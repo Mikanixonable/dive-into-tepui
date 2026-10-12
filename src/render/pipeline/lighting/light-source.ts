@@ -5,18 +5,18 @@ import { mrt, select, vec3, vec4 } from 'three/tsl';
 import type { Vec3Node } from '../../tsl-types';
 import type { ShadingSample } from './shading-sample';
 
-// 鏡面の寄与がどちらの照度バッファへ入るか。'far'(遠方)は近くの物体の映り込みが置き換える鏡面 — 天体照と
-// 環境光の像。'direct'(直接)は置き換えない鏡面 — 遮り方を影パスなど光源自身が持つもの。
+// 鏡面の寄与を積む照度バッファ。'far'(遠方)は近くの物体の映り込みが置き換える鏡面。'direct'(直接)は
+// 遮り方を影パスなど光源自身が持つ鏡面。
 export type SpecularReach = 'direct' | 'far';
 
 // 光源 1 つがシェーディング点へ届ける照度。マテリアル固有の F0(反射率の色)を知らないため、
 // 鏡面は F0=1 で仮に評価した値になる — フレネル項をマテリアルパス側で掛け直す前提の、
-// ライトプリパスという構成そのものが持つ制約。specularReach は鏡面を積む照度バッファ。
-export type LightContribution = {
+// ライトプリパスという構成そのものが持つ制約。
+export interface LightContribution {
   readonly diffuse: Vec3Node;
   readonly specular: Vec3Node;
   readonly specularReach: SpecularReach;
-};
+}
 
 export interface LightSource {
   // このフレームに寄与があるか。偽なら描画命令は発行されない。
@@ -29,7 +29,7 @@ export interface LightSource {
 }
 
 // 寄与を照度バッファ(拡散・直接の鏡面・遠方の鏡面の MRT)へ加算で積むマテリアルに包む。鏡面は
-// specularReach の側にだけ積み、もう一方へは 0 を積む。
+// specularReach の側の照度バッファへ積む。
 export function contributionMaterial(
   sample: ShadingSample, contribution: LightContribution,
 ): THREE.MeshBasicNodeMaterial {

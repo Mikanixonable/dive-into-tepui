@@ -1,9 +1,7 @@
 // 映り込みのぼけ方のケース。粗さを段に振った金属の帯を床に並べ、帯ごとに同じ発光球を1つずつ映し、地球の鏡面像も
 // 同じ床に映す。同じ粗さの面で、近くの物体の像と遠方の光の像が同じ規則でぼけるかを、帯を横に並べて読む試験体。
-// 対照のケースは発光球の代わりに同じ場所・大きさ・放射輝度の球光源を置き、ライティングパスが積分した鏡面像を映す。
-// チェッカーのケースは発光球の代わりに 2×2 のマスの発光板を立て、当たった画素どうしの境のぼけと、縦と横のぼけ方の
-// 違いを映す — 一様な発光球の像は、当たり / 外れの境のぼけしか持たない。
-// 帯ごとの像の縁の幅と明るさは tools/render-lab-reflection-levels.mjs が撮影から表にする。
+// 発光球を球光源に替えた対照と、チェッカーの発光板に替えた変種も持つ。
+// 配置の値は、撮影から表を作る tools/render-lab-reflection-levels.mjs が写して持つ — 変えるときは両方を揃える。
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { markLitOpaque, markShadowCaster } from '../../src/render/pipeline/lit-layer';
@@ -13,7 +11,7 @@ import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { SphereLightValue } from '../../src/render/pipeline/lighting/sphere-lights';
 
 // 帯の粗さ。帯 k は左から k 番目。鏡に近い側を細かく刻み、0.6 で映り込みが消えるところまでを置く。いちばん
-// 滑らかな帯は、three の標準マテリアルが下から切る粗さ 0.0525 の面として G バッファに載る。
+// 滑らかな帯は、three の粗さの下限 0.0525 で G バッファに載る。
 const ROUGHNESSES = [0.05, 0.075, 0.1, 0.15, 0.2, 0.25, 0.3, 0.4, 0.5, 0.6] as const;
 // 帯の金属の線形の灰色の値(金属度 1 なので鏡面反射率そのもの)。
 const METAL_REFLECTANCE = 0.9;
@@ -24,10 +22,9 @@ const CAMERA_PITCH_DEG = 10;
 // カメラの周回の中心までの距離 [m]。
 const VIEW_DISTANCE = 8;
 
-// 帯は、カメラの真下の点から水平に放射状へ延ばした扇形。**全帯がカメラの真下を通る鉛直軸まわりに回しただけの
-// 配置** — 反射点・当たり距離・カメラから反射点までの距離が全帯で揃い、縁の幅の予測が粗さだけで決まる。
-// 帯の内外の半径 [m] と、隣り合う帯の中心線の間の方位角と帯の幅の方位角 [deg]。両端の帯が画面の縁の映り込みの
-// フェードに掛からない範囲に収める。
+// 帯は、カメラの真下の点から水平に放射状へ延ばした扇形を、真下を通る鉛直軸まわりに回して並べる — 反射点・当たり
+// 距離・カメラから反射点までの距離が全帯で揃い、縁の幅の予測が粗さだけで決まる。内外の半径 [m] と、隣の帯との
+// 中心線の間隔と帯の幅の方位角 [deg]。両端の帯は画面の縁の映り込みのフェードより内側に収める。
 const BAND_INNER_RADIUS = 2.4;
 const BAND_OUTER_RADIUS = 24;
 const BAND_SPACING_DEG = 6.6;
@@ -59,7 +56,7 @@ const LADDER_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
   earthLongitudeDeg: 13,
 };
 
-// 恒星の向き。床の真下に置き、見えている面へ直射を当てない — 帯に映る遠方の光は地球の天体照だけ。
+// 恒星の向き。床の真下に置いて見えている面から直射を外し、帯に映る遠方の光を地球の天体照に絞る。
 const SUN_BELOW = new THREE.Vector3(0, -1, 0);
 
 // どの撮影にも重ねる描画設定。環境光の鏡面は粗さによらない一様な放射輝度でぼけを持たず、帯どうしの差を埋めるので
@@ -107,7 +104,7 @@ function band(index: number): THREE.Mesh {
   return mesh;
 }
 
-// 発光球とチェッカーの発光するマスのマテリアル。ベース色は黒で、自己発光だけで光る。
+// 発光球とチェッカーの発光するマスのマテリアル。
 function emitterMaterial(): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     color: 0x000000,
@@ -212,10 +209,8 @@ function reflectionLadder(): LabCase {
   };
 }
 
-// 対照: 同じ床と地球に、発光球の代わりに同じ場所・大きさ・放射輝度の球光源を置く。縁の幅は天体照を切った直接の
-// 鏡面照度で測る — 球光源の像の手前に地球の像の縁が来ると、粗い帯で縁の幅を読めない。
+// 対照: 同じ床と地球に、発光球の代わりに同じ場所・大きさ・放射輝度の球光源を置く。
 function reflectionLadderLights(): LabCase {
-  // 球光源は発光球と同じ中心・半径・放射輝度。
   const radiance = new THREE.Color(EMITTER_RADIANCE, EMITTER_RADIANCE, EMITTER_RADIANCE);
   const sphereLights: SphereLightValue[] = ROUGHNESSES.map((_, index) => ({
     center: sphereCenter(index), radius: SPHERE_RADIUS, radiance,
@@ -229,13 +224,14 @@ function reflectionLadderLights(): LabCase {
     shots: {
       'ladder-lights': { view: {}, graphics: LADDER_GRAPHICS },
       'ladder-lights-no-planet': { view: {}, graphics: NO_PLANET_GRAPHICS },
+      // 縁の幅は天体照を切った直接の鏡面照度で測る — 粗い帯では球光源の像の手前に地球の像の縁が来る。
       'ladder-lights-no-planet-specular': { view: {}, graphics: NO_PLANET_GRAPHICS, debugTarget: 'direct-specular' },
     },
   };
 }
 
-// 同じ床と地球に、発光球の代わりにチェッカーの発光板を立てる。どの撮影も天体照を切る — 天体照は黒いマスにも誘電体の
-// 鏡面の照り返しを乗せ、黒いマスの像が 0 にならない。
+// 同じ床と地球に、発光球の代わりにチェッカーの発光板を立て、像の中のマスの境のぼけと、縦と横のぼけ方の違いを読む。
+// どの撮影も天体照を切る — 天体照は黒いマスにも誘電体の鏡面の照り返しを乗せ、黒いマスの像が 0 にならない。
 function reflectionLadderChecker(): LabCase {
   return {
     objects: [structure(checkerPlates())],

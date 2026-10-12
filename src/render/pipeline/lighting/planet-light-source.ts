@@ -173,7 +173,7 @@ class PlanetLightSlot implements LightSource {
     return material;
   }
 
-  // このスロットの球光源がシェーディング点へ届ける照度。鏡面は近くの物体の像が置き換える遠方の鏡面。
+  // このスロットの球光源がシェーディング点へ届ける照度。
   private contribution(sample: ShadingSample): LightContribution {
     const center = sample.viewPositionOf(this.slot.center);
     const toCenter = center.sub(sample.position);
@@ -250,7 +250,7 @@ class PlanetLightSlot implements LightSource {
     return this.slot.radiance.mul(receiverPhase(alpha, capAngle));
   }
 
-  // 鏡面が写しを読むフィルタの角幅 [rad]。GGX のローブ半幅 2α と、光源の円錐の半角 σ の小さい方。
+  // 鏡面が写しを読むフィルタの角幅 [rad]。鏡面ローブの半幅と、光源の円錐の半角 σ の小さい方。
   private specularFilterAngle(sample: ShadingSample, sinSigmaSqr: FloatNode): FloatNode {
     return min(specularLobeHalfWidth(sample), asin(clamp(sqrt(sinSigmaSqr), 0, 1)));
   }

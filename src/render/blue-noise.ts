@@ -6,7 +6,7 @@
 // なので、そこを小さくできる列だけが絵の質を上げる。blue noise はそれを、格子(規則的な模様として
 // 見えてしまう)ではない形で満たす。
 //
-// **画素座標だけから引くので時間で動かない。** 動くノイズは、静止した絵ではちらつきとして目に付く。
+// **値は画素座標とずらし(tileOffset)で決まり、時間で動かない。** 動くノイズは、静止した絵ではちらつきとして目に付く。
 import * as THREE from 'three/webgpu';
 import { floor, ivec2, mod, round, screenCoordinate, textureLoad } from 'three/tsl';
 import type { FloatNode, Vec2Node } from './tsl-types';
@@ -15,9 +15,8 @@ import { BLUE_NOISE_TILE_BASE64, BLUE_NOISE_TILE_SIZE } from './blue-noise-tile.
 export class BlueNoise {
   private readonly tile: THREE.DataTexture;
 
-  // タイルを 1 枚だけ GPU へ載せる。解放は呼び出し側が dispose で行う。tileOffset はタイルを読む位置へ足すずらし
-  // [px](整数)で、どの tileShift の値も同じだけずれる — 画面が整数 px 動いて、各画素の引く値が入れ替わるのと同じ。
-  // null ならずらさない。
+  // タイルを 1 枚だけ GPU へ載せる。解放は呼び出し側が dispose で行う。tileOffset(整数の [px]、null で 0)は
+  // 読む位置へ足すずらしで、どの tileShift にも同じだけ効く — 画面が整数 px 動いたときと同じく、値が画素の間で入れ替わる。
   public constructor(private readonly tileOffset: Vec2Node | null = null) {
     const bytes = Uint8Array.from(atob(BLUE_NOISE_TILE_BASE64), (c) => c.charCodeAt(0));
     this.tile = new THREE.DataTexture(

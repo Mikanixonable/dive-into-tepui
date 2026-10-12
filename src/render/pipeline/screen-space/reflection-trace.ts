@@ -1,7 +1,5 @@
 // 滑らかな面の画素 1 つから反射の向きへ ray を 1 本出し、画面に写った深度の上を進めて、近くの物体に当たった位置と
-// 距離、その像が遠方の鏡面光を置き換える重み w を求める。ray は画面空間で透視補正した刻みで進める(McGuire &
-// Mara 2014「Efficient GPU Screen-Space Ray Tracing」)。判定は幾何 — 深度と、反射する面の位置・向き・粗さ —
-// だけから決まる。
+// 距離、その像が遠方の鏡面光を置き換える重み w を求める。判定は深度と、反射する面の位置・向き・粗さから決まる。
 import type * as THREE from 'three/webgpu';
 import {
   Break, If, Loop, abs, dot, float, floor, ivec2, length, max, min, mix, select, smoothstep, textureLoad, vec2, vec4,
@@ -17,10 +15,9 @@ const MAX_TRACE_DISTANCE = 1000;
 // 距離のフェードを始める、上限に対する割合。
 const DISTANCE_FADE_START = 0.8;
 
-// ray thickness: 深度に写った面がその奥へ続くとみなす厚みの、面の view 空間の奥行き |z| に対する割合。深度は
-// 面の手前側しか持たないので、ray が面の奥へ入ったとき、この厚みの内側なら物体に当たった、外側なら物体の後ろを
-// 抜けたとみなす。奥行きに比例させるのは、同じ見かけの大きさの物体は奥行きに比例した厚みを持つため — 厚みを
-// 長さで固定すると、写る物体の規模(m の荷室から km の構造まで)ごとに当たり方が変わる。
+// ray thickness: 深度に写った面がその奥へ続くとみなす厚みの、面の view 空間の奥行き |z| に対する割合。ray が面の
+// 奥へ入ったとき、この厚みの内側なら物体に当たった、外側なら物体の後ろを抜けたとみなす。奥行きに比例させるのは、同じ
+// 見かけの大きさの物体は奥行きに比例した厚みを持つため — 長さで固定すると、写る物体の規模ごとに当たり方が変わる。
 const THICKNESS_PER_DISTANCE = 0.05;
 // G バッファへの書き込みから位置の復元、ray の射影と補間までの float32 の演算が、view 空間の奥行き |z| に積む
 // 相対誤差の上限。丸め 1 回の 2^-24 を 16 回ぶん見込む。
@@ -68,13 +65,12 @@ export interface ReflectionHit {
   readonly weight: FloatNode;
 }
 
-// 面 sample から向き direction(view 空間の単位ベクトル)の ray を、素の深度 depth(逆 Z、虚空は 0)の上で
-// stepCount 歩進めて判定する。rayWeight は ray が選ばれた重みで、w へ掛ける — 0 の ray は進めない。depth の画素
-// 1 つは描画バッファの画素 footprint 個四方のいちばん手前の深度を持つ。traceSize は depth の画素を単位とする画面の
-// 寸法で、割り切れなければ端の画素が画面の外へはみ出す。pixelSpan は描画バッファの画素 1 つの横の幅(x, y)で、
-// clip 座標の w を掛けると view 空間の長さ [m] になる。projection / projectionInverse は実カメラの射影行列とその逆、
-// near は近クリップ距離 [m]、jitter は画素ごとの 0..1 で、歩みの位置をずらす。粗さが NO_REFLECTION_ROUGHNESS 以上の
-// 面は進めずに 0 を返す。**Fn の中から、面が写っている画素について呼ぶこと。**
+// 面 sample から向き direction(view 空間の単位ベクトル)の ray を、素の深度 depth(逆 Z、虚空は 0)の上で stepCount
+// 歩進めて判定する。depth の画素 1 つは描画バッファの画素 footprint 個四方のいちばん手前の深度を持ち、traceSize は
+// depth の画素を単位とする画面の寸法(割り切れなければ端の画素が画面の外へはみ出す)。pixelSpan は描画バッファの
+// 画素 1 つの横の幅(x, y)で、clip 座標の w を掛けると view 空間の長さ [m]。projection / projectionInverse / near は
+// 実カメラの射影行列・その逆・近クリップ距離 [m]、jitter は歩みの位置をずらす画素ごとの 0..1、rayWeight は w へ掛ける
+// ray の重み。**Fn の中から、面が写っている画素について呼ぶこと。**
 export function traceReflection(
   depth: THREE.Texture, footprint: IntNode, traceSize: Vec2Node, pixelSpan: Vec2Node, projection: Mat4Uniform,
   projectionInverse: Mat4Uniform, near: FloatNode, stepCount: IntNode, jitter: FloatNode, sample: ShadingSample,
@@ -83,7 +79,7 @@ export function traceReflection(
   const hitUV = vec2(0).toVar();
   const distance = float(0).toVar();
   const weight = float(0).toVar();
-  // 当たり方によらない重み。0 の ray は追跡を打ち切る。
+  // 当たり方によらない重み。
   const roughnessFade = float(1).sub(smoothstep(FULL_REFLECTION_ROUGHNESS, NO_REFLECTION_ROUGHNESS, sample.roughness));
   const facingFade = float(1).sub(
     smoothstep(CAMERA_FACING_FADE_START, CAMERA_FACING_FADE_END, dot(direction, sample.viewDir)));
@@ -147,7 +143,7 @@ export function traceReflection(
 }
 
 // view 空間の線分 origin → end を、寸法 size [px] の画面へ写した線分。画面上の位置で線形に補間した t(0..1)で、
-// 透視補正した view 空間の点を引ける。
+// 透視補正した view 空間の点を引ける(McGuire & Mara 2014「Efficient GPU Screen-Space Ray Tracing」)。
 class ScreenSegment {
   // 起点と終点の画面上の位置 [px]。
   public readonly start: Vec2Node;
@@ -220,8 +216,7 @@ export function rayThicknessAt(surfaceZ: FloatNode): FloatNode {
 }
 
 // 面 sample の ray の起点を法線の向きへ浮かせる高さ [m]。平らな面が、自分を写した深度の画素で自分の奥へ入らない
-// 最小の高さで、深度の画素の中で面の傾きが生む高さの差と、奥行きの誤差の上限の和。ray は法線の側へ出るので、
-// 起点で足りれば先の刻みでも足りる。footprint と pixelSpan は traceReflection と同じ。
+// 最小の高さ。ray は法線の側へ出るので、起点で足りれば先の刻みでも足りる。
 function originLift(
   sample: ShadingSample, footprint: IntNode, pixelSpan: Vec2Node, projection: Mat4Uniform,
 ): FloatNode {

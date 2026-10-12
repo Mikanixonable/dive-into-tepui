@@ -1,7 +1,7 @@
-// 陰影の合成のパス。面の画素の最終の陰影 keep + R × ((1 − w) × 遠方の鏡面照度 + w × I) を、world パスと共有する
-// HDR ターゲットへ書き、G バッファの深度を同じターゲットへ複製する。近くの物体の映り込み(均した、または均す前の
-// w × I と w)が遠方の鏡面光を置き換えるのはこの式の中だけで、鏡面反射率 R は両方へ同じ値を一度だけ掛ける。面の無い
-// 画素は捨て、先に描かれた背景を残す。
+// 陰影の合成のパス。面の画素の最終の陰影 keep + R × ((1 − w) × 遠方の鏡面照度 + w × I) を共有の HDR ターゲットへ
+// 書き、G バッファの深度を同じターゲットへ複製する。近くの物体の映り込み(均した、または均す前の w × I と w)は
+// この式で遠方の鏡面光を置き換え、鏡面反射率 R は両方へ同じ値を一度だけ掛ける。面の無い画素は捨て、先に描かれた
+// 背景を残す。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { Discard, Fn, screenUV, texture, vec4 } from 'three/tsl';
@@ -12,8 +12,8 @@ import type { GBufferPass } from './gbuffer';
 import type { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import type { FloatNode, Vec3Node, Vec4Node } from '../tsl-types';
 
-// 画素の最終の陰影。weight と weightedImage はいま描く画素の置換の重み w と、それを掛けた像 w × I で、映り込みの同じ
-// 描画先の同じ texel から読んだもの。物体の無い画素は捨てる。
+// 画素の最終の陰影。weight と weightedImage は、いま描く画素の置換の重み w とそれを掛けた像 w × I で、映り込みの
+// 同じ描画先の同じ texel から読んだものであること。物体の無い画素は捨てる。
 function composedShading(
   gbuffer: GBufferPass, keep: THREE.Texture, farSpecular: THREE.Texture, weight: FloatNode, weightedImage: Vec3Node,
 ): Vec4Node {
@@ -40,14 +40,14 @@ function compositeMaterial(
 }
 
 export class ShadingCompositePass {
-  // 均す前と均した映り込みを読む 2 枚。ぼかしの切り替えでは持ち替えるだけにする — 組み直すとシェーダの再コンパイルが
-  // フレームを止める。
+  // 均す前と均した映り込みを読む 2 枚。ぼかしの切り替えでは持ち替える — 組み直すとシェーダの再コンパイルがフレームを
+  // 止める。
   private readonly rawMaterial: THREE.MeshBasicNodeMaterial;
   private readonly denoisedMaterial: THREE.MeshBasicNodeMaterial;
   private readonly quad = new QuadMesh();
 
-  // keep は映り込みが置き換えない成分(放射輝度)、farSpecular は遠方の鏡面照度、reflection は映り込み、sharedTarget は
-  // 書き込む共有の描画先。denoised は構築時点の描画設定 screenSpaceSpecularDenoise の値。
+  // keep は映り込みが置き換えない成分(放射輝度)、farSpecular は遠方の鏡面照度。denoised は構築時点の描画設定
+  // screenSpaceSpecularDenoise の値。
   public constructor(
     private readonly renderer: WebGPURenderer, gbuffer: GBufferPass, keep: THREE.Texture, farSpecular: THREE.Texture,
     reflection: ScreenSpaceReflection, private readonly sharedTarget: THREE.RenderTarget,

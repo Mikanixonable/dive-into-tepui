@@ -50,8 +50,8 @@ const AXES = {
     ratioLabel: '近傍拡散合計',
   },
   // 値は src/render/graphics-settings.ts の screenSpaceSpecular / screenSpaceSpecularQuality / screenSpaceSpecularDenoise の
-  // 選択肢。構図は映り込みの出る金属面 — 材質の格子の既定の向き(leo-metal)と、荷室の金属の板(bay-metal。
-  // tools/render-lab/bay-cases.ts の METAL_VIEW)。
+  // 選択肢。構図は映り込みの出る金属面 — 材質の格子の既定の向き(leo-metal)と、荷室の金属の板(bay-metal。向きは
+  // tools/render-lab/bay-cases.ts の METAL_VIEW と同じ)。
   reflection: {
     statistic: 'p50',
     framings: [

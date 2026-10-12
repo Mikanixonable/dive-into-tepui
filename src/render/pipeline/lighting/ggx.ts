@@ -1,5 +1,5 @@
 // GGX の鏡面。点光源近似で放射照度へ掛ける係数と、像をぼかす鏡面ローブの幅、ローブから選んだ反射の向きを返す。
-// 係数と重みは F0=1 で仮に評価した値で、フレネル項はマテリアルパス側が掛け直す。
+// 係数と重みは F0=1 で仮に評価した値で、マテリアルの F0 でフレネル項を掛け直して使う。
 import {
   D_GGX, F_Schlick, V_GGX_SmithCorrelated, clamp, cos, dot, float, max, normalize, saturate, select, sin, sqrt, vec3,
 } from 'three/tsl';
@@ -27,13 +27,12 @@ export interface GgxReflectionSample {
   readonly weight: FloatNode;
 }
 
-// 面 sample の鏡面ローブから、反射の向きを 1 本選ぶ。マイクロ法線を可視法線分布(VNDF)から選んで視線を映す
-// (Dupuy & Benyoub 2023 の球冠による Heitz 2018 の標本化)。この向きの密度は D·G1(v) / (4·N·V) なので、重み
-// G2 / G1 を掛けた放射輝度の期待値が、F0=1 の鏡面の積分 ∫ L·D·V·(N·L) dl になる。u は画素ごとの 0..1 の 2 つ組。
+// 面 sample の鏡面ローブから、反射の向きを 1 本選ぶ。u は画素ごとの 0..1 の 2 つ組。選んだ向きで見た放射輝度に
+// 重みを掛けたものの期待値が、F0=1 の鏡面の積分 ∫ L·D·V·(N·L) dl になる。
 export function sampleGgxReflection(sample: ShadingSample, u: Vec2Node): GgxReflectionSample {
   const alpha = sample.roughness.mul(sample.roughness);
   const alphaSqr = alpha.mul(alpha);
-  // 法線を z とする正規直交基底(Duff ら 2017)。法線の向きによらず分岐なしで組める。
+  // 法線を z とする正規直交基底(Duff ら 2017。法線のどの向きでも組める)。
   const normal = sample.normal;
   const sign = select(normal.z.greaterThanEqual(0), float(1), float(-1));
   const a = float(-1).div(sign.add(normal.z));
@@ -41,16 +40,18 @@ export function sampleGgxReflection(sample: ShadingSample, u: Vec2Node): GgxRefl
   const tangent = vec3(float(1).add(sign.mul(normal.x).mul(normal.x).mul(a)), sign.mul(b), sign.mul(normal.x).negate());
   const bitangent = vec3(b, sign.add(normal.y.mul(normal.y).mul(a)), normal.y.negate());
   const view = vec3(dot(sample.viewDir, tangent), dot(sample.viewDir, bitangent), dot(sample.viewDir, normal));
-  // 粗さ 1 の半球へ引き伸ばした視線のまわりの球冠から点を選び、引き伸ばしを戻してマイクロ法線にする。
+  // 可視法線分布(VNDF)からマイクロ法線を選ぶ(Dupuy & Benyoub 2023 の球冠による Heitz 2018 の標本化)。
+  // 粗さ 1 の半球へ引き伸ばした視線のまわりの球冠から点を選び、引き伸ばしを戻す。
   const stretchedView = normalize(vec3(view.xy.mul(alpha), view.z)).toVar();
   const phi = u.x.mul(2 * Math.PI);
   const z = float(1).sub(u.y).mul(stretchedView.z.add(1)).sub(stretchedView.z);
   const sinTheta = sqrt(clamp(float(1).sub(z.mul(z)), 0, 1));
   const cap = vec3(sinTheta.mul(cos(phi)), sinTheta.mul(sin(phi)), z).add(stretchedView);
   const micro = normalize(vec3(cap.xy.mul(alpha), max(cap.z, 0)));
+  // マイクロ法線を view 空間へ戻し、視線をそれで映す。
   const halfDir = normalize(tangent.mul(micro.x).add(bitangent.mul(micro.y)).add(normal.mul(micro.z))).toVar();
   const direction = halfDir.mul(dot(sample.viewDir, halfDir).mul(2)).sub(sample.viewDir).toVar();
-  // 高さ相関の Smith の G2 / G1(v)。
+  // 重みは高さ相関の Smith の G2 / G1(v) — 選んだ向きの密度 D·G1(v) / (4·N·V) で鏡面の被積分関数を割った値。
   const dotNV = max(view.z, 1e-4);
   const dotNL = dot(normal, direction);
   const rootV = sqrt(alphaSqr.add(float(1).sub(alphaSqr).mul(dotNV.mul(dotNV))));

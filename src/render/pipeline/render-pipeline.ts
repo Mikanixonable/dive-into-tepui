@@ -270,7 +270,6 @@ export class RenderPipeline {
       shadow: this.buildCompositeMaterial(
         vec4(vec3(texture(this.shadowPass.texture, screenUV).r), 1),
       ),
-      // 照度は 1 天文単位で π を超え、トーンマッピングを通さないと全面白になる。
       diffuse: hdrMaterial(this.lightPrepass.diffuseTexture),
       'direct-specular': hdrMaterial(this.lightPrepass.directSpecularTexture),
       'far-specular': hdrMaterial(this.lightPrepass.farSpecularTexture),
@@ -283,7 +282,6 @@ export class RenderPipeline {
       'bounce-source': hdrMaterial(this.screenSpacePass.surfaceRadianceTexture),
       material: hdrMaterial(this.materialPass.keepTexture),
       'reflection-source': hdrMaterial(this.materialPass.reflectionSourceTexture),
-      // 映り込みの深度は近いほど明るく、面の無い画素は黒。当たり距離は対数で濃淡へ写す。
       'reflection-depth': this.buildCompositeMaterial(vec4(vec3(this.reflectionDepthDebugNode()), 1)),
       'raw-reflection-weight': this.buildCompositeMaterial(vec4(vec3(this.reflection.rawWeightAt(screenUV)), 1)),
       'raw-reflection-distance': this.buildCompositeMaterial(
@@ -386,9 +384,9 @@ export class RenderPipeline {
     return select(distance.greaterThan(0), scaled.clamp(0, 1), float(0));
   }
 
-  // 映り込みを均すのに読んだ段を、段 + 1 を REFLECTION_LEVEL_COUNT で割った線形の灰へ写す — 高さ 540 px の描画バッファで
-  // いちばん粗い段が白で、それより高い描画バッファの上の段も白。w̄ が 0 の画素は青、均した値を書いていない(映り込みを
-  // 切った)フレームは黒。tools/render-lab-reflection-levels.mjs が同じ目盛りで段へ戻す。
+  // 映り込みを均すのに読んだ段を、段 + 1 を REFLECTION_LEVEL_COUNT で割った線形の灰(1 で切る)へ写す。w̄ が 0 の画素は
+  // 青、均した値を書いていない(映り込みを切った)フレームは黒。目盛りを変えるときは
+  // tools/render-lab-reflection-levels.mjs の読み戻しも揃える。
   private reflectionDenoiseLevelDebugNode(): Vec3Node {
     const level = this.reflection.denoiseLevelAt(screenUV);
     const gray = vec3(level.add(1).div(REFLECTION_LEVEL_COUNT).clamp(0, 1));
@@ -513,9 +511,7 @@ export class RenderPipeline {
 
   // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → 遮蔽と照り返し → ライティング → マテリアル → 映り込み →
   // 陰影の合成 → 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルではマテリアル・
-  // 映り込み・陰影の合成・大気・world・レンズの6つのパスをスキップする。デバッグ表示を選んでいてもパスは省略しない —
-  // 設定で切られているパス(影マップ・遮蔽と照り返し・映り込み・レンズ)を選べば、そのフレームが何も作っていない
-  // ことがそのまま空として見える。
+  // 映り込み・陰影の合成・大気・world・レンズの6つのパスを飛ばす。デバッグ表示の間もすべてのパスを発行する。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();

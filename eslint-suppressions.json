@@ -1263,11 +1263,6 @@
       "count": 6
     }
   },
-  "src/render/pipeline/lighting/light-source.ts": {
-    "@typescript-eslint/consistent-type-definitions": {
-      "count": 1
-    }
-  },
   "src/render/pipeline/lighting/ltc-table.generated.ts": {
     "@typescript-eslint/consistent-type-definitions": {
       "count": 1

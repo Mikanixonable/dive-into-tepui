@@ -44,7 +44,6 @@ export class AmbientSource implements LightSource {
 
   // 拡散は、その画素へ届く環境光の放射照度そのもの。鏡面は同じ光を放射輝度 E/π の一様な環境と
   // して映したもので、粗さによらず一定 — 拡散を持たない金属面が影の中で真っ黒に残らないための項。
-  // 鏡面は近くの物体の像が置き換える遠方の鏡面。
   private contribution(sample: ShadingSample): LightContribution {
     const irradiance = this.irradiance(sample);
     return { diffuse: irradiance, specular: irradiance.div(PI), specularReach: 'far' };

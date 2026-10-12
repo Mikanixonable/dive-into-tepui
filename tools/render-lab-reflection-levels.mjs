@@ -1,30 +1,17 @@
 // 映り込みのぼけ方の表。render-lab:shot が撮った組の dir から、粗さの段のケース(tools/render-lab/reflection-cases.ts)の
-// 撮影を読み、6つの表を出す。読むのは PNG だけで、ブラウザは開かない。
+// 撮影を読み、粗さの帯ごとの6つの表を標準出力へ出す。画素は粗さのデバッグ表示(ladder-roughness)で帯へ振り分ける。
 //
 // 使い方: node tools/render-lab-reflection-levels.mjs <shots-dir>。dir は相対ならリポジトリ根から。
 //
-// 画素は ladder-roughness で帯へ振り分ける。真値は、画素に写る床の点で F0 = 1 の GGX の鏡面を近似を使わずに数値
-// 積分した値。発光球の像・置換の重み・チェッカーの像は、均した映り込みの撮影で読む。
-// 1. 縁の幅: 帯の中心線に沿った縦の断面で、発光球の像(ladder-reflection)と地球の像(ladder-off-specular)の縁が
-//    10% から 90% の明るさへ上がるまでの px を測る。球は、同じ場所の球光源をライティングパスで照らした対照の像
-//    (天体照を切った ladder-lights-no-planet-specular)の縁の幅と並べ、両方を鏡面ローブの予測幅とも並べる。
-//    球の予測は、ローブの円の直径 2·d·tan(2α) を当たった点の奥行きで画面へ写した px、地球の予測は、ローブの角幅 2·2α を画素の角幅で割った px。
-//    球の縁は手前側(画面の下側)で測る — 奥側は帯の奥の端が近く、ぼけた縁が帯からはみ出す。
-// 2. 像の明るさ: 帯の画素の、発光球の像(ladder-reflection)の明るさの最大と和を、対照の像
-//    (ladder-lights-no-planet-specular)のそれと比べる。ぼかしで明るさが失われていないかを読む。明るさの頂の行を
-//    球の中心の鏡像の行と発光球の真値の頂の行と並べ、像が粗さとともに対照・真値と同じ向きへずれるかを読む。発光球の
-//    像(w·I)も対照(鏡面照度)も反射率 R を掛ける前の値なので、比は R によらない。
-// 3. まだらの量: 帯の画素の値と、そのまわり 5×5 の平均との差の平均。発光球の像と、置換の重み w(ladder-weight)で
-//    測る。
-// 4. チェッカーの縁の幅: チェッカーの発光板の像(ladder-checker-reflection)の、横の境(上下のマスの間)と縦の境(左右の
-//    マスの間)の縁が 90% から 10% の明るさへ下がるまでの px を、同じ断面の真値と並べる。横の境は左下のマスの像の
-//    中心を通る縦の断面で、縦の境は下のマスの像の中心を通る横の断面で測る。撮影の無い組では飛ばす。
-// 5. 像から遠い輝点: 発光球の真値の像が読める明るさを持たない行 — その行の帯の画素の真値の最大が、帯の真値の頂の
-//    0.1% に満たない行 — にある帯の画素のうち、発光球の像(ladder-reflection)の明るさが帯の対照の像
-//    (ladder-lights-no-planet-specular)の頂の 10% 以上の画素の数。鏡面ローブの裾の標本が像から遠くに落とす疎らな
-//    輝点を読む。読める行を真値で決めるのは、8bit の対照の撮影では頂の 0.1% の明るさが 0 に丸まるため。
-// 6. 帯 × 均しの段: 均しの段の撮影(ladder-level)を段へ戻し、w̄ が正の画素を段ごとに数える。「張り付き」は縮小列の
-//    いちばん粗い段に張り付いた画素の、w̄ が正の画素に対する割合。撮影の無い組では飛ばす。
+// 映り込みは均したあとの像を読み、同じ場所の球光源をライティングパスで照らした対照の像(天体照を切った
+// ladder-lights-no-planet-specular)・鏡面ローブの幅からの予測・真値と比べる。真値は、画素に写る床の点で F0 = 1 の
+// GGX の鏡面を近似を使わずに数値積分した値。
+// 1. 縁の幅: 発光球と地球の像の縁のぼけの幅。
+// 2. 像の明るさ: 発光球の像の明るさの最大・和と頂の行。ぼかしで明るさが失われないか、像が対照・真値と同じ向きへずれるか。
+// 3. まだらの量: 発光球の像と置換の重み w の、帯の中の細かなむら。
+// 4. チェッカーの縁の幅: チェッカーの発光板の像の、上下・左右のマスの間の縁のぼけの幅。
+// 5. 像から遠い輝点: 鏡面ローブの裾の標本が、真値の像の届かない行に落とす疎らな輝点の数。
+// 6. 帯 × 均しの段: 均しに使った縮小列の段の分布と、いちばん粗い段に張り付いた画素の割合。
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { decodePng } from './png.mjs';
@@ -51,15 +38,14 @@ const VIEW_HEIGHT = 540;
 const FOV_DEG = 50;
 // 鏡面ローブの半幅 [rad] の、GGX の α に対する比(src/render/pipeline/lighting/ggx.ts の LOBE_HALF_WIDTH_PER_ALPHA)。
 const LOBE_HALF_WIDTH_PER_ALPHA = 2;
-// 高さ 540 px の描画バッファで均すのに使う縮小列の段数は src の定数から読む。均しの段のデバッグ表示は、段 + 1 を段数で
-// 割った灰(src/render/pipeline/render-pipeline.ts)。
+// 高さ 540 px の描画バッファで均すのに使う縮小列の段数。
 const LEVEL_COUNT = (() => {
   const source = readFileSync(path.join(root, 'src/render/pipeline/screen-space/reflection-denoise.ts'), 'utf8');
   const match = /^export const REFLECTION_LEVEL_COUNT = (\d+);/m.exec(source);
   if (match === null) throw new Error('REFLECTION_LEVEL_COUNT not found in reflection-denoise.ts');
   return Number(match[1]);
 })();
-// いちばん粗い段に張り付いたとみなす、段の端からの差。8bit の灰の白の側の刻み(段数 13 で段約 0.12、7 で約 0.06)を覆う。
+// いちばん粗い段に張り付いたとみなす、段の端からの差。8bit の灰の白の側の1刻み(段にして約 0.009 × 段数)を覆う。
 const STUCK_MARGIN = 0.15;
 
 // 粗さのデバッグ表示から帯を決めるときの、粗さの許す差。いちばん狭い帯の間隔(0.0525 と 0.075)の半分より小さい。
@@ -86,16 +72,16 @@ const PEAK_ROW_STEP = 0.25;
 // 1〜2% あり、それより十分広く取る。
 const PEAK_FIT_DROP = 0.05;
 // ローブの半幅が、床の点から見た発光球の視半径のこの割合に満たない帯では、像が一様な円盤で頂が平らなので、
-// 頂の代わりに重心の行を取る(帯0)。
+// 頂の代わりに重心の行を取る。
 const FLAT_TOP_LOBE_RATIO = 0.25;
 // チェッカーの真値の縁が断面に収まるのに、暗い側の明るさが下回らなければならない、基準に対する比。
 const DARK_FLOOR = 0.05;
-// 像から遠い輝点の表で、真値の像が読める行とみなす、その行の帯の画素の真値の最大の、帯の真値の頂に対する比の下限と、
-// 輝点とみなす発光球の像の明るさの、帯の対照の頂に対する比の下限。
+// 真値の像が読める行とみなす、その行の帯の画素の真値の最大の、帯の真値の頂に対する比の下限。
 const READABLE_ROW_FLOOR = 0.001;
+// 像から遠い輝点とみなす、発光球の像の明るさの、帯の対照の像の頂に対する比の下限。
 const DISTANT_SPOT_FLOOR = 0.1;
-// 真値の像が読める行を決めるのに、行ごとに真値を求める帯の画素の列の数。その行の帯の区間の両端と中心を含めて等間隔に
-// 取る — 粗い帯では、隣の帯の発光球の裾が帯の端でいちばん明るい。
+// 真値の像が読める行を決めるのに、行ごとに真値を求める帯の画素の列の数(両端と中心を含む等間隔)。端を外すと、粗い帯で
+// 帯の端がいちばん明るい隣の帯の発光球の裾を取りこぼす。
 const READABLE_ROW_COLUMNS = 5;
 // 円錐の積分の、床の点・発光球ごとの標本数。倍にしても真値の像が読める行の範囲が変わらない数。
 const CONE_SAMPLES = 1024;
@@ -123,13 +109,15 @@ function neutral(c) {
   return shifted.map((v) => v * (newPeak / peak) * (1 - g) + newPeak * g);
 }
 
-// PBR Neutral の逆写像。圧縮の掛からない範囲は閉じた式で、掛かる範囲は順写像を繰り返し当てて解く。
+// PBR Neutral の逆写像。
 function inverseNeutral(t) {
+  // 肩の圧縮の掛からない範囲は閉じた式で解く。
   if (Math.max(...t) < 0.76) {
     const low = Math.min(...t);
     const x = low < 0.04 ? 0.4 * Math.sqrt(low) : low + 0.04;
     return t.map((v) => v + x - low);
   }
+  // 圧縮の掛かる範囲は、順写像の残差を足し戻す反復で解く。
   let c = [...t];
   for (let i = 0; i < 100; i++) {
     const f = neutral(c);
@@ -151,7 +139,8 @@ function readShot(dir, name) {
   };
 }
 
-// トーンマッピングして出す表示の画素の値の、線形の輝度。
+// 表示の画素の値 code(sRGB の 0..255)から、トーンマッピングを戻した線形の輝度。sRGB を戻すだけでは PBR Neutral の
+// 足もとの押し下げが残り、薄く広げた像が点描より暗く読める。
 function tonemappedLuminance(code) {
   const [r, g, b] = inverseNeutral(code.map((v) => srgbToLinear(v / 255)));
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
@@ -162,6 +151,7 @@ function bandMap(shot) {
   const bands = new Int8Array(shot.width * shot.height).fill(-1);
   for (let y = 0; y < shot.height; y++) {
     for (let x = 0; x < shot.width; x++) {
+      // 粗さのデバッグ表示の赤は、粗さを sRGB で符号化した値。
       const roughness = srgbToLinear(shot.at(x, y)[0] / 255);
       let best = -1;
       for (const [index, value] of ROUGHNESSES.entries()) {
@@ -178,6 +168,7 @@ function bandMap(shot) {
 function bandRun(bands, width, y, band) {
   let bestStart = 0;
   let bestLength = 0;
+  // 帯でない画素と右端の外で区間を閉じ、いちばん長い区間を残す。
   for (let x = 0, start = 0; x <= width; x++) {
     if (x < width && bands[y * width + x] === band) continue;
     if (x - start > bestLength) {
@@ -196,6 +187,7 @@ function bandProfile(bands, width, height, band, value) {
   for (let y = 0; y < height; y++) {
     const { start: bestStart, length: bestLength } = bandRun(bands, width, y, band);
     if (bestLength < MIN_ROW_PIXELS) continue;
+    // 中心線は、行ごとの帯の区間の中央。
     const center = bestStart + Math.floor(bestLength / 2);
     let total = 0;
     for (let dx = -PROFILE_HALF_WIDTH; dx <= PROFILE_HALF_WIDTH; dx++) total += value(center + dx, y);
@@ -222,19 +214,19 @@ function brightestIndex(profile, from, to) {
   return peak;
 }
 
-// 断面 profile の縁の幅 [px]。縁の内側の明るさの基準から step の向きへ、明るさが基準の 90% と 10% を下回るまでの幅。
-// 基準は、断面の外側の端から内側へ向かって初めて断面全体の最大の 10% 以上が EDGE_RUN 行続く位置から、内側へ
-// reach 行までの最大 — 像の中の明るさがまちまちでも縁のすぐ内側の明るさで測り、帯の端の数行の照り返しは縁と
-// みなさない。
+// 断面 profile の、step(±1)の向きへ暗くなる縁の幅 [px]。縁のすぐ内側 reach 行の明るさの最大を基準に、明るさが
+// 基準の 90% と 10% を下回るまでの幅。測れなければ null。
 function edgeWidth(profile, step, reach) {
   if (profile.length === 0) return null;
   const max = profile[brightestIndex(profile, 0, profile.length)].value;
   if (max <= 0) return null;
+  // 縁は、step の先の端から戻って初めて最大の 10% 以上が EDGE_RUN 行続く所 — 帯の端の数行の照り返しを縁とみなさない。
   const lit = (i) => profile[i] !== undefined && profile[i].value >= 0.1 * max;
   const sustained = (i) => Array.from({ length: EDGE_RUN }, (_, k) => i - step * k).every(lit);
   let edge = step > 0 ? profile.length - 1 : 0;
   while (profile[edge] !== undefined && !sustained(edge)) edge -= step;
   if (profile[edge] === undefined) return null;
+  // 基準を縁のすぐ内側で取り、像の中の明るさのむらに左右されずに縁を測る。
   const inner = Math.min(Math.max(edge - step * reach, 0), profile.length - 1);
   const peak = brightestIndex(profile, Math.min(edge, inner), Math.max(edge, inner) + 1);
   const reference = profile[peak].value;
@@ -243,9 +235,9 @@ function edgeWidth(profile, step, reach) {
   return high === null || low === null ? null : Math.abs(low - high);
 }
 
-// 帯 band の発光球の像の縁の予測幅 [px]。帯の中心線の上で、発光球の中心へ鏡の向きで届く床の点から、当たった点
-// (球の手前の面)までの距離 d を、当たった点の奥行きで画面へ写す。ローブの半幅が 90° に届く粗さでは円が閉じない
-// ので Infinity。
+// 帯 band の発光球の像の縁の予測幅 [px]。帯の中心線の上で発光球の中心へ鏡の向きで届く床の点から、当たった点(球の
+// 手前の面)までの距離 d の、ローブの円の直径 2·d·tan(2α) を、当たった点の奥行きで画面へ写す。ローブの半幅が 90° に
+// 届く粗さでは円が閉じないので Infinity。
 function predictedSphereWidth(band, alpha) {
   if (LOBE_HALF_WIDTH_PER_ALPHA * alpha >= Math.PI / 2) return Infinity;
   const distance = REFLECTION_TO_SPHERE - SPHERE_RADIUS;
@@ -256,12 +248,12 @@ function predictedSphereWidth(band, alpha) {
   return 2 * distance * Math.tan(LOBE_HALF_WIDTH_PER_ALPHA * alpha) * FOCAL / depth;
 }
 
-// 地球の像の縁の予測幅 [px]。
+// 地球の像の縁の予測幅 [px]。地球を無限遠とみなし、ローブの角幅 2·2α を画面の中央の画素の角幅で割る。
 function predictedEarthWidth(alpha) {
   return 2 * LOBE_HALF_WIDTH_PER_ALPHA * alpha * FOCAL;
 }
 
-// 表 1: 帯ごとの縁の幅と、対照の球光源の縁の幅・予測幅。
+// 表 1: 帯ごとの、発光球と地球の像の縁の幅を、対照の球光源の縁の幅・予測幅と並べる。
 function edgeTable(bands, sphereShot, lightShot, earthShot) {
   const { width, height } = sphereShot;
   const sphere = (x, y) => tonemappedLuminance(sphereShot.at(x, y));
@@ -281,10 +273,10 @@ function edgeTable(bands, sphereShot, lightShot, earthShot) {
     const sphereExpected = predictedSphereWidth(index, alpha);
     const earthExpected = predictedEarthWidth(alpha);
     const reach = (expected) => Math.max(MIN_EDGE_REACH, Math.ceil(EDGE_REACH_PER_WIDTH * expected));
-    // 球の像の手前の縁は画面の下へ、地球の像の縁は地球の内側(下)から上へ向かって暗くなる。
+    // 球の像は、画面の下へ暗くなる手前の縁で測る — 奥の縁は帯の奥の端に近く、ぼけた縁が帯からはみ出す。
     const sphereWidth = edgeWidth(bandProfile(bands, width, height, index, sphere), 1, reach(sphereExpected));
     const lightWidth = edgeWidth(bandProfile(bands, width, height, index, light), 1, reach(sphereExpected));
-    // 地球の像は帯の手前の端まで続くので、予測幅が断面の半分を超える粗さでは縁が断面に収まらず、測らない。
+    // 地球の像は下から上へ暗くなり、帯の手前の端まで続くので、予測幅が断面の半分を超える粗さでは縁が断面に収まらない。
     const earthProfile = bandProfile(bands, width, height, index, earth);
     const earthWidth = earthExpected > earthProfile.length / 2 ? null : edgeWidth(earthProfile, -1, reach(earthExpected));
     lines.push([
@@ -297,7 +289,7 @@ function edgeTable(bands, sphereShot, lightShot, earthShot) {
   return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
 }
 
-// 撮影 shot の帯ごとの、画素の明るさの最大と和。
+// 撮影 shot の帯ごとの、画素の明るさ(トーンマッピングを戻した輝度)の最大 peak と和 sum。
 function bandBrightness(bands, shot) {
   const rows = ROUGHNESSES.map(() => ({ peak: 0, sum: 0 }));
   for (let y = 0; y < shot.height; y++) {
@@ -383,13 +375,12 @@ function smithLambda(alphaSquared, cos) {
 }
 
 // 床の点 (px, 0, pz)(法線 +Y)の、F0 = 1 の GGX の鏡面 ∫ L(l)·D(h)·V(l, v)·(n·l) dl。V は高さ相関の Smith、v は
-// 床の点からカメラへの向き、L は床の点から l の向きへ出した光線の放射輝度 radiance(px, pz, lx, ly, lz)。向きを
-// 可視法線分布(Heitz 2018)から選んで G2 / G1 を掛ける — 期待値がこの積分そのもので、細いローブでも標本が光源へ
-// 集まる。標本は固定の Hammersley 点で、同じ引数には同じ値を返す。標本がローブの中に集まるので、像の近く(縁の幅・
-// 頂の行)に向く。ローブの裾だけが光源に届く像から遠い点では、光源に当たる標本がまれで値が粗い — そこは発光球ごとの
-// 円錐で積分する coneSpecular で求める。
+// 床の点からカメラへの向き、L は床の点から l の向きへ出した光線の放射輝度 radiance(px, pz, lx, ly, lz)。標本は固定で、
+// 同じ引数には同じ値を返す。像の近く(縁の幅・頂の行)向き — ローブの裾が光源に届く程度の、像から遠い点では光源に
+// 当たる標本がまれで値が粗く、そこは coneSpecular で求める。
 function ggxSpecular(px, pz, alpha, radiance) {
-  // 床の接平面の座標 (X, Z, Y) で、視線を α で引き伸ばした半球の上に標本を取る。
+  // 向きを可視法線分布(Heitz 2018)から選んで G2 / G1 を掛ける — 期待値が積分そのもので、細いローブでも標本が光源へ
+  // 集まる。標本は、床の接平面の座標 (X, Z, Y) で、視線を α で引き伸ばした半球の上に取る。
   const toCamera = Math.hypot(px, CAMERA_HEIGHT, pz);
   const vx = -px / toCamera;
   const vy = -pz / toCamera;
@@ -437,8 +428,7 @@ const SPHERE_CENTERS = ROUGHNESSES.map((_, band) => {
   return [x, SPHERE_HEIGHT, z];
 });
 
-// 床の点 (px, 0, pz) から向き (lx, ly, lz) へ出した光線が当たる発光球の放射輝度。どの球も同じ放射輝度で、球の
-// ほかに当たるものは無い。
+// 床の点 (px, 0, pz) から単位ベクトルの向き (lx, ly, lz) へ出した光線が当たる発光球の放射輝度。当たらなければ 0。
 function sphereRadiance(px, pz, lx, ly, lz) {
   for (const [cx, cy, cz] of SPHERE_CENTERS) {
     const ox = px - cx;
@@ -453,10 +443,9 @@ function sphereRadiance(px, pz, lx, ly, lz) {
 
 const CONE_POINTS = hammersleyDisk(CONE_SAMPLES);
 
-// 床の点 (px, 0, pz)(法線 +Y)の、発光球すべてから来る F0 = 1 の GGX の鏡面 ∫ L·D(h)·V(l, v)·(n·l) dl(V と v は
-// ggxSpecular と同じ)。発光球ごとに、床の点から見込む円錐の中の向きを立体角について一様に選ぶ — どの標本も球に
-// 当たるので、ローブの裾だけが球に届く像から遠い点の小さな値も、相対誤差を小さく求まる。球は床のどの点から見ても
-// 重ならないので、球ごとの積分を足す。標本は固定の Hammersley 点で、同じ引数には同じ値を返す。
+// 床の点 (px, 0, pz)(法線 +Y)の、発光球すべてから来る F0 = 1 の GGX の鏡面 ∫ L·D(h)·V(l, v)·(n·l) dl(V は高さ相関の
+// Smith、v は床の点からカメラへの向き)。標本は固定で、同じ引数には同じ値を返す。ローブの裾が球に届く程度の、像から
+// 遠い点の小さな値も相対誤差を小さく求まる。
 function coneSpecular(px, pz, alpha) {
   const toCamera = Math.hypot(px, CAMERA_HEIGHT, pz);
   const viewX = -px / toCamera;
@@ -466,6 +455,8 @@ function coneSpecular(px, pz, alpha) {
   const rootView = Math.sqrt(viewY * viewY * (1 - alphaSquared) + alphaSquared);
   const { count, radius, cos, sin } = CONE_POINTS;
   let total = 0;
+  // 発光球ごとに、床の点から見込む円錐の中の向きを立体角について一様に選ぶ — どの標本も球に当たる。球は床のどの点から
+  // 見ても重ならないので、球ごとの積分を足してよい。
   for (const [cx, cy, cz] of SPHERE_CENTERS) {
     // 球の中心への向き w と、それに直交する基底 t1・t2(Duff ら 2017)、円錐の半頂角の 1 − cos。
     const distance = Math.hypot(cx - px, cy, cz - pz);
@@ -502,9 +493,7 @@ function coneSpecular(px, pz, alpha) {
   return total;
 }
 
-// 帯 band の中心線の上の、発光球の真値の明るさの頂の行(端数あり)。中心線の床の点を行で刻んで積分し、最大の
-// まわりへ放物線を当てた頂点 — 頂の近くは平らで、刻みごとの最大は標本の揺らぎで跳ぶ。ローブが球の視半径より
-// 十分細い帯では、像が一様な円盤で頂が決まらないので、重心の行。
+// 帯 band の中心線の上の、発光球の真値の明るさの頂の行(端数あり)。頂が平らな帯(FLAT_TOP_LOBE_RATIO)では重心の行。
 function trueSphereRow(band, alpha) {
   const azimuth = bandAzimuth(band);
   const [x, z] = bandEnd(band);
@@ -520,8 +509,8 @@ function trueSphereRow(band, alpha) {
     const total = samples.reduce((sum, { value }) => sum + value, 0);
     return samples.reduce((sum, { row, value }) => sum + row * value, 0) / total;
   }
-  // 放物線は、最大の行から明るさが最大の PEAK_FIT_DROP 倍だけ下がるまで続く行に当てる — 平らな頂ほど広い行で
-  // 揺らぎを均す。
+  // 頂の近くは平らで、刻みごとの最大は標本の揺らぎで跳ぶので、最大から PEAK_FIT_DROP の割合だけ下がるまで続く行へ
+  // 放物線を当てた頂点を取る — 平らな頂ほど広い行で揺らぎを均す。
   let peak = 0;
   for (let i = 1; i < samples.length; i++) if (samples[i].value > samples[peak].value) peak = i;
   const floor = (1 - PEAK_FIT_DROP) * samples[peak].value;
@@ -545,13 +534,13 @@ function parabolaVertex(points) {
   const det3 = (a, b, c, d, e, f, g, h, i) => a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
   const [m0, m1, m2, m3, m4] = moment;
   const [w0, w1, w2] = weighted;
-  // a と b はどちらも係数の行列式で割る前の値 — 頂点は比なので割らなくてよい。
+  // a と b はどちらも係数の行列式で割る前の値 — 頂点は比なので、共通の行列式は約される。
   const a = det3(w2, m3, m2, w1, m2, m1, w0, m1, m0);
   const b = det3(m4, w2, m2, m3, w1, m1, m2, w0, m0);
   return -b / (2 * a);
 }
 
-// 断面 profile を縦に幅 width 行の箱で均してから、いちばん明るい行。断面の端では、断面の中にある行だけで均す。
+// 断面 profile を幅 width 行の箱で均してから、いちばん明るい行。箱は断面の端で断面の中へ切り詰める。正の値が無ければ null。
 function peakRow(profile, width) {
   const half = Math.floor(Math.max(1, width) / 2);
   let best = null;
@@ -568,8 +557,9 @@ function peakRow(profile, width) {
   return best?.at ?? null;
 }
 
-// 表 2: 帯ごとの、発光球の像の明るさの最大と和の、対照の像に対する比と、明るさの頂の行。頂の行は、断面を予測幅の
-// 1/4 の箱で均してから取り、発光球の真値の頂の行(帯0は重心の行)と、球の中心の鏡像の行と並べる。
+// 表 2: 帯ごとの、発光球の像(w·I)の明るさの最大と和の、対照の像(鏡面照度)に対する比 — どちらも反射率を掛ける前の
+// 値どうしの比 — と、明るさの頂の行。頂の行は断面を予測幅の 1/4 の箱で均してから取り、発光球の真値の頂の行・球の
+// 中心の鏡像の行と並べる。
 function brightnessTable(bands, sphereShot, lightShot) {
   const { width, height } = sphereShot;
   const sphere = bandBrightness(bands, sphereShot);
@@ -593,8 +583,7 @@ function brightnessTable(bands, sphereShot, lightShot) {
   return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
 }
 
-// 撮影 shot の帯ごとの、まだらの量 — 帯の画素の値と、そのまわり 5×5 の同じ帯の画素の平均との差の平均。帯の
-// 画素の値の平均も返す。画素の値は、画素の符号 [r, g, b] から valueOf で読む。
+// 撮影 shot の帯ごとの、まだらの量 mottle と画素の値の平均 mean。画素の値は、画素の符号 [r, g, b] から valueOf で読む。
 function bandMottle(bands, shot, valueOf) {
   const { width, height } = shot;
   const luminance = new Float64Array(width * height);
@@ -604,6 +593,7 @@ function bandMottle(bands, shot, valueOf) {
     for (let x = 0; x < width; x++) {
       const band = bands[y * width + x];
       if (band < 0) continue;
+      // まだらは、画素の値と、まわり 5×5 のうち同じ帯の画素の平均との差。
       let total = 0;
       let count = 0;
       for (let dy = -MOTTLE_RADIUS; dy <= MOTTLE_RADIUS; dy++) {
@@ -763,8 +753,8 @@ function boundaryWidths(section, boundary, measured, truth) {
   return { measured: edgeSpan(checkerEdge(sectionProfile(section, measured), boundary)), truth: edgeSpan(trueEdge) };
 }
 
-// 表 4: 帯ごとの、チェッカーの発光板の像(ladder-checker-reflection)の横の境と縦の境の縁の幅と、同じ断面・同じ平均・
-// 同じ測り方の真値。比は 実測 / 真値 で、真値の 横の境 / 縦の境 は床の映り込みの縦と横のぼけ方の違い。
+// 表 4: 帯ごとの、チェッカーの発光板の像の横の境(上下のマスの間)と縦の境(左右のマスの間)の縁の幅を、同じ断面・
+// 同じ測り方の真値と並べる。真値の 横の境 / 縦の境 は床の映り込みの縦と横のぼけ方の違い。
 function checkerTable(bands, checkerShot) {
   const measured = (x, y) => tonemappedLuminance(checkerShot.at(x, y));
   const format = (v) => (v === null || !Number.isFinite(v) ? '-' : v.toFixed(1));
@@ -778,6 +768,7 @@ function checkerTable(bands, checkerShot) {
   const lines = [header, header.map(() => '---')];
   for (const [index, roughness] of ROUGHNESSES.entries()) {
     const alpha = effectiveRoughness(roughness) ** 2;
+    // 画素 (x, y) に写る床の点の真値。地平より上の画素は 0。
     const truth = (x, y) => {
       const floor = floorPointAt(x + 0.5, y + 0.5);
       return floor === null ? 0 : ggxSpecular(floor[0], floor[1], alpha, checkerRadiance);
@@ -817,8 +808,8 @@ function rowRanges(rows) {
   return ranges.map(([first, last]) => (first === last ? String(first) : `${first}〜${last}`)).join(', ');
 }
 
-// 帯 band の行ごとの、帯の画素に写る床の点の発光球の真値(coneSpecular)の最大。行の帯の区間(bandRun)の両端と中心を
-// 含む READABLE_ROW_COLUMNS 列で求め、帯の画素が無い行は −1。
+// 帯 band の行ごとの、帯の画素に写る床の点の発光球の真値(coneSpecular)の最大。行の帯の区間(bandRun)の
+// READABLE_ROW_COLUMNS 列で求め、帯の画素が無い行は −1。
 function trueRowPeaks(bands, width, height, band, alpha) {
   const peaks = new Float64Array(height).fill(-1);
   for (let y = 0; y < height; y++) {
@@ -833,8 +824,8 @@ function trueRowPeaks(bands, width, height, band, alpha) {
   return peaks;
 }
 
-// 表 5: 帯ごとの、像から遠い輝点の数と、輝点を数えない行 — 真値の像が読める行 — の範囲・帯の画素がある行の範囲・
-// 数える行の数。真値の像が帯の全行で読める帯は、数える行が無いので数を '-' にする。
+// 表 5: 帯ごとの、像から遠い輝点の数(真値の像が読めない行で数える)と、真値の像が読める行の範囲・帯の行の範囲・数える
+// 行の数。読める行を対照の撮影でなく真値で決めるのは、8bit の撮影では頂の 0.1% の明るさが 0 に丸まるため。
 function distantSpotTable(bands, sphereShot, lightShot) {
   const { width, height } = sphereShot;
   // 帯ごとの、行ごとの真値の最大と、その最大(帯の真値の頂)。
@@ -866,14 +857,15 @@ function distantSpotTable(bands, sphereShot, lightShot) {
   return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
 }
 
-// 均しの段のデバッグ表示の画素の段。w̄ が 0 の画素(青)と均した値を書いていない画素(黒)は null。
+// 均しの段のデバッグ表示(段 + 1 を段数で割った線形の灰。src/render/pipeline/render-pipeline.ts)の画素の段。w̄ が 0 の
+// 画素(青)と均した値を書いていない画素(黒)は null。
 function levelOf([r, g, b]) {
   if (b > 128 && r < 64 && g < 64) return null;
   if (r === 0 && g === 0 && b === 0) return null;
   return srgbToLinear(r / 255) * LEVEL_COUNT - 1;
 }
 
-// 表 6: 帯 × 均しの段の画素数。
+// 表 6: 帯ごとの、w̄ が正の画素の数と、それを均しの段の区間ごとに数えた数・いちばん粗い段に張り付いた数と割合。
 function levelTable(bands, levelShot) {
   const top = LEVEL_COUNT - 1;
   const rows = ROUGHNESSES.map(() => ({ weighted: 0, bins: new Array(top).fill(0), stuck: 0 }));
@@ -900,6 +892,8 @@ function levelTable(bands, levelShot) {
   return lines.map((cells) => `| ${cells.join(' | ')} |`).join('\n');
 }
 
+// 引数の dir の撮影を読み、6つの表を見出しつきで標準出力へ書く。チェッカーと均しの段の表は、その撮影の無い組では
+// 飛ばす。引数が無ければ使い方を投げる。
 function main() {
   const [dirArg] = process.argv.slice(2);
   if (dirArg === undefined) throw new Error(USAGE);

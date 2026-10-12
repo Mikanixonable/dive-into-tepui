@@ -25,10 +25,9 @@ function lambertOf(albedo: Vec3Node): Vec3Node {
   return BRDF_Lambert({ diffuseColor: albedo }) as unknown as Vec3Node;
 }
 
-// 画素の keep と M0 を MRT の出力として組む。拡散は BRDF_Lambert(ベース色×(1−金属度)/π)、鏡面は鏡面反射率を
-// 照度へ掛け、自己発光を足す。照度バッファが持つのは放射照度なので、掛けるのは反射率ではなく BRDF — 拡散の 1/π を
-// 落とすと、それだけで π 倍明るくなる。
+// 画素の keep と像の元 M0 を、MRT の出力 keep / reflectionSource として組む。
 function shadedOutputs(lightPrepass: LightPrepass, gbuffer: GBufferPass): ReturnType<typeof mrt> {
+  // 照度は放射照度なので、拡散へは反射率ではなく BRDF を掛ける — 1/π を落とすと π 倍明るくなる。
   const material = texture(gbuffer.basecolorTexture, screenUV);
   const baseColor: Vec3Node = material.rgb;
   const metalness = material.a;
@@ -40,12 +39,11 @@ function shadedOutputs(lightPrepass: LightPrepass, gbuffer: GBufferPass): Return
   const emissive = texture(gbuffer.emissiveTexture, screenUV).rgb;
   const keep = diffuse.add(directSpecular).add(emissive);
 
-  // 像の元は、面を反射率 ρ = 拡散色 + r × R(r は知覚的粗さ)のランバート面とみなした放射輝度 — 映り込みの中の物体の
-  // 鏡面を、一様な反射に広げた近似。ρ = 拡散色 + R なら一様な環境光の下でこのエンジンが描く面(拡散色 × E/π + R × E/π)と
-  // 一致するが、一様に広げた見え方は滑らかな面ほど元の鏡面から離れるので、R を粗さで弱める。鏡面をそのまま入れると、
-  // 受け手のローブに比べて小さく明るいハイライトに当たる回数が画素ごとに揺らいでブロック状に明滅し、カメラへ向けた鏡面は
-  // 追跡した向きの鏡面でもないので指向性も正しくならない。映り込みの中の精度を上げる手段(事前縮小列・粗さの比で鏡面を
-  // 混ぜる・画面空間より正確な追跡)は設計の判断を要するので、指示なしに着手しない。
+  // 像の元は、面を反射率 ρ = 拡散色 + r × R(r は知覚的粗さ)のランバート面とみなした放射輝度。R を足すと一様な環境光の
+  // 下で描く面と一致し、粗さで弱めるのは一様に広げた見え方が滑らかな面ほど元の鏡面から離れるため。描いた鏡面をそのまま
+  // 入れると、小さく明るいハイライトに当たる回数が画素ごとに揺らいでブロック状に明滅し、向きもカメラへ向けた鏡面になる。
+  // 映り込みの中の精度を上げる手段(事前縮小列・粗さの比で鏡面を混ぜる・画面空間より正確な追跡)は設計の判断を要する
+  // ので、指示なしに着手しない。
   // 拡散照度は近傍の遮蔽と照り返しを含んだまま使う — 抜くと、遮られた隅の面が映り込みの中で明るくなりすぎる。
   const roughness = texture(gbuffer.roughnessTexture, screenUV).r;
   const source = irradiance.mul(lambertOf(diffuseColor.add(reflectance.mul(roughness)))).add(emissive);
@@ -91,7 +89,7 @@ export class MaterialPass {
   public get reflectionSourceTexture(): THREE.Texture { return this.target.textures[1]!; }
 
   // 背景専用レイヤーを sharedTarget へ、面の陰影を自分の描画先へ描く。描画バッファの寸法 width × height で呼ぶ。
-  // camera はこのあと world パスでも使う同一インスタンスなので、layers.mask は呼び出し前の値へ必ず戻す。
+  // camera の layers.mask は呼び出し前の値へ戻して返る。
   public render(
     scene: THREE.Scene, camera: THREE.Camera, sharedTarget: THREE.RenderTarget, width: number, height: number,
   ): void {
