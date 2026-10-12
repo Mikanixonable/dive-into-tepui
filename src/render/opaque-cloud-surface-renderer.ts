@@ -3,7 +3,7 @@
 // 場の texel より細かい起伏は天体固定の粒で足す。
 import * as THREE from 'three/webgpu';
 import {
-  Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
+  Discard, Fn, If, Loop, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
   max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
   sqrt, step, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
@@ -27,13 +27,9 @@ const CUMULUS_ROUGHNESS = 1;
 // 画素が抜ける。
 const DITHER_LEVELS = 256;
 
-// 雲頂を探す標本の配り方。march は殻の中を等間隔にたどる刻みの数(どの交点を見つけるかを決める)、
-// refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を決める)。費用は
-// march + refine 回の標本化。
-interface CumulusSampling { readonly march: number; readonly refine: number }
-
-// 最初の setSampling までのマテリアルが展開する標本の配り方。
-const INITIAL_SAMPLING: CumulusSampling = { march: 6, refine: 3 };
+// setSampling で置き直すまでの標本の配り方(刻みの数と二分の回数)。
+const INITIAL_MARCH_STEPS = 6;
+const INITIAL_REFINE_STEPS = 3;
 
 // 粒の 1 波長が何画素を切ったら消し始め、何画素まで残すか。標本化できない粒はモアレにしか
 // ならないので、Nyquist の 2 画素へ落ちるまでに振幅を 0 へ渡す。
@@ -42,9 +38,12 @@ const GRAIN_FADE_FULL_PIXELS = 4;
 
 export class OpaqueCloudSurfaceRenderer {
   private readonly shape: CloudShapeEvaluator;
-  // 標本の配り方と、その回数まで展開したマテリアル。
-  private sampling: CumulusSampling = INITIAL_SAMPLING;
-  private material: THREE.Material;
+  // 雲頂を探す標本の配り方。march は殻の中を等間隔にたどる刻みの数(どの交点を見つけるかを決める)、
+  // refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を決める)。費用は
+  // march + refine 回の標本化。
+  private readonly march = uniform(INITIAL_MARCH_STEPS, 'int');
+  private readonly refine = uniform(INITIAL_REFINE_STEPS, 'int');
+  private readonly material: THREE.Material;
   private readonly blueNoise = new BlueNoise();
   // 読む雲場。出どころが焼いた写しと cap の置き方を bind で写し取る。
   private readonly fieldSampler = new CloudFieldSampler();
@@ -99,20 +98,10 @@ export class OpaqueCloudSurfaceRenderer {
     this.fieldSampler.bind(input.field);
   }
 
-  // 標本の配り方を、刻み march 本(1 以上)と二分 refine 回に置き直す。回数はシェーダへ展開されるので、
-  // 変わればマテリアルを組み直す。
+  // 標本の配り方を、刻み march 本(1 以上)と二分 refine 回に置き直す。次の描画から効く。
   public setSampling(march: number, refine: number): void {
-    if (march === this.sampling.march && refine === this.sampling.refine) return;
-    this.sampling = { march, refine };
-    this.rebuildMaterial();
-  }
-
-  // いまの標本の配り方と雲場でマテリアルを組み直し、全段のメッシュへ張り替える。
-  private rebuildMaterial(): void {
-    const previous = this.material;
-    this.material = this.buildMaterial();
-    for (const mesh of this.meshes.values()) mesh.material = this.material;
-    previous.dispose();
+    this.march.value = march;
+    this.refine.value = refine;
   }
 
   // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。
@@ -170,15 +159,14 @@ export class OpaqueCloudSurfaceRenderer {
         along.negate().sub(sqrt(max(groundHalf, 0))),
         along.negate().add(sqrt(max(half.add(1), 0))),
       ), 0);
-      const sampling = this.sampling;
-      const stepLength = marchEnd.div(sampling.march);
+      const stepLength = marchEnd.div(float(this.march)).toVar();
 
       // 雲頂より内側へ入った最初の刻みを、その手前の刻みと一緒に覚える。
       const hit = float(0).toVar();
       const above = float(0).toVar();
       const below = marchEnd.toVar();
-      for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
-        const distance = stepLength.mul(stepIndex);
+      Loop({ start: 1, end: this.march, type: 'int', condition: '<=' }, ({ i }) => {
+        const distance = stepLength.mul(float(i)).toVar();
         const inside = this.clearanceAt(
           entry.add(direction.mul(distance)), threshold, grainAmplitude).lessThan(0);
         If(inside.and(hit.lessThan(0.5)), () => {
@@ -186,14 +174,14 @@ export class OpaqueCloudSurfaceRenderer {
           below.assign(distance);
         });
         If(hit.lessThan(0.5), () => { above.assign(distance); });
-      }
+      });
       // 雲頂をまたいだ区間を二分して縁を締める。
-      for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
-        const middle = above.add(below).mul(0.5);
+      Loop({ start: 0, end: this.refine, type: 'int', condition: '<' }, () => {
+        const middle = above.add(below).mul(0.5).toVar();
         const inside = this.clearanceAt(
           entry.add(direction.mul(middle)), threshold, grainAmplitude).lessThan(0);
         If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
-      }
+      });
 
       const hitPoint = entry.add(direction.mul(below)).toVar();
       const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
