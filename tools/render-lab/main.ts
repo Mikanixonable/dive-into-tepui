@@ -27,6 +27,7 @@ import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
 import { ERROR_SCALES, ErrorMetric, FALSE_STRUCTURE_EPSILONS, type ErrorMeasurement } from './error-metric';
 import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
+import { MotionSequence, type MotionFrameRecord } from './motion-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
@@ -69,6 +70,7 @@ declare global {
       captureCorrectionProbe: () => ReturnType<LabView['captureCorrectionProbe']>;
       render: () => void;
       setView: (changes: Partial<LabViewAngles>) => void;
+      viewAngles: () => LabViewAngles;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
@@ -117,6 +119,9 @@ declare global {
         rgb: Float32Array, geometry: SurfaceGeometry, radius: number, shift: readonly [number, number],
       ) => Promise<Float32Array>;
       stochasticUpscale: (scan: Float32Array, geometry: SurfaceGeometry, block: number) => Promise<Float32Array>;
+      resetMotion: () => void;
+      moveCamera: (translationPx: readonly [number, number], rotationPx: readonly [number, number]) => void;
+      motionFrame: (averagedSeeds: readonly (readonly [number, number])[] | null) => Promise<MotionFrameRecord>;
     };
   }
 }
@@ -250,6 +255,7 @@ async function init(): Promise<void> {
   // 平面を均す GPU の資源は盲検の刺激を組むときにしか使わないので、初めて使うときに作る。
   let smoother: Promise<PlaneSmoother> | null = null;
   const planeSmoother = (): Promise<PlaneSmoother> => (smoother ??= PlaneSmoother.create());
+  const motion = new MotionSequence(view);
   const syncAngles = buildViewAngleSliders(view);
 
   const shotsRow = document.getElementById('shots')!;
@@ -355,6 +361,7 @@ async function init(): Promise<void> {
     captureCorrectionProbe: () => view.captureCorrectionProbe(),
     render: () => view.render(),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
+    viewAngles: () => view.viewAngles,
     setStyle: selectStyle,
     setTarget: (target) => { targets.setSelected(target); view.showDebugTarget(target); },
     setGraphicsOption: (key, value) => {
@@ -397,6 +404,9 @@ async function init(): Promise<void> {
     sparseBilateral: async (rgb, geometry, radius, shift) => (
       (await planeSmoother()).sparseBilateral(rgb, geometry, radius, shift)),
     stochasticUpscale: async (scan, geometry, block) => (await planeSmoother()).stochasticUpscale(scan, geometry, block),
+    resetMotion: () => motion.reset(),
+    moveCamera: (translationPx, rotationPx) => motion.moveCamera(translationPx, rotationPx),
+    motionFrame: (averagedSeeds) => motion.frame(averagedSeeds),
   };
 }
 

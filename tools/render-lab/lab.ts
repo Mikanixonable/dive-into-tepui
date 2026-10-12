@@ -2,7 +2,7 @@
 // 絵の撮影(PNG)と中間ターゲットの読み戻し、CPU / GPU それぞれの所要時間の計測もここが担う。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { getViewPosition, ivec2, screenCoordinate, screenUV, select, textureLoad, uniform, vec2, vec4 } from 'three/tsl';
+import { getViewPosition, ivec2, mrt, screenCoordinate, screenUV, select, textureLoad, uniform, vec2, vec4 } from 'three/tsl';
 import { GPU_PASS, GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
 import { projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
@@ -22,6 +22,7 @@ import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { distributionOf, type SampleDistribution } from '../../src/math/sample-distribution';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { SCREEN_SPACE_DIFFUSE } from '../../src/render/pipeline/screen-space/screen-space-pass';
+import { stageMaterial } from '../../src/render/pipeline/screen-space/screen-space-stage';
 import { CASES, type CaseName } from './cases';
 import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
@@ -53,9 +54,9 @@ const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 // 帯 0、2 以上では 'merged-0' と同じ)。'surface-radiance' は照り返しの源(走査の解像度の rgb)、'representative-ℓ' は代表の
 // 段 ℓ の G バッファの画素の整数座標と素の深度(rgb、a は 0)。'scan-surface-0' は走査の面の写しの (G バッファの画素の x, y,
 // 素の深度, 0)、'scan-surface-1' はその法線の rg(ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の
-// 半径が写る描画バッファの画素数で、面の無い画素は 0。
+// 半径が写る描画バッファの画素数で、面の無い画素は 0。'depth' は G バッファの素の深度(r、gba は 0。面の無い画素は 0)。
 export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'correction' | 'diffuse'
-  | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius';
+  | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius' | 'depth';
 const REPRESENTATIVE_NAME_PATTERN = /^representative-(\d)$/;
 const SCAN_SURFACE_NAME_PATTERN = /^scan-surface-([01])$/;
 
@@ -66,6 +67,9 @@ const CHANNELS_OF_FORMAT: Readonly<Partial<Record<THREE.AnyPixelFormat, number>>
 
 // accumulateWhitePasses が GPU の終わりを待つ間隔 [パス]。
 const WHITE_PASSES_PER_WAIT = 256;
+// averageCorrection が GPU の終わりを待つ間隔 [seed]。1 つの seed で近傍拡散補正の全段を描くので、走査だけを描く
+// accumulateWhitePasses より短く取る。
+const CORRECTION_PASSES_PER_WAIT = 16;
 
 // 単精度の値 v に最も近い半精度のビット列(DataUtils.toHalfFloat は切り捨てる)。
 function nearestHalfOf(v: number): number {
@@ -99,6 +103,8 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 // カメラ位置を毎フレーム組み立てる書き込み先。
 const CAMERA_OFFSET = new THREE.Vector3();
+// 姿勢を重ねたカメラの行列を分解するときの、縮尺の書き込み先。
+const SHIFTED_CAMERA_SCALE = new THREE.Vector3();
 
 // 地球の天体照へ渡す恒星の向きの置き場。毎フレーム書き換えて使い回す。
 const EARTH_STAR_DIRECTION = new THREE.Vector3();
@@ -165,6 +171,16 @@ export class LabView {
   private readonly radiusProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
   // accumulateWhitePasses が走査の帯を足し込む器。初めて足すとき、または帯の描画先が変わったときに作り直す。
   private passAccumulator: PassAccumulator | null = null;
+  // averageCorrection が最後の拡大の出力を足し込む器。初めて足すときに作る。
+  private correctionAccumulator: PassAccumulator | null = null;
+  // G バッファの素の深度を写す先と、その描画命令。
+  private readonly depthTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
+    type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+  });
+  private readonly depthQuad = new QuadMesh();
+  // 観察の向きで置いたカメラへ、カメラの座標で重ねる姿勢(setCameraShift)。null なら重ねない。
+  private cameraShift: THREE.Matrix4 | null = null;
   // 与えた HDR を合成した表示を、8 bit へ丸めずに受ける先。合成は深度も写すので深度を持たせる。
   private readonly compositeTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
     type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: true,
@@ -193,6 +209,11 @@ export class LabView {
     const pixels = projectedRadius(position, this.radiusProjection, vec2(VIEW_WIDTH, VIEW_HEIGHT));
     radius.colorNode = vec4(select(depth.greaterThan(0), pixels, 0), 0, 0, 1);
     this.radiusQuad.material = radius;
+    // 深度は色の経路を通さず MRT の出力で写す — 単精度の値をそのまま残す。
+    this.depthTarget.texture.name = 'labDepth';
+    const depthCopy = stageMaterial();
+    depthCopy.mrtNode = mrt({ labDepth: vec4(depth, 0, 0, 0) });
+    this.depthQuad.material = depthCopy;
   }
 
   // graphics は描く描画品質設定の器。この時点の値を起動時の設定として控え、以後はその変更を受けて
@@ -297,6 +318,18 @@ export class LabView {
     this.render();
   }
 
+  // 次に描くフレームから、観察の向きで置いたカメラへ、カメラの座標の剛体の変換 shift を重ねる。null で外す。観察の
+  // 向きでは表せない、カメラの軸に沿う並進と、カメラの位置を中心とする回転を与える口。
+  public setCameraShift(shift: THREE.Matrix4 | null): void {
+    this.cameraShift = shift;
+  }
+
+  // 直前に描いたフレームのカメラ。ケースを表示していなければ投げる。
+  public get camera(): THREE.PerspectiveCamera {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    return this.current.camera;
+  }
+
   // ケースのカメラと注視点から、観察の向きの既定値を引き直す。
   private resetView(): void {
     const built = this.current;
@@ -338,6 +371,11 @@ export class LabView {
     directionFromAngles(this.angles.cameraAzimuthDeg, this.angles.cameraElevationDeg, CAMERA_OFFSET);
     camera.position.copy(this.pivot).addScaledVector(CAMERA_OFFSET, this.cameraDistance);
     camera.lookAt(this.pivot);
+    if (this.cameraShift !== null) {
+      camera.updateMatrix();
+      // 縮尺は捨てる — カメラの縮尺へ書き戻すと、描くたびに丸めの誤差が溜まる。
+      camera.matrix.multiply(this.cameraShift).decompose(camera.position, camera.quaternion, SHIFTED_CAMERA_SCALE);
+    }
     camera.updateMatrixWorld(true);
     camera.fov = this.cameraFovDeg;
     camera.far = farClip(this.cameraDistance);
@@ -611,6 +649,29 @@ export class LabView {
     return { sums, squares };
   }
 
+  // 直前に描いたフレームの G バッファなどを入力のまま、近傍拡散補正だけを seed の列 seeds [タイルの幅] で描き直し、最後の
+  // 拡大の出力(rgba)の平均を返す。終わると、seed は列の最後のもの、'correction' はその seed の出力になる。
+  public async averageCorrection(seeds: readonly (readonly [number, number])[]): Promise<FloatImage> {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    if (seeds.length === 0) throw new RangeError('render-lab: averaging needs at least one seed');
+    const { screenSpace, diffuseCorrection } = this.pipeline;
+    const { target } = diffuseCorrection;
+    this.correctionAccumulator ??= new PassAccumulator(this.renderer, [target.texture], target.width, target.height);
+    for (const [k, [x, y]] of seeds.entries()) {
+      screenSpace.setSeed(x, y);
+      screenSpace.render(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT);
+      this.correctionAccumulator.add(0);
+      // GPU の待ち行列が際限なく伸びないよう、ときどき終わりを待つ。時刻印の器も空ける。
+      if (k % CORRECTION_PASSES_PER_WAIT === CORRECTION_PASSES_PER_WAIT - 1) {
+        await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
+        this.gpu.resolve();
+      }
+    }
+    const sum = await this.readBack(this.correctionAccumulator.sumTextures[0]![0]!);
+    this.correctionAccumulator.clear();
+    return { ...sum, rgba: sum.rgba.map((v) => v / seeds.length) };
+  }
+
   // いまの段の帯の数の、走査の帯を詰めた描画先の index 枚目('packed-bands-<index>')へ、走査の解像度の画素ごとの RGBA の
   // 値 rgba(行は上から)を半精度へ丸めて書く。いまの段で 1 度描いて描画先の寸法を合わせてから呼ぶ。段の範囲
   // 'chain' のフレーム(setScanStageRange)が鎖の入力として読む。
@@ -634,7 +695,9 @@ export class LabView {
   // 直前に描いたフレームの中間ターゲット name を読み戻す。
   public async readFloat(name: FloatTargetName): Promise<FloatImage> {
     if (name === 'band-sum') return this.readBandSum();
-    return this.readBack(name === 'projected-radius' ? this.drawProjectedRadius() : this.floatTextureOf(name));
+    if (name === 'projected-radius') return this.readBack(this.drawProjectedRadius());
+    if (name === 'depth') return this.readBack(this.drawDepth());
+    return this.readBack(this.floatTextureOf(name));
   }
 
   // 直前に描いたフレームの、いまの段の帯の数の走査の帯の和(rgb、α は 0)。帯の並びは packedBands の通しのチャンネル。
@@ -739,7 +802,7 @@ export class LabView {
   }
 
   // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。いまの段の帯の数の鎖に無い段か枚数なら投げる。
-  private floatTextureOf(name: Exclude<FloatTargetName, 'band-sum' | 'projected-radius'>): THREE.Texture {
+  private floatTextureOf(name: Exclude<FloatTargetName, 'band-sum' | 'projected-radius' | 'depth'>): THREE.Texture {
     const { screenSpace, diffuseCorrection } = this.pipeline;
     switch (name) {
       case 'scan-correction': return diffuseCorrection.mergedTexture(screenSpace.bandCount, 0);
@@ -784,6 +847,14 @@ export class LabView {
     this.radiusQuad.render(this.renderer);
     this.renderer.setRenderTarget(null);
     return this.radiusTarget.texture;
+  }
+
+  // 直前に描いたフレームの G バッファの深度を写し、そのテクスチャを返す。
+  private drawDepth(): THREE.Texture {
+    this.renderer.setRenderTarget(this.depthTarget);
+    this.depthQuad.render(this.renderer);
+    this.renderer.setRenderTarget(null);
+    return this.depthTarget.texture;
   }
 
   // いまのケースの撮影。ケースが宣言していなければ、ケース名で既定の向きを 1 枚撮る。
@@ -849,8 +920,8 @@ export class LabView {
   }
 
   // 連続する 2 回の capture が一致するまで撮り直し、一致した絵を返す。MAX_SETTLE_CAPTURES 回撮っても
-  // 一致しなければ、撮影名 shotName を添えて投げる。
-  private async captureSettled(shotName: string): Promise<string> {
+  // 一致しなければ、撮ったものの名前 shotName を添えて投げる。
+  public async captureSettled(shotName: string): Promise<string> {
     // **一致を「絵が落ち着いた」ことの判定にする** — 同じセッションの中では、落ち着いたあとのフレームは
     // 完全に決定的。雲場は焼いたフレームの次から載り、パイプラインを組み直した直後のフレームは崩れる。
     let previous = await this.capture();
