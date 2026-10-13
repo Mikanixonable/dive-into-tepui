@@ -59,7 +59,7 @@ const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 // 素の深度, 0)、'scan-surface-1' はその法線の rg(ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の
 // 半径が写る描画バッファの画素数で、面の無い画素は 0。'depth' は G バッファの素の深度(r、gba は 0。面の無い画素は 0)。
 export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'correction' | 'diffuse'
-  | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius' | 'depth';
+  | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius' | 'depth' | 'motion';
 const REPRESENTATIVE_NAME_PATTERN = /^representative-(\d)$/;
 const SCAN_SURFACE_NAME_PATTERN = /^scan-surface-([01])$/;
 
@@ -451,7 +451,7 @@ export class LabView {
       graphics,
     ));
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, camera, this.style);
+    this.pipeline.render(this.scene, camera, this.style, this.frame);
     this.lastRenderCpuMs = performance.now() - startedAt;
     this.gpu.resolve();
   }
@@ -871,6 +871,7 @@ export class LabView {
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
       case 'surface-radiance': return screenSpace.surfaceRadianceTexture;
       case 'hdr': return this.pipeline.hdrTexture;
+      case 'motion': return this.pipeline.gbuffer.motionTexture;
       default: {
         const count = screenSpace.bandCount;
         const [, scanSurfaceIndex] = SCAN_SURFACE_NAME_PATTERN.exec(name) ?? [];

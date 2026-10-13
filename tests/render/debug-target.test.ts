@@ -12,6 +12,8 @@ export function register(): void {
     };
     before('shadow-map', 'normal');
     before('normal', 'shadow');
+    before('depth', 'motion');
+    before('motion', 'shadow');
     before('shadow', 'planet-light');
     before('planet-light', 'bounce-source');
     // 走査の帯 → 代表の縮小列 → 段ごとの帯の縮小(段 m は帯 m〜4) → 粗い段からの拡大と合流 → 描画バッファの

@@ -4,7 +4,8 @@
 // bind/sample することになる。
 import * as THREE from 'three/webgpu';
 import {
-  abs, float, floor, getViewPosition, int, ivec2, log, max, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select, sign,
+  abs, atan, cos, float, floor, getViewPosition, int, ivec2, length, log, max, sRGBTransferEOTF, sRGBTransferOETF,
+  screenUV, select, sign,
   texture, uniform, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from './gbuffer';
@@ -53,6 +54,7 @@ export class DebugComposites {
   private readonly near: FloatUniform = uniform(1);
   private readonly far: FloatUniform = uniform(2);
   private readonly viewToWorld: Mat4Uniform = uniform(new THREE.Matrix4());
+  private readonly motionViewport = uniform(new THREE.Vector2(1, 1));
 
   // 映す中間ターゲットの持ち主を受ける。projectionInverse は実カメラの逆射影行列で、書き込むのは呼び出し側。
   public constructor(
@@ -79,6 +81,7 @@ export class DebugComposites {
       metalness: material(vec4(vec3(this.metalness()), 1)),
       emissive: hdr(gbuffer.emissiveTexture),
       depth: material(vec4(vec3(this.logDepth(texture(gbuffer.depthTexture, screenUV).r)), 1)),
+      motion: material(vec4(this.motionColor(), 1)),
       // 4 枚のスロットを 2x2 に並べて画面いっぱいへ映す。線形深度なのでそのまま濃淡として
       // 読め(遠いほど白)、使われていないスロットは真っ白のまま残る。
       'shadow-map': material(vec4(vec3(this.shadowSlotGrid()), 1)),
@@ -172,8 +175,9 @@ export class DebugComposites {
   }
 
   // 深度と影スロットの表示が読む実カメラ camera の値を書き込む。
-  public syncCamera(camera: THREE.Camera): void {
+  public syncCamera(camera: THREE.Camera, width: number, height: number): void {
     this.viewToWorld.value.copy(camera.matrixWorld);
+    this.motionViewport.value.set(width, height);
     if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
       this.near.value = camera.near;
       this.far.value = camera.far;
@@ -203,6 +207,21 @@ export class DebugComposites {
   private metalness(): FloatNode {
     const metalness = texture(this.gbuffer.basecolorTexture, screenUV).a;
     return select(this.gbuffer.covered(), metalness, float(0));
+  }
+
+  // G バッファの動きだけを、方向の色相・対数の画素長・棄却色へ写す。
+  private motionColor(): Vec3Node {
+    const movement = texture(this.gbuffer.motionTexture, screenUV).rg;
+    const magnitude = length(movement.mul(this.motionViewport));
+    const hue = atan(movement.y, movement.x).add(Math.PI).div(2 * Math.PI);
+    const wheel = vec3(
+      cos(hue.mul(2 * Math.PI)).mul(0.5).add(0.5),
+      cos(hue.mul(2 * Math.PI).add((2 * Math.PI) / 3)).mul(0.5).add(0.5),
+      cos(hue.mul(2 * Math.PI).add((4 * Math.PI) / 3)).mul(0.5).add(0.5),
+    );
+    const brightness = log(magnitude.add(1)).div(Math.log(33)).clamp(0, 1);
+    const rejected = max(abs(movement.x), abs(movement.y)).greaterThan(1000);
+    return select(rejected, vec3(0.65, 0.05, 0.9), wheel.mul(brightness));
   }
 
   // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。

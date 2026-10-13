@@ -9,7 +9,7 @@ const buildDir = path.join(root, '.render-lab');
 // 撮る描画設定。映り込みの追跡は GPU によってはフレームごとに決定的でないので切る。レンズ効果は明るい面の光を、
 // アンチエイリアス(値 0 はなし)は縁を広げて補正の揺れに混ぜるので切る。補正は照り返しまで描く方式で撮る。
 export const MOTION_GRAPHICS = {
-  screenSpaceSpecular: false, lens: false, antialias: 0, screenSpaceOcclusion: true, screenSpaceIndirect: true,
+  screenSpaceSpecular: false, lens: false, antialias: 0, clouds: true, screenSpaceOcclusion: true, screenSpaceIndirect: true,
 };
 
 // 場面。light は光源を動かす列で回す観察の向きのつまみ(光源が自己発光の物だけの場面では null)。
@@ -22,9 +22,18 @@ export const SCENES = [
 // 動きの参照(render-lab-motion-vectors.mjs)の場面。casingCount はケースへ置く薬莢の数、hasEntities はケースが実体の口
 // (motionEntities)と値の口を持つか、orders は撮る積み順(積み順を持たないケースは 1 つ)。
 export const MOTION_VECTOR_SCENES = [
-  { name: 'casing-room', caseName: 'casing-room', shot: 'casing-room', casingCount: 20, hasEntities: true, orders: ['stable', 'shuffle', 'churn'] },
-  { name: 'casing-pool', caseName: 'casing-pool', shot: 'casing-pool', casingCount: 260, hasEntities: true, orders: ['stable', 'shuffle', 'churn'] },
-  { name: 'cornell-box', caseName: 'cornell-box', shot: 'cornell-box', casingCount: 0, hasEntities: false, orders: ['stable'] },
+  {
+    name: 'casing-room', caseName: 'casing-room', shot: 'casing-room', casingCount: 20, hasEntities: true, orders: ['stable'],
+    runs: [
+      { sequences: ['translate-0.25px', 'translate-1px', 'translate-4px', 'rotate-0.25px', 'rotate-1px', 'rotate-4px', 'orbit-0.25px', 'orbit-1px', 'orbit-4px', 'object-motion', 'object-stop', 'both'], coordinates: ['world'] },
+      { sequences: ['translate-1px', 'rotate-1px', 'orbit-1px'], coordinates: ['floating'] },
+    ],
+  },
+  { name: 'casing-pool', caseName: 'casing-pool', shot: 'casing-pool', casingCount: 260, hasEntities: true, orders: ['stable'], runs: [{ sequences: ['object-motion'], coordinates: ['world'] }] },
+  { name: 'bay-earth-open', caseName: 'bay', shot: 'bay-earth-open', casingCount: 0, hasEntities: false, orders: ['stable'], runs: [{ sequences: ['translate-0.25px', 'translate-1px', 'translate-4px', 'rotate-0.25px', 'rotate-1px', 'rotate-4px', 'orbit-0.25px', 'orbit-1px', 'orbit-4px'], coordinates: ['world'] }] },
+  { name: 'earth-oblique', caseName: 'earth', shot: 'earth-oblique', casingCount: 0, hasEntities: false, orders: ['stable'], runs: [{ sequences: ['translate-1px'], coordinates: ['world'] }] },
+  { name: 'cornell-box', caseName: 'cornell-box', shot: 'cornell-box', casingCount: 0, hasEntities: false, orders: ['stable'], runs: [{ sequences: ['translate-0.25px', 'translate-1px', 'translate-4px', 'rotate-0.25px', 'rotate-1px', 'rotate-4px', 'orbit-0.25px', 'orbit-1px', 'orbit-4px'], coordinates: ['world'] }] },
+  { name: 'protein-5i4r', caseName: 'protein-5i4r-molecular-1', shot: 'protein-5i4r-molecular-1', casingCount: 0, hasEntities: false, orders: ['stable'], runs: [{ sequences: ['still', 'translate-1px'], coordinates: ['world'] }] },
 ];
 
 // 位相の列の名前ごとの、動かす源(tools/render-lab/phase-sequence.ts の PhaseSource)。

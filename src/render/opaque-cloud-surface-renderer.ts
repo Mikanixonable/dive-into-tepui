@@ -3,9 +3,9 @@
 // 場の texel より細かい起伏は天体固定の粒で足す。
 import * as THREE from 'three/webgpu';
 import {
-  Discard, Fn, If, Loop, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
+  Discard, Fn, If, Loop, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length, mrt,
   max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select, smoothstep,
-  sqrt, step, transformNormalToView, uniform, vec3, vec4,
+  sqrt, step, struct, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
 import { CloudShapeEvaluator } from './cloud/cloud-shape-evaluator';
@@ -16,8 +16,9 @@ import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
+import { markMotionHistoryKey, motionNodeAtPosition } from './pipeline/motion-history';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './celestial/screen-lod';
-import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
+import type { FloatNode, FloatUniform, Vec3Node } from './tsl-types';
 
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
 const CUMULUS_ROUGHNESS = 1;
@@ -35,6 +36,9 @@ const INITIAL_REFINE_STEPS = 3;
 // ならないので、Nyquist の 2 画素へ落ちるまでに振幅を 0 へ渡す。
 const GRAIN_FADE_MIN_PIXELS = 2;
 const GRAIN_FADE_FULL_PIXELS = 4;
+
+// 1 回のレイマーチが深度・法線・動きで共有する結果。
+const MarchedCloudSurface = struct({ hitPoint: 'vec3', normal: 'vec3', depth: 'float' }, 'MarchedCloudSurface');
 
 export class OpaqueCloudSurfaceRenderer {
   private readonly shape: CloudShapeEvaluator;
@@ -90,7 +94,10 @@ export class OpaqueCloudSurfaceRenderer {
 
   // 全段のメッシュを parent の下へ置く。
   public addTo(parent: THREE.Object3D): void {
-    for (const mesh of this.meshes.values()) parent.add(mesh);
+    for (const mesh of this.meshes.values()) {
+      parent.add(mesh);
+      markMotionHistoryKey(mesh, parent);
+    }
   }
 
   // 読む雲場と cap の置き方を写し取る。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
@@ -131,18 +138,19 @@ export class OpaqueCloudSurfaceRenderer {
     const material = new THREE.MeshStandardNodeMaterial({
       roughness: CUMULUS_ROUGHNESS, metalness: 0,
     });
-    const marched = this.marchedSurface().toVar();
-    material.depthNode = marched.w;
-    material.normalNode = marched.xyz;
+    const marched = this.marchedSurface();
+    material.depthNode = marched.get('depth') as FloatNode;
+    material.normalNode = marched.get('normal') as Vec3Node;
     material.colorNode = vec3(CLOUD_ALBEDO);
+    material.mrtNode = mrt({ motion: motionNodeAtPosition(marched.get('hitPoint') as Vec3Node) });
     return material;
   }
 
-  // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、交点の view 空間法線(xyz)と深度(w)を返す。
+  // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、物体空間の交点・view 空間法線・深度を返す。
   //
   // **画面微分は分岐の外で取り、捨てるのは最後にする** — 粒の振幅が使う dFdx/dFdy は隣接画素との
   // 差なので、条件分岐や discard のあとでは決まらない。
-  private marchedSurface(): Vec4Node {
+  private marchedSurface(): THREE.Node {
     return Fn(() => {
       const entry = positionLocal.toVar();
       const origin = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
@@ -187,7 +195,7 @@ export class OpaqueCloudSurfaceRenderer {
       const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
       const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, grainAmplitude)));
       Discard(hit.lessThan(0.5));
-      return vec4(viewNormal, clip.z.div(clip.w));
+      return MarchedCloudSurface(hitPoint, viewNormal, clip.z.div(clip.w));
     })();
   }
 

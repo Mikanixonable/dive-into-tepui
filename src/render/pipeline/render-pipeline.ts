@@ -266,9 +266,9 @@ export class RenderPipeline {
   }
 
   // 合成パスの表示が深度から位置と距離を引き直すための、実カメラの値を書き込む。
-  private syncCompositeCamera(camera: THREE.Camera): void {
+  private syncCompositeCamera(camera: THREE.Camera, width: number, height: number): void {
     this.cameraProjectionInverse.value.copy(camera.projectionMatrixInverse);
-    this.debugComposites.syncCamera(camera);
+    this.debugComposites.syncCamera(camera, width, height);
   }
 
   // このフレームに画面いっぱいへ映す中間ターゲット。'off' なら通常表示。
@@ -323,7 +323,7 @@ export class RenderPipeline {
   ): Promise<void> {
     const { x: width, y: height } = this.syncTargetSize();
 
-    this.syncCompositeCamera(camera);
+    this.syncCompositeCamera(camera, width, height);
 
     // 描画順に並べる。スタイルによらず通る段。
     const passes: [string, () => Promise<void>][] = [
@@ -368,7 +368,7 @@ export class RenderPipeline {
   // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → 遮蔽と照り返し → ライティング → マテリアル → 映り込み →
   // 陰影の合成 → 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルではマテリアル・
   // 映り込み・陰影の合成・大気・world・レンズの6つのパスを飛ばす。デバッグ表示の間もすべてのパスを発行する。
-  public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
+  public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, frame: number): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
 
@@ -382,7 +382,7 @@ export class RenderPipeline {
     this.shadowMaps.render(scene, camera, height, this._sunLight);
 
     // G バッファパス。
-    this._gbuffer.render(scene, camera, width, height);
+    this._gbuffer.render(scene, camera, width, height, frame);
 
     // 影パス。G バッファの深度を読む。
     this.shadowPass.render(camera, width, height);
@@ -437,7 +437,7 @@ export class RenderPipeline {
     }
 
     // composite パス。
-    this.syncCompositeCamera(camera);
+    this.syncCompositeCamera(camera, width, height);
     // 出力先を差し替えると、描画先を指定しない2つのパスが表示用ターゲットへ向く。撮影のために
     // 呼び出し側が張った出力先を潰さないよう、退避してから戻す。
     const outputTarget = this.renderer.getOutputRenderTarget();

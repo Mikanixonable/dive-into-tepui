@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import { texture as textureNode, uv } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { markLitOpaque } from '../pipeline/lit-layer';
+import { markMotionHistoryKey } from '../pipeline/motion-history';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from '../celestial-albedo';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './screen-lod';
 import {
@@ -209,7 +210,10 @@ export class CelestialSurface implements CelestialSurfaceLike {
 
   // 全段のメッシュを parent の下へ置く。
   public addTo(parent: THREE.Object3D): void {
-    for (const mesh of this.meshes.values()) parent.add(mesh);
+    for (const mesh of this.meshes.values()) {
+      parent.add(mesh);
+      markMotionHistoryKey(mesh, parent);
+    }
   }
 
   // 全段のメッシュの材質を詳細材質へ差し替え、attachment の資源を解放まで持つ。初期の材質は

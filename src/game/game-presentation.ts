@@ -92,6 +92,7 @@ export class GamePresentation {
   // 論理視点を表示値へ写す側。sync が確定させた1フレームぶんの値を cameraFrame が持つ。
   private readonly cameraView = new CameraView();
   private cameraFrame: CameraFrame | null = null;
+  private motionFrame = 0;
   // 操作対象の計画折れ線。計画の表示と、マップの計画の編集・戦闘の噴射ガイドが読む。
   private readonly planPath: PlanPath;
   private readonly planDisplay: PlanDisplay;
@@ -508,7 +509,7 @@ export class GamePresentation {
   // このフレームの sync が確定させたカメラで描く。まだ1度も sync していなければ何も描かない。
   public render(style: RenderStyle): void {
     if (this.cameraFrame === null) return;
-    this.devices.scene.pipeline.render(this.devices.scene.scene, this.cameraFrame.camera, style);
+    this.devices.scene.pipeline.render(this.devices.scene.scene, this.cameraFrame.camera, style, this.motionFrame++);
   }
 
   // 表示の導出が答える計測値。
