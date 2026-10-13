@@ -23,6 +23,31 @@ export interface DifferenceSummary {
   readonly differenceMax: number;
 }
 
+// カメラ camera のクリップ座標を、前のフレームのカメラ previousCamera のクリップ座標へ写す行列。
+export function reprojectionMatrixBetween(camera: THREE.Camera, previousCamera: THREE.Camera): THREE.Matrix4 {
+  return new THREE.Matrix4()
+    .multiplyMatrices(previousCamera.projectionMatrix, previousCamera.matrixWorldInverse)
+    .multiply(camera.matrixWorld)
+    .multiply(camera.projectionMatrixInverse);
+}
+
+// 画素 (x, y) の中心と素の深度 depth(NDC の z)を写像 toPrevious(reprojectionMatrixBetween)で前のフレームへ写し、
+// 前のフレームの画素の座標(画素の中心が整数、行は上から)と素の深度を返す。写した点がカメラの後ろなら null。
+// クリップ座標は WebGPU の座標系で、y は上が正。
+export function reprojectPixelAtDepth(
+  x: number, y: number, depth: number, width: number, height: number, toPrevious: THREE.Matrix4,
+): readonly [number, number, number] | null {
+  const m = toPrevious.elements;
+  const cx = 2 * (x + 0.5) / width - 1;
+  const cy = 1 - 2 * (y + 0.5) / height;
+  const w = m[3]! * cx + m[7]! * cy + m[11]! * depth + m[15]!;
+  if (w <= 0) return null;
+  const px = ((m[0]! * cx + m[4]! * cy + m[8]! * depth + m[12]!) / w + 1) / 2 * width - 0.5;
+  const py = (1 - (m[1]! * cx + m[5]! * cy + m[9]! * depth + m[13]!) / w) / 2 * height - 0.5;
+  const pd = (m[2]! * cx + m[6]! * cy + m[10]! * depth + m[14]!) / w;
+  return [px, py, pd];
+}
+
 // いまのフレームの素の深度 depth(r。面の無い画素は 0)とカメラ camera で、各画素の表面の点が前のフレームのカメラ
 // previousCamera で写る画素の座標(画素の中心が整数、行は上から)を、画素ごとに x, y の順で並べて返す。面の無い画素、
 // 前のフレームの画面の中に 2×2 の近傍が取れない画素、その近傍の前のフレームの素の深度 previousDepth が写した点と同じ面に
@@ -32,24 +57,15 @@ export function reprojectedPixels(
 ): Float64Array {
   const { width, height } = depth;
   // いまのフレームのクリップ座標から、前のフレームのクリップ座標への写像。
-  const toPrevious = new THREE.Matrix4()
-    .multiplyMatrices(previousCamera.projectionMatrix, previousCamera.matrixWorldInverse)
-    .multiply(camera.matrixWorld)
-    .multiply(camera.projectionMatrixInverse);
-  const m = toPrevious.elements;
+  const toPrevious = reprojectionMatrixBetween(camera, previousCamera);
   const out = new Float64Array(width * height * 2).fill(Number.NaN);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const d = depth.rgba[4 * (y * width + x)]!;
       if (d <= 0) continue;
-      // 画素の中心のクリップ座標(WebGPU の座標系。y は上が正)を前のフレームへ写す。
-      const cx = 2 * (x + 0.5) / width - 1;
-      const cy = 1 - 2 * (y + 0.5) / height;
-      const w = m[3]! * cx + m[7]! * cy + m[11]! * d + m[15]!;
-      if (w <= 0) continue;
-      const px = ((m[0]! * cx + m[4]! * cy + m[8]! * d + m[12]!) / w + 1) / 2 * width - 0.5;
-      const py = (1 - (m[1]! * cx + m[5]! * cy + m[9]! * d + m[13]!) / w) / 2 * height - 0.5;
-      const pd = (m[2]! * cx + m[6]! * cy + m[10]! * d + m[14]!) / w;
+      const projected = reprojectPixelAtDepth(x, y, d, width, height, toPrevious);
+      if (projected === null) continue;
+      const [px, py, pd] = projected;
       if (!(px >= 0 && px <= width - 1 && py >= 0 && py <= height - 1)) continue;
       // 近傍の 4 画素がどれも面を持ち、双線形に読んだ素の深度が写した点の深度に合うときだけ、同じ面の点とみなす。
       const taps = bilinearTaps(px, py, width, height);

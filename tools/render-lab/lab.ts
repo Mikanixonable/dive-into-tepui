@@ -304,6 +304,9 @@ export class LabView {
 
   public get debugTarget(): DebugTargetId { return this.selectedDebugTarget; }
 
+  // いま表示しているケース。ケースを表示していなければ null。
+  public get currentCase(): LabCase | null { return this.current; }
+
   // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
   public get viewAngles(): LabViewAngles { return this.angles; }
 

@@ -149,3 +149,88 @@ export function motionPageHtml(records, aggregates, kinds, statics = [], title =
 <script type="application/json" id="data">${JSON.stringify(data).replaceAll('<', '\\u003c')}</script>
 <script>${SCRIPT}</script></html>`;
 }
+
+// 動きの参照(render-lab-motion-vectors.mjs)のページのスクリプト。場面・列・座標・積み順の組とフレームを選んで PNG を
+// 出し、全フレームの要約を 1 表に並べる。表の見出しは columns から組む。
+const MOTION_VECTOR_SCRIPT = `
+const records = JSON.parse(document.getElementById('data').textContent);
+const select = document.getElementById('record');
+const kind = document.getElementById('kind');
+const slider = document.getElementById('frame');
+const image = document.getElementById('image');
+const caption = document.getElementById('caption');
+const table = document.getElementById('metrics');
+const columns = [
+  ['場面', (r) => r.scene], ['列', (r) => r.sequence], ['座標', (r) => r.coordinates], ['積み順', (r) => r.order],
+  ['frame', (_, m) => m.frame], ['面', (_, m) => m.surfaceCount],
+  ['実体輪郭率', (_, m) => m.entityOutlineFraction], ['深度輪郭率', (_, m) => m.depthOutlineFraction],
+  ['ρ 最大', (_, m) => m.depthRatioMax], ['ρ/ρmax p99.9', (_, m) => m.rasterToleranceRatioP999],
+  ['ρ/ρmax 最大', (_, m) => m.rasterToleranceRatioMax], ['ρ/ρmax >1', (_, m) => m.rasterToleranceAboveLimitCount],
+  ['ρ >1e-4', (_, m) => m.depthRatioAboveLimitCount], ['前なし', (_, m) => m.noHistoryCount],
+  ['A RMS', (_, m) => m.selfCheckRms], ['A p99.9', (_, m) => m.selfCheckP999], ['A 最大', (_, m) => m.selfCheckMax],
+  ['A >1e-6', (_, m) => m.selfCheckAboveLimitCount], ['C 最大', (_, m) => m.gpuDifferenceMax],
+  ['C/(動き·ρ) 最大', (_, m) => m.gpuDifferenceNormalizedMax], ['番号 RMS', (_, m) => m.slotErrorRms],
+  ['番号 最大', (_, m) => m.slotErrorMax],
+];
+const format = (value) => typeof value === 'number' && !Number.isInteger(value) ? value.toExponential(2) : String(value);
+
+function imagePath(record, frame) {
+  return record.scene + '/' + record.sequence + '/' + record.coordinates + '/' + record.order
+    + '/' + kind.value + '-' + String(frame).padStart(3, '0') + '.png';
+}
+
+function render() {
+  const record = records[Number(select.value)];
+  slider.max = String(record.frames - 1);
+  const frame = Number(slider.value);
+  const metrics = record.metrics[frame];
+  image.src = imagePath(record, frame);
+  caption.textContent = 'frame ' + frame + ' / 面 ' + metrics.surfaceCount
+    + ' / A 最大 ' + metrics.selfCheckMax.toExponential(2) + ' px / ρ 最大 ' + metrics.depthRatioMax.toExponential(2);
+}
+
+select.replaceChildren(...records.map((record, index) => {
+  const option = document.createElement('option');
+  option.value = String(index);
+  option.textContent = record.scene + ' / ' + record.sequence + ' / ' + record.coordinates + ' / ' + record.order;
+  return option;
+}));
+const head = document.createElement('tr');
+for (const [label] of columns) {
+  const cell = document.createElement('th');
+  cell.textContent = label;
+  head.appendChild(cell);
+}
+table.appendChild(head);
+for (const record of records) {
+  for (const metrics of record.metrics) {
+    const row = document.createElement('tr');
+    for (const [, read] of columns) {
+      const cell = document.createElement('td');
+      cell.textContent = format(read(record, metrics));
+      row.appendChild(cell);
+    }
+    table.appendChild(row);
+  }
+}
+select.onchange = () => { slider.value = '0'; render(); };
+kind.onchange = render;
+slider.oninput = render;
+render();
+`;
+
+// 動きの参照の撮影の記録 records(場面・列・座標・積み順ごとのフレームの要約)を見る、外部依存なしの単一 HTML。
+export function motionVectorPageHtml(records) {
+  const data = JSON.stringify(records).replaceAll('<', '\\u003c');
+  return `<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>動きの参照</title><style>${STYLE}.controls select{background:var(--panel);color:var(--text);padding:4px}#image{image-rendering:pixelated}</style>
+<h1>動きの参照</h1><p>色相は動きの向き、明るさは大きさ [px]、紫は前フレームが無い画素。差は CPU 自己検算の差 ×10。</p>
+<div class="controls">
+<div><span>場面・列・座標・順</span><select id="record"></select></div>
+<div><span>画像</span><select id="kind"><option value="motion">期待する動き</option><option value="difference">CPU 自己検算の差 ×10</option></select></div>
+<div><span>フレーム</span><input type="range" id="frame" min="0" step="1"><span id="caption"></span></div>
+</div>
+<div class="stage"><img id="image" alt=""></div>
+<h2>数値の一覧</h2><table id="metrics"></table>
+<script type="application/json" id="data">${data}</script><script>${MOTION_VECTOR_SCRIPT}</script></html>`;
+}
