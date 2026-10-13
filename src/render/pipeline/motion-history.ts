@@ -1,7 +1,7 @@
 // 論理フレームごとのカメラと物体の前変換を記録し、G バッファへ動きベクトルを書く。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, float, modelWorldMatrix, positionLocal, renderGroup, select, uniform, uint, varying, vec2, vec4,
+  Fn, float, modelWorldMatrix, positionLocal, renderGroup, select, uniform, uint, vec2, vec4,
 } from 'three/tsl';
 import type { Vec2Node, Vec3Node } from '../tsl-types';
 
@@ -61,7 +61,7 @@ export function isMotionRejected(object: THREE.Object3D): boolean {
 
 // 描画物のマテリアルが交点を動きベクトルへ使う。
 export function motionNodeAtPosition(position: Vec3Node): Vec2Node {
-  return createMotionNode(position, 'fragment');
+  return createMotionNode(position);
 }
 
 export class MotionHistory {
@@ -72,7 +72,7 @@ export class MotionHistory {
   // 現在の描画に渡す番号。renderGroup の番号 uniform は render 時に読む。
   private frame = 0;
   // G バッファの動き節。
-  public readonly node: Vec2Node = createMotionNode(positionLocal, 'vertex');
+  public readonly node: Vec2Node = createMotionNode(positionLocal);
 
   // 論理番号とカメラを選び、描画ごとの P×V 前後値を更新する。
   public setFrame(frame: number, camera: THREE.Camera): void {
@@ -158,13 +158,9 @@ export function useRecordedPreviousModel(objectFrame: number, frame: number): bo
   return objectFrame === frame || objectFrame === MOTION_REJECTED_FRAME;
 }
 
-// 前と今の clip を求める段。頂点の位置なら頂点で求めて補間する — clip は位置の一次式なので、透視補正の補間で
-// 画素で求めたのと丸めの差しか生まれず、画素ごとの行列とベクトルの積を省ける。画素で決まる位置(雲殻の交点)は画素で求める。
-type ClipStage = 'vertex' | 'fragment';
-
 // 前 clip の w≤0 は両成分に 1e4。通常値は今の uv−前の uv、uv の y は下向き。
 class MotionNode extends THREE.Node {
-  public constructor(private readonly position: Vec3Node, private readonly stage: ClipStage) {
+  public constructor(private readonly position: Vec3Node) {
     super('vec2');
   }
 
@@ -186,20 +182,18 @@ class MotionNode extends THREE.Node {
       const previousModelPosition = select(useStored, storedPreviousPosition, currentModelPosition);
       const currentClipPosition = currentViewProjection.mul(currentModelPosition);
       const previousClipPosition = previousViewProjection.mul(previousModelPosition);
-      const currentClip = this.stage === 'vertex' ? varying(currentClipPosition) : currentClipPosition;
-      const previousClip = this.stage === 'vertex' ? varying(previousClipPosition) : previousClipPosition;
-      const valid = previousClip.w.greaterThan(0);
-      const currentW = select(currentClip.w.greaterThan(0), currentClip.w, float(1));
-      const previousW = select(valid, previousClip.w, float(1));
-      const movement = currentClip.xy.div(currentW)
-        .sub(previousClip.xy.div(previousW)).mul(vec2(0.5, -0.5));
+      const valid = previousClipPosition.w.greaterThan(0);
+      const currentW = select(currentClipPosition.w.greaterThan(0), currentClipPosition.w, float(1));
+      const previousW = select(valid, previousClipPosition.w, float(1));
+      const movement = currentClipPosition.xy.div(currentW)
+        .sub(previousClipPosition.xy.div(previousW)).mul(vec2(0.5, -0.5));
       return select(valid, movement, vec2(float(MOTION_NO_HISTORY)));
     })();
   }
 }
 
-function createMotionNode(position: Vec3Node, stage: ClipStage): Vec2Node {
-  return new MotionNode(position, stage) as unknown as Vec2Node;
+function createMotionNode(position: Vec3Node): Vec2Node {
+  return new MotionNode(position) as unknown as Vec2Node;
 }
 
 // setViewOffset を含む射影を、カメラ本来の投影へ戻す。
