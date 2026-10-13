@@ -128,6 +128,10 @@ export interface LabCase {
   readonly setFrame?: (frame: number) => void;
   // ケース固有の値を差し替える。受け付ける名前と型はケースが検査する。
   readonly setValue?: (name: string, value: string | number | boolean) => void;
+  // frame の実体を返す。同じ論理 frame には同じ実体と行列を返し、問い合わせでケースの状態を変えない。
+  readonly motionEntities?: (frame: number) => readonly LabMotionEntity[];
+  // 直前の sync が描画座標の原点にした、ケースの世界座標の点を返す。
+  readonly renderOrigin?: () => THREE.Vector3;
   // ケースが握る、objects の所有印では解放できない資源を解放する。
   readonly dispose?: () => void;
   // 計測結果へ添える、タンパク質ケースの識別。
@@ -136,6 +140,19 @@ export interface LabCase {
   readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
   // 残基 motion が握る資源を解放する。
   readonly disposeProteinMotion?: () => void;
+}
+
+export interface LabMotionEntity {
+  // 同じ実体は全フレームで同じ鍵を持ち、異なる実体は異なる鍵を持つ。
+  readonly key: string;
+  // 部屋、通常物体、プールの区分。
+  readonly kind: 'room' | 'ordinary' | 'pool';
+  // 実体ごとの CPU レイに使う形状。
+  readonly geometry: THREE.BufferGeometry;
+  // 浮動原点で置き直す前の、ケース世界座標での model 行列。
+  readonly matrix: THREE.Matrix4;
+  // プールへ push した順の番号。プール以外は null。
+  readonly slot: number | null;
 }
 
 // ケースを組む関数。style の表示スタイルで組んだ姿を返し、環の帯は ringMaterials で描く。

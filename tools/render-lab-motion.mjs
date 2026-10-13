@@ -13,6 +13,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { motionPageHtml } from './render-lab-motion-page.mjs';
+import { CAMERA_MOTION_SEQUENCES } from './render-lab-motion-sequences.mjs';
 import {
   MOTION_GRAPHICS, PHASE_SOURCES, SCENES, aggregatesOf, evaluateLong, openLabPage, openMotionLab, selectedByName,
 } from './render-lab-motion-scenes.mjs';
@@ -26,24 +27,18 @@ const USAGE = 'usage: node tools/render-lab-motion.mjs <set-name> [--scenes=S,..
 // そのフレームの 1 パスの補正の列の名前(tools/render-lab/motion-sequence.ts の SINGLE_COLUMN)。
 const SINGLE_COLUMN = 'single';
 
-// カメラの 1 フレームの動き [描画バッファの画素]。ラスタライズが変わる画素の 1 未満から、走査のダウンサンプリングが
-// 一巡する走査の画素の幅(1/4 の解像度で 4 px)まで。
-const SPEEDS_PX = [0.25, 1, 4];
-// 動きの向き(x は右、y は上)。画素の格子に沿う向きは走査の格子の決まった位相だけを踏むので、横から 30° 傾ける。
-const DIRECTION = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)];
 // 光源を動かす列の、1 フレームの光源の方位の変化 [deg]。
 const LIGHT_STEP_DEG = 0.5;
 
 // 列。frame(k) は k 番目のフレームの、列の最初からのカメラの並進・カメラを中心とする回転・周回の中心を中心とする回転(周回)
 // [描画バッファの画素](MotionSequence.moveCamera)と、光源のつまみの変化 [deg]。周回は、周回の中心の点を画面に留めたまま
 // 面を見る向きを変える — 同じ画素の並進と同じだけ向きが変わり、側面の写る面積が変わる。
-const offset = (k, speed) => DIRECTION.map((v) => k * speed * v);
 const still = { translation: [0, 0], rotation: [0, 0], orbit: [0, 0], light: 0 };
 const SEQUENCES = [
   { name: 'still', frame: () => still },
-  ...SPEEDS_PX.map((speed) => ({ name: `translate-${speed}px`, frame: (k) => ({ ...still, translation: offset(k, speed) }) })),
-  ...SPEEDS_PX.map((speed) => ({ name: `rotate-${speed}px`, frame: (k) => ({ ...still, rotation: offset(k, speed) }) })),
-  ...SPEEDS_PX.map((speed) => ({ name: `orbit-${speed}px`, frame: (k) => ({ ...still, orbit: offset(k, speed) }) })),
+  ...CAMERA_MOTION_SEQUENCES.map((sequence) => ({
+    ...sequence, frame: (k) => ({ ...still, ...sequence.frame(k) }),
+  })),
   { name: 'light', lightOnly: true, frame: (k) => ({ ...still, light: k * LIGHT_STEP_DEG }) },
 ];
 

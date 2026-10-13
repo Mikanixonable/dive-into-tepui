@@ -9,7 +9,7 @@ import { syncThermalState } from '../../src/render/thermal-emissive';
 import { directionFromAngles } from './view-angles';
 import {
   cornellRoomShell, labCamera, OVERHEAD_EARTH, standard, white, type CaseBuilder,
-  type CornellRoomDimensions, type LabCase, type LabShot,
+  type CornellRoomDimensions, type LabCase, type LabMotionEntity, type LabShot,
 } from './lab-case';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
@@ -351,6 +351,32 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
       values = withCaseValue(configuration.name, values, name, value);
       applyFrame();
     },
+    motionEntities: (entityFrame): readonly LabMotionEntity[] => {
+      const entities: LabMotionEntity[] = room.children.map((child, index) => {
+        const ordinaryId = CASING_ROOM_ORDINARY_IDS.find((id) => ordinary?.[id] === child);
+        return {
+          key: ordinaryId === undefined ? `room:${index}` : `ordinary:${ordinaryId}`,
+          kind: ordinaryId === undefined ? 'room' : 'ordinary',
+          geometry: (child as THREE.Mesh).geometry,
+          matrix: ordinaryId === undefined
+            ? new THREE.Matrix4().compose(child.position, child.quaternion, child.scale)
+            : casingRoomOrdinaryMatrixAt(ordinaryId, entityFrame, values.motion, new THREE.Matrix4()),
+          slot: null,
+        };
+      });
+      const order = casingRoomCasingOrderAt(entityFrame, values.casingCount, values.casingOrder);
+      for (const [slot, identity] of order.entries()) {
+        entities.push({
+          key: `casing:${identity}`,
+          kind: 'pool',
+          geometry: (casings.object as THREE.InstancedMesh).geometry,
+          matrix: configuration.casingMatrixAt(identity, entityFrame, values.motion, new THREE.Matrix4()),
+          slot,
+        });
+      }
+      return entities;
+    },
+    renderOrigin: () => poolOrigin.clone(),
     sync: () => {
       if (values.coordinates === 'floating') poolOrigin.copy(camera.position);
       else poolOrigin.set(0, 0, 0);

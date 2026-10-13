@@ -19,6 +19,14 @@ export const SCENES = [
   { name: 'bay-dark', caseName: 'bay', shot: 'bay-dark', light: null },
 ];
 
+// 動きの参照(render-lab-motion-vectors.mjs)の場面。casingCount はケースへ置く薬莢の数、hasEntities はケースが実体の口
+// (motionEntities)と値の口を持つか、orders は撮る積み順(積み順を持たないケースは 1 つ)。
+export const MOTION_VECTOR_SCENES = [
+  { name: 'casing-room', caseName: 'casing-room', shot: 'casing-room', casingCount: 20, hasEntities: true, orders: ['stable', 'shuffle', 'churn'] },
+  { name: 'casing-pool', caseName: 'casing-pool', shot: 'casing-pool', casingCount: 260, hasEntities: true, orders: ['stable', 'shuffle', 'churn'] },
+  { name: 'cornell-box', caseName: 'cornell-box', shot: 'cornell-box', casingCount: 0, hasEntities: false, orders: ['stable'] },
+];
+
 // 位相の列の名前ごとの、動かす源(tools/render-lab/phase-sequence.ts の PhaseSource)。
 export const PHASE_SOURCES = {
   seed: ['seed'],

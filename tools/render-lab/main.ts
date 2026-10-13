@@ -27,6 +27,7 @@ import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './e
 import { ERROR_SCALES, ErrorMetric, FALSE_STRUCTURE_EPSILONS, type ErrorMeasurement } from './error-metric';
 import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
 import { MotionSequence, type MotionFrameRecord } from './motion-sequence';
+import { MotionVectorCheck, type MotionVectorFrameRecord } from './motion-vector-check';
 import { JitterSweep, type SweepRecord } from './jitter-sweep';
 import { phasesOf, type PhaseSequence } from './phase-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
@@ -134,6 +135,8 @@ declare global {
       motionFrame: (
         columns: readonly { readonly name: string; readonly sequence: PhaseSequence }[],
       ) => Promise<MotionFrameRecord>;
+      resetMotionReference: () => void;
+      motionVectorFrame: (frame: number, compareDepth: boolean) => Promise<MotionVectorFrameRecord>;
       jitterSweep: (
         sequence: PhaseSequence, timeConstants: readonly number[], imagedTimeConstants: readonly number[],
       ) => Promise<SweepRecord>;
@@ -271,6 +274,7 @@ async function init(): Promise<void> {
   let smoother: Promise<PlaneSmoother> | null = null;
   const planeSmoother = (): Promise<PlaneSmoother> => (smoother ??= PlaneSmoother.create());
   const motion = new MotionSequence(view);
+  const motionVectorCheck = new MotionVectorCheck(view);
   const sweep = new JitterSweep(view);
   const syncAngles = buildViewAngleSliders(view);
 
@@ -429,6 +433,8 @@ async function init(): Promise<void> {
     moveCamera: (translationPx, rotationPx, orbitPx) => motion.moveCamera(translationPx, rotationPx, orbitPx),
     motionFrame: (columns) => motion.frame(
       columns.map(({ name, sequence }) => ({ name, phases: phasesOf(sequence, view.scanCellSize) }))),
+    resetMotionReference: () => motionVectorCheck.reset(),
+    motionVectorFrame: (frame, compareDepth) => motionVectorCheck.frame(frame, compareDepth),
     jitterSweep: (sequence, timeConstants, imagedTimeConstants) => sweep.sweep(
       phasesOf(sequence, view.scanCellSize), timeConstants, imagedTimeConstants, view.scanCellSize),
   };
