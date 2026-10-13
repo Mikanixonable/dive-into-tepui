@@ -155,7 +155,8 @@ export class RenderPipeline {
     ], this._sphereLights.sources, gpu);
     this.screenSpacePass = new ScreenSpacePass(
       renderer, this._gbuffer, this.lightPrepass, this._planetLight, this._ambient, this._diffuseCorrection, gpu,
-      screenSpaceDiffuseOf(graphics), graphics.screenSpaceSliceCount, graphics.screenSpaceStepCount,
+      screenSpaceDiffuseOf(graphics), graphics.screenSpaceScanScale, graphics.screenSpaceSliceCount,
+      graphics.screenSpaceStepCount,
     );
 
     // マテリアルパス以降が共有する描画先。**大気パスの生成より先に作る** — 自身が書く先としてこれを受け取る。
@@ -286,7 +287,8 @@ export class RenderPipeline {
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
     this.screenSpacePass.setMode(screenSpaceDiffuseOf(graphics));
-    this.screenSpacePass.setScan(graphics.screenSpaceSliceCount, graphics.screenSpaceStepCount);
+    this.screenSpacePass.setScan(
+      graphics.screenSpaceScanScale, graphics.screenSpaceSliceCount, graphics.screenSpaceStepCount);
     // 近傍補正を書く段と、それを読む本マテリアル・映り込みの像の元は一緒に切り替える。
     this.reflectionSourcePass.setCorrected(graphics.screenSpaceOcclusion);
     this.materialPass.setCorrected(graphics.screenSpaceOcclusion);

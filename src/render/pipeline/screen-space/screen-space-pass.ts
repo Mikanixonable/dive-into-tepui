@@ -53,15 +53,14 @@ export interface ScanTier {
   readonly bandScale: number;
 }
 
-// 走査の解像度の描画バッファに対する比、帯の数、帯の座標の尺度 κ。スライス数と歩数と組んで段にする。
+// 帯の数、帯の座標の尺度 κ。走査の解像度とスライス数と歩数と組んで段にする。
 // TODO: 帯の数と尺度は仮置き。費用と画質の指標の実測から選び直す。
-const SCAN_SCALE = 0.25;
 const BAND_COUNT = 4;
 const BAND_SCALE = 0.38;
 
-// スライス sliceCount 本・片側 stepCount 歩の走査の段。
-function scanTierOf(sliceCount: number, stepCount: number): ScanTier {
-  return { scale: SCAN_SCALE, sliceCount, stepCount, bandCount: BAND_COUNT, bandScale: BAND_SCALE };
+// 解像度 scale・スライス sliceCount 本・片側 stepCount 歩の走査の段。
+function scanTierOf(scale: number, sliceCount: number, stepCount: number): ScanTier {
+  return { scale, sliceCount, stepCount, bandCount: BAND_COUNT, bandScale: BAND_SCALE };
 }
 
 // 疎な拡大の回転が読むブルーノイズのずれ [タイルの幅]。走査の 0・½・27/64 との差がタイルの自己相関の小さい所に
@@ -105,8 +104,8 @@ export class ScreenSpacePass {
   // 方式ごとの、段 0 の面の写しと源を書く描画命令。
   private readonly occlusionSurfaceStage: ScreenSpaceStage;
   private readonly indirectSurfaceStage: ScreenSpaceStage;
-  // 帯の数ごとの描画命令。初めてその帯の数で描くときに組む。
-  private readonly stagesByBandCount = new Map<number, BandCountStages>();
+  // 帯の数と mergesIntoCorrection の組ごとの描画命令。初めてその組で描くときに組む。
+  private readonly stagesByKey = new Map<string, BandCountStages>();
   private readonly experimentStagesByKey = new Map<string, readonly ScreenSpaceStage[]>();
   private readonly quad = new QuadMesh();
   // QuadMesh は固定直交カメラで描かれるため、実カメラの射影行列とその逆は毎フレーム自前で書き込む。
@@ -155,9 +154,9 @@ export class ScreenSpacePass {
     private readonly lightPrepass: LightPrepass,
     private readonly planetLight: PlanetLightSource, private readonly ambient: AmbientSource,
     private readonly output: DiffuseCorrection, private readonly gpu: GpuTimings,
-    private mode: ScreenSpaceDiffuse, sliceCount: number, stepCount: number,
+    private mode: ScreenSpaceDiffuse, scale: number, sliceCount: number, stepCount: number,
   ) {
-    this.tier = scanTierOf(sliceCount, stepCount);
+    this.tier = scanTierOf(scale, sliceCount, stepCount);
     // 走査の解像度の面の読み手と、段ごとの代表の面・帯・再構成を組む。
     this.sample = new ShadingSample(gbuffer, this.gbufferUV);
     const weight = new SurfaceWeight(gbuffer, this.projection, this.projectionInverse, this.fullSize);
@@ -180,6 +179,10 @@ export class ScreenSpacePass {
   // いまの段で補正を分ける帯の数。
   public get bandCount(): number { return this.tier.bandCount; }
 
+  // いまの段が走査を描画バッファの解像度で行い、段 0 の合流が最後の拡大を介さず補正の描画先へ直接書くか。このとき段 0 の
+  // 合流の描画先(DiffuseCorrection.mergedTarget(count, 0))は書かれない。帯が 1 つなら合流が無いので常に偽。
+  public get mergesIntoCorrection(): boolean { return this.tier.scale === 1 && this.tier.bandCount > 1; }
+
   public get experimentOutputTarget(): THREE.RenderTarget {
     if (this.experiment === null) throw new Error('screen-space: no experiment is active');
     return this.output.target;
@@ -193,9 +196,9 @@ export class ScreenSpacePass {
     this.mode = mode;
   }
 
-  // 次の render からスライス sliceCount 本・片側 stepCount 歩で走査する。
-  public setScan(sliceCount: number, stepCount: number): void {
-    this.tier = scanTierOf(sliceCount, stepCount);
+  // 次の render から解像度 scale・スライス sliceCount 本・片側 stepCount 歩で走査する。
+  public setScan(scale: number, sliceCount: number, stepCount: number): void {
+    this.tier = scanTierOf(scale, sliceCount, stepCount);
   }
 
   // 次の render から段 tier で走査する。次に setScan を呼ぶまで保つ。
@@ -304,7 +307,7 @@ export class ScreenSpacePass {
   public dispose(): void {
     const own = [
       this.occlusionSurfaceStage, this.indirectSurfaceStage,
-      ...[...this.stagesByBandCount.values()].flatMap((stages) => stages.own),
+      ...[...this.stagesByKey.values()].flatMap((stages) => stages.own),
     ];
     for (const material of new Set(own.map(({ material }) => material))) material.dispose();
     for (const stages of this.experimentStagesByKey.values()) {
@@ -356,20 +359,22 @@ export class ScreenSpacePass {
     return stages;
   }
 
-  // 帯の数 count の描画命令。初めて引いたときに組み、以後は同じものを返す。
+  // 帯の数 count と、いまの段の mergesIntoCorrection で決まる描画命令。初めて引いたときに組み、以後は同じものを返す。
   private stagesOf(count: number): BandCountStages {
-    const built = this.stagesByBandCount.get(count);
+    const intoCorrection = this.mergesIntoCorrection;
+    const key = `${count}:${intoCorrection}`;
+    const built = this.stagesByKey.get(key);
     if (built !== undefined) return built;
     const occlusionScan = this.createScanStage(count, null);
     const indirectScan = this.createScanStage(count, this.surfaces.radianceTexture);
     // 走査より後の段は方式によらないので、両方の方式で同じ描画命令を使う。
-    const chain = this.createChainStages(count);
-    const upsample = this.createUpsampleStage(count);
+    const chain = this.createChainStages(count, intoCorrection);
+    const upsample = intoCorrection ? [] : [this.createUpsampleStage(count)];
     const scans: ModeStages = {
       [SCREEN_SPACE_DIFFUSE.occlusion]: [this.occlusionSurfaceStage, occlusionScan],
       [SCREEN_SPACE_DIFFUSE.indirect]: [this.indirectSurfaceStage, indirectScan],
     };
-    const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, upsample];
+    const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, ...upsample];
     const stages: BandCountStages = {
       ranges: {
         all: {
@@ -379,9 +384,9 @@ export class ScreenSpacePass {
         scan: scans,
         chain: { [SCREEN_SPACE_DIFFUSE.occlusion]: afterScan, [SCREEN_SPACE_DIFFUSE.indirect]: afterScan },
       },
-      own: [occlusionScan, indirectScan, ...chain, upsample],
+      own: [occlusionScan, indirectScan, ...chain, ...upsample],
     };
-    this.stagesByBandCount.set(count, stages);
+    this.stagesByKey.set(key, stages);
     return stages;
   }
 
@@ -413,8 +418,9 @@ export class ScreenSpacePass {
     return { material, target, gpuPass: GPU_PASS.nearbyDiffuseScan };
   }
 
-  // 帯の数 count の、帯の縮小(段 1..count − 1)→ 拡大と合流(段 count − 2..0)の描画命令の列。
-  private createChainStages(count: number): ScreenSpaceStage[] {
+  // 帯の数 count の、帯の縮小(段 1..count − 1)→ 拡大と合流(段 count − 2..0)の描画命令の列。intoCorrection なら段 0 の
+  // 合流は補正の描画先へ直接書く(走査が描画バッファの解像度で、最後の拡大を組まないとき)。
+  private createChainStages(count: number, intoCorrection: boolean): ScreenSpaceStage[] {
     const reduce = Array.from({ length: count - 1 }, (_, index): ScreenSpaceStage => {
       const level = index + 1;
       const target = this.output.bandTarget(count, level);
@@ -424,16 +430,17 @@ export class ScreenSpacePass {
     });
     const merge = Array.from({ length: count - 1 }, (_, index): ScreenSpaceStage => {
       const level = count - 2 - index;
-      const target = this.output.mergedTarget(count, level);
+      const direct = intoCorrection && level === 0;
+      const target = direct ? this.output.target : this.output.mergedTarget(count, level);
       const coarse = this.output.mergedTexture(count, level + 1);
       const coarseBands = this.output.bandTarget(count, level + 1).textures;
       const own = this.output.bandTarget(count, level).textures;
       const value = (): Vec4Node => this.bandPyramid.merged(coarse, coarseBands, own, count, level);
-      // 段 0 の受け手は走査の受け手なので、走査と同じく補正を受けない受け手を 0 で塗る。
+      // 段 0 の受け手は走査の受け手なので、走査と同じく補正を受けない受け手を 0 で塗る。補正の描画先の α は 1。
       const material = stageMaterial();
-      material.mrtNode = mrt({
-        [target.texture.name]: level === 0 ? this.whereResolved(this.gbufferUV, value) : Fn(value)(),
-      });
+      const output = direct ? this.whereResolved(this.gbufferUV, () => vec4(value().rgb, 1))
+        : level === 0 ? this.whereResolved(this.gbufferUV, value) : Fn(value)();
+      material.mrtNode = mrt({ [target.texture.name]: output });
       return { material, target, gpuPass: GPU_PASS.nearbyDiffuseMerge };
     });
     return [...reduce, ...merge];

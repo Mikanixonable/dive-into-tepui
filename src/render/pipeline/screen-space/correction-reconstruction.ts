@@ -13,8 +13,8 @@ import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types
 // 最後の拡大で読む疎なタップの数と、タップ間の黄金角 [rad]。
 const UPSAMPLE_TAP_COUNT = 8;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
-// 拡大の半径の下限 [全解像度の画素]。走査の解像度に起因するエイリアスを隠すので、受け手の距離によらず画面の画素で固定する。
-const UPSAMPLE_FLOOR_RADIUS = 12 / Math.SQRT2;
+// 拡大の半径の下限 [走査の画素]。走査の解像度に起因するエイリアスを隠すので、受け手の距離によらず走査の画素で固定する。
+const UPSAMPLE_FLOOR_RADIUS = 3 / Math.SQRT2;
 // 補正が均されていない分の輝点を慣らす半径の、受け手の近傍の投影半径に対する比。
 const UPSAMPLE_RADIUS_PER_PROJECTED_RADIUS = 0.0351;
 // 拡大の楕円の異方性の柔らかさ a — 短い半軸を (a + c)/(a + 1) 倍、長い半軸をその逆数倍にする。c は受け手の法線と
@@ -45,7 +45,7 @@ export class CorrectionReconstruction {
     const nearest = textureLoad(source, this.clampToScan(ivec2(round(position)))).toVar();
     const projected = projectedRadius(receiver.position, this.projection, this.fullSize);
     const share = select(this.forceAlphaOne.greaterThan(0.5), float(1), clamp(nearest.a, 0, 1));
-    const radius = max(float(UPSAMPLE_FLOOR_RADIUS),
+    const radius = max(float(UPSAMPLE_FLOOR_RADIUS).div(scale.x),
       projected.mul(UPSAMPLE_RADIUS_PER_PROJECTED_RADIUS).mul(float(1).sub(share)));
     const { across, along } = this.surfaceEllipseOf(receiver, radius);
     const angle = rotation.mul(2 * Math.PI).toVar();

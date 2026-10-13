@@ -135,6 +135,7 @@ function expandedValues(legacy: LegacyValues): GraphicsSettingsData {
     aurora: legacy.aurora,
     screenSpaceOcclusion: legacy.screenSpaceDiffuse !== SCREEN_SPACE_DIFFUSE_OFF,
     screenSpaceIndirect: legacy.screenSpaceDiffuse === SCREEN_SPACE_DIFFUSE_INDIRECT,
+    screenSpaceScanScale: 0.25,
     screenSpaceSliceCount: scan.sliceCount,
     screenSpaceStepCount: scan.stepCount,
     screenSpaceSpecular: legacy.screenSpaceSpecular,

@@ -223,4 +223,13 @@ export function register(): void {
     assert.deepEqual(custom.elements, { ...elementPresetValues('high'), lens: false });
     assert.deepEqual(parsed.preferences, DEFAULT_GRAPHICS_SELECTION.preferences);
   });
+
+  test('graphics-selection: 走査の解像度を持たない保存は 1/4 に解ける', () => {
+    const saved = { quality: { fields: { screenSpace: { custom: { screenSpaceSliceCount: 3, screenSpaceStepCount: 4 } } } } };
+    const resolved = resolveGraphics(parseGraphicsSelection(JSON.stringify(saved)));
+    assert.equal(resolved.screenSpaceScanScale, 0.25);
+    assert.equal(resolved.screenSpaceSliceCount, 3);
+    const rejected = { quality: { fields: { screenSpace: { custom: { screenSpaceScanScale: 0.3 } } } } };
+    assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(rejected))).screenSpaceScanScale, 0.25);
+  });
 }

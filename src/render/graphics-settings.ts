@@ -216,6 +216,12 @@ export const GRAPHICS_FIELDS = {
         kind: 'toggle', label: '照り返し',
         presets: { low: false, medium: false, high: true },
       },
+      // 走査の解像度の、描画バッファに対する比。
+      screenSpaceScanScale: {
+        kind: 'choice', label: '走査の解像度',
+        items: [[0.125, '1/8'], [0.25, '1/4'], [0.5, '1/2'], [1, '1']],
+        presets: { low: 0.25, medium: 0.25, high: 0.25 },
+      },
       // 走査のスライスの数。
       screenSpaceSliceCount: {
         kind: 'slider', label: '走査のスライス数',

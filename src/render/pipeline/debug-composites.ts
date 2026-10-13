@@ -44,8 +44,9 @@ function isChainView(view: DebugView): view is ChainDebugTargetId {
 
 export class DebugComposites {
   private readonly materials: Readonly<Record<Exclude<DebugView, ChainDebugTargetId>, THREE.MeshBasicNodeMaterial>>;
-  // 帯の数ごとの、帯と段の表示。初めてその帯の数で映すときに組む。
-  private readonly chainMaterials = new Map<number, ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial>>();
+  // 帯の数と、段 0 の合流が補正の描画先へ直接書くか(ScreenSpacePass.mergesIntoCorrection)ごとの、帯と段の表示。初めて
+  // その組で映すときに組む。
+  private readonly chainMaterials = new Map<string, ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial>>();
   // いまの段の帯の数に無い帯と段の表示が映す黒。
   private readonly blankMaterial: THREE.MeshBasicNodeMaterial;
   // 深度と影スロットの表示が、深度から距離と描画座標を引き直す実カメラの値。合成パスは固定の直交カメラで描かれる
@@ -112,7 +113,8 @@ export class DebugComposites {
   // 帯と段なら黒。
   public material(view: DebugView): THREE.MeshBasicNodeMaterial {
     if (!isChainView(view)) return this.materials[view];
-    return this.chainMaterialsOf(this.screenSpacePass.bandCount).get(view) ?? this.blankMaterial;
+    const { bandCount, mergesIntoCorrection } = this.screenSpacePass;
+    return this.chainMaterialsOf(bandCount, mergesIntoCorrection).get(view) ?? this.blankMaterial;
   }
 
   public signedCorrectionMaterial(source: THREE.Texture): THREE.MeshBasicNodeMaterial {
@@ -120,20 +122,23 @@ export class DebugComposites {
   }
 
   // 帯の数 count で描いた帯と段の表示の合成マテリアル。その帯の数に無い帯と段は持たない。初めて引いたときに組む。
-  private chainMaterialsOf(count: number): ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial> {
-    const existing = this.chainMaterials.get(count);
+  private chainMaterialsOf(
+    count: number, mergesIntoCorrection: boolean,
+  ): ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial> {
+    const key = `${count}:${mergesIntoCorrection}`;
+    const existing = this.chainMaterials.get(key);
     if (existing !== undefined) return existing;
     const materials = new Map(CHAIN_DEBUG_TARGETS.flatMap((target) => {
-      const color = this.chainColor(target, count);
+      const color = this.chainColor(target, count, mergesIntoCorrection);
       return color === null ? [] : [[target.id, compositeMaterial(color, this.gbuffer.depthTexture)] as const];
     }));
-    this.chainMaterials.set(count, materials);
+    this.chainMaterials.set(key, materials);
     return materials;
   }
 
   // 帯の数 count で描いた、帯と段の表示 target の色。補正は符号を色分けし、代表の面は法線を映す。その帯の数に無い
-  // 帯と段なら null。
-  private chainColor(target: ChainDebugTarget, count: number): Vec4Node | null {
+  // 帯と段と、書かれない段 0 の合流の均された割合(mergesIntoCorrection)は null。そのとき段 0 の合流は補正の描画先を映す。
+  private chainColor(target: ChainDebugTarget, count: number, mergesIntoCorrection: boolean): Vec4Node | null {
     const corrections = this.diffuseCorrection;
     switch (target.kind) {
       // 段 level の描画先は、帯 level〜count − 1 を packedBands の並びで詰めて持つ。
@@ -149,7 +154,10 @@ export class DebugComposites {
       case 'merged':
       case 'merged-share': {
         if (target.level >= count - 1) return null;
-        const merged = texture(corrections.mergedTarget(count, target.level).texture, screenUV);
+        const direct = mergesIntoCorrection && target.level === 0;
+        if (direct && target.kind === 'merged-share') return null;
+        const source = direct ? corrections.texture : corrections.mergedTarget(count, target.level).texture;
+        const merged = texture(source, screenUV);
         return target.kind === 'merged'
           ? this.signedColor(merged.rgb)
           : vec4(vec3(merged.a), 1);

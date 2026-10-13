@@ -54,6 +54,7 @@ export const ENTRIES = [
     'plane-moon-horizon', 'plane-ambient', 'plane-earth-low-grazing', 'plane-ambient-grazing',
   ].flatMap((shot) => Object.values(MODE).map((mode) => entry('correctness', 'plane', shot, mode))),
   ...Array.from({ length: DOLLY_FRAMES }, (_, k) => entry('flicker', 'bay', 'bay', MODE.indirect, (k + 1) * DOLLY_STEP)),
+  entry('scan-scale', 'angled-bounce', 'angled-bounce'),
   ...['clutter', 'clutter-far'].map((shot) => entry('holes', 'clutter', shot)),
 ];
 

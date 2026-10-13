@@ -51,8 +51,9 @@ const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 // i 枚目のテクスチャ(段の帯 b の rgb は、テクスチャを並べた通しのチャンネル 3(b − m)..3(b − m) + 2。帯の数 1 では
 // 'packed-bands-0' の rgb が帯に分けない補正)。MergedName は、いまの段の帯の数の拡大と合流の段 k の出力(rgb は C_k)。
 // 'band-sum' は走査の帯の和(rgb、α は 0)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1 では
-// 帯 0、2 以上では 'merged-0' と同じ)。'surface-radiance' は照り返しの源(走査の解像度の rgb)、'representative-ℓ' は代表の
-// 段 ℓ の G バッファの画素の整数座標と素の深度(rgb、a は 0)。'scan-surface-0' は走査の面の写しの (G バッファの画素の x, y,
+// 帯 0、2 以上では 'merged-0' と同じ。走査の解像度が 1 なら 'correction' と同じで、'merged-0' は書かれず読めない)。
+// 'surface-radiance' は照り返しの源(走査の解像度の rgb)、'representative-ℓ' は代表の段 ℓ の G バッファの画素の整数座標と
+// 素の深度(rgb、a は 0)。'scan-surface-0' は走査の面の写しの (G バッファの画素の x, y,
 // 素の深度, 0)、'scan-surface-1' はその法線の rg(ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の
 // 半径が写る描画バッファの画素数で、面の無い画素は 0。
 export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'correction' | 'diffuse'
@@ -747,7 +748,8 @@ export class LabView {
   private floatTextureOf(name: Exclude<FloatTargetName, 'band-sum' | 'projected-radius'>): THREE.Texture {
     const { screenSpace, diffuseCorrection } = this.pipeline;
     switch (name) {
-      case 'scan-correction': return diffuseCorrection.mergedTexture(screenSpace.bandCount, 0);
+      case 'scan-correction': return screenSpace.mergesIntoCorrection
+        ? diffuseCorrection.texture : diffuseCorrection.mergedTexture(screenSpace.bandCount, 0);
       case 'correction': return diffuseCorrection.texture;
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
       case 'surface-radiance': return screenSpace.surfaceRadianceTexture;
@@ -767,6 +769,9 @@ export class LabView {
         const [, mergedLevel] = MERGED_NAME_PATTERN.exec(name) ?? [];
         if (mergedLevel !== undefined) {
           if (Number(mergedLevel) >= count - 1) throw new Error(`render-lab: ${count} bands have no "${name}"`);
+          if (Number(mergedLevel) === 0 && screenSpace.mergesIntoCorrection) {
+            throw new Error(`render-lab: "${name}" is not written at scan scale 1 (read "correction")`);
+          }
           return diffuseCorrection.mergedTarget(count, Number(mergedLevel)).texture;
         }
         // 帯を詰めたテクスチャは、いまの段の帯の数の、名前の段(無ければ走査の段 0)の描画先から引く。
