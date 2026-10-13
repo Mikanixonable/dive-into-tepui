@@ -5,7 +5,7 @@ import type { FloatImage } from './lab';
 import type { LabMotionEntity } from './lab-case';
 
 // レイを当てる仮の Mesh の材質。Raycaster は材質の面の向きで当たりを選ぶので、G バッファと同じく表面だけに当てる。
-const RAY_MATERIAL = new THREE.MeshBasicMaterial({ side: THREE.FrontSide });
+const RAY_MATERIAL = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
 
 // 前フレームが無い標本を PNG で示す色(紫。8 bit の RGB)。
 const NO_HISTORY_RGB = [160, 32, 240] as const;
@@ -26,9 +26,11 @@ const RASTER_POSITION_ERROR_PX = 2 ** -(RASTER_SUBPIXEL_BITS + 1);
 // ケースの世界の座標、entities はケースの世界の座標で置いた実体、depth は G バッファの素の深度。
 export interface MotionReferenceFrame {
   readonly depth: FloatImage;
+  readonly motion: FloatImage;
   readonly camera: THREE.PerspectiveCamera;
   readonly origin: THREE.Vector3;
   readonly entities: readonly LabMotionEntity[];
+  readonly rejectedObjects: readonly THREE.Object3D[];
 }
 
 // 1 フレームの参照の要約。標本は SAMPLE_STEP おきの画素で、面のある標本だけを数える。輪郭は 3×3 の近傍のレイで決める。
@@ -56,6 +58,24 @@ export interface MotionReferenceMetrics {
   readonly depthRatioMaxPixel: readonly [number, number] | null;
   // 前フレームに同じ鍵の実体が無い標本の数。
   readonly noHistoryCount: number;
+  readonly gpuMotionCount: number;
+  readonly gpuMotionRms: number;
+  readonly gpuMotionP999: number;
+  readonly gpuMotionMax: number;
+  readonly gpuMotionAboveLimitCount: number;
+  readonly rejectedPixelCount: number;
+  readonly rejectedPixelMismatchCount: number;
+  readonly expectedRejectedGpuValueCount: number;
+  readonly expectedValueGpuRejectedCount: number;
+  readonly nonFiniteGpuMovementCount: number;
+  readonly rejectedObjectCount: number;
+  readonly rejectedRayHitCount: number;
+  readonly rejectedDepthMatchedCount: number;
+  readonly comparisonExpectedCount: number;
+  readonly comparisonCount: number;
+  readonly sameFrameMismatchCount: number;
+  readonly fullNoHistorySurfacePixelCount: number;
+  readonly fullNoHistoryMismatchCount: number;
   // CPU の経路どうしの自己検算(当たりの点の深度を深度の参照の写像へ通した動きと、レイの参照の動きの差)の標本の数と、
   // 差の RMS・99.9% 分位・最大 [px]、SELF_CHECK_TOLERANCE_PX を超えた標本の数、最大の画素の座標。
   readonly selfCheckCount: number;
@@ -80,6 +100,7 @@ export interface MotionReferenceMetrics {
 export interface MotionReferenceResult {
   readonly motionPng: string;
   readonly differencePng: string;
+  readonly comparisonSamples: readonly number[];
   readonly metrics: MotionReferenceMetrics;
 }
 
@@ -98,16 +119,24 @@ interface Sample {
   gpuDifferenceNormalized: number | null;
   selfError: number | null;
   outlineKind: 'none' | 'entity' | 'depth';
+  gpuMovement: readonly [number, number] | null;
+  motionError: number | null;
+  motionToleranceRatio: number | null;
+  rejected: boolean;
 }
 
 // 現在の面 hit と前フレームの写像を比べ、CPU 検算・深度整合・PNG を返す。
-export function motionReferenceOf(
+export async function motionReferenceOf(
   frame: MotionReferenceFrame,
   previous: MotionReferenceFrame | null,
   toPrevious: THREE.Matrix4 | null,
   gpuReprojected: Float64Array | null,
-): MotionReferenceResult {
+  depthSampleStep = SAMPLE_STEP,
+): Promise<MotionReferenceResult> {
   const { width, height } = frame.depth;
+  if (frame.entities.length === 0) {
+    return depthMotionReferenceOf(frame, previous, toPrevious, depthSampleStep);
+  }
   const camera = unjitteredCamera(frame.camera);
   const previousCamera = previous === null ? null : unjitteredCamera(previous.camera);
   const drawFromWorld = new THREE.Matrix4().makeTranslation(-frame.origin.x, -frame.origin.y, -frame.origin.z);
@@ -118,23 +147,44 @@ export function motionReferenceOf(
     mesh.matrixWorld.copy(mesh.matrix);
     return { entity, mesh };
   });
-  const raycastMeshes = meshes.map(({ mesh }) => mesh);
-  const entitiesByMesh = new Map<THREE.Object3D, LabMotionEntity>(meshes.map(({ entity, mesh }) => [mesh, entity]));
+  const rejectedMeshes = frame.entities.some((entity) => entity.kind === 'pool')
+    ? [] : rejectedMeshesOf(frame.rejectedObjects);
+  const baseRaycastMeshes = meshes.map(({ mesh }) => mesh);
+  const raycastMeshes = [...baseRaycastMeshes, ...rejectedMeshes];
+  const baseEntitiesByMesh = new Map<THREE.Object3D, LabMotionEntity>(meshes.map(({ entity, mesh }) => [mesh, entity]));
+  const entitiesByMesh = new Map<THREE.Object3D, LabMotionEntity>([
+    ...baseEntitiesByMesh.entries(),
+    ...rejectedMeshes.map((mesh, index) => [mesh, {
+      key: `motion-rejected:${index}`,
+      kind: 'pool' as const,
+      geometry: mesh.geometry,
+      matrix: mesh.matrixWorld.clone(),
+      slot: null,
+    }] as const),
+  ]);
   const byKey = new Map((previous?.entities ?? []).map((entity) => [entity.key, entity]));
   const bySlot = new Map((previous?.entities ?? [])
     .filter((entity) => entity.kind === 'pool' && entity.slot !== null)
     .map((entity) => [entity.slot!, entity]));
   const raycaster = new THREE.Raycaster();
   const intersections: THREE.Intersection[] = [];
+  const rayCandidates: THREE.Mesh[] = [];
   raycaster.near = camera.near;
   raycaster.far = camera.far;
   const samples: Sample[] = [];
   let surfaceCount = 0;
   let noHistoryCount = 0;
+  let rejectedPixelCount = 0;
+  let rejectedPixelMismatchCount = 0;
+  let expectedRejectedGpuValueCount = 0;
+  let expectedValueGpuRejectedCount = 0;
+  let nonFiniteGpuMovementCount = 0;
 
   for (let y = 0; y < height; y += SAMPLE_STEP) {
     for (let x = 0; x < width; x += SAMPLE_STEP) {
-      const hit = hitAt(x, y, width, height, camera, raycaster, raycastMeshes, entitiesByMesh, intersections);
+      const hit = hitAt(
+        x, y, width, height, camera, frame.depth, raycaster, raycastMeshes, entitiesByMesh, intersections, rayCandidates,
+      );
       if (hit === null) continue;
       surfaceCount++;
       const { entity, mesh, point } = hit;
@@ -143,6 +193,30 @@ export function motionReferenceOf(
       const movement = before === undefined || previousCamera === null
         ? null : movementOf(localPoint, before.matrix, previous!.origin, previousCamera, x, y, width, height);
       if (movement === null) noHistoryCount++;
+      const pixelIndex = 4 * (y * width + x);
+      const gpuX = frame.motion.rgba[pixelIndex]!;
+      const gpuY = frame.motion.rgba[pixelIndex + 1]!;
+      const gpuFinite = Number.isFinite(gpuX) && Number.isFinite(gpuY);
+      const gpuRejected = gpuFinite && Math.max(Math.abs(gpuX), Math.abs(gpuY)) >= 1000;
+      if (!gpuFinite) nonFiniteGpuMovementCount++;
+      const expectedRejected = movement === null || entity.kind === 'pool';
+      if (expectedRejected) {
+        rejectedPixelCount++;
+        if (!gpuRejected) {
+          rejectedPixelMismatchCount++;
+          expectedRejectedGpuValueCount++;
+        }
+      } else if (gpuRejected) {
+        rejectedPixelMismatchCount++;
+        expectedValueGpuRejectedCount++;
+      }
+      const gpuMovement: readonly [number, number] | null = gpuRejected
+        ? null : [gpuX * width, gpuY * height];
+      const motionError = expectedRejected || movement === null || gpuRejected ? null
+        : !gpuFinite ? Number.POSITIVE_INFINITY
+        : Math.hypot(gpuX * width - movement[0], gpuY * height - movement[1]);
+      const motionToleranceRatio = motionError === null || movement === null ? null
+        : motionError / (2 ** -10 * Math.hypot(...movement) + 0.01);
 
       let slotError: number | null = null;
       if (entity.kind === 'pool' && entity.slot !== null) {
@@ -159,21 +233,29 @@ export function motionReferenceOf(
       samples.push({
         x, y, entity, mesh, point, localPoint, movement, slotError,
         depthRatio: 0, rasterToleranceRatio: 0, gpuDifference: null, gpuDifferenceNormalized: null,
-        selfError: null, outlineKind: 'none',
+        selfError: null, outlineKind: 'none', gpuMovement, motionError, motionToleranceRatio, rejected: expectedRejected,
       });
     }
+    if ((y / SAMPLE_STEP) % 16 === 15) await yieldToBrowser();
   }
 
-  for (const sample of samples) {
-    const neighborhood = neighborhoodOf(
-      sample, width, height, camera, raycaster, raycastMeshes, entitiesByMesh, intersections,
-    );
-    sample.outlineKind = neighborhood.entityEdge ? 'entity' : neighborhood.depthEdge ? 'depth' : 'none';
+  for (const [sampleIndex, sample] of samples.entries()) {
+    let relativeGradient = 1;
+    if (sample.entity.kind === 'pool') {
+      sample.outlineKind = 'none';
+    } else {
+      const neighborhood = neighborhoodOf(
+        sample, width, height, camera, frame.depth, raycaster, baseRaycastMeshes, baseEntitiesByMesh,
+        intersections, rayCandidates,
+      );
+      sample.outlineKind = neighborhood.entityEdge ? 'entity' : neighborhood.depthEdge ? 'depth' : 'none';
+      relativeGradient = neighborhood.relativeGradient;
+    }
     sample.depthRatio = depthRatioOf(
       sample.point, camera, frame.depth.rgba[4 * (sample.y * width + sample.x)]!,
       sample.x, sample.y, width, height,
     );
-    sample.rasterToleranceRatio = sample.depthRatio / (RASTER_POSITION_ERROR_PX * neighborhood.relativeGradient + 1e-6);
+    sample.rasterToleranceRatio = sample.depthRatio / (RASTER_POSITION_ERROR_PX * relativeGradient + 1e-6);
 
     if (toPrevious === null || sample.movement === null) continue;
     const currentView = sample.point.clone().applyMatrix4(camera.matrixWorldInverse);
@@ -202,13 +284,21 @@ export function motionReferenceOf(
     if (movementSize > 0 && sample.depthRatio > 0) {
       sample.gpuDifferenceNormalized = sample.gpuDifference / (movementSize * sample.depthRatio);
     }
+    if (sampleIndex % 256 === 255) await yieldToBrowser();
   }
 
   const cleanSamples = samples.filter((sample) => sample.outlineKind === 'none');
+  const comparisonSamples = cleanSamples
+    .filter((sample) => sample.movement !== null && sample.entity.kind !== 'pool')
+    .map((sample) => Math.floor(sample.y / SAMPLE_STEP) * Math.ceil(width / SAMPLE_STEP)
+      + Math.floor(sample.x / SAMPLE_STEP));
   const selfErrors = cleanSamples.flatMap((sample) => sample.selfError === null ? [] : [sample.selfError]);
   const gpuErrors = cleanSamples.flatMap((sample) => sample.gpuDifference === null ? [] : [sample.gpuDifference]);
   const normalizedGpuErrors = cleanSamples.flatMap((sample) =>
     sample.gpuDifferenceNormalized === null ? [] : [sample.gpuDifferenceNormalized]);
+  const motionErrors = cleanSamples.flatMap((sample) => sample.motionError === null ? [] : [sample.motionError]);
+  const comparisonExpectedCount = cleanSamples.filter((sample) =>
+    sample.movement !== null && sample.entity.kind !== 'pool').length;
   const planLimitSamples = cleanSamples.filter((sample) => sample.depthRatio > DEPTH_RELATIVE_TOLERANCE);
   const depthMaxSample = maximumOf(cleanSamples, (sample) => sample.depthRatio);
   const metrics: MotionReferenceMetrics = {
@@ -225,6 +315,24 @@ export function motionReferenceOf(
     depthRatioAboveLimitNormalizedMax: maxOf(planLimitSamples, (sample) => sample.rasterToleranceRatio),
     depthRatioMaxPixel: depthMaxSample === null ? null : [depthMaxSample.x, depthMaxSample.y],
     noHistoryCount,
+    gpuMotionCount: motionErrors.length,
+    gpuMotionRms: rms(motionErrors),
+    gpuMotionP999: percentile(motionErrors, 0.999),
+    gpuMotionMax: maxOf(cleanSamples, (sample) => sample.motionError ?? 0),
+    gpuMotionAboveLimitCount: cleanSamples.filter((sample) => (sample.motionToleranceRatio ?? 0) > 1).length,
+    rejectedPixelCount,
+    rejectedPixelMismatchCount,
+    expectedRejectedGpuValueCount,
+    expectedValueGpuRejectedCount,
+    nonFiniteGpuMovementCount,
+    rejectedObjectCount: frame.rejectedObjects.length,
+    rejectedRayHitCount: 0,
+    rejectedDepthMatchedCount: 0,
+    comparisonExpectedCount,
+    comparisonCount: motionErrors.length,
+    sameFrameMismatchCount: 0,
+    fullNoHistorySurfacePixelCount: 0,
+    fullNoHistoryMismatchCount: 0,
     selfCheckCount: selfErrors.length,
     selfCheckRms: rms(selfErrors),
     selfCheckP999: percentile(selfErrors, 0.999),
@@ -243,30 +351,301 @@ export function motionReferenceOf(
   return {
     motionPng: imagePng(width, height, samples, false),
     differencePng: imagePng(width, height, samples, true),
+    comparisonSamples,
     metrics,
   };
+}
+
+// 静止物の実体口を持たない場面では、深度の再投影を参照にする。
+async function depthMotionReferenceOf(
+  frame: MotionReferenceFrame, previous: MotionReferenceFrame | null, toPrevious: THREE.Matrix4 | null,
+  sampleStep: number,
+): Promise<MotionReferenceResult> {
+  const { width, height } = frame.depth;
+  const errors: number[] = [];
+  const toleranceRatios: number[] = [];
+  const colors: { readonly x: number; readonly y: number; readonly movement: readonly [number, number] | null; readonly ratio: number | null }[] = [];
+  let surfaceCount = 0;
+  let noHistoryCount = 0;
+  let rejectedPixelMismatchCount = 0;
+  let expectedRejectedGpuValueCount = 0;
+  let expectedValueGpuRejectedCount = 0;
+  let nonFiniteGpuMovementCount = 0;
+  let comparisonExpectedCount = 0;
+  const comparisonSamples: number[] = [];
+  let depthOutlineCount = 0;
+  const camera = unjitteredCamera(frame.camera);
+  const rejectedTargets = rejectedMeshesOf(frame.rejectedObjects);
+  const rejectedRaycaster = new THREE.Raycaster();
+  rejectedRaycaster.layers.mask = 0xffff_ffff;
+  const rejectedIntersections: THREE.Intersection[] = [];
+  const rejectedCandidates: THREE.Mesh[] = [];
+  let rejectedRayHitCount = 0;
+  let rejectedDepthMatchedCount = 0;
+  for (let y = 0; y < height; y += sampleStep) {
+    for (let x = 0; x < width; x += sampleStep) {
+      const pixel = y * width + x;
+      if (frame.depth.rgba[4 * pixel]! <= 0) continue;
+      surfaceCount++;
+      const outline = depthOutlineAt(frame.depth, camera, x, y, sampleStep);
+      if (outline) depthOutlineCount++;
+      const actualX = frame.motion.rgba[4 * pixel]!;
+      const actualY = frame.motion.rgba[4 * pixel + 1]!;
+      const gpuFinite = Number.isFinite(actualX) && Number.isFinite(actualY);
+      const rejected = gpuFinite && Math.max(Math.abs(actualX), Math.abs(actualY)) >= 1000;
+      if (!gpuFinite) nonFiniteGpuMovementCount++;
+      let expectedRejectedObject = false;
+      if (frame.rejectedObjects.length > 0) {
+        rejectedRaycaster.setFromCamera(
+          new THREE.Vector2(2 * (x + 0.5) / width - 1, 1 - 2 * (y + 0.5) / height), camera,
+        );
+        collectRayCandidates(rejectedTargets, rejectedRaycaster, rejectedCandidates);
+        rejectedIntersections.length = 0;
+        rejectedRaycaster.intersectObjects(rejectedCandidates, false, rejectedIntersections);
+        const rejectedHit = rejectedIntersections[0];
+        if (rejectedHit !== undefined) {
+          rejectedRayHitCount++;
+          expectedRejectedObject = depthRatioOf(
+            rejectedHit.point, camera, frame.depth.rgba[4 * pixel]!, x, y, width, height,
+          ) <= DEPTH_RELATIVE_TOLERANCE;
+          if (expectedRejectedObject) rejectedDepthMatchedCount++;
+        }
+      }
+      if (expectedRejectedObject) {
+        noHistoryCount++;
+        if (!rejected) {
+          rejectedPixelMismatchCount++;
+          expectedRejectedGpuValueCount++;
+        }
+        colors.push({ x, y, movement: null, ratio: null });
+        continue;
+      }
+      if (previous === null || toPrevious === null) {
+        noHistoryCount++;
+        if (!rejected) {
+          rejectedPixelMismatchCount++;
+          expectedRejectedGpuValueCount++;
+        }
+        colors.push({ x, y, movement: null, ratio: null });
+        continue;
+      }
+      const projected = reprojectPixelAtDepth(
+        x, y, frame.depth.rgba[4 * pixel]!, width, height, toPrevious,
+      );
+      if (projected === null) {
+        noHistoryCount++;
+        if (!rejected) {
+          rejectedPixelMismatchCount++;
+          expectedRejectedGpuValueCount++;
+        }
+        colors.push({ x, y, movement: null, ratio: null });
+        continue;
+      }
+      if (outline) {
+        colors.push({ x, y, movement: null, ratio: null });
+        continue;
+      }
+      comparisonExpectedCount++;
+      comparisonSamples.push(Math.floor(y / sampleStep) * Math.ceil(width / sampleStep)
+        + Math.floor(x / sampleStep));
+      if (rejected) {
+        rejectedPixelMismatchCount++;
+        expectedValueGpuRejectedCount++;
+        colors.push({ x, y, movement: null, ratio: null });
+        continue;
+      }
+      const expected: readonly [number, number] = [x - projected[0], y - projected[1]];
+      const actual: readonly [number, number] = [actualX * width, actualY * height];
+      const error = gpuFinite ? Math.hypot(actual[0] - expected[0], actual[1] - expected[1])
+        : Number.POSITIVE_INFINITY;
+      const ratio = error / (2 ** -10 * Math.hypot(...expected) + 0.01);
+      errors.push(error);
+      toleranceRatios.push(ratio);
+      colors.push({ x, y, movement: rejected ? null : actual, ratio });
+    }
+    if (Math.floor(y / sampleStep) % 16 === 15) await yieldToBrowser();
+  }
+  return {
+    motionPng: sampledMotionPng(width, height, colors, false),
+    differencePng: sampledMotionPng(width, height, colors, true),
+    comparisonSamples,
+    metrics: {
+      sampleCount: Math.ceil(width / sampleStep) * Math.ceil(height / sampleStep),
+      surfaceCount,
+      entityOutlineFraction: 0,
+      depthOutlineFraction: surfaceCount === 0 ? 0 : depthOutlineCount / surfaceCount,
+      outlineFraction: surfaceCount === 0 ? 0 : depthOutlineCount / surfaceCount,
+      depthRatioMax: 0,
+      rasterToleranceRatioP999: 0,
+      rasterToleranceRatioMax: 0,
+      rasterToleranceAboveLimitCount: 0,
+      depthRatioAboveLimitCount: 0,
+      depthRatioAboveLimitNormalizedMax: 0,
+      depthRatioMaxPixel: null,
+      noHistoryCount,
+      gpuMotionCount: errors.length,
+      gpuMotionRms: rms(errors),
+      gpuMotionP999: percentile(errors, 0.999),
+      gpuMotionMax: Math.max(0, ...errors),
+      gpuMotionAboveLimitCount: toleranceRatios.filter((ratio) => ratio > 1).length,
+      rejectedPixelCount: noHistoryCount,
+      rejectedPixelMismatchCount,
+      expectedRejectedGpuValueCount,
+      expectedValueGpuRejectedCount,
+      nonFiniteGpuMovementCount,
+      rejectedObjectCount: frame.rejectedObjects.length,
+      rejectedRayHitCount,
+      rejectedDepthMatchedCount,
+      comparisonExpectedCount,
+      comparisonCount: errors.length,
+      sameFrameMismatchCount: 0,
+      fullNoHistorySurfacePixelCount: 0,
+      fullNoHistoryMismatchCount: 0,
+      selfCheckCount: 0,
+      selfCheckRms: 0,
+      selfCheckP999: 0,
+      selfCheckMax: 0,
+      selfCheckAboveLimitCount: 0,
+      selfCheckMaxPixel: null,
+      gpuDifferenceRms: 0,
+      gpuDifferenceCount: 0,
+      gpuDifferenceP999: 0,
+      gpuDifferenceMax: 0,
+      gpuDifferenceNormalizedMax: 0,
+      slotErrorRms: 0,
+      slotErrorMax: 0,
+      slotErrorCount: 0,
+    },
+  };
+}
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// 深度参照の標本を動きと許容誤差比で色分けする。
+// 深度だけの参照では、欠けた隣接面と深度の二階差が大きい画素を輪郭として比較から外す。
+// InstancedMesh は展開し、薬莢などの印付き個体を CPU の深度参照でも個別に交差判定する。
+function rejectedMeshesOf(objects: readonly THREE.Object3D[]): THREE.Mesh[] {
+  const targets: THREE.Mesh[] = [];
+  const instanceMatrix = new THREE.Matrix4();
+  const worldMatrix = new THREE.Matrix4();
+  const add = (object: THREE.Object3D, matrix: THREE.Matrix4): void => {
+    const mesh = object as THREE.Mesh;
+    mesh.geometry.computeBoundingSphere();
+    if (mesh.geometry.boundingSphere === null) return;
+    const target = new THREE.Mesh(mesh.geometry, RAY_MATERIAL);
+    target.matrixAutoUpdate = false;
+    target.matrix.copy(matrix);
+    target.matrixWorld.copy(matrix);
+    target.userData.motionReferenceSphere = mesh.geometry.boundingSphere.clone().applyMatrix4(matrix);
+    targets.push(target);
+  };
+  for (const object of objects) {
+    if (!(object instanceof THREE.InstancedMesh)) {
+      add(object, object.matrixWorld);
+      continue;
+    }
+    for (let instanceId = 0; instanceId < object.count; instanceId++) {
+      object.getMatrixAt(instanceId, instanceMatrix);
+      if (instanceMatrix.determinant() === 0) continue;
+      worldMatrix.multiplyMatrices(object.matrixWorld, instanceMatrix);
+      add(object, worldMatrix);
+    }
+  }
+  return targets;
+}
+
+function collectRayCandidates(meshes: readonly THREE.Mesh[], raycaster: THREE.Raycaster, candidates: THREE.Mesh[]): void {
+  candidates.length = 0;
+  for (const mesh of meshes) {
+    const sphere: THREE.Sphere | null = mesh.userData.motionReferenceSphere ?? null;
+    if (sphere === null || raycaster.ray.intersectsSphere(sphere)) candidates.push(mesh);
+  }
+}
+
+function depthOutlineAt(depth: FloatImage, camera: THREE.PerspectiveCamera, x: number, y: number, step: number): boolean {
+  const { width, height } = depth;
+  const center = depthViewZ(depth, camera, x, y);
+  for (const [dx, dy] of [[step, 0], [0, step]] as const) {
+    const minusX = x - dx;
+    const minusY = y - dy;
+    const plusX = x + dx;
+    const plusY = y + dy;
+    if (minusX < 0 || minusY < 0 || plusX >= width || plusY >= height) return true;
+    const minus = depthViewZ(depth, camera, minusX, minusY);
+    const plus = depthViewZ(depth, camera, plusX, plusY);
+    if (minus === null || plus === null || center === null
+      || Math.abs(minus - 2 * center + plus) > DEPTH_CURVATURE_TOLERANCE * center) return true;
+  }
+  return false;
+}
+
+function depthViewZ(depth: FloatImage, camera: THREE.PerspectiveCamera, x: number, y: number): number | null {
+  const rawDepth = depth.rgba[4 * (y * depth.width + x)]!;
+  if (rawDepth <= 0) return null;
+  const point = new THREE.Vector4(
+    2 * (x + 0.5) / depth.width - 1,
+    1 - 2 * (y + 0.5) / depth.height,
+    rawDepth,
+    1,
+  ).applyMatrix4(camera.projectionMatrixInverse);
+  return -point.z / point.w;
+}
+
+function sampledMotionPng(
+  width: number, height: number,
+  samples: readonly { readonly x: number; readonly y: number; readonly movement: readonly [number, number] | null; readonly ratio: number | null }[],
+  difference: boolean,
+): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d');
+  if (context === null) throw new Error('render-lab: canvas 2D context is unavailable');
+  context.fillStyle = '#000';
+  context.fillRect(0, 0, width, height);
+  for (const sample of samples) {
+    const color = difference
+      ? (() => { const value = THREE.MathUtils.clamp(sample.ratio ?? 0, 0, 1) * 255; return [value, value, value] as const; })()
+      : sample.movement === null ? NO_HISTORY_RGB : rgbOfHsl(
+        (Math.atan2(sample.movement[1], sample.movement[0]) / (2 * Math.PI) + 1) % 1,
+        1,
+        THREE.MathUtils.clamp(Math.log2(1 + Math.hypot(...sample.movement)) / 8, 0.08, 0.85),
+      );
+    context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+    context.fillRect(sample.x, sample.y, SAMPLE_STEP, SAMPLE_STEP);
+  }
+  return canvas.toDataURL('image/png');
 }
 
 // 画素中心からの最近傍交点と、その交点を持つ実体を返す。
 function hitAt(
   x: number, y: number, width: number, height: number, camera: THREE.PerspectiveCamera,
+  depth: FloatImage,
   raycaster: THREE.Raycaster, meshes: THREE.Mesh[], entitiesByMesh: ReadonlyMap<THREE.Object3D, LabMotionEntity>,
-  intersections: THREE.Intersection[],
+  intersections: THREE.Intersection[], candidates: THREE.Mesh[],
 ): { readonly entity: LabMotionEntity; readonly mesh: THREE.Mesh; readonly point: THREE.Vector3 } | null {
   raycaster.setFromCamera(new THREE.Vector2(2 * (x + 0.5) / width - 1, 1 - 2 * (y + 0.5) / height), camera);
+  collectRayCandidates(meshes, raycaster, candidates);
   intersections.length = 0;
-  raycaster.intersectObjects(meshes, false, intersections);
-  const first = intersections[0];
-  if (first === undefined) return null;
-  const entity = entitiesByMesh.get(first.object);
-  return entity === undefined ? null : { entity, mesh: first.object as THREE.Mesh, point: first.point };
+  raycaster.intersectObjects(candidates, false, intersections);
+  const rawDepth = depth.rgba[4 * (y * width + x)]!;
+  for (const intersection of intersections) {
+    const entity = entitiesByMesh.get(intersection.object);
+    if (entity === undefined) continue;
+    if (depthRatioOf(intersection.point, camera, rawDepth, x, y, width, height) > DEPTH_RELATIVE_TOLERANCE) continue;
+    return { entity, mesh: intersection.object as THREE.Mesh, point: intersection.point };
+  }
+  return null;
 }
 
 // 3×3 近傍で実体の縁、深度勾配、中心線の二階差を調べる。
 function neighborhoodOf(
-  sample: Sample, width: number, height: number, camera: THREE.PerspectiveCamera, raycaster: THREE.Raycaster,
+  sample: Sample, width: number, height: number, camera: THREE.PerspectiveCamera, depth: FloatImage,
+  raycaster: THREE.Raycaster,
   meshes: THREE.Mesh[], entitiesByMesh: ReadonlyMap<THREE.Object3D, LabMotionEntity>,
-  intersections: THREE.Intersection[],
+  intersections: THREE.Intersection[], candidates: THREE.Mesh[],
 ): { readonly entityEdge: boolean; readonly depthEdge: boolean; readonly relativeGradient: number } {
   const centerDepth = viewDepth(sample.point, camera);
   const neighborDepths = new Map<string, number>();
@@ -281,15 +660,15 @@ function neighborhoodOf(
         entityEdge = true;
         continue;
       }
-      const hit = hitAt(x, y, width, height, camera, raycaster, meshes, entitiesByMesh, intersections);
+      const hit = hitAt(x, y, width, height, camera, depth, raycaster, meshes, entitiesByMesh, intersections, candidates);
       if (hit === null || hit.entity.key !== sample.entity.key) {
         entityEdge = true;
         continue;
       }
-      const depth = viewDepth(hit.point, camera);
-      neighborDepths.set(`${dx},${dy}`, depth);
+      const neighborDepth = viewDepth(hit.point, camera);
+      neighborDepths.set(`${dx},${dy}`, neighborDepth);
       relativeGradient = Math.max(relativeGradient,
-        Math.abs(depth - centerDepth) / (centerDepth * Math.hypot(dx, dy)));
+        Math.abs(neighborDepth - centerDepth) / (centerDepth * Math.hypot(dx, dy)));
     }
   }
   let depthEdge = false;
@@ -363,8 +742,8 @@ function imagePng(width: number, height: number, samples: readonly Sample[], dif
 
 // 動きの向きを色相、大きさを対数の明るさへ写す。
 function motionColor(sample: Sample): readonly [number, number, number] {
-  if (sample.movement === null) return NO_HISTORY_RGB;
-  const [x, y] = sample.movement;
+  if (sample.rejected || sample.gpuMovement === null) return NO_HISTORY_RGB;
+  const [x, y] = sample.gpuMovement;
   const magnitude = Math.hypot(x, y);
   // 色相は 0 以上 1 未満へ畳む — rgbOfHsl は 1 以上の色相を最後の区間として扱う。
   return rgbOfHsl((Math.atan2(y, x) / (2 * Math.PI) + 1) % 1, 1,
@@ -373,8 +752,8 @@ function motionColor(sample: Sample): readonly [number, number, number] {
 
 // CPU 自己検算差を 10 倍して濃淡にする。
 function differenceColor(sample: Sample): readonly [number, number, number] {
-  if (sample.selfError === null) return [0, 0, 0];
-  const value = THREE.MathUtils.clamp(sample.selfError * 10, 0, 1);
+  if (sample.motionToleranceRatio === null) return [0, 0, 0];
+  const value = THREE.MathUtils.clamp(sample.motionToleranceRatio, 0, 1);
   return [Math.round(value * 255), Math.round(value * 255), Math.round(value * 255)];
 }
 

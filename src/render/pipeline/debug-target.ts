@@ -53,6 +53,7 @@ function chainLabelOf(target: ChainDebugTarget): string {
 
 export type DebugTargetId =
   | 'off' | 'normal' | 'roughness' | 'basecolor' | 'metalness' | 'emissive' | 'depth'
+  | 'motion'
   | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'direct-specular' | 'far-specular'
   | 'correction' | ChainDebugTargetId
   | 'bounce-source' | 'material' | 'reflection-source'
@@ -71,6 +72,7 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['metalness', '金属度'],
   ['emissive', '自己発光'],
   ['depth', '深度'],
+  ['motion', '動きベクトル'],
   ['shadow', '影'],
   ['planet-light', '天体照の光源テクスチャ'],
   ['bounce-source', '照り返しの源'],

@@ -1,5 +1,6 @@
 // 論理フレームの深度・カメラ・実体から動きの参照と検算を作る。
 import * as THREE from 'three/webgpu';
+import { isMotionRejected } from '../../src/render/pipeline/motion-history';
 import {
   reprojectedPixels, reprojectionMatrixBetween,
 } from './reference-reprojection';
@@ -21,32 +22,91 @@ export class MotionVectorCheck {
 
   // frame をケースへ置いて描き、前のフレームからの動きの参照を求める。compareDepth なら、世界が静止しているとみなして
   // 深度の参照の写像との自己検算と、GPU の深度による参照の再投影との差も求める。
-  public async frame(frame: number, compareDepth: boolean): Promise<MotionVectorFrameRecord> {
+  public async frame(
+    frame: number, compareDepth: boolean, forceNoHistory = false, verifyRepeated = true,
+  ): Promise<MotionVectorFrameRecord> {
     this.view.setFrame(frame);
     const capture = await this.view.captureSettled(`motion reference ${frame}`);
+    const motion = await this.view.readFloat('motion');
+    let sameFrameMismatchCount = 0;
+    if (verifyRepeated) {
+      await this.view.capture();
+      const repeatedMotion = await this.view.readFloat('motion');
+      sameFrameMismatchCount = motion.rgba.reduce(
+        (count, value, index) => count + (value === repeatedMotion.rgba[index] ? 0 : 1), 0,
+      );
+    }
     const currentCase = this.view.currentCase;
+    const depth = await this.view.readFloat('depth');
     const current: MotionReferenceFrame = {
-      depth: await this.view.readFloat('depth'),
+      depth,
+      motion,
       camera: this.view.camera.clone(),
       origin: currentCase?.renderOrigin?.() ?? new THREE.Vector3(),
-      entities: entitiesAt(currentCase, frame),
+      entities: currentCase?.proteinMotion === undefined ? entitiesAt(currentCase, frame) : [],
+      rejectedObjects: currentCase?.proteinMotion === undefined ? rejectedObjectsAt(currentCase) : [],
     };
+    const expectNoHistory = this.previous === null || forceNoHistory;
+    let fullNoHistorySurfacePixelCount = 0;
+    let fullNoHistoryMismatchCount = 0;
+    if (expectNoHistory) {
+      for (let pixel = 0; pixel < depth.width * depth.height; pixel++) {
+        if (depth.rgba[4 * pixel]! <= 0) continue;
+        fullNoHistorySurfacePixelCount++;
+        const x = motion.rgba[4 * pixel]!;
+        const y = motion.rgba[4 * pixel + 1]!;
+        if (!Number.isFinite(x) || !Number.isFinite(y) || Math.max(Math.abs(x), Math.abs(y)) < 1000) {
+          fullNoHistoryMismatchCount++;
+        }
+      }
+    }
     const previousCamera = this.previous === null ? null : worldCameraOf(this.previous);
     const currentCamera = worldCameraOf(current);
     const toPrevious = compareDepth && previousCamera !== null
       ? reprojectionMatrixBetween(currentCamera, previousCamera)
       : null;
     const gpuReprojected = toPrevious === null || this.previous === null ? null
-      : reprojectedPixels(current.depth, currentCamera, this.previous.depth, previousCamera!);
-    const result = motionReferenceOf(current, this.previous, toPrevious, gpuReprojected);
+      : reprojectedPixels(
+        current.depth, currentCamera, this.previous.depth, previousCamera!,
+      );
+    const proteinRejection = currentCase?.proteinMotion !== undefined;
+    const result = await (proteinRejection
+      ? motionReferenceOf(current, null, null, null, 1)
+      : motionReferenceOf(
+        current, forceNoHistory ? null : this.previous, forceNoHistory ? null : toPrevious,
+        forceNoHistory ? null : gpuReprojected,
+      ));
     this.previous = current;
-    return { ...result, capture, frame };
+    return {
+      ...result,
+      metrics: {
+        ...result.metrics,
+        sameFrameMismatchCount,
+        fullNoHistorySurfacePixelCount,
+        fullNoHistoryMismatchCount,
+      },
+      capture,
+      frame,
+    };
   }
 
   // 列を終える。前のフレームを捨てる。
   public reset(): void {
     this.previous = null;
   }
+}
+
+// 深度だけを参照にする場面でも、印の付いた実体が前面にある標本は棄却対象として扱う。
+function rejectedObjectsAt(current: LabCase | null): readonly THREE.Object3D[] {
+  if (current === null) return [];
+  const objects: THREE.Object3D[] = [];
+  for (const root of current.objects) {
+    root.updateWorldMatrix(true, true);
+    root.traverse((object) => {
+      if (isMotionRejected(object)) objects.push(object);
+    });
+  }
+  return objects;
 }
 
 // ケース current の frame の実体。実体の口を持たないケースは、objects の中の(InstancedMesh でない)Mesh を、いまの

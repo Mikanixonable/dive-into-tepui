@@ -22,6 +22,8 @@ export interface CasingRoomValues {
   readonly coordinates: CasingRoomCoordinates;
   readonly motion: boolean;
   readonly casingCount: number;
+  // 物が動くのをやめる論理フレーム。それより後のフレームは、このフレームの姿勢のまま止まる。-1 なら止めない。
+  readonly motionStopFrame: number;
 }
 
 export const CASING_ROOM_ORDINARY_IDS: readonly CasingRoomOrdinaryId[] = [
@@ -277,6 +279,9 @@ function withCaseValue(
     && value >= 0 && value <= CASING_CAPACITY) {
     return { ...values, casingCount: value };
   }
+  if (name === 'motionStopFrame' && typeof value === 'number' && Number.isInteger(value) && value >= -1) {
+    return { ...values, motionStopFrame: value };
+  }
   throw new Error(`render-lab ${caseName}: invalid value ${name}=${String(value)}`);
 }
 
@@ -301,17 +306,20 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
   });
   let values: CasingRoomValues = {
     casingOrder: 'stable', coordinates: 'world', motion: true, casingCount: configuration.defaultCount,
+    motionStopFrame: -1,
   };
   let frame = 0;
   let poolDirty = true;
   const lastPoolOrigin = new THREE.Vector3(Number.NaN, Number.NaN, Number.NaN);
   const worldMatrix = new THREE.Matrix4();
   const poolOrigin = new THREE.Vector3();
+  // 論理フレーム k で物を置く姿勢の番号。止めるフレームより後は止めたフレームの姿勢。
+  const motionFrameAt = (k: number): number => (values.motionStopFrame < 0 ? k : Math.min(k, values.motionStopFrame));
 
   const applyFrame = (): void => {
     if (ordinary !== null) {
       for (const id of CASING_ROOM_ORDINARY_IDS) {
-        casingRoomOrdinaryMatrixAt(id, frame, values.motion, ordinary[id].matrix);
+        casingRoomOrdinaryMatrixAt(id, motionFrameAt(frame), values.motion, ordinary[id].matrix);
         ordinary[id].matrixAutoUpdate = false;
       }
     }
@@ -324,7 +332,7 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
     casings.pool.beginFrame();
     for (const identity of casingRoomCasingOrderAt(frame, values.casingCount, values.casingOrder)) {
       const object = casingObjects[identity]!;
-      configuration.casingMatrixAt(identity, frame, values.motion, worldMatrix);
+      configuration.casingMatrixAt(identity, motionFrameAt(frame), values.motion, worldMatrix);
       object.matrix.multiplyMatrices(REBASE_MATRIX, worldMatrix);
       object.matrixWorld.copy(object.matrix);
       casings.pool.push(object);
@@ -360,7 +368,9 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
           geometry: (child as THREE.Mesh).geometry,
           matrix: ordinaryId === undefined
             ? new THREE.Matrix4().compose(child.position, child.quaternion, child.scale)
-            : casingRoomOrdinaryMatrixAt(ordinaryId, entityFrame, values.motion, new THREE.Matrix4()),
+            : casingRoomOrdinaryMatrixAt(
+              ordinaryId, motionFrameAt(entityFrame), values.motion, new THREE.Matrix4(),
+            ),
           slot: null,
         };
       });
@@ -370,7 +380,9 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
           key: `casing:${identity}`,
           kind: 'pool',
           geometry: (casings.object as THREE.InstancedMesh).geometry,
-          matrix: configuration.casingMatrixAt(identity, entityFrame, values.motion, new THREE.Matrix4()),
+          matrix: configuration.casingMatrixAt(
+            identity, motionFrameAt(entityFrame), values.motion, new THREE.Matrix4(),
+          ),
           slot,
         });
       }

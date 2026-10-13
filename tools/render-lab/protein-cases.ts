@@ -73,6 +73,10 @@ function proteinCase(): LabCase {
         lodCounts: { near: 1 },
       };
     },
+    setFrame(frame) {
+      controller.sampleAt((frame + 1) / 60, 'near');
+      updateProteinMotionCoefficients(binding, controller.effectiveModeCoefficients);
+    },
     disposeProteinMotion() { disposeProteinMotionBinding(binding); },
   };
 }

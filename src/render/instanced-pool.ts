@@ -1,6 +1,7 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque, markOverlay, markShadowCaster } from './pipeline/lit-layer';
+import { markMotionRejected } from './pipeline/motion-history';
 import { INSTANCE_THERMAL_ATTRIBUTE, writeThermalState } from './thermal-emissive';
 import type { ShadowExtent } from './pipeline/shadow/shadow-casters';
 
@@ -60,6 +61,7 @@ export class InstancedPool {
     // ジオメトリの外接球は散らばった個体を包まないので、フラスタム判定を切る。
     this.mesh.frustumCulled = false;
     markLitOpaque(this.mesh);
+    markMotionRejected(this.mesh);
     markShadowCaster(this.mesh);
     this.mesh.userData.shadowExtent = this.extent;
     geometry.computeBoundingSphere();
