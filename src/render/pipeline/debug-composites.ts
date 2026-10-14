@@ -213,7 +213,7 @@ export class DebugComposites {
     return select(this.gbuffer.covered(), metalness, float(0));
   }
 
-  // G バッファの動きだけを、方向の色相・対数の画素長・棄却色へ写す。
+  // RGBA 動き添付の rg を、方向の色相・対数の画素長・棄却色へ写す。
   private motionColor(): Vec3Node {
     const movement = texture(this.gbuffer.motionTexture, screenUV).rg;
     const magnitude = length(movement.mul(this.motionViewport));

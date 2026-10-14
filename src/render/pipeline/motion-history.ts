@@ -1,22 +1,24 @@
-// 論理フレームごとのカメラと物体の前変換を記録し、G バッファへ動きベクトルを書く。
+// 論理番号で連続性を判定し、再利用しない通し番号で物体の前モデルを選んで G バッファへ動きベクトルを書く。
 import * as THREE from 'three/webgpu';
 import type NodeBuilder from 'three/src/nodes/core/NodeBuilder.js';
 import {
   Fn, float, instanceIndex, modelWorldMatrix, positionGeometry, positionLocal, renderGroup, select, storage, uniform, uint,
   varying, vec2, vec4,
 } from 'three/tsl';
-import type { Vec2Node, Vec3Node } from '../tsl-types';
+import type { Vec3Node, Vec4Node } from '../tsl-types';
 
-// rg16f で正確に表せ、画面外の前座標として読む側が棄却できる値。
+// rgba16f の rg で正確に表せ、画面外の前座標として読む側が棄却できる値。
 export const MOTION_NO_HISTORY = 1e4;
 // uint の全 1 は、更新対象の動きそのものを棄却する物体印に予約する。
 const MOTION_REJECTED_FRAME = 0xffff_ffff;
-// uint uniform で正確に比較できる論理番号の上限。全 1 は物体印に使う。
+// 論理番号と通し番号の上限。予約済みの全 1 はどちらにも使わない。
 const MAX_MOTION_FRAME = 0xffff_fffe;
 
 interface ModelRecord {
   // 最後に物体更新が走った番号。行列が変わらない間は更新されず、シェーダが現 modelWorldMatrix を前にも使う。
   frame: number;
+  // 論理番号が振り直されても再利用しない、シェーダ比較用の通し番号。
+  renderSerial: number;
   // 最後に onObjectUpdate が読んだ modelWorldMatrix。
   current: THREE.Matrix4;
   // 最後の物体更新より前に読んだ modelWorldMatrix。初回は零行列。
@@ -53,7 +55,7 @@ const registeredMotionPools = new Set<PoolMotionData>();
 // MotionHistory.setFrame が G バッファ描画前に値を書き、renderGroup の binding が描画ごとに GPU へ送る。
 const currentViewProjection = uniform(new THREE.Matrix4()).setGroup(renderGroup);
 const previousViewProjection = uniform(new THREE.Matrix4()).setGroup(renderGroup);
-const renderFrame = uniform(0, 'uint').setGroup(renderGroup);
+const renderSerial = uniform(0, 'uint').setGroup(renderGroup);
 
 // 描画物の履歴鍵を指定する。指定しない物は描画物自身が鍵になる。
 export function markMotionHistoryKey(object: THREE.Object3D, key: THREE.Object3D): void {
@@ -87,7 +89,7 @@ export function registerMotionPool(
 }
 
 // 描画物のマテリアルが交点を動きベクトルへ使う。
-export function motionNodeAtPosition(position: Vec3Node): Vec2Node {
+export function motionNodeAtPosition(position: Vec3Node): Vec4Node {
   return createMotionNode(position);
 }
 
@@ -96,38 +98,54 @@ export class MotionHistory {
   private readonly models = new WeakMap<THREE.Camera, WeakMap<THREE.Object3D, ModelRecord>>();
   // 透視・平行やカメラの交換ごとに P×V の前歴を分ける。
   private readonly cameras = new WeakMap<THREE.Camera, CameraRecord>();
+  // 射影と view を積む一時行列。カメラの射影行列は直接変更しない。
+  private readonly viewProjection = new THREE.Matrix4();
   // 現在の描画に渡す番号。renderGroup の番号 uniform は render 時に読む。
   private frame = 0;
+  // 新しい論理フレームごとに 1 進む。物体 uniform の番号と照合する。
+  private renderSerial = -1;
+  // setFrame が初回かどうかを区別する。
+  private hasFrame = false;
   // G バッファの動き節。
-  public readonly node: Vec2Node = createMotionNode(positionLocal);
+  public readonly node: Vec4Node = createMotionNode(positionLocal);
 
-  // 論理番号とカメラを選び、描画ごとの P×V 前後値を更新する。
+  // G バッファを描く前に毎回呼ぶ。論理番号とカメラの前歴を更新し、同じ番号の描き直しでは通し番号を進めない。
   public setFrame(frame: number, camera: THREE.Camera): void {
+    // 同じ論理番号の再描画では、物体との照合に使う通し番号を保つ。
     if (!Number.isInteger(frame) || frame < 0 || frame > MAX_MOTION_FRAME) {
       throw new RangeError(`Invalid motion frame ${frame}`);
     }
+    const isNewFrame = !this.hasFrame || frame !== this.frame;
+    const nextRenderSerial = this.renderSerial + Number(isNewFrame);
+    if (nextRenderSerial > MAX_MOTION_FRAME) {
+      throw new RangeError(`Invalid motion render serial ${nextRenderSerial}`);
+    }
+    this.renderSerial = nextRenderSerial;
+    this.hasFrame = true;
     this.frame = frame;
-    const viewProjection = unjitteredProjection(camera).multiply(camera.matrixWorldInverse);
+    // 射影と view を作業行列へ積み、カメラ記録には独立した行列を保持する。
+    this.viewProjection.multiplyMatrices(unjitteredProjection(camera), camera.matrixWorldInverse);
     const record = this.cameras.get(camera) ?? null;
     if (record === null) {
-      this.cameras.set(camera, { frame, current: viewProjection, previous: zeroMatrix.clone() });
+      this.cameras.set(camera, { frame, current: this.viewProjection.clone(), previous: zeroMatrix.clone() });
     } else if (record.frame === frame) {
-      record.current.copy(viewProjection);
+      record.current.copy(this.viewProjection);
     } else {
       if (record.frame + 1 === frame) record.previous.copy(record.current);
       else record.previous.copy(zeroMatrix);
-      record.current.copy(viewProjection);
+      record.current.copy(this.viewProjection);
       record.frame = frame;
     }
-    currentViewProjection.value.copy(viewProjection);
+    currentViewProjection.value.copy(this.viewProjection);
     previousViewProjection.value.copy(record?.previous ?? zeroMatrix);
-    renderFrame.value = frame;
+    renderSerial.value = this.renderSerial;
     this.writePoolMatrices(camera);
     historiesByCamera.set(camera, this);
   }
 
   // 現在の各枠の実体から、連続した前フレームの model 行列を枠順に書く。
   public writePoolMatrices(camera: THREE.Camera): void {
+    // 登録された全 instance の前 model を、スロット順に storage buffer へ並べる。
     for (const pool of registeredMotionPools) {
       const count = pool.count();
       const target = pool.previous.array as Float32Array;
@@ -151,13 +169,13 @@ export class MotionHistory {
     return record.previous;
   }
 
-  // 物体更新時にその値を書いた番号を返す。棄却印は全フレームで零 model を選ぶ予約番号にする。
+  // 物体更新時に記録した通し番号を返す。棄却印は全フレームで零 model を選ぶ予約番号にする。
   public modelFrameFor(object: THREE.Object3D, camera: THREE.Camera): number {
     if (rejectedObjects.has(object)) {
       this.updateModel(object, camera);
       return MOTION_REJECTED_FRAME;
     }
-    return this.updateModel(object, camera)?.frame ?? this.frame;
+    return this.updateModel(object, camera)?.renderSerial ?? this.renderSerial;
   }
 
   // テストと G バッファ描画前の書き込みからカメラ記録を読む。
@@ -177,7 +195,10 @@ export class MotionHistory {
     }
     let record = byObject.get(key);
     if (!record) {
-      record = { frame: this.frame, current: object.matrixWorld.clone(), previous: zeroMatrix.clone() };
+      record = {
+        frame: this.frame, renderSerial: this.renderSerial,
+        current: object.matrixWorld.clone(), previous: zeroMatrix.clone(),
+      };
       byObject.set(key, record);
     } else if (record.frame !== this.frame) {
       // render-lab は列を切り替えると番号を戻す。変わらない物体はその間 onObjectUpdate が走らないため、
@@ -186,6 +207,7 @@ export class MotionHistory {
       else record.previous.copy(zeroMatrix);
       record.current.copy(object.matrixWorld);
       record.frame = this.frame;
+      record.renderSerial = this.renderSerial;
     } else {
       record.current.copy(object.matrixWorld);
     }
@@ -198,17 +220,19 @@ export class MotionHistory {
   }
 }
 
-// 棄却印は予約番号、更新済み model は現在番号、古い番号は今の modelWorldMatrix を前位置に選ぶ。
-export function useRecordedPreviousModel(objectFrame: number, frame: number): boolean {
-  return objectFrame === frame || objectFrame === MOTION_REJECTED_FRAME;
+// objectFrame と現在の通し番号から、記録した前モデルを選ぶか返す。棄却印は予約値として扱う。
+export function useRecordedPreviousModel(objectFrame: number, renderSerial: number): boolean {
+  return objectFrame === renderSerial || objectFrame === MOTION_REJECTED_FRAME;
 }
 
-// 前 clip の w≤0 は両成分に 1e4。通常値は今の uv−前の uv、uv の y は下向き。
+// 前 clip の w≤0 は rg の両成分に 1e4。通常値は今の uv−前の uv、b は前深度−今深度、a は 0。
 class MotionNode extends THREE.Node {
+  // position は描画物のローカル位置を受け取り、vec4 の動き添付を返す。
   public constructor(private readonly position: Vec3Node) {
-    super('vec2');
+    super('vec4');
   }
 
+  // NodeBuilder の構築時に呼ばれ、描画物とカメラに対応するノードを返す。
   public override setup(builder: NodeBuilder): THREE.Node {
     // objectGroup は物ごとの matrixWorld 変更時だけ更新され、番号が古ければシェーダで現行 modelWorldMatrix を前にも使う。
     const previousModel = uniform(new THREE.Matrix4()).onObjectUpdate(({ object, camera }, self) => {
@@ -237,7 +261,7 @@ class MotionNode extends THREE.Node {
       const storedPreviousPosition = pool === undefined
         ? previousModel.mul(localPosition)
         : modelWorldMatrix.mul(previousInstance!.mul(localPosition));
-      const useStored = objectFrame.equal(renderFrame).or(objectFrame.equal(uint(MOTION_REJECTED_FRAME)));
+      const useStored = objectFrame.equal(renderSerial).or(objectFrame.equal(uint(MOTION_REJECTED_FRAME)));
       const previousModelPosition = pool === undefined
         ? select(useStored, storedPreviousPosition, currentModelPosition)
         : storedPreviousPosition;
@@ -248,22 +272,34 @@ class MotionNode extends THREE.Node {
       const previousW = select(valid, previousClipPosition.w, float(1));
       const movement = currentClipPosition.xy.div(currentW)
         .sub(previousClipPosition.xy.div(previousW)).mul(vec2(0.5, -0.5));
-      return select(valid, movement, vec2(float(MOTION_NO_HISTORY)));
+      const depthChange = select(
+        valid, previousClipPosition.z.div(previousW).sub(currentClipPosition.z.div(currentW)), float(0),
+      );
+      return vec4(select(valid, movement, vec2(float(MOTION_NO_HISTORY))), depthChange, 0);
     })();
   }
 }
 
-function createMotionNode(position: Vec3Node): Vec2Node {
-  return new MotionNode(position) as unknown as Vec2Node;
+// position は Vec3Node とし、返り値を vec4 の動き添付として使う。
+function createMotionNode(position: Vec3Node): Vec4Node {
+  // 通常面と位置指定面で共有する vec4 動きノードを作る。
+  return new MotionNode(position) as unknown as Vec4Node;
 }
 
-// setViewOffset を含む射影を、カメラ本来の投影へ戻す。
+// setViewOffset を含む射影を、カメラ本来の投影へ戻す。戻り値はカメラの行列そのものでありうるので書き換えない。
 function unjitteredProjection(camera: THREE.Camera): THREE.Matrix4 {
-  if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
-    const copy = camera.clone();
-    copy.clearViewOffset();
-    copy.updateProjectionMatrix();
-    return copy.projectionMatrix;
-  }
-  return camera.projectionMatrix;
+  // view offset が無い場合は、カメラが描画に使う射影をそのまま返す。
+  if (!(camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera)
+    || camera.view === null || !camera.view.enabled) return camera.projectionMatrix;
+  // view offset を除いた射影を複製上で作り、必要なら深度の向きを元カメラに合わせる。
+  const projection = camera.clone();
+  projection.clearViewOffset();
+  projection.updateProjectionMatrix();
+  if (!camera.reversedDepth) return projection.projectionMatrix;
+  return new THREE.Matrix4().set(
+    1, 0, 0, 0,
+    0, 1, 0, 0,
+    0, 0, -1, 1,
+    0, 0, 0, 1,
+  ).multiply(projection.projectionMatrix);
 }

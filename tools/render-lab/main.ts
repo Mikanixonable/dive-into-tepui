@@ -72,7 +72,7 @@ declare global {
       capture: () => Promise<string>;
       captureCorrectionProbe: () => ReturnType<LabView['captureCorrectionProbe']>;
       render: () => void;
-      setFrame: (frame: number) => void;
+      setFrame: (frame: number, change?: number) => void;
       setCaseValue: (name: string, value: string | number | boolean) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
       viewAngles: () => LabViewAngles;
@@ -381,7 +381,7 @@ async function init(): Promise<void> {
     capture: () => view.capture(),
     captureCorrectionProbe: () => view.captureCorrectionProbe(),
     render: () => view.render(),
-    setFrame: (frame) => view.setFrame(frame),
+    setFrame: (frame, change) => view.setFrame(frame, change),
     setCaseValue: (name, value) => view.setCaseValue(name, value),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     viewAngles: () => view.viewAngles,

@@ -1,13 +1,19 @@
 // 受け手の面に対する、G バッファの画素の面の重み。受け手の接平面から離れた面と、向きの違う面の重みを落とす。
+import type * as THREE from 'three/webgpu';
 import { cos, dot, float, getViewPosition, select, textureLoad, transpose, vec4 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { texelCenterUV } from './hemisphere-scan';
-import type { GBufferPass } from '../gbuffer';
 import type { Texel, TexelSurface } from './texel-surface';
 import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 面の写っていない標本の重みの指数。重みは 0 になる。
 export const VOID_EXPONENT = 1e4;
+
+// 重みを測る面の深度と符号化法線のテクスチャ。
+export interface SurfaceTextures {
+  readonly depthTexture: THREE.Texture;
+  readonly normalTexture: THREE.Texture;
+}
 
 // 重みを測る受け手の面。texel は受け手の G バッファの画素。接平面は、逆射影する前の座標 c = (NDC の xy, 素の深度, 1) の
 // 一次式で持ち、dot(plane, c) / dot(w, c) が c の点の接平面からの符号付きの距離 [m] になる。position と normal は受け手の
@@ -22,10 +28,10 @@ export interface SurfaceReceiver {
 }
 
 export class SurfaceWeight {
-  // gbuffer は重みを測る深度と法線、projection / projectionInverse は実カメラの射影行列とその逆、fullSize は描画バッファの
+  // surfaces は重みを測る深度と法線、projection / projectionInverse は実カメラの射影行列とその逆、fullSize は描画バッファの
   // 解像度 [px]。
   public constructor(
-    private readonly gbuffer: GBufferPass, private readonly projection: Mat4Uniform,
+    private readonly surfaces: SurfaceTextures, private readonly projection: Mat4Uniform,
     private readonly projectionInverse: Mat4Uniform, private readonly fullSize: Vec2Node,
   ) {}
 
@@ -33,8 +39,8 @@ export class SurfaceWeight {
   public surfaceAt(texel: Texel): TexelSurface {
     return {
       texel,
-      depth: textureLoad(this.gbuffer.depthTexture, texel).r,
-      encodedNormal: textureLoad(this.gbuffer.normalTexture, texel).rg,
+      depth: textureLoad(this.surfaces.depthTexture, texel).r,
+      encodedNormal: textureLoad(this.surfaces.normalTexture, texel).rg,
     };
   }
 
@@ -63,11 +69,17 @@ export class SurfaceWeight {
   public exponentOf(
     receiver: SurfaceReceiver, surface: TexelSurface, tolerance: FloatNode, halfWeightAngle: FloatNode,
   ): FloatNode {
-    const depth = surface.depth.toVar();
     const uv = texelCenterUV(surface.texel, this.fullSize);
-    const clip = vec4(uv.x.mul(2).sub(1), uv.y.oneMinus().mul(2).sub(1), depth, 1).toVar();
+    const clip = vec4(uv.x.mul(2).sub(1), uv.y.oneMinus().mul(2).sub(1), surface.depth, 1).toVar();
+    return this.exponentAt(receiver, clip, octDecodeNormal(surface.encodedNormal), tolerance, halfWeightAngle);
+  }
+
+  // 受け手 receiver に対する任意の clip 点と視点法線の重み指数を返す。距離は接平面からの足跡単位で測る。
+  public exponentAt(
+    receiver: SurfaceReceiver, clip: Vec4Node, normal: Vec3Node, tolerance: FloatNode, halfWeightAngle: FloatNode,
+  ): FloatNode {
+    const depth = clip.z.toVar();
     const plane = dot(receiver.plane, clip).div(dot(receiver.w, clip).mul(receiver.footprint.mul(tolerance)));
-    const normal = octDecodeNormal(surface.encodedNormal);
     const bend = float(1).sub(dot(receiver.normal, normal)).div(float(1).sub(cos(halfWeightAngle)));
     return select(depth.greaterThan(0), plane.mul(plane).add(bend.mul(bend)), float(VOID_EXPONENT));
   }

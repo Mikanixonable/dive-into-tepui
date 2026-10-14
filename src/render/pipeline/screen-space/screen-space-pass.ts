@@ -579,7 +579,7 @@ export class ScreenSpacePass {
     const levelSizes = Array.from({ length: tier.bandCount }, (_, level) =>
       [levelExtent(scanWidth, level), levelExtent(scanHeight, level)] as const);
     this.output.setSize(tier.bandCount, levelSizes, width, height);
-    this.temporal.setSize(width, height);
+    this.temporal.prepare(camera, width, height);
     if (this.experiment?.variant === 'q') {
       for (const target of this.qTargetsOf()) target.setSize(scanWidth, scanHeight);
     }
