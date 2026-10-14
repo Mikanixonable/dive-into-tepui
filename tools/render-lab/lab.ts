@@ -30,7 +30,9 @@ import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
 import { LabSun } from './lab-sun';
 import { PassAccumulator } from './pass-accumulator';
 import { PRODUCTION_PHASE, type CorrectionPhase } from './phase-sequence';
-import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
+import {
+  anglesFromDirection, directionFromAngles, withLightShift, type LabViewAngles, type LightAngleShift,
+} from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { captureAccumulated } from './accumulated-capture';
 import type { GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
@@ -196,6 +198,8 @@ export class LabView {
   private readonly depthQuad = new QuadMesh();
   // 観察の向きで置いたカメラへ、カメラの座標で重ねる姿勢(setCameraShift)。null なら重ねない。
   private cameraShift: THREE.Matrix4 | null = null;
+  // 次に描くフレームの光源の置き方へ重ねるつまみのずれ。
+  private lightShift: LightAngleShift = {};
   // カメラの射影のずれ [描画バッファの画素](setRasterJitter)。null ならずらさない。
   private rasterJitterPx: readonly [number, number] | null = null;
   // 与えた HDR を合成した表示を、8 bit へ丸めずに受ける先。合成は深度も写すので深度を持たせる。
@@ -386,6 +390,11 @@ export class LabView {
     this.cameraShift = shift;
   }
 
+  // 次に描くフレームから、光源の置き方のつまみへ shift を足して置く。
+  public setLightShift(shift: LightAngleShift): void {
+    this.lightShift = shift;
+  }
+
   // 次に描くフレームから、カメラの射影を描画バッファの画素で offsetPx(x は右、y は下)だけずらす — ラスタライズの
   // ジッター。null で外す。
   public setRasterJitter(offsetPx: readonly [number, number] | null): void {
@@ -452,9 +461,10 @@ export class LabView {
     camera.updateProjectionMatrix();
     // 恒星・地球・ケースの部品は、このフレームのカメラを置いてから合わせる — 部品はそのカメラを読んでよい。
     // ケースの部品は地球の中心も読むので、地球を先に置く。
-    this.sun.sync(this.angles, camera, graphics, this.style);
+    const lightAngles = withLightShift(this.angles, this.lightShift);
+    this.sun.sync(lightAngles, camera, graphics, this.style);
     const earth = this.current.earth === undefined ? null : this.earth;
-    earth?.place(this.angles);
+    earth?.place(lightAngles);
     earth?.sync(camera, graphics, this.style);
     this.current.sync?.(graphics, earth?.center ?? null);
     // 恒星の光と露出。順応の基準点は描画原点 — **恒星の距離のつまみはここから恒星までの距離**なので、

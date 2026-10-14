@@ -82,14 +82,13 @@ function argumentsOf(argv) {
 // 列 sequence を場面 scene で frames フレーム撮り、PNG を dir へ書いて、フレームごとの列ごとの要約の並びを返す。
 async function shootSequence(devTools, scene, sequence, frames, columns, kinds, dir) {
   const call = (expression) => devTools.evaluate(`window.renderLab.${expression}`);
-  const base = scene.light === null ? null : (await call('viewAngles()'))[scene.light];
   await call('resetMotion()');
   const summaries = [];
   try {
     for (let k = 0; k < frames; k++) {
       const { translation, rotation, orbit, light } = sequence.frame(k);
       await call(`moveCamera(${JSON.stringify(translation)}, ${JSON.stringify(rotation)}, ${JSON.stringify(orbit)})`);
-      if (base !== null) await call(`setView(${JSON.stringify({ [scene.light]: base + light })})`);
+      if (scene.light !== null) await call(`moveLight(${JSON.stringify({ [scene.light]: light })})`);
       const columnSummaries = await evaluateLong(devTools, `window.renderLab.motionFrame(${JSON.stringify(columns)})
         .then((record) => {
           window.__motionRecord = record;
@@ -107,7 +106,6 @@ async function shootSequence(devTools, scene, sequence, frames, columns, kinds, 
   } finally {
     await devTools.evaluate('delete window.__motionRecord');
     await call('resetMotion()');
-    if (base !== null) await call(`setView(${JSON.stringify({ [scene.light]: base })})`);
   }
   return summaries;
 }

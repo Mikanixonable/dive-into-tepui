@@ -26,6 +26,27 @@ export interface LabViewAngles {
 export type EarthAngleKey =
   'earthAzimuthDeg' | 'earthElevationDeg' | 'earthAltitudeLog' | 'earthLatitudeDeg' | 'earthLongitudeDeg';
 
+// 光源になる恒星と地球の置き方を決めるつまみ。
+export type LightAngleKey = 'sunAzimuthDeg' | 'sunElevationDeg' | 'sunDistanceLogAu' | EarthAngleKey;
+
+// 光源の置き方のつまみへ足すずれ。
+export type LightAngleShift = Partial<Pick<LabViewAngles, LightAngleKey>>;
+
+// 観察の向きへ光源の置き方のずれを足した値を返す。
+export function withLightShift(angles: LabViewAngles, shift: LightAngleShift): LabViewAngles {
+  return {
+    ...angles,
+    sunAzimuthDeg: angles.sunAzimuthDeg + (shift.sunAzimuthDeg ?? 0),
+    sunElevationDeg: angles.sunElevationDeg + (shift.sunElevationDeg ?? 0),
+    sunDistanceLogAu: angles.sunDistanceLogAu + (shift.sunDistanceLogAu ?? 0),
+    earthAzimuthDeg: angles.earthAzimuthDeg + (shift.earthAzimuthDeg ?? 0),
+    earthElevationDeg: angles.earthElevationDeg + (shift.earthElevationDeg ?? 0),
+    earthAltitudeLog: angles.earthAltitudeLog + (shift.earthAltitudeLog ?? 0),
+    earthLatitudeDeg: angles.earthLatitudeDeg + (shift.earthLatitudeDeg ?? 0),
+    earthLongitudeDeg: angles.earthLongitudeDeg + (shift.earthLongitudeDeg ?? 0),
+  };
+}
+
 // 方位角・仰角 [deg] から単位ベクトルを組み、out へ書いて返す。方位角 0 が +Z、+90 度が +X。
 export function directionFromAngles(azimuthDeg: number, elevationDeg: number, out: THREE.Vector3): THREE.Vector3 {
   const azimuth = THREE.MathUtils.degToRad(azimuthDeg);

@@ -34,7 +34,7 @@ import { phasesOf, type PhaseSequence } from './phase-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
-import type { LabViewAngles } from './view-angles';
+import type { LabViewAngles, LightAngleShift } from './view-angles';
 import type {
   ScanTier, ScreenSpaceExperimentVariant, ScreenSpaceStageRange,
 } from '../../src/render/pipeline/screen-space/screen-space-pass';
@@ -135,6 +135,7 @@ declare global {
       moveCamera: (
         translationPx: readonly [number, number], rotationPx: readonly [number, number], orbitPx: readonly [number, number],
       ) => void;
+      moveLight: (shift: LightAngleShift) => void;
       // columns は、位相の列 sequence で描き直した平均の補正を名前 name で添える列。
       motionFrame: (
         columns: readonly { readonly name: string; readonly sequence: PhaseSequence }[],
@@ -439,6 +440,7 @@ async function init(): Promise<void> {
     scanCellSize: () => view.scanCellSize,
     resetMotion: () => motion.reset(),
     moveCamera: (translationPx, rotationPx, orbitPx) => motion.moveCamera(translationPx, rotationPx, orbitPx),
+    moveLight: (shift) => motion.moveLight(shift),
     motionFrame: (columns) => motion.frame(
       columns.map(({ name, sequence }) => ({ name, phases: phasesOf(sequence, view.scanCellSize) }))),
     resetMotionReference: () => motionVectorCheck.reset(),
