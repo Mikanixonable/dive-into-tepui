@@ -8,6 +8,7 @@ import {
 } from './reference-reprojection';
 import type { CorrectionPhase } from './phase-sequence';
 import type { FloatImage, LabView } from './lab';
+import type { LightAngleShift } from './view-angles';
 
 // 補正の差を、補正と同じ符号付きの表示へ写すときに掛ける倍率。
 const DIFFERENCE_DISPLAY_GAIN = 4;
@@ -48,10 +49,11 @@ export class MotionSequence {
 
   public constructor(private readonly view: LabView) {}
 
-  // 列を終える。前のフレームを捨て、カメラに重ねた動きを外す。
+  // 列を終える。前のフレームを捨て、カメラと光源に重ねた動きを外す。
   public reset(): void {
     this.previous = null;
     this.view.setCameraShift(null);
+    this.view.setLightShift({});
     this.frameNumber = 0;
     this.view.setFrame(this.frameNumber, Number.POSITIVE_INFINITY);
   }
@@ -73,6 +75,11 @@ export class MotionSequence {
       .multiply(new THREE.Matrix4().makeTranslation(pivot.clone().negate()));
     const rest = new THREE.Matrix4().compose(translation, rotationOf(rotationPx, focalPx), new THREE.Vector3(1, 1, 1));
     this.view.setCameraShift(orbit.multiply(rest));
+  }
+
+  // 次に描くフレームから、光源の置き方のつまみへ shift を重ねる。
+  public moveLight(shift: LightAngleShift): void {
+    this.view.setLightShift(shift);
   }
 
   // いまのカメラで 1 フレーム描いて撮り、前のフレームからの補正の差を測る。columns を渡すと、それぞれの位相の列で描き直した
