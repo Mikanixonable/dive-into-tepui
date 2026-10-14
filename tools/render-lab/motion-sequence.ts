@@ -44,6 +44,7 @@ interface PreviousFrame {
 
 export class MotionSequence {
   private previous: PreviousFrame | null = null;
+  private frameNumber = 0;
 
   public constructor(private readonly view: LabView) {}
 
@@ -51,6 +52,8 @@ export class MotionSequence {
   public reset(): void {
     this.previous = null;
     this.view.setCameraShift(null);
+    this.frameNumber = 0;
+    this.view.setFrame(this.frameNumber, Number.POSITIVE_INFINITY);
   }
 
   // 次に描くフレームから、観察の向きで置いたカメラへ、周回の中心を中心とする回転(周回)orbitPx、並進 translationPx、カメラを
@@ -75,6 +78,8 @@ export class MotionSequence {
   // いまのカメラで 1 フレーム描いて撮り、前のフレームからの補正の差を測る。columns を渡すと、それぞれの位相の列で描き直した
   // 平均の列も撮る。
   public async frame(columns: readonly MotionColumn[]): Promise<MotionFrameRecord> {
+    const frame = this.frameNumber;
+    this.view.setFrame(frame, frame === 0 ? Number.POSITIVE_INFINITY : 0);
     // 平均の列は補正を描き直すので、そのフレームの 1 パスの補正・深度・カメラを先に読む。
     const capture = await this.view.captureSettled('motion frame');
     const corrections = new Map<string, FloatImage>([[SINGLE_COLUMN, await this.view.readFloat('upsampled-correction')]]);
@@ -103,6 +108,7 @@ export class MotionSequence {
       };
     }
     this.previous = { depth, camera, corrections };
+    this.frameNumber++;
     return { capture, columns: records };
   }
 }

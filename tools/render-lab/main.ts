@@ -29,6 +29,7 @@ import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
 import { MotionSequence, type MotionFrameRecord } from './motion-sequence';
 import { MotionVectorCheck, type MotionVectorFrameRecord } from './motion-vector-check';
 import { JitterSweep, type SweepRecord } from './jitter-sweep';
+import { captureAccumulated } from './accumulated-capture';
 import { phasesOf, type PhaseSequence } from './phase-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
@@ -69,6 +70,7 @@ declare global {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
+      captureAccumulated: () => Promise<string>;
       capture: () => Promise<string>;
       captureCorrectionProbe: () => ReturnType<LabView['captureCorrectionProbe']>;
       render: () => void;
@@ -80,7 +82,7 @@ declare global {
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsKey, value: boolean | ChoiceValue) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
-      measureCurrent: (warmupFrames?: number, sampleFrames?: number) => Promise<LabMeasurement>;
+      measureCurrent: (warmupFrames?: number, sampleFrames?: number, advanceFrame?: boolean) => Promise<LabMeasurement>;
       measurePoolRebuild: (iterations: number) => ReturnType<LabView['measurePoolRebuild']>;
       measureScreenSpacePaths: (
         seeds: readonly (readonly [number, number])[], sampleCount?: number,
@@ -379,6 +381,7 @@ async function init(): Promise<void> {
       targets.setSelected(view.debugTarget);
       return pngs;
     },
+    captureAccumulated: () => captureAccumulated(view, 'accumulated capture'),
     capture: () => view.capture(),
     captureCorrectionProbe: () => view.captureCorrectionProbe(),
     render: () => view.render(),
@@ -392,7 +395,8 @@ async function init(): Promise<void> {
       settings.graphics.set(withGraphicsValue(settings.graphics.current, key, value));
     },
     measure: (name, angles) => view.measure(name, angles),
-    measureCurrent: (warmupFrames, sampleFrames) => view.measureCurrent(warmupFrames, sampleFrames),
+    measureCurrent: (warmupFrames, sampleFrames, advanceFrame) =>
+      view.measureCurrent(warmupFrames, sampleFrames, advanceFrame),
     measurePoolRebuild: (iterations) => view.measurePoolRebuild(iterations),
     measureScreenSpacePaths: (seeds, sampleCount) => view.measureScreenSpacePaths(seeds, sampleCount),
     showShot: async (name, shotName, graphics) => {
