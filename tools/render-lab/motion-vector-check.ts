@@ -1,6 +1,5 @@
 // 論理フレームの深度・カメラ・実体から動きの参照と検算を作る。
 import * as THREE from 'three/webgpu';
-import { isMotionRejected } from '../../src/render/pipeline/motion-history';
 import {
   reprojectedPixels, reprojectionMatrixBetween,
 } from './reference-reprojection';
@@ -98,15 +97,7 @@ export class MotionVectorCheck {
 
 // 深度だけを参照にする場面でも、印の付いた実体が前面にある標本は棄却対象として扱う。
 function rejectedObjectsAt(current: LabCase | null): readonly THREE.Object3D[] {
-  if (current === null) return [];
-  const objects: THREE.Object3D[] = [];
-  for (const root of current.objects) {
-    root.updateWorldMatrix(true, true);
-    root.traverse((object) => {
-      if (isMotionRejected(object)) objects.push(object);
-    });
-  }
-  return objects;
+  return current?.rejectedMotionObjects?.() ?? [];
 }
 
 // ケース current の frame の実体。実体の口を持たないケースは、objects の中の(InstancedMesh でない)Mesh を、いまの

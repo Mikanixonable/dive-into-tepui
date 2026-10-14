@@ -307,6 +307,27 @@ export class LabView {
   // いま表示しているケース。ケースを表示していなければ null。
   public get currentCase(): LabCase | null { return this.current; }
 
+  // 現在のケースで積み直しと前行列の CPU 標本を作る。
+  public measurePoolRebuild(iterations: number): ReturnType<NonNullable<LabCase['measurePoolRebuild']>> {
+    if (this.current?.measurePoolRebuild === undefined) {
+      throw new Error('render-lab: the current case has no pool measurement');
+    }
+    const result = this.current.measurePoolRebuild(iterations);
+    const gbuffer = this.pipeline.gbuffer as typeof this.pipeline.gbuffer & {
+      writePoolMatrices?: (camera: THREE.Camera) => void;
+    };
+    const previousMatricesMs = Array.from({ length: iterations }, () => {
+      if (gbuffer.writePoolMatrices === undefined) return 0;
+      const started = performance.now();
+      gbuffer.writePoolMatrices(this.current!.camera);
+      return performance.now() - started;
+    });
+    return {
+      ...result,
+      previousMatricesMs,
+    };
+  }
+
   // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
   public get viewAngles(): LabViewAngles { return this.angles; }
 

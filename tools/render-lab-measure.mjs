@@ -13,6 +13,94 @@ const debugPort = 9446;
 
 const USAGE = 'usage: node tools/render-lab-measure.mjs [巡回数] [軸]';
 
+function poolMedianOf(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function poolStandardDeviation(values) {
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1));
+}
+
+async function measurePoolMotion(rounds, buildDirs) {
+  if (buildDirs.length !== 3) throw new Error('pool-motion requires three build directories');
+  const labels = ['(0) 手順4前 669abbfa1', '(1) 4-3 revert 704bbe234', '(2) 作業ツリー 4-4'];
+  const sessions = [];
+  try {
+    for (const [index, buildDir] of buildDirs.entries()) {
+      const session = await openChromeSession({
+        serveDir: path.resolve(buildDir), port: port + index, debugPort: debugPort + index,
+        profilePrefix: `tepui-render-lab-pool-${index}-`,
+      });
+      sessions.push(session);
+      await session.devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
+      for (let wait = 0; wait < 600; wait++) {
+        if (await session.devTools.evaluate('typeof window.renderLab?.measureCurrent === "function"')) break;
+        await sleep(200);
+      }
+      await session.devTools.evaluate(
+        `window.renderLab.showShot("casing-pool", "casing-pool", `
+        + `${JSON.stringify({ screenSpaceOcclusion: true, screenSpaceIndirect: true })})`,
+      );
+      for (const [key, value] of Object.entries({ casingCount: 260, debrisCount: 600, casingOrder: 'stable', motion: false })) {
+        await session.devTools.evaluate(`window.renderLab.setCaseValue(${JSON.stringify(key)}, ${JSON.stringify(value)})`);
+      }
+    }
+
+    const samples = sessions.map(() => []);
+    for (let round = 0; round < rounds; round++) {
+      const order = round % 2 === 0 ? [0, 1, 2] : [2, 1, 0];
+      for (const index of order) {
+        const devTools = sessions[index].devTools;
+        const result = await devTools.evaluate('window.renderLab.measureCurrent(6, 30)');
+        const cpu = await devTools.evaluate('window.renderLab.measurePoolRebuild(300)');
+        samples[index].push({
+          gbuffer: result.gpuPassMs['Gバッファ'].p50,
+          cloud: result.gpuPassMs['表面雲'].p50,
+          material: result.gpuPassMs['マテリアル'].p50,
+          poolCpu: poolMedianOf(cpu.poolRebuildMs),
+          previousCpu: poolMedianOf(cpu.previousMatricesMs),
+        });
+        console.log(`round ${round + 1}/${rounds} ${labels[index]}: G=${samples[index].at(-1).gbuffer.toFixed(3)} ms`);
+      }
+    }
+
+    const summaries = samples.map((runs) => Object.fromEntries(
+      ['gbuffer', 'cloud', 'material', 'poolCpu', 'previousCpu'].map((key) => [key, poolMedianOf(runs.map((run) => run[key]))]),
+    ));
+    const poolCpuTotals = samples.map((runs, index) => poolMedianOf(runs.map((run) =>
+      run.poolCpu + (index === 2 ? run.previousCpu : 0))));
+    const poolCpuIncrement = poolCpuTotals[2] - poolCpuTotals[1];
+    const deltaByRound = samples[2].map((run, index) => run.gbuffer - samples[1][index].gbuffer);
+    const delta = poolMedianOf(deltaByRound);
+    const deltaSe = poolStandardDeviation(deltaByRound) / Math.sqrt(rounds);
+    const rows = ['gbuffer', 'cloud', 'material'].map((key) => `| ${key} GPU p50 [ms] | ${summaries[0][key].toFixed(3)} | ${summaries[1][key].toFixed(3)} | ${summaries[2][key].toFixed(3)} |`);
+    rows.push(`| (2) − (1) G バッファ増分 [ms] | — | — | ${delta.toFixed(3)} ± ${deltaSe.toFixed(3)} SE |`);
+    rows.push(`| (2) − (1) / (2) マテリアル | — | — | ${(delta / summaries[2].material).toFixed(3)} |`);
+    rows.push(`| pool begin/push/end CPU p50 [ms] | ${summaries[0].poolCpu.toFixed(9)} | ${summaries[1].poolCpu.toFixed(9)} | ${summaries[2].poolCpu.toFixed(9)} |`);
+    rows.push(`| writePoolMatrices CPU p50 [ms] | 0 | 0 | ${summaries[2].previousCpu.toFixed(9)} |`);
+    rows.push(`| pool積み直し+前行列 CPU p50 [ms] | ${poolCpuTotals.map((value) => value.toFixed(9)).join(' | ')} |`);
+    rows.push(`| (2)−(1) CPU 増分 [ms] | — | — | ${poolCpuIncrement.toFixed(9)} |`);
+    rows.push(`| 今行列 / 前行列送信 [B/frame] | 285440 / 0 | 285440 / 0 | 285440 / 55040 |`);
+    console.log('\n| 測定 | (0) | (1) | (2) |\n| --- | ---: | ---: | ---: |\n' + rows.join('\n'));
+    for (const key of ['gbuffer', 'cloud', 'material', 'poolCpu', 'previousCpu']) {
+      console.log(`${key} per-build range/stddev [ms]: ${samples.map((runs) => {
+        const values = runs.map((run) => run[key]);
+        return `${Math.min(...values).toFixed(3)}–${Math.max(...values).toFixed(3)} / ${poolStandardDeviation(values).toFixed(3)}`;
+      }).join(' ; ')}`);
+    }
+    const materialDeltaByRound = samples[2].map((run, index) => run.material - samples[1][index].material);
+    const materialDelta = poolMedianOf(materialDeltaByRound);
+    console.log(`material increment (2)-(1) per round median/SE [ms]: ${materialDelta.toFixed(3)} ± ${(poolStandardDeviation(materialDeltaByRound) / Math.sqrt(rounds)).toFixed(3)}`);
+    console.log(`measurement rounds (${rounds}) order: alternate 0→1→2 / 2→1→0; per build G/material [ms]: ${samples.map((runs) => runs.map((run) => `${run.gbuffer.toFixed(3)}/${run.material.toFixed(3)}`).join(',')).join(' ; ')}`);
+    console.log(`G increment target: ${delta <= summaries[2].material * 0.05}; CPU increment target: ${poolCpuIncrement <= 0.1}`);
+  } finally {
+    await Promise.all(sessions.map((session) => session.close()));
+  }
+}
+
 // 測る軸。framings の angles はケース既定の観察の向きへ重ねる。variants の graphics は setGraphicsOption へ
 // 渡す描画設定の差分で、差分に無い鍵は直前に測った段の値のまま残る。rows は result.gpuPassMs の行名
 // (src/render/gpu-timings.ts の GPU_PASS_LABELS)。
@@ -190,6 +278,10 @@ function printTable(axis, measurements) {
 async function main() {
   const passes = Math.max(1, Number(process.argv[2] ?? 2));
   const axisName = process.argv[3] ?? 'atmosphere';
+  if (axisName === 'pool-motion') {
+    await measurePoolMotion(passes, process.argv.slice(4));
+    return;
+  }
   if (!Object.hasOwn(AXES, axisName)) {
     console.error(`${USAGE}\n軸: ${Object.keys(AXES).join(' | ')}`);
     process.exit(1);

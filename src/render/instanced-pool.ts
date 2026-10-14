@@ -1,7 +1,7 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
 import { markLitOpaque, markOverlay, markShadowCaster } from './pipeline/lit-layer';
-import { markMotionRejected } from './pipeline/motion-history';
+import { registerMotionPool } from './pipeline/motion-history';
 import { INSTANCE_THERMAL_ATTRIBUTE, writeThermalState } from './thermal-emissive';
 import type { ShadowExtent } from './pipeline/shadow/shadow-casters';
 
@@ -14,6 +14,9 @@ const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 export class InstancedPool {
   private readonly mesh: THREE.InstancedMesh;
   private readonly capacity: number;
+  private readonly previousMatrices: THREE.StorageInstancedBufferAttribute;
+  private readonly slotObjects: THREE.Object3D[];
+  private readonly unregisterMotionPool: () => void;
   private count = 0;
   // 前フレームに使った枠数。今フレームで余った枠だけをゼロ行列へ戻すために持つ。
   private lastCount = 0;
@@ -44,6 +47,11 @@ export class InstancedPool {
   ) {
     this.capacity = capacity;
     this.mesh = new THREE.InstancedMesh(geometry, material, this.capacity);
+    this.previousMatrices = new THREE.StorageInstancedBufferAttribute(this.capacity, 16);
+    this.slotObjects = new Array<THREE.Object3D>(this.capacity);
+    this.unregisterMotionPool = registerMotionPool(
+      this.mesh, this.previousMatrices, this.slotObjects, () => this.count,
+    );
     this.mesh.renderOrder = renderOrder;
     // 変換は storage バッファで渡す。既定の属性だと容量ぶんの mat4 が uniform 配列として
     // シェーダへ焼き込まれ、プールごとに起動時のコンパイルが伸びる。
@@ -61,7 +69,6 @@ export class InstancedPool {
     // ジオメトリの外接球は散らばった個体を包まないので、フラスタム判定を切る。
     this.mesh.frustumCulled = false;
     markLitOpaque(this.mesh);
-    markMotionRejected(this.mesh);
     markShadowCaster(this.mesh);
     this.mesh.userData.shadowExtent = this.extent;
     geometry.computeBoundingSphere();
@@ -87,6 +94,7 @@ export class InstancedPool {
     if (!renderObject.visible || this.count >= this.capacity) return;
     renderObject.updateMatrixWorld();
     this.mesh.setMatrixAt(this.count, renderObject.matrixWorld);
+    this.slotObjects[this.count] = renderObject;
     if (color && this.mesh.instanceColor) this.mesh.setColorAt(this.count, color);
     if (this.thermal !== null
       && writeThermalState(renderObject, this.thermal.array as Float32Array, this.count * 3)) {
@@ -116,7 +124,9 @@ export class InstancedPool {
   // InstancedMesh をシーンから外し、そのインスタンスバッファを解放する。geometry/material は
   // 呼び出し側から渡された共有資源なので、その所有者だけが破棄できる。
   public dispose(): void {
+    this.unregisterMotionPool();
     this.mesh.removeFromParent();
     this.mesh.dispose();
+    this.previousMatrices.dispose();
   }
 }

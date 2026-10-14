@@ -1,7 +1,8 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import {
-  markMotionHistoryKey, markMotionRejected, MOTION_NO_HISTORY, MotionHistory, useRecordedPreviousModel,
+  markMotionHistoryKey, markMotionRejected, MOTION_NO_HISTORY, MotionHistory, registerMotionPool,
+  useRecordedPreviousModel,
 } from '../../src/render/pipeline/motion-history';
 import { test } from '../harness';
 
@@ -169,6 +170,60 @@ export function register(): void {
     assert.strictEqual(useRecordedPreviousModel(rejectedFrame, 5), true);
     assert.ok(history.previousModelFor(object, camera).equals(zeroMatrix()));
   });
+
+  test('motion history: プールの積み順を変えても実体ごとの前 model を枠順へ書く', () => {
+    const history = new MotionHistory();
+    const camera = new THREE.PerspectiveCamera();
+    camera.updateMatrixWorld(true);
+    const first = positionedObject(1);
+    const second = positionedObject(2);
+    const newObject = positionedObject(3);
+    const mesh = new THREE.InstancedMesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial(), 2);
+    const previous = new THREE.StorageInstancedBufferAttribute(2, 16);
+    const objects: THREE.Object3D[] = [first, second];
+    let count = 2;
+    const unregister = registerMotionPool(mesh, previous, objects, () => count);
+    try {
+      history.setFrame(0, camera);
+      first.position.x = 4;
+      first.updateMatrixWorld(true);
+      second.position.x = 5;
+      second.updateMatrixWorld(true);
+      objects.splice(0, 2, second, first);
+
+      history.setFrame(1, camera);
+      assert.equal(previous.array[12], 2);
+      assert.equal(previous.array[28], 1);
+
+      first.position.x = 8;
+      first.updateMatrixWorld(true);
+      history.setFrame(1, camera);
+      assert.equal(previous.array[12], 2);
+      assert.equal(previous.array[28], 1);
+
+      objects.splice(0, 2, newObject, first);
+      count = 2;
+      history.setFrame(2, camera);
+      assert.deepEqual(Array.from(previous.array.slice(0, 16)), Array.from(zeroMatrix().elements));
+      assert.equal(previous.array[28], 8);
+
+      history.setFrame(4, camera);
+      assert.deepEqual(Array.from(previous.array.slice(0, 32)), [
+        ...zeroMatrix().elements, ...zeroMatrix().elements,
+      ]);
+    } finally {
+      unregister();
+      previous.dispose();
+      mesh.dispose();
+    }
+  });
+}
+
+function positionedObject(x: number): THREE.Object3D {
+  const object = new THREE.Object3D();
+  object.position.x = x;
+  object.updateMatrixWorld(true);
+  return object;
 }
 
 function zeroMatrix(): THREE.Matrix4 {

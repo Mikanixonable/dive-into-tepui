@@ -165,7 +165,7 @@ export async function motionReferenceOf(
   const byKey = new Map((previous?.entities ?? []).map((entity) => [entity.key, entity]));
   const bySlot = new Map((previous?.entities ?? [])
     .filter((entity) => entity.kind === 'pool' && entity.slot !== null)
-    .map((entity) => [entity.slot!, entity]));
+    .map((entity) => [`${entity.poolId ?? 'pool'}:${entity.slot!}`, entity]));
   const raycaster = new THREE.Raycaster();
   const intersections: THREE.Intersection[] = [];
   const rayCandidates: THREE.Mesh[] = [];
@@ -199,7 +199,7 @@ export async function motionReferenceOf(
       const gpuFinite = Number.isFinite(gpuX) && Number.isFinite(gpuY);
       const gpuRejected = gpuFinite && Math.max(Math.abs(gpuX), Math.abs(gpuY)) >= 1000;
       if (!gpuFinite) nonFiniteGpuMovementCount++;
-      const expectedRejected = movement === null || entity.kind === 'pool';
+      const expectedRejected = movement === null;
       if (expectedRejected) {
         rejectedPixelCount++;
         if (!gpuRejected) {
@@ -220,7 +220,7 @@ export async function motionReferenceOf(
 
       let slotError: number | null = null;
       if (entity.kind === 'pool' && entity.slot !== null) {
-        const wrong = bySlot.get(entity.slot);
+        const wrong = bySlot.get(`${entity.poolId ?? 'pool'}:${entity.slot}`);
         if (wrong !== undefined && previousCamera !== null) {
           const wrongMovement = movementOf(
             localPoint, wrong.matrix, previous!.origin, previousCamera, x, y, width, height,
@@ -289,7 +289,7 @@ export async function motionReferenceOf(
 
   const cleanSamples = samples.filter((sample) => sample.outlineKind === 'none');
   const comparisonSamples = cleanSamples
-    .filter((sample) => sample.movement !== null && sample.entity.kind !== 'pool')
+    .filter((sample) => sample.movement !== null)
     .map((sample) => Math.floor(sample.y / SAMPLE_STEP) * Math.ceil(width / SAMPLE_STEP)
       + Math.floor(sample.x / SAMPLE_STEP));
   const selfErrors = cleanSamples.flatMap((sample) => sample.selfError === null ? [] : [sample.selfError]);
@@ -297,8 +297,7 @@ export async function motionReferenceOf(
   const normalizedGpuErrors = cleanSamples.flatMap((sample) =>
     sample.gpuDifferenceNormalized === null ? [] : [sample.gpuDifferenceNormalized]);
   const motionErrors = cleanSamples.flatMap((sample) => sample.motionError === null ? [] : [sample.motionError]);
-  const comparisonExpectedCount = cleanSamples.filter((sample) =>
-    sample.movement !== null && sample.entity.kind !== 'pool').length;
+  const comparisonExpectedCount = cleanSamples.filter((sample) => sample.movement !== null).length;
   const planLimitSamples = cleanSamples.filter((sample) => sample.depthRatio > DEPTH_RELATIVE_TOLERANCE);
   const depthMaxSample = maximumOf(cleanSamples, (sample) => sample.depthRatio);
   const metrics: MotionReferenceMetrics = {
