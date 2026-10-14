@@ -130,10 +130,16 @@ export interface LabCase {
   readonly setValue?: (name: string, value: string | number | boolean) => void;
   // frame の実体を返す。同じ論理 frame には同じ実体と行列を返し、問い合わせでケースの状態を変えない。
   readonly motionEntities?: (frame: number) => readonly LabMotionEntity[];
+  // Reference-only objects whose pixels intentionally reject motion history.
+  readonly rejectedMotionObjects?: () => readonly THREE.Object3D[];
   // 直前の sync が描画座標の原点にした、ケースの世界座標の点を返す。
   readonly renderOrigin?: () => THREE.Vector3;
   // ケースが握る、objects の所有印では解放できない資源を解放する。
   readonly dispose?: () => void;
+  readonly measurePoolRebuild?: (iterations: number) => {
+    readonly poolRebuildMs: readonly number[];
+    readonly previousMatricesMs: readonly number[];
+  };
   // 計測結果へ添える、タンパク質ケースの識別。
   readonly proteinMotion?: ProteinLabCaseMetadata;
   // 表示時刻 displayTime [s] まで残基 motion を進め、そのフレームの計測値を返す。
@@ -153,6 +159,7 @@ export interface LabMotionEntity {
   readonly matrix: THREE.Matrix4;
   // プールへ push した順の番号。プール以外は null。
   readonly slot: number | null;
+  readonly poolId?: string;
 }
 
 // ケースを組む関数。style の表示スタイルで組んだ姿を返し、環の帯は ringMaterials で描く。

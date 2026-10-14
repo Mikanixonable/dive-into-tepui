@@ -81,6 +81,7 @@ declare global {
       setGraphicsOption: (key: GraphicsKey, value: boolean | ChoiceValue) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
       measureCurrent: (warmupFrames?: number, sampleFrames?: number) => Promise<LabMeasurement>;
+      measurePoolRebuild: (iterations: number) => ReturnType<LabView['measurePoolRebuild']>;
       measureScreenSpacePaths: (
         seeds: readonly (readonly [number, number])[], sampleCount?: number,
       ) => ReturnType<LabView['measureScreenSpacePaths']>;
@@ -391,6 +392,7 @@ async function init(): Promise<void> {
     },
     measure: (name, angles) => view.measure(name, angles),
     measureCurrent: (warmupFrames, sampleFrames) => view.measureCurrent(warmupFrames, sampleFrames),
+    measurePoolRebuild: (iterations) => view.measurePoolRebuild(iterations),
     measureScreenSpacePaths: (seeds, sampleCount) => view.measureScreenSpacePaths(seeds, sampleCount),
     showShot: async (name, shotName, graphics) => {
       await view.showShot(name, shotName, graphics);

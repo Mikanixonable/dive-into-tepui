@@ -104,6 +104,11 @@ export class GBufferPass {
   public get motionTexture(): THREE.Texture { return this.target.textures[4]!; }
   public get depthTexture(): THREE.DepthTexture { return this.target.depthTexture!; }
 
+  // render-lab が計時できるよう、実処理への呼び口を公開する。
+  public writePoolMatrices(camera: THREE.Camera): void {
+    this.motionHistory.writePoolMatrices(camera);
+  }
+
   // その画素に面が写っているか。反転 Z の far がクリア値 0 なので、素の深度がそのまま虚空を表す。
   public covered(uv: Vec2Node = screenUV): BoolNode {
     return texture(this.depthTexture, uv).r.greaterThan(0);

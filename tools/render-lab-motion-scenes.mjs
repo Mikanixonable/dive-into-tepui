@@ -29,7 +29,11 @@ export const MOTION_VECTOR_SCENES = [
       { sequences: ['translate-1px', 'rotate-1px', 'orbit-1px'], coordinates: ['floating'] },
     ],
   },
-  { name: 'casing-pool', caseName: 'casing-pool', shot: 'casing-pool', casingCount: 260, hasEntities: true, orders: ['stable'], runs: [{ sequences: ['object-motion'], coordinates: ['world'] }] },
+  {
+    name: 'casing-pool', caseName: 'casing-pool', shot: 'casing-pool', casingCount: 260, debrisCount: 600,
+    hasEntities: true, orders: ['stable', 'shuffle', 'churn'],
+    runs: [{ sequences: ['still', 'object-motion', 'both'], coordinates: ['world'] }],
+  },
   { name: 'bay-earth-open', caseName: 'bay', shot: 'bay-earth-open', casingCount: 0, hasEntities: false, orders: ['stable'], runs: [{ sequences: ['translate-0.25px', 'translate-1px', 'translate-4px', 'rotate-0.25px', 'rotate-1px', 'rotate-4px', 'orbit-0.25px', 'orbit-1px', 'orbit-4px'], coordinates: ['world'] }] },
   { name: 'earth-oblique', caseName: 'earth', shot: 'earth-oblique', casingCount: 0, hasEntities: false, orders: ['stable'], runs: [{ sequences: ['translate-1px'], coordinates: ['world'] }] },
   { name: 'cornell-box', caseName: 'cornell-box', shot: 'cornell-box', casingCount: 0, hasEntities: false, orders: ['stable'], runs: [{ sequences: ['translate-0.25px', 'translate-1px', 'translate-4px', 'rotate-0.25px', 'rotate-1px', 'rotate-4px', 'orbit-0.25px', 'orbit-1px', 'orbit-4px'], coordinates: ['world'] }] },

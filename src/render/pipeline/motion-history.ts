@@ -1,7 +1,9 @@
 // 論理フレームごとのカメラと物体の前変換を記録し、G バッファへ動きベクトルを書く。
 import * as THREE from 'three/webgpu';
+import type NodeBuilder from 'three/src/nodes/core/NodeBuilder.js';
 import {
-  Fn, float, modelWorldMatrix, positionLocal, renderGroup, select, uniform, uint, vec2, vec4,
+  Fn, float, instanceIndex, modelWorldMatrix, positionGeometry, positionLocal, renderGroup, select, storage, uniform, uint,
+  varying, vec2, vec4,
 } from 'three/tsl';
 import type { Vec2Node, Vec3Node } from '../tsl-types';
 
@@ -39,6 +41,15 @@ const historiesByCamera = new WeakMap<THREE.Camera, MotionHistory>();
 // 履歴がない前変換。零行列なので clip の w が 0 となる。
 const zeroMatrix = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
+interface PoolMotionData {
+  readonly previous: THREE.StorageInstancedBufferAttribute;
+  readonly objects: THREE.Object3D[];
+  readonly count: () => number;
+}
+
+const poolMotionByMesh = new WeakMap<THREE.InstancedMesh, PoolMotionData>();
+const registeredMotionPools = new Set<PoolMotionData>();
+
 // MotionHistory.setFrame が G バッファ描画前に値を書き、renderGroup の binding が描画ごとに GPU へ送る。
 const currentViewProjection = uniform(new THREE.Matrix4()).setGroup(renderGroup);
 const previousViewProjection = uniform(new THREE.Matrix4()).setGroup(renderGroup);
@@ -57,6 +68,22 @@ export function markMotionRejected(object: THREE.Object3D): void {
 // 参照撮影が棄却対象の実体を深度画像から識別できるよう、印の有無を問い合わせる。
 export function isMotionRejected(object: THREE.Object3D): boolean {
   return rejectedObjects.has(object);
+}
+
+// プールの前行列器を登録し、積み直し後に枠順の前行列を同期する。
+export function registerMotionPool(
+  mesh: THREE.InstancedMesh,
+  previous: THREE.StorageInstancedBufferAttribute,
+  objects: THREE.Object3D[],
+  count: () => number,
+): () => void {
+  const data = { previous, objects, count };
+  poolMotionByMesh.set(mesh, data);
+  registeredMotionPools.add(data);
+  return () => {
+    poolMotionByMesh.delete(mesh);
+    registeredMotionPools.delete(data);
+  };
 }
 
 // 描画物のマテリアルが交点を動きベクトルへ使う。
@@ -95,7 +122,24 @@ export class MotionHistory {
     currentViewProjection.value.copy(viewProjection);
     previousViewProjection.value.copy(record?.previous ?? zeroMatrix);
     renderFrame.value = frame;
+    this.writePoolMatrices(camera);
     historiesByCamera.set(camera, this);
+  }
+
+  // 現在の各枠の実体から、連続した前フレームの model 行列を枠順に書く。
+  public writePoolMatrices(camera: THREE.Camera): void {
+    for (const pool of registeredMotionPools) {
+      const count = pool.count();
+      const target = pool.previous.array as Float32Array;
+      for (let slot = 0; slot < count; slot++) {
+        const object = pool.objects[slot]!;
+        const record = this.updateModel(object, camera, true);
+        target.set(record?.previous.elements ?? zeroMatrix.elements, slot * 16);
+      }
+      pool.previous.clearUpdateRanges();
+      if (count > 0) pool.previous.addUpdateRange(0, count * 16);
+      pool.previous.needsUpdate = true;
+    }
   }
 
   // 物体更新時に前 model を返す。明示棄却・初回は零行列を返す。
@@ -122,7 +166,7 @@ export class MotionHistory {
   }
 
   // onObjectUpdate が呼ばれた物体だけ記録を進める。番号が飛んでも、未更新だった current を前として扱う。
-  private updateModel(object: THREE.Object3D, camera: THREE.Camera): ModelRecord | null {
+  private updateModel(object: THREE.Object3D, camera: THREE.Camera, rejectGaps = false): ModelRecord | null {
     if (!this.cameras.get(camera)) return null;
     let key = historyKeys.get(object);
     if (!key) key = object;
@@ -138,7 +182,8 @@ export class MotionHistory {
     } else if (record.frame !== this.frame) {
       // render-lab は列を切り替えると番号を戻す。変わらない物体はその間 onObjectUpdate が走らないため、
       // 記録済み current を新しい列の前 model として使う。カメラの前行列は列の先頭で零になる。
-      record.previous.copy(record.current);
+      if (!rejectGaps || record.frame + 1 === this.frame) record.previous.copy(record.current);
+      else record.previous.copy(zeroMatrix);
       record.current.copy(object.matrixWorld);
       record.frame = this.frame;
     } else {
@@ -164,7 +209,7 @@ class MotionNode extends THREE.Node {
     super('vec2');
   }
 
-  public override setup(): THREE.Node {
+  public override setup(builder: NodeBuilder): THREE.Node {
     // objectGroup は物ごとの matrixWorld 変更時だけ更新され、番号が古ければシェーダで現行 modelWorldMatrix を前にも使う。
     const previousModel = uniform(new THREE.Matrix4()).onObjectUpdate(({ object, camera }, self) => {
       const value = object === null || camera === null
@@ -174,12 +219,28 @@ class MotionNode extends THREE.Node {
     const objectFrame = uniform(0, 'uint').onObjectUpdate(({ object, camera }) => (
       object === null || camera === null ? 0 : historiesByCamera.get(camera)?.modelFrameFor(object, camera) ?? 0
     ));
+    const instancedMesh = builder.object as THREE.InstancedMesh;
+    const pool = poolMotionByMesh.get(instancedMesh);
+    const poolIndex = pool === undefined ? null : varying(instanceIndex).setInterpolation('flat');
+    const poolPosition = pool === undefined ? null : varying(positionGeometry);
+    const currentInstance = pool === undefined
+      ? null
+      : storage(instancedMesh.instanceMatrix, 'mat4', instancedMesh.instanceMatrix.count).element(poolIndex!);
+    const previousInstance = pool === undefined
+      ? null
+      : storage(pool.previous, 'mat4', pool.previous.count).element(poolIndex!);
     return Fn(() => {
-      const localPosition = vec4(this.position, 1);
-      const currentModelPosition = modelWorldMatrix.mul(localPosition);
-      const storedPreviousPosition = previousModel.mul(localPosition);
+      const localPosition = pool === undefined ? vec4(this.position, 1) : vec4(poolPosition!, 1);
+      const currentModelPosition = pool === undefined
+        ? modelWorldMatrix.mul(localPosition)
+        : modelWorldMatrix.mul(currentInstance!.mul(localPosition));
+      const storedPreviousPosition = pool === undefined
+        ? previousModel.mul(localPosition)
+        : modelWorldMatrix.mul(previousInstance!.mul(localPosition));
       const useStored = objectFrame.equal(renderFrame).or(objectFrame.equal(uint(MOTION_REJECTED_FRAME)));
-      const previousModelPosition = select(useStored, storedPreviousPosition, currentModelPosition);
+      const previousModelPosition = pool === undefined
+        ? select(useStored, storedPreviousPosition, currentModelPosition)
+        : storedPreviousPosition;
       const currentClipPosition = currentViewProjection.mul(currentModelPosition);
       const previousClipPosition = previousViewProjection.mul(previousModelPosition);
       const valid = previousClipPosition.w.greaterThan(0);

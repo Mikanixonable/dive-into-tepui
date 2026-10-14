@@ -68,6 +68,9 @@ async function setCase(devTools, scene, coordinate, order, sequence) {
   if (scene.hasEntities) {
     await devTools.evaluate(`window.renderLab.setCaseValue('motion', ${JSON.stringify(sequence.moveObjects)})`);
     await devTools.evaluate(`window.renderLab.setCaseValue('casingCount', ${scene.casingCount})`);
+    if (scene.debrisCount !== undefined) {
+      await devTools.evaluate(`window.renderLab.setCaseValue('debrisCount', ${scene.debrisCount})`);
+    }
     await devTools.evaluate(`window.renderLab.setCaseValue('casingOrder', ${JSON.stringify(order)})`);
     await devTools.evaluate(`window.renderLab.setCaseValue('coordinates', ${JSON.stringify(coordinate)})`);
     await devTools.evaluate(`window.renderLab.setCaseValue('motionStopFrame', ${sequence.motionStopFrame ?? -1})`);
@@ -318,6 +321,13 @@ function reportOf(aggregates, frames) {
     item.coordinateDifference?.coverageMismatchCount ?? '',
     item.coordinateDifference?.expectedCount ?? '', item.coordinateDifference?.comparedCount ?? '',
   ]);
+  const surfaceRows = aggregates.flatMap((record) => {
+    const first = record.metrics.find((item) => item.frame === 0)?.surfaceCount ?? 0;
+    return record.metrics.map((item) => [
+      record.scene, record.sequence, record.coordinates, record.order, item.frame, item.surfaceCount,
+      first === 0 ? 0 : item.surfaceCount / first,
+    ]);
+  });
   return [
     `# 動きの参照 (${new Date().toISOString()})`, '',
     `フレーム数 ${frames}。通常の照合は 4 px 間隔、タンパク質の棄却確認は全画素。輪郭は実体境界と深度二階差を別々に集計。`,
@@ -325,6 +335,11 @@ function reportOf(aggregates, frames) {
     '99.9% は条件内のフレームごとの分位の最大。', '',
     `| ${header.join(' | ')} |`, `| ${header.map(() => '---').join(' | ')} |`,
     ...rows.map((row) => `| ${row.join(' | ')} |`), '',
+    '## 面数のフレーム推移', '',
+    'frame 0 に対する面画素数の比を示す。連続フレームで比が 1 から落ちないことを条件ごとに確認する。', '',
+    '| 場面 | 列 | 座標 | 積み順 | frame | surfaceCount | frame 0 比 |',
+    '| --- | --- | --- | --- | ---: | ---: | ---: |',
+    ...surfaceRows.map((row) => `| ${row.slice(0, 6).join(' | ')} | ${row[6].toFixed(6)} |`), '',
   ].join('\n');
 }
 

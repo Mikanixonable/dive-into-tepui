@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import { ENTITY_CAP } from '../../src/game/dynamic/dynamic-entity/entity-kind';
 import { mulberry32 } from '../../src/math/random';
 import { CasingPool } from '../../src/render/dynamic/dynamic-entity/casing-view';
+import { DebrisFragmentPools } from '../../src/render/dynamic/dynamic-entity/debris-fragment-view';
 import { markLitOpaque, markShadowCaster } from '../../src/render/pipeline/lit-layer';
 import { syncThermalState } from '../../src/render/thermal-emissive';
 import { directionFromAngles } from './view-angles';
@@ -22,6 +23,7 @@ export interface CasingRoomValues {
   readonly coordinates: CasingRoomCoordinates;
   readonly motion: boolean;
   readonly casingCount: number;
+  readonly debrisCount: number;
   // 物が動くのをやめる論理フレーム。それより後のフレームは、このフレームの姿勢のまま止まる。-1 なら止めない。
   readonly motionStopFrame: number;
 }
@@ -40,6 +42,8 @@ const POOL_FLOOR_COLUMNS = 8;
 const POOL_AIR_COLUMNS = 13;
 const POOL_AIR_ROWS = 4;
 const POOL_AIR_LANE_SIZE = POOL_AIR_COLUMNS * POOL_AIR_ROWS;
+const DEBRIS_CAPACITY = 600;
+const DEBRIS_ID_COUNT = 2 * DEBRIS_CAPACITY;
 
 const ROOM_DIMENSIONS: CornellRoomDimensions = {
   halfWidth: 3, backZ: -3, frontZ: 3, height: 5.5, panelThickness: 0.2,
@@ -203,6 +207,39 @@ export function casingPoolCasingMatrixAt(
   return target.compose(MATRIX_POSITION, MATRIX_ROTATION, MATRIX_SCALE);
 }
 
+// 飛散片を薬莢の上限配置へ重ね、同じ論理フレームで再現できる姿勢を返す。
+function debrisMatrixAt(identity: number, frame: number, motion: boolean, target: THREE.Matrix4): THREE.Matrix4 {
+  const slot = identity % DEBRIS_CAPACITY;
+  const generation = Math.floor(identity / DEBRIS_CAPACITY);
+  const column = slot % 20;
+  const row = Math.floor(slot / 20) % 6;
+  const layer = Math.floor(slot / 120);
+  const k = motion ? frame : 0;
+  const phase = identity * 1.61803398875;
+  MATRIX_POSITION.set(
+    -6.5 + column * (13 / 19) + 0.16 * Math.sin(0.027 * k + phase),
+    0.55 + row * 1.25 + layer * 0.32 + generation * 0.08 + 0.16 * Math.sin(0.031 * k + phase),
+    -14 + layer * 3.2 + 0.16 * Math.cos(0.023 * k + phase),
+  );
+  MATRIX_EULER.set(0.012 * k + identity * 0.13, 0.009 * k + identity * 0.17, identity * 0.11);
+  MATRIX_ROTATION.setFromEuler(MATRIX_EULER);
+  MATRIX_SCALE.setScalar(0.08 + (identity % 5) * 0.015);
+  return target.compose(MATRIX_POSITION, MATRIX_ROTATION, MATRIX_SCALE);
+}
+
+// 薬莢と飛散片それぞれの実体 ID を積み順へ並べる。
+function debrisOrderAt(frame: number, count: number, order: CasingRoomOrder): readonly number[] {
+  const start = order === 'churn' ? (frame * Math.max(1, Math.ceil(count / 5))) % DEBRIS_ID_COUNT : 0;
+  const identities = Array.from({ length: count }, (_, index) => (start + index) % DEBRIS_ID_COUNT);
+  if (order !== 'shuffle') return identities;
+  const random = mulberry32((frame ^ 0x85ebca6b) >>> 0);
+  for (let i = identities.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [identities[i], identities[j]] = [identities[j]!, identities[i]!];
+  }
+  return identities;
+}
+
 // frame のプールへ積む実体の identity を、実際に push する順に返す。
 export function casingRoomCasingOrderAt(
   frame: number, count: number, order: CasingRoomOrder,
@@ -279,6 +316,10 @@ function withCaseValue(
     && value >= 0 && value <= CASING_CAPACITY) {
     return { ...values, casingCount: value };
   }
+  if (name === 'debrisCount' && typeof value === 'number' && Number.isInteger(value)
+    && value >= 0 && value <= DEBRIS_CAPACITY) {
+    return { ...values, debrisCount: value };
+  }
   if (name === 'motionStopFrame' && typeof value === 'number' && Number.isInteger(value) && value >= -1) {
     return { ...values, motionStopFrame: value };
   }
@@ -297,6 +338,15 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
   const ordinary = configuration.ordinary ? ordinaryObjects() : null;
   const room = structure(configuration.dimensions, ordinary);
   const casings = casingPool();
+  const debrisHost = new THREE.Scene();
+  const debrisPools = configuration.name === 'casing-pool'
+    ? new DebrisFragmentPools(debrisHost, DEBRIS_CAPACITY) : null;
+  const debrisPoolMeshes = debrisHost.children.slice();
+  debrisHost.clear();
+  for (const object of debrisPoolMeshes) object.visible = false;
+  const debrisObjects = Array.from({ length: DEBRIS_ID_COUNT }, () => new THREE.Object3D());
+  for (const object of debrisObjects) object.matrixAutoUpdate = false;
+  const debrisColors = debrisObjects.map((_, identity) => new THREE.Color(identity % 3 === 0 ? 0x69758b : 0xa8a187));
   const casingObjects = Array.from({ length: CASING_ID_COUNT }, (_, identity) => {
     const object = new THREE.Object3D();
     object.matrixAutoUpdate = false;
@@ -306,6 +356,7 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
   });
   let values: CasingRoomValues = {
     casingOrder: 'stable', coordinates: 'world', motion: true, casingCount: configuration.defaultCount,
+    debrisCount: 0,
     motionStopFrame: -1,
   };
   let frame = 0;
@@ -330,7 +381,8 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
   const rebuildPool = (): void => {
     REBASE_MATRIX.makeTranslation(-poolOrigin.x, -poolOrigin.y, -poolOrigin.z);
     casings.pool.beginFrame();
-    for (const identity of casingRoomCasingOrderAt(frame, values.casingCount, values.casingOrder)) {
+    const casingOrder = casingRoomCasingOrderAt(frame, values.casingCount, values.casingOrder);
+    for (const identity of casingOrder) {
       const object = casingObjects[identity]!;
       configuration.casingMatrixAt(identity, motionFrameAt(frame), values.motion, worldMatrix);
       object.matrix.multiplyMatrices(REBASE_MATRIX, worldMatrix);
@@ -338,12 +390,26 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
       casings.pool.push(object);
     }
     casings.pool.endFrame();
+
+    if (debrisPools !== null) {
+      debrisPools.beginFrame();
+      const debrisOrder = debrisOrderAt(frame, values.debrisCount, values.casingOrder);
+      for (const identity of debrisOrder) {
+        const object = debrisObjects[identity]!;
+        debrisMatrixAt(identity, motionFrameAt(frame), values.motion, worldMatrix);
+        object.matrix.multiplyMatrices(REBASE_MATRIX, worldMatrix);
+        object.matrixWorld.copy(object.matrix);
+        debrisPools.push(identity % 7, object, debrisColors[identity]!);
+      }
+      debrisPools.endFrame();
+      for (const object of debrisPoolMeshes) object.visible = values.debrisCount > 0;
+    }
     lastPoolOrigin.copy(poolOrigin);
     poolDirty = false;
   };
 
   return {
-    objects: [room, casings.object],
+    objects: [room, casings.object, ...debrisPoolMeshes],
     camera,
     viewTarget: configuration.viewTarget,
     sunDirection: directionFromAngles(configuration.sunAzimuthDeg, configuration.sunElevationDeg, new THREE.Vector3()),
@@ -384,7 +450,23 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
             identity, motionFrameAt(entityFrame), values.motion, new THREE.Matrix4(),
           ),
           slot,
+          poolId: 'casings',
         });
+      }
+      if (debrisPools !== null) {
+        const slots = Array(7).fill(0) as number[];
+        for (const identity of debrisOrderAt(entityFrame, values.debrisCount, values.casingOrder)) {
+          const variant = identity % 7;
+          entities.push({
+            key: `debris:${identity}`,
+            kind: 'pool',
+            geometry: (debrisPoolMeshes[variant] as THREE.InstancedMesh).geometry,
+            matrix: debrisMatrixAt(identity, motionFrameAt(entityFrame), values.motion, new THREE.Matrix4()),
+            slot: slots[variant]!,
+            poolId: `debris:${variant}`,
+          });
+          slots[variant] = slots[variant]! + 1;
+        }
       }
       return entities;
     },
@@ -399,7 +481,23 @@ function casingCase(configuration: CasingCaseConfiguration): LabCase {
         camera.updateMatrixWorld(true);
       }
     },
-    dispose: () => casings.pool.dispose(),
+    dispose: () => {
+      casings.pool.dispose();
+      debrisPools?.dispose();
+    },
+    measurePoolRebuild: (iterations) => {
+      const poolRebuildMs: number[] = [];
+      for (let sample = 0; sample < iterations; sample++) {
+        frame = sample;
+        applyFrame();
+        if (values.coordinates === 'floating') poolOrigin.copy(camera.position);
+        else poolOrigin.set(0, 0, 0);
+        const rebuildStarted = performance.now();
+        rebuildPool();
+        poolRebuildMs.push(performance.now() - rebuildStarted);
+      }
+      return { poolRebuildMs, previousMatricesMs: [] };
+    },
     shots: configuration.shots,
   };
 }
