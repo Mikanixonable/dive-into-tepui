@@ -5,6 +5,7 @@ import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { getViewPosition, ivec2, screenCoordinate, screenUV, select, textureLoad, uniform, vec2, vec4 } from 'three/tsl';
 import { GPU_PASS, GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
 import { projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
+import { scanBandsOf } from '../../src/render/pipeline/screen-space/band-pyramid';
 import {
   ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
 } from '../../src/game/protein/protein-motion-metrics';
@@ -19,6 +20,7 @@ import { atmosphereDraws, withAirglowEnabled, type AtmosphereBody } from '../../
 import { RingMaterials } from '../../src/render/celestial/ring';
 import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-render-resources';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
+import { webGpuRequiredLimits } from '../../src/render/webgpu-required-limits';
 import { distributionOf, type SampleDistribution } from '../../src/math/sample-distribution';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { SCREEN_SPACE_DIFFUSE, screenSpaceDiffuseOf } from '../../src/render/pipeline/screen-space/screen-space-pass';
@@ -38,13 +40,15 @@ import type {
   ScanTier, ScreenSpaceExperimentVariant, ScreenSpaceStageRange,
 } from '../../src/render/pipeline/screen-space/screen-space-pass';
 import type { Mat4Uniform } from '../../src/render/tsl-types';
+import { multiOutputMaterial } from '../../src/render/pipeline/screen-space/screen-space-stage';
 
 // 近傍拡散補正の、帯を詰めた描画先の i 枚目のテクスチャの読み戻しの名前。'packed-bands-i' は走査(段 0)、'reduced-m-i'
-// は帯の縮小の段 m。枚数は WebGPU の既定の上限で書ける帯の数 5 の分だけ並べる。
-type PackedBandsName = `packed-bands-${0 | 1 | 2 | 3}` | `reduced-${1 | 2 | 3 | 4}-${0 | 1 | 2}`;
+// は帯の縮小の段 m。帯数 8 までに必要な枚数を含める。
+type PackedBandsName = `packed-bands-${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}`
+  | `reduced-${1 | 2 | 3 | 4 | 5 | 6 | 7}-${0 | 1 | 2 | 3 | 4 | 5}`;
 const PACKED_BANDS_NAME_PATTERN = /^(?:packed-bands|reduced-(\d))-(\d)$/;
 // 近傍拡散補正の拡大と合流の段 k の出力の読み戻しの名前。
-type MergedName = `merged-${0 | 1 | 2 | 3}`;
+type MergedName = `merged-${0 | 1 | 2 | 3 | 4 | 5 | 6}`;
 const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 
 // 読み戻せる浮動小数の中間ターゲット。PackedBandsName は、いまの段の帯の数の段 m の描画先が帯 m〜帯の数 − 1 を詰めた
@@ -208,7 +212,7 @@ export class LabView {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、深度の分解能と
     // 描画順の並べ替えが本番と別物になる。
     const renderer = new WebGPURenderer({
-      canvas, trackTimestamp: true, reversedDepthBuffer: true,
+      canvas, trackTimestamp: true, reversedDepthBuffer: true, requiredLimits: await webGpuRequiredLimits(),
     });
     renderer.setOpaqueSort(reversedOpaqueSort);
     renderer.setTransparentSort(reversedTransparentSort);
@@ -477,6 +481,9 @@ export class LabView {
     return stages.map(({ gpuPass, wgsl }) => ({ label: GPU_PASS_LABELS[gpuPass]!, wgsl }));
   }
 
+  // いまの段の帯の描画先の形式の、段ごとの並び。
+  public get screenSpaceBandLayout(): readonly string[] { return this.pipeline.screenSpace.bandLayout; }
+
   // 近傍拡散補正の方式をオフにして 1 フレーム描き、その全描画先を空にする。方式は描画設定のものへ戻し、段は保つ。
   public clearScreenSpace(): void {
     const { screenSpace } = this.pipeline;
@@ -571,7 +578,9 @@ export class LabView {
   public async accumulateWhitePasses(first: number, count: number): Promise<void> {
     if (this.current === null) throw new Error('render-lab: no case selected');
     const { screenSpace, diffuseCorrection } = this.pipeline;
-    const target = diffuseCorrection.bandTarget(screenSpace.bandCount, 0);
+    const layout = screenSpace.bandLayout;
+    if (layout[0] !== 'packed-half') throw new Error('render-lab: pass accumulation requires packed-half bands');
+    const target = diffuseCorrection.bandTarget(layout, 0);
     if (this.passAccumulator?.sources !== target.textures) {
       this.passAccumulator?.dispose();
       this.passAccumulator = new PassAccumulator(this.renderer, target.textures, target.width, target.height);
@@ -621,7 +630,10 @@ export class LabView {
   // 値 rgba(行は上から)を半精度へ丸めて書く。いまの段で 1 度描いて描画先の寸法を合わせてから呼ぶ。段の範囲
   // 'chain' のフレーム(setScanStageRange)が鎖の入力として読む。
   public writePackedBands(index: number, rgba: Float32Array): void {
-    const target = this.pipeline.diffuseCorrection.bandTarget(this.pipeline.screenSpace.bandCount, 0);
+    const { screenSpace } = this.pipeline;
+    const layout = screenSpace.bandLayout;
+    if (layout[0] !== 'packed-half') throw new Error('render-lab: packed writes require packed-half bands');
+    const target = this.pipeline.diffuseCorrection.bandTarget(layout, 0);
     const destination = target.textures[index];
     if (destination === undefined) throw new Error(`render-lab: the scan has no packed band texture ${index}`);
     const { width, height } = target;
@@ -643,11 +655,39 @@ export class LabView {
     return this.readBack(name === 'projected-radius' ? this.drawProjectedRadius() : this.floatTextureOf(name));
   }
 
+  // 直前の走査で書いた帯 band の符号付き補正を、共有の復号ノードで浮動小数へ戻して読む。
+  public async readBand(band: number): Promise<FloatImage> {
+    if (!Number.isInteger(band) || band < 0 || band >= this.pipeline.screenSpace.bandCount) {
+      throw new RangeError(`render-lab: invalid band ${band}`);
+    }
+    const { screenSpace, diffuseCorrection } = this.pipeline;
+    const layout = screenSpace.bandLayout;
+    const source = diffuseCorrection.bandTarget(layout, 0);
+    const target = new THREE.RenderTarget(source.width, source.height, {
+      type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
+      minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+    });
+    const material = multiOutputMaterial(target, () => [vec4(scanBandsOf(
+      source.textures.map((item) => textureLoad(item, ivec2(screenCoordinate.xy))), screenSpace.bandCount,
+      layout[0]!, this.pipeline.exposure.factor)[band]!, 0)]);
+    this.renderer.setRenderTarget(target);
+    const quad = new QuadMesh(material);
+    quad.render(this.renderer);
+    this.renderer.setRenderTarget(null);
+    const image = await this.readBack(target.texture);
+    material.dispose();
+    target.dispose();
+    return image;
+  }
+
   // 直前に描いたフレームの、いまの段の帯の数の走査の帯の和(rgb、α は 0)。帯の並びは packedBands の通しのチャンネル。
   private async readBandSum(): Promise<FloatImage> {
     const count = this.pipeline.screenSpace.bandCount;
+    if (this.pipeline.screenSpace.bandLayout[0] !== 'packed-half') {
+      throw new Error('render-lab: band-sum requires packed-half bands');
+    }
     const packed: FloatImage[] = [];
-    for (const texture of this.pipeline.diffuseCorrection.bandTarget(count, 0).textures) {
+    for (const texture of this.pipeline.diffuseCorrection.bandTextures(this.pipeline.screenSpace.bandLayout, 0)) {
       packed.push(await this.readBack(texture));
     }
     const { width, height } = packed[0]!;
@@ -749,7 +789,7 @@ export class LabView {
     const { screenSpace, diffuseCorrection } = this.pipeline;
     switch (name) {
       case 'scan-correction': return screenSpace.mergesIntoCorrection
-        ? diffuseCorrection.texture : diffuseCorrection.mergedTexture(screenSpace.bandCount, 0);
+        ? diffuseCorrection.texture : diffuseCorrection.mergedTexture(screenSpace.bandLayout, 0);
       case 'correction': return diffuseCorrection.texture;
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
       case 'surface-radiance': return screenSpace.surfaceRadianceTexture;
@@ -772,12 +812,12 @@ export class LabView {
           if (Number(mergedLevel) === 0 && screenSpace.mergesIntoCorrection) {
             throw new Error(`render-lab: "${name}" is not written at scan scale 1 (read "correction")`);
           }
-          return diffuseCorrection.mergedTarget(count, Number(mergedLevel)).texture;
+          return diffuseCorrection.mergedTarget(screenSpace.bandLayout, Number(mergedLevel)).texture;
         }
         // 帯を詰めたテクスチャは、いまの段の帯の数の、名前の段(無ければ走査の段 0)の描画先から引く。
         const [, level = '0', index] = PACKED_BANDS_NAME_PATTERN.exec(name)!;
         const texture = Number(level) < count
-          ? diffuseCorrection.bandTarget(count, Number(level)).textures[Number(index)] : undefined;
+          ? diffuseCorrection.bandTextures(screenSpace.bandLayout, Number(level))[Number(index)] : undefined;
         if (texture === undefined) throw new Error(`render-lab: ${count} bands have no "${name}"`);
         return texture;
       }

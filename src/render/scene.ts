@@ -7,6 +7,7 @@ import { RenderPipeline } from './pipeline/render-pipeline';
 import { GpuTimings } from './gpu-timings';
 import type { DebugTargetId } from './pipeline/debug-target';
 import type { Viewport } from './viewport';
+import { webGpuRequiredLimits } from './webgpu-required-limits';
 
 // canvas と同じ寿命を持つ描画基盤一式。GPU 資源を確保するので、1つだけ作って使い回す。
 export interface GameScene {
@@ -34,7 +35,7 @@ export async function createGameScene(
   // trackTimestamp と reversedDepthBuffer は生成時に渡す。後者をあとから代入すると、深度比較
   // 関数だけが非反転のまま残る。
   const renderer = new WebGPURenderer({
-    canvas, trackTimestamp: true, reversedDepthBuffer: true,
+    canvas, trackTimestamp: true, reversedDepthBuffer: true, requiredLimits: await webGpuRequiredLimits(),
   });
   renderer.setOpaqueSort(reversedOpaqueSort);
   renderer.setTransparentSort(reversedTransparentSort);

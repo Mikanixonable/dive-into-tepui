@@ -232,4 +232,13 @@ export function register(): void {
     const rejected = { quality: { fields: { screenSpace: { custom: { screenSpaceScanScale: 0.3 } } } } };
     assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(rejected))).screenSpaceScanScale, 0.25);
   });
+
+  test('graphics-selection: 均しの段数を持たない保存と範囲外の値は 4 に解ける', () => {
+    const saved = { quality: { fields: { screenSpace: { custom: { screenSpaceSliceCount: 3, screenSpaceStepCount: 4 } } } } };
+    const resolved = resolveGraphics(parseGraphicsSelection(JSON.stringify(saved)));
+    assert.equal(resolved.screenSpaceBandCount, 4);
+    assert.equal(resolved.screenSpaceSliceCount, 3);
+    const rejected = { quality: { fields: { screenSpace: { custom: { screenSpaceBandCount: 9 } } } } };
+    assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(rejected))).screenSpaceBandCount, 4);
+  });
 }

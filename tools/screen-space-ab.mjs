@@ -83,7 +83,7 @@ function targetsOf(bandCount) {
     'surface-radiance', ...packedBandsNamesOf(bandCount),
     ...levels.map((level) => `representative-${level}`),
     ...levels.flatMap((level) => Array.from(
-      { length: Math.ceil(3 * (bandCount - level) / 4) }, (_, i) => `reduced-${level}-${i}`)),
+      { length: Math.ceil((3 * (bandCount - level) + 1) / 4) }, (_, i) => `reduced-${level}-${i}`)),
     ...levels.map((level) => `merged-${level - 1}`),
     'correction',
   ];

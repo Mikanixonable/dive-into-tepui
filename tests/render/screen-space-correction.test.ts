@@ -1,8 +1,8 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
-import { vec2, vec3 } from 'three/tsl';
+import { float, vec2, vec3 } from 'three/tsl';
 import { DiffuseCorrection, signedDiffuseCorrection } from '../../src/render/pipeline/screen-space/diffuse-correction';
-import { packedBands, unpackedBands } from '../../src/render/pipeline/screen-space/band-pyramid';
+import { bandLayoutOf, levelTextureFormats, packedBands, scanBandsOf, unpackedBands } from '../../src/render/pipeline/screen-space/band-pyramid';
 import { diffuseIrradianceAt } from '../../src/render/pipeline/material-pass';
 import { test } from '../harness';
 import { containsShaderNode, evaluateShaderNode } from './tsl-node-evaluator';
@@ -29,21 +29,19 @@ export function register(): void {
     correction.dispose();
   });
 
-  test('screen space correction: 帯の段の描画先は帯の数と段ごとに 1 つの、1 標本 32 バイト以内の半精度 RGBA', () => {
+  test('screen space correction: layout ごとの描画先は段の型と形式を保つ', () => {
     const correction = new DiffuseCorrection();
-    for (let count = 1; count <= 5; count++) {
-      // 段 level は帯 level..count − 1 を持ち、段 1 以降は実効画素数のチャンネルを 1 つ足して持つ。
-      for (let level = 0; level < count; level++) {
-        const target = correction.bandTarget(count, level);
-        assert.strictEqual(correction.bandTarget(count, level), target);
-        const channels = 3 * (count - level) + (level === 0 ? 0 : 1);
-        assert.strictEqual(target.textures.length, Math.ceil(channels / 4), `${count} 帯の段 ${level}`);
-        for (const texture of target.textures) {
-          assert.strictEqual(texture.type, THREE.HalfFloatType);
-          assert.strictEqual(texture.format, THREE.RGBAFormat);
+    for (let count = 4; count <= 8; count++) {
+      const layout = bandLayoutOf(count, 32);
+      for (let level = 0; level < layout.length; level++) {
+        const target = correction.bandTarget(layout, level);
+        assert.strictEqual(correction.bandTarget(layout, level), target);
+        const formats = levelTextureFormats(count, level, layout[level]!);
+        assert.strictEqual(target.textures.length, formats.length);
+        for (const [textureIndex, texture] of target.textures.entries()) {
+          assert.strictEqual(texture.type, formats[textureIndex]!.type);
+          assert.strictEqual(texture.format, formats[textureIndex]!.format);
         }
-        // WebGPU が既定で保証する色の出力は、1 標本あたり 32 バイト(maxColorAttachmentBytesPerSample)。
-        assert.ok(target.textures.length * 8 <= 32, `${count} 帯の段 ${level}`);
       }
     }
     correction.dispose();
@@ -52,13 +50,14 @@ export function register(): void {
   test('screen space correction: 拡大と合流の出力は段 0..L − 2 に 1 枚ずつで、最も粗い段の C はその段の帯', () => {
     const correction = new DiffuseCorrection();
     for (let count = 1; count <= 5; count++) {
+      const layout = bandLayoutOf(count, 128);
       for (let level = 0; level < count - 1; level++) {
-        const target = correction.mergedTarget(count, level);
+        const target = correction.mergedTarget(layout, level);
         assert.strictEqual(target.textures.length, 1);
         assert.strictEqual(target.texture.type, THREE.HalfFloatType);
-        assert.strictEqual(correction.mergedTexture(count, level), target.texture);
+        assert.strictEqual(correction.mergedTexture(layout, level), target.texture);
       }
-      assert.strictEqual(correction.mergedTexture(count, count - 1), correction.bandTarget(count, count - 1).texture);
+      assert.strictEqual(correction.mergedTexture(layout, count - 1), correction.bandTarget(layout, count - 1).texture);
     }
     correction.dispose();
   });
@@ -66,10 +65,25 @@ export function register(): void {
   test('screen space correction: 詰めた帯を取り出すと詰める前の帯に戻り、余りのチャンネルは 0', () => {
     for (let count = 1; count <= 5; count++) {
       const values = Array.from({ length: count }, (_, band) => [band + 0.25, -band - 0.5, 3 * band + 1]);
-      const packed = packedBands(values.map(([r, g, b]) => vec3(r!, g!, b!)));
+      const packed = packedBands(values.map(([r, g, b]) => vec3(r!, g!, b!)), 'packed-half', float(1));
       const channels = packed.flatMap((value) => evaluateShaderNode(value) as number[]);
       assert.deepStrictEqual(channels.slice(3 * count), Array(channels.length - 3 * count).fill(0), `${count} 帯`);
       assert.deepStrictEqual(unpackedBands(packed, count).map((band) => evaluateShaderNode(band)), values);
+    }
+  });
+
+  test('screen space correction: 走査の packed-word は 4 語ずつ詰めて符号付き帯へ戻す', () => {
+    const values = Array.from({ length: 8 }, (_, band) => [80 + band, -120 - band, band === 0 ? 0 : 200 + band]);
+    const packed = packedBands(values.map(([r, g, b]) => vec3(r!, g!, b!)), 'packed-word', float(1));
+    assert.strictEqual(packed.length, 2);
+    const decoded = scanBandsOf(packed, values.length, 'packed-word', float(1));
+    for (const [band, value] of decoded.entries()) {
+      const actual = evaluateShaderNode(value) as number[];
+      for (const [channel, component] of actual.entries()) {
+        const expected = values[band]![channel]!;
+        if (expected === 0) assert.strictEqual(component, 0);
+        else assert.ok(Math.abs((component - expected) / expected) < 0.012);
+      }
     }
   });
 

@@ -7,6 +7,8 @@ interface ShaderNode {
   readonly type?: string;
   readonly value?: unknown;
   readonly node?: ShaderNode;
+  readonly valueNode?: ShaderNode;
+  readonly conversionType?: string;
   readonly nodes?: readonly ShaderNode[];
   readonly components?: string;
   readonly convertTo?: string;
@@ -60,6 +62,7 @@ function evaluateOperator(node: ShaderNode, evaluate: Evaluate): ShaderValue {
     case '&': return ((left as number) & (right as number)) >>> 0;
     case '|': return ((left as number) | (right as number)) >>> 0;
     case '<<': return ((left as number) << (right as number)) >>> 0;
+    case '>>': return (left as number) >>> (right as number);
     default: throw new Error(`Unsupported shader operator ${node.op}`);
   }
 }
@@ -81,8 +84,12 @@ function evaluateMath(node: ShaderNode, evaluate: Evaluate): ShaderValue {
     }
     case 'atan': return Math.atan2(value as number, evaluate(node.bNode) as number);
     case 'asin': return Math.asin(value as number);
-    case 'clamp': return Math.min(Math.max(value as number, evaluate(node.bNode) as number), evaluate(node.cNode) as number);
+    case 'clamp': return componentwise(
+      componentwise(value, evaluate(node.bNode), Math.max), evaluate(node.cNode), Math.min,
+    );
     case 'exp2': return 2 ** (value as number);
+    case 'exp': return Array.isArray(value) ? value.map(Math.exp) : Math.exp(value as number);
+    case 'log': return Array.isArray(value) ? value.map(Math.log) : Math.log(value as number);
     case 'log2': return Math.log2(value as number);
     case 'fract': return (value as number) - Math.floor(value as number);
     case 'floor': return Array.isArray(value)
@@ -90,11 +97,14 @@ function evaluateMath(node: ShaderNode, evaluate: Evaluate): ShaderValue {
       : Math.floor(value as number);
     case 'round': {
       // WGSL の round は、ちょうど半分を偶数へ丸める。
-      const nearest = Math.round(value as number);
-      return nearest - (value as number) === 0.5 && nearest % 2 !== 0 ? nearest - 1 : nearest;
+      const roundEven = (component: number): number => {
+        const nearest = Math.round(component);
+        return nearest - component === 0.5 && nearest % 2 !== 0 ? nearest - 1 : nearest;
+      };
+      return Array.isArray(value) ? value.map(roundEven) : roundEven(value as number);
     }
-    case 'sign': return Math.sign(value as number);
-    case 'abs': return Math.abs(value as number);
+    case 'sign': return Array.isArray(value) ? value.map(Math.sign) : Math.sign(value as number);
+    case 'abs': return Array.isArray(value) ? value.map(Math.abs) : Math.abs(value as number);
     case 'negate': return Array.isArray(value) ? value.map((component) => -component) : -(value as number);
     case 'oneMinus': return 1 - (value as number);
     case 'sqrt': return Math.sqrt(value as number);
@@ -123,6 +133,21 @@ function evaluateConversion(node: ShaderNode, evaluate: Evaluate): ShaderValue {
   return value;
 }
 
+function evaluateBitcast(node: ShaderNode, evaluate: Evaluate): ShaderValue {
+  const value = evaluate(node.valueNode) as number;
+  const buffer = new ArrayBuffer(4);
+  const view = new DataView(buffer);
+  if (node.conversionType === 'uint') {
+    view.setFloat32(0, value, true);
+    return view.getUint32(0, true);
+  }
+  if (node.conversionType === 'float') {
+    view.setUint32(0, value >>> 0, true);
+    return view.getFloat32(0, true);
+  }
+  throw new Error(`Unsupported shader bitcast to ${node.conversionType}`);
+}
+
 // ノード 1 つを、子を evaluate で評価して求める。
 function evaluateNode(input: unknown, evaluate: Evaluate): ShaderValue {
   const node = input as ShaderNode & {
@@ -141,6 +166,7 @@ function evaluateNode(input: unknown, evaluate: Evaluate): ShaderValue {
   if (node.type === 'VarNode') return evaluate(node.node);
   if (node.type === 'ConstNode' || node.type === 'UniformNode') return evaluate(node.value);
   if (node.type === 'ConvertNode') return evaluateConversion(node, evaluate);
+  if (node.type === 'BitcastNode') return evaluateBitcast(node, evaluate);
   if (node.type === 'JoinNode') return node.nodes!.flatMap((child) => {
     const value = evaluate(child);
     return Array.isArray(value) ? value : [value as number];

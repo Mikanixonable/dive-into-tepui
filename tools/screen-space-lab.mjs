@@ -123,9 +123,9 @@ export function candidateSeedOf(k, referencePasses) {
   return SEED_CELLS[index];
 }
 
-// 精細さの段。scale・bandCount・bandScale は src/render/pipeline/screen-space/screen-space-pass.ts の SCAN_SCALE・
-// BAND_COUNT・BAND_SCALE、sliceCount・stepCount は描画設定 screenSpaceSliceCount・screenSpaceStepCount の低・中・高の
-// プリセット(setScan へ渡るもの)。
+// 精細さの段。bandScale は src/render/pipeline/screen-space/screen-space-pass.ts の BAND_SCALE、
+// scale・bandCount・sliceCount・stepCount は描画設定 screenSpaceScanScale・screenSpaceBandCount・
+// screenSpaceSliceCount・screenSpaceStepCount の低・中・高のプリセット(setScan へ渡るもの)。
 export const TIERS = {
   low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 0.38 },
   medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 0.38 },
@@ -416,6 +416,21 @@ function labOf(devTools) {
       await devTools.evaluate('delete window.__ssdFloat');
       return out;
     },
+    // 直前の走査の帯 band の ΔE(rgb、画素ごとに 3 成分)の Float32Array。
+    async readBand(band) {
+      const [width, height] = await devTools.evaluate(`window.renderLab.readBand(${band})
+        .then(({ width, height, rgba }) => {
+          const packed = new Float32Array(width * height * 3);
+          for (let p = 0; p < width * height; p++) {
+            for (let k = 0; k < 3; k++) packed[p * 3 + k] = rgba[p * 4 + k];
+          }
+          window.__ssdFloat = packed;
+          return [width, height];
+        })`);
+      const out = await receiveFloats(devTools, 'window.__ssdFloat', width * height * 3);
+      await devTools.evaluate('delete window.__ssdFloat');
+      return out;
+    },
     async signedCorrectionPng(image) {
       await sendArray(devTools, 'window.__ssdCorrectionImage', image.rgba);
       const dataUrl = await devTools.evaluate(`window.renderLab.signedCorrectionPng({
@@ -628,18 +643,20 @@ export function linearOfPng(png) {
   return linearOfSrgbCodes(data, channels, WIDTH * HEIGHT);
 }
 
-// .render-lab/ を開いた Chrome の上で work(lab) を走らせる。
-export async function withLab(work) {
-  const session = await openChromeSession({ serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-render-lab-ss-' });
+// .render-lab/ を開いた Chrome の上で work(lab, devTools) を走らせる。onEvent は CDP のイベントの受け手、initScript は
+// ページを開く前に走らせる式(ページの内側の観測を仕込む)。
+export async function withLab(work, { onEvent, initScript } = {}) {
+  const session = await openChromeSession({ serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-render-lab-ss-', onEvent });
   try {
     const { devTools } = session;
+    if (initScript !== undefined) await devTools.send('Page.addScriptToEvaluateOnNewDocument', { source: initScript });
     await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
     await waitFor(devTools,
       "(document.getElementById('error')?.textContent || typeof window.renderLab?.showShot === 'function')",
       'the render lab to initialise');
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
-    return await work(labOf(devTools));
+    return await work(labOf(devTools), devTools);
   } finally {
     await session.close();
   }

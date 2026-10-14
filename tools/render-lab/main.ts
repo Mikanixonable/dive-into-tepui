@@ -91,6 +91,7 @@ declare global {
       }>;
       writePackedBands: (index: number, rgba: Float32Array) => void;
       readFloat: (name: FloatTargetName) => Promise<FloatImage>;
+      readBand: (band: number) => Promise<FloatImage>;
       composite: (hdr: FloatImage) => Promise<FloatImage>;
       signedCorrectionDisplay: (hdr: FloatImage, exposureFactor?: number) => FloatImage;
       signedCorrectionPng: (hdr: FloatImage) => Promise<string>;
@@ -102,6 +103,7 @@ declare global {
         tiers: readonly ScanTier[], rounds: number,
       ) => Promise<readonly (readonly Readonly<Record<string, number>>[])[] | null>;
       screenSpaceShaders: () => Promise<readonly { readonly label: string; readonly wgsl: string }[]>;
+      screenSpaceBandLayout: () => readonly string[];
       clearScreenSpace: () => void;
       errorScales: readonly number[];
       falseStructureEpsilons: readonly number[];
@@ -378,6 +380,7 @@ async function init(): Promise<void> {
     takePassSums: (includeSquares) => view.takePassSums(includeSquares),
     writePackedBands: (index, rgba) => view.writePackedBands(index, rgba),
     readFloat: (name) => view.readFloat(name),
+    readBand: (band) => view.readBand(band),
     composite: (hdr) => view.composite(hdr),
     signedCorrectionDisplay: (hdr, exposureFactor) => view.signedCorrectionDisplay(hdr, exposureFactor),
     signedCorrectionPng: (hdr) => view.signedCorrectionPng(hdr),
@@ -385,6 +388,7 @@ async function init(): Promise<void> {
     measureTiers: (tiers, rounds) => view.measureTiers(tiers, rounds),
     measureTierRounds: (tiers, rounds) => view.measureTierRounds(tiers, rounds),
     screenSpaceShaders: () => view.screenSpaceShaders(),
+    screenSpaceBandLayout: () => view.screenSpaceBandLayout,
     clearScreenSpace: () => view.clearScreenSpace(),
     errorScales: ERROR_SCALES,
     falseStructureEpsilons: FALSE_STRUCTURE_EPSILONS,

@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import {
   abs, float, floor, getViewPosition, int, ivec2, log, max, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select, sign,
-  texture, uniform, vec3, vec4,
+  texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from './gbuffer';
 import { compositeMaterial } from './composite-material';
@@ -13,7 +13,7 @@ import { viewPositionAt } from './view-ray';
 import {
   CHAIN_DEBUG_TARGETS, type ChainDebugTarget, type ChainDebugTargetId, type DebugTargetId,
 } from './debug-target';
-import { unpackedBands } from './screen-space/band-pyramid';
+import { levelAt, type BandLayout } from './screen-space/band-pyramid';
 import { REFLECTION_LEVEL_COUNT } from './screen-space/reflection-denoise';
 import type { GBufferPass } from './gbuffer';
 import type { Exposure } from './exposure';
@@ -113,8 +113,8 @@ export class DebugComposites {
   // 帯と段なら黒。
   public material(view: DebugView): THREE.MeshBasicNodeMaterial {
     if (!isChainView(view)) return this.materials[view];
-    const { bandCount, mergesIntoCorrection } = this.screenSpacePass;
-    return this.chainMaterialsOf(bandCount, mergesIntoCorrection).get(view) ?? this.blankMaterial;
+    const { bandLayout, mergesIntoCorrection } = this.screenSpacePass;
+    return this.chainMaterialsOf(bandLayout, mergesIntoCorrection).get(view) ?? this.blankMaterial;
   }
 
   public signedCorrectionMaterial(source: THREE.Texture): THREE.MeshBasicNodeMaterial {
@@ -123,13 +123,13 @@ export class DebugComposites {
 
   // 帯の数 count で描いた帯と段の表示の合成マテリアル。その帯の数に無い帯と段は持たない。初めて引いたときに組む。
   private chainMaterialsOf(
-    count: number, mergesIntoCorrection: boolean,
+    layout: BandLayout, mergesIntoCorrection: boolean,
   ): ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial> {
-    const key = `${count}:${mergesIntoCorrection}`;
+    const key = `${JSON.stringify(layout)}:${mergesIntoCorrection}`;
     const existing = this.chainMaterials.get(key);
     if (existing !== undefined) return existing;
     const materials = new Map(CHAIN_DEBUG_TARGETS.flatMap((target) => {
-      const color = this.chainColor(target, count, mergesIntoCorrection);
+      const color = this.chainColor(target, layout, mergesIntoCorrection);
       return color === null ? [] : [[target.id, compositeMaterial(color, this.gbuffer.depthTexture)] as const];
     }));
     this.chainMaterials.set(key, materials);
@@ -138,7 +138,8 @@ export class DebugComposites {
 
   // 帯の数 count で描いた、帯と段の表示 target の色。補正は符号を色分けし、代表の面は法線を映す。その帯の数に無い
   // 帯と段と、書かれない段 0 の合流の均された割合(mergesIntoCorrection)は null。そのとき段 0 の合流は補正の描画先を映す。
-  private chainColor(target: ChainDebugTarget, count: number, mergesIntoCorrection: boolean): Vec4Node | null {
+  private chainColor(target: ChainDebugTarget, layout: BandLayout, mergesIntoCorrection: boolean): Vec4Node | null {
+    const count = layout.length;
     const corrections = this.diffuseCorrection;
     switch (target.kind) {
       // 段 level の描画先は、帯 level〜count − 1 を packedBands の並びで詰めて持つ。
@@ -146,8 +147,12 @@ export class DebugComposites {
       case 'reduced': {
         const { level, band } = target;
         if (band >= count) return null;
-        const packed = corrections.bandTarget(count, level).textures.map((source) => texture(source, screenUV));
-        return this.signedColor(unpackedBands(packed, count - level)[band - level]!);
+        const textures = corrections.bandTextures(layout, level);
+        const sourceSize = texture(textures[0]!).size(int(0)) as THREE.Node<'uvec2'>;
+        const texel = ivec2(floor(screenUV.mul(vec2(sourceSize))));
+        const { bands } = levelAt(textures, layout, level, texel, this.exposure.factor);
+        const value = bands[band - level]!;
+        return this.signedColor(value);
       }
       case 'representative':
         return target.level < count ? vec4(this.representativeNormal(target.level), 1) : null;
@@ -156,7 +161,7 @@ export class DebugComposites {
         if (target.level >= count - 1) return null;
         const direct = mergesIntoCorrection && target.level === 0;
         if (direct && target.kind === 'merged-share') return null;
-        const source = direct ? corrections.texture : corrections.mergedTarget(count, target.level).texture;
+        const source = direct ? corrections.texture : corrections.mergedTarget(layout, target.level).texture;
         const merged = texture(source, screenUV);
         return target.kind === 'merged'
           ? this.signedColor(merged.rgb)

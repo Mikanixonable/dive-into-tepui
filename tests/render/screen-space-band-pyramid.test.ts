@@ -1,11 +1,12 @@
 // 近傍拡散補正の段ごとの代表の選び方と、帯の縮小・粗い段からの拡大と合流を、テントの重み、面の数ごとの選び方、
 // 実効画素数の定義、合流の混合比の極限、一様な値の恒等で検査する。
 import * as assert from 'node:assert/strict';
-import { bool, float, ivec2, vec2, vec3 } from 'three/tsl';
+import { bool, float, floatBitsToUint, ivec2, uint, uintBitsToFloat, vec2, vec3 } from 'three/tsl';
 import {
-  effectivePixelsOf, mergedCorrection, packedReducedBands, packedTextureCount, tentNeighbors,
-  unpackedBands, weightedBands, type ParentPixel,
+  attachmentBytesOf, bandLayoutOf, effectivePixelsOf, levelTextureFormats, mergedCorrection, packedReducedBands,
+  scanBandsOf, tentNeighbors, unpackedBands, weightedBands, type ParentPixel,
 } from '../../src/render/pipeline/screen-space/band-pyramid';
+import * as THREE from 'three/webgpu';
 import { secondNearest } from '../../src/render/pipeline/screen-space/screen-space-input-pyramid';
 import { test } from '../harness';
 import { evaluateShaderNode } from './tsl-node-evaluator';
@@ -134,19 +135,65 @@ export function register(): void {
       for (let level = 1; level < count; level++) {
         const label = `${count} 帯の段 ${level}`;
         const values = Array.from({ length: count - level }, (_, band) => [band + 0.25, -band - 0.5, 3 * band + 1]);
-        const packed = packedReducedBands(values.map(vectorNode), float(37.5));
+        const packed = packedReducedBands(values.map(vectorNode), float(37.5), 'packed-half', float(1));
         // 帯の rgb と実効画素数の 1 チャンネルを持つ枚数。
         const textureCount = Math.ceil((3 * (count - level) + 1) / 4);
-        assert.strictEqual(packedTextureCount(count, level), textureCount, label);
         assert.strictEqual(packed.length, textureCount, label);
         const channels = packed.flatMap((value) => evaluateShaderNode(value) as number[]);
         const spare = channels.slice(3 * values.length, -1);
         assert.strictEqual(channels.at(-1), 37.5, label);
         assert.deepStrictEqual(spare, Array(spare.length).fill(0), label);
-        const unpacked = unpackedBands(packed, values.length).map((band) => evaluateShaderNode(band));
+        const unpacked = unpackedBands(packed, values.length)
+          .map((band) => evaluateShaderNode(band));
         assert.deepStrictEqual(unpacked, values, label);
       }
     }
+  });
+
+  test('screen space band pyramid: 描画先の byte cost と段の MRT 形式を数える', () => {
+    const rgba16 = { type: THREE.HalfFloatType, format: THREE.RGBAFormat };
+    const rgba32 = { type: THREE.UnsignedIntType, format: THREE.RGBAIntegerFormat };
+    assert.strictEqual(attachmentBytesOf([rgba16]), 8);
+    assert.strictEqual(attachmentBytesOf([rgba32]), 16);
+    assert.strictEqual(attachmentBytesOf([rgba32, rgba32]), 32);
+    assert.strictEqual(levelTextureFormats(7, 1, 'packed-word').length, 2);
+    assert.strictEqual(levelTextureFormats(7, 1, 'packed-half').length, 5);
+    assert.throws(() => attachmentBytesOf([{ type: THREE.FloatType, format: THREE.RGBAFormat }]), Error);
+  });
+
+  test('screen space band pyramid: 描画先の上限から段ごとの half と word を選ぶ', () => {
+    for (let count = 4; count <= 8; count++) {
+      assert.deepStrictEqual(bandLayoutOf(count, 128), Array(count).fill('packed-half'));
+      const expectedWords = count === 6 ? [0] : count === 7 ? [0, 1] : count === 8 ? [0, 1, 2] : [];
+      const layout = bandLayoutOf(count, 32);
+      assert.deepStrictEqual(layout.flatMap((format, level) => format === 'packed-word' ? [level] : []), expectedWords);
+      assert.ok(layout.every((format, level) =>
+        attachmentBytesOf(levelTextureFormats(count, level, format)) <= 32), `L=${count}`);
+    }
+    assert.throws(() => bandLayoutOf(8, 15), Error);
+  });
+
+  test('screen space band pyramid: word の μ-law を 11・11・10 bit 精度内で戻し、実効画素数を bitcast する', () => {
+    const bands = [[80, -120, 200], [-160, 100, 0]] as const;
+    const packed = packedReducedBands(bands.map(vectorNode), float(37.5), 'packed-word', float(1));
+    const decoded = scanBandsOf(packed, bands.length, 'packed-word', float(1)).map(componentsOf);
+    assert.strictEqual(packed.length, 1);
+    const packedWords = componentsOf(packed[0]!);
+    assert.strictEqual(evaluateShaderNode(uintBitsToFloat(uint(packedWords[2]!))), 37.5);
+    assert.strictEqual(evaluateShaderNode(uintBitsToFloat(floatBitsToUint(float(0)))), 0);
+    for (const [band, values] of decoded.entries()) {
+      for (const [channel, value] of values.entries()) {
+        const expected = bands[band]![channel]!;
+        if (expected === 0) assert.strictEqual(value, 0, `word ${band}:${channel}`);
+        else {
+          assert.ok(131072 * Math.abs(expected / Math.PI) / 256 >= 20);
+          const bits = channel === 2 ? 10 : 11;
+          const tolerance = Math.log(1 + 131072) / (2 * (2 ** (bits - 1) - 1)) * 1.01;
+          assert.ok(Math.abs((value - expected) / expected) <= tolerance, `word ${band}:${channel}: ${value} / ${expected}`);
+        }
+      }
+    }
+    assert.strictEqual(packedWords.length, 4);
   });
 
   test('screen space band pyramid: 合流は、粗い段の C が一様で T と等しければ、面の重みと実効画素数によらず D + T を返す', () => {

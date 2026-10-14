@@ -4,8 +4,8 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, float, floor, fract, getViewPosition, ivec2, mrt, screenSize, screenUV, select, texture, textureLoad, uint, uniform,
-  vec3, vec4,
+  Fn, If, float, floor, fract, getViewPosition, ivec2, mrt, screenSize, screenUV, select, texture, textureLoad, uint,
+  uniform, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
@@ -16,7 +16,7 @@ import { lambertianRadianceAt } from '../material-pass';
 import {
   gbufferUVOf, projectedRadius, resolvesNearby, scanHemisphere, type PlanetIllumination,
 } from './hemisphere-scan';
-import { BandPyramid, packedBands } from './band-pyramid';
+import { BandPyramid, bandLayoutOf, packedBands, type BandFormat, type BandLayout } from './band-pyramid';
 import { CorrectionReconstruction } from './correction-reconstruction';
 import { QReconstruction } from './q-reconstruction';
 import { ScreenSpaceInputPyramid, levelExtent } from './screen-space-input-pyramid';
@@ -53,14 +53,20 @@ export interface ScanTier {
   readonly bandScale: number;
 }
 
-// 帯の数、帯の座標の尺度 κ。走査の解像度とスライス数と歩数と組んで段にする。
-// TODO: 帯の数と尺度は仮置き。費用と画質の指標の実測から選び直す。
-const BAND_COUNT = 4;
+// 帯の座標の尺度 κ。走査の解像度・スライス数・歩数・帯の数と組んで段にする。
+// TODO: 帯の尺度は仮置き。費用と画質の指標の実測から選び直す。
 const BAND_SCALE = 0.38;
+// デバイス上限を読めない場合(renderer をスタブにしたテストなど)に使う WebGPU の既定値 [byte/sample]。
+const DEFAULT_ATTACHMENT_BYTE_LIMIT = 32;
 
-// 解像度 scale・スライス sliceCount 本・片側 stepCount 歩の走査の段。
-function scanTierOf(scale: number, sliceCount: number, stepCount: number): ScanTier {
-  return { scale, sliceCount, stepCount, bandCount: BAND_COUNT, bandScale: BAND_SCALE };
+// renderer.backend から必要な WebGPU の描画先上限を読むための構造型。
+interface WebGpuAttachmentLimitsBackend {
+  readonly device?: { readonly limits?: { readonly maxColorAttachmentBytesPerSample?: number } };
+}
+
+// 解像度 scale・スライス sliceCount 本・片側 stepCount 歩・帯 bandCount 個の走査の段。
+function scanTierOf(scale: number, sliceCount: number, stepCount: number, bandCount: number): ScanTier {
+  return { scale, sliceCount, stepCount, bandCount, bandScale: BAND_SCALE };
 }
 
 // 疎な拡大の回転が読むブルーノイズのずれ [タイルの幅]。走査の 0・½・27/64 との差がタイルの自己相関の小さい所に
@@ -145,6 +151,8 @@ export class ScreenSpacePass {
   private experiment: { readonly variant: ScreenSpaceExperimentVariant; readonly sparseTapCount: number } | null = null;
   // 空へ戻すときに退避する消去色。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
+  // device.limits.maxColorAttachmentBytesPerSample。取得できなければ WebGPU の既定値。
+  private readonly deviceAttachmentByteLimit: number;
 
   // lightPrepass は照り返しの源になる面の遠方の拡散照度、planetLight は塞がれ方を数える天体照の球冠の出どころ。
   // planetLight と ambient は受け手へ届く遠方の拡散光でもある。output は結果の描画先。mode は構築時点の方式、
@@ -154,14 +162,17 @@ export class ScreenSpacePass {
     private readonly lightPrepass: LightPrepass,
     private readonly planetLight: PlanetLightSource, private readonly ambient: AmbientSource,
     private readonly output: DiffuseCorrection, private readonly gpu: GpuTimings,
-    private mode: ScreenSpaceDiffuse, scale: number, sliceCount: number, stepCount: number,
+    private mode: ScreenSpaceDiffuse, scale: number, sliceCount: number, stepCount: number, bandCount: number,
+    private readonly exposureFactor: FloatNode,
   ) {
-    this.tier = scanTierOf(scale, sliceCount, stepCount);
+    this.deviceAttachmentByteLimit = (renderer.backend as WebGpuAttachmentLimitsBackend).device?.limits
+      ?.maxColorAttachmentBytesPerSample ?? DEFAULT_ATTACHMENT_BYTE_LIMIT;
+    this.tier = scanTierOf(scale, sliceCount, stepCount, bandCount);
     // 走査の解像度の面の読み手と、段ごとの代表の面・帯・再構成を組む。
     this.sample = new ShadingSample(gbuffer, this.gbufferUV);
     const weight = new SurfaceWeight(gbuffer, this.projection, this.projectionInverse, this.fullSize);
     this.surfaces = new ScreenSpaceInputPyramid(gbuffer, this.projectionInverse, this.fullSize, this.scanSize);
-    this.bandPyramid = new BandPyramid(this.surfaces, weight, this.fullSize, this.scanSize);
+    this.bandPyramid = new BandPyramid(this.surfaces, weight, this.fullSize, this.scanSize, this.exposureFactor);
     this.reconstruction = new CorrectionReconstruction(
       weight, this.surfaces, this.fullSize, this.scanSize, this.projection, this.upsampleAlphaOne,
     );
@@ -178,9 +189,11 @@ export class ScreenSpacePass {
 
   // いまの段で補正を分ける帯の数。
   public get bandCount(): number { return this.tier.bandCount; }
+  // いまの段の描画先に合わせた、走査・縮小段の描画命令。
+  public get bandLayout(): BandLayout { return bandLayoutOf(this.tier.bandCount, this.deviceAttachmentByteLimit); }
 
   // いまの段が走査を描画バッファの解像度で行い、段 0 の合流が最後の拡大を介さず補正の描画先へ直接書くか。このとき段 0 の
-  // 合流の描画先(DiffuseCorrection.mergedTarget(count, 0))は書かれない。帯が 1 つなら合流が無いので常に偽。
+  // 合流の描画先(DiffuseCorrection.mergedTarget(layout, 0))は書かれない。帯が 1 つなら合流が無いので常に偽。
   public get mergesIntoCorrection(): boolean { return this.tier.scale === 1 && this.tier.bandCount > 1; }
 
   public get experimentOutputTarget(): THREE.RenderTarget {
@@ -196,9 +209,9 @@ export class ScreenSpacePass {
     this.mode = mode;
   }
 
-  // 次の render から解像度 scale・スライス sliceCount 本・片側 stepCount 歩で走査する。
-  public setScan(scale: number, sliceCount: number, stepCount: number): void {
-    this.tier = scanTierOf(scale, sliceCount, stepCount);
+  // 次の render から解像度 scale・スライス sliceCount 本・片側 stepCount 歩・帯 bandCount 個で走査する。
+  public setScan(scale: number, sliceCount: number, stepCount: number, bandCount: number): void {
+    this.tier = scanTierOf(scale, sliceCount, stepCount, bandCount);
   }
 
   // 次の render から段 tier で走査する。次に setScan を呼ぶまで保つ。
@@ -322,34 +335,36 @@ export class ScreenSpacePass {
   private currentStages(): readonly ScreenSpaceStage[] {
     if (this.mode === SCREEN_SPACE_DIFFUSE.off) return [];
     if (this.experiment !== null) return this.experimentStages(this.experiment.variant, this.experiment.sparseTapCount);
-    return this.stagesOf(this.tier.bandCount).ranges[this.stageRange][this.mode];
+    return this.stagesOf(this.tier, this.bandLayout).ranges[this.stageRange][this.mode];
   }
 
   private experimentStages(variant: ScreenSpaceExperimentVariant, sparseTapCount: number): readonly ScreenSpaceStage[] {
-    const cacheKey = `${variant}:${this.tier.bandCount}:${sparseTapCount}`;
+    const layout = this.bandLayout;
+    const cacheKey = `${variant}:${JSON.stringify(layout)}:${sparseTapCount}`;
     const cached = this.experimentStagesByKey.get(cacheKey);
     if (cached !== undefined) return cached;
-    const count = this.tier.bandCount;
     if (variant === 'raw-full') {
       const stages = [this.indirectSurfaceStage,
-        this.createScanStage(1, this.surfaces.radianceTexture, this.output.target, true)];
+        this.createScanStage(1, this.surfaces.radianceTexture, this.output.target, layout[0]!, true)];
       this.experimentStagesByKey.set(cacheKey, stages);
       return stages;
     }
-    const scan = this.stagesOf(count).ranges.scan[SCREEN_SPACE_DIFFUSE.indirect];
-    if (variant === 'band') return this.stagesOf(count).ranges.all[SCREEN_SPACE_DIFFUSE.indirect];
+    const scan = this.stagesOf(this.tier, layout).ranges.scan[SCREEN_SPACE_DIFFUSE.indirect];
+    if (variant === 'band') return this.stagesOf(this.tier, layout).ranges.all[SCREEN_SPACE_DIFFUSE.indirect];
     if (variant === 'raw-quarter') {
-      const stages = [...scan, this.createStochasticUpsampleStage(this.output.bandTarget(count, 0).textures[0]!)];
+      if (layout[0] === 'packed-word') throw new Error('screen-space: raw-quarter cannot sample packed scan words');
+      const stages = [...scan, this.createStochasticUpsampleStage(this.output.bandTarget(layout, 0).textures[0]!)];
       this.experimentStagesByKey.set(cacheKey, stages);
       return stages;
     }
+    if (layout[0] === 'packed-word') throw new Error('screen-space: q cannot sample packed scan words');
     const [first, second, denoised] = this.qTargetsOf();
     const firstRotation = this.blueNoise.atScreenPixel(this.seed.add(36 / 64));
     const secondRotation = this.blueNoise.atScreenPixel(this.seed.add(61 / 64));
     const stages = [
       ...scan,
       this.createDenoiseStage(first!,
-        () => this.qReconstruction.sparseDenoised(this.output.bandTarget(count, 0).textures[0]!, firstRotation, sparseTapCount)),
+        () => this.qReconstruction.sparseDenoised(this.output.bandTarget(layout, 0).textures[0]!, firstRotation, sparseTapCount)),
       this.createDenoiseStage(second!,
         () => this.qReconstruction.sparseDenoised(first!.texture, secondRotation, sparseTapCount)),
       this.createDenoiseStage(denoised!, () => this.qReconstruction.denseDenoised(second!.texture)),
@@ -360,16 +375,19 @@ export class ScreenSpacePass {
   }
 
   // 帯の数 count と、いまの段の mergesIntoCorrection で決まる描画命令。初めて引いたときに組み、以後は同じものを返す。
-  private stagesOf(count: number): BandCountStages {
+  private stagesOf(tier: ScanTier, layout: BandLayout): BandCountStages {
+    const { bandCount: count } = tier;
+    const format = layout[0]!;
     const intoCorrection = this.mergesIntoCorrection;
-    const key = `${count}:${intoCorrection}`;
+    const key = `${JSON.stringify(layout)}:${intoCorrection}`;
     const built = this.stagesByKey.get(key);
     if (built !== undefined) return built;
-    const occlusionScan = this.createScanStage(count, null);
-    const indirectScan = this.createScanStage(count, this.surfaces.radianceTexture);
+    const scanTarget = this.output.bandTarget(layout, 0);
+    const occlusionScan = this.createScanStage(count, null, scanTarget, format);
+    const indirectScan = this.createScanStage(count, this.surfaces.radianceTexture, scanTarget, format);
     // 走査より後の段は方式によらないので、両方の方式で同じ描画命令を使う。
-    const chain = this.createChainStages(count, intoCorrection);
-    const upsample = intoCorrection ? [] : [this.createUpsampleStage(count)];
+    const chain = this.createChainStages(count, intoCorrection, layout);
+    const upsample = intoCorrection ? [] : [this.createUpsampleStage(layout)];
     const scans: ModeStages = {
       [SCREEN_SPACE_DIFFUSE.occlusion]: [this.occlusionSurfaceStage, occlusionScan],
       [SCREEN_SPACE_DIFFUSE.indirect]: [this.indirectSurfaceStage, indirectScan],
@@ -393,7 +411,7 @@ export class ScreenSpacePass {
   // 受け手へ届く遠方の拡散光のうち塞がれた照度と照り返しの差を、帯の数 count の帯ごとに求めて詰めて書く、走査の
   // 描画命令を組む。radiance は照り返しの源の放射輝度で、null なら照り返しを集めない。
   private createScanStage(
-    count: number, radiance: THREE.Texture | null, target = this.output.bandTarget(count, 0), directCorrection = false,
+    count: number, radiance: THREE.Texture | null, target: THREE.RenderTarget, format: BandFormat, directCorrection = false,
   ): ScreenSpaceStage {
     // 丸めのずれのタイルのずれ 27/64 は、歩みのずれ(½)と画素ごとに相関しないものを実測で選んだ。
     const whiteAt = (component: number): FloatNode => whiteNoiseAt(this.scanPixel, uint(this.whiteNoisePass), component);
@@ -413,29 +431,29 @@ export class ScreenSpacePass {
         this.ambient.irradiance(this.sample), planets, radiance,
         { count, scale: this.bandScale },
       );
-      return directCorrection ? [vec4(corrections[0]!, float(1))] : packedBands(corrections);
+      return directCorrection ? [vec4(corrections[0]!, float(1))] : packedBands(corrections, format, this.exposureFactor);
     });
     return { material, target, gpuPass: GPU_PASS.nearbyDiffuseScan };
   }
 
   // 帯の数 count の、帯の縮小(段 1..count − 1)→ 拡大と合流(段 count − 2..0)の描画命令の列。intoCorrection なら段 0 の
   // 合流は補正の描画先へ直接書く(走査が描画バッファの解像度で、最後の拡大を組まないとき)。
-  private createChainStages(count: number, intoCorrection: boolean): ScreenSpaceStage[] {
-    const reduce = Array.from({ length: count - 1 }, (_, index): ScreenSpaceStage => {
-      const level = index + 1;
-      const target = this.output.bandTarget(count, level);
-      const finer = this.output.bandTarget(count, level - 1).textures;
-      const material = multiOutputMaterial(target, () => this.bandPyramid.reduced(finer, count, level));
-      return { material, target, gpuPass: GPU_PASS.nearbyDiffuseBandReduce };
-    });
+  private createChainStages(count: number, intoCorrection: boolean, layout: BandLayout): ScreenSpaceStage[] {
+    const reduce: ScreenSpaceStage[] = [];
+    for (let level = 1; level < count; level++) {
+      const finer = this.output.bandTextures(layout, level - 1);
+      const target = this.output.bandTarget(layout, level);
+      const material = multiOutputMaterial(target, () => this.bandPyramid.reduced(finer, layout, level));
+      reduce.push({ material, target, gpuPass: GPU_PASS.nearbyDiffuseBandReduce });
+    }
     const merge = Array.from({ length: count - 1 }, (_, index): ScreenSpaceStage => {
       const level = count - 2 - index;
       const direct = intoCorrection && level === 0;
-      const target = direct ? this.output.target : this.output.mergedTarget(count, level);
-      const coarse = this.output.mergedTexture(count, level + 1);
-      const coarseBands = this.output.bandTarget(count, level + 1).textures;
-      const own = this.output.bandTarget(count, level).textures;
-      const value = (): Vec4Node => this.bandPyramid.merged(coarse, coarseBands, own, count, level);
+      const target = direct ? this.output.target : this.output.mergedTarget(layout, level);
+      const coarse = this.output.mergedTexture(layout, level + 1);
+      const coarseBands = this.output.bandTextures(layout, level + 1);
+      const own = this.output.bandTextures(layout, level);
+      const value = (): Vec4Node => this.bandPyramid.merged(coarse, coarseBands, own, layout, level);
       // 段 0 の受け手は走査の受け手なので、走査と同じく補正を受けない受け手を 0 で塗る。補正の描画先の α は 1。
       const material = stageMaterial();
       const output = direct ? this.whereResolved(this.gbufferUV, () => vec4(value().rgb, 1))
@@ -448,8 +466,8 @@ export class ScreenSpacePass {
 
   // 帯の数 count の、走査の解像度の最後の拡大の前の補正を、描画バッファの解像度へ疎なタップで拡大する描画命令を組む。
   // 拡大は描画バッファの解像度の受け手で、補正を受けるかを測り直す。
-  private createUpsampleStage(count: number): ScreenSpaceStage {
-    const source = this.output.mergedTexture(count, 0);
+  private createUpsampleStage(layout: BandLayout): ScreenSpaceStage {
+    const source = this.output.mergedTexture(layout, 0);
     const rotation = this.blueNoise.atScreenPixel(this.seed.add(UPSAMPLE_ROTATION_SHIFT));
     const upsample = stageMaterial();
     upsample.mrtNode = mrt({ diffuseCorrection: this.whereResolved(screenUV,
@@ -512,7 +530,7 @@ export class ScreenSpacePass {
     this.surfaces.setSize(scanWidth, scanHeight);
     const levelSizes = Array.from({ length: tier.bandCount }, (_, level) =>
       [levelExtent(scanWidth, level), levelExtent(scanHeight, level)] as const);
-    this.output.setSize(tier.bandCount, levelSizes, width, height);
+    this.output.setSize(this.bandLayout, levelSizes, width, height);
     if (this.experiment?.variant === 'q') {
       for (const target of this.qTargetsOf()) target.setSize(scanWidth, scanHeight);
     }

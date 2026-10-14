@@ -1,43 +1,39 @@
 // render/pipeline/ の中間ターゲットを画面全体へ映すデバッグ表示の選択肢。
 
+import { GRAPHICS_FIELDS } from '../graphics-settings';
+
 // 近傍拡散補正の帯と段の表示。kind は中間ターゲットの種類 — band は走査が遮りの画面距離の帯ごとに書く補正、
 // representative は代表の面の縮小列、reduced は帯の縮小、merged は拡大と合流の出力。level は段、band は帯(帯を映す
-// 種類だけ)。並びは生成順(段の中の帯は帯の順)で、WebGPU の既定の上限で書ける帯の数 5 の帯と段まで並べる。帯の
-// 縮小の段 m は帯 m〜4 を持つ。
-export const CHAIN_DEBUG_TARGETS = [
-  { id: 'band-0', kind: 'band', level: 0, band: 0 },
-  { id: 'band-1', kind: 'band', level: 0, band: 1 },
-  { id: 'band-2', kind: 'band', level: 0, band: 2 },
-  { id: 'band-3', kind: 'band', level: 0, band: 3 },
-  { id: 'band-4', kind: 'band', level: 0, band: 4 },
-  { id: 'representative-0', kind: 'representative', level: 0 },
-  { id: 'representative-1', kind: 'representative', level: 1 },
-  { id: 'representative-2', kind: 'representative', level: 2 },
-  { id: 'representative-3', kind: 'representative', level: 3 },
-  { id: 'representative-4', kind: 'representative', level: 4 },
-  { id: 'reduced-1-band-1', kind: 'reduced', level: 1, band: 1 },
-  { id: 'reduced-1-band-2', kind: 'reduced', level: 1, band: 2 },
-  { id: 'reduced-1-band-3', kind: 'reduced', level: 1, band: 3 },
-  { id: 'reduced-1-band-4', kind: 'reduced', level: 1, band: 4 },
-  { id: 'reduced-2-band-2', kind: 'reduced', level: 2, band: 2 },
-  { id: 'reduced-2-band-3', kind: 'reduced', level: 2, band: 3 },
-  { id: 'reduced-2-band-4', kind: 'reduced', level: 2, band: 4 },
-  { id: 'reduced-3-band-3', kind: 'reduced', level: 3, band: 3 },
-  { id: 'reduced-3-band-4', kind: 'reduced', level: 3, band: 4 },
-  { id: 'reduced-4-band-4', kind: 'reduced', level: 4, band: 4 },
-  { id: 'merged-3', kind: 'merged', level: 3 },
-  { id: 'merged-share-3', kind: 'merged-share', level: 3 },
-  { id: 'merged-2', kind: 'merged', level: 2 },
-  { id: 'merged-share-2', kind: 'merged-share', level: 2 },
-  { id: 'merged-1', kind: 'merged', level: 1 },
-  { id: 'merged-share-1', kind: 'merged-share', level: 1 },
-  { id: 'merged-0', kind: 'merged', level: 0 },
-  { id: 'merged-share-0', kind: 'merged-share', level: 0 },
-] as const satisfies readonly (
-  | { readonly id: string; readonly kind: 'band' | 'reduced'; readonly level: number; readonly band: number }
-  | { readonly id: string; readonly kind: 'representative' | 'merged' | 'merged-share'; readonly level: number }
-)[];
-export type ChainDebugTarget = (typeof CHAIN_DEBUG_TARGETS)[number];
+// 種類だけ)。
+export type ChainDebugTarget =
+  | { readonly id: `band-${number}`; readonly kind: 'band'; readonly level: 0; readonly band: number }
+  | { readonly id: `representative-${number}`; readonly kind: 'representative'; readonly level: number }
+  | {
+    readonly id: `reduced-${number}-band-${number}`; readonly kind: 'reduced'; readonly level: number;
+    readonly band: number;
+  }
+  | { readonly id: `merged-${number}`; readonly kind: 'merged'; readonly level: number }
+  | { readonly id: `merged-share-${number}`; readonly kind: 'merged-share'; readonly level: number };
+
+// from 以上 to 未満の整数の並び。
+function range(from: number, to: number): number[] {
+  return Array.from({ length: to - from }, (_, offset) => from + offset);
+}
+
+const MAX_BAND_COUNT = GRAPHICS_FIELDS.screenSpace.knobs.screenSpaceBandCount.max;
+
+// 並びは生成順(段の中の帯は帯の順)で、描画設定の均しの段数の上限まで並べる。
+export const CHAIN_DEBUG_TARGETS: readonly ChainDebugTarget[] = [
+  ...range(0, MAX_BAND_COUNT).map((band): ChainDebugTarget => ({ id: `band-${band}`, kind: 'band', level: 0, band })),
+  ...range(0, MAX_BAND_COUNT).map((level): ChainDebugTarget => (
+    { id: `representative-${level}`, kind: 'representative', level })),
+  ...range(1, MAX_BAND_COUNT).flatMap((level) => range(level, MAX_BAND_COUNT).map((band): ChainDebugTarget => (
+    { id: `reduced-${level}-band-${band}`, kind: 'reduced', level, band }))),
+  ...range(0, MAX_BAND_COUNT - 1).reverse().flatMap((level): ChainDebugTarget[] => [
+    { id: `merged-${level}`, kind: 'merged', level },
+    { id: `merged-share-${level}`, kind: 'merged-share', level },
+  ]),
+];
 export type ChainDebugTargetId = ChainDebugTarget['id'];
 
 // 帯と段の表示 target の名前。

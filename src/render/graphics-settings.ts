@@ -222,6 +222,12 @@ export const GRAPHICS_FIELDS = {
         items: [[0.125, '1/8'], [0.25, '1/4'], [0.5, '1/2'], [1, '1']],
         presets: { low: 0.25, medium: 0.25, high: 0.25 },
       },
+      // 遠い帯ほど粗い段まで均す、鎖の段の数。
+      screenSpaceBandCount: {
+        kind: 'slider', label: '均しの段数',
+        min: 4, max: 8, step: 1,
+        presets: { low: 4, medium: 4, high: 4 },
+      },
       // 走査のスライスの数。
       screenSpaceSliceCount: {
         kind: 'slider', label: '走査のスライス数',
