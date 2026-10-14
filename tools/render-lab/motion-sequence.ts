@@ -77,7 +77,7 @@ export class MotionSequence {
   public async frame(columns: readonly MotionColumn[]): Promise<MotionFrameRecord> {
     // 平均の列は補正を描き直すので、そのフレームの 1 パスの補正・深度・カメラを先に読む。
     const capture = await this.view.captureSettled('motion frame');
-    const corrections = new Map<string, FloatImage>([[SINGLE_COLUMN, await this.view.readFloat('correction')]]);
+    const corrections = new Map<string, FloatImage>([[SINGLE_COLUMN, await this.view.readFloat('upsampled-correction')]]);
     const depth = await this.view.readFloat('depth');
     const camera = this.view.camera.clone();
     for (const { name, phases } of columns) {

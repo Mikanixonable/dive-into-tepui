@@ -30,7 +30,9 @@ export function register(): void {
     ] as const;
     before('bounce-source', chain[0]);
     for (const [index, id] of chain.slice(1).entries()) before(chain[index]!, id);
-    before(chain[chain.length - 1]!, 'correction');
+    before(chain[chain.length - 1]!, 'upsampled-correction');
+    before('upsampled-correction', 'correction');
+    before('correction', 'history-length');
     before('correction', 'diffuse');
     before('diffuse', 'direct-specular');
     before('direct-specular', 'far-specular');

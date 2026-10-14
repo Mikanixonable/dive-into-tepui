@@ -509,7 +509,7 @@ export class GamePresentation {
   // このフレームの sync が確定させたカメラで描く。まだ1度も sync していなければ何も描かない。
   public render(style: RenderStyle): void {
     if (this.cameraFrame === null) return;
-    this.devices.scene.pipeline.render(this.devices.scene.scene, this.cameraFrame.camera, style, this.motionFrame++);
+    this.devices.scene.pipeline.render(this.devices.scene.scene, this.cameraFrame.camera, style, this.motionFrame++, 0);
   }
 
   // 表示の導出が答える計測値。
