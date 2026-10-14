@@ -27,6 +27,7 @@ import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './e
 import { ERROR_SCALES, ErrorMetric, FALSE_STRUCTURE_EPSILONS, type ErrorMeasurement } from './error-metric';
 import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
 import { MotionSequence, type MotionFrameRecord } from './motion-sequence';
+import { LabPlayback } from './playback';
 import { MotionVectorCheck, type MotionVectorFrameRecord } from './motion-vector-check';
 import { JitterSweep, type SweepRecord } from './jitter-sweep';
 import { captureAccumulated } from './accumulated-capture';
@@ -282,6 +283,7 @@ async function init(): Promise<void> {
   const motionVectorCheck = new MotionVectorCheck(view);
   const sweep = new JitterSweep(view);
   const syncAngles = buildViewAngleSliders(view);
+  const playback = new LabPlayback(view, 'playback', 'temporal');
 
   const shotsRow = document.getElementById('shots')!;
   // 撮影のプルダウンを、いまのケースの撮影名で組み直す。反映は **applyShot を通す** — 観察の向きだけを
@@ -291,6 +293,7 @@ async function init(): Promise<void> {
     const columns: readonly [PulldownColumn<string>] = [{ items }];
     const shots = new Pulldown('撮影', columns, '反映', ([name]) => {
       view.applyShot(name);
+      playback.restart();
       targets.setSelected(view.debugTarget);
       syncAngles();
     });
@@ -301,6 +304,7 @@ async function init(): Promise<void> {
   const selectCase = (name: CaseName): void => {
     cases.setSelected(name);
     view.show(name);
+    playback.restart();
     syncAngles();
     rebuildShots();
   };
@@ -319,6 +323,7 @@ async function init(): Promise<void> {
     styles.setSelected(style);
     targets.setEnabled(style === 'realistic');
     view.setStyle(style);
+    playback.restart();
   };
   const styles = new SegmentedControl<RenderStyle>('スタイル', RENDER_STYLES, selectStyle);
   document.getElementById('modes')!.append(styles.element, targets.element);
@@ -327,16 +332,21 @@ async function init(): Promise<void> {
   const panel = new GraphicsPanel(settings.graphics.current, HIDDEN_GRAPHICS_KEYS);
   document.getElementById('graphics')!.appendChild(panel.element);
   panel.onChange = (selection) => settings.graphics.set(selection);
-  settings.graphics.subscribe((selection) => panel.sync(selection));
+  settings.graphics.subscribe((selection) => {
+    panel.sync(selection);
+    playback.refreshStatus();
+  });
 
   const loadButton = new Button('計測', () => { void measureCurrent(); });
   const loadResult = document.getElementById('load-result')!;
   document.getElementById('load-controls')!.appendChild(loadButton.element);
   const measureCurrent = async (): Promise<void> => {
+    const resumePlayback = playback.isPlaying;
     loadButton.setEnabled(false);
     loadResult.textContent = '計測中…';
     try {
-      const result = await view.measureCurrent();
+      await playback.pause();
+      const result = await view.measureCurrent(undefined, undefined, true);
       const table = document.createElement('table');
       const head = document.createElement('tr');
       for (const label of ['パス', 'median [ms]', 'p95 [ms]']) {
@@ -363,6 +373,8 @@ async function init(): Promise<void> {
     } catch (error) {
       loadResult.textContent = String(error);
     } finally {
+      playback.restart();
+      if (resumePlayback) playback.play();
       loadButton.setEnabled(true);
     }
   };
