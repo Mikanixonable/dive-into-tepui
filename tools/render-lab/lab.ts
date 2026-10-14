@@ -32,6 +32,7 @@ import { PassAccumulator } from './pass-accumulator';
 import { PRODUCTION_PHASE, type CorrectionPhase } from './phase-sequence';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
+import { captureAccumulated } from './accumulated-capture';
 import type { GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
 import type { StoredSetting } from '../../src/settings/stored-setting';
@@ -141,6 +142,8 @@ export class LabView {
   private frame = 0;
   // 前の論理フレームから、動きベクトルでは追えない変化の量 (0 = 変化なし、Infinity = 切り替え)。
   private change = 0;
+  // 本番の番号由来ジッターに使わせている源(null は走査の入力に触らせない)。
+  private activeJitterSources: readonly JitterSource[] | null = null;
   private selectedDebugTarget: DebugTargetId = 'off';
   // 画面全体の見せ方。起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
@@ -493,8 +496,10 @@ export class LabView {
     return this.measureCurrent(warmupFrames, sampleFrames);
   }
 
-  // 現在のケース・観察角・描画設定を保ったまま、CLI と同じ暖機と30標本で測る。
-  public async measureCurrent(warmupFrames = 6, sampleFrames = 30): Promise<LabMeasurement> {
+  // 現在のケース・観察角・描画設定を保ったまま測る。advanceFrame は履歴写しも標本へ含める。
+  public async measureCurrent(
+    warmupFrames = 6, sampleFrames = 30, advanceFrame = false,
+  ): Promise<LabMeasurement> {
     if (this.currentName === null) throw new Error('render-lab: no case selected for measurement');
     await this.gpu.waitForResolve();
     this.gpu.reset();
@@ -504,6 +509,11 @@ export class LabView {
     for (let frame = 0; frame < warmupFrames; frame++) {
       const displayTime = (frame + 1) / 60;
       this.current?.updateProteinMotion?.(displayTime);
+      if (advanceFrame) {
+        this.frame = frame;
+        this.change = frame === 0 ? Number.POSITIVE_INFINITY : 0;
+        this.current?.setFrame?.(frame);
+      }
       this.render(displayTime);
       await this.gpu.waitForResolve();
     }
@@ -516,6 +526,12 @@ export class LabView {
     for (let frame = 0; frame < sampleFrames; frame++) {
       const displayTime = (warmupFrames + frame + 1) / 60;
       const motionSample = this.current?.updateProteinMotion?.(displayTime);
+      if (advanceFrame) {
+        const logicalFrame = warmupFrames + frame;
+        this.frame = logicalFrame;
+        this.change = logicalFrame === 0 ? Number.POSITIVE_INFINITY : 0;
+        this.current?.setFrame?.(logicalFrame);
+      }
       this.render(displayTime);
       cpuSamples.push(this.lastRenderCpuMs);
       await this.gpu.waitForResolve();
@@ -655,8 +671,13 @@ export class LabView {
 
   // 次に描くフレームから、本番の番号由来ジッターに使う源を選ぶ。null は明示した走査値を保つ。
   public setJitterSources(sources: readonly JitterSource[] | null): void {
-    this.pipeline.screenSpace.setJitterSources(sources);
+    this.activeJitterSources = sources === null ? null : [...sources];
+    this.pipeline.screenSpace.setJitterSources(this.activeJitterSources);
   }
+
+  public get logicalFrame(): number { return this.frame; }
+  public get timeConstantFrames(): number { return this.resolvedGraphics.screenSpaceTimeConstant; }
+  public get jitterSources(): readonly JitterSource[] | null { return this.activeJitterSources; }
 
   // いまの段の走査の画素の幅 [描画バッファの画素]。
   public get scanCellSize(): number { return this.pipeline.screenSpace.scanCellSize; }
@@ -999,7 +1020,7 @@ export class LabView {
     const pngs: Record<string, string> = {};
     for (const shotName of this.shotNames) {
       this.applyShot(shotName, graphics);
-      pngs[shotName] = await this.captureSettled(shotName);
+      pngs[shotName] = await captureAccumulated(this, shotName);
     }
     return pngs;
   }
