@@ -57,6 +57,47 @@ export function register(): void {
     assert.strictEqual(MOTION_NO_HISTORY, 1e4);
   });
 
+  test('motion history: 射影の深度行は view offset と反転深度を保つ', () => {
+    for (const reversedDepth of [false, true]) {
+      for (const viewOffset of [false, true]) {
+        const camera = new THREE.PerspectiveCamera(50, 16 / 9, 0.1, 1000);
+        camera.coordinateSystem = THREE.WebGPUCoordinateSystem;
+        if (reversedDepth) Reflect.set(camera, '_reversedDepth', true);
+        if (viewOffset) camera.setViewOffset(1920, 1080, 120, 80, 960, 540);
+        camera.updateProjectionMatrix();
+        camera.updateMatrixWorld(true);
+
+        const history = new MotionHistory();
+        history.setFrame(0, camera);
+        const recorded = history.cameraRecord(camera)!.current;
+        const expected = camera.projectionMatrix.clone().multiply(camera.matrixWorldInverse);
+        for (const index of [2, 3, 6, 7, 10, 11, 14, 15]) {
+          assert.ok(Math.abs(recorded.elements[index]! - expected.elements[index]!) < 1e-12);
+        }
+        if (!viewOffset) assert.ok(recorded.equals(expected));
+      }
+    }
+  });
+
+  test('motion history: 射影行列を保ち、記録へ別の P×V を持つ', () => {
+    const history = new MotionHistory();
+    const camera = new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 1000);
+    camera.position.set(3, 2, 5);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    const projection = camera.projectionMatrix.clone();
+
+    history.setFrame(0, camera);
+    assert.ok(camera.projectionMatrix.equals(projection));
+    history.setFrame(1, camera);
+
+    const current = history.cameraRecord(camera)!.current;
+    const expected = camera.projectionMatrix.clone().multiply(camera.matrixWorldInverse);
+    assert.ok(camera.projectionMatrix.equals(projection));
+    assert.notStrictEqual(current, camera.projectionMatrix);
+    assert.ok(current.equals(expected));
+  });
+
   test('motion history: 番号が飛んだ物体更新でも最後の未変更 model を前として保つ', () => {
     const history = new MotionHistory();
     const camera = new THREE.PerspectiveCamera();
@@ -77,7 +118,7 @@ export function register(): void {
     assert.ok(frame7?.previous.equals(frame4));
 
     // 番号が 8 へ進んでも物の uniform が更新されなければ、シェーダは記録済み前 model を選ばない。
-    assert.strictEqual(useRecordedPreviousModel(frame7!.frame, 8), false);
+    assert.strictEqual(useRecordedPreviousModel(history.modelFrameFor(object, camera), 8), false);
     assert.ok(frame7?.current.equals(object.matrixWorld));
   });
 
@@ -101,6 +142,30 @@ export function register(): void {
     const frame1 = history.read(object, camera);
     assert.strictEqual(frame1?.frame, 1);
     assert.ok(frame1?.previous.equals(previousSequence));
+  });
+
+  test('motion history: reset logical frame uses monotonic serial', () => {
+    const history = new MotionHistory();
+    const camera = new THREE.PerspectiveCamera();
+    const staticObject = new THREE.Object3D();
+    const updatedObject = new THREE.Object3D();
+    camera.updateMatrixWorld(true);
+    staticObject.updateMatrixWorld(true);
+    updatedObject.updateMatrixWorld(true);
+
+    history.setFrame(0, camera);
+    history.read(staticObject, camera);
+    const recordedStaticSerial = history.modelFrameFor(staticObject, camera);
+
+    history.setFrame(1, camera);
+    history.read(updatedObject, camera);
+    history.setFrame(0, camera);
+    history.read(updatedObject, camera);
+    const currentSerial = history.modelFrameFor(updatedObject, camera);
+    history.setFrame(0, camera);
+    assert.strictEqual(history.modelFrameFor(updatedObject, camera), currentSerial);
+    assert.notStrictEqual(recordedStaticSerial, currentSerial);
+    assert.strictEqual(useRecordedPreviousModel(recordedStaticSerial, currentSerial), false);
   });
 
   test('motion history: 分割段は親を鍵にして履歴を共有する', () => {

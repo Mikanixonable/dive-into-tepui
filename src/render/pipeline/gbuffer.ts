@@ -77,7 +77,7 @@ export class GBufferPass {
     emissiveTex!.format = THREE.RGBAFormat;
     emissiveTex!.type = THREE.HalfFloatType;
     motionTex!.name = 'motion';
-    motionTex!.format = THREE.RGFormat;
+    motionTex!.format = THREE.RGBAFormat;
     motionTex!.type = THREE.HalfFloatType;
     // 深度は 32bit 浮動小数点。RenderTarget の深度が自動で depth32float になるのは
     // キャンバス直描きのときだけで、明示しないと depth24plus のまま — 絵は正常なのに
