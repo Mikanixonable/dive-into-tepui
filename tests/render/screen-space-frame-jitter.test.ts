@@ -2,7 +2,9 @@
 // 一巡で全ての位置を巡ることの不変条件で検査する。
 import * as assert from 'node:assert/strict';
 import { ivec2, vec2 } from 'three/tsl';
-import { frameJitterAt, type JitterSource } from '../../src/render/pipeline/screen-space/frame-jitter';
+import {
+  frameJitterAt, frameJitterForTimeConstant, type JitterSource,
+} from '../../src/render/pipeline/screen-space/frame-jitter';
 import { REPRESENTATIVE_STEPS, gbufferTexelOf } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import { test } from '../harness';
 import { evaluateShaderNode } from './tsl-node-evaluator';
@@ -24,6 +26,15 @@ function texelOf(
 }
 
 export function register(): void {
+  test('frame jitter: 時定数 1 は静止画の位相、長い時定数は指定源、null は変更なし', () => {
+    for (const frame of [0, 1, 7]) {
+      assert.deepEqual(frameJitterForTimeConstant(frame, BOTH, 1, 4), frameJitterAt(frame, [], 4));
+      assert.deepEqual(frameJitterForTimeConstant(frame, BOTH, 8, 4), frameJitterAt(frame, BOTH, 4));
+      assert.equal(frameJitterForTimeConstant(frame, null, 8, 4), null);
+    }
+    assert.throws(() => frameJitterForTimeConstant(0, BOTH, 0, 4), RangeError);
+  });
+
   test('frame jitter: フレーム 0 は、どの入力を動かしても本番の静止画(seed (0, 0)・代表はブロックの中心)に一致する', () => {
     for (const cellSize of CELL_SIZES) {
       const jitter = frameJitterAt(0, BOTH, cellSize);

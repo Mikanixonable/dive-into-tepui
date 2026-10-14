@@ -91,6 +91,8 @@ export class TemporalAccumulation {
   public get previousDepthTexture(): THREE.Texture { return this.target.textures[1]!; }
   public get previousNormalTexture(): THREE.Texture { return this.target.textures[2]!; }
   public get accumulation(): ScreenSpaceStage { return this.accumulationStage; }
+  // 現在の蓄積の時定数 [フレーム]。
+  public get timeConstantFrames(): number { return this.timeConstant.value; }
 
   // 履歴と前フレームの面を width × height へ合わせ、寸法が変われば true を返す。
   public setSize(width: number, height: number): boolean {

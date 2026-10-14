@@ -31,7 +31,7 @@ import { MotionVectorCheck, type MotionVectorFrameRecord } from './motion-vector
 import { JitterSweep, type SweepRecord } from './jitter-sweep';
 import { phasesOf, type PhaseSequence } from './phase-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
-import type { ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
+import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
 import type {
@@ -126,6 +126,7 @@ declare global {
       ) => Promise<Float32Array>;
       stochasticUpscale: (scan: Float32Array, geometry: SurfaceGeometry, block: number) => Promise<Float32Array>;
       setScanJitter: (jitter: ScanJitter | null) => void;
+      setJitterSources: (sources: readonly JitterSource[] | null) => void;
       setRasterJitter: (offsetPx: readonly [number, number] | null) => void;
       scanCellSize: () => number;
       resetMotion: () => void;
@@ -429,6 +430,7 @@ async function init(): Promise<void> {
       (await planeSmoother()).sparseBilateral(rgb, geometry, radius, shift)),
     stochasticUpscale: async (scan, geometry, block) => (await planeSmoother()).stochasticUpscale(scan, geometry, block),
     setScanJitter: (jitter) => view.setScanJitter(jitter),
+    setJitterSources: (sources) => view.setJitterSources(sources),
     setRasterJitter: (offsetPx) => view.setRasterJitter(offsetPx),
     scanCellSize: () => view.scanCellSize,
     resetMotion: () => motion.reset(),
