@@ -33,7 +33,7 @@ import { PRODUCTION_PHASE, type CorrectionPhase } from './phase-sequence';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
 import type { GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
-import type { ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
+import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
@@ -207,6 +207,7 @@ export class LabView {
     private readonly gpu: GpuTimings,
     private readonly graphics: StoredSetting<GraphicsSelection>,
   ) {
+    this.pipeline.screenSpace.setJitterSources(null);
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
@@ -650,6 +651,11 @@ export class LabView {
   // 次に描くフレームから、近傍拡散補正の走査の代表を jitter で選ぶ。null はブロックの中心。
   public setScanJitter(jitter: ScanJitter | null): void {
     this.pipeline.screenSpace.setScanJitter(jitter);
+  }
+
+  // 次に描くフレームから、本番の番号由来ジッターに使う源を選ぶ。null は明示した走査値を保つ。
+  public setJitterSources(sources: readonly JitterSource[] | null): void {
+    this.pipeline.screenSpace.setJitterSources(sources);
   }
 
   // いまの段の走査の画素の幅 [描画バッファの画素]。

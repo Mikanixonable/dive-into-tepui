@@ -24,7 +24,7 @@ import { SurfaceWeight } from './surface-weight';
 import { TemporalAccumulation } from './temporal-accumulation';
 import { whiteNoiseAt } from './white-noise';
 import type { DiffuseCorrection } from './diffuse-correction';
-import type { ScanJitter } from './frame-jitter';
+import { frameJitterForTimeConstant, type JitterSource, type ScanJitter } from './frame-jitter';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
 import type { SunSource } from '../lighting/sun-source';
@@ -118,6 +118,8 @@ interface BandCountStages {
 export class ScreenSpacePass {
   // フレーム番号に応じて履歴を写し、蓄積の段を持つ。
   private readonly temporal: TemporalAccumulation;
+  // null は走査の入力を呼び出し側に任せる。
+  private jitterSources: readonly JitterSource[] | null = ['seed', 'scanRepresentative'];
   // 方式ごとの、段 0 の面の写しと源を書く描画命令。
   private readonly occlusionSurfaceStage: ScreenSpaceStage;
   private readonly indirectSurfaceStage: ScreenSpaceStage;
@@ -239,8 +241,21 @@ export class ScreenSpacePass {
     this.temporal.setTimeConstant(frames);
   }
 
-  // G バッファを描く前に、前回からの番号の進み方を蓄積へ渡す。
-  public beginFrame(frame: number, change: number): void { this.temporal.beginFrame(frame, change); }
+  // G バッファを描く前に毎フレーム呼ぶ。番号の進み方を蓄積へ渡し、動かす源があれば走査の入力をその番号の位相へ置く。
+  public beginFrame(frame: number, change: number): void {
+    this.temporal.beginFrame(frame, change);
+    const jitter = frameJitterForTimeConstant(
+      frame, this.jitterSources, this.temporal.timeConstantFrames, this.scanCellSize,
+    );
+    if (jitter === null) return;
+    this.setSeed(jitter.seed[0], jitter.seed[1]);
+    this.setScanJitter(jitter.scanJitter);
+  }
+
+  // null は走査の入力を呼び出し側に任せ、配列はフレームごとの位相源として使う。
+  public setJitterSources(sources: readonly JitterSource[] | null): void {
+    this.jitterSources = sources === null ? null : [...sources];
+  }
 
   // 次の render から段 tier で走査する。次に setScan を呼ぶまで保つ。
   public setTier(tier: ScanTier): void {

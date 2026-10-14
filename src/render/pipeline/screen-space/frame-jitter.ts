@@ -41,6 +41,18 @@ export function frameJitterAt(frame: number, sources: readonly JitterSource[], c
   return { seed, scanJitter };
 }
 
+// フレーム frame に置く走査の入力。時定数 timeConstant が 1 なら本番の静止画の値、源 sources が null なら置かない(null)、
+// それ以外は sources をその番号の位相で動かした値。
+export function frameJitterForTimeConstant(
+  frame: number, sources: readonly JitterSource[] | null, timeConstant: number, cellSize: number,
+): FrameJitter | null {
+  if (sources === null) return null;
+  if (!Number.isInteger(timeConstant) || timeConstant < 1) {
+    throw new RangeError(`frame jitter: invalid time constant ${timeConstant}`);
+  }
+  return frameJitterAt(frame, timeConstant > 1 ? sources : [], cellSize);
+}
+
 // 一辺 cellSize のブロックの中の位置を散らばる順に巡ったときの、index 番目の位置(ブロックの幅に対する割合)。index 0 は
 // ブロックの中心で、cellSize² フレームでブロックの全ての画素を 1 度ずつ巡る。
 function gridFractionAt(index: number, cellSize: number): readonly [number, number] {
