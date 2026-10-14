@@ -302,7 +302,7 @@ three の前例（`node_modules/three/`）: `src/nodes/accessors/VelocityNode.js
 | `src/render/graphics-settings.ts` | 描画設定「時定数」を今の表へ 1 項目（`graphics-settings-feature.md` の手順2 がノブへ畳む） |
 | `src/render/gpu-timings.ts` / `tests/render/gpu-timings.test.ts` | 蓄積の行（実行順に「近傍拡散拡大」の後） |
 | `src/render/pipeline/debug-target.ts` / debug-composites / `tests/render/debug-target.test.ts` | 蓄積の前の補正と、履歴の長さのデバッグ表示 |
-| `tools/render-lab/lab.ts`（`captureSettled`）・`motion-sequence.ts`（`reset`） | 履歴を消して決まったジッターの列で N フレーム積んだ 1 枚の撮影（着手時に決めること 3 の形）。動く絵の列の始めで履歴を消す |
+| `tools/render-lab/lab.ts`（`captureSettled`）・`motion-sequence.ts`（`reset`） | 履歴を消して決まったジッターの列で N フレーム積んだ 1 枚の撮影（着手時に決めること 3 の形）。動く絵の列の始めで履歴を消す。**動く絵の列はフレームごとに `setFrame` で番号を進める**（いまの `MotionSequence` は番号を進めずに描くので、動きベクトルも履歴も回らない） |
 
 **達成条件** — 着手時に決めたことの結論（原文のまま）を判断材料へ。達成目標5（時定数を最小にした撮影が封筒内）。commit
 （`feat(render): 近傍拡散補正を時間方向に蓄積する`）。`npm run typecheck` / `npm run check:boundaries` / `npm run test:render` / `npm run test:settings`。
