@@ -181,6 +181,14 @@ three 0.185.1 の読みは `node_modules/three/src/` の行番号で、`f10576e8
     収まった）。(b) 行列が変わらない物は前フレームに描かれたかを確かめられない — 隠れていた静止物が同じ行列で再び出たフレームは、棄却の
     印ではなくカメラの動きだけの動きになる（幾何としては正しい。浮動原点のゲームでは、ほとんどの物が毎フレーム行列を変える）。
     覆すと: MRT の名前を `velocity` にして全物を毎回更新させる（決めたこと 15 の費用を払う）か、物ごとの番号を storage へ置く形に作り直す。
+29. **履歴の棄却のため、動きの添付に前フレームの深さを足す（rg16f → rgba16f）**（2026-10-14、エージェント）。`SurfaceWeight` の流用
+    （決めたこと 23）は、前フレームの面と今の面を同じ座標で比べることになる。しかしパイプラインはフレームの間のカメラの並進を知らない
+    （ゲームは浮動原点で、カメラは常に原点にあり、並進は物ごとの model 行列にだけ入っている）。また 2 次元の動きベクトルには深さが無い。
+    前フレームの面を今のカメラの回転だけで今の向きへ戻すと、並進のぶん（面に沿わない成分）が接平面からの距離の誤差になる。近くの物を
+    1 px/フレームで周回すると足跡 1 つほどで、ふつうのカメラの動きで履歴が落ちる。lab の `world`（カメラが並進する）と `floating` でも
+    結果が食い違う。そこで、動きのシェーダが既に求めている前の clip から、前フレームでの深さを添付の b に書き、比較を前フレームの座標の
+    中で厳密にする。費用は 1 標本 4 B（26 → 30 B。上限 32 B の内）と 1080p で約 7.9 MiB。覆すと: 回転だけで戻す近似にし、許容を
+    広げて並進の誤差を飲む（周回の速い列で履歴が落ちるのを受け入れる）。
 ### 前提として守る契約
 
 並行する拡散側の作業（`screenspace-source.md`・手順9〜11）と衝突させないため。
@@ -195,6 +203,8 @@ three 0.185.1 の読みは `node_modules/three/src/` の行番号で、`f10576e8
   決め、1/4 に決め打たない（拡散側の手順9 が走査の解像度を 1/2・1・1/8 にする。1 で消える）。
 - **動きベクトルは G バッファに 1 枚足す。** いまの 4 枚（rg16f・r8・rgba16f・rgba16f）で 1 標本あたり約 22 B、rg16f を足して約 26 B で、
   WebGPU の既定の上限 32 B（`maxColorAttachmentBytesPerSample`）に収まる。`requiredLimits` は触らない（拡散側の手順10 が触る）。
+  手順5-3 で rgba16f に広げ、b に前フレームでの深さを書く（決めたこと 29。30 B — 上限の内。拡散側が添付を足すなら、取り込むときに
+  合計を確かめる）。
   **動きベクトルにジッターを含めない**（前後ともジッターなしの射影で写す） — Backlog のラスタライズのジッターを足すときに書き直さない。
   MRT の名前は `motion`（決めたこと 15）。
 - **描画パイプラインはフレーム番号を受ける**（`RenderPipeline.render` の引数。決めたこと 14）。同じ番号で呼び直すと、動きベクトルの記録を
@@ -228,24 +238,12 @@ export type ScanJitter =
 // 次の render から、走査の代表をこう選ぶ。null はいまの選び方(ブロックの中心)。
 public setScanJitter(jitter: ScanJitter | null): void;
 
-// RenderPipeline（変更の案。手順5。決めたこと 25・26・28）
+// RenderPipeline（変更の案。手順5-1。決めたこと 25・26・28）
 // change は前のフレームから動きベクトルでは追えない変化の量 d(0 = 変化なし、Infinity = カメラの切り替え)。同じ frame で
 // 呼び直したときは読まない。
 public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, frame: number, change: number): void;
 
-// src/render/pipeline/screen-space/temporal-accumulation.ts（案。手順5）
-export class TemporalAccumulation {
-  public constructor(renderer: WebGPURenderer, gbuffer: GBufferPass, correction: DiffuseCorrection, gpu: GpuTimings);
-  // 最後の拡大の出力(蓄積の前)を履歴と混ぜて correction.target へ書く。G バッファと同じ寸法 width × height で呼ぶ。
-  // 履歴の上限は s / (1 + change)。frame が前回と同じなら前の番号の履歴から書き直し(履歴を進めない)、前回 + 1 でなければ履歴を捨てる。
-  public render(camera: THREE.Camera, width: number, height: number, frame: number, change: number): void;
-  // 次の render から、静止した場面(change = 0)での履歴の上限 s をこのフレーム数にする。1 なら履歴もジッターも使わない(蓄積の前と同じ絵)。
-  public setTimeConstant(frames: number): void;
-  public dispose(): void;
-}
-
-// DiffuseCorrection（追加の案。手順5）
-public readonly upsampledTarget: THREE.RenderTarget; // 最後の拡大の出力(蓄積の前)。rgb = ΔE
+// TemporalAccumulation と DiffuseCorrection.upsampledTarget は、手順5「新しい口の形」へ移した。
 ```
 
 ## 読むもの
@@ -332,8 +330,8 @@ three の前例（`node_modules/three/`）: `src/nodes/accessors/VelocityNode.js
    - **s の範囲と既定の仮置き** — 下端 1（履歴もジッターも使わない）。既定は 8 前後（手順3 の蓄積の模擬で、N = 8 の揺れが 0.03〜0.05）。
      上端は rgba16f の丸めで決まる — 1 フレームの更新 (x − h)/n が履歴 h の半 ulp（相対 2⁻¹²〜2⁻¹¹）を下回ると消えるので、1 パスの
      揺れ（σ/平均 0.13〜0.27）では数百フレームから更新が消え始める。範囲と既定は手順6 で決め直す。
-3. **撮影の再現性** — 決めたこと 28。同じ番号の描き直しは、前の番号の履歴から今の番号の結果を書き直す（前の履歴を壊さない — 履歴を
-   2 枚交互に使う形になる。`correction.target` を交互の片方にできるかを確かめる）。lab の静止画は番号 0〜s−1・番号 0 で d = ∞。
+3. **撮影の再現性** — 決めたこと 28。同じ番号の描き直しは、前の番号の履歴から今の番号の結果を書き直す（前の履歴を壊さない — 番号が
+   進んだときだけ、前の番号の出力を履歴へ写す。5-2）。lab の静止画は番号 0〜s−1・番号 0 で d = ∞。
 4. **カメラの切り替えで履歴を捨てる口** — `reset()` は作らず、d = ∞ で渡す（決めたこと 28）。手順5 でゲームが渡す d は、切り替えで ∞、
    それ以外は 0（決めたこと 27）。
 
@@ -369,24 +367,201 @@ three の前例（`node_modules/three/`）: `src/nodes/accessors/VelocityNode.js
 - **ジッターと動きベクトル** — three の `TRAANode` は Halton(2,3) のずれを `setViewOffset` で入れ、動きベクトルはジッターなしの射影で書く。
 - Split RC も 1 フレームと時間方向の蓄積の両方で評価している（組み合わせの前例）。
 
-**変更が必要な箇所**
+#### 段階の組み立て（2026-10-14、エージェント）
 
-| ファイル | 変更 |
-| --- | --- |
-| `src/render/pipeline/screen-space/`（新しいモジュール） | 履歴の描画先（描画バッファの解像度。rgb = ΔE、α = 履歴の長さ。同じ番号の描き直しのため 2 枚を交互に）、再投影して混ぜるパス（棄却は `SurfaceWeight`、上限は `s / (1 + d)`） |
-| `src/render/pipeline/screen-space/diffuse-correction.ts` | 最後の拡大の出力（蓄積の前）の描画先。`target` / `texture` は蓄積の後の値 |
-| `src/render/pipeline/screen-space/screen-space-pass.ts` | 最後の拡大の書き先を蓄積の前の描画先へ。フレーム番号で `frameJitterAt` を回し、s = 1 なら止める |
-| `src/render/pipeline/render-pipeline.ts` | `render` がフレーム番号と組で変化量 d を受け、蓄積へ渡す（実行順は変えない） |
-| `src/game/game-presentation.ts` ほか | `pipeline.render` へ d を渡す。カメラの切り替え（`camera-system.ts` の照準の出入り・注視の切り替え、`runtime/display-phase.ts` の戦闘とマップ）で ∞、ほかは 0（照明の要素は手順6） |
-| `src/render/graphics-settings.ts` | 描画設定「時定数」（静止した場面での上限 s）を今の表へ 1 項目（`graphics-settings-feature.md` の手順2 がノブへ畳む） |
-| `src/render/gpu-timings.ts` / `tests/render/gpu-timings.test.ts` | 蓄積の行（実行順に「近傍拡散拡大」の後） |
-| `src/render/pipeline/debug-target.ts` / debug-composites / `tests/render/debug-target.test.ts` | 蓄積の前の補正と、履歴の長さのデバッグ表示 |
-| `tools/render-lab/lab.ts`（`captureSettled`・`setFrame`）・`motion-sequence.ts`（`reset`） | 番号 0〜s−1 を d = ∞, 0, 0, … で描いた 1 枚の撮影（決めたこと 28）。lab の番号に d を添える口。動く絵の列の始めは d = ∞。**動く絵の列はフレームごとに `setFrame` で番号を進める**（いまの `MotionSequence` は番号を進めずに描くので、動きベクトルも履歴も回らない） |
+上から順に実施し、段階ごとに検証して commit する。**どの段階の終わりでも、ゲームの絵は壊れていない** — 5-2 までは蓄積が素通しで
+絵が変わらず、5-3 で積み始め、5-4 でジッターが入る（ジッターを蓄積より先に入れると、積まずに揺れる絵が commit に残る）。
 
-**達成条件** — 達成目標5（s = 1 の撮影が封筒内）。同じ番号で描き直した結果がバイト一致し、番号 0〜s−1 の撮影が前の撮影に依らない。
-d = ∞ のフレームで履歴が切れ、d = 0 の静止した列で n が s まで伸びる（デバッグ表示「履歴の長さ」）。commit
-（`feat(render): 近傍拡散補正を時間方向に蓄積する`）。`npm run typecheck` / `npm run check:boundaries` / `npm run test:render` /
-`npm run test:settings` / `npm run test:game`。
+| 段階 | 作るもの | 絵 |
+| --- | --- | --- |
+| 5-1 | d と s の受け口、番号の進み方と履歴の上限の式（CPU だけ） | 変わらない |
+| 5-2 | 蓄積の前の描画先・履歴・前フレームの面の写し、素通しの蓄積、デバッグ表示と GPU の行 | 変わらない（素通し） |
+| 5-3 | 再投影して混ぜるシェーダ（棄却と重み）。動きの添付に前フレームの深さを足す | 静止した場面で同じ絵へ収束する（ジッターが無いので） |
+| 5-4 | ジッターの本番の配線 | 積んだ絵が滑らかになる |
+| 5-5 | ゲームのカメラの切り替えで d = ∞ | — |
+| 5-6 | lab の積んだ撮影と、動く絵の列の番号送り。手順5 の達成確認 | — |
+
+**すでにあるもの**（手順3・4 で作った。作り直さない）
+
+- `frame-jitter.ts` の `frameJitterAt(frame, sources, cellSize)`（seed の R2 列と走査の代表の Bayer 順。フレーム 0 は本番の静止画と一致）、
+  `ScreenSpacePass.setSeed` / `setScanJitter` / `scanCellSize`、最後の拡大の写像の代表への追従（`correction-reconstruction.ts`）。
+  **無いのは本番の配線だけ** — いまは lab（`LabView.renderCorrection`・`phase-sequence.ts`）だけが呼ぶ（5-4）。
+- 動きベクトル（`gbuffer.motionTexture`。rg = 今の uv − 前の uv、uv の y は下向き。前が無い画素は両成分 `MOTION_NO_HISTORY` = 1e4 —
+  前の uv が画面の外になる）と、番号の記録（`MotionHistory.setFrame` — G バッファの描画の中で呼ばれる）。
+- `SurfaceWeight`（`surface-weight.ts`。受け手の接平面からの距離 / 足跡と法線の角で重みの指数を返す。同じフレームの G バッファの
+  面どうしを比べる作り — 5-3 で前フレームの面へ広げる）。
+
+**新しい口の形**（「新しい口の案」を段階に合わせて改めた。名前と置き場は CODING-RULE・ARCHITECTURE に当てて決め直してよい）
+
+```ts
+// src/render/pipeline/screen-space/temporal-accumulation.ts
+// 番号の進み方。repeat は同じ番号の描き直し、advance は前回 + 1、cut はそれ以外（初回・番号の飛び・change = ∞・描画先の確保し直し）。
+export type FrameStep = 'repeat' | 'advance' | 'cut';
+export function frameStepOf(previous: number | null, frame: number, change: number): FrameStep;
+// 履歴の上限 s / (1 + change)。1 未満は 1（change = ∞ で 1）。
+export function historyCapOf(timeConstant: number, change: number): number;
+
+export class TemporalAccumulation {
+  // G バッファを描く前に呼ぶ。advance なら前の番号の出力を履歴へ、前の番号の深度・法線を前フレームの面へ写し、このフレームの上限を
+  // 決める。repeat なら何もしない（最初に受けた change を使い続ける）。cut なら履歴を捨てる。
+  public beginFrame(frame: number, change: number): void;
+  // 最後の拡大の出力（蓄積の前）を履歴と混ぜて correction.target へ書く。
+  public render(camera: THREE.Camera, width: number, height: number): void;
+  public setTimeConstant(frames: number): void;
+  public dispose(): void;
+}
+// ScreenSpacePass が TemporalAccumulation を持ち、render の最後の段にする（ScreenSpacePass.render の意味「correction.target を作る」を
+// 保つ — lab の renderCorrection もそのまま蓄積を通る）。ScreenSpacePass.beginFrame(frame, change) が蓄積とジッター（5-4）へ配る。
+
+// DiffuseCorrection（追加。5-2）
+public readonly upsampledTarget: THREE.RenderTarget; // 最後の拡大の出力（蓄積の前）。rgb = ΔE
+```
+
+#### 5-1. d と s の受け口、番号の進み方と履歴の上限の式
+
+**目的** — 外から受ける 2 つの数（フレームごとの変化量 d と、描画設定の時定数 s）の通り道と、それを履歴の上限へ換える式を、GPU に
+触れずに作って単体テストで固める。
+
+**変更箇所**
+
+- `RenderPipeline.render(scene, camera, style, frame, change)` — `change` を足す。呼び出し元は `game-presentation.ts:512`（この段階では
+  0 を渡す。∞ は 5-5）と `tools/render-lab/lab.ts` の `render`（`LabView` が番号と組で d を持つ — `setFrame(frame, change = 0)`）。
+- `temporal-accumulation.ts` の `frameStepOf` と `historyCapOf`（純粋な関数）。
+- `graphics-settings.ts` の「遮蔽と照り返し」の組に、時定数 s（整数、範囲 1〜32、既定 8 — 仮置き。手順6 で決め直す）。この段階ではまだ
+  どこにも効かない。`rebuildForGraphics` から `ScreenSpacePass` へ渡す口だけ作る。
+
+**達成条件** — `frameStepOf`: 初回は cut、同じ番号は repeat、前回 + 1 は advance（change = ∞ なら cut）、それ以外は cut。`historyCapOf`:
+d = 0 で s、d = ∞ で 1、s = 1 で d によらず 1、d について単調に減る。
+
+**検証** — `npm run typecheck` / `npm run test:render`（式の単体テスト）/ `npm run test:settings` / `npm run test:game`（呼び出しの型）。
+
+**commit** — `feat(render): 描画パイプラインが変化量と時定数を受け、履歴の上限を求める`
+
+#### 5-2. 蓄積の描画先と、前フレームの写し（蓄積はまだ素通し）
+
+**目的** — 履歴まわりの描画先と、番号が進んだときの写しを先に作り、デバッグ表示で見えるようにする。混ぜる計算は入れない（素通し）ので、
+描画先の取り回しの誤りを、混ぜ方の誤りと切り分けて捕まえられる。
+
+**変更箇所**
+
+- `DiffuseCorrection.upsampledTarget`（rgba16f、描画バッファの解像度） — 最後の拡大の書き先をここへ移す。`target` / `texture` は
+  蓄積の後の値（rgb = ΔE、α = 履歴の長さ n。読む側は rgb だけを読むので変わらない）。
+- `TemporalAccumulation` の描画先 — 履歴（rgba16f。rgb = ΔE、α = n）と前フレームの面（深度と法線）。`beginFrame` が advance のときだけ、
+  `correction.target`（前の番号の最後の出力）→ 履歴、G バッファの深度・法線 → 前フレームの面、と写す。**写すのは番号が進んだときだけ**
+  なので、同じ番号の描き直しは同じ履歴を読み、何回描いても同じ結果になる（決めたこと 28）。前の番号の G バッファはまだ上書きされて
+  いない（`beginFrame` は G バッファの描画より前）。
+  - 深度（depth32float）は `copyTextureToTexture` で r32float へは写せない（形式が違う）。同じ形式の深度テクスチャへ写すか、全画面の 1 パスで
+    r32float へ書く。法線（rg16f）と履歴（rgba16f）は同じ形式なのでそのまま写せる。three の G バッファの深度に写しの元の用途が付いているかを
+    確かめる。
+  - 描画先を確保し直したフレーム（寸法の変化）と、方式を切り替えたフレームは cut として扱う（履歴の中身が無い）。
+- `render-pipeline.ts` — `screenSpacePass.beginFrame(frame, change)` を `_gbuffer.render` の前に 1 行足す。パスの実行順は変えない。
+- 素通しの蓄積パス — `upsampledTarget` を読んで `correction.target` へ (ΔE, 1) を書く。5-3 でこのパスを混ぜるシェーダへ育てる。
+- GPU の行 `gpu-timings.ts`「近傍拡散蓄積」（実行順に「近傍拡散拡大」の後）と、写しの行（`beginFrame`。G バッファの前）。
+  `tests/render/gpu-timings.test.ts`。
+- デバッグ表示 `debug-target.ts` / debug-composites — 「蓄積の前の補正」（`upsampledTarget`。補正と同じ見せ方）と「履歴の長さ」（n / s の
+  濃淡）。`tests/render/debug-target.test.ts`。
+- lab — `FloatTargetName` に `'upsampled-correction'`。**1 パスを読む道具は蓄積の前を読む**: `averageCorrection`・`jitter-sweep.ts`・
+  `MotionSequence` の single 列（いまは `'correction'` を読む。5-3 以降は `'correction'` が履歴と混ざる）。
+
+**達成条件** — `render-lab:compare` が蓄積の前の組と 0 件封筒外。`readFloat('correction')` の rgb と `readFloat('upsampled-correction')` の rgb が
+ビット一致。デバッグ表示が 2 つとも写る。新しい描画先の大きさ（1080p で）を判断材料「手順5 の実装」へ書く。
+
+**検証** — `npm run typecheck` / `npm run check:boundaries`（新しいモジュール）/ `npm run test:render`。
+
+**commit** — `feat(render): 近傍拡散補正の蓄積の描画先と、前フレームの写し`
+
+#### 5-3. 再投影して混ぜるシェーダ（棄却と重み）
+
+**目的** — 素通しの蓄積パスを、前フレームの位置から履歴を引き、面の重みで棄却し、履歴の長さで混ぜるパスにする。
+
+**変更箇所**
+
+- **動きの添付に、前フレームの深さを足す**（決めたこと 29） — `motion` を rg16f から rgba16f にし、b に「今の画素の点の、前フレームでの
+  深さ」を書く。rg（動き）と棄却の印は変えない。形は半精度で足跡の 1/10 より細かく表せるもの（例: 透視では、前と今の clip の w の比の
+  対数 — 1 に近い比の対数は半精度でも細かい）。添付の合計は 26 → 30 B（上限 32 B。`requiredLimits` は触らない）。
+- **棄却** — 前の uv = 今の uv − 動き。印（画面の外を指す）と、画面の外は棄却。前の uv の 2×2 の画素ごとに、`SurfaceWeight` の
+  重みの指数で受け入れる:
+  - 受け手は前フレームの面の画素（前の深度・前の法線・前の射影）、面は「今の画素の点を前フレームへ写した点」（前の uv・b の前の深さ・
+    今の法線をカメラの回転で前の向きへ戻したもの）。比べるのは前フレームの座標の中。`SurfaceWeight` を前フレームの面の描画先と前の射影で
+    組んだもう 1 つの実体にし、`exponentOf` に画素ではなく点（uv・深度・法線）を受ける形を足す。
+  - 許容は q-reconstruction と同じ（足跡 × 1・半分の重みの角 π/9）から始める。
+  - 前の射影とカメラの回転は `MotionHistory` のカメラの記録（ジッターを外した前の射影 × view）から取る。物の回転はカメラの回転に
+    入らないが、1 フレームの回転は小さく、法線の許容に収まる。
+- **混ぜ方** — 2×2 の重み w = 双線形の重み × 2^−指数。ΔE_履歴 = Σ w·ΔE / Σ w、n_履歴 = Σ w·n（棄却された画素の分だけ履歴の長さが縮む —
+  受け入れが連続に変わる。Σ w が 0 なら n_履歴 = 0）。n' = min(n_履歴 + 1, N_cap)、出力 = ΔE_履歴 + (ΔE_今 − ΔE_履歴) / n'、α = n'。
+  **n' ≤ 1 では履歴を読まずに ΔE_今 をそのまま書く**（select。`mix` の丸めや履歴のごみに頼らない — s = 1 の絵がビット一致するため）。
+- `render-lab-motion-vectors.mjs` の照合（手順4-3 の組から `casing-room` の並進・回転・周回 1 px と `object-motion`）を撮り直し、rg が
+  変わっていないこと。
+
+**達成条件**
+
+- s = 1 で `render-lab:compare` が蓄積の前の組と 0 件封筒外（達成目標5）。
+- d = 0 の静止した列で n が s まで伸びて止まり、出力が 1 パスと同じ値に留まる（ジッターが無いので積んでも同じ）。同じ番号の描き直しで
+  `'correction'` がビット一致。d = ∞ のフレームで全面の n が 1。
+- カメラの並進・回転・周回 1 px の列で、面のある画素のうち棄却された割合を、手順2 の参照の再投影が除いた割合（0.2〜0.6%）と並べる
+  — 平らな面で棄却が出ていれば許容が狭すぎる。`casing-room` の `object-motion` で、動く物の上の n が伸び、縁と現れた画素だけが短い
+  （デバッグ表示「履歴の長さ」）。タンパク質の画素は n = 1 のまま（決めたこと 20）。
+
+**検証** — `npm run typecheck` / `npm run test:render`。
+
+**commit** — `feat(render): 近傍拡散補正を、動きベクトルで引いた履歴と混ぜる`
+
+#### 5-4. 乱数を動かす（本番の配線）
+
+**目的** — すでにあるジッターの列（手順3）を、パイプラインが受けた番号で毎フレーム回す。
+
+**変更箇所**
+
+- `ScreenSpacePass.beginFrame` — s > 1 なら `frameJitterAt(frame, sources, scanCellSize)` を `setSeed` / `setScanJitter` へ、s = 1 なら
+  本番の静止画の値（seed (0, 0)・代表 null）へ。repeat でも同じ番号なので同じ値になる。d が大きくて N_cap が 1 に落ちても止めない
+  （着手時に決めたことの下）。
+- 動かす源の口 `setJitterSources(sources)`（既定は seed と走査の代表 — 決めたこと 10）。デバッグと lab の切り分け（手順6）に使う。
+- lab の `renderCorrection` は `beginFrame` の後に seed と代表を自分で置いて `screenSpace.render` を呼ぶので、そのまま使える。
+
+**達成条件** — 静止したカメラ・d = 0・s = 8 で番号 0〜7 を描いた `'correction'` と、同じ G バッファでの `averageCorrection`（`phasesOf` の
+seed + 代表の位相 0〜7）の差が、半精度の丸め 8 回ぶん以内（ジッターの配線・1/n の重み・番号の扱いの 3 つをまとめて確かめる）。
+s = 1 で `render-lab:compare` が 0 件封筒外のまま。
+
+**検証** — `npm run typecheck` / `npm run test:render`。
+
+**commit** — `feat(render): 近傍拡散補正の走査の乱数と代表をフレームごとに回す`
+
+#### 5-5. ゲームのカメラの切り替えで d = ∞
+
+**目的** — 跳ぶ切り替えで履歴を捨てる（着手時に決めたこと 4）。
+
+**変更箇所** — `game-presentation.ts` が描くたびに d を決めて `pipeline.render` へ渡す。切り替えは 1 か所で判定する — 前のフレームと
+「戦闘とマップ（`runtime/display-phase.ts`）・視点の種類（照準の出入り）・注視の対象（`camera/camera-system.ts`）」の組を比べ、変わったら
+∞。**滑らかに移る遷移は切り替えにしない**（動きベクトルが追う） — `camera-system.ts` の各切り替えが跳ぶか補間するかを確かめ、跳ぶもの
+だけを組に入れる。照明の要素は手順6 なので、ほかは 0。組を比べる部分は純粋な関数にする。
+
+**達成条件** — 跳ぶ切り替えのフレームでだけ ∞、それ以外は 0。
+
+**検証** — `npm run typecheck` / `npm run test:game`（切り替えの判定）。
+
+**commit** — `feat(game): カメラの切り替えで近傍拡散補正の履歴を捨てる`
+
+#### 5-6. lab の積んだ撮影と、動く絵の列の番号送り
+
+**目的** — 手順6 の評価が使う撮影の形（決めたこと 28）を作り、手順5 全体を確かめる。
+
+**変更箇所**
+
+- `LabView` に s フレーム積んだ撮影 — 番号 0（d = ∞）、1〜s−1（d = 0）を描き、`captureSettled` で撮る（同じ番号の描き直しは履歴を
+  進めない）。動く物のあるケース（`casing-room` など）は番号で状態が動くので、静止画の比較にはケース値で動きを止める。`lab.ts` への変更は
+  口だけにし、本体は新しいファイルに置く（契約）。
+- `motion-sequence.ts` — フレームごとに `setFrame` で番号を進め、列の始めは d = ∞（いまは番号を進めずに描くので、動きベクトルも履歴も
+  回らない）。
+
+**達成条件**（手順5 の達成）
+
+- s = 1 の `render-lab:shot` が蓄積の前の組と `render-lab:compare` で 0 件封筒外（達成目標5）。
+- 積んだ撮影がバイト一致で再現し、前の撮影に依らない（A → B → A の順に撮って、2 回の A が一致）。
+- 判断材料「手順5 の実装」へ: 新しい描画先の大きさ、写しと蓄積の GPU の行（概算。正式な費用の表は手順6）、5-3 の棄却の割合、5-4 の差。
+
+**検証** — `npm run typecheck` / `npm run test:render`。
+
+**commit** — `feat(render-lab): 近傍拡散補正を積んだ撮影と、番号を進める動く絵の列`
 
 ### 手順 6. 評価とユーザーの判定
 
@@ -887,12 +1062,17 @@ N ≥ 8 は立ち上がりを含む。
 
 | 作業 | 手順 | 中央見積り |
 | --- | --- | ---: |
-| 蓄積（s フレーム積んだ 1 枚の撮影、d の口、カメラの切り替えの ∞ を含む） | 5 | 4.25 h |
+| d と s の受け口・式（5-1） | 5 | 0.5 h |
+| 蓄積の描画先と写し・素通し・デバッグ表示と GPU の行（5-2） | 5 | 1 h |
+| 再投影して混ぜるシェーダ・動きの添付の b・照合の撮り直し（5-3） | 5 | 1.5 h |
+| ジッターの配線（5-4） | 5 | 0.5 h |
+| カメラの切り替え（5-5） | 5 | 0.5 h |
+| lab の積んだ撮影・動く絵の番号送り・達成確認（5-6） | 5 | 1 h |
 | 照明の変化量 d の見積り（純粋な関数・`test:game`・lab の `light` の列への d） | 6 | 1.5 h |
 | 評価と表（送り手の幾何は 4-1 の口で動かす） | 6 | 3 h |
 | 送り返す | 8 | 0.5 h |
 
-**残り 約 9.25 h**（ユーザーの判定と相談の時間は含めない。手順1〜4 は済んだ）。
+**残り 約 10 h**（ユーザーの判定と相談の時間は含めない。手順1〜4 は済んだ）。
 手順3 の実績が見積りの 1.25 倍、4-2 が 1.2 倍だったので、手順4 も同じ程度に延びうる。撮影は 1 組あたりの時間を先に測ってから組を決める（4-2 の参照は 1 組約 2 分）。
 
 ## リスクと落とし穴
@@ -927,8 +1107,12 @@ N ≥ 8 は立ち上がりを含む。
 | d にカメラから見た光の向きの変化や、カメラ・物の動きを入れる | 再投影が追える変化を二重に数え、カメラを回すだけで履歴が縮む | 手順6 — 注視している物の座標系で求める |
 | d の要素の指標を小さな変化について 2 次にする | ゆっくり回り続ける場面で d ≪ 1 のまま履歴が縮まず、残像が回る速さとともに伸びる | 手順6 — 指標を 1 次にする |
 | d の要素を [0, 1] の一致の度合いのまま足す | カメラの切り替え（完全不一致）がほかの要素に薄められ、履歴が残る | 手順5・6 — 負の対数で ∞ にして足す（決めたこと 26） |
-| 同じ番号の描き直しで履歴を進める・前の履歴を上書きする | lab の撮影が描き直しの回数で変わり、`captureSettled` で余分に積まれる | 手順5 — 履歴を 2 枚交互にし、同じ番号では前の番号の履歴から書き直す |
-| 履歴（1080p の rgba16f で 1 枚約 16 MiB。同じ番号の描き直しのため 2 枚交互 — `correction.target` を片方にできなければ 2 枚増える）と動きベクトル 1 枚（同じく rg16f で約 7.9 MiB）が中間 target の予算（中 32 MiB — 拡散側の「負荷の予算」）を圧迫する | プリセットの予算に入らない | 手順5 — 交互の片方を `correction.target` にできるか。手順6 — `screenspace-source.md` で `keep` が消えると −15.8 MiB |
+| 同じ番号の描き直しで履歴を進める・前の履歴を上書きする | lab の撮影が描き直しの回数で変わり、`captureSettled` で余分に積まれる | 5-2 — 写しは番号が進んだときだけ。同じ番号では同じ履歴を読む |
+| 中間 target の増分（1080p で、蓄積の前 15.8・履歴 15.8・前フレームの深度 7.9・法線 7.9・動きの添付の拡幅 7.9 MiB、手順4 の動き 7.9 MiB と合わせて約 63 MiB）が中間 target の予算（中 32 MiB — 拡散側の「負荷の予算」）を圧迫する | プリセットの予算に入らない | 5-6 で大きさを書き、手順6 の費用の表で判断する。減らす手は、`screenspace-source.md` で `keep` が消える（−15.8 MiB）、蓄積の前の描画先を蓄積のパスへ畳む（契約の観測の口と引き換え） |
+| 1 パスを読む lab の道具（`averageCorrection`・`jitter-sweep`・`MotionSequence` の single 列）が `'correction'` を読み続ける | 履歴と混ざった値を 1 パスとして測り、手順3 の表と比べられなくなる | 5-2 — 蓄積の前（`'upsampled-correction'`）へ移す。素通しの間にビット一致で確かめる |
+| 前フレームの面を今のカメラの回転だけで今の向きへ戻して比べる | 浮動原点ではカメラの並進が見えず、ふつうのカメラの動きで履歴が落ちる。lab の `world` と `floating` で結果が食い違う | 5-3 — 動きの添付の b に前フレームの深さを書き、前フレームの座標で比べる（決めたこと 29） |
+| s = 1 の蓄積を `mix(履歴, 今, 1)` で書く | 履歴のごみや丸めで、蓄積の前とビット一致しない | 5-3 — n' ≤ 1 では履歴を読まずに今の値を select で書く |
+| ジッターを蓄積より先に本番へ配線する | 積まずに揺れる絵が commit に残る | 段階の順（5-3 → 5-4） |
 | 拡散側と同じファイル（`render-pipeline.ts`・`gpu-timings.ts`・`debug-target.ts`・`lab.ts`・走査の写像）を大きく触る | 取り込むときに衝突する | 全手順 — 契約のとおり触る行を最小に |
 | seed や走査の代表をフレームで回して render-lab の撮影が決定的でなくなる | 撮影の比較が偽の差を出す | 手順5 — 撮影の再現性を先に決める |
 | 映り込みの追跡が、GPU によっては毎フレーム決定的でない（Intel HD 520 で確認。`screenspace-specular.md`） | 映り込みをオンにした撮影の揺れを、蓄積のせいと取り違える | 手順2・3・6 — 映り込みを切った撮影で比べる |
