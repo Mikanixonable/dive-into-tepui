@@ -129,7 +129,7 @@ export class JitterSweep {
   // 位相 phase で描き直した最後の拡大の出力。
   private async correctionOf(phase: CorrectionPhase): Promise<FloatImage> {
     this.view.renderCorrection(phase);
-    return this.view.readFloat('correction');
+    return this.view.readFloat('upsampled-correction');
   }
 
   // 指数移動平均 accumulation へ k 番目の位相の補正 correction を積み、1 つ前からの差を要約する。新しい位相の重みは

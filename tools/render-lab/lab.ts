@@ -58,7 +58,10 @@ const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 // 段 ℓ の G バッファの画素の整数座標と素の深度(rgb、a は 0)。'scan-surface-0' は走査の面の写しの (G バッファの画素の x, y,
 // 素の深度, 0)、'scan-surface-1' はその法線の rg(ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の
 // 半径が写る描画バッファの画素数で、面の無い画素は 0。'depth' は G バッファの素の深度(r、gba は 0。面の無い画素は 0)。
-export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'correction' | 'diffuse'
+// 'upsampled-correction' は蓄積前の補正、'correction-history' は前フレームの補正履歴、
+// 'previous-depth' は前フレームの素の深度。
+export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'upsampled-correction'
+  | 'correction-history' | 'previous-depth' | 'correction' | 'diffuse'
   | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius' | 'depth' | 'motion';
 const REPRESENTATIVE_NAME_PATTERN = /^representative-(\d)$/;
 const SCAN_SURFACE_NAME_PATTERN = /^scan-surface-([01])$/;
@@ -136,6 +139,8 @@ export class LabView {
   private currentName: CaseName | null = null;
   // ケースへ渡す論理フレーム。同じ番号で描き直しても、ケースの状態は進まない。
   private frame = 0;
+  // 前の論理フレームから、動きベクトルでは追えない変化の量 (0 = 変化なし、Infinity = 切り替え)。
+  private change = 0;
   private selectedDebugTarget: DebugTargetId = 'off';
   // 画面全体の見せ方。起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
@@ -355,10 +360,11 @@ export class LabView {
     this.render();
   }
 
-  // 論理フレーム frame を覚え、ケースをその番号の状態へ置いて描き直す。
-  public setFrame(frame: number): void {
+  // 論理フレーム frame と変化量 change を覚え、ケースをその番号の状態へ置いて描き直す。
+  public setFrame(frame: number, change = 0): void {
     if (!Number.isInteger(frame) || frame < 0) throw new Error(`render-lab: invalid frame ${frame}`);
     this.frame = frame;
+    this.change = change;
     this.current?.setFrame?.(frame);
     this.render();
   }
@@ -472,7 +478,7 @@ export class LabView {
       graphics,
     ));
     const startedAt = performance.now();
-    this.pipeline.render(this.scene, camera, this.style, this.frame);
+    this.pipeline.render(this.scene, camera, this.style, this.frame, this.change);
     this.lastRenderCpuMs = performance.now() - startedAt;
     this.gpu.resolve();
   }
@@ -737,7 +743,7 @@ export class LabView {
   // 位相は本番の静止画のものへ戻り、'correction' はその出力になる。
   public async averageCorrection(phases: readonly CorrectionPhase[]): Promise<FloatImage> {
     if (phases.length === 0) throw new RangeError('render-lab: averaging needs at least one phase');
-    const { target } = this.pipeline.diffuseCorrection;
+    const target = this.pipeline.diffuseCorrection.upsampledTarget;
     this.correctionAccumulator ??= new PassAccumulator(this.renderer, [target.texture], target.width, target.height);
     for (const [k, phase] of phases.entries()) {
       this.renderCorrection(phase);
@@ -888,6 +894,9 @@ export class LabView {
     const { screenSpace, diffuseCorrection } = this.pipeline;
     switch (name) {
       case 'scan-correction': return diffuseCorrection.mergedTexture(screenSpace.bandCount, 0);
+      case 'upsampled-correction': return diffuseCorrection.upsampledTarget.texture;
+      case 'correction-history': return screenSpace.temporalHistoryTexture;
+      case 'previous-depth': return screenSpace.previousDepthTexture;
       case 'correction': return diffuseCorrection.texture;
       case 'diffuse': return this.pipeline.lighting.diffuseTexture;
       case 'surface-radiance': return screenSpace.surfaceRadianceTexture;

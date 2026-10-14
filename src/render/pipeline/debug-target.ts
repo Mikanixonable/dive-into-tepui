@@ -55,7 +55,7 @@ export type DebugTargetId =
   | 'off' | 'normal' | 'roughness' | 'basecolor' | 'metalness' | 'emissive' | 'depth'
   | 'motion'
   | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'direct-specular' | 'far-specular'
-  | 'correction' | ChainDebugTargetId
+  | 'upsampled-correction' | 'correction' | 'history-length' | ChainDebugTargetId
   | 'bounce-source' | 'material' | 'reflection-source'
   | 'reflection-depth' | 'raw-reflection-weight' | 'raw-reflection-distance' | 'raw-reflection'
   | 'denoised-reflection-weight' | 'denoised-reflection-distance' | 'denoised-reflection' | 'reflection-denoise-level'
@@ -77,7 +77,9 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['planet-light', '天体照の光源テクスチャ'],
   ['bounce-source', '照り返しの源'],
   ...CHAIN_DEBUG_TARGETS.map((target) => [target.id, chainLabelOf(target)] as const),
+  ['upsampled-correction', '蓄積の前の補正'],
   ['correction', '拡散照度補正'],
+  ['history-length', '履歴の長さ'],
   ['diffuse', '拡散照度'],
   ['direct-specular', '直接の鏡面照度'],
   ['far-specular', '遠方の鏡面照度'],

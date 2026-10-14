@@ -21,6 +21,7 @@ import { QReconstruction } from './q-reconstruction';
 import { ScreenSpaceInputPyramid, levelExtent } from './screen-space-input-pyramid';
 import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
 import { SurfaceWeight } from './surface-weight';
+import { TemporalAccumulation } from './temporal-accumulation';
 import { whiteNoiseAt } from './white-noise';
 import type { DiffuseCorrection } from './diffuse-correction';
 import type { ScanJitter } from './frame-jitter';
@@ -115,6 +116,8 @@ interface BandCountStages {
 }
 
 export class ScreenSpacePass {
+  // フレーム番号に応じて履歴を写し、蓄積の段を持つ。
+  private readonly temporal: TemporalAccumulation;
   // 方式ごとの、段 0 の面の写しと源を書く描画命令。
   private readonly occlusionSurfaceStage: ScreenSpaceStage;
   private readonly indirectSurfaceStage: ScreenSpaceStage;
@@ -189,6 +192,7 @@ export class ScreenSpacePass {
       vec2(this.representativeSteps).div(REPRESENTATIVE_STEPS), this.upsampleAlphaOne,
     );
     this.qReconstruction = new QReconstruction(weight, this.surfaces, this.fullSize, this.scanSize);
+    this.temporal = new TemporalAccumulation(renderer, gbuffer, output, gpu);
     this.occlusionSurfaceStage = this.surfaces.scanStageOf(null);
     this.indirectSurfaceStage = this.surfaces.scanStageOf(
       this.whereResolved(this.gbufferUV, () => vec4(this.emittedRadiance(sun), 1)));
@@ -196,6 +200,15 @@ export class ScreenSpacePass {
 
   // 走査の解像度。rgb = 照り返しの源として面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)。方式が遮蔽では 0。
   public get surfaceRadianceTexture(): THREE.Texture { return this.surfaces.radianceTexture; }
+
+  // 前フレームの補正履歴 (rgb = ΔE、α = 履歴の長さ n)。
+  public get temporalHistoryTexture(): THREE.Texture { return this.temporal.historyTexture; }
+
+  // 前フレームの素の深度。
+  public get previousDepthTexture(): THREE.Texture { return this.temporal.previousDepthTexture; }
+
+  // correction.target の履歴長 n / 時定数 s (0〜1)。
+  public normalizedHistoryAt(uv: Vec2Node): FloatNode { return this.temporal.normalizedHistoryAt(uv); }
 
   // いまの段で補正を分ける帯の数。
   public get bandCount(): number { return this.tier.bandCount; }
@@ -220,6 +233,14 @@ export class ScreenSpacePass {
   public setScan(sliceCount: number, stepCount: number): void {
     this.tier = scanTierOf(sliceCount, stepCount);
   }
+
+  // 履歴の時定数 frames [フレーム] を蓄積へ渡す。
+  public setTimeConstant(frames: number): void {
+    this.temporal.setTimeConstant(frames);
+  }
+
+  // G バッファを描く前に、前回からの番号の進み方を蓄積へ渡す。
+  public beginFrame(frame: number, change: number): void { this.temporal.beginFrame(frame, change); }
 
   // 次の render から段 tier で走査する。次に setScan を呼ぶまで保つ。
   public setTier(tier: ScanTier): void {
@@ -306,12 +327,14 @@ export class ScreenSpacePass {
       this.quad.render(this.renderer);
     }
     this.renderer.setRenderTarget(null);
+    if (stages.includes(this.temporal.accumulation)) this.temporal.markFrameRendered();
   }
 
   // いまの方式と段の全段のマテリアルを、それぞれの描画先へ事前コンパイルする。
   public async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
     const stages = this.currentStages();
     this.prepare(camera, width, height);
+    await this.temporal.compile();
     for (const { material, target } of stages) {
       this.quad.material = material;
       await compileInto(this.renderer, target, this.quad, this.quad.camera);
@@ -350,6 +373,7 @@ export class ScreenSpacePass {
       for (const material of new Set(stages.map(({ material }) => material))) material.dispose();
     }
     for (const target of this.qTargets ?? []) target.dispose();
+    this.temporal.dispose();
     this.surfaces.dispose();
     this.blueNoise.dispose();
   }
@@ -368,14 +392,16 @@ export class ScreenSpacePass {
     const count = this.tier.bandCount;
     if (variant === 'raw-full') {
       const stages = [this.indirectSurfaceStage,
-        this.createScanStage(1, this.surfaces.radianceTexture, this.output.target, true)];
+        this.createScanStage(1, this.surfaces.radianceTexture, this.output.upsampledTarget, true),
+        this.temporal.accumulation];
       this.experimentStagesByKey.set(cacheKey, stages);
       return stages;
     }
     const scan = this.stagesOf(count).ranges.scan[SCREEN_SPACE_DIFFUSE.indirect];
     if (variant === 'band') return this.stagesOf(count).ranges.all[SCREEN_SPACE_DIFFUSE.indirect];
     if (variant === 'raw-quarter') {
-      const stages = [...scan, this.createStochasticUpsampleStage(this.output.bandTarget(count, 0).textures[0]!)];
+      const stages = [...scan, this.createStochasticUpsampleStage(this.output.bandTarget(count, 0).textures[0]!),
+        this.temporal.accumulation];
       this.experimentStagesByKey.set(cacheKey, stages);
       return stages;
     }
@@ -390,6 +416,7 @@ export class ScreenSpacePass {
         () => this.qReconstruction.sparseDenoised(first!.texture, secondRotation, sparseTapCount)),
       this.createDenoiseStage(denoised!, () => this.qReconstruction.denseDenoised(second!.texture)),
       this.createStochasticUpsampleStage(denoised!.texture),
+      this.temporal.accumulation,
     ];
     this.experimentStagesByKey.set(cacheKey, stages);
     return stages;
@@ -408,7 +435,7 @@ export class ScreenSpacePass {
       [SCREEN_SPACE_DIFFUSE.occlusion]: [this.occlusionSurfaceStage, occlusionScan],
       [SCREEN_SPACE_DIFFUSE.indirect]: [this.indirectSurfaceStage, indirectScan],
     };
-    const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, upsample];
+    const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, upsample, this.temporal.accumulation];
     const stages: BandCountStages = {
       ranges: {
         all: {
@@ -484,9 +511,9 @@ export class ScreenSpacePass {
     const source = this.output.mergedTexture(count, 0);
     const rotation = this.blueNoise.atScreenPixel(this.seed.add(UPSAMPLE_ROTATION_SHIFT));
     const upsample = stageMaterial();
-    upsample.mrtNode = mrt({ diffuseCorrection: this.whereResolved(screenUV,
+    upsample.mrtNode = mrt({ [this.output.upsampledTarget.texture.name]: this.whereResolved(screenUV,
       () => vec4(this.reconstruction.sparseUpsampled(source, rotation), 1)) });
-    return { material: upsample, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
+    return { material: upsample, target: this.output.upsampledTarget, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
   }
 
   private createDenoiseStage(
@@ -500,9 +527,9 @@ export class ScreenSpacePass {
   private createStochasticUpsampleStage(source: THREE.Texture): ScreenSpaceStage {
     const choice = this.blueNoise.atScreenPixel(this.seed.add(23 / 64));
     const material = stageMaterial();
-    material.mrtNode = mrt({ diffuseCorrection: this.whereResolved(screenUV,
+    material.mrtNode = mrt({ [this.output.upsampledTarget.texture.name]: this.whereResolved(screenUV,
       () => vec4(this.qReconstruction.stochasticUpsampled(source, choice), 1)) });
-    return { material, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
+    return { material, target: this.output.upsampledTarget, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
   }
 
   // 描いている画素を、uv(描いている画素に当たる G バッファの uv)の面が補正を受ける(resolvesNearbyAt)ときだけ
@@ -552,6 +579,7 @@ export class ScreenSpacePass {
     const levelSizes = Array.from({ length: tier.bandCount }, (_, level) =>
       [levelExtent(scanWidth, level), levelExtent(scanHeight, level)] as const);
     this.output.setSize(tier.bandCount, levelSizes, width, height);
+    this.temporal.setSize(width, height);
     if (this.experiment?.variant === 'q') {
       for (const target of this.qTargetsOf()) target.setSize(scanWidth, scanHeight);
     }

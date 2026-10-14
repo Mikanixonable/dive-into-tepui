@@ -41,8 +41,10 @@ interface BandChainTargets {
 export class DiffuseCorrection {
   // 帯の数ごとの、段ごとの描画先。初めて引いたときに作る。
   private readonly chains = new Map<number, BandChainTargets>();
-  // 描画バッファの解像度の、復元した補正。
+  // 描画バッファの解像度の、時間方向に蓄積した補正 (rgb = ΔE、α = 履歴の長さ n)。
   public readonly target = createTarget(1, 'diffuseCorrection');
+  // 蓄積へ渡す、描画バッファの解像度の補正。
+  public readonly upsampledTarget = createTarget(1, 'upsampledDiffuseCorrection');
 
   public get texture(): THREE.Texture { return this.target.texture; }
 
@@ -62,9 +64,10 @@ export class DiffuseCorrection {
     return level === count - 1 ? this.bandTarget(count, level).texture : this.mergedTarget(count, level).texture;
   }
 
-  // 作った描画先すべて — 帯の数ごとの段ごとの描画先と、復元した補正の描画先。
+  // 作った描画先すべて — 帯の数ごとの段ごとの描画先、蓄積前の補正、蓄積後の補正。
   public get targets(): readonly THREE.RenderTarget[] {
-    return [...[...this.chains.values()].flatMap(({ bands, merged }) => [...bands, ...merged]), this.target];
+    return [...[...this.chains.values()].flatMap(({ bands, merged }) => [...bands, ...merged]),
+      this.upsampledTarget, this.target];
   }
 
   // 帯の数 count の段ごとの描画先を levelSizes(levelSizes[level] が段 level の幅と高さ [段の画素]。段 0 は走査の寸法)へ、
@@ -79,6 +82,7 @@ export class DiffuseCorrection {
         fitSize(target, levelWidth, levelHeight);
       }
     }
+    fitSize(this.upsampledTarget, width, height);
     fitSize(this.target, width, height);
   }
 

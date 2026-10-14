@@ -90,7 +90,11 @@ export class DebugComposites {
       diffuse: hdr(lightPrepass.diffuseTexture),
       'direct-specular': hdr(lightPrepass.directSpecularTexture),
       'far-specular': hdr(lightPrepass.farSpecularTexture),
+      'upsampled-correction': material(vec4(
+        this.signedCorrection(texture(diffuseCorrection.upsampledTarget.texture, screenUV)), 1,
+      )),
       correction: material(vec4(this.signedCorrection(texture(diffuseCorrection.texture, screenUV)), 1)),
+      'history-length': material(vec4(vec3(screenSpacePass.normalizedHistoryAt(screenUV)), 1)),
       'bounce-source': hdr(screenSpacePass.surfaceRadianceTexture),
       material: hdr(materialPass.keepTexture),
       'reflection-source': hdr(materialPass.reflectionSourceTexture),

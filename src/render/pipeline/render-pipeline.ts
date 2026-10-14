@@ -288,6 +288,7 @@ export class RenderPipeline {
     this.lensEnabled = graphics.lens;
     this.screenSpacePass.setMode(screenSpaceDiffuseOf(graphics));
     this.screenSpacePass.setScan(graphics.screenSpaceSliceCount, graphics.screenSpaceStepCount);
+    this.screenSpacePass.setTimeConstant(graphics.screenSpaceTimeConstant);
     this.reflectionPass.setEnabled(graphics.screenSpaceSpecular);
     this.reflectionPass.setTrace(graphics.screenSpaceSpecularScale, graphics.screenSpaceSpecularStepCount);
     // 均した映り込みを書く段と、それを読む合成は一緒に切り替える。
@@ -368,7 +369,7 @@ export class RenderPipeline {
   // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → 遮蔽と照り返し → ライティング → マテリアル → 映り込み →
   // 陰影の合成 → 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルではマテリアル・
   // 映り込み・陰影の合成・大気・world・レンズの6つのパスを飛ばす。デバッグ表示の間もすべてのパスを発行する。
-  public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, frame: number): void {
+  public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, frame: number, change: number): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
 
@@ -382,6 +383,7 @@ export class RenderPipeline {
     this.shadowMaps.render(scene, camera, height, this._sunLight);
 
     // G バッファパス。
+    this.screenSpacePass.beginFrame(frame, change);
     this._gbuffer.render(scene, camera, width, height, frame);
 
     // 影パス。G バッファの深度を読む。
