@@ -137,6 +137,7 @@ function expandedValues(legacy: LegacyValues): GraphicsSettingsData {
     screenSpaceIndirect: legacy.screenSpaceDiffuse === SCREEN_SPACE_DIFFUSE_INDIRECT,
     screenSpaceSliceCount: scan.sliceCount,
     screenSpaceStepCount: scan.stepCount,
+    screenSpaceTimeConstant: 8,
     screenSpaceSpecular: legacy.screenSpaceSpecular,
     screenSpaceSpecularScale: trace.scale,
     screenSpaceSpecularStepCount: trace.stepCount,
