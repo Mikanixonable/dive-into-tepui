@@ -58,23 +58,11 @@ export class MotionSequence {
     this.view.setFrame(this.frameNumber, Number.POSITIVE_INFINITY);
   }
 
-  // 次に描くフレームから、観察の向きで置いたカメラへ、周回の中心を中心とする回転(周回)orbitPx、並進 translationPx、カメラを
-  // 中心とする回転 rotationPx [描画バッファの画素] をこの順に重ねる。並進は周回の中心の深さの点が、周回と回転は無限遠の点が、
-  // 画面の上でその向きと量だけ動くもので、x は右、y は上が正。周回では、周回の中心が画面の中心に留まる。
+  // 次に描くフレームから、cameraShiftOf の姿勢をカメラへ重ねる。
   public moveCamera(
     translationPx: readonly [number, number], rotationPx: readonly [number, number], orbitPx: readonly [number, number],
   ): void {
-    const focalPx = VIEW_HEIGHT / 2 / Math.tan(THREE.MathUtils.degToRad(this.view.cameraFovDeg) / 2);
-    const distance = this.view.cameraDistance;
-    // 物が画面の右へ動くのはカメラが左へ動くとき。
-    const translation = new THREE.Vector3(-translationPx[0], -translationPx[1], 0).multiplyScalar(distance / focalPx);
-    // 周回の中心はカメラの座標で (0, 0, −距離)。そこを中心に回すと、カメラの位置と向きが同じ回転で回る。
-    const pivot = new THREE.Vector3(0, 0, -distance);
-    const orbit = new THREE.Matrix4().makeTranslation(pivot)
-      .multiply(new THREE.Matrix4().makeRotationFromQuaternion(rotationOf(orbitPx, focalPx)))
-      .multiply(new THREE.Matrix4().makeTranslation(pivot.clone().negate()));
-    const rest = new THREE.Matrix4().compose(translation, rotationOf(rotationPx, focalPx), new THREE.Vector3(1, 1, 1));
-    this.view.setCameraShift(orbit.multiply(rest));
+    this.view.setCameraShift(cameraShiftOf(this.view, translationPx, rotationPx, orbitPx));
   }
 
   // 次に描くフレームから、光源の置き方のつまみへ shift を重ねる。
@@ -118,6 +106,26 @@ export class MotionSequence {
     this.frameNumber++;
     return { capture, columns: records };
   }
+}
+
+// 観察の向きで置いたカメラへ、周回の中心を中心とする回転(周回)orbitPx、並進 translationPx、カメラを中心とする回転
+// rotationPx [描画バッファの画素] をこの順に重ねる姿勢を返す。並進は周回の中心の深さの点が、周回と回転は無限遠の点が、
+// 画面の上でその向きと量だけ動くもので、x は右、y は上が正。周回では、周回の中心が画面の中心に留まる。
+export function cameraShiftOf(
+  view: Pick<LabView, 'cameraFovDeg' | 'cameraDistance'>,
+  translationPx: readonly [number, number], rotationPx: readonly [number, number], orbitPx: readonly [number, number],
+): THREE.Matrix4 {
+  const focalPx = VIEW_HEIGHT / 2 / Math.tan(THREE.MathUtils.degToRad(view.cameraFovDeg) / 2);
+  const distance = view.cameraDistance;
+  // 物が画面の右へ動くのはカメラが左へ動くとき。
+  const translation = new THREE.Vector3(-translationPx[0], -translationPx[1], 0).multiplyScalar(distance / focalPx);
+  // 周回の中心はカメラの座標で (0, 0, −距離)。そこを中心に回すと、カメラの位置と向きが同じ回転で回る。
+  const pivot = new THREE.Vector3(0, 0, -distance);
+  const orbit = new THREE.Matrix4().makeTranslation(pivot)
+    .multiply(new THREE.Matrix4().makeRotationFromQuaternion(rotationOf(orbitPx, focalPx)))
+    .multiply(new THREE.Matrix4().makeTranslation(pivot.clone().negate()));
+  const rest = new THREE.Matrix4().compose(translation, rotationOf(rotationPx, focalPx), new THREE.Vector3(1, 1, 1));
+  return orbit.multiply(rest);
 }
 
 // 焦点距離 focalPx [描画バッファの画素] のカメラで、無限遠の点を画面の上で movePx [描画バッファの画素](x は右、y は上)だけ

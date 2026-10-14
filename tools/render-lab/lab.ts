@@ -287,6 +287,9 @@ export class LabView {
     for (const object of built.objects) this.scene.add(object);
     this.current = built;
     this.currentName = name;
+    // 組み直したケースを、履歴が切れる番号から配置する。
+    this.frame = 0;
+    this.change = Number.POSITIVE_INFINITY;
     built.setFrame?.(this.frame);
     // 地球はケースが置き方を宣言したときだけ出し、まずその既定の置き方へ置く。
     if (built.earth !== undefined) {
@@ -391,6 +394,7 @@ export class LabView {
   }
 
   // 次に描くフレームから、光源の置き方のつまみへ shift を足して置く。
+  // 番号を進める前に描き直すと、新しい置き方が前の番号の絵として履歴へ入る。
   public setLightShift(shift: LightAngleShift): void {
     this.lightShift = shift;
   }
@@ -406,6 +410,9 @@ export class LabView {
     if (this.current === null) throw new Error('render-lab: no case selected');
     return this.current.camera;
   }
+
+  // 直前に描いたフレームの GPU 処理が終わるまで待つ。
+  public waitForGpu(): Promise<void> { return this.gpu.waitForResolve(); }
 
   // ケースのカメラと注視点から、観察の向きの既定値を引き直す。
   private resetView(): void {
