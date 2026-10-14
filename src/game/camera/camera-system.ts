@@ -19,6 +19,7 @@ import { COMBAT_CAMERA_FOV, type CameraFrameSamples, type CameraSelectionSource 
 import type { CameraFrameSample, FocusCameraSource } from '../viewer/focus-camera-selection';
 import { focusTargetId, type FocusTarget } from '../viewer/focus-target';
 import type { ViewSelectionSource } from '../viewer/view-selection';
+import type { CameraCutKey } from './camera-cut';
 import { cameraOperation } from './camera-operator';
 import { CameraRig } from './camera-rig';
 import type { FocusCandidate } from './focus-derivation';
@@ -42,6 +43,14 @@ export class CameraSystem {
   private get view(): ViewMode { return this.viewSelection.current; }
   private get activeSource(): FocusCameraSource { return this.cameraSelection.camera(this.view); }
   public get activeFocus(): FocusTarget { return this.activeSource.focus; }
+  // 表示中のビュー・照準・注視対象から、描画フレームの切り替えキーを返す。
+  public get cutKey(): CameraCutKey {
+    return {
+      view: this.view,
+      gunsight: this.view === 'combat' && this.useGunsight,
+      focusTargetId: focusTargetId(this.activeSource.focus),
+    };
+  }
   // 表に出ているビューの視点。
   public get activeViewpoint(): Viewpoint {
     return this.view === 'map' ? this.mapRig.viewpoint : this.combatViewpoint;

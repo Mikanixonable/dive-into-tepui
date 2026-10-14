@@ -1,6 +1,7 @@
 // 1ランの表示の導出の根: 入力の解釈、表示窓・座標系の錨・カメラの導出、表示物と HUD への同期、
 // 描画を所有する。モデル層の根 Game を読み、命令の列へ積み、進行の末尾へ渡す材料を組む。
 import type { FrameSections } from './frame-sections';
+import { cameraCutChangeOf, type CameraCutKey } from './camera/camera-cut';
 import { CameraSystem } from './camera/camera-system';
 import { controlSelectionCommands } from './control-selection-commands';
 import { simSpeedCommands } from './dynamic/sim-speed-commands';
@@ -92,6 +93,10 @@ export class GamePresentation {
   // 論理視点を表示値へ写す側。sync が確定させた1フレームぶんの値を cameraFrame が持つ。
   private readonly cameraView = new CameraView();
   private cameraFrame: CameraFrame | null = null;
+  // sync が確定したカメラ切り替えキー。
+  private cameraCutKey: CameraCutKey | null = null;
+  // 直前に描いたフレームのカメラ切り替えキー。
+  private renderedCameraCutKey: CameraCutKey | null = null;
   private motionFrame = 0;
   // 操作対象の計画折れ線。計画の表示と、マップの計画の編集・戦闘の噴射ガイドが読む。
   private readonly planPath: PlanPath;
@@ -398,6 +403,7 @@ export class GamePresentation {
       cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, cs.zoomActive, cs.focusVelocity,
     );
     this.cameraFrame = camera;
+    this.cameraCutKey = cs.cutKey;
     this.viewOptions.setVisible(view === 'map');
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
     this.viewManager.activeView.syncLabels(displayWindow, camera, nowMs);
@@ -506,10 +512,14 @@ export class GamePresentation {
     );
   }
 
-  // このフレームの sync が確定させたカメラで描く。まだ1度も sync していなければ何も描かない。
+  // このフレームの sync が確定させたカメラで描き、前の描画フレームからの切り替えを履歴へ渡す。
   public render(style: RenderStyle): void {
-    if (this.cameraFrame === null) return;
-    this.devices.scene.pipeline.render(this.devices.scene.scene, this.cameraFrame.camera, style, this.motionFrame++, 0);
+    if (this.cameraFrame === null || this.cameraCutKey === null) return;
+    const change = cameraCutChangeOf(this.renderedCameraCutKey, this.cameraCutKey);
+    this.devices.scene.pipeline.render(
+      this.devices.scene.scene, this.cameraFrame.camera, style, this.motionFrame++, change,
+    );
+    this.renderedCameraCutKey = this.cameraCutKey;
   }
 
   // 表示の導出が答える計測値。
