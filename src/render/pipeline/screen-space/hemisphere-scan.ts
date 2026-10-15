@@ -48,11 +48,12 @@ export interface PlanetIllumination {
   readonly irradiance: Vec3Node;
 }
 
-// 受け手へ届く遠方の拡散光と、新しく塞いだ測度をその光の塞がれた割合へ写す尺度。ambient は一様な環境光の照度、
-// hemisphereScale は 1 / (スライスの数 × SECTOR_COUNT)、planets は天体照ごとに(視半径を広げた)円盤の尺度
-// capScale = 1 / (スライスの数 × SECTOR_COUNT × 円盤の測度) を添えたもの。
+// 受け手へ届く遠方の拡散光と、新しく塞いだ測度をその光の塞がれた割合へ写す尺度。undirected は向きによらず塞がれる
+// 照度(一様な環境光と、向きを見ない天体照)、hemisphereScale は 1 / (スライスの数 × SECTOR_COUNT)、planets は円盤の
+// 向きで塞がれる天体照ごとに(視半径を広げた)円盤の尺度 capScale = 1 / (スライスの数 × SECTOR_COUNT × 円盤の測度) を
+// 添えたもの。
 interface DistantLight {
-  readonly ambient: Vec3Node;
+  readonly undirected: Vec3Node;
   readonly hemisphereScale: FloatNode;
   readonly planets: readonly (PlanetIllumination & { readonly capScale: FloatNode })[];
 }
@@ -71,14 +72,14 @@ interface GBufferSurface {
 // gbufferSize はその G バッファの寸法 [px]。
 // projection / projectionInverse は実カメラの射影行列とその逆、sliceCount はスライスの数、stepCount は片側の歩数、
 // noise は画素ごとの互いに独立な 0..1 の組(x がスライスの回転、y が歩みのずれ、z が扇形の端の丸めのずれ)。
-// ambientIrradiance と planets は、近くの構造に遮られないときに受け手へ届く一様な環境光の照度と天体照。radiance は
-// 走査と同じ解像度の、面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)で、null なら照り返しは 0。resolvesNearby が
-// 偽の受け手は 0。**Fn の中から呼ぶこと。** noise・ambientIrradiance・planets は一様でない分岐の中で読むので、
+// undirectedIrradiance と planets は、近くの構造に遮られないときに受け手へ届く遠方の拡散光 — 向きによらず塞がれる
+// 照度(一様な環境光と、向きを見ない天体照)と、円盤の向きで塞がれる天体照。radiance は走査と同じ解像度の、面が放つ
+// 放射輝度(SUN_IRRADIANCE_1AU の目盛り)で、null なら照り返しは 0。resolvesNearby が偽の受け手は 0。**Fn の中から呼ぶこと。** noise・undirectedIrradiance・planets は一様でない分岐の中で読むので、
 // テクスチャを段を明示して読む式で渡すこと。
 export function scanHemisphere(
   surfaces: ScanSurfaces, gbufferSize: Vec2Node, projection: Mat4Uniform,
   projectionInverse: Mat4Uniform, sliceCount: IntNode, stepCount: IntNode, noise: Vec3Node,
-  ambientIrradiance: Vec3Node, planets: readonly PlanetIllumination[], radiance: THREE.Texture | null,
+  undirectedIrradiance: Vec3Node, planets: readonly PlanetIllumination[], radiance: THREE.Texture | null,
   bands: BandSplit,
 ): Vec3Node[] {
   // 受け手。ループの中と外の両方から読むので、先に変数へ置く。
@@ -98,7 +99,7 @@ export function scanHemisphere(
     const dither = noise.z.mul(255 / 256).add(0.5 / 256).toVar();
     // 遠方の光は面の値を読む式から組まれている。**ループへ入る前に変数へ置く** — ループの中で初めて組むと、
     // スライスごとに面を読み直し、ループの後の照度もループの中で読んだ値に頼る。
-    const ambient = ambientIrradiance.toVar();
+    const undirected = undirectedIrradiance.toVar();
     const hemisphereScale = float(1).div(float(sliceCount).mul(SECTOR_COUNT)).toVar();
     // 天体照の円盤は視半径を広げ、受け手ごとに 1 回その測度を求める。円盤が地平の下で測度が 0 のときは、下限で
     // 0 除算を避ける — 弧は半球の外で幅 0 になるので掛かる測度も 0。
@@ -112,7 +113,7 @@ export function scanHemisphere(
     const sliceOf = (index: IntNode): Slice =>
       sliceAt(float(index).add(rotation).mul(Math.PI).div(float(sliceCount)), view, hemisphereNormal);
     // スライスの重みの期待値は 1 なので、期待値で割る。
-    const light: DistantLight = { ambient, hemisphereScale, planets: planetLights };
+    const light: DistantLight = { undirected, hemisphereScale, planets: planetLights };
     // 歩みの割合 progress(0..stepCount)の画面上の距離 [走査の画素]。受け手自身の画素を読まない 1 走査画素先から半径までを、
     // 指数で近くへ寄せて配る（半径が大きくても受け手のそばを粗くしない）。
     const stepDistance = (progress: FloatNode): FloatNode => {
@@ -251,9 +252,9 @@ class SliceOcclusion {
       // 距離重みは**ビットには掛けない** — 手前から奥へ歩むので、ビットを立てそこねると奥の標本が手前の遮りの
       // 後ろを塞ぎ直し、二重に数える。
       const newlyMeasure = bitCount(newly).mul(falloff).toVar();
-      // 新しく塞いだ半球の割合だけ環境光が、天体ごとに新しく塞いだ割合だけその天体照が塞がれる。
+      // 新しく塞いだ半球の割合だけ向きによらない照度が、天体ごとに新しく塞いだ割合だけその天体照が塞がれる。
       const hemisphere = newlyMeasure.mul(this.hemisphereWeight).toVar();
-      const blockedIrradiance = this.light.ambient.mul(hemisphere).toVar();
+      const blockedIrradiance = this.light.undirected.mul(hemisphere).toVar();
       for (const { irradiance, sectors: planetSectors, capWeight } of this.planets) {
         blockedIrradiance.addAssign(irradiance.mul(maskedMeasure(newly, planetSectors).mul(falloff).mul(capWeight)));
       }

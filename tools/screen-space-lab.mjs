@@ -127,9 +127,9 @@ export function candidateSeedOf(k, referencePasses) {
 // scale・bandCount・sliceCount・stepCount は描画設定 screenSpaceScanScale・screenSpaceBandCount・
 // screenSpaceSliceCount・screenSpaceStepCount の低・中・高のプリセット(setScan へ渡るもの)。
 export const TIERS = {
-  low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 0.38 },
-  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 0.38 },
-  high: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 0.38 },
+  low: { scale: 0.25, sliceCount: 2, stepCount: 3, bandCount: 4, bandScale: 0.25 },
+  medium: { scale: 0.25, sliceCount: 4, stepCount: 5, bandCount: 4, bandScale: 0.25 },
+  high: { scale: 0.25, sliceCount: 4, stepCount: 6, bandCount: 4, bandScale: 0.25 },
 };
 // 中の段の、帯に分けない愚直な点。走査の帯 0 が raw。
 export const MEDIUM_RAW_TIER = { ...TIERS.medium, bandCount: 1 };

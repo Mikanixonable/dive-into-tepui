@@ -79,6 +79,9 @@ const LARGE_EARTH_RADIUS_DEG = 30;
 const LARGE_EARTH_SUN_DISTANCE_LOG_AU = -0.16;
 const SMALL_EARTH_RADIUS_DEG = 3;
 const SMALL_EARTH_SUN_DISTANCE_LOG_AU = -1.14;
+// 2 つ目の天体照の見かけの半径 [deg]。同じ仰角では位相が地球と同じなので、届ける明るさは地球の約 6 割(アルベド 0.11 対
+// 0.306、sin² の比 0.41 対 0.25)— 地球が先頭のスロットに残る。
+const SECOND_PLANET_RADIUS_DEG = 40;
 const TINY_EARTH_RADIUS_DEG = 1;
 const TINY_EARTH_SUN_DISTANCE_LOG_AU = SMALL_EARTH_SUN_DISTANCE_LOG_AU
   + Math.log10(Math.sin(THREE.MathUtils.degToRad(TINY_EARTH_RADIUS_DEG))
@@ -111,6 +114,14 @@ function earthLightView(azimuthDeg: number, radiusDeg: number, sunDistanceLogAu:
     earthAltitudeLog: Math.log10(altitude),
   };
 }
+
+// 2 つの天体照の撮影の観察の向き。地球を開いた側に、2 つ目の天体を内隅の側の同じ仰角に置く。
+const TWO_PLANETS_VIEW: Partial<LabViewAngles> = {
+  ...earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
+  secondPlanetAzimuthDeg: CORNER_SIDE_AZIMUTH_DEG,
+  secondPlanetElevationDeg: LOW_EARTH_ELEVATION_DEG,
+  secondPlanetRadiusDeg: SECOND_PLANET_RADIUS_DEG,
+};
 
 // 同じ撮影の描画設定。天体照だけを一様球で当て、床が拡散照度のデバッグ表示で線形 0.3〜0.6 に写る露出補正
 // exposureCompensation にする。レンズ効果は、暗い壁のそばの P_in を 1% 以上動かすので切る。
@@ -312,6 +323,13 @@ function bay(): LabCase {
       'bay-earth-radius-30deg': {
         view: earthLightView(OPEN_SIDE_AZIMUTH_DEG, LARGE_EARTH_RADIUS_DEG, LARGE_EARTH_SUN_DISTANCE_LOG_AU),
         graphics: planetLightOnly(4), debugTarget: 'correction',
+      },
+      // 2 つの天体照。地球を開いた側、2 つ目の天体を内隅の側に置く — 向きを見る天体照の数で、内隅の側の遮られ方が変わる。
+      'bay-two-planets': { view: TWO_PLANETS_VIEW, graphics: planetLightOnly(4) },
+      'bay-two-planets-correction': {
+        view: TWO_PLANETS_VIEW,
+        graphics: { ...planetLightOnly(4), screenSpaceOcclusion: true, screenSpaceIndirect: false },
+        debugTarget: 'correction',
       },
       // 照り返しの較正。恒星を奥の壁の法線(+Z)に置く — 奥の壁は恒星へ正対し、床と端の壁は直射を掠める
       // だけ。天体照と環境光を切り、地球を遠ざけるので、壁の足元の床 P_base へ届くのは照り返しだけになる。

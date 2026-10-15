@@ -2,6 +2,7 @@
 // 帯ごとの標準偏差(輝点の探索)・画素ごとの最大偏差・帯ごとの1パス・seed 違いの1パスの補正項も同じ撮影で書く。
 // 使い方: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--baseline=<label>] [--scene=<name>]
 //   [--passes=1024|2048|4096] [--band-scale=<κ>] [--occlusion-invariant]
+//   [--occlusion-only] [--directional-planets=<0|1|2>]
 //   [--dry-run | --reindex | --cache-only]
 // 帯座標の因子 c・d は走査に固定で入っている(FIXED_FACTORS が記録)。--cache-only は撮影済みの run の収束の積算のキャッシュに
 // 足りない和・二乗の和だけを撮り足して標準偏差の帯を書く(ほかの出力と記録は触らない)。
@@ -38,7 +39,7 @@ const TIER = tierOf(bandScale);
 const PASSES = argumentOf('passes') === undefined ? 1024 : Number(argumentOf('passes'));
 if (![1024, 2048, 4096].includes(PASSES)) throw new Error('--passes must be 1024, 2048, or 4096');
 const RUN_LABEL = argumentOf('run');
-if (RUN_LABEL === undefined) throw new Error('usage: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--baseline=<label>] [--scene=<name>] [--factors=...] [--occlusion-invariant] [--dry-run|--reindex|--cache-only]');
+if (RUN_LABEL === undefined) throw new Error('usage: node tools/render-lab-screen-space-chain-metrics.mjs --run=<label> [--baseline=<label>] [--scene=<name>] [--factors=...] [--occlusion-invariant] [--occlusion-only] [--directional-planets=<0|1|2>] [--dry-run|--reindex|--cache-only]');
 if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(RUN_LABEL)) throw new Error('--run must be a safe lowercase label (letters, digits, hyphens)');
 const BASELINE_LABEL = argumentOf('baseline') ?? BASELINE_RUN;
 if (!/^[a-z0-9][a-z0-9-]{0,47}$/.test(BASELINE_LABEL)) throw new Error('--baseline must be a safe lowercase label');
@@ -46,10 +47,19 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const REINDEX = process.argv.includes('--reindex');
 const CACHE_ONLY = process.argv.includes('--cache-only');
 const OCCLUSION_INVARIANT = process.argv.includes('--occlusion-invariant');
+const OCCLUSION_ONLY = process.argv.includes('--occlusion-only');
+const directionalPlanetsArg = argumentOf('directional-planets');
+const DIRECTIONAL_PLANETS = directionalPlanetsArg === undefined ? undefined : Number(directionalPlanetsArg);
+if (DIRECTIONAL_PLANETS !== undefined && ![0, 1, 2].includes(DIRECTIONAL_PLANETS)) {
+  throw new Error('--directional-planets must be 0, 1, or 2');
+}
 if ([DRY_RUN, REINDEX, CACHE_ONLY].filter(Boolean).length > 1) throw new Error('--dry-run, --reindex and --cache-only are exclusive');
 const INVARIANT_FAILURES = path.join(OUTPUT, 'invariant-failures');
 const scenes = argumentOf('scene') === undefined ? SCENES : SCENES.filter(({ name }) => name === argumentOf('scene'));
 if (scenes.length === 0) throw new Error(`unknown scene: ${argumentOf('scene')}`);
+if (OCCLUSION_ONLY && scenes.some((scene) => scene.hasOcclusionOnly === false)) {
+  throw new Error('--occlusion-only requires scenes with an occlusion-only contribution');
+}
 const RUN_DIR = path.join(RUNS, RUN_LABEL);
 const RUN_RECORD = path.join(RUN_DIR, 'record.json');
 const COMMON_SIGNATURE = sourceSignatureOf(TIER);
@@ -73,7 +83,9 @@ function existingRunRecord() {
   if (record.scanSourceSignature !== COMMON_SIGNATURE) {
     throw new Error(`run ${RUN_LABEL} has a different shared scan-source signature; choose a new --run label`);
   }
-  if (JSON.stringify(record.conditions) !== JSON.stringify(captureConditions())) {
+  const storedConditions = { ...record.conditions,
+    lighting: record.conditions.lighting ?? { occlusionOnly: false, directionalPlanets: 2 } };
+  if (JSON.stringify(storedConditions) !== JSON.stringify(captureConditions())) {
     throw new Error(`run ${RUN_LABEL} has different capture conditions; choose a new --run label`);
   }
   for (const stored of Object.values(record.scenes ?? {})) {
@@ -108,19 +120,33 @@ if (DRY_RUN) {
 }
 
 function cacheKeyOf(scene) {
-  return createHash('sha256').update('ssd-8-15-chunk-cache-v2').update(sceneSourceSignatures.get(scene.name))
-    .update(`chunkPasses:${CHUNK_PASSES}`).update(JSON.stringify(TIER)).digest('hex').slice(0, 16);
+  const hash = createHash('sha256').update('ssd-8-15-chunk-cache-v2').update(sceneSourceSignatures.get(scene.name))
+    .update(`chunkPasses:${CHUNK_PASSES}`).update(JSON.stringify(TIER));
+  if (OCCLUSION_ONLY || DIRECTIONAL_PLANETS !== undefined) {
+    hash.update(`lighting:${JSON.stringify({ occlusionOnly: OCCLUSION_ONLY, directionalPlanets: DIRECTIONAL_PLANETS ?? null })}`);
+  }
+  return hash.digest('hex').slice(0, 16);
 }
 
 function captureConditions() {
   return { viewport: [WIDTH, HEIGHT], scanResolution: [SCAN_WIDTH, SCAN_HEIGHT], tier: TIER, fixedFactors: FIXED_FACTORS, passes: PASSES,
     chunkPasses: CHUNK_PASSES, invariantPass: INVARIANT_PASS,
-    noisePasses: { first: NOISE_FIRST_PASS, count: NOISE_PASSES }, baselineLabel: BASELINE_LABEL };
+    noisePasses: { first: NOISE_FIRST_PASS, count: NOISE_PASSES }, baselineLabel: BASELINE_LABEL,
+    lighting: { occlusionOnly: OCCLUSION_ONLY, directionalPlanets: DIRECTIONAL_PLANETS ?? 2 } };
+}
+
+// 撮影 scene を方式 mode で表示し、--directional-planets を当てる。表示は描画設定を撮影の既定へ戻すので、表示のたびにこれを通す。
+async function showWithLighting(lab, scene, mode) {
+  await lab.show({ caseName: scene.caseName, shot: scene.shot, mode, set: 'tuning', key: scene.name });
+  if (DIRECTIONAL_PLANETS !== undefined) {
+    await lab.setGraphicsOption('screenSpaceDirectionalPlanetCount', DIRECTIONAL_PLANETS);
+  }
 }
 
 // 候補どうしで違ってよい条件(κ と、古い記録の因子の欄)と、走査に固定で入る因子の記録を除いた条件。
 function sharedConditionsOf(conditions) {
   const shared = structuredClone(conditions);
+  shared.lighting ??= { occlusionOnly: false, directionalPlanets: 2 };
   delete shared.tier.bandScale;
   delete shared.tier[TIER_FACTORS_FIELD];
   delete shared.fixedFactors;
@@ -164,7 +190,8 @@ async function mergedOf(lab, packed) {
 
 async function clayPng(lab) {
   // クレイは合成後の照度を表示するため、遠方照度 E と近傍補正 ΔE を足してから負値を切る。
-  const [rgba, correction] = await Promise.all([lab.readFloat('diffuse', 4), lab.readFloat('correction', 4)]);
+  const rgba = await lab.readFloat('diffuse', 4);
+  const correction = await lab.readFloat('correction', 4);
   for (let i = 0; i < rgba.length; i += 4) {
     for (let c = 0; c < 3; c++) rgba[i + c] = Math.max(0, rgba[i + c] + correction[i + c]);
     rgba[i + 3] = 1;
@@ -400,11 +427,11 @@ async function captureScene(lab, scene, dir, cache) {
   const sceneStarted = performance.now();
   let occlusionBandSum = null;
   if (OCCLUSION_INVARIANT && scene.hasOcclusionOnly !== false) {
-    await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 1, set: 'tuning', key: scene.name });
+    await showWithLighting(lab, scene, 1);
     await lab.setUpsampleAlphaOne(false);
     occlusionBandSum = await checkedBandSumInvariant(lab, scene, dir, '-occlusion');
   }
-  await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 2, set: 'tuning', key: scene.name });
+  await showWithLighting(lab, scene, OCCLUSION_ONLY ? 1 : 2);
   const exposure = await lab.exposureFactor();
   await lab.setUpsampleAlphaOne(false);
   const sumInvariant = await checkedBandSumInvariant(lab, scene, dir, '');
@@ -520,7 +547,7 @@ async function captureScene(lab, scene, dir, cache) {
 
 // --cache-only: 記録済みの run のキャッシュの不足を埋める。
 async function fillCacheOnly(lab, scene, cache) {
-  await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 2, set: 'tuning', key: scene.name });
+  await showWithLighting(lab, scene, OCCLUSION_ONLY ? 1 : 2);
   await lab.setUpsampleAlphaOne(false);
   await lab.setTier(TIER);
   await lab.setWhiteNoisePass(null);

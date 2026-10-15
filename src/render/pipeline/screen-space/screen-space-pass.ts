@@ -10,7 +10,6 @@ import {
 import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
 import { ShadingSample } from '../lighting/shading-sample';
-import { MAX_PLANET_LIGHT_SLOTS, type PlanetLightSource } from '../lighting/planet-light-source';
 import { compileInto } from '../compile-into';
 import { lambertianRadianceAt } from '../material-pass';
 import {
@@ -24,6 +23,7 @@ import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './scr
 import { SurfaceWeight } from './surface-weight';
 import { whiteNoiseAt } from './white-noise';
 import type { DiffuseCorrection } from './diffuse-correction';
+import type { PlanetLightSource } from '../lighting/planet-light-source';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
 import type { LightPrepass } from '../light-prepass';
@@ -55,7 +55,7 @@ export interface ScanTier {
 
 // 帯の座標の尺度 κ。走査の解像度・スライス数・歩数・帯の数と組んで段にする。
 // TODO: 帯の尺度は仮置き。費用と画質の指標の実測から選び直す。
-const BAND_SCALE = 0.38;
+const BAND_SCALE = 0.25;
 // デバイス上限を読めない場合(renderer をスタブにしたテストなど)に使う WebGPU の既定値 [byte/sample]。
 const DEFAULT_ATTACHMENT_BYTE_LIMIT = 32;
 
@@ -110,7 +110,7 @@ export class ScreenSpacePass {
   // 方式ごとの、段 0 の面の写しと源を書く描画命令。
   private readonly occlusionSurfaceStage: ScreenSpaceStage;
   private readonly indirectSurfaceStage: ScreenSpaceStage;
-  // 帯の数と mergesIntoCorrection の組ごとの描画命令。初めてその組で描くときに組む。
+  // 帯の数・mergesIntoCorrection・天体照のスロット数の組ごとの描画命令。初めてその組で描くときに組む。
   private readonly stagesByKey = new Map<string, BandCountStages>();
   private readonly experimentStagesByKey = new Map<string, readonly ScreenSpaceStage[]>();
   private readonly quad = new QuadMesh();
@@ -156,13 +156,15 @@ export class ScreenSpacePass {
 
   // lightPrepass は照り返しの源になる面の遠方の拡散照度、planetLight は塞がれ方を数える天体照の球冠の出どころ。
   // planetLight と ambient は受け手へ届く遠方の拡散光でもある。output は結果の描画先。mode は構築時点の方式、
-  // sliceCount / stepCount は構築時点の走査のスライス数と片側の歩数。
+  // sliceCount / stepCount は構築時点の走査のスライス数と片側の歩数。directionalPlanetCount は構築時点の、走査が
+  // 遮りの向きを見る天体照の数(描画設定 screenSpaceDirectionalPlanetCount の値)。
   public constructor(
     private readonly renderer: WebGPURenderer, private readonly gbuffer: GBufferPass,
     private readonly lightPrepass: LightPrepass,
     private readonly planetLight: PlanetLightSource, private readonly ambient: AmbientSource,
     private readonly output: DiffuseCorrection, private readonly gpu: GpuTimings,
     private mode: ScreenSpaceDiffuse, scale: number, sliceCount: number, stepCount: number, bandCount: number,
+    private directionalPlanetCount: number,
     private readonly exposureFactor: FloatNode,
   ) {
     this.deviceAttachmentByteLimit = (renderer.backend as WebGpuAttachmentLimitsBackend).device?.limits
@@ -217,6 +219,12 @@ export class ScreenSpacePass {
   // 次の render から段 tier で走査する。次に setScan を呼ぶまで保つ。
   public setTier(tier: ScanTier): void {
     this.tier = tier;
+  }
+
+  // 次の render から、走査が遮りの向きを見る天体照を、届ける明るさの強い先頭の count 個までにする(描画設定
+  // screenSpaceDirectionalPlanetCount の値)。
+  public setDirectionalPlanetCount(count: number): void {
+    this.directionalPlanetCount = count;
   }
 
   // 次の render から、走査の全体の回転とブルーノイズのずれを (x, y) [タイルの幅] にする。
@@ -340,7 +348,7 @@ export class ScreenSpacePass {
 
   private experimentStages(variant: ScreenSpaceExperimentVariant, sparseTapCount: number): readonly ScreenSpaceStage[] {
     const layout = this.bandLayout;
-    const cacheKey = `${variant}:${JSON.stringify(layout)}:${sparseTapCount}`;
+    const cacheKey = `${variant}:${JSON.stringify(layout)}:${sparseTapCount}:${this.planetSlotKey}`;
     const cached = this.experimentStagesByKey.get(cacheKey);
     if (cached !== undefined) return cached;
     if (variant === 'raw-full') {
@@ -374,12 +382,23 @@ export class ScreenSpacePass {
     return stages;
   }
 
-  // 帯の数 count と、いまの段の mergesIntoCorrection で決まる描画命令。初めて引いたときに組み、以後は同じものを返す。
+  // 走査が円盤の向きで遮りを数える天体照のスロットの数。使うスロット(PlanetLightSource.count)の先頭のこれだけで、
+  // 残りの使うスロットは環境光と同じく向きによらず塞ぐ。
+  private get directionalSlotCount(): number {
+    return Math.min(this.directionalPlanetCount, this.planetLight.count);
+  }
+
+  // 走査の描画命令を、向きを見る天体照のスロットの数と使うスロットの数で引き分ける鍵。
+  private get planetSlotKey(): string {
+    return `${this.directionalSlotCount}:${this.planetLight.count}`;
+  }
+
+  // 帯の数 count・mergesIntoCorrection・天体照のスロット数で決まる描画命令。初めて引いたときに組み、以後は同じものを返す。
   private stagesOf(tier: ScanTier, layout: BandLayout): BandCountStages {
     const { bandCount: count } = tier;
     const format = layout[0]!;
     const intoCorrection = this.mergesIntoCorrection;
-    const key = `${JSON.stringify(layout)}:${intoCorrection}`;
+    const key = `${JSON.stringify(layout)}:${intoCorrection}:${this.planetSlotKey}`;
     const built = this.stagesByKey.get(key);
     if (built !== undefined) return built;
     const scanTarget = this.output.bandTarget(layout, 0);
@@ -421,14 +440,22 @@ export class ScreenSpacePass {
       select(useBlue, this.blueNoise.atScreenPixel(this.seed.add(0.5)), whiteAt(1)),
       select(useBlue, this.blueNoise.atScreenPixel(this.seed.add(27 / 64)), whiteAt(2)),
     );
-    const planets: readonly PlanetIllumination[] = Array.from({ length: MAX_PLANET_LIGHT_SLOTS }, (_, slot) => ({
+    const directional = this.directionalSlotCount;
+    const planets: readonly PlanetIllumination[] = Array.from({ length: directional }, (_, slot) => ({
       cap: this.planetLight.capAt(this.sample, slot),
       irradiance: this.planetLight.diffuseIrradianceAtSlot(this.sample, slot),
     }));
+    // 向きを見ない天体照は漏らさず、環境光と同じく向きによらず塞ぐ。
+    const undirectedSlots = Array.from(
+      { length: this.planetLight.count - directional }, (_, index) => directional + index);
     const material = multiOutputMaterial(target, () => {
+      const undirected = undirectedSlots.reduce<Vec3Node>(
+        (sum, slot) => sum.add(this.planetLight.diffuseIrradianceAtSlot(this.sample, slot)),
+        this.ambient.irradiance(this.sample),
+      );
       const corrections = scanHemisphere(
         this.surfaces, this.fullSize, this.projection, this.projectionInverse, this.sliceCount, this.stepCount, noise,
-        this.ambient.irradiance(this.sample), planets, radiance,
+        undirected, planets, radiance,
         { count, scale: this.bandScale },
       );
       return directCorrection ? [vec4(corrections[0]!, float(1))] : packedBands(corrections, format, this.exposureFactor);

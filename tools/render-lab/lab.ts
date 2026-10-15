@@ -22,7 +22,9 @@ import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-rend
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { webGpuRequiredLimits } from '../../src/render/webgpu-required-limits';
 import { distributionOf, type SampleDistribution } from '../../src/math/sample-distribution';
-import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
+import { R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
+import { DEFAULT_ALBEDO } from '../../src/render/celestial-albedo';
+import { planetLightStrength } from '../../src/render/pipeline/lighting/planet-light-select';
 import { SCREEN_SPACE_DIFFUSE, screenSpaceDiffuseOf } from '../../src/render/pipeline/screen-space/screen-space-pass';
 import { resolveGraphics, selectionOfGraphics, type GraphicsSelection } from '../../src/render/graphics-selection';
 import { CASES, type CaseName } from './cases';
@@ -108,6 +110,13 @@ const CAMERA_OFFSET = new THREE.Vector3();
 
 // 地球の天体照へ渡す恒星の向きの置き場。毎フレーム書き換えて使い回す。
 const EARTH_STAR_DIRECTION = new THREE.Vector3();
+// 2 つ目の天体照の値と、光源を明るさの順に並べる計算の置き場。毎フレーム書き換えて使い回す。
+const SECOND_PLANET_DIRECTION = new THREE.Vector3();
+const SECOND_PLANET_CENTER = new THREE.Vector3();
+const SECOND_PLANET_STAR_DIRECTION = new THREE.Vector3();
+const LIGHT_STRENGTH_TO_SUN = new THREE.Vector3();
+const LIGHT_STRENGTH_TO_ORIGIN = new THREE.Vector3();
+const SECOND_PLANET_BODY_FROM_WORLD = new THREE.Matrix4();
 
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
@@ -148,6 +157,7 @@ export class LabView {
     sunAzimuthDeg: 0, sunElevationDeg: 0, sunDistanceLogAu: 0,
     cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraDistanceLog: 0, cameraZoomLog: 0,
     earthAzimuthDeg: 0, earthElevationDeg: 0, earthAltitudeLog: 0, earthLatitudeDeg: 0, earthLongitudeDeg: 0,
+    secondPlanetAzimuthDeg: 0, secondPlanetElevationDeg: 0, secondPlanetRadiusDeg: 0,
   };
   private angles: LabViewAngles = this.defaultAngles;
   // 全ケースの環の帯が共有するマテリアル。
@@ -322,11 +332,13 @@ export class LabView {
     this.defaultCameraFovDeg = camera.fov;
     this.pivot.copy(camera.position).addScaledVector(forward, this.defaultCameraDistance);
     // 恒星とカメラの向きを角度へ直す。地球を置かないケースでは、地球のつまみを前のケースの値のまま保つ。
+    // 2 つ目の天体照はケースの既定では置かない — 前のケースの撮影で置いたものを持ち越さない。
     const sun = anglesFromDirection(built.sunDirection ?? SUN_DIR);
     const eye = anglesFromDirection(forward.clone().negate());
     this.defaultAngles = {
       ...this.angles,
       ...built.earth,
+      secondPlanetRadiusDeg: 0,
       sunAzimuthDeg: sun.azimuthDeg,
       sunElevationDeg: sun.elevationDeg,
       sunDistanceLogAu: 0,
@@ -363,8 +375,13 @@ export class LabView {
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
     this.pipeline.sunLight.set(this.sun.position, R_SUN, SUN_LIGHT_COLOR, this.sun.intensity);
     this.pipeline.exposure.setReference(ORIGIN, this.sun.position, this.sun.intensity);
-    // 天体照の光源は地球だけ、影・大気の源は地球のぶんとケースのぶんを合わせて渡す。
-    this.pipeline.planetLight.set(earth === null ? [] : [earthLightValue(earth, this.sun, graphics.airglow)]);
+    // 天体照の光源は地球と 2 つ目の天体照を描画原点へ届く明るさ順に渡し、影・大気の源は地球のぶんとケースのぶんを合わせる。
+    const secondPlanet = secondPlanetLightValue(this.angles, this.sun);
+    const lights = [
+      ...(earth === null ? [] : [earthLightValue(earth, this.sun, graphics.airglow)]),
+      ...(secondPlanet === null ? [] : [secondPlanet]),
+    ];
+    this.pipeline.planetLight.set(byStrengthAtOrigin(lights, this.sun));
     this.pipeline.sphereLights.set(this.current.sphereLights ?? []);
     this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
@@ -1020,4 +1037,38 @@ function earthLightValue(earth: LabEarth, sun: LabSun, airglow: boolean): Planet
       atmosphere: withAirglowSetting(earth.atmosphere, airglow),
     },
   };
+}
+
+// 観察の向き angles の 2 つ目の天体照を、恒星 sun に照らされた光源とした値。見かけの半径が 0 なら null。
+function secondPlanetLightValue(angles: LabViewAngles, sun: LabSun): PlanetLightValue | null {
+  if (angles.secondPlanetRadiusDeg === 0) return null;
+  const radius = THREE.MathUtils.degToRad(angles.secondPlanetRadiusDeg);
+  const center = SECOND_PLANET_CENTER.copy(
+    directionFromAngles(angles.secondPlanetAzimuthDeg, angles.secondPlanetElevationDeg, SECOND_PLANET_DIRECTION),
+  ).multiplyScalar(R_MOON / Math.sin(radius));
+  const sunIrradiance = sun.irradianceAt(center);
+  return {
+    center,
+    radius: R_MOON,
+    radiance: planetRadiance(DEFAULT_ALBEDO, sunIrradiance),
+    appearance: {
+      map: null,
+      albedo: DEFAULT_ALBEDO,
+      sunIrradiance,
+      starDirection: SECOND_PLANET_STAR_DIRECTION.subVectors(sun.position, center).normalize(),
+      bodyFromWorld: SECOND_PLANET_BODY_FROM_WORLD,
+      atmosphere: null,
+    },
+  };
+}
+
+// 天体照の光源 lights を、恒星 sun の下で描画原点へ届ける明るさ(planetLightStrength)の強い順に並べた列。
+function byStrengthAtOrigin(lights: readonly PlanetLightValue[], sun: LabSun): readonly PlanetLightValue[] {
+  return lights.map((light) => {
+    const distance = light.center.length();
+    const toSun = LIGHT_STRENGTH_TO_SUN.subVectors(sun.position, light.center);
+    const toOrigin = LIGHT_STRENGTH_TO_ORIGIN.copy(light.center).negate();
+    const phaseAngle = toSun.angleTo(toOrigin);
+    return { light, strength: planetLightStrength(light.radiance, light.radius, distance, phaseAngle) };
+  }).sort((a, b) => b.strength - a.strength).map(({ light }) => light);
 }

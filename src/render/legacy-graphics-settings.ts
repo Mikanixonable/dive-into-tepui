@@ -139,6 +139,7 @@ function expandedValues(legacy: LegacyValues): GraphicsSettingsData {
     screenSpaceBandCount: 4,
     screenSpaceSliceCount: scan.sliceCount,
     screenSpaceStepCount: scan.stepCount,
+    screenSpaceDirectionalPlanetCount: 2,
     screenSpaceSpecular: legacy.screenSpaceSpecular,
     screenSpaceSpecularScale: trace.scale,
     screenSpaceSpecularStepCount: trace.stepCount,

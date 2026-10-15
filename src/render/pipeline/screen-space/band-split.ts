@@ -1,6 +1,6 @@
 // 補正の増分(照り返し − 塞がれた照度)を、標本の画面距離と向きから帯へ分ける。帯の座標は log₂(κ·ρ·cos ε ÷ √(n_s·v_s))
 // で、照り返しにも遮蔽にも同じ。受け手の視線の因子 c と送り手の視線の因子 d は固定で掛かる。
-import { abs, clamp, dot, float, log2, max, pow } from 'three/tsl';
+import { clamp, dot, exp2, float, log2, max, min, pow } from 'three/tsl';
 import type { FloatNode, Vec3Node } from '../../tsl-types';
 
 // 補正を遮りの画面距離 ρ [走査の画素] と向きで分ける帯。count は帯の数(1 なら分けない)で、帯 b は座標 b を受け持つ。
@@ -24,7 +24,7 @@ export function facingCosine(normal: Vec3Node, direction: Vec3Node): FloatNode {
 }
 
 // 受け手の法線と受け手→カメラの内積 cos ε を、弱めずに帯の座標へ掛ける因子 c。斜めに見る受け手は画面上で縮むので、
-// 同じ世界の波長が画面では短い。cos ε = 0 は帯 0 へ頭打ちで、NaN は出ない。
+// 同じ世界の波長が画面では短い。cos ε = 0 は帯 0 が最も重い形へ寄り、NaN は出ない。
 function receiverViewMultiplier(cosine: FloatNode): FloatNode {
   return max(cosine, COORDINATE_FLOOR);
 }
@@ -34,7 +34,7 @@ function senderViewDivisor(senderView: FloatNode): FloatNode {
   return pow(max(senderView, COORDINATE_FLOOR), SENDER_VIEW_EXPONENT);
 }
 
-// 帯の座標 log₂(κ·ρ·multiply / divide) を 0..count − 1 へ寄せる。
+// 帯の座標 log₂(κ·ρ·multiply / divide)。帯 b の山は座標 b にあり、帯の範囲へは寄せない。
 // **掛ける因子の区別に注意**
 // - 標本(送り手)ごとに変わる掛ける因子は、0 へ近づくと踏まれにくく値の大きい標本だけを帯 0(均さない帯)へ落として
 //   輝点にする。掛けるなら弱めて下限を持たせること。
@@ -42,16 +42,24 @@ function senderViewDivisor(senderView: FloatNode): FloatNode {
 //   という本当の尺度を表す。弱めない。
 // - 割る因子は最も粗い帯への頭打ちで済むので安全。
 export function bandCoordinate(
-  count: number, scale: FloatNode, rho: FloatNode, multiply: FloatNode, divide: FloatNode,
+  scale: FloatNode, rho: FloatNode, multiply: FloatNode, divide: FloatNode,
 ): FloatNode {
   const wavelength = log2(max(scale.mul(rho).mul(multiply), COORDINATE_FLOOR));
-  return clamp(wavelength.sub(log2(max(divide, COORDINATE_FLOOR))), 0, count - 1);
+  return wavelength.sub(log2(max(divide, COORDINATE_FLOOR)));
 }
 
-// 帯の座標 coordinate が両隣の帯へ分ける重み。0 以上で和は 1(1 帯なら重み 1)。
+// 帯の座標 coordinate の増分を帯へ分ける重み。0 以上で和は 1(1 帯なら重み 1)。帯 b は、線形の距離で山 d_b を頂点に 0〜2d_b に張った
+// 左右対称な三角 max(1 − |u − 1|, 0)(u = 2^{coordinate − b})を全帯の和で割った重みで、近い側の裾は ρ = 0 まで伸び、粗い隣の帯との比は 1/2。
+// 最後の帯は山より遠くを 1 で受け持つ。座標の下限で u > 0 なので、帯 0 の三角は正で和は 0 にならない。
 export function bandWeights(count: number, coordinate: FloatNode): FloatNode[] {
   if (count === 1) return [float(1)];
-  return Array.from({ length: count }, (_, band) => max(float(1).sub(abs(coordinate.sub(band))), 0));
+  const peaks = Array.from({ length: count }, (_, band) => {
+    const ratio = exp2(coordinate.sub(band));
+    const u = band === count - 1 ? min(ratio, 1) : ratio;
+    return max(float(1).sub(u.sub(1).abs()), 0);
+  });
+  const total = peaks.reduce((sum, peak) => sum.add(peak), float(0));
+  return peaks.map((peak) => peak.div(total));
 }
 
 // 画面距離 rho の標本の、補正の増分の帯ごとの重み。receiverView は受け手の法線と受け手→カメラの内積 cos ε、senderView は
@@ -67,6 +75,6 @@ export function sampleBandWeights(
   //   const receiverFacing = pow(max(cosPhi, COORDINATE_FLOOR), s);
   // 色ムラをどこまで均せるかを手順12(時間方向の蓄積)以降に決めてから、a を採るかを決める。
   const coordinate = bandCoordinate(
-    bands.count, bands.scale, rho, receiverViewMultiplier(receiverView), senderViewDivisor(senderView));
+    bands.scale, rho, receiverViewMultiplier(receiverView), senderViewDivisor(senderView));
   return bandWeights(bands.count, coordinate);
 }

@@ -240,6 +240,12 @@ export const GRAPHICS_FIELDS = {
         min: 1, max: 12, step: 1,
         presets: { low: 3, medium: 5, high: 5 },
       },
+      // 走査が遮りの向きを見る天体照の数。最大値は MAX_PLANET_LIGHT_SLOTS。
+      screenSpaceDirectionalPlanetCount: {
+        kind: 'choice', label: '向きを見る天体照の数',
+        items: [[0, 'なし'], [1, '1'], [2, '2']],
+        presets: { low: 2, medium: 2, high: 2 },
+      },
     },
   },
   // 滑らかな面へ、反射方向にある近くの物体を映す。

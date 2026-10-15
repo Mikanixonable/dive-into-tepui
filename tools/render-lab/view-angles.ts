@@ -6,7 +6,8 @@ import * as THREE from 'three/webgpu';
 // cameraDistanceLog はケース既定の距離に対する倍率の常用対数、cameraZoomLog はケース既定の
 // 画角を狭める倍率の常用対数。earth* は地球の置き方で、方位・仰角は描画原点から地球の中心への
 // 向き、earthAltitudeLog は描画原点の高度 [m] の常用対数、緯度・経度は描画原点の直下にある
-// 天体固定の地点。
+// 天体固定の地点。secondPlanet* は形を描かない 2 つ目の天体照の置き方で、方位・仰角は描画原点から
+// 中心への向き、secondPlanetRadiusDeg は見かけの半径 [deg](0 なら置かない)。
 export interface LabViewAngles {
   readonly sunAzimuthDeg: number;
   readonly sunElevationDeg: number;
@@ -20,6 +21,9 @@ export interface LabViewAngles {
   readonly earthAltitudeLog: number;
   readonly earthLatitudeDeg: number;
   readonly earthLongitudeDeg: number;
+  readonly secondPlanetAzimuthDeg: number;
+  readonly secondPlanetElevationDeg: number;
+  readonly secondPlanetRadiusDeg: number;
 }
 
 // 観察の向きのうち、地球の置き方を決めるつまみ。

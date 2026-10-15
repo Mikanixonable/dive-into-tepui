@@ -173,6 +173,14 @@ function buildViewAngleSliders(view: LabView): () => void {
     () => degrees(view.viewAngles.earthLatitudeDeg), (v) => view.setViewAngles({ earthLatitudeDeg: v }));
   const setEarthLongitude = buildSlider('earth-angles', '直下 経度', -180, 180, 0.5,
     () => degrees(view.viewAngles.earthLongitudeDeg), (v) => view.setViewAngles({ earthLongitudeDeg: v }));
+  // 形を描かない 2 つ目の天体照の置き方。視半径 0 では置かない。
+  const setSecondPlanetAzimuth = buildSlider('earth-angles', '2つ目の天体 方位', -180, 180, 0.5,
+    () => degrees(view.viewAngles.secondPlanetAzimuthDeg), (v) => view.setViewAngles({ secondPlanetAzimuthDeg: v }));
+  const setSecondPlanetElevation = buildSlider('earth-angles', '2つ目の天体 仰角', -90, 90, 0.5,
+    () => degrees(view.viewAngles.secondPlanetElevationDeg),
+    (v) => view.setViewAngles({ secondPlanetElevationDeg: v }));
+  const setSecondPlanetRadius = buildSlider('earth-angles', '2つ目の天体 視半径', 0, 60, 0.5,
+    () => degrees(view.viewAngles.secondPlanetRadiusDeg), (v) => view.setViewAngles({ secondPlanetRadiusDeg: v }));
   const earthSection = document.getElementById('earth-section')!;
 
   return () => {
@@ -192,6 +200,9 @@ function buildViewAngleSliders(view: LabView): () => void {
     setEarthAltitude(current.earthAltitudeLog);
     setEarthLatitude(current.earthLatitudeDeg);
     setEarthLongitude(current.earthLongitudeDeg);
+    setSecondPlanetAzimuth(current.secondPlanetAzimuthDeg);
+    setSecondPlanetElevation(current.secondPlanetElevationDeg);
+    setSecondPlanetRadius(current.secondPlanetRadiusDeg);
   };
 }
 

@@ -4,7 +4,7 @@
 // 載せる天体とその値は、毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, PI, acos, asin, clamp, cos, dot, float, length, max, min, normalize, select, sin, sqrt, uniform, vec3,
+  Fn, PI, acos, asin, clamp, cos, dot, float, length, max, min, normalize, select, sin, sqrt, uniform,
 } from 'three/tsl';
 import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';
 import { specularLobeHalfWidth } from './ggx';
@@ -284,10 +284,11 @@ export class PlanetLightSource {
   );
   private readonly slotSources: readonly PlanetLightSlot[];
 
-  // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、count は同時に使うスロットの本数
+  // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、usedCount は同時に使うスロットの本数
   // (描画設定 planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
   public constructor(
-    sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular, private count: number, model: number,
+    sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular,
+    private usedCount: number, model: number,
   ) {
     this.slotSources = this.slots.map((slot) => new PlanetLightSlot(
       sunLight, bodyShadow, sphereSpecular, slot, model));
@@ -298,19 +299,16 @@ export class PlanetLightSource {
     return this.slotSources[slot]!.capAt(sample);
   }
 
-  // 受け手 sample へ全スロットの天体が届ける拡散照度の和。lightSources が寄与する拡散の和と同じ値。
-  public diffuseIrradiance(sample: ShadingSample): Vec3Node {
-    return this.slotSources.reduce<Vec3Node>(
-      (sum, source) => sum.add(source.diffuseIrradianceAt(sample)), vec3(0));
-  }
-
   // 受け手 sample へスロット slot の天体が届ける拡散照度。そのスロットの光源が寄与する拡散と同じ値。
   public diffuseIrradianceAtSlot(sample: ShadingSample, slot: number): Vec3Node {
     return this.slotSources[slot]!.diffuseIrradianceAt(sample);
   }
 
+  // 同時に使うスロットの本数(描画設定 planetLightCount の値)。点きうるのは先頭からこの本数のスロット。
+  public get count(): number { return this.usedCount; }
+
   // 同時に使用するスロット本数を変更する。次回の set() 呼び出し時から適用される。
-  public setCount(count: number): void { this.count = count; }
+  public setCount(count: number): void { this.usedCount = count; }
 
   // 描画設定 planetLightModel の値を全スロットへ配る。
   public setModel(model: number): void {
@@ -345,7 +343,7 @@ export class PlanetLightSource {
 
   // このフレームの光源の列。本数を超えたぶんは捨て、足りないスロットは消灯する。
   public set(lights: readonly PlanetLightValue[]): void {
-    const used = lights.slice(0, this.count);
+    const used = lights.slice(0, this.usedCount);
     for (const [i, slot] of this.slots.entries()) {
       const light = used[i];
       slot.radius.value = light === undefined ? 0 : light.radius;
