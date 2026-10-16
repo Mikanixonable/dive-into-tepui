@@ -31,6 +31,7 @@ import { LabPlayback } from './playback';
 import { MotionVectorCheck, type MotionVectorFrameRecord } from './motion-vector-check';
 import { JitterSweep, type SweepRecord } from './jitter-sweep';
 import { captureAccumulated } from './accumulated-capture';
+import { StaticVariance, type StaticVarianceRecord } from './static-variance';
 import { phasesOf, type PhaseSequence } from './phase-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
@@ -146,6 +147,9 @@ declare global {
       jitterSweep: (
         sequence: PhaseSequence, historyCaps: readonly number[], imagedHistoryCaps: readonly number[],
       ) => Promise<SweepRecord>;
+      staticVariance: (
+        sliceCount: number, historyCap: number, frames: number, pngScale: number | null,
+      ) => Promise<StaticVarianceRecord>;
     };
   }
 }
@@ -282,6 +286,7 @@ async function init(): Promise<void> {
   const motion = new MotionSequence(view);
   const motionVectorCheck = new MotionVectorCheck(view);
   const sweep = new JitterSweep(view);
+  const staticVariance = new StaticVariance(view);
   const syncAngles = buildViewAngleSliders(view);
   const playback = new LabPlayback(view, 'playback', 'temporal');
 
@@ -459,6 +464,7 @@ async function init(): Promise<void> {
     motionVectorFrame: (frame, compareDepth, forceNoHistory, verifyRepeated) => motionVectorCheck.frame(frame, compareDepth, forceNoHistory, verifyRepeated),
     jitterSweep: (sequence, historyCaps, imagedHistoryCaps) => sweep.sweep(
       phasesOf(sequence, view.scanCellSize), historyCaps, imagedHistoryCaps, view.scanCellSize),
+    staticVariance: (sliceCount, historyCap, frames, pngScale) => staticVariance.capture(sliceCount, historyCap, frames, pngScale),
   };
 }
 
