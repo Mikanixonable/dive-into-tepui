@@ -70,9 +70,9 @@ function debrisPool(center: THREE.Vector3, count: number): THREE.Object3D {
   const pool = new InstancedPool(host, geometry, material, count);
   // 1 フレームぶんの個体を、決定的な乱数で位置と姿勢を散らして積む。
   const random = lcg(20260825);
-  const piece = new THREE.Object3D();
   pool.beginFrame();
   for (let i = 0; i < count; i++) {
+    const piece = new THREE.Object3D();
     piece.position.set(
       center.x + randSym(DEBRIS_SPREAD, random),
       center.y + randSym(DEBRIS_SPREAD, random),

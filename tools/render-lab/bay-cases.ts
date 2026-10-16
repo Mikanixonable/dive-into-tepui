@@ -210,9 +210,9 @@ function structure(): THREE.Object3D {
 function casings(): THREE.Object3D {
   const host = new THREE.Scene();
   const pool = new CasingPool(host, CASINGS.length);
-  const piece = new THREE.Object3D();
   pool.beginFrame();
   for (const { x, z, yaw } of CASINGS) {
+    const piece = new THREE.Object3D();
     piece.position.set(x, CASING_AXIS_HEIGHT, z);
     // 焼いたモデルの軸はローカルの +Y なので、Z まわりに倒して寝かせてから方位を回す。
     piece.rotation.set(0, yaw, Math.PI / 2);

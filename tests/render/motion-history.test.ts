@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import {
-  markMotionHistoryKey, markMotionRejected, MOTION_NO_HISTORY, MotionHistory, registerMotionPool,
+  markMotionHistoryKey, markMotionRejected, MOTION_NO_HISTORY, MotionHistory, PoolMotionHistory,
   useRecordedPreviousModel,
 } from '../../src/render/pipeline/motion-history';
 import { test } from '../harness';
@@ -244,17 +244,20 @@ export function register(): void {
     const second = positionedObject(2);
     const newObject = positionedObject(3);
     const mesh = new THREE.InstancedMesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial(), 2);
-    const previous = new THREE.StorageInstancedBufferAttribute(2, 16);
-    const objects: THREE.Object3D[] = [first, second];
-    let count = 2;
-    const unregister = registerMotionPool(mesh, previous, objects, () => count);
+    const pool = new PoolMotionHistory(mesh, 2);
+    const previous = pool.previousMatrices;
     try {
+      pool.beginFrame();
+      pool.place(first);
+      pool.place(second);
       history.setFrame(0, camera);
       first.position.x = 4;
       first.updateMatrixWorld(true);
       second.position.x = 5;
       second.updateMatrixWorld(true);
-      objects.splice(0, 2, second, first);
+      pool.beginFrame();
+      pool.place(second);
+      pool.place(first);
 
       history.setFrame(1, camera);
       assert.equal(previous.array[12], 2);
@@ -266,8 +269,9 @@ export function register(): void {
       assert.equal(previous.array[12], 2);
       assert.equal(previous.array[28], 1);
 
-      objects.splice(0, 2, newObject, first);
-      count = 2;
+      pool.beginFrame();
+      pool.place(newObject);
+      pool.place(first);
       history.setFrame(2, camera);
       assert.deepEqual(Array.from(previous.array.slice(0, 16)), Array.from(zeroMatrix().elements));
       assert.equal(previous.array[28], 8);
@@ -277,8 +281,23 @@ export function register(): void {
         ...zeroMatrix().elements, ...zeroMatrix().elements,
       ]);
     } finally {
-      unregister();
-      previous.dispose();
+      pool.dispose();
+      mesh.dispose();
+    }
+  });
+
+  test('motion history: プールの同じフレームの2つの枠へ同じ個体を置けない', () => {
+    const mesh = new THREE.InstancedMesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial(), 2);
+    const pool = new PoolMotionHistory(mesh, 2);
+    const object = positionedObject(1);
+    try {
+      pool.beginFrame();
+      pool.place(object);
+      assert.throws(() => pool.place(object));
+      pool.beginFrame();
+      pool.place(object);
+    } finally {
+      pool.dispose();
       mesh.dispose();
     }
   });
