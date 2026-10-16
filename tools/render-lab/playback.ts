@@ -1,6 +1,6 @@
 // 描画テスト環境の再生。論理フレームに応じて動きを決めて描き、操作・動きの設定・状態表示を組む。
 import { Button, SegmentedControl } from '../../src/hud/widgets';
-import { historyCapOf } from '../../src/render/pipeline/screen-space/temporal-accumulation';
+import { lengthCapOf } from '../../src/render/pipeline/screen-space/temporal-accumulation';
 import { buildSlider } from '../lab-controls';
 import { cameraShiftOf } from './motion-sequence';
 import type { JitterSource } from '../../src/render/pipeline/screen-space/frame-jitter';
@@ -175,13 +175,13 @@ export class LabPlayback {
     this.refreshStatus();
   }
 
-  // 時定数の変更を状態表示へ反映する。
+  // 履歴の上限の変更を状態表示へ反映する。
   public refreshStatus(): void {
     const frameText = this.playing ? `${this.frameIntervalMs?.toFixed(1) ?? '—'} ms/フレーム` : '—';
-    const historyCap = historyCapOf(this.view.timeConstantFrames, this.change).toFixed(1);
-    const note = this.view.timeConstantFrames === 1 ? ' · 時定数 1 では履歴もジッターも使わない' : '';
+    const lengthCap = lengthCapOf(this.view.historyCapFrames, this.change).toFixed(1);
+    const note = this.view.historyCapFrames === 1 ? ' · 履歴の上限 1 では履歴もジッターも使わない' : '';
     this.statusOutput.textContent = [
-      `k = ${this.view.logicalFrame} · ${frameText} · 履歴の上限 ${historyCap}${note}`,
+      `k = ${this.view.logicalFrame} · ${frameText} · 履歴の長さの上限 ${lengthCap}${note}`,
       this.failure,
     ].filter((line): line is string => line !== null).join(' · ');
   }

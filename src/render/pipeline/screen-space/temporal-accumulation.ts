@@ -56,9 +56,9 @@ export class TemporalAccumulation {
   // 履歴コピーと蓄積の全画面描画に使う。
   private readonly quad = new QuadMesh();
   // 描画設定から受け取る静止時の履歴上限。
-  private readonly timeConstant: FloatUniform = uniform(1);
-  // 現在の変化量から決めた履歴長の上限。
   private readonly historyCap: FloatUniform = uniform(1);
+  // 現在の変化量から決めた履歴長の上限。
+  private readonly lengthCap: FloatUniform = uniform(1);
   // 前フレームの面を復元するときに使う射影とその逆。
   private readonly previousProjection: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly previousProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
@@ -103,20 +103,20 @@ export class TemporalAccumulation {
   public get previousDepthTexture(): THREE.Texture { return this.target.textures[1]!; }
   public get previousNormalTexture(): THREE.Texture { return this.target.textures[2]!; }
   public get accumulation(): ScreenSpaceStage { return this.accumulationStage; }
-  // 現在の蓄積の時定数 [フレーム]。
-  public get timeConstantFrames(): number { return this.timeConstant.value; }
+  // 現在の履歴の上限 [フレーム]。
+  public get historyCapFrames(): number { return this.historyCap.value; }
 
   // 履歴と前フレームの面を width × height へ合わせ、寸法が変われば true を返す。
   public setSize(width: number, height: number): boolean {
     if (this.target.width === width && this.target.height === height) return false;
     this.target.setSize(width, height);
-    this.historyCap.value = 1;
+    this.lengthCap.value = 1;
     return true;
   }
 
-  // 履歴の時定数 frames [フレーム] を履歴上限の計算とデバッグ表示へ渡す。
-  public setTimeConstant(frames: number): void {
-    this.timeConstant.value = frames;
+  // 履歴の上限 frames [フレーム] を履歴長の上限の計算とデバッグ表示へ渡す。
+  public setHistoryCap(frames: number): void {
+    this.historyCap.value = frames;
   }
 
   // 履歴の寸法と今のカメラ行列を記録し、前視点へ法線を回す行列を組む。
@@ -129,9 +129,9 @@ export class TemporalAccumulation {
     this.normalToPreviousView.value.setFromMatrix4(this.normalMatrix);
   }
 
-  // correction.target の履歴長を時定数で割り、0〜1 に制限した値を返す。
+  // correction.target の履歴長を履歴の上限で割り、0〜1 に制限した値を返す。
   public normalizedHistoryAt(uv: Vec2Node): FloatNode {
-    return texture(this.correction.target.texture, uv).a.div(this.timeConstant).clamp(0, 1);
+    return texture(this.correction.target.texture, uv).a.div(this.historyCap).clamp(0, 1);
   }
 
   // G バッファを上書きする前に、連続して描いた前フレームがあれば履歴へ写す。
@@ -148,10 +148,10 @@ export class TemporalAccumulation {
       this.previousProjectionInverse.value.copy(this.currentProjectionInverse);
       this.previousView.copy(this.currentView);
       this.copyPreviousFrame();
-      this.historyCap.value = historyCapOf(this.timeConstant.value, change);
+      this.lengthCap.value = lengthCapOf(this.historyCap.value, change);
     } else {
       // cut または前番号未描画では、履歴を今の値だけに制限する。
-      this.historyCap.value = 1;
+      this.lengthCap.value = 1;
     }
     this.previousFrame = frame;
     this.previousFrameRendered = false;
@@ -230,7 +230,7 @@ export class TemporalAccumulation {
     const historyLength = total.length.add(right.length).add(bottom.length).add(diagonal.length).toVar();
     const validSurface = depth.greaterThan(0);
     const accumulatedLength = select(validSurface, historyLength, 0).add(1).toVar();
-    const length = min(accumulatedLength, this.historyCap).toVar();
+    const length = min(accumulatedLength, this.lengthCap).toVar();
     // 履歴長で今の値へ寄せる。長さ 1 以下は今の値をそのまま選び、s=1 の出力を一致させる。
     const sample = select(allFinite(current.x, current.y, current.z), current, history);
     const blended = history.add(sample.sub(history).div(length));
@@ -306,11 +306,13 @@ export function frameStepOf(previous: number | null, frame: number, change: numb
   return 'advance';
 }
 
-// 時定数 timeConstant [フレーム] と変化量 change から、実数の履歴上限を返す。
-export function historyCapOf(timeConstant: number, change: number): number {
-  if (!Number.isInteger(timeConstant) || timeConstant < 1) {
-    throw new RangeError(`screen-space: invalid time constant ${timeConstant}`);
+// 履歴の上限 historyCap [フレーム] と変化量 change から、履歴長の上限を返す。古い値が 1 フレームで残る割合を、静止時の
+// 残り (1 − 1/s) と変わらなかった割合 e^(−d) の積にした 1 / (1 − (1 − 1/s)·e^(−d)) を、d = 0 で s・d = ∞ で 1 が丸めなしで
+// 出る形に変形して求める。
+export function lengthCapOf(historyCap: number, change: number): number {
+  if (!Number.isInteger(historyCap) || historyCap < 1) {
+    throw new RangeError(`screen-space: invalid history cap ${historyCap}`);
   }
   assertChange(change);
-  return Math.max(1, timeConstant / (1 + change));
+  return historyCap / (1 + (historyCap - 1) * -Math.expm1(-change));
 }

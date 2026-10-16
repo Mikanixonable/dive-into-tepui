@@ -1,6 +1,6 @@
 // 近傍拡散補正のちらつきの源ごとの寄与を、静止したカメラで撮る。ヘッドレス Chrome で .render-lab/ を開き、場面ごとに、
 // 源(seed・走査の代表・ラスタライズのずれ)の位相の列を 1 つずつ(と全部同時に)回して描き直し、位相ごとの 1 パスと列の平均
-// からの偏差、列の平均・画素ごとの標準偏差・最大偏差の PNG、位相を順に時定数ごとの指数移動平均で積んだ列(蓄積の模擬)と
+// からの偏差、列の平均・画素ごとの標準偏差・最大偏差の PNG、位相を順に履歴の上限ごとの指数移動平均で積んだ列(蓄積の模擬)と
 // その隣り合うフレームの差の PNG と、源ごとの揺れの表を書く。書き先は .render-lab-shots/<組の名前>/ で、表は report.md、
 // 見るページは index.html。
 // 先に .render-lab/ を組んでおくこと(webpack --config webpack.render-lab.config.js --mode production)。
@@ -30,17 +30,17 @@ const SWEEPS = [
   { name: 'all', count: 64 },
 ].map((sweep) => ({ ...sweep, sources: PHASE_SOURCES[sweep.name] }));
 
-// 蓄積の模擬の時定数 [フレーム](1 は積まない列そのもの)と、そのうち積んだ補正の PNG も残すもの。
-const TIME_CONSTANTS = [1, 2, 4, 8, 16];
-const IMAGED_TIME_CONSTANTS = [2, 8];
+// 蓄積の模擬の履歴の上限 [フレーム](1 は積まない列そのもの)と、そのうち積んだ補正の PNG も残すもの。
+const HISTORY_CAPS = [1, 2, 4, 8, 16];
+const IMAGED_HISTORY_CAPS = [2, 8];
 
 // 撮る画像の種類(ファイル名の頭)と、jitterSweep の記録のフレームの中の場所、要約を引く補正の列の名前。
 const IMAGE_KINDS = [
   { id: 'pass', label: '1 パス', source: 'pass', column: 'deviation', fromFrame: 0 },
   { id: 'deviation', label: '平均からの偏差 ×4', source: 'deviation', column: 'deviation', fromFrame: 0 },
-  ...IMAGED_TIME_CONSTANTS.flatMap((n) => [
-    { id: `accumulated-${n}`, label: `時定数 ${n} の蓄積`, source: `accumulated["${n}"].image`, column: `accumulated-${n}`, fromFrame: 0 },
-    { id: `accumulated-${n}-difference`, label: `時定数 ${n} の蓄積の差 ×4`, source: `accumulated["${n}"].difference`, column: `accumulated-${n}`, fromFrame: 1 },
+  ...IMAGED_HISTORY_CAPS.flatMap((n) => [
+    { id: `accumulated-${n}`, label: `履歴の上限 ${n} の蓄積`, source: `accumulated["${n}"].image`, column: `accumulated-${n}`, fromFrame: 0 },
+    { id: `accumulated-${n}-difference`, label: `履歴の上限 ${n} の蓄積の差 ×4`, source: `accumulated["${n}"].difference`, column: `accumulated-${n}`, fromFrame: 1 },
   ]),
 ];
 // 列ごとの静止画(ファイル名)と、記録の中の場所。
@@ -66,7 +66,7 @@ function argumentsOf(argv) {
 async function shootSweep(devTools, sweep, dir) {
   const sequence = { sources: sweep.sources, count: sweep.count };
   const { summary, frames } = await evaluateLong(devTools, `window.renderLab.jitterSweep(${JSON.stringify(sequence)},
-    ${JSON.stringify(TIME_CONSTANTS)}, ${JSON.stringify(IMAGED_TIME_CONSTANTS)}).then((record) => {
+    ${JSON.stringify(HISTORY_CAPS)}, ${JSON.stringify(IMAGED_HISTORY_CAPS)}).then((record) => {
       window.__sweepRecord = record;
       return {
         summary: record.summary,
@@ -120,7 +120,7 @@ async function main() {
     await session.close();
   }
 
-  const columns = ['deviation', ...TIME_CONSTANTS.map((n) => `accumulated-${n}`)];
+  const columns = ['deviation', ...HISTORY_CAPS.map((n) => `accumulated-${n}`)];
   const aggregates = aggregatesOf(records, columns);
   const format = (v) => (v === null ? '—' : v.toFixed(3));
   const report = [
@@ -137,13 +137,13 @@ async function main() {
       ]),
     ), '',
     '## 蓄積の模擬', '',
-    '位相を順に時定数 N の指数移動平均(新しいフレームの重み 1 / min(k + 1, N))で積んだ列の、隣り合うフレームの差 RMS / 列の平均の RMS',
+    '位相を順に履歴の上限 N の指数移動平均(新しいフレームの重み 1 / min(k + 1, N))で積んだ列の、隣り合うフレームの差 RMS / 列の平均の RMS',
     '(N = 1 は積まない列)。差のあるフレーム(2 枚目から)の二乗平均。', '',
     ...table(
-      ['場面', '列', ...TIME_CONSTANTS.map((n) => `N = ${n}`)],
+      ['場面', '列', ...HISTORY_CAPS.map((n) => `N = ${n}`)],
       records.map(({ scene, sequence }) => [
         scene, sequence,
-        ...TIME_CONSTANTS.map((n) => aggregates.find((a) => a.scene === scene && a.sequence === sequence && a.column === `accumulated-${n}`)
+        ...HISTORY_CAPS.map((n) => aggregates.find((a) => a.scene === scene && a.sequence === sequence && a.column === `accumulated-${n}`)
           ?.ratio.toFixed(3) ?? '—'),
       ]),
     ),

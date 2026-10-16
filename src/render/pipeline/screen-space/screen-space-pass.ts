@@ -24,7 +24,7 @@ import { SurfaceWeight } from './surface-weight';
 import { TemporalAccumulation } from './temporal-accumulation';
 import { whiteNoiseAt } from './white-noise';
 import type { DiffuseCorrection } from './diffuse-correction';
-import { frameJitterForTimeConstant, type JitterSource, type ScanJitter } from './frame-jitter';
+import { frameJitterForHistoryCap, type JitterSource, type ScanJitter } from './frame-jitter';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
 import type { SunSource } from '../lighting/sun-source';
@@ -209,7 +209,7 @@ export class ScreenSpacePass {
   // 前フレームの素の深度。
   public get previousDepthTexture(): THREE.Texture { return this.temporal.previousDepthTexture; }
 
-  // correction.target の履歴長 n / 時定数 s (0〜1)。
+  // correction.target の履歴長 n / 履歴の上限 s (0〜1)。
   public normalizedHistoryAt(uv: Vec2Node): FloatNode { return this.temporal.normalizedHistoryAt(uv); }
 
   // いまの段で補正を分ける帯の数。
@@ -236,16 +236,16 @@ export class ScreenSpacePass {
     this.tier = scanTierOf(sliceCount, stepCount);
   }
 
-  // 履歴の時定数 frames [フレーム] を蓄積へ渡す。
-  public setTimeConstant(frames: number): void {
-    this.temporal.setTimeConstant(frames);
+  // 履歴の上限 frames [フレーム] を蓄積へ渡す。
+  public setHistoryCap(frames: number): void {
+    this.temporal.setHistoryCap(frames);
   }
 
   // G バッファを描く前に毎フレーム呼ぶ。番号の進み方を蓄積へ渡し、動かす源があれば走査の入力をその番号の位相へ置く。
   public beginFrame(frame: number, change: number): void {
     this.temporal.beginFrame(frame, change);
-    const jitter = frameJitterForTimeConstant(
-      frame, this.jitterSources, this.temporal.timeConstantFrames, this.scanCellSize,
+    const jitter = frameJitterForHistoryCap(
+      frame, this.jitterSources, this.temporal.historyCapFrames, this.scanCellSize,
     );
     if (jitter === null) return;
     this.setSeed(jitter.seed[0], jitter.seed[1]);

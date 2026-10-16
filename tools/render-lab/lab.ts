@@ -693,7 +693,7 @@ export class LabView {
   }
 
   public get logicalFrame(): number { return this.frame; }
-  public get timeConstantFrames(): number { return this.resolvedGraphics.screenSpaceTimeConstant; }
+  public get historyCapFrames(): number { return this.resolvedGraphics.screenSpaceHistoryCap; }
   public get jitterSources(): readonly JitterSource[] | null { return this.activeJitterSources; }
 
   // いまの段の走査の画素の幅 [描画バッファの画素]。

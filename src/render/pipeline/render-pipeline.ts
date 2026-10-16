@@ -288,7 +288,7 @@ export class RenderPipeline {
     this.lensEnabled = graphics.lens;
     this.screenSpacePass.setMode(screenSpaceDiffuseOf(graphics));
     this.screenSpacePass.setScan(graphics.screenSpaceSliceCount, graphics.screenSpaceStepCount);
-    this.screenSpacePass.setTimeConstant(graphics.screenSpaceTimeConstant);
+    this.screenSpacePass.setHistoryCap(graphics.screenSpaceHistoryCap);
     this.reflectionPass.setEnabled(graphics.screenSpaceSpecular);
     this.reflectionPass.setTrace(graphics.screenSpaceSpecularScale, graphics.screenSpaceSpecularStepCount);
     // 均した映り込みを書く段と、それを読む合成は一緒に切り替える。

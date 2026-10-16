@@ -41,16 +41,16 @@ export function frameJitterAt(frame: number, sources: readonly JitterSource[], c
   return { seed, scanJitter };
 }
 
-// フレーム frame に置く走査の入力。時定数 timeConstant が 1 なら本番の静止画の値、源 sources が null なら置かない(null)、
+// フレーム frame に置く走査の入力。履歴の上限 historyCap が 1 なら本番の静止画の値、源 sources が null なら置かない(null)、
 // それ以外は sources をその番号の位相で動かした値。
-export function frameJitterForTimeConstant(
-  frame: number, sources: readonly JitterSource[] | null, timeConstant: number, cellSize: number,
+export function frameJitterForHistoryCap(
+  frame: number, sources: readonly JitterSource[] | null, historyCap: number, cellSize: number,
 ): FrameJitter | null {
   if (sources === null) return null;
-  if (!Number.isInteger(timeConstant) || timeConstant < 1) {
-    throw new RangeError(`frame jitter: invalid time constant ${timeConstant}`);
+  if (!Number.isInteger(historyCap) || historyCap < 1) {
+    throw new RangeError(`frame jitter: invalid history cap ${historyCap}`);
   }
-  return frameJitterAt(frame, timeConstant > 1 ? sources : [], cellSize);
+  return frameJitterAt(frame, historyCap > 1 ? sources : [], cellSize);
 }
 
 // 一辺 cellSize のブロックの中の位置を散らばる順に巡ったときの、index 番目の位置(ブロックの幅に対する割合)。index 0 は

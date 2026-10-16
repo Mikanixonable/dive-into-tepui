@@ -16,7 +16,7 @@ const LEGACY_HIGH: GraphicsSettingsData = {
   cumulus: true, cumulusMarchSteps: 6, cumulusRefineSteps: 3, cumulusShadow: true,
   atmosphere: true, atmosphereSampleBudget: 24, airglow: true, aurora: true,
   screenSpaceOcclusion: true, screenSpaceIndirect: true, screenSpaceSliceCount: 4, screenSpaceStepCount: 5,
-  screenSpaceTimeConstant: 8,
+  screenSpaceHistoryCap: 8,
   screenSpaceSpecular: true, screenSpaceSpecularScale: 0.5, screenSpaceSpecularStepCount: 32,
   screenSpaceSpecularDenoise: true,
   pointField: true, rings: true, lens: true, proteinVibration: true,
