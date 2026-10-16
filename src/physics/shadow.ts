@@ -6,6 +6,9 @@
 import { Vec3 } from '../math/vec3';
 import type { CelestialBody } from './celestial-body';
 
+// 球の遮り手。中心と半径は、日照率を問う点 r と同じ座標と単位。
+export interface SphereOccluder { readonly center: Vec3; readonly radius: number }
+
 // 2円(半径 r1, r2、中心距離 d、すべて同じ角度単位)の交差面積。
 function circleOverlapArea(r1: number, r2: number, d: number): number {
   if (d >= r1 + r2) return 0;
@@ -30,23 +33,65 @@ function shadowedFraction(
 ): number {
   if (body.kind === 'star' || body.def.radius <= 0) return 1; // 恒星自身・半径0の天体は影を落とさない
   const b = body.positionAt(pivot, t);
-  const dx = b.x - r.x, dy = b.y - r.y, dz = b.z - r.z;
+  return sphereShadowedFraction(
+    r, sunDirX, sunDirY, sunDirZ, sunDist, sinSunAng, sunAngRadius,
+    b.x, b.y, b.z, body.def.radius,
+  );
+}
+
+// r から見た太陽円盤のうち、中心 (bodyX, bodyY, bodyZ)・半径 bodyRadius の球に遮られていない面積比(0..1)。恒星の引数は
+// shadowedFraction と同じ。
+function sphereShadowedFraction(
+  r: Vec3,
+  sunDirX: number, sunDirY: number, sunDirZ: number,
+  sunDist: number, sinSunAng: number, sunAngRadius: number,
+  bodyX: number, bodyY: number, bodyZ: number, bodyRadius: number,
+): number {
+  if (bodyRadius <= 0) return 1;
+  const dx = bodyX - r.x, dy = bodyY - r.y, dz = bodyZ - r.z;
   const along = dx * sunDirX + dy * sunDirY + dz * sunDirZ;
   if (along <= 0 || along >= sunDist) return 1; // 艦より太陽から遠い側/背後にある天体は影を落とさない
   const distSq = dx * dx + dy * dy + dz * dz;
   const dist = Math.sqrt(distSq);
-  if (dist <= body.def.radius) return 0; // 天体の内側なら太陽は見えない
+  if (dist <= bodyRadius) return 0; // 天体の内側なら太陽は見えない
   // 太陽線からの垂直距離が両円盤の視半径の和を超えていれば、重なりようがない。sin は
   // [0, π/2] で劣加法的(sin(a+b) ≤ sin a + sin b)なので、sin で測ったまま比べれば
   // 逆三角関数を通さずに安全側で落とせる — along > 0 なので離角は π/2 未満。
-  const reach = sinSunAng * dist + body.def.radius;
+  const reach = sinSunAng * dist + bodyRadius;
   if (distSq - along * along > reach * reach) return 1;
   // LEO のように天体のすぐ近くでは R/d が 1 に近づくので、視半径は asin を取る
   // (小角近似のままだと地球の影の境界が数十度ずれる)。
-  const bodyAngRadius = Math.asin(body.def.radius / dist);
+  const bodyAngRadius = Math.asin(bodyRadius / dist);
   const sep = Math.acos(Math.min(1, Math.max(-1, along / dist)));
   const overlap = circleOverlapArea(sunAngRadius, bodyAngRadius, sep);
   return 1 - overlap / (Math.PI * sunAngRadius * sunAngRadius);
+}
+
+// 位置 r における日照率 0..1 を、天体の型ではなく恒星(中心 starCenter・半径 starRadius)と球の遮り手 occluders の幾何から
+// 求める。合成は sunlitFactor と同じ(減光率の積)。半径 0 の恒星は誰にも遮られない。
+export function sphereSunlitFactor(
+  r: Vec3,
+  starCenter: Vec3,
+  starRadius: number,
+  occluders: readonly SphereOccluder[],
+): number {
+  if (starRadius <= 0) return 1;
+  // 恒星の向き・距離・視半径を 1 度だけ求め、遮り手ごとの減光率を掛け合わせる。
+  const tx = starCenter.x - r.x, ty = starCenter.y - r.y, tz = starCenter.z - r.z;
+  const sunDist = Math.sqrt(tx * tx + ty * ty + tz * tz);
+  if (sunDist < 1) return 1;
+  const inv = 1 / sunDist;
+  const sinSunAng = Math.min(1, starRadius / sunDist);
+  const sunAngRadius = Math.asin(sinSunAng);
+  let lit = 1;
+  for (const body of occluders) {
+    lit *= sphereShadowedFraction(
+      r, tx * inv, ty * inv, tz * inv, sunDist, sinSunAng, sunAngRadius,
+      body.center.x, body.center.y, body.center.z, body.radius,
+    );
+    if (lit === 0) return 0;
+  }
+  return Math.min(1, Math.max(0, lit));
 }
 
 // r のまわりへ body が落としうる影の濃さの上限 0..1。両円盤が最も都合よく重なったとき —

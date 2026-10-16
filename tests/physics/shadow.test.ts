@@ -2,7 +2,7 @@
 import { fixedMotion } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { maxShadowedFraction, sunlitFactor } from '../../src/physics/shadow';
+import { maxShadowedFraction, sphereSunlitFactor, sunlitFactor } from '../../src/physics/shadow';
 import { CelestialMotion } from '../../src/physics/celestial-motion';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
@@ -20,6 +20,22 @@ function body(id: string, mu: number, radius: number, x: number): CelestialMotio
 }
 
 export function register(): void {
+  test('shadow: 球の遮り手から求めた日照率は、本影・半影・日照・金環で sunlitFactor と一致する', () => {
+    const sun = star(AU);
+    const cases = [
+      { center: v3(), radius: R_EARTH, point: v3(-R_EARTH * 2, 0, 0) },
+      { center: v3(), radius: R_EARTH, point: v3(-2e7, R_EARTH + R_SUN / AU * 2e7, 0) },
+      { center: v3(-1e7, 0, 0), radius: R_EARTH, point: v3() },
+      { center: v3(0.9 * AU, 0, 0), radius: R_MOON, point: v3() },
+    ];
+    for (const { center, radius, point } of cases) {
+      const celestial = body('occluder', MU_EARTH, radius, center.x);
+      const expected = sunlitFactor(point, sun, [celestial], 0);
+      const actual = sphereSunlitFactor(point, v3(AU, 0, 0), R_SUN, [{ center, radius }]);
+      assert.equal(actual, expected);
+    }
+  });
+
   test('shadow: sunlitFactor は遮蔽天体が無ければ常に 1', () => {
     const sun = star(AU);
     for (const r of [v3(1e6, 0, 0), v3(0, R_EARTH, 0), v3(-1e5, 7e6, 0)]) {

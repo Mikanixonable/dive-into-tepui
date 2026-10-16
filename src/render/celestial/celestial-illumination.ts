@@ -123,6 +123,7 @@ export class CelestialIllumination {
       frame.starDirection.subVectors(sunPos, center).normalize();
       writeBodyFromWorld(frame.bodyFromWorld, light.celestialBody, displayTime);
       return {
+        key: light.celestialBody.def.id,
         center,
         radius: shapeInscribedRadius(light.celestialBody.def.radius, shapeOf(light.celestialBody.def)),
         radiance: light.radiance,

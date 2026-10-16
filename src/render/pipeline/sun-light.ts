@@ -61,6 +61,7 @@ export class SunLight {
 
   // 恒星の半径 [m]。
   get radius(): FloatNode { return this.radiusUniform; }
+  public get radiusValue(): number { return this.radiusUniform.value; }
 
   // 描画座標の点 worldPos から恒星の中心までの距離 [m]。恒星の只中で 0 除算にならない床を張る。
   distanceFrom(worldPos: Vec3Node): FloatNode {
@@ -82,4 +83,5 @@ export class SunLight {
 
   // 放射強度。シェーディング点から恒星までの距離の二乗で割ると、その点の放射照度になる。
   get intensity(): FloatNode { return this.intensityUniform; }
+  public get intensityValue(): number { return this.intensityUniform.value; }
 }
