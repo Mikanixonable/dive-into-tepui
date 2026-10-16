@@ -9,6 +9,8 @@ import {
   ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
 } from '../../src/game/protein/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
+import type { SceneChangeDeclarations } from '../../src/render/pipeline/scene-change-tracker';
+import type { SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { farClip } from '../../src/render/camera/camera-view';
 import { planetRadiance, type PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
@@ -109,6 +111,9 @@ export interface LabMeasurement {
 
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
+
+// 変化量の推定を切る重み。lab の既定 — 渡した変化量で撮る道具を、推定で黙って変えない。
+export const SCENE_CHANGE_OFF: SceneChangeWeights = { lightDirection: 0, sunlit: 0, cameraSlide: 0 };
 
 // カメラ位置を毎フレーム組み立てる書き込み先。
 const CAMERA_OFFSET = new THREE.Vector3();
@@ -214,7 +219,7 @@ export class LabView {
     private readonly gpu: GpuTimings,
     private readonly graphics: StoredSetting<GraphicsSelection>,
   ) {
-    this.pipeline.sceneChange.setWeights({ lightDirection: 0, sunlit: 0, cameraSlide: 0 });
+    this.pipeline.sceneChange.setWeights(SCENE_CHANGE_OFF);
     this.pipeline.screenSpace.setJitterSources(null);
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
@@ -699,6 +704,7 @@ export class LabView {
   }
 
   public get logicalFrame(): number { return this.frame; }
+  public get sceneChange(): SceneChangeDeclarations { return this.pipeline.sceneChange; }
   public get historyCapFrames(): number { return this.resolvedGraphics.screenSpaceHistoryCap; }
   public get jitterSources(): readonly JitterSource[] | null { return this.activeJitterSources; }
 
