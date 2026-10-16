@@ -100,23 +100,30 @@ function rejectedObjectsAt(current: LabCase | null): readonly THREE.Object3D[] {
   return current?.rejectedMotionObjects?.() ?? [];
 }
 
-// ケース current の frame の実体。実体の口を持たないケースは、objects の中の(InstancedMesh でない)Mesh を、いまの
-// matrixWorld で静止した実体とみなす。
+// ケース current の frame の実体。実体の口を持たないケースは、objects の中の Mesh と InstancedMesh の個体を、いまの
+// 行列で静止した実体とみなす。
 function entitiesAt(current: LabCase | null, frame: number): readonly LabMotionEntity[] {
   if (current === null) return [];
   if (current.motionEntities !== undefined) return current.motionEntities(frame);
   const entities: LabMotionEntity[] = [];
+  const instanceMatrix = new THREE.Matrix4();
   for (const [rootIndex, root] of current.objects.entries()) {
     root.updateWorldMatrix(true, true);
+    const add = (geometry: THREE.BufferGeometry, matrix: THREE.Matrix4): void => {
+      entities.push({ key: `static:${rootIndex}:${entities.length}`, kind: 'room', geometry, matrix, slot: null });
+    };
     root.traverse((object) => {
-      if (!(object instanceof THREE.Mesh) || object instanceof THREE.InstancedMesh) return;
-      entities.push({
-        key: `static:${rootIndex}:${entities.length}`,
-        kind: 'room',
-        geometry: object.geometry,
-        matrix: object.matrixWorld.clone(),
-        slot: null,
-      });
+      if (!(object instanceof THREE.Mesh)) return;
+      if (!(object instanceof THREE.InstancedMesh)) {
+        add(object.geometry, object.matrixWorld.clone());
+        return;
+      }
+      for (let instanceId = 0; instanceId < object.count; instanceId++) {
+        object.getMatrixAt(instanceId, instanceMatrix);
+        // 空き枠は零行列で潰されている。
+        if (instanceMatrix.determinant() === 0) continue;
+        add(object.geometry, object.matrixWorld.clone().multiply(instanceMatrix));
+      }
     });
   }
   return entities;

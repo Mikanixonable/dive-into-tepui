@@ -239,9 +239,9 @@ function blackbodyInstancedRow(center: THREE.Vector3, spacing: number): THREE.Ob
   const count = BLACKBODY_INSTANCE_TEMPERATURES.length;
   const pool = new InstancedPool(host, geometry, material, count, false, 0, true);
   // 個体を横一列に並べ、それぞれの温度を属性として積む。
-  const piece = new THREE.Object3D();
   pool.beginFrame();
   for (const [i, temperature] of BLACKBODY_INSTANCE_TEMPERATURES.entries()) {
+    const piece = new THREE.Object3D();
     piece.position.copy(center).setX(center.x + (i - (count - 1) / 2) * spacing);
     piece.rotation.set(0.42, 0.62, 0);
     syncThermalState(piece, temperature, 0, HULL_EMISS);

@@ -43,14 +43,8 @@ const historiesByCamera = new WeakMap<THREE.Camera, MotionHistory>();
 // 履歴がない前変換。零行列なので clip の w が 0 となる。
 const zeroMatrix = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
-interface PoolMotionData {
-  readonly previous: THREE.StorageInstancedBufferAttribute;
-  readonly objects: THREE.Object3D[];
-  readonly count: () => number;
-}
-
-const poolMotionByMesh = new WeakMap<THREE.InstancedMesh, PoolMotionData>();
-const registeredMotionPools = new Set<PoolMotionData>();
+const poolMotionByMesh = new WeakMap<THREE.InstancedMesh, PoolMotionHistory>();
+const registeredMotionPools = new Set<PoolMotionHistory>();
 
 // MotionHistory.setFrame が G バッファ描画前に値を書き、renderGroup の binding が描画ごとに GPU へ送る。
 const currentViewProjection = uniform(new THREE.Matrix4()).setGroup(renderGroup);
@@ -70,22 +64,6 @@ export function markMotionRejected(object: THREE.Object3D): void {
 // 参照撮影が棄却対象の実体を深度画像から識別できるよう、印の有無を問い合わせる。
 export function isMotionRejected(object: THREE.Object3D): boolean {
   return rejectedObjects.has(object);
-}
-
-// プールの前行列器を登録し、積み直し後に枠順の前行列を同期する。
-export function registerMotionPool(
-  mesh: THREE.InstancedMesh,
-  previous: THREE.StorageInstancedBufferAttribute,
-  objects: THREE.Object3D[],
-  count: () => number,
-): () => void {
-  const data = { previous, objects, count };
-  poolMotionByMesh.set(mesh, data);
-  registeredMotionPools.add(data);
-  return () => {
-    poolMotionByMesh.delete(mesh);
-    registeredMotionPools.delete(data);
-  };
 }
 
 // 描画物のマテリアルが交点を動きベクトルへ使う。
@@ -145,18 +123,8 @@ export class MotionHistory {
 
   // 現在の各枠の実体から、連続した前フレームの model 行列を枠順に書く。
   public writePoolMatrices(camera: THREE.Camera): void {
-    // 登録された全 instance の前 model を、スロット順に storage buffer へ並べる。
     for (const pool of registeredMotionPools) {
-      const count = pool.count();
-      const target = pool.previous.array as Float32Array;
-      for (let slot = 0; slot < count; slot++) {
-        const object = pool.objects[slot]!;
-        const record = this.updateModel(object, camera, true);
-        target.set(record?.previous.elements ?? zeroMatrix.elements, slot * 16);
-      }
-      pool.previous.clearUpdateRanges();
-      if (count > 0) pool.previous.addUpdateRange(0, count * 16);
-      pool.previous.needsUpdate = true;
+      pool.writePrevious((object) => this.updateModel(object, camera, true)?.previous ?? zeroMatrix);
     }
   }
 
@@ -220,6 +188,58 @@ export class MotionHistory {
   }
 }
 
+// 積み直す InstancedMesh の動きベクトルの履歴。枠に置いた個体を履歴の鍵にし、前フレームの model 行列を
+// 枠順の器へ書く。毎フレーム beginFrame → place(...) の順に、InstancedMesh の枠と同じ順で個体を置く。
+export class PoolMotionHistory {
+  // 枠順の前フレームの model 行列。
+  public readonly previousMatrices: THREE.StorageInstancedBufferAttribute;
+  // 今フレームに枠の順に置いた個体。
+  private readonly slotObjects: THREE.Object3D[] = [];
+  // slotObjects と同じ個体。2度置かれたかを引くために持つ。
+  private readonly placedObjects = new Set<THREE.Object3D>();
+
+  // mesh の capacity 個の枠の履歴を作り、G バッファの動き節が mesh から引けるよう登録する。
+  public constructor(private readonly mesh: THREE.InstancedMesh, capacity: number) {
+    this.previousMatrices = new THREE.StorageInstancedBufferAttribute(capacity, 16);
+    poolMotionByMesh.set(mesh, this);
+    registeredMotionPools.add(this);
+  }
+
+  // 置き直しを始める。前フレームに置いた個体を枠から外す。
+  public beginFrame(): void {
+    this.slotObjects.length = 0;
+    this.placedObjects.clear();
+  }
+
+  // 次の枠に個体を置く。object は個体そのもので、フレームをまたいで同じ個体には同じ Object3D を渡す。
+  // 1つの Object3D を書き換えて複数の個体に使い回すと履歴を取り違えるので、同じフレームに2度置くと例外を投げる。
+  public place(object: THREE.Object3D): void {
+    if (this.placedObjects.has(object)) {
+      throw new Error('PoolMotionHistory: 同じ Object3D を同じフレームの2つの枠へ置けない — 個体ごとに別の Object3D を渡す');
+    }
+    this.placedObjects.add(object);
+    this.slotObjects.push(object);
+  }
+
+  // 置いた個体ごとに previousOf が返す前フレームの model 行列を、枠順の器へ書いて転送させる。
+  public writePrevious(previousOf: (object: THREE.Object3D) => THREE.Matrix4): void {
+    const target = this.previousMatrices.array as Float32Array;
+    for (let slot = 0; slot < this.slotObjects.length; slot++) {
+      target.set(previousOf(this.slotObjects[slot]!).elements, slot * 16);
+    }
+    this.previousMatrices.clearUpdateRanges();
+    if (this.slotObjects.length > 0) this.previousMatrices.addUpdateRange(0, this.slotObjects.length * 16);
+    this.previousMatrices.needsUpdate = true;
+  }
+
+  // 登録を外し、器を解放する。
+  public dispose(): void {
+    poolMotionByMesh.delete(this.mesh);
+    registeredMotionPools.delete(this);
+    this.previousMatrices.dispose();
+  }
+}
+
 // objectFrame と現在の通し番号から、記録した前モデルを選ぶか返す。棄却印は予約値として扱う。
 export function useRecordedPreviousModel(objectFrame: number, renderSerial: number): boolean {
   return objectFrame === renderSerial || objectFrame === MOTION_REJECTED_FRAME;
@@ -252,7 +272,7 @@ class MotionNode extends THREE.Node {
       : storage(instancedMesh.instanceMatrix, 'mat4', instancedMesh.instanceMatrix.count).element(poolIndex!);
     const previousInstance = pool === undefined
       ? null
-      : storage(pool.previous, 'mat4', pool.previous.count).element(poolIndex!);
+      : storage(pool.previousMatrices, 'mat4', pool.previousMatrices.count).element(poolIndex!);
     return Fn(() => {
       const localPosition = pool === undefined ? vec4(this.position, 1) : vec4(poolPosition!, 1);
       const currentModelPosition = pool === undefined
