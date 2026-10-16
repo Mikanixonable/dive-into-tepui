@@ -508,15 +508,20 @@ three の前例（`node_modules/three/`）: `src/nodes/accessors/VelocityNode.js
 1. **光源の向きの、基準の受け手（注視している物）の座標系の中での 1 フレームの回転** — 恒星光と天体照の宣言ごと。倍率や自転・公転の
    速さから見積もらず、**前と今の宣言から直接求める** — 姿勢の回転（倍率に比例する）・軌道角速度（低軌道で等倍 0.067°/s、×1000 で
    約 1°/フレーム）・太陽を回る公転が自動的に入り、自転しない巡航と静止した場面では 0 になる。光源ごとの回転は、基準の位置での照度の
-   割合で均す。天体照の選定（`selectPlanetLights` の上位の数体）が入れ替わると、走査が見る天体照の組が段差で変わる — 宣言に天体の鍵を
-   足して前と今を引き、片方にしか無い光源は向きが揃わない（回転 π）とみなしてその照度の割合で数える（案）。
+   割合で均す（前と今の照度の平均の割合。恒星光の照度は**日照率を掛けた後** — 本影の中の恒星が重みを取って天体照の回転を薄めないため。
+   エージェント、2026-10-16）。天体照の照度は π × 輝度 × min(1, (半径/距離)²)。天体照の選定（`selectPlanetLights` の上位の数体）が
+   入れ替わると、走査が見る天体照の組が段差で変わる — 宣言に天体の鍵を足して前と今を引き、片方にしか無い光源は向きが揃わない（回転 π）と
+   みなしてその照度の割合で数える。
 2. **日照率の変化** — |log f_今 − log f_前|（両方 0 なら 0）。本影へ入ると ∞。f は基準の位置の日照率で、恒星光の宣言（位置・半径）と
    影を落とす天体の宣言（`bodyShadow` — 描いている影と同じ遮り手。半軸は球へ近似）から、`physics/shadow.ts` の円盤の重なりで求める
    （日照率の答えは `physics/shadow.ts` の 1 つだけ）。
 3. **カメラの動き（可視性の出入り。決めたこと 35）** — 物が画面の外や別の物の裏から出る・照り返しの源が画面に現れると、走査が見る幾何が
-   変わり、受け手が動かなくても ΔE が変わる。動きベクトルは受け手を追うが、この変化は追えない。指標の案（エージェント）: 基準の受け手の
-   座標系での、1 フレームの視線の回転角 / 視野角 + カメラの並進の視線に垂直な成分 / 基準までの距離 — どちらも 1 フレームに画面が滑る
-   割合で、1 次。受け手とカメラの位置関係が変わらなければ 0。重みは小さく置く — 大きいとカメラを動かすだけで履歴が縮み、動かしたときの
+   変わり、受け手が動かなくても ΔE が変わる。動きベクトルは受け手を追うが、この変化は追えない。指標（エージェント、2026-10-16）: 基準の
+   受け手の座標系で、画面の 3×3 の点を前のカメラで奥行き D/2・D・2D（D は基準までの距離）の点へ戻し、今のカメラで射影し直したときの
+   画面の滑り（画面の高さを 1 とする）の、27 点の RMS。1 次で、受け手とカメラの位置関係が変わらなければ 0。回転（画面の端から物が入る —
+   どの奥行きも同じだけ滑る）と並進・周回（物が別の物の裏から出る — 奥行きで滑り方が違う視差）を 1 つの量で数え、ロール・寄り・画角の
+   変化も同じ式に入る（当初の案「視線の回転角 / 視野角 + 並進の垂直成分 / 距離」は回転と並進で単位が揃わず、周回の視差を数えないので
+   改めた）。点がカメラの後ろへ回る・射影の種類が替わると ∞。重みは小さく置く — 大きいとカメラを動かすだけで履歴が縮み、動かしたときの
    ちらつき（達成目標1）が戻る。釣り合いは 6-4 で見る。
 4. **カメラの切り替え** — 宣言されたカメラの同一性の鍵が前の番号と違えば ∞（決めたこと 40）。手順5-5 の `cameraCutChangeOf`（比べる
    部分）をパイプラインの推定へ移す。
@@ -529,8 +534,11 @@ three の前例（`node_modules/three/`）: `src/nodes/accessors/VelocityNode.js
   t 秒にしたいなら w = 1/(ω·t)。s に依らない（決めたこと 34）。
 - **拾わないもの** — 物どうしの相対の動き（動く送り手。可視性の出入りも生むが、基準の受け手の外の物の動きは数えない）と局所の光（熱した
   薬莢。×4 以下でだけ起きる）。s が上限を置く（決めたこと 4）。
-- **注視の対象（ゲームが宣言する基準）・重み・指標の式**はここで決める。重みは参考値で、6-4 で lab の再生から置き、本体で実機を見て
-  詰める（決めたこと 36）。最高の倍率（×33554432 では 60 fps の 1 フレームが約 6.5 日）ではすべてが毎フレーム入れ替わり、d ≫ 1 で
+- **注視の対象（ゲームが宣言する基準）** — 位置は露出の基準点と同じ注視点（`camera.viewpoint.lookTarget`）、向きは注視の対象の姿勢
+  （`CameraSystem` の視点の材料が引いている `attitudeOf` — 艦の `att.q`）。天体と固定点の注視は恒等の向き — 天体の自転は数えない
+  （エージェント、2026-10-16。地表に受け手の構造が無く、天体の上の ΔE は小さい。覆すなら天体の自転の向きを宣言へ足す）。
+- **重みの参考値**（エージェント、2026-10-16） — lightDirection 10 /rad（光が約 6° 回るあいだに残像が 1/e）、sunlit 1、cameraSlide 4 /画面。
+  6-4 で lab の再生から置き直し、本体で実機を見て詰める（決めたこと 36）。最高の倍率（×33554432 では 60 fps の 1 フレームが約 6.5 日）ではすべてが毎フレーム入れ替わり、d ≫ 1 で
   履歴を積まないのが正しい。
 
 **口**（2026-10-16、エージェントの設計。ユーザーが覆せる。名前と置き場は CODING-RULE・ARCHITECTURE に当てて決め直してよい）
@@ -540,24 +548,23 @@ three の前例（`node_modules/three/`）: `src/nodes/accessors/VelocityNode.js
 // 前のフレームから動きベクトルでは追えない場面の変化の量を、描画パイプラインが受けた宣言(恒星光・天体照・影を落とす天体・
 // カメラ・基準の受け手)の、前の番号との差から見積もる。指標と合成は純粋な関数で、様子は宣言から写した値なので、テストは値を
 // 組むだけで書ける。
+// three を import しない。成分は math/ の Vec3・Quat で持つ(宣言の THREE.Vector3 からは成分を写して作り、参照で持たない)。
 import type { Quat } from '../../math/quat';
-
-// 成分だけの読み取り専用のベクトル。宣言の THREE.Vector3 からは成分を写して作る(参照で持たない)。
-export interface SampleVector { readonly x: number; readonly y: number; readonly z: number }
+import type { Vec3 } from '../../math/vec3';
 
 // 位置と向き。座標は描画座標(浮動原点。軸は ECI と同じ)、orientation は局所の座標から描画座標への回転。
-export interface SamplePose { readonly position: SampleVector; readonly orientation: Quat }
+export interface SamplePose { readonly position: Vec3; readonly orientation: Quat }
 
-// カメラの射影。
+// カメラの射影。aspect は幅 / 高さ(画面の滑りを画面の高さで測るため)。
 export type SampleProjection =
-  | { readonly kind: 'perspective'; readonly verticalFovRad: number }
-  | { readonly kind: 'orthographic'; readonly halfHeight: number };
+  | { readonly kind: 'perspective'; readonly verticalFovRad: number; readonly aspect: number }
+  | { readonly kind: 'orthographic'; readonly halfHeight: number; readonly aspect: number };
 
 // 光源 1 つ。key はフレームをまたいで同じ光源を引く鍵(恒星光は固定の鍵、天体照は宣言の鍵)。direction は基準の位置から光源への
-// 単位ベクトル(描画座標)、irradiance は基準の位置の照度(光源どうしを均す割合に使う。恒星光は日照率を掛ける前)。
+// 単位ベクトル(描画座標)、irradiance は基準の位置の照度(光源どうしを均す割合に使う。恒星光は日照率を掛けた後)。
 export interface SampleLight {
   readonly key: string;
-  readonly direction: SampleVector;
+  readonly direction: Vec3;
   readonly irradiance: number;
 }
 
@@ -590,23 +597,28 @@ export function sceneChangeTermsOf(previous: SceneChangeSample, current: SceneCh
 // 指標を weights で足した変化量。
 export function sceneChangeOf(terms: SceneChangeTerms, weights: SceneChangeWeights): number;
 
-// RenderPipeline に足す宣言の口(案)
+// 重み 0 の要素は足さない(0·∞ を NaN にしない)。
+
+// src/render/pipeline/scene-change-tracker.ts(案) — 宣言を受け、番号の進み方(frameStepOf を写さずに使う)で前と今の様子を回す。
 // ゲームと lab が毎フレーム描く前に宣言する、推定の基準(sunLight.set と同じく、そのフレームの全体を宣言する)。
 export interface SceneChangeDeclaration {
   // カメラの同一性の鍵。同じ値の間は同じカメラで、替わった番号で d = ∞。意味は持たない — ゲームはビュー・照準・注視の対象から
-  // 作り(camera-cut.ts)、lab は固定の値。
+  // 作り(camera-key.ts)、lab は固定の値。
   readonly cameraKey: string;
-  // 光の向きとカメラの動きを測る基準の受け手の姿勢(描画座標)。ゲームは注視の対象(向きを持たない対象は恒等)、lab はケースの
+  // 光の向きとカメラの動きを測る基準の受け手の姿勢(描画座標)。ゲームは注視点と注視の対象の姿勢(艦以外は恒等)、lab はケースの
   // 周回の中心と恒等の向き。
   readonly referencePosition: THREE.Vector3;
   readonly referenceOrientation: THREE.Quaternion;
 }
-public readonly sceneChange: {
+// SceneChangeTracker(set・setWeights・lastTerms・lastChange と、パイプラインだけが呼ぶ changeAt(frame, external, sample))と、
+// パイプラインの宣言(恒星光・天体照・影を落とす天体)とカメラから様子を組む sceneChangeSampleOf。パイプラインは次の型で公開する:
+public get sceneChange(): {
   set(declaration: SceneChangeDeclaration): void;
   // 要素の重み。null で本番の重み(SCENE_CHANGE_WEIGHTS)。lab の調整用で、ゲームは呼ばない。
   setWeights(weights: SceneChangeWeights | null): void;
-  // 直前に番号を進めたときの要素ごとの指標(lab の表示)。前の様子が無ければ null。
+  // 直前に番号を進めたときの要素ごとの指標と、蓄積へ渡した d(lab の表示)。前の様子が無ければ指標は null。
   readonly lastTerms: SceneChangeTerms | null;
+  readonly lastChange: number;
 };
 
 // PlanetLightValue に足す(案): フレームをまたいで同じ天体を引く鍵。ゲームは天体の id、lab は固定の鍵。
@@ -625,8 +637,8 @@ readonly key: string;
   `sunlitFactor` はそれを呼ぶ形にする（パイプラインが日照率を写経しないため）。
 - **ゲーム** — 導出と同期の位相（`sync`）で、カメラの同一性の鍵と基準の受け手（注視の対象の位置と向き）を宣言し、天体照の宣言に天体の
   id を鍵として足す（`CelestialIllumination`）。ゲームは前のフレームを覚えず、推定の中身も持たない（決めたこと 40）:
-  - `camera-cut.ts` は、ビュー・照準・注視の対象から鍵の文字列を作る写しだけになる（`CameraSystem.cutKey` が返す）。比べる
-    `cameraCutChangeOf` はパイプラインの推定へ移す。
+  - `camera-cut.ts` は `camera-key.ts` へ改め、ビュー・照準・注視の対象から鍵の文字列を作る写しだけになる（`CameraSystem.cameraKey` が
+    返す）。比べる `cameraCutChangeOf` はパイプラインの推定へ移す。
   - `GamePresentation` の `cameraCutKey`・`renderedCameraCutKey` は消え、`render()` はパイプラインの `render` を呼ぶだけになる。
   - フレーム番号の `motionFrame++` は `sync` へ移す。`sync` の後には必ず `render` が来る（`run.ts` の `warmUp` と `frame` —
     2026-10-16 に確かめた）ので、番号の進み方は変わらない。
@@ -635,10 +647,12 @@ readonly key: string;
   重み 0 にして推定を切る** — 渡した d で撮る CDP の道具（積んだ撮影・動く絵の列）を黙って変えない（決めたこと 30 と同じ考え）。推定を
   使うのは 6-4 の再生の画面で選んだときと、CDP で `setWeights(null)` を呼んだとき。
 
-**変更箇所** — `src/render/pipeline/scene-change.ts` とその単体テスト（`tests/render/`）。`render-pipeline.ts`（様子を組んで外の変化量に
-足し、`screenSpacePass.beginFrame` へ渡す数行）。`planet-light-source.ts`（宣言の鍵）。`physics/shadow.ts`（幾何の口）とそのテスト。
+**変更箇所** — `src/render/pipeline/scene-change.ts`・`scene-change-tracker.ts` とその単体テスト（`tests/render/`）。`render-pipeline.ts`
+（追う側を持ち、`screenSpacePass.beginFrame` へ渡す 1 行と getter）。`sun-light.ts`・`body-shadow.ts`（様子を組む側の読み口）、
+`planet-light-source.ts`（宣言の鍵と読み口）。`physics/shadow.ts`（幾何の口）とそのテスト。
 `game-presentation.ts` と `celestial-illumination.ts`（基準と鍵の宣言・天体照の鍵・`render()` から差と番号を外す）。
-`camera-cut.ts` と `camera-system.ts`（鍵の写し）と `tests/game/camera-cut.test.ts`（比べるテストは `tests/render/` へ移す）。`lab.ts` と `lab-earth.ts`（基準の宣言・鍵・既定の重み 0）。
+`camera-cut.ts` → `camera-key.ts` と `camera-system.ts`（鍵の写しと注視の対象の姿勢）と `tests/game/camera-cut.test.ts` → `camera-key.test.ts`
+（比べるテストは `tests/render/` へ移す）。`lab.ts`（基準の宣言・地球の天体照の鍵・既定の重み 0）。
 
 **達成条件**
 
