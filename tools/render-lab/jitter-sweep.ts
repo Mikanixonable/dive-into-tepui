@@ -204,7 +204,7 @@ class SweepStatistics {
 }
 
 // 画素ごとの値 rgba(α は捨てる)を、面のある画素で α = 1、ほかで 0 と rgb = 0 にした画像。
-function maskedImage(rgba: Float32Array, width: number, height: number, mask: Uint8Array): FloatImage {
+export function maskedImage(rgba: Float32Array, width: number, height: number, mask: Uint8Array): FloatImage {
   const out = new Float32Array(width * height * 4);
   for (let p = 0; p < width * height; p++) {
     if (mask[p] === 0) continue;
@@ -220,7 +220,7 @@ function subtracted(a: Float32Array, b: Float32Array): Float32Array {
 }
 
 // 面のある画素の rgb の、尺度 scale を掛けた RMS。
-function maskedRms(image: FloatImage, mask: Uint8Array, scale: number): number {
+export function maskedRms(image: FloatImage, mask: Uint8Array, scale: number): number {
   let squares = 0;
   let count = 0;
   for (let p = 0; p < mask.length; p++) {
