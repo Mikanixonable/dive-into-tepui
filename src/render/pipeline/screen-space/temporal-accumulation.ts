@@ -2,8 +2,8 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, exp2, floor, float, int, ivec2, max, min, mrt, screenSize, screenUV, select, texture, textureLoad, uniform,
-  vec2, vec4,
+  Fn, exp2, floatBitsToUint, floor, float, int, ivec2, max, min, mrt, screenSize, screenUV, select, texture,
+  textureLoad, uint, uniform, vec2, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { compileInto } from '../compile-into';
@@ -13,10 +13,22 @@ import { octDecodeNormal } from '../gbuffer';
 import type { GBufferPass } from '../gbuffer';
 import { SurfaceWeight, type SurfaceTextures } from './surface-weight';
 import type {
-  FloatNode, FloatUniform, IVec2Node, Mat3Uniform, Mat4Uniform, Vec2Node, Vec3Node, Vec4Node,
+  BoolNode, FloatNode, FloatUniform, IVec2Node, Mat3Uniform, Mat4Uniform, UintNode, Vec2Node, Vec3Node, Vec4Node,
 } from '../../tsl-types';
 
 const HALF_WEIGHT_ANGLE = Math.PI / 9;
+
+// 単精度浮動小数の指数部のビット。±∞ と NaN だけが、このビットをすべて立てる。
+const FLOAT_EXPONENT_BITS = 0x7f800000;
+
+// components がすべて有限か。WGSL の実装は非有限の値が現れないと仮定して浮動小数の比較を畳んでよいので、ビット列で判定する。
+function allFinite(...components: FloatNode[]): BoolNode {
+  return components.map((component) => {
+    // floatBitsToUint の @types/three 上の戻り値型は値の型を持たないため、UintNode へ読み替える。
+    const bits = floatBitsToUint(component) as unknown as UintNode;
+    return bits.bitAnd(uint(FLOAT_EXPONENT_BITS)).notEqual(uint(FLOAT_EXPONENT_BITS));
+  }).reduce((finite, next) => finite.and(next));
+}
 
 // 履歴と前フレームの深度・法線を、それぞれの形式の添付先へまとめる。
 function targetOf(): THREE.RenderTarget {
@@ -189,11 +201,12 @@ export class TemporalAccumulation {
     return { material, target, gpuPass: GPU_PASS.nearbyDiffuseAccumulation };
   }
 
-  // 前フレームの四近傍から履歴を再投影し、今の補正と履歴長で混ぜる。
+  // 前フレームの四近傍から履歴を再投影し、今の補正と履歴長で混ぜる。非有限な履歴の画素は再投影に使わず、
+  // 非有限な今の値は、履歴があればその標本を捨てて履歴を保つ。
   private accumulatedValue(): Vec4Node {
     // 今の補正・面・動きから、前フレームの対応位置を求める。
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
-    const current = textureLoad(this.correction.upsampledTarget.texture, pixel).rgb;
+    const current = textureLoad(this.correction.upsampledTarget.texture, pixel).rgb.toVar();
     const depth = textureLoad(this.gbuffer.depthTexture, pixel).r.toVar();
     const encodedNormal = textureLoad(this.gbuffer.normalTexture, pixel).rg;
     const normal = this.normalToPreviousView.mul(octDecodeNormal(encodedNormal)).toVar();
@@ -219,7 +232,8 @@ export class TemporalAccumulation {
     const accumulatedLength = select(validSurface, historyLength, 0).add(1).toVar();
     const length = min(accumulatedLength, this.historyCap).toVar();
     // 履歴長で今の値へ寄せる。長さ 1 以下は今の値をそのまま選び、s=1 の出力を一致させる。
-    const blended = history.add(current.sub(history).div(length));
+    const sample = select(allFinite(current.x, current.y, current.z), current, history);
+    const blended = history.add(sample.sub(history).div(length));
     return vec4(select(length.lessThanEqual(1), current, blended), length);
   }
 
@@ -243,10 +257,12 @@ export class TemporalAccumulation {
     );
     const bilinear = (dx === 0 ? fraction.x.oneMinus() : fraction.x)
       .mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
-    // 面の重みと双線形係数を合わせ、履歴 RGB と長さを重み付きで返す。
-    const hasSurface = inside.and(surface.depth.greaterThan(0));
-    const weight = select(hasSurface, exp2(exponent.negate()).mul(bilinear), 0).toVar();
-    const history = textureLoad(this.target.textures[0]!, safeTexel);
+    // 面があり値が有限なタップの、面の重みと双線形係数を合わせた重みと、重みを掛けた履歴 RGB と長さを返す。
+    // 非有限の履歴は重み 0 を掛けても NaN のまま混ざり、近傍へ毎フレーム広がるので、掛ける前に値ごと落とす。
+    const stored = textureLoad(this.target.textures[0]!, safeTexel).toVar();
+    const usable = inside.and(surface.depth.greaterThan(0)).and(allFinite(stored.x, stored.y, stored.z, stored.w));
+    const weight = select(usable, exp2(exponent.negate()).mul(bilinear), 0).toVar();
+    const history = select(usable, stored, vec4(0));
     return {
       weight,
       value: history.rgb.mul(weight),
