@@ -1,10 +1,11 @@
 // 描画テスト環境の再生。論理フレームに応じて動きを決めて描き、操作・動きの設定・状態表示を組む。
 import { Button, SegmentedControl } from '../../src/hud/widgets';
 import { lengthCapOf } from '../../src/render/pipeline/screen-space/temporal-accumulation';
+import { SCENE_CHANGE_WEIGHTS, type SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import { buildSlider } from '../lab-controls';
 import { cameraShiftOf } from './motion-sequence';
 import type { JitterSource } from '../../src/render/pipeline/screen-space/frame-jitter';
-import type { LabView } from './lab';
+import { SCENE_CHANGE_OFF, type LabView } from './lab';
 
 // カメラの往復の片側の幅 [描画バッファの画素]。
 const CAMERA_SWING_PX = 120;
@@ -22,6 +23,7 @@ const MAX_CHANGE = 16;
 type CameraMotion = 'still' | 'translate' | 'rotate' | 'orbit';
 type MovingLight = 'none' | 'sun' | 'earth';
 type JitterChoice = 'none' | 'seed' | 'scanRepresentative' | 'production';
+type SceneChangeChoice = 'off' | 'production' | 'custom';
 
 const JITTER_SOURCES: Readonly<Record<JitterChoice, readonly JitterSource[]>> = {
   none: [], seed: ['seed'], scanRepresentative: ['scanRepresentative'], production: ['seed', 'scanRepresentative'],
@@ -37,6 +39,17 @@ const MOVING_LIGHTS: readonly (readonly [MovingLight, string])[] = [
   ['none', 'なし'], ['sun', '恒星'], ['earth', '地球'],
 ];
 const LIGHT_SPEED_CHOICES: readonly (readonly [number, string])[] = LIGHT_SPEEDS_DEG.map((speed) => [speed, String(speed)]);
+const SCENE_CHANGE_CHOICES: readonly (readonly [SceneChangeChoice, string])[] = [
+  ['off', '切る'], ['production', '本番の重み'], ['custom', 'つまみの重み'],
+];
+// 重みのつまみの要素と見出し。
+const SCENE_CHANGE_SLIDERS: readonly (readonly [keyof SceneChangeWeights, string])[] = [
+  ['lightDirection', '重み 光の向き [1/rad]'], ['sunlit', '重み 日照率'], ['cameraSlide', '重み 画面の滑り [1/画面]'],
+];
+// 重みのつまみの範囲(常用対数)と刻み。
+const MIN_WEIGHT_LOG = -2;
+const MAX_WEIGHT_LOG = 3;
+const WEIGHT_LOG_STEP = 0.05;
 
 // 原点から正の向きへ進み、片側の幅 swing で折り返す往復位置。
 function swingAt(distance: number, swing: number): number {
@@ -61,6 +74,9 @@ export class LabPlayback {
   private lightSpeed: number = LIGHT_SPEEDS_DEG[1];
   // 時間方向の蓄積へ渡す変化量。
   private change = 0;
+  // 推定への重みの選択と、つまみで編集する重み。
+  private sceneChangeChoice: SceneChangeChoice = 'off';
+  private sceneChangeWeights: SceneChangeWeights = { ...SCENE_CHANGE_WEIGHTS };
   // 番号に応じて動かす走査入力。
   private jitterChoice: JitterChoice = 'production';
   // 直前に番号を進めた時刻 [ms]。
@@ -129,9 +145,28 @@ export class LabPlayback {
     light.setSelected(this.movingLight);
     lightSpeed.setSelected(this.lightSpeed);
 
-    // 変化量のつまみと状態表示を初期化する。
+    // d の推定の選択と重みのつまみ(値は常用対数で持ち、つまみの重みを選んだときだけ効く)、外から渡す変化量のつまみを組む。
+    const sceneChange = new SegmentedControl<SceneChangeChoice>('d の推定', SCENE_CHANGE_CHOICES, (choice) => {
+      sceneChange.setSelected(choice);
+      this.sceneChangeChoice = choice;
+      this.applySceneChangeWeights();
+      this.refreshStatus();
+    });
+    sceneChange.setSelected(this.sceneChangeChoice);
+    for (const [key, label] of SCENE_CHANGE_SLIDERS) {
+      const setWeight = buildSlider(
+        settingsRowId, label, MIN_WEIGHT_LOG, MAX_WEIGHT_LOG, WEIGHT_LOG_STEP,
+        () => this.sceneChangeWeights[key].toPrecision(3), (exponent) => {
+          this.sceneChangeWeights = { ...this.sceneChangeWeights, [key]: 10 ** exponent };
+          this.applySceneChangeWeights();
+          this.refreshStatus();
+        },
+      );
+      setWeight(Math.log10(SCENE_CHANGE_WEIGHTS[key]));
+    }
+    document.getElementById(settingsRowId)!.append(sceneChange.element);
     const setChange = buildSlider(
-      settingsRowId, '変化量 d', 0, MAX_CHANGE, 0.25,
+      settingsRowId, '外から渡す変化量', 0, MAX_CHANGE, 0.25,
       () => this.change.toFixed(2), (value) => {
         this.change = value;
         this.refreshStatus();
@@ -175,13 +210,19 @@ export class LabPlayback {
     this.refreshStatus();
   }
 
-  // 履歴の上限の変更を状態表示へ反映する。
+  // 番号・描く間隔・直前に番号を進めたときの推定の内訳と d・履歴の長さの上限を状態表示へ映す。
   public refreshStatus(): void {
     const frameText = this.playing ? `${this.frameIntervalMs?.toFixed(1) ?? '—'} ms/フレーム` : '—';
-    const lengthCap = lengthCapOf(this.view.historyCapFrames, this.change).toFixed(1);
+    const terms = this.view.sceneChange.lastTerms;
+    const change = this.view.sceneChange.lastChange;
+    const lengthCap = lengthCapOf(this.view.historyCapFrames, change).toFixed(1);
+    // 内訳は、前の様子と比べなかった番号(最初・飛んだ番号・カメラの切り替え)では「—」。光の向きは度で出す。
+    const breakdown = terms === null ? '光の向き — · 日照率 — · 画面の滑り —'
+      : `光の向き ${(terms.lightDirection * 180 / Math.PI).toPrecision(3)}° · 日照率 ${terms.sunlit.toPrecision(3)}`
+        + ` · 画面の滑り ${terms.cameraSlide.toPrecision(3)}`;
     const note = this.view.historyCapFrames === 1 ? ' · 履歴の上限 1 では履歴もジッターも使わない' : '';
     this.statusOutput.textContent = [
-      `k = ${this.view.logicalFrame} · ${frameText} · 履歴の長さの上限 ${lengthCap}${note}`,
+      `k = ${this.view.logicalFrame} · ${frameText} · ${breakdown} · d ${change.toPrecision(3)} · 履歴の長さの上限 ${lengthCap}${note}`,
       this.failure,
     ].filter((line): line is string => line !== null).join(' · ');
   }
@@ -252,5 +293,12 @@ export class LabPlayback {
     this.playButton.setLabel(this.playing ? '停止' : '再生');
     this.playButton.setOn(this.playing);
     this.stepButton.setEnabled(!this.playing);
+  }
+
+  // 選択中の推定モードをパイプラインへ反映する。
+  private applySceneChangeWeights(): void {
+    this.view.sceneChange.setWeights(this.sceneChangeChoice === 'off'
+      ? SCENE_CHANGE_OFF
+      : this.sceneChangeChoice === 'production' ? null : this.sceneChangeWeights);
   }
 }

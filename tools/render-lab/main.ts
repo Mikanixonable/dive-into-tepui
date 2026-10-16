@@ -3,6 +3,7 @@
 // そのまま組む。
 import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
+import type { SceneChangeTerms, SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import type { ChoiceValue, GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { withGraphicsValue } from '../../src/render/graphics-selection';
@@ -77,6 +78,8 @@ declare global {
       captureCorrectionProbe: () => ReturnType<LabView['captureCorrectionProbe']>;
       render: () => void;
       setFrame: (frame: number, change?: number) => void;
+      setSceneChangeWeights: (weights: SceneChangeWeights | null) => void;
+      sceneChange: () => { terms: SceneChangeTerms | null; change: number };
       setCaseValue: (name: string, value: string | number | boolean) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
       viewAngles: () => LabViewAngles;
@@ -404,6 +407,8 @@ async function init(): Promise<void> {
     captureCorrectionProbe: () => view.captureCorrectionProbe(),
     render: () => view.render(),
     setFrame: (frame, change) => view.setFrame(frame, change),
+    setSceneChangeWeights: (weights) => view.sceneChange.setWeights(weights),
+    sceneChange: () => ({ terms: view.sceneChange.lastTerms, change: view.sceneChange.lastChange }),
     setCaseValue: (name, value) => view.setCaseValue(name, value),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     viewAngles: () => view.viewAngles,
