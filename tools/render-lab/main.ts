@@ -144,7 +144,7 @@ declare global {
       resetMotionReference: () => void;
       motionVectorFrame: (frame: number, compareDepth: boolean, forceNoHistory?: boolean, verifyRepeated?: boolean) => Promise<MotionVectorFrameRecord>;
       jitterSweep: (
-        sequence: PhaseSequence, timeConstants: readonly number[], imagedTimeConstants: readonly number[],
+        sequence: PhaseSequence, historyCaps: readonly number[], imagedHistoryCaps: readonly number[],
       ) => Promise<SweepRecord>;
     };
   }
@@ -457,8 +457,8 @@ async function init(): Promise<void> {
       columns.map(({ name, sequence }) => ({ name, phases: phasesOf(sequence, view.scanCellSize) }))),
     resetMotionReference: () => motionVectorCheck.reset(),
     motionVectorFrame: (frame, compareDepth, forceNoHistory, verifyRepeated) => motionVectorCheck.frame(frame, compareDepth, forceNoHistory, verifyRepeated),
-    jitterSweep: (sequence, timeConstants, imagedTimeConstants) => sweep.sweep(
-      phasesOf(sequence, view.scanCellSize), timeConstants, imagedTimeConstants, view.scanCellSize),
+    jitterSweep: (sequence, historyCaps, imagedHistoryCaps) => sweep.sweep(
+      phasesOf(sequence, view.scanCellSize), historyCaps, imagedHistoryCaps, view.scanCellSize),
   };
 }
 

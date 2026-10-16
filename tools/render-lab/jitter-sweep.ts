@@ -1,5 +1,5 @@
 // 静止したカメラで、近傍拡散補正を位相の列で描き直して撮る道具。位相ごとの 1 パスと列の平均からの偏差、列の平均・
-// 画素ごとの標準偏差・最大偏差の地図、位相を順に時定数ごとの指数移動平均で積んだ列とその隣り合うフレームの差を、
+// 画素ごとの標準偏差・最大偏差の地図、位相を順に履歴の上限ごとの指数移動平均で積んだ列とその隣り合うフレームの差を、
 // PNG と要約で返す。
 import { differenceSummaryOf, type DifferenceSummary } from './reference-reprojection';
 import { amplified } from './motion-sequence';
@@ -11,7 +11,7 @@ const HOT_SPOT_PERCENTILE = 0.999;
 // 標準偏差がこの比(列の標準偏差の RMS に対する)より小さい画素は、最大偏差 / 標準偏差に数えない。
 const HOT_SPOT_STD_FLOOR = 1e-3;
 
-// 時定数 1 つの指数移動平均に位相 1 つを積んだ記録。image は積んだ補正(残さないときは null)、difference は 1 つ前からの差
+// 履歴の上限 1 つの指数移動平均に位相 1 つを積んだ記録。image は積んだ補正(残さないときは null)、difference は 1 つ前からの差
 // (×4)、summary はその差の要約(どちらも最初の位相では null)。
 export interface AccumulatedRecord {
   readonly image: string | null;
@@ -20,7 +20,7 @@ export interface AccumulatedRecord {
 }
 
 // 位相 1 つの記録。pass は 1 パスの補正、deviation は列の平均からの偏差(×4)、deviationSummary はその要約(値は列の平均)、
-// accumulated は時定数(10 進の文字列)ごとの指数移動平均。PNG はデータ URL で、符号付きの表示。
+// accumulated は履歴の上限(10 進の文字列)ごとの指数移動平均。PNG はデータ URL で、符号付きの表示。
 export interface SweepFrameRecord {
   readonly pass: string;
   readonly deviation: string;
@@ -54,7 +54,7 @@ export interface SweepRecord {
 
 // 指数移動平均 1 つの状態 — 積んだ補正と、1 つ前の位相の積んだ補正。
 interface Accumulation {
-  readonly timeConstant: number;
+  readonly historyCap: number;
   readonly image: FloatImage;
   previous: FloatImage | null;
 }
@@ -62,10 +62,10 @@ interface Accumulation {
 export class JitterSweep {
   public constructor(private readonly view: LabView) {}
 
-  // いまの絵を位相の列 phases で描き直して撮る。timeConstants は指数移動平均の時定数 [フレーム] の並び、imagedTimeConstants は
+  // いまの絵を位相の列 phases で描き直して撮る。historyCaps は模擬の蓄積の履歴の上限 [フレーム] の並び、imagedHistoryCaps は
   // そのうち積んだ補正の PNG も残すもの、cellSize は走査の画素の幅 [描画バッファの画素]。終わると位相は本番の静止画のものへ戻る。
   public async sweep(
-    phases: readonly CorrectionPhase[], timeConstants: readonly number[], imagedTimeConstants: readonly number[],
+    phases: readonly CorrectionPhase[], historyCaps: readonly number[], imagedHistoryCaps: readonly number[],
     cellSize: number,
   ): Promise<SweepRecord> {
     if (phases.length === 0) throw new RangeError('render-lab: a sweep needs at least one phase');
@@ -84,9 +84,9 @@ export class JitterSweep {
     const std = maskedImage(statistics.std(), width, height, mask);
     const maxDeviation = maskedImage(statistics.maxDeviation(), width, height, mask);
 
-    // 2 巡目 — 位相ごとの偏差と、時定数ごとの指数移動平均。同じ入力からは同じ画像になるので、描き直した値は 1 巡目と一致する。
-    const accumulations: Accumulation[] = timeConstants.map((timeConstant) => ({
-      timeConstant, image: { width, height, rgba: new Float32Array(width * height * 4) }, previous: null,
+    // 2 巡目 — 位相ごとの偏差と、履歴の上限ごとの指数移動平均。同じ入力からは同じ画像になるので、描き直した値は 1 巡目と一致する。
+    const accumulations: Accumulation[] = historyCaps.map((historyCap) => ({
+      historyCap, image: { width, height, rgba: new Float32Array(width * height * 4) }, previous: null,
     }));
     const frames: SweepFrameRecord[] = [];
     const explained: number[] = [];
@@ -99,8 +99,8 @@ export class JitterSweep {
       }
       const accumulated: Record<string, AccumulatedRecord> = {};
       for (const accumulation of accumulations) {
-        accumulated[String(accumulation.timeConstant)] = await this.accumulate(
-          accumulation, correction, k, mask, mean, surfaceCount, scale, imagedTimeConstants.includes(accumulation.timeConstant));
+        accumulated[String(accumulation.historyCap)] = await this.accumulate(
+          accumulation, correction, k, mask, mean, surfaceCount, scale, imagedHistoryCaps.includes(accumulation.historyCap));
       }
       frames.push({
         pass: await this.view.signedCorrectionPng(correction),
@@ -133,14 +133,14 @@ export class JitterSweep {
   }
 
   // 指数移動平均 accumulation へ k 番目の位相の補正 correction を積み、1 つ前からの差を要約する。新しい位相の重みは
-  // 1 / min(k + 1, 時定数)。
+  // 1 / min(k + 1, 履歴の上限)。
   private async accumulate(
     accumulation: Accumulation, correction: FloatImage, k: number, mask: Uint8Array, mean: FloatImage,
     surfaceCount: number, scale: number, imaged: boolean,
   ): Promise<AccumulatedRecord> {
     // 積んでから、1 つ前の積んだ補正との差を取る。
     const { image } = accumulation;
-    const weight = 1 / Math.min(k + 1, accumulation.timeConstant);
+    const weight = 1 / Math.min(k + 1, accumulation.historyCap);
     for (let i = 0; i < image.rgba.length; i++) image.rgba[i] = image.rgba[i]! + weight * (correction.rgba[i]! - image.rgba[i]!);
     const previous = accumulation.previous;
     accumulation.previous = { ...image, rgba: image.rgba.slice() };
