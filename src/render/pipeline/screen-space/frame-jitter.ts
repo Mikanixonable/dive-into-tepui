@@ -1,7 +1,7 @@
-// 近傍拡散補正の走査の入力のうち、時間方向に平均するためにフレームごとに動かすもの — ブルーノイズのずれ(seed)と
-// 走査の代表の選び方 — の語彙と、フレーム番号からその位相を答える列。
+// 近傍拡散補正の走査の入力のうち、時間方向に平均するためにフレームごとに動かすもの — 走査の全体の回転とブルーノイズの
+// ずれ(seed)と走査の代表の選び方 — の語彙と、フレーム番号からその位相を答える列。
 
-// フレームごとに動かせる走査の入力。seed はブルーノイズのずれ、scanRepresentative は走査の代表の選び方。
+// フレームごとに動かせる走査の入力。seed は走査の全体の回転とブルーノイズのずれ、scanRepresentative は走査の代表の選び方。
 export type JitterSource = 'seed' | 'scanRepresentative';
 
 // 走査の代表の選び方。grid は全ての走査の画素の代表を、受け持つブロックの中の同じ位置 fraction(走査の画素の幅に対する
@@ -10,10 +10,11 @@ export type ScanJitter =
   | { readonly kind: 'grid'; readonly fraction: readonly [number, number] }
   | { readonly kind: 'perPixel'; readonly draw: number };
 
-// 1 フレームの走査の入力。seed はブルーノイズのずれ [タイルの幅]、scanJitter は走査の代表の選び方(null はブロックの
-// 中心)。
+// 1 フレームの走査の入力。seed はブルーノイズのずれ [タイルの幅]、scanRotation は走査の全体の回転 [スライスの間隔]
+// (0 以上 1 未満)、scanJitter は走査の代表の選び方(null はブロックの中心)。
 export interface FrameJitter {
   readonly seed: readonly [number, number];
+  readonly scanRotation: number;
   readonly scanJitter: ScanJitter | null;
 }
 
@@ -21,24 +22,28 @@ export interface FrameJitter {
 const PLASTIC = 1.3247179572447461;
 const SEED_ALPHA = [1 / PLASTIC, 1 / PLASTIC ** 2] as const;
 
+// 走査の全体の回転の列の生成元 — 黄金比の逆数。R2 列の x 成分(1/g ≈ 0.755)で回すと 3/4 に近いので、整列した 2×2 の
+// 走査の画素が持つ ¼ ずつの回転を並べ替えるだけになり、数十フレームのあいだ新しい回転を足さない。
+const ROTATION_ALPHA = (Math.sqrt(5) - 1) / 2;
+
 // 2×2 の Bayer 行列 [[0, 2], [3, 1]] の、番号ごとの升の座標 (x, y)。
 const BAYER_2_CELLS = [[0, 0], [1, 1], [1, 0], [0, 1]] as const;
 
 // フレーム frame(0 以上の整数)で動かす走査の入力。sources に含む入力だけが動き、含まない入力は本番の静止画の値(seed (0, 0)・
-// 代表はブロックの中心)になる。cellSize は走査の画素の幅 [描画バッファの画素](2 の冪)で、代表は cellSize² 通りの位置を Bayer 順に
+// 回転 0・代表はブロックの中心)になる。cellSize は走査の画素の幅 [描画バッファの画素](2 の冪)で、代表は cellSize² 通りの位置を Bayer 順に
 // 巡る。フレーム 0 は、どの入力を動かしても本番の静止画と一致する。
 export function frameJitterAt(frame: number, sources: readonly JitterSource[], cellSize: number): FrameJitter {
   if (!Number.isInteger(frame) || frame < 0) throw new RangeError(`frame jitter: frame ${frame} is not a non-negative integer`);
   if (!Number.isInteger(cellSize) || cellSize < 1 || (cellSize & (cellSize - 1)) !== 0) {
     throw new RangeError(`frame jitter: the scan cell size ${cellSize} is not a power of two`);
   }
-  const seed = sources.includes('seed')
-    ? SEED_ALPHA.map((alpha) => fract(frame * alpha)) as [number, number]
-    : [0, 0] as const;
+  const moveSeed = sources.includes('seed');
+  const seed = moveSeed ? SEED_ALPHA.map((alpha) => fract(frame * alpha)) as [number, number] : [0, 0] as const;
+  const scanRotation = moveSeed ? fract(frame * ROTATION_ALPHA) : 0;
   const scanJitter: ScanJitter | null = sources.includes('scanRepresentative')
     ? { kind: 'grid', fraction: gridFractionAt(frame % (cellSize * cellSize), cellSize) }
     : null;
-  return { seed, scanJitter };
+  return { seed, scanRotation, scanJitter };
 }
 
 // フレーム frame に置く走査の入力。履歴の上限 historyCap が 1 なら本番の静止画の値、源 sources が null なら置かない(null)、

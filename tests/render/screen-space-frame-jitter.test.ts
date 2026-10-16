@@ -35,29 +35,53 @@ export function register(): void {
     assert.throws(() => frameJitterForHistoryCap(0, BOTH, 0, 4), RangeError);
   });
 
-  test('frame jitter: フレーム 0 は、どの入力を動かしても本番の静止画(seed (0, 0)・代表はブロックの中心)に一致する', () => {
+  test('frame jitter: フレーム 0 は、どの入力を動かしても本番の静止画(seed (0, 0)・回転 0・代表はブロックの中心)に一致する', () => {
     for (const cellSize of CELL_SIZES) {
       const jitter = frameJitterAt(0, BOTH, cellSize);
       assert.deepEqual(jitter.seed, [0, 0]);
+      assert.equal(jitter.scanRotation, 0);
       assert.deepEqual(jitter.scanJitter, { kind: 'grid', fraction: [0.5, 0.5] });
     }
   });
 
   test('frame jitter: 動かさない入力は、どのフレームでも本番の静止画の値のまま', () => {
     for (const frame of [1, 7, 100]) {
-      assert.deepEqual(frameJitterAt(frame, ['scanRepresentative'], 4).seed, [0, 0]);
+      const representativeOnly = frameJitterAt(frame, ['scanRepresentative'], 4);
+      assert.deepEqual(representativeOnly.seed, [0, 0]);
+      assert.equal(representativeOnly.scanRotation, 0);
       assert.equal(frameJitterAt(frame, ['seed'], 4).scanJitter, null);
-      assert.deepEqual(frameJitterAt(frame, [], 4), { seed: [0, 0], scanJitter: null });
+      assert.deepEqual(frameJitterAt(frame, [], 4), { seed: [0, 0], scanRotation: 0, scanJitter: null });
     }
   });
 
-  test('frame jitter: seed は 0 以上 1 未満で、隣り合うフレームで変わる', () => {
-    let previous = frameJitterAt(0, ['seed'], 4).seed;
+  test('frame jitter: seed と回転は 0 以上 1 未満で、隣り合うフレームで変わる', () => {
+    let previous = frameJitterAt(0, ['seed'], 4);
     for (let frame = 1; frame < 256; frame++) {
-      const { seed } = frameJitterAt(frame, ['seed'], 4);
-      for (const component of seed) assert.ok(component >= 0 && component < 1, `seed ${seed} at frame ${frame}`);
-      assert.notDeepEqual(seed, previous);
-      previous = seed;
+      const jitter = frameJitterAt(frame, ['seed'], 4);
+      for (const component of [...jitter.seed, jitter.scanRotation]) {
+        assert.ok(component >= 0 && component < 1, `seed ${jitter.seed}, rotation ${jitter.scanRotation} at frame ${frame}`);
+      }
+      assert.notDeepEqual(jitter.seed, previous.seed);
+      assert.notEqual(jitter.scanRotation, previous.scanRotation);
+      previous = jitter;
+    }
+  });
+
+  test('frame jitter: 回転は、どの N フレームの窓でも、画素ごとにも整列した 2×2 の層の上でも円周上に偏らない', () => {
+    // 整列した 2×2 の走査の画素は ¼ ずつずれた回転を持つので、2×2 の層の上の位置は回転の 4 倍の小数部。
+    // 許す最大の隙間は理想 1/N の 4 倍 — 実測は画素ごとで 1.8 倍、2×2 で 2.9 倍まで。3/4 に近い回し方は 2×2 で 7 倍を超える。
+    for (const layers of [1, 4]) {
+      for (const count of [4, 8, 16, 32]) {
+        for (let start = 0; start < 64; start++) {
+          const positions = Array.from({ length: count }, (_, i) => {
+            const rotation = frameJitterAt(start + i, ['seed'], 4).scanRotation * layers;
+            return rotation - Math.floor(rotation);
+          }).sort((a, b) => a - b);
+          const gaps = positions.map((position, i) => (positions[i + 1] ?? positions[0]! + 1) - position);
+          const largest = Math.max(...gaps);
+          assert.ok(largest * count <= 4, `${layers} layers, frames ${start}..${start + count - 1}: gap ${largest}`);
+        }
+      }
     }
   });
 

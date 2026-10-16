@@ -82,12 +82,12 @@ function representativeStepOf(fraction: number): number {
   return Math.min(REPRESENTATIVE_STEPS - 1, Math.round(fraction * REPRESENTATIVE_STEPS));
 }
 
-// 走査画素の下位 bit から回転の上位の 2 bit ずつへ写す。整列した 2^level 四方には 4^level 個の
+// 走査画素の下位 bit から回転の上位の 2 bit ずつへ写し、全画素共通の offset を足す。整列した 2^level 四方には 4^level 個の
 // 等間隔な回転が 1 個ずつ入る。11 桁なら 2048 四方まで繰り返さない。
-function stratifiedRotation(pixel: Vec2Node, seed: FloatNode): FloatNode {
+function stratifiedRotation(pixel: Vec2Node, offset: FloatNode): FloatNode {
   const x = uint(pixel.x);
   const y = uint(pixel.y);
-  let rotation: FloatNode = seed;
+  let rotation: FloatNode = offset;
   for (let level = 0; level < 11; level++) {
     const digit = x.shiftRight(uint(level)).bitAnd(uint(1))
       .add(y.shiftRight(uint(level)).bitAnd(uint(1)).shiftLeft(uint(1)));
@@ -139,9 +139,10 @@ export class ScreenSpacePass {
   private readonly bandScale: FloatUniform = uniform(1);
   // 走査のずれをホワイトノイズから引くパスの番号(setWhiteNoisePass)。負ならブルーノイズから引く。
   private readonly whiteNoisePass = uniform(-1, 'int');
-  // 走査の全体の回転と、歩み・丸めのブルーノイズ、拡大のブルーノイズを変える seed [タイルの幅]。
-  // (0, 0) 以外の値は、同じ推定を独立な標本で繰り返すためのもの。
+  // 歩み・丸めのブルーノイズと拡大のブルーノイズを変える seed [タイルの幅] と、走査の全体の回転 [スライスの間隔]。
+  // どちらも 0 以外の値は、同じ推定を独立な標本で繰り返すためのもの。
   private readonly seed: Vec2Uniform = uniform(new THREE.Vector2(0, 0));
+  private readonly scanRotation: FloatUniform = uniform(0);
   // 描画バッファと走査の解像度 [px]。解像度の違う段どうしで、対応する画素を引くのに使う。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly scanSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
@@ -249,6 +250,7 @@ export class ScreenSpacePass {
     );
     if (jitter === null) return;
     this.setSeed(jitter.seed[0], jitter.seed[1]);
+    this.setScanRotation(jitter.scanRotation);
     this.setScanJitter(jitter.scanJitter);
   }
 
@@ -262,9 +264,14 @@ export class ScreenSpacePass {
     this.tier = tier;
   }
 
-  // 次の render から、走査の全体の回転とブルーノイズのずれを (x, y) [タイルの幅] にする。
+  // 次の render から、ブルーノイズのずれを (x, y) [タイルの幅] にする。
   public setSeed(x: number, y: number): void {
     this.seed.value.set(x, y);
+  }
+
+  // 次の render から、走査の全体の回転を rotation [スライスの間隔] にする。
+  public setScanRotation(rotation: number): void {
+    this.scanRotation.value = rotation;
   }
 
   // 次の render から、走査の 3 つのずれを、pass が null ならブルーノイズ(本番)から、整数ならパスの番号 pass のホワイト
@@ -475,7 +482,7 @@ export class ScreenSpacePass {
     const whiteAt = (component: number): FloatNode => whiteNoiseAt(this.scanPixel, uint(this.whiteNoisePass), component);
     const useBlue = this.whiteNoisePass.lessThan(0);
     const noise = vec3(
-      select(useBlue, stratifiedRotation(this.scanPixel, this.seed.x), whiteAt(0)),
+      select(useBlue, stratifiedRotation(this.scanPixel, this.scanRotation), whiteAt(0)),
       select(useBlue, this.blueNoise.atScreenPixel(this.seed.add(0.5)), whiteAt(1)),
       select(useBlue, this.blueNoise.atScreenPixel(this.seed.add(27 / 64)), whiteAt(2)),
     );
