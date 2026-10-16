@@ -39,8 +39,9 @@ const PLANET_LIGHT_MODEL = { uniformSphere: 0, textured: 1 } as const;
 // 拡散のローブを覆うフィルタの角幅 [rad]。クランプドコサイン(立体角 π)と同じ立体角の円錐の半角。
 const DIFFUSE_FILTER_ANGLE = 1.05;
 
-// スロット 1 本の値。中心・半径は描画座標、放射輝度は色つき(SUN_IRRADIANCE_1AU の目盛り)。
+// スロット 1 本の値。key はフレームをまたいで同じ天体を引く鍵、中心・半径は描画座標、放射輝度は色つき(SUN_IRRADIANCE_1AU の目盛り)。
 export interface PlanetLightValue {
+  readonly key: string;
   readonly center: THREE.Vector3;
   readonly radius: number;
   readonly radiance: Albedo;
@@ -283,6 +284,8 @@ export class PlanetLightSource {
     () => ({ center: uniform(new THREE.Vector3()), radius: uniform(0), radiance: uniform(new THREE.Color(0, 0, 0)) }),
   );
   private readonly slotSources: readonly PlanetLightSlot[];
+  // 直前の set で使った光源(本数で切った後)。
+  private used: readonly PlanetLightValue[] = [];
 
   // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、count は同時に使うスロットの本数
   // (描画設定 planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
@@ -335,6 +338,9 @@ export class PlanetLightSource {
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。
   public get lightSources(): readonly LightSource[] { return this.slotSources; }
 
+  // このフレームに宣言されて使っている光源の値(本数で切った後)。値は宣言した側の物で、次の set までに読む。
+  public get declaredLights(): readonly PlanetLightValue[] { return this.used; }
+
   // スロット 0 の写しを uv(0..1)で読んだ放射輝度。
   public imageRadianceAt(uv: Vec2Node): Vec3Node { return this.slotSources[0]!.imageRadianceAt(uv); }
 
@@ -346,6 +352,7 @@ export class PlanetLightSource {
   // このフレームの光源の列。本数を超えたぶんは捨て、足りないスロットは消灯する。
   public set(lights: readonly PlanetLightValue[]): void {
     const used = lights.slice(0, this.count);
+    this.used = used;
     for (const [i, slot] of this.slots.entries()) {
       const light = used[i];
       slot.radius.value = light === undefined ? 0 : light.radius;

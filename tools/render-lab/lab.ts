@@ -214,6 +214,7 @@ export class LabView {
     private readonly gpu: GpuTimings,
     private readonly graphics: StoredSetting<GraphicsSelection>,
   ) {
+    this.pipeline.sceneChange.setWeights({ lightDirection: 0, sunlit: 0, cameraSlide: 0 });
     this.pipeline.screenSpace.setJitterSources(null);
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
@@ -499,6 +500,11 @@ export class LabView {
       graphics,
     ));
     const startedAt = performance.now();
+    this.pipeline.sceneChange.set({
+      cameraKey: 'render-lab',
+      referencePosition: this.pivot,
+      referenceOrientation: new THREE.Quaternion(),
+    });
     this.pipeline.render(this.scene, camera, this.style, this.frame, this.change);
     this.lastRenderCpuMs = performance.now() - startedAt;
     this.gpu.resolve();
@@ -1165,6 +1171,7 @@ function withAirglowSetting(body: AtmosphereBody, airglow: boolean): AtmosphereB
 function earthLightValue(earth: LabEarth, sun: LabSun, airglow: boolean): PlanetLightValue {
   const sunIrradiance = sun.irradianceAt(earth.center);
   return {
+    key: 'earth',
     center: earth.center,
     radius: R_EARTH,
     radiance: planetRadiance(EARTH_LIGHT_ALBEDO, sunIrradiance),

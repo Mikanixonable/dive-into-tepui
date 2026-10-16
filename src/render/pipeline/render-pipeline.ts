@@ -28,6 +28,7 @@ import { ScreenSpacePass, screenSpaceDiffuseOf } from './screen-space/screen-spa
 import { DiffuseCorrection } from './screen-space/diffuse-correction';
 import { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import { BodyShadow } from './shadow/body-shadow';
+import { SceneChangeTracker, type SceneChangeDeclarations } from './scene-change-tracker';
 import { RingShadow } from './shadow/ring-shadow';
 import { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
 import { MeshShadow } from './shadow/mesh-shadow';
@@ -98,6 +99,8 @@ export class RenderPipeline {
   private readonly drawingBufferSize = new THREE.Vector2();
   // 天体照の写しの基準点(カメラの描画座標)の書き込み先。同じく使い回し領域。
   private readonly cameraPosition = new THREE.Vector3();
+  // 宣言の前の番号との差から、時間方向の蓄積へ渡す変化量を決める。
+  private readonly sceneChangeTracker = new SceneChangeTracker();
   private readonly unregisterProteinMotionRenderer: () => void;
 
   // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。
@@ -114,6 +117,8 @@ export class RenderPipeline {
   public get ambient(): AmbientSource { return this._ambient; }
   public get sphereLights(): SphereLights { return this._sphereLights; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
+  // 変化量の推定の基準(カメラの同一性の鍵と基準の受け手)の書き込み先。毎フレーム描く前に宣言する。
+  public get sceneChange(): SceneChangeDeclarations { return this.sceneChangeTracker; }
 
   // 以下は、近傍拡散補正の段と seed の書き込み先と、読み戻せる中間ターゲットの持ち主。
   public get screenSpace(): ScreenSpacePass { return this.screenSpacePass; }
@@ -368,8 +373,11 @@ export class RenderPipeline {
 
   // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → 遮蔽と照り返し → ライティング → マテリアル → 映り込み →
   // 陰影の合成 → 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルではマテリアル・
-  // 映り込み・陰影の合成・大気・world・レンズの6つのパスを飛ばす。デバッグ表示の間もすべてのパスを発行する。
-  public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, frame: number, change: number): void {
+  // 映り込み・陰影の合成・大気・world・レンズの6つのパスを飛ばす。デバッグ表示の間もすべてのパスを発行する。frame は論理フレームの
+  // 番号(同じ番号の描き直しは時間方向の履歴を進めない)、change は宣言の差から見積もる変化量へ外から足す量。
+  public render(
+    scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, frame: number, change = 0,
+  ): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
 
@@ -383,7 +391,10 @@ export class RenderPipeline {
     this.shadowMaps.render(scene, camera, height, this._sunLight);
 
     // G バッファパス。
-    this.screenSpacePass.beginFrame(frame, change);
+    this.screenSpacePass.beginFrame(frame, this.sceneChangeTracker.changeAt(
+      frame, change,
+      this.sceneChangeTracker.sampleOf(camera, this._sunLight, this._planetLight, this._bodyShadow),
+    ));
     this._gbuffer.render(scene, camera, width, height, frame);
 
     // 影パス。G バッファの深度を読む。
