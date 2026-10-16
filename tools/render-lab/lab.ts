@@ -666,7 +666,7 @@ export class LabView {
         accumulator.clear(() => this.gpu.beginPass(GPU_PASS.nearbyDiffuseAverage));
         for (const [path, seed] of seeds.entries()) {
           screenSpace.setWhiteNoisePass(null);
-          screenSpace.setSeed(seed[0], seed[1]);
+          this.setScanSeed(seed[0], seed[1]);
           screenSpace.renderExperimentPath(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT, path === 0);
           accumulator.add((path % 2) as 0 | 1, () => this.gpu.beginPass(GPU_PASS.nearbyDiffuseAverage));
         }
@@ -687,9 +687,11 @@ export class LabView {
     }
   }
 
-  // 次に描くフレームから、近傍拡散補正の走査が読むブルーノイズを (x, y) [タイルの幅] だけずらす。
+  // 次に描くフレームから、近傍拡散補正の走査が読むブルーノイズを (x, y) [タイルの幅] だけずらし、走査の全体の回転を
+  // x [スライスの間隔] にする。
   public setScanSeed(x: number, y: number): void {
     this.pipeline.screenSpace.setSeed(x, y);
+    this.pipeline.screenSpace.setScanRotation(x);
   }
 
   // 次に描くフレームから、近傍拡散補正の走査の代表を jitter で選ぶ。null はブロックの中心。
@@ -717,6 +719,7 @@ export class LabView {
     if (this.current === null) throw new Error('render-lab: no case selected');
     const { screenSpace } = this.pipeline;
     screenSpace.setSeed(...phase.seed);
+    screenSpace.setScanRotation(phase.scanRotation);
     screenSpace.setScanJitter(phase.scanJitter);
     // 射影のずれを外すときも、ずれた G バッファを捨てるためにフレーム全体を描き直す。
     if (phase.rasterJitter !== null || this.rasterJitterPx !== null) {

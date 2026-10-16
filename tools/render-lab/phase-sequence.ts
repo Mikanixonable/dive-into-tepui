@@ -10,7 +10,7 @@ export interface CorrectionPhase extends FrameJitter {
 }
 
 // 本番の静止画の位相。
-export const PRODUCTION_PHASE: CorrectionPhase = { seed: [0, 0], scanJitter: null, rasterJitter: null };
+export const PRODUCTION_PHASE: CorrectionPhase = { seed: [0, 0], scanRotation: 0, scanJitter: null, rasterJitter: null };
 
 // 動かせる源。raster はラスタライズのずれ。
 export type PhaseSource = JitterSource | 'raster';
