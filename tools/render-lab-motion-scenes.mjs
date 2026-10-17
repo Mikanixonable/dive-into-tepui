@@ -1,5 +1,5 @@
-// 近傍拡散補正のちらつきを撮る道具(render-lab-motion.mjs・render-lab-jitter-sweep.mjs)が共有するもの — 撮る場面と描画設定、
-// 位相の列の名前、描画テスト環境を開いて初期化を待つ手順、フレームごとの差の要約を列ごとに均す集計。
+// 描画テスト環境で動く絵を撮る道具の共有部品 — 撮る場面と描画設定、位相の列の名前、描画テスト環境を開いて初期化を
+// 待つ手順と長い撮影の待ち方、フレームごとの差の要約を列ごとに均す集計。
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 
@@ -19,8 +19,9 @@ export const SCENES = [
   { name: 'bay-dark', caseName: 'bay', shot: 'bay-dark', light: null },
 ];
 
-// 動きの参照(render-lab-motion-vectors.mjs)の場面。casingCount はケースへ置く薬莢の数、hasEntities はケースが実体の口
-// (motionEntities)と値の口を持つか、orders は撮る積み順(積み順を持たないケースは 1 つ)。
+// 動きの参照の場面。casingCount と debrisCount はケースへ置く薬莢と飛散片の数(debrisCount を省けばケースの既定)、
+// hasEntities はケースが実体の口(motionEntities)と値の口を持つか、orders は撮る積み順(積み順を持たないケースは 1 つ)、
+// runs は撮る列と描画座標の組。
 export const MOTION_VECTOR_SCENES = [
   {
     name: 'casing-room', caseName: 'casing-room', shot: 'casing-room', casingCount: 20, hasEntities: true, orders: ['stable'],
@@ -61,6 +62,7 @@ export function selectedByName(names, all, label) {
 // あるフレームが無い組は含めない。
 export function aggregatesOf(records, columns) {
   return records.flatMap(({ scene, sequence, summaries }) => columns.flatMap((column) => {
+    // 差のあるフレームの要約。
     const pairs = summaries.map((s) => s[column]).filter((s) => s !== null && s !== undefined);
     if (pairs.length === 0) return [];
     const mean = (values) => values.reduce((sum, v) => sum + v, 0) / pairs.length;

@@ -84,6 +84,7 @@ async function movingLight(devTools, caseName, shotName, sceneLabel, angleKey, l
     await evaluate(devTools, `window.renderLab.setView({ ${angleKey}: ${base[angleKey]} + 0.5 * ${frame} })`);
     await evaluate(devTools, `window.renderLab.setFrame(${frame}, 0)`);
     const sample = await read(devTools);
+    // 恒星は向きの回転がそのまま lightDirection に、地球は照度の割合の分だけ効くはず。
     const fullTurn = turnAngle(0.5, elevation);
     const earthLightFraction = (sample.terms?.lightDirection ?? NaN) / fullTurn;
     const passed = angleKey === 'sunAzimuthDeg'
@@ -107,10 +108,10 @@ async function cameraMovement(devTools, mode, movement) {
   await evaluate(devTools, 'window.renderLab.setFrame(0, Infinity)');
   for (let frame = 1; frame <= 4; frame++) {
     const pixels = frame;
-    const tuple = mode === 'translation' ? `[${pixels},0]` : '[0,0]';
+    const translation = mode === 'translation' ? `[${pixels},0]` : '[0,0]';
     const rotation = mode === 'rotation' ? `[${pixels},0]` : '[0,0]';
     const orbit = mode === 'orbit' ? `[${pixels},0]` : '[0,0]';
-    await evaluate(devTools, `window.renderLab.moveCamera(${tuple}, ${rotation}, ${orbit})`);
+    await evaluate(devTools, `window.renderLab.moveCamera(${translation}, ${rotation}, ${orbit})`);
     await evaluate(devTools, `window.renderLab.setFrame(${frame}, 0)`);
     const sample = await read(devTools);
     const onlySlide = sample.terms?.lightDirection === 0 && sample.terms?.sunlit === 0
@@ -126,6 +127,7 @@ async function cameraMovement(devTools, mode, movement) {
 // 同じ番号の描き直しで推定が変わらず、次の番号が 1 度目の描画からの差になるかを確かめる。
 async function repeatFrameCheck(devTools) {
   await setup(devTools, 'cornell-box', 'cornell-box', SUN_ONLY);
+  // k=1 を基準から 0.5° 回して描いたあと、向きを大きく変えて同じ番号を読み直し、向きを基準へ戻して k=2 へ進める。
   const base = await evaluate(devTools, 'window.renderLab.viewAngles()');
   await evaluate(devTools, 'window.renderLab.setView({ sunAzimuthDeg: window.renderLab.viewAngles().sunAzimuthDeg + 0.5 })');
   await evaluate(devTools, 'window.renderLab.setFrame(1, 0)');
@@ -135,6 +137,7 @@ async function repeatFrameCheck(devTools) {
   await evaluate(devTools, 'window.renderLab.setView({ sunAzimuthDeg: window.renderLab.viewAngles().sunAzimuthDeg - 7.5 })');
   await evaluate(devTools, 'window.renderLab.setFrame(2, 0)');
   const next = await read(devTools);
+  // 描き直しで推定が変わらず、k=2 の推定は k=1 の 1 度目の描画からの 0.5° の回転になるはず。
   const expected = turnAngle(0.5, base.sunElevationDeg * Math.PI / 180);
   const passed = JSON.stringify(first) === JSON.stringify(repeated)
     && nearRelative(next.terms?.lightDirection ?? NaN, expected)

@@ -1,9 +1,9 @@
 // 静止した場面で、近傍拡散補正の 1 パスと蓄積の後の時間方向の揺れを量る道具。番号を本番のジッターの列で進めながら描き、
 // 画素ごとの時間平均・時間方向の標準偏差・隣り合うフレームの差と、1 パスから積んだ理想の指数移動平均との差を要約と PNG で返す。
 import type { FloatImage, LabView } from './lab';
-import { maskedImage, maskedRms } from './jitter-sweep';
 import type { JitterSource } from '../../src/render/pipeline/screen-space/frame-jitter';
 
+// 番号由来ジッターに使わせる源 — 本番と同じ。
 const JITTER_SOURCES: readonly JitterSource[] = ['seed', 'scanRepresentative'];
 // 画素ごとの比を数える下限(1 パスの標準偏差の RMS に対する比)。揺れの無い画素の比を数えない。
 const RATIO_STD_FLOOR = 1e-3;
@@ -57,6 +57,7 @@ class Moments {
   public readonly emaErrorSquares: Float64Array;
   // 1 パスから積んだ理想の指数移動平均。読み始めのフレームで蓄積の後の値から始める。
   public readonly ema: Float64Array;
+  // 理想の指数移動平均との差の、画素・成分・フレームにわたる絶対値の最大(ΔE)。
   public emaErrorMax = 0;
 
   // 画素・成分 length 個ぶんの器を 0 で作る。
@@ -81,9 +82,15 @@ export class StaticVariance {
   public async capture(
     sliceCount: number, historyCap: number, frames: number, pngScale: number | null,
   ): Promise<StaticVarianceRecord> {
-    if (!Number.isInteger(sliceCount) || sliceCount < 1) throw new RangeError('render-lab: slice count must be a positive integer');
-    if (!Number.isInteger(historyCap) || historyCap < 1) throw new RangeError('render-lab: history cap must be a positive integer');
-    if (!Number.isInteger(frames) || frames < 2) throw new RangeError('render-lab: static variance needs at least two measured frames');
+    if (!Number.isInteger(sliceCount) || sliceCount < 1) {
+      throw new RangeError('render-lab: slice count must be a positive integer');
+    }
+    if (!Number.isInteger(historyCap) || historyCap < 1) {
+      throw new RangeError('render-lab: history cap must be a positive integer');
+    }
+    if (!Number.isInteger(frames) || frames < 2) {
+      throw new RangeError('render-lab: static variance needs at least two measured frames');
+    }
     if (pngScale !== null && (!Number.isFinite(pngScale) || pngScale < 0)) {
       throw new RangeError('render-lab: PNG scale must be finite and nonnegative');
     }
@@ -141,7 +148,7 @@ export class StaticVariance {
     let passPrevious: Float32Array | null = null;
     let accumulatedPrevious: Float32Array | null = null;
     for (let frame = 0; frame < warmupFrames + frames; frame++) {
-      // 上限 s に達した後、初期の算術平均の影響が e⁻⁴ ほどに減るまでは描くだけにする。
+      // 履歴の長さが上限に達した後、初期の算術平均の重みが (1 − 1/s)^(2s) ≈ e⁻² に減るまでは描くだけにする(s = historyCap)。
       this.view.setFrame(frame, frame === 0 ? Number.POSITIVE_INFINITY : 0);
       if (frame < warmupFrames) continue;
       const accumulated = (await this.view.readFloat('correction')).rgba;
@@ -193,7 +200,7 @@ interface Statistics {
 // frames フレームぶん積んだ moments から、画素・成分ごとの統計を求める。
 function statisticsOf(moments: Moments, frames: number): Statistics {
   // 標準偏差は和と二乗和から(丸めで負になった分散は 0 へ)、差の RMS は差の組の数で割る。
-  const std =(sum: Float64Array, squares: Float64Array): Float32Array => Float32Array.from(
+  const std = (sum: Float64Array, squares: Float64Array): Float32Array => Float32Array.from(
     sum, (value, i) => Math.sqrt(Math.max(squares[i]! / frames - (value / frames) ** 2, 0)));
   const rmsOver = (squares: Float64Array, count: number): Float32Array => Float32Array.from(
     squares, (value) => Math.sqrt(value / count));
@@ -244,4 +251,27 @@ function percentileOf(values: readonly number[], fraction: number): number {
 // 画素・成分の並び rgba を width × height の画像として包む。
 function image(rgba: Float32Array, width: number, height: number): FloatImage {
   return { width, height, rgba };
+}
+
+// 画素ごとの値 rgba(α は捨てる)を、面のある画素で α = 1、ほかで 0 と rgb = 0 にした画像。
+function maskedImage(rgba: Float32Array, width: number, height: number, mask: Uint8Array): FloatImage {
+  const out = new Float32Array(width * height * 4);
+  for (let p = 0; p < width * height; p++) {
+    if (mask[p] === 0) continue;
+    for (let c = 0; c < 3; c++) out[4 * p + c] = rgba[4 * p + c]!;
+    out[4 * p + 3] = 1;
+  }
+  return { width, height, rgba: out };
+}
+
+// 面のある画素の rgb の、尺度 scale を掛けた RMS。
+function maskedRms(image: FloatImage, mask: Uint8Array, scale: number): number {
+  let squares = 0;
+  let count = 0;
+  for (let p = 0; p < mask.length; p++) {
+    if (mask[p] === 0) continue;
+    for (let c = 0; c < 3; c++) squares += (scale * image.rgba[4 * p + c]!) ** 2;
+    count += 3;
+  }
+  return count === 0 ? 0 : Math.sqrt(squares / count);
 }

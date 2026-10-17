@@ -9,8 +9,6 @@ import {
   ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
 } from '../../src/game/protein/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
-import type { SceneChangeDeclarations } from '../../src/render/pipeline/scene-change-tracker';
-import type { SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { farClip } from '../../src/render/camera/camera-view';
 import { planetRadiance, type PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
@@ -39,6 +37,8 @@ import { pixelsToPngDataUrl } from '../lab-png';
 import { captureAccumulated } from './accumulated-capture';
 import type { GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
+import type { SceneChangeDeclarations } from '../../src/render/pipeline/scene-change-tracker';
+import type { SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
@@ -63,11 +63,11 @@ const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 // 段 ℓ の G バッファの画素の整数座標と素の深度(rgb、a は 0)。'scan-surface-0' は走査の面の写しの (G バッファの画素の x, y,
 // 素の深度, 0)、'scan-surface-1' はその法線の rg(ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の
 // 半径が写る描画バッファの画素数で、面の無い画素は 0。'depth' は G バッファの素の深度(r、gba は 0。面の無い画素は 0)。
-// 'upsampled-correction' は蓄積前の補正、'correction-history' は前フレームの補正履歴、
-// 'previous-depth' は前フレームの素の深度。
+// 'upsampled-correction' は蓄積前の補正、'correction-history' は前フレームの補正履歴、'previous-depth' は前フレームの素の
+// 深度、'motion' は G バッファの動きベクトル。
 export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'upsampled-correction'
-  | 'correction-history' | 'previous-depth' | 'correction' | 'diffuse'
-  | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius' | 'depth' | 'motion';
+  | 'correction-history' | 'previous-depth' | 'correction' | 'diffuse' | 'depth' | 'motion'
+  | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius';
 const REPRESENTATIVE_NAME_PATTERN = /^representative-(\d)$/;
 const SCAN_SURFACE_NAME_PATTERN = /^scan-surface-([01])$/;
 
@@ -78,7 +78,7 @@ const CHANNELS_OF_FORMAT: Readonly<Partial<Record<THREE.AnyPixelFormat, number>>
 
 // accumulateWhitePasses が GPU の終わりを待つ間隔 [パス]。
 const WHITE_PASSES_PER_WAIT = 256;
-// averageCorrection が GPU の終わりを待つ間隔 [seed]。1 つの seed で近傍拡散補正の全段を描くので、走査だけを描く
+// averageCorrection が GPU の終わりを待つ間隔 [位相]。位相ごとに近傍拡散補正の全段を描くので、走査だけを描く
 // accumulateWhitePasses より短く取る。
 const CORRECTION_PASSES_PER_WAIT = 16;
 
@@ -112,7 +112,7 @@ export interface LabMeasurement {
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
-// 変化量の推定を切る重み。lab の既定 — 渡した変化量で撮る道具を、推定で黙って変えない。
+// 変化量の推定を切る重み。lab の既定 — 撮る道具が渡した変化量をそのまま使う。
 export const SCENE_CHANGE_OFF: SceneChangeWeights = { lightDirection: 0, sunlit: 0, cameraSlide: 0 };
 
 // カメラ位置を毎フレーム組み立てる書き込み先。
@@ -294,9 +294,7 @@ export class LabView {
     this.current = built;
     this.currentName = name;
     // 組み直したケースを、履歴が切れる番号から配置する。
-    this.frame = 0;
-    this.change = Number.POSITIVE_INFINITY;
-    built.setFrame?.(this.frame);
+    this.placeFrame(0, Number.POSITIVE_INFINITY);
     // 地球はケースが置き方を宣言したときだけ出し、まずその既定の置き方へ置く。
     if (built.earth !== undefined) {
       this.scene.add(this.earth.object);
@@ -329,25 +327,21 @@ export class LabView {
   // いま表示しているケース。ケースを表示していなければ null。
   public get currentCase(): LabCase | null { return this.current; }
 
-  // 現在のケースで積み直しと前行列の CPU 標本を作る。
+  // 現在のケースのプールを積み直す CPU 時間と、G バッファがプールの前の行列を書く CPU 時間を、それぞれ iterations 回
+  // 測って回ごとに [ms] で返す。プールの計測を持たないケースでは投げる。
   public measurePoolRebuild(iterations: number): ReturnType<NonNullable<LabCase['measurePoolRebuild']>> {
-    if (this.current?.measurePoolRebuild === undefined) {
+    const current = this.current;
+    if (current?.measurePoolRebuild === undefined) {
       throw new Error('render-lab: the current case has no pool measurement');
     }
-    const result = this.current.measurePoolRebuild(iterations);
-    const gbuffer = this.pipeline.gbuffer as typeof this.pipeline.gbuffer & {
-      writePoolMatrices?: (camera: THREE.Camera) => void;
-    };
+    // ケースが積み直しを測ったあとで、同じカメラで前の行列の書き込みを測る。
+    const measured = current.measurePoolRebuild(iterations);
     const previousMatricesMs = Array.from({ length: iterations }, () => {
-      if (gbuffer.writePoolMatrices === undefined) return 0;
       const started = performance.now();
-      gbuffer.writePoolMatrices(this.current!.camera);
+      this.pipeline.gbuffer.writePoolMatrices(current.camera);
       return performance.now() - started;
     });
-    return {
-      ...result,
-      previousMatricesMs,
-    };
+    return { ...measured, previousMatricesMs };
   }
 
   // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
@@ -380,10 +374,15 @@ export class LabView {
   // 論理フレーム frame と変化量 change を覚え、ケースをその番号の状態へ置いて描き直す。
   public setFrame(frame: number, change = 0): void {
     if (!Number.isInteger(frame) || frame < 0) throw new Error(`render-lab: invalid frame ${frame}`);
+    this.placeFrame(frame, change);
+    this.render();
+  }
+
+  // 論理フレーム frame と変化量 change を覚え、ケースをその番号の状態へ置く。
+  private placeFrame(frame: number, change: number): void {
     this.frame = frame;
     this.change = change;
     this.current?.setFrame?.(frame);
-    this.render();
   }
 
   // 現在のケース固有の値 name を value へ差し替えて描き直す。
@@ -524,7 +523,8 @@ export class LabView {
     return this.measureCurrent(warmupFrames, sampleFrames);
   }
 
-  // 現在のケース・観察角・描画設定を保ったまま測る。advanceFrame は履歴写しも標本へ含める。
+  // 現在のケース・観察角・描画設定を保ったまま測る。advanceFrame なら番号 0 で履歴を切ってから論理フレームを 1 つずつ
+  // 進めて描き、番号を進めるときの履歴の写しも標本へ含める。
   public async measureCurrent(
     warmupFrames = 6, sampleFrames = 30, advanceFrame = false,
   ): Promise<LabMeasurement> {
@@ -537,11 +537,7 @@ export class LabView {
     for (let frame = 0; frame < warmupFrames; frame++) {
       const displayTime = (frame + 1) / 60;
       this.current?.updateProteinMotion?.(displayTime);
-      if (advanceFrame) {
-        this.frame = frame;
-        this.change = frame === 0 ? Number.POSITIVE_INFINITY : 0;
-        this.current?.setFrame?.(frame);
-      }
+      if (advanceFrame) this.placeFrame(frame, frame === 0 ? Number.POSITIVE_INFINITY : 0);
       this.render(displayTime);
       await this.gpu.waitForResolve();
     }
@@ -554,12 +550,8 @@ export class LabView {
     for (let frame = 0; frame < sampleFrames; frame++) {
       const displayTime = (warmupFrames + frame + 1) / 60;
       const motionSample = this.current?.updateProteinMotion?.(displayTime);
-      if (advanceFrame) {
-        const logicalFrame = warmupFrames + frame;
-        this.frame = logicalFrame;
-        this.change = logicalFrame === 0 ? Number.POSITIVE_INFINITY : 0;
-        this.current?.setFrame?.(logicalFrame);
-      }
+      const logicalFrame = warmupFrames + frame;
+      if (advanceFrame) this.placeFrame(logicalFrame, logicalFrame === 0 ? Number.POSITIVE_INFINITY : 0);
       this.render(displayTime);
       cpuSamples.push(this.lastRenderCpuMs);
       await this.gpu.waitForResolve();
@@ -715,7 +707,7 @@ export class LabView {
 
   // 位相 phase で近傍拡散補正を描き直す。射影のずれを使う(いま使っている)ならフレーム全体を、そうでなければ直前に描いた
   // フレームの G バッファなどを入力のまま近傍拡散補正だけを描く。
-  public renderCorrection(phase: CorrectionPhase): void {
+  private renderCorrection(phase: CorrectionPhase): void {
     if (this.current === null) throw new Error('render-lab: no case selected');
     const { screenSpace } = this.pipeline;
     screenSpace.setSeed(...phase.seed);

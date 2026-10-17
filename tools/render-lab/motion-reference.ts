@@ -1,10 +1,11 @@
-// 実体ごとの CPU レイから、同じ表面点が前後フレームで写る画素と深度の整合を求める。
+// 動きベクトルの参照。実体ごとの CPU レイで、画素に写る表面の点が前のフレームで写る画素を求め、G バッファの
+// 動きベクトルと深度に照合した要約と PNG を返す。実体の口を持たない場面では、深度の再投影を参照にする。
 import * as THREE from 'three/webgpu';
 import { reprojectPixelAtDepth } from './reference-reprojection';
 import type { FloatImage } from './lab';
 import type { LabMotionEntity } from './lab-case';
 
-// レイを当てる仮の Mesh の材質。Raycaster は材質の面の向きで当たりを選ぶので、G バッファと同じく表面だけに当てる。
+// レイを当てる仮の Mesh の材質。Raycaster は材質の side で当たる面を選ぶので、裏から見た面にも当たるよう両面にする。
 const RAY_MATERIAL = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
 
 // 前フレームが無い標本を PNG で示す色(紫。8 bit の RGB)。
@@ -13,8 +14,10 @@ const NO_HISTORY_RGB = [160, 32, 240] as const;
 const SAMPLE_STEP = 4;
 // CPU 経路どうしの動き差の許容値 [px]。
 const SELF_CHECK_TOLERANCE_PX = 1e-6;
-// 従来の深度整合で同じ面とみなす相対差。
+// レイの交点と G バッファの深度を同じ面とみなす相対差の上限。
 const DEPTH_RELATIVE_TOLERANCE = 1e-4;
+// G バッファの動きベクトル(uv)のどちらかの成分の絶対値がこれ以上なら、履歴なしの印とみなす。
+const NO_HISTORY_MOTION_THRESHOLD = 1000;
 // 中心線の深度二階差がこの割合を超えた標本を滑らかでない輪郭とする。
 const DEPTH_CURVATURE_TOLERANCE = 1e-3;
 // GPU のラスタライズ小数精度は画素位置の小数部 8 bit。
@@ -22,18 +25,23 @@ const RASTER_SUBPIXEL_BITS = 8;
 // 深度誤差の上限へ使う、画素位置の丸め誤差 [px]。
 const RASTER_POSITION_ERROR_PX = 2 ** -(RASTER_SUBPIXEL_BITS + 1);
 
-// 参照を求める 1 フレーム。camera は描画の座標(浮動原点で置き直した後)のカメラ、origin はその描画の座標の原点の
-// ケースの世界の座標、entities はケースの世界の座標で置いた実体、depth は G バッファの素の深度。
+// 参照を求める 1 フレーム。
 export interface MotionReferenceFrame {
+  // G バッファの素の深度(r。面の無い画素は 0)。
   readonly depth: FloatImage;
+  // G バッファの動きベクトル(rg は今の uv − 前の uv)。
   readonly motion: FloatImage;
+  // 描画の座標(浮動原点で置き直した後)のカメラ。
   readonly camera: THREE.PerspectiveCamera;
+  // 描画の座標の原点の、ケースの世界の座標。
   readonly origin: THREE.Vector3;
+  // ケースの世界の座標で置いた実体。空なら深度の再投影を参照にする。
   readonly entities: readonly LabMotionEntity[];
+  // 写る画素が履歴なしになるはずの物体。
   readonly rejectedObjects: readonly THREE.Object3D[];
 }
 
-// 1 フレームの参照の要約。標本は SAMPLE_STEP おきの画素で、面のある標本だけを数える。輪郭は 3×3 の近傍のレイで決める。
+// 1 フレームの参照の要約。標本は間引いた画素で、割合・分位・最大は面のある標本について求める。
 export interface MotionReferenceMetrics {
   // 間引いた画素の数。
   readonly sampleCount: number;
@@ -58,22 +66,30 @@ export interface MotionReferenceMetrics {
   readonly depthRatioMaxPixel: readonly [number, number] | null;
   // 前フレームに同じ鍵の実体が無い標本の数。
   readonly noHistoryCount: number;
+  // G バッファの動きと参照の動きを比べた標本の数、差の RMS・99.9% 分位・最大 [px]、差が許容を超えた標本の数。
   readonly gpuMotionCount: number;
   readonly gpuMotionRms: number;
   readonly gpuMotionP999: number;
   readonly gpuMotionMax: number;
   readonly gpuMotionAboveLimitCount: number;
+  // 履歴なしになるはずの標本の数と、G バッファの履歴なしの印と食い違った標本の数。食い違いの内訳は、履歴なしの
+  // はずが値を持つ標本と、値を持つはずが履歴なしの標本。
   readonly rejectedPixelCount: number;
   readonly rejectedPixelMismatchCount: number;
   readonly expectedRejectedGpuValueCount: number;
   readonly expectedValueGpuRejectedCount: number;
+  // G バッファの動きが有限でない標本の数。
   readonly nonFiniteGpuMovementCount: number;
+  // 履歴なしにする物体の数と、深度の参照でそのレイが当たった標本の数、うち交点が G バッファの深度と合った標本の数。
   readonly rejectedObjectCount: number;
   readonly rejectedRayHitCount: number;
   readonly rejectedDepthMatchedCount: number;
+  // 動きを比べるはずの標本(輪郭を除き、前のフレームに写るもの)の数と、実際に比べた標本の数。
   readonly comparisonExpectedCount: number;
   readonly comparisonCount: number;
+  // 同じ論理フレームを描き直したとき、動きベクトルの値が変わった成分の数。
   readonly sameFrameMismatchCount: number;
+  // 前のフレームが無いはずのフレームの、全画素で数えた面のある画素の数と、そのうち履歴なしの印を持たない画素の数。
   readonly fullNoHistorySurfacePixelCount: number;
   readonly fullNoHistoryMismatchCount: number;
   // CPU の経路どうしの自己検算(当たりの点の深度を深度の参照の写像へ通した動きと、レイの参照の動きの差)の標本の数と、
@@ -97,13 +113,18 @@ export interface MotionReferenceMetrics {
   readonly slotErrorCount: number;
 }
 
+// 1 フレームの参照。
 export interface MotionReferenceResult {
+  // 標本の G バッファの動き(向きが色相、大きさが明るさ。履歴なしは紫)の PNG のデータ URL。
   readonly motionPng: string;
+  // 標本の G バッファと参照の動きの差の、許容に対する比(1 で白)の PNG のデータ URL。
   readonly differencePng: string;
+  // 動きを比べるはずの標本の番号(間引いた画素の格子を行ごとに左から数えたもの)。
   readonly comparisonSamples: readonly number[];
   readonly metrics: MotionReferenceMetrics;
 }
 
+// 面のある 1 標本。readonly の欄はレイを当てたときに決まり、ほかの欄は輪郭と照合の段で書き足す。
 interface Sample {
   readonly x: number;
   readonly y: number;
@@ -119,13 +140,24 @@ interface Sample {
   gpuDifferenceNormalized: number | null;
   selfError: number | null;
   outlineKind: 'none' | 'entity' | 'depth';
-  gpuMovement: readonly [number, number] | null;
-  motionError: number | null;
-  motionToleranceRatio: number | null;
-  rejected: boolean;
+  readonly gpuMovement: readonly [number, number] | null;
+  readonly motionError: number | null;
+  readonly motionToleranceRatio: number | null;
+  readonly rejected: boolean;
 }
 
-// 現在の面 hit と前フレームの写像を比べ、CPU 検算・深度整合・PNG を返す。
+// 深度の参照の、面のある 1 標本。movement は塗る G バッファの動き [px]、ratio は G バッファと参照の動きの差の許容に
+// 対する比(どちらも履歴なしと比べない標本では null)。
+interface DepthSample {
+  readonly x: number;
+  readonly y: number;
+  readonly movement: readonly [number, number] | null;
+  readonly ratio: number | null;
+}
+
+// frame の参照を求める。previous は前のフレーム(null なら全標本が履歴なしになるはず)、toPrevious は世界が静止している
+// とみなしたときの今のクリップ座標から前のクリップ座標への写像(null なら自己検算を省く)、gpuReprojected は GPU の深度に
+// よる各画素の前の画素の座標(reprojectedPixels。null なら比べない)、depthSampleStep は深度の参照の標本の間隔 [px]。
 export async function motionReferenceOf(
   frame: MotionReferenceFrame,
   previous: MotionReferenceFrame | null,
@@ -137,6 +169,7 @@ export async function motionReferenceOf(
   if (frame.entities.length === 0) {
     return depthMotionReferenceOf(frame, previous, toPrevious, depthSampleStep);
   }
+  // 実体と履歴なしにする物体をレイの的として描画の座標へ置き、前のフレームの実体を鍵と積み順の番号で引けるようにする。
   const camera = unjitteredCamera(frame.camera);
   const previousCamera = previous === null ? null : unjitteredCamera(previous.camera);
   const drawFromWorld = new THREE.Matrix4().makeTranslation(-frame.origin.x, -frame.origin.y, -frame.origin.z);
@@ -180,6 +213,7 @@ export async function motionReferenceOf(
   let expectedValueGpuRejectedCount = 0;
   let nonFiniteGpuMovementCount = 0;
 
+  // 標本ごとにレイを当て、表面の点が前のフレームで写る画素と G バッファの動きを照合する。
   for (let y = 0; y < height; y += SAMPLE_STEP) {
     for (let x = 0; x < width; x += SAMPLE_STEP) {
       const hit = hitAt(
@@ -193,11 +227,12 @@ export async function motionReferenceOf(
       const movement = before === undefined || previousCamera === null
         ? null : movementOf(localPoint, before.matrix, previous!.origin, previousCamera, x, y, width, height);
       if (movement === null) noHistoryCount++;
+      // 履歴の有無を G バッファの履歴なしの印と照合し、どちらにも履歴があれば動きの差を求める。
       const pixelIndex = 4 * (y * width + x);
       const gpuX = frame.motion.rgba[pixelIndex]!;
       const gpuY = frame.motion.rgba[pixelIndex + 1]!;
       const gpuFinite = Number.isFinite(gpuX) && Number.isFinite(gpuY);
-      const gpuRejected = gpuFinite && Math.max(Math.abs(gpuX), Math.abs(gpuY)) >= 1000;
+      const gpuRejected = gpuFinite && Math.max(Math.abs(gpuX), Math.abs(gpuY)) >= NO_HISTORY_MOTION_THRESHOLD;
       if (!gpuFinite) nonFiniteGpuMovementCount++;
       const expectedRejected = movement === null;
       if (expectedRejected) {
@@ -216,8 +251,9 @@ export async function motionReferenceOf(
         : !gpuFinite ? Number.POSITIVE_INFINITY
         : Math.hypot(gpuX * width - movement[0], gpuY * height - movement[1]);
       const motionToleranceRatio = motionError === null || movement === null ? null
-        : motionError / (2 ** -10 * Math.hypot(...movement) + 0.01);
+        : motionError / motionToleranceOf(movement);
 
+      // 積み順の番号で前のフレームの実体を引いた場合の動きと、鍵で引いた動きの差。
       let slotError: number | null = null;
       if (entity.kind === 'pool' && entity.slot !== null) {
         const wrong = bySlot.get(`${entity.poolId ?? 'pool'}:${entity.slot}`);
@@ -239,6 +275,7 @@ export async function motionReferenceOf(
     if ((y / SAMPLE_STEP) % 16 === 15) await yieldToBrowser();
   }
 
+  // 標本ごとに輪郭を見分け、深度の整合と、自己検算・GPU の深度による再投影との差を求める。
   for (const [sampleIndex, sample] of samples.entries()) {
     let relativeGradient = 1;
     if (sample.entity.kind === 'pool') {
@@ -257,6 +294,7 @@ export async function motionReferenceOf(
     );
     sample.rasterToleranceRatio = sample.depthRatio / (RASTER_POSITION_ERROR_PX * relativeGradient + 1e-6);
 
+    // 自己検算: 交点の深度を写像 toPrevious で前のフレームへ写した動きと、レイの参照の動きの差。
     if (toPrevious === null || sample.movement === null) continue;
     const currentView = sample.point.clone().applyMatrix4(camera.matrixWorldInverse);
     const currentClip = new THREE.Vector4(currentView.x, currentView.y, currentView.z, 1)
@@ -271,6 +309,7 @@ export async function motionReferenceOf(
       );
     }
 
+    // GPU の深度による再投影の動きと、レイの参照の動きの差。
     if (gpuReprojected === null) continue;
     const pixelIndex = sample.y * width + sample.x;
     const previousX = gpuReprojected[2 * pixelIndex]!;
@@ -287,6 +326,7 @@ export async function motionReferenceOf(
     if (sampleIndex % 256 === 255) await yieldToBrowser();
   }
 
+  // 輪郭を除いた標本で要約する。
   const cleanSamples = samples.filter((sample) => sample.outlineKind === 'none');
   const comparisonSamples = cleanSamples
     .filter((sample) => sample.movement !== null)
@@ -298,7 +338,7 @@ export async function motionReferenceOf(
     sample.gpuDifferenceNormalized === null ? [] : [sample.gpuDifferenceNormalized]);
   const motionErrors = cleanSamples.flatMap((sample) => sample.motionError === null ? [] : [sample.motionError]);
   const comparisonExpectedCount = cleanSamples.filter((sample) => sample.movement !== null).length;
-  const planLimitSamples = cleanSamples.filter((sample) => sample.depthRatio > DEPTH_RELATIVE_TOLERANCE);
+  const aboveDepthToleranceSamples = cleanSamples.filter((sample) => sample.depthRatio > DEPTH_RELATIVE_TOLERANCE);
   const depthMaxSample = maximumOf(cleanSamples, (sample) => sample.depthRatio);
   const metrics: MotionReferenceMetrics = {
     sampleCount: Math.ceil(width / SAMPLE_STEP) * Math.ceil(height / SAMPLE_STEP),
@@ -310,8 +350,8 @@ export async function motionReferenceOf(
     rasterToleranceRatioP999: percentile(cleanSamples.map((sample) => sample.rasterToleranceRatio), 0.999),
     rasterToleranceRatioMax: maxOf(cleanSamples, (sample) => sample.rasterToleranceRatio),
     rasterToleranceAboveLimitCount: cleanSamples.filter((sample) => sample.rasterToleranceRatio > 1).length,
-    depthRatioAboveLimitCount: planLimitSamples.length,
-    depthRatioAboveLimitNormalizedMax: maxOf(planLimitSamples, (sample) => sample.rasterToleranceRatio),
+    depthRatioAboveLimitCount: aboveDepthToleranceSamples.length,
+    depthRatioAboveLimitNormalizedMax: maxOf(aboveDepthToleranceSamples, (sample) => sample.rasterToleranceRatio),
     depthRatioMaxPixel: depthMaxSample === null ? null : [depthMaxSample.x, depthMaxSample.y],
     noHistoryCount,
     gpuMotionCount: motionErrors.length,
@@ -348,14 +388,15 @@ export async function motionReferenceOf(
     slotErrorCount: samples.filter((sample) => sample.slotError !== null).length,
   };
   return {
-    motionPng: imagePng(width, height, samples, false),
-    differencePng: imagePng(width, height, samples, true),
+    motionPng: blockPng(width, height, samples, motionColor),
+    differencePng: blockPng(width, height, samples, differenceColor),
     comparisonSamples,
     metrics,
   };
 }
 
-// 静止物の実体口を持たない場面では、深度の再投影を参照にする。
+// 実体の口を持たない場面の参照。世界が静止しているとみなし、G バッファの深度を toPrevious で前のフレームへ写した動きを
+// 参照にする。標本の間隔は sampleStep [px]。
 async function depthMotionReferenceOf(
   frame: MotionReferenceFrame, previous: MotionReferenceFrame | null, toPrevious: THREE.Matrix4 | null,
   sampleStep: number,
@@ -363,7 +404,7 @@ async function depthMotionReferenceOf(
   const { width, height } = frame.depth;
   const errors: number[] = [];
   const toleranceRatios: number[] = [];
-  const colors: { readonly x: number; readonly y: number; readonly movement: readonly [number, number] | null; readonly ratio: number | null }[] = [];
+  const samples: DepthSample[] = [];
   let surfaceCount = 0;
   let noHistoryCount = 0;
   let rejectedPixelMismatchCount = 0;
@@ -391,8 +432,9 @@ async function depthMotionReferenceOf(
       const actualX = frame.motion.rgba[4 * pixel]!;
       const actualY = frame.motion.rgba[4 * pixel + 1]!;
       const gpuFinite = Number.isFinite(actualX) && Number.isFinite(actualY);
-      const rejected = gpuFinite && Math.max(Math.abs(actualX), Math.abs(actualY)) >= 1000;
+      const rejected = gpuFinite && Math.max(Math.abs(actualX), Math.abs(actualY)) >= NO_HISTORY_MOTION_THRESHOLD;
       if (!gpuFinite) nonFiniteGpuMovementCount++;
+      // 履歴なしにする物体が、G バッファの深度と合う位置で前面にあるか。
       let expectedRejectedObject = false;
       if (frame.rejectedObjects.length > 0) {
         rejectedRaycaster.setFromCamera(
@@ -410,63 +452,46 @@ async function depthMotionReferenceOf(
           if (expectedRejectedObject) rejectedDepthMatchedCount++;
         }
       }
-      if (expectedRejectedObject) {
-        noHistoryCount++;
-        if (!rejected) {
-          rejectedPixelMismatchCount++;
-          expectedRejectedGpuValueCount++;
-        }
-        colors.push({ x, y, movement: null, ratio: null });
-        continue;
-      }
-      if (previous === null || toPrevious === null) {
-        noHistoryCount++;
-        if (!rejected) {
-          rejectedPixelMismatchCount++;
-          expectedRejectedGpuValueCount++;
-        }
-        colors.push({ x, y, movement: null, ratio: null });
-        continue;
-      }
-      const projected = reprojectPixelAtDepth(
-        x, y, frame.depth.rgba[4 * pixel]!, width, height, toPrevious,
-      );
+      // 履歴なしになるはずの標本: 履歴なしにする物体が前面にあるか、前のフレームが無いか、前のカメラの後ろへ写る。
+      const projected = expectedRejectedObject || previous === null || toPrevious === null ? null
+        : reprojectPixelAtDepth(x, y, frame.depth.rgba[4 * pixel]!, width, height, toPrevious);
       if (projected === null) {
         noHistoryCount++;
         if (!rejected) {
           rejectedPixelMismatchCount++;
           expectedRejectedGpuValueCount++;
         }
-        colors.push({ x, y, movement: null, ratio: null });
+        samples.push({ x, y, movement: null, ratio: null });
         continue;
       }
       if (outline) {
-        colors.push({ x, y, movement: null, ratio: null });
+        samples.push({ x, y, movement: null, ratio: null });
         continue;
       }
+      // 参照の動きと G バッファの動きを比べる。
       comparisonExpectedCount++;
       comparisonSamples.push(Math.floor(y / sampleStep) * Math.ceil(width / sampleStep)
         + Math.floor(x / sampleStep));
       if (rejected) {
         rejectedPixelMismatchCount++;
         expectedValueGpuRejectedCount++;
-        colors.push({ x, y, movement: null, ratio: null });
+        samples.push({ x, y, movement: null, ratio: null });
         continue;
       }
       const expected: readonly [number, number] = [x - projected[0], y - projected[1]];
       const actual: readonly [number, number] = [actualX * width, actualY * height];
       const error = gpuFinite ? Math.hypot(actual[0] - expected[0], actual[1] - expected[1])
         : Number.POSITIVE_INFINITY;
-      const ratio = error / (2 ** -10 * Math.hypot(...expected) + 0.01);
+      const ratio = error / motionToleranceOf(expected);
       errors.push(error);
       toleranceRatios.push(ratio);
-      colors.push({ x, y, movement: rejected ? null : actual, ratio });
+      samples.push({ x, y, movement: actual, ratio });
     }
     if (Math.floor(y / sampleStep) % 16 === 15) await yieldToBrowser();
   }
   return {
-    motionPng: sampledMotionPng(width, height, colors, false),
-    differencePng: sampledMotionPng(width, height, colors, true),
+    motionPng: blockPng(width, height, samples, depthMotionColor),
+    differencePng: blockPng(width, height, samples, depthDifferenceColor),
     comparisonSamples,
     metrics: {
       sampleCount: Math.ceil(width / sampleStep) * Math.ceil(height / sampleStep),
@@ -518,17 +543,22 @@ async function depthMotionReferenceOf(
   };
 }
 
+// ブラウザへ一度制御を返す。長い走査の途中で待ち、ページを固めない。
 function yieldToBrowser(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-// 深度参照の標本を動きと許容誤差比で色分けする。
-// 深度だけの参照では、欠けた隣接面と深度の二階差が大きい画素を輪郭として比較から外す。
-// InstancedMesh は展開し、薬莢などの印付き個体を CPU の深度参照でも個別に交差判定する。
+// GPU の動きと参照の動き movement [px] の差に許す上限 [px]。半精度で書いた動きの丸め(相対 2⁻¹⁰)に 0.01 px を足したもの。
+function motionToleranceOf(movement: readonly [number, number]): number {
+  return 2 ** -10 * Math.hypot(...movement) + 0.01;
+}
+
+// objects(InstancedMesh は個体ごと)を、レイを当てる的の Mesh へ写して返す。的はレイの候補を絞る外接球を持つ。
 function rejectedMeshesOf(objects: readonly THREE.Object3D[]): THREE.Mesh[] {
   const targets: THREE.Mesh[] = [];
   const instanceMatrix = new THREE.Matrix4();
   const worldMatrix = new THREE.Matrix4();
+  // object の形状を matrix で置いた的を足す。外接球の求まらない形状は除く。
   const add = (object: THREE.Object3D, matrix: THREE.Matrix4): void => {
     const mesh = object as THREE.Mesh;
     mesh.geometry.computeBoundingSphere();
@@ -547,6 +577,7 @@ function rejectedMeshesOf(objects: readonly THREE.Object3D[]): THREE.Mesh[] {
     }
     for (let instanceId = 0; instanceId < object.count; instanceId++) {
       object.getMatrixAt(instanceId, instanceMatrix);
+      // 空き枠は零行列で潰されている。
       if (instanceMatrix.determinant() === 0) continue;
       worldMatrix.multiplyMatrices(object.matrixWorld, instanceMatrix);
       add(object, worldMatrix);
@@ -555,6 +586,7 @@ function rejectedMeshesOf(objects: readonly THREE.Object3D[]): THREE.Mesh[] {
   return targets;
 }
 
+// meshes のうち、外接球がレイと交わるもの(外接球の無いものは常に)を candidates へ集める。candidates は書き換える。
 function collectRayCandidates(meshes: readonly THREE.Mesh[], raycaster: THREE.Raycaster, candidates: THREE.Mesh[]): void {
   candidates.length = 0;
   for (const mesh of meshes) {
@@ -563,9 +595,12 @@ function collectRayCandidates(meshes: readonly THREE.Mesh[], raycaster: THREE.Ra
   }
 }
 
+// 深度の参照で、画素 (x, y) を比較から外す輪郭とみなすか。step 離れた横か縦の隣の面が欠けている画素と、視線深度の
+// 2 階差が大きい画素を輪郭とする。
 function depthOutlineAt(depth: FloatImage, camera: THREE.PerspectiveCamera, x: number, y: number, step: number): boolean {
   const { width, height } = depth;
   const center = depthViewZ(depth, camera, x, y);
+  // 横と縦の向きごとに、両隣の面の有無と 2 階差を見る。
   for (const [dx, dy] of [[step, 0], [0, step]] as const) {
     const minusX = x - dx;
     const minusY = y - dy;
@@ -580,6 +615,7 @@ function depthOutlineAt(depth: FloatImage, camera: THREE.PerspectiveCamera, x: n
   return false;
 }
 
+// 画素 (x, y) の素の深度から復元した視線深度 [m](カメラの前が正)。面が無ければ null。
 function depthViewZ(depth: FloatImage, camera: THREE.PerspectiveCamera, x: number, y: number): number | null {
   const rawDepth = depth.rgba[4 * (y * depth.width + x)]!;
   if (rawDepth <= 0) return null;
@@ -592,33 +628,8 @@ function depthViewZ(depth: FloatImage, camera: THREE.PerspectiveCamera, x: numbe
   return -point.z / point.w;
 }
 
-function sampledMotionPng(
-  width: number, height: number,
-  samples: readonly { readonly x: number; readonly y: number; readonly movement: readonly [number, number] | null; readonly ratio: number | null }[],
-  difference: boolean,
-): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (context === null) throw new Error('render-lab: canvas 2D context is unavailable');
-  context.fillStyle = '#000';
-  context.fillRect(0, 0, width, height);
-  for (const sample of samples) {
-    const color = difference
-      ? (() => { const value = THREE.MathUtils.clamp(sample.ratio ?? 0, 0, 1) * 255; return [value, value, value] as const; })()
-      : sample.movement === null ? NO_HISTORY_RGB : rgbOfHsl(
-        (Math.atan2(sample.movement[1], sample.movement[0]) / (2 * Math.PI) + 1) % 1,
-        1,
-        THREE.MathUtils.clamp(Math.log2(1 + Math.hypot(...sample.movement)) / 8, 0.08, 0.85),
-      );
-    context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
-    context.fillRect(sample.x, sample.y, SAMPLE_STEP, SAMPLE_STEP);
-  }
-  return canvas.toDataURL('image/png');
-}
-
-// 画素中心からの最近傍交点と、その交点を持つ実体を返す。
+// 画素 (x, y) の中心を通るレイの交点のうち、G バッファの深度と合う最も近いものと、その交点を持つ実体。無ければ null。
+// intersections と candidates は作業用に書き換える。
 function hitAt(
   x: number, y: number, width: number, height: number, camera: THREE.PerspectiveCamera,
   depth: FloatImage,
@@ -629,6 +640,7 @@ function hitAt(
   collectRayCandidates(meshes, raycaster, candidates);
   intersections.length = 0;
   raycaster.intersectObjects(candidates, false, intersections);
+  // 近い順の交点のうち、G バッファで隠れている(深度の合わない)ものは飛ばす。
   const rawDepth = depth.rgba[4 * (y * width + x)]!;
   for (const intersection of intersections) {
     const entity = entitiesByMesh.get(intersection.object);
@@ -639,7 +651,8 @@ function hitAt(
   return null;
 }
 
-// 3×3 近傍で実体の縁、深度勾配、中心線の二階差を調べる。
+// 標本の 3×3 近傍にレイを当て、実体の縁か(近傍が画面の外・面なし・別の実体)、中心を通る線の視線深度の 2 階差が
+// 大きいか、近傍への視線深度の相対勾配の最大を返す。
 function neighborhoodOf(
   sample: Sample, width: number, height: number, camera: THREE.PerspectiveCamera, depth: FloatImage,
   raycaster: THREE.Raycaster,
@@ -650,6 +663,7 @@ function neighborhoodOf(
   const neighborDepths = new Map<string, number>();
   let entityEdge = false;
   let relativeGradient = 0;
+  // 8 近傍の視線深度を集め、実体の縁と相対勾配を調べる。
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       if (dx === 0 && dy === 0) continue;
@@ -670,6 +684,7 @@ function neighborhoodOf(
         Math.abs(neighborDepth - centerDepth) / (centerDepth * Math.hypot(dx, dy)));
     }
   }
+  // 中心を通る 4 本の線で 2 階差を見る。
   let depthEdge = false;
   for (const [dx, dy] of [[1, 0], [0, 1], [1, 1], [1, -1]] as const) {
     const minus = neighborDepths.get(`${-dx},${-dy}`);
@@ -680,7 +695,8 @@ function neighborhoodOf(
   return { entityEdge, depthEdge, relativeGradient };
 }
 
-// localPoint を前の実体・カメラへ写し、x 右 y 下の画素差を返す。
+// 実体の局所座標の点 localPoint を前のフレームの model 行列・描画の座標の原点・カメラで写し、画素 (x, y) との差
+// (今 − 前。x は右、y は下 [px])を返す。前のカメラの後ろへ写るなら null。
 function movementOf(
   localPoint: THREE.Vector3, previousModel: THREE.Matrix4, previousOrigin: THREE.Vector3,
   previousCamera: THREE.PerspectiveCamera, x: number, y: number, width: number, height: number,
@@ -713,7 +729,7 @@ function depthRatioOf(
   return Math.abs(-reconstructed.z / reconstructed.w + viewPoint.z) / Math.max(-viewPoint.z, Number.MIN_VALUE);
 }
 
-// view offset を持たない射影カメラのコピーを返す。
+// source の写しを、世界行列を更新して返す。view offset(ジッター)を持つカメラなら投げる。
 function unjitteredCamera(source: THREE.PerspectiveCamera): THREE.PerspectiveCamera {
   const camera = source.clone();
   if (camera.view?.enabled === true) throw new Error('render-lab: motion reference requires a camera without view offset');
@@ -721,43 +737,61 @@ function unjitteredCamera(source: THREE.PerspectiveCamera): THREE.PerspectiveCam
   return camera;
 }
 
-// 標本の動き(difference なら自己検算の差)を塗った、描画バッファと同じ寸法の PNG のデータ URL。
-function imagePng(width: number, height: number, samples: readonly Sample[], difference: boolean): string {
+// 標本ごとの色 rgbOf を、その標本が代表する SAMPLE_STEP 四方の区画へ塗った、描画バッファと同じ寸法の PNG の
+// データ URL。
+function blockPng<T extends { readonly x: number; readonly y: number }>(
+  width: number, height: number, samples: readonly T[], rgbOf: (sample: T) => readonly [number, number, number],
+): string {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext('2d');
   if (context === null) throw new Error('render-lab: canvas 2D context is unavailable');
-  // 面の無い標本は黒。標本の色は、その標本が代表する SAMPLE_STEP 四方の区画へ塗る。
+  // 標本の無い区画は黒。
   context.fillStyle = '#000';
   context.fillRect(0, 0, width, height);
   for (const sample of samples) {
-    const [red, green, blue] = difference ? differenceColor(sample) : motionColor(sample);
+    const [red, green, blue] = rgbOf(sample);
     context.fillStyle = `rgb(${red}, ${green}, ${blue})`;
     context.fillRect(sample.x, sample.y, SAMPLE_STEP, SAMPLE_STEP);
   }
   return canvas.toDataURL('image/png');
 }
 
-// 動きの向きを色相、大きさを対数の明るさへ写す。
+// 実体の参照の標本の、G バッファの動きの色。参照か G バッファのどちらかが履歴なしなら紫。
 function motionColor(sample: Sample): readonly [number, number, number] {
   if (sample.rejected || sample.gpuMovement === null) return NO_HISTORY_RGB;
-  const [x, y] = sample.gpuMovement;
-  const magnitude = Math.hypot(x, y);
-  // 色相は 0 以上 1 未満へ畳む — rgbOfHsl は 1 以上の色相を最後の区間として扱う。
-  return rgbOfHsl((Math.atan2(y, x) / (2 * Math.PI) + 1) % 1, 1,
-    THREE.MathUtils.clamp(Math.log2(1 + magnitude) / 8, 0.08, 0.85));
+  return rgbOfMovement(sample.gpuMovement);
 }
 
-// CPU 自己検算差を 10 倍して濃淡にする。
+// 実体の参照の標本の、G バッファと参照の動きの差の許容に対する比(1 で白)の濃淡。比べない標本は黒。
 function differenceColor(sample: Sample): readonly [number, number, number] {
   if (sample.motionToleranceRatio === null) return [0, 0, 0];
   const value = THREE.MathUtils.clamp(sample.motionToleranceRatio, 0, 1);
   return [Math.round(value * 255), Math.round(value * 255), Math.round(value * 255)];
 }
 
-// HSL の単位値を PNG の RGB へ変換する。
+// 深度の参照の標本の、G バッファの動きの色。履歴なしと比べない標本は紫。
+function depthMotionColor(sample: DepthSample): readonly [number, number, number] {
+  return sample.movement === null ? NO_HISTORY_RGB : rgbOfMovement(sample.movement);
+}
+
+// 深度の参照の標本の、G バッファと参照の動きの差の許容に対する比(1 で白)の濃淡。比べない標本は黒。
+function depthDifferenceColor(sample: DepthSample): readonly [number, number, number] {
+  const value = THREE.MathUtils.clamp(sample.ratio ?? 0, 0, 1) * 255;
+  return [value, value, value];
+}
+
+// 動き movement [px] の向きを色相、大きさを対数の明るさへ写した色。
+function rgbOfMovement(movement: readonly [number, number]): readonly [number, number, number] {
+  // 色相は 0 以上 1 未満へ畳む — rgbOfHsl は 1 以上の色相を最後の区間として扱う。
+  return rgbOfHsl((Math.atan2(movement[1], movement[0]) / (2 * Math.PI) + 1) % 1, 1,
+    THREE.MathUtils.clamp(Math.log2(1 + Math.hypot(...movement)) / 8, 0.08, 0.85));
+}
+
+// 0〜1 の HSL を 8 bit の RGB へ変換する。hue は 0 以上 1 未満。
 function rgbOfHsl(hue: number, saturation: number, lightness: number): readonly [number, number, number] {
+  // 色相の 6 区間ごとに、主と副の成分を割り当てる。
   const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation;
   const sector = hue * 6;
   const secondary = chroma * (1 - Math.abs(sector % 2 - 1));
@@ -770,36 +804,36 @@ function rgbOfHsl(hue: number, saturation: number, lightness: number): readonly 
   return [red, green, blue].map((value) => Math.round((value + offset) * 255)) as [number, number, number];
 }
 
-// 対象の値を小さい順に並べ、指定分位の要素を返す。
+// values の fraction 分位の要素(空なら 0)。
 function percentile(values: readonly number[], fraction: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.floor(fraction * sorted.length))]!;
 }
 
-// 値の二乗平均平方根を返す。
+// values の二乗平均平方根(空なら 0)。
 function rms(values: readonly number[]): number {
   return values.length === 0 ? 0 : Math.sqrt(values.reduce((sum, value) => sum + value * value, 0) / values.length);
 }
 
-// 最大値が属する標本を返す。
+// read で読んだ値が最大の要素(空なら null)。
 function maximumOf<T>(values: readonly T[], read: (value: T) => number): T | null {
   return values.reduce<T | null>((maximum, value) =>
     maximum === null || read(value) > read(maximum) ? value : maximum, null);
 }
 
-// 最大値を返す。
+// read で読んだ値の最大(空なら 0。負の値は 0 に切り上げる)。
 function maxOf<T>(values: readonly T[], read: (value: T) => number): number {
   return Math.max(0, ...values.map(read));
 }
 
-// 最大値の画素座標を返す。
+// read で読んだ値が最大の標本の画素の座標(空なら null)。
 function pixelOfMaximum(values: readonly Sample[], read: (value: Sample) => number): readonly [number, number] | null {
   const maximum = maximumOf(values, read);
   return maximum === null ? null : [maximum.x, maximum.y];
 }
 
-// 条件に合う標本の、面のある標本数に対する割合を返す。
+// values のうち predicate に合う標本の割合(空なら 0)。
 function fractionOf(values: readonly Sample[], predicate: (value: Sample) => boolean): number {
   return values.length === 0 ? 0 : values.filter(predicate).length / values.length;
 }

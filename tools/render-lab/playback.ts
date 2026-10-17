@@ -4,8 +4,8 @@ import { lengthCapOf } from '../../src/render/pipeline/screen-space/temporal-acc
 import { SCENE_CHANGE_WEIGHTS, type SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import { buildSlider } from '../lab-controls';
 import { cameraShiftOf } from './motion-sequence';
-import type { JitterSource } from '../../src/render/pipeline/screen-space/frame-jitter';
 import { SCENE_CHANGE_OFF, type LabView } from './lab';
+import type { JitterSource } from '../../src/render/pipeline/screen-space/frame-jitter';
 
 // カメラの往復の片側の幅 [描画バッファの画素]。
 const CAMERA_SWING_PX = 120;
@@ -25,9 +25,11 @@ type MovingLight = 'none' | 'sun' | 'earth';
 type JitterChoice = 'none' | 'seed' | 'scanRepresentative' | 'production';
 type SceneChangeChoice = 'off' | 'production' | 'custom';
 
+// ジッターの選択ごとの、番号由来ジッターに使わせる源。
 const JITTER_SOURCES: Readonly<Record<JitterChoice, readonly JitterSource[]>> = {
   none: [], seed: ['seed'], scanRepresentative: ['scanRepresentative'], production: ['seed', 'scanRepresentative'],
 };
+// 選択欄の選択肢と見出し。
 const JITTER_CHOICES: readonly (readonly [JitterChoice, string])[] = [
   ['none', 'なし'], ['seed', 'seed'], ['scanRepresentative', '代表'], ['production', '本番'],
 ];
@@ -92,7 +94,7 @@ export class LabPlayback {
   // 論理番号・履歴上限・実行状態を表示する欄。
   private readonly statusOutput: HTMLOutputElement;
 
-  // 再生操作と時間方向の設定を、それぞれの行へ組む。
+  // 再生操作を id が transportRowId の行へ、時間方向の設定を id が settingsRowId の行へ組む。
   public constructor(private readonly view: LabView, transportRowId: string, settingsRowId: string) {
     const transportRow = document.getElementById(transportRowId)!;
     // 再生操作と現在の状態を並べる。
@@ -216,13 +218,14 @@ export class LabPlayback {
     const terms = this.view.sceneChange.lastTerms;
     const change = this.view.sceneChange.lastChange;
     const lengthCap = lengthCapOf(this.view.historyCapFrames, change).toFixed(1);
-    // 内訳は、前の様子と比べなかった番号(最初・飛んだ番号・カメラの切り替え)では「—」。光の向きは度で出す。
+    // 内訳は、前の様子と比べなかった番号では「—」。光の向きは度で出す。
     const breakdown = terms === null ? '光の向き — · 日照率 — · 画面の滑り —'
       : `光の向き ${(terms.lightDirection * 180 / Math.PI).toPrecision(3)}° · 日照率 ${terms.sunlit.toPrecision(3)}`
         + ` · 画面の滑り ${terms.cameraSlide.toPrecision(3)}`;
     const note = this.view.historyCapFrames === 1 ? ' · 履歴の上限 1 では履歴もジッターも使わない' : '';
     this.statusOutput.textContent = [
-      `k = ${this.view.logicalFrame} · ${frameText} · ${breakdown} · d ${change.toPrecision(3)} · 履歴の長さの上限 ${lengthCap}${note}`,
+      `k = ${this.view.logicalFrame} · ${frameText} · ${breakdown} · d ${change.toPrecision(3)}`
+        + ` · 履歴の長さの上限 ${lengthCap}${note}`,
       this.failure,
     ].filter((line): line is string => line !== null).join(' · ');
   }
