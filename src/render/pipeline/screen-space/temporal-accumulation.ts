@@ -1,4 +1,4 @@
-// フレーム番号の進み方と履歴の上限を求め、近傍拡散補正を時間方向に蓄積する。
+// フレーム番号の進み方と履歴長の上限を決め、近傍拡散補正を時間方向に蓄積する。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
@@ -8,31 +8,33 @@ import {
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { compileInto } from '../compile-into';
 import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
-import type { DiffuseCorrection } from './diffuse-correction';
 import { octDecodeNormal } from '../gbuffer';
+import { SurfaceWeight } from './surface-weight';
+import type { DiffuseCorrection } from './diffuse-correction';
 import type { GBufferPass } from '../gbuffer';
-import { SurfaceWeight, type SurfaceTextures } from './surface-weight';
 import type {
   BoolNode, FloatNode, FloatUniform, IVec2Node, Mat3Uniform, Mat4Uniform, UintNode, Vec2Node, Vec3Node, Vec4Node,
 } from '../../tsl-types';
 
-const HALF_WEIGHT_ANGLE = Math.PI / 9;
+// 履歴の再投影の面の重みの、法線の重みが半分になる角 [rad](20°)。
+const HISTORY_HALF_WEIGHT_ANGLE = Math.PI / 9;
 
 // 単精度浮動小数の指数部のビット。±∞ と NaN だけが、このビットをすべて立てる。
 const FLOAT_EXPONENT_BITS = 0x7f800000;
 
-// components がすべて有限か。WGSL の実装は非有限の値が現れないと仮定して浮動小数の比較を畳んでよいので、ビット列で判定する。
+// components がすべて有限か。
 function allFinite(...components: FloatNode[]): BoolNode {
   return components.map((component) => {
     // floatBitsToUint の @types/three 上の戻り値型は値の型を持たないため、UintNode へ読み替える。
     const bits = floatBitsToUint(component) as unknown as UintNode;
+    // WGSL の実装は非有限の値が現れないと仮定して浮動小数の比較を畳んでよいので、ビット列で判定する。
     return bits.bitAnd(uint(FLOAT_EXPONENT_BITS)).notEqual(uint(FLOAT_EXPONENT_BITS));
   }).reduce((finite, next) => finite.and(next));
 }
 
-// 履歴と前フレームの深度・法線を、それぞれの形式の添付先へまとめる。
-function targetOf(): THREE.RenderTarget {
-  // 履歴値と前フレームの面を同じ画素へ写せるよう、形式ごとに添付を分ける。
+// 添付 0〜2 に履歴(rgb = 補正、α = 履歴の長さ n)・前フレームの素の深度・前フレームの符号化法線を持つ描画先。
+function createHistoryTarget(): THREE.RenderTarget {
+  // 1 回の描画で同じ画素へまとめて写せるよう、形式の違う 3 つを 1 つの描画先に束ねる。
   const target = new THREE.RenderTarget(1, 1, {
     count: 3, depthBuffer: false, samples: 0, minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
   });
@@ -49,77 +51,69 @@ function targetOf(): THREE.RenderTarget {
   return target;
 }
 
-// 履歴と前フレームの面を保持し、蓄積の段を correction.target へ書く。beginFrame は G バッファを描く前に毎フレーム呼ぶ。
+// 蓄積前の補正 correction.upsampledTarget を、前フレームから再投影した履歴と混ぜて correction.target へ書く。毎フレーム、
+// G バッファを描く前に beginFrame を、蓄積の段を描く前に prepare を呼ぶ。
 export class TemporalAccumulation {
-  // 履歴と前フレームの面を保持し、蓄積段の出力先にも使う。
-  private readonly target = targetOf();
-  // 履歴コピーと蓄積の全画面描画に使う。
+  // 履歴と前フレームの面。履歴を写す段の描画先。
+  private readonly target = createHistoryTarget();
+  // 履歴を写す段を描く板。
   private readonly quad = new QuadMesh();
-  // 描画設定から受け取る静止時の履歴上限。
+  // 静止時の履歴の上限 s [フレーム]。
   private readonly historyCap: FloatUniform = uniform(1);
-  // 現在の変化量から決めた履歴長の上限。
+  // このフレームの変化量から決めた履歴長の上限 [フレーム]。
   private readonly lengthCap: FloatUniform = uniform(1);
-  // 前フレームの面を復元するときに使う射影とその逆。
+  // 前フレームの射影行列とその逆。前フレームの面の位置を戻す。
   private readonly previousProjection: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly previousProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
-  // 前フレームの視点座標を保持し、今の view と合わせて法線を移す。
+  // 前フレームの view 行列(world → 前フレームの視点座標)。
   private readonly previousView = new THREE.Matrix4();
   // 今の法線を前フレームの視点座標へ移す回転行列。
   private readonly normalToPreviousView: Mat3Uniform = uniform(new THREE.Matrix3());
-  // prepare が記録する今の射影と逆射影。
+  // このフレームの射影行列とその逆と view 行列。次の番号へ進むとき、前フレームの行列になる。
   private readonly currentProjection = new THREE.Matrix4();
   private readonly currentProjectionInverse = new THREE.Matrix4();
-  // prepare が記録する今の view。
   private readonly currentView = new THREE.Matrix4();
   // prepare で前 view と今の world 行列を合成する作業行列。
   private readonly normalMatrix = new THREE.Matrix4();
-  // 履歴ターゲット内の深度・法線を前フレームの面として読む。
-  private readonly previousSurfaces: SurfaceTextures;
-  // 前フレームの面との整合性から再投影タップの重みを求める。
+  // 履歴ターゲットの深度・法線を前フレームの面として読み、再投影タップの重みを求める。
   private readonly previousWeight: SurfaceWeight;
   // 補正と G バッファを履歴ターゲットへ写す段。
   private readonly copyStage: ScreenSpaceStage;
   // 再投影した履歴と今の補正を correction.target へ混ぜて書く段。
   private readonly accumulationStage: ScreenSpaceStage;
-  // 最後に beginFrame が受けた論理番号。
+  // 最後に beginFrame が受けた番号。null はまだ受けていない。
   private previousFrame: number | null = null;
-  // 最後の番号の補正段が実際に描かれたかを記録する。
+  // previousFrame の番号で蓄積の段を描いたか。
   private previousFrameRendered = false;
 
-  // 同じ描画系の renderer、G バッファ、補正先、GPU 計測を渡して構築する。
+  // gbuffer は今のフレームの面と動き、correction は蓄積の入力(upsampledTarget)と出力(target)、gpu は履歴を写す段の
+  // 計測先。
   public constructor(
     private readonly renderer: WebGPURenderer, private readonly gbuffer: GBufferPass,
     private readonly correction: DiffuseCorrection, private readonly gpu: GpuTimings,
   ) {
-    this.previousSurfaces = { depthTexture: this.target.textures[1]!, normalTexture: this.target.textures[2]! };
+    const previousSurfaces = { depthTexture: this.target.textures[1]!, normalTexture: this.target.textures[2]! };
     this.previousWeight = new SurfaceWeight(
-      this.previousSurfaces, this.previousProjection, this.previousProjectionInverse, vec2(screenSize),
+      previousSurfaces, this.previousProjection, this.previousProjectionInverse, vec2(screenSize),
     );
-    this.copyStage = this.copyStageOf();
-    this.accumulationStage = this.accumulationStageOf();
+    this.copyStage = this.createCopyStage();
+    this.accumulationStage = this.createAccumulationStage();
   }
 
   public get historyTexture(): THREE.Texture { return this.target.textures[0]!; }
   public get previousDepthTexture(): THREE.Texture { return this.target.textures[1]!; }
   public get previousNormalTexture(): THREE.Texture { return this.target.textures[2]!; }
   public get accumulation(): ScreenSpaceStage { return this.accumulationStage; }
-  // 現在の履歴の上限 [フレーム]。
+  // 静止時の履歴の上限 s [フレーム]。
   public get historyCapFrames(): number { return this.historyCap.value; }
 
-  // 履歴と前フレームの面を width × height へ合わせ、寸法が変われば true を返す。
-  public setSize(width: number, height: number): boolean {
-    if (this.target.width === width && this.target.height === height) return false;
-    this.target.setSize(width, height);
-    this.lengthCap.value = 1;
-    return true;
-  }
-
-  // 履歴の上限 frames [フレーム] を履歴長の上限の計算とデバッグ表示へ渡す。
+  // 静止時の履歴の上限 s を frames [フレーム](1 以上の整数)にする。履歴長の上限には次の beginFrame から効く。
   public setHistoryCap(frames: number): void {
     this.historyCap.value = frames;
   }
 
-  // 履歴の寸法と今のカメラ行列を記録し、前視点へ法線を回す行列を組む。
+  // 履歴の寸法を width × height へ合わせ、camera の行列をこのフレームのものとして記録する。beginFrame の後、蓄積の段を
+  // 描く前に呼ぶ。
   public prepare(camera: THREE.Camera, width: number, height: number): void {
     this.setSize(width, height);
     this.currentProjection.copy(camera.projectionMatrix);
@@ -134,15 +128,16 @@ export class TemporalAccumulation {
     return texture(this.correction.target.texture, uv).a.div(this.historyCap).clamp(0, 1);
   }
 
-  // G バッファを上書きする前に、連続して描いた前フレームがあれば履歴へ写す。
+  // 番号 frame のフレームを始める。G バッファを上書きする前に呼ぶ。前の番号を描き終えていれば前フレームとして履歴へ写し、
+  // 変化量 change(0 以上。∞ は履歴を切る)から履歴長の上限を決める。番号が続かなければ履歴を切る。
   public beginFrame(frame: number, change: number): void {
-    // 同じ番号の再描画では履歴を写さず、次の advance 判定用の描画済み印を外す。
+    // 同じ番号の描き直しは、前回に写した履歴をそのまま使う。
     const step = frameStepOf(this.previousFrame, frame, change);
     if (step === 'repeat') {
       this.previousFrameRendered = false;
       return;
     }
-    // 連続番号かつ前番号が描画済みなら、カメラ記録と履歴面を前フレームへ移す。
+    // 前の番号のカメラと面と補正を、前フレームとして写す。
     if (step === 'advance' && this.previousFrameRendered) {
       this.previousProjection.value.copy(this.currentProjection);
       this.previousProjectionInverse.value.copy(this.currentProjectionInverse);
@@ -150,35 +145,40 @@ export class TemporalAccumulation {
       this.copyPreviousFrame();
       this.lengthCap.value = lengthCapOf(this.historyCap.value, change);
     } else {
-      // cut または前番号未描画では、履歴を今の値だけに制限する。
+      // 使える前フレームが無いので、今の値から蓄積をやり直す。
       this.lengthCap.value = 1;
     }
     this.previousFrame = frame;
     this.previousFrameRendered = false;
   }
 
-  // 近傍拡散補正の段を描いたことを、次の番号へ進むときの判断に使う。
+  // このフレームで蓄積の段を描いたことを記録する。記録の無いフレームの次の番号では履歴を切る。
   public markFrameRendered(): void {
     this.previousFrameRendered = true;
   }
 
-  // beginFrame の履歴写しで使うマテリアルを、履歴ターゲットへ事前コンパイルする。
+  // 履歴を写す段のマテリアルを、履歴ターゲットへ事前コンパイルする。
   public async compile(): Promise<void> {
     this.quad.material = this.copyStage.material;
     await compileInto(this.renderer, this.target, this.quad, this.quad.camera);
   }
 
-  // 描画系の破棄時に呼び、以後このインスタンスを使わない。
+  // 所有する描画先と段の材質を解放する。以後このインスタンスは使えない。
   public dispose(): void {
-    // インスタンスを使い終えたとき、所有する描画先と段の材質を解放する。
     this.target.dispose();
     this.copyStage.material.dispose();
     this.accumulationStage.material.dispose();
   }
 
-  // コンストラクタから一度呼び、返した段を compile・描画・破棄で共有する。
-  private copyStageOf(): ScreenSpaceStage {
-    // 3 添付を同じ画素から読み、履歴値・深度・法線を一度に写す段を作る。
+  // 履歴と前フレームの面の寸法を width × height へ合わせる。寸法が変われば、このフレームの履歴を切る。
+  private setSize(width: number, height: number): void {
+    if (this.target.width === width && this.target.height === height) return;
+    this.target.setSize(width, height);
+    this.lengthCap.value = 1;
+  }
+
+  // 補正の結果 correction.target と G バッファの深度・法線を、同じ画素の履歴の添付 0〜2 へ写す段。
+  private createCopyStage(): ScreenSpaceStage {
     const target = this.target;
     const pixel = ivec2(floor(screenUV.mul(screenSize)));
     const material = multiOutputMaterial(target, () => [
@@ -189,8 +189,8 @@ export class TemporalAccumulation {
     return { material, target, gpuPass: GPU_PASS.nearbyDiffuseHistoryCopy };
   }
 
-  // 蓄積前の補正の rgb と履歴長 1 を correction.target へ書く段を作る。
-  private accumulationStageOf(): ScreenSpaceStage {
+  // 再投影した履歴と蓄積前の補正を混ぜた値(accumulatedValue)を correction.target へ書く段。
+  private createAccumulationStage(): ScreenSpaceStage {
     const target = this.correction.target;
     const material = stageMaterial();
     material.mrtNode = mrt({
@@ -201,8 +201,8 @@ export class TemporalAccumulation {
     return { material, target, gpuPass: GPU_PASS.nearbyDiffuseAccumulation };
   }
 
-  // 前フレームの四近傍から履歴を再投影し、今の補正と履歴長で混ぜる。非有限な履歴の画素は再投影に使わず、
-  // 非有限な今の値は、履歴があればその標本を捨てて履歴を保つ。
+  // 前フレームの 2×2 近傍から再投影した履歴と今の補正を、履歴の長さで混ぜた値(rgb = 補正、α = 履歴の長さ n)。非有限な
+  // 履歴の画素は再投影から外し、非有限な今の値は、履歴があればその標本を捨てて履歴を保つ。
   private accumulatedValue(): Vec4Node {
     // 今の補正・面・動きから、前フレームの対応位置を求める。
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
@@ -220,29 +220,31 @@ export class TemporalAccumulation {
     const base = ivec2(floor(previousCoordinate)).toVar();
     const fraction = previousCoordinate.sub(vec2(float(base.x), float(base.y))).toVar();
     // 2×2 の履歴タップを、前フレームの面との整合性と双線形係数で重み付けする。
-    const total = this.addHistoryTap(clip, normal, base, fraction, 0, 0);
-    const right = this.addHistoryTap(clip, normal, base, fraction, 1, 0);
-    const bottom = this.addHistoryTap(clip, normal, base, fraction, 0, 1);
-    const diagonal = this.addHistoryTap(clip, normal, base, fraction, 1, 1);
-    const totalWeight = total.weight.add(right.weight).add(bottom.weight).add(diagonal.weight).toVar();
-    const history = total.value.add(right.value).add(bottom.value).add(diagonal.value)
+    const tap00 = this.addHistoryTap(clip, normal, base, fraction, 0, 0);
+    const tap10 = this.addHistoryTap(clip, normal, base, fraction, 1, 0);
+    const tap01 = this.addHistoryTap(clip, normal, base, fraction, 0, 1);
+    const tap11 = this.addHistoryTap(clip, normal, base, fraction, 1, 1);
+    const totalWeight = tap00.weight.add(tap10.weight).add(tap01.weight).add(tap11.weight).toVar();
+    const history = tap00.value.add(tap10.value).add(tap01.value).add(tap11.value)
       .div(max(totalWeight, 1e-20)).toVar();
-    const historyLength = total.length.add(right.length).add(bottom.length).add(diagonal.length).toVar();
+    // 面のある画素は履歴の長さを 1 つ延ばし、変化量から決めた上限で切る。
+    const historyLength = tap00.length.add(tap10.length).add(tap01.length).add(tap11.length).toVar();
     const validSurface = depth.greaterThan(0);
     const accumulatedLength = select(validSurface, historyLength, 0).add(1).toVar();
     const length = min(accumulatedLength, this.lengthCap).toVar();
-    // 履歴長で今の値へ寄せる。長さ 1 以下は今の値をそのまま選び、s=1 の出力を一致させる。
+    // 履歴長で今の値へ寄せる。長さ 1 以下は、蓄積前の補正とビット一致させるため今の値をそのまま選ぶ。
     const sample = select(allFinite(current.x, current.y, current.z), current, history);
     const blended = history.add(sample.sub(history).div(length));
     return vec4(select(length.lessThanEqual(1), current, blended), length);
   }
 
-  // 前フレームの画素を受け手にし、再投影した点との面重みを履歴値へ掛ける。
+  // 前フレームの画素 base + (dx, dy) の履歴のタップ — 重み(その画素の面を受け手にした、再投影した点 clip・法線 normal の面の
+  // 重みと、端数 fraction による双線形係数の積)と、重みを掛けた履歴の rgb と長さ。画面外・面の無い・非有限なタップの重みは 0。
   private addHistoryTap(
     clip: Vec4Node, normal: Vec3Node,
     base: IVec2Node, fraction: Vec2Node, dx: number, dy: number,
   ): { readonly weight: FloatNode; readonly value: Vec3Node; readonly length: FloatNode } {
-    // 画面内かつ面のあるタップだけを履歴候補にする。
+    // 画面外のタップは、読む座標を画面の端へ寄せたうえで重みを 0 にする。
     const texel = base.add(ivec2(dx, dy)).toVar();
     const size = ivec2(screenSize).toVar();
     const inside = texel.x.greaterThanEqual(0).and(texel.x.lessThan(size.x))
@@ -253,11 +255,10 @@ export class TemporalAccumulation {
     const surface = this.previousWeight.surfaceAt(safeTexel);
     const receiver = this.previousWeight.receiverAt(surface);
     const exponent = this.previousWeight.exponentAt(
-      receiver, clip, normal, float(1), float(HALF_WEIGHT_ANGLE),
+      receiver, clip, normal, float(1), float(HISTORY_HALF_WEIGHT_ANGLE),
     );
     const bilinear = (dx === 0 ? fraction.x.oneMinus() : fraction.x)
       .mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
-    // 面があり値が有限なタップの、面の重みと双線形係数を合わせた重みと、重みを掛けた履歴 RGB と長さを返す。
     // 非有限の履歴は重み 0 を掛けても NaN のまま混ざり、近傍へ毎フレーム広がるので、掛ける前に値ごと落とす。
     const stored = textureLoad(this.target.textures[0]!, safeTexel).toVar();
     const usable = inside.and(surface.depth.greaterThan(0)).and(allFinite(stored.x, stored.y, stored.z, stored.w));
@@ -270,7 +271,7 @@ export class TemporalAccumulation {
     };
   }
 
-  // beginFrame が advance と判定したとき、補正と G バッファを履歴へ写す。
+  // 補正の結果と G バッファの深度・法線を履歴へ写す。G バッファを上書きする前に呼ぶ。
   private copyPreviousFrame(): void {
     this.renderer.setRenderTarget(this.target);
     this.quad.material = this.copyStage.material;
@@ -283,14 +284,15 @@ export class TemporalAccumulation {
 // 前回から同じ番号を描き直すか、次の番号へ進むか、履歴を切るか。
 export type FrameStep = 'repeat' | 'advance' | 'cut';
 
-// 変化量 change が履歴の計算で使える値かを検査する。
+// 変化量 change が NaN か負なら投げる。
 function assertChange(change: number): void {
   if (Number.isNaN(change) || change < 0) {
     throw new RangeError(`screen-space: invalid change ${change}`);
   }
 }
 
-// 前回番号 previous と今回の番号 frame から、履歴を再利用できる進み方を返す。
+// 前回の番号 previous(null は初回)から今回の番号 frame への進み方。変化量 change が ∞ なら、番号が続いていても履歴を切る。
+// 番号が負か整数でないとき、変化量が NaN か負のときは投げる。
 export function frameStepOf(previous: number | null, frame: number, change: number): FrameStep {
   if (!Number.isInteger(frame) || frame < 0) {
     throw new RangeError(`screen-space: invalid frame ${frame}`);
@@ -306,13 +308,13 @@ export function frameStepOf(previous: number | null, frame: number, change: numb
   return 'advance';
 }
 
-// 履歴の上限 historyCap [フレーム] と変化量 change から、履歴長の上限を返す。古い値が 1 フレームで残る割合を、静止時の
-// 残り (1 − 1/s) と変わらなかった割合 e^(−d) の積にした 1 / (1 − (1 − 1/s)·e^(−d)) を、d = 0 で s・d = ∞ で 1 が丸めなしで
-// 出る形に変形して求める。
+// 履歴の上限 historyCap = s [フレーム] と変化量 change = d から決める、履歴長の上限 1 / (1 − (1 − 1/s)·e^(−d)) [フレーム]。
+// 古い値が 1 フレームで残る割合を、静止時の残り (1 − 1/s) と変わらなかった割合 e^(−d) の積とする。
 export function lengthCapOf(historyCap: number, change: number): number {
   if (!Number.isInteger(historyCap) || historyCap < 1) {
     throw new RangeError(`screen-space: invalid history cap ${historyCap}`);
   }
   assertChange(change);
+  // d = 0 で s、d = ∞ で 1 が丸めなしで出る形に変形した式。
   return historyCap / (1 + (historyCap - 1) * -Math.expm1(-change));
 }

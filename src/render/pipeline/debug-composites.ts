@@ -54,6 +54,7 @@ export class DebugComposites {
   private readonly near: FloatUniform = uniform(1);
   private readonly far: FloatUniform = uniform(2);
   private readonly viewToWorld: Mat4Uniform = uniform(new THREE.Matrix4());
+  // 動きベクトルの表示が uv の差を画素の長さへ直す、描画バッファの寸法 [px]。syncCamera が毎フレーム書き込む。
   private readonly motionViewport = uniform(new THREE.Vector2(1, 1));
 
   // 映す中間ターゲットの持ち主を受ける。projectionInverse は実カメラの逆射影行列で、書き込むのは呼び出し側。
@@ -179,6 +180,7 @@ export class DebugComposites {
   }
 
   // 深度と影スロットの表示が読む実カメラ camera の値を書き込む。
+  // width × height は描画バッファの寸法 [px] で、動きベクトルの表示が読む。
   public syncCamera(camera: THREE.Camera, width: number, height: number): void {
     this.viewToWorld.value.copy(camera.matrixWorld);
     this.motionViewport.value.set(width, height);
@@ -215,9 +217,11 @@ export class DebugComposites {
 
   // RGBA 動き添付の rg を、方向の色相・対数の画素長・棄却色へ写す。
   private motionColor(): Vec3Node {
+    // 画素で測った動きの長さと、向きを 0..1 にした色相。
     const movement = texture(this.gbuffer.motionTexture, screenUV).rg;
     const magnitude = length(movement.mul(this.motionViewport));
     const hue = atan(movement.y, movement.x).add(Math.PI).div(2 * Math.PI);
+    // 色相を色の輪へ写し、明るさは 0..32 px を対数で 0..1 へ。履歴なし(MOTION_NO_HISTORY)の画素は紫。
     const wheel = vec3(
       cos(hue.mul(2 * Math.PI)).mul(0.5).add(0.5),
       cos(hue.mul(2 * Math.PI).add((2 * Math.PI) / 3)).mul(0.5).add(0.5),

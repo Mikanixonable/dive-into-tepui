@@ -25,6 +25,7 @@ function texelOf(
   return [Math.floor(x!), Math.floor(y!)];
 }
 
+// フレームごとのジッターの列と、走査の代表の写像の検査を登録する。
 export function register(): void {
   test('frame jitter: 履歴の上限 1 は静止画の位相、上限が大きいと指定源、null は変更なし', () => {
     for (const frame of [0, 1, 7]) {
@@ -59,7 +60,9 @@ export function register(): void {
     for (let frame = 1; frame < 256; frame++) {
       const jitter = frameJitterAt(frame, ['seed'], 4);
       for (const component of [...jitter.seed, jitter.scanRotation]) {
-        assert.ok(component >= 0 && component < 1, `seed ${jitter.seed}, rotation ${jitter.scanRotation} at frame ${frame}`);
+        assert.ok(
+          component >= 0 && component < 1, `seed ${jitter.seed}, rotation ${jitter.scanRotation} at frame ${frame}`,
+        );
       }
       assert.notDeepEqual(jitter.seed, previous.seed);
       assert.notEqual(jitter.scanRotation, previous.scanRotation);
@@ -97,7 +100,9 @@ export function register(): void {
       }
       assert.equal(visited.size, cellSize * cellSize);
       // 次の巡りは最初と同じ順。
-      assert.deepEqual(frameJitterAt(cellSize * cellSize, BOTH, cellSize).scanJitter, frameJitterAt(0, BOTH, cellSize).scanJitter);
+      assert.deepEqual(
+        frameJitterAt(cellSize * cellSize, BOTH, cellSize).scanJitter, frameJitterAt(0, BOTH, cellSize).scanJitter,
+      );
     }
   });
 
@@ -114,14 +119,22 @@ export function register(): void {
   });
 
   test('scan representative: ブロックの中の位置を 0 以上 1 未満で動かしても、代表は走査の画素が受け持つブロックに収まる', () => {
-    const sizes = [[[960, 540], [240, 135]], [[959, 539], [240, 135]], [[960, 540], [480, 270]], [[960, 540], [960, 540]]] as const;
+    const sizes = [
+      [[960, 540], [240, 135]], [[959, 539], [240, 135]], [[960, 540], [480, 270]], [[960, 540], [960, 540]],
+    ] as const;
     for (const [gbufferSize, pixelSize] of sizes) {
       for (const pixel of [[0, 0], [1, 2], [101, 77], [pixelSize[0] - 1, pixelSize[1] - 1]] as const) {
         for (const fraction of [0, 0.125, 0.5, 0.875, 15 / 16]) {
           const [x, y] = texelOf(pixel, [fraction, fraction], gbufferSize, pixelSize);
           const ratio = [gbufferSize[0] / pixelSize[0], gbufferSize[1] / pixelSize[1]];
-          assert.ok(x >= Math.floor(pixel[0] * ratio[0]!) && x < (pixel[0] + 1) * ratio[0]!, `x ${x} of ${pixel} at ${fraction}`);
-          assert.ok(y >= Math.floor(pixel[1] * ratio[1]!) && y < (pixel[1] + 1) * ratio[1]!, `y ${y} of ${pixel} at ${fraction}`);
+          assert.ok(
+            x >= Math.floor(pixel[0] * ratio[0]!) && x < (pixel[0] + 1) * ratio[0]!,
+            `x ${x} of ${pixel} at ${fraction}`,
+          );
+          assert.ok(
+            y >= Math.floor(pixel[1] * ratio[1]!) && y < (pixel[1] + 1) * ratio[1]!,
+            `y ${y} of ${pixel} at ${fraction}`,
+          );
           assert.ok(x < gbufferSize[0] && y < gbufferSize[1]);
         }
       }
