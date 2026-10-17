@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
   Fn, If, float, floor, fract, getViewPosition, ivec2, mrt, screenSize, screenUV, select, texture, textureLoad, uint,
-  uniform, vec3, vec4,
+  uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
 import { BlueNoise } from '../../blue-noise';
@@ -13,7 +13,7 @@ import { ShadingSample } from '../lighting/shading-sample';
 import { compileInto } from '../compile-into';
 import { lambertianRadianceAt } from '../material-pass';
 import {
-  gbufferUVOf, projectedRadius, resolvesNearby, scanHemisphere, type PlanetIllumination,
+  REPRESENTATIVE_STEPS, gbufferUVOf, projectedRadius, resolvesNearby, scanHemisphere, type PlanetIllumination,
 } from './hemisphere-scan';
 import { BandPyramid, bandLayoutOf, packedBands, type BandFormat, type BandLayout } from './band-pyramid';
 import { CorrectionReconstruction } from './correction-reconstruction';
@@ -21,15 +21,16 @@ import { QReconstruction } from './q-reconstruction';
 import { ScreenSpaceInputPyramid, levelExtent } from './screen-space-input-pyramid';
 import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
 import { SurfaceWeight } from './surface-weight';
+import { frameJitterForHistoryCap, type JitterSource, type ScanJitter } from './frame-jitter';
+import { TemporalAccumulation } from './temporal-accumulation';
 import { whiteNoiseAt } from './white-noise';
 import type { DiffuseCorrection } from './diffuse-correction';
 import type { PlanetLightSource } from '../lighting/planet-light-source';
 import type { GBufferPass } from '../gbuffer';
-import type { AmbientSource } from '../lighting/ambient-source';
 import type { LightPrepass } from '../light-prepass';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type {
-  BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node,
+  BoolNode, FloatNode, FloatUniform, IntNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node,
 } from '../../tsl-types';
 
 // 描くものの方式。オフ / 遮蔽だけ / 遮蔽と照り返し。
@@ -73,12 +74,25 @@ function scanTierOf(scale: number, sliceCount: number, stepCount: number, bandCo
 // 来るものを実測で選んだ。
 const UPSAMPLE_ROTATION_SHIFT = 23 / 64;
 
-// 走査画素の下位 bit から回転の上位の 2 bit ずつへ写す。整列した 2^level 四方には 4^level 個の
+// 走査の画素 pixel の代表の、受け持つブロックの中の位置 [1/REPRESENTATIVE_STEPS ブロック] — draw が負なら全ての画素で
+// steps、0 以上なら番号 draw のホワイトノイズ(走査のずれが引く成分 0〜2 とは別の成分)から引いた位置。
+function representativeOf(pixel: Vec2Node, steps: THREE.Node<'ivec2'>, draw: IntNode): THREE.Node<'ivec2'> {
+  const random = ivec2(floor(
+    vec2(whiteNoiseAt(pixel, uint(draw), 3), whiteNoiseAt(pixel, uint(draw), 4)).mul(REPRESENTATIVE_STEPS)));
+  return select(draw.lessThan(0), steps, random);
+}
+
+// ブロックの中の位置 fraction(ブロックの幅に対する割合。0 以上 1 未満)を、代表の位置の刻みへ丸めた整数。
+function representativeStepOf(fraction: number): number {
+  return Math.min(REPRESENTATIVE_STEPS - 1, Math.round(fraction * REPRESENTATIVE_STEPS));
+}
+
+// 走査画素の下位 bit から回転の上位の 2 bit ずつへ写し、全画素共通の offset を足す。整列した 2^level 四方には 4^level 個の
 // 等間隔な回転が 1 個ずつ入る。11 桁なら 2048 四方まで繰り返さない。
-function stratifiedRotation(pixel: Vec2Node, seed: FloatNode): FloatNode {
+function stratifiedRotation(pixel: Vec2Node, offset: FloatNode): FloatNode {
   const x = uint(pixel.x);
   const y = uint(pixel.y);
-  let rotation: FloatNode = seed;
+  let rotation: FloatNode = offset;
   for (let level = 0; level < 11; level++) {
     const digit = x.shiftRight(uint(level)).bitAnd(uint(1))
       .add(y.shiftRight(uint(level)).bitAnd(uint(1)).shiftLeft(uint(1)));
@@ -107,6 +121,10 @@ interface BandCountStages {
 }
 
 export class ScreenSpacePass {
+  // フレーム番号に応じて履歴を写し、蓄積の段を持つ。
+  private readonly temporal: TemporalAccumulation;
+  // beginFrame がフレームごとに動かす走査の入力。null なら走査の入力は set* で置いた値を保つ。
+  private jitterSources: readonly JitterSource[] | null = ['seed', 'scanRepresentative'];
   // 方式ごとの、段 0 の面の写しと源を書く描画命令。
   private readonly occlusionSurfaceStage: ScreenSpaceStage;
   private readonly indirectSurfaceStage: ScreenSpaceStage;
@@ -126,15 +144,24 @@ export class ScreenSpacePass {
   private readonly bandScale: FloatUniform = uniform(1);
   // 走査のずれをホワイトノイズから引くパスの番号(setWhiteNoisePass)。負ならブルーノイズから引く。
   private readonly whiteNoisePass = uniform(-1, 'int');
-  // 走査の全体の回転と、歩み・丸めのブルーノイズ、拡大のブルーノイズを変える seed [タイルの幅]。
-  // (0, 0) 以外の値は、同じ推定を独立な標本で繰り返すためのもの。
+  // 歩み・丸めのブルーノイズと拡大のブルーノイズを変える seed [タイルの幅] と、走査の全体の回転 [スライスの間隔]。
+  // どちらも 0 以外の値は、同じ推定を独立な標本で繰り返すためのもの。
   private readonly seed: Vec2Uniform = uniform(new THREE.Vector2(0, 0));
+  private readonly scanRotation: FloatUniform = uniform(0);
   // 描画バッファと走査の解像度 [px]。解像度の違う段どうしで、対応する画素を引くのに使う。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly scanSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
-  // 走査の解像度で描いている画素の整数座標と、その画素が表す G バッファの画素の中心の uv。
+  // 走査の代表の選び方(setScanJitter)。representativeDraw が負なら全ての走査の画素の代表が、受け持つブロックの中の
+  // 位置 representativeSteps [1/REPRESENTATIVE_STEPS ブロック] にあり、0 以上なら走査の画素ごとにその番号のホワイトノイズで
+  // 位置を引く。
+  private readonly representativeSteps = uniform(
+    new THREE.Vector2(REPRESENTATIVE_STEPS / 2, REPRESENTATIVE_STEPS / 2), 'ivec2');
+  private readonly representativeDraw = uniform(-1, 'int');
+  // 走査の解像度で描いている画素の整数座標、その画素の代表のブロックの中の位置、その代表の G バッファの画素の中心の uv。
   private readonly scanPixel: Vec2Node = floor(screenUV.mul(screenSize));
-  private readonly gbufferUV: Vec2Node = gbufferUVOf(this.scanPixel, this.fullSize);
+  private readonly representative: THREE.Node<'ivec2'> = representativeOf(
+    this.scanPixel, this.representativeSteps, this.representativeDraw);
+  private readonly gbufferUV: Vec2Node = gbufferUVOf(this.scanPixel, this.representative, this.fullSize);
   // 走査の解像度の画素の、光の向きと面の向きを引くシェーディング入力。
   private readonly sample: ShadingSample;
   // 段ごとの代表の面と、それで比べる帯の縮小・拡大と合流、描画バッファの解像度への拡大。
@@ -154,14 +181,14 @@ export class ScreenSpacePass {
   // device.limits.maxColorAttachmentBytesPerSample。取得できなければ WebGPU の既定値。
   private readonly deviceAttachmentByteLimit: number;
 
-  // lightPrepass は照り返しの源になる面の遠方の拡散照度、planetLight は塞がれ方を数える天体照の球冠の出どころ。
-  // planetLight と ambient は受け手へ届く遠方の拡散光でもある。output は結果の描画先。mode は構築時点の方式、
+  // lightPrepass は照り返しの源になる面と受け手へ届く遠方の拡散照度、planetLight は塞がれ方を数える天体照の球冠の
+  // 出どころ。output は結果の描画先。mode は構築時点の方式、
   // sliceCount / stepCount は構築時点の走査のスライス数と片側の歩数。directionalPlanetCount は構築時点の、走査が
   // 遮りの向きを見る天体照の数(描画設定 screenSpaceDirectionalPlanetCount の値)。
   public constructor(
     private readonly renderer: WebGPURenderer, private readonly gbuffer: GBufferPass,
     private readonly lightPrepass: LightPrepass,
-    private readonly planetLight: PlanetLightSource, private readonly ambient: AmbientSource,
+    private readonly planetLight: PlanetLightSource,
     private readonly output: DiffuseCorrection, private readonly gpu: GpuTimings,
     private mode: ScreenSpaceDiffuse, scale: number, sliceCount: number, stepCount: number, bandCount: number,
     private directionalPlanetCount: number,
@@ -173,12 +200,15 @@ export class ScreenSpacePass {
     // 走査の解像度の面の読み手と、段ごとの代表の面・帯・再構成を組む。
     this.sample = new ShadingSample(gbuffer, this.gbufferUV);
     const weight = new SurfaceWeight(gbuffer, this.projection, this.projectionInverse, this.fullSize);
-    this.surfaces = new ScreenSpaceInputPyramid(gbuffer, this.projectionInverse, this.fullSize, this.scanSize);
+    this.surfaces = new ScreenSpaceInputPyramid(
+      gbuffer, this.projectionInverse, this.fullSize, this.scanSize, this.representative);
     this.bandPyramid = new BandPyramid(this.surfaces, weight, this.fullSize, this.scanSize, this.exposureFactor);
     this.reconstruction = new CorrectionReconstruction(
-      weight, this.surfaces, this.fullSize, this.scanSize, this.projection, this.upsampleAlphaOne,
+      weight, this.surfaces, this.fullSize, this.scanSize, this.projection,
+      vec2(this.representativeSteps).div(REPRESENTATIVE_STEPS), this.upsampleAlphaOne,
     );
     this.qReconstruction = new QReconstruction(weight, this.surfaces, this.fullSize, this.scanSize);
+    this.temporal = new TemporalAccumulation(renderer, gbuffer, output, gpu);
     this.occlusionSurfaceStage = this.surfaces.scanStageOf(null);
     // 源は補正を受ける近い面にだけ書く — 遠い面(天体の面など)は画面の大半を占めうるが、その源が効くのは打ち切りの縁の
     // 受け手だけで、全面に書くと源の段が倍ほど重くなる。
@@ -189,6 +219,15 @@ export class ScreenSpacePass {
   // 走査の解像度。rgb = 照り返しの源として面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)。方式が遮蔽では 0。
   public get surfaceRadianceTexture(): THREE.Texture { return this.surfaces.radianceTexture; }
 
+  // 前フレームの補正履歴 (rgb = ΔE_screen、α = 履歴の長さ n)。
+  public get temporalHistoryTexture(): THREE.Texture { return this.temporal.historyTexture; }
+
+  // 前フレームの素の深度。
+  public get previousDepthTexture(): THREE.Texture { return this.temporal.previousDepthTexture; }
+
+  // correction.target の履歴長 n / 履歴の上限 s (0〜1)。
+  public normalizedHistoryAt(uv: Vec2Node): FloatNode { return this.temporal.normalizedHistoryAt(uv); }
+
   // いまの段で補正を分ける帯の数。
   public get bandCount(): number { return this.tier.bandCount; }
   // いまの段の描画先に合わせた、走査・縮小段の描画命令。
@@ -198,9 +237,12 @@ export class ScreenSpacePass {
   // 合流の描画先(DiffuseCorrection.mergedTarget(layout, 0))は書かれない。帯が 1 つなら合流が無いので常に偽。
   public get mergesIntoCorrection(): boolean { return this.tier.scale === 1 && this.tier.bandCount > 1; }
 
+  // いまの段の走査の画素の幅 [描画バッファの画素]。走査の代表が巡れるブロックの中の位置は、この 2 乗の数だけある。
+  public get scanCellSize(): number { return Math.round(1 / this.tier.scale); }
+
   public get experimentOutputTarget(): THREE.RenderTarget {
     if (this.experiment === null) throw new Error('screen-space: no experiment is active');
-    return this.output.target;
+    return this.output.upsampledTarget;
   }
 
   // 段ごとの代表の面。
@@ -216,6 +258,30 @@ export class ScreenSpacePass {
     this.tier = scanTierOf(scale, sliceCount, stepCount, bandCount);
   }
 
+  // 次のフレームから、静止時の履歴の上限を frames [フレーム](1 以上の整数)にする。1 なら蓄積前の補正をそのまま出し、
+  // beginFrame が置く走査の入力は本番の静止画の値になる。
+  public setHistoryCap(frames: number): void {
+    this.temporal.setHistoryCap(frames);
+  }
+
+  // 番号 frame のフレームを始める。G バッファを描く前に毎フレーム呼ぶ。番号の続き方と変化量 change(0 以上。∞ は履歴を切る)
+  // で履歴の残し方を決め、動かす源があれば走査の入力をその番号の位相へ置く。
+  public beginFrame(frame: number, change: number): void {
+    this.temporal.beginFrame(frame, change);
+    const jitter = frameJitterForHistoryCap(
+      frame, this.jitterSources, this.temporal.historyCapFrames, this.scanCellSize,
+    );
+    if (jitter === null) return;
+    this.setSeed(jitter.seed[0], jitter.seed[1]);
+    this.setScanRotation(jitter.scanRotation);
+    this.setScanJitter(jitter.scanJitter);
+  }
+
+  // 次の beginFrame から、フレームごとに動かす走査の入力を sources にする。null なら走査の入力は set* で置いた値を保つ。
+  public setJitterSources(sources: readonly JitterSource[] | null): void {
+    this.jitterSources = sources === null ? null : [...sources];
+  }
+
   // 次の render から段 tier で走査する。次に setScan を呼ぶまで保つ。
   public setTier(tier: ScanTier): void {
     this.tier = tier;
@@ -227,15 +293,38 @@ export class ScreenSpacePass {
     this.directionalPlanetCount = count;
   }
 
-  // 次の render から、走査の全体の回転とブルーノイズのずれを (x, y) [タイルの幅] にする。
+  // 次の render から、ブルーノイズのずれを (x, y) [タイルの幅] にする。
   public setSeed(x: number, y: number): void {
     this.seed.value.set(x, y);
+  }
+
+  // 次の render から、走査の全体の回転を rotation [スライスの間隔] にする。
+  public setScanRotation(rotation: number): void {
+    this.scanRotation.value = rotation;
   }
 
   // 次の render から、走査の 3 つのずれを、pass が null ならブルーノイズ(本番)から、整数ならパスの番号 pass のホワイト
   // ノイズ(画素・パス・成分ごとに独立)から引く。多くのパスを平均する道具のためのもの。
   public setWhiteNoisePass(pass: number | null): void {
     this.whiteNoisePass.value = pass ?? -1;
+  }
+
+  // 次の render から、走査の代表を jitter(ScanJitter)で選ぶ。null はブロックの中心。格子のずらしの位置が 0 以上 1 未満の
+  // 範囲を外れたら投げる。
+  public setScanJitter(jitter: ScanJitter | null): void {
+    // 画素ごとに引くとき、拡大が読む全画素共通の代表の位置はブロックの中心にする。
+    if (jitter?.kind === 'perPixel') {
+      this.representativeDraw.value = jitter.draw;
+      this.representativeSteps.value.set(REPRESENTATIVE_STEPS / 2, REPRESENTATIVE_STEPS / 2);
+      return;
+    }
+    // 格子のずらしは、全ての走査の画素に同じ位置を代表の位置の刻みへ丸めて置く。
+    const [x, y] = jitter?.fraction ?? [0.5, 0.5];
+    if (!(x >= 0 && x < 1 && y >= 0 && y < 1)) {
+      throw new RangeError(`screen-space: the scan representative (${x}, ${y}) is outside its block`);
+    }
+    this.representativeDraw.value = -1;
+    this.representativeSteps.value.set(representativeStepOf(x), representativeStepOf(y));
   }
 
   // 次の render から、段の範囲 range(ScreenSpaceStageRange)だけを描く。chain は走査の描画先
@@ -291,12 +380,14 @@ export class ScreenSpacePass {
       this.quad.render(this.renderer);
     }
     this.renderer.setRenderTarget(null);
+    if (stages.includes(this.temporal.accumulation)) this.temporal.markFrameRendered();
   }
 
   // いまの方式と段の全段のマテリアルを、それぞれの描画先へ事前コンパイルする。
   public async compile(camera: THREE.Camera, width: number, height: number): Promise<void> {
     const stages = this.currentStages();
     this.prepare(camera, width, height);
+    await this.temporal.compile();
     for (const { material, target } of stages) {
       this.quad.material = material;
       await compileInto(this.renderer, target, this.quad, this.quad.camera);
@@ -335,6 +426,7 @@ export class ScreenSpacePass {
       for (const material of new Set(stages.map(({ material }) => material))) material.dispose();
     }
     for (const target of this.qTargets ?? []) target.dispose();
+    this.temporal.dispose();
     this.surfaces.dispose();
     this.blueNoise.dispose();
   }
@@ -348,12 +440,13 @@ export class ScreenSpacePass {
 
   private experimentStages(variant: ScreenSpaceExperimentVariant, sparseTapCount: number): readonly ScreenSpaceStage[] {
     const layout = this.bandLayout;
-    const cacheKey = `${variant}:${JSON.stringify(layout)}:${sparseTapCount}:${this.planetSlotKey}`;
+    const cacheKey = `${variant}:${JSON.stringify(layout)}:${sparseTapCount}:${this.directionalSlotCount}`;
     const cached = this.experimentStagesByKey.get(cacheKey);
     if (cached !== undefined) return cached;
     if (variant === 'raw-full') {
       const stages = [this.indirectSurfaceStage,
-        this.createScanStage(1, this.surfaces.radianceTexture, this.output.target, layout[0]!, true)];
+        this.createScanStage(1, this.surfaces.radianceTexture, this.output.upsampledTarget, layout[0]!, true),
+        this.temporal.accumulation];
       this.experimentStagesByKey.set(cacheKey, stages);
       return stages;
     }
@@ -361,7 +454,8 @@ export class ScreenSpacePass {
     if (variant === 'band') return this.stagesOf(this.tier, layout).ranges.all[SCREEN_SPACE_DIFFUSE.indirect];
     if (variant === 'raw-quarter') {
       if (layout[0] === 'packed-word') throw new Error('screen-space: raw-quarter cannot sample packed scan words');
-      const stages = [...scan, this.createStochasticUpsampleStage(this.output.bandTarget(layout, 0).textures[0]!)];
+      const stages = [...scan, this.createStochasticUpsampleStage(this.output.bandTarget(layout, 0).textures[0]!),
+        this.temporal.accumulation];
       this.experimentStagesByKey.set(cacheKey, stages);
       return stages;
     }
@@ -377,6 +471,7 @@ export class ScreenSpacePass {
         () => this.qReconstruction.sparseDenoised(first!.texture, secondRotation, sparseTapCount)),
       this.createDenoiseStage(denoised!, () => this.qReconstruction.denseDenoised(second!.texture)),
       this.createStochasticUpsampleStage(denoised!.texture),
+      this.temporal.accumulation,
     ];
     this.experimentStagesByKey.set(cacheKey, stages);
     return stages;
@@ -388,17 +483,17 @@ export class ScreenSpacePass {
     return Math.min(this.directionalPlanetCount, this.planetLight.count);
   }
 
-  // 走査の描画命令を、向きを見る天体照のスロットの数と使うスロットの数で引き分ける鍵。
-  private get planetSlotKey(): string {
-    return `${this.directionalSlotCount}:${this.planetLight.count}`;
+  // ライトプリパスが遠方の拡散照度を向きを見るスロットごとと和とに分ける枚数。走査をしない方式なら null で、分けない。
+  public get farDiffuseSplit(): number | null {
+    return this.mode === SCREEN_SPACE_DIFFUSE.off ? null : this.directionalSlotCount;
   }
 
-  // 帯の数 count・mergesIntoCorrection・天体照のスロット数で決まる描画命令。初めて引いたときに組み、以後は同じものを返す。
+  // 帯の数 count・mergesIntoCorrection・向きを見る天体照のスロット数で決まる描画命令。初めて引いたときに組み、以後は同じものを返す。
   private stagesOf(tier: ScanTier, layout: BandLayout): BandCountStages {
     const { bandCount: count } = tier;
     const format = layout[0]!;
     const intoCorrection = this.mergesIntoCorrection;
-    const key = `${JSON.stringify(layout)}:${intoCorrection}:${this.planetSlotKey}`;
+    const key = `${JSON.stringify(layout)}:${intoCorrection}:${this.directionalSlotCount}`;
     const built = this.stagesByKey.get(key);
     if (built !== undefined) return built;
     const scanTarget = this.output.bandTarget(layout, 0);
@@ -411,7 +506,7 @@ export class ScreenSpacePass {
       [SCREEN_SPACE_DIFFUSE.occlusion]: [this.occlusionSurfaceStage, occlusionScan],
       [SCREEN_SPACE_DIFFUSE.indirect]: [this.indirectSurfaceStage, indirectScan],
     };
-    const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, ...upsample];
+    const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, ...upsample, this.temporal.accumulation];
     const stages: BandCountStages = {
       ranges: {
         all: {
@@ -436,23 +531,18 @@ export class ScreenSpacePass {
     const whiteAt = (component: number): FloatNode => whiteNoiseAt(this.scanPixel, uint(this.whiteNoisePass), component);
     const useBlue = this.whiteNoisePass.lessThan(0);
     const noise = vec3(
-      select(useBlue, stratifiedRotation(this.scanPixel, this.seed.x), whiteAt(0)),
+      select(useBlue, stratifiedRotation(this.scanPixel, this.scanRotation), whiteAt(0)),
       select(useBlue, this.blueNoise.atScreenPixel(this.seed.add(0.5)), whiteAt(1)),
       select(useBlue, this.blueNoise.atScreenPixel(this.seed.add(27 / 64)), whiteAt(2)),
     );
     const directional = this.directionalSlotCount;
     const planets: readonly PlanetIllumination[] = Array.from({ length: directional }, (_, slot) => ({
       cap: this.planetLight.capAt(this.sample, slot),
-      irradiance: this.planetLight.diffuseIrradianceAtSlot(this.sample, slot),
+      irradiance: this.irradianceFrom(this.lightPrepass.directionalPlanetDiffuseTexture(slot)),
     }));
-    // 向きを見ない天体照は漏らさず、環境光と同じく向きによらず塞ぐ。
-    const undirectedSlots = Array.from(
-      { length: this.planetLight.count - directional }, (_, index) => directional + index);
     const material = multiOutputMaterial(target, () => {
-      const undirected = undirectedSlots.reduce<Vec3Node>(
-        (sum, slot) => sum.add(this.planetLight.diffuseIrradianceAtSlot(this.sample, slot)),
-        this.ambient.irradiance(this.sample),
-      );
+      // 向きを見ない天体照は漏らさず、環境光と同じく向きによらず塞ぐ。
+      const undirected = this.irradianceFrom(this.lightPrepass.undirectedFarDiffuseTexture);
       const corrections = scanHemisphere(
         this.surfaces, this.fullSize, this.projection, this.projectionInverse, this.sliceCount, this.stepCount, noise,
         undirected, planets, radiance,
@@ -476,7 +566,7 @@ export class ScreenSpacePass {
     const merge = Array.from({ length: count - 1 }, (_, index): ScreenSpaceStage => {
       const level = count - 2 - index;
       const direct = intoCorrection && level === 0;
-      const target = direct ? this.output.target : this.output.mergedTarget(layout, level);
+      const target = direct ? this.output.upsampledTarget : this.output.mergedTarget(layout, level);
       const coarse = this.output.mergedTexture(layout, level + 1);
       const coarseBands = this.output.bandTextures(layout, level + 1);
       const own = this.output.bandTextures(layout, level);
@@ -497,9 +587,9 @@ export class ScreenSpacePass {
     const source = this.output.mergedTexture(layout, 0);
     const rotation = this.blueNoise.atScreenPixel(this.seed.add(UPSAMPLE_ROTATION_SHIFT));
     const upsample = stageMaterial();
-    upsample.mrtNode = mrt({ diffuseCorrection: this.whereResolved(screenUV,
+    upsample.mrtNode = mrt({ [this.output.upsampledTarget.texture.name]: this.whereResolved(screenUV,
       () => vec4(this.reconstruction.sparseUpsampled(source, rotation), 1)) });
-    return { material: upsample, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
+    return { material: upsample, target: this.output.upsampledTarget, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
   }
 
   private createDenoiseStage(
@@ -513,9 +603,9 @@ export class ScreenSpacePass {
   private createStochasticUpsampleStage(source: THREE.Texture): ScreenSpaceStage {
     const choice = this.blueNoise.atScreenPixel(this.seed.add(23 / 64));
     const material = stageMaterial();
-    material.mrtNode = mrt({ diffuseCorrection: this.whereResolved(screenUV,
+    material.mrtNode = mrt({ [this.output.upsampledTarget.texture.name]: this.whereResolved(screenUV,
       () => vec4(this.qReconstruction.stochasticUpsampled(source, choice), 1)) });
-    return { material, target: this.output.target, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
+    return { material, target: this.output.upsampledTarget, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
   }
 
   // 描いている画素を、uv(描いている画素に当たる G バッファの uv)の面が補正を受ける(resolvesNearbyAt)ときだけ
@@ -535,8 +625,12 @@ export class ScreenSpacePass {
   // その面自身の遮られ方を含まない — それはこのパスの出力そのものなので、1 パスの中では求まらない。一様でない分岐の中から
   // 呼んでよい。
   private bounceSourceRadiance(): Vec3Node {
-    const irradiance = texture(this.lightPrepass.diffuseTexture, this.gbufferUV).level(float(0)).rgb;
-    return lambertianRadianceAt(this.gbuffer, this.gbufferUV, irradiance);
+    return lambertianRadianceAt(this.gbuffer, this.gbufferUV, this.irradianceFrom(this.lightPrepass.diffuseTexture));
+  }
+
+  // ライトプリパスの照度バッファ source を、走査の画素が表す面で読んだ照度。一様でない分岐の中から呼んでよい。
+  private irradianceFrom(source: THREE.Texture): Vec3Node {
+    return texture(source, this.gbufferUV).level(float(0)).rgb;
   }
 
   // uv の画素の素の深度 depth の受け手が補正を受けるか(resolvesNearby)。半径は、描いている解像度によらず走査の
@@ -558,6 +652,7 @@ export class ScreenSpacePass {
     const levelSizes = Array.from({ length: tier.bandCount }, (_, level) =>
       [levelExtent(scanWidth, level), levelExtent(scanHeight, level)] as const);
     this.output.setSize(this.bandLayout, levelSizes, width, height);
+    this.temporal.prepare(camera, width, height);
     if (this.experiment?.variant === 'q') {
       for (const target of this.qTargetsOf()) target.setSize(scanWidth, scanHeight);
     }

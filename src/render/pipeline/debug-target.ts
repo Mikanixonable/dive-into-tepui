@@ -1,6 +1,7 @@
 // render/pipeline/ の中間ターゲットを画面全体へ映すデバッグ表示の選択肢。
 
 import { GRAPHICS_FIELDS } from '../graphics-settings';
+import { MAX_PLANET_LIGHT_SLOTS } from './lighting/planet-light-source';
 
 // 近傍拡散補正の帯と段の表示。kind は中間ターゲットの種類 — band は走査が遮りの画面距離の帯ごとに書く補正、
 // representative は代表の面の縮小列、reduced は帯の縮小、merged は拡大と合流の出力。level は段、band は帯(帯を映す
@@ -47,11 +48,21 @@ function chainLabelOf(target: ChainDebugTarget): string {
   }
 }
 
+// 遠方の拡散照度のうち、向きを見る天体照のスロットごとの表示。
+export type PlanetDiffuseDebugTargetId = `directional-planet-diffuse-${number}`;
+
+export const PLANET_DIFFUSE_DEBUG_TARGETS: readonly (readonly [PlanetDiffuseDebugTargetId, string])[] = range(
+  0, MAX_PLANET_LIGHT_SLOTS,
+).map((slot) => [`directional-planet-diffuse-${slot}`, `向きを見る天体照の拡散照度(スロット ${slot})`] as const);
+
 export type DebugTargetId =
   | 'off' | 'normal' | 'roughness' | 'basecolor' | 'metalness' | 'emissive' | 'depth'
+  | 'motion'
   | 'shadow-map' | 'shadow-map-slot' | 'shadow' | 'diffuse' | 'direct-specular' | 'far-specular'
+  | 'undirected-far-diffuse' | PlanetDiffuseDebugTargetId
   | 'correction' | ChainDebugTargetId
   | 'bounce-source' | 'reflection-source'
+  | 'upsampled-correction' | 'history-length'
   | 'reflection-depth' | 'raw-reflection-weight' | 'raw-reflection-distance' | 'raw-reflection'
   | 'denoised-reflection-weight' | 'denoised-reflection-distance' | 'denoised-reflection' | 'reflection-denoise-level'
   | 'atmosphere' | 'lens' | 'planet-light';
@@ -67,14 +78,19 @@ export const DEBUG_TARGETS: readonly (readonly [DebugTargetId, string])[] = [
   ['metalness', '金属度'],
   ['emissive', '自己発光'],
   ['depth', '深度'],
+  ['motion', '動きベクトル'],
   ['shadow', '影'],
   ['planet-light', '天体照の光源テクスチャ'],
   ['diffuse', '遠方の拡散照度'],
   ['direct-specular', '直接の鏡面照度'],
   ['far-specular', '遠方の鏡面照度'],
+  ['undirected-far-diffuse', '向きを見ない遠方の拡散照度'],
+  ...PLANET_DIFFUSE_DEBUG_TARGETS,
   ['bounce-source', '照り返しの源'],
   ...CHAIN_DEBUG_TARGETS.map((target) => [target.id, chainLabelOf(target)] as const),
+  ['upsampled-correction', '蓄積の前の補正'],
   ['correction', '拡散照度補正'],
+  ['history-length', '履歴の長さ'],
   ['reflection-source', '映り込みの像の元'],
   ['reflection-depth', '映り込みの深度'],
   ['raw-reflection-weight', 'raw 映り込みの置換重み'],

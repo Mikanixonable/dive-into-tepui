@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { PI, clamp, dot, float, length, max, normalize, saturate, texture } from 'three/tsl';
 import { ggxSpecularFactor } from './ggx';
-import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
+import { contributionMaterial, type LightContribution, type LightSource, type SpecularReach } from './light-source';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { FloatNode, Vec3Node } from '../../tsl-types';
 import type { ShadowPass } from '../shadow/shadow-pass';
@@ -14,6 +14,7 @@ import type { ShadingSample } from './shading-sample';
 const SUN_LIGHT_MODEL = { point: 0, sphere: 1 } as const;
 
 export class SunSource implements LightSource {
+  public readonly specularReach: SpecularReach = 'direct';
   // モードごとに 1 枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの再コンパイルが
   // フレームを止める。
   private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
@@ -36,7 +37,7 @@ export class SunSource implements LightSource {
     if (cached !== undefined) return cached;
     const contribution = this.model === SUN_LIGHT_MODEL.sphere
       ? this.sphereContribution(sample) : this.pointContribution(sample);
-    const material = contributionMaterial(sample, contribution);
+    const material = contributionMaterial(sample, contribution, this.specularReach);
     this.materials.set(this.model, material);
     return material;
   }
@@ -61,7 +62,7 @@ export class SunSource implements LightSource {
     const irradiance = this.pointIrradiance(sample);
     const lightDir = normalize(this.toSunOf(sample));
     return {
-      diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)), specularReach: 'direct',
+      diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)),
     };
   }
 
@@ -91,7 +92,7 @@ export class SunSource implements LightSource {
       .mul(this.sunLight.intensity).div(radius.mul(radius).mul(PI));
     const specular: Vec3Node = radiance
       .mul(this.sphereSpecular.factor(sample, center, radius)).mul(transmittance);
-    return { diffuse, specular, specularReach: 'direct' };
+    return { diffuse, specular };
   }
 
   // 組んだマテリアルを解放する。

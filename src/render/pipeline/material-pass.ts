@@ -3,7 +3,7 @@
 // 鏡面光を置き換える。背景専用レイヤーの星野を共有ターゲットへ最初に描く(クリアする)のもこのパスが担う。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { BRDF_Lambert, Discard, Fn, float, max, mix, screenUV, texture, vec3, vec4 } from 'three/tsl';
+import { BRDF_Lambert, Discard, Fn, float, max, min, mix, screenUV, texture, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { WORLD_BACKGROUND_LAYER } from './lit-layer';
 import type { GBufferPass } from './gbuffer';
@@ -21,12 +21,21 @@ export function specularReflectanceAt(gbuffer: GBufferPass, uv: Vec2Node): Vec3N
   return mix(vec3(0.04), material.rgb, material.a);
 }
 
-// 遠方の拡散照度に近傍補正を足し、0 以上に切った照度。
+// 近傍補正が遠方の拡散照度を引き切る所で、0 への折れ目を丸める幅(引く量に対する比)。1 を超えると遠方光の無い所に光が出る。
+const UNDERSHOOT_KNEE = 0.5;
+
+// 遠方の拡散照度に近傍補正を足した照度。引く量が遠方光に近づくと 0 へ滑らかに寄せ、負にしない。引く量と遠方光が
+// 丸めの幅より離れていれば、足しただけの値か 0 そのもの。
 export function diffuseIrradianceAt(distant: Vec3Node, correction: Vec3Node): Vec3Node {
-  return max(distant.add(correction), vec3(0));
+  const subtraction = max(correction.negate(), vec3(0));
+  const knee = subtraction.mul(UNDERSHOOT_KNEE);
+  const overlap = max(knee.sub(subtraction.sub(distant).abs()), vec3(0));
+  // 引く量と遠方光の 2 次の smooth min。引く量が 0 なら丸めも 0。
+  const softMin = min(subtraction, distant).sub(overlap.mul(overlap).div(max(knee, vec3(1e-20)).mul(4)));
+  return distant.add(max(correction, vec3(0))).sub(softMin);
 }
 
-// 画素 screenUV の拡散照度。correction が null でなければ近傍補正を足して 0 以上に切り、null なら遠方の拡散照度そのもの
+// 画素 screenUV の拡散照度。correction が null でなければ近傍補正を足し(diffuseIrradianceAt)、null なら遠方の拡散照度そのもの
 // (近傍補正が空のフレームで補正を読まずに済ませる)。
 export function receivedIrradiance(lightPrepass: LightPrepass, correction: DiffuseCorrection | null): Vec3Node {
   const distant = texture(lightPrepass.diffuseTexture, screenUV).rgb;

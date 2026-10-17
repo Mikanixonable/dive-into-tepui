@@ -6,6 +6,7 @@ import {
 } from './protein-atom-view';
 import { disposeOwnedRenderResources } from '../dispose-owned-render-resources';
 import { markLitOpaque, markShadowCaster } from '../pipeline/lit-layer';
+import { markMotionRejected } from '../pipeline/motion-history';
 import { buildProteinSilhouette } from './protein-silhouette-view';
 import { buildProteinRibbon } from './protein-ribbon';
 import type { ProteinMotionBinding } from './protein-motion-material';
@@ -28,6 +29,18 @@ function proteinCoordinateRoot(structure: THREE.Group, coordinateScale: number):
   return root;
 }
 
+// root の下で、残基の変位を positionNode に加える材質を使うメッシュと線の動きベクトルを履歴なしにする。変位は
+// model 行列の履歴に現れないので、前フレームの位置を求められない。
+function markProteinMotionTargets(root: THREE.Object3D): void {
+  root.traverse((object) => {
+    if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.Line)) return;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    if (materials.some((material) => material.userData.proteinMotionPositionNode === true)) {
+      markMotionRejected(object);
+    }
+  });
+}
+
 /** Cartoon リボンとリガンドを、指定した着色で1体ぶんの root へ組む。 */
 export function buildProteinRibbonShip(
   source: ProteinRenderSource,
@@ -39,6 +52,7 @@ export function buildProteinRibbonShip(
   const structure = buildProteinRibbon(source, mode, fixedColor, motion);
   if (source.semantic.ligands.length) structure.add(buildProteinLigands(source, motion));
   const root = proteinCoordinateRoot(structure, source.semantic.coordinateScale);
+  markProteinMotionTargets(root);
   markLitOpaque(root);
   markShadowCaster(root);
   return root;
@@ -56,6 +70,7 @@ export function buildProteinEnemyShip(
   else if (display.representation === 'silhouette') structure = buildProteinSilhouette(source, display.colorMode, motion);
   else return buildProteinRibbonShip(source, display.colorMode, null, motion);
   const root = proteinCoordinateRoot(structure, source.semantic.coordinateScale);
+  markProteinMotionTargets(root);
   markLitOpaque(root);
   markShadowCaster(root);
   // 半透明の外殻は world パスで合成する。G バッファに残すと内部リボンの深度と法線を上書きする。

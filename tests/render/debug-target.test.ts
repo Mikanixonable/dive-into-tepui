@@ -12,6 +12,8 @@ export function register(): void {
     };
     before('shadow-map', 'normal');
     before('normal', 'shadow');
+    before('depth', 'motion');
+    before('motion', 'shadow');
     before('shadow', 'planet-light');
     before('planet-light', 'diffuse');
     before('diffuse', 'direct-specular');
@@ -32,7 +34,10 @@ export function register(): void {
     ] as const;
     before('bounce-source', chain[0]);
     for (const [index, id] of chain.slice(1).entries()) before(chain[index]!, id);
-    before(chain[chain.length - 1]!, 'correction');
+    before(chain[chain.length - 1]!, 'upsampled-correction');
+    before('upsampled-correction', 'correction');
+    before('correction', 'history-length');
+    before('history-length', 'reflection-source');
     before('correction', 'reflection-source');
     before('reflection-source', 'reflection-depth');
     before('reflection-depth', 'raw-reflection-weight');

@@ -6,30 +6,32 @@ import { InspectorBase, TimestampQuery, type WebGPURenderer } from 'three/webgpu
 export const GPU_PASS = {
   cloudBake: 0,
   shadowMap: 1,
-  gbuffer: 2,
-  cloudSurface: 3,
-  shadow: 4,
-  cloudShadow: 5,
-  lighting: 6,
-  nearbyDiffuseScanSurface: 7,
-  nearbyDiffuseScan: 8,
-  nearbyDiffuseInputPyramid: 9,
-  nearbyDiffuseBandReduce: 10,
-  nearbyDiffuseMerge: 11,
-  nearbyDiffuseDenoise: 12,
-  nearbyDiffuseUpsample: 13,
-  nearbyDiffuseAverage: 14,
-  reflectionSource: 15,
-  reflection: 16,
-  reflectionDenoise: 17,
-  material: 18,
-  atmosphere: 19,
-  cloudAtmosphere: 20,
-  world: 21,
-  lens: 22,
-  composite: 23,
-  overlay: 24,
-  antialias: 25,
+  nearbyDiffuseHistoryCopy: 2,
+  gbuffer: 3,
+  cloudSurface: 4,
+  shadow: 5,
+  cloudShadow: 6,
+  lighting: 7,
+  nearbyDiffuseScanSurface: 8,
+  nearbyDiffuseScan: 9,
+  nearbyDiffuseInputPyramid: 10,
+  nearbyDiffuseBandReduce: 11,
+  nearbyDiffuseMerge: 12,
+  nearbyDiffuseDenoise: 13,
+  nearbyDiffuseUpsample: 14,
+  nearbyDiffuseAccumulation: 15,
+  nearbyDiffuseAverage: 16,
+  reflectionSource: 17,
+  reflection: 18,
+  reflectionDenoise: 19,
+  material: 20,
+  atmosphere: 21,
+  cloudAtmosphere: 22,
+  world: 23,
+  lens: 24,
+  composite: 25,
+  overlay: 26,
+  antialias: 27,
 } as const;
 
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
@@ -40,9 +42,9 @@ export interface GpuTimingSink {
 
 // 表示名。並びは GPU_PASS の値の順。
 export const GPU_PASS_LABELS: readonly string[] = [
-  '雲の生成', '影マップ', 'Gバッファ', '表面雲', '影', '雲影',
+  '雲の生成', '影マップ', '近傍拡散履歴写し', 'Gバッファ', '表面雲', '影', '雲影',
   'ライティング', '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流',
-  '近傍拡散 joint-bilateral 均し', '近傍拡散拡大', '近傍拡散パス平均',
+  '近傍拡散 joint-bilateral 均し', '近傍拡散拡大', '近傍拡散蓄積', '近傍拡散パス平均',
   '映り込みの像の元', '映り込み', '映り込みの均し', 'マテリアル', '大気', '大気(雲あり)', 'ワールド', 'レンズ', '合成',
   '3D UI', 'アンチエイリアス',
 ];
@@ -166,7 +168,7 @@ export class GpuTimings {
         this.available = true;
         const pool = this.renderTimestampPool();
         if (pool) {
-          const matches: Array<readonly [GpuPassId, number]> = [];
+          const matches: (readonly [GpuPassId, number])[] = [];
           for (const [uid, duration] of pool.timestamps) {
             const pass = this.passByUid.get(uid);
             if (pass === undefined) continue;

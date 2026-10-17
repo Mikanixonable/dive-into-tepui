@@ -26,9 +26,17 @@ import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
 import { ERROR_SCALES, ErrorMetric, FALSE_STRUCTURE_EPSILONS, type ErrorMeasurement } from './error-metric';
 import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
+import { MotionSequence, type MotionFrameRecord } from './motion-sequence';
+import { LabPlayback } from './playback';
+import { MotionVectorCheck, type MotionVectorFrameRecord } from './motion-vector-check';
+import { captureAccumulated } from './accumulated-capture';
+import { StaticVariance, type StaticVarianceRecord } from './static-variance';
+import { phasesOf, type PhaseSequence } from './phase-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
+import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
+import type { SceneChangeTerms, SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
-import type { LabViewAngles } from './view-angles';
+import type { LabViewAngles, LightAngleShift } from './view-angles';
 import type {
   ScanTier, ScreenSpaceExperimentVariant, ScreenSpaceStageRange,
 } from '../../src/render/pipeline/screen-space/screen-space-pass';
@@ -64,15 +72,22 @@ declare global {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
+      captureAccumulated: () => Promise<string>;
       capture: () => Promise<string>;
       captureCorrectionProbe: () => ReturnType<LabView['captureCorrectionProbe']>;
       render: () => void;
+      setFrame: (frame: number, change?: number) => void;
+      setSceneChangeWeights: (weights: SceneChangeWeights | null) => void;
+      sceneChange: () => { terms: SceneChangeTerms | null; change: number };
+      setCaseValue: (name: string, value: string | number | boolean) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
+      viewAngles: () => LabViewAngles;
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsKey, value: boolean | ChoiceValue) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
-      measureCurrent: (warmupFrames?: number, sampleFrames?: number) => Promise<LabMeasurement>;
+      measureCurrent: (warmupFrames?: number, sampleFrames?: number, advanceFrame?: boolean) => Promise<LabMeasurement>;
+      measurePoolRebuild: (iterations: number) => ReturnType<LabView['measurePoolRebuild']>;
       measureScreenSpacePaths: (
         seeds: readonly (readonly [number, number])[], sampleCount?: number,
       ) => ReturnType<LabView['measureScreenSpacePaths']>;
@@ -118,6 +133,26 @@ declare global {
         rgb: Float32Array, geometry: SurfaceGeometry, radius: number, shift: readonly [number, number],
       ) => Promise<Float32Array>;
       stochasticUpscale: (scan: Float32Array, geometry: SurfaceGeometry, block: number) => Promise<Float32Array>;
+      setScanJitter: (jitter: ScanJitter | null) => void;
+      setJitterSources: (sources: readonly JitterSource[] | null) => void;
+      setRasterJitter: (offsetPx: readonly [number, number] | null) => void;
+      scanCellSize: () => number;
+      resetMotion: () => void;
+      moveCamera: (
+        translationPx: readonly [number, number], rotationPx: readonly [number, number], orbitPx: readonly [number, number],
+      ) => void;
+      moveLight: (shift: LightAngleShift) => void;
+      // columns は、位相の列 sequence で描き直した平均の補正を名前 name で添える列。
+      motionFrame: (
+        columns: readonly { readonly name: string; readonly sequence: PhaseSequence }[],
+      ) => Promise<MotionFrameRecord>;
+      resetMotionReference: () => void;
+      motionVectorFrame: (
+        frame: number, compareDepth: boolean, forceNoHistory?: boolean, verifyRepeated?: boolean,
+      ) => Promise<MotionVectorFrameRecord>;
+      staticVariance: (
+        sliceCount: number, historyCap: number, frames: number, pngScale: number | null,
+      ) => Promise<StaticVarianceRecord>;
     };
   }
 }
@@ -262,7 +297,11 @@ async function init(): Promise<void> {
   // 平面を均す GPU の資源は盲検の刺激を組むときにしか使わないので、初めて使うときに作る。
   let smoother: Promise<PlaneSmoother> | null = null;
   const planeSmoother = (): Promise<PlaneSmoother> => (smoother ??= PlaneSmoother.create());
+  const motion = new MotionSequence(view);
+  const motionVectorCheck = new MotionVectorCheck(view);
+  const staticVariance = new StaticVariance(view);
   const syncAngles = buildViewAngleSliders(view);
+  const playback = new LabPlayback(view, 'playback', 'temporal');
 
   const shotsRow = document.getElementById('shots')!;
   // 撮影のプルダウンを、いまのケースの撮影名で組み直す。反映は **applyShot を通す** — 観察の向きだけを
@@ -272,6 +311,7 @@ async function init(): Promise<void> {
     const columns: readonly [PulldownColumn<string>] = [{ items }];
     const shots = new Pulldown('撮影', columns, '反映', ([name]) => {
       view.applyShot(name);
+      playback.restart();
       targets.setSelected(view.debugTarget);
       syncAngles();
     });
@@ -282,6 +322,7 @@ async function init(): Promise<void> {
   const selectCase = (name: CaseName): void => {
     cases.setSelected(name);
     view.show(name);
+    playback.restart();
     syncAngles();
     rebuildShots();
   };
@@ -300,6 +341,7 @@ async function init(): Promise<void> {
     styles.setSelected(style);
     targets.setEnabled(style === 'realistic');
     view.setStyle(style);
+    playback.restart();
   };
   const styles = new SegmentedControl<RenderStyle>('スタイル', RENDER_STYLES, selectStyle);
   document.getElementById('modes')!.append(styles.element, targets.element);
@@ -308,16 +350,21 @@ async function init(): Promise<void> {
   const panel = new GraphicsPanel(settings.graphics.current, HIDDEN_GRAPHICS_KEYS);
   document.getElementById('graphics')!.appendChild(panel.element);
   panel.onChange = (selection) => settings.graphics.set(selection);
-  settings.graphics.subscribe((selection) => panel.sync(selection));
+  settings.graphics.subscribe((selection) => {
+    panel.sync(selection);
+    playback.refreshStatus();
+  });
 
   const loadButton = new Button('計測', () => { void measureCurrent(); });
   const loadResult = document.getElementById('load-result')!;
   document.getElementById('load-controls')!.appendChild(loadButton.element);
   const measureCurrent = async (): Promise<void> => {
+    const resumePlayback = playback.isPlaying;
     loadButton.setEnabled(false);
     loadResult.textContent = '計測中…';
     try {
-      const result = await view.measureCurrent();
+      await playback.pause();
+      const result = await view.measureCurrent(undefined, undefined, true);
       const table = document.createElement('table');
       const head = document.createElement('tr');
       for (const label of ['パス', 'median [ms]', 'p95 [ms]']) {
@@ -344,6 +391,8 @@ async function init(): Promise<void> {
     } catch (error) {
       loadResult.textContent = String(error);
     } finally {
+      playback.restart();
+      if (resumePlayback) playback.play();
       loadButton.setEnabled(true);
     }
   };
@@ -363,17 +412,25 @@ async function init(): Promise<void> {
       targets.setSelected(view.debugTarget);
       return pngs;
     },
+    captureAccumulated: () => captureAccumulated(view, 'accumulated capture'),
     capture: () => view.capture(),
     captureCorrectionProbe: () => view.captureCorrectionProbe(),
     render: () => view.render(),
+    setFrame: (frame, change) => view.setFrame(frame, change),
+    setSceneChangeWeights: (weights) => view.sceneChange.setWeights(weights),
+    sceneChange: () => ({ terms: view.sceneChange.lastTerms, change: view.sceneChange.lastChange }),
+    setCaseValue: (name, value) => view.setCaseValue(name, value),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
+    viewAngles: () => view.viewAngles,
     setStyle: selectStyle,
     setTarget: (target) => { targets.setSelected(target); view.showDebugTarget(target); },
     setGraphicsOption: (key, value) => {
       settings.graphics.set(withGraphicsValue(settings.graphics.current, key, value));
     },
     measure: (name, angles) => view.measure(name, angles),
-    measureCurrent: (warmupFrames, sampleFrames) => view.measureCurrent(warmupFrames, sampleFrames),
+    measureCurrent: (warmupFrames, sampleFrames, advanceFrame) =>
+      view.measureCurrent(warmupFrames, sampleFrames, advanceFrame),
+    measurePoolRebuild: (iterations) => view.measurePoolRebuild(iterations),
     measureScreenSpacePaths: (seeds, sampleCount) => view.measureScreenSpacePaths(seeds, sampleCount),
     showShot: async (name, shotName, graphics) => {
       await view.showShot(name, shotName, graphics);
@@ -411,6 +468,20 @@ async function init(): Promise<void> {
     sparseBilateral: async (rgb, geometry, radius, shift) => (
       (await planeSmoother()).sparseBilateral(rgb, geometry, radius, shift)),
     stochasticUpscale: async (scan, geometry, block) => (await planeSmoother()).stochasticUpscale(scan, geometry, block),
+    setScanJitter: (jitter) => view.setScanJitter(jitter),
+    setJitterSources: (sources) => view.setJitterSources(sources),
+    setRasterJitter: (offsetPx) => view.setRasterJitter(offsetPx),
+    scanCellSize: () => view.scanCellSize,
+    resetMotion: () => motion.reset(),
+    moveCamera: (translationPx, rotationPx, orbitPx) => motion.moveCamera(translationPx, rotationPx, orbitPx),
+    moveLight: (shift) => motion.moveLight(shift),
+    motionFrame: (columns) => motion.frame(
+      columns.map(({ name, sequence }) => ({ name, phases: phasesOf(sequence, view.scanCellSize) }))),
+    resetMotionReference: () => motionVectorCheck.reset(),
+    motionVectorFrame: (frame, compareDepth, forceNoHistory, verifyRepeated) =>
+      motionVectorCheck.frame(frame, compareDepth, forceNoHistory, verifyRepeated),
+    staticVariance: (sliceCount, historyCap, frames, pngScale) =>
+      staticVariance.capture(sliceCount, historyCap, frames, pngScale),
   };
 }
 

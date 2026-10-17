@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { PI, clamp, dot, length, max, uniform } from 'three/tsl';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
-import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
+import { contributionMaterial, type LightContribution, type LightSource, type SpecularReach } from './light-source';
 import type { ColorUniform, FloatUniform, Vec3Uniform } from '../../tsl-types';
 import type { ShadingSample } from './shading-sample';
 
@@ -21,6 +21,7 @@ export interface SphereLightValue {
 
 // 球光源の枠 1 つ。放射輝度が黒の間は寄与が無い。
 class SphereLightSource implements LightSource {
+  public readonly specularReach: SpecularReach = 'direct';
   private readonly centerUniform: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly radiusUniform: FloatUniform = uniform(1);
   private readonly radianceUniform: ColorUniform = uniform(new THREE.Color(0, 0, 0));
@@ -47,7 +48,7 @@ class SphereLightSource implements LightSource {
 
   // 寄与のマテリアル。位置と明るさはユニフォームで切り替える。
   public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
-    this.materialValue ??= contributionMaterial(sample, this.contribution(sample));
+    this.materialValue ??= contributionMaterial(sample, this.contribution(sample), this.specularReach);
     return this.materialValue;
   }
 
@@ -69,7 +70,7 @@ class SphereLightSource implements LightSource {
     const diffuse = this.radianceUniform.mul(PI).mul(radius).mul(radius).div(distSqr)
       .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr));
     const specular = this.radianceUniform.mul(this.sphereSpecular.factor(sample, center, radius));
-    return { diffuse, specular, specularReach: 'direct' };
+    return { diffuse, specular };
   }
 }
 

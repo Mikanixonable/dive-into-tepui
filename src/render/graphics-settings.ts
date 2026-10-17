@@ -246,6 +246,12 @@ export const GRAPHICS_FIELDS = {
         items: [[0, 'なし'], [1, '1'], [2, '2']],
         presets: { low: 2, medium: 2, high: 2 },
       },
+      // 静止した場面で積む履歴の上限 [フレーム]。1 で今のフレームの値をそのまま使う。
+      screenSpaceHistoryCap: {
+        kind: 'slider', label: '履歴の上限',
+        min: 1, max: 32, step: 1,
+        presets: { low: 8, medium: 8, high: 8 },
+      },
     },
   },
   // 滑らかな面へ、反射方向にある近くの物体を映す。

@@ -8,7 +8,7 @@ import {
 } from 'three/tsl';
 import { LAMBERT_SPHERE_GEOMETRIC_ALBEDO_RATIO } from '../../../physics/lambert-sphere';
 import { specularLobeHalfWidth } from './ggx';
-import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
+import { contributionMaterial, type LightContribution, type LightSource, type SpecularReach } from './light-source';
 import { PlanetLightImage } from './planet-light-image';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -39,8 +39,9 @@ const PLANET_LIGHT_MODEL = { uniformSphere: 0, textured: 1 } as const;
 // 拡散のローブを覆うフィルタの角幅 [rad]。クランプドコサイン(立体角 π)と同じ立体角の円錐の半角。
 const DIFFUSE_FILTER_ANGLE = 1.05;
 
-// スロット 1 本の値。中心・半径は描画座標、放射輝度は色つき(SUN_IRRADIANCE_1AU の目盛り)。
+// スロット 1 本の値。key はフレームをまたいで同じ天体を引く鍵、中心・半径は描画座標、放射輝度は色つき(SUN_IRRADIANCE_1AU の目盛り)。
 export interface PlanetLightValue {
+  readonly key: string;
   readonly center: THREE.Vector3;
   readonly radius: number;
   readonly radiance: Albedo;
@@ -108,6 +109,7 @@ const clampedToCone = Fn((
 // (sphere-light.ts)。大きさはその閉じた解が持ち、写しは色の倍率としてしか効かない。
 // TODO: 別の天体の影を受けない — 受け手と天体の間に別の天体があっても届く。
 class PlanetLightSlot implements LightSource {
+  public readonly specularReach: SpecularReach = 'far';
   // 光源モデルごとに 1 枚を遅延生成して持つ。
   private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
   // このスロットの天体の見た目を持つ写しと、そこへ焼く内容。消灯している間は null。
@@ -168,7 +170,7 @@ class PlanetLightSlot implements LightSource {
   public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
     const cached = this.materials.get(this.model);
     if (cached !== undefined) return cached;
-    const material = contributionMaterial(sample, this.contribution(sample));
+    const material = contributionMaterial(sample, this.contribution(sample), this.specularReach);
     this.materials.set(this.model, material);
     return material;
   }
@@ -188,17 +190,7 @@ class PlanetLightSlot implements LightSource {
       : sphereRadiance;
     const diffuse = this.diffuseIrradianceFor(sample, lightDir, sinSigmaSqr, sphereRadiance);
     const specular: Vec3Node = specularRadiance.mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
-    return { diffuse, specular, specularReach: 'far' };
-  }
-
-  // 受け手 sample へこのスロットの天体が届ける拡散照度。contribution の拡散と同じ値。
-  public diffuseIrradianceAt(sample: ShadingSample): Vec3Node {
-    const center = sample.viewPositionOf(this.slot.center);
-    const toCenter = center.sub(sample.position);
-    const sinSigmaSqr = this.sinSigmaSqrOf(toCenter);
-    const lightDir = this.capOf(toCenter, sinSigmaSqr).direction;
-    const sphereRadiance = this.uniformSphereRadiance(sample, center, lightDir, sinSigmaSqr);
-    return this.diffuseIrradianceFor(sample, lightDir, sinSigmaSqr, sphereRadiance);
+    return { diffuse, specular };
   }
 
   // 球冠の向き lightDir・視半径の正弦の 2 乗 sinSigmaSqr・一様球の放射輝度 sphereRadiance の天体が届ける拡散照度。
@@ -283,6 +275,8 @@ export class PlanetLightSource {
     () => ({ center: uniform(new THREE.Vector3()), radius: uniform(0), radiance: uniform(new THREE.Color(0, 0, 0)) }),
   );
   private readonly slotSources: readonly PlanetLightSlot[];
+  // 直前の set で使った光源(本数で切った後)。
+  private used: readonly PlanetLightValue[] = [];
 
   // sunLight は満ち欠けを測る恒星、bodyShadow は写しの大気が読む天体の影、usedCount は同時に使うスロットの本数
   // (描画設定 planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
@@ -297,11 +291,6 @@ export class PlanetLightSource {
   // 受け手 sample から見たスロット slot の天体の球冠。
   public capAt(sample: ShadingSample, slot: number): PlanetCap {
     return this.slotSources[slot]!.capAt(sample);
-  }
-
-  // 受け手 sample へスロット slot の天体が届ける拡散照度。そのスロットの光源が寄与する拡散と同じ値。
-  public diffuseIrradianceAtSlot(sample: ShadingSample, slot: number): Vec3Node {
-    return this.slotSources[slot]!.diffuseIrradianceAt(sample);
   }
 
   // 同時に使うスロットの本数(描画設定 planetLightCount の値)。点きうるのは先頭からこの本数のスロット。
@@ -333,6 +322,9 @@ export class PlanetLightSource {
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。
   public get lightSources(): readonly LightSource[] { return this.slotSources; }
 
+  // このフレームに宣言されて使っている光源の値(本数で切った後)。値は宣言した側の物で、次の set までに読む。
+  public get declaredLights(): readonly PlanetLightValue[] { return this.used; }
+
   // スロット 0 の写しを uv(0..1)で読んだ放射輝度。
   public imageRadianceAt(uv: Vec2Node): Vec3Node { return this.slotSources[0]!.imageRadianceAt(uv); }
 
@@ -343,7 +335,8 @@ export class PlanetLightSource {
 
   // このフレームの光源の列。本数を超えたぶんは捨て、足りないスロットは消灯する。
   public set(lights: readonly PlanetLightValue[]): void {
-    const used = lights.slice(0, this.usedCount);
+    const used = lights.slice(0, this.count);
+    this.used = used;
     for (const [i, slot] of this.slots.entries()) {
       const light = used[i];
       slot.radius.value = light === undefined ? 0 : light.radius;

@@ -124,12 +124,45 @@ export interface LabCase {
   // earthCenter は地球の中心(描画座標)で、地球を置かないケースでは null。毎フレーム、カメラと地球を
   // 置いたあとに呼ばれるので、同値なら何もしないこと。
   readonly sync?: (graphics: GraphicsSettingsData, earthCenter: THREE.Vector3 | null) => void;
+  // 論理フレーム frame の状態へ置く。同じ番号を繰り返し渡したときは同じ状態になる。
+  readonly setFrame?: (frame: number) => void;
+  // ケース固有の値を差し替える。受け付ける名前と型はケースが検査する。
+  readonly setValue?: (name: string, value: string | number | boolean) => void;
+  // frame の実体を返す。同じ論理 frame には同じ実体と行列を返し、問い合わせでケースの状態を変えない。
+  readonly motionEntities?: (frame: number) => readonly LabMotionEntity[];
+  // 動きの参照で、写った画素が動きの履歴を棄てるのを正しいとみなす物体を返す。
+  readonly rejectedMotionObjects?: () => readonly THREE.Object3D[];
+  // 直前の sync が描画座標の原点にした、ケースの世界座標の点を返す。
+  readonly renderOrigin?: () => THREE.Vector3;
+  // ケースが握る、objects の所有印では解放できない資源を解放する。
+  readonly dispose?: () => void;
+  // プールを iterations 回積み直し、回ごとの CPU の所要時間 [ms] を poolRebuildMs で返す。
+  readonly measurePoolRebuild?: (iterations: number) => {
+    readonly poolRebuildMs: readonly number[];
+    readonly previousMatricesMs: readonly number[];
+  };
   // 計測結果へ添える、タンパク質ケースの識別。
   readonly proteinMotion?: ProteinLabCaseMetadata;
   // 表示時刻 displayTime [s] まで残基 motion を進め、そのフレームの計測値を返す。
   readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
   // 残基 motion が握る資源を解放する。
   readonly disposeProteinMotion?: () => void;
+}
+
+// 動きの参照が CPU のレイで追う、論理フレーム 1 つぶんの実体。
+export interface LabMotionEntity {
+  // 同じ実体は全フレームで同じ鍵を持ち、異なる実体は異なる鍵を持つ。
+  readonly key: string;
+  // 部屋、通常物体、プールの区分。
+  readonly kind: 'room' | 'ordinary' | 'pool';
+  // 実体ごとの CPU レイに使う形状。
+  readonly geometry: THREE.BufferGeometry;
+  // 浮動原点で置き直す前の、ケース世界座標での model 行列。
+  readonly matrix: THREE.Matrix4;
+  // プールへ push した順の番号。プール以外は null。
+  readonly slot: number | null;
+  // slot を数えるプールの識別。プールを 1 つしか持たないケースでは省ける。
+  readonly poolId?: string;
 }
 
 // ケースを組む関数。style の表示スタイルで組んだ姿を返し、環の帯は ringMaterials で描く。
@@ -267,6 +300,31 @@ export function slab(
   mesh.userData.ownsGeometry = true;
   mesh.userData.ownsMaterial = true;
   return mesh;
+}
+
+// Cornell box の内寸と板の厚み [m]。内面は x = ±halfWidth・z = backZ・y = height で、z = frontZ で手前を開ける。床の
+// 上面は y = 0。
+export interface CornellRoomDimensions {
+  readonly halfWidth: number;
+  readonly backZ: number;
+  readonly frontZ: number;
+  readonly height: number;
+  readonly panelThickness: number;
+}
+
+// 寸法 dimensions の、手前を開けた Cornell box の殻 — 白い床・天井・奥の壁と、赤い左の壁・緑の右の壁の板。ジオメトリと
+// マテリアルは板が所有する。
+export function cornellRoomShell(dimensions: CornellRoomDimensions): THREE.Mesh[] {
+  const { halfWidth: w, backZ, frontZ, height, panelThickness: t } = dimensions;
+  const red = standard(new THREE.Vector3(0.63, 0.065, 0.05), WHITE_ROUGHNESS, 0);
+  const green = standard(new THREE.Vector3(0.14, 0.45, 0.091), WHITE_ROUGHNESS, 0);
+  return [
+    slab(new THREE.Vector3(-w - t, -t, backZ - t), new THREE.Vector3(w + t, 0, frontZ)),
+    slab(new THREE.Vector3(-w - t, height, backZ - t), new THREE.Vector3(w + t, height + t, frontZ)),
+    slab(new THREE.Vector3(-w - t, 0, backZ - t), new THREE.Vector3(w + t, height, backZ)),
+    slab(new THREE.Vector3(-w - t, 0, backZ), new THREE.Vector3(-w, height, frontZ), red),
+    slab(new THREE.Vector3(w, 0, backZ), new THREE.Vector3(w + t, height, frontZ), green),
+  ];
 }
 
 // 仮の親 host へ組んで個体を積み終えた InstancedPool の枝を、host から外してケースの物体にする。

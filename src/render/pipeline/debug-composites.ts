@@ -4,14 +4,16 @@
 // bind/sample することになる。
 import * as THREE from 'three/webgpu';
 import {
-  abs, float, floor, getViewPosition, int, ivec2, log, max, sRGBTransferEOTF, sRGBTransferOETF, screenUV, select, sign,
+  abs, atan, cos, float, floor, getViewPosition, int, ivec2, length, log, max, sRGBTransferEOTF, sRGBTransferOETF,
+  screenUV, select, sign,
   texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { octDecodeNormal } from './gbuffer';
 import { compositeMaterial } from './composite-material';
 import { viewPositionAt } from './view-ray';
 import {
-  CHAIN_DEBUG_TARGETS, type ChainDebugTarget, type ChainDebugTargetId, type DebugTargetId,
+  CHAIN_DEBUG_TARGETS, PLANET_DIFFUSE_DEBUG_TARGETS, type ChainDebugTarget, type ChainDebugTargetId, type DebugTargetId,
+  type PlanetDiffuseDebugTargetId,
 } from './debug-target';
 import { levelAt, type BandLayout } from './screen-space/band-pyramid';
 import { REFLECTION_LEVEL_COUNT } from './screen-space/reflection-denoise';
@@ -42,8 +44,16 @@ function isChainView(view: DebugView): view is ChainDebugTargetId {
   return CHAIN_DEBUG_TARGETS.some(({ id }) => id === view);
 }
 
+// 選択肢 view が、向きを見る天体照のスロットごとの拡散照度の表示か。
+function isPlanetDiffuseView(view: DebugView): view is PlanetDiffuseDebugTargetId {
+  return PLANET_DIFFUSE_DEBUG_TARGETS.some(([id]) => id === view);
+}
+
 export class DebugComposites {
-  private readonly materials: Readonly<Record<Exclude<DebugView, ChainDebugTargetId>, THREE.MeshBasicNodeMaterial>>;
+  private readonly materials: Readonly<Record<
+    Exclude<DebugView, ChainDebugTargetId | PlanetDiffuseDebugTargetId>, THREE.MeshBasicNodeMaterial
+  >>;
+  private readonly planetDiffuseMaterials: ReadonlyMap<PlanetDiffuseDebugTargetId, THREE.MeshBasicNodeMaterial>;
   // 帯の数と、段 0 の合流が補正の描画先へ直接書くか(ScreenSpacePass.mergesIntoCorrection)ごとの、帯と段の表示。初めて
   // その組で映すときに組む。
   private readonly chainMaterials = new Map<string, ReadonlyMap<ChainDebugTargetId, THREE.MeshBasicNodeMaterial>>();
@@ -54,6 +64,8 @@ export class DebugComposites {
   private readonly near: FloatUniform = uniform(1);
   private readonly far: FloatUniform = uniform(2);
   private readonly viewToWorld: Mat4Uniform = uniform(new THREE.Matrix4());
+  // 動きベクトルの表示が uv の差を画素の長さへ直す、描画バッファの寸法 [px]。syncCamera が毎フレーム書き込む。
+  private readonly motionViewport = uniform(new THREE.Vector2(1, 1));
 
   // 映す中間ターゲットの持ち主を受ける。projectionInverse は実カメラの逆射影行列で、書き込むのは呼び出し側。
   public constructor(
@@ -73,6 +85,8 @@ export class DebugComposites {
       toneMapped(texture(source, screenUV).rgb),
     );
     this.blankMaterial = material(vec4(0, 0, 0, 1));
+    this.planetDiffuseMaterials = new Map(PLANET_DIFFUSE_DEBUG_TARGETS.map(([id], slot) => (
+      [id, hdr(lightPrepass.directionalPlanetDiffuseTexture(slot))] as const)));
     this.materials = {
       normal: material(vec4(octDecodeNormal(texture(gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1)),
       roughness: material(vec4(vec3(texture(gbuffer.roughnessTexture, screenUV).r), 1)),
@@ -80,6 +94,7 @@ export class DebugComposites {
       metalness: material(vec4(vec3(this.metalness()), 1)),
       emissive: hdr(gbuffer.emissiveTexture),
       depth: material(vec4(vec3(this.logDepth(texture(gbuffer.depthTexture, screenUV).r)), 1)),
+      motion: material(vec4(this.motionColor(), 1)),
       // 4 枚のスロットを 2x2 に並べて画面いっぱいへ映す。線形深度なのでそのまま濃淡として
       // 読め(遠いほど白)、使われていないスロットは真っ白のまま残る。
       'shadow-map': material(vec4(vec3(this.shadowSlotGrid()), 1)),
@@ -88,7 +103,12 @@ export class DebugComposites {
       diffuse: hdr(lightPrepass.diffuseTexture),
       'direct-specular': hdr(lightPrepass.directSpecularTexture),
       'far-specular': hdr(lightPrepass.farSpecularTexture),
+      'undirected-far-diffuse': hdr(lightPrepass.undirectedFarDiffuseTexture),
+      'upsampled-correction': material(vec4(
+        this.signedCorrection(texture(diffuseCorrection.upsampledTarget.texture, screenUV)), 1,
+      )),
       correction: material(vec4(this.signedCorrection(texture(diffuseCorrection.texture, screenUV)), 1)),
+      'history-length': material(vec4(vec3(screenSpacePass.normalizedHistoryAt(screenUV)), 1)),
       'bounce-source': hdr(screenSpacePass.surfaceRadianceTexture),
       'reflection-source': hdr(reflectionSourcePass.texture),
       'reflection-depth': material(vec4(vec3(this.reflectionDepth()), 1)),
@@ -112,6 +132,7 @@ export class DebugComposites {
   // 選択肢 view の合成マテリアル。帯と段の表示は、いまの段の帯の数で描いた中間ターゲットを映し、その帯の数に無い
   // 帯と段なら黒。
   public material(view: DebugView): THREE.MeshBasicNodeMaterial {
+    if (isPlanetDiffuseView(view)) return this.planetDiffuseMaterials.get(view)!;
     if (!isChainView(view)) return this.materials[view];
     const { bandLayout, mergesIntoCorrection } = this.screenSpacePass;
     return this.chainMaterialsOf(bandLayout, mergesIntoCorrection).get(view) ?? this.blankMaterial;
@@ -161,7 +182,7 @@ export class DebugComposites {
         if (target.level >= count - 1) return null;
         const direct = mergesIntoCorrection && target.level === 0;
         if (direct && target.kind === 'merged-share') return null;
-        const source = direct ? corrections.texture : corrections.mergedTarget(layout, target.level).texture;
+        const source = direct ? corrections.upsampledTarget.texture : corrections.mergedTarget(layout, target.level).texture;
         const merged = texture(source, screenUV);
         return target.kind === 'merged'
           ? this.signedColor(merged.rgb)
@@ -184,8 +205,10 @@ export class DebugComposites {
   }
 
   // 深度と影スロットの表示が読む実カメラ camera の値を書き込む。
-  public syncCamera(camera: THREE.Camera): void {
+  // width × height は描画バッファの寸法 [px] で、動きベクトルの表示が読む。
+  public syncCamera(camera: THREE.Camera, width: number, height: number): void {
     this.viewToWorld.value.copy(camera.matrixWorld);
+    this.motionViewport.value.set(width, height);
     if (camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera) {
       this.near.value = camera.near;
       this.far.value = camera.far;
@@ -215,6 +238,23 @@ export class DebugComposites {
   private metalness(): FloatNode {
     const metalness = texture(this.gbuffer.basecolorTexture, screenUV).a;
     return select(this.gbuffer.covered(), metalness, float(0));
+  }
+
+  // RGBA 動き添付の rg を、方向の色相・対数の画素長・棄却色へ写す。
+  private motionColor(): Vec3Node {
+    // 画素で測った動きの長さと、向きを 0..1 にした色相。
+    const movement = texture(this.gbuffer.motionTexture, screenUV).rg;
+    const magnitude = length(movement.mul(this.motionViewport));
+    const hue = atan(movement.y, movement.x).add(Math.PI).div(2 * Math.PI);
+    // 色相を色の輪へ写し、明るさは 0..32 px を対数で 0..1 へ。履歴なし(MOTION_NO_HISTORY)の画素は紫。
+    const wheel = vec3(
+      cos(hue.mul(2 * Math.PI)).mul(0.5).add(0.5),
+      cos(hue.mul(2 * Math.PI).add((2 * Math.PI) / 3)).mul(0.5).add(0.5),
+      cos(hue.mul(2 * Math.PI).add((4 * Math.PI) / 3)).mul(0.5).add(0.5),
+    );
+    const brightness = log(magnitude.add(1)).div(Math.log(33)).clamp(0, 1);
+    const rejected = max(abs(movement.x), abs(movement.y)).greaterThan(1000);
+    return select(rejected, vec3(0.65, 0.05, 0.9), wheel.mul(brightness));
   }
 
   // 影のスロット 4 枚を 2x2 のタイルとして 1 枚のノードへ畳む。

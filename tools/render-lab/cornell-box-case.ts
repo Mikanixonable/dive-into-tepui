@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { markLitOpaque, markShadowCaster } from '../../src/render/pipeline/lit-layer';
 import { directionFromAngles } from './view-angles';
 import {
-  labCamera, OVERHEAD_EARTH, slab, standard, white, WHITE_ROUGHNESS, type CaseBuilder, type LabCase,
+  cornellRoomShell, labCamera, OVERHEAD_EARTH, white, WHITE_ROUGHNESS, type CaseBuilder, type LabCase,
 } from './lab-case';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
@@ -16,9 +16,6 @@ const FRONT_Z = 3;
 const HEIGHT = 5.5;
 // 床・壁・天井の板の厚み [m]。
 const PANEL_THICKNESS = 0.2;
-// 左(−X)と右(+X)の壁の色(線形 RGB)。
-const RED = new THREE.Vector3(0.63, 0.065, 0.05);
-const GREEN = new THREE.Vector3(0.14, 0.45, 0.091);
 
 // 波板の振幅と波長 [m]、波の数と、波長あたりの分割数。波板は床の z = WAVE_BACK_Z から開口までを壁から壁まで覆い、
 // 山は x に沿って走る。谷底で床の上面に接し、奥と手前の端は谷底で終わる。
@@ -79,15 +76,9 @@ function ownedMesh(geometry: THREE.BufferGeometry, material: THREE.Material): TH
 
 // 床・天井・奥の壁と、赤い左の壁・緑の右の壁。
 function shell(): THREE.Mesh[] {
-  const w = HALF_WIDTH;
-  const t = PANEL_THICKNESS;
-  return [
-    slab(new THREE.Vector3(-w - t, -t, BACK_Z - t), new THREE.Vector3(w + t, 0, FRONT_Z)),
-    slab(new THREE.Vector3(-w - t, HEIGHT, BACK_Z - t), new THREE.Vector3(w + t, HEIGHT + t, FRONT_Z)),
-    slab(new THREE.Vector3(-w - t, 0, BACK_Z - t), new THREE.Vector3(w + t, HEIGHT, BACK_Z)),
-    slab(new THREE.Vector3(-w - t, 0, BACK_Z), new THREE.Vector3(-w, HEIGHT, FRONT_Z), standard(RED, WHITE_ROUGHNESS, 0)),
-    slab(new THREE.Vector3(w, 0, BACK_Z), new THREE.Vector3(w + t, HEIGHT, FRONT_Z), standard(GREEN, WHITE_ROUGHNESS, 0)),
-  ];
+  return cornellRoomShell({
+    halfWidth: HALF_WIDTH, backZ: BACK_Z, frontZ: FRONT_Z, height: HEIGHT, panelThickness: PANEL_THICKNESS,
+  });
 }
 
 // 奥行き z [m] での波板の上面の高さ [m]。

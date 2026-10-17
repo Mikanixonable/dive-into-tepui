@@ -7,7 +7,7 @@ import { PI, dot, uniform, vec3 } from 'three/tsl';
 import type { FloatUniform, Vec3Node } from '../../tsl-types';
 import { REFERENCE_RADIANT_INTENSITY, type SunLight } from '../sun-light';
 import type { GraphicsSettingsData } from '../../graphics-settings';
-import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
+import { contributionMaterial, type LightContribution, type LightSource, type SpecularReach } from './light-source';
 import type { ShadingSample } from './shading-sample';
 
 // 1 天文単位で SUN_IRRADIANCE_1AU になる放射照度へ掛ける割合。
@@ -19,6 +19,7 @@ export function ambientFraction(graphics: GraphicsSettingsData): number {
 }
 
 export class AmbientSource implements LightSource {
+  public readonly specularReach: SpecularReach = 'far';
   private readonly fractionUniform: FloatUniform = uniform(0);
   private materialValue: THREE.MeshBasicNodeMaterial | null = null;
   // sunLight から減衰の中心となる位置を読む。
@@ -32,12 +33,12 @@ export class AmbientSource implements LightSource {
 
   // 環境光の寄与のマテリアル。強さはユニフォームで切り替える。
   material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
-    this.materialValue ??= contributionMaterial(sample, this.contribution(sample));
+    this.materialValue ??= contributionMaterial(sample, this.contribution(sample), this.specularReach);
     return this.materialValue;
   }
 
   // 受け手 sample へ届く環境光の放射照度。空が遮られないとしたときの値で、消灯していれば 0。
-  public irradiance(sample: ShadingSample): Vec3Node {
+  private irradiance(sample: ShadingSample): Vec3Node {
     const toSun = sample.viewPositionOf(this.sunLight.position).sub(sample.position);
     return vec3(REFERENCE_RADIANT_INTENSITY).div(dot(toSun, toSun)).mul(this.fractionUniform);
   }
@@ -46,7 +47,7 @@ export class AmbientSource implements LightSource {
   // して映したもので、粗さによらず一定 — 拡散を持たない金属面が影の中で真っ黒に残らないための項。
   private contribution(sample: ShadingSample): LightContribution {
     const irradiance = this.irradiance(sample);
-    return { diffuse: irradiance, specular: irradiance.div(PI), specularReach: 'far' };
+    return { diffuse: irradiance, specular: irradiance.div(PI) };
   }
 
   // 組んだマテリアルを解放する。

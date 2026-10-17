@@ -27,6 +27,7 @@ import { ScreenSpacePass, screenSpaceDiffuseOf } from './screen-space/screen-spa
 import { DiffuseCorrection } from './screen-space/diffuse-correction';
 import { ScreenSpaceReflection } from './screen-space/screen-space-reflection';
 import { BodyShadow } from './shadow/body-shadow';
+import { SceneChangeTracker, type SceneChangeDeclarations } from './scene-change-tracker';
 import { RingShadow } from './shadow/ring-shadow';
 import { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
 import { MeshShadow } from './shadow/mesh-shadow';
@@ -96,6 +97,8 @@ export class RenderPipeline {
   private readonly drawingBufferSize = new THREE.Vector2();
   // 天体照の写しの基準点(カメラの描画座標)の書き込み先。同じく使い回し領域。
   private readonly cameraPosition = new THREE.Vector3();
+  // 宣言の前の番号との差から、時間方向の蓄積へ渡す変化量を決める。
+  private readonly sceneChangeTracker = new SceneChangeTracker();
   private readonly unregisterProteinMotionRenderer: () => void;
 
   // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。
@@ -112,6 +115,8 @@ export class RenderPipeline {
   public get ambient(): AmbientSource { return this._ambient; }
   public get sphereLights(): SphereLights { return this._sphereLights; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
+  // 変化量の推定の基準(カメラの同一性の鍵と基準の受け手)の書き込み先。毎フレーム描く前に宣言する。
+  public get sceneChange(): SceneChangeDeclarations { return this.sceneChangeTracker; }
 
   // 以下は、近傍拡散補正の段と seed の書き込み先と、読み戻せる中間ターゲットの持ち主。
   public get screenSpace(): ScreenSpacePass { return this.screenSpacePass; }
@@ -150,11 +155,12 @@ export class RenderPipeline {
     this._ambient = new AmbientSource(this._sunLight);
     this._diffuseCorrection = new DiffuseCorrection();
     this._sphereLights = new SphereLights(this.sphereSpecular);
-    this.lightPrepass = new LightPrepass(renderer, this._gbuffer, [
-      this.sunSource, ...this._planetLight.lightSources, this._ambient,
-    ], this._sphereLights.sources, gpu);
+    this.lightPrepass = new LightPrepass(
+      renderer, this._gbuffer, this.sunSource, this._planetLight.lightSources, this._ambient,
+      this._sphereLights.sources, gpu,
+    );
     this.screenSpacePass = new ScreenSpacePass(
-      renderer, this._gbuffer, this.lightPrepass, this._planetLight, this._ambient, this._diffuseCorrection, gpu,
+      renderer, this._gbuffer, this.lightPrepass, this._planetLight, this._diffuseCorrection, gpu,
       screenSpaceDiffuseOf(graphics), graphics.screenSpaceScanScale, graphics.screenSpaceSliceCount,
       graphics.screenSpaceStepCount, graphics.screenSpaceBandCount,
       graphics.screenSpaceDirectionalPlanetCount, this._exposure.factor,
@@ -267,9 +273,9 @@ export class RenderPipeline {
   }
 
   // 合成パスの表示が深度から位置と距離を引き直すための、実カメラの値を書き込む。
-  private syncCompositeCamera(camera: THREE.Camera): void {
+  private syncCompositeCamera(camera: THREE.Camera, width: number, height: number): void {
     this.cameraProjectionInverse.value.copy(camera.projectionMatrixInverse);
-    this.debugComposites.syncCamera(camera);
+    this.debugComposites.syncCamera(camera, width, height);
   }
 
   // このフレームに画面いっぱいへ映す中間ターゲット。'off' なら通常表示。
@@ -292,6 +298,7 @@ export class RenderPipeline {
       graphics.screenSpaceScanScale, graphics.screenSpaceSliceCount, graphics.screenSpaceStepCount,
       graphics.screenSpaceBandCount);
     this.screenSpacePass.setDirectionalPlanetCount(graphics.screenSpaceDirectionalPlanetCount);
+    this.screenSpacePass.setHistoryCap(graphics.screenSpaceHistoryCap);
     // 近傍補正を書く段と、それを読む本マテリアル・映り込みの像の元は一緒に切り替える。
     this.reflectionSourcePass.setCorrected(graphics.screenSpaceOcclusion);
     this.materialPass.setCorrected(graphics.screenSpaceOcclusion);
@@ -330,14 +337,14 @@ export class RenderPipeline {
   ): Promise<void> {
     const { x: width, y: height } = this.syncTargetSize();
 
-    this.syncCompositeCamera(camera);
+    this.syncCompositeCamera(camera, width, height);
 
     // 描画順に並べる。スタイルによらず通る段。
     const passes: [string, () => Promise<void>][] = [
       ['影マップ', () => this.shadowMaps.compile(scene, camera, height, this._sunLight)],
       ['G バッファ', () => this._gbuffer.compile(scene, camera, width, height)],
       ['影', () => this.shadowPass.compile(camera, width, height)],
-      ['照明', () => this.lightPrepass.compile(camera, width, height)],
+      ['照明', () => this.lightPrepass.compile(camera, width, height, this.screenSpacePass.farDiffuseSplit)],
       ['遮蔽と照り返し', () => this.screenSpacePass.compile(camera, width, height)],
     ];
 
@@ -375,7 +382,9 @@ export class RenderPipeline {
   // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → ライティング → 遮蔽と照り返し → 映り込みの像の元 → 映り込み →
   // マテリアル → 大気 → world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは映り込みの
   // 像の元・映り込み・マテリアル・大気・world・レンズの6つのパスを飛ばす。デバッグ表示の間もすべてのパスを発行する。
-  public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
+  // frame は論理フレームの番号(同じ番号の描き直しは時間方向の履歴を進めない)、change は宣言の差から見積もる変化量へ
+  // 外から足す量。
+  public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, frame: number, change = 0): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
 
@@ -388,8 +397,14 @@ export class RenderPipeline {
     // 太陽光の影マップパス。G バッファを必要としないので、その前に置く。
     this.shadowMaps.render(scene, camera, height, this._sunLight);
 
+    // 時間方向の蓄積へ、このフレームの番号と、宣言の差から決めた変化量を渡す。
+    this.screenSpacePass.beginFrame(frame, this.sceneChangeTracker.changeAt(
+      frame, change,
+      this.sceneChangeTracker.sampleOf(camera, this._sunLight, this._planetLight, this._bodyShadow),
+    ));
+
     // G バッファパス。
-    this._gbuffer.render(scene, camera, width, height);
+    this._gbuffer.render(scene, camera, width, height, frame);
 
     // 影パス。G バッファの深度を読む。
     this.shadowPass.render(camera, width, height);
@@ -398,7 +413,7 @@ export class RenderPipeline {
     this._planetLight.bake(this.renderer, camera.getWorldPosition(this.cameraPosition), this.gpu);
 
     // ライティングパス。G バッファと影の透過率を読む。
-    this.lightPrepass.render(camera, width, height);
+    this.lightPrepass.render(camera, width, height, this.screenSpacePass.farDiffuseSplit);
 
     // 遮蔽と照り返しのパス。G バッファと拡散照度を読む。
     this.screenSpacePass.render(camera, width, height);
@@ -444,7 +459,7 @@ export class RenderPipeline {
     }
 
     // composite パス。
-    this.syncCompositeCamera(camera);
+    this.syncCompositeCamera(camera, width, height);
     // 出力先を差し替えると、描画先を指定しない2つのパスが表示用ターゲットへ向く。撮影のために
     // 呼び出し側が張った出力先を潰さないよう、退避してから戻す。
     const outputTarget = this.renderer.getOutputRenderTarget();

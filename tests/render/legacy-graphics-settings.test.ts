@@ -17,6 +17,7 @@ const LEGACY_HIGH: GraphicsSettingsData = {
   atmosphere: true, atmosphereSampleBudget: 24, airglow: true, aurora: true,
   screenSpaceOcclusion: true, screenSpaceIndirect: true, screenSpaceScanScale: 0.25, screenSpaceBandCount: 4, screenSpaceSliceCount: 4, screenSpaceStepCount: 5,
   screenSpaceDirectionalPlanetCount: 2,
+  screenSpaceHistoryCap: 8,
   screenSpaceSpecular: true, screenSpaceSpecularScale: 0.5, screenSpaceSpecularStepCount: 32,
   screenSpaceSpecularDenoise: true,
   pointField: true, rings: true, lens: true, proteinVibration: true,
