@@ -23,12 +23,13 @@ export interface PhaseSequence {
 
 // 列 sequence の k 番目(0 から)の位相。cellSize は走査の画素の幅 [描画バッファの画素]。
 export function phaseAt(sequence: PhaseSequence, k: number, cellSize: number): CorrectionPhase {
-  const jitter = frameJitterAt(k, sequence.sources.filter((source): source is JitterSource => source !== 'raster'), cellSize);
+  const scanSources = sequence.sources.filter((source): source is JitterSource => source !== 'raster');
+  const jitter = frameJitterAt(k, scanSources, cellSize);
   return { ...jitter, rasterJitter: sequence.sources.includes('raster') ? rasterJitterAt(k) : null };
 }
 
 // 列 sequence の全ての位相。
-export function phasesOf(sequence: PhaseSequence, cellSize: number): CorrectionPhase[] {
+export function phasesOf(sequence: PhaseSequence, cellSize: number): readonly CorrectionPhase[] {
   return Array.from({ length: sequence.count }, (_, k) => phaseAt(sequence, k, cellSize));
 }
 

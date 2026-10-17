@@ -73,7 +73,7 @@ function proteinCase(): LabCase {
         lodCounts: { near: 1 },
       };
     },
-    // 論理番号 0 はケースを落ち着かせる時刻 1 秒に合わせ、以後は番号ごとに進める。
+    // 論理番号 0 をケースが落ち着く表示時刻 1 s に置き、以後は番号ごとに 1/60 s 進める。
     setFrame(frame) {
       controller.sampleAt(1 + frame / 60, 'near');
       updateProteinMotionCoefficients(binding, controller.effectiveModeCoefficients);

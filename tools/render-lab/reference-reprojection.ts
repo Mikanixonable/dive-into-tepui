@@ -1,5 +1,5 @@
 // 世界に静止した場面の、参照の再投影。いまのフレームの画素が写す表面の点を、深度から位置を戻して前のフレームのカメラで写し、
-// 前のフレームの画素の座標を求める。描画の動きベクトルに頼らない、フレームの間の同じ表面の点の対応づけで、それを使って
+// 前のフレームの画素の座標を求める。深度とカメラだけから決まる、フレームの間の同じ表面の点の対応づけで、それを使って
 // フレームの間の値の差とその大きさの要約を求める。
 import * as THREE from 'three/webgpu';
 import type { FloatImage } from './lab';
@@ -98,6 +98,7 @@ export function reprojectedDifference(
 ): FloatImage {
   const { width, height } = current;
   const rgba = new Float32Array(width * height * 4);
+  // 再投影のある画素ごとに、前のフレームの同じ表面の点の値を読んで引く。
   for (let p = 0; p < width * height; p++) {
     const px = reprojected[2 * p]!;
     if (Number.isNaN(px)) continue;
@@ -116,6 +117,7 @@ export function reprojectedDifference(
 export function differenceSummaryOf(
   difference: FloatImage, current: FloatImage, surfaceCount: number, scale: number,
 ): DifferenceSummary {
+  // 再投影のある画素の、差といまの値の成分の二乗和と、画素ごとの差の成分の絶対値の最大を集める。
   const magnitudes: number[] = [];
   let differenceSquares = 0;
   let valueSquares = 0;
@@ -130,6 +132,7 @@ export function differenceSummaryOf(
     }
     magnitudes.push(magnitude);
   }
+  // 画素ごとの最大を並べて分位を読む。再投影のある画素が無ければ全て 0。
   const sorted = Float64Array.from(magnitudes).sort();
   const count = sorted.length;
   return {

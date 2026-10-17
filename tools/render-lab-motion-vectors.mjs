@@ -1,4 +1,6 @@
-// CPU レイの動き参照を、ケース・カメラの列・座標・プールの積み順で撮る。
+// G バッファの動きベクトルを、CPU レイによる動きの参照と照合する。ヘッドレス Chrome で .render-lab/ を開き、ケース・
+// カメラの列・描画座標・プールの積み順の組ごとにフレームを描いて、PNG と表(report.md)・記録(metrics.json)・見るページ
+// (index.html)を .render-lab-shots/<組の名前>/ へ書く。照合に外れた組があれば終了コード 1。
 // 先に npx webpack --config webpack.render-lab.config.js --mode production を実行する。
 // 使い方: node tools/render-lab-motion-vectors.mjs <組の名前> [--scenes=...] [--sequences=...] [--frames=N]
 //   [--coordinates=world,floating] [--orders=stable,shuffle,churn]
@@ -16,16 +18,15 @@ const root = path.resolve(import.meta.dirname, '..');
 const USAGE = 'usage: node tools/render-lab-motion-vectors.mjs <set-name> [--scenes=S,...] [--sequences=Q,...] [--frames=N] [--coordinates=world,floating] [--orders=stable,shuffle,churn]';
 const COORDINATES = ['world', 'floating'];
 const ORDERS = ['stable', 'shuffle', 'churn'];
+// 動きの格子を読む画素の間隔 [px]。参照の標本の間隔(motion-reference.ts の SAMPLE_STEP)と揃える。
 const MOTION_SAMPLE_STEP = 4;
+// G バッファの動きベクトル(uv)のどちらかの成分の絶対値がこれ以上なら、履歴なしの印とみなす。
+const NO_HISTORY_MOTION_THRESHOLD = 1000;
 
-// 各列がケースの物体を動かすかと、フレームごとのカメラ移動を持つ。
+// 各列がケースの物体を動かすかと、フレームごとのカメラ移動を持つ。motionStopFrame は物が止まる論理フレーム。
 const SEQUENCES = [
   { name: 'still', moveObjects: false, frame: () => ({ translation: [0, 0], rotation: [0, 0], orbit: [0, 0] }) },
-  ...CAMERA_MOTION_SEQUENCES.map((sequence) => ({
-    ...sequence,
-    moveObjects: false,
-    frame: (k) => ({ ...sequence.frame(k), moveObjects: false }),
-  })),
+  ...CAMERA_MOTION_SEQUENCES.map((sequence) => ({ ...sequence, moveObjects: false })),
   { name: 'object-motion', moveObjects: true, frame: () => ({ translation: [0, 0], rotation: [0, 0], orbit: [0, 0] }) },
   {
     // 物はフレーム 1 の姿勢で止まる — フレーム 2 が、動いていた物が止まった最初のフレーム。
@@ -44,7 +45,7 @@ function argumentsOf(argv) {
   const [setName, ...options] = argv;
   if (setName === undefined || !/^[\w.-]+$/.test(setName) || setName === '.' || setName === '..') throw new Error(USAGE);
   const valueOf = (name) => options.find((argument) => argument.startsWith(`--${name}=`))?.slice(name.length + 3);
-  const select = (value, all, label) => value === undefined ? all : selectedByName(value, all, label);
+  // 撮る組の選択を検査する。
   const frames = Number(valueOf('frames') ?? 4);
   if (!Number.isInteger(frames) || frames < 2) throw new Error(`invalid frames: ${valueOf('frames')}`);
   const coordinates = valueOf('coordinates')?.split(',') ?? COORDINATES;
@@ -53,8 +54,8 @@ function argumentsOf(argv) {
   for (const order of orders) if (!ORDERS.includes(order)) throw new Error(`unknown order ${order}`);
   return {
     outDir: path.join(root, '.render-lab-shots', setName),
-    scenes: select(valueOf('scenes'), MOTION_VECTOR_SCENES, 'scene'),
-    sequences: select(valueOf('sequences'), SEQUENCES, 'sequence'),
+    scenes: selectedByName(valueOf('scenes'), MOTION_VECTOR_SCENES, 'scene'),
+    sequences: selectedByName(valueOf('sequences'), SEQUENCES, 'sequence'),
     coordinates,
     orders,
     frames,
@@ -65,6 +66,7 @@ function argumentsOf(argv) {
 async function setCase(devTools, scene, coordinate, order, sequence) {
   await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)}, ${JSON.stringify(scene.shot)}, ${JSON.stringify(MOTION_GRAPHICS)})`);
   await devTools.evaluate('window.renderLab.setFrame(0)');
+  // 実体の口を持つケースは、物の動き・数・積み順・描画座標・止めるフレームを置く。
   if (scene.hasEntities) {
     await devTools.evaluate(`window.renderLab.setCaseValue('motion', ${JSON.stringify(sequence.moveObjects)})`);
     await devTools.evaluate(`window.renderLab.setCaseValue('casingCount', ${scene.casingCount})`);
@@ -78,7 +80,8 @@ async function setCase(devTools, scene, coordinate, order, sequence) {
   await devTools.evaluate('window.renderLab.resetMotionReference()');
 }
 
-// 1 条件の全フレームを描き、PNG とフレーム別指標を保存する。
+// いま描いたフレームの動きベクトルを参照の標本と同じ格子で読み、成分(values)・面の有無(covered)・動きを比べるはずの
+// 標本の番号(eligible。window.__motionVector の comparisonSamples)を返す。格子は行ごとに左から並べる。
 async function motionGridOf(devTools, label) {
   return evaluateLong(devTools, `Promise.all([
     window.renderLab.readFloat('motion'), window.renderLab.readFloat('depth'),
@@ -102,12 +105,15 @@ async function motionGridOf(devTools, label) {
   })`, label);
 }
 
+// values の fraction 分位(最近傍の順位。空なら 0)。
 function percentileOf(values, fraction) {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   return sorted[Math.min(sorted.length - 1, Math.ceil(fraction * sorted.length) - 1)] ?? 0;
 }
 
+// 同じ場面・列・積み順を world と floating の描画座標で撮った動きの格子を、フレームと標本ごとに比べる。面・比べるはずの
+// 標本・履歴なしの印の食い違いの数と、動きの差 [px] の要約を返す。
 function compareCoordinateMotions(worldFrames, floatingFrames) {
   const errors = [];
   let expectedCount = 0;
@@ -127,6 +133,7 @@ function compareCoordinateMotions(worldFrames, floatingFrames) {
     const worldEligible = new Set(world.eligible);
     const floatingEligible = new Set(floating.eligible);
     for (let sample = 0; sample < world.covered.length; sample++) {
+      // 面と、比べるはずの標本が両方の座標で揃っているか。
       if (!world.covered[sample] && !floating.covered[sample]) continue;
       if (world.covered[sample] !== floating.covered[sample]) {
         coverageMismatchCount++;
@@ -136,8 +143,8 @@ function compareCoordinateMotions(worldFrames, floatingFrames) {
       const worldY = world.values[2 * sample + 1];
       const floatingX = floating.values[2 * sample];
       const floatingY = floating.values[2 * sample + 1];
-      const worldRejected = Math.max(Math.abs(worldX), Math.abs(worldY)) >= 1000;
-      const floatingRejected = Math.max(Math.abs(floatingX), Math.abs(floatingY)) >= 1000;
+      const worldRejected = Math.max(Math.abs(worldX), Math.abs(worldY)) >= NO_HISTORY_MOTION_THRESHOLD;
+      const floatingRejected = Math.max(Math.abs(floatingX), Math.abs(floatingY)) >= NO_HISTORY_MOTION_THRESHOLD;
       const worldSampleEligible = worldEligible.has(sample);
       const floatingSampleEligible = floatingEligible.has(sample);
       if (worldSampleEligible !== floatingSampleEligible) {
@@ -145,6 +152,7 @@ function compareCoordinateMotions(worldFrames, floatingFrames) {
         continue;
       }
       if (!worldSampleEligible) continue;
+      // 履歴なしの印の食い違いと、どちらにも動きがあればその差(許容は参照と同じ 2⁻¹⁰·|動き| + 0.01 px)。
       expectedCount++;
       if (worldRejected && !floatingRejected) worldRejectedFloatingValueCount++;
       else if (!worldRejected && floatingRejected) worldValueFloatingRejectedCount++;
@@ -166,42 +174,55 @@ function compareCoordinateMotions(worldFrames, floatingFrames) {
   };
 }
 
+// カメラを、列の最初からの動き movement(列の frame(k) の返す値)の位置へ置く。
+async function moveCamera(devTools, movement) {
+  await devTools.evaluate(`window.renderLab.moveCamera(${JSON.stringify(movement.translation)}, ${JSON.stringify(movement.rotation)}, ${JSON.stringify(movement.orbit)})`);
+}
+
+// 論理フレーム frame を描いて動きの参照と照合し(引数は window.renderLab.motionVectorFrame のもの)、指標を返す。
+// 記録は window.__motionVector に残るので、読み終えたら消すこと。
+async function motionVectorFrameOf(devTools, frame, compareDepth, forceNoHistory, verifyRepeated, label) {
+  return evaluateLong(devTools,
+    `window.renderLab.motionVectorFrame(${frame}, ${compareDepth}, ${forceNoHistory}, ${verifyRepeated}).then((record) => {
+      window.__motionVector = record;
+      return record.metrics;
+    })`,
+    label);
+}
+
+// PNG のデータ URL dataUrl を file へ書く。
+function writePng(file, dataUrl) {
+  writeFileSync(file, Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
+}
+
+// 場面 scene を列 sequence・描画座標 coordinate・積み順 order で frames フレーム撮って PNG を directory へ書き、続けて
+// 論理フレームを 1 つ飛ばしたフレームを前のフレームが無いものとして撮る。フレームごとの指標と動きの格子を返す。
 async function shootSequence(devTools, scene, sequence, coordinate, order, frames, directory) {
   const metrics = [];
   const motionGrids = [];
   await setCase(devTools, scene, coordinate, order, sequence);
   try {
     for (let frame = 0; frame < frames; frame++) {
-      const movement = sequence.frame(frame);
-      await devTools.evaluate(`window.renderLab.moveCamera(${JSON.stringify(movement.translation)}, ${JSON.stringify(movement.rotation)}, ${JSON.stringify(movement.orbit)})`);
+      await moveCamera(devTools, sequence.frame(frame));
+      // 世界が静止している列だけ、深度の参照との自己検算をする。描き直しの一致は 2 枚目で確かめる。
       const staticWorld = !sequence.moveObjects && order !== 'churn';
-      const summary = await evaluateLong(devTools,
-        `window.renderLab.motionVectorFrame(${frame}, ${staticWorld}, false, ${frame === 1}).then((record) => {
-          window.__motionVector = record;
-          return record.metrics;
-        })`,
+      const summary = await motionVectorFrameOf(devTools, frame, staticWorld, false, frame === 1,
         `${scene.name}/${sequence.name}/${coordinate}/${order}/${frame}`);
       for (const kind of ['motion', 'difference']) {
-        const dataUrl = await devTools.evaluate(`window.__motionVector.${kind}Png`);
-        writeFileSync(path.join(directory, `${kind}-${String(frame).padStart(3, '0')}.png`),
-          Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
+        writePng(path.join(directory, `${kind}-${String(frame).padStart(3, '0')}.png`),
+          await devTools.evaluate(`window.__motionVector.${kind}Png`));
       }
       metrics.push({ frame, ...summary });
       motionGrids.push(await motionGridOf(devTools, `${scene.name}/${sequence.name}/${coordinate}/${frame}/grid`));
       await devTools.evaluate('delete window.__motionVector');
     }
+    // 論理フレームを飛ばしたフレーム。
     const gapFrame = frames + 1;
-    const lastMovement = sequence.frame(frames - 1);
-    await devTools.evaluate(`window.renderLab.moveCamera(${JSON.stringify(lastMovement.translation)}, ${JSON.stringify(lastMovement.rotation)}, ${JSON.stringify(lastMovement.orbit)})`);
-    const gapSummary = await evaluateLong(devTools,
-      `window.renderLab.motionVectorFrame(${gapFrame}, false, true, false).then((record) => {
-        window.__motionVector = record;
-        return record.metrics;
-      })`,
+    await moveCamera(devTools, sequence.frame(frames - 1));
+    const gapSummary = await motionVectorFrameOf(devTools, gapFrame, false, true, false,
       `${scene.name}/${sequence.name}/${coordinate}/${order}/gap`);
-    const gapDataUrl = await devTools.evaluate('window.__motionVector.motionPng');
-    writeFileSync(path.join(directory, `motion-gap-${String(gapFrame).padStart(3, '0')}.png`),
-      Buffer.from(gapDataUrl.slice(gapDataUrl.indexOf(',') + 1), 'base64'));
+    writePng(path.join(directory, `motion-gap-${String(gapFrame).padStart(3, '0')}.png`),
+      await devTools.evaluate('window.__motionVector.motionPng'));
     metrics.push({ frame: gapFrame, ...gapSummary });
     motionGrids.push(await motionGridOf(devTools, `${scene.name}/${sequence.name}/${coordinate}/${gapFrame}/grid`));
     await devTools.evaluate('delete window.__motionVector');
@@ -212,18 +233,19 @@ async function shootSequence(devTools, scene, sequence, coordinate, order, frame
   return { metrics, motionGrids };
 }
 
-// 1 条件のフレーム別指標から、撮影組に記録する要約を作る。
+// 条件ごとのフレーム別の指標から、撮影の組に記録する要約を作る。
 function aggregatesOf(records) {
   return records.map((record) => {
+    // 数は和、割合は面の数で重み付け、RMS は標本の数で合わせ、分位と最大は最大を取る。
     const metrics = record.metrics;
-    const selfCount = metrics.reduce((sum, item) => sum + item.selfCheckCount, 0);
-    const gpuCount = metrics.reduce((sum, item) => sum + item.gpuDifferenceCount, 0);
-    const motionCount = metrics.reduce((sum, item) => sum + item.gpuMotionCount, 0);
-    const slotCount = metrics.reduce((sum, item) => sum + item.slotErrorCount, 0);
-    const surfaceCount = metrics.reduce((sum, item) => sum + item.surfaceCount, 0);
+    const selfCount = sumMetric(metrics, 'selfCheckCount');
+    const gpuCount = sumMetric(metrics, 'gpuDifferenceCount');
+    const motionCount = sumMetric(metrics, 'gpuMotionCount');
+    const slotCount = sumMetric(metrics, 'slotErrorCount');
+    const surfaceCount = sumMetric(metrics, 'surfaceCount');
     return {
       ...record,
-      sampleCount: metrics.reduce((sum, item) => sum + item.sampleCount, 0),
+      sampleCount: sumMetric(metrics, 'sampleCount'),
       surfaceCount,
       entityOutlineFraction: weightedFraction(metrics, 'entityOutlineFraction', surfaceCount),
       depthOutlineFraction: weightedFraction(metrics, 'depthOutlineFraction', surfaceCount),
@@ -263,7 +285,7 @@ function aggregatesOf(records) {
   });
 }
 
-// フレーム別割合を面のある標本数で重み付けする。
+// フレーム別の割合 key を、面のある標本の数で重み付けして均す。surfaceCount はその和。
 function weightedFraction(metrics, key, surfaceCount) {
   return surfaceCount === 0 ? 0
     : metrics.reduce((sum, item) => sum + item[key] * item.surfaceCount, 0) / surfaceCount;
@@ -285,8 +307,9 @@ function pooledRms(metrics, rmsKey, countKey, count) {
     : Math.sqrt(metrics.reduce((sum, item) => sum + item[rmsKey] ** 2 * item[countKey], 0) / count);
 }
 
-// 検算 A/B/C と輪郭・番号比較を場面、列、座標、積み順ごとの表にする。
+// 照合・自己検算・輪郭・番号の比較を場面、列、座標、積み順ごとに並べた表と、フレームごとの面の数の推移の表(markdown)。
 function reportOf(aggregates, frames) {
+  // 条件ごとの要約の表。
   const header = [
     '場面', '列', '座標', '積み順', '標本', '面', '実体輪郭率', '深度輪郭率', '輪郭率',
     'ρ 最大', 'ρ/ρmax 99.9%', 'ρ/ρmax 最大', 'ρ/ρmax >1', 'ρ>1e-4', 'そのρ/ρmax 最大',
@@ -321,6 +344,7 @@ function reportOf(aggregates, frames) {
     item.coordinateDifference?.coverageMismatchCount ?? '',
     item.coordinateDifference?.expectedCount ?? '', item.coordinateDifference?.comparedCount ?? '',
   ]);
+  // フレーム 0 に対する面の数の比の推移。
   const surfaceRows = aggregates.flatMap((record) => {
     const first = record.metrics.find((item) => item.frame === 0)?.surfaceCount ?? 0;
     return record.metrics.map((item) => [
@@ -343,7 +367,7 @@ function reportOf(aggregates, frames) {
   ].join('\n');
 }
 
-// 全ケース・列・座標・積み順を撮り、指標と閲覧ページを出力する。
+// 選んだ場面・列・座標・積み順の組を撮り、表・記録・見るページを書く。照合に外れた組があれば投げる。
 async function main() {
   const { outDir, scenes, sequences, coordinates, orders, frames } = argumentsOf(process.argv.slice(2));
   const { session, devTools, fatalEvents } = await openMotionLab({
@@ -353,31 +377,34 @@ async function main() {
   const worldMotionFrames = new Map();
   try {
     rmSync(outDir, { recursive: true, force: true });
+    // 場面ごとにページを開き直し、場面の runs が挙げる列と座標の組を積み順ごとに撮る。
     for (const scene of scenes) {
       await openLabPage(session);
-      const runs = scene.runs ?? [{ sequences: sequences.map(({ name }) => name), coordinates }];
-      for (const run of runs) {
+      for (const run of scene.runs) {
         for (const sequence of sequences.filter(({ name }) => run.sequences.includes(name))) {
-        for (const coordinate of run.coordinates.filter((value) => coordinates.includes(value))) {
-          for (const order of orders.filter((value) => scene.orders.includes(value))) {
-            const directory = path.join(outDir, scene.name, sequence.name, coordinate, order);
-            mkdirSync(directory, { recursive: true });
-            const { metrics, motionGrids } = await shootSequence(devTools, scene, sequence, coordinate, order, frames, directory);
-            const pairKey = `${scene.name}/${sequence.name}/${order}`;
-            let coordinateDifference = null;
-            if (coordinate === 'world') worldMotionFrames.set(pairKey, motionGrids);
-            if (coordinate === 'floating') {
-              const worldFrames = worldMotionFrames.get(pairKey);
-              if (worldFrames !== undefined) coordinateDifference = compareCoordinateMotions(worldFrames, motionGrids);
+          for (const coordinate of run.coordinates.filter((value) => coordinates.includes(value))) {
+            for (const order of orders.filter((value) => scene.orders.includes(value))) {
+              const directory = path.join(outDir, scene.name, sequence.name, coordinate, order);
+              mkdirSync(directory, { recursive: true });
+              const { metrics, motionGrids } = await shootSequence(
+                devTools, scene, sequence, coordinate, order, frames, directory,
+              );
+              // floating の動きは、先に撮った同じ組の world の動きと比べる。
+              const pairKey = `${scene.name}/${sequence.name}/${order}`;
+              let coordinateDifference = null;
+              if (coordinate === 'world') worldMotionFrames.set(pairKey, motionGrids);
+              if (coordinate === 'floating') {
+                const worldFrames = worldMotionFrames.get(pairKey);
+                if (worldFrames !== undefined) coordinateDifference = compareCoordinateMotions(worldFrames, motionGrids);
+              }
+              records.push({
+                scene: scene.name, sequence: sequence.name, coordinates: coordinate, order, frames, metrics,
+                coordinateDifference,
+              });
+              console.log(`shot ${scene.name}/${sequence.name}/${coordinate}/${order}`);
             }
-            records.push({
-              scene: scene.name, sequence: sequence.name, coordinates: coordinate, order, frames, metrics,
-              coordinateDifference,
-            });
-            console.log(`shot ${scene.name}/${sequence.name}/${coordinate}/${order}`);
           }
         }
-      }
       }
     }
     if (fatalEvents.length > 0) throw new Error(`Page reported errors during shooting:\n${fatalEvents.join('\n')}`);
@@ -385,6 +412,7 @@ async function main() {
     await session.close();
   }
 
+  // 要約を書き出し、照合に外れた組を集める。
   const aggregates = aggregatesOf(records);
   const report = reportOf(aggregates, frames);
   writeFileSync(path.join(outDir, 'report.md'), report);

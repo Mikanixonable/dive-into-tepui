@@ -31,6 +31,7 @@ function argumentsOf(argv) {
   const [setName, ...options] = argv;
   if (setName === undefined || !/^[\w.-]+$/.test(setName) || setName === '.' || setName === '..') throw new Error(USAGE);
   const option = (key) => options.find((arg) => arg.startsWith(`--${key}=`))?.slice(key.length + 3);
+  // 場面と組。組は Sxs の並びで、地図の倍率を省くなら σ₁ を読む組 1x2 を含むこと。
   const sceneNames = option('scenes')?.split(',') ?? DEFAULT_SCENES;
   for (const name of sceneNames) if (!SCENES.some((scene) => scene.name === name)) throw new Error(`unknown scene ${name}`);
   const scenes = SCENES.filter((scene) => sceneNames.includes(scene.name));
@@ -42,6 +43,7 @@ function argumentsOf(argv) {
   if (combos.length === 0 || combos.some(({ sliceCount, historyCap }) => sliceCount < 1 || historyCap < 1)) {
     throw new Error('combos must be positive integers');
   }
+  // 読むフレームの数と地図の倍率。
   const frames = Number(option('frames') ?? 512);
   if (!Number.isInteger(frames) || frames < 2) throw new Error('--frames must be an integer greater than 1');
   const scale = option('scale') === undefined ? null : Number(option('scale'));
@@ -53,6 +55,7 @@ function argumentsOf(argv) {
 // σ₁ を読む組か。
 function isReference({ sliceCount, historyCap }) { return sliceCount === 1 && historyCap === 2; }
 
+// 組の名前(Sxs)。ファイルの名前にも使う。
 function comboName({ sliceCount, historyCap }) { return `${sliceCount}x${historyCap}`; }
 
 // 開き直したページで場面 scene を組 combo の描画設定で置き、frames フレームを量る。pngScale は地図の倍率(null なら組の 1 パスの σ)。
@@ -86,6 +89,7 @@ function saveRecord(outDir, record) {
   }
 }
 
+// 表の数値(有効数字 5 桁の指数表記。有限でなければそのまま)。
 const number = (value) => (Number.isFinite(value) ? value.toExponential(4) : String(value));
 
 // 場面ごとの表(組の数値・模型で割った列)と、S ごとの 128 の群 / 64 の群の比の表。
@@ -113,6 +117,7 @@ function summaryMarkdown(records) {
 
     // 群の比。模型の予測は時間方向の分散が (2s₆₄ − 1)/(2s₁₂₈ − 1)、隣り合う差の分散が s₆₄(2s₆₄ − 1)/(s₁₂₈(2s₁₂₈ − 1))。
     const group = (product) => rows.filter((record) => record.sliceCount * record.historyCap === product);
+    // 組の並び members の accumulatedStdRms の最大 / 最小(空なら NaN)。
     const spread = (members) => {
       const stds = members.map((record) => record.summary.accumulatedStdRms);
       return stds.length === 0 ? Number.NaN : Math.max(...stds) / Math.min(...stds);
@@ -132,6 +137,7 @@ function summaryMarkdown(records) {
   return `${sections.join('\n')}\n`;
 }
 
+// 場面と組ごとに撮って記録を書き、場面ごとの表と全体の JSON を書く。
 async function main() {
   const { setName, scenes, combos, frames, scale, outDir } = argumentsOf(process.argv.slice(2));
   mkdirSync(outDir, { recursive: true });

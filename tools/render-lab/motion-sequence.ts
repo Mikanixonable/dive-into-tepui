@@ -44,12 +44,14 @@ interface PreviousFrame {
 }
 
 export class MotionSequence {
+  // 直前に撮ったフレーム。列の最初では null。
   private previous: PreviousFrame | null = null;
+  // 次に撮るフレームの論理フレーム。
   private frameNumber = 0;
 
   public constructor(private readonly view: LabView) {}
 
-  // 列を終える。前のフレームを捨て、カメラと光源に重ねた動きを外す。
+  // 列を終える。前のフレームを捨て、カメラと光源に重ねた動きを外して、番号 0 で履歴を切って描き直す。
   public reset(): void {
     this.previous = null;
     this.view.setCameraShift(null);
@@ -137,7 +139,7 @@ function rotationOf(movePx: readonly [number, number], focalPx: number): THREE.Q
 }
 
 // 差 difference の rgb を DIFFERENCE_DISPLAY_GAIN 倍した写し。
-export function amplified(difference: FloatImage): FloatImage {
+function amplified(difference: FloatImage): FloatImage {
   const rgba = difference.rgba.map((v, i) => (i % 4 === 3 ? v : DIFFERENCE_DISPLAY_GAIN * v));
   return { ...difference, rgba };
 }

@@ -1,9 +1,12 @@
+// 描画テスト環境の、近傍拡散補正の履歴を本番のジッターの列で積んでから撮る撮影。
 import type { JitterSource } from '../../src/render/pipeline/screen-space/frame-jitter';
 import type { LabView } from './lab';
 
+// 積むあいだ番号由来ジッターに使わせる源 — 本番と同じ。
 const ACCUMULATION_SOURCES: readonly JitterSource[] = ['seed', 'scanRepresentative'];
 
-// 本番のジッター列で履歴の上限ぶん描き、履歴が落ち着いた絵を撮る。
+// 本番のジッター列で履歴の上限ぶん描き、履歴が落ち着いた絵を撮って PNG のデータ URL で返す。shotName は撮ったものの
+// 名前で、落ち着かなかったときの例外に添える。終わると源と論理フレームを呼ぶ前のものへ戻し、その番号で履歴を切る。
 export async function captureAccumulated(view: LabView, shotName: string): Promise<string> {
   const previousSources = view.jitterSources;
   const previousFrame = view.logicalFrame;
@@ -18,7 +21,6 @@ export async function captureAccumulated(view: LabView, shotName: string): Promi
     }
     return await view.captureSettled(shotName);
   } finally {
-    // 次の lab 操作が呼び出し前の源と番号から続くように戻す。
     view.setJitterSources(previousSources);
     view.setFrame(previousFrame, Number.POSITIVE_INFINITY);
   }

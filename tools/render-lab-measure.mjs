@@ -13,22 +13,27 @@ const debugPort = 9446;
 
 const USAGE = 'usage: node tools/render-lab-measure.mjs [巡回数] [軸]';
 
+// values の中央値(空なら NaN)。
 function poolMedianOf(values) {
   const sorted = [...values].sort((a, b) => a - b);
   const middle = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 1 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
+// values の標本標準偏差(n − 1 で割る)。
 function poolStandardDeviation(values) {
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
   return Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1));
 }
 
+// 組んだ描画テスト環境 3 つ(buildDirs)で casing-pool を同じ条件に置いて rounds 巡測り、G バッファ・表面雲・マテリアルの
+// GPU 時間とプールの積み直しの CPU 時間を比べた表を標準出力へ書く。巡ごとに測る順を逆にする。
 async function measurePoolMotion(rounds, buildDirs) {
   if (buildDirs.length !== 3) throw new Error('pool-motion requires three build directories');
   const labels = ['(0) 手順4前 669abbfa1', '(1) 4-3 revert 704bbe234', '(2) 作業ツリー 4-4'];
   const sessions = [];
   try {
+    // 環境ごとにページを開き、casing-pool を同じ条件に置く。
     for (const [index, buildDir] of buildDirs.entries()) {
       const session = await openChromeSession({
         serveDir: path.resolve(buildDir), port: port + index, debugPort: debugPort + index,
@@ -49,6 +54,7 @@ async function measurePoolMotion(rounds, buildDirs) {
       }
     }
 
+    // 巡ごとに、環境ごとの GPU 時間の中央値と CPU 時間を読む。
     const samples = sessions.map(() => []);
     for (let round = 0; round < rounds; round++) {
       const order = round % 2 === 0 ? [0, 1, 2] : [2, 1, 0];
@@ -67,6 +73,7 @@ async function measurePoolMotion(rounds, buildDirs) {
       }
     }
 
+    // 環境ごとの中央値と、(2) − (1) の増分の表。
     const summaries = samples.map((runs) => Object.fromEntries(
       ['gbuffer', 'cloud', 'material', 'poolCpu', 'previousCpu'].map((key) => [key, poolMedianOf(runs.map((run) => run[key]))]),
     ));
@@ -85,6 +92,7 @@ async function measurePoolMotion(rounds, buildDirs) {
     rows.push(`| (2)−(1) CPU 増分 [ms] | — | — | ${poolCpuIncrement.toFixed(9)} |`);
     rows.push(`| 今行列 / 前行列送信 [B/frame] | 285440 / 0 | 285440 / 0 | 285440 / 55040 |`);
     console.log('\n| 測定 | (0) | (1) | (2) |\n| --- | ---: | ---: | ---: |\n' + rows.join('\n'));
+    // 環境ごとのばらつきと、巡ごとの増分。
     for (const key of ['gbuffer', 'cloud', 'material', 'poolCpu', 'previousCpu']) {
       console.log(`${key} per-build range/stddev [ms]: ${samples.map((runs) => {
         const values = runs.map((run) => run[key]);

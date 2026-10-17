@@ -1,4 +1,4 @@
-// 論理フレームの深度・カメラ・実体から動きの参照と検算を作る。
+// ケースを論理フレームごとに描き、G バッファの動きベクトルを、深度・カメラ・実体から求めた動きの参照と照合する。
 import * as THREE from 'three/webgpu';
 import {
   reprojectedPixels, reprojectionMatrixBetween,
@@ -20,10 +20,12 @@ export class MotionVectorCheck {
   public constructor(private readonly view: LabView) {}
 
   // frame をケースへ置いて描き、前のフレームからの動きの参照を求める。compareDepth なら、世界が静止しているとみなして
-  // 深度の参照の写像との自己検算と、GPU の深度による参照の再投影との差も求める。
+  // 深度の参照の写像との自己検算と、GPU の深度による参照の再投影との差も求める。forceNoHistory なら前のフレームが無い
+  // ものとして照合し、verifyRepeated なら同じフレームを描き直して動きベクトルが変わらないかも数える。
   public async frame(
     frame: number, compareDepth: boolean, forceNoHistory = false, verifyRepeated = true,
   ): Promise<MotionVectorFrameRecord> {
+    // 描いて動きベクトルを読み、描き直しで値が変わった成分を数える。
     this.view.setFrame(frame);
     const capture = await this.view.captureSettled(`motion reference ${frame}`);
     const motion = await this.view.readFloat('motion');
@@ -35,6 +37,7 @@ export class MotionVectorCheck {
         (count, value, index) => count + (value === repeatedMotion.rgba[index] ? 0 : 1), 0,
       );
     }
+    // 参照を求める 1 フレーム。タンパク質のケースは実体を渡さず、深度の参照にする。
     const currentCase = this.view.currentCase;
     const depth = await this.view.readFloat('depth');
     const current: MotionReferenceFrame = {
@@ -45,6 +48,7 @@ export class MotionVectorCheck {
       entities: currentCase?.proteinMotion === undefined ? entitiesAt(currentCase, frame) : [],
       rejectedObjects: currentCase?.proteinMotion === undefined ? rejectedObjectsAt(currentCase) : [],
     };
+    // 前のフレームが無いはずなら、面のある全画素が履歴なしの印(成分の絶対値 1000 以上)を持つかを数える。
     const expectNoHistory = this.previous === null || forceNoHistory;
     let fullNoHistorySurfacePixelCount = 0;
     let fullNoHistoryMismatchCount = 0;
@@ -59,6 +63,7 @@ export class MotionVectorCheck {
         }
       }
     }
+    // 世界が静止しているとみなしたときの今から前への写像と、GPU の深度による再投影。
     const previousCamera = this.previous === null ? null : worldCameraOf(this.previous);
     const currentCamera = worldCameraOf(current);
     const toPrevious = compareDepth && previousCamera !== null
@@ -68,6 +73,7 @@ export class MotionVectorCheck {
       : reprojectedPixels(
         current.depth, currentCamera, this.previous.depth, previousCamera!,
       );
+    // タンパク質のケースは全画素を標本にし、全画素が履歴なしになるはずとして照合する。
     const proteinRejection = currentCase?.proteinMotion !== undefined;
     const result = await (proteinRejection
       ? motionReferenceOf(current, null, null, null, 1)
@@ -95,7 +101,7 @@ export class MotionVectorCheck {
   }
 }
 
-// 深度だけを参照にする場面でも、印の付いた実体が前面にある標本は棄却対象として扱う。
+// ケース current の、写る画素が履歴なしになるはずの物体(ケースが持たなければ空)。
 function rejectedObjectsAt(current: LabCase | null): readonly THREE.Object3D[] {
   return current?.rejectedMotionObjects?.() ?? [];
 }
@@ -109,6 +115,7 @@ function entitiesAt(current: LabCase | null, frame: number): readonly LabMotionE
   const instanceMatrix = new THREE.Matrix4();
   for (const [rootIndex, root] of current.objects.entries()) {
     root.updateWorldMatrix(true, true);
+    // 形状 geometry を matrix で置いた、静止した実体を足す。
     const add = (geometry: THREE.BufferGeometry, matrix: THREE.Matrix4): void => {
       entities.push({ key: `static:${rootIndex}:${entities.length}`, kind: 'room', geometry, matrix, slot: null });
     };

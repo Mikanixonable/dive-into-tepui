@@ -1,9 +1,7 @@
-// 近傍拡散補正のちらつきを、動く絵で撮る。ヘッドレス Chrome で .render-lab/ を開き、場面ごとに、カメラを止めた列・並進させる
-// 列・カメラを中心に回転させる列・周回の中心を中心に回転させる列(1 フレームの動きを描画バッファの画素で段に振る)と、光源を
-// 動かす列を描いて、フレームごとの全体の絵・補正(最後の拡大の出力)・前のフレームからの補正の差の PNG と、同じ表面の点の
-// 補正の揺れの表を書く。差は参照の再投影で同じ表面の点どうしを引いたもの。補正は、そのフレームの 1 パス(single)のほかに、
-// そのフレームを位相の列で描き直した平均の列(--columns)も撮れる。書き先は .render-lab-shots/<組の名前>/ で、表は
-// report.md、見るページは index.html。
+// 近傍拡散補正のちらつきを、動く絵で撮る。ヘッドレス Chrome で .render-lab/ を開き、場面ごとに、カメラを止めた列・並進・
+// 回転・周回させる列と光源を動かす列を描いて、フレームごとの全体の絵・補正・前のフレームからの補正の差(同じ表面の点
+// どうし)の PNG と、補正の揺れの表を書く。補正は 1 パス(single)のほかに、位相の列で描き直した平均の列(--columns)も
+// 撮れる。書き先は .render-lab-shots/<組の名前>/ で、表は report.md、見るページは index.html。
 // 先に .render-lab/ を組んでおくこと(webpack --config webpack.render-lab.config.js --mode production)。
 //
 // 使い方: node tools/render-lab-motion.mjs <組の名前> [--scenes=S,...] [--sequences=Q,...] [--frames=N] [--columns=C,...] [--phases=K]
@@ -31,8 +29,7 @@ const SINGLE_COLUMN = 'single';
 const LIGHT_STEP_DEG = 0.5;
 
 // 列。frame(k) は k 番目のフレームの、列の最初からのカメラの並進・カメラを中心とする回転・周回の中心を中心とする回転(周回)
-// [描画バッファの画素](MotionSequence.moveCamera)と、光源のつまみの変化 [deg]。周回は、周回の中心の点を画面に留めたまま
-// 面を見る向きを変える — 同じ画素の並進と同じだけ向きが変わり、側面の写る面積が変わる。
+// [描画バッファの画素](MotionSequence.moveCamera)と、光源のつまみの変化 [deg]。lightOnly の列は光源を動かせる場面だけで撮る。
 const still = { translation: [0, 0], rotation: [0, 0], orbit: [0, 0], light: 0 };
 const SEQUENCES = [
   { name: 'still', frame: () => still },
@@ -44,6 +41,7 @@ const SEQUENCES = [
 
 // 撮る画像の種類(ファイル名の頭)と、motionFrame の記録の中の場所(JS の式)。columns は補正の列の名前(SINGLE_COLUMN を含む)。
 function imageKindsOf(columns) {
+  // 全体の絵と、補正の列ごとの補正とその差(差は 2 枚目のフレームから)。
   return [
     { id: 'capture', label: '全体', source: 'capture', column: null, fromFrame: 0 },
     ...columns.flatMap((column) => [
@@ -59,11 +57,12 @@ function imageKindsOf(columns) {
   ];
 }
 
-// コマンドラインの引数。
+// コマンドラインの引数から、書き先・場面・列・フレーム数・平均の補正の列を取る。知らない名前なら投げる。
 function argumentsOf(argv) {
   const [setName, ...options] = argv;
   if (setName === undefined || !/^[\w.-]+$/.test(setName) || setName === '.' || setName === '..') throw new Error(USAGE);
   const option = (key) => options.find((arg) => arg.startsWith(`--${key}=`))?.slice(key.length + 3);
+  // 平均の補正の列は、名前ごとの動かす源と、平均する位相の数の組。
   const phases = Number(option('phases') ?? 32);
   const columns = (option('columns')?.split(',') ?? []).map((name) => {
     const sources = PHASE_SOURCES[name];
@@ -110,6 +109,7 @@ async function shootSequence(devTools, scene, sequence, frames, columns, kinds, 
   return summaries;
 }
 
+// 場面と列ごとに撮り、表・記録・見るページを書く。
 async function main() {
   const { outDir, scenes, sequences, frames, columns } = argumentsOf(process.argv.slice(2));
   const columnNames = [SINGLE_COLUMN, ...columns.map(({ name }) => name)];
@@ -137,6 +137,7 @@ async function main() {
     await session.close();
   }
 
+  // 場面・列・補正の列ごとに均した揺れの表。
   const aggregates = aggregatesOf(records, columnNames);
   const report = [
     `# 補正の揺れ(${new Date().toISOString()}、平均の列 ${columns.map(({ name, sequence }) => `${name}×${sequence.count}`).join(' ') || '無し'})`, '',

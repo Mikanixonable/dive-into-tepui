@@ -3,7 +3,6 @@
 // そのまま組む。
 import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
-import type { SceneChangeTerms, SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import type { ChoiceValue, GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { withGraphicsValue } from '../../src/render/graphics-selection';
@@ -30,12 +29,12 @@ import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
 import { MotionSequence, type MotionFrameRecord } from './motion-sequence';
 import { LabPlayback } from './playback';
 import { MotionVectorCheck, type MotionVectorFrameRecord } from './motion-vector-check';
-import { JitterSweep, type SweepRecord } from './jitter-sweep';
 import { captureAccumulated } from './accumulated-capture';
 import { StaticVariance, type StaticVarianceRecord } from './static-variance';
 import { phasesOf, type PhaseSequence } from './phase-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
+import type { SceneChangeTerms, SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles, LightAngleShift } from './view-angles';
 import type {
@@ -146,10 +145,9 @@ declare global {
         columns: readonly { readonly name: string; readonly sequence: PhaseSequence }[],
       ) => Promise<MotionFrameRecord>;
       resetMotionReference: () => void;
-      motionVectorFrame: (frame: number, compareDepth: boolean, forceNoHistory?: boolean, verifyRepeated?: boolean) => Promise<MotionVectorFrameRecord>;
-      jitterSweep: (
-        sequence: PhaseSequence, historyCaps: readonly number[], imagedHistoryCaps: readonly number[],
-      ) => Promise<SweepRecord>;
+      motionVectorFrame: (
+        frame: number, compareDepth: boolean, forceNoHistory?: boolean, verifyRepeated?: boolean,
+      ) => Promise<MotionVectorFrameRecord>;
       staticVariance: (
         sliceCount: number, historyCap: number, frames: number, pngScale: number | null,
       ) => Promise<StaticVarianceRecord>;
@@ -288,7 +286,6 @@ async function init(): Promise<void> {
   const planeSmoother = (): Promise<PlaneSmoother> => (smoother ??= PlaneSmoother.create());
   const motion = new MotionSequence(view);
   const motionVectorCheck = new MotionVectorCheck(view);
-  const sweep = new JitterSweep(view);
   const staticVariance = new StaticVariance(view);
   const syncAngles = buildViewAngleSliders(view);
   const playback = new LabPlayback(view, 'playback', 'temporal');
@@ -466,10 +463,10 @@ async function init(): Promise<void> {
     motionFrame: (columns) => motion.frame(
       columns.map(({ name, sequence }) => ({ name, phases: phasesOf(sequence, view.scanCellSize) }))),
     resetMotionReference: () => motionVectorCheck.reset(),
-    motionVectorFrame: (frame, compareDepth, forceNoHistory, verifyRepeated) => motionVectorCheck.frame(frame, compareDepth, forceNoHistory, verifyRepeated),
-    jitterSweep: (sequence, historyCaps, imagedHistoryCaps) => sweep.sweep(
-      phasesOf(sequence, view.scanCellSize), historyCaps, imagedHistoryCaps, view.scanCellSize),
-    staticVariance: (sliceCount, historyCap, frames, pngScale) => staticVariance.capture(sliceCount, historyCap, frames, pngScale),
+    motionVectorFrame: (frame, compareDepth, forceNoHistory, verifyRepeated) =>
+      motionVectorCheck.frame(frame, compareDepth, forceNoHistory, verifyRepeated),
+    staticVariance: (sliceCount, historyCap, frames, pngScale) =>
+      staticVariance.capture(sliceCount, historyCap, frames, pngScale),
   };
 }
 

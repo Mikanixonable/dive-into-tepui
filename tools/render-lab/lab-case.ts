@@ -130,12 +130,13 @@ export interface LabCase {
   readonly setValue?: (name: string, value: string | number | boolean) => void;
   // frame の実体を返す。同じ論理 frame には同じ実体と行列を返し、問い合わせでケースの状態を変えない。
   readonly motionEntities?: (frame: number) => readonly LabMotionEntity[];
-  // Reference-only objects whose pixels intentionally reject motion history.
+  // 動きの参照で、写った画素が動きの履歴を棄てるのを正しいとみなす物体を返す。
   readonly rejectedMotionObjects?: () => readonly THREE.Object3D[];
   // 直前の sync が描画座標の原点にした、ケースの世界座標の点を返す。
   readonly renderOrigin?: () => THREE.Vector3;
   // ケースが握る、objects の所有印では解放できない資源を解放する。
   readonly dispose?: () => void;
+  // プールを iterations 回積み直し、回ごとの CPU の所要時間 [ms] を poolRebuildMs で返す。
   readonly measurePoolRebuild?: (iterations: number) => {
     readonly poolRebuildMs: readonly number[];
     readonly previousMatricesMs: readonly number[];
@@ -148,6 +149,7 @@ export interface LabCase {
   readonly disposeProteinMotion?: () => void;
 }
 
+// 動きの参照が CPU のレイで追う、論理フレーム 1 つぶんの実体。
 export interface LabMotionEntity {
   // 同じ実体は全フレームで同じ鍵を持ち、異なる実体は異なる鍵を持つ。
   readonly key: string;
@@ -159,6 +161,7 @@ export interface LabMotionEntity {
   readonly matrix: THREE.Matrix4;
   // プールへ push した順の番号。プール以外は null。
   readonly slot: number | null;
+  // slot を数えるプールの識別。プールを 1 つしか持たないケースでは省ける。
   readonly poolId?: string;
 }
 
@@ -299,6 +302,8 @@ export function slab(
   return mesh;
 }
 
+// Cornell box の内寸と板の厚み [m]。内面は x = ±halfWidth・z = backZ・y = height で、z = frontZ で手前を開ける。床の
+// 上面は y = 0。
 export interface CornellRoomDimensions {
   readonly halfWidth: number;
   readonly backZ: number;
@@ -307,7 +312,8 @@ export interface CornellRoomDimensions {
   readonly panelThickness: number;
 }
 
-// 左壁が赤、右壁が緑で、手前を開けた Cornell box の殻。
+// 寸法 dimensions の、手前を開けた Cornell box の殻 — 白い床・天井・奥の壁と、赤い左の壁・緑の右の壁の板。ジオメトリと
+// マテリアルは板が所有する。
 export function cornellRoomShell(dimensions: CornellRoomDimensions): THREE.Mesh[] {
   const { halfWidth: w, backZ, frontZ, height, panelThickness: t } = dimensions;
   const red = standard(new THREE.Vector3(0.63, 0.065, 0.05), WHITE_ROUGHNESS, 0);
