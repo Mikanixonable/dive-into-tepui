@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>案01 連続スケール — Powers of Ten</title>
+<style>
+:root{
+  --bg:#03050b; --panel:rgba(8,13,26,.74); --line:rgba(150,185,255,.20);
+  --ink:#dce9ff; --dim:#8497bb; --faint:#56658a;
+  --self:#7fe8ff;      /* 自機 */
+  --foe:#ff3d9a;       /* 敵 */
+  --arm:#ff7a1a;       /* 武装・交戦圏 */
+  --future:#b8a4ff;    /* 未来・ゴースト */
+  --sun:#ffc857;       /* 日照 */
+  --dark:#4a50b8;      /* 日陰 */
+  --font:ui-monospace,SFMono-Regular,Menlo,Consolas,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:12px/1.5 var(--font);overflow:hidden;
+  -webkit-user-select:none;user-select:none;touch-action:none}
+#scene{position:absolute;inset:0;width:100%;height:100%;display:block}
+.panel{position:absolute;background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#top{position:absolute;left:12px;right:12px;top:10px;height:36px;display:flex;gap:8px;align-items:center;pointer-events:none}
+.chip{pointer-events:auto;display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;background:var(--panel);
+  border:1px solid var(--line);border-radius:17px;white-space:nowrap;backdrop-filter:blur(8px)}
+.chip b{font-weight:600;letter-spacing:.04em}
+.chip .k{color:var(--dim);font-size:11px}
+.chip.brand b{color:var(--self)}
+#clock{font-variant-numeric:tabular-nums}
+#warpChip b{font-size:15px;min-width:64px;text-align:right;font-variant-numeric:tabular-nums}
+.tag{font-size:10px;padding:1px 7px;border-radius:9px;border:1px solid currentColor;letter-spacing:.06em}
+.tag.link{color:var(--self)} .tag.lock{color:var(--sun)} .tag.brake{color:var(--arm)} .tag.auto{color:var(--future)} .tag.pause{color:#ff6b6b}
+.sp{flex:1}
+#legend{left:12px;top:56px;width:256px;padding:11px 12px 9px}
+#legend h1{font-size:15px;margin:0 0 2px;color:var(--self);letter-spacing:.03em}
+#legend p{margin:0 0 8px;color:var(--ink);font-size:12px;line-height:1.55}
+#legend details summary{cursor:pointer;color:var(--dim);font-size:11px;margin-bottom:4px;list-style:none}
+#legend details summary::-webkit-details-marker{display:none}
+#legend details summary::before{content:"▾ "}
+#legend details:not([open]) summary::before{content:"▸ "}
+#legend table{border-collapse:collapse;width:100%}
+#legend td{padding:1px 0;vertical-align:top;font-size:11px}
+#legend td:first-child{color:var(--sun);white-space:nowrap;padding-right:10px}
+.legendKey{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;font-size:11px;color:var(--dim)}
+.legendKey i{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:4px;vertical-align:-1px}
+#readout{left:12px;bottom:218px;width:246px;padding:10px 12px}
+#readout h2{margin:0 0 4px;font-size:11px;color:var(--dim);font-weight:400;letter-spacing:.1em}
+#readout .nm{font-size:14px;color:var(--foe);font-weight:600}
+#readout dl{display:grid;grid-template-columns:auto 1fr;gap:1px 10px;margin:6px 0 0}
+#readout dt{color:var(--dim);font-size:11px} #readout dd{margin:0;text-align:right;font-variant-numeric:tabular-nums}
+.ok{color:var(--arm)} .bad{color:var(--faint)} .cy{color:var(--self)}
+#axis{position:absolute;right:12px;top:56px;width:236px;height:min(470px,calc(100% - 290px));border-radius:10px;
+  background:var(--panel);border:1px solid var(--line);cursor:ns-resize;backdrop-filter:blur(8px)}
+#tools{position:absolute;left:12px;right:12px;bottom:176px;height:34px;display:flex;gap:6px;align-items:center;justify-content:flex-end;pointer-events:none}
+#tools .group{pointer-events:auto;display:flex;gap:4px;padding:3px;background:var(--panel);border:1px solid var(--line);border-radius:17px;backdrop-filter:blur(8px)}
+button{font:inherit;color:var(--ink);background:rgba(120,160,255,.10);border:1px solid var(--line);border-radius:14px;height:26px;
+  padding:0 11px;cursor:pointer;white-space:nowrap}
+button:hover{background:rgba(120,160,255,.22)}
+button.on{background:rgba(127,232,255,.22);border-color:var(--self);color:#fff}
+button.arm{border-color:rgba(255,122,26,.55)} button.arm:active{background:rgba(255,122,26,.4)}
+button.fut{border-color:rgba(184,164,255,.6)}
+button:focus-visible{outline:2px solid var(--self);outline-offset:1px}
+#tl{position:absolute;left:12px;right:12px;bottom:10px;height:160px;border-radius:10px;background:var(--panel);
+  border:1px solid var(--line);backdrop-filter:blur(8px);cursor:ew-resize;overflow:hidden}
+#tlc{position:absolute;inset:0;width:100%;height:100%;display:block}
+#caption{position:absolute;left:0;right:250px;top:66px;text-align:center;pointer-events:none;opacity:0;transition:opacity .6s}
+#caption.show{opacity:1;transition:opacity .15s}
+#caption b{display:block;font-size:26px;letter-spacing:.18em;font-weight:500;color:#fff;text-shadow:0 0 18px rgba(127,232,255,.55)}
+#caption span{color:var(--dim);font-size:12px;letter-spacing:.08em}
+#futureBanner{position:absolute;left:0;right:250px;top:56px;text-align:center;pointer-events:none;opacity:0;transition:opacity .25s}
+#futureBanner.show{opacity:1}
+#futureBanner span{display:inline-block;padding:3px 16px;border:1px solid var(--future);color:var(--future);border-radius:14px;
+  background:rgba(40,28,90,.55);letter-spacing:.12em;font-size:12px}
+#toast{position:absolute;left:50%;transform:translateX(-50%);bottom:224px;padding:5px 14px;border-radius:14px;background:rgba(255,122,26,.18);
+  border:1px solid var(--arm);color:#ffd2b0;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}
+@media (max-width:900px){
+  #legend{width:240px} #readout{display:none} #axis{width:190px}
+  #caption,#futureBanner{right:200px} .chip .k{display:none}
+}
+@media (max-width:640px){
+  #legend{top:auto;bottom:250px;left:12px;width:calc(100% - 24px);max-height:36vh;overflow:auto}
+  #top .opt,#clockChip{display:none} #axis{display:none} #caption,#futureBanner{right:0} #tools{overflow-x:auto;justify-content:flex-start}
+  #toast{bottom:250px}
+}
+@media (max-height:760px){ #legend p{display:none} }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="top">
+  <div class="chip brand"><b>01 連続スケール</b><span class="k opt">Powers of Ten</span></div>
+  <div class="chip" id="clockChip"><span class="k">T+</span><span id="clock">0Y-00M-00D-00h-00m-00s</span></div>
+  <div class="chip" id="warpChip"><span class="k">時間加速</span><b id="warp">×1</b><span id="mode" class="tag link">連動</span><span id="why" class="tag brake" style="display:none"></span></div>
+  <div class="chip opt" id="viewChip"><span class="k">視野半径</span><b id="viewR">—</b><span id="layer" class="tag link">—</span></div>
+  <div class="sp"></div>
+</div>
+
+<div id="caption"><b id="capA"></b><span id="capB"></span></div>
+<div id="futureBanner"><span id="futureTxt"></span></div>
+
+<aside class="panel" id="legend">
+  <h1>ひとつの連続した空間と時間</h1>
+  <p>戦闘/マップの切替をやめ、<b>ホイール1本</b>で数 m から地球–月系まで往復。ズームで<b>時間の流れ</b>が連動し、下端を<b>掴んで引く</b>と未来が見える。</p>
+  <details open><summary>操作</summary>
+  <table>
+    <tr><td>ホイール</td><td>スケール連続変更(右の軸もドラッグ可)</td></tr>
+    <tr><td>1〜5</td><td>機体/近接/会合圏/軌道/地球–月へ飛ぶ</td></tr>
+    <tr><td>下端ドラッグ</td><td>未来を掴む。離すと現在へ戻る</td></tr>
+    <tr><td>F / N / Enter</td><td>ピン / 最接近へ / 掴んだ時刻へワープ</td></tr>
+    <tr><td>, .</td><td>連動の加速を ∓1 段</td></tr>
+    <tr><td>L / P</td><td>連動⇄固定 / 一時停止</td></tr>
+    <tr><td>W S A D</td><td>推力 PRO/RET/RAD(×4 以下)</td></tr>
+    <tr><td>T / Space</td><td>目標切替 / 射撃(×4 以下・12 km 内)</td></tr>
+  </table></details>
+  <div class="legendKey"><span><i style="background:var(--self)"></i>自機</span><span><i style="background:var(--foe)"></i>敵</span>
+    <span><i style="background:var(--arm)"></i>武装・交戦圏</span><span><i style="background:var(--future)"></i>未来</span>
+    <span><i style="background:var(--sun)"></i>日照</span><span><i style="background:var(--dark)"></i>日陰</span></div>
+</aside>
+
+<aside class="panel" id="readout">
+  <h2>TARGET</h2><div class="nm" id="tName">—</div>
+  <dl>
+    <dt>距離</dt><dd id="tDist">—</dd>
+    <dt>相対速度</dt><dd id="tRate">—</dd>
+    <dt>最接近</dt><dd id="tCA">—</dd>
+    <dt>武装</dt><dd id="tArm">—</dd>
+    <dt>自機 Δv</dt><dd id="dvTot">0.0 m/s</dd>
+  </dl>
+</aside>
+
+<canvas id="axis"></canvas>
+
+<div id="tools">
+  <div class="group">
+    <button id="bLink" title="L">連動</button>
+    <button id="bPause" title="P">停止</button>
+    <button id="bIntro">▶ イントロ</button>
+  </div>
+  <div class="group">
+    <button id="bPin" class="fut" title="F">ピン</button>
+    <button id="bCA" class="fut" title="N">最接近へ</button>
+    <button id="bGo" class="fut" title="Enter">掴んだ時刻へワープ</button>
+  </div>
+  <div class="group">
+    <button id="bPro" class="arm" title="W">PRO</button><button id="bRet" class="arm" title="S">RET</button>
+    <button id="bRadP" class="arm" title="A">RAD+</button><button id="bRadM" class="arm" title="D">RAD−</button>
+    <button id="bFire" class="arm" title="Space">射撃</button>
+  </div>
+</div>
+
+<div id="tl"><canvas id="tlc"></canvas></div>
+<div id="toast"></div>
+
+<script>
+'use strict';
+/* ============================================================
+   定数・ユーティリティ
+   ============================================================ */
+const MU=3.986004418e14, RE=6371e3, RMOON=1737e3, DM=384400e3, TAU=Math.PI*2, D2R=Math.PI/180;
+const ENGAGE=30e3, FIRE_R=12e3, SLUG_V=800;
+const clamp=(x,a,b)=>x<a?a:x>b?b:x, lerp=(a,b,t)=>a+(b-a)*t;
+const sm=x=>{x=clamp(x,0,1);return x*x*(3-2*x)};
+const wrap=a=>{a%=TAU; if(a>Math.PI)a-=TAU; else if(a<-Math.PI)a+=TAU; return a};
+const FONT='ui-monospace,SFMono-Regular,Menlo,Consolas,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,monospace';
+const COL={self:'#7fe8ff',foe:'#ff3d9a',arm:'#ff7a1a',future:'#b8a4ff',sun:'#ffc857',dark:'#4a50b8',ink:'#dce9ff',dim:'#8497bb'};
+function interp(T,x){
+  if(x<=T[0][0])return T[0][1];
+  for(let i=1;i<T.length;i++){ if(x<=T[i][0]){ const a=T[i-1],b=T[i]; return lerp(a[1],b[1],(x-a[0])/(b[0]-a[0])); } }
+  return T[T.length-1][1];
+}
+function fmtDist(m){
+  m=Math.abs(m);
+  if(m<1000)return m.toFixed(m<10?1:0)+' m';
+  if(m<1e5)return (m/1e3).toFixed(m<1e4?2:1)+' km';
+  return Math.round(m/1e3).toLocaleString('en-US')+' km';
+}
+function fmtDur(s){
+  s=Math.max(0,s);
+  if(s<90)return Math.round(s)+'s';
+  if(s<7200){const m=Math.floor(s/60);return m+'m'+String(Math.round(s%60)).padStart(2,'0')+'s';}
+  if(s<172800){return (s/3600).toFixed(1)+'h';}
+  return (s/86400).toFixed(1)+'d';
+}
+function fmtClock(t){
+  t=Math.floor(t); const p=n=>String(n).padStart(2,'0');
+  const s=t%60, m=Math.floor(t/60)%60, h=Math.floor(t/3600)%24, d=Math.floor(t/86400)%30, M=Math.floor(t/2592000)%12, Y=Math.floor(t/31104000);
+  return `${Y}Y-${p(M)}M-${p(d)}D-${p(h)}h-${p(m)}m-${p(s)}s`;
+}
+function fmtSpeed(v){ const a=Math.abs(v); return (v<0?'−':'+')+(a<1000?a.toFixed(a<10?2:1)+' m/s':(a/1e3).toFixed(2)+' km/s'); }
+
+/* ============================================================
+   二体軌道(平面)。すべての物体は「エポック状態+Kepler 伝播」で、
+   どの時刻の位置も解析的に引ける。未来ゴーストの土台。
+   ============================================================ */
+class Orbit{
+  constructor(a,e,w,M0,s,t0=0){
+    this.a=a; this.e=Math.max(e,1e-7); this.w=w; this.M0=M0; this.s=s; this.t0=t0;
+    this.n=Math.sqrt(MU/(a*a*a)); this.p=a*(1-this.e*this.e); this.shift=0;
+  }
+  static fromState(x,y,vx,vy,t){
+    const r=Math.hypot(x,y), v2=vx*vx+vy*vy, a=1/(2/r-v2/MU), h=x*vy-y*vx, s=h<0?-1:1, rv=x*vx+y*vy;
+    const ex=((v2-MU/r)*x-rv*vx)/MU, ey=((v2-MU/r)*y-rv*vy)/MU, e=Math.hypot(ex,ey);
+    const w=e>1e-9?Math.atan2(ey,ex):Math.atan2(y,x);
+    const nu=wrap(s*(Math.atan2(y,x)-w));
+    const E=2*Math.atan2(Math.sqrt(1-e)*Math.sin(nu/2),Math.sqrt(1+e)*Math.cos(nu/2));
+    return new Orbit(a,e,w,E-e*Math.sin(E),s,t);
+  }
+  at(t){
+    const e=this.e, Mraw=this.M0+this.n*(t-this.t0), M=wrap(Mraw), rev=Math.round((Mraw-M)/TAU);
+    let E=e<0.8?M:Math.PI;
+    for(let i=0;i<40;i++){ const f=E-e*Math.sin(E)-M; E-=f/(1-e*Math.cos(E)); if(Math.abs(f)<1e-12)break; }
+    const nu=2*Math.atan2(Math.sqrt(1+e)*Math.sin(E/2),Math.sqrt(1-e)*Math.cos(E/2));
+    const r=this.a*(1-e*Math.cos(E)), phi=this.w+this.s*nu, c=Math.cos(phi), sn=Math.sin(phi);
+    const k=Math.sqrt(MU/this.p), vr=k*e*Math.sin(nu), vt=k*(1+e*Math.cos(nu));
+    return {x:r*c,y:r*sn,vx:vr*c+this.s*vt*(-sn),vy:vr*sn+this.s*vt*c,r,phi,nu,
+            phiU:this.w+this.s*(nu+rev*TAU)+this.shift};
+  }
+  rAt(nu){ return this.p/(1+this.e*Math.cos(nu)); }
+}
+const sunA=180*D2R, SX=Math.cos(sunA), SY=Math.sin(sunA);
+function inShadow(x,y){ if(x*SX+y*SY>0)return false; return Math.abs(x*SY-y*SX)<RE; }
+
+/* ============================================================
+   登場物(ステージはモック用の架空配置)
+   ============================================================ */
+const ship={id:'ship',name:'TEPUI-1',kind:'ship',len:14,orb:new Orbit(RE+400e3,1e-5,120*D2R,0,-1),dv:0,head:0};
+const enemyA={id:'A',name:'PEP-α',kind:'foe',len:28,hp:5,max:5,orb:new Orbit(RE+400e3-12000,0.0010,120.5*D2R,0,-1)};
+const enemyB={id:'B',name:'PEP-β (HEO)',kind:'foe',len:40,hp:6,max:6,orb:new Orbit(20000e3,0.65,200*D2R,2.5,-1)};
+const guards=[]; for(let i=0;i<10;i++) guards.push({id:'G'+i,name:'GRD-'+String(i+1).padStart(2,'0'),kind:'guard',len:9,orb:new Orbit(RE+1200e3,1e-5,(7+i*36)*D2R,0,-1)});
+const moon={id:'M',name:'月',kind:'moon',len:RMOON*2,orb:new Orbit(DM,1e-5,60*D2R,0,-1)};
+const hostiles=[enemyA,enemyB,...guards];
+const targets=[enemyA,enemyB,guards[0]];
+let tIdx=0; const target=()=>targets[tIdx];
+
+/* ============================================================
+   スケール⇄時間の連動則(この案の核)
+   lr = log10(視野半径[m])。Lc = 推奨の時間加速段(2^L 倍)。
+   ============================================================ */
+const LT=[[0.9,0],[3,0],[4,1],[4.477,2],[5,6],[5.7,8],[6,8.5],[7,10],[8,12],[8.8,17]];
+const HT=[[0.9,6.5],[4,9],[5,12],[6,13.7],[7,14.3],[7.7,14.5],[8.8,22]];
+const LR_MIN=0.9, LR_MAX=8.8, LR_ENG=Math.log10(ENGAGE);
+const Lc=lr=>interp(LT,lr);
+const horizon=lr=>Math.pow(2,interp(HT,lr));
+const Lcap=lr=>lr<=LR_ENG?2:Math.min(25,Lc(lr)+3);
+const LAYERS=[
+  {max:2.5,name:'機体',sub:'モジュールの船体を見る距離'},
+  {max:LR_ENG,name:'近接戦闘',sub:'等倍。照準と推力、射撃'},
+  {max:5.7,name:'会合圏',sub:'相対運動と最接近を読む'},
+  {max:7.3,name:'軌道',sub:'軌道・日照・遷移'},
+  {max:99,name:'地球–月系',sub:'ラグランジュ点まで'}];
+const layerOf=lr=>LAYERS.find(l=>lr<=l.max);
+
+const sim={t:0,L:0,bias:0,mode:'link',lockL:6,paused:false,autoTo:null,autoGhost:null,off:0,offT:0,grab:false,pin:false,
+  lr:1.45,lrT:1.45,zk:10,why:'',ca:null,slugs:[],flash:[],ammo:200,lastFire:-9,layer:null,intro:null,shake:0};
+const keys=Object.create(null);
+
+/* ============================================================
+   DOM / キャンバス
+   ============================================================ */
+const $=id=>document.getElementById(id);
+const scene=$('scene'), g=scene.getContext('2d'), axisC=$('axis'), ag=axisC.getContext('2d'), tlC=$('tlc'), tg=tlC.getContext('2d');
+let W=0,H=0,DPR=1,AW=0,AH=0,TW=0,TH=0;
+function fit(c,ctx,w,h){ c.width=Math.round(w*DPR); c.height=Math.round(h*DPR); ctx.setTransform(DPR,0,0,DPR,0,0); }
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1,2);
+  W=innerWidth; H=innerHeight; fit(scene,g,W,H);
+  const ar=axisC.getBoundingClientRect(); AW=ar.width; AH=ar.height; fit(axisC,ag,AW,AH);
+  const tr=$('tl').getBoundingClientRect(); TW=tr.width; TH=tr.height; fit(tlC,tg,TW,TH);
+}
+addEventListener('resize',resize);
+function sceneRect(){
+  const right=W>640?(W>900?256:200):8;
+  return {x0:W>900?272:8,y0:54,x1:W-right,y1:H-(W>640?214:260)};
+}
+const setText=(id,s)=>{const e=$(id); if(e._s!==s){e._s=s;e.textContent=s;}};
+let toastT=0;
+function toast(s){ const e=$('toast'); e.textContent=s; e.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>e.classList.remove('show'),1800); }
+
+/* ============================================================
+   カメラ(セマンティックズームの座標系)
+   近: 自機中心・地球が下(LVLH)  →  遠: 地球中心・慣性系
+   ============================================================ */
+let C={ox:0,oy:0,al:0,ca:1,sa:0,k:1,cx:0,cy:0,w:0,mpp:1,R:1,tv:0};
+function camAt(tau,w,wc,withMoon){
+  const s=ship.orb.at(tau);
+  let ox=s.x*(1-wc), oy=s.y*(1-wc);
+  if(withMoon){ const u2=sm(sim.lr-7.5); if(u2>0){ const m=moon.orb.at(tau); ox+=0.4*m.x*u2; oy+=0.4*m.y*u2; } }
+  return {ox,oy,al:(Math.PI/2-s.phiU)*(1-w),s};
+}
+function buildCam(tv){
+  const R=Math.pow(10,sim.lr), r=sceneRect();
+  const w=sm((sim.lr-6.0)/1.1), wc=sm((sim.lr-6.3)/1.0);
+  const c=camAt(tv,w,wc,true);
+  const cx=(r.x0+r.x1)/2, cy=(r.y0+r.y1)/2, half=Math.min(r.x1-r.x0,r.y1-r.y0)/2;
+  C={ox:c.ox,oy:c.oy,al:c.al,ca:Math.cos(c.al),sa:Math.sin(c.al),k:half/R,cx,cy,w,mpp:R/half,R,tv,rect:r,ship:c.s,diag:Math.hypot(W,H)};
+}
+const P=(x,y)=>{ const dx=x-C.ox, dy=y-C.oy; return [C.cx+C.k*(dx*C.ca-dy*C.sa), C.cy-C.k*(dx*C.sa+dy*C.ca)]; };
+const worldDirToScreen=(dx,dy)=>{ const u=dx*C.ca-dy*C.sa, v=dx*C.sa+dy*C.ca; return [u,-v]; };
+function relL(o,tau){ // 自機 LVLH 座標(右=進行, 上=動径外)での相対位置[m]
+  const s=ship.orb.at(tau), p=o.orb.at(tau), al=Math.PI/2-s.phi, ca=Math.cos(al), sa=Math.sin(al), dx=p.x-s.x, dy=p.y-s.y;
+  return [dx*ca-dy*sa, dx*sa+dy*ca];
+}
+const rel2s=(u,v)=>[C.cx+C.k*u, C.cy-C.k*v];
+function distAt(o,tau){ const s=ship.orb.at(tau), p=o.orb.at(tau); return Math.hypot(p.x-s.x,p.y-s.y); }
+
+/* ============================================================
+   背景: 星・格子・スケールバー
+   ============================================================ */
+const stars=[]; for(let i=0;i<320;i++) stars.push({a:Math.random()*TAU,r:Math.sqrt(Math.random()),b:.25+Math.random()*.75,s:.5+Math.random()*1.1});
+function drawStars(){
+  const R=Math.max(W,H)*.78;
+  for(const s of stars){
+    const a=s.a+C.al, x=W/2+Math.cos(a)*s.r*R, y=H/2-Math.sin(a)*s.r*R;
+    g.fillStyle=`rgba(200,220,255,${s.b*.55})`; g.fillRect(x,y,s.s,s.s);
+  }
+}
+function drawGrid(){
+  const r=C.rect; g.save(); g.beginPath(); g.rect(r.x0,r.y0,r.x1-r.x0,r.y1-r.y0); g.clip();
+  const g0=Math.pow(10,Math.ceil(Math.log10(46*C.mpp))); const px=g0/C.mpp;
+  const a1=clamp((px-24)/50,0,1);
+  // 画面四隅を世界座標へ
+  let minX=1e99,maxX=-1e99,minY=1e99,maxY=-1e99;
+  for(const [sx,sy] of [[r.x0,r.y0],[r.x1,r.y0],[r.x0,r.y1],[r.x1,r.y1]]){
+    const u=(sx-C.cx)/C.k, v=-(sy-C.cy)/C.k, dx=u*C.ca+v*C.sa, dy=-u*C.sa+v*C.ca, X=C.ox+dx, Y=C.oy+dy;
+    minX=Math.min(minX,X);maxX=Math.max(maxX,X);minY=Math.min(minY,Y);maxY=Math.max(maxY,Y);
+  }
+  const fade=1-.6*C.w;
+  for(const [step,alpha] of [[g0,.055*a1],[g0*10,.11]]){
+    if(alpha<.005)continue;
+    const nx=Math.ceil(maxX/step)-Math.floor(minX/step), ny=Math.ceil(maxY/step)-Math.floor(minY/step);
+    if(nx>140||ny>140)continue;
+    g.strokeStyle=`rgba(140,175,255,${alpha*fade})`; g.lineWidth=1; g.beginPath();
+    for(let i=Math.floor(minX/step);i<=Math.ceil(maxX/step);i++){ const a=P(i*step,minY),b=P(i*step,maxY); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); }
+    for(let j=Math.floor(minY/step);j<=Math.ceil(maxY/step);j++){ const a=P(minX,j*step),b=P(maxX,j*step); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); }
+    g.stroke();
+  }
+  g.restore();
+  sim.gridLabel=fmtDist(g0)+' / '+fmtDist(g0*10);
+  // スケールバー
+  const n=C.mpp*140, p=Math.pow(10,Math.floor(Math.log10(n))), q=n/p>=5?5:n/p>=2?2:1, len=q*p, lp=len/C.mpp;
+  const bx=(r.x0+r.x1)/2-lp/2, by=r.y1-12;
+  g.strokeStyle='rgba(220,235,255,.8)'; g.lineWidth=1.5; g.beginPath();
+  g.moveTo(bx,by-5);g.lineTo(bx,by);g.lineTo(bx+lp,by);g.lineTo(bx+lp,by-5);g.stroke();
+  txt(fmtDist(len)+'  ·  格子 '+sim.gridLabel,(r.x0+r.x1)/2,by-10,COL.dim,'center',11); LB.push([(r.x0+r.x1)/2-150,by-24,300,18]);
+}
+function txt(s,x,y,col,align='left',size=12,bold=false,alpha=1){
+  g.font=`${bold?'600 ':''}${size}px ${FONT}`; g.textAlign=align; g.textBaseline='alphabetic';
+  g.lineJoin='round'; g.lineWidth=3.5; g.strokeStyle=`rgba(3,5,11,${.85*alpha})`; g.strokeText(s,x,y);
+  g.globalAlpha=alpha; g.fillStyle=col; g.fillText(s,x,y); g.globalAlpha=1;
+}
+
+/* ============================================================
+   地球・影・月・ラグランジュ点
+   ============================================================ */
+function drawEarth(tv){
+  const c=P(0,0), Rp=RE*C.k, diag=C.diag;
+  if(c[0]+Rp<-50||c[0]-Rp>W+50||c[1]+Rp<-50||c[1]-Rp>H+50)return;
+  const sd=worldDirToScreen(SX,SY); // 太陽の向き(画面)
+  const atm=Math.max(2,Math.min(Rp*.05, 100e3*C.k));
+  if(Rp<6000){
+    const gr=g.createRadialGradient(c[0]+sd[0]*Rp*.45,c[1]+sd[1]*Rp*.45,Rp*.05,c[0],c[1],Rp*1.02);
+    gr.addColorStop(0,'#3c86cf'); gr.addColorStop(.55,'#245b9c'); gr.addColorStop(1,'#12315e');
+    // 大気
+    const ga=g.createRadialGradient(c[0],c[1],Rp*.98,c[0],c[1],Rp+atm*1.6);
+    ga.addColorStop(0,'rgba(120,190,255,.55)'); ga.addColorStop(.35,'rgba(90,150,255,.18)'); ga.addColorStop(1,'rgba(60,110,255,0)');
+    g.fillStyle=ga; g.beginPath(); g.arc(c[0],c[1],Rp+atm*1.6,0,TAU); g.fill();
+    g.fillStyle=gr; g.beginPath(); g.arc(c[0],c[1],Rp,0,TAU); g.fill();
+    const sa=Math.atan2(sd[1],sd[0]);
+    g.fillStyle='rgba(2,4,14,.62)'; g.beginPath(); g.arc(c[0],c[1],Rp,sa+Math.PI/2,sa+Math.PI*1.5); g.closePath(); g.fill();
+    g.strokeStyle='rgba(150,210,255,.5)'; g.lineWidth=1.2; g.beginPath(); g.arc(c[0],c[1],Rp,0,TAU); g.stroke();
+  }else{
+    // 巨大な円は可視弧だけ多角形で描く(座標が巨大になると描画が壊れるため)
+    const rc=C.rect, mx=(rc.x0+rc.x1)/2-c[0], my=(rc.y0+rc.y1)/2-c[1], dist=Math.hypot(mx,my), th0=Math.atan2(my,mx);
+    const da=Math.min(Math.PI,Math.asin(Math.min(1,diag*.9/Math.max(dist,diag)))+.05), N=48, inner=Math.max(0,Rp-3*diag);
+    const el=(mx*sd[0]+my*sd[1])/Math.max(dist,1);
+    const day=sm((el+.2)/.5);
+    const col=`rgb(${Math.round(lerp(6,38,day))},${Math.round(lerp(12,102,day))},${Math.round(lerp(34,176,day))})`;
+    const arc=(rad,rev)=>{ for(let i=0;i<=N;i++){ const j=rev?N-i:i, th=th0-da+2*da*j/N; g.lineTo(c[0]+rad*Math.cos(th),c[1]+rad*Math.sin(th)); } };
+    // 大気グロー
+    const ga=g.createRadialGradient(c[0],c[1],Rp,c[0],c[1],Rp+atm*5);
+    ga.addColorStop(0,`rgba(${Math.round(lerp(60,130,day))},${Math.round(lerp(100,200,day))},255,${lerp(.18,.62,day)})`);
+    ga.addColorStop(.3,`rgba(80,140,255,${lerp(.05,.2,day)})`); ga.addColorStop(1,'rgba(60,110,255,0)');
+    g.fillStyle=ga; g.beginPath(); g.moveTo(c[0]+(Rp+atm*5)*Math.cos(th0-da),c[1]+(Rp+atm*5)*Math.sin(th0-da));
+    arc(Rp+atm*5,false); arc(Rp,true); g.closePath(); g.fill();
+    g.fillStyle=col; g.beginPath(); g.moveTo(c[0]+Rp*Math.cos(th0-da),c[1]+Rp*Math.sin(th0-da)); arc(Rp,false); arc(inner,true); g.closePath(); g.fill();
+    g.strokeStyle=`rgba(160,215,255,${lerp(.35,.8,day)})`; g.lineWidth=1.6; g.beginPath(); g.moveTo(c[0]+Rp*Math.cos(th0-da),c[1]+Rp*Math.sin(th0-da)); arc(Rp,false); g.stroke();
+  }
+  // 経線(動きの手がかり)。見えるスケールのときだけ
+  if(sim.lr<6.9){
+    const steps=[0.01,0.02,0.05,0.1,0.2,0.5,1,2,5,10,20,45];
+    let st=45; for(const s of steps){ if(s*D2R*RE/C.mpp>70){ st=s; break; } }
+    const dth=st*D2R, rc=C.rect;
+    const ccx=(rc.x0+rc.x1)/2, ccy=(rc.y0+rc.y1)/2, ang=Math.atan2(ccy-c[1],ccx-c[0]);
+    // 画面中心方向の地球角度(世界)
+    const sh=C.ship, wAng0=Math.atan2(C.oy,C.ox);
+    const centerA=(C.w<.99)?Math.atan2(C.oy,C.ox):sh.phi;
+    const span=Math.min(Math.PI,(C.diag*C.mpp*.9)/RE+.02);
+    if(span/dth<400){
+      const i0=Math.floor((centerA-span)/dth), i1=Math.ceil((centerA+span)/dth), len=Math.min(RE*.3,C.diag*C.mpp*.5);
+      g.strokeStyle=`rgba(150,200,255,${.13*(1-C.w)})`; g.lineWidth=1; g.beginPath();
+      for(let i=i0;i<=i1;i++){ const th=i*dth, a=P(RE*Math.cos(th),RE*Math.sin(th)), b=P((RE-len)*Math.cos(th),(RE-len)*Math.sin(th)); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); }
+      g.stroke();
+    }
+  }
+}
+function drawEarthCue(){
+  if(sim.lr>6.3||C.w>.4)return;
+  const r=C.rect, alt=C.ship.r-RE, c=P(0,0), dist=Math.hypot(c[0]-C.cx,c[1]-C.cy);
+  if(dist-RE*C.k<(r.y1-r.y0)*.55)return; // 地球の縁が画面に入っているなら不要
+  const a=(1-C.w)*clamp(1-(sim.lr-5.6)/.7,0,1);
+  const gr=g.createLinearGradient(0,r.y1+40,0,r.y1-150); gr.addColorStop(0,`rgba(80,150,255,${.30*a})`); gr.addColorStop(1,'rgba(80,150,255,0)');
+  g.fillStyle=gr; g.fillRect(0,r.y1-150,W,H);
+  txt('▼ 地球  高度 '+fmtDist(alt)+'  /  地球を下に置く座標系',(r.x0+r.x1)/2,r.y1-52,'#8fbfff','center',11,false,a);
+}
+function drawShadow(){
+  if(sim.lr<6.2)return;
+  const a=sm((sim.lr-6.2)/.8)*.55, len=RE*(sim.lr>8?60:14);
+  const nx=-SY, ny=SX; // 太陽軸に直交
+  const pts=[[nx*RE,ny*RE],[nx*RE-SX*len,ny*RE-SY*len],[-nx*RE-SX*len,-ny*RE-SY*len],[-nx*RE,-ny*RE]].map(p=>P(p[0],p[1]));
+  const gr=g.createLinearGradient(pts[0][0],pts[0][1],pts[1][0],pts[1][1]);
+  gr.addColorStop(0,`rgba(74,80,184,${a*.7})`); gr.addColorStop(1,'rgba(74,80,184,0)');
+  g.fillStyle=gr; g.beginPath(); g.moveTo(pts[0][0],pts[0][1]); for(let i=1;i<4;i++)g.lineTo(pts[i][0],pts[i][1]); g.closePath(); g.fill();
+  // 太陽の向き
+  if(sim.lr>6.5){
+    const sd=worldDirToScreen(SX,SY), rc=C.rect, ox=rc.x0+110, oy=rc.y0+56;
+    g.strokeStyle='rgba(255,200,87,.85)'; g.lineWidth=1.5; g.beginPath(); g.moveTo(ox,oy); g.lineTo(ox+sd[0]*28,oy+sd[1]*28); g.stroke();
+    g.fillStyle='#ffc857'; g.beginPath(); g.arc(ox+sd[0]*34,oy+sd[1]*34,4,0,TAU); g.fill();
+    txt('太陽光',ox+sd[0]*44+(sd[0]<0?-6:6),oy+sd[1]*44+4,COL.sun,sd[0]<0?'right':'left',11);
+  }
+}
+function drawMoonSys(tv){
+  const m=moon.orb.at(tv);
+  const a=sm((sim.lr-6.3)/1.2);
+  if(a>0.01){ // 月軌道
+    const c=P(0,0), rp=DM*C.k;
+    if(rp<4e5){ g.strokeStyle=`rgba(180,190,215,${.35*a})`; g.setLineDash([4,6]); g.lineWidth=1; g.beginPath(); g.arc(c[0],c[1],rp,0,TAU); g.stroke(); g.setLineDash([]); }
+  }
+  const p=P(m.x,m.y), rp=RMOON*C.k;
+  if(rp>0.8||sim.lr>6.8){
+    const rr=Math.max(rp,3.6);
+    const gr=g.createRadialGradient(p[0]-rr*.3,p[1]-rr*.3,rr*.1,p[0],p[1],rr);
+    gr.addColorStop(0,'#d8dbe3'); gr.addColorStop(1,'#6e7488');
+    g.fillStyle=gr; g.beginPath(); g.arc(p[0],p[1],rr,0,TAU); g.fill();
+    if(sim.lr>6.3) txt('月',p[0]+rr+6,p[1]+4,'#cfd5e6','left',12,true,clamp(a*1.5,0,1));
+  }
+  // ラグランジュ点(月に固定)
+  if(sim.lr>7.7){
+    const al=sm((sim.lr-7.7)/.6), ang=m.phi;
+    const pts=[['L1',.8369,0],['L2',1.1557,0],['L3',-1,0],['L4',1,-60*D2R],['L5',1,60*D2R]];
+    for(const [nm,f,da] of pts){
+      const rr=DM*f, th=ang+da*(nm==='L3'?0:1), x=rr*Math.cos(th)*(nm==='L3'?1:1), y=rr*Math.sin(th);
+      const q=nm==='L3'?[-DM*Math.cos(ang),-DM*Math.sin(ang)]:[x,y]; const s=P(q[0],q[1]);
+      g.strokeStyle=`rgba(255,200,87,${.8*al})`; g.lineWidth=1.3; g.beginPath(); g.moveTo(s[0]-5,s[1]);g.lineTo(s[0]+5,s[1]);g.moveTo(s[0],s[1]-5);g.lineTo(s[0],s[1]+5);g.stroke();
+      txt(nm,s[0]+8,s[1]-6,COL.sun,'left',11,false,al);
+    }
+  }
+}
+
+/* ============================================================
+   軌道線(絶対表示)。巨大軌道は可視範囲の窓だけ標本化
+   ============================================================ */
+function orbitPath(o,tv,from,to){
+  const orb=o.orb, cur=orb.at(tv);
+  const rpx=orb.a*C.k;
+  const pts=[];
+  let nuC=cur.nu, span=Math.PI;
+  if(rpx>3200){ span=Math.min(Math.PI,C.diag*C.mpp*1.3/Math.max(cur.r,1)+.002); }
+  const N=rpx>3200?110:Math.max(120,Math.min(360,Math.round(rpx/6)));
+  const nu0=nuC-span, nu1=nuC+span;
+  for(let i=0;i<=N;i++){
+    const nu=lerp(nu0,nu1,i/N), r=orb.rAt(nu), ph=orb.w+orb.s*nu;
+    pts.push(P(r*Math.cos(ph),r*Math.sin(ph)));
+  }
+  return pts;
+}
+function strokePts(pts){ g.beginPath(); pts.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1])); g.stroke(); }
+function drawOrbits(tv){
+  const a=1-sm((C.w-.1)/.5)*0; // 絶対軌道は常に描くが、近傍では相対経路が主役になる
+  const nearFade=sm((sim.lr-4.9)/1.2); // 近傍では自機以外の軌道線を薄くする
+  const list=[[ship,COL.self,1.6,.55],[enemyA,COL.foe,1.2,.5*Math.max(nearFade,.25)],[enemyB,COL.foe,1.2,.5]];
+  for(const [o,col,lw,al] of list){
+    g.strokeStyle=col; g.globalAlpha=al*a; g.lineWidth=lw; strokePts(orbitPath(o,tv));
+  }
+  g.globalAlpha=1;
+  // 護衛コンステレーションの軌道(共通の円)
+  if(sim.lr>5.6){
+    const c=P(0,0), rp=guards[0].orb.a*C.k, al=sm((sim.lr-5.6)/1);
+    g.strokeStyle=`rgba(255,61,154,${.28*al})`; g.setLineDash([2,5]); g.lineWidth=1; g.beginPath(); g.arc(c[0],c[1],rp,0,TAU); g.stroke(); g.setLineDash([]);
+  }
+  // 現在→tv の走破区間(未来を掴んでいるとき)
+  if(sim.off>1){
+    for(const [o,col] of [[ship,COL.self],[target(),COL.foe]]){
+      const n=Math.min(200,Math.max(20,Math.round(sim.off/Math.max(sim.off/200,1)))), pts=[];
+      for(let i=0;i<=n;i++){ const p=o.orb.at(sim.t+sim.off*i/n); pts.push(P(p.x,p.y)); }
+      g.strokeStyle=COL.future; g.lineWidth=3; g.globalAlpha=.9; strokePts(pts); g.globalAlpha=1;
+    }
+  }
+  // 高速時の流れ星の尾
+  const rate=Math.pow(2,sim.L);
+  if(rate>6){
+    for(const [o,col] of [[ship,COL.self],[enemyA,COL.foe],[enemyB,COL.foe],[moon,'#cfd5e6']]){
+      const tail=Math.min(0.7*rate,o.orb.n>0?Math.PI/o.orb.n*.45:1e9), pts=[];
+      for(let i=0;i<=22;i++){ const p=o.orb.at(tv-tail*(1-i/22)); pts.push(P(p.x,p.y)); }
+      const grd=g.createLinearGradient(pts[0][0],pts[0][1],pts[22][0],pts[22][1]);
+      grd.addColorStop(0,'rgba(255,255,255,0)'); grd.addColorStop(1,col);
+      g.strokeStyle=grd; g.lineWidth=2.4; strokePts(pts);
+    }
+  }
+}
+
+/* ============================================================
+   相対経路(会合圏で主役になる: 目標が自機のまわりをどう動くか)
+   ============================================================ */
+function drawRelPath(tv){
+  sim.caScreen=null; sim.ticks=[];
+  const al=1-sm((C.w-.0)/.6); if(al<.02||sim.lr<3.2||sim.lr>6.6)return;
+  const tg=target(), Hh=horizon(sim.lr), N=240, pts=[];
+  for(let i=0;i<=N;i++){ const q=relL(tg,sim.t+Hh*i/N); pts.push(rel2s(q[0],q[1])); }
+  g.save(); g.beginPath(); const r=C.rect; g.rect(r.x0,r.y0,r.x1-r.x0,r.y1-r.y0); g.clip();
+  // 時間で濃淡: 近い未来ほど濃い
+  for(let i=0;i<N;i++){
+    const f=i/N; g.strokeStyle=COL.foe; g.globalAlpha=al*lerp(.95,.28,f); g.lineWidth=lerp(2.4,1.2,f);
+    g.beginPath(); g.moveTo(pts[i][0],pts[i][1]); g.lineTo(pts[i+1][0],pts[i+1][1]); g.stroke();
+  }
+  g.globalAlpha=al;
+  // 時刻目盛り
+  const ticks=8;
+  for(let j=1;j<ticks;j++){
+    const q=relL(tg,sim.t+Hh*j/ticks), p=rel2s(q[0],q[1]);
+    g.fillStyle='rgba(255,140,200,.9)'; g.beginPath(); g.arc(p[0],p[1],2.2,0,TAU); g.fill();
+    if(j%2===0)(sim.ticks=sim.ticks||[]).push([p[0],p[1],'+'+fmtDur(Hh*j/ticks),al]);
+  }
+  // 最接近
+  if(sim.ca){
+    const q=relL(tg,sim.ca.t), p=rel2s(q[0],q[1]);
+    g.strokeStyle=COL.future; g.lineWidth=1.5; g.setLineDash([3,3]); g.beginPath(); g.moveTo(C.cx,C.cy); g.lineTo(p[0],p[1]); g.stroke(); g.setLineDash([]);
+    g.fillStyle='rgba(20,14,50,.9)'; g.strokeStyle=COL.future; g.lineWidth=2; g.beginPath(); g.arc(p[0],p[1],6,0,TAU); g.fill(); g.stroke();
+    sim.caScreen=[p[0],p[1],al];
+  }
+  g.restore(); g.globalAlpha=1;
+}
+
+function drawRelLabels(){
+  if(sim.caScreen&&sim.ca){ const [x,y,a]=sim.caScreen; place([{s:'最接近 '+fmtDist(sim.ca.d),col:COL.future,bold:true,alpha:a},{s:'+'+fmtDur(sim.ca.t-sim.t),col:COL.future,size:11,alpha:a}],x,y,8,['RD','RU','LD','LU'],true); }
+  for(const [x,y,t,a] of sim.ticks||[]) place([{s:t,col:'#ff9ccb',size:11,alpha:.9*a}],x,y,3,['RU','RD'],true);
+}
+function drawFarCluster(tv){
+  const c=P(0,0), a=sm((sim.lr-7.3)/.5);
+  // 地球と LEO 戦域(位相図としての簡略表示)
+  g.strokeStyle=`rgba(255,61,154,${.7*a})`; g.lineWidth=1.3; g.setLineDash([3,3]); g.beginPath(); g.arc(c[0],c[1],16,0,TAU); g.stroke(); g.setLineDash([]);
+  place([{s:'地球',col:'#9ccbff',bold:true,alpha:a},{s:'LEO 戦域(護衛10・PEP-α/β・自機)',col:COL.foe,size:11,alpha:a}],c[0],c[1],18,['LD','RD','LU','RU']);
+  const m=moon.orb.at(tv), mp=P(m.x,m.y);
+  place([{s:'月 基地',col:'#cfd5e6',bold:true,alpha:a},{s:'地球から '+fmtDist(Math.hypot(m.x,m.y)),col:COL.dim,size:11,alpha:a}],mp[0],mp[1],6,['RU','LU','RD']);
+}
+/* ============================================================
+   交戦圏・射程・自機まわりの記号
+   ============================================================ */
+function drawZones(tv){
+  const c=[C.cx,C.cy];
+  for(const [rad,col,lab,dash] of [[ENGAGE,COL.arm,'交戦圏 30 km · ≤×4',[8,6]],[FIRE_R,'#ff4d4d','射程 12 km',[2,5]]]){
+    const px=rad*C.k; if(px<14||px>3e4)continue;
+    const a=clamp((px-14)/30,0,1)*(1-.4*C.w);
+    if(rad===ENGAGE){ const gr=g.createRadialGradient(c[0],c[1],px*.6,c[0],c[1],px); gr.addColorStop(0,'rgba(255,122,26,0)'); gr.addColorStop(1,'rgba(255,122,26,.09)'); g.fillStyle=gr; g.beginPath(); g.arc(c[0],c[1],px,0,TAU); g.fill(); }
+    g.strokeStyle=col; g.globalAlpha=.8*a; g.lineWidth=1.4; g.setLineDash(dash); g.beginPath(); g.arc(c[0],c[1],px,0,TAU); g.stroke(); g.setLineDash([]); g.globalAlpha=1;
+    const lx=c[0]+px*Math.cos(-Math.PI/3.4), ly=c[1]+px*Math.sin(-Math.PI/3.4), r=C.rect;
+    if(lx>r.x0+20&&lx<r.x1-120&&ly>r.y0+10&&ly<r.y1-10){ txt(lab,lx+6,ly,col,'left',11,false,a); LB.push([lx+4,ly-12,lab.length*9,16]); }
+  }
+}
+
+/* ============================================================
+   物体の描画(写実 → アイコン → 点 を大きさで連続的に切替)
+   ============================================================ */
+function shipArt(x,y,L,ang,dark,alpha,burn){
+  g.save(); g.translate(x,y); g.rotate(ang); g.scale(L,L); g.globalAlpha=alpha;
+  const lit=dark?0.42:1, mix=(r,gg,b)=>`rgb(${Math.round(r*lit)},${Math.round(gg*lit)},${Math.round(b*lit)})`;
+  const lw=1.2/L;
+  g.lineWidth=lw; g.lineJoin='round';
+  // 太陽電池パドル
+  for(const sgn of [-1,1]){
+    g.fillStyle=mix(30,70,150); g.strokeStyle=mix(120,180,255); g.beginPath(); g.rect(-0.30,sgn*0.11-(sgn<0?0.34:0),0.22,0.34); g.fill(); g.stroke();
+    g.strokeStyle='rgba(150,200,255,.35)'; g.beginPath();
+    for(let i=1;i<4;i++){ const yy=sgn*0.11+sgn*i*0.085; g.moveTo(-0.30,yy); g.lineTo(-0.08,yy); }
+    g.moveTo(-0.19,sgn*0.11); g.lineTo(-0.19,sgn*0.45); g.stroke();
+  }
+  // ラジエータ
+  g.fillStyle=mix(210,215,225); for(const sgn of [-1,1]){ g.fillRect(0.0,sgn*0.14-(sgn<0?0.07:0),0.2,0.07); }
+  // 燃料タンク
+  g.fillStyle=mix(205,214,230); g.strokeStyle=mix(255,255,255); g.beginPath(); g.rect(-0.36,-0.115,0.46,0.23); g.fill(); g.stroke();
+  g.strokeStyle=mix(130,140,160); g.beginPath(); g.moveTo(-0.2,-0.115);g.lineTo(-0.2,0.115);g.moveTo(-0.04,-0.115);g.lineTo(-0.04,0.115);g.stroke();
+  // 操縦室
+  g.fillStyle=mix(120,160,255); g.strokeStyle=mix(210,230,255); g.beginPath(); g.moveTo(0.10,-0.115);g.lineTo(0.42,-0.05);g.lineTo(0.42,0.05);g.lineTo(0.10,0.115);g.closePath();g.fill();g.stroke();
+  g.fillStyle=mix(20,30,60); g.beginPath(); g.ellipse(0.30,0,0.06,0.026,0,0,TAU); g.fill();
+  // 武装
+  g.strokeStyle=mix(255,140,60); g.lineWidth=lw*2.2; g.beginPath(); g.moveTo(0.05,-0.115);g.lineTo(0.52,-0.2); g.stroke();
+  g.lineWidth=lw;
+  // 推進器
+  g.fillStyle=mix(110,115,130); g.strokeStyle=mix(200,205,220); g.beginPath(); g.moveTo(-0.36,-0.07);g.lineTo(-0.5,-0.14);g.lineTo(-0.5,0.14);g.lineTo(-0.36,0.07);g.closePath();g.fill();g.stroke();
+  if(burn>0){ const gr=g.createLinearGradient(-0.5,0,-0.5-burn*.5,0); gr.addColorStop(0,'rgba(180,230,255,.95)'); gr.addColorStop(1,'rgba(80,120,255,0)');
+    g.fillStyle=gr; g.beginPath(); g.moveTo(-0.5,-0.1);g.lineTo(-0.5-burn*.5,0);g.lineTo(-0.5,0.1);g.fill(); }
+  if(dark){ g.strokeStyle='rgba(127,232,255,.75)'; g.lineWidth=lw*1.6; g.beginPath(); g.rect(-0.36,-0.115,0.46,0.23); g.stroke(); }
+  g.restore();
+}
+function enemyArt(x,y,L,ang,alpha,o,time){
+  g.save(); g.translate(x,y); g.rotate(ang); g.globalAlpha=alpha;
+  const n=15;
+  const pos=[]; for(let i=0;i<n;i++){ const f=i/(n-1); pos.push([(f-.5)*L, Math.sin(f*9+time*1.7)*L*.085*Math.sin(f*Math.PI)]); }
+  g.strokeStyle='rgba(255,120,190,.65)'; g.lineWidth=Math.max(1,L*.012); g.beginPath(); pos.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1])); g.stroke();
+  const alive=o.hp/o.max;
+  for(let i=0;i<n;i++){
+    const f=i/(n-1), dead=(f>alive+.0001)&&false;
+    const act=(i===5||i===6), bind=(i===10||i===11), r=L*(act?.034:.026);
+    const hit=i/n>=alive? true:false;
+    g.fillStyle=hit?'#3a2540':act?'#ff4d4d':bind?'#4db3ff':'#ff6cb4';
+    g.strokeStyle='rgba(255,255,255,.55)'; g.lineWidth=Math.max(.6,L*.006);
+    g.beginPath(); g.arc(pos[i][0],pos[i][1],r,0,TAU); g.fill(); g.stroke();
+    if(i%2===0&&!hit){ g.strokeStyle='rgba(255,160,210,.5)'; g.beginPath(); g.moveTo(pos[i][0],pos[i][1]); g.lineTo(pos[i][0]+L*.02,pos[i][1]+(i%4===0?-1:1)*L*.07); g.stroke(); }
+  }
+  g.restore();
+}
+function icon(kind,x,y,s,ang,alpha,col){
+  g.save(); g.translate(x,y); g.rotate(ang); g.globalAlpha=alpha; g.strokeStyle=col; g.fillStyle=col+'33'; g.lineWidth=1.8; g.lineJoin='round';
+  g.beginPath();
+  if(kind==='ship'){ g.moveTo(s,0); g.lineTo(-s*.8,-s*.7); g.lineTo(-s*.35,0); g.lineTo(-s*.8,s*.7); g.closePath(); }
+  else if(kind==='foe'){ for(let i=0;i<6;i++){ const a=i*TAU/6; g.lineTo(Math.cos(a)*s,Math.sin(a)*s); } g.closePath(); }
+  else { g.rect(-s*.6,-s*.6,s*1.2,s*1.2); }
+  g.fill(); g.stroke(); g.restore();
+}
+function drawBody(o,tv,opts={}){
+  const p=o.orb.at(tv), sp=P(p.x,p.y), L=o.len*C.k, r=C.rect;
+  const out=sp[0]<r.x0-80||sp[0]>r.x1+80||sp[1]<r.y0-80||sp[1]>r.y1+80;
+  const dark=inShadow(p.x,p.y);
+  let ang=0;
+  if(o.kind==='ship') ang=-(sim.shipHead+C.al);
+  else{ const s=C.ship, dx=s.x-p.x, dy=s.y-p.y, a=worldDirToScreen(dx,dy); ang=Math.atan2(a[1],a[0]); }
+  const detail=sm((L-34)/70), ico=(1-detail)*sm((L-7)/12);
+  const col=o.kind==='ship'?COL.self:COL.foe;
+  const res={sp,out,p,dark,L};
+  if(out)return res;
+  if(sim.lr>7.45&&o.kind!=='moon'){ res.out=true; return res; }
+  const dotA=1-ico*.85-detail;
+  // 点(遠景): ハロー+芯
+  if(dotA>0.03){
+    g.globalAlpha=dotA; const gr=g.createRadialGradient(sp[0],sp[1],0,sp[0],sp[1],11);
+    gr.addColorStop(0,col+'cc'); gr.addColorStop(1,col+'00'); g.fillStyle=gr; g.beginPath(); g.arc(sp[0],sp[1],11,0,TAU); g.fill();
+    g.fillStyle=col; g.beginPath(); g.arc(sp[0],sp[1],o.kind==='guard'?1.7:2.6,0,TAU); g.fill(); g.globalAlpha=1;
+  }
+  if(ico>0.03) icon(o.kind,sp[0],sp[1],clamp(L*.5,5,13),ang,ico,col);
+  if(detail>0.02){
+    if(o.kind==='ship') shipArt(sp[0],sp[1],L,ang,dark,detail,sim.burning?1:0);
+    else if(o.kind==='foe') enemyArt(sp[0],sp[1],L,ang,detail,o,performance.now()/1000);
+    else icon('guard',sp[0],sp[1],L*.5,ang,detail,col);
+  }
+  return res;
+}
+
+let LB=[];
+function place(lines,x,y,r,cands,drop){
+  g.font=`11px ${FONT}`;
+  let w=0; for(const l of lines){ g.font=`${l.bold?'600 ':''}${l.size||11}px ${FONT}`; w=Math.max(w,g.measureText(l.s).width); }
+  w+=4; const h=lines.length*13+2, R=C.rect;
+  const f=44, spots={R:[r+6,-h/2],RU:[r+6,-h+4],RD:[r+6,-4],L:[-r-6-w,-h/2],LU:[-r-6-w,-h+4],LD:[-r-6-w,-4],D:[-w/2,r+6],U:[-w/2,-r-6-h],
+    RU2:[r+f,-h-f*.6],RD2:[r+f,f*.6],LU2:[-r-f-w,-h-f*.6],LD2:[-r-f-w,f*.6],D2:[-w/2,r+f],U2:[-w/2,-r-f-h]};
+  let pick=null;
+  for(const c of cands){
+    const [ox,oy]=spots[c], bx=x+ox, by=y+oy;
+    if(bx<R.x0+2||bx+w>R.x1-2||by<R.y0+2||by+h>R.y1-2)continue;
+    if(LB.some(b=>bx<b[0]+b[2]&&bx+w>b[0]&&by<b[1]+b[3]&&by+h>b[1]))continue;
+    pick=[bx,by]; break;
+  }
+  if(!pick){ if(drop)return false; const [ox,oy]=spots[cands[0]]; pick=[clamp(x+ox,R.x0+2,R.x1-w-2),clamp(y+oy,R.y0+2,R.y1-h-2)]; }
+  LB.push([pick[0],pick[1],w,h]);
+  if(Math.hypot(pick[0]+w/2-x,pick[1]+h/2-y)>r+30){ g.strokeStyle='rgba(200,215,255,.35)'; g.lineWidth=1; g.beginPath(); g.moveTo(x,y); g.lineTo(clamp(x,pick[0],pick[0]+w),clamp(y,pick[1],pick[1]+h)); g.stroke(); }
+  lines.forEach((l,i)=>txt(l.s,pick[0],pick[1]+11+13*i,l.col,'left',l.size||11,l.bold,l.alpha||1));
+  return true;
+}
+function drawLabel(o,res){
+  if(res.out)return;
+  const sp=res.sp, d=distAt(o,C.tv), rr=Math.max(res.L*.5,6)+3, isT=o===target();
+  if(o.kind==='ship'){
+    const ln=[{s:o.name,col:COL.self,bold:true}]; if(res.dark)ln.push({s:'日陰 · 蓄電池',col:'#9aa0ff',size:11});
+    place(ln,sp[0],sp[1],rr,['D','U','D2','U2','L']);
+  }else{
+    const ln=[{s:o.name+(isT?'  ◎':''),col:COL.foe,bold:isT},{s:fmtDist(d)+(res.dark?' · 日陰':''),col:COL.dim,size:11}];
+    place(ln,sp[0],sp[1],rr,['RU','RD','LU','LD','RU2','LU2','RD2','LD2']);
+    if(isT&&o.kind==='foe'){ for(let i=0;i<o.max;i++){ g.fillStyle=i<o.hp?'#ff4d6a':'rgba(120,70,100,.55)'; g.fillRect(sp[0]+rr+6+i*9,sp[1]+4,7,3); } }
+  }
+}
+const fmtClose=v=>(v>=0?'接近 ':'離脱 ')+(Math.abs(v)<1000?Math.abs(v).toFixed(Math.abs(v)<10?2:1)+' m/s':(Math.abs(v)/1e3).toFixed(2)+' km/s');
+
+/* 画面外の目標へ向かう縁マーカー */
+function drawRim(o,tv,label){
+  const p=o.orb.at(tv), sp=P(p.x,p.y), r=C.rect, m=26;
+  if(sp[0]>=r.x0&&sp[0]<=r.x1&&sp[1]>=r.y0&&sp[1]<=r.y1)return;
+  const cx=C.cx, cy=C.cy, dx=sp[0]-cx, dy=sp[1]-cy;
+  const ex=(r.x1-r.x0)/2-m, ey=(r.y1-r.y0)/2-m, sc=Math.min(ex/Math.abs(dx||1e-9),ey/Math.abs(dy||1e-9));
+  const x=cx+dx*sc, y=cy+dy*sc, a=Math.atan2(dy,dx), col=o.kind==='ship'?COL.self:COL.foe;
+  g.save(); g.translate(x,y); g.rotate(a); g.fillStyle=col; g.strokeStyle='rgba(3,5,11,.8)'; g.lineWidth=2; g.beginPath(); g.moveTo(10,0);g.lineTo(-6,-7);g.lineTo(-3,0);g.lineTo(-6,7);g.closePath();g.stroke();g.fill(); g.restore();
+  const left=x>cx, ln=[{s:label||o.name,col,bold:o===target()}];
+  if(o.kind!=='ship') ln.push({s:fmtDist(distAt(o,tv))+' · '+fmtClose(-closingRate(o,tv)),col:COL.dim,size:11});
+  place(ln,x,y,12,left?['L','LU','LD']:['R','RU','RD']);
+}
+function closingRate(o,tau){ const d1=distAt(o,tau-.5), d2=distAt(o,tau+.5); return (d2-d1); } // 負=接近
+
+/* 弾・爆発 */
+function drawSlugs(tv){
+  for(const s of sim.slugs){
+    const p=s.orb.at(tv), q=s.orb.at(tv-.12), a=P(p.x,p.y), b=P(q.x,q.y);
+    g.strokeStyle='#ffd9a8'; g.lineWidth=2; g.beginPath(); g.moveTo(a[0],a[1]); g.lineTo(b[0],b[1]); g.stroke();
+  }
+  const now=performance.now();
+  sim.flash=sim.flash.filter(f=>now-f.t0<1400);
+  for(const f of sim.flash){
+    const age=(now-f.t0)/1400, p=f.orb.at(tv), s=P(p.x,p.y);
+    g.strokeStyle=`rgba(255,160,90,${1-age})`; g.lineWidth=2; g.beginPath(); g.arc(s[0],s[1],8+age*70,0,TAU); g.stroke();
+    g.strokeStyle=`rgba(255,255,255,${(1-age)*.7})`; g.beginPath(); g.arc(s[0],s[1],4+age*30,0,TAU); g.stroke();
+    if(f.label&&age<.8) txt(f.label,s[0]+12,s[1]-10,COL.arm,'left',12,true,1-age);
+  }
+}
+
+/* 進行方向・照準 */
+function drawShipMarks(res){
+  if(res.out)return;
+  const sp=res.sp, s=C.ship;
+  // 進行方向(PRO)・逆進行(RET)
+  const vv=worldDirToScreen(s.vx,s.vy), vl=Math.hypot(vv[0],vv[1])||1, ux=vv[0]/vl, uy=vv[1]/vl;
+  const d=Math.max(46,res.L*.7+26);
+  const px=sp[0]+ux*d, py=sp[1]+uy*d;
+  const al=1-sm((C.w-.2)/.4); if(al<.05)return;
+  g.globalAlpha=al*.9; g.strokeStyle=COL.sun; g.lineWidth=1.5;
+  g.beginPath(); g.arc(px,py,6,0,TAU); g.stroke(); g.beginPath(); g.arc(px,py,1.3,0,TAU); g.stroke();
+  g.beginPath(); g.arc(sp[0]-ux*d,sp[1]-uy*d,6,0,TAU); g.moveTo(sp[0]-ux*d-4,sp[1]-uy*d-4); g.lineTo(sp[0]-ux*d+4,sp[1]-uy*d+4); g.moveTo(sp[0]-ux*d+4,sp[1]-uy*d-4); g.lineTo(sp[0]-ux*d-4,sp[1]-uy*d+4); g.stroke();
+  g.globalAlpha=1;
+  sim.proPos=[px,py,al];
+}
+function drawProLabel(res){ if(!sim.proPos||res.out)return; const [x,y,a]=sim.proPos; place([{s:'PRO',col:COL.sun,size:11,alpha:a}],x,y,8,['R','U'],true); sim.proPos=null; }
+function drawLead(tgRes){
+  // 目標の相対速度ベクトルと、射撃可能なら予測照準点
+  const tg=target(); if(tgRes.out&&sim.lr>5)return;
+  const al=1-sm((C.w-.0)/.5); if(al<.05)return;
+  const sp=tgRes.sp, t=C.tv;
+  const q1=relL(tg,t-.5), q2=relL(tg,t+.5), vx=q2[0]-q1[0], vy=q2[1]-q1[1];
+  const sc=rel2s(vx*sim.vecT,vy*sim.vecT), base=rel2s(0,0);
+  const ax=sp[0]+(sc[0]-base[0]), ay=sp[1]+(sc[1]-base[1]);
+  g.strokeStyle=COL.foe; g.globalAlpha=al*.9; g.lineWidth=1.6; g.beginPath(); g.moveTo(sp[0],sp[1]); g.lineTo(ax,ay); g.stroke();
+  const ang=Math.atan2(ay-sp[1],ax-sp[0]); if(Math.hypot(ax-sp[0],ay-sp[1])>8){ g.fillStyle=COL.foe; g.beginPath(); g.moveTo(ax,ay); g.lineTo(ax-8*Math.cos(ang-.4),ay-8*Math.sin(ang-.4)); g.lineTo(ax-8*Math.cos(ang+.4),ay-8*Math.sin(ang+.4)); g.fill(); }
+  g.globalAlpha=1;
+  const d=distAt(tg,t);
+  if(d<FIRE_R*1.3&&sim.lr<5.2){ // 照準リング
+    const lp=leadPoint(tg,t); if(lp){ const s2=P(lp.x,lp.y);
+      g.strokeStyle=COL.arm; g.lineWidth=1.6; g.globalAlpha=.95; g.beginPath(); g.arc(s2[0],s2[1],11,0,TAU); g.moveTo(s2[0]-17,s2[1]);g.lineTo(s2[0]-6,s2[1]);g.moveTo(s2[0]+6,s2[1]);g.lineTo(s2[0]+17,s2[1]);g.moveTo(s2[0],s2[1]-17);g.lineTo(s2[0],s2[1]-6);g.moveTo(s2[0],s2[1]+6);g.lineTo(s2[0],s2[1]+17); g.stroke(); g.globalAlpha=1;
+      txt('見越し '+lp.tof.toFixed(1)+'s',s2[0]+20,s2[1]+4,COL.arm,'left',10); }
+  }
+}
+function leadPoint(tg,t){
+  const s=ship.orb.at(t), p=tg.orb.at(t), rx=p.x-s.x, ry=p.y-s.y, vx=p.vx-s.vx, vy=p.vy-s.vy;
+  const a=vx*vx+vy*vy-SLUG_V*SLUG_V, b=2*(rx*vx+ry*vy), c=rx*rx+ry*ry;
+  let tof; const disc=b*b-4*a*c; if(disc<0)return null;
+  const t1=(-b-Math.sqrt(disc))/(2*a), t2=(-b+Math.sqrt(disc))/(2*a); tof=Math.min(t1>0?t1:1e9,t2>0?t2:1e9); if(tof>1e8)return null;
+  const hx=rx+vx*tof, hy=ry+vy*tof, hl=Math.hypot(hx,hy);
+  return {x:s.x+hx,y:s.y+hy,dx:hx/hl,dy:hy/hl,tof};
+}
+
+/* ============================================================
+   未来ゴースト: 「現在」の自機印と全体のトーン
+   ============================================================ */
+function drawNowMark(){
+  if(sim.off<1)return;
+  const p=ship.orb.at(sim.t), sp=P(p.x,p.y), r=C.rect;
+  const inside=sp[0]>r.x0&&sp[0]<r.x1&&sp[1]>r.y0&&sp[1]<r.y1;
+  if(inside){
+    g.strokeStyle=COL.self; g.setLineDash([3,3]); g.lineWidth=1.3; g.beginPath(); g.arc(sp[0],sp[1],10,0,TAU); g.stroke(); g.setLineDash([]);
+    txt('NOW',sp[0]+14,sp[1]+4,COL.self,'left',11,true);
+  }
+}
+function drawFutureTone(){
+  const a=sm(sim.off/Math.max(2,Math.min(30,horizon(sim.lr)*.01)));
+  if(a<.01)return;
+  g.fillStyle=`rgba(90,70,200,${.07*a})`; g.fillRect(0,0,W,H);
+  const gr=g.createRadialGradient(W/2,H/2,Math.min(W,H)*.35,W/2,H/2,Math.max(W,H)*.75);
+  gr.addColorStop(0,'rgba(184,164,255,0)'); gr.addColorStop(1,`rgba(184,164,255,${.30*a})`);
+  g.fillStyle=gr; g.fillRect(0,0,W,H);
+  g.strokeStyle=`rgba(184,164,255,${.55*a})`; g.lineWidth=2; g.strokeRect(1,1,W-2,H-2);
+}
+
+/* ============================================================
+   フレーム描画
+   ============================================================ */
+function drawScene(){
+  const tv=sim.t+sim.off;
+  buildCam(tv); LB=[];
+  g.setTransform(DPR,0,0,DPR,0,0);
+  g.fillStyle='#03050b'; g.fillRect(0,0,W,H);
+  const bg=g.createRadialGradient(W*.4,H*.35,0,W*.4,H*.35,Math.max(W,H)); bg.addColorStop(0,'#0a1020'); bg.addColorStop(1,'#03050b'); g.fillStyle=bg; g.fillRect(0,0,W,H);
+  drawStars();
+  drawGrid();
+  drawShadow();
+  drawEarth(tv);
+  drawEarthCue();
+  drawMoonSys(tv);
+  drawOrbits(tv);
+  drawRelPath(tv);
+  drawZones(tv);
+  // 護衛(群)
+  const gres=guards.map(o=>drawBody(o,tv));
+  const eA=drawBody(enemyA,tv), eB=drawBody(enemyB,tv);
+  drawSlugs(tv);
+  const sRes=drawBody(ship,tv);
+  drawNowMark();
+  drawShipMarks(sRes);
+  const tg=target(), tgRes=tg===enemyA?eA:tg===enemyB?eB:gres[0];
+  drawLead(tgRes);
+  // ラベル
+  const detailSuppress=sim.lr<2.4;
+  if(sim.lr<7.3){
+    drawLabel(ship,sRes); drawLabel(tg,tgRes);
+    drawRelLabels();
+    for(const [o,r] of [[enemyA,eA],[enemyB,eB]]) if(o!==tg)drawLabel(o,r);
+    if(sim.lr>5.0&&sim.lr<6.8) guards.forEach((o,i)=>{ const r=gres[i]; if(!r.out&&i%3===0) place([{s:o.name,col:'#c97aa6',size:11,alpha:.85}],r.sp[0],r.sp[1],4,['RU','RD'],true); });
+    drawProLabel(sRes);
+  }else drawFarCluster(tv);
+  drawRim(tg,tv); if(tg!==enemyA)drawRim(enemyA,tv);
+  if(sim.off>1){ const p=ship.orb.at(sim.t); const sp=P(p.x,p.y),r=C.rect; if(sp[0]<r.x0||sp[0]>r.x1||sp[1]<r.y0||sp[1]>r.y1) drawRim({...ship,orb:ship.orb,name:'NOW'},sim.t,'NOW'); }
+  drawFutureTone();
+  // 仮: 一時停止の表示
+  if(sim.paused){ txt('PAUSE',C.cx,C.rect.y0+40,'#ff8a8a','center',16,true); }
+}
+
+/* ============================================================
+   右の「スケール⇄時間」軸: この案の中心 UI
+   ============================================================ */
+const AX={top:30,bot:24,x:62,tx0:128,tx1:226};
+function ay(lr){ return AX.top+(LR_MAX-lr)/(LR_MAX-LR_MIN)*(AH-AX.top-AX.bot); }
+function lrFromAy(y){ return clamp(LR_MAX-(y-AX.top)/(AH-AX.top-AX.bot)*(LR_MAX-LR_MIN),LR_MIN,LR_MAX); }
+function axL(L){ return AX.tx0+(L/17)*(AX.tx1-AX.tx0); }
+function drawAxis(){
+  ag.setTransform(DPR,0,0,DPR,0,0); ag.clearRect(0,0,AW,AH);
+  const t=(s,x,y,col,al='left',sz=10,b=false)=>{ ag.font=`${b?'600 ':''}${sz}px ${FONT}`; ag.textAlign=al; ag.fillStyle=col; ag.fillText(s,x,y); };
+  t('スケール',10,16,COL.dim,'left',10); t('時間加速',AX.tx0-8,16,COL.dim,'left',10);
+  // 層の帯
+  const bands=[[LR_MIN,2.5,'機体','#7fe8ff'],[2.5,LR_ENG,'近接戦闘','#ff7a1a'],[LR_ENG,5.7,'会合圏','#ff3d9a'],[5.7,7.3,'軌道','#b8a4ff'],[7.3,LR_MAX,'地球–月','#ffc857']];
+  for(const [a,b,nm,col] of bands){
+    const y0=ay(b), y1=ay(a); ag.fillStyle=col+'1f'; ag.fillRect(4,y0,AX.x-6,y1-y0);
+    ag.fillStyle=col; ag.fillRect(4,y0+1,2,y1-y0-2);
+    t(nm,11,(y0+y1)/2+3,col,'left',10);
+  }
+  // 武器域(≤×4)
+  ag.fillStyle='rgba(255,122,26,.16)'; ag.fillRect(AX.tx0,ay(LR_ENG),axL(2)-AX.tx0,ay(LR_MIN)-ay(LR_ENG));
+  ag.strokeStyle='rgba(255,122,26,.7)'; ag.setLineDash([3,3]); ag.beginPath(); ag.moveTo(axL(2),ay(LR_ENG)); ag.lineTo(axL(2),ay(LR_MIN)); ag.moveTo(AX.tx0,ay(LR_ENG)); ag.lineTo(AX.tx1,ay(LR_ENG)); ag.stroke(); ag.setLineDash([]);
+  t('武器域',AX.tx0+3,ay(LR_MIN)-6,COL.arm,'left',10);
+  // 軸と 10 のべき目盛り
+  ag.strokeStyle='rgba(180,200,240,.55)'; ag.lineWidth=1.2; ag.beginPath(); ag.moveTo(AX.x,AX.top-4); ag.lineTo(AX.x,AH-AX.bot+4); ag.stroke();
+  const tk=[[1,'10 m'],[2,'100 m'],[3,'1 km'],[4,'10 km'],[5,'100 km'],[6,'1000 km'],[7,'10⁴ km'],[8,'10⁵ km']];
+  for(const [lr,lab] of tk){ const y=ay(lr); ag.beginPath(); ag.moveTo(AX.x-5,y); ag.lineTo(AX.x+5,y); ag.stroke(); t(lab,AX.x+9,y+3,COL.ink,'left',10); }
+  // 時間段の目盛り(下)
+  for(const L of [0,4,8,12,16]){ const x=axL(L); ag.strokeStyle='rgba(180,200,240,.25)'; ag.beginPath(); ag.moveTo(x,AX.top); ag.lineTo(x,AH-AX.bot); ag.stroke(); t('×'+fmtWarp(Math.pow(2,L)),Math.min(x,AX.tx1-8),AH-9,COL.dim,'center',9); }
+  // 連動曲線: 推奨 / 上限
+  ag.beginPath(); for(let lr=LR_MIN;lr<=LR_MAX+1e-6;lr+=.05){ const x=axL(Lc(lr)),y=ay(lr); lr===LR_MIN?ag.moveTo(x,y):ag.lineTo(x,y); }
+  ag.strokeStyle=COL.self; ag.lineWidth=2; ag.stroke();
+  ag.beginPath(); for(let lr=LR_MIN;lr<=LR_MAX+1e-6;lr+=.05){ const x=axL(Math.min(17,Lcap(lr))),y=ay(lr); lr===LR_MIN?ag.moveTo(x,y):ag.lineTo(x,y); }
+  ag.strokeStyle='rgba(127,232,255,.35)'; ag.setLineDash([2,3]); ag.lineWidth=1; ag.stroke(); ag.setLineDash([]);
+  // 現在位置
+  const y=ay(sim.lr), x=axL(Math.min(17,sim.L));
+  ag.strokeStyle='rgba(255,255,255,.35)'; ag.beginPath(); ag.moveTo(4,y); ag.lineTo(AX.tx1,y); ag.stroke();
+  ag.fillStyle='#fff'; ag.beginPath(); ag.moveTo(AX.x-9,y); ag.lineTo(AX.x-15,y-5); ag.lineTo(AX.x-15,y+5); ag.fill();
+  ag.fillStyle=COL.self; ag.strokeStyle='#04101a'; ag.lineWidth=2; ag.beginPath(); ag.arc(x,y,5.5,0,TAU); ag.stroke(); ag.fill();
+  t('×'+fmtWarp(Math.pow(2,sim.L)),AX.tx1+4,16,'#fff','right',12,true);
+}
+function fmtWarp(r){ return r<10?r.toFixed(r<2?2:1).replace(/\.?0+$/,''):r<1e4?Math.round(r).toString():r<1e6?(r/1e3).toFixed(1)+'k':(r/1e6).toFixed(2)+'M'; }
+
+/* ============================================================
+   タイムライン(掴んで引く)
+   ============================================================ */
+const TLp={l:68,r:14,rulerY:20,laneD:[28,86],laneF:[92,108],laneS:[114,150]};
+let tlData=null;
+function computeTL(){
+  const Hh=horizon(sim.lr), N=300, tg=target();
+  const ts=new Float64Array(N+1), d=new Float64Array(N+1), sS=new Uint8Array(N+1), sT=new Uint8Array(N+1);
+  for(let i=0;i<=N;i++){
+    const t=sim.t+Hh*i/N, s=ship.orb.at(t), p=tg.orb.at(t);
+    ts[i]=t; d[i]=Math.hypot(p.x-s.x,p.y-s.y); sS[i]=inShadow(s.x,s.y)?1:0; sT[i]=inShadow(p.x,p.y)?1:0;
+  }
+  // 最接近(区間内の局所最小のうち最も近い未来)
+  let best=-1;
+  for(let i=1;i<N;i++){ if(d[i]<=d[i-1]&&d[i]<d[i+1]){ if(best<0||d[i]<d[best]-1e-3&&false)best=i; if(best<0)best=i; } }
+  let ca=null;
+  if(best>0){
+    let a=ts[best-1], b=ts[best+1];
+    for(let k=0;k<40;k++){ const m1=a+(b-a)/3, m2=b-(b-a)/3; if(distAt(tg,m1)<distAt(tg,m2))b=m2; else a=m1; }
+    const tc=(a+b)/2; ca={t:tc,d:distAt(tg,tc)};
+  }
+  sim.ca=ca; tlData={Hh,N,ts,d,sS,sT};
+}
+function tx(t){ return TLp.l+(t-sim.t)/tlData.Hh*(TW-TLp.l-TLp.r); }
+function tFromX(x){ return clamp((x-TLp.l)/(TW-TLp.l-TLp.r),0,1)*tlData.Hh; }
+function runs(arr,N,fn){ let s=-1; for(let i=0;i<=N;i++){ if(arr(i)){ if(s<0)s=i; } else if(s>=0){ fn(s,i-1); s=-1; } } if(s>=0)fn(s,N); }
+function drawTL(){
+  const q=tlData; if(!q)return;
+  tg.setTransform(DPR,0,0,DPR,0,0); tg.clearRect(0,0,TW,TH);
+  const T=(s,x,y,col,al='left',sz=10,b=false)=>{ tg.font=`${b?'600 ':''}${sz}px ${FONT}`; tg.textAlign=al; tg.fillStyle=col; tg.fillText(s,x,y); };
+  const x0=TLp.l, x1=TW-TLp.r, w=x1-x0;
+  // 目盛り(読みやすい間隔)
+  const raw=q.Hh/Math.max(3,Math.floor(w/110)), steps=[1,2,5,10,15,30,60,120,300,600,900,1800,3600,7200,14400,21600,43200,86400,172800,432000,864000,2592000];
+  const st=steps.find(s=>s>=raw)||steps[steps.length-1];
+  tg.strokeStyle='rgba(160,185,235,.22)'; tg.lineWidth=1;
+  for(let k=1;k*st<=q.Hh;k++){ const x=x0+k*st/q.Hh*w; tg.beginPath(); tg.moveTo(x,TLp.rulerY); tg.lineTo(x,TH-6); tg.stroke(); T('+'+fmtDur(k*st),x,14,COL.dim,'center',10); }
+  T('NOW',x0,14,COL.self,'center',10,true);
+  tg.strokeStyle=COL.self; tg.lineWidth=2; tg.beginPath(); tg.moveTo(x0,TLp.rulerY-4); tg.lineTo(x0,TH-6); tg.stroke();
+  // レーン見出し
+  T('目標距離',8,TLp.laneD[0]+11,COL.dim,'left',10);T('(対数)',8,TLp.laneD[0]+22,COL.faint||COL.dim,'left',9);
+  T('射撃',8,TLp.laneF[0]+12,COL.dim,'left',10);
+  T('日照',8,TLp.laneS[0]+13,COL.dim,'left',10);
+  // --- 距離レーン
+  const [y0,y1]=TLp.laneD;
+  let dmin=1e99,dmax=0; for(let i=0;i<=q.N;i++){ dmin=Math.min(dmin,q.d[i]); dmax=Math.max(dmax,q.d[i]); }
+  let lo=Math.log10(dmin/1000)-.15, hi=Math.log10(dmax/1000)+.1; if(hi-lo<1.4){ const m=(hi+lo)/2; lo=m-.7; hi=m+.7; }
+  const dy=v=>y1-2-(clamp(Math.log10(v/1000),lo,hi)-lo)/(hi-lo)*(y1-y0-4);
+  T(fmtDist(Math.pow(10,hi)*1000),8,y0+34,COL.faint||COL.dim,'left',9);T(fmtDist(Math.pow(10,lo)*1000),8,y1-2,COL.faint||COL.dim,'left',9);
+  tg.fillStyle='rgba(120,150,230,.06)'; tg.fillRect(x0,y0,w,y1-y0);
+  for(const [v,col,lab] of [[ENGAGE,COL.arm,'30 km'],[FIRE_R,'#ff4d4d','12 km']]){ if(Math.log10(v/1000)<lo||Math.log10(v/1000)>hi)continue; tg.strokeStyle=col; tg.globalAlpha=.65; tg.setLineDash([5,4]); tg.beginPath(); tg.moveTo(x0,dy(v)); tg.lineTo(x1,dy(v)); tg.stroke(); tg.setLineDash([]); tg.globalAlpha=1; T(lab,x1-2,dy(v)-2,col,'right',9); }
+  tg.beginPath(); for(let i=0;i<=q.N;i++){ const x=x0+i/q.N*w, y=dy(q.d[i]); i?tg.lineTo(x,y):tg.moveTo(x,y); }
+  tg.strokeStyle=COL.foe; tg.lineWidth=2; tg.stroke();
+  // --- 射撃可能レーン
+  const [f0,f1]=TLp.laneF; tg.fillStyle='rgba(120,150,230,.06)'; tg.fillRect(x0,f0,w,f1-f0);
+  runs(i=>q.d[i]<ENGAGE,q.N,(a,b)=>{ tg.fillStyle='rgba(255,122,26,.28)'; tg.fillRect(x0+a/q.N*w,f0+2,(b-a+1)/q.N*w,f1-f0-4); });
+  runs(i=>q.d[i]<FIRE_R,q.N,(a,b)=>{ tg.fillStyle='rgba(255,90,60,.95)'; tg.fillRect(x0+a/q.N*w,f0+2,(b-a+1)/q.N*w,f1-f0-4); if((b-a)/q.N*w>46)T('射撃可',x0+a/q.N*w+4,f0+12,'#fff','left',9,true); });
+  // --- 日照レーン(自機/目標の2段)
+  const [s0,s1]=TLp.laneS, mid=(s0+s1)/2;
+  if(q.Hh>40000){
+    tg.fillStyle='rgba(120,150,230,.10)'; tg.fillRect(x0,s0+1,w,s1-s0-2);
+    T('この幅では 92分周期の明暗が潰れる — ズームインすると日陰の区間が現れる',x0+w/2,mid+4,COL.dim,'center',10);
+  }else
+  for(const [arr,ya,yb,lab] of [[q.sS,s0+1,mid-1,'自機'],[q.sT,mid+1,s1-1,'目標']]){
+    tg.fillStyle=COL.sun+'cc'; tg.fillRect(x0,ya,w,yb-ya);
+    runs(i=>arr[i]===1,q.N,(a,b)=>{ tg.fillStyle=COL.dark; tg.fillRect(x0+a/q.N*w,ya,(b-a+1)/q.N*w,yb-ya); });
+    T(lab,x0-4,(ya+yb)/2+3,COL.dim,'right',9);
+  }
+  // 最接近
+  sim.caHit=null;
+  if(sim.ca){
+    const x=tx(sim.ca.t);
+    tg.strokeStyle=COL.future; tg.lineWidth=1.5; tg.setLineDash([2,3]); tg.beginPath(); tg.moveTo(x,TLp.rulerY); tg.lineTo(x,s1+2); tg.stroke(); tg.setLineDash([]);
+    tg.fillStyle=COL.future; tg.beginPath(); tg.arc(x,dy(sim.ca.d),4.5,0,TAU); tg.fill();
+    const lab='最接近 '+fmtDist(sim.ca.d)+' @+'+fmtDur(sim.ca.t-sim.t), lw=tg.measureText(lab).width+14, lx=Math.min(x+8,x1-lw);
+    tg.fillStyle='rgba(40,28,90,.92)'; tg.strokeStyle=COL.future; tg.lineWidth=1; tg.beginPath(); tg.roundRect(lx,y0-1,lw,17,8); tg.fill(); tg.stroke();
+    T(lab,lx+7,y0+11,'#e6dcff','left',10,true);
+    sim.caHit={x:lx,y:y0-1,w:lw,h:17,cx:x};
+  }
+  // 掴んだ位置のカーソル
+  if(sim.off>.5||sim.grab){
+    const x=x0+sim.off/q.Hh*w;
+    tg.strokeStyle=COL.future; tg.lineWidth=2; tg.beginPath(); tg.moveTo(x,TLp.rulerY-6); tg.lineTo(x,TH-4); tg.stroke();
+    tg.fillStyle=COL.future; tg.beginPath(); tg.moveTo(x-7,3); tg.lineTo(x+7,3); tg.lineTo(x,TLp.rulerY-3); tg.fill();
+    const lab='+'+fmtDur(sim.off)+'  d='+fmtDist(interpD(sim.off)), lw=tg.measureText(lab).width+12, lx=clamp(x-lw/2,x0,x1-lw);
+    tg.fillStyle='rgba(40,28,90,.95)'; tg.strokeStyle=COL.future; tg.beginPath(); tg.roundRect(lx,TH-22,lw,17,8); tg.fill(); tg.stroke();
+    T(lab,lx+6,TH-10,'#fff','left',10,true);
+  }else{
+    T('← 下端をつかんで右へ引くと、すべてが未来へ動く →',x0+w/2,TH-8,COL.faint||COL.dim,'center',10);
+  }
+  // 自動ワープの目標
+  if(sim.autoTo!=null){ const x=tx(sim.autoTo); tg.strokeStyle=COL.self; tg.lineWidth=1.5; tg.beginPath(); tg.moveTo(x,TLp.rulerY); tg.lineTo(x,s1); tg.stroke(); T('WARP',x,s1+11,COL.self,'center',9,true); }
+}
+function interpD(off){ const q=tlData, f=clamp(off/q.Hh,0,1)*q.N, i=Math.min(q.N-1,Math.floor(f)); return lerp(q.d[i],q.d[i+1],f-i); }
+
+/* ============================================================
+   入力
+   ============================================================ */
+let tlDrag=false;
+function offFromEvent(e){ const r=tlC.getBoundingClientRect(); return tFromX(e.clientX-r.left); }
+tlC.addEventListener('pointerdown',e=>{
+  if(!tlData)return;
+  const r=tlC.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top;
+  if(sim.caHit&&x>=sim.caHit.x&&x<=sim.caHit.x+sim.caHit.w&&y>=sim.caHit.y&&y<=sim.caHit.y+sim.caHit.h&&sim.ca){ sim.offT=sim.ca.t-sim.t; sim.autoTo=null; sim.autoGhost=null; tlDrag=false; sim.grab=true; sim.grabHold=performance.now()+700; return; }
+  tlDrag=true; sim.grab=true; sim.autoTo=null; sim.autoGhost=null; tlC.setPointerCapture(e.pointerId); sim.offT=offFromEvent(e);
+});
+tlC.addEventListener('pointermove',e=>{ if(tlDrag)sim.offT=offFromEvent(e); });
+const endDrag=()=>{ tlDrag=false; sim.grab=false; if(!sim.pin&&sim.autoTo==null)sim.offT=0; };
+tlC.addEventListener('pointerup',endDrag); tlC.addEventListener('pointercancel',endDrag);
+
+function setZoom(lr,fast){ sim.lrT=clamp(lr,LR_MIN,LR_MAX); sim.zk=fast?14:3.2; }
+scene.addEventListener('wheel',e=>{ e.preventDefault(); sim.intro=null; setZoom(sim.lrT+clamp(e.deltaY,-120,120)*.0016*(e.ctrlKey?2.5:1),true); },{passive:false});
+const ptrs=new Map(); let pinch0=null;
+scene.addEventListener('pointerdown',e=>{ ptrs.set(e.pointerId,[e.clientX,e.clientY]); scene.setPointerCapture(e.pointerId); if(ptrs.size===2){ const [a,b]=[...ptrs.values()]; pinch0={d:Math.hypot(a[0]-b[0],a[1]-b[1]),lr:sim.lrT}; } });
+scene.addEventListener('pointermove',e=>{ if(!ptrs.has(e.pointerId))return; ptrs.set(e.pointerId,[e.clientX,e.clientY]); if(ptrs.size===2&&pinch0){ const [a,b]=[...ptrs.values()], d=Math.hypot(a[0]-b[0],a[1]-b[1]); sim.intro=null; setZoom(pinch0.lr-Math.log10(d/pinch0.d),true); } });
+const pend=e=>{ ptrs.delete(e.pointerId); if(ptrs.size<2)pinch0=null; };
+scene.addEventListener('pointerup',pend); scene.addEventListener('pointercancel',pend);
+let axDrag=false;
+axisC.addEventListener('pointerdown',e=>{ axDrag=true; axisC.setPointerCapture(e.pointerId); sim.intro=null; setZoom(lrFromAy(e.clientY-axisC.getBoundingClientRect().top),true); });
+axisC.addEventListener('pointermove',e=>{ if(axDrag){ sim.intro=null; setZoom(lrFromAy(e.clientY-axisC.getBoundingClientRect().top),true); } });
+axisC.addEventListener('pointerup',()=>axDrag=false); axisC.addEventListener('pointercancel',()=>axDrag=false);
+axisC.addEventListener('wheel',e=>{ e.preventDefault(); sim.intro=null; setZoom(sim.lrT-clamp(e.deltaY,-120,120)*.0016,true); },{passive:false});
+
+const PRESET={'1':1.4,'2':3.4,'3':5.4,'4':7.1,'5':8.6};
+function cycleTarget(){ tIdx=(tIdx+1)%targets.length; toast('目標: '+target().name); }
+function toggleLink(){ if(sim.mode==='link'){ sim.mode='lock'; sim.lockL=Math.round(sim.L); toast('時間を固定: ズームしても倍率は変わらない(交戦圏の内側では ×4 に制限)'); } else { sim.mode='link'; sim.bias=0; toast('連動: ズームが時間の流れを決める'); } }
+function goCA(){ if(!sim.ca){ toast('この範囲に最接近はありません。ズームアウトして時間窓を広げる'); return; } sim.autoTo=Math.max(sim.t+1,sim.ca.t-45); sim.autoGhost=sim.ca.t; sim.pin=false; }
+function goGhost(){ if(sim.offT>1){ sim.autoTo=sim.t+sim.offT; sim.autoGhost=sim.autoTo; sim.pin=false; } }
+function bumpWarp(d){ if(sim.mode==='link'){ sim.bias=clamp(sim.bias+d,-6,3); toast('連動 '+(sim.bias>=0?'+':'')+sim.bias+' 段'); } else sim.lockL=clamp(sim.lockL+d,0,25); }
+function fire(){
+  const rate=Math.pow(2,sim.L);
+  if(sim.paused||rate>4.6||sim.off>1)return;
+  if(sim.t-sim.lastFire<0.22||sim.ammo<=0)return;
+  const tg=target(), lp=leadPoint(tg,sim.t); if(!lp)return;
+  const d=distAt(tg,sim.t); if(d>FIRE_R)return;
+  const s=ship.orb.at(sim.t); sim.lastFire=sim.t; sim.ammo--;
+  sim.slugs.push({orb:Orbit.fromState(s.x,s.y,s.vx+lp.dx*SLUG_V,s.vy+lp.dy*SLUG_V,sim.t),born:sim.t,prev:sim.t});
+}
+addEventListener('keydown',e=>{
+  if(e.repeat&&!'wsadWSAD '.includes(e.key))return;
+  const k=e.key.length===1?e.key.toLowerCase():e.key; keys[k]=true;
+  if(PRESET[k]!==undefined){ sim.intro=null; setZoom(PRESET[k],false); return; }
+  if(k===','){ bumpWarp(-1); } else if(k==='.'){ bumpWarp(1); }
+  else if(k==='l')toggleLink(); else if(k==='p'){ sim.paused=!sim.paused; }
+  else if(k==='t')cycleTarget(); else if(k==='f'){ sim.pin=!sim.pin; if(!sim.pin&&!sim.grab)sim.offT=0; toast(sim.pin?'ピン留め: 未来の表示を保持':'ピン解除'); }
+  else if(k==='n')goCA(); else if(k==='Enter')goGhost(); else if(k==='Escape'){ sim.autoTo=null; sim.autoGhost=null; sim.pin=false; sim.offT=0; }
+  else if(k===' '){ e.preventDefault(); }
+});
+addEventListener('keyup',e=>{ const k=e.key.length===1?e.key.toLowerCase():e.key; keys[k]=false; });
+for(const [id,f] of [['bLink',toggleLink],['bPause',()=>sim.paused=!sim.paused],['bPin',()=>{sim.pin=!sim.pin; if(!sim.pin&&!sim.grab)sim.offT=0;}],['bCA',goCA],['bGo',goGhost],['bIntro',()=>startIntro()]])
+  $(id).addEventListener('click',f);
+for(const [id,k] of [['bPro','w'],['bRet','s'],['bRadP','a'],['bRadM','d'],['bFire',' ']]){
+  const b=$(id); b.addEventListener('pointerdown',e=>{ keys[k]=true; b.setPointerCapture(e.pointerId); }); b.addEventListener('pointerup',()=>keys[k]=false); b.addEventListener('pointercancel',()=>keys[k]=false);
+}
+function startIntro(){ sim.lr=1.2; sim.lrT=1.2; sim.zk=3; sim.intro={t0:performance.now()}; }
+
+/* ============================================================
+   シミュレーション更新
+   ============================================================ */
+function nearestHostile(){ let b=null,bd=1e99; for(const o of hostiles){ const d=distAt(o,sim.t); if(d<bd){bd=d;b=o;} } return [b,bd]; }
+function respawnA(){
+  const s=ship.orb.at(sim.t);
+  enemyA.orb=new Orbit(ship.orb.a-12000,0.0010,s.phi+0.5*D2R,0,-1,sim.t); enemyA.hp=enemyA.max; toast('新たな PEP-α が出撃 — 最接近を確かめよう');
+}
+function step(dt){
+  // --- ズームの滑らかな追従
+  if(sim.intro){
+    const f=clamp((performance.now()-sim.intro.t0)/9000,0,1); sim.lrT=lerp(1.2,5.0,sm(f)); sim.lr=sim.lrT; if(f>=1)sim.intro=null;
+  } else sim.lr+=(sim.lrT-sim.lr)*(1-Math.exp(-dt*sim.zk));
+  const lr=sim.lr;
+  // --- 層キャプション
+  const ly=layerOf(lr); if(ly!==sim.layer){ sim.layer=ly; $('capA').textContent=ly.name; $('capB').textContent=ly.sub; const c=$('caption'); c.classList.add('show'); clearTimeout(sim.capT); sim.capT=setTimeout(()=>c.classList.remove('show'),1600); }
+  // --- 時間加速の決定
+  const [near,nd]=nearestHostile(); const cr=closingRate(near,sim.t);
+  let Lt, why='';
+  const cap0=Lcap(lr);
+  if(sim.autoTo!=null){
+    Lt=Math.log2(clamp((sim.autoTo-sim.t)/2.4,1,Math.pow(2,25)));
+    why='ワープ中';
+    if(sim.autoTo-sim.t<.6){ sim.autoTo=null; sim.autoGhost=null; toast('到着'); }
+  }else{
+    Lt=sim.mode==='link'?Lc(lr)+sim.bias:sim.lockL;
+    let cap=cap0; if(lr<=LR_ENG)why='武器域 ≤×4';
+    if(sim.mode==='link'){
+      if(nd<ENGAGE){ if(cap>2&&Lt>2)why='交戦圏'; cap=Math.min(cap,2); }
+      else if(cr<0&&nd<4e6){ const ttc=nd/Math.max(-cr,.5), cb=Math.log2(Math.max(1,ttc/8)); if(cb<cap){ cap=cb; if(Lt>cb+.5)why='接近減速'; } }
+    }
+    if(sim.mode==='lock'&&lr<=LR_ENG&&sim.lockL>2&&!sim._warned){ sim._warned=true; toast('交戦圏の内側では ×4 まで'); } if(lr>LR_ENG)sim._warned=false;
+    Lt=clamp(Math.floor(Math.min(Lt,cap)+1e-6),0,25);
+  }
+  sim.why=why;
+  sim.L+=(Lt-sim.L)*(1-Math.exp(-dt*(sim.autoTo!=null?3:4)));
+  const rate=sim.paused||sim.grab?0:Math.pow(2,sim.L);
+  const dts=dt*rate;
+  // --- 噴射(×4 以下のみ)
+  sim.burning=false;
+  if(rate>0&&rate<=4.6&&sim.off<1){
+    let dvp=0,dvr=0; const A=2.2;
+    if(keys.w)dvp+=A; if(keys.s)dvp-=A; if(keys.a)dvr+=A; if(keys.d)dvr-=A;
+    if(dvp||dvr){
+      const s=ship.orb.at(sim.t), sp=Math.hypot(s.vx,s.vy), ux=s.vx/sp, uy=s.vy/sp, rx=s.x/s.r, ry=s.y/s.r;
+      const vx=s.vx+(ux*dvp+rx*dvr)*dts, vy=s.vy+(uy*dvp+ry*dvr)*dts;
+      const old=s.phiU, no=Orbit.fromState(s.x,s.y,vx,vy,sim.t), nu=no.at(sim.t);
+      no.shift=Math.round((old-nu.phiU)/TAU)*TAU; ship.orb=no; ship.dv+=Math.hypot(dvp,dvr)*dts; sim.burning=true;
+    }
+  }
+  const tPrev=sim.t; sim.t+=dts;
+  if(rate>0&&rate<=4.6&&keys[' ']&&sim.off<1)fire();
+  // --- 弾の命中判定(経路全体)
+  if(dts>0){
+    const tg=hostiles.filter(o=>o.kind==='foe');
+    sim.slugs=sim.slugs.filter(sl=>{
+      if(sim.t-sl.born>30)return false;
+      const a0=sl.orb.at(tPrev), a1=sl.orb.at(sim.t);
+      for(const o of tg){
+        if(o.hp<=0)continue;
+        const b0=o.orb.at(tPrev), b1=o.orb.at(sim.t);
+        const r0x=a0.x-b0.x,r0y=a0.y-b0.y, r1x=a1.x-b1.x,r1y=a1.y-b1.y, dx=r1x-r0x, dy=r1y-r0y, dd=dx*dx+dy*dy||1e-9;
+        const u=clamp(-(r0x*dx+r0y*dy)/dd,0,1), md=Math.hypot(r0x+dx*u,r0y+dy*u);
+        if(md<o.len*.55+8){ o.hp--; sim.shake=1;
+          sim.flash.push({orb:Orbit.fromState(b1.x,b1.y,b1.vx,b1.vy,sim.t),t0:performance.now(),label:o.hp>0?'命中 '+o.hp+'/'+o.max:'撃破'});
+          if(o.hp<=0&&o===enemyA)setTimeout(respawnA,3200);
+          return false; }
+      }
+      return true;
+    });
+  }
+  // --- ゴーストの掴み位置
+  if(sim.autoTo!=null&&sim.autoGhost!=null)sim.offT=Math.max(0,sim.autoGhost-sim.t);
+  if(sim.grabHold&&performance.now()>sim.grabHold){ sim.grabHold=0; sim.grab=false; if(!sim.pin&&sim.autoTo==null)sim.offT=0; }
+  sim.off+=(sim.offT-sim.off)*(1-Math.exp(-dt*(sim.grab?24:5)));
+  if(Math.abs(sim.offT-sim.off)<.05)sim.off=sim.offT;
+  // --- 自機の向き: 交戦圏内では見越し点へ、それ以外は進行方向
+  const s=ship.orb.at(sim.t+0), tg=target(); let want=Math.atan2(s.vy,s.vx);
+  if(distAt(tg,sim.t)<ENGAGE*1.2){ const lp=leadPoint(tg,sim.t); if(lp)want=Math.atan2(lp.dy,lp.dx); else { const p=tg.orb.at(sim.t); want=Math.atan2(p.y-s.y,p.x-s.x); } }
+  if(sim.shipHead===undefined)sim.shipHead=want;
+  sim.shipHead+=wrap(want-sim.shipHead)*(1-Math.exp(-dt*3));
+  sim.vecT=Math.max(8,horizon(lr)/45); // 相対速度矢印の長さに使う時間
+}
+
+/* ============================================================
+   HUD(DOM)の更新
+   ============================================================ */
+function updateHUD(){
+  const rate=Math.pow(2,sim.L), disp=sim.paused?'PAUSE':sim.grab?'GRAB':'×'+fmtWarp(Math.pow(2,Math.round(sim.L)));
+  setText('clock',fmtClock(sim.t)); setText('warp',disp);
+  const m=$('mode'); setText('mode',sim.autoTo!=null?'ワープ':sim.mode==='link'?'連動'+(sim.bias?(sim.bias>0?' +':' ')+sim.bias:''):'固定');
+  const cls=sim.autoTo!=null?'tag auto':sim.mode==='link'?'tag link':'tag lock'; if(m.className!==cls)m.className=cls;
+  const w=$('why'); if(sim.why&&sim.autoTo==null){ w.style.display=''; setText('why',sim.why); } else w.style.display='none';
+  setText('viewR',fmtDist(Math.pow(10,sim.lr)));
+  const ly=layerOf(sim.lr); setText('layer',ly.name);
+  $('bLink').classList.toggle('on',sim.mode==='lock'); $('bLink').textContent=sim.mode==='link'?'連動':'固定';
+  $('bPause').classList.toggle('on',sim.paused); $('bPin').classList.toggle('on',sim.pin);
+  const fb=$('futureBanner'); const fut=sim.off>1; fb.classList.toggle('show',fut);
+  if(fut) setText('futureTxt','FUTURE  +'+fmtDur(sim.off)+'  '+fmtClock(sim.t+sim.off)+(sim.pin?'  [ピン留め]':sim.grab?'  [離すと現在へ戻る]':''));
+  // 目標パネル
+  const tg=target(), d=distAt(tg,sim.t), cr=closingRate(tg,sim.t);
+  setText('tName',tg.name);setText('tDist',fmtDist(d));
+  const rr=$('tRate'); setText('tRate',fmtClose(-cr)); rr.className=cr<0?'cy':'';
+  setText('tCA',sim.ca?`+${fmtDur(sim.ca.t-sim.t)} / ${fmtDist(sim.ca.d)}`:'— (窓外)');
+  const arm=$('tArm'); let a,cl;
+  if(sim.off>1){a='未来表示中';cl='bad';} else if(rate>4.6){a='SAFE ×'+fmtWarp(rate)+' > ×4';cl='bad';}
+  else if(d<=FIRE_R){a='ARMED · 射程内';cl='ok';} else if(d<=ENGAGE){a='交戦圏 · 射程外';cl='ok';} else {a='圏外';cl='bad';}
+  setText('tArm',a); arm.className=cl;
+  setText('dvTot',ship.dv.toFixed(1)+' m/s · 弾 '+sim.ammo);
+}
+
+/* ============================================================
+   メインループ
+   ============================================================ */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000); last=now;
+  try{ step(dt); computeTL(); drawScene(); drawAxis(); drawTL(); updateHUD(); }
+  catch(err){ if(!frame.warned){ frame.warned=true; console.error(err); } }
+  requestAnimationFrame(frame);
+}
+/* 初期化 */
+resize();
+if(innerWidth<900){ const d=document.querySelector('#legend details'); if(d)d.open=false; }
+sim.shipHead=Math.atan2(ship.orb.at(0).vy,ship.orb.at(0).vx);
+sim.vecT=60;
+const hq=new URLSearchParams(location.hash.slice(1));
+if(hq.has('lr')){ sim.lr=sim.lrT=+hq.get('lr'); sim.L=Lc(sim.lr); } else startIntro();
+if(hq.has('t'))sim.t=+hq.get('t');
+if(hq.has('ex')){ const s0=ship.orb.at(sim.t), sp=Math.hypot(s0.vx,s0.vy), ex=+hq.get('ex'), ey=+hq.get('ey')||0, ux=s0.vx/sp, uy=s0.vy/sp, rx=s0.x/s0.r, ry=s0.y/s0.r;
+  enemyA.orb=Orbit.fromState(s0.x+ux*ex+rx*ey,s0.y+uy*ex+ry*ey,s0.vx-ux*(+hq.get('vr')||0),s0.vy-uy*(+hq.get('vr')||0),sim.t); }
+if(hq.has('off')){ sim.off=sim.offT=+hq.get('off'); sim.pin=true; }
+requestAnimationFrame(frame);
+window.__mock={sim,ship,enemyA,target,setZoom,horizon,Lc};
+</script>
+</body>
+</html>

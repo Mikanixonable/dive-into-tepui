@@ -1,0 +1,884 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Intent Console — 意図で指揮する</title>
+<style>
+:root{
+  --bg:#04060c; --ink:#dbe5f7; --mute:#7886a3; --dim:#4a5670;
+  --glass:rgba(13,19,33,.74); --glass2:rgba(22,31,52,.72); --line:rgba(150,180,255,.14); --line2:rgba(150,180,255,.28);
+  --acc:#ff6a00; --acc2:#ffb066; --ghost:#5fd8ff; --friend:#7fb6ff; --hostile:#ff4d8d; --ok:#4fe0b0; --warn:#ffcf5a; --bad:#ff4d6a;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,"HackGen","Noto Sans Mono CJK JP",monospace;
+  --sans:system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI","Noto Sans JP",sans-serif;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--ink);font:13px/1.45 var(--sans);overflow:hidden}
+button{font:inherit;color:inherit}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 18px;padding:8px 16px;border-bottom:1px solid var(--line);background:linear-gradient(#0a1020,#060912)}
+header .brand{font-weight:700;letter-spacing:.14em;font-size:14px}
+header .brand i{font-style:normal;color:var(--acc)}
+header .concept{color:var(--mute);flex:1 1 360px}
+header .keys{color:var(--mute);font-size:11.5px}
+kbd{font:11px var(--mono);padding:1px 5px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:4px;color:var(--ink);background:rgba(255,255,255,.04)}
+main{display:grid;grid-template-columns:minmax(0,1fr) 480px;height:calc(100% - 46px)}
+#stage{position:relative;min-height:0;overflow:hidden;background:radial-gradient(ellipse at 50% 50%,#0a1226 0%,#05070e 62%,#030409 100%)}
+#orb{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:default}
+#side{overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:10px;border-left:1px solid var(--line);background:linear-gradient(#070b16,#05070f)}
+.panel{background:var(--glass);border:1px solid var(--line);border-radius:10px;padding:10px 12px;backdrop-filter:blur(10px)}
+.panel h3{margin:0 0 7px;font-size:11px;font-weight:600;letter-spacing:.12em;color:var(--mute);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.panel h3 em{font-style:normal;color:var(--dim);letter-spacing:0;font-weight:400}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{border:1px solid var(--line2);background:var(--glass2);border-radius:7px;padding:6px 11px;cursor:pointer;min-height:32px;transition:border-color .15s,background .15s,transform .1s}
+.btn:hover{border-color:var(--acc2);background:rgba(255,106,0,.1)}
+.btn:active{transform:translateY(1px)}
+.btn[disabled]{opacity:.35;cursor:not-allowed}
+.btn.pri{background:linear-gradient(180deg,rgba(255,106,0,.34),rgba(255,106,0,.16));border-color:var(--acc);font-weight:600}
+.btn.on{border-color:var(--acc);background:rgba(255,106,0,.16)}
+.seg{display:inline-flex;border:1px solid var(--line2);border-radius:7px;overflow:hidden}
+.seg button{border:0;background:transparent;padding:5px 12px;cursor:pointer;color:var(--mute)}
+.seg button.on{background:rgba(255,106,0,.2);color:var(--ink)}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;border:1px solid var(--line2);background:rgba(255,255,255,.04);font-size:12px}
+.chip b{color:var(--acc2)}
+#intentLine{min-height:28px}
+#intentLine .none{color:var(--mute)}
+#chartWrap{position:relative;height:262px;user-select:none;transition:height .2s}
+#chartWrap.idle{height:84px}
+#pChart.idle #legend,#pChart.idle #legendTx,#pChart.idle #chartTools,#pChart.idle #hoverLine,#pChart.idle .seg,#pChart.idle label{display:none}
+#chartWrap canvas{position:absolute;left:0;top:0;width:100%;height:100%}
+#chOv{cursor:crosshair;touch-action:none}
+#chartTools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:7px;font-size:12px;color:var(--mute)}
+#chartTools label{display:inline-flex;gap:5px;align-items:center;cursor:pointer}
+input[type=range]{accent-color:var(--acc);height:18px;margin:0}
+input[type=checkbox]{accent-color:var(--acc)}
+#legend{height:8px;border-radius:4px;margin-top:8px;border:1px solid var(--line)}
+#legendTx{display:flex;justify-content:space-between;font:10.5px var(--mono);color:var(--mute);margin-top:2px}
+#hoverLine{font:11.5px var(--mono);color:var(--mute);min-height:18px;margin-top:5px}
+.kv{display:grid;grid-template-columns:repeat(3,1fr);gap:6px 10px}
+.kv div{display:flex;flex-direction:column;border-left:2px solid var(--line2);padding-left:7px}
+.kv span{font-size:10.5px;color:var(--mute)}
+.kv b{font:600 15px var(--mono);letter-spacing:-.02em}
+.kv b small{font-weight:400;font-size:10.5px;color:var(--mute);margin-left:2px}
+.riskbar{height:5px;border-radius:3px;background:rgba(255,255,255,.08);margin-top:3px;overflow:hidden}
+.riskbar i{display:block;height:100%;background:linear-gradient(90deg,var(--ok),var(--warn),var(--bad));transition:width .12s}
+#bud{position:relative;height:18px;border-radius:5px;overflow:hidden;background:rgba(255,255,255,.05);border:1px solid var(--line2);display:flex}
+#bud i{display:block;height:100%;transition:width .12s}
+#bR{background:linear-gradient(90deg,#1fa882,#4fe0b0)}
+#bP{background:repeating-linear-gradient(135deg,var(--acc) 0 5px,#c24f00 5px 10px)}
+#bS{background:repeating-linear-gradient(135deg,#2a3348 0 4px,#1d2434 4px 8px);flex:1}
+#bTick{position:absolute;top:-1px;bottom:-1px;width:2px;background:var(--warn);box-shadow:0 0 6px var(--warn)}
+#budTx{display:flex;justify-content:space-between;font:11.5px var(--mono);margin-top:5px;color:var(--mute)}
+#budTx b{color:var(--ink)}
+details.panel summary{cursor:pointer;list-style:none;font-size:11px;font-weight:600;letter-spacing:.12em;color:var(--mute);display:flex;justify-content:space-between}
+details.panel summary::-webkit-details-marker{display:none}
+details.panel[open] summary{margin-bottom:8px}
+.sl{display:grid;grid-template-columns:78px 1fr 74px;gap:6px;align-items:center;margin:4px 0;font-size:12px}
+.sl output{font:12px var(--mono);text-align:right;color:var(--acc2)}
+table.nodes{width:100%;border-collapse:collapse;font:11.5px var(--mono);margin:6px 0 2px}
+table.nodes td,table.nodes th{padding:3px 5px;border-bottom:1px solid var(--line);text-align:right}
+table.nodes th{color:var(--mute);font-weight:400}
+table.nodes td:first-child,table.nodes th:first-child{text-align:left}
+#flightList{font:12px var(--mono)}
+#flightList .n{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--line)}
+#flightList .done{color:var(--dim);text-decoration:line-through}
+#speed{position:absolute;left:12px;bottom:12px;display:flex;gap:6px;align-items:center}
+#clock{position:absolute;left:14px;top:12px;font:12px var(--mono);color:var(--mute);pointer-events:none;line-height:1.7}
+#clock b{color:var(--ink);font-size:15px;letter-spacing:.04em}
+#hint{position:absolute;right:14px;bottom:14px;max-width:420px;text-align:right;color:var(--mute);font-size:12px;pointer-events:none;line-height:1.7}
+#toast{position:absolute;left:50%;top:14px;transform:translateX(-50%);pointer-events:none;display:flex;flex-direction:column;gap:6px;align-items:center}
+#toast div{background:var(--glass);border:1px solid var(--line2);padding:6px 14px;border-radius:99px;font-size:12.5px;animation:tIn .25s ease-out,tOut .5s 3.4s forwards}
+@keyframes tIn{from{opacity:0;transform:translateY(-6px)}}
+@keyframes tOut{to{opacity:0}}
+#menu{position:absolute;width:0;height:0;pointer-events:none;z-index:5}
+#menu.open{pointer-events:auto}
+#menu .ctr{position:absolute;left:0;top:0;transform:translate(-50%,-50%) scale(.6);opacity:0;padding:5px 12px;border-radius:99px;background:var(--glass);border:1px solid var(--acc);font-size:12px;white-space:nowrap;transition:.16s}
+#menu .it{position:absolute;left:0;top:0;transform:translate(-50%,-50%) scale(.3);opacity:0;min-width:128px;min-height:46px;white-space:nowrap;padding:5px 10px;border-radius:10px;background:rgba(10,15,28,.9);border:1px solid var(--line2);cursor:pointer;text-align:center;transition:transform .18s cubic-bezier(.2,1.3,.4,1),opacity .15s,border-color .12s,background .12s}
+#menu .it small{display:block;color:var(--mute);font-size:10.5px}
+#menu .it kbd{margin-right:5px}
+#menu.open .ctr{transform:translate(-50%,-50%) scale(1);opacity:1}
+#menu.open .it{opacity:1;transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(1)}
+#menu .it:hover:not(.dis),#menu .it.hot{border-color:var(--acc);background:rgba(255,106,0,.2)}
+#menu .it.dis{opacity:.28!important;cursor:not-allowed}
+#menu svg{position:absolute;left:-120px;top:-120px;width:240px;height:240px;overflow:visible;pointer-events:none;opacity:0;transition:.2s}
+#menu.open svg{opacity:1}
+#pal{position:fixed;inset:0;background:rgba(2,4,9,.55);backdrop-filter:blur(3px);display:none;z-index:20;align-items:flex-start;justify-content:center;padding-top:14vh}
+#pal.open{display:flex}
+#palBox{width:min(560px,92vw);background:rgba(11,16,29,.96);border:1px solid var(--line2);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.6);overflow:hidden}
+#palIn{width:100%;background:transparent;border:0;border-bottom:1px solid var(--line);padding:14px 16px;color:var(--ink);font:15px var(--sans);outline:none}
+#palList{max-height:44vh;overflow:auto;padding:6px}
+#palList .pi{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:7px;cursor:pointer}
+#palList .pi.sel{background:rgba(255,106,0,.18)}
+#palList .pi span{color:var(--mute);font-size:11.5px}
+#palFoot{padding:7px 14px;border-top:1px solid var(--line);color:var(--mute);font-size:11px}
+@media (max-width:1000px){
+  html,body{overflow:auto}
+  main{grid-template-columns:1fr;height:auto}
+  #stage{height:70vh}
+  #side{border-left:0;overflow:visible}
+  header .keys{display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">INTENT <i>CONSOLE</i> <span style="font-weight:400;letter-spacing:.05em">意図コンソール</span></div>
+  <div class="concept">意図で指揮し、選択肢を「地形」として選ぶ。システムは答えを押し付けず、取りうる全ての答えの地形を見せる。</div>
+  <div class="keys">天体クリック→<kbd>放射メニュー</kbd>　<kbd>Ctrl</kbd>+<kbd>K</kbd> / <kbd>/</kbd> パレット　チャート上ドラッグで選択　<kbd>Enter</kbd>確定　<kbd>Esc</kbd>破棄　<kbd>Space</kbd>停止　<kbd>C</kbd>地形/前線　<kbd>N</kbd>次ノードへ</div>
+</header>
+<main>
+  <section id="stage">
+    <canvas id="orb"></canvas>
+    <div id="clock"></div>
+    <div id="speed"></div>
+    <div id="hint"></div>
+    <div id="toast"></div>
+    <div id="menu"></div>
+  </section>
+  <aside id="side">
+    <div class="panel"><h3>意図 <em>INTENT</em></h3><div id="intentLine"></div></div>
+    <div class="panel" id="pChart">
+      <h3><span id="chTitle">選択肢の地形</span><em id="chSub"></em></h3>
+      <div class="row" style="justify-content:space-between;margin-bottom:7px">
+        <div class="seg" id="tabs"><button data-t="map" class="on">地形</button><button data-t="front">前線</button></div>
+        <div class="row" style="gap:10px;font-size:12px;color:var(--mute)">
+          <label title="被弾リスクの高い領域を赤い斜線で表示"><input type="checkbox" id="oRisk" checked> リスク陰影</label>
+          <label title="パレート非劣解の位置を薄い点で示す(選びはしない)"><input type="checkbox" id="oRidge" checked> 尾根</label>
+          <label title="ドラッグ中、近くの谷底へゆるく引き寄せる(弱い補助)"><input type="checkbox" id="oMag"> 谷へ吸着</label>
+        </div>
+      </div>
+      <div id="chartWrap"><canvas id="chBase"></canvas><canvas id="chOv"></canvas></div>
+      <div id="legend"></div><div id="legendTx"><span id="lgA"></span><span id="lgM">Δv(m/s)</span><span id="lgB"></span></div>
+      <div id="chartTools"><span>リスク上限</span><input type="range" id="cap" min="5" max="100" value="100" style="width:140px"><output id="capO" style="font-family:var(--mono)">100%</output></div>
+      <div id="hoverLine"></div>
+    </div>
+    <div class="panel" id="pRead"><h3>選んだ計画 <em id="rdState"></em></h3>
+      <div class="kv" id="kv"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn pri" id="bCommit">この計画で確定 <kbd>Enter</kbd></button>
+        <button class="btn" id="bDiscard">破棄 <kbd>Esc</kbd></button>
+      </div>
+    </div>
+    <div class="panel"><h3>Δv 予算 <em id="budEm"></em></h3>
+      <div id="bud"><i id="bR"></i><i id="bP"></i><i id="bS"></i><div id="bTick" title="戦闘用予備"></div></div>
+      <div id="budTx"></div>
+    </div>
+    <details class="panel" id="pExpert"><summary><span>エキスパート層(ノードを手で触る)</span><em style="font-style:normal;font-weight:400;letter-spacing:0">意図 → ノード展開</em></summary>
+      <div id="expBody"></div>
+    </details>
+    <div class="panel" id="pFlight"><h3>実行中の計画 <em id="flEm"></em></h3><div id="flightList"></div></div>
+  </aside>
+</main>
+<div id="pal"><div id="palBox"><input id="palIn" placeholder="意図・対象・コマンドを入力 (例: かいごう / 迎撃 P-03 / 占位 / 降下)" autocomplete="off"><div id="palList"></div><div id="palFoot">↑↓ 選択　Enter 実行　Esc 閉じる</div></div></div>
+
+<script>
+'use strict';
+/*PHYS-START*/
+const MU=398600.4418, RE=6371, TAU=Math.PI*2;
+const hyp=Math.hypot, clamp=(x,a,b)=>x<a?a:x>b?b:x;
+function stC(z){ if(z>1e-6) return (1-Math.cos(Math.sqrt(z)))/z; if(z<-1e-6) return (Math.cosh(Math.sqrt(-z))-1)/(-z); return 0.5-z/24+z*z/720; }
+function stS(z){ if(z>1e-6){const s=Math.sqrt(z);return (s-Math.sin(s))/(s*s*s);} if(z<-1e-6){const s=Math.sqrt(-z);return (Math.sinh(s)-s)/(s*s*s);} return 1/6-z/120+z*z/5040; }
+/* 万有変数による二体伝播(r0,v0 -> dt 後) */
+function kepler(r0,v0,dt){
+  if(dt===0) return {r:[r0[0],r0[1]],v:[v0[0],v0[1]]};
+  const sm=Math.sqrt(MU), R0=hyp(r0[0],r0[1]), V2=v0[0]*v0[0]+v0[1]*v0[1];
+  const vr0=(r0[0]*v0[0]+r0[1]*v0[1])/R0, al=2/R0-V2/MU;
+  let chi=Math.abs(al)>1e-9? sm*al*dt : sm*dt/R0;
+  if(al<=1e-9) chi=sm*Math.abs(al)*dt+ (sm*dt/R0)*0.2;
+  for(let i=0;i<80;i++){
+    const z=al*chi*chi, C=stC(z), S=stS(z);
+    const F=R0*vr0/sm*chi*chi*C+(1-al*R0)*chi*chi*chi*S+R0*chi-sm*dt;
+    const dF=R0*vr0/sm*chi*(1-z*S)+(1-al*R0)*chi*chi*C+R0;
+    const d=F/dF; chi-=d; if(Math.abs(d)<1e-9*(1+Math.abs(chi))) break;
+  }
+  const z=al*chi*chi, C=stC(z), S=stS(z);
+  const f=1-chi*chi/R0*C, g=dt-chi*chi*chi*S/sm;
+  const r=[f*r0[0]+g*v0[0], f*r0[1]+g*v0[1]], R=hyp(r[0],r[1]);
+  const fd=sm/(R*R0)*(al*chi*chi*chi*S-chi), gd=1-chi*chi/R*C;
+  return {r, v:[fd*r0[0]+gd*v0[0], fd*r0[1]+gd*v0[1]]};
+}
+/* Lambert(2次元・順行・0周) — Curtis Alg.5.2 の万有変数法、z を二分法で解く */
+function lambert(r1,r2,dt){
+  const R1=hyp(r1[0],r1[1]), R2=hyp(r2[0],r2[1]);
+  const cr=r1[0]*r2[1]-r1[1]*r2[0], dt0=(r1[0]*r2[0]+r1[1]*r2[1])/(R1*R2);
+  let th=Math.acos(clamp(dt0,-1,1)); if(cr<0) th=TAU-th; if(th<1e-5||TAU-th<1e-5) return null;
+  const A=Math.sin(th)*Math.sqrt(R1*R2/(1-Math.cos(th))); if(Math.abs(A)<1e-6) return null;
+  const sm=Math.sqrt(MU);
+  const Y=z=>R1+R2+A*(z*stS(z)-1)/Math.sqrt(stC(z));
+  const Fz=z=>{const y=Y(z); if(y<0) return NaN; return Math.pow(y/stC(z),1.5)*stS(z)+A*Math.sqrt(y)-sm*dt;};
+  let lo=-60, hi=TAU*TAU-1e-3;
+  for(let i=0;i<70;i++){
+    const m=(lo+hi)/2, y=Y(m);
+    if(y<0){ if(A>0) lo=m; else hi=m; continue; }
+    const F=Fz(m); if(F<0) lo=m; else hi=m;
+  }
+  const z=(lo+hi)/2, y=Y(z); if(!(y>0)) return null;
+  if(Math.abs(Fz(z))>1e-3*sm*dt) return null;
+  const f=1-y/R1, g=A*Math.sqrt(y/MU), gd=1-y/R2;
+  return {v1:[(r2[0]-f*r1[0])/g,(r2[1]-f*r1[1])/g], v2:[(gd*r2[0]-r1[0])/g,(gd*r2[1]-r1[1])/g]};
+}
+function mkBody(o){ const R=RE+o.alt; return Object.assign({R,n:Math.sqrt(MU/(R*R*R)),th0:o.ph*Math.PI/180},o); }
+function circ(b,t){ const th=b.th0+b.n*t,c=Math.cos(th),s=Math.sin(th); return {r:[b.R*c,b.R*s],v:[-b.R*b.n*s,b.R*b.n*c]}; }
+function rot(p,a){ const c=Math.cos(a),s=Math.sin(a); return [p[0]*c-p[1]*s,p[0]*s+p[1]*c]; }
+const STN_OFF_KM=0.6;
+function tpoint(b,stn,t){ const c=circ(b,t); if(!stn) return c; const a=-STN_OFF_KM/b.R; return {r:rot(c.r,a),v:rot(c.v,a)}; }
+/* 被弾リスク: 敵の前方弧(速度方向±約70°)かつ脅威圏内にいる時間の積分 */
+function riskAlong(r,v,ta,D,hostiles){
+  const M=clamp(Math.round(D/200),8,36), dt=D/M; let st={r,v}, sum=0;
+  for(let i=1;i<=M;i++){
+    st=kepler(st.r,st.v,dt); const t=ta+i*dt; let e=0;
+    for(const h of hostiles){
+      const H=circ(h,t), dx=st.r[0]-H.r[0], dy=st.r[1]-H.r[1], d=hyp(dx,dy);
+      if(d>=h.range) continue;
+      let arc=0.5; if(d>1e-3){ const cs=(H.v[0]*dx+H.v[1]*dy)/(hyp(H.v[0],H.v[1])*d); arc=clamp((cs-0.1)/0.55,0,1); }
+      e=Math.max(e,(1-d/h.range)*arc);
+    }
+    sum+=e;
+  }
+  return 1-Math.exp(-sum*dt/1500);
+}
+/* 経路シミュレーション。nodes: burn{pro,rad km/s} / match / pass */
+function simulate(nodes,start,until){
+  let st={r:start.r.slice(),v:start.v.slice(),t:start.t};
+  const pts=[{r:st.r.slice(),t:st.t}], marks=[]; let dvTot=0,last=null;
+  const coastTo=te=>{ const span=te-st.t; if(span<=0) return; const n=Math.max(1,Math.ceil(span/40)), dt=span/n;
+    for(let i=0;i<n;i++){ const k=kepler(st.r,st.v,dt); st.r=k.r; st.v=k.v; st.t+=dt; pts.push({r:k.r,t:st.t}); } st.t=te; };
+  for(const n of nodes){
+    coastTo(n.t);
+    if(n.kind==='burn'){
+      const vh=[st.v[0]/hyp(st.v[0],st.v[1]),st.v[1]/hyp(st.v[0],st.v[1])], nh=[vh[1],-vh[0]];
+      st.v=[st.v[0]+vh[0]*n.pro+nh[0]*n.rad, st.v[1]+vh[1]*n.pro+nh[1]*n.rad];
+      const dv=hyp(n.pro,n.rad); dvTot+=dv; marks.push({kind:'burn',t:n.t,r:st.r.slice(),dv});
+    } else if(n.kind==='match'){
+      const T=tpoint(n.tgt,n.stn,n.t), C=circ(n.tgt,n.t);
+      const dv=hyp(T.v[0]-st.v[0],T.v[1]-st.v[1]); dvTot+=dv;
+      last={err:hyp(st.r[0]-T.r[0],st.r[1]-T.r[1]),dist:hyp(st.r[0]-C.r[0],st.r[1]-C.r[1]),relv:dv};
+      marks.push({kind:'match',t:n.t,r:st.r.slice(),dv,tp:T.r}); st.v=T.v.slice();
+    } else if(n.kind==='pass'){
+      const C=circ(n.tgt,n.t);
+      last={err:hyp(st.r[0]-C.r[0],st.r[1]-C.r[1]),dist:hyp(st.r[0]-C.r[0],st.r[1]-C.r[1]),relv:hyp(st.v[0]-C.v[0],st.v[1]-C.v[1])};
+      marks.push({kind:'pass',t:n.t,r:st.r.slice(),tp:C.r});
+    }
+  }
+  coastTo(until);
+  return {pts,marks,dvTot,last,end:{r:st.r,v:st.v,t:st.t}};
+}
+/*PHYS-END*/
+
+/* ============ 世界定義 ============ */
+const BODIES=[
+  mkBody({id:'self',name:'自機 ARC-7',kind:'self',alt:400,ph:0}),
+  mkBody({id:'cont',name:'補給コンテナ C-1',kind:'friend',alt:650,ph:12.5,kw:'ほきゅう こんてな container supply'}),
+  mkBody({id:'dock',name:'友軍ドック D-2',kind:'friend',lab:[-14,16,'right'],alt:400,ph:14,kw:'どっく dock station ゆうぐん'}),
+  mkBody({id:'p03',name:'敵 ペプチド P-03',kind:'hostile',alt:900,ph:25,range:1500,kw:'てき ぺぷちど peptide enemy hostile'}),
+  mkBody({id:'p07',name:'敵 ペプチド P-07',kind:'hostile',alt:520,ph:80,range:1500,kw:'てき ぺぷちど peptide enemy hostile'}),
+];
+const BY={}; BODIES.forEach(b=>BY[b.id]=b);
+const HOSTILES=BODIES.filter(b=>b.kind==='hostile');
+const SHIP=BODIES[0];
+const INTENTS={
+  rdv:{k:'rdv',label:'会合',sub:'位置と速度を合わせる',type:'two',key:'1',kw:'かいごう rendezvous rdv あわせる',cStep:null},
+  icp:{k:'icp',label:'迎撃',sub:'最小Δvで通過・接触',type:'two',key:'2',kw:'げいげき intercept 迎撃 ついせき'},
+  stn:{k:'stn',label:'占位',sub:'背後 600 m に付く',type:'two',key:'3',kw:'せんい station keeping 背後 うしろ 占位'},
+  esc:{k:'esc',label:'離脱',sub:'高軌道へ逃れる',type:'esc',key:'4',kw:'りだつ escape retreat 逃げる にげる'},
+  dsc:{k:'dsc',label:'降下',sub:'大気ブレーキで降りる',type:'dsc',key:'5',kw:'こうか deorbit drag aerobrake 大気 たいき ぶれーき'},
+};
+const IORDER=['rdv','icp','stn','esc','dsc'];
+const S={t:0,speed:30,paused:false,ship:null,dvCap:700,dvLeft:640,reserve:180,nodes:[],plan:null,effects:[],ghostC:null,hoverBody:null,targetId:null,menu:null};
+{ const c=circ(SHIP,0); S.ship={r:c.r,v:c.v}; }
+
+/* ============ 評価関数(チャートの1点=1通りの計画) ============ */
+function axesFor(ik){
+  if(INTENTS[ik].type==='two') return {x0:0,x1:6000,y0:900,y1:5400,ylab:'所要時間',yfmt:v=>Math.round(v/60)+'分',ytick:v=>Math.round(v/60),yStepTick:1200};
+  if(ik==='esc') return {x0:0,x1:6000,y0:800,y1:2400,ylab:'遠地点高度',yfmt:v=>Math.round(v)+' km',ytick:v=>Math.round(v),yStepTick:400};
+  return {x0:0,x1:6000,y0:40,y1:110,ylab:'近地点高度',yfmt:v=>Math.round(v)+' km',ytick:v=>Math.round(v),yStepTick:20};
+}
+function evalAt(P,tdep,y){
+  const sh=kepler(P.r0,P.v0,tdep), ta=P.t0+tdep, spd=hyp(sh.v[0],sh.v[1]);
+  const vh=[sh.v[0]/spd,sh.v[1]/spd], nh=[vh[1],-vh[0]];
+  const out={ok:false,tdep,y};
+  const decomp=(vnew)=>{ const d=[vnew[0]-sh.v[0],vnew[1]-sh.v[1]]; return {dvv:d,pro:d[0]*vh[0]+d[1]*vh[1],rad:d[0]*nh[0]+d[1]*nh[1]}; };
+  if(P.def.type==='two'){
+    const tof=y, T=tpoint(P.tgt,P.ik==='stn',ta+tof);
+    const L=lambert(sh.r,T.r,tof); if(!L) return out;
+    const d=decomp(L.v1), dv1=hyp(d.dvv[0],d.dvv[1]);
+    const relv=hyp(T.v[0]-L.v2[0],T.v[1]-L.v2[1]);
+    const dv2=P.ik==='icp'?0:relv;
+    const dv=dv1+dv2;
+    if(!isFinite(dv)||dv>3) return out;
+    const risk=riskAlong(sh.r,L.v1,ta,tof,HOSTILES);
+    return Object.assign(out,{ok:true,pro:d.pro,rad:d.rad,dv1,dv2,dv:dv*1000,relv,tm:tof/60,risk,tof,arrive:ta+tof,until:ta+tof+900});
+  }
+  const R1=hyp(sh.r[0],sh.r[1]), Ro=RE+y;
+  if(P.ik==='esc' && Ro<=R1+20) return out;
+  if(P.ik==='dsc' && Ro>=R1-20) return out;
+  const a=(R1+Ro)/2, s=Math.sqrt(MU*(2/R1-1/a)), tn=[-sh.r[1]/R1,sh.r[0]/R1];
+  const vnew=[tn[0]*s,tn[1]*s], d=decomp(vnew), half=Math.PI*Math.sqrt(a*a*a/MU);
+  const dv1=hyp(d.dvv[0],d.dvv[1]);
+  let tm=half/60, risk=riskAlong(sh.r,vnew,ta,half,HOSTILES);
+  if(P.ik==='dsc'){
+    const h=y, N=1+Math.max(0,(h-40))*0.5, Torb=TAU*Math.sqrt(R1*R1*R1/MU);
+    tm=(half+(N-1)*Torb)/60;
+    const heat=Math.pow(clamp((115-h)/75,0,1),2);
+    risk=1-(1-risk)*(1-0.85*heat);
+    out.passes=Math.round(N);
+  }
+  return Object.assign(out,{ok:true,pro:d.pro,rad:d.rad,dv1,dv2:0,dv:dv1*1000,relv:0,tm,risk,tof:half,until:ta+half+120,arrive:ta+half});
+}
+function buildNodes(P){
+  const e=evalAt(P,P.sel.tdep,P.sel.y); P.e=e; if(!e.ok) return null;
+  const nodes=[{kind:'burn',t:P.t0+e.tdep,pro:e.pro+P.off.pro/1000,rad:e.rad+P.off.rad/1000,lab:'出発バーン'}];
+  if(P.def.type==='two'){
+    if(P.ik==='icp') nodes.push({kind:'pass',t:e.arrive,tgt:P.tgt,lab:'通過'});
+    else nodes.push({kind:'match',t:e.arrive,tgt:P.tgt,stn:P.ik==='stn',lab:P.ik==='stn'?'占位バーン':'速度合わせ'});
+  }
+  P.until=e.until; return nodes;
+}
+function refreshPlan(P){
+  P.nodes=buildNodes(P);
+  P.sim=P.nodes?simulate(P.nodes,{r:P.r0,v:P.v0,t:P.t0},P.until):null;
+  P.dirtyUI=true;
+}
+
+/* ============ グリッド(等高線の元データ) ============ */
+function computeGrid(P){
+  const ax=P.ax=axesFor(P.ik), NX=P.NX=48, NY=P.NY=34;
+  P.dvG=new Float32Array(NX*NY); P.rkG=new Float32Array(NX*NY); P.tmG=new Float32Array(NX*NY); P.cells=[];
+  for(let j=0;j<NY;j++) for(let i=0;i<NX;i++){
+    const tdep=ax.x0+(ax.x1-ax.x0)*i/(NX-1), y=ax.y0+(ax.y1-ax.y0)*j/(NY-1);
+    const e=evalAt(P,tdep,y), k=j*NX+i;
+    if(e.ok){ P.dvG[k]=e.dv; P.rkG[k]=e.risk; P.tmG[k]=e.tm; P.cells.push({i,j,k,tdep,y,dv:e.dv,tm:e.tm,risk:e.risk,pareto:false}); }
+    else{ P.dvG[k]=NaN; P.rkG[k]=NaN; P.tmG[k]=NaN; }
+  }
+  const v=Array.from(P.dvG).filter(x=>x===x).sort((a,b)=>a-b);
+  P.vmin=v.length?v[0]:0; P.vmax=v.length?Math.min(v[Math.floor(v.length*0.82)],P.vmin+(P.def.type==='two'?700:1e9)):1; if(P.vmax-P.vmin<1) P.vmax=P.vmin+1;
+  const raw=(P.vmax-P.vmin)/9, steps=[1,2,5,10,20,25,50,100,200];
+  P.cStep=steps.filter(s=>s<=raw*1.3).pop()||1; P.dvLim=P.def.type==='two'?P.vmin+700:1e9;
+}
+function computePareto(P){
+  const nowRel=S.t-P.t0, c=P.cells.filter(c=>c.tdep>=nowRel-1&&c.risk<=P.cap&&c.dv<=P.dvLim);
+  for(const a of P.cells) a.pareto=false;
+  for(const a of c){
+    let dom=false;
+    for(const b of c){ if(b!==a&&b.dv<=a.dv&&b.tm<=a.tm&&b.risk<=a.risk&&(b.dv<a.dv||b.tm<a.tm||b.risk<a.risk)){dom=true;break;} }
+    a.pareto=!dom;
+  }
+  P.front=c; P.parNow=Math.floor(nowRel/((P.ax.x1-P.ax.x0)/(P.NX-1)));
+}
+function initialSel(P){
+  const ax=P.ax; let best=null,bd=1e9;
+  const tx=ax.x0+(ax.x1-ax.x0)*0.16, ty=ax.y0+(ax.y1-ax.y0)*0.42;
+  for(const c of P.cells){ const d=((c.tdep-tx)/(ax.x1-ax.x0))**2+((c.y-ty)/(ax.y1-ax.y0))**2; if(d<bd){bd=d;best=c;} }
+  P.sel=best?{tdep:best.tdep,y:best.y}:{tdep:tx,y:ty};
+}
+
+/* ============ 実行(ノードの発火) ============ */
+function toast(msg){ const d=document.createElement('div'); d.textContent=msg; $('toast').appendChild(d); setTimeout(()=>d.remove(),4000); }
+const $=id=>document.getElementById(id);
+function fmtClock(s){ s=Math.max(0,Math.round(s)); const p=n=>String(Math.floor(n)).padStart(2,'0'); return p(s/3600)+':'+p(s%3600/60)+':'+p(s%60); }
+function fmtMS(s){ s=Math.max(0,Math.round(s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0'); }
+function fmtLen(km){ return km<1?(km*1000).toFixed(0)+' m':km<100?km.toFixed(1)+' km':Math.round(km).toLocaleString()+' km'; }
+function execNode(n){
+  if(n.kind==='burn'){
+    const sp=hyp(S.ship.v[0],S.ship.v[1]), vh=[S.ship.v[0]/sp,S.ship.v[1]/sp], nh=[vh[1],-vh[0]];
+    S.ship.v=[S.ship.v[0]+vh[0]*n.pro+nh[0]*n.rad,S.ship.v[1]+vh[1]*n.pro+nh[1]*n.rad];
+    const dv=hyp(n.pro,n.rad)*1000; S.dvLeft-=dv; toast('バーン実行  Δv '+dv.toFixed(0)+' m/s');
+  } else if(n.kind==='match'){
+    const T=tpoint(n.tgt,n.stn,S.t), C=circ(n.tgt,S.t);
+    const dv=hyp(T.v[0]-S.ship.v[0],T.v[1]-S.ship.v[1])*1000; S.dvLeft-=dv;
+    const err=hyp(S.ship.r[0]-T.r[0],S.ship.r[1]-T.r[1]), dist=hyp(S.ship.r[0]-C.r[0],S.ship.r[1]-C.r[1]);
+    S.ship.v=T.v.slice(); toast((n.stn?'占位完了':'会合完了')+'  標的まで '+fmtLen(dist)+'  ずれ '+fmtLen(err)+'  Δv '+dv.toFixed(0)+' m/s');
+  } else {
+    const C=circ(n.tgt,S.t); toast('通過  距離 '+fmtLen(hyp(S.ship.r[0]-C.r[0],S.ship.r[1]-C.r[1]))+'  相対 '+(hyp(S.ship.v[0]-C.v[0],S.ship.v[1]-C.v[1])*1000).toFixed(0)+' m/s');
+  }
+  S.effects.push({r:S.ship.r.slice(),age:0});
+  S.nodes.forEach(x=>x.done=x.done); n.done=true; flightDirty=true;
+}
+let flightDirty=true;
+const doneNodes=[];
+function advance(dt){
+  const tNew=S.t+dt;
+  while(S.nodes.length&&S.nodes[0].t<=tNew){
+    const n=S.nodes.shift(), k=kepler(S.ship.r,S.ship.v,Math.max(0,n.t-S.t));
+    S.ship.r=k.r; S.ship.v=k.v; S.t=Math.max(S.t,n.t); execNode(n); doneNodes.push(n); updateGhostC();
+  }
+  const k=kepler(S.ship.r,S.ship.v,tNew-S.t); S.ship.r=k.r; S.ship.v=k.v; S.t=tNew;
+}
+function updateGhostC(){
+  if(!S.nodes.length){ S.ghostC=null; return; }
+  const last=S.nodes[S.nodes.length-1];
+  S.ghostC=simulate(S.nodes,{r:S.ship.r,v:S.ship.v,t:S.t},last.t+(S.committedTail||600));
+}
+
+/* ============ 計画の開始・確定・破棄 ============ */
+function startIntent(ik,tgtId){
+  const def=INTENTS[ik]; if(def.type==='two'&&(!tgtId||tgtId==='self')){ toast('この意図には対象が要ります。天体を選んでください'); return; }
+  if(S.nodes.length){ S.nodes=[]; S.ghostC=null; doneNodes.length=0; toast('実行待ちの計画を差し替えます'); }
+  closeMenu();
+  const P={ik,def,tgt:def.type==='two'?BY[tgtId]:null,t0:S.t,r0:S.ship.r.slice(),v0:S.ship.v.slice(),sel:null,off:{pro:0,rad:0},tab:'map',cap:1,ridge:$('oRisk')?$('oRidge').checked:true,riskShade:$('oRisk').checked,magnet:$('oMag').checked,baseDirty:true};
+  computeGrid(P); initialSel(P); computePareto(P);
+  S.plan=P; if(P.tgt) S.targetId=P.tgt.id;
+  $('cap').value=100; $('capO').textContent='100%';
+  setTab('map'); refreshPlan(P); buildExpert(); flightDirty=true;
+}
+function discardPlan(){ if(S.plan){ S.plan=null; toast('計画を破棄しました'); buildExpert(); } else if(S.nodes.length){ S.nodes=[]; S.ghostC=null; doneNodes.length=0; toast('実行待ちの計画を破棄しました'); flightDirty=true; } }
+function commitPlan(){
+  const P=S.plan; if(!P||!P.nodes||!P.sim) return;
+  if(P.sim.dvTot*1000>S.dvLeft){ toast('Δv 予算が足りません'); return; }
+  const nowRel=S.t-P.t0; if(P.sel.tdep<nowRel-0.5){ toast('出発窓が閉じています'); return; }
+  S.nodes=P.nodes.map(n=>Object.assign({},n)); doneNodes.length=0; S.committedTail=900;
+  S.plan=null; updateGhostC(); toast('計画を確定: ノード '+S.nodes.length+' 件。エキスパート層で内訳を確認できます'); flightDirty=true; buildExpert();
+}
+
+/* ============ メインキャンバス ============ */
+const orb=$('orb'), octx=orb.getContext('2d');
+let W=0,H=0,DPR=1,SC=1,CX=0,CY=0;
+const stars=[]; { let s=7; const rnd=()=>(s=(s*16807)%2147483647)/2147483647; for(let i=0;i<220;i++) stars.push({x:rnd(),y:rnd(),a:.15+rnd()*.5,r:rnd()*1.1+.2}); }
+function resize(){
+  DPR=Math.min(window.devicePixelRatio||1,2); const r=orb.getBoundingClientRect(); W=r.width; H=r.height;
+  orb.width=W*DPR; orb.height=H*DPR; octx.setTransform(DPR,0,0,DPR,0,0); SC=Math.min(W,H)/560; CX=W/2; CY=H/2;
+  sizeChart(); if(S.plan) S.plan.baseDirty=true;
+}
+const EARTH_PX=()=>56*SC;
+function rdisp(r){ const alt=r-RE; if(alt<=0) return EARTH_PX()*Math.max(r,0)/RE; return EARTH_PX()+118*SC*Math.pow(alt/1000,0.62); }
+function toS(p){ const r=hyp(p[0],p[1]), th=Math.atan2(p[1],p[0]), rr=rdisp(r); return [CX+rr*Math.cos(th),CY-rr*Math.sin(th)]; }
+function polyline(ctx,pts,close){ let first=true; for(const p of pts){ const s=toS(p); if(first){ctx.moveTo(s[0],s[1]);first=false;} else ctx.lineTo(s[0],s[1]); } if(close) ctx.closePath(); }
+function bodyColor(b){ return b.kind==='hostile'?'#ff4d8d':b.kind==='friend'?'#7fb6ff':'#ffffff'; }
+
+function drawStage(){
+  const c=octx; c.clearRect(0,0,W,H);
+  for(const s of stars){ c.fillStyle='rgba(190,210,255,'+s.a+')'; c.fillRect(s.x*W,s.y*H,s.r,s.r); }
+  /* 地球 */
+  const er=EARTH_PX();
+  const atm=c.createRadialGradient(CX,CY,er*0.96,CX,CY,er*1.28); atm.addColorStop(0,'rgba(90,160,255,.30)'); atm.addColorStop(1,'rgba(90,160,255,0)');
+  c.fillStyle=atm; c.beginPath(); c.arc(CX,CY,er*1.28,0,TAU); c.fill();
+  const eg=c.createRadialGradient(CX-er*.35,CY-er*.4,er*.1,CX,CY,er); eg.addColorStop(0,'#2a6fb0'); eg.addColorStop(.55,'#12407a'); eg.addColorStop(1,'#07152f');
+  c.fillStyle=eg; c.beginPath(); c.arc(CX,CY,er,0,TAU); c.fill();
+  c.strokeStyle='rgba(150,200,255,.5)'; c.lineWidth=1; c.stroke();
+  c.fillStyle='rgba(170,200,240,.45)'; c.font='10px '+getComputedStyle(document.body).fontFamily; c.textAlign='center'; c.fillText('地球',CX,CY+3);
+  /* 軌道リング */
+  const P=S.plan;
+  for(const b of BODIES){
+    const rr=rdisp(b.R); c.beginPath(); c.arc(CX,CY,rr,0,TAU);
+    c.strokeStyle=b.kind==='hostile'?'rgba(255,77,141,.16)':b.kind==='self'?'rgba(255,255,255,.2)':'rgba(127,182,255,.13)'; c.lineWidth=1; c.stroke();
+  }
+  /* 脅威圏(控えめ。計画中だけ少し濃く) */
+  for(const h of HOSTILES){
+    const H0=circ(h,S.t), ph=Math.atan2(H0.v[1],H0.v[0]), pts=[H0.r];
+    for(let a=-70;a<=70;a+=7){ const q=ph+a*Math.PI/180; pts.push([H0.r[0]+h.range*Math.cos(q),H0.r[1]+h.range*Math.sin(q)]); }
+    c.beginPath(); polyline(c,pts,true);
+    const al=P?0.11:0.055; c.fillStyle='rgba(255,60,120,'+al+')'; c.fill(); c.strokeStyle='rgba(255,60,120,'+(al*1.8)+')'; c.lineWidth=1; c.stroke();
+  }
+  /* 標的の予測経路(計画中) */
+  const plan=P&&P.sim?P:null;
+  if(plan&&plan.tgt){
+    const a=S.t, b=plan.e.arrive; c.beginPath();
+    for(let t=a;t<=b;t+=60){ const q=tpoint(plan.tgt,plan.ik==='stn',t).r, s=toS(q); if(t===a)c.moveTo(s[0],s[1]); else c.lineTo(s[0],s[1]); }
+    c.strokeStyle='rgba(255,176,102,.28)'; c.setLineDash([2,5]); c.lineWidth=1.2; c.stroke(); c.setLineDash([]);
+  }
+  /* 確定済み計画 */
+  if(S.ghostC) drawPath(c,S.ghostC,'rgba(255,176,102,.85)',true);
+  /* ゴースト(計画中) */
+  if(plan){ drawPath(c,plan.sim,'rgba(95,216,255,.95)',false); }
+  /* 天体 */
+  for(const b of BODIES){
+    const st=b.id==='self'?{r:S.ship.r,v:S.ship.v}:circ(b,S.t), sp=toS(st.r); b.sp=sp; b.st=st;
+    const col=bodyColor(b), hot=(S.hoverBody===b.id), tg=(S.targetId===b.id);
+    if(b.kind==='self'){
+      const sv=toS([st.r[0]+st.v[0]*20,st.r[1]+st.v[1]*20]); const a=Math.atan2(sv[1]-sp[1],sv[0]-sp[0]);
+      c.save(); c.translate(sp[0],sp[1]); c.rotate(a); c.fillStyle='#fff'; c.shadowColor='#fff'; c.shadowBlur=8;
+      c.beginPath(); c.moveTo(9,0); c.lineTo(-6,5.5); c.lineTo(-3,0); c.lineTo(-6,-5.5); c.closePath(); c.fill(); c.restore();
+    } else if(b.kind==='hostile'){
+      c.save(); c.translate(sp[0],sp[1]); c.rotate(Math.PI/4); c.fillStyle=col; c.shadowColor=col; c.shadowBlur=9; c.fillRect(-4.5,-4.5,9,9); c.restore();
+    } else {
+      c.beginPath(); c.arc(sp[0],sp[1],4.5,0,TAU); c.fillStyle=col; c.shadowColor=col; c.shadowBlur=8; c.fill(); c.shadowBlur=0;
+      c.beginPath(); c.arc(sp[0],sp[1],8,0,TAU); c.strokeStyle='rgba(127,182,255,.5)'; c.lineWidth=1; c.stroke();
+    }
+    c.shadowBlur=0;
+    if(hot||tg){ c.strokeStyle=tg?'#ff6a00':'rgba(255,255,255,.7)'; c.lineWidth=tg?1.6:1; const q=15;
+      c.beginPath(); for(const [sx,sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){ c.moveTo(sp[0]+sx*q,sp[1]+sy*(q-6)); c.lineTo(sp[0]+sx*q,sp[1]+sy*q); c.lineTo(sp[0]+sx*(q-6),sp[1]+sy*q); } c.stroke(); }
+    c.fillStyle=tg?'#ffb066':hot?'#fff':'rgba(200,215,240,.62)'; c.font='11px '+getComputedStyle(document.body).fontFamily; c.textAlign='left';
+    const lb=b.lab||[14,-9,'left']; c.textAlign=lb[2]; c.fillText(b.name,sp[0]+lb[0],sp[1]+lb[1]);
+    if((hot||tg)&&b.kind!=='self'){
+      const dx=st.r[0]-S.ship.r[0],dy=st.r[1]-S.ship.r[1], dv=[st.v[0]-S.ship.v[0],st.v[1]-S.ship.v[1]];
+      c.fillStyle='rgba(180,200,235,.7)'; c.font='10.5px '+getComputedStyle(document.body).fontFamily;
+      c.fillText('距離 '+fmtLen(hyp(dx,dy))+'  相対 '+(hyp(dv[0],dv[1])*1000).toFixed(0)+' m/s',sp[0]+lb[0],sp[1]+lb[1]+14);
+    }
+  }
+  /* 実行エフェクト */
+  S.effects=S.effects.filter(e=>e.age<1.2);
+  for(const e of S.effects){ const s=toS(e.r); c.beginPath(); c.arc(s[0],s[1],6+e.age*40,0,TAU); c.strokeStyle='rgba(255,106,0,'+(1-e.age/1.2)+')'; c.lineWidth=2; c.stroke(); }
+  /* 時計 */
+  $('clock').innerHTML='<b>T+'+fmtClock(S.t)+'</b><br>時間 '+(S.paused?'停止':'×'+S.speed)+'  ・  Δv 残 '+S.dvLeft.toFixed(0)+' m/s';
+}
+function drawPath(c,sim,col,committed){
+  const pts=sim.pts; if(!pts||pts.length<2) return;
+  const burn=sim.marks.find(m=>m.kind==='burn'), tb=burn?burn.t:S.t;
+  const now=S.t, sp=S.ship.r;
+  const seg=(from,to,dash,wid,color)=>{ c.beginPath(); let started=false;
+    if(from<=now){ const s=toS(sp); c.moveTo(s[0],s[1]); started=true; }
+    for(const p of pts){ if(p.t<from||p.t>to||p.t<now) continue; const s=toS(p.r); if(!started){c.moveTo(s[0],s[1]);started=true;} else c.lineTo(s[0],s[1]); }
+    c.setLineDash(dash); c.lineWidth=wid; c.strokeStyle=color; c.stroke(); c.setLineDash([]); };
+  /* 出発前(慣性航行)は目立たない点線、バーン後は細い実線 */
+  seg(-1e9,tb,[1.5,5],1.2,'rgba(255,255,255,.34)');
+  c.save(); c.shadowColor=col; c.shadowBlur=committed?0:7; seg(tb,1e12,committed?[6,4]:[],1.6,col); c.restore();
+  for(const m of sim.marks){
+    if(m.t<now-1) continue; const s=toS(m.r);
+    if(m.kind==='burn'){ c.fillStyle='#ff6a00'; c.fillRect(s[0]-4,s[1]-4,8,8); c.strokeStyle='#fff'; c.lineWidth=1; c.strokeRect(s[0]-4,s[1]-4,8,8);
+      c.fillStyle='#ffb066'; c.font='10.5px '+getComputedStyle(document.body).fontFamily; c.textAlign='left'; c.fillText((m.dv*1000).toFixed(0)+' m/s  @'+fmtMS(m.t-now)+' 後',s[0]+9,s[1]+14); }
+    else{
+      const tp=toS(m.tp); c.beginPath(); c.arc(tp[0],tp[1],10,0,TAU); c.strokeStyle='rgba(255,176,102,.85)'; c.lineWidth=1.2; c.stroke();
+      c.beginPath(); c.arc(s[0],s[1],3,0,TAU); c.fillStyle=col; c.fill();
+      c.fillStyle='#ffb066'; c.font='10.5px '+getComputedStyle(document.body).fontFamily; c.textAlign='left';
+      c.fillText((m.kind==='pass'?'通過':m.kind==='match'?(S.plan&&S.plan.ik==='stn'?'占位':'会合'):'')+' @'+fmtMS(m.t-now)+' 後'+(m.dv?'  '+(m.dv*1000).toFixed(0)+' m/s':''),tp[0]+14,tp[1]+16);
+    }
+  }
+}
+
+/* ============ 選択メニュー(放射状) ============ */
+const menuEl=$('menu');
+function openMenu(b,x,y){
+  const R=112, m=70; const mx=clamp(x,R+m,W-R-m), my=clamp(y,R+30,H-R-30);
+  S.menu={b,x:mx,y:my}; S.targetId=b.id==='self'?S.targetId:b.id;
+  menuEl.style.left=mx+'px'; menuEl.style.top=my+'px';
+  let h='<svg viewBox="-120 -120 240 240"><circle r="'+(R*1.0)+'" fill="none" stroke="rgba(255,106,0,.28)" stroke-dasharray="2 5"/><circle r="30" fill="rgba(255,106,0,.05)" stroke="rgba(255,106,0,.35)"/></svg>';
+  h+='<div class="ctr">'+b.name+'</div>';
+  IORDER.forEach((k,i)=>{
+    const d=INTENTS[k], a=(-90+72*i)*Math.PI/180, dis=(d.type==='two'&&b.kind==='self');
+    const rec=(b.kind==='hostile'&&k==='icp');
+    h+='<button class="it'+(dis?' dis':'')+(rec?' hot':'')+'" data-k="'+k+'" style="--dx:'+(R*Math.cos(a)).toFixed(1)+'px;--dy:'+(R*Math.sin(a)).toFixed(1)+'px"><kbd>'+d.key+'</kbd>'+d.label+'<small>'+d.sub+'</small></button>';
+  });
+  menuEl.innerHTML=h; requestAnimationFrame(()=>menuEl.classList.add('open'));
+  menuEl.querySelectorAll('.it').forEach(el=>el.addEventListener('click',ev=>{ev.stopPropagation(); if(el.classList.contains('dis'))return; startIntent(el.dataset.k,b.id);}));
+}
+function closeMenu(){ menuEl.classList.remove('open'); S.menu=null; setTimeout(()=>{ if(!S.menu) menuEl.innerHTML=''; },200); }
+
+orb.addEventListener('pointermove',e=>{
+  const r=orb.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top; let hit=null,bd=24;
+  for(const b of BODIES){ if(!b.sp) continue; const d=hyp(b.sp[0]-x,b.sp[1]-y); if(d<bd){bd=d;hit=b.id;} }
+  S.hoverBody=hit; orb.style.cursor=hit?'pointer':'default';
+});
+orb.addEventListener('pointerleave',()=>S.hoverBody=null);
+orb.addEventListener('pointerdown',e=>{
+  const r=orb.getBoundingClientRect(), x=e.clientX-r.left, y=e.clientY-r.top; let hit=null,bd=26;
+  for(const b of BODIES){ if(!b.sp) continue; const d=hyp(b.sp[0]-x,b.sp[1]-y); if(d<bd){bd=d;hit=b;} }
+  if(hit) openMenu(hit,hit.sp[0],hit.sp[1]); else { closeMenu(); }
+});
+
+/* ============ チャート ============ */
+const chB=$('chBase'), chO=$('chOv'), cb=chB.getContext('2d'), co=chO.getContext('2d');
+let CW=0,CH=0,CD=1; const M={l:46,r:10,t:8,b:34}; let heatCache=null;
+function sizeChart(){
+  const r=$('chartWrap').getBoundingClientRect(); CW=r.width; CH=r.height; CD=Math.min(window.devicePixelRatio||1,2);
+  for(const c of [chB,chO]){ c.width=CW*CD; c.height=CH*CD; }
+  cb.setTransform(CD,0,0,CD,0,0); co.setTransform(CD,0,0,CD,0,0);
+}
+const plotW=()=>CW-M.l-M.r, plotH=()=>CH-M.t-M.b;
+function xPx(P,t){ return M.l+(t-P.ax.x0)/(P.ax.x1-P.ax.x0)*plotW(); }
+function yPx(P,y){ return M.t+(1-(y-P.ax.y0)/(P.ax.y1-P.ax.y0))*plotH(); }
+function pxX(P,px){ return P.ax.x0+(px-M.l)/plotW()*(P.ax.x1-P.ax.x0); }
+function pxY(P,py){ return P.ax.y0+(1-(py-M.t)/plotH())*(P.ax.y1-P.ax.y0); }
+const RAMP=[[0,[252,244,196]],[.22,[132,222,200]],[.48,[58,150,190]],[.74,[52,86,160]],[1,[22,26,72]]];
+function ramp(t){ t=clamp(t,0,1); for(let i=1;i<RAMP.length;i++){ if(t<=RAMP[i][0]){ const a=RAMP[i-1],b=RAMP[i],u=(t-a[0])/(b[0]-a[0]); return [a[1][0]+(b[1][0]-a[1][0])*u,a[1][1]+(b[1][1]-a[1][1])*u,a[1][2]+(b[1][2]-a[1][2])*u]; } } return RAMP[RAMP.length-1][1]; }
+function rampRisk(t){ t=clamp(t,0,1); const A=[90,224,176],B=[255,204,90],C=[255,70,110]; const f=(a,b,u)=>[a[0]+(b[0]-a[0])*u,a[1]+(b[1]-a[1])*u,a[2]+(b[2]-a[2])*u]; return t<.5?f(A,B,t*2):f(B,C,(t-.5)*2); }
+function css(c){ return 'rgb('+c.map(Math.round).join(',')+')'; }
+
+function renderHeat(P){
+  const pw=Math.max(8,Math.round(plotW()*CD)), ph=Math.max(8,Math.round(plotH()*CD)), NX=P.NX, NY=P.NY;
+  const img=new ImageData(pw,ph), d=img.data, dvp=new Float32Array(pw*ph).fill(NaN);
+  const rng=P.vmax-P.vmin;
+  for(let py=0;py<ph;py++){
+    const gy=(1-py/(ph-1))*(NY-1), j0=Math.min(Math.floor(gy),NY-2), fy=gy-j0;
+    for(let px=0;px<pw;px++){
+      const gx=px/(pw-1)*(NX-1), i0=Math.min(Math.floor(gx),NX-2), fx=gx-i0, k=j0*NX+i0;
+      const k00=k,k10=k+1,k01=k+NX,k11=k+NX+1;
+      const w00=(1-fx)*(1-fy),w10=fx*(1-fy),w01=(1-fx)*fy,w11=fx*fy;
+      const near=(fx<.5?(fy<.5?k00:k01):(fy<.5?k10:k11));
+      const o=(py*pw+px)*4;
+      if(P.dvG[near]!==P.dvG[near]){ d[o]=7;d[o+1]=9;d[o+2]=16;d[o+3]=255; continue; }
+      let sw=0,sv=0,sr=0;
+      const add=(kk,w)=>{ const v=P.dvG[kk]; if(v===v){ sw+=w; sv+=v*w; sr+=P.rkG[kk]*w; } };
+      add(k00,w00);add(k10,w10);add(k01,w01);add(k11,w11);
+      const dv=sv/sw, rk=sr/sw; dvp[py*pw+px]=dv;
+      let c=ramp((dv-P.vmin)/rng);
+      if(P.riskShade){ const a=clamp((rk-.18)/.55,0,1)*.62, hat=(((px+py)>>2)&1)?1:.35; const m=a*hat; c=[c[0]*(1-m)+255*m,c[1]*(1-m)+50*m,c[2]*(1-m)+95*m]; }
+      if(rk>P.cap){ const hat=(((px-py)>>2)&1)?.88:.7; c=[c[0]*(1-hat)+8*hat,c[1]*(1-hat)+10*hat,c[2]*(1-hat)+18*hat]; }
+      d[o]=c[0];d[o+1]=c[1];d[o+2]=c[2];d[o+3]=255;
+    }
+  }
+  const band=v=>Math.floor((Math.min(v,P.vmax+P.cStep)-P.vmin)/P.cStep);
+  for(let py=0;py<ph-1;py++) for(let px=0;px<pw-1;px++){
+    const a=dvp[py*pw+px]; if(a!==a) continue; const b=dvp[py*pw+px+1], c2=dvp[(py+1)*pw+px]; const ba=band(a);
+    if((b===b&&band(b)!==ba)||(c2===c2&&band(c2)!==ba)){ const o=(py*pw+px)*4; d[o]=d[o]*.62+255*.38; d[o+1]=d[o+1]*.62+255*.38; d[o+2]=d[o+2]*.62+255*.38; }
+  }
+  const oc=document.createElement('canvas'); oc.width=pw; oc.height=ph; oc.getContext('2d').putImageData(img,0,0); return oc;
+}
+function drawAxes(P,xl,yl,xt,yt,xf,yf){
+  cb.strokeStyle='rgba(150,180,255,.22)'; cb.fillStyle='rgba(150,165,195,.85)'; cb.font='10.5px '+getComputedStyle(document.body).fontFamily; cb.lineWidth=1;
+  cb.strokeRect(M.l+.5,M.t+.5,plotW(),plotH());
+  cb.textAlign='center'; for(const t of xt){ const x=Math.round(xf(t))+.5; cb.beginPath(); cb.moveTo(x,M.t+plotH()); cb.lineTo(x,M.t+plotH()+4); cb.stroke(); cb.fillText(xl(t),x,CH-17); }
+  cb.textAlign='right'; for(const t of yt){ const y=Math.round(yf(t))+.5; cb.beginPath(); cb.moveTo(M.l-4,y); cb.lineTo(M.l,y); cb.stroke(); cb.fillText(yl(t),M.l-6,y+3.5); }
+}
+function drawBase(P){
+  cb.clearRect(0,0,CW,CH);
+  if(P.tab==='map'){
+    const oc=renderHeat(P); cb.imageSmoothingEnabled=true; cb.drawImage(oc,M.l,M.t,plotW(),plotH());
+    const ax=P.ax;
+    const xt=[];for(let t=0;t<=ax.x1;t+=1200)xt.push(t);
+    const yt=[];for(let y=ax.y0;y<=ax.y1+1e-6;y+=ax.yStepTick)yt.push(y);
+    drawAxes(P,t=>'+'+Math.round(t/60)+'m',y=>ax.ytick(y),xt,yt,t=>xPx(P,t),y=>yPx(P,y));
+    cb.fillStyle='rgba(170,185,215,.9)'; cb.textAlign='left'; cb.textAlign='right'; cb.fillText('出発 (いまから) →',M.l+plotW(),CH-3);
+    cb.save(); cb.translate(11,M.t+plotH()/2); cb.rotate(-Math.PI/2); cb.textAlign='center'; cb.fillText(ax.ylab+(P.def.type==='two'?' (分)':''),0,0); cb.restore();
+    /* 凡例 */
+    const g=[];for(let i=0;i<=10;i++)g.push(css(ramp(i/10)));
+    $('legend').style.background='linear-gradient(90deg,'+g.join(',')+')';
+    $('lgA').textContent=P.vmin.toFixed(0)+' (少)'; $('lgB').textContent='(多) '+P.vmax.toFixed(0)+'+'; $('lgM').textContent='Δv m/s・白線は '+P.cStep+' m/s ごと';
+  } else {
+    /* 前線: x=所要(分) y=Δv, 色=リスク */
+    const cs=P.cells.filter(c=>c.dv<=P.dvLim); let xs=cs.map(c=>c.tm), ys=cs.map(c=>c.dv);
+    const x0=Math.min(...xs), x1=Math.max(...xs), y0=Math.min(...ys), y1=Math.max(...ys);
+    P.fr={x0:x0-(x1-x0)*.04,x1:x1+(x1-x0)*.04,y0:y0-(y1-y0)*.06,y1:y1+(y1-y0)*.06};
+    const fr=P.fr, fx=t=>M.l+(t-fr.x0)/(fr.x1-fr.x0)*plotW(), fy=v=>M.t+(1-(v-fr.y0)/(fr.y1-fr.y0))*plotH();
+    P.fx=fx;P.fy=fy;
+    cb.fillStyle='rgba(8,12,22,.7)'; cb.fillRect(M.l,M.t,plotW(),plotH());
+    const nowRel=S.t-P.t0;
+    const xt=[],yt=[]; const sx=niceStep((fr.x1-fr.x0)/5), sy=niceStep((fr.y1-fr.y0)/5);
+    for(let t=Math.ceil(fr.x0/sx)*sx;t<=fr.x1;t+=sx)xt.push(t); for(let v=Math.ceil(fr.y0/sy)*sy;v<=fr.y1;v+=sy)yt.push(v);
+    cb.strokeStyle='rgba(150,180,255,.07)'; for(const t of xt){cb.beginPath();cb.moveTo(fx(t),M.t);cb.lineTo(fx(t),M.t+plotH());cb.stroke();} for(const v of yt){cb.beginPath();cb.moveTo(M.l,fy(v));cb.lineTo(M.l+plotW(),fy(v));cb.stroke();}
+    drawAxes(P,t=>P.ik==='dsc'?(t>=600?Math.round(t/60)+'h':Math.round(t)+'m'):Math.round(t)+'m',v=>Math.round(v),xt,yt,fx,fy);
+    cb.fillStyle='rgba(170,185,215,.9)'; cb.textAlign='right'; cb.fillText(P.ik==='dsc'?'完了までの目安 (分) →':'所要時間 (分) →',M.l+plotW(),CH-3);
+    cb.save(); cb.translate(11,M.t+plotH()/2); cb.rotate(-Math.PI/2); cb.textAlign='center'; cb.fillText('Δv (m/s)',0,0); cb.restore();
+    computePareto(P);
+    for(const c of cs){ const live=c.tdep>=nowRel-1&&c.risk<=P.cap&&c.dv<=P.dvLim; const col=rampRisk(c.risk/0.9);
+      cb.beginPath(); cb.arc(fx(c.tm),fy(c.dv),live?2.1:1.4,0,TAU); cb.fillStyle=live?'rgba('+col.map(Math.round).join(',')+',.45)':'rgba(120,130,150,.14)'; cb.fill(); }
+    /* 2D前線(所要×Δv) の薄い包絡線 */
+    const live=P.front.slice().sort((a,b)=>a.tm-b.tm); let best=1e9; const env=[];
+    for(const c of live){ if(c.dv<best-1e-9){ best=c.dv; env.push(c); } }
+    cb.beginPath(); env.forEach((c,i)=>{ const x=fx(c.tm),y=fy(c.dv); if(i)cb.lineTo(x,y); else cb.moveTo(x,y); }); cb.strokeStyle='rgba(255,255,255,.2)'; cb.setLineDash([3,4]); cb.stroke(); cb.setLineDash([]);
+    for(const c of P.front) if(c.pareto){ const col=rampRisk(c.risk/0.9); cb.beginPath(); cb.arc(fx(c.tm),fy(c.dv),3.6,0,TAU); cb.fillStyle=css(col); cb.fill(); cb.strokeStyle='rgba(255,255,255,.85)'; cb.lineWidth=1; cb.stroke(); }
+    const g=[];for(let i=0;i<=10;i++)g.push(css(rampRisk(i/10)));
+    $('legend').style.background='linear-gradient(90deg,'+g.join(',')+')';
+    $('lgA').textContent='被弾リスク 低'; $('lgB').textContent='高'; $('lgM').textContent='白縁 = 3目的の非劣解';
+  }
+  P.baseDirty=false;
+}
+function niceStep(raw){ const p=Math.pow(10,Math.floor(Math.log10(raw))); const m=raw/p; return (m<1.5?1:m<3.5?2:m<7.5?5:10)*p; }
+
+function drawOverlay(){
+  co.clearRect(0,0,CW,CH); const P=S.plan; if(!P) { co.fillStyle='rgba(150,165,195,.6)'; co.font='12px '+getComputedStyle(document.body).fontFamily; co.textAlign='center'; co.fillText('意図を選ぶと、ここに「選択肢の地形」が現れます',CW/2,CH/2); return; }
+  const nowRel=S.t-P.t0;
+  if(P.tab==='map'){
+    const nx=xPx(P,nowRel);
+    if(nx>M.l){ co.fillStyle='rgba(3,5,10,.62)'; co.fillRect(M.l,M.t,Math.min(nx,M.l+plotW())-M.l,plotH());
+      co.strokeStyle='rgba(255,106,0,.9)'; co.lineWidth=1.2; co.setLineDash([4,3]); co.beginPath(); co.moveTo(nx,M.t); co.lineTo(nx,M.t+plotH()); co.stroke(); co.setLineDash([]);
+      co.fillStyle='#ffb066'; co.font='10.5px '+getComputedStyle(document.body).fontFamily; co.textAlign='left'; co.fillText('いま(窓は閉じていく)',nx+4,M.t+11); }
+    if(P.ridge){ co.fillStyle='rgba(255,255,255,.55)'; for(const c of P.cells){ if(c.pareto&&c.tdep>=nowRel){ co.beginPath(); co.arc(xPx(P,c.tdep),yPx(P,c.y),1.5,0,TAU); co.fill(); } } }
+    const sx=xPx(P,P.sel.tdep), sy=yPx(P,P.sel.y);
+    co.strokeStyle='rgba(255,255,255,.28)'; co.lineWidth=1; co.beginPath(); co.moveTo(sx,M.t); co.lineTo(sx,M.t+plotH()); co.moveTo(M.l,sy); co.lineTo(M.l+plotW(),sy); co.stroke();
+    marker(sx,sy,!!P.nodes);
+    if(P.hov&&!P.drag){ co.strokeStyle='rgba(255,255,255,.7)'; co.beginPath(); co.arc(xPx(P,P.hov.tdep),yPx(P,P.hov.y),4,0,TAU); co.stroke(); }
+  } else if(P.fx){
+    if(P.e&&P.e.ok) marker(P.fx(P.e.tm),P.fy(P.e.dv),true);
+  }
+}
+function marker(x,y,ok){
+  co.beginPath(); co.arc(x,y,9,0,TAU); co.strokeStyle=ok?'#ff6a00':'#ff4d6a'; co.lineWidth=2; co.shadowColor=ok?'#ff6a00':'#ff4d6a'; co.shadowBlur=10; co.stroke(); co.shadowBlur=0;
+  co.beginPath(); co.arc(x,y,2.6,0,TAU); co.fillStyle='#fff'; co.fill();
+}
+function chartPos(e){ const r=chO.getBoundingClientRect(); return [e.clientX-r.left,e.clientY-r.top]; }
+function setSelFromPx(P,px,py,drag){
+  if(P.tab==='map'){
+    const nowRel=S.t-P.t0;
+    let tdep=clamp(pxX(P,px),Math.max(P.ax.x0,nowRel),P.ax.x1), y=clamp(pxY(P,py),P.ax.y0,P.ax.y1);
+    if(P.magnet&&drag){ /* 弱い補助: 近傍で dv×(1+2*risk) が最小の格子点へ寄せる */
+      const gx=(tdep-P.ax.x0)/(P.ax.x1-P.ax.x0)*(P.NX-1), gy=(y-P.ax.y0)/(P.ax.y1-P.ax.y0)*(P.NY-1); let best=null,bc=1e9;
+      for(let j=Math.max(0,Math.round(gy)-3);j<=Math.min(P.NY-1,Math.round(gy)+3);j++) for(let i=Math.max(0,Math.round(gx)-3);i<=Math.min(P.NX-1,Math.round(gx)+3);i++){
+        const k=j*P.NX+i, dv=P.dvG[k]; if(dv!==dv) continue; const t=P.ax.x0+(P.ax.x1-P.ax.x0)*i/(P.NX-1); if(t<nowRel) continue;
+        const cst=dv*(1+2*P.rkG[k])+((i-gx)**2+(j-gy)**2)*3; if(cst<bc){bc=cst;best={tdep:t,y:P.ax.y0+(P.ax.y1-P.ax.y0)*j/(P.NY-1)};}
+      }
+      if(best){ tdep=tdep*.55+best.tdep*.45; y=y*.55+best.y*.45; }
+    }
+    P.sel={tdep,y};
+  } else if(P.fx){
+    let best=null,bd=1e9; const nowRel=S.t-P.t0;
+    for(const c of P.cells){ if(c.tdep<nowRel-1||c.risk>P.cap||c.dv>P.dvLim) continue; const d=(P.fx(c.tm)-px)**2+(P.fy(c.dv)-py)**2; if(d<bd){bd=d;best=c;} }
+    if(best) P.sel={tdep:best.tdep,y:best.y};
+  }
+  refreshPlan(P);
+}
+chO.addEventListener('pointerdown',e=>{ const P=S.plan; if(!P) return; chO.setPointerCapture(e.pointerId); P.drag=true; const [x,y]=chartPos(e); setSelFromPx(P,x,y,false); });
+chO.addEventListener('pointermove',e=>{ const P=S.plan; if(!P) return; const [x,y]=chartPos(e);
+  if(P.drag) setSelFromPx(P,x,y,true);
+  else if(P.tab==='map'&&x>=M.l&&x<=M.l+plotW()&&y>=M.t&&y<=M.t+plotH()){
+    const tdep=pxX(P,x), yy=pxY(P,y), h=evalAt(P,tdep,yy); P.hov={tdep,y:yy};
+    $('hoverLine').textContent=h.ok?('出発 +'+fmtMS(tdep)+'  '+(P.def.type==='two'?'所要 '+fmtMS(yy):P.ax.ylab+' '+Math.round(yy)+' km')+'   Δv '+h.dv.toFixed(0)+' m/s   リスク '+(h.risk*100).toFixed(0)+'%'):'この点には解がありません(幾何的に到達不能)';
+  } else P.hov=null;
+});
+chO.addEventListener('pointerup',()=>{ if(S.plan) S.plan.drag=false; });
+chO.addEventListener('pointerleave',()=>{ if(S.plan){ S.plan.hov=null; if(!S.plan.drag) $('hoverLine').textContent=''; } });
+function setTab(t){ const P=S.plan; document.querySelectorAll('#tabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===t)); if(P){ P.tab=t; P.baseDirty=true; } }
+document.querySelectorAll('#tabs button').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.t)));
+$('oRisk').addEventListener('change',e=>{ if(S.plan){ S.plan.riskShade=e.target.checked; S.plan.baseDirty=true; } });
+$('oRidge').addEventListener('change',e=>{ if(S.plan) S.plan.ridge=e.target.checked; });
+$('oMag').addEventListener('change',e=>{ if(S.plan) S.plan.magnet=e.target.checked; });
+$('cap').addEventListener('input',e=>{ const v=+e.target.value; $('capO').textContent=v+'%'; if(S.plan){ S.plan.cap=v/100; S.plan.baseDirty=true; computePareto(S.plan);} });
+
+/* ============ サイドパネルの更新 ============ */
+function kvHTML(P){
+  const e=P&&P.e, sim=P&&P.sim; if(!P||!e||!e.ok||!sim) return '<div style="grid-column:1/-1;color:var(--mute)">'+(P?'この点には解がありません。別の点を選んでください':'意図を選ぶと、選んだ点の内訳がここに出ます')+'</div>';
+  const nowRel=S.t-P.t0, last=sim.last, dvT=sim.dvTot*1000;
+  const cell=(l,v,u,extra)=>'<div><span>'+l+'</span><b>'+v+'<small>'+(u||'')+'</small></b>'+(extra||'')+'</div>';
+  const out=[];
+  out.push(cell('出発まで',fmtMS(Math.max(0,P.sel.tdep-nowRel)),''));
+  out.push(cell(P.def.type==='two'?'所要時間':'完了まで',P.ik==='dsc'?(e.tm>=120?(e.tm/60).toFixed(1)+' h':e.tm.toFixed(0)+' m')+'':fmtMS(e.tm*60),P.ik==='dsc'?'(約'+e.passes+'周)':''));
+  out.push(cell('Δv 合計',dvT.toFixed(0),'m/s'));
+  if(P.def.type==='two'){ out.push(cell('出発バーン',(hyp(P.nodes[0].pro,P.nodes[0].rad)*1000).toFixed(0),'m/s')); out.push(cell(P.ik==='icp'?'到達時の相対速度':'到着バーン',P.ik==='icp'?(e.relv*1000).toFixed(0):(e.dv2*1000).toFixed(0),'m/s')); }
+  else { out.push(cell('バーン',(hyp(P.nodes[0].pro,P.nodes[0].rad)*1000).toFixed(0),'m/s')); out.push(cell('方向',P.ik==='esc'?'順行 加速':'逆行 減速','')); }
+  out.push(cell('被弾リスク',(e.risk*100).toFixed(0),'%','<div class="riskbar"><i style="width:'+(e.risk*100)+'%"></i></div>'));
+  if(last) out.push(cell('目標点とのずれ',last.err<1?(last.err*1000).toFixed(0):last.err.toFixed(1),last.err<1?'m':'km'));
+  return out.join('');
+}
+let wasPlan=false;
+function updateSide(){
+  const P=S.plan;
+  /* 意図行 */
+  let il='<span class="none">天体をクリック、または Ctrl+K で意図を指示</span>';
+  if(P) il='<span class="chip"><b>'+P.def.label+'</b>'+(P.tgt?'→ '+P.tgt.name:'(自機)')+'</span> <span style="color:var(--mute);font-size:12px">'+P.def.sub+'</span>';
+  else if(S.nodes.length||doneNodes.length) il='<span class="chip"><b>実行中</b>確定済みの計画を遂行しています</span>';
+  $('intentLine').innerHTML=il;
+  $('pChart').classList.toggle('idle',!P); $('chartWrap').classList.toggle('idle',!P); if(!!P!==wasPlan){ wasPlan=!!P; sizeChart(); if(P) P.baseDirty=true; }
+  $('chSub').textContent=P?(P.tab==='map'?'横=出発  縦='+P.ax.ylab:'横=所要  縦=Δv  色=リスク'):'';
+  $('rdState').textContent=P?(P.nodes?'ドラッグで動く':'解なし'):'';
+  $('kv').innerHTML=kvHTML(P);
+  $('bCommit').disabled=!(P&&P.nodes&&P.sim&&P.sim.dvTot*1000<=S.dvLeft&&P.sel.tdep>=S.t-P.t0-0.5);
+  $('bDiscard').disabled=!(P||S.nodes.length);
+  /* 予算バー */
+  const cap=S.dvCap, spent=cap-S.dvLeft, pv=P&&P.sim?P.sim.dvTot*1000:0, remain=Math.max(0,S.dvLeft-pv);
+  $('bR').style.width=(remain/cap*100)+'%'; $('bP').style.width=(Math.min(pv,S.dvLeft)/cap*100)+'%'; $('bTick').style.left=(S.reserve/cap*100)+'%';
+  const under=remain<S.reserve, over=pv>S.dvLeft;
+  $('budTx').innerHTML='<span>残 <b>'+S.dvLeft.toFixed(0)+'</b>'+(pv?' → <b style="color:'+(over?'var(--bad)':under?'var(--warn)':'var(--ok)')+'">'+(S.dvLeft-pv).toFixed(0)+'</b>':'')+' m/s</span><span>'+(over?'予算超過':under?'戦闘予備を割る':'戦闘予備 '+S.reserve+' m/s')+'</span>';
+  $('budEm').textContent='全量 '+cap+' m/s';
+  /* 実行中計画 */
+  const rows=[]; for(const n of doneNodes) rows.push('<div class="n done"><span>'+(n.lab||n.kind)+'</span><span>完了</span></div>');
+  for(const n of S.nodes) rows.push('<div class="n"><span>'+(n.lab||n.kind)+'</span><span>T-'+fmtMS(n.t-S.t)+'</span></div>');
+  $('flightList').innerHTML=rows.length?rows.join(''):'<span style="color:var(--mute)">なし</span>';
+  $('flEm').textContent=S.nodes.length?'N キーで次ノードまで飛ばす':'';
+}
+function buildExpert(){
+  const P=S.plan, el=$('expBody');
+  if(!P){ el.innerHTML='<div style="color:var(--mute)">計画中のみ有効。意図から生成したノードを、数値で補正できます(補正量は意図の解に乗る)。</div>'; return; }
+  const ax=P.ax, two=P.def.type==='two';
+  el.innerHTML=
+   '<div style="color:var(--mute);font-size:12px;margin-bottom:4px">チャートの点と同じ状態の別の見え方。触るとチャート上の点も動く。</div>'+
+   sl('s_t','出発時刻 (+分)',0,ax.x1/60,0.1)+
+   sl('s_y',two?'所要 (分)':ax.ylab.split('(')[0],two?ax.y0/60:ax.y0,two?ax.y1/60:ax.y1,two?0.1:1)+
+   sl('s_p','PRO 補正 (m/s)',-120,120,1)+sl('s_r','RAD 補正 (m/s)',-120,120,1)+
+   '<div class="row" style="margin-top:4px"><button class="btn" id="bZero">補正を 0 に戻す</button></div>'+
+   '<table class="nodes" id="nodeTab"></table>';
+  const bind=(id,fn)=>$(id).addEventListener('input',e=>{ fn(+e.target.value); refreshPlan(P); });
+  bind('s_t',v=>P.sel.tdep=clamp(v*60,Math.max(0,S.t-P.t0),ax.x1));
+  bind('s_y',v=>P.sel.y=two?v*60:v);
+  bind('s_p',v=>P.off.pro=v); bind('s_r',v=>P.off.rad=v);
+  $('bZero').addEventListener('click',()=>{ P.off={pro:0,rad:0}; refreshPlan(P); });
+}
+function sl(id,l,a,b,st){ return '<div class="sl"><span>'+l+'</span><input type="range" id="'+id+'" min="'+a+'" max="'+b+'" step="'+st+'"><output id="'+id+'o"></output></div>'; }
+function syncExpert(){
+  const P=S.plan; if(!P||!$('s_t')) return; const two=P.def.type==='two';
+  const set=(id,v,txt)=>{ const el=$(id); if(document.activeElement!==el) el.value=v; $(id+'o').textContent=txt; };
+  set('s_t',P.sel.tdep/60,'+'+fmtMS(P.sel.tdep)); set('s_y',two?P.sel.y/60:P.sel.y,two?fmtMS(P.sel.y):Math.round(P.sel.y)+' km');
+  set('s_p',P.off.pro,(P.off.pro>0?'+':'')+P.off.pro.toFixed(0)); set('s_r',P.off.rad,(P.off.rad>0?'+':'')+P.off.rad.toFixed(0));
+  const rows=(P.nodes||[]).map(n=>{ const dv=n.kind==='burn'?hyp(n.pro,n.rad)*1000:(P.sim.marks.find(m=>m.t===n.t&&m.dv)||{dv:0}).dv*1000;
+    return '<tr><td>'+(n.lab||n.kind)+'</td><td>+'+fmtMS(n.t-P.t0)+'</td><td>'+(n.kind==='burn'?(n.pro*1000).toFixed(0)+'/'+(n.rad*1000).toFixed(0):'自動')+'</td><td>'+dv.toFixed(0)+'</td></tr>'; });
+  $('nodeTab').innerHTML='<tr><th>ノード</th><th>時刻</th><th>PRO/RAD</th><th>Δv m/s</th></tr>'+rows.join('');
+}
+
+/* ============ 速度ボタン ============ */
+{ const el=$('speed'); const mk=(t,fn,id)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=t; b.id=id||''; b.addEventListener('click',fn); el.appendChild(b); return b; };
+  mk('停止',()=>{S.paused=!S.paused;sp()},'spP'); for(const v of [10,30,100,300]) mk('×'+v,()=>{S.speed=v;S.paused=false;sp();},'sp'+v);
+  mk('次ノードへ ⏭',warpNext,'spN');
+  window.sp=()=>{ el.querySelectorAll('button').forEach(b=>b.classList.remove('on')); (S.paused?$('spP'):$('sp'+S.speed)).classList.add('on'); }; sp(); }
+function warpNext(){ if(!S.nodes.length){ toast('実行待ちのノードがありません'); return; } const dt=S.nodes[0].t-S.t-3; if(dt>0) advance(dt); S.paused=false; }
+
+/* ============ コマンドパレット ============ */
+const palEl=$('pal'), palIn=$('palIn'), palList=$('palList'); let palItems=[], palSel=0;
+function paletteSource(){
+  const items=[];
+  for(const b of BODIES){ if(b.kind==='self') continue; for(const k of ['rdv','icp','stn']){ const d=INTENTS[k]; items.push({label:d.label+' → '+b.name,desc:d.sub,kw:d.kw+' '+(b.kw||'')+' '+b.name,run:()=>startIntent(k,b.id)}); } }
+  for(const k of ['esc','dsc']){ const d=INTENTS[k]; items.push({label:d.label+'(自機)',desc:d.sub,kw:d.kw,run:()=>startIntent(k,null)}); }
+  items.push({label:'計画を確定',desc:'Enter',kw:'かくてい commit 決定 ok',run:commitPlan});
+  items.push({label:'計画を破棄',desc:'Esc',kw:'はき discard cancel 取り消し',run:discardPlan});
+  items.push({label:'時間を止める/再開',desc:'Space',kw:'ていし pause stop',run:()=>{S.paused=!S.paused;sp();}});
+  for(const v of [10,30,100,300]) items.push({label:'時間加速 ×'+v,desc:'',kw:'じかん time warp speed かそく',run:()=>{S.speed=v;S.paused=false;sp();}});
+  items.push({label:'次のノードまで飛ばす',desc:'N',kw:'warp node つぎ',run:warpNext});
+  items.push({label:'チャート: 地形 ⇄ 前線',desc:'C',kw:'ぜんせん pareto front map ちけい',run:()=>{ if(S.plan) setTab(S.plan.tab==='map'?'front':'map'); }});
+  items.push({label:'エキスパート層を開く/閉じる',desc:'',kw:'expert node ノード えきすぱーと',run:()=>{ const d=$('pExpert'); d.open=!d.open; }});
+  return items;
+}
+function palRender(){
+  const q=palIn.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  palItems=paletteSource().filter(it=>{ const h=(it.label+' '+it.kw).toLowerCase(); return q.every(t=>h.includes(t)); }).slice(0,40);
+  palSel=Math.min(palSel,Math.max(0,palItems.length-1));
+  palList.innerHTML=palItems.map((it,i)=>'<div class="pi'+(i===palSel?' sel':'')+'" data-i="'+i+'">'+it.label+'<span>'+it.desc+'</span></div>').join('')||'<div class="pi"><span>該当なし</span></div>';
+  palList.querySelectorAll('.pi[data-i]').forEach(el=>{ el.addEventListener('click',()=>{ palSel=+el.dataset.i; palRun(); }); });
+}
+function openPal(){ palEl.classList.add('open'); palIn.value=''; palSel=0; palRender(); setTimeout(()=>palIn.focus(),0); }
+function closePal(){ palEl.classList.remove('open'); palIn.blur(); }
+function palRun(){ const it=palItems[palSel]; closePal(); if(it) it.run(); }
+palIn.addEventListener('input',()=>{palSel=0;palRender();});
+palIn.addEventListener('keydown',e=>{
+  if(e.key==='ArrowDown'){e.preventDefault();palSel=Math.min(palSel+1,palItems.length-1);palRender();}
+  else if(e.key==='ArrowUp'){e.preventDefault();palSel=Math.max(0,palSel-1);palRender();}
+  else if(e.key==='Enter'){e.preventDefault();palRun();}
+  else if(e.key==='Escape'){e.preventDefault();closePal();}
+});
+palEl.addEventListener('pointerdown',e=>{ if(e.target===palEl) closePal(); });
+
+/* ============ キー ============ */
+addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){ e.preventDefault(); openPal(); return; }
+  if(palEl.classList.contains('open')) return;
+  const tag=e.target.tagName; if(tag==='INPUT'&&e.target.type!=='range'&&e.target.type!=='checkbox') return;
+  if(e.key==='/'){ e.preventDefault(); openPal(); return; }
+  if(S.menu&&/^[1-5]$/.test(e.key)){ const k=IORDER[+e.key-1]; if(!(INTENTS[k].type==='two'&&S.menu.b.kind==='self')) startIntent(k,S.menu.b.id); return; }
+  if(e.key==='Escape'){ if(S.menu) closeMenu(); else discardPlan(); return; }
+  if(e.key==='Enter'){ if(S.plan){ e.preventDefault(); commitPlan(); } return; }
+  if(e.key===' '){ e.preventDefault(); S.paused=!S.paused; sp(); return; }
+  if(e.key==='n'||e.key==='N'){ warpNext(); return; }
+  if(e.key==='c'||e.key==='C'){ if(S.plan) setTab(S.plan.tab==='map'?'front':'map'); return; }
+});
+$('bCommit').addEventListener('click',commitPlan);
+$('bDiscard').addEventListener('click',discardPlan);
+
+/* ============ ヒント ============ */
+function updateHint(){
+  let h;
+  if(S.plan) h='右のチャートをドラッグ。点を動かすとゴースト軌道が追従します。<br>「リスク上限」を絞ると非劣解の前線が動きます。<kbd>C</kbd>で前線へ。';
+  else if(S.nodes.length) h='確定済みの計画を実行中。<kbd>N</kbd>で次のバーン直前へ。';
+  else h='<b style="color:var(--ink)">1. 天体をクリック</b> → 放射メニューで意図を選ぶ<br>2. チャートの<b style="color:var(--ink)">地形</b>から点を選ぶ(答えは出さない)<br>3. <kbd>Enter</kbd>で確定。<kbd>Ctrl</kbd>+<kbd>K</kbd>でも指示できる';
+  if($('hint').dataset.h!==h){ $('hint').innerHTML=h; $('hint').dataset.h=h; }
+}
+
+/* ============ メインループ ============ */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.1,(now-last)/1000); last=now;
+  if(!S.paused) advance(dt*S.speed);
+  for(const e of S.effects) e.age+=dt;
+  const P=S.plan;
+  if(P){
+    const nowRel=S.t-P.t0;
+    if(P.sel.tdep<nowRel){ P.sel.tdep=Math.min(P.ax.x1,nowRel); refreshPlan(P); }
+    if(P.tab==='front'){ const col=Math.floor(nowRel/((P.ax.x1-P.ax.x0)/(P.NX-1))); if(col!==P.parNow){ P.baseDirty=true; } }
+    if(P.baseDirty) drawBase(P);
+  }
+  drawStage(); drawOverlay();
+  if(flightDirty||P||S.nodes.length) { updateSide(); flightDirty=false; }
+  if(P) syncExpert();
+  updateHint();
+  requestAnimationFrame(frame);
+}
+addEventListener('resize',()=>{ resize(); });
+resize(); buildExpert(); updateSide(); drawOverlay();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
