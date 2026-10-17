@@ -390,11 +390,13 @@ export class RenderPipeline {
     // 太陽光の影マップパス。G バッファを必要としないので、その前に置く。
     this.shadowMaps.render(scene, camera, height, this._sunLight);
 
-    // G バッファパス。
+    // 時間方向の蓄積へ、このフレームの番号と、宣言の差から決めた変化量を渡す。
     this.screenSpacePass.beginFrame(frame, this.sceneChangeTracker.changeAt(
       frame, change,
       this.sceneChangeTracker.sampleOf(camera, this._sunLight, this._planetLight, this._bodyShadow),
     ));
+
+    // G バッファパス。
     this._gbuffer.render(scene, camera, width, height, frame);
 
     // 影パス。G バッファの深度を読む。

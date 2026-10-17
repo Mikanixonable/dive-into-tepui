@@ -46,7 +46,9 @@ export class CameraSystem {
   public get activeFocus(): FocusTarget { return this.activeSource.focus; }
   // 表示中のビュー・照準・注視対象から作る、カメラの同一性の鍵。
   public get cameraKey(): string {
-    return cameraKeyOf(this.view, this.view === 'combat' && this.useGunsight, focusTargetId(this.activeSource.focus) ?? null);
+    return cameraKeyOf(
+      this.view, this.view === 'combat' && this.useGunsight, focusTargetId(this.activeSource.focus) ?? null,
+    );
   }
   // 表に出ているビューの注視の対象の姿勢(ECI)。姿勢を持たない対象(天体・固定点)では null。
   public get focusAttitude(): Quat | null { return this.sample(this.view).attitude; }

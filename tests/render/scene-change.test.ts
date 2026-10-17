@@ -10,11 +10,12 @@ import {
 const perspective = { kind: 'perspective', verticalFovRad: Math.PI / 3, aspect: 16 / 9 } as const;
 const weights: SceneChangeWeights = { lightDirection: 10, sunlit: 1, cameraSlide: 4 };
 
+// 原点の基準を +z の距離 10 から見る透視のカメラと、+z の恒星光 1 本の様子に、overrides を上書きした様子。
 function sample(overrides: Partial<SceneChangeSample> = {}): SceneChangeSample {
   return {
     cameraKey: 'camera',
-    reference: { position: v3(), orientation: Q_IDENTITY },
-    camera: { position: v3(0, 0, 10), orientation: Q_IDENTITY },
+    referenceOrientation: Q_IDENTITY,
+    camera: { offset: v3(0, 0, 10), orientation: Q_IDENTITY },
     projection: perspective,
     lights: [{ key: 'sun', direction: v3(0, 0, 1), irradiance: 1 }],
     sunlit: 1,
@@ -31,21 +32,15 @@ export function register(): void {
     assert.equal(sceneChangeOf(terms, weights), 0);
   });
 
-  test('scene-change: 基準の回転は光源方向の一次の角度になり、並進では遠方光源の方向をほぼ変えない', () => {
+  test('scene-change: 基準の回転は光源方向の一次の角度になる', () => {
     const angle = 0.01;
-    const rotated = sample({ reference: { position: v3(), orientation: qFromAxisAngle(v3(0, 1, 0), angle) } });
+    const rotated = sample({ referenceOrientation: qFromAxisAngle(v3(0, 1, 0), angle) });
     const term = sceneChangeTermsOf(sample(), rotated).lightDirection;
     assert.ok(Math.abs(term - angle) / angle < 1e-6, `${term} != ${angle}`);
     const twice = sceneChangeTermsOf(sample(), sample({
-      reference: { position: v3(), orientation: qFromAxisAngle(v3(0, 1, 0), angle * 2) },
+      referenceOrientation: qFromAxisAngle(v3(0, 1, 0), angle * 2),
     })).lightDirection;
     assert.ok(Math.abs(twice / term - 2) < 1e-6);
-    const distant = sample({ lights: [{ key: 'sun', direction: v3(1, 0, 0), irradiance: 1 }] });
-    const translated = sample({
-      reference: { position: v3(1e3, 0, 0), orientation: Q_IDENTITY },
-      lights: [{ key: 'sun', direction: v3(1, 0, 0), irradiance: 1 }],
-    });
-    assert.ok(sceneChangeTermsOf(distant, translated).lightDirection < 1e-6);
   });
 
   test('scene-change: 光源を鍵で対にし、照度で角度を均す', () => {
@@ -67,11 +62,11 @@ export function register(): void {
     assert.ok(Math.abs(sceneChangeTermsOf(before, added).lightDirection - Math.PI / 9) < 1e-12);
   });
 
-  test('scene-change: カメラ移動だけが滑り量を作り、基準と一緒に動くとゼロ', () => {
+  test('scene-change: 基準に対するカメラの動きだけが滑り量を作り、基準と一緒に回るとゼロ', () => {
     const before = sample({ projection: { kind: 'orthographic', halfHeight: 100, aspect: 2 } });
     const shifted = sample({
       projection: before.projection,
-      camera: { position: v3(2, 0, 10), orientation: Q_IDENTITY },
+      camera: { offset: v3(2, 0, 10), orientation: Q_IDENTITY },
     });
     const slide = sceneChangeTermsOf(before, shifted);
     assert.equal(slide.lightDirection, 0);
@@ -79,21 +74,15 @@ export function register(): void {
     assert.ok(Math.abs(slide.cameraSlide - 0.01) < 1e-12);
     const twice = sample({
       projection: before.projection,
-      camera: { position: v3(4, 0, 10), orientation: Q_IDENTITY },
+      camera: { offset: v3(4, 0, 10), orientation: Q_IDENTITY },
     });
     assert.ok(Math.abs(sceneChangeTermsOf(before, twice).cameraSlide / slide.cameraSlide - 2) < 1e-12);
-    const together = sample({
-      projection: before.projection,
-      reference: { position: v3(1, 0, 0), orientation: Q_IDENTITY },
-      camera: { position: v3(1, 0, 10), orientation: Q_IDENTITY },
-    });
-    assert.equal(sceneChangeTermsOf(before, together).cameraSlide, 0);
     const sharedRotation = { x: 0, y: 1, z: 0, w: 0 };
     const sharedOrigin = sample({ projection: before.projection, lights: [] });
     const sharedFrame = sample({
       projection: before.projection,
-      reference: { position: v3(3, 4, 5), orientation: sharedRotation },
-      camera: { position: v3(3, 4, -5), orientation: sharedRotation },
+      referenceOrientation: sharedRotation,
+      camera: { offset: v3(0, 0, -10), orientation: sharedRotation },
       lights: [],
     });
     assert.deepEqual(sceneChangeTermsOf(sharedOrigin, sharedFrame), {
@@ -103,7 +92,7 @@ export function register(): void {
     const orbit = sample({
       projection: before.projection,
       camera: {
-        position: v3(10 * Math.sin(orbitAngle), 0, 10 * Math.cos(orbitAngle)),
+        offset: v3(10 * Math.sin(orbitAngle), 0, 10 * Math.cos(orbitAngle)),
         orientation: qFromAxisAngle(v3(0, 1, 0), orbitAngle),
       },
     });

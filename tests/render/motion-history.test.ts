@@ -1,3 +1,4 @@
+// 動きベクトルの履歴(論理番号・通し番号・カメラ・物体・プールの前フレームの変換)の記録の進み方を検査する。
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import {
@@ -144,7 +145,7 @@ export function register(): void {
     assert.ok(frame1?.previous.equals(previousSequence));
   });
 
-  test('motion history: reset logical frame uses monotonic serial', () => {
+  test('motion history: 論理番号が戻っても通し番号は単調に進む', () => {
     const history = new MotionHistory();
     const camera = new THREE.PerspectiveCamera();
     const staticObject = new THREE.Object3D();
@@ -303,6 +304,7 @@ export function register(): void {
   });
 }
 
+// x 軸上の x に置き、matrixWorld を更新済みの物体。
 function positionedObject(x: number): THREE.Object3D {
   const object = new THREE.Object3D();
   object.position.x = x;
@@ -310,6 +312,7 @@ function positionedObject(x: number): THREE.Object3D {
   return object;
 }
 
+// 履歴なしの前変換と比べる零行列を、新しく作る。
 function zeroMatrix(): THREE.Matrix4 {
   return new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }

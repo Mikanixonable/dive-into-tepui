@@ -1,7 +1,7 @@
 // 1ランの表示の導出の根: 入力の解釈、表示窓・座標系の錨・カメラの導出、表示物と HUD への同期、
 // 描画を所有する。モデル層の根 Game を読み、命令の列へ積み、進行の末尾へ渡す材料を組む。
-import type { FrameSections } from './frame-sections';
 import * as THREE from 'three/webgpu';
+import type { FrameSections } from './frame-sections';
 import { CameraSystem } from './camera/camera-system';
 import { controlSelectionCommands } from './control-selection-commands';
 import { simSpeedCommands } from './dynamic/sim-speed-commands';
@@ -401,7 +401,7 @@ export class GamePresentation {
       cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, cs.zoomActive, cs.focusVelocity,
     );
     this.cameraFrame = camera;
-    // 変化量の推定の基準 — 位置は露出の基準と同じ注視点、向きは注視の対象の姿勢(持たなければ恒等)。
+    // 変化量の推定の基準 — 位置は注視点、向きは注視の対象の姿勢(持たなければ恒等)。
     const focusAttitude = cs.focusAttitude;
     this.devices.scene.pipeline.sceneChange.set({
       cameraKey: cs.cameraKey,

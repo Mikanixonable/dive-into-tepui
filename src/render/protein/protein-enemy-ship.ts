@@ -29,7 +29,8 @@ function proteinCoordinateRoot(structure: THREE.Group, coordinateScale: number):
   return root;
 }
 
-// 残基変位を positionNode に加える材質を使う全メッシュを、共通の組み立て経路で棄却対象にする。
+// root の下で、残基の変位を positionNode に加える材質を使うメッシュと線の動きベクトルを履歴なしにする。変位は
+// model 行列の履歴に現れないので、前フレームの位置を求められない。
 function markProteinMotionTargets(root: THREE.Object3D): void {
   root.traverse((object) => {
     if (!(object instanceof THREE.Mesh) && !(object instanceof THREE.Line)) return;

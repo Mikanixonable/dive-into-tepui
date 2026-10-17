@@ -3,7 +3,7 @@
 // r から見た太陽円盤とその天体の円盤の重なり面積比で減光率を出す — 本影(重なり=太陽円盤全体)・
 // 金環(天体の円盤が太陽円盤に内包)・半影(部分的に重なる)・完全日照(重なり無し)が場合分け
 // 無しに1つの閉じた式から出る。
-import { Vec3 } from '../math/vec3';
+import type { Vec3 } from '../math/vec3';
 import type { CelestialBody } from './celestial-body';
 
 // 球の遮り手。中心と半径は、日照率を問う点 r と同じ座標と単位。
@@ -39,8 +39,8 @@ function shadowedFraction(
   );
 }
 
-// r から見た太陽円盤のうち、中心 (bodyX, bodyY, bodyZ)・半径 bodyRadius の球に遮られていない面積比(0..1)。恒星の引数は
-// shadowedFraction と同じ。
+// r から見た太陽円盤のうち、中心 (bodyX, bodyY, bodyZ)・半径 bodyRadius の球に遮られていない面積比(0..1)。sunDirX..Z は
+// r から太陽への単位ベクトルの成分、sunDist は太陽までの距離、sinSunAng は sin(sunAngRadius)。
 function sphereShadowedFraction(
   r: Vec3,
   sunDirX: number, sunDirY: number, sunDirZ: number,
@@ -67,8 +67,8 @@ function sphereShadowedFraction(
   return 1 - overlap / (Math.PI * sunAngRadius * sunAngRadius);
 }
 
-// 位置 r における日照率 0..1 を、天体の型ではなく恒星(中心 starCenter・半径 starRadius)と球の遮り手 occluders の幾何から
-// 求める。合成は sunlitFactor と同じ(減光率の積)。半径 0 の恒星は誰にも遮られない。
+// 位置 r における日照率 0..1 を、恒星(中心 starCenter・半径 starRadius)と球の遮り手 occluders の幾何から求める。
+// 遮り手ごとの減光率の積で、半径 0 の恒星では 1。
 export function sphereSunlitFactor(
   r: Vec3,
   starCenter: Vec3,

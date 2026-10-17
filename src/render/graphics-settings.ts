@@ -228,7 +228,7 @@ export const GRAPHICS_FIELDS = {
         min: 1, max: 12, step: 1,
         presets: { low: 3, medium: 5, high: 5 },
       },
-      // 静止した場面で積む履歴の上限 [フレーム]。1 なら前のフレームを引き継がない。
+      // 静止した場面で積む履歴の上限 [フレーム]。1 で今のフレームの値をそのまま使う。
       screenSpaceHistoryCap: {
         kind: 'slider', label: '履歴の上限',
         min: 1, max: 32, step: 1,

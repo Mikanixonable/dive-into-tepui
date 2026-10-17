@@ -41,9 +41,9 @@ interface BandChainTargets {
 export class DiffuseCorrection {
   // 帯の数ごとの、段ごとの描画先。初めて引いたときに作る。
   private readonly chains = new Map<number, BandChainTargets>();
-  // 描画バッファの解像度の、時間方向に蓄積した補正 (rgb = ΔE、α = 履歴の長さ n)。
+  // 描画バッファの解像度の、時間方向に蓄積した補正 (rgb = ΔE_screen、α = 履歴の長さ n)。
   public readonly target = createTarget(1, 'diffuseCorrection');
-  // 蓄積へ渡す、描画バッファの解像度の補正。
+  // 描画バッファの解像度の、蓄積する前の補正 (rgb = ΔE_screen)。
   public readonly upsampledTarget = createTarget(1, 'upsampledDiffuseCorrection');
 
   public get texture(): THREE.Texture { return this.target.texture; }

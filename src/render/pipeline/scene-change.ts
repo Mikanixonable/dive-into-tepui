@@ -1,27 +1,27 @@
-// 前のフレームから動きベクトルでは追えない場面の変化の量 d を、2 つのフレームの様子(描画パイプラインが受けた宣言から写した値)の
-// 差から見積もる。要素ごとの指標はどれも完全一致で 0、小さな変化について 1 次で、d は重みを掛けた和。純粋な関数だけを持つ。
+// 前のフレームから動きベクトルでは追えない場面の変化の量 d を、2 つのフレームの様子の差から見積もる純関数。
+// 要素ごとの指標はどれも完全一致で 0、小さな変化について 1 次で、d は重みを掛けた和。
 import type { Quat } from '../../math/quat';
 import { qInvert, qMul, qRotate } from '../../math/quat';
 import type { Vec3 } from '../../math/vec3';
 import { add, cross, dot, len, sub, v3 } from '../../math/vec3';
 
-// 位置と向き。座標は描画座標(浮動原点。軸は ECI と同じ)、orientation は局所の座標から描画座標への回転。
-export interface SamplePose { readonly position: Vec3; readonly orientation: Quat }
+// 基準の受け手から見たカメラの置き方。offset は基準の位置からの変位(軸は ECI)、orientation は局所の座標から ECI の軸への回転。
+export interface SamplePose { readonly offset: Vec3; readonly orientation: Quat }
 
 // カメラの射影。aspect は幅 / 高さ。
 export type SampleProjection =
   | { readonly kind: 'perspective'; readonly verticalFovRad: number; readonly aspect: number }
   | { readonly kind: 'orthographic'; readonly halfHeight: number; readonly aspect: number };
 
-// 光源 1 つ。key はフレームをまたいで同じ光源を引く鍵、direction は基準の位置から光源への単位ベクトル(描画座標)、irradiance は
+// 光源 1 つ。key はフレームをまたいで同じ光源を引く鍵、direction は基準の位置から光源への単位ベクトル(軸は ECI)、irradiance は
 // 基準の位置の照度(光源どうしを均す割合。恒星光は日照率を掛けた後)。
 export interface SampleLight { readonly key: string; readonly direction: Vec3; readonly irradiance: number }
 
-// 1 描画フレームの様子。reference は光の向きとカメラの動きを測る基準の受け手、camera は three の規約(局所の −Z を見る)、
-// sunlit は基準の位置の日照率 0..1。
+// 1 描画フレームの様子。referenceOrientation は光の向きとカメラの動きを測る基準の受け手の、局所の座標から ECI の軸への回転。
+// camera は three の規約(局所の −Z を見る)、sunlit は基準の位置の日照率 0..1。
 export interface SceneChangeSample {
   readonly cameraKey: string;
-  readonly reference: SamplePose;
+  readonly referenceOrientation: Quat;
   readonly camera: SamplePose;
   readonly projection: SampleProjection;
   readonly lights: readonly SampleLight[];
@@ -39,7 +39,8 @@ export interface SceneChangeTerms {
 // 要素ごとの重み w(d = Σ w·指標)。1/w は残像が 1/e に減るまでに場面が変わる量。
 export type SceneChangeWeights = { readonly [K in keyof SceneChangeTerms]: number };
 
-// 本番の重み。参考値で、lab の再生と実機で詰める。
+// 本番の重み。
+// TODO: 参考値。render-lab の再生と実機で詰める。
 export const SCENE_CHANGE_WEIGHTS: SceneChangeWeights = {
   lightDirection: 10,
   sunlit: 1,
@@ -77,8 +78,8 @@ export function sceneChangeOf(terms: SceneChangeTerms, weights: SceneChangeWeigh
 function lightDirectionTermOf(previous: SceneChangeSample, current: SceneChangeSample): number {
   const previousByKey = new Map(previous.lights.map((light) => [light.key, light]));
   const currentByKey = new Map(current.lights.map((light) => [light.key, light]));
-  const previousInverse = qInvert(previous.reference.orientation);
-  const currentInverse = qInvert(current.reference.orientation);
+  const previousInverse = qInvert(previous.referenceOrientation);
+  const currentInverse = qInvert(current.referenceOrientation);
   let weightedAngle = 0;
   let irradianceSum = 0;
   // 前と今のどちらかにある光源ごとに、局所の向きの角を照度の重みで積む。
@@ -107,11 +108,11 @@ function sunlitTermOf(previous: number, current: number): number {
 // 滑り [画面の高さ] の RMS。どちらのカメラも基準の局所の座標で扱う。局所の姿勢と射影が前と同じならちょうど 0、射影の種類が替わる
 // か点が今のカメラの後ろへ回ると ∞。
 function cameraSlideTermOf(previous: SceneChangeSample, current: SceneChangeSample): number {
-  const before = localPoseOf(previous.reference, previous.camera);
-  const now = localPoseOf(current.reference, current.camera);
+  const before = localPoseOf(previous.referenceOrientation, previous.camera);
+  const now = localPoseOf(current.referenceOrientation, current.camera);
   if (samePose(before, now) && sameProjection(previous.projection, current.projection)) return 0;
   if (previous.projection.kind !== current.projection.kind) return Infinity;
-  const distance = Math.max(len(now.position), MIN_REFERENCE_DISTANCE);
+  const distance = Math.max(len(now.offset), MIN_REFERENCE_DISTANCE);
   const nowInverse = qInvert(now.orientation);
   let squares = 0;
   let count = 0;
@@ -119,8 +120,10 @@ function cameraSlideTermOf(previous: SceneChangeSample, current: SceneChangeSamp
   for (const scale of SLIDE_DEPTH_SCALES) {
     for (const x of SLIDE_NDC) {
       for (const y of SLIDE_NDC) {
-        const point = add(before.position, qRotate(before.orientation, unprojected(previous.projection, x, y, distance * scale)));
-        const projected = projectedNdc(current.projection, qRotate(nowInverse, sub(point, now.position)));
+        const point = add(
+          before.offset, qRotate(before.orientation, unprojected(previous.projection, x, y, distance * scale)),
+        );
+        const projected = projectedNdc(current.projection, qRotate(nowInverse, sub(point, now.offset)));
         if (projected === null) return Infinity;
         const aspect = current.projection.aspect;
         squares += ((projected[0] - x) * aspect / 2) ** 2 + ((projected[1] - y) / 2) ** 2;
@@ -150,18 +153,15 @@ function projectedNdc(projection: SampleProjection, point: Vec3): readonly [numb
   return [point.x / (projection.aspect * projection.halfHeight), point.y / projection.halfHeight];
 }
 
-// 姿勢 pose を、基準 reference を原点とする局所の座標へ移す。
-function localPoseOf(reference: SamplePose, pose: SamplePose): SamplePose {
-  const inverse = qInvert(reference.orientation);
-  return {
-    position: qRotate(inverse, sub(pose.position, reference.position)),
-    orientation: qMul(inverse, pose.orientation),
-  };
+// 置き方 pose を、向き referenceOrientation の基準の局所の座標へ移す。
+function localPoseOf(referenceOrientation: Quat, pose: SamplePose): SamplePose {
+  const inverse = qInvert(referenceOrientation);
+  return { offset: qRotate(inverse, pose.offset), orientation: qMul(inverse, pose.orientation) };
 }
 
-// 2 つの姿勢の成分がすべて等しいか。
+// 2 つの置き方の成分がすべて等しいか。
 function samePose(a: SamplePose, b: SamplePose): boolean {
-  return a.position.x === b.position.x && a.position.y === b.position.y && a.position.z === b.position.z
+  return a.offset.x === b.offset.x && a.offset.y === b.offset.y && a.offset.z === b.offset.z
     && a.orientation.x === b.orientation.x && a.orientation.y === b.orientation.y
     && a.orientation.z === b.orientation.z && a.orientation.w === b.orientation.w;
 }
@@ -174,7 +174,7 @@ function sameProjection(a: SampleProjection, b: SampleProjection): boolean {
     : a.kind === 'orthographic' && b.kind === 'orthographic' && a.halfHeight === b.halfHeight;
 }
 
-// 2 つの向きの間の角 [rad]。atan2 で取るので、小さな角でも丸めで潰れない。
+// 2 つの向きの間の角 [rad]。0 と π の近くでも丸めで潰れない。
 function angleBetween(a: Vec3, b: Vec3): number {
   return Math.atan2(len(cross(a, b)), dot(a, b));
 }

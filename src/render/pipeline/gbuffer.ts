@@ -1,7 +1,7 @@
 // フレーム最初のパス: lit-opaque 層(lit-layer.ts)のオブジェクトだけを対象に、深度・法線・
 // ラフネス・ベース色・金属度・自己発光を MRT(複数レンダーターゲット)へ描く。
 import * as THREE from 'three/webgpu';
-import { WebGPURenderer } from 'three/webgpu';
+import type { WebGPURenderer } from 'three/webgpu';
 import {
   abs, diffuseColor, emissive, float, metalness, mrt, normalize, normalView, roughness, screenUV, select, step,
   texture, vec3, vec4,
@@ -52,6 +52,7 @@ export function octDecodeNormal(raw: Vec2Node): Vec3Node {
 export class GBufferPass {
   private readonly target: THREE.RenderTarget;
   private readonly mrtNode: ReturnType<typeof mrt>;
+  // 動きベクトルが読む前フレームの変換の記録。
   private readonly motionHistory = new MotionHistory();
 
   // ターゲットは 1×1 で作り、render() が画面寸法へ合わせる。
@@ -76,6 +77,7 @@ export class GBufferPass {
     emissiveTex!.name = 'emissive';
     emissiveTex!.format = THREE.RGBAFormat;
     emissiveTex!.type = THREE.HalfFloatType;
+    // 動きベクトルは符号つきの uv と深度の差なので半精度浮動小数点で持つ。
     motionTex!.name = 'motion';
     motionTex!.format = THREE.RGBAFormat;
     motionTex!.type = THREE.HalfFloatType;
@@ -104,7 +106,7 @@ export class GBufferPass {
   public get motionTexture(): THREE.Texture { return this.target.textures[4]!; }
   public get depthTexture(): THREE.DepthTexture { return this.target.depthTexture!; }
 
-  // render-lab が計時できるよう、実処理への呼び口を公開する。
+  // 各プールの枠へ、camera の記録から前フレームの model 行列を書く。同じ論理番号の間は何度呼んでも同じ値を書く。
   public writePoolMatrices(camera: THREE.Camera): void {
     this.motionHistory.writePoolMatrices(camera);
   }
@@ -117,6 +119,7 @@ export class GBufferPass {
   // lit-opaque 層と雲殻の層を、同じ G バッファへ 2 回に分けて描く。分けるのは雲殻だけの GPU
   // 時間を読むためで、書き出す素材はどちらも同じ。camera はこのあと world パスでも使う同一
   // インスタンスなので、layers.mask は呼び出し前の値へ必ず戻す。
+  // frame は論理フレームの番号で、同じ番号の描き直しは動きベクトルを同じ前フレームと比べる。
   public render(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number, frame: number): void {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
 

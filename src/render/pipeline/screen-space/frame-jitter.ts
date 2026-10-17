@@ -29,25 +29,29 @@ const ROTATION_ALPHA = (Math.sqrt(5) - 1) / 2;
 // 2×2 の Bayer 行列 [[0, 2], [3, 1]] の、番号ごとの升の座標 (x, y)。
 const BAYER_2_CELLS = [[0, 0], [1, 1], [1, 0], [0, 1]] as const;
 
-// フレーム frame(0 以上の整数)で動かす走査の入力。sources に含む入力だけが動き、含まない入力は本番の静止画の値(seed (0, 0)・
-// 回転 0・代表はブロックの中心)になる。cellSize は走査の画素の幅 [描画バッファの画素](2 の冪)で、代表は cellSize² 通りの位置を Bayer 順に
-// 巡る。フレーム 0 は、どの入力を動かしても本番の静止画と一致する。
+// フレーム frame(0 以上の整数)で動かす走査の入力。sources に含む入力をその番号の位相に置き、含まない入力は本番の静止画の値
+// (seed (0, 0)・回転 0・代表はブロックの中心)にする。cellSize は走査の画素の幅 [描画バッファの画素](2 の冪)で、代表は cellSize²
+// 通りの位置を Bayer 順に巡る。フレーム 0 は、どの入力を動かしても本番の静止画と一致する。
 export function frameJitterAt(frame: number, sources: readonly JitterSource[], cellSize: number): FrameJitter {
-  if (!Number.isInteger(frame) || frame < 0) throw new RangeError(`frame jitter: frame ${frame} is not a non-negative integer`);
+  if (!Number.isInteger(frame) || frame < 0) {
+    throw new RangeError(`frame jitter: frame ${frame} is not a non-negative integer`);
+  }
   if (!Number.isInteger(cellSize) || cellSize < 1 || (cellSize & (cellSize - 1)) !== 0) {
     throw new RangeError(`frame jitter: the scan cell size ${cellSize} is not a power of two`);
   }
+  // 源 seed は、ブルーノイズのずれと走査の全体の回転をそろって動かす。
   const moveSeed = sources.includes('seed');
   const seed = moveSeed ? SEED_ALPHA.map((alpha) => fract(frame * alpha)) as [number, number] : [0, 0] as const;
   const scanRotation = moveSeed ? fract(frame * ROTATION_ALPHA) : 0;
+  // 代表の巡りは cellSize² フレームで一巡し、同じ順を繰り返す。
   const scanJitter: ScanJitter | null = sources.includes('scanRepresentative')
     ? { kind: 'grid', fraction: gridFractionAt(frame % (cellSize * cellSize), cellSize) }
     : null;
   return { seed, scanRotation, scanJitter };
 }
 
-// フレーム frame に置く走査の入力。履歴の上限 historyCap が 1 なら本番の静止画の値、源 sources が null なら置かない(null)、
-// それ以外は sources をその番号の位相で動かした値。
+// フレーム frame に置く走査の入力。源 sources が null なら置かない(null)、履歴の上限 historyCap(1 以上の整数)が 1 なら本番の
+// 静止画の値、それ以外は sources をその番号の位相で動かした値。
 export function frameJitterForHistoryCap(
   frame: number, sources: readonly JitterSource[] | null, historyCap: number, cellSize: number,
 ): FrameJitter | null {
@@ -67,7 +71,7 @@ function gridFractionAt(index: number, cellSize: number): readonly [number, numb
   return [0.5 + ((x ^ center) - center) / cellSize, 0.5 + ((y ^ center) - center) / cellSize];
 }
 
-// 一辺 size(2 の冪)の Bayer 行列で番号 index を持つ升の座標。番号の下位 2 bit から順に、粗い四分割の位置を決める。
+// 一辺 size(2 の冪)の Bayer 行列で番号 index を持つ升の座標。
 function bayerCellAt(index: number, size: number): readonly [number, number] {
   let x = 0;
   let y = 0;

@@ -1,8 +1,9 @@
-// 時間方向の蓄積で使うフレーム番号の進み方と履歴上限の不変条件を検査する。
+// 時間方向の蓄積で使うフレーム番号の進み方と履歴長の上限の不変条件を検査する。
 import * as assert from 'node:assert/strict';
 import { frameStepOf, lengthCapOf } from '../../src/render/pipeline/screen-space/temporal-accumulation';
 import { test } from '../harness';
 
+// フレーム番号の進み方と履歴長の上限の検査を登録する。
 export function register(): void {
   test('temporal accumulation: 初回・再描画・連続番号・飛びと戻りを分類する', () => {
     assert.equal(frameStepOf(null, 0, 0), 'cut');

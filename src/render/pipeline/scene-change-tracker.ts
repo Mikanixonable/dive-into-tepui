@@ -1,13 +1,15 @@
-// 描画パイプラインが受けた宣言から、フレームごとの様子を写して前の番号の様子と比べ、時間方向の蓄積へ渡す変化量 d を決める。
-// 外から宣言を受けるのは、宣言の差から導けない 2 つ — カメラの同一性の鍵と、基準の受け手の姿勢 — だけ。
+// フレームごとに、パイプラインが受けた恒星光・天体照・影を落とす天体の宣言とカメラから場面の様子を写し、前の番号の様子と
+// 比べて時間方向の蓄積の変化量 d を決める。宣言の差から導けない 2 つ — カメラの同一性の鍵と基準の受け手の姿勢 — は、
+// 毎フレーム外から宣言を受ける。
 import * as THREE from 'three/webgpu';
 import type { Quat } from '../../math/quat';
 import type { Vec3 } from '../../math/vec3';
-import { norm, sub, v3 } from '../../math/vec3';
+import { lenSq, norm, v3 } from '../../math/vec3';
 import { sphereSunlitFactor } from '../../physics/shadow';
+import { rec709Luminance } from '../celestial-albedo';
 import { frameStepOf } from './screen-space/temporal-accumulation';
 import {
-  SCENE_CHANGE_WEIGHTS, sceneChangeOf, sceneChangeTermsOf, type SampleLight, type SamplePose, type SampleProjection,
+  SCENE_CHANGE_WEIGHTS, sceneChangeOf, sceneChangeTermsOf, type SampleLight, type SampleProjection,
   type SceneChangeSample, type SceneChangeTerms, type SceneChangeWeights,
 } from './scene-change';
 import type { PlanetLightSource } from './lighting/planet-light-source';
@@ -25,20 +27,19 @@ export interface SceneChangeDeclaration {
 // 外へ見せる口 — 宣言・重み・直前の推定。
 export type SceneChangeDeclarations = Pick<SceneChangeTracker, 'set' | 'setWeights' | 'lastTerms' | 'lastChange'>;
 
-// Rec.709 の輝度の係数。天体照の色つきの放射輝度を、照度の割合を比べる 1 つの数へ畳む。
-const LUMINANCE = [0.2126, 0.7152, 0.0722] as const;
-
 export class SceneChangeTracker {
   // 直前に受けた宣言(成分を写したもの)。
   private declaration: SceneChangeDeclaration | null = null;
   // 直前に番号を進めたフレームの様子と、その番号。
   private previous: SceneChangeSample | null = null;
   private previousFrame: number | null = null;
+  // 要素の重み。
   private weights: SceneChangeWeights = SCENE_CHANGE_WEIGHTS;
+  // 直前に番号を進めたときの要素ごとの指標(前の様子と比べなかったなら null)と、決めた d。
   private terms: SceneChangeTerms | null = null;
   private change = 0;
 
-  // このフレームの宣言を受ける。成分を写して持つ — 参照で持つと、呼び出し側が次のフレームで書き換えたときに前と今が同じになる。
+  // このフレームの宣言を受ける。成分を写して持つので、呼び出し側は渡した値をこの後に書き換えてよい。
   public set(declaration: SceneChangeDeclaration): void {
     this.declaration = {
       cameraKey: declaration.cameraKey,
@@ -63,22 +64,22 @@ export class SceneChangeTracker {
   ): SceneChangeSample {
     if (this.declaration === null) throw new Error('SceneChangeTracker: declaration has not been set');
     const { cameraKey, referencePosition, referenceOrientation } = this.declaration;
-    const reference = vec3Of(referencePosition);
-    const sunPosition = vec3Of(sunLight.position.value);
+    const toSun = offsetOf(sunLight.position.value, referencePosition);
     // 日照率は描いている影と同じ遮り手から、半軸を平均の半径の球へ近似して求める。
     const occluders = bodyShadow.declaredBodies.map(({ center, axes }) => ({
-      center: vec3Of(center), radius: (axes.x + axes.y + axes.z) / 3,
+      center: offsetOf(center, referencePosition), radius: (axes.x + axes.y + axes.z) / 3,
     }));
-    const sunlit = sphereSunlitFactor(reference, sunPosition, sunLight.radiusValue, occluders);
+    const sunlit = sphereSunlitFactor(v3(0, 0, 0), toSun, sunLight.radiusValue, occluders);
+    // カメラの置き方と射影を写す。
     const cameraPosition = new THREE.Vector3();
     const cameraOrientation = new THREE.Quaternion();
     camera.matrixWorld.decompose(cameraPosition, cameraOrientation, new THREE.Vector3());
     return {
       cameraKey,
-      reference: { position: reference, orientation: quatOf(referenceOrientation) },
-      camera: poseOf(cameraPosition, cameraOrientation),
+      referenceOrientation: quatOf(referenceOrientation),
+      camera: { offset: offsetOf(cameraPosition, referencePosition), orientation: quatOf(cameraOrientation) },
       projection: projectionOf(camera),
-      lights: lightsOf(reference, sunPosition, sunLight.intensityValue * sunlit, planetLight),
+      lights: lightsOf(toSun, sunLight.intensityValue * sunlit, planetLight, referencePosition),
       sunlit,
     };
   }
@@ -108,21 +109,20 @@ export class SceneChangeTracker {
   }
 }
 
-// 基準の位置 reference から見た光源の並び。恒星光の照度 sunIrradianceScale / 距離² は日照率を掛けた後、天体照の照度は
-// π × 輝度 × (半径 / 距離)²(1 で頭打ち)。
+// 描画座標の位置 reference から見た光源の並び。toSun は reference から恒星への変位。恒星光の照度 sunIrradianceScale /
+// 距離² は日照率を掛けた後、天体照の照度は π × 輝度 × (半径 / 距離)²(1 で頭打ち)。
 function lightsOf(
-  reference: Vec3, sunPosition: Vec3, sunIrradianceScale: number, planetLight: PlanetLightSource,
+  toSun: Vec3, sunIrradianceScale: number, planetLight: PlanetLightSource, reference: THREE.Vector3,
 ): readonly SampleLight[] {
-  const toSun = sub(sunPosition, reference);
-  const sunDistanceSq = toSun.x * toSun.x + toSun.y * toSun.y + toSun.z * toSun.z;
+  const sunDistanceSq = lenSq(toSun);
   const lights: SampleLight[] = [{
     key: 'sun', direction: norm(toSun), irradiance: sunDistanceSq === 0 ? 0 : sunIrradianceScale / sunDistanceSq,
   }];
   // 天体照は宣言の鍵のまま並べる。
   for (const light of planetLight.declaredLights) {
-    const toPlanet = sub(vec3Of(light.center), reference);
-    const distanceSq = toPlanet.x * toPlanet.x + toPlanet.y * toPlanet.y + toPlanet.z * toPlanet.z;
-    const luminance = LUMINANCE.reduce((sum, weight, channel) => sum + weight * light.radiance[channel]!, 0);
+    const toPlanet = offsetOf(light.center, reference);
+    const distanceSq = lenSq(toPlanet);
+    const luminance = rec709Luminance(light.radiance);
     const solidAngleRatio = distanceSq === 0 ? 1 : Math.min(1, light.radius * light.radius / distanceSq);
     lights.push({ key: light.key, direction: norm(toPlanet), irradiance: Math.PI * luminance * solidAngleRatio });
   }
@@ -134,7 +134,9 @@ function projectionOf(camera: THREE.Camera): SampleProjection {
   // three のカメラの型ごとに、画角か高さを読む。
   if (camera instanceof THREE.PerspectiveCamera) {
     const fov = camera.fov * Math.PI / 180;
-    return { kind: 'perspective', verticalFovRad: 2 * Math.atan(Math.tan(fov / 2) / camera.zoom), aspect: camera.aspect };
+    return {
+      kind: 'perspective', verticalFovRad: 2 * Math.atan(Math.tan(fov / 2) / camera.zoom), aspect: camera.aspect,
+    };
   }
   if (camera instanceof THREE.OrthographicCamera) {
     return {
@@ -146,11 +148,9 @@ function projectionOf(camera: THREE.Camera): SampleProjection {
   throw new Error(`SceneChangeTracker: unsupported camera ${camera.type}`);
 }
 
-function vec3Of(value: THREE.Vector3): Vec3 { return v3(value.x, value.y, value.z); }
+// 描画座標の位置 reference から position への変位(軸は ECI)。描画座標の原点はフレームごとに動くので、位置は変位で比べる。
+function offsetOf(position: THREE.Vector3, reference: THREE.Vector3): Vec3 {
+  return v3(position.x - reference.x, position.y - reference.y, position.z - reference.z);
+}
 
 function quatOf(value: THREE.Quaternion): Quat { return { x: value.x, y: value.y, z: value.z, w: value.w }; }
-
-// three の位置と向きから、成分を写した姿勢を作る。
-function poseOf(position: THREE.Vector3, orientation: THREE.Quaternion): SamplePose {
-  return { position: vec3Of(position), orientation: quatOf(orientation) };
-}

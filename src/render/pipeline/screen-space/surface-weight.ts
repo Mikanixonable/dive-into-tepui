@@ -74,7 +74,9 @@ export class SurfaceWeight {
     return this.exponentAt(receiver, clip, octDecodeNormal(surface.encodedNormal), tolerance, halfWeightAngle);
   }
 
-  // 受け手 receiver に対する任意の clip 点と視点法線の重み指数を返す。距離は接平面からの足跡単位で測る。
+  // 受け手 receiver に対する、点 clip(c = (NDC の xy, 素の深度, 1))にある視点座標の法線 normal の面の重みの指数(重みは
+  // 2^−exponent)。接平面からの距離が受け手の足跡 × tolerance のとき、法線のなす角が halfWeightAngle [rad] のときに、
+  // それぞれ重みが半分になる。素の深度が 0 以下の点の重みは 0。
   public exponentAt(
     receiver: SurfaceReceiver, clip: Vec4Node, normal: Vec3Node, tolerance: FloatNode, halfWeightAngle: FloatNode,
   ): FloatNode {

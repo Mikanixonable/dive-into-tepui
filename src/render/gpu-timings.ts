@@ -168,7 +168,7 @@ export class GpuTimings {
         this.available = true;
         const pool = this.renderTimestampPool();
         if (pool) {
-          const matches: Array<readonly [GpuPassId, number]> = [];
+          const matches: (readonly [GpuPassId, number])[] = [];
           for (const [uid, duration] of pool.timestamps) {
             const pass = this.passByUid.get(uid);
             if (pass === undefined) continue;

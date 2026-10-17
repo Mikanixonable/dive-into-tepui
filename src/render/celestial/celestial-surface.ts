@@ -212,6 +212,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
   public addTo(parent: THREE.Object3D): void {
     for (const mesh of this.meshes.values()) {
       parent.add(mesh);
+      // 段を切り替えても動きベクトルの履歴が続くよう、全段で parent の履歴を共有する。
       markMotionHistoryKey(mesh, parent);
     }
   }

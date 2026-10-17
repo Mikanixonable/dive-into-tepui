@@ -21,10 +21,10 @@ import { QReconstruction } from './q-reconstruction';
 import { ScreenSpaceInputPyramid, levelExtent } from './screen-space-input-pyramid';
 import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
 import { SurfaceWeight } from './surface-weight';
+import { frameJitterForHistoryCap, type JitterSource, type ScanJitter } from './frame-jitter';
 import { TemporalAccumulation } from './temporal-accumulation';
 import { whiteNoiseAt } from './white-noise';
 import type { DiffuseCorrection } from './diffuse-correction';
-import { frameJitterForHistoryCap, type JitterSource, type ScanJitter } from './frame-jitter';
 import type { GBufferPass } from '../gbuffer';
 import type { AmbientSource } from '../lighting/ambient-source';
 import type { SunSource } from '../lighting/sun-source';
@@ -118,7 +118,7 @@ interface BandCountStages {
 export class ScreenSpacePass {
   // フレーム番号に応じて履歴を写し、蓄積の段を持つ。
   private readonly temporal: TemporalAccumulation;
-  // null は走査の入力を呼び出し側に任せる。
+  // beginFrame がフレームごとに動かす走査の入力。null なら走査の入力は set* で置いた値を保つ。
   private jitterSources: readonly JitterSource[] | null = ['seed', 'scanRepresentative'];
   // 方式ごとの、段 0 の面の写しと源を書く描画命令。
   private readonly occlusionSurfaceStage: ScreenSpaceStage;
@@ -149,7 +149,8 @@ export class ScreenSpacePass {
   // 走査の代表の選び方(setScanJitter)。representativeDraw が負なら全ての走査の画素の代表が、受け持つブロックの中の
   // 位置 representativeSteps [1/REPRESENTATIVE_STEPS ブロック] にあり、0 以上なら走査の画素ごとにその番号のホワイトノイズで
   // 位置を引く。
-  private readonly representativeSteps = uniform(new THREE.Vector2(REPRESENTATIVE_STEPS / 2, REPRESENTATIVE_STEPS / 2), 'ivec2');
+  private readonly representativeSteps = uniform(
+    new THREE.Vector2(REPRESENTATIVE_STEPS / 2, REPRESENTATIVE_STEPS / 2), 'ivec2');
   private readonly representativeDraw = uniform(-1, 'int');
   // 走査の解像度で描いている画素の整数座標、その画素の代表のブロックの中の位置、その代表の G バッファの画素の中心の uv。
   private readonly scanPixel: Vec2Node = floor(screenUV.mul(screenSize));
@@ -204,7 +205,7 @@ export class ScreenSpacePass {
   // 走査の解像度。rgb = 照り返しの源として面が放つ放射輝度(SUN_IRRADIANCE_1AU の目盛り)。方式が遮蔽では 0。
   public get surfaceRadianceTexture(): THREE.Texture { return this.surfaces.radianceTexture; }
 
-  // 前フレームの補正履歴 (rgb = ΔE、α = 履歴の長さ n)。
+  // 前フレームの補正履歴 (rgb = ΔE_screen、α = 履歴の長さ n)。
   public get temporalHistoryTexture(): THREE.Texture { return this.temporal.historyTexture; }
 
   // 前フレームの素の深度。
@@ -237,12 +238,14 @@ export class ScreenSpacePass {
     this.tier = scanTierOf(sliceCount, stepCount);
   }
 
-  // 履歴の上限 frames [フレーム] を蓄積へ渡す。
+  // 次のフレームから、静止時の履歴の上限を frames [フレーム](1 以上の整数)にする。1 なら蓄積前の補正をそのまま出し、
+  // beginFrame が置く走査の入力は本番の静止画の値になる。
   public setHistoryCap(frames: number): void {
     this.temporal.setHistoryCap(frames);
   }
 
-  // G バッファを描く前に毎フレーム呼ぶ。番号の進み方を蓄積へ渡し、動かす源があれば走査の入力をその番号の位相へ置く。
+  // 番号 frame のフレームを始める。G バッファを描く前に毎フレーム呼ぶ。番号の続き方と変化量 change(0 以上。∞ は履歴を切る)
+  // で履歴の残し方を決め、動かす源があれば走査の入力をその番号の位相へ置く。
   public beginFrame(frame: number, change: number): void {
     this.temporal.beginFrame(frame, change);
     const jitter = frameJitterForHistoryCap(
@@ -254,7 +257,7 @@ export class ScreenSpacePass {
     this.setScanJitter(jitter.scanJitter);
   }
 
-  // null は走査の入力を呼び出し側に任せ、配列はフレームごとの位相源として使う。
+  // 次の beginFrame から、フレームごとに動かす走査の入力を sources にする。null なら走査の入力は set* で置いた値を保つ。
   public setJitterSources(sources: readonly JitterSource[] | null): void {
     this.jitterSources = sources === null ? null : [...sources];
   }
@@ -283,11 +286,13 @@ export class ScreenSpacePass {
   // 次の render から、走査の代表を jitter(ScanJitter)で選ぶ。null はブロックの中心。格子のずらしの位置が 0 以上 1 未満の
   // 範囲を外れたら投げる。
   public setScanJitter(jitter: ScanJitter | null): void {
+    // 画素ごとに引くとき、拡大が読む全画素共通の代表の位置はブロックの中心にする。
     if (jitter?.kind === 'perPixel') {
       this.representativeDraw.value = jitter.draw;
       this.representativeSteps.value.set(REPRESENTATIVE_STEPS / 2, REPRESENTATIVE_STEPS / 2);
       return;
     }
+    // 格子のずらしは、全ての走査の画素に同じ位置を代表の位置の刻みへ丸めて置く。
     const [x, y] = jitter?.fraction ?? [0.5, 0.5];
     if (!(x >= 0 && x < 1 && y >= 0 && y < 1)) {
       throw new RangeError(`screen-space: the scan representative (${x}, ${y}) is outside its block`);
