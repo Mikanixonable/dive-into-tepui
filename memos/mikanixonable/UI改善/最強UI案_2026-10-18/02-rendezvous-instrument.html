@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>会合計器 — Rendezvous Instrument</title>
+<style>
+:root{
+  --bg:#05060d; --bg2:#0a0d1c; --panel:rgba(14,17,34,.80); --line:rgba(160,180,255,.13);
+  --txt:#d9e0f4; --dim:#7f8aa8; --faint:#4b5573;
+  --own:#bfe8ff; --enemy:#ff6a00; --ghost:#ff3fa4; --ok:#3ddc97; --path:#6aa9ff;
+  --bullet:#ffe66d; --warn:#ff4d4d;
+  --mono:ui-monospace,"SF Mono","HackGen","Hiragino Sans",Menlo,Consolas,"Noto Sans Mono CJK JP","Yu Gothic",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:radial-gradient(1200px 700px at 30% 10%,#0b1030 0%,var(--bg) 60%);color:var(--txt);font:13px/1.45 var(--mono);overflow:hidden}
+body{display:grid;grid-template-rows:auto auto 1fr;min-height:100vh}
+button,select{font:inherit;color:var(--txt);background:rgba(120,140,255,.10);border:1px solid var(--line);border-radius:6px;padding:4px 10px;cursor:pointer}
+button:hover{background:rgba(120,140,255,.22)}
+button:focus-visible,select:focus-visible{outline:2px solid var(--path);outline-offset:1px}
+button.on{background:rgba(61,220,151,.20);border-color:var(--ok);color:#eafff5}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:6px 14px;border-bottom:1px solid var(--line);background:rgba(8,10,22,.7)}
+header h1{margin:0;font-size:15px;letter-spacing:.06em;font-weight:600}
+header h1 small{color:var(--dim);font-weight:400;letter-spacing:.02em;margin-left:8px;font-size:11px}
+header .concept{color:var(--dim);flex:1 1 300px;min-width:240px;font-size:12px}
+.ctl{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ctl .lbl{color:var(--dim);font-size:12px}
+#clock{min-width:84px;text-align:right;color:var(--own)}
+.legend{display:flex;flex-wrap:wrap;gap:3px 12px;padding:4px 14px;border-bottom:1px solid var(--line);color:var(--dim);font-size:11px;background:rgba(8,10,22,.45)}
+.legend b{color:var(--txt);font-weight:600}
+kbd{display:inline-block;border:1px solid var(--line);border-bottom-width:2px;border-radius:4px;padding:0 5px;color:var(--txt);background:rgba(255,255,255,.04);font:inherit;font-size:11px}
+.sw{display:inline-block;width:18px;height:0;border-top:2px solid;vertical-align:middle;margin-right:4px}
+main{display:grid;grid-template-columns:minmax(0,1fr) 392px;gap:10px;padding:10px 12px;min-height:0}
+.col{display:flex;flex-direction:column;gap:10px;min-height:0;min-width:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(6px);position:relative;min-width:0}
+.panel h2{margin:0;padding:6px 10px 0;font-size:11px;letter-spacing:.12em;color:var(--dim);font-weight:600;display:flex;justify-content:space-between}
+.panel h2 span{letter-spacing:0;font-weight:400;color:var(--faint)}
+#plotWrap{flex:1 1 auto;min-height:300px;overflow:hidden}
+#tlWrap{flex:0 0 auto}
+canvas{display:block;width:100%}
+#plot{height:100%;position:absolute;inset:0;cursor:crosshair;touch-action:none}
+#tlBar{display:flex;flex-wrap:wrap;gap:4px 22px;padding:2px 10px 0;font-size:12px;color:var(--dim)}
+#tlBar b{color:var(--txt);font-weight:600}
+#tlBar .g b{color:var(--ghost)}
+#tl{height:132px}
+#dialWrap canvas{height:272px}
+.row2{display:grid;grid-template-columns:132px 1fr;gap:10px;padding:6px 10px 10px}
+#pad{height:132px;touch-action:none;cursor:grab;border-radius:8px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:6px;align-content:start}
+.btns button{padding:5px 4px;font-size:12px}
+.btns .wide{grid-column:1/3}
+#commit{background:rgba(255,63,164,.20);border-color:var(--ghost)}
+#commit:hover{background:rgba(255,63,164,.38)}
+#insight{padding:0 10px 8px;font-size:12px;color:var(--dim);min-height:76px}
+#insight .hint{color:var(--txt)}
+#insight table{width:100%;border-collapse:collapse;margin-top:4px}
+#insight td{padding:1px 0}
+#insight td:last-child{text-align:right;color:var(--txt)}
+.ghostv{color:var(--ghost)}
+#readout{display:grid;grid-template-columns:1fr 1fr;gap:1px 14px;padding:4px 10px 9px;font-size:12px}
+#readout div{display:flex;justify-content:space-between;border-bottom:1px dotted rgba(255,255,255,.06)}
+#readout span{color:var(--dim)}
+#readout b{font-weight:500}
+.bad{color:var(--warn)}.good{color:var(--ok)}
+#fireBtn{background:rgba(255,230,109,.14);border-color:var(--bullet);color:#fff6c8;font-size:14px;padding:6px 14px}
+#fireBtn:hover{background:rgba(255,230,109,.30)}
+.stepsel{display:flex;gap:6px;align-items:center;font-size:12px;color:var(--dim);grid-column:1/3}
+@media (max-width:1000px){
+  html,body{overflow:auto}
+  body{display:block}
+  main{display:flex;flex-direction:column}
+  #plotWrap{height:62vh;min-height:360px;flex:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header>
+  <h1>会合計器<small>RENDEZVOUS INSTRUMENT / Hill-LVLH + CW</small></h1>
+  <div class="concept">相対運動を「読む」のでなく「見る」。未来の軌道・弾道・撃てる時間を、噴射する前に確かめる。</div>
+  <div class="ctl">
+    <span class="lbl">シナリオ</span>
+    <select id="presetSel" aria-label="シナリオ"></select>
+    <button id="resetBtn" title="R">リセット</button>
+  </div>
+  <div class="ctl">
+    <span class="lbl">時間</span>
+    <button data-sp="0" title="P">停止</button><button data-sp="1">×1</button><button data-sp="2">×5</button><button data-sp="3">×20</button><button data-sp="4" title="高倍率では射撃不可">×60</button>
+    <span id="clock">T+00:00</span>
+  </div>
+</header>
+<div class="legend">
+  <span><b>Δv</b> <kbd>W</kbd><kbd>S</kbd> 前/後(V-bar) <kbd>E</kbd><kbd>Q</kbd> 上/下(R-bar) &nbsp;または 右のパッドをドラッグ</span>
+  <span><kbd>Enter</kbd> 噴射確定 <kbd>Esc</kbd> 取消</span>
+  <span><b>照準</b> マウス位置 / <kbd>J</kbd><kbd>L</kbd> 回転 / <kbd>G</kbd> 自動見越し</span>
+  <span><kbd>Space</kbd>/クリック 射撃</span>
+  <span><kbd>,</kbd><kbd>.</kbd> 時間倍率 <kbd>P</kbd> 停止 <kbd>Z</kbd> 自動ズーム</span>
+  <span>ホイール 拡大縮小 / タイムライン上にホバー = 未来位置</span>
+</div>
+<main>
+  <div class="col">
+    <div class="panel" id="plotWrap"><canvas id="plot"></canvas></div>
+    <div class="panel" id="tlWrap">
+      <h2>TIMELINE <span>予測はすべて「これ以上噴かない」前提 / マゼンタ = ゴースト(未確定の噴射)</span></h2>
+      <div id="tlBar"></div>
+      <canvas id="tl"></canvas>
+    </div>
+  </div>
+  <div class="col" style="overflow:auto">
+    <div class="panel" id="dialWrap">
+      <h2>GUNSIGHT <span>機首=真上。ダイヤルは機首からの角度(自動で倍率切替)</span></h2>
+      <canvas id="dial"></canvas>
+    </div>
+    <div class="panel">
+      <h2>Δv PREVIEW <span id="fuelTxt"></span></h2>
+      <div class="row2">
+        <canvas id="pad" aria-label="Δv パッド"></canvas>
+        <div class="btns">
+          <button id="commit" title="Enter">確定噴射</button>
+          <button id="cancel" title="Esc">取消</button>
+          <button id="assistDrift" class="wide">ドリフト止め(提案)</button>
+          <button id="assistRdv" class="wide">会合コース(ミス0)提案</button>
+          <div class="stepsel">1押し
+            <select id="stepSel"><option value="0.1">0.1</option><option value="0.25" selected>0.25</option><option value="0.5">0.5</option><option value="1">1.0</option></select> m/s
+            <label style="margin-left:auto;display:flex;gap:4px;align-items:center" title="Δv を組んでいる間は時間を×1へ落とす"><input type="checkbox" id="planSlow" checked>計画中スロー</label>
+          </div>
+        </div>
+      </div>
+      <div id="insight"></div>
+    </div>
+    <div class="panel">
+      <h2>READOUT <span>数値は補助。主役は左の図</span></h2>
+      <div id="readout"></div>
+      <div style="padding:0 10px 10px;display:flex;gap:8px"><button id="fireBtn" style="flex:1">射撃 [Space]</button><button id="autoBtn" title="G">自動見越し</button><button id="zoomBtn" class="on" title="Z">自動ズーム</button></div>
+    </div>
+  </div>
+</main>
+
+<script>
+(()=>{ 'use strict';
+//#PHYSICS-BEGIN
+// 座標: x=半径方向(外向き=上), y=進行方向(V-bar), 速度 vx,vy。単位 m, m/s, s。
+const N=0.0011309;                 // 平均運動 [rad/s](高度約 400km の円軌道)
+const W=90, LT=100;                // 弾の銃口速度[m/s](モック用)と寿命[s]
+const RHIT=60, KEEP=30;           // 命中半径・接触警戒半径[m]
+const SIGMA=0.5*Math.PI/180;       // 照準ぶれ(標準偏差)
+const TD=0.5, TN=200;              // 弾の飛翔テーブル刻み・個数(0.5s×200=100s)
+function cw(s,t){
+  const nt=N*t,S=Math.sin(nt),C=Math.cos(nt),x=s[0],y=s[1],vx=s[2],vy=s[3];
+  return [(4-3*C)*x+S/N*vx+2/N*(1-C)*vy,
+          6*(S-nt)*x+y-2/N*(1-C)*vx+(4*S-3*nt)/N*vy,
+          3*N*S*x+C*vx+2*S*vy,
+          6*N*(C-1)*x-2*S*vx+(4*C-3)*vy];
+}
+const A11=new Float64Array(TN+1),A21=new Float64Array(TN+1),B11=new Float64Array(TN+1),B12=new Float64Array(TN+1),
+      B21=new Float64Array(TN+1),B22=new Float64Array(TN+1),KX1=new Float64Array(TN+1),KX2=new Float64Array(TN+1),
+      KY1=new Float64Array(TN+1),KY2=new Float64Array(TN+1);
+function reqCoef(t){ // 位置 p から時間 t で原点へ着くのに要る速度 v=K p
+  const nt=N*t,S=Math.sin(nt),C=Math.cos(nt);
+  const a11=4-3*C,a21=6*(S-nt),b11=S/N,b12=2*(1-C)/N,b21=-b12,b22=(4*S-3*nt)/N,det=b11*b22-b12*b21;
+  return {a11,a21,b11,b12,b21,b22,
+    kx1:-(b22*a11-b12*a21)/det,kx2:b12/det,ky1:-(-b21*a11+b11*a21)/det,ky2:-b11/det};
+}
+for(let j=1;j<=TN;j++){const c=reqCoef(j*TD);
+  A11[j]=c.a11;A21[j]=c.a21;B11[j]=c.b11;B12[j]=c.b12;B21[j]=c.b21;B22[j]=c.b22;KX1[j]=c.kx1;KX2[j]=c.kx2;KY1[j]=c.ky1;KY2[j]=c.ky2;}
+A11[0]=1;A21[0]=0;B11[0]=B12[0]=B21[0]=B22[0]=0;
+function reqVel(t,p){const c=reqCoef(t);return [c.kx1*p[0]+c.kx2*p[1],c.ky1*p[0]+c.ky2*p[1]];}
+// 見越し解: 銃口速度 W の弾が、位置 p・速度 v の自機から原点へ当たる射角(複数)
+function solutions(p,v){
+  const px=p[0],py=p[1],list=[];let minf=1e9,pf=1,pex=0,pey=0;
+  for(let j=1;j<=TN;j++){
+    const ex=KX1[j]*px+KX2[j]*py-v[0],ey=KY1[j]*px+KY2[j]*py-v[1],f=Math.hypot(ex,ey)-W;
+    if(f<minf)minf=f;
+    if((pf>0&&f<=0)||(pf<0&&f>=0)){
+      const fr=pf===1?1:pf/(pf-f),ux=pex+(ex-pex)*fr,uy=pey+(ey-pey)*fr;
+      list.push({t:(j-1+fr)*TD,ang:Math.atan2(ux,uy),enter:pf>0});
+    }
+    pf=f;pex=ex;pey=ey;
+  }
+  return {list,minf};
+}
+function segMin(px,py,qx,qy){const dx=qx-px,dy=qy-py,l=dx*dx+dy*dy;let t=l>0?-(px*dx+py*dy)/l:0;t=t<0?0:t>1?1:t;return Math.hypot(px+t*dx,py+t*dy);}
+// 弾 (p, 絶対速度 v0) が原点にいちばん近づく距離と時刻
+function bulletMin(px,py,vx,vy){
+  let lx=px,ly=py,best=Math.hypot(px,py),bt=0;
+  for(let j=1;j<=TN;j++){
+    const x=A11[j]*px+B11[j]*vx+B12[j]*vy,y=A21[j]*px+py+B21[j]*vx+B22[j]*vy;
+    const d=segMin(lx,ly,x,y);if(d<best){best=d;bt=j*TD;}
+    lx=x;ly=y;
+  }
+  return {d:best,t:bt};
+}
+// center 付近 ±half の射角を走査して「当たる射角」の窓を作る
+function hitWindow(p,v,center,half,n){
+  const hit=new Uint8Array(n),da=2*half/(n-1),a0=center-half;
+  for(let k=0;k<n;k++){const a=a0+k*da;hit[k]=bulletMin(p[0],p[1],v[0]+W*Math.sin(a),v[1]+W*Math.cos(a)).d<=RHIT?1:0;}
+  const iv=[];let s=-1;
+  for(let k=0;k<n;k++){if(hit[k]&&s<0)s=k;if(s>=0&&(!hit[k]||k===n-1)){iv.push([s,hit[k]?k:k-1]);s=-1;}}
+  return {a0,da,n,hit,iv};
+}
+function tcaOf(st){ // 最初の極小(最接近)
+  const rg=t=>{const q=cw(st,t);return Math.hypot(q[0],q[1]);};
+  let r0=rg(0),r1=rg(2);if(r1>=r0)return null;
+  let rp=r0,rc=r1;
+  for(let t=4;t<=3200;t+=2){
+    const rn=rg(t);
+    if(rn>rc){ // 極小は t-2 付近
+      const d=(rp-rn)/(2*(rp-2*rc+rn)||1e-9);const tt=t-2+2*Math.max(-1,Math.min(1,d));
+      const q=cw(st,tt);return {t:tt,miss:Math.hypot(q[0],q[1]),pos:q};
+    }
+    rp=rc;rc=rn;
+  }
+  return null;
+}
+const driftOf=s=>-(6*N*s[0]+3*s[3]);        // 長期ドリフト速度 [m/s](負=後ろへ流れる)
+const centerX=s=>4*s[0]+2*s[3]/N;           // 楕円の中心の高さ
+//#PHYSICS-END
+
+const TAU=Math.PI*2, rad=Math.PI/180;
+const $=id=>document.getElementById(id);
+const fmtM=m=>{const a=Math.abs(m);return a>=1000?(m/1000).toFixed(a>=10000?1:2)+' km':Math.round(m)+' m';};
+const fmtT=t=>{t=Math.max(0,Math.round(t));return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');};
+const wrap=a=>{a%=TAU;if(a>Math.PI)a-=TAU;if(a<=-Math.PI)a+=TAU;return a;};
+function erf(x){const t=1/(1+0.3275911*Math.abs(x)),y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);return x<0?-y:y;}
+function randn(){let u=0;for(let i=0;i<6;i++)u+=Math.random();return (u-3)*Math.SQRT2;}
+
+// ---------- シナリオ ----------
+const PRESETS=[
+  {name:'A  V-bar 後方から接近(ミスあり)',p:[ 200,-6500],T:600,dv:[ 0.30,-0.20]},
+  {name:'B  地球側(R-bar 下)から浮上',  p:[-2400,-2200],T:480,dv:[-0.20, 0.35]},
+  {name:'C  前方を先行 → 後ろから抜かれる',p:[ 300, 6000],T:650,dv:[-0.25, 0.20]},
+  {name:'D  低い軌道からの追い越し(コエリプティック)',p:[-2500,-4500],T:null,dv:[0,0]},
+];
+const SPEEDS=[0,1,5,20,60];
+const S={ship:[0,-9000,0,0],pend:[0,0],fuel:30,bullets:[],simT:0,hp:3,kills:0,shots:0,hits:0,speedIdx:3,autoLead:false,
+  aim:0,trail:[],parts:[],flash:0,burnFlash:0,banner:null,autoZoom:true,sc:0.04,preset:0,hoverTau:null,lastFire:0,
+  coll:0,msg:'',msgT:0,killTimer:0,mouse:null,burns:[]};
+function loadPreset(i){
+  const P=PRESETS[i];S.preset=i;
+  let v;
+  if(P.T===null){v=[0,-1.5*N*P.p[0]];}else{const r=reqVel(P.T,P.p);v=[r[0]+P.dv[0],r[1]+P.dv[1]];}
+  S.ship=[P.p[0],P.p[1],v[0],v[1]];S.pend=[0,0];S.bullets=[];S.trail=[];S.parts=[];S.burns=[];S.simT=0;S.hp=3;S.banner=null;S.killTimer=0;
+  S.aim=Math.atan2(-P.p[0],-P.p[1]);S.autoZoom=true;$('zoomBtn').classList.add('on');S.sc=0.02;
+}
+const sel=$('presetSel');PRESETS.forEach((P,i)=>{const o=document.createElement('option');o.value=i;o.textContent=P.name;sel.appendChild(o);});
+sel.onchange=()=>{loadPreset(+sel.value);S.fuel=30;S.shots=S.hits=S.kills=0;};
+$('resetBtn').onclick=()=>{loadPreset(S.preset);S.fuel=30;S.shots=S.hits=S.kills=0;};
+
+// ---------- キャンバス ----------
+function fit(cv){const r=cv.getBoundingClientRect(),d=Math.min(2,window.devicePixelRatio||1);const w=Math.max(10,Math.round(r.width*d)),h=Math.max(10,Math.round(r.height*d));
+  if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}const c=cv.getContext('2d');c.setTransform(d,0,0,d,0,0);return {c,w:r.width,h:r.height};}
+const FONT=(px,b)=>(b?'600 ':'')+px+'px '+getComputedStyle(document.body).fontFamily;
+function T(c,s,x,y,col,px,al,b){c.font=FONT(px||11,b);c.fillStyle=col;c.textAlign=al||'left';c.textBaseline='middle';c.fillText(s,x,y);}
+
+// ---------- 解析(毎フレーム) ----------
+const AN={};
+function analyze(){
+  const s=S.ship,p=[s[0],s[1]],v=[s[2],s[3]],r=Math.hypot(p[0],p[1])||1e-6;
+  AN.range=r;AN.closing=(p[0]*v[0]+p[1]*v[1])/r;AN.omega=(p[0]*v[1]-p[1]*v[0])/(r*r);AN.speed=Math.hypot(v[0],v[1]);
+  AN.los=Math.atan2(-p[0],-p[1]);
+  const sol=solutions(p,v);AN.sol=sol.list;AN.minf=sol.minf;
+  AN.pip=sol.list.length?sol.list[0]:null;
+  if(S.autoLead&&AN.pip)S.aim=AN.pip.ang;
+  const center=AN.pip?AN.pip.ang:AN.los;
+  const half=Math.max(1.5*rad,Math.min(30*rad,4*RHIT/r));
+  AN.win=hitWindow(p,v,center,half,161);
+  AN.winC=center;
+  // 現在の射角で外れる量・確率
+  let P=0;const w=AN.win;
+  for(let k=0;k<w.n;k++)if(w.hit[k]){const a=w.a0+k*w.da,z=(a-S.aim)/SIGMA;P+=Math.exp(-.5*z*z);}
+  AN.prob=Math.min(1,P*w.da/(SIGMA*Math.sqrt(TAU)));
+  AN.inWin=false;AN.winOff=null;
+  let bestD=1e9;
+  for(let k=0;k<w.n;k++)if(w.hit[k]){const o=(w.a0+k*w.da)-S.aim;if(Math.abs(o)<bestD){bestD=Math.abs(o);AN.winOff=o;}}
+  if(AN.winOff!==null&&bestD<0.05*rad)AN.inWin=true;
+  AN.aimMin=bulletMin(p[0],p[1],v[0]+W*Math.sin(S.aim),v[1]+W*Math.cos(S.aim));
+  // 窓の扇(ピパーまたは最寄りの区間)
+  AN.fan=null;
+  if(w.iv.length){let bi=0,bd=1e9;w.iv.forEach((q,i)=>{const m=w.a0+(q[0]+q[1])/2*w.da;const d=Math.abs(m-center);if(d<bd){bd=d;bi=i;}});
+    const q=w.iv[bi];AN.fan=[w.a0+q[0]*w.da,w.a0+q[1]*w.da];}
+  AN.tca=tcaOf(s);
+  const pe=S.pend,pn=Math.hypot(pe[0],pe[1])>1e-6;
+  AN.ghost=pn?[s[0],s[1],s[2]+pe[0],s[3]+pe[1]]:null;
+  AN.gtca=AN.ghost?tcaOf(AN.ghost):null;
+  AN.drift=driftOf(s);AN.cx=centerX(s);
+  if(AN.ghost){AN.gdrift=driftOf(AN.ghost);AN.gcx=centerX(AN.ghost);}
+}
+
+// タイムライン用(間引き)
+const TL={H:1200,step:6,n:201,act:null,gh:null,t:0};
+function buildTL(){
+  const s=S.ship;
+  const one=st=>{const rg=new Float32Array(TL.n),win=new Uint8Array(TL.n),pr=new Float32Array(TL.n);
+    for(let i=0;i<TL.n;i++){const q=cw(st,i*TL.step);rg[i]=Math.hypot(q[0],q[1]);
+      const sl=solutions([q[0],q[1]],[q[2],q[3]]);win[i]=sl.list.length?1:0;
+      // 解の方向へ狙いを合わせたときの命中確率(窓の半幅 ≈ RHIT/(W·飛翔時間) を照準ぶれ σ で測る)
+      pr[i]=sl.list.length?erf(RHIT/(W*sl.list[0].t)/(SIGMA*Math.SQRT2)):0;}
+    let mx=0;for(let i=0;i<TL.n;i++)if(pr[i]>mx)mx=pr[i];
+    let sum=0,cnt=0;for(let i=0;i<TL.n;i++)if(mx>0&&pr[i]>=mx-0.03){sum+=i;cnt++;}
+    return {rg,win,pr,best:cnt?Math.round(sum/cnt)*TL.step:null,mx};};
+  TL.act=one(s);TL.gh=AN.ghost?one(AN.ghost):null;
+}
+
+// ---------- 入力 ----------
+function addPend(dx,dy){S.pend[0]=+(S.pend[0]+dx).toFixed(3);S.pend[1]=+(S.pend[1]+dy).toFixed(3);}
+function commit(){
+  const pe=S.pend,m=Math.hypot(pe[0],pe[1]);if(m<1e-6)return;
+  if(m>S.fuel){setMsg('Δv が足りない');return;}
+  S.ship[2]+=pe[0];S.ship[3]+=pe[1];S.fuel-=m;S.burns.push([S.ship[0],S.ship[1],pe[0],pe[1]]);S.burnFlash=1;S.pend=[0,0];
+}
+function fire(){
+  if(SPEEDS[S.speedIdx]>20){setMsg('時間加速中は射撃できない');return;}
+  if(SPEEDS[S.speedIdx]===0){setMsg('停止中');return;}
+  const now=performance.now();if(now-S.lastFire<110)return;S.lastFire=now;
+  const a=S.aim+randn()*SIGMA,s=S.ship;
+  S.bullets.push({s:[s[0],s[1],s[2]+W*Math.sin(a),s[3]+W*Math.cos(a)],age:0,tr:[[s[0],s[1]]],hot:1});
+  S.shots++;S.flash=1;
+}
+function setMsg(m){S.msg=m;S.msgT=performance.now();}
+function setSpeed(i){S.speedIdx=Math.max(0,Math.min(SPEEDS.length-1,i));}
+addEventListener('keydown',e=>{
+  if(e.target&&(e.target.tagName==='SELECT'||e.target.tagName==='INPUT'))return;
+  const k=e.key,st=+$('stepSel').value;let used=true;
+  if(k==='w'||k==='W'||k==='ArrowRight')addPend(0,st);
+  else if(k==='s'||k==='S'||k==='ArrowLeft')addPend(0,-st);
+  else if(k==='e'||k==='E'||k==='ArrowUp')addPend(st,0);
+  else if(k==='q'||k==='Q'||k==='ArrowDown')addPend(-st,0);
+  else if(k==='Enter')commit();
+  else if(k==='Escape'||k==='Backspace')S.pend=[0,0];
+  else if(k===' ')fire();
+  else if(k==='j'||k==='J'){S.aim+=1.2*rad;S.autoLead=false;syncBtns();}
+  else if(k==='l'||k==='L'){S.aim-=1.2*rad;S.autoLead=false;syncBtns();}
+  else if(k==='g'||k==='G'){S.autoLead=!S.autoLead;syncBtns();}
+  else if(k==='p'||k==='P')setSpeed(S.speedIdx===0?3:0);
+  else if(k===','&&S.speedIdx>0)setSpeed(S.speedIdx-1);
+  else if(k==='.')setSpeed(S.speedIdx+1);
+  else if(k==='z'||k==='Z'){S.autoZoom=!S.autoZoom;syncBtns();}
+  else if(k==='r'||k==='R')$('resetBtn').click();
+  else used=false;
+  if(used)e.preventDefault();
+});
+document.querySelectorAll('[data-sp]').forEach(b=>b.onclick=()=>setSpeed(+b.dataset.sp));
+$('commit').onclick=commit;$('cancel').onclick=()=>{S.pend=[0,0];};
+$('fireBtn').onclick=fire;$('autoBtn').onclick=()=>{S.autoLead=!S.autoLead;syncBtns();};
+$('zoomBtn').onclick=()=>{S.autoZoom=!S.autoZoom;syncBtns();};
+$('assistDrift').onclick=()=>{const s=S.ship;S.pend=[0,+(-2*N*s[0]-s[3]).toFixed(3)];};
+$('assistRdv').onclick=()=>{const s=S.ship,t=AN.tca?Math.max(150,Math.min(1000,AN.tca.t)):450;const r=reqVel(t,[s[0],s[1]]);S.pend=[+(r[0]-s[2]).toFixed(3),+(r[1]-s[3]).toFixed(3)];};
+function syncBtns(){$('autoBtn').classList.toggle('on',S.autoLead);$('zoomBtn').classList.toggle('on',S.autoZoom);
+  document.querySelectorAll('[data-sp]').forEach(b=>b.classList.toggle('on',+b.dataset.sp===S.speedIdx));}
+
+// ---------- プロット(Hill) ----------
+const plotCv=$('plot');
+let PV={w:800,h:500,cx:400,cy:250};
+const w2s=(x,y)=>[PV.cx+y*S.sc,PV.cy-x*S.sc];
+const s2w=(sx,sy)=>[(PV.cy-sy)/S.sc,(sx-PV.cx)/S.sc];
+plotCv.addEventListener('pointermove',e=>{const r=plotCv.getBoundingClientRect();S.mouse=[e.clientX-r.left,e.clientY-r.top];
+  if(!S.autoLead){const w=s2w(S.mouse[0],S.mouse[1]);S.aim=Math.atan2(w[0]-S.ship[0],w[1]-S.ship[1]);}});
+plotCv.addEventListener('pointerleave',()=>{S.mouse=null;});
+plotCv.addEventListener('pointerdown',e=>{if(e.pointerType==='touch'){const r=plotCv.getBoundingClientRect();const w=s2w(e.clientX-r.left,e.clientY-r.top);if(!S.autoLead)S.aim=Math.atan2(w[0]-S.ship[0],w[1]-S.ship[1]);}fire();});
+plotCv.addEventListener('wheel',e=>{e.preventDefault();S.autoZoom=false;syncBtns();S.sc=Math.max(0.006,Math.min(0.6,S.sc*(e.deltaY<0?1.15:1/1.15)));},{passive:false});
+
+function niceStep(minPx){const c=[50,100,200,500,1000,2000,5000,10000,20000];for(const v of c)if(v*S.sc>=minPx)return v;return 50000;}
+function arrow(c,x0,y0,x1,y1,col,lw,head){const a=Math.atan2(y1-y0,x1-x0);c.strokeStyle=col;c.fillStyle=col;c.lineWidth=lw;
+  c.beginPath();c.moveTo(x0,y0);c.lineTo(x1,y1);c.stroke();c.beginPath();c.moveTo(x1,y1);c.lineTo(x1-head*Math.cos(a-.4),y1-head*Math.sin(a-.4));c.lineTo(x1-head*Math.cos(a+.4),y1-head*Math.sin(a+.4));c.closePath();c.fill();}
+function polyline(c,pts,col,lw,dash,alpha){c.save();c.globalAlpha=alpha==null?1:alpha;c.strokeStyle=col;c.lineWidth=lw;c.setLineDash(dash||[]);c.beginPath();
+  pts.forEach((q,i)=>{const s=w2s(q[0],q[1]);i?c.lineTo(s[0],s[1]):c.moveTo(s[0],s[1]);});c.stroke();c.restore();}
+
+function drawPlot(){
+  const {c,w,h}=fit(plotCv);PV.w=w;PV.h=h;PV.cx=w/2;PV.cy=h/2;
+  // 自動ズーム
+  if(S.autoZoom){
+    let ex=1200,ey=700;const upd=(x,y)=>{ex=Math.max(ex,Math.abs(y));ey=Math.max(ey,Math.abs(x));};
+    upd(S.ship[0],S.ship[1]);
+    const fitT=(st,tc)=>{const T1=tc?Math.min(900,tc.t*1.15):300;for(let t=0;t<=T1;t+=T1/8){const q=cw(st,t);upd(q[0],q[1]);}};
+    fitT(S.ship,AN.tca);if(AN.ghost)fitT(AN.ghost,AN.gtca);
+    const want=Math.min((w/2)/(ex*1.3),(h/2)/(ey*1.3));
+    S.sc+=(Math.max(0.01,Math.min(0.35,want))-S.sc)*0.06;
+  }
+  const sc=S.sc;
+  // 背景
+  const bg=c.createLinearGradient(0,0,0,h);bg.addColorStop(0,'rgba(8,10,26,.0)');bg.addColorStop(.82,'rgba(8,10,26,0)');bg.addColorStop(1,'rgba(40,90,170,.26)');
+  c.clearRect(0,0,w,h);c.fillStyle=bg;c.fillRect(0,0,w,h);
+  // 星
+  c.fillStyle='rgba(255,255,255,.3)';for(let i=0;i<70;i++){c.fillRect((i*211+37)%Math.max(50,Math.floor(w)),(i*137+11)%Math.max(50,Math.floor(h)),1,1);}
+  // 距離リング + 軸
+  const st=niceStep(70);
+  c.lineWidth=1;
+  for(let r=st;r*sc<Math.hypot(w,h);r+=st){
+    c.strokeStyle='rgba(140,160,255,.10)';c.beginPath();c.arc(PV.cx,PV.cy,r*sc,0,TAU);c.stroke();
+    {const lx=PV.cx+r*sc*0.866,ly=PV.cy+r*sc*0.5;if(lx<w-30&&ly<h-24)T(c,fmtM(r),lx+4,ly+8,'rgba(150,165,210,.5)',10);}
+  }
+  c.strokeStyle='rgba(140,160,255,.22)';c.beginPath();c.moveTo(0,PV.cy);c.lineTo(w,PV.cy);c.moveTo(PV.cx,0);c.lineTo(PV.cx,h);c.stroke();
+  // 目盛
+  c.strokeStyle='rgba(140,160,255,.32)';for(let k=-40;k<=40;k++){if(!k)continue;const d=k*st*sc/ (st>=1000?1:1);
+    const x=PV.cx+k*st*sc,y=PV.cy-k*st*sc;if(x>0&&x<w){c.beginPath();c.moveTo(x,PV.cy-3);c.lineTo(x,PV.cy+3);c.stroke();}if(y>0&&y<h){c.beginPath();c.moveTo(PV.cx-3,y);c.lineTo(PV.cx+3,y);c.stroke();}}
+  T(c,'V-bar →  進行方向(前)',w-12,PV.cy-12,'rgba(170,190,255,.75)',11,'right',true);
+  T(c,'← 後方',12,PV.cy-12,'rgba(170,190,255,.5)',11,'left');
+  T(c,'▲ 地心から離れる側(−R-bar)',PV.cx+8,14,'rgba(170,190,255,.6)',11,'left');
+  T(c,'▼ 地球側(R-bar)  地球',PV.cx+8,h-12,'rgba(120,180,255,.85)',11,'left',true);
+  T(c,'Hill / LVLH 座標・ターゲット中心 — 軌道は CW 方程式で予測',12,h-12,'rgba(170,190,255,.45)',10,'left');
+  T(c,'scale 1 km = '+Math.round(1000*sc)+' px',w-12,h-12,'rgba(170,190,255,.45)',10,'right');
+
+  const s=S.ship,[sx,sy]=w2s(s[0],s[1]),[tx,ty]=w2s(0,0);
+  // 武器到達圏
+  c.save();c.setLineDash([2,6]);c.strokeStyle='rgba(61,220,151,.28)';c.beginPath();c.arc(sx,sy,W*LT*sc,0,TAU);c.stroke();c.restore();
+  T(c,'弾の寿命内到達 '+fmtM(W*LT),sx,sy-W*LT*sc-8,'rgba(61,220,151,.5)',10,'center');
+  // 履歴
+  if(S.trail.length>1)polyline(c,S.trail,'rgba(191,232,255,.35)',1.2,[1,4]);
+  S.burns.forEach(b=>{const q=w2s(b[0],b[1]);c.strokeStyle='rgba(255,63,164,.7)';c.lineWidth=1.5;c.beginPath();c.arc(q[0],q[1],4,0,TAU);c.stroke();});
+  // 衝突コーン(直線近似)
+  const rng=AN.range;
+  if(rng>RHIT*1.2){
+    const al=Math.asin(RHIT/rng),L=Math.sqrt(rng*rng-RHIT*RHIT)*sc;
+    c.save();c.strokeStyle='rgba(255,106,0,.35)';c.lineWidth=1;c.setLineDash([4,4]);
+    for(const sg of[-1,1]){const a=AN.los+sg*al;c.beginPath();c.moveTo(sx,sy);c.lineTo(sx+L*Math.cos(a),sy-L*Math.sin(a));c.stroke();}
+    c.restore();
+  }
+  // 射撃窓の扇
+  if(AN.fan&&rng>RHIT){
+    const tEnd=Math.min(LT,(AN.pip?AN.pip.t:AN.aimMin.t||60)*1.08+2),e1=[],e2=[];
+    for(const [arr,a] of [[e1,AN.fan[0]],[e2,AN.fan[1]]]){
+      for(let t=0;t<=tEnd;t+=2){const q=cw([s[0],s[1],s[2]+W*Math.sin(a),s[3]+W*Math.cos(a)],t);arr.push(w2s(q[0],q[1]));}}
+    c.save();c.fillStyle='rgba(61,220,151,.16)';c.strokeStyle='rgba(61,220,151,.55)';c.lineWidth=1;
+    c.beginPath();e1.forEach((q,i)=>i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1]));for(let i=e2.length-1;i>=0;i--)c.lineTo(e2[i][0],e2[i][1]);c.closePath();c.fill();
+    c.beginPath();e1.forEach((q,i)=>i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1]));c.stroke();
+    c.beginPath();e2.forEach((q,i)=>i?c.lineTo(q[0],q[1]):c.moveTo(q[0],q[1]));c.stroke();c.restore();
+  }
+  // 見越し解の弾道
+  if(AN.pip){const pts=[];for(let t=0;t<=AN.pip.t*1.05;t+=2){const q=cw([s[0],s[1],s[2]+W*Math.sin(AN.pip.ang),s[3]+W*Math.cos(AN.pip.ang)],t);pts.push(q);}
+    polyline(c,pts,'#3ddc97',1.6,[],0.9);}
+  // 照準プレビュー弾道
+  {const pts=[];const vv=[s[2]+W*Math.sin(S.aim),s[3]+W*Math.cos(S.aim)];const tmax=AN.aimMin.t>0?Math.min(LT,AN.aimMin.t+15):LT;
+    for(let t=0;t<=tmax;t+=2){pts.push(cw([s[0],s[1],vv[0],vv[1]],t));}
+    polyline(c,pts,AN.aimMin.d<=RHIT?'#3ddc97':'#ffe66d',1.3,[2,4],0.9);
+    const q=cw([s[0],s[1],vv[0],vv[1]],AN.aimMin.t),qs=w2s(q[0],q[1]);
+    c.strokeStyle=AN.aimMin.d<=RHIT?'#3ddc97':'#ffe66d';c.lineWidth=1.2;c.beginPath();c.moveTo(qs[0]-4,qs[1]-4);c.lineTo(qs[0]+4,qs[1]+4);c.moveTo(qs[0]+4,qs[1]-4);c.lineTo(qs[0]-4,qs[1]+4);c.stroke();
+  }
+  // 予測軌道
+  const drawPred=(st,col,dash,tca,lab)=>{
+    const pts=[];for(let t=0;t<=1500;t+=10)pts.push(cw(st,t));
+    polyline(c,pts,col,2,dash,0.95);
+    for(let t=120;t<=1500;t+=120){const q=cw(st,t),p=w2s(q[0],q[1]);c.fillStyle=col;c.beginPath();c.arc(p[0],p[1],t%600===0?3.2:1.8,0,TAU);c.fill();
+      if(t%600===0)T(c,(t/60)+'分',p[0]+6,p[1]-7,col,10);}
+    if(tca){const p=w2s(tca.pos[0],tca.pos[1]);
+      c.strokeStyle=col;c.lineWidth=1;c.setLineDash([3,3]);c.beginPath();c.moveTo(p[0],p[1]);c.lineTo(tx,ty);c.stroke();c.setLineDash([]);
+      c.lineWidth=2;c.beginPath();c.arc(p[0],p[1],7,0,TAU);c.stroke();c.beginPath();c.moveTo(p[0]-11,p[1]);c.lineTo(p[0]-4,p[1]);c.moveTo(p[0]+4,p[1]);c.lineTo(p[0]+11,p[1]);c.stroke();
+      T(c,lab+' '+fmtT(tca.t)+' / '+fmtM(tca.miss),p[0]+12,p[1]+(lab==='TCA'?-10:12),col,11,'left',true);}
+  };
+  drawPred(s,'#6aa9ff',[],AN.tca,'TCA');
+  if(AN.ghost)drawPred(AN.ghost,'#ff3fa4',[7,5],AN.gtca,'ゴースト');
+  // 弾
+  S.bullets.forEach(b=>{
+    const tr=b.tr;if(tr.length>1){for(let i=1;i<tr.length;i++){const a=w2s(tr[i-1][0],tr[i-1][1]),q=w2s(tr[i][0],tr[i][1]);c.strokeStyle='rgba(255,230,109,'+(0.1+0.7*i/tr.length)+')';c.lineWidth=1.4;c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(q[0],q[1]);c.stroke();}}
+    const p=w2s(b.s[0],b.s[1]);c.fillStyle='#fff3b0';c.beginPath();c.arc(p[0],p[1],2.4,0,TAU);c.fill();
+  });
+  // ターゲット
+  const rr=RHIT*sc;
+  c.strokeStyle='rgba(255,106,0,.65)';c.lineWidth=1.2;c.setLineDash([2,3]);c.beginPath();c.arc(tx,ty,Math.max(rr,9),0,TAU);c.stroke();c.setLineDash([]);
+  c.strokeStyle='rgba(255,77,77,.5)';c.beginPath();c.arc(tx,ty,Math.max(KEEP*sc,5),0,TAU);c.stroke();
+  const tr=Math.max(6,Math.min(16,rr*.6));
+  // ペプチド鎖(5粒)
+  c.fillStyle='#ff6a00';c.strokeStyle='#ffb27a';c.lineWidth=1;
+  const pr=performance.now()/1000;
+  for(let i=0;i<5;i++){const a=i*TAU/5+pr*0.5,x=tx+Math.cos(a)*tr*.9,y=ty+Math.sin(a)*tr*.9;c.beginPath();c.arc(x,y,tr*.38,0,TAU);c.fill();}
+  c.beginPath();for(let i=0;i<=5;i++){const a=i*TAU/5+pr*0.5,x=tx+Math.cos(a)*tr*.9,y=ty+Math.sin(a)*tr*.9;i?c.lineTo(x,y):c.moveTo(x,y);}c.stroke();
+  T(c,'ENEMY',tx-Math.max(rr,9)-8,ty-14,'#ff9a52',10,'right',true);
+  for(let i=0;i<3;i++){c.fillStyle=i<S.hp?'#ff6a00':'rgba(255,106,0,.18)';c.fillRect(tx-Math.max(rr,9)-34+i*10,ty-6,8,3);}
+  // 自機 + 相対速度
+  const vlen=Math.max(18,Math.min(150,AN.speed*60*sc)),vsx=sx+(s[3]/(AN.speed||1))*vlen,vsy=sy-(s[2]/(AN.speed||1))*vlen;
+  const dirV=Math.atan2(s[2],s[3]);let inCone=false;
+  if(rng>RHIT&&AN.closing<0){inCone=Math.abs(wrap(dirV-AN.los))<Math.asin(Math.min(1,RHIT/rng));}
+  if(AN.speed>0.02)arrow(c,sx,sy,vsx,vsy,inCone?'#3ddc97':'#9fd2ff',2,8);
+  if(AN.ghost){const gs=Math.hypot(AN.ghost[2],AN.ghost[3])||1,gl=Math.max(18,Math.min(150,gs*60*sc));
+    arrow(c,sx,sy,sx+(AN.ghost[3]/gs)*gl,sy-(AN.ghost[2]/gs)*gl,'#ff3fa4',1.6,7);}
+  c.save();c.translate(sx,sy);c.rotate(-S.aim);c.fillStyle='#bfe8ff';c.strokeStyle='#fff';c.lineWidth=1;
+  c.beginPath();c.moveTo(12,0);c.lineTo(-7,6);c.lineTo(-3,0);c.lineTo(-7,-6);c.closePath();c.fill();c.stroke();
+  if(S.flash>0){c.strokeStyle='rgba(255,230,109,'+S.flash+')';c.lineWidth=2;c.beginPath();c.moveTo(14,0);c.lineTo(14+16*S.flash,0);c.stroke();}
+  c.restore();
+  if(S.burnFlash>0){c.strokeStyle='rgba(255,63,164,'+S.burnFlash+')';c.lineWidth=2;c.beginPath();c.arc(sx,sy,10+30*(1-S.burnFlash),0,TAU);c.stroke();}
+  T(c,'自機  '+AN.speed.toFixed(2)+' m/s',sx+14,sy+16,'#bfe8ff',10,'left');
+  // 照準線(短い)
+  c.strokeStyle='rgba(255,255,255,.35)';c.lineWidth=1;c.beginPath();c.moveTo(sx+Math.cos(S.aim)*16,sy-Math.sin(S.aim)*16);c.lineTo(sx+Math.cos(S.aim)*40,sy-Math.sin(S.aim)*40);c.stroke();
+  // ピパー(解の方向)
+  if(AN.pip){const a=AN.pip.ang,px=sx+Math.cos(a)*52,py=sy-Math.sin(a)*52;c.strokeStyle='#3ddc97';c.lineWidth=1.6;c.beginPath();c.arc(px,py,5,0,TAU);c.stroke();c.fillStyle='#3ddc97';c.fillRect(px-1,py-1,2,2);
+    T(c,'PIPPER 飛翔 '+AN.pip.t.toFixed(0)+'s',px+9,py,'#3ddc97',10,'left');}
+  // スクラブ
+  if(S.hoverTau!=null){[[S.ship,'#6aa9ff'],[AN.ghost,'#ff3fa4']].forEach(([st,col])=>{if(!st)return;const q=cw(st,S.hoverTau),p=w2s(q[0],q[1]);
+    c.strokeStyle=col;c.lineWidth=2;c.beginPath();c.arc(p[0],p[1],6,0,TAU);c.stroke();});
+    T(c,'+'+fmtT(S.hoverTau),sx,sy-26,'#fff',11,'center',true);}
+  // 粒子
+  S.parts.forEach(p=>{c.fillStyle='rgba(255,'+(150+p.l*90|0)+',60,'+p.l+')';c.fillRect(p.x,p.y,2.5,2.5);});
+  // 警告
+  if(S.coll>0){c.fillStyle='rgba(255,77,77,'+Math.min(.18,S.coll*.18)+')';c.fillRect(0,0,w,h);T(c,'接触警戒圏に進入',w/2,50,'#ff6b6b',16,'center',true);}
+  if(S.banner){T(c,S.banner.t,w/2,h*0.2,'rgba(255,200,120,'+Math.min(1,S.banner.l)+')',26,'center',true);}
+  if(performance.now()-S.msgT<1800&&S.msg)T(c,S.msg,w/2,h*0.30,'#ffd98a',14,'center',true);
+  if(SPEEDS[S.speedIdx]>20)T(c,'高倍率の時間加速中 — 射撃不可',w/2,h-34,'#ffd98a',12,'center',true);
+  // 凡例
+  const lg=[['#6aa9ff','予測軌道(CW)'],['#ff3fa4','ゴースト(噴射前)'],['#3ddc97','見越し弾道/射撃窓'],['#ffe66d','弾']];
+  lg.forEach(([col,t],i)=>{c.fillStyle=col;c.fillRect(12,14+i*15-3,12,2.5);T(c,t,30,14+i*15,'rgba(200,210,235,.75)',10);});
+}
+
+// ---------- ダイヤル(照準計器) ----------
+const dialCv=$('dial');
+const RANGES=[1,2,6,20,60,180];
+function drawDial(){
+  const {c,w,h}=fit(dialCv),R=Math.min(h*0.37,w*0.27),cx=R+34,cy=h*0.50;
+  c.clearRect(0,0,w,h);
+  const offLOS=wrap(AN.los-S.aim)/rad,offP=AN.pip?wrap(AN.pip.ang-S.aim)/rad:0;
+  const vdir=AN.speed>0.03?Math.atan2(S.ship[2],S.ship[3]):null;
+  const offV=vdir!=null?wrap(vdir-S.aim)/rad:null;
+  const need=Math.max(Math.abs(offLOS),AN.pip?Math.abs(offP):0,AN.winOff!=null?Math.abs(AN.winOff)/rad:0,0.5)*1.15;
+  const rg=RANGES.find(v=>v>=need)||180;
+  const span=130;
+  const ang=off=>Math.max(-span,Math.min(span,-off/rg*span)); // 時計回りの度数(上=0)
+  const pt=(deg,r)=>[cx+r*Math.sin(deg*rad),cy-r*Math.cos(deg*rad)];
+  // 同心円と十字
+  c.strokeStyle='rgba(140,160,255,.10)';c.lineWidth=1;
+  [R*.30,R*.55,R*.8].forEach(r=>{c.beginPath();c.arc(cx,cy,r,0,TAU);c.stroke();});
+  c.beginPath();c.moveTo(cx-R*.8,cy);c.lineTo(cx+R*.8,cy);c.moveTo(cx,cy-R*.8);c.lineTo(cx,cy+R*.8);c.stroke();
+  c.fillStyle='rgba(191,232,255,.7)';c.beginPath();c.arc(cx,cy,2,0,TAU);c.fill();
+  // 目盛トラック
+  c.lineWidth=9;c.strokeStyle='rgba(120,140,220,.10)';c.beginPath();c.arc(cx,cy,R,(-90-span)*rad,(-90+span)*rad);c.stroke();
+  for(let k=-4;k<=4;k++){const d=k/4*span,major=(k%2===0);const a=pt(d,R+6),b=pt(d,R+(major?14:10));
+    c.strokeStyle='rgba(190,205,255,.5)';c.lineWidth=1;c.beginPath();c.moveTo(a[0],a[1]);c.lineTo(b[0],b[1]);c.stroke();
+    if(major){const t=pt(d,R+24);T(c,(k===0?'0':(k<0?'+':'−')+(Math.abs(k)/4*rg).toFixed(rg<6?1:0))+'°',t[0],t[1],'rgba(170,185,230,.7)',10,'center');}}
+  // 射撃窓(緑の帯)
+  const wn=AN.win;
+  wn.iv.forEach(q=>{const o0=(wn.a0+q[0]*wn.da-S.aim)/rad,o1=(wn.a0+q[1]*wn.da-S.aim)/rad;
+    const a0=ang(o0),a1=ang(o1);const lo=Math.min(a0,a1),hi=Math.max(a0,a1,lo+1.2);
+    c.lineCap='butt';c.strokeStyle='rgba(61,220,151,.22)';c.lineWidth=22;c.beginPath();c.arc(cx,cy,R,(-90+lo)*rad,(-90+hi)*rad);c.stroke();
+    c.strokeStyle='#3ddc97';c.lineWidth=10;c.beginPath();c.arc(cx,cy,R,(-90+lo)*rad,(-90+hi)*rad);c.stroke();});
+  // 照準ぶれ(±1σ)
+  const sg=Math.max(SIGMA/rad/rg*span,1.2);
+  c.strokeStyle='#fff';c.lineWidth=3;c.beginPath();c.arc(cx,cy,R-9,(-90-sg)*rad,(-90+sg)*rad);c.stroke();
+  c.fillStyle='#fff';c.beginPath();c.moveTo(cx,cy-R+18);c.lineTo(cx-6,cy-R+6);c.lineTo(cx+6,cy-R+6);c.closePath();c.fill();
+  // マーカー
+  const mark=(off,r,fn)=>{const out=Math.abs(off/rg*span)>span;const p=pt(ang(off),r);fn(p[0],p[1],out);};
+  const label=(txt,x,y,col)=>T(c,txt,x,y,col,9,'center',true);
+  mark(offLOS,R-26,(x,y,out)=>{c.save();c.strokeStyle='#ff6a00';c.lineWidth=2;c.globalAlpha=out?.6:1;
+    c.beginPath();c.moveTo(x-5,y-9);c.lineTo(x-10,y-9);c.lineTo(x-10,y+9);c.lineTo(x-5,y+9);c.moveTo(x+5,y-9);c.lineTo(x+10,y-9);c.lineTo(x+10,y+9);c.lineTo(x+5,y+9);c.stroke();
+    c.fillStyle='#ff6a00';c.fillRect(x-2,y-2,4,4);c.restore();label('TGT'+(out?(offLOS>0?' ◀':' ▶'):''),x,y+19,'#ff9a52');});
+  if(AN.pip)mark(offP,R-26,(x,y,out)=>{c.save();c.globalAlpha=out?.6:1;c.strokeStyle='#3ddc97';c.lineWidth=2;c.beginPath();c.arc(x,y,6.5,0,TAU);c.stroke();
+    c.beginPath();c.moveTo(x-11,y);c.lineTo(x-6.5,y);c.moveTo(x+6.5,y);c.lineTo(x+11,y);c.moveTo(x,y-11);c.lineTo(x,y-6.5);c.stroke();c.fillStyle='#3ddc97';c.fillRect(x-1.5,y-1.5,3,3);c.restore();
+    label('LEAD',x,y-17,'#3ddc97');});
+  if(offV!=null){
+    mark(offV,R-54,(x,y,out)=>{c.save();c.globalAlpha=out?.6:1;c.strokeStyle='#9fd2ff';c.lineWidth=1.8;c.beginPath();c.arc(x,y,5.5,0,TAU);c.moveTo(x-5.5,y);c.lineTo(x-12,y);c.moveTo(x+5.5,y);c.lineTo(x+12,y);c.moveTo(x,y-5.5);c.lineTo(x,y-10);c.stroke();c.restore();label('Vrel',x,y+16,'#9fd2ff');});
+    mark(wrap(vdir+Math.PI-S.aim)/rad,R-54,(x,y,out)=>{c.save();c.globalAlpha=out?.55:.85;c.strokeStyle='#9fd2ff';c.lineWidth=1.4;c.beginPath();c.arc(x,y,5.5,0,TAU);c.moveTo(x-4,y-4);c.lineTo(x+4,y+4);c.moveTo(x+4,y-4);c.lineTo(x-4,y+4);c.stroke();c.restore();label('−Vrel',x,y+16,'#9fd2ff');});
+  }
+  // 数値列(右)
+  const clos=AN.closing,x0=cx+R+44,rows=[
+    ['距離',fmtM(AN.range),'#fff'],
+    [clos<0?'接近率':'離脱率',Math.abs(clos).toFixed(1)+' m/s',clos<0?'#9fd2ff':'#ffd98a'],
+    ['視線の回転',(Math.abs(AN.omega)/rad*60).toFixed(2)+' °/min','#d9e0f4'],
+    ['TCA / ミス',AN.tca?fmtT(AN.tca.t)+' / '+fmtM(AN.tca.miss).replace(' ',''):'—','#6aa9ff']];
+  rows.forEach((q,i)=>{const y=cy-62+i*40;T(c,q[0],x0,y,'rgba(150,165,210,.75)',10,'left');T(c,q[1],x0,y+16,q[2],i===0?16:i===3?12:13,'left',true);});
+  // 状態
+  const fireOK=AN.inWin&&SPEEDS[S.speedIdx]>0&&SPEEDS[S.speedIdx]<=20;
+  let st,col;
+  if(SPEEDS[S.speedIdx]>20){st='時間加速中 射撃不可';col='#ffd98a';}
+  else if(!wn.iv.length){st=AN.range>W*LT*1.05?'射程外':'窓なし(相対速度が大きい)';col='#ff8a8a';}
+  else if(AN.inWin){st='◉ 射撃窓の中';col='#3ddc97';}
+  else{const o=AN.winOff/rad;st='窓外 '+(o>0?'左へ ':'右へ ')+Math.abs(o).toFixed(2)+'°';col='#ffe66d';}
+  T(c,st,cx,cy+R*0.80+16,col,fireOK?15:13,'center',true);
+  T(c,'命中見込み '+Math.round(AN.prob*100)+'%',cx,cy+R*0.80+34,'rgba(200,210,235,.85)',11,'center');
+  const bw=R*1.3;c.fillStyle='rgba(255,255,255,.08)';c.fillRect(cx-bw/2,cy+R*0.80+44,bw,4);c.fillStyle=col;c.fillRect(cx-bw/2,cy+R*0.80+44,bw*AN.prob,4);
+  T(c,'±'+rg+'° 範囲',10,22,'rgba(150,165,210,.6)',10,'left');
+  T(c,'照準ぶれ σ'+(SIGMA/rad).toFixed(1)+'°(白帯)',w-10,22,'rgba(150,165,210,.6)',10,'right');
+}
+
+// ---------- Δv パッド ----------
+const padCv=$('pad');let padDrag=false;const PADMAX=2.5;
+function padSet(e){const r=padCv.getBoundingClientRect(),x=(e.clientX-r.left)/r.width*2-1,y=(e.clientY-r.top)/r.height*2-1;
+  let vy=x*PADMAX,vx=-y*PADMAX;const m=Math.hypot(vx,vy);if(m>PADMAX){vx*=PADMAX/m;vy*=PADMAX/m;}
+  S.pend=[Math.round(vx*20)/20,Math.round(vy*20)/20];}
+padCv.addEventListener('pointerdown',e=>{padDrag=true;padCv.setPointerCapture(e.pointerId);padSet(e);});
+padCv.addEventListener('pointermove',e=>{if(padDrag)padSet(e);});
+padCv.addEventListener('pointerup',()=>{padDrag=false;});
+function drawPad(){
+  const {c,w,h}=fit(padCv),cx=w/2,cy=h/2,R=Math.min(w,h)/2-6;
+  c.clearRect(0,0,w,h);c.fillStyle='rgba(120,140,255,.06)';c.beginPath();c.arc(cx,cy,R,0,TAU);c.fill();
+  c.strokeStyle='rgba(140,160,255,.25)';c.lineWidth=1;[R/2.5,R*2/2.5,R].forEach(r=>{c.beginPath();c.arc(cx,cy,r,0,TAU);c.stroke();});
+  c.beginPath();c.moveTo(cx-R,cy);c.lineTo(cx+R,cy);c.moveTo(cx,cy-R);c.lineTo(cx,cy+R);c.stroke();
+  T(c,'+V',cx+R-9,cy-8,'rgba(170,190,255,.6)',9,'center');T(c,'−V',cx-R+9,cy-8,'rgba(170,190,255,.6)',9,'center');
+  T(c,'上',cx+9,cy-R+8,'rgba(170,190,255,.6)',9,'center');T(c,'下',cx+9,cy+R-8,'rgba(170,190,255,.6)',9,'center');
+  const px=cx+S.pend[1]/PADMAX*R,py=cy-S.pend[0]/PADMAX*R;
+  c.strokeStyle='#ff3fa4';c.lineWidth=1.5;c.beginPath();c.moveTo(cx,cy);c.lineTo(px,py);c.stroke();
+  c.fillStyle='#ff3fa4';c.beginPath();c.arc(px,py,5,0,TAU);c.fill();
+  T(c,'1 m/s',cx+R/2.5+2,cy+9,'rgba(150,165,210,.45)',8,'left');
+}
+
+// ---------- タイムライン ----------
+const tlCv=$('tl');let TLG={l:74,r:12,t:20,rh:50};
+tlCv.addEventListener('pointermove',e=>{const r=tlCv.getBoundingClientRect(),x=e.clientX-r.left;const f=(x-TLG.l)/(r.width-TLG.l-TLG.r);S.hoverTau=f>=0&&f<=1?f*TL.H:null;});
+tlCv.addEventListener('pointerleave',()=>{S.hoverTau=null;});
+function drawTL(){
+  const {c,w,h}=fit(tlCv);c.clearRect(0,0,w,h);
+  if(!TL.act)return;
+  const L=TLG.l,Rr=w-TLG.r,pw=Rr-L,X=t=>L+t/TL.H*pw;
+  // 軸
+  for(let t=0;t<=TL.H;t+=120){const x=X(t);c.strokeStyle='rgba(140,160,255,.12)';c.beginPath();c.moveTo(x,TLG.t);c.lineTo(x,h-16);c.stroke();T(c,t===0?'NOW':'+'+fmtT(t),x,10,t===0?'#fff':'rgba(150,165,210,.7)',10,t===TL.H?'right':'center');}
+  // 距離チャート
+  const ct=TLG.t+2,ch=52,mx=Math.min(26000,Math.max(12000,Math.max(...TL.act.rg)*1.05));
+  const Y=r=>ct+ch-Math.min(r,mx)/mx*ch;
+  T(c,'距離',6,ct+8,'rgba(170,185,230,.8)',11,'left',true);T(c,fmtM(mx),6,ct+22,'rgba(130,145,190,.6)',9,'left');
+  c.setLineDash([3,3]);c.strokeStyle='rgba(61,220,151,.5)';c.beginPath();c.moveTo(L,Y(W*LT));c.lineTo(Rr,Y(W*LT));c.stroke();c.setLineDash([]);
+  T(c,'射程',Rr-3,Y(W*LT)-5,'rgba(61,220,151,.7)',9,'right');
+  c.fillStyle='rgba(255,106,0,.18)';c.fillRect(L,ct+ch-1.5,pw,2.5);
+  const line=(rg,col,dash,wid)=>{c.strokeStyle=col;c.lineWidth=wid;c.setLineDash(dash);c.beginPath();for(let i=0;i<TL.n;i++){const x=X(i*TL.step),y=Y(rg[i]);i?c.lineTo(x,y):c.moveTo(x,y);}c.stroke();c.setLineDash([]);};
+  line(TL.act.rg,'#6aa9ff',[],2);if(TL.gh)line(TL.gh.rg,'#ff3fa4',[6,4],1.8);
+  // 射撃窓バー
+  const bar=(d,y,col,rgb,lab)=>{T(c,lab,6,y+6,col,10,'left',true);c.fillStyle='rgba(255,255,255,.05)';c.fillRect(L,y,pw,12);
+    for(let i=0;i<TL.n;i++)if(d.pr[i]>0.01){c.fillStyle='rgba('+rgb+','+(0.12+0.88*d.pr[i]).toFixed(2)+')';c.fillRect(X(i*TL.step),y,Math.ceil(TL.step/TL.H*pw)+.5,12);}
+    if(d.best!=null){const x=X(d.best);c.fillStyle='#fff';c.beginPath();c.moveTo(x,y-1);c.lineTo(x+4,y+6);c.lineTo(x,y+13);c.lineTo(x-4,y+6);c.closePath();c.fill();}};
+  const by=ct+ch+10;bar(TL.act,by,'#3ddc97','61,220,151','射撃窓');
+  if(TL.gh)bar(TL.gh,by+17,'#ff3fa4','255,63,164','ゴースト');
+  // TCA
+  const tcaMark=(t,col,lab,dy)=>{if(!t||t.t>TL.H)return;const x=X(t.t);c.strokeStyle=col;c.lineWidth=1.5;c.beginPath();c.moveTo(x,TLG.t);c.lineTo(x,h-16);c.stroke();
+    c.fillStyle=col;c.beginPath();c.moveTo(x,ct+ch+1);c.lineTo(x-4,ct+ch+8);c.lineTo(x+4,ct+ch+8);c.closePath();c.fill();T(c,lab,x+4,TLG.t+6+dy,col,10,'left',true);};
+  tcaMark(AN.tca,'#6aa9ff','TCA',0);tcaMark(AN.gtca,'#ff3fa4','TCA′',12);
+  // ホバー
+  if(S.hoverTau!=null){const x=X(S.hoverTau);c.strokeStyle='rgba(255,255,255,.7)';c.lineWidth=1;c.beginPath();c.moveTo(x,TLG.t);c.lineTo(x,h-16);c.stroke();
+    const i=Math.round(S.hoverTau/TL.step);const lab='+'+fmtT(S.hoverTau)+'  '+fmtM(TL.act.rg[i])+(TL.act.win[i]?'  解を狙えば '+Math.round(TL.act.pr[i]*100)+'%':'  射撃不可');
+    T(c,lab,Math.min(x+6,w-150),h-6,'#fff',11,'left');}
+  // 凡例
+  if(S.hoverTau==null)T(c,'横軸=今からの時間 / 射撃窓の濃さ=解を狙ったときの命中率 / ◆=撃ちどき / 乗せると上の図に未来位置',L,h-6,'rgba(130,145,190,.6)',10,'left');
+}
+function drawTLBar(){
+  // 射撃可能区間(実)
+  let seg=null;const win=TL.act?TL.act.win:null;
+  if(win){const pr=TL.act.pr;let s0=-1;const out=[];for(let i=0;i<TL.n;i++){const ok=pr[i]>=0.5;if(ok&&s0<0)s0=i;if(s0>=0&&(!ok||i===TL.n-1)){out.push([s0*TL.step,i*TL.step]);s0=-1;}}
+    seg=out.length?out.map(q=>(q[0]===0?'いま':fmtT(q[0]))+'〜'+fmtT(q[1])).join(' , ')+(TL.act.best!=null?'  撃ちどき '+fmtT(TL.act.best):''):'なし';}
+  const el=$('tlBar');
+  el.innerHTML='<span>TCA <b>'+(AN.tca?fmtT(AN.tca.t):'—')+'</b> ミス <b>'+(AN.tca?fmtM(AN.tca.miss):'—')+'</b></span>'
+   +(AN.ghost?'<span class="g">ゴースト TCA <b>'+(AN.gtca?fmtT(AN.gtca.t):'—')+'</b> ミス <b>'+(AN.gtca?fmtM(AN.gtca.miss):'—')+'</b></span>':'')
+   +'<span>命中率50%超の区間: <b style="color:var(--ok)">'+(seg||'—')+'</b></span>';
+}
+
+// ---------- 数値/ヒント ----------
+function drawText(){
+  const pe=S.pend,pn=Math.hypot(pe[0],pe[1]);
+  $('fuelTxt').textContent='Δv 残 '+S.fuel.toFixed(1)+' / 30 m/s';
+  const f=(v,u)=>(v>=0?'+':'')+v.toFixed(2)+u;
+  let hint;
+  if(pn<1e-6)hint='Δv を足すと、確定する前に予測軌道(ゴースト)が曲がる。例: <kbd>W</kbd> で前へ 0.5 m/s。';
+  else if(Math.abs(pe[1])>=Math.abs(pe[0]))hint=pe[1]>0?
+    '前へ噴射 → 軌道エネルギーが増える。いったん上(外側)へ膨らみ、そのあと<b>後ろへ流れる</b>(長期ドリフトは Δv の −3 倍)。':
+    '後ろへ噴射(減速) → 下(地球側)へ沈み、そのあと<b>前へ流れ込む</b>。';
+  else hint=(pe[0]>0?'上(外向き)':'下(地球向き)')+'へ噴射 → ドリフトは変わらない。代わりに軌道の中心が<b>'+(pe[0]>0?'後方':'前方')+'へ約 '+fmtM(Math.abs(2*pe[0]/N))+'</b> ずれる。';
+  let tb='<table><tr><td>相対速度(V / R↑)</td><td>'+f(S.ship[3],'')+' / '+f(S.ship[2],'')+' m/s</td></tr>';
+  tb+='<tr><td>ドリフト(1周平均)</td><td>'+AN.drift.toFixed(2)+(AN.ghost?' → <span class="ghostv">'+AN.gdrift.toFixed(2)+'</span>':'')+' m/s</td></tr>';
+  tb+='<tr><td>軌道中心の高さ</td><td>'+fmtM(AN.cx)+(AN.ghost?' → <span class="ghostv">'+fmtM(AN.gcx)+'</span>':'')+'</td></tr>';
+  if(pn>1e-6)tb+='<tr><td>保留 Δv (V / R↑)</td><td class="ghostv">'+f(pe[1],'')+' / '+f(pe[0],'')+' = '+pn.toFixed(2)+' m/s</td></tr>';
+  $('insight').innerHTML='<div class="hint">'+hint+'</div>'+tb+'</table>';
+  const rd=$('readout');
+  const items=[['距離',fmtM(AN.range)],['接近率',(AN.closing<0?'−':'+')+Math.abs(AN.closing).toFixed(2)+' m/s'],['相対速度',AN.speed.toFixed(2)+' m/s'],['LOS 角速度',(Math.abs(AN.omega)/rad*60).toFixed(2)+' °/min'],
+   ['TCA',AN.tca?fmtT(AN.tca.t):'—'],['TCA ミス',AN.tca?fmtM(AN.tca.miss):'—'],['命中見込み',Math.round(AN.prob*100)+'%'],['発射/命中',S.shots+' / '+S.hits],['敵 HP',S.hp+' / 3'],['撃破',S.kills+'']];
+  rd.innerHTML=items.map(q=>'<div><span>'+q[0]+'</span><b>'+q[1]+'</b></div>').join('');
+  $('clock').textContent='T+'+fmtT(S.simT);
+  syncBtns();
+}
+
+// ---------- 進行 ----------
+function advance(sd){
+  if(sd<=0)return;const n=Math.max(1,Math.ceil(sd/0.5)),h=sd/n;
+  for(let i=0;i<n;i++){
+    S.ship=cw(S.ship,h);S.simT+=h;
+    if(Math.floor(S.simT/6)!==Math.floor((S.simT-h)/6)){S.trail.push([S.ship[0],S.ship[1]]);if(S.trail.length>300)S.trail.shift();}
+    for(const b of S.bullets){
+      const px=b.s[0],py=b.s[1];b.s=cw(b.s,h);b.age+=h;
+      if(segMin(px,py,b.s[0],b.s[1])<=RHIT&&S.hp>0){b.dead=true;S.hits++;S.hp--;boom(b.s[0],b.s[1],S.hp===0?40:14);
+        if(S.hp===0){S.kills++;S.banner={t:'撃破  ENEMY DESTROYED',l:2.5};S.killTimer=2.6;}}
+      else if(b.age>LT)b.dead=true;
+      else b.tr.push([b.s[0],b.s[1]]);
+      if(b.tr.length>140)b.tr.shift();
+    }
+    S.bullets=S.bullets.filter(b=>!b.dead);
+  }
+  S.coll=AN.range<KEEP?1:Math.max(0,S.coll-0.02);
+}
+function boom(x,y,n){const [sx,sy]=w2s(x,y);for(let i=0;i<n;i++){const a=Math.random()*TAU,v=20+Math.random()*80;S.parts.push({x:sx,y:sy,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:1});}}
+
+let last=performance.now(),tlAcc=0;
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000);last=now;
+  let sp=SPEEDS[S.speedIdx];if(sp>0&&$('planSlow').checked&&Math.hypot(S.pend[0],S.pend[1])>1e-6)sp=Math.min(sp,1);
+  if(S.killTimer>0&&S.hp===0){S.killTimer-=dt;if(S.killTimer<=0){const keep=[S.kills,S.shots,S.hits,S.fuel];loadPreset((S.preset+1)%PRESETS.length);sel.value=S.preset;S.kills=keep[0];S.shots=keep[1];S.hits=keep[2];S.fuel=keep[3];}}
+  advance(dt*sp);
+  S.flash=Math.max(0,S.flash-dt*6);S.burnFlash=Math.max(0,S.burnFlash-dt*2.2);
+  if(S.banner){S.banner.l-=dt;if(S.banner.l<=0)S.banner=null;}
+  S.parts.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.l-=dt*1.4;});S.parts=S.parts.filter(p=>p.l>0);
+  analyze();
+  tlAcc+=dt;if(tlAcc>0.12||!TL.act){tlAcc=0;buildTL();drawTLBar();}
+  drawPlot();drawDial();drawPad();drawTL();drawText();
+  requestAnimationFrame(frame);
+}
+loadPreset(0);syncBtns();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
