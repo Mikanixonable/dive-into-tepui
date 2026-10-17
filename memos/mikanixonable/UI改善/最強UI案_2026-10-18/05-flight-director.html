@@ -1,0 +1,1155 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>フライトディレクター卓</title>
+<style>
+:root{
+  --bg:#04060c; --panel:rgba(12,18,32,.82); --panel2:rgba(20,28,48,.9);
+  --line:rgba(150,180,255,.18); --line2:rgba(150,180,255,.32);
+  --ink:#e2eaff; --dim:#8c9abb; --faint:#56627f;
+  --amber:#ffb23e; --cyan:#62d4ff; --red:#ff4766; --green:#4fe3a0; --violet:#a597ff; --gold:#ffd166;
+  --font:ui-monospace,"SF Mono",Menlo,Consolas,"Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:12px;line-height:1.45}
+body{display:flex;flex-direction:column;overflow:hidden}
+button,select,input{font-family:inherit;font-size:12px;color:var(--ink)}
+button{background:rgba(120,150,230,.12);border:1px solid var(--line2);border-radius:5px;padding:4px 9px;cursor:pointer;transition:background .15s,border-color .15s}
+button:hover{background:rgba(120,150,230,.24)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--cyan);outline-offset:1px}
+button.on{background:rgba(98,212,255,.22);border-color:var(--cyan)}
+button.primary{background:rgba(255,178,62,.2);border-color:var(--amber);color:#ffe2b0;font-weight:bold}
+button.primary:hover{background:rgba(255,178,62,.36)}
+button:disabled{opacity:.4;cursor:not-allowed}
+select{background:#0d1426;border:1px solid var(--line2);border-radius:5px;padding:3px 5px}
+input[type=range]{accent-color:var(--amber);vertical-align:middle}
+input[type=checkbox]{accent-color:var(--cyan)}
+header{display:flex;align-items:baseline;gap:14px;padding:5px 14px;border-bottom:1px solid var(--line);background:linear-gradient(90deg,rgba(255,178,62,.1),transparent 55%);flex:none}
+header h1{margin:0;font-size:15px;letter-spacing:.08em}
+header h1 small{color:var(--amber);font-size:10px;margin-right:6px;letter-spacing:.2em}
+header .concept{color:var(--dim);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#transport{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center;padding:4px 14px;border-bottom:1px solid var(--line);background:rgba(10,15,28,.85);flex:none}
+#transport .grp{display:flex;align-items:center;gap:5px}
+#transport .lbl{color:var(--dim);font-size:11px}
+#clock{font-size:17px;font-weight:bold;letter-spacing:.04em;min-width:132px;color:#fff}
+#clock small{display:block;font-size:10px;color:var(--dim);font-weight:normal;letter-spacing:0}
+#grid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 420px;grid-template-rows:minmax(0,1.04fr) minmax(0,.96fr);gap:8px;padding:8px}
+.pane{position:relative;min-width:0;min-height:0;border:1px solid var(--line);border-radius:8px;background:var(--panel);overflow:hidden}
+#mapPane{background:#03050b}
+canvas{display:block;width:100%;height:100%}
+#map{cursor:crosshair}
+#tl{cursor:ew-resize;touch-action:none}
+#side{display:flex;flex-direction:column;gap:8px;min-height:0}
+#tiles{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:none}
+.tile{position:relative;height:68px;border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:pointer;background:#03050b}
+.tile.sel{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset}
+.tile .cap{position:absolute;left:0;right:0;top:0;padding:2px 6px;display:flex;justify-content:space-between;background:linear-gradient(#000a,transparent);font-size:11px;pointer-events:none}
+.tile .cap2{position:absolute;left:0;right:0;bottom:0;padding:2px 6px;background:linear-gradient(transparent,#000c);font-size:10px;color:#cfe;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .flash{position:absolute;inset:0;pointer-events:none;border-radius:5px;box-shadow:0 0 0 0 #fff inset;opacity:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+#composer{flex:1;min-height:0;overflow:auto}
+#composer h3,#logPane h3{margin:0 0 4px;font-size:12px;letter-spacing:.1em;color:var(--amber);display:flex;justify-content:space-between;align-items:baseline}
+#composer h3 span,#logPane h3 span{color:var(--dim);font-weight:normal;letter-spacing:0;font-size:10px}
+#composer h3 span button{font-size:12px}
+.row{display:flex;align-items:center;gap:6px;margin:4px 0;flex-wrap:wrap}
+.row>.k{width:38px;color:var(--dim);font-size:11px;flex:none}
+.seg{display:flex;gap:3px;flex-wrap:wrap}
+.seg button{padding:3px 7px}
+.seg button.ship{border-color:currentColor}
+.seg button.ship.on{background:rgba(255,255,255,.14)}
+#etaBox{margin-top:5px;padding:4px 8px;border-radius:6px;background:rgba(255,178,62,.08);border:1px dashed rgba(255,178,62,.45);color:#ffe2b0;font-size:11px}
+#etaBox b{color:#fff}
+#logPane{grid-column:2;grid-row:2;display:flex;flex-direction:column;padding:8px 10px}
+#upNext{flex:none;margin-bottom:6px}
+.up{display:flex;gap:6px;align-items:center;padding:3px 6px;margin-bottom:3px;border-radius:5px;background:rgba(255,71,102,.1);border-left:3px solid var(--red);cursor:pointer}
+.up:first-child{background:rgba(255,71,102,.2)}
+.up .eta{margin-left:auto;color:#fff;font-weight:bold;white-space:nowrap}
+#fly{flex:none;margin-bottom:6px;color:var(--dim);font-size:11px}
+#fly .f{display:flex;gap:6px;align-items:center;padding:1px 0}
+#fly .bar{flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden}
+#fly .bar i{display:block;height:100%;background:var(--amber)}
+#log{flex:1;min-height:0;overflow:auto;border-top:1px solid var(--line);padding-top:4px}
+.lg{display:flex;gap:6px;padding:2px 3px;border-radius:4px;cursor:pointer;align-items:baseline}
+.lg:hover{background:rgba(255,255,255,.07)}
+.lg .tm{color:var(--dim);width:78px;flex:none;font-size:11px}
+.lg .dot{width:8px;height:8px;border-radius:50%;flex:none;align-self:center}
+.lg .late{color:var(--cyan);font-size:10px;margin-left:auto;white-space:nowrap}
+.lg.fresh{animation:fresh 1.6s ease-out}
+@keyframes fresh{from{background:rgba(255,255,255,.3)}to{background:transparent}}
+#info{position:absolute;left:10px;top:10px;min-width:210px;padding:7px 10px;border-radius:7px;background:var(--panel);border:1px solid var(--line);font-size:11px;pointer-events:none}
+#info b{font-size:13px}
+#info .bar{height:4px;background:rgba(255,255,255,.1);border-radius:2px;margin:2px 0 4px;overflow:hidden}
+#info .bar i{display:block;height:100%}
+#mapTools{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:4px;align-items:flex-end}
+#banner{position:absolute;left:50%;top:10px;transform:translateX(-50%);padding:8px 16px;border-radius:8px;background:rgba(255,71,102,.92);color:#fff;font-weight:bold;font-size:13px;box-shadow:0 0 24px rgba(255,71,102,.6);display:none;z-index:30;white-space:nowrap}
+#banner small{display:block;font-weight:normal;opacity:.9;font-size:11px}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);padding:6px 14px;border-radius:8px;background:rgba(255,178,62,.92);color:#201400;font-weight:bold;display:none;z-index:99}
+#tip{position:fixed;display:none;z-index:60;max-width:300px;padding:5px 8px;border-radius:6px;background:rgba(6,10,20,.96);border:1px solid var(--line2);pointer-events:none;font-size:11px}
+#battle{position:absolute;inset:0;background:rgba(2,4,9,.96);display:none;z-index:20;flex-direction:column}
+#battle.on{display:flex}
+#battle .bh{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-bottom:1px solid var(--line);gap:8px}
+#bcv{flex:1;min-height:0;cursor:crosshair}
+#battle .bf{padding:4px 10px;border-top:1px solid var(--line);color:var(--dim);font-size:11px}
+#help{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;z-index:80;align-items:center;justify-content:center}
+#help.on{display:flex}
+#help .box{width:min(760px,92vw);max-height:88vh;overflow:auto;padding:16px 20px;border-radius:10px;background:#0b1224;border:1px solid var(--line2)}
+#help h2{margin:0 0 8px;font-size:15px;color:var(--amber)}
+#help table{border-collapse:collapse;width:100%;margin:6px 0 10px}
+#help td{padding:2px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+#help td:first-child{white-space:nowrap;color:var(--cyan);width:130px}
+.legend span{display:inline-flex;align-items:center;gap:4px;margin-right:12px}
+.sw{display:inline-block;width:14px;height:8px;border-radius:2px}
+@media (max-height:800px) and (min-width:1051px){.tile{height:56px}}
+@media (max-width:1050px){
+  body{overflow:auto}
+  html,body{height:auto}
+  #grid{display:flex;flex-direction:column;flex:none}
+  #side{flex:none}
+  .pane{flex:none;height:380px}
+  #tlPane{height:420px}
+  #logPane{height:auto;min-height:300px}
+  .pane{min-height:340px}
+  #mapPane{min-height:380px}
+  #side{min-height:0}
+  #logPane{min-height:300px}
+  #tiles .tile{height:84px}
+  #composer{flex:none}
+  header .concept{white-space:normal}
+  #info{min-width:160px}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1><small>PROPOSAL 05</small>フライトディレクター卓</h1>
+  <div class="concept">時間軸を主役にした管制卓 ― 光の波面で指令を撒き、遅延の向こうの船に先回りする</div>
+  <button id="helpBtn">操作・凡例 (?)</button>
+</header>
+
+<div id="transport">
+  <div class="grp">
+    <button id="playBtn" class="primary" title="Space">▶ 再生</button>
+    <button id="nextBtn" title="N">⏭ 次の注意点へ</button>
+  </div>
+  <div id="clock">D+0 00:00<small>T = 0.0 h</small></div>
+  <div class="grp"><span class="lbl">時間加速</span><span class="seg" id="spdSeg"></span></div>
+  <div class="grp"><span class="lbl">手前で停止</span><input type="range" id="margin" min="0" max="6" step="0.5" value="1" style="width:70px"><span id="marginLbl" style="width:34px">1.0h</span></div>
+  <div class="grp"><span class="lbl">アラーム</span><span id="alarmSeg" class="seg"></span></div>
+  <div class="grp"><span class="lbl">光速 c</span><input type="range" id="cSlider" min="0" max="100" value="40" style="width:90px"><span id="cLbl" style="min-width:150px"></span><button id="realC" title="実際の光速に切替">実 c</button></div>
+  <div class="grp"><span class="lbl">発信・観測結晶</span><span class="seg" id="obsSeg"></span></div>
+  <div class="grp"><span class="lbl">視点</span><span class="seg" id="viewSeg"></span></div>
+</div>
+
+<div id="grid">
+  <section class="pane" id="mapPane">
+    <canvas id="map"></canvas>
+    <div id="info"></div>
+    <div id="mapTools">
+      <button id="zapBtn" title="Tab">ザッピング (Tab)</button>
+      <button id="resetBtn" title="0">全景 (0)</button>
+    </div>
+    <div id="banner"></div>
+    <div id="battle">
+      <div class="bh"><b id="bTitle">直接操縦</b><span id="bStat" style="color:var(--dim)"></span><button id="bExit" class="primary">卓へ戻る (Esc)</button></div>
+      <canvas id="bcv"></canvas>
+      <div class="bf">WASD/矢印=RCS(相対速度を変える) ・ マウス=照準 ・ Space/クリック=射撃 ・ 世界の時計は 1秒=1分 に落ち、他の現場は下段で進み続けます</div>
+    </div>
+  </section>
+
+  <aside id="side">
+    <div id="tiles"></div>
+    <div id="composer" class="panel">
+      <h3 title="光速で送る。宛先が受け取るまで船は旧指令で動く">指令コンポーザ <span><button id="sendBtn" class="primary">指令を送信 ▸</button> <button id="battleBtn" title="B">直接操縦 (B)</button></span></h3>
+      <div class="row"><span class="k">宛先</span><span class="seg" id="shipSeg"></span></div>
+      <div class="row"><span class="k">指令</span>
+        <select id="ordKind">
+          <option value="goto">目標へ移動</option>
+          <option value="hold">待機(その場で停止)</option>
+          <option value="flee">回避(敵から離れる)</option>
+          <option value="engage">迎撃(最寄りの敵へ)</option>
+          <option value="rtb">帰投</option>
+        </select>
+        <span id="tgtInfo" style="color:var(--dim)"></span></div>
+      <div class="row" id="nodeRow"><span class="k">目標</span><span class="seg" id="nodeSeg"></span></div>
+      <div class="row"><span class="k">条件</span>
+        <label><input type="checkbox" id="condOn">条件付き(先送り)</label>
+        <select id="condKind"><option value="near">敵が接近したら</option><option value="fuel">燃料が減ったら</option></select></div>
+      <div class="row" id="condRow" style="display:none"><span class="k"></span><input type="range" id="condVal" min="5000" max="60000" step="1000" value="25000" style="width:150px"><span id="condLbl"></span></div>
+      <div id="etaBox"></div>
+    </div>
+  </aside>
+
+  <section class="pane" id="tlPane"><canvas id="tl"></canvas></section>
+
+  <section class="pane" id="logPane">
+    <h3>次に注意が要るのは <span>アラーム設定に従う</span></h3>
+    <div id="upNext"></div>
+    <div id="fly"></div>
+    <h3 style="margin-top:2px">出来事ログ <span>結晶に光が届いた順 / クリックで同時刻ビュー</span></h3>
+    <div id="log"></div>
+  </section>
+</div>
+
+<div id="toast"></div>
+<div id="tip"></div>
+<div id="help"><div class="box">
+  <h2>フライトディレクター卓 ― 操作と凡例</h2>
+  <p style="margin:0 0 8px;color:var(--dim)">地月系を「結晶」から見た管制卓。船が動くのに数日〜1か月かかる世界で、複数の船を並列に運用する。ここでは光速を遊べる値(既定 32,000 km/h = 地月 12 h)に縮めてある。</p>
+  <table>
+    <tr><td>Space</td><td>再生 / 停止(アラームの手前で自動停止)</td></tr>
+    <tr><td>, / .</td><td>時間加速を下げる / 上げる</td></tr>
+    <tr><td>N</td><td>次の注意点へ即ジャンプ</td></tr>
+    <tr><td>1-4 / Tab</td><td>船を選択 / ザッピング(地図が船へ寄る)</td></tr>
+    <tr><td>0</td><td>全景に戻す</td></tr>
+    <tr><td>B</td><td>選択中の船の直接操縦へ入る(Esc で戻る)</td></tr>
+    <tr><td>下段ドラッグ</td><td>再生ヘッドをスクラブ(過去へ戻ると以降の自分の指令は破棄されて分岐)</td></tr>
+    <tr><td>下段ホイール</td><td>時間軸のズーム</td></tr>
+    <tr><td>地図ホイール/ドラッグ</td><td>ズーム / パン</td></tr>
+  </table>
+  <div class="legend">
+    <span><i class="sw" style="background:var(--amber)"></i>噴射 / 指令の光</span>
+    <span><i class="sw" style="background:rgba(255,71,102,.8)"></i>交戦</span>
+    <span><i class="sw" style="background:var(--green)"></i>通信可能窓</span>
+    <span><i class="sw" style="background:#2a2f55"></i>日陰</span>
+    <span><i class="sw" style="background:rgba(98,212,255,.5)"></i>未着の過去(まだ見えていない)</span>
+    <span><i class="sw" style="background:rgba(255,178,62,.5)"></i>指令が効くまで(まだ変えられない)</span>
+  </div>
+  <p style="color:var(--dim)">下段の「斜めの線」は光。結晶レーンから船レーンへ伸びる琥珀の線が指令、船から結晶へ伸びる白青の線が出来事の知らせ。線の傾きが遅延そのもの。</p>
+  <p style="color:var(--faint);font-size:11px">注: 本モックは Earth-Moon 回転座標系のキネマティクス近似(物理は簡易)。LEO・天体半径・敵網は縮尺外の誇張。直接操縦は卓の予測へは反映しない。敵の位置は遅延させていない。</p>
+  <button id="helpClose" class="primary">閉じる</button>
+</div></div>
+
+<script>
+'use strict';
+//#SIM-BEGIN
+const DT=0.1, H=240, NSTEP=Math.round(H/DT);
+const R_E=20000, R_M=9000, EM=384400, R_ENG=12000;
+const CR={a:{name:'結晶α',base:'ミフラーブ',x:369500,y:9500},b:{name:'結晶β',base:'バーグ',x:326400,y:0}};
+const MOON={x:EM,y:0}, L1={x:326400,y:0}, L2={x:448900,y:0}, MIN={x:448900,y:0};
+const MODES=['周回','待機','航行','回避','迎撃','帰投','喪失'];
+const SHIPS=[
+ {id:'perle',name:'ラ・ペルル',role:'貨物タグ',col:'#ffcf5a',vmax:1200,a:300,hp:40,atk:0,burn:1.5,start:{x:CR.a.x,y:CR.a.y},home:{x:CR.a.x,y:CR.a.y},
+  plan:[{t:4,kind:'goto',tx:329400,ty:3500,label:'バーグへ荷下ろし'}]},
+ {id:'alba',name:'アルバ',role:'戦闘艦',col:'#ff6b8b',vmax:4000,a:900,hp:100,atk:14,burn:2.5,start:{x:322400,y:-9000},home:{x:322400,y:-9000},
+  plan:[{t:30,kind:'goto',tx:140000,ty:-45000,label:'外縁パトロール'}]},
+ {id:'najma',name:'ナジュマ',role:'偵察',col:'#6fe3c0',vmax:2500,a:600,hp:50,atk:0,burn:1.8,start:{x:448900,y:-4000},home:{x:448900,y:-4000},
+  plan:[{t:20,kind:'goto',tx:425000,ty:62000,label:'月の裏側を偵察'},{t:100,kind:'goto',tx:448900,ty:-4000,label:'L2へ戻る'}]},
+ {id:'tiare',name:'ティアレ',role:'LEO戦闘機',col:'#8aa8ff',vmax:3500,a:1200,hp:60,atk:8,burn:3,orbit:{r:32000,T:8,ph:2.2},home:{x:36000,y:0},plan:[]}
+];
+const ENEMIES=[
+ {id:'e1',name:'ハンター#1',kind:'roam',x:268000,y:62000,vmax:1100,hp:60,dps:10,aggro:90000,patrol:{x:318000,y:30000}}
+];
+for(let i=0;i<5;i++)ENEMIES.push({id:'n'+i,name:'網ノード#'+(i+1),kind:'shell',r:55000,T:24,ph:i*Math.PI*2/5+0.4,hp:40,dps:8});
+const SHELL_R=55000, LEO_R=32000;
+const OMEGA_S=2*Math.PI/655.2;
+function shadowAng(t){return -OMEGA_S*(t-45);}
+function sunDir(t){const a=shadowAng(t)+Math.PI;return {x:Math.cos(a),y:Math.sin(a)};}
+function inShadow(x,y,t){
+  const a=shadowAng(t), sx=Math.cos(a), sy=Math.sin(a);
+  for(const b of [[0,0,R_E],[EM,0,R_M]]){
+    const rx=x-b[0], ry=y-b[1], al=rx*sx+ry*sy;
+    if(al>0 && Math.abs(rx*sy-ry*sx)<b[2]) return true;
+  }
+  return false;
+}
+function segCircle(ax,ay,bx,by,cx,cy,r){
+  const dx=bx-ax,dy=by-ay,l2=dx*dx+dy*dy||1;
+  let u=((cx-ax)*dx+(cy-ay)*dy)/l2;u=Math.max(0,Math.min(1,u));
+  const px=ax+u*dx-cx,py=ay+u*dy-cy;return px*px+py*py<r*r;
+}
+function los(ax,ay,bx,by){return !segCircle(ax,ay,bx,by,0,0,R_E)&&!segCircle(ax,ay,bx,by,EM,0,R_M);}
+function dist(ax,ay,bx,by){return Math.hypot(ax-bx,ay-by);}
+function mkTrk(){return {on:false,t0:0,list:[]};}
+function trk(tr,on,t){if(on&&!tr.on){tr.on=true;tr.t0=t;return 1;}if(!on&&tr.on){tr.on=false;tr.list.push([tr.t0,t]);return -1;}return 0;}
+function enemyPos(e,t){return {x:e.r*Math.cos(e.ph+2*Math.PI*t/e.T),y:e.r*Math.sin(e.ph+2*Math.PI*t/e.T)};}
+
+function cmdText(c){
+  const k={goto:'目標へ移動',hold:'待機',flee:'回避',engage:'迎撃',rtb:'帰投'}[c.kind];
+  let s=k+(c.kind==='goto'&&c.label?'('+c.label+')':'');
+  if(c.cond)s=(c.cond.type==='near'?'敵が'+Math.round(c.cond.v/1000)+'千km以内なら ':'燃料'+c.cond.v+'%未満なら ')+s;
+  return s;
+}
+
+function simulate(cmds,c){
+  const N=NSTEP, NS=SHIPS.length, NE=ENEMIES.length;
+  const R={N,c,ships:[],en:[],ev:[],iv:{burn:[],ecl:[],losA:[],losB:[],eng:[]},base:{ecl:[mk(),mk(),mk()].map(x=>x)},cmd:{}};
+  function mk(){return mkTrk();}
+  for(let i=0;i<NS;i++){R.ships.push({X:new Float32Array(N+1),Y:new Float32Array(N+1),VX:new Float32Array(N+1),VY:new Float32Array(N+1),
+    HP:new Float32Array(N+1),FU:new Float32Array(N+1),TH:new Float32Array(N+1),FL:new Uint8Array(N+1),MD:new Uint8Array(N+1)});}
+  for(let j=0;j<NE;j++)R.en.push({X:new Float32Array(N+1),Y:new Float32Array(N+1),HP:new Float32Array(N+1)});
+  const ships=SHIPS.map((cf,i)=>{
+    const s={i,cf,x:cf.start?cf.start.x:0,y:cf.start?cf.start.y:0,vx:0,vy:0,hp:cf.hp,fuel:100,thr:0,burning:false,mode:cf.orbit?'orbit':'hold',
+      tx:0,ty:0,dead:false,armed:[],planIdx:0,threat:{},theta:cf.orbit?cf.orbit.ph:0,eng:false,arrived:true,
+      tBurn:mkTrk(),tEcl:mkTrk(),tLosA:mkTrk(),tLosB:mkTrk(),tEng:mkTrk()};
+    return s;});
+  const ens=ENEMIES.map(e=>{const p=e.kind==='shell'?enemyPos(e,0):{x:e.x,y:e.y};return {e,x:p.x,y:p.y,hp:e.hp,dead:false,last:-1};});
+  const baseTr=[mkTrk(),mkTrk(),mkTrk()];
+  const basePos=[CR.a,CR.b,MIN];
+  const cmdRes={};cmds.forEach(cm=>{cmdRes[cm.id]={deliv:null,trig:null};});
+  R.cmd=cmdRes;
+  function ev(kind,cls,t,s,x,y,text,seenAlarm,extra){R.ev.push(Object.assign({kind,cls,t,ship:s,x,y,text,seenAlarm:!!seenAlarm},extra||{}));}
+  function apply(s,kind,tx,ty,t){
+    if(s.mode==='orbit'){
+      const o=s.cf.orbit,w=2*Math.PI/o.T;
+      const vmag=Math.min(s.cf.vmax,w*o.r);
+      s.vx=-Math.sin(s.theta)*vmag;s.vy=Math.cos(s.theta)*vmag;
+    }
+    s.mode=kind;
+    if(kind==='rtb'){s.tx=s.cf.home.x;s.ty=s.cf.home.y;}
+    else if(kind==='goto'){s.tx=tx;s.ty=ty;}
+    s.arrived=false;
+  }
+  function nearestEnemy(s){let b=null,bd=1e18;for(const q of ens){if(q.dead)continue;const d=dist(s.x,s.y,q.x,q.y);if(d<bd){bd=d;b=q;}}return {q:b,d:bd};}
+  function guide(s,vdx,vdy){
+    let ax=(vdx-s.vx)/DT,ay=(vdy-s.vy)/DT;const am=s.cf.a,m=Math.hypot(ax,ay);
+    if(m>am){ax*=am/m;ay*=am/m;}
+    if(s.fuel<=0){ax=0;ay=0;}
+    const mm=Math.hypot(ax,ay);let th=mm/am;
+    s.vx+=ax*DT;s.vy+=ay*DT;s.fuel=Math.max(0,s.fuel-th*s.cf.burn*DT);s.thr=th;
+    s.x+=s.vx*DT;s.y+=s.vy*DT;
+  }
+  for(let k=0;k<=N;k++){
+    const t=k*DT;
+    // 1. 指令の到達・計画の実行・条件の評価
+    for(const s of ships){
+      if(s.dead)continue;
+      while(s.planIdx<s.cf.plan.length&&s.cf.plan[s.planIdx].t<=t+1e-9){
+        const p=s.cf.plan[s.planIdx++];apply(s,p.kind,p.tx,p.ty,t);
+        ev('plan','info',t,s.i,s.x,s.y,'計画実行: '+p.label,false);
+      }
+      for(const cm of cmds){
+        if(cm.ship!==s.i||cmdRes[cm.id].deliv!==null||cm.t>t)continue;
+        const o=CR[cm.origin];
+        if(dist(o.x,o.y,s.x,s.y)<=c*(t-cm.t)&&los(o.x,o.y,s.x,s.y)){
+          cmdRes[cm.id].deliv=t;
+          ev('deliver','order',t,s.i,s.x,s.y,'指令到達: '+cmdText(cm)+'('+CR[cm.origin].name+'発)',false,{cmd:cm.id});
+          if(cm.cond){s.armed.push({cm,cond:cm.cond});}
+          else{apply(s,cm.kind,cm.tx,cm.ty,t);s.planIdx=s.cf.plan.length;}
+        }
+      }
+      for(let a=s.armed.length-1;a>=0;a--){
+        const ar=s.armed[a];let hit=false;
+        if(ar.cond.type==='near'){const ne=nearestEnemy(s);hit=ne.q&&ne.d<ar.cond.v;}
+        else hit=s.fuel<ar.cond.v;
+        if(hit){s.armed.splice(a,1);cmdRes[ar.cm.id].trig=t;apply(s,ar.cm.kind,ar.cm.tx,ar.cm.ty,t);s.planIdx=s.cf.plan.length;
+          ev('trigger','engage',t,s.i,s.x,s.y,'条件発動: '+cmdText(ar.cm),true,{cmd:ar.cm.id});}
+      }
+    }
+    // 2. 記録
+    for(const s of ships){
+      const r=R.ships[s.i];
+      r.X[k]=s.x;r.Y[k]=s.y;r.VX[k]=s.vx;r.VY[k]=s.vy;r.HP[k]=Math.max(0,s.hp);r.FU[k]=s.fuel;r.TH[k]=s.thr;
+      const ecl=inShadow(s.x,s.y,t);
+      const lA=!s.dead&&los(CR.a.x,CR.a.y,s.x,s.y), lB=!s.dead&&los(CR.b.x,CR.b.y,s.x,s.y);
+      r.FL[k]=(ecl?1:0)|(lA?2:0)|(lB?4:0)|(s.dead?8:0)|(s.eng?16:0);
+      r.MD[k]=s.dead?6:MODES.indexOf(MODES[['orbit','hold','goto','flee','engage','rtb'].indexOf(s.mode)]);
+      if(!s.dead){
+        trk(s.tEcl,ecl,t);
+        for(const [tr,on,o] of [[s.tLosA,lA,'a'],[s.tLosB,lB,'b']]){const r2=trk(tr,on,t);if(r2===1&&k>0)ev('comm','comm',t,s.i,s.x,s.y,'通信窓が開く('+CR[o].name+')',false,{obs:o});else if(r2===-1)ev('comm','comm',t,s.i,s.x,s.y,'通信途絶('+CR[o].name+')',false,{obs:o});}
+        const was=s.burning;
+        if(!s.burning&&s.thr>0.3)s.burning=true;else if(s.burning&&s.thr<0.15)s.burning=false;
+        if(trk(s.tBurn,s.burning,t)===1)ev('burn','burn',t,s.i,s.x,s.y,'噴射開始',false);
+      }else{trk(s.tBurn,false,t);trk(s.tEng,false,t);}
+    }
+    ens.forEach((q,j)=>{const r=R.en[j];r.X[k]=q.x;r.Y[k]=q.y;r.HP[k]=q.dead?0:q.hp;});
+    basePos.forEach((b,j)=>trk(baseTr[j],inShadow(b.x,b.y,t),t));
+    if(k===N)break;
+    // 3. 戦闘
+    for(const s of ships){
+      if(s.dead){s.eng=false;continue;}
+      for(const q of ens){
+        if(q.dead||q.e.kind!=='roam')continue;
+        const d=dist(s.x,s.y,q.x,q.y);
+        if(!s.threat[q.e.id]&&d<60000){s.threat[q.e.id]=true;ev('threat','engage',t,s.i,s.x,s.y,'敵接近(対 '+q.e.name+' 60千km圏)',false,{enemy:q.e.id});}
+        else if(s.threat[q.e.id]&&d>85000)s.threat[q.e.id]=false;
+      }
+      let eng=false,first=null;
+      for(const q of ens){
+        if(q.dead)continue;
+        if(dist(s.x,s.y,q.x,q.y)<R_ENG){
+          eng=true;first=first||q;
+          s.hp-=q.e.dps*DT;q.hp-=s.cf.atk*DT;if(s.cf.atk>0)q.last=s.i;
+        }
+      }
+      s.eng=eng;
+      const tr=trk(s.tEng,eng,t);
+      if(tr===1)ev('engage','engage',t,s.i,s.x,s.y,'交戦開始(対 '+first.e.name+')',false,{enemy:first.e.id});
+      if(s.hp<=0){s.dead=true;s.thr=0;s.burning=false;trk(s.tEng,false,t);
+        ev('destroyed','loss',t,s.i,s.x,s.y,s.cf.name+' 喪失',true,{boom:true});}
+    }
+    for(const q of ens){
+      if(!q.dead&&q.hp<=0){q.dead=true;
+        ev('kill','loss',t,q.last,q.x,q.y,(q.last>=0?SHIPS[q.last].name+' が ':'')+q.e.name+' を撃破',true,{boom:true,fire:true});}
+    }
+    // 4. 移動
+    const tn=t+DT;
+    for(const s of ships){
+      if(s.dead){s.x+=s.vx*DT;s.y+=s.vy*DT;continue;}
+      s.thr=0;
+      if(s.mode==='orbit'){
+        const o=s.cf.orbit,w=2*Math.PI/o.T;s.theta+=w*DT;
+        s.x=o.r*Math.cos(s.theta);s.y=o.r*Math.sin(s.theta);s.vx=-w*o.r*Math.sin(s.theta);s.vy=w*o.r*Math.cos(s.theta);
+        continue;
+      }
+      let vdx=0,vdy=0;const cf=s.cf;
+      if(s.mode==='goto'||s.mode==='rtb'){
+        const dx=s.tx-s.x,dy=s.ty-s.y,d=Math.hypot(dx,dy);
+        if(d<400&&Math.hypot(s.vx,s.vy)<60){s.vx=0;s.vy=0;s.mode='hold';
+          if(!s.arrived){s.arrived=true;ev('arrive','order',tn,s.i,s.x,s.y,'目的地に到着',false);}
+        }else{
+          const sp=Math.min(cf.vmax,Math.sqrt(2*cf.a*0.8*d));
+          vdx=dx/d*sp;vdy=dy/d*sp;
+        }
+      }else if(s.mode==='flee'){
+        const ne=nearestEnemy(s);
+        if(!ne.q||ne.d>45000)s.mode='hold';
+        else{const dx=s.x-ne.q.x,dy=s.y-ne.q.y,d=Math.hypot(dx,dy)||1;vdx=dx/d*cf.vmax;vdy=dy/d*cf.vmax;}
+      }else if(s.mode==='engage'){
+        const ne=nearestEnemy(s);
+        if(!ne.q)s.mode='hold';
+        else{const dx=ne.q.x-s.x,dy=ne.q.y-s.y,d=Math.hypot(dx,dy)||1;
+          const sp=Math.min(cf.vmax,Math.sqrt(2*cf.a*0.8*Math.max(0,d-6000)));vdx=dx/d*sp;vdy=dy/d*sp;}
+      }
+      guide(s,vdx,vdy);
+    }
+    for(const q of ens){
+      if(q.dead)continue;
+      const e=q.e;
+      if(e.kind==='shell'){const p=enemyPos(e,tn);q.x=p.x;q.y=p.y;continue;}
+      let best=null,bd=1e18;
+      for(const s of ships){if(s.dead||s.mode==='orbit')continue;const d=dist(s.x,s.y,q.x,q.y);if(d<e.aggro&&d<bd){bd=d;best=s;}}
+      let gx,gy;
+      if(best){gx=best.x;gy=best.y;}else{gx=e.patrol.x;gy=e.patrol.y;}
+      const dx=gx-q.x,dy=gy-q.y,d=Math.hypot(dx,dy);
+      if(d>(best?5000:3000)){q.x+=dx/d*e.vmax*DT;q.y+=dy/d*e.vmax*DT;}
+    }
+  }
+  for(const s of ships){
+    closeT(s.tBurn);closeT(s.tEcl);closeT(s.tLosA);closeT(s.tLosB);closeT(s.tEng);
+    R.iv.burn.push(s.tBurn.list);R.iv.ecl.push(s.tEcl.list);R.iv.losA.push(s.tLosA.list);R.iv.losB.push(s.tLosB.list);R.iv.eng.push(s.tEng.list);
+  }
+  function closeT(tr){if(tr.on){tr.list.push([tr.t0,N*DT]);tr.on=false;}}
+  baseTr.forEach(b=>closeT(b));
+  R.base.ecl=baseTr.map(b=>b.list);
+  R.ev.sort((a,b)=>a.t-b.t);
+  return R;
+}
+//#SIM-END
+
+// ===================== UI =====================
+const $=s=>document.querySelector(s);
+const st={T:0,playing:false,speed:12,cSlider:40,realC:false,obs:'a',view:'both',sel:1,cmds:[],nextId:1,
+  acked:new Map(),alarmOn:{engage:true,loss:true,order:false,burn:false,comm:false},margin:1,focusEv:null,
+  ord:{kind:'goto',tx:140000,ty:-45000,label:'外縁',cond:false,ck:'near',cv:25000},coach:true,lastAlarm:null,zapUntil:0};
+const SPEEDS=[1,4,12,36,96];
+function cVal(){return st.realC?1.08e9:Math.round(Math.pow(10,3.9+st.cSlider/100*1.5)/1000)*1000;}
+let S=null, EVS=[];
+function resim(){S=simulate(st.cmds,cVal());buildEvs();}
+function crystal(){return CR[st.obs];}
+function dur(h){if(h<1/60)return (h*3600).toFixed(1)+' s';if(h<1)return Math.round(h*60)+' min';return h.toFixed(1)+' h';}
+function fmtT(h){const d=Math.floor(h/24),r=h-d*24,hh=Math.floor(r),mm=Math.floor((r-hh)*60);return 'D+'+d+' '+String(hh).padStart(2,'0')+':'+String(mm).padStart(2,'0');}
+function at(i,t){
+  t=Math.max(0,Math.min(NSTEP*DT-1e-6,t));const k=Math.floor(t/DT),f=t/DT-k,a=S.ships[i],k2=Math.min(k+1,NSTEP);
+  const L=(arr)=>arr[k]+(arr[k2]-arr[k])*f;
+  return {x:L(a.X),y:L(a.Y),vx:L(a.VX),vy:L(a.VY),hp:a.HP[k],fuel:a.FU[k],thr:a.TH[k],fl:a.FL[k],md:a.MD[k]};
+}
+function enAt(j,t){
+  t=Math.max(0,Math.min(NSTEP*DT-1e-6,t));const k=Math.floor(t/DT),f=t/DT-k,a=S.en[j],k2=Math.min(k+1,NSTEP);
+  return {x:a.X[k]+(a.X[k2]-a.X[k])*f,y:a.Y[k]+(a.Y[k2]-a.Y[k])*f,hp:a.HP[k]};
+}
+function image(i,T){ // 結晶に今見えている船の像(遅延像)
+  const cr=crystal(),c=S.c;let tr=T;
+  for(let n=0;n<6;n++){const p=at(i,tr);tr=Math.max(0,T-dist(p.x,p.y,cr.x,cr.y)/c);}
+  const p=at(i,tr);return {t:tr,x:p.x,y:p.y,lag:T-tr};
+}
+function etaDeliver(i,T){ // いま送った指令が着く時刻
+  const cr=crystal(),c=S.c,key=st.obs==='a'?2:4;
+  for(let k=Math.ceil(T/DT);k<=NSTEP;k++){
+    const t=k*DT,a=S.ships[i];
+    if(a.FL[k]&8)return null;
+    if(dist(cr.x,cr.y,a.X[k],a.Y[k])<=c*(t-T)&&(a.FL[k]&key))return t;
+  }
+  return null;
+}
+function buildEvs(){
+  const cr=crystal(),c=S.c;
+  EVS=S.ev.filter(e=>!e.obs||e.obs===st.obs).map(e=>{const o=Object.assign({},e);o.tSeen=e.t+dist(e.x,e.y,cr.x,cr.y)/c;o.key=e.kind+'|'+e.ship+'|'+Math.round(e.t/2);return o;});
+}
+function alarmT(e){return e.seenAlarm?e.tSeen:Math.max(0,e.t-st.margin);}
+function alarmList(){return EVS.filter(e=>st.alarmOn[e.cls]&&e.cls!=='info').map(e=>({e,a:alarmT(e)})).sort((x,y)=>x.a-y.a);}
+function nextAlarm(T){
+  for(const x of alarmList()){if(x.a>T+1e-6&&!st.acked.has(x.e.key))return x;}return null;
+}
+function evLabel(e,future){
+  const n=SHIPS[e.ship]?SHIPS[e.ship].name:'';
+  if(e.kind==='engage')return future?n+' 交戦予測 '+e.text.replace(/^交戦開始/,''):n+' '+e.text;
+  if(e.kind==='deliver'||e.kind==='trigger'||e.kind==='arrive'||e.kind==='burn'||e.kind==='threat')return n+' '+e.text;
+  return e.text;
+}
+
+// ---------- 描画共通 ----------
+const dpr=Math.min(2,window.devicePixelRatio||1);
+function fit(cv){const w=cv.clientWidth,h=cv.clientHeight;if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr);}
+  const ctx=cv.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);return {ctx,w,h};}
+const stars=[];{let s=7;const rnd=()=>{s=(s*16807)%2147483647;return s/2147483647;};for(let i=0;i<160;i++)stars.push({x:rnd(),y:rnd(),r:rnd()*1.1+.2,a:rnd()*.6+.2});}
+const mapView={cx:214000,cy:-4000,sc:560,tcx:214000,tcy:-4000,tsc:560};
+function w2s(v,w,h,x,y){return [(x-v.cx)/v.sc+w/2,h/2-(y-v.cy)/v.sc];}
+function s2w(v,w,h,px,py){return [(px-w/2)*v.sc+v.cx,(h/2-py)*v.sc+v.cy];}
+function hexA(hex,a){const n=parseInt(hex.slice(1),16);return 'rgba('+(n>>16)+','+((n>>8)&255)+','+(n&255)+','+a+')';}
+
+function drawGlyph(ctx,x,y,ang,sz,col,fill){
+  ctx.save();ctx.translate(x,y);ctx.rotate(-ang);ctx.beginPath();ctx.moveTo(sz*1.3,0);ctx.lineTo(-sz,sz*.8);ctx.lineTo(-sz*.5,0);ctx.lineTo(-sz,-sz*.8);ctx.closePath();
+  if(fill){ctx.fillStyle=col;ctx.fill();}ctx.strokeStyle=col;ctx.lineWidth=1.4;ctx.stroke();ctx.restore();
+}
+function drawPeptide(ctx,x,y,r,col,hpf,ph){
+  ctx.fillStyle=col;ctx.strokeStyle=col;ctx.lineWidth=1.2;
+  const pts=[[-r*1.6,r*.5],[0,-r*.3],[r*1.6,r*.5]];
+  ctx.beginPath();pts.forEach((p,i)=>{i?ctx.lineTo(x+p[0],y+p[1]):ctx.moveTo(x+p[0],y+p[1]);});ctx.stroke();
+  pts.forEach((p,i)=>{ctx.beginPath();ctx.arc(x+p[0],y+p[1],r*(i===1?1.1:.8),0,7);ctx.fill();});
+  ctx.strokeStyle=hexA('#ff4766',.35);ctx.beginPath();ctx.arc(x,y,r*3.2,-Math.PI/2,-Math.PI/2+Math.PI*2*hpf);ctx.stroke();
+}
+
+function drawWorld(ctx,w,h,v,opt){
+  const T=st.T,full=opt.full,now=performance.now()/1000;
+  const bg=ctx.createRadialGradient(w*.4,h*.5,10,w*.4,h*.5,Math.max(w,h));
+  bg.addColorStop(0,'#0a1020');bg.addColorStop(1,'#02030a');ctx.fillStyle=bg;ctx.fillRect(0,0,w,h);
+  for(const s of stars){ctx.fillStyle='rgba(200,215,255,'+s.a+')';ctx.fillRect(s.x*w,s.y*h,s.r,s.r);}
+  const P=(x,y)=>w2s(v,w,h,x,y),km=1/v.sc;
+  // 地球の影
+  {const a=shadowAng(T),sx=Math.cos(a),sy=Math.sin(a);
+   for(const b of [[0,0,R_E,.5],[EM,0,R_M,.35]]){
+     const p0=P(b[0],b[1]),L=1.2e6*km,rr=b[2]*km;
+     ctx.save();ctx.translate(p0[0],p0[1]);ctx.rotate(-a);
+     const g=ctx.createLinearGradient(0,0,L,0);g.addColorStop(0,'rgba(60,70,140,'+b[3]*.55+')');g.addColorStop(1,'rgba(60,70,140,0)');
+     ctx.fillStyle=g;ctx.fillRect(0,-rr,L,rr*2);ctx.restore();
+   }}
+  // 地月軸と光の時間定規(観測結晶を中心に、光が1時間で進む距離ごと)
+  if(full){
+    const e0=P(0,0),e1=P(EM,0);ctx.strokeStyle='rgba(150,180,255,.12)';ctx.setLineDash([2,6]);ctx.beginPath();ctx.moveTo(e0[0],e0[1]);ctx.lineTo(e1[0]+60,e1[1]);ctx.stroke();ctx.setLineDash([]);
+    if(S.c<5e6){const o=P(CR[st.obs].x,CR[st.obs].y),step=S.c,maxn=Math.min(40,Math.ceil(900000/step));
+      ctx.lineWidth=1;
+      for(let n=1;n<=maxn;n++){const r=n*step*km;if(r>Math.max(w,h)*1.6)break;
+        ctx.strokeStyle='rgba(255,200,120,'+(n%6===0?.2:.09)+')';ctx.beginPath();ctx.arc(o[0],o[1],r,0,7);ctx.stroke();
+        if(n%2===0||maxn<9){ctx.fillStyle='rgba(255,210,150,.42)';ctx.fillText('光 '+n+'h',o[0]-r*.9-4,o[1]-r*.436-3);}}}
+  }
+  // LEO・網
+  let p=P(0,0);
+  ctx.setLineDash([3,5]);ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(138,168,255,.35)';ctx.beginPath();ctx.arc(p[0],p[1],LEO_R*km,0,7);ctx.stroke();
+  ctx.strokeStyle='rgba(255,71,102,.35)';ctx.beginPath();ctx.arc(p[0],p[1],SHELL_R*km,0,7);ctx.stroke();ctx.setLineDash([]);
+  // 地球
+  {const r=R_E*km;const g=ctx.createRadialGradient(p[0]-r*.3,p[1]-r*.3,r*.1,p[0],p[1],r);
+   g.addColorStop(0,'#6fb4ff');g.addColorStop(.6,'#1d4d9a');g.addColorStop(1,'#0a1c3e');
+   ctx.fillStyle=g;ctx.beginPath();ctx.arc(p[0],p[1],Math.max(r,3),0,7);ctx.fill();
+   ctx.strokeStyle='rgba(140,200,255,.5)';ctx.lineWidth=1.5;ctx.stroke();
+   if(full){ctx.fillStyle='#9fc6ff';ctx.fillText('地球',p[0]-9,p[1]+r+13);}}
+  // 月
+  {const m=P(EM,0),r=R_M*km;const g=ctx.createRadialGradient(m[0]-r*.3,m[1]-r*.3,r*.1,m[0],m[1],r);
+   g.addColorStop(0,'#e8e4d8');g.addColorStop(1,'#6c6a64');ctx.fillStyle=g;ctx.beginPath();ctx.arc(m[0],m[1],Math.max(r,2.5),0,7);ctx.fill();
+   if(full){ctx.fillStyle='#cfcab8';ctx.fillText('月',m[0]-4,m[1]+r+13);}}
+  // L1 L2 拠点
+  const node=(pt,label,col)=>{const q=P(pt.x,pt.y);ctx.strokeStyle=col;ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(q[0]-5,q[1]);ctx.lineTo(q[0]+5,q[1]);ctx.moveTo(q[0],q[1]-5);ctx.lineTo(q[0],q[1]+5);ctx.stroke();
+    if(full){ctx.fillStyle=col;ctx.fillText(label,q[0]+7,q[1]-6);}};
+  node(L1,'L1 バーグ農場','#7be9b0');node(L2,'','#b7a9ff');
+  if(full){const q2=P(L2.x,L2.y);ctx.fillStyle='#b7a9ff';ctx.textAlign='right';ctx.fillText('L2 ミナール観測所',q2[0]+6,q2[1]+22);ctx.textAlign='left';}
+  // 結晶
+  for(const k of ['a','b']){
+    const q=P(CR[k].x,CR[k].y),on=(k===st.obs);
+    ctx.save();ctx.translate(q[0],q[1]);ctx.rotate(Math.PI/4);
+    ctx.strokeStyle=on?'#ffe9b0':'rgba(255,233,176,.45)';ctx.lineWidth=on?2:1;const r=on?6:4.5;ctx.strokeRect(-r,-r,r*2,r*2);
+    if(on){ctx.fillStyle='rgba(255,226,150,.35)';ctx.fillRect(-r,-r,r*2,r*2);
+      const pu=(now%2.4)/2.4;ctx.strokeStyle='rgba(255,226,150,'+(1-pu)*.6+')';ctx.strokeRect(-r-pu*12,-r-pu*12,(r+pu*12)*2,(r+pu*12)*2);}
+    ctx.restore();
+    if(full){ctx.fillStyle=on?'#ffe9b0':'rgba(255,233,176,.55)';ctx.fillText(CR[k].name+(k==='a'?'(ミフラーブ)':''),q[0]+(k==='a'?9:-52),q[1]+(k==='a'?-10:16));}
+  }
+  // 事象の光(爆発・撃破): 白青の波面
+  const c=S.c;
+  if(c<5e6){
+    for(const e of EVS){
+      if(!e.boom||e.t>T)continue;
+      const Rk=c*(T-e.t);if(Rk>650000)continue;
+      const q=P(e.x,e.y),rr=Rk*km,al=Math.max(0,1-Rk/650000);
+      if(T-e.t<1.2){const g=ctx.createRadialGradient(q[0],q[1],0,q[0],q[1],26);g.addColorStop(0,'rgba(255,250,230,'+(1-(T-e.t)/1.2)+')');g.addColorStop(1,'rgba(255,200,120,0)');ctx.fillStyle=g;ctx.fillRect(q[0]-26,q[1]-26,52,52);}
+      ctx.strokeStyle='rgba(205,236,255,'+al*.8+')';ctx.lineWidth=full?2:1;ctx.beginPath();ctx.arc(q[0],q[1],rr,0,7);ctx.stroke();
+      if(full){ctx.fillStyle='rgba(205,236,255,'+al+')';ctx.fillText('光 '+(e.fire?'★':'✖'),q[0]+rr*.7071+3,q[1]-rr*.7071-3);}
+    }
+  }
+  // 指令の波面
+  if(c<5e6){
+    for(const cm of st.cmds){
+      if(cm.t>T)continue;
+      const Rk=c*(T-cm.t);if(Rk>650000)continue;
+      const o=CR[cm.origin],q=P(o.x,o.y),rr=Rk*km,al=Math.max(0,1-Rk/650000);
+      ctx.strokeStyle='rgba(255,178,62,'+(.25+al*.7)+')';ctx.lineWidth=full?2.2:1.2;
+      ctx.beginPath();ctx.arc(q[0],q[1],rr,0,7);ctx.stroke();
+      ctx.strokeStyle='rgba(255,178,62,'+al*.12+')';ctx.lineWidth=14*(full?1:.4);ctx.stroke();
+      if(full){ctx.fillStyle='rgba(255,200,110,'+(.4+al*.6)+')';const a=-0.5;ctx.fillText('指令#'+cm.id+' '+SHIPS[cm.ship].name,q[0]+Math.cos(a)*rr+4,q[1]+Math.sin(a)*rr);}
+    }
+  }
+  // 予測経路・軌跡
+  SHIPS.forEach((cf,i)=>{
+    const a=S.ships[i];const k0=Math.floor(T/DT);
+    if(opt.tile&&i!==opt.focus)return;
+    const sel=(i===st.sel);
+    // 過去の軌跡
+    ctx.strokeStyle=hexA(cf.col,.25);ctx.lineWidth=1;ctx.beginPath();let first=true;
+    for(let k=Math.max(0,k0-400);k<=k0;k+=2){const q=P(a.X[k],a.Y[k]);if(first){ctx.moveTo(q[0],q[1]);first=false;}else ctx.lineTo(q[0],q[1]);}
+    ctx.stroke();
+    // 予測
+    if(!full&&!opt.tile)return;
+    const kend=Math.min(NSTEP,k0+(sel?1200:700)),step=sel?1:3;
+    let prevBurn=false;
+    for(let k=k0;k<kend;k+=step){
+      const k2=Math.min(kend,k+step),b=a.TH[k]>0.3;
+      const q1=P(a.X[k],a.Y[k]),q2=P(a.X[k2],a.Y[k2]);
+      ctx.strokeStyle=b?'rgba(255,170,60,'+(sel?.95:.5)+')':hexA(cf.col,sel?.55:.28);
+      ctx.lineWidth=b?(sel?3:2):1;ctx.setLineDash(b?[]:[2,4]);
+      ctx.beginPath();ctx.moveTo(q1[0],q1[1]);ctx.lineTo(q2[0],q2[1]);ctx.stroke();
+      if(a.FL[k]&8)break;
+    }
+    ctx.setLineDash([]);
+  });
+  // 敵
+  ENEMIES.forEach((e,j)=>{
+    const q=enAt(j,T);if(q.hp<=0)return;const s=P(q.x,q.y);
+    if(full){ctx.strokeStyle='rgba(255,71,102,.35)';ctx.setLineDash([2,3]);ctx.beginPath();ctx.arc(s[0],s[1],R_ENG*km,0,7);ctx.stroke();ctx.setLineDash([]);}
+    drawPeptide(ctx,s[0],s[1],e.kind==='shell'?(full?2.2:2):3.2,e.kind==='shell'?'#ff7a8c':'#ff3b5c',q.hp/e.hp,0);
+    if(full&&e.kind==='roam'){ctx.fillStyle='#ff8a9a';ctx.fillText(e.name,s[0]+9,s[1]+4);}
+  });
+  // 船
+  SHIPS.forEach((cf,i)=>{
+    if(opt.tile&&false)return;
+    const q=at(i,T),s=P(q.x,q.y),dead=q.fl&8;
+    const sp=Math.hypot(q.vx,q.vy),ang=sp>5?Math.atan2(q.vy,q.vx):Math.PI/2;
+    const showTrue=st.view!=='crystal'||opt.tile;
+    if(!full&&!opt.tile&&false)return;
+    if(showTrue){
+      if(dead){ctx.strokeStyle='#777';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(s[0]-4,s[1]-4);ctx.lineTo(s[0]+4,s[1]+4);ctx.moveTo(s[0]+4,s[1]-4);ctx.lineTo(s[0]-4,s[1]+4);ctx.stroke();}
+      else{
+        if(i===st.sel){ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=1;const r=11+Math.sin(now*4)*1.2;ctx.beginPath();ctx.arc(s[0],s[1],r,0,7);ctx.stroke();}
+        if(q.thr>0.3){ctx.fillStyle='rgba(255,170,60,.9)';ctx.beginPath();const bx=s[0]-Math.cos(ang)*8,by=s[1]+Math.sin(ang)*8;ctx.arc(bx,by,2+Math.random()*1.5,0,7);ctx.fill();}
+        drawGlyph(ctx,s[0],s[1],ang,opt.tile&&!full?5:6,cf.col,true);
+        if(q.fl&16){ctx.strokeStyle='rgba(255,71,102,'+(.5+.5*Math.sin(now*12))+')';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(s[0],s[1],15,0,7);ctx.stroke();}
+        if(q.fl&1){ctx.fillStyle='rgba(20,25,60,.85)';ctx.beginPath();ctx.arc(s[0]+9,s[1]-9,3.5,0,7);ctx.fill();ctx.strokeStyle='#9aa4ff';ctx.lineWidth=1;ctx.stroke();}
+      }
+      if(full){ctx.fillStyle=cf.col;ctx.fillText(i===st.sel?(i+1)+' '+cf.name:String(i+1),s[0]+10,s[1]+16);}
+    }
+    // 遅延像
+    if(full&&!dead&&st.view!=='god'&&c<5e6){
+      const im=image(i,T),m=P(im.x,im.y);
+      if(Math.hypot(m[0]-s[0],m[1]-s[1])>4){
+        ctx.strokeStyle=hexA(cf.col,.35);ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(s[0],s[1]);ctx.lineTo(m[0],m[1]);ctx.stroke();ctx.setLineDash([]);
+        drawGlyph(ctx,m[0],m[1],ang,5.5,hexA(cf.col,.95),false);
+        ctx.fillStyle=hexA('#62d4ff',.95);ctx.fillText('像 −'+dur(im.lag),m[0]+9,m[1]-7);
+      }
+      if(st.view==='crystal'){ctx.fillStyle=cf.col;ctx.fillText((i+1)+' '+cf.name,m[0]+9,m[1]+14);}
+    }
+  });
+  // 次のアラームの場所
+  if(full){const na=nextAlarm(T);if(na){const q=P(na.e.x,na.e.y);ctx.strokeStyle='rgba(255,71,102,.9)';ctx.lineWidth=1.5;
+      const r=10+((now*2)%1)*6;ctx.beginPath();ctx.arc(q[0],q[1],r,0,7);ctx.stroke();
+      const tx2='⏰ '+fmtT(na.a);ctx.fillStyle='rgba(60,8,20,.85)';ctx.fillRect(q[0]+12,q[1]-24,ctx.measureText(tx2).width+8,16);ctx.fillStyle='#ffb0bc';ctx.fillText(tx2,q[0]+16,q[1]-12);}}
+  // 条件の半径(選択船)
+  if(full){const q=at(st.sel,T);const sp=P(q.x,q.y);
+    if(st.ord.cond&&st.ord.ck==='near'){ctx.strokeStyle='rgba(165,151,255,.8)';ctx.setLineDash([4,4]);ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(sp[0],sp[1],st.ord.cv*km,0,7);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle='#c7bdff';ctx.fillText('条件: 敵 '+Math.round(st.ord.cv/1000)+'千km',sp[0]+st.ord.cv*km*.7+4,sp[1]-st.ord.cv*km*.7);}
+    if(st.ord.kind==='goto'){const t=P(st.ord.tx,st.ord.ty);ctx.strokeStyle='rgba(255,226,150,.9)';ctx.lineWidth=1.2;
+      ctx.beginPath();ctx.moveTo(t[0]-7,t[1]);ctx.lineTo(t[0]+7,t[1]);ctx.moveTo(t[0],t[1]-7);ctx.lineTo(t[0],t[1]+7);ctx.stroke();
+      ctx.beginPath();ctx.arc(t[0],t[1],4,0,7);ctx.stroke();ctx.fillStyle='#ffe2b0';ctx.fillText('指令目標',t[0]+9,t[1]-8);}
+  }
+  if(full){ // スケールバーと太陽
+    ctx.strokeStyle='rgba(200,215,255,.7)';ctx.lineWidth=1.5;const L=100000*km;ctx.beginPath();ctx.moveTo(16,h-18);ctx.lineTo(16+L,h-18);ctx.stroke();
+    ctx.fillStyle='#aab';ctx.fillText('100,000 km  ≒ 光 '+dur(100000/c),16,h-24);
+    const sd=sunDir(T),sx=w-60,sy=64;ctx.strokeStyle='#ffd37a';ctx.fillStyle='#ffd37a';ctx.lineWidth=1.6;
+    ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(sx+sd.x*24,sy-sd.y*24);ctx.stroke();ctx.beginPath();ctx.arc(sx+sd.x*24,sy-sd.y*24,4,0,7);ctx.fill();
+    ctx.fillText('太陽',sx-10,sy+34);
+  }
+}
+
+// ---------- 地図 ----------
+const mapCv=$('#map');
+function updateMapView(){
+  const v=mapView,k=0.14;
+  v.cx+=(v.tcx-v.cx)*k;v.cy+=(v.tcy-v.cy)*k;v.sc*=Math.pow(v.tsc/v.sc,k);
+}
+function resetView(){const w=mapCv.clientWidth||900;mapView.tcx=214000;mapView.tcy=-4000;mapView.tsc=Math.max(300,500000/w);st.zap=false;$('#zapBtn').classList.remove('on');}
+function focusShip(i){const q=at(i,st.T);mapView.tcx=q.x;mapView.tcy=q.y;mapView.tsc=Math.max(60,150000/(mapCv.clientWidth||900));}
+function drawMap(){
+  const {ctx,w,h}=fit(mapCv);
+  ctx.font='11px '+getComputedStyle(document.body).fontFamily;ctx.textBaseline='alphabetic';
+  if(st.zap)focusShip(st.sel);
+  updateMapView();
+  drawWorld(ctx,w,h,mapView,{full:true});
+}
+let drag=null;
+mapCv.addEventListener('pointerdown',e=>{mapCv.setPointerCapture(e.pointerId);drag={x:e.clientX,y:e.clientY,cx:mapView.tcx,cy:mapView.tcy,moved:false};});
+mapCv.addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.hypot(dx,dy)>4)drag.moved=true;
+  if(drag.moved){st.zap=false;$('#zapBtn').classList.remove('on');mapView.tcx=drag.cx-dx*mapView.sc;mapView.tcy=drag.cy+dy*mapView.sc;mapView.cx=mapView.tcx;mapView.cy=mapView.tcy;}});
+mapCv.addEventListener('pointerup',e=>{
+  if(drag&&!drag.moved){
+    const r=mapCv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top,w=r.width,h=r.height;
+    let best=-1,bd=16;
+    SHIPS.forEach((cf,i)=>{const q=at(i,st.T),s=w2s(mapView,w,h,q.x,q.y),d=Math.hypot(s[0]-px,s[1]-py);if(d<bd){bd=d;best=i;}});
+    if(best>=0)selectShip(best);
+    else if(st.ord.kind==='goto'){
+      let [wx,wy]=s2w(mapView,w,h,px,py),label='指定点';
+      for(const n of NODES){const s=w2s(mapView,w,h,n.x,n.y);if(Math.hypot(s[0]-px,s[1]-py)<18){wx=n.x;wy=n.y;label=n.name;}}
+      st.ord.tx=wx;st.ord.ty=wy;st.ord.label=label;refreshComposer();
+    }
+  }
+  drag=null;
+});
+mapCv.addEventListener('wheel',e=>{e.preventDefault();const r=mapCv.getBoundingClientRect(),w=r.width,h=r.height;
+  const f=Math.exp(e.deltaY*0.0015);const [wx,wy]=s2w(mapView,w,h,e.clientX-r.left,e.clientY-r.top);
+  const ns=Math.max(30,Math.min(1500,mapView.tsc*f));
+  mapView.tsc=ns;mapView.sc=ns;mapView.tcx=mapView.cx=wx-(e.clientX-r.left-w/2)*ns;mapView.tcy=mapView.cy=wy+(e.clientY-r.top-h/2)*ns;st.zap=false;$('#zapBtn').classList.remove('on');},{passive:false});
+const NODES=[{name:'地球圏',x:48000,y:0},{name:'L1 バーグ',x:L1.x+3000,y:3500},{name:'L2 ミナール',x:L2.x,y:L2.y-4000},{name:'月 ミフラーブ',x:CR.a.x,y:CR.a.y}];
+
+// ---------- タイル(同時刻ビュー) ----------
+const tilesEl=$('#tiles'),tileObjs=[];
+SHIPS.forEach((cf,i)=>{
+  const d=document.createElement('div');d.className='tile';
+  d.innerHTML='<canvas></canvas><div class="cap"><b style="color:'+cf.col+'">'+(i+1)+' '+cf.name+'</b><span class="mode"></span></div><div class="cap2"></div><div class="flash"></div>';
+  d.addEventListener('click',()=>{selectShip(i);st.zap=true;$('#zapBtn').classList.add('on');});
+  tilesEl.appendChild(d);
+  tileObjs.push({el:d,cv:d.querySelector('canvas'),mode:d.querySelector('.mode'),cap2:d.querySelector('.cap2'),flash:d.querySelector('.flash')});
+});
+function drawTiles(){
+  const T=st.T,c=S.c;
+  tileObjs.forEach((t,i)=>{
+    const {ctx,w,h}=fit(t.cv);const q=at(i,T);
+    ctx.font='9px '+getComputedStyle(document.body).fontFamily;
+    const v={cx:q.x,cy:q.y,sc:Math.max(160,60000/w)};
+    drawWorld(ctx,w,h,v,{full:false,tile:true,focus:i});
+    t.el.classList.toggle('sel',i===st.sel);
+    const dead=q.fl&8;
+    t.mode.textContent=MODES[q.md]+(q.fl&16?' ⚔':'');t.mode.style.color=dead?'#f66':(q.fl&16?'#ff6a80':'#9fb0d8');
+    const cr=crystal(),lag=dist(q.x,q.y,cr.x,cr.y)/c,losOk=(q.fl&(st.obs==='a'?2:4))>0;
+    // 光の到達
+    let msg=dead?'喪失 ― 最後の像のみ':'指令遅延 '+dur(lag)+(losOk?'':' ・通信窓なし');
+    let fl=0;
+    const fe=st.focusEv;
+    if(fe&&c<5e6){const ar=fe.t+dist(q.x,q.y,fe.x,fe.y)/c;
+      msg=ar>T?'⚡ 閃光が届くまで '+dur(ar-T):'⚡ 閃光を目撃 ('+dur(T-ar)+' 前)';if(Math.abs(ar-T)<0.4)fl=1-Math.abs(ar-T)/0.4;}
+    for(const e of EVS){if(!e.boom||e.t>T||c>5e6)continue;const ar=e.t+dist(q.x,q.y,e.x,e.y)/c;if(T>=ar&&T-ar<0.6&&!dead)fl=Math.max(fl,1-(T-ar)/0.6);}
+    t.cap2.textContent=msg;
+    t.flash.style.opacity=fl;t.flash.style.boxShadow='0 0 '+(10+fl*26)+'px '+(fl*8)+'px rgba(255,248,225,.95) inset';
+  });
+}
+
+// ---------- タイムライン ----------
+const tlCv=$('#tl'),tip=$('#tip');
+const TL={t0:0,span:240,padL:150,padR:10};
+let tlHits=[],hatchEcl=null,hatchFut=null;
+function mkHatch(col){const c=document.createElement('canvas');c.width=c.height=8;const x=c.getContext('2d');x.strokeStyle=col;x.lineWidth=1.2;x.beginPath();x.moveTo(-2,10);x.lineTo(10,-2);x.moveTo(-2,6);x.lineTo(6,-2);x.moveTo(2,10);x.lineTo(10,2);x.stroke();return c;}
+function lanes(h){
+  const ruler=28,bA=22,bB=22,bM=20,hs=Math.max(40,(h-ruler-bA-bB-bM-4)/4);let y=ruler;const L=[];
+  L.push({t:'crystal',k:'a',y,h:bA,label:'結晶α(月)',col:'#ffe9b0'});y+=bA;
+  L.push({t:'crystal',k:'b',y,h:bB,label:'結晶β(L1)',col:'#ffe9b0'});y+=bB;
+  SHIPS.forEach((cf,i)=>{L.push({t:'ship',i,y,h:hs,label:cf.name,col:cf.col});y+=hs;});
+  L.push({t:'base',idx:2,y,h:bM,label:'ミナール(L2)',col:'#b7a9ff'});
+  return L;
+}
+function drawTL(){
+  const {ctx,w,h}=fit(tlCv);const T=st.T,c=S.c,font=getComputedStyle(document.body).fontFamily;
+  ctx.font='11px '+font;ctx.textBaseline='middle';ctx.clearRect(0,0,w,h);
+  if(!hatchEcl){hatchEcl=mkHatch('rgba(130,140,230,.55)');hatchFut=mkHatch('rgba(255,255,255,.08)');}
+  // 窓の追従
+  const right=TL.t0+TL.span;
+  if(T>right-TL.span*.12)TL.t0=Math.min(H-TL.span,T-TL.span*.3);
+  if(T<TL.t0)TL.t0=Math.max(0,T-TL.span*.3);
+  const x0=TL.padL,x1=w-TL.padR,tx=t=>x0+(t-TL.t0)/TL.span*(x1-x0);
+  const LN=lanes(h);tlHits=[];
+  ctx.fillStyle='#070c18';ctx.fillRect(0,0,w,h);
+  // 目盛
+  ctx.fillStyle='#0c1325';ctx.fillRect(0,0,w,28);
+  const major=TL.span>150?24:(TL.span>60?12:6),minor=major/(major>=24?4:(major===12?4:3));
+  for(let t=Math.ceil(TL.t0/minor)*minor;t<=TL.t0+TL.span;t+=minor){
+    const x=tx(t),isM=Math.abs(t/major-Math.round(t/major))<1e-6;
+    ctx.strokeStyle=isM?'rgba(150,180,255,.28)':'rgba(150,180,255,.09)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,isM?4:20);ctx.lineTo(x,h);ctx.stroke();
+    if(isM&&x<x1-26){ctx.fillStyle='#9fb0d8';ctx.fillText(fmtT(t).replace(/ 00:00$/,''),x+3,8);}
+  }
+  // レーン
+  LN.forEach(L=>{
+    ctx.fillStyle=L.t==='ship'?'rgba(255,255,255,.025)':'rgba(255,255,255,.012)';
+    ctx.fillRect(0,L.y,w,L.h);
+    ctx.strokeStyle='rgba(150,180,255,.16)';ctx.beginPath();ctx.moveTo(0,L.y+L.h);ctx.lineTo(w,L.y+L.h);ctx.stroke();
+  });
+  // 日陰(拠点・船)
+  const eclBars=(list,y,hh)=>{ctx.save();ctx.beginPath();ctx.rect(x0,y,x1-x0,hh);ctx.clip();
+    for(const [a,b] of list){const xa=tx(a),xb=tx(b);if(xb<x0||xa>x1)continue;
+      ctx.fillStyle='rgba(30,36,90,.7)';ctx.fillRect(xa,y,xb-xa,hh);ctx.fillStyle=ctx.createPattern(hatchEcl,'repeat');ctx.fillRect(xa,y,xb-xa,hh);
+      tlHits.push({x0:xa,x1:xb,y0:y,y1:y+hh,text:'日陰 '+fmtT(a)+' – '+fmtT(b)+'('+dur(b-a)+')'});}
+    ctx.restore();};
+  // 結晶レーン
+  LN.forEach(L=>{
+    if(L.t==='crystal'||L.t==='base'){
+      const bi=L.t==='crystal'?(L.k==='a'?0:1):L.idx;
+      eclBars(S.base.ecl[bi],L.y,L.h);
+      ctx.fillStyle=L.col;ctx.fillText(L.label,8,L.y+L.h/2);
+      if(L.t==='crystal'&&L.k===st.obs){ctx.fillStyle='rgba(255,226,150,.9)';ctx.fillText('◀ 発信',116,L.y+L.h/2);}
+    }
+  });
+  // 船レーン
+  const key=st.obs==='a'?'losA':'losB';
+  LN.forEach(L=>{
+    if(L.t!=='ship')return;
+    const i=L.i,cf=SHIPS[i],mid=L.y+L.h/2;
+    const q=at(i,T),dead=q.fl&8;
+    ctx.fillStyle=cf.col;ctx.font='bold 12px '+font;ctx.fillText((i+1)+' '+cf.name,8,L.y+13);ctx.font='10px '+font;
+    ctx.fillStyle='#8c9abb';ctx.fillText(cf.role+' / '+MODES[q.md],8,L.y+27);
+    // 選択
+    if(i===st.sel){ctx.fillStyle='rgba(255,178,62,.07)';ctx.fillRect(0,L.y,w,L.h);ctx.fillStyle='var(--amber)';ctx.fillStyle='#ffb23e';ctx.fillRect(0,L.y,3,L.h);}
+    eclBars(S.iv.ecl[i],L.y,L.h);
+    // 通信可能窓: 下端の緑バー、窓なしは赤点線
+    const cy=L.y+L.h-5;
+    ctx.fillStyle='rgba(255,71,102,.35)';ctx.fillRect(x0,cy,x1-x0,2);
+    ctx.save();ctx.beginPath();ctx.rect(x0,L.y,x1-x0,L.h);ctx.clip();
+    for(const [a,b] of S.iv[key][i]){const xa=tx(a),xb=tx(b);if(xb<x0||xa>x1)continue;ctx.fillStyle='rgba(79,227,160,.85)';ctx.fillRect(xa,cy-1,Math.max(1,xb-xa),4);
+      tlHits.push({x0:xa,x1:xb,y0:cy-3,y1:cy+4,text:'通信可能窓 '+fmtT(a)+' – '+fmtT(b)});}
+    // 噴射
+    for(const [a,b] of S.iv.burn[i]){const xa=tx(a),xb=tx(b);if(xb<x0||xa>x1)continue;
+      const fut=a>T;ctx.fillStyle=fut?'rgba(255,178,62,.55)':'rgba(255,178,62,.95)';ctx.fillRect(xa,mid-8,Math.max(2,xb-xa),12);
+      if(fut){ctx.strokeStyle='#ffb23e';ctx.setLineDash([3,2]);ctx.strokeRect(xa+.5,mid-7.5,Math.max(2,xb-xa)-1,11);ctx.setLineDash([]);}
+      tlHits.push({x0:xa,x1:Math.max(xb,xa+4),y0:mid-9,y1:mid+5,text:'噴射 '+fmtT(a)+' – '+fmtT(b)+'('+dur(b-a)+')'});}
+    // 交戦
+    for(const [a,b] of S.iv.eng[i]){const xa=tx(a),xb=tx(b);if(xb<x0||xa>x1)continue;
+      ctx.fillStyle=a>T?'rgba(255,71,102,.35)':'rgba(255,71,102,.75)';ctx.fillRect(xa,L.y+3,Math.max(3,xb-xa),L.h-12);
+      if(xb-xa>34){ctx.fillStyle='#fff';ctx.fillText(a>T?'交戦予測':'交戦',xa+4,L.y+L.h/2-4);}
+      tlHits.push({x0:xa,x1:Math.max(xb,xa+4),y0:L.y+3,y1:L.y+L.h-8,text:(a>T?'交戦予測 ':'交戦 ')+fmtT(a)+' – '+fmtT(b)});}
+    ctx.restore();
+    // 喪失後
+    if(dead){const k=S.ships[i].FL.findIndex(f=>f&8);if(k>=0){const xa=tx(k*DT);ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(Math.max(x0,xa),L.y,x1-Math.max(x0,xa),L.h);}}
+    else{const k=S.ships[i].FL.findIndex(f=>f&8);if(k>=0){const xa=tx(k*DT);if(xa<x1){ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(Math.max(x0,xa),L.y,x1-Math.max(x0,xa),L.h);}}}
+    // 光円錐の帯: 未着の過去(シアン) と 指令が効くまで(琥珀)
+    if(!dead&&c<5e6){
+      const cr=crystal(),lag=dist(q.x,q.y,cr.x,cr.y)/c;
+      const xa=tx(T-lag),xb=tx(T);
+      if(st.view!=='god'){
+        ctx.fillStyle='rgba(98,212,255,.16)';ctx.fillRect(Math.max(x0,xa),L.y+1,xb-Math.max(x0,xa),L.h-2);
+        ctx.strokeStyle='rgba(98,212,255,.6)';ctx.lineWidth=1;ctx.strokeRect(Math.max(x0,xa)+.5,L.y+1.5,xb-Math.max(x0,xa)-1,L.h-3);
+        if(xb-xa>46){ctx.fillStyle='#9fe3ff';ctx.fillText('未着 '+dur(lag),xa+4,L.y+L.h-14);}
+      }
+      const eta=etaDeliver(i,T),ex=tx(eta===null?H:eta);
+      ctx.fillStyle='rgba(255,178,62,.15)';ctx.fillRect(xb,L.y+1,Math.min(x1,ex)-xb,L.h-2);
+      ctx.strokeStyle='rgba(255,178,62,.65)';ctx.strokeRect(xb+.5,L.y+1.5,Math.min(x1,ex)-xb-1,L.h-3);
+      if(ex-xb>64){ctx.fillStyle='#ffd08a';ctx.fillText((eta!==null&&eta-T>lag*1.5+0.3?'窓待ち ':'指令遅延 ')+dur(eta===null?H-T:eta-T),xb+4,L.y+L.h-14);}
+    }
+  });
+  // 光線: 指令(琥珀) と 知らせ(白青)
+  const laneOf=s=>LN.find(L=>L.t==='ship'&&L.i===s);
+  const crLane=k=>LN.find(L=>L.t==='crystal'&&L.k===k);
+  ctx.save();ctx.beginPath();ctx.rect(x0,28,x1-x0,h-28);ctx.clip();
+  for(const cm of st.cmds){
+    const res=S.cmd[cm.id],sl=laneOf(cm.ship),cl=crLane(cm.origin);
+    const ya=cl.y+cl.h/2,yb=sl.y+sl.h/2,ta=cm.t,tb=res.deliv===null?Math.min(H,ta+60):res.deliv;
+    ctx.strokeStyle=res.deliv===null?'rgba(255,178,62,.5)':'rgba(255,178,62,.95)';ctx.lineWidth=1.8;ctx.setLineDash(res.deliv===null?[4,3]:[]);
+    ctx.beginPath();ctx.moveTo(tx(ta),ya);ctx.lineTo(tx(tb),yb);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#ffb23e';ctx.beginPath();ctx.arc(tx(ta),ya,3.5,0,7);ctx.fill();
+    ctx.fillStyle='#ffd08a';ctx.fillText('#'+cm.id,tx(ta)+5,ya-1);
+    if(res.deliv!==null){const X=tx(res.deliv);ctx.save();ctx.translate(X,yb);ctx.rotate(Math.PI/4);ctx.fillStyle=res.deliv<=T?'#ffb23e':'rgba(255,178,62,.55)';ctx.fillRect(-4.5,-4.5,9,9);ctx.restore();
+      tlHits.push({x0:X-6,x1:X+6,y0:yb-6,y1:yb+6,text:'指令#'+cm.id+' 到達 '+fmtT(res.deliv)+' '+cmdText(cm)+(res.trig!==null?' → 発動 '+fmtT(res.trig):'')});
+      if(res.trig!==null){const X2=tx(res.trig);ctx.fillStyle='#a597ff';ctx.beginPath();ctx.moveTo(X2,yb-8);ctx.lineTo(X2+6,yb+4);ctx.lineTo(X2-6,yb+4);ctx.closePath();ctx.fill();
+        tlHits.push({x0:X2-7,x1:X2+7,y0:yb-9,y1:yb+5,text:'条件発動 '+fmtT(res.trig)});}}
+    tlHits.push({x0:tx(ta)-5,x1:tx(ta)+5,y0:ya-5,y1:ya+5,text:'指令#'+cm.id+' 送信 '+fmtT(ta)+' '+SHIPS[cm.ship].name+': '+cmdText(cm)});
+  }
+  // 出来事
+  const cl=crLane(st.obs);
+  for(const e of EVS){
+    if(e.ship<0&&e.kind!=='kill')continue;
+    const sl=laneOf(e.ship>=0?e.ship:0);if(!sl)continue;
+    const known=e.tSeen<=T,past=e.t<=T;
+    if(st.view==='crystal'&&past&&!known)continue;
+    const X=tx(e.t),Y=sl.y+sl.h/2;
+    if(e.kind==='engage')continue;
+    if(e.kind==='burn'||e.kind==='plan'||e.kind==='deliver'||e.kind==='trigger')continue;
+    const fut=!past;
+    if(e.boom&&c<5e6){ // 知らせの光線
+      const Xs=tx(e.tSeen),Yc=cl.y+cl.h/2;
+      ctx.strokeStyle=fut?'rgba(205,236,255,.4)':'rgba(205,236,255,.9)';ctx.lineWidth=1.4;ctx.setLineDash(fut?[3,3]:[]);
+      ctx.beginPath();ctx.moveTo(X,Y);ctx.lineTo(Xs,Yc);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle='#dff3ff';ctx.beginPath();ctx.arc(Xs,Yc,3.2,0,7);ctx.fill();
+      tlHits.push({x0:Xs-6,x1:Xs+6,y0:Yc-6,y1:Yc+6,text:'結晶に光が届く '+fmtT(e.tSeen)+'(発生 '+dur(e.tSeen-e.t)+' 前): '+evLabel(e,false)});
+    }
+    ctx.save();ctx.translate(X,Y);
+    if(e.kind==='destroyed'){ctx.strokeStyle=fut?'rgba(255,71,102,.7)':'#ff4766';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-7,-7);ctx.lineTo(7,7);ctx.moveTo(7,-7);ctx.lineTo(-7,7);ctx.stroke();}
+    else if(e.kind==='kill'){ctx.fillStyle=fut?'rgba(255,209,102,.6)':'#ffd166';ctx.font='16px '+font;ctx.textAlign='center';ctx.fillText('★',0,1);ctx.textAlign='left';}
+    else if(e.kind==='threat'){ctx.fillStyle=fut?'rgba(255,71,102,.55)':'#ff4766';ctx.beginPath();ctx.moveTo(0,-7);ctx.lineTo(7,6);ctx.lineTo(-7,6);ctx.closePath();ctx.fill();ctx.fillStyle='#fff';ctx.font='bold 9px '+font;ctx.textAlign='center';ctx.fillText('!',0,2);ctx.textAlign='left';ctx.font='11px '+font;}
+    else if(e.kind==='arrive'){ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(0,0,4.5,0,7);ctx.stroke();}
+    ctx.restore();
+    tlHits.push({x0:X-8,x1:X+8,y0:Y-8,y1:Y+8,text:fmtT(e.t)+' '+evLabel(e,fut)+(fut?'(予測)':'')});
+  }
+  ctx.restore();
+  // アラーム目盛
+  const al=alarmList();
+  for(const x of al){const X=tx(x.a);if(X<x0||X>x1||x.a<T-.01)continue;
+    ctx.fillStyle=st.acked.has(x.e.key)?'rgba(255,71,102,.35)':'#ff4766';ctx.beginPath();ctx.moveTo(X,26);ctx.lineTo(X-4,18);ctx.lineTo(X+4,18);ctx.closePath();ctx.fill();
+    tlHits.push({x0:X-5,x1:X+5,y0:16,y1:27,text:'⏰ '+fmtT(x.a)+' '+evLabel(x.e,x.e.t>T)});}
+  // 未来のヴェール
+  const xn=tx(T);
+  ctx.fillStyle='rgba(2,4,10,.22)';ctx.fillRect(xn,28,x1-xn,h-28);
+  ctx.fillStyle=ctx.createPattern(hatchFut,'repeat');ctx.fillRect(xn,28,x1-xn,h-28);
+  // 再生ヘッド
+  ctx.strokeStyle='#fff';ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(xn,0);ctx.lineTo(xn,h);ctx.stroke();
+  ctx.fillStyle='#fff';ctx.beginPath();ctx.moveTo(xn-7,0);ctx.lineTo(xn+7,0);ctx.lineTo(xn,9);ctx.closePath();ctx.fill();
+  {const nl='NOW '+fmtT(T),nx=Math.min(xn+9,x1-100);ctx.font='bold 11px '+font;ctx.fillStyle='rgba(8,12,24,.92)';ctx.fillRect(nx-3,13,ctx.measureText(nl).width+6,14);ctx.fillStyle='#fff';ctx.fillText(nl,nx,20);ctx.font='11px '+font;}
+  if(xn<x1-170){ctx.fillStyle='rgba(255,255,255,.35)';ctx.fillText('予測 ▸ 現在の指令どおりに進んだ場合',xn+10,h-9);}
+  // 同時刻ビューの縦線
+  if(st.focusEv){const X=tx(st.focusEv.t);ctx.strokeStyle='rgba(255,245,200,.7)';ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(X,28);ctx.lineTo(X,h);ctx.stroke();ctx.setLineDash([]);}
+}
+function tlT(px){const r=tlCv.getBoundingClientRect();return TL.t0+(px-r.left-TL.padL)/(r.width-TL.padL-TL.padR)*TL.span;}
+let scrub=false;
+function setT(t,user){
+  t=Math.max(0,Math.min(H,t));
+  if(user){for(const [k,a] of st.acked)if(a>t)st.acked.delete(k);}
+  st.T=t;
+}
+tlCv.addEventListener('pointerdown',e=>{
+  const r=tlCv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
+  if(px<TL.padL){const LN=lanes(r.height);for(const L of LN)if(L.t==='ship'&&py>=L.y&&py<L.y+L.h)selectShip(L.i);return;}
+  tlCv.setPointerCapture(e.pointerId);scrub=true;st.playing=false;st.focusEv=null;setT(tlT(e.clientX),true);syncUI();
+});
+tlCv.addEventListener('pointermove',e=>{
+  const r=tlCv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
+  if(scrub){setT(tlT(e.clientX),true);return;}
+  let hit=null;for(let i=tlHits.length-1;i>=0;i--){const q=tlHits[i];if(px>=q.x0&&px<=q.x1&&py>=q.y0&&py<=q.y1){hit=q;break;}}
+  if(hit){tip.style.display='block';tip.textContent=hit.text;tip.style.left=Math.min(innerWidth-310,e.clientX+12)+'px';tip.style.top=(e.clientY-34)+'px';}else tip.style.display='none';
+});
+tlCv.addEventListener('pointerup',()=>{scrub=false;});
+tlCv.addEventListener('pointerleave',()=>{tip.style.display='none';});
+tlCv.addEventListener('wheel',e=>{e.preventDefault();const f=Math.exp(e.deltaY*0.0015);TL.span=Math.max(24,Math.min(H,TL.span*f));TL.t0=Math.max(0,Math.min(H-TL.span,st.T-TL.span*.35));},{passive:false});
+
+// ---------- ログ・次の注意点 ----------
+let logSig='';
+function updateLog(){
+  const T=st.T;
+  const vis=EVS.filter(e=>e.cls!=='info'||e.kind==='plan'?true:true).filter(e=>{
+    if(e.kind==='plan')return false;
+    if((e.cls==='comm'||e.cls==='burn')&&!st.alarmOn[e.cls])return false;
+    return st.view==='god'?e.t<=T:e.tSeen<=T;});
+  vis.sort((a,b)=>(st.view==='god'?b.t-a.t:b.tSeen-a.tSeen));
+  const sig=vis.length+'|'+st.view+'|'+st.obs+'|'+S.c;
+  if(sig!==logSig){
+    const prev=logSig.split('|')[0]|0;logSig=sig;
+    $('#log').innerHTML=vis.slice(0,60).map((e,idx)=>{
+      const sh=SHIPS[e.ship],col=sh?sh.col:'#ffd166',late=e.tSeen-e.t;
+      const tm=st.view==='god'?e.t:e.tSeen;
+      return '<div class="lg'+(idx===0&&vis.length>prev&&prev>0?' fresh':'')+'" data-i="'+EVS.indexOf(e)+'"><span class="tm">'+fmtT(tm)+'</span><span class="dot" style="background:'+col+'"></span><span>'+evLabel(e,false)+'</span>'+(late>0.05&&c_ok()?'<span class="late">発生 '+dur(late)+' 前</span>':'')+'</div>';
+    }).join('')||'<div style="color:#a9b6d8;padding:4px 2px;line-height:1.7"><b style="color:var(--amber)">遊び方</b><br>① <b>Space</b> で再生。注意点の<b>手前で自動停止</b>します。<br>② 船を選び、指令コンポーザで<b>待機/回避/迎撃</b>等を送信。琥珀の波面が広がり、<b>届いた瞬間</b>に船が動きを変えます。<br>③ <b>条件付き</b>で「敵が接近したら回避」を先送りすれば、遅延の向こうで船が自分で判断します。<br>④ ここに並ぶ出来事を<b>クリック</b>すると、全員の現場が同じ時刻に揃います(同時刻ビュー)。<br>⑤ <b>B</b> で1隻の直接操縦へ。</div>';
+  }
+  // 次の注意点
+  const ups=alarmList().filter(x=>x.a>T+1e-6&&!st.acked.has(x.e.key)).slice(0,3);
+  $('#upNext').innerHTML=ups.map(x=>{const sh=SHIPS[x.e.ship];return '<div class="up" data-t="'+x.a+'"><b style="color:'+(sh?sh.col:'#ffd166')+'">'+(sh?sh.name:'')+'</b><span>'+evLabel(x.e,x.e.t>T).replace(sh?sh.name+' ':'','')+'</span><span class="eta">+'+dur(x.a-T)+'</span></div>';}).join('')||'<div style="color:var(--faint)">予定された注意点なし</div>';
+  // 飛行中の指令
+  const fl=st.cmds.slice(-3).reverse().map(cm=>{const r=S.cmd[cm.id];const tot=(r.deliv===null?60:r.deliv-cm.t)||1;const pr=Math.min(1,(T-cm.t)/tot);
+    const stt=r.deliv===null?'未達':(T>=r.deliv?(r.trig!==null&&T>=r.trig?'発動済':(cm.cond?'待機中(条件)':'実行中')):'光は飛行中');
+    return '<div class="f"><span style="color:#ffb23e">#'+cm.id+'</span><span style="color:'+SHIPS[cm.ship].col+'">'+SHIPS[cm.ship].name+'</span><span class="bar"><i style="width:'+(T<cm.t?0:(T>=(r.deliv??1e9)?100:pr*100))+'%"></i></span><span>'+stt+'</span></div>';}).join('');
+  $('#fly').innerHTML=fl||'送信した指令はここに並びます。';
+}
+function c_ok(){return S.c<5e6;}
+$('#log').addEventListener('click',e=>{const d=e.target.closest('.lg');if(!d)return;const ev=EVS[+d.dataset.i];if(!ev)return;
+  st.playing=false;setT(ev.t,true);st.focusEv=ev;if(ev.ship>=0)selectShip(ev.ship);syncUI();toast('同時刻ビュー: '+fmtT(ev.t)+' に全員の現場を揃えました');});
+$('#upNext').addEventListener('click',e=>{const d=e.target.closest('.up');if(!d)return;st.playing=false;setT(Math.max(0,+d.dataset.t-0.01),true);syncUI();});
+
+// ---------- コンポーザ ----------
+function selectShip(i){st.sel=i;if(st.zap)focusShip(i);refreshComposer();syncUI();}
+const shipSeg=$('#shipSeg');
+SHIPS.forEach((cf,i)=>{const b=document.createElement('button');b.className='ship';b.style.color=cf.col;b.textContent=(i+1)+' '+cf.name;b.onclick=()=>selectShip(i);shipSeg.appendChild(b);});
+const nodeSeg=$('#nodeSeg');
+NODES.forEach(n=>{const b=document.createElement('button');b.textContent=n.name;b.onclick=()=>{st.ord.tx=n.x;st.ord.ty=n.y;st.ord.label=n.name;refreshComposer();};nodeSeg.appendChild(b);});
+function refreshComposer(){
+  [...shipSeg.children].forEach((b,i)=>b.classList.toggle('on',i===st.sel));
+  const o=st.ord;$('#ordKind').value=o.kind;$('#nodeRow').style.display=o.kind==='goto'?'flex':'none';
+  $('#tgtInfo').textContent=o.kind==='goto'?'→ '+o.label+' ('+Math.round(o.tx/1000)+', '+Math.round(o.ty/1000)+') 千km':'';
+  $('#condOn').checked=o.cond;$('#condRow').style.display=o.cond?'flex':'none';$('#condKind').value=o.ck;
+  const cv=$('#condVal');if(o.ck==='near'){cv.min=5000;cv.max=60000;cv.step=1000;}else{cv.min=5;cv.max=60;cv.step=1;}
+  if(+cv.value!==o.cv)cv.value=o.cv;
+  $('#condLbl').textContent=o.ck==='near'?'敵が '+Math.round(o.cv/1000)+' 千km 以内':'燃料 '+o.cv+'% 未満';
+  updateEta();
+}
+function updateEta(){
+  const i=st.sel,T=st.T,cr=crystal(),q=at(i,T),box=$('#etaBox');
+  const sh=SHIPS[i];
+  if(q.fl&8){box.innerHTML='<b>'+sh.name+'</b> は喪失しています。';return;}
+  const d=dist(cr.x,cr.y,q.x,q.y),lag=d/S.c,eta=etaDeliver(i,T);
+  const rt=2*lag;
+  box.innerHTML='<b>'+cr.name+'</b> → <b style="color:'+sh.col+'">'+sh.name+'</b> 距離 '+Math.round(d/1000).toLocaleString()+' 千km / 光で <b>'+dur(lag)+'</b>(往復 '+dur(rt)+')<br>'+
+   (eta===null?'<b style="color:#ff8a9a">この先、通信窓が開きません(遮蔽)。</b>':'到達予定 <b>'+fmtT(eta)+'</b>(+'+dur(eta-T)+')'+(eta-T>lag*1.5+.3?' ― <b style="color:#ff8a9a">遮蔽のため窓待ち</b>':''))+
+   '<br><span style="color:#caa">それまで '+sh.name+' は<b>旧指令</b>で動きます。'+(st.ord.cond?'条件付きなので到達後に船が自分で判断します。':'')+'</span>';
+}
+$('#ordKind').onchange=e=>{st.ord.kind=e.target.value;refreshComposer();};
+$('#condOn').onchange=e=>{st.ord.cond=e.target.checked;refreshComposer();};
+$('#condKind').onchange=e=>{st.ord.ck=e.target.value;st.ord.cv=st.ord.ck==='near'?25000:30;refreshComposer();};
+$('#condVal').oninput=e=>{st.ord.cv=+e.target.value;refreshComposer();};
+$('#sendBtn').onclick=sendOrder;
+function sendOrder(){
+  const i=st.sel,T=st.T,q=at(i,T);
+  if(q.fl&8){toast('喪失した船には送れません');return;}
+  const later=st.cmds.filter(c=>c.t>T+1e-9);
+  if(later.length){st.cmds=st.cmds.filter(c=>c.t<=T+1e-9);toast('過去へ分岐: '+later.length+' 件の以降の指令を破棄');}
+  const o=st.ord,cm={id:st.nextId++,ship:i,origin:st.obs,t:T,kind:o.kind,tx:o.tx,ty:o.ty,label:o.label,cond:o.cond?{type:o.ck,v:o.cv}:null};
+  st.cmds.push(cm);resim();st.focusEv=null;syncUI();
+  const eta=etaDeliver(i,T);
+  toast('指令#'+cm.id+' を放射 ― '+SHIPS[i].name+' への到達は '+(eta===null?'窓待ち':fmtT(eta)));
+}
+
+// ---------- 時間制御・アラーム ----------
+const spdSeg=$('#spdSeg');
+SPEEDS.forEach((s,i)=>{const b=document.createElement('button');b.textContent=s+' h/s';b.onclick=()=>{st.speed=s;syncTransport();};spdSeg.appendChild(b);});
+const ALARMS=[['engage','脅威・交戦'],['loss','喪失・戦果'],['order','指令・到着'],['burn','噴射'],['comm','通信']];
+const alarmSeg=$('#alarmSeg');
+ALARMS.forEach(([k,l])=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>{st.alarmOn[k]=!st.alarmOn[k];syncTransport();};b.dataset.k=k;alarmSeg.appendChild(b);});
+const obsSeg=$('#obsSeg');
+[['a','α ミフラーブ'],['b','β バーグ']].forEach(([k,l])=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>{st.obs=k;buildEvs();logSig='';syncTransport();refreshComposer();};b.dataset.k=k;obsSeg.appendChild(b);});
+const viewSeg=$('#viewSeg');
+[['both','両方'],['god','神視点(真値)'],['crystal','結晶視点(遅延像)']].forEach(([k,l])=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>{st.view=k;logSig='';syncTransport();};b.dataset.k=k;viewSeg.appendChild(b);});
+function syncTransport(){
+  [...spdSeg.children].forEach((b,i)=>b.classList.toggle('on',SPEEDS[i]===st.speed));
+  [...alarmSeg.children].forEach(b=>b.classList.toggle('on',!!st.alarmOn[b.dataset.k]));
+  [...obsSeg.children].forEach(b=>b.classList.toggle('on',b.dataset.k===st.obs));
+  [...viewSeg.children].forEach(b=>b.classList.toggle('on',b.dataset.k===st.view));
+  $('#playBtn').textContent=st.playing?'⏸ 停止':'▶ 再生';
+  $('#realC').classList.toggle('on',st.realC);
+  const c=cVal();$('#cLbl').textContent=st.realC?'実際の c ≒ 地月 1.3 s(遅延は事実上ゼロ)':c.toLocaleString()+' km/h ・ 地月 '+dur(EM/c);
+  $('#marginLbl').textContent=st.margin.toFixed(1)+'h';
+}
+function syncUI(){syncTransport();refreshComposer();}
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',2600);}
+function banner(x){const b=$('#banner');
+  const sh=SHIPS[x.e.ship];
+  b.innerHTML='⏰ '+(sh?sh.name+' ':'')+evLabel(x.e,x.e.t>st.T).replace(sh?sh.name+' ':'','')+'<small>'+(x.e.seenAlarm?'結晶に光が届きました':'予定時刻 '+fmtT(x.e.t)+' の '+dur(Math.max(0,x.e.t-st.T))+' 手前で停止')+' ― 指令を送るか、Space で続行</small>';
+  b.style.display='block';clearTimeout(banner.h);banner.h=setTimeout(()=>b.style.display='none',9000);}
+$('#playBtn').onclick=togglePlay;
+function togglePlay(){if(st.T>=H-1e-6)setT(0,true);st.playing=!st.playing;st.focusEv=null;syncTransport();}
+$('#nextBtn').onclick=jumpNext;
+function jumpNext(){const na=nextAlarm(st.T);if(!na){toast('この先の注意点はありません');return;}st.acked.set(na.e.key,na.a);st.playing=false;setT(na.a,false);banner(na);
+  if(na.e.ship>=0&&na.e.cls!=='order')selectShip(na.e.ship);syncUI();}
+$('#margin').oninput=e=>{st.margin=+e.target.value;syncTransport();};
+$('#cSlider').oninput=e=>{st.cSlider=+e.target.value;st.realC=false;resim();logSig='';syncUI();};
+$('#realC').onclick=()=>{st.realC=!st.realC;resim();logSig='';syncUI();};
+$('#zapBtn').onclick=()=>{st.zap=!st.zap;$('#zapBtn').classList.toggle('on',st.zap);if(st.zap)focusShip(st.sel);else resetView();};
+$('#resetBtn').onclick=resetView;
+$('#helpBtn').onclick=()=>$('#help').classList.add('on');
+$('#helpClose').onclick=()=>$('#help').classList.remove('on');
+$('#help').onclick=e=>{if(e.target.id==='help')$('#help').classList.remove('on');};
+
+function advance(dtH){
+  if(dtH<=0)return;
+  const Tn=Math.min(H,st.T+dtH);
+  let stopAt=null;
+  for(const x of alarmList()){if(x.a>st.T+1e-6&&x.a<=Tn&&!st.acked.has(x.e.key)){stopAt=x;break;}}
+  if(stopAt){st.acked.set(stopAt.e.key,stopAt.a);st.T=stopAt.a;st.playing=false;banner(stopAt);
+    if(!B.on&&stopAt.e.ship>=0&&stopAt.e.cls!=='order')selectShip(stopAt.e.ship);syncTransport();return;}
+  st.T=Tn;if(Tn>=H){st.playing=false;syncTransport();}
+}
+
+// ---------- 直接操縦(スタブ) ----------
+const B={on:false,ship:0,hp:100,en:null,shots:[],es:[],fx:[],keys:{},mx:0,my:0,t:0,fire:0,over:'',kills:0,efire:1.5};
+const bcv=$('#bcv');
+function battleEnter(){
+  const q=at(st.sel,st.T);if(q.fl&8){toast('喪失した船は操縦できません');return;}
+  B.on=true;B.ship=st.sel;B.hp=100;B.shots=[];B.es=[];B.fx=[];B.over='';B.kills=0;B.efire=1.5;st.playing=false;
+  B.en={x:240,y:-110,vx:-14,vy:8,hp:60};
+  $('#battle').classList.add('on');$('#bTitle').innerHTML='直接操縦 ― <span style="color:'+SHIPS[B.ship].col+'">'+SHIPS[B.ship].name+'</span>';
+  syncTransport();
+}
+function battleExit(){if(!B.on)return;B.on=false;$('#battle').classList.remove('on');
+  toast('卓へ復帰: '+fmtT(st.T)+'(戦果 '+B.kills+' 機 / 本モックでは卓の予測へは未反映)');}
+$('#battleBtn').onclick=battleEnter;$('#bExit').onclick=battleExit;
+bcv.addEventListener('pointermove',e=>{const r=bcv.getBoundingClientRect();B.mx=e.clientX-r.left-r.width/2;B.my=e.clientY-r.top-r.height/2;});
+bcv.addEventListener('pointerdown',e=>{B.mx=e.clientX-bcv.getBoundingClientRect().left-bcv.clientWidth/2;B.my=e.clientY-bcv.getBoundingClientRect().top-bcv.clientHeight/2;battleFire();});
+function battleFire(){if(B.fire>0||B.over)return;B.fire=0.18;const d=Math.hypot(B.mx,B.my)||1;B.shots.push({x:0,y:0,vx:B.mx/d*420,vy:B.my/d*420,life:2.4});}
+function battleStep(dt){
+  const sp=70,k=B.keys;let ax=0,ay=0;
+  if(k.a||k.arrowleft)ax-=1;if(k.d||k.arrowright)ax+=1;if(k.w||k.arrowup)ay-=1;if(k.s||k.arrowdown)ay+=1;
+  B.en.vx-=ax*sp*dt;B.en.vy-=ay*sp*dt;
+  const e=B.en;
+  if(e.hp>0){const d=Math.hypot(e.x,e.y)||1;const want=230,kk=(d-want)*0.12;e.vx-=e.x/d*kk*dt*10;e.vy-=e.y/d*kk*dt*10;
+    e.vx+=(Math.random()-.5)*20*dt;e.vy+=(Math.random()-.5)*20*dt;}
+  e.x+=e.vx*dt;e.y+=e.vy*dt;
+  B.fire-=dt;if(k[' ']||k.space)battleFire();
+  for(const s of B.shots){s.x+=s.vx*dt;s.y+=s.vy*dt;s.x-=ax*0;s.life-=dt;
+    if(e.hp>0&&Math.hypot(s.x-e.x,s.y-e.y)<13){s.life=0;e.hp-=12;for(let n=0;n<8;n++)B.fx.push({x:s.x,y:s.y,vx:(Math.random()-.5)*160,vy:(Math.random()-.5)*160,l:.5,c:'#ffd166'});
+      if(e.hp<=0){B.kills++;for(let n=0;n<60;n++){const a=Math.random()*7,v=40+Math.random()*180;B.fx.push({x:e.x,y:e.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,l:1.2+Math.random(),c:['#fff','#ffb23e','#ff6b8b','#62d4ff'][n%4]});}B.over='撃破 ― ★ 花火は光速で他の現場へ広がっていく';}}}
+  B.shots=B.shots.filter(s=>s.life>0);
+  B.efire-=dt;
+  if(e.hp>0&&B.efire<=0){B.efire=2.2;const d=Math.hypot(e.x,e.y)||1;B.es.push({x:e.x,y:e.y,vx:-e.x/d*150,vy:-e.y/d*150,life:4});}
+  for(const s of B.es){s.x+=s.vx*dt;s.y+=s.vy*dt;s.life-=dt;if(Math.hypot(s.x,s.y)<12){s.life=0;B.hp-=12;B.fx.push({x:0,y:0,vx:0,vy:0,l:.3,c:'#ff4766',ring:true});}}
+  B.es=B.es.filter(s=>s.life>0);
+  for(const f of B.fx){f.x+=f.vx*dt;f.y+=f.vy*dt;f.l-=dt;}B.fx=B.fx.filter(f=>f.l>0);
+  if(B.hp<=0&&!B.over)B.over='被弾 ― 機能停止。卓へ戻ると他の現場は進んでいます';
+}
+function battleDraw(){
+  const {ctx,w,h}=fit(bcv);ctx.fillStyle='#02040a';ctx.fillRect(0,0,w,h);
+  for(const s of stars){ctx.fillStyle='rgba(200,215,255,'+s.a*.7+')';ctx.fillRect(((s.x*w-B.en.vx*0.0)%w+w)%w,s.y*h,s.r,s.r);}
+  ctx.save();ctx.translate(w/2,h/2);
+  // 地球の縁
+  const g=ctx.createRadialGradient(0,h*1.4,h*.9,0,h*1.4,h*1.1);g.addColorStop(0,'#1d4d9a');g.addColorStop(1,'rgba(29,77,154,0)');ctx.fillStyle=g;ctx.fillRect(-w/2,-h/2,w,h);
+  const e=B.en;
+  if(e.hp>0){ctx.strokeStyle='rgba(255,71,102,.35)';ctx.setLineDash([3,4]);ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(e.x,e.y);ctx.stroke();ctx.setLineDash([]);
+    drawPeptide(ctx,e.x,e.y,7,'#ff3b5c',e.hp/60,0);
+    ctx.strokeStyle='#ffb23e';ctx.beginPath();ctx.moveTo(e.x,e.y);ctx.lineTo(e.x+e.vx*2,e.y+e.vy*2);ctx.stroke();
+    ctx.fillStyle='#ffd08a';ctx.fillText('相対 '+Math.hypot(e.vx,e.vy).toFixed(0)+' m/s  距離 '+(Math.hypot(e.x,e.y)*20).toFixed(0)+' m',e.x+14,e.y+4);}
+  for(const s of B.shots){ctx.fillStyle='#fff';ctx.fillRect(s.x-1.5,s.y-1.5,3,3);}
+  for(const s of B.es){ctx.fillStyle='#ff6b8b';ctx.beginPath();ctx.arc(s.x,s.y,3,0,7);ctx.fill();}
+  for(const f of B.fx){ctx.globalAlpha=Math.max(0,Math.min(1,f.l));ctx.fillStyle=f.c;if(f.ring){ctx.strokeStyle=f.c;ctx.beginPath();ctx.arc(0,0,20+(.3-f.l)*80,0,7);ctx.stroke();}else{ctx.fillRect(f.x,f.y,2.5,2.5);}ctx.globalAlpha=1;}
+  drawGlyph(ctx,0,0,Math.atan2(-B.my,B.mx),9,SHIPS[B.ship].col,true);
+  ctx.strokeStyle='rgba(255,255,255,.4)';ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(B.mx,B.my);ctx.stroke();ctx.beginPath();ctx.arc(B.mx,B.my,7,0,7);ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle='#fff';ctx.fillText('自機 HP '+Math.max(0,B.hp|0)+'   敵 HP '+Math.max(0,e.hp|0)+'   戦果 '+B.kills,14,22);
+  if(B.over){ctx.fillStyle='rgba(0,0,0,.55)';ctx.fillRect(0,h/2-24,w,48);ctx.fillStyle='#ffe2b0';ctx.textAlign='center';ctx.font='14px '+getComputedStyle(document.body).fontFamily;ctx.fillText(B.over,w/2,h/2+4);ctx.textAlign='left';ctx.font='11px '+getComputedStyle(document.body).fontFamily;}
+  $('#bStat').textContent='世界の時計 '+fmtT(st.T)+'(1秒=1分で進行中)';
+}
+
+// ---------- 入力 ----------
+addEventListener('keydown',e=>{
+  const tg=e.target.tagName;if(tg==='INPUT'||tg==='SELECT'||tg==='TEXTAREA')return;
+  const k=e.key.toLowerCase();
+  if(B.on){B.keys[k]=true;if(k===' ')e.preventDefault();if(k==='escape')battleExit();return;}
+  if(k===' '){e.preventDefault();togglePlay();}
+  else if(k===','){const i=Math.max(0,SPEEDS.indexOf(st.speed)-1);st.speed=SPEEDS[i];syncTransport();}
+  else if(k==='.'){const i=Math.min(SPEEDS.length-1,SPEEDS.indexOf(st.speed)+1);st.speed=SPEEDS[i];syncTransport();}
+  else if(k==='n')jumpNext();
+  else if(k==='b')battleEnter();
+  else if(k==='0')resetView();
+  else if(k==='tab'){e.preventDefault();st.zap=true;$('#zapBtn').classList.add('on');selectShip((st.sel+1)%SHIPS.length);}
+  else if(k>='1'&&k<='4'){selectShip(+k-1);}
+  else if(k==='?'||k==='/'){$('#help').classList.toggle('on');}
+  else if(k==='escape'){$('#help').classList.remove('on');}
+});
+addEventListener('keyup',e=>{B.keys[e.key.toLowerCase()]=false;});
+
+// ---------- 情報カード ----------
+function updateInfo(){
+  $('#banner').style.top=B.on?'46px':'10px';
+  const i=st.sel,cf=SHIPS[i],q=at(i,st.T),cr=crystal(),lag=dist(q.x,q.y,cr.x,cr.y)/S.c;
+  const dead=q.fl&8,sp=Math.hypot(q.vx,q.vy);
+  const lastCmd=[...st.cmds].reverse().find(c=>c.ship===i&&S.cmd[c.id].deliv!==null&&S.cmd[c.id].deliv<=st.T);
+  const bar=(v,col)=>'<div class="bar"><i style="width:'+Math.max(0,Math.min(100,v))+'%;background:'+col+'"></i></div>';
+  $('#info').innerHTML='<b style="color:'+cf.col+'">'+cf.name+'</b> <span style="color:var(--dim)">'+cf.role+'</span> ― '+(dead?'<span style="color:#f66">喪失</span>':MODES[q.md]+(q.fl&16?' <span style="color:#ff6a80">⚔交戦中</span>':'')+(q.fl&1?' <span style="color:#9aa4ff">日陰</span>':''))+
+   '<br>船体 '+Math.round(q.hp)+'/'+cf.hp+bar(q.hp/cf.hp*100,'#ff6b8b')+'燃料 '+q.fuel.toFixed(0)+'%'+bar(q.fuel,'#ffb23e')+
+   '速度 '+(sp/3600*1).toFixed(2)+' km/s ・ 指令遅延 '+dur(lag)+'<br>'+
+   '最新指令 '+(lastCmd?'#'+lastCmd.id+' ('+dur(st.T-lastCmd.t)+' 前発)':'計画どおり');
+}
+
+// ---------- メインループ ----------
+let last=performance.now(),lastSlow=0;
+function frame(now){
+  const dt=Math.min(0.06,(now-last)/1000);last=now;
+  if(B.on){advance(dt/60);battleStep(dt);battleDraw();}
+  else if(st.playing){advance(st.speed*dt);}
+  drawMap();drawTiles();drawTL();
+  if(now-lastSlow>120){lastSlow=now;updateLog();updateInfo();updateEta();
+    const m=Math.floor(st.T%24);$('#clock').innerHTML=fmtT(st.T)+'<small>T = '+st.T.toFixed(1)+' h'+(B.on?' ・戦闘中 ×60':st.playing?' ・'+st.speed+' h/s':' ・停止')+'</small>';
+    $('#playBtn').textContent=st.playing?'⏸ 停止':'▶ 再生';}
+  requestAnimationFrame(frame);
+}
+resim();resetView();mapView.cx=mapView.tcx;mapView.cy=mapView.tcy;mapView.sc=mapView.tsc;
+syncUI();
+requestAnimationFrame(frame);
+addEventListener('resize',()=>{if(!st.zap)resetView();});
+</script>
+</body>
+</html>
