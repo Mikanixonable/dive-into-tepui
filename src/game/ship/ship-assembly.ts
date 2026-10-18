@@ -171,19 +171,6 @@ export class ShipAssembly {
     this.addModule(instance, parentId, transform, 'side', connectionId, sideSlot);
   }
 
-  // 建造枝の根元を、ポート対の docking edge とは別の分離可能な建造接続へ確定する。
-  public completeConstructionConnection(connectionId: string): void {
-    const index = this.connections.findIndex(connection => connection.id === connectionId);
-    const connection = index < 0 ? undefined : this.connections[index];
-    if (connection === undefined) throw new Error(`unknown construction connection: ${connectionId}`);
-    if (connection.kind === 'construction') return;
-    if (connection.kind === 'docking') throw new Error(`docking connection is not a construction branch: ${connectionId}`);
-    if (this.nodes.get(connection.parentId)?.instance.kind !== 'dock') {
-      throw new Error(`construction connection does not start at a docking module: ${connectionId}`);
-    }
-    this.connections[index] = { ...connection, kind: 'construction' };
-  }
-
   /** 二つの接舷部を正対させ、other をこの assembly の dock branch として複製統合する。 */
   public mergedAtDock(
     other: ShipAssembly, localPortId: string, otherPortId: string, namespace: string,

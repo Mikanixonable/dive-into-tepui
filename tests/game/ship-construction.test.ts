@@ -1,26 +1,29 @@
 import * as assert from 'node:assert/strict';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
-import { ShipDockState } from '../../src/game/ship/ship-dock-state';
 import { createBasePreset } from '../../src/game/ship/ship-presets';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
-import { enumerateConstructionSlots, placementForSlot } from '../../src/game/ship/ship-construction-rules';
-import { restoreConstructionDrafts, restoreDockedVessels } from '../../src/game/ship/ship-save';
+import { enumerateConstructionTargets } from '../../src/game/ship/ship-construction-rules';
+import { restoreDockedVessels, serializeShipAssembly } from '../../src/game/ship/ship-save';
 import { CommandQueue } from '../../src/game/command-queue';
 import { CommandCompletion } from '../../src/game/command-completion';
 import { ShipConstructionEdits, type ConstructionShip } from '../../src/game/ship/ship-construction-edits';
+import { ConstructionHistory } from '../../src/game/ship/ship-construction-history';
 import { ShipCapabilities } from '../../src/game/ship/ship-capabilities';
 import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { test } from '../harness';
-import { constructionCandidate, hitsConstructionCandidate } from '../../src/game/ship/ship-construction-candidates';
-import { LOCAL_FORWARD, LOCAL_UP, Q_IDENTITY, qFromAxisAngle, qRotate } from '../../src/math/quat';
-import { add, sub, scale, len, v3 } from '../../src/math/vec3';
+import { Q_IDENTITY } from '../../src/math/quat';
+import { v3 } from '../../src/math/vec3';
+import type { ModuleOrientation } from '../../src/game/ship/ship-assembly-transform';
+import type { AxialFace } from '../../src/game/ship/ship-assembly-transform';
+import type { TankInstance } from '../../src/game/ship/ship-module-instance';
 
-// 船体構成・予約・運動を実部品で組み、構造編集後の物性を更新する。
+const ORIENTATION: ModuleOrientation = { roll: 0, face: 'back' };
+
+// 船体構成と運動を実部品で組み、構造編集後の物性を更新する。
 class ConstructionTestShip implements ConstructionShip {
   public readonly assembly = createBasePreset();
-  public readonly docks = new ShipDockState();
   public readonly capabilities = new ShipCapabilities(this.assembly);
   public readonly motion = new ModularShipMotion(
     this.assembly, kinematicState<'eci'>(0, v3(100, 200, 300), v3()),
@@ -34,158 +37,18 @@ class ConstructionTestShip implements ConstructionShip {
   }
 }
 
+// 起点ドックから見て前端側の空いている面の取り付け先を探す。
+function axialFaceTarget(assembly: ShipAssembly, anchorId: string, parentId: string, face: AxialFace) {
+  return enumerateConstructionTargets(assembly, anchorId).find(
+    info => info.target.kind === 'axial-face' && info.target.parentId === parentId && info.target.face === face,
+  );
+}
+
 export function register(): void {
-  test('ship construction: dock draft lifecycle is resumable and serializable', () => {
-    const assembly = createBasePreset();
-    const docks = new ShipDockState();
-
-    assert.equal(docks.status(assembly, 'dock-left'), 'empty');
-    docks.beginBuilding(assembly, 'dock-left');
-    assert.equal(docks.status(assembly, 'dock-left'), 'building');
-    assert.deepEqual(docks.constructionDraft('dock-left'), {
-      dockId: 'dock-left', addedIds: [], axialTailId: 'dock-left', firstConnectionId: null,
-    });
-
-    docks.updateConstructionDraft({
-      dockId: 'dock-left', addedIds: ['branch-1'], axialTailId: 'branch-1', firstConnectionId: 'edge-1',
-    });
-    const saved = docks.serialize();
-    assert.deepEqual(saved, [{
-      dockId: 'dock-left', addedIds: ['branch-1'], axialTailId: 'branch-1', firstConnectionId: 'edge-1',
-    }]);
-
-    const resumed = new ShipDockState(saved);
-    const resumedDraft = resumed.constructionDraft('dock-left');
-    assert.deepEqual(resumedDraft, saved[0]);
-    assert.equal(resumed.status(assembly, 'dock-left'), 'building');
-
-    resumed.finishBuilding('dock-left');
-    assert.equal(resumed.status(assembly, 'dock-left'), 'empty');
-  });
-
-  test('ship construction: a connected dock takes precedence over a construction draft', () => {
-    const host = createBasePreset();
-    const guest = new ShipAssembly(SHIP_MODULE_CATALOG, true);
-    guest.addRoot(createShipModuleInstance(
-      SHIP_MODULE_CATALOG.require('docking-port-standard'), 'port',
-    ));
-    const merged = host.mergedAtDock(guest, 'dock-left', 'port', 'guest');
-    const docks = new ShipDockState([{
-      dockId: 'dock-left', addedIds: [], axialTailId: 'dock-left', firstConnectionId: null,
-    }]);
-
-    assert.equal(docks.status(merged.assembly, 'dock-left'), 'connected');
-  });
-
-  test('ship construction: all free cockpit and tank side slots are enumerated', () => {
-    const assembly = createBasePreset();
-    const slots = enumerateConstructionSlots(
-      assembly, ['dock-left', 'cockpit', 'main-tank', 'rcs-tank'], 'rcs-tank',
-    );
-    assert.equal(slots[0]?.id, 'axial');
-    assert.ok(slots.some(slot => slot.id === 'main-tank:side+y'));
-    assert.ok(slots.some(slot => slot.id === 'rcs-tank:side-y'));
-    assert.equal(slots.some(slot => slot.id === 'cockpit:side+y'), false);
-    assert.equal(new Set(slots.map(slot => slot.id)).size, slots.length);
-  });
-
-  test('ship construction: placement rules allow side equipment on any eligible parent', () => {
-    const assembly = createBasePreset();
-    const slot = enumerateConstructionSlots(
-      assembly, ['dock-left', 'cockpit', 'main-tank', 'rcs-tank'], 'rcs-tank',
-    ).find(candidate => candidate.id === 'main-tank:side+y');
-    assert.ok(slot);
-    const dockingPort = SHIP_MODULE_CATALOG.require('docking-port-standard');
-    const sidePlacement = placementForSlot(assembly, slot, dockingPort);
-    assert.equal(sidePlacement.valid, true);
-    assert.equal(sidePlacement.kind, 'side');
-
-    const cockpit = SHIP_MODULE_CATALOG.require('cockpit-standard');
-    const axial = enumerateConstructionSlots(assembly, ['dock-left'], 'rcs-tank')[0];
-    assert.ok(axial);
-    assert.equal(placementForSlot(assembly, axial, cockpit).valid, true);
-    const solar = SHIP_MODULE_CATALOG.require('solar-panel-standard');
-    assert.equal(placementForSlot(assembly, axial, solar).valid, false);
-  });
-
-  test('ship construction: dock axial slot points +Z outward with inverted rotation', () => {
-    const assembly = createBasePreset();
-    const dockSlots = enumerateConstructionSlots(assembly, ['dock-left'], 'dock-left');
-    assert.equal(dockSlots[0]?.id, 'axial');
-    assert.equal(dockSlots[0]?.direction.z, 1);
-
-    const cockpit = SHIP_MODULE_CATALOG.require('cockpit-standard');
-    const placement = placementForSlot(assembly, dockSlots[0], cockpit);
-    assert.equal(placement.valid, true);
-    assert.equal(placement.transform.position.z, (1 + 9) / 2);
-    assert.equal(placement.transform.rotation.y, 1);
-  });
-
   test('ship construction: catalog definitions expose presentation metadata', () => {
     assert.equal(SHIP_MODULE_CATALOG.require('cockpit-standard').name, 'コックピット');
     assert.equal(SHIP_MODULE_CATALOG.require('tank-6-main').category, 'fuel');
     assert.equal(SHIP_MODULE_CATALOG.require('weapon-gatling').category, 'combat');
-  });
-
-  test('ship construction: 候補位置は船体の平行移動と回転に従う', () => {
-    const assembly = createBasePreset();
-    const definition = SHIP_MODULE_CATALOG.require('cockpit-standard');
-    const slots = enumerateConstructionSlots(assembly, ['dock-left', 'main-tank'], 'dock-left');
-    const position = v3(700, -30, 80); // ECI [m]
-    const offset = v3(1, 2, 3); // 船体内重心 [m]
-    const rotation = qFromAxisAngle(LOCAL_UP, Math.PI / 3);
-    for (const slot of slots) {
-      const local = constructionCandidate(assembly, slot, definition, v3(), Q_IDENTITY, offset);
-      const world = constructionCandidate(assembly, slot, definition, position, rotation, offset);
-      assert.ok(local !== null && world !== null);
-      assert.ok(len(sub(world.centerEci, add(position, qRotate(rotation, local.centerEci)))) < 1e-9);
-      assert.ok(len(sub(world.guideEci, add(position, qRotate(rotation, local.guideEci)))) < 1e-9);
-      assert.equal(world.placement.valid, local.placement.valid);
-      assert.equal(world.guideRadius, local.guideRadius);
-    }
-  });
-
-  test('ship construction: 円盤は前方の交差を受け、背後と平行の視線を拒否する', () => {
-    const assembly = createBasePreset();
-    const slot = enumerateConstructionSlots(assembly, ['dock-left'], 'dock-left')[0];
-    assert.ok(slot !== undefined);
-    const candidate = constructionCandidate(
-      assembly, slot, SHIP_MODULE_CATALOG.require('cockpit-standard'),
-      v3(700, -30, 80), qFromAxisAngle(LOCAL_UP, Math.PI / 3), v3(1, 2, 3),
-    );
-    assert.ok(candidate !== null);
-    const normal = qRotate(candidate.rotationEci, LOCAL_FORWARD);
-    const origin = add(candidate.guideEci, scale(normal, 10));
-    assert.equal(hitsConstructionCandidate({ origin, dir: scale(normal, -1) }, candidate, false), true);
-    assert.equal(hitsConstructionCandidate({ origin, dir: normal }, candidate, false), false);
-    const tangent = qRotate(candidate.rotationEci, LOCAL_UP);
-    assert.equal(hitsConstructionCandidate({ origin, dir: tangent }, candidate, false), false);
-    const outside = add(origin, scale(tangent, candidate.guideRadius * 2));
-    assert.equal(hitsConstructionCandidate({ origin: outside, dir: scale(normal, -1) }, candidate, false), false);
-  });
-
-  test('ship construction: 保存ドラフトは追加枝と重複IDを検証する', () => {
-    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
-    assembly.addRoot(createShipModuleInstance(
-      SHIP_MODULE_CATALOG.require('dock-standard'), 'dock',
-    ));
-    assembly.append(createShipModuleInstance(
-      SHIP_MODULE_CATALOG.require('tank-3-main'), 'tank',
-    ), 'dock');
-    const edge = assembly.graph[0];
-    assert.ok(edge !== undefined);
-    assert.deepEqual(restoreConstructionDrafts([{
-      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
-    }], assembly), [{
-      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
-    }]);
-    assert.throws(() => restoreConstructionDrafts([{
-      dockId: 'dock', addedIds: ['tank', 'tank'], axialTailId: 'tank', firstConnectionId: edge.id,
-    }], assembly), /invalid construction draft/);
-    assert.throws(() => restoreConstructionDrafts([{
-      dockId: 'dock', addedIds: 'tank' as unknown as readonly string[],
-      axialTailId: 'dock', firstConnectionId: null,
-    }], assembly), /invalid construction draft/);
   });
 
   test('ship construction: 保存された docking identity は全 edge と一対一である', () => {
@@ -202,84 +65,246 @@ export function register(): void {
     }]);
     assert.throws(() => restoreDockedVessels([], merged.assembly), /do not match docking connections/);
   });
-  test('ship construction: 命令を順に適用し、予約と構成と物性を同時に更新する', () => {
+
+  // (a) 撤去は先端部ごと消え、起点側は残る
+  test('ship construction: 撤去は先端部ごと消え、起点側の船体は残る', () => {
+    const ship = new ConstructionTestShip();
+    const edits = new ShipConstructionEdits(ship, 'dock-left');
+
+    edits.remove('rcs-tank');
+
+    for (const id of ['rcs-tank', 'radiator-left', 'radiator-right']) {
+      assert.equal(ship.assembly.module(id), null, `${id} が残っている`);
+    }
+    for (const id of ['dock-left', 'main-tank', 'cockpit', 'solar-left', 'solar-right', 'dock-right']) {
+      assert.ok(ship.assembly.module(id) !== null, `${id} が消えた`);
+    }
+    assert.equal(ship.motion.mass, ship.assembly.totalMass);
+    ship.assembly.assertValid();
+  });
+
+  // (b) 付け替えで識別子・HP・燃料が保たれる
+  test('ship construction: 付け替えは識別子と HP と燃料を保つ', () => {
+    const ship = new ConstructionTestShip();
+    const edits = new ShipConstructionEdits(ship, 'dock-left');
+    const tank = ship.assembly.module('rcs-tank') as TankInstance;
+    ship.assembly.setHp('rcs-tank', tank.hp - 1);
+    const fuelBefore = tank.fuel - ship.assembly.consumeFuel('rcs', 20);
+
+    const target = axialFaceTarget(ship.assembly, 'dock-left', 'cockpit', 'front');
+    assert.ok(target !== undefined);
+    edits.move('rcs-tank', target.target, ORIENTATION);
+
+    const moved = ship.assembly.module('rcs-tank') as TankInstance;
+    assert.ok(moved !== null);
+    assert.equal(moved.id, 'rcs-tank');
+    assert.equal(moved.fuel, fuelBefore);
+    assert.equal(moved.hp, ship.assembly.definition('rcs-tank')!.maxHp - 1);
+    // 先端部の残りの識別子も保つ。
+    assert.ok(ship.assembly.module('radiator-left') !== null);
+    assert.ok(ship.assembly.module('radiator-right') !== null);
+    assert.equal(
+      ship.assembly.graph.find(edge => edge.childId === 'rcs-tank')?.parentId, 'cockpit',
+    );
+    ship.assembly.assertValid();
+  });
+
+  // (c) 割り込みで後ろ側が割り込んだモジュールの反対端へ付き、並びがその長さだけずれる
+  test('ship construction: 継ぎ目への割り込みは後ろ側を割り込んだ部品の反対端へ付き直す', () => {
+    const ship = new ConstructionTestShip();
+    const edits = new ShipConstructionEdits(ship, 'dock-left');
+    const joint = ship.assembly.graph.find(
+      edge => edge.parentId === 'cockpit' && edge.childId === 'main-tank',
+    );
+    assert.ok(joint !== undefined);
+    const jointTarget = enumerateConstructionTargets(ship.assembly, 'dock-left')
+      .find(info => info.target.kind === 'joint' && info.target.connectionId === joint.id);
+    assert.ok(jointTarget !== undefined);
+    const before = ship.assembly.worldTransformOf('cockpit')!.position;
+    const insertedLength = SHIP_MODULE_CATALOG.require('tank-3-main').length;
+
+    edits.insert('tank-3-main', joint.id, ORIENTATION, 'inserted-tank');
+
+    // 割り込んだモジュールは anchor 側(main-tank)へ付き、後ろ側(cockpit)は反対端へ付き直る。
+    assert.equal(
+      ship.assembly.graph.find(edge => edge.childId === 'inserted-tank')?.parentId, 'main-tank',
+    );
+    const reattached = ship.assembly.graph.find(
+      edge => edge.parentId === 'inserted-tank' && edge.childId === 'cockpit',
+    );
+    assert.ok(reattached !== undefined);
+    assert.equal(reattached.id, joint.id);
+    const after = ship.assembly.worldTransformOf('cockpit')!.position;
+    assert.ok(Math.abs(after.z - before.z - insertedLength) < 1e-9);
+    ship.assembly.assertValid();
+  });
+
+  // (d) replaceAssembly で写しの時点へ戻る
+  test('ship construction: replaceAssembly は船体を写しの時点へ戻す', () => {
+    const ship = new ConstructionTestShip();
+    const edits = new ShipConstructionEdits(ship, 'dock-left');
+    const start = serializeShipAssembly(ship.assembly);
+    const target = axialFaceTarget(ship.assembly, 'dock-left', 'dock-left', 'front');
+    assert.ok(target !== undefined);
+    edits.place(
+      { kind: 'catalog', definitionId: 'tank-3-main' }, target.target, ORIENTATION, 1, ['placed-1'],
+    );
+    assert.ok(ship.assembly.module('placed-1') !== null);
+
+    edits.replaceAssembly(start);
+
+    assert.equal(ship.assembly.module('placed-1'), null);
+    assert.ok(ship.assembly.module('dock-left') !== null);
+    assert.equal(ship.motion.mass, ship.assembly.totalMass);
+    ship.assembly.assertValid();
+  });
+
+  // (e) 起点ドックを動かす・消す命令は失敗する
+  test('ship construction: 起点ドックの撤去・付け替え・回転は失敗する', () => {
+    const ship = new ConstructionTestShip();
+    const edits = new ShipConstructionEdits(ship, 'dock-left');
+    const target = { kind: 'axial-face' as const, parentId: 'cockpit', face: 'front' as const };
+
+    assert.throws(() => edits.remove('dock-left'), /起点のドック/);
+    assert.throws(() => edits.move('dock-left', target, ORIENTATION), /起点のドック/);
+    assert.throws(() => edits.reorient('dock-left', ORIENTATION), /起点のドック/);
+    ship.assembly.assertValid();
+  });
+
+  test('ship construction: 命令を順に適用し、構成と物性を同時に更新する', () => {
     const ship = new ConstructionTestShip();
     const edits = new ShipConstructionEdits(ship, 'dock-left');
     const queue = new CommandQueue();
-    const start = new CommandCompletion();
     const first = new CommandCompletion();
     const second = new CommandCompletion();
-    queue.submitWithCompletion(() => edits.begin(), start);
-    queue.submitWithCompletion(() => edits.place('cockpit-standard', 'axial', 'branch-cockpit'), first);
-    queue.submitWithCompletion(() => edits.place('tank-3-main', 'axial', 'branch-tank'), second);
-    assert.equal(ship.docks.constructionDraft('dock-left'), null);
-    assert.equal(ship.assembly.module('branch-cockpit'), null);
+    const dockFront = axialFaceTarget(ship.assembly, 'dock-left', 'dock-left', 'front');
+    assert.ok(dockFront !== undefined);
+    queue.submitWithCompletion(
+      () => edits.place(
+        { kind: 'catalog', definitionId: 'tank-3-main' }, dockFront.target, ORIENTATION, 1, ['branch-tank'],
+      ), first,
+    );
+    assert.equal(ship.assembly.module('branch-tank'), null);
 
     queue.applyAll();
-    assert.equal(start.state.kind, 'succeeded');
     assert.equal(first.state.kind, 'succeeded');
+    // ドックの前端への配置は建造接続になる。
+    assert.equal(
+      ship.assembly.graph.find(edge => edge.childId === 'branch-tank')?.kind, 'construction',
+    );
+    assert.equal(ship.motion.mass, ship.assembly.totalMass);
+
+    const branchFront = axialFaceTarget(ship.assembly, 'dock-left', 'branch-tank', 'front');
+    assert.ok(branchFront !== undefined);
+    queue.submitWithCompletion(
+      () => edits.place(
+        { kind: 'catalog', definitionId: 'tank-3-main' }, branchFront.target, ORIENTATION, 1, ['branch-tank-2'],
+      ), second,
+    );
+    queue.applyAll();
     assert.equal(second.state.kind, 'succeeded');
-    assert.deepEqual(edits.draft?.addedIds, ['branch-cockpit', 'branch-tank']);
-    assert.equal(edits.draft?.axialTailId, 'branch-tank');
-    assert.equal(ship.assembly.graph.find(edge => edge.childId === 'branch-tank')?.parentId, 'branch-cockpit');
-    assert.equal(ship.motion.mass, ship.assembly.totalMass);
-
-    edits.removeLast();
-    assert.equal(ship.assembly.module('branch-tank'), null);
-    assert.deepEqual(edits.draft?.addedIds, ['branch-cockpit']);
-    assert.equal(edits.draft?.axialTailId, 'branch-cockpit');
-    assert.equal(ship.motion.mass, ship.assembly.totalMass);
-    edits.finish();
-    assert.deepEqual(edits.draft, null);
-    assert.equal(ship.docks.status(ship.assembly, 'dock-left'), 'connected');
-    assert.ok(ship.assembly.module('branch-cockpit') !== null);
+    assert.equal(
+      ship.assembly.graph.find(edge => edge.childId === 'branch-tank-2')?.parentId, 'branch-tank',
+    );
+    ship.assembly.assertValid();
   });
 
-  test('ship construction: 予約を再開しても枝を保ち、破棄は追加した部品に限定する', () => {
-    const ship = new ConstructionTestShip();
-    const originalIds = ship.assembly.moduleIds;
-    const edits = new ShipConstructionEdits(ship, 'dock-left');
-    edits.begin();
-    edits.place('cockpit-standard', 'axial', 'branch-cockpit');
-    edits.place('tank-3-main', 'axial', 'branch-tank');
-    const resumed = new ShipConstructionEdits(ship, 'dock-left');
-    resumed.begin();
-    assert.deepEqual(resumed.draft, edits.draft);
-    resumed.discard();
-    assert.equal(resumed.draft, null);
-    assert.deepEqual(ship.assembly.moduleIds, originalIds);
-    assert.equal(ship.docks.status(ship.assembly, 'dock-left'), 'empty');
-    assert.equal(ship.motion.mass, ship.assembly.totalMass);
-  });
-
-  test('ship construction: 適用前に候補が消えた配置命令は構成を変更しない', () => {
+  test('ship construction: 適用前に取り付け先が消えた配置命令は構成を変更しない', () => {
     const ship = new ConstructionTestShip();
     const edits = new ShipConstructionEdits(ship, 'dock-left');
-    edits.begin();
-    edits.place('cockpit-standard', 'axial', 'branch-cockpit');
+    const target = axialFaceTarget(ship.assembly, 'dock-left', 'rcs-tank', 'back');
+    assert.ok(target !== undefined);
     const queue = new CommandQueue();
     const completion = new CommandCompletion();
-    queue.submitWithCompletion(() => edits.place('radiator-standard', 'branch-cockpit:side+y', 'radiator'), completion);
-    edits.removeLast();
+    queue.submitWithCompletion(
+      () => edits.place(
+        { kind: 'catalog', definitionId: 'tank-3-main' }, target.target, ORIENTATION, 1, ['extra-tank'],
+      ), completion,
+    );
+    // 適用前に取り付け先の親ごと撤去する。
+    edits.remove('rcs-tank');
     const originalIds = ship.assembly.moduleIds;
     queue.applyAll();
     assert.equal(completion.state.kind, 'failed');
     assert.deepEqual(ship.assembly.moduleIds, originalIds);
-    assert.deepEqual(edits.draft?.addedIds, []);
+    ship.assembly.assertValid();
   });
 
-  test('ship construction: 破壊済みドックへの配置を適用時に拒否する', () => {
+  test('ship construction: 破壊済みドックへの編集を適用時に拒否する', () => {
     const ship = new ConstructionTestShip();
     const edits = new ShipConstructionEdits(ship, 'dock-left');
-    edits.begin();
+    const target = axialFaceTarget(ship.assembly, 'dock-left', 'dock-left', 'front');
+    assert.ok(target !== undefined);
     const queue = new CommandQueue();
     const completion = new CommandCompletion();
-    queue.submitWithCompletion(() => edits.place('cockpit-standard', 'axial', 'branch-cockpit'), completion);
+    queue.submitWithCompletion(
+      () => edits.place(
+        { kind: 'catalog', definitionId: 'tank-3-main' }, target.target, ORIENTATION, 1, ['branch-tank'],
+      ), completion,
+    );
     ship.assembly.setHp('dock-left', 0);
     queue.applyAll();
     assert.equal(completion.state.kind, 'failed');
-    assert.equal(ship.assembly.module('branch-cockpit'), null);
-    assert.deepEqual(edits.draft?.addedIds, []);
+    assert.equal(ship.assembly.module('branch-tank'), null);
+    ship.assembly.assertValid();
   });
 
+  test('ship construction: 配置済みモジュールを接続軸まわりへ回しても接続は保つ', () => {
+    const ship = new ConstructionTestShip();
+    const edits = new ShipConstructionEdits(ship, 'dock-left');
+    // solar-left は cockpit の側面接続。回すとロールだけが変わる。
+    edits.reorient('solar-left', { roll: 1, face: 'back' });
+    ship.assembly.assertValid();
+    const edge = ship.assembly.graph.find(candidate => candidate.childId === 'solar-left');
+    assert.equal(edge?.kind, 'side');
+    const rotated = ship.assembly.worldTransformOf('solar-left');
+    assert.ok(rotated !== null);
+  });
+
+  test('ship construction history: 上限を超えたら開始時を残して古い順に捨てる', () => {
+    const start = serializeShipAssembly(createBasePreset());
+    const history = new ConstructionHistory(start);
+    for (let index = 0; index < ConstructionHistory.LIMIT + 10; index++) {
+      history.record(`操作${index}`, start);
+    }
+    assert.equal(history.entriesView.length, ConstructionHistory.LIMIT);
+    assert.equal(history.entriesView[0]?.name, '建造を開始');
+    assert.equal(history.entriesView[0]?.assembly, start);
+    assert.equal(history.position, ConstructionHistory.LIMIT - 1);
+    // 開始時の次から古い順に捨てるので、残る最古の操作は 11 件捨てたあとのもの。
+    assert.equal(history.entriesView[1]?.name, `操作${11}`);
+  });
+
+  test('ship construction history: 取り消しのあと新しい操作を積むとやり直し分は消える', () => {
+    const start = serializeShipAssembly(createBasePreset());
+    const history = new ConstructionHistory(start);
+    const after = serializeShipAssembly(createBasePreset());
+    history.record('a', after);
+    history.record('b', after);
+    assert.equal(history.position, 2);
+
+    history.moveTo(1);
+    assert.equal(history.target(0), start);
+    assert.equal(history.canRedo, true);
+
+    history.record('c', after);
+    assert.equal(history.canRedo, false);
+    assert.equal(history.canUndo, true);
+    assert.deepEqual(history.names, ['建造を開始', 'a', 'c']);
+  });
+
+  test('ship construction history: 戻す先の写しを返すだけで位置は確定を待つ', () => {
+    const start = serializeShipAssembly(createBasePreset());
+    const history = new ConstructionHistory(start);
+    const after = serializeShipAssembly(createBasePreset());
+    history.record('a', after);
+    assert.equal(history.target(0), start);
+    assert.equal(history.target(9), null);
+    // target は位置を動かさない。
+    assert.equal(history.position, 1);
+    history.moveTo(0);
+    assert.equal(history.position, 0);
+    history.moveTo(99);
+    assert.equal(history.position, 0);
+  });
 }
