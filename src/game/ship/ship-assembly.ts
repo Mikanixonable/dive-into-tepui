@@ -8,7 +8,7 @@ import {
   SHIP_MODULE_CATALOG, type ShipModuleCatalog,
 } from './ship-module-catalog';
 import type { ShipModuleDefinition } from './ship-module-definition';
-import { cloneShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
+import { cloneShipModuleInstance, createShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
 export type {
   ConnectionKind, DockingMergeResult, ModuleTransform, ShipAssemblyNode as AssemblyNode, ShipAssemblyTotals,
   ShipAssemblyValidation, ShipConnection, ShipRole, SideSlot,
@@ -21,9 +21,10 @@ import {
 import type { ShipAssemblyNode as AssemblyNode } from './ship-assembly-types';
 import { shipAssemblyTotals } from './ship-assembly-totals';
 import { validateShipAssembly } from './ship-assembly-validation';
+import { pieceOfModule, rerootedAssembly } from './ship-assembly-graft';
 import {
-  copyTransform, isIdentityRotation, normalizedTransform, sideMountTransform,
-  sideSlotFromTransform,
+  copyTransform, finiteQuaternion, finiteVector, isIdentityRotation, normalizedTransform,
+  sideMountTransform, sideSlotFromTransform,
 } from './ship-assembly-transform';
 
 export { isDockingModule, SIDE_SLOTS } from './ship-assembly-types';
@@ -214,74 +215,42 @@ export class ShipAssembly {
       reservedModuleIds.add(candidate);
     }
 
-    const otherWorld = new Map<string, ModuleTransform>();
-    for (const id of other.moduleIds) {
-      const transform = other.worldTransformOf(id);
-      if (transform === null) throw new Error(`missing module transform: ${id}`);
-      otherWorld.set(id, transform);
-    }
-    const visited = new Set<string>();
-    const pending: { readonly id: string; readonly parentId: string | null; readonly sourceEdge: ShipConnection | null }[] = [
-      { id: otherPortId, parentId: null, sourceEdge: null },
-    ];
     const dockRotation = qFromAxisAngle(LOCAL_UP, Math.PI);
     const localDefinition = this.catalog.require(localPort.definitionId);
     const otherDefinition = this.catalog.require(otherPort.definitionId);
     const mappedOtherPortId = moduleIds.get(otherPortId);
     if (mappedOtherPortId === undefined) throw new Error(`missing mapped docking port: ${otherPortId}`);
     const dockingConnectionId = merged.uniqueConnectionId(`docking-${localPortId}-${mappedOtherPortId}`);
+    // other を接舷ポートを根に組み直してから、接舷部を正対させて接ぎ木する。
+    const rerooted = rerootedAssembly(other.nodes, other.connections, otherPortId);
+    const sourcePort = other.module(otherPortId);
+    if (sourcePort === null) throw new Error(`missing docked module: ${otherPortId}`);
+    merged.addModule({ ...sourcePort, id: mappedOtherPortId } as ShipModuleInstance, localPortId, {
+      position: v3(0, 0, (localDefinition.length + otherDefinition.length) / 2),
+      rotation: dockRotation,
+    }, 'docking', dockingConnectionId);
+    const grafted = new Set([otherPortId]);
+    const pending = [...rerooted.connections];
     while (pending.length > 0) {
-      const current = pending.shift();
-      if (current === undefined) break;
-      if (visited.has(current.id)) continue;
-      visited.add(current.id);
-      const sourceInstance = other.module(current.id);
-      const mappedId = moduleIds.get(current.id);
-      if (sourceInstance === null || mappedId === undefined) throw new Error(`missing docked module: ${current.id}`);
-      const instance = { ...sourceInstance, id: mappedId } as ShipModuleInstance;
-      if (current.parentId === null) {
-        merged.addModule(instance, localPortId, {
-          position: v3(0, 0, (localDefinition.length + otherDefinition.length) / 2),
-          rotation: dockRotation,
-        }, 'docking', dockingConnectionId);
-      } else {
-        const sourceEdge = current.sourceEdge;
-        const parentWorld = otherWorld.get(current.parentId);
-        const childWorld = otherWorld.get(current.id);
-        const mappedParentId = moduleIds.get(current.parentId);
-        if (sourceEdge === null || parentWorld === undefined || childWorld === undefined
-          || mappedParentId === undefined) throw new Error(`invalid docked branch: ${current.id}`);
-        const inverse = qInvert(parentWorld.rotation);
-        const relative: ModuleTransform = {
-          position: qRotate(inverse, v3(
-            childWorld.position.x - parentWorld.position.x,
-            childWorld.position.y - parentWorld.position.y,
-            childWorld.position.z - parentWorld.position.z,
-          )),
-          rotation: qMul(inverse, childWorld.rotation),
-        };
-        const edgeId = merged.uniqueConnectionId(sourceEdge.id);
-        connectionIds.set(sourceEdge.id, edgeId);
-        const isTraversingBackwards = sourceEdge.parentId === current.id;
-        const isSide = sourceEdge.kind === 'side';
-        const sideReversed = isSide
-          ? (isTraversingBackwards ? !sourceEdge.sideReversed : (sourceEdge.sideReversed ?? false))
-          : undefined;
-        const sideSlot = isSide ? sourceEdge.sideSlot : undefined;
-        merged.addModule(
-          instance, mappedParentId, relative, sourceEdge.kind, edgeId, sideSlot, sideReversed,
-        );
+      const index = pending.findIndex(edge => grafted.has(edge.parentId));
+      if (index < 0) throw new Error('docked assembly graph is disconnected');
+      const edge = pending.splice(index, 1)[0]!;
+      const sourceInstance = other.module(edge.childId);
+      const mappedId = moduleIds.get(edge.childId);
+      const mappedParentId = moduleIds.get(edge.parentId);
+      if (sourceInstance === null || mappedId === undefined || mappedParentId === undefined) {
+        throw new Error(`invalid docked branch: ${edge.childId}`);
       }
-      for (const edge of other.connections) {
-        const neighbor = edge.parentId === current.id ? edge.childId
-          : edge.childId === current.id ? edge.parentId : null;
-        if (neighbor !== null && !visited.has(neighbor)) {
-          pending.push({ id: neighbor, parentId: current.id, sourceEdge: edge });
-        }
-      }
+      const edgeId = merged.uniqueConnectionId(edge.id);
+      connectionIds.set(edge.id, edgeId);
+      merged.addModule(
+        { ...sourceInstance, id: mappedId } as ShipModuleInstance,
+        mappedParentId, edge.childTransform, edge.kind, edgeId, edge.sideSlot, edge.sideReversed,
+      );
+      grafted.add(edge.childId);
     }
     merged.assertValid();
-    if (visited.size !== other.moduleIds.length) throw new Error('docked assembly graph is disconnected');
+    if (grafted.size !== other.moduleIds.length) throw new Error('docked assembly graph is disconnected');
     return { assembly: merged, connectionId: dockingConnectionId, moduleIds, connectionIds };
   }
 
@@ -513,6 +482,116 @@ export class ShipAssembly {
     this.nextConnectionNumber = source.nextConnectionNumber;
     source.nodes.clear();
     source.connections.length = 0;
+  }
+
+  // moduleId を根とする先端部(anchorId から見て moduleId より先の部分)をこの assembly から
+  // 取り除き、moduleId を根に組み直した独立の assembly として返す。識別子と状態は保つ。
+  public detachPiece(moduleId: string, anchorId: string): ShipAssembly {
+    if (!this.nodes.has(moduleId)) throw new Error(`unknown module: ${moduleId}`);
+    if (!this.nodes.has(anchorId)) throw new Error(`unknown anchor module: ${anchorId}`);
+    if (moduleId === anchorId) throw new Error(`cannot detach the anchor module: ${moduleId}`);
+    const piece = pieceOfModule(this.connections, anchorId, moduleId);
+    if (piece === null) throw new Error(`module is not reachable from the anchor: ${moduleId}`);
+    // 残る側が切られた接続の子なら新しい根になるので、切り離し前のワールド変換を与える。
+    const keptRootId = piece.rootConnection.parentId === moduleId ? piece.rootConnection.childId : null;
+    const keptTransform = keptRootId === null ? null : this.worldTransformOf(keptRootId);
+    const pieceNodes = new Map<string, AssemblyNode>();
+    for (const [id, node] of this.nodes) {
+      if (piece.moduleIds.has(id)) pieceNodes.set(id, node);
+    }
+    const pieceConnections = this.connections.filter(
+      edge => piece.moduleIds.has(edge.parentId) && piece.moduleIds.has(edge.childId),
+    );
+    const rerooted = rerootedAssembly(pieceNodes, pieceConnections, moduleId);
+    const detached = ShipAssembly.fromTransferred(
+      this.catalog, new Map(rerooted.nodes), rerooted.connections, this.nextConnectionNumber, this.playerOwned,
+    );
+    for (const id of piece.moduleIds) this.nodes.delete(id);
+    const remaining = this.connections.filter(
+      edge => !piece.moduleIds.has(edge.parentId) && !piece.moduleIds.has(edge.childId),
+    );
+    this.connections.length = 0;
+    this.connections.push(...remaining);
+    if (keptRootId !== null && keptTransform !== null) {
+      const kept = this.nodes.get(keptRootId);
+      if (kept !== undefined) kept.transform = keptTransform;
+    }
+    return detached;
+  }
+
+  // piece の根を parentId へ transform と kind の接続で接ぎ木する。piece 内部の接続は
+  // 識別子と変換を保つ。識別子の衝突は拒否し、成功すると piece は消費される。
+  public attachPiece(
+    piece: ShipAssembly, parentId: string, transform: ModuleTransform,
+    kind: ConnectionKind, sideSlot?: SideSlot, sideReversed?: boolean, connectionId?: string,
+  ): void {
+    if (piece === this) throw new Error('cannot attach an assembly to itself');
+    if (piece.catalog !== this.catalog) throw new Error('cannot attach an assembly from a different catalog');
+    if (!this.nodes.has(parentId)) throw new Error(`unknown parent module: ${parentId}`);
+    const childIds = new Set(piece.connections.map(edge => edge.childId));
+    const pieceRootId = [...piece.nodes.keys()].find(id => !childIds.has(id));
+    if (pieceRootId === undefined) throw new Error('cannot attach an empty assembly');
+    for (const id of piece.nodes.keys()) {
+      if (this.nodes.has(id)) throw new Error(`duplicate ship module instance: ${id}`);
+    }
+    for (const edge of piece.connections) {
+      if (this.connections.some(connection => connection.id === edge.id)) {
+        throw new Error(`duplicate connection: ${edge.id}`);
+      }
+      if (!finiteVector(edge.childTransform.position) || !finiteQuaternion(edge.childTransform.rotation)) {
+        throw new Error(`non-finite connection transform: ${edge.id}`);
+      }
+    }
+    if (connectionId !== undefined && this.connections.some(connection => connection.id === connectionId)) {
+      throw new Error(`duplicate connection: ${connectionId}`);
+    }
+    const pieceRoot = piece.nodes.get(pieceRootId);
+    if (pieceRoot === undefined) throw new Error('assembly piece is missing its root');
+    this.addModule(pieceRoot.instance, parentId, transform, kind, connectionId, sideSlot, sideReversed);
+    // piece は木なので、親が先に入った接続から順に取り込む。
+    const pending = [...piece.connections];
+    while (pending.length > 0) {
+      const index = pending.findIndex(edge => this.nodes.has(edge.parentId));
+      if (index < 0) throw new Error('assembly piece is disconnected');
+      const edge = pending.splice(index, 1)[0]!;
+      const child = piece.nodes.get(edge.childId);
+      if (child === undefined) throw new Error(`assembly piece is missing module: ${edge.childId}`);
+      this.addModule(
+        child.instance, edge.parentId, edge.childTransform, edge.kind, edge.id, edge.sideSlot, edge.sideReversed,
+      );
+    }
+    piece.nodes.clear();
+    piece.connections.length = 0;
+  }
+
+  // 新しい識別子と新品状態(HP・燃料・展開の初期値)の写しを返す。
+  public copiedAsNew(prefix: string): ShipAssembly {
+    const copy = new ShipAssembly(this.catalog, this.playerOwned);
+    const childIds = new Set(this.connections.map(edge => edge.childId));
+    const rootId = [...this.nodes.keys()].find(id => !childIds.has(id));
+    if (rootId === undefined) {
+      if (this.nodes.size === 0) return copy;
+      throw new Error('assembly has no root module');
+    }
+    const fresh = (id: string): ShipModuleInstance => {
+      const node = this.nodes.get(id);
+      if (node === undefined) throw new Error(`missing module: ${id}`);
+      return createShipModuleInstance(this.catalog.require(node.instance.definitionId), `${prefix}:${id}`);
+    };
+    copy.addRoot(fresh(rootId));
+    const added = new Set([rootId]);
+    const pending = [...this.connections];
+    while (pending.length > 0) {
+      const index = pending.findIndex(edge => added.has(edge.parentId));
+      if (index < 0) throw new Error('assembly graph is disconnected');
+      const edge = pending.splice(index, 1)[0]!;
+      copy.addModule(
+        fresh(edge.childId), `${prefix}:${edge.parentId}`, edge.childTransform, edge.kind,
+        `${prefix}:${edge.id}`, edge.sideSlot, edge.sideReversed,
+      );
+      added.add(edge.childId);
+    }
+    return copy;
   }
 
   private component(start: string, excludedEdge: string): Set<string> {
