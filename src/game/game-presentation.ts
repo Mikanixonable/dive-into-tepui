@@ -41,6 +41,7 @@ import { ObjectWindowActions } from './pickable/object-window-actions';
 import { ModuleCommands } from './pickable/module-commands';
 import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
+import { ShipConstructionView } from './ship/ship-construction-view';
 import type { ShipBlueprintShelf } from './ship/ship-blueprint';
 import { ConstructionEntry, hasUsableConstructionDock } from './ship/construction-entry';
 import { FrameControls } from './hud/frame/frame-controls';
@@ -108,6 +109,8 @@ export class GamePresentation {
   private readonly objectWindows: ObjectWindows;
   private readonly moduleWindows: ModuleWindows;
   private readonly shipConstruction: ShipConstruction;
+  // 建造セッションの読み取り面から、接続ノード・ガイド・ゴースト・強調・操作音を組む表示導出。
+  private readonly shipConstructionView: ShipConstructionView;
   // ドックの直接クリック・Bキー・常設ボタン・プロパティ窓が共有する建造の入口。
   private readonly constructionEntry: ConstructionEntry;
   private readonly confirmation: ConfirmationOverlay;
@@ -173,11 +176,13 @@ export class GamePresentation {
       hud.mapRoot, hud.panelCollapse, celestialSystem, viewer.displayTimeline, timelineCommands,
     );
     this.confirmation = new ConfirmationOverlay(hud.overlayManager);
+    this.input = new Input(scene.renderer.domElement);
     this.shipConstruction = new ShipConstruction(
-      scene.scene, commands, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
+      this.input, commands, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
       hud, hud.constructionConfirm, blueprints, game.events,
       (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
     );
+    this.shipConstructionView = new ShipConstructionView(scene.scene, markers);
     this.constructionEntry = new ConstructionEntry(this.shipConstruction, hud);
     const viewSelectionCommands = viewCommands(commands, viewer.view);
     this.moduleWindows = new ModuleWindows(
@@ -211,7 +216,6 @@ export class GamePresentation {
     this.planPath = new PlanPath(scene.scene, celestialSystem, this.displayWindowManager);
     this.planDisplay = new PlanDisplay(this.planPath, markers, celestialSystem, controlSelection);
     this.planGuide = new PlanGuide(markers);
-    this.input = new Input(scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls.setPointerKind(kind);
 
@@ -298,6 +302,7 @@ export class GamePresentation {
     this.combatView.dispose();
     this.moduleWindows.close();
     this.shipConstruction.dispose();
+    this.shipConstructionView.dispose();
     this.confirmation.dispose();
     this.objectWindows.dispose();
     this.worldSfx.dispose();
@@ -440,13 +445,17 @@ export class GamePresentation {
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
     celestialSystem.bakeClouds(this.devices.scene.renderer, displayTime, this.devices.scene.gpu);
+    // 建造の読み取り面を確定させてから表示導出へ渡す — 適用済み命令の記録・選択の整合が
+    // shipConstruction.sync で更新され、shipConstructionView.sync がそれを読んで強調と音を組む。
+    this.shipConstruction.sync();
+    const construction = this.shipConstructionView.sync(this.shipConstruction, camera, nowMs);
+    for (const sound of construction.sounds) this.uiSounds.push(`construction-${sound}`);
     dynamicSystem.sync(
       displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay,
-      null,
+      construction.shipModuleEmphasis,
       this.devices.scene.pipeline.sunLight, this.devices.scene.pipeline.bodyShadow,
       orbitRef ?? undefined,
     );
-    this.shipConstruction.sync(camera);
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
     this.playerMarkers.sync(
       controlled !== null && isModularShip(controlled) ? controlled : null, view, camera.project,
