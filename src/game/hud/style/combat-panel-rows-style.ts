@@ -123,8 +123,7 @@ body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; 
   color: var(--text-muted); font-size: var(--font-xxs); font-variant-numeric: tabular-nums;
 }
 #hud-orbit .orbit-env-meter { width: 100%; }
-#hud-orbit .orbit-env-meter .w-meter-track { height: 4px; }
-#hud-orbit .orbit-env-row.ui-danger-fill {
+#hud-orbit .orbit-env-row.ui-warning-fill {
   margin-inline: calc(var(--space-2) * -1); padding: var(--space-3) var(--space-2);
   border-radius: var(--radius-micro);
 }
