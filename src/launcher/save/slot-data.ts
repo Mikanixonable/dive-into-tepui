@@ -1,5 +1,6 @@
 // セーブの索引(スロット・ステージ履歴・手動セーブのメタ)と、書き出しファイルの形。
 import type { GamePhase } from '../../game/stages/stage';
+import type { ShipBlueprint } from '../../game/ship/ship-blueprint';
 import type { SavedGame } from './save-store';
 
 // 索引が指す id を1つ作る。同一ミリ秒内に続けて作っても衝突しない。
@@ -69,4 +70,6 @@ export interface SlotExport {
   slot: SaveSlotMeta;
   // スナップショット id → 本体。
   snapshots: Record<string, SavedGame>;
+  // 設計図の一覧。設計図を含まない頃に書き出されたファイルでは欠ける。
+  blueprints?: readonly ShipBlueprint[];
 }
