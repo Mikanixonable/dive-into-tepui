@@ -88,8 +88,11 @@ export class ObjectWindowActions {
           return this.navTargetPresenter.canTarget(
             target.id, this.roster, this.celestialBodies, simTime);
         case 'duplicate':
-        case 'openObjectPlacer':
           return this.authoring !== null;
+        case 'openObjectPlacer':
+          // 天体の窓からはその天体を基準天体にして開くので、基準天体になれない恒星の窓には出さない。
+          return this.authoring !== null
+            && (!(target instanceof CelestialEntity) || target.motion.kind !== 'star');
         case 'planExecCycle':
           return this.activeStage.executesPlans;
         default:
@@ -154,7 +157,8 @@ export class ObjectWindowActions {
     else if (act === 'toggleTrajectoryLine') this.entityDisplayCommands.toggleTrajectoryLine(target.id);
     else if (act === 'openSettings') this.pauseMenu.toggle(true);
     else if (act === 'openObjectPlacer') {
-      this.authoring?.openObjectPlacer(focusTargetId(this.camera.map.focus));
+      this.authoring?.openObjectPlacer(
+        target instanceof CelestialEntity ? target.id : focusTargetId(this.camera.map.focus));
     } else {
       this.commands.runMenu(target, act, this.authoring, this.planEditor);
     }
