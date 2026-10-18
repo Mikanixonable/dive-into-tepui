@@ -1,0 +1,753 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>パネル部品カタログ</title>
+<link rel="stylesheet" href="foundation/tepui-base.css">
+<link rel="stylesheet" href="foundation/ref.css">
+<style>
+  /* ============ このページ固有(ref.css へ昇格すべき部品は .ix- 接頭辞。.pg- はこのページの枠だけ) ============ */
+
+  /* --- 昇格候補 A: パネルは自分の幅を基準に詰める(レール幅が 300/260/220 と変わるため) --- */
+  .ix-panel { container-type: inline-size; container-name: ixp; }
+
+  /* --- 昇格候補 B: 行の列を揃える。値の幅が行ごとに違っても、メーターの左端と値の右端が全行で揃う。
+         .ix-rows.is-aligned が列を決め、各 .ix-row はその列を subgrid で借りる。 --- */
+  .ix-rows.is-aligned {
+    grid-template-columns: fit-content(7.6em) minmax(0, 1fr) max-content;
+    column-gap: var(--space-4);
+  }
+  .ix-rows.is-aligned > .ix-row { grid-column: 1 / -1; grid-template-columns: subgrid; }
+  .ix-rows.is-aligned > .ix-row > .ix-k { grid-column: 1; }
+  .ix-rows.is-aligned > .ix-row > .ix-gauge { grid-column: 2; }
+  .ix-rows.is-aligned > .ix-row > .ix-v { grid-column: 3; }
+  .ix-rows.is-aligned > .ix-row:not(:has(> .ix-gauge)) > .ix-v { grid-column: 2 / 4; grid-row: 1; }
+  /* ゲージの無い行は、ラベルがメーター列まで使える(長いラベルを切らない)。値は右寄せなので重ならない。 */
+  .ix-rows.is-aligned > .ix-row:not(:has(> .ix-gauge)) > .ix-k { grid-column: 1 / 3; grid-row: 1; }
+  /* 狭いレール(medium の 220px 級)では、メーターをラベルの下の全幅1本へ落とす。値は右上に残る。 */
+  @container ixp (max-width: 210px) {
+    .ix-rows.is-aligned { grid-template-columns: minmax(0, 1fr) max-content; }
+    .ix-rows.is-aligned > .ix-row:has(> .ix-gauge) { padding-bottom: var(--space-2); row-gap: var(--space-1); }
+    .ix-rows.is-aligned > .ix-row > .ix-k,
+    .ix-rows.is-aligned > .ix-row:not(:has(> .ix-gauge)) > .ix-k { grid-column: 1; grid-row: 1; }
+    .ix-rows.is-aligned > .ix-row > .ix-v,
+    .ix-rows.is-aligned > .ix-row:not(:has(> .ix-gauge)) > .ix-v { grid-column: 2; grid-row: 1; }
+    .ix-rows.is-aligned > .ix-row > .ix-gauge { grid-column: 1 / -1; grid-row: 2; }
+    .ix-pair.is-stack-narrow { grid-template-columns: 1fr; }
+    .ix-panel .ix-row.is-deploy { grid-template-columns: 1fr 1fr; }
+    .ix-panel .ix-row.is-deploy > .ix-k { grid-column: 1 / -1; }
+    /* 値が長い行ではキーキャップを譲る(ラベルが省略記号になるより、キーを畳むほうが読める) */
+    .ix-rows.is-aligned > .ix-row:has(> .ix-gauge) > .ix-k .key { display: none; }
+  }
+
+  /* --- 昇格候補 C: メーターの段(並進出力 4 段)。25% ごとに細い切れ目 --- */
+  .ix-gauge.is-steps::after {
+    content: ''; position: absolute; inset: 0;
+    background: repeating-linear-gradient(90deg, transparent 0, transparent calc(25% - 1px), var(--bg) calc(25% - 1px), var(--bg) 25%);
+  }
+
+  /* --- 昇格候補 D: 見出しの要約。畳んだときだけ出て、最も重い状態を色+記号で見せる --- */
+  .ix-head-meta.is-summary { display: none; }
+  .ix-panel.is-collapsed .ix-head-meta { display: none; }
+  .ix-panel.is-collapsed .ix-head-meta.is-summary { display: inline; }
+  .ix-head-meta.is-caution { color: var(--ix-caution); }
+  .ix-head-meta.is-warning { color: var(--ix-warning); }
+  .ix-head-meta.is-caution::before { content: '△ '; }
+  .ix-head-meta.is-warning::before { content: '▲ '; }
+
+  /* --- 昇格候補 E: 主読み値の状態色(高度の降下警告ほか) --- */
+  .ix-readout.is-caution .ix-readout-value { color: var(--ix-caution); }
+  .ix-readout.is-warning .ix-readout-value { color: var(--ix-warning); }
+  .ix-readout.is-caution .ix-readout-cap::before { content: '△ '; color: var(--ix-caution); }
+  .ix-readout.is-warning .ix-readout-cap::before { content: '▲ '; color: var(--ix-warning); }
+
+  /* --- 昇格候補 F: 展開部品の行。ラベル + 左右の点灯ボタン(押せるものは w-btn のまま)。損耗はボタン内の記号付き数値 --- */
+  .ix-row.is-deploy { grid-template-columns: fit-content(7.6em) minmax(0, 1fr) minmax(0, 1fr); min-height: calc(var(--row-min-h-s) + var(--space-3)); }
+  .ix-row.is-deploy > .w-btn { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; white-space: nowrap; }
+  .ix-row.is-deploy > .w-btn .key { margin-left: 0; }
+  .ix-wear { font-size: var(--font-xxs); font-variant-numeric: tabular-nums; color: var(--ix-label); margin-left: auto; }
+  .ix-wear.is-caution { color: var(--ix-caution); }
+  .ix-wear.is-warning { color: var(--ix-warning); }
+  .ix-wear.is-caution::before { content: '△'; margin-right: var(--space-1); }
+  .ix-wear.is-warning::before { content: '▲'; margin-right: var(--space-1); }
+
+  /* --- 昇格候補 G: ターゲットを選ぶボタンだけ第二色(w-btn の変種。新しい対話部品ではない) --- */
+  .w-btn.is-tgt { background: var(--ix-tgt-fill); color: var(--ix-tgt); }
+  .w-btn.is-tgt:hover { background: var(--ix-tgt-edge); color: var(--text-strong); }
+
+  /* --- 昇格候補 H: タッチ用のモード行(w-btn の点灯型。キーが無いのでキーキャップも無い) --- */
+  .ix-modebtn { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: var(--space-4); width: 100%; text-align: left; min-height: var(--hit-target-min); }
+  .ix-modebtn::before { content: ''; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ix-meta); }
+  .ix-modebtn.on::before { background: var(--ix-own); box-shadow: none; }
+  .w-btn.ix-modebtn.is-plain.on { background: var(--fill-3); color: var(--text-strong); }
+  .w-btn.ix-modebtn.is-plain.on::before { background: var(--text-strong); }
+  .ix-touch-stack { display: grid; gap: var(--space-2); margin-top: var(--space-2); }
+  .ix-seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: var(--space-2); }
+  .ix-seg .w-btn { text-align: center; padding-inline: var(--space-2); min-height: var(--hit-target-min); display: grid; place-items: center; }
+  .ix-seg .w-btn small { display: block; font-size: var(--font-xxs); color: var(--ix-label); }
+  .ix-seg .w-btn.on small { color: inherit; }
+
+  /* --- 昇格候補 I: 機能部位の行(タンパク質敵)。グリフ + 略号 + 三角形HPアイコン + 数値 --- */
+  .ix-site {
+    display: grid; grid-template-columns: 1.2em minmax(0, 1fr) auto 5.4em; align-items: center; column-gap: var(--space-4);
+    min-height: var(--row-min-h-s); font-size: var(--font-s);
+  }
+  .ix-site-glyph { color: var(--ix-tgt); text-align: center; font-size: var(--font-xs); opacity: calc(.35 + var(--hp, 1) * .65); }
+  .ix-site-abbr { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ix-data); }
+  .ix-site-icon { color: var(--ix-tgt); display: grid; width: 16px; height: 16px; }
+  .ix-site-icon svg { width: 100%; height: 100%; display: block; }
+  .ix-site-hp { justify-self: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ix-site.is-off .ix-site-glyph, .ix-site.is-off .ix-site-icon { color: var(--ix-meta); }
+  .ix-site.is-off .ix-site-abbr, .ix-site.is-off .ix-site-hp { color: var(--ix-meta); }
+  .ix-phase { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-label); }
+
+  /* --- 昇格候補 J: 一覧の行の状態語(距離の注意色・波の件数・折りたたみ件数) --- */
+  .ix-item-v.is-caution { color: var(--ix-caution); }
+  .ix-item-v.is-warning { color: var(--ix-warning); }
+  .ix-item-v.is-caution::before { content: '△ '; font-size: var(--font-xxs); }
+  .ix-item-v.is-warning::before { content: '▲ '; font-size: var(--font-xxs); }
+  .ix-item .ix-u { margin-left: var(--space-2); }
+  .ix-item.is-warning-row { background: var(--ix-warning-fill); }
+  .ix-item.is-d1 { padding-left: calc(var(--space-3) + 1.5em); }
+  .ix-item.is-d2 { padding-left: calc(var(--space-3) + 3em); }
+  .ix-item.is-hover { background: var(--glass-control-hover); color: var(--text); }
+  .ix-item.on .ix-item-glyph { color: inherit; }
+
+  /* --- 昇格候補 K: 識別行の対象種別(艦/基地/タンパク質)。ix-ident-role は右端 --- */
+  .ix-note-line { margin-top: var(--space-4); font-size: var(--font-xxs); color: var(--ix-label); line-height: 1.5; }
+
+  /* ============ ここから先は .pg-(このページの枠。ゲームへは移さない) ============ */
+  .pg-gallery { display: flex; flex-wrap: wrap; gap: var(--space-5); align-items: flex-start; margin-top: var(--space-4); }
+  .rf-cell.pg-cell { position: relative; padding: var(--space-5) var(--space-5) var(--space-5) 28px; width: 340px; max-width: 100%; }
+  .rf-cell.pg-cell.is-w220 { width: 260px; }
+  .pg-w { width: 300px; max-width: 100%; }
+  .pg-w220 { width: 220px; }
+  .pg-w260 { width: 260px; }
+  .pg-none {
+    width: 300px; max-width: 100%; min-height: 96px; display: grid; place-items: center; text-align: center;
+    border-radius: var(--radius-panel); box-shadow: inset 0 0 0 1px var(--fill-3); color: var(--text-dim);
+    font-size: var(--font-xs); line-height: 1.6; padding: var(--space-5);
+  }
+  .pg-pin {
+    position: absolute; z-index: 5; left: 5px; width: 18px; height: 18px; margin-top: -1px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 11px; font-weight: 700; line-height: 1;
+    background: var(--color-focus); color: var(--color-focus-contrast); box-shadow: 0 0 0 2px rgba(0, 0, 0, .55); pointer-events: none;
+  }
+  .rf-cell.is-w220 .pg-pin, .rf-cell.pg-cell .pg-pin { left: 5px; }
+  .pg-kv { width: 100%; }
+  .pg-kv td:first-child { white-space: nowrap; width: 1%; }
+  .pg-steps { margin: var(--space-4) 0 0; padding-left: 1.4em; color: var(--text-muted); line-height: 1.8; max-width: 980px; }
+  .pg-steps b { color: var(--text); }
+  .pg-mini { font-size: var(--font-xxs); color: var(--text-dim); margin: var(--space-3) 0 0; line-height: 1.6; }
+  .pg-spec-note { color: var(--ix-caution); }
+</style>
+</head>
+<body class="rf" data-title="04 パネル部品カタログ" data-sub="艦 VSL・ターゲット TGT・敵一覧 CNT・軌道 ORB・物体一覧 OBJ — レール幅 300px の実寸で、現行と改修案を並べる">
+<main class="rf-main">
+
+<p class="rf-intro">
+  レールに載る5つのパネルを、<b>実際のレール幅 300px</b>(medium の左レールは 220px、右は 260px)で現行と改修案に並べ、さらに
+  <b>正常/注意/警告/折りたたみ/対象なし</b>の状態を並べる。改修案は <code>foundation/ref.css</code> の <code>.ix-*</code> と <code>tepui-base.css</code> の <code>.w-*</code> で組んだ実 DOM で、
+  表示する値は現行の撮影と同じ状況(stage 1・LEO 420 km・ターゲット HOSTILE-ε 60 km・敵5機)。
+  文法(色の意味・1行・状態ピップ・キーキャップ・メーター・3段の強弱)は <b>01 表示の文法</b>に従い、ここではそれを各パネルの行まで落とす。
+  <b>注記の番号</b>は、各ペインの左の丸いピンと対応する。注記は「何を・なぜ(監査の番号)・どの src のどの要素・どの SPEC」の順で書く。
+</p>
+<p class="rf-intro" style="margin-top: calc(-1 * var(--space-4))">
+  <b>全パネル共通の規則</b>:
+  ① 見出しは <code>[記号][題名] ……… [補足][▾]</code>、記号は中立色。<b>畳むと本文が消え、見出しの補足が「そのパネルの答え」へ変わる</b>(いちばん重い状態は色+記号で残る)。
+  ② 行は <code>[ラベル][メーター][値 単位]</code>。値は切らず、幅が足りなければメーター→ラベルの順に譲り、220px 級ではメーターをラベルの下へ落とす。
+  ③ 色は意味でだけ付く(自分=主役色、ターゲット=第二色、注意=△、警告=▲)。正常値は中立。
+  ④ 状態は <code>on</code> / 押下 / 無効 の3語だけ(SPEC UI-DESIGN §3)。
+</p>
+
+<!-- ======================================================================================= -->
+<h2><span class="ix-code">VSL</span>艦のステータス</h2>
+<p class="rf-lead">
+  SPEC §8 の問いは「<b>いま艦はどんな状態で、どう構えているか</b>」。現行は計器・モード・弾薬・展開部品・操作が1枚に混ざり(監査7)、値が右端で切れる(監査2)。
+  改修案は<b>同じ1枚を責務の順に4つの区画へ分ける</b>: <b>計器</b>(量=メーター) → <b>モード</b>(構え=ピップとキー) → <b>展開</b>(物理部品の状態と操作) → <b>操作</b>(単発の行為)。
+  区画は小見出しと余白だけで区切り、線は引かない。
+</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>右レール 300px</span></div><img src="foundation/current/crops/vessel.jpg" alt="現行の艦ステータス" width="300" height="372"></div>
+  <div class="rf-cell is-space pg-cell"><div class="rf-cell-cap"><b>改修案</b><span>同じ値・同じ幅(右放熱板は損耗 100%)</span></div><div class="pg-w" data-mount="vsl:current"></div></div>
+</div>
+
+<h3>責務の分け方 — 現行の1行が、どの区画のどの形になるか</h3>
+<div class="rf-scroll"><table class="rf-table">
+  <tr><th>区画</th><th>答える問い</th><th>現行の行</th><th>改修後の形</th></tr>
+  <tr><td><b>計器</b></td><td>量はいくつか、閾値まで余裕はあるか</td><td>RCS燃料・並進出力・動圧・(弾薬)</td><td><code>.ix-row</code> + <code>.ix-gauge</code>(閾値の目盛り)+ 値 + 単位。<b>船体温度</b>を新規行で追加(ORB と同じ値)。弾薬は文字行のまま</td></tr>
+  <tr><td><b>モード</b></td><td>どう構えているか</td><td>RCS制動・微調整・進行方向ホールド・視点RCS追従(On/Off の色文字)</td><td><code>.ix-row</code> + <code>.ix-pip</code>(ON/OFF)+ <code>.key</code>。自分で掛けた制動・ホールドだけ主役色</td></tr>
+  <tr><td><b>展開</b></td><td>パドル・放熱板はどの状態で、傷んでいないか</td><td>2×2 の大きな点灯ボタン(展開/収納/損耗100% を文章で)</td><td>ラベル + 左右の <code>.w-btn.on</code>(展開=点灯)+ キー + 損耗の記号付き数値</td></tr>
+  <tr><td><b>操作</b></td><td>単発の行為は何があるか</td><td>進行方向 [F] / 視点追従 [G] / ターゲット [T] / 装填 [R]</td><td><code>.w-btn</code> 3つ(進行方向・ターゲット・装填)。視点追従はモード区画が状態を持つので、ボタンから外す</td></tr>
+  <tr><td><b>タッチ</b></td><td>キーでしか選べない操作を指で選べるか</td><td>推力段の SegmentedControl を計器の下へ追加(1–4)</td><td>並進出力の行が<b>そのまま</b>4段のセグメントに置き換わる(重複しない)。モードは点灯ボタンの列になる</td></tr>
+</table></div>
+
+<h3>状態のバリエーション</h3>
+<div class="pg-gallery" data-gallery="vsl"></div>
+<p class="pg-mini">注意・警告の閾値(目盛り)は 01 に合わせる: 燃料 20% 以下で注意・5% 以下で警告 / 動圧 70%・90% / 船体温度 75%・90% / 放熱板の損耗 50% 超で注意・90% 以上で警告。現行コードは動圧 50%・船体温度 70%・燃料 20% を一律に赤にしている。</p>
+
+<ol class="rf-notes">
+  <li data-n="1"><b>見出し: 記号を中立に、題名は日本語、畳むと要約が残る。</b> 記号 VSL を <code>--text-faint</code>、題名を「艦のステータス」(SPEC §8 の名称)、開閉は ▾/▸。畳んだ見出しの補足に最も重い状態(例「▲ 燃料 4%」)を出す — 畳んでいても警告が埋もれない(監査1・7)。
+    <span class="rf-where">src/game/hud/hud-root.ts の <code>configureCombatPanel</code>(記号 span ・ aria)・ <code>buildVesselStatusPanel</code>(題名 'Vessel')/ src/game/hud/panel-shell.ts の <code>PanelShell</code>(要約を書く <code>setSummary(text, level)</code> を追加)/ src/game/hud/style/editorial-data-style.ts の <code>#hud .ui-section-code</code>(color: primary → text-faint)/ src/game/hud/panels/vessel-panel.ts の <code>sync</code>(要約を渡す) ・ SPEC UI-DESIGN §5 は変更不要</span></li>
+  <li data-n="2"><b>計器は「ラベル・メーター・値 単位」の行で、列を全行で揃える。</b> 現行は <code>dl.metric-list &gt; .row.metric</code> の flex で、メーター+値を 128px 固定の <code>.vessel-meter-readout</code> に押し込むため、値が右端で切れる(<code>1000 / 100…</code>)。改修案は <code>.ix-rows.is-aligned</code>(列を決める) + <code>.ix-row</code>(subgrid)で、メーターの左端と値の右端が全行で揃い、値は <code>white-space: nowrap</code>(監査2)。
+    <span class="rf-where">src/game/hud/hud-root.ts の <code>buildVesselStatusPanel</code>(<code>.row.metric</code> → <code>.ix-row</code>。<code>dd.v</code> の <code>output</code> は <code>.ix-v</code>)/ src/game/hud/style/combat-panel-rows-style.ts の <code>.vessel-meter-readout</code> と <code>#hud-vessel-status .v { min-width: 75px }</code> を削除 / src/game/hud/style/combat-view-style.ts の <code>.combat-panel .metric*</code> を <code>.ix-row</code> 系へ置換</span></li>
+  <li data-n="3"><b>メーターは細い中立の線 + 閾値の目盛り。色は越えたときだけ。</b> 満タンの RCS 燃料が最も強く主張している現行(主役色・高さ 12px)をやめる。<code>Meter.setProgress(now, max, valueText, danger: boolean)</code> を <code>(now, max, level: 'normal' | 'caution' | 'warning')</code> へ、閾値の位置を渡す <code>setThreshold(ratio)</code> を足す。値は常にバーの外(右)に出し、<code>w-meter-value</code> の重ね書きは使わない(監査1)。
+    <span class="rf-where">src/hud/widgets/meter.ts(<code>setProgress</code>・<code>setDanger</code>・<code>setLabel</code>)/ src/hud/widgets/widget-style.ts の <code>.w-meter-track</code> / <code>.w-meter-fill</code>(高さを <code>--ix-gauge-h</code>、塗りを中立、<code>.caution</code>/<code>.warning</code> を追加)/ src/game/hud/panels/vessel-panel.ts の <code>syncMeter</code> と燃料・動圧の <code>critical</code> 引数 ・ SPEC §3 メーター「危険域は専用の警告色」は「注意と警告の2段」へ更新が要る</span></li>
+  <li data-n="4"><b>並進出力: 値を「段名 + 加速度」の2語にし、キーは 1つのキーキャップ。</b> 現行は <code>中 (20.0 m/s²)</code> という括弧つき1文字列が切れていた。「中」を値、<code>20.0 m/s²</code> を単位として淡く。段は 25% ごとの切れ目で読める(<code>.ix-gauge.is-steps</code>)。キーは <code>1–4</code> を <code>.key</code> 1つ。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts の <code>sync</code>(<code>THROTTLE_LABELS[idx] (${…toFixed(1)} m/s²)</code> の組み立て)/ src/game/hud/hud-root.ts の <code>並進出力 &lt;kbd&gt;${K.throttleLow.label}–${K.throttleMax.label}&lt;/kbd&gt;</code></span></li>
+  <li data-n="5"><b>モードの On/Off を、色文字から状態ピップへ。</b> 現行は <code>On</code> を赤(<code>ui-near</code>)・青(<code>ui-signal</code>)・白で書き分けていた。改修案は <code>.ix-pip</code>(ON は塗り点、OFF は輪)。<b>自分で掛けた</b>制動とホールドだけ <code>.is-own</code>(主役色)、視点追従は中立。1つの値に色が複数の意味を持たない(監査1・4)。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts の <code>syncState</code>(<code>textContent = 'On'/'Off'</code> と <code>ui-near</code>/<code>ui-signal</code> の切替 → <code>.on</code>/<code>.is-own</code> の切替。引数 <code>role: 'near' | 'signal'</code> は <code>own: boolean</code> へ)/ src/game/hud/style/editorial-data-style.ts と skeleton-style.ts の <code>.ui-near</code>/<code>.ui-signal</code> の使用箇所 ・ SPEC §3「状態語彙は3つ」と整合(on のみ)</span></li>
+  <li data-n="6"><b>キーの表記を <code>.key</code> に1本化。</b> 現行の <code>&lt;kbd&gt;P&lt;/kbd&gt;</code>・<code>1–4</code>・<code>[7]</code>・<code>[F]</code> の4通りを、ラベルの右の同じキーキャップへ(監査3)。キー名は <code>K.xxx.label</code> から引き、文字列に埋め込まない。
+    <span class="rf-where">src/game/hud/hud-root.ts(<code>&lt;kbd&gt;${K.rcsDampToggle.label}&lt;/kbd&gt;</code> ほか)/ src/game/hud/style/combat-view-style.ts の <code>.combat-panel kbd</code> → <code>.key</code> / src/game/hud/panels/vessel-panel.ts の <code>RADIATOR_UI</code>・<code>SOLAR_UI</code>・<code>addAction</code>(ラベルの <code>[${key.label}]</code> を廃止)</span></li>
+  <li data-n="7"><b>展開部品: 大きなボタンの塗りつぶしをやめ、「ラベル + 左右ボタン + キー + 損耗の記号付き数値」の1行にする。</b> 現行は塗り幅で損耗を示し、<code>放熱板右[0] 収納 / 損耗100%</code> が2行に折れていた。展開=点灯(<code>w-btn.on</code>)、損耗は 0 を超えたときだけ出し、50% 超で △・90% 以上で ▲。押せることは <code>w-btn</code> の面で示す(原則: 押せるものは w-btn)。aria-label には「パドル左 展開、損耗 0%」を残す。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts の <code>buildDeployButton</code>(<code>.fill</code>/<code>.label</code> の innerHTML)・<code>syncDeployButton</code>(<code>fillWidth</code>/<code>fillColor</code> と <code>text</code> の組み立て。<code>RADIATOR_HIGH_WEAR</code> を2段へ)/ src/game/hud/style/combat-panel-rows-style.ts の <code>.vessel-deploy-controls</code>・<code>.vessel-deploy-btn .fill</code>・<code>.label</code> / src/game/hud/style/combat-view-style.ts の <code>.vessel-deploy-btn*</code></span></li>
+  <li data-n="8"><b>操作は単発の行為だけ。</b> 進行方向リセット・ターゲット選択・装填の3つ。ラベルは「進行方向」「ターゲット」「装填」+ キーキャップで、現行の <code>[F]</code> 書きと、点灯の意味が曖昧な「視点追従 [G]」(モード行と二重表示)を解消(監査3・4・7)。ターゲットだけ第二色(ターゲットの色の意味に一致)。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts の <code>buildActionButtons</code>(<code>addAction</code> の <code>variants: 'primary'</code> → ターゲットは <code>.is-tgt</code>。<code>followButton</code> とその <code>setOn</code> を削除し、タッチ用はモード列へ)/ src/game/hud/style/combat-panel-rows-style.ts の <code>.combat-panel .panel-actions .w-btn</code> ・ SPEC §8 VSL「ボタンを持つ操作にはキー割り当てもある」に整合</span></li>
+  <li data-n="9"><b>弾薬は文字行。<code>Fuel: …</code> の代用表示は削除。</b> 現行は機関砲が無い艦で弾薬の行に <code>Fuel: 1000 / 1000</code> を出していたが、燃料は計器にある(二重)。弾薬は残弾を値、<code>/ 40 · 予備 2連</code> を単位とし、予備 1連以下で注意・弾切れで警告(現行は予備 4連未満が常に赤)。<b>機関砲が無い艦では行ごと畳む</b>(SPEC §8 の「対象が持たない値の行は畳む」と同じ扱い)。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts の <code>sync</code> 末尾の <code>ammoEl</code> 分岐(<code>Fuel:</code> 行・<code>ui-danger</code> の切替)/ src/game/hud/ammo-status.ts の <code>fmtAmmoStatus</code>(文字列でなく <code>{ value, unit, level }</code> を返す)</span></li>
+  <li data-n="10"><b>タッチ: 推力段は計器の行そのものが4段のボタンになる。</b> 現行は計器の下に別の SegmentedControl を足して二重になっていた。改修案は <code>body.touch-ui-active</code> のときだけ、並進出力の行を「1 弱 / 2 中 / 3 強 / 4 最強」の4ボタンへ置換(最小 44px)。さらに、キーでしか入らない制動・微調整・ホールド・視点追従を<b>点灯ボタンの列</b>で補う(キーキャップは無し)。SPEC §8 の「タッチ環境でのみ、キーでしか選べない操作の列を補う」の実装。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts の <code>buildThrottleControl</code>(<code>status-throttle-touch</code> の追加先を計器の行へ)・<code>tapKey</code> 経路の流用 / src/game/hud/style/combat-panel-rows-style.ts の <code>.status-throttle-touch { display: none }</code> と <code>body.touch-ui-active</code> の規則 / src/game/hud/style/combat-view-style.ts の <code>.status-throttle-touch .w-btn</code> ・ SPEC §6(タップ 44px)</span></li>
+  <li data-n="11"><b>船体温度の行を追加し、動圧と並べる。</b> 動圧と同じ「環境負荷」として艦のステータスにも出す(ORB と同じ値 <code>temperatureK</code> を使う)。<b>ORB と二重に出る点は設計判断が要る</b>(SPEC §8 は環境の危険を ORB の問いとしている)。ここでは、操縦中に推力と環境を同じレールで見比べたいという理由で残し、判断は報告に挙げる。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts の <code>VesselPanelViewModel</code>(<code>temperatureK</code> を追加)/ src/game/hud/hud-root.ts の <code>buildVesselStatusPanel</code>(行を足す)・閾値は src/game/dynamic/dynamic-entity/combat-ship-entity.ts の <code>MAX_HULL_TEMP</code>(1300 K)と src/game/player/aero-load.ts の <code>MAX_DYN_PRESSURE</code>(35 kPa)から割合で導く ・ SPEC §8 VSL へ「環境(動圧・船体温度)」を明記する更新が要る</span></li>
+</ol>
+
+<!-- ======================================================================================= -->
+<h2><span class="ix-code">TGT</span>ターゲット</h2>
+<p class="rf-lead">
+  SPEC §8 の問いは「<b>いま狙っている相手に、撃てるか</b>」。引き金を引く判断に要る値は<b>距離・接近速度・相対速度・残装甲</b>の4つだけ。
+  現行は4つが同じ強さで並び、「装甲」が縦に折れ(監査2)、距離だけが青い。改修案は強弱を3段に付ける: <b>距離=主読み値</b>・<b>接近速度=準主読み値</b>・相対速度/装甲=行。
+</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>右レール 300px</span></div><img src="foundation/current/crops/target.jpg" alt="現行のターゲット" width="300" height="243"></div>
+  <div class="rf-cell is-space pg-cell"><div class="rf-cell-cap"><b>改修案</b><span>HOSTILE-ε 60 km</span></div><div class="pg-w" data-mount="tgt:normal"></div></div>
+</div>
+<h3>状態のバリエーション(タンパク質敵の機能部位つきを含む)</h3>
+<div class="pg-gallery" data-gallery="tgt"></div>
+<p class="pg-mini">対象なし = ロックが無い間はパネルごと非表示(SPEC §8「ロック時のみ表示」)。基地は装甲を持たないので装甲の行が畳まれる(「対象が持たない値の行は畳む」)。近接の閾値(1 km で注意・200 m で警告)は<span class="pg-spec-note">この提案で新設する値</span>で、SPEC §8 TGT への追記が要る。</p>
+
+<ol class="rf-notes">
+  <li data-n="12"><b>識別行: 名前は第二色、対象の種別を右端へ。</b> 現行は名前の下に常に「ターゲット」と書いていた(情報量ゼロ)。右端を対象の種別(艦/基地/タンパク質名)にし、パネル枠の左縁の線(<code>#hud[data-attention="engagement"] #hud-target { box-shadow: inset 2px 0 … }</code>)は廃止 — 主役色は自分のもので、ターゲットの強調は第二色の識別行だけ(監査1)。
+    <span class="rf-where">src/game/hud/hud-root.ts の <code>buildTargetPanel</code>(<code>.target-identity</code> と <code>.target-role</code> の定数文字列)/ src/game/hud/panels/target-panel.ts の <code>TargetPanelViewModel</code>(<code>kind: string</code> を追加)・<code>syncTarget</code> / src/game/hud/style/combat-view-style.ts の <code>.target-identity</code>・<code>.target-lock-glyph</code>・<code>.target-name</code> → <code>.ix-ident.is-tgt</code> / src/game/hud/style/combat-panel-rows-style.ts の <code>#hud[data-attention="engagement"] #hud-target</code> を削除</span></li>
+  <li data-n="13"><b>距離と接近速度を主読み値にする。</b> 距離は 24px(<code>.ix-readout.is-m.is-tgt</code>)、接近速度は 18px(<code>.is-s</code>)の左右ペア、相対速度は行に落とす。撃つ判断の第一は「どれだけ離れているか」「どれだけ近づいているか」で、相対速度は補助。幅が 220px 級に縮むとペアは縦に積む(<code>.is-stack-narrow</code>)。
+    <span class="rf-where">src/game/hud/hud-root.ts の <code>buildTargetPanel</code>(<code>.metric-list</code> の3行 → <code>.ix-pair</code> + <code>.ix-row</code>)/ src/game/hud/panels/target-panel.ts の <code>syncTarget</code>(<code>fmtDist</code>/<code>fmtSpeed</code> の戻りを値と単位に分ける。<code>src/hud/utils.ts</code> に <code>fmtDistParts</code>/<code>fmtSpeedParts</code> を足す)/ src/game/hud/style/combat-view-style.ts の <code>.target-primary-value</code></span></li>
+  <li data-n="14"><b>装甲の行: 折り返さない・赤にしない。</b> 現行は <code>.armor-readout { width: 100% }</code> がラベル列を押し潰し「装/甲」が縦に折れていた。ラベル列を <code>fit-content</code> にし、メーターは<b>ターゲットの色</b>で塗る。敵の装甲が減るのは良いことなので、閾値の警告色は使わない(現行の <code>hp ≤ 30%</code> の danger 引数を廃止)。
+    <span class="rf-where">src/game/hud/panels/target-panel.ts の <code>syncTarget</code>(<code>armorMeter.setProgress(…, hp &lt;= maxHp * 0.3)</code> の第4引数 → <code>'normal'</code> 固定、<code>tone: 'tgt'</code>)/ src/game/hud/style/combat-view-style.ts の <code>.armor-readout</code>・<code>.armor-meter .w-meter-fill</code>・<code>.armor-value</code> を削除</span></li>
+  <li data-n="15"><b>近接は距離の色+記号で。</b> 1 km 未満で距離に △(注意)、200 m 未満で ▲(警告、行の面も赤)。接近速度が大きいときの衝突の危険は同じ値で読める。警報灯の発報は 05 の規則に従う(パネルは読み値だけを塗る)。
+    <span class="rf-where">src/game/hud/panels/target-panel.ts の <code>syncTarget</code>(距離から level を求める)・閾値の定数は src/game/hud/panels/ 内に置く ・ SPEC §8 TGT へ追記</span></li>
+  <li data-n="16"><b>機能部位(タンパク質敵): 見出し小・構造安定性・部位行。</b> SPEC §8 の記述どおり、部位は「攻撃可否のグリフ + 英語略号 + 三角形HPアイコン + 数値」だけ(バーを使わない)。HP の三角形は艦のマーカーと同じ意匠。<b>グリフの形は <code>◆</code>(攻撃可)/<code>◇</code>(攻撃不可)/<code>×</code>(停止)</b>へ — 現行の <code>▲</code>/<code>△</code> は注意・警告の記号と衝突するため。位相(INTACT/EXPOSED…)は小見出しの右。
+    <span class="rf-where">src/game/hud/panels/target-panel.ts の <code>syncTarget</code>(<code>glyph = site.disabled ? '▽' : site.attackable ? '▲' : '△'</code> と、<code>protein-site-row</code> の innerHTML)/ src/game/hud/style/combat-panel-rows-style.ts の <code>.protein-site-*</code>・<code>.protein-target-*</code> → <code>.ix-site*</code> ・ SPEC §8 TGT 「機能部位一覧」の「グリフ」の字形を規定する更新が要る</span></li>
+  <li data-n="17"><b>基地(装甲なし)は装甲の行を畳む。</b> 満タン相当の値で埋めない(SPEC §8 に既出)。現行も <code>tgt-armor-row</code> を畳んでおり、挙動は同じ — 行の殻が <code>.ix-row</code> へ変わるだけ。
+    <span class="rf-where">src/game/hud/panels/target-panel.ts の <code>syncTarget</code>(<code>tgt-armor-row</code> の <code>hidden</code> 切替)</span></li>
+  <li data-n="18"><b>末尾の案内行: 右クリックだけでなく長押しも書く。</b> 現行の「軌道要素は右クリックで表示」はタッチで読めない(SPEC §6: 長押し=右クリック相当、説明をホバー/マウス専用にしない)。補足の段(11px・淡色)の1行。
+    <span class="rf-where">src/game/hud/hud-root.ts の <code>buildTargetPanel</code>(<code>.target-help</code>)・SPEC §8 TGT「案内行」の文言</span></li>
+</ol>
+
+<!-- ======================================================================================= -->
+<h2><span class="ix-code">CNT</span>敵一覧</h2>
+<p class="rf-lead">
+  SPEC §8: 生存中の敵を距離順に列挙し、同じ波は「第N波 ×件数」の1行に集約する。現行は連番「01 02 03」が情報を持たず、見出しは「CONTACTS」だけ英大文字で他と不揃い、固定/隣接が同じ主役色で並ぶ。
+  改修案の行は <code>.ix-item</code>(<code>[グリフ] [名前] [距離] [状態語]</code>)で、<b>固定=第二色の面・隣接=注意色の状態語・近接=距離を注意色</b>。
+</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>右レール 300px</span></div><img src="foundation/current/crops/contacts.jpg" alt="現行の敵一覧" width="300" height="140"></div>
+  <div class="rf-cell is-space pg-cell"><div class="rf-cell-cap"><b>改修案</b><span>敵5機(うち1機ロック)</span></div><div class="pg-w" data-mount="cnt:normal"></div></div>
+</div>
+<h3>状態のバリエーション(波の集約行を含む)</h3>
+<div class="pg-gallery" data-gallery="cnt"></div>
+<p class="pg-mini">対象なし = 敵が0機のときパネルごと非表示(現行コードと同じ。<code>contact-empty</code> の「残存目標なし」は到達しない)。波の行は特定の1機を指さないので右クリックしても何も起きない(SPEC §8)— 行の見た目も「単独の敵」と同じ強さにして、押せそうに見せない。</p>
+
+<ol class="rf-notes">
+  <li data-n="19"><b>見出し: 題名を日本語に、件数は補足へ。</b> 「CONTACTS 5 / 5」を「敵一覧 ……… 残 5 / 5」にする(題名が英大文字なのはこのパネルだけ)。数値の意味を「残」で言い切る(SPEC §8 の「出撃数/撃破数のバッジ」の文言と、実装の<code>remainingCount / totalCount</code> が食い違っている — 報告に挙げる)。
+    <span class="rf-where">src/game/hud/hud-root.ts の <code>buildEnemiesPanel</code>(題名 'CONTACTS'、<code>.panel-count</code>)/ src/game/hud/panels/enemies-panel.ts の <code>sync</code>(<code>count.textContent</code>・<code>aria-label</code>)/ src/game/hud/style/combat-view-style.ts の <code>#hud-enemies .panel-count</code></span></li>
+  <li data-n="20"><b>行: 連番をやめて、状態を持つグリフにする。</b> 現行の <code>counter-increment</code> による「01・02…」は並び順の他に意味が無い。グリフは敵 △、ロック中 ⌖(第二色)。<code>.ix-item</code> は名前・距離・状態語を右に揃え、距離は桁が揃う(<code>tabular-nums</code>)。固定行は <code>.is-tgt</code>(第二色の面)で、現行の左縁の主役色の線は廃止(監査1)。
+    <span class="rf-where">src/game/hud/panels/enemies-panel.ts の <code>syncEnemyList</code>(<code>li.contact-row</code> の3 span と <code>ui-accent</code>/<code>ui-near</code> クラス → <code>.ix-item</code> の4 span と <code>.is-tgt</code>/<code>.is-near</code>)/ src/game/hud/style/combat-view-style.ts の <code>.contact-row</code>・<code>.contact-row::before</code>・<code>.contact-role</code>・<code>.contact-row.ui-accent</code>/ src/game/hud/style/combat-panel-rows-style.ts の <code>#hud-enemies .erow</code>(未使用の旧規則)</span></li>
+  <li data-n="21"><b>波の集約行: 「第N波 ×件数」+ 最も近い個体の距離。</b> 件数は淡い単位(<code>×3</code>)として名前の後ろへ。距離は波の最短距離。波の中にロック中の個体がいれば、行は固定の見た目(第二色の面)になる。見出しと同じ並びの1種類の行で、波専用の部品は作らない。
+    <span class="rf-where">src/game/hud/panels/enemies-panel.ts の <code>buildEnemyRows</code>(波の代表距離・<code>targeted</code> の集約。ロジックは変えない)・<code>syncEnemyList</code>(<code>label</code> の組み立てを name と count に分ける)・SPEC §8 敵一覧</span></li>
+  <li data-n="22"><b>近接の状態を距離に出す。</b> 500 m 未満で距離に △、100 m 未満で ▲(行の面も赤)。「隣接」の状態語は注意色の文字のまま(最も近い未固定の1行)。名前の「隣接」は意味が曖昧(最近傍の意)なので、SPEC の言葉に合わせて改めるか要検討。
+    <span class="rf-where">src/game/hud/panels/enemies-panel.ts の <code>syncEnemyList</code>(<code>isAdjacent</code>・<code>role</code>)・閾値の定数は同ファイルへ ・ SPEC §8 敵一覧へ追記</span></li>
+</ol>
+
+<!-- ======================================================================================= -->
+<h2><span class="ix-code">ORB</span>軌道</h2>
+<p class="rf-lead">
+  SPEC §8: 「<b>操作対象はいまどこをどう飛んでいて、この先どうなるか</b>」。主読み値は<b>高度</b>(と速度)、その根拠が遠地点・近地点・傾斜・周期、先行きの危険が動圧と船体温度。
+  現行は主読み値が 34px で良いが、遠地点/近地点の箱・INC/PRD・動圧・温度が罫線も強弱もなく並び、基準のピルが2行に折れ、「REFERENCE · 自動」と「地球」が離れている。
+  改修案は <b>読む順(高度 → 形 → 危険 → 基準)</b>を保ったまま、行の文法と閾値つきメーターに揃える。
+</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>左レール 300px</span></div><img src="foundation/current/crops/orbit.jpg" alt="現行の軌道パネル" width="300" height="416"></div>
+  <div class="rf-cell is-space pg-cell"><div class="rf-cell-cap"><b>改修案</b><span>LEO 420 km</span></div><div class="pg-w" data-mount="orb:normal"></div></div>
+</div>
+<h3>状態のバリエーション</h3>
+<div class="pg-gallery" data-gallery="orb"></div>
+<p class="pg-mini">軌道要素が求まらない状態(基準が重力中心でない・双曲線軌道)では、遠地点・近地点・傾斜・周期が「---」になり、行は残して値だけ淡色にする(欄を詰めない)。大気を受けない操作対象(基地)では動圧の行ごと畳む(SPEC §8 に既出)。</p>
+
+<ol class="rf-notes">
+  <li data-n="23"><b>主読み値: 高度は最大、速度はその右に1段小さく。</b> <code>.ix-readout</code>(高度 34px)と <code>.ix-readout.is-s</code>(速度 18px)の左右ペア。現行は速度が「7.66 km/s」を高度の隣に置いた構図で良いが、ラベル(ALTITUDE/VELOCITY)が英語で遠いので、値の直下に日本語の補足(高度・速度)を付ける。高度の降下警告(現行 <code>descendWarned</code> の赤字)は、値を警告色にし補足を「▲ 高度」にする。220px では2つを縦に積む。
+    <span class="rf-where">src/game/hud/hud-root.ts の <code>buildOrbitInfoPanel</code>(<code>.orbit-primary-grid</code> → <code>.ix-pair</code> + <code>.ix-readout</code>)/ src/game/hud/orbit/orbit-panel.ts の <code>sync</code>(<code>alt</code> の <code>ui-danger</code> 切替 → level)/ src/game/hud/style/editorial-data-style.ts の <code>.ui-data-hero</code>・<code>.ui-data-major</code>・<code>.ui-data-label</code> と combat-panel-rows-style.ts の <code>.orbit-primary*</code></span></li>
+  <li data-n="24"><b>軌道の形: 箱をやめ、遠地点・近地点・傾斜角・周期を同じ行にする。</b> 現行は遠地点/近地点だけが <code>glass-inset</code> の箱で、INC/PRD は別の小さな2列。4つとも「値」で、強弱は同じ(補足の段)なので、同じ <code>.ix-row</code> にそろえる。ラベルは天体ごとに変わる(<code>getApsisLabelSpec</code>: 遠地点/遠月点…)。近地点が大気圏に近いときは △。
+    <span class="rf-where">src/game/hud/hud-root.ts の <code>buildOrbitInfoPanel</code>(<code>.orbit-apsides</code>・<code>.orbit-secondary-grid</code> → <code>.ix-rows</code>)/ src/game/hud/orbit/orbit-panel.ts の <code>sync</code>(<code>ap-label</code>/<code>pe-label</code> の組み立て)/ src/game/hud/style/combat-panel-rows-style.ts の <code>.orbit-apsis</code>・<code>.orbit-apsides</code>・<code>.orbit-secondary-grid</code>(削除)</span></li>
+  <li data-n="25"><b>環境負荷: 閾値の目盛りつきメーター + 注意/警告の2段。</b> 現行は閾値を越えたとき値を赤字にして行の面を赤くするだけで、越える手前が分からない(動圧 50%・船体温度 70% で一斉に赤)。改修案は目盛り(動圧 70%・船体温度 75%)に近づく様子をメーターで見せ、越えたら注意 △(色)、90% 以上で警告 ▲(行の面)。<b>メーターは4px の細線</b>で、ラベル・値と同じ行。
+    <span class="rf-where">src/game/hud/orbit/orbit-panel.ts の <code>sync</code>(<code>qDanger</code>/<code>tDanger</code> と <code>ui-danger-fill</code> の切替 → level 2段)・<code>qdynMeter</code>/<code>tempMeter</code> の <code>setProgress</code> / src/game/hud/hud-root.ts(<code>.orbit-environment</code>・<code>.orbit-env-row</code>)/ src/game/hud/style/combat-panel-rows-style.ts の <code>.orbit-env-*</code> ・ 閾値の割合は src/game/player/aero-load.ts・combat-ship-entity.ts の最大値から導く ・ SPEC §8 ORB 「危険の度合い」へ閾値2段を追記</span></li>
+  <li data-n="26"><b>基準の選択: 1行に収め、押せることを面で示す。</b> 「基準」の見出し + 4択のセグメント(<code>.w-group</code> + <code>.w-btn--dense</code>)が300pxで1行に収まる(現行は主役色のピルと大きいボタンで2行に折れ、「航法ターゲット」だけ孤立)。選択中は <code>.on</code>(主役色=自分の選択)。220px では折り返すが切れない。選択が即時反映する規約(SPEC §8 ORB)はそのまま。
+    <span class="rf-where">src/game/hud/orbit/orbit-panel.ts の <code>REFERENCE_ITEMS</code>・<code>referenceControl</code>(<code>SegmentedControl</code> のラベル 'REFERENCE · 自動' の文脈行は削除し、見出しの補足に中心天体を出す)/ src/game/hud/hud-root.ts(<code>orbit-context-row</code> の削除・<code>reference-row</code>)/ src/game/hud/style/combat-panel-rows-style.ts の <code>.orbit-context-row</code>・<code>.orbit-controls</code>・<code>.orbit-controls .w-segmented</code></span></li>
+  <li data-n="27"><b>軌道分析の入口は第二級の1ボタン。</b> 「軌道分析」は常用の操作ではないので、補足の強さ(<code>.w-btn--secondary.w-btn--dense</code>)で下端に置く。マップビューで畳まれる規則(SPEC §8)は変えない。
+    <span class="rf-where">src/game/hud/orbit/orbit-panel.ts の <code>buildActionButtons</code>(<code>new Button('軌道分析', …)</code> に variants を渡す)</span></li>
+  <li data-n="28"><b>畳んだ見出しは高度を出す。</b> 畳んでいても「いまどの高さか」は読める(主読み値の要約)。降下警告・環境の注意/警告があるときは、いちばん重い1つが色+記号で残る。
+    <span class="rf-where">src/game/hud/panel-shell.ts の <code>PanelShell.setSummary</code>(1 と共通)/ src/game/hud/orbit/orbit-panel.ts の <code>sync</code></span></li>
+</ol>
+
+<!-- ======================================================================================= -->
+<h2><span class="ix-code">OBJ</span>物体一覧 — 行の状態だけ</h2>
+<p class="rf-lead">
+  マップ左レールの物体一覧は 03 が全体配置を担当する。ここでは<b>行(<code>.ix-item</code>)の状態</b>だけを定める。
+  現行の選択行は全幅の主役色の面(地球)だが、改修後も「自分の選択」は主役色(<code>on</code>)、「ターゲット」は第二色、「接近」は注意色の状態語、<b>畳まれた木は ▸ と件数</b>。
+  状態は5種(通常・ホバー・選択中・ターゲット・接近)と木の開閉で、ホバーは装飾(情報を持たない — SPEC §6)。
+</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>左レール 300px(抜粋)</span></div><img src="foundation/current/crops/map-objects.jpg" alt="現行の物体一覧" width="300" height="578"></div>
+  <div class="rf-cell is-space pg-cell"><div class="rf-cell-cap"><b>改修案</b><span>行の状態</span></div><div class="pg-w" data-mount="obj:states"></div></div>
+</div>
+<ol class="rf-notes">
+  <li data-n="29"><b>行の状態を5つの語彙に閉じる。</b> 通常 / ホバー(面と文字がアクセント化するだけ)/ 選択中(<code>.ui-selectable.on</code> = 主役色の面)/ ターゲット(<code>.is-tgt</code> = 第二色の面とタグ)/ 接近(<code>.is-near</code> = タグだけ注意色、行は変えない)。<b>「選択」と「ターゲット」が同時なら、ターゲットの色が勝つ</b>(ターゲットは敵や航法目標という別の意味を持つため)。木の開閉は ▸/▾(SPEC §3 開閉トグルの共通記号)で、畳んだ行の右に子の件数を出す。
+    <span class="rf-where">src/game/hud/panels/physical-object-list-panel.ts(<code>physical-object-list-section-header</code> の <code>ui-selectable</code>・グリフ)/ src/game/hud/panels/physical-object-list-row-tree.ts(行の組み立てと木の展開)/ src/game/hud/style/map-view-style.ts(<code>.physical-object-list-*</code> の選択行の背景)・行の殻は <code>.ix-item</code> へ ・ SPEC §8 の物体一覧と MAP.md の選択規則</span></li>
+</ol>
+
+<!-- ======================================================================================= -->
+<h2><span class="ix-code">220</span>幅 220px(medium の左レール)でも値が切れない</h2>
+<p class="rf-lead">
+  medium の左レールは 220px、右レールは 260px。<b>最悪の値</b>(月の高度 384.40 Mm・速度 10.92 km/s・動圧 28.00 kPa・船体温度 1220 K、艦では「最強 400.0 m/s²」・燃料「1000 / 1000」)を、300px・260px・220px に並べる。
+  300→260 は列の幅が縮むだけで、220px では<b>メーターがラベルの下へ落ち、読み値のペアが縦に積まれる</b>。値と単位は常に残る。
+</p>
+<div class="pg-gallery" data-gallery="narrow"></div>
+<ol class="rf-notes">
+  <li data-n="30"><b>狭いレールの規則は、パネル自身の幅(コンテナ)で判断する。</b> 画面幅のメディアクエリではなく <code>.ix-panel { container-type: inline-size }</code> に対する <code>@container</code> で切り替える — レール幅は <code>--rail-w-left/right</code> が画面幅で 300/260/220 と変わり、パネル内の規則がそれを知らなくて済む(SPEC §5 ブレークポイントの値を直書きしない規約、CODING-RULE 1.12)。列を揃える <code>subgrid</code> と合わせて、ref.css への昇格候補。
+    <span class="rf-where">src/game/hud/style/layout-tokens.ts(<code>--rail-w-*</code> は変更しない)/ src/game/hud/panel-shell.ts(<code>.panel-shell</code> に <code>container-type</code>)/ src/game/hud/style/combat-panel-rows-style.ts(行の列定義を <code>.ix-rows</code> へ)・ DEVELOP/CODING-RULE.md 1.12 の例に追記</span></li>
+</ol>
+
+<!-- ======================================================================================= -->
+<h2><span class="ix-code">PLAN</span>改修の手順</h2>
+<p class="rf-lead">小さく入れられる順。各段で <code>npm run typecheck</code> を通し、触った層のテストを回す(<code>test:game</code>・<code>test:render</code>)。見た目が変わる段は、前後の撮影を残す。</p>
+<ol class="pg-steps">
+  <li><b>切れと折返しだけ直す(見た目の文法は変えない)。</b> <code>.vessel-meter-readout</code> の 128px 固定幅を外し、値を <code>nowrap</code> にして列を可変にする。「装甲」ラベルの折返しを直す(<code>.armor-readout</code>)。監査2 だけが解ける。<code>combat-panel-rows-style.ts</code>・<code>combat-view-style.ts</code> のみ。</li>
+  <li><b>ショートカットを <code>.key</code> 1種にする。</b> <code>&lt;kbd&gt;</code>・<code>[F]</code>・<code>[7]</code>・<code>1–4</code> を統一(注記 6)。ラベル文字列からキーを外し、<code>vessel-panel.ts</code> の <code>RADIATOR_UI</code>/<code>SOLAR_UI</code>/<code>addAction</code> を直す。監査3。</li>
+  <li><b>状態を形にし、色を意味で引く。</b> <code>.ix-pip</code> を入れ、<code>syncState</code> を <code>.on</code>/<code>.is-own</code> へ(注記 5)。<code>.ui-section-code</code> を中立に(注記 1)。主役色の使いどころを自分・選択だけに絞る。監査1・4。<code>theme.ts</code> に意味の別名を足す(01 参照)。</li>
+  <li><b>メーターを細線+閾値にする。</b> <code>Meter</code> に <code>level</code> と <code>setThreshold</code> を足し、全パネルの <code>setProgress</code> 呼び出しを2段へ(注記 3・14・25)。閾値を SPEC §8 に書いてから入れる(<code>/modify-feature</code> の入口)。</li>
+  <li><b>パネルを責務の区画に分け、列を揃える。</b> VSL を4区画に、ORB の箱を行に(注記 2・7・8・24)。<code>.ix-rows.is-aligned</code> と container query を入れて 220px を解く(注記 30)。タッチの推力段と点灯ボタン(注記 10)はここで入れる。</li>
+  <li><b>畳んだ見出しの要約と、ターゲット/敵一覧の強弱。</b> <code>PanelShell.setSummary</code>(注記 1・28)、TGT の主読み値・機能部位の字形(注記 13・16)、CNT の行(注記 20〜22)。SPEC §8 の TGT/CNT/VSL/ORB の追記(<code>docs(spec):</code> 単独 commit)を先に済ませる。</li>
+</ol>
+
+</main>
+<script src="foundation/themes.js"></script>
+<script src="foundation/ref.js"></script>
+<script>
+(function () {
+  'use strict';
+  // ====================================================================================
+  // 小さな組み立て関数。ゲームへ移すときの DOM もこの形(.ix-* と .w-* だけ)。
+  // ====================================================================================
+  const u = (t) => `<span class="ix-u">${t}</span>`;
+  const key = (k) => `<kbd class="key">${k}</kbd>`;
+  const N = (n) => (n ? ` data-note="${n}"` : '');
+  const LV = { caution: 'is-caution', warning: 'is-warning' };
+  const lvOf = (r, c, w) => (r >= w ? 'warning' : r >= c ? 'caution' : '');
+  const worst = (...a) => (a.includes('warning') ? 'warning' : a.includes('caution') ? 'caution' : '');
+
+  function gauge(v, o) {
+    o = o || {};
+    const cls = ['ix-gauge', o.level ? LV[o.level] : '', o.tone ? 'is-' + o.tone : '', o.steps ? 'is-steps' : ''].filter(Boolean).join(' ');
+    return `<span class="${cls}"${o.at != null ? ` style="--at: ${o.at}%"` : ''}><i style="--v: ${Math.max(0, Math.min(100, v))}%"></i></span>`;
+  }
+  // k: ラベル, kk: キー, g: {v, at, tone, steps}, v: 値(HTML), unit: 単位, level: '' | caution | warning
+  function row(o) {
+    const lv = o.level ? LV[o.level] : '';
+    const g = o.g ? gauge(o.g.v, { at: o.g.at, tone: o.g.tone, steps: o.g.steps, level: o.level }) : '';
+    return `<div class="ix-row${o.level === 'warning' ? ' is-warning' : ''}"${N(o.note)}>` +
+      `<span class="ix-k"><span class="ix-k-text">${o.k}</span>${o.kk ? key(o.kk) : ''}</span>${g}` +
+      `<span class="ix-v ${lv}">${o.v}${o.unit ? u(o.unit) : ''}</span></div>`;
+  }
+  const pip = (on, own) => `<span class="ix-pip${on ? ' on' : ''}${on && own ? ' is-own' : ''}">${on ? 'ON' : 'OFF'}</span>`;
+  const sub = (t, n) => `<div class="ix-sub"${N(n)}>${t}</div>`;
+
+  // 見出し。summary は畳んだときだけ出る(最も重い状態が色+記号で残る)。
+  function head(code, title, meta, o) {
+    o = o || {};
+    const sm = o.summary ? `<span class="ix-head-meta is-summary ${o.summary.level ? LV[o.summary.level] : ''}">${o.summary.text}</span>` : '';
+    return `<header class="ix-head"${N(o.note)}><span class="ix-code">${code}</span><span class="ix-title">${title}</span>` +
+      `<span class="ix-head-meta">${meta || ''}</span>${sm}<span class="ix-collapse" title="${o.collapsed ? '開く' : '折りたたむ'}">${o.collapsed ? '▸' : '▾'}</span></header>`;
+  }
+  const panel = (inner, o) => `<section class="ix-panel${o && o.collapsed ? ' is-collapsed' : ''}${o && o.cls ? ' ' + o.cls : ''}">${inner}</section>`;
+
+  // 距離・速度の書式(src/hud/utils.ts の fmtDist/fmtSpeed と同じ丸め。値と単位に分ける)。
+  function distParts(m) {
+    if (Math.abs(m) >= 1e6) return [(m / 1e6).toFixed(2), 'Mm'];
+    if (Math.abs(m) >= 1e3) return [(m / 1e3).toFixed(2), 'km'];
+    return [m.toFixed(0), 'm'];
+  }
+  function speedParts(ms) {
+    if (Math.abs(ms) >= 1000) return [(ms / 1000).toFixed(2), 'km/s'];
+    return [ms.toFixed(1), 'm/s'];
+  }
+  const withU = (p) => `${p[0]}${u(p[1])}`;
+
+  // 三角形HPアイコン(src/game/marker/marker-shapes.ts の triangleHpMarkerSvg と同じ意匠)。
+  function triSvg(hp, maxHp) {
+    const segments = Math.max(3, Math.round(maxHp / 3) * 3);
+    const lit = Math.max(0, Math.min(segments, Math.round((hp / maxHp) * segments)));
+    const pts = [[12, 3], [21, 18.588], [3, 18.588]];
+    const lines = [];
+    const emit = (i, j, k, a, b) => {
+      if (b <= a) return;
+      const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % 3];
+      const c = (i * k + j) < lit ? 'currentColor' : 'var(--fill-3)';
+      lines.push(`<line x1="${x1 + (x2 - x1) * a}" y1="${y1 + (y2 - y1) * a}" x2="${x1 + (x2 - x1) * b}" y2="${y1 + (y2 - y1) * b}" style="stroke:${c}" stroke-width="1.5"/>`);
+    };
+    for (let i = 0; i < 3; i++) {
+      const k = segments / 3, ns = 0.455, ne = 0.545;
+      for (let j = 0; j < k; j++) {
+        const a = j / k, b = (j + 1) / k;
+        if (a < ne && b > ns) { if (a < ns) emit(i, j, k, a, ns); if (b > ne) emit(i, j, k, ne, b); } else emit(i, j, k, a, b);
+      }
+    }
+    return `<svg viewBox="0 0 24 24" aria-label="HP ${hp} / ${maxHp}">${lines.join('')}</svg>`;
+  }
+
+  // ====================================================================================
+  // VSL — 艦のステータス
+  // ====================================================================================
+  const THR = [['弱', 5.0], ['中', 20.0], ['強', 100.0], ['最強', 400.0]];
+  const MAXQ = 35000, MAXT = 1300;
+  const VSL_BASE = {
+    fuel: [1000, 1000], thr: 1, q: 0, t: 334, ammo: [40, 2], modes: [1, 0, 1, 1],
+    pad: [1, 1], rad: [{ on: 0, w: 0 }, { on: 0, w: 0 }],
+  };
+  const VSL_STATES = {
+    current: Object.assign({}, VSL_BASE, { rad: [{ on: 0, w: 0 }, { on: 0, w: 100 }] }),
+    normal: VSL_BASE,
+    caution: Object.assign({}, VSL_BASE, {
+      fuel: [180, 1000], thr: 3, q: 26000, t: 1010, ammo: [12, 1], rad: [{ on: 1, w: 12 }, { on: 0, w: 62 }],
+    }),
+    warning: Object.assign({}, VSL_BASE, {
+      fuel: [40, 1000], thr: 3, q: 33000, t: 1220, ammo: [0, 0], modes: [1, 0, 0, 1], rad: [{ on: 0, w: 100 }, { on: 0, w: 100 }],
+    }),
+  };
+  function vslLevels(s) {
+    const fr = s.fuel[0] / s.fuel[1];
+    return {
+      fuel: fr <= 0.05 ? 'warning' : fr <= 0.2 ? 'caution' : '',
+      q: lvOf(s.q / MAXQ, 0.7, 0.9),
+      t: lvOf(s.t / MAXT, 0.75, 0.9),
+      ammo: s.ammo[0] === 0 && s.ammo[1] === 0 ? 'warning' : s.ammo[1] <= 1 ? 'caution' : '',
+    };
+  }
+  const wearLv = (w) => (w >= 90 ? 'warning' : w > 50 ? 'caution' : '');
+  function deployRow(label, items, keys, notes) {
+    const btns = items.map((it, i) => {
+      const lv = wearLv(it.w);
+      const wear = it.w > 0 ? `<span class="ix-wear ${lv ? LV[lv] : ''}">${it.w}%</span>` : '';
+      const side = i === 0 ? '左' : '右';
+      return `<span class="w-btn w-btn--dense w-hit${it.on ? ' on' : ''}" role="button" aria-pressed="${it.on ? 'true' : 'false'}" ` +
+        `aria-label="${label}${side} ${it.on ? '展開' : '収納'}${it.w > 0 ? '、損耗' + it.w + '%' : ''}"><span>${side}</span>${wear}${key(keys[i])}</span>`;
+    }).join('');
+    return `<div class="ix-row is-deploy"${N(notes)}><span class="ix-k"><span class="ix-k-text">${label}</span></span>${btns}</div>`;
+  }
+  function vslSummary(s) {
+    const L = vslLevels(s);
+    const lv = worst(L.fuel, L.q, L.t, L.ammo, wearLv(s.rad[0].w), wearLv(s.rad[1].w));
+    const pct = Math.round((s.fuel[0] / s.fuel[1]) * 100);
+    if (L.fuel) return { level: L.fuel, text: `燃料 ${pct}%` };
+    if (L.t) return { level: L.t, text: `船体 ${s.t} K` };
+    if (L.q) return { level: L.q, text: `動圧 ${(s.q / 1000).toFixed(0)} kPa` };
+    if (L.ammo) return { level: L.ammo, text: L.ammo === 'warning' ? '弾切れ' : `予備 ${s.ammo[1]}連` };
+    return { level: lv, text: `燃料 ${pct}%` };
+  }
+  function vsl(stateKey, opt) {
+    opt = opt || {};
+    const s = VSL_STATES[stateKey];
+    const L = vslLevels(s);
+    const touch = !!opt.touch;
+    const tn = (n) => (opt.n || (opt.v && touch) ? n : 0);
+    const thr = THR[s.thr];
+    const q = s.q >= 1000 ? [(s.q / 1000).toFixed(2), 'kPa'] : [s.q.toFixed(0), 'Pa'];
+    const meter = [
+      row({ k: 'RCS燃料', g: { v: (s.fuel[0] / s.fuel[1]) * 100, at: 20 }, v: String(s.fuel[0]), unit: `/ ${s.fuel[1]}`, level: L.fuel, note: opt.n && 2 }),
+      touch
+        ? ''
+        : row({ k: '並進出力', kk: '1–4', g: { v: ((s.thr + 1) / 4) * 100, steps: true }, v: thr[0], unit: `${thr[1].toFixed(1)} m/s²`, note: opt.n && 4 }),
+      row({ k: '動圧', g: { v: (s.q / MAXQ) * 100, at: 70 }, v: q[0], unit: q[1], level: L.q, note: opt.n && 3 }),
+      row({ k: '船体温度', g: { v: (s.t / MAXT) * 100, at: 75 }, v: String(s.t), unit: 'K', level: L.t, note: opt.n && 11 }),
+      row({ k: '弾薬', v: s.ammo[0] === 0 && s.ammo[1] === 0 ? '弾切れ' : String(s.ammo[0]), unit: s.ammo[0] === 0 && s.ammo[1] === 0 ? '' : `/ 40 · 予備 ${s.ammo[1]}連`, level: L.ammo, note: opt.n && 9 }),
+    ].join('');
+    const thrTouch = touch
+      ? `<div class="ix-touch-stack"${N(tn(10))}><span class="w-group-title">並進出力 · 推力段</span><div class="ix-seg" role="group" aria-label="推力段">` +
+        THR.map((t, i) => `<span class="w-btn w-hit${i === s.thr ? ' on' : ''}" role="button">${i + 1}<small>${t[0]}</small></span>`).join('') + '</div></div>'
+      : '';
+    const modeDefs = [['RCS 制動', 'P', true], ['微調整', 'V', true], ['進行方向ホールド', 'C', true], ['視点RCS追従', 'G', false]];
+    const modes = touch
+      ? `<div class="ix-touch-stack"${N(tn(10))}>` + modeDefs.map((m, i) => `<span class="w-btn ix-modebtn w-hit${m[2] ? '' : ' is-plain'}${s.modes[i] ? ' on' : ''}" role="button" aria-pressed="${s.modes[i] ? 'true' : 'false'}">${m[0]}</span>`).join('') + '</div>'
+      : '<div class="ix-rows is-aligned">' + modeDefs.map((m, i) => row({ k: m[0], kk: m[1], v: pip(s.modes[i], m[2]), note: opt.n && i === 1 && 5 })).join('') + '</div>';
+    const actions = `<div class="ix-actions"${N(opt.n && 8)}><span class="w-btn w-btn--dense w-btn--secondary w-hit">進行方向${touch ? '' : key('F')}</span>` +
+      `<span class="w-btn w-btn--dense is-tgt w-hit">ターゲット${touch ? '' : key('T')}</span><span class="w-btn w-btn--dense w-btn--secondary w-hit">装填${touch ? '' : key('R')}</span></div>`;
+    const sm = vslSummary(s);
+    const body =
+      sub('計器') + '<div class="ix-rows is-aligned">' + meter + '</div>' + thrTouch +
+      sub('モード', opt.n && 6) + modes +
+      sub('展開') + '<div class="ix-rows">' + deployRow('パドル', s.pad.map((on) => ({ on, w: 0 })), ['7', '8'], opt.n && 7) + deployRow('放熱板', s.rad, ['9', '0']) + '</div>' +
+      sub('操作') + actions;
+    return panel(head('VSL', '艦のステータス', '', { collapsed: opt.collapsed, summary: sm, note: (opt.n && 1) || (opt.v && opt.collapsed && 1) }) + body, { collapsed: opt.collapsed });
+  }
+
+  // ====================================================================================
+  // TGT — ターゲット
+  // ====================================================================================
+  const TGT_BASE = { name: 'HOSTILE-ε', kind: '艦', dist: 60000, closing: 0, rel: 67.6, hp: [11, 11], protein: null };
+  const TGT_STATES = {
+    normal: TGT_BASE,
+    caution: Object.assign({}, TGT_BASE, { dist: 820, closing: 38.4, rel: 41.2, hp: [7, 11] }),
+    warning: Object.assign({}, TGT_BASE, { dist: 126, closing: 210.3, rel: 212.0, hp: [3, 11] }),
+    base: Object.assign({}, TGT_BASE, { name: 'BASE-A', kind: '基地', dist: 15200, closing: -3.2, rel: 3.2, hp: null }),
+    protein: Object.assign({}, TGT_BASE, {
+      name: 'HOSTILE-ζ', kind: 'ミオグロビン', dist: 4300, closing: 12.6, rel: 14.1, hp: null,
+      protein: {
+        phase: 'EXPOSED', integrity: [412, 500],
+        sites: [
+          { abbr: 'Fe155', hp: 62, max: 150, attackable: true, disabled: false },
+          { abbr: 'His93', hp: 0, max: 95, attackable: false, disabled: true },
+          { abbr: 'Mb-Core', hp: 180, max: 180, attackable: false, disabled: false },
+        ],
+      },
+    }),
+  };
+  const distLv = (m) => (m < 200 ? 'warning' : m < 1000 ? 'caution' : '');
+  function tgt(stateKey, opt) {
+    opt = opt || {};
+    const s = TGT_STATES[stateKey];
+    const dl = distLv(s.dist);
+    const d = distParts(s.dist), c = speedParts(s.closing), r = speedParts(s.rel);
+    const readClass = dl ? ' ' + LV[dl] : '';
+    const vn = (n, on) => (opt.v && on ? n : opt.n && n);
+    const ident = `<div class="ix-ident is-tgt"${N((opt.n && 12) || (opt.v && stateKey === 'base' && 17))}><span class="ix-ident-glyph">⌖</span><span class="ix-ident-name">${s.name}</span><span class="ix-ident-role">${s.kind}</span></div>`;
+    const pair = `<div class="ix-pair is-stack-narrow" style="margin-top: var(--space-4); align-items: end"${N(opt.n && 13)}>` +
+      `<div class="ix-readout is-m is-tgt${readClass}"><span class="ix-readout-value">${d[0]}${u(d[1])}</span><span class="ix-readout-cap">距離</span></div>` +
+      `<div class="ix-readout is-s"><span class="ix-readout-value">${c[0]}${u(c[1])}</span><span class="ix-readout-cap">接近速度</span></div></div>`;
+    const rows = [row({ k: '相対速度', v: r[0], unit: r[1], level: dl === 'warning' ? 'warning' : '', note: (opt.n && 15) || (opt.v && (stateKey === 'caution' || stateKey === 'warning') && 15) })];
+    if (s.hp) rows.push(row({ k: '装甲', g: { v: (s.hp[0] / s.hp[1]) * 100, tone: 'tgt' }, v: String(s.hp[0]), unit: `/ ${s.hp[1]}`, note: opt.n && 14 }));
+    let prot = '';
+    if (s.protein) {
+      const p = s.protein;
+      rows.push(row({ k: '構造安定性', g: { v: (p.integrity[0] / p.integrity[1]) * 100, tone: 'tgt' }, v: String(p.integrity[0]), unit: `/ ${p.integrity[1]}` }));
+      prot = `<div class="ix-sub"${N(opt.v || opt.n ? 16 : 0)} style="display:flex;justify-content:space-between"><span>機能部位</span><span class="ix-phase">${p.phase}</span></div>` +
+        p.sites.map((st) => {
+          const glyph = st.disabled ? '×' : st.attackable ? '◆' : '◇';
+          const hpText = st.disabled ? '停止' : `${st.hp} / ${st.max}`;
+          return `<div class="ix-site${st.disabled ? ' is-off' : ''}" style="--hp: ${st.max ? st.hp / st.max : 0}"><span class="ix-site-glyph" aria-hidden="true">${glyph}</span><span class="ix-site-abbr">${st.abbr}</span>` +
+            `<span class="ix-site-icon">${triSvg(st.hp, st.max)}</span><span class="ix-site-hp">${hpText}</span></div>`;
+        }).join('');
+    }
+    const help = `<p class="ix-note-line"${N(opt.n && 18)}>軌道要素は右クリック / 長押しで表示</p>`;
+    return panel(head('TGT', 'ターゲット', '', { collapsed: opt.collapsed, summary: { level: dl, text: `${d[0]} ${d[1]}` }, note: opt.n && 12 && undefined }) +
+      ident + pair + '<div class="ix-rows is-aligned" style="margin-top: var(--space-3)">' + rows.join('') + '</div>' + prot + help, { collapsed: opt.collapsed });
+  }
+
+  // ====================================================================================
+  // CNT — 敵一覧
+  // ====================================================================================
+  function item(o) {
+    const dl = o.level ? LV[o.level] : '';
+    return `<div class="ix-item ui-selectable${o.tgt ? ' is-tgt' : ''}${o.near ? ' is-near' : ''}${o.level === 'warning' ? ' is-warning-row' : ''}"${N(o.n)}>` +
+      `<span class="ix-item-glyph">${o.glyph || '△'}</span><span class="ix-item-name">${o.name}${o.count ? u('×' + o.count) : ''}</span>` +
+      `<span class="ix-item-v ${dl}">${o.dist}</span><span class="ix-item-tag">${o.tag || ''}</span></div>`;
+  }
+  const CNT = {
+    normal: { count: '5 / 5', rows: [
+      { name: 'HOSTILE-α', dist: '1.40 km', tag: '隣接', near: true, n: 20 },
+      { name: 'HOSTILE-γ', dist: '2.21 km' },
+      { name: 'HOSTILE-β', dist: '3.77 km' },
+      { name: 'HOSTILE-δ', dist: '18.40 km' },
+      { name: 'HOSTILE-ε', dist: '60.00 km', tag: '固定', tgt: true, glyph: '⌖' },
+    ] },
+    wave: { count: '6 / 9', rows: [
+      { name: '第1波', count: 3, dist: '1.40 km', tag: '隣接', near: true, n: 21 },
+      { name: 'HOSTILE-γ', dist: '2.21 km' },
+      { name: '第2波', count: 2, dist: '9.80 km' },
+      { name: 'HOSTILE-ε', dist: '60.00 km', tag: '固定', tgt: true, glyph: '⌖' },
+    ] },
+    waveTgt: { count: '5 / 9', rows: [
+      { name: '第1波', count: 4, dist: '1.40 km', tag: '固定', tgt: true, glyph: '⌖' },
+      { name: '第2波', count: 1, dist: '9.80 km', tag: '隣接', near: true },
+    ] },
+    close: { count: '4 / 5', rows: [
+      { name: 'HOSTILE-β', dist: '90 m', level: 'warning', n: 22 },
+      { name: 'HOSTILE-α', dist: '380 m', level: 'caution', tag: '隣接', near: true },
+      { name: 'HOSTILE-γ', dist: '2.21 km' },
+      { name: 'HOSTILE-ε', dist: '60.00 km', tag: '固定', tgt: true, glyph: '⌖' },
+    ] },
+  };
+  function cnt(stateKey, opt) {
+    opt = opt || {};
+    const s = CNT[stateKey];
+    const hasWarn = s.rows.some((r) => r.level === 'warning');
+    const hasCaut = s.rows.some((r) => r.level === 'caution');
+    const meta = `残 ${s.count}`;
+    const sm = { level: hasWarn ? 'warning' : hasCaut ? 'caution' : '', text: meta };
+    return panel(head('CNT', '敵一覧', meta, { collapsed: opt.collapsed, summary: sm, note: (opt.n && 19) || (opt.v && opt.collapsed && 19) }) + '<div class="ix-list">' + s.rows.map((r) => item(Object.assign({}, r, (opt.n || (opt.v && r.n !== 20)) ? {} : { n: undefined }))).join('') + '</div>', { collapsed: opt.collapsed });
+  }
+
+  // ====================================================================================
+  // ORB — 軌道
+  // ====================================================================================
+  const ORB_BASE = { center: '地球', ref: 0, alt: 420000, spd: 7660, ap: 420050, pe: 419950, inc: 97.0, prd: '01:32:58', q: 0, t: 311, descend: false, apLabel: ['遠地点', 'AP'], peLabel: ['近地点', 'PE'] };
+  const ORB_STATES = {
+    normal: ORB_BASE,
+    caution: Object.assign({}, ORB_BASE, { alt: 118000, spd: 7800, ap: 410000, pe: 64000, q: 26000, t: 1010 }),
+    warning: Object.assign({}, ORB_BASE, { alt: 78000, spd: 7930, ap: 400000, pe: 32000, descend: true, q: 33000, t: 1220 }),
+    hyper: Object.assign({}, ORB_BASE, { ref: 2, center: '月', alt: 1737000, spd: 2410, ap: NaN, pe: NaN, inc: NaN, prd: NaN, q: null }),
+    far: Object.assign({}, ORB_BASE, { center: '月', ref: 2, alt: 384400000, spd: 10920, ap: 384400000, pe: 360200000, inc: 5.14, prd: '27d 07:43', q: 28000, t: 1220 }),
+  };
+  const REFS = ['自動', '地球', '月', '航法ターゲット'];
+  function orb(stateKey, opt) {
+    opt = opt || {};
+    const s = ORB_STATES[stateKey];
+    const finite = isFinite(s.ap);
+    const alt = distParts(s.alt), spd = speedParts(s.spd);
+    const altLv = s.descend ? 'warning' : '';
+    const peLv = finite && s.pe < 100000 ? (s.pe < 50000 ? 'warning' : 'caution') : '';
+    const qr = s.q == null ? null : s.q / MAXQ;
+    const tr = s.t / MAXT;
+    const qLv = qr == null ? '' : lvOf(qr, 0.7, 0.9), tLv = lvOf(tr, 0.75, 0.9);
+    const dash = '<span style="color: var(--ix-meta)">---</span>';
+    const rows = [
+      row({ k: s.apLabel[0] + u(s.apLabel[1]), v: finite ? withU(distParts(s.ap)) : dash }),
+      row({ k: s.peLabel[0] + u(s.peLabel[1]), v: finite ? withU(distParts(s.pe)) : dash, level: peLv }),
+      row({ k: '傾斜角', v: finite ? s.inc.toFixed(2) + '°' : dash }),
+      row({ k: '周期', v: finite ? s.prd : dash }),
+    ].join('');
+    const qKpa = qr == null ? null : (s.q >= 10 ? (s.q / 1000).toFixed(2) : '0.00');
+    const env = [
+      qr == null ? '' : row({ k: '動圧', g: { v: qr * 100, at: 70 }, v: qKpa, unit: 'kPa', level: qLv, note: opt.n && 25 }),
+      row({ k: '船体温度', g: { v: tr * 100, at: 75 }, v: String(s.t), unit: 'K', level: tLv }),
+    ].join('');
+    const refBtns = REFS.map((r, i) => `<span class="w-btn w-btn--dense w-hit${i === s.ref ? ' on' : ''}" role="button">${r}</span>`).join('');
+    const worstL = worst(altLv, peLv, qLv, tLv);
+    const sm = { level: worstL, text: `${alt[0]} ${alt[1]}` };
+    return panel(head('ORB', '軌道', `基準 ${s.center}`, { collapsed: opt.collapsed, summary: sm, note: (opt.n && 28) || (opt.v && opt.collapsed && 28) }) +
+      `<div class="ix-pair is-stack-narrow" style="align-items: end"${N(opt.n && 23)}>` +
+        `<div class="ix-readout${altLv ? ' ' + LV[altLv] : ''}"><span class="ix-readout-value">${alt[0]}${u(alt[1])}</span><span class="ix-readout-cap">高度</span></div>` +
+        `<div class="ix-readout is-s"><span class="ix-readout-value">${spd[0]}${u(spd[1])}</span><span class="ix-readout-cap">速度</span></div></div>` +
+      '<div class="ix-rows is-aligned" style="margin-top: var(--space-4)"' + N(opt.n && 24) + '>' + rows + '</div>' +
+      sub('飛行環境') + '<div class="ix-rows is-aligned">' + env + '</div>' +
+      `<div class="w-group" style="margin-top: var(--space-4)"${N(opt.n && 26)}><span class="w-group-title">基準</span>${refBtns}</div>` +
+      `<div class="ix-actions"${N(opt.n && 27)}><span class="w-btn w-btn--dense w-btn--secondary w-hit">軌道分析</span></div>`, { collapsed: opt.collapsed });
+  }
+
+  // ====================================================================================
+  // OBJ — 行の状態
+  // ====================================================================================
+  function obj() {
+    const cap = (t) => `<div class="ix-sub">${t}</div>`;
+    return '<section class="ix-panel">' +
+      `<div class="ix-sub" data-note="29">通常</div>` + '<div class="ix-list">' +
+        '<div class="ix-item ui-selectable"><span class="ix-item-glyph">●</span><span class="ix-item-name">水星</span><span class="ix-item-v"></span><span class="ix-item-tag"></span></div>' +
+      '</div>' +
+      cap('ホバー(装飾のみ)') + '<div class="ix-list">' +
+        '<div class="ix-item ui-selectable is-hover"><span class="ix-item-glyph">●</span><span class="ix-item-name">金星</span><span class="ix-item-v"></span><span class="ix-item-tag"></span></div>' +
+      '</div>' +
+      cap('選択中(自分の選択 = 主役色)') + '<div class="ix-list">' +
+        '<div class="ix-item ui-selectable on"><span class="ix-item-glyph">●</span><span class="ix-item-name">地球</span><span class="ix-item-v"></span><span class="ix-item-tag"></span></div>' +
+      '</div>' +
+      cap('ターゲット(第二色)') + '<div class="ix-list">' +
+        '<div class="ix-item ui-selectable is-tgt"><span class="ix-item-glyph">⌖</span><span class="ix-item-name">HOSTILE-ε</span><span class="ix-item-v"></span><span class="ix-item-tag">TGT</span></div>' +
+      '</div>' +
+      cap('接近(タグだけ注意色)') + '<div class="ix-list">' +
+        '<div class="ix-item ui-selectable is-near"><span class="ix-item-glyph">◦</span><span class="ix-item-name">アポフィス</span><span class="ix-item-v">0.04 AU</span><span class="ix-item-tag">接近</span></div>' +
+      '</div>' +
+      cap('畳まれた木(▸ + 件数)と、開いた木(▾)') + '<div class="ix-list">' +
+        '<div class="ix-item ui-selectable"><span class="ix-item-glyph">▸</span><span class="ix-item-name">太陽</span><span class="ix-item-v">8</span><span class="ix-item-tag"></span></div>' +
+        '<div class="ix-item ui-selectable on"><span class="ix-item-glyph">▾</span><span class="ix-item-name">地球</span><span class="ix-item-v">3</span><span class="ix-item-tag"></span></div>' +
+        '<div class="ix-item ui-selectable is-d1"><span class="ix-item-glyph">◦</span><span class="ix-item-name">月</span><span class="ix-item-v"></span><span class="ix-item-tag"></span></div>' +
+        '<div class="ix-item ui-selectable is-d1"><span class="ix-item-glyph">▸</span><span class="ix-item-name">人工物</span><span class="ix-item-v">2</span><span class="ix-item-tag"></span></div>' +
+      '</div></section>';
+  }
+
+  // ====================================================================================
+  // マウント
+  // ====================================================================================
+  const BUILD = {
+    vsl: (k, o) => (k === 'touch' ? vsl('normal', Object.assign({ touch: true }, o)) : k === 'collapsed' ? vsl('normal', Object.assign({ collapsed: true }, o)) : k === 'collapsedWarn' ? vsl('warning', Object.assign({ collapsed: true }, o)) : vsl(k, o)),
+    tgt: (k, o) => (k === 'collapsed' ? tgt('normal', Object.assign({ collapsed: true }, o)) : k === 'collapsedWarn' ? tgt('warning', Object.assign({ collapsed: true }, o)) : tgt(k, o)),
+    cnt: (k, o) => (k === 'collapsed' ? cnt('normal', Object.assign({ collapsed: true }, o)) : cnt(k, o)),
+    orb: (k, o) => (k === 'collapsed' ? orb('normal', Object.assign({ collapsed: true }, o)) : k === 'collapsedWarn' ? orb('warning', Object.assign({ collapsed: true }, o)) : orb(k, o)),
+    obj: () => obj(),
+  };
+  const NONE = {
+    vsl: '非表示<br>自機がいない間はパネルごと畳まれる<br>(<code>VesselPanel.sync(null)</code>)',
+    tgt: '非表示<br>ターゲットを固定していない間は出ない<br>(SPEC §8「ロック時のみ表示」)',
+    cnt: '非表示<br>敵が0機のとき、パネルごと出ない<br>(<code>hasContacts</code> が偽)',
+    orb: '非表示<br>操作対象がいない間はパネルごと畳まれる。<br>マップビューでも畳まれる(SPEC §8)',
+  };
+  const GALLERY = {
+    vsl: [['正常', 'normal'], ['注意', 'caution'], ['警告', 'warning'], ['折りたたみ(正常)', 'collapsed'], ['折りたたみ(警告が残る)', 'collapsedWarn'], ['タッチ環境', 'touch'], ['対象なし', 'none']],
+    tgt: [['正常', 'normal'], ['近接 注意(820 m)', 'caution'], ['近接 警告(126 m)', 'warning'], ['基地(装甲の行が畳まれる)', 'base'], ['タンパク質敵(機能部位つき)', 'protein'], ['折りたたみ', 'collapsed'], ['折りたたみ(近接警告が残る)', 'collapsedWarn'], ['対象なし', 'none']],
+    cnt: [['正常(単独5機)', 'normal'], ['波の集約行', 'wave'], ['波にロック中の個体', 'waveTgt'], ['近接(注意・警告)', 'close'], ['折りたたみ', 'collapsed'], ['対象なし', 'none']],
+    orb: [['正常', 'normal'], ['注意(近地点・動圧・温度)', 'caution'], ['警告(降下・動圧・温度)', 'warning'], ['軌道要素なし(双曲線・月基準)', 'hyper'], ['折りたたみ', 'collapsed'], ['折りたたみ(警告が残る)', 'collapsedWarn'], ['対象なし', 'none']],
+  };
+
+  function mountGalleries() {
+    document.querySelectorAll('[data-gallery]').forEach((g) => {
+      const kind = g.dataset.gallery;
+      if (kind === 'narrow') {
+        const cells = [
+          ['300px(右・左レールの既定)', 300, () => orb('far', {})],
+          ['260px(medium の右レール)', 260, () => orb('far', {})],
+          ['220px(medium の左レール)', 220, () => orb('far', { n: true })],
+          ['艦 220px(最強・燃料満タン)', 220, () => vsl('caution', { n: false })],
+        ];
+        cells.forEach(([cap, w, build]) => {
+          const cell = document.createElement('div');
+          cell.className = 'rf-cell is-space pg-cell';
+          cell.style.width = `${w + 40}px`;
+          cell.innerHTML = `<div class="rf-cell-cap"><b>${cap}</b></div><div style="width:${w}px; max-width:100%">${build()}</div>`;
+          g.appendChild(cell);
+        });
+        return;
+      }
+      GALLERY[kind].forEach(([cap, k]) => {
+        const cell = document.createElement('div');
+        cell.className = 'rf-cell is-space pg-cell';
+        cell.innerHTML = `<div class="rf-cell-cap"><b>${cap}</b></div>` +
+          (k === 'none' ? `<div class="pg-none"><div>${NONE[kind]}</div></div>` : `<div class="pg-w">${BUILD[kind](k, { n: false, v: true })}</div>`);
+        g.appendChild(cell);
+      });
+    });
+    document.querySelectorAll('[data-mount]').forEach((m) => {
+      const [kind, k] = m.dataset.mount.split(':');
+      m.innerHTML = BUILD[kind](k, { n: true });
+    });
+  }
+
+  // 注記ピン: data-note を持つ要素の左の余白へ番号を立てる(ステージを使わないページ用)。
+  function placePins() {
+    document.querySelectorAll('.pg-pin').forEach((p) => p.remove());
+    document.querySelectorAll('.rf-cell.pg-cell').forEach((cell) => {
+      const origin = cell.getBoundingClientRect();
+      cell.querySelectorAll('[data-note]').forEach((el) => {
+        const r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) return;
+        const pin = document.createElement('span');
+        pin.className = 'pg-pin';
+        pin.textContent = el.dataset.note;
+        pin.style.top = `${r.top - origin.top + 2}px`;
+        cell.appendChild(pin);
+      });
+    });
+  }
+
+  mountGalleries();
+  placePins();
+  addEventListener('resize', placePins);
+  document.fonts && document.fonts.ready.then(placePins);
+  addEventListener('load', placePins);
+})();
+</script>
+</body>
+</html>
