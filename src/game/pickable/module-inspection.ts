@@ -75,7 +75,7 @@ export function moduleContent(ship: ModuleInspectionShip, module: ShipModuleInst
     title: label,
     subtitle: `取り付け艦: ${ship.name}`,
     kindCode: 'MOD',
-    kindLabel: 'MODULE',
+    kindLabel: '部品',
     monitorWhenClipped: true,
     rows: [
       {

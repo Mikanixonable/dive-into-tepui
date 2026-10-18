@@ -29,8 +29,8 @@ const STYLE = `
   }
 }
 #hud .dg-window-header {
-  display: flex; align-items: flex-start; gap: var(--space-3);
-  padding: var(--space-5) var(--space-4) var(--space-4) var(--space-5);
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-5) var(--space-5) var(--space-4) var(--space-6);
   border: 0; background: transparent;
   cursor: move;
 }
@@ -38,28 +38,31 @@ const STYLE = `
   #hud .dg-window-header { cursor: default; }
 }
 #hud .dg-window-title { flex: 1; min-width: 0; }
-#hud .dg-window-title-top { display: flex; align-items: center; gap: var(--space-2); }
+#hud .dg-window-title-top { display: flex; align-items: center; gap: var(--space-4); min-height: var(--key-cap-min); }
 #hud .dg-window-title-icon {
-  flex: 0 0 var(--font-m); width: var(--font-m); height: var(--font-m);
-  color: var(--text); font-size: var(--font-m); line-height: 1; text-align: center;
+  flex: 0 0 1.3em; width: 1.3em; height: 1.3em;
+  color: var(--role-label); font-size: var(--font-xl); line-height: 1; text-align: center;
 }
 #hud .dg-window-title-icon svg { display: block; width: 100%; height: 100%; }
-#hud .dg-window-title-main { flex: 1; min-width: 0; color: var(--text); font-weight: bold; overflow-wrap: break-word; }
-#hud .dg-window-title-sub { color: var(--text); opacity: 0.7; font-size: var(--font-s); margin-top: var(--space-1); }
+#hud .dg-window-title-main {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-strong); font-size: var(--font-xl); font-weight: 650; letter-spacing: var(--tracking-title);
+}
+#hud .dg-window-title-sub { color: var(--role-label); font-size: var(--font-xs); margin-top: var(--space-1); }
+#hud .dg-window-tag {
+  flex: 0 0 auto; color: var(--role-meta); font-size: var(--font-xxs);
+  letter-spacing: var(--tracking-code); white-space: nowrap;
+}
 /* ヘッダの flex 行へ直接子として並んだのと同じ見た目で任意のボタンを追加できる枠。
    自身はレイアウトに参加しない。 */
 #hud .dg-window-header-extras { display: contents; }
-#hud .dg-window-btn {
-  flex: none; width: 18px; height: 18px; line-height: 18px; text-align: center;
-  border: 0; border-radius: 50%;
-  background: var(--glass-control); color: var(--text);
-  cursor: pointer; font-size: var(--font-s); padding: 0;
-}
-#hud .dg-window-btn:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
-#hud .dg-window-btn.clipped { background: var(--color-primary-fill); color: var(--color-primary); }
-#hud .dg-window.tgt {
-  background: color-mix(in srgb, var(--color-primary) 16%, var(--glass-focus));
-}
+#hud .dg-window-pip { flex: 0 0 auto; }
+#hud .dg-window-pip[hidden] { display: none; }
+/* 操作対象の自艦は自分の色、ターゲット中の対象は第二色を、グリフと名前とピップが帯びる。 */
+#hud .dg-window.is-own .dg-window-title-icon, #hud .dg-window.is-own .dg-window-title-main { color: var(--role-own); }
+#hud .dg-window.is-tgt .dg-window-title-icon, #hud .dg-window.is-tgt .dg-window-title-main,
+#hud .dg-window.is-tgt .dg-window-pip { color: var(--role-target); }
+#hud .dg-window.is-tgt .dg-window-pip::before { background: var(--role-target); }
 `;
 
 export interface DraggableWindowOptions {
@@ -68,6 +71,8 @@ export interface DraggableWindowOptions {
   // タイトル前に添える対象種別のグリフ。Unicode 文字または SVG マークアップ(信頼できる
   // 内部生成の文字列を渡す)。省略すると添えない。値は開いた時点で固定する。
   readonly icon?: string;
+  // 題名の隣へ添える中立色の種別タグ(例: 「CNT · 敵機」)。省略すると添えない。
+  readonly tag?: string;
   // クリップ済みの状態で開く。省略時は false。
   readonly initiallyClipped?: boolean;
   // 渡すとクリップされていない間だけこの排他グループに参加する一時ウィンドウになる。
@@ -81,6 +86,15 @@ export interface ReclampingWindow {
   reclamp(): void;
 }
 
+// 題名の色と状態ピップが示す、対象とプレイヤーの関係。操作対象の自艦(own)・ターゲット中(target)・
+// どちらでもない(null)。
+export type WindowRole = 'own' | 'target' | null;
+
+const ROLE_PIP_LABEL = { own: '操作中', target: 'ターゲット中' } as const;
+
+// クリップボタンの絵(ピン)。
+const PIN_ICON_SVG = '<svg viewBox="0 0 16 16"><path d="M10 1.5l4.5 4.5-2 .6-2.6 2.6.4 3.3-1.2 1.2-2.9-2.9-3.6 3.6-.7-.7 3.6-3.6-2.9-2.9L3 6.9l3.3.4 2.6-2.6z" fill="currentColor"/></svg>';
+
 export class DraggableWindow implements OverlayHandle {
   private static nextId = 0;
   private static readonly UNSET = Symbol('unset');
@@ -90,6 +104,7 @@ export class DraggableWindow implements OverlayHandle {
   public readonly headerExtras: HTMLElement;
   private readonly titleMainEl: HTMLDivElement;
   private readonly titleSubEl: HTMLDivElement;
+  private readonly pipEl: HTMLElement;
   private readonly clipBtn: Button;
   private lastTitle = '';
   private lastSubtitle: string | undefined | typeof DraggableWindow.UNSET = DraggableWindow.UNSET;
@@ -124,8 +139,8 @@ export class DraggableWindow implements OverlayHandle {
     header.className = 'dg-window-header';
     const title = document.createElement('div');
     title.className = 'dg-window-title';
-    // アイコンは題名の行だけと横並びにする(サブタイトルを含めた全体で中央寄せすると、
-    // サブタイトルの有無で題名との高さが揃わなくなるため)。
+    // アイコン・名前・追加ボタン・種別タグ・状態ピップは題名の1行に並べる(サブタイトルを含めた全体で
+    // 中央寄せすると、サブタイトルの有無で題名との高さが揃わなくなるため)。
     const titleMain = document.createElement('div');
     titleMain.className = 'dg-window-title-top';
     if (options.icon) {
@@ -140,25 +155,33 @@ export class DraggableWindow implements OverlayHandle {
     this.titleMainEl.id = `${this.overlayId}-title`;
     this.element.setAttribute('aria-labelledby', this.titleMainEl.id);
     titleMain.appendChild(this.titleMainEl);
+    this.headerExtras = document.createElement('div');
+    this.headerExtras.className = 'dg-window-header-extras';
+    titleMain.appendChild(this.headerExtras);
+    if (options.tag !== undefined) {
+      const tagEl = document.createElement('span');
+      tagEl.className = 'dg-window-tag';
+      tagEl.textContent = options.tag;
+      titleMain.appendChild(tagEl);
+    }
+    this.pipEl = document.createElement('span');
+    this.pipEl.className = 'dg-window-pip ui-pip';
+    this.pipEl.hidden = true;
+    titleMain.appendChild(this.pipEl);
     this.titleSubEl = document.createElement('div');
     this.titleSubEl.className = 'dg-window-title-sub';
     title.appendChild(titleMain);
     title.appendChild(this.titleSubEl);
 
-    this.headerExtras = document.createElement('div');
-    this.headerExtras.className = 'dg-window-header-extras';
-
-    this.clipBtn = new Button('📌', () => this.setClipped(!this._clipped));
-    this.clipBtn.element.classList.add('dg-window-btn', 'ui-icon-control');
+    this.clipBtn = new Button('', () => this.setClipped(!this._clipped), PIN_ICON_SVG, 'icon');
     this.clipBtn.element.title = 'クリップ';
     this.clipBtn.element.setAttribute('aria-label', 'クリップ');
-    this.clipBtn.element.classList.toggle('clipped', this._clipped);
+    this.clipBtn.setOn(this._clipped);
 
     // ✕ は他の窓(セーブブラウザ/設定)と同じ見た目に統一する。
     const closeBtn = new CloseButton(() => this.close());
 
     header.appendChild(title);
-    header.appendChild(this.headerExtras);
     header.appendChild(this.clipBtn.element);
     header.appendChild(closeBtn.element);
     // compact ではボトムシート化しており、ドラッグの起点確保は不要になる。
@@ -230,9 +253,14 @@ export class DraggableWindow implements OverlayHandle {
     }
   }
 
-  // 対象が現在のターゲットであることを示す帯び色を、ルート要素へ付け替える。
-  public setBadge(isTarget: boolean): void {
-    this.element.classList.toggle('tgt', isTarget);
+  // 対象とプレイヤーの関係を、ルート要素の色の帯びと題名の状態ピップへ反映する。
+  public setRole(role: WindowRole): void {
+    this.element.classList.toggle('is-own', role === 'own');
+    this.element.classList.toggle('is-tgt', role === 'target');
+    this.pipEl.hidden = role === null;
+    this.pipEl.classList.toggle('on', role !== null);
+    this.pipEl.classList.toggle('is-own', role === 'own');
+    this.pipEl.textContent = role === null ? '' : ROLE_PIP_LABEL[role];
   }
 
   // 現在クリップされているかどうか。
@@ -245,7 +273,7 @@ export class DraggableWindow implements OverlayHandle {
   public setClipped(clipped: boolean): void {
     if (clipped === this._clipped) return;
     this._clipped = clipped;
-    this.clipBtn.element.classList.toggle('clipped', clipped);
+    this.clipBtn.setOn(clipped);
     this.overlayManager.reconfigure(this.overlayId, this.currentSpec());
     this.onClipChange?.(clipped);
   }

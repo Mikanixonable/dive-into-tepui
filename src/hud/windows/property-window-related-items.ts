@@ -2,15 +2,20 @@
 // 組み立て、ダブルクリック/右クリックが起きたら渡されたコールバックをそのまま呼ぶ。一覧が
 // 空のときは自分自身を DOM から外し、非空になれば内容を組み立て直す。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
-import { bindActivation, expandHitTarget, stopDragPropagation } from '../widgets/widget-base';
+import { bindActivation, stopDragPropagation } from '../widgets/widget-base';
 import type { ReclampingWindow } from './draggable-window';
 import type { PropertyWindowRelatedItem } from './property-window-content';
+
+// 一覧の行の頭に置く記号。
+const RELATED_ITEM_GLYPH = '▪';
 
 export class PropertyWindowRelatedItems {
   public readonly element: HTMLDivElement;
   private listEl: HTMLDivElement | null = null;
   private titleEl: HTMLDivElement | null = null;
   private titleLabelEl: HTMLSpanElement | null = null;
+  private titleGlyphEl: HTMLSpanElement | null = null;
+  private titleCountEl: HTMLSpanElement | null = null;
   private expanded = false;
   private items: readonly PropertyWindowRelatedItem[] = [];
   private title = '';
@@ -36,19 +41,22 @@ export class PropertyWindowRelatedItems {
       this.listEl = null;
       this.titleEl = null;
       this.titleLabelEl = null;
+      this.titleGlyphEl = null;
+      this.titleCountEl = null;
       return;
     }
 
     // 折りたたみ見出し。クリック/Enter/Space のいずれでも開閉を切り替える。
     const titleEl = document.createElement('div');
-    titleEl.className = 'prop-window-related-title ui-selectable editorial-divider';
+    titleEl.className = 'prop-window-related-title ui-fold';
     titleEl.setAttribute('role', 'button');
     titleEl.tabIndex = 0;
     titleEl.setAttribute('aria-expanded', String(this.expanded));
+    const titleGlyph = document.createElement('span');
     const titleLabel = document.createElement('span');
-    titleLabel.className = 'w-hit';
-    expandHitTarget(titleLabel);
-    titleEl.appendChild(titleLabel);
+    const titleCount = document.createElement('span');
+    titleCount.className = 'ui-fold-n';
+    titleEl.append(titleGlyph, titleLabel, titleCount);
     stopDragPropagation(titleEl);
     bindActivation(titleEl, () => {
       this.setExpanded(!this.expanded);
@@ -58,18 +66,18 @@ export class PropertyWindowRelatedItems {
     // 一覧本体。ダブルクリック/右クリックは引数で渡されたコールバックへ委譲する。
     const list = document.createElement('div');
     list.className = 'prop-window-related-list';
-    let index = 1;
     for (const it of items) {
       const row = document.createElement('div');
-      row.className = 'prop-window-related-item ui-selectable editorial-index-row';
-      row.dataset['index'] = String(index++).padStart(2, '0');
+      row.className = 'prop-window-related-item ui-item ui-selectable';
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
+      const rowGlyph = document.createElement('span');
+      rowGlyph.className = 'ui-item-glyph';
+      rowGlyph.textContent = RELATED_ITEM_GLYPH;
       const rowLabel = document.createElement('span');
-      rowLabel.className = 'w-hit';
+      rowLabel.className = 'ui-item-name';
       rowLabel.textContent = it.label;
-      expandHitTarget(rowLabel);
-      row.appendChild(rowLabel);
+      row.append(rowGlyph, rowLabel);
       row.title = 'ダブルクリック: フォーカス · 右クリック: プロパティ';
       stopDragPropagation(row);
       row.addEventListener('dblclick', (e) => {
@@ -93,15 +101,18 @@ export class PropertyWindowRelatedItems {
     this.listEl = list;
     this.titleEl = titleEl;
     this.titleLabelEl = titleLabel;
+    this.titleGlyphEl = titleGlyph;
+    this.titleCountEl = titleCount;
     this.syncToggleLabel();
     this.setExpanded(this.expanded, false);
   }
 
   // 折りたたみ見出しの文字列を、開閉状態と件数へ合わせて書き換える。
   private syncToggleLabel(): void {
-    if (!this.titleEl || !this.titleLabelEl) return;
-    this.titleLabelEl.textContent =
-      `${this.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH} ${this.title.toUpperCase()} / ${this.items.length}`;
+    if (!this.titleEl || !this.titleLabelEl || !this.titleGlyphEl || !this.titleCountEl) return;
+    this.titleGlyphEl.textContent = this.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH;
+    this.titleLabelEl.textContent = this.title;
+    this.titleCountEl.textContent = String(this.items.length);
     this.titleEl.setAttribute('aria-expanded', String(this.expanded));
   }
 

@@ -41,6 +41,6 @@ export const MenuCommon = {
     shortcut: 'KeyT',
   }),
   trajectoryLine: (on: boolean): MenuItem<MenuAction> => ({
-    label: '予測線・過去線で表示', act: 'toggleTrajectoryLine', selected: on, keepOpen: true,
+    label: '予測線・過去線を表示', act: 'toggleTrajectoryLine', selected: on, keepOpen: true,
   }),
 };

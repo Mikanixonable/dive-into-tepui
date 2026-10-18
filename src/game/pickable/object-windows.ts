@@ -6,9 +6,7 @@ import type { MenuAction } from '../hud/windows/menu-actions';
 import { PropertyWindow } from '../../hud/windows/property-window';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
-import type { MapCameraSource } from '../viewer/camera-selection';
 import type { DisplayWindowManager } from '../display-window-manager';
-import { focusTargetId } from '../viewer/focus-target';
 import { UNCLIPPED_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { EmptySpacePickable } from './empty-space-pickable';
 import type { InspectedObject } from './inspected-object';
@@ -31,7 +29,6 @@ export class ObjectWindows implements PropertyWindowOpener {
   public constructor(
     private readonly hud: Hud,
     private readonly celestialBodies: CelestialBodies,
-    private readonly camera: MapCameraSource,
     private readonly controlSelection: ControlSelection,
     private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
     private readonly actions: ObjectWindowActions,
@@ -104,11 +101,9 @@ export class ObjectWindows implements PropertyWindowOpener {
   // 求まらないだけのフレーム(posAt が null)は消滅ではない。
   public sync(): void {
     const { simTime, displayTime } = this.displayWindowManager.current;
-    // バッジはマップのカメラが注視している対象の窓に付ける。
-    const mapFocusId = focusTargetId(this.camera.map.focus);
     for (const [key, entry] of [...this.windows]) {
       if (entry.target.gone) { this.closeWindow(key); continue; }
-      const { title, subtitle, items: menuItems } = this.actions.windowParts(entry.target, simTime);
+      const { title, subtitle, items: menuItems, toggles } = this.actions.windowParts(entry.target, simTime);
       entry.win.syncHeader(title, subtitle);
       entry.win.syncRelatedItems(
         this.actions.relatedItemsFor(entry.target, simTime, this),
@@ -117,7 +112,8 @@ export class ObjectWindows implements PropertyWindowOpener {
       entry.win.syncRows(entry.target.propertyRows(
         this.celestialBodies, this.controlSelection.current, simTime, displayTime));
       entry.win.syncItems(menuItems);
-      entry.win.syncBadge(entry.target.id === mapFocusId);
+      entry.win.syncToggles(toggles);
+      entry.win.syncRole(this.actions.roleOf(entry.target));
     }
   }
 

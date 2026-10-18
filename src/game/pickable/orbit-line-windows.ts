@@ -64,7 +64,7 @@ export class OrbitLineWindows {
     return {
       title: KIND_LABEL[orbit.kind],
       kindCode: 'ORB',
-      kindLabel: 'TRAJECTORY',
+      kindLabel: '軌道',
       monitorWhenClipped: true,
       rows: [{
         key: 'method', label: '計算方法', value: CALC_METHOD_LABEL[orbit.method], presentation: 'hero',

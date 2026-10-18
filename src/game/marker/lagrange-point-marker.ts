@@ -4,7 +4,7 @@ import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import { bodySearchText } from '../pickable/body-search-text';
-import { fmtDist } from '../../hud/utils';
+import { fmtDistParts } from '../../hud/utils';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './marker-priority';
@@ -90,7 +90,7 @@ export class LagrangePointMarker implements ObjectPickable {
     if (viewer && pos) {
       rows.push({
         key: 'dist', label: '自艦からの距離',
-        value: fmtDist(len(sub(pos, viewer.motion.state.r))),
+        ...fmtDistParts(len(sub(pos, viewer.motion.state.r))),
         presentation: 'hero',
       });
     }

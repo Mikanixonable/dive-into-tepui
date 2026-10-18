@@ -25,8 +25,7 @@ export class PropertyWindowRename {
     this.titleEl = win.titleMain;
     // onRename を持つ対象にだけ改名ボタンを添える。
     if (this.renameCallback) {
-      const renameBtn = new Button('✎', () => this.startRename());
-      renameBtn.element.classList.add('dg-window-btn');
+      const renameBtn = new Button('✎', () => this.startRename(), undefined, 'icon');
       renameBtn.element.title = '名前を変更';
       renameBtn.element.setAttribute('aria-label', '名前を変更');
       win.headerExtras.appendChild(renameBtn.element);
