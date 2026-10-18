@@ -194,8 +194,8 @@ class ModularShipBehavior implements DynamicMotionBehavior {
   }
 
   // 自動操縦が要求する積分刻みの上限 [s]。
-  public maxSubstepDuration(self: DynamicMotion): number | undefined {
-    return this.reactions.autopilotMaxStep?.(self);
+  public maxSubstepDuration(self: DynamicMotion): number | null {
+    return this.reactions.autopilotMaxStep?.(self) ?? null;
   }
 
   // 船体表面への接触を反応先へ渡す。
