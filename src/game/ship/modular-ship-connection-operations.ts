@@ -18,7 +18,6 @@ import {
 import { dockingEligibility } from './ship-docking';
 import { repairDockedAssembly } from './ship-repair';
 import type { ShipCapabilities } from './ship-capabilities';
-import type { ShipDockState } from './ship-dock-state';
 import {
   restoreDockedVessels,
   type SerializedCollisionGrace,
@@ -37,7 +36,6 @@ export interface ModularShipConnectionHost {
   readonly scene: THREE.Scene;
   readonly assembly: ShipAssembly;
   readonly capabilities: ShipCapabilities;
-  readonly docks: ShipDockState;
   readonly motion: ModularShipMotion;
   createShip(init: ModularShipInit, registry: EntityRegistry): ModularShip;
   clearTransientCommands(): void;
@@ -75,7 +73,6 @@ export class ModularShipConnectionOperations {
       : anchor.motion.state.v;
     const t = anchor.motion.state.t;
     anchor.assembly.replaceWith(merged.assembly);
-    anchor.docks.mergeFrom(moving.docks, merged.moduleIds, merged.connectionIds);
     anchor.motion.synchronizeAssembly();
     anchor.motion.reset(kinematicState<'eci'>(t, position, velocity));
     const anchorCockpit = anchorCockpitId === null ? null : anchor.assembly.module(anchorCockpitId);
@@ -150,7 +147,6 @@ export class ModularShipConnectionOperations {
         inertia: detachedShape.mass.inertia,
       },
       assembly: detachedAssembly,
-      dockState: this.host.docks.copyForAssembly(detachedAssembly).serialize(),
       operatingCockpitId: operatingCockpitId !== null && detachedAssembly.module(operatingCockpitId) !== null
         ? operatingCockpitId : null,
     }, registry);
@@ -164,7 +160,6 @@ export class ModularShipConnectionOperations {
     }
     this.host.clearTransientCommands();
     this.host.assembly.replaceWith(retainedAssembly);
-    this.host.docks.restrictToAssembly(retainedAssembly);
     this.host.motion.synchronizeAssembly();
     this.host.motion.reset(kinematicState<'eci'>(t, retainedPosition, velocities.retained));
     this.host.syncAssemblyDerivedState();
@@ -217,14 +212,12 @@ export class ModularShipConnectionOperations {
       state: kinematicState<'eci'>(t, detachedPosition, velocities.detached),
       att: { q: detachedQ, w: detachedW, inertia: detachedShape.mass.inertia },
       assembly: split.detached,
-      dockState: this.host.docks.copyForAssembly(split.detached).serialize(),
       operatingCockpitId: operatingCockpitId !== null && split.detached.module(operatingCockpitId) !== null
         ? operatingCockpitId : null,
     }, registry);
     // 分離船の構築成功後に live assembly を差し替え、途中失敗を原船へ反映させない。
     this.host.clearTransientCommands();
     this.host.assembly.replaceWith(split.retained);
-    this.host.docks.restrictToAssembly(split.retained);
     this.host.motion.synchronizeAssembly();
     this.host.motion.resetRigidState(
       kinematicState<'eci'>(t, retainedPosition, velocities.retained),
