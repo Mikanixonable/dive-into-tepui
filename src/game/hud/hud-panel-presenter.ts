@@ -30,6 +30,7 @@ import type { Stage } from '../stages/stage';
 import type { Viewer } from '../viewer/viewer';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { Targeter } from '../targeter';
+import type { NavigationCommand } from '../navigation/navigation-command';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { CameraSystem } from '../camera/camera-system';
 import type { DisplayWindow } from '../display-window-manager';
@@ -60,6 +61,7 @@ export class HudPanelPresenter {
     private readonly targeter: Targeter,
     private readonly objectWindows: ObjectWindows,
     private readonly cameraSystem: CameraSystem,
+    private readonly navigationCommand: NavigationCommand,
   ) {
     this.viewBadge = new ViewBadge(
       hud.viewBadgeRow, hud.overlayManager, viewCommands(commands, viewer.view),
@@ -212,7 +214,13 @@ export class HudPanelPresenter {
       dynamicPressurePa: ship?.motion.aero.qdyn ?? null,
       temperatureK: motion.temperature,
       setReferenceMode: (mode) => this.orbitReferenceCommands.setMode(mode),
+      onOpenNavigationCommand: () => this.openNavigationCommand(),
     };
+  }
+
+  // 「航行指令…」: 現在の航法ターゲットへ向かう候補の求解窓を開く。
+  private openNavigationCommand(): void {
+    this.navigationCommand.open(this.viewer.navTarget.id, this.viewer.navTarget.name ?? '');
   }
 
   // 固定中のターゲットの読み値。操作対象かターゲットが無ければ null。

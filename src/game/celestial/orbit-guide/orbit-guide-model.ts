@@ -238,6 +238,9 @@ export class OrbitGuideModel {
 
   public constructor(private readonly celestialBodies: CelestialBodies) {}
 
+  // 焼き込み族カタログの読み取り口。系がまだ読み込まれていなければ null を返す。
+  public get orbitCatalog(): OrbitGuideCatalog { return this.catalog; }
+
   // 直近にマップビューで組んだ線の本数。曲線を引けなかった線も数える。
   public get lineCount(): number { return this.lines.length; }
 

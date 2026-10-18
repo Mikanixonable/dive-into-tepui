@@ -36,6 +36,7 @@ import type { PerfCounts } from '../perf-counts';
 import type { Vec3 } from '../../math/vec3';
 import type { MapCameraSource } from '../viewer/camera-selection';
 import type { UiSoundQueue } from '../ui-sound-queue';
+import type { OrbitSlotPresenter } from '../navigation/orbit-slot-presenter';
 
 interface CameraPositionSource {
   readonly activeCameraPos: Vec3;
@@ -69,6 +70,7 @@ export class MapFrame implements ViewFrame {
     planDisplay: PlanDisplay,
     planPath: PlanPath,
     planCommands: PlanCommands,
+    orbitSlotPresenter: OrbitSlotPresenter,
     scene: THREE.Scene,
     hud: HudLayers & Notifier,
     uiSounds: UiSoundQueue,
@@ -84,9 +86,9 @@ export class MapFrame implements ViewFrame {
     // 被選択物・軌道線の候補列と、それらへクリックを当てる先。
     this.objectPickables = new ObjectPickables(
       controlSelection, roster, celestialSystem, navTargetPresenter, camera,
-      celestialMarkers, planDisplay, frameAnchors, equatorNodes,
+      celestialMarkers, planDisplay, frameAnchors, equatorNodes, orbitSlotPresenter,
     );
-    this.linePickables = new LinePickables(roster, celestialSystem);
+    this.linePickables = new LinePickables(roster, celestialSystem, orbitSlotPresenter);
     this.picking = new MapPicking(
       hud, camera, roster, celestialSystem, celestialMarkers, markers,
       navTargetPresenter, navTargetCommands, frameControls, this.objectPickables, this.linePickables, objectWindows,

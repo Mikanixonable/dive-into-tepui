@@ -75,6 +75,13 @@ export interface DynamicMotionBehavior {
   updateCommands?(self: DynamicMotion, simDt: number): void;
   // 直近の updateCommands が決めた推力加速度(ECI)。噴いていなければ null。
   commandedThrust?(self: DynamicMotion): Vec3 | null;
+  // 各積分ステップの直前に呼ぶ自律の指令(自動操縦の推力・トルクなど)。この歩の長さ dt [s] と、
+  // その歩に使う重力源・評価時刻を受ける。
+  stepCommands?(
+    self: DynamicMotion, dt: number, attractors: readonly CelestialBody[], pivot: number,
+  ): void;
+  // この個体が要求する積分刻みの上限 [s](燃焼中の細かい刻みなど)。制約しないなら null。
+  maxSubstepDuration?(self: DynamicMotion): number | null;
   contactsWith?(self: DynamicMotion, other: EntityContactParticipant, simTime: number): boolean;
   testSphereCollision?(
     self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number,
@@ -427,13 +434,20 @@ export class DynamicMotion {
     return orbitalElementsOf(this.state, center, centerPivot);
   }
 
-  // dt を大気突入の刻み幅の上限に収めるための分割数。preciseReentry でない個体は 1。
+  // dt を大気突入の刻み幅の上限と個体が要求する刻みの上限に収めるための分割数。
   public substepDivisions(
     dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number,
   ): number {
-    if (!this.preciseReentry) return 1;
-    const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies, pivot);
-    return innerDt >= dt ? 1 : Math.ceil(dt / innerDt);
+    let divisions = 1;
+    if (this.preciseReentry) {
+      const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies, pivot);
+      if (innerDt < dt) divisions = Math.ceil(dt / innerDt);
+    }
+    const cap = this.behavior.maxSubstepDuration?.(this);
+    if (cap !== undefined && cap !== null && cap > 0 && cap < dt) {
+      divisions = Math.max(divisions, Math.ceil(dt / cap));
+    }
+    return divisions;
   }
 
   // dt のあいだに抗力が対気速度を奪い切るか。preciseReentry の個体は常に false。
@@ -450,6 +464,8 @@ export class DynamicMotion {
     atmosphereBody: CelestialBody | null, star: CelestialBody | null, pivot: number,
     services: DynamicReactionServices,
   ): boolean {
+    // この歩の自律の指令を先に決める。推力があれば以降の判定で弧なぞりは選ばれない。
+    this.behavior.stepCommands?.(this, dt, celestialBodies, pivot);
     // 推力がなく予測弧が届く歩は、弧をなぞって積分を省く。
     const interval = this.historySampleInterval(celestialBodies, pivot);
     const integrated = !this.followPredicted(this.state.t + dt, interval);

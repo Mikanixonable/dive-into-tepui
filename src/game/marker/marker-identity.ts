@@ -51,6 +51,7 @@ export const ORBIT_POINT_GLYPH = {
   burnPoint: '⬡',
   impact: '✕',
   closestApproach: '✧',
+  orbitSlot: '⌾',
 } as const;
 
 // 天体クラスに対応する ENTITY_GLYPH。恒星・衛星だけ他の分類と見分けやすい専用字形を持つ。
