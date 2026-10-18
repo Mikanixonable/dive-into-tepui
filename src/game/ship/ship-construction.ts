@@ -132,7 +132,7 @@ export class ShipConstruction implements OverlayHandle {
     this.overlayManager.close('ship-construction-mode');
     this.displayWindow.setForceCurrent(this.previousForceCurrent);
     this.panel.sync(hiddenShipConstructionModel());
-    this.ghost.sync(null);
+    this.ghost.sync([]);
     this.guide.syncAll([]);
   }
 
@@ -162,7 +162,7 @@ export class ShipConstruction implements OverlayHandle {
   public sync(camera: CameraFrame): void {
     this.syncCommandResults();
     if (this.current === null) {
-      this.ghost.sync(null);
+      this.ghost.sync([]);
       this.guide.syncAll([]);
       return;
     }
@@ -181,14 +181,14 @@ export class ShipConstruction implements OverlayHandle {
     // 選択中の候補だけをゴーストへ置く。
     const selected = candidates.find(candidate => candidate.slot.id === this.selectedSlotId) ?? null;
     if (selected === null) {
-      this.ghost.sync(null);
+      this.ghost.sync([]);
     } else {
-      this.ghost.sync({
+      this.ghost.sync([{
         modelId: SHIP_MODULE_CATALOG.require(this.definitionId).modelId,
         position: this.displayPosition(camera, selected.centerEci),
         rotation: selected.rotationEci,
         valid: selected.placement.valid,
-      });
+      }]);
     }
     this.syncPanel();
   }
