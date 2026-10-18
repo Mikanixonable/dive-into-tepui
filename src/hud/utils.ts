@@ -1,12 +1,24 @@
 // HUD 表示用の数値整形。
 import { julianDateToCalendarDate, type TdbJulianDate } from '../physics/time';
 
+// 値と単位に分けた表記(例: 値 "1.23"・単位 "km")。非有限値は値が "---" で単位は空。
+export interface ValueParts {
+  readonly value: string;
+  readonly unit: string;
+}
+
+// パネル用距離の値と単位。fmtDist はこれを連結したもの。
+export function fmtDistParts(m: number): ValueParts {
+  if (!isFinite(m)) return { value: '---', unit: '' };
+  if (Math.abs(m) >= 1e6) return { value: (m / 1e6).toFixed(2), unit: 'Mm' };
+  if (Math.abs(m) >= 1e3) return { value: (m / 1e3).toFixed(2), unit: 'km' };
+  return { value: m.toFixed(0), unit: 'm' };
+}
+
 // パネル用距離表記(例: "420 m" / "1.23 km" / "1.50 Mm")
 export function fmtDist(m: number): string {
-  if (!isFinite(m)) return '---';
-  if (Math.abs(m) >= 1e6) return `${(m / 1e6).toFixed(2)} Mm`;
-  if (Math.abs(m) >= 1e3) return `${(m / 1e3).toFixed(2)} km`;
-  return `${m.toFixed(0)} m`;
+  const { value, unit } = fmtDistParts(m);
+  return unit === '' ? value : `${value} ${unit}`;
 }
 
 // マーカーラベル用コンパクト距離表記(例: "420m" / "2.2km")
@@ -22,11 +34,17 @@ export function fmtEnergy(j: number): string {
   return `${j.toFixed(0)} J`;
 }
 
+// パネル用速度の値と単位。fmtSpeed はこれを連結したもの。
+export function fmtSpeedParts(ms: number): ValueParts {
+  if (!isFinite(ms)) return { value: '---', unit: '' };
+  if (Math.abs(ms) >= 1000) return { value: (ms / 1000).toFixed(2), unit: 'km/s' };
+  return { value: ms.toFixed(1), unit: 'm/s' };
+}
+
 // パネル用速度表記(例: "7.80 km/s" / "12.3 m/s")
 export function fmtSpeed(ms: number): string {
-  if (!isFinite(ms)) return '---';
-  if (Math.abs(ms) >= 1000) return `${(ms / 1000).toFixed(2)} km/s`;
-  return `${ms.toFixed(1)} m/s`;
+  const { value, unit } = fmtSpeedParts(ms);
+  return unit === '' ? value : `${value} ${unit}`;
 }
 
 // ランの元期(simTime=0 が指す絶対時刻)を、fmtDateTime へ渡せる unix 秒相当へ変換する。
