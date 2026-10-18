@@ -113,9 +113,11 @@ export function altitudeAlarmLevel(
   return withHysteresis(entered, held, previous);
 }
 
-// 展開部品の損耗度 wear(0〜1)の段。
+// 展開部品の損耗度 wear(0〜1)の段。入る・戻るは同じ閾値(ヒステリシスを持たない)。
 export function wearAlarmLevel(wear: number): AlarmLevel {
-  return highRatioLevel(wear, 1, WEAR_CAUTION_RATIO, WEAR_WARNING_RATIO);
+  return highRatioLevel(
+    wear, 1, WEAR_CAUTION_RATIO, WEAR_WARNING_RATIO, WEAR_CAUTION_RATIO, WEAR_WARNING_RATIO, 'normal',
+  );
 }
 
 // 装甲の段。注意の段は持たない。
