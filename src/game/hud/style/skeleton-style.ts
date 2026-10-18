@@ -30,8 +30,7 @@ body.title-screen-open.hud-overlay-modal-open #hud { z-index: var(--z-hud-title-
 
 /* 選択無効化対象 */
 #hud .ctx-menu-item,
-#hud .rail-toggle, #hud-chase-reset,
-#hud-viewbadge .vb-view-btn { user-select: none; }
+#hud .rail-toggle, #hud-chase-reset { user-select: none; }
 
 ${OVERLAY_LAYER_STYLE}
 
@@ -100,8 +99,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-topbar,
   #hud-map-scale,
   #hud-chase-reset,
-  #hud-help-badge,
-  #hud-toast { background: var(--surface-opaque); }
+  #hud-help-badge { background: var(--surface-opaque); }
 }
 #hud .panel-shell-collapse {
   flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
@@ -165,75 +163,22 @@ body.hud-construction-mode #touch-ui { display: none; }
 
 /* 画面固定バッジ・ステータスバー・通知(視点バッジ・スケール定規・トースト・カメラリセット)。 */
 #hud-chrome {
+  /* 全体ステータスバーが避ける、左右端の収納トグルとヘルプ起動ボタンが占める幅。 */
+  --hud-chrome-side: calc(
+    var(--space-4) * 2 + var(--hud-rail-toggle-size) + var(--space-2) + var(--hit-target-min) + var(--space-3)
+      - var(--space-5)
+  );
   position: absolute; top: 0; left: 0; right: 0;
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 820px) minmax(0, 1fr);
+  display: grid;
+  grid-template-columns: minmax(var(--hud-chrome-side), 1fr) minmax(0, 820px) minmax(var(--hud-chrome-side), 1fr);
   grid-auto-rows: max-content; align-items: start;
   padding-inline: 12px; pointer-events: none;
 }
 #hud-topbar {
   position: relative; grid-column: 2; justify-self: center;
   pointer-events: auto;
-  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
-  padding: var(--space-2) var(--space-5) var(--space-3);
-  font-size: var(--font-s); letter-spacing: var(--tracking-label); font-variant-numeric: tabular-nums;
-  color: var(--text-dim);
-  display: flex; flex-direction: column; align-items: stretch; gap: var(--space-2);
-  width: 100%;
-  max-width: 820px;
+  width: max-content; max-width: 100%;
 }
-#hud-topbar .gs-status-head {
-  display: flex; align-items: baseline; gap: var(--space-2);
-}
-#hud-topbar .gs-workspace { margin-left: auto; }
-#hud[data-workspace="flight"] #hud-topbar .gs-workspace::after { content: 'FLIGHT'; }
-#hud[data-workspace="map"] #hud-topbar .gs-workspace::after { content: 'MAP'; }
-#hud[data-workspace="construction"] #hud-topbar .gs-workspace::after { content: 'BUILD · PAUSED'; }
-#hud-topbar .gs-row {
-  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4);
-  max-width: 100%; min-width: 0; overflow: visible;
-}
-#hud-topbar .gs-metrics {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: end; gap: var(--space-5);
-  padding-top: var(--space-2);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
-}
-#hud-topbar .gs-metric { display: grid; gap: 2px; min-width: 0; }
-#hud-topbar .gs-metric-time .v {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--text); font-size: var(--font-s);
-}
-#hud-topbar .v { color: var(--text); }
-#hud-topbar .gs-speed-select {
-  min-width: 76px; padding: var(--space-1) var(--space-5) var(--space-1) var(--space-2);
-  border: 0; border-radius: var(--radius-micro);
-  background: var(--glass-control); color: var(--text); font: inherit; font-size: var(--font-s);
-  font-variant-numeric: tabular-nums; cursor: pointer;
-}
-#hud-topbar .gs-speed-select:hover,
-#hud-topbar .gs-speed-select:focus { background: var(--glass-control-hover); }
-#hud-topbar .gs-sep { color: var(--edge); }
-
-#hud-viewbadge {
-  gap: var(--space-3);
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label); opacity: 0.9;
-}
-#hud-viewbadge .vb-mode {
-  color: var(--color-primary); font-weight: 700; letter-spacing: var(--tracking-label);
-}
-#hud-viewbadge .vb-field { display: inline-flex; align-items: center; gap: var(--space-1); min-width: 0; }
-#hud-viewbadge .vb-field > span:first-child { color: var(--text-dim); }
-#hud-viewbadge .vb-field > span:last-child {
-  color: var(--text); max-width: 18em; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#hud-viewbadge .vb-sep { color: var(--edge); }
-#hud-viewbadge span.vb-view-btn {
-  background: var(--glass-control);
-  border-radius: var(--radius-micro); padding: var(--space-1) var(--space-3);
-  color: var(--text-dim); font: inherit; letter-spacing: inherit;
-}
-#hud-viewbadge span.vb-view-btn:hover { color: var(--text); }
 
 #hud-map-scale {
   position: absolute; right: 12px; bottom: var(--hud-map-scale-bottom); display: none; pointer-events: none;
@@ -289,20 +234,13 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-help-badge { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
 
+/* 通知(出来事)は画面下部中央の1行。ステージ状態の下端予約と、操作パッドの上端の上に積む。 */
 #hud-toast {
-  position: absolute; top: calc(var(--hud-chrome-h) + var(--space-2)); left: 50%; transform: translateX(-50%);
-  display: flex; align-items: baseline; gap: var(--space-3);
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: calc(max(var(--hud-stage-bottom-occupied, 0px), var(--hud-rail-bottom)) + var(--space-4));
   max-width: min(720px, calc(100vw - var(--space-6) * 2));
-  border-radius: var(--radius-micro); padding: var(--space-3) var(--space-4);
-  color: var(--text); font-size: var(--font-s); text-align: left;
-  transition: opacity var(--transition-slow); opacity: 0; line-height: 1.45;
+  transition: opacity var(--transition-slow); opacity: 0;
 }
-#hud-toast .toast-code {
-  flex: 0 0 auto; color: var(--color-primary); font-size: var(--font-xxs);
-  font-weight: 700; letter-spacing: var(--tracking-code);
-}
-#hud-toast.warn .toast-code { color: var(--color-warning); }
-#hud-toast .toast-message { min-width: 0; overflow-wrap: anywhere; }
 
 /* 状態色の共有語彙: 読み値や行が持つ意味を、場所ごとの色名ではなく共通ロールで名付ける。
    ui-caution / ui-warning は注意・警告の値(色に加えて △ ▲ を伴う)、ui-warning-fill は警告の行の面、
@@ -321,16 +259,11 @@ body.hud-construction-mode #touch-ui { display: none; }
    モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる。 */
 @media ${MQ_MEDIUM_DOWN} {
   #hud { font-size: var(--font-s); }
-  #hud-topbar { padding-block: var(--space-1) var(--space-2); }
-  #hud-topbar .gs-status-head { display: none; }
-  #hud-topbar .gs-metrics { padding-top: 0; box-shadow: none; }
-  #hud-topbar .gs-metric .ui-data-label { display: none; }
   #hud .panel { padding: var(--space-3) var(--space-4); line-height: 1.4; }
   #hud .panel h3 { font-size: var(--font-xs); letter-spacing: 1.5px; margin-bottom: var(--space-2); }
   #hud .row { gap: var(--space-4); }
   #hud .row .v { min-width: 0; }
-  #hud:not(.map-ui-active) #hud-viewbadge { display: none; }
-  #hud-toast { max-width: 92vw; padding: var(--space-5) var(--space-5); font-size: var(--font-l); }
+  #hud-toast { max-width: 92vw; }
   #hud .hud-rail { gap: var(--space-3); }
   #hud .hud-rail-left { left: 8px; }
   #hud .hud-rail-right { right: 8px; }
@@ -340,15 +273,6 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 @media ${MQ_COMPACT} {
   #hud .hud-rail { font-size: var(--font-xxs); }
-  #hud-topbar {
-    width: 100%;
-    padding-inline: var(--space-3);
-  }
-  #hud-topbar .gs-status-head { gap: var(--space-1); }
-  #hud-topbar .gs-metrics { grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); }
-  /* 通常は MET + SIM、ノードワープ中だけ SIM + NODE WARP を優先する。 */
-  #hud-topbar.node-warp-active .gs-metric-time { display: none; }
-  #hud-topbar .gs-metric-time .v { font-size: var(--font-xxs); }
 }
 @media ${MQ_COARSE_SHORT} {
   #hud-chase-reset .hud-mini-code { display: none; }

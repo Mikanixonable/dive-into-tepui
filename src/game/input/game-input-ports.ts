@@ -54,6 +54,11 @@ export function gameInputPorts(
       handleCommand: command => hud.handleCommand(command.id),
     },
     {
+      feature: 'alarm',
+      commands: [gameCommand(K.acknowledgeAlarm.code, K.acknowledgeAlarm)],
+      handleCommand: () => hud.acknowledgeAlarm(),
+    },
+    {
       feature: 'camera-command',
       isEnabled: () => !constructionActive(),
       commands: [gameCommand(K.followAttitudeToggle.code, K.followAttitudeToggle)],

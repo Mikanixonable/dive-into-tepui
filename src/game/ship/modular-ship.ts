@@ -314,8 +314,8 @@ export class ModularShip extends Ship implements Controllable {
       saved?.fire ? WeaponState.deserialize(saved.fire) : placement?.ammo ? WeaponState.create(placement.ammo) : undefined,
     );
     this.altitudeAlarm = saved?.altitudeAlarm
-      ? AltitudeAlarm.deserialize(saved.altitudeAlarm, registry.events)
-      : new AltitudeAlarm(registry.events);
+      ? AltitudeAlarm.deserialize(saved.altitudeAlarm)
+      : new AltitudeAlarm();
     if (saved?.plan) {
       const dropped = Plan.droppedNodeCount(saved.plan);
       if (dropped > 0) registry.events.record({ kind: 'planNodesDropped', ship: this.name, count: dropped });

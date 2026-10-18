@@ -211,7 +211,7 @@ export class ShipConstruction implements OverlayHandle {
     const session = this.current;
     const candidate = this.selectedCandidate();
     if (session === null || candidate === null || !candidate.placement.valid) {
-      if (candidate?.placement.reason) this.notifier.hint(candidate.placement.reason, undefined, 'warn');
+      if (candidate?.placement.reason) this.notifier.hint(candidate.placement.reason, undefined, 'denied');
       return;
     }
     const definitionId = this.definitionId;
@@ -343,7 +343,7 @@ export class ShipConstruction implements OverlayHandle {
       const state = command.completion.state;
       if (state.kind === 'pending') continue;
       if (state.kind === 'failed') {
-        this.notifier.hint(state.error instanceof Error ? state.error.message : '建造操作に失敗しました', undefined, 'warn');
+        this.notifier.hint(state.error instanceof Error ? state.error.message : '建造操作に失敗しました', undefined, 'denied');
         if (command.action === 'begin' && this.current === command.session) this.close();
       } else if ((command.action === 'finish' || command.action === 'discard')
         && this.current === command.session) {

@@ -69,16 +69,24 @@ export function fmtDateTime(unixSec: number): string {
   return `${y}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
 }
 
-// 経過秒 sec を単位付きで表記する(例: "0Y-01M-02D-03h-04m-05s")。年だけ自由桁、
-// 月日時分秒は2桁固定。1970-01-01T00:00:00 UTC を経過0とする換算(年月日は暦通りの繰り上がり)。
-export function fmtElapsedUnits(sec: number): string {
+// 経過秒 sec を短く表記する。1日未満は "HH:MM:SS"、1日以上は桁ごとに単位を付け、年が 0 なら年を、
+// 月も 0 なら月を省く(例: "01D-03h-04m-05s" / "2Y-00M-01D-00h-00m-00s")。1970-01-01T00:00:00 UTC を
+// 経過0とする換算(年月日は暦通りの繰り上がり)。
+export function fmtElapsedBrief(sec: number): string {
   if (!isFinite(sec)) return '--';
   const d = new Date(Math.max(0, sec) * 1000);
   const pad = (n: number) => String(n).padStart(2, '0');
-  const y = d.getUTCFullYear() - 1970;
-  const mo = pad(d.getUTCMonth());
-  const day = pad(d.getUTCDate() - 1);
-  return `${y}Y-${mo}M-${day}D-${pad(d.getUTCHours())}h-${pad(d.getUTCMinutes())}m-${pad(d.getUTCSeconds())}s`;
+  const clock = `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`;
+  const years = d.getUTCFullYear() - 1970;
+  const months = d.getUTCMonth();
+  const days = d.getUTCDate() - 1;
+  if (years === 0 && months === 0 && days === 0) return clock;
+  const units: string[] = [];
+  if (years > 0) units.push(`${years}Y`);
+  if (years > 0 || months > 0) units.push(`${pad(months)}M`);
+  units.push(`${pad(days)}D`);
+  units.push(`${pad(d.getUTCHours())}h`, `${pad(d.getUTCMinutes())}m`, `${pad(d.getUTCSeconds())}s`);
+  return units.join('-');
 }
 
 // 経過秒 sec を、目盛り間隔 unitHintSec が示す単位で表記する

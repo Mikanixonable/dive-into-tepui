@@ -129,7 +129,7 @@ export class PlanEditor {
   // 時刻 t まで自動ワープを始める。既に通過した時刻ならその旨を出すだけで何もしない。
   public warpTo(t: number): void {
     if (!this.simSpeedManager.canAutoWarpTo(t, this.simTime)) {
-      this.hud.hint('この時刻は既に通過しています', undefined, 'warn');
+      this.hud.hint('この時刻は既に通過しています', undefined, 'denied');
       return;
     }
     this.simSpeedCommands.startAutoWarpTo(t, this.simTime);
@@ -296,7 +296,7 @@ export class PlanEditor {
     if (!ship) return;
     const sample = this.path.sampleAt(t);
     if (!sample) {
-      this.hud.hint('この時刻の計画軌道が求まりません', undefined, 'warn');
+      this.hud.hint('この時刻の計画軌道が求まりません', undefined, 'denied');
       return;
     }
     this.placeNode(ship.plan, sample, ship.plan.anchorOr(ship.motion.state));
@@ -306,7 +306,7 @@ export class PlanEditor {
   // で、その時刻以前は計画の外なので理由を伝えて何もしない。
   private placeNode(plan: Plan, postState: KinematicState, anchor: KinematicState): void {
     if (plan.nodeIndexFor(postState.t, anchor) < 0) {
-      this.hud.hint('計画の起点より前にはノードを置けません', undefined, 'warn');
+      this.hud.hint('計画の起点より前にはノードを置けません', undefined, 'denied');
       return;
     }
     this.selectedNode = postState;
@@ -378,7 +378,7 @@ export class PlanEditor {
     );
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
-      this.hud.hint('ノード位置は許可された軌道区間内で指定してください', undefined, 'warn');
+      this.hud.hint('ノード位置は許可された軌道区間内で指定してください', undefined, 'denied');
       return;
     }
     if (Math.abs(targetT - node.t) <= epsilon) return;
@@ -386,7 +386,7 @@ export class PlanEditor {
     // その時刻の計画軌道のサンプル
     const picked = this.path.sampleAtWithArc(targetT);
     if (!picked) {
-      this.hud.hint('この時刻の計画軌道が求まりません', undefined, 'warn');
+      this.hud.hint('この時刻の計画軌道が求まりません', undefined, 'denied');
       return;
     }
 

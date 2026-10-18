@@ -15,6 +15,10 @@ import { focusTargetId } from '../viewer/focus-target';
 import { ViewBadge } from './view-badge';
 import { frameRoleName } from './frame/frame-labels';
 import type { Hud, HudPanelViewModels } from './hud';
+import type { PlanHintStage } from './guidance';
+import type { AlarmEvaluator } from '../alarm/alarm-evaluator';
+import type { ViewOptionsControl } from './panels/view-options-control';
+import type { RenderStyle } from '../../render/render-style';
 import type { VesselPanelViewModel } from './panels/vessel-panel';
 import type { WeaponStripViewModel } from './panels/weapon-strip';
 import type { OrbitPanelViewModel } from './orbit/orbit-panel';
@@ -41,12 +45,20 @@ import type { Input } from '../../input/input';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ThemePalette } from '../../theme';
 
+// 案内チップの段の判定が読む、計画のノード選択の読み取り面。
+interface PlanNodeSelection {
+  readonly selectedNodeIdx: number | null;
+}
+
 export class HudPanelPresenter {
   private readonly viewBadge: ViewBadge;
   // パネル操作コマンドをキューへエンキューするインターフェース。
   private readonly simSpeedCommands: SimSpeedCommands;
   private readonly deployableCommands: DeployableCommands;
   private readonly orbitReferenceCommands: OrbitReferenceCommands;
+  // 案内チップの 'confirm' 段の判定に使う、「この計画で一度はノードを選択していた」のラッチ。
+  // マップを出るか計画のノードが無くなったら下ろす。
+  private nodeSelectionSeen = false;
 
   // ビューバッジを組む。パネルの操作は commands へ積み、値は残りの持ち主から毎フレーム読む。
   public constructor(
@@ -62,6 +74,9 @@ export class HudPanelPresenter {
     private readonly targeter: Targeter,
     private readonly objectWindows: ObjectWindows,
     private readonly cameraSystem: CameraSystem,
+    private readonly alarms: AlarmEvaluator,
+    private readonly viewOptions: ViewOptionsControl,
+    private readonly planNodeSelection: PlanNodeSelection,
   ) {
     this.viewBadge = new ViewBadge(
       hud.viewBadgeRow, hud.overlayManager, viewCommands(commands, viewer.view),
@@ -76,8 +91,8 @@ export class HudPanelPresenter {
     this.viewBadge.dispose();
   }
 
-  // ビューバッジを、表に出ているビュー view・選べるビュー selectableViews・見せ方 style と、このランの
-  // 注視・操作対象・航法ターゲットの名前へ合わせる。pickables は表のビューの被選択物候補。
+  // ビューバッジを、表に出ているビュー view・選べるビュー selectableViews と、このランの注視対象の
+  // 名前へ合わせる。注視対象は操作対象と違うときだけ出す。pickables は表のビューの被選択物候補。
   public syncViewBadge(
     view: ViewMode, selectableViews: readonly ViewMode[], pickables: readonly ObjectPickable[],
   ): void {
@@ -85,10 +100,15 @@ export class HudPanelPresenter {
       modeLabel: this.stage.stageClass.selectLabel,
       view,
       selectableViews,
-      focusName: this.focusName(pickables),
-      controlName: this.controlSelection.current?.name ?? null,
-      targetName: this.viewer.navTarget.name,
+      focusName: this.focusesControlled() ? null : this.focusName(pickables),
     });
+  }
+
+  // 注視対象が操作対象そのもの(役割の指定を含む)か。
+  private focusesControlled(): boolean {
+    const id = focusTargetId(this.cameraSystem.activeFocus);
+    if (id === undefined) return false;
+    return id === this.controlSelection.current?.id || frameRoleOf(id) === 'controlled';
   }
 
   // 注視対象の表示名。アプシス/交点などの一時マーカーも指しうるので、座標系の役割・被選択物
@@ -109,19 +129,22 @@ export class HudPanelPresenter {
   // 組んだ値へ合わせる。camera はこのフレームの表示カメラ、nowMs はフレームの実時刻 [ms]。
   public sync(
     view: ViewMode, displayWindow: DisplayWindow, orbitRef: OrbitReference | undefined, palette: ThemePalette,
-    camera: CameraFrame, nowMs: number,
+    camera: CameraFrame, renderStyle: RenderStyle, nowMs: number,
   ): void {
-    this.hud.syncPanels(view, this.viewModels(view, displayWindow, orbitRef, palette), camera, nowMs);
+    this.hud.syncPanels(view, this.viewModels(view, displayWindow, orbitRef, palette, renderStyle), camera, nowMs);
   }
 
   // 常設パネルの値を束ねる。表に出ているビューのパネルのぶんだけを組む。
   private viewModels(
     view: ViewMode, displayWindow: DisplayWindow, orbitRef: OrbitReference | undefined, palette: ThemePalette,
+    renderStyle: RenderStyle,
   ): HudPanelViewModels {
     const controlled = this.controlSelection.current;
     // 戦闘ビューにしか出ないパネルは、マップでは値を組まない。
     const combatControlled = view === 'map' ? null : controlled;
     const { simTime } = displayWindow;
+    const nextNode = controlled?.plan.nodes[0];
+    const autoWarpRemain = this.simSpeedManager.remainingSimulationSeconds(simTime);
     // 操作対象が要るパネルは、対象が無い間 null で畳む。
     return {
       topBar: {
@@ -129,10 +152,20 @@ export class HudPanelPresenter {
         simTime,
         simSpeed: this.simSpeedManager.simSpeed,
         isPaused: this.hud.overlayManager.isGamePaused(),
+        view,
         autoWarpRealRemainSec: this.simSpeedManager.estimatedRealSecondsToWarpEnd(simTime),
-        autoWarpSimRemainSec: this.simSpeedManager.remainingSimulationSeconds(simTime),
+        nodeWarpRemainSec: autoWarpRemain ?? (nextNode === undefined ? null : Math.max(0, nextNode.t - simTime)),
+        isAutoWarping: this.simSpeedManager.isAutoWarping,
+        cautionCount: this.alarms.cautionCount,
+        warningCount: this.alarms.warningCount,
+        hasUnacknowledgedWarning: this.alarms.hasUnacknowledgedWarning,
+        renderStyle,
         setSimSpeed: (speed) => this.simSpeedCommands.setSpeed(speed),
+        setRenderStyle: (style) => this.viewOptions.changeRenderStyle(style),
       },
+      alarms: this.alarms.alarms,
+      planningHint: this.planHintStage(view, controlled),
+      acknowledgeAlarm: () => this.alarms.acknowledge(),
       vessel: combatControlled === null ? null : this.vesselViewModel(combatControlled),
       weapon: combatControlled === null ? null : this.weaponViewModel(combatControlled),
       orbit: controlled === null || orbitRef === undefined
@@ -159,6 +192,18 @@ export class HudPanelPresenter {
     };
   }
 
+  // 軌道計画の案内チップの段。マップビュー以外か、操作対象が居ないなら null。
+  private planHintStage(view: ViewMode, controlled: Controllable | null): PlanHintStage | null {
+    const nodeCount = controlled?.plan.nodes.length ?? 0;
+    const selecting = this.planNodeSelection.selectedNodeIdx !== null;
+    if (view !== 'map' || nodeCount === 0) this.nodeSelectionSeen = false;
+    else if (selecting) this.nodeSelectionSeen = true;
+    if (view !== 'map' || controlled === null) return null;
+    if (nodeCount === 0) return 'place';
+    if (selecting) return 'edit';
+    return this.nodeSelectionSeen ? 'confirm' : 'adjust';
+  }
+
   // 操作対象の装備・燃料・姿勢の状態と、代替操作用のコールバック。
   private vesselViewModel(controlled: Controllable): VesselPanelViewModel {
     const ship = isModularShip(controlled) ? controlled : null;
@@ -171,6 +216,9 @@ export class HudPanelPresenter {
       throttleIdx: controlled.throttle.throttleIdx,
       dynamicPressurePa: motion?.aero.qdyn ?? null,
       temperatureK: controlled.motion.temperature,
+      dynamicPressureLevel: this.alarms.levelOf('dynamicPressure'),
+      fuelLevel: this.alarms.levelOf('fuel'),
+      temperatureLevel: this.alarms.levelOf('temperature'),
       fineAttitude: controlled.fineAttitude,
       progradeHold: controlled.throttle.progradeHold,
       totalFuel: controlled.totalFuel,
@@ -218,7 +266,9 @@ export class HudPanelPresenter {
       centerId: info.centerId,
       centerName: !reference.attractor && targetName ? targetName : info.centerName,
       altitudeM: info.alt,
-      descendWarned: controlled.altitudeAlarm?.descendWarned ?? false,
+      altitudeLevel: this.alarms.levelOf('altitude'),
+      dynamicPressureLevel: this.alarms.levelOf('dynamicPressure'),
+      temperatureLevel: this.alarms.levelOf('temperature'),
       speedMps: info.spd,
       apAltitudeM: info.apAlt,
       peAltitudeM: info.peAlt,

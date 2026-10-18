@@ -111,7 +111,7 @@ export class ModuleWindows implements ModuleWindowOpener {
           this.close();
           this.closeOtherWindows();
         } catch (error) {
-          this.hud.hint(error instanceof Error ? error.message : '建造を開始できません', undefined, 'warn');
+          this.hud.hint(error instanceof Error ? error.message : '建造を開始できません', undefined, 'denied');
         }
       } else if (act === 'undockModule') {
         if (this.undockProducesMaterial(ship, moduleId)) {
@@ -251,7 +251,7 @@ export class ModuleWindows implements ModuleWindowOpener {
       }
       // 失敗を通知し、接舷条件の不成立では候補を出し直す。
       const error = state.error;
-      this.hud.hint(error instanceof Error ? error.message : this.failureText(pending.action), undefined, 'warn');
+      this.hud.hint(error instanceof Error ? error.message : this.failureText(pending.action), undefined, 'denied');
       const { entry } = pending;
       if (pending.action === 'dockCandidate' && error instanceof DockingEligibilityError
         && this.windows.get(`${entry.ship.id}:${entry.moduleId}`) === entry) {

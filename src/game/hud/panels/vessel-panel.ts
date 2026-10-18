@@ -11,7 +11,7 @@ import { setStatePip } from '../../../hud/state-pip';
 import {
   DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO, FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO,
   TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO, WEAR_CAUTION_RATIO, WEAR_WARNING_RATIO,
-  dynamicPressureAlarmLevel, fuelAlarmLevel, temperatureAlarmLevel, wearAlarmLevel,
+  wearAlarmLevel,
 } from '../../alarm/alarm-level';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';
@@ -37,6 +37,10 @@ export interface VesselPanelViewModel {
   // 大気を受けない操作対象では null。
   readonly dynamicPressurePa: number | null;
   readonly temperatureK: number;
+  // 警報の評価器が判定した動圧・燃料・船体温度の段。行・メーターは警報灯と同じ判定を読む。
+  readonly dynamicPressureLevel: AlarmLevel;
+  readonly fuelLevel: AlarmLevel;
+  readonly temperatureLevel: AlarmLevel;
   readonly fineAttitude: boolean;
   readonly progradeHold: boolean;
   readonly totalFuel: number;
@@ -274,7 +278,7 @@ export class VesselPanel {
   private syncFuel(view: VesselPanelViewModel): AlarmLevel {
     const maxFuel = view.totalMaxFuel;
     const clampedFuel = Math.max(0, Math.min(maxFuel, view.totalFuel));
-    const level = fuelAlarmLevel(clampedFuel, maxFuel);
+    const level = view.fuelLevel;
     this.syncMeter(
       { meter: this.fuelMeter, value: this.els.get('rcs-fuel-value') },
       clampedFuel, maxFuel, { value: `${Math.round(clampedFuel)}`, unit: `/ ${Math.round(maxFuel)}` }, level,
@@ -284,7 +288,7 @@ export class VesselPanel {
 
   // 船体温度の行を反映して段を返す。
   private syncTemperature(view: VesselPanelViewModel): AlarmLevel {
-    const level = temperatureAlarmLevel(view.temperatureK, MAX_HULL_TEMP);
+    const level = view.temperatureLevel;
     this.syncMeter(
       this.tempMeter, view.temperatureK, MAX_HULL_TEMP, { value: view.temperatureK.toFixed(0), unit: 'K' }, level,
     );
@@ -296,7 +300,7 @@ export class VesselPanel {
     const qdyn = view.dynamicPressurePa;
     this.els.get('qdyn-row').classList.toggle('hidden', qdyn === null);
     if (qdyn === null) return 'normal';
-    const level = dynamicPressureAlarmLevel(qdyn, MAX_DYN_PRESSURE);
+    const level = view.dynamicPressureLevel;
     this.syncMeter(this.qdynMeter, qdyn, MAX_DYN_PRESSURE, this.dynamicPressureParts(qdyn), level);
     return level;
   }

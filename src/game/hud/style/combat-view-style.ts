@@ -78,9 +78,6 @@ export const COMBAT_VIEW_STYLE = `
   line-height: 1.45;
 }
 
-#hud:not(.base-mode) #hud-topbar {
-  border-radius: 0 0 var(--radius-panel) var(--radius-panel);
-}
 #hud:not(.base-mode) #hud-simulation-status .k { color: var(--text-dim); }
 #hud:not(.base-mode) #hud-simulation-status .gs-sep { color: var(--fill-4); }
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:focus-visible,

@@ -21,6 +21,7 @@ import { EntityLineManager } from './lines/entity-line-manager';
 import { Input } from '../input/input';
 import { TouchControls } from './hud/touch-controls';
 import { WorldSfx } from '../audio/sfx/world-sfx';
+import { AlarmSfx } from '../audio/sfx/alarm-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
 import { CameraView } from '../render/camera/camera-view';
 import { ViewManager } from './view/view-manager';
@@ -43,6 +44,9 @@ import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
 import { FrameControls } from './hud/frame/frame-controls';
 import { HudPanelPresenter } from './hud/hud-panel-presenter';
+import { AlarmEvaluator } from './alarm/alarm-evaluator';
+import { measureAlarms } from './alarm/alarm-measurements';
+import { alarmClearedText } from './hud/alarm-content';
 import { ViewOptionsControl, type ViewOptionsSettings } from './hud/panels/view-options-control';
 import { controlledLoopSfx } from './controlled-loop-sfx';
 import { UiSoundQueue } from './ui-sound-queue';
@@ -72,14 +76,16 @@ import type { ViewMode } from './view/view-mode';
 import type { PerfCounts } from './perf-counts';
 import type { LoadingProgress } from './loading-progress';
 
-// 新規開始のブリーフィングを出しておく時間 [ms]。
-const BRIEFING_TOAST_MS = 12000;
-
 export class GamePresentation {
   private readonly input: Input;
   private readonly touchControls: TouchControls;
   private readonly worldSfx: WorldSfx;
   private readonly uiSfx: UiSfx;
+  private readonly alarmSfx: AlarmSfx;
+  // 警報(状態)の評価器。ランごとに持ち、保存しない。
+  private readonly alarms = new AlarmEvaluator();
+  // 警報音の宣言に振る通し番号。
+  private nextAlarmCueId = 0;
   // 操作と出来事から出す UI の効果音を、同期まで溜める先。
   private readonly uiSounds = new UiSoundQueue();
   // 進行が記録した出来事を UI の効果音・通知へ写す読み手。
@@ -141,6 +147,7 @@ export class GamePresentation {
     const { commands, dynamicSystem, celestialSystem, controlSelection, viewer, activeStage } = game;
     this.worldSfx = new WorldSfx(audioEngine);
     this.uiSfx = new UiSfx(audioEngine);
+    this.alarmSfx = new AlarmSfx(audioEngine);
     this.runEventPresenter = new RunEventPresenter(this.uiSounds, hud);
     this.frameMarkers = markers.createGroup();
     this.playerMarkers = new PlayerMarkers(markers);
@@ -247,6 +254,7 @@ export class GamePresentation {
     this.hudPanels = new HudPanelPresenter(
       hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
       activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
+      this.alarms, this.viewOptions, this.mapView.planEditor,
     );
     const inputSource: GameInputSource = {
       commands: game.commands,
@@ -308,7 +316,7 @@ export class GamePresentation {
   public presentRunStart(): void {
     this.runEventPresenter.present(this.game.events.recent);
     const briefing = this.game.activeStage.briefing;
-    if (briefing !== null) this.devices.hud.toast(briefing, BRIEFING_TOAST_MS);
+    if (briefing !== null) this.devices.hud.showBriefing(briefing);
   }
 
   // ------------------------------------------------------------ 入力の解釈
@@ -387,6 +395,7 @@ export class GamePresentation {
     );
     this.syncPanelsAndMarkers(
       nowMs, displayWindow, displayTime, view, controlled, orbitRef ?? null, visibilityPolicy, palette, camera,
+      style,
     );
   }
 
@@ -437,6 +446,19 @@ export class GamePresentation {
     );
   }
 
+  // 操作対象の測定値から警報を評価し、警報音・警告の解除の通知・ブリーフィングの折りたたみへ写す。
+  // 警報音はポーズ中・建造中には鳴らさない。
+  private syncAlarms(controlled: Controllable | null, nowMs: number): void {
+    this.alarms.update(nowMs, measureAlarms(controlled));
+    const { sound, clearedWarnings } = this.alarms;
+    const audible = !this.isPaused && !this.shipConstruction.active;
+    if (sound !== null && audible) this.alarmSfx.sync([{ id: this.nextAlarmCueId++, sound }]);
+    if (clearedWarnings.length > 0) this.devices.hud.hint(alarmClearedText(clearedWarnings), 3000, 'cleared');
+    // 最初の操作でブリーフィングを畳む。
+    const { thrust, rotation, firing, commands } = this.pilotControls;
+    if (thrust.size > 0 || rotation.size > 0 || firing || commands.length > 0) this.devices.hud.foldBriefing();
+  }
+
   // このフレームの出来事を通知・音・閃光・対象・航法ターゲットの宣言へ写す。
   private syncEffectsAndTargets(
     nowMs: number, displayTime: number, view: ViewMode, controlled: Controllable | null,
@@ -445,6 +467,7 @@ export class GamePresentation {
   ): void {
     const events = this.game.events.recent;
     this.runEventPresenter.present(events);
+    this.syncAlarms(controlled, nowMs);
     this.worldSfx.sync({
       loops: controlledLoopSfx(controlled, displayTime, !this.isPaused && this.game.activeStage.isPlaying),
       cues: worldSoundCues(events),
@@ -466,6 +489,7 @@ export class GamePresentation {
     nowMs: number, displayWindow: DisplayWindow, displayTime: number, view: ViewMode,
     controlled: Controllable | null, orbitRef: OrbitReference | null,
     visibilityPolicy: MapVisibilityPolicy | null, palette: ThemePalette, camera: CameraFrame,
+    style: RenderStyle,
   ): void {
     const { celestialSystem, activeStage, viewer } = this.game;
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
@@ -479,9 +503,9 @@ export class GamePresentation {
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
-    activeStage.sync(camera, view, displayTime);
+    activeStage.sync(camera, view, displayTime, this.alarms.levelOf('temperature'));
     activeStage.proteinDisplayControl?.syncProteinDisplay(viewer.entityDisplay.proteinDisplay);
-    this.hudPanels.sync(view, displayWindow, orbitRef ?? undefined, palette, camera, nowMs);
+    this.hudPanels.sync(view, displayWindow, orbitRef ?? undefined, palette, camera, style, nowMs);
     this.syncFrameMarkers(nowMs);
     // このフレームのマーカーが出揃った後でなければならないので最後に通す。
     this.devices.markers.resolveOverlaps(view === 'map');

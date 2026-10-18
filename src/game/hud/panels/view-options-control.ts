@@ -35,7 +35,7 @@ export class ViewOptionsControl {
   // 軌道ガイド orbitGuide の現在値をパネルへ当て、パネルの操作は settings の書き換えと
   // orbitGuideCommands の命令として返す。
   public constructor(
-    root: HTMLElement, collapse: PanelCollapse, settings: ViewOptionsSettings,
+    root: HTMLElement, collapse: PanelCollapse, private readonly settings: ViewOptionsSettings,
     orbitGuide: OrbitGuideSource, orbitGuideCommands: OrbitGuideCommands,
   ) {
     this.panel = new ViewOptionsPanel(root, collapse, catalogFamilyIndex());
@@ -48,10 +48,7 @@ export class ViewOptionsControl {
     };
     this.panel.setBodyClassToggles(settings.mapDisplay.current);
 
-    this.panel.onRenderStyleChange = (style) => {
-      settings.onRenderStyleChange(style);
-      this.panel.setRenderStyle(style);
-    };
+    this.panel.onRenderStyleChange = (style) => this.changeRenderStyle(style);
     this.panel.setRenderStyle(settings.renderStyle.current);
 
     // 天球グリッド。行見出しと面・極・網は、互いに独立したトグルとして書き戻す。
@@ -81,6 +78,12 @@ export class ViewOptionsControl {
       this.panel.setOrbitGuideGroupTab(tab);
     };
     this.panel.setOrbitGuideGroupTab(settings.orbitGuideGroupTab.current);
+  }
+
+  // 描画方式を style へ切り替える。全体ステータスバーの見せ方トグルと、このパネルの選択の共通の入口。
+  public changeRenderStyle(style: RenderStyle): void {
+    this.settings.onRenderStyleChange(style);
+    this.panel.setRenderStyle(style);
   }
 
   // パネルを出すかどうかを切り替える。

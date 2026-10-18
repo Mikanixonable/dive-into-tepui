@@ -4,6 +4,7 @@
 
 // HUD の静的 DOM が data-id で公開する要素の id 一覧。
 export const HUD_ELEMENT_IDS = [
+  'alarm-lamps',
   'alt',
   'ap',
   'ap-label',
@@ -61,6 +62,8 @@ export const HUD_ELEMENT_IDS = [
   'map-scale-ruler',
   'map-scale-value',
   'met',
+  'met-elapsed',
+  'node-warp',
   'node-warp-remain',
   'orbit-actions',
   'orbit-qdyn-row',
@@ -83,6 +86,7 @@ export const HUD_ELEMENT_IDS = [
   'status-actions',
   'status-modes-touch',
   'status-throttle-touch',
+  'style-toggle',
   'temp',
   'temp-meter',
   'temp-row',

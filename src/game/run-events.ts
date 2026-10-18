@@ -113,8 +113,6 @@ export type RunEventBody =
   | { readonly kind: 'stageDecided' }
 
   // -------------------------------------------------------------------- 飛行
-  // 高度の警戒線を下回った。threshold はその線の高度 [m]。
-  | { readonly kind: 'altitudeWarned'; readonly threshold: number }
   // RCS 回転制動を切り替えた。
   | { readonly kind: 'rcsDampToggled'; readonly on: boolean }
   // 機首をプログレードへ向け直した。
@@ -169,8 +167,6 @@ export type RunEventBody =
   | { readonly kind: 'combatViewUnavailable' }
   // 計画ノードを確定して戦闘ビューへ戻った。nodeCount は確定したノード数。
   | { readonly kind: 'maneuverPlanConfirmed'; readonly nodeCount: number }
-  // 軌道計画のためにマップビューへ入った。
-  | { readonly kind: 'orbitPlanningOpened' }
 
   // ------------------------------------------------------------------ カメラ
   // ビューの視点をリセットした。
