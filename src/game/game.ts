@@ -194,8 +194,11 @@ export class Game {
   // ------------------------------------------------------------ 進行の位相
 
   // 出来事の記録を空にし、受け付けた命令を適用し、一時停止でなければ操作量 controls と dt [s] で
-  // 1フレーム進め、視点を進行に合わせる。
-  public advance(dt: number, controls: PilotControls, paused: boolean): void {
+  // 1フレーム進め、視点を進行に合わせる。simTimeLimit はそのフレームに simTime が越えてはいけない
+  // 上限(求解中の遷移候補が守る出発の猶予)で、null なら制限なし。
+  public advance(
+    dt: number, controls: PilotControls, paused: boolean, simTimeLimit: number | null,
+  ): void {
     // 一時停止中も命令は適用する(R8)。命令の適用そのものが出来事を積むので、記録を空にするのは
     // その前。
     this.events.beginStep();
@@ -204,7 +207,7 @@ export class Game {
     const boardTargetId = this.viewer.navTarget.id;
     // ポーズには「止まった瞬間」の知らせが無いので、止まっている間は毎フレーム連続指令を畳む。
     if (paused) this.dynamicSystem.pause();
-    else this.advanceSimulation(dt, controls, boardTargetId);
+    else this.advanceSimulation(dt, controls, boardTargetId, simTimeLimit);
     this.followProgress();
   }
 
@@ -236,11 +239,18 @@ export class Game {
 
   // ステージ・エンティティ群・操作対象の選択を、操作入力 controls と dt [s] で1フレーム進める。boardTargetId は
   // 的面の通過を記録する対象の id。
-  private advanceSimulation(dt: number, controls: PilotControls, boardTargetId: string | null): void {
+  private advanceSimulation(
+    dt: number, controls: PilotControls, boardTargetId: string | null, simTimeLimit: number | null,
+  ): void {
     // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
     // 自動ワープの段階変更を跨いで別の倍率を読むと、同じ区間を表さなくなる。
     this.simSpeedManager.update(this.dynamicSystem.simTime);
-    const simDt = dt * this.simSpeedManager.simSpeed;
+    let simDt = dt * this.simSpeedManager.simSpeed;
+    // 求解中の遷移候補が示す時刻上限。上限へ達したら simTime はそれ以上進まない
+    // (倍率によって求解の結果が変わらないための保証 — PLAN.md「遷移方式」)。
+    if (simTimeLimit !== null) {
+      simDt = Math.min(simDt, Math.max(0, simTimeLimit - this.dynamicSystem.simTime));
+    }
     const canShipAct = this.simSpeedManager.canShipAct;
     const canEngage = this.simSpeedManager.canEngage;
     const controlled = this.activeControllable;
