@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { ShipModuleView, type ShipModuleModelFactory } from './ship-module-view';
-import type { ShipModuleRenderInput } from './ship-render-contract';
+import type { ShipModuleEmphasis, ShipModuleRenderInput } from './ship-render-contract';
 
 const ZERO = v3();
 
@@ -29,21 +29,27 @@ export class ModularShipView {
 
   // module 座標を ship の COM 原点へ合わせて同期する。centerOffset は physics shape の
   // centerOfMass と同じ assembly-local 軸で渡すので、model/collider の +Z/m を保てる。
-  public sync(modules: readonly ShipModuleRenderInput[], centerOffset: Vec3 = ZERO): void {
+  // emphasis は モジュール id → 強調とずらしの宣言で、宣言の無いモジュールは通常どおり描く。
+  public sync(
+    modules: readonly ShipModuleRenderInput[],
+    centerOffset: Vec3 = ZERO,
+    emphasis: ReadonlyMap<string, ShipModuleEmphasis> | null = null,
+  ): void {
     if (this.disposed) throw new Error('cannot sync a disposed ModularShipView');
     const live = new Set<string>();
     for (const module of modules) {
       live.add(module.id);
       const id = module.id;
+      const declared = emphasis?.get(id) ?? null;
       let view = this.modules.get(id);
       if (view === undefined) {
-        view = new ShipModuleView(module, this.modelFactory, centerOffset);
+        view = new ShipModuleView(module, this.modelFactory, centerOffset, declared);
         this.modules.set(id, view);
         this.object.add(view.object);
       } else if (view.input.modelId !== module.modelId) {
-        view.replaceModule(module, centerOffset);
+        view.replaceModule(module, centerOffset, declared);
       } else {
-        view.sync(module, centerOffset);
+        view.sync(module, centerOffset, declared);
       }
     }
     for (const [id, view] of this.modules) {

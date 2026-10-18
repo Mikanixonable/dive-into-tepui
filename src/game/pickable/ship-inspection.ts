@@ -103,7 +103,7 @@ export class ShipInspection implements InspectedObject {
       .map(module => ({
         key: `dock-${module.id}`,
         label: `接舷部 ${module.id}`,
-        value: module.hp <= 0 ? '全損' : this.ship.docks.status(this.ship.assembly, module.id),
+        value: module.hp <= 0 ? '全損' : this.ship.assembly.isPortConnected(module.id) ? '接続中' : '空き',
         collapsible: true,
       }));
     return [
