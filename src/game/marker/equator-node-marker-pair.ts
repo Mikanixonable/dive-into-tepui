@@ -8,6 +8,7 @@ import { solveEquatorCrossings } from '../../physics/orbit-solvers';
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { TimelineEvent } from '../map/timeline-event';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -103,6 +104,15 @@ export class EquatorNodeMarkerPair {
   // 右クリック対象として公開する EqAN/EqDN アイコン。出す理由が残っているぶんを返す。
   public pickables(): readonly ObjectPickable[] {
     return [this.ascending, this.descending].filter((marker) => !marker.gone);
+  }
+
+  // 求まっている交点の通過を、時間軸の事象として out へ積む。
+  public pushTimelineEvents(out: TimelineEvent[]): void {
+    for (const event of [
+      this.ascending.timelineEvent('ascendingNode'), this.descending.timelineEvent('descendingNode'),
+    ]) {
+      if (event !== null) out.push(event);
+    }
   }
 
   // 求まっている交点の △▽ マーカーの宣言を out へ積む。celestialBodies は遮蔽判定に使う

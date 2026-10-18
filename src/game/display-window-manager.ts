@@ -16,6 +16,8 @@ import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { PredictedArc } from './dynamic/predicted-arc';
 import type { TrajectoryDemand } from './dynamic/trajectory-demand';
 import type { CelestialBodies } from './celestial/celestial-bodies';
+import type { OverlayManager } from '../hud/overlay-manager';
+import type { TimelineEvent } from './map/timeline-event';
 import {
   APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,
 } from './viewer/display-timeline-selection';
@@ -85,6 +87,7 @@ export class DisplayWindowManager {
   public constructor(
     hudRoot: HTMLElement,
     collapse: PanelCollapse,
+    overlayManager: OverlayManager,
     private readonly celestialBodies: CelestialBodies,
     private readonly selection: DisplayTimelineSource,
     private readonly commands: DisplayTimelineCommands,
@@ -96,7 +99,7 @@ export class DisplayWindowManager {
       tickLabelMode: selection.tickLabelMode, showElementTimes: selection.showElementTimes,
       epochUnixSec: this.epochUnixSec,
     };
-    this.panel = new DisplayTimelinePanel(hudRoot, collapse);
+    this.panel = new DisplayTimelinePanel(hudRoot, collapse, overlayManager);
     this.panel.onDurationSelect = (key) => this.commands.selectDuration(key);
     this.panel.onCustomDurationConfirm = (sec) => this.commands.selectCustomDuration(sec);
     this.panel.onPastDurationSelect = (key) => this.commands.selectPastDuration(key);
@@ -158,7 +161,8 @@ export class DisplayWindowManager {
   }
 
   // 毎フレーム呼ぶ。操作パネル(期間・スクラバー・目盛り)の表示/非表示と内容を押し出す。
-  public sync(controlled: DynamicEntity | null): void {
+  // events は時間軸へ目盛りとして載せる軌道上の事象(時刻の昇順)。
+  public sync(controlled: DynamicEntity | null, events: readonly TimelineEvent[]): void {
     this.panel.render({
       visible: !this._current.forceCurrent,
       durationKey: this.selection.durationKey,
@@ -173,7 +177,9 @@ export class DisplayWindowManager {
       sliderSteps: this.sliderSteps(),
       sliderT: this.selection.sliderT,
       predictionRatio: this.predictionCoverageRatio(controlled),
-      ticks: buildTicks(this._current.duration, TICK_MAX_COUNT),
+      ticks: buildTicks(this._current.duration, TICK_MAX_COUNT, this._current.pastDuration),
+      simTime: this._current.simTime,
+      events,
     });
   }
 

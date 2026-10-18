@@ -2,13 +2,7 @@
 // 対象・ガイド・軌道ガイドの3タブに分かれ、タブの内装は TargetTab / GuideTab /
 // OrbitGuideTab が担い、このパネルは器とタブ間の配線を持つ。
 import { hudRail } from '../hud-root';
-import {
-  Button,
-  COLLAPSE_COLLAPSED_GLYPH,
-  COLLAPSE_EXPANDED_GLYPH,
-  TabBar,
-  type CollapseToggleLabels,
-} from '../../../hud/widgets';
+import { Button, TabBar } from '../../../hud/widgets';
 import type {
   MapDisplayCategory,
   MapDisplayMode,
@@ -21,7 +15,7 @@ import { OrbitGuideTab } from './orbit-guide-tab';
 import { zeroVelocityJacobiAt } from './zero-velocity-section';
 import { TargetTab } from './target-tab';
 import { GuideTab } from './guide-tab';
-import type { PanelCollapse } from '../panel-shell';
+import { PanelShell, type PanelCollapse } from '../panel-shell';
 import type { OrbitGuideGroupTab, ViewOptionsTab } from '../hud-selection';
 import type { RenderStyle } from '../../../render/render-style';
 
@@ -41,13 +35,8 @@ function buildTabBody(tab: ViewOptionsTab): HTMLElement {
   return el;
 }
 
-// このパネル自身の折りたたみトグルの見た目。
-const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
-  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
-  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-  expandedTitle: '表示を閉じる',
-  collapsedTitle: '表示を開く',
-};
+// 畳んだ見出しに残す要約。タブの名前を並べて、開けば何が選べるかを示す。
+const COLLAPSED_SUMMARY = TAB_ITEMS.map(([, label]) => label).join(' · ');
 
 export class ViewOptionsPanel {
   public onBodyClassModeChange: ((key: MapDisplayCategory, mode: MapDisplayMode) => void) | null = null;
@@ -67,8 +56,7 @@ export class ViewOptionsPanel {
   private readonly guideTab: GuideTab;
   private readonly orbitGuideTab: OrbitGuideTab;
 
-  private readonly panel: HTMLElement;
-  private readonly unsubscribeCollapsedView: () => void;
+  private readonly shell: PanelShell;
 
   // availableFamilies は軌道ガイドタブへ渡し、焼き込みカタログに実在する族だけを選ばせる。
   // collapse は折りたたみトグルの配線役。
@@ -77,39 +65,16 @@ export class ViewOptionsPanel {
     collapse: PanelCollapse,
     availableFamilies: ReadonlyMap<CatalogSystemId, readonly string[]> = new Map(),
   ) {
-    // パネル本体とタイトル。
-    this.panel = document.createElement('div');
-    this.panel.id = 'hud-view-options';
-    this.panel.className = 'panel hidden editorial-control-sheet editorial-index';
-    this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
-    const titleRow = document.createElement('div');
-    titleRow.className = 'view-options-title';
-    const code = document.createElement('span');
-    code.className = 'ui-section-code';
-    code.setAttribute('aria-hidden', 'true');
-    code.textContent = 'DSP';
-    const title = document.createElement('h3');
-    title.className = 'editorial-panel-title';
-    title.textContent = 'DISPLAY';
-    const context = document.createElement('span');
-    context.className = 'ui-data-context view-options-context';
-    context.textContent = 'VISIBILITY / GUIDES / ORBITS';
-    titleRow.append(code, title, context);
-    this.panel.appendChild(titleRow);
+    // パネル本体と見出し。畳んだまま始まる。
+    this.shell = new PanelShell(hudRail(root, 'left'), collapse, 'hud-view-options', 'DSP', '表示', true);
+    this.shell.setHidden(true);
+    this.shell.el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    const summary = this.shell.el.querySelector<HTMLElement>('[data-id="hud-view-options-summary"]');
+    if (summary !== null) summary.textContent = COLLAPSED_SUMMARY;
 
     const body = document.createElement('div');
     body.className = 'view-options-body';
-    this.panel.appendChild(body);
-    this.unsubscribeCollapsedView = collapse.wire({
-      toggleRoot: titleRow,
-      toggleId: 'hud-view-options-toggle',
-      toggleClassName: 'view-options-collapse',
-      target: body,
-      labels: VIEW_OPTIONS_COLLAPSE_LABELS,
-      storageId: 'hud-view-options',
-      defaultCollapsed: true,
-      extraHitEls: [title],
-    });
+    this.shell.body.appendChild(body);
 
     const renderRow = document.createElement('div');
     renderRow.className = 'view-options-render-row editorial-index-row';
@@ -167,8 +132,6 @@ export class ViewOptionsPanel {
 
     this.tabBodies = new Map([['target', targetBody], ['guide', guideBody], ['orbit', orbitBody]]);
     for (const [tab] of TAB_ITEMS) this.tabBar.buttonFor(tab)?.setAttribute('aria-controls', `hud-view-options-${tab}`);
-
-    hudRail(root, 'left').appendChild(this.panel);
   }
 
   // 編集後の軌道ガイド設定を、軌道ガイドタブとゼロ速度曲線節の両方へ揃えてから通知する。
@@ -202,13 +165,12 @@ export class ViewOptionsPanel {
 
   // パネルの表示/非表示を切り替える。
   public setVisible(visible: boolean): void {
-    this.panel.classList.toggle('hidden', !visible);
+    this.shell.setHidden(!visible);
   }
 
-  // パネルを取り除き、折りたたみ状態変化の購読を解除する。
+  // パネルを取り除く。
   public dispose(): void {
-    this.unsubscribeCollapsedView();
-    this.panel.remove();
+    this.shell.el.remove();
   }
 
   // クラス別の表示状態を現在値へ合わせる。

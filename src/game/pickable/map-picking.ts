@@ -183,7 +183,7 @@ export class MapPicking {
     }
     this.listPanel.setVisible(true);
     this.listPanel.sync(
-      this.pickables.listPickables, focusTargetId(this.camera.map.focus),
+      this.pickables.listPickables, focusTargetId(this.camera.map.focus), this.navTargetPresenter.targetId,
       parentOf, viewer, displayTime);
     this.orbitLineWindows.sync();
   }

@@ -18,6 +18,7 @@ import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { TimelineEvent, TimelineEventKind } from '../map/timeline-event';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
@@ -72,6 +73,11 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   }
 
   public get gone(): boolean { return this.retired; }
+
+  // この点を時間軸の事象として答える。通過時刻が解けていないフレームは null。
+  public timelineEvent(kind: TimelineEventKind): TimelineEvent | null {
+    return this.time === null ? null : { kind, time: this.time, name: this.headerLabel };
+  }
 
   // 生成元が解いた時刻の位置。
   public posAt(): Vec3 | null { return this.pos; }

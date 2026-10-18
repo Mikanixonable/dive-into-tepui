@@ -10,6 +10,7 @@ import type { ObjectPickable } from '../pickable/object-pickable';
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarkerPair, type EquatorNodeInputs } from './equator-node-marker-pair';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { TimelineEvent } from '../map/timeline-event';
 import type { MarkerSink } from '../../marker/marker-sink';
 import type { MarkerDevice } from '../../marker/marker-device';
 import type { SettingValue } from '../../settings/setting-value';
@@ -65,6 +66,11 @@ export class EquatorNodeManager {
   // 現在解が有効な交点を、マップの選択候補として返す。
   public get pickables(): readonly ObjectPickable[] {
     return [...this.pairs.values()].flatMap((pair) => pair.pickables());
+  }
+
+  // entityId の個体について、いま求まっている交点の通過を時間軸の事象として out へ積む。
+  public pushTimelineEvents(out: TimelineEvent[], entityId: string): void {
+    this.pairs.get(entityId)?.pushTimelineEvents(out);
   }
 
   // update で確定した交点を、このフレームのカメラと時刻表示設定へ同期する。

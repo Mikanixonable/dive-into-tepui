@@ -18,6 +18,7 @@ import { pointPlacement } from '../marker/marker-placement';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ObjectPickable } from '../pickable/object-pickable';
+import type { TimelineEvent } from '../map/timeline-event';
 import type { PlanData } from './plan';
 import type { PlanPath } from './plan-path';
 import { type DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
@@ -126,6 +127,18 @@ export class PlanDisplay {
       this.pushTickDeclarations(declarations, project, view, cameraPos, displayTime, timeLabel);
     }
     this.group.sync(declarations, nowMs);
+  }
+
+  // 表示中の計画のノードと、最後のバーン後の軌道の近点・遠点の通過を、時間軸の事象として out へ積む。
+  public pushTimelineEvents(out: TimelineEvent[]): void {
+    if (this.displayedPlan === null) return;
+    this.displayedPlan.nodes.forEach((node, i) => {
+      out.push({ kind: 'maneuverNode', time: node.t, name: `ノード ${i + 1}` });
+    });
+    for (const marker of [this.apsisPe, this.apsisAp]) {
+      const event = marker.timelineEvent('apsis');
+      if (event !== null) out.push(event);
+    }
   }
 
   // このフレームに表示している計画区間の弧。表示している計画が無ければ空。

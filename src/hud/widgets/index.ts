@@ -12,7 +12,14 @@ export { ToggleValueEdit } from './toggle-value-edit';
 export { DurationPillRow } from './duration-pill-row';
 export { Meter } from './meter';
 export { TabBar } from './tab-bar';
-export { Slider, type SliderOptions } from './slider';
+export {
+  Slider,
+  type SliderBand,
+  type SliderBandTone,
+  type SliderMark,
+  type SliderMarkTone,
+  type SliderOptions,
+} from './slider';
 export {
   buildCollapseToggle,
   syncCollapseToggle,
