@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { qFromUnitVectors, qRotate, LOCAL_FORWARD, LOCAL_UP } from '../../src/math/quat';
+import { qFromAxisAngle, qFromUnitVectors, qInvert, qMul, qRotate, LOCAL_FORWARD, LOCAL_UP } from '../../src/math/quat';
 import { add, scale, v3 } from '../../src/math/vec3';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
@@ -8,7 +8,9 @@ import { createShipModuleInstance } from '../../src/game/ship/ship-module-instan
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { restoreShipAssembly, serializeShipAssembly } from '../../src/game/ship/ship-save';
-import { sameTransform, sideMountTransform, sideSlotRotation } from '../../src/game/ship/ship-assembly-transform';
+import {
+  axialMountTransform, inverseTransform, sameTransform, sideMountTransform, sideSlotRotation,
+} from '../../src/game/ship/ship-assembly-transform';
 import { test } from '../harness';
 
 function module(definitionId: string, id: string, state = {}) {
@@ -442,5 +444,175 @@ export function register(): void {
       assert.ok(retainedB.module('ship-port') !== null);
       assert.ok(detachedB.module(mappedDockId) !== null);
     }
+  });
+
+  test('ship assembly: 軸方向接続は 90° ロールと前後反転の8通りを受け付け、45° は拒否する', () => {
+    const parent = SHIP_MODULE_CATALOG.require('tank-6-main');
+    const child = SHIP_MODULE_CATALOG.require('tank-3-main');
+    for (const parentFace of ['front', 'back'] as const) {
+      for (const face of ['front', 'back'] as const) {
+        for (const roll of [0, 1, 2, 3] as const) {
+          const assembly = new ShipAssembly();
+          assembly.addRoot(module('tank-6-main', 'parent'));
+          const transform = axialMountTransform(parent, child, parentFace, { roll, face });
+          // 幾何: 子は親の端面へ面どうしで接し、取り付ける端は親の側を向く。
+          const sign = parentFace === 'front' ? 1 : -1;
+          assert.equal(transform.position.x, 0);
+          assert.equal(transform.position.y, 0);
+          assert.equal(transform.position.z, sign * (parent.length / 2 + child.length / 2));
+          const childAxis = qRotate(transform.rotation, LOCAL_FORWARD);
+          assert.equal(childAxis.z, face === 'front' ? -sign : sign, `${parentFace}/${face}/${roll}`);
+          assembly.addModule(module('tank-3-main', 'child'), 'parent', transform, 'axial');
+          assert.equal(assembly.validate().valid, true, `${parentFace}/${face}/${roll}`);
+        }
+      }
+    }
+    const bad = new ShipAssembly();
+    bad.addRoot(module('tank-6-main', 'parent'));
+    bad.addModule(module('tank-3-main', 'child'), 'parent', {
+      position: v3(0, 0, -4.5), rotation: qFromAxisAngle(LOCAL_FORWARD, Math.PI / 4),
+    }, 'axial');
+    assert.equal(bad.validate().valid, false);
+  });
+
+  test('ship assembly: 側面接続は標準変換と 90° ロールの合成を受け付け、45° は拒否する', () => {
+    const parent = SHIP_MODULE_CATALOG.require('tank-6-main');
+    const child = SHIP_MODULE_CATALOG.require('solar-panel-standard');
+    for (const roll of [0, 1, 2, 3] as const) {
+      const assembly = new ShipAssembly();
+      assembly.addRoot(module('tank-6-main', 'parent'));
+      const transform = sideMountTransform(parent, child, 'side:+x', roll);
+      assembly.addModule(
+        module('solar-panel-standard', 'child'), 'parent', transform, 'side', undefined, 'side:+x',
+      );
+      assert.equal(assembly.validate().valid, true, `roll ${roll}`);
+    }
+    const bad = new ShipAssembly();
+    bad.addRoot(module('tank-6-main', 'parent'));
+    const base = sideMountTransform(parent, child, 'side:+x');
+    bad.addModule(module('solar-panel-standard', 'child'), 'parent', {
+      position: base.position,
+      rotation: qMul(base.rotation, qFromAxisAngle(LOCAL_FORWARD, Math.PI / 4)),
+    }, 'side', undefined, 'side:+x');
+    assert.equal(bad.validate().valid, false);
+  });
+
+  test('ship assembly: ロール・取り付け端を変えた接続は直列化と復元で同じ変換に戻る', () => {
+    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    const parent = SHIP_MODULE_CATALOG.require('tank-6-main');
+    const child = SHIP_MODULE_CATALOG.require('tank-3-main');
+    const solar = SHIP_MODULE_CATALOG.require('solar-panel-standard');
+    assembly.addRoot(module('tank-6-main', 'root'));
+    // 親の前端へ後端を向けて、90° ロールして付く。
+    assembly.addModule(
+      module('tank-3-main', 'child'), 'root',
+      axialMountTransform(parent, child, 'front', { roll: 1, face: 'back' }),
+      'axial', 'rolled-edge',
+    );
+    assembly.addModule(
+      module('solar-panel-standard', 'solar'), 'root',
+      sideMountTransform(parent, solar, 'side:+y', 2),
+      'side', 'rolled-side', 'side:+y',
+    );
+    const saved = serializeShipAssembly(assembly);
+    assert.equal(saved.explicitTransforms, true);
+    const restored = restoreShipAssembly(saved);
+    assert.equal(restored.validate().valid, true);
+    for (const id of ['child', 'solar']) {
+      assert.ok(sameTransform(restored.transformOf(id)!, assembly.transformOf(id)!), id);
+      const before = assembly.graph.find(edge => edge.childId === id)!;
+      const after = restored.graph.find(edge => edge.childId === id)!;
+      assert.ok(sameTransform(after.childTransform, before.childTransform), `${id} edge`);
+    }
+  });
+
+  test('ship assembly: 両プリセットは向きの規則でも検証を通る', () => {
+    assert.equal(createDefaultCombatPreset().validate().valid, true);
+    assert.equal(createBasePreset().validate().valid, true);
+  });
+
+  test('ship assembly: 起点ドックから見た先端部は起点の反対側の部分を切り離す', () => {
+    const assembly = createDefaultCombatPreset();
+    const piece = assembly.detachPiece('armor', 'docking-port');
+    assert.deepEqual([...piece.moduleIds].sort(), ['armor', 'cockpit', 'weapon']);
+    assert.deepEqual(
+      [...assembly.moduleIds].sort(),
+      ['docking-port', 'main-tank', 'main-thruster', 'radiator', 'rcs', 'rcs-tank', 'solar-left', 'solar-right'],
+    );
+    assert.equal(piece.validate().valid, true);
+    assert.equal(assembly.validate().valid, true);
+    // 残る側のワールド変換は切り離し前のまま保つ。
+    const kept = createDefaultCombatPreset();
+    for (const id of assembly.moduleIds) {
+      assert.ok(sameTransform(assembly.worldTransformOf(id)!, kept.worldTransformOf(id)!), id);
+    }
+  });
+
+  test('ship assembly: 切り離した先端部を同じ位置へ接ぎ木すると全変換と識別子が戻る', () => {
+    const assembly = createDefaultCombatPreset();
+    const worldsBefore = new Map(assembly.moduleIds.map(id => [id, assembly.worldTransformOf(id)!]));
+    const edgeIdsBefore = assembly.graph.map(edge => edge.id).sort();
+    const seam = assembly.graph.find(edge => edge.parentId === 'armor' && edge.childId === 'main-tank')!;
+    const piece = assembly.detachPiece('armor', 'docking-port');
+    // 元の接続は armor→main-tank なので、armor を main-tank の子として戻すには逆変換を使う。
+    assembly.attachPiece(
+      piece, 'main-tank', inverseTransform(seam.childTransform), seam.kind,
+      undefined, undefined, seam.id,
+    );
+    assert.equal(assembly.validate().valid, true);
+    assert.equal(piece.size, 0);
+    assert.deepEqual(assembly.graph.map(edge => edge.id).sort(), edgeIdsBefore);
+    assert.deepEqual([...assembly.moduleIds].sort(), [...worldsBefore.keys()].sort());
+    for (const [id, transform] of worldsBefore) {
+      assert.ok(sameTransform(assembly.worldTransformOf(id)!, transform), id);
+    }
+  });
+
+  test('ship assembly: 切り離した先端部は根を組み直しても相互の変換を保つ', () => {
+    const assembly = createDefaultCombatPreset();
+    const armorWorld = assembly.worldTransformOf('armor')!;
+    const worldsBefore = new Map(
+      ['armor', 'cockpit', 'weapon'].map(id => [id, assembly.worldTransformOf(id)!]),
+    );
+    const piece = assembly.detachPiece('armor', 'docking-port');
+    // 先端部のワールド系は根(armor)を原点に取る。元の assembly で armor から見た変換と一致する。
+    const inv = qInvert(armorWorld.rotation);
+    for (const [id, original] of worldsBefore) {
+      const expected = {
+        position: qRotate(inv, v3(
+          original.position.x - armorWorld.position.x,
+          original.position.y - armorWorld.position.y,
+          original.position.z - armorWorld.position.z,
+        )),
+        rotation: qMul(inv, original.rotation),
+      };
+      assert.ok(sameTransform(piece.worldTransformOf(id)!, expected), id);
+    }
+    // 根は単位変換になる。
+    const root = piece.worldTransformOf('armor');
+    assert.ok(root !== null);
+    assert.deepEqual(root.position, v3());
+    assert.deepEqual(root.rotation, { x: 0, y: 0, z: 0, w: 1 });
+  });
+
+  test('ship assembly: 複製は新しい識別子と新品状態を持つ', () => {
+    const assembly = createDefaultCombatPreset();
+    assembly.damage(10, 1, 'cockpit');
+    assembly.consumeFuel('main', 50);
+    const copy = assembly.copiedAsNew('copy');
+    assert.equal(copy.validate().valid, true);
+    assert.equal(copy.modules.length, assembly.modules.length);
+    for (const instance of copy.modules) {
+      assert.ok(instance.id.startsWith('copy:'), instance.id);
+      const definition = SHIP_MODULE_CATALOG.require(instance.definitionId);
+      assert.equal(instance.hp, definition.maxHp);
+      if (instance.kind === 'tank') assert.equal(instance.fuel, definition.abilities.fuelCapacity);
+    }
+    // 識別子は元と重ならず、接続の向きと変換は写す。
+    assert.ok(copy.moduleIds.every(id => !assembly.moduleIds.includes(id)));
+    const source = assembly.graph.find(edge => edge.childId === 'armor')!;
+    const copied = copy.graph.find(edge => edge.childId === 'copy:armor')!;
+    assert.equal(copied.parentId, 'copy:cockpit');
+    assert.ok(sameTransform(copied.childTransform, source.childTransform));
   });
 }
