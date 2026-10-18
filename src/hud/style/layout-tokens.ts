@@ -10,6 +10,8 @@ export const HUD_LAYOUT_TOKENS_STYLE = `
   --tracking-label: .08em;
   --tracking-code: .14em;
   --tracking-title: -.025em;
+  /* 計器の行・一覧の行・タブ・行系の見出しに共通する、1行の最小高さ。 */
+  --row-min-h-s: 28px;
   /* 表示トグルが OFF の行・区画を淡色化するときの不透明度。 */
   --toggle-off-opacity: .52;
 }
