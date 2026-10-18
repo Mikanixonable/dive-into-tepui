@@ -26,6 +26,7 @@ import type { CommandQueue } from '../command-queue';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry } from '../dynamic/entity-registry';
+import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
 import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
 import type { ViewMode } from '../view/view-mode';
 
@@ -49,6 +50,7 @@ export type StageDeps = [
   celestialSystem: CelestialSystem,
   controlSelection: ControlSelection,
   commandQueue: CommandQueue,
+  orbitSlots: OrbitSlotRegistry,
 ];
 
 // 全ステージ共通の状態(スコア・決着状態・補給)。基底のコンストラクタが deps の後ろに受け、
@@ -158,6 +160,8 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   protected readonly _controlSelection: ControlSelection;
   // モデル層の外から届いた書き換えを積む先。ステージ固有の命令の口はここへ積む。
   protected readonly _commandQueue: CommandQueue;
+  // このランの軌道標識の台帳。
+  protected readonly _orbitSlots: OrbitSlotRegistry;
 
   public get phase(): GamePhase { return this._phase; }
   public get isPlaying(): boolean { return this._phase === 'playing'; }
@@ -180,13 +184,14 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     private _phase: GamePhase = 'playing',
     logistics?: Logistics,
   ) {
-    const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue] = deps;
+    const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue, orbitSlots] = deps;
     this._hud = hud;
     this._scene = scene;
     this._dynamicSystem = dynamicSystem;
     this._celestialSystem = celestialSystem;
     this._controlSelection = controlSelection;
     this._commandQueue = commandQueue;
+    this._orbitSlots = orbitSlots;
     this.logistics = logistics ?? new Logistics(scene, dynamicSystem, this.stageRules.automaticResupply);
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
