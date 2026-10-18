@@ -66,7 +66,11 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     displayed: KinematicState | null,
     viewFrame: DynamicViewFrame,
   ): void {
-    this.modules.sync(source.assembly.modules, source.centerOffset);
+    this.modules.sync(
+      source.assembly.modules,
+      source.centerOffset,
+      viewFrame.shipModuleEmphasis?.get(source.id) ?? null,
+    );
     const origin = viewFrame.camera.floatingOrigin;
     const effectVisible = this.object.visible;
     const cameraQuat = viewFrame.camera.camera.quaternion;
