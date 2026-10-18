@@ -1,5 +1,6 @@
 // 単発クリックのボタン。押下時に onClick を発火する。on(点灯)/disabled 表示は
 // setOn/setEnabled を介して制御する。点灯型トグル表示にも対応する。
+import { createKeyCap } from '../key-cap';
 import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-base';
 
 // ボタンの意味(Primary/Secondary)と密度・形状(Dense/Icon)を、画面側の個別 CSS ではなく
@@ -12,23 +13,27 @@ export class Button {
   private readonly labelEl: HTMLElement | null;
 
   // label はボタンの表示文字列。onClick はクリック(またはキーボード操作)のたびに呼ばれる。
-  // icon を渡すと、その SVG/文字マークアップをラベルの前に添える。
+  // icon を渡すと、その SVG/文字マークアップをラベルの前に添える。keyLabel を渡すと、ラベルの後ろに
+  // ショートカットのキーキャップを添える。
   public constructor(
     label: string, onClick: () => void, icon?: string,
-    variant?: ButtonVariant | readonly ButtonVariant[],
+    variant?: ButtonVariant | readonly ButtonVariant[], keyLabel?: string,
   ) {
     this.element = document.createElement('span');
     const variants = variant === undefined ? [] : typeof variant === 'string' ? [variant] : variant;
     this.element.className = ['w-btn', ...variants.map((name) => `w-btn--${name}`)].join(' ');
-    if (icon !== undefined) {
-      const iconEl = document.createElement('span');
-      iconEl.className = 'w-btn-icon';
-      iconEl.setAttribute('aria-hidden', 'true');
-      iconEl.innerHTML = icon;
-      this.element.appendChild(iconEl);
+    if (icon !== undefined || keyLabel !== undefined) {
+      if (icon !== undefined) {
+        const iconEl = document.createElement('span');
+        iconEl.className = 'w-btn-icon';
+        iconEl.setAttribute('aria-hidden', 'true');
+        iconEl.innerHTML = icon;
+        this.element.appendChild(iconEl);
+      }
       this.labelEl = document.createElement('span');
       this.labelEl.textContent = label;
       this.element.appendChild(this.labelEl);
+      if (keyLabel !== undefined) this.element.appendChild(createKeyCap(keyLabel));
     } else {
       this.element.textContent = label;
       this.labelEl = null;
