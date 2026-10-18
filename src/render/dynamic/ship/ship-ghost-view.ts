@@ -11,7 +11,7 @@ const VALID_COLOR = 0x53f089;
 const INVALID_COLOR = 0xff5b63;
 const GHOST_OPACITY = 0.35;
 
-// 建造候補の world transform と配置可否。
+// 建造候補1つぶんの world transform と配置可否。
 export interface ShipGhostDisplay {
   readonly modelId: string;
   readonly position: Vec3;
@@ -19,11 +19,17 @@ export interface ShipGhostDisplay {
   readonly valid: boolean;
 }
 
-// 建造中の module 1個を専用の半透明 material で描く。
+// 宣言1件が占有する表示単位。modelId が変わったときだけ model を差し替える。
+interface GhostSlot {
+  readonly object: THREE.Group;
+  model: THREE.Object3D | null;
+  modelId: string | null;
+}
+
+// 建造中の module 群を専用の半透明 material で描く。宣言の列の要素がそのままゴーストになる。
 export class ShipGhostView {
   public readonly object = new THREE.Group();
-  private model: THREE.Object3D | null = null;
-  private modelId: string | null = null;
+  private readonly slots: GhostSlot[] = [];
   private disposed = false;
 
   public constructor(
@@ -37,44 +43,67 @@ export class ShipGhostView {
     if (addToScene) scene?.add(this.object);
   }
 
-  // null で非表示にし、候補があれば model・world pose・可否色を同期する。
-  public sync(display: ShipGhostDisplay | null): void {
+  // 宣言の列をそのまま表示する。空なら全て隠す。スロットは宣言数ぶんまで増やして使い回し、
+  // 余った分は model を保ったまま伏せる。
+  public sync(displays: readonly ShipGhostDisplay[]): void {
     if (this.disposed) throw new Error('cannot sync a disposed ShipGhostView');
-    this.object.visible = display !== null;
-    if (display === null) return;
-    if (display.modelId !== this.modelId) this.replaceModel(display.modelId);
-    this.object.position.set(display.position.x, display.position.y, display.position.z);
-    this.setQuaternion(display.rotation);
-    this.tint(display.valid ? VALID_COLOR : INVALID_COLOR);
-    this.object.userData.shipGhostModelId = display.modelId;
-    this.object.userData.shipGhostValid = display.valid;
+    this.object.visible = displays.length > 0;
+    while (this.slots.length < displays.length) this.slots.push(this.createSlot());
+    for (const [index, slot] of this.slots.entries()) {
+      const display = displays[index];
+      if (display === undefined) {
+        slot.object.visible = false;
+        continue;
+      }
+      slot.object.visible = true;
+      if (display.modelId !== slot.modelId) this.replaceModel(slot, display.modelId);
+      slot.object.position.set(display.position.x, display.position.y, display.position.z);
+      const q = qNormalize(display.rotation);
+      slot.object.quaternion.set(q.x, q.y, q.z, q.w);
+      this.tint(slot, display.valid ? VALID_COLOR : INVALID_COLOR);
+      slot.object.userData.shipGhostModelId = display.modelId;
+      slot.object.userData.shipGhostValid = display.valid;
+    }
   }
 
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.removeModel();
+    for (const slot of this.slots) {
+      this.object.remove(slot.object);
+      disposeOwnedRenderResources(slot.object);
+    }
+    this.slots.length = 0;
     this.scene?.remove(this.object);
   }
 
-  private replaceModel(modelId: string): void {
-    this.removeModel();
+  private createSlot(): GhostSlot {
+    const object = new THREE.Group();
+    object.name = `ship-ghost:${this.slots.length}`;
+    object.visible = false;
+    markOverlay(object);
+    this.object.add(object);
+    return { object, model: null, modelId: null };
+  }
+
+  private replaceModel(slot: GhostSlot, modelId: string): void {
+    this.removeModel(slot);
     const model = this.modelFactory(modelId);
     if (!(model instanceof THREE.Object3D)) throw new Error(`ship model factory returned no Object3D: ${modelId}`);
     this.prepareGhostMaterials(model);
     model.traverse((object) => { object.renderOrder = 0; });
-    this.object.add(model);
-    markOverlay(this.object);
-    this.model = model;
-    this.modelId = modelId;
+    slot.object.add(model);
+    markOverlay(slot.object);
+    slot.model = model;
+    slot.modelId = modelId;
   }
 
-  private removeModel(): void {
-    if (this.model === null) return;
-    this.object.remove(this.model);
-    disposeOwnedRenderResources(this.model);
-    this.model = null;
-    this.modelId = null;
+  private removeModel(slot: GhostSlot): void {
+    if (slot.model === null) return;
+    slot.object.remove(slot.model);
+    disposeOwnedRenderResources(slot.model);
+    slot.model = null;
+    slot.modelId = null;
   }
 
   // 通常船と material を共有すると ghost の透過色が伝播するため、専用 clone へ置換する。
@@ -129,8 +158,8 @@ export class ShipGhostView {
     });
   }
 
-  private tint(color: number): void {
-    this.model?.traverse((object) => {
+  private tint(slot: GhostSlot, color: number): void {
+    slot.model?.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -139,10 +168,5 @@ export class ShipGhostView {
         colored.color?.set(color);
       }
     });
-  }
-
-  private setQuaternion(rotation: Quat): void {
-    const q = qNormalize(rotation);
-    this.object.quaternion.set(q.x, q.y, q.z, q.w);
   }
 }
