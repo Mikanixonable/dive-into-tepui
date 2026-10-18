@@ -21,6 +21,7 @@ import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import type { HelpPanel } from './windows/help-panel';
+import type { Button } from '../../hud/widgets';
 import type { HintKind, Notifier } from '../../hud/notifier';
 import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
 import { HudToast } from './hud-toast';
@@ -61,6 +62,10 @@ export class Hud implements HudLayers, Notifier {
   private readonly burnManagementPanel: BurnManagementPanel;
   public readonly shipConstructionPanel: ShipConstructionPanel;
   public readonly constructionConfirm: ConfirmationOverlay;
+  private readonly constructionBadge: Button;
+  // 常設の建造バッジの押下先。ランが「最寄りのドックから始める」処理を差し込み、
+  // ランの外では null のまま残す(押しても何も起きない)。
+  public onConstructionStart: (() => void) | null = null;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   // 直近に見た目を合わせたビュー。DOM を組み替える差分の鍵。
   private chromeView: ViewMode | null = null;
@@ -73,10 +78,13 @@ export class Hud implements HudLayers, Notifier {
   public constructor(
     private readonly shell: HudShell, public readonly panelCollapse: PanelCollapse, renderStyle: RenderStyle,
   ) {
-    const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(shell, panelCollapse, renderStyle);
+    const { combatRoot, mapRoot, helpPanel, constructionBadge, els } = buildHudDom(
+      shell, panelCollapse, renderStyle, () => this.onConstructionStart?.(),
+    );
     this.combatRoot = combatRoot.element;
     this.mapRoot = mapRoot.element;
     this.helpPanel = helpPanel;
+    this.constructionBadge = constructionBadge;
 
     // 常設パネルを、data-id で引ける要素の一覧から組む。
     this.topBar = new TopBar(els);
@@ -125,12 +133,20 @@ export class Hud implements HudLayers, Notifier {
     this.applyHudProfile(this.chromeView ?? 'combat', false);
   }
 
+  // 常設の建造バッジの表示を切り替える。戦闘ビューで使用可能なドックがあり、
+  // 建造中でない間だけ true。
+  public syncConstructionBadge(visible: boolean): void {
+    this.constructionBadge.element.classList.toggle('hidden', !visible);
+  }
+
   // ランが畳まれたときに、ランの見た目とパネルが掴んでいるランの値・操作の口を落とす。
   public clearRunPanels(): void {
     this.root.classList.remove('creative-mode');
     this.root.classList.remove('construction-mode');
     document.body.classList.remove('hud-construction-mode');
     this.constructionMode = false;
+    this.onConstructionStart = null;
+    this.syncConstructionBadge(false);
     this.applyHudProfile(this.chromeView ?? 'combat', false);
     this.topBar.sync(null, 0);
     this.vesselPanel.sync(null, 0);
