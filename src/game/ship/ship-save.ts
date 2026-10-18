@@ -1,4 +1,4 @@
-// ship v4 の assembly・建造予約・接舷 identity を検証し、実行時状態と相互変換する。
+// ship v4 の assembly・接舷 identity を検証し、実行時状態と相互変換する。
 import { v3 } from '../../math/vec3';
 import { qInvert, qRotate, type Quat } from '../../math/quat';
 import type { SerializedVec3 } from '../../math/vec3';
@@ -7,7 +7,6 @@ import { sideMountTransform, sideSlotFromTransform } from './ship-assembly-trans
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import type { ShipModuleDefinition } from './ship-module-definition';
 import { createShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
-import type { ShipConstructionDraftState } from './ship-dock-state';
 
 export type SerializedShipModule = {
   readonly id: string;
@@ -36,13 +35,8 @@ export interface SerializedShipAssembly {
   readonly playerOwned: boolean;
   readonly modules: readonly SerializedShipModule[];
   readonly connections: readonly SerializedShipConnection[];
-}
-
-export interface SerializedShipConstructionDraft {
-  readonly dockId: string;
-  readonly addedIds: readonly string[];
-  readonly axialTailId: string;
-  readonly firstConnectionId: string | null;
+  // 接続変換をそのまま使う記録の印。この項目が無い記録は旧形式として補正して読む。
+  readonly explicitTransforms?: boolean;
 }
 
 export interface SerializedDockedVessel {
@@ -120,6 +114,7 @@ function moduleState(saved: SerializedShipModule): ShipModuleInstance {
 export function serializeShipAssembly(assembly: ShipAssembly): SerializedShipAssembly {
   return {
     playerOwned: assembly.playerOwned,
+    explicitTransforms: true,
     modules: assembly.modules.map(module => ({ ...module })),
     connections: assembly.graph.map(connection => ({
       id: connection.id,
@@ -189,43 +184,46 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
       rotation: { ...connection.rotation },
     };
     let sideSlot = connection.sideSlot;
-    if (connection.kind === 'side') {
-      const parentDefinition = assembly.definition(connection.parentId);
-      const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
-      if (connection.sideReversed) {
-        if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
-          const forward = sideMountTransform(childDefinition, parentDefinition, sideSlot);
-          const invRot = qInvert(forward.rotation);
+    // 旧形式の記録だけを補正する。印のある記録の変換は検証済みのまま使う。
+    if (saved.explicitTransforms !== true) {
+      if (connection.kind === 'side') {
+        const parentDefinition = assembly.definition(connection.parentId);
+        const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
+        if (connection.sideReversed) {
+          if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
+            const forward = sideMountTransform(childDefinition, parentDefinition, sideSlot);
+            const invRot = qInvert(forward.rotation);
+            childTransform = {
+              position: qRotate(invRot, v3(-forward.position.x, -forward.position.y, -forward.position.z)),
+              rotation: invRot,
+            };
+          }
+        } else {
+          sideSlot = sideSlot ?? sideSlotFromTransform(childTransform) ?? undefined;
+          if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
+            childTransform = sideMountTransform(parentDefinition, childDefinition, sideSlot);
+          }
+        }
+      } else if (connection.kind === 'axial' && childTransform.position.z > 0) {
+        const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
+        if (childDefinition?.kind !== 'weapon') {
           childTransform = {
-            position: qRotate(invRot, v3(-forward.position.x, -forward.position.y, -forward.position.z)),
-            rotation: invRot,
+            position: v3(childTransform.position.x, childTransform.position.y, -childTransform.position.z),
+            rotation: childTransform.rotation,
           };
         }
-      } else {
-        sideSlot = sideSlot ?? sideSlotFromTransform(childTransform) ?? undefined;
-        if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
-          childTransform = sideMountTransform(parentDefinition, childDefinition, sideSlot);
+      }
+      if (connection.kind === 'axial') {
+        const spacing = cockpitAxialMigrationSpacing(
+          assembly.definition(connection.parentId), SHIP_MODULE_CATALOG.get(module.definitionId),
+        );
+        if (spacing !== null && Math.abs(Math.abs(childTransform.position.z) - spacing.previous) < 1e-9) {
+          const sign = childTransform.position.z < 0 ? -1 : 1;
+          childTransform = {
+            position: v3(childTransform.position.x, childTransform.position.y, sign * spacing.current),
+            rotation: childTransform.rotation,
+          };
         }
-      }
-    } else if (connection.kind === 'axial' && childTransform.position.z > 0) {
-      const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
-      if (childDefinition?.kind !== 'weapon') {
-        childTransform = {
-          position: v3(childTransform.position.x, childTransform.position.y, -childTransform.position.z),
-          rotation: childTransform.rotation,
-        };
-      }
-    }
-    if (connection.kind === 'axial') {
-      const spacing = cockpitAxialMigrationSpacing(
-        assembly.definition(connection.parentId), SHIP_MODULE_CATALOG.get(module.definitionId),
-      );
-      if (spacing !== null && Math.abs(Math.abs(childTransform.position.z) - spacing.previous) < 1e-9) {
-        const sign = childTransform.position.z < 0 ? -1 : 1;
-        childTransform = {
-          position: v3(childTransform.position.x, childTransform.position.y, sign * spacing.current),
-          rotation: childTransform.rotation,
-        };
       }
     }
     assembly.addModule(
@@ -234,62 +232,6 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
   }
   assembly.assertValid();
   return assembly;
-}
-
-// 建造予約が現在の dock と assembly graph を参照することを検証して複製する。
-export function restoreConstructionDrafts(
-  saved: readonly SerializedShipConstructionDraft[], assembly: ShipAssembly,
-): readonly ShipConstructionDraftState[] {
-  if (!Array.isArray(saved)) throw new Error('invalid ship dock state');
-  const docks = new Set<string>();
-  const added = new Set<string>();
-  const firstConnections = new Set<string>();
-  return saved.map((draft) => {
-    if (draft === null || typeof draft !== 'object') throw new Error('invalid construction draft');
-    const dock = assembly.module(draft.dockId);
-    const hasAddedIds = Array.isArray(draft.addedIds);
-    const ids: readonly string[] = hasAddedIds ? draft.addedIds : [];
-    const edge = draft.firstConnectionId === null
-      ? undefined : assembly.graph.find(connection => connection.id === draft.firstConnectionId);
-    const idSet = new Set(ids);
-    const reachable = new Set<string>();
-    if (edge !== undefined) {
-      const pending = [edge.childId];
-      while (pending.length > 0) {
-        const id = pending.pop();
-        if (id === undefined || reachable.has(id)) continue;
-        reachable.add(id);
-        for (const child of assembly.graph.filter(connection => connection.parentId === id)) pending.push(child.childId);
-      }
-    }
-    const valid = dock?.kind === 'dock'
-      && typeof draft.dockId === 'string'
-      && typeof draft.axialTailId === 'string'
-      && (draft.firstConnectionId === null || typeof draft.firstConnectionId === 'string')
-      && hasAddedIds
-      && !docks.has(draft.dockId)
-      && !assembly.isPortConnected(draft.dockId)
-      && ids.length === idSet.size
-      && ids.every((id: unknown) => typeof id === 'string' && id.length > 0
-        && assembly.module(id) !== null && !added.has(id))
-      && (ids.length === 0
-        ? draft.firstConnectionId === null && draft.axialTailId === draft.dockId
-        : draft.firstConnectionId !== null && edge !== undefined
-          && !firstConnections.has(draft.firstConnectionId)
-          && edge.parentId === draft.dockId
-          && (edge.kind === 'axial' || edge.kind === 'side')
-          && edge.childId === ids[0]
-          && ids.every(id => reachable.has(id))
-          && (draft.axialTailId === draft.dockId || idSet.has(draft.axialTailId)))
-      && assembly.module(draft.axialTailId) !== null;
-    if (!valid) {
-      throw new Error(`invalid construction draft: ${draft.dockId}`);
-    }
-    docks.add(draft.dockId);
-    for (const id of ids) added.add(id);
-    if (draft.firstConnectionId !== null) firstConnections.add(draft.firstConnectionId);
-    return { ...draft, addedIds: [...ids] };
-  });
 }
 
 // 接舷船 identity が現在の docking edge と一対一に対応することを検証する。

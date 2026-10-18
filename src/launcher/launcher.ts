@@ -6,7 +6,9 @@ import { findStageClass } from '../game/stages/stage-dictionary';
 import { selectStage } from './stage-select';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
+import { BlueprintShelf } from './save/blueprint-shelf';
 import type { SerializedGame } from '../game/game';
+import type { RunEvent } from '../game/run-events';
 import type { PageDevices } from '../run/page-devices';
 import type { FrameSections } from '../game/frame-sections';
 import type { ViewOptionsSettings } from '../game/hud/panels/view-options-control';
@@ -47,6 +49,7 @@ function fallbackResult(phase: GamePhase): StageResult {
 // 今動いている周回の Run を保持し、遷移のたびに捨てて作り直す。
 export class Launcher implements RunTransitions, CurrentGameSource {
   private readonly resultScreen: ResultScreen;
+  private readonly blueprintShelf: BlueprintShelf;
   private run: Run | null = null;
   private launchedStage: StageClass | null = null;
   // 遷移中に再入すると、組み立て中の Run が dispose されないまま取り残される。
@@ -71,6 +74,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly renderStyle: SettingValue<RenderStyle>,
   ) {
     this.resultScreen = new ResultScreen(shell, this);
+    this.blueprintShelf = new BlueprintShelf(slots);
   }
 
   // 起動時の遷移。始めるステージを決めて Run を起こし、失敗したら画面に出す。
@@ -123,6 +127,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 現在の周回を畳んだ上で、再開する記録があればそこから、無ければ新しく Run を組み、起動をスロットへ記録する。
   private async startRun(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): Promise<void> {
     this.endRun();
+    this.blueprintShelf.reload();
     const initialSave = this.initialSaveFor(stageClass, snapshotId, startEpoch);
     showLoading();
     try {
@@ -130,11 +135,11 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.run = initialSave === undefined
         ? await Run.create(
           stageClass, startEpoch, this.devices, this.viewOptions, this.themePalette,
-          this.graphics, this.renderStyle, this.sections, this.autoSave, progress,
+          this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
         )
         : await Run.resume(
           initialSave, stageClass, this.devices, this.viewOptions, this.themePalette,
-          this.graphics, this.renderStyle, this.sections, this.autoSave, progress,
+          this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
         );
     } finally {
       hideLoading();
@@ -146,14 +151,43 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (!stage.isPlaying) this.showResult(stage);
   }
 
-  // このフレームの進行が決着を記録していたら、クリアを数えて結果画面を出す。Run.frame を回し
-  // 終えたフレームごとに呼ぶ。
+  // このフレームの進行が記録した出来事を処理する。設計図の記録は棚へ写し、決着が記録されて
+  // いればクリアを数えて結果画面を出す。Run.frame を回し終えたフレームごとに呼ぶ。
   public followProgress(): void {
     if (this.run === null) return;
     const { activeStage: stage, events } = this.run.game;
+    this.recordBlueprintEvents(events.recent);
     if (!events.recent.some(({ body }) => body.kind === 'stageDecided')) return;
     if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.devices.hud);
     this.showResult(stage);
+  }
+
+  // 直近の進行が記録した設計図の記録を棚へ写す。記録できなかった操作があれば警告を出す。
+  private recordBlueprintEvents(events: readonly RunEvent[]): void {
+    const records = events.filter(
+      ({ body }) => body.kind === 'blueprintRecorded'
+        || body.kind === 'blueprintRenamed' || body.kind === 'blueprintDeleted',
+    );
+    if (records.length === 0) return;
+    // 棚の一覧がアクティブなセーブデータの切り替えに乗り遅れていると、別の一覧へ重ねて書き込む。
+    this.blueprintShelf.reload();
+    let failed = false;
+    for (const { body } of records) {
+      switch (body.kind) {
+        case 'blueprintRecorded':
+          if (!this.blueprintShelf.add(body.blueprint)) failed = true;
+          break;
+        case 'blueprintRenamed':
+          if (!this.blueprintShelf.rename(body.id, body.name)) failed = true;
+          break;
+        case 'blueprintDeleted':
+          if (!this.blueprintShelf.delete(body.id)) failed = true;
+          break;
+        default:
+          break;
+      }
+    }
+    if (failed) this.devices.hud.hint('設計図を記録できませんでした', undefined, 'warn');
   }
 
   // 決着したランを締め、結果画面を出す。
@@ -234,6 +268,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.transitioning = true;
     // 前のスロットの周回を畳んでから、次の起動先を決める。
     this.endRun();
+    this.blueprintShelf.reload();
     const resumed = resumableStageClass(this.unlockManager, this.slots);
     const resolved: Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> =
       resumed !== null ? Promise.resolve({ stageClass: resumed }) : this.selectStageScreen();

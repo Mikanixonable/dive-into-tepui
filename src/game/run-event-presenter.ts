@@ -282,6 +282,11 @@ export class RunEventPresenter {
       case 'shipRequiredForAction':
         this.notifier.hint(SHIP_REQUIRED_TEXT[body.action], undefined, 'warn');
         return;
+
+      case 'blueprintRecorded':
+      case 'blueprintRenamed':
+      case 'blueprintDeleted':
+        return;
     }
   }
 

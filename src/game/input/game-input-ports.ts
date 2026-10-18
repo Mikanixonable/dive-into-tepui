@@ -16,13 +16,15 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ViewSelection } from '../viewer/view-selection';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 
-// ゲーム全体ではなく、単発キーの解釈に必要な進行の読み取り口だけを渡す。
+// ゲーム全体ではなく、単発キーの解釈に必要な進行の読み取り口と、キーで起きる操作の受け口を渡す。
 export interface GameInputSource {
   readonly commands: CommandQueue;
   readonly simSpeedManager: SimSpeedManager;
   readonly view: ViewSelection;
   readonly activeControllable: Controllable | null;
   readonly stageIsPlaying: boolean;
+  // 建造開始キーの受け口。「使用可能なドックのうち最寄りのものから始める」は呼び出し側が組む。
+  readonly startConstruction: () => void;
 }
 
 // 画面・カメラ・ターゲット・時間加速・ビューの単発キーを受ける口。
@@ -49,7 +51,6 @@ export function gameInputPorts(
     },
     {
       feature: 'hud',
-      isEnabled: () => !constructionActive(),
       commands: [gameCommand(K.help.code, K.help)],
       handleCommand: command => hud.handleCommand(command.id),
     },
@@ -68,6 +69,16 @@ export function gameInputPorts(
         && source.activeControllable !== null,
       commands: [gameCommand(K.targetSelect.code, K.targetSelect)],
       handleCommand: () => targeter.requestTargetSelect(),
+    },
+    {
+      feature: 'construction-start',
+      isEnabled: () => !overlays.isGamePaused()
+        && !overlays.isInputGated()
+        && !constructionActive()
+        && viewManager.current === 'combat'
+        && source.activeControllable !== null,
+      commands: [gameCommand(K.constructionStart.code, K.constructionStart)],
+      handleCommand: () => source.startConstruction(),
     },
     {
       feature: 'game-speed',

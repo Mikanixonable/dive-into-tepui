@@ -15,6 +15,7 @@ const HELP_TABS: readonly (readonly [HelpCategory, string])[] = [
   ['camera', 'CAMERA'],
   ['combat', 'COMBAT'],
   ['map', 'MAP & ORBIT'],
+  ['construction', 'CONSTRUCTION'],
   ['system', 'SYSTEM'],
 ];
 
@@ -118,7 +119,8 @@ export class HelpPanel implements OverlayHandle {
   public open(): void {
     if (this.isOpen) return;
     const workspace = document.getElementById('hud')?.dataset['workspace'];
-    const category: HelpCategory = workspace === 'map' ? 'map' : 'flight';
+    const category: HelpCategory =
+      workspace === 'construction' ? 'construction' : workspace === 'map' ? 'map' : 'flight';
     this.contextEl.textContent = workspace === 'map' ? 'MAP' : workspace === 'construction' ? 'BUILD' : 'FLIGHT';
     this.setCategory(category);
     this.el.style.display = 'flex';

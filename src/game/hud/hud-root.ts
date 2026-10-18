@@ -26,7 +26,7 @@ import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../view/view-mode';
-import type { CollapseToggleLabels } from '../../hud/widgets';
+import { Button, type CollapseToggleLabels } from '../../hud/widgets';
 import type { PanelCollapse } from './panel-shell';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
@@ -44,6 +44,7 @@ interface HudDomRefs {
   readonly combatRoot: HudViewRoot;
   readonly mapRoot: HudViewRoot;
   readonly helpPanel: HelpPanel;
+  readonly constructionBadge: Button;
   readonly els: HudEls;
 }
 
@@ -235,7 +236,6 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
         <span class="ui-section-code">BLD</span>
         <span class="ui-data-context">CONSTRUCTION WORKSPACE</span>
         <strong data-id="construction-ship-name">—</strong>
-        <span class="construction-target-dock" data-id="construction-dock-name">—</span>
       </header>
       <section class="construction-catalog" aria-label="モジュールカタログ">
         <div data-id="construction-category-tabs"></div>
@@ -246,16 +246,27 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
     <div class="construction-center" aria-hidden="true">
       <span class="ui-section-code">ASM</span>
       <span class="ui-data-context">3D ASSEMBLY / SELECT A MOUNT POINT</span>
-      <span class="construction-center-note">リングを選択 · 同じリングを再度選択して配置</span>
+      <span class="construction-center-note">カードを押して手に取る · ドラッグして候補へ置く</span>
     </div>
 
     <aside class="construction-pane construction-pane-right ui-surface-focus" aria-label="建造結果">
-      <section class="construction-selection" aria-label="建造選択">
-        <div class="construction-selection-row"><span>部品</span><strong data-id="construction-selected-module">—</strong></div>
-        <div class="construction-selection-row"><span>接続先</span><strong data-id="construction-selected-slot">—</strong></div>
+      <section class="construction-held" aria-label="手持ち">
+        <div class="construction-section-head"><span class="ui-data-label">手持ち</span><strong data-id="construction-held-name">—</strong></div>
+        <div class="construction-held-row"><span>向き</span><output data-id="construction-held-orientation">—</output></div>
+        <div class="construction-held-row"><span>対称</span><output data-id="construction-held-symmetry">—</output></div>
+        <div class="construction-button-row" data-id="construction-held-actions" role="group" aria-label="手持ちの操作"></div>
+      </section>
+      <section class="construction-selection" aria-label="選択中の部品">
+        <div class="construction-section-head"><span class="ui-data-label">選択中</span><strong data-id="construction-selected-name">—</strong></div>
+        <div class="construction-button-row" data-id="construction-selection-actions" role="group" aria-label="選択中の部品の操作"></div>
+        <div class="construction-blueprint-form" data-id="construction-blueprint-form"></div>
+        <p class="construction-note hidden" data-id="construction-blueprint-note"></p>
+      </section>
+      <section class="construction-targets" aria-label="取り付け候補">
+        <div class="construction-section-head"><span class="ui-data-label">取り付け候補</span></div>
         <div class="construction-slots" data-id="construction-slots" aria-label="接続候補"></div>
       </section>
-      <div class="construction-metrics">
+      <div class="construction-metrics" aria-label="船体全体の性能">
         <div class="construction-metric">
           <span class="ui-data-label">MODULES</span><output data-id="construction-count">0</output>
         </div>
@@ -273,8 +284,12 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
         <div class="construction-metric"><span class="ui-data-label">POWER GENERATION</span><output data-id="construction-power">0</output><small class="ui-delta" data-id="construction-power-preview"></small></div>
         <div class="construction-metric"><span class="ui-data-label">RADIATOR AREA</span><output data-id="construction-radiation">0</output><small class="ui-delta" data-id="construction-radiation-preview"></small></div>
         <div class="construction-metric"><span class="ui-data-label">ROLE</span><output data-id="construction-role">物資</output></div>
-        <div class="construction-metric"><span class="ui-data-label">COMPLETION</span><output data-id="construction-completion">部品を1個以上配置</output></div>
       </div>
+      <section class="construction-history" aria-label="操作履歴">
+        <div class="construction-section-head"><span class="ui-data-label">履歴</span></div>
+        <div class="construction-history-list" data-id="construction-history-list" aria-label="操作履歴の一覧"></div>
+        <div class="construction-button-row" data-id="construction-history-actions" role="group" aria-label="取り消しとやり直し"></div>
+      </section>
       <p class="construction-warning ui-status-note ui-status-note--warning hidden" data-id="construction-warning"></p>
       <div class="construction-actions" data-id="construction-actions" role="group" aria-label="船体建造操作"></div>
     </aside>`;
@@ -400,6 +415,27 @@ function buildChaseReset(root: HTMLElement): void {
   });
 }
 
+// 右上の常設バッジ列(建造開始・ヘルプ)を組む。右レール収納トグルの左へ一列に並ぶ。
+// 建造バッジの押下は onConstructionStart へ委ね、表示は呼び出し側が毎フレーム切り替える。
+function buildChromeActions(
+  chrome: HTMLElement, helpPanel: HelpPanel, onConstructionStart: () => void,
+): Button {
+  const actions = createHudElement('div', 'hud-chrome-actions', chrome);
+  const badge = new Button(`建造 [${K.constructionStart.label}]`, onConstructionStart);
+  badge.element.id = 'hud-construction-badge';
+  badge.element.dataset.id = 'construction-badge';
+  badge.element.classList.add('ui-surface-quiet', 'hidden');
+  badge.element.setAttribute('aria-label', `建造を始める [${K.constructionStart.label}]`);
+  const code = document.createElement('span');
+  code.className = 'hud-mini-code';
+  code.setAttribute('aria-hidden', 'true');
+  code.textContent = 'BLD';
+  badge.element.prepend(code);
+  actions.appendChild(badge.element);
+  buildHelpBadge(actions, helpPanel);
+  return badge;
+}
+
 // H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
 function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
   const badge = createHudElement('button', 'hud-help-badge', root, 'ui-surface-quiet');
@@ -447,7 +483,11 @@ function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRa
 }
 
 // HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
-export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle): HudDomRefs {
+// onConstructionStart は常設の建造バッジの押下先で、呼び出し側の状態を遅延参照する。
+export function buildHudDom(
+  shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle,
+  onConstructionStart: () => void,
+): HudDomRefs {
   injectStyle();
   startViewportTracking();
   const { root, layers } = shell;
@@ -466,12 +506,12 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
   buildTopBar(chrome);
   buildChaseReset(chrome);
-  buildHelpBadge(chrome, helpPanel);
+  const constructionBadge = buildChromeActions(chrome, helpPanel, onConstructionStart);
   trackHudChromeInset(root, chrome);
 
   buildMapScale(mapRoot.element);
   createHudElement('div', 'hud-toast', layers.notify, 'ui-surface-focus');
 
   const els = new HudEls(root);
-  return { combatRoot, mapRoot, helpPanel, els };
+  return { combatRoot, mapRoot, helpPanel, constructionBadge, els };
 }
