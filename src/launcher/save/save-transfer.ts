@@ -1,4 +1,5 @@
 import { SAVED_GAME_VERSION } from './save-store';
+import { isShipBlueprint } from '../../game/ship/ship-blueprint';
 import {
   type SaveSlotMeta,
   type SlotExport,
@@ -111,7 +112,8 @@ export function pickAndImportSlot(slots: SaveSlots): Promise<ImportResult> {
 
 // unknown から段階的に SlotExport の形を確かめる。参照切れ・バージョン不一致の
 // スナップショットは中止せずメタ側から取り除き、結果として空になった場合のみ落とす。
-function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | { ok: true; exp: SlotExport } {
+// 設計図も同じく、壊れたものだけを1件ずつ外す。
+export function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | { ok: true; exp: SlotExport } {
   // 形式・バージョン・構造・参照整合性の順に狭めていく。
   if (typeof parsed !== 'object' || parsed === null) {
     return { ok: false, reason: 'セーブファイルとして読めません' };
@@ -162,12 +164,17 @@ function checkSlotExportShape(parsed: unknown): { ok: false; reason: string } | 
   const filteredSnapshots: Record<string, unknown> = {};
   for (const id of keptIds) filteredSnapshots[id] = snapshotsRecord[id];
 
+  // 設計図は1件ずつ検証し、壊れたものだけ外す。一覧そのものが配列でなければ持っていかない。
+  const rawBlueprints = obj.blueprints;
+  const blueprints = Array.isArray(rawBlueprints) ? rawBlueprints.filter(isShipBlueprint) : undefined;
+
   const exp: SlotExport = {
     format: SLOT_EXPORT_FORMAT,
     formatVersion: SLOT_EXPORT_VERSION,
     exportedAtReal: typeof obj.exportedAtReal === 'number' ? obj.exportedAtReal : Date.now(),
     slot: { ...(slot as SaveSlotMeta), stages: filteredStages },
     snapshots: filteredSnapshots as SlotExport['snapshots'],
+    ...(blueprints === undefined ? {} : { blueprints }),
   };
   return { ok: true, exp };
 }
