@@ -20,3 +20,9 @@ function formatDecimal(value: number): string {
 export function formatConstructionNumber(value: number): string {
   return Math.round(value).toLocaleString();
 }
+
+// 向きを「回転角 · 取り付ける端」の1行で表す。
+export function formatConstructionOrientation(orientation: { readonly roll: number; readonly face: 'front' | 'back' }): string {
+  const degrees = ((orientation.roll % 4) + 4) % 4 * 90;
+  return `${degrees}° · ${orientation.face === 'front' ? '前端' : '後端'}で取り付け`;
+}
