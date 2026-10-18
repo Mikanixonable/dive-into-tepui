@@ -53,7 +53,7 @@ export type ReferenceOrbit = ReferenceOrbitElements | ReferenceOrbitFamily;
 export interface ReferenceOrbitEnv {
   bodyById(id: string): CelestialBody | null;
   // 基準天体の2次重力場。J2 を持たない天体は undefined(歳差なしとして扱う)。
-  degree2Field(bodyId: string, t: number): { readonly j2: number; readonly refRadius: number } | undefined;
+  degree2Field(bodyId: string, t: number): { readonly j2: number; readonly refRadius: number } | null;
   familyMemberAt(
     orbit: ReferenceOrbitFamily, t: number,
   ): { period: number; sample(phase: number): readonly [number, number, number, number, number, number] } | null;
