@@ -16,6 +16,7 @@ import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { Viewport } from '../render/viewport';
 import type { SettingValue } from '../settings/setting-value';
+import type { ShipBlueprintShelf } from '../game/ship/ship-blueprint';
 import type { ThemePalette } from '../theme';
 import type { TdbJulianDate } from '../physics/time';
 
@@ -42,6 +43,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
@@ -50,7 +52,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     const game = await Game.create(stageClass, startEpoch, devices.scene, devices.hud, sections, progress);
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
-      progressReader, progress,
+      blueprints, progressReader, progress,
     );
   }
 
@@ -64,6 +66,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
@@ -72,7 +75,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     const game = await Game.deserialize(serialized, stageClass, devices.scene, devices.hud, sections, progress);
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
-      progressReader, progress,
+      blueprints, progressReader, progress,
     );
   }
 
@@ -88,10 +91,11 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
-    const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections);
+    const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections, blueprints);
     const run = new Run(game, presentation, devices, graphics, renderStyle, sections, progressReader);
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
     // ここで視点に反映してプレゼンテーション層へ反映しておく。新規開始のブリーフィングもこの場で表示する。
