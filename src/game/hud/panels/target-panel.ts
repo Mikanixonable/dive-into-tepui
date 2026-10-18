@@ -1,10 +1,12 @@
-// 常設 TARGET パネル(#hud-target)の同期。ロック中ターゲットの名前・装甲・距離・
-// 接近速度・相対速度を、ターゲットの固定中に表示する。
-import { fmtDist, fmtSpeed } from '../../../hud/utils';
+// 常設 TARGET パネル(#hud-target)の同期。ロック中ターゲットの名前・距離・接近速度・相対速度・
+// 装甲を、ターゲットの固定中に表示する。距離と接近速度が答えで、残りは行に出す。
+import { fmtDist, fmtDistParts, fmtSpeedParts } from '../../../hud/utils';
+import { setReadout } from '../../../hud/readout';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls } from '../hud-els';
 import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import { Meter } from '../../../hud/widgets';
+import { applyAlarmLevel } from '../../../hud/alarm-level';
 import type { ProteinCombatReadout } from '../../protein/protein-schema';
 
 const SYNC_INTERVAL_MS = 100;
@@ -55,24 +57,32 @@ export class TargetPanel {
     if (!target) {
       this.els.setText('tgtname', '—');
       this.els.get('tgt-protein').classList.add('hidden');
+      this.els.setText('hud-target-summary', '—');
+      applyAlarmLevel(this.els.get('hud-target-summary'), 'normal');
       return;
     }
 
     // 名前・距離・速度系の基本値。
     this.els.setText('tgtname', target.name);
-    this.els.setText('tgt-dist', fmtDist(target.distanceM));
-    this.els.setText('tgt-closing', fmtSpeed(target.closingMps));
-    this.els.setText('tgt-relative-speed', fmtSpeed(target.relativeSpeedMps));
+    const distance = fmtDistParts(target.distanceM);
+    setReadout(this.els.get('tgt-dist'), distance.value, distance.unit);
+    const closing = fmtSpeedParts(target.closingMps);
+    setReadout(this.els.get('tgt-closing'), closing.value, closing.unit);
+    const relative = fmtSpeedParts(target.relativeSpeedMps);
+    setReadout(this.els.get('tgt-relative-speed'), relative.value, relative.unit);
+    this.els.setText('hud-target-summary', fmtDist(target.distanceM));
+    applyAlarmLevel(this.els.get('hud-target-summary'), 'normal');
 
     // 装甲メーターと数値表示。装甲を持たない対象では行ごと畳む。
     const { hp, maxHp } = target;
     this.els.get('tgt-armor-row').classList.toggle('hidden', hp === null || maxHp === null);
     if (hp !== null && maxHp !== null) {
       const clampedHp = Math.max(0, Math.min(maxHp, hp));
-      const armorValue = `${Math.floor(clampedHp)} / ${maxHp}`;
+      const armorValue = `${Math.floor(clampedHp)}`;
+      const armorUnit = `/ ${maxHp}`;
       // 装甲は減るほど撃破に近づくので、段を持たない。
-      this.armorMeter.setProgress(clampedHp, maxHp, armorValue, 'normal');
-      this.els.setText('tgt-armor-value', armorValue);
+      this.armorMeter.setProgress(clampedHp, maxHp, `${armorValue} ${armorUnit}`, 'normal');
+      setReadout(this.els.get('tgt-armor-value'), armorValue, armorUnit);
     }
     // タンパク質構造を持つ標的なら、フェーズと部位ごとの状態も表示する。
     const proteinPanel = this.els.get('tgt-protein');
@@ -88,7 +98,10 @@ export class TargetPanel {
       }).join('');
       const siteRows = this.els.get('tgt-protein-sites');
       if (siteRows.innerHTML !== rows) siteRows.innerHTML = rows;
-      this.els.setText('tgt-integrity-value', `${Math.floor(target.protein.integrityHp)} / ${target.protein.integrityMaxHp}`);
+      setReadout(
+        this.els.get('tgt-integrity-value'), `${Math.floor(target.protein.integrityHp)}`,
+        `/ ${target.protein.integrityMaxHp}`,
+      );
     }
   }
 }
