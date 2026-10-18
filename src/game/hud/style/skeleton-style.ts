@@ -266,7 +266,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 #hud-help-badge:hover { background: var(--surface-2); color: var(--color-primary-hover); }
 #hud .hud-mini-code {
-  color: var(--color-primary); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-code);
+  color: var(--role-meta); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-code);
 }
 #hud-help-badge:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 @media ${MQ_COARSE} {
@@ -289,10 +289,16 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud-toast .toast-message { min-width: 0; overflow-wrap: anywhere; }
 
 /* 状態色の共有語彙: 読み値や行が持つ意味を、場所ごとの色名ではなく共通ロールで名付ける。
-   ui-danger は危険な値、ui-danger-fill は行ごとの危険強調、ui-accent は稼働中のモード、
-   ui-near / ui-signal はオンの状態の強弱。 */
-#hud .ui-danger { color: var(--color-error); }
-#hud .ui-danger-fill { background: var(--color-error-fill); }
+   ui-caution / ui-warning は注意・警告の値(色に加えて △ ▲ を伴う)、ui-warning-fill は警告の行の面、
+   ui-accent は稼働中のモード、ui-near / ui-signal はオンの状態の強弱。 */
+#hud .ui-caution { color: var(--role-caution); }
+#hud .ui-warning { color: var(--role-warning); }
+#hud .ui-caution::before, #hud .ui-warning::before {
+  display: inline-block; margin-right: var(--space-2); font-size: var(--font-xxs); vertical-align: 1px;
+}
+#hud .ui-caution::before { content: '△'; }
+#hud .ui-warning::before { content: '▲'; }
+#hud .ui-warning-fill { background: var(--role-warning-fill); }
 #hud .ui-accent { color: var(--color-primary); }
 #hud .ui-near { color: var(--color-primary-hover); }
 #hud .ui-signal { color: var(--color-signal); }
