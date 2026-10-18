@@ -10,7 +10,7 @@ import type { ControlSelection } from '../control-selection';
 import type { HudLayers } from '../hud/hud-layers';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { Notifier } from '../../hud/notifier';
-import type { ShipConstruction } from '../ship/ship-construction';
+import type { ConstructionEntry } from '../ship/construction-entry';
 import type { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
 
 type ModuleAction = ModuleInspectionAction | 'cancelDockCandidates' | `dockCandidate:${number}`;
@@ -54,7 +54,7 @@ export class ModuleWindows implements ModuleWindowOpener {
     private readonly controlSelection: ControlSelection,
     private readonly roster: EntityRoster,
     private readonly commands: ModuleCommands,
-    private readonly construction: ShipConstruction,
+    private readonly constructionEntry: ConstructionEntry,
     private readonly confirmation: ConfirmationOverlay,
     private readonly enterCombatView: () => boolean,
     private readonly closeOtherWindows: () => void = () => {},
@@ -103,13 +103,11 @@ export class ModuleWindows implements ModuleWindowOpener {
         this.pending.add({ entry, action: 'dockCandidate', completion, closeOnSuccess: [...this.windows.values()] });
         this.commands.dock(ship, moduleId, candidate.ship, candidate.moduleId, completion);
       } else if (act === 'startConstructionModule') {
-        try {
-          if (!this.enterCombatView()) throw new Error('戦闘ビューへ切り替えられません');
-          this.construction.start(ship, moduleId);
+        if (!this.enterCombatView()) {
+          this.hud.hint('戦闘ビューへ切り替えられません', undefined, 'warn');
+        } else if (this.constructionEntry.startAt(ship, moduleId)) {
           this.close();
           this.closeOtherWindows();
-        } catch (error) {
-          this.hud.hint(error instanceof Error ? error.message : '建造を開始できません', undefined, 'warn');
         }
       } else if (act === 'undockModule') {
         if (this.undockProducesMaterial(ship, moduleId)) {
