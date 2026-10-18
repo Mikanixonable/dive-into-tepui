@@ -69,6 +69,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud.construction-mode #hud-map-scale,
 #hud.construction-mode #hud-chase-reset,
 #hud.construction-mode #hud-help-badge,
+#hud.construction-mode #hud-construction-badge,
 #hud.construction-mode .rail-toggle { display: none !important; }
 #hud .hud-view-root { position: absolute; inset: 0; display: none; pointer-events: none; }
 #hud .hud-view-root.active { display: block; }
@@ -101,6 +102,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-map-scale,
   #hud-chase-reset,
   #hud-help-badge,
+  #hud-construction-badge,
   #hud-toast { background: var(--surface-opaque); }
 }
 /* PanelShell 共通ヘッド */
@@ -255,22 +257,28 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-chase-reset { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
 
-#hud-help-badge {
+/* 右上の常設バッジ列。右レール収納トグルの左へ、建造開始・ヘルプを一列に並べる。 */
+#hud-chrome-actions {
   position: absolute; top: var(--space-4);
   right: calc(var(--space-4) + var(--hud-rail-toggle-size) + var(--space-2));
+  display: flex; align-items: center; gap: var(--space-2);
+}
+#hud-chrome-actions > * {
   pointer-events: auto; cursor: pointer;
   min-width: 0; width: auto; height: 30px; border-radius: var(--radius-micro);
   display: flex; justify-content: center; align-items: center; gap: var(--space-2);
   padding: 0 var(--space-3); color: var(--text-dim);
   font: inherit; font-size: var(--font-s); font-weight: 700;
 }
-#hud-help-badge:hover { background: var(--surface-2); color: var(--color-primary-hover); }
+#hud-chrome-actions > *:hover { background: var(--surface-2); color: var(--color-primary-hover); }
+#hud-chrome-actions > *:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+/* バッジ列のガラス面は Quiet。ウィジェット(.w-btn)より詳細度を上げて同一の面に揃える。 */
+#hud-construction-badge { background: var(--glass-quiet); }
 #hud .hud-mini-code {
   color: var(--color-primary); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-code);
 }
-#hud-help-badge:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 @media ${MQ_COARSE} {
-  #hud-help-badge { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
+  #hud-chrome-actions > * { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
 
 #hud-toast {
