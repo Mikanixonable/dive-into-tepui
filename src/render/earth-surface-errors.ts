@@ -1,4 +1,12 @@
-// タイルURL解決とHTTP要求の境界で共有するエラー型。
+// 地表配信物のURL解決・HTTP要求・デコードで共有するエラー型。
+export class EarthSurfaceDecodeError extends Error {
+  // 地表配信物を解釈できない理由をErrorとして公開する。
+  public constructor(message: string) {
+    super(message);
+    this.name = 'EarthSurfaceDecodeError';
+  }
+}
+
 export class EarthSurfaceRequestError extends Error {
   // 要求失敗のメッセージと任意の原因をErrorへ保存する。
   public constructor(message: string, options?: ErrorOptions) {
