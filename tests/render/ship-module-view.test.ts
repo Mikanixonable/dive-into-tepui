@@ -133,6 +133,89 @@ export function register(): void {
     view.dispose();
   });
 
+  test('ship module view: 強調の宣言で加算の殻が現れ、ずらしが位置へ乗り、消すと元へ戻る', () => {
+    const module = at(moduleInput('cockpit-standard', 'cockpit-1', 'cockpit'), v3(2, 3, 4));
+    const view = new ShipModuleView(module, modelFactory);
+    assert.deepEqual(view.object.position.toArray(), [2, 3, 4]);
+    assert.equal(view.object.getObjectByName('ship-module-emphasis:cockpit-1'), undefined);
+
+    view.sync(module, v3(), { tone: 'selected', intensity: 1, offset: v3(0, 0, 0.5) });
+    const shell = view.object.getObjectByName('ship-module-emphasis:cockpit-1') as THREE.Object3D;
+    assert.ok(shell !== undefined && shell.visible);
+    assert.deepEqual(view.object.position.toArray(), [2, 3, 4.5]);
+    const shellMesh = shell.getObjectByProperty('isMesh', true) as THREE.Mesh;
+    const shellMaterial = shellMesh.material as THREE.MeshBasicMaterial;
+    assert.equal(shellMaterial.transparent, true);
+    assert.equal(shellMaterial.blending, THREE.AdditiveBlending);
+    assert.equal(shellMaterial.depthTest, true);
+    assert.equal(shellMaterial.depthWrite, false);
+    assert.equal(shellMaterial.toneMapped, false);
+    assert.equal(shellMaterial.opacity, 0.45);
+    assert.equal(shellMesh.layers.isEnabled(3), true, '殻が overlay チャンネルに無い');
+    // 殻は本体と同じ形状を共有する。
+    const bodyMesh = view.object.children[0]!.getObjectByProperty('isMesh', true) as THREE.Mesh;
+    assert.equal(shellMesh.geometry, bodyMesh.geometry);
+
+    // tone で色が、intensity で不透明度が変わる。
+    view.sync(module, v3(), { tone: 'conflict', intensity: 0.5, offset: v3(0, 0, 0.5) });
+    assert.equal(shellMaterial.color.getHex(), 0xff5b63);
+    assert.equal(shellMaterial.opacity, 0.225);
+
+    // 宣言が消えれば殻は伏せられ、位置も元へ戻る。
+    view.sync(module);
+    assert.equal(shell.visible, false);
+    assert.deepEqual(view.object.position.toArray(), [2, 3, 4]);
+    view.dispose();
+    view.dispose();
+  });
+
+  test('modular ship view: 宣言はモジュール id ごとに届き、宣言の無いモジュールは変わらない', () => {
+    const cockpit = at(moduleInput('cockpit-standard', 'cockpit', 'cockpit'), v3(0, 0, 0));
+    const tank = at(moduleInput('tank-3-main', 'tank', 'tank'), v3(0, 0, 3));
+    const view = new ModularShipView(modelFactory);
+    view.sync([cockpit, tank]);
+    const emphasis = new Map([
+      ['tank', { tone: 'piece' as const, intensity: 1, offset: v3(1, 0, 0) }],
+    ]);
+    view.sync([cockpit, tank], v3(), emphasis);
+    assert.deepEqual(view.module('tank')?.object.position.toArray(), [1, 0, 3]);
+    assert.deepEqual(view.module('cockpit')?.object.position.toArray(), [0, 0, 0]);
+    assert.equal(
+      view.module('cockpit')?.object.getObjectByName('ship-module-emphasis:cockpit'), undefined,
+      '宣言の無いモジュールに殻が付いている',
+    );
+    const tankShell = view.module('tank')?.object.getObjectByName('ship-module-emphasis:tank');
+    assert.ok(tankShell !== undefined && tankShell.visible);
+    const tankShellMesh = tankShell.getObjectByProperty('isMesh', true) as THREE.Mesh;
+    assert.equal((tankShellMesh.material as THREE.MeshBasicMaterial).color.getHex(), 0x53c8f0);
+
+    // 宣言が外れれば殻は伏せられ、ずらしも 0 に戻る。
+    view.sync([cockpit, tank]);
+    assert.equal(tankShell.visible, false);
+    assert.deepEqual(view.module('tank')?.object.position.toArray(), [0, 0, 3]);
+    view.dispose();
+  });
+
+  test('ship module view: モデル差し替えで殻も新しい形状へ組み直される', () => {
+    const first = moduleInput('cockpit-standard', 'module-1', 'cockpit');
+    const second = at(moduleInput('tank-3-main', 'module-1', 'tank'), v3(1, 2, 3));
+    const emphasis = { tone: 'selected' as const, intensity: 1, offset: v3() };
+    const view = new ShipModuleView(first, modelFactory);
+    view.sync(first, v3(), emphasis);
+    const oldShell = view.object.getObjectByName('ship-module-emphasis:module-1');
+    const oldMesh = oldShell!.getObjectByProperty('isMesh', true) as THREE.Mesh;
+    const oldGeometry = oldMesh.geometry;
+    view.replaceModule(second, v3(), emphasis);
+    const shell = view.object.getObjectByName('ship-module-emphasis:module-1') as THREE.Object3D;
+    assert.ok(shell !== undefined && shell.visible);
+    assert.notEqual(shell, oldShell, 'モデル差し替え後も古い殻が残っている');
+    const mesh = shell.getObjectByProperty('isMesh', true) as THREE.Mesh;
+    assert.notEqual(mesh.geometry, oldGeometry);
+    const bodyMesh = view.object.children[0]!.getObjectByProperty('isMesh', true) as THREE.Mesh;
+    assert.equal(mesh.geometry, bodyMesh.geometry, '殻が新しいモデルの形状を共有していない');
+    view.dispose();
+  });
+
   test('modular ship view: dispose は保持した scene から root を外し二重呼び出しできる', () => {
     const scene = new THREE.Scene();
     const cockpit = moduleInput('cockpit-standard', 'cockpit', 'cockpit');
