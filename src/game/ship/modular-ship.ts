@@ -43,11 +43,9 @@ import { shipRenderAssembly } from './ship-render-adapter';
 import { ShipCapabilities } from './ship-capabilities';
 import { shipPhysicsShape } from './ship-physics-shape';
 import type { ControlSelection } from '../control-selection';
-import { ShipDockState } from './ship-dock-state';
 import {
-  restoreConstructionDrafts, restoreShipAssembly, serializeShipAssembly,
+  restoreShipAssembly, serializeShipAssembly,
   type SerializedCollisionGrace, type SerializedDockedVessel, type SerializedShipAssembly,
-  type SerializedShipConstructionDraft,
 } from './ship-save';
 import { ModularShipConnectionOperations } from './modular-ship-connection-operations';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -74,7 +72,6 @@ export interface ModularShipInit {
   readonly ammo?: AmmoLoad;
   readonly assembly?: ShipAssembly;
   readonly att?: Attitude;
-  readonly dockState?: readonly SerializedShipConstructionDraft[];
   readonly operatingCockpitId?: string | null;
 }
 
@@ -82,7 +79,6 @@ export interface SerializedModularShip extends SerializedDynamicEntityFields {
   readonly kind: 'ship';
   readonly name: string;
   readonly assembly: SerializedShipAssembly;
-  readonly dockState: readonly SerializedShipConstructionDraft[];
   readonly dockedVessels: readonly SerializedDockedVessel[];
   readonly collisionGrace: readonly SerializedCollisionGrace[];
   readonly operatingCockpitId: string | null;
@@ -116,7 +112,6 @@ export class ModularShip extends Ship implements Controllable {
   public declare readonly motion: ModularShipMotion;
   public readonly assembly: ShipAssembly;
   public readonly capabilities: ShipCapabilities;
-  public readonly docks: ShipDockState;
   public readonly connections: ModularShipConnectionOperations;
   public readonly throttle: Throttle;
   public readonly fire: FireControl;
@@ -259,9 +254,6 @@ export class ModularShip extends Ship implements Controllable {
       id,
     );
     this.assembly = assembly;
-    this.docks = new ShipDockState(saved
-      ? restoreConstructionDrafts(saved.dockState, assembly)
-      : placement?.dockState ? restoreConstructionDrafts(placement.dockState, assembly) : []);
     this.capabilities = new ShipCapabilities(
       assembly, saved?.operatingCockpitId ?? placement?.operatingCockpitId ?? null,
     );
@@ -292,7 +284,6 @@ export class ModularShip extends Ship implements Controllable {
       scene,
       assembly: this.assembly,
       capabilities: this.capabilities,
-      docks: this.docks,
       motion: this.motion,
       createShip: (next, nextRegistry) => ModularShip.create(next, nextRegistry, scene),
       clearTransientCommands: () => this.clearTransientCommands(),
@@ -664,7 +655,6 @@ export class ModularShip extends Ship implements Controllable {
       ...this.serializeEntityFields(ModularShip.kind),
       name: this.name,
       assembly: serializeShipAssembly(this.assembly),
-      dockState: this.docks.serialize(),
       dockedVessels: this.connections.serializeDockedVessels(),
       collisionGrace: this.connections.serializeCollisionGrace(this.motion.state.t),
       operatingCockpitId: this.capabilities.operatingCockpitId,
