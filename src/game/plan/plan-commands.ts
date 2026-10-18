@@ -15,6 +15,8 @@ export interface PlanCommands {
   removeNode(plan: Plan, idx: number): void;
   // plan のノードを全部削除する。
   clear(plan: Plan): void;
+  // plan を起点 anchor とノード列 nodes へ丸ごと差し替える。
+  replaceAll(plan: Plan, anchor: KinematicState, nodes: readonly KinematicState[]): void;
 }
 
 // 計画へのコマンドを queue へエンキューする実装を構築する。
@@ -24,5 +26,6 @@ export function planCommands(queue: CommandQueue): PlanCommands {
     replaceNode: (plan, idx, postState) => queue.submit(() => plan.replaceNode(idx, postState)),
     removeNode: (plan, idx) => queue.submit(() => plan.removeNode(idx)),
     clear: (plan) => queue.submit(() => plan.clear()),
+    replaceAll: (plan, anchor, nodes) => queue.submit(() => plan.replaceAll(anchor, nodes)),
   };
 }
