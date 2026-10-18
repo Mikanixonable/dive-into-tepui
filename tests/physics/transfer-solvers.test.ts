@@ -152,7 +152,7 @@ test('reference-orbit: elements 型は時刻の関数として状態を返し J2
   };
   const env = {
     bodyById: (id: string) => (id === 'earth' ? earth : null),
-    degree2Field: (_id: string, _t: number) => undefined,
+    degree2Field: (_id: string, _t: number) => null,
     familyMemberAt: () => null,
     rotatingFrameAt: () => null,
   };

@@ -14,7 +14,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 function orbitSlotEnv(env: CelestialBodies, catalog: OrbitSlotCatalogAccess | null): ReferenceOrbitEnv {
   return {
     bodyById: (id) => env.findMotion(id),
-    degree2Field: (id, t) => env.findMotion(id)?.degree2At(t) ?? undefined,
+    degree2Field: (id, t) => env.findMotion(id)?.degree2At(t) ?? null,
     familyMemberAt: (orbit, t) => orbitSlotFamilyMember(orbit, t, env, catalog),
     rotatingFrameAt: (primaryId, secondaryId, t) => slotRotatingFrameAt(env, primaryId, secondaryId, t),
   };
