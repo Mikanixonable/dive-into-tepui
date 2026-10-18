@@ -102,7 +102,7 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
 export const LIGHT_PALETTE: ThemePalette = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
 // 未保存・プリセットに無い id のときの配色。
-const DEFAULT_THEME_ID = 'fluorescent-red-blue';
+const DEFAULT_THEME_ID = 'amber-field';
 
 // id が指すプリセット。プリセットに無い id では null。
 export function themePresetOf(id: string): ThemePalette | null {
