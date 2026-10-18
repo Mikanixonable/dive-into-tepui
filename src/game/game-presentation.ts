@@ -429,7 +429,7 @@ export class GamePresentation {
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
     this.playerMarkers.sync(
       controlled !== null && isModularShip(controlled) ? controlled : null, view, camera.project,
-      orbitRef?.state ?? null, nowMs,
+      orbitRef?.state ?? null, this.targeter.aliveTarget, nowMs,
     );
     this.equatorNodes.sync(
       camera.project, camera.position, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot,

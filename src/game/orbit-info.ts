@@ -57,6 +57,14 @@ interface RelativeInfo {
   relIncDeg: number; // self 軌道面との相対傾斜角 [deg]
 }
 
+// self から見た other の距離 [m] と接近速度 [m/s](正 = 近づいている)。
+export function approachInfo(self: OrbitingObject, other: OrbitingObject): { dist: number; closing: number } {
+  const relP = sub(other.motion.state.r, self.motion.state.r);
+  const relV = sub(other.motion.state.v, self.motion.state.v);
+  const dist = len(relP);
+  return { dist, closing: dist > 1e-6 ? -dot(relP, relV) / dist : 0 };
+}
+
 // self から見た other の距離・接近速度・相対速度・相対傾斜角を導出する。相対傾斜角は
 // 双方の基準天体(strongestAttractor)が一致するときのみ意味を持ち、異なる場合は NaN にする。
 export function relativeInfo(
@@ -67,9 +75,8 @@ export function relativeInfo(
   const otherCenter = strongestAttractor(other.motion.state.r, celestialBodies, pivot);
   const selfEl = self.motion.orbitalElementsAround(selfCenter, pivot);
   const otherEl = other.motion.orbitalElementsAround(otherCenter, pivot);
-  const relP = sub(other.motion.state.r, self.motion.state.r);
+  const { dist, closing } = approachInfo(self, other);
   const relV = sub(other.motion.state.v, self.motion.state.v);
-  const dist = len(relP);
   // 基準天体が一致するときのみ hHat 同士を比較できる。
   const relIncDeg =
     selfEl && otherEl && selfCenter.id === otherCenter.id
@@ -77,7 +84,7 @@ export function relativeInfo(
       : NaN;
   return {
     dist,
-    closing: dist > 1e-6 ? -dot(relP, relV) / dist : 0,
+    closing,
     relSpeed: len(relV),
     relIncDeg,
   };

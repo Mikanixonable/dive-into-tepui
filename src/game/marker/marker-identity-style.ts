@@ -53,6 +53,18 @@ const MARKER_IDENTITY_STYLE = `
   top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3);
   white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2;
 }
+/* 照準の脇の読み値: 距離・接近はターゲットの色、弾速は中立。 */
+.ui-cluster { display: grid; gap: var(--space-1); font-variant-numeric: tabular-nums; }
+.ui-cluster-row { display: flex; align-items: baseline; gap: var(--space-4); }
+.ui-cluster-k {
+  min-width: 2.6em; font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  color: var(--space-label-subtext); text-shadow: 0 0 3px var(--bg);
+}
+.ui-cluster-v {
+  font-size: var(--font-m); color: var(--role-target); white-space: nowrap;
+  text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg);
+}
+.ui-cluster-v.is-data { color: var(--role-data); }
 
 .mk-target { color: var(--color-signal); }
 .mk-enemy { color: var(--text-strong); }
