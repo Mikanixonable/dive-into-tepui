@@ -17,6 +17,11 @@ export const FUEL_WARNING_RATIO = 0.05;
 // 装甲が最大のこの割合まで減ると警告。
 export const ARMOR_WARNING_RATIO = 0.3;
 
+// 展開部品(放熱板)の損耗度(0〜1)がこの値に達すると注意・警告。FLIGHT.md に損耗の警報条件は無く、
+// 展開部品の行に出す段のための値。
+export const WEAR_CAUTION_RATIO = 0.5;
+export const WEAR_WARNING_RATIO = 0.9;
+
 // 予備の弾倉がこの数まで減ると注意。
 const AMMO_CAUTION_MAGS = 1;
 
@@ -51,6 +56,11 @@ export function dynamicPressureAlarmLevel(pressurePa: number, maxPressurePa: num
 // 燃料の段。fuel と maxFuel は同じ単位で、maxFuel が 0 以下(燃料を積まない)なら判定しない。
 export function fuelAlarmLevel(fuel: number, maxFuel: number): AlarmLevel {
   return lowRatioLevel(fuel, maxFuel, FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO);
+}
+
+// 展開部品の損耗度 wear(0〜1)の段。
+export function wearAlarmLevel(wear: number): AlarmLevel {
+  return highRatioLevel(wear, 1, WEAR_CAUTION_RATIO, WEAR_WARNING_RATIO);
 }
 
 // 装甲の段。注意の段は持たない。

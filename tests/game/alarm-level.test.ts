@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import {
-  ammoAlarmLevel, armorAlarmLevel, dynamicPressureAlarmLevel, fuelAlarmLevel, temperatureAlarmLevel,
+  ammoAlarmLevel, armorAlarmLevel, dynamicPressureAlarmLevel, fuelAlarmLevel, temperatureAlarmLevel, wearAlarmLevel,
 } from '../../src/game/alarm/alarm-level';
 import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { MAX_DYN_PRESSURE } from '../../src/game/player/aero-load';
@@ -59,5 +59,17 @@ export function register(): void {
     assert.equal(armorAlarmLevel(31, 100), 'normal');
     assert.equal(armorAlarmLevel(30, 100), 'warning');
     assert.equal(armorAlarmLevel(0, 100), 'warning');
+  });
+
+  test('alarm level: wear is normal when intact, never improves as it grows, and is warning when fully worn', () => {
+    const rank = { normal: 0, caution: 1, warning: 2 } as const;
+    assert.equal(wearAlarmLevel(0), 'normal');
+    assert.equal(wearAlarmLevel(1), 'warning');
+    let previous = 0;
+    for (let wear = 0; wear <= 1; wear += 0.01) {
+      const current = rank[wearAlarmLevel(wear)];
+      assert.ok(current >= previous, `wear ${wear} must not be milder than a smaller wear`);
+      previous = current;
+    }
   });
 }
