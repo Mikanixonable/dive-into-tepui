@@ -135,11 +135,11 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.run = initialSave === undefined
         ? await Run.create(
           stageClass, startEpoch, this.devices, this.viewOptions, this.themePalette,
-          this.graphics, this.renderStyle, this.sections, this.autoSave, progress,
+          this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
         )
         : await Run.resume(
           initialSave, stageClass, this.devices, this.viewOptions, this.themePalette,
-          this.graphics, this.renderStyle, this.sections, this.autoSave, progress,
+          this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
         );
     } finally {
       hideLoading();

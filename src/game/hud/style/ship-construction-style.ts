@@ -27,13 +27,9 @@ export const SHIP_CONSTRUCTION_STYLE = `
   grid-column: 1 / -1; min-width: 0; overflow: hidden; color: var(--text-strong);
   font-size: var(--font-l); text-overflow: ellipsis; white-space: nowrap;
 }
-#ship-construction-panel .construction-target-dock {
-  grid-column: 1 / -1; color: var(--text-dim); font-size: var(--font-xxs);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
 #ship-construction-panel .construction-catalog { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; }
 #ship-construction-panel .construction-category-tabs {
-  display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; margin-bottom: var(--space-3);
+  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 3px; margin-bottom: var(--space-3);
 }
 #ship-construction-panel .construction-category-tabs .w-btn {
   min-width: 0; padding: var(--space-2) 2px; font-size: var(--font-xxs);
@@ -44,7 +40,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
 }
 #ship-construction-panel .construction-module-card .w-btn {
   display: grid; width: 100%; min-height: 58px; gap: 2px; padding: var(--space-3);
-  text-align: left; white-space: normal;
+  text-align: left; white-space: normal; touch-action: none;
 }
 #ship-construction-panel .construction-module-name { color: var(--text); font-size: var(--font-xs); font-weight: 650; }
 #ship-construction-panel .construction-module-spec,
@@ -53,6 +49,14 @@ export const SHIP_CONSTRUCTION_STYLE = `
 }
 #ship-construction-panel .construction-module-card .w-btn.on {
   box-shadow: inset 2px 0 0 var(--color-primary); background: var(--color-primary-fill);
+}
+#ship-construction-panel .construction-blueprint-card .w-btn { cursor: grab; }
+#ship-construction-panel .construction-blueprint-tools {
+  display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-1);
+}
+#ship-construction-panel .construction-blueprint-rename { width: 100%; }
+#ship-construction-panel .construction-blueprint-empty {
+  margin: 0; color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.5;
 }
 #ship-construction-panel .construction-center {
   align-self: start; justify-self: center; display: grid; grid-template-columns: auto auto;
@@ -64,17 +68,36 @@ export const SHIP_CONSTRUCTION_STYLE = `
 #ship-construction-panel .construction-center-note {
   grid-column: 1 / -1; color: var(--text-dim); font-size: var(--font-xxs);
 }
-#ship-construction-panel .construction-selection {
+#ship-construction-panel .construction-held,
+#ship-construction-panel .construction-selection,
+#ship-construction-panel .construction-targets,
+#ship-construction-panel .construction-history {
   display: grid; gap: var(--space-2); margin-bottom: var(--space-4); padding-bottom: var(--space-4);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
 }
-#ship-construction-panel .construction-selection-row {
+#ship-construction-panel .construction-section-head {
   display: flex; justify-content: space-between; gap: var(--space-3); align-items: baseline;
 }
-#ship-construction-panel .construction-selection-row span { color: var(--text-dim); font-size: var(--font-xxs); }
-#ship-construction-panel .construction-selection-row strong {
+#ship-construction-panel .construction-section-head strong {
+  min-width: 0; overflow: hidden; color: var(--text); font-size: var(--font-xs);
+  text-align: right; text-overflow: ellipsis; white-space: nowrap;
+}
+#ship-construction-panel .construction-held-row {
+  display: flex; justify-content: space-between; gap: var(--space-3); align-items: baseline;
+}
+#ship-construction-panel .construction-held-row span { color: var(--text-dim); font-size: var(--font-xxs); }
+#ship-construction-panel .construction-held-row output {
   min-width: 0; overflow: hidden; color: var(--text); font-size: var(--font-xxs);
   text-align: right; text-overflow: ellipsis; white-space: nowrap;
+}
+#ship-construction-panel .construction-button-row {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+}
+#ship-construction-panel .construction-blueprint-form {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); align-items: center;
+}
+#ship-construction-panel .construction-note {
+  margin: 0; color: var(--color-warning); font-size: var(--font-xxs); line-height: 1.5;
 }
 #ship-construction-panel .construction-slots {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px;
@@ -89,9 +112,10 @@ export const SHIP_CONSTRUCTION_STYLE = `
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #ship-construction-panel .construction-metrics {
-  display: grid; flex: 1 1 auto;
+  display: grid; flex: 0 0 auto;
   grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2);
-  min-height: 0; overflow-y: auto; padding-right: 2px;
+  margin-bottom: var(--space-4); padding-bottom: var(--space-4);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
 }
 #ship-construction-panel .construction-metric {
   display: grid; align-content: start; gap: 2px; min-width: 0;
@@ -105,6 +129,14 @@ export const SHIP_CONSTRUCTION_STYLE = `
 #ship-construction-panel .construction-hp-row { grid-column: 1 / -1; }
 #ship-construction-panel .construction-hp-meter,
 #ship-construction-panel .construction-hp-meter .w-meter-track { width: 100%; }
+#ship-construction-panel .ui-delta[data-delta="up"] { color: var(--color-primary); }
+#ship-construction-panel .ui-delta[data-delta="down"] { color: var(--color-warning); }
+#ship-construction-panel .construction-history-list {
+  display: grid; gap: 3px; max-height: 154px; overflow-y: auto; scrollbar-width: thin;
+}
+#ship-construction-panel .construction-history-item {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left;
+}
 #ship-construction-panel .construction-actions {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2);
   margin-top: auto; padding-top: var(--space-4);
