@@ -43,6 +43,13 @@ export const FRAME_CONTROLS_STYLE = `
   max-height: none; overflow: visible;
 }
 #hud .hud-frame-controls-compact .editorial-panel-head { margin-bottom: var(--space-2); }
+/* 戦闘のカメラパネルのトグルは [見出し][トラック][キー] の行で、トラックとキーが行をまたいで揃う。 */
+#hud .hud-frame-controls-compact .w-toggle {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto var(--instrument-key-col);
+  column-gap: var(--space-4); align-items: center; min-height: var(--row-min-h-s);
+}
+#hud .hud-frame-controls-compact .w-toggle-title { font-size: var(--font-xs); color: var(--role-label); }
+#hud .hud-frame-controls-compact .w-toggle > .ui-key { justify-self: end; }
 #hud .trajectory-frame-state [data-frame-hero="true"] {
   text-transform: uppercase;
 }

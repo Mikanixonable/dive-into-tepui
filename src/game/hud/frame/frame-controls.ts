@@ -38,9 +38,9 @@ export class FrameControls {
       | 'fov'
       | 'referencePlane'
     >,
-    private readonly combatCamera: Pick<FocusCameraSource, 'cameraRotationMode'>,
+    private readonly combatCamera: Pick<FocusCameraSource, 'cameraRotationMode' | 'rotationFollow'>,
     private readonly mapCameraCommands: FocusCameraCommands,
-    combatCameraCommands: Pick<FocusCameraCommands, 'setCameraRotationMode'>,
+    combatCameraCommands: Pick<FocusCameraCommands, 'setCameraRotationMode' | 'toggleAttitudeFollow'>,
     private readonly cameraPresentation: CameraFramePresentation,
     displayTimeline: Pick<DisplayTimelineSource, 'frame' | 'followCamera'>,
     private readonly displayTimelineCommands: Pick<
@@ -67,7 +67,12 @@ export class FrameControls {
       mapPanelRoot, celestialBodies, mapCommands, overlayManager, mapCamera.cameraRotationMode,
     );
     this.combatCameraPanel = new CombatCameraPanel(
-      combatPanelRoot, combatCameraCommands, combatCamera.cameraRotationMode,
+      combatPanelRoot,
+      {
+        setCameraRotationMode: (mode) => combatCameraCommands.setCameraRotationMode(mode),
+        toggleAttitudeFollow: () => combatCameraCommands.toggleAttitudeFollow(cameraPresentation.sample('combat')),
+      },
+      combatCamera.cameraRotationMode,
     );
     this.trajectoryPanel = new TrajectoryFramePanel(
       mapPanelRoot, celestialBodies, displayTimeline, displayTimelineCommands, frameAnchors, overlayManager,
@@ -110,7 +115,9 @@ export class FrameControls {
       fovDeg: this.mapCamera.fov,
       referencePlane: this.mapCamera.referencePlane,
     });
-    this.combatCameraPanel.sync(this.combatCamera.cameraRotationMode);
+    this.combatCameraPanel.sync(
+      this.combatCamera.cameraRotationMode, this.combatCamera.rotationFollow?.kind === 'attitude',
+    );
     this.trajectoryPanel.sync(pickables, members, displayTime);
   }
 

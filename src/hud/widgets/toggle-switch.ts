@@ -1,4 +1,5 @@
 // 見出し + ON/OFF を切り替えるトラック+ノブ型のスイッチ。
+import { createKeyCap } from '../key-cap';
 import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-base';
 
 export class ToggleSwitch {
@@ -6,8 +7,9 @@ export class ToggleSwitch {
   private readonly track: HTMLElement;
   private on = false;
 
-  // title は見出し。onChange は切り替わった後の値で呼ばれる。
-  public constructor(title: string, onChange: (on: boolean) => void) {
+  // title は見出し。onChange は切り替わった後の値で呼ばれる。keyLabel を渡すと、トラックの後ろに
+  // ショートカットのキーキャップを添える。
+  public constructor(title: string, onChange: (on: boolean) => void, keyLabel?: string) {
     this.element = document.createElement('div');
     this.element.className = 'w-toggle';
     const heading = document.createElement('span');
@@ -31,6 +33,7 @@ export class ToggleSwitch {
       onChange(this.on);
     });
     this.element.appendChild(this.track);
+    if (keyLabel !== undefined) this.element.appendChild(createKeyCap(keyLabel));
   }
 
   // 表示状態を外部状態に合わせて設定する。
