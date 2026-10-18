@@ -33,7 +33,6 @@ export class ShipConstructionPanel {
 
   private readonly panel: HTMLElement;
   private readonly shipName: HTMLElement;
-  private readonly dockName: HTMLElement;
   private readonly count: HTMLElement;
   private readonly mass: HTMLElement;
   private readonly massPreview: HTMLElement;
@@ -61,7 +60,6 @@ export class ShipConstructionPanel {
   public constructor(els: HudEls) {
     this.panel = els.get('ship-construction-panel');
     this.shipName = els.get('construction-ship-name');
-    this.dockName = els.get('construction-dock-name');
     this.count = els.get('construction-count');
     this.mass = els.get('construction-mass');
     this.massPreview = els.get('construction-mass-preview');
@@ -102,9 +100,9 @@ export class ShipConstructionPanel {
     // 操作ボタンを組み、操作の通知へ繋ぐ。
     const actions = els.get('construction-actions');
     this.place = new Button('配置', () => this.onPlace?.(), undefined, 'primary');
-    this.remove = new Button('末尾撤去', () => this.onRemove?.(), undefined, 'secondary');
+    this.remove = new Button('撤去', () => this.onRemove?.(), undefined, 'secondary');
     this.finish = new Button('建造終了', () => this.onFinish?.(), undefined, 'primary');
-    this.discard = new Button('船体破棄', () => this.onDiscard?.(), undefined, 'secondary');
+    this.discard = new Button('変更をすべて取り消す', () => this.onDiscard?.(), undefined, 'secondary');
     const destructive = document.createElement('div');
     destructive.className = 'construction-destructive-actions';
     destructive.appendChild(this.discard.element);
@@ -116,7 +114,6 @@ export class ShipConstructionPanel {
   public sync(model: ShipConstructionPanelModel): void {
     this.panel.classList.toggle('hidden', !model.visible);
     this.shipName.textContent = model.shipName;
-    this.dockName.textContent = model.dockLabel;
     this.count.textContent = String(model.moduleCount);
 
     this.mass.textContent = formatConstructionMetric(model.totalMass, 'kg');
@@ -139,25 +136,25 @@ export class ShipConstructionPanel {
     this.role.dataset['role'] = model.role;
     this.warning.textContent = model.warning ?? '';
     this.warning.classList.toggle('hidden', model.warning === null);
-    this.selectedModule.textContent = model.selectedModuleName;
-    this.selectedSlot.textContent = model.slots.find(slot => slot.id === model.selectedSlotId)?.label ?? '候補なし';
-    this.completion.textContent = model.canFinish ? '建造終了可能' : '部品を1個以上配置';
+    this.selectedModule.textContent = model.held?.name ?? model.selection?.name ?? '—';
+    this.selectedSlot.textContent = model.targets.find(slot => slot.id === model.pointedTargetId)?.label ?? '候補なし';
+    this.completion.textContent = `変更 ${Math.max(0, model.history.names.length - 1)} 件`;
     // 一覧と操作ボタンの可否を model の値へ揃える。
-    this.catalog.sync(model.selectedDefinitionId);
+    this.catalog.sync(model.held?.catalogId ?? null);
     this.renderSlots(model);
     this.place.setEnabled(model.canPlace);
     this.remove.setEnabled(model.canRemove);
-    this.finish.setEnabled(model.canFinish);
-    this.discard.setEnabled(model.visible);
+    this.finish.setEnabled(model.visible);
+    this.discard.setEnabled(model.visible && model.history.names.length > 1);
   }
 
   // 候補一覧に変更があった場合のみボタンを再生成し、選択状態は毎フレーム反映する。
   private renderSlots(model: ShipConstructionPanelModel): void {
-    const signature = model.slots.map(slot => `${slot.id}:${slot.valid}:${slot.reason ?? ''}`).join('|');
+    const signature = model.targets.map(slot => `${slot.id}:${slot.valid}:${slot.reason ?? ''}`).join('|');
     if (signature !== this.slotSignature) {
       this.slotList.replaceChildren();
       this.slotButtons.clear();
-      for (const slot of model.slots) {
+      for (const slot of model.targets) {
         const button = new Button('', () => this.onSlotChange?.(slot.id), undefined, 'dense');
         button.element.classList.add('construction-slot-button');
         button.element.dataset['valid'] = String(slot.valid);
@@ -172,10 +169,10 @@ export class ShipConstructionPanel {
       }
       this.slotSignature = signature;
     }
-    for (const slot of model.slots) {
+    for (const slot of model.targets) {
       const button = this.slotButtons.get(slot.id);
       if (button === undefined) continue;
-      button.setOn(slot.id === model.selectedSlotId);
+      button.setOn(slot.id === model.pointedTargetId);
       button.element.dataset['valid'] = String(slot.valid);
     }
   }

@@ -37,13 +37,13 @@ export class ShipConstructionCatalog {
   }
 
   // 表示カテゴリと選択中の部品を反映する。
-  public sync(selectedDefinitionId: string): void {
+  public sync(selectedDefinitionId: string | null): void {
     this.categoryTabs.setSelected(this.activeCategory);
     this.renderModules(selectedDefinitionId);
   }
 
   // カード一覧と選択表示を同期し、同じ一覧では表示資源を維持する。
-  private renderModules(selectedId: string): void {
+  private renderModules(selectedId: string | null): void {
     const definitions = this.definitions.filter(definition => moduleCategory(definition) === this.activeCategory);
     const signature = `${this.activeCategory}:${definitions.map(definition => definition.id).join(',')}`;
     if (signature !== this.moduleSignature) {
