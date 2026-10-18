@@ -1,0 +1,519 @@
+/* デザインリファレンスの見た目。2層からなる。
+ *
+ *   1. 改修案の部品(.ix-*)  — ゲームへそのまま移す前提の CSS。値は tepui-base.css / themes.js が
+ *                              :root に置く既存トークンだけから導き、リテラルを持たない。
+ *                              新しく要るトークンは --ix-* として冒頭で宣言し、既存トークンから派生させる。
+ *   2. リファレンスの外枠(.rf-*) — 比較・注記・配色切替のための枠。ゲームへは移さない。
+ */
+
+@font-face {
+  font-family: 'HackGen';
+  src: url('../../../../../node_modules/@sarap422/font-hackgen/HackGen-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+
+/* ============================================================================================
+ * 1. 改修案の部品
+ * ========================================================================================== */
+
+/* --- 提案トークン: 色は「意味」で引く ---------------------------------------------------------
+ * 既存の主役色(--color-primary)は、いまセクション記号・ON 表示・主要ボタン・メーターの塗り・
+ * 選択中のタブ・危険表示の近くまで、すべてを兼ねている。意味ごとに1色へ割り当て直す。 */
+:root {
+  --ix-own: var(--color-primary);              /* 自機・自分の選択・自分が掛けているモード */
+  --ix-own-fill: var(--color-primary-fill);
+  --ix-tgt: var(--color-signal);               /* ターゲット(敵・航法目標) */
+  --ix-tgt-fill: color-mix(in srgb, var(--color-signal) 14%, transparent);
+  --ix-tgt-edge: color-mix(in srgb, var(--color-signal) 46%, transparent);
+  --ix-caution: var(--color-warning);          /* 注意: 見ておくべき */
+  --ix-caution-fill: var(--color-warning-fill);
+  --ix-caution-edge: var(--color-warning-edge);
+  --ix-warning: var(--color-error);            /* 警告: いま対処が要る */
+  --ix-warning-fill: var(--color-error-fill);
+  --ix-warning-edge: var(--color-error-edge);
+  /* 正常値は色を持たない。データは中立の文字色で読む。 */
+  --ix-data: var(--text);
+  --ix-label: var(--text-dim);
+  --ix-meta: var(--text-faint);
+  --ix-hairline: var(--fill-2);
+  /* メーターは細い中立の線。色が付くのは閾値を越えたときだけ。 */
+  --ix-gauge-h: var(--space-2);
+  --ix-gauge-track: var(--fill-2);
+  --ix-gauge-fill: var(--text-dim);
+  /* 行の高さは既存の --row-min-h-s(28px)を使う。 */
+}
+
+/* --- パネル ----------------------------------------------------------------------------------- */
+.ix-panel {
+  background: var(--glass-quiet);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  color: var(--ix-data);
+  font-size: var(--font-s);
+  line-height: 1.45;
+  min-width: 0;
+}
+.ix-panel.is-focus { background: var(--glass-focus); }
+/* ターゲットを扱うパネルは、見出しの記号だけが第二色を帯びる。 */
+.ix-panel.is-tgt-panel .ix-code { color: var(--ix-tgt); }
+/* ターゲットを扱うパネルは、縁ではなく見出しの記号と名前だけが第二色を帯びる。 */
+.ix-panel + .ix-panel { margin-top: var(--space-4); }
+
+/* 見出し: [記号][題名] ……… [補足][開閉] 。記号は中立色(主役色を使わない)。 */
+.ix-head {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center;
+  column-gap: var(--space-3); min-height: var(--row-min-h-s); margin-bottom: var(--space-2);
+}
+.ix-code {
+  font-size: var(--font-xxs); letter-spacing: var(--tracking-code); color: var(--ix-meta);
+}
+.ix-title {
+  font-size: var(--font-s); font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ix-head-meta { font-size: var(--font-xxs); color: var(--ix-label); font-variant-numeric: tabular-nums; }
+.ix-collapse {
+  width: 24px; height: 24px; display: inline-grid; place-items: center; border-radius: 50%;
+  color: var(--ix-label); background: transparent; font-size: var(--font-xs); cursor: pointer;
+}
+.ix-collapse:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
+.ix-panel.is-collapsed > :not(.ix-head) { display: none; }
+.ix-panel.is-collapsed .ix-head { margin-bottom: 0; }
+
+/* 区切り: 線ではなく余白と小見出しで分ける。 */
+.ix-sub {
+  margin: var(--space-4) 0 var(--space-1); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  color: var(--ix-meta);
+}
+
+/* --- 行の文法: [ラベル] [メーター] [値 単位] [キー] ------------------------------------------
+ * 値は決して切らない・折り返さない。幅が足りなければ、メーター → ラベル(省略記号)の順に縮む。 */
+.ix-rows { display: grid; row-gap: 0; }
+.ix-row {
+  display: grid;
+  /* ラベルは内容の幅まで先に取り、メーターは残りだけを取る(最大 64px)。 */
+  grid-template-columns: minmax(2.5em, max-content) minmax(0, 1fr) auto;
+  align-items: center; column-gap: var(--space-4);
+  min-height: var(--row-min-h-s);
+}
+.ix-row > .ix-k { grid-column: 1; }
+.ix-row > .ix-gauge { grid-column: 2; }
+.ix-row > .ix-v { grid-column: 3; }
+.ix-row:not(:has(> .ix-gauge)) > .ix-v { grid-column: 2 / 4; }
+.ix-k {
+  display: flex; align-items: center; gap: var(--space-3); min-width: 0;
+  color: var(--ix-label); white-space: nowrap;
+}
+.ix-k > .ix-k-text { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ix-v {
+  justify-self: end; white-space: nowrap; color: var(--ix-data);
+  font-variant-numeric: tabular-nums; text-align: right;
+}
+.ix-u { margin-left: var(--space-1); font-size: var(--font-xxs); color: var(--ix-label); }
+/* 状態は色だけでなく形でも示す(色覚に依存しない)。 */
+.ix-v.is-own { color: var(--ix-own); }
+.ix-v.is-tgt { color: var(--ix-tgt); }
+.ix-v.is-caution { color: var(--ix-caution); }
+.ix-v.is-warning { color: var(--ix-warning); }
+.ix-v.is-caution::before, .ix-v.is-warning::before {
+  display: inline-block; margin-right: var(--space-2); font-size: var(--font-xxs); vertical-align: 1px;
+}
+.ix-v.is-caution::before { content: '△'; }
+.ix-v.is-warning::before { content: '▲'; }
+.ix-row.is-warning { background: var(--ix-warning-fill); border-radius: var(--radius-micro);
+  margin-inline: calc(-1 * var(--space-3)); padding-inline: var(--space-3); }
+
+/* キー列つきの行: [ラベル][メーター][値][キー]。キーは行の束で共有する右端の列に揃える。
+   束の中にキーを持たない行があっても、値の列は揃ったまま(キー列は空で残る)。 */
+.ix-rows.has-keys .ix-row { grid-template-columns: minmax(2.5em, max-content) minmax(0, 1fr) auto 2.6em; }
+.ix-rows.has-keys .ix-row:not(:has(> .ix-gauge)) > .ix-v { grid-column: 2 / 4; }
+.ix-rows.has-keys .ix-row > .ix-key { grid-column: 4; justify-self: end; }
+/* 狭い幅(コンパクトのレールは縦持ちで約160px)では、キーの列から先に譲る。キーは打鍵の補助で、
+   値そのものではないため。譲る順は メーター → キー → ラベル(省略記号)。 */
+.ix-rows.has-keys { container-type: inline-size; }
+@container (max-width: 180px) {
+  .ix-rows.has-keys .ix-row { grid-template-columns: minmax(2.5em, max-content) minmax(0, 1fr) auto; }
+  .ix-rows.has-keys .ix-row > .ix-key { display: none; }
+}
+
+/* 展開部品の行: ラベルと、押せる2つの面(状態ピップ+語+キー)。 */
+.ix-deploy { display: grid; grid-template-columns: minmax(2.5em, 1fr) auto auto; column-gap: var(--space-3); align-items: center; min-height: calc(var(--row-min-h-s) + var(--space-3)); }
+.ix-deploy .ix-k { grid-column: 1; }
+.ix-deploy .w-btn { display: inline-flex; align-items: center; gap: var(--space-3); min-width: 76px; white-space: nowrap; }
+.ix-deploy .w-btn .ix-pip { gap: var(--space-2); color: inherit; font-size: inherit; letter-spacing: 0; }
+
+/* --- メーター: 細い中立の線。閾値の目盛りを持ち、越えたときだけ色が付く ------------------------ */
+.ix-gauge {
+  position: relative; height: var(--ix-gauge-h); border-radius: var(--radius-pill);
+  background: var(--ix-gauge-track); overflow: hidden; min-width: 0;
+  width: 100%; max-width: 64px; justify-self: end;
+}
+.ix-gauge > i {
+  position: absolute; inset: 0 auto 0 0; width: var(--v, 0%); border-radius: inherit;
+  background: var(--ix-gauge-fill); transition: width var(--transition-slow);
+}
+/* 閾値の目盛り(--at: 閾値の位置)。 */
+.ix-gauge[style*="--at"]::after {
+  content: ''; position: absolute; top: 0; bottom: 0; left: var(--at); width: 1px; background: var(--fill-4);
+}
+/* 2本目の閾値目盛り(--at2: 注意と警告の2段を持つメーター)。 */
+.ix-gauge[style*="--at2"]::before {
+  content: ''; position: absolute; top: 0; bottom: 0; left: var(--at2); width: 1px; background: var(--fill-4);
+}
+.ix-gauge.is-caution > i { background: var(--ix-caution); }
+.ix-gauge.is-warning > i { background: var(--ix-warning); }
+.ix-gauge.is-own > i { background: var(--ix-own); }
+.ix-gauge.is-tgt > i { background: var(--ix-tgt); }
+.ix-gauge.is-wide { height: calc(var(--ix-gauge-h) * 1.5); }
+
+/* --- 状態ピップ: ON/OFF を赤い文字ではなく点と語で -------------------------------------------- */
+.ix-pip {
+  display: inline-flex; align-items: center; gap: var(--space-3);
+  font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-meta);
+}
+.ix-pip::before {
+  content: ''; width: 7px; height: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ix-meta);
+}
+.ix-pip.on { color: var(--ix-data); }
+.ix-pip.on::before { background: var(--ix-data); box-shadow: none; }
+/* 自分が掛けているモード(姿勢保持など)は主役色。 */
+.ix-pip.on.is-own { color: var(--ix-own); }
+.ix-pip.on.is-own::before { background: var(--ix-own); box-shadow: 0 0 6px color-mix(in srgb, var(--ix-own) var(--glow-weak), transparent); }
+
+/* --- キーキャップ: ショートカットの表記はこれ1つ(いまは P / 1–4 / [7] / [F] が混在) --------- */
+.key, kbd.key {
+  display: inline-grid; place-items: center; min-width: 1.7em; height: 1.7em; padding: 0 var(--space-2);
+  font: inherit; font-size: var(--font-xxs); line-height: 1; color: var(--text-muted);
+  background: var(--fill-2); border-radius: calc(var(--radius-micro) / 2);
+  box-shadow: inset 0 -1px 0 var(--fill-3);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.w-btn .key { margin-left: var(--space-3); }
+.w-btn.on .key { background: var(--ix-own-fill); color: var(--ix-own); }
+
+/* --- 主読み値: パネルの答えそのもの ----------------------------------------------------------- */
+.ix-readout { display: grid; gap: 0; }
+.ix-readout-value {
+  font-size: var(--font-3xl); line-height: 1.05; letter-spacing: var(--tracking-title);
+  font-variant-numeric: tabular-nums; color: var(--ix-data); white-space: nowrap;
+}
+.ix-readout-value .ix-u { font-size: var(--font-l); letter-spacing: 0; }
+.ix-readout-cap {
+  font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-label);
+}
+.ix-readout.is-m .ix-readout-value { font-size: var(--font-2xl); }
+.ix-readout.is-s .ix-readout-value { font-size: var(--font-xl); }
+.ix-readout.is-tgt .ix-readout-value { color: var(--ix-tgt); }
+.ix-pair { display: grid; grid-template-columns: 1fr 1fr; column-gap: var(--space-5); row-gap: var(--space-3); }
+
+/* --- 操作の列: 押せるものは面で示し、状態は .on で ----------------------------------------- */
+.ix-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-4); }
+.ix-actions .w-btn { display: inline-flex; align-items: center; }
+
+/* --- 識別: 対象名の行 ------------------------------------------------------------------------- */
+.ix-ident {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-4);
+  padding: var(--space-3) var(--space-4); border-radius: var(--radius-control); background: var(--glass-inset);
+}
+.ix-ident-glyph { color: var(--ix-label); font-size: var(--font-l); }
+.ix-ident-name { font-size: var(--font-l); color: var(--ix-data); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ix-ident-role { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-label); }
+.ix-ident.is-tgt { background: var(--ix-tgt-fill); }
+.ix-ident.is-tgt .ix-ident-glyph, .ix-ident.is-tgt .ix-ident-name { color: var(--ix-tgt); }
+.ix-ident.is-own .ix-ident-glyph, .ix-ident.is-own .ix-ident-name { color: var(--ix-own); }
+
+/* --- 一覧の行(敵一覧・物体一覧) --------------------------------------------------------------- */
+.ix-list { display: grid; }
+.ix-item {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; column-gap: var(--space-4);
+  min-height: var(--row-min-h-s); padding-inline: var(--space-3); margin-inline: calc(-1 * var(--space-3));
+  border-radius: var(--radius-micro); color: var(--text-muted); cursor: pointer;
+}
+.ix-item:hover { background: var(--glass-control-hover); color: var(--text); }
+.ix-item-glyph { color: var(--ix-meta); font-size: var(--font-xs); width: 1.2em; text-align: center; }
+.ix-item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ix-item-v { font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+.ix-item-tag { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-label); min-width: 2.5em; text-align: right; }
+.ix-item.is-tgt { background: var(--ix-tgt-fill); color: var(--ix-tgt); }
+.ix-item.is-tgt .ix-item-glyph, .ix-item.is-tgt .ix-item-v, .ix-item.is-tgt .ix-item-tag { color: var(--ix-tgt); }
+.ix-item.is-near .ix-item-tag { color: var(--ix-caution); }
+/* 自分の選択(フォーカス中の行)は主役色の面。自機の行は記号だけが主役色。 */
+.ix-item.is-focus { background: var(--ix-own-fill); color: var(--ix-own); }
+.ix-item.is-focus .ix-item-glyph, .ix-item.is-focus .ix-item-tag, .ix-item.is-focus .ix-item-tog { color: var(--ix-own); }
+.ix-item.is-own { color: var(--text); }
+.ix-item.is-own .ix-item-glyph { color: var(--ix-own); }
+.ix-item.is-touch { min-height: var(--hit-target-min); }
+/* 木の行: 字下げ(--d: 深さ)と開閉記号。 */
+.ix-tree .ix-item { grid-template-columns: auto auto minmax(0, 1fr) auto; column-gap: var(--space-3); }
+.ix-item-tog { display: inline-block; width: calc(14px + var(--d, 0) * 14px); text-align: right; color: var(--ix-meta); font-size: var(--font-xxs); }
+
+/* --- 縮尺バー(マップの画面固定バッジ) -------------------------------------------------------- */
+.ix-scale { display: inline-flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-5); border-radius: var(--radius-control); background: var(--glass-quiet); font-size: var(--font-xs); font-variant-numeric: tabular-nums; }
+.ix-scale-ruler { display: block; width: 100px; height: 7px; border: 1px solid var(--text-muted); border-top: 0; }
+
+/* --- 上部ストリップ: 2行・高さ約100px の全体ステータスを1行へ ----------------------------------- */
+.ix-strip {
+  display: inline-flex; align-items: center; gap: var(--space-4); height: 40px;
+  padding: 0 var(--space-3) 0 var(--space-5); border-radius: var(--radius-pill);
+  background: var(--glass-quiet); box-shadow: var(--glass-shadow);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  font-size: var(--font-xs); white-space: nowrap;
+}
+.ix-strip-sep { width: 1px; height: 18px; background: var(--ix-hairline); }
+.ix-strip-label { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-meta); }
+.ix-strip-time { font-variant-numeric: tabular-nums; color: var(--text); }
+.ix-strip .w-btn { padding: var(--space-2) var(--space-4); font-size: var(--font-xs); }
+
+/* 時間加速: 段の列。いまの段は主役色ではなく「面」で示し、制限中の段は無効。 */
+.ix-warp { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1); border-radius: var(--radius-pill); background: var(--glass-inset); }
+.ix-warp > span {
+  min-width: 2.6em; height: 26px; display: inline-grid; place-items: center; border-radius: var(--radius-pill);
+  font-size: var(--font-xxs); color: var(--ix-label); font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.ix-warp > span.on { background: var(--fill-3); color: var(--text-strong); }
+.ix-warp > span.disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* --- 警報灯: 注意と警告を1箇所に集める --------------------------------------------------------- */
+.ix-annun { display: inline-flex; gap: var(--space-2); }
+.ix-lamp {
+  height: 26px; padding: 0 var(--space-4); display: inline-grid; place-items: center;
+  border-radius: var(--radius-pill); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  color: var(--ix-meta); background: var(--fill-1);
+}
+.ix-lamp.is-caution { color: var(--ix-caution); background: var(--ix-caution-fill); box-shadow: inset 0 0 0 1px var(--ix-caution-edge); }
+.ix-lamp.is-warning { color: var(--text-strong); background: var(--ix-warning); animation: ix-blink 1s steps(1) infinite; }
+@keyframes ix-blink { 50% { background: var(--ix-warning-fill); color: var(--ix-warning); } }
+
+/* 警報の帯: 中央上部に出る、取るべき行動つきの1行。 */
+.ix-alert {
+  display: inline-grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-4);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-5); border-radius: var(--radius-control);
+  background: var(--glass-focus); box-shadow: var(--glass-shadow); font-size: var(--font-s);
+  backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+}
+.ix-alert-level { font-size: var(--font-xxs); letter-spacing: var(--tracking-code); }
+.ix-alert.is-caution { box-shadow: inset 0 0 0 1px var(--ix-caution-edge), var(--glass-shadow); }
+.ix-alert.is-caution .ix-alert-level { color: var(--ix-caution); }
+.ix-alert.is-warning { box-shadow: inset 0 0 0 1px var(--ix-warning-edge), var(--glass-shadow); }
+.ix-alert.is-warning .ix-alert-level { color: var(--ix-warning); }
+.ix-alert.is-info .ix-alert-level { color: var(--ix-label); }
+
+/* 警報灯の記号(△/▲)と件数。確認済みの警告灯は点滅せず「淡い面+縁」へ(動きに頼らず未確認と区別する)。 */
+.ix-lamp { display: inline-flex; align-items: center; gap: var(--space-2); }
+.ix-lamp.is-caution::before { content: '△'; }
+.ix-lamp.is-warning::before { content: '▲'; }
+.ix-lamp-n { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ix-lamp.is-warning.is-acked {
+  animation: none; background: var(--ix-warning-fill); color: var(--ix-warning);
+  box-shadow: inset 0 0 0 1px var(--ix-warning-edge);
+}
+/* 警報帯: [レベル][本文: 何が起きたか + 取るべき行動のキー][確認 B]。確認済みは面を静かにし、確認ボタンを外す。
+   行動は押し続ける操作(推力など)も含むので、ボタンではなくキーの列として本文に置く。 */
+.ix-alert { align-items: start; }
+.ix-alert-level { min-width: 7.2em; line-height: 1.9; white-space: nowrap; }
+.ix-alert.is-caution .ix-alert-level::before { content: '△ '; }
+.ix-alert.is-warning .ix-alert-level::before { content: '▲ '; }
+.ix-alert-body { display: grid; gap: var(--space-1); min-width: 0; }
+.ix-alert-msg { color: var(--text-strong); line-height: 1.6; }
+.ix-alert-msg b { font-weight: 600; letter-spacing: var(--tracking-label); margin-right: var(--space-2); }
+.ix-alert-act { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); color: var(--text-muted); font-size: var(--font-xs); }
+.ix-alert-act .ix-hint-step + .ix-hint-step::before { content: '›'; color: var(--ix-meta); margin-right: var(--space-2); }
+.ix-alert-state { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-meta); line-height: 2.2; white-space: nowrap; }
+.ix-alert.is-acked { background: var(--glass-quiet); }
+.ix-alert.is-acked .ix-alert-msg { color: var(--text-muted); }
+.ix-alert.is-acked .ix-alert-level { opacity: .75; }
+/* 通知(出来事): 帯と同じ部品の1行版。確認ボタンを持たず、時間で消える。 */
+.ix-alert.is-info { grid-template-columns: auto minmax(0, 1fr); align-items: center; padding-right: var(--space-5); }
+.ix-alert.is-info .ix-alert-level { min-width: 0; line-height: inherit; }
+.ix-alert.is-info.is-denied .ix-alert-level::before { content: '⊘ '; }
+.ix-alert.is-info.is-cleared .ix-alert-level { color: var(--text); }
+/* 表示しきれない警報の件数。 */
+.ix-more {
+  justify-self: center; padding: var(--space-1) var(--space-4); border-radius: var(--radius-pill);
+  background: var(--glass-quiet); color: var(--ix-caution); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+}
+
+/* 操作の案内: 文章の帯ではなく、キーと語の短いチップ。 */
+.ix-hint {
+  display: inline-flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; justify-content: center;
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-pill);
+  background: var(--surface-weak); color: var(--text-muted); font-size: var(--font-xs);
+}
+.ix-hint-step { display: inline-flex; align-items: center; gap: var(--space-2); }
+.ix-hint-step + .ix-hint-step::before { content: '›'; color: var(--ix-meta); margin-right: var(--space-2); }
+
+/* --- 照準まわりの読み値: 撃つ判断に要る3つを、目線の近くへ ---------------------------------------- */
+.ix-cluster { position: absolute; display: grid; gap: var(--space-1); font-variant-numeric: tabular-nums; pointer-events: none; }
+.ix-cluster-v { font-size: var(--font-m); color: var(--ix-tgt); text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg); white-space: nowrap; }
+.ix-cluster-k { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--space-label-subtext); text-shadow: 0 0 3px var(--bg); }
+.ix-cluster-row { display: flex; align-items: baseline; gap: var(--space-4); }
+.ix-cluster-row .ix-cluster-k { min-width: 2.6em; }
+.ix-cluster-row .ix-cluster-v.is-data { color: var(--text); }
+
+/* --- ワールドマーカー(DOM/SVG で描く場合): 記号と1行の名前。方向マーカーは記号だけ ------------ */
+.ix-mk { position: absolute; transform: translate(-50%, -50%); display: grid; place-items: center; line-height: 1; pointer-events: none; }
+.ix-mk-label { position: absolute; top: 100%; margin-top: var(--space-2); white-space: nowrap; text-align: center; font-size: var(--font-xxs);
+  color: var(--text); text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg); line-height: 1.3; }
+.ix-mk.is-enemy { color: var(--text); font-size: var(--font-l); }
+.ix-mk.is-pro { color: var(--axis-prograde); }
+.ix-mk.is-bore { color: var(--text-muted); }
+.ix-mk-badge { position: absolute; left: 100%; bottom: 100%; margin: 0 0 calc(-1 * var(--space-3)) calc(-1 * var(--space-2)); padding: 0 var(--space-2);
+  border-radius: var(--radius-pill); background: var(--glass-quiet); color: var(--text); font-size: var(--font-xxs); }
+
+/* --- 武装の帯: 弾帯をセルで見せる ------------------------------------------------------------- */
+.ix-weapon {
+  display: inline-grid; grid-auto-flow: column; align-items: center; column-gap: var(--space-5);
+  padding: var(--space-3) var(--space-5); border-radius: var(--radius-pill);
+  background: var(--glass-quiet);
+  backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+  font-size: var(--font-xs); font-variant-numeric: tabular-nums;
+}
+.ix-belt { display: grid; grid-auto-flow: column; gap: 2px; }
+.ix-belt > i { width: 4px; height: 14px; border-radius: 1px; background: var(--text-muted); }
+.ix-belt > i.spent { background: var(--fill-2); }
+.ix-belt.is-caution > i:not(.spent) { background: var(--ix-caution); }
+
+/* --- 画面端の方位: 画面外の対象の向き ---------------------------------------------------------- */
+.ix-edge {
+  position: absolute; display: grid; place-items: center; width: 34px; height: 34px; pointer-events: none;
+  font-size: var(--font-xxs); color: var(--ix-tgt);
+}
+.ix-edge::before {
+  content: ''; width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent;
+  border-bottom: 11px solid currentColor; transform: rotate(var(--dir, 0deg));
+}
+.ix-edge.is-warning { color: var(--ix-warning); }
+.ix-edge.is-other { color: var(--ix-label); }
+.ix-edge-label { position: absolute; white-space: nowrap; font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  color: var(--ix-tgt); text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg); font-variant-numeric: tabular-nums; }
+.ix-edge-label.is-other { color: var(--ix-label); }
+
+/* --- 時間軸: 掴んで動かす1本の帯 --------------------------------------------------------------- */
+.ix-scrub { display: grid; gap: var(--space-2); }
+.ix-scrub-track {
+  position: relative; height: 34px; border-radius: var(--radius-control); background: var(--glass-inset);
+  overflow: hidden; cursor: ew-resize;
+}
+.ix-scrub-past { position: absolute; inset: 0 auto 0 0; width: var(--now, 0%); background: var(--fill-1); }
+.ix-scrub-band { position: absolute; top: 0; bottom: 0; left: var(--from); width: var(--len); }
+.ix-scrub-band.is-shadow { background: repeating-linear-gradient(135deg, var(--fill-2) 0 4px, transparent 4px 8px); }
+.ix-scrub-tick { position: absolute; top: 6px; bottom: 6px; left: var(--at); width: 2px; border-radius: 1px; background: var(--ix-label); }
+.ix-scrub-tick.is-own { background: var(--ix-own); }
+.ix-scrub-tick.is-tgt { background: var(--ix-tgt); }
+.ix-scrub-tick.is-caution { background: var(--ix-caution); }
+.ix-scrub-tick.is-warning { background: var(--ix-warning); }
+.ix-scrub-head {
+  position: absolute; top: 0; bottom: 0; left: var(--at); width: 2px; margin-left: -1px; background: var(--text-strong);
+}
+.ix-scrub-head::before {
+  content: ''; position: absolute; top: -1px; left: -5px; border-left: 6px solid transparent; border-right: 6px solid transparent;
+  border-top: 7px solid var(--text-strong);
+}
+.ix-scrub-axis { display: flex; justify-content: space-between; font-size: var(--font-xxs); color: var(--ix-meta); font-variant-numeric: tabular-nums; }
+
+/* ============================================================================================
+ * 2. リファレンスの外枠(ゲームへは移さない)
+ * ========================================================================================== */
+html, body { margin: 0; }
+body.rf {
+  background: var(--bg); color: var(--text); font-family: var(--font-family); font-size: var(--font-m);
+  min-height: 100dvh;
+}
+.rf *, .rf *::before, .rf *::after { box-sizing: border-box; }
+.rf a { color: var(--text-muted); }
+.rf a:hover { color: var(--color-primary-hover); }
+
+/* ツールバー */
+.rf-bar {
+  position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4) var(--space-5);
+  padding: var(--space-4) 16px; background: var(--surface-opaque); box-shadow: 0 1px 0 var(--edge);
+}
+.rf-bar-title { display: grid; min-width: 0; flex: 1 1 260px; }
+.rf-bar-title b { font-size: var(--font-l); font-weight: 600; }
+.rf-bar-title span { font-size: var(--font-xs); color: var(--text-dim); }
+.rf-bar-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+.rf-bar label { font-size: var(--font-xs); color: var(--text-dim); display: inline-flex; align-items: center; gap: var(--space-3); }
+
+main.rf-main { padding: var(--space-6) 16px 64px; max-width: 1680px; margin: 0 auto; }
+.rf-intro { max-width: 980px; color: var(--text-muted); margin: 0 0 var(--space-6); line-height: 1.7; }
+.rf-intro b { color: var(--text); }
+.rf h2 { font-size: var(--font-xl); margin: 48px 0 var(--space-4); font-weight: 600; }
+.rf h2 .ix-code { margin-right: var(--space-4); }
+.rf h3 { font-size: var(--font-m); margin: var(--space-6) 0 var(--space-3); font-weight: 600; }
+.rf p.rf-lead { color: var(--text-muted); margin: 0 0 var(--space-5); max-width: 980px; line-height: 1.7; }
+
+/* 画面ステージ: 設計寸法(data-w × data-h)で組み、幅に合わせて縮める。 */
+.rf-stage-wrap { position: relative; width: 100%; overflow: hidden; border-radius: var(--radius-panel); background: #000; box-shadow: 0 0 0 1px var(--edge); }
+.rf-stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; overflow: hidden; }
+.rf-layer { position: absolute; inset: 0; }
+.rf-layer > img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.rf-after { font-family: var(--font-family); font-size: var(--font-l); color: var(--text); }
+.rf-stage[data-mode="before"] .rf-after { display: none; }
+.rf-stage[data-mode="after"] .rf-before { display: none; }
+.rf-stage[data-mode="compare"] .rf-after { clip-path: inset(0 0 0 var(--wipe, 50%)); }
+.rf-wipe { display: none; position: absolute; top: 0; bottom: 0; left: var(--wipe, 50%); width: 0; z-index: 40; }
+.rf-stage[data-mode="compare"] .rf-wipe { display: block; }
+.rf-wipe::before { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: var(--text-strong); box-shadow: 0 0 8px #000; }
+.rf-wipe-handle {
+  position: absolute; top: 50%; left: -22px; width: 44px; height: 44px; margin-top: -22px; border-radius: 50%;
+  background: var(--text-strong); color: var(--bg); display: grid; place-items: center; cursor: ew-resize; font-size: var(--font-m);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, .5); touch-action: none;
+}
+.rf-wipe-label { position: absolute; top: 12px; font-size: var(--font-xs); padding: 2px 8px; border-radius: 999px; background: rgba(0,0,0,.65); color: #fff; white-space: nowrap; }
+.rf-wipe-label.l { right: 10px; }
+.rf-wipe-label.r { left: 10px; }
+
+/* 背景の宇宙(改修案の側だけに描く) */
+.rf-scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+/* 注記ピン */
+.rf-pin {
+  position: absolute; z-index: 45; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700; font-family: var(--font-family);
+  background: var(--color-focus); color: var(--color-focus-contrast); box-shadow: 0 0 0 2px rgba(0,0,0,.6);
+  pointer-events: none;
+}
+body.rf-notes-off .rf-pin { display: none; }
+.rf-stage[data-mode="before"] .rf-pin { display: none; }
+
+/* 注記の一覧 */
+.rf-notes { list-style: none; margin: var(--space-5) 0 0; padding: 0; display: grid; gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); }
+.rf-notes > li {
+  position: relative; padding: var(--space-4) var(--space-5) var(--space-4) 48px; border-radius: var(--radius-control);
+  background: var(--surface-1); color: var(--text-muted); font-size: var(--font-s); line-height: 1.6;
+}
+.rf-notes > li::before {
+  content: attr(data-n); position: absolute; left: 14px; top: 12px; width: 22px; height: 22px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--color-focus); color: var(--color-focus-contrast);
+}
+.rf-notes b { color: var(--text); }
+.rf-notes code, .rf code { font-size: .92em; color: var(--text); background: var(--fill-2); padding: 0 4px; border-radius: 4px; }
+.rf-notes .rf-where { display: block; margin-top: var(--space-2); font-size: var(--font-xs); color: var(--text-dim); }
+
+/* 並べて見せる(部品単位の 現行 / 改修案) */
+.rf-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: var(--space-5); align-items: start; }
+.rf-cell { border-radius: var(--radius-panel); background: var(--surface-0); box-shadow: 0 0 0 1px var(--edge); padding: var(--space-5); min-width: 0; }
+.rf-cell-cap { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--text-dim); margin-bottom: var(--space-4); display: flex; justify-content: space-between; gap: var(--space-4); }
+.rf-cell-cap b { color: var(--text); font-weight: 600; }
+.rf-cell img { max-width: 100%; display: block; border-radius: var(--radius-control); }
+.rf-cell.is-space { background: radial-gradient(120% 90% at 30% 0%, #10141f 0%, #05060a 70%); }
+.rf-rail-sample { width: 300px; max-width: 100%; }
+
+/* 表 */
+.rf-table { width: 100%; border-collapse: collapse; font-size: var(--font-s); }
+.rf-table th, .rf-table td { text-align: left; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--fill-2); vertical-align: top; }
+.rf-table th { color: var(--text-dim); font-weight: 400; font-size: var(--font-xs); }
+.rf-scroll { overflow-x: auto; }
+.rf-swatch { display: inline-block; width: 28px; height: 18px; border-radius: 4px; vertical-align: middle; box-shadow: inset 0 0 0 1px var(--fill-3); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ix-lamp.is-warning { animation: none; }
+}
