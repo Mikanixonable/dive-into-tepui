@@ -88,14 +88,46 @@
 「過剰」の判定基準: **今回のサイクルに直接効かず、かつ規模・保守コスト・認知負荷が大きいもの**。
 長期構想(宇宙農場・他惑星資源)に接続しうるものは「完全削除」ではなく「隔離/縮小」案も併記する。
 
+### 3.0 削減可能行数の序列(実測 `cdb65c836`)
+
+各案の対象ファイルを網羅して `wc -l` で数えた。「削減量」は仮に完全削除した場合の行数で、
+推奨する扱い(削除/縮小/隔離/維持)は右列。アセット容量は別途。
+
+| 順 | 案 | 削減できる行数(コード) | アセット等 | 推奨の扱い |
+| --- | --- | --- | --- | --- |
+| 1 | A: 太陽系全域 | **~2,400行**(solar-system 内の非地球-月ファイル計 2,366 + render 環/点群描画 ~470) | 惑星テクスチャ ~7MB、軌道カタログ ~9.5MB、ephemeris パック縮小余地 ~4MB | **段階縮小**(既定登録を絞る) |
+| 2 | B: 軌道ガイド | **~2,700行**(game 側 1,937 + physics 284 + render 463)+ tools 716行 | `assets/orbits/` ~13.7MB(うち earth-moon 以外 ~11.5MB) | **UI 縮小→軌道標識へ統合** |
+| 3 | G: stage0/00+utils | **~975行**(stage0 115 + stage00 92 + stage-utils 782 + enemy-spawner 76)※logistics 282行は D と共用 | — | **サイクル実装後に格下げ** |
+| 4 | C: assembly 敵系統 | **~935行**(game/assembly + render/assembly 640 + assembly-enemy 229 + view 66) | — | **CREATIVE 選択肢から外し棚上げ** |
+| 5 | D: ピックアップ/補給 | **~665行**(pickup 313 + pickup-motion 46 + pickup-view 24 + logistics 282) | — | **基地補給実装後に転用** |
+| 6 | H: parts 系敵モデル | **~513行**(parts 166 + part-inventory 94 + part-damage-model 155 + part-based-enemy 52 + ship-default-parts 46) | — | **モジュール系へ統合**(削除ではない) |
+| 7 | F: booster/decoupler | **~300行**(ship-decoupling 65 + burn-management-panel 125 + modular-ship 内ブロック ~80 + カタログ) | — | **削除せず配線** |
+| 8 | I: 小物合計 | **~260行**(gunsight 40+配線、target-board 36、altitude-alarm 102、entity-inspection 59、タグ 2 行) | — | **個別削除可** |
+| 9 | 薬莢の物理衝突 | **~182行**(casing-collision 117 + casing-view 61 + casing-style 4) | — | 追加候補(詳細は下) |
+| 10 | E: instant 実行 | **~80行**(modular-ship 内 ~40 + creative-stage 内 ~15 + 設定巡回 ~20) | — | **格下げ**(削除は自動操縦後) |
+
+参考(維持するが規模が大きいもの — 「過剰」ではなく「重い資産」):
+
+| 対象 | 行数 | 備考 |
+| --- | --- | --- |
+| 地球地表タイル基盤 | **~12,600行**(src/render 4,111 + tools/earth-surface 8,501) | LEO の見た目の主役。削るなら全システムで最大の削減幅だが没入感を失う |
+| 建造システム+UI | **~3,676行** | 完成度は高いがサイクル未接続。削るより資源コストの配線が先 |
+| protein 敵基盤 | **~3,600行** + アセット ~92MB | 世界観の看板。ミオグロビン(~1.8MB)の個別削減のみ現実的 |
+| 雲気象モデル | **~3,400行**(render/cloud 等) | 地球の見た目の一部 |
+| 敵配線(全系統共通) | ~774行(generator 178 + spawner 76 + manual-spawn 125 + stage-controls 395) | 敵系統を減らすと選択肢分だけ痩せる |
+
+重複の注意: G と D は `logistics.ts`(282行)を共有し、C と H は敵モデルで重なり合う。
+単純合計はしないこと。
+
 ### 案 A: 太陽系全域の天体登録を絞る — 最大の過剰
 
 - **対象・規模**: `src/game/celestial/solar-system/` の地球-月-太陽以外の全部 —
-  `inner-planets.ts`(水星・金星)、`mars-system.ts`、`jupiter-system.ts`(衛星14)、`saturn-system.ts`(衛星14)、
-  `uranus-system.ts`(衛星6)、`neptune-system.ts`、`dwarf-planets.ts`(15)、`small-bodies.ts`(34天体・600行)、
-  `point-field.ts`(小天体点群 ~9,000点)、`rings.ts`(6天体分)。計 ~2,300行 + 惑星テクスチャ約 7MB
+  `inner-planets.ts`(水星・金星,108行)、`mars-system.ts`(115)、`jupiter-system.ts`(衛星14,272)、`saturn-system.ts`(衛星14,280)、
+  `uranus-system.ts`(衛星6,163)、`neptune-system.ts`(102)、`dwarf-planets.ts`(15,372)、`small-bodies.ts`(34天体・600行)、
+  `point-field.ts`(小天体点群 ~9,000点,240行)、`rings.ts`(6天体分,114)。**コード計 ~2,366行** + render 側
+  `celestial/ring.ts`(339)+`ring-view.ts`(135)+`point-celestial-view.ts`(226,部分) + 惑星テクスチャ約 7MB
   (`2k_*.jpg`×11) + ラグランジュ軌道カタログ5系(jupiter-europa/mars-phobos/saturn-enceladus/
-  saturn-titan/sun-mars,`src/assets/orbits/`)。
+  saturn-titan/sun-mars,~9.5MB) + ephemeris パック 2件(4.3MB×2,天体を絞れば縮小余地あり)。
 - **現状の役割**: 全97天体が重力源として登録され(`celestial-system.ts:111`)、マップ表示・
   フォーカス・物体配置の基準天体・ラベル・検索・可視性ポリシー・セーブ形式に波及している。
 - **過剰の根拠**: サイクルの舞台は月軌道と地球低軌道だけ。木星系14衛星や34小天体は戦闘・往復・
@@ -118,16 +150,18 @@
 
 ### 案 B: 軌道ガイド動物園の縮小 — 実装規模に対し使われていない
 
-- **対象・規模**: `viewer/orbit-guide-settings.ts`(313行)+ `hud/panels/orbit-guide-tab.ts`(577行)+
+- **対象・規模**: game 側 `viewer/orbit-guide-settings.ts`(313行)+ `hud/panels/orbit-guide-tab.ts`(577行)+
   `celestial/orbit-guide/orbit-guide-model.ts`(463行)+ `zero-velocity-model.ts`(224行)+
-  `orbit-guide-kind-ids.ts`(168行)+ `orbit-guide-catalog.ts`(116行)+ render 側 ~480行 +
-  `src/assets/orbits/` の焼き込みカタログ ~13MB + 生成ツール(`export-lagrange-orbits.mjs` 等)。
+  `orbit-guide-kind-ids.ts`(168行)+ `orbit-guide-catalog.ts`(116行)+ `orbit-guide-groups.ts`(11)+
+  `orbit-guide-commands.ts`(17)+ `orbit-guide-selection.ts`(30)+ `orbit-guide-style.ts`(34) = **1,953行**、
+  `physics/orbit-guide.ts`(284)、render 側 `celestial/orbit-guide/`(463) — **コード計 ~2,700行** +
+  `src/assets/orbits/` の焼き込みカタログ ~13.7MB + 生成ツール716行(`export-lagrange-orbits.mjs` 等)。
   種類は CR3BP 族(lyapunov/halo/axial/vertical/short/longp/dpo/lpo/resonant/butterfly/dragonfly)×7系
   + リサジュー + 太陽同期 + ドーンダスク + モルニヤ + ツンドラ + ゼロ速度曲線 + 静止軌道。
 - **現状の役割**: マップ上の参照表示のみ。既定 ON は geostationary と earth-moon 系だけで、
   他は全部既定 OFF。航行・誘導・ターゲットとは接続していない。
 - **過剰の根拠**: サイクルの移動は「基地→目標軌道」の往復であり、族カタログの鑑賞表示は
-  サイクルに入ってこない。実装量(~2,300行+ツール)に対し露出が薄い。
+  サイクルに入ってこない。実装量(~2,700行+ツール716行+13.7MB)に対し露出が薄い。
 - **注意(保留理由)**: 自動航行提案の「軌道標識」はラグランジュ族メンバーを標識化する構想
   (提案書 §4.1)で、族カタログはその土台になり得る。**全削除は提案書 P1 と衝突しうる**。
 - **手順案(段階)**:
@@ -141,9 +175,12 @@
 ### 案 C: 敵の3系統を1〜2系統へ — 実装とアセットの集中
 
 - **対象・規模**: `MetalEnemy`/`ProteinEnemy`/`AssemblyEnemy` の3系統。
-  protein は `src/game/protein/`(~976行)+ `src/render/protein/`(~1,900行)+ アセット JSON 約 92MB
+  protein は `src/game/protein/`+`src/render/protein/`(実測3,088行・21ファイル)+ `protein-enemy.ts`(295)+
+  `protein-enemy-view.ts`(148)+`protein-enemy-ship.ts`(78) ≈ **3,600行** + アセット JSON 約 92MB
   (ATPシンテターゼ 37+17MB、ルビスコ 16+8.2MB、5I4R 8+3.8MB、ミオグロビン ~1.8MB)。
-  assembly は `src/game/assembly/`(239行)+ `render/assembly/`。
+  assembly は `src/game/assembly/`+`src/render/assembly/`(640)+ `assembly-enemy.ts`(229)+`assembly-enemy-view.ts`(66) ≈ **935行**。
+  metal は `metal-enemy.ts`(141)+view 52+`metal-f0.ts` 12 ≈ 205行。
+  共通配線(enemy-generator 178・enemy-spawner 76・manual-spawn 125・stage-controls-panel 358)は系統数に比例して痩せる。
 - **現状の役割**: 3系統とも出現経路を持つ(stages の spawner・CREATIVE 手動スポーン)。
   陣形(5I4R攻撃・ルビスコ盾・ATP供給)は protein が担う。
 - **過剰の根拠**: サイクルに必要なのは「撃ち合える敵」1種類であり、世界観の看板は protein 系。
@@ -162,8 +199,9 @@
 
 ### 案 D: 補給ピックアップ系の再編 — 基地補給ができるまでの保留
 
-- **対象・規模**: `dynamic-entity/pickup.ts`(AmmoPickup/RcsFuelPickup 313行)+ `stage-utils/logistics.ts`(282行)+
-  `pickup-view`・補給マーカー・CREATIVE 設定パネルの自動投入トグル2種 + SPEC GAME.md §8。
+- **対象・規模**: `dynamic-entity/pickup.ts`(AmmoPickup/RcsFuelPickup 313行)+ `pickup-motion.ts`(46)+
+  `stage-utils/logistics.ts`(282行)+ `pickup-view.ts`(24)= **~665行** + 補給マーカー・
+  CREATIVE 設定パネルの自動投入トグル2種 + SPEC GAME.md §8。
 - **現状の役割**: 軌道上に弾薬・RCS燃料パケットを浮かべ、接近で回収。stage0 は初期配置、
   stage00 は「弾薬確保まで波が来ない」仕掛けの一部。
 - **過剰の根拠**: サイクルでは「基地に帰れば補給される」が正本になるはずで、軌道上を追いかけて
@@ -199,9 +237,9 @@
 
 ### 案 G: stage0(スコアアタック)/stage00(無限サバイバル) — サイクル実装後に再判断
 
-- **対象・規模**: `stage0.ts`(115行)+ `stage00.ts`(92行)+ `stage-utils/` 全体
-  (score-attack-timer・score-counter・wave-attack・logistics・status-panel ~1,300行)+
-  `enemy-spawner.ts`(クラスタ生成)。
+- **対象・規模**: `stage0.ts`(115行)+ `stage00.ts`(92行)+ `stage-utils/` 全体(実測782行:
+  score-attack-timer 26・score-counter 53・wave-attack 328・logistics 282・status-panel 93)+
+  `spawner/enemy-spawner.ts`(76)= **~975行**(logistics は案 D と共用)。
 - **現状の役割**: 唯一「今すぐ遊べる」戦闘ステージ。
 - **過剰の根拠**: サイクルの本編ではない。ただし今すぐ遊べるのはこれだけなので、
   **サイクルが実装されるまで廃止は非現実的**。
@@ -214,8 +252,9 @@
 
 ### 案 H: 敵の被弾モデルの二重構造 — 統合候補
 
-- **対象・規模**: `parts.ts`/`part-inventory.ts`/`part-damage-model.ts`/`part-based-enemy.ts`/
-  `ship-default-parts.ts`(敵側だけが使う旧パーツ系)vs 船側の `ShipAssembly`/`ShipModuleInstance` 系。
+- **対象・規模**: `parts.ts`(166)/`part-inventory.ts`(94)/`part-damage-model.ts`(155)/
+  `part-based-enemy.ts`(52)/`ship-default-parts.ts`(46)= **513行**(敵側だけが使う旧パーツ系)
+  vs 船側の `ShipAssembly`/`ShipModuleInstance` 系。
 - **現状の役割**: 敵(MetalEnemy,AssemblyEnemy は PartBasedEnemy)の部位破壊を担う。
 - **過剰の根拠**: 船はモジュール系へ移行済みで、敵だけが旧パーツ系に残っている。
   CONTEXT.md の方向(船・基地を同一基盤)から見て、敵側だけ別モデルは整合しない。
@@ -230,7 +269,8 @@
 | --- | --- | --- | --- |
 | ガンサイトズーム([Z]) | `gunsight-camera.ts`(40行)+ camera-system 配線 | dev.md 自身が「全然使っていない」 | CONTROLS/CAMERA のキー割当削除、マズルフラッシュ減光(COMBAT.md「戦闘エフェクト」)は例外仕様が残る |
 | 的通過記録 | `target-board-passes.ts` | normal 弾限定の演出記録、参照薄い | ほぼ独立 |
-| 高度アラーム | `player/altitude-alarm.ts` | 地球大気向け降下警告のみ。月基地運用では出番薄い | alarm-level の閾値1種、UI-SFX 'altAlarm' |
+| 高度アラーム | `player/altitude-alarm.ts`(102行) | 地球大気向け降下警告のみ。月基地運用では出番薄い | alarm-level の閾値1種、UI-SFX 'altAlarm' |
+| 薬莢の物理衝突 | `casing-collision.ts`(117)+`casing-view.ts`(61)+`casing-style.ts`(4) | 薬莢が実体として他エンティティと衝突する詳細系。撃破フィードバック上の価値はデブリが担う | 薬莢を「非衝突の視覚デブリ」へ格下げするか削除。衝突ペア評価のコストも減る |
 | 直列化タグ `'booster'`/`'base'` 残骸 | `dynamic-entity/dynamic-entity.ts:23` | 具象クラス無し、`ENTITY_CLASSES` 未登録で旧記録も復元不可 | デッドコード、消すだけ |
 | `entity-inspection.ts` | `src/game/pickable/entity-inspection.ts` 全体 | import 元ゼロのデッドコード(リファクタリング候補メモ既出) | ファイル削除のみ |
 | 週 predict 単位 | `viewer/display-timeline-selection.ts` の期間選択肢 | dev.md「週を廃止し月を追加」 | UI 選択肢の入替 |
