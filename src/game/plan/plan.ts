@@ -7,9 +7,10 @@ import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { orbitalElementsOf } from '../../physics/elements';
 
-// 計画をどう実行するか。'off': ノードを消化しない。
-// 'instant': ノード時刻ちょうどで絶対状態へ乗り移る(自動実行)。
-export type PlanExecutionMode = 'off' | 'instant';
+// 計画をどう実行するか。'none': ノードを消化しない。
+// 'autopilot': ノード時刻をほぼ中心とする有限燃焼で、絶対状態へ有限推力で到達する(既定)。
+// 'instant': ノード時刻ちょうどで絶対状態へ乗り移る(理想実行)。
+export type PlanExecutionMode = 'none' | 'autopilot' | 'instant';
 
 export interface SerializedPlan {
   readonly anchor: SerializedKinematicState;
@@ -170,6 +171,13 @@ export class Plan {
   // 全ノードを削除する。
   public clear(): void {
     this.data = null;
+  }
+
+  // 計画を起点 anchor とノード列 nodes へ丸ごと差し替える。ソルバが組んだノード列を
+  // 一括で書き込むための命令。起点以前のノードは除き、実行時刻順に整列して持つ。
+  public replaceAll(anchor: KinematicState, nodes: readonly KinematicState[]): void {
+    const kept = nodes.filter((node) => node.t > anchor.t).sort((a, b) => a.t - b.t);
+    this.data = kept.length > 0 ? { anchor, nodes: kept } : null;
   }
 
   // idx 番目のノードを置ける実行時刻の範囲。直前の状態(前のノード、無ければ起点)の時刻から、

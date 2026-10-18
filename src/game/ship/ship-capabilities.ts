@@ -127,6 +127,33 @@ export class ShipCapabilities {
     return this.assembly.consumeFuel(kind, amount);
   }
 
+  // kind の燃料タンクに残っている推進剤の質量 [kg]。表示単位を各タンクの fuelMassPerUnit で換算する。
+  public propellantKg(kind: FuelKind): number {
+    let kg = 0;
+    for (const module of this.modules('tank', true)) {
+      if (module.fuelKind !== kind) continue;
+      kg += module.fuel * (this.assembly.definition(module.id)?.abilities.fuelMassPerUnit ?? 1);
+    }
+    return kg;
+  }
+
+  // kind の燃料 1 unit あたりの質量 [kg/unit]。残量に応じた加重平均で、空なら容量に応じた加重平均、
+  // タンクがなければ 1。
+  public fuelMassPerUnit(kind: FuelKind): number {
+    let units = 0, kg = 0, capacity = 0, capacityKg = 0;
+    for (const module of this.modules('tank', true)) {
+      if (module.fuelKind !== kind) continue;
+      const perUnit = this.assembly.definition(module.id)?.abilities.fuelMassPerUnit ?? 1;
+      units += module.fuel;
+      kg += module.fuel * perUnit;
+      const max = this.assembly.definition(module.id)?.abilities.fuelCapacity ?? 0;
+      capacity += max;
+      capacityKg += max * perUnit;
+    }
+    if (units > 0) return kg / units;
+    return capacity > 0 ? capacityKg / capacity : 1;
+  }
+
   public refuel(kind: FuelKind, amount: number): number {
     return this.assembly.refuel(kind, amount);
   }
