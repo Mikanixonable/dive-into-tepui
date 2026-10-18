@@ -1,14 +1,12 @@
 // 船体の搭載モジュールから、検査ウィンドウの表示内容と選べる操作を導出する。
 import type { PropertyWindowContent, PropertyWindowItem } from '../../hud/windows/property-window-content';
 import type { ShipAssembly } from '../ship/ship-assembly';
-import type { ShipDockState } from '../ship/ship-dock-state';
 import type { ShipModuleInstance } from '../ship/ship-module-instance';
 
-// 検査に必要な船体の読み取り面。
+// 検査に必要な船体の読み取り面。ドックの状態は assembly の接続から読む。
 export interface ModuleInspectionShip {
   readonly name: string;
   readonly assembly: ShipAssembly;
-  readonly docks: Pick<ShipDockState, 'status'>;
   readonly capabilities: { readonly operatingCockpitId: string | null };
 }
 
@@ -36,24 +34,19 @@ export function moduleItems(ship: ModuleInspectionShip, module: ShipModuleInstan
     label: ship.capabilities.operatingCockpitId === module.id ? '操作基準コックピット' : '操作基準に設定',
     act: 'selectCockpitModule', keepOpen: true,
   }];
-  // 接続状態に応じて接舷・建造・発進を提示する。
+  // 接続状態に応じて接舷・建造・発進を提示する。健全な dock には常に建造を出す。
   if (module.kind === 'dock' || module.kind === 'docking_port') {
-    const status = ship.docks.status(ship.assembly, module.id);
-    return status === 'connected'
-      ? [
-        ...(module.kind === 'dock' && ship.assembly.isDockingPortOccupied(module.id)
-          ? [{ label: '接続船体を修理', act: 'repairDockedModules' as const, keepOpen: true }]
-          : []),
-        { label: '接続を解除して発進', act: 'undockModule' as const },
-      ]
-      : [
-        ...(module.kind === 'dock'
-          ? [{ label: status === 'building' ? '建造を再開' : '船体を建造', act: 'startConstructionModule' as const }]
-          : []),
-        ...(status === 'empty'
-          ? [{ label: '近傍船を接舷', act: 'dockModule' as const }]
-          : []),
-      ];
+    const connected = ship.assembly.isPortConnected(module.id);
+    return [
+      ...(module.kind === 'dock' && module.hp > 0
+        ? [{ label: '船体を建造', act: 'startConstructionModule' as const }]
+        : []),
+      ...(connected && module.kind === 'dock' && ship.assembly.isDockingPortOccupied(module.id)
+        ? [{ label: '接続船体を修理', act: 'repairDockedModules' as const, keepOpen: true }]
+        : []),
+      ...(connected ? [{ label: '接続を解除して発進', act: 'undockModule' as const }] : []),
+      ...(!connected ? [{ label: '近傍船を接舷', act: 'dockModule' as const }] : []),
+    ];
   }
   return [];
 }
