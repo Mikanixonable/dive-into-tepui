@@ -1,5 +1,7 @@
 // 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。
-import { pickCombatEntityAtPoint } from '../pickable/combat-pick';
+import { pickCombatEntityAtPoint, pickShipModuleAtPoint } from '../pickable/combat-pick';
+import { isModularShip } from '../ship/modular-ship';
+import { isUsableConstructionDock, type ConstructionEntry } from '../ship/construction-entry';
 import type { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input/input';
 import type { TouchControls } from '../hud/touch-controls';
@@ -28,6 +30,7 @@ export class CombatFrame implements ViewFrame {
     private readonly controlSelection: ControlSelection,
     private readonly planPath: PlanPath,
     private readonly planGuide: PlanGuide,
+    private readonly constructionEntry: ConstructionEntry,
   ) {}
 
   public readonly pickables: readonly ObjectPickable[] = [];
@@ -47,11 +50,19 @@ export class CombatFrame implements ViewFrame {
 
   public updateActions(): void {}
 
-  // 照準キーと右クリック入力をルーティングする。操作対象がいなければ照準先が無いので何もしない。
+  // 照準キーとポインタ入力をルーティングする。操作対象がいなければ照準先が無いので何もしない。
   public handlePointer(camera: CameraFrame): void {
     const controlled = this.controlSelection.current;
     if (!controlled) return;
     this.targeter.handleTargetSelect(controlled, camera.project, camera.viewport);
+    // 左クリックは、当たったモジュールが使用可能な建造ドックなら建造を始める。それ以外は消費しない。
+    this.input.takeClicks((p) => {
+      if (!isModularShip(controlled) || !controlled.motion.alive) return false;
+      const hit = pickShipModuleAtPoint(controlled, camera.viewpoint, p.x, p.y, camera.viewport);
+      if (hit === null || !isUsableConstructionDock(hit)) return false;
+      this.constructionEntry.startAt(controlled, hit.id);
+      return true;
+    });
     // 右クリックは実体に当たればそのプロパティウィンドウを、外れれば空域メニューを開く。
     this.input.takeRightClicks((p) => {
       const hit = pickCombatEntityAtPoint(
