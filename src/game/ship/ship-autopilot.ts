@@ -15,6 +15,8 @@ import { add, len, sameVec, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import type { Plan, PlanExecutionMode } from '../plan/plan';
 import type { ModularShipMotion } from './modular-ship-motion';
 import { burnDuration, deltaVBudget, effectiveExhaustVelocity } from '../../physics/rocket';
+import { solveLambert } from '../../physics/lambert';
+import { kinematicState } from '../../physics/kinematic-state';
 
 // 燃焼・回頭を指令する間の積分刻みの上限 [s]。倍率によらず一定なので、ワープを変えても
 // 燃焼の結果は変わらない。
@@ -41,6 +43,12 @@ const TURN_MARGIN_FLAT = 2;
 // 燃焼の打ち切り猶予。予定燃焼時間の何倍まで実燃焼を許すか(推定誤差・回頭遅れを吸収する)。
 const BURN_OVERRUN_FACTOR = 2;
 const BURN_OVERRUN_FLAT = 30; // [s]
+
+// 燃焼後の中間修正ノードを挿す位置。残り飛行時間に対する割合と最小の猶予 [s]。
+const CORRECTION_FRACTION = 0.2;
+const CORRECTION_LEAD_MIN = 60;
+// 実状態の二体外挿が次ノード位置からこれを超えて外れていたら修正ノードを挿す [m]。
+const CORRECTION_MIN_MISS = 500;
 
 // 自動操縦の直列化した形。
 export interface SerializedShipAutopilot {
@@ -236,7 +244,7 @@ export class ShipAutopilot {
     const vgo = velocityToGo(scheduled.node, motion.state, attractors, pivot);
     const vgoMag = len(vgo);
     if (this.phase === 'aiming') {
-      if (vgoMag <= MIN_NODE_DELTA_V) { this.finishBurn(scheduled.node); return; }
+      if (vgoMag <= MIN_NODE_DELTA_V) { this.finishBurn(scheduled.node, attractors, pivot); return; }
       const dir = scale(vgo, 1 / vgoMag);
       this.aimAt(dir, dt);
       if (t >= scheduled.burnStart && aimError(motion.att, dir) <= IGNITE_ANGLE_TOLERANCE) {
@@ -249,16 +257,16 @@ export class ShipAutopilot {
     }
     // 燃焼。残り必要速度変化の方向へ推力を向け、尽きる・収束する・打ち切り時刻で止める。
     if (vgoMag <= BURN_DONE_EPSILON || t >= this.hardEnd || !(this.host.totalThrust > 0)) {
-      this.finishBurn(scheduled.node);
+      this.finishBurn(scheduled.node, attractors, pivot);
       return;
     }
     const dir = scale(vgo, 1 / vgoMag);
     this.aimAt(dir, dt);
     const units = this.host.totalFuelConsumptionRate * dt;
     const ratio = this.host.consumeFuel(units);
-    if (!(ratio > 0)) { this.finishBurn(scheduled.node); return; }
+    if (!(ratio > 0)) { this.finishBurn(scheduled.node, attractors, pivot); return; }
     const mass = motion.mass;
-    if (!(mass > 0)) { this.finishBurn(scheduled.node); return; }
+    if (!(mass > 0)) { this.finishBurn(scheduled.node, attractors, pivot); return; }
     const thrust = scale(dir, this.host.totalThrust / mass * ratio);
     motion.setThrust(this.externalThrust === null ? thrust : add(thrust, this.externalThrust));
   }
@@ -287,13 +295,45 @@ export class ShipAutopilot {
     motion.setTorque(torque);
   }
 
-  // 燃焼を閉じ、実行したノードを実状態から消化して次の段へ戻る。
-  private finishBurn(node: KinematicState): void {
+  // 燃焼を閉じ、実行したノードを実状態から消化し、残る計画へ中間修正を挿して次の段へ戻る。
+  private finishBurn(
+    node: KinematicState, attractors: readonly CelestialBody[], pivot: number,
+  ): void {
     const motion = this.host.motion;
     motion.setThrust(this.externalThrust);
     this.host.plan.consumeNodesUpTo(node.t, motion.state);
+    this.replanAfterBurn(attractors, pivot);
     this.stop();
     this.burnCompleted?.(this.host, node);
+  }
+
+  // 燃焼の実績が計画どおりでない分を、次ノードへ向かう中間修正ノードとして挿す閉ループ。
+  // 実状態を最も強く引く天体まわりで外挿し、次ノードの位置からずれていたら、
+  // ランベルトで修正点へ乗り継ぐノードを残り計画の先頭へ足す。
+  private replanAfterBurn(attractors: readonly CelestialBody[], pivot: number): void {
+    const next = this.host.plan.firstNode();
+    if (next === undefined) return;
+    const state = this.host.motion.state;
+    const tof = next.t - state.t;
+    const tC = state.t + Math.max(CORRECTION_LEAD_MIN, tof * CORRECTION_FRACTION);
+    if (!(tC < next.t)) return; // 次ノードが近いなら到達燃焼が誤差を吸収する
+    const center = strongestAttractor(state.r, attractors, pivot);
+    const elements = orbitalElementsOf(state, center, state.t);
+    if (elements === null) return;
+    const atNext = stateOnOrbitAt(elements, next.t);
+    if (atNext === null) return;
+    const centerNext = center.stateAt(next.t);
+    const miss = len(sub(add(atNext.r, centerNext.r), next.r));
+    if (!(miss > CORRECTION_MIN_MISS)) return;
+    const relC = stateOnOrbitAt(elements, tC);
+    if (relC === null) return;
+    const centerC = center.stateAt(tC);
+    const sol = solveLambert(relC.r, sub(next.r, centerNext.r), next.t - tC, center.def.mu)[0];
+    if (sol === undefined) return;
+    const dv = len(sub(sol.v1, relC.v));
+    if (!(dv >= MIN_RESOLVE_CORRECTION)) return;
+    const correction = kinematicState<'eci'>(tC, add(relC.r, centerC.r), add(sol.v1, centerC.v));
+    this.host.plan.replaceAll(state, [correction, ...this.host.plan.nodes]);
   }
 
   // 段と予定を畳む。推力は外部の分へ戻す。
