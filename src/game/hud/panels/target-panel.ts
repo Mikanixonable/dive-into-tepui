@@ -70,7 +70,8 @@ export class TargetPanel {
     if (hp !== null && maxHp !== null) {
       const clampedHp = Math.max(0, Math.min(maxHp, hp));
       const armorValue = `${Math.floor(clampedHp)} / ${maxHp}`;
-      this.armorMeter.setProgress(clampedHp, maxHp, armorValue, hp <= maxHp * 0.3);
+      // 装甲は減るほど撃破に近づくので、段を持たない。
+      this.armorMeter.setProgress(clampedHp, maxHp, armorValue, 'normal');
       this.els.setText('tgt-armor-value', armorValue);
     }
     // タンパク質構造を持つ標的なら、フェーズと部位ごとの状態も表示する。

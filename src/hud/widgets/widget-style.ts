@@ -94,14 +94,23 @@ export const WIDGET_STYLE = `
 /* w-slider: つまみ型の連続値スライダー。トラックの寸法はパネル側の CSS が決める。 */
 .w-slider { pointer-events: auto; accent-color: var(--color-primary); }
 
-/* w-meter: HP/温度/電力バー。常に左から右へ満ちる。 */
-.w-meter { display: flex; align-items: center; }
-.w-meter-track { position: relative; flex: 1 1 auto; height: 12px; overflow: hidden; border-radius: var(--radius-micro); background: var(--bar-bg); }
-.w-meter-fill { width: 0; height: 100%; background: var(--color-primary); transition: width var(--transition-fast); }
-.w-meter-fill.danger { background: var(--color-error); }
+/* w-meter: HP/温度/電力の細い線。常に左から右へ満ちる。量は中立の線で示し、色が付くのは
+   呼び出し側が注意・警告の段を渡したときだけ。閾値は目盛り(--at: 位置)で示す。 */
+.w-meter { display: flex; align-items: center; gap: var(--space-3); }
+.w-meter-track {
+  position: relative; flex: 1 1 auto; height: var(--space-2); overflow: hidden;
+  border-radius: var(--radius-pill); background: var(--role-hairline);
+}
+.w-meter-fill {
+  width: 0; height: 100%; border-radius: inherit; background: var(--role-label);
+  transition: width var(--transition-slow);
+}
+.w-meter-fill.caution { background: var(--role-caution); }
+.w-meter-fill.warning { background: var(--role-warning); }
+.w-meter-mark { position: absolute; top: 0; bottom: 0; left: var(--at); width: 1px; background: var(--fill-4); }
 .w-meter-value {
-  position: absolute; inset: 0; right: var(--space-2); display: flex; align-items: center; justify-content: flex-end;
-  font-size: var(--font-xs); color: var(--text-strong); text-shadow: 0 0 2px var(--bg), 0 0 2px var(--bg);
+  flex: 0 0 auto; font-size: var(--font-xs); color: var(--role-data);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 
 /* タップ最小寸法は pointer:coarse でだけ効かせる — マウス操作では詰めて並べたウィジェットの
