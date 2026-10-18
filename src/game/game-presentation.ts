@@ -10,6 +10,7 @@ import { PlayerMarkers } from './marker/player-markers';
 import { isModularShip } from './ship/modular-ship';
 import { CelestialMarkers } from './marker/celestial-markers';
 import { EquatorNodeManager } from './marker/equator-node-manager';
+import { OrbitSlotPresenter } from './navigation/orbit-slot-presenter';
 import { Targeter } from './targeter';
 import { PlanDisplay } from './plan/plan-display';
 import { PlanGuide } from './plan/plan-guide';
@@ -118,6 +119,8 @@ export class GamePresentation {
   private readonly flashEffectsView: FlashEffectsView;
   private readonly entityLines: EntityLineManager;
   private readonly equatorNodes: EquatorNodeManager;
+  // 軌道標識の軌道線・位相点マーカー・被選択物をまとめる口。
+  private readonly orbitSlots: OrbitSlotPresenter;
   private readonly frameControls: FrameControls;
   private readonly hudPanels: HudPanelPresenter;
   private readonly inputPhase: GameInputPhase;
@@ -146,6 +149,10 @@ export class GamePresentation {
     this.playerMarkers = new PlayerMarkers(markers);
     this.flashEffectsView = new FlashEffectsView(scene.scene);
     this.equatorNodes = new EquatorNodeManager(dynamicSystem, markers, viewOptionsSettings.mapDisplay);
+    this.orbitSlots = new OrbitSlotPresenter(
+      game.orbitSlots, celestialSystem, celestialSystem.orbitGuide.orbitCatalog,
+      markers, scene.scene, () => game.simTime,
+    );
     this.celestialMarkers = new CelestialMarkers(markers, celestialSystem);
     hud.beginRun(activeStage.id);
     const entityDisplayPort = entityDisplayCommands(commands, viewer.entityDisplay);
@@ -156,7 +163,9 @@ export class GamePresentation {
     this.entityLines = new EntityLineManager(dynamicSystem, viewer.entityDisplay);
     const cameraCommandPort = cameraCommands(commands, viewer.camera);
     const targetCommands = navTargetCommands(commands, viewer.navTarget);
-    this.navTargetPresenter = new NavTargetPresenter(viewer.navTarget, markers);
+    this.navTargetPresenter = new NavTargetPresenter(
+      viewer.navTarget, markers, game.orbitSlots, celestialSystem.orbitGuide.orbitCatalog,
+    );
     const anchorEntities = new AnchorEntities(
       dynamicSystem, controlSelection, this.navTargetPresenter, celestialSystem,
     );
@@ -236,7 +245,7 @@ export class GamePresentation {
       this.displayWindowManager, this.frameControls,
       this.frameAnchors, controlSelection, controlSelectionCommands(commands, controlSelection),
       game.simSpeedManager, simSpeedCommands(commands, game.simSpeedManager),
-      this.planDisplay, this.planPath, planCommands(commands),
+      this.planDisplay, this.planPath, planCommands(commands), this.orbitSlots,
       scene.scene, hud, this.uiSounds, this.navTargetPresenter, targetCommands,
       viewOptionsSettings.mapDisplay,
     );
@@ -296,6 +305,7 @@ export class GamePresentation {
     this.viewOptions.dispose();
     this.displayWindowManager.dispose();
     this.equatorNodes.dispose();
+    this.orbitSlots.dispose();
     this.flashEffectsView.dispose();
     this.targeter.dispose();
     this.navTargetPresenter.dispose();
@@ -434,6 +444,12 @@ export class GamePresentation {
     this.equatorNodes.sync(
       camera.project, camera.position, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot,
       view === 'map', timeLabel, nowMs,
+    );
+    // 標識の線は celestialSystem.sync の後・軌道線の右クリック候補(linePickables.refresh)の前に
+    // 揃える — 候補は描かれた線の点列を読む。
+    this.orbitSlots.sync(
+      displayTime, view, camera,
+      this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, visibilityPolicy, nowMs,
     );
   }
 

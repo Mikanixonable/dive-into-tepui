@@ -17,6 +17,7 @@ import type { MapDisplayToggles } from '../map/display-toggles';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DisplayWindow } from '../display-window-manager';
 import type { EquatorNodeManager } from '../marker/equator-node-manager';
+import type { OrbitSlotPresenter } from '../navigation/orbit-slot-presenter';
 import type { Vec3 } from '../../math/vec3';
 
 export class ObjectPickables {
@@ -49,6 +50,7 @@ export class ObjectPickables {
     private readonly planDisplay: PlanDisplay,
     private readonly frameAnchors: FrameAnchorSource,
     private readonly equatorNodes: EquatorNodeManager,
+    private readonly orbitSlots: OrbitSlotPresenter,
   ) {}
 
   // 候補列と可視性ポリシーを空へ戻す。マップを離れるときに呼ぶ。
@@ -108,5 +110,6 @@ export class ObjectPickables {
     for (const node of this.navTargetPresenter.pickables()) append(node);
     for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
     for (const node of this.equatorNodes.pickables) append(node);
+    for (const slot of this.orbitSlots.pickables) append(slot);
   }
 }
