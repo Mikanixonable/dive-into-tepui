@@ -70,7 +70,7 @@ function detailedMaterialFor(
 ): EarthSurfaceMaterialAttachment {
   // 材質バインディングのインターフェースを runtime attachment へ変換する。
   const binding = createEarthSurfaceMaterialBinding(
-    textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl, source.terrainFormat,
+    textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl,
     source.colorCalibration.diffuseAlbedoScale,
   );
   return {
@@ -113,14 +113,14 @@ function coordinatorFor(
   const queue = new EarthSurfaceTileRequestQueue(bootstrap.tileSource, {
     fetchImpl: options.fetchImpl,
     decodeImage: options.decodeImage,
-    terrainFormat: bootstrap.source?.terrainFormat,
   });
-  const gpu = new EarthSurfaceGpuAdapter(createEarthSurfaceGpuThree(backend));
-  if (gpu.mode === 'base') {
+  const three = createEarthSurfaceGpuThree(backend);
+  if (three.textures === null) {
     queue.dispose();
-    gpu.dispose();
+    three.dispose();
     return { coordinator: null, state: 'fallback', material: null, reason: 'WebGPU detail features unavailable' };
   }
+  const gpu = new EarthSurfaceGpuAdapter(three);
   const textures = gpu.textures;
   if (textures === null) {
     queue.dispose();
