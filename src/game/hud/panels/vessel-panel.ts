@@ -5,6 +5,11 @@
 // キー入力の代替 UI。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { Button, Meter, SegmentedControl } from '../../../hud/widgets';
+import { applyAlarmLevel, type AlarmLevel } from '../../../hud/alarm-level';
+import {
+  DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO, FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO,
+  ammoAlarmLevel, dynamicPressureAlarmLevel, fuelAlarmLevel,
+} from '../../alarm/alarm-level';
 import { fmtAmmoStatus } from '../ammo-status';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';
@@ -91,7 +96,9 @@ export class VesselPanel {
   public constructor(private readonly els: HudEls) {
     this.throttleMeter = this.buildMeter('throttle-readout', '並進出力');
     this.qdynMeter = this.buildMeter('qdyn-readout', '動圧');
+    this.qdynMeter.meter.setMarks(DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO);
     this.fuelMeter = this.mountMeter('rcs-fuel-meter', 'RCS燃料');
+    this.fuelMeter.setMarks(FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO);
     this.buildActionButtons();
     this.throttleControl = this.buildThrottleControl();
     const deployContainer = this.els.get('vessel-deploy-controls');
@@ -217,7 +224,7 @@ export class VesselPanel {
       throttleIdx + 1,
       THROTTLE_LEVELS.length,
       `${THROTTLE_LABELS[throttleIdx]} (${THROTTLE_LEVELS[throttleIdx]!.toFixed(1)} m/s²)`,
-      false,
+      'normal',
     );
     this.throttleControl.setSelected(throttleIdx);
 
@@ -231,7 +238,7 @@ export class VesselPanel {
         qdyn,
         MAX_DYN_PRESSURE,
         qdynText,
-        qdyn > 0.5 * MAX_DYN_PRESSURE,
+        dynamicPressureAlarmLevel(qdyn, MAX_DYN_PRESSURE),
       );
     }
 
@@ -245,28 +252,29 @@ export class VesselPanel {
     const clampedFuel = Math.max(0, Math.min(maxFuel, view.totalFuel));
     const fuelValueText = `${Math.round(clampedFuel)} / ${Math.round(maxFuel)}`;
 
-    this.fuelMeter.setProgress(
-      clampedFuel, maxFuel, fuelValueText, maxFuel > 0 && clampedFuel < maxFuel * 0.2,
-    );
+    const fuelLevel = fuelAlarmLevel(clampedFuel, maxFuel);
+    this.fuelMeter.setProgress(clampedFuel, maxFuel, fuelValueText, fuelLevel);
     this.els.setText('rcs-fuel-value', fuelValueText);
+    applyAlarmLevel(this.els.get('rcs-fuel-value'), fuelLevel);
 
     // 機関砲を持たない操作対象では、同じ行に燃料の読み値を出す。
     const ammoEl = this.els.get('ammo');
     const ammo = view.ammo;
     if (ammo) {
       ammoEl.textContent = fmtAmmoStatus(ammo.rounds, ammo.mags, ammo.cooldown);
-      ammoEl.classList.toggle('ui-danger', ammo.cooldown > 0 || ammo.mags < 4);
+      applyAlarmLevel(ammoEl, ammoAlarmLevel(ammo.rounds, ammo.mags));
     } else {
       ammoEl.textContent = `Fuel: ${Math.round(view.totalFuel)} / ${maxFuel}`;
-      ammoEl.classList.toggle('ui-danger', view.totalFuel < maxFuel * 0.2);
+      applyAlarmLevel(ammoEl, fuelAlarmLevel(view.totalFuel, maxFuel));
     }
   }
 
-  // now/max の実数からメーターの満ち幅・危険表示・aria 属性と右寄せの数値を反映する。
+  // now/max の実数からメーターの満ち幅・段・aria 属性と右寄せの数値を反映する。
   private syncMeter(
-    dom: VesselMeterDom, now: number, max: number, label: string, critical: boolean,
+    dom: VesselMeterDom, now: number, max: number, label: string, level: AlarmLevel,
   ): void {
-    dom.meter.setProgress(now, max, label, critical);
+    dom.meter.setProgress(now, max, label, level);
+    applyAlarmLevel(dom.value, level);
     if (dom.value.textContent !== label) dom.value.textContent = label;
   }
 

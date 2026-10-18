@@ -6,8 +6,10 @@ import { fmtEnergy } from '../../../hud/utils';
 import { Meter } from '../../../hud/widgets';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/combat-ship-entity';
 import { POWER_CAPACITY } from '../../player/power';
-
-const LOW_HP_RATIO = 0.3;
+import {
+  ARMOR_WARNING_RATIO, TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,
+  armorAlarmLevel, temperatureAlarmLevel,
+} from '../../alarm/alarm-level';
 
 export class StatusPanel {
   private readonly panel: HTMLElement;
@@ -33,7 +35,9 @@ export class StatusPanel {
     root.appendChild(this.panel);
 
     this.hpMeter = this.buildMeterRow('装甲');
+    this.hpMeter.setMarks(null, ARMOR_WARNING_RATIO);
     this.tempMeter = this.buildMeterRow('温度');
+    this.tempMeter.setMarks(TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO);
     this.powerMeter = this.buildMeterRow('電力');
   }
 
@@ -59,23 +63,19 @@ export class StatusPanel {
     if (!player) return;
 
     const { hp, maxHp } = player;
-    const low = hp <= maxHp * LOW_HP_RATIO;
     const temp = Math.round(player.motion.temperature);
-    const tempHigh = temp > 0.7 * MAX_HULL_TEMP;
     const chargeJ = player.motion.power.chargeJ;
 
     this.hpMeter.setRatio(hp / maxHp);
-    this.hpMeter.setDanger(low);
+    this.hpMeter.setLevel(armorAlarmLevel(hp, maxHp));
     this.hpMeter.setLabel(`${Math.floor(hp)} / ${maxHp}`);
 
     this.tempMeter.setRatio(temp / MAX_HULL_TEMP);
-    this.tempMeter.setDanger(tempHigh);
+    this.tempMeter.setLevel(temperatureAlarmLevel(temp, MAX_HULL_TEMP));
     this.tempMeter.setLabel(`${temp} / ${MAX_HULL_TEMP} K`);
 
     this.powerMeter.setRatio(player.motion.power.chargeRatio);
     this.powerMeter.setLabel(`${fmtEnergy(chargeJ)} / ${fmtEnergy(POWER_CAPACITY)}`);
-
-    this.centerCol.classList.toggle('warn', low);
 
     const leftHtml = message ? `<div>${message}</div><div>撃墜 ${kills}</div>` : `<div>撃墜 ${kills}</div>`;
     if (this.lastLeftHtml !== leftHtml) {

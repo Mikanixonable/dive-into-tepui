@@ -1,4 +1,5 @@
 import { Button, buildSpan, Meter } from '../../../hud/widgets';
+import { ARMOR_WARNING_RATIO, armorAlarmLevel } from '../../alarm/alarm-level';
 import { ShipConstructionCatalog } from './ship-construction-catalog';
 import { formatConstructionMetric, formatConstructionNumber } from './ship-construction-format';
 import { hiddenShipConstructionModel } from '../../ship/ship-construction-types';
@@ -83,6 +84,7 @@ export class ShipConstructionPanel {
 
     // 動的に組む表示部品を、静的な配置枠へ差し込む。
     this.hpMeter = new Meter();
+    this.hpMeter.setMarks(null, ARMOR_WARNING_RATIO);
     this.hpMeter.element.classList.add('construction-hp-meter');
     els.get('construction-hp-meter').appendChild(this.hpMeter.element);
 
@@ -125,7 +127,7 @@ export class ShipConstructionPanel {
     this.hp.textContent = `${formatConstructionNumber(model.hp)} / ${formatConstructionNumber(model.maxHp)}`;
     this.hpPreview.textContent = previewText(model.maxHp, model.preview === null ? null : model.preview.maxHp, '');
     this.hpMeter.setRatio(model.maxHp > 0 ? model.hp / model.maxHp : 0);
-    this.hpMeter.setDanger(model.maxHp > 0 && model.hp / model.maxHp < 0.3);
+    this.hpMeter.setLevel(armorAlarmLevel(model.hp, model.maxHp));
     this.hpMeter.setLabel(`${formatConstructionNumber(model.hp)} / ${formatConstructionNumber(model.maxHp)}`);
 
     // 現在値と配置後の見積りを、性能表示へ並べる。
