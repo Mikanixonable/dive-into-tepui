@@ -129,8 +129,10 @@ const definitions: readonly ShipModuleDefinition[] = [
   tank('tank-combat-main', 6, 'main', 1_000, 100, 0.6),
   // RCS の容量は持つが、推進剤質量は主タンク側の集計値に含まれる。
   tank('tank-combat-rcs', 3, 'rcs', 80, 25, 0, 'tank-3-rcs'),
+  // 推力は 400 m/s² 級の手触りを保ち、消費率は有効排気速度が化学ロケット級(約4.4 km/s)に
+  // なる値へ揃える。RCS の消費率はトルク基準で排気速度へ写像しないため据え置き。
   moduleDefinition('thruster-standard', 'thruster', 1, 80, 50, {
-    thrust: 400_000, fuelConsumptionRate: 1,
+    thrust: 400_000, fuelConsumptionRate: 90,
   }),
   moduleDefinition('rcs-standard', 'rcs', 1, 50, 50, { torque: RCS_MODULE_TORQUE, fuelConsumptionRate: 1 }),
   moduleDefinition(
@@ -148,7 +150,7 @@ const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 825 },
     3, 'solar-panel-standard', [], v3(), [DEPLOYABLE_MOUNT_PRIMITIVE]),
   moduleDefinition('booster-standard', 'booster', 6, 100, 200, {
-    fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 80,
+    fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 135,
   }),
   moduleDefinition('docking-port-standard', 'docking_port', 1, 50, 40, {}, 1.5,
     'docking-port-standard', [], v3(), [DOCK_MODULE_PRIMITIVE], undefined, 3),
