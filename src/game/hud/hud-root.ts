@@ -279,7 +279,6 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
         <span class="ui-section-code">BLD</span>
         <span class="ui-data-context">CONSTRUCTION WORKSPACE</span>
         <strong data-id="construction-ship-name">—</strong>
-        <span class="construction-target-dock" data-id="construction-dock-name">—</span>
       </header>
       <section class="construction-catalog" aria-label="モジュールカタログ">
         <div data-id="construction-category-tabs"></div>
@@ -290,16 +289,27 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
     <div class="construction-center" aria-hidden="true">
       <span class="ui-section-code">ASM</span>
       <span class="ui-data-context">3D ASSEMBLY / SELECT A MOUNT POINT</span>
-      <span class="construction-center-note">リングを選択 · 同じリングを再度選択して配置</span>
+      <span class="construction-center-note">カードを押して手に取る · ドラッグして候補へ置く</span>
     </div>
 
     <aside class="construction-pane construction-pane-right ui-surface-focus" aria-label="建造結果">
-      <section class="construction-selection" aria-label="建造選択">
-        <div class="construction-selection-row"><span>部品</span><strong data-id="construction-selected-module">—</strong></div>
-        <div class="construction-selection-row"><span>接続先</span><strong data-id="construction-selected-slot">—</strong></div>
+      <section class="construction-held" aria-label="手持ち">
+        <div class="construction-section-head"><span class="ui-data-label">手持ち</span><strong data-id="construction-held-name">—</strong></div>
+        <div class="construction-held-row"><span>向き</span><output data-id="construction-held-orientation">—</output></div>
+        <div class="construction-held-row"><span>対称</span><output data-id="construction-held-symmetry">—</output></div>
+        <div class="construction-button-row" data-id="construction-held-actions" role="group" aria-label="手持ちの操作"></div>
+      </section>
+      <section class="construction-selection" aria-label="選択中の部品">
+        <div class="construction-section-head"><span class="ui-data-label">選択中</span><strong data-id="construction-selected-name">—</strong></div>
+        <div class="construction-button-row" data-id="construction-selection-actions" role="group" aria-label="選択中の部品の操作"></div>
+        <div class="construction-blueprint-form" data-id="construction-blueprint-form"></div>
+        <p class="construction-note hidden" data-id="construction-blueprint-note"></p>
+      </section>
+      <section class="construction-targets" aria-label="取り付け候補">
+        <div class="construction-section-head"><span class="ui-data-label">取り付け候補</span></div>
         <div class="construction-slots" data-id="construction-slots" aria-label="接続候補"></div>
       </section>
-      <div class="construction-metrics">
+      <div class="construction-metrics" aria-label="船体全体の性能">
         <div class="construction-metric">
           <span class="ui-data-label">MODULES</span><output data-id="construction-count">0</output>
         </div>
@@ -317,8 +327,12 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
         <div class="construction-metric"><span class="ui-data-label">POWER GENERATION</span><output data-id="construction-power">0</output><small class="ui-delta" data-id="construction-power-preview"></small></div>
         <div class="construction-metric"><span class="ui-data-label">RADIATOR AREA</span><output data-id="construction-radiation">0</output><small class="ui-delta" data-id="construction-radiation-preview"></small></div>
         <div class="construction-metric"><span class="ui-data-label">ROLE</span><output data-id="construction-role">物資</output></div>
-        <div class="construction-metric"><span class="ui-data-label">COMPLETION</span><output data-id="construction-completion">部品を1個以上配置</output></div>
       </div>
+      <section class="construction-history" aria-label="操作履歴">
+        <div class="construction-section-head"><span class="ui-data-label">履歴</span></div>
+        <div class="construction-history-list" data-id="construction-history-list" aria-label="操作履歴の一覧"></div>
+        <div class="construction-button-row" data-id="construction-history-actions" role="group" aria-label="取り消しとやり直し"></div>
+      </section>
       <p class="construction-warning ui-status-note ui-status-note--warning hidden" data-id="construction-warning"></p>
       <div class="construction-actions" data-id="construction-actions" role="group" aria-label="船体建造操作"></div>
     </aside>`;
