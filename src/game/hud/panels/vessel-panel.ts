@@ -11,7 +11,7 @@ import { setReadout } from '../../../hud/readout';
 import { setStatePip } from '../../../hud/state-pip';
 import {
   DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO, FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO,
-  ammoAlarmLevel, dynamicPressureAlarmLevel, fuelAlarmLevel,
+  ammoAlarmLevel,
 } from '../../alarm/alarm-level';
 import { fmtAmmoStatus } from '../ammo-status';
 import { SyncThrottle } from '../sync-throttle';
@@ -36,6 +36,9 @@ export interface VesselPanelViewModel {
   readonly throttleIdx: number;
   // 大気を受けない操作対象では null。
   readonly dynamicPressurePa: number | null;
+  // 警報の評価器が判定した動圧・燃料の段。行・メーターは警報灯と同じ判定を読む。
+  readonly dynamicPressureLevel: AlarmLevel;
+  readonly fuelLevel: AlarmLevel;
   readonly fineAttitude: boolean;
   readonly cameraFollowsAttitude: boolean;
   readonly progradeHold: boolean;
@@ -224,7 +227,7 @@ export class VesselPanel {
     let qdynLevel: AlarmLevel = 'normal';
     let qdynText = '';
     if (qdyn !== null) {
-      qdynLevel = dynamicPressureAlarmLevel(qdyn, MAX_DYN_PRESSURE);
+      qdynLevel = view.dynamicPressureLevel;
       const parts = qdyn >= 1000
         ? { value: (qdyn / 1000).toFixed(2), unit: 'kPa' }
         : { value: qdyn.toFixed(0), unit: 'Pa' };
@@ -240,7 +243,7 @@ export class VesselPanel {
 
     const maxFuel = view.totalMaxFuel;
     const clampedFuel = Math.max(0, Math.min(maxFuel, view.totalFuel));
-    const fuelLevel = fuelAlarmLevel(clampedFuel, maxFuel);
+    const fuelLevel = view.fuelLevel;
     this.syncMeter(
       { meter: this.fuelMeter, value: this.els.get('rcs-fuel-value') },
       clampedFuel, maxFuel, { value: `${Math.round(clampedFuel)}`, unit: `/ ${Math.round(maxFuel)}` }, fuelLevel,

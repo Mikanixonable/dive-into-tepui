@@ -4,6 +4,7 @@ import { injectOnce } from '../inject-style';
 import { WIDGET_STYLE } from '../widgets/widget-style';
 import { HUD_LAYOUT_TOKENS_STYLE } from './layout-tokens';
 import { INSTRUMENT_STYLE } from './instrument-style';
+import { ALARM_STYLE } from './alarm-style';
 
 const SURFACE_STYLE = `
 .ui-surface-quiet, #hud .panel {
@@ -72,5 +73,5 @@ const SURFACE_STYLE = `
 
 // 共通 UI の CSS を一度だけ document.head へ注入する。
 export function injectCommonUiStyle(): void {
-  injectOnce('common-ui-style', HUD_LAYOUT_TOKENS_STYLE + SURFACE_STYLE + INSTRUMENT_STYLE + WIDGET_STYLE);
+  injectOnce('common-ui-style', HUD_LAYOUT_TOKENS_STYLE + SURFACE_STYLE + INSTRUMENT_STYLE + ALARM_STYLE + WIDGET_STYLE);
 }

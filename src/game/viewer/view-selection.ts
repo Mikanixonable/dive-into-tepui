@@ -60,7 +60,6 @@ export class ViewSelection implements ViewSelectionSource {
   public toggle(): void {
     if (this.view === 'combat') {
       this.view = 'map';
-      this.events.record({ kind: 'orbitPlanningOpened' });
       return;
     }
 

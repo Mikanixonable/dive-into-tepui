@@ -63,7 +63,6 @@ function worldSoundOf(body: RunEventBody): WorldSound | null {
     case 'enemyStruckByBullet': return { kind: 'enemyHit' };
     case 'shipExploded': return { kind: 'explosion' };
     case 'plasmaPassedClose': return { kind: 'magneticInterference' };
-    case 'altitudeWarned': return { kind: 'altAlarm' };
     case 'boosterDecoupled': return { kind: 'decouple' };
     case 'ammoPickedUp':
     case 'rcsFuelPickedUp': return { kind: 'pickup' };
@@ -119,7 +118,7 @@ export class RunEventPresenter {
       case 'autoWarpUnavailable':
         this.notifier.hint(body.reason === 'noNode'
           ? `マニューバノードがありません ([${K.toggleMapMode.label}] で計画)`
-          : 'ノード時刻を通過しています', undefined, 'warn');
+          : 'ノード時刻を通過しています', undefined, 'denied');
         return;
       case 'controlledStateCorrupted': {
         const detail = `controlled ${describeState(body.state)} ${describeAttitude(body.attitude)} simTime=${body.simTime}`;
@@ -133,10 +132,10 @@ export class RunEventPresenter {
       }
 
       case 'gunDisabled':
-        this.notifier.hint('武装が損傷しており発射できない', 3000, 'warn');
+        this.notifier.hint('武装が損傷しており発射できない', 3000, 'denied');
         return;
       case 'gunOutOfAmmo':
-        this.notifier.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000, 'warn');
+        this.notifier.hint('弾薬切れ — 軌道上の補給 ▣ を回収せよ', 3000, 'denied');
         return;
 
       case 'enemyDied':
@@ -145,12 +144,9 @@ export class RunEventPresenter {
           : `${body.name} ${ENEMY_LOSS_TEXT[body.cause]}`);
         return;
       case 'shipLost':
-        this.notifier.hint(body.reason, undefined, 'warn');
+        this.notifier.hint(body.reason, 6000, 'denied');
         return;
 
-      case 'altitudeWarned':
-        this.notifier.hint(`警告: 高度が${Math.round(body.threshold / 1000)}km以下です`, 3000, 'warn');
-        return;
       case 'rcsDampToggled':
         this.notifier.hint(`RCS 回転制動: ${body.on ? 'ON' : 'OFF'}`);
         return;
@@ -171,21 +167,21 @@ export class RunEventPresenter {
         return;
 
       case 'boosterLimitReached':
-        this.notifier.hint(`ブースターは最大 ${body.limit} 段です`, undefined, 'warn');
+        this.notifier.hint(`ブースターは最大 ${body.limit} 段です`, undefined, 'denied');
         return;
       case 'boosterAttached':
         this.notifier.hint(`ブースターを追加: ${body.stages} 段`);
         return;
       case 'boosterIgnitionUnavailable':
-        this.notifier.hint('点火できるブースターがありません', undefined, 'warn');
+        this.notifier.hint('点火できるブースターがありません', undefined, 'denied');
         return;
       case 'boosterIgnitionToggled':
         this.notifier.hint(body.fuelEmpty
           ? '最後尾ブースターは燃料切れです'
-          : `ブースター燃焼: ${body.on ? 'ON' : 'OFF'}`, undefined, body.fuelEmpty ? 'warn' : 'info');
+          : `ブースター燃焼: ${body.on ? 'ON' : 'OFF'}`, undefined, body.fuelEmpty ? 'denied' : 'info');
         return;
       case 'boosterDecoupleUnavailable':
-        this.notifier.hint('分離できるブースターがありません', undefined, 'warn');
+        this.notifier.hint('分離できるブースターがありません', undefined, 'denied');
         return;
       case 'boosterDecoupled':
         this.notifier.hint(`ブースター分離: 残り ${body.stages} 段`);
@@ -215,21 +211,14 @@ export class RunEventPresenter {
         this.uiSounds.push('warp');
         return;
       case 'planNodesDropped':
-        this.notifier.hint(`${body.ship}: 起点より前のマニューバノード ${body.count} 件を復元できません`, undefined, 'warn');
+        this.notifier.hint(`${body.ship}: 起点より前のマニューバノード ${body.count} 件を復元できません`, undefined, 'denied');
         return;
 
       case 'combatViewUnavailable':
-        this.notifier.hint('操作できる艦または基地がいません', undefined, 'warn');
+        this.notifier.hint('操作できる艦または基地がいません', undefined, 'denied');
         return;
       case 'maneuverPlanConfirmed':
         this.notifier.hint(`マニューバ計画 ${body.nodeCount} 件確定`, 4500, 'plan');
-        return;
-      case 'orbitPlanningOpened':
-        this.notifier.hint(
-          `軌道計画モード: 軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [${K.toggleMapMode.label}] で確定`,
-          5000,
-          'plan',
-        );
         return;
 
       case 'cameraViewReset':
@@ -271,16 +260,16 @@ export class RunEventPresenter {
         this.notifier.hint(`${body.name} を配置`);
         return;
       case 'objectPlacementRejected':
-        this.notifier.hint(`配置できません: ${body.reason}`, 5000, 'warn');
+        this.notifier.hint(`配置できません: ${body.reason}`, 5000, 'denied');
         return;
       case 'shipPlacementLimitReached':
-        this.notifier.hint(`配置数が上限(${body.limit}隻)に達しています`, undefined, 'warn');
+        this.notifier.hint(`配置数が上限(${body.limit}隻)に達しています`, undefined, 'denied');
         return;
       case 'orbitNotDuplicable':
-        this.notifier.hint('この軌道は要素として複製できないため、種類だけを引き継いだ新規配置として開きます', undefined, 'warn');
+        this.notifier.hint('この軌道は要素として複製できないため、種類だけを引き継いだ新規配置として開きます', undefined, 'denied');
         return;
       case 'shipRequiredForAction':
-        this.notifier.hint(SHIP_REQUIRED_TEXT[body.action], undefined, 'warn');
+        this.notifier.hint(SHIP_REQUIRED_TEXT[body.action], undefined, 'denied');
         return;
     }
   }

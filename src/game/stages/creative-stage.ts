@@ -21,6 +21,7 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ViewMode } from '../view/view-mode';
+import type { AlarmLevel } from '../../hud/alarm-level';
 
 // クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
 // 保つ(ON に戻したとき波数を続きから再開する)。手動スポーンと物体配置の設定・連番も持つ。
@@ -228,9 +229,9 @@ export class CreativeStage extends Stage {
 
   // 共通のステータス表示に加えて、ステージ操作パネルと配置プレビューを同期する。
   public sync(
-    camera: CameraFrame, view: ViewMode, displayTime: number,
+    camera: CameraFrame, view: ViewMode, displayTime: number, hullTemperatureLevel: AlarmLevel,
   ): void {
-    super.sync(camera, view, displayTime);
+    super.sync(camera, view, displayTime, hullTemperatureLevel);
     const ship = this.ship;
     this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
     this.mountStageControlsPanel(view === 'map');

@@ -75,6 +75,7 @@ export function helpRows(): readonly HelpRow[] {
       [K.solarDeployLeft, K.solarDeployRight], '太陽電池パドル展開 / 収納',
       `左右の太陽電池パドルを個別に切り替える (${K.solarDeployLeft.label} = 左、${K.solarDeployRight.label} = 右)。`,
     ),
+    keyRow('flight', [K.acknowledgeAlarm], '警報を確認', '点滅と警報音を止める。警報は条件が戻るまで残る。'),
     keyRow('combat', [K.targetSelect], 'ターゲット選択', '照準に近い敵を選択する。短時間の連打で第二ターゲットを順送りする。'),
     keyRow('combat', [K.gunsightZoom], '照準ズーム', '押している間、機首方向を画面中心に拡大表示する。自機は非表示になる。'),
     keyRow('camera', [K.followAttitudeToggle], '視点の RCS 追従', '視点を機体姿勢に追従させる。OFF にすると軌道基準の独立視点になる。'),

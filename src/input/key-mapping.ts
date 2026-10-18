@@ -75,6 +75,7 @@ export const KEY_MAPPING = {
 
   // 画面
   help: { code: 'KeyH', label: 'H' },
+  acknowledgeAlarm: { code: 'KeyY', label: 'Y' },
   pauseMenu: { code: 'Escape', label: 'ESC' },
   restart: { code: 'KeyR', label: 'R' },
   toggleDebugInfoWindow: { code: 'F3', label: 'F3' },

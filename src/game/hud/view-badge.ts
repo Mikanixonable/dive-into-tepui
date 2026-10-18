@@ -1,4 +1,4 @@
-// トップバー1行目のコンテキスト表示: 現在のモード・ビュー切替と、注視/操作/ターゲットの対象名。
+// 全体ステータスバーの先頭: ステージ名・ビュー切替バッジと、操作対象と違うときだけ出す注視対象の名前。
 import type { ViewMode } from '../view/view-mode';
 import type { ViewCommands } from '../viewer/view-commands';
 import { ContextMenu, type MenuItem } from './windows/context-menu';
@@ -7,54 +7,17 @@ import { Button } from '../../hud/widgets';
 
 const VIEW_LABELS: Record<ViewMode, string> = { combat: 'Combat', map: 'Map' };
 
-// 対象が定まっていない欄の表示。
-const NO_VALUE = '—';
+// 注視対象の名前の前に添える記号。
+const FOCUS_GLYPH = '◎';
 
-// 語ごとに先頭を大文字、残りを小文字にする('CREATIVE' → 'Creative')。
-function titleCase(s: string): string {
-  return s.replace(/\S+/g, (w) => (w[0] ?? '').toUpperCase() + w.slice(1).toLowerCase());
-}
-
-// 「· Focus: 月」の1欄を container の末尾へ組み、値側の要素を返す。
-function appendField(container: HTMLElement, label: string): HTMLElement {
-  // 読み上げない区切りの「·」。
-  const separator = document.createElement('span');
-  separator.className = 'vb-sep';
-  separator.setAttribute('aria-hidden', 'true');
-  separator.textContent = '·';
-  // 「ラベル: 値」の欄。値は未定の表示で始める。
-  const field = document.createElement('span');
-  field.className = 'vb-field';
-  const key = document.createElement('span');
-  key.textContent = `${label}:`;
-  const value = document.createElement('span');
-  value.textContent = NO_VALUE;
-  field.append(key, value);
-  container.append(separator, field);
-  return value;
-}
-
-// 欄の値を書く。null なら未定の表示にする。
-function setFieldValue(el: HTMLElement, value: string | null): void {
-  const text = value ?? NO_VALUE;
-  if (el.textContent !== text) el.textContent = text;
-  const field = el.parentElement;
-  field?.classList.toggle('hidden', value === null);
-  const separator = field?.previousElementSibling;
-  if (separator instanceof HTMLElement && separator.classList.contains('vb-sep')) {
-    separator.classList.toggle('hidden', value === null);
-  }
-}
-
-// ビューバッジが1フレームに映す値。名前の欄は、対象が定まっていなければ null。
+// ビューバッジが1フレームに映す値。
 export interface ViewBadgeViewModel {
   readonly modeLabel: string;
   readonly view: ViewMode;
   // 遷移メニューに並べるビュー。いま入れるものだけが入る。
   readonly selectableViews: readonly ViewMode[];
+  // 注視対象の名前。操作対象と同じなら null。
   readonly focusName: string | null;
-  readonly controlName: string | null;
-  readonly targetName: string | null;
 }
 
 export class ViewBadge {
@@ -62,37 +25,34 @@ export class ViewBadge {
   private readonly modeEl: HTMLElement;
   private readonly viewButton: Button;
   private readonly focusEl: HTMLElement;
-  private readonly controlEl: HTMLElement;
-  private readonly targetEl: HTMLElement;
   // ビュー遷移メニューは特定の対象を持たないので、target には固定で true を使う。
   private readonly menu: ContextMenu<true, ViewMode>;
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
   // 直近の sync が受けた値。遷移メニューはフレームの外で開くので、遷移先をここから引く。
   private view: ViewBadgeViewModel | null = null;
-  // container(トップバー1行目の行)へコンテキスト表示を組み立て、遷移メニューは
-  // overlayManager へ登録する。遷移メニューの選択は commands へ返す。
+
+  // container(全体ステータスバーの先頭の欄)へステージ名・ビューボタン・注視対象の欄を組み立て、
+  // 遷移メニューは overlayManager へ登録する。遷移メニューの選択は commands へ返す。
   public constructor(
     container: HTMLElement, overlayManager: OverlayManager,
     private readonly commands: Pick<ViewCommands, 'select'>,
   ) {
     this.menu = new ContextMenu<true, ViewMode>(overlayManager);
-    // モード名・ビュー切替ボタンと、現在値がある対象欄を横に並べる。
     container.setAttribute('role', 'navigation');
     container.setAttribute('aria-label', 'ビュー切り替え');
     container.addEventListener('pointerdown', this.stopPointerDown);
 
     this.modeEl = document.createElement('span');
     this.modeEl.className = 'vb-mode';
-    this.viewButton = new Button('', () => this.openMenu());
+    this.viewButton = new Button('', () => this.openMenu(), undefined, 'dense');
     this.viewButton.element.classList.add('vb-view-btn');
     this.viewButton.element.setAttribute('aria-haspopup', 'menu');
     this.viewButton.element.setAttribute('aria-label', '表示するビューを選ぶ');
     this.viewButton.element.setAttribute('aria-expanded', 'false');
+    this.focusEl = document.createElement('span');
+    this.focusEl.className = 'vb-focus hidden';
 
-    container.append(this.modeEl, this.viewButton.element);
-    this.focusEl = appendField(container, 'Focus');
-    this.controlEl = appendField(container, 'Control');
-    this.targetEl = appendField(container, 'Target');
+    container.append(this.modeEl, this.viewButton.element, this.focusEl);
     this.el = container;
 
     this.menu.onSelect = (act) => { this.commands.select(act); };
@@ -106,14 +66,15 @@ export class ViewBadge {
     this.el.replaceChildren();
   }
 
-  // モード名・ビューボタンと、注視対象・操作対象・ターゲットの名前を反映する。
+  // ステージ名・ビューボタンと、注視対象の名前を反映する。
   public sync(view: ViewBadgeViewModel): void {
     this.view = view;
-    this.modeEl.textContent = titleCase(view.modeLabel).toUpperCase();
+    const mode = view.modeLabel.toUpperCase();
+    if (this.modeEl.textContent !== mode) this.modeEl.textContent = mode;
     this.viewButton.setLabel(`${VIEW_LABELS[view.view].toUpperCase()} ▾`);
-    setFieldValue(this.focusEl, view.focusName);
-    setFieldValue(this.controlEl, view.controlName);
-    setFieldValue(this.targetEl, view.targetName);
+    this.focusEl.classList.toggle('hidden', view.focusName === null);
+    const focus = view.focusName === null ? '' : `${FOCUS_GLYPH} ${view.focusName}`;
+    if (this.focusEl.textContent !== focus) this.focusEl.textContent = focus;
   }
 
   // ビュー遷移メニューをボタンの下に開く。遷移できるビューが無ければ開かない。

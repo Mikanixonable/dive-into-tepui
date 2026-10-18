@@ -34,14 +34,14 @@ export class SnapshotControls {
     if (source === null) return;
     // 決着後の状態を残すと、結果画面へ辿り着けない記録になる(SAVE.md「記録」)。
     if (!source.isPlaying) {
-      this.notifier.hint('決着後はセーブできません', undefined, 'warn');
+      this.notifier.hint('決着後はセーブできません', undefined, 'denied');
       return;
     }
     const snap = this.service.addManualSave(source.runSummary(), source.serialize(), null);
     this.notifier.hint(
       snap ? `セーブしました: ${snap.name}` : 'セーブに失敗しました',
       undefined,
-      snap ? 'info' : 'warn',
+      snap ? 'info' : 'denied',
     );
   }
 }

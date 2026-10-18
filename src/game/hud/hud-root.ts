@@ -21,6 +21,8 @@ import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { SHIP_CONSTRUCTION_STYLE } from './style/ship-construction-style';
 import { EDITORIAL_DATA_STYLE } from './style/editorial-data-style';
+import { TOP_BAR_STYLE } from './style/top-bar-style';
+import { ALERT_STACK_STYLE } from './style/alert-stack-style';
 import { isCompactViewport } from '../../hud/breakpoints';
 import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
@@ -36,7 +38,8 @@ const STYLE =
   + PLAN_PANEL_STYLE + VIEW_OPTIONS_PANEL_STYLE + PREDICT_PANEL_STYLE
   + FRAME_CONTROLS_STYLE + ORBIT_GUIDE_STYLE + STAGE_CONTROLS_STYLE
   + OBJECT_PLACER_STYLE + STAGE_STATUS_STYLE
-  + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE + SHIP_CONSTRUCTION_STYLE;
+  + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE + SHIP_CONSTRUCTION_STYLE
+  + TOP_BAR_STYLE + ALERT_STACK_STYLE;
 
 
 // 組み上がった HUD の DOM への参照一式。
@@ -348,33 +351,39 @@ function buildMapScale(root: HTMLElement): void {
     </div>`;
 }
 
-// 画面全体のトップバーを組む。
+// 画面全体の1行のステータスバーを組む。左から、ステージ名・ビュー切替(と注視対象)、日時と T+、
+// NODE WARP、時間加速、警報灯、見せ方トグル。
 function buildTopBar(root: HTMLElement): void {
   const bar = createHudElement('section', 'hud-topbar', root, 'ui-surface-quiet');
-  bar.setAttribute('aria-label', 'Mission status');
-  // タイトル画面の status block と同じ語彙で、workspace → context → mission time の順に読む。
-  bar.classList.add('editorial-instrument');
+  bar.setAttribute('aria-label', '全体ステータス');
   bar.innerHTML = `
-    <div class="gs-status-head">
-      <span class="ui-section-code" aria-hidden="true">MIS</span>
-      <span class="ui-data-context">MISSION STATUS</span>
-      <span class="gs-workspace ui-data-context" aria-label="現在のHUDワークスペース"></span>
-    </div>
     <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
-    <div class="gs-metrics">
-      <div class="gs-metric gs-metric-time">
-        <span class="ui-data-label">MISSION TIME</span>
-        <output class="v" data-id="met">—</output>
-      </div>
-      <div class="gs-metric">
-        <span class="ui-data-label">SIM RATE</span>
-        <div class="gs-speed-holder" data-id="sim-speed"></div>
-      </div>
-      <div class="gs-metric">
-        <span class="ui-data-label">NODE WARP</span>
-        <output class="v" data-id="node-warp-remain">—</output>
-      </div>
-    </div>`;
+    <i class="ui-strip-sep" aria-hidden="true"></i>
+    <span class="ui-strip-time">
+      <output class="ui-strip-date" data-id="met">—</output> <output data-id="met-elapsed">—</output>
+    </span>
+    <span class="ui-strip-chip hidden" data-id="node-warp">
+      <span class="ui-strip-label">NODE WARP</span><output data-id="node-warp-remain">—</output>
+    </span>
+    <i class="ui-strip-sep" aria-hidden="true"></i>
+    <div class="ui-warp" data-id="sim-speed" role="group" aria-label="時間加速"></div>
+    <i class="ui-strip-sep" aria-hidden="true"></i>
+    <span class="ui-annun" data-id="alarm-lamps" role="status">
+      <span class="ui-lamp" data-lamp="caution"><span class="ui-lamp-name">CAUTION</span><b class="ui-lamp-n"></b></span>
+      <span class="ui-lamp" data-lamp="warning"><span class="ui-lamp-name">WARNING</span><b class="ui-lamp-n"></b></span>
+    </span>
+    <i class="ui-strip-sep" aria-hidden="true"></i>
+    <div class="ui-strip-style" data-id="style-toggle"></div>`;
+}
+
+// 画面中央上部に積む、警報帯・ブリーフィングのカード・案内チップの置き場を組む。
+function buildAlertStack(layer: HTMLElement): void {
+  const stack = createHudElement('div', 'hud-alert-stack', layer);
+  createHudElement('div', 'hud-alarm-band', stack);
+  const briefing = createHudElement('section', 'hud-briefing', stack, 'ui-surface-focus hidden');
+  briefing.setAttribute('aria-label', 'ブリーフィング');
+  const hint = createHudElement('div', 'hud-hint', stack, 'ui-hint hidden');
+  hint.setAttribute('aria-label', '軌道計画の操作');
 }
 
 // 視点リセットボタンを組む。id の chase は「動く実体を追っている視点」の意味。
@@ -470,7 +479,8 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
   trackHudChromeInset(root, chrome);
 
   buildMapScale(mapRoot.element);
-  createHudElement('div', 'hud-toast', layers.notify, 'ui-surface-focus');
+  buildAlertStack(layers.notify);
+  createHudElement('div', 'hud-toast', layers.notify);
 
   const els = new HudEls(root);
   return { combatRoot, mapRoot, helpPanel, els };

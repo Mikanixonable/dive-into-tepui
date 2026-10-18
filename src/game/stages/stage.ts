@@ -4,6 +4,7 @@ import { isModularShip, ModularShip, type ModularShipInit } from '../ship/modula
 import { Logistics, type SerializedLogistics } from './stage-utils/logistics';
 import { ScoreCounter, type SerializedScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
+import type { AlarmLevel } from '../../hud/alarm-level';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from '../../physics/time';
@@ -225,21 +226,21 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.statusPanel.appendLeftWidget(el);
   }
 
-  // ステータスパネルを同期する。
+  // ステータスパネルを同期する。hullTemperatureLevel は警報の評価器が判定した船体温度の段。
   public sync(
-    _camera: CameraFrame, view: ViewMode, _displayTime: number,
+    _camera: CameraFrame, view: ViewMode, _displayTime: number, hullTemperatureLevel: AlarmLevel,
   ): void {
-    this.syncStatusPanel(view === 'map');
+    this.syncStatusPanel(view === 'map', hullTemperatureLevel);
   }
 
   // 直近の sync が組んだ、このステージ固有のマーカーの宣言。
   public get markerDeclarations(): readonly MarkerDeclaration[] { return []; }
 
   // hudSubStatus() が null のとき、またはマップビューのときはパネルを畳む。
-  private syncStatusPanel(mapView: boolean): void {
+  private syncStatusPanel(mapView: boolean, hullTemperatureLevel: AlarmLevel): void {
     const message = this.hudSubStatus();
     const show = message !== null && !mapView;
-    this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills);
+    this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills, hullTemperatureLevel);
   }
 
   // 台本が相手にする自艦。操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。

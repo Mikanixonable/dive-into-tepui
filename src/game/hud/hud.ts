@@ -13,6 +13,8 @@ import { EnemiesPanel, type EnemiesPanelViewModel } from './panels/enemies-panel
 import { BurnManagementPanel, type BurnManagementViewModel } from './panels/burn-management-panel';
 import { ShipConstructionPanel } from './panels/ship-construction-panel';
 import { TopBar, type TopBarViewModel } from './panels/top-bar';
+import { AlarmBand } from './alarm-band';
+import { Guidance, type PlanHintStage } from './guidance';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow, type OrbitAnalysisSubject } from './orbit/orbit-analysis-window';
 import type { AnalysisChartSource } from './orbit/orbit-analysis-tab';
@@ -24,6 +26,7 @@ import type { HelpPanel } from './windows/help-panel';
 import type { HintKind, Notifier } from '../../hud/notifier';
 import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
 import { HudToast } from './hud-toast';
+import type { ActiveAlarm } from '../alarm/alarm-evaluator';
 import { hudAttention, hudWorkspace } from './hud-workspace';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
@@ -38,6 +41,12 @@ export interface HudPanelViewModels {
   readonly target: TargetPanelViewModel | null;
   readonly enemies: EnemiesPanelViewModel | null;
   readonly burnManagement: BurnManagementViewModel | null;
+  // 出ている警報。警告が先、同じ段では新しいものが先。
+  readonly alarms: readonly ActiveAlarm[];
+  // 軌道計画の案内チップの段。出さないなら null。
+  readonly planningHint: PlanHintStage | null;
+  // 出ている警報をすべて確認済みにする。
+  acknowledgeAlarm(): void;
   // マップカメラの注視点の ECI 位置。
   readonly mapFocus: Vec3;
   readonly analysisSource: AnalysisChartSource;
@@ -52,6 +61,10 @@ export class Hud implements HudLayers, Notifier {
   public readonly mapRoot: HTMLElement;
   private readonly helpPanel: HelpPanel;
   private readonly topBar: TopBar;
+  private readonly alarmBand: AlarmBand;
+  private readonly guidance: Guidance;
+  // 直近の syncPanels が受けた、警報の確認の口。キーと警報帯のボタンはフレームの外で押される。
+  private acknowledgeAlarmOnRun: (() => void) | null = null;
   public readonly viewBadgeRow: HTMLElement;
   private readonly mapScaleBadge: MapScaleBadge;
   private readonly vesselPanel: VesselPanel;
@@ -79,7 +92,13 @@ export class Hud implements HudLayers, Notifier {
     this.helpPanel = helpPanel;
 
     // 常設パネルを、data-id で引ける要素の一覧から組む。
-    this.topBar = new TopBar(els);
+    this.topBar = new TopBar(els, this.overlayManager);
+    this.alarmBand = new AlarmBand(
+      this.root.querySelector<HTMLElement>('#hud-alarm-band')!, () => this.acknowledgeAlarm(),
+    );
+    this.guidance = new Guidance(
+      this.root.querySelector<HTMLElement>('#hud-briefing')!, this.root.querySelector<HTMLElement>('#hud-hint')!,
+    );
     this.viewBadgeRow = els.get('gs-viewrow');
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);
@@ -133,6 +152,9 @@ export class Hud implements HudLayers, Notifier {
     this.constructionMode = false;
     this.applyHudProfile(this.chromeView ?? 'combat', false);
     this.topBar.sync(null, 0);
+    this.alarmBand.sync([]);
+    this.guidance.foldBriefing();
+    this.acknowledgeAlarmOnRun = null;
     this.vesselPanel.sync(null, 0);
     this.orbitPanel.sync(null, 0);
     this.targetPanel.sync(null, 0);
@@ -152,6 +174,9 @@ export class Hud implements HudLayers, Notifier {
     // 両ビュー共通のパネル。
     this.burnManagementPanel.sync(panels.burnManagement);
     this.topBar.sync(panels.topBar, nowMs);
+    this.acknowledgeAlarmOnRun = () => panels.acknowledgeAlarm();
+    this.alarmBand.sync(panels.alarms);
+    this.guidance.sync(panels.planningHint, panels.alarms.length > 0, nowMs);
     this.orbitPanel.sync(panels.orbit, nowMs);
     // ビュー固有のパネル。
     if (map) {
@@ -202,12 +227,27 @@ export class Hud implements HudLayers, Notifier {
     this.root.dataset['renderStyle'] = style;
   }
 
-  // 本文だけのトーストを durationMs 表示する。kind は通知の意味上の種別。
+  // 出ている警報をすべて確認済みにする。警報帯のボタンとキーの共通の入口。
+  public acknowledgeAlarm(): void {
+    this.acknowledgeAlarmOnRun?.();
+  }
+
+  // ステージ開始のブリーフィング(HTML)を、画面中央上部のカードに出す。
+  public showBriefing(html: string): void {
+    this.guidance.showBriefing(html);
+  }
+
+  // ブリーフィングのカードを畳む。最初の操作が起きたときに呼ぶ。
+  public foldBriefing(): void {
+    this.guidance.foldBriefing();
+  }
+
+  // 本文だけの通知を durationMs 表示する。kind は通知の意味上の種別。
   public hint(text: string, durationMs?: number, kind?: HintKind): void {
     this.toastBox.hint(text, durationMs, kind);
   }
 
-  // 見出しと本文を持つ HTML のトーストを durationMs 表示する。
+  // HTML の通知を durationMs 表示する。
   public toast(html: string, durationMs?: number): void {
     this.toastBox.toast(html, durationMs);
   }

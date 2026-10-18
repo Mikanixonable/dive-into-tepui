@@ -144,8 +144,8 @@ function roundTrips(): readonly RoundTrip[] {
     ),
     roundTrip<SerializedAltitudeAlarm>(
       'AltitudeAlarm',
-      { descendWarned: true, altEma: 95e3, altRateEma: -4, warnedThresholds: [120e3, 100e3] },
-      (serialized) => AltitudeAlarm.deserialize(serialized, events),
+      { descendWarned: true, altEma: 95e3, altRateEma: -4 },
+      (serialized) => AltitudeAlarm.deserialize(serialized),
     ),
     roundTrip<SerializedBeltController>(
       'BeltController',
@@ -177,6 +177,14 @@ export function register(): void {
       assert.deepEqual(reserialized(), serialized);
     });
   }
+
+  test('progress-serialization: AltitudeAlarm は警告済みしきい値を持つ記録を復元できる', () => {
+    // 警戒線の走破を記録していた形式の記録も、平滑化と降下警告の状態を引き継いで復元する。
+    const alarm = AltitudeAlarm.deserialize({
+      descendWarned: true, altEma: 95e3, altRateEma: -4, warnedThresholds: [120e3, 100e3],
+    });
+    assert.deepEqual(alarm.serialize(), { descendWarned: true, altEma: 95e3, altRateEma: -4 });
+  });
 
   test('progress-serialization: 旧ベルト記録の最初の取付同期は節点位置を保つ', () => {
     const belt = BeltController.deserialize({

@@ -19,7 +19,7 @@ export interface LoopSfx {
 export type WorldSound =
   | {
     readonly kind: 'fire' | 'reload' | 'spinUp' | 'clank' | 'magFeed' | 'pickup' | 'emptyClick'
-      | 'magneticInterference' | 'enemyHit' | 'explosion' | 'decouple' | 'altAlarm';
+      | 'magneticInterference' | 'enemyHit' | 'explosion' | 'decouple';
   }
   | { readonly kind: 'hit'; readonly impactDistance: number };
 
@@ -67,7 +67,6 @@ export class WorldSfx {
       case 'enemyHit': this.enemyHit(); return;
       case 'explosion': this.explosion(); return;
       case 'decouple': this.decouple(); return;
-      case 'altAlarm': this.altAlarm(); return;
     }
   }
 
@@ -329,12 +328,6 @@ export class WorldSfx {
     this.engine.noiseBurst(0.09, 'lowpass', 320, 0.22);
     this.engine.tone(760, 0.06, 0.07, 'square');
     this.engine.tone(430, 0.11, 0.05, 'triangle');
-  }
-
-  // 高度低下警報: 短い二音の警告音。
-  private altAlarm(): void {
-    this.engine.tone(392, 0.16, 0.09, 'square');
-    this.engine.tone(415.3, 0.16, 0.07, 'square'); // わずかに不協和にして警報らしいうなりを出す
   }
 
   // 連続音の宣言 loops へ、各チャンネルの音量をなめらかに追わせる。

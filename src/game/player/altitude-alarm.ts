@@ -3,54 +3,42 @@
 import type { CelestialBody } from '../../physics/celestial-body';
 import { ellipsoidAltitude } from '../../physics/atmosphere';
 import { type Vec3, sub } from '../../math/vec3';
-import type { RunEventSink } from '../run-events';
-
-// 高度低下警告のしきい値(降順)。EMA 高度がこれを下回るたびに一度だけ警告する [m]
-const ALT_WARN_THRESHOLDS = [120e3, 100e3, 80e3];
 
 const ALT_EMA_TIME_CONST = 3; // 高度・降下率EMAの時定数 [s]
 const ALT_DESCEND_WARN_RATE = -3; // この降下率(EMA)を下回ると警告 [m/s]
 const ALT_DESCEND_CLEAR_RATE = -1; // この降下率(EMA)まで戻ると警告解除 [m/s]
-const ALT_WARN_HYSTERESIS = 5e3; // しきい値の再警告までのヒステリシス幅 [m]
 
 export interface SerializedAltitudeAlarm {
   readonly descendWarned: boolean;
   // 高度の指数移動平均 [m]。まだ高度を測っていなければ null。
   readonly altEma: number | null;
   readonly altRateEma: number;
-  readonly warnedThresholds: number[];
+  // 高度の警告済みしきい値 [m]。記録の後方互換のためだけに残す。
+  readonly warnedThresholds?: readonly number[];
 }
 
 export class AltitudeAlarm {
-  // 警告済みのしきい値 [m]。登り返すと外れ、再び潜れば同じしきい値で再警告する。
-  private readonly warnedThresholds: Set<number>;
-
-  // 警告は events へ記録する。descendWarned は降下中とみなされているか、altEma は高度の指数移動
-  // 平均 [m](まだ測っていなければ null)、altRateEma は高度変化率の指数移動平均 [m/s]、
-  // warnedThresholds は警告済みのしきい値 [m]。
+  // descendWarned は降下中とみなされているか、altEma は高度の指数移動平均 [m](まだ測って
+  // いなければ null)、altRateEma は高度変化率の指数移動平均 [m/s]。
   public constructor(
-    private readonly events: RunEventSink,
     private _descendWarned = false,
     private altEma: number | null = null,
     private altRateEma = 0,
-    warnedThresholds: readonly number[] = [],
-  ) {
-    this.warnedThresholds = new Set(warnedThresholds);
-  }
+  ) { }
 
-  // 直列化した平滑化と警告の状態から復元する。警告は events へ記録する。
-  public static deserialize(serialized: SerializedAltitudeAlarm, events: RunEventSink): AltitudeAlarm {
-    return new AltitudeAlarm(
-      events,
-      serialized.descendWarned,
-      serialized.altEma,
-      serialized.altRateEma,
-      serialized.warnedThresholds,
-    );
+  // 直列化した平滑化と警告の状態から復元する。
+  public static deserialize(serialized: SerializedAltitudeAlarm): AltitudeAlarm {
+    return new AltitudeAlarm(serialized.descendWarned, serialized.altEma, serialized.altRateEma);
   }
 
   // 降下中とみなされているか。
   public get descendWarned(): boolean { return this._descendWarned; }
+
+  // 平滑化した高度 [m]。まだ測っていなければ null。
+  public get smoothedAltitudeM(): number | null { return this.altEma; }
+
+  // 平滑化した高度変化率 [m/s]。下降が負。
+  public get smoothedAltitudeRateMps(): number { return this.altRateEma; }
 
   // 平滑化と警告の状態をシリアライズ形式へ変換する。
   public serialize(): SerializedAltitudeAlarm {
@@ -58,7 +46,6 @@ export class AltitudeAlarm {
       descendWarned: this._descendWarned,
       altEma: this.altEma,
       altRateEma: this.altRateEma,
-      warnedThresholds: [...this.warnedThresholds],
     };
   }
 
@@ -73,30 +60,18 @@ export class AltitudeAlarm {
     this.step(dt, ellipsoidAltitude(sub(r, atmosphereBody.positionAt(atmospherePivot)), atm));
   }
 
-  // 平滑化を1歩進め、降下率としきい値の走破を見る。
+  // 平滑化を1歩進め、降下率の警告を見る。
   private step(dt: number, alt: number): void {
     // 高度と変化率を平滑化する。最初の1歩は測った高度から始める
     const prevEma = this.altEma ?? alt;
     const k = Math.min(1, dt / ALT_EMA_TIME_CONST);
-    const altEma = prevEma + (alt - prevEma) * k;
-    this.altEma = altEma;
+    this.altEma = prevEma + (alt - prevEma) * k;
     if (dt > 1e-6) {
-      const rate = (altEma - prevEma) / dt;
+      const rate = (this.altEma - prevEma) / dt;
       this.altRateEma += (rate - this.altRateEma) * k;
     }
     // 降下の判定はヒステリシスを持つ
     if (this.altRateEma < ALT_DESCEND_WARN_RATE) this._descendWarned = true;
     else if (this.altRateEma > ALT_DESCEND_CLEAR_RATE) this._descendWarned = false;
-
-    // しきい値を下回るたびに1度だけ警告する
-    for (const threshold of ALT_WARN_THRESHOLDS) {
-      if (altEma < threshold) {
-        if (this.warnedThresholds.has(threshold)) continue;
-        this.warnedThresholds.add(threshold);
-        this.events.record({ kind: 'altitudeWarned', threshold });
-      } else if (altEma > threshold + ALT_WARN_HYSTERESIS) {
-        this.warnedThresholds.delete(threshold);
-      }
-    }
   }
 }

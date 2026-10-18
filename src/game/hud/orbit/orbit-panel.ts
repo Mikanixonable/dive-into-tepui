@@ -10,7 +10,6 @@ import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud/
 import {
   DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO,
   TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,
-  dynamicPressureAlarmLevel, temperatureAlarmLevel,
 } from '../../alarm/alarm-level';
 
 import { getApsisLabelSpec } from './orbit-labels';
@@ -33,7 +32,10 @@ export interface OrbitPanelViewModel {
   readonly centerId: string;
   readonly centerName: string;
   readonly altitudeM: number;
-  readonly descendWarned: boolean;
+  // 警報の評価器が判定した高度・動圧・船体温度の段。行・メーターは警報灯と同じ判定を読む。
+  readonly altitudeLevel: AlarmLevel;
+  readonly dynamicPressureLevel: AlarmLevel;
+  readonly temperatureLevel: AlarmLevel;
   readonly speedMps: number;
   readonly apAltitudeM: number;
   readonly peAltitudeM: number;
@@ -103,7 +105,7 @@ export class OrbitPanel {
     this.els.setText('hud-orbit-meta', `基準 ${view.centerName}`);
 
     // 主読み値(高度・速度)。降下の警告は高度の段で示す。
-    const altitudeLevel: AlarmLevel = view.descendWarned ? 'caution' : 'normal';
+    const altitudeLevel = view.altitudeLevel;
     this.syncPrimary('alt', fmtDistParts(view.altitudeM), altitudeLevel);
     this.syncPrimary('spd', fmtSpeedParts(view.speedMps), 'normal');
 
@@ -121,7 +123,7 @@ export class OrbitPanel {
     qRow.classList.toggle('hidden', qdyn === null);
     let qdynLevel: AlarmLevel = 'normal';
     if (qdyn !== null) {
-      qdynLevel = dynamicPressureAlarmLevel(qdyn, MAX_DYN_PRESSURE);
+      qdynLevel = view.dynamicPressureLevel;
       this.syncEnvironmentLevel(
         'qdyn', qRow, this.qdynMeter, qdyn, MAX_DYN_PRESSURE, qdynLevel,
         { value: qdyn >= 10 ? (qdyn / 1000).toFixed(2) : '0.00', unit: 'kPa' },
@@ -130,7 +132,7 @@ export class OrbitPanel {
       this.syncEnvironmentLevel('qdyn', qRow, this.qdynMeter, 0, MAX_DYN_PRESSURE, 'normal', { value: '—', unit: '' });
     }
 
-    const tempLevel = temperatureAlarmLevel(view.temperatureK, MAX_HULL_TEMP);
+    const tempLevel = view.temperatureLevel;
     this.syncEnvironmentLevel(
       'temp', this.els.get('temp-row'), this.tempMeter, view.temperatureK, MAX_HULL_TEMP, tempLevel,
       { value: view.temperatureK.toFixed(0), unit: 'K' },
