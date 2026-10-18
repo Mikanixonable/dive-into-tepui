@@ -7,6 +7,7 @@ import type { VisibleGuideLine } from '../../render/celestial/orbit-guide/orbit-
 import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import { isCombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import type { LinePickable } from './line-pickable';
+import type { OrbitSlotPresenter } from '../navigation/orbit-slot-presenter';
 
 // 線1本あたりの当たり判定用サンプル点数。ピクセル半径内かの判定に足りる粗さで固定する。
 const ORBIT_PICK_SAMPLES = 128;
@@ -20,6 +21,7 @@ export class LinePickables {
   public constructor(
     private readonly roster: EntityRoster,
     private readonly celestialSystem: CelestialSystem,
+    private readonly orbitSlots: OrbitSlotPresenter,
   ) {}
 
   // 候補列を空にする。軌道線を出さないフレームで refresh の代わりに呼ぶ。
@@ -45,6 +47,14 @@ export class LinePickables {
       this.items.push({
         key: `orbit-guide:${guide.key}`, kind: 'orbit-guide', method: 'guide',
         ownerKeys: this.guideOwnerKeys(guide), points: guide.points,
+      });
+    }
+
+    // 軌道標識の軌道線は、このフレームに表示されているもの。
+    for (const slot of this.orbitSlots.lineSamples(ORBIT_PICK_SAMPLES)) {
+      this.items.push({
+        key: `orbit-slot:${slot.key}`, kind: 'orbit-slot', method: 'analytic',
+        ownerKeys: slot.ownerKeys, points: slot.points,
       });
     }
   }

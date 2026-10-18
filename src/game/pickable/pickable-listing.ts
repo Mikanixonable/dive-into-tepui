@@ -3,7 +3,8 @@ import type { CelestialClass } from '../celestial/celestial-entity/celestial-ent
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 
 // 軌道物体一覧の区画。天体はクラスをまたいで1区画にまとめ、人工物は種別ごとに分ける。
-export type MapListSection = 'body' | DynamicEntityKind;
+// 軌道標識は実体ではないので個別の区画名を持つ。
+export type MapListSection = 'body' | DynamicEntityKind | 'orbitSlot';
 
 // 選択ウィジェットのジャンルの並び。見出しの文字列がそのまま鍵になる。
 export const OBJECT_PICKER_GENRES = [
