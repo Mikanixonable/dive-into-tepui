@@ -1,4 +1,7 @@
 // 建造モードのゲーム状態とHUDの間で共有する、不変な表示語彙。
+import type { ShipAssembly } from './ship-assembly';
+import type { AxialFace } from './ship-assembly-transform';
+import type { SideSlot } from './ship-assembly-types';
 
 export type ConstructionMount = 'axial' | 'side+x' | 'side-x' | 'side+y' | 'side-y';
 export type ConstructionSlotKind = 'axial' | 'side';
@@ -60,6 +63,23 @@ export interface ConstructionConfirmationPort {
   request(request: ConstructionConfirmationRequest, onResult: (confirmed: boolean) => void): void;
   close(): void;
 }
+
+// 建造で手持ちのものを置ける取り付け先。空いている軸方向の面、空いている側面スロット、
+// 軸方向に隣り合う2モジュールの継ぎ目の3種。
+export type ConstructionTarget =
+  | { readonly kind: 'axial-face'; readonly parentId: string; readonly face: AxialFace }
+  | { readonly kind: 'side-slot'; readonly parentId: string; readonly slot: SideSlot }
+  | { readonly kind: 'joint'; readonly connectionId: string };
+
+// 建造で手に持っているもの。カタログの定義、配置済みモジュールの先端部(付け替え)、
+// 先端部の写し(複製・設計図)の3種。写しは根が取り付けるモジュールになる。
+export type ConstructionHeld =
+  | { readonly kind: 'catalog'; readonly definitionId: string }
+  | { readonly kind: 'piece'; readonly moduleId: string }
+  | { readonly kind: 'copy'; readonly piece: ShipAssembly };
+
+// 側面へ新しく置くときの対称数。1 は指した位置だけ、2 は対向する2位置、4 は全4位置。
+export type ConstructionSymmetry = 1 | 2 | 4;
 
 // 閉じた建造パネルへ同期する、表示資源を持たない空のmodel。
 export function hiddenShipConstructionModel(): ShipConstructionPanelModel {
