@@ -80,8 +80,8 @@ export interface DynamicMotionBehavior {
   stepCommands?(
     self: DynamicMotion, dt: number, attractors: readonly CelestialBody[], pivot: number,
   ): void;
-  // この個体が要求する積分刻みの上限 [s](燃焼中の細かい刻みなど)。制約しないなら undefined。
-  maxSubstepDuration?(self: DynamicMotion): number | undefined;
+  // この個体が要求する積分刻みの上限 [s](燃焼中の細かい刻みなど)。制約しないなら null。
+  maxSubstepDuration?(self: DynamicMotion): number | null;
   contactsWith?(self: DynamicMotion, other: EntityContactParticipant, simTime: number): boolean;
   testSphereCollision?(
     self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number,
@@ -444,7 +444,7 @@ export class DynamicMotion {
       if (innerDt < dt) divisions = Math.ceil(dt / innerDt);
     }
     const cap = this.behavior.maxSubstepDuration?.(this);
-    if (cap !== undefined && cap > 0 && cap < dt) {
+    if (cap !== undefined && cap !== null && cap > 0 && cap < dt) {
       divisions = Math.max(divisions, Math.ceil(dt / cap));
     }
     return divisions;
