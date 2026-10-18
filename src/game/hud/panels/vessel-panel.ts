@@ -103,6 +103,7 @@ export class VesselPanel {
     this.qdynMeter = this.buildMeter('qdyn-gauge', 'qdyn-value', '動圧');
     this.qdynMeter.meter.setMarks(DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO);
     this.fuelMeter = this.mountMeter('rcs-fuel-meter', 'RCS 燃料');
+    // 動圧とRCS燃料には、それぞれの危険境界を示す目盛りを持たせる。
     this.fuelMeter.setMarks(FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO);
     this.buildActionButtons();
     this.throttleControl = this.buildThrottleControl();
@@ -175,6 +176,7 @@ export class VesselPanel {
   private buildDeployButton(
     container: HTMLElement, partName: string, side: { label: string; key: string }, onClick: () => void,
   ): DeployButtonDom {
+    // 左右それぞれの部品状態を、操作可能なひとつの領域として表示する。
     const button = new Button('', onClick);
     button.element.classList.add('vessel-deploy-btn');
     const fill = document.createElement('div');

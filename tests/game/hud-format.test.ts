@@ -5,6 +5,7 @@ import { test } from '../harness';
 
 // HUD の値と単位の分け方(距離は m/km/Mm、速度は m/s・km/s の境界)と、段の重さの順を確かめる。
 export function register(): void {
+  // 単位境界の前後と、表示値・単位への分解結果を確認する。
   test('hud format: distance parts switch unit at 1 km and 1 Mm, and join back to fmtDist', () => {
     assert.deepEqual(fmtDistParts(420), { value: '420', unit: 'm' });
     assert.deepEqual(fmtDistParts(1000), { value: '1.00', unit: 'km' });

@@ -1,19 +1,14 @@
-// hud/widgets/ の共通スタイル。状態遷移の基準(hover=Near、pressed=中立面、on=Accent、
-// disabled=単一 opacity+cursor:not-allowed)をここ1箇所で定義する。ビュー固有スタイルは、
-// 同期や完了など別の意味ロールがある場合だけ Secondary 等へ上書きする。
-// #hud の外(タイトル画面・起動時のオーバーレイ)でもウィジェットを組めるよう、
-// セレクタは #hud に閉じない(hud-root.ts の STYLE へ連結して注入する)。
+// HUD ウィジェットの状態遷移(hover・pressed・on・disabled)と部品の密度・形状を定める。
+// 操作状態を共有し、同期や完了などの意味はそれぞれのロールで表す。
 import { MQ_COARSE } from '../breakpoints';
 
 export const WIDGET_STYLE = `
-/* #hud 自体が pointer-events:none のため、対話要素はここで明示的に有効化する
-   (#hud の外では既定で auto だが、明示しても害はない)。 */
+/* HUD の全面オーバーレイ内でも操作要素をクリック可能にする。 */
 .w-btn, .w-toggle-track, .w-close, .w-input, .w-select { pointer-events: auto; cursor: pointer; }
 .w-btn, .w-toggle, .w-close, .w-tabs, .w-group { user-select: none; }
 .w-input { cursor: text; }
 
-/* 幅・高さと border/padding を併せ持つ要素は、置き場所の box-sizing リセットに
-   依存せず自前で border-box を持つ。 */
+/* 閉じるボタンとトグルの寸法は、枠線を含む大きさとして扱う。 */
 .w-close, .w-toggle-track { box-sizing: border-box; }
 
 .w-btn, .w-close {

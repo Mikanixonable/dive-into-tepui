@@ -1,5 +1,4 @@
-// HUD とタイトル画面が共有する、ガラス面・選択状態・計器の表示部品の共通スタイル。
-// 画面固有の CSS は配置と内容の調整だけを持ち、UI の面と状態はここへ集約する。
+// HUD とタイトル画面で共有する、操作状態・ガラス面・計器部品の共通スタイル。
 import { injectOnce } from '../inject-style';
 import { WIDGET_STYLE } from '../widgets/widget-style';
 import { HUD_LAYOUT_TOKENS_STYLE } from './layout-tokens';
