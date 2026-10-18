@@ -10,8 +10,7 @@ import { projectedRadius } from './hemisphere-scan';
 import type { ScanSurfaces, Texel, TexelSurface } from './texel-surface';
 import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
 
-// 最後の拡大で読む疎なタップの数と、タップ間の黄金角 [rad]。
-const UPSAMPLE_TAP_COUNT = 8;
+// 最後の拡大でタップを並べる黄金角 [rad]。
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 // 拡大の半径の下限 [走査の画素]。走査の解像度に起因するエイリアスを隠すので、受け手の距離によらず走査の画素で固定する。
 const UPSAMPLE_FLOOR_RADIUS = 3 / Math.SQRT2;
@@ -22,6 +21,7 @@ const UPSAMPLE_RADIUS_PER_PROJECTED_RADIUS = 0.0351;
 const UPSAMPLE_ANISOTROPY_SOFTNESS = 1 / 2;
 // 拡大の面の重みの、法線の重みが半分になる角 [rad](20°)。
 const UPSAMPLE_HALF_WEIGHT_ANGLE = Math.PI / 9;
+const UPSAMPLE_MISS_EXPONENT = 20;
 
 export class CorrectionReconstruction {
   // weight は受け手と標本の面の重み、surfaces は標本の面を読む走査の解像度の面、fullSize と scanSize は描画バッファと
@@ -38,7 +38,7 @@ export class CorrectionReconstruction {
   // 近傍の投影半径に比例させ、代表が最寄りの走査の画素の A が大きいほど縮める。rotation(0..1)は画素ごとに独立な螺旋の
   // 回転。空だけなら代表が最寄りの走査の画素へ延長する。
   // **Fn の中の、受け手が補正を受ける分岐から呼ぶこと。**
-  public sparseUpsampled(source: THREE.Texture, rotation: FloatNode): Vec3Node {
+  public sparseUpsampled(source: THREE.Texture, rotation: FloatNode, tapCount: number): Vec3Node {
     const pixel = ivec2(floor(screenUV.mul(screenSize))).toVar();
     const receiver = this.weight.receiverAt(this.weight.surfaceAt(pixel));
     // 走査の画素の座標で、代表がこの画素に最も近い走査の画素が整数になる位置。
@@ -53,9 +53,9 @@ export class CorrectionReconstruction {
     const angle = rotation.mul(2 * Math.PI).toVar();
     const cosAngle = cos(angle).toVar();
     const sinAngle = sin(angle).toVar();
-    const taps = Array.from({ length: UPSAMPLE_TAP_COUNT }, (_, index) => {
+    const taps = Array.from({ length: tapCount }, (_, index) => {
       // 単位円盤の螺旋の点。中心を空けて、どのタップも画素ごとに回す。
-      const radial = Math.sqrt((index + 0.5) / UPSAMPLE_TAP_COUNT);
+      const radial = Math.sqrt((index + 0.5) / tapCount);
       const x = radial * Math.cos(index * GOLDEN_ANGLE);
       const y = radial * Math.sin(index * GOLDEN_ANGLE);
       const offset = across.mul(cosAngle.mul(x).sub(sinAngle.mul(y)))
@@ -75,11 +75,17 @@ export class CorrectionReconstruction {
     If(least.lessThan(VOID_EXPONENT), () => {
       const sum = vec3(0).toVar();
       const total = float(0).toVar();
+      // E=20 を控えの指数にし、最良タップの指数がそれを超える場合も重みを正規化できる基準にする。
+      const weightBase = min(least, UPSAMPLE_MISS_EXPONENT);
       for (const { tap, exponent } of taps) {
-        const weight = select(exponent.lessThan(VOID_EXPONENT), exp2(least.sub(exponent)), float(0));
+        const weight = select(exponent.lessThan(VOID_EXPONENT), exp2(weightBase.sub(exponent)), float(0));
         sum.addAssign(textureLoad(source, tap).rgb.mul(weight));
         total.addAssign(weight);
       }
+      // nearest は上で取得済み。E=20 (重み 2^-20) の控えとして再利用する。
+      const reserveWeight = exp2(weightBase.sub(UPSAMPLE_MISS_EXPONENT));
+      sum.addAssign(nearest.rgb.mul(reserveWeight));
+      total.addAssign(reserveWeight);
       result.assign(sum.div(total));
     }).Else(() => {
       result.assign(nearest.rgb);

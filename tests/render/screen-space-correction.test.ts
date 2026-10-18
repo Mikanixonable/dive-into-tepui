@@ -23,9 +23,23 @@ export function register(): void {
     const correction = new DiffuseCorrection();
     assert.strictEqual(correction.texture.type, THREE.HalfFloatType);
     assert.strictEqual(correction.texture.format, THREE.RGBAFormat);
-    assert.strictEqual(correction.target.textures.length, 1);
+    for (const target of [correction.targetAt(0), correction.targetAt(1)]) {
+      assert.deepStrictEqual(target.textures.map(({ type, format }) => [type, format]), [
+        [THREE.HalfFloatType, THREE.RGBAFormat],
+        [THREE.FloatType, THREE.RedFormat],
+        [THREE.HalfFloatType, THREE.RGFormat],
+      ]);
+    }
+    assert.notStrictEqual(correction.targetAt(0), correction.targetAt(1));
+    assert.deepStrictEqual(correction.upsampledTarget.textures.map(({ type, format }) => [type, format]), [
+      [THREE.HalfFloatType, THREE.RGBAFormat],
+    ]);
     const readNode = correction.atUv(vec2(0, 0)) as unknown as { node: { value: THREE.Texture } };
     assert.strictEqual(readNode.node.value, correction.texture);
+    correction.setTargetIndex(1);
+    assert.strictEqual(readNode.node.value, correction.targetAt(1).texture);
+    correction.setTargetIndex(0);
+    assert.strictEqual(readNode.node.value, correction.targetAt(0).texture);
     correction.dispose();
   });
 

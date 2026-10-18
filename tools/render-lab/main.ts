@@ -85,6 +85,8 @@ declare global {
       setStyle: (style: RenderStyle) => void;
       setTarget: (target: DebugTargetId) => void;
       setGraphicsOption: (key: GraphicsKey, value: boolean | ChoiceValue) => void;
+      // 計測のためだけ。撮影は 960×540 を前提にする。
+      setRenderSize: (width: number, height: number) => void;
       measure: (name: CaseName, angles?: Partial<LabViewAngles>) => Promise<LabMeasurement>;
       measureCurrent: (warmupFrames?: number, sampleFrames?: number, advanceFrame?: boolean) => Promise<LabMeasurement>;
       measurePoolRebuild: (iterations: number) => ReturnType<LabView['measurePoolRebuild']>;
@@ -427,6 +429,7 @@ async function init(): Promise<void> {
     setGraphicsOption: (key, value) => {
       settings.graphics.set(withGraphicsValue(settings.graphics.current, key, value));
     },
+    setRenderSize: (width, height) => view.setRenderSize(width, height),
     measure: (name, angles) => view.measure(name, angles),
     measureCurrent: (warmupFrames, sampleFrames, advanceFrame) =>
       view.measureCurrent(warmupFrames, sampleFrames, advanceFrame),

@@ -252,6 +252,12 @@ export const GRAPHICS_FIELDS = {
         min: 1, max: 32, step: 1,
         presets: { low: 8, medium: 8, high: 8 },
       },
+      // 最後の拡大で読む疎なタップの数。
+      screenSpaceUpsampleTapCount: {
+        kind: 'slider', label: '最後の拡大のタップ数',
+        min: 2, max: 8, step: 1,
+        presets: { low: 8, medium: 8, high: 8 },
+      },
     },
   },
   // 滑らかな面へ、反射方向にある近くの物体を映す。

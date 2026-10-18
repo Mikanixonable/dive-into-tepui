@@ -141,6 +141,7 @@ function expandedValues(legacy: LegacyValues): GraphicsSettingsData {
     screenSpaceStepCount: scan.stepCount,
     screenSpaceDirectionalPlanetCount: 2,
     screenSpaceHistoryCap: 8,
+    screenSpaceUpsampleTapCount: 8,
     screenSpaceSpecular: legacy.screenSpaceSpecular,
     screenSpaceSpecularScale: trace.scale,
     screenSpaceSpecularStepCount: trace.stepCount,

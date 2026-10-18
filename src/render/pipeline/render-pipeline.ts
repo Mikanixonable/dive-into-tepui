@@ -163,7 +163,7 @@ export class RenderPipeline {
       renderer, this._gbuffer, this.lightPrepass, this._planetLight, this._diffuseCorrection, gpu,
       screenSpaceDiffuseOf(graphics), graphics.screenSpaceScanScale, graphics.screenSpaceSliceCount,
       graphics.screenSpaceStepCount, graphics.screenSpaceBandCount,
-      graphics.screenSpaceDirectionalPlanetCount, this._exposure.factor,
+      graphics.screenSpaceDirectionalPlanetCount, graphics.screenSpaceUpsampleTapCount, this._exposure.factor,
     );
 
     // マテリアルパス以降が共有する描画先。**大気パスの生成より先に作る** — 自身が書く先としてこれを受け取る。
@@ -299,6 +299,7 @@ export class RenderPipeline {
       graphics.screenSpaceBandCount);
     this.screenSpacePass.setDirectionalPlanetCount(graphics.screenSpaceDirectionalPlanetCount);
     this.screenSpacePass.setHistoryCap(graphics.screenSpaceHistoryCap);
+    this.screenSpacePass.setUpsampleTapCount(graphics.screenSpaceUpsampleTapCount);
     // 近傍補正を書く段と、それを読む本マテリアル・映り込みの像の元は一緒に切り替える。
     this.reflectionSourcePass.setCorrected(graphics.screenSpaceOcclusion);
     this.materialPass.setCorrected(graphics.screenSpaceOcclusion);

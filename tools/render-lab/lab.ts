@@ -280,6 +280,11 @@ export class LabView {
     return new LabView(renderer, pipeline, gpu, graphics);
   }
 
+  // 描画の大きさを変える。計測のためだけ。撮影は 960×540 を前提にする。
+  public setRenderSize(width: number, height: number): void {
+    this.renderer.setSize(width, height);
+  }
+
   // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
   public show(name: CaseName): void {
     this.build(name);

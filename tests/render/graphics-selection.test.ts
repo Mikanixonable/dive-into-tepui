@@ -55,6 +55,22 @@ export function register(): void {
     for (const key of fieldKnobKeys('cloud')) assert.equal(graphics[key], medium[key], key);
   });
 
+  test('graphics-selection: 最後の拡大タップ数は 2..8 の整数で、各プリセットは 8', () => {
+    const knob = GRAPHICS_FIELDS.screenSpace.knobs.screenSpaceUpsampleTapCount;
+    assert.equal(knob.kind, 'slider');
+    if (knob.kind !== 'slider') return;
+    assert.deepEqual([knob.min, knob.max, knob.step], [2, 8, 1]);
+    for (const preset of PRESETS) assert.equal(knob.presets[preset], 8);
+    assert.equal(resolveGraphics(selectionOf('high')).screenSpaceUpsampleTapCount, 8);
+  });
+
+  test('graphics-selection: 既存のカスタム保存値に最後の拡大タップ数が無ければ 8', () => {
+    const selection = parseGraphicsSelection(JSON.stringify({
+      quality: { fields: { screenSpace: { custom: { screenSpaceBandCount: 6 } } } },
+    }));
+    assert.equal(resolveGraphics(selection).screenSpaceUpsampleTapCount, 8);
+  });
+
   test('graphics-selection: 保存が無いときは全体「高」で、好みは保存が無いときの値', () => {
     assert.equal(DEFAULT_GRAPHICS_SELECTION.quality, 'high');
     assert.deepEqual(DEFAULT_GRAPHICS, resolveGraphics(selectionOf('high')));

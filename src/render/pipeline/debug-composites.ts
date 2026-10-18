@@ -107,7 +107,7 @@ export class DebugComposites {
       'upsampled-correction': material(vec4(
         this.signedCorrection(texture(diffuseCorrection.upsampledTarget.texture, screenUV)), 1,
       )),
-      correction: material(vec4(this.signedCorrection(texture(diffuseCorrection.texture, screenUV)), 1)),
+      correction: material(vec4(this.signedCorrection(diffuseCorrection.valueAtUv(screenUV)), 1)),
       'history-length': material(vec4(vec3(screenSpacePass.normalizedHistoryAt(screenUV)), 1)),
       'bounce-source': hdr(screenSpacePass.surfaceRadianceTexture),
       'reflection-source': hdr(reflectionSourcePass.texture),

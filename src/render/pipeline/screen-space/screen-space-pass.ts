@@ -130,6 +130,8 @@ export class ScreenSpacePass {
   private readonly indirectSurfaceStage: ScreenSpaceStage;
   // 帯の数・mergesIntoCorrection・天体照のスロット数の組ごとの描画命令。初めてその組で描くときに組む。
   private readonly stagesByKey = new Map<string, BandCountStages>();
+  // 最後の拡大の描画命令。走査と鎖を再利用し、layout と K ごとにだけ組む。
+  private readonly upsampleStagesByKey = new Map<string, ScreenSpaceStage>();
   private readonly experimentStagesByKey = new Map<string, readonly ScreenSpaceStage[]>();
   private readonly quad = new QuadMesh();
   // QuadMesh は固定直交カメラで描かれるため、実カメラの射影行列とその逆は毎フレーム自前で書き込む。
@@ -191,7 +193,7 @@ export class ScreenSpacePass {
     private readonly planetLight: PlanetLightSource,
     private readonly output: DiffuseCorrection, private readonly gpu: GpuTimings,
     private mode: ScreenSpaceDiffuse, scale: number, sliceCount: number, stepCount: number, bandCount: number,
-    private directionalPlanetCount: number,
+    private directionalPlanetCount: number, private upsampleTapCount: number,
     private readonly exposureFactor: FloatNode,
   ) {
     this.deviceAttachmentByteLimit = (renderer.backend as WebGpuAttachmentLimitsBackend).device?.limits
@@ -208,7 +210,7 @@ export class ScreenSpacePass {
       vec2(this.representativeSteps).div(REPRESENTATIVE_STEPS), this.upsampleAlphaOne,
     );
     this.qReconstruction = new QReconstruction(weight, this.surfaces, this.fullSize, this.scanSize);
-    this.temporal = new TemporalAccumulation(renderer, gbuffer, output, gpu);
+    this.temporal = new TemporalAccumulation(renderer, gbuffer, output);
     this.occlusionSurfaceStage = this.surfaces.scanStageOf(null);
     // 源は補正を受ける近い面にだけ書く — 遠い面(天体の面など)は画面の大半を占めうるが、その源が効くのは打ち切りの縁の
     // 受け手だけで、全面に書くと源の段が倍ほど重くなる。
@@ -262,6 +264,11 @@ export class ScreenSpacePass {
   // beginFrame が置く走査の入力は本番の静止画の値になる。
   public setHistoryCap(frames: number): void {
     this.temporal.setHistoryCap(frames);
+  }
+
+  // 次の render から、最後の拡大で読む疎なタップの数を count にする。
+  public setUpsampleTapCount(count: number): void {
+    this.upsampleTapCount = count;
   }
 
   // 番号 frame のフレームを始める。G バッファを描く前に毎フレーム呼ぶ。番号の続き方と変化量 change(0 以上。∞ は履歴を切る)
@@ -353,7 +360,7 @@ export class ScreenSpacePass {
       this.indirectSurfaceStage,
       ...this.surfaces.stagesUpTo(this.tier.bandCount),
     ]);
-    for (const stage of this.experimentStages(this.experiment.variant, this.experiment.sparseTapCount)) {
+    for (const stage of this.resolveAccumulationStage(this.experimentStages(this.experiment.variant, this.experiment.sparseTapCount))) {
       if (reusableSurfaceStages?.has(stage)) continue;
       this.renderer.setRenderTarget(stage.target);
       this.quad.material = stage.material;
@@ -420,6 +427,7 @@ export class ScreenSpacePass {
     const own = [
       this.occlusionSurfaceStage, this.indirectSurfaceStage,
       ...[...this.stagesByKey.values()].flatMap((stages) => stages.own),
+      ...this.upsampleStagesByKey.values(),
     ];
     for (const material of new Set(own.map(({ material }) => material))) material.dispose();
     for (const stages of this.experimentStagesByKey.values()) {
@@ -434,8 +442,23 @@ export class ScreenSpacePass {
   // いまの方式と段の帯の数と段の範囲の描画命令の列。オフは空。
   private currentStages(): readonly ScreenSpaceStage[] {
     if (this.mode === SCREEN_SPACE_DIFFUSE.off) return [];
-    if (this.experiment !== null) return this.experimentStages(this.experiment.variant, this.experiment.sparseTapCount);
-    return this.stagesOf(this.tier, this.bandLayout).ranges[this.stageRange][this.mode];
+    const stages = this.experiment !== null
+      ? this.experimentStages(this.experiment.variant, this.experiment.sparseTapCount)
+      : this.stagesOf(this.tier, this.bandLayout).ranges[this.stageRange][this.mode];
+    const resolved = this.resolveAccumulationStage(stages);
+    const regularUpsample = this.experiment === null || this.experiment.variant === 'band';
+    if (!regularUpsample || this.mergesIntoCorrection
+      || !resolved.some((stage) => stage.gpuPass === GPU_PASS.nearbyDiffuseAccumulation)
+      || resolved.some((stage) => stage.gpuPass === GPU_PASS.nearbyDiffuseUpsample)) return resolved;
+    const upsample = this.upsampleStageOf(this.bandLayout);
+    return resolved.flatMap((stage) => stage.gpuPass === GPU_PASS.nearbyDiffuseAccumulation
+      ? [upsample, stage] : [stage]);
+  }
+
+  // 蓄積段を現在の ping-pong 出力先に結び直す。
+  private resolveAccumulationStage(stages: readonly ScreenSpaceStage[]): readonly ScreenSpaceStage[] {
+    return stages.map((stage) => stage.gpuPass === GPU_PASS.nearbyDiffuseAccumulation
+      ? this.temporal.accumulation : stage);
   }
 
   private experimentStages(variant: ScreenSpaceExperimentVariant, sparseTapCount: number): readonly ScreenSpaceStage[] {
@@ -501,12 +524,11 @@ export class ScreenSpacePass {
     const indirectScan = this.createScanStage(count, this.surfaces.radianceTexture, scanTarget, format);
     // 走査より後の段は方式によらないので、両方の方式で同じ描画命令を使う。
     const chain = this.createChainStages(count, intoCorrection, layout);
-    const upsample = intoCorrection ? [] : [this.createUpsampleStage(layout)];
     const scans: ModeStages = {
       [SCREEN_SPACE_DIFFUSE.occlusion]: [this.occlusionSurfaceStage, occlusionScan],
       [SCREEN_SPACE_DIFFUSE.indirect]: [this.indirectSurfaceStage, indirectScan],
     };
-    const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, ...upsample, this.temporal.accumulation];
+    const afterScan = [...this.surfaces.stagesUpTo(count), ...chain, this.temporal.accumulation];
     const stages: BandCountStages = {
       ranges: {
         all: {
@@ -516,7 +538,7 @@ export class ScreenSpacePass {
         scan: scans,
         chain: { [SCREEN_SPACE_DIFFUSE.occlusion]: afterScan, [SCREEN_SPACE_DIFFUSE.indirect]: afterScan },
       },
-      own: [occlusionScan, indirectScan, ...chain, ...upsample],
+      own: [occlusionScan, indirectScan, ...chain],
     };
     this.stagesByKey.set(key, stages);
     return stages;
@@ -586,10 +608,20 @@ export class ScreenSpacePass {
   private createUpsampleStage(layout: BandLayout): ScreenSpaceStage {
     const source = this.output.mergedTexture(layout, 0);
     const rotation = this.blueNoise.atScreenPixel(this.seed.add(UPSAMPLE_ROTATION_SHIFT));
+    const tapCount = this.upsampleTapCount;
     const upsample = stageMaterial();
     upsample.mrtNode = mrt({ [this.output.upsampledTarget.texture.name]: this.whereResolved(screenUV,
-      () => vec4(this.reconstruction.sparseUpsampled(source, rotation), 1)) });
+      () => vec4(this.reconstruction.sparseUpsampled(source, rotation, tapCount), 1)) });
     return { material: upsample, target: this.output.upsampledTarget, gpuPass: GPU_PASS.nearbyDiffuseUpsample };
+  }
+
+  private upsampleStageOf(layout: BandLayout): ScreenSpaceStage {
+    const key = `${JSON.stringify(layout)}:${this.upsampleTapCount}`;
+    const built = this.upsampleStagesByKey.get(key);
+    if (built !== undefined) return built;
+    const stage = this.createUpsampleStage(layout);
+    this.upsampleStagesByKey.set(key, stage);
+    return stage;
   }
 
   private createDenoiseStage(

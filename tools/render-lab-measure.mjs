@@ -1,8 +1,9 @@
 // 描画テスト環境の計測。ヘッドレス Chrome で .render-lab/ を開き、選んだ軸の構図 × 描画設定の段の組ごとに
 // window.renderLab.measure() を呼んで、パス別 GPU 時間のうち軸が読む行を表にする。
 //
-// 使い方: node tools/render-lab-measure.mjs [巡回数] [軸](既定は 2 と atmosphere)。熱によるドリフトを
-// 差と切り分けるため、同じ組を巡回数だけ巡り、偶数回目は逆順で回す。結果は巡ごとの値と、その中央値で出す。
+// 使い方: node tools/render-lab-measure.mjs [巡回数] [軸] [描画の大きさ] [reverse](既定は 2 と atmosphere、
+// 960x540)。熱によるドリフトを差と切り分けるため、同じ組を巡回数だけ巡り、偶数回目は逆順で回す。reverse を
+// 渡すと逆順から始める(別セッションで順の影響を切り分ける)。結果は巡ごとの値と、その中央値で出す。
 import path from 'node:path';
 import { openChromeSession, sleep } from './chrome-session.mjs';
 
@@ -11,7 +12,7 @@ const buildDir = path.join(root, '.render-lab');
 const port = 8769;
 const debugPort = 9446;
 
-const USAGE = 'usage: node tools/render-lab-measure.mjs [巡回数] [軸]';
+const USAGE = 'usage: node tools/render-lab-measure.mjs [巡回数] [軸] [描画の大きさ 例 1920x1080] [reverse]';
 
 // values の中央値(空なら NaN)。
 function poolMedianOf(values) {
@@ -109,7 +110,19 @@ async function measurePoolMotion(rounds, buildDirs) {
   }
 }
 
-// 測る軸。framings の angles はケース既定の観察の向きへ重ねる。variants の graphics は setGraphicsOption へ
+// 全行の和を読む行の名前。
+const TOTAL_ROW = '全行の和';
+
+// screen-space-knobs の基準の構成。全部のノブを明示する — 段は { ...SCREEN_SPACE_BASE, 動かすノブ: 値 } で書く。
+const SCREEN_SPACE_BASE = {
+  screenSpaceOcclusion: true, screenSpaceIndirect: true, screenSpaceScanScale: 0.25, screenSpaceBandCount: 8,
+  screenSpaceSliceCount: 4, screenSpaceStepCount: 5, screenSpaceDirectionalPlanetCount: 2, screenSpaceHistoryCap: 8,
+  screenSpaceSpecular: true, screenSpaceSpecularScale: 0.5, screenSpaceSpecularStepCount: 32,
+  screenSpaceSpecularDenoise: false,
+};
+
+// 測る軸。framings の shotName は、撮影名の構図と描画設定の差分を showShot で出し、論理フレームを進めて測る印。
+// framings の angles はケース既定の観察の向きへ重ねる。variants の graphics は setGraphicsOption へ
 // 渡す描画設定の差分で、差分に無い鍵は直前に測った段の値のまま残る。rows は result.gpuPassMs の行名
 // (src/render/gpu-timings.ts の GPU_PASS_LABELS)。
 const AXES = {
@@ -231,10 +244,71 @@ const AXES = {
     ratioRows: ['映り込みの像の元', '映り込み', '映り込みの均し'],
     ratioLabel: '映り込み合計',
   },
+  // 基準から 1 つずつ動かして、近傍拡散補正と映り込みの行ごとの効きを読む。全行の和は行ごとの p50 の和。
+  'screen-space-knobs': {
+    statistic: 'p50',
+    framings: [
+      { label: 'bay-two-planets', caseName: 'bay', shotName: 'bay-two-planets' },
+      { label: 'bay-earth-open', caseName: 'bay', shotName: 'bay-earth-open' },
+      { label: 'cornell-box', caseName: 'cornell-box', shotName: 'cornell-box' },
+    ],
+    variants: [
+      { label: '基準', graphics: SCREEN_SPACE_BASE },
+      { label: '照り返しオフ', graphics: { ...SCREEN_SPACE_BASE, screenSpaceIndirect: false } },
+      { label: '遮蔽と照り返しオフ', graphics: { ...SCREEN_SPACE_BASE, screenSpaceOcclusion: false } },
+      ...[0.125, 0.5, 1].map((value) => ({
+        label: `走査の解像度 ${value}`, graphics: { ...SCREEN_SPACE_BASE, screenSpaceScanScale: value },
+      })),
+      ...[4, 5, 6, 7].map((value) => ({
+        label: `段数 ${value}`, graphics: { ...SCREEN_SPACE_BASE, screenSpaceBandCount: value },
+      })),
+      ...[2, 8].map((value) => ({
+        label: `スライス数 ${value}`, graphics: { ...SCREEN_SPACE_BASE, screenSpaceSliceCount: value },
+      })),
+      ...[3, 8].map((value) => ({
+        label: `歩数 ${value}`, graphics: { ...SCREEN_SPACE_BASE, screenSpaceStepCount: value },
+      })),
+      ...[0, 1].map((value) => ({
+        label: `天体照 ${value}`, graphics: { ...SCREEN_SPACE_BASE, screenSpaceDirectionalPlanetCount: value },
+      })),
+      { label: '履歴の上限 1', graphics: { ...SCREEN_SPACE_BASE, screenSpaceHistoryCap: 1 } },
+      { label: '映り込みオフ', graphics: { ...SCREEN_SPACE_BASE, screenSpaceSpecular: false } },
+      { label: '映り込みの解像度 1', graphics: { ...SCREEN_SPACE_BASE, screenSpaceSpecularScale: 1 } },
+      ...[16, 64].map((value) => ({
+        label: `映り込みの歩数 ${value}`, graphics: { ...SCREEN_SPACE_BASE, screenSpaceSpecularStepCount: value },
+      })),
+      { label: '映り込みのぼかしオン', graphics: { ...SCREEN_SPACE_BASE, screenSpaceSpecularDenoise: true } },
+    ],
+    rows: [
+      '近傍拡散履歴写し', 'ライティング', '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小',
+      '近傍拡散合流', '近傍拡散拡大', '近傍拡散蓄積', '映り込みの像の元', '映り込み', '映り込みの均し', 'マテリアル',
+      TOTAL_ROW,
+    ],
+    ratioRows: [
+      '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流', '近傍拡散拡大',
+      '近傍拡散蓄積',
+    ],
+    ratioLabel: '近傍拡散合計',
+  },
+  // 最後の拡大の K を同じページ上で交互に測る。合流行は GPU 全体の速さの補助指標。
+  'upsample-taps': {
+    statistic: 'p50',
+    framings: [
+      { label: 'bay-earth-open', caseName: 'bay', shotName: 'bay-earth-open' },
+      { label: 'cornell-box', caseName: 'cornell-box', shotName: 'cornell-box' },
+    ],
+    variants: [8, 6, 4, 2].map((value) => ({
+      label: `K=${value}`, graphics: { ...SCREEN_SPACE_BASE, screenSpaceUpsampleTapCount: value },
+    })),
+    rows: ['近傍拡散拡大', '近傍拡散合流'],
+  },
 };
 
 // 軸の rows に含めると、ratioRows の中央値の和をこの行の中央値で割った比の列が表に付く。
 const RATIO_DENOMINATOR_ROW = 'マテリアル';
+
+// src/render/graphics-settings.ts の、分野の有無のトグル。
+const ENABLE_OPTIONS = ['screenSpaceOcclusion', 'screenSpaceSpecular'];
 
 // 小数 digits 桁の文字列にする。null(読めなかった値)は — にする。
 function formatFixed(value, digits) {
@@ -283,6 +357,18 @@ function printTable(axis, measurements) {
   }
 }
 
+// 描画設定の差分 graphics を setGraphicsOption で当てる。分野のノブを書くとオフの分野が点くので、
+// 偽にする有無のトグルは最後に書く。
+async function applyGraphics(devTools, graphics) {
+  const isOffToggle = ([option, value]) => value === false && ENABLE_OPTIONS.includes(option);
+  const entries = Object.entries(graphics);
+  for (const [option, value] of [...entries.filter((e) => !isOffToggle(e)), ...entries.filter(isOffToggle)]) {
+    await devTools.evaluate(
+      `window.renderLab.setGraphicsOption(${JSON.stringify(option)}, ${JSON.stringify(value)})`,
+    );
+  }
+}
+
 async function main() {
   const passes = Math.max(1, Number(process.argv[2] ?? 2));
   const axisName = process.argv[3] ?? 'atmosphere';
@@ -296,6 +382,8 @@ async function main() {
   }
   const axis = AXES[axisName];
   const statistic = axis.statistic ?? 'avg';
+  const renderSize = process.argv[4]?.match(/^(\d+)x(\d+)$/);
+  const firstReversed = process.argv[5] === 'reverse';
 
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-render-lab-m-',
@@ -308,6 +396,7 @@ async function main() {
       await sleep(200);
     }
 
+    if (renderSize) await devTools.evaluate(`window.renderLab.setRenderSize(${renderSize[1]}, ${renderSize[2]})`);
     const adapter = await devTools.evaluate(
       '(async () => { const a = await navigator.gpu.requestAdapter(); const i = a.info ?? {};'
       + ' return [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(" / "); })()',
@@ -318,19 +407,45 @@ async function main() {
     const combos = [];
     for (const framing of axis.framings) for (const variant of axis.variants) combos.push({ framing, variant });
     for (const pass of Array.from(
-      { length: passes }, (_, index) => (index % 2 === 0 ? combos : [...combos].reverse()),
+      { length: passes }, (_, index) => ((index + Number(firstReversed)) % 2 === 0 ? combos : [...combos].reverse()),
     )) {
       for (const { framing, variant } of pass) {
-        for (const [option, value] of Object.entries(variant.graphics)) {
+        let result;
+        if (framing.shotName) {
           await devTools.evaluate(
-            `window.renderLab.setGraphicsOption(${JSON.stringify(option)}, ${JSON.stringify(value)})`,
+            `window.renderLab.showShot(${JSON.stringify(framing.caseName)}, ${JSON.stringify(framing.shotName)})`,
+          );
+          await applyGraphics(devTools, variant.graphics);
+          if (axisName === 'upsample-taps') {
+            await devTools.evaluate(
+              'window.renderLab.setScreenSpaceExperiment("band",'
+              + '{scale:0.25,sliceCount:4,stepCount:5,bandCount:8,bandScale:0.25},8)',
+            );
+          }
+          result = await devTools.evaluate('window.renderLab.measureCurrent(undefined, undefined, true)');
+        } else {
+          await applyGraphics(devTools, variant.graphics);
+          result = await devTools.evaluate(
+            `window.renderLab.measure(${JSON.stringify(framing.caseName)}, ${JSON.stringify(framing.angles)})`,
           );
         }
-        const result = await devTools.evaluate(
-          `window.renderLab.measure(${JSON.stringify(framing.caseName)}, ${JSON.stringify(framing.angles)})`,
-        );
         const key = `${framing.label} / ${variant.label}`;
-        const values = axis.rows.map((row) => result.gpuSupported ? result.gpuPassMs[row]?.[statistic] ?? null : null);
+        if (axisName === 'upsample-taps') {
+          const shaders = await devTools.evaluate('window.renderLab.screenSpaceShaders()');
+          const upsample = shaders.find((shader) => shader.label === '近傍拡散拡大');
+          const textureLoads = upsample?.wgsl.match(/textureLoad\(/g)?.length ?? 0;
+          const wgsl = upsample?.wgsl ?? '';
+          let hash = 2166136261;
+          for (let index = 0; index < wgsl.length; index++) hash = Math.imul(hash ^ wgsl.charCodeAt(index), 16777619);
+          console.log(`shader ${key}: textureLoad calls=${textureLoads}, WGSL length=${wgsl.length}, hash=${(hash >>> 0).toString(16)}`);
+        }
+        const values = axis.rows.map((row) => {
+          if (!result.gpuSupported) return null;
+          if (row === TOTAL_ROW) {
+            return Object.values(result.gpuPassMs).reduce((sum, distribution) => sum + distribution[statistic], 0);
+          }
+          return result.gpuPassMs[row]?.[statistic] ?? null;
+        });
         const entry = measurements.get(key) ?? { supported: result.gpuSupported, runs: [] };
         entry.runs.push(values);
         measurements.set(key, entry);

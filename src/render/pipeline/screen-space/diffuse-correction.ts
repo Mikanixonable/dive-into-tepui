@@ -3,7 +3,7 @@ import * as THREE from 'three/webgpu';
 import { texture } from 'three/tsl';
 import { levelTextureFormats, type BandLayout } from './band-pyramid';
 import type { ShadingSample } from '../lighting/shading-sample';
-import type { Vec2Node, Vec3Node } from '../../tsl-types';
+import type { Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 受けた照り返しから、遮られた通常照度を引く。負値もそのまま描画先へ渡す。
 export function signedDiffuseCorrection(received: Vec3Node, blocked: Vec3Node): Vec3Node {
@@ -41,14 +41,39 @@ interface BandChainTargets {
 export class DiffuseCorrection {
   // layout ごとの段の描画先。初めて引いたときに作る。
   private readonly chains = new Map<string, BandChainTargets>();
-  // 描画バッファの解像度の、蓄積後の補正 (rgb = ΔE_screen、α = 履歴の長さ n)。
-  public readonly target = createTarget(
-    [{ type: THREE.HalfFloatType, format: THREE.RGBAFormat }], 'diffuseCorrection');
+  // 蓄積後の補正・深度・法線。前フレームと今のフレームを交互に書く。
+  private readonly temporalTargets = [
+    createTarget([
+      { type: THREE.HalfFloatType, format: THREE.RGBAFormat },
+      { type: THREE.FloatType, format: THREE.RedFormat },
+      { type: THREE.HalfFloatType, format: THREE.RGFormat },
+    ], 'diffuseCorrection0'),
+    createTarget([
+      { type: THREE.HalfFloatType, format: THREE.RGBAFormat },
+      { type: THREE.FloatType, format: THREE.RedFormat },
+      { type: THREE.HalfFloatType, format: THREE.RGFormat },
+    ], 'diffuseCorrection1'),
+  ] as const;
+  private targetIndex: 0 | 1 = 0;
+  private readonly targetSampler = texture(this.temporalTargets[0].texture);
   // 描画バッファの解像度の、蓄積する前の補正 (rgb = ΔE_screen)。
   public readonly upsampledTarget = createTarget(
     [{ type: THREE.HalfFloatType, format: THREE.RGBAFormat }], 'upsampledDiffuseCorrection');
 
+  public get target(): THREE.RenderTarget { return this.temporalTargets[this.targetIndex]; }
   public get texture(): THREE.Texture { return this.target.texture; }
+
+  // index の蓄積先を返す。
+  public targetAt(index: 0 | 1): THREE.RenderTarget { return this.temporalTargets[index]; }
+
+  // 蓄積出力と描画後に読む補正の組を index へ切り替える。
+  public setTargetIndex(index: 0 | 1): void {
+    this.targetIndex = index;
+    this.targetSampler.value = this.target.texture;
+  }
+
+  // 現在の蓄積出力を UV から読む。
+  public valueAtUv(uv: Vec2Node): Vec4Node { return this.targetSampler.sample(uv) as Vec4Node; }
 
   // 段 level(0..layout.length − 1)の描画先。段 0 は走査の出力。
   public bandTarget(layout: BandLayout, level: number): THREE.RenderTarget {
@@ -76,7 +101,7 @@ export class DiffuseCorrection {
   // 作った描画先すべて — layout ごとの段ごとの描画先、蓄積前の補正、蓄積後の補正。
   public get targets(): readonly THREE.RenderTarget[] {
     return [...[...this.chains.values()].flatMap(({ bands, merged }) => [...bands, ...merged]),
-      this.upsampledTarget, this.target];
+      this.upsampledTarget, ...this.temporalTargets];
   }
 
   // layout の各段の描画先を levelSizes(levelSizes[level] が段 level の幅と高さ [段の画素]。段 0 は走査の寸法)へ、
@@ -94,14 +119,14 @@ export class DiffuseCorrection {
       fitSize(target, levelWidth, levelHeight);
     }
     fitSize(this.upsampledTarget, width, height);
-    fitSize(this.target, width, height);
+    for (const target of this.temporalTargets) fitSize(target, width, height);
   }
 
   // sample の画素の、復元した補正。
   public at(sample: ShadingSample): Vec3Node { return this.atUv(sample.uv); }
 
   // uv(0..1)の位置の、復元した補正。
-  public atUv(uv: Vec2Node): Vec3Node { return texture(this.texture, uv).rgb; }
+  public atUv(uv: Vec2Node): Vec3Node { return this.valueAtUv(uv).rgb; }
 
   // 作った描画先をすべて解放する。
   public dispose(): void {
