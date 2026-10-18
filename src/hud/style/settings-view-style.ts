@@ -4,41 +4,10 @@ import { MQ_MEDIUM_DOWN } from '../breakpoints';
 export const SETTINGS_VIEW_STYLE = `
 #hud-pause-menu .pm-settings-view {
   --sv-content-inset: var(--space-4);
-  counter-reset: settings-section;
-  display: block; min-width: 0; pointer-events: auto; padding: var(--space-1) 0 var(--space-2);
+  display: grid; gap: var(--space-4); min-width: 0; pointer-events: auto;
 }
-#hud-pause-menu .pm-settings-view .sv-header,
-#hud-pause-menu .pm-settings-view .sv-description,
-#hud-pause-menu .pm-settings-view .sv-section { width: 100%; margin-inline: auto; }
-#hud-pause-menu .pm-settings-view .sv-header {
-  display: flex; align-items: flex-start; padding: 0 var(--sv-content-inset) var(--space-2);
-}
-#hud-pause-menu .pm-settings-view .sv-heading-group { display: flex; flex-direction: column; gap: var(--space-2); }
-#hud-pause-menu .pm-settings-view .sv-header h2 {
-  color: var(--title); font-size: var(--font-xl); letter-spacing: var(--tracking-title);
-}
-#hud-pause-menu .pm-settings-view .sv-eyebrow { color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: var(--tracking-label); }
-#hud-pause-menu .pm-settings-view .sv-description {
-  margin-top: var(--space-3); padding-inline: var(--sv-content-inset);
-  color: var(--text-dim); font-size: var(--font-s); line-height: 1.6;
-}
-#hud-pause-menu .pm-settings-view .sv-section {
-  counter-increment: settings-section;
-  margin-top: var(--space-4); padding: var(--sv-content-inset);
-  border: 0; border-radius: 0;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
-}
-#hud-pause-menu .pm-settings-view .sv-section-body { min-width: 0; margin-top: var(--space-4); }
+#hud-pause-menu .pm-settings-view .sv-section { width: 100%; padding: var(--sv-content-inset); }
 #hud-pause-menu .pm-settings-view .sv-tab-panel[hidden] { display: none; }
-#hud-pause-menu .pm-settings-view .sv-section h3 {
-  display: flex; align-items: center; gap: var(--space-3); margin: 0;
-  color: var(--title); font-size: var(--font-m); letter-spacing: var(--tracking-label);
-}
-#hud-pause-menu .pm-settings-view .sv-section h3::before {
-  width: auto; height: auto; border-radius: 0; background: transparent;
-  color: var(--color-primary); content: counter(settings-section, decimal-leading-zero);
-  font-size: var(--font-xxs); font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-label);
-}
 #hud-pause-menu .pm-settings-view .sv-theme-options {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: var(--space-3);
 }

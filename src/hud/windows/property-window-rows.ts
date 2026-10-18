@@ -1,194 +1,181 @@
-// プロパティウィンドウの値表示。hero/major を上段の Summary、通常値を Metric Grid、
-// group を意味単位の折りたたみ Section、collapsible/detail を末尾の詳細欄として組む。
-// presentation 未指定の既存 PropertyRow は metric として扱い、旧データとの互換性を保つ。
-import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
+// プロパティウィンドウの値表示。hero を主読み値、major をその脇の行にした上段の Summary、通常値を
+// 行の束、group を名前付きの折り畳みとして組む。刻々変わる値を先に、腰を据えて読む値(group)を末尾に置く。
+// presentation 未指定の PropertyRow は metric として扱う。
+import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Meter } from '../widgets';
+import { bindActivation, stopDragPropagation } from '../widgets/widget-base';
+import { setReadout } from '../readout';
 import type { ReclampingWindow } from './draggable-window';
 import type { PropertyRow, PropertyRowPresentation } from './property-window-content';
 
-function groupToggleLabel(name: string, rowCount: number, expanded: boolean): string {
-  return expanded
-    ? `${COLLAPSE_EXPANDED_GLYPH} ${name}`
-    : `${COLLAPSE_COLLAPSED_GLYPH} ${name} (${rowCount})`;
-}
-
+// presentation 未指定の行は metric。
 function presentationOf(row: PropertyRow): PropertyRowPresentation {
   return row.presentation ?? 'metric';
 }
 
+// 行の値を書き換えるために覚えておく要素。meter は fill を持つ行だけが持つ。
+interface RowRefs {
+  readonly valueEl: HTMLElement;
+  readonly meter: Meter | null;
+}
+
+// 値・単位・メーターのどれかが変われば変わる行の署名。
+function rowSignature(row: PropertyRow): string {
+  return `${row.value}|${row.unit ?? ''}|${row.fill ?? ''}`;
+}
+
 export class PropertyWindowRows {
   public readonly element: HTMLDivElement;
-  private lastRowValues = new Map<string, string>();
+  private readonly refs = new Map<string, RowRefs>();
+  private readonly lastSignatures = new Map<string, string>();
   private lastRowShapeKey = '';
-  private collapsibleContainerEl: HTMLDivElement | null = null;
-  private toggleEl: HTMLDivElement | null = null;
-  private collapsibleExpanded = false;
   private readonly groupExpanded = new Map<string, boolean>();
 
+  // 折り畳みの開閉で高さが変わるときのはみ出し補正を win へ頼む。
   public constructor(private readonly win: ReclampingWindow) {
     this.element = document.createElement('div');
     this.element.className = 'prop-window-rows';
   }
 
+  // 行構成が変わったときだけ DOM を組み直し、構成が同じなら値・単位・メーターだけを更新する。
   public sync(rows: readonly PropertyRow[]): void {
     const shapeKey = JSON.stringify(rows.map((r) => [
-      r.key, r.label, r.group ?? null, r.collapsible === true, presentationOf(r),
+      r.key, r.label, r.group ?? null, presentationOf(r), r.fill !== undefined,
     ]));
     if (shapeKey === this.lastRowShapeKey) {
-      for (const r of rows) {
-        if (this.lastRowValues.get(r.key) === r.value) continue;
-        this.lastRowValues.set(r.key, r.value);
-        const valueEl = this.element.querySelector<HTMLElement>(
-          `.prop-window-row[data-key="${r.key}"] .prop-window-row-value`,
-        );
-        if (valueEl) valueEl.textContent = r.value;
-      }
+      for (const row of rows) this.updateRow(row);
       return;
     }
 
     this.lastRowShapeKey = shapeKey;
     this.element.replaceChildren();
-    this.lastRowValues.clear();
-    this.collapsibleContainerEl = null;
-    this.toggleEl = null;
+    this.refs.clear();
+    this.lastSignatures.clear();
 
-    const summaryRows: PropertyRow[] = [];
-    const plainRows: PropertyRow[] = [];
-    const collapsibleRows: PropertyRow[] = [];
+    // presentation ごと・group ごとに振り分け、上段の Summary → 通常の行 → 折り畳みの順に並べる。
+    const heroRows = rows.filter((r) => r.group === undefined && presentationOf(r) === 'hero');
+    const majorRows = rows.filter((r) => r.group === undefined && presentationOf(r) === 'major');
+    const plainRows = rows.filter((r) => r.group === undefined && presentationOf(r) === 'metric');
     const groupNames: string[] = [];
     const groupRows = new Map<string, PropertyRow[]>();
-
     for (const row of rows) {
-      const presentation = presentationOf(row);
-      if (row.group !== undefined) {
-        let list = groupRows.get(row.group);
-        if (!list) {
-          list = [];
-          groupRows.set(row.group, list);
-          groupNames.push(row.group);
-        }
-        list.push(row);
-      } else if (row.collapsible || presentation === 'detail') {
-        collapsibleRows.push(row);
-      } else if (presentation === 'hero' || presentation === 'major') {
-        summaryRows.push(row);
-      } else {
-        plainRows.push(row);
+      if (row.group === undefined) continue;
+      let list = groupRows.get(row.group);
+      if (!list) {
+        list = [];
+        groupRows.set(row.group, list);
+        groupNames.push(row.group);
       }
+      list.push(row);
     }
 
-    if (summaryRows.length > 0) {
+    if (heroRows.length > 0 || majorRows.length > 0) {
       const summary = document.createElement('div');
       summary.className = 'prop-window-summary';
-      const orderedSummary = [...summaryRows].sort((a, b) => {
-        const rank = (row: PropertyRow): number => presentationOf(row) === 'hero' ? 0 : 1;
-        return rank(a) - rank(b);
-      });
-      for (const row of orderedSummary) this.appendRowEl(summary, row);
+      if (heroRows.length > 0) {
+        const heroes = document.createElement('div');
+        heroes.className = 'prop-window-heroes';
+        for (const row of heroRows) heroes.appendChild(this.buildHero(row));
+        summary.appendChild(heroes);
+      }
+      if (majorRows.length > 0) summary.appendChild(this.buildRows(majorRows, 'prop-window-majors'));
       this.element.appendChild(summary);
     }
-
-    if (plainRows.length > 0) {
-      const metrics = document.createElement('div');
-      metrics.className = 'prop-window-metrics';
-      for (const row of plainRows) this.appendRowEl(metrics, row);
-      this.element.appendChild(metrics);
-    }
-
+    if (plainRows.length > 0) this.element.appendChild(this.buildRows(plainRows, 'prop-window-metrics'));
     for (const name of groupNames) this.appendGroupEl(name, groupRows.get(name) ?? []);
-
-    if (collapsibleRows.length > 0) {
-      const toggle = document.createElement('div');
-      toggle.className = 'prop-window-row-toggle';
-      toggle.setAttribute('role', 'button');
-      toggle.tabIndex = 0;
-      const activate = (e: Event): void => {
-        e.stopPropagation();
-        this.setCollapsibleExpanded(!this.collapsibleExpanded);
-      };
-      toggle.addEventListener('click', activate);
-      toggle.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        activate(e);
-      });
-      this.element.appendChild(toggle);
-      this.toggleEl = toggle;
-
-      const container = document.createElement('div');
-      container.className = 'prop-window-details';
-      for (const row of collapsibleRows) this.appendRowEl(container, row);
-      this.element.appendChild(container);
-      this.collapsibleContainerEl = container;
-      this.syncToggleLabel(collapsibleRows.length);
-      container.style.display = this.collapsibleExpanded ? '' : 'none';
-    }
   }
 
-  private appendRowEl(container: HTMLElement, row: PropertyRow): void {
-    const presentation = presentationOf(row);
+  // 値だけが変わった行を書き換える。
+  private updateRow(row: PropertyRow): void {
+    const signature = rowSignature(row);
+    if (this.lastSignatures.get(row.key) === signature) return;
+    this.lastSignatures.set(row.key, signature);
+    const refs = this.refs.get(row.key);
+    if (refs === undefined) return;
+    setReadout(refs.valueEl, row.value, row.unit ?? '');
+    refs.meter?.setRatio(row.fill ?? 0);
+  }
+
+  // 主読み値(大きな値と、その下の見出し)を組む。
+  private buildHero(row: PropertyRow): HTMLElement {
+    const hero = document.createElement('div');
+    hero.className = 'ui-readout prop-window-row prop-window-row-hero';
+    hero.dataset['key'] = row.key;
+    const valueEl = document.createElement('span');
+    valueEl.className = 'ui-readout-value prop-window-row-value';
+    const capEl = document.createElement('span');
+    capEl.className = 'ui-readout-cap prop-window-row-label';
+    capEl.textContent = row.label;
+    hero.append(valueEl, capEl);
+    this.refs.set(row.key, { valueEl, meter: null });
+    this.updateRow(row);
+    return hero;
+  }
+
+  // 行の束。ラベル・(あれば)メーター・値と単位の1行を並べる。
+  private buildRows(rows: readonly PropertyRow[], className: string): HTMLElement {
+    const container = document.createElement('div');
+    container.className = `ui-rows ${className}`;
+    for (const row of rows) container.appendChild(this.buildRow(row));
+    return container;
+  }
+
+  // ラベル・(fill があれば)メーター・値と単位の1行。
+  private buildRow(row: PropertyRow): HTMLElement {
     const rowEl = document.createElement('div');
-    rowEl.className = `prop-window-row prop-window-row-${presentation}`;
+    rowEl.className = `ui-row prop-window-row prop-window-row-${presentationOf(row)}`;
     rowEl.dataset['key'] = row.key;
-    const labelEl = document.createElement('div');
-    labelEl.className = 'prop-window-row-label';
+    const keyEl = document.createElement('span');
+    keyEl.className = 'ui-k';
+    const labelEl = document.createElement('span');
+    labelEl.className = 'ui-k-text prop-window-row-label';
     labelEl.textContent = row.label;
-    const valueEl = document.createElement('div');
-    valueEl.className = 'prop-window-row-value';
-    valueEl.textContent = row.value;
-    rowEl.append(labelEl, valueEl);
-    container.appendChild(rowEl);
-    this.lastRowValues.set(row.key, row.value);
+    keyEl.appendChild(labelEl);
+    rowEl.appendChild(keyEl);
+    let meter: Meter | null = null;
+    if (row.fill !== undefined) {
+      meter = new Meter(row.label);
+      const gaugeEl = document.createElement('span');
+      gaugeEl.className = 'ui-gauge';
+      gaugeEl.appendChild(meter.element);
+      rowEl.appendChild(gaugeEl);
+    }
+    const valueEl = document.createElement('span');
+    valueEl.className = 'ui-v prop-window-row-value';
+    rowEl.appendChild(valueEl);
+    this.refs.set(row.key, { valueEl, meter });
+    this.updateRow(row);
+    return rowEl;
   }
 
+  // 名前付きの折り畳み。既定では畳まれ、開閉の状態は名前ごとに覚える。
   private appendGroupEl(name: string, rows: readonly PropertyRow[]): void {
-    const expanded = this.groupExpanded.get(name) ?? false;
     const toggle = document.createElement('div');
-    toggle.className = 'prop-window-row-group-toggle';
+    toggle.className = 'ui-fold prop-window-row-group-toggle';
     toggle.setAttribute('role', 'button');
     toggle.tabIndex = 0;
-    toggle.textContent = groupToggleLabel(name, rows.length, expanded);
+    const glyphEl = document.createElement('span');
+    const nameEl = document.createElement('span');
+    nameEl.textContent = name;
+    const countEl = document.createElement('span');
+    countEl.className = 'ui-fold-n';
+    countEl.textContent = String(rows.length);
+    toggle.append(glyphEl, nameEl, countEl);
 
-    const container = document.createElement('div');
-    container.className = 'prop-window-section';
-    container.style.display = expanded ? '' : 'none';
-    for (const row of rows) this.appendRowEl(container, row);
-
-    const setExpanded = (): void => {
+    const container = this.buildRows(rows, 'prop-window-section');
+    // 開閉の見た目(記号・aria・本文の表示)を open に合わせる。
+    const apply = (open: boolean): void => {
+      glyphEl.textContent = open ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH;
+      toggle.setAttribute('aria-expanded', String(open));
+      container.style.display = open ? '' : 'none';
+    };
+    apply(this.groupExpanded.get(name) ?? false);
+    stopDragPropagation(toggle);
+    bindActivation(toggle, () => {
       const next = !(this.groupExpanded.get(name) ?? false);
       this.groupExpanded.set(name, next);
-      toggle.textContent = groupToggleLabel(name, rows.length, next);
-      container.style.display = next ? '' : 'none';
-      this.reclamp();
-    };
-    toggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setExpanded();
+      apply(next);
+      this.win.reclamp();
     });
-    toggle.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
-      e.preventDefault();
-      e.stopPropagation();
-      setExpanded();
-    });
-
     this.element.append(toggle, container);
-  }
-
-  private syncToggleLabel(count: number): void {
-    if (!this.toggleEl) return;
-    this.toggleEl.textContent = this.collapsibleExpanded
-      ? `${COLLAPSE_EXPANDED_GLYPH} DETAILS`
-      : `${COLLAPSE_COLLAPSED_GLYPH} DETAILS / ${count}`;
-  }
-
-  private setCollapsibleExpanded(expanded: boolean): void {
-    this.collapsibleExpanded = expanded;
-    if (this.collapsibleContainerEl) this.collapsibleContainerEl.style.display = expanded ? '' : 'none';
-    this.syncToggleLabel(this.collapsibleContainerEl?.childElementCount ?? 0);
-    this.reclamp();
-  }
-
-  private reclamp(): void {
-    this.win.reclamp();
   }
 }

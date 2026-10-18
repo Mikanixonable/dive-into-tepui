@@ -6,21 +6,54 @@ import { THROTTLE_LABELS } from '../../player/throttle';
 // 行が属する章。タブの並び順と表示名はパネル側が持つ。
 export type HelpCategory = 'flight' | 'camera' | 'combat' | 'map' | 'system';
 
+// 対応表の入力欄の表記。gesture はタッチ・マウスの操作(丸い札を並べる。複数は「または」)、
+// key はキー割り当て(キーキャップを並べる)。
+export type HelpInput =
+  | { readonly kind: 'gesture'; readonly chips: readonly string[] }
+  | { readonly kind: 'key'; readonly keys: readonly string[] };
+
+// 説明文の断片。文字列はそのまま、key はキーキャップとして出す。
+export type HelpTextPart = string | { readonly key: string };
+
 // 対応表の1行。category は載せる章、input は操作する入力の表記、label と description は
 // それで起きること。
 export interface HelpRow {
   readonly category: HelpCategory;
-  readonly input: string;
+  readonly input: HelpInput;
   readonly label: string;
-  readonly description: string;
+  readonly description: readonly HelpTextPart[];
 }
 
-// キー割り当ての行。別キーを持つキーは括弧で併記する。
-function keyRow(
-  category: HelpCategory, keys: readonly KeyBinding[], label: string, description: string,
+// description の断片にキーキャップを差し込むための、キー割り当ての断片。
+function keyPart(key: KeyBinding): HelpTextPart {
+  return { key: key.label };
+}
+
+// タッチ・マウスの行。chips は同じ操作を指す表記の並び。
+function gestureRow(
+  category: HelpCategory, chips: readonly string[], label: string, description: string,
 ): HelpRow {
-  const input = keys.map((key) => (key.altLabel ? `${key.label} (${key.altLabel})` : key.label)).join(' / ');
-  return { category, input, label, description };
+  return { category, input: { kind: 'gesture', chips }, label, description: [description] };
+}
+
+// キー割り当ての行。別キーを持つキーは別のキーキャップとして続ける。説明は文字列かキーを含む断片の並び。
+function keyRow(
+  category: HelpCategory, keys: readonly KeyBinding[], label: string, description: string | readonly HelpTextPart[],
+): HelpRow {
+  const labels = keys.flatMap((key) => (key.altLabel ? [key.label, key.altLabel] : [key.label]));
+  return {
+    category, input: { kind: 'key', keys: labels }, label,
+    description: typeof description === 'string' ? [description] : description,
+  };
+}
+
+// 章の対応表を、タッチ・マウスの行、キーボードの行の順に分けて返す。
+export function helpRowGroups(category: HelpCategory): { readonly gestures: readonly HelpRow[]; readonly keys: readonly HelpRow[] } {
+  const rows = helpRows().filter((row) => row.category === category);
+  return {
+    gestures: rows.filter((row) => row.input.kind === 'gesture'),
+    keys: rows.filter((row) => row.input.kind === 'key'),
+  };
 }
 
 // 対応表の行を、タッチ・マウスの行、キーボードの行の順に返す。キー名は必ず KEY_MAPPING から取る。
@@ -29,22 +62,24 @@ function keyRow(
 export function helpRows(): readonly HelpRow[] {
   return [
     // タッチ・マウスの操作。
-    {
-      category: 'map', input: '長押し / 右クリック', label: 'プロパティ・メニュー',
-      description: '対象のプロパティウィンドウ、または空域・ノード・計画軌道のメニューを開く。',
-    },
-    { category: 'camera', input: '二本指ドラッグ / 中ボタンドラッグ', label: '視点パン', description: 'カメラを画面平面に沿って移動する。' },
-    { category: 'flight', input: 'ピンチ / ホイール', label: '距離ズーム', description: 'カメラ距離を変える。二本指をひねると視点ロールになる。' },
-    { category: 'camera', input: 'ダブルタップ / ダブルクリック', label: 'フォーカス移動', description: '対象へフォーカスを移す。自艦なら操作対象にもなる。' },
-    { category: 'camera', input: 'ドラッグ', label: '視点回転', description: 'カメラのヨー / ピッチを回す。' },
-    {
-      category: 'map', input: '計画軌道をタップ / クリック', label: 'ノードを配置',
-      description: 'マップビューで計画軌道にノードを置く。ノードの丸ハンドルをドラッグすると軌道上の時刻を移動する。',
-    },
-    {
-      category: 'map', input: 'Δv ハンドルをドラッグ', label: 'ノードの Δv 編集',
-      description: '選択中ノードの PRO/RET・NRM/ANM・OUT/IN ハンドルで Δv 成分を調整する。',
-    },
+    gestureRow(
+      'map', ['長押し', '右クリック'], 'プロパティ・メニュー',
+      '対象のプロパティウィンドウ、または空域・ノード・計画軌道のメニューを開く。',
+    ),
+    gestureRow('camera', ['二本指ドラッグ', '中ボタンドラッグ'], '視点パン', 'カメラを画面平面に沿って移動する。'),
+    gestureRow('flight', ['ピンチ', 'ホイール'], '距離ズーム', 'カメラ距離を変える。二本指をひねると視点ロールになる。'),
+    gestureRow(
+      'camera', ['ダブルタップ', 'ダブルクリック'], 'フォーカス移動', '対象へフォーカスを移す。自艦なら操作対象にもなる。',
+    ),
+    gestureRow('camera', ['ドラッグ'], '視点回転', 'カメラのヨー / ピッチを回す。'),
+    gestureRow(
+      'map', ['計画軌道をタップ', 'クリック'], 'ノードを配置',
+      'マップビューで計画軌道にノードを置く。ノードの丸ハンドルをドラッグすると軌道上の時刻を移動する。',
+    ),
+    gestureRow(
+      'map', ['Δv ハンドルをドラッグ'], 'ノードの Δv 編集',
+      '選択中ノードの PRO/RET・NRM/ANM・OUT/IN ハンドルで Δv 成分を調整する。',
+    ),
     // キーボードの操作。
     keyRow(
       'flight',
@@ -68,12 +103,12 @@ export function helpRows(): readonly HelpRow[] {
     keyRow(
       'flight',
       [K.radiatorDeployLeft, K.radiatorDeployRight], 'ラジエーター展開 / 収納',
-      `左右のラジエーターを個別に切り替える (${K.radiatorDeployLeft.label} = 左、${K.radiatorDeployRight.label} = 右)。`,
+      ['左右のラジエーターを個別に切り替える (', keyPart(K.radiatorDeployLeft), ' = 左、', keyPart(K.radiatorDeployRight), ' = 右)。'],
     ),
     keyRow(
       'flight',
       [K.solarDeployLeft, K.solarDeployRight], '太陽電池パドル展開 / 収納',
-      `左右の太陽電池パドルを個別に切り替える (${K.solarDeployLeft.label} = 左、${K.solarDeployRight.label} = 右)。`,
+      ['左右の太陽電池パドルを個別に切り替える (', keyPart(K.solarDeployLeft), ' = 左、', keyPart(K.solarDeployRight), ' = 右)。'],
     ),
     keyRow('combat', [K.targetSelect], 'ターゲット選択', '照準に近い敵を選択する。短時間の連打で第二ターゲットを順送りする。'),
     keyRow('combat', [K.gunsightZoom], '照準ズーム', '押している間、機首方向を画面中心に拡大表示する。自機は非表示になる。'),
@@ -94,7 +129,7 @@ export function helpRows(): readonly HelpRow[] {
     keyRow(
       'map',
       [K.warpSlower, K.warpFaster], '時間加速',
-      `${K.warpSlower.label} で時間加速を 1 段下げ、${K.warpFaster.label} で 1 段上げる。`,
+      [keyPart(K.warpSlower), ' で時間加速を 1 段下げ、', keyPart(K.warpFaster), ' で 1 段上げる。'],
     ),
     keyRow('map', [K.toggleMapMode], 'ビュー切替', '戦闘ビューとマップビューを切り替える。時間は進み続けるのでワープも使える。'),
     keyRow(
@@ -118,8 +153,10 @@ export function helpRows(): readonly HelpRow[] {
     keyRow(
       'system',
       [K.toggleDebugInfoWindow, K.manualSave, K.openSaveBrowser], 'デバッグ・セーブ',
-      `${K.toggleDebugInfoWindow.label} でデバッグ表示、${K.manualSave.label} で手動セーブ、`
-        + `${K.openSaveBrowser.label} でセーブデータ画面を開く。`,
+      [
+        keyPart(K.toggleDebugInfoWindow), ' でデバッグ表示、', keyPart(K.manualSave), ' で手動セーブ、',
+        keyPart(K.openSaveBrowser), ' でセーブデータ画面を開く。',
+      ],
     ),
     keyRow('system', [K.restart], '決着後の再出撃', '決着画面で同じステージへ再出撃する。'),
   ];

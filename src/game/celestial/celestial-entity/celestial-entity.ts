@@ -5,7 +5,7 @@ import { len, sub } from '../../../math/vec3';
 import { bodyEntityGlyph } from '../../marker/marker-identity';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { bodySearchText } from '../../pickable/body-search-text';
-import { fmtDist, fmtTime } from '../../../hud/utils';
+import { fmtDist, fmtDistParts, fmtTime } from '../../../hud/utils';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { hitsSphere, type Ray } from '../../../math/ray';
@@ -115,7 +115,7 @@ export class CelestialEntity implements ObjectPickable {
   public readonly runMenu = null;
 
   // プロパティウィンドウに出す行。種別・μ・半径を主要行とし、公転していれば軌道要素を
-  // 「軌道」グループの下に畳む。viewer が null なら距離の行は落ちる。
+  // 「軌道」の折り畳みの下に畳む。viewer が null なら距離の行は落ちる。
   public propertyRows(
     _celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number, displayTime: number,
   ): readonly PropertyRow[] {
@@ -124,12 +124,13 @@ export class CelestialEntity implements ObjectPickable {
     const rows: PropertyRow[] = [];
     if (viewer !== null) {
       const dist = len(sub(this.posAt(displayTime), viewer.motion.state.r));
-      rows.push({ key: 'dist', label: '自艦からの距離', value: fmtDist(dist), presentation: 'hero' });
+      const { value, unit } = fmtDistParts(dist);
+      rows.push({ key: 'dist', label: '自艦からの距離', value, unit, presentation: 'hero' });
     }
     const kindLabel = motion.kind === 'star' ? '恒星' : motion.kind === 'planet' ? '惑星' : '衛星';
     rows.push(
       { key: 'kind', label: '種別', value: kindLabel },
-      { key: 'radius', label: '半径', value: fmtDist(def.radius), presentation: 'major' },
+      { key: 'radius', label: '半径', ...fmtDistParts(def.radius), presentation: 'major' },
       { key: 'mu', label: 'μ', value: `${def.mu.toExponential(3)} m³/s²`, presentation: 'major' },
     );
     // 軌道要素は公転天体だけが持つ。
@@ -141,10 +142,10 @@ export class CelestialEntity implements ObjectPickable {
     const apSpec = getApsisLabelSpec('ap', el.center.id);
     const peSpec = getApsisLabelSpec('pe', el.center.id);
     rows.push(
-      { key: 'ap', label: apSpec.full, value: fmtDist(apsis.ap), group: 'ORBIT' },
-      { key: 'pe', label: peSpec.full, value: fmtDist(apsis.pe), group: 'ORBIT' },
-      { key: 'inc', label: ORBIT_ELEMENT_LABELS.inc.full, value: `${el.incDeg.toFixed(2)}°`, group: 'ORBIT' },
-      { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(el.period), group: 'ORBIT' },
+      { key: 'ap', label: apSpec.full, value: fmtDist(apsis.ap), group: '軌道' },
+      { key: 'pe', label: peSpec.full, value: fmtDist(apsis.pe), group: '軌道' },
+      { key: 'inc', label: ORBIT_ELEMENT_LABELS.inc.full, value: `${el.incDeg.toFixed(2)}°`, group: '軌道' },
+      { key: 'prd', label: ORBIT_ELEMENT_LABELS.prd.full, value: fmtTime(el.period), group: '軌道' },
     );
     return rows;
   }

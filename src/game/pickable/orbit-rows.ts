@@ -1,5 +1,5 @@
 // 軌道上の実体に共通する軌道要素の行(基準天体・高度・速度・AP/PE/INC/PRD)。
-// 「軌道」グループにまとめ、プロパティウィンドウ先頭の折り畳みセクションへ描かれる。
+// group の折り畳みにまとめ、プロパティウィンドウの末尾へ描かれる。
 import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { orbitInfo } from '../orbit-info';
@@ -9,9 +9,12 @@ import type { PropertyRow } from '../../hud/windows/property-window-content';
 
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
+// 折り畳みの既定の名前。
+export const ORBIT_GROUP = '軌道';
+
 // simTime は天体位置を厳密に引く時刻。
 export function orbitRows(
-  entity: OrbitingObject, celestialBodies: CelestialBodies, simTime: number,
+  entity: OrbitingObject, celestialBodies: CelestialBodies, simTime: number, group = ORBIT_GROUP,
 ): PropertyRow[] {
   const motions = celestialBodies.celestialMotions;
   const oi = orbitInfo(
@@ -19,7 +22,6 @@ export function orbitRows(
     (id: string) => celestialBodies.nameOf(id));
   const apSpec = getApsisLabelSpec('ap', oi.centerId);
   const peSpec = getApsisLabelSpec('pe', oi.centerId);
-  const group = 'ORBIT';
   return [
     { key: 'center', label: '基準天体', value: oi.centerName, group },
     { key: 'alt', label: ORBIT_ELEMENT_LABELS.alt.full, value: fmtDist(oi.alt), group },

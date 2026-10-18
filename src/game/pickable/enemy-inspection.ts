@@ -19,12 +19,15 @@ import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import type { ProteinCombatReadout } from '../protein/protein-schema';
 import type { ProteinSiteMarker } from '../../render/dynamic/dynamic-entity/protein-enemy-view';
 import { len, sub } from '../../math/vec3';
-import { fmtDist, fmtSpeed } from '../../hud/utils';
+import { fmtDist, fmtDistParts, fmtSpeed, fmtSpeedParts } from '../../hud/utils';
 import { relativeInfo } from '../orbit-info';
 import { orbitRows } from './orbit-rows';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
 import { MenuCommon } from '../hud/windows/menu-actions';
+
+// 軌道要素と相対値をまとめる折り畳みの名前。
+const ORBIT_AND_RELATIVE_GROUP = '軌道と相対値';
 
 // 一覧で「接近」として数える、viewer からの距離 [m]。
 const ENEMY_APPROACH_DIST = 2e5;
@@ -121,27 +124,30 @@ export class EnemyInspection implements InspectedObject {
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.source.mapKind, this.source.motion.state);
   }
 
-  // 装甲・viewer との相対距離と速度・軌道・相対傾斜の行。viewer が無ければ相対の行を省く。
+  // 距離・接近速度・装甲を先に、軌道と相対値を末尾の折り畳みにまとめた行。viewer が無ければ相対の行を省く。
   public propertyRows(
     bodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number, _displayTime: number,
   ): readonly PropertyRow[] {
     const rel = viewer ? relativeInfo(viewer, this.source, bodies.celestialMotions, simTime) : null;
+    const group = ORBIT_AND_RELATIVE_GROUP;
     const rows: PropertyRow[] = [];
     // 戦闘判断で最初に読む距離・接近速度を主状態へ上げる。
-    if (rel) rows.push(
-      { key: 'dist', label: '距離', value: fmtDist(rel.dist), presentation: 'hero' },
-      { key: 'closing', label: '接近速度', value: fmtSpeed(rel.closing), presentation: 'major' },
-    );
+    if (rel) {
+      const dist = fmtDistParts(rel.dist);
+      const closing = fmtSpeedParts(rel.closing);
+      rows.push(
+        { key: 'dist', label: '距離', value: dist.value, unit: dist.unit, presentation: 'hero' },
+        { key: 'closing', label: '接近速度', value: closing.value, unit: closing.unit, presentation: 'major' },
+      );
+    }
     rows.push({
-      key: 'hp', label: '装甲', value: `${Math.floor(this.source.hp)} / ${this.source.maxHp}`,
-      presentation: 'major',
+      key: 'hp', label: '装甲', value: `${Math.floor(this.source.hp)}`, unit: `/ ${this.source.maxHp}`,
+      fill: this.source.maxHp > 0 ? this.source.hp / this.source.maxHp : 0, presentation: 'major',
     });
-    if (rel) rows.push(
-      { key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), presentation: 'detail' },
-    );
-    rows.push(...orbitRows(this.source, bodies, simTime));
-    if (rel) rows.push({ key: 'relinc', label: '相対傾斜 [AN/DN]',
-      value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group: 'ORBIT' });
+    if (rel) rows.push({ key: 'relspeed', label: '相対速度', value: fmtSpeed(rel.relSpeed), group });
+    rows.push(...orbitRows(this.source, bodies, simTime, group));
+    if (rel) rows.push({ key: 'relinc', label: '相対傾斜',
+      value: isFinite(rel.relIncDeg) ? `${rel.relIncDeg.toFixed(2)}°` : '---', group });
     return rows;
   }
 }

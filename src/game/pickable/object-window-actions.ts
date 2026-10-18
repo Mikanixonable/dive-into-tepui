@@ -3,8 +3,9 @@
 import type { PauseMenu } from '../../hud/windows/pause-menu';
 import type { HintKind } from '../../hud/notifier';
 import type {
-  PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem,
+  PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem, PropertyWindowToggle,
 } from '../../hud/windows/property-window-content';
+import type { WindowRole } from '../../hud/windows/draggable-window';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -42,6 +43,13 @@ export interface ObjectWindowParts {
   readonly title: string;
   readonly subtitle?: string;
   readonly items: readonly PropertyWindowItem<MenuAction>[];
+  readonly toggles: readonly PropertyWindowToggle<MenuAction>[];
+}
+
+// 操作の意味に応じたボタンの役割。ターゲット操作は第二色の面、削除は取り消せない操作の警告面。
+function toneOf(act: MenuAction): PropertyWindowItem<MenuAction>['tone'] {
+  if (act === 'target') return 'target';
+  return act === 'delete' ? 'danger' : undefined;
 }
 
 export class ObjectWindowActions {
@@ -98,40 +106,51 @@ export class ObjectWindowActions {
     });
   }
 
-  // 対象が差し出す項目を、窓のタイトル・サブタイトルと操作項目へ振り分ける。
+  // 対象が差し出す項目を、窓のタイトル・サブタイトル・2値の設定・操作ボタンへ振り分ける。
+  // 閉じる操作(✕・ESC)と重複するキャンセルの項目は窓へ出さない。
   public windowParts(target: InspectedObject, simTime: number): ObjectWindowParts {
     const all = this.offeredItems(target, simTime);
     const header = all.find((it) => it.type === 'header');
     // 戦闘ビューで開いたウィンドウは項目ショートカットを持たせない — [F]/[T] は自機の
     // 進行方向リセット/ターゲット選択が既に使っており、同じキーを両方へは配れない。
     const showShortcuts = this.view.current === 'map';
-    const items = all
-      .filter((it) => it.type !== 'header' && it.act !== undefined)
+    const acts = all.filter((it) => it.type !== 'header' && it.act !== undefined && it.act !== 'cancel');
+    const toggles = acts
+      .filter((it) => it.selected !== undefined)
+      .map((it) => ({ label: it.label, act: it.act as MenuAction, on: it.selected === true }));
+    const items = acts
+      .filter((it) => it.selected === undefined)
       .map((it) => ({
         label: it.label, act: it.act as MenuAction,
         shortcut: showShortcuts ? it.shortcut : undefined,
-        selected: it.selected, keepOpen: it.keepOpen,
+        tone: toneOf(it.act as MenuAction), keepOpen: it.keepOpen,
       }));
-    return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
+    return { title: header?.label ?? target.name, subtitle: header?.subLabel, items, toggles };
+  }
+
+  // 対象と操作対象・ターゲットとの関係。操作対象の自艦が先で、次にターゲット中。
+  public roleOf(target: InspectedObject): WindowRole {
+    if (this.controlSelection.current?.id === target.id) return 'own';
+    return this.navTarget.id === target.id ? 'target' : null;
   }
 
   public buildContent(
     target: InspectedObject, simTime: number, opener: PropertyWindowOpener,
   ): PropertyWindowContent<MenuAction> {
-    const { title, subtitle, items } = this.windowParts(target, simTime);
+    const { title, subtitle, items, toggles } = this.windowParts(target, simTime);
     const kind = target instanceof CelestialEntity
-      ? { kindCode: 'BDY', kindLabel: 'CELESTIAL BODY' }
+      ? { kindCode: 'BDY', kindLabel: '天体' }
       : target instanceof ShipInspection
-        ? { kindCode: 'VSL', kindLabel: 'SPACECRAFT' }
+        ? { kindCode: 'VSL', kindLabel: target.roleLabel }
         : target instanceof EnemyInspection
-          ? { kindCode: 'CNT', kindLabel: 'CONTACT' }
+          ? { kindCode: 'CNT', kindLabel: '敵機' }
           : target instanceof Pickup
-            ? { kindCode: 'SUP', kindLabel: 'SUPPLY' }
+            ? { kindCode: 'SUP', kindLabel: '物資' }
             : target instanceof LagrangePointMarker
-              ? { kindCode: 'POI', kindLabel: 'REFERENCE POINT' }
+              ? { kindCode: 'POI', kindLabel: '基準点' }
               : target instanceof OrbitPointMarker
-                ? { kindCode: 'EVT', kindLabel: 'ORBIT EVENT' }
-                : { kindCode: 'OBJ', kindLabel: 'OBJECT' };
+                ? { kindCode: 'EVT', kindLabel: '軌道上の点' }
+                : { kindCode: 'OBJ', kindLabel: '物体' };
     return {
       title,
       subtitle,
@@ -140,6 +159,7 @@ export class ObjectWindowActions {
       icon: target.glyphSvg ?? target.glyph,
       rows: [],
       items,
+      toggles,
       relatedItems: this.relatedItemsFor(target, simTime, opener),
       relatedTitle: this.relatedTitleFor(target),
       onRename: target.rename === null ? undefined : (name) => this.commands.rename(target, name),
@@ -207,7 +227,7 @@ export class ObjectWindowActions {
   public relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
     return controlled !== null && isModularShip(controlled) && target.id === controlled.id
-      ? 'MODULES' : 'ORBITING';
+      ? '搭載部品' : '周回物体';
   }
 
   // 表示中のビューのカメラの注視を id の対象へ移し、name で知らせる。

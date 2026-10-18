@@ -18,18 +18,22 @@ import { orbitRows } from './orbit-rows';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
-import { PLAN_EXECUTION_MODES, planExecutionLabel } from '../player/player-plan-settings';
+import { PLAN_EXECUTION_MODES } from '../player/player-plan-settings';
 import type { ShipModuleInstance } from '../ship/ship-module-instance';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
 import type { MapVisibility } from '../map/visibility-policy';
 
 const ROLE_LABEL = { ship: '船', base: '基地', material: '物資' } as const;
+// 種別タグ「VSL · 自艦」に出す役割の名前。
+const KIND_TAG_LABEL = { ship: '自艦', base: '基地', material: '物資' } as const;
 
 // モジュール船の表示・一覧・検査面をゲーム状態から分離する adapter。
 export class ShipInspection implements InspectedObject {
   public constructor(private readonly ship: ModularShip) {}
 
+  // 種別タグに出す、船体の役割の名前。
+  public get roleLabel(): string { return KIND_TAG_LABEL[this.ship.capabilities.role]; }
   public get id(): string { return this.ship.id; }
   public get name(): string { return this.ship.name; }
   public get gone(): boolean { return !this.ship.motion.alive; }
@@ -75,7 +79,7 @@ export class ShipInspection implements InspectedObject {
     const active = this.ship === viewer;
     return [
       MenuCommon.target(navTargetId === this.ship.id),
-      { label: `軌道計画の実行: ${planExecutionLabel(this.ship.planExecution)}`, act: 'planExecCycle', keepOpen: true },
+      { label: '軌道計画の自動実行', act: 'planExecCycle', selected: this.ship.planExecution !== 'off', keepOpen: true },
       active ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
       MenuCommon.focus(),
       ...(active ? [] : [MenuCommon.trajectoryLine(this.ship.trajectoryLineVisible)]),
@@ -95,8 +99,9 @@ export class ShipInspection implements InspectedObject {
     } else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.ship.mapKind, this.ship.motion.state);
     else if (act === 'delete') selection.remove(this.ship);
   }
+  // 船体・温度・電力・弾薬と接舷部の状態を先に、軌道を末尾の折り畳みにまとめた行。
   public propertyRows(
-    bodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
+    bodies: CelestialBodies, _viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     const dockRows: PropertyRow[] = this.ship.assembly.modules
       .filter(module => module.kind === 'dock' || module.kind === 'docking_port')
@@ -104,19 +109,19 @@ export class ShipInspection implements InspectedObject {
         key: `dock-${module.id}`,
         label: `接舷部 ${module.id}`,
         value: module.hp <= 0 ? '全損' : this.ship.docks.status(this.ship.assembly, module.id),
-        collapsible: true,
       }));
     return [
-      { key: 'role', label: '役割', value: ROLE_LABEL[this.ship.capabilities.role] },
-      { key: 'operated', label: '操作対象か', value: this.ship === viewer ? 'はい' : 'いいえ', collapsible: true },
-      { key: 'follow', label: '計画実行', value: planExecutionLabel(this.ship.planExecution), collapsible: true },
       {
-        key: 'hp', label: 'HULL',
-        value: `${Math.round((this.ship.hp / Math.max(1, this.ship.maxHp)) * 100)}% · ${Math.floor(this.ship.hp)} / ${this.ship.maxHp}`,
+        key: 'hp', label: '船体',
+        value: `${Math.round((this.ship.hp / Math.max(1, this.ship.maxHp)) * 100)}`, unit: '%',
         presentation: 'hero',
       },
       {
-        key: 'temp', label: '温度', value: `${this.ship.motion.temperature.toFixed(0)} K`,
+        key: 'hullHp', label: '船体 HP', value: `${Math.floor(this.ship.hp)}`, unit: `/ ${this.ship.maxHp}`,
+        presentation: 'major',
+      },
+      {
+        key: 'temp', label: '温度', value: this.ship.motion.temperature.toFixed(0), unit: 'K',
         presentation: 'major',
       },
       { key: 'power', label: '電力', value: fmtEnergy(this.ship.motion.power.chargeJ), presentation: 'major' },

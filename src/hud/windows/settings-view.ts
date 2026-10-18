@@ -20,18 +20,12 @@ export class SettingsView {
   // BGM の音量が変わったときに呼ばれる。
   public onBgmVolumeChange: ((volume: number) => void) | null = null;
 
-  // ヘッダー・タブバーおよび描画/BGM/配色の各パネルを構築する。graphics・bgmVolume・themeId は
+  // タブバーおよび描画/BGM/配色の各パネルを構築する。graphics・bgmVolume・themeId は
   // 組み立て時の設定値。
   public constructor(graphics: GraphicsSettingsData, bgmVolume: number, themeId: string) {
     this.element = document.createElement('section');
     this.element.className = 'pm-settings-view';
-    this.element.setAttribute('aria-labelledby', 'hud-settings-title');
-    this.element.appendChild(this.buildHeader());
-
-    const description = document.createElement('p');
-    description.className = 'sv-description';
-    description.textContent = '描画・BGM・配色の設定を切り替えられます。';
-    this.element.appendChild(description);
+    this.element.setAttribute('aria-label', '設定');
 
     // タブバー: 描画・BGM・配色の3パネルを切り替える。
     const tabPanels = new Map<SettingsTab, HTMLElement>();
@@ -42,10 +36,10 @@ export class SettingsView {
         for (const [tab, panel] of tabPanels) panel.hidden = tab !== selectedTab;
       },
     );
-    tabs.element.classList.add('sv-tabs', 'ui-surface-inset');
+    tabs.element.classList.add('sv-tabs', 'w-tabs--neutral', 'is-dense');
     this.element.appendChild(tabs.element);
 
-    // 見出し付きのタブパネル要素を生成し、タブ切り替え用に tabPanels へ登録する。
+    // タブパネル要素を生成し、タブ切り替え用に tabPanels へ登録する。
     const addTabPanel = (tab: SettingsTab, title: string): HTMLElement => {
       const section = document.createElement('section');
       section.className = 'sv-section sv-tab-panel ui-surface-inset';
@@ -53,9 +47,6 @@ export class SettingsView {
       section.setAttribute('aria-label', title);
       // タブで選ばれるまで隠しておく。
       section.hidden = true;
-      const sectionTitle = document.createElement('h3');
-      sectionTitle.textContent = title;
-      section.appendChild(sectionTitle);
       const sectionBody = document.createElement('div');
       sectionBody.className = 'sv-section-body';
       section.appendChild(sectionBody);
@@ -84,25 +75,6 @@ export class SettingsView {
     tabs.setSelected('graphics');
     const initialPanel = tabPanels.get('graphics');
     if (initialPanel !== undefined) initialPanel.hidden = false;
-  }
-
-  // 設定ビューのヘッダー見出しと説明用テキストを構築する。
-  private buildHeader(): HTMLElement {
-    const header = document.createElement('div');
-    header.className = 'sv-header';
-    const headingGroup = document.createElement('div');
-    headingGroup.className = 'sv-heading-group';
-    const heading = document.createElement('h2');
-    heading.id = 'hud-settings-title';
-    heading.textContent = '設定';
-    headingGroup.appendChild(heading);
-    // 見出しに添える英字の小見出し。
-    const eyebrow = document.createElement('span');
-    eyebrow.className = 'sv-eyebrow';
-    eyebrow.textContent = 'SYSTEM / SETTINGS';
-    headingGroup.appendChild(eyebrow);
-    header.appendChild(headingGroup);
-    return header;
   }
 
   // BGM試聴状態。設定ビューを開いている間を試聴期間とし、非表示時は null、停止時は 'silent'。

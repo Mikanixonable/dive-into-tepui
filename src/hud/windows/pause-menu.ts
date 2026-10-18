@@ -1,6 +1,5 @@
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { SPACE_4 } from '../../theme';
 import { placeOverlayAt } from '../layout';
 import { onViewportChange } from '../viewport';
 import { injectOnce } from '../inject-style';
@@ -12,6 +11,7 @@ import { SYSTEM_MODAL_GROUP } from '../overlay-manager';
 import type { OverlayHandle, OverlayManager, SurfaceSpec } from '../overlay-manager';
 import {
   Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider, TabBar,
+  type ButtonVariant,
 } from '../widgets';
 import { wireHeaderDrag } from '../window-drag';
 import { SettingsView } from './settings-view';
@@ -21,7 +21,14 @@ type PauseMenuTab = 'pause' | 'settings';
 // OverlayManager の台帳上の id。開いているかどうかは登録の有無が正本。
 const OVERLAY_ID = 'pause-menu';
 
-// ESCメニュー(#hud-pause-menu)。一時停止操作と詳細設定を外側タブで切り替え、ヘッダーのドラッグ移動と
+const TAB_LABELS: readonly (readonly [PauseMenuTab, string])[] = [['pause', '一時停止'], ['settings', '設定']];
+
+// 消音ボタンの絵。消音中(.on)は音の波が消えて斜線が出る。
+const SPEAKER_ICON_SVG = '<svg viewBox="0 0 16 16"><path d="M2 6h3l4-3.5v11L5 10H2z" fill="currentColor"/>'
+  + '<path class="pm-speaker-waves" d="M11.5 5.5a3.5 3.5 0 010 5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'
+  + '<path class="pm-speaker-slash" d="M11 5.5l4 5M15 5.5l-4 5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+
+// ESCメニュー(#hud-pause-menu)。一時停止操作と詳細設定を外側タブで切り替え、ロゴの列とタブの行からのドラッグ移動と
 // 最小化を持つ。
 export class PauseMenu implements OverlayHandle {
   private readonly panel: HTMLElement;
@@ -32,7 +39,7 @@ export class PauseMenu implements OverlayHandle {
   // 設定タブに配置された設定ビュー。設定変更の操作を受け持つ。
   private readonly _settingsView: SettingsView;
   public get settingsView(): SettingsView { return this._settingsView; }
-  private readonly minimizeToggle: HTMLButtonElement;
+  private readonly minimizeToggle: Button;
   private minimized = false;
   private hasCustomPosition = false;
   private activeTab: PauseMenuTab = 'pause';
@@ -49,6 +56,7 @@ export class PauseMenu implements OverlayHandle {
   private readonly resizeObserver: ResizeObserver;
   private readonly bgmSlider: Slider;
   private readonly bgmMute: Button;
+  private readonly bgmValue: HTMLElement;
 
   // パネル DOM を組み立てる。要素は開くまで DOM へ挿さず、overlayManager が modal の層へ置く。
   // graphics・themeId は組み立て時の設定値、bgmVolume は消音を織り込んだ組み立て時の音量。
@@ -65,49 +73,36 @@ export class PauseMenu implements OverlayHandle {
     this._settingsView = new SettingsView(graphics, bgmVolume, themeId);
     this.panel = document.createElement('div');
     this.panel.id = 'hud-pause-menu';
-    this.panel.className = 'panel ui-surface-focus editorial-workspace';
+    this.panel.className = 'panel ui-surface-focus';
 
-    // ヘッダー: ロゴ・見出し・最小化トグル・✕ ボタンと、ドラッグ移動の配線。
-    const header = document.createElement('div');
-    header.className = 'pm-header';
-    const headerTop = document.createElement('div');
-    headerTop.className = 'pm-header-top';
-    headerTop.appendChild(this.buildBrand());
-    this.minimizeToggle = document.createElement('button');
-    this.minimizeToggle.type = 'button';
-    this.minimizeToggle.className = 'pm-minimize';
-    this.minimizeToggle.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.minimizeToggle.addEventListener('click', () => this.setMinimized(!this.minimized));
-    const closeBtn = new CloseButton(() => this.toggle(false));
-    const headerActions = document.createElement('div');
-    headerActions.className = 'pm-header-actions';
-    headerActions.appendChild(this.minimizeToggle);
-    headerActions.appendChild(closeBtn.element);
-    headerTop.appendChild(headerActions);
-    header.appendChild(headerTop);
-    const heading = document.createElement('h3');
-    heading.className = 'pm-system-heading';
-    heading.innerHTML = '<span class="ui-section-code" aria-hidden="true">SYS</span><span>SYSTEM / PAUSE</span>';
-    const subheading = document.createElement('div');
-    subheading.className = 'pm-system-sub ui-data-context';
-    subheading.textContent = 'APPLICATION STATE · SUSPENDED';
-    header.append(heading, subheading);
-    wireHeaderDrag(header, {
-      position: () => ({ x: this.panel.offsetLeft, y: this.panel.offsetTop }),
-      moveTo: (x, y) => this.moveTo(x, y),
-      onDragStart: () => { this.hasCustomPosition = true; },
-    });
-    this.panel.appendChild(header);
+    // 左の列にロゴと版・状態、右の列にタブ・最小化・✕ と本文。ロゴの列とタブの行はどちらも
+    // ドラッグ領域で、最小化と ✕ は右上端に置く。
+    const brand = this.buildBrand();
+    this.panel.appendChild(brand);
+    const main = document.createElement('div');
+    main.className = 'pm-main';
+    this.panel.appendChild(main);
+    const top = document.createElement('div');
+    top.className = 'pm-top';
+    main.appendChild(top);
+    for (const dragArea of [brand, top]) {
+      wireHeaderDrag(dragArea, {
+        position: () => ({ x: this.panel.offsetLeft, y: this.panel.offsetTop }),
+        moveTo: (x, y) => this.moveTo(x, y),
+        onDragStart: () => { this.hasCustomPosition = true; },
+      });
+    }
+
+    this.tabBar = new TabBar<PauseMenuTab>(TAB_LABELS, (tab) => this.setActiveTab(tab));
+    this.tabBar.element.classList.add('pm-tabs', 'w-tabs--neutral');
+    top.appendChild(this.tabBar.element);
+    this.minimizeToggle = new Button('', () => this.setMinimized(!this.minimized), undefined, 'icon');
+    top.appendChild(this.minimizeToggle.element);
+    top.appendChild(new CloseButton(() => this.toggle(false)).element);
 
     this.body = document.createElement('div');
     this.body.className = 'pm-body';
-    this.panel.appendChild(this.body);
-
-    this.tabBar = new TabBar<PauseMenuTab>(
-      [['pause', 'PAUSE'], ['settings', 'SETTINGS']], (tab) => this.setActiveTab(tab),
-    );
-    this.tabBar.element.classList.add('pm-tabs', 'ui-surface-inset');
-    this.body.appendChild(this.tabBar.element);
+    main.appendChild(this.body);
 
     this.tabContent = document.createElement('div');
     this.tabContent.className = 'pm-tab-content';
@@ -125,11 +120,14 @@ export class PauseMenu implements OverlayHandle {
     this.syncMinimizeToggle();
 
     // 一時停止タブ: BGM 音量行と操作ボタンのグリッド。
+    this.bgmValue = document.createElement('span');
     this.bgmSlider = new Slider({ min: 0, max: 1, step: 0.05 }, (vol) => {
       this.updateMuteState(vol);
       this.onBgmVolumeChange?.(vol);
     });
-    this.bgmMute = new Button('消音', () => this.toggleMute());
+    this.bgmMute = new Button('', () => this.toggleMute(), SPEAKER_ICON_SVG, 'icon');
+    this.bgmMute.element.title = '消音';
+    this.bgmMute.element.setAttribute('aria-label', '消音');
     this.pauseTabPanel.appendChild(this.buildBgmRow());
     this.syncBgmVolume(bgmVolume);
     this.pauseTabPanel.appendChild(this.buildActionGrid());
@@ -146,9 +144,9 @@ export class PauseMenu implements OverlayHandle {
     return this.overlayManager.isOverlayOpen(OVERLAY_ID);
   }
 
-  // タイトルとバージョンを ESC メニュー上部へ積む。
+  // ロゴ・版情報・時間停止中の状態を、操作から独立したブランド欄へまとめる。
   private buildBrand(): HTMLElement {
-    // 共有ロゴと版情報を、操作ヘッダーから独立したブランド欄へまとめる。
+    // ロゴ(タイトル画面と同じロゴタイプ)の下へ、会社名・版・状態ピップを積む。
     const brand = document.createElement('div');
     brand.className = 'pm-brand';
 
@@ -164,51 +162,46 @@ export class PauseMenu implements OverlayHandle {
     const version = document.createElement('span');
     version.className = 'pm-brand-version';
     version.textContent = `v${__APP_VERSION__}`;
-    meta.append(label, version);
+    const pip = document.createElement('span');
+    pip.className = 'pm-brand-pip ui-pip on';
+    pip.textContent = '時間停止中';
+    meta.append(label, version, pip);
 
     brand.append(logotype, meta);
     return brand;
   }
 
-  // ラベル・音量スライダー・消音ボタンを1行に並べる。
+  // ラベル・音量スライダー・音量の値・消音ボタンを1行に並べる。
   private buildBgmRow(): HTMLElement {
     const bgmRow = document.createElement('div');
-    bgmRow.className = 'pm-row';
+    bgmRow.className = 'pm-row pm-bgm';
     const bgmLabel = document.createElement('span');
-    bgmLabel.className = 'k';
-    bgmLabel.textContent = 'BGM Vol';
-    bgmRow.appendChild(bgmLabel);
-    // スライダーが残りの幅を取り、消音ボタンは右端に寄る。
-    this.bgmSlider.element.style.flex = '1';
-    this.bgmSlider.element.style.marginLeft = SPACE_4;
-    bgmRow.appendChild(this.bgmSlider.element);
-    this.bgmMute.element.style.marginLeft = SPACE_4;
-    bgmRow.appendChild(this.bgmMute.element);
+    bgmLabel.className = 'ui-k';
+    bgmLabel.textContent = 'BGM';
+    this.bgmValue.className = 'pm-bgm-value ui-v';
+    bgmRow.append(bgmLabel, this.bgmSlider.element, this.bgmValue, this.bgmMute.element);
     return bgmRow;
   }
 
-  // セーブ・セーブデータ管理・デバッグ表示の導線と、タイトルへ戻るボタンを1つのグリッドへ並べる。
+  // ゲームへ戻る・セーブ・セーブデータ管理・デバッグ表示を2列のボタンへ、タイトルへ戻るを末尾の
+  // 1行へ並べる。キー割り当てのあるものはキーキャップを添える。
   private buildActionGrid(): HTMLElement {
     const actionGrid = document.createElement('div');
     actionGrid.className = 'pm-actions';
-    // 幅いっぱいのボタン1つだけを持つ行を足す。
-    const addButtonRow = (label: string, onClick: () => void): void => {
-      const row = document.createElement('div');
-      row.className = 'pm-row';
-      const btn = new Button(label, onClick);
+    // 1つのボタンを組んでグリッドへ足す。
+    const addButton = (
+      label: string, onClick: () => void, key?: string, variant?: ButtonVariant, extraClass?: string,
+    ): void => {
+      const btn = new Button(label, onClick, undefined, variant, key);
       btn.element.classList.add('pm-menu-btn');
-      btn.element.style.flex = '1';
-      row.appendChild(btn.element);
-      actionGrid.appendChild(row);
+      if (extraClass !== undefined) btn.element.classList.add(extraClass);
+      actionGrid.appendChild(btn.element);
     };
-    addButtonRow('01  ゲームに戻る', () => this.toggle(false));
-    addButtonRow('02  セーブ', () => this.onSave?.());
-    addButtonRow('03  セーブデータの管理', () => this.onOpenSaveBrowser?.());
-    addButtonRow(`04  デバッグ [${K.toggleDebugInfoWindow.label}]`, () => this.onOpenDebugInfoWindow?.());
-
-    const quitBtn = new Button('05  タイトル画面に戻る', () => this.onQuitToTitle?.());
-    quitBtn.element.classList.add('pm-menu-btn', 'pm-quit');
-    actionGrid.appendChild(quitBtn.element);
+    addButton('ゲームに戻る', () => this.toggle(false), K.pauseMenu.label, 'primary');
+    addButton('セーブ', () => this.onSave?.(), K.manualSave.label);
+    addButton('セーブデータの管理', () => this.onOpenSaveBrowser?.(), K.openSaveBrowser.label);
+    addButton('デバッグ', () => this.onOpenDebugInfoWindow?.(), K.toggleDebugInfoWindow.label);
+    addButton('タイトル画面に戻る', () => this.onQuitToTitle?.(), undefined, 'caution', 'pm-quit');
     return actionGrid;
   }
 
@@ -217,9 +210,10 @@ export class PauseMenu implements OverlayHandle {
     this.onBgmMutedChange?.(this.bgmSlider.getValue() > 0);
   }
 
-  // 消音ボタンの点灯を音量から合わせる。
+  // 消音ボタンの点灯と音量の値の表示を音量から合わせる。
   private updateMuteState(vol: number): void {
     this.bgmMute.setOn(vol <= 0);
+    this.bgmValue.textContent = `${Math.round(vol * 100)}%`;
   }
 
   // 最小化状態を切り替える。パネルを閉じて再び開くと展開状態から始まる。
@@ -251,11 +245,13 @@ export class PauseMenu implements OverlayHandle {
     };
   }
 
-  // 最小化トグルボタンの絵文字・aria-expanded・title を現在の折りたたみ状態に合わせる。
+  // 最小化トグルボタンの記号・aria-expanded・title を現在の折りたたみ状態に合わせる。
   private syncMinimizeToggle(): void {
-    this.minimizeToggle.textContent = this.minimized ? COLLAPSE_COLLAPSED_GLYPH : COLLAPSE_EXPANDED_GLYPH;
-    this.minimizeToggle.setAttribute('aria-expanded', String(!this.minimized));
-    this.minimizeToggle.title = this.minimized ? '展開する' : '最小化する';
+    const button = this.minimizeToggle.element;
+    this.minimizeToggle.setLabel(this.minimized ? COLLAPSE_COLLAPSED_GLYPH : COLLAPSE_EXPANDED_GLYPH);
+    button.setAttribute('aria-expanded', String(!this.minimized));
+    button.title = this.minimized ? '展開する' : '最小化する';
+    button.setAttribute('aria-label', button.title);
   }
 
   // target がパネル要素の内部かどうかを返す。

@@ -221,7 +221,7 @@ export class GamePresentation {
     );
     // ビューの表示実装は ObjectWindows より後に組む。
     this.objectWindows = new ObjectWindows(
-      hud, celestialSystem, viewer.camera, controlSelection,
+      hud, celestialSystem, controlSelection,
       this.displayWindowManager, objectWindowActions,
     );
     this.combatView = new CombatFrame(

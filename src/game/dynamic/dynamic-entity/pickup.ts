@@ -1,5 +1,5 @@
 // 軌道上の補給物(接近した自艦が取り込む漂流物)と、その種別ごとの具象。
-import { fmtDist } from '../../../hud/utils';
+import { fmtDist, fmtDistParts } from '../../../hud/utils';
 import { len, sub, v3, type SerializedVec3, type Vec3 } from '../../../math/vec3';
 import { AmmoPickupView, RcsFuelPickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
@@ -207,7 +207,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     if (viewer) {
       const distance = len(sub(this.motion.state.r, viewer.motion.state.r));
       rows.push({
-        key: 'dist', label: '距離', value: fmtDist(distance),
+        key: 'dist', label: '距離', ...fmtDistParts(distance),
         presentation: 'hero',
       });
       rows.push({
