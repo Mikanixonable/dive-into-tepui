@@ -70,8 +70,10 @@ export type ShipPlacementPreset = 'combat-ship' | 'base-ship';
 export type ObjectPlacementSelection = ShipPlacementPreset | Exclude<DynamicEntityKind, 'player' | 'base'>;
 export type ObjectPlacerForm = { readonly selection: ObjectPlacementSelection } & (ElementsForm | LagrangeForm);
 
-// open() の事前入力: 'body' は基準天体だけをその値へ合わせる(他のフィールドは前回の値のまま) —
-// マップの現在フォーカスを新規配置の初期値にする経路。'selection' は preset/種類だけを合わせる —
+// open() の事前入力: 'body' はその天体を基準天体とする軌道要素方式のフォームで開く
+// (その天体を基準天体に選べない種類を選んでいたときは、選べる種類へ戻してから合わせる。
+// 他の入力欄は前回の値のまま) — マップの現在フォーカスや天体のプロパティウィンドウから、
+// 新規配置の基準天体を初期値にする経路。'selection' は preset/種類だけを合わせる —
 // 複製元の軌道要素一式は引き継げない(または引き継ぐと基地の基準天体制約に反する)ときの経路。
 // 'form' は preset/種類を selection に固定し、軌道要素一式をその値へ書き換える —
 // 軌道要素をそのまま引き継げる複製の経路。
@@ -594,11 +596,19 @@ export class ObjectPlacerPanel implements OverlayHandle {
     } else if (preset?.kind === 'selection') {
       this.selectEntityKind(preset.selection);
     } else if (preset?.kind === 'body') {
+      // その天体を基準天体に選べない種類(基地=月のみ)を選んでいたときは、選べる種類へ戻す。
+      // 基準天体になれない天体の id が来たときは種類も含めて何も触らない。
+      if (this.entityKindValue === 'base-ship'
+        && !this.baseCelestialBodyItems.some(([id]) => id === preset.celestialBody)
+        && this.celestialBodyItems.some(([id]) => id === preset.celestialBody)) {
+        this.selectEntityKind('combat-ship');
+      }
       const allowed = this.entityKindValue === 'base-ship' ? this.baseCelestialBodyItems : this.celestialBodyItems;
       if (allowed.some(([id]) => id === preset.celestialBody)) {
         this.celestialBodyValue = preset.celestialBody;
         this.celestialBody.setSelected(this.celestialBodyValue);
         this.refreshPresets();
+        this.selectPlacementMode('elements');
       }
     }
     this.panel.classList.remove('hidden');
