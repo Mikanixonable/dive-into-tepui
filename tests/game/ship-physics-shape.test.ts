@@ -16,6 +16,7 @@ const MULTI_TANK = defineShipModule({
   name: 'test multi tank',
   length: 4,
   diameter: 2,
+  axialFaces: { front: 'structural', back: 'structural' },
   dryMass: 10,
   maxHp: 100,
   modelId: 'test-multi-tank',
