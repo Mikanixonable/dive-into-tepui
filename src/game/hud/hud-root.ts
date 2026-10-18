@@ -2,6 +2,7 @@
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import type { HudShell } from '../../hud/hud-shell';
 import { createHudElement } from '../../hud/hud-element';
+import { instrumentRowHtml } from '../../hud/instrument-row';
 import { HelpPanel } from './windows/help-panel';
 import { PanelShell } from './panel-shell';
 import { HudEls } from './hud-els';
@@ -102,20 +103,13 @@ function buildViewRoot(parent: HTMLElement, collapse: PanelCollapse, id: string,
 }
 
 // PanelShell が組んだ見出し・本文・開閉ボタンを、アクセシブルな一領域として関連付ける。
-function configureCombatPanel(panel: PanelShell, code?: string): void {
+function configureCombatPanel(panel: PanelShell): void {
   const titleId = `${panel.el.id}-title`;
   const bodyId = `${panel.el.id}-body`;
   panel.el.classList.add('combat-panel');
   panel.el.setAttribute('role', 'region');
   panel.el.setAttribute('aria-labelledby', titleId);
   panel.titleEl.id = titleId;
-  if (code !== undefined) {
-    const codeEl = document.createElement('span');
-    codeEl.className = 'ui-section-code';
-    codeEl.setAttribute('aria-hidden', 'true');
-    codeEl.textContent = code;
-    panel.titleEl.prepend(codeEl);
-  }
   panel.body.id = bodyId;
 
   // 開閉ボタンへ aria 属性を与え、開閉状態が変わるたびに読み上げ名を更新する。
@@ -138,44 +132,24 @@ function injectStyle(): void {
 
 // 常設 VESSEL パネルを右レールへ組む。
 function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
-  const status = new PanelShell(rightRail, collapse, 'hud-vessel-status', 'Vessel');
-  configureCombatPanel(status, 'VSL');
+  const status = new PanelShell(rightRail, collapse, 'hud-vessel-status', 'VSL', '艦のステータス');
+  configureCombatPanel(status);
+  const pip = (id: string): string => `<output class="ui-pip" data-id="${id}">—</output>`;
   // 計器の行(燃料・RCS・出力・動圧・各モード・弾薬)と、展開・スロットル・主要操作の置き場。
   status.body.innerHTML = `
-    <dl class="metric-list">
-      <div class="row metric">
-        <dt class="k">RCS燃料</dt>
-        <dd class="v vessel-meter-readout">
-          <span class="vessel-meter" data-id="rcs-fuel-meter"></span>
-          <output class="vessel-meter-value" data-id="rcs-fuel-value">—</output>
-        </dd>
-      </div>
-      <div class="row metric">
-        <dt class="k">RCS制動 <kbd>${K.rcsDampToggle.label}</kbd></dt>
-        <dd class="v"><output data-id="rcs">—</output></dd>
-      </div>
-      <div class="row metric">
-        <dt class="k">並進出力 <kbd>${K.throttleLow.label}–${K.throttleMax.label}</kbd></dt>
-        <dd class="v vessel-meter-readout" data-id="throttle-readout"></dd>
-      </div>
-      <div class="row metric" data-id="qdyn-row">
-        <dt class="k">動圧</dt>
-        <dd class="v vessel-meter-readout" data-id="qdyn-readout"></dd>
-      </div>
-      <div class="row metric">
-        <dt class="k">微調整 <kbd>${K.fineAttitudeToggle.label}</kbd></dt>
-        <dd class="v"><output data-id="fine">—</output></dd>
-      </div>
-      <div class="row metric">
-        <dt class="k">進行方向ホールド <kbd>${K.progradeHoldToggle.label}</kbd></dt>
-        <dd class="v"><output data-id="prohold">—</output></dd>
-      </div>
-      <div class="row metric">
-        <dt class="k">視点RCS追従 <kbd>${K.followAttitudeToggle.label}</kbd></dt>
-        <dd class="v"><output data-id="camfollow">—</output></dd>
-      </div>
-      <div class="row metric"><dt class="k">弾薬</dt><dd class="v"><output data-id="ammo">—</output></dd></div>
-    </dl>
+    <div class="ui-rows has-keys">
+      ${instrumentRowHtml({ label: 'RCS 燃料', gaugeId: 'rcs-fuel-meter', valueId: 'rcs-fuel-value' })}
+      ${instrumentRowHtml({ label: 'RCS 制動', keys: K.rcsDampToggle.label, valueHtml: pip('rcs') })}
+      ${instrumentRowHtml({
+        label: '並進出力', gaugeId: 'throttle-meter', valueId: 'throttle-value',
+        keys: `${K.throttleLow.label}–${K.throttleMax.label}`,
+      })}
+      ${instrumentRowHtml({ label: '動圧', rowId: 'qdyn-row', gaugeId: 'qdyn-gauge', valueId: 'qdyn-value' })}
+      ${instrumentRowHtml({ label: '微調整', keys: K.fineAttitudeToggle.label, valueHtml: pip('fine') })}
+      ${instrumentRowHtml({ label: '進行方向ホールド', keys: K.progradeHoldToggle.label, valueHtml: pip('prohold') })}
+      ${instrumentRowHtml({ label: '視点RCS追従', keys: K.followAttitudeToggle.label, valueHtml: pip('camfollow') })}
+      ${instrumentRowHtml({ label: '弾薬', valueId: 'ammo' })}
+    </div>
     <div class="vessel-deploy-controls" data-id="vessel-deploy-controls" role="group" aria-label="太陽電池パドル・放熱板の収納展開"></div>
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
     <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
@@ -184,48 +158,31 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
 // 常設 ORBIT パネルを左レールへ組む。軌道は map の主情報なので、compact 以外では開いて始める。
 function buildOrbitInfoPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
   const orbit = new PanelShell(
-    leftRail, collapse, 'hud-orbit', 'Orbit', () => isCompactViewport(),
+    leftRail, collapse, 'hud-orbit', 'ORB', '軌道', () => isCompactViewport(),
   );
-  configureCombatPanel(orbit, 'ORB');
-  // Editorial な読み順: 文脈 → 高度/速度 → Ap/Pe → INC/PRD → 環境負荷 → 操作。
+  configureCombatPanel(orbit);
+  // 読み順: 高度/速度(答え) → 遠地点/近地点/傾斜角/周期(形) → 飛行環境 → 基準と操作。
   orbit.body.innerHTML = `
-    <div class="orbit-context-row">
-      <span class="ui-data-context" data-id="orbit-context">—</span>
-      <output class="orbit-center-name" data-id="center">—</output>
-    </div>
-    <div class="orbit-primary-grid">
-      <div class="orbit-primary orbit-altitude">
-        <output class="ui-data-hero" data-id="alt">—</output>
-        <span class="ui-data-label">Altitude</span>
+    <div class="ui-pair">
+      <div class="ui-readout">
+        <output class="ui-readout-value" data-id="alt">—</output>
+        <span class="ui-readout-cap">高度</span>
       </div>
-      <div class="orbit-primary orbit-speed">
-        <output class="ui-data-major" data-id="spd">—</output>
-        <span class="ui-data-label">Velocity</span>
+      <div class="ui-readout is-s">
+        <output class="ui-readout-value" data-id="spd">—</output>
+        <span class="ui-readout-cap">速度</span>
       </div>
     </div>
-    <div class="orbit-apsides">
-      <div class="orbit-apsis">
-        <span class="ui-data-label" data-id="ap-label">Ap</span>
-        <output class="ui-data-major" data-id="ap">—</output>
-      </div>
-      <div class="orbit-apsis">
-        <span class="ui-data-label" data-id="pe-label">Pe</span>
-        <output class="ui-data-major" data-id="pe">—</output>
-      </div>
+    <div class="ui-rows orbit-shape">
+      ${instrumentRowHtml({ label: '遠地点', labelId: 'ap-label', valueId: 'ap' })}
+      ${instrumentRowHtml({ label: '近地点', labelId: 'pe-label', valueId: 'pe' })}
+      ${instrumentRowHtml({ label: '傾斜角', valueId: 'inc' })}
+      ${instrumentRowHtml({ label: '周期', valueId: 'prd' })}
     </div>
-    <dl class="orbit-secondary-grid">
-      <div><dt class="ui-data-label">INC</dt><dd><output data-id="inc">—</output></dd></div>
-      <div><dt class="ui-data-label">PRD</dt><dd><output data-id="prd">—</output></dd></div>
-    </dl>
-    <div class="orbit-environment" aria-label="飛行環境">
-      <div class="orbit-env-row" data-id="orbit-qdyn-row">
-        <div class="orbit-env-head"><span class="ui-data-label">q · DYNAMIC PRESSURE</span><output data-id="qdyn">—</output></div>
-        <span class="orbit-env-meter" data-id="qdyn-meter"></span>
-      </div>
-      <div class="orbit-env-row" data-id="temp-row">
-        <div class="orbit-env-head"><span class="ui-data-label">T · HULL TEMP</span><output data-id="temp">—</output></div>
-        <span class="orbit-env-meter" data-id="temp-meter"></span>
-      </div>
+    <div class="ui-sub">飛行環境</div>
+    <div class="ui-rows">
+      ${instrumentRowHtml({ label: '動圧', rowId: 'orbit-qdyn-row', gaugeId: 'qdyn-meter', valueId: 'qdyn' })}
+      ${instrumentRowHtml({ label: '船体温度', rowId: 'temp-row', gaugeId: 'temp-meter', valueId: 'temp' })}
     </div>
     <div class="orbit-controls">
       <div data-id="reference-row"></div>
@@ -236,9 +193,9 @@ function buildOrbitInfoPanel(leftRail: HTMLElement, collapse: PanelCollapse): vo
 // ブースター燃焼管理パネルを左レールへ組む。
 function buildBurnManagementPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
   const burnManagement = new PanelShell(
-    leftRail, collapse, 'burn-management-panel', '燃焼管理',
+    leftRail, collapse, 'burn-management-panel', 'BRN', '燃焼管理',
   );
-  configureCombatPanel(burnManagement, 'BRN');
+  configureCombatPanel(burnManagement);
   // 段数・総質量・最後尾燃料・燃焼状態の行と、ブースター操作の置き場。
   burnManagement.body.innerHTML = `
     <dl class="metric-list burn-management-metrics">
@@ -325,52 +282,46 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
 
 // 常設 TARGET パネルを右レールへ組む。ロック対象が無い間は隠す。
 function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
-  const target = new PanelShell(rightRail, collapse, 'hud-target', 'Target');
-  configureCombatPanel(target, 'TGT');
+  const target = new PanelShell(rightRail, collapse, 'hud-target', 'TGT', 'ターゲット');
+  configureCombatPanel(target);
   target.setHidden(true);
-  // 名前・距離・速度・装甲の行と、タンパク質標的の詳細欄。
+  // 識別行・距離と接近速度(答え)・相対速度と装甲の行・タンパク質標的の詳細欄・案内。
   target.body.innerHTML = `
     <div data-id="tgtbody">
-      <div class="target-identity">
-        <span class="target-lock-glyph" aria-hidden="true">⌖</span>
-        <strong class="target-name" data-id="tgtname" aria-live="polite">—</strong>
-        <span class="target-role">ターゲット</span>
+      <div class="ui-ident is-tgt">
+        <span class="ui-ident-glyph" aria-hidden="true">⌖</span>
+        <strong class="ui-ident-name" data-id="tgtname" aria-live="polite">—</strong>
       </div>
-      <dl class="metric-list">
-        <div class="row metric">
-          <dt class="k">距離</dt>
-          <dd class="v"><output class="target-primary-value" data-id="tgt-dist">—</output></dd>
+      <div class="ui-pair target-readouts">
+        <div class="ui-readout is-m is-tgt">
+          <output class="ui-readout-value" data-id="tgt-dist">—</output>
+          <span class="ui-readout-cap">距離</span>
         </div>
-        <div class="row metric">
-          <dt class="k">接近速度</dt><dd class="v"><output data-id="tgt-closing">—</output></dd>
+        <div class="ui-readout is-s">
+          <output class="ui-readout-value" data-id="tgt-closing">—</output>
+          <span class="ui-readout-cap">接近速度</span>
         </div>
-        <div class="row metric">
-          <dt class="k">相対速度</dt><dd class="v"><output data-id="tgt-relative-speed">—</output></dd>
-        </div>
-        <div class="row metric" data-id="tgt-armor-row"><dt class="k">装甲</dt><dd class="v armor-readout">
-          <span class="armor-meter" data-id="tgt-armor-meter"></span>
-          <output class="armor-value" data-id="tgt-armor-value">—</output>
-        </dd></div>
-      </dl>
+      </div>
+      <div class="ui-rows">
+        ${instrumentRowHtml({ label: '相対速度', valueId: 'tgt-relative-speed' })}
+        ${instrumentRowHtml({ label: '装甲', rowId: 'tgt-armor-row', gaugeId: 'tgt-armor-meter', valueId: 'tgt-armor-value' })}
+      </div>
       <section id="tgt-protein" data-id="tgt-protein" class="protein-target-details hidden" aria-label="タンパク質構造">
         <div class="protein-target-heading"><span>タンパク質</span><output data-id="tgt-protein-phase">INTACT</output></div>
-        <div class="row metric"><dt class="k">構造安定性</dt><dd class="v"><output data-id="tgt-integrity-value">—</output></dd></div>
+        <div class="ui-rows">
+          ${instrumentRowHtml({ label: '構造安定性', valueId: 'tgt-integrity-value' })}
+        </div>
         <div data-id="tgt-protein-sites"></div>
       </section>
-      <p class="target-help">軌道要素は右クリックで表示</p>
+      <p class="target-help">軌道要素は右クリック / 長押しで表示</p>
     </div>`;
 }
 
-// 常設 ENEMIES パネルを右レールへ組む。件数バッジを見出しへ添える。
+// 常設 ENEMIES パネルを右レールへ組む。残数は見出しの補足に出す。
 function buildEnemiesPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
-  const enemies = new PanelShell(rightRail, collapse, 'hud-enemies', 'CONTACTS', isCompactViewport());
-  configureCombatPanel(enemies, 'CNT');
-  const count = document.createElement('span');
-  count.className = 'panel-count';
-  count.dataset['id'] = 'count';
-  count.textContent = '—';
-  enemies.titleEl.append(' ', count);
-  enemies.body.innerHTML = `<ol class="contact-list" data-id="elist" aria-label="距離順の戦闘対象"></ol>`;
+  const enemies = new PanelShell(rightRail, collapse, 'hud-enemies', 'CNT', '敵一覧', isCompactViewport());
+  configureCombatPanel(enemies);
+  enemies.body.innerHTML = `<ol class="ui-list" data-id="elist" aria-label="距離順の戦闘対象"></ol>`;
 }
 
 // 常設の情報パネル群を左右のドックへ組む。
@@ -459,9 +410,9 @@ function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
   badge.addEventListener('click', () => helpPanel.open());
 }
 
-/* 上部クロームの実寸を HUD の配置トークンへ反映する。トップバーの行数が変わっても
-   レール・通知が固定px前提で重ならないよう、ResizeObserverで追従する。 */
+// 上部の固定 UI が占める高さを HUD の配置へ反映する。
 function trackHudChromeInset(root: HTMLElement, chrome: HTMLElement): void {
+  // 表示中のクローム高を配置値へ反映する。
   const sync = (): void => {
     const height = Math.ceil(chrome.getBoundingClientRect().height);
     if (height > 0) root.style.setProperty('--hud-chrome-h', `${height}px`);
@@ -474,9 +425,9 @@ function trackHudChromeInset(root: HTMLElement, chrome: HTMLElement): void {
   }
 }
 
-/* 左右レールが実際に占めている幅をビュー自身の CSS 変数へ反映する。
-   収納・幅変更・viewport変更を中央HUDが rail-w の手計算なしで追従できる。 */
+// 左右レールが占める幅を HUD の配置へ反映する。
 function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRail: HTMLElement): void {
+  // 現在のレール占有量を配置値へ反映する。
   const sync = (): void => {
     const rootRect = root.getBoundingClientRect();
     if (rootRect.width <= 0) return;

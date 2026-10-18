@@ -8,3 +8,10 @@ export function applyAlarmLevel(element: HTMLElement, level: AlarmLevel): void {
   element.classList.toggle('ui-caution', level === 'caution');
   element.classList.toggle('ui-warning', level === 'warning');
 }
+
+const LEVEL_RANK: Readonly<Record<AlarmLevel, number>> = { normal: 0, caution: 1, warning: 2 };
+
+// levels のうち最も重い段を返す。空なら normal。
+export function worstAlarmLevel(...levels: readonly AlarmLevel[]): AlarmLevel {
+  return levels.reduce<AlarmLevel>((worst, level) => (LEVEL_RANK[level] > LEVEL_RANK[worst] ? level : worst), 'normal');
+}
