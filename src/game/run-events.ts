@@ -3,6 +3,7 @@
 import type { CommandQueue } from './command-queue';
 import type { BulletType } from './dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
+import type { ShipBlueprint } from './ship/ship-blueprint';
 import type { EnemyDeathCause } from './stages/stage-outcome';
 import type { Attitude } from '../physics/attitude';
 import type { KinematicState } from '../physics/kinematic-state';
@@ -210,7 +211,15 @@ export type RunEventBody =
   // 複製しようとした軌道を軌道要素へ逆算できなかった。
   | { readonly kind: 'orbitNotDuplicable' }
   // 操作艦が要る操作を、操作艦が居ない状態で行おうとした。
-  | { readonly kind: 'shipRequiredForAction'; readonly action: ShipRequiredAction };
+  | { readonly kind: 'shipRequiredForAction'; readonly action: ShipRequiredAction }
+
+  // ------------------------------------------------------------------ 設計図
+  // 先端部を設計図として記録した。blueprint は記録した設計図。
+  | { readonly kind: 'blueprintRecorded'; readonly blueprint: ShipBlueprint }
+  // 設計図の名前を変えた。
+  | { readonly kind: 'blueprintRenamed'; readonly id: string; readonly name: string }
+  // 設計図を削除した。
+  | { readonly kind: 'blueprintDeleted'; readonly id: string };
 
 // 記録された出来事1件。
 export interface RunEvent {
