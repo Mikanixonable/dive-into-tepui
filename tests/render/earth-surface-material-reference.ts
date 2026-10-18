@@ -6,10 +6,35 @@ import * as THREE from 'three/webgpu';
 import {
   EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_MAX_Z, EARTH_TILE_TEXELS, EARTH_TILE_MIN_Z,
   earthTileKey,
-} from './earth-surface-tile-key';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, earthPageAt } from './earth-surface-page-table';
-import type { EarthTileKey } from './earth-surface-tile-key';
-import { earthSurfaceNormal, earthSurfaceUv, validateEarthAxes } from './earth-surface-coordinate';
+} from '../../src/render/earth-surface-tile-key';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-layout';
+import type { EarthTileKey } from '../../src/render/earth-surface-tile-key';
+import { earthSurfaceNormal, earthSurfaceUv, validateEarthAxes } from '../../src/render/earth-surface-coordinate';
+import { EARTH_ICE_ROUGHNESS, EARTH_LAND_ROUGHNESS, EARTH_WATER_ROUGHNESS } from '../../src/render/earth-surface-material-node';
+
+// ページ表の1セルを最近傍で読む。経度の両端を同じセルへ畳み、南極は最終行へ置く。
+export function earthPageAt(table: Uint8Array, u: number, v: number): readonly number[] {
+  const x = Math.floor(THREE.MathUtils.euclideanModulo(u, 1) * EARTH_PAGE_WIDTH);
+  const y = Math.min(EARTH_PAGE_HEIGHT - 1, Math.floor(THREE.MathUtils.clamp(v, 0, 1) * EARTH_PAGE_HEIGHT));
+  return [...table.subarray((y * EARTH_PAGE_WIDTH + x) * 4, (y * EARTH_PAGE_WIDTH + x) * 4 + 4)];
+}
+
+// タイル標本化用UV。v=1は南端のガターを読み、北端へwrapさせない。
+export function earthTileSampleUv(u: number, v: number, z: number): THREE.Vector2 {
+  const tu = THREE.MathUtils.euclideanModulo(u * 2 ** (z + 1), 1);
+  const tv = v === 1 ? 1 : THREE.MathUtils.euclideanModulo(v * 2 ** z, 1);
+  return new THREE.Vector2(
+    (EARTH_TILE_GUTTER + 0.5 + EARTH_TILE_TEXELS * tu) / EARTH_TILE_EXTENT,
+    (EARTH_TILE_GUTTER + 0.5 + EARTH_TILE_TEXELS * tv) / EARTH_TILE_EXTENT,
+  );
+}
+
+// 表示木の根を返す。全球画像は暗黙のz4で、地域詳細はz5から始める。
+export function earthTileRoots(): readonly EarthTileKey[] {
+  const height = 2 ** EARTH_TILE_MIN_Z;
+  return Array.from({ length: height }, (_, y) => Array.from({ length: 2 * height }, (_, x) =>
+    earthTileKey(EARTH_TILE_MIN_Z, x, y))).flat();
+}
 
 export type EarthSurfaceColorSpace = 'srgb';
 export type EarthSurfaceTerrainColorSpace = 'none';
@@ -191,9 +216,7 @@ export interface EarthSurfaceGshhgCoverage {
   readonly iceFraction: number;
 }
 
-export const EARTH_WATER_ROUGHNESS = 0.05;
-export const EARTH_LAND_ROUGHNESS = 0.80;
-export const EARTH_ICE_ROUGHNESS = 0.35;
+export { EARTH_ICE_ROUGHNESS, EARTH_LAND_ROUGHNESS, EARTH_WATER_ROUGHNESS };
 
 // GSHHGの面積被覆率から固定クラス値を求める。BMNGの青さ・明るさは参照しない。
 export function roughnessFromGshhgCoverage(coverage: EarthSurfaceGshhgCoverage): number {

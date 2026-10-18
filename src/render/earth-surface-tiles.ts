@@ -7,7 +7,7 @@ import {
 } from './earth-surface-tile-key';
 import type { EarthTileProjection } from './earth-surface-tile-projection';
 import type { EarthTileMetric } from './earth-surface-tile-projection';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-page-table';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-layout';
 
 const FADE_MS = 250; // 壁時計の描画時間 [ms]。
 const SPLIT_ERROR_PX = 2;
@@ -23,14 +23,14 @@ interface DisplayedTile extends EarthTileResident {
 }
 
 // 暗黙の全球基底と同じz4区画から可視性を絞り、z5全数の評価を避ける。
-// 詳細選択の起点となるz4相当の全球区画を列挙する。
-function selectionRoots(): readonly EarthTileKey[] {
+// 詳細選択の起点となるz4相当の全球区画。固定なので1回だけ構築する。
+const SELECTION_ROOTS: readonly EarthTileKey[] = (() => {
   const z = EARTH_TILE_MIN_Z - 1;
   const rows = 2 ** z;
   return Array.from({ length: rows }, (_, y) => Array.from(
     { length: 2 * rows }, (_, x) => earthTileKey(z, x, y),
   )).flat();
-}
+})();
 
 // 投影優先度、LOD、IDの順に候補を安定ソートする。
 function ordered(
@@ -181,7 +181,7 @@ export class EarthSurfaceTiles {
       if (metric.errorPx <= SPLIT_ERROR_PX || key.z === this.maxZoom) return;
       for (const child of earthTileChildren(key)) visit(child);
     };
-    for (const root of selectionRoots()) visit(root);
+    for (const root of SELECTION_ROOTS) visit(root);
     return { keys: candidates, metrics };
   }
 

@@ -7,10 +7,11 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   canonicalSha256, inspectEarthSurfaceBundle, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
-  EARTH_TERRAIN_BYTES, EARTH_TERRAIN_FORMAT_VERSION,
-  EARTH_TERRAIN_LAYOUT, EARTH_TERRAIN_SCALAR_UINT8, EARTH_TERRAIN_CHANNELS,
 } from './contract.mjs';
 import { fixtureClimatePng } from './fixture-climate.mjs';
+import {
+  baseTerrainPayload, fixtureManifest, fixtureSourceManifest, jpegFixture, terrainPayload,
+} from './fixture-builders.mjs';
 import { packageEarthSurface } from './package.mjs';
 
 const DEFAULT_DATASET = 'earth-pages-fixture';
@@ -18,81 +19,25 @@ const DEFAULT_DATASET = 'earth-pages-fixture';
 // release gate never publishes a bundle above the stated limit.
 export const DEFAULT_MAX_BYTES = 1_000_000_000;
 
-// 寸法検査を通る最小JPEGをPages用fixtureへ書き出す。
-function jpegFixture(width, height) {
-  const segment = (marker, body) => Buffer.concat([
-    Buffer.from([0xff, marker, (body.length + 2) >> 8, (body.length + 2) & 0xff]), body,
-  ]);
-  const sof = Buffer.from([8, height >> 8, height & 0xff, width >> 8, width & 0xff, 3,
-    1, 0x11, 0, 2, 0x11, 0, 3, 0x11, 0]);
-  const sos = Buffer.from([3, 1, 0, 2, 0, 3, 0, 0, 63, 0]);
-  return Buffer.concat([Buffer.from([0xff, 0xd8]), segment(0xc0, sof), segment(0xda, sos),
-    Buffer.from([0, 0xff, 0xd9])]);
-}
-
-function terrainPayload(z, x, y) {
-  const bytes = EARTH_TERRAIN_BYTES;
-  const payload = Buffer.alloc(32 + bytes);
-  payload.write('ESTN', 0, 'ascii'); payload.writeUInt16LE(EARTH_TERRAIN_FORMAT_VERSION, 4); payload.writeUInt16LE(32, 6);
-  payload.writeUInt16LE(260, 8); payload.writeUInt16LE(260, 10); payload.writeUInt8(z, 12);
-  payload.writeUInt32LE(x, 14); payload.writeUInt32LE(y, 18); payload.writeUInt8(EARTH_TERRAIN_CHANNELS, 22);
-  payload.writeUInt8(EARTH_TERRAIN_SCALAR_UINT8, 23); payload.writeUInt32LE(bytes, 24);
-  return payload;
-}
-
-function baseTerrain() {
-  const body = Buffer.concat([terrainPayload(0, 0, 0), terrainPayload(0, 1, 0)]);
-  const payload = Buffer.alloc(32 + body.length);
-  payload.write('ESTB', 0, 'ascii'); payload.writeUInt16LE(EARTH_TERRAIN_FORMAT_VERSION, 4); payload.writeUInt16LE(32, 6);
-  payload.writeUInt16LE(260, 8); payload.writeUInt16LE(260, 10); payload.writeUInt32LE(2, 14);
-  payload.writeUInt32LE(1, 18); payload.writeUInt8(EARTH_TERRAIN_CHANNELS, 22); payload.writeUInt8(EARTH_TERRAIN_SCALAR_UINT8, 23);
-  payload.writeUInt32LE(body.length, 24); body.copy(payload, 32);
-  return payload;
-}
-
-function fixtureSource() {
-  return { schemaVersion: 1, datasetId: DEFAULT_DATASET, sources: [{ id: 'fixture', inputSha256: [] }] };
-}
-
-function fixtureManifest(sourceManifestSha256) {
-  return {
-    schemaVersion: 3, datasetId: DEFAULT_DATASET, sourceManifestSha256,
-    colorCalibration: {
-      inputEncoding: 'sRGB8', aggregation: 'linear_rgb_area_mean', outputEncoding: 'sRGB8',
-      diffuseAlbedoScale: 1, meanLinearRgb: [0.1, 0.1, 0.1], meanRec709Albedo: 0.1,
-      bondAlbedo: 0.294, averageHue: [1, 1, 1],
-    },
-    sourceManifest: 'sources.json', provenance: { generator: 'pages-fixture/1' },
-    terrainEncoding: { formatVersion: EARTH_TERRAIN_FORMAT_VERSION, layout: EARTH_TERRAIN_LAYOUT,
-      width: 260, height: 260, channels: EARTH_TERRAIN_CHANNELS, scalar: 'UInt8', normalFrame: 'body_fixed' },
-    climateMap: { width: 1024, height: 512, channels: 4, scalar: 'UInt8' },
-    controlRegions: Array.from({ length: 16 }, (_, index) => ({ id: `region-${index}`, west: -180, south: -80, east: 180, north: 80 })),
-    coverage: { kind: 'sparse', minZoom: EARTH_TILE_MIN_Z, maxZoom: EARTH_TILE_MAX_Z, expectedTiles: null }, baseColor: 'base/earth.jpg',
-    baseTerrain: 'base/earth.bin.gz', tileTemplates: { color: 'tiles/{z}/{x}/{y}.jpg', terrain: 'tiles/{z}/{x}/{y}.bin.gz' },
-    climateMaps: Array.from({ length: 12 }, (_, index) => `climate/${String(index + 1).padStart(2, '0')}.png`),
-    climateEncoding: {
-      temperatureK: { min: 180, max: 330 }, cloudFraction: { min: 0, max: 1 },
-      orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
-      waterOrthometricElevationM: 0,
-    },
-    attribution: ['deterministic Pages fixture'],
-  };
-}
-
 async function createFixtureBundle(root) {
-  const source = fixtureSource();
+  const source = fixtureSourceManifest(DEFAULT_DATASET);
   const sourceHash = canonicalSha256(source);
-  const manifest = fixtureManifest(sourceHash);
-  const terrain = terrainPayload(5, 0, 0);
-  const color = jpegFixture(260, 260);
-  const baseColor = jpegFixture(8192, 4096);
+  const manifest = fixtureManifest({
+    sourceManifestSha256: sourceHash,
+    datasetId: DEFAULT_DATASET,
+    generator: 'pages-fixture/1',
+    attribution: ['deterministic Pages fixture'],
+  });
+  const terrain = terrainPayload({ z: 5, x: 0, y: 0 });
+  const color = jpegFixture({ width: 260, height: 260 });
+  const baseColor = jpegFixture();
   await mkdir(join(root, 'base'), { recursive: true });
   await mkdir(join(root, 'climate'), { recursive: true });
   await mkdir(join(root, 'tiles/5/0'), { recursive: true });
   await writeFile(join(root, 'sources.json'), `${JSON.stringify(source)}\n`);
   await writeFile(join(root, 'earth-surface.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(join(root, 'base/earth.jpg'), baseColor);
-  await writeFile(join(root, 'base/earth.bin.gz'), gzipSync(baseTerrain(), { mtime: 0 }));
+  await writeFile(join(root, 'base/earth.bin.gz'), gzipSync(baseTerrainPayload(), { mtime: 0 }));
   await writeFile(join(root, 'tiles/5/0/0.jpg'), color);
   await writeFile(join(root, 'tiles/5/0/0.bin.gz'), gzipSync(terrain, { mtime: 0 }));
   for (const [index, path] of manifest.climateMaps.entries()) {
@@ -101,8 +46,9 @@ async function createFixtureBundle(root) {
   return manifest;
 }
 
+// manifest/receiptは短期再検証、hashを含む実体はimmutable。serve.mjsも同じ規則を使う。
 export function cacheControlForPages(path) {
-  return path === 'earth-surface.json' || path === 'receipt.json'
+  return path.endsWith('earth-surface.json') || path.endsWith('receipt.json')
     ? 'public, max-age=60, must-revalidate' : 'public, max-age=31536000, immutable';
 }
 
