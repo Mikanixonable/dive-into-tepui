@@ -25,7 +25,7 @@ import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../view/view-mode';
-import type { CollapseToggleLabels } from '../../hud/widgets';
+import { Button, type CollapseToggleLabels } from '../../hud/widgets';
 import type { PanelCollapse } from './panel-shell';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
@@ -43,6 +43,7 @@ interface HudDomRefs {
   readonly combatRoot: HudViewRoot;
   readonly mapRoot: HudViewRoot;
   readonly helpPanel: HelpPanel;
+  readonly constructionBadge: Button;
   readonly els: HudEls;
 }
 
@@ -449,6 +450,27 @@ function buildChaseReset(root: HTMLElement): void {
   });
 }
 
+// 右上の常設バッジ列(建造開始・ヘルプ)を組む。右レール収納トグルの左へ一列に並ぶ。
+// 建造バッジの押下は onConstructionStart へ委ね、表示は呼び出し側が毎フレーム切り替える。
+function buildChromeActions(
+  chrome: HTMLElement, helpPanel: HelpPanel, onConstructionStart: () => void,
+): Button {
+  const actions = createHudElement('div', 'hud-chrome-actions', chrome);
+  const badge = new Button(`建造 [${K.constructionStart.label}]`, onConstructionStart);
+  badge.element.id = 'hud-construction-badge';
+  badge.element.dataset.id = 'construction-badge';
+  badge.element.classList.add('ui-surface-quiet', 'hidden');
+  badge.element.setAttribute('aria-label', `建造を始める [${K.constructionStart.label}]`);
+  const code = document.createElement('span');
+  code.className = 'hud-mini-code';
+  code.setAttribute('aria-hidden', 'true');
+  code.textContent = 'BLD';
+  badge.element.prepend(code);
+  actions.appendChild(badge.element);
+  buildHelpBadge(actions, helpPanel);
+  return badge;
+}
+
 // H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
 function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
   const badge = createHudElement('button', 'hud-help-badge', root, 'ui-surface-quiet');
@@ -496,7 +518,11 @@ function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRa
 }
 
 // HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
-export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle): HudDomRefs {
+// onConstructionStart は常設の建造バッジの押下先で、呼び出し側の状態を遅延参照する。
+export function buildHudDom(
+  shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle,
+  onConstructionStart: () => void,
+): HudDomRefs {
   injectStyle();
   startViewportTracking();
   const { root, layers } = shell;
@@ -515,12 +541,12 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
   buildTopBar(chrome);
   buildChaseReset(chrome);
-  buildHelpBadge(chrome, helpPanel);
+  const constructionBadge = buildChromeActions(chrome, helpPanel, onConstructionStart);
   trackHudChromeInset(root, chrome);
 
   buildMapScale(mapRoot.element);
   createHudElement('div', 'hud-toast', layers.notify, 'ui-surface-focus');
 
   const els = new HudEls(root);
-  return { combatRoot, mapRoot, helpPanel, els };
+  return { combatRoot, mapRoot, helpPanel, constructionBadge, els };
 }
