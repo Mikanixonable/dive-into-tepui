@@ -3,6 +3,7 @@
 // #hud の子として popup レイヤへ置くため、`#hud, #hud *` の margin/padding リセットに
 // 勝てるよう全セレクタを `#hud` で始める。
 import { placeOverlayAt } from '../../../hud/layout';
+import { createKeyCap } from '../../../hud/key-cap';
 import { shortcutKeyLabel } from '../../../hud/windows/shortcut-hint';
 import { onViewportChange } from '../../../hud/viewport';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
@@ -18,22 +19,11 @@ const STYLE = `
   font-family: var(--font-family); user-select: none;
   -webkit-user-select: none;
 }
-#hud .ctx-menu-code {
-  display: flex; align-items: baseline; gap: var(--space-2);
-  padding: var(--space-2) var(--space-3) var(--space-3);
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
-}
-#hud .ctx-menu-code > strong { color: var(--color-primary); letter-spacing: var(--tracking-code); }
 #hud .ctx-menu-item {
-  display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto;
-  align-items: baseline; gap: var(--space-2);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center; gap: var(--space-4);
   min-height: var(--hit-target-min); padding: var(--space-2) var(--space-3);
-  color: var(--body); cursor: pointer; border: 0; border-radius: 0;
-}
-#hud .ctx-menu-item::before {
-  content: attr(data-index); color: var(--text-dim); font-size: var(--font-xxs);
-  font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-label);
+  color: var(--body); cursor: pointer; border: 0; border-radius: var(--radius-micro);
 }
 #hud .ctx-menu-item.w-hit { display: grid; }
 #hud .ctx-menu-item:hover, #hud .ctx-menu-item:active {
@@ -41,9 +31,6 @@ const STYLE = `
 }
 #hud .ctx-menu-item.on {
   box-shadow: inset 2px 0 0 var(--color-primary); background: transparent; color: var(--color-primary);
-}
-#hud .ctx-menu-item-shortcut {
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud .ctx-menu-item:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .ctx-menu-header {
@@ -135,11 +122,6 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
     this.requestedY = clientY;
     // 項目 DOM を組み立てる。ラベルには改名可能な名前が流れうるので textContent で入れる。
     this.el.replaceChildren();
-    const code = document.createElement('div');
-    code.className = 'ctx-menu-code';
-    code.innerHTML = '<strong>ACT</strong><span>COMMAND INDEX</span>';
-    this.el.appendChild(code);
-    let itemIndex = 1;
     for (const it of items) {
       if (it.type === 'header') {
         const header = document.createElement('div');
@@ -159,7 +141,6 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
       }
       const item = document.createElement('div');
       item.className = 'ctx-menu-item ui-selectable w-hit';
-      item.dataset['index'] = String(itemIndex++).padStart(2, '0');
       item.setAttribute('role', 'menuitem');
       item.tabIndex = -1;
       item.classList.toggle('on', it.selected === true);
@@ -167,10 +148,7 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
       label.textContent = it.label;
       item.appendChild(label);
       if (it.shortcut) {
-        const shortcut = document.createElement('span');
-        shortcut.className = 'ctx-menu-item-shortcut';
-        shortcut.textContent = shortcutKeyLabel(it.shortcut);
-        item.appendChild(shortcut);
+        item.appendChild(createKeyCap(shortcutKeyLabel(it.shortcut)));
       }
       stopDragPropagation(item);
       expandHitTarget(item);
