@@ -60,6 +60,15 @@ export class ShipConstructionCatalog {
     categoryRoot.appendChild(this.categoryTabs.element);
   }
 
+  // タブの並び順の index のカテゴリを選ぶ。範囲外は無視する。
+  public selectCategory(index: number): void {
+    const item = CATEGORY_ITEMS[index];
+    if (item === undefined) return;
+    this.activeCategory = item[0];
+    this.renderModules(null);
+    this.renderBlueprints(null, this.lastBlueprints);
+  }
+
   // 表示カテゴリと選択中の部品・設計図を反映する。
   public sync(
     selectedDefinitionId: string | null, heldBlueprintId: string | null,
@@ -81,7 +90,9 @@ export class ShipConstructionCatalog {
       for (const definition of definitions) {
         const card = document.createElement('div');
         card.className = 'construction-module-card';
-        const button = new Button('', () => this.callbacks.onSelectModule(definition.id), undefined, 'secondary');
+        // click の解釈は wireCardDrag 側の tap が担う(ドラッグ後の click を抑制するため、
+        // Button の活性化と二重に呼ばない)。
+        const button = new Button('', () => {}, undefined, 'secondary');
         button.element.title = moduleDescription(definition);
         // 名称・寸法・主要能力をカードへ載せる。
         button.element.replaceChildren(
@@ -135,7 +146,8 @@ export class ShipConstructionCatalog {
   private blueprintCard(blueprint: ShipBlueprintCardView): HTMLElement {
     const card = document.createElement('div');
     card.className = 'construction-module-card construction-blueprint-card';
-    const body = new Button('', () => this.callbacks.onSelectBlueprint(blueprint.id), undefined, 'secondary');
+    // click の解釈は wireCardDrag 側の tap が担う。
+    const body = new Button('', () => {}, undefined, 'secondary');
     body.element.title = `${blueprint.name} を手に取る`;
     this.wireCardDrag(
       body.element, () => this.callbacks.onSelectBlueprint(blueprint.id),
