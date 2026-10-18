@@ -66,38 +66,6 @@ export const COMBAT_VIEW_STYLE = `
   gap: 5px;
   margin-top: 7px;
 }
-#hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch {
-  margin-top: 7px;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch .w-group-title {
-  color: var(--text-dim);
-  letter-spacing: 0;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch .w-btn {
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--fill-1);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .status-throttle-touch .w-btn.on {
-  background: var(--color-primary-fill);
-  color: var(--color-primary);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .vessel-deploy-controls .vessel-deploy-btn {
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--fill-1);
-  color: var(--text-dim);
-  font-size: var(--font-xxs);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .vessel-deploy-controls .vessel-deploy-btn.on {
-  background: var(--color-primary-fill);
-  color: var(--color-primary);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .vessel-deploy-controls .vessel-deploy-btn:hover {
-  background: var(--fill-2);
-  color: var(--color-primary-hover);
-}
-
 /* 装甲はターゲットの持ち物なので、メーターをターゲットの色で塗る。 */
 #hud-target .w-meter-fill { background: var(--role-target); }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .ui-pair { margin-top: var(--space-4); }

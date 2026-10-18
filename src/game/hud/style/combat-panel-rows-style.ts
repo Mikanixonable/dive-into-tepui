@@ -1,4 +1,4 @@
-// タンパク質対象詳細、艦の展開操作、燃焼管理パネルの CSS。
+// タンパク質対象詳細、燃焼管理パネル、常設パネルの操作ボタン列の CSS。
 export const COMBAT_PANEL_ROWS_STYLE = `
   .protein-target-details { margin-top: var(--space-3); padding-top: var(--space-3); }
   .protein-target-heading { display: flex; justify-content: space-between; color: var(--text-muted); font-size: var(--font-xxs); letter-spacing: .08em; }
@@ -21,35 +21,9 @@ export const COMBAT_PANEL_ROWS_STYLE = `
   min-width: 48px; color: var(--text); font-size: var(--font-xxs);
   text-align: right; white-space: nowrap;
 }
-#hud-vessel-status .vessel-deploy-controls {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-}
-/* パドル/放熱板の展開度と損耗をボタン内の塗りつぶしで示す。 */
-#hud-vessel-status span.vessel-deploy-btn {
-  position: relative; overflow: hidden; width: 100%; min-width: 0;
-  padding: var(--space-2) var(--space-3); text-align: left;
-}
-#hud-vessel-status .vessel-deploy-btn .fill {
-  position: absolute; inset: 0; z-index: 0;
-  transition: width var(--transition-fast), background var(--transition-fast);
-}
-#hud-vessel-status .vessel-deploy-btn .label {
-  position: relative; z-index: 1; color: var(--text); font-size: var(--font-xxs); line-height: 1.5;
-  text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg); transition: color var(--transition-fast);
-}
-#hud-vessel-status .vessel-deploy-btn.on { color: var(--color-primary); }
-#hud-vessel-status .vessel-deploy-btn.on .label { color: var(--color-primary); }
-/* 常設パネルの操作ボタン列(艦ステータスの R/F/G/T 代替、軌道情報の分析パネル起動、
-   いずれもタッチ・マウスどちらでも常設)。 */
+/* 常設パネルの操作ボタン列。 */
 .combat-panel .panel-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .combat-panel .panel-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }
-/* スロットル 1-4 の SegmentedControl。タッチ UI が出ている間だけ表示する — 表示条件は
-   body.touch-ui-active と同じものに載せ、ここで別の判定を作らない。 */
-#hud-vessel-status .status-throttle-touch { display: none; margin-top: var(--space-3); }
-body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: flex; }
 #hud .hud-rail-right > #hud-target { width: 100%; box-sizing: border-box; font-size: var(--font-xs); }
 #hud-orbit .orbit-controls {
   display: grid; gap: var(--space-2); padding-top: var(--space-3);

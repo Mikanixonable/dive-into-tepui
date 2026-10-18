@@ -10,11 +10,13 @@ import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-co
 import { deployableCommands, type DeployableCommands } from '../player/deployable-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from '../viewer/orbit-reference-commands';
 import { viewCommands } from '../viewer/view-commands';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { focusTargetId } from '../viewer/focus-target';
 import { ViewBadge } from './view-badge';
 import { frameRoleName } from './frame/frame-labels';
 import type { Hud, HudPanelViewModels } from './hud';
 import type { VesselPanelViewModel } from './panels/vessel-panel';
+import type { WeaponStripViewModel } from './panels/weapon-strip';
 import type { OrbitPanelViewModel } from './orbit/orbit-panel';
 import type { TargetPanelViewModel } from './panels/target-panel';
 import type { EnemyContact } from './panels/enemies-panel';
@@ -132,6 +134,7 @@ export class HudPanelPresenter {
         setSimSpeed: (speed) => this.simSpeedCommands.setSpeed(speed),
       },
       vessel: combatControlled === null ? null : this.vesselViewModel(combatControlled),
+      weapon: combatControlled === null ? null : this.weaponViewModel(combatControlled),
       orbit: controlled === null || orbitRef === undefined
         ? null
         : this.orbitViewModel(controlled, orbitRef),
@@ -162,18 +165,16 @@ export class HudPanelPresenter {
     const motion = ship?.motion ?? null;
     const power = motion?.power ?? null;
     const radiator = motion?.radiator ?? null;
-    const fire = controlled.fire ?? null;
     // 搭載していない装備は null を返す。
     return {
       rcsDamp: controlled.throttle.rcsDamp,
       throttleIdx: controlled.throttle.throttleIdx,
       dynamicPressurePa: motion?.aero.qdyn ?? null,
+      temperatureK: controlled.motion.temperature,
       fineAttitude: controlled.fineAttitude,
-      cameraFollowsAttitude: this.viewer.camera.combat.rotationFollow?.kind === 'attitude',
       progradeHold: controlled.throttle.progradeHold,
       totalFuel: controlled.totalFuel,
       totalMaxFuel: controlled.totalMaxFuel,
-      ammo: fire === null ? null : { rounds: fire.rounds, mags: fire.mags, cooldown: fire.cooldown },
       solar: power === null ? null : {
         up: { deploy: power.deployOf('up'), wear: 0 },
         down: { deploy: power.deployOf('down'), wear: 0 },
@@ -185,6 +186,20 @@ export class HudPanelPresenter {
       tapKey: (key) => this.input.tapKey(key),
       toggleSolar: (side) => { if (power !== null) this.deployableCommands.toggleSolar(power, side); },
       toggleRadiator: (side) => { if (radiator !== null) this.deployableCommands.toggleRadiator(radiator, side); },
+    };
+  }
+
+  // 操作対象の機関砲の弾薬と、装填の操作。機関砲(武装モジュール)を持たなければ null。
+  private weaponViewModel(controlled: Controllable): WeaponStripViewModel | null {
+    const fire = controlled.fire ?? null;
+    if (fire === null) return null;
+    if (isModularShip(controlled) && !controlled.capabilities.has('weapon', false)) return null;
+    return {
+      rounds: fire.rounds,
+      mags: fire.mags,
+      // 発砲のたびの間隔も同じクールダウンで数えるので、引き金を引いている間は装填中と扱わない。
+      reloading: fire.cooldown > 0 && !fire.isFiring,
+      reload: () => this.input.tapKey(K.reload),
     };
   }
 

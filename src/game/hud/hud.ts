@@ -10,6 +10,7 @@ import { VesselPanel, type VesselPanelViewModel } from './panels/vessel-panel';
 import { OrbitPanel, type OrbitPanelViewModel } from './orbit/orbit-panel';
 import { TargetPanel, type TargetPanelViewModel } from './panels/target-panel';
 import { EnemiesPanel, type EnemiesPanelViewModel } from './panels/enemies-panel';
+import { WeaponStrip, type WeaponStripViewModel } from './panels/weapon-strip';
 import { BurnManagementPanel, type BurnManagementViewModel } from './panels/burn-management-panel';
 import { ShipConstructionPanel } from './panels/ship-construction-panel';
 import { TopBar, type TopBarViewModel } from './panels/top-bar';
@@ -34,6 +35,7 @@ const ANALYSIS_WINDOW_OPEN_Y = 100;
 export interface HudPanelViewModels {
   readonly topBar: TopBarViewModel;
   readonly vessel: VesselPanelViewModel | null;
+  readonly weapon: WeaponStripViewModel | null;
   readonly orbit: OrbitPanelViewModel | null;
   readonly target: TargetPanelViewModel | null;
   readonly enemies: EnemiesPanelViewModel | null;
@@ -55,6 +57,7 @@ export class Hud implements HudLayers, Notifier {
   public readonly viewBadgeRow: HTMLElement;
   private readonly mapScaleBadge: MapScaleBadge;
   private readonly vesselPanel: VesselPanel;
+  private readonly weaponStrip: WeaponStrip;
   private readonly orbitPanel: OrbitPanel;
   private readonly targetPanel: TargetPanel;
   private readonly enemiesPanel: EnemiesPanel;
@@ -83,6 +86,7 @@ export class Hud implements HudLayers, Notifier {
     this.viewBadgeRow = els.get('gs-viewrow');
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);
+    this.weaponStrip = new WeaponStrip(els);
     this.orbitPanel = new OrbitPanel(els, () => this.openOrbitAnalysis());
     this.targetPanel = new TargetPanel(els);
     this.enemiesPanel = new EnemiesPanel(els);
@@ -134,6 +138,7 @@ export class Hud implements HudLayers, Notifier {
     this.applyHudProfile(this.chromeView ?? 'combat', false);
     this.topBar.sync(null, 0);
     this.vesselPanel.sync(null, 0);
+    this.weaponStrip.sync(null, 0);
     this.orbitPanel.sync(null, 0);
     this.targetPanel.sync(null, 0);
     this.enemiesPanel.sync(null, 0);
@@ -158,6 +163,7 @@ export class Hud implements HudLayers, Notifier {
       this.mapScaleBadge.sync(camera.scale, panels.mapFocus);
     } else {
       this.vesselPanel.sync(panels.vessel, nowMs);
+      this.weaponStrip.sync(panels.weapon, nowMs);
       this.targetPanel.sync(panels.target, nowMs);
       this.enemiesPanel.sync(panels.enemies, nowMs);
     }

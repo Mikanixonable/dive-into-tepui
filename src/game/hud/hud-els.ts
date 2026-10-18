@@ -5,7 +5,6 @@
 // HUD の静的 DOM が data-id で公開する要素の id 一覧。
 export const HUD_ELEMENT_IDS = [
   'alt',
-  'ammo',
   'ap',
   'ap-label',
   'burn-active-fuel-meter',
@@ -15,7 +14,6 @@ export const HUD_ELEMENT_IDS = [
   'burn-stage-count',
   'burn-state',
   'burn-total-mass',
-  'camfollow',
   'chase-reset',
   'construction-actions',
   'construction-category-tabs',
@@ -83,6 +81,7 @@ export const HUD_ELEMENT_IDS = [
   'sim-speed',
   'spd',
   'status-actions',
+  'status-modes-touch',
   'status-throttle-touch',
   'temp',
   'temp-meter',
@@ -102,6 +101,13 @@ export const HUD_ELEMENT_IDS = [
   'throttle-meter',
   'throttle-value',
   'vessel-deploy-controls',
+  'vessel-temp-gauge',
+  'vessel-temp-value',
+  'weapon-belt',
+  'weapon-count',
+  'weapon-mags',
+  'weapon-reload',
+  'weapon-strip',
 ] as const;
 
 export type HudElId = (typeof HUD_ELEMENT_IDS)[number];

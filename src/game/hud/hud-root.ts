@@ -9,6 +9,8 @@ import { HudEls } from './hud-els';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
 import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
+import { VESSEL_STATUS_STYLE } from './style/vessel-status-style';
+import { WEAPON_STRIP_STYLE } from './style/weapon-strip-style';
 import { PLAN_PANEL_STYLE } from './style/plan-panel-style';
 import { VIEW_OPTIONS_PANEL_STYLE } from './style/view-options-panel-style';
 import { PREDICT_PANEL_STYLE } from './style/predict-panel-style';
@@ -32,11 +34,11 @@ import type { PanelCollapse } from './panel-shell';
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
 const STYLE =
   LAYOUT_TOKENS_STYLE + SKELETON_STYLE + EDITORIAL_DATA_STYLE
-  + COMBAT_PANEL_ROWS_STYLE
+  + COMBAT_PANEL_ROWS_STYLE + VESSEL_STATUS_STYLE
   + PLAN_PANEL_STYLE + VIEW_OPTIONS_PANEL_STYLE + PREDICT_PANEL_STYLE
   + FRAME_CONTROLS_STYLE + ORBIT_GUIDE_STYLE + STAGE_CONTROLS_STYLE
   + OBJECT_PLACER_STYLE + STAGE_STATUS_STYLE
-  + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE + SHIP_CONSTRUCTION_STYLE;
+  + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE + SHIP_CONSTRUCTION_STYLE + WEAPON_STRIP_STYLE;
 
 
 // 組み上がった HUD の DOM への参照一式。
@@ -135,24 +137,35 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
   const status = new PanelShell(rightRail, collapse, 'hud-vessel-status', 'VSL', '艦のステータス');
   configureCombatPanel(status);
   const pip = (id: string): string => `<output class="ui-pip" data-id="${id}">—</output>`;
-  // 計器の行(燃料・RCS・出力・動圧・各モード・弾薬)と、展開・スロットル・主要操作の置き場。
+  // 計器・モード・展開部品・操作の4区画。推力段とモードはタッチでだけ、キー無しで押せるボタンに替わる。
   status.body.innerHTML = `
+    <div class="ui-sub">計器</div>
     <div class="ui-rows has-keys">
       ${instrumentRowHtml({ label: 'RCS 燃料', gaugeId: 'rcs-fuel-meter', valueId: 'rcs-fuel-value' })}
-      ${instrumentRowHtml({ label: 'RCS 制動', keys: K.rcsDampToggle.label, valueHtml: pip('rcs') })}
+    </div>
+    <div class="ui-rows has-keys vessel-throttle-rows">
       ${instrumentRowHtml({
         label: '並進出力', gaugeId: 'throttle-meter', valueId: 'throttle-value',
         keys: `${K.throttleLow.label}–${K.throttleMax.label}`,
       })}
+    </div>
+    <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
+    <div class="ui-rows has-keys">
       ${instrumentRowHtml({ label: '動圧', rowId: 'qdyn-row', gaugeId: 'qdyn-gauge', valueId: 'qdyn-value' })}
+      ${instrumentRowHtml({ label: '船体温度', gaugeId: 'vessel-temp-gauge', valueId: 'vessel-temp-value' })}
+    </div>
+    <div class="ui-sub">モード</div>
+    <div class="ui-rows has-keys vessel-mode-rows">
+      ${instrumentRowHtml({ label: 'RCS 制動', keys: K.rcsDampToggle.label, valueHtml: pip('rcs') })}
       ${instrumentRowHtml({ label: '微調整', keys: K.fineAttitudeToggle.label, valueHtml: pip('fine') })}
       ${instrumentRowHtml({ label: '進行方向ホールド', keys: K.progradeHoldToggle.label, valueHtml: pip('prohold') })}
-      ${instrumentRowHtml({ label: '視点RCS追従', keys: K.followAttitudeToggle.label, valueHtml: pip('camfollow') })}
-      ${instrumentRowHtml({ label: '弾薬', valueId: 'ammo' })}
     </div>
-    <div class="vessel-deploy-controls" data-id="vessel-deploy-controls" role="group" aria-label="太陽電池パドル・放熱板の収納展開"></div>
-    <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
-    <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
+    <div class="status-modes-touch" data-id="status-modes-touch" role="group" aria-label="モード"></div>
+    <section class="vessel-deploy" data-id="vessel-deploy-controls" aria-label="展開部品">
+      <div class="ui-sub">展開部品</div>
+    </section>
+    <div class="ui-sub">操作</div>
+    <div class="panel-actions" data-id="status-actions" role="group" aria-label="艦の操作"></div>`;
 }
 
 // 常設 ORBIT パネルを左レールへ組む。軌道は map の主情報なので、compact 以外では開いて始める。
@@ -325,12 +338,28 @@ function buildEnemiesPanel(rightRail: HTMLElement, collapse: PanelCollapse): voi
 }
 
 // 常設の情報パネル群を左右のドックへ組む。
+// 右レールは、いま狙う相手を先に読む順(ターゲット → 敵一覧 → 艦のステータス)に並べる。
 function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement, collapse: PanelCollapse): void {
-  buildVesselStatusPanel(rightRail, collapse);
   buildOrbitInfoPanel(leftRail, collapse);
   buildBurnManagementPanel(leftRail, collapse);
   buildTargetPanel(rightRail, collapse);
   buildEnemiesPanel(rightRail, collapse);
+  buildVesselStatusPanel(rightRail, collapse);
+}
+
+// 戦闘ビューの画面下中央に、武装の帯(弾帯・残弾・予備の弾倉・装填)の器を組む。
+function buildWeaponStrip(root: HTMLElement): void {
+  const strip = createHudElement('section', 'hud-weapon-strip', root, 'ui-surface-quiet hidden');
+  strip.dataset.id = 'weapon-strip';
+  strip.setAttribute('aria-label', '武装');
+  // 弾帯のセルと装填ボタンは WeaponStrip が差し込む。
+  strip.innerHTML = `
+    <span class="weapon-label">弾</span>
+    <span class="weapon-belt" data-id="weapon-belt"></span>
+    <output class="weapon-count" data-id="weapon-count">—</output>
+    <span class="weapon-label">予備</span>
+    <output class="weapon-mags" data-id="weapon-mags">—</output>
+    <span class="weapon-reload" data-id="weapon-reload"></span>`;
 }
 
 // マップビューの縮尺バーを組む。
@@ -458,6 +487,7 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
 
   // 常設パネル群を組む。
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail, collapse);
+  buildWeaponStrip(combatRoot.element);
   buildShipConstructionWorkspace(layers.panel);
 
   // 画面上端の状態・カメラ操作・ヘルプを一つのクロームへまとめる。各要素が独立した
