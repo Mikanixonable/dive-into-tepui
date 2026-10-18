@@ -62,15 +62,6 @@ export const COMBAT_VIEW_STYLE = `
   font-variant-numeric: tabular-nums;
   line-height: 1.35;
 }
-#hud:not(.base-mode) .hud-combat-root.active .combat-panel kbd {
-  padding: 1px var(--space-2);
-  border: 0;
-  border-radius: var(--radius-micro);
-  background: var(--fill-1);
-  color: var(--text-dim);
-  font: inherit;
-  font-size: 0.9em;
-}
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-actions {
   gap: 5px;
   margin-top: 7px;
@@ -107,6 +98,11 @@ export const COMBAT_VIEW_STYLE = `
   color: var(--color-primary-hover);
 }
 
+/* 装甲はターゲットの持ち物なので、メーターをターゲットの色で塗る。 */
+#hud-target .w-meter-fill { background: var(--role-target); }
+#hud:not(.base-mode) .hud-combat-root.active #hud-target .ui-pair { margin-top: var(--space-4); }
+#hud:not(.base-mode) .hud-combat-root.active #hud-target .ui-pair + .ui-rows { margin-top: var(--space-3); }
+#hud:not(.base-mode) .hud-combat-root.active #hud-orbit .ui-pair + .orbit-shape { margin-top: var(--space-4); }
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-help {
   margin-top: var(--space-3);
   color: var(--text-dim);

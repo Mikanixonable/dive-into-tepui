@@ -83,7 +83,7 @@ export class CameraFramePanel {
     overlayManager: OverlayManager,
     initialRotationMode: CameraRotationMode,
   ) {
-    this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'CAMERA', 'CAM');
+    this.panel = buildPanel(panelRoot, 'hud-camera-controls', 'カメラ', 'CAM');
 
     const state = document.createElement('section');
     state.className = 'editorial-state camera-state';

@@ -31,7 +31,7 @@ export class TrajectoryFramePanel {
     frameAnchors: Pick<FrameAnchorSource, 'attractorOf'>,
     overlayManager: OverlayManager,
   ) {
-    this.panel = buildPanel(panelRoot, 'hud-trajectory-frame', 'TRAJECTORY FRAME', 'FRM');
+    this.panel = buildPanel(panelRoot, 'hud-trajectory-frame', '座標系', 'FRM');
 
     const state = document.createElement('section');
     state.className = 'editorial-state trajectory-frame-state';

@@ -1,5 +1,6 @@
 // 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
 import { fmtDist } from '../../../hud/utils';
+import { setReadout } from '../../../hud/readout';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls } from '../hud-els';
 
@@ -108,7 +109,7 @@ export class EnemiesPanel {
     const list = this.els.get('elist');
     if (rows.length === 0) {
       const empty = document.createElement('li');
-      empty.className = 'ui-item contact-empty';
+      empty.className = 'ui-item';
       empty.textContent = '残存目標なし';
       list.replaceChildren(empty);
       return;
@@ -119,18 +120,20 @@ export class EnemiesPanel {
     const items = rows.map((row, index) => {
       const isAdjacent = index === adjacentIndex;
       const role = row.targeted ? '固定' : isAdjacent ? '隣接' : '';
-      const label = row.kind === 'wave' ? `第${row.waveId}波 ×${row.count}` : row.name;
+      const label = row.kind === 'wave' ? `第${row.waveId}波` : row.name;
+      const count = row.kind === 'wave' ? `×${row.count}` : '';
       const distance = fmtDist(row.distanceM);
 
       // 行本体。固定/隣接の強調はクラスと aria-current で示す。
       const item = document.createElement('li');
       item.className = [
         'ui-item',
+        'ui-selectable',
         row.targeted ? 'is-tgt' : '',
         isAdjacent ? 'is-near' : '',
       ].filter(Boolean).join(' ');
       if (row.targeted) item.setAttribute('aria-current', 'true');
-      item.setAttribute('aria-label', [label, distance, role ? `${role}ターゲット` : '未選択'].join('、'));
+      item.setAttribute('aria-label', [`${label}${count}`, distance, role ? `${role}ターゲット` : '未選択'].join('、'));
       if (row.kind === 'single') {
         item.addEventListener('contextmenu', (e) => {
           e.preventDefault();
@@ -145,7 +148,7 @@ export class EnemiesPanel {
       glyph.setAttribute('aria-hidden', 'true');
       const name = document.createElement('span');
       name.className = 'ui-item-name';
-      name.textContent = label;
+      setReadout(name, label, count);
       const distanceValue = document.createElement('span');
       distanceValue.className = 'ui-item-v';
       distanceValue.textContent = distance;
