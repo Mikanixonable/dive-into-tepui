@@ -14,7 +14,7 @@ import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { add, len, sameVec, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import type { Plan, PlanExecutionMode } from '../plan/plan';
 import type { ModularShipMotion } from './modular-ship-motion';
-import { burnDuration, deltaVBudget, effectiveExhaustVelocity } from './rocket-equation';
+import { burnDuration, deltaVBudget, effectiveExhaustVelocity } from '../../physics/rocket';
 
 // 燃焼・回頭を指令する間の積分刻みの上限 [s]。倍率によらず一定なので、ワープを変えても
 // 燃焼の結果は変わらない。
