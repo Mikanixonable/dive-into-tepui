@@ -182,6 +182,11 @@ export class ShipConstructionPanel {
     this.sync(hiddenShipConstructionModel());
   }
 
+  // カタログの表示カテゴリをタブの並び順の index で選ぶ。範囲外は無視する。
+  public selectCatalogCategory(index: number): void {
+    this.catalog.selectCategory(index);
+  }
+
   // 毎フレームの snapshot を、現在値・配置後差分・候補・操作可能状態へ分解して同期する。
   public sync(model: ShipConstructionPanelModel): void {
     this.panel.classList.toggle('hidden', !model.visible);
