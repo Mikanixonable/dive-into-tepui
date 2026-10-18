@@ -53,9 +53,9 @@ export type ReferenceOrbit = ReferenceOrbitElements | ReferenceOrbitFamily;
 export interface ReferenceOrbitEnv {
   bodyById(id: string): CelestialBody | null;
   // 基準天体の2次重力場。J2 を持たない天体は undefined(歳差なしとして扱う)。
-  degree2Field(bodyId: string, t: number): { readonly j2: number; readonly refRadius: number } | undefined;
+  degree2Field(bodyId: string, t: number): { readonly j2: number; readonly refRadius: number } | null;
   familyMemberAt(
-    orbit: ReferenceOrbitFamily,
+    orbit: ReferenceOrbitFamily, t: number,
   ): { period: number; sample(phase: number): readonly [number, number, number, number, number, number] } | null;
   rotatingFrameAt(
     primaryId: string, secondaryId: string, t: number,
@@ -101,7 +101,7 @@ export function referenceOrbitStateAt(
     return kinematicState<'eci'>(rel.t, addScaled(c.r, rel.r, 1), addScaled(c.v, rel.v, 1));
   }
 
-  const member = env.familyMemberAt(orbit);
+  const member = env.familyMemberAt(orbit, t);
   const frame = env.rotatingFrameAt(orbit.primaryId, orbit.secondaryId, t);
   if (!member || !frame || !(member.period > 0)) return null;
   const frac = (((orbit.phase0 + t / member.period) % 1) + 1) % 1;
@@ -123,6 +123,41 @@ export function referenceOrbitStateAt(
   // ここでは origin 速度を含めない(族標識の速度用途は描画とランデブー誘導の初値で、
   // 誤差は全力モデルの修正が吸収する)。
   return kinematicState<'eci'>(t, addScaled(origin, local, 1), addScaled(rotV, spinV, 1));
+}
+
+// 標識の参照軌道の形を、時刻 t における位相 phase ∈[0,1) の ECI 位置として返す。
+// 位相点そのものではなく、位相点がその時刻に通る軌道上の1点を指す — elements は t の
+// 振動要素(J2 永年歳差込み)が描く楕円、family は t の回転座標系へ載せた族メンバーの
+// 閉曲線。解けない条件は referenceOrbitStateAt と同じ。
+export function referenceOrbitPointAt(
+  orbit: ReferenceOrbit, t: number, phase: number, env: ReferenceOrbitEnv,
+): Vec3 | null {
+  const p = ((phase % 1) + 1) % 1;
+  if (orbit.kind === 'elements') {
+    const body = env.bodyById(orbit.bodyId);
+    if (!body || !(orbit.a > 0) || !(orbit.e >= 0) || orbit.e >= 1) return null;
+    const field = env.degree2Field(orbit.bodyId, t);
+    const { raanDot, argpDot } = secularRates(
+      orbit.a, orbit.e, orbit.i, body.def.mu,
+      field?.j2 ?? 0, field?.refRadius ?? body.def.radius,
+    );
+    const dt = t - orbit.epoch;
+    const rel = stateFromOrbitalElements(
+      t, orbit.a, orbit.e, orbit.i,
+      orbit.raan + raanDot * dt, orbit.argPeriapsis + argpDot * dt,
+      trueAnomaly(p * 2 * Math.PI, orbit.e), body.def.mu,
+    );
+    return addScaled(body.stateAt(t).r, rel.r, 1);
+  }
+
+  const member = env.familyMemberAt(orbit, t);
+  const frame = env.rotatingFrameAt(orbit.primaryId, orbit.secondaryId, t);
+  if (!member || !frame) return null;
+  const s = member.sample(p);
+  return addScaled(frame.origin, addScaled(
+    addScaled(scale(frame.xHat, s[0] * frame.unit), frame.yHat, s[1] * frame.unit),
+    frame.zHat, s[2] * frame.unit,
+  ), 1);
 }
 
 // 平均近点角 M [rad] → 真近点角 ν。elements.trueAnomalyFromMean と同じ式だが、
@@ -151,6 +186,6 @@ export function referenceOrbitPeriod(orbit: ReferenceOrbit, env: ReferenceOrbitE
     );
     return meanMotion > 0 ? (2 * Math.PI) / meanMotion : null;
   }
-  const member = env.familyMemberAt(orbit);
+  const member = env.familyMemberAt(orbit, 0);
   return member && member.period > 0 ? member.period : null;
 }
