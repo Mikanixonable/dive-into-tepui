@@ -117,7 +117,7 @@ function base(): LabCase {
   const ghost = new ShipGhostView(undefined, buildShipModuleModel, false);
   const guide = new DockSnapGuideView(undefined, false);
   // ゴーストは寄港した船にも基地にも重ならない位置に離し、ガイドはゴーストの奥の面へ付ける。
-  ghost.sync({ modelId: 'tank-6-main', position: v3(12, 0, -36), rotation: Q_IDENTITY, valid: true });
+  ghost.sync([{ modelId: 'tank-6-main', position: v3(12, 0, -36), rotation: Q_IDENTITY, valid: true }]);
   guide.sync({ position: v3(12, 0, -39.5), rotation: Q_IDENTITY, radius: 3, valid: true });
   return {
     objects: [docked, ghost.object, guide.object],
