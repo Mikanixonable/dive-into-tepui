@@ -1,7 +1,10 @@
 // クリエイティブモードの物体配置。配置パネルを持ち、フォームの値を検証して初期状態を組み、
 // 置くと決まった物体の指定を受け手へ渡す。配置プレビューをどの値で出すかもここが決める。
 import { OrbitingMotion } from '../../physics/celestial-motion';
-import { orbitalElementsOf, semiMajorFromPeriod, stateFromOrbitalElements, type OrbitalElements } from '../../physics/elements';
+import {
+  meanMotionFromSemiMajor, orbitalElementsFromClassical, orbitalElementsOf, semiMajorFromPeriod,
+  stateFromOrbitalElements, timeSincePeriapsis, type OrbitalElements,
+} from '../../physics/elements';
 import { haloState, lissajousState } from '../../physics/halo';
 import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { secondaryFrameOf } from '../../physics/lagrange';
@@ -23,6 +26,8 @@ import {
   validateBaseReferenceFields, validateEllipticPlacementFields, validateLagrangePlacementFields,
   type PlacementFieldIssue,
 } from './placement-validation';
+import { orbitSlotFromHalo, orbitSlotFromLissajous } from '../navigation/orbit-slot-source';
+import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';
 import { COLOR_MARKER_ALLY, ENTITY_GLYPH } from '../marker/marker-identity';
@@ -67,9 +72,11 @@ export interface SerializedObjectPlacement {
   readonly playerIdAllocator: number;
 }
 
-// 検証を通った配置の指定の受け手。実体を作るのは受け手の側。
+// 検証を通った配置の指定の受け手。実体を作るのは受け手の側。軌道標識は実体ではないので
+// 別の口へ渡す。
 export interface ObjectPlacementSink {
   placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void;
+  placeOrbitSlot(name: string, orbit: OrbitSlotOrbit): void;
 }
 
 export class ObjectPlacement {
@@ -188,6 +195,11 @@ export class ObjectPlacement {
     }
     try {
       this.assertValidForm(form);
+      // 軌道標識は実体を作らず、参照軌道の記述を台帳へ渡す。
+      if (form.selection === 'orbit-slot') {
+        this.placements.placeOrbitSlot(name, this.buildSlotOrbit(form));
+        return;
+      }
       const state = this.buildInitialState(form);
       this.assertFiniteEllipticState(state);
       this.placements.placeObject(name, form.selection, state);
@@ -239,6 +251,8 @@ export class ObjectPlacement {
           },
         };
       }
+      case 'orbit-slot':
+        throw new Error('createObject: 軌道標識は実体ではないのでここには来ない');
     }
   }
 
@@ -271,25 +285,56 @@ export class ObjectPlacement {
     return this.celestialSystem.motionOf(form.celestialBody);
   }
 
+  // フォームの値から軌道標識の参照軌道の記述を組む。元期は現在時刻で、位相点は
+  // フォームの位相(真近点角)に揃える。
+  private buildSlotOrbit(form: ObjectPlacerForm): OrbitSlotOrbit {
+    if (form.placementMode === 'lagrange') return this.buildLagrangeSlotOrbit(form);
+    const center = this.referenceCelestialBody(form);
+    const t = this.roster.simTime;
+    const { a, e } = this.elementsSizeOf(form, center);
+    const elements = orbitalElementsFromClassical(
+      a, e, form.incDeg, form.raanDeg, form.argpDeg, center, center.stateAt(t),
+    );
+    const meanAnomaly0 = meanMotionFromSemiMajor(a, center.def.mu)
+      * timeSincePeriapsis(elements, form.nuDeg * DEG);
+    return {
+      kind: 'elements', bodyId: form.celestialBody, epoch: t, a, e,
+      i: form.incDeg * DEG, raan: form.raanDeg * DEG, argPeriapsis: form.argpDeg * DEG,
+      meanAnomaly0,
+    };
+  }
+
+  // ラグランジュ点指定のフォームから、系と族の1メンバーを指す標識の記述を組む。
+  private buildLagrangeSlotOrbit(form: LagrangeForm): OrbitSlotOrbit {
+    const motion = this.celestialSystem.entityOf(form.lagrangeSecondary).motion;
+    if (!(motion instanceof OrbitingMotion)) {
+      throw new Error(`buildSlotOrbit: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
+    }
+    const secondaryId = form.lagrangeSecondary;
+    if (form.lagrangeOrbitKind === 'halo') {
+      return orbitSlotFromHalo(motion.primary.id, secondaryId, form.lagrangePoint, form.azKm * 1e3);
+    }
+    return orbitSlotFromLissajous(
+      motion.primary.id, secondaryId, form.lagrangePoint, form.axKm * 1e3, form.azKm * 1e3, 0,
+    );
+  }
+
+  // フォームのサイズ/形の指定から、半長軸 [m] と離心率を出す。
+  private elementsSizeOf(form: ElementsForm, center: CelestialBody): { a: number; e: number } {
+    if (form.sizeMode === 'apsides') {
+      const rp = center.def.radius + form.peAltKm * 1e3;
+      const ra = center.def.radius + form.apAltKm * 1e3;
+      return { a: (rp + ra) / 2, e: (ra - rp) / (ra + rp) };
+    }
+    if (form.sizeMode === 'semiMajorEcc') return { a: form.semiMajorKm * 1e3, e: form.eccentricity };
+    return { a: semiMajorFromPeriod(form.periodHours * 3600, center.def.mu), e: form.eccentricity };
+  }
+
   // フォームのサイズ/形の指定から軌道要素を組み、基準天体中心の状態を ECI へ直して返す。
   private buildElementsState(form: ElementsForm): KinematicState {
     const center = this.referenceCelestialBody(form);
     const centerState = center.stateAt(this.roster.simTime);
-    // サイズの指定方法ごとに長半径と離心率を出す。
-    let a: number;
-    let e: number;
-    if (form.sizeMode === 'apsides') {
-      const rp = center.def.radius + form.peAltKm * 1e3;
-      const ra = center.def.radius + form.apAltKm * 1e3;
-      a = (rp + ra) / 2;
-      e = (ra - rp) / (ra + rp);
-    } else if (form.sizeMode === 'semiMajorEcc') {
-      a = form.semiMajorKm * 1e3;
-      e = form.eccentricity;
-    } else {
-      a = semiMajorFromPeriod(form.periodHours * 3600, center.def.mu);
-      e = form.eccentricity;
-    }
+    const { a, e } = this.elementsSizeOf(form, center);
 
     // 基準天体中心の相対状態を ECI へ直す。
     const rel = stateFromOrbitalElements(
