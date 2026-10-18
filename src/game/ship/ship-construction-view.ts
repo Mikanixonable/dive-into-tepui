@@ -247,10 +247,12 @@ export class ShipConstructionView {
     const held = source.held;
     const declarations: MarkerDeclaration[] = [];
     if (held !== null) {
+      // 対称数は新しく置くものにだけ効く。付け替え中の先端部は 1 で評価する。
+      const symmetry = held.kind === 'piece' ? 1 : source.symmetryCount;
       for (const info of source.targets()) {
         const guide = constructionTargetGuide(
           ship.assembly, anchorId, held, info,
-          source.currentOrientation, source.symmetryCount,
+          source.currentOrientation, symmetry,
           ship.motion.state.r, ship.motion.att.q, ship.motion.centerOffset,
         );
         if (guide === null) continue;

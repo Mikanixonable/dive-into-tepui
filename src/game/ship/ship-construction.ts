@@ -1,14 +1,14 @@
 // 建造セッションの状態と命令の所有者: 起点ドック・手持ち・選択・向き・対称数・
 // 指している取り付け先・取り消し履歴を持ち、船体への編集は命令として列へ積む。
-import { qFromUnitVectors, qMul, qRotate, LOCAL_FORWARD } from '../../math/quat';
-import { add, sub, v3, type Vec3 } from '../../math/vec3';
-import { DockSnapGuideView, type DockSnapGuideDisplay } from '../../render/dynamic/ship/dock-snap-guide-view';
-import { ShipGhostView, type ShipGhostDisplay } from '../../render/dynamic/ship/ship-ghost-view';
+// ゴースト・ガイド・接続ノードの描画は読み取り面を通して表示の導出が行う。
 import {
   constructionModuleLabel, constructionTargetId, enumerateConstructionTargets, heldRootDefinition,
   placementFor, type ConstructionTargetInfo,
 } from './ship-construction-rules';
-import { constructionTargetGuide } from './ship-construction-candidates';
+import {
+  constructionTargetGuide, type ConstructionTargetGuide,
+} from './ship-construction-candidates';
+import { ShipConstructionPointer } from './ship-construction-pointer';
 import { tryConstructionPlacement, type ConstructionTrial } from './ship-construction-preview';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import { ShipConstructionEdits } from './ship-construction-edits';
@@ -29,8 +29,6 @@ import {
 import type { ShipBlueprint, ShipBlueprintShelf } from './ship-blueprint';
 import type { RunEventSink } from '../run-events';
 import { CommandCompletion } from '../command-completion';
-import type * as THREE from 'three/webgpu';
-import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
 import type { Input } from '../../input/input';
 import type { Viewport } from '../../render/viewport';
@@ -90,13 +88,15 @@ export interface ShipConstructionPanelPort {
   onJumpHistory: ((index: number) => void) | null;
   onFinish: (() => void) | null;
   onDiscard: (() => void) | null;
+  // カタログの表示カテゴリをタブの並び順の index で選ぶ。
+  selectCatalogCategory(index: number): void;
   sync(model: ShipConstructionPanelModel): void;
 }
 
 // 一度に一つの建造セッションを所有し、船体の編集を命令へ、表示へ同期する。
 export class ShipConstruction implements OverlayHandle {
-  private readonly ghost: ShipGhostView;
-  private readonly guide: DockSnapGuideView;
+  // ポインタとショートカットキーの解釈。操作途中の状態(掴んだドラッグ)を持つ部品。
+  private readonly pointer = new ShipConstructionPointer(this);
   private current: ConstructionSession | null = null;
   private pending: PendingConstructionCommand[] = [];
   private heldValue: ConstructionHeld | null = null;
@@ -116,7 +116,7 @@ export class ShipConstruction implements OverlayHandle {
 
   // 建造規則の結果を、既存のHUD・入力・表示時刻の各装置へ接続する。
   public constructor(
-    scene: THREE.Scene,
+    private readonly input: Input,
     private readonly commands: CommandQueue,
     private readonly panel: ShipConstructionPanelPort,
     private readonly overlayManager: OverlayManager,
@@ -127,8 +127,6 @@ export class ShipConstruction implements OverlayHandle {
     private readonly events: RunEventSink,
     private readonly focusDock: ((ship: ModularShip) => void) | null = null,
   ) {
-    this.ghost = new ShipGhostView(scene);
-    this.guide = new DockSnapGuideView(scene);
     // パネルの操作を建造の各操作へ繋ぐ。
     panel.onSelectionChange = (definitionId) => {
       if (this.heldValue?.kind === 'catalog' && this.heldValue.definitionId === definitionId) {
@@ -213,11 +211,34 @@ export class ShipConstruction implements OverlayHandle {
       this.trialCache = {
         signature,
         trial: tryConstructionPlacement(
-          session.ship.assembly, session.anchorId, held, target.target, orientation, this.symmetry,
+          session.ship.assembly, session.anchorId, held, target.target, orientation,
+          this.placementSymmetry(held),
         ),
       };
     }
     return this.trialCache.trial;
+  }
+
+  // 指している取り付け先の接続面ガイド(ECI 座標)。持つもの・指す先が無ければ null。
+  public pointedGuide(): ConstructionTargetGuide | null {
+    const session = this.current;
+    const held = this.effectiveHeld();
+    const target = this.pointedTarget();
+    if (session === null || held === null || target === null) return null;
+    return this.guideFor(session, held, target);
+  }
+
+  // 全取り付け先の接続面ガイド(ECI 座標)。ポインタが指す候補の画面位置の材料。
+  public targetGuides(): readonly ConstructionTargetGuide[] {
+    const session = this.current;
+    const held = this.effectiveHeld();
+    if (session === null || held === null) return [];
+    const guides: ConstructionTargetGuide[] = [];
+    for (const info of this.targets()) {
+      const guide = this.guideFor(session, held, info);
+      if (guide !== null) guides.push(guide);
+    }
+    return guides;
   }
 
   // 履歴の名前の列・現在位置・取り消し/やり直し可否。適用待ちの編集がある間は動けない。
@@ -278,8 +299,6 @@ export class ShipConstruction implements OverlayHandle {
     this.overlayManager.close('ship-construction-mode');
     this.displayWindow.setForceCurrent(this.previousForceCurrent);
     this.panel.sync(hiddenShipConstructionModel());
-    this.ghost.sync([]);
-    this.guide.syncAll([]);
   }
 
   // 手持ちにする。piece は配置済みモジュールの先端部、copy は写しの先端部。
@@ -344,7 +363,8 @@ export class ShipConstruction implements OverlayHandle {
     if (info === null) { this.deny('取り付け先を選んでください'); return; }
     const trial = targetId !== undefined
       ? tryConstructionPlacement(
-        session.ship.assembly, session.anchorId, held, info.target, this.orientation, this.symmetry,
+        session.ship.assembly, session.anchorId, held, info.target, this.orientation,
+        this.placementSymmetry(held),
       )
       : this.pointedTrial();
     if (trial === null || !trial.valid) {
@@ -360,7 +380,7 @@ export class ShipConstruction implements OverlayHandle {
     // 手持ちの写しから置くものは、置いた時点で手から離れるのではなく持ち続ける。
     const releasesHand = held.kind === 'piece';
     this.submit(session, 'place', name, this.placedIds(session, held, newIds), false, null, () => {
-      session.edits.place(held, info.target, this.orientation, this.symmetry, newIds);
+      session.edits.place(held, info.target, this.orientation, this.placementSymmetry(held), newIds);
     });
     if (releasesHand) this.heldValue = null;
     this.trialCache = null;
@@ -650,87 +670,49 @@ export class ShipConstruction implements OverlayHandle {
     return restoreShipAssembly(blueprint.piece);
   }
 
-  // クリックは指している取り付け先への配置、取り付け先以外ではモジュールの選択、
-  // 右クリックは手放す。候補ノードやドラッグの判定は後の作業で切り出す。
+  // ポインタ入力を建造の操作へ写す。建造中だけ呼ぶ。
   public handlePointer(input: Input, camera: CameraSystem, viewport: Viewport): boolean {
-    const session = this.current;
-    if (session === null) return false;
-    input.takeClicks((point) => {
-      if (this.heldValue !== null) {
-        this.placeAt();
-        return true;
-      }
-      const ray = camera.rayThroughScreen(point.x, point.y, viewport);
-      const hit = session.ship.motion.raycastCompound(ray, session.ship.motion.state.r);
-      // 起点ドックは選べないので、クリックしても選択を変えない。
-      if (hit === null) {
-        this.select(null);
-      } else if (hit.moduleId !== session.anchorId) {
-        this.select(hit.moduleId);
-      }
-      return true;
-    });
-    input.takeRightClicks(() => {
-      if (this.heldValue !== null) this.release();
-      return true;
-    });
+    if (this.current === null) return false;
+    this.pointer.interpretPointer(input, camera, viewport);
     return true;
   }
 
-  // 適用済みの命令を読み、指している取り付け先だけへガイドとゴーストを宣言する。
-  public sync(camera: CameraFrame): void {
-    this.syncCommandResults();
+  // OverlayHandle 実装: 建造モードのショートカットキーを操作へ写す。
+  // 入力を塞ぐモーダル(確認等)が開いている間は受け付けない。
+  public handleShortcut(code: string): boolean {
+    if (this.current === null || this.overlayManager.isInputGated()) return false;
+    return this.pointer.interpretKey(code, this.input);
+  }
+
+  // moduleId を根とする先端部が撤去・付け替え・回転を受け付けるか。
+  public canEditModule(moduleId: string): boolean {
     const session = this.current;
-    if (session === null) {
-      this.ghost.sync([]);
-      this.guide.syncAll([]);
-      return;
-    }
+    return session !== null && this.pieceEditable(session, moduleId);
+  }
+
+  // 建造対象の船体へ視点を寄せる。
+  public focusShip(): void {
+    const session = this.current;
+    if (session !== null) this.focusDock?.(session.ship);
+  }
+
+  // カタログの表示カテゴリをタブの並び順の index で選ぶ。
+  public selectCatalogCategory(index: number): void {
+    this.panel.selectCatalogCategory(index);
+  }
+
+  // 適用済みの命令を読み、選択・指す先の整合性とパネルを同期する。
+  // 表示物への宣言は、この同期の後に読み取り面を経由して表示の導出が組む。
+  public sync(): void {
+    this.syncCommandResults();
+    if (this.current === null) return;
     this.normalizeSelection();
-    const held = this.effectiveHeld();
-    const target = this.pointedTarget();
-    const trial = this.pointedTrial();
-    // 指している取り付け先だけに接続面のリングを出す。
-    const guides: DockSnapGuideDisplay[] = [];
-    if (held !== null && target !== null) {
-      const guide = constructionTargetGuide(
-        session.ship.assembly, session.anchorId, held, target,
-        this.effectiveOrientation(session, held), this.symmetry,
-        session.ship.motion.state.r, session.ship.motion.att.q, session.ship.motion.centerOffset,
-      );
-      if (guide !== null) {
-        guides.push({
-          id: constructionTargetId(target.target),
-          position: this.displayPosition(camera, guide.guideEci),
-          rotation: qFromUnitVectors(LOCAL_FORWARD, guide.normalEci),
-          radius: guide.guideRadius,
-          valid: guide.placement.valid && (trial?.valid ?? false),
-          selected: true,
-        });
-      }
-    }
-    this.guide.syncAll(guides);
-    // 試し置きで置いたモジュールをゴーストとして出す。
-    const displays: ShipGhostDisplay[] = [];
-    if (held !== null && trial !== null) {
-      for (const placed of trial.placed) {
-        displays.push({
-          modelId: this.placedModelId(session, held, placed.moduleId),
-          position: this.displayPosition(camera, this.eciOfAssembly(session, placed.transform.position)),
-          rotation: qMul(session.ship.motion.att.q, placed.transform.rotation),
-          valid: trial.valid,
-        });
-      }
-    }
-    this.ghost.sync(displays);
     this.syncPanel();
   }
 
-  // モード終了時にDOM callbackとGPU/3D資源を同じ所有者から解放する。
+  // モード終了時にDOM callbackを同じ所有者から解放する。
   public dispose(): void {
     this.close();
-    this.ghost.dispose();
-    this.guide.dispose();
     this.panel.onSelectionChange = null;
     this.panel.onBlueprintHold = null;
     this.panel.onCardDrag = null;
@@ -865,15 +847,21 @@ export class ShipConstruction implements OverlayHandle {
     return definition?.name ?? '部品';
   }
 
-  // 試し置きで置いたモジュールの表示モデル id。
-  private placedModelId(session: ConstructionSession, held: ConstructionHeld, placedId: string): string {
-    const fallback = heldRootDefinition(session.ship.assembly, held)?.modelId ?? 'cockpit-standard';
-    if (held.kind === 'catalog') return SHIP_MODULE_CATALOG.require(held.definitionId).modelId;
-    if (held.kind === 'piece') {
-      return session.ship.assembly.definition(placedId)?.modelId ?? fallback;
-    }
-    const original = placedId.slice(placedId.indexOf(':') + 1);
-    return held.piece.definition(original)?.modelId ?? fallback;
+  // 対称数は新しく置くもの(カタログ・写し)の側面配置にだけ効く。付け替える
+  // 先端部には対称が無いので 1 で評価する。
+  private placementSymmetry(held: ConstructionHeld): ConstructionSymmetry {
+    return held.kind === 'piece' ? 1 : this.symmetry;
+  }
+
+  // 取り付け先1つの接続面ガイド(ECI 座標)を求める。
+  private guideFor(
+    session: ConstructionSession, held: ConstructionHeld, info: ConstructionTargetInfo,
+  ): ConstructionTargetGuide | null {
+    return constructionTargetGuide(
+      session.ship.assembly, session.anchorId, held, info,
+      this.effectiveOrientation(session, held), this.placementSymmetry(held),
+      session.ship.motion.state.r, session.ship.motion.att.q, session.ship.motion.centerOffset,
+    );
   }
 
   // 操作の拒否を記録し、理由をヒントへ出す。
@@ -930,19 +918,6 @@ export class ShipConstruction implements OverlayHandle {
     this.pending = this.pending.filter(command => command.completion.state.kind === 'pending');
   }
 
-  // 船体座標の位置を ECI へ写す。
-  private eciOfAssembly(session: ConstructionSession, position: Vec3): Vec3 {
-    const q = session.ship.motion.att.q;
-    const root = sub(session.ship.motion.state.r, qRotate(q, session.ship.motion.centerOffset));
-    return add(root, qRotate(q, position));
-  }
-
-  // 物理のECI座標を、このフレームのfloating origin表示座標へ写す。
-  private displayPosition(camera: CameraFrame, position: Vec3): Vec3 {
-    const p = camera.floatingOrigin.RtoThreeV3(position);
-    return v3(p.x, p.y, p.z);
-  }
-
   // ゲーム状態を構造化したHUD snapshotへ変換する。
   private syncPanel(): void {
     const session = this.current;
@@ -986,7 +961,7 @@ export class ShipConstruction implements OverlayHandle {
         // 色は規則だけで決める — 重なりは指している取り付け先の試し置きだけが見る。
         const placement = effective === null ? null : placementFor(
           assembly, session.anchorId, effective, info.target,
-          this.effectiveOrientation(session, effective), this.symmetry,
+          this.effectiveOrientation(session, effective), this.placementSymmetry(effective),
         );
         return {
           id: constructionTargetId(info.target), label: info.label,

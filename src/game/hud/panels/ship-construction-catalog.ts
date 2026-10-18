@@ -60,6 +60,15 @@ export class ShipConstructionCatalog {
     categoryRoot.appendChild(this.categoryTabs.element);
   }
 
+  // タブの並び順の index のカテゴリを選ぶ。範囲外は無視する。
+  public selectCategory(index: number): void {
+    const item = CATEGORY_ITEMS[index];
+    if (item === undefined) return;
+    this.activeCategory = item[0];
+    this.renderModules(null);
+    this.renderBlueprints(null, this.lastBlueprints);
+  }
+
   // 表示カテゴリと選択中の部品・設計図を反映する。
   public sync(
     selectedDefinitionId: string | null, heldBlueprintId: string | null,
