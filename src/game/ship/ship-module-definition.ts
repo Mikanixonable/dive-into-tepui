@@ -10,6 +10,17 @@ export type ShipModuleKind = typeof SHIP_MODULE_KINDS[number];
 export type FuelKind = 'main' | 'rcs';
 export type ShipModuleCategory = 'command' | 'fuel' | 'propulsion' | 'combat' | 'utility';
 
+// 軸方向の端面の使い道。
+// 'none' は接続しない端、'structural' はこの端で他へ付くことも他がこの端へ付くこともできる端、
+// 'receive' は他がこの端へ付くことだけできる端(建造ドックの結合面)。
+export type AxialFaceUse = 'none' | 'structural' | 'receive';
+
+// 軸方向の両端面の使い道。front は +Z 端、back は −Z 端。
+export interface AxialFaces {
+  readonly front: AxialFaceUse;
+  readonly back: AxialFaceUse;
+}
+
 // 円柱は機体座標系で定義する。axis は単位ベクトル、半長 halfLength と半径 radius は m。
 export interface LocalCappedCylinder {
   readonly center: Vec3;
@@ -42,6 +53,7 @@ export interface ShipModuleDefinition {
   readonly category?: ShipModuleCategory;
   readonly length: number; // m, +Z 軸方向
   readonly diameter: number; // m
+  readonly axialFaces: AxialFaces;
   readonly dryMass: number; // kg
   readonly maxHp: number;
   readonly modelId: string;
@@ -79,6 +91,7 @@ function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinitio
   }));
   return Object.freeze({
     ...definition,
+    axialFaces: Object.freeze({ ...definition.axialFaces }),
     solidPrimitives: Object.freeze(primitives),
     muzzles: Object.freeze(definition.muzzles.map(frozenVector)),
     feedPort: frozenVector(definition.feedPort),
@@ -100,6 +113,11 @@ export function defineShipModule(
   finitePositive(definition.maxHp, 'maxHp');
   if (definition.id.length === 0 || definition.modelId.length === 0) {
     throw new Error('ship module id and modelId must not be empty');
+  }
+  for (const use of [definition.axialFaces.front, definition.axialFaces.back]) {
+    if (use !== 'none' && use !== 'structural' && use !== 'receive') {
+      throw new Error(`invalid axial face use: ${definition.id}`);
+    }
   }
   if (definition.solidPrimitives.length === 0) throw new Error('ship module needs a solid primitive');
   for (const primitive of definition.solidPrimitives) {

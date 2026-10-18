@@ -36,6 +36,8 @@ export interface SerializedShipAssembly {
   readonly playerOwned: boolean;
   readonly modules: readonly SerializedShipModule[];
   readonly connections: readonly SerializedShipConnection[];
+  // 接続変換をそのまま使う記録の印。この項目が無い記録は旧形式として補正して読む。
+  readonly explicitTransforms?: boolean;
 }
 
 export interface SerializedShipConstructionDraft {
@@ -120,6 +122,7 @@ function moduleState(saved: SerializedShipModule): ShipModuleInstance {
 export function serializeShipAssembly(assembly: ShipAssembly): SerializedShipAssembly {
   return {
     playerOwned: assembly.playerOwned,
+    explicitTransforms: true,
     modules: assembly.modules.map(module => ({ ...module })),
     connections: assembly.graph.map(connection => ({
       id: connection.id,
@@ -189,43 +192,46 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
       rotation: { ...connection.rotation },
     };
     let sideSlot = connection.sideSlot;
-    if (connection.kind === 'side') {
-      const parentDefinition = assembly.definition(connection.parentId);
-      const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
-      if (connection.sideReversed) {
-        if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
-          const forward = sideMountTransform(childDefinition, parentDefinition, sideSlot);
-          const invRot = qInvert(forward.rotation);
+    // 旧形式の記録だけを補正する。印のある記録の変換は検証済みのまま使う。
+    if (saved.explicitTransforms !== true) {
+      if (connection.kind === 'side') {
+        const parentDefinition = assembly.definition(connection.parentId);
+        const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
+        if (connection.sideReversed) {
+          if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
+            const forward = sideMountTransform(childDefinition, parentDefinition, sideSlot);
+            const invRot = qInvert(forward.rotation);
+            childTransform = {
+              position: qRotate(invRot, v3(-forward.position.x, -forward.position.y, -forward.position.z)),
+              rotation: invRot,
+            };
+          }
+        } else {
+          sideSlot = sideSlot ?? sideSlotFromTransform(childTransform) ?? undefined;
+          if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
+            childTransform = sideMountTransform(parentDefinition, childDefinition, sideSlot);
+          }
+        }
+      } else if (connection.kind === 'axial' && childTransform.position.z > 0) {
+        const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
+        if (childDefinition?.kind !== 'weapon') {
           childTransform = {
-            position: qRotate(invRot, v3(-forward.position.x, -forward.position.y, -forward.position.z)),
-            rotation: invRot,
+            position: v3(childTransform.position.x, childTransform.position.y, -childTransform.position.z),
+            rotation: childTransform.rotation,
           };
         }
-      } else {
-        sideSlot = sideSlot ?? sideSlotFromTransform(childTransform) ?? undefined;
-        if (parentDefinition !== null && childDefinition !== null && sideSlot !== undefined) {
-          childTransform = sideMountTransform(parentDefinition, childDefinition, sideSlot);
+      }
+      if (connection.kind === 'axial') {
+        const spacing = cockpitAxialMigrationSpacing(
+          assembly.definition(connection.parentId), SHIP_MODULE_CATALOG.get(module.definitionId),
+        );
+        if (spacing !== null && Math.abs(Math.abs(childTransform.position.z) - spacing.previous) < 1e-9) {
+          const sign = childTransform.position.z < 0 ? -1 : 1;
+          childTransform = {
+            position: v3(childTransform.position.x, childTransform.position.y, sign * spacing.current),
+            rotation: childTransform.rotation,
+          };
         }
-      }
-    } else if (connection.kind === 'axial' && childTransform.position.z > 0) {
-      const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
-      if (childDefinition?.kind !== 'weapon') {
-        childTransform = {
-          position: v3(childTransform.position.x, childTransform.position.y, -childTransform.position.z),
-          rotation: childTransform.rotation,
-        };
-      }
-    }
-    if (connection.kind === 'axial') {
-      const spacing = cockpitAxialMigrationSpacing(
-        assembly.definition(connection.parentId), SHIP_MODULE_CATALOG.get(module.definitionId),
-      );
-      if (spacing !== null && Math.abs(Math.abs(childTransform.position.z) - spacing.previous) < 1e-9) {
-        const sign = childTransform.position.z < 0 ? -1 : 1;
-        childTransform = {
-          position: v3(childTransform.position.x, childTransform.position.y, sign * spacing.current),
-          rotation: childTransform.rotation,
-        };
       }
     }
     assembly.addModule(
