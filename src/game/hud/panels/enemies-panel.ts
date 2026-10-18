@@ -60,9 +60,9 @@ export class EnemiesPanel {
 
     // 間引き周期でのみ一覧を組み直す。
     if (this.throttle.due(nowMs)) {
-      const count = this.els.get('count');
-      count.textContent = `${view.remainingCount} / ${view.totalCount}`;
-      count.setAttribute('aria-label', `残存 ${view.remainingCount}、合計 ${view.totalCount}`);
+      const count = `${view.remainingCount} / ${view.totalCount}`;
+      this.els.setText('hud-enemies-meta', `残 ${count}`);
+      this.els.setText('hud-enemies-summary', `残 ${count}`);
       const rows = this.buildEnemyRows(view.contacts);
       this.hasContacts = rows.length > 0;
       this.syncEnemyList(rows);
@@ -108,7 +108,7 @@ export class EnemiesPanel {
     const list = this.els.get('elist');
     if (rows.length === 0) {
       const empty = document.createElement('li');
-      empty.className = 'contact-empty';
+      empty.className = 'ui-item contact-empty';
       empty.textContent = '残存目標なし';
       list.replaceChildren(empty);
       return;
@@ -125,9 +125,9 @@ export class EnemiesPanel {
       // 行本体。固定/隣接の強調はクラスと aria-current で示す。
       const item = document.createElement('li');
       item.className = [
-        'contact-row',
-        row.targeted ? 'ui-accent' : '',
-        isAdjacent ? 'ui-near' : '',
+        'ui-item',
+        row.targeted ? 'is-tgt' : '',
+        isAdjacent ? 'is-near' : '',
       ].filter(Boolean).join(' ');
       if (row.targeted) item.setAttribute('aria-current', 'true');
       item.setAttribute('aria-label', [label, distance, role ? `${role}ターゲット` : '未選択'].join('、'));
@@ -138,18 +138,22 @@ export class EnemiesPanel {
         });
       }
 
-      // 名前・距離・役割ラベルの3スパン。
+      // グリフ・名前・距離・役割ラベルの4列。
+      const glyph = document.createElement('span');
+      glyph.className = 'ui-item-glyph';
+      glyph.textContent = row.targeted ? '⌖' : '·';
+      glyph.setAttribute('aria-hidden', 'true');
       const name = document.createElement('span');
-      name.className = 'contact-name';
+      name.className = 'ui-item-name';
       name.textContent = label;
       const distanceValue = document.createElement('span');
-      distanceValue.className = 'contact-distance';
+      distanceValue.className = 'ui-item-v';
       distanceValue.textContent = distance;
       const roleLabel = document.createElement('span');
-      roleLabel.className = 'contact-role';
+      roleLabel.className = 'ui-item-tag';
       roleLabel.textContent = role;
       roleLabel.setAttribute('aria-hidden', 'true');
-      item.append(name, distanceValue, roleLabel);
+      item.append(glyph, name, distanceValue, roleLabel);
       return item;
     });
     list.replaceChildren(...items);

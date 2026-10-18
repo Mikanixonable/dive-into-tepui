@@ -1,10 +1,17 @@
 // 常設 ORBIT パネル(#hud-orbit)の同期: 自艦の基準・高度・速度・遠地点/近地点・傾斜角・
 // 周期・動圧・機体温度、および基準切替のセグメントコントロール。戦闘/マップ共通。
-import { fmtDist, fmtSpeed, fmtTime } from '../../../hud/utils';
+import { fmtDistParts, fmtSpeedParts, fmtTime, type ValueParts } from '../../../hud/utils';
+import { setReadout } from '../../../hud/readout';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';
 import type { OrbitReferenceMode } from '../../viewer/orbit-reference-selection';
 import { Button, Meter, SegmentedControl } from '../../../hud/widgets';
+import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud/alarm-level';
+import {
+  DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO,
+  TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,
+  dynamicPressureAlarmLevel, temperatureAlarmLevel,
+} from '../../alarm/alarm-level';
 
 import { getApsisLabelSpec } from './orbit-labels';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/combat-ship-entity';
@@ -57,7 +64,9 @@ export class OrbitPanel {
     });
     this.els.get('reference-row').appendChild(this.referenceControl.element);
     this.qdynMeter = this.mountMeter('qdyn-meter', '動圧');
+    this.qdynMeter.setMarks(DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO);
     this.tempMeter = this.mountMeter('temp-meter', '機体温度');
+    this.tempMeter.setMarks(TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO);
     this.buildActionButtons();
   }
 
@@ -71,7 +80,7 @@ export class OrbitPanel {
   // 軌道分析パネルを開くボタンを els が指す DOM へ組み込む。
   private buildActionButtons(): void {
     const container = this.els.get('orbit-actions');
-    const button = new Button('軌道分析', () => this.openAnalysis());
+    const button = new Button('軌道分析', () => this.openAnalysis(), undefined, ['dense', 'secondary']);
     container.appendChild(button.element);
   }
 
@@ -91,44 +100,69 @@ export class OrbitPanel {
     this.referenceControl.setSelected(view.selectedMode);
     const apSpec = getApsisLabelSpec('ap', view.centerId);
     const peSpec = getApsisLabelSpec('pe', view.centerId);
-    this.els.setText('center', view.centerName);
-    this.els.setText('orbit-context', `REFERENCE · ${referenceLabel(view.selectedMode)}`);
-    this.els.setText('alt', fmtDist(view.altitudeM));
-    this.els.get('alt').classList.toggle('ui-danger', view.descendWarned);
-    this.els.setText('spd', fmtSpeed(view.speedMps));
-    this.els.setText('ap-label', `${apSpec.nameJa} ${apSpec.short}`);
-    this.els.setText('pe-label', `${peSpec.nameJa} ${peSpec.short}`);
-    this.els.setText('ap', fmtDist(view.apAltitudeM));
-    this.els.setText('pe', fmtDist(view.peAltitudeM));
-    this.els.setText('inc', isFinite(view.inclinationDeg) ? `${view.inclinationDeg.toFixed(2)}°` : '---');
-    this.els.setText('prd', fmtTime(view.periodSec));
-    // 動圧は大気を受ける機体だけ行自体を出す。値だけの赤字ではなく、閾値接近をバーでも示す。
+    this.els.setText('hud-orbit-meta', `基準 ${view.centerName}`);
+
+    // 主読み値(高度・速度)。降下の警告は高度の段で示す。
+    const altitudeLevel: AlarmLevel = view.descendWarned ? 'caution' : 'normal';
+    this.syncPrimary('alt', fmtDistParts(view.altitudeM), altitudeLevel);
+    this.syncPrimary('spd', fmtSpeedParts(view.speedMps), 'normal');
+
+    // 軌道の形(遠地点・近地点・傾斜角・周期)。
+    setReadout(this.els.get('ap-label'), apSpec.nameJa, apSpec.short);
+    setReadout(this.els.get('pe-label'), peSpec.nameJa, peSpec.short);
+    this.syncRow('ap', fmtDistParts(view.apAltitudeM));
+    this.syncRow('pe', fmtDistParts(view.peAltitudeM));
+    this.syncRow('inc', { value: isFinite(view.inclinationDeg) ? `${view.inclinationDeg.toFixed(2)}°` : '---', unit: '' });
+    this.syncRow('prd', { value: fmtTime(view.periodSec), unit: '' });
+
+    // 動圧は大気を受ける機体だけ行自体を出す。閾値を越えた値は色と記号で示し、バーにも閾値を立てる。
     const qdyn = view.dynamicPressurePa;
-    const qEl = this.els.get('qdyn');
     const qRow = this.els.get('orbit-qdyn-row');
     qRow.classList.toggle('hidden', qdyn === null);
+    let qdynLevel: AlarmLevel = 'normal';
     if (qdyn !== null) {
-      const qDanger = qdyn > 0.5 * MAX_DYN_PRESSURE;
-      qEl.textContent = qdyn >= 10 ? `${(qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
-      qEl.classList.toggle('ui-danger', qDanger);
-      qRow.classList.toggle('ui-danger-fill', qDanger);
-      this.qdynMeter.setProgress(qdyn, MAX_DYN_PRESSURE, null, qDanger);
+      qdynLevel = dynamicPressureAlarmLevel(qdyn, MAX_DYN_PRESSURE);
+      this.syncEnvironmentLevel(
+        'qdyn', qRow, this.qdynMeter, qdyn, MAX_DYN_PRESSURE, qdynLevel,
+        { value: qdyn >= 10 ? (qdyn / 1000).toFixed(2) : '0.00', unit: 'kPa' },
+      );
     } else {
-      qEl.classList.remove('ui-danger');
-      qRow.classList.remove('ui-danger-fill');
-      this.qdynMeter.setProgress(0, MAX_DYN_PRESSURE, null, false);
+      this.syncEnvironmentLevel('qdyn', qRow, this.qdynMeter, 0, MAX_DYN_PRESSURE, 'normal', { value: '—', unit: '' });
     }
 
-    const tDanger = view.temperatureK > 0.7 * MAX_HULL_TEMP;
-    const tEl = this.els.get('temp');
-    tEl.textContent = `${view.temperatureK.toFixed(0)} K`;
-    tEl.classList.toggle('ui-danger', tDanger);
-    this.els.get('temp-row').classList.toggle('ui-danger-fill', tDanger);
-    this.tempMeter.setProgress(view.temperatureK, MAX_HULL_TEMP, null, tDanger);
-  }
-}
+    const tempLevel = temperatureAlarmLevel(view.temperatureK, MAX_HULL_TEMP);
+    this.syncEnvironmentLevel(
+      'temp', this.els.get('temp-row'), this.tempMeter, view.temperatureK, MAX_HULL_TEMP, tempLevel,
+      { value: view.temperatureK.toFixed(0), unit: 'K' },
+    );
 
-// 基準モードの内部値を、context line で短く読める表示名へ変換する。
-function referenceLabel(mode: OrbitReferenceMode): string {
-  return REFERENCE_ITEMS.find(([id]) => id === mode)?.[1] ?? mode;
+    // 畳んだ見出しには高度を出し、高度・動圧・船体温度のうち最も重い段を色と記号で残す。
+    const altitude = fmtDistParts(view.altitudeM);
+    this.els.setText('hud-orbit-summary', `${altitude.value} ${altitude.unit}`.trim());
+    applyAlarmLevel(this.els.get('hud-orbit-summary'), worstAlarmLevel(altitudeLevel, qdynLevel, tempLevel));
+  }
+
+  // 主読み値(高度・速度)の要素へ値と単位、段を書く。
+  private syncPrimary(id: 'alt' | 'spd', parts: ValueParts, level: AlarmLevel): void {
+    const el = this.els.get(id);
+    setReadout(el, parts.value, parts.unit);
+    applyAlarmLevel(el, level);
+  }
+
+  // 行の値の要素へ値と単位を書く。
+  private syncRow(id: HudElId, parts: ValueParts): void {
+    setReadout(this.els.get(id), parts.value, parts.unit);
+  }
+
+  // 環境負荷1行ぶんの値・行・メーターへ段を反映する。警告のときだけ行に面が付く。
+  private syncEnvironmentLevel(
+    valueId: HudElId, rowEl: HTMLElement, meter: Meter, now: number, max: number, level: AlarmLevel,
+    parts: ValueParts,
+  ): void {
+    const valueEl = this.els.get(valueId);
+    setReadout(valueEl, parts.value, parts.unit);
+    applyAlarmLevel(valueEl, level);
+    rowEl.classList.toggle('ui-warning-fill', level === 'warning');
+    meter.setProgress(now, max, null, level);
+  }
 }
