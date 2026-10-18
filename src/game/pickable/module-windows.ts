@@ -83,7 +83,9 @@ export class ModuleWindows implements ModuleWindowOpener {
         || act === 'repairDockedModules' || act === 'selectCockpitModule') {
         this.submit(entry, act);
       } else if (act === 'decoupleModule') {
-        this.confirmation.open({ message: `${moduleId} を作動させますか？` }, (confirmed) => {
+        this.confirmation.open({
+          title: 'デカプラーを作動', message: `${moduleId} を作動させますか？`, destructive: true,
+        }, (confirmed) => {
           if (!confirmed) return;
           this.submit(entry, 'decoupleModule');
         });
@@ -114,7 +116,10 @@ export class ModuleWindows implements ModuleWindowOpener {
       } else if (act === 'undockModule') {
         if (this.undockProducesMaterial(ship, moduleId)) {
           this.confirmation.open(
-            { message: 'コックピットがないため操縦不能な物資として分離します。続けますか？' },
+            {
+              title: '物資として分離',
+              message: 'コックピットがないため操縦不能な物資として分離します。続けますか？', destructive: true,
+            },
             (confirmed) => { if (confirmed) this.submit(entry, 'undockModule'); },
           );
         } else this.submit(entry, 'undockModule');

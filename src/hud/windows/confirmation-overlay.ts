@@ -1,6 +1,7 @@
 // 取り消しにくい操作を OverlayManager の入力ゲート下で確認する共通モーダル。
 // 建造の確定確認(ConstructionConfirmationPort)を含め、題名+説明+確定/取消の確認は
 // すべてこの1枚が担う。開閉の骨組みは ModalOverlay が持つ。
+import { KEY_MAPPING } from '../../input/key-mapping';
 import { injectOnce } from '../inject-style';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import { Button } from '../widgets/button';
@@ -13,17 +14,20 @@ const STYLE = `
 }
 #hud .confirmation-overlay[hidden] { display: none !important; }
 #hud .confirmation-overlay-panel {
+  display: grid; gap: var(--space-5);
   width: min(32rem, calc(100vw - var(--space-6) * 2)); max-height: var(--overlay-max-h-s);
-  overflow-y: auto; padding: var(--space-6); color: var(--text); text-align: center;
+  overflow-y: auto; padding: var(--space-6); color: var(--text);
 }
 #hud .confirmation-overlay-title {
-  margin: 0 0 var(--space-3); font-size: var(--font-s); font-weight: 600;
+  display: flex; align-items: center; gap: var(--space-4); margin: 0;
+  color: var(--text-strong); font-size: var(--font-l); font-weight: 600;
 }
-#hud .confirmation-overlay-panel[data-destructive="true"] .confirmation-overlay-title {
-  color: var(--color-warning);
+#hud .confirmation-overlay-panel[data-destructive="true"] .confirmation-overlay-title::before {
+  content: '▲'; color: var(--role-warning); font-size: var(--font-s);
 }
-#hud .confirmation-overlay-message { margin-bottom: var(--space-5); white-space: pre-wrap; }
-#hud .confirmation-overlay-actions { display: flex; justify-content: center; gap: var(--space-3); }
+#hud .confirmation-overlay-message { margin: 0; color: var(--text-muted); white-space: pre-wrap; line-height: 1.6; }
+#hud .confirmation-overlay-actions { display: flex; justify-content: flex-end; gap: var(--space-3); }
+#hud .confirmation-overlay-actions .w-btn { display: inline-flex; align-items: center; }
 `;
 
 export interface ConfirmationOverlayRequest {
@@ -31,7 +35,7 @@ export interface ConfirmationOverlayRequest {
   readonly message: string;
   readonly confirmLabel?: string;
   readonly cancelLabel?: string;
-  // 破壊的な操作の確認なら true。題名を警告色へ変える。
+  // 取り消せない結果を伴う操作の確認なら true。題名へ記号 ▲ を添え、確定ボタンを警告の面にする。
   readonly destructive?: boolean;
 }
 
@@ -44,9 +48,11 @@ export class ConfirmationOverlay implements OverlayHandle {
   public constructor(overlayManager: OverlayManager) {
     injectOnce('confirmation-overlay', STYLE);
     this.shell = new ModalOverlay<boolean>(overlayManager, 'confirmation-overlay');
-    this.confirm = new Button('実行', () => this.shell.resolve(true), undefined, 'primary');
-    this.cancel = new Button('キャンセル', () => this.shell.resolve(false), undefined, 'secondary');
-    this.shell.actions.append(this.confirm.element, this.cancel.element);
+    this.confirm = new Button('実行', () => this.shell.resolve(true));
+    this.cancel = new Button(
+      'キャンセル', () => this.shell.resolve(false), undefined, undefined, KEY_MAPPING.pauseMenu.label,
+    );
+    this.shell.actions.append(this.cancel.element, this.confirm.element);
   }
 
   // 確認を一枚だけ開く。既存の確認が開いていれば取消として解決してから重ねない。
@@ -54,9 +60,13 @@ export class ConfirmationOverlay implements OverlayHandle {
   public open(request: ConfirmationOverlayRequest, onResult: (confirmed: boolean) => void): void {
     this.confirm.setLabel(request.confirmLabel ?? '実行');
     this.cancel.setLabel(request.cancelLabel ?? 'キャンセル');
-    this.shell.panel.dataset['destructive'] = String(request.destructive === true);
+    const destructive = request.destructive === true;
+    this.shell.panel.dataset['destructive'] = String(destructive);
+    this.confirm.element.classList.toggle('w-btn--danger', destructive);
+    this.confirm.element.classList.toggle('w-btn--primary', !destructive);
     this.shell.open(request, false, onResult);
-    this.confirm.element.focus();
+    // 取り消せない結果を伴うので、Enter で即確定しないよう取消へフォーカスを置く。
+    this.cancel.element.focus();
   }
 
   // open() と同じ要求形状の別名。要求/結果の契約を持つ呼び出し側はこちらを使う。
