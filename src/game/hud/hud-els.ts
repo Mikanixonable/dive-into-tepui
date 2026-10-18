@@ -19,6 +19,7 @@ export const HUD_ELEMENT_IDS = [
   'center',
   'chase-reset',
   'construction-actions',
+  'construction-badge',
   'construction-category-tabs',
   'construction-completion',
   'construction-count',

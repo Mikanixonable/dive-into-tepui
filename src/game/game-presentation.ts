@@ -41,6 +41,7 @@ import { ObjectWindowActions } from './pickable/object-window-actions';
 import { ModuleCommands } from './pickable/module-commands';
 import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
+import { ConstructionEntry, hasUsableConstructionDock } from './ship/construction-entry';
 import { FrameControls } from './hud/frame/frame-controls';
 import { HudPanelPresenter } from './hud/hud-panel-presenter';
 import { ViewOptionsControl, type ViewOptionsSettings } from './hud/panels/view-options-control';
@@ -106,6 +107,8 @@ export class GamePresentation {
   private readonly objectWindows: ObjectWindows;
   private readonly moduleWindows: ModuleWindows;
   private readonly shipConstruction: ShipConstruction;
+  // ドックの直接クリック・Bキー・常設ボタン・プロパティ窓が共有する建造の入口。
+  private readonly constructionEntry: ConstructionEntry;
   private readonly confirmation: ConfirmationOverlay;
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
   private readonly viewOptions: ViewOptionsControl;
@@ -173,10 +176,11 @@ export class GamePresentation {
       hud, hud.constructionConfirm,
       (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
     );
+    this.constructionEntry = new ConstructionEntry(this.shipConstruction, hud);
     const viewSelectionCommands = viewCommands(commands, viewer.view);
     this.moduleWindows = new ModuleWindows(
       hud, controlSelection, dynamicSystem, new ModuleCommands(commands, controlSelection, dynamicSystem),
-      this.shipConstruction,
+      this.constructionEntry,
       this.confirmation,
       () => {
         if (!viewer.view.canSelect('combat')) return false;
@@ -227,7 +231,7 @@ export class GamePresentation {
     this.combatView = new CombatFrame(
       this.input, this.targeter, this.objectWindows, dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      controlSelection, this.planPath, this.planGuide,
+      controlSelection, this.planPath, this.planGuide, this.constructionEntry,
     );
     this.mapView = new MapFrame(
       this.input, this.cameraSystem, viewer.camera, this.objectWindows,
@@ -248,12 +252,21 @@ export class GamePresentation {
       hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
       activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
     );
+    // 最寄りの使用可能ドックから建造を始める。Bキーのポートと常設ボタンが共有する。
+    const startConstructionNearest = (): void => {
+      const controlled = game.activeControllable;
+      const camera = this.cameraFrame;
+      if (controlled === null || camera === null || !isModularShip(controlled)) return;
+      this.constructionEntry.startNearestDock(controlled, camera.viewpoint.position);
+    };
+    hud.onConstructionStart = startConstructionNearest;
     const inputSource: GameInputSource = {
       commands: game.commands,
       simSpeedManager: game.simSpeedManager,
       view: game.viewer.view,
       get activeControllable() { return game.activeControllable; },
       get stageIsPlaying() { return game.activeStage.isPlaying; },
+      startConstruction: startConstructionNearest,
     };
     const displaySource: DisplayPhaseSource = {
       get simTime() { return game.simTime; },
@@ -366,6 +379,11 @@ export class GamePresentation {
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime } = displayWindow;
     const view = this.viewManager.current;
+    // 常設の建造ボタンは、戦闘ビューで操作対象の船体が使えるドックを持つ間だけ出す。
+    this.devices.hud.syncConstructionBadge(
+      view === 'combat' && !this.shipConstruction.active
+        && controlled !== null && isModularShip(controlled) && hasUsableConstructionDock(controlled),
+    );
     // 最初にカメラを確定し、後続の同期とマーカー投影が読む行列を揃える。
     const camera = this.syncCamera(displayWindow, view, viewport, nowMs);
     // 描く対象と選べる対象を同じ判定から出すため、ビューが確定させた可否を読む。
