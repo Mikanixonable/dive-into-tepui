@@ -1,5 +1,4 @@
-// ステージ固有の状況表示パネル(左部: ステージ補助メッセージ・撃墜数 / 中央部: 自機の装甲・温度・電力)。
-// 表示内容がステージごとに決まるので Stage が所有する。
+// ステージの補助メッセージ・撃墜数と、自機の装甲・温度・電力を示す状況パネル。
 
 import type { ModularShip } from '../../ship/modular-ship';
 import { fmtEnergy } from '../../../hud/utils';
@@ -34,6 +33,7 @@ export class StatusPanel {
     this.centerCol = this.panel.querySelector<HTMLElement>('.t')!;
     root.appendChild(this.panel);
 
+    // 装甲と温度の警報段は、表示する物理量の境界に合わせる。
     this.hpMeter = this.buildMeterRow('装甲');
     this.hpMeter.setMarks(null, ARMOR_WARNING_RATIO);
     this.tempMeter = this.buildMeterRow('温度');
@@ -66,6 +66,7 @@ export class StatusPanel {
     const temp = Math.round(player.motion.temperature);
     const chargeJ = player.motion.power.chargeJ;
 
+    // 装甲・温度の表示値と警報段を同じ値から更新する。
     this.hpMeter.setRatio(hp / maxHp);
     this.hpMeter.setLevel(armorAlarmLevel(hp, maxHp));
     this.hpMeter.setLabel(`${Math.floor(hp)} / ${maxHp}`);
@@ -85,8 +86,7 @@ export class StatusPanel {
     this.panel.classList.remove('hidden');
   }
 
-  // root へ追加したパネル DOM を取り除く。左部ウィジェット枠に他クラスが差し込んだ要素も
-  // その配下なので一緒に消える。
+  // このパネルの DOM を破棄する。
   public dispose(): void {
     this.panel.remove();
   }

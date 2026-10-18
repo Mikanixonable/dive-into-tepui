@@ -228,6 +228,7 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
   construction.dataset['mobilePane'] = 'catalog';
   construction.setAttribute('aria-label', '船体建造');
 
+  // 部品選択・配置地点・建造結果を一画面で追えるよう、3区画の役割を保つ。
   construction.innerHTML = `
     <nav class="construction-mobile-tabs" data-id="construction-mobile-tabs" aria-label="建造表示切替"></nav>
     <aside class="construction-pane construction-pane-left ui-surface-focus" aria-label="モジュールカタログ">
