@@ -3,6 +3,7 @@ import { SAVED_GAME_VERSION, type SavedGame } from '../../src/launcher/save/save
 import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
 import { SimSpeedManager } from '../../src/game/dynamic/sim-speed-manager';
 import { PlanNodeRules } from '../../src/game/plan/plan-node-rules';
+import { OrbitSlotRegistry } from '../../src/game/navigation/orbit-slot-registry';
 import { RunEventLog } from '../../src/game/run-events';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
 import { Viewer } from '../../src/game/viewer/viewer';
@@ -32,6 +33,7 @@ export function serializedGame(stageId: string): SavedGame {
         logistics: { resupplyCheckAt: 0, resupplyEnabled: false, rcsFuelResupplyEnabled: false },
       },
       planNodeRules: PlanNodeRules.create(events).serialize(),
+      orbitSlots: OrbitSlotRegistry.create().serialize(),
     },
     viewer: Viewer.create({ current: null }, events, solarSystem('earth', null, TEST_EPOCH)).serialize(),
   };
