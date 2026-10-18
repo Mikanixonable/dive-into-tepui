@@ -55,7 +55,7 @@ export interface ReferenceOrbitEnv {
   // 基準天体の2次重力場。J2 を持たない天体は undefined(歳差なしとして扱う)。
   degree2Field(bodyId: string, t: number): { readonly j2: number; readonly refRadius: number } | undefined;
   familyMemberAt(
-    orbit: ReferenceOrbitFamily,
+    orbit: ReferenceOrbitFamily, t: number,
   ): { period: number; sample(phase: number): readonly [number, number, number, number, number, number] } | null;
   rotatingFrameAt(
     primaryId: string, secondaryId: string, t: number,
@@ -101,7 +101,7 @@ export function referenceOrbitStateAt(
     return kinematicState<'eci'>(rel.t, addScaled(c.r, rel.r, 1), addScaled(c.v, rel.v, 1));
   }
 
-  const member = env.familyMemberAt(orbit);
+  const member = env.familyMemberAt(orbit, t);
   const frame = env.rotatingFrameAt(orbit.primaryId, orbit.secondaryId, t);
   if (!member || !frame || !(member.period > 0)) return null;
   const frac = (((orbit.phase0 + t / member.period) % 1) + 1) % 1;
@@ -151,6 +151,6 @@ export function referenceOrbitPeriod(orbit: ReferenceOrbit, env: ReferenceOrbitE
     );
     return meanMotion > 0 ? (2 * Math.PI) / meanMotion : null;
   }
-  const member = env.familyMemberAt(orbit);
+  const member = env.familyMemberAt(orbit, 0);
   return member && member.period > 0 ? member.period : null;
 }
