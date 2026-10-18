@@ -49,7 +49,6 @@ export function gameInputPorts(
     },
     {
       feature: 'hud',
-      isEnabled: () => !constructionActive(),
       commands: [gameCommand(K.help.code, K.help)],
       handleCommand: command => hud.handleCommand(command.id),
     },
