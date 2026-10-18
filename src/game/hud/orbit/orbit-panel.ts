@@ -5,6 +5,12 @@ import { SyncThrottle } from '../sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';
 import type { OrbitReferenceMode } from '../../viewer/orbit-reference-selection';
 import { Button, Meter, SegmentedControl } from '../../../hud/widgets';
+import { applyAlarmLevel, type AlarmLevel } from '../../../hud/alarm-level';
+import {
+  DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO,
+  TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,
+  dynamicPressureAlarmLevel, temperatureAlarmLevel,
+} from '../../alarm/alarm-level';
 
 import { getApsisLabelSpec } from './orbit-labels';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/combat-ship-entity';
@@ -57,7 +63,9 @@ export class OrbitPanel {
     });
     this.els.get('reference-row').appendChild(this.referenceControl.element);
     this.qdynMeter = this.mountMeter('qdyn-meter', '動圧');
+    this.qdynMeter.setMarks(DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO);
     this.tempMeter = this.mountMeter('temp-meter', '機体温度');
+    this.tempMeter.setMarks(TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO);
     this.buildActionButtons();
   }
 
@@ -94,7 +102,7 @@ export class OrbitPanel {
     this.els.setText('center', view.centerName);
     this.els.setText('orbit-context', `REFERENCE · ${referenceLabel(view.selectedMode)}`);
     this.els.setText('alt', fmtDist(view.altitudeM));
-    this.els.get('alt').classList.toggle('ui-danger', view.descendWarned);
+    applyAlarmLevel(this.els.get('alt'), view.descendWarned ? 'caution' : 'normal');
     this.els.setText('spd', fmtSpeed(view.speedMps));
     this.els.setText('ap-label', `${apSpec.nameJa} ${apSpec.short}`);
     this.els.setText('pe-label', `${peSpec.nameJa} ${peSpec.short}`);
@@ -102,29 +110,35 @@ export class OrbitPanel {
     this.els.setText('pe', fmtDist(view.peAltitudeM));
     this.els.setText('inc', isFinite(view.inclinationDeg) ? `${view.inclinationDeg.toFixed(2)}°` : '---');
     this.els.setText('prd', fmtTime(view.periodSec));
-    // 動圧は大気を受ける機体だけ行自体を出す。値だけの赤字ではなく、閾値接近をバーでも示す。
+    // 動圧は大気を受ける機体だけ行自体を出す。閾値を越えた値は色と記号で示し、バーにも閾値を立てる。
     const qdyn = view.dynamicPressurePa;
     const qEl = this.els.get('qdyn');
     const qRow = this.els.get('orbit-qdyn-row');
     qRow.classList.toggle('hidden', qdyn === null);
     if (qdyn !== null) {
-      const qDanger = qdyn > 0.5 * MAX_DYN_PRESSURE;
       qEl.textContent = qdyn >= 10 ? `${(qdyn / 1000).toFixed(2)} kPa` : '0.00 kPa';
-      qEl.classList.toggle('ui-danger', qDanger);
-      qRow.classList.toggle('ui-danger-fill', qDanger);
-      this.qdynMeter.setProgress(qdyn, MAX_DYN_PRESSURE, null, qDanger);
+      this.syncEnvironmentLevel(
+        qEl, qRow, this.qdynMeter, qdyn, MAX_DYN_PRESSURE, dynamicPressureAlarmLevel(qdyn, MAX_DYN_PRESSURE),
+      );
     } else {
-      qEl.classList.remove('ui-danger');
-      qRow.classList.remove('ui-danger-fill');
-      this.qdynMeter.setProgress(0, MAX_DYN_PRESSURE, null, false);
+      this.syncEnvironmentLevel(qEl, qRow, this.qdynMeter, 0, MAX_DYN_PRESSURE, 'normal');
     }
 
-    const tDanger = view.temperatureK > 0.7 * MAX_HULL_TEMP;
     const tEl = this.els.get('temp');
     tEl.textContent = `${view.temperatureK.toFixed(0)} K`;
-    tEl.classList.toggle('ui-danger', tDanger);
-    this.els.get('temp-row').classList.toggle('ui-danger-fill', tDanger);
-    this.tempMeter.setProgress(view.temperatureK, MAX_HULL_TEMP, null, tDanger);
+    this.syncEnvironmentLevel(
+      tEl, this.els.get('temp-row'), this.tempMeter, view.temperatureK, MAX_HULL_TEMP,
+      temperatureAlarmLevel(view.temperatureK, MAX_HULL_TEMP),
+    );
+  }
+
+  // 環境負荷1行ぶんの値・行・メーターへ段を反映する。警告のときだけ行に面が付く。
+  private syncEnvironmentLevel(
+    valueEl: HTMLElement, rowEl: HTMLElement, meter: Meter, now: number, max: number, level: AlarmLevel,
+  ): void {
+    applyAlarmLevel(valueEl, level);
+    rowEl.classList.toggle('ui-warning-fill', level === 'warning');
+    meter.setProgress(now, max, null, level);
   }
 }
 
