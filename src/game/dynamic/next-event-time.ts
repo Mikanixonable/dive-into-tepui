@@ -1,16 +1,11 @@
 // サブステップを区切るべき次の絶対時刻。ステージ側(マニューバの点火・燃焼終了)と個体側
-// (弾の寿命など)の締切のうち、最も早いものを算出・返却する。
+// (弾の寿命・接触猶予・自動操縦の燃焼)の締切のうち、最も早いものを算出・返却する。
 import type { DynamicSimulationRoster } from './dynamic-simulation-participant';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 
 export class NextEventTime {
-  // 個体側の最小イベント時刻のキャッシュと、それを算出した時点のリビジョン。
-  private cached: number | null = null;
-  private valid = false;
-  private revision = -1;
-
-  // simTime 以降で最も早い締切。無ければ null。ステージ側の時刻は艦の現在の Δv と加速度から
-  // 毎回決まる生きた値なので、毎回引き直す。
+  // simTime 以降で最も早い締切。無ければ null。個体側の時刻は計画・燃焼予定のような
+  // 実行中に変わりうる生きた値なので、毎回引き直す。
   public at(simTime: number, activeStage: StageSimulationEvents, roster: DynamicSimulationRoster): number | null {
     const stage = activeStage.nextSimulationEventTime(simTime);
     const entity = this.entityEventTime(simTime, roster);
@@ -19,24 +14,14 @@ export class NextEventTime {
     return Math.min(stage, entity);
   }
 
-  // 個体側の締切は固定の絶対時刻であるため、キャッシュ時刻を simTime が超過した際と、エンティティ集合のリビジョンが
-  // 更新された際にのみ全走査で再取得する。
+  // 生存中の全個体が持つ締切のうち最も早いもの。
   private entityEventTime(simTime: number, roster: DynamicSimulationRoster): number | null {
-    const revision = roster.collectionRevision;
-    const stale = !this.valid
-      || this.revision !== revision
-      || (this.cached !== null && this.cached <= simTime);
-    if (!stale) return this.cached;
-
     let next: number | null = null;
     for (const e of roster.allMotions()) {
       if (!e.alive) continue;
       const t = e.nextSimulationEventTime(simTime);
       if (t !== null && (next === null || t < next)) next = t;
     }
-    this.cached = next;
-    this.valid = true;
-    this.revision = revision;
     return next;
   }
 }
