@@ -1,6 +1,7 @@
 // ブースターの段構成・燃焼状態を表示する常設パネル。ゲーム側で作った表示用の
 // スナップショットを sync する。操作は各 module のプロパティウィンドウから行う。
 import { Meter } from '../../../hud/widgets';
+import { FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO, fuelAlarmLevel } from '../../alarm/alarm-level';
 import type { HudEls } from '../hud-els';
 
 /** 燃焼管理パネルへ渡す、ゲーム状態から分離された表示モデル。 */
@@ -73,6 +74,7 @@ export class BurnManagementPanel {
   // 表示要素を els から取り出し、燃料バーを Meter ウィジェットで組み込む。
   public constructor(private readonly els: HudEls) {
     const fuelMeter = new Meter('最後尾ブースター燃料');
+    fuelMeter.setMarks(FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO);
     this.els.get('burn-active-fuel-meter').appendChild(fuelMeter.element);
     this.dom = {
       stageCount: this.els.get('burn-stage-count'),
@@ -96,14 +98,13 @@ export class BurnManagementPanel {
     const stageCount = Math.max(0, Math.floor(view.stageCount));
     const activeFuel = finiteNonNegative(view.activeFuel);
     const activeFuelMax = finiteNonNegative(view.activeFuelMax);
-    const fuelRatio = activeFuelMax > 0 ? Math.min(1, activeFuel / activeFuelMax) : 0;
     const fuelText = formatFuel(activeFuel, activeFuelMax);
     const state = activeFuelMax <= 0 || activeFuel <= 0 ? 'fuel-empty' : view.burnState;
 
     this.dom.stageCount.textContent = `${stageCount} 個`;
     this.dom.totalMass.textContent = formatMass(view.totalMass);
     this.dom.fuelValue.textContent = fuelText;
-    this.dom.fuelMeter.setProgress(activeFuel, activeFuelMax, fuelText, fuelRatio <= 0.2);
+    this.dom.fuelMeter.setProgress(activeFuel, activeFuelMax, fuelText, fuelAlarmLevel(activeFuel, activeFuelMax));
     this.dom.burnState.textContent = stateLabel(state);
     this.dom.burnState.setAttribute('aria-label', view.burnStateDescription ?? stateLabel(state));
 
