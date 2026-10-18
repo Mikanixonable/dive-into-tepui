@@ -28,6 +28,7 @@ import type { ControlSelectionCommands } from '../control-selection-commands';
 import type { DisplayWindow, DisplayWindowManager } from '../display-window-manager';
 import type { FrameControls } from '../hud/frame/frame-controls';
 import type { FrameAnchors } from '../frame-anchors';
+import { DisplayTimelineEvents } from '../map/display-timeline-events';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { SettingValue } from '../../settings/setting-value';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -46,6 +47,7 @@ export class MapFrame implements ViewFrame {
   public readonly planEditor: PlanEditor;
   private readonly objectPickables: ObjectPickables;
   private readonly linePickables: LinePickables;
+  private readonly timelineEvents: DisplayTimelineEvents;
 
   // マップ専用の編集口・候補列・クリックの当て先は、受け取った材料からここで組んで持つ。
   public constructor(
@@ -87,6 +89,7 @@ export class MapFrame implements ViewFrame {
       celestialMarkers, planDisplay, frameAnchors, equatorNodes,
     );
     this.linePickables = new LinePickables(roster, celestialSystem);
+    this.timelineEvents = new DisplayTimelineEvents(planDisplay, equatorNodes, navTargetPresenter, controlSelection);
     this.picking = new MapPicking(
       hud, camera, roster, celestialSystem, celestialMarkers, markers,
       navTargetPresenter, navTargetCommands, frameControls, this.objectPickables, this.linePickables, objectWindows,
@@ -164,7 +167,7 @@ export class MapFrame implements ViewFrame {
   public syncPanels(displayWindow: DisplayWindow, camera: CameraFrame, nowMs: number): void {
     // 編集 UI と常設パネル
     this.planEditor.sync(this.camera.map.distance, camera.floatingOrigin);
-    this.displayWindowManager.sync(this.controlSelection.current);
+    this.displayWindowManager.sync(this.controlSelection.current, this.timelineEvents.current());
     this.picking.sync(displayWindow.displayTime, this.controlSelection.current);
     this.frameControls.sync(
       this.objectPickables.pickables, camera.position, displayWindow.displayTime,

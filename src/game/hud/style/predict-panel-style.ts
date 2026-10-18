@@ -1,33 +1,81 @@
-// 予測軌道パネル(#hud-predict)と、それを収める下部シート(#hud-predict-wrap /
-// #hud-predict-toggle)の CSS。
+// 時間軸パネル(#hud-predict)と、それを収める下部シート(#hud-predict-wrap / #hud-predict-toggle)、
+// 表示範囲・設定の小窓(.tml-pop)の CSS。
 import {
   MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN,
 } from '../../../hud/breakpoints';
 
 export const PREDICT_PANEL_STYLE = `
-#hud-predict .predict-head { margin-bottom: var(--space-2); }
-#hud-predict .predict-state {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end; gap: var(--space-5);
-  margin-bottom: var(--space-3); padding-bottom: var(--space-3);
+#hud #hud-predict { padding: var(--space-4) var(--space-5); }
+
+/* 上段: 現在に戻す・読み値・(空き)・次の事象・予測率・設定。 */
+#hud-predict .tml-top { display: flex; align-items: center; gap: var(--space-5); min-height: var(--row-min-h-s); }
+#hud-predict .tml-read { display: flex; align-items: baseline; gap: var(--space-4); min-width: 0; white-space: nowrap; }
+#hud-predict .tml-elapsed {
+  cursor: pointer; pointer-events: auto; color: var(--role-data); font-size: var(--font-xl);
+  font-variant-numeric: tabular-nums;
 }
-#hud-predict .predict-state .editorial-state-hero strong {
-  font-size: var(--font-xl);
+#hud-predict .tml-elapsed:hover { color: var(--color-primary-hover); }
+#hud-predict .tml-date {
+  color: var(--role-label); font-size: var(--font-xs); font-variant-numeric: tabular-nums;
 }
-#hud-predict .predict-state-progress {
-  display: grid; justify-items: end; gap: 2px; min-width: 72px;
+#hud-predict .tml-grow { flex: 1 1 auto; }
+#hud-predict .tml-top .w-btn { white-space: nowrap; }
+#hud-predict .tml-pred {
+  color: var(--role-meta); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-#hud-predict .predict-state-progress .ui-data-secondary {
-  color: var(--color-primary); font-size: var(--font-m); font-weight: 650;
+/* span. まで指定して .w-btn 側の display/padding より確実に勝たせる。 */
+#hud-predict span.predict-reset {
+  flex: 0 0 auto; padding: 0;
+  display: flex; align-items: center; justify-content: center; border-radius: 50%;
+  font-size: var(--font-m);
 }
-#hud-predict .predict-controls {
-  display: grid; gap: var(--space-2); padding-top: var(--space-3);
+#hud-predict .predict-value-input { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; }
+#hud-predict .predict-value-input input[type="number"] { width: 112px; }
+
+/* 時間軸: [過去の掴み手] [トラックと軸のラベル] [未来の掴み手]。 */
+#hud-predict .tml-scrub {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start;
+  column-gap: var(--space-4); margin-top: var(--space-3);
 }
-#hud-predict .predict-controls .predict-row1 { margin-bottom: 0; }
-#hud-predict .predict-controls .predict-row2 {
-  margin-top: var(--space-1); padding-top: var(--space-2);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 14%, transparent);
+#hud-predict .tml-end {
+  display: inline-flex; align-items: center; gap: var(--space-3); box-sizing: border-box;
+  height: var(--slider-marked-h); padding: 0 var(--space-4); white-space: nowrap;
 }
+#hud-predict .tml-end-caption { color: var(--role-meta); font-size: var(--font-xxs); letter-spacing: var(--tracking-label); }
+#hud-predict .tml-end b { color: var(--text); font-size: var(--font-s); font-weight: 400; }
+#hud-predict .tml-end i { color: var(--role-label); font-size: var(--font-xxs); font-style: normal; }
+#hud-predict .tml-track { min-width: 0; }
+#hud-predict .slider-ticks { position: relative; height: var(--font-xxs); margin-top: var(--space-2); }
+#hud-predict .slider-ticks span {
+  position: absolute; color: var(--role-meta); font-size: var(--font-xxs);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+/* 表示範囲・設定の小窓(popup 層に置かれるので #hud-predict の外)。 */
+#hud .tml-pop {
+  position: fixed; display: none; box-sizing: border-box; pointer-events: auto;
+  max-width: calc(100vw - 2 * var(--space-5)); margin-bottom: var(--space-4);
+  padding: var(--space-5) var(--space-5) var(--space-4); border-radius: var(--radius-panel);
+  font-size: var(--font-s); color: var(--text);
+}
+#hud .tml-pop-range { width: 556px; }
+#hud .tml-pop-range .predict-row1.is-active { background: var(--fill-1); border-radius: var(--radius-micro); }
+#hud .tml-pop-settings { width: 288px; }
+#hud .tml-pop-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+#hud .tml-pop .predict-row1 { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+#hud .tml-pop .predict-pills { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+#hud .tml-pop-note { margin-top: var(--space-3); color: var(--role-meta); font-size: var(--font-xxs); }
+#hud .tml-pop-toggles { display: grid; gap: var(--space-3); }
+#hud .tml-pop-toggles .w-toggle { justify-content: space-between; margin-bottom: 0; }
+#hud .tml-pop-toggles .w-toggle-title { color: var(--text); font-size: var(--font-s); letter-spacing: 0; }
+#hud .tml-legend {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-4); color: var(--role-label); font-size: var(--font-xxs);
+}
+#hud .tml-legend b { display: inline-block; width: 1.4em; margin-right: var(--space-2); font-weight: 400; text-align: center; }
+#hud .tml-legend-item.is-own { color: var(--role-own); }
+#hud .tml-legend-item.is-target { color: var(--role-target); }
 
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
    トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
@@ -53,40 +101,11 @@ export const PREDICT_PANEL_STYLE = `
   background: var(--surface); color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-predict-toggle { display: block; }
-#hud-predict .predict-row1, #hud-predict .predict-row2 { display: flex; align-items: center; gap: var(--space-3); }
-#hud-predict .predict-row1 { flex-wrap: wrap; margin-bottom: var(--space-2); }
-#hud-predict .predict-pills { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
-/* span. まで指定して .w-btn 側の display/padding より確実に勝たせる
-   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
-#hud-predict span.predict-reset {
-  flex: 0 0 auto; padding: 0;
-  display: flex; align-items: center; justify-content: center; border-radius: 50%;
-  font-size: var(--font-m);
-}
-#hud-predict span.predict-reset:hover { color: var(--color-primary); }
-#hud-predict .predict-slider-wrap { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; height: 22px; }
-#hud-predict input[type="range"] { width: 100%; height: 22px; margin: 0; pointer-events: auto; accent-color: var(--color-primary); }
-#hud-predict .predict-elapsed {
-  flex: 0 0 auto; pointer-events: auto; cursor: pointer;
-  font-size: var(--font-s); color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-#hud-predict .predict-elapsed:hover { color: var(--text); }
-#hud-predict .predict-absolute {
-  flex: 0 0 auto; font-size: var(--font-s); color: var(--text-dim);
-  font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-#hud-predict .predict-value-input { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; }
-#hud-predict .predict-value-input input[type="number"] { width: 112px; }
-#hud-predict .slider-ticks { position: relative; height: 11px; margin-top: var(--space-1); }
-#hud-predict .slider-ticks span {
-  position: absolute;
-  font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
-}
 @media ${MQ_MEDIUM_DOWN} {
   #hud-predict-wrap { bottom: 8px; }
 }
 @media ${MQ_COMPACT} {
-  /* compactは左右railの合計幅が中央領域をほぼ使い切るため、PREDICTは横の隙間ではなく
+  /* compactは左右railの合計幅が中央領域をほぼ使い切るため、時間軸は横の隙間ではなく
      下部sheetとして配置し、その実占有量ぶんrailを上へ切る。 */
   #hud .hud-map-root.active .hud-rail {
     bottom: max(
@@ -94,9 +113,8 @@ export const PREDICT_PANEL_STYLE = `
       calc(var(--hud-predict-bottom-occupied, 0px) + var(--space-2))
     );
   }
-  #hud-predict .slider-ticks { display: none; }
-  /* 幅が足りないので、行2はスクラバーと T+ 読み値だけ残す。 */
-  #hud-predict .predict-absolute { display: none; }
+  /* 幅が足りないので、上段は T+ 読み値と次の事象・設定だけ残し、軸のラベルは畳む。 */
+  #hud-predict .slider-ticks, #hud-predict .tml-date, #hud-predict .tml-pred { display: none; }
   #hud-predict-wrap { left: 8px; right: 8px; bottom: 8px; }
   #hud-predict { max-height: 28vh; max-height: 28dvh; }
 }

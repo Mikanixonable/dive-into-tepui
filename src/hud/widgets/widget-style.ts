@@ -94,6 +94,48 @@ export const WIDGET_STYLE = `
 /* w-slider: つまみ型の連続値スライダー。トラックの寸法はパネル側の CSS が決める。 */
 .w-slider { pointer-events: auto; accent-color: var(--color-primary); }
 
+/* w-slider-frame: 帯と目盛りを載せるトラック。つまみは細い線(再生ヘッド)で、目盛りの位置は
+   つまみの移動幅(全幅からつまみ幅を引いた分)に対する割合で置く。 */
+:root { --slider-marked-h: 34px; --slider-head-w: 3px; --slider-mark-hit: 14px; }
+.w-slider-frame {
+  position: relative; box-sizing: border-box; height: var(--slider-marked-h); overflow: hidden;
+  border-radius: var(--radius-control); background: var(--glass-inset); box-shadow: inset 0 0 0 1px var(--fill-2);
+  touch-action: none;
+}
+.w-slider-frame:has(> .w-slider:focus-visible) { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.w-slider.is-marked {
+  -webkit-appearance: none; appearance: none; display: block; box-sizing: border-box;
+  width: 100%; height: 100%; margin: 0; padding: 0; background: transparent; cursor: ew-resize;
+}
+.w-slider.is-marked:focus-visible { outline: none; }
+.w-slider.is-marked::-webkit-slider-runnable-track { height: var(--slider-marked-h); background: transparent; }
+.w-slider.is-marked::-moz-range-track { height: var(--slider-marked-h); background: transparent; }
+.w-slider.is-marked::-webkit-slider-thumb {
+  -webkit-appearance: none; box-sizing: border-box; width: var(--slider-head-w); height: var(--slider-marked-h);
+  border: 0; border-radius: 0; background: var(--text-strong);
+}
+.w-slider.is-marked::-moz-range-thumb {
+  box-sizing: border-box; width: var(--slider-head-w); height: var(--slider-marked-h);
+  border: 0; border-radius: 0; background: var(--text-strong);
+}
+.w-slider-marks { position: absolute; inset: 0; pointer-events: none; }
+.w-slider-mark {
+  position: absolute; top: 0; bottom: 0; width: var(--slider-mark-hit); margin-left: calc(var(--slider-mark-hit) / -2);
+  left: calc(var(--slider-head-w) / 2 + (100% - var(--slider-head-w)) * var(--at, 0));
+  color: var(--role-label); pointer-events: auto; cursor: pointer;
+}
+.w-slider-mark::before {
+  content: attr(data-glyph); position: absolute; top: var(--space-1); left: 50%; transform: translateX(-50%);
+  font-size: var(--font-xs); line-height: 1;
+}
+.w-slider-mark::after {
+  content: ''; position: absolute; top: calc(var(--slider-marked-h) / 2 - var(--space-1)); bottom: var(--space-2);
+  left: 50%; width: 2px; margin-left: -1px; border-radius: 1px; background: currentColor;
+}
+.w-slider-mark:hover { color: var(--text); }
+.w-slider-mark.is-own { color: var(--role-own); }
+.w-slider-mark.is-target { color: var(--role-target); }
+
 /* w-meter: HP/温度/電力の細い線。常に左から右へ満ちる。量は中立の線で示し、色が付くのは
    呼び出し側が注意・警告の段を渡したときだけ。閾値は目盛り(--at: 位置)で示す。 */
 .w-meter { display: flex; align-items: center; gap: var(--space-3); }
@@ -117,6 +159,7 @@ export const WIDGET_STYLE = `
    間隔を保つ。要素自身の寸法(min-width/min-height)で確保する: 重ね合わせの疑似要素で広げると、
    視覚サイズを変えないぶん間隔の詰まった隣接要素のヒット領域まで侵してしまうため。 */
 @media ${MQ_COARSE} {
+  :root { --slider-marked-h: var(--hit-target-min); }
   .w-hit {
     box-sizing: border-box; min-width: var(--hit-target-min); min-height: var(--hit-target-min);
     display: inline-flex; align-items: center; justify-content: center;

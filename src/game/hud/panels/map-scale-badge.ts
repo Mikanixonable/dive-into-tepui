@@ -20,7 +20,7 @@ export class MapScaleBadge {
   public sync(screenScale: ScaleFn, focus: Vec3): void {
     const panel = this.els.get('map-scale');
     // 基底の CSS 規則(#hud-map-scale)が display:none なので、'' へ戻すと表示に復帰しない。
-    panel.style.display = 'block';
+    panel.style.display = 'flex';
 
     const metersPerPixel = screenScale(focus);
     const scale = mapScaleFor(metersPerPixel);

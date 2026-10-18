@@ -46,13 +46,16 @@ export class PhysicalObjectListRowTree {
     private readonly actions: RowTreeActions,
   ) {}
 
-  // 補助表示の導出に要る今フレームの操作対象と表示時刻。syncRow より先に渡すこと。
+  // 補助表示の導出に要る今フレームの操作対象と表示時刻、ターゲットの色を帯びる行の id。
+  // syncRow より先に渡すこと。
   private viewer: OrbitingObject | null = null;
   private displayTime = 0;
+  private targetId: string | null = null;
 
-  public setFrame(viewer: OrbitingObject | null, displayTime: number): void {
+  public setFrame(viewer: OrbitingObject | null, displayTime: number, targetId: string | null): void {
     this.viewer = viewer;
     this.displayTime = displayTime;
+    this.targetId = targetId;
   }
 
   // id に対応する RowNode を(無ければ生成して)最新化し、続けてその子を再帰的に同期する。
@@ -60,12 +63,13 @@ export class PhysicalObjectListRowTree {
   // だけにする — 作り直すとプレイヤーが開いた枝と savedExpanded が毎回失われる。
   // id が今フレームの候補に無ければ何もしない。今フレーム生存していた id は seen へ積み、
   // 呼び出し元が区画ごとに一度だけ pruneRows() へ渡す。reorder は呼び出し元の区画の並びが
-  // このフレームで組み直されたか — 真なら既存行も並び順どおりの位置へ移す。
+  // このフレームで組み直されたか — 真なら既存行も並び順どおりの位置へ移す。depth は根を 0 とした
+  // 入れ子の深さで、字下げの幅になる。
   public syncRow(
     rows: Map<string, RowNode>, id: string,
     childrenOf: ReadonlyMap<string, string[]>, focusId: string | undefined, container: HTMLElement,
     focusAncestors: ReadonlySet<string>, matchAncestors: ReadonlySet<string>, reorder: boolean,
-    seen: Set<string>,
+    seen: Set<string>, depth: number,
   ): void {
     const item = this.itemsById.get(id);
     if (!item) return;
@@ -97,7 +101,10 @@ export class PhysicalObjectListRowTree {
     const detailText = item.listDetail(this.celestialBodies, this.viewer, this.displayTime);
     if (node.detail.textContent !== detailText) node.detail.textContent = detailText;
     node.detail.classList.toggle('hidden', detailText === '');
-    node.row.classList.toggle('focus', item.id === focusId);
+    node.row.style.setProperty('--d', String(depth));
+    node.row.classList.toggle('is-focus', item.id === focusId);
+    node.row.classList.toggle('is-tgt', item.id === this.targetId);
+    node.row.classList.toggle('is-own', item.listSection === 'player');
     // 衛星フィルタで添えたクラスタ見出し(親惑星自身はフィルタを通っていない)を淡色化する。
     node.row.classList.toggle('cluster', !this.order.matches(item));
     node.row.setAttribute('aria-label', [item.name, detailText].filter(Boolean).join('、'));
@@ -112,7 +119,10 @@ export class PhysicalObjectListRowTree {
     this.applyRowExpanded(node);
 
     for (const childId of children) {
-      this.syncRow(rows, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors, reorder, seen);
+      this.syncRow(
+        rows, childId, childrenOf, focusId, node.childrenContainer, focusAncestors, matchAncestors, reorder, seen,
+        depth + 1,
+      );
     }
   }
 
@@ -156,16 +166,16 @@ export class PhysicalObjectListRowTree {
   // 既定は畳んだ状態 — 衛星・ラグランジュ点は候補数が多く、常に見る必要は薄いため。
   private createRowNode(id: string): RowNode {
     const row = document.createElement('div');
-    row.className = 'erow';
+    row.className = 'erow ui-item ui-selectable';
     const toggle = document.createElement('span');
-    toggle.className = 'physical-object-list-toggle';
+    toggle.className = 'physical-object-list-toggle ui-item-tog';
     const glyph = document.createElement('span');
-    glyph.className = 'physical-object-list-glyph';
+    glyph.className = 'physical-object-list-glyph ui-item-glyph';
     glyph.setAttribute('aria-hidden', 'true');
     const label = document.createElement('span');
-    label.className = 'physical-object-list-name';
-    const detail = document.createElement('small');
-    detail.className = 'physical-object-list-detail';
+    label.className = 'physical-object-list-name ui-item-name';
+    const detail = document.createElement('span');
+    detail.className = 'physical-object-list-detail ui-item-tag';
     row.appendChild(toggle);
     row.appendChild(glyph);
     row.appendChild(label);

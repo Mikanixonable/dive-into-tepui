@@ -21,6 +21,7 @@ import type { MarkerSink } from '../marker/marker-sink';
 import type { MarkerDevice } from '../marker/marker-device';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { ObjectPickable } from './pickable/object-pickable';
+import type { TimelineEvent } from './map/timeline-event';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { OrbitReference } from './orbit-reference';
@@ -85,6 +86,9 @@ export class NavTargetPresenter {
 
   // 所有するマーカー群を取り除く。
   public dispose(): void { this.group.dispose(); }
+
+  // 航法ターゲットの id。設定されていなければ null。
+  public get targetId(): string | null { return this.navTarget.id; }
 
   // AN・DN・再接近点のマーカー。
   private get nodeMarkers(): readonly RelativeNodeMarker[] {
@@ -210,6 +214,12 @@ export class NavTargetPresenter {
   // 右クリック対象として公開する AN/DN・再接近点アイコン。出す理由が残っているぶんを返す。
   public pickables(): readonly ObjectPickable[] {
     return this.nodeMarkers.filter((marker) => !marker.gone);
+  }
+
+  // いま求まっている再接近点の通過を、時間軸の事象として out へ積む。
+  public pushTimelineEvents(out: TimelineEvent[]): void {
+    const event = this.closestApproach.timelineEvent('closestApproach');
+    if (event !== null) out.push(event);
   }
 
   // AN/DN・再接近点のマーカーを update で求めた位置へ、マップビューでだけ置く。天体に遮蔽された点は

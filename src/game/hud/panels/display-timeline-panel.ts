@@ -1,13 +1,18 @@
-// 未来表示の操作パネル。未来/過去の期間ピル、目盛り表記の切り替え、表示時刻のスクラバーと
-// 目盛り列を持つ。
+// 未来表示の操作パネル。掴んで動かす1本の時間軸(過去・再生ヘッド・軌道上の事象の目盛り・
+// 軸のラベル)と、その上段の読み値・次の事象・予測率を持つ。表示期間は時間軸の両端の
+// 「過去」「未来」から開く1つの範囲選択で選び、目盛りの表記などの設定は「⋯」から開く。
 import {
   Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, DurationPillRow,
   Slider, ToggleSwitch, ToggleValueEdit,
-  type CollapseToggleLabels,
+  type CollapseToggleLabels, type SliderBand, type SliderMark,
 } from '../../../hud/widgets';
 import type { PanelCollapse } from '../panel-shell';
+import type { OverlayManager } from '../../../hud/overlay-manager';
 import { fmtDateTime, fmtDuration } from '../../../hud/utils';
-import type { DisplayTick } from '../orbit/tick-scale';
+import { fmtOffsetLabel, fmtSpanLabel, type DisplayTick } from '../orbit/tick-scale';
+import { TimelinePopover } from './display-timeline-popover';
+import { ORBIT_POINT_GLYPH } from '../../marker/marker-identity';
+import type { TimelineEvent, TimelineEventKind } from '../../map/timeline-event';
 import {
   APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,
 } from '../../viewer/display-timeline-selection';
@@ -18,6 +23,9 @@ import type {
 // 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
 // サンプルが1件も残らず、どの時刻も引けない列になる。
 const DISPLAY_DURATION_MIN = 3600;
+
+// 「次の事象」へ飛ぶとき、再生ヘッドの現在位置と同じ事象とみなす幅 [s]。
+const NEXT_EVENT_MARGIN_SEC = 1;
 
 // ピルで選べる期間。手動レンジ('custom')だけは入力欄が受け持つ。
 type FixedDurationKey = Exclude<DisplayDurationKey, 'custom'>;
@@ -36,6 +44,15 @@ const FIXED_PAST_DURATIONS: readonly (readonly [FixedPastDurationKey, string])[]
   ...FIXED_DURATIONS,
 ];
 
+// 凡例の1項目: 字形・説明・時間軸の目盛りと同じ持ち主の色。
+const LEGEND: readonly (readonly [string, string, 'neutral' | 'own' | 'target'])[] = [
+  [ORBIT_POINT_GLYPH.apsis, '近点 / 遠点', 'neutral'],
+  [`${ORBIT_POINT_GLYPH.ascendingNode}${ORBIT_POINT_GLYPH.descendingNode}`, '昇交点 / 降交点', 'neutral'],
+  [ORBIT_POINT_GLYPH.closestApproach, '再接近(ターゲット)', 'target'],
+  [ORBIT_POINT_GLYPH.maneuverNode, 'ノード', 'own'],
+  ['▏', '現在', 'neutral'],
+];
+
 // マップビュー下部のタイムラインバー用トグルの見た目。
 const TIMELINE_TOGGLE_LABELS: CollapseToggleLabels = {
   expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
@@ -43,6 +60,19 @@ const TIMELINE_TOGGLE_LABELS: CollapseToggleLabels = {
   expandedTitle: '下部パネルを閉じる',
   collapsedTitle: '下部パネルを開く',
 };
+
+// 事象の字形・色の持ち主。再接近はターゲット、ノードは自分の計画。
+function markToneOf(kind: TimelineEventKind): SliderMark['tone'] {
+  if (kind === 'closestApproach') return 'target';
+  return kind === 'maneuverNode' ? 'own' : 'neutral';
+}
+
+// 表示期間の選択を、時間軸の端の掴み手に出す語にする。
+function spanLabelOf(
+  key: DisplayPastDurationKey, sec: number, fixed: readonly (readonly [string, string])[],
+): string {
+  return fixed.find(([fixedKey]) => fixedKey === key)?.[1] ?? fmtSpanLabel(sec);
+}
 
 // タイムラインパネルが1フレームに映す値。
 interface DisplayTimelinePanelState {
@@ -60,7 +90,17 @@ interface DisplayTimelinePanelState {
   readonly sliderSteps: number;
   readonly sliderT: number;
   readonly predictionRatio: number;
+  // 軸のラベル。位置は時間軸全体(過去を含む)に対する割合。
   readonly ticks: readonly DisplayTick[];
+  // 現在の simTime。事象の時刻を現在からの経過へ直すために使う。
+  readonly simTime: number;
+  readonly events: readonly TimelineEvent[];
+}
+
+// 時間軸の端に置く、「過去」「未来」の掴み手。押すと表示範囲の選択が開く。
+interface RangeEnd {
+  readonly button: Button;
+  readonly value: HTMLElement;
 }
 
 export class DisplayTimelinePanel {
@@ -76,9 +116,6 @@ export class DisplayTimelinePanel {
   public onJumpToTime: ((sec: number) => void) | null = null;
 
   private readonly panel: HTMLElement;
-  private readonly timelineElapsed: HTMLElement;
-  private readonly timelineAbsolute: HTMLElement;
-  private readonly timelinePrediction: HTMLElement;
   private readonly durationRow: DurationPillRow<FixedDurationKey, DisplayDurationKey>;
   private readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
   private readonly tickLabelModeSwitch: ToggleSwitch;
@@ -88,67 +125,131 @@ export class DisplayTimelinePanel {
   private readonly absoluteLabel: HTMLElement;
   private readonly elapsedLabel: HTMLElement;
   private readonly jumpToggle: ToggleValueEdit;
+  private readonly predictionLabel: HTMLElement;
+  private readonly nextButton: Button;
+  private readonly nextLabel: HTMLElement;
+  private readonly pastEnd: RangeEnd;
+  private readonly futureEnd: RangeEnd;
+  private readonly rangePopover: TimelinePopover;
+  private readonly settingsPopover: TimelinePopover;
   private readonly ticks: HTMLElement;
   private readonly wrap: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
   private readonly occupancyObserver: ResizeObserver | null;
 
   private sliderSteps = 1000;
+  private pastSteps = 0;
   private currentDuration = APERIODIC_ARC_DURATION;
-  private lastTrackRatio = 1;
+  // 現在からの経過 [s] で並べた、時間軸の範囲に収まる事象。目盛りと「次の事象」が共有する。
+  private visibleEvents: readonly (readonly [TimelineEvent, number])[] = [];
+  private nextEventSec: number | null = null;
 
-  // タイムラインパネルの DOM を組み立て、root へ追加する。collapse は折りたたみトグルの配線役。
-  public constructor(root: HTMLElement, collapse: PanelCollapse) {
+  // タイムラインパネルの DOM を組み立て、root へ追加する。collapse は折りたたみトグルの配線役、
+  // overlayManager は表示範囲・設定の小窓の開閉を預ける。
+  public constructor(root: HTMLElement, collapse: PanelCollapse, overlayManager: OverlayManager) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-predict';
-    this.panel.className = 'panel editorial-instrument';
+    this.panel.className = 'panel';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
 
-    const head = document.createElement('div');
-    head.className = 'editorial-panel-head predict-head';
-    head.innerHTML = '<span class="ui-section-code" aria-hidden="true">TML</span><h3 class="editorial-panel-title">ORBIT TIMELINE</h3>';
-    this.panel.appendChild(head);
+    const top = document.createElement('div');
+    top.className = 'tml-top';
+    this.panel.appendChild(top);
+    const resetBtn = new Button('⏮', () => this.onResetToNow?.());
+    resetBtn.element.classList.add('predict-reset', 'w-btn--icon');
+    resetBtn.element.title = '現在に戻す';
+    resetBtn.element.setAttribute('aria-label', '現在に戻す');
+    top.appendChild(resetBtn.element);
 
-    const state = document.createElement('section');
-    state.className = 'predict-state editorial-state';
-    state.innerHTML = `
-      <div class="editorial-state-hero">
-        <span class="ui-data-label">DISPLAY TIME</span>
-        <strong data-predict-state="elapsed">T+00:00</strong>
-        <span class="ui-annotation" data-predict-state="absolute">—</span>
-      </div>
-      <div class="predict-state-progress">
-        <span class="ui-data-label">PREDICTED</span>
-        <span class="ui-data-secondary" data-predict-state="prediction">—</span>
-      </div>`;
-    this.panel.appendChild(state);
-    this.timelineElapsed = state.querySelector<HTMLElement>('[data-predict-state="elapsed"]')!;
-    this.timelineAbsolute = state.querySelector<HTMLElement>('[data-predict-state="absolute"]')!;
-    this.timelinePrediction = state.querySelector<HTMLElement>('[data-predict-state="prediction"]')!;
+    // T+ 読み値と絶対日時。T+ はクリックでジャンプ入力(jumpToggle)へ差し替わる。
+    const read = document.createElement('div');
+    read.className = 'tml-read';
+    this.elapsedLabel = document.createElement('span');
+    this.elapsedLabel.className = 'tml-elapsed';
+    this.elapsedLabel.title = 'クリックして時刻へジャンプ';
+    this.elapsedLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.elapsedLabel.addEventListener('click', () => this.jumpToggle.open(
+      this.currentDuration * (this.slider.getValue() / this.sliderSteps), 0, this.currentDuration,
+    ));
+    const jumpEditEl = document.createElement('span');
+    jumpEditEl.className = 'predict-value-input hidden';
+    this.jumpToggle = new ToggleValueEdit(this.elapsedLabel, jumpEditEl, 'hour', (sec) => this.onJumpToTime?.(sec));
+    jumpEditEl.appendChild(this.jumpToggle.inputEl);
+    this.absoluteLabel = document.createElement('span');
+    this.absoluteLabel.className = 'tml-date';
+    read.append(this.elapsedLabel, jumpEditEl, this.absoluteLabel);
+    top.appendChild(read);
 
-    const controls = document.createElement('div');
-    controls.className = 'predict-controls editorial-control-zone';
-    this.panel.appendChild(controls);
+    // 次の事象へ飛ぶボタン・予測率・設定。
+    const grow = document.createElement('span');
+    grow.className = 'tml-grow';
+    top.appendChild(grow);
+    this.nextLabel = document.createElement('span');
+    this.nextButton = new Button('', () => {
+      if (this.nextEventSec !== null) this.onJumpToTime?.(this.nextEventSec);
+    }, undefined, ['dense', 'secondary']);
+    this.nextButton.element.title = '次の事象へ飛ぶ';
+    this.nextButton.element.appendChild(this.nextLabel);
+    top.appendChild(this.nextButton.element);
+    this.predictionLabel = document.createElement('span');
+    this.predictionLabel.className = 'tml-pred';
+    top.appendChild(this.predictionLabel);
+    const settingsBtn = new Button('⋯', () => this.settingsPopover.toggle(settingsBtn.element, 'end', this.panel));
+    settingsBtn.element.classList.add('w-btn--icon');
+    settingsBtn.element.title = '目盛りと凡例';
+    settingsBtn.element.setAttribute('aria-label', '目盛りと凡例');
+    top.appendChild(settingsBtn.element);
 
-    const durationRows = this.buildDurationRows(controls);
-    this.durationRow = durationRows.durationRow;
-    this.pastDurationRow = durationRows.pastDurationRow;
-
-    const modeSwitches = this.buildModeRow(controls);
-    this.tickLabelModeSwitch = modeSwitches.tickLabelModeSwitch;
-    this.showTicksSwitch = modeSwitches.showTicksSwitch;
-    this.showElementTimesSwitch = modeSwitches.showElementTimesSwitch;
-
-    const scrubberRow = this.buildScrubberRow(controls);
-    this.slider = scrubberRow.slider;
-    this.absoluteLabel = scrubberRow.absoluteLabel;
-    this.elapsedLabel = scrubberRow.elapsedLabel;
-    this.jumpToggle = scrubberRow.jumpToggle;
-
-    // 目盛り。スクラバーの直下に置く。
+    // 時間軸: [過去] [トラックと軸のラベル] [未来]。
+    const scrub = document.createElement('div');
+    scrub.className = 'tml-scrub';
+    this.panel.appendChild(scrub);
+    this.pastEnd = this.buildRangeEnd('過去', '過去の表示期間', 'start');
+    this.futureEnd = this.buildRangeEnd('未来', '未来の表示期間', 'end');
+    this.slider = new Slider({ min: 0, max: this.sliderSteps, marked: true }, (value) => this.handleSliderInput(value));
+    this.slider.element.title = 'ドラッグ、またはトラックをクリックして未来位置を選ぶ';
+    this.slider.element.setAttribute('aria-label', '表示時刻');
+    const track = document.createElement('div');
+    track.className = 'tml-track';
     this.ticks = document.createElement('div');
     this.ticks.className = 'slider-ticks';
-    controls.appendChild(this.ticks);
+    track.append(this.slider.frame, this.ticks);
+    scrub.append(this.pastEnd.button.element, track, this.futureEnd.button.element);
+
+    // 表示範囲の選択。未来と過去の2行を持つ。
+    this.rangePopover = new TimelinePopover(overlayManager, '表示範囲', 'tml-pop-range');
+    this.durationRow = new DurationPillRow<FixedDurationKey, DisplayDurationKey>(
+      '未来', FIXED_DURATIONS,
+      (key) => this.onDurationSelect?.(key),
+      (sec) => this.onCustomDurationConfirm?.(sec),
+      DISPLAY_DURATION_MIN, DISPLAY_DURATION_MAX,
+    );
+    this.pastDurationRow = new DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>(
+      '過去', FIXED_PAST_DURATIONS,
+      (key) => this.onPastDurationSelect?.(key),
+      (sec) => this.onPastCustomDurationConfirm?.(sec),
+      DISPLAY_DURATION_MIN, DISPLAY_DURATION_MAX,
+    );
+    const rangeNote = document.createElement('div');
+    rangeNote.className = 'tml-pop-note';
+    rangeNote.textContent = '1時間〜1年。「1周」は自機の周期に追従し、過去は飛行履歴の範囲まで。';
+    this.rangePopover.body.append(this.durationRow.element, this.pastDurationRow.element, rangeNote);
+
+    // 目盛りの表記・表示と軌道要素の時刻のスイッチ、事象の凡例。
+    this.settingsPopover = new TimelinePopover(overlayManager, '目盛りと凡例', 'tml-pop-settings');
+    this.tickLabelModeSwitch = new ToggleSwitch(
+      '目盛りを相対表記', (on) => this.onTickLabelModeChange?.(on ? 'relative' : 'absolute'),
+    );
+    this.showTicksSwitch = new ToggleSwitch('目盛りを表示', (on) => this.onShowTicksChange?.(on));
+    this.showElementTimesSwitch = new ToggleSwitch(
+      '軌道要素の時刻を表示', (on) => this.onShowElementTimesChange?.(on),
+    );
+    const toggles = document.createElement('div');
+    toggles.className = 'tml-pop-toggles';
+    toggles.append(
+      this.tickLabelModeSwitch.element, this.showTicksSwitch.element, this.showElementTimesSwitch.element,
+    );
+    this.settingsPopover.body.append(toggles, this.buildLegend());
 
     // トグルとバー本体を1つの縦積み flex にまとめ、バーを畳んでもトグルだけがその場に残るようにする。
     this.wrap = document.createElement('div');
@@ -185,107 +286,45 @@ export class DisplayTimelinePanel {
     }
   }
 
-  // 未来と過去、それぞれの期間ピル行を組む。過去は「なし」も選べる。
-  private buildDurationRows(container: HTMLElement): {
-    readonly durationRow: DurationPillRow<FixedDurationKey, DisplayDurationKey>;
-    readonly pastDurationRow: DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>;
-  } {
-    // 未来の期間。
-    const durationRow = new DurationPillRow<FixedDurationKey, DisplayDurationKey>(
-      '未来', FIXED_DURATIONS,
-      (key) => this.onDurationSelect?.(key),
-      (sec) => this.onCustomDurationConfirm?.(sec),
-      DISPLAY_DURATION_MIN, DISPLAY_DURATION_MAX,
-    );
-    container.appendChild(durationRow.element);
-    // 過去の期間。
-    const pastDurationRow = new DurationPillRow<FixedPastDurationKey, DisplayPastDurationKey>(
-      '過去', FIXED_PAST_DURATIONS,
-      (key) => this.onPastDurationSelect?.(key),
-      (sec) => this.onPastCustomDurationConfirm?.(sec),
-      DISPLAY_DURATION_MIN, DISPLAY_DURATION_MAX,
-    );
-    pastDurationRow.element.classList.add('predict-past');
-    container.appendChild(pastDurationRow.element);
-    return { durationRow, pastDurationRow };
+  // 時間軸の端の掴み手を組む。押すと、その端に揃えて表示範囲の選択を開き、押した側の行を強調する。
+  private buildRangeEnd(caption: string, title: string, align: 'start' | 'end'): RangeEnd {
+    const button = new Button('', () => {
+      this.rangePopover.toggle(button.element, align, this.panel);
+      this.durationRow.element.classList.toggle('is-active', align === 'end');
+      this.pastDurationRow.element.classList.toggle('is-active', align === 'start');
+    });
+    button.element.classList.add('tml-end');
+    button.element.title = title;
+    button.element.setAttribute('aria-haspopup', 'dialog');
+    const captionEl = document.createElement('span');
+    captionEl.className = 'tml-end-caption';
+    captionEl.textContent = caption;
+    const value = document.createElement('b');
+    const caret = document.createElement('i');
+    caret.textContent = COLLAPSE_EXPANDED_GLYPH;
+    button.element.append(captionEl, value, caret);
+    return { button, value };
   }
 
-  // 目盛りラベルの表記(UTC カレンダー / 現在からの経過時間)、目盛り行そのものの表示有無、
-  // 軌道要素の時刻の表示有無を選ぶ行。
-  private buildModeRow(container: HTMLElement): {
-    readonly tickLabelModeSwitch: ToggleSwitch;
-    readonly showTicksSwitch: ToggleSwitch;
-    readonly showElementTimesSwitch: ToggleSwitch;
-  } {
-    const modeRow = document.createElement('div');
-    modeRow.className = 'predict-row1';
-    const tickLabelModeSwitch = new ToggleSwitch(
-      '目盛りを相対表記',
-      (on) => this.onTickLabelModeChange?.(on ? 'relative' : 'absolute'),
-    );
-    modeRow.appendChild(tickLabelModeSwitch.element);
-    const showTicksSwitch = new ToggleSwitch(
-      '目盛りを表示',
-      (on) => this.onShowTicksChange?.(on),
-    );
-    modeRow.appendChild(showTicksSwitch.element);
-    const showElementTimesSwitch = new ToggleSwitch(
-      '軌道要素の時刻を表示',
-      (on) => this.onShowElementTimesChange?.(on),
-    );
-    modeRow.appendChild(showElementTimesSwitch.element);
-    container.appendChild(modeRow);
-    return { tickLabelModeSwitch, showTicksSwitch, showElementTimesSwitch };
+  // 時間軸に載せる事象の字形と、その意味の凡例。
+  private buildLegend(): HTMLElement {
+    const legend = document.createElement('div');
+    legend.className = 'tml-legend';
+    for (const [glyph, text, tone] of LEGEND) {
+      const item = document.createElement('span');
+      item.className = `tml-legend-item is-${tone}`;
+      const glyphEl = document.createElement('b');
+      glyphEl.textContent = glyph;
+      item.append(glyphEl, text);
+      legend.appendChild(item);
+    }
+    return legend;
   }
 
-  // 現在に戻すボタン + スクラバー + T+読み値(クリックで直接ジャンプ入力に変わる)の行。
-  private buildScrubberRow(container: HTMLElement): {
-    readonly slider: Slider;
-    readonly absoluteLabel: HTMLElement;
-    readonly elapsedLabel: HTMLElement;
-    readonly jumpToggle: ToggleValueEdit;
-  } {
-    const row2 = document.createElement('div');
-    row2.className = 'predict-row2';
-    const resetBtn = new Button('⏮', () => this.onResetToNow?.());
-    resetBtn.element.classList.add('predict-reset', 'w-btn--icon');
-    resetBtn.element.title = '現在に戻す';
-    resetBtn.element.setAttribute('aria-label', '現在に戻す');
-    row2.appendChild(resetBtn.element);
-
-    // 表示時刻を選ぶスクラバー本体。
-    const sliderWrap = document.createElement('div');
-    sliderWrap.className = 'predict-slider-wrap';
-    const slider = new Slider(
-      { min: 0, max: this.sliderSteps },
-      (value) => this.onSliderChange?.(value / this.sliderSteps),
-    );
-    slider.element.title = 'ドラッグ、またはトラックをクリックして未来位置を選ぶ';
-    sliderWrap.appendChild(slider.element);
-    row2.appendChild(sliderWrap);
-
-    const absoluteLabel = document.createElement('span');
-    absoluteLabel.className = 'predict-absolute';
-    row2.appendChild(absoluteLabel);
-
-    // T+読み値。クリックするとジャンプ入力欄(jumpToggle)へ差し替わる。
-    const elapsedLabel = document.createElement('span');
-    elapsedLabel.className = 'predict-elapsed';
-    elapsedLabel.title = 'クリックして時刻へジャンプ';
-    elapsedLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
-    elapsedLabel.addEventListener('click', () => this.jumpToggle.open(
-      this.currentDuration * (slider.getValue() / this.sliderSteps), 0, this.currentDuration,
-    ));
-    row2.appendChild(elapsedLabel);
-
-    const jumpEditEl = document.createElement('span');
-    jumpEditEl.className = 'predict-value-input hidden';
-    const jumpToggle = new ToggleValueEdit(elapsedLabel, jumpEditEl, 'hour', (sec) => this.onJumpToTime?.(sec));
-    jumpEditEl.appendChild(jumpToggle.inputEl);
-    row2.appendChild(jumpEditEl);
-    container.appendChild(row2);
-
-    return { slider, absoluteLabel, elapsedLabel, jumpToggle };
+  // つまみの動きを表示時刻の比率へ直して通知する。ヘッドは現在より過去へは行かない。
+  private handleSliderInput(value: number): void {
+    if (value < 0) this.slider.setValue(0);
+    this.onSliderChange?.(Math.max(0, value) / this.sliderSteps);
   }
 
   // state をパネルへ反映する。編集中の行はユーザー入力を壊さないよう再描画しない。
@@ -296,18 +335,19 @@ export class DisplayTimelinePanel {
     this.currentDuration = state.duration;
     this.durationRow.render(state.durationKey, state.duration);
     this.pastDurationRow.render(state.pastDurationKey, state.pastDuration);
+    this.futureEnd.value.textContent = spanLabelOf(state.durationKey, state.duration, FIXED_DURATIONS);
+    this.pastEnd.value.textContent = spanLabelOf(state.pastDurationKey, state.pastDuration, FIXED_PAST_DURATIONS);
     this.tickLabelModeSwitch.setOn(state.tickLabelMode === 'relative');
     this.showTicksSwitch.setOn(state.showTicks);
     this.showElementTimesSwitch.setOn(state.showElementTimes);
-    this.renderSlider(state.sliderSteps, state.sliderT, state.predictionRatio);
-    this.renderAbsoluteLabel(state.epochUnixSec + state.displayTime);
-    if (!this.jumpToggle.editing) this.renderElapsedLabel(state.sliderT * state.duration);
+    this.renderTrack(state);
     const elapsed = state.sliderT * state.duration;
-    this.timelineElapsed.textContent = `T+${fmtDuration(elapsed, elapsed)}`;
-    this.timelineAbsolute.textContent = fmtDateTime(state.epochUnixSec + state.displayTime);
-    this.timelinePrediction.textContent = `${Math.round(state.predictionRatio * 100)}%`;
+    this.renderText(this.absoluteLabel, fmtDateTime(state.epochUnixSec + state.displayTime));
+    if (!this.jumpToggle.editing) this.renderText(this.elapsedLabel, `T+${fmtDuration(elapsed, elapsed)}`);
+    this.renderText(this.predictionLabel, `予測 ${Math.round(state.predictionRatio * 100)}%`);
     this.ticks.classList.toggle('hidden', !state.showTicks);
     this.renderTicks(state.ticks);
+    this.renderEvents(state, elapsed);
   }
 
   // パネル本体を出し入れする。折りたたみトグルは外側に残る。
@@ -319,40 +359,68 @@ export class DisplayTimelinePanel {
   public dispose(): void {
     this.unsubscribeCollapsedView();
     this.occupancyObserver?.disconnect();
+    this.rangePopover.dispose();
+    this.settingsPopover.dispose();
     this.wrap.parentElement?.style.removeProperty('--hud-predict-bottom-occupied');
     this.wrap.remove();
   }
 
-  // スライダーの段階数・つまみ位置・未予測区間の表示を反映する。
-  private renderSlider(steps: number, t: number, predictionRatio: number): void {
-    if (steps !== this.sliderSteps) {
-      this.sliderSteps = steps;
-      this.slider.element.max = String(steps);
-    }
-    const value = Math.round(t * this.sliderSteps);
+  // トラックの値域・つまみ位置・過去と未予測区間の帯を反映する。値域は過去ぶん負側へ伸びる。
+  private renderTrack(state: DisplayTimelinePanelState): void {
+    const stepsPerSec = state.sliderSteps / state.duration;
+    const pastSteps = Math.round(state.pastDuration * stepsPerSec);
+    const rangeChanged = state.sliderSteps !== this.sliderSteps || pastSteps !== this.pastSteps;
+    this.sliderSteps = state.sliderSteps;
+    this.pastSteps = pastSteps;
+    if (rangeChanged) this.slider.setRange(-pastSteps, state.sliderSteps);
+    const value = Math.round(state.sliderT * state.sliderSteps);
     if (this.slider.getValue() !== value) this.slider.setValue(value);
-    if (predictionRatio !== this.lastTrackRatio) {
-      this.lastTrackRatio = predictionRatio;
-      // <input type=range> はトラック上の区間ごとに色を分けられないので、
-      // 背景グラデーションで未予測区間の減光を表す。
-      this.slider.setGradient(predictionRatio);
+    const totalSteps = pastSteps + state.sliderSteps;
+    const nowRatio = pastSteps / totalSteps;
+    const reachedRatio = nowRatio + (1 - nowRatio) * state.predictionRatio;
+    const bands: SliderBand[] = [];
+    if (pastSteps > 0) bands.push({ to: nowRatio, tone: 'quiet' });
+    bands.push({ to: reachedRatio, tone: 'normal' }, { to: 1, tone: 'dim' });
+    this.slider.setBands(bands);
+    const elapsed = state.sliderT * state.duration;
+    this.slider.element.setAttribute('aria-valuetext', `T+${fmtDuration(elapsed, elapsed)}`);
+  }
+
+  // 範囲内の事象を目盛りとして載せ、再生ヘッドより先で最も近い事象を「次」のボタンへ出す。
+  private renderEvents(state: DisplayTimelinePanelState, headSec: number): void {
+    const total = state.pastDuration + state.duration;
+    const visible: (readonly [TimelineEvent, number])[] = [];
+    for (const event of state.events) {
+      const sec = event.time - state.simTime;
+      if (sec >= -state.pastDuration && sec <= state.duration) visible.push([event, sec]);
+    }
+    this.visibleEvents = visible;
+    this.slider.setMarks(
+      visible.map(([event, sec]) => ({
+        at: (sec + state.pastDuration) / total,
+        glyph: ORBIT_POINT_GLYPH[event.kind],
+        tone: markToneOf(event.kind),
+        title: `${event.name} ${fmtOffsetLabel(Math.abs(sec))}`,
+      })),
+      (index) => {
+        const sec = this.visibleEvents[index]?.[1];
+        if (sec !== undefined) this.onJumpToTime?.(Math.max(0, sec));
+      },
+    );
+    const next = visible.find(([, sec]) => sec > headSec + NEXT_EVENT_MARGIN_SEC);
+    this.nextEventSec = next === undefined ? null : next[1];
+    this.nextButton.element.classList.toggle('hidden', next === undefined);
+    if (next !== undefined) {
+      this.renderText(this.nextLabel, `${ORBIT_POINT_GLYPH[next[0].kind]} 次 ${next[0].name} ${fmtOffsetLabel(next[1])}`);
     }
   }
 
-  // 表示時刻を UTC の絶対日時で出す。T+ 表記は目盛りと同じ粗い単位なので、
-  // 正確な時刻はこちらが受け持つ。
-  private renderAbsoluteLabel(displayUnixSec: number): void {
-    const text = fmtDateTime(displayUnixSec);
-    if (this.absoluteLabel.textContent !== text) this.absoluteLabel.textContent = text;
+  // 変わったときだけ文字を書く(毎フレームの再代入はレイアウト再計算を招く)。
+  private renderText(el: HTMLElement, text: string): void {
+    if (el.textContent !== text) el.textContent = text;
   }
 
-  // T+ 表記の経過時間を表示する。
-  private renderElapsedLabel(elapsedSec: number): void {
-    const text = `T+${fmtDuration(elapsedSec, elapsedSec)}`;
-    if (this.elapsedLabel.textContent !== text) this.elapsedLabel.textContent = text;
-  }
-
-  // 各目盛りをスライダー全域上の位置 t(0..1)へ置く。t は期間の等分ではなく、最後の目盛りが
+  // 各目盛りをトラック全域上の位置 t(0..1)へ置く。t は期間の等分ではなく、最後の目盛りが
   // 右端に来るとも限らないので、端からはみ出さないための寄せ方も t の値そのものから決める。
   private renderTicks(ticks: readonly DisplayTick[]): void {
     if (this.ticks.childElementCount !== ticks.length) {

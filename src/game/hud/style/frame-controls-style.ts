@@ -9,40 +9,39 @@ export const FRAME_CONTROLS_STYLE = `
 #hud .hud-frame-controls .hud-frame-rotation-zone > .w-group-title {
   flex: 0 0 100%; min-width: 0;
 }
-/* タイトルを独立行にし、次の行へスライダー・数値入力・リセットボタンを並べる。 */
+/* 画角の行: [ラベル] [スライダー] [数値] [単位] [リセット]。 */
 #hud .hud-frame-controls .camera-fov-control {
-  display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-3);
+  display: grid; grid-template-columns: minmax(var(--instrument-label-min), max-content) minmax(0, 1fr) auto auto auto;
+  align-items: center; column-gap: var(--space-3); min-height: var(--row-min-h-s); margin: 0;
 }
-#hud .hud-frame-controls .camera-control-label {
-  flex: 0 0 100%; color: var(--text-dim); font-size: var(--font-xs); letter-spacing: var(--tracking-label);
-}
-#hud .hud-frame-controls .camera-fov-control .w-slider { flex: 1 1 auto; min-width: 60px; }
+#hud .hud-frame-controls .camera-control-label { color: var(--role-label); font-size: var(--font-xs); }
+#hud .hud-frame-controls .camera-fov-control .w-slider { min-width: 0; width: 100%; }
 #hud .hud-frame-controls .camera-fov-control .w-slider:disabled,
 #hud .hud-frame-controls .camera-fov-control .w-input:disabled { opacity: .4; cursor: not-allowed; }
 #hud .hud-frame-controls .camera-fov-control .w-input { width: 54px; }
-#hud .hud-frame-controls .camera-control-unit { color: var(--text-dim); font-size: var(--font-xs); }
+#hud .hud-frame-controls .camera-control-unit { color: var(--role-label); font-size: var(--font-xs); }
 #hud .hud-frame-controls .camera-fov-note {
-  flex: 0 0 100%; color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.45;
+  grid-column: 1 / -1; color: var(--role-label); font-size: var(--font-xxs); line-height: 1.45;
 }
-/* 「角度」プルダウン: 見出しを独立行にし、次の行へ選択欄とセットボタンを並べる。 */
-#hud .hud-frame-controls .camera-angle-group > .w-group-title { flex: 0 0 100%; min-width: 0; }
-#hud .hud-frame-controls .camera-angle-group .w-select { flex: 1 1 auto; min-width: 80px; }
+/* 切り替えの行は、行の文法(ラベルと値を両端へ)に揃える。 */
+#hud .hud-frame-controls .camera-rows > .w-toggle {
+  justify-content: space-between; min-height: var(--row-min-h-s); margin: 0;
+}
+#hud .hud-frame-controls .camera-rows .w-toggle-title { color: var(--role-label); font-size: var(--font-xs); letter-spacing: 0; }
+#hud .hud-frame-controls .ui-ident { margin-bottom: var(--space-3); }
+/* カメラパネルの選択行は、見出しを横に置いてボタンを小さく詰める。 */
+#hud #hud-camera-controls .w-group { gap: var(--space-2); margin: var(--space-3) 0 0; }
+#hud #hud-camera-controls .w-group-title { min-width: 0; margin-right: var(--space-2); }
+#hud #hud-camera-controls .w-group .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
+#hud #hud-camera-controls .hud-anchor-zone { margin-top: var(--space-3); }
+#hud #hud-camera-controls .hud-anchor-zone .w-group { margin: 0; }
+#hud #hud-camera-controls .camera-angle-group { flex-wrap: nowrap; }
+#hud #hud-camera-controls .camera-angle-group .w-select { flex: 1 1 0; min-width: 0; }
 
-/* CAMERA / FRAME — 現在状態を先に読み、操作は下段へ分離する。 */
-#hud .hud-frame-controls .editorial-panel-head { margin-bottom: var(--space-3); }
-#hud .hud-frame-controls .editorial-state { margin-top: var(--space-1); }
-#hud .hud-frame-controls .camera-state-lens {
-  display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr);
-  align-items: end; gap: var(--space-3);
-}
-#hud .hud-frame-controls .camera-state-lens > div { display: grid; gap: var(--space-1); min-width: 0; }
-#hud .hud-frame-controls .camera-state-lens > div:last-child { text-align: right; }
-#hud .hud-frame-controls .camera-state-lens .ui-data-hero { font-size: var(--font-2xl); }
 #hud .hud-frame-controls .editorial-control-zone > :last-child { margin-bottom: 0; }
 #hud .hud-frame-controls-compact {
   max-height: none; overflow: visible;
 }
-#hud .hud-frame-controls-compact .editorial-panel-head { margin-bottom: var(--space-2); }
 #hud .trajectory-frame-state [data-frame-hero="true"] {
   text-transform: uppercase;
 }

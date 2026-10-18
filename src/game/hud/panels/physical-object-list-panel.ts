@@ -3,11 +3,12 @@
 // メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
 import { hudRail } from '../hud-root';
 import {
-  Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
+  Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Pulldown, SegmentedControl, type PulldownColumn,
 } from '../../../hud/widgets';
 import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
+import { createKeyCap } from '../../../hud/key-cap';
 import { injectOnce } from '../../../hud/inject-style';
-import type { PanelCollapse } from '../panel-shell';
+import { PanelShell, type PanelCollapse } from '../panel-shell';
 import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListRowTree } from './physical-object-list-row-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
@@ -31,6 +32,8 @@ interface Section {
   readonly header: HTMLElement;
   readonly labelEl: HTMLElement;
   readonly glyphEl: HTMLElement;
+  readonly countEl: HTMLElement;
+  readonly summaryEl: HTMLElement;
   readonly body: HTMLElement;
   // この区画の全行の台帳(id → 行)。木のどこに居るかに依らず1件1エントリで、絞り込みで
   // 木の形が変わっても作り直さない — 作り直すとプレイヤーが開いた枝が毎回失われる。
@@ -47,91 +50,86 @@ const HEADER_SUMMARY: Partial<Record<MapListSection, string>> = {
   enemy: '接近', ammo: '回収可', fuel: '回収可',
 };
 
-// このパネル自身の折りたたみトグルの見た目。
-const COLLAPSE_LABELS: CollapseToggleLabels = {
-  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
-  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
-  expandedTitle: '軌道物体一覧を閉じる',
-  collapsedTitle: '軌道物体一覧を開く',
-};
+// 分類のプルダウン。先頭の「すべて」を選ぶと絞り込みを解除する。
+const FILTER_COLUMNS: readonly [PulldownColumn<PhysicalObjectListFilter | null>] = [{
+  description: '分類',
+  items: [[null, '分類: すべて'], ...FILTERS],
+}];
 
 const STYLE = `
-#hud-physical-object-list { display: flex; flex-direction: column; overflow: hidden; }
-/* 上半分(検索・フィルタ)は要素数ぶんの高さに縮め、下半分(項目一覧)が残りを占有する。互いに重ならないよう独立してスクロールさせる */
-#hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: none; overflow: visible; }
-#hud-physical-object-list .physical-object-list-body { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
-#hud-physical-object-list .physical-object-list-search { padding: var(--space-1) var(--space-2); }
-#hud-physical-object-list .physical-object-list-search .w-input { width: 100%; }
-#hud-physical-object-list .physical-object-list-head .w-group { padding: var(--space-1) var(--space-2); }
-#hud-physical-object-list .physical-object-list-head .w-group-title { flex: 1 0 100%; }
-#hud-physical-object-list .physical-object-list-head .w-btn { font-size: var(--font-xxs); }
-#hud-physical-object-list .physical-object-list-collapse {
-  margin-left: auto; background: none; border: none; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
+/* パネルはレールの残り高さまで縮み、操作部と見出しは固定のまま木だけがスクロールする。 */
+#hud .hud-rail > #hud-physical-object-list {
+  display: flex; flex-direction: column; flex: 0 1 auto; min-height: calc(var(--row-min-h-s) * 6); overflow: hidden;
+  max-height: calc(100vh - var(--hud-chrome-h) - var(--hud-map-scale-bottom) - var(--hud-map-scale-h) - var(--space-4));
+  max-height: calc(100dvh - var(--hud-chrome-h) - var(--hud-map-scale-bottom) - var(--hud-map-scale-h) - var(--space-4));
 }
-#hud-physical-object-list .physical-object-list-title { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
-#hud-physical-object-list .physical-object-list-body.collapsed { display: none !important; }
-#hud-physical-object-list .physical-object-list-breadcrumb { padding: var(--space-1) var(--space-3); font-size: var(--font-xxs); color:var(--text-dim); }
+#hud-physical-object-list > .panel-shell-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+#hud-physical-object-list .physical-object-list-tools { display: flex; align-items: center; gap: var(--space-3); }
+#hud-physical-object-list .physical-object-list-tools .w-input { flex: 1 1 auto; min-width: 0; }
+#hud-physical-object-list .physical-object-list-tools .w-group { flex: 0 0 auto; margin: 0; }
+#hud-physical-object-list .physical-object-list-tools .w-select { width: 9em; }
+#hud-physical-object-list .physical-object-list-sort { margin-top: var(--space-3); }
+#hud-physical-object-list .physical-object-list-sort .w-group { gap: var(--space-3); margin: 0; }
+#hud-physical-object-list .physical-object-list-sort .w-group-title {
+  min-width: 0; margin-right: var(--space-2); color: var(--role-meta); font-size: var(--font-xxs);
+}
+#hud-physical-object-list .physical-object-list-sort .w-btn { padding: var(--space-2) var(--space-3); font-size: var(--font-xxs); }
+#hud-physical-object-list .physical-object-list-list {
+  font-size: var(--font-xs); line-height: 1.35; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  margin-inline: calc(-1 * var(--space-2)); padding-inline: var(--space-2);
+}
+#hud-physical-object-list .physical-object-list-list.collapsed { display: none !important; }
+#hud-physical-object-list .physical-object-list-breadcrumb {
+  display: flex; align-items: baseline; gap: var(--space-3); margin-top: var(--space-3); padding: 0 var(--space-2);
+  color: var(--role-meta); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+}
+#hud-physical-object-list .physical-object-list-breadcrumb > :last-child {
+  color: var(--role-label); font-size: var(--font-xs); letter-spacing: 0;
+}
 /* 全展開して数百行をスクロールしても今どの区画かを見失わないよう、見出しを内側スクロール
-   領域の先頭へ貼り付ける。背景の不透明化は map-view-style.ts 側(見た目のトークン)が持つ。 */
+   領域の先頭へ貼り付ける。 */
 #hud-physical-object-list .physical-object-list-section-header {
-  display: block; width: 100%; text-align: left; margin: var(--space-2) 0 var(--space-1);
-  padding: var(--space-2) var(--space-4); font-size: var(--font-xs); letter-spacing: var(--tracking-label);
-  position: sticky; top: 0; z-index: 1;
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: var(--space-4);
+  min-height: var(--row-min-h-s); margin-top: var(--space-3); padding: 0 var(--space-2);
+  border-radius: var(--radius-micro); background: var(--surface-opaque); cursor: pointer;
+  color: var(--role-meta); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
-#hud-physical-object-list .physical-object-list-section-header-glyph { margin-left: var(--space-2); }
-#hud-physical-object-list .physical-object-list-section-body { padding-left: var(--space-2); }
-#hud-physical-object-list .physical-object-list-section-body.collapsed { display: none !important; }
+#hud-physical-object-list .physical-object-list-section-header:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+#hud-physical-object-list .physical-object-list-section-header-label {
+  color: var(--text); font-size: var(--font-xs); letter-spacing: 0;
+}
+#hud-physical-object-list .physical-object-list-section-header-count { font-variant-numeric: tabular-nums; }
+#hud-physical-object-list .physical-object-list-section-header-summary { margin-left: auto; }
+#hud-physical-object-list .physical-object-list-section-header-tools {
+  display: inline-flex; gap: var(--space-2); margin-left: auto;
+}
+#hud-physical-object-list .physical-object-list-section-header-summary + .physical-object-list-section-header-tools {
+  margin-left: 0;
+}
+#hud-physical-object-list .physical-object-list-section-body.collapsed,
 #hud-physical-object-list .physical-object-list-section-body.hidden { display: none !important; }
-#hud-physical-object-list .physical-object-list-row-tree-controls { display: flex; gap: var(--space-2); padding: 0 var(--space-4) var(--space-1); }
-#hud-physical-object-list .erow { padding: var(--space-2) var(--space-2); color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: var(--space-2); }
-#hud-physical-object-list .physical-object-list-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#hud-physical-object-list .physical-object-list-detail { margin-left: auto; font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap; }
-#hud-physical-object-list .erow:hover { color: var(--text); }
-#hud-physical-object-list .erow.focus {
-  color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-}
-#hud-physical-object-list .erow.cluster { opacity: .55; }
-#hud-physical-object-list .physical-object-list-toggle { width: 10px; text-align: center; flex: none; }
-#hud-physical-object-list .physical-object-list-toggle.no-children { visibility: hidden; }
-#hud-physical-object-list .physical-object-list-children { padding-left: var(--space-5); }
 #hud-physical-object-list .physical-object-list-children.collapsed { display: none !important; }
-#hud-physical-object-list .physical-object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
+/* 木の行: [開閉記号(深さぶん字下げ)] [記号] [名前] [区分]。 */
+#hud-physical-object-list .erow { grid-template-columns: auto auto minmax(0, 1fr) auto; column-gap: var(--space-3); cursor: pointer; }
+#hud-physical-object-list .erow:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+#hud-physical-object-list .erow.cluster { opacity: .55; }
+#hud-physical-object-list .physical-object-list-toggle {
+  box-sizing: content-box; width: calc(var(--space-6) * (var(--d, 0) + 1)); text-align: right;
+  color: var(--role-meta); font-size: var(--font-xxs);
+}
+#hud-physical-object-list .physical-object-list-toggle.no-children { visibility: hidden; }
+#hud-physical-object-list .erow.is-focus .physical-object-list-toggle { color: var(--role-own); }
+#hud-physical-object-list .erow.is-tgt .physical-object-list-toggle { color: var(--role-target); }
+#hud-physical-object-list .physical-object-list-glyph svg { display: block; width: 1em; height: 1em; margin: auto; }
+#hud-physical-object-list .physical-object-list-empty { padding: var(--space-6); text-align: center; color: var(--role-label); }
 #hud-physical-object-list .physical-object-list-help {
-  padding: var(--space-2) var(--space-3) var(--space-3);
-  color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.45;
+  padding: var(--space-3) var(--space-2); color: var(--role-meta); font-size: var(--font-xxs); line-height: 1.8;
 }
-#hud-physical-object-list .physical-object-list-title {
-  align-items: baseline; padding: var(--space-2) var(--space-3) var(--space-3);
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
-}
-#hud-physical-object-list .physical-object-list-title h3 {
-  margin: 0; color: var(--text); font-size: var(--font-xs); letter-spacing: var(--tracking-label);
-}
-#hud-physical-object-list .physical-object-list-tracked {
-  margin-left: auto; white-space: nowrap; font-variant-numeric: tabular-nums;
-}
-#hud-physical-object-list .physical-object-list-search { margin-top: var(--space-2); }
-#hud-physical-object-list .physical-object-list-section-header {
-  display: flex; align-items: baseline; gap: var(--space-2);
-  background: var(--surface-opaque);
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-}
-#hud-physical-object-list .physical-object-list-section-header-label { color: var(--text); }
-#hud-physical-object-list .erow {
-  min-height: var(--hit-target-min); margin-inline: var(--space-1);
-  padding-inline: var(--space-3); border-radius: 0;
-  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 10%, transparent);
-}
-#hud-physical-object-list .erow.focus {
-  box-shadow: inset 2px 0 0 var(--color-primary), inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 10%, transparent);
-  background: transparent;
-}
-#hud-physical-object-list .physical-object-list-name { color: var(--text); }
-#hud-physical-object-list .erow.focus .physical-object-list-name { color: var(--color-primary); }
+#hud-physical-object-list .physical-object-list-help .ui-key { margin: 0 var(--space-1); }
 @media ${MQ_COARSE} {
-  /* 子を開閉するトグルは天体行にしかない小さな記号だが、タッチでは他の行と同じ最小寸法を要る。 */
-  #hud-physical-object-list .physical-object-list-toggle { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
+  /* 子を開閉する記号は天体行にしかない小さな記号だが、タッチでは他の行と同じ最小寸法を要る。 */
+  #hud-physical-object-list .erow { min-height: var(--hit-target-min); }
+  #hud-physical-object-list .physical-object-list-toggle { align-self: stretch; display: inline-flex; align-items: center; justify-content: flex-end; }
 }
 `;
 
@@ -140,11 +138,12 @@ export class PhysicalObjectListPanel {
   public onNavTarget: ((id: string) => void) | null = null;
   public onSelectRight: ((id: string, clientX: number, clientY: number) => void) | null = null;
 
-  private readonly panel: HTMLElement;
-  private readonly body: HTMLElement;
+  private readonly shell: PanelShell;
+  private readonly list: HTMLElement;
   private readonly sections = new Map<MapListSection, Section>();
   private readonly order: PhysicalObjectListOrder;
   private readonly rowTree: PhysicalObjectListRowTree;
+  private readonly filterControl: Pulldown<typeof FILTER_COLUMNS>;
   private lastFocusId: string | undefined = undefined;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
@@ -159,10 +158,9 @@ export class PhysicalObjectListPanel {
   private prevAutoExpandQuery = '';
   private prevAutoExpandFilter: PhysicalObjectListFilter | null = null;
   private wasFilteringActive = false;
-  private readonly breadcrumb: HTMLElement;
-  private readonly trackedCount: HTMLElement;
+  private readonly breadcrumbPath: HTMLElement;
+  private readonly trackedCount: readonly HTMLElement[];
   private readonly emptyState: HTMLElement;
-  private readonly unsubscribeCollapsedView: () => void;
 
   // 検索・分類・並び順の操作部と、種別ごとの区画を組んで root の右レールへ置く。隠した状態で
   // 始まるので、出すかどうかは setVisible で決める。
@@ -174,30 +172,15 @@ export class PhysicalObjectListPanel {
       onNavTarget: (id) => this.onNavTarget?.(id),
       onSelectRight: (id, clientX, clientY) => this.onSelectRight?.(id, clientX, clientY),
     });
-    this.panel = document.createElement('div');
-    this.panel.id = 'hud-physical-object-list';
-    this.panel.className = 'panel editorial-index';
-    this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.shell = new PanelShell(hudRail(root, 'right'), collapse, 'hud-physical-object-list', 'OBJ', '軌道物体');
+    this.shell.el.addEventListener('pointerdown', (e) => e.stopPropagation());
+    this.trackedCount = ['hud-physical-object-list-meta', 'hud-physical-object-list-summary']
+      .map((id) => this.shell.el.querySelector<HTMLElement>(`[data-id="${id}"]`)!);
+    const body = this.shell.body;
 
-    const head = document.createElement('div');
-    head.className = 'physical-object-list-head';
-
-    const titleRow = document.createElement('div');
-    titleRow.className = 'physical-object-list-title';
-    const code = document.createElement('span');
-    code.className = 'ui-section-code';
-    code.setAttribute('aria-hidden', 'true');
-    code.textContent = 'OBJ';
-    const title = document.createElement('h3');
-    title.className = 'editorial-panel-title';
-    title.textContent = 'ORBITAL OBJECTS';
-    this.trackedCount = document.createElement('span');
-    this.trackedCount.className = 'physical-object-list-tracked ui-data-context';
-    this.trackedCount.textContent = '0 TRACKED';
-    titleRow.append(code, title, this.trackedCount);
-    head.appendChild(titleRow);
-    const searchWrap = document.createElement('div');
-    searchWrap.className = 'physical-object-list-search';
+    // 操作部の1段目: 検索と分類。
+    const tools = document.createElement('div');
+    tools.className = 'physical-object-list-tools';
     // 絞り込み入力は打鍵ごとに一覧を再描画する必要があり、確定でしか通知しない ValueInput の
     // 契約に合わない唯一の例外(UI-DESIGN §3)。対話要素の共通の下地(ドラッグ伝播の抑止・
     // タッチでのタップ領域確保)だけは他の部品と同じ形で踏襲する。
@@ -219,124 +202,127 @@ export class PhysicalObjectListPanel {
       this.order.query = '';
     });
     search.addEventListener('input', () => { this.order.query = search.value.trim().toLocaleLowerCase(); });
-    searchWrap.appendChild(search);
-    head.appendChild(searchWrap);
+    this.filterControl = new Pulldown('', FILTER_COLUMNS, null, ([filter]) => { this.order.filter = filter; });
+    tools.append(search, this.filterControl.element);
+    body.appendChild(tools);
 
-    const filterControl = new SegmentedControl<PhysicalObjectListFilter | null>('分類', FILTERS, (key) => {
-      this.order.filter = this.order.filter === key ? null : key;
-      filterControl.setSelected(this.order.filter);
-    });
-    filterControl.setSelected(this.order.filter);
-    head.appendChild(filterControl.element);
-
-    // 並び順はフィルタとは別行 — 絞り込みと並べ替えは独立な操作であることを見た目でも分ける。
-    const sortControl = new SegmentedControl<PhysicalObjectListSort>('並び順', SORTS, (key) => {
+    // 2段目: 並び順。絞り込みと並べ替えは独立な操作であることを段でも分ける。
+    const sortRow = document.createElement('div');
+    sortRow.className = 'physical-object-list-sort';
+    const sortControl = new SegmentedControl<PhysicalObjectListSort>('並び', SORTS, (key) => {
       this.order.sort = key;
       sortControl.setSelected(key);
     });
     sortControl.setSelected(this.order.sort);
-    head.appendChild(sortControl.element);
-    this.panel.appendChild(head);
-    // 見出し以外をまとめて畳める区画にする — 一覧は常時表示で画面右を大きく占有するため。
-    const body = document.createElement('div');
-    body.className = 'physical-object-list-body';
-    this.body = body;
-    this.panel.appendChild(body);
-    this.unsubscribeCollapsedView = collapse.wire({
-      toggleRoot: titleRow,
-      toggleId: 'hud-physical-object-list-toggle',
-      toggleClassName: 'physical-object-list-collapse',
-      target: body,
-      labels: COLLAPSE_LABELS,
-      storageId: 'hud-physical-object-list',
-      extraHitEls: [title],
-    });
-    this.breadcrumb = document.createElement('div');
-    this.breadcrumb.className = 'physical-object-list-breadcrumb';
-    body.appendChild(this.breadcrumb);
+    sortRow.appendChild(sortControl.element);
+    body.appendChild(sortRow);
+
+    // 木の本体。操作部と違って、ここだけがスクロールする。
+    this.list = document.createElement('div');
+    this.list.className = 'physical-object-list-list';
+    body.appendChild(this.list);
+    const breadcrumb = document.createElement('div');
+    breadcrumb.className = 'physical-object-list-breadcrumb';
+    const crumbCaption = document.createElement('span');
+    crumbCaption.textContent = 'FOCUS';
+    this.breadcrumbPath = document.createElement('span');
+    breadcrumb.append(crumbCaption, this.breadcrumbPath);
+    this.list.appendChild(breadcrumb);
 
     for (const { section: sectionKey } of SECTIONS) {
-      const sectionId = `hud-physical-object-list-section-${sectionKey}`;
-      const header = document.createElement('div');
-      header.className = 'physical-object-list-section-header ui-selectable';
-      header.tabIndex = 0;
-      header.setAttribute('role', 'button');
-      header.setAttribute('aria-controls', sectionId);
-      stopDragPropagation(header);
-      expandHitTarget(header);
-      const labelEl = document.createElement('span');
-      labelEl.className = 'physical-object-list-section-header-label';
-      const glyphEl = document.createElement('span');
-      glyphEl.className = 'physical-object-list-section-header-glyph';
-      glyphEl.setAttribute('aria-hidden', 'true');
-      header.appendChild(labelEl);
-      header.appendChild(glyphEl);
-
-      const sectionBody = document.createElement('div');
-      sectionBody.id = sectionId;
-      sectionBody.className = 'physical-object-list-section-body';
-      const order: SectionOrder = { ids: [], rootIds: [], childIds: new Map() };
-      // 開閉状態はビューごとに引き継ぐ(未操作なら既定で開く)。
-      const expanded = !(collapse.collapsed(sectionId) ?? false);
-      const section: Section = {
-        header, labelEl, glyphEl, body: sectionBody, rows: new Map(), order, expanded, savedExpanded: null,
-      };
-      // クリック/Enter/Space 共通のユーザー操作による開閉。絞り込みによる一時的な自動展開
-      // (savedExpanded 経由)はここを通らないため、ここでの保存は常にプレイヤーの意思を表す。
-      const toggleSection = (): void => {
-        section.expanded = !section.expanded;
-        this.applyExpanded(section);
-        collapse.setCollapsed(sectionId, !section.expanded);
-      };
-      bindActivation(header, toggleSection);
+      const section = this.buildSection(collapse, sectionKey);
       this.sections.set(sectionKey, section);
-      body.appendChild(header);
-      // 入れ子を持つのは天体区画だけなので、一括開閉ボタンもそこにだけ添える。区画本体の先頭へ
-      // 置いて、区画の折りたたみ・絞り込みでの表示切替へ連動させる。
-      if (sectionKey === 'body') sectionBody.appendChild(this.buildTreeControls(section));
-      body.appendChild(sectionBody);
+      this.list.append(section.header, section.body);
       this.applyExpanded(section);
     }
 
     this.emptyState = document.createElement('div');
     this.emptyState.className = 'physical-object-list-empty hidden';
     this.emptyState.textContent = '該当する物体がありません';
-    body.appendChild(this.emptyState);
+    this.list.appendChild(this.emptyState);
 
     // 行の操作はホバーの説明文だけに置かず、常時表示の案内として一覧の末尾へ出す。
+    this.list.appendChild(this.buildHelp());
+    this.setVisible(false);
+  }
+
+  // 区画1つぶんの見出しと本体を組む。開閉状態はビューごとに引き継ぐ(未操作なら既定で開く)。
+  private buildSection(collapse: PanelCollapse, sectionKey: MapListSection): Section {
+    const sectionId = `hud-physical-object-list-section-${sectionKey}`;
+    const header = document.createElement('div');
+    header.className = 'physical-object-list-section-header ui-selectable';
+    header.tabIndex = 0;
+    header.setAttribute('role', 'button');
+    header.setAttribute('aria-controls', sectionId);
+    stopDragPropagation(header);
+    expandHitTarget(header);
+    const glyphEl = document.createElement('span');
+    glyphEl.className = 'physical-object-list-section-header-glyph';
+    glyphEl.setAttribute('aria-hidden', 'true');
+    const labelEl = document.createElement('b');
+    labelEl.className = 'physical-object-list-section-header-label';
+    const countEl = document.createElement('span');
+    countEl.className = 'physical-object-list-section-header-count';
+    const summaryEl = document.createElement('span');
+    summaryEl.className = 'physical-object-list-section-header-summary';
+    header.append(glyphEl, labelEl, countEl, summaryEl);
+
+    const sectionBody = document.createElement('div');
+    sectionBody.id = sectionId;
+    sectionBody.className = 'physical-object-list-section-body';
+    const section: Section = {
+      header, labelEl, glyphEl, countEl, summaryEl, body: sectionBody, rows: new Map(),
+      order: { ids: [], rootIds: [], childIds: new Map() } satisfies SectionOrder,
+      expanded: !(collapse.collapsed(sectionId) ?? false), savedExpanded: null,
+    };
+    // クリック/Enter/Space 共通のユーザー操作による開閉。絞り込みによる一時的な自動展開
+    // (savedExpanded 経由)はここを通らないため、ここでの保存は常にプレイヤーの意思を表す。
+    bindActivation(header, () => {
+      section.expanded = !section.expanded;
+      this.applyExpanded(section);
+      collapse.setCollapsed(sectionId, !section.expanded);
+    });
+    // 入れ子を持つのは天体区画だけなので、一括開閉も見出しの右へそこにだけ添える。
+    if (sectionKey === 'body') header.appendChild(this.buildTreeControls(section));
+    return section;
+  }
+
+  // 行の操作を、キーキャップを添えた1行の案内にする。
+  private buildHelp(): HTMLElement {
     const help = document.createElement('div');
     help.className = 'physical-object-list-help';
-    help.textContent = '行: ダブルクリック・F でフォーカス · T でナビ対象 · 右クリックでメニュー';
-    body.appendChild(help);
-
-    hudRail(root, 'right').appendChild(this.panel);
-    this.setVisible(false);
+    help.append(
+      'ダブルクリック /', createKeyCap('F'), 'フォーカス · ', createKeyCap('T'), 'ターゲット · 右クリックでメニュー',
+    );
+    return help;
   }
 
   // パネルを出し入れする。
   public setVisible(visible: boolean): void {
-    this.panel.classList.toggle('hidden', !visible);
+    this.shell.setHidden(!visible);
   }
 
-  // パネルを取り除き、折りたたみ状態変化の購読を解除する。
+  // パネルを取り除く。
   public dispose(): void {
-    this.unsubscribeCollapsedView();
-    this.panel.remove();
+    this.shell.el.remove();
   }
 
   // 種別ごとの区画へ、既存行は使い回しつつ id 差分だけ足し引きする。parentOf は id → 親 id
-  // (天体の親子関係だけが載る)。focusId が undefined なら、どの行も強調しない。
+  // (天体の親子関係だけが載る)。focusId が undefined なら、どの行も強調しない。targetId はターゲットの
+  // 色を帯びる行の id。
   public sync(
     items: readonly ListedObject[],
     focusId: string | undefined,
+    targetId: string | null,
     parentOf: ReadonlyMap<string, string>,
     viewer: OrbitingObject | null,
     displayTime: number,
   ): void {
-    this.trackedCount.textContent = `${items.length.toLocaleString()} TRACKED`;
+    const total = items.length.toLocaleString();
+    for (const el of this.trackedCount) if (el.textContent !== total) el.textContent = total;
     // 本体が畳まれている間は完全に不可視なので、行ツリーの差分同期を止める。次に開いたときは
     // items/focusId の現在値から組み直されるため、この間の変化を取りこぼしても壊れない。
-    if (this.body.classList.contains('collapsed')) return;
+    if (this.shell.body.classList.contains('collapsed')) return;
     this.namesScratch.clear();
     this.itemsByIdScratch.clear();
     for (const item of items) {
@@ -347,11 +333,12 @@ export class PhysicalObjectListPanel {
     const crumbs = this.crumbsScratch;
     crumbs.length = 0;
     for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) crumbs.push(names.get(cur) ?? cur);
-    this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
+    this.breadcrumbPath.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'なし';
+    this.filterControl.setSelected(0, this.order.filter);
     const focusChanged = focusId !== this.lastFocusId;
     this.lastFocusId = focusId;
     const inputsChanged = this.order.refreshInputs(items, parentOf, viewer, displayTime, focusId);
-    this.rowTree.setFrame(viewer, displayTime);
+    this.rowTree.setFrame(viewer, displayTime, targetId);
 
     // フォーカスが切り替わった瞬間だけ、そこへ至る枝を自動展開する対象として渡す
     // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
@@ -409,7 +396,7 @@ export class PhysicalObjectListPanel {
       for (const id of section.order.rootIds) {
         this.rowTree.syncRow(
           section.rows, id, section.order.childIds, focusId, section.body,
-          focusAncestors, matchAncestors, reordered, seen,
+          focusAncestors, matchAncestors, reordered, seen, 0,
         );
       }
       this.rowTree.pruneRows(section.rows, seen);
@@ -441,25 +428,27 @@ export class PhysicalObjectListPanel {
     section.header.classList.toggle('hidden', !hasItems);
     section.body.classList.toggle('hidden', !hasItems);
     const summaryLabel = HEADER_SUMMARY[sectionKey];
-    let state = '';
+    let summary = '';
     if (summaryLabel !== undefined) {
       let count = 0;
       for (const id of ids) if (this.itemsByIdScratch.get(id)?.listCounted(viewer, displayTime)) count++;
-      state = ` · ${summaryLabel} ${count}`;
+      summary = `${summaryLabel} ${count}`;
     }
     // 毎フレームの再代入はレイアウト再計算を招くので、変わったときだけ書く。
-    const text = `${label} (${ids.length})${state}`;
-    if (section.labelEl.textContent !== text) section.labelEl.textContent = text;
+    if (section.labelEl.textContent !== label) section.labelEl.textContent = label;
+    const countText = String(ids.length);
+    if (section.countEl.textContent !== countText) section.countEl.textContent = countText;
+    if (section.summaryEl.textContent !== summary) section.summaryEl.textContent = summary;
     const glyph = section.expanded ? COLLAPSE_EXPANDED_GLYPH : COLLAPSE_COLLAPSED_GLYPH;
     if (section.glyphEl.textContent !== glyph) section.glyphEl.textContent = glyph;
   }
 
-  // 天体区画の見出しに添える「全展開」「全折りたたむ」ボタンの組。
+  // 天体区画の見出しに添える「全展開」「畳む」ボタンの組。
   private buildTreeControls(section: Section): HTMLElement {
-    const controls = document.createElement('div');
-    controls.className = 'physical-object-list-row-tree-controls';
-    const expandAll = new Button('全展開', () => this.rowTree.setAllRowsExpanded(section.rows, true));
-    const collapseAll = new Button('全折りたたむ', () => this.rowTree.setAllRowsExpanded(section.rows, false));
+    const controls = document.createElement('span');
+    controls.className = 'physical-object-list-section-header-tools';
+    const expandAll = new Button('全展開', () => this.rowTree.setAllRowsExpanded(section.rows, true), undefined, ['dense', 'secondary']);
+    const collapseAll = new Button('畳む', () => this.rowTree.setAllRowsExpanded(section.rows, false), undefined, ['dense', 'secondary']);
     controls.appendChild(expandAll.element);
     controls.appendChild(collapseAll.element);
     return controls;
