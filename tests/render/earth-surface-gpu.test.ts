@@ -7,7 +7,7 @@ import { EarthSurfaceGpuThree, earthSurfaceGpuCapabilitiesOf } from '../../src/r
 import {
   EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z, earthTileKey,
 } from '../../src/render/earth-surface-tile-key';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-page-table';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-layout';
 import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface-gpu';
 
 const SUPPORTED: EarthSurfaceGpuCapabilities = {
@@ -101,16 +101,13 @@ export function register(): void {
     });
   });
 
-  test('earth GPU: 配列層や線形標本化が不足すればbaseへ固定する', () => {
+  test('earth GPU: 配列層や線形標本化が不足すればadapterを組まない', () => {
     for (const capabilities of [
       { ...SUPPORTED, texture2dArray: false }, { ...SUPPORTED, maxTextureArrayLayers: EARTH_TILE_LAYERS - 1 },
       { ...SUPPORTED, colorSrgbLinear: false }, { ...SUPPORTED, terrainRgba8Linear: false },
     ]) {
       const backend = new FakeBackend(capabilities);
-      const adapter = new EarthSurfaceGpuAdapter(backend);
-      assert.equal(adapter.mode, 'base');
-      assert.throws(() => adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 0, 0), 0));
-      assert.equal(adapter.publishFrame(0), false);
+      assert.throws(() => new EarthSurfaceGpuAdapter(backend), /detail features unavailable/);
       assert.equal(backend.writes.length, 0);
     }
   });
@@ -150,7 +147,7 @@ export function register(): void {
     await assert.rejects(adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), reservation), /Stale/);
   });
 
-  test('earth GPU: z5以降のページセルも対応するタイル層へ限定する', async () => {
+  test('earth GPU: 親と子の層を参照するページ表を公開できる', async () => {
     const backend = new FakeBackend();
     const adapter = new EarthSurfaceGpuAdapter(backend);
     const parent = earthTileKey(EARTH_TILE_MIN_Z, 1, 0);
@@ -166,7 +163,6 @@ export function register(): void {
     backend.color.resolve();
     backend.terrain.resolve();
     await Promise.all([parentUpload, childUpload]);
-    assert.throws(() => adapter.stagePageTable(page(0, earthTileKey(4, 0, 0))), /wrong tile level/);
     const table = page(0, parent);
     const size = 2 ** (EARTH_TILE_MAX_Z - child.z);
     for (let y = child.y * size; y < (child.y + 1) * size; y++) {

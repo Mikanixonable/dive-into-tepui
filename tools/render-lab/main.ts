@@ -25,7 +25,7 @@ import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
 import type { FloatUniform } from '../../src/render/tsl-types';
-import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
+import type { EarthSurfaceCaptureDocument } from './earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
 
 // 恒星の距離のつまみの下限・上限。つまみは距離を**天文単位の常用対数で持つ** — 見かけ径が 1px を切る

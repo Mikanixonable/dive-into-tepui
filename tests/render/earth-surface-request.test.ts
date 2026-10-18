@@ -40,11 +40,12 @@ export function register(): void {
       'https://example.test/earth/tiles/{z}/{x}/{y}.bin.gz',
     );
     assert.equal(source.descriptorFor(earthTileKey(4, 0, 0)), null);
-    assert.deepEqual(source.urlFor(earthTileKey(5, 3, 7)), {
-      color: 'https://example.test/earth/tiles/5/3/7.jpg',
-      terrain: 'https://example.test/earth/tiles/5/3/7.bin.gz',
+    assert.deepEqual(source.descriptorFor(earthTileKey(5, 3, 7)), {
+      key: earthTileKey(5, 3, 7),
+      colorUrl: 'https://example.test/earth/tiles/5/3/7.jpg',
+      terrainUrl: 'https://example.test/earth/tiles/5/3/7.bin.gz',
     });
-    assert.ok(source.urlFor(earthTileKey(8, 511, 255)) !== null);
+    assert.ok(source.descriptorFor(earthTileKey(8, 511, 255)) !== null);
     const z7 = new EarthSurfaceTileSource(
       'https://example.test/earth/tiles/{z}/{x}/{y}.jpg',
       'https://example.test/earth/tiles/{z}/{x}/{y}.bin.gz',

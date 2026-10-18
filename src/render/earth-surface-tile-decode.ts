@@ -1,6 +1,6 @@
 // 色JPEGとgzip地形を取得段と復号段に分け、GPU投入可能なペイロードへ束ねる。
 import type { EarthTileKey } from './earth-surface-tile-key';
-import { EarthSurfaceDecodeError } from './earth-surface-decode-errors';
+import { EarthSurfaceDecodeError } from './earth-surface-errors';
 import { ensureEarthSurfaceNotAborted, readEarthSurfaceResponse } from './earth-surface-decode-response';
 import { decodeEarthTerrainBytes } from './earth-surface-terrain-codec';
 import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from './earth-surface-format';
@@ -95,7 +95,4 @@ export async function decodeEarthSurfaceTileBytes(
   }
 }
 
-// 取得と復号を一度に行う簡易入口。段ごとの同時実行数を制御する場合は各関数を直接使う。
-export async function decodeEarthSurfaceTile(request: EarthSurfaceTileRequest): Promise<EarthSurfaceTilePayload> {
-  return decodeEarthSurfaceTileBytes(request, await downloadEarthSurfaceTile(request));
-}
+

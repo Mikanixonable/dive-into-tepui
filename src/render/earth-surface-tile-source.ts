@@ -1,5 +1,5 @@
 // 完全な地表データセットについて、正規化済みキーから色・地形のURLを決定する。
-import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z, earthTileId } from './earth-surface-tile-key';
+import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from './earth-surface-tile-key';
 import type { EarthTileKey } from './earth-surface-tile-key';
 
 export interface EarthSurfaceTileDescriptor {
@@ -36,13 +36,4 @@ export class EarthSurfaceTileSource {
       terrainUrl: resolveTemplate(this.terrainTemplate, key),
     };
   }
-
-  // 範囲内タイルの色・地形URLを同時に返す。
-  public urlFor(key: EarthTileKey): { readonly color: string; readonly terrain: string } | null {
-    const descriptor = this.descriptorFor(key);
-    return descriptor === null ? null : { color: descriptor.colorUrl, terrain: descriptor.terrainUrl };
-  }
-
-  // URLに使う識別子と同じ正規化済みキー表現を返す。
-  public idFor(key: EarthTileKey): string { return earthTileId(key); }
 }

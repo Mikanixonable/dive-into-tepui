@@ -2,12 +2,11 @@
 import { decodeEarthSurfaceTileBytes, downloadEarthSurfaceTile } from './earth-surface-tile-decode';
 import type { EarthSurfaceTilePayload } from './earth-surface-tile-decode';
 import { decodeEarthTerrainOffThread } from './earth-surface-terrain-worker-client';
-import type { EarthSurfaceTerrainFormat } from './earth-surface-format';
 import { earthTileId } from './earth-surface-tile-key';
 import type { EarthTileKey } from './earth-surface-tile-key';
 import type { EarthSurfaceTileSource } from './earth-surface-tile-source';
 import type { EarthSurfaceTileDescriptor } from './earth-surface-tile-source';
-import { EarthSurfaceHttpError, EarthSurfaceRequestError } from './earth-surface-request-errors';
+import { EarthSurfaceHttpError, EarthSurfaceRequestError } from './earth-surface-errors';
 
 export interface EarthSurfaceTileRequestMetrics {
   readonly httpReserved: number;
@@ -34,7 +33,6 @@ export interface EarthSurfaceTileRequestMetricEvent {
 export interface EarthSurfaceTileRequestQueueOptions {
   readonly fetchImpl?: typeof fetch;
   readonly decodeImage?: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown>;
-  readonly terrainFormat?: EarthSurfaceTerrainFormat;
   readonly maxRetries?: number;
   readonly timeoutMs?: number;
   readonly onMetric?: (event: EarthSurfaceTileRequestMetricEvent) => void;
@@ -129,6 +127,7 @@ export class EarthSurfaceTileRequestQueue {
   private readonly items = new Map<string, QueueItem>();
   private readonly permanentFailures = new Map<string, Error>();
   private readonly eventLog: EarthSurfaceTileRequestMetricEvent[] = [];
+  private static readonly EVENT_LOG_LIMIT = 512;
   private disposed = false;
   private counters = {
     httpReserved: 0, httpStarted: 0, httpReleased: 0,
@@ -236,10 +235,7 @@ export class EarthSurfaceTileRequestQueue {
           generation: item.generation, signal: attemptController.signal,
           fetchImpl: this.limitedFetch(item.generation),
           decodeImage: this.options.decodeImage,
-          decodeTerrain: (compressed: Uint8Array, key: EarthTileKey, limit: number,
-            expectedSha256?: string, signal?: AbortSignal) => decodeEarthTerrainOffThread(
-            compressed, key, limit, expectedSha256, signal, this.options.terrainFormat,
-          ),
+          decodeTerrain: decodeEarthTerrainOffThread,
         };
         let bytes;
         try {
@@ -343,9 +339,10 @@ export class EarthSurfaceTileRequestQueue {
     for (const [id, error] of this.permanentFailures) yield [id, reasonOf(error)];
   }
 
-  // 計測イベントを履歴へ保存し、任意の監視へ通知する。
+  // 計測イベントを上限付きの履歴へ保存し、任意の監視へ通知する。
   private emit(event: EarthSurfaceTileRequestMetricEvent): void {
     this.eventLog.push(event);
+    if (this.eventLog.length > EarthSurfaceTileRequestQueue.EVENT_LOG_LIMIT) this.eventLog.shift();
     this.options.onMetric?.(event);
   }
 }

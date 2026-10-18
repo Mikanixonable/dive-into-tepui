@@ -13,7 +13,8 @@ import {
   EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MIN_Z,
   earthTileChildren, earthTileId, earthTileKey, earthTileParent,
 } from '../../src/render/earth-surface-tile-key';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, earthPageAt } from '../../src/render/earth-surface-page-table';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-layout';
+import { earthPageAt } from './earth-surface-material-reference';
 import { EarthSurfaceTiles } from '../../src/render/earth-surface-tiles';
 import type { EarthTileResident } from '../../src/render/earth-surface-tiles';
 import type { EarthTileKey } from '../../src/render/earth-surface-tile-key';
@@ -480,18 +481,9 @@ export function register(): void {
     assert.ok(reservations <= EARTH_TILE_LAYERS);
   });
 
-  test('earth resident: GPU機能不足時は詳細要求を止めて全球baseを維持する', () => {
-    const fixture = coordinator([earthTileKey(EARTH_TILE_MIN_Z, 0, 0)]);
+  test('earth resident: GPU機能不足ではadapterを組まず全球baseへ戻る', () => {
     const unsupported = new ImmediateBackend({ ...CAPABILITIES, texture2dArray: false });
-    const baseGpu = new EarthSurfaceGpuAdapter(unsupported);
-    const baseCoordinator = new EarthSurfaceResidentCoordinator({
-      tiles: new EarthSurfaceTiles(), queue: fixture.queue, gpu: baseGpu,
-      colorToRgba8: (color) => color as Uint8Array,
-    });
-    const result = baseCoordinator.sync({ projection: new Projection(), timeMs: 0, generation: 1 });
-    assert.deepEqual(result.requested, []);
+    assert.throws(() => new EarthSurfaceGpuAdapter(unsupported), /detail features unavailable/);
     assert.equal(unsupported.pages.length, 0);
-    baseCoordinator.dispose();
-    fixture.resident.dispose();
   });
 }
