@@ -43,6 +43,8 @@ export interface OrbitPanelViewModel {
   readonly dynamicPressurePa: number | null;
   readonly temperatureK: number;
   setReferenceMode(mode: OrbitReferenceMode): void;
+  // 「航行指令…」ボタン。現在の航法ターゲットへ向かう遷移候補の求解窓を開く。
+  onOpenNavigationCommand(): void;
 }
 
 export class OrbitPanel {
@@ -77,11 +79,15 @@ export class OrbitPanel {
     return meter;
   }
 
-  // 軌道分析パネルを開くボタンを els が指す DOM へ組み込む。
+  // 軌道分析・航行指令を開くボタンを els が指す DOM へ組み込む。
   private buildActionButtons(): void {
     const container = this.els.get('orbit-actions');
     const button = new Button('軌道分析', () => this.openAnalysis(), undefined, ['dense', 'secondary']);
     container.appendChild(button.element);
+    const navigation = new Button(
+      '航行指令…', () => this.view?.onOpenNavigationCommand(), undefined, ['dense', 'secondary'],
+    );
+    container.appendChild(navigation.element);
   }
 
   // 操作対象の基準・高度・速度・遠地点/近地点・傾斜角・周期・動圧・機体温度を DOM へ反映する。
