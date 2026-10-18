@@ -2,6 +2,9 @@
 // 選ばれた候補を命令キュー経由で艦の計画へ書き込む。求解ウィンドウが開いているあいだは、
 // 候補の最早出発時刻の手前までしか simTime を進めない時刻バリアを公開する。
 import { planTransfers, type TransferCandidate } from '../../physics/transfer-planner';
+import { planRendezvous, type TerminalProfile } from './terminal-rendezvous';
+import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
+import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { deltaVBudget, effectiveExhaustVelocity } from '../../physics/rocket';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CommandQueue } from '../command-queue';
@@ -15,6 +18,11 @@ import type { OrbitSlotCatalogAccess } from './orbit-slot-family';
 import { transferTargetOf } from './transfer-target';
 import { commitTransferCandidate } from './transfer-command';
 import { NavigationCommandWindow } from './navigation-command-window';
+
+// 敵への会合は交戦圏外の待機点で、味方艦・基地への会合はドッキング手前の接近点で終える
+// (SPEC/PLAN.md「航行指令」)。いずれも終端到達点までの距離 [m]。
+const STANDOFF_DISTANCE = 40_000;
+const APPROACH_DISTANCE = 200;
 
 // 時刻バリアが simTime を止める、最早の出発時刻の手前の余裕 [s]。
 // planTransfers の最早出発(出発までの最小猶予)より小さい値なので、開いた直後に
@@ -109,11 +117,18 @@ export class NavigationCommand {
     );
     const center = strongestAttractor(ship.motion.state.r, this.celestialBodies.celestialMotions, simTime);
     this.solvedSimTime = simTime;
+    // 個体への会合は終端誘導つき(敵=待機点、味方・基地=接近点)、天体・軌道標識への
+    // 投入は位相点そのものへ向かう。
+    const entity = aliveCombatTarget(this.roster.all(), this.targetId);
+    const profile: TerminalProfile | null = entity === null ? null
+      : isEnemy(entity) ? { kind: 'standoff', distance: STANDOFF_DISTANCE }
+      : { kind: 'approach', distance: APPROACH_DISTANCE };
+    const constraints = { maxDeltaV: this.deltaVLimit ?? undefined };
     this.candidates = target === null
       ? []
-      : planTransfers(ship.motion.state, center, target, {
-        maxDeltaV: this.deltaVLimit ?? undefined,
-      });
+      : profile === null
+        ? planTransfers(ship.motion.state, center, target, constraints)
+        : planRendezvous(ship.motion.state, center, target, profile, constraints);
     window.render(this.candidates, simTime);
   }
 
