@@ -1,6 +1,6 @@
 // 地表タイルの固定レイアウトと、周期境界を含むキー操作を定義する。
 import * as THREE from 'three/webgpu';
-import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from './earth-surface-layout';
+import { EARTH_TILE_MAX_Z } from './earth-surface-layout';
 export {
   EARTH_BASE_COLOR_Z, EARTH_BASE_LAYER, EARTH_GLOBAL_TILE_COUNT,
   EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z,
@@ -40,13 +40,6 @@ export function earthTileChildren(key: EarthTileKey): readonly EarthTileKey[] {
     earthTileKey(key.z + 1, key.x * 2, key.y * 2 + 1),
     earthTileKey(key.z + 1, key.x * 2 + 1, key.y * 2 + 1),
   ];
-}
-
-// 表示木の根を返す。全球画像は暗黙のz4で、地域詳細はz5から始める。
-export function earthTileRoots(): readonly EarthTileKey[] {
-  const height = 2 ** EARTH_TILE_MIN_Z;
-  return Array.from({ length: height }, (_, y) => Array.from({ length: 2 * height }, (_, x) =>
-    earthTileKey(EARTH_TILE_MIN_Z, x, y))).flat();
 }
 
 // 同じ段の東西南北の隣接キー。極を越える辺は経度を半周ずらして反転する。

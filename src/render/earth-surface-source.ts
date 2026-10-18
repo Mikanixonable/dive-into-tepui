@@ -7,9 +7,7 @@ import {
   EARTH_TERRAIN_CHANNELS,
   EARTH_TERRAIN_HEIGHT,
   EARTH_TERRAIN_LAYOUT,
-  EARTH_TERRAIN_OCTAHEDRAL_LAYOUT,
   EARTH_TERRAIN_WIDTH,
-  type EarthSurfaceTerrainFormat,
 } from './earth-surface-format';
 
 export interface EarthSurfaceSource {
@@ -22,7 +20,6 @@ export interface EarthSurfaceSource {
   readonly manifestUrl: string;
   readonly colorTileTemplate: string;
   readonly terrainTileTemplate: string;
-  readonly terrainFormat: EarthSurfaceTerrainFormat;
   readonly baseColorUrl: string;
   readonly baseTerrainUrl: string;
   readonly climateMapUrls: readonly string[];
@@ -42,8 +39,8 @@ export interface EarthSurfaceColorCalibration {
   readonly averageHue: readonly [number, number, number];
 }
 
-// schema 1と旧静的fallbackの校正。新しいBMNG配信物はmanifestの値を使い、これを再利用しない。
-export const EARTH_SURFACE_LEGACY_COLOR_CALIBRATION: EarthSurfaceColorCalibration = {
+// 配信物が未設定の開発環境で使う静的fallbackの校正。BMNG配信物はmanifestの値を使う。
+export const EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION: EarthSurfaceColorCalibration = {
   inputEncoding: 'sRGB8',
   aggregation: 'linear_rgb_area_mean',
   outputEncoding: 'sRGB8',
@@ -77,14 +74,7 @@ interface EarthSurfaceAssetManifestBase {
   readonly attribution: readonly string[];
 }
 
-export interface EarthSurfaceAssetManifestV1 extends EarthSurfaceAssetManifestBase {
-  readonly schemaVersion: 1;
-  readonly terrainEncoding: EarthSurfaceLegacyTerrainEncoding;
-  readonly tileIndexUrl: string;
-  readonly coverage: EarthSurfaceLegacyCoverage;
-}
-
-export interface EarthSurfaceAssetManifestV3 extends EarthSurfaceAssetManifestBase {
+export interface EarthSurfaceAssetManifest extends EarthSurfaceAssetManifestBase {
   readonly schemaVersion: typeof EARTH_SURFACE_MANIFEST_SCHEMA_VERSION;
   readonly terrainEncoding: EarthSurfaceTerrainEncoding;
   readonly colorCalibration: EarthSurfaceColorCalibration;
@@ -92,19 +82,11 @@ export interface EarthSurfaceAssetManifestV3 extends EarthSurfaceAssetManifestBa
   readonly coverage: EarthSurfaceCoverage;
 }
 
-export type EarthSurfaceAssetManifest = EarthSurfaceAssetManifestV1 | EarthSurfaceAssetManifestV3;
-
 export interface EarthSurfaceCoverage {
   readonly kind: 'complete';
   readonly minZoom: 5;
   readonly maxZoom: number;
   readonly expectedTiles: number;
-}
-
-export interface EarthSurfaceLegacyCoverage {
-  readonly kind: 'complete';
-  readonly maxZoom: 7;
-  readonly expectedTiles: 43_690;
 }
 
 export interface EarthSurfaceTileTemplates {
@@ -120,21 +102,6 @@ export interface EarthSurfaceTerrainEncoding {
   readonly height: typeof EARTH_TERRAIN_HEIGHT;
   readonly channels: typeof EARTH_TERRAIN_CHANNELS;
   readonly scalar: 'UInt8';
-}
-
-export interface EarthSurfaceLegacyTerrainEncoding {
-  readonly formatVersion: 2;
-  readonly layout: typeof EARTH_TERRAIN_OCTAHEDRAL_LAYOUT;
-  readonly width: typeof EARTH_TERRAIN_WIDTH;
-  readonly height: typeof EARTH_TERRAIN_HEIGHT;
-  readonly channels: typeof EARTH_TERRAIN_CHANNELS;
-  readonly scalar: 'UInt8';
-  readonly materialClasses: {
-    readonly water: 0;
-    readonly land: 1;
-    readonly ice: 2;
-    readonly unknown: 255;
-  };
 }
 
 // 配信base配下の安全な相対アセットURLを作る。
@@ -215,38 +182,12 @@ function validateTerrainGeometry(terrain: { readonly width: number; readonly hei
 export function earthSurfaceSourceFromManifest(
   baseUrl: string, manifestUrl: string, manifest: EarthSurfaceAssetManifest,
 ): EarthSurfaceSource {
-  if (manifest.schemaVersion !== 1 && manifest.schemaVersion !== EARTH_SURFACE_MANIFEST_SCHEMA_VERSION) {
+  if (manifest.schemaVersion !== EARTH_SURFACE_MANIFEST_SCHEMA_VERSION) {
     throw new Error('Unsupported Earth surface manifest schema');
   }
   requireDatasetId(manifest.datasetId);
   validateManifestBase(baseUrl, manifest);
   validateTerrainGeometry(manifest.terrainEncoding);
-  if (manifest.schemaVersion === 1) {
-    const terrain = manifest.terrainEncoding;
-    if (manifest.coverage.kind !== 'complete' || manifest.coverage.maxZoom !== 7
-      || manifest.coverage.expectedTiles !== 43_690 || terrain.formatVersion !== 2
-      || terrain.layout !== EARTH_TERRAIN_OCTAHEDRAL_LAYOUT || terrain.materialClasses.water !== 0
-      || terrain.materialClasses.land !== 1 || terrain.materialClasses.ice !== 2
-      || terrain.materialClasses.unknown !== 255) {
-      throw new Error('Unsupported Earth surface schema 1 manifest');
-    }
-    relativeAsset(baseUrl, manifest.tileIndexUrl);
-    return {
-      datasetId: manifest.datasetId,
-      sourceManifestSha256: manifest.sourceManifestSha256,
-      colorCalibration: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
-      climateEncoding: manifest.climateEncoding,
-      maxZoom: 7,
-      baseUrl,
-      manifestUrl,
-      colorTileTemplate: relativeTileTemplate(baseUrl, 'tiles/{z}/{x}/{y}.jpg'),
-      terrainTileTemplate: relativeTileTemplate(baseUrl, 'tiles/{z}/{x}/{y}.bin.gz'),
-      terrainFormat: EARTH_TERRAIN_OCTAHEDRAL_LAYOUT,
-      baseColorUrl: relativeAsset(baseUrl, manifest.baseColor),
-      baseTerrainUrl: relativeAsset(baseUrl, manifest.baseTerrain),
-      climateMapUrls: manifest.climateMaps.map((path) => relativeAsset(baseUrl, path)),
-    };
-  }
   const terrain = manifest.terrainEncoding;
   const coverage = manifest.coverage;
   if (coverage.kind !== 'complete' || coverage.minZoom !== EARTH_TILE_MIN_Z
@@ -271,7 +212,6 @@ export function earthSurfaceSourceFromManifest(
     manifestUrl,
     colorTileTemplate: relativeTileTemplate(baseUrl, manifest.tileTemplates.color),
     terrainTileTemplate: relativeTileTemplate(baseUrl, manifest.tileTemplates.terrain),
-    terrainFormat: EARTH_TERRAIN_LAYOUT,
     baseColorUrl: relativeAsset(baseUrl, manifest.baseColor),
     baseTerrainUrl: relativeAsset(baseUrl, manifest.baseTerrain),
     climateMapUrls: manifest.climateMaps.map((path) => relativeAsset(baseUrl, path)),

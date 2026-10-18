@@ -4,9 +4,9 @@ import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
   EARTH_BASE_LAYER, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
-  earthTileChildren, earthTileId, earthTileKey, earthTileNeighbors, earthTileParent, earthTileRoots,
+  earthTileChildren, earthTileId, earthTileKey, earthTileNeighbors, earthTileParent,
 } from '../../src/render/earth-surface-tile-key';
-import { earthPageAt, earthTileSampleUv } from '../../src/render/earth-surface-page-table';
+import { earthPageAt, earthTileRoots, earthTileSampleUv } from './earth-surface-material-reference';
 import { EarthSurfaceView } from '../../src/render/earth-surface-tile-projection';
 import { EarthSurfaceTiles } from '../../src/render/earth-surface-tiles';
 import type { EarthTileResident } from '../../src/render/earth-surface-tiles';
