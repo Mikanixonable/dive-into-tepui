@@ -67,10 +67,12 @@ export interface ConstructionHistoryView {
   readonly canRedo: boolean;
 }
 
-// 手に持っているものの表示用の写し。catalogId はカタログ由来のときだけ定義 id を持つ。
+// 手に持っているものの表示用の写し。catalogId はカタログ由来のときだけ定義 id を、
+// blueprintId は設計図由来のときだけ設計図 id を持つ。
 export interface ShipConstructionHeldView {
   readonly name: string;
   readonly catalogId: string | null;
+  readonly blueprintId: string | null;
   readonly orientation: ModuleOrientation;
   readonly symmetry: ConstructionSymmetry;
 }
@@ -79,6 +81,35 @@ export interface ShipConstructionHeldView {
 export interface ShipConstructionSelectionView {
   readonly name: string;
   readonly canEdit: boolean;
+}
+
+// 設計図タブのカード1枚分の表示用の写し。質量は乾燥質量 [kg]。
+export interface ShipBlueprintCardView {
+  readonly id: string;
+  readonly name: string;
+  readonly moduleCount: number;
+  readonly mass: number;
+  // いま手に持っている設計図なら true。
+  readonly held: boolean;
+}
+
+// カタログのカードから始まるドラッグの通知。座標はクライアント座標 [px]。
+export interface ConstructionCardDragEvent {
+  readonly source:
+    | { readonly kind: 'module'; readonly definitionId: string }
+    | { readonly kind: 'blueprint'; readonly blueprintId: string };
+  // start は持ち上げた瞬間、move は移動、end は離した瞬間。
+  readonly phase: 'start' | 'move' | 'end';
+  readonly clientX: number;
+  readonly clientY: number;
+}
+
+// カードのドラッグが進行している間、建造セッションが持つ操作途中の状態(R5-4)。
+// point/released はクライアント座標 [px] で、キャンバス座標への変換は入力の解釈が行う。
+export interface ConstructionCardDrag {
+  readonly held: ConstructionHeld;
+  readonly point: { readonly x: number; readonly y: number };
+  readonly released: { readonly x: number; readonly y: number } | null;
 }
 
 export interface ShipConstructionPanelModel {
@@ -98,6 +129,9 @@ export interface ShipConstructionPanelModel {
   readonly pointedTargetId: string | null;
   readonly targets: readonly ConstructionTargetState[];
   readonly history: ConstructionHistoryView;
+  readonly blueprints: readonly ShipBlueprintCardView[];
+  // 設計図を記録できない理由。記録できるときは null。
+  readonly blueprintRecordReason: string | null;
   readonly canPlace: boolean;
   readonly canRemove: boolean;
 }
@@ -122,6 +156,7 @@ export function hiddenShipConstructionModel(): ShipConstructionPanelModel {
     capabilities: { thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0 }, preview: null,
     role: 'material', warning: null, pointedTargetId: null, targets: [],
     history: { names: [], position: 0, canUndo: false, canRedo: false },
+    blueprints: [], blueprintRecordReason: null,
     canPlace: false, canRemove: false,
   };
 }
