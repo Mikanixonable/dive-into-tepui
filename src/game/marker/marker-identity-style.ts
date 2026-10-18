@@ -28,7 +28,7 @@ const MARKER_IDENTITY_STYLE = `
 }
 
 #hud .mk { z-index: var(--z-mk-base); }
-#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight, #hud .mk-protein-site { z-index: var(--z-mk-node); }
+#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight, #hud .mk-protein-site, #hud .mk-construction-node { z-index: var(--z-mk-node); }
 #hud .mk-ammo { z-index: var(--z-mk-ammo); }
 #hud .mk-fuel { z-index: var(--z-mk-ammo); }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-ally { z-index: var(--z-mk-enemy); }
@@ -80,6 +80,13 @@ const MARKER_IDENTITY_STYLE = `
 .mk-protein-site { color: var(--text-dim); }
 .mk-protein-site .sym { font-size: calc(var(--glyph-base) * 0.25); }
 .mk-protein-site .lbl { font-size: var(--font-xxs); }
+
+/* 建造の接続ノード。置ける=成功色、置けない=エラー色。指しているノードはひと回り大きい。
+   有効・不適合を色で読ませる必要があるので、模式図の一括黒化へは入れない。 */
+.mk-construction-node { color: var(--color-success); }
+.mk-construction-node-invalid { color: var(--color-error); }
+.mk-construction-node .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-element)); }
+.mk-construction-node-pointed .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-element) * 1.5); }
 
 .mk-poi { color: var(--text-strong); }
 .mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-poi)); }
