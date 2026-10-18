@@ -18,13 +18,16 @@ import {
   axialPlacementFromTransform, inverseTransform, sideRollFromTransform,
   type ModuleOrientation,
 } from './ship-assembly-transform';
-import { serializeShipAssembly } from './ship-save';
+import { restoreShipAssembly, serializeShipAssembly } from './ship-save';
 import {
   hiddenShipConstructionModel,
+  type ConstructionCardDrag, type ConstructionCardDragEvent,
   type ConstructionConfirmationPort, type ConstructionDeniedRecord,
   type ConstructionHeld, type ConstructionHistoryView, type ConstructionOperationRecord,
   type ConstructionSymmetry, type ShipConstructionPanelModel,
 } from './ship-construction-types';
+import type { ShipBlueprint, ShipBlueprintShelf } from './ship-blueprint';
+import type { RunEventSink } from '../run-events';
 import { CommandCompletion } from '../command-completion';
 import type * as THREE from 'three/webgpu';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -45,7 +48,8 @@ interface ConstructionSession {
 }
 
 // 命令の種別。'restore' は取り消し系で、成功時に履歴位置を動かす。
-type ConstructionAction = 'place' | 'move' | 'remove' | 'reorient' | 'restore';
+// 'blueprint' は船体を変えない記録系で、成功時に履歴も操作記録も積まない。
+type ConstructionAction = 'place' | 'move' | 'remove' | 'reorient' | 'restore' | 'blueprint';
 
 interface PendingConstructionCommand {
   readonly session: ConstructionSession;
@@ -63,13 +67,27 @@ interface PendingConstructionCommand {
 }
 
 let nextConstructionModule = 1;
+let nextBlueprintSequence = 1;
 
 export interface ShipConstructionPanelPort {
   readonly element: { contains(target: Node): boolean };
   onSelectionChange: ((definitionId: string) => void) | null;
+  onBlueprintHold: ((blueprintId: string) => void) | null;
+  onCardDrag: ((event: ConstructionCardDragEvent) => void) | null;
+  onBlueprintRename: ((id: string, name: string) => void) | null;
+  onBlueprintDelete: ((id: string) => void) | null;
   onSlotChange: ((slotId: string) => void) | null;
   onPlace: (() => void) | null;
   onRemove: (() => void) | null;
+  onDuplicate: (() => void) | null;
+  onRelease: (() => void) | null;
+  onRotate: ((delta: 1 | -1) => void) | null;
+  onSwapEnds: (() => void) | null;
+  onCycleSymmetry: (() => void) | null;
+  onSaveBlueprint: ((name: string) => void) | null;
+  onUndo: (() => void) | null;
+  onRedo: (() => void) | null;
+  onJumpHistory: ((index: number) => void) | null;
   onFinish: (() => void) | null;
   onDiscard: (() => void) | null;
   sync(model: ShipConstructionPanelModel): void;
@@ -82,10 +100,14 @@ export class ShipConstruction implements OverlayHandle {
   private current: ConstructionSession | null = null;
   private pending: PendingConstructionCommand[] = [];
   private heldValue: ConstructionHeld | null = null;
+  // 手持ちが設計図の写しのとき、その設計図の id。
+  private heldBlueprintId: string | null = null;
   private selectedId: string | null = null;
   private orientation: ModuleOrientation = { roll: 0, face: 'back' };
   private symmetry: ConstructionSymmetry = 1;
   private pointedId: string | null = null;
+  // カタログのカードから持ち上げている最中のドラッグ(R5-4 の操作途中の状態)。
+  private cardDragValue: ConstructionCardDrag | null = null;
   private previousForceCurrent = false;
   private operationSequence = 0;
   private operation: ConstructionOperationRecord | null = null;
@@ -101,6 +123,8 @@ export class ShipConstruction implements OverlayHandle {
     private readonly displayWindow: DisplayWindowManager,
     private readonly notifier: Notifier,
     private readonly confirmation: ConstructionConfirmationPort,
+    private readonly blueprints: ShipBlueprintShelf,
+    private readonly events: RunEventSink,
     private readonly focusDock: ((ship: ModularShip) => void) | null = null,
   ) {
     this.ghost = new ShipGhostView(scene);
@@ -114,6 +138,16 @@ export class ShipConstruction implements OverlayHandle {
       }
       this.syncPanel();
     };
+    panel.onBlueprintHold = (blueprintId) => {
+      if (this.heldBlueprintId === blueprintId && this.heldValue !== null) {
+        this.release();
+      } else {
+        this.holdBlueprint(blueprintId);
+      }
+    };
+    panel.onCardDrag = (event) => this.noteCardDrag(event);
+    panel.onBlueprintRename = (id, name) => this.renameBlueprint(id, name);
+    panel.onBlueprintDelete = (id) => this.deleteBlueprint(id);
     panel.onSlotChange = (slotId) => {
       this.setPointedTarget(slotId);
       this.syncPanel();
@@ -127,6 +161,15 @@ export class ShipConstruction implements OverlayHandle {
       this.syncPanel();
     };
     panel.onRemove = () => this.removeSelected();
+    panel.onDuplicate = () => this.duplicateSelected();
+    panel.onRelease = () => { this.release(); this.select(null); };
+    panel.onRotate = (delta) => this.rotate(delta);
+    panel.onSwapEnds = () => this.swapEnds();
+    panel.onCycleSymmetry = () => this.cycleSymmetry();
+    panel.onSaveBlueprint = (name) => this.saveSelectionAsBlueprint(name);
+    panel.onUndo = () => this.undo();
+    panel.onRedo = () => this.redo();
+    panel.onJumpHistory = (index) => this.jumpToHistory(index);
     panel.onFinish = () => this.close();
     panel.onDiscard = () => this.revertAll();
   }
@@ -143,6 +186,13 @@ export class ShipConstruction implements OverlayHandle {
   public get pointedTargetId(): string | null { return this.pointedId; }
   public get lastOperation(): ConstructionOperationRecord | null { return this.operation; }
   public get lastDenied(): ConstructionDeniedRecord | null { return this.denied; }
+
+  // カタログのカードから持ち上げている最中のドラッグ。持ち上げている手持ちと
+  // クライアント座標、離した位置(押している間は null)を返す。
+  public get cardDrag(): ConstructionCardDrag | null { return this.cardDragValue; }
+
+  // ドラッグを閉じる。離した位置を読み終えた入力の解釈が呼ぶ。
+  public clearCardDrag(): void { this.cardDragValue = null; }
 
   // 船体全体の空いている取り付け先。
   public targets(): readonly ConstructionTargetInfo[] {
@@ -197,10 +247,12 @@ export class ShipConstruction implements OverlayHandle {
       history: new ConstructionHistory(serializeShipAssembly(ship.assembly)),
     };
     this.heldValue = null;
+    this.heldBlueprintId = null;
     this.selectedId = null;
     this.orientation = { roll: 0, face: 'back' };
     this.symmetry = 1;
     this.pointedId = null;
+    this.cardDragValue = null;
     this.trialCache = null;
     // 建造モードの入力と表示時刻の境界を開く。
     this.focusDock?.(ship);
@@ -218,8 +270,10 @@ export class ShipConstruction implements OverlayHandle {
     this.confirmation.close();
     this.current = null;
     this.heldValue = null;
+    this.heldBlueprintId = null;
     this.selectedId = null;
     this.pointedId = null;
+    this.cardDragValue = null;
     this.trialCache = null;
     this.overlayManager.close('ship-construction-mode');
     this.displayWindow.setForceCurrent(this.previousForceCurrent);
@@ -244,6 +298,7 @@ export class ShipConstruction implements OverlayHandle {
       };
     }
     this.heldValue = held;
+    this.heldBlueprintId = null;
     this.trialCache = null;
     this.syncPanel();
   }
@@ -251,6 +306,7 @@ export class ShipConstruction implements OverlayHandle {
   // 手に持ったものを手放す。
   public release(): void {
     this.heldValue = null;
+    this.heldBlueprintId = null;
     this.trialCache = null;
     this.syncPanel();
   }
@@ -443,6 +499,74 @@ export class ShipConstruction implements OverlayHandle {
     }
   }
 
+  // ---- 設計図 ----
+
+  // id の設計図の先端部を写しの手持ちにする。棚に無い id では何もしない。
+  public holdBlueprint(id: string): void {
+    const blueprint = this.blueprints.blueprints.find(entry => entry.id === id) ?? null;
+    if (blueprint === null) { this.deny('その設計図はありません'); return; }
+    try {
+      this.hold({ kind: 'copy', piece: restoreShipAssembly(blueprint.piece) });
+      this.heldBlueprintId = id;
+    } catch (error) {
+      this.deny(error instanceof Error ? error.message : 'その設計図は読み込めません');
+    }
+  }
+
+  // 選択中のモジュールの先端部を、名前付きで設計図として記録する命令を積む。
+  public saveSelectionAsBlueprint(name: string): void {
+    const session = this.current;
+    const moduleId = this.selectedId;
+    if (session === null) return;
+    if (moduleId === null) { this.deny('設計図にする部品を選んでください'); return; }
+    if (!this.blueprints.canRecord) { this.deny('記録先のセーブデータが無いため設計図を保存できません'); return; }
+    const trimmed = name.trim();
+    if (trimmed === '') { this.deny('設計図の名前を入力してください'); return; }
+    if (!this.pieceEditable(session, moduleId)) {
+      this.deny('接舷中の接続の先は、設計図にできません');
+      return;
+    }
+    this.submit(session, 'blueprint', '', [], false, null, () => {
+      // 命令の中で、適用時点の船体の写しから先端部を取り出して直列化する。
+      const piece = session.ship.assembly.clone().detachPiece(moduleId, session.anchorId);
+      const blueprint: ShipBlueprint = {
+        id: `blueprint-${Date.now()}-${nextBlueprintSequence++}`,
+        name: trimmed,
+        createdAtReal: Date.now(),
+        piece: serializeShipAssembly(piece),
+      };
+      this.events.record({ kind: 'blueprintRecorded', blueprint });
+    });
+  }
+
+  // id の設計図の名前を変える記録を積む。
+  public renameBlueprint(id: string, name: string): void {
+    const session = this.current;
+    if (session === null) return;
+    const trimmed = name.trim();
+    if (trimmed === '' || !this.blueprints.blueprints.some(entry => entry.id === id)) return;
+    this.submit(session, 'blueprint', '', [], false, null,
+      () => this.events.record({ kind: 'blueprintRenamed', id, name: trimmed }));
+  }
+
+  // id の設計図を消す記録を積む。確認を挟み、手に持っていれば手放す。
+  public deleteBlueprint(id: string): void {
+    const session = this.current;
+    if (session === null) return;
+    const blueprint = this.blueprints.blueprints.find(entry => entry.id === id) ?? null;
+    if (blueprint === null) return;
+    this.confirmation.request({
+      title: '設計図を削除',
+      message: `設計図「${blueprint.name}」を削除します。続けますか？`,
+      confirmLabel: '削除する', destructive: true,
+    }, (confirmed) => {
+      if (!confirmed) return;
+      this.submit(session, 'blueprint', '', [], false, null,
+        () => this.events.record({ kind: 'blueprintDeleted', id }));
+      if (this.heldBlueprintId === id) this.release();
+    });
+  }
+
   // ---- 履歴(適用待ちがある間は受け付けない) ----
 
   private revertTo(index: number): void {
@@ -482,6 +606,49 @@ export class ShipConstruction implements OverlayHandle {
 
   // 建造パネル内の操作かを判定する。
   public contains(target: Node): boolean { return this.panel.element.contains(target); }
+
+  // カタログのカードのドラッグ通知を操作途中の状態として持つ。start はそのカードを
+  // 手持ちにし、end は離した位置を記録する — 離した位置から取り付け先を決めるのは
+  // 入力の解釈の仕事で、ここでは状態を持つだけ。
+  private noteCardDrag(event: ConstructionCardDragEvent): void {
+    if (this.current === null) return;
+    const point = { x: event.clientX, y: event.clientY };
+    switch (event.phase) {
+      case 'start': {
+        let held: ConstructionHeld;
+        let blueprintId: string | null = null;
+        if (event.source.kind === 'module') {
+          held = { kind: 'catalog', definitionId: event.source.definitionId };
+        } else {
+          try {
+            held = { kind: 'copy', piece: this.blueprintPiece(event.source.blueprintId) };
+            blueprintId = event.source.blueprintId;
+          } catch {
+            return;
+          }
+        }
+        this.cardDragValue = { held, point, released: null };
+        this.hold(held);
+        this.heldBlueprintId = blueprintId;
+        return;
+      }
+      case 'move':
+        if (this.cardDragValue !== null) this.cardDragValue = { ...this.cardDragValue, point };
+        return;
+      case 'end':
+        if (this.cardDragValue !== null) this.cardDragValue = { ...this.cardDragValue, point, released: point };
+        return;
+      default:
+        return;
+    }
+  }
+
+  // id の設計図の先端部を復元する。棚に無い・読めないときは例外にする。
+  private blueprintPiece(id: string) {
+    const blueprint = this.blueprints.blueprints.find(entry => entry.id === id) ?? null;
+    if (blueprint === null) throw new Error(`unknown blueprint: ${id}`);
+    return restoreShipAssembly(blueprint.piece);
+  }
 
   // クリックは指している取り付け先への配置、取り付け先以外ではモジュールの選択、
   // 右クリックは手放す。候補ノードやドラッグの判定は後の作業で切り出す。
@@ -565,9 +732,22 @@ export class ShipConstruction implements OverlayHandle {
     this.ghost.dispose();
     this.guide.dispose();
     this.panel.onSelectionChange = null;
+    this.panel.onBlueprintHold = null;
+    this.panel.onCardDrag = null;
+    this.panel.onBlueprintRename = null;
+    this.panel.onBlueprintDelete = null;
     this.panel.onSlotChange = null;
     this.panel.onPlace = null;
     this.panel.onRemove = null;
+    this.panel.onDuplicate = null;
+    this.panel.onRelease = null;
+    this.panel.onRotate = null;
+    this.panel.onSwapEnds = null;
+    this.panel.onCycleSymmetry = null;
+    this.panel.onSaveBlueprint = null;
+    this.panel.onUndo = null;
+    this.panel.onRedo = null;
+    this.panel.onJumpHistory = null;
     this.panel.onFinish = null;
     this.panel.onDiscard = null;
   }
@@ -730,17 +910,20 @@ export class ShipConstruction implements OverlayHandle {
         this.denied = { reason, sequence: ++this.operationSequence };
         this.notifier.hint(reason, undefined, 'warn');
       } else if (this.current === command.session) {
-        if (command.action === 'restore' && command.historyIndex !== null) {
-          command.session.history.moveTo(command.historyIndex);
-        } else if (command.snapshot !== null) {
-          command.session.history.record(command.historyName, command.snapshot);
+        // 'blueprint' は船体を変えない記録系なので、履歴にも操作記録にも積まない。
+        if (command.action !== 'blueprint') {
+          if (command.action === 'restore' && command.historyIndex !== null) {
+            command.session.history.moveTo(command.historyIndex);
+          } else if (command.snapshot !== null) {
+            command.session.history.record(command.historyName, command.snapshot);
+          }
+          this.operation = {
+            kind: command.action === 'reorient' ? 'rotate'
+              : command.action === 'restore' ? 'restore' : command.action,
+            moduleIds: command.moduleIds,
+            sequence: ++this.operationSequence,
+          };
         }
-        this.operation = {
-          kind: command.action === 'reorient' ? 'rotate'
-            : command.action === 'restore' ? 'restore' : command.action,
-          moduleIds: command.moduleIds,
-          sequence: ++this.operationSequence,
-        };
         if (command.closeOnSuccess) this.close();
       }
     }
@@ -787,6 +970,7 @@ export class ShipConstruction implements OverlayHandle {
       held: held === null ? null : {
         name: this.heldName(session, held),
         catalogId: held.kind === 'catalog' ? held.definitionId : null,
+        blueprintId: this.heldBlueprintId,
         orientation: this.orientation, symmetry: this.symmetry,
       },
       selection: this.selectedId === null ? null : {
@@ -810,6 +994,16 @@ export class ShipConstruction implements OverlayHandle {
         };
       }),
       history,
+      blueprints: this.blueprints.blueprints.map(entry => ({
+        id: entry.id, name: entry.name,
+        moduleCount: entry.piece.modules.length,
+        mass: entry.piece.modules.reduce(
+          (sum, module) => sum + (SHIP_MODULE_CATALOG.get(module.definitionId)?.dryMass ?? 0), 0,
+        ),
+        held: this.heldBlueprintId === entry.id,
+      })),
+      blueprintRecordReason: this.blueprints.canRecord
+        ? null : '記録先のセーブデータが無いため、設計図を保存できません',
       canPlace: (held !== null || this.selectedId !== null)
         && target !== null && (trial?.valid ?? false),
       canRemove: this.selectedId !== null && this.pieceEditable(session, this.selectedId),

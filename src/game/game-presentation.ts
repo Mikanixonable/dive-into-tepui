@@ -41,6 +41,7 @@ import { ObjectWindowActions } from './pickable/object-window-actions';
 import { ModuleCommands } from './pickable/module-commands';
 import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
+import type { ShipBlueprintShelf } from './ship/ship-blueprint';
 import { ConstructionEntry, hasUsableConstructionDock } from './ship/construction-entry';
 import { FrameControls } from './hud/frame/frame-controls';
 import { HudPanelPresenter } from './hud/hud-panel-presenter';
@@ -139,6 +140,7 @@ export class GamePresentation {
     private readonly viewOptionsSettings: ViewOptionsSettings,
     private readonly themePalette: SettingValue<ThemePalette>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
   ) {
     const { scene, hud, markers, audioEngine, pauseMenu } = devices;
     const { commands, dynamicSystem, celestialSystem, controlSelection, viewer, activeStage } = game;
@@ -173,7 +175,7 @@ export class GamePresentation {
     this.confirmation = new ConfirmationOverlay(hud.overlayManager);
     this.shipConstruction = new ShipConstruction(
       scene.scene, commands, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
-      hud, hud.constructionConfirm,
+      hud, hud.constructionConfirm, blueprints, game.events,
       (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
     );
     this.constructionEntry = new ConstructionEntry(this.shipConstruction, hud);
