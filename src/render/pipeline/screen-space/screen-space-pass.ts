@@ -4,7 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, float, floor, fract, getViewPosition, ivec2, mrt, screenSize, screenUV, select, texture, textureLoad, uint,
+  Fn, If, float, floor, fract, getViewPosition, ivec2, mrt, screenSize, screenUV, texture, textureLoad, uint,
   uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuPassId, type GpuTimings } from '../../gpu-timings';
@@ -21,16 +21,15 @@ import { QReconstruction } from './q-reconstruction';
 import { ScreenSpaceInputPyramid, levelExtent } from './screen-space-input-pyramid';
 import { multiOutputMaterial, stageMaterial, type ScreenSpaceStage } from './screen-space-stage';
 import { SurfaceWeight } from './surface-weight';
-import { frameJitterForHistoryCap, type JitterSource, type ScanJitter } from './frame-jitter';
+import { frameJitterForHistoryCap, type ScanJitter } from './frame-jitter';
 import { TemporalAccumulation } from './temporal-accumulation';
-import { whiteNoiseAt } from './white-noise';
 import type { DiffuseCorrection } from './diffuse-correction';
 import type { PlanetLightSource } from '../lighting/planet-light-source';
 import type { GBufferPass } from '../gbuffer';
 import type { LightPrepass } from '../light-prepass';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type {
-  BoolNode, FloatNode, FloatUniform, IntNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node,
+  BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node,
 } from '../../tsl-types';
 
 // 描くものの方式。オフ / 遮蔽だけ / 遮蔽と照り返し。
@@ -74,14 +73,6 @@ function scanTierOf(scale: number, sliceCount: number, stepCount: number, bandCo
 // 来るものを実測で選んだ。
 const UPSAMPLE_ROTATION_SHIFT = 23 / 64;
 
-// 走査の画素 pixel の代表の、受け持つブロックの中の位置 [1/REPRESENTATIVE_STEPS ブロック] — draw が負なら全ての画素で
-// steps、0 以上なら番号 draw のホワイトノイズ(走査のずれが引く成分 0〜2 とは別の成分)から引いた位置。
-function representativeOf(pixel: Vec2Node, steps: THREE.Node<'ivec2'>, draw: IntNode): THREE.Node<'ivec2'> {
-  const random = ivec2(floor(
-    vec2(whiteNoiseAt(pixel, uint(draw), 3), whiteNoiseAt(pixel, uint(draw), 4)).mul(REPRESENTATIVE_STEPS)));
-  return select(draw.lessThan(0), steps, random);
-}
-
 // ブロックの中の位置 fraction(ブロックの幅に対する割合。0 以上 1 未満)を、代表の位置の刻みへ丸めた整数。
 function representativeStepOf(fraction: number): number {
   return Math.min(REPRESENTATIVE_STEPS - 1, Math.round(fraction * REPRESENTATIVE_STEPS));
@@ -123,8 +114,8 @@ interface BandCountStages {
 export class ScreenSpacePass {
   // フレーム番号に応じて履歴を写し、蓄積の段を持つ。
   private readonly temporal: TemporalAccumulation;
-  // beginFrame がフレームごとに動かす走査の入力。null なら走査の入力は set* で置いた値を保つ。
-  private jitterSources: readonly JitterSource[] | null = ['seed', 'scanRepresentative'];
+  // false なら明示された走査入力を保つ(render-lab の位相比較用)。
+  private automaticJitterEnabled = true;
   // 方式ごとの、段 0 の面の写しと源を書く描画命令。
   private readonly occlusionSurfaceStage: ScreenSpaceStage;
   private readonly indirectSurfaceStage: ScreenSpaceStage;
@@ -144,8 +135,6 @@ export class ScreenSpacePass {
   private readonly sliceCount = uniform(1, 'int');
   private readonly stepCount = uniform(1, 'int');
   private readonly bandScale: FloatUniform = uniform(1);
-  // 走査のずれをホワイトノイズから引くパスの番号(setWhiteNoisePass)。負ならブルーノイズから引く。
-  private readonly whiteNoisePass = uniform(-1, 'int');
   // 歩み・丸めのブルーノイズと拡大のブルーノイズを変える seed [タイルの幅] と、走査の全体の回転 [スライスの間隔]。
   // どちらも 0 以外の値は、同じ推定を独立な標本で繰り返すためのもの。
   private readonly seed: Vec2Uniform = uniform(new THREE.Vector2(0, 0));
@@ -153,16 +142,12 @@ export class ScreenSpacePass {
   // 描画バッファと走査の解像度 [px]。解像度の違う段どうしで、対応する画素を引くのに使う。
   private readonly fullSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
   private readonly scanSize: Vec2Uniform = uniform(new THREE.Vector2(1, 1));
-  // 走査の代表の選び方(setScanJitter)。representativeDraw が負なら全ての走査の画素の代表が、受け持つブロックの中の
-  // 位置 representativeSteps [1/REPRESENTATIVE_STEPS ブロック] にあり、0 以上なら走査の画素ごとにその番号のホワイトノイズで
-  // 位置を引く。
+  // 全ての走査の画素の代表が、受け持つブロックの中の位置 [1/REPRESENTATIVE_STEPS ブロック]。
   private readonly representativeSteps = uniform(
     new THREE.Vector2(REPRESENTATIVE_STEPS / 2, REPRESENTATIVE_STEPS / 2), 'ivec2');
-  private readonly representativeDraw = uniform(-1, 'int');
   // 走査の解像度で描いている画素の整数座標、その画素の代表のブロックの中の位置、その代表の G バッファの画素の中心の uv。
   private readonly scanPixel: Vec2Node = floor(screenUV.mul(screenSize));
-  private readonly representative: THREE.Node<'ivec2'> = representativeOf(
-    this.scanPixel, this.representativeSteps, this.representativeDraw);
+  private readonly representative: THREE.Node<'ivec2'> = this.representativeSteps;
   private readonly gbufferUV: Vec2Node = gbufferUVOf(this.scanPixel, this.representative, this.fullSize);
   // 走査の解像度の画素の、光の向きと面の向きを引くシェーディング入力。
   private readonly sample: ShadingSample;
@@ -210,7 +195,7 @@ export class ScreenSpacePass {
       vec2(this.representativeSteps).div(REPRESENTATIVE_STEPS), this.upsampleAlphaOne,
     );
     this.qReconstruction = new QReconstruction(weight, this.surfaces, this.fullSize, this.scanSize);
-    this.temporal = new TemporalAccumulation(renderer, gbuffer, output);
+    this.temporal = new TemporalAccumulation(renderer, gbuffer, output, this.blueNoise);
     this.occlusionSurfaceStage = this.surfaces.scanStageOf(null);
     // 源は補正を受ける近い面にだけ書く — 遠い面(天体の面など)は画面の大半を占めうるが、その源が効くのは打ち切りの縁の
     // 受け手だけで、全面に書くと源の段が倍ほど重くなる。
@@ -266,27 +251,27 @@ export class ScreenSpacePass {
     this.temporal.setHistoryCap(frames);
   }
 
+  public get historyCapFrames(): number { return this.temporal.historyCapFrames; }
+
   // 次の render から、最後の拡大で読む疎なタップの数を count にする。
   public setUpsampleTapCount(count: number): void {
     this.upsampleTapCount = count;
   }
 
-  // 番号 frame のフレームを始める。G バッファを描く前に毎フレーム呼ぶ。番号の続き方と変化量 change(0 以上。∞ は履歴を切る)
-  // で履歴の残し方を決め、動かす源があれば走査の入力をその番号の位相へ置く。
+  // 番号 frame のフレームを始める。G バッファを描く前に毎フレーム呼ぶ。変化量 change(0 以上。∞ は履歴を切る)で履歴を制御し、
+  // 本番の番号由来位相を置く。
   public beginFrame(frame: number, change: number): void {
     this.temporal.beginFrame(frame, change);
-    const jitter = frameJitterForHistoryCap(
-      frame, this.jitterSources, this.temporal.historyCapFrames, this.scanCellSize,
-    );
-    if (jitter === null) return;
+    if (!this.automaticJitterEnabled) return;
+    const jitter = frameJitterForHistoryCap(frame, this.temporal.historyCapFrames, this.scanCellSize);
     this.setSeed(jitter.seed[0], jitter.seed[1]);
     this.setScanRotation(jitter.scanRotation);
     this.setScanJitter(jitter.scanJitter);
   }
 
-  // 次の beginFrame から、フレームごとに動かす走査の入力を sources にする。null なら走査の入力は set* で置いた値を保つ。
-  public setJitterSources(sources: readonly JitterSource[] | null): void {
-    this.jitterSources = sources === null ? null : [...sources];
+  // render-lab が明示位相を保つため、自動位相の適用を切り替える。
+  public setAutomaticJitterEnabled(enabled: boolean): void {
+    this.automaticJitterEnabled = enabled;
   }
 
   // 次の render から段 tier で走査する。次に setScan を呼ぶまで保つ。
@@ -310,27 +295,14 @@ export class ScreenSpacePass {
     this.scanRotation.value = rotation;
   }
 
-  // 次の render から、走査の 3 つのずれを、pass が null ならブルーノイズ(本番)から、整数ならパスの番号 pass のホワイト
-  // ノイズ(画素・パス・成分ごとに独立)から引く。多くのパスを平均する道具のためのもの。
-  public setWhiteNoisePass(pass: number | null): void {
-    this.whiteNoisePass.value = pass ?? -1;
-  }
-
   // 次の render から、走査の代表を jitter(ScanJitter)で選ぶ。null はブロックの中心。格子のずらしの位置が 0 以上 1 未満の
   // 範囲を外れたら投げる。
   public setScanJitter(jitter: ScanJitter | null): void {
-    // 画素ごとに引くとき、拡大が読む全画素共通の代表の位置はブロックの中心にする。
-    if (jitter?.kind === 'perPixel') {
-      this.representativeDraw.value = jitter.draw;
-      this.representativeSteps.value.set(REPRESENTATIVE_STEPS / 2, REPRESENTATIVE_STEPS / 2);
-      return;
-    }
     // 格子のずらしは、全ての走査の画素に同じ位置を代表の位置の刻みへ丸めて置く。
     const [x, y] = jitter?.fraction ?? [0.5, 0.5];
     if (!(x >= 0 && x < 1 && y >= 0 && y < 1)) {
       throw new RangeError(`screen-space: the scan representative (${x}, ${y}) is outside its block`);
     }
-    this.representativeDraw.value = -1;
     this.representativeSteps.value.set(representativeStepOf(x), representativeStepOf(y));
   }
 
@@ -550,12 +522,10 @@ export class ScreenSpacePass {
     count: number, radiance: THREE.Texture | null, target: THREE.RenderTarget, format: BandFormat, directCorrection = false,
   ): ScreenSpaceStage {
     // 丸めのずれのタイルのずれ 27/64 は、歩みのずれ(½)と画素ごとに相関しないものを実測で選んだ。
-    const whiteAt = (component: number): FloatNode => whiteNoiseAt(this.scanPixel, uint(this.whiteNoisePass), component);
-    const useBlue = this.whiteNoisePass.lessThan(0);
     const noise = vec3(
-      select(useBlue, stratifiedRotation(this.scanPixel, this.scanRotation), whiteAt(0)),
-      select(useBlue, this.blueNoise.atScreenPixel(this.seed.add(0.5)), whiteAt(1)),
-      select(useBlue, this.blueNoise.atScreenPixel(this.seed.add(27 / 64)), whiteAt(2)),
+      stratifiedRotation(this.scanPixel, this.scanRotation),
+      this.blueNoise.atScreenPixel(this.seed.add(0.5)),
+      this.blueNoise.atScreenPixel(this.seed.add(27 / 64)),
     );
     const directional = this.directionalSlotCount;
     const planets: readonly PlanetIllumination[] = Array.from({ length: directional }, (_, slot) => ({

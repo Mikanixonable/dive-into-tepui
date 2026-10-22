@@ -25,7 +25,6 @@ const outputName = highQuarter10 ? 'preliminary-timings-high-quarter10.json'
   : additionalOnly ? 'preliminary-timings-additional.json' : 'preliminary-timings.json';
 const port = 8773;
 const debugPort = 9450;
-const variants = ['band', 'q', 'raw-quarter', 'raw-full'];
 const anchors = [
   { slices: 1, paths: 1, variants: ['raw-full'] },
   { slices: 2, paths: 1, variants: ['raw-full'] },
@@ -188,7 +187,6 @@ async function main() {
         const sparseTapCount = config.sparseTapCount ?? 8;
         const tier = tierOf(variant, config.slices);
         const seeds = Array.from({ length: config.paths }, (_, index) => seedOf(index));
-        await devTools.evaluate('window.renderLab.setScanWhiteNoisePass(null)');
         await devTools.evaluate(`window.renderLab.setScanSeed(${seeds[0][0]}, ${seeds[0][1]})`);
         await devTools.evaluate(
           `window.renderLab.setScreenSpaceExperiment(${JSON.stringify(variant)}, ${JSON.stringify(tier)}, ${sparseTapCount})`,
@@ -227,7 +225,6 @@ async function main() {
       }
     }
     const oneSliceTier = { scale: 1, sliceCount: 1, stepCount: 5, bandCount: 1, bandScale: 0.75 };
-    await devTools.evaluate('window.renderLab.setScanWhiteNoisePass(null)');
     await devTools.evaluate('window.renderLab.setScanSeed(0, 0)');
     await devTools.evaluate(
       `window.renderLab.setScreenSpaceExperiment("raw-full", ${JSON.stringify(oneSliceTier)}, 8)`,

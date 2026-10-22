@@ -15,10 +15,10 @@ import { BAND_COUNT, bandScaleOf, readBands, scaleOfBands, stdBandsOfCache, writ
 import { cachedMean, chunkComplete, chunkFile } from './screen-space-chain-cache.mjs';
 import { accumulateMaxDeviation, deviationStatsOf, rgbaOfScalar, roiRms } from './screen-space-chain-deviation.mjs';
 import { FIXED_FACTORS, TIER_FACTORS_FIELD } from './screen-space-chain-factors.mjs';
-import { ONE_PASS_CORRECTION_SEEDS, writeLandingIndex, writeRunIndex } from './screen-space-chain-index.mjs';
+import { ONE_PASS_CORRECTION_PHASES, writeLandingIndex, writeRunIndex } from './screen-space-chain-index.mjs';
 import { BASELINE_RUN, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_PIXELS as PIXELS, SCAN_WIDTH, signedPng, signedRgb } from './screen-space-chain-runs.mjs';
 import { CHUNK_PASSES, SCENES, sceneSignatureOf, sourceSignatureOf, tierOf } from './screen-space-chain-setup.mjs';
-import { HEIGHT, readFloats, seedOf, unpackedBand, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
+import { HEIGHT, readFloats, unpackedBand, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
 
 // 帯和の検査は、閾値に乗った画素の孤立した反転を通し、系統差(超過画素が多い・平均や最大が大きい)だけを止める。
 const INVARIANT_MAX_EXCEEDED_PIXEL_FRACTION = 0.001;
@@ -121,7 +121,7 @@ if (DRY_RUN) {
 }
 
 function cacheKeyOf(scene) {
-  const hash = createHash('sha256').update('ssd-8-15-chunk-cache-v2').update(sceneSourceSignatures.get(scene.name))
+  const hash = createHash('sha256').update('ssd-8-15-chunk-cache-production-jitter-v1').update(sceneSourceSignatures.get(scene.name))
     .update(`chunkPasses:${CHUNK_PASSES}`).update(JSON.stringify(TIER));
   if (OCCLUSION_ONLY || graphicsArg !== undefined) {
     hash.update(`lighting:${JSON.stringify({ occlusionOnly: OCCLUSION_ONLY, graphics: GRAPHICS })}`);
@@ -131,7 +131,7 @@ function cacheKeyOf(scene) {
 
 function captureConditions() {
   return { viewport: [WIDTH, HEIGHT], scanResolution: [SCAN_WIDTH, SCAN_HEIGHT], tier: TIER, fixedFactors: FIXED_FACTORS, passes: PASSES,
-    chunkPasses: CHUNK_PASSES, invariantPass: INVARIANT_PASS,
+    chunkPasses: CHUNK_PASSES, sampling: 'production-jitter-phase', invariantPhase: INVARIANT_PASS,
     noisePasses: { first: NOISE_FIRST_PASS, count: NOISE_PASSES }, baselineLabel: BASELINE_LABEL,
     lighting: { occlusionOnly: OCCLUSION_ONLY, graphics: GRAPHICS } };
 }
@@ -176,7 +176,7 @@ function rgbDifference(a, b) {
   return result;
 }
 
-// 帯和の不変条件を、白色雑音のパス INVARIANT_PASS で検査して差の地図を dir に書く。半精度の丸め幅を超える系統差があれば、
+// 帯和の不変条件を、本番ジッター位相 INVARIANT_PASS で検査して差の地図を dir に書く。半精度の丸め幅を超える系統差があれば、
 // 地図を INVARIANT_FAILURES に書いて投げる。label は遮蔽のみの検査を区別する地図の名前の添え字。
 async function checkedBandSumInvariant(lab, scene, dir, label) {
   const { stats, difference } = await captureBandSumInvariant(lab, TIER, INVARIANT_PASS);
@@ -198,7 +198,7 @@ const alphaMap = (merged) => Float32Array.from({ length: PIXELS }, (_, p) => mer
 async function mergedOf(lab, packed) {
   for (const [index, rgba] of packed.entries()) await lab.writePackedBands(index, rgba);
   await lab.setStageRange('chain');
-  await lab.render();
+  await lab.renderProductionCorrectionPhase(0);
   return { bandSum: await lab.readFloat('band-sum', 4), merged: await lab.readFloat('merged-0', 4) };
 }
 
@@ -298,7 +298,7 @@ async function fillCache(lab, scene, cache) {
       continue;
     }
     misses.push(first);
-    await lab.accumulateWhitePasses(first, CHUNK_PASSES);
+    await lab.accumulateProductionPasses(first, CHUNK_PASSES);
     const taken = await lab.takePassSums(needSquares);
     const writeSums = (kind, halves) => {
       for (let texture = 0; texture < 3; texture++) {
@@ -313,7 +313,7 @@ async function fillCache(lab, scene, cache) {
   return { hits, misses };
 }
 
-// 1パスの A の検査(帯和検査・基準・帯 RGB の変更に対する不変)。mergedOne は seed 0 の1パス。
+// 1パスの A の検査(帯和検査・基準・帯 RGB の変更に対する不変)。mergedOne は本番位相 0 の1パス。
 async function alphaChecks(lab, scene, dir, mergedOne, invariantMergedOne) {
   const alpha = alphaMap(mergedOne);
   const invariantAlpha = alphaMap(invariantMergedOne);
@@ -322,7 +322,7 @@ async function alphaChecks(lab, scene, dir, mergedOne, invariantMergedOne) {
     invariantAlphaMaximumDifference = Math.max(invariantAlphaMaximumDifference, Math.abs(invariantAlpha[p] - alpha[p]));
   }
   if (invariantAlphaMaximumDifference !== 0) {
-    throw new Error(`${scene.name}: A changed between invariant and display seeds: ${invariantAlphaMaximumDifference}`);
+    throw new Error(`${scene.name}: A changed between invariant and display phases: ${invariantAlphaMaximumDifference}`);
   }
   const baselineFile = path.join(RUN_LABEL === BASELINE_LABEL ? dir : path.join(RUNS, BASELINE_LABEL, scene.name), 'one-pass-a.f32');
   if (RUN_LABEL !== BASELINE_LABEL && !existsSync(baselineFile)) {
@@ -360,8 +360,7 @@ async function measureNoise(lab, convergedMerged) {
   let alphaVariation = 0;
   await lab.setStageRange('all');
   for (let pass = NOISE_FIRST_PASS; pass < NOISE_FIRST_PASS + NOISE_PASSES; pass++) {
-    await lab.setWhiteNoisePass(pass);
-    await lab.render();
+    await lab.renderProductionCorrectionPhase(pass);
     const one = await lab.readFloat('merged-0', 4);
     for (let i = 0; i < one.length; i += 4) {
       for (let c = 0; c < 3; c++) noiseSquares[i + c] += (one[i + c] - convergedMerged[i + c]) ** 2;
@@ -397,22 +396,19 @@ function checkedScales(scene, scales) {
   }
 }
 
-// 1パス(白色雑音なし、ブルーノイズ)の補正項を、seed 0 と ONE_PASS_CORRECTION_SEEDS の seed で撮って dir へ。
-// 終わると seed 0 で描き直した状態になる。
+// 本番位相 0 と ONE_PASS_CORRECTION_PHASES の位相の補正項を撮って dir へ。
+// 終わると本番位相 0 で描き直した状態になる。
 async function captureOnePassCorrections(lab, dir) {
-  await lab.setWhiteNoisePass(null);
   await lab.setTier(TIER);
   await lab.setStageRange('all');
   await lab.setUpsampleAlphaOne(false);
-  for (const k of [0, ...ONE_PASS_CORRECTION_SEEDS]) {
-    await lab.setSeed(seedOf(k));
-    await lab.render();
-    const name = k === 0 ? 'one-pass-correction.png' : `one-pass-correction-seed${k}.png`;
+  for (const k of [0, ...ONE_PASS_CORRECTION_PHASES]) {
+    await lab.renderProductionCorrectionPhase(k);
+    const name = k === 0 ? 'one-pass-correction.png' : `one-pass-correction-phase${k}.png`;
     writeFileSync(path.join(dir, name), await lab.signedCorrectionPng({ width: WIDTH, height: HEIGHT, rgba: await lab.readFloat('correction', 4) }));
     if (k === 0) writeFileSync(path.join(dir, 'one-pass-diffuse-clay.png'), await clayPng(lab));
   }
-  await lab.setSeed(seedOf(0));
-  await lab.render();
+  await lab.renderProductionCorrectionPhase(0);
 }
 
 // 収束した4帯の平均 mean から、収束平均・帯合計迂回の補正項とクレイを dir へ。
@@ -420,15 +416,15 @@ async function captureConvergedCorrections(lab, dir, mean, bandSum) {
   const correctionPng = async () => lab.signedCorrectionPng({ width: WIDTH, height: HEIGHT, rgba: await lab.readFloat('correction', 4) });
   await mergedOf(lab, mean);
   await lab.setUpsampleAlphaOne(true);
-  await lab.render();
+  await lab.renderProductionCorrectionPhase(0);
   writeFileSync(path.join(dir, `mean-${PASSES}-correction.png`), await correctionPng());
   writeFileSync(path.join(dir, `mean-${PASSES}-diffuse-clay.png`), await clayPng(lab));
   await lab.setTier({ ...TIER, bandCount: 1 });
-  await lab.render();
+  await lab.renderProductionCorrectionPhase(0);
   await lab.writePackedBands(0, bandSum);
   await lab.setStageRange('chain');
   await lab.setUpsampleAlphaOne(true);
-  await lab.render();
+  await lab.renderProductionCorrectionPhase(0);
   writeFileSync(path.join(dir, `bypass-mean-${PASSES}-correction.png`), await correctionPng());
   writeFileSync(path.join(dir, `bypass-mean-${PASSES}-diffuse-clay.png`), await clayPng(lab));
   await lab.setUpsampleAlphaOne(false);
@@ -450,9 +446,7 @@ async function captureScene(lab, scene, dir, cache) {
   await lab.setUpsampleAlphaOne(false);
   const sumInvariant = await checkedBandSumInvariant(lab, scene, dir, '');
   const invariantMergedOne = await lab.readFloat('merged-0', 4);
-  await lab.setWhiteNoisePass(null);
-  await lab.setSeed(seedOf(0));
-  await lab.render();
+  await lab.renderProductionCorrectionPhase(0);
   const bandOne = await lab.readFloat('band-sum', 4);
   const mergedOne = await lab.readFloat('merged-0', 4);
   const onePassBands = await readBands(lab);
@@ -471,14 +465,14 @@ async function captureScene(lab, scene, dir, cache) {
     rgbDifference(secondHalf.bandSum, secondHalf.merged));
 
   const scanImages = [
-    { id: 'one-pass-band-sum', label: '1パス・4帯合計 (seed 0)', values: bandOne },
-    { id: 'one-pass-merged', label: '1パス・合流結果 (seed 0)', values: mergedOne },
+    { id: 'one-pass-band-sum', label: '1パス・4帯合計 (本番位相 0)', values: bandOne },
+    { id: 'one-pass-merged', label: '1パス・合流結果 (本番位相 0)', values: mergedOne },
     { id: 'converged-band-sum', label: `${PASSES}パス・4帯合計`, values: full.bandSum },
     { id: 'converged-merged', label: `${PASSES}パス・合流結果`, values: full.merged },
   ];
   const displayScales = displayScalesOf(scene, scanImages, structure);
   const { noise, maxima, alphaVariation } = await measureNoise(lab, full.merged);
-  if (alphaVariation !== 0) throw new Error(`${scene.name}: A varied across one-pass seeds`);
+  if (alphaVariation !== 0) throw new Error(`${scene.name}: A varied across one-pass phases`);
   const maxDeviation = rgbaOfScalar(maxima);
   if (RUN_LABEL === BASELINE_LABEL) {
     displayScales.noise.scale ??= imageScale([noise], NOISE_DISPLAY_QUANTILE, true);
@@ -525,7 +519,7 @@ async function captureScene(lab, scene, dir, cache) {
     `structure-half-difference-${PASSES}.rgba.f32`, `band-sum-${PASSES}.rgba.f32`, `merged-${PASSES}.rgba.f32`,
     `noise-rms-${PASSES}.rgba.f32`, `max-deviation-${PASSES}.rgba.f32`, `structure-${PASSES}.png`,
     `structure-half-difference-${PASSES}.png`, `noise-rms-${PASSES}.png`, `max-deviation-${PASSES}.png`, 'rois.png',
-    'one-pass-correction.png', ...ONE_PASS_CORRECTION_SEEDS.map((seed) => `one-pass-correction-seed${seed}.png`),
+    'one-pass-correction.png', ...ONE_PASS_CORRECTION_PHASES.map((phase) => `one-pass-correction-phase${phase}.png`),
     'one-pass-diffuse-clay.png', `mean-${PASSES}-correction.png`, `mean-${PASSES}-diffuse-clay.png`,
     `bypass-mean-${PASSES}-correction.png`, `bypass-mean-${PASSES}-diffuse-clay.png`,
     ...scanImages.flatMap((image) => [image.f32, image.png]),
@@ -541,9 +535,9 @@ async function captureScene(lab, scene, dir, cache) {
       + (BASELINE_LABEL === BASELINE_RUN ? '' : ` --baseline=${BASELINE_LABEL}`)
       + (argumentOf('band-scale') === undefined ? '' : ` --band-scale=${bandScale}`),
     captureStartedAt: sceneStartedAt, captureWallTimeMs: performance.now() - sceneStarted,
-    conditions: captureConditions(), exposure, blueNoiseSeed: seedOf(0),
-    whiteNoise: { onePassInvariantPass: INVARIANT_PASS, convergedPassIndices: [0, PASSES - 1],
-      noisePassIndices: [NOISE_FIRST_PASS, NOISE_FIRST_PASS + NOISE_PASSES - 1] },
+    conditions: captureConditions(), exposure, productionPhase: 0,
+    productionJitter: { onePassInvariantPhase: INVARIANT_PASS, convergedPhaseIndices: [0, PASSES - 1],
+      noisePhaseIndices: [NOISE_FIRST_PASS, NOISE_FIRST_PASS + NOISE_PASSES - 1] },
     onePassBandSum: sumInvariant, occlusionOnlyBandSum: occlusionBandSum,
     onePassInvariantAlphaMaximumDifference: alphaResult.invariantAlphaMaximumDifference,
     onePassAlphaMaximumDifference: alphaResult.alphaMaximumDifference,
@@ -564,9 +558,7 @@ async function fillCacheOnly(lab, scene, cache) {
   await showWithLighting(lab, scene, OCCLUSION_ONLY ? 1 : 2);
   await lab.setUpsampleAlphaOne(false);
   await lab.setTier(TIER);
-  await lab.setWhiteNoisePass(null);
-  await lab.setSeed(seedOf(0));
-  await lab.render();
+  await lab.renderProductionCorrectionPhase(0);
   const { hits, misses } = await fillCache(lab, scene, cache);
   console.log(`${scene.name}: ${hits.length} cache hits, ${misses.length} misses`);
 }

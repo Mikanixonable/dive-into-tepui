@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { ivec2, vec2 } from 'three/tsl';
 import {
-  frameJitterAt, frameJitterForHistoryCap, type JitterSource,
+  frameJitterAt, frameJitterForHistoryCap, historyReadJitterAt, type JitterSource,
 } from '../../src/render/pipeline/screen-space/frame-jitter';
 import { REPRESENTATIVE_STEPS, gbufferTexelOf } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import { test } from '../harness';
@@ -27,13 +27,23 @@ function texelOf(
 
 // フレームごとのジッターの列と、走査の代表の写像の検査を登録する。
 export function register(): void {
-  test('frame jitter: 履歴の上限 1 は静止画の位相、上限が大きいと指定源、null は変更なし', () => {
-    for (const frame of [0, 1, 7]) {
-      assert.deepEqual(frameJitterForHistoryCap(frame, BOTH, 1, 4), frameJitterAt(frame, [], 4));
-      assert.deepEqual(frameJitterForHistoryCap(frame, BOTH, 8, 4), frameJitterAt(frame, BOTH, 4));
-      assert.equal(frameJitterForHistoryCap(frame, null, 8, 4), null);
+  test('frame jitter: 履歴の読み位置は番号だけで決まり、半画素の範囲に収まる', () => {
+    for (const frame of [0, 1, 7, 31, 1000]) {
+      const offset = historyReadJitterAt(frame);
+      assert.deepEqual(historyReadJitterAt(frame), offset);
+      for (const component of offset) assert.ok(component >= -0.5 && component < 0.5);
     }
-    assert.throws(() => frameJitterForHistoryCap(0, BOTH, 0, 4), RangeError);
+    assert.notDeepEqual(historyReadJitterAt(1), historyReadJitterAt(2));
+    for (const frame of [-1, 0.5, Number.NaN, Infinity]) {
+      assert.throws(() => historyReadJitterAt(frame), RangeError);
+    }
+  });
+  test('frame jitter: 履歴の上限 1 は静止画の位相、それ以外は本番位相', () => {
+    for (const frame of [0, 1, 7]) {
+      assert.deepEqual(frameJitterForHistoryCap(frame, 1, 4), frameJitterAt(frame, [], 4));
+      assert.deepEqual(frameJitterForHistoryCap(frame, 8, 4), frameJitterAt(frame, BOTH, 4));
+    }
+    assert.throws(() => frameJitterForHistoryCap(0, 0, 4), RangeError);
   });
 
   test('frame jitter: フレーム 0 は、どの入力を動かしても本番の静止画(seed (0, 0)・回転 0・代表はブロックの中心)に一致する', () => {

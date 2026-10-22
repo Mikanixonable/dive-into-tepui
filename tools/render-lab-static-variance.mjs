@@ -3,7 +3,7 @@
 // 模型(1 パスの分散 σ₁²/S、蓄積の後の時間方向の分散 σ_S²/(2s − 1)、隣り合う差の分散 2σ_S²/(s(2s − 1)))で割った列を含む表を
 // .render-lab-shots/<組の名前>/ へ書く(表は summary.md と標準出力)。
 // 先に .render-lab/ を組んでおくこと(webpack --config webpack.render-lab.config.js --mode production)。
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { SCENES, MOTION_GRAPHICS, evaluateLong, openLabPage, openMotionLab } from './render-lab-motion-scenes.mjs';
 import { table } from './screen-space-lab.mjs';
@@ -19,7 +19,7 @@ const DEFAULT_COMBOS = [
   { sliceCount: 2, historyCap: 64 }, { sliceCount: 4, historyCap: 32 }, { sliceCount: 8, historyCap: 16 },
 ];
 const DEFAULT_SCENES = ['cornell-box', 'bay-earth-open'];
-const USAGE = 'usage: node tools/render-lab-static-variance.mjs <set-name> [--scenes=name,...] [--combos=Sxs,...] [--frames=512] [--scale=value]';
+const USAGE = 'usage: node tools/render-lab-static-variance.mjs <set-name> [--scenes=name,...] [--combos=Sxs,...] [--frames=512] [--scale=value] [--graphics=file.json]';
 // 表で、平均の RMS に対する比も添える量(画素ごとの比の分位は比なので添えない)。
 const RMS_METRICS = [
   'passMeanRms', 'passStdRms', 'accumulatedStdRms', 'passDifferenceRms', 'accumulatedDifferenceRms', 'emaErrorRms', 'emaErrorMax',
@@ -49,7 +49,10 @@ function argumentsOf(argv) {
   const scale = option('scale') === undefined ? null : Number(option('scale'));
   if (scale !== null && (!Number.isFinite(scale) || scale < 0)) throw new Error('--scale must be finite and nonnegative');
   if (scale === null && !combos.some(isReference)) throw new Error('--scale is required when --combos omits 1x2');
-  return { setName, scenes, combos, frames, scale, outDir: path.join(root, '.render-lab-shots', setName) };
+  // MOTION_GRAPHICS に重ねる描画設定(プリセットの構成で量るとき)。組のスライス数と履歴の上限はさらにその上に重なる。
+  const graphicsFile = option('graphics');
+  const graphics = { ...MOTION_GRAPHICS, ...(graphicsFile === undefined ? {} : JSON.parse(readFileSync(graphicsFile, 'utf8'))) };
+  return { setName, scenes, combos, frames, scale, graphics, outDir: path.join(root, '.render-lab-shots', setName) };
 }
 
 // σ₁ を読む組か。
@@ -58,9 +61,10 @@ function isReference({ sliceCount, historyCap }) { return sliceCount === 1 && hi
 // 組の名前(Sxs)。ファイルの名前にも使う。
 function comboName({ sliceCount, historyCap }) { return `${sliceCount}x${historyCap}`; }
 
-// 開き直したページで場面 scene を組 combo の描画設定で置き、frames フレームを量る。pngScale は地図の倍率(null なら組の 1 パスの σ)。
-async function shoot(devTools, scene, combo, frames, pngScale) {
-  const graphics = { ...MOTION_GRAPHICS, screenSpaceSliceCount: combo.sliceCount, screenSpaceHistoryCap: combo.historyCap };
+// 開き直したページで場面 scene を描画設定 baseGraphics に組 combo を重ねて置き、frames フレームを量る。pngScale は地図の倍率
+// (null なら組の 1 パスの σ)。
+async function shoot(devTools, scene, baseGraphics, combo, frames, pngScale) {
+  const graphics = { ...baseGraphics, screenSpaceSliceCount: combo.sliceCount, screenSpaceHistoryCap: combo.historyCap };
   await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)}, ${JSON.stringify(scene.shot)}, ${JSON.stringify(graphics)})`);
   const summary = await evaluateLong(devTools, `window.renderLab.staticVariance(${combo.sliceCount}, ${combo.historyCap}, ${frames},
     ${JSON.stringify(pngScale)}).then((record) => {
@@ -139,7 +143,7 @@ function summaryMarkdown(records) {
 
 // 場面と組ごとに撮って記録を書き、場面ごとの表と全体の JSON を書く。
 async function main() {
-  const { setName, scenes, combos, frames, scale, outDir } = argumentsOf(process.argv.slice(2));
+  const { setName, scenes, combos, frames, scale, graphics, outDir } = argumentsOf(process.argv.slice(2));
   mkdirSync(outDir, { recursive: true });
   const { session, devTools, fatalEvents } = await openMotionLab({ port, debugPort, profilePrefix: 'tepui-static-variance-' });
   const records = [];
@@ -151,7 +155,7 @@ async function main() {
       for (const combo of ordered) {
         // 読み戻しの器が溜まらないよう、組ごとにページを開き直す。
         await openLabPage(session);
-        const record = await shoot(devTools, scene, combo, frames, pngScale);
+        const record = await shoot(devTools, scene, graphics, combo, frames, pngScale);
         pngScale ??= record.summary.pngScale;
         records.push(record);
         saveRecord(outDir, record);

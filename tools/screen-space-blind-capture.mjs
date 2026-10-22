@@ -43,7 +43,6 @@ export async function initStats(devTools) {
 
 // seeds の順にパスを描いた完成補正を描画先 'correction' へ置く。1 本ならふつうの 1 フレーム、2 本以上ならその平均。
 async function renderCompletedPaths(devTools, seeds) {
-  await devTools.evaluate('window.renderLab.setScanWhiteNoisePass(null)');
   if (seeds.length === 1) {
     const [x, y] = seeds[0];
     await devTools.evaluate(`window.renderLab.setScanSeed(${x}, ${y}); window.renderLab.render()`);
@@ -56,8 +55,8 @@ async function renderCompletedPaths(devTools, seeds) {
 }
 
 // 描画先 'correction' の完成補正を組 group として器へ積む。組 0・1 は写しを控える。
-async function accumulateGroup(devTools, group) {
-  await devTools.evaluate(`window.renderLab.readFloat('correction').then(({ rgba }) => {
+async function accumulateGroup(devTools, group, source = 'correction') {
+  await devTools.evaluate(`window.renderLab.readFloat(${JSON.stringify(source)}).then(({ rgba }) => {
     const s = window.__ssdBlind, n = s.sum.length, out = new Float32Array(n);
     for (let i = 0, j = 0; i < n; i += 3, j += 4) {
       for (let c = 0; c < 3; c++) {
@@ -98,6 +97,32 @@ export async function captureGroups(devTools, pathCount, label) {
     await accumulateGroup(devTools, group);
   }
   await finalizeStats(devTools);
+  return {
+    noise: 'blue-noise',
+    pathCount,
+    groupCount: GROUP_COUNT,
+    passIndices: null,
+  };
+}
+
+// 本番のフレームジッターを使う位相を1パスずつ読み、32フレームの統計を作る。
+export async function captureProductionPhases(devTools, label) {
+  await initStats(devTools);
+  try {
+    for (let frame = 0; frame < GROUP_COUNT; frame++) {
+      if (frame % 8 === 0) console.log(`${label}: frame ${frame}/${GROUP_COUNT}`);
+      await devTools.evaluate(`window.renderLab.renderProductionCorrectionPhase(${frame})`);
+      await accumulateGroup(devTools, frame, 'upsampled-correction');
+    }
+  } finally {
+    await devTools.evaluate('window.renderLab.renderProductionCorrectionPhase(null)');
+  }
+  await finalizeStats(devTools);
+  return {
+    provenance: 'production-frame-jitter',
+    frameIndices: Array.from({ length: GROUP_COUNT }, (_, frame) => frame),
+    groupCount: GROUP_COUNT,
+  };
 }
 
 // ページの式 source が指す補正を、表示 transform(CORRECTION_DISPLAY の値)で PNG の data URL にする。exposureFactor は

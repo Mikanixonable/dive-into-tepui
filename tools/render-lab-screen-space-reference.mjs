@@ -2,7 +2,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { encodeRgbPng } from './png.mjs';
-import { HEIGHT, seedOf, shotsDir, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
+import { HEIGHT, shotsDir, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
 
 const smoke = process.argv.includes('--smoke');
 const rawPassArgument = process.argv.find((arg) => arg.startsWith('--raw-passes='));
@@ -13,7 +13,7 @@ if (!Number.isInteger(RAW_PASSES) || RAW_PASSES < 2 || RAW_PASSES % 2 !== 0
   || !Number.isInteger(CHAIN_PASSES) || CHAIN_PASSES < 1) {
   throw new Error('--raw-passes must be a positive even integer and --chain-passes a positive integer');
 }
-const outDir = path.join(shotsDir, 'ssd-8-15-reference', smoke ? 'smoke' : '');
+const outDir = path.join(shotsDir, 'ssd-8-15-reference-production-phases', smoke ? 'smoke' : '');
 const scenes = [
   { id: 'bay-earth-open', caseName: 'bay', shot: 'bay-earth-open' },
   { id: 'cornell-box', caseName: 'cornell-box', shot: 'cornell-box' },
@@ -40,15 +40,6 @@ function averageImages(taken, count) {
 }
 
 function writeImage(file, buffer) { writeFileSync(file, buffer); }
-function writeRgbPng(file, display) {
-  const rgb = new Uint8Array(display.width * display.height * 3);
-  for (let pixel = 0; pixel < display.width * display.height; pixel++) {
-    for (let channel = 0; channel < 3; channel++) {
-      rgb[pixel * 3 + channel] = Math.round(Math.max(0, Math.min(1, display.rgba[pixel * 4 + channel])) * 255);
-    }
-  }
-  writeImage(file, encodeRgbPng(display.width, display.height, rgb));
-}
 
 function sameRgb(a, b) {
   for (let i = 0; i < a.length; i += 4) for (let c = 0; c < 3; c++) if (a[i + c] !== b[i + c]) return false;
@@ -66,14 +57,14 @@ await withLab(async (lab) => {
     mkdirSync(dir, { recursive: true });
     await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 2, set: 'tuning', key: scene.id });
     const exposure = await lab.exposureFactor();
-    const blueNoiseSeed = seedOf(0);
+    const productionPhase = 0;
 
-    // raw 1/4走査を512ずつ積み、半分ごとの差を残してから全1024パスを平均する。
+    // raw 1/4走査を本番ジッター位相で512ずつ積み、半分ごとの差を残してから全1024位相を平均する。
     await lab.setTier(rawTier);
-    await lab.render();
-    await lab.accumulateWhitePasses(0, HALF_PASSES);
+    await lab.renderProductionCorrectionPhase(productionPhase);
+    await lab.accumulateProductionPasses(0, HALF_PASSES);
     const firstHalf = await lab.takePassSums();
-    await lab.accumulateWhitePasses(HALF_PASSES, HALF_PASSES);
+    await lab.accumulateProductionPasses(HALF_PASSES, HALF_PASSES);
     const secondHalf = await lab.takePassSums();
     const combinedSums = [0, 1].map((parity) => firstHalf.sums[parity].map((values, texture) => (
       Float32Array.from(values, (value, index) => value + secondHalf.sums[parity][texture][index]))));
@@ -99,26 +90,23 @@ await withLab(async (lab) => {
     await lab.writePackedBands(0, rawPacked);
     await lab.setStageRange('chain');
     await lab.setUpsampleAlphaOne(true);
-    await lab.render();
+    await lab.renderProductionCorrectionPhase(productionPhase);
     const rawCorrection = await lab.readFloat('correction', 4);
     writeFloats(path.join(dir, 'raw1024-a1.rgba.f32'), rawCorrection);
     writeImage(path.join(dir, 'raw1024-a1.scene.png'), await lab.capturePng());
     writeImage(path.join(dir, 'raw1024-a1.signed.png'), await lab.signedCorrectionPng(
       { width: WIDTH, height: HEIGHT, rgba: rawCorrection }));
 
-    // 鎖の帯入力を独立32パス平均し、同じ入力で A=1 と実際のAを切り替える。
+    // 鎖の帯入力を本番ジッター位相の32位相で平均し、同じ入力で A=1 と実際のAを切り替える。
     await lab.setTier(chainTier);
     await lab.setStageRange('all');
-    await lab.render();
-    await lab.accumulateWhitePasses(0, CHAIN_PASSES);
+    await lab.renderProductionCorrectionPhase(productionPhase);
+    await lab.accumulateProductionPasses(0, CHAIN_PASSES);
     const chainTaken = await lab.takePassSums();
     const chainMean = averageImages(chainTaken, CHAIN_PASSES);
-    const firstSeed = seedOf(0);
     await lab.setStageRange('all');
-    await lab.setWhiteNoisePass(null);
-    await lab.setSeed(firstSeed);
     await lab.setUpsampleAlphaOne(false);
-    await lab.render();
+    await lab.renderProductionCorrectionPhase(0);
     const onePassCorrection = await lab.readFloat('correction', 4);
     writeFloats(path.join(dir, 'chain1-actual-a.rgba.f32'), onePassCorrection);
     writeImage(path.join(dir, 'chain1-actual-a.scene.png'), await lab.capturePng());
@@ -131,7 +119,7 @@ await withLab(async (lab) => {
     }
     await lab.setStageRange('chain');
     await lab.setUpsampleAlphaOne(true);
-    await lab.render();
+    await lab.renderProductionCorrectionPhase(productionPhase);
     const chainA1 = await lab.readFloat('correction', 4);
     const mergeA1 = await lab.readFloat('merged-0', 4);
     writeFloats(path.join(dir, 'chain32-a1.rgba.f32'), chainA1);
@@ -151,7 +139,7 @@ await withLab(async (lab) => {
       { width: WIDTH, height: HEIGHT, rgba: chainA1 }));
 
     await lab.setUpsampleAlphaOne(false);
-    await lab.render();
+    await lab.renderProductionCorrectionPhase(productionPhase);
     const chainActualA = await lab.readFloat('correction', 4);
     const mergeActualA = await lab.readFloat('merged-0', 4);
     if (!sameRgb(mergeA1, mergeActualA)) throw new Error(`${scene.id}: A toggle changed merged RGB`);
@@ -174,8 +162,8 @@ await withLab(async (lab) => {
     records.push({
       scene: scene.id, caseName: scene.caseName, shot: scene.shot,
       viewport: [WIDTH, HEIGHT], scanResolution: [SCAN_WIDTH, SCAN_HEIGHT], scanTier: rawTier, chainTier,
-      rawPasses: RAW_PASSES, rawHalfPasses: HALF_PASSES, chainAveragePasses: CHAIN_PASSES,
-      seeds: 'seeds.json', exposureFactor: exposure,
+      rawProductionPhases: RAW_PASSES, rawHalfProductionPhases: HALF_PASSES, chainAverageProductionPhases: CHAIN_PASSES,
+      phaseIndices: 'phases.json', exposureFactor: exposure,
       alphaTogglePreservedMergedRgb: true,
       outputs: [
         'raw1024-a1.scene.png', 'chain1-actual-a.scene.png', 'chain32-a1.scene.png', 'chain32-actual-a.scene.png',
@@ -185,7 +173,7 @@ await withLab(async (lab) => {
         'chain32-level-2-packed-0.rgba.f32', 'chain32-level-3-packed-0.rgba.f32',
         'chain32-merged-0-a1.rgba.f32', 'chain32-merged-0-actual-a.rgba.f32',
       ],
-      blueNoiseSeed,
+      productionPhase,
     });
     console.log(`${scene.id}: completed (${RAW_PASSES} raw, ${CHAIN_PASSES} chain)`);
   } finally {
@@ -228,10 +216,10 @@ for (const record of records) {
     mean[i + 3] = 1;
   }
   writeFloats(path.join(dir, 'raw1024-scan-average-a1.rgba.f32'), mean);
-  writeFileSync(path.join(dir, 'seeds.json'), JSON.stringify({
-    rawWhiteNoisePassIndices: Array.from({ length: RAW_PASSES }, (_, index) => index),
-    chainWhiteNoisePassIndices: Array.from({ length: CHAIN_PASSES }, (_, index) => index),
-    firstBlueNoiseSeed: record.blueNoiseSeed,
+  writeFileSync(path.join(dir, 'phases.json'), JSON.stringify({
+    rawProductionPhaseIndices: Array.from({ length: RAW_PASSES }, (_, index) => index),
+    chainProductionPhaseIndices: Array.from({ length: CHAIN_PASSES }, (_, index) => index),
+    firstProductionPhase: record.productionPhase,
   }, null, 2));
 }
 const differenceScale = maximumAbsoluteRgb(differenceImages);

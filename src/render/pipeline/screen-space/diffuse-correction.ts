@@ -1,6 +1,6 @@
 // 近傍の遮蔽と照り返しを、受け手へ届く符号付き拡散照度の差分として渡す。
 import * as THREE from 'three/webgpu';
-import { texture } from 'three/tsl';
+import { floor, ivec2, screenSize, texture } from 'three/tsl';
 import { levelTextureFormats, type BandLayout } from './band-pyramid';
 import type { ShadingSample } from '../lighting/shading-sample';
 import type { Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
@@ -60,6 +60,14 @@ export class DiffuseCorrection {
   public readonly upsampledTarget = createTarget(
     [{ type: THREE.HalfFloatType, format: THREE.RGBAFormat }], 'upsampledDiffuseCorrection');
 
+  public constructor() {
+    // 補正履歴だけを双線形で読めるようにする。深度と法線は面の判定なので最寄りのまま。
+    for (const target of this.temporalTargets) {
+      target.textures[0]!.minFilter = THREE.LinearFilter;
+      target.textures[0]!.magFilter = THREE.LinearFilter;
+    }
+  }
+
   public get target(): THREE.RenderTarget { return this.temporalTargets[this.targetIndex]; }
   public get texture(): THREE.Texture { return this.target.texture; }
 
@@ -73,7 +81,9 @@ export class DiffuseCorrection {
   }
 
   // 現在の蓄積出力を UV から読む。
-  public valueAtUv(uv: Vec2Node): Vec4Node { return this.targetSampler.sample(uv) as Vec4Node; }
+  public valueAtUv(uv: Vec2Node): Vec4Node {
+    return this.targetSampler.load(ivec2(floor(uv.mul(screenSize)))) as Vec4Node;
+  }
 
   // 段 level(0..layout.length − 1)の描画先。段 0 は走査の出力。
   public bandTarget(layout: BandLayout, level: number): THREE.RenderTarget {

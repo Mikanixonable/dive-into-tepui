@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { metricsOf, sceneDirOf } from './screen-space-chain-runs.mjs';
 import { BAND_COUNT } from './screen-space-chain-bands.mjs';
-import { ONE_PASS_CORRECTION_SEEDS } from './screen-space-chain-index.mjs';
+import { ONE_PASS_CORRECTION_PHASES, ONE_PASS_CORRECTION_SEEDS } from './screen-space-chain-index.mjs';
 
 export const SCAN = 'scan';
 export const FULL = 'full';
@@ -35,6 +35,8 @@ export const KINDS = [
   plain('band-sum-invariant', '誤差の地図', '帯和の不変条件の差', SCAN, (passes, zoom, metrics) => metrics.onePassBandSum?.differenceMap),
   plain('band-sum-invariant-occlusion', '誤差の地図', '同・遮蔽のみ', SCAN, (passes, zoom, metrics) => metrics.occlusionOnlyBandSum?.differenceMap),
   plain('one-pass-correction', '補正項', '1パス', FULL, () => 'one-pass-correction.png'),
+  ...ONE_PASS_CORRECTION_PHASES.map((phase) => plain(`one-pass-correction-phase${phase}`, '???', `1?? (???? ${phase})`, FULL,
+    () => `one-pass-correction-phase${phase}.png`)),
   ...ONE_PASS_CORRECTION_SEEDS.map((seed) => plain(`one-pass-correction-seed${seed}`, '補正項', `1パス (seed ${seed})`, FULL,
     () => `one-pass-correction-seed${seed}.png`)),
   plain('mean-correction', '補正項', '収束平均', FULL, (passes) => `mean-${passes}-correction.png`),

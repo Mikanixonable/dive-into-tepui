@@ -1,10 +1,6 @@
 // 静止した場面で、近傍拡散補正の 1 パスと蓄積の後の時間方向の揺れを量る道具。番号を本番のジッターの列で進めながら描き、
 // 画素ごとの時間平均・時間方向の標準偏差・隣り合うフレームの差と、1 パスから積んだ理想の指数移動平均との差を要約と PNG で返す。
 import type { FloatImage, LabView } from './lab';
-import type { JitterSource } from '../../src/render/pipeline/screen-space/frame-jitter';
-
-// 番号由来ジッターに使わせる源 — 本番と同じ。
-const JITTER_SOURCES: readonly JitterSource[] = ['seed', 'scanRepresentative'];
 // 画素ごとの比を数える下限(1 パスの標準偏差の RMS に対する比)。揺れの無い画素の比を数えない。
 const RATIO_STD_FLOOR = 1e-3;
 // 標準偏差の地図の表示値を、1 パスの標準偏差の RMS の何倍で 1 にするかの逆数。
@@ -97,47 +93,52 @@ export class StaticVariance {
     const startedAt = performance.now();
     // 読み込み途中の絵を履歴へ入れないよう落ち着かせてから、本番の源で番号を進める。範囲の外の上限が黙って既定へ戻っていないか確かめる。
     await this.view.captureSettled(`static variance ${sliceCount}x${historyCap} before accumulation`);
-    this.view.setJitterSources(JITTER_SOURCES);
-    if (this.view.historyCapFrames !== historyCap) {
-      throw new Error(`render-lab: requested history cap ${historyCap}, got ${this.view.historyCapFrames}`);
-    }
-    // 面のある画素は深度で決める。
-    const depth = await this.view.readFloat('depth');
-    const { width, height } = depth;
-    const mask = Uint8Array.from({ length: width * height }, (_, p) => (depth.rgba[4 * p]! > 0 ? 1 : 0));
-    const surfaceCount = mask.reduce((sum, value) => sum + value, 0);
-    if (surfaceCount === 0) throw new Error('render-lab: static variance found no surface pixels');
+    const previousAutomaticJitter = this.view.automaticJitterIsEnabled;
+    this.view.setAutomaticJitterEnabled(true);
+    try {
+      if (this.view.historyCapFrames !== historyCap) {
+        throw new Error(`render-lab: requested history cap ${historyCap}, got ${this.view.historyCapFrames}`);
+      }
+      // 面のある画素は深度で決める。
+      const depth = await this.view.readFloat('depth');
+      const { width, height } = depth;
+      const mask = Uint8Array.from({ length: width * height }, (_, p) => (depth.rgba[4 * p]! > 0 ? 1 : 0));
+      const surfaceCount = mask.reduce((sum, value) => sum + value, 0);
+      if (surfaceCount === 0) throw new Error('render-lab: static variance found no surface pixels');
 
-    const moments = await this.accumulate(historyCap, frames, mask, width * height * 4);
-    const statistics = statisticsOf(moments, frames);
-    const exposureScale = this.view.exposureFactor / Math.PI;
-    const passStdRms = maskedRms(image(statistics.passStd, width, height), mask, exposureScale);
-    const scale = pngScale ?? PNG_STD_GAIN / passStdRms;
-    // 地図の表示は符号付きの補正の表示を通るので、q ではなく ΔE の標準偏差へ倍率を掛ける。
-    const stdPng = (std: Float32Array): Promise<string> => this.view.signedCorrectionPng(
-      maskedImage(Float32Array.from(std, (value) => value * scale / Math.PI), width, height, mask));
-    const rms = (values: Float32Array): number => maskedRms(image(values, width, height), mask, exposureScale);
-    return {
-      summary: {
-        surfaceCount,
-        historyCap: this.view.historyCapFrames,
-        sliceCount,
-        frames,
-        meanRms: rms(statistics.accumulatedMean),
-        passMeanRms: rms(statistics.passMean),
-        passStdRms,
-        accumulatedStdRms: rms(statistics.accumulatedStd),
-        passDifferenceRms: rms(statistics.passDifferenceRms),
-        accumulatedDifferenceRms: rms(statistics.accumulatedDifferenceRms),
-        ...ratioPercentilesOf(statistics, mask, width, height),
-        emaErrorRms: rms(statistics.emaErrorRms),
-        emaErrorMax: moments.emaErrorMax * exposureScale,
-        pngScale: scale,
-        elapsedMs: performance.now() - startedAt,
-      },
-      accumulatedStdPng: await stdPng(statistics.accumulatedStd),
-      passStdPng: await stdPng(statistics.passStd),
-    };
+      const moments = await this.accumulate(historyCap, frames, mask, width * height * 4);
+      const statistics = statisticsOf(moments, frames);
+      const exposureScale = this.view.exposureFactor / Math.PI;
+      const passStdRms = maskedRms(image(statistics.passStd, width, height), mask, exposureScale);
+      const scale = pngScale ?? PNG_STD_GAIN / passStdRms;
+      // 地図の表示は符号付きの補正の表示を通るので、q ではなく ΔE の標準偏差へ倍率を掛ける。
+      const stdPng = (std: Float32Array): Promise<string> => this.view.signedCorrectionPng(
+        maskedImage(Float32Array.from(std, (value) => value * scale / Math.PI), width, height, mask));
+      const rms = (values: Float32Array): number => maskedRms(image(values, width, height), mask, exposureScale);
+      return {
+        summary: {
+          surfaceCount,
+          historyCap: this.view.historyCapFrames,
+          sliceCount,
+          frames,
+          meanRms: rms(statistics.accumulatedMean),
+          passMeanRms: rms(statistics.passMean),
+          passStdRms,
+          accumulatedStdRms: rms(statistics.accumulatedStd),
+          passDifferenceRms: rms(statistics.passDifferenceRms),
+          accumulatedDifferenceRms: rms(statistics.accumulatedDifferenceRms),
+          ...ratioPercentilesOf(statistics, mask, width, height),
+          emaErrorRms: rms(statistics.emaErrorRms),
+          emaErrorMax: moments.emaErrorMax * exposureScale,
+          pngScale: scale,
+          elapsedMs: performance.now() - startedAt,
+        },
+        accumulatedStdPng: await stdPng(statistics.accumulatedStd),
+        passStdPng: await stdPng(statistics.passStd),
+      };
+    } finally {
+      this.view.setAutomaticJitterEnabled(previousAutomaticJitter);
+    }
   }
 
   // 番号 0〜3·historyCap + frames − 1 を描き、後ろの frames フレームの蓄積の後('correction')と 1 パス('upsampled-correction')を

@@ -3,12 +3,10 @@
 
 // フレームごとに動かせる走査の入力。seed は走査の全体の回転とブルーノイズのずれ、scanRepresentative は走査の代表の選び方。
 export type JitterSource = 'seed' | 'scanRepresentative';
+const PRODUCTION_JITTER_SOURCES: readonly JitterSource[] = ['seed', 'scanRepresentative'];
 
-// 走査の代表の選び方。grid は全ての走査の画素の代表を、受け持つブロックの中の同じ位置 fraction(走査の画素の幅に対する
-// 割合。0 以上 1 未満)に置く。perPixel は走査の画素ごとに、番号 draw から引いた乱数の位置に置く。
-export type ScanJitter =
-  | { readonly kind: 'grid'; readonly fraction: readonly [number, number] }
-  | { readonly kind: 'perPixel'; readonly draw: number };
+// 走査の代表の選び方。全ての走査の画素の代表を、受け持つブロックの中の同じ位置 fraction(割合。0 以上 1 未満)に置く。
+export type ScanJitter = { readonly kind: 'grid'; readonly fraction: readonly [number, number] };
 
 // 1 フレームの走査の入力。seed はブルーノイズのずれ [タイルの幅]、scanRotation は走査の全体の回転 [スライスの間隔]
 // (0 以上 1 未満)、scanJitter は走査の代表の選び方(null はブロックの中心)。
@@ -28,6 +26,14 @@ const ROTATION_ALPHA = (Math.sqrt(5) - 1) / 2;
 
 // 2×2 の Bayer 行列 [[0, 2], [3, 1]] の、番号ごとの升の座標 (x, y)。
 const BAYER_2_CELLS = [[0, 0], [1, 1], [1, 0], [0, 1]] as const;
+
+// 履歴色を読む位置のずれ [描画バッファの画素]。R2 列を画素中心のまわりへ写し、同じ番号の描き直しでも同じ位置を読む。
+export function historyReadJitterAt(frame: number): readonly [number, number] {
+  if (!Number.isInteger(frame) || frame < 0) {
+    throw new RangeError(`history read jitter: frame ${frame} is not a non-negative integer`);
+  }
+  return [fract((frame + 1) * SEED_ALPHA[0]) - 0.5, fract((frame + 1) * SEED_ALPHA[1]) - 0.5];
+}
 
 // フレーム frame(0 以上の整数)で動かす走査の入力。sources に含む入力をその番号の位相に置き、含まない入力は本番の静止画の値
 // (seed (0, 0)・回転 0・代表はブロックの中心)にする。cellSize は走査の画素の幅 [描画バッファの画素](2 の冪)で、代表は cellSize²
@@ -50,16 +56,12 @@ export function frameJitterAt(frame: number, sources: readonly JitterSource[], c
   return { seed, scanRotation, scanJitter };
 }
 
-// フレーム frame に置く走査の入力。源 sources が null なら置かない(null)、履歴の上限 historyCap(1 以上の整数)が 1 なら本番の
-// 静止画の値、それ以外は sources をその番号の位相で動かした値。
-export function frameJitterForHistoryCap(
-  frame: number, sources: readonly JitterSource[] | null, historyCap: number, cellSize: number,
-): FrameJitter | null {
-  if (sources === null) return null;
+// フレーム frame に置く本番の走査入力。履歴の上限 historyCap(1 以上の整数)が 1 なら静止画の位相、それ以外は本番の位相。
+export function frameJitterForHistoryCap(frame: number, historyCap: number, cellSize: number): FrameJitter {
   if (!Number.isInteger(historyCap) || historyCap < 1) {
     throw new RangeError(`frame jitter: invalid history cap ${historyCap}`);
   }
-  return frameJitterAt(frame, historyCap > 1 ? sources : [], cellSize);
+  return frameJitterAt(frame, historyCap > 1 ? PRODUCTION_JITTER_SOURCES : [], cellSize);
 }
 
 // 一辺 cellSize のブロックの中の位置を散らばる順に巡ったときの、index 番目の位置(ブロックの幅に対する割合)。index 0 は

@@ -5,7 +5,6 @@ import { SCENE_CHANGE_WEIGHTS, type SceneChangeWeights } from '../../src/render/
 import { buildSlider } from '../lab-controls';
 import { cameraShiftOf } from './motion-sequence';
 import { SCENE_CHANGE_OFF, type LabView } from './lab';
-import type { JitterSource } from '../../src/render/pipeline/screen-space/frame-jitter';
 
 // カメラの往復の片側の幅 [描画バッファの画素]。
 const CAMERA_SWING_PX = 120;
@@ -22,17 +21,8 @@ const MAX_CHANGE = 16;
 
 type CameraMotion = 'still' | 'translate' | 'rotate' | 'orbit';
 type MovingLight = 'none' | 'sun' | 'earth';
-type JitterChoice = 'none' | 'seed' | 'scanRepresentative' | 'production';
 type SceneChangeChoice = 'off' | 'production' | 'custom';
 
-// ジッターの選択ごとの、番号由来ジッターに使わせる源。
-const JITTER_SOURCES: Readonly<Record<JitterChoice, readonly JitterSource[]>> = {
-  none: [], seed: ['seed'], scanRepresentative: ['scanRepresentative'], production: ['seed', 'scanRepresentative'],
-};
-// 選択欄の選択肢と見出し。
-const JITTER_CHOICES: readonly (readonly [JitterChoice, string])[] = [
-  ['none', 'なし'], ['seed', 'seed'], ['scanRepresentative', '代表'], ['production', '本番'],
-];
 const CAMERA_MOTIONS: readonly (readonly [CameraMotion, string])[] = [
   ['still', '静止'], ['translate', '並進'], ['rotate', '回転'], ['orbit', '周回'],
 ];
@@ -79,8 +69,6 @@ export class LabPlayback {
   // 推定への重みの選択と、つまみで編集する重み。
   private sceneChangeChoice: SceneChangeChoice = 'off';
   private sceneChangeWeights: SceneChangeWeights = { ...SCENE_CHANGE_WEIGHTS };
-  // 番号に応じて動かす走査入力。
-  private jitterChoice: JitterChoice = 'production';
   // 直前に番号を進めた時刻 [ms]。
   private lastFrameAtMs: number | null = null;
   // 番号を進めた間隔 [ms/フレーム]。
@@ -112,11 +100,7 @@ export class LabPlayback {
     status.append(statusName, this.statusOutput);
     transportRow.append(this.playButton.element, this.stepButton.element, restartButton.element, status);
 
-    // 時間方向の選択肢を組む。
-    const jitter = new SegmentedControl<JitterChoice>('ジッター', JITTER_CHOICES, (choice) => {
-      jitter.setSelected(choice);
-      this.jitterChoice = choice;
-    });
+    // 時間方向の動き方を組む。
     const camera = new SegmentedControl<CameraMotion>('カメラの動き', CAMERA_MOTIONS, (motion) => {
       camera.setSelected(motion);
       this.cameraMotion = motion;
@@ -138,10 +122,9 @@ export class LabPlayback {
       this.restart();
     });
     document.getElementById(settingsRowId)!.append(
-      jitter.element, camera.element, cameraSpeed.element, light.element, lightSpeed.element,
+      camera.element, cameraSpeed.element, light.element, lightSpeed.element,
     );
     // 初期値を選択表示へ反映する。
-    jitter.setSelected(this.jitterChoice);
     camera.setSelected(this.cameraMotion);
     cameraSpeed.setSelected(this.cameraSpeed);
     light.setSelected(this.movingLight);
@@ -207,6 +190,7 @@ export class LabPlayback {
     this.failure = null;
     this.lastFrameAtMs = null;
     this.frameIntervalMs = null;
+    this.view.setAutomaticJitterEnabled(true);
     this.setMotionAt(0);
     this.view.setFrame(0, Number.POSITIVE_INFINITY);
     this.refreshStatus();
@@ -238,7 +222,7 @@ export class LabPlayback {
     this.lastFrameAtMs = now;
     // 番号に対応する動きと走査入力を置いてから描く。
     this.setMotionAt(frame);
-    this.view.setJitterSources(JITTER_SOURCES[this.jitterChoice]);
+    this.view.setAutomaticJitterEnabled(true);
     this.view.setFrame(frame, this.change);
     this.refreshStatus();
   }

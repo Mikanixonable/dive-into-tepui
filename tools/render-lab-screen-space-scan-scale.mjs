@@ -102,7 +102,6 @@ function momentsOf(slots) {
 async function captureScale(lab, entry, { tag, scale, bandCount }, outDir, exposureOf) {
   await lab.show(entry);
   await lab.setTier({ ...tierOf(BAND_SCALE), scale, bandCount });
-  await lab.setWhiteNoisePass(null);
   await lab.setStageRange('all');
   await lab.setUpsampleAlphaOne(false);
   await lab.setSeed(seedOf(0));
@@ -291,7 +290,8 @@ function writeCombined(all) {
   writeFileSync(path.join(rootDir, 'summary.md'), text);
   writeFileSync(path.join(rootDir, 'summary.json'), JSON.stringify({
     commit: headHash(), reference: all[0].meta === null ? null : referenceName, passes: PASSES,
-    scenes: Object.fromEntries(all.map(({ scene, component, toQ, ...rest }) => [scene.name, rest])),
+    scenes: Object.fromEntries(all.map((item) => [item.scene.name, Object.fromEntries(
+      Object.entries(item).filter(([key]) => key !== 'scene' && key !== 'component' && key !== 'toQ'))])),
   }, null, 1));
   const hasB = all.every(({ meta }) => meta !== null);
   const scaleButtons = [...VARIANTS.map((s) => [s.tag, s.label]), ...(hasB ? [['B', 'B']] : [])];

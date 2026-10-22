@@ -58,7 +58,8 @@ const independentSamples = 8;
 function saveViewerData() {
   const data = {
     scenes: scenes.map(scene => scene.id), budgets: ['low', 'medium', 'high'], symbols,
-    sets: viewerSets, pngs: pngs.map(({ displayTransform: _transform, ...image }) => image),
+    sets: viewerSets, pngs: pngs.map((image) => Object.fromEntries(
+      Object.entries(image).filter(([key]) => key !== 'displayTransform'))),
   };
   writeFileSync(viewerDataPath, JSON.stringify(data, null, 2) + '\n');
   const privateImages = pngs.map((image) => {
@@ -115,13 +116,7 @@ function rowsOf(measurement) {
 }
 function totalOf(rows) { return Object.values(rows).reduce((a, b) => a + b, 0); }
 function rotate(values, n) { const k = n % values.length; return [...values.slice(k), ...values.slice(0, k)]; }
-function symbolFor(set, variant) {
-  const found = Object.entries(set.bySymbol).find(([, item]) => item.variant === variant);
-  if (found === undefined) throw new Error(`missing blind symbol for ${variant}`);
-  return found[0];
-}
 async function setVariant(devTools, variant, slices, sparseTapCount = 8) {
-  await devTools.evaluate('window.renderLab.setScanWhiteNoisePass(null)');
   await devTools.evaluate(`window.renderLab.setScreenSpaceExperiment(${JSON.stringify(variant)}, ${JSON.stringify(tierOf(variant, slices))}, ${sparseTapCount})`);
 }
 async function checkSignedDisplay(devTools) {
@@ -143,7 +138,8 @@ async function compareSignedDebugCapture(devTools) {
   const result = await devTools.evaluate('window.renderLab.captureCorrectionProbe()');
   await devTools.evaluate('window.renderLab.setTarget("off")');
   result.exposureStability=exposureStability;
-  const { capture, signed, ...metrics } = result;
+  const metrics = Object.fromEntries(Object.entries(result)
+    .filter(([key]) => key !== 'capture' && key !== 'signed'));
   if (metrics.meanAbsoluteError > 2 / 255) throw new Error(`debug signed display mismatch: ${JSON.stringify(metrics)}`);
   return metrics;
 }
@@ -180,7 +176,7 @@ async function measureCurveExtra(devTools, scene, round) {
     const slices = anchorSlices[variant];
     console.log(`Timing ${scene}/curve-extra: ${variant}/${slices}/1`);
     await setVariant(devTools, variant, slices, 8);
-    await devTools.evaluate('window.renderLab.setScanWhiteNoisePass(null);window.renderLab.setScanSeed(0,0)');
+    await devTools.evaluate('window.renderLab.setScanSeed(0,0)');
     const result = await devTools.evaluate(`window.renderLab.measureCurrent(${warmupFrames}, ${sampleFrames})`);
     if (!result.gpuSupported) throw new Error('GPU timestamp queries unavailable for curve extra point');
     const rows = rowsOf(result);
@@ -245,7 +241,7 @@ async function generateB(devTools, scene, referenceId) {
     await devTools.evaluate(`(async()=>{
       const seeds=${JSON.stringify(seeds)},b=window.__ssdB;
       for(const [x,y] of seeds){
-        window.renderLab.setScanWhiteNoisePass(null);window.renderLab.setScanSeed(x,y);window.renderLab.render();
+        window.renderLab.setScanSeed(x,y);window.renderLab.render();
         const rgba=(await window.renderLab.readFloat('correction')).rgba;
         const target=${first < 32 ? 'b.firstSum' : 'b.secondSum'};
         for(let i=0,j=0;i<rgba.length;i+=4,j+=3){target[j]+=rgba[i];target[j+1]+=rgba[i+1];target[j+2]+=rgba[i+2];}
@@ -307,7 +303,7 @@ async function main() {
       if(!(await devTools.evaluate('typeof window.renderLab?.measureScreenSpacePaths === "function"')))throw new Error('render-lab API unavailable');
       const adapter=await devTools.evaluate('(async()=>{const a=await navigator.gpu.requestAdapter(),i=a.info??{};return [i.vendor,i.architecture,i.device,i.description].filter(Boolean).join(" / ")})()');
       await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)},${JSON.stringify(scene.shotName)})`);
-      await devTools.evaluate('window.renderLab.setTarget("off"); window.renderLab.setGraphicsOption("screenSpaceOcclusion",true); window.renderLab.setGraphicsOption("screenSpaceIndirect",true); window.renderLab.setGraphicsOption("screenSpaceSliceCount",4); window.renderLab.setGraphicsOption("screenSpaceStepCount",6); window.renderLab.setScanWhiteNoisePass(null)');
+      await devTools.evaluate('window.renderLab.setTarget("off"); window.renderLab.setGraphicsOption("screenSpaceOcclusion",true); window.renderLab.setGraphicsOption("screenSpaceIndirect",true); window.renderLab.setGraphicsOption("screenSpaceSliceCount",4); window.renderLab.setGraphicsOption("screenSpaceStepCount",6)');
       const exposureStability=await stabilizeExposure(devTools);
       const displayCheck=await checkSignedDisplay(devTools);
       await setVariant(devTools, 'raw-full', 4);
@@ -371,7 +367,7 @@ async function minimalCheck() {
     await devTools.evaluate(`window.renderLab.showShot("bay","bay-dark");window.renderLab.setTarget("off");window.renderLab.setGraphicsOption("screenSpaceOcclusion",true);window.renderLab.setGraphicsOption("screenSpaceIndirect",true);window.renderLab.setGraphicsOption("screenSpaceSliceCount",4);window.renderLab.setGraphicsOption("screenSpaceStepCount",6)`);
     await setVariant(devTools,'band',16);
     await initStats(devTools);
-    await devTools.evaluate('window.renderLab.setScanWhiteNoisePass(null);window.renderLab.setScanSeed(0,0);window.renderLab.render()');
+    await devTools.evaluate('window.renderLab.setScanSeed(0,0);window.renderLab.render()');
     const image=await devTools.evaluate("window.renderLab.readFloat('correction').then(({rgba})=>({length:rgba.length,min:Math.min(...rgba.slice(0,10000)),max:Math.max(...rgba.slice(0,10000))}))");
     const buffers=await devTools.evaluate('({sum:window.__ssdBlind.sum.length,squareSum:window.__ssdBlind.squareSum.length})');
     if(image.length!==960*540*4||image.max<=0||buffers.sum!==960*540*3)throw new Error(`minimal check failed: ${JSON.stringify({image,buffers})}`);

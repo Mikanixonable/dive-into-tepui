@@ -1,7 +1,7 @@
 // 近傍拡散補正の、前後の 2 つの形を同じページに載せて比べる道具。段は <TIERS の名前>[:<variant>](例 medium:1。variant は
 // ScanTier に variant がある、一時の切り替えを当てた作業ツリーでだけ書ける)。表と記録と画像を .render-lab-shots/ssd-opt/<名前>/ へ書く。
 //
-//   identity <前の段> <後の段> [--entries <key,...>] [--targets <名前,...>] [--white-noise <パス>] [--seeds <K>] --out <名前>
+//   identity <前の段> <後の段> [--entries <key,...>] [--targets <名前,...>] [--seeds <K>] --out <名前>
 //     撮影ごとに、方式をオフにして 1 フレーム描いて近傍拡散補正の全描画先を空にしてから、前 → 後の順に、続けて 2 回同じ
 //     読み戻しになるまで描き直して中間の読み戻しを比べる。--seeds K では、seedOf(0〜K − 1) のシードごとに前 → 後の順に描いた
 //     対の差の統計(多シードの比べ方)を出す。
@@ -208,13 +208,11 @@ async function identity(specs, options) {
   }
   const entries = (options.entries?.split(',') ?? IDENTITY_ENTRIES).map(entryOfKey);
   const targets = options.targets?.split(',') ?? targetsOf(before.tier.bandCount);
-  const whiteNoisePass = options['white-noise'] === undefined ? null : Number(options['white-noise']);
   const shots = await withLab(async (lab) => {
     const measured = {};
     for (const entry of entries) {
       await lab.show(entry);
       await lab.setSeed(seedOf(0));
-      await lab.setWhiteNoisePass(whiteNoisePass);
       const drawn = [];
       for (const { tier } of [before, after]) drawn.push(await drawSettled(lab, tier, targets));
       const compared = {};
@@ -231,14 +229,14 @@ async function identity(specs, options) {
     return measured;
   });
   const record = {
-    head: headHash(), before: before.label, after: after.label, whiteNoisePass, targets,
+    head: headHash(), before: before.label, after: after.label, targets,
     entries: entries.map((e) => e.key), shots,
   };
   writeRecord(dir, record, identityReportOf(record));
 }
 
 // identity の記録 record の表。
-function identityReportOf({ head, before, after, whiteNoisePass, targets, entries, shots }) {
+function identityReportOf({ head, before, after, targets, entries, shots }) {
   const all = entries.flatMap((key) => targets.map((name) => shots[key].targets[name]));
   const differing = all.filter((t) => t.differing > 0).length;
   const outlying = all.filter((t) => t.outliers > 0).length;
@@ -258,8 +256,7 @@ function identityReportOf({ head, before, after, whiteNoisePass, targets, entrie
   });
   return [
     '# 近傍拡散補正の前後の中間の読み戻しの差', '',
-    `HEAD ${head}。前 = ${before}、後 = ${after}。seedOf(0)、`
-      + `${whiteNoisePass === null ? 'ブルーノイズ' : `ホワイトノイズのパス ${whiteNoisePass}`}。`,
+    `HEAD ${head}。前 = ${before}、後 = ${after}。seedOf(0)、ブルーノイズ。`,
     '撮影ごとに、方式をオフにして 1 フレーム描いて近傍拡散補正の全描画先を空にしてから、前 → 後の順に、続けて 2 回同じ読み戻しに',
     'なるまで描き直して(上限 6 回)読み戻した。差は成分ごとに前の値の刻み(半精度は 2^(⌊log₂ max(|v|, 2⁻¹⁴)⌋ − 10)、単精度は',
     `2^(⌊log₂ max(|v|, 2⁻¹²⁶)⌋ − 23))で数える。外れは ${OUTLIER_STEPS} 刻みを超える成分を持つ画素、塊は外れの 4 連結の塊。`,
@@ -279,7 +276,6 @@ function identityReportOf({ head, before, after, whiteNoisePass, targets, entrie
 async function identityOverSeeds(dir, before, after, options) {
   const seedCount = Number(options.seeds);
   if (!Number.isInteger(seedCount) || seedCount < 2) throw new Error('--seeds must be an integer of at least 2');
-  if (options['white-noise'] !== undefined) throw new Error('--seeds compares blue-noise seeds; drop --white-noise');
   const entries = (options.entries?.split(',') ?? SEED_ENTRIES).map(entryOfKey);
   const names = options.targets?.split(',') ?? SEED_TARGETS;
   const shots = await withLab(async (lab) => {
@@ -509,7 +505,7 @@ const COMMANDS = { identity, cost, wgsl };
 async function main() {
   const { positionals: [command, ...specs], values: options } = parseArgs({
     allowPositionals: true,
-    options: Object.fromEntries(['entries', 'targets', 'white-noise', 'seeds', 'entry', 'rounds', 'out']
+    options: Object.fromEntries(['entries', 'targets', 'seeds', 'entry', 'rounds', 'out']
       .map((name) => [name, { type: 'string' }])),
   });
   if (!Object.hasOwn(COMMANDS, command ?? '')) throw new Error(USAGE);

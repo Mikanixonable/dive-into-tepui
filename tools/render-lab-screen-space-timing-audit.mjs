@@ -80,7 +80,7 @@ try {
     await sleep(200);
   }
   await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)},${JSON.stringify(scene.shotName)})`);
-  await devTools.evaluate('window.renderLab.setTarget("off");window.renderLab.setGraphicsOption("screenSpaceOcclusion",true);window.renderLab.setGraphicsOption("screenSpaceIndirect",true);window.renderLab.setGraphicsOption("screenSpaceSliceCount",4);window.renderLab.setGraphicsOption("screenSpaceStepCount",6);window.renderLab.setScanWhiteNoisePass(null)');
+  await devTools.evaluate('window.renderLab.setTarget("off");window.renderLab.setGraphicsOption("screenSpaceOcclusion",true);window.renderLab.setGraphicsOption("screenSpaceIndirect",true);window.renderLab.setGraphicsOption("screenSpaceSliceCount",4);window.renderLab.setGraphicsOption("screenSpaceStepCount",6)');
   output.adapter = await devTools.evaluate(`(async()=>{const a=await navigator.gpu.requestAdapter(),i=a.info??{};return [i.vendor,i.architecture,i.device,i.description].filter(Boolean).join(" / ")})()`);
   output.exposureStability = await stabilizeExposure(devTools);
   output.pageUrl = session.baseUrl;
@@ -92,7 +92,6 @@ try {
     rounds.push(result);
     for (const variant of order) {
       const config = budget[variant];
-      await devTools.evaluate('window.renderLab.setScanWhiteNoisePass(null)');
       await devTools.evaluate(`window.renderLab.setScreenSpaceExperiment(${JSON.stringify(variant)},${JSON.stringify(tierOf(variant, config.slices))},8)`);
       const seeds = Array.from({ length: config.paths }, (_, p) => seedOf(p));
       await devTools.evaluate(`window.renderLab.setScanSeed(${seeds[0][0]},${seeds[0][1]})`);

@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  exp2, floatBitsToUint, floor, float, int, ivec2, min, screenSize, screenUV, select,
+  exp2, floatBitsToUint, floor, float, fract, int, ivec2, min, screenSize, screenUV, select,
   textureLoad, uint, uniform, vec2, vec4,
 } from 'three/tsl';
 import { GPU_PASS } from '../../gpu-timings';
@@ -10,14 +10,19 @@ import { compileInto } from '../compile-into';
 import { multiOutputMaterial, type ScreenSpaceStage } from './screen-space-stage';
 import { octDecodeNormal } from '../gbuffer';
 import { SurfaceWeight } from './surface-weight';
+import { historyReadJitterAt } from './frame-jitter';
+import type { BlueNoise } from '../../blue-noise';
 import type { DiffuseCorrection } from './diffuse-correction';
 import type { GBufferPass } from '../gbuffer';
 import type {
-  BoolNode, FloatNode, FloatUniform, IVec2Node, Mat3Uniform, Mat4Uniform, UintNode, Vec2Node, Vec3Node, Vec4Node,
+  BoolNode, FloatNode, FloatUniform, IVec2Node, Mat3Uniform, Mat4Uniform, UintNode, Vec2Node,
+  Vec2Uniform, Vec3Node, Vec4Node,
 } from '../../tsl-types';
 
 // 履歴の再投影の面の重みの、法線の重みが半分になる角 [rad](20°)。
 const HISTORY_HALF_WEIGHT_ANGLE = Math.PI / 9;
+// 画素中心からジッターして最寄り画素を選ぶ範囲 [px]。静止画素中心では一軸の隣接画素選択率が約 9%。
+const HISTORY_JITTER_RADIUS = 0.55;
 
 // 単精度浮動小数の指数部のビット。±∞ と NaN だけが、このビットをすべて立てる。
 const FLOAT_EXPONENT_BITS = 0x7f800000;
@@ -40,6 +45,8 @@ export class TemporalAccumulation {
   private readonly historyCap: FloatUniform = uniform(1);
   // このフレームの変化量から決めた履歴長の上限 [フレーム]。
   private readonly lengthCap: FloatUniform = uniform(1);
+  // 画素ごとのブルーノイズへ加える番号由来の位相 [-0.5, +0.5)。
+  private readonly historyReadOffset: Vec2Uniform = uniform(new THREE.Vector2());
   // 前フレームの射影行列とその逆。前フレームの面の位置を戻す。
   private readonly previousProjection: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly previousProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
@@ -68,7 +75,7 @@ export class TemporalAccumulation {
   // gbuffer は今のフレームの面と動き、correction は蓄積の入力と交互に書く出力。
   public constructor(
     private readonly renderer: WebGPURenderer, private readonly gbuffer: GBufferPass,
-    private readonly correction: DiffuseCorrection,
+    private readonly correction: DiffuseCorrection, private readonly blueNoise: BlueNoise,
   ) {
     this.previousWeights = [0, 1].map((writeIndex) => {
       const historyTarget = this.correction.targetAt((1 - writeIndex) as 0 | 1);
@@ -113,6 +120,7 @@ export class TemporalAccumulation {
   public beginFrame(frame: number, change: number): void {
     // 同じ番号の描き直しは、組を交代せず同じ前組の履歴を使う。
     const step = frameStepOf(this.previousFrame, frame, change);
+    this.historyReadOffset.value.set(...historyReadJitterAt(frame));
     if (step === 'repeat') {
       this.previousFrameRendered = false;
       return;
@@ -177,7 +185,8 @@ export class TemporalAccumulation {
     return { material, target, gpuPass: GPU_PASS.nearbyDiffuseAccumulation };
   }
 
-  // 前フレームの最寄りの1画素から再投影した履歴と今の補正を、履歴の長さで混ぜた値(rgb = 補正、α = 履歴の長さ n)。非有限な
+  // 前フレームの面と履歴色は同じ最近傍画素から読む。番号ごとの位相と画素ごとのブルーノイズで位置をずらす。
+  // 再投影の位置はずらさず面と比較し、今の補正と履歴の長さ n (α) を混ぜた値 (rgb = 補正) を返す。非有限な
   // 履歴の画素は再投影から外し、非有限な今の値は、履歴があればその標本を捨てて履歴を保つ。
   private accumulatedValue(
     historyTarget: THREE.RenderTarget, previousWeight: SurfaceWeight, pixel: IVec2Node,
@@ -193,14 +202,7 @@ export class TemporalAccumulation {
       previousUv.x.mul(2).sub(1), previousUv.y.oneMinus().mul(2).sub(1), previousDepth, 1,
     ).toVar();
     const previousCoordinate = previousUv.mul(screenSize).sub(0.5).toVar();
-    const base = ivec2(floor(previousCoordinate)).toVar();
-    const fraction = previousCoordinate.sub(vec2(float(base.x), float(base.y))).toVar();
-    // 再投影位置に最も近い前フレームの画素を選び、空間重みを 1 とする。
-    const nearest = ivec2(
-      select(fraction.x.greaterThanEqual(0.5), int(1), int(0)),
-      select(fraction.y.greaterThanEqual(0.5), int(1), int(0)),
-    );
-    const tap = this.addHistoryTap(clip, normal, base, nearest, historyTarget, previousWeight);
+    const tap = this.addHistoryTap(clip, normal, previousCoordinate, historyTarget, previousWeight);
     const history = tap.value.toVar();
     // 面のある画素は履歴の長さを 1 つ延ばし、変化量から決めた上限で切る。
     const historyLength = tap.length.toVar();
@@ -213,14 +215,19 @@ export class TemporalAccumulation {
     return vec4(select(length.lessThanEqual(1), current, blended), length);
   }
 
-  // 選んだ前フレーム画素から、使える履歴色と面の重みを掛けた履歴長を返す。
+  // 番号ごとの位相と画素ごとのブルーノイズでずらした再投影位置から最近傍画素を選び、その面と履歴色から面重み付きの履歴長を返す。
   private addHistoryTap(
-    clip: Vec4Node, normal: Vec3Node,
-    base: IVec2Node, offset: IVec2Node,
+    clip: Vec4Node, normal: Vec3Node, previousCoordinate: Vec2Node,
     historyTarget: THREE.RenderTarget, previousWeight: SurfaceWeight,
   ): { readonly value: Vec3Node; readonly length: FloatNode } {
     // 画面外のタップは、読む座標を画面の端へ寄せたうえで重みを 0 にする。
-    const texel = base.add(offset).toVar();
+    const calculatedJitter = vec2(
+      fract(this.blueNoise.centeredAtScreenPixel().add(this.historyReadOffset.x)).mul(2).sub(1)
+        .mul(HISTORY_JITTER_RADIUS),
+      fract(this.blueNoise.centeredAtScreenPixel(vec2(0.5, 0.5)).add(this.historyReadOffset.y)).mul(2).sub(1)
+        .mul(HISTORY_JITTER_RADIUS),
+    );
+    const texel = ivec2(floor(previousCoordinate.add(calculatedJitter).add(0.5))).toVar();
     const size = ivec2(screenSize).toVar();
     const inside = texel.x.greaterThanEqual(0).and(texel.x.lessThan(size.x))
       .and(texel.y.greaterThanEqual(0)).and(texel.y.lessThan(size.y));
@@ -234,8 +241,11 @@ export class TemporalAccumulation {
     );
     // 非有限の履歴は重み 0 を掛けても NaN のまま混ざり、近傍へ毎フレーム広がるので、掛ける前に値ごと落とす。
     const stored = textureLoad(historyTarget.textures[0]!, safeTexel).toVar();
-    const usable = inside.and(surface.depth.greaterThan(0)).and(allFinite(stored.x, stored.y, stored.z, stored.w));
     const surfaceWeight = exp2(exponent.negate());
+    const usable = inside.and(surface.depth.greaterThan(0)).and(allFinite(
+      clip.z, normal.x, normal.y, normal.z, exponent, surfaceWeight,
+      stored.x, stored.y, stored.z, stored.w,
+    ));
     const history = select(usable.and(surfaceWeight.greaterThan(0)), stored, vec4(0));
     return {
       value: history.rgb,

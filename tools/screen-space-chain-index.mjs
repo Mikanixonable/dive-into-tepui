@@ -4,6 +4,7 @@ import path from 'node:path';
 import { BASELINE_RUN, escapeHtml, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_WIDTH } from './screen-space-chain-runs.mjs';
 import { shotsDir } from './screen-space-lab.mjs';
 
+export const ONE_PASS_CORRECTION_PHASES = [1, 2, 3];
 export const ONE_PASS_CORRECTION_SEEDS = [1, 2, 3];
 
 const STYLE = ':root{--page:#17191d;--panel:#222;--text:#eee;--line:#555;--space:24px;--gap:18px}body{margin:var(--space);background:var(--page);color:var(--text);font:14px system-ui}h1{font-size:24px}nav{position:sticky;top:0;padding:12px;background:var(--page);z-index:1}section{scroll-margin-top:64px;margin:28px 0}section h2{border-bottom:1px solid var(--line);padding-bottom:8px}.gallery{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:var(--gap)}figure{margin:0}img{display:block;width:100%;background:var(--panel);image-rendering:auto}figcaption{padding:7px}a{color:inherit}';
@@ -23,7 +24,7 @@ export function writeRunIndex(runDir, runRecord, passes, baselineLabel) {
       [`noise-rms-${passes}.png`, `1パスのノイズ RMS、表示幅 ${noise.scale}`],
       [`max-deviation-${passes}.png`, `1パスの最大偏差(32パスのうち画素ごとの最大)、表示幅 ${maxDeviation?.scale}`],
       ['one-pass-correction.png', '1パスのフル解像度補正'],
-      ...ONE_PASS_CORRECTION_SEEDS.map((seed) => [`one-pass-correction-seed${seed}.png`, `1パスのフル解像度補正(blue-noise seed ${seed})`]),
+      ...ONE_PASS_CORRECTION_PHASES.map((phase) => [`one-pass-correction-phase${phase}.png`, `1パスのフル解像度補正(本番ジッター位相 ${phase})`]),
       [`mean-${passes}-correction.png`, `${passes}パス平均のフル解像度補正`],
       [`bypass-mean-${passes}-correction.png`, `${passes}パス平均・帯合計迂回の補正`],
       ['one-pass-diffuse-clay.png', '1パスの拡散光クレイ表示'],

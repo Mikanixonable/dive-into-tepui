@@ -33,14 +33,14 @@ import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
 import { LabSun } from './lab-sun';
 import { PassAccumulator } from './pass-accumulator';
-import { PRODUCTION_PHASE, type CorrectionPhase } from './phase-sequence';
+import { phaseAt, PRODUCTION_PHASE, type CorrectionPhase } from './phase-sequence';
 import {
   anglesFromDirection, directionFromAngles, withLightShift, type LabViewAngles, type LightAngleShift,
 } from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { captureAccumulated } from './accumulated-capture';
 import type { GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
-import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
+import type { ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
 import type { SceneChangeDeclarations } from '../../src/render/pipeline/scene-change-tracker';
 import type { SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import type { StoredSetting } from '../../src/settings/stored-setting';
@@ -83,10 +83,10 @@ const CHANNELS_OF_FORMAT: Readonly<Partial<Record<THREE.AnyPixelFormat, number>>
   [THREE.RedFormat]: 1, [THREE.RGFormat]: 2, [THREE.RGBAFormat]: 4,
 };
 
-// accumulateWhitePasses が GPU の終わりを待つ間隔 [パス]。
-const WHITE_PASSES_PER_WAIT = 256;
+// accumulateProductionPasses が GPU の終わりを待つ間隔 [パス]。
+const PRODUCTION_PASSES_PER_WAIT = 256;
 // averageCorrection が GPU の終わりを待つ間隔 [位相]。位相ごとに近傍拡散補正の全段を描くので、走査だけを描く
-// accumulateWhitePasses より短く取る。
+// accumulateProductionPasses より短く取る。
 const CORRECTION_PASSES_PER_WAIT = 16;
 
 // 単精度の値 v に最も近い半精度のビット列(DataUtils.toHalfFloat は切り捨てる)。
@@ -163,8 +163,10 @@ export class LabView {
   private frame = 0;
   // 前の論理フレームから、動きベクトルでは追えない変化の量 (0 = 変化なし、Infinity = 切り替え)。
   private change = 0;
-  // 本番の番号由来ジッターに使わせている源(null は走査の入力に触らせない)。
-  private activeJitterSources: readonly JitterSource[] | null = null;
+  // 時間方向の再生で本番の番号由来位相を使うか。
+  private automaticJitterEnabled = false;
+  // 一時比較中だけ履歴上限を上書きする。描画品質設定そのものは変えない。
+  private comparisonHistoryCap: number | null = null;
   private selectedDebugTarget: DebugTargetId = 'off';
   // 画面全体の見せ方。起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
@@ -206,7 +208,7 @@ export class LabView {
   private readonly radiusQuad = new QuadMesh();
   private readonly radiusProjection: Mat4Uniform = uniform(new THREE.Matrix4());
   private readonly radiusProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
-  // accumulateWhitePasses が走査の帯を足し込む器。初めて足すとき、または帯の描画先が変わったときに作り直す。
+  // accumulateProductionPasses が走査の帯を足し込む器。初めて足すとき、または帯の描画先が変わったときに作り直す。
   private passAccumulator: PassAccumulator | null = null;
   // averageCorrection が最後の拡大の出力を足し込む器。初めて足すときに作る。
   private correctionAccumulator: PassAccumulator | null = null;
@@ -235,7 +237,7 @@ export class LabView {
     private readonly graphics: StoredSetting<GraphicsSelection>,
   ) {
     this.pipeline.sceneChange.setWeights(SCENE_CHANGE_OFF);
-    this.pipeline.screenSpace.setJitterSources(null);
+    this.pipeline.screenSpace.setAutomaticJitterEnabled(false);
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
@@ -332,6 +334,9 @@ export class LabView {
     this.resolvedGraphics = graphics;
     this.pipeline.ambient.setFraction(ambientFraction(graphics));
     this.pipeline.rebuildForGraphics(graphics);
+    if (this.comparisonHistoryCap !== null) {
+      this.pipeline.screenSpace.setHistoryCap(this.comparisonHistoryCap);
+    }
     this.render();
   }
 
@@ -687,7 +692,6 @@ export class LabView {
         this.gpu.reset();
         accumulator.clear(() => this.gpu.beginPass(GPU_PASS.nearbyDiffuseAverage));
         for (const [path, seed] of seeds.entries()) {
-          screenSpace.setWhiteNoisePass(null);
           this.setScanSeed(seed[0], seed[1]);
           screenSpace.renderExperimentPath(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT, path === 0);
           accumulator.add((path % 2) as 0 | 1, () => this.gpu.beginPass(GPU_PASS.nearbyDiffuseAverage));
@@ -704,7 +708,6 @@ export class LabView {
         gpuPassMsById: Object.fromEntries(Object.entries(samples).map(([id, values]) => [id, distributionOf(values)])),
       };
     } finally {
-      screenSpace.setWhiteNoisePass(null);
       accumulator.dispose();
     }
   }
@@ -721,19 +724,42 @@ export class LabView {
     this.pipeline.screenSpace.setScanJitter(jitter);
   }
 
-  // 次に描くフレームから、本番の番号由来ジッターに使う源を選ぶ。null は明示した走査値を保つ。
-  public setJitterSources(sources: readonly JitterSource[] | null): void {
-    this.activeJitterSources = sources === null ? null : [...sources];
-    this.pipeline.screenSpace.setJitterSources(this.activeJitterSources);
+  // 明示位相の比較では自動位相を止め、再生では本番位相を自動適用する。
+  public setAutomaticJitterEnabled(enabled: boolean): void {
+    this.automaticJitterEnabled = enabled;
+    this.pipeline.screenSpace.setAutomaticJitterEnabled(enabled);
+  }
+
+  // render-lab の時間方向比較用。描画品質設定の履歴の上限を frames へ変える。
+  public setHistoryCapForComparison(frames: number | null): void {
+    if (frames !== null && (!Number.isInteger(frames) || frames < 1 || frames > 32)) {
+      throw new RangeError(`render-lab: invalid history cap ${frames}`);
+    }
+    this.comparisonHistoryCap = frames;
+    this.pipeline.screenSpace.setHistoryCap(frames ?? this.resolvedGraphics.screenSpaceHistoryCap);
   }
 
   public get logicalFrame(): number { return this.frame; }
   public get sceneChange(): SceneChangeDeclarations { return this.pipeline.sceneChange; }
-  public get historyCapFrames(): number { return this.resolvedGraphics.screenSpaceHistoryCap; }
-  public get jitterSources(): readonly JitterSource[] | null { return this.activeJitterSources; }
+  public get historyCapFrames(): number { return this.pipeline.screenSpace.historyCapFrames; }
+  public get automaticJitterIsEnabled(): boolean { return this.automaticJitterEnabled; }
 
   // いまの段の走査の画素の幅 [描画バッファの画素]。
   public get scanCellSize(): number { return this.pipeline.screenSpace.scanCellSize; }
+
+  // 本番ジッター列の frame を既存の G バッファへ適用する。null は静止画の本番位相へ戻す。
+  public renderProductionCorrectionPhase(frame: number | null): void {
+    if (frame !== null && (!Number.isInteger(frame) || frame < 0)) {
+      throw new RangeError(`render-lab: invalid production correction phase ${frame}`);
+    }
+    if (this.rasterJitterPx !== null) {
+      throw new Error('render-lab: production correction phases require an unjittered G-buffer');
+    }
+    const phase = frame === null
+      ? PRODUCTION_PHASE
+      : phaseAt({ sources: ['seed', 'scanRepresentative'], count: 32 }, frame, this.scanCellSize);
+    this.renderCorrection(phase);
+  }
 
   // 位相 phase で近傍拡散補正を描き直す。射影のずれを使う(いま使っている)ならフレーム全体を、そうでなければ直前に描いた
   // フレームの G バッファなどを入力のまま近傍拡散補正だけを描く。
@@ -762,16 +788,10 @@ export class LabView {
     this.pipeline.screenSpace.setUpsampleAlphaOne(enabled);
   }
 
-  // 次に描くフレームから、近傍拡散補正の走査のずれを、pass が null ならブルーノイズから、整数ならパスの番号 pass の
-  // ホワイトノイズから引く。
-  public setScanWhiteNoisePass(pass: number | null): void {
-    this.pipeline.screenSpace.setWhiteNoisePass(pass);
-  }
-
-  // 直前に描いたフレームの G バッファなどを入力のまま、近傍拡散補正の照り返しの源と走査だけを、ホワイトノイズのパスの番号
-  // first〜first + count − 1 で描き直し、走査が帯を詰めたテクスチャを偶数番目と奇数番目のパスに分けて和へ足す。和は
-  // takePassSums で受け取る。終わると段の範囲とノイズは本番のものへ戻る。
-  public async accumulateWhitePasses(first: number, count: number): Promise<void> {
+  // 直前に描いたフレームの G バッファなどを入力のまま、近傍拡散補正の照り返しの源と走査だけを、本番ジッターの位相列で
+  // 描き直し、走査が帯を詰めたテクスチャを偶数番目と奇数番目のパスに分けて和へ足す。和は takePassSums で受け取る。
+  // 終わると段の範囲と位相は静止画の本番値へ戻る。
+  public async accumulateProductionPasses(first: number, count: number): Promise<void> {
     if (this.current === null) throw new Error('render-lab: no case selected');
     const { screenSpace, diffuseCorrection } = this.pipeline;
     const layout = screenSpace.bandLayout;
@@ -784,22 +804,23 @@ export class LabView {
     screenSpace.setStageRange('scan');
     try {
       for (let k = first; k < first + count; k++) {
-        screenSpace.setWhiteNoisePass(k);
-        screenSpace.render(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT);
+        this.renderCorrection(phaseAt({ sources: ['seed', 'scanRepresentative'], count: first + count }, k, this.scanCellSize));
         this.passAccumulator.add(k % 2 === 0 ? 0 : 1);
         // GPU の待ち行列が際限なく伸びないよう、ときどき終わりを待つ。時刻印の器も空ける。
-        if ((k - first) % WHITE_PASSES_PER_WAIT === WHITE_PASSES_PER_WAIT - 1) {
+        if ((k - first) % PRODUCTION_PASSES_PER_WAIT === PRODUCTION_PASSES_PER_WAIT - 1) {
           await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
           this.gpu.resolve();
         }
       }
     } finally {
       screenSpace.setStageRange('all');
-      screenSpace.setWhiteNoisePass(null);
+      screenSpace.setSeed(...PRODUCTION_PHASE.seed);
+      screenSpace.setScanRotation(PRODUCTION_PHASE.scanRotation);
+      screenSpace.setScanJitter(PRODUCTION_PHASE.scanJitter);
     }
   }
 
-  // accumulateWhitePasses で足した値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
+  // accumulateProductionPasses で足した値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
   // テクスチャごと)を読み戻し、和を 0 に戻す。
   public async takePassSums(includeSquares = true): Promise<{
     readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];

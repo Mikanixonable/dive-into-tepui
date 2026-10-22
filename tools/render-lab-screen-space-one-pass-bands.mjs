@@ -35,7 +35,6 @@ for (const scene of scenes) {
       await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 2, set: 'tuning', key: scene.name });
       await lab.setUpsampleAlphaOne(false);
       await lab.setTier(tier);
-      await lab.setWhiteNoisePass(null);
       await lab.setSeed(seedOf(0));
       await lab.render();
       bands = await readBands(lab);

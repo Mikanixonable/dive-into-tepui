@@ -51,14 +51,13 @@ export function bandSumInvariant(raw, bands) {
     maximumToleranceRatio: maximumRatio, roundingExceeded: { count: exceededCount, pixelCount: exceededPixels.size, firstPositions: exceeded } }, difference };
 }
 
-// 白色雑音のパス pass で、1帯の撮影と tier の撮影を比べる。呼ぶとき lab は tier の描画を終えた状態になる。
-export async function captureBandSumInvariant(lab, tier, pass) {
+// 本番フレーム pass で、1帯の撮影と tier の撮影を比べる。
+export async function captureBandSumInvariant(lab, tier, frame) {
   await lab.setTier({ ...tier, bandCount: 1 });
-  await lab.setWhiteNoisePass(pass);
-  await lab.render();
+  await lab.renderProductionCorrectionPhase(frame);
   const raw = await lab.readFloat('band-sum', 4);
   await lab.setTier(tier);
-  await lab.render();
+  await lab.renderProductionCorrectionPhase(frame);
   const packed = [];
   for (let texture = 0; texture < 3; texture++) packed.push(await lab.readFloat(`packed-bands-${texture}`, 4));
   return bandSumInvariant(raw, Array.from({ length: tier.bandCount }, (_, band) => unpackedBand(packed, band)));

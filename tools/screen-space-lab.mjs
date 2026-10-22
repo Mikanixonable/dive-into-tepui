@@ -242,13 +242,15 @@ function labOf(devTools) {
     setGraphicsOption: (key, value) => call(`setGraphicsOption(${JSON.stringify(key)}, ${JSON.stringify(value)})`),
     // seed は seedOf の返す [x, y]。
     setSeed: ([x, y]) => call(`setScanSeed(${x}, ${y})`),
+    // 指定番号の本番ジッター位相で近傍拡散補正を描き直す。null は静止画の本番位相。
+    renderProductionCorrectionPhase: (frame) => call(`renderProductionCorrectionPhase(${JSON.stringify(frame)})`),
     // 近傍拡散補正の段の範囲 range('all'・'scan'・'chain')だけを描く。'chain' は帯を詰めた描画先の値から鎖を描く。
     setStageRange: (range) => call(`setScanStageRange(${JSON.stringify(range)})`),
     setUpsampleAlphaOne: (enabled) => call(`setUpsampleAlphaOne(${JSON.stringify(enabled)})`),
-    // 直前のフレームの入力のまま、走査だけをホワイトノイズのパス first〜first + count − 1 で描き直し、帯を詰めた
-    // テクスチャを偶数番目と奇数番目のパスに分けてページの GPU の和へ足す。和は takePassSums で受け取る。
-    accumulateWhitePasses: (first, count) => call(`accumulateWhitePasses(${first}, ${count})`),
-    // accumulateWhitePasses の値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
+    // 直前のフレームの入力のまま、本番ジッター位相の走査を描き直し、帯を詰めたテクスチャを偶数番目と奇数番目のパスに
+    // 分けてページの GPU の和へ足す。和は takePassSums で受け取る。
+    accumulateProductionPasses: (first, count) => call(`accumulateProductionPasses(${first}, ${count})`),
+    // accumulateProductionPasses の値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
     // テクスチャごとの、画素ごとに RGBA の Float32Array)を受け取り、ページの和を 0 に戻す。
     async takePassSums(includeSquares = true) {
       const shapes = await devTools.evaluate(`window.renderLab.takePassSums(${JSON.stringify(includeSquares)}).then((taken) => {
@@ -297,8 +299,6 @@ function labOf(devTools) {
     },
     // 近傍拡散補正の方式をオフにして 1 フレーム描き、その全描画先を空にする。方式は撮影のものへ戻り、段は保つ。
     clearScreenSpace: () => call('clearScreenSpace()'),
-    // 走査のずれを、pass が null ならブルーノイズ(本番)から、整数ならパスの番号 pass のホワイトノイズから引く。
-    setWhiteNoisePass: (pass) => call(`setScanWhiteNoisePass(${JSON.stringify(pass)})`),
     // 描き直しては中間ターゲット names を読み戻し、続けて 2 回がビットで同じになった読み戻しを返す。返り値は
     // { renders, images } で、renders は描いた回数、images は names の順の { width, height, rgba }(rgba は画素ごとに RGBA の
     // Float32Array)。MAX_SETTLE_CAPTURES 回描いても揃わなければ投げる。

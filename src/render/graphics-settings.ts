@@ -214,49 +214,49 @@ export const GRAPHICS_FIELDS = {
       // 明るい面と自己発光する面が近くの面を照らし返す項を足すか。
       screenSpaceIndirect: {
         kind: 'toggle', label: '照り返し',
-        presets: { low: false, medium: false, high: true },
+        presets: { low: true, medium: true, high: true },
       },
       // 走査の解像度の、描画バッファに対する比。
       screenSpaceScanScale: {
         kind: 'choice', label: '走査の解像度',
         items: [[0.125, '1/8'], [0.25, '1/4'], [0.5, '1/2'], [1, '1']],
-        presets: { low: 0.25, medium: 0.25, high: 0.25 },
+        presets: { low: 0.125, medium: 0.25, high: 0.25 },
       },
       // 遠い帯ほど粗い段まで均す、鎖の段の数。
       screenSpaceBandCount: {
         kind: 'slider', label: '均しの段数',
         min: 4, max: 8, step: 1,
-        presets: { low: 4, medium: 4, high: 4 },
+        presets: { low: 4, medium: 5, high: 5 },
       },
       // 走査のスライスの数。
       screenSpaceSliceCount: {
         kind: 'slider', label: '走査のスライス数',
         min: 1, max: 8, step: 1,
-        presets: { low: 2, medium: 4, high: 4 },
+        presets: { low: 3, medium: 2, high: 4 },
       },
       // スライス 1 本の片側の歩数。
       screenSpaceStepCount: {
         kind: 'slider', label: '片側の歩数',
         min: 1, max: 12, step: 1,
-        presets: { low: 3, medium: 5, high: 5 },
+        presets: { low: 3, medium: 3, high: 5 },
       },
       // 走査が遮りの向きを見る天体照の数。最大値は MAX_PLANET_LIGHT_SLOTS。
       screenSpaceDirectionalPlanetCount: {
         kind: 'choice', label: '向きを見る天体照の数',
         items: [[0, 'なし'], [1, '1'], [2, '2']],
-        presets: { low: 2, medium: 2, high: 2 },
+        presets: { low: 0, medium: 0, high: 1 },
       },
       // 静止した場面で積む履歴の上限 [フレーム]。1 で今のフレームの値をそのまま使う。
       screenSpaceHistoryCap: {
         kind: 'slider', label: '履歴の上限',
         min: 1, max: 32, step: 1,
-        presets: { low: 8, medium: 8, high: 8 },
+        presets: { low: 28, medium: 12, high: 7 },
       },
       // 最後の拡大で読む疎なタップの数。
       screenSpaceUpsampleTapCount: {
         kind: 'slider', label: '最後の拡大のタップ数',
         min: 2, max: 8, step: 1,
-        presets: { low: 8, medium: 8, high: 8 },
+        presets: { low: 2, medium: 5, high: 8 },
       },
     },
   },

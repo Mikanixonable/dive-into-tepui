@@ -55,20 +55,20 @@ export function register(): void {
     for (const key of fieldKnobKeys('cloud')) assert.equal(graphics[key], medium[key], key);
   });
 
-  test('graphics-selection: 最後の拡大タップ数は 2..8 の整数で、各プリセットは 8', () => {
+  test('graphics-selection: 最後の拡大タップ数は 2..8 の整数で、プリセットは範囲内', () => {
     const knob = GRAPHICS_FIELDS.screenSpace.knobs.screenSpaceUpsampleTapCount;
     assert.equal(knob.kind, 'slider');
     if (knob.kind !== 'slider') return;
     assert.deepEqual([knob.min, knob.max, knob.step], [2, 8, 1]);
-    for (const preset of PRESETS) assert.equal(knob.presets[preset], 8);
-    assert.equal(resolveGraphics(selectionOf('high')).screenSpaceUpsampleTapCount, 8);
+    for (const preset of PRESETS) assert.ok(knob.presets[preset] >= 2 && knob.presets[preset] <= 8);
+    assert.equal(resolveGraphics(selectionOf('high')).screenSpaceUpsampleTapCount, knob.presets.high);
   });
 
-  test('graphics-selection: 既存のカスタム保存値に最後の拡大タップ数が無ければ 8', () => {
+  test('graphics-selection: 既存のカスタム保存値に最後の拡大タップ数が無ければ「高」の値', () => {
     const selection = parseGraphicsSelection(JSON.stringify({
       quality: { fields: { screenSpace: { custom: { screenSpaceBandCount: 6 } } } },
     }));
-    assert.equal(resolveGraphics(selection).screenSpaceUpsampleTapCount, 8);
+    assert.equal(resolveGraphics(selection).screenSpaceUpsampleTapCount, fieldPresetValues('screenSpace', 'high').screenSpaceUpsampleTapCount);
   });
 
   test('graphics-selection: 保存が無いときは全体「高」で、好みは保存が無いときの値', () => {
@@ -249,21 +249,21 @@ export function register(): void {
     assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(rejected))).screenSpaceScanScale, 0.25);
   });
 
-  test('graphics-selection: 均しの段数を持たない保存と範囲外の値は 4 に解ける', () => {
+  test('graphics-selection: 均しの段数を持たない保存と範囲外の値は「高」の値に解ける', () => {
     const saved = { quality: { fields: { screenSpace: { custom: { screenSpaceSliceCount: 3, screenSpaceStepCount: 4 } } } } };
     const resolved = resolveGraphics(parseGraphicsSelection(JSON.stringify(saved)));
-    assert.equal(resolved.screenSpaceBandCount, 4);
+    assert.equal(resolved.screenSpaceBandCount, fieldPresetValues('screenSpace', 'high').screenSpaceBandCount);
     assert.equal(resolved.screenSpaceSliceCount, 3);
     const rejected = { quality: { fields: { screenSpace: { custom: { screenSpaceBandCount: 9 } } } } };
-    assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(rejected))).screenSpaceBandCount, 4);
+    assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(rejected))).screenSpaceBandCount, fieldPresetValues('screenSpace', 'high').screenSpaceBandCount);
   });
 
-  test('graphics-selection: 向きを見る天体照の数を持たない保存と範囲外の値は 2 に解ける', () => {
+  test('graphics-selection: 向きを見る天体照の数を持たない保存と範囲外の値は「高」の値に解ける', () => {
     const saved = { quality: { fields: { screenSpace: { custom: { screenSpaceSliceCount: 3, screenSpaceStepCount: 4 } } } } };
     const resolved = resolveGraphics(parseGraphicsSelection(JSON.stringify(saved)));
-    assert.equal(resolved.screenSpaceDirectionalPlanetCount, 2);
+    assert.equal(resolved.screenSpaceDirectionalPlanetCount, fieldPresetValues('screenSpace', 'high').screenSpaceDirectionalPlanetCount);
     assert.equal(resolved.screenSpaceSliceCount, 3);
     const rejected = { quality: { fields: { screenSpace: { custom: { screenSpaceDirectionalPlanetCount: 3 } } } } };
-    assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(rejected))).screenSpaceDirectionalPlanetCount, 2);
+    assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(rejected))).screenSpaceDirectionalPlanetCount, fieldPresetValues('screenSpace', 'high').screenSpaceDirectionalPlanetCount);
   });
 }

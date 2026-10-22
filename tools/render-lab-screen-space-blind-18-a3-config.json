@@ -1,0 +1,166 @@
+{
+  "candidates": [
+    {
+      "name": "L1",
+      "budget": "low",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 5,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "L2",
+      "budget": "low",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "L3",
+      "budget": "low",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": false,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "M1",
+      "budget": "medium",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 8,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "M2",
+      "budget": "medium",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 8,
+        "screenSpaceSliceCount": 4,
+        "screenSpaceStepCount": 5,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "M3",
+      "budget": "medium",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 8,
+        "screenSpaceSliceCount": 4,
+        "screenSpaceStepCount": 4,
+        "screenSpaceDirectionalPlanetCount": 2,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "H1",
+      "budget": "high",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 8,
+        "screenSpaceSliceCount": 3,
+        "screenSpaceStepCount": 4,
+        "screenSpaceDirectionalPlanetCount": 2,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "H2",
+      "budget": "high",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 8,
+        "screenSpaceSliceCount": 4,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 2,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "H3",
+      "budget": "high",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 8,
+        "screenSpaceSliceCount": 3,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 2,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 4
+      }
+    }
+  ],
+  "scenes": [
+    {
+      "name": "bay-two-planets",
+      "caseName": "bay",
+      "shotName": "bay-two-planets"
+    },
+    {
+      "name": "bay-earth-open",
+      "caseName": "bay",
+      "shotName": "bay-earth-open"
+    },
+    {
+      "name": "bay-dark",
+      "caseName": "bay",
+      "shotName": "bay-dark"
+    },
+    {
+      "name": "cornell-box",
+      "caseName": "cornell-box",
+      "shotName": "cornell-box"
+    },
+    {
+      "name": "angled-bounce",
+      "caseName": "angled-bounce",
+      "shotName": "angled-bounce"
+    }
+  ]
+}

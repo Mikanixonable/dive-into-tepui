@@ -29,11 +29,13 @@ import { PlaneSmoother, type SurfaceGeometry } from './plane-smoother';
 import { MotionSequence, type MotionFrameRecord } from './motion-sequence';
 import { LabPlayback } from './playback';
 import { MotionVectorCheck, type MotionVectorFrameRecord } from './motion-vector-check';
-import { captureAccumulated } from './accumulated-capture';
+import {
+  captureAccumulated, compareHistoryAccumulation, historyAccumulationComparisonImage,
+} from './accumulated-capture';
 import { StaticVariance, type StaticVarianceRecord } from './static-variance';
 import { phasesOf, type PhaseSequence } from './phase-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
-import type { JitterSource, ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
+import type { ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
 import type { SceneChangeTerms, SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
 import type { LabViewAngles, LightAngleShift } from './view-angles';
@@ -73,6 +75,8 @@ declare global {
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
       captureAccumulated: () => Promise<string>;
+      compareHistoryAccumulation: (referenceFrames?: number) => ReturnType<typeof compareHistoryAccumulation>;
+      historyAccumulationComparisonImage: (key: string) => string;
       capture: () => Promise<string>;
       captureCorrectionProbe: () => ReturnType<LabView['captureCorrectionProbe']>;
       render: () => void;
@@ -101,8 +105,7 @@ declare global {
       setScanSeed: (x: number, y: number) => void;
       setScanStageRange: (range: ScreenSpaceStageRange) => void;
       setUpsampleAlphaOne: (enabled: boolean) => void;
-      setScanWhiteNoisePass: (pass: number | null) => void;
-      accumulateWhitePasses: (first: number, count: number) => Promise<void>;
+      accumulateProductionPasses: (first: number, count: number) => Promise<void>;
       takePassSums: (includeSquares?: boolean) => Promise<{
         readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
       }>;
@@ -136,8 +139,8 @@ declare global {
       ) => Promise<Float32Array>;
       stochasticUpscale: (scan: Float32Array, geometry: SurfaceGeometry, block: number) => Promise<Float32Array>;
       setScanJitter: (jitter: ScanJitter | null) => void;
-      setJitterSources: (sources: readonly JitterSource[] | null) => void;
       setRasterJitter: (offsetPx: readonly [number, number] | null) => void;
+      renderProductionCorrectionPhase: (frame: number | null) => void;
       scanCellSize: () => number;
       resetMotion: () => void;
       moveCamera: (
@@ -415,6 +418,8 @@ async function init(): Promise<void> {
       return pngs;
     },
     captureAccumulated: () => captureAccumulated(view, 'accumulated capture'),
+    compareHistoryAccumulation: (referenceFrames) => compareHistoryAccumulation(view, referenceFrames),
+    historyAccumulationComparisonImage,
     capture: () => view.capture(),
     captureCorrectionProbe: () => view.captureCorrectionProbe(),
     render: () => view.render(),
@@ -446,8 +451,7 @@ async function init(): Promise<void> {
     setScanSeed: (x, y) => view.setScanSeed(x, y),
     setScanStageRange: (range) => view.setScanStageRange(range),
     setUpsampleAlphaOne: (enabled) => view.setUpsampleAlphaOne(enabled),
-    setScanWhiteNoisePass: (pass) => view.setScanWhiteNoisePass(pass),
-    accumulateWhitePasses: (first, count) => view.accumulateWhitePasses(first, count),
+    accumulateProductionPasses: (first, count) => view.accumulateProductionPasses(first, count),
     takePassSums: (includeSquares) => view.takePassSums(includeSquares),
     writePackedBands: (index, rgba) => view.writePackedBands(index, rgba),
     readFloat: (name) => view.readFloat(name),
@@ -472,8 +476,8 @@ async function init(): Promise<void> {
       (await planeSmoother()).sparseBilateral(rgb, geometry, radius, shift)),
     stochasticUpscale: async (scan, geometry, block) => (await planeSmoother()).stochasticUpscale(scan, geometry, block),
     setScanJitter: (jitter) => view.setScanJitter(jitter),
-    setJitterSources: (sources) => view.setJitterSources(sources),
     setRasterJitter: (offsetPx) => view.setRasterJitter(offsetPx),
+    renderProductionCorrectionPhase: (frame) => view.renderProductionCorrectionPhase(frame),
     scanCellSize: () => view.scanCellSize,
     resetMotion: () => motion.reset(),
     moveCamera: (translationPx, rotationPx, orbitPx) => motion.moveCamera(translationPx, rotationPx, orbitPx),

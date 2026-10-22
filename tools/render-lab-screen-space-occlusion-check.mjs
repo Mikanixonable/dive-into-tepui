@@ -23,8 +23,7 @@ await withLab(async (lab) => {
     mkdirSync(dir, { recursive: true });
     await lab.show({ ...scene, mode: 1 });
     await lab.setTier(tier);
-    await lab.setWhiteNoisePass(7000);
-    await lab.render();
+    await lab.renderProductionCorrectionPhase(7000);
     const differences = {};
     for (const name of targets) {
       const actual = await lab.readFloat(name, 4);
@@ -45,7 +44,7 @@ await withLab(async (lab) => {
       }
       differences[name] = { maximumAbsolute, meanAbsolute: sumAbsolute / actual.length, differing };
     }
-    writeFileSync(path.join(dir, 'comparison.json'), JSON.stringify({ scene: scene.name, tier, whiteNoisePass: 7000,
+    writeFileSync(path.join(dir, 'comparison.json'), JSON.stringify({ scene: scene.name, tier, productionFrame: 7000,
       mode: 'occlusion', against: against ?? null, differences }, null, 2));
     console.log(`${scene.name}: ${JSON.stringify(differences)}`);
   }

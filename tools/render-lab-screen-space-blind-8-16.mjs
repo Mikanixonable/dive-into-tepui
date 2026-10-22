@@ -179,8 +179,7 @@ async function withScene(scene, work) {
     await devTools.evaluate(`window.renderLab.showShot(${JSON.stringify(scene.caseName)}, ${JSON.stringify(scene.shot)})`);
     await devTools.evaluate(`window.renderLab.setTarget('off');
       window.renderLab.setGraphicsOption('screenSpaceOcclusion', true); window.renderLab.setGraphicsOption('screenSpaceIndirect', true);
-      window.renderLab.setGraphicsOption('screenSpaceSliceCount', 4); window.renderLab.setGraphicsOption('screenSpaceStepCount', 6);
-      window.renderLab.setScanWhiteNoisePass(null)`);
+      window.renderLab.setGraphicsOption('screenSpaceSliceCount', 4); window.renderLab.setGraphicsOption('screenSpaceStepCount', 6)`);
     const exposure = await stabilizeExposure(devTools);
     return await work(devTools, { pageUrl: session.baseUrl, adapter, exposure });
   } finally {
@@ -200,8 +199,7 @@ function experimentOf(method, slices) {
 // 次のフレームから方式 method をスライス数 slices で、ブルーノイズのずれで描く。
 async function setMethod(devTools, method, slices) {
   const { variant, tier } = experimentOf(method, slices);
-  await devTools.evaluate(`window.renderLab.setScanWhiteNoisePass(null);
-    window.renderLab.setScreenSpaceExperiment(${JSON.stringify(variant)}, ${JSON.stringify(tier)}, ${SPARSE_TAP_COUNT})`);
+  await devTools.evaluate(`window.renderLab.setScreenSpaceExperiment(${JSON.stringify(variant)}, ${JSON.stringify(tier)}, ${SPARSE_TAP_COUNT})`);
 }
 
 // 方式 method・スライス数 slices の 1 パスを seedOf(k) で描く。
@@ -471,7 +469,7 @@ async function captureStimulus(devTools, scene, stimulus) {
 async function renderReference(devTools, scene) {
   const runDir = path.join(RUNS, REFERENCE_RUN, scene.name);
   const bandSum = readFileSync(path.join(runDir, 'band-sum-1024.rgba.f32')).toString('base64');
-  await devTools.evaluate(`window.renderLab.setScanWhiteNoisePass(null); window.renderLab.setScanSeed(0, 0);
+  await devTools.evaluate(`window.renderLab.setScanSeed(0, 0);
     window.renderLab.setScreenSpaceExperiment(null, ${JSON.stringify(REFERENCE_TIER)}); window.renderLab.render()`);
   try {
     await devTools.evaluate(`window.renderLab.writePackedBands(0,

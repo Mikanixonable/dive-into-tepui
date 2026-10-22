@@ -2,7 +2,7 @@
 // window.renderLab.shoot() を呼んで、ケースが宣言した向きごとの PNG を 1 枚ずつ受け取り、撮影名で書く。
 // 書き先は第 1 引数に撮影の組の名前を渡せば .render-lab-shots/<名前>/、省けば .render-lab/shots で、
 // 撮影の前に作り直す。組の名前に続く「項目=値」(値は JSON。例: planetLightCount=0)は、全ケースの撮影へ
-// 重ねる描画品質設定の差分になる。
+// 重ねる描画品質設定の差分になる。--case=<caseName> はケースを絞り、--shot=<shotName> を加えるとその撮影だけを撮る。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
@@ -14,7 +14,7 @@ const debugPort = 9444;
 // いまのケースの撮影結果(撮影名から PNG のデータ URL への表)を、取り出し終えるまでページ内に置く名前。
 const PENDING_PNGS = '__renderLabPendingPngs';
 
-const USAGE = 'usage: node tools/render-lab-shot.mjs [<shot-set-name> [<graphics-option>=<json> ...]]';
+const USAGE = 'usage: node tools/render-lab-shot.mjs [<shot-set-name> [--case=<caseName> [--shot=<shotName>]] [<graphics-option>=<json> ...]]';
 
 // 撮影の組の名前 setName(省けば undefined)の書き先。名前が /^[\w.-]+$/ に合わないか . / .. なら
 // 使い方を投げる。
@@ -35,7 +35,16 @@ function graphicsOf(args) {
 
 async function main() {
   const outDir = outDirOf(process.argv[2]);
-  const graphics = graphicsOf(process.argv.slice(3));
+  const args = process.argv.slice(3);
+  const caseArgs = args.filter((arg) => arg.startsWith('--case='));
+  const shotArgs = args.filter((arg) => arg.startsWith('--shot='));
+  if (caseArgs.length > 1 || caseArgs.some((arg) => arg.length === '--case='.length)
+    || shotArgs.length > 1 || shotArgs.some((arg) => arg.length === '--shot='.length)) throw new Error(USAGE);
+  const caseName = caseArgs[0]?.slice('--case='.length);
+  const shotName = shotArgs[0]?.slice('--shot='.length);
+  if (shotName !== undefined && (caseName === undefined || !/^[\w.-]+$/.test(shotName)
+    || shotName === '.' || shotName === '..')) throw new Error(USAGE);
+  const graphics = graphicsOf(args.filter((arg) => !arg.startsWith('--case=') && !arg.startsWith('--shot=')));
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-render-lab-', onEvent,
@@ -54,9 +63,26 @@ async function main() {
 
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
-    const names = await devTools.evaluate('window.renderLab.cases');
+    const availableNames = await devTools.evaluate('window.renderLab.cases');
+    if (caseName !== undefined && !availableNames.includes(caseName)) {
+      throw new Error(`Unknown render-lab case "${caseName}"; available cases: ${availableNames.join(', ')}`);
+    }
+    const names = caseName === undefined ? availableNames : [caseName];
     const shotNames = new Set();
     for (const name of names) {
+      if (shotName !== undefined) {
+        // 1 枚だけ必要なとき shoot() は全撮影が終わるまで返らないので、指定撮影を直接反映して撮る。
+        const dataUrl = await devTools.evaluate(
+          `window.renderLab.showShot(${JSON.stringify(name)}, ${JSON.stringify(shotName)}, ${JSON.stringify(graphics)})`
+          + `.then(() => window.renderLab.captureAccumulated())`,
+        );
+        writeFileSync(
+          path.join(outDir, `${shotName}.png`), Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'),
+        );
+        shotNames.add(shotName);
+        console.log(`shot ${shotName}`);
+        continue;
+      }
       // **PNG は 1 枚ずつ受け取る** — CDP の 1 メッセージが約 4 MB を超えると接続が閉じるので、ケースの
       // 全撮影をまとめて返させると、撮影の多いケースで落ちる。
       const caseShotNames = await devTools.evaluate(

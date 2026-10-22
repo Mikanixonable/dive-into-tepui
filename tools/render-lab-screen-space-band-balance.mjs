@@ -35,11 +35,11 @@ if (!(baselineScale > 0)) throw new Error('baseline κ must be a positive number
 const candidateTiers = scales.map(tierOf);
 const allTiers = TARGET === undefined ? [tierOf(baselineScale), ...candidateTiers] : candidateTiers;
 
-// いまの tier で PASSES パスの白色雑音を平均した、帯ごとの画素ごとの RGB(Float32Array × 帯数)。
+// いまの tier で PASSES 本番ジッター位相を平均した、帯ごとの画素ごとの RGB(Float32Array × 帯数)。
 async function meanBands(lab, tier) {
   await lab.setTier(tier);
   await lab.render();
-  await lab.accumulateWhitePasses(0, PASSES);
+  await lab.accumulateProductionPasses(0, PASSES);
   const { sums: [even, odd] } = await lab.takePassSums(false);
   const mean = even.map((image, texture) => Float32Array.from(image, (value, i) => (value + odd[texture][i]) / PASSES));
   return Array.from({ length: BAND_COUNT }, (_, band) => unpackedBand(mean, band));
@@ -110,7 +110,7 @@ function markdownOf(results) {
 
 // --target の出力の、ケース scene の基準の行(測った最初の行)の平均の帯。
 function targetBaselineOf(scene) {
-  const file = path.join(OUTPUT, 'band-balance', `${TARGET}.json`);
+  const file = path.join(OUTPUT, 'band-balance', `production-phase-${TARGET}.json`);
   const row = JSON.parse(readFileSync(file, 'utf8')).results.find((result) => result.scene === scene)?.rows[0];
   if (row === undefined) throw new Error(`--target ${TARGET}: no row for ${scene}`);
   return row;
@@ -127,7 +127,7 @@ await withLab(async (lab) => {
 });
 const directory = path.join(OUTPUT, 'band-balance');
 mkdirSync(directory, { recursive: true });
-writeFileSync(path.join(directory, `${LABEL}.json`), JSON.stringify({ passes: PASSES, scales,
+writeFileSync(path.join(directory, `production-phase-${LABEL}.json`), JSON.stringify({ sampling: 'production-jitter-phase', passes: PASSES, scales,
   results }, null, 2));
-writeFileSync(path.join(directory, `${LABEL}.md`), markdownOf(results));
+writeFileSync(path.join(directory, `production-phase-${LABEL}.md`), markdownOf(results));
 console.log(markdownOf(results));

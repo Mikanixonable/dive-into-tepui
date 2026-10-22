@@ -31,7 +31,6 @@ await withLab(async (lab) => {
     const packed = Array.from({ length: 3 }, (_, index) => floats(path.join(cache, `mean-1024-packed-${index}.f32`)));
     await lab.show({ caseName: 'cornell-box', shot: 'cornell-box', mode: 2 });
     await lab.setTier(metrics.conditions.tier);
-    await lab.setWhiteNoisePass(7000);
     await lab.setStageRange('all');
     await lab.render();
     const errors = [];

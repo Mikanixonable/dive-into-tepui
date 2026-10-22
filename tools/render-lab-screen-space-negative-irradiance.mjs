@@ -7,14 +7,14 @@ import path from 'node:path';
 import { encodeRgbPng } from './png.mjs';
 import { linearToSrgb } from './screen-space-error.mjs';
 import {
-  analyticRatiosOf, ENTRIES, entryInMode, fixed, HEIGHT, maskOf, readFloats, referenceMetaOf, referenceSumsOf, seedOf,
+  analyticRatiosOf, ENTRIES, entryInMode, fixed, HEIGHT, maskOf, readFloats, referenceMetaOf, referenceSumsOf,
   shotsDir, table, TIERS, unpackedBand, WIDTH, windowRatiosOf, withLab, writeFloats,
 } from './screen-space-lab.mjs';
 import { reference } from './screen-space-reference.mjs';
 import { gbufferTexelOf, scanMaskOf } from './screen-space-scan.mjs';
 
-const OUTPUT = path.join(shotsDir, 'ssd-8.5', 'negative3');
-const REFERENCE_NAME = '8.5-after2';
+const OUTPUT = path.join(shotsDir, 'ssd-8.5', 'negative3-production-phases');
+const REFERENCE_NAME = '8.5-after2-production-phases';
 const REFERENCE_PASSES = 1024;
 const SHOTS = ['bay-earth-open', 'bay-earth-overhead', 'bay-moon-open', 'bay', 'cornell-box'];
 const TIER = TIERS.medium;
@@ -94,20 +94,18 @@ const rgbaOfRgb = (rgb) => Float32Array.from({ length: rgb.length / 3 * 4 }, (_,
 // 走査の描き直しの準備: 段 tier・段の範囲 range・A を固定するかを決めて 1 度全段を描く。
 async function prepare(lab, tier, alphaOne) {
   await lab.setTier(tier);
-  await lab.setWhiteNoisePass(null);
-  await lab.setSeed(seedOf(0));
   await lab.setStageRange('all');
   await lab.setUpsampleAlphaOne(false);
-  await lab.render();
+  await lab.renderProductionCorrectionPhase(0);
   await lab.setUpsampleAlphaOne(alphaOne);
 }
 
-// 中の段の走査の帯の SCAN_PASSES パス平均(白色雑音)を、偶数番目と奇数番目の半分ごとに rq-*.f32 へ。
+// 中の段の走査の帯の SCAN_PASSES 本番ジッター位相の平均を、偶数番目と奇数番目の半分ごとに rq-*.f32 へ。
 async function captureScanBands(lab, dir) {
   await prepare(lab, TIER, false);
   const sums = HALVES.map(() => [0, 1, 2].map(() => new Float64Array(SCAN_PIXELS * 4)));
   for (let first = 0; first < SCAN_PASSES; first += CHUNK_PASSES) {
-    await lab.accumulateWhitePasses(first, CHUNK_PASSES);
+    await lab.accumulateProductionPasses(first, CHUNK_PASSES);
     const taken = await lab.takePassSums(false);
     for (const [parity, textures] of taken.sums.entries()) {
       for (const [texture, values] of textures.entries()) {
@@ -123,14 +121,13 @@ async function captureScanBands(lab, dir) {
   }
 }
 
-// 半分ごとに、帯 packed(3 枚)を鎖の入力へ書き、seed を ROTATIONS_PER_HALF 通り回して全解像度の補正を平均する。
-// 半分ごとに使う seed は重ならない(回転の雑音が半分どうしの差に出る)。返り値は半分ごとの全解像度の平均。
+// 半分ごとに、帯 packed(3 枚)を鎖の入力へ書き、本番位相を ROTATIONS_PER_HALF 通り回して全解像度の補正を平均する。
+// 半分ごとに使う位相は重ならない。返り値は半分ごとの全解像度の平均。
 async function averageOverRotations(lab, inputs) {
   for (const [half, writes] of inputs.entries()) {
     for (const [texture, rgba] of writes.entries()) await lab.writePackedBands(texture, rgba);
     for (let k = 0; k < ROTATIONS_PER_HALF; k++) {
-      await lab.setSeed(seedOf(half * ROTATIONS_PER_HALF + k));
-      await lab.render();
+      await lab.renderProductionCorrectionPhase(half * ROTATIONS_PER_HALF + k);
       await lab.accumulateFloat('correction', 3, half);
     }
   }
@@ -144,7 +141,7 @@ async function captureChainRows(lab, dir) {
   await lab.setStageRange('chain');
   for (const half of HALVES) {
     for (const [texture, rgba] of packedOf(dir, half).entries()) await lab.writePackedBands(texture, rgba);
-    await lab.render();
+    await lab.renderProductionCorrectionPhase(0);
     writeFloats(path.join(dir, `c2-${half}.f32`), await lab.readFloat('scan-correction', 3));
   }
   const chained = await averageOverRotations(lab, HALVES.map((half) => packedOf(dir, half)));
@@ -155,7 +152,7 @@ async function captureChainRows(lab, dir) {
   HALVES.forEach((half, h) => writeFloats(path.join(dir, `u3-${half}.f32`), sums[h]));
 }
 
-// 本番(ブルーノイズの seed 0〜PRODUCTION_PASSES − 1)の補正を 1 パスずつ撮り、E + C の見える負の画素の数を
+// 本番ジッター位相 0〜PRODUCTION_PASSES − 1 の補正を 1 位相ずつ撮り、E + C の見える負の画素の数を
 // パスごとに、補正の平均と不偏分散を画素・成分ごとに残す。最初のパスでは、拡散照度の読み戻しが E に合うかも調べる。
 async function captureProduction(lab, dir, e, mask, exposure) {
   await prepare(lab, TIER, false);
@@ -164,8 +161,7 @@ async function captureProduction(lab, dir, e, mask, exposure) {
   const counts = [];
   let farDiffuseMismatchPixels = 0;
   for (let k = 0; k < PRODUCTION_PASSES; k++) {
-    await lab.setSeed(seedOf(k));
-    await lab.render();
+    await lab.renderProductionCorrectionPhase(k);
     const c = await lab.readFloat('correction', 3);
     if (k === 0) {
       const diffuse = await lab.readFloat('diffuse', 3);
@@ -184,7 +180,7 @@ async function captureProduction(lab, dir, e, mask, exposure) {
   writeFloats(path.join(dir, 'prod-mean.f32'), Float32Array.from(sums, (v) => v / PRODUCTION_PASSES));
   writeFloats(path.join(dir, 'prod-variance.f32'), Float32Array.from(sums, (sum, i) => (
     (squares[i] - sum * sum / PRODUCTION_PASSES) / (PRODUCTION_PASSES - 1))));
-  return { passes: counts, farDiffuseMismatchPixels };
+  return { phaseIndices: Array.from({ length: PRODUCTION_PASSES }, (_, phase) => phase), phases: counts, farDiffuseMismatchPixels };
 }
 
 async function captureUnit(lab, { entry, offEntry, dir }) {
@@ -203,7 +199,8 @@ async function captureUnit(lab, { entry, offEntry, dir }) {
   await captureChainRows(lab, dir);
   const production = await captureProduction(lab, dir, e, maskOf(radius, TIER.scale), exposure);
   writeFileSync(path.join(dir, 'capture.json'), JSON.stringify({
-    exposure, exposureOff, production, seconds: (Date.now() - started) / 1000 }, null, 1));
+    sampling: 'production-jitter-phase', exposure, exposureOff, production,
+    seconds: (Date.now() - started) / 1000 }, null, 1));
 }
 
 // ---- 数え方 ----
@@ -417,7 +414,7 @@ function writeTable(results) {
     '', '## 本番の最終出力(64 パスの 1 パスごと)の見える負の画素 最小 / 中央 / 最大', '',
     ...table(['撮影', '見える', '0 未満', '遠方拡散照度の読み戻しと E が合わない画素'], results.map((r) => {
       const range = (field) => {
-        const sorted = r.production.passes.map((pass) => pass[field]).sort((a, b) => a - b);
+        const sorted = r.production.phases.map((phase) => phase[field]).sort((a, b) => a - b);
         return `${sorted[0]} / ${sorted[Math.floor(sorted.length / 2)]} / ${sorted.at(-1)}`;
       };
       return [r.key, range('visibleCount'), range('negativeCount'), r.production.farDiffuseMismatchPixels];

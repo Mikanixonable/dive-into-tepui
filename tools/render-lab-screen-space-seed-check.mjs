@@ -24,13 +24,12 @@ for (const scene of scenes) {
     await withLab(async (lab) => {
       try {
         await lab.show({ caseName: scene.caseName, shot: scene.shot, mode: 2, set: 'tuning', key: scene.id });
-        await lab.setWhiteNoisePass(0);
         await lab.setTier(rawTier);
         await lab.setStageRange('scan');
-        await lab.render();
+        await lab.renderProductionCorrectionPhase(0);
         const raw = await lab.readFloat('band-sum', 4);
         await lab.setTier(chainTier);
-        await lab.render();
+        await lab.renderProductionCorrectionPhase(0);
         const chain = await lab.readFloat('band-sum', 4);
         if (raw.length !== chain.length) throw new Error(`${scene.id}: scan outputs have different sizes`);
         const difference = new Float32Array(raw.length);
@@ -51,14 +50,13 @@ for (const scene of scenes) {
         writeFloats(path.join(outDir, scene.id, 'same-seed-band-sum-difference.rgba.f32'), difference);
         const pixelCount = raw.length / 4 * 3;
         results.push({
-          scene: scene.id, whiteNoisePass: 0, rawTier, chainTier,
+          scene: scene.id, productionFrame: 0, rawTier, chainTier,
           dimensions: [scanWidth, scanHeight], comparedRgbValues: pixelCount,
           maximumAbsoluteDifference: maximum, meanAbsoluteDifference: sum / pixelCount,
           rmsDifference: Math.sqrt(squareSum / pixelCount), changedRgbValues: changed,
         });
         succeeded = true;
       } finally {
-        await lab.setWhiteNoisePass(null);
         await lab.setStageRange('all');
       }
     });
