@@ -39,11 +39,18 @@ const FOV_DEG = 50;
 // 鏡面ローブの半幅 [rad] の、GGX の α に対する比(src/render/pipeline/lighting/ggx.ts の LOBE_HALF_WIDTH_PER_ALPHA)。
 const LOBE_HALF_WIDTH_PER_ALPHA = 2;
 // 高さ 540 px の描画バッファで均すのに使う縮小列の段数。
-const LEVEL_COUNT = (() => {
+const MAX_LEVEL_COUNT = (() => {
   const source = readFileSync(path.join(root, 'src/render/pipeline/screen-space/reflection-denoise.ts'), 'utf8');
-  const match = /^export const REFLECTION_LEVEL_COUNT = (\d+);/m.exec(source);
-  if (match === null) throw new Error('REFLECTION_LEVEL_COUNT not found in reflection-denoise.ts');
+  const match = /^export const MAX_REFLECTION_LEVEL_COUNT = (\d+);/m.exec(source);
+  if (match === null) throw new Error('MAX_REFLECTION_LEVEL_COUNT not found in reflection-denoise.ts');
   return Number(match[1]);
+})();
+// 撮影はケース既定の段数で行う。
+const CAPTURE_LEVEL_COUNT = (() => {
+  const source = readFileSync(path.join(root, 'src/render/graphics-settings.ts'), 'utf8');
+  const reflection = /reflection:\s*\{[\s\S]*?screenSpaceSpecularDenoiseLevelCount:\s*\{[\s\S]*?presets:\s*\{[^}]*high:\s*(\d+)/m.exec(source);
+  if (reflection === null) throw new Error('reflection denoise level preset not found in graphics-settings.ts');
+  return Number(reflection[1]);
 })();
 // いちばん粗い段に張り付いたとみなす、段の端からの差。8bit の灰の白の側の1刻み(段にして約 0.009 × 段数)を覆う。
 const STUCK_MARGIN = 0.15;
@@ -862,12 +869,12 @@ function distantSpotTable(bands, sphereShot, lightShot) {
 function levelOf([r, g, b]) {
   if (b > 128 && r < 64 && g < 64) return null;
   if (r === 0 && g === 0 && b === 0) return null;
-  return srgbToLinear(r / 255) * LEVEL_COUNT - 1;
+  return srgbToLinear(r / 255) * MAX_LEVEL_COUNT - 1;
 }
 
 // 表 6: 帯ごとの、w̄ が正の画素の数と、それを均しの段の区間ごとに数えた数・いちばん粗い段に張り付いた数と割合。
 function levelTable(bands, levelShot) {
-  const top = LEVEL_COUNT - 1;
+  const top = CAPTURE_LEVEL_COUNT - 1;
   const rows = ROUGHNESSES.map(() => ({ weighted: 0, bins: new Array(top).fill(0), stuck: 0 }));
   for (let y = 0; y < levelShot.height; y++) {
     for (let x = 0; x < levelShot.width; x++) {
@@ -915,7 +922,7 @@ function main() {
   }
   console.log('\n像から遠い輝点\n');
   console.log(distantSpotTable(bands, sphereShot, lightShot));
-  console.log(`\n帯 × 均しの段(w̄ が正の画素。段数 ${LEVEL_COUNT}、段 0〜${LEVEL_COUNT - 1})\n`);
+  console.log(`\n帯 × 均しの段(w̄ が正の画素。段数 ${CAPTURE_LEVEL_COUNT}、段 0〜${CAPTURE_LEVEL_COUNT - 1})\n`);
   if (existsSync(path.join(dir, 'ladder-level.png'))) {
     console.log(levelTable(bands, readShot(dir, 'ladder-level')));
   } else {

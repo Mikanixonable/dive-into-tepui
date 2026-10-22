@@ -258,6 +258,27 @@ export function register(): void {
     assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(rejected))).screenSpaceBandCount, fieldPresetValues('screenSpace', 'high').screenSpaceBandCount);
   });
 
+  test('graphics-selection: 映り込みの均しの段数を持たない保存と範囲外の値は「高」の値に解ける', () => {
+    const saved = { quality: { fields: { reflection: { custom: { screenSpaceSpecularDenoise: true } } } } };
+    const resolved = resolveGraphics(parseGraphicsSelection(JSON.stringify(saved)));
+    assert.equal(resolved.screenSpaceSpecularDenoiseLevelCount, 7);
+    const rejected = [9, 2].map((value) => ({
+      quality: { fields: { reflection: { custom: { screenSpaceSpecularDenoiseLevelCount: value } } } },
+    }));
+    for (const selection of rejected) {
+      assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(selection))).screenSpaceSpecularDenoiseLevelCount, 7);
+    }
+  });
+
+  test('graphics-selection: 映り込みの追跡解像度の保存値は候補だけ受け入れ、候補外は「高」の値に解ける', () => {
+    for (const value of [0.25, 1 / 3]) {
+      const saved = { quality: { fields: { reflection: { custom: { screenSpaceSpecularScale: value } } } } };
+      assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(saved))).screenSpaceSpecularScale, value);
+    }
+    const rejected = { quality: { fields: { reflection: { custom: { screenSpaceSpecularScale: 0.2 } } } } };
+    assert.equal(resolveGraphics(parseGraphicsSelection(JSON.stringify(rejected))).screenSpaceSpecularScale, 0.5);
+  });
+
   test('graphics-selection: 向きを見る天体照の数を持たない保存と範囲外の値は「高」の値に解ける', () => {
     const saved = { quality: { fields: { screenSpace: { custom: { screenSpaceSliceCount: 3, screenSpaceStepCount: 4 } } } } };
     const resolved = resolveGraphics(parseGraphicsSelection(JSON.stringify(saved)));

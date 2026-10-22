@@ -146,6 +146,7 @@ function expandedValues(legacy: LegacyValues): GraphicsSettingsData {
     screenSpaceSpecularScale: trace.scale,
     screenSpaceSpecularStepCount: trace.stepCount,
     screenSpaceSpecularDenoise: legacy.screenSpaceSpecularDenoise,
+    screenSpaceSpecularDenoiseLevelCount: 7,
     pointField: legacy.pointField,
     rings: legacy.rings,
     lens: legacy.lens,

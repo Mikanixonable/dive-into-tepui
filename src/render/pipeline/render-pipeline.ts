@@ -184,6 +184,7 @@ export class RenderPipeline {
       renderer, this._gbuffer, this.reflectionSourcePass.texture, this.reflection, gpu,
       graphics.screenSpaceSpecular, graphics.screenSpaceSpecularScale, graphics.screenSpaceSpecularStepCount,
       graphics.screenSpaceSpecularDenoise,
+      graphics.screenSpaceSpecularDenoiseLevelCount,
     );
     this.materialPass = new MaterialPass(
       renderer, this.lightPrepass, this._gbuffer, this._diffuseCorrection, this.reflection, gpu,
@@ -308,6 +309,7 @@ export class RenderPipeline {
     this.reflectionPass.setTrace(graphics.screenSpaceSpecularScale, graphics.screenSpaceSpecularStepCount);
     // 均した映り込みを書く段と、それを読む本マテリアルは一緒に切り替える。
     this.reflectionPass.setDenoised(graphics.screenSpaceSpecularDenoise);
+    this.reflectionPass.setDenoiseLevelCount(graphics.screenSpaceSpecularDenoiseLevelCount);
     this.materialPass.setReflection(graphics.screenSpaceSpecular, graphics.screenSpaceSpecularDenoise);
     this.shadowMaps.setQuality(
       graphics.meshShadow,

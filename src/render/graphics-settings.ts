@@ -264,10 +264,10 @@ export const GRAPHICS_FIELDS = {
   reflection: {
     label: '映り込み', enabled: 'screenSpaceSpecular',
     knobs: {
-      // 追跡する深度の解像度の、描画バッファに対する比。
+      // 追跡する深度の解像度の、描画バッファに対する比。深度の画素 1 つが描画画素の整数個四方を覆うので 1 / 整数に限る。
       screenSpaceSpecularScale: {
-        kind: 'choice', label: '映り込みを全解像度で追跡する',
-        items: [[0.5, '1/2'], [1, '1']],
+        kind: 'choice', label: '追跡の解像度',
+        items: [[0.25, '1/4'], [1 / 3, '1/3'], [0.5, '1/2'], [1, '1']],
         presets: { low: 0.5, medium: 0.5, high: 0.5 },
       },
       // ray 1 本の歩数。
@@ -280,6 +280,12 @@ export const GRAPHICS_FIELDS = {
       screenSpaceSpecularDenoise: {
         kind: 'toggle', label: 'ぼかし',
         presets: { low: false, medium: false, high: true },
+      },
+      // 映り込みを均すのに使う縮小列の段数(高さ 540 px の描画バッファでの数)。
+      screenSpaceSpecularDenoiseLevelCount: {
+        kind: 'slider', label: '均しの段数',
+        min: 3, max: 8, step: 1,
+        presets: { low: 7, medium: 7, high: 7 },
       },
     },
   },

@@ -20,7 +20,7 @@ const LEGACY_HIGH: GraphicsSettingsData = {
   screenSpaceHistoryCap: 8,
   screenSpaceUpsampleTapCount: 8,
   screenSpaceSpecular: true, screenSpaceSpecularScale: 0.5, screenSpaceSpecularStepCount: 32,
-  screenSpaceSpecularDenoise: true,
+  screenSpaceSpecularDenoise: true, screenSpaceSpecularDenoiseLevelCount: 7,
   pointField: true, rings: true, lens: true, proteinVibration: true,
   exposureCompensation: 1, filmLut: 'none',
 };

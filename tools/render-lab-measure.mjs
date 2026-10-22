@@ -194,11 +194,12 @@ const AXES = {
   },
   // 値は src/render/graphics-settings.ts の screenSpaceSpecular と、screenSpaceSpecularScale / screenSpaceSpecularStepCount
   // (低・中・高はプリセットの値)/ screenSpaceSpecularDenoise。有無はノブより先に書く。構図は映り込みの出る金属面 —
-  // 材質の格子の既定の向き(leo-metal)と、荷室の金属の板(bay-metal。向きは tools/render-lab/bay-cases.ts の
+  // 金属の部屋(metal-room)、材質の格子の既定の向き(leo-metal)と、荷室の金属の板(bay-metal。向きは tools/render-lab/bay-cases.ts の
   // METAL_VIEW と同じ)。
   reflection: {
     statistic: 'p50',
     framings: [
+      { label: 'metal-room', caseName: 'metal-room', shotName: 'metal-room' },
       { label: 'leo-metal', caseName: 'materials', angles: {} },
       {
         label: 'bay-metal',

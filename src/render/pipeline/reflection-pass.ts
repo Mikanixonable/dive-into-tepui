@@ -76,6 +76,7 @@ export class ReflectionPass {
     private readonly renderer: WebGPURenderer, gbuffer: GBufferPass, reflectionSource: THREE.Texture,
     private readonly output: ScreenSpaceReflection, private readonly gpu: GpuTimings,
     private enabled: boolean, private traceScale: number, private traceStepCount: number, private denoised: boolean,
+    denoiseLevelCount: number,
   ) {
     this.depthTarget.texture.name = 'reflectionDepth';
     this.depth = gbuffer.depthTexture;
@@ -85,7 +86,7 @@ export class ReflectionPass {
     this.traceMaterial.mrtNode = encodedRawReflection(
       traced.get('image') as Vec3Node, traced.get('distance') as FloatNode, traced.get('weight') as FloatNode,
     );
-    this.denoise = new ReflectionDenoise(renderer, gbuffer, output, gpu);
+    this.denoise = new ReflectionDenoise(renderer, gbuffer, output, gpu, denoiseLevelCount);
   }
 
   // uv(0..1)の画素の、追跡の解像度へ縮小した素の深度(逆 Z、虚空は 0)。
@@ -107,6 +108,11 @@ export class ReflectionPass {
   // 次の render から、均した映り込みを書くか(denoised が偽なら、均した描画先は空のまま)。
   public setDenoised(denoised: boolean): void {
     this.denoised = denoised;
+  }
+
+  // 次の render から、均しに使う縮小列の段数を denoiseLevelCount にする。
+  public setDenoiseLevelCount(denoiseLevelCount: number): void {
+    this.denoise.setLevelCount(denoiseLevelCount);
   }
 
   // 次の render から、ray の向きと開始点のずらしを引く blue noise のタイルを (x, y) [px](整数)ずらして読む。

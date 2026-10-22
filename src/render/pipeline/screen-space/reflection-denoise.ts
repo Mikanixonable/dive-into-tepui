@@ -14,15 +14,16 @@ import { encodedDenoisedReflection, type ScreenSpaceReflection } from './screen-
 import type { GBufferPass } from '../gbuffer';
 import type { FloatNode, Vec3Node } from '../../tsl-types';
 
-// 高さ LEVEL_REFERENCE_HEIGHT の描画バッファで均すのに使う、縮小列の段数。段 0 は均す前の映り込みと G バッファそのもので、
-// 段 k は描画画素 2^k 個四方を画素 1 つにまとめる。描画バッファの高さが倍になるごとに 1 段増やす — 焦点距離 [px] が倍に
-// なると、同じ粗さの面を均す段は 1 つ上がる。tools/render-lab-reflection-levels.mjs がこの行を文字列で読む。
-export const REFLECTION_LEVEL_COUNT = 7;
-// REFLECTION_LEVEL_COUNT の段数で均す、描画バッファの高さ [px]。
+// 描画設定の「均しの段数」の上端。均しの段数は、高さ LEVEL_REFERENCE_HEIGHT の描画バッファで均すのに使う縮小列の段数で
+// 数える。段 0 は均す前の映り込みと G バッファそのもので、段 k は描画画素 2^k 個四方を画素 1 つにまとめる。描画バッファの
+// 高さが倍になるごとに 1 段増やす — 焦点距離 [px] が倍になると、同じ粗さの面を均す段は 1 つ上がる。
+// tools/render-lab-reflection-levels.mjs がこの行を文字列で読む。
+export const MAX_REFLECTION_LEVEL_COUNT = 8;
+// 均しの段数を数える描画バッファの高さ [px]。
 const LEVEL_REFERENCE_HEIGHT = 540;
 // 縮小列に組む段数。描画バッファの高さ 4320 px(LEVEL_REFERENCE_HEIGHT の 8 倍)まで、均すのに使う段を増やせる。
-const BUILT_LEVEL_COUNT = REFLECTION_LEVEL_COUNT + 3;
-// 当たり距離を読み始める段(描画画素 16 個四方)。
+const BUILT_LEVEL_COUNT = MAX_REFLECTION_LEVEL_COUNT + 3;
+// 当たり距離を読み始める段(描画画素 16 個四方)。均すのに使ういちばん粗い段がこれより細かいときは、その段から読む。
 const DISTANCE_LEVEL = 4;
 // 受け手を均す段の上限に足す余裕。上限と均す段を求める式の丸めの違いで、均す段が上限をわずかに超えないようにする。
 const LEVEL_CEILING_MARGIN = 1e-3;
@@ -47,12 +48,15 @@ export class ReflectionDenoise {
   // 描画バッファの縦の焦点距離 [px](view 空間の長さ × 焦点距離 / 奥行き が画面の長さ)。
   private readonly focalLength = uniform(1);
   // 均すのに使ういちばん粗い段(小数)。描画バッファの高さで決まる(coarsestLevelOf)。
-  private readonly coarsestLevel = uniform(REFLECTION_LEVEL_COUNT - 1);
+  private readonly coarsestLevel = uniform(MAX_REFLECTION_LEVEL_COUNT - 1);
+  // 当たり距離を読み始める段。DISTANCE_LEVEL を、このフレームに書くいちばん粗い段で止めた値。
+  private readonly distanceLevel = uniform(DISTANCE_LEVEL);
 
-  // reflection は均す前の映り込みを読み、均した映り込みを書く先。
+  // reflection は均す前の映り込みを読み、均した映り込みを書く先。levelCount は均しの段数(MAX_REFLECTION_LEVEL_COUNT の
+  // 冒頭の数え方)。
   public constructor(
     private readonly renderer: WebGPURenderer, private readonly gbuffer: GBufferPass,
-    private readonly reflection: ScreenSpaceReflection, private readonly gpu: GpuTimings,
+    private readonly reflection: ScreenSpaceReflection, private readonly gpu: GpuTimings, private levelCount: number,
   ) {
     this.sample = new ShadingSample(gbuffer);
     this.reduction = new ReflectionReduction(renderer, gbuffer, reflection, gpu, BUILT_LEVEL_COUNT);
@@ -72,7 +76,7 @@ export class ReflectionDenoise {
   public render(camera: THREE.Camera, width: number, height: number): void {
     this.prepare(camera, height);
     // 縮小列を、均すのに使ういちばん粗い段の端数を混ぜる段まで書き、均した映り込みを書く。
-    this.reduction.render(camera, width, height, Math.ceil(coarsestLevelOf(height)));
+    this.reduction.render(camera, width, height, Math.ceil(coarsestLevelOf(height, this.levelCount)));
     this.renderer.setRenderTarget(this.reflection.denoisedTarget);
     this.quad.material = this.material;
     this.gpu.beginPass(GPU_PASS.reflectionDenoise);
@@ -93,6 +97,11 @@ export class ReflectionDenoise {
     this.material.dispose();
   }
 
+  // 次の render から、均しの段数を count にする。組む段は変わらないので、シェーダは組み直さない。
+  public setLevelCount(count: number): void {
+    this.levelCount = count;
+  }
+
   // 受け手の画素の均した映り込み(DenoisedReflection)。段 0 から順に、受け手の面に載らない分を 1 つ細かい段の値で埋めた
   // 値を求め、段 DISTANCE_LEVEL から粗い段へ、最初に w̄ が正になった段の (w × d)‾ / w̄ を当たり距離にして均す段を選び、
   // 選んだ段の両隣を段の端数で混ぜる。受け手を均す段の上限までに w̄ が正にならない画素、面の写っていない画素、映り込みの
@@ -107,7 +116,7 @@ export class ReflectionDenoise {
         const receiverWidth = specularLobeHalfWidth(this.sample).toVar();
         // 当たり距離を探す段の上限。それより粗い段で当たり距離を見つけても、選ぶのは上限より細かい段で、そこまでの段は
         // どれも w̄ が 0。
-        const searchCeiling = max(float(DISTANCE_LEVEL), ceil(this.levelCeiling())).toVar();
+        const searchCeiling = max(this.distanceLevel, ceil(this.levelCeiling())).toVar();
         // このフレームに書いた段のうち、いちばん粗い段。
         const lastLevel = ceil(this.coarsestLevel).toVar();
         // 段ごとの埋めた値。段 0 は受け手の画素そのもの。混ぜる 2 段は必ず求めてある。
@@ -125,14 +134,12 @@ export class ReflectionDenoise {
             value.weighted.assign(next.weighted);
             value.weightedDistance.assign(next.weightedDistance);
           };
-          if (index <= DISTANCE_LEVEL) fill();
-          else {
-            const searching = selected.lessThan(0).and(searchCeiling.greaterThanEqual(index));
-            If(searching.or(selected.greaterThanEqual(index - 1)).and(lastLevel.greaterThanEqual(index)), fill);
-          }
+          const searching = selected.lessThan(0).and(searchCeiling.greaterThanEqual(index));
+          If(lastLevel.greaterThanEqual(index).and(
+            this.distanceLevel.greaterThanEqual(index).or(searching).or(selected.greaterThanEqual(index - 1)),
+          ), fill);
           // 当たり距離が決まったら、均す段を選ぶ。
-          if (index < DISTANCE_LEVEL) continue;
-          If(selected.lessThan(0).and(value.weighted.a.greaterThan(0)), () => {
+          If(this.distanceLevel.lessThanEqual(index).and(selected.lessThan(0)).and(value.weighted.a.greaterThan(0)), () => {
             selected.assign(this.levelOf(value.weightedDistance.div(value.weighted.a)));
           });
         }
@@ -182,14 +189,15 @@ export class ReflectionDenoise {
   private prepare(camera: THREE.Camera, height: number): void {
     // 縦の焦点距離は、射影行列の縦の倍率に画面の高さの半分を掛けたもの。
     this.focalLength.value = camera.projectionMatrix.elements[5]! * height / 2;
-    this.coarsestLevel.value = coarsestLevelOf(height);
+    this.coarsestLevel.value = coarsestLevelOf(height, this.levelCount);
+    this.distanceLevel.value = Math.min(DISTANCE_LEVEL, Math.ceil(this.coarsestLevel.value));
     this.sample.sync(camera);
   }
 }
 
 // 高さ height [px] の描画バッファで均すのに使う、いちばん粗い段(小数)。高さ LEVEL_REFERENCE_HEIGHT で
-// REFLECTION_LEVEL_COUNT − 1 になり、高さが倍になるごとに 1 上がる。
-function coarsestLevelOf(height: number): number {
-  const level = REFLECTION_LEVEL_COUNT - 1 + Math.log2(height / LEVEL_REFERENCE_HEIGHT);
-  return THREE.MathUtils.clamp(level, DISTANCE_LEVEL, BUILT_LEVEL_COUNT - 1);
+// levelCount − 1 になり、高さが倍になるごとに 1 上がる。
+function coarsestLevelOf(height: number, levelCount: number): number {
+  const level = levelCount - 1 + Math.log2(height / LEVEL_REFERENCE_HEIGHT);
+  return THREE.MathUtils.clamp(level, 0, BUILT_LEVEL_COUNT - 1);
 }

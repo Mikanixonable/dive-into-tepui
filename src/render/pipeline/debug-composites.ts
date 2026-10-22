@@ -16,7 +16,7 @@ import {
   type PlanetDiffuseDebugTargetId,
 } from './debug-target';
 import { levelAt, type BandLayout } from './screen-space/band-pyramid';
-import { REFLECTION_LEVEL_COUNT } from './screen-space/reflection-denoise';
+import { MAX_REFLECTION_LEVEL_COUNT } from './screen-space/reflection-denoise';
 import type { GBufferPass } from './gbuffer';
 import type { Exposure } from './exposure';
 import type { ShadowMaps } from './shadow/shadow-maps';
@@ -306,12 +306,12 @@ export class DebugComposites {
     return select(distance.greaterThan(0), scaled.clamp(0, 1), float(0));
   }
 
-  // 映り込みを均すのに読んだ段を、段 + 1 を REFLECTION_LEVEL_COUNT で割った線形の灰(1 で切る)へ写す。w̄ が 0 の画素は
+  // 映り込みを均すのに読んだ段を、段 + 1 を最大段数で割った線形の灰(1 で切る)へ写す。w̄ が 0 の画素は
   // 青、均した値を書いていない(映り込みを切った)フレームは黒。目盛りを変えるときは
   // tools/render-lab-reflection-levels.mjs の読み戻しも揃える。
   private reflectionDenoiseLevel(): Vec3Node {
     const level = this.reflection.denoiseLevelAt(screenUV);
-    const gray = vec3(level.add(1).div(REFLECTION_LEVEL_COUNT).clamp(0, 1));
+    const gray = vec3(level.add(1).div(MAX_REFLECTION_LEVEL_COUNT).clamp(0, 1));
     return select(level.greaterThan(-0.5), gray, select(level.greaterThan(-1.5), vec3(0, 0, 1), vec3(0)));
   }
 }
