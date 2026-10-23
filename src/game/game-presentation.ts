@@ -10,6 +10,8 @@ import { PlayerMarkers } from './marker/player-markers';
 import { isModularShip } from './ship/modular-ship';
 import { CelestialMarkers } from './marker/celestial-markers';
 import { EquatorNodeManager } from './marker/equator-node-manager';
+import { OrbitSlotPresenter } from './navigation/orbit-slot-presenter';
+import { NavigationCommand } from './navigation/navigation-command';
 import { Targeter } from './targeter';
 import { PlanDisplay } from './plan/plan-display';
 import { PlanGuide } from './plan/plan-guide';
@@ -118,6 +120,10 @@ export class GamePresentation {
   private readonly flashEffectsView: FlashEffectsView;
   private readonly entityLines: EntityLineManager;
   private readonly equatorNodes: EquatorNodeManager;
+  // 軌道標識の軌道線・位相点マーカー・被選択物をまとめる口。
+  private readonly orbitSlots: OrbitSlotPresenter;
+  // 航行指令の求解と候補一覧。開いているあいだ時刻バリアを進行へ渡す。
+  private readonly navigationCommand: NavigationCommand;
   private readonly frameControls: FrameControls;
   private readonly hudPanels: HudPanelPresenter;
   private readonly inputPhase: GameInputPhase;
@@ -127,6 +133,8 @@ export class GamePresentation {
   public get isPaused(): boolean { return this.devices.hud.overlayManager.isGamePaused(); }
   // このフレームの入力の解釈が組んだ操作量。
   public get pilotControls(): PilotControls { return this.inputPhase.pilotControls; }
+  // 航行指令の求解中に simTime が越えてはいけない上限。求解窓が開いていなければ null。
+  public get simTimeLimit(): number | null { return this.navigationCommand.simTimeLimit; }
 
   // 各表示物・入力ハンドラを、互いの依存関係が満たせる順に組んで game へ繋ぐ。viewOptionsSettings は
   // マップ・天球の表示設定と表示パネルのタブの選択、themePalette は選ばれている配色。
@@ -146,6 +154,10 @@ export class GamePresentation {
     this.playerMarkers = new PlayerMarkers(markers);
     this.flashEffectsView = new FlashEffectsView(scene.scene);
     this.equatorNodes = new EquatorNodeManager(dynamicSystem, markers, viewOptionsSettings.mapDisplay);
+    this.orbitSlots = new OrbitSlotPresenter(
+      game.orbitSlots, celestialSystem, celestialSystem.orbitGuide.orbitCatalog,
+      markers, scene.scene, () => game.simTime,
+    );
     this.celestialMarkers = new CelestialMarkers(markers, celestialSystem);
     hud.beginRun(activeStage.id);
     const entityDisplayPort = entityDisplayCommands(commands, viewer.entityDisplay);
@@ -156,7 +168,9 @@ export class GamePresentation {
     this.entityLines = new EntityLineManager(dynamicSystem, viewer.entityDisplay);
     const cameraCommandPort = cameraCommands(commands, viewer.camera);
     const targetCommands = navTargetCommands(commands, viewer.navTarget);
-    this.navTargetPresenter = new NavTargetPresenter(viewer.navTarget, markers);
+    this.navTargetPresenter = new NavTargetPresenter(
+      viewer.navTarget, markers, game.orbitSlots, celestialSystem.orbitGuide.orbitCatalog,
+    );
     const anchorEntities = new AnchorEntities(
       dynamicSystem, controlSelection, this.navTargetPresenter, celestialSystem,
     );
@@ -236,7 +250,7 @@ export class GamePresentation {
       this.displayWindowManager, this.frameControls,
       this.frameAnchors, controlSelection, controlSelectionCommands(commands, controlSelection),
       game.simSpeedManager, simSpeedCommands(commands, game.simSpeedManager),
-      this.planDisplay, this.planPath, planCommands(commands),
+      this.planDisplay, this.planPath, planCommands(commands), this.orbitSlots,
       scene.scene, hud, this.uiSounds, this.navTargetPresenter, targetCommands,
       viewOptionsSettings.mapDisplay,
     );
@@ -244,9 +258,15 @@ export class GamePresentation {
       viewer.view, this.touchControls, { combat: this.combatView, map: this.mapView },
     );
 
+    this.navigationCommand = new NavigationCommand(
+      commands, celestialSystem, dynamicSystem, controlSelection,
+      game.orbitSlots, celestialSystem.orbitGuide.orbitCatalog,
+      hud.overlayManager, (message) => hud.hint(message), () => game.simTime,
+    );
     this.hudPanels = new HudPanelPresenter(
       hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
       activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
+      this.navigationCommand,
     );
     const inputSource: GameInputSource = {
       commands: game.commands,
@@ -279,6 +299,7 @@ export class GamePresentation {
     // Hud はこのランより長生きするので、操作対象も操作ハンドラも無い状態を1度宣言してから破棄する。
     this.devices.hud.clearRunPanels();
     this.hudPanels.dispose();
+    this.navigationCommand.dispose();
     this.mapView.dispose();
     this.combatView.dispose();
     this.moduleWindows.close();
@@ -296,6 +317,7 @@ export class GamePresentation {
     this.viewOptions.dispose();
     this.displayWindowManager.dispose();
     this.equatorNodes.dispose();
+    this.orbitSlots.dispose();
     this.flashEffectsView.dispose();
     this.targeter.dispose();
     this.navTargetPresenter.dispose();
@@ -346,6 +368,8 @@ export class GamePresentation {
   // nowMs [ms] はフレームの実時刻。
   public update(nowMs: number, viewport: Viewport): void {
     this.displayPhase.update(nowMs, viewport);
+    // 求解中の艦や目標が失われたら航行指令ウィンドウを畳む。
+    this.navigationCommand.sync();
   }
 
   // ------------------------------------------------------------ 導出と同期・描画
@@ -434,6 +458,12 @@ export class GamePresentation {
     this.equatorNodes.sync(
       camera.project, camera.position, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot,
       view === 'map', timeLabel, nowMs,
+    );
+    // 標識の線は celestialSystem.sync の後・軌道線の右クリック候補(linePickables.refresh)の前に
+    // 揃える — 候補は描かれた線の点列を読む。
+    this.orbitSlots.sync(
+      displayTime, view, camera,
+      this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, visibilityPolicy, nowMs,
     );
   }
 

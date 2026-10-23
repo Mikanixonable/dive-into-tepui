@@ -51,6 +51,14 @@ export interface ModularShipMotionReactions {
   ): void;
   receiveStructuralLoss?(services: DynamicReactionServices): void;
   receiveBurnUp?(services: DynamicReactionServices): void;
+  // 自動操縦の次の時刻指定出来事(回頭・燃焼の開始・燃焼の終了)。予定が無ければ null。
+  nextAutopilotEventTime?(self: DynamicMotion, simTime: number): number | null;
+  // 積分ステップの直前に呼ぶ自動操縦の指令。燃焼中は倍率によらない刻みで進む。
+  stepAutopilot?(
+    self: DynamicMotion, dt: number, attractors: readonly CelestialBody[], pivot: number,
+  ): void;
+  // 自動操縦が要求する積分刻みの上限 [s]。制約しないなら Infinity。
+  autopilotMaxStep?(self: DynamicMotion): number;
 }
 
 export interface ModularShipMotionSystems {
@@ -169,9 +177,25 @@ class ModularShipBehavior implements DynamicMotionBehavior {
     return modularShipMotionOf(self).contactsAllowedWith(other, simTime);
   }
 
-  // 接触猶予のうち、次にシミュレーションを区切る時刻を返す。
+  // 接触猶予と自動操縦の予定のうち、次にシミュレーションを区切る時刻を返す。
   public nextSimulationEventTime(self: DynamicMotion, simTime: number): number | null {
-    return modularShipMotionOf(self).nextCollisionGraceBoundary(simTime);
+    const grace = modularShipMotionOf(self).nextCollisionGraceBoundary(simTime);
+    const burn = this.reactions.nextAutopilotEventTime?.(self, simTime) ?? null;
+    if (grace === null) return burn;
+    if (burn === null) return grace;
+    return Math.min(grace, burn);
+  }
+
+  // 積分ステップの直前に自動操縦の指令を進める。
+  public stepCommands(
+    self: DynamicMotion, dt: number, attractors: readonly CelestialBody[], pivot: number,
+  ): void {
+    this.reactions.stepAutopilot?.(self, dt, attractors, pivot);
+  }
+
+  // 自動操縦が要求する積分刻みの上限 [s]。
+  public maxSubstepDuration(self: DynamicMotion): number | null {
+    return this.reactions.autopilotMaxStep?.(self) ?? null;
   }
 
   // 船体表面への接触を反応先へ渡す。

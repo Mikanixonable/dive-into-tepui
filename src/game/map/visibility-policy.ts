@@ -149,6 +149,13 @@ export class MapVisibilityPolicy {
     return result;
   }
 
+  // 軌道標識の表示判定。実体ではないので entity() の種別表には載せず、トグルを直に読む。
+  public orbitSlot(): MapVisibility {
+    if (!mapDisplayCategoryVisible(this.toggles, 'orbitSlotVisible')) return noVisibility();
+    const name = this.toggles.orbitSlotName;
+    return { icon: name, label: name, orbit: this.toggles.orbitSlotOrbit, pickable: true };
+  }
+
   // entity() の判定そのもの。
   private computeEntity(kind: DynamicEntityKind, isActivePlayer: boolean): MapVisibility {
     const keys = ENTITY_KEYS[kind];
