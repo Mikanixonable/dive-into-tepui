@@ -30,21 +30,6 @@ export const COMBAT_VIEW_STYLE = `
   letter-spacing: 0;
   line-height: 1.35;
 }
-#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-head {
-  align-items: center;
-  margin-bottom: 7px;
-}
-#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-head h3 {
-  margin: 0;
-  padding: 0;
-  border: 0;
-  color: var(--text);
-  font-size: var(--font-s);
-  font-weight: 600;
-  letter-spacing: 0;
-  line-height: 1.35;
-  text-transform: none;
-}
 #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse {
   border: 0;
   border-radius: 50%;
@@ -122,108 +107,11 @@ export const COMBAT_VIEW_STYLE = `
   color: var(--color-primary-hover);
 }
 
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .target-identity {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  align-items: center;
-  gap: var(--space-1) 7px;
-  margin-bottom: 7px;
-  padding: 7px var(--space-4);
-  border-radius: var(--radius-control);
-  background: color-mix(in srgb, var(--color-signal) 8%, transparent);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .target-lock-glyph {
-  grid-row: 1 / span 2;
-  color: var(--color-signal);
-  font-size: var(--font-xl);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .target-name {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--color-signal);
-  font-size: var(--font-l);
-  font-weight: 600;
-  line-height: 1.2;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .target-role {
-  color: var(--text-dim);
-  font-size: var(--font-xxs);
-  line-height: 1.25;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .target-primary-value { color: var(--color-signal); }
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-readout {
-  display: inline-grid;
-  grid-template-columns: minmax(64px, 1fr) auto;
-  align-items: center;
-  gap: var(--space-3);
-  width: 100%;
-  min-width: 0;
-}
-/* w-meter-fill の既定色(--color-primary)より、ターゲット固有の signal 色を優先する。 */
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-meter .w-meter-fill {
-  background: var(--color-signal);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-target .armor-value {
-  min-width: 0;
-  color: var(--text);
-  font-size: var(--font-xxs);
-  text-align: right;
-}
 #hud:not(.base-mode) .hud-combat-root.active #hud-target .target-help {
   margin-top: var(--space-3);
   color: var(--text-dim);
   font-size: var(--font-xxs);
   line-height: 1.45;
-}
-
-#hud:not(.base-mode) .hud-combat-root.active #hud-enemies .panel-count {
-  margin-left: 5px;
-  color: var(--text-dim);
-  font-size: var(--font-xxs);
-  font-weight: 500;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-list {
-  display: grid; gap: 1px; list-style: none; counter-reset: contact-index;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row {
-  counter-increment: contact-index;
-  display: grid;
-  grid-template-columns: 2.2em minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 7px;
-  min-height: 24px;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-micro);
-  color: var(--text-dim);
-  font-size: var(--font-xs);
-  font-variant-numeric: tabular-nums;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row::before {
-  content: counter(contact-index, decimal-leading-zero);
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-distance { color: currentColor; }
-#hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-role {
-  min-width: 28px;
-  color: currentColor;
-  font-size: var(--font-xxs);
-  text-align: right;
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-row.ui-accent {
-  background: transparent;
-  box-shadow: inset 2px 0 0 var(--color-primary);
-}
-#hud:not(.base-mode) .hud-combat-root.active #hud-enemies .contact-empty {
-  padding: var(--space-2) 0;
-  color: var(--text-dim);
-  font-size: var(--font-xs);
 }
 
 #hud:not(.base-mode) #hud-topbar {
