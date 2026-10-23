@@ -19,8 +19,6 @@ export const LAYOUT_TOKENS_STYLE = `
   --hud-map-scale-bottom: 12px;
   /* 画面右上の収納トグルと固定バッジを隣接させるための配置寸法。 */
   --hud-rail-toggle-size: 30px;
-  /* 常設パネル1行の最小高さ(タブ・行系の見出しに共通)。 */
-  --row-min-h-s: 28px;
 }
 @media ${MQ_MEDIUM_DOWN} {
   :root {

@@ -57,12 +57,12 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
     ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff4a20', accentNear: '#ff8060', signal: '#1ee7d2',
   },
   {
-    id: 'fluorescent-red-blue', name: 'Arcade Pulse', description: '赤と青の強い電気的対比', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, page: '#08090d', accent: '#ff3155', accentNear: '#ff6b82', signal: '#3478ff',
+    id: 'fluorescent-red-blue', name: 'Arcade Pulse', description: 'マゼンタと青の強い電気的対比', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, page: '#08090d', accent: '#ff0090', accentNear: '#ff59b7', signal: '#3478ff',
   },
   {
-    id: 'fluorescent-pink-dawn-blue', name: 'Daybreak', description: '朱色寄りの蛍光ピンクと夜明けの淡い青', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff2d6c', accentNear: '#ff6f96', signal: '#bfe0ff',
+    id: 'fluorescent-pink-dawn-blue', name: 'Daybreak', description: '蛍光ピンクと夜明けの淡い青', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff0080', accentNear: '#ff59ac', signal: '#bfe0ff',
   },
   {
     id: 'driftwood', name: 'Driftwood', description: '褐色に寒色を差した落ち着いた色調', tone: 'dark',
@@ -102,7 +102,7 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
 export const LIGHT_PALETTE: ThemePalette = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
 // 未保存・プリセットに無い id のときの配色。
-const DEFAULT_THEME_ID = 'fluorescent-red-blue';
+const DEFAULT_THEME_ID = 'amber-field';
 
 // id が指すプリセット。プリセットに無い id では null。
 export function themePresetOf(id: string): ThemePalette | null {
@@ -208,6 +208,10 @@ export const SAFE_AREA_LEFT = 'env(safe-area-inset-left, 0px)';
 export const FONT_FAMILY =
   "'JetBrains Mono', 'HackGen', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace";
 
+// ターゲット色の薄膜・縁の濃さ。
+const ROLE_TARGET_FILL = '14%';
+const ROLE_TARGET_EDGE = '46%';
+
 // 配色によらないトークン。--token-name のケバブケースで :root に置く。
 // calc() を要するトークンは、計算済みの値ではなく派生関係そのものを値にする。
 const FIXED_CSS_VARIABLES: Readonly<Record<string, string>> = {
@@ -264,6 +268,23 @@ const FIXED_CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--safe-b': SAFE_AREA_BOTTOM,
   '--safe-l': SAFE_AREA_LEFT,
   '--font-family': FONT_FAMILY,
+  // HUD の色を意味で引くための別名(UI-DESIGN §2「HUD の色は意味で引く」)。値は既存の配色トークンへの
+  // 参照だけで、配色を切り替えれば追従する。データ・ラベル・補足は中立で、色を持つのは残り4つの意味だけ。
+  '--role-own': 'var(--color-primary)',
+  '--role-own-fill': 'var(--color-primary-fill)',
+  '--role-target': 'var(--color-signal)',
+  '--role-target-fill': `color-mix(in srgb, var(--color-signal) ${ROLE_TARGET_FILL}, transparent)`,
+  '--role-target-edge': `color-mix(in srgb, var(--color-signal) ${ROLE_TARGET_EDGE}, transparent)`,
+  '--role-caution': 'var(--color-warning)',
+  '--role-caution-fill': 'var(--color-warning-fill)',
+  '--role-caution-edge': 'var(--color-warning-edge)',
+  '--role-warning': 'var(--color-error)',
+  '--role-warning-fill': 'var(--color-error-fill)',
+  '--role-warning-edge': 'var(--color-error-edge)',
+  '--role-data': 'var(--text)',
+  '--role-label': 'var(--text-dim)',
+  '--role-meta': 'var(--text-faint)',
+  '--role-hairline': 'var(--fill-2)',
 };
 
 // palette を当てたときの CSS 変数の名前と値、すべて。
