@@ -17,7 +17,6 @@ export const STAGE_STATUS_STYLE = `
   font-size: var(--font-s); letter-spacing: 2px; color: var(--text); font-variant-numeric: tabular-nums;
   display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); align-items: center;
 }
-#hud-stagestatus .t.warn { color: var(--color-warning); }
 #hud-stagestatus .t .w-meter { width: 240px; }
 #hud-stagestatus .k { font-size: var(--font-s); color: var(--text-dim); line-height: 1.8; white-space: nowrap; }
 #hud-stagestatus .k-widgets:not(:empty) { margin-top: var(--space-3); }
