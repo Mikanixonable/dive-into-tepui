@@ -2,7 +2,7 @@
 // 距離、その像が遠方の鏡面光を置き換える重み w を求める。判定は深度と、反射する面の位置・向き・粗さから決まる。
 import type * as THREE from 'three/webgpu';
 import {
-  Break, If, Loop, abs, dot, float, floor, ivec2, length, max, min, mix, select, smoothstep, textureLoad, vec2, vec4,
+  Break, If, Loop, abs, dot, float, floor, getViewPosition, ivec2, length, max, min, mix, select, smoothstep, textureLoad, vec2, vec4,
 } from 'three/tsl';
 import type { ShadingSample } from '../lighting/shading-sample';
 import { sampleGgxReflection, type GgxReflectionSample } from '../lighting/ggx';
@@ -86,7 +86,8 @@ export function traceReflection(
   const surfaceWeight = roughnessFade.mul(facingFade).mul(rayWeight).toVar();
   If(surfaceWeight.greaterThan(0), () => {
     // ray の両端。視点へ向かう ray は近クリップ面で止める — その先は透視の除算が裏返る。
-    const origin = sample.position.add(sample.normal.mul(originLift(sample, footprint, pixelSpan, projection))).toVar();
+    const lift = originLift(sample, footprint, pixelSpan, projection).toVar();
+    const origin = sample.position.add(sample.normal.mul(lift)).toVar();
     const toNearPlane = select(direction.z.greaterThan(0),
       near.negate().sub(origin.z).div(max(direction.z, 1e-6)), float(MAX_TRACE_DISTANCE));
     const end = origin.add(direction.mul(max(min(toNearPlane, MAX_TRACE_DISTANCE), 0))).toVar();
@@ -106,7 +107,11 @@ export function traceReflection(
         const sceneZ = viewZOf(sceneDepth, projectionInverse).toVar();
         const nearZ = max(previousZ, rayZ);
         const farZ = min(previousZ, rayZ);
-        If(farZ.lessThan(sceneZ).and(nearZ.greaterThan(thicknessFarZ(sceneZ))), () => {
+        const scenePoint = getViewPosition(cell.add(0.5).div(traceSize), sceneDepth, projectionInverse).toVar();
+        // 接平面より下に写った面は、凸な自分の面か同じ平面で、接平面の上を進む ray が当たる相手ではない。
+        // lift は深度画素内で自分の面が接平面から外れうる高さの上限。
+        const aboveSurface = dot(sample.normal, scenePoint.sub(sample.position)).greaterThan(lift);
+        If(farZ.lessThan(sceneZ).and(nearZ.greaterThan(thicknessFarZ(sceneZ))).and(aboveSurface), () => {
           hitT.assign(t);
           Break();
         });
@@ -216,7 +221,7 @@ export function rayThicknessAt(surfaceZ: FloatNode): FloatNode {
 }
 
 // 面 sample の ray の起点を法線の向きへ浮かせる高さ [m]。平らな面が、自分を写した深度の画素で自分の奥へ入らない
-// 最小の高さ。ray は法線の側へ出るので、起点で足りれば先の刻みでも足りる。
+// 最小の高さで、当たり判定で自分の面を許容する高さの上限にも使う。ray は法線の側へ出るので、起点で足りれば先の刻みでも足りる。
 function originLift(
   sample: ShadingSample, footprint: IntNode, pixelSpan: Vec2Node, projection: Mat4Uniform,
 ): FloatNode {

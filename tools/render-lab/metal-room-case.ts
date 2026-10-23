@@ -51,7 +51,7 @@ const CAMERA_AZIMUTH_DEG = 25;
 const CAMERA_ELEVATION_DEG = 30;
 const CAMERA_DISTANCE = 5.5;
 // 近距離撮影の距離 [m] と仰角 [deg]。
-const CLOSE_DISTANCE = 3.4;
+const CLOSE_DISTANCE = 4.6;
 const CLOSE_ELEVATION_DEG = 18;
 const SUN_AZIMUTH_DEG = 60;
 const SUN_ELEVATION_DEG = 12;

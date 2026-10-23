@@ -17,7 +17,7 @@ export function register(): void {
       '影マップ', '近傍拡散履歴写し', 'Gバッファ',
     ]);
     assert.deepEqual(GPU_PASS_LABELS.slice(GPU_PASS.reflectionSource, GPU_PASS.atmosphere + 1), [
-      '映り込みの像の元', '映り込み', '映り込みの均し', 'マテリアル', '大気',
+      '映り込みの像の元', '映り込み', '映り込みの縮小', '映り込みの合流', '映り込みの均し', 'マテリアル', '大気',
     ]);
   });
 

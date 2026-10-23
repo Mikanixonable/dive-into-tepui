@@ -1,10 +1,9 @@
 // 均す前の映り込みの縮小列。段 k の画素は描画画素 2^k 個四方をまとめ、そこに写る代表の面に載る描画画素についての
-// w × I・w・w × d の和と被覆率を持つ。受け手の画素が、ある段を自分の面に載る分だけ読み、載らない分を 1 つ細かい段の
-// 値で埋める口を持つ(Stachowiak 2015「Stochastic Screen-Space Reflections」の空間方向の均しの縮小列)。
+// w × I・w・w × d の和と被覆率を持つ。段ごとの値と代表の面を読む口を持つ。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, abs, ceil, dot, float, floor, getViewPosition, ivec2, max, min, mrt, saturate, screenCoordinate, screenUV,
+  Fn, If, abs, ceil, dot, float, floor, getViewPosition, ivec2, max, min, mrt, screenCoordinate,
   select, smoothstep, struct, textureLoad, uniform, vec2, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
@@ -14,7 +13,6 @@ import { viewRayAt } from '../view-ray';
 import { compileInto } from '../compile-into';
 import { rayThicknessAt } from './reflection-trace';
 import type { ScreenSpaceReflection } from './screen-space-reflection';
-import type { ShadingSample } from '../lighting/shading-sample';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 同じ面とみなす重みの区間。重みは full の側で 1、none の側で 0 で、あいだをなめらかにつなぐ — 二値の判定は、境をまたぐ
@@ -34,16 +32,10 @@ const SAME_SURFACE_LOBE_WIDTH_DIFFERENCE = { full: 0.2, none: 0.3 } as const;
 const ReflectionLevelTexel = struct(
   { weighted: 'vec4', covered: 'vec2', surface: 'vec4' }, 'ReflectionLevelTexel',
 );
-interface LevelTexel {
+export interface LevelTexel {
   readonly weighted: Vec4Node;
   readonly covered: Vec2Node;
   readonly surface: Vec4Node;
-}
-
-// 受け手の画素の、ある段までで埋めた値。weighted は rgb = (w × I)‾、a = w̄、weightedDistance は (w × d)‾ [m]。
-export interface FilledReflection {
-  readonly weighted: Vec4Node;
-  readonly weightedDistance: FloatNode;
 }
 
 // 縮小列の段の描画先のテクスチャの名前。MRT の出力と結び付く。
@@ -108,11 +100,11 @@ interface RepresentativeSurface {
   readonly lobeHalfWidth: FloatNode;
 }
 
-// 双線形の 4 点の、左上の点からのずれ。
+// 縮小列の 2 × 2 の子の、左上の子からのずれ。
 const CORNERS = [[0, 0], [1, 0], [0, 1], [1, 1]] as const;
 
 // LevelTexel の surface の符号を戻した代表の面。**Fn の中から呼ぶこと。**
-function representativeSurfaceOf(code: Vec4Node): RepresentativeSurface {
+export function representativeSurfaceOf(code: Vec4Node): RepresentativeSurface {
   return {
     normal: octDecodeNormal(code.xy).toVar(),
     offset: code.z,
@@ -122,7 +114,7 @@ function representativeSurfaceOf(code: Vec4Node): RepresentativeSurface {
 
 // 点 point(view 空間)に載る、法線 normal・鏡面ローブの半幅 lobeHalfWidth の面を、代表の面 surface と同じ面とみなす
 // 重み(0..1)。法線の向き、代表の平面からの隔たり、鏡面ローブの半幅の近さの重みを掛けたもの。**Fn の中から呼ぶこと。**
-function sameSurfaceWeight(
+export function sameSurfaceWeight(
   surface: RepresentativeSurface, point: Vec3Node, normal: Vec3Node, lobeHalfWidth: FloatNode,
 ): FloatNode {
   const facing = smoothstep(
@@ -191,7 +183,7 @@ export class ReflectionReduction {
       level.atlas.viewport.copy(level.viewport);
       this.renderer.setRenderTarget(level.atlas);
       this.quad.material = level.material;
-      this.gpu.beginPass(GPU_PASS.reflectionDenoise);
+      this.gpu.beginPass(GPU_PASS.reflectionReduction);
       this.quad.render(this.renderer);
     }
     this.renderer.autoClear = true;
@@ -212,43 +204,19 @@ export class ReflectionReduction {
     for (const atlas of this.atlases) atlas.dispose();
   }
 
-  // 受け手 receiver の画素の、段 level(1 以上)までで埋めた値。段 level を受け手の画素の中心で双線形に読み、受け手の
-  // 面に載る分はその段の値を、載らない分と画面の外の分は 1 つ細かい段の埋めた値 finer を使う。receiverWidth は受け手の
-  // 鏡面ローブの半幅 [rad]。**Fn の中から呼ぶこと。**
-  public filledAt(
-    level: number, finer: FilledReflection, receiver: ShadingSample, receiverWidth: FloatNode,
-  ): FilledReflection {
-    const reduced = this.levels[level - 1]!;
-    // 受け手の画素の中心を囲む段の画素 4 つと、双線形の端数。
-    const position = screenUV.mul(this.fullSize).div(reduced.span).sub(0.5).toVar();
-    const base = floor(position).toVar();
-    const fraction = position.sub(base).toVar();
-    const size = ceil(this.fullSize.div(reduced.span)).toVar();
-    // 画面の中の画素を、双線形の重みと受け手の面に載る重みを掛けて足す。段の値は被覆率を掛けた和なので、足した被覆率が
-    // 受け手の画素のうち段の値で埋まった割合になる。
-    const weighted = vec4(0).toVar();
-    const covered = vec2(0).toVar();
-    for (const [dx, dy] of CORNERS) {
-      const texel = base.add(vec2(dx, dy)).toVar();
-      const inside = texel.x.greaterThanEqual(0).and(texel.y.greaterThanEqual(0))
-        .and(texel.x.lessThan(size.x)).and(texel.y.lessThan(size.y));
-      If(inside, () => {
-        const read = this.levelTexelAt(reduced, texel);
-        const bilinear = (dx === 0 ? fraction.x.oneMinus() : fraction.x)
-          .mul(dy === 0 ? fraction.y.oneMinus() : fraction.y);
-        const surface = representativeSurfaceOf(read.surface);
-        const share = bilinear.mul(sameSurfaceWeight(surface, receiver.position, receiver.normal, receiverWidth))
-          .toVar();
-        weighted.addAssign(read.weighted.mul(share));
-        covered.addAssign(read.covered.mul(share));
-      });
-    }
-    // 埋まらなかった割合を、細かい段の値で埋める。
-    const remainder = saturate(float(1).sub(covered.y)).toVar();
-    return {
-      weighted: weighted.add(finer.weighted.mul(remainder)),
-      weightedDistance: covered.x.add(finer.weightedDistance.mul(remainder)),
-    };
+  // 段 level の atlas 内の原点を返す。
+  public originAt(level: number): Vec2Uniform { return this.levels[level - 1]!.origin; }
+  // 段 level の描画先の viewport を返す。
+  public viewportAt(level: number): THREE.Vector4 { return this.levels[level - 1]!.viewport; }
+  // 段 level の画素が覆う描画画素の一辺の数を返す。
+  public spanAt(level: number): number { return this.levels[level - 1]!.span; }
+  // 段 level の画素 texel の縮小値と代表面を返す。**Fn の中から呼ぶこと。**
+  public reducedLevelTexelAt(level: number, texel: Vec2Node): LevelTexel {
+    return this.levelTexelAt(this.levels[level - 1]!, texel);
+  }
+  // 段 level の画素 texel の値・点・法線を返す。**Fn の中から呼ぶこと。**
+  public reducedChildAt(level: number, texel: Vec2Node): Omit<ReductionChild, 'inside'> {
+    return this.childOf(this.levels[level - 1]!, texel);
   }
 
   // 縮小列の段の画素(ReflectionLevelTexel)。finer は 1 つ細かい段で、段 1 では null(段 0)。origin は書く段の矩形の
@@ -296,7 +264,7 @@ export class ReflectionReduction {
       const clamped = min(texel, finerSize.sub(1)).toVar();
       return {
         inside: texel.x.lessThan(finerSize.x).and(texel.y.lessThan(finerSize.y)),
-        ...(finer === null ? this.drawnChildAt(clamped) : this.reducedChildAt(finer, clamped)),
+        ...(finer === null ? this.drawnChildAt(clamped) : this.childOf(finer, clamped)),
       };
     });
   }
@@ -326,7 +294,7 @@ export class ReflectionReduction {
   }
 
   // 段 1 以降の段 level の画素 texel。その画素の点は、画素の中心を通る視線と代表の平面の交点。**Fn の中から呼ぶこと。**
-  private reducedChildAt(level: ReductionLevel, texel: Vec2Node): Omit<ReductionChild, 'inside'> {
+  private childOf(level: ReductionLevel, texel: Vec2Node): Omit<ReductionChild, 'inside'> {
     const read = this.levelTexelAt(level, texel);
     const ray = viewRayAt(this.projectionInverse, texel.add(0.5).mul(level.span).div(this.fullSize));
     const normal = octDecodeNormal(read.surface.xy).toVar();

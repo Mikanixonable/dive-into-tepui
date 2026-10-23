@@ -23,15 +23,17 @@ export const GPU_PASS = {
   nearbyDiffuseAverage: 16,
   reflectionSource: 17,
   reflection: 18,
-  reflectionDenoise: 19,
-  material: 20,
-  atmosphere: 21,
-  cloudAtmosphere: 22,
-  world: 23,
-  lens: 24,
-  composite: 25,
-  overlay: 26,
-  antialias: 27,
+  reflectionReduction: 19,
+  reflectionMerge: 20,
+  reflectionDenoise: 21,
+  material: 22,
+  atmosphere: 23,
+  cloudAtmosphere: 24,
+  world: 25,
+  lens: 26,
+  composite: 27,
+  overlay: 28,
+  antialias: 29,
 } as const;
 
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
@@ -45,7 +47,7 @@ export const GPU_PASS_LABELS: readonly string[] = [
   '雲の生成', '影マップ', '近傍拡散履歴写し', 'Gバッファ', '表面雲', '影', '雲影',
   'ライティング', '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流',
   '近傍拡散 joint-bilateral 均し', '近傍拡散拡大', '近傍拡散蓄積', '近傍拡散パス平均',
-  '映り込みの像の元', '映り込み', '映り込みの均し', 'マテリアル', '大気', '大気(雲あり)', 'ワールド', 'レンズ', '合成',
+  '映り込みの像の元', '映り込み', '映り込みの縮小', '映り込みの合流', '映り込みの均し', 'マテリアル', '大気', '大気(雲あり)', 'ワールド', 'レンズ', '合成',
   '3D UI', 'アンチエイリアス',
 ];
 
