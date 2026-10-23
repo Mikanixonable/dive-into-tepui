@@ -216,7 +216,7 @@ export class CreativeStage extends Stage {
     this._dynamicSystem.events.record({ kind: 'objectPlaced', name: placed.entity.name });
   }
 
-  // ステージ操作パネルは、表示中のビューの右ドックへ追従させる。
+  // ステージ操作パネルを、指定したビューの右ドックへ置く。
   private mountStageControlsPanel(inMapView: boolean): void {
     const root = inMapView ? this._hud.mapRoot : this._hud.combatRoot;
     const rightRail = hudRail(root, 'right');
@@ -233,9 +233,11 @@ export class CreativeStage extends Stage {
     super.sync(camera, view, displayTime);
     const ship = this.ship;
     this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
-    this.mountStageControlsPanel(view === 'map');
+    // 設定パネルは戦闘ビューでのみ出す(SPEC/GAME.md「9.2 設定パネル」)。レールは
+    // 戦闘側に固定し、マップでは隠す。
+    this.mountStageControlsPanel(false);
+    this.stageControlsPanel.element.classList.toggle('hidden', view === 'map');
     this.objectPlacement.sync(camera, view, displayTime);
-    this.stageControlsPanel.element.classList.remove('hidden');
   }
 
   // 直近の sync が組んだ、配置プレビューのマーカーの宣言。
