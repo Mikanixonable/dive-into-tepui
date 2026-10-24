@@ -13,8 +13,6 @@ export interface SerializedAltitudeAlarm {
   // 高度の指数移動平均 [m]。まだ高度を測っていなければ null。
   readonly altEma: number | null;
   readonly altRateEma: number;
-  // 高度の警告済みしきい値 [m]。記録の後方互換のためだけに残す。
-  readonly warnedThresholds?: readonly number[];
 }
 
 export class AltitudeAlarm {

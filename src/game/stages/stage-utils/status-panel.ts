@@ -7,7 +7,7 @@ import { Meter } from '../../../hud/widgets';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/combat-ship-entity';
 import { POWER_CAPACITY } from '../../player/power';
 import {
-  ARMOR_WARNING_RATIO, TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO, armorAlarmLevel,
+  ARMOR_WARNING_RATIO, TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO, armorAlarmLevel, shownTemperatureLevel,
 } from '../../alarm/alarm-level';
 import type { AlarmLevel } from '../../../hud/alarm-level';
 
@@ -57,9 +57,11 @@ export class StatusPanel {
   }
 
   // 毎フレーム(sync 時)呼ぶ。player が null ならパネルを畳む。DOM の書き換えは
-  // 内容が変わったフレームだけに絞る。hullTemperatureLevel は警報の評価器が判定した船体温度の段。
+  // 内容が変わったフレームだけに絞る。hullTemperatureLevel は警報の評価器が判定した、操作対象の船体温度の段で、
+  // player が操作対象(isControlled)のときだけ使う。操作対象でない船は、その船の温度から段を求める。
   public sync(
     player: ModularShip | null, message: string, kills: number, hullTemperatureLevel: AlarmLevel,
+    isControlled: boolean,
   ): void {
     this.panel.classList.toggle('hidden', !player);
     if (!player) return;
@@ -73,7 +75,9 @@ export class StatusPanel {
     this.hpMeter.setLabel(`${Math.floor(hp)} / ${maxHp}`);
 
     this.tempMeter.setRatio(temp / MAX_HULL_TEMP);
-    this.tempMeter.setLevel(hullTemperatureLevel);
+    this.tempMeter.setLevel(shownTemperatureLevel(
+      player.motion.temperature, MAX_HULL_TEMP, isControlled, hullTemperatureLevel,
+    ));
     this.tempMeter.setLabel(`${temp} / ${MAX_HULL_TEMP} K`);
 
     this.powerMeter.setRatio(player.motion.power.chargeRatio);

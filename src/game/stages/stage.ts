@@ -226,7 +226,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.statusPanel.appendLeftWidget(el);
   }
 
-  // ステータスパネルを同期する。hullTemperatureLevel は警報の評価器が判定した船体温度の段。
+  // ステータスパネルを同期する。hullTemperatureLevel は警報の評価器が判定した、操作対象の船体温度の段。
   public sync(
     _camera: CameraFrame, view: ViewMode, _displayTime: number, hullTemperatureLevel: AlarmLevel,
   ): void {
@@ -240,7 +240,10 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   private syncStatusPanel(mapView: boolean, hullTemperatureLevel: AlarmLevel): void {
     const message = this.hudSubStatus();
     const show = message !== null && !mapView;
-    this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills, hullTemperatureLevel);
+    const ship = show ? this.ship : null;
+    this.statusPanel.sync(
+      ship, message ?? '', this.scoreCounter.kills, hullTemperatureLevel, ship === this._controlSelection.current,
+    );
   }
 
   // 台本が相手にする自艦。操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。

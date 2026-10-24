@@ -2,9 +2,7 @@
 // ブリーフィングは最初の操作・一定時間・警報の発生のどれかで畳み、案内チップは計画の間だけ出す。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { createKeyCap } from '../../hud/key-cap';
-
-// ブリーフィングを出しておく時間 [ms]。
-const BRIEFING_VISIBLE_MS = 12000;
+import { BriefingClock } from './briefing-clock';
 
 // 軌道計画の案内チップの段。計画が空・ノードがあるが編集していない・ノードを選択中・確定できる、の
 // いずれか。段は案内チップを出す側が計画とノード選択の状態から決める。
@@ -33,8 +31,7 @@ const PLAN_HINT_STEPS: Record<PlanHintStage, readonly (readonly [readonly string
 };
 
 export class Guidance {
-  // 表示を始めた時刻 [ms]。表示していなければ null。次の sync で時刻を確定する。
-  private briefingShownAt: number | 'pending' | null = null;
+  private readonly briefingClock = new BriefingClock();
   // hintEl に組んだ案内の段。段が変わったときだけ DOM を組み替える。
   private shownStage: PlanHintStage | null = null;
 
@@ -51,12 +48,12 @@ export class Guidance {
     body.innerHTML = html;
     this.briefingEl.replaceChildren(code, body);
     this.briefingEl.classList.remove('hidden');
-    this.briefingShownAt = 'pending';
+    this.briefingClock.show();
   }
 
   // ブリーフィングを畳む。
   public foldBriefing(): void {
-    this.briefingShownAt = null;
+    this.briefingClock.fold();
     this.briefingEl.classList.add('hidden');
   }
 
@@ -64,10 +61,7 @@ export class Guidance {
   // stage は軌道計画の案内の段(出さないなら null)、alarmActive は警報が出ているか。
   // nowMs はフレームの実時刻 [ms]。
   public sync(stage: PlanHintStage | null, alarmActive: boolean, nowMs: number): void {
-    if (this.briefingShownAt === 'pending') this.briefingShownAt = nowMs;
-    if (this.briefingShownAt !== null && (alarmActive || nowMs - this.briefingShownAt > BRIEFING_VISIBLE_MS)) {
-      this.foldBriefing();
-    }
+    if (this.briefingClock.update(alarmActive, nowMs)) this.foldBriefing();
     if (stage !== this.shownStage) {
       this.shownStage = stage;
       this.hintEl.replaceChildren(...(stage === null ? [] : this.hintSteps(stage)));

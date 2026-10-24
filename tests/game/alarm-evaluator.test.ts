@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { AlarmEvaluator, type AlarmMeasurements } from '../../src/game/alarm/alarm-evaluator';
 import {
-  altitudeAlarmLevel, dynamicPressureAlarmLevel, fuelAlarmLevel, temperatureAlarmLevel,
+  altitudeAlarmLevel, dynamicPressureAlarmLevel, fuelAlarmLevel, shownTemperatureLevel, temperatureAlarmLevel,
 } from '../../src/game/alarm/alarm-level';
 import { test } from '../harness';
 
@@ -193,5 +193,106 @@ export function register(): void {
     assert.equal(evaluator.levelOf('ammo'), 'warning');
     evaluator.update(300, calm({ ammo: null }));
     assert.equal(evaluator.levelOf('ammo'), 'normal');
+  });
+
+  test('alarm evaluator: a descent alarm is flagged descending and a low altitude alone is not', () => {
+    const evaluator = adoptedEvaluator();
+    // 高度 300 km は低高度ではなく、降下率の警告だけが注意の原因。
+    evaluator.update(100, calm({ altitude: { meters: 300e3, descentRateMps: -5, descending: true } }));
+    const descent = evaluator.alarms.find((alarm) => alarm.item === 'altitude');
+    assert.equal(descent?.level, 'caution');
+    assert.equal(descent?.descending, true);
+    assert.equal(descent?.secondaryValue, -5);
+    assert.equal(evaluator.sound, 'caution');
+    // 高度 100 km の円軌道に近い飛行(降下率の警告は掛からず、平滑化した降下率がわずかに負)は低高度が原因。
+    evaluator.update(200, calm({ altitude: { meters: 100e3, descentRateMps: -0.2, descending: false } }));
+    const low = evaluator.alarms.find((alarm) => alarm.item === 'altitude');
+    assert.equal(low?.level, 'caution');
+    assert.equal(low?.descending, false);
+    // 他の項目の警報は descending にならない。
+    evaluator.update(300, calm({ temperatureK: 750 }));
+    assert.equal(evaluator.alarms[0]?.descending, false);
+  });
+
+  test('alarm evaluator: a descent alarm clears when the descent warning ends above the caution altitude', () => {
+    const evaluator = adoptedEvaluator();
+    evaluator.update(100, calm({ altitude: { meters: 300e3, descentRateMps: -5, descending: true } }));
+    evaluator.update(200, calm({ altitude: { meters: 300e3, descentRateMps: 0, descending: false } }));
+    assert.equal(evaluator.levelOf('altitude'), 'normal');
+    assert.deepEqual(evaluator.clearedWarnings, []);
+  });
+
+  test('alarm evaluator: a caution and a warning in the same frame sound as a warning', () => {
+    const evaluator = adoptedEvaluator();
+    evaluator.update(100, calm({ fuel: 150, temperatureK: 950 }));
+    assert.equal(evaluator.cautionCount, 1);
+    assert.equal(evaluator.warningCount, 1);
+    assert.equal(evaluator.sound, 'warning');
+    // 続く注意だけの更新は、注意の音を鳴らし直さない。
+    evaluator.update(150, calm({ fuel: 150, temperatureK: 950 }));
+    assert.equal(evaluator.sound, null);
+  });
+
+  test('alarm evaluator: acknowledging stops the repeat and a re-escalation sounds and repeats again', () => {
+    const evaluator = adoptedEvaluator();
+    evaluator.update(1000, calm({ temperatureK: 950 }));
+    assert.equal(evaluator.sound, 'warning');
+    evaluator.acknowledge();
+    evaluator.update(3500, calm({ temperatureK: 950 }));
+    assert.equal(evaluator.sound, null);
+    // 警告から注意へ戻り、再び警告へ昇格すると、未確認の警告として鳴る。
+    evaluator.update(4000, calm({ temperatureK: 800 }));
+    assert.equal(evaluator.levelOf('temperature'), 'caution');
+    evaluator.update(4500, calm({ temperatureK: 950 }));
+    assert.equal(evaluator.sound, 'warning');
+    assert.equal(evaluator.hasUnacknowledgedWarning, true);
+    evaluator.update(5000, calm({ temperatureK: 950 }));
+    assert.equal(evaluator.sound, null);
+    evaluator.update(6600, calm({ temperatureK: 950 }));
+    assert.equal(evaluator.sound, 'warning');
+  });
+
+  test('alarm evaluator: three or more simultaneous alarms keep their order and counts', () => {
+    const evaluator = adoptedEvaluator();
+    evaluator.update(100, calm({ ammo: { roundsInMag: 10, magsLeft: 1 } }));
+    evaluator.update(200, calm({ ammo: { roundsInMag: 10, magsLeft: 1 }, fuel: 150 }));
+    evaluator.update(300, calm({
+      ammo: { roundsInMag: 10, magsLeft: 1 }, fuel: 150, altitude: { meters: 70e3, descentRateMps: -9, descending: true },
+    }));
+    evaluator.update(400, calm({
+      ammo: { roundsInMag: 10, magsLeft: 1 }, fuel: 150, temperatureK: 750,
+      altitude: { meters: 70e3, descentRateMps: -9, descending: true },
+    }));
+    assert.deepEqual(evaluator.alarms.map((alarm) => alarm.item), ['altitude', 'temperature', 'fuel', 'ammo']);
+    assert.equal(evaluator.warningCount, 1);
+    assert.equal(evaluator.cautionCount, 3);
+    evaluator.acknowledge();
+    assert.equal(evaluator.alarms.every((alarm) => alarm.acknowledged), true);
+  });
+
+  test('alarm evaluator: a gap in the measurements drops the records and a returning alarm starts fresh', () => {
+    const evaluator = adoptedEvaluator();
+    evaluator.update(100, calm({ temperatureK: 950 }));
+    evaluator.acknowledge();
+    evaluator.update(200, null);
+    assert.deepEqual(evaluator.alarms, []);
+    // 引き継ぎは最初の測定値でだけ行う(AUDIO.md はラン開始・セーブの読み込みだけを挙げる)ので、
+    // 戻った測定値の警報は新しく立ったものとして未確認から始まる。
+    evaluator.update(300, calm({ temperatureK: 950, fuel: 100 }));
+    assert.equal(evaluator.warningCount, 1);
+    assert.equal(evaluator.cautionCount, 1);
+    assert.equal(evaluator.hasUnacknowledgedWarning, true);
+    assert.equal(evaluator.sound, 'warning');
+    assert.deepEqual(evaluator.clearedWarnings, []);
+  });
+
+  test('alarm level: the status panel temperature uses the evaluator only for the controlled ship', () => {
+    // 操作対象を描くなら評価器の段(ヒステリシスを含む)をそのまま使う。
+    assert.equal(shownTemperatureLevel(650, MAX_TEMP, true, 'caution'), 'caution');
+    assert.equal(shownTemperatureLevel(950, MAX_TEMP, true, 'normal'), 'normal');
+    // 操作対象でない船(基地を操作中の自艦)は、その船の温度から求める。
+    assert.equal(shownTemperatureLevel(950, MAX_TEMP, false, 'normal'), 'warning');
+    assert.equal(shownTemperatureLevel(750, MAX_TEMP, false, 'normal'), 'caution');
+    assert.equal(shownTemperatureLevel(300, MAX_TEMP, false, 'warning'), 'normal');
   });
 }
