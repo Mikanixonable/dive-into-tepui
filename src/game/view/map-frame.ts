@@ -114,12 +114,13 @@ export class MapFrame implements ViewFrame {
     this.planEditor.selectedNodeIdx = null;
   }
 
-  // 開いたままの編集 UI とメニューを畳み、マップで組んだ選択候補・可視性ポリシー・
+  // 開いたままの編集 UI・メニュー・時間軸の小窓を畳み、マップで組んだ選択候補・可視性ポリシー・
   // 軌道線候補を空へ戻す。
   public onLeave(): void {
     this.planEditor.onMapClosed();
     this.planEditor.closeMenu();
     this.objectWindows.close();
+    this.displayWindowManager.closePopovers();
     this.picking.close();
     this.objectPickables.clear();
     this.linePickables.clear();

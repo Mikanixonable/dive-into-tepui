@@ -230,7 +230,6 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active .hud-frame-controls .w-btn.on { color: var(--color-primary); }
 
 /* 縮尺バー: [SCL] [距離] [定規] の1行。視野端の小さな Quiet Glass に留める(display は MapScaleBadge が切り替える)。 */
-#hud { --hud-map-scale-h: var(--row-min-h-s); }
 #hud #hud-map-scale {
   box-sizing: border-box; height: var(--hud-map-scale-h); align-items: center; gap: var(--space-4); padding: 0 var(--space-5);
   border-radius: var(--radius-control); color: var(--role-data); font-size: var(--font-xs);

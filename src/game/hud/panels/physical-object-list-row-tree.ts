@@ -168,7 +168,7 @@ export class PhysicalObjectListRowTree {
     const row = document.createElement('div');
     row.className = 'erow ui-item ui-selectable';
     const toggle = document.createElement('span');
-    toggle.className = 'physical-object-list-toggle ui-item-tog';
+    toggle.className = 'physical-object-list-toggle';
     const glyph = document.createElement('span');
     glyph.className = 'physical-object-list-glyph ui-item-glyph';
     glyph.setAttribute('aria-hidden', 'true');

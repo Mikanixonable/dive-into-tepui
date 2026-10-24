@@ -879,7 +879,7 @@ async function runConfiguredScenario() {
     if (!placedRowReady) {
       const diagnostic = await devTools.evaluate(`(() => ({
         hint: document.getElementById('hud-hint')?.textContent ?? '',
-        tracked: document.querySelector('.physical-object-list-tracked')?.textContent ?? '',
+        tracked: document.querySelector('[data-id="hud-physical-object-list-meta"]')?.textContent ?? '',
         playerRows: [...document.querySelectorAll('#hud-physical-object-list-section-player .physical-object-list-name')]
           .map((el) => el.textContent),
         baseRows: [...document.querySelectorAll('#hud-physical-object-list-section-base .physical-object-list-name')]

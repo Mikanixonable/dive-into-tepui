@@ -1,5 +1,5 @@
-// レール幅・レール/戦闘パネル高上限・行の最小高さ・淡色化の不透明度の CSS 変数を定義する。値は
-// ブレークポイントごとにここで再代入し、判定式そのものをこの1箇所へ集約する。
+// レール幅・レール/戦闘パネル高上限・行の最小高さ・淡色化の不透明度・パネル間で共有する寸法の
+// CSS 変数を定義する。値はブレークポイントごとにここで再代入し、判定式そのものをこの1箇所へ集約する。
 import {
   MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
 } from '../../../hud/breakpoints';
@@ -17,6 +17,11 @@ export const LAYOUT_TOKENS_STYLE = `
   --hud-right-rail-occupied: calc(12px + var(--rail-w-right));
   --hud-rail-bottom: 12px;
   --hud-map-scale-bottom: 12px;
+  /* 縮尺バーの高さ。左下の縮尺バーと、その上に積む右レールの物体一覧の高さ上限が共有する。 */
+  --hud-map-scale-h: var(--row-min-h-s);
+  /* 時間軸の小窓(表示範囲・設定)の幅。 */
+  --tml-pop-range-w: 556px;
+  --tml-pop-settings-w: 288px;
   /* 画面右上の収納トグルと固定バッジを隣接させるための配置寸法。 */
   --hud-rail-toggle-size: 30px;
 }

@@ -184,25 +184,28 @@ async function shipMarkerScreenPos(devTools) {
 // クリック対象の線は自機軌道の白線とほぼ重なって見分けが付かなかったが、マーカー近傍への
 // クリックは NODE_PICK_PX=30px の許容内に収まり、確実にノードが置けた)。
 // 成否は .gz-node(node-gizmo.ts の各ノードハンドル)の増加で確認する。
-// 軌道予測パネルの未来側の表示期間ピル(1周/1日/7日/28日)を押す。過去側の行(.predict-past)は
-// 同じラベルを持つので除いて探す。押せたら true。
+// 時間軸の「未来」の掴み手から表示範囲の小窓を開き、未来側の表示期間ピル(1周/1日/10日/1ヶ月/3ヶ月)を
+// 押して小窓を閉じる。小窓は開くまで DOM に無く、未来側の行はその先頭の行。押せたら true。
 async function selectDisplayDuration(devTools, pillLabel) {
-  const rect = await devTools.evaluate(`(() => {
-    const rows = [...document.querySelectorAll('.predict-row1')].filter((r) => !r.classList.contains('predict-past'));
-    for (const row of rows) {
-      for (const b of row.querySelectorAll('.predict-pills .w-btn')) {
-        if (b.textContent === ${JSON.stringify(pillLabel)}) {
-          const r = b.getBoundingClientRect();
-          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-        }
-      }
-    }
-    return null;
-  })()`);
-  if (!rect) return false;
-  await leftClickAt(devTools, rect.x, rect.y);
-  await sleep(300);
-  return true;
+  const clickCenter = async (expression) => {
+    const rect = await devTools.evaluate(`(() => {
+      const el = ${expression};
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    })()`);
+    if (!rect) return false;
+    await leftClickAt(devTools, rect.x, rect.y);
+    await sleep(300);
+    return true;
+  };
+  const futureEnd = `[...document.querySelectorAll('#hud-predict .tml-end')].find((b) => b.title === '未来の表示期間')`;
+  if (!(await clickCenter(futureEnd))) return false;
+  const pill = `[...(document.querySelector('.tml-pop-range .predict-row1')?.querySelectorAll('.predict-pills .w-btn') ?? [])]`
+    + `.find((b) => b.textContent === ${JSON.stringify(pillLabel)})`;
+  const pressed = await clickCenter(pill);
+  await clickCenter(futureEnd);
+  return pressed;
 }
 
 async function attemptPlaceNode(devTools) {
@@ -500,17 +503,17 @@ function defaultMatrix() {
     // 多数の遠方個体を、伸長が毎フレーム必要になるワープで。×65536 は積分だけで 8.7s/frame に
     // なり計測にならないので、フレーム時間が読める段まで落とす。
     { label: 'debug-load-map-warp1024', stage: 'debug-load', warp: 1024, view: 'map', placeNode: false, ...common },
-    // 28日プリセットは horizon/PREDICT_MAX_STEPS 項が効き始める唯一の条件。予測列は
+    // 1ヶ月(30日)プリセットは horizon/PREDICT_MAX_STEPS 項が効き始める唯一の条件。予測列は
     // この長さでは伸び切らず、予算を飽和させたまま推移する。
-    { label: 'stage1-map-warp1-dur28d', stage: '1', warp: 1, view: 'map', placeNode: false, duration: '28日', ...common, settleMs: 8000 },
+    { label: 'stage1-map-warp1-dur28d', stage: '1', warp: 1, view: 'map', placeNode: false, duration: '1ヶ月', ...common, settleMs: 8000 },
 
     // (e) 外挿タイルの焼き直し(TrajectoryLine.sync)。焼き直しは
     // 「|to - 前回の to| >= 予測列の間引き間隔」で起きるので、simDt が間引き間隔を超える
     // ワープ段では毎フレームになる。1回で最大 MAX_EXTRAPOLATED_SAMPLES = 2048 サンプルぶんの
     // ephemeris.stateOf(すべて別時刻 = リングキャッシュ全ミス)+ frameTransformAt を払う。
     // これは update ではなく sync フェーズに乗るので、sync 行を見ること。
-    { label: 'stage1-map-warp1024-dur28d', stage: '1', warp: 1024, view: 'map', placeNode: false, duration: '28日', ...common, settleMs: 8000 },
-    { label: 'stage1-map-warp65536-dur28d', stage: '1', warp: 65536, view: 'map', placeNode: false, duration: '28日', ...common, settleMs: 8000 },
+    { label: 'stage1-map-warp1024-dur28d', stage: '1', warp: 1024, view: 'map', placeNode: false, duration: '1ヶ月', ...common, settleMs: 8000 },
+    { label: 'stage1-map-warp65536-dur28d', stage: '1', warp: 65536, view: 'map', placeNode: false, duration: '1ヶ月', ...common, settleMs: 8000 },
 
     // (f) 軌道線トグルの影響。DEFAULT_MAP_DISPLAY_TOGGLES は敵・基地・弾薬・自艦の
     // Orbit をすべて既定 true にしているので、マップビューでは元から描かれている。

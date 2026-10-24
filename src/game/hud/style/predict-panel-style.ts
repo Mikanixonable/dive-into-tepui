@@ -9,17 +9,23 @@ export const PREDICT_PANEL_STYLE = `
 
 /* 上段: 現在に戻す・読み値・(空き)・次の事象・予測率・設定。 */
 #hud-predict .tml-top { display: flex; align-items: center; gap: var(--space-5); min-height: var(--row-min-h-s); }
+/* 上段は折り返さない。幅が足りない中幅では、絶対日時と次の事象の名前を省略記号で縮め、隣へ重ねない。 */
 #hud-predict .tml-read { display: flex; align-items: baseline; gap: var(--space-4); min-width: 0; white-space: nowrap; }
 #hud-predict .tml-elapsed {
-  cursor: pointer; pointer-events: auto; color: var(--role-data); font-size: var(--font-xl);
+  flex: none; cursor: pointer; pointer-events: auto; color: var(--role-data); font-size: var(--font-xl);
   font-variant-numeric: tabular-nums;
 }
 #hud-predict .tml-elapsed:hover { color: var(--color-primary-hover); }
 #hud-predict .tml-date {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
   color: var(--role-label); font-size: var(--font-xs); font-variant-numeric: tabular-nums;
 }
-#hud-predict .tml-grow { flex: 1 1 auto; }
+#hud-predict .tml-grow { flex: 1 1 0; min-width: 0; }
 #hud-predict .tml-top .w-btn { white-space: nowrap; }
+#hud-predict .tml-top .w-btn:not(.w-btn--icon) {
+  flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+#hud-predict .tml-top .w-btn:not(.w-btn--icon):focus-visible { outline-offset: -2px; }
 #hud-predict .tml-pred {
   color: var(--role-meta); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
   font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -46,6 +52,16 @@ export const PREDICT_PANEL_STYLE = `
 #hud-predict .tml-end b { color: var(--text); font-size: var(--font-s); font-weight: 400; }
 #hud-predict .tml-end i { color: var(--role-label); font-size: var(--font-xxs); font-style: normal; }
 #hud-predict .tml-track { min-width: 0; }
+/* トラック: 左に過去の静的な帯(履歴。指して動かす対象ではない)、右にスライダー(未来側の値域)。
+   帯の幅 --tml-past-w はトラック全幅に対する割合で、上限は tick-scale.ts の PAST_REGION_MAX_FRACTION。 */
+#hud-predict .tml-bar { display: flex; }
+#hud-predict .tml-bar > .w-slider-frame { flex: 1 1 0; min-width: 0; }
+#hud-predict .tml-past {
+  flex: 0 0 var(--tml-past-w, 0); box-sizing: border-box; height: var(--slider-marked-h);
+  border-radius: var(--radius-control) 0 0 var(--radius-control);
+  background: var(--fill-1); box-shadow: inset 0 0 0 1px var(--fill-2); pointer-events: none;
+}
+#hud-predict .tml-bar.has-past > .w-slider-frame { border-top-left-radius: 0; border-bottom-left-radius: 0; }
 #hud-predict .slider-ticks { position: relative; height: var(--font-xxs); margin-top: var(--space-2); }
 #hud-predict .slider-ticks span {
   position: absolute; color: var(--role-meta); font-size: var(--font-xxs);
@@ -59,9 +75,9 @@ export const PREDICT_PANEL_STYLE = `
   padding: var(--space-5) var(--space-5) var(--space-4); border-radius: var(--radius-panel);
   font-size: var(--font-s); color: var(--text);
 }
-#hud .tml-pop-range { width: 556px; }
+#hud .tml-pop-range { width: var(--tml-pop-range-w); }
 #hud .tml-pop-range .predict-row1.is-active { background: var(--fill-1); border-radius: var(--radius-micro); }
-#hud .tml-pop-settings { width: 288px; }
+#hud .tml-pop-settings { width: var(--tml-pop-settings-w); }
 #hud .tml-pop-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
 #hud .tml-pop .predict-row1 { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
 #hud .tml-pop .predict-pills { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }

@@ -133,6 +133,7 @@ export const WIDGET_STYLE = `
   left: 50%; width: 2px; margin-left: -1px; border-radius: 1px; background: currentColor;
 }
 .w-slider-mark:hover { color: var(--text); }
+.w-slider-mark:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 .w-slider-mark.is-own { color: var(--role-own); }
 .w-slider-mark.is-target { color: var(--role-target); }
 
@@ -159,7 +160,7 @@ export const WIDGET_STYLE = `
    間隔を保つ。要素自身の寸法(min-width/min-height)で確保する: 重ね合わせの疑似要素で広げると、
    視覚サイズを変えないぶん間隔の詰まった隣接要素のヒット領域まで侵してしまうため。 */
 @media ${MQ_COARSE} {
-  :root { --slider-marked-h: var(--hit-target-min); }
+  :root { --slider-marked-h: var(--hit-target-min); --slider-mark-hit: var(--hit-target-min); }
   .w-hit {
     box-sizing: border-box; min-width: var(--hit-target-min); min-height: var(--hit-target-min);
     display: inline-flex; align-items: center; justify-content: center;
