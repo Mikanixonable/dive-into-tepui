@@ -144,7 +144,7 @@ export class RunEventPresenter {
           : `${body.name} ${ENEMY_LOSS_TEXT[body.cause]}`);
         return;
       case 'shipLost':
-        this.notifier.hint(body.reason, 6000, 'denied');
+        this.notifier.hint(body.reason);
         return;
 
       case 'rcsDampToggled':

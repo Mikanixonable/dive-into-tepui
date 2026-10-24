@@ -179,10 +179,12 @@ export function register(): void {
   }
 
   test('progress-serialization: AltitudeAlarm は警告済みしきい値を持つ記録を復元できる', () => {
-    // 警戒線の走破を記録していた形式の記録も、平滑化と降下警告の状態を引き継いで復元する。
-    const alarm = AltitudeAlarm.deserialize({
-      descendWarned: true, altEma: 95e3, altRateEma: -4, warnedThresholds: [120e3, 100e3],
-    });
+    // 警戒線の走破を記録していた形式の記録(SAVE.md の版は上げていない)も、読み捨てる項目を残したまま
+    // 平滑化と降下警告の状態を引き継いで復元する。
+    const saved = JSON.parse(
+      '{"descendWarned":true,"altEma":95000,"altRateEma":-4,"warnedThresholds":[120000,100000]}',
+    ) as SerializedAltitudeAlarm;
+    const alarm = AltitudeAlarm.deserialize(saved);
     assert.deepEqual(alarm.serialize(), { descendWarned: true, altEma: 95e3, altRateEma: -4 });
   });
 

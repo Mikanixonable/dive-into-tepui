@@ -33,9 +33,9 @@ export const WEAR_WARNING_RATIO = 0.9;
 const AMMO_CAUTION_MAGS = 1;
 
 // 高度 [m] がこの値を下回ると注意・警告に入り、この値を上回ると戻る。降下中(降下率の警告)も注意。
-const ALTITUDE_CAUTION_M = 120e3;
+export const ALTITUDE_CAUTION_M = 120e3;
 const ALTITUDE_CAUTION_LEAVE_M = 125e3;
-const ALTITUDE_WARNING_M = 80e3;
+export const ALTITUDE_WARNING_M = 80e3;
 const ALTITUDE_WARNING_LEAVE_M = 85e3;
 
 // 入る閾値で求めた段 entered と、戻る閾値で求めた段 held から、境界で明滅しない段を返す。
@@ -79,6 +79,14 @@ export function temperatureAlarmLevel(
     temperatureK, maxTemperatureK, TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,
     TEMPERATURE_CAUTION_LEAVE_RATIO, TEMPERATURE_WARNING_LEAVE_RATIO, previous,
   );
+}
+
+// 船体温度を描く船の段。evaluated は警報の評価器が操作対象の温度から判定した段なので、描く船が
+// 操作対象のとき(isControlled)だけ使う。別の船は、その船の温度だけから求める(ヒステリシスは持たない)。
+export function shownTemperatureLevel(
+  temperatureK: number, maxTemperatureK: number, isControlled: boolean, evaluated: AlarmLevel,
+): AlarmLevel {
+  return isControlled ? evaluated : temperatureAlarmLevel(temperatureK, maxTemperatureK);
 }
 
 // 動圧 [Pa] の段。

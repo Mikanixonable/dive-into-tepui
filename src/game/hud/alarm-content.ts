@@ -4,6 +4,7 @@ import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { MAX_HULL_TEMP } from '../dynamic/dynamic-entity/combat-ship-entity';
 import { MAX_DYN_PRESSURE } from '../player/aero-load';
 import type { ActiveAlarm, AlarmItem } from '../alarm/alarm-evaluator';
+import { ALTITUDE_CAUTION_M, ALTITUDE_WARNING_M } from '../alarm/alarm-level';
 
 // 文言の1区間。strong は値などの強調。
 export interface AlarmMessagePart {
@@ -34,6 +35,9 @@ function percent(ratio: number): string { return `${Math.round(ratio * 100)}%`; 
 
 // 動圧 [Pa] を kPa で。
 function kilopascal(pressurePa: number): string { return (pressurePa / 1000).toFixed(1); }
+
+// 高度の閾値 [m] を km で。
+function kilometers(altitudeM: number): string { return `${altitudeM / 1000} km`; }
 
 const THOUSANDS = new Intl.NumberFormat('en-US');
 
@@ -79,12 +83,14 @@ function altitudeContent(alarm: ActiveAlarm): AlarmContent {
   const value = `${(alarm.value / 1000).toFixed(alarm.value < 1e5 ? 1 : 0)} km`;
   if (alarm.level === 'warning') {
     return {
-      code: 'ALT', message: [plain('高度 '), strong(value), plain(' — 80 km 以下は大気圏突入')],
+      code: 'ALT', message: [plain('高度 '), strong(value), plain(` — ${kilometers(ALTITUDE_WARNING_M)} 以下は大気圏突入`)],
       actions: [{ keys: [K.thrustForward.label], text: '前進して引き起こす' }],
     };
   }
-  const descent = alarm.secondaryValue ?? 0;
-  const reason = descent < 0 ? `降下中 ${Math.round(descent)} m/s` : '120 km を下回った';
+  // 注意の原因は降下率の警告か低高度か。降下率の符号ではなく、評価器が判定した警告の有無で分ける。
+  const reason = alarm.descending
+    ? `降下中 ${Math.round(alarm.secondaryValue ?? 0)} m/s`
+    : `${kilometers(ALTITUDE_CAUTION_M)} を下回った`;
   return {
     code: 'ALT', message: [plain('高度 '), strong(value), plain(` — ${reason}`)],
     actions: [
@@ -129,6 +135,11 @@ const ITEM_NAMES: Readonly<Record<AlarmItem, string>> = {
 // 警告から戻った項目 items の、解除の通知の本文。
 export function alarmClearedText(items: readonly AlarmItem[]): string {
   return `${items.map((item) => ITEM_NAMES[item]).join('・')}の警報を解除`;
+}
+
+// 行動の構成を比較用の文字列にする。値には依らず、行動の DOM を組み直すかの判定に使う。
+export function alarmActionSignature(content: AlarmContent): string {
+  return JSON.stringify(content.actions);
 }
 
 // alarm の文言と行動。

@@ -312,9 +312,14 @@ export class GamePresentation {
     this.frameMarkers.dispose();
   }
 
-  // ランの開始を表示する: 組み立ての間に記録された出来事を音・通知へ写し、新規開始のブリーフィングを出す。
+  // ランの開始を表示する: 組み立ての間に記録された出来事を音・通知へ写す。
   public presentRunStart(): void {
     this.runEventPresenter.present(this.game.events.recent);
+  }
+
+  // 新規開始のランのブリーフィングを出す。畳む時間は出した次の同期の実時刻から数えるので、読み込みや
+  // シェーダの組み立てを終えて最初の通常のフレームから呼ぶ。復元したランでは何も出さない。
+  public presentBriefing(): void {
     const briefing = this.game.activeStage.briefing;
     if (briefing !== null) this.devices.hud.showBriefing(briefing);
   }

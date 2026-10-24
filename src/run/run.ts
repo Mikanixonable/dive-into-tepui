@@ -30,6 +30,8 @@ export interface ProgressReader {
 export class Run implements SnapshotSource, PerfCountSource {
   // 畳まれた後か。入力の途中で畳まれたフレームを、そこで打ち切るのに読む。
   private disposed = false;
+  // 新規開始のブリーフィングを出したか。読み込みとシェーダの組み立ての間は出さず、最初の通常のフレームで出す。
+  private briefingPresented = false;
 
   // stageClass の新しいランを組む。startEpoch は選ばれた開始日時。viewOptions はマップ・天球の表示設定と
   // 表示パネルのタブの選択、themePalette は選ばれている配色。
@@ -94,7 +96,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections);
     const run = new Run(game, presentation, devices, graphics, renderStyle, sections, progressReader);
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
-    // ここで視点に反映してプレゼンテーション層へ反映しておく。新規開始のブリーフィングもこの場で表示する。
+    // ここで視点に反映してプレゼンテーション層へ反映しておく。
     game.followProgress();
     presentation.anchorFrameAt(game.simTime);
     game.followCamera(presentation.cameraSamples());
@@ -149,6 +151,10 @@ export class Run implements SnapshotSource, PerfCountSource {
     if (this.disposed) return false;
     // ランを読む者へは、進行と導出の間のモデル層だけが確定した瞬間を渡す(R8)。
     this.progressReader.update(this.snapshot);
+    if (!this.briefingPresented) {
+      this.briefingPresented = true;
+      this.presentation.presentBriefing();
+    }
     const t1 = debugInfo.on ? performance.now() : 0;
     this.presentation.sync(this.graphics.current, this.renderStyle.current, viewport, nowMs);
     const t2 = debugInfo.on ? performance.now() : 0;

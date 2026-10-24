@@ -115,27 +115,43 @@ export class TopBar {
   private syncWarp(view: TopBarViewModel): void {
     const direct = DIRECT_SPEEDS[view.view];
     const shown = direct.includes(view.simSpeed) ? direct : [...direct, view.simSpeed].sort((a, b) => a - b);
-    if (shown.length !== this.warpButtons.size || shown.some((speed) => !this.warpButtons.has(speed))) {
-      this.rebuildWarpButtons(shown);
-    }
+    this.syncWarpButtons(shown);
     for (const [speed, button] of this.warpButtons) button.setOn(speed === view.simSpeed);
     this.warpEl.title = view.isPaused ? '一時停止中' : `時間加速 ${speedLabel(view.simSpeed)}`;
     this.warpEl.classList.toggle('is-paused', view.isPaused);
   }
 
-  // 段 speeds のボタンを、「▾」ボタンの前へ並べ直す。
-  private rebuildWarpButtons(speeds: readonly number[]): void {
-    for (const button of this.warpButtons.values()) button.element.remove();
-    this.warpButtons.clear();
-    for (const speed of speeds) {
-      const button = new Button(speedLabel(speed), () => this.view?.setSimSpeed(speed), undefined, 'dense');
-      // 射撃・推進が効かない段は、効かないことを併記する(GAME.md「時間加速」)。
-      if (speed > MAX_PHYS_SIM_SPEED) {
-        button.element.title = `${speedLabel(speed)} — 自機の操作はワープ ×${MAX_PHYS_SIM_SPEED} 以下でのみ可能`;
-      }
-      this.warpMoreButton.element.before(button.element);
-      this.warpButtons.set(speed, button);
+  // 段 speeds のボタン列へ、足りない段のボタンを足し、要らない段のボタンを外す。残る段のボタンは
+  // 作り直さない — 押したボタンのフォーカスを保つ。並びは段の昇順に揃える。
+  private syncWarpButtons(speeds: readonly number[]): void {
+    for (const [speed, button] of this.warpButtons) {
+      if (speeds.includes(speed)) continue;
+      button.element.remove();
+      this.warpButtons.delete(speed);
     }
+    for (const speed of speeds) {
+      if (!this.warpButtons.has(speed)) this.warpButtons.set(speed, this.createWarpButton(speed));
+    }
+    let previous: Element | null = null;
+    for (const speed of speeds) {
+      const element = this.warpButtons.get(speed)!.element;
+      if (element.previousElementSibling !== previous) {
+        // 並びが合わないときだけ動かす。フォーカス中の要素を動かすとフォーカスが外れる。
+        if (previous === null) this.warpEl.prepend(element);
+        else previous.after(element);
+      }
+      previous = element;
+    }
+  }
+
+  // 段 speed の時間加速ボタンを作る。
+  private createWarpButton(speed: number): Button {
+    const button = new Button(speedLabel(speed), () => this.view?.setSimSpeed(speed), undefined, 'dense');
+    // 射撃・推進が効かない段は、効かないことを併記する(GAME.md「時間加速」)。
+    if (speed > MAX_PHYS_SIM_SPEED) {
+      button.element.title = `${speedLabel(speed)} — 自機の操作はワープ ×${MAX_PHYS_SIM_SPEED} 以下でのみ可能`;
+    }
+    return button;
   }
 
   // 直接押せない残りの段を、「▾」ボタンの下のメニューに開く。

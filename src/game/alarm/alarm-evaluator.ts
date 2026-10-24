@@ -41,6 +41,8 @@ export interface ActiveAlarm {
   readonly value: number;
   // 項目の補助の測定値(高度の下降率 [m/s]・装填中の残弾)。持たない項目は null。
   readonly secondaryValue: number | null;
+  // 高度の降下率の警告が掛かっているか。高度以外の項目は false。注意の原因が降下か低高度かを分ける。
+  readonly descending: boolean;
 }
 
 // 項目ごとの内部記録。seq は出た(昇格した)順で、新しいほど大きい。
@@ -51,6 +53,7 @@ interface AlarmRecord {
   reachedWarning: boolean;
   value: number;
   secondaryValue: number | null;
+  descending: boolean;
 }
 
 const LEVEL_RANK: Readonly<Record<AlarmLevel, number>> = { normal: 0, caution: 1, warning: 2 };
@@ -58,7 +61,7 @@ const LEVEL_RANK: Readonly<Record<AlarmLevel, number>> = { normal: 0, caution: 1
 // 項目 item の測定値から求めた段・主な測定値・補助の測定値。測れない項目は normal。
 function judge(
   item: AlarmItem, m: AlarmMeasurements, previous: AlarmLevel,
-): { level: AlarmLevel; value: number; secondaryValue: number | null } {
+): { level: AlarmLevel; value: number; secondaryValue: number | null; descending?: boolean } {
   switch (item) {
     case 'temperature':
       return {
@@ -82,6 +85,7 @@ function judge(
       return {
         level: altitudeAlarmLevel(m.altitude.meters, m.altitude.descending, previous),
         value: m.altitude.meters, secondaryValue: m.altitude.descentRateMps,
+        descending: m.altitude.descending,
       };
     }
     case 'ammo': {
@@ -169,6 +173,7 @@ export class AlarmEvaluator {
         reachedWarning: judged.level === 'warning' || (previous?.reachedWarning ?? false),
         value: judged.value,
         secondaryValue: judged.secondaryValue,
+        descending: judged.descending ?? false,
       });
       if (escalated && !silentAdoption && LEVEL_RANK[judged.level] > LEVEL_RANK[raised]) raised = judged.level;
     }
@@ -197,6 +202,7 @@ export class AlarmEvaluator {
         acknowledged: record.acknowledged,
         value: record.value,
         secondaryValue: record.secondaryValue,
+        descending: record.descending,
       }));
   }
 }
