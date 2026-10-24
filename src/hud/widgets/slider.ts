@@ -5,6 +5,9 @@
 // 重ねる。つまみは細い線(再生ヘッド)として描き、トラック上のどこを押しても動く。
 import { expandHitTarget, stopDragPropagation } from './widget-base';
 
+// 目盛りを選ぶキー。
+const MARK_SELECT_KEYS: readonly string[] = ['Enter', ' '];
+
 export interface SliderOptions {
   readonly min: number;
   readonly max: number;
@@ -13,8 +16,8 @@ export interface SliderOptions {
   readonly marked?: boolean;
 }
 
-// 区間の濃淡。quiet は通り過ぎた区間、normal は有効な区間、dim は届いていない区間。
-export type SliderBandTone = 'quiet' | 'normal' | 'dim';
+// 区間の濃淡。normal は有効な区間、dim は届いていない区間。
+export type SliderBandTone = 'normal' | 'dim';
 
 // 帯は直前の帯の終端から to までの区間を tone で塗る。to は 0..1(トラック全幅に対する位置)。
 export interface SliderBand {
@@ -24,7 +27,8 @@ export interface SliderBand {
 
 export type SliderMarkTone = 'neutral' | 'own' | 'target';
 
-// トラック上の目盛り。at は 0..1(トラック全幅に対する位置)。
+// トラック上の目盛り。at は 0..1(トラック全幅に対する位置)。title は目盛りの名前で、
+// ポインタの説明とキーボード・支援技術向けの名前を兼ねる。
 export interface SliderMark {
   readonly at: number;
   readonly glyph: string;
@@ -33,7 +37,6 @@ export interface SliderMark {
 }
 
 const BAND_FILL: Readonly<Record<SliderBandTone, string>> = {
-  quiet: 'var(--fill-1)',
   normal: 'var(--fill-3)',
   dim: 'transparent',
 };
@@ -64,6 +67,7 @@ export class Slider {
       this.element.classList.add('is-marked');
       this.markLayer = document.createElement('div');
       this.markLayer.className = 'w-slider-marks';
+      this.wireMarkLayer(this.markLayer);
       this.frame.append(this.element, this.markLayer);
     } else {
       this.frame = this.element;
@@ -133,28 +137,65 @@ export class Slider {
     if (layer === null) return;
     this.onMarkSelect = onSelect;
     while (layer.childElementCount > marks.length) layer.lastElementChild?.remove();
-    while (layer.childElementCount < marks.length) layer.appendChild(this.buildMark(layer.childElementCount));
+    while (layer.childElementCount < marks.length) layer.appendChild(this.buildMark());
     marks.forEach((mark, i) => {
       const el = layer.children[i];
       if (!(el instanceof HTMLElement)) return;
       const at = String(mark.at);
       if (el.style.getPropertyValue('--at') !== at) el.style.setProperty('--at', at);
       if (el.dataset['glyph'] !== mark.glyph) el.dataset['glyph'] = mark.glyph;
-      if (el.title !== mark.title) el.title = mark.title;
+      if (el.title !== mark.title) {
+        el.title = mark.title;
+        el.setAttribute('aria-label', mark.title);
+      }
       el.classList.toggle('is-own', mark.tone === 'own');
       el.classList.toggle('is-target', mark.tone === 'target');
     });
   }
 
-  // 押すとその目盛りを選ぶ1本。ドラッグはつまみ(入力欄)が受け持ち、目盛りは押下だけを扱う。
-  private buildMark(index: number): HTMLElement {
-    const el = document.createElement('span');
-    el.className = 'w-slider-mark';
-    stopDragPropagation(el);
-    el.addEventListener('pointerdown', (e) => {
+  // 目盛りの層に押下を集める。ドラッグはつまみ(入力欄)が受け持ち、目盛りは押下だけを扱う。
+  // タッチでは目盛りのヒット領域が隣と重なるので、要素ごとに受けず、押した位置にいちばん近い
+  // 目盛りを選ぶ。
+  private wireMarkLayer(layer: HTMLElement): void {
+    stopDragPropagation(layer);
+    layer.addEventListener('pointerdown', (e) => {
+      if (!(e.target instanceof Element) || e.target.closest('.w-slider-mark') === null) return;
+      e.preventDefault();
+      const index = this.nearestMarkIndex(layer, e.clientX);
+      if (index >= 0) this.onMarkSelect?.(index);
+    });
+    layer.addEventListener('keydown', (e) => {
+      // 矢印キー等の打鍵をゲーム操作と誤認されないよう伝播を止める。
+      e.stopPropagation();
+      if (!MARK_SELECT_KEYS.includes(e.key) || !(e.target instanceof Element)) return;
+      const index = Array.prototype.indexOf.call(layer.children, e.target.closest('.w-slider-mark'));
+      if (index < 0) return;
       e.preventDefault();
       this.onMarkSelect?.(index);
     });
+  }
+
+  // clientX にいちばん近い中心を持つ目盛りの index。目盛りが無ければ -1。
+  private nearestMarkIndex(layer: HTMLElement, clientX: number): number {
+    let best = -1;
+    let bestDistance = Infinity;
+    Array.from(layer.children).forEach((child, i) => {
+      const rect = child.getBoundingClientRect();
+      const distance = Math.abs(rect.left + rect.width / 2 - clientX);
+      if (distance < bestDistance) {
+        best = i;
+        bestDistance = distance;
+      }
+    });
+    return best;
+  }
+
+  // 1本の目盛り。Tab で順に辿れ、Enter / Space で選ぶ。
+  private buildMark(): HTMLElement {
+    const el = document.createElement('span');
+    el.className = 'w-slider-mark';
+    el.tabIndex = 0;
+    el.setAttribute('role', 'button');
     return el;
   }
 }
