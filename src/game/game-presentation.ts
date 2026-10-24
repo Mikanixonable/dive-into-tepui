@@ -214,6 +214,7 @@ export class GamePresentation {
     this.planGuide = new PlanGuide(markers);
     this.input = new Input(scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
+    this.touchControls.onSheetToggle = () => hud.toggleSheet();
     this.input.onPointerKindChange = (kind) => this.touchControls.setPointerKind(kind);
 
     const objectWindowActions = new ObjectWindowActions(

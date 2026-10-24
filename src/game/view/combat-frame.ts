@@ -76,6 +76,7 @@ export class CombatFrame implements ViewFrame {
     if (controlled) {
       this.touchControls?.syncModeButtons(
         controlled.throttle.rcsDamp, controlled.fineAttitude, controlled.throttle.progradeHold,
+        controlled.throttle.throttleIdx,
         (key) => controlled.throttle.isThrustLatched(key),
       );
     }

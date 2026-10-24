@@ -1,5 +1,7 @@
-// 艦のステータス(#hud-vessel-status)の区画の意匠: 展開部品の行、単発操作、タッチ環境の推力段とモードのボタン。
+// 艦のステータス(#hud-vessel-status)の区画の意匠: 展開部品の行、単発操作、タッチ環境の推力段のボタン。
 // 計器とモードの行の文法は共通の計器スタイルが持つ。
+import { MQ_COARSE_SHORT } from '../../../hud/breakpoints';
+
 export const VESSEL_STATUS_STYLE = `
 /* 展開部品: [ラベル][左の面][右の面]。面は「展開の点と左右の語・キーキャップ」。 */
 #hud-vessel-status .vessel-deploy-row {
@@ -20,17 +22,19 @@ export const VESSEL_STATUS_STYLE = `
 #hud-vessel-status .panel-actions .w-btn.is-target { background: var(--role-target-fill); color: var(--role-target); }
 #hud-vessel-status .panel-actions .w-btn.is-target .ui-key { color: var(--role-target); }
 
-/* タッチ環境(body.touch-ui-active と同じ判定)では、推力段の行が4つのボタンに、モードの行が点灯ボタンの列に替わる。 */
-#hud-vessel-status .status-throttle-touch, #hud-vessel-status .status-modes-touch { display: none; }
-body.touch-ui-active #hud-vessel-status .vessel-throttle-rows,
-body.touch-ui-active #hud-vessel-status .vessel-mode-rows { display: none; }
+/* タッチ環境(body.touch-ui-active と同じ判定)では、推力段の行が4つのボタンに替わる。制動・微動・ホールドは
+   どのタッチ環境でも仮想パッド側のドックが持ち、行は状態の表示のまま残る。 */
+#hud-vessel-status .status-throttle-touch { display: none; }
+body.touch-ui-active #hud-vessel-status .vessel-throttle-rows { display: none; }
 body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: block; margin-top: var(--space-3); }
 body.touch-ui-active #hud-vessel-status .status-throttle-touch .w-group { gap: var(--space-2); }
 body.touch-ui-active #hud-vessel-status .status-throttle-touch .w-group-title { flex: 0 0 100%; }
 body.touch-ui-active #hud-vessel-status .status-throttle-touch .w-btn {
   flex: 1 1 0; padding-inline: var(--space-2); text-align: center; white-space: nowrap;
 }
-body.touch-ui-active #hud-vessel-status .status-modes-touch {
-  display: grid; gap: var(--space-2); margin-top: var(--space-3);
+/* スマホ横持ちは推力段を仮想パッドの縦4段が持つ。シートの艦のパネルは読み値の行のまま。 */
+@media ${MQ_COARSE_SHORT} {
+  body.touch-ui-active #hud-vessel-status .vessel-throttle-rows { display: grid; }
+  body.touch-ui-active #hud-vessel-status .status-throttle-touch { display: none; }
 }
 `;

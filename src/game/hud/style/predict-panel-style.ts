@@ -6,6 +6,8 @@ import {
 
 export const PREDICT_PANEL_STYLE = `
 #hud #hud-predict { padding: var(--space-4) var(--space-5); }
+/* シートの「時間」の面。レールの無い幅でシートが見せるときだけ出る(hud-sheet-style.ts)。 */
+#hud #hud-time-pane { display: none; }
 
 /* 上段: 現在に戻す・読み値・(空き)・次の事象・予測率・設定。 */
 #hud-predict .tml-top { display: flex; align-items: center; gap: var(--space-5); min-height: var(--row-min-h-s); }
@@ -138,6 +140,23 @@ export const PREDICT_PANEL_STYLE = `
   #hud-predict-wrap { bottom: 62px; }
 }
 @media ${MQ_COARSE_SHORT} {
-  #hud-predict-wrap { bottom: 52px; }
+  /* スマホ横持ちの下部は、時間を掴む1本の帯(タップ最小寸法)だけ。右には仮想パッドのマップの取っ手が並ぶ。
+     表示範囲の選択と設定は、シートの「時間」の面(#hud-time-pane)へ移る。 */
+  #hud-predict-wrap {
+    left: calc(var(--safe-l) + var(--space-4));
+    right: calc(var(--safe-r) + var(--space-4) + var(--hud-dock-btn-w) * 3 + var(--space-2) * 2 + var(--space-4));
+    bottom: calc(var(--safe-b) + var(--space-4));
+  }
+  #hud .hud-map-root.active #hud-predict-toggle { display: none; }
+  #hud #hud-predict.collapsed:not(.hidden) { display: flex !important; }
+  #hud #hud-predict {
+    display: flex; align-items: center; gap: var(--space-4); height: var(--hit-target-min); max-height: none;
+    padding: 0 var(--space-3); overflow: hidden;
+  }
+  #hud-predict .tml-top { display: contents; }
+  #hud-predict .tml-top > :not(.predict-reset, .tml-read), #hud-predict .tml-date, #hud-predict .tml-end,
+  #hud-predict .slider-ticks { display: none; }
+  #hud-predict .tml-elapsed { font-size: var(--font-m); }
+  #hud-predict .tml-scrub { display: block; flex: 1 1 auto; min-width: 0; margin: 0; }
 }
 `;

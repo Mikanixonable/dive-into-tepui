@@ -25,6 +25,9 @@ import { SHIP_CONSTRUCTION_STYLE } from './style/ship-construction-style';
 import { EDITORIAL_DATA_STYLE } from './style/editorial-data-style';
 import { TOP_BAR_STYLE } from './style/top-bar-style';
 import { ALERT_STACK_STYLE } from './style/alert-stack-style';
+import { HUD_SHEET_STYLE } from './style/hud-sheet-style';
+import { MINI_INSTRUMENTS_STYLE } from './style/mini-instruments-style';
+import { MINI_LEFT_HTML, MINI_RIGHT_HTML } from './panels/mini-instruments';
 import { isCompactViewport } from '../../hud/breakpoints';
 import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
@@ -41,7 +44,7 @@ const STYLE =
   + FRAME_CONTROLS_STYLE + ORBIT_GUIDE_STYLE + STAGE_CONTROLS_STYLE
   + OBJECT_PLACER_STYLE + STAGE_STATUS_STYLE
   + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE + SHIP_CONSTRUCTION_STYLE + WEAPON_STRIP_STYLE
-  + TOP_BAR_STYLE + ALERT_STACK_STYLE;
+  + TOP_BAR_STYLE + ALERT_STACK_STYLE + HUD_SHEET_STYLE + MINI_INSTRUMENTS_STYLE;
 
 
 // 組み上がった HUD の DOM への参照一式。
@@ -140,7 +143,7 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
   const status = new PanelShell(rightRail, collapse, 'hud-vessel-status', 'VSL', '艦のステータス');
   configureCombatPanel(status);
   const pip = (id: string): string => `<output class="ui-pip" data-id="${id}">—</output>`;
-  // 計器・モード・展開部品・操作の4区画。推力段とモードはタッチでだけ、キー無しで押せるボタンに替わる。
+  // 計器・モード・展開部品・操作の4区画。推力段はタッチ(レールのある幅)でだけ、キー無しで押せるボタンに替わる。
   status.body.innerHTML = `
     <div class="ui-sub">計器</div>
     <div class="ui-rows has-keys">
@@ -163,7 +166,6 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
       ${instrumentRowHtml({ label: '微調整', keys: K.fineAttitudeToggle.label, valueHtml: pip('fine') })}
       ${instrumentRowHtml({ label: '進行方向ホールド', keys: K.progradeHoldToggle.label, valueHtml: pip('prohold') })}
     </div>
-    <div class="status-modes-touch" data-id="status-modes-touch" role="group" aria-label="モード"></div>
     <section class="vessel-deploy" data-id="vessel-deploy-controls" aria-label="展開部品">
       <div class="ui-sub">展開部品</div>
     </section>
@@ -365,6 +367,19 @@ function buildWeaponStrip(root: HTMLElement): void {
     <span class="weapon-reload" data-id="weapon-reload"></span>`;
 }
 
+// 常時小計器(スマホ横持ちで上の両端へ出す2枚)の器を組む。中身は MiniInstruments が同期する。
+function buildMiniInstruments(layer: HTMLElement): void {
+  for (const [id, label, html] of [
+    ['hud-mini-left', '位置と速度', MINI_LEFT_HTML],
+    ['hud-mini-right', '燃料・出力・船体温度', MINI_RIGHT_HTML],
+  ] as const) {
+    const card = createHudElement('section', id, layer, 'ui-surface-quiet hidden');
+    card.dataset['id'] = id;
+    card.setAttribute('aria-label', label);
+    card.innerHTML = html;
+  }
+}
+
 // マップビューの縮尺バーを組む。
 function buildMapScale(root: HTMLElement): void {
   const mapScale = createHudElement('div', 'hud-map-scale', root, 'ui-surface-quiet');
@@ -471,8 +486,11 @@ function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRa
     if (rootRect.width <= 0) return;
     const leftRect = leftRail.getBoundingClientRect();
     const rightRect = rightRail.getBoundingClientRect();
-    root.style.setProperty('--hud-left-rail-occupied', `${Math.max(0, Math.ceil(leftRect.right - rootRect.left))}px`);
-    root.style.setProperty('--hud-right-rail-occupied', `${Math.max(0, Math.ceil(rootRect.right - rightRect.left))}px`);
+    // 表示されていないレール(スマホ横持ちでシートを開いていない間)は何も占めない。
+    const leftOccupied = leftRect.width > 0 ? Math.ceil(leftRect.right - rootRect.left) : 0;
+    const rightOccupied = rightRect.width > 0 ? Math.ceil(rootRect.right - rightRect.left) : 0;
+    root.style.setProperty('--hud-left-rail-occupied', `${Math.max(0, leftOccupied)}px`);
+    root.style.setProperty('--hud-right-rail-occupied', `${Math.max(0, rightOccupied)}px`);
   };
   sync();
   requestAnimationFrame(sync);
@@ -498,6 +516,7 @@ export function buildHudDom(shell: HudShell, collapse: PanelCollapse, renderStyl
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail, collapse);
   buildWeaponStrip(combatRoot.element);
   buildShipConstructionWorkspace(layers.panel);
+  buildMiniInstruments(layers.panel);
 
   // 画面上端の状態・カメラ操作・ヘルプを一つのクロームへまとめる。各要素が独立した
   // top 値を持たないため、トップバーが折り返しても互いに重ならない。

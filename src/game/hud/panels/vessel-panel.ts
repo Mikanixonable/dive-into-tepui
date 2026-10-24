@@ -1,7 +1,7 @@
 // 常設 VESSEL パネル(#hud-vessel-status)の同期。「いま艦はどんな状態で、どう構えているか」を、
 // 計器(RCS燃料・並進出力・動圧・船体温度)・モード(RCS制動・微調整・進行方向ホールド)・展開部品
 // (太陽電池パドル・放熱板)・操作(姿勢リセット・ターゲット選択)の4区画で示す。操作対象が無ければ隠す。
-// ボタンはキー押下と同じ経路で発火し、タッチでは推力段とモードがキー無しで押せるボタンになる。
+// ボタンはキー押下と同じ経路で発火し、タッチ(レールのある幅)では推力段がキー無しで押せるボタンになる。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { Button, Meter, SegmentedControl } from '../../../hud/widgets';
 import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud/alarm-level';
@@ -56,13 +56,6 @@ export interface VesselPanelViewModel {
 
 const THROTTLE_KEYS: readonly KeyBinding[] = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax];
 
-// タッチで押せるモードの列。押下はキー押下と同じ経路で、点灯は view の対応する状態から決まる。
-const TOUCH_MODES: readonly { readonly label: string; readonly key: KeyBinding }[] = [
-  { label: 'RCS 制動', key: K.rcsDampToggle },
-  { label: '微調整', key: K.fineAttitudeToggle },
-  { label: '進行方向ホールド', key: K.progradeHoldToggle },
-];
-
 // side を「左(+X)/右(-X)」ラベルとショートカットキーへ対応させる。
 // (機体の+Zが前なので、後ろから見ると+Xは左になる)
 const RADIATOR_UI: Record<RadiatorSide, { label: string; key: string }> = {
@@ -102,7 +95,6 @@ export class VesselPanel {
   // 直近の sync で受け取った状態。ボタン押下はフレーム外で発生するため、現在のコールバックをここから取得する。
   private view: VesselPanelViewModel | null = null;
   private readonly throttleControl: SegmentedControl<number>;
-  private readonly modeButtons: readonly Button[];
   private readonly throttleMeter: VesselMeterDom;
   private readonly qdynMeter: VesselMeterDom;
   private readonly tempMeter: VesselMeterDom;
@@ -121,9 +113,8 @@ export class VesselPanel {
     this.tempMeter.meter.setMarks(TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO);
     this.fuelMeter = this.mountMeter('rcs-fuel-meter', 'RCS 燃料');
     this.fuelMeter.setMarks(FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO);
-    // タッチ用の推力段とモードのボタン。
+    // タッチ用の推力段のボタン。
     this.throttleControl = this.buildThrottleControl();
-    this.modeButtons = this.buildModeButtons();
     // 展開部品の行と損耗の行、単発操作。
     const deploy = this.els.get('vessel-deploy-controls');
     this.solarButtons = {
@@ -184,17 +175,6 @@ export class VesselPanel {
     );
     container.appendChild(control.element);
     return control;
-  }
-
-  // モードのボタン列を組み立てて status-modes-touch プレースホルダへ足す。表示可否は CSS が持つ。
-  private buildModeButtons(): readonly Button[] {
-    const container = this.els.get('status-modes-touch');
-    return TOUCH_MODES.map(({ label, key }) => {
-      const button = new Button(label, () => this.view?.tapKey(key));
-      button.element.setAttribute('aria-keyshortcuts', key.label);
-      container.appendChild(button.element);
-      return button;
-    });
   }
 
   // 太陽電池パドル・放熱板1枚ぶんの展開/収納ボタンを組み立てる。面は「展開の点と左右の語・キーキャップ」。
@@ -331,14 +311,12 @@ export class VesselPanel {
     this.throttleControl.setSelected(throttleIdx);
   }
 
-  // 制動・微調整・進行方向ホールドの状態を、行のピップとタッチのボタンの点灯へ反映する。
+  // 制動・微調整・進行方向ホールドの状態を、行のピップへ反映する。
   // 自分が掛けているモードなので、ピップは自分の色で点灯する。
   private syncModes(view: VesselPanelViewModel): void {
-    const states = [view.rcsDamp, view.fineAttitude, view.progradeHold];
     setStatePip(this.els.get('rcs'), view.rcsDamp, true);
     setStatePip(this.els.get('fine'), view.fineAttitude, true);
     setStatePip(this.els.get('prohold'), view.progradeHold, true);
-    this.modeButtons.forEach((button, i) => button.setOn(states[i]!));
   }
 
   // now/max の実数からメーターの満ち幅・段・aria 属性を反映し、値の要素へ「値 単位」と段を書く。
