@@ -126,6 +126,11 @@ export class DisplayWindowManager {
     return this._current;
   }
 
+  // 時間軸の表示範囲・設定の小窓を閉じる。マップビューを抜けるときに呼ぶ。
+  public closePopovers(): void {
+    this.panel.closePopovers();
+  }
+
   // 建造など未来表示を一時停止するモードが、現在の表示窓を保ったまま強制現在表示を切り替える。
   public setForceCurrent(forceCurrent: boolean): void {
     this._current = { ...this._current, forceCurrent,
