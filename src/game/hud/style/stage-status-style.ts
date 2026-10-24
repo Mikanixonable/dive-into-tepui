@@ -26,11 +26,15 @@ export const STAGE_STATUS_STYLE = `
   #hud-stagestatus .t { font-size: var(--font-s); }
   #hud-stagestatus .k { font-size: var(--font-xxs); line-height: 1.35; white-space: normal; }
 }
-@media ${MQ_COARSE_SHORT} {
-  #hud:has(#hud-stagestatus:not(.hidden)) { --hud-stage-bottom-occupied: 54px; }
-  #hud-stagestatus { max-height: 46px; }
-}
 @media ${MQ_SHORT} {
   #hud:has(#hud-stagestatus:not(.hidden)) { --hud-stage-bottom-occupied: 54px; }
   #hud-stagestatus { max-height: 46px; }
-}`;
+}
+@media ${MQ_COARSE_SHORT} {
+  /* 下端はドックと武装の帯が使うので、ステージ状態はその上へ置く。 */
+  #hud { --hud-stage-bottom: calc(var(--hud-rail-bottom) + var(--row-min-h-s) + var(--space-5)); }
+  #hud:has(#hud-stagestatus:not(.hidden)) { --hud-stage-bottom-occupied: calc(var(--hud-stage-bottom) + 46px); }
+  #hud-stagestatus { bottom: var(--hud-stage-bottom); max-height: 46px; }
+  #hud[data-sheet] #hud-stagestatus { display: none; }
+}
+`;

@@ -29,6 +29,8 @@ import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
 import { HudToast } from './hud-toast';
 import type { ActiveAlarm } from '../alarm/alarm-evaluator';
 import { hudAttention, hudWorkspace } from './hud-workspace';
+import { HudSheet } from './hud-sheet';
+import { MiniInstruments } from './panels/mini-instruments';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
 const ANALYSIS_WINDOW_OPEN_X = 320;
@@ -83,6 +85,9 @@ export class Hud implements HudLayers, Notifier {
   // 建造は ViewMode と独立した一時 workspace。ユーザーのパネル折りたたみ設定は変更しない。
   private constructionMode = false;
   private readonly toastBox: HudToast;
+  // スマホ横持ちでレールが取る、下から出る計器シート。
+  private readonly sheet: HudSheet;
+  private readonly miniInstruments: MiniInstruments;
 
   // 画面の器の上に、ゲームの HUD の DOM を組む。renderStyle は組み立て時の見せ方で、
   // panelCollapse は各パネルの折りたたみトグルの配線役。
@@ -113,11 +118,18 @@ export class Hud implements HudLayers, Notifier {
     this.shipConstructionPanel = new ShipConstructionPanel(els);
     this.constructionConfirm = new ConfirmationOverlay(this.overlayManager);
     this.toastBox = new HudToast(this.root);
+    this.sheet = new HudSheet(this.overlayManager, this.root);
+    this.miniInstruments = new MiniInstruments(els);
 
     // ランがまだ無い状態の見た目で組み上げる。
     this.burnManagementPanel.sync(null);
     this.applyView('combat');
     this.applyHudProfile('combat', false);
+  }
+
+  // 計器シートを開閉する。レールの無い幅(スマホ横持ち)で仮想パッドの取っ手が呼ぶ。
+  public toggleSheet(): void {
+    this.sheet.toggle();
   }
 
   // 軌道分析ウィンドウを開く。既に開いていれば、その1枚を最前面へ持ち上げる。
@@ -143,6 +155,7 @@ export class Hud implements HudLayers, Notifier {
   public setConstructionMode(active: boolean): void {
     if (this.constructionMode === active) return;
     this.constructionMode = active;
+    if (active) this.sheet.close();
     this.root.classList.toggle('construction-mode', active);
     document.body.classList.toggle('hud-construction-mode', active);
     this.applyHudProfile(this.chromeView ?? 'combat', false);
@@ -154,6 +167,7 @@ export class Hud implements HudLayers, Notifier {
     this.root.classList.remove('construction-mode');
     document.body.classList.remove('hud-construction-mode');
     this.constructionMode = false;
+    this.sheet.close();
     this.applyHudProfile(this.chromeView ?? 'combat', false);
     this.topBar.sync(null, 0);
     this.alarmBand.sync([]);
@@ -162,6 +176,7 @@ export class Hud implements HudLayers, Notifier {
     this.vesselPanel.sync(null, 0);
     this.weaponStrip.sync(null, 0);
     this.orbitPanel.sync(null, 0);
+    this.miniInstruments.sync(null, null, 0);
     this.targetPanel.sync(null, 0);
     this.enemiesPanel.sync(null, 0);
     this.burnManagementPanel.sync(null);
@@ -176,6 +191,7 @@ export class Hud implements HudLayers, Notifier {
     this.panelCollapse.sync(view);
     this.applyView(view);
     this.applyHudProfile(view, panels.target !== null);
+    this.sheet.sync(view, panels.target !== null);
     // 両ビュー共通のパネル。
     this.burnManagementPanel.sync(panels.burnManagement);
     this.topBar.sync(panels.topBar, nowMs);
@@ -183,6 +199,7 @@ export class Hud implements HudLayers, Notifier {
     this.alarmBand.sync(panels.alarms);
     this.guidance.sync(panels.planningHint, panels.alarms.length > 0, nowMs);
     this.orbitPanel.sync(panels.orbit, nowMs);
+    this.miniInstruments.sync(panels.orbit, map ? null : panels.vessel, nowMs);
     // ビュー固有のパネル。
     if (map) {
       this.mapScaleBadge.sync(camera.scale, panels.mapFocus);

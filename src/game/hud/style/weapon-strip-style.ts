@@ -28,6 +28,8 @@ export const WEAPON_STRIP_STYLE = `
 }
 /* スマホ横持ちは左右のレールの間に収める: 弾帯のセルを詰め、「弾」の語を省く。 */
 @media ${MQ_COARSE_SHORT} {
+  #hud-weapon-strip { max-width: calc(100% - 2 * (var(--hud-pad-side) + var(--space-4))); }
+  #hud-weapon-strip .weapon-belt { overflow: hidden; }
   #hud-weapon-strip > .weapon-label:first-child { display: none; }
   #hud-weapon-strip .weapon-belt { gap: 0; }
   #hud-weapon-strip .weapon-belt > i { width: var(--space-1); border-radius: 0; }

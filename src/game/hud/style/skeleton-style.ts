@@ -276,6 +276,17 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 @media ${MQ_COARSE_SHORT} {
   #hud-chase-reset .hud-mini-code { display: none; }
+  /* ストリップの左右に空ける幅は、ヘルプの丸ボタンと端の余白だけ(レールの収納トグルは無い)。 */
+  #hud-chrome {
+    --hud-chrome-side: calc(max(var(--safe-l), var(--safe-r)) + var(--space-4) + var(--hit-target-min) + var(--space-3));
+  }
+  /* ヘルプは右上の独立した丸ボタン。ストリップと同じ高さに置く。 */
+  #hud-help-badge {
+    top: var(--space-3); right: calc(var(--safe-r) + var(--space-4));
+    width: var(--hit-target-min); height: var(--hit-target-min); padding: 0; border-radius: 50%;
+  }
+  #hud-help-badge .hud-mini-code { display: none; }
+  #hud-map-scale { right: calc(var(--safe-r) + var(--space-4)); }
 }
 @media (prefers-reduced-motion: reduce) {
   #hud *, #hud *::before, #hud *::after {

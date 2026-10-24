@@ -2,6 +2,7 @@
 // ブリーフィングは最初の操作・一定時間・警報の発生のどれかで畳み、案内チップは計画の間だけ出す。
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { createKeyCap } from '../../hud/key-cap';
+import { MQ_COARSE } from '../../hud/breakpoints';
 
 // ブリーフィングを出しておく時間 [ms]。
 const BRIEFING_VISIBLE_MS = 12000;
@@ -32,11 +33,29 @@ const PLAN_HINT_STEPS: Record<PlanHintStage, readonly (readonly [readonly string
   ],
 };
 
+// タッチでは、クリック・矢印キー・M・N を指さず、指の語とマップの下端の取っ手の語で示す。キーで操作する
+// 段(edit)は物理キーを前提にするので、タッチでも同じ列を出す。
+const PLAN_HINT_STEPS_TOUCH: Record<PlanHintStage, readonly (readonly [readonly string[], string])[]> = {
+  place: [
+    [['タップ'], 'ノードを置く'],
+  ],
+  adjust: [
+    [['ドラッグ'], '時刻'],
+    [['長押し'], 'メニュー'],
+  ],
+  edit: PLAN_HINT_STEPS.edit,
+  confirm: [
+    [['戦闘へ'], '確定'],
+    [['ノードへ'], '自動ワープ'],
+  ],
+};
+
 export class Guidance {
   // 表示を始めた時刻 [ms]。表示していなければ null。次の sync で時刻を確定する。
   private briefingShownAt: number | 'pending' | null = null;
-  // hintEl に組んだ案内の段。段が変わったときだけ DOM を組み替える。
+  // hintEl に組んだ案内の段と、そのときの語彙(タッチかどうか)。変わったときだけ DOM を組み替える。
   private shownStage: PlanHintStage | null = null;
+  private shownTouch = false;
 
   // briefingEl と hintEl は #hud に構築済みの案内の置き場。
   public constructor(private readonly briefingEl: HTMLElement, private readonly hintEl: HTMLElement) { }
@@ -68,16 +87,19 @@ export class Guidance {
     if (this.briefingShownAt !== null && (alarmActive || nowMs - this.briefingShownAt > BRIEFING_VISIBLE_MS)) {
       this.foldBriefing();
     }
-    if (stage !== this.shownStage) {
+    // 画面の向きや入力装置で変わりうるので、語彙は段を組むたびにその場で判定する。
+    const touch = typeof matchMedia === 'function' && matchMedia(MQ_COARSE).matches;
+    if (stage !== this.shownStage || touch !== this.shownTouch) {
       this.shownStage = stage;
-      this.hintEl.replaceChildren(...(stage === null ? [] : this.hintSteps(stage)));
+      this.shownTouch = touch;
+      this.hintEl.replaceChildren(...(stage === null ? [] : this.hintSteps(stage, touch)));
     }
     this.hintEl.classList.toggle('hidden', stage === null);
   }
 
-  // 段 stage の案内のステップ列を組む。
-  private hintSteps(stage: PlanHintStage): HTMLElement[] {
-    return PLAN_HINT_STEPS[stage].map(([keys, text]) => {
+  // 段 stage の案内のステップ列を組む。touch ならタッチの語で組む。
+  private hintSteps(stage: PlanHintStage, touch: boolean): HTMLElement[] {
+    return (touch ? PLAN_HINT_STEPS_TOUCH : PLAN_HINT_STEPS)[stage].map(([keys, text]) => {
       const step = document.createElement('span');
       step.className = 'ui-hint-step';
       step.append(...keys.map((key) => createKeyCap(key)), text);

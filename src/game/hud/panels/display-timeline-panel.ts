@@ -7,6 +7,7 @@ import {
   type CollapseToggleLabels, type SliderBand, type SliderMark,
 } from '../../../hud/widgets';
 import type { PanelCollapse } from '../panel-shell';
+import { TimelineSheetPane } from './display-timeline-sheet-pane';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { fmtDateTime, fmtDuration } from '../../../hud/utils';
 import { fmtOffsetLabel, fmtSpanLabel, type DisplayTick } from '../orbit/tick-scale';
@@ -135,6 +136,8 @@ export class DisplayTimelinePanel {
   private readonly ticks: HTMLElement;
   private readonly wrap: HTMLElement;
   private readonly unsubscribeCollapsedView: () => void;
+  // スマホ横持ち(レールの無い幅)で、表示範囲の選択と設定を小窓の代わりに載せる、シートの「時間」の面。
+  private readonly sheetPane: TimelineSheetPane;
   private readonly occupancyObserver: ResizeObserver | null;
 
   private sliderSteps = 1000;
@@ -233,7 +236,8 @@ export class DisplayTimelinePanel {
     const rangeNote = document.createElement('div');
     rangeNote.className = 'tml-pop-note';
     rangeNote.textContent = '1時間〜1年。「1周」は自機の周期に追従し、過去は飛行履歴の範囲まで。';
-    this.rangePopover.body.append(this.durationRow.element, this.pastDurationRow.element, rangeNote);
+    const rangeParts = [this.durationRow.element, this.pastDurationRow.element, rangeNote];
+    this.rangePopover.body.append(...rangeParts);
 
     // 目盛りの表記・表示と軌道要素の時刻のスイッチ、事象の凡例。
     this.settingsPopover = new TimelinePopover(overlayManager, '目盛りと凡例', 'tml-pop-settings');
@@ -249,7 +253,8 @@ export class DisplayTimelinePanel {
     toggles.append(
       this.tickLabelModeSwitch.element, this.showTicksSwitch.element, this.showElementTimesSwitch.element,
     );
-    this.settingsPopover.body.append(toggles, this.buildLegend());
+    const settingsParts = [toggles, this.buildLegend()];
+    this.settingsPopover.body.append(...settingsParts);
 
     // トグルとバー本体を1つの縦積み flex にまとめ、バーを畳んでもトグルだけがその場に残るようにする。
     this.wrap = document.createElement('div');
@@ -264,6 +269,10 @@ export class DisplayTimelinePanel {
       storageId: 'hud-predict',
     });
     root.appendChild(this.wrap);
+    this.sheetPane = new TimelineSheetPane(
+      root, { popover: this.rangePopover, parts: rangeParts, heading: '表示範囲' },
+      { popover: this.settingsPopover, parts: settingsParts, heading: '目盛りと凡例' },
+    );
 
     // compactではこのパネルを下部sheetとして扱うため、wrapの上端から画面下端までの実占有量を
     // map rootへ公開する。高さだけでなくbottom offsetも含め、touch UIの下端予約にも追従する。
@@ -358,6 +367,7 @@ export class DisplayTimelinePanel {
   // パネルの DOM を取り除き、折りたたみ状態変化の購読を解除する。
   public dispose(): void {
     this.unsubscribeCollapsedView();
+    this.sheetPane.dispose();
     this.occupancyObserver?.disconnect();
     this.rangePopover.dispose();
     this.settingsPopover.dispose();

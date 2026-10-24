@@ -19,6 +19,8 @@ export const LAYOUT_TOKENS_STYLE = `
   --hud-map-scale-bottom: 12px;
   /* 画面右上の収納トグルと固定バッジを隣接させるための配置寸法。 */
   --hud-rail-toggle-size: 30px;
+  /* スマホ横持ちの下端のドック(制動・微動・ホールド・計器、マップでは ノードへ・戦闘へ・計器)の1ボタンの幅。 */
+  --hud-dock-btn-w: calc(var(--hit-target-min) * 4 / 3);
 }
 @media ${MQ_MEDIUM_DOWN} {
   :root {
@@ -40,20 +42,32 @@ export const LAYOUT_TOKENS_STYLE = `
 }
 @media ${MQ_COARSE} {
   :root {
+    /* タッチでは収納トグルもタップ最小寸法(UI-DESIGN §6)。 */
+    --hud-rail-toggle-size: var(--hit-target-min);
     --combat-panel-max-h: none;
     --rail-panel-max-h: none;
     --hud-rail-bottom: 62px;
     --hud-map-scale-bottom: 62px;
   }
 }
-@media ${MQ_COARSE_SHORT} {
-  :root { --hud-rail-bottom: 52px; }
-}
 @media ${MQ_SHORT} {
   :root {
     --combat-panel-max-h: none;
     --rail-panel-max-h: none;
     --hud-map-scale-bottom: 52px;
+  }
+}
+@media ${MQ_COARSE_SHORT} {
+  :root {
+    /* 下端のドック(タップ最小寸法)の上。左右のレールは無いので、下端に置く常設のものはここを基準にする。 */
+    --hud-rail-bottom: calc(var(--safe-b) + var(--space-4) + var(--hit-target-min) + var(--space-3));
+    --hud-map-scale-bottom: var(--hud-rail-bottom);
+    /* 画面中央に残る幅を測る基準: 左の推力段と並進パッドの端まで、上の左右の小計器の端まで。 */
+    --hud-pad-side: calc(
+      max(var(--safe-l), var(--safe-r)) + var(--space-4) * 2 + var(--hit-target-min) * 4 + var(--space-2) * 2
+    );
+    --hud-mini-side: calc(max(var(--safe-l), var(--safe-r)) + var(--space-4) + var(--hud-mini-w));
+    --hud-mini-w: 12em;
   }
 }
 `;
