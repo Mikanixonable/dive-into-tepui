@@ -168,9 +168,9 @@ export class ViewOptionsPanel {
     this.shell.setHidden(!visible);
   }
 
-  // パネルを取り除く。
+  // パネルを取り除き、折りたたみ状態変化の購読を解除する。
   public dispose(): void {
-    this.shell.el.remove();
+    this.shell.dispose();
   }
 
   // クラス別の表示状態を現在値へ合わせる。

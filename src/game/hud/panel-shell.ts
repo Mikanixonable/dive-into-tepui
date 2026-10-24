@@ -85,6 +85,7 @@ export class PanelShell {
   public readonly el: HTMLElement;
   public readonly titleEl: HTMLHeadingElement;
   public readonly body: HTMLElement;
+  private readonly unsubscribeCollapsedView: () => void;
 
   // parent の子として id のパネルを組む。見出しは [記号][題名] ……… [補足][開閉] の並びで、code が記号、
   // title が題名。補足は `${id}-meta`、畳んだときの要約は `${id}-summary` の data-id で引ける。
@@ -121,7 +122,7 @@ export class PanelShell {
     this.el.appendChild(this.body);
 
     // 見出しクリックとトグルの両方から畳めるようにする。
-    collapse.wire({
+    this.unsubscribeCollapsedView = collapse.wire({
       toggleRoot: head,
       toggleId: `${id}-collapse`,
       toggleClassName: 'panel-shell-collapse',
@@ -138,6 +139,12 @@ export class PanelShell {
     });
 
     parent.appendChild(this.el);
+  }
+
+  // 畳み状態のビュー切替への追随をやめ、パネルの DOM を取り除く。
+  public dispose(): void {
+    this.unsubscribeCollapsedView();
+    this.el.remove();
   }
 
   // ゲーム状態由来の表示/非表示を .hidden クラスで切り替える。折りたたみ(利用者の
