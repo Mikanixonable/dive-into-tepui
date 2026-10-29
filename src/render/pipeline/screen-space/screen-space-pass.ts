@@ -53,8 +53,8 @@ export interface ScanTier {
   readonly bandScale: number;
 }
 
-// 帯の座標の尺度 κ。走査の解像度・スライス数・歩数・帯の数と組んで段にする。
-const BAND_SCALE = 0.284;
+// 帯の座標の尺度 κ。走査の解像度・スライス数・歩数・帯の数と組んで段にする。帯の天井の形(band-split.ts)と組で決めた値。
+const BAND_SCALE = 0.451;
 // デバイス上限を読めない場合(renderer をスタブにしたテストなど)に使う WebGPU の既定値 [byte/sample]。
 const DEFAULT_ATTACHMENT_BYTE_LIMIT = 32;
 

@@ -12,7 +12,7 @@ import {
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
-import { bandCeiling, facingCosine, sampleBandWeights, type BandSplit } from './band-split';
+import { NO_CEILING, bandCeiling, facingCosine, sampleBandWeights, type BandSplit } from './band-split';
 import { signedDiffuseCorrection } from './diffuse-correction';
 import {
   SECTOR_COUNT, angleOf, bitCount, capMeasure, capRange, hemisphereNormalOf, maskedMeasure, rangeSectors, sectorPosition,
@@ -271,7 +271,7 @@ class SliceOcclusion {
       }
       // 帯の天井は照り返しにだけ掛ける。遮蔽は源の面の光を運ばないので、源の平面との交線を根元に持たない。
       const receivedWeights = sampleBandWeights(this.bands, rho, this.receiverView, senderView, ceiling);
-      const blockedWeights = sampleBandWeights(this.bands, rho, this.receiverView, senderView, float(64));
+      const blockedWeights = sampleBandWeights(this.bands, rho, this.receiverView, senderView, float(NO_CEILING));
       for (const [band, correction] of this.corrections.entries()) {
         correction.addAssign(signedDiffuseCorrection(received.mul(receivedWeights[band]!), blockedIrradiance.mul(blockedWeights[band]!)));
       }

@@ -1,5 +1,5 @@
 // 補正の増分(照り返し − 塞がれた照度)を、標本の画面距離と向きから帯へ分ける。帯の座標は log₂(κ·ρ·cos ε ÷ √(n_s·v_s))
-// で、照り返しにも遮蔽にも同じ。交線の像を越える帯には天井を置く。
+// で、照り返しにも遮蔽にも同じ。照り返しには、交線の像を越える帯へ天井を置く。
 import { clamp, dot, exp2, float, length, log2, max, min, pow, select, vec2, vec4 } from 'three/tsl';
 import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
 
@@ -13,15 +13,17 @@ export interface BandSplit {
 // 送り手の法線と送り手→カメラの内積 n_s·v_s を割る因子 d の冪。画面に側面を向ける送り手は踏まれにくく、切片を交点まで
 // 延ばす方式で大きく数えられて疎な輝点になるので、大きな帯で均す。冪は f(0) = 0・f(1) = 1 を保ち、側面を最も粗い帯へ送る。
 // tools/screen-space-chain-factors.mjs の FIXED_FACTORS が撮影の条件に写しを持つ。
-// 一時: 手順22 の段 A・C は d を切って撮る(本来 0.5)。
+// 一時: 手順22 の段 A・C は d を切る(本来 0.5)。帯の天井と κ は d 0 で決めたので、d を戻すときは振り直す(計画書「段 A の引き継ぎ」)。
 export const SENDER_VIEW_EXPONENT = 0;
 
-// 一時: 手順22 の段 A で撮り比べる帯の天井(bandCeiling)。CEILING_DEPTH は天井が最も下がるときの深さ D [帯](null なら天井を置かない)、
-// CEILING_CENTER は天井が最も下がる ρ ÷ ℓ_L の比 R。撮影の担当が run ごとに書き換える。
-export const CEILING_DEPTH: number | null = null;
-export const CEILING_CENTER = 8;
-// 一時: 天井の下限 F [帯]。天井はこれより細かい帯へ下がらない — 根元の近くでも帯 F の半径までは均し、漏れをその幅に留める。撮影の担当が run ごとに書き換える。
-export const CEILING_FLOOR = 0;
+// 帯の天井(bandCeiling)の形。CEILING_DEPTH は天井が最も下がるときの深さ D [帯]、CEILING_CENTER は天井が最も下がる ρ ÷ ℓ_L の比 R、
+// CEILING_FLOOR は天井の下限 F [帯](根元の近くでも帯 F の半径までは均し、漏れをその幅に留める)。κ(BandSplit の scale)と組で決めた値
+// (手順22 段A、決めたこと 64)なので、κ を変えたら振り直す。
+const CEILING_DEPTH = 2.17;
+const CEILING_CENTER = 8;
+const CEILING_FLOOR = 1;
+// 天井を置かない寄与(遮蔽)に渡す、どの帯も制限しない天井。
+export const NO_CEILING = 64;
 
 // 交線の像が無い(同じ平面の標本)ときの距離 [走査の画素]。
 const UNLIMITED_DISTANCE = 1e9;
@@ -57,12 +59,11 @@ export function intersectionImageDistance(
 
 // 画面距離 rho の標本の帯の天井の座標 max(log₂(κ·ρ) − D + |log₂(R·ℓ_L ÷ ρ)|, F)(scale は κ、ℓ_L は intersectionImageDistance、D・R・F は
 // CEILING_DEPTH・CEILING_CENTER・CEILING_FLOOR)。天井は交線の像までの距離が ρ ÷ R の標本で距離だけの座標より D 帯下がり、そこから 2 倍離れるごとに
-// 1 帯戻る — 根元にごく近い標本も、根元より十分遠い標本も縛らない。CEILING_DEPTH が null なら、どの帯も制限しない値。
+// 1 帯戻る — 根元にごく近い標本も、根元より十分遠い標本も縛らない。
 export function bandCeiling(
   scale: FloatNode, rho: FloatNode, senderPosition: Vec3Node, senderNormal: Vec3Node, receiverPosition: Vec3Node,
   receiverNormal: Vec3Node, projection: Mat4Uniform, projectionInverse: Mat4Uniform, scanSize: Vec2Node,
 ): FloatNode {
-  if (CEILING_DEPTH === null) return float(64);
   const distance = intersectionImageDistance(senderPosition, senderNormal, receiverPosition, receiverNormal,
     projection, projectionInverse, scanSize);
   const offCenter = log2(max(distance.mul(CEILING_CENTER).div(max(rho, COORDINATE_FLOOR)), COORDINATE_FLOOR)).abs();
