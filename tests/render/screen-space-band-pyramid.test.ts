@@ -4,7 +4,7 @@ import * as assert from 'node:assert/strict';
 import { bool, float, floatBitsToUint, ivec2, uint, uintBitsToFloat, vec2, vec3 } from 'three/tsl';
 import {
   attachmentBytesOf, bandLayoutOf, effectivePixelsOf, levelTextureFormats, mergedCorrection, packedReducedBands,
-  scanBandsOf, tentNeighbors, unpackedBands, weightedBands, type ParentPixel,
+  scanBandsOf, mergeNeighbors, unpackedBands, weightedBands, type ParentPixel,
 } from '../../src/render/pipeline/screen-space/band-pyramid';
 import * as THREE from 'three/webgpu';
 import { secondNearest } from '../../src/render/pipeline/screen-space/screen-space-input-pyramid';
@@ -34,7 +34,7 @@ function parentsAround(
   parentPixels: number, parentShare = 1,
 ): ParentPixel[] {
   const containing = pixel.map((coordinate) => Math.floor(coordinate / 2));
-  return tentNeighbors(vec2(pixel[0], pixel[1])).map(({ texel, weight }) => {
+  return mergeNeighbors(vec2(pixel[0], pixel[1])).map(({ texel, weight }) => {
     const offset = componentsOf(texel).map((coordinate, axis) => coordinate - containing[axis]!);
     return {
       interpolationWeight: weight, surface: float(surfaceAt(offset)), value: vectorNode(value),
@@ -50,19 +50,33 @@ const PIXEL_COUNTS = [{ own: 1, parent: 4 }, { own: 4, parent: 16 }, { own: 2.5,
 const MERGE_PIXELS = [[0, 0], [1, 0], [0, 1], [5, 2], [6, 9]] as const;
 
 export function register(): void {
-  test('screen space band pyramid: 3×3 テントは含む親を中心に対称で、重みの和が 1', () => {
+  test('screen space band pyramid: 3×3 端数を見るテントは重みの和が 1、重心が子の端数に一致する', () => {
     for (const [x, y] of [[0, 0], [1, 0], [0, 1], [1, 1], [6, 9]] as const) {
-      const neighbors = tentNeighbors(vec2(x, y)).map(({ texel, weight }) => ({
+      const neighbors = mergeNeighbors(vec2(x, y)).map(({ texel, weight }) => ({
         texel: componentsOf(texel), weight: evaluateShaderNode(weight) as number,
       }));
       const center = [Math.floor(x / 2), Math.floor(y / 2)];
       assert.strictEqual(neighbors.length, 9);
       near(neighbors.reduce((sum, neighbor) => sum + neighbor.weight, 0), 1, 1e-12, `(${x}, ${y}) 和`);
+      const axisWeights = (coordinate: number): readonly number[] => coordinate % 2 === 0 ? [12, 16, 4] : [4, 16, 12];
       for (const neighbor of neighbors) {
         const offset = neighbor.texel.map((coordinate, axis) => coordinate - center[axis]!);
         assert.ok(offset.every((delta) => delta >= -1 && delta <= 1), `(${x}, ${y}) ${neighbor.texel}`);
-        const expected = (offset[0] === 0 ? 2 : 1) * (offset[1] === 0 ? 2 : 1) / 16;
+        const xWeights = axisWeights(x);
+        const yWeights = axisWeights(y);
+        const expected = xWeights[offset[0]! + 1]! * yWeights[offset[1]! + 1]! / 1024;
         near(neighbor.weight, expected, 1e-12, `(${x}, ${y}) ${neighbor.texel}`);
+      }
+      for (const axis of [0, 1]) {
+        const weights = [-1, 0, 1].map((offset) => neighbors
+          .filter(({ texel }) => texel[axis]! - center[axis]! === offset)
+          .reduce((sum, { weight }) => sum + weight, 0));
+        const expected = axisWeights(axis === 0 ? x : y).map((weight) => weight / 32);
+        weights.forEach((weight, index) => near(weight, expected[index]!, 1e-12, `(${x}, ${y}) 軸 ${axis} 重み ${index}`));
+        near(weights.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, `(${x}, ${y}) 軸 ${axis} 和`);
+        near(weights.reduce((sum, weight, index) => sum + (index - 1) * weight, 0),
+          axis === 0 ? (x % 2 === 0 ? -0.25 : 0.25) : (y % 2 === 0 ? -0.25 : 0.25), 1e-12,
+          `(${x}, ${y}) 軸 ${axis} 重心`);
       }
     }
   });
@@ -212,7 +226,7 @@ export function register(): void {
     }
   });
 
-  test('screen space band pyramid: 合流の混合比は、平らなら 1、自分を含む親だけが合えば 1、対角4親だけなら 4m / (4m + n_T)、どれも合わなければ 0', () => {
+  test('screen space band pyramid: 合流の混合比は、平らなら 1、自分を含む親だけが合えば 1、対角親だけなら核の重みと実効画素数で決まり、どれも合わなければ 0', () => {
     // D = T = 0 で親の C をどれも 1 にすると、C_k の各成分が混合比 α になる。
     const ratioOf = (pixel: readonly [number, number], surfaceAt: (offset: readonly number[]) => number,
       own: number, parent: number): number => {
@@ -226,8 +240,18 @@ export function register(): void {
         near(ratioOf(pixel, () => 1, own, parent), 1, 1e-12, `${label} 平ら`);
         near(ratioOf(pixel, (offset) => (offset.every((d) => d === 0) ? 1 : 0), own, parent), 1, 1e-12,
           `${label} 自分を含む親`);
+        const axisWeights = (coordinate: number): readonly number[] =>
+          (coordinate % 2 === 0 ? [12, 16, 4] : [4, 16, 12]).map((weight) => weight / 32);
+        const diagonalWeights = [
+          axisWeights(pixel[0])[0]! * axisWeights(pixel[1])[0]!,
+          axisWeights(pixel[0])[0]! * axisWeights(pixel[1])[2]!,
+          axisWeights(pixel[0])[2]! * axisWeights(pixel[1])[0]!,
+          axisWeights(pixel[0])[2]! * axisWeights(pixel[1])[2]!,
+        ];
+        const diagonalTotal = diagonalWeights.reduce((sum, weight) => sum + weight, 0);
+        const squaredShareTotal = diagonalWeights.reduce((sum, weight) => sum + (weight / diagonalTotal) ** 2, 0);
         near(ratioOf(pixel, (offset) => (offset.every((d) => d !== 0) ? 1 : 0), own, parent),
-          4 * parent / (4 * parent + own),
+          1 / (1 + own * squaredShareTotal / parent),
           1e-12, `${label} 斜向かい`);
         near(ratioOf(pixel, () => 0, own, parent), 0, 1e-12, `${label} 合わない`);
       }

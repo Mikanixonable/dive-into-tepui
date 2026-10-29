@@ -1,7 +1,7 @@
 // 補正の増分(照り返し − 塞がれた照度)を、標本の画面距離と向きから帯へ分ける。帯の座標は log₂(κ·ρ·cos ε ÷ √(n_s·v_s))
-// で、照り返しにも遮蔽にも同じ。受け手の視線の因子 c と送り手の視線の因子 d は固定で掛かる。
-import { clamp, dot, exp2, float, log2, max, min, pow } from 'three/tsl';
-import type { FloatNode, Vec3Node } from '../../tsl-types';
+// で、照り返しにも遮蔽にも同じ。交線の像を越える帯には天井を置く。
+import { clamp, dot, exp2, float, length, log2, max, min, pow, select, vec2, vec4 } from 'three/tsl';
+import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
 
 // 補正を遮りの画面距離 ρ [走査の画素] と向きで分ける帯。count は帯の数(1 なら分けない)で、帯 b は座標 b を受け持つ。
 // scale は距離だけの座標 log₂(κ·ρ) の尺度 κ。
@@ -13,7 +13,18 @@ export interface BandSplit {
 // 送り手の法線と送り手→カメラの内積 n_s·v_s を割る因子 d の冪。画面に側面を向ける送り手は踏まれにくく、切片を交点まで
 // 延ばす方式で大きく数えられて疎な輝点になるので、大きな帯で均す。冪は f(0) = 0・f(1) = 1 を保ち、側面を最も粗い帯へ送る。
 // tools/screen-space-chain-factors.mjs の FIXED_FACTORS が撮影の条件に写しを持つ。
-export const SENDER_VIEW_EXPONENT = 0.5;
+// 一時: 手順22 の段 A・C は d を切って撮る(本来 0.5)。
+export const SENDER_VIEW_EXPONENT = 0;
+
+// 一時: 手順22 の段 A で撮り比べる帯の天井(bandCeiling)。CEILING_DEPTH は天井が最も下がるときの深さ D [帯](null なら天井を置かない)、
+// CEILING_CENTER は天井が最も下がる ρ ÷ ℓ_L の比 R。撮影の担当が run ごとに書き換える。
+export const CEILING_DEPTH: number | null = null;
+export const CEILING_CENTER = 8;
+// 一時: 天井の下限 F [帯]。天井はこれより細かい帯へ下がらない — 根元の近くでも帯 F の半径までは均し、漏れをその幅に留める。撮影の担当が run ごとに書き換える。
+export const CEILING_FLOOR = 0;
+
+// 交線の像が無い(同じ平面の標本)ときの距離 [走査の画素]。
+const UNLIMITED_DISTANCE = 1e9;
 
 // 帯の座標に入れる、0 の手前の下限。
 const COORDINATE_FLOOR = 1e-6;
@@ -21,6 +32,41 @@ const COORDINATE_FLOOR = 1e-6;
 // 法線 normal と単位ベクトル direction の内積。負値は 0 へ寄せる。
 export function facingCosine(normal: Vec3Node, direction: Vec3Node): FloatNode {
   return clamp(dot(normal, direction), 0, 1);
+}
+
+// 受け手の画素から、標本の接平面と受け手の接平面の交線 L の像までの画面距離 [走査の画素](位置と法線は view 空間)。受け手の面の
+// 上でこの標本の寄与は L で 0 になるので、L の像を越えてぼかす帯へ出すと漏れになる。直線は射影で直線へ写るので、L と視点を含む
+// 平面を clip 空間へ写した直線として厳密に求まる(透視でも平行投影でも)。平行に近い平面では像は受け手の面の消失線へ寄るだけで、
+// 発散も 0 への潰れもしない。同じ平面の標本(その寄与は 0)は UNLIMITED_DISTANCE。
+export function intersectionImageDistance(
+  senderPosition: Vec3Node, senderNormal: Vec3Node, receiverPosition: Vec3Node, receiverNormal: Vec3Node,
+  projection: Mat4Uniform, projectionInverse: Mat4Uniform, scanSize: Vec2Node,
+): FloatNode {
+  const senderPlane = vec4(senderNormal, dot(senderNormal, senderPosition).negate());
+  const receiverPlane = vec4(receiverNormal, dot(receiverNormal, receiverPosition).negate());
+  const eye = projectionInverse.mul(vec4(0, 0, 1, 0));
+  const linePlane = receiverPlane.mul(dot(senderPlane, eye)).sub(senderPlane.mul(dot(receiverPlane, eye)));
+  const imagePlane = projectionInverse.transpose().mul(linePlane);
+  const receiverClip = projection.mul(vec4(receiverPosition, 1));
+  const q = receiverClip.xy.div(receiverClip.w);
+  const pixelNormal = imagePlane.xy.mul(vec2(2).div(scanSize));
+  const distance = imagePlane.x.mul(q.x).add(imagePlane.y.mul(q.y)).add(imagePlane.w).abs()
+    .div(length(pixelNormal));
+  return select(length(pixelNormal).equal(0), float(UNLIMITED_DISTANCE), distance);
+}
+
+// 画面距離 rho の標本の帯の天井の座標 max(log₂(κ·ρ) − D + |log₂(R·ℓ_L ÷ ρ)|, F)(scale は κ、ℓ_L は intersectionImageDistance、D・R・F は
+// CEILING_DEPTH・CEILING_CENTER・CEILING_FLOOR)。天井は交線の像までの距離が ρ ÷ R の標本で距離だけの座標より D 帯下がり、そこから 2 倍離れるごとに
+// 1 帯戻る — 根元にごく近い標本も、根元より十分遠い標本も縛らない。CEILING_DEPTH が null なら、どの帯も制限しない値。
+export function bandCeiling(
+  scale: FloatNode, rho: FloatNode, senderPosition: Vec3Node, senderNormal: Vec3Node, receiverPosition: Vec3Node,
+  receiverNormal: Vec3Node, projection: Mat4Uniform, projectionInverse: Mat4Uniform, scanSize: Vec2Node,
+): FloatNode {
+  if (CEILING_DEPTH === null) return float(64);
+  const distance = intersectionImageDistance(senderPosition, senderNormal, receiverPosition, receiverNormal,
+    projection, projectionInverse, scanSize);
+  const offCenter = log2(max(distance.mul(CEILING_CENTER).div(max(rho, COORDINATE_FLOOR)), COORDINATE_FLOOR)).abs();
+  return max(log2(max(scale.mul(rho), COORDINATE_FLOOR)).sub(CEILING_DEPTH).add(offCenter), CEILING_FLOOR);
 }
 
 // 受け手の法線と受け手→カメラの内積 cos ε を、弱めずに帯の座標へ掛ける因子 c。斜めに見る受け手は画面上で縮むので、
@@ -51,12 +97,17 @@ export function bandCoordinate(
 // 帯の座標 coordinate の増分を帯へ分ける重み。0 以上で和は 1(1 帯なら重み 1)。帯 b は、線形の距離で山 d_b を頂点に 0〜2d_b に張った
 // 左右対称な三角 max(1 − |u − 1|, 0)(u = 2^{coordinate − b})を全帯の和で割った重みで、近い側の裾は ρ = 0 まで伸び、粗い隣の帯との比は 1/2。
 // 最後の帯は山より遠くを 1 で受け持つ。座標の下限で u > 0 なので、帯 0 の三角は正で和は 0 にならない。
-export function bandWeights(count: number, coordinate: FloatNode): FloatNode[] {
+// 天井 ceiling(bandCeiling)より粗い帯は 1 帯の幅で 0 へ落とす。帯 0 は均さないので天井を持たない。座標も天井で頭打ちにする —
+// しないと、天井より上の寄与で許された帯の三角がすべて 0 になる。
+export function bandWeights(count: number, coordinate: FloatNode, ceiling: FloatNode): FloatNode[] {
   if (count === 1) return [float(1)];
+  const capped = min(coordinate, ceiling);
   const peaks = Array.from({ length: count }, (_, band) => {
-    const ratio = exp2(coordinate.sub(band));
+    const ratio = exp2(capped.sub(band));
     const u = band === count - 1 ? min(ratio, 1) : ratio;
-    return max(float(1).sub(u.sub(1).abs()), 0);
+    const peak = max(float(1).sub(u.sub(1).abs()), 0);
+    const ceilingWeight = band === 0 ? float(1) : clamp(float(1).add(ceiling).sub(band), 0, 1);
+    return peak.mul(ceilingWeight);
   });
   const total = peaks.reduce((sum, peak) => sum.add(peak), float(0));
   return peaks.map((peak) => peak.div(total));
@@ -65,7 +116,7 @@ export function bandWeights(count: number, coordinate: FloatNode): FloatNode[] {
 // 画面距離 rho の標本の、補正の増分の帯ごとの重み。receiverView は受け手の法線と受け手→カメラの内積 cos ε、senderView は
 // 標本(送り手)の法線と送り手→カメラの内積 n_s·v_s(どちらも facingCosine)。
 export function sampleBandWeights(
-  bands: BandSplit, rho: FloatNode, receiverView: FloatNode, senderView: FloatNode,
+  bands: BandSplit, rho: FloatNode, receiverView: FloatNode, senderView: FloatNode, ceiling: FloatNode,
 ): FloatNode[] {
   // 試して保留した因子(8-15。再開は計画書の Backlog)。
   // a = cos θ(送り手の法線 · 送り手→受け手)を掛ける。送り手の地平による空間波長の異方性で、源の地平に沿うハードエッジの芯を
@@ -76,5 +127,5 @@ export function sampleBandWeights(
   // 色ムラをどこまで均せるかを手順12(時間方向の蓄積)以降に決めてから、a を採るかを決める。
   const coordinate = bandCoordinate(
     bands.scale, rho, receiverViewMultiplier(receiverView), senderViewDivisor(senderView));
-  return bandWeights(bands.count, coordinate);
+  return bandWeights(bands.count, coordinate, ceiling);
 }

@@ -1,5 +1,5 @@
 // 縮小列の段を粗い側から合流し、段ごとの映り込みを 2 倍に拡大する。
-// 各親段は端数を見る二次 B スプラインの 3 × 3 で読み、代表面の類似度で重み付けする。
+// 各親段は端数を見るテントの 3 × 3 で読み、代表面の類似度で重み付けする。
 // 代表面で選んだ均す段に応じて、自分の段の平均と親段の値を混ぜる。
 // 確からしさは拡散補正項の合流と同じく、寄与した親面の重みの平均で求める。
 import * as THREE from 'three/webgpu';
@@ -11,6 +11,7 @@ import {
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { specularLobeHalfWidthOf } from '../lighting/ggx';
 import { compileInto } from '../compile-into';
+import { phaseTentWeight } from './band-pyramid';
 import { ReflectionReduction, representativeSurfaceOf, sameSurfaceWeight } from './reflection-reduction';
 import { reflectionDenoiseLevelOf } from './reflection-denoise-level';
 import { NO_REFLECTION_ROUGHNESS } from './reflection-trace';
@@ -36,13 +37,6 @@ function atlasTarget(): THREE.RenderTarget {
   target.textures[1]!.format = THREE.RGFormat;
   target.textures[1]!.type = THREE.HalfFloatType;
   return target;
-}
-
-// 二次 B スプラインの 1 軸ぶんの重みを返す。fraction は −0.5..0.5。
-function bsplineWeight(offset: number, fraction: FloatNode): FloatNode {
-  if (offset === -1) return float(0.5).mul(float(0.5).sub(fraction).mul(float(0.5).sub(fraction)));
-  if (offset === 0) return float(0.75).sub(fraction.mul(fraction));
-  return float(0.5).mul(float(0.5).add(fraction).mul(float(0.5).add(fraction)));
 }
 
 // 合流列の画素値。
@@ -180,7 +174,7 @@ export class ReflectionMerge {
     level: number, center: Vec2Node, fraction: Vec2Node, point: Vec3Node, normal: Vec3Node, width: FloatNode,
   ): ParentReflection {
     const size = ceil(this.fullSize.div(this.reduction.spanAt(level))).toVar();
-    // 画面内の周辺画素を、B スプラインと代表面の類似度で重み付けして集める。
+    // 画面内の周辺画素を、端数を見るテントと代表面の類似度で重み付けして集める。
     const sum = vec4(0).toVar();
     const sumDistance = float(0).toVar();
     const sumHit = float(0).toVar();
@@ -193,7 +187,8 @@ export class ReflectionMerge {
       If(inside, () => {
         const surface = representativeSurfaceOf(this.reduction.reducedLevelTexelAt(level, texel).surface);
         const surfaceWeight = sameSurfaceWeight(surface, point, normal, width);
-        const share = bsplineWeight(dx, fraction.x).mul(bsplineWeight(dy, fraction.y)).mul(surfaceWeight).toVar();
+        const share = phaseTentWeight(dx as -1 | 0 | 1, fraction.x)
+          .mul(phaseTentWeight(dy as -1 | 0 | 1, fraction.y)).mul(surfaceWeight).toVar();
         const merged = this.mergedTexelAt(level, texel);
         sum.addAssign(merged.weighted.mul(share));
         sumDistance.addAssign(merged.distance.mul(share));

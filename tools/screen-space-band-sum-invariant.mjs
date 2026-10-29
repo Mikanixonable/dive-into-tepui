@@ -52,12 +52,12 @@ export function bandSumInvariant(raw, bands) {
 }
 
 // 本番フレーム pass で、1帯の撮影と tier の撮影を比べる。
-export async function captureBandSumInvariant(lab, tier, frame) {
+export async function captureBandSumInvariant(lab, tier, frame, fixScanRepresentative = false) {
   await lab.setTier({ ...tier, bandCount: 1 });
-  await lab.renderProductionCorrectionPhase(frame);
+  await lab.renderProductionCorrectionPhase(frame, fixScanRepresentative);
   const raw = await lab.readFloat('band-sum', 4);
   await lab.setTier(tier);
-  await lab.renderProductionCorrectionPhase(frame);
+  await lab.renderProductionCorrectionPhase(frame, fixScanRepresentative);
   const packed = [];
   for (let texture = 0; texture < 3; texture++) packed.push(await lab.readFloat(`packed-bands-${texture}`, 4));
   return bandSumInvariant(raw, Array.from({ length: tier.bandCount }, (_, band) => unpackedBand(packed, band)));

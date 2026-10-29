@@ -3,6 +3,7 @@ import { existsSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { BASELINE_RUN, escapeHtml, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_WIDTH } from './screen-space-chain-runs.mjs';
 import { shotsDir } from './screen-space-lab.mjs';
+import { SCALES } from './screen-space-chain-scale-rms.mjs';
 
 export const ONE_PASS_CORRECTION_PHASES = [1, 2, 3];
 export const ONE_PASS_CORRECTION_SEEDS = [1, 2, 3];
@@ -13,6 +14,12 @@ const STYLE = ':root{--page:#17191d;--panel:#222;--text:#eee;--line:#555;--space
 export function writeRunIndex(runDir, runRecord, passes, baselineLabel) {
   const scenes = Object.values(runRecord.scenes);
   const navigation = scenes.map((scene) => `<a href="#${escapeHtml(scene.scene)}">${escapeHtml(scene.scene)}</a>`).join(' | ');
+  const scaleRows = scenes.flatMap((scene) => SCALES.map((scale) => {
+    const structure = scene.scaleRms?.structure?.[scale] ?? [];
+    const noise = scene.scaleRms?.noise?.[scale] ?? [];
+    const cells = [...structure, ...noise].map((value) => Number.isFinite(value) ? value.toExponential(4) : '—');
+    return `<tr><td>${escapeHtml(scene.scene)}</td><td>${scale}</td>${cells.map((value) => `<td>${value}</td>`).join('')}</tr>`;
+  }));
   const sections = scenes.map((scene) => {
     const dir = path.join(runDir, scene.scene);
     const { scan, structure, noise, maxDeviation } = scene.displayScales;
@@ -40,7 +47,9 @@ export function writeRunIndex(runDir, runRecord, passes, baselineLabel) {
   writeFileSync(path.join(runDir, 'index.html'), `<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>8-15 画面空間拡散 - ${label}</title>
 <style>${STYLE}</style>
-<h1>8-15 画面空間拡散 - ${label}</h1><p>${passes} パス。走査解像度 ${SCAN_WIDTH}&times;${SCAN_HEIGHT}。signed RGB は線形値を灰色中心で表示し、各場面で ${escapeHtml(baselineLabel)} の固定スケールを使います。撮影条件と全スケールは record.json に記録します。</p><nav>${navigation}</nav><main>${sections.join('\n')}</main></html>`);
+<h1>8-15 画面空間拡散 - ${label}</h1><p>${passes} パス。走査解像度 ${SCAN_WIDTH}&times;${SCAN_HEIGHT}。signed RGB は線形値を灰色中心で表示し、各場面で ${escapeHtml(baselineLabel)} の固定スケールを使います。撮影条件と全スケールは record.json に記録します。</p>
+<table><caption>面マスク内のスケール別 RMS (構造誤差 RGB、1パス雑音 RGB)</caption><thead><tr><th>撮影</th><th>s</th><th>構造 R</th><th>構造 G</th><th>構造 B</th><th>雑音 R</th><th>雑音 G</th><th>雑音 B</th></tr></thead><tbody>${scaleRows.join('\n')}</tbody></table>
+<nav>${navigation}</nav><main>${sections.join('\n')}</main></html>`);
 }
 
 export function writeLandingIndex() {

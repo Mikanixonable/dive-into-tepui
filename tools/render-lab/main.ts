@@ -105,10 +105,13 @@ declare global {
       setScanSeed: (x: number, y: number) => void;
       setScanStageRange: (range: ScreenSpaceStageRange) => void;
       setUpsampleAlphaOne: (enabled: boolean) => void;
-      accumulateProductionPasses: (first: number, count: number) => Promise<void>;
+      accumulateProductionPasses: (first: number, count: number, fixScanRepresentative?: boolean, rasterJitter?: boolean) => Promise<void>;
       takePassSums: (includeSquares?: boolean) => Promise<{
         readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
       }>;
+      addReflectionPasses: (offsets: readonly (readonly [number, number])[], first: number) => Promise<void>;
+      takeReflectionSums: () => Promise<readonly (readonly FloatImage[])[]>;
+      renderReflectionPass: (x: number, y: number) => void;
       writePackedBands: (index: number, rgba: Float32Array) => void;
       readFloat: (name: FloatTargetName) => Promise<FloatImage>;
       readBand: (band: number) => Promise<FloatImage>;
@@ -140,7 +143,7 @@ declare global {
       stochasticUpscale: (scan: Float32Array, geometry: SurfaceGeometry, block: number) => Promise<Float32Array>;
       setScanJitter: (jitter: ScanJitter | null) => void;
       setRasterJitter: (offsetPx: readonly [number, number] | null) => void;
-      renderProductionCorrectionPhase: (frame: number | null) => void;
+      renderProductionCorrectionPhase: (frame: number | null, fixScanRepresentative?: boolean) => void;
       scanCellSize: () => number;
       resetMotion: () => void;
       moveCamera: (
@@ -451,8 +454,11 @@ async function init(): Promise<void> {
     setScanSeed: (x, y) => view.setScanSeed(x, y),
     setScanStageRange: (range) => view.setScanStageRange(range),
     setUpsampleAlphaOne: (enabled) => view.setUpsampleAlphaOne(enabled),
-    accumulateProductionPasses: (first, count) => view.accumulateProductionPasses(first, count),
+    accumulateProductionPasses: (first, count, fixScanRepresentative, rasterJitter) => view.accumulateProductionPasses(first, count, fixScanRepresentative, rasterJitter),
     takePassSums: (includeSquares) => view.takePassSums(includeSquares),
+    addReflectionPasses: (offsets, first) => view.addReflectionPasses(offsets, first),
+    takeReflectionSums: () => view.takeReflectionSums(),
+    renderReflectionPass: (x, y) => view.renderReflectionPass(x, y),
     writePackedBands: (index, rgba) => view.writePackedBands(index, rgba),
     readFloat: (name) => view.readFloat(name),
     readBand: (band) => view.readBand(band),
@@ -477,7 +483,7 @@ async function init(): Promise<void> {
     stochasticUpscale: async (scan, geometry, block) => (await planeSmoother()).stochasticUpscale(scan, geometry, block),
     setScanJitter: (jitter) => view.setScanJitter(jitter),
     setRasterJitter: (offsetPx) => view.setRasterJitter(offsetPx),
-    renderProductionCorrectionPhase: (frame) => view.renderProductionCorrectionPhase(frame),
+    renderProductionCorrectionPhase: (frame, fixScanRepresentative) => view.renderProductionCorrectionPhase(frame, fixScanRepresentative),
     scanCellSize: () => view.scanCellSize,
     resetMotion: () => motion.reset(),
     moveCamera: (translationPx, rotationPx, orbitPx) => motion.moveCamera(translationPx, rotationPx, orbitPx),

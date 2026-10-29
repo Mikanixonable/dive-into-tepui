@@ -252,12 +252,25 @@ export function scanBandsOf(
   return unpackedLevelBands(packed, count, 0, format, exposureFactor);
 }
 
-// 段 k の画素を含む段 k + 1 の画素を中心とした 3×3 の親と、[1, 2, 1]⊗[1, 2, 1]/16 の重み。
-export function tentNeighbors(pixel: Vec2Node): { readonly texel: Vec2Node; readonly weight: FloatNode }[] {
+// 2 倍の拡大で、子が親の画素の単位で端数 fraction にあるときの、端数を見るテントの 1 軸の重み（和は 1、偏りなし）。
+export function phaseTentWeight(offset: -1 | 0 | 1, fraction: FloatNode): FloatNode {
+  if (offset === -1) return float(0.5).sub(fraction).mul(0.5);
+  if (offset === 0) return float(0.5);
+  return float(0.5).add(fraction).mul(0.5);
+}
+
+// 段 k の画素を含む段 k + 1 の画素を中心とした 3×3 の親を、端数を見るテントで合流する。
+export function mergeNeighbors(pixel: Vec2Node): { readonly texel: Vec2Node; readonly weight: FloatNode }[] {
   const center = floor(pixel.mul(0.5));
-  const taps = [1, 2, 1] as const;
-  return [-1, 0, 1].flatMap((dy, y) => [-1, 0, 1].map((dx, x) => ({
-    texel: center.add(vec2(dx, dy)), weight: float(taps[x]! * taps[y]! / 16),
+  const parity = pixel.sub(center.mul(2));
+  const fraction = vec2(
+    select(parity.x.equal(0), float(-0.25), float(0.25)),
+    select(parity.y.equal(0), float(-0.25), float(0.25)),
+  );
+  const offsets = [-1, 0, 1] as const;
+  return offsets.flatMap((dy) => offsets.map((dx) => ({
+    texel: center.add(vec2(dx, dy)),
+    weight: phaseTentWeight(dx, fraction.x).mul(phaseTentWeight(dy, fraction.y)),
   })));
 }
 
@@ -398,7 +411,7 @@ export class BandPyramid {
       // 親の面の重みは、その代表を段 level の代表と比べたもの(画面の外は 0)。
       const { distance, angle } = this.toleranceAt(level + 1);
       const containing = pixel.div(2);
-      const parents = tentNeighbors(vec2(pixel)).map(({ texel, weight }): ParentPixel => {
+      const parents = mergeNeighbors(vec2(pixel)).map(({ texel, weight }): ParentPixel => {
         const parent = ivec2(texel).toVar();
         const exponent = this.weight.exponentOf(receiver, this.surfaces.surfaceAt(level + 1, parent), distance, angle);
         const coarseValue = textureLoad(coarse, parent);

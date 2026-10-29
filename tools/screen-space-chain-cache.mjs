@@ -9,18 +9,18 @@ import { readFloats } from './screen-space-lab.mjs';
 export const chunkFile = (cache, first, texture, kind = 'sum') =>
   path.join(cache, `${kind}-${String(first).padStart(4, '0')}-packed-${texture}.f32`);
 
-// first から始まるチャンクの kind のファイルが3枚そろっているか。
-export const chunkComplete = (cache, first, kind = 'sum') => [0, 1, 2]
+// first から始まるチャンクの kind のテクスチャファイルがそろっているか。
+export const chunkComplete = (cache, first, kind = 'sum', textureCount = 3) => Array.from({ length: textureCount }, (_, texture) => texture)
   .every((texture) => {
     const file = chunkFile(cache, first, texture, kind);
     return existsSync(file) && readFileSync(file).byteLength === SCAN_PIXELS * 4 * 4;
   });
 
-// パス first〜end − 1 の kind の値の平均(帯を詰めた3枚のテクスチャ)。end − first は CHUNK_PASSES の倍数。
-export function cachedMean(cache, first, end, kind = 'sum') {
-  const sums = Array.from({ length: 3 }, () => new Float64Array(SCAN_PIXELS * 4));
+// パス first〜end − 1 の kind の値の平均(帯を詰めたテクスチャ)。end − first は CHUNK_PASSES の倍数。
+export function cachedMean(cache, first, end, kind = 'sum', textureCount = 3) {
+  const sums = Array.from({ length: textureCount }, () => new Float64Array(SCAN_PIXELS * 4));
   for (let pass = first; pass < end; pass += CHUNK_PASSES) {
-    for (let texture = 0; texture < 3; texture++) {
+    for (let texture = 0; texture < textureCount; texture++) {
       const values = readFloats(chunkFile(cache, pass, texture, kind));
       if (values.length !== SCAN_PIXELS * 4) throw new Error(`invalid cached scan chunk ${pass}/${texture}`);
       const sum = sums[texture];

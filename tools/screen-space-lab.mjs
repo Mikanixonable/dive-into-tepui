@@ -243,13 +243,15 @@ function labOf(devTools) {
     // seed は seedOf の返す [x, y]。
     setSeed: ([x, y]) => call(`setScanSeed(${x}, ${y})`),
     // 指定番号の本番ジッター位相で近傍拡散補正を描き直す。null は静止画の本番位相。
-    renderProductionCorrectionPhase: (frame) => call(`renderProductionCorrectionPhase(${JSON.stringify(frame)})`),
+    renderProductionCorrectionPhase: (frame, fixScanRepresentative = false) =>
+      call(`renderProductionCorrectionPhase(${JSON.stringify(frame)}, ${JSON.stringify(fixScanRepresentative)})`),
     // 近傍拡散補正の段の範囲 range('all'・'scan'・'chain')だけを描く。'chain' は帯を詰めた描画先の値から鎖を描く。
     setStageRange: (range) => call(`setScanStageRange(${JSON.stringify(range)})`),
     setUpsampleAlphaOne: (enabled) => call(`setUpsampleAlphaOne(${JSON.stringify(enabled)})`),
     // 直前のフレームの入力のまま、本番ジッター位相の走査を描き直し、帯を詰めたテクスチャを偶数番目と奇数番目のパスに
     // 分けてページの GPU の和へ足す。和は takePassSums で受け取る。
-    accumulateProductionPasses: (first, count) => call(`accumulateProductionPasses(${first}, ${count})`),
+    accumulateProductionPasses: (first, count, fixScanRepresentative = false, rasterJitter = false) =>
+      call(`accumulateProductionPasses(${first}, ${count}, ${JSON.stringify(fixScanRepresentative)}, ${JSON.stringify(rasterJitter)})`),
     // accumulateProductionPasses の値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
     // テクスチャごとの、画素ごとに RGBA の Float32Array)を受け取り、ページの和を 0 に戻す。
     async takePassSums(includeSquares = true) {

@@ -57,7 +57,7 @@ export class RenderPipeline {
   // 遮蔽と照り返しのパスが書く符号付き拡散照度補正。本マテリアルとデバッグ表示が読む。
   private readonly _diffuseCorrection: DiffuseCorrection;
   // 映り込みのパスが書く映り込み。本マテリアルとデバッグ表示が読む。
-  private readonly reflection: ScreenSpaceReflection;
+  private readonly _reflection: ScreenSpaceReflection;
   private readonly lightPrepass: LightPrepass;
   // 球光源の鏡面が引く係数表。太陽と天体照で 1 つを共有する。
   private readonly sphereSpecular: SphereSpecular;
@@ -123,6 +123,7 @@ export class RenderPipeline {
   public get diffuseCorrection(): DiffuseCorrection { return this._diffuseCorrection; }
   public get lighting(): LightPrepass { return this.lightPrepass; }
   public get gbuffer(): GBufferPass { return this._gbuffer; }
+  public get reflection(): ScreenSpaceReflection { return this._reflection; }
   // 直前のフレームの、合成が読む HDR の絵(線形、半精度)。
   public get hdrTexture(): THREE.Texture { return this.target.texture; }
 
@@ -175,19 +176,19 @@ export class RenderPipeline {
     // 深度を 32bit 浮動小数点にするには明示が要る — 省くと depth24plus のまま精度だけ落ちる。
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
-    this.reflection = new ScreenSpaceReflection();
+    this._reflection = new ScreenSpaceReflection();
     this.reflectionSourcePass = new ReflectionSourcePass(
       renderer, this.lightPrepass, this._gbuffer, this._diffuseCorrection, gpu, graphics.screenSpaceSpecular,
       graphics.screenSpaceOcclusion,
     );
     this.reflectionPass = new ReflectionPass(
-      renderer, this._gbuffer, this.reflectionSourcePass.texture, this.reflection, gpu,
+      renderer, this._gbuffer, this.reflectionSourcePass.texture, this._reflection, gpu,
       graphics.screenSpaceSpecular, graphics.screenSpaceSpecularScale, graphics.screenSpaceSpecularStepCount,
       graphics.screenSpaceSpecularDenoise,
       graphics.screenSpaceSpecularDenoiseLevelCount,
     );
     this.materialPass = new MaterialPass(
-      renderer, this.lightPrepass, this._gbuffer, this._diffuseCorrection, this.reflection, gpu,
+      renderer, this.lightPrepass, this._gbuffer, this._diffuseCorrection, this._reflection, gpu,
       graphics.screenSpaceSpecular, graphics.screenSpaceSpecularDenoise, graphics.screenSpaceOcclusion,
     );
     this.atmospherePass = new AtmospherePass(
@@ -218,7 +219,7 @@ export class RenderPipeline {
     this.debugComposites = new DebugComposites(
       this._gbuffer, this._exposure, this.cameraProjectionInverse, this.shadowMaps, this.meshShadow, this.shadowPass,
       this.lightPrepass, this.screenSpacePass, this._diffuseCorrection, this.reflectionSourcePass, this.reflectionPass,
-      this.reflection, this._planetLight, this.atmospherePass, this.lensPass,
+      this._reflection, this._planetLight, this.atmospherePass, this.lensPass,
     );
     // 模式図用の合成マテリアル。表示スタイルの切り替えなので、デバッグ表示の選択肢とは別に持つ。
     this.schematicComposite = new SchematicComposite(this._gbuffer, this.cameraProjectionInverse);
@@ -486,7 +487,7 @@ export class RenderPipeline {
     this.shadowMaps.dispose();
     this.screenSpacePass.dispose();
     this._diffuseCorrection.dispose();
-    this.reflection.dispose();
+    this._reflection.dispose();
     this.lightPrepass.dispose();
     this.sphereSpecular.dispose();
     this.reflectionSourcePass.dispose();

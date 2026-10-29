@@ -74,7 +74,8 @@ const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 // 深度、'motion' は G バッファの動きベクトル。
 export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'upsampled-correction'
   | 'correction-history' | 'previous-depth' | 'correction' | 'diffuse' | 'depth' | 'motion'
-  | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius';
+  | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius'
+  | 'reflection-raw' | 'reflection-denoised' | 'far-specular';
 const REPRESENTATIVE_NAME_PATTERN = /^representative-(\d)$/;
 const SCAN_SURFACE_NAME_PATTERN = /^scan-surface-([01])$/;
 
@@ -210,6 +211,8 @@ export class LabView {
   private readonly radiusProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
   // accumulateProductionPasses が走査の帯を足し込む器。初めて足すとき、または帯の描画先が変わったときに作り直す。
   private passAccumulator: PassAccumulator | null = null;
+  private reflectionAccumulator: PassAccumulator | null = null;
+  private reflectionAccumulatorSources: readonly THREE.Texture[] | null = null;
   // averageCorrection が最後の拡大の出力を足し込む器。初めて足すときに作る。
   private correctionAccumulator: PassAccumulator | null = null;
   // G バッファの素の深度を写す先と、その描画命令。
@@ -748,7 +751,7 @@ export class LabView {
   public get scanCellSize(): number { return this.pipeline.screenSpace.scanCellSize; }
 
   // 本番ジッター列の frame を既存の G バッファへ適用する。null は静止画の本番位相へ戻す。
-  public renderProductionCorrectionPhase(frame: number | null): void {
+  public renderProductionCorrectionPhase(frame: number | null, fixScanRepresentative = false): void {
     if (frame !== null && (!Number.isInteger(frame) || frame < 0)) {
       throw new RangeError(`render-lab: invalid production correction phase ${frame}`);
     }
@@ -758,7 +761,10 @@ export class LabView {
     const phase = frame === null
       ? PRODUCTION_PHASE
       : phaseAt({ sources: ['seed', 'scanRepresentative'], count: 32 }, frame, this.scanCellSize);
-    this.renderCorrection(phase);
+    const scanRepresentative = phaseAt({ sources: ['seed', 'scanRepresentative'], count: 32 }, 0, this.scanCellSize).scanJitter;
+    this.renderCorrection(fixScanRepresentative
+      ? { ...phase, scanJitter: scanRepresentative }
+      : phase);
   }
 
   // 位相 phase で近傍拡散補正を描き直す。射影のずれを使う(いま使っている)ならフレーム全体を、そうでなければ直前に描いた
@@ -772,7 +778,14 @@ export class LabView {
     // 射影のずれを外すときも、ずれた G バッファを捨てるためにフレーム全体を描き直す。
     if (phase.rasterJitter !== null || this.rasterJitterPx !== null) {
       this.setRasterJitter(phase.rasterJitter);
-      this.render();
+      // フレーム全体の描画では、自動ジッターが置いた位相を上書きするので止める。
+      const automaticJitterEnabled = this.automaticJitterEnabled;
+      this.setAutomaticJitterEnabled(false);
+      try {
+        this.render();
+      } finally {
+        this.setAutomaticJitterEnabled(automaticJitterEnabled);
+      }
     } else {
       screenSpace.render(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT);
     }
@@ -790,9 +803,11 @@ export class LabView {
 
   // 直前に描いたフレームの G バッファなどを入力のまま、近傍拡散補正の照り返しの源と走査だけを、本番ジッターの位相列で
   // 描き直し、走査が帯を詰めたテクスチャを偶数番目と奇数番目のパスに分けて和へ足す。和は takePassSums で受け取る。
-  // 終わると段の範囲と位相は静止画の本番値へ戻る。
-  public async accumulateProductionPasses(first: number, count: number): Promise<void> {
+  // rasterJitter はラスタライズのずれも動かし、パスごとにフレーム全体を描く(収束先からラスタライズのアーティファクトを除く基準)。
+  // 終わると段の範囲と位相は静止画の本番値へ戻り、ずれの無いフレームを描き直す。
+  public async accumulateProductionPasses(first: number, count: number, fixScanRepresentative = false, rasterJitter = false): Promise<void> {
     if (this.current === null) throw new Error('render-lab: no case selected');
+    if (fixScanRepresentative && rasterJitter) throw new Error('render-lab: fixed scan representative cannot be combined with raster jitter');
     const { screenSpace, diffuseCorrection } = this.pipeline;
     const layout = screenSpace.bandLayout;
     if (layout[0] !== 'packed-half') throw new Error('render-lab: pass accumulation requires packed-half bands');
@@ -802,9 +817,14 @@ export class LabView {
       this.passAccumulator = new PassAccumulator(this.renderer, target.textures, target.width, target.height);
     }
     screenSpace.setStageRange('scan');
+    const sources = rasterJitter ? ['seed', 'scanRepresentative', 'raster'] as const : ['seed', 'scanRepresentative'] as const;
+    const scanRepresentative = phaseAt({ sources, count: first + count }, 0, this.scanCellSize).scanJitter;
     try {
       for (let k = first; k < first + count; k++) {
-        this.renderCorrection(phaseAt({ sources: ['seed', 'scanRepresentative'], count: first + count }, k, this.scanCellSize));
+        const phase = phaseAt({ sources, count: first + count }, k, this.scanCellSize);
+        this.renderCorrection(fixScanRepresentative
+          ? { ...phase, scanJitter: scanRepresentative }
+          : phase);
         this.passAccumulator.add(k % 2 === 0 ? 0 : 1);
         // GPU の待ち行列が際限なく伸びないよう、ときどき終わりを待つ。時刻印の器も空ける。
         if ((k - first) % PRODUCTION_PASSES_PER_WAIT === PRODUCTION_PASSES_PER_WAIT - 1) {
@@ -817,6 +837,7 @@ export class LabView {
       screenSpace.setSeed(...PRODUCTION_PHASE.seed);
       screenSpace.setScanRotation(PRODUCTION_PHASE.scanRotation);
       screenSpace.setScanJitter(PRODUCTION_PHASE.scanJitter);
+      if (rasterJitter) this.renderCorrection(PRODUCTION_PHASE);
     }
   }
 
@@ -892,7 +913,51 @@ export class LabView {
     if (name === 'band-sum') return this.readBandSum();
     if (name === 'projected-radius') return this.readBack(this.drawProjectedRadius());
     if (name === 'depth') return this.readBack(this.drawDepth());
+    if (name === 'reflection-raw' || name === 'reflection-denoised') {
+      const reflection = this.pipeline.reflection;
+      return this.readBack((name === 'reflection-raw' ? reflection.rawTarget : reflection.denoisedTarget).textures[0]!);
+    }
+    if (name === 'far-specular') return this.readBack(this.pipeline.lighting.farSpecularTexture);
     return this.readBack(this.floatTextureOf(name));
+  }
+
+  // 映り込みの乱数のずらし offsets を 1 つずつ描き、raw と均したの 0 枚目を、通しの番号 first + i の偶奇に分けて GPU 上で
+  // 足す。first が 0 のときは和を空にしてから足す。CDP の 1 回の評価の上限に掛からないように、数百パスずつ呼ぶこと。
+  public async addReflectionPasses(offsets: readonly (readonly [number, number])[], first: number): Promise<void> {
+    const reflection = this.pipeline.reflection;
+    const sources = [reflection.rawTarget.textures[0]!, reflection.denoisedTarget.textures[0]!];
+    if (this.reflectionAccumulatorSources?.some((source, index) => source !== sources[index]) ?? true) {
+      this.reflectionAccumulator?.dispose();
+      this.reflectionAccumulator = new PassAccumulator(this.renderer, sources, reflection.rawTarget.width, reflection.rawTarget.height);
+      this.reflectionAccumulatorSources = sources;
+    }
+    const accumulator = this.reflectionAccumulator!;
+    if (first === 0) accumulator.clear();
+    for (const [index, [x, y]] of offsets.entries()) {
+      this.pipeline.setReflectionNoiseOffset(x, y);
+      this.render();
+      accumulator.add((first + index) % 2 === 0 ? 0 : 1);
+      if (index % PRODUCTION_PASSES_PER_WAIT === PRODUCTION_PASSES_PER_WAIT - 1) {
+        await this.renderer.readRenderTargetPixelsAsync(reflection.rawTarget, 0, 0, 1, 1);
+        this.gpu.resolve();
+      }
+    }
+    await this.renderer.readRenderTargetPixelsAsync(reflection.rawTarget, 0, 0, 1, 1);
+  }
+
+  // addReflectionPasses で足した和を [偶数番目, 奇数番目] × [raw, 均した] で読み、和を空にする。
+  public async takeReflectionSums(): Promise<readonly (readonly FloatImage[])[]> {
+    const accumulator = this.reflectionAccumulator;
+    if (accumulator === null) throw new Error('render-lab: no reflection passes accumulated');
+    const sums = await Promise.all(accumulator.sumTextures.map((parity) => Promise.all(parity.map((texture) => this.readBack(texture)))));
+    accumulator.clear();
+    return sums;
+  }
+
+  // 乱数タイルのずれを指定して映り込みを 1 フレーム描く。
+  public renderReflectionPass(x: number, y: number): void {
+    this.pipeline.setReflectionNoiseOffset(x, y);
+    this.render();
   }
 
   // 直前の走査で書いた帯 band の符号付き補正を、共有の復号ノードで浮動小数へ戻して読む。

@@ -607,7 +607,7 @@ export function register(): void {
     for (const count of [2, 4, 5, 8]) {
       for (const scale of [1 / 8, 1 / 4, 0.25]) {
         for (const rho of [0, 0.01, 1, 3, 8, 40, 128, 700]) {
-          const weights = bandWeights(count, bandCoordinate(float(scale), float(rho), float(1), float(1))).map(valueOf);
+          const weights = bandWeights(count, bandCoordinate(float(scale), float(rho), float(1), float(1)), float(64)).map(valueOf);
           assert.ok(weights.every((weight) => Number.isFinite(weight) && weight >= 0), `count=${count} rho=${rho} ${weights}`);
           near(weights.reduce((sum, weight) => sum + weight, 0), 1, 1e-9, `count=${count} rho=${rho} 和`);
         }
@@ -616,26 +616,43 @@ export function register(): void {
   });
 
   test('screen space estimator: 三角の近い側は隣の帯と 1/2 になり、遠い側は最後の帯へ集まる', () => {
-    const weights = bandWeights(5, float(-12)).map(valueOf);
+    const weights = bandWeights(5, float(-12), float(64)).map(valueOf);
     for (let band = 0; band < 4; band++) near(weights[band + 1]! / weights[band]!, 0.5, 1e-9, `band=${band}`);
     for (const coordinate of [5, 6, 12]) {
-      const farWeights = bandWeights(5, float(coordinate)).map(valueOf);
+      const farWeights = bandWeights(5, float(coordinate), float(64)).map(valueOf);
       assert.deepStrictEqual(farWeights, [0, 0, 0, 0, 1]);
     }
   });
 
   test('screen space estimator: 三角は座標より 1 以上細かい帯へ配らない', () => {
     for (const coordinate of [1.3, 2, 3.7, 5]) {
-      const weights = bandWeights(8, float(coordinate)).map(valueOf);
+      const weights = bandWeights(8, float(coordinate), float(64)).map(valueOf);
       for (let band = 0; band <= coordinate - 1; band++) assert.strictEqual(weights[band], 0, `coordinate=${coordinate} band=${band}`);
     }
+  });
+
+  test('screen space estimator: 交線の像の天井は粗い帯を落とし、許された帯で重みを保つ', () => {
+    const uncapped = bandWeights(6, float(2.25), float(64)).map(valueOf);
+    const legacy = bandWeights(6, float(2.25), float(1e9)).map(valueOf);
+    assert.deepStrictEqual(uncapped, legacy);
+    const capped = bandWeights(6, float(4), float(2.5)).map(valueOf);
+    const base = bandWeights(6, float(2.5), float(64)).map(valueOf);
+    const expectedBand3 = base[3]! * 0.5 / (base.slice(0, 3).reduce((sum, weight) => sum + weight, 0) + base[3]! * 0.5);
+    near(capped[3]!, expectedBand3, 1e-9, '帯 3 の半分の天井重み');
+    assert.deepStrictEqual(capped.slice(4), [0, 0]);
+    near(capped.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '天井後の和');
+    const above = bandWeights(6, float(100), float(2.5)).map(valueOf);
+    assert.ok(above.every(Number.isFinite));
+    near(above.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '座標が天井より上');
+    const negative = bandWeights(6, float(100), float(-2)).map(valueOf);
+    assert.equal(negative[0], 1);
   });
 
   test('screen space estimator: 距離が増えると最大重みの帯番号は減らない', () => {
     for (const count of [2, 4, 5, 8]) {
       let previous = -1;
       for (const rho of [0, 0.01, 1, 3, 8, 40, 128, 700]) {
-        const values = bandWeights(count, bandCoordinate(float(0.19), float(rho), float(1), float(1))).map(valueOf);
+        const values = bandWeights(count, bandCoordinate(float(0.19), float(rho), float(1), float(1)), float(64)).map(valueOf);
         const index = values.indexOf(Math.max(...values));
         assert.ok(index >= previous, `count=${count} rho=${rho}: ${previous} -> ${index}`);
         previous = index;
@@ -646,14 +663,14 @@ export function register(): void {
   test('screen space estimator: 帯が 1 つなら、増分は画面距離によらずすべてその帯へ入る', () => {
     for (const rho of [0, 0.01, 1, 3, 8, 40, 128, 700]) {
       const coordinate = bandCoordinate(float(1 / 8), float(rho), float(1), float(1));
-      assert.deepStrictEqual(bandWeights(1, coordinate).map(valueOf), [1]);
+      assert.deepStrictEqual(bandWeights(1, coordinate, float(64)).map(valueOf), [1]);
     }
   });
 
   test('screen space estimator: 受け手・送り手とも視線に正対なら、帯の重みは距離だけの重みと一致する', () => {
     for (const rho of [1, 8, 40, 700]) {
-      const expected = bandWeights(4, bandCoordinate(float(0.75), float(rho), float(1), float(1))).map(valueOf);
-      assert.deepStrictEqual(sampleBandWeights(bandsWith(4, 0.75), float(rho), float(1), float(1)).map(valueOf), expected);
+      const expected = bandWeights(4, bandCoordinate(float(0.75), float(rho), float(1), float(1)), float(64)).map(valueOf);
+      assert.deepStrictEqual(sampleBandWeights(bandsWith(4, 0.75), float(rho), float(1), float(1), float(64)).map(valueOf), expected);
     }
   });
 
@@ -662,9 +679,9 @@ export function register(): void {
     const one = float(1);
     const zero = float(0);
     const bands = bandsWith(4, 0.75);
-    const receiverEdge = sampleBandWeights(bands, rho, zero, float(1)).map(valueOf);
-    const senderEdge = sampleBandWeights(bands, rho, one, float(0)).map(valueOf);
-    const bothEdge = sampleBandWeights(bands, rho, zero, float(0)).map(valueOf);
+    const receiverEdge = sampleBandWeights(bands, rho, zero, float(1), float(64)).map(valueOf);
+    const senderEdge = sampleBandWeights(bands, rho, one, float(0), float(64)).map(valueOf);
+    const bothEdge = sampleBandWeights(bands, rho, zero, float(0), float(64)).map(valueOf);
     for (const weights of [receiverEdge, senderEdge, bothEdge]) {
       assert.ok(weights.every((weight) => Number.isFinite(weight) && weight >= 0));
       near(weights.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
@@ -679,8 +696,8 @@ export function register(): void {
     const base = Math.log2(0.75 * rho);
     // [cos ε, n_s·v_s, 期待する座標]。座標 = log₂(κρ) + log₂(cos ε) − ½·log₂(n_s·v_s)。
     for (const [cosine, senderView, expected] of [[1, 1, base], [0.5, 1, base - 1], [0.5, 0.25, base]] as const) {
-      const weights = sampleBandWeights(bands, float(rho), float(cosine), float(senderView)).map(valueOf);
-      const expectedWeights = bandWeights(6, float(expected)).map(valueOf);
+      const weights = sampleBandWeights(bands, float(rho), float(cosine), float(senderView), float(64)).map(valueOf);
+      const expectedWeights = bandWeights(6, float(expected), float(64)).map(valueOf);
       weights.forEach((weight, i) => near(weight, expectedWeights[i]!, 1e-9, `cos ε = ${cosine}, band=${i}`));
     }
   });
@@ -691,8 +708,8 @@ export function register(): void {
     const bands = bandsWith(4, 0.75);
     const base = Math.log2(0.75 * rho);
     for (const [senderView, expected] of [[1, base], [0.25, base + 1]] as const) {
-      const weights = sampleBandWeights(bands, float(rho), float(1), float(senderView)).map(valueOf);
-      const expectedWeights = bandWeights(4, float(expected)).map(valueOf);
+      const weights = sampleBandWeights(bands, float(rho), float(1), float(senderView), float(64)).map(valueOf);
+      const expectedWeights = bandWeights(4, float(expected), float(64)).map(valueOf);
       weights.forEach((weight, i) => near(weight, expectedWeights[i]!, 1e-9, `d = ${senderView}, band=${i}`));
     }
   });
