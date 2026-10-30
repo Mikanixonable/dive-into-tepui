@@ -5,7 +5,7 @@ import { isOccluded } from '../../physics/occlusion';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
 
-type LinePickKind = 'orbit-body' | 'orbit-ship' | 'orbit-guide';
+type LinePickKind = 'orbit-body' | 'orbit-ship' | 'orbit-guide' | 'orbit-slot';
 type LineCalcMethod = 'analytic' | 'numeric' | 'guide';
 
 export interface LinePickable {

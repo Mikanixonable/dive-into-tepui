@@ -25,6 +25,7 @@ import type { SerializedBeltController } from '../player/belt';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
 import type { SerializedPlan } from '../plan/plan';
+import { ShipAutopilot, type SerializedShipAutopilot } from './ship-autopilot';
 import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
@@ -95,6 +96,7 @@ export interface SerializedModularShip extends SerializedDynamicEntityFields {
   readonly altitudeAlarm: SerializedAltitudeAlarm;
   readonly plan: SerializedPlan | null;
   readonly planExecution: PlanExecutionMode;
+  readonly autopilot?: SerializedShipAutopilot;
   readonly fineAttitude: boolean;
 }
 
@@ -127,6 +129,8 @@ export class ModularShip extends Ship implements Controllable {
   // この艦自身のマニューバ計画。
   public readonly plan: Plan;
   private _planExecution: PlanExecutionMode;
+  // 計画ノードを有限燃焼で実行する自動操縦。planExecution==='autopilot' のときだけ動く。
+  public readonly autopilot: ShipAutopilot;
 
   private _fineAttitude: boolean;
   // 自機の操作方法は HUD とヘルプが常設で示しているので、選び直しても案内は出さない。
@@ -238,6 +242,9 @@ export class ModularShip extends Ship implements Controllable {
       ),
       receiveStructuralLoss: services => requiredReactions().receiveStructuralLoss(services),
       receiveBurnUp: services => requiredReactions().receiveBurnUp(services),
+      nextAutopilotEventTime: (_self, simTime) => owner.autopilot.nextEventTime(simTime),
+      stepAutopilot: (_self, dt, attractors, pivot) => owner.autopilot.step(dt, attractors, pivot),
+      autopilotMaxStep: () => owner.autopilot.maxStepDuration(),
     });
     super(
       name,
@@ -305,6 +312,7 @@ export class ModularShip extends Ship implements Controllable {
     });
     this.plan = saved?.plan ? Plan.deserialize(saved.plan) : Plan.create();
     this._planExecution = saved?.planExecution ?? 'instant';
+    this.autopilot = new ShipAutopilot(this, saved?.autopilot);
     this._fineAttitude = saved?.fineAttitude ?? false;
     if (saved) {
       this.connections.restore(saved.dockedVessels, saved.collisionGrace, state.t);
@@ -333,6 +341,12 @@ export class ModularShip extends Ship implements Controllable {
 
   public get planExecution(): PlanExecutionMode { return this._planExecution; }
   public get fineAttitude(): boolean { return this._fineAttitude; }
+
+  // 健全なコックピットを持ち操縦できるか(自動操縦の許可条件)。
+  public get healthyCockpit(): boolean { return this.capabilities.controllable; }
+
+  // 主推進燃料 1 unit あたりの質量 [kg/unit](自動操縦が燃焼時間へ換算する)。
+  public mainFuelMassPerUnit(): number { return this.capabilities.fuelMassPerUnit('main'); }
 
   public setPlanExecution(mode: PlanExecutionMode): void { this._planExecution = mode; }
 
@@ -507,6 +521,11 @@ export class ModularShip extends Ship implements Controllable {
     if (stageRules.selfRepair) this.hpRegen(dt);
     this.syncModuleDeployments();
     const boosterThrust = this.stepBoosters(simDt);
+    // 自動操縦は操作艦・非操作艦とも毎フレーム進める。手動の噴射・回転入力は中断として扱う。
+    if (controls !== null && (controls.thrust.size > 0 || controls.rotation.size > 0)) {
+      this.autopilot.interrupt();
+    }
+    this.autopilot.updateFrame(this.motion.state.t, celestialBodies, true, boosterThrust);
     if (controls === null) {
       this.clearTransientCommands();
       this.motion.setThrust(boosterThrust);
@@ -678,6 +697,7 @@ export class ModularShip extends Ship implements Controllable {
       altitudeAlarm: this.altitudeAlarm.serialize(),
       // 操作・表示の設定と計画
       planExecution: this.planExecution,
+      autopilot: this.autopilot.serialize(),
       fineAttitude: this.fineAttitude,
       plan: this.plan.serialize(),
     };

@@ -6,6 +6,8 @@ import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 export type EnemyDeathCause = 'killed' | 'burnup' | 'collision' | 'despawn';
 
 export interface StageOutcome {
+  // 艦の軌道計画を自動実行(自動操縦・理想実行)させるステージか。
+  readonly executesPlans: boolean;
   // 自機の発砲を1発数える。
   recordShot(): void;
   // 敵への命中を1発数える。
