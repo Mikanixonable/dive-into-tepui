@@ -33,6 +33,7 @@ import { EnemyInspection } from './enemy-inspection';
 import { Pickup } from '../dynamic/dynamic-entity/pickup';
 import { LagrangePointMarker } from '../marker/lagrange-point-marker';
 import { OrbitPointMarker } from '../marker/orbit-point-marker';
+import { OrbitSlotPickable } from './orbit-slot-pickable';
 import type { ObjectMenuCommands } from './object-menu-commands';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
@@ -131,7 +132,9 @@ export class ObjectWindowActions {
               ? { kindCode: 'POI', kindLabel: 'REFERENCE POINT' }
               : target instanceof OrbitPointMarker
                 ? { kindCode: 'EVT', kindLabel: 'ORBIT EVENT' }
-                : { kindCode: 'OBJ', kindLabel: 'OBJECT' };
+                : target instanceof OrbitSlotPickable
+                  ? { kindCode: 'SLT', kindLabel: 'ORBIT SLOT' }
+                  : { kindCode: 'OBJ', kindLabel: 'OBJECT' };
     return {
       title,
       subtitle,
