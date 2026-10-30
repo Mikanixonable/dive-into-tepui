@@ -67,7 +67,8 @@ export type LagrangeForm = {
 // 確定時点のフォーム値。placementMode を判別子とし、選ばれた配置方法(・サイズ/形・軌道種別)が
 // 実際に使う値だけを持つ。
 export type ShipPlacementPreset = 'combat-ship' | 'base-ship';
-export type ObjectPlacementSelection = ShipPlacementPreset | Exclude<DynamicEntityKind, 'player' | 'base'>;
+export type ObjectPlacementSelection =
+  | ShipPlacementPreset | Exclude<DynamicEntityKind, 'player' | 'base'> | 'orbit-slot';
 export type ObjectPlacerForm = { readonly selection: ObjectPlacementSelection } & (ElementsForm | LagrangeForm);
 
 // open() の事前入力: 'body' は基準天体だけをその値へ合わせる(他のフィールドは前回の値のまま) —
@@ -87,6 +88,7 @@ const ENTITY_KIND_ITEMS: readonly (readonly [ObjectPlacementSelection, string, s
   ['ammo', '弾薬', ENTITY_GLYPH.ammo],
   ['fuel', 'RCS燃料', ENTITY_GLYPH.fuel],
   ['base-ship', '基地', baseMarkerSvg()],
+  ['orbit-slot', '軌道標識', '⌾'],
 ];
 
 const PLACEMENT_MODE_ITEMS: readonly (readonly [PlacementMode, string])[] = [
