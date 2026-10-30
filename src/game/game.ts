@@ -6,6 +6,7 @@ import { PlanNodeRules, type SerializedPlanNodeRules } from './plan/plan-node-ru
 import { SimSpeedManager, type SerializedSimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem, type SerializedDynamicSystem } from './dynamic/dynamic-system';
 import { RunEventLog } from './run-events';
+import { OrbitSlotRegistry, type SerializedOrbitSlotRegistry } from './navigation/orbit-slot-registry';
 import { Predictor } from './dynamic/predictor';
 import { recordTargetBoardPasses } from './dynamic/target-board-passes';
 import { Viewer, type SerializedViewer } from './viewer/viewer';
@@ -39,6 +40,7 @@ export interface SerializedProgress {
   readonly controlSelection: SerializedControlSelection;
   readonly stage: SerializedStage;
   readonly planNodeRules: SerializedPlanNodeRules;
+  readonly orbitSlots: SerializedOrbitSlotRegistry;
 }
 
 export class Game {
@@ -62,6 +64,8 @@ export class Game {
     public readonly simSpeedManager: SimSpeedManager,
     // 操作対象(艦 0..n 隻と基地のうちどれを操作するか)の切替を持つ。
     public readonly controlSelection: ControlSelection,
+    // 軌道標識の台帳。航行指令が標識を id で参照するので進行に置く(R4)。
+    public readonly orbitSlots: OrbitSlotRegistry,
     public readonly activeStage: Stage,
     // 直近ノードの消化と、接近・達成の記録。進行の末尾で通す。
     private readonly planNodeRules: PlanNodeRules,
@@ -91,12 +95,15 @@ export class Game {
     const dynamicSystem = DynamicSystem.create(scene.scene, events, celestialSystem, sections);
     const simSpeedManager = SimSpeedManager.create(events);
     const controlSelection = ControlSelection.create(dynamicSystem);
-    const stage = stageClass.create(hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands);
+    const orbitSlots = OrbitSlotRegistry.create();
+    const stage = stageClass.create(
+      hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands, orbitSlots,
+    );
     const planNodeRules = PlanNodeRules.create(events);
     const viewer = Viewer.create(controlSelection, events, celestialSystem);
     return new Game(
-      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage,
-      planNodeRules, viewer,
+      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection,
+      orbitSlots, stage, planNodeRules, viewer,
     );
   }
 
@@ -122,16 +129,18 @@ export class Game {
     );
     const simSpeedManager = SimSpeedManager.deserialize(serializedProgress.simSpeedManager, events);
     const controlSelection = ControlSelection.deserialize(serializedProgress.controlSelection, dynamicSystem);
+    // 記録に台帳が無ければ(null)空の台帳で始める(形式の版は上げない — SAVE.md「形式の版」)。
+    const orbitSlots = OrbitSlotRegistry.deserialize(serializedProgress.orbitSlots ?? null);
     const stage = stageClass.deserialize(
       // 記録にステージの内訳が無い・null なら、新しいランの初期値で補う(初期配置はしない)。
       serializedProgress.stage ?? null,
-      hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands,
+      hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands, orbitSlots,
     );
     const planNodeRules = PlanNodeRules.deserialize(serializedProgress.planNodeRules, events);
     const viewer = Viewer.deserialize(serialized.viewer, dynamicSystem, controlSelection, events, celestialSystem);
     return new Game(
-      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection, stage,
-      planNodeRules, viewer,
+      celestialSystem, sections, commands, events, dynamicSystem, simSpeedManager, controlSelection,
+      orbitSlots, stage, planNodeRules, viewer,
     );
   }
 
@@ -161,6 +170,7 @@ export class Game {
         controlSelection: this.controlSelection.serialize(),
         stage: this.activeStage.serialize(),
         planNodeRules: this.planNodeRules.serialize(),
+        orbitSlots: this.orbitSlots.serialize(),
       },
       viewer: this.viewer.serialize(),
     };
@@ -184,8 +194,11 @@ export class Game {
   // ------------------------------------------------------------ 進行の位相
 
   // 出来事の記録を空にし、受け付けた命令を適用し、一時停止でなければ操作量 controls と dt [s] で
-  // 1フレーム進め、視点を進行に合わせる。
-  public advance(dt: number, controls: PilotControls, paused: boolean): void {
+  // 1フレーム進め、視点を進行に合わせる。simTimeLimit はそのフレームに simTime が越えてはいけない
+  // 上限(求解中の遷移候補が守る出発の猶予)で、null なら制限なし。
+  public advance(
+    dt: number, controls: PilotControls, paused: boolean, simTimeLimit: number | null,
+  ): void {
     // 一時停止中も命令は適用する(R8)。命令の適用そのものが出来事を積むので、記録を空にするのは
     // その前。
     this.events.beginStep();
@@ -194,7 +207,7 @@ export class Game {
     const boardTargetId = this.viewer.navTarget.id;
     // ポーズには「止まった瞬間」の知らせが無いので、止まっている間は毎フレーム連続指令を畳む。
     if (paused) this.dynamicSystem.pause();
-    else this.advanceSimulation(dt, controls, boardTargetId);
+    else this.advanceSimulation(dt, controls, boardTargetId, simTimeLimit);
     this.followProgress();
   }
 
@@ -226,11 +239,18 @@ export class Game {
 
   // ステージ・エンティティ群・操作対象の選択を、操作入力 controls と dt [s] で1フレーム進める。boardTargetId は
   // 的面の通過を記録する対象の id。
-  private advanceSimulation(dt: number, controls: PilotControls, boardTargetId: string | null): void {
+  private advanceSimulation(
+    dt: number, controls: PilotControls, boardTargetId: string | null, simTimeLimit: number | null,
+  ): void {
     // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
     // 自動ワープの段階変更を跨いで別の倍率を読むと、同じ区間を表さなくなる。
     this.simSpeedManager.update(this.dynamicSystem.simTime);
-    const simDt = dt * this.simSpeedManager.simSpeed;
+    let simDt = dt * this.simSpeedManager.simSpeed;
+    // 求解中の遷移候補が示す時刻上限。上限へ達したら simTime はそれ以上進まない
+    // (倍率によって求解の結果が変わらないための保証 — PLAN.md「遷移方式」)。
+    if (simTimeLimit !== null) {
+      simDt = Math.min(simDt, Math.max(0, simTimeLimit - this.dynamicSystem.simTime));
+    }
     const canShipAct = this.simSpeedManager.canShipAct;
     const canEngage = this.simSpeedManager.canEngage;
     const controlled = this.activeControllable;

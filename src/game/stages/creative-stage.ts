@@ -16,6 +16,7 @@ import { creativeStageCommands, type CreativeStageCommands } from './creative-st
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import { queuedEventSink, type RunEventSink } from '../run-events';
 import type { KinematicState } from '../../physics/kinematic-state';
+import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
@@ -214,6 +215,12 @@ export class CreativeStage extends Stage {
     }
     this._dynamicSystem.add(placed.entity);
     this._dynamicSystem.events.record({ kind: 'objectPlaced', name: placed.entity.name });
+  }
+
+  // 検証を通過した配置指定から軌道標識を作り、台帳へ追加して配置を記録する。
+  public placeOrbitSlot(name: string, orbit: OrbitSlotOrbit): void {
+    const slot = this._orbitSlots.add(orbit, name);
+    this._dynamicSystem.events.record({ kind: 'objectPlaced', name: slot.name });
   }
 
   // ステージ操作パネルを、指定したビューの右ドックへ置く。

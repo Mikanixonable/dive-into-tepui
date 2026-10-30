@@ -34,6 +34,7 @@ const ENTITY_ROWS: readonly BodyClassRow[] = [
   { label: '弾薬', categoryKey: 'ammoVisible', orbitKey: 'ammoOrbit' },
   { label: 'RCS燃料', categoryKey: 'fuelVisible', orbitKey: 'fuelOrbit' },
   { label: '基地', categoryKey: 'baseVisible', orbitKey: 'baseOrbit' },
+  { label: '軌道標識', categoryKey: 'orbitSlotVisible', orbitKey: 'orbitSlotOrbit' },
 ];
 
 // 対象クラスの表示状態を文字ではなく、ラベル・軌道・非表示を連想できる SVG で示す。
