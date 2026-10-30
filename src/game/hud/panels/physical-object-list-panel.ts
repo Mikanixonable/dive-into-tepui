@@ -25,6 +25,7 @@ const SECTIONS: readonly { section: MapListSection; label: string }[] = [
   { section: 'ammo', label: '弾薬' },
   { section: 'fuel', label: 'RCS燃料' },
   { section: 'base', label: '基地' },
+  { section: 'orbitSlot', label: '軌道標識' },
 ];
 
 interface Section {
