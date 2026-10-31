@@ -1,6 +1,6 @@
 // スライスの中で、深度の標本 1 つが受け持つ接平面の切片の幾何。画面上で隣り合う標本の切片の境目、スライスの
 // 片側の視線、視線と接平面の交点、受け手から見た角の大小を答える。
-import { abs, dot, float, getViewPosition, length, max, select, vec2 } from 'three/tsl';
+import { abs, dot, float, getViewPosition, length, max, min, select, vec2 } from 'three/tsl';
 import { NORMAL_ANGLE_ERROR } from '../gbuffer';
 import { toSliceCoordinates, type Slice } from './slice-sectors';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
@@ -34,10 +34,15 @@ export interface SideRays {
 export interface SegmentSplit {
   readonly nearUpper: Vec2Node;
   readonly farLower: Vec2Node;
+  // 頭打ちにした境目と頭打ちにしない境目の間の角は、1 画素の面が見積もれる広さを超えた継ぎ目への延長なので、
+  // 捨てずに帯の天井が許す最も粗い帯へ積む。捨てると光源のまわりが暗い輪になり、細かい帯では画素の写り方で明滅する。継ぎ目以外では両者は同じ。
+  readonly nearUpperUncapped: Vec2Node;
+  readonly farLowerUncapped: Vec2Node;
 }
 
 // 2 つの接平面がスライス平面を切る直線を平行とみなす、射影した法線どうしの外積の大きさの上限。
 const PARALLEL_LIMIT = 1e-6;
+
 
 // 画面距離 rho で読んだ標本の、スライス slice の中の面の点。toSample は受け手から標本への変位、normal は標本の
 // 法線(view 空間)、rays は標本のある側の視線、receiver は受け手自身の面の点。
@@ -81,24 +86,39 @@ export function splitSegments(
     .and(seam.y.mul(rays.originStep.y).lessThan(0));
   const joint = select(roundedBehind, seam.negate(), seam).toVar();
   // 標本が読む面は画面距離の点を含む画素のもので、その画素は 1 画素先まで届く。受け手自身は画素の中心にある。
-  const atSeam = bothSurfaces.and(solvable)
-    .and(seenBetween(rays, joint, max(nearRho.sub(1), 0), farRho.add(1)));
+  const middle = rayAt(rays, nearRho.add(farRho).mul(0.5));
+  const tolerance = pixelFootprint(rays, far.position);
+  const atSeam = bothSurfaces.and(solvable).and(seenBetween(rays, joint, max(nearRho.sub(1), 0), farRho.add(1)));
   // 継ぎ目が写らなくても、互いに相手の接平面の手前へ画素の足跡を超えて出ていなければ、同じ面か凸の稜をまたぐ面の
   // 続きなので far の位置で直に継ぐ — 視線との交点へ延ばすと、縁をまたいだ画素の面が縁の手前へはみ出す。
-  const tolerance = pixelFootprint(rays, far.position);
   const contiguous = bothSurfaces
     .and(dot(near.normal, far.position).sub(near.offset).lessThanEqual(tolerance))
     .and(dot(far.normal, near.position).sub(far.offset).lessThanEqual(tolerance));
-  // それ以外(輪郭・向かい合う面・面のない標本)は境目の位置が分からないので、画面上の中点の視線で分ける。
-  const middle = rayAt(rays, nearRho.add(farRho).mul(0.5));
+  // それ以外(輪郭・向かい合う面・面のない標本)は境目の位置が分からないので、画面上の中点の視線と各接平面で分ける。
+  const delta = max(farRho.sub(nearRho), 1);
+  const nearUncapped = select(atSeam, joint, select(contiguous, far.position, tangentHit(middle, near)));
+  const farUncapped = select(atSeam, joint, select(contiguous, far.position, tangentHit(middle, far)));
   return {
-    nearUpper: select(atSeam, joint, select(contiguous, far.position, tangentHit(middle, near))),
-    farLower: select(atSeam, joint, select(contiguous, far.position, tangentHit(middle, far))),
+    nearUpper: select(atSeam, limitFootprint(rays, middle, near, joint, delta), nearUncapped),
+    farLower: select(atSeam, limitFootprint(rays, middle, far, joint, delta), farUncapped),
+    nearUpperUncapped: nearUncapped,
+    farLowerUncapped: farUncapped,
   };
 }
 
+// 標本 point から視線 ray の上の交点 hit への延長を、Δ = delta 画素に写る面の長さ Δ·(1 画素の長さ) ÷ max(|n·v|, 1/Δ) で頭打ちにした点。
+function limitFootprint(rays: SideRays, ray: Ray, point: SlicePoint, hit: Vec2Node, delta: FloatNode): Vec2Node {
+  const direction = ray.direction.div(length(ray.direction));
+  const normal = point.normal.div(length(point.normal));
+  const cosine = max(abs(dot(normal, direction)), float(1).div(delta));
+  const limit = delta.mul(pixelFootprint(rays, point.position)).div(cosine);
+  const span = hit.sub(point.position);
+  const extent = max(length(span), 1e-12);
+  return point.position.add(span.mul(min(float(1), limit.div(extent))));
+}
+
 // スライスの中の点 point の奥行きで、走査の 1 画素が占める長さ [m]。
-function pixelFootprint(rays: SideRays, point: Vec2Node): FloatNode {
+export function pixelFootprint(rays: SideRays, point: Vec2Node): FloatNode {
   const depth = dot(point.sub(rays.origin), rays.direction);
   return length(rays.originStep.add(rays.directionStep.mul(depth)));
 }

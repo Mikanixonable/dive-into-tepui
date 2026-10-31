@@ -2,12 +2,9 @@
 // 出すために読む。
 export const TIER_FACTORS_FIELD = 'bandFactors';
 
-// src の走査に固定で入っている因子(band-split.ts の SENDER_VIEW_EXPONENT と receiverViewMultiplier の写し)。撮影の条件の
-// fixedFactors に記録する。components は掛かる成分。
-// 因子 d: 送り手の法線と送り手→カメラの内積 n_s·v_s の exponent 乗で割る。
+// src の走査に固定で入っている因子(receiverViewMultiplier の写し)。撮影の条件の fixedFactors に記録する。components は掛かる成分。
 // 因子 c: 受け手の法線と受け手→カメラの内積 cos ε の exponent 乗を、弱めずに掛ける。
 export const FIXED_FACTORS = {
-  senderView: { exponent: 0.5, components: ['bounce', 'occlusion'] },
   receiverView: { exponent: 1, components: ['bounce', 'occlusion'] },
 };
 
@@ -65,8 +62,8 @@ function cosEpsilonText(p) {
   return p === 1 ? 'cos ε' : p === 0.5 ? '√cos ε' : `(cos ε)^${numberText(p)}`;
 }
 
-// tier の帯座標の式。「照り返し: log₂(0.699ρ·(1+cos ε)/2 ÷ √(n_s·v_s)) / 遮蔽: log₂(0.904ρ·(1+cos ε)/2 ÷ √(n_s·v_s))」。
-// a = cos θ(光線と送り手)、b = cos φ(光線と受け手)、c = cos ε(受け手と視線)、d = n_s·v_s。fixedFactors は条件の記録。
+// tier の帯座標の式。「照り返し: log₂(0.699ρ·(1+cos ε)/2) / 遮蔽: log₂(0.904ρ·(1+cos ε)/2)」。
+// a = cos θ(光線と送り手)、b = cos φ(光線と受け手)、c = cos ε(受け手と視線)。fixedFactors は条件の記録。
 export function factorsLabelOf(tier, fixedFactors = undefined) {
   const factors = tier[TIER_FACTORS_FIELD];
   const sideText = ([side, title]) => {

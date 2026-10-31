@@ -225,6 +225,31 @@ async function sendRgbAndGeometry(devTools, planes, geometry) {
 // 画素ごとに rgb を並べた rgb を平面の組(R・G・B)へ。
 const planesOfRgb = (rgb) => [0, 1, 2].map((c) => Float32Array.from({ length: rgb.length / 3 }, (_, p) => rgb[3 * p + c]));
 
+// renderLab の method(和 sums と二乗の和 squares を [偶奇][テクスチャ] の FloatImage で返す)を呼び、画素ごとに RGBA の
+// Float32Array で受け取る。
+async function takeSums(devTools, method, includeSquares) {
+  const shapes = await devTools.evaluate(`window.renderLab.${method}.then((taken) => {
+    window.__ssdPassSums = taken;
+    const shapeOf = (halves) => halves.map((images) => images.map(({ rgba }) => rgba.length));
+    return { sums: shapeOf(taken.sums), squares: taken.squares.length ? shapeOf(taken.squares) : [] };
+  })`);
+  // 和 kind('sums' か 'squares')の [偶奇][テクスチャ] を受け取る。
+  const receiveHalves = async (kind) => {
+    const halves = [];
+    for (const [parity, lengths] of shapes[kind].entries()) {
+      const images = [];
+      for (const [i, length] of lengths.entries()) {
+        images.push(await receiveFloats(devTools, `window.__ssdPassSums.${kind}[${parity}][${i}].rgba`, length));
+      }
+      halves.push(images);
+    }
+    return halves;
+  };
+  const taken = { sums: await receiveHalves('sums'), squares: includeSquares ? await receiveHalves('squares') : [] };
+  await devTools.evaluate('delete window.__ssdPassSums');
+  return taken;
+}
+
 // 描画テスト環境の CDP の入口を包む。
 function labOf(devTools) {
   const call = (expression) => devTools.evaluate(`window.renderLab.${expression}`);
@@ -245,6 +270,9 @@ function labOf(devTools) {
     // 指定番号の本番ジッター位相で近傍拡散補正を描き直す。null は静止画の本番位相。
     renderProductionCorrectionPhase: (frame, fixScanRepresentative = false) =>
       call(`renderProductionCorrectionPhase(${JSON.stringify(frame)}, ${JSON.stringify(fixScanRepresentative)})`),
+    // 本番位相 frame を、ラスタずれの列の rasterFrame 番目のずれのフレーム全体から描く。null はずれの無いフレームへ戻す。
+    renderProductionCorrectionPhaseWithRasterJitter: (frame, rasterFrame) =>
+      call(`renderProductionCorrectionPhaseWithRasterJitter(${frame}, ${JSON.stringify(rasterFrame)})`),
     // 近傍拡散補正の段の範囲 range('all'・'scan'・'chain')だけを描く。'chain' は帯を詰めた描画先の値から鎖を描く。
     setStageRange: (range) => call(`setScanStageRange(${JSON.stringify(range)})`),
     setUpsampleAlphaOne: (enabled) => call(`setUpsampleAlphaOne(${JSON.stringify(enabled)})`),
@@ -254,28 +282,11 @@ function labOf(devTools) {
       call(`accumulateProductionPasses(${first}, ${count}, ${JSON.stringify(fixScanRepresentative)}, ${JSON.stringify(rasterJitter)})`),
     // accumulateProductionPasses の値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
     // テクスチャごとの、画素ごとに RGBA の Float32Array)を受け取り、ページの和を 0 に戻す。
-    async takePassSums(includeSquares = true) {
-      const shapes = await devTools.evaluate(`window.renderLab.takePassSums(${JSON.stringify(includeSquares)}).then((taken) => {
-        window.__ssdPassSums = taken;
-        const shapeOf = (halves) => halves.map((images) => images.map(({ rgba }) => rgba.length));
-        return { sums: shapeOf(taken.sums), squares: taken.squares.length ? shapeOf(taken.squares) : [] };
-      })`);
-      // 和 kind('sums' か 'squares')の [偶奇][テクスチャ] を受け取る。
-      const receiveHalves = async (kind) => {
-        const halves = [];
-        for (const [parity, lengths] of shapes[kind].entries()) {
-          const images = [];
-          for (const [i, length] of lengths.entries()) {
-            images.push(await receiveFloats(devTools, `window.__ssdPassSums.${kind}[${parity}][${i}].rgba`, length));
-          }
-          halves.push(images);
-        }
-        return halves;
-      };
-      const taken = { sums: await receiveHalves('sums'), squares: includeSquares ? await receiveHalves('squares') : [] };
-      await devTools.evaluate('delete window.__ssdPassSums');
-      return taken;
-    },
+    takePassSums: (includeSquares = true) => takeSums(devTools, `takePassSums(${JSON.stringify(includeSquares)})`, includeSquares),
+    // 本番の位相列(長さ total)の first〜first + count − 1 番目で、ラスタのずれだけを独立に変えた対の合流を積む。和は takeRasterPairSums で受け取る。
+    accumulateRasterPairs: (first, count, total) => call(`accumulateRasterPairs(${first}, ${count}, ${total})`),
+    // accumulateRasterPairs の和と二乗の和([偶奇][A, B, A − B] の、画素ごとに RGBA の Float32Array)を受け取り、ページの和を 0 に戻す。
+    takeRasterPairSums: () => takeSums(devTools, 'takeRasterPairSums()', true),
     // いまの段の、走査が帯を詰めた描画先の index 枚目へ、走査の解像度の画素ごとの RGBA の ΔE rgba(Float32Array)を書く。
     async writePackedBands(index, rgba) {
       await sendArray(devTools, 'window.__ssdPacked', rgba);

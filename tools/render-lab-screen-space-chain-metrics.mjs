@@ -4,6 +4,7 @@
 //   [--passes=1024|2048|4096] [--band-count=<4..8>] [--band-scale=<κ>] [--occlusion-invariant]
 //   [--occlusion-only] [--graphics=<JSON>]
 //   [--reference-jitter]
+//   [--noise-jitter] (requires --reference-jitter)
 //   [--dry-run | --reindex | --cache-only]
 // 帯座標の因子 c・d は走査に固定で入っている(FIXED_FACTORS が記録)。--cache-only は撮影済みの run の収束の積算のキャッシュに
 // 足りない和・二乗の和だけを撮り足して標準偏差の帯を書く(ほかの出力と記録は触らない)。
@@ -17,7 +18,7 @@ import { cachedMean, chunkComplete, chunkFile } from './screen-space-chain-cache
 import { accumulateMaxDeviation, deviationStatsOf, rgbaOfScalar, roiRms } from './screen-space-chain-deviation.mjs';
 import { FIXED_FACTORS, TIER_FACTORS_FIELD } from './screen-space-chain-factors.mjs';
 import { ONE_PASS_CORRECTION_PHASES, writeLandingIndex, writeRunIndex } from './screen-space-chain-index.mjs';
-import { BASELINE_RUN, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_PIXELS as PIXELS, SCAN_WIDTH, signedPng, signedRgb } from './screen-space-chain-runs.mjs';
+import { BASELINE_RUN, contourMaskOf, maskPng, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_PIXELS as PIXELS, SCAN_WIDTH, signedPng, signedRgb } from './screen-space-chain-runs.mjs';
 import { CHUNK_PASSES, SCENES, sceneSignatureOf, sourceSignatureOf, tierOf } from './screen-space-chain-setup.mjs';
 import { accumulateScaleRms, scaleRmsAccumulator, scaleRmsOf } from './screen-space-chain-scale-rms.mjs';
 import { HEIGHT, readFloats, unpackedBand, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
@@ -56,6 +57,10 @@ const DRY_RUN = process.argv.includes('--dry-run');
 const REINDEX = process.argv.includes('--reindex');
 const CACHE_ONLY = process.argv.includes('--cache-only');
 const REFERENCE_JITTER = process.argv.includes('--reference-jitter');
+const REFERENCE_UNJITTERED = process.argv.includes('--reference-unjittered');
+const NOISE_JITTER = process.argv.includes('--noise-jitter');
+if (REFERENCE_UNJITTERED && (REFERENCE_JITTER || NOISE_JITTER)) throw new Error('--reference-unjittered cannot be combined with --reference-jitter or --noise-jitter');
+if (NOISE_JITTER && !REFERENCE_JITTER) throw new Error('--noise-jitter requires --reference-jitter');
 const OCCLUSION_INVARIANT = process.argv.includes('--occlusion-invariant');
 const OCCLUSION_ONLY = process.argv.includes('--occlusion-only');
 if ([DRY_RUN, REINDEX, CACHE_ONLY].filter(Boolean).length > 1) throw new Error('--dry-run, --reindex and --cache-only are exclusive');
@@ -130,6 +135,7 @@ function cacheKeyOf(scene) {
   const hash = createHash('sha256').update('ssd-8-15-chunk-cache-production-jitter-v1').update(sceneSourceSignatures.get(scene.name))
     .update(`chunkPasses:${CHUNK_PASSES}`).update(JSON.stringify(TIER));
   if (REFERENCE_JITTER) hash.update('reference-jitter-v2');
+  if (REFERENCE_UNJITTERED) hash.update('reference-unjittered-v1');
   if (OCCLUSION_ONLY || graphicsArg !== undefined) {
     hash.update(`lighting:${JSON.stringify({ occlusionOnly: OCCLUSION_ONLY, graphics: GRAPHICS })}`);
   }
@@ -138,9 +144,10 @@ function cacheKeyOf(scene) {
 
 function captureConditions() {
   return { viewport: [WIDTH, HEIGHT], scanResolution: [SCAN_WIDTH, SCAN_HEIGHT], tier: TIER, fixedFactors: FIXED_FACTORS, passes: PASSES,
-    chunkPasses: CHUNK_PASSES, sampling: REFERENCE_JITTER ? 'production-seed-scan-representative-raster-jitter' : 'production-seed-fixed-scan-representative', invariantPhase: INVARIANT_PASS,
-    scanRepresentative: REFERENCE_JITTER ? { fixed: false } : { fixed: true, phase: 0, fraction: [0.5, 0.5] },
+    chunkPasses: CHUNK_PASSES, sampling: REFERENCE_UNJITTERED ? 'production-seed-scan-representative-raster-unjittered' : REFERENCE_JITTER ? 'production-seed-scan-representative-raster-jitter' : 'production-seed-fixed-scan-representative', invariantPhase: INVARIANT_PASS,
+    scanRepresentative: REFERENCE_JITTER || REFERENCE_UNJITTERED ? { fixed: false } : { fixed: true, phase: 0, fraction: [0.5, 0.5] },
     noisePasses: { first: NOISE_FIRST_PASS, count: NOISE_PASSES }, baselineLabel: BASELINE_LABEL,
+    ...(NOISE_JITTER ? { noiseSampling: 'raster-jitter-paired-seed' } : {}),
     lighting: { occlusionOnly: OCCLUSION_ONLY, graphics: GRAPHICS } };
 }
 
@@ -300,7 +307,7 @@ async function fillCache(lab, scene, cache) {
       continue;
     }
     misses.push(first);
-    await lab.accumulateProductionPasses(first, CHUNK_PASSES, !REFERENCE_JITTER, REFERENCE_JITTER);
+    await lab.accumulateProductionPasses(first, CHUNK_PASSES, !REFERENCE_JITTER && !REFERENCE_UNJITTERED, REFERENCE_JITTER);
     const taken = await lab.takePassSums(needSquares);
     const writeSums = (kind, halves) => {
       for (let texture = 0; texture < textureCount; texture++) {
@@ -356,24 +363,60 @@ async function alphaChecks(lab, scene, dir, mergedOne, invariantMergedOne) {
 }
 
 // 独立な NOISE_PASSES 個の1パスと収束した合流 convergedMerged の差。画素ごとの RMS(noise)と最大偏差(maxima)、A の変動。
-async function measureNoise(lab, convergedMerged, surfaceMask) {
+async function measureNoise(lab, convergedMerged, bandSum, surfaceMask) {
   const noiseSquares = new Float64Array(PIXELS * 4);
   const maxima = new Float32Array(PIXELS);
   const scaleSquares = scaleRmsAccumulator();
+  const seedScaleSquares = scaleRmsAccumulator();
+  const seedSquares = new Float64Array(PIXELS * 4);
+  const errorSquares = new Float64Array(PIXELS * 4);
+  const errorScaleSquares = scaleRmsAccumulator();
   let alphaVariation = 0;
   await lab.setStageRange('all');
-  for (let pass = NOISE_FIRST_PASS; pass < NOISE_FIRST_PASS + NOISE_PASSES; pass++) {
-    await lab.renderProductionCorrectionPhase(pass, true);
-    const one = await lab.readFloat('merged-0', 4);
-    accumulateScaleRms(scaleSquares, rgbDifference(one, convergedMerged), surfaceMask);
-    for (let i = 0; i < one.length; i += 4) {
-      for (let c = 0; c < 3; c++) noiseSquares[i + c] += (one[i + c] - convergedMerged[i + c]) ** 2;
-      alphaVariation = Math.max(alphaVariation, Math.abs(one[i + 3] - convergedMerged[i + 3]));
+  for (let i = 0; i < NOISE_PASSES; i++) {
+    const pair = [];
+    for (const frame of NOISE_JITTER ? [NOISE_FIRST_PASS + i, 6000 + i] : [NOISE_FIRST_PASS + i]) {
+      if (NOISE_JITTER) await lab.renderProductionCorrectionPhaseWithRasterJitter(frame, NOISE_FIRST_PASS + i);
+      else await lab.renderProductionCorrectionPhase(frame, true);
+      const one = await lab.readFloat('merged-0', 4);
+      pair.push(one);
+      accumulateScaleRms(scaleSquares, rgbDifference(one, convergedMerged), surfaceMask);
+      for (let j = 0; j < one.length; j += 4) {
+        for (let c = 0; c < 3; c++) noiseSquares[j + c] += (one[j + c] - convergedMerged[j + c]) ** 2;
+        alphaVariation = Math.max(alphaVariation, Math.abs(one[j + 3] - convergedMerged[j + 3]));
+      }
+      accumulateMaxDeviation(maxima, one, convergedMerged);
+      if (NOISE_JITTER) {
+        const error = rgbDifference(one, bandSum);
+        accumulateScaleRms(errorScaleSquares, error, surfaceMask);
+        for (let j = 0; j < error.length; j += 4) for (let c = 0; c < 3; c++) errorSquares[j + c] += error[j + c] ** 2;
+      }
     }
-    accumulateMaxDeviation(maxima, one, convergedMerged);
+    if (NOISE_JITTER) {
+      const [a, b] = pair;
+      const pairDifference = new Float32Array(a.length);
+      for (let j = 0; j < a.length; j += 4) for (let c = 0; c < 3; c++) {
+        const delta = a[j + c] - b[j + c];
+        pairDifference[j + c] = delta / Math.sqrt(2);
+        seedSquares[j + c] += delta * delta / 2;
+      }
+      accumulateScaleRms(seedScaleSquares, pairDifference, surfaceMask);
+    }
   }
-  const noise = Float32Array.from(noiseSquares, (sum, i) => i % 4 === 3 ? 1 : Math.sqrt(sum / NOISE_PASSES));
-  return { noise, maxima, alphaVariation, scaleRms: scaleRmsOf(scaleSquares, surfaceMask, NOISE_PASSES) };
+  if (NOISE_JITTER) await lab.renderProductionCorrectionPhaseWithRasterJitter(0, null);
+  const sampleCount = NOISE_JITTER ? NOISE_PASSES * 2 : NOISE_PASSES;
+  const noise = Float32Array.from(noiseSquares, (sum, i) => i % 4 === 3 ? 1 : Math.sqrt(sum / sampleCount));
+  if (!NOISE_JITTER) return { noise, maxima, alphaVariation, scaleRms: scaleRmsOf(scaleSquares, surfaceMask, sampleCount) };
+  const seed = Float32Array.from(seedSquares, (sum, i) => i % 4 === 3 ? 1 : Math.sqrt(sum / NOISE_PASSES));
+  const raster = Float32Array.from(noise, (value, i) => i % 4 === 3 ? 1 : Math.sqrt(Math.max(value * value - seed[i] * seed[i], 0)));
+  const totalScaleRms = scaleRmsOf(scaleSquares, surfaceMask, sampleCount);
+  const noiseSeedScaleRms = scaleRmsOf(seedScaleSquares, surfaceMask, NOISE_PASSES);
+  const noiseRasterScaleRms = Object.fromEntries(Object.keys(totalScaleRms).map((scale) => [scale,
+    totalScaleRms[scale].map((value, channel) => Math.sqrt(Math.max(value * value - noiseSeedScaleRms[scale][channel] ** 2, 0)))]));
+  const onePassError = Float32Array.from(errorSquares, (sum, i) => i % 4 === 3 ? 1 : Math.sqrt(sum / sampleCount));
+  return { noise, seed, raster, onePassError, maxima, alphaVariation,
+    scaleRms: { noise: totalScaleRms, noiseSeed: noiseSeedScaleRms, noiseRaster: noiseRasterScaleRms,
+      onePassError: scaleRmsOf(errorScaleSquares, surfaceMask, sampleCount) } };
 }
 
 // 表示の尺度。基準の run は、記録があればそれを使い、無い(または新しい欄が無い)ものを撮影した値から決める。
@@ -407,11 +450,13 @@ async function captureOnePassCorrections(lab, dir) {
   await lab.setStageRange('all');
   await lab.setUpsampleAlphaOne(false);
   for (const k of [0, ...ONE_PASS_CORRECTION_PHASES]) {
-    await lab.renderProductionCorrectionPhase(k, true);
+    if (NOISE_JITTER) await lab.renderProductionCorrectionPhaseWithRasterJitter(k, NOISE_FIRST_PASS + k);
+    else await lab.renderProductionCorrectionPhase(k, true);
     const name = k === 0 ? 'one-pass-correction.png' : `one-pass-correction-phase${k}.png`;
     writeFileSync(path.join(dir, name), await lab.signedCorrectionPng({ width: WIDTH, height: HEIGHT, rgba: await lab.readFloat('correction', 4) }));
     if (k === 0) writeFileSync(path.join(dir, 'one-pass-diffuse-clay.png'), await clayPng(lab));
   }
+  if (NOISE_JITTER) await lab.renderProductionCorrectionPhaseWithRasterJitter(0, null);
   await lab.renderProductionCorrectionPhase(0, true);
 }
 
@@ -448,6 +493,9 @@ async function captureScene(lab, scene, dir, cache) {
   await showWithLighting(lab, scene, OCCLUSION_ONLY ? 1 : 2);
   const scanSurface = await lab.readFloat('scan-surface-0', 4);
   const surfaceMask = Uint8Array.from({ length: PIXELS }, (_, p) => scanSurface[p * 4 + 2] > 0 ? 1 : 0);
+  const contourMask = contourMaskOf(scanSurface);
+  writeFileSync(path.join(dir, 'contour-mask.u8'), contourMask);
+  writeFileSync(path.join(dir, 'contour-mask.png'), maskPng(contourMask));
   if (!surfaceMask.some(Boolean)) throw new Error(`${scene.name}: scan surface mask is empty`);
   const exposure = await lab.exposureFactor();
   await lab.setUpsampleAlphaOne(false);
@@ -482,8 +530,10 @@ async function captureScene(lab, scene, dir, cache) {
     { id: 'converged-merged', label: `${PASSES}パス・合流結果`, values: full.merged },
   ];
   const displayScales = displayScalesOf(scene, scanImages, structure);
-  const { noise, maxima, alphaVariation, scaleRms: noiseScaleRms } = await measureNoise(lab, full.merged, surfaceMask);
-  if (alphaVariation !== 0) throw new Error(`${scene.name}: A varied across one-pass phases`);
+  const noiseResult = await measureNoise(lab, full.merged, full.bandSum, surfaceMask);
+  const { noise, maxima, alphaVariation } = noiseResult;
+  // 代表を巡らせた収束先(--reference-unjittered)は、代表を固定した 1 パスと A が揃わない — 記録だけにする(その run は B だけを使う)。
+  if (alphaVariation !== 0 && !NOISE_JITTER && !REFERENCE_UNJITTERED) throw new Error(`${scene.name}: A varied across one-pass phases`);
   const maxDeviation = rgbaOfScalar(maxima);
   if (RUN_LABEL === BASELINE_LABEL) {
     displayScales.noise.scale ??= imageScale([noise], NOISE_DISPLAY_QUANTILE, true);
@@ -499,6 +549,11 @@ async function captureScene(lab, scene, dir, cache) {
   writeFloats(path.join(dir, `band-sum-${PASSES}.rgba.f32`), full.bandSum);
   writeFloats(path.join(dir, `merged-${PASSES}.rgba.f32`), full.merged);
   writeFloats(path.join(dir, `noise-rms-${PASSES}.rgba.f32`), noise);
+  if (NOISE_JITTER) writeFloats(path.join(dir, `one-pass-error-rms-${PASSES}.rgba.f32`), noiseResult.onePassError);
+  if (NOISE_JITTER) {
+    writeFloats(path.join(dir, `noise-seed-rms-${PASSES}.rgba.f32`), noiseResult.seed);
+    writeFloats(path.join(dir, `noise-raster-rms-${PASSES}.rgba.f32`), noiseResult.raster);
+  }
   writeFloats(path.join(dir, `max-deviation-${PASSES}.rgba.f32`), maxDeviation);
   for (const image of scanImages) {
     image.f32 = `scan-${image.id}.rgba.f32`;
@@ -522,11 +577,17 @@ async function captureScene(lab, scene, dir, cache) {
   writeFileSync(path.join(dir, `structure-${PASSES}.png`), signedPng(structure, 4, displayScales.structure.scale));
   writeFileSync(path.join(dir, `structure-half-difference-${PASSES}.png`), signedPng(structureHalfDifference, 4, displayScales.structure.scale));
   writeFileSync(path.join(dir, `noise-rms-${PASSES}.png`), magnitudePng(noise, displayScales.noise.scale));
+  if (NOISE_JITTER) {
+    for (const [kind, values] of [['seed', noiseResult.seed], ['raster', noiseResult.raster]]) {
+      writeFileSync(path.join(dir, `noise-${kind}-rms-${PASSES}.png`), magnitudePng(values, displayScales.noise.scale));
+    }
+    writeFileSync(path.join(dir, `one-pass-error-rms-${PASSES}.png`), magnitudePng(noiseResult.onePassError, displayScales.structure.scale));
+  }
   writeFileSync(path.join(dir, `max-deviation-${PASSES}.png`), magnitudePng(maxDeviation, displayScales.maxDeviation.scale));
   writeFileSync(path.join(dir, 'rois.png'), roisPng(full.bandSum, scene.rois, displayScales.scan.scale));
 
   const outputs = [
-    'metrics.json', 'one-pass-a.f32', 'display-scales.json', `structure-${PASSES}.rgba.f32`,
+    'metrics.json', 'one-pass-a.f32', 'display-scales.json', 'contour-mask.u8', 'contour-mask.png', `structure-${PASSES}.rgba.f32`,
     `structure-half-difference-${PASSES}.rgba.f32`, `band-sum-${PASSES}.rgba.f32`, `merged-${PASSES}.rgba.f32`,
     `noise-rms-${PASSES}.rgba.f32`, `max-deviation-${PASSES}.rgba.f32`, `structure-${PASSES}.png`,
     `structure-half-difference-${PASSES}.png`, `noise-rms-${PASSES}.png`, `max-deviation-${PASSES}.png`, 'rois.png',
@@ -536,6 +597,9 @@ async function captureScene(lab, scene, dir, cache) {
     ...scanImages.flatMap((image) => [image.f32, image.png]),
     sumInvariant.differenceMap, ...(occlusionBandSum === null ? [] : [occlusionBandSum.differenceMap]),
   ];
+  if (NOISE_JITTER) outputs.push(`noise-seed-rms-${PASSES}.rgba.f32`, `noise-raster-rms-${PASSES}.rgba.f32`,
+    `one-pass-error-rms-${PASSES}.rgba.f32`, `noise-seed-rms-${PASSES}.png`, `noise-raster-rms-${PASSES}.png`,
+    `one-pass-error-rms-${PASSES}.png`);
   if (existsSync(path.join(dir, 'rois-on-render.png'))) outputs.push('rois-on-render.png');
   const result = {
     scene: scene.name, run: RUN_LABEL, caseName: scene.caseName, shot: scene.shot,
@@ -545,18 +609,23 @@ async function captureScene(lab, scene, dir, cache) {
     captureCommand: `node tools/render-lab-screen-space-chain-metrics.mjs --run=${RUN_LABEL} --scene=${scene.name} --passes=${PASSES} --band-count=${bandCount}`
       + (BASELINE_LABEL === BASELINE_RUN ? '' : ` --baseline=${BASELINE_LABEL}`)
       + (REFERENCE_JITTER ? ' --reference-jitter' : '')
+      + (REFERENCE_UNJITTERED ? ' --reference-unjittered' : '')
+      + (NOISE_JITTER ? ' --noise-jitter' : '')
       + (argumentOf('band-scale') === undefined ? '' : ` --band-scale=${bandScale}`),
     captureStartedAt: sceneStartedAt, captureWallTimeMs: performance.now() - sceneStarted,
     conditions: captureConditions(), exposure, productionPhase: 0,
     productionJitter: { onePassInvariantPhase: INVARIANT_PASS, convergedPhaseIndices: [0, PASSES - 1],
-      noisePhaseIndices: [NOISE_FIRST_PASS, NOISE_FIRST_PASS + NOISE_PASSES - 1] },
+      noisePhaseIndices: NOISE_JITTER ? [NOISE_FIRST_PASS, 6000 + NOISE_PASSES - 1]
+        : [NOISE_FIRST_PASS, NOISE_FIRST_PASS + NOISE_PASSES - 1] },
     onePassBandSum: sumInvariant, occlusionOnlyBandSum: occlusionBandSum,
     onePassInvariantAlphaMaximumDifference: alphaResult.invariantAlphaMaximumDifference,
     onePassAlphaMaximumDifference: alphaResult.alphaMaximumDifference,
     onePassAlphaDifferentPixels: alphaResult.alphaDifferentPixels,
     onePassAlphaMeanAbsoluteDifference: alphaResult.alphaMeanAbsoluteDifference,
     alphaChangeFromRgb: alphaResult.alphaChangeFromRgb, alphaVariationAcrossNoisePasses: alphaVariation,
-    displayScales, scaleRms: { structure: structureScaleRms, noise: noiseScaleRms }, rois,
+    displayScales, scaleRms: { structure: structureScaleRms, noise: NOISE_JITTER ? noiseResult.scaleRms.noise : noiseResult.scaleRms,
+      ...(NOISE_JITTER ? { noiseSeed: noiseResult.scaleRms.noiseSeed, noiseRaster: noiseResult.scaleRms.noiseRaster, onePassError: noiseResult.scaleRms.onePassError } : {}) }, rois,
+    contourMask: 'contour-mask.u8', contourMaskPng: 'contour-mask.png', contourDepth: 'scan-surface-0 の素の深度(reversed-z)の 4 近傍の相対の段差 5%',
     scanImages: scanImages.map(({ id, label, png, f32 }) => ({ id, label, png, f32 })), outputs,
   };
   writeFileSync(path.join(dir, 'metrics.json'), JSON.stringify(result, null, 2));

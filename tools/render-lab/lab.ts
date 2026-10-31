@@ -33,7 +33,8 @@ import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
 import { LabSun } from './lab-sun';
 import { PassAccumulator } from './pass-accumulator';
-import { phaseAt, PRODUCTION_PHASE, type CorrectionPhase } from './phase-sequence';
+import { RasterPairs } from './raster-pairs';
+import { phaseAt, PRODUCTION_PHASE, rasterJitterAt, rasterPairJitterAt, type CorrectionPhase } from './phase-sequence';
 import {
   anglesFromDirection, directionFromAngles, withLightShift, type LabViewAngles, type LightAngleShift,
 } from './view-angles';
@@ -215,6 +216,8 @@ export class LabView {
   private reflectionAccumulatorSources: readonly THREE.Texture[] | null = null;
   // averageCorrection が最後の拡大の出力を足し込む器。初めて足すときに作る。
   private correctionAccumulator: PassAccumulator | null = null;
+  // accumulateRasterPairs の器。合流の描画先が変わったら作り直す。
+  private rasterPairs: RasterPairs | null = null;
   // G バッファの素の深度を写す先と、その描画命令。
   private readonly depthTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
     type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
@@ -767,6 +770,16 @@ export class LabView {
       : phase);
   }
 
+  // 本番位相 frame の補正を、ラスタずれの列の rasterFrame 番目のずれでフレーム全体を描いて求める(走査の代表も位相で動く)。
+  // rasterFrame が null ならずれの無いフレームを描き直す — ずれたフレームから renderProductionCorrectionPhase へ戻る前に通す。
+  public renderProductionCorrectionPhaseWithRasterJitter(frame: number, rasterFrame: number | null): void {
+    if (!Number.isInteger(frame) || frame < 0 || (rasterFrame !== null && (!Number.isInteger(rasterFrame) || rasterFrame < 0))) {
+      throw new RangeError(`render-lab: invalid jittered production phase ${frame}/${rasterFrame}`);
+    }
+    const phase = phaseAt({ sources: ['seed', 'scanRepresentative'], count: 32 }, frame, this.scanCellSize);
+    this.renderCorrection({ ...phase, rasterJitter: rasterFrame === null ? null : rasterJitterAt(rasterFrame) });
+  }
+
   // 位相 phase で近傍拡散補正を描き直す。射影のずれを使う(いま使っている)ならフレーム全体を、そうでなければ直前に描いた
   // フレームの G バッファなどを入力のまま近傍拡散補正だけを描く。
   private renderCorrection(phase: CorrectionPhase): void {
@@ -848,20 +861,64 @@ export class LabView {
   }> {
     const accumulator = this.passAccumulator;
     if (accumulator === null) throw new Error('render-lab: no passes accumulated');
-    // 偶奇ごと・テクスチャごとに読み戻す。
-    const readBackHalves = async (halves: readonly (readonly THREE.Texture[])[]): Promise<FloatImage[][]> => {
-      const images: FloatImage[][] = [];
-      for (const textures of halves) {
-        const half: FloatImage[] = [];
-        for (const texture of textures) half.push(await this.readBack(texture));
-        images.push(half);
-      }
-      return images;
-    };
-    const sums = await readBackHalves(accumulator.sumTextures);
-    const squares = includeSquares ? await readBackHalves(accumulator.squareTextures) : [];
+    const sums = await this.readBackHalves(accumulator.sumTextures);
+    const squares = includeSquares ? await this.readBackHalves(accumulator.squareTextures) : [];
     accumulator.clear();
     return { sums, squares };
+  }
+
+  // 本番の位相列(長さ total)の k 番目(first ≤ k < first + count)のシードと走査の代表で、ラスタのずれだけを独立に変えた 2 枚 A・B の
+  // フレーム全体を描き、合流 'merged-0' の A・B と差 A − B を偶奇 k % 2 の和へ足す。和は takeRasterPairSums で受け取る。
+  // 終わると位相は静止画の本番値へ戻り、ずれの無いフレームを描き直す。
+  public async accumulateRasterPairs(first: number, count: number, total: number): Promise<void> {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    const { screenSpace, diffuseCorrection } = this.pipeline;
+    const merged = diffuseCorrection.mergedTarget(screenSpace.bandLayout, 0);
+    if (this.rasterPairs?.merged !== merged) {
+      this.rasterPairs?.dispose();
+      this.rasterPairs = new RasterPairs(this.renderer, merged);
+    }
+    const pairs = this.rasterPairs;
+    const sequence = { sources: ['seed', 'scanRepresentative'] as const, count: total };
+    screenSpace.setStageRange('all');
+    try {
+      for (let k = first; k < first + count; k++) {
+        const phase = phaseAt(sequence, k, this.scanCellSize);
+        this.renderCorrection({ ...phase, rasterJitter: rasterJitterAt(k) });
+        pairs.hold();
+        this.renderCorrection({ ...phase, rasterJitter: rasterPairJitterAt(k) });
+        pairs.add(k % 2 === 0 ? 0 : 1);
+        if ((k - first) % PRODUCTION_PASSES_PER_WAIT === PRODUCTION_PASSES_PER_WAIT - 1) {
+          await this.renderer.readRenderTargetPixelsAsync(merged, 0, 0, 1, 1);
+          this.gpu.resolve();
+        }
+      }
+    } finally {
+      this.renderCorrection(PRODUCTION_PHASE);
+    }
+  }
+
+  // accumulateRasterPairs で足した和 sums と成分ごとの二乗の和 squares を [偶数番目, 奇数番目][A, B, A − B] で読み戻し、和を 0 に戻す。
+  public async takeRasterPairSums(): Promise<{
+    readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
+  }> {
+    const pairs = this.rasterPairs;
+    if (pairs === null) throw new Error('render-lab: no raster pairs accumulated');
+    const sums = await this.readBackHalves(pairs.accumulator.sumTextures);
+    const squares = await this.readBackHalves(pairs.accumulator.squareTextures);
+    pairs.accumulator.clear();
+    return { sums, squares };
+  }
+
+  // 偶奇ごと・テクスチャごとに読み戻す。
+  private async readBackHalves(halves: readonly (readonly THREE.Texture[])[]): Promise<FloatImage[][]> {
+    const images: FloatImage[][] = [];
+    for (const textures of halves) {
+      const half: FloatImage[] = [];
+      for (const texture of textures) half.push(await this.readBack(texture));
+      images.push(half);
+    }
+    return images;
   }
 
   // 直前に描いたフレームを位相の列 phases で描き直し(renderCorrection)、最後の拡大の出力(rgba)の平均を返す。終わると

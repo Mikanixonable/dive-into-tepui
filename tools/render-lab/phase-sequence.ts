@@ -38,6 +38,17 @@ export function rasterJitterAt(k: number): readonly [number, number] {
   return [halton(k + 1, 2) - 0.5, halton(k + 1, 3) - 0.5];
 }
 
+// k 番目の対の片方のラスタのずれ。rasterJitterAt(k) と独立で同じ分布(各成分 [−0.5, 0.5) の一様) — Halton の近い番号どうしは相関するので使わない。
+export function rasterPairJitterAt(k: number): readonly [number, number] {
+  const uniform = (value: number): number => {
+    let x = (value + 0x9e3779b9) >>> 0;
+    x = Math.imul(x ^ (x >>> 16), 0x21f0aaad);
+    x = Math.imul(x ^ (x >>> 15), 0x735a2d97);
+    return ((x ^ (x >>> 15)) >>> 0) / 0x100000000 - 0.5;
+  };
+  return [uniform(k), uniform(k ^ 0x68bc21eb)];
+}
+
 // 基数 base の Halton 列の index 番目(1 から)の値 (0, 1)。
 function halton(index: number, base: number): number {
   let result = 0;

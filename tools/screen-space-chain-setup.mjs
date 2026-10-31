@@ -43,7 +43,7 @@ export function sourceSignatureOf(tier) {
     'src/render/pipeline/render-pipeline.ts', 'src/render/pipeline/view-ray.ts',
     'src/render/pipeline/exposure.ts', 'src/render/graphics-settings.ts',
     'tools/render-lab/lab.ts', 'tools/render-lab/main.ts',
-    'tools/render-lab/pass-accumulator.ts', 'tools/render-lab/lab-case.ts',
+    'tools/render-lab/pass-accumulator.ts', 'tools/render-lab/raster-pairs.ts', 'tools/render-lab/lab-case.ts',
     'tools/screen-space-lab.mjs',
   ].sort();
   for (const relative of files) hash.update(relative).update(readFileSync(path.join(ROOT, relative)));

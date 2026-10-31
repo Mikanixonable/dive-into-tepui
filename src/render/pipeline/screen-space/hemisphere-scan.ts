@@ -12,14 +12,17 @@ import {
 } from 'three/tsl';
 import { octDecodeNormal } from '../gbuffer';
 import { viewRayAt } from '../view-ray';
-import { NO_CEILING, bandCeiling, facingCosine, sampleBandWeights, type BandSplit } from './band-split';
+import {
+  NO_CEILING, bandCeiling, coarsestBandWeights, facingCosine, sampleBandWeights, type BandSplit,
+} from './band-split';
 import { signedDiffuseCorrection } from './diffuse-correction';
 import {
   SECTOR_COUNT, angleOf, bitCount, capMeasure, capRange, hemisphereNormalOf, maskedMeasure, rangeSectors, sectorPosition,
   segmentSectors, sliceAt, toSliceCoordinates, type RangeSectors, type Slice,
 } from './slice-sectors';
 import {
-  angularlyHigher, angularlyLower, rayAt, samplePoint, sideRays, splitSegments, tangentHit, type SideRays,
+  angularlyHigher, angularlyLower, rayAt, samplePoint, sideRays, splitSegments, tangentHit,
+  type SideRays,
   type SlicePoint,
 } from './tangent-segments';
 import type { PlanetCap } from '../lighting/planet-light-source';
@@ -154,9 +157,7 @@ export function scanHemisphere(
             .and(samplePixel.x.lessThan(screenSize.x)).and(samplePixel.y.lessThan(screenSize.y));
           const surface = onScreen.and(sample.depth.greaterThan(0))
             .and(dot(toSample, toSample).lessThanEqual(WORLD_RADIUS * WORLD_RADIUS));
-          // 送り手の位置での視線(透視でも平行投影でも標本の uv から引く)。
-          const senderToCamera = viewRayAt(projectionInverse, sample.uv).direction.negate();
-          walk.visit(rho, surface, toSample, sample.normal, facingCosine(sample.normal, senderToCamera),
+          walk.visit(rho, surface, toSample, sample.normal,
             bandCeiling(bands.scale, rho, sample.position, sample.normal, receiver.position, receiver.normal,
               projection, projectionInverse, screenSize));
         });
@@ -239,11 +240,11 @@ class SliceOcclusion {
   }
 
   // 受け手から見て角 lower..upper を占める切片を、手前の切片の後ろへ積む。falloff はその標本の距離重み、
-  // facesReceiver は標本が受け手へ面を向けているか、senderView は標本の法線と標本→カメラの内積、ceiling は帯の天井。
+  // facesReceiver は標本が受け手へ面を向けているか、ceiling は帯の天井。
   // rho と pixel は標本の画面距離 [走査の画素] と走査の画素。
   public add(
     lower: FloatNode, upper: FloatNode, falloff: FloatNode, facesReceiver: BoolNode,
-    senderView: FloatNode, ceiling: FloatNode, rho: FloatNode, pixel: Vec2Node,
+    ceiling: FloatNode, rho: FloatNode, pixel: Vec2Node, excess = false,
   ): void {
     const sectors = segmentSectors(
       sectorPosition(this.slice, lower, this.dither), sectorPosition(this.slice, upper, this.dither)).toVar();
@@ -270,8 +271,12 @@ class SliceOcclusion {
         });
       }
       // 帯の天井は照り返しにだけ掛ける。遮蔽は源の面の光を運ばないので、源の平面との交線を根元に持たない。
-      const receivedWeights = sampleBandWeights(this.bands, rho, this.receiverView, senderView, ceiling);
-      const blockedWeights = sampleBandWeights(this.bands, rho, this.receiverView, senderView, float(NO_CEILING));
+      const receivedWeights = excess
+        ? coarsestBandWeights(this.bands, ceiling)
+        : sampleBandWeights(this.bands, rho, this.receiverView, ceiling);
+      const blockedWeights = !excess
+        ? sampleBandWeights(this.bands, rho, this.receiverView, float(NO_CEILING))
+        : coarsestBandWeights(this.bands, float(NO_CEILING));
       for (const [band, correction] of this.corrections.entries()) {
         correction.addAssign(signedDiffuseCorrection(received.mul(receivedWeights[band]!), blockedIrradiance.mul(blockedWeights[band]!)));
       }
@@ -289,8 +294,8 @@ class SideWalk {
   private readonly previousHasSurface = bool(true).toVar();
   // 直前の標本の切片の下端(円で切った点)と距離重み。上端は次の標本で決まる。
   private readonly previousLower = vec2(0).toVar();
+  private readonly previousLowerUncapped = vec2(0).toVar();
   private readonly previousFalloff = float(0).toVar();
-  private readonly previousSenderView = float(0).toVar();
   private readonly previousCeiling = float(0).toVar();
 
   // screenStep はこの側の画面上の歩み [uv/走査の画素]、rays はこの側の視線、occlusion は切片を積むスライスの遮り、
@@ -305,10 +310,9 @@ class SideWalk {
   }
 
   // 画面距離 rho の標本を次に加える。toSample は受け手から標本への変位、normal は標本の法線(view 空間)。hasSurface
-  // が偽なら面のない標本(虚空・画面外・半径の外)で、切片を持たない。senderView は標本→カメラの内積、ceiling は帯の天井。
+  // が偽なら面のない標本(虚空・画面外・半径の外)で、切片を持たない。ceiling は帯の天井。
   public visit(
-    rho: FloatNode, hasSurface: BoolNode, toSample: Vec3Node, normal: Vec3Node, senderView: FloatNode,
-    ceiling: FloatNode,
+    rho: FloatNode, hasSurface: BoolNode, toSample: Vec3Node, normal: Vec3Node, ceiling: FloatNode,
   ): void {
     const sample = samplePoint(this.slice, this.rays, rho, toSample, normal, this.receiver);
     const split = splitSegments(this.rays, this.previous, this.previousRho, sample, rho,
@@ -317,11 +321,11 @@ class SideWalk {
     const nearUpper = split.nearUpper.toVar();
     const farLower = split.farLower.toVar();
     // 直前の標本の切片は、上端が決まったので積む。
-    If(this.holdsSegment(), () => this.closeSegment(nearUpper));
+    If(this.holdsSegment(), () => this.closeSegment(nearUpper, split.nearUpperUncapped));
     // この標本を直前の標本として持ち越す。面がなければ、持ち越した値は旗で読まれない。
     this.previousLower.assign(clipToCircle(sample.position, farLower));
+    this.previousLowerUncapped.assign(clipToCircle(sample.position, split.farLowerUncapped));
     this.previousFalloff.assign(max(float(1).sub(dot(toSample, toSample).div(WORLD_RADIUS * WORLD_RADIUS)), 0));
-    this.previousSenderView.assign(senderView);
     this.previousCeiling.assign(ceiling);
     this.previous.position.assign(sample.position);
     this.previous.normal.assign(sample.normal);
@@ -332,7 +336,9 @@ class SideWalk {
 
   // 最後の標本の切片を、画面距離 radius [走査の画素] の視線まで受け持たせて積む。
   public finish(radius: FloatNode): void {
-    If(this.holdsSegment(), () => this.closeSegment(tangentHit(rayAt(this.rays, radius), this.previous)));
+    const ray = rayAt(this.rays, radius);
+    const end = tangentHit(ray, this.previous);
+    If(this.holdsSegment(), () => this.closeSegment(end, end));
   }
 
   // 直前の標本が、上端を待つ切片を持つか — 面を持つ標本であって、受け手自身でない。
@@ -341,14 +347,23 @@ class SideWalk {
   }
 
   // 直前の標本の切片を、上端 end(円で切る前)で閉じて積む。角の範囲は、下端・上端・標本自身の角の最小〜最大。
-  private closeSegment(end: Vec2Node): void {
+  private closeSegment(end: Vec2Node, endUncapped: Vec2Node): void {
     const { position, offset } = this.previous;
     const upper = clipToCircle(position, end).toVar();
     const lowest = angularlyLower(angularlyLower(this.previousLower, position), upper);
     const highest = angularlyHigher(angularlyHigher(this.previousLower, position), upper);
     this.occlusion.add(angleOf(this.slice, lowest), angleOf(this.slice, highest), this.previousFalloff,
-      offset.lessThan(0), this.previousSenderView, this.previousCeiling, this.previousRho,
+      offset.lessThan(0), this.previousCeiling, this.previousRho,
       pixelAlong(this.screenStep, this.previousRho));
+    const upperUncapped = clipToCircle(position, endUncapped);
+    const upperLow = angularlyLower(upper, upperUncapped);
+    const upperHigh = angularlyHigher(upper, upperUncapped);
+    this.occlusion.add(angleOf(this.slice, upperLow), angleOf(this.slice, upperHigh), this.previousFalloff,
+      offset.lessThan(0), this.previousCeiling, this.previousRho, pixelAlong(this.screenStep, this.previousRho), true);
+    const lowerLow = angularlyLower(this.previousLower, this.previousLowerUncapped);
+    const lowerHigh = angularlyHigher(this.previousLower, this.previousLowerUncapped);
+    this.occlusion.add(angleOf(this.slice, lowerLow), angleOf(this.slice, lowerHigh), this.previousFalloff,
+      offset.lessThan(0), this.previousCeiling, this.previousRho, pixelAlong(this.screenStep, this.previousRho), true);
   }
 }
 

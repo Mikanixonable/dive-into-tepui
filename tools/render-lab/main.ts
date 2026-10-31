@@ -109,6 +109,8 @@ declare global {
       takePassSums: (includeSquares?: boolean) => Promise<{
         readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
       }>;
+      accumulateRasterPairs: (first: number, count: number, total: number) => Promise<void>;
+      takeRasterPairSums: () => Promise<{ readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[] }>;
       addReflectionPasses: (offsets: readonly (readonly [number, number])[], first: number) => Promise<void>;
       takeReflectionSums: () => Promise<readonly (readonly FloatImage[])[]>;
       renderReflectionPass: (x: number, y: number) => void;
@@ -144,6 +146,7 @@ declare global {
       setScanJitter: (jitter: ScanJitter | null) => void;
       setRasterJitter: (offsetPx: readonly [number, number] | null) => void;
       renderProductionCorrectionPhase: (frame: number | null, fixScanRepresentative?: boolean) => void;
+      renderProductionCorrectionPhaseWithRasterJitter: (frame: number, rasterFrame: number | null) => void;
       scanCellSize: () => number;
       resetMotion: () => void;
       moveCamera: (
@@ -456,6 +459,8 @@ async function init(): Promise<void> {
     setUpsampleAlphaOne: (enabled) => view.setUpsampleAlphaOne(enabled),
     accumulateProductionPasses: (first, count, fixScanRepresentative, rasterJitter) => view.accumulateProductionPasses(first, count, fixScanRepresentative, rasterJitter),
     takePassSums: (includeSquares) => view.takePassSums(includeSquares),
+    accumulateRasterPairs: (first, count, total) => view.accumulateRasterPairs(first, count, total),
+    takeRasterPairSums: () => view.takeRasterPairSums(),
     addReflectionPasses: (offsets, first) => view.addReflectionPasses(offsets, first),
     takeReflectionSums: () => view.takeReflectionSums(),
     renderReflectionPass: (x, y) => view.renderReflectionPass(x, y),
@@ -484,6 +489,7 @@ async function init(): Promise<void> {
     setScanJitter: (jitter) => view.setScanJitter(jitter),
     setRasterJitter: (offsetPx) => view.setRasterJitter(offsetPx),
     renderProductionCorrectionPhase: (frame, fixScanRepresentative) => view.renderProductionCorrectionPhase(frame, fixScanRepresentative),
+    renderProductionCorrectionPhaseWithRasterJitter: (frame, rasterFrame) => view.renderProductionCorrectionPhaseWithRasterJitter(frame, rasterFrame),
     scanCellSize: () => view.scanCellSize,
     resetMotion: () => motion.reset(),
     moveCamera: (translationPx, rotationPx, orbitPx) => motion.moveCamera(translationPx, rotationPx, orbitPx),

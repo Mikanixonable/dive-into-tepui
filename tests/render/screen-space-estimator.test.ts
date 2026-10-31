@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { bool, float, uint, uniform, vec2, vec3 } from 'three/tsl';
 import {
-  bandCoordinate, bandWeights, facingCosine, sampleBandWeights, SENDER_VIEW_EXPONENT, type BandSplit,
+  bandCoordinate, bandWeights, facingCosine, sampleBandWeights, type BandSplit,
 } from '../../src/render/pipeline/screen-space/band-split';
 import { clipToCircle, projectedRadius, widenedCap } from '../../src/render/pipeline/screen-space/hemisphere-scan';
 import {
@@ -607,7 +607,7 @@ export function register(): void {
     for (const count of [2, 4, 5, 8]) {
       for (const scale of [1 / 8, 1 / 4, 0.25]) {
         for (const rho of [0, 0.01, 1, 3, 8, 40, 128, 700]) {
-          const weights = bandWeights(count, bandCoordinate(float(scale), float(rho), float(1), float(1)), float(64)).map(valueOf);
+          const weights = bandWeights(count, bandCoordinate(float(scale), float(rho), float(1)), float(64)).map(valueOf);
           assert.ok(weights.every((weight) => Number.isFinite(weight) && weight >= 0), `count=${count} rho=${rho} ${weights}`);
           near(weights.reduce((sum, weight) => sum + weight, 0), 1, 1e-9, `count=${count} rho=${rho} 和`);
         }
@@ -652,7 +652,7 @@ export function register(): void {
     for (const count of [2, 4, 5, 8]) {
       let previous = -1;
       for (const rho of [0, 0.01, 1, 3, 8, 40, 128, 700]) {
-        const values = bandWeights(count, bandCoordinate(float(0.19), float(rho), float(1), float(1)), float(64)).map(valueOf);
+        const values = bandWeights(count, bandCoordinate(float(0.19), float(rho), float(1)), float(64)).map(valueOf);
         const index = values.indexOf(Math.max(...values));
         assert.ok(index >= previous, `count=${count} rho=${rho}: ${previous} -> ${index}`);
         previous = index;
@@ -662,55 +662,37 @@ export function register(): void {
 
   test('screen space estimator: 帯が 1 つなら、増分は画面距離によらずすべてその帯へ入る', () => {
     for (const rho of [0, 0.01, 1, 3, 8, 40, 128, 700]) {
-      const coordinate = bandCoordinate(float(1 / 8), float(rho), float(1), float(1));
+      const coordinate = bandCoordinate(float(1 / 8), float(rho), float(1));
       assert.deepStrictEqual(bandWeights(1, coordinate, float(64)).map(valueOf), [1]);
     }
   });
 
-  test('screen space estimator: 受け手・送り手とも視線に正対なら、帯の重みは距離だけの重みと一致する', () => {
+  test('screen space estimator: 受け手が視線に正対なら、帯の重みは距離だけの重みと一致する', () => {
     for (const rho of [1, 8, 40, 700]) {
-      const expected = bandWeights(4, bandCoordinate(float(0.75), float(rho), float(1), float(1)), float(64)).map(valueOf);
-      assert.deepStrictEqual(sampleBandWeights(bandsWith(4, 0.75), float(rho), float(1), float(1), float(64)).map(valueOf), expected);
+      const expected = bandWeights(4, bandCoordinate(float(0.75), float(rho), float(1)), float(64)).map(valueOf);
+      assert.deepStrictEqual(sampleBandWeights(bandsWith(4, 0.75), float(rho), float(1), float(64)).map(valueOf), expected);
     }
   });
 
-  test('screen space estimator: 掛ける因子の 0 は帯 0 を最も重く、割る因子の 0 は最も粗い帯へ寄せ、NaN を作らない', () => {
+  test('screen space estimator: 掛ける因子の 0 は帯 0 を最も重く、NaN を作らない', () => {
     const rho = float(8);
-    const one = float(1);
     const zero = float(0);
     const bands = bandsWith(4, 0.75);
-    const receiverEdge = sampleBandWeights(bands, rho, zero, float(1), float(64)).map(valueOf);
-    const senderEdge = sampleBandWeights(bands, rho, one, float(0), float(64)).map(valueOf);
-    const bothEdge = sampleBandWeights(bands, rho, zero, float(0), float(64)).map(valueOf);
-    for (const weights of [receiverEdge, senderEdge, bothEdge]) {
-      assert.ok(weights.every((weight) => Number.isFinite(weight) && weight >= 0));
-      near(weights.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
-    }
-    assert.strictEqual(receiverEdge.indexOf(Math.max(...receiverEdge)), 0);
-    assert.ok(senderEdge[3]! > 0.99);
+    const weights = sampleBandWeights(bands, rho, zero, float(64)).map(valueOf);
+    assert.ok(weights.every((weight) => Number.isFinite(weight) && weight >= 0));
+    near(weights.reduce((sum, weight) => sum + weight, 0), 1, 1e-12, '帯和');
+    assert.strictEqual(weights.indexOf(Math.max(...weights)), 0);
   });
 
-  test('screen space estimator: 因子 c・d を通した重みは対応する座標の重みと一致する', () => {
+  test('screen space estimator: 因子 c を通した重みは対応する座標の重みと一致する', () => {
     const rho = 40;
     const bands = bandsWith(6, 0.75);
     const base = Math.log2(0.75 * rho);
-    // [cos ε, n_s·v_s, 期待する座標]。座標 = log₂(κρ) + log₂(cos ε) − ½·log₂(n_s·v_s)。
-    for (const [cosine, senderView, expected] of [[1, 1, base], [0.5, 1, base - 1], [0.5, 0.25, base]] as const) {
-      const weights = sampleBandWeights(bands, float(rho), float(cosine), float(senderView), float(64)).map(valueOf);
+    // [cos ε, 期待する座標]。座標 = log₂(κρ) + log₂(cos ε)。
+    for (const [cosine, expected] of [[1, base], [0.5, base - 1]] as const) {
+      const weights = sampleBandWeights(bands, float(rho), float(cosine), float(64)).map(valueOf);
       const expectedWeights = bandWeights(6, float(expected), float(64)).map(valueOf);
       weights.forEach((weight, i) => near(weight, expectedWeights[i]!, 1e-9, `cos ε = ${cosine}, band=${i}`));
-    }
-  });
-
-  test('screen space estimator: 送り手と視線の内積 d は冪 1/2 で割る', () => {
-    assert.strictEqual(SENDER_VIEW_EXPONENT, 0.5);
-    const rho = 2;
-    const bands = bandsWith(4, 0.75);
-    const base = Math.log2(0.75 * rho);
-    for (const [senderView, expected] of [[1, base], [0.25, base + 1]] as const) {
-      const weights = sampleBandWeights(bands, float(rho), float(1), float(senderView), float(64)).map(valueOf);
-      const expectedWeights = bandWeights(4, float(expected), float(64)).map(valueOf);
-      weights.forEach((weight, i) => near(weight, expectedWeights[i]!, 1e-9, `d = ${senderView}, band=${i}`));
     }
   });
 
@@ -767,11 +749,11 @@ export function register(): void {
     for (const rho of [40, 55, 90]) {
       const wall = sampleAt(WALL, bay, rho);
       const split = splitSegments(bay.rays, receiverPoint(bay), float(0), wall, float(rho), bool(true));
-      near(lifted(bay, split.farLower).distanceTo(expected), 0, 1e-9, `rho=${rho} 継ぎ目`);
-      near(lifted(bay, split.nearUpper).distanceTo(expected), 0, 1e-9, `rho=${rho} 受け手の端`);
+      near(lifted(bay, split.farLowerUncapped).distanceTo(expected), 0, 1e-9, `rho=${rho} 継ぎ目`);
+      near(lifted(bay, split.nearUpperUncapped).distanceTo(expected), 0, 1e-9, `rho=${rho} 受け手の端`);
       for (const dither of [0.13, 0.71]) {
         // 床の平面の上の向きは、受け手の半球の縁にある。壁の標本自身は縁より上。
-        const lower = endPosition(bay, wall, split.farLower, dither);
+        const lower = endPosition(bay, wall, split.farLowerUncapped, dither);
         const horizon = Math.min(Math.abs(lower - (dither - 0.5)), Math.abs(lower - (SECTOR_COUNT + dither - 0.5)));
         near(horizon, 0, 1e-6, `rho=${rho} dither=${dither} 下端`);
         const own = endPosition(bay, wall, wall.position, dither);
@@ -834,9 +816,37 @@ export function register(): void {
       const split = splitSegments(bay.rays, sampleAt(BOX_FRONT, bay, ridgeRho - before), float(ridgeRho - before),
         sampleAt(BOX_TOP, bay, ridgeRho + after), float(ridgeRho + after), bool(true));
       const label = `${-before}..${after}`;
-      near(lifted(bay, split.nearUpper).distanceTo(ridge), 0, 1e-9, `${label} 前面の上端`);
-      near(lifted(bay, split.farLower).distanceTo(ridge), 0, 1e-9, `${label} 上面の下端`);
+      near(lifted(bay, split.nearUpperUncapped).distanceTo(ridge), 0, 1e-9, `${label} 前面の上端`);
+      near(lifted(bay, split.farLowerUncapped).distanceTo(ridge), 0, 1e-9, `${label} 上面の下端`);
     }
+  });
+
+  test('screen space estimator: 継ぎ目への延長は、標本と継ぎ目を結ぶ線分の上で頭打ちになり、継ぎ目を越えない', () => {
+    const bay = bayScan();
+    const ridge = intersection(BOX_FRONT, BOX_TOP, bay.slicePlane);
+    const ridgeRho = rhoOf(ridge);
+    // 頭打ちにした境目 capped が、標本 sample と頭打ちにしない境目 uncapped を結ぶ線分の上にあるか。
+    const assertOnSegment = (label: string, capped: Vec2Node, uncapped: Vec2Node, sample: Vec2Node): void => {
+      const p = evaluateShaderNode(capped) as number[];
+      const u = evaluateShaderNode(uncapped) as number[];
+      const s = evaluateShaderNode(sample) as number[];
+      const ps = Math.hypot(p[0]! - s[0]!, p[1]! - s[1]!);
+      const up = Math.hypot(u[0]! - p[0]!, u[1]! - p[1]!);
+      const us = Math.hypot(u[0]! - s[0]!, u[1]! - s[1]!);
+      near(ps + up, us, 1e-9 * us, `${label} 線分上`);
+      assert.ok(ps <= us, `${label} 継ぎ目を越えない: ${ps} <= ${us}`);
+    };
+    for (const rho of [40, 55, 90]) {
+      const wall = sampleAt(WALL, bay, rho);
+      const concave = splitSegments(bay.rays, receiverPoint(bay), float(0), wall, float(rho), bool(true));
+      assertOnSegment(`凹 rho=${rho} near`, concave.nearUpper, concave.nearUpperUncapped, receiverPoint(bay).position);
+      assertOnSegment(`凹 rho=${rho} far`, concave.farLower, concave.farLowerUncapped, wall.position);
+    }
+    const front = sampleAt(BOX_FRONT, bay, ridgeRho - 10);
+    const top = sampleAt(BOX_TOP, bay, ridgeRho + 3);
+    const convex = splitSegments(bay.rays, front, float(ridgeRho - 10), top, float(ridgeRho + 3), bool(true));
+    assertOnSegment('凸 near', convex.nearUpper, convex.nearUpperUncapped, front.position);
+    assertOnSegment('凸 far', convex.farLower, convex.farLowerUncapped, top.position);
   });
 
   test('screen space estimator: 継ぎ目を含む画素を読んだ標本は、画面距離が継ぎ目の先でも手前でも、継ぎ目で継がれる', () => {
@@ -851,8 +861,8 @@ export function register(): void {
     for (const [floor, floorRho, wall, wallRho] of pairs) {
       const split = splitSegments(bay.rays, floor, float(floorRho), wall, float(wallRho), bool(true));
       const label = `${floorRho - seamRho}..${wallRho - seamRho}`;
-      near(lifted(bay, split.nearUpper).distanceTo(seam), 0, 1e-9, `${label} 床の上端`);
-      near(lifted(bay, split.farLower).distanceTo(seam), 0, 1e-9, `${label} 壁の下端`);
+      near(lifted(bay, split.nearUpperUncapped).distanceTo(seam), 0, 1e-9, `${label} 床の上端`);
+      near(lifted(bay, split.farLowerUncapped).distanceTo(seam), 0, 1e-9, `${label} 壁の下端`);
     }
   });
 
@@ -1000,7 +1010,7 @@ export function register(): void {
         for (const dither of [0.13, 0.71]) {
           // 床と壁の交線は受け手の画素の中にあり、壁の切片は走査の側の床の地平(半球の上の縁)から始まる。
           const label = `rho=${rho} shift=${shift} dither=${dither}`;
-          const lower = endPosition(bay, wall, split.farLower, dither);
+          const lower = endPosition(bay, wall, split.farLowerUncapped, dither);
           near(lower, SECTOR_COUNT + dither - 0.5, 1e-6, `${label} 下端`);
           const own = endPosition(bay, wall, wall.position, dither);
           assert.ok(Math.abs(own - lower) > 1e-3, `${label} 標本 ${own}`);

@@ -1,6 +1,6 @@
-// 補正の増分(照り返し − 塞がれた照度)を、標本の画面距離と向きから帯へ分ける。帯の座標は log₂(κ·ρ·cos ε ÷ √(n_s·v_s))
+// 補正の増分(照り返し − 塞がれた照度)を、標本の画面距離と向きから帯へ分ける。帯の座標は log₂(κ·ρ·cos ε)
 // で、照り返しにも遮蔽にも同じ。照り返しには、交線の像を越える帯へ天井を置く。
-import { clamp, dot, exp2, float, length, log2, max, min, pow, select, vec2, vec4 } from 'three/tsl';
+import { clamp, dot, exp2, float, length, log2, max, min, select, vec2, vec4 } from 'three/tsl';
 import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node } from '../../tsl-types';
 
 // 補正を遮りの画面距離 ρ [走査の画素] と向きで分ける帯。count は帯の数(1 なら分けない)で、帯 b は座標 b を受け持つ。
@@ -9,12 +9,6 @@ export interface BandSplit {
   readonly count: number;
   readonly scale: FloatNode;
 }
-
-// 送り手の法線と送り手→カメラの内積 n_s·v_s を割る因子 d の冪。画面に側面を向ける送り手は踏まれにくく、切片を交点まで
-// 延ばす方式で大きく数えられて疎な輝点になるので、大きな帯で均す。冪は f(0) = 0・f(1) = 1 を保ち、側面を最も粗い帯へ送る。
-// tools/screen-space-chain-factors.mjs の FIXED_FACTORS が撮影の条件に写しを持つ。
-// 一時: 手順22 の段 A・C は d を切る(本来 0.5)。帯の天井と κ は d 0 で決めたので、d を戻すときは振り直す(計画書「段 A の引き継ぎ」)。
-export const SENDER_VIEW_EXPONENT = 0;
 
 // 帯の天井(bandCeiling)の形。CEILING_DEPTH は天井が最も下がるときの深さ D [帯]、CEILING_CENTER は天井が最も下がる ρ ÷ ℓ_L の比 R、
 // CEILING_FLOOR は天井の下限 F [帯](根元の近くでも帯 F の半径までは均し、漏れをその幅に留める)。κ(BandSplit の scale)と組で決めた値
@@ -76,23 +70,14 @@ function receiverViewMultiplier(cosine: FloatNode): FloatNode {
   return max(cosine, COORDINATE_FLOOR);
 }
 
-// 因子 d。0 は最も粗い帯へ頭打ちになるだけで安全。pow に渡す前の下限は NaN を避けるため。
-function senderViewDivisor(senderView: FloatNode): FloatNode {
-  return pow(max(senderView, COORDINATE_FLOOR), SENDER_VIEW_EXPONENT);
-}
-
-// 帯の座標 log₂(κ·ρ·multiply / divide)。帯 b の山は座標 b にあり、帯の範囲へは寄せない。
+// 帯の座標 log₂(κ·ρ·multiply)。帯 b の山は座標 b にあり、帯の範囲へは寄せない。
 // **掛ける因子の区別に注意**
 // - 標本(送り手)ごとに変わる掛ける因子は、0 へ近づくと踏まれにくく値の大きい標本だけを帯 0(均さない帯)へ落として
 //   輝点にする。掛けるなら弱めて下限を持たせること。
 // - 受け手ごとに一定の掛ける因子(c)は、その受け手の寄与をまとめて細かい帯へ移すだけで、受け手が画面上で狭く写る
 //   という本当の尺度を表す。弱めない。
-// - 割る因子は最も粗い帯への頭打ちで済むので安全。
-export function bandCoordinate(
-  scale: FloatNode, rho: FloatNode, multiply: FloatNode, divide: FloatNode,
-): FloatNode {
-  const wavelength = log2(max(scale.mul(rho).mul(multiply), COORDINATE_FLOOR));
-  return wavelength.sub(log2(max(divide, COORDINATE_FLOOR)));
+export function bandCoordinate(scale: FloatNode, rho: FloatNode, multiply: FloatNode): FloatNode {
+  return log2(max(scale.mul(rho).mul(multiply), COORDINATE_FLOOR));
 }
 
 // 帯の座標 coordinate の増分を帯へ分ける重み。0 以上で和は 1(1 帯なら重み 1)。帯 b は、線形の距離で山 d_b を頂点に 0〜2d_b に張った
@@ -114,10 +99,14 @@ export function bandWeights(count: number, coordinate: FloatNode, ceiling: Float
   return peaks.map((peak) => peak.div(total));
 }
 
-// 画面距離 rho の標本の、補正の増分の帯ごとの重み。receiverView は受け手の法線と受け手→カメラの内積 cos ε、senderView は
-// 標本(送り手)の法線と送り手→カメラの内積 n_s·v_s(どちらも facingCosine)。
+// 天井が許す最も粗い帯へ寄与を送る。
+export function coarsestBandWeights(bands: BandSplit, ceiling: FloatNode): FloatNode[] {
+  return bandWeights(bands.count, float(NO_CEILING), ceiling);
+}
+
+// 画面距離 rho の標本の、補正の増分の帯ごとの重み。receiverView は受け手の法線と受け手→カメラの内積 cos ε。
 export function sampleBandWeights(
-  bands: BandSplit, rho: FloatNode, receiverView: FloatNode, senderView: FloatNode, ceiling: FloatNode,
+  bands: BandSplit, rho: FloatNode, receiverView: FloatNode, ceiling: FloatNode,
 ): FloatNode[] {
   // 試して保留した因子(8-15。再開は計画書の Backlog)。
   // a = cos θ(送り手の法線 · 送り手→受け手)を掛ける。送り手の地平による空間波長の異方性で、源の地平に沿うハードエッジの芯を
@@ -126,7 +115,6 @@ export function sampleBandWeights(
   // b = cos φ(受け手の法線 · 受け手→送り手)で割る。a で狭まった波長を受け手の側で広げる。a を採るときだけ要る。
   //   const receiverFacing = pow(max(cosPhi, COORDINATE_FLOOR), s);
   // 色ムラをどこまで均せるかを手順12(時間方向の蓄積)以降に決めてから、a を採るかを決める。
-  const coordinate = bandCoordinate(
-    bands.scale, rho, receiverViewMultiplier(receiverView), senderViewDivisor(senderView));
+  const coordinate = bandCoordinate(bands.scale, rho, receiverViewMultiplier(receiverView));
   return bandWeights(bands.count, coordinate, ceiling);
 }

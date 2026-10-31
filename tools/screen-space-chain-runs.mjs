@@ -67,3 +67,26 @@ export function escapeHtml(value) {
   return String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
+
+// 走査の画素ごとの輪郭(1)の地図 — 4 近傍のどれかが面でないか、素の深度が相対で 5% 超ずれる画素。深度は reversed-z なので
+// 素の深度 ≈ near ÷ 奥行きで、相対の段差は view 空間の奥行きの相対の段差とほぼ同じ。
+export function contourMaskOf(scanSurface) {
+  const mask = new Uint8Array(SCAN_PIXELS);
+  for (let y = 0; y < SCAN_HEIGHT; y++) for (let x = 0; x < SCAN_WIDTH; x++) {
+    const p = y * SCAN_WIDTH + x, depth = scanSurface[p * 4 + 2];
+    for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+      if (nx < 0 || nx >= SCAN_WIDTH || ny < 0 || ny >= SCAN_HEIGHT) { mask[p] = 1; break; }
+      const neighbor = scanSurface[(ny * SCAN_WIDTH + nx) * 4 + 2];
+      if ((depth > 0) !== (neighbor > 0) || (depth > 0 && neighbor > 0 && Math.abs(depth - neighbor) / Math.min(depth, neighbor) > 0.05)) {
+        mask[p] = 1; break;
+      }
+    }
+  }
+  return mask;
+}
+
+export function maskPng(mask) {
+  const rgb = new Uint8Array(SCAN_PIXELS * 3);
+  for (let p = 0; p < SCAN_PIXELS; p++) rgb.fill(mask[p] ? 255 : 0, p * 3, p * 3 + 3);
+  return encodeRgbPng(SCAN_WIDTH, SCAN_HEIGHT, rgb);
+}
