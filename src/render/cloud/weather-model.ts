@@ -3,7 +3,7 @@
 import { abs, clamp, cos, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
-import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
+import { AtmosphericWindField, SURFACE_HEIGHT } from './atmospheric-wind';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
@@ -221,24 +221,31 @@ export class WeatherModel {
     // 風: 局所的な気圧風へ、大循環の背景風(地表付近/上層)とロスビー波を重ねる。
     const rossby = this.rossbyWave.perturbationAt(direction, this.surfaceRadius);
     const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
-    const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
     const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
-    const upperBackground = east.mul(upperMean.x).add(north.mul(upperMean.y)).add(rossby);
-    const surfaceWind = composeWind(balancedWind(
+    const surfaceLocal = balancedWind(
       gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
       this.surfaceRadius, this.rotationPeriod,
-    ), surfaceBackground);
-    const convectionWind = composeWind(balancedWind(
+    );
+    const convectionLocal = balancedWind(
       gradient, isobar, bend, latitude, CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT,
       this.surfaceRadius, this.rotationPeriod,
-    ), surfaceBackground);
-    const upperWind = composeWind(balancedWind(
+    );
+    const upperLocal = balancedWind(
       gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
       this.surfaceRadius, this.rotationPeriod,
-    ), upperBackground);
+    );
+    const surfaceWind = composeWind(surfaceLocal, surfaceBackground);
 
-    // 風で流した湿度・対流と、前線を強める湿度の勾配。
-    const advected = this.transport.advectedAt(direction, surfaceWind, upperWind, convectionWind);
+    // 風で流した湿度・対流と、前線を強める湿度の勾配。移流の遡りは、大循環の平均風からの
+    // 偏差(局所の釣り合い風とロスビー波の摂動)で取る — 源の模様の平行移動は、写しを焼く
+    // 循環が平均風で既に担っている。平均風まで遡りに含めると両者が打ち消し合い、模様は
+    // 周期の中で混ざり合うだけで流れも形の変化も鈍る。
+    const advected = this.transport.advectedAt(
+      direction,
+      composeWind(surfaceLocal, rossby),
+      composeWind(upperLocal, rossby),
+      composeWind(convectionLocal, rossby),
+    );
     const moistureGradient = this.moistureGradientAt(direction, east, north);
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
