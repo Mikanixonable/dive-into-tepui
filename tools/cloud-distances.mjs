@@ -109,6 +109,37 @@ function motionConsistencyDistance(drift) {
   return mean(terms);
 }
 
+// 実物の動きと生成の動きの距離。箱ごとに、相関曲線の差(時刻 0 を除く各時刻の |Δ相関| の
+// 平均)と、移流ベクトルの差(向きの差と速さ比)を項とする。移流は生成の composite 対 実物
+// 赤外で比べる(被覆率は参考値で、距離には入れない)。片方の速さだけが 0 のとき、向きの差
+// と速さ比はどちらも「最も違う」として 1 とする。
+function motionReferenceDistance(referenceMotion) {
+  const terms = [];
+  for (const box of referenceMotion.boxes) {
+    const reference = box.reference;
+    const generated = box.generated.composite;
+    let corrDiff = 0;
+    let count = 0;
+    for (let i = 1; i < reference.correlations.length; i++) {
+      corrDiff += Math.abs(reference.correlations[i] - generated.correlations[i]);
+      count++;
+    }
+    terms.push(count > 0 ? corrDiff / count : 0);
+    const refSpeed = reference.drift.driftSpeedMs;
+    const genSpeed = generated.drift.driftSpeedMs;
+    const dot = reference.drift.driftMs.east * generated.drift.driftMs.east
+      + reference.drift.driftMs.north * generated.drift.driftMs.north;
+    const angleTerm = refSpeed > 0 && genSpeed > 0
+      ? Math.acos(Math.min(1, Math.max(-1, dot / (refSpeed * genSpeed)))) / Math.PI
+      : (refSpeed === 0 && genSpeed === 0 ? 0 : 1);
+    const speedTerm = refSpeed > 0 && genSpeed > 0
+      ? Math.abs(Math.log2(genSpeed / refSpeed))
+      : (refSpeed === genSpeed ? 0 : 1);
+    terms.push((angleTerm + speedTerm) / 2);
+  }
+  return mean(terms);
+}
+
 // sections を受けて、家族ごとの距離と追跡用の index を返す。節が欠けているレポート
 // (古い版) では、その家族は 0 でなく「測れない」として落とし、index の平均からも除く。
 export function computeDistances(sections) {
@@ -124,5 +155,8 @@ export function computeDistances(sections) {
   if (sections.terrain) families.terrain = terrainDistance(sections.terrain);
   if (sections.capMeans) families.capMeans = capMeansDistance(sections.capMeans);
   if (sections.motion?.drift) families.motionConsistency = motionConsistencyDistance(sections.motion.drift);
+  if (sections.referenceMotion?.boxes?.length) {
+    families.motionReference = motionReferenceDistance(sections.referenceMotion);
+  }
   return { families, index: mean(Object.values(families)) };
 }
