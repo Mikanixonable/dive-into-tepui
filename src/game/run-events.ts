@@ -258,6 +258,8 @@ export class RunEventLog implements RunEventSink {
 
   // 起きたことを1件、次の通し番号を付けて積む。
   public record(body: RunEventBody): void {
+    // TEMP-DEBUG: イベントの発生頻度を計測するための一時ログ。調査後に外す。
+    console.debug('[run-event]', body.kind, JSON.stringify(body).slice(0, 200));
     this.events.push({ seq: this.nextSeq++, body });
   }
 }
