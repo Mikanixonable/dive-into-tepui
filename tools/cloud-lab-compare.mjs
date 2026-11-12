@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { componentStats } from './cloud-components.mjs';
+import { computeDistances } from './cloud-distances.mjs';
 import { bestShift, centroidOffset, crossingTime } from './cloud-motion.mjs';
 import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
 import { cropField, cropLatLonBox, decodeChannelPng, decodeRedPng, fieldToGrayPng } from './gray-image.mjs';
@@ -1301,6 +1302,15 @@ async function main() {
     cyclone: { track, translationKmh, centerOffsets },
   };
 
+  // 家族ごとの距離。sections だけから同じ定義で計算できる (過去のレポートへも後から
+  // 適用できる) ので、レポートには結果だけを載せる。
+  report.distances = computeDistances(report.sections);
+  console.log('\n=== 実写との距離(特徴量の家族ごと、0 が一致) ===');
+  for (const [family, value] of Object.entries(report.distances.families)) {
+    console.log(`${family.padEnd(18)} ${value.toFixed(3)}`);
+  }
+  console.log(`${'index (家族の平均)'.padEnd(18)} ${report.distances.index.toFixed(3)}`);
+
   // レポートを履歴へ残す。ファイル名は生成時刻と HEAD で一意にし、過去分は消さない
   // (webpack の保持対象に .cloud-lab/history を加えてある — webpack.cloud-lab.config.js)。
   // 書く前に直近のレポートとの差分を出す — 変更 → 計測 → 何が動いたか、の輪の出口。
@@ -1331,6 +1341,39 @@ async function main() {
       console.log(diffs.changed.length === 0
         ? `変わった数値なし(比較した数値 ${diffs.compared}、前回: ${previousName})`
         : `変わった数値 ${diffs.changed.length} / ${diffs.compared}(前回: ${previousName})`);
+    }
+  }
+
+  // 距離の前後判定。前回の距離は保存値でなく sections から同じ定義で計算し直す —
+  // 距離の定義を変えても履歴と比較できるようにするため。変化が相対 5% 以内なら横ばい
+  // とする (計測は決定的だが、実行環境の浮動小数の揺れを悪化と誤判定しないための幅)。
+  if (previousName !== undefined) {
+    let prior = null;
+    try {
+      prior = JSON.parse(readFileSync(path.join(historyDir, previousName), 'utf8'));
+    } catch {
+      prior = null;
+    }
+    if (prior?.sections) {
+      const before = computeDistances(prior.sections);
+      let improved = 0;
+      let worsened = 0;
+      let unchanged = 0;
+      console.log('\n=== 距離の変化(前回比、相対 5% 以内は横ばい) ===');
+      for (const [family, after] of Object.entries(report.distances.families)) {
+        const priorValue = before.families[family];
+        if (priorValue === undefined) {
+          console.log(`${family.padEnd(18)} (前回は未計測) → ${after.toFixed(3)}`);
+          continue;
+        }
+        const relative = priorValue > 0 ? (after - priorValue) / priorValue : (after > 0 ? Infinity : 0);
+        const verdict = relative < -0.05 ? '改善' : relative > 0.05 ? '悪化' : '横ばい';
+        if (verdict === '改善') improved++;
+        else if (verdict === '悪化') worsened++;
+        else unchanged++;
+        console.log(`${family.padEnd(18)} ${priorValue.toFixed(3)} → ${after.toFixed(3)}  ${verdict}`);
+      }
+      console.log(`改善 ${improved} / 悪化 ${worsened} / 横ばい ${unchanged}(index: ${before.index.toFixed(3)} → ${report.distances.index.toFixed(3)})`);
     }
   }
 }
