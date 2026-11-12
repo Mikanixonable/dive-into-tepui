@@ -698,6 +698,43 @@ function gitHead() {
   }
 }
 
+// 2 つの時刻の場の移流。bestShift のずらし [texel] を [m/s] へ換算し、渡された平均風
+// (null なら風との比較をしない)との向きの差と速さ比を添える。箱の実物の動きと生成の動きを
+// 同じ定義で測るためのもので、全球面の帯の移流は従来どおり main の中で測る。
+function driftOf(a, b, lagHours, kmPerTexelX, kmPerTexelY, wind) {
+  const shift = bestShift(a, b, DRIFT_MAX_DX, DRIFT_MAX_DY);
+  const driftEast = (shift.dx * kmPerTexelX * 1000) / (lagHours * 3600);
+  const driftNorth = (-shift.dy * kmPerTexelY * 1000) / (lagHours * 3600);
+  const driftSpeed = Math.hypot(driftEast, driftNorth);
+  if (wind === null) {
+    return {
+      shiftTexels: [shift.dx, shift.dy],
+      correlation: shift.correlation,
+      driftMs: { east: driftEast, north: driftNorth },
+      driftSpeedMs: driftSpeed,
+      windMs: null,
+      windSpeedMs: null,
+      angleDeg: null,
+      speedRatio: null,
+    };
+  }
+  const windSpeed = Math.hypot(wind.east, wind.north);
+  const angleDeg = driftSpeed > 0 && windSpeed > 0
+    ? (Math.acos(Math.min(1, Math.max(-1, (driftEast * wind.east + driftNorth * wind.north)
+      / (driftSpeed * windSpeed)))) * 180) / Math.PI
+    : null;
+  return {
+    shiftTexels: [shift.dx, shift.dy],
+    correlation: shift.correlation,
+    driftMs: { east: driftEast, north: driftNorth },
+    driftSpeedMs: driftSpeed,
+    windMs: wind,
+    windSpeedMs: windSpeed,
+    angleDeg,
+    speedRatio: windSpeed > 0 ? driftSpeed / windSpeed : null,
+  };
+}
+
 // sRGB の 8bit 値 → 線形の 0..1。
 function linearOf(srgb) {
   const c = srgb / 255;
@@ -732,8 +769,10 @@ async function main() {
   // 時刻 0 の低気圧の谷の配置(緯度・経度 [rad]、深さ [hPa]、半径 [m])。ページの進路モジュールから引く。
   let cyclonesAtZero;
   // 動きの計測用の追加撮影の受け皿。全球の被覆率の時系列と、熱帯低気圧の解析配置の時系列、
-  // 解析中心へ合わせた cap の被覆率。
+  // 解析中心へ合わせた cap の被覆率。合成ビューも同じ時刻で撮る — 実物は衛星の見た輝度なので、
+  // 被覆率ではなく描画そのものの輝度と比べる。
   let motionCoverage;
+  let motionComposite;
   let cycloneTrack;
   let cycloneCenters;
   try {
@@ -775,8 +814,19 @@ async function main() {
       motionCoverage.set(hours, cropField(decodeRedPng(png), 0, 0, GLOBE_W, HEIGHT));
       console.log(`shot motion coverage at ${hours} h`);
     }
+    motionComposite = new Map();
+    await devTools.evaluate("window.cloudLab.show('composite')");
+    for (const hours of MOTION_SAMPLE_HOURS) {
+      await devTools.evaluate(`window.cloudLab.setTime(${hours})`);
+      const dataUrl = await devTools.evaluate('window.cloudLab.capture()');
+      const png = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
+      motionComposite.set(hours, cropField(decodeRedPng(png), 0, 0, GLOBE_W, HEIGHT));
+      console.log(`shot motion composite at ${hours} h`);
+    }
     cycloneTrack = JSON.parse(await devTools.evaluate(
       `JSON.stringify([${TRACK_SAMPLE_HOURS.join(',')}].map((hours) => ({ hours, ...window.cloudLab.cyclonesAt(hours) })))`));
+    // 中心のずれは被覆率の重心で測るので、ビューを coverage へ戻す(composite の撮影の後)。
+    await devTools.evaluate("window.cloudLab.show('coverage')");
     cycloneCenters = new Map();
     const capBoxX = GLOBE_W + (CAP_W - CAP_BOX) / 2;
     const capBoxY = (HEIGHT - CAP_BOX) / 2;
@@ -1301,6 +1351,104 @@ async function main() {
     drift,
     cyclone: { track, translationKmh, centerOffsets },
   };
+
+  console.log('\n=== 実物の動き: ひまわり赤外の時系列と生成の同じ箱・同じ時刻刻み ===');
+  const timeseriesManifest = path.join(buildDir, 'reference-timeseries', 'manifest.json');
+  if (!existsSync(timeseriesManifest)) {
+    console.log('.cloud-lab/reference-timeseries/manifest.json が無い — npm run cloud-lab:reference-timeseries で取り込む');
+  } else {
+    const manifest = JSON.parse(readFileSync(timeseriesManifest, 'utf8'));
+    if (JSON.stringify(manifest.sampleHours) !== JSON.stringify(MOTION_SAMPLE_HOURS)) {
+      throw new Error(`manifest の sampleHours(${manifest.sampleHours})が MOTION_SAMPLE_HOURS(${MOTION_SAMPLE_HOURS})と違う`);
+    }
+    // 箱の実物フレームを輝度へ直し、生成側の箱の格子へ載せ替える。実物フレームは箱そのもの
+    // なので、全球面用の resampleEquirect ではなく度数から sampleBilinear で引く。
+    // 載せ替えた場は .cloud-lab/compare/ へ残す。
+    const referenceBoxAt = (box, hours) => {
+      const frame = manifest.frames.find((entry) => entry.box === box.name && entry.hours === hours);
+      if (!frame) throw new Error(`manifest に ${box.name} ${hours}h のフレームが無い`);
+      const luminance = decodeLuminancePng(readFileSync(path.join(root, frame.file)));
+      const size = cropLatLonBox(globe.coverage, box.north, box.south, box.west, box.east);
+      const out = new Float32Array(size.width * size.height);
+      for (let y = 0; y < size.height; y++) {
+        const latitude = box.north - ((y + 0.5) / size.height) * (box.north - box.south);
+        for (let x = 0; x < size.width; x++) {
+          const longitude = box.west + ((x + 0.5) / size.width) * (box.east - box.west);
+          const u = ((longitude - box.west) / (box.east - box.west)) * luminance.width - 0.5;
+          const v = ((box.north - latitude) / (box.north - box.south)) * luminance.height - 0.5;
+          out[y * size.width + x] = sampleBilinear(luminance, u, v);
+        }
+      }
+      const field = { width: size.width, height: size.height, data: out };
+      saveGray(`reference-motion-${box.name}-${hours}h.png`, field);
+      return field;
+    };
+    // 箱の地表風の平均 [m/s]。成分 = (値 − 0.5) × 2 × WIND_SPAN。
+    const windMeanOf = (box) => {
+      const east = cropLatLonBox(windEast, box.north, box.south, box.west, box.east);
+      const north = cropLatLonBox(windNorth, box.north, box.south, box.west, box.east);
+      let u = 0;
+      let v = 0;
+      for (let i = 0; i < east.data.length; i++) {
+        u += (east.data[i] - 0.5) * 2 * WIND_SPAN;
+        v += (north.data[i] - 0.5) * 2 * WIND_SPAN;
+      }
+      return { east: u / east.data.length, north: v / north.data.length };
+    };
+    const motionOf = (box, fields, wind) => {
+      const correlationsAt = MOTION_SAMPLE_HOURS.map((hours, index) => correlation(fields[0], fields[index]));
+      const kmPerTexelX = GLOBE_KM_PER_PX * Math.cos((((box.north + box.south) / 2) * Math.PI) / 180);
+      return {
+        correlations: correlationsAt,
+        tauHours: crossingTime(MOTION_SAMPLE_HOURS, correlationsAt, 1 / Math.E),
+        drift: driftOf(fields[0], fields[MOTION_SAMPLE_HOURS.indexOf(DRIFT_LAG_HOURS)], DRIFT_LAG_HOURS,
+          kmPerTexelX, GLOBE_KM_PER_PX, wind),
+      };
+    };
+    const printMotionRow = (label, motion) => {
+      console.log(`${label.padEnd(10)}  ${motion.correlations.map((value) => value.toFixed(3).padStart(7)).join('')}`
+        + `   ${motion.tauHours === null ? '  -  ' : `${motion.tauHours.toFixed(1).padStart(5)} h`}`);
+    };
+    const referenceMotionBoxes = [];
+    for (const box of manifest.boxes) {
+      const wind = windMeanOf(box);
+      const fieldAt = (source) => MOTION_SAMPLE_HOURS.map((hours) => source(hours));
+      const reference = motionOf(box,
+        fieldAt((hours) => referenceBoxAt(box, hours)), wind);
+      const composite = motionOf(box,
+        fieldAt((hours) => cropLatLonBox(motionComposite.get(hours), box.north, box.south, box.west, box.east)), wind);
+      const coverage = motionOf(box,
+        fieldAt((hours) => cropLatLonBox(motionCoverage.get(hours), box.north, box.south, box.west, box.east)), wind);
+      console.log(`--- ${box.label} ---`);
+      console.log(`時刻 [h]  ${MOTION_SAMPLE_HOURS.map((hours) => String(hours).padStart(7)).join('')}   1/e を切る時刻`);
+      printMotionRow('実物赤外', reference);
+      printMotionRow('生成合成', composite);
+      printMotionRow('生成被覆率', coverage);
+      const printDrift = (label, motion) => console.log(
+        `${label.padEnd(10)}  移流 東 ${motion.drift.driftMs.east.toFixed(1).padStart(5)} / 北 `
+        + `${motion.drift.driftMs.north.toFixed(1).padStart(5)} m/s`
+        + `  ずらし ${String(motion.drift.shiftTexels[0]).padStart(3)},${String(motion.drift.shiftTexels[1]).padStart(2)}`
+        + `  相関 ${motion.drift.correlation.toFixed(3)}`
+        + `  風との向きの差 ${motion.drift.angleDeg === null ? ' - ' : `${motion.drift.angleDeg.toFixed(0).padStart(3)}°`}`
+        + `  速さ比 ${motion.drift.speedRatio === null ? '-' : motion.drift.speedRatio.toFixed(2)}`);
+      console.log(`8 h の移流(モデルの風 東 ${wind.east.toFixed(1)} / 北 ${wind.north.toFixed(1)} m/s との比較):`);
+      printDrift('実物赤外', reference);
+      printDrift('生成合成', composite);
+      printDrift('生成被覆率', coverage);
+      referenceMotionBoxes.push({
+        box: box.name, label: box.label,
+        sampleHours: MOTION_SAMPLE_HOURS,
+        driftLagHours: DRIFT_LAG_HOURS,
+        windMs: wind,
+        reference, generated: { composite, coverage },
+      });
+    }
+    report.sections.referenceMotion = {
+      startUtc: manifest.startUtc,
+      layer: manifest.layer,
+      boxes: referenceMotionBoxes,
+    };
+  }
 
   // 家族ごとの距離。sections だけから同じ定義で計算できる (過去のレポートへも後から
   // 適用できる) ので、レポートには結果だけを載せる。
