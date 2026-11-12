@@ -55,7 +55,11 @@ function buildTimeSlider(
 
 // 器を起こし、操作部品を配線し、撮影の入口を window へ出す。
 async function init(): Promise<void> {
-  const canvas = await CloudLabCanvas.create(document.getElementById('view') as HTMLCanvasElement);
+  // 撮影の駆動(tools/cloud-lab-*.mjs)は ?capture-only を付けて開く — 画面へ提示しない撮影専用
+  // (理由は lab.ts の render())。人が開くときは付けないので、画面はこれまでどおり出る。
+  const captureOnly = new URLSearchParams(location.search).has('capture-only');
+  const canvas = await CloudLabCanvas.create(
+    document.getElementById('view') as HTMLCanvasElement, captureOnly);
 
   const entries = CLOUD_LAB_VIEWS.map((view) => [view.id, view.label] as const);
   const markView = buildButtonRow<CloudLabViewId>('views', entries, (id) => {
