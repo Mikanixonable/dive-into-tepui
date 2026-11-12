@@ -1,5 +1,4 @@
-// ブースターの段構成・燃焼状態を表示する常設パネル。ゲーム側で作った表示用の
-// スナップショットを sync する。操作は各 module のプロパティウィンドウから行う。
+// ブースターの段構成・燃焼状態と、各段の状態を示す常設パネル。
 import { Meter } from '../../../hud/widgets';
 import { FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO, fuelAlarmLevel } from '../../alarm/alarm-level';
 import type { HudEls } from '../hud-els';
@@ -16,7 +15,6 @@ export interface BurnManagementViewModel {
   readonly activeFuelMax: number;
   /** 燃焼状態。UIへそのまま表示できる日本語ラベルでもよい。 */
   readonly burnState: string;
-  /** 点火中なら true。点火ボタンの pressed 表示に使う。 */
   /** 状態の aria-label に使う短い説明。 */
   readonly burnStateDescription?: string;
   readonly modules: readonly {
@@ -52,6 +50,7 @@ function formatFuel(value: number, max: number): string {
 
 // 燃焼状態の内部識別子を日本語表示名へマッピングする。未知の状態はそのまま返す。
 function stateLabel(state: string): string {
+  // 燃料切れは由来の異なる状態名でも同じ表示語に揃える。
   const labels: Record<string, string> = {
     idle: '待機',
     ready: '点火待機',
@@ -73,6 +72,7 @@ export class BurnManagementPanel {
 
   // 表示要素を els から取り出し、燃料バーを Meter ウィジェットで組み込む。
   public constructor(private readonly els: HudEls) {
+    // 燃料警報の境界と表示モデルを同じ Meter に結びつける。
     const fuelMeter = new Meter('最後尾ブースター燃料');
     fuelMeter.setMarks(FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO);
     this.els.get('burn-active-fuel-meter').appendChild(fuelMeter.element);
@@ -91,6 +91,7 @@ export class BurnManagementPanel {
     const panel = this.els.get('burn-management-panel');
     panel.classList.toggle('hidden', view === null);
     if (!view) {
+      // 空の表示モデルでは、段一覧も空として扱う。
       this.dom.moduleList.replaceChildren();
       return;
     }
@@ -99,6 +100,7 @@ export class BurnManagementPanel {
     const activeFuel = finiteNonNegative(view.activeFuel);
     const activeFuelMax = finiteNonNegative(view.activeFuelMax);
     const fuelText = formatFuel(activeFuel, activeFuelMax);
+    // 燃料残量を燃焼状態より優先し、残量がなければ燃料切れを示す。
     const state = activeFuelMax <= 0 || activeFuel <= 0 ? 'fuel-empty' : view.burnState;
 
     this.dom.stageCount.textContent = `${stageCount} 個`;
@@ -108,6 +110,7 @@ export class BurnManagementPanel {
     this.dom.burnState.textContent = stateLabel(state);
     this.dom.burnState.setAttribute('aria-label', view.burnStateDescription ?? stateLabel(state));
 
+    // 各段は種類と現在状態を対にして表示する。
     const rows = view.modules.map((module) => {
       const row = document.createElement('div');
       row.className = 'row metric';
