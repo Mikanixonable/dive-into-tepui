@@ -92,6 +92,7 @@
     "cloud-lab:compare": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-compare.mjs",
     "cloud-lab:separate": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-separate.mjs",
     "cloud-lab:reference": "node tools/cloud-lab-reference.mjs",
+    "cloud-lab:reference-timeseries": "node tools/cloud-lab-reference-timeseries.mjs",
     "verify:hud-layout": "node tools/verify-hud-layout.mjs",
     "smoke:layout": "node tools/layout-smoke-retry.mjs"
   },
