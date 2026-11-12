@@ -42,7 +42,12 @@ function packRgb(fields) {
 async function main() {
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
-    serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-cloud-separate-', onEvent,
+    serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-cloud-separate-',
+    // 8k 全面のパイプラインと読み出しは、ソフトウェア WebGPU では 1 枚の撮影が既定の 60 秒を
+    // 超える(実測: 初回の撮影 ≈ 66 秒 — 初期のパイプラインの滞留分を含む)。この駆動だけ
+    // 上限を 10 分へ延ばす。
+    requestTimeoutMs: 600_000,
+    onEvent,
   });
   try {
     const { devTools } = session;
