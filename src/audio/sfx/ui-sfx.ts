@@ -23,6 +23,8 @@ export class UiSfx {
     for (const cue of cues) {
       if (cue.id <= this.lastCueId) continue;
       this.lastCueId = cue.id;
+      // TEMP-DEBUG: UI 音の発生を観測するための一時ログ。調査後に外す。
+      console.debug('[ui-sfx]', cue.sound);
       this.play(cue.sound);
     }
   }
