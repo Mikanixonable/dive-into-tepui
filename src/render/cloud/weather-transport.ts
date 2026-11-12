@@ -37,6 +37,11 @@ const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 64, amplitude: 0.23 }, // 100 km
 ];
 
+// エポックの混ぜ替えに参加する段の周波数の上限 [1 rad あたりの山数]。地表付近は 400 km 以上、
+// 上層は 800 km 以上の段だけがその場で入れ替わり、それより細い段は模様の平行移動の足場として残る。
+const SURFACE_HUMIDITY_EPOCH_MAX_FREQUENCY = 16;
+const UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY = 8;
+
 // 場の振れ幅。CirculatingNoiseが段の振幅の総和で割って返すので、段数を変えてもここは動かない。
 export const SURFACE_HUMIDITY_BASE = 0.405;
 const UPPER_HUMIDITY_BASE = 0.42;
@@ -77,9 +82,11 @@ export class WeatherTransport {
     private readonly surfaceRadius: number,
   ) {
     const texel = projection.texelAngle;
-    this.surfaceHumidityNoise = new CirculatingNoise(surfaceCirculation, SURFACE_HUMIDITY_NOISE, texel);
+    this.surfaceHumidityNoise = new CirculatingNoise(
+      surfaceCirculation, SURFACE_HUMIDITY_NOISE, texel, SURFACE_HUMIDITY_EPOCH_MAX_FREQUENCY);
     this.convectionNoise = new CirculatingNoise(surfaceCirculation, CONVECTION_NOISE, texel);
-    this.upperHumidityNoise = new CirculatingNoise(upperCirculation, UPPER_HUMIDITY_NOISE, texel);
+    this.upperHumidityNoise = new CirculatingNoise(
+      upperCirculation, UPPER_HUMIDITY_NOISE, texel, UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY);
     this.humiditySource = new BakedField(
       'humiditySource', THREE.RGFormat, projection,
       (direction) => vec4(this.humiditySourceAt(direction), 0, 1),
@@ -94,6 +101,8 @@ export class WeatherTransport {
   public syncTime(seconds: number): void {
     const cycle = (seconds / ADVECTION_PERIOD) % 1;
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
+    this.surfaceHumidityNoise.syncTime(seconds);
+    this.upperHumidityNoise.syncTime(seconds);
   }
 
   // 移流前の場をテクスチャへレンダリングする。advectedAt() と surfaceHumidityAt() のグラフを描く前に呼ぶ。
