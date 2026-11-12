@@ -15,6 +15,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { componentStats } from './cloud-components.mjs';
+import { bestShift, centroidOffset, crossingTime } from './cloud-motion.mjs';
 import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
 import { cropField, cropLatLonBox, decodeChannelPng, decodeRedPng, fieldToGrayPng } from './gray-image.mjs';
 import { decodePng } from './png.mjs';
@@ -88,6 +89,21 @@ const CONTRAST_WINDOW = 5;
 // 雲の塊と見なす値のしきい。階調の刻み(TONE_LEVELS)の 1 つで、のっぺり判定の区間の上限でも
 // ある — 中間調より上を「塊」として形を測る。
 const SHAPE_THRESHOLD = 0.25;
+
+// 動きの計測のサンプル時刻 [h]。decorrelation の桁を見るために対数刻みにする。
+const MOTION_SAMPLE_HOURS = [0, 1, 2, 4, 8, 16, 32, 64];
+// 移流の lag 相関を取る時刻差 [h] と、探すずらしの上限 [texel]。風 15 m/s × 8 h ≈ 430 km は
+// 全球面で約 11 texel(赤道)〜22 texel(60°、横が縮む分)なので、横は 24 まで見る。縦は南北の
+// 移動が小さいぶん 6 まで。
+const DRIFT_LAG_HOURS = 8;
+const DRIFT_MAX_DX = 24;
+const DRIFT_MAX_DY = 6;
+// 熱帯低気圧のトラックを読む時刻 [h] と、描画中心のずれを測る時刻 [h]。
+const TRACK_SAMPLE_HOURS = [0, 12, 24, 36, 48, 60, 72];
+const CENTER_SAMPLE_HOURS = [0, 24, 48];
+// 描画中心のずれは、解析中心からこの半径 [km] の内側の被覆率の重心で測る。cap 全面で取ると
+// 渦の外の雲(前線や別の擾乱)に重心が引かれて「ずれ」でなく環境の非対称を測ってしまう。
+const CENTER_CORE_RADIUS_KM = 500;
 
 // 地球の平均半径 [km]。
 const EARTH_RADIUS_KM = 6371;
@@ -714,6 +730,11 @@ async function main() {
   const shots = new Map();
   // 時刻 0 の低気圧の谷の配置(緯度・経度 [rad]、深さ [hPa]、半径 [m])。ページの進路モジュールから引く。
   let cyclonesAtZero;
+  // 動きの計測用の追加撮影の受け皿。全球の被覆率の時系列と、熱帯低気圧の解析配置の時系列、
+  // 解析中心へ合わせた cap の被覆率。
+  let motionCoverage;
+  let cycloneTrack;
+  let cycloneCenters;
   try {
     const { devTools } = session;
     await devTools.send('Page.navigate', { url: `${session.baseUrl}/?capture-only` });
@@ -741,6 +762,34 @@ async function main() {
         console.log(`shot ${region.name} ${view}`);
       }
     }
+
+    // 動きの計測用の追加撮影。被覆率の全球面をサンプル時刻ごとに撮る。熱帯低気圧の cap は
+    // 解析中心へ照準を合わせ直して撮るので、地域別の撮影が終わってから行う (照準が移る)。
+    motionCoverage = new Map();
+    await devTools.evaluate("window.cloudLab.show('coverage')");
+    for (const hours of MOTION_SAMPLE_HOURS) {
+      await devTools.evaluate(`window.cloudLab.setTime(${hours})`);
+      const dataUrl = await devTools.evaluate('window.cloudLab.capture()');
+      const png = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
+      motionCoverage.set(hours, cropField(decodeRedPng(png), 0, 0, GLOBE_W, HEIGHT));
+      console.log(`shot motion coverage at ${hours} h`);
+    }
+    cycloneTrack = JSON.parse(await devTools.evaluate(
+      `JSON.stringify([${TRACK_SAMPLE_HOURS.join(',')}].map((hours) => ({ hours, ...window.cloudLab.cyclonesAt(hours) })))`));
+    cycloneCenters = new Map();
+    const capBoxX = GLOBE_W + (CAP_W - CAP_BOX) / 2;
+    const capBoxY = (HEIGHT - CAP_BOX) / 2;
+    for (const hours of CENTER_SAMPLE_HOURS) {
+      const tropical = cycloneTrack.find((entry) => entry.hours === hours)?.tropical;
+      if (!tropical) continue;
+      await devTools.evaluate(`window.cloudLab.setTime(${hours})`);
+      await devTools.evaluate(
+        `window.cloudLab.aimCap(${(tropical.latitude * 180) / Math.PI}, ${(tropical.longitude * 180) / Math.PI}, ${CAP_RADIUS})`);
+      const dataUrl = await devTools.evaluate('window.cloudLab.capture()');
+      const png = Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64');
+      cycloneCenters.set(hours, cropField(decodeRedPng(png), capBoxX, capBoxY, CAP_BOX, CAP_BOX));
+      console.log(`shot cyclone center at ${hours} h`);
+    }
     if (fatalEvents.length > 0) throw new Error(`Page reported errors during shooting:\n${fatalEvents.join('\n')}`);
   } finally {
     await session.close();
@@ -763,9 +812,13 @@ async function main() {
   };
   saveGray('globe-thick.png', globe.thick);
   saveGray('globe-veil.png', globe.veil);
-  // 地表の風だけは B(速さ)を読むので、書いた PNG から取り直す。
-  const windSpeed = cropField(
-    decodeChannelPng(readFileSync(path.join(outDir, `${REGIONS[0].name}-surfaceWind.png`)), 2), 0, 0, GLOBE_W, HEIGHT);
+  // 地表の風だけは B(速さ)を読むので、書いた PNG から取り直す。動きの節では R(東西)・
+  // G(南北)の成分も要る — 符号の規約は tools/cloud-lab/views.ts の windColor と対で、
+  // 成分 = (値 − 0.5) × 2 × WIND_SPAN [m/s]。
+  const windPng = readFileSync(path.join(outDir, `${REGIONS[0].name}-surfaceWind.png`));
+  const windSpeed = cropField(decodeChannelPng(windPng, 2), 0, 0, GLOBE_W, HEIGHT);
+  const windEast = cropField(decodeChannelPng(windPng, 0), 0, 0, GLOBE_W, HEIGHT);
+  const windNorth = cropField(decodeChannelPng(windPng, 1), 0, 0, GLOBE_W, HEIGHT);
 
   // 雲頂ビューの表示値は 0..CLOUD_TOP_SPAN を 0..1 に載せたもの。分位は [m] で取る。
   const metresOf = (field) => ({
@@ -1133,6 +1186,120 @@ async function main() {
     }
     report.sections.typhoonReference = typhoonReference;
   }
+
+  console.log('\n=== 動き: 被覆率の時刻方向の自己相関(全球面・±60°) ===');
+  const coverageBandAt = (hours) => cropField(motionCoverage.get(hours), 0, y60, GLOBE_W, bandHeight);
+  const correlations = MOTION_SAMPLE_HOURS.map((hours) => correlation(coverageBandAt(0), coverageBandAt(hours)));
+  console.log(`時刻 [h]  ${MOTION_SAMPLE_HOURS.map((hours) => String(hours).padStart(7)).join('')}`);
+  console.log(`相関      ${correlations.map((value) => value.toFixed(3).padStart(7)).join('')}`);
+  const tauHours = crossingTime(MOTION_SAMPLE_HOURS, correlations, 1 / Math.E);
+  console.log(tauHours === null
+    ? `相関が 1/e を切る時刻: ${MOTION_SAMPLE_HOURS.at(-1)} h 以内では切らない`
+    : `相関が 1/e を切る時刻: ${tauHours.toFixed(1)} h`);
+
+  console.log(`\n=== 動き: 帯ごとの移流(${DRIFT_LAG_HOURS} 時間の lag 相関)と地表風の平均 ===`);
+  console.log('帯           ずらし [texel]   移流 東/北 [m/s]   相関    風 東/北 [m/s]   向きの差   速さ比');
+  const drift = [];
+  for (const band of BANDS) {
+    const y0 = rowAtLatitude(band.north);
+    const h = rowAtLatitude(band.south) - y0;
+    const shift = bestShift(
+      cropField(motionCoverage.get(0), 0, y0, GLOBE_W, h),
+      cropField(motionCoverage.get(DRIFT_LAG_HOURS), 0, y0, GLOBE_W, h),
+      DRIFT_MAX_DX, DRIFT_MAX_DY);
+    const kmPerTexelX = GLOBE_KM_PER_PX * Math.cos((((band.north + band.south) / 2) * Math.PI) / 180);
+    const driftEast = (shift.dx * kmPerTexelX * 1000) / (DRIFT_LAG_HOURS * 3600);
+    const driftNorth = (-shift.dy * GLOBE_KM_PER_PX * 1000) / (DRIFT_LAG_HOURS * 3600);
+    let windU = 0;
+    let windV = 0;
+    for (let y = y0; y < y0 + h; y++) {
+      for (let x = 0; x < GLOBE_W; x++) {
+        windU += (windEast.data[y * GLOBE_W + x] - 0.5) * 2 * WIND_SPAN;
+        windV += (windNorth.data[y * GLOBE_W + x] - 0.5) * 2 * WIND_SPAN;
+      }
+    }
+    windU /= h * GLOBE_W;
+    windV /= h * GLOBE_W;
+    const driftSpeed = Math.hypot(driftEast, driftNorth);
+    const windSpeed = Math.hypot(windU, windV);
+    const angleDeg = driftSpeed > 0 && windSpeed > 0
+      ? (Math.acos(Math.min(1, Math.max(-1, (driftEast * windU + driftNorth * windV) / (driftSpeed * windSpeed)))) * 180) / Math.PI
+      : null;
+    console.log(`${band.label.padEnd(12)}  ${String(shift.dx).padStart(4)},${String(shift.dy).padStart(3)}`
+      + `        ${driftEast.toFixed(1).padStart(5)} / ${driftNorth.toFixed(1).padStart(5)}   ${shift.correlation.toFixed(3)}`
+      + `   ${windU.toFixed(1).padStart(5)} / ${windV.toFixed(1).padStart(5)}   ${angleDeg === null ? '    -' : `${angleDeg.toFixed(0).padStart(4)}°`}`
+      + `   ${windSpeed > 0 ? (driftSpeed / windSpeed).toFixed(2) : '-'}`);
+    drift.push({
+      band: band.label,
+      shiftTexels: [shift.dx, shift.dy],
+      correlation: shift.correlation,
+      driftMs: { east: driftEast, north: driftNorth },
+      driftSpeedMs: driftSpeed,
+      windMs: { east: windU, north: windV },
+      windSpeedMs: windSpeed,
+      angleDeg,
+      speedRatio: windSpeed > 0 ? driftSpeed / windSpeed : null,
+    });
+  }
+
+  console.log(`\n=== 動き: 熱帯低気圧のトラック(解析配置)と描画中心のずれ(中心 ${CENTER_CORE_RADIUS_KM} km 以内の被覆率の重心) ===`);
+  const longitudeDegOf = (rad) => ((((rad * 180) / Math.PI + 180) % 360) + 360) % 360 - 180;
+  const track = cycloneTrack.map((entry) => ({
+    hours: entry.hours,
+    tropical: entry.tropical === null ? null : {
+      latitudeDeg: (entry.tropical.latitude * 180) / Math.PI,
+      longitudeDeg: longitudeDegOf(entry.tropical.longitude),
+      depthHpa: entry.tropical.depth,
+    },
+  }));
+  for (const point of track) {
+    console.log(point.tropical === null
+      ? `${String(point.hours).padStart(3)} h  (熱帯低気圧なし)`
+      : `${String(point.hours).padStart(3)} h  ${point.tropical.latitudeDeg.toFixed(1).padStart(5)}° `
+        + `${point.tropical.longitudeDeg.toFixed(1).padStart(6)}°  深さ ${point.tropical.depthHpa.toFixed(1)} hPa`);
+  }
+  const translationKmh = [];
+  for (let i = 1; i < track.length; i++) {
+    const from = track[i - 1].tropical;
+    const to = track[i].tropical;
+    if (from === null || to === null) continue;
+    const dLat = ((to.latitudeDeg - from.latitudeDeg) * Math.PI) / 180;
+    const dLon = ((to.longitudeDeg - from.longitudeDeg) * Math.PI) / 180;
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos((from.latitudeDeg * Math.PI) / 180) * Math.cos((to.latitudeDeg * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+    const distanceKm = 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(a));
+    translationKmh.push({ fromHours: track[i - 1].hours, toHours: track[i].hours, kmh: distanceKm / (track[i].hours - track[i - 1].hours) });
+  }
+  for (const leg of translationKmh) {
+    console.log(`${leg.fromHours}-${leg.toHours} h の移動速度: ${leg.kmh.toFixed(1)} km/h`);
+  }
+  const centerOffsets = [];
+  const centerCoreRadiusPx = CENTER_CORE_RADIUS_KM / CAP_KM_PER_PX;
+  for (const [hours, field] of cycloneCenters) {
+    const core = {
+      width: field.width,
+      height: field.height,
+      data: Float32Array.from(field.data, (value, i) => {
+        const dx = (i % field.width) - (field.width - 1) / 2;
+        const dy = Math.floor(i / field.width) - (field.height - 1) / 2;
+        return Math.hypot(dx, dy) <= centerCoreRadiusPx ? value : 0;
+      }),
+    };
+    const offset = centroidOffset(core);
+    if (offset === null) continue;
+    const dxKm = offset.dx * CAP_KM_PER_PX;
+    const dyKm = offset.dy * CAP_KM_PER_PX;
+    const offsetKm = Math.hypot(dxKm, dyKm);
+    console.log(`${String(hours).padStart(3)} h の描画中心のずれ: 東 ${dxKm.toFixed(0)} km / 南 ${dyKm.toFixed(0)} km(計 ${offsetKm.toFixed(0)} km)`);
+    centerOffsets.push({ hours, dxKm, dyKm, offsetKm });
+  }
+  report.sections.motion = {
+    sampleHours: MOTION_SAMPLE_HOURS,
+    decorrelation: { correlations, tauHours },
+    driftLagHours: DRIFT_LAG_HOURS,
+    drift,
+    cyclone: { track, translationKmh, centerOffsets },
+  };
 
   // レポートを履歴へ残す。ファイル名は生成時刻と HEAD で一意にし、過去分は消さない
   // (webpack の保持対象に .cloud-lab/history を加えてある — webpack.cloud-lab.config.js)。
