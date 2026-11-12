@@ -46,7 +46,7 @@ async function main() {
   });
   try {
     const { devTools } = session;
-    await devTools.send('Page.navigate', { url: `${session.baseUrl}/separate.html` });
+    await devTools.send('Page.navigate', { url: `${session.baseUrl}/separate.html?capture-only` });
     await waitFor(
       devTools,
       "(document.getElementById('error')?.textContent || typeof window.cloudSeparate === 'object')",
