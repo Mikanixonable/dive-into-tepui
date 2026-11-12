@@ -7,6 +7,10 @@
 // 再標本化した実写厚・実写薄も画像で .cloud-lab/compare/ に残る。
 // 台風は 8k_clouds に写っていないので、`npm run cloud-lab:reference` が取り込んだ Worldview の実写
 // (.cloud-lab/reference/)を cap の面へ再標本化して比べる。無ければその節だけ飛ばす。
+// 表に出した数値はすべて、機械可読なレポートとして .cloud-lab/history/ へも残す(1 回の比較に
+// つき 1 ファイル、消さない)。変更の前後で「どの特徴量がどれだけ動いたか」を後から引くためで、
+// レポートの形は sections の節立てが表の節立てと対になる。
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
@@ -438,6 +442,7 @@ function structuresOf(field, rowKmPerPx, kmPerPxY, wrapX, scales) {
 }
 
 // 1 つの面の構造を尺度ごとに並べる。rows は { scale, cells } で、cells は STRUCTURE_FIELDS と同じ並び。
+// レポート用に、場のキーと組にした同じ値を返す。
 function printStructureTable(header, rows) {
   console.log(header);
   console.log(`尺度[km]  ${STRUCTURE_FIELDS.map((field) => `${field.label} 伸び/揃い/向き`).join('    ')}`);
@@ -446,6 +451,10 @@ function printStructureTable(header, rows) {
       `${cell.coherence.toFixed(2)} ${cell.r.toFixed(2)} ${cell.orientationDeg.toFixed(0).padStart(3)}°`);
     console.log(`${String(scale).padStart(5)}     ${columns.join('       ')}`);
   }
+  return rows.map(({ scale, cells }) => ({
+    scaleKm: scale,
+    fields: STRUCTURE_FIELDS.map((field, index) => ({ field: field.key, ...cells[index] })),
+  }));
 }
 
 // 雲頂 [m] の分位。被覆率が CLOUD_TOP_COVERAGE を超え、mask(null なら全域)が立つ texel だけを
@@ -505,37 +514,52 @@ function cloudTopStats(top, coverage, kmPerPx, mask) {
 }
 
 // 実写と生成のオクターブ束スペクトルを波長帯ごとに並べ、比を添えて出す。wavelengthOf は
-// 波数 → 波長 [km]。
+// 波数 → 波長 [km]。レポート用に、波長帯と組にした同じ値を返す。
 function printSpectrumTable(header, wavelengthOf, reference, generated, referenceLabel, generatedLabel) {
   console.log(header);
   console.log(`波長帯 [km]      ${referenceLabel}   ${generatedLabel}   比(生成/実写)`);
+  const buckets = [];
   for (let i = 0; i < reference.length; i++) {
     const coarse = wavelengthOf(reference[i].k0);
     const fine = wavelengthOf(reference[i].k1);
     console.log(
       `${fine.toFixed(0).padStart(5)}-${coarse.toFixed(0).padStart(5)}  ${reference[i].value.toExponential(2)}  `
       + `${generated[i].value.toExponential(2)}  ${(generated[i].value / reference[i].value).toFixed(3)}`);
+    buckets.push({
+      wavelengthKm: [fine, coarse],
+      reference: reference[i].value,
+      generated: generated[i].value,
+      ratio: generated[i].value / reference[i].value,
+    });
   }
+  return buckets;
 }
 
 // 階調の表。rows は { label, field, source }(source は張り付きを数える元の場。既定は field)。
 // TONE_LEVELS で区切った段ごとの割合 [%]、平均、局所コントラスト、
 // 晴れ(< CLEAR_LEVEL)と真っ白(> WHITE_LEVEL)の割合 [%]、8bit の両端へ張り付いた割合 [%] を
-// 場ごとに 1 行で出す。
+// 場ごとに 1 行で出す。レポート用に、割合は % でなく 0..1 のまま返す(row に key があれば一緒に)。
 function printToneTable(header, rows) {
   console.log(header);
   const marks = TONE_LEVELS.map((level) => level.toFixed(2).slice(1));
   const bins = [`<${marks[0]}`, ...marks.slice(0, -1).map((mark, i) => `${mark}-${marks[i + 1]}`), `>${marks.at(-1)}`];
   console.log(`${'場'.padEnd(12)}  ${bins.map((bin) => bin.padStart(8)).join('')}`
     + `   平均  局所コントラスト  晴れ<${CLEAR_LEVEL}  >${WHITE_LEVEL}  黒潰れ=0  白飛び=1`);
-  for (const { label, field, source } of rows) {
+  const recorded = [];
+  for (const { label, field, source, key } of rows) {
     const tone = toneStats(field);
     const ends = source === undefined ? tone : toneStats(source);
+    const contrast = localContrastOf(field);
     console.log(`${label.padEnd(12)}  ${tone.shares.map((share) => (share * 100).toFixed(1).padStart(8)).join('')}`
-      + `  ${tone.mean.toFixed(3)}  ${localContrastOf(field).toFixed(4).padStart(14)}`
+      + `  ${tone.mean.toFixed(3)}  ${contrast.toFixed(4).padStart(14)}`
       + `  ${(tone.low * 100).toFixed(1).padStart(8)}%  ${(tone.high * 100).toFixed(1).padStart(5)}%`
       + `  ${(ends.zero * 100).toFixed(1).padStart(7)}%  ${(ends.full * 100).toFixed(1).padStart(7)}%`);
+    recorded.push({
+      label, key: key ?? null, shares: tone.shares, mean: tone.mean, contrast,
+      clear: tone.low, white: tone.high, crushed: ends.zero, clipped: ends.full,
+    });
   }
+  return recorded;
 }
 
 // 帯(緯度 north..south [°])の圧縮を昇順の 3 組に分ける。all は帯の全 texel、background はどの
@@ -603,6 +627,7 @@ function annulusShare(field, kmPerPx, innerKm, outerKm, min, max) {
 }
 
 // 径方向プロファイルを刻みごとに並べる。columns は { label, values, digits }。
+// レポート用に、列ごとの値の並びも返す。
 function printRadialTable(header, columns) {
   console.log(header);
   console.log(`距離 [km]   ${columns.map((column) => column.label.padStart(8)).join('  ')}`);
@@ -610,6 +635,16 @@ function printRadialTable(header, columns) {
     const cells = columns.map((column) => column.values[bin].toFixed(column.digits).padStart(8));
     const range = `${String(bin * PROFILE_BIN_KM).padStart(4)}-${String((bin + 1) * PROFILE_BIN_KM).padStart(4)}`;
     console.log(`${range}   ${cells.join('  ')}`);
+  }
+  return columns.map((column) => ({ label: column.label, values: Array.from(column.values) }));
+}
+
+// レポートへ焼く、いまの HEAD の短い SHA。git が読めない環境では unknown として、比較自体は止めない。
+function gitHead() {
+  try {
+    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  } catch {
+    return 'unknown';
   }
 }
 
@@ -724,39 +759,61 @@ async function main() {
     capTops.set(region.name, metresOf(cropField(shots.get(`${region.name}-cloudTop`), boxX0, boxY0, CAP_BOX, CAP_BOX)));
   }
 
+  // レポートの器。以後の節は、表へ出したのと同じ値をここへも溜める。
+  const report = {
+    meta: {
+      tool: 'cloud-lab-compare',
+      reportVersion: 1,
+      generatedAt: new Date().toISOString(),
+      gitHead: gitHead(),
+      regions: REGIONS.map((region) => region.name),
+      views: VIEWS,
+    },
+    sections: {},
+  };
+
   console.log('\n=== 帯状平均(全球面・5.625° 刻み) ===');
   console.log('緯度      実写計  実写厚  実写薄  被覆率  薄い雲  合成   被覆率/実写厚');
+  const zonal = [];
   for (let band = 0; band < 32; band++) {
     const latitude = 90 - (band + 0.5) * 5.625;
     const rowMeans = Object.fromEntries(Object.entries(globe).map(([key, field]) =>
       [key, toneStats(cropField(field, 0, band * 16, GLOBE_W, 16)).mean]));
+    const coveragePerThick = rowMeans.coverage / Math.max(1e-6, rowMeans.thick);
     console.log(
       `${latitude.toFixed(1).padStart(6)}°  ${rowMeans.photo.toFixed(3)}  ${rowMeans.thick.toFixed(3)}  `
       + `${rowMeans.veil.toFixed(3)}  ${rowMeans.coverage.toFixed(3)}  ${rowMeans.translucent.toFixed(3)}  `
-      + `${rowMeans.composite.toFixed(3)}  ${(rowMeans.coverage / Math.max(1e-6, rowMeans.thick)).toFixed(2)}`);
+      + `${rowMeans.composite.toFixed(3)}  ${coveragePerThick.toFixed(2)}`);
+    zonal.push({ latitudeDeg: latitude, means: rowMeans, coveragePerThick });
   }
+  report.sections.zonal = zonal;
 
   const y60 = rowAtLatitude(60);
   const bandHeight = rowAtLatitude(-60) - y60;
   // 薄い雲は輝度へ写したものを比べるので、張り付きは写す前の光学的厚み(撮影そのもの)で数える。
   const TONE_FIELDS = [['実写計', 'photo'], ['合成', 'composite'], ['実写厚', 'thick'],
     ['被覆率', 'coverage'], ['実写薄', 'veil'], ['薄い雲(輝度)', 'translucent', globeOf('translucent')]];
-  printToneTable(
+  report.sections.toneGlobe = printToneTable(
     `\n=== 階調(全球面・±60°): 段ごとの割合 [%]・平均・局所コントラスト(${CONTRAST_WINDOW}×${CONTRAST_WINDOW} texel の標準偏差の平均)・晴れ・真っ白・張り付き ===`,
     TONE_FIELDS.map(([label, key, source]) => ({
       label,
+      key,
       field: cropField(globe[key], 0, y60, GLOBE_W, bandHeight),
       source: source && cropField(source, 0, y60, GLOBE_W, bandHeight),
     })));
 
   console.log('\n=== のっぺり率(全球面・±60°): 0.06〜0.25 かつ 5×5 texel の標準偏差 < 0.02 ===');
+  const flatness = {};
   for (const [label, key] of [['実写計', 'photo'], ['実写厚', 'thick'], ['合成', 'composite'], ['被覆率', 'coverage']]) {
-    console.log(`${label}: ${(flatnessOf(cropField(globe[key], 0, y60, GLOBE_W, bandHeight)) * 100).toFixed(1)}%`);
+    flatness[key] = flatnessOf(cropField(globe[key], 0, y60, GLOBE_W, bandHeight));
+    console.log(`${label}: ${(flatness[key] * 100).toFixed(1)}%`);
   }
+  report.sections.flatness = flatness;
 
   console.log('\n=== 風の異常(全球面・熱帯低気圧の中心 10° 以内を除く) ===');
   const wind = windAnomaly(windSpeed, cyclonesAtZero.tropical);
   console.log(`最大 ${wind.max.toFixed(1)} m/s   99 パーセンタイル ${wind.p99.toFixed(1)} m/s`);
+  report.sections.wind = { maxMs: wind.max, p99Ms: wind.p99 };
 
   console.log('\n=== 圧縮の分位(全球面・前線ビュー、低気圧の帯・時刻 0) ===');
   // 前線ビューの表示値は、圧縮の 1 を超えた分を FRONT_SPAN で割ったもの。
@@ -767,32 +824,59 @@ async function main() {
   // 時刻 0 に居る低気圧だけ(居ない枡は null)。
   const lows = cyclonesAtZero.lows.flatMap((low, index) => (low === null ? [] : [{ index, ...low }]));
   console.log('低気圧    緯度      経度   深さ [hPa]  半径 [km]');
+  const compressionReport = { lows: [], bands: [] };
   for (const low of lows) {
     const longitudeDeg = ((((low.longitude * 180) / Math.PI + 180) % 360) + 360) % 360 - 180;
     console.log(`${String(low.index).padStart(4)}   ${((low.latitude * 180) / Math.PI).toFixed(1).padStart(6)}°  `
       + `${longitudeDeg.toFixed(1).padStart(6)}°  ${low.depth.toFixed(1).padStart(6)}   ${(low.radius / 1e3).toFixed(0).padStart(6)}`);
+    compressionReport.lows.push({
+      index: low.index,
+      latitudeDeg: (low.latitude * 180) / Math.PI,
+      longitudeDeg,
+      depthHpa: low.depth,
+      radiusKm: low.radius / 1e3,
+    });
   }
   console.log(`帯        中央値   90%    99%   背景 90%(中心から >${BACKGROUND_KM} km)`
     + `  環の中央値  環 90%(最盛期の中心から ${RING_INNER_KM}-${RING_OUTER_KM} km)`);
   // 低気圧が置かれる緯度の帯だけを見る。
   for (const band of BANDS.filter((band) => Math.min(Math.abs(band.north), Math.abs(band.south)) >= LOW_BAND_LATITUDE)) {
     const { all, background, ring } = compressionInBand(compression, band, lows);
-    console.log(`${band.label}   ${quantile(all, 0.5).toFixed(2)}  ${quantile(all, 0.9).toFixed(2)}`
-      + `  ${quantile(all, 0.99).toFixed(2)}  ${quantile(background, 0.9).toFixed(2).padStart(22)}`
-      + `  ${quantile(ring, 0.5).toFixed(2).padStart(10)}  ${quantile(ring, 0.9).toFixed(2).padStart(8)}`);
+    const bandStats = {
+      band: band.label,
+      median: quantile(all, 0.5),
+      p90: quantile(all, 0.9),
+      p99: quantile(all, 0.99),
+      backgroundP90: quantile(background, 0.9),
+      ringMedian: quantile(ring, 0.5),
+      ringP90: quantile(ring, 0.9),
+    };
+    console.log(`${band.label}   ${bandStats.median.toFixed(2)}  ${bandStats.p90.toFixed(2)}`
+      + `  ${bandStats.p99.toFixed(2)}  ${bandStats.backgroundP90.toFixed(2).padStart(22)}`
+      + `  ${bandStats.ringMedian.toFixed(2).padStart(10)}  ${bandStats.ringP90.toFixed(2).padStart(8)}`);
+    compressionReport.bands.push(bandStats);
   }
+  report.sections.compression = compressionReport;
 
   console.log('\n=== 行方向スペクトル(全球面)===');
+  const spectrumGlobe = [];
   for (const band of BANDS) {
     const y0 = rowAtLatitude(band.north);
     const h = rowAtLatitude(band.south) - y0;
     const circumference = 40075 * Math.cos((((band.north + band.south) / 2) * Math.PI) / 180);
     const wavelengthOf = (k) => circumference / k;
     const bandOf = (key) => rowSpectrum(cropField(globe[key], 0, y0, GLOBE_W, h));
-    printSpectrumTable(`--- ${band.label} ---`, wavelengthOf, bandOf('thick'), bandOf('coverage'), '実写厚', '被覆率');
-    printSpectrumTable(`--- ${band.label} ---`, wavelengthOf, bandOf('photo'), bandOf('composite'), '実写計', '合成  ');
-    printSpectrumTable(`--- ${band.label} ---`, wavelengthOf, bandOf('veil'), bandOf('translucent'), '実写薄', '薄い雲');
+    for (const [referenceKey, generatedKey, referenceLabel, generatedLabel] of [
+      ['thick', 'coverage', '実写厚', '被覆率'],
+      ['photo', 'composite', '実写計', '合成  '],
+      ['veil', 'translucent', '実写薄', '薄い雲'],
+    ]) {
+      const buckets = printSpectrumTable(
+        `--- ${band.label} ---`, wavelengthOf, bandOf(referenceKey), bandOf(generatedKey), referenceLabel, generatedLabel);
+      spectrumGlobe.push({ band: band.label, reference: referenceKey, generated: generatedKey, buckets });
+    }
   }
+  report.sections.spectrumGlobe = spectrumGlobe;
 
   // 上層の移流が写しの外を読む地域は、薄い雲と合成の値が参考値であることを見出しで断る。
   const capLabelOf = (region) => (region.upperReadsOutside
@@ -800,6 +884,7 @@ async function main() {
   const capLabelWidth = Math.max(...REGIONS.map((region) => capLabelOf(region).length));
   console.log('\n=== 地域別 cap(中央 362×362)の平均 ===');
   console.log(`${'地域'.padEnd(capLabelWidth)}  実写計  実写厚  実写薄  被覆率  薄い雲  合成`);
+  const capMeans = [];
   for (const region of REGIONS) {
     const cap = caps.get(region.name);
     const means = Object.fromEntries(Object.entries(cap).map(([key, field]) => [key, toneStats(field).mean]));
@@ -807,15 +892,20 @@ async function main() {
       `${capLabelOf(region).padEnd(capLabelWidth)}  ${means.photo.toFixed(3)}  ${means.thick.toFixed(3)}  `
       + `${means.veil.toFixed(3)}  ${means.coverage.toFixed(3)}  ${means.translucent.toFixed(3)}  `
       + `${means.composite.toFixed(3)}`);
+    capMeans.push({ region: region.name, means });
   }
+  report.sections.capMeans = capMeans;
 
   console.log('\n=== 地域別 cap: 行方向スペクトル(実写厚 vs 被覆率)===');
   const capWavelengthOf = (k) => (CAP_BOX * CAP_KM_PER_PX) / k;
+  const capSpectrum = [];
   for (const region of REGIONS) {
     const cap = caps.get(region.name);
-    printSpectrumTable(
+    const buckets = printSpectrumTable(
       `--- ${region.label} ---`, capWavelengthOf, rowSpectrum(cap.thick), rowSpectrum(cap.coverage), '実写厚', '被覆率');
+    capSpectrum.push({ region: region.name, reference: 'thick', generated: 'coverage', buckets });
   }
+  report.sections.capSpectrum = capSpectrum;
 
   console.log('\n=== 構造の異方性(全球面・帯 × 尺度): 局所の伸び / 向きの揃い / 卓越する筋の向き ===');
   // 正距円筒は経度方向が緯度の余弦で縮むので、勾配も窓も 1 texel の地表距離で測り直す。
@@ -831,18 +921,22 @@ async function main() {
         structureToRgbPng(globeStructures.get(field.key).get(scale)));
     }
   }
+  const structureGlobe = [];
   for (const band of BANDS) {
     const y0 = rowAtLatitude(band.north);
     const h = rowAtLatitude(band.south) - y0;
-    printStructureTable(`--- ${band.label} ---`, GLOBE_SCALES_KM.map((scale) => ({
+    const rows = printStructureTable(`--- ${band.label} ---`, GLOBE_SCALES_KM.map((scale) => ({
       scale,
       cells: STRUCTURE_FIELDS.map((field) =>
         summarizeStructure(globeStructures.get(field.key).get(scale), 0, y0, GLOBE_W, h)),
     })));
+    structureGlobe.push({ band: band.label, rows });
   }
+  report.sections.structureGlobe = structureGlobe;
 
   console.log('\n=== 構造の異方性(地域別 cap・尺度) ===');
   const capRowKm = new Array(CAP_BOX).fill(CAP_KM_PER_PX);
+  const structureCaps = [];
   for (const region of REGIONS) {
     const cap = caps.get(region.name);
     const structures = new Map(STRUCTURE_FIELDS.map((field) =>
@@ -853,34 +947,54 @@ async function main() {
           structureToRgbPng(structures.get(field.key).get(scale)));
       }
     }
-    printStructureTable(`--- ${capLabelOf(region)} ---`, CAP_SCALES_KM.map((scale) => ({
+    const rows = printStructureTable(`--- ${capLabelOf(region)} ---`, CAP_SCALES_KM.map((scale) => ({
       scale,
       cells: STRUCTURE_FIELDS.map((field) =>
         summarizeStructure(structures.get(field.key).get(scale), 0, 0, CAP_BOX, CAP_BOX)),
     })));
+    structureCaps.push({ region: region.name, rows });
   }
+  report.sections.structureCaps = structureCaps;
 
   console.log('\n=== 地形との関係(全球面・±60°、帯状平均を引いた偏差の相関) ===');
   console.log('場      平年雲量   標高');
   const inBand = (field) => zonalDeviation(cropField(field, 0, y60, GLOBE_W, bandHeight));
   const cloudinessDeviation = inBand(meanCloudiness);
   const elevationDeviation = inBand(elevation);
+  const terrain = [];
   for (const [label, key] of [['実写計', 'photo'], ['実写厚', 'thick'], ['実写薄', 'veil'],
     ['被覆率', 'coverage'], ['薄い雲', 'translucent'], ['合成', 'composite']]) {
     const deviation = inBand(globe[key]);
-    console.log(`${label}   ${correlation(deviation, cloudinessDeviation).toFixed(3).padStart(6)}  `
-      + `${correlation(deviation, elevationDeviation).toFixed(3).padStart(6)}`);
+    const cloudinessCorr = correlation(deviation, cloudinessDeviation);
+    const elevationCorr = correlation(deviation, elevationDeviation);
+    console.log(`${label}   ${cloudinessCorr.toFixed(3).padStart(6)}  `
+      + `${elevationCorr.toFixed(3).padStart(6)}`);
+    terrain.push({ field: key, cloudinessCorr, elevationCorr });
   }
+  report.sections.terrain = terrain;
 
   console.log('\n=== 地形の箱(平均と、晴れ < 0.06 の割合) ===');
   console.log('箱                              平年雲量  実写計  合成   被覆率  薄い雲  実写計の晴れ  合成の晴れ');
+  const terrainBoxes = [];
   for (const box of TERRAIN_BOXES) {
     const statsIn = (field) => toneStats(cropLatLonBox(field, box.north, box.south, box.west, box.east));
     const meanIn = (field) => statsIn(field).mean;
-    console.log(`${box.label.padEnd(26)}  ${meanIn(meanCloudiness).toFixed(3)}  ${meanIn(globe.photo).toFixed(3)}  `
-      + `${meanIn(globe.composite).toFixed(3)}  ${meanIn(globe.coverage).toFixed(3)}  ${meanIn(globe.translucent).toFixed(3)}  `
-      + `${(statsIn(globe.photo).low * 100).toFixed(0).padStart(10)}%  ${(statsIn(globe.composite).low * 100).toFixed(0).padStart(8)}%`);
+    const means = {
+      photo: meanIn(globe.photo),
+      composite: meanIn(globe.composite),
+      coverage: meanIn(globe.coverage),
+      translucent: meanIn(globe.translucent),
+    };
+    const clearPhoto = statsIn(globe.photo).low;
+    const clearComposite = statsIn(globe.composite).low;
+    console.log(`${box.label.padEnd(26)}  ${meanIn(meanCloudiness).toFixed(3)}  ${means.photo.toFixed(3)}  `
+      + `${means.composite.toFixed(3)}  ${means.coverage.toFixed(3)}  ${means.translucent.toFixed(3)}  `
+      + `${(clearPhoto * 100).toFixed(0).padStart(10)}%  ${(clearComposite * 100).toFixed(0).padStart(8)}%`);
+    terrainBoxes.push({
+      label: box.label, meanCloudiness: meanIn(meanCloudiness), means, clearPhoto, clearComposite,
+    });
   }
+  report.sections.terrainBoxes = terrainBoxes;
 
   console.log('\n=== 雲頂(cap の中央 362×362・被覆率 > 0.3 の texel、生成のみ) ===');
   console.log('地域                                    雲域  中央値  四分位幅   ≤3km  3-7km   >9km  >12km   金床');
@@ -890,11 +1004,14 @@ async function main() {
     + `  ${(stats.middle * 100).toFixed(0).padStart(4)}%  ${(stats.above9 * 100).toFixed(1).padStart(5)}%`
     + `  ${(stats.above12 * 100).toFixed(1).padStart(5)}%  ${(stats.anvil * 100).toFixed(0).padStart(4)}%`);
   const capCenter = (CAP_BOX - 1) / 2;
+  const cloudTop = [];
   for (const region of REGIONS) {
     const top = capTops.get(region.name);
     const { coverage } = caps.get(region.name);
     if (region.coreRadiusKm === null) {
-      printCloudTop(region.label, cloudTopStats(top, coverage, CAP_KM_PER_PX, null));
+      const stats = cloudTopStats(top, coverage, CAP_KM_PER_PX, null);
+      printCloudTop(region.label, stats);
+      cloudTop.push({ region: region.name, part: 'all', stats });
       continue;
     }
     // 中心濃密雲域は外側と分けて出す。平らな天蓋を持ってよいのはここだけ。
@@ -903,16 +1020,22 @@ async function main() {
       const inside = Math.hypot((i % CAP_BOX) - capCenter, Math.floor(i / CAP_BOX) - capCenter) <= radius;
       return inside === within ? 1 : 0;
     });
-    printCloudTop(`${region.label} 中心 ${region.coreRadiusKm} km`, cloudTopStats(top, coverage, CAP_KM_PER_PX, maskFor(true)));
-    printCloudTop(`${region.label} 外側`, cloudTopStats(top, coverage, CAP_KM_PER_PX, maskFor(false)));
+    const coreStats = cloudTopStats(top, coverage, CAP_KM_PER_PX, maskFor(true));
+    printCloudTop(`${region.label} 中心 ${region.coreRadiusKm} km`, coreStats);
+    cloudTop.push({ region: region.name, part: 'core', stats: coreStats });
+    const outsideStats = cloudTopStats(top, coverage, CAP_KM_PER_PX, maskFor(false));
+    printCloudTop(`${region.label} 外側`, outsideStats);
+    cloudTop.push({ region: region.name, part: 'outside', stats: outsideStats });
   }
+  report.sections.cloudTop = cloudTop;
 
   console.log(`\n=== 台風の径方向プロファイル(cap の中央 362×362・${PROFILE_BIN_KM} km 刻みの方位平均、全 texel) ===`);
+  const typhoonRadial = [];
   for (const region of REGIONS) {
     if (region.coreRadiusKm === null) continue;
     const cap = caps.get(region.name);
     const topKm = radialProfile(capTops.get(region.name), CAP_KM_PER_PX).map((metres) => metres / 1000);
-    printRadialTable(`--- ${region.label} ---`, [
+    const profile = printRadialTable(`--- ${region.label} ---`, [
       { label: '雲頂 [km]', values: topKm, digits: 2 },
       { label: '被覆率', values: radialProfile(cap.coverage, CAP_KM_PER_PX), digits: 3 },
       { label: '合成', values: radialProfile(cap.composite, CAP_KM_PER_PX), digits: 3 },
@@ -921,28 +1044,44 @@ async function main() {
       cap.coverage, CAP_KM_PER_PX, region.coreRadiusKm, PROFILE_MAX_KM, MID_TONE_MIN, MID_TONE_MAX);
     console.log(`${region.coreRadiusKm}-${PROFILE_MAX_KM} km の被覆率のうち中間調(${MID_TONE_MIN}-${MID_TONE_MAX})の割合: `
       + `${(midTones * 100).toFixed(1)}%`);
+    typhoonRadial.push({ region: region.name, profile, midToneShare: midTones });
   }
+  report.sections.typhoonRadial = typhoonRadial;
 
   console.log('\n=== 台風リファレンス(Worldview の実写の輝度を cap へ再標本化、生成の台風 cap の合成と比較) ===');
   const referenceDir = path.join(buildDir, 'reference');
   const referenceIndex = path.join(referenceDir, 'reference.json');
   if (!existsSync(referenceIndex)) {
     console.log('.cloud-lab/reference/reference.json が無い — npm run cloud-lab:reference で取り込む');
+    report.sections.typhoonReference = [];
   } else {
     const typhoon = REGIONS.find((region) => region.coreRadiusKm !== null);
     const typhoonCap = caps.get(typhoon.name);
+    const typhoonReference = [];
     for (const entry of JSON.parse(readFileSync(referenceIndex, 'utf8'))) {
       const luminance = decodeLuminancePng(readFileSync(path.join(root, entry.file)));
       const referenceCap = resampleCap(luminance, entry.bbox, entry.center.latitude, entry.center.longitude);
       saveGray(`typhoon-reference-${entry.name}.png`, referenceCap);
       const header = `--- ${entry.name}(${entry.date}・${entry.center.latitude}N ${entry.center.longitude}E) ---`;
-      printToneTable(header, [{ label: '実写(輝度)', field: referenceCap }, { label: '合成', field: typhoonCap.composite }]);
-      printSpectrumTable(`${header} 行方向スペクトル`, capWavelengthOf,
+      const tone = printToneTable(header, [
+        { label: '実写(輝度)', key: 'reference', field: referenceCap },
+        { label: '合成', key: 'composite', field: typhoonCap.composite },
+      ]);
+      const spectrum = printSpectrumTable(`${header} 行方向スペクトル`, capWavelengthOf,
         rowSpectrum(referenceCap), rowSpectrum(typhoonCap.composite), '実写(輝度)', '合成  ');
-      printRadialTable(`${header} 径方向プロファイル`,
+      const radial = printRadialTable(`${header} 径方向プロファイル`,
         [{ label: '実写(輝度)', values: radialProfile(referenceCap, CAP_KM_PER_PX), digits: 3 }]);
+      typhoonReference.push({ name: entry.name, date: entry.date, tone, spectrum, radial });
     }
+    report.sections.typhoonReference = typhoonReference;
   }
+
+  // レポートを履歴へ残す。ファイル名は生成時刻と HEAD で一意にし、過去分は消さない
+  // (webpack の保持対象に .cloud-lab/history を加えてある — webpack.cloud-lab.config.js)。
+  const historyDir = path.join(buildDir, 'history');
+  mkdirSync(historyDir, { recursive: true });
+  const stamp = report.meta.generatedAt.replace(/[:.]/g, '-');
+  writeFileSync(path.join(historyDir, `${stamp}-${report.meta.gitHead}.json`), `${JSON.stringify(report, null, 2)}\n`);
 }
 
 main().catch((e) => {
