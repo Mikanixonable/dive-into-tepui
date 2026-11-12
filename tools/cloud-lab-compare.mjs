@@ -1475,7 +1475,7 @@ async function main() {
     try {
       previous = JSON.parse(readFileSync(path.join(historyDir, previousName), 'utf8'));
     } catch {
-      previous = null;
+      // 読めなければ null のままにする。
     }
     if (previous === null || previous.sections === undefined) {
       console.log(`${previousName} が読めないため差分を出せない`);
@@ -1500,7 +1500,7 @@ async function main() {
     try {
       prior = JSON.parse(readFileSync(path.join(historyDir, previousName), 'utf8'));
     } catch {
-      prior = null;
+      // 読めなければ null のままにする。
     }
     if (prior?.sections) {
       const before = computeDistances(prior.sections);
