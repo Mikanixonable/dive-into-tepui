@@ -116,6 +116,13 @@ async function init(): Promise<void> {
   await renderer.init();
 
   const pipeline = new SeparationPipeline(renderer, photo, width, height);
+  // 撮影の駆動(tools/cloud-lab-separate.mjs)は ?capture-only を付けて開く。このとき画面へは出さない
+  // — GPU の無い環境ではキャンバスへの提示が device を落とし、撮影の読み出しまで道連れにする
+  // (cloud-lab/lab.ts の render() と同じ理由)。分離のパイプライン自体は写しへ焼くので撮影は通る。
+  const captureOnly = new URLSearchParams(location.search).has('capture-only');
+  const showView = (target: SeparationView): void => {
+    if (!captureOnly) pipeline.show(target);
+  };
   let view: SeparationView = 'veil';
   const params = Object.fromEntries(
     Object.entries(SEPARATION_PARAMS).map(([id, spec]) => [id, spec.initial]),
@@ -124,7 +131,7 @@ async function init(): Promise<void> {
   const markView = buildButtonRow<SeparationView>('views', SEPARATION_VIEWS, (next) => {
     view = next;
     markView(view);
-    pipeline.show(view);
+    showView(view);
   });
 
   // 分離の質の指標を測って表示する。読み出しが非同期なので、走っている間の要求は 1 つに畳む。
@@ -180,7 +187,7 @@ async function init(): Promise<void> {
     }
     paramsBox.value = JSON.stringify(params);
     pipeline.run();
-    pipeline.show(view);
+    showView(view);
     refreshMetrics();
   };
 
@@ -211,7 +218,7 @@ async function init(): Promise<void> {
 
   window.cloudSeparate = {
     views: SEPARATION_VIEWS.map(([id]) => id),
-    show: (next) => { view = next; markView(view); pipeline.show(view); },
+    show: (next) => { view = next; markView(view); showView(view); },
     setParam: (id, value) => applyParams({ [id]: value }),
     capture: (target) => pipeline.capture(target),
     metrics: () => measure(),

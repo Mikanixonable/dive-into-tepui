@@ -53,7 +53,8 @@ export class CloudLabCanvas {
 
   // レンダラを起こし、実写の雲と気候の画像を読み終えてから器を返す — 撮影は画像の到着を待たずに
   // 走るので、ここで待たないと最初の何枚かが空のテクスチャで焼かれる。
-  public static async create(canvas: HTMLCanvasElement): Promise<CloudLabCanvas> {
+  // captureOnly は撮影専用(画面へ提示しない)。指定の理由は render() 側に書く。
+  public static async create(canvas: HTMLCanvasElement, captureOnly = false): Promise<CloudLabCanvas> {
     const renderer = new WebGPURenderer({ canvas });
     renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT, false);
     renderer.toneMapping = THREE.NoToneMapping;
@@ -69,7 +70,7 @@ export class CloudLabCanvas {
     photo.minFilter = THREE.LinearMipmapLinearFilter;
     photo.magFilter = THREE.LinearFilter;
     photo.colorSpace = THREE.NoColorSpace;
-    const lab = new CloudLabCanvas(renderer, photo);
+    const lab = new CloudLabCanvas(renderer, photo, captureOnly);
     await lab.awaitClimate();
     return lab;
   }
@@ -87,7 +88,11 @@ export class CloudLabCanvas {
   }
 
   // 2 面と、起動時に出す量のマテリアルを組む。
-  private constructor(private readonly renderer: WebGPURenderer, photo: THREE.Texture) {
+  private constructor(
+    private readonly renderer: WebGPURenderer,
+    photo: THREE.Texture,
+    private readonly captureOnly: boolean,
+  ) {
     this.capProjection = new OrthographicCap(
       CAP_SIZE, THREE.MathUtils.degToRad(this.capLatitude), THREE.MathUtils.degToRad(this.capLongitude),
       THREE.MathUtils.degToRad(this.capRadius));
@@ -141,6 +146,10 @@ export class CloudLabCanvas {
   public render(): void {
     DeferredTexture.publishOne(this.renderer);
     for (const pane of this.panes) pane.bake(this.renderer, this.seconds);
+    // 撮影専用ではキャンバスへ出さない。GPU の無い環境(ソフトウェア WebGPU)では、キャンバスへの
+    // 提示が共有イメージを作れずに device を落とし、撮影の読み出し(mapAsync)まで道連れにする。
+    // 撮影は captureTarget への描画だけを使うので、提示を止めても撮れる絵は変わらない。
+    if (this.captureOnly && this.renderer.getOutputRenderTarget() === null) return;
     this.quad.render(this.renderer);
   }
 
