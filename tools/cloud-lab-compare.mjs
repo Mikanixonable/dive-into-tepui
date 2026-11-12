@@ -11,7 +11,7 @@
 // つき 1 ファイル、消さない)。変更の前後で「どの特徴量がどれだけ動いたか」を後から引くためで、
 // レポートの形は sections の節立てが表の節立てと対になる。
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
@@ -639,6 +639,35 @@ function printRadialTable(header, columns) {
   return columns.map((column) => ({ label: column.label, values: Array.from(column.values) }));
 }
 
+// 差分の表示用の数値の整形。スペクトルのような小さな値と雲頂 [m] のような大きな値が混ざるので、
+// 桁の端では指数表記へ倒し、それ以外は有効数字 6 桁で丸める。
+function formatDiffValue(value) {
+  const magnitude = Math.abs(value);
+  if (magnitude !== 0 && (magnitude < 1e-4 || magnitude >= 1e6)) return value.toExponential(3);
+  return String(Number(value.toPrecision(6)));
+}
+
+// 2 つのレポートの sections を辿り、両方にある数値のリーフについて { path, before, after } を集める。
+// 形が変わった(節やキーの増減)ものは数えない — 形の変更は差分でなく版の変更として扱う。
+function collectNumericDiffs(before, after, path, out) {
+  if (typeof before === 'number' && typeof after === 'number') {
+    out.compared++;
+    if (before !== after) out.changed.push({ path, before, after });
+    return;
+  }
+  if (Array.isArray(before) && Array.isArray(after)) {
+    for (let i = 0; i < Math.min(before.length, after.length); i++) {
+      collectNumericDiffs(before[i], after[i], `${path}[${i}]`, out);
+    }
+    return;
+  }
+  if (before !== null && after !== null && typeof before === 'object' && typeof after === 'object') {
+    for (const key of Object.keys(before)) {
+      if (key in after) collectNumericDiffs(before[key], after[key], path === '' ? key : `${path}.${key}`, out);
+    }
+  }
+}
+
 // レポートへ焼く、いまの HEAD の短い SHA。git が読めない環境では unknown として、比較自体は止めない。
 function gitHead() {
   try {
@@ -1078,10 +1107,36 @@ async function main() {
 
   // レポートを履歴へ残す。ファイル名は生成時刻と HEAD で一意にし、過去分は消さない
   // (webpack の保持対象に .cloud-lab/history を加えてある — webpack.cloud-lab.config.js)。
+  // 書く前に直近のレポートとの差分を出す — 変更 → 計測 → 何が動いたか、の輪の出口。
   const historyDir = path.join(buildDir, 'history');
   mkdirSync(historyDir, { recursive: true });
+  const previousName = readdirSync(historyDir).filter((name) => name.endsWith('.json')).sort().at(-1);
   const stamp = report.meta.generatedAt.replace(/[:.]/g, '-');
   writeFileSync(path.join(historyDir, `${stamp}-${report.meta.gitHead}.json`), `${JSON.stringify(report, null, 2)}\n`);
+  console.log('\n=== 前回レポートとの差分 ===');
+  if (previousName === undefined) {
+    console.log('前回のレポートが無い(今回が初回)');
+  } else {
+    let previous = null;
+    try {
+      previous = JSON.parse(readFileSync(path.join(historyDir, previousName), 'utf8'));
+    } catch {
+      previous = null;
+    }
+    if (previous === null || previous.sections === undefined) {
+      console.log(`${previousName} が読めないため差分を出せない`);
+    } else {
+      const diffs = { compared: 0, changed: [] };
+      collectNumericDiffs(previous.sections, report.sections, '', diffs);
+      for (const { path: leaf, before, after } of diffs.changed) {
+        const delta = after - before;
+        console.log(`${leaf}: ${formatDiffValue(before)} → ${formatDiffValue(after)} (${delta >= 0 ? '+' : ''}${formatDiffValue(delta)})`);
+      }
+      console.log(diffs.changed.length === 0
+        ? `変わった数値なし(比較した数値 ${diffs.compared}、前回: ${previousName})`
+        : `変わった数値 ${diffs.changed.length} / ${diffs.compared}(前回: ${previousName})`);
+    }
+  }
 }
 
 main().catch((e) => {
