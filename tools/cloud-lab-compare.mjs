@@ -14,6 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
+import { componentStats } from './cloud-components.mjs';
 import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
 import { cropField, cropLatLonBox, decodeChannelPng, decodeRedPng, fieldToGrayPng } from './gray-image.mjs';
 import { decodePng } from './png.mjs';
@@ -84,6 +85,9 @@ const CLEAR_LEVEL = 0.06;
 const WHITE_LEVEL = 0.94;
 // 局所コントラストを取る窓 [texel]。周りこの広さの標準偏差を全 texel で平均する。
 const CONTRAST_WINDOW = 5;
+// 雲の塊と見なす値のしきい。階調の刻み(TONE_LEVELS)の 1 つで、のっぺり判定の区間の上限でも
+// ある — 中間調より上を「塊」として形を測る。
+const SHAPE_THRESHOLD = 0.25;
 
 // 地球の平均半径 [km]。
 const EARTH_RADIUS_KM = 6371;
@@ -984,6 +988,31 @@ async function main() {
     structureCaps.push({ region: region.name, rows });
   }
   report.sections.structureCaps = structureCaps;
+
+  console.log(`\n=== 雲の塊の形(しきい ${SHAPE_THRESHOLD}・前景 8 近傍、面積と周囲は地表の km 換算) ===`);
+  console.log('面            場      塊の数   曇り割合  面積中央値 [km²]  面積 p90 [km²]  最大の割合   穴の数  穴の割合  周囲/面積 [1/km]');
+  const printShapeRow = (face, label, stats) => console.log(
+    `${face.padEnd(12)}  ${label.padEnd(6)}  ${String(stats.count).padStart(6)}  ${(stats.cloudyShare * 100).toFixed(1).padStart(7)}%`
+    + `  ${stats.areaKm2.median.toFixed(0).padStart(12)}  ${stats.areaKm2.p90.toFixed(0).padStart(12)}`
+    + `  ${(stats.largestShare * 100).toFixed(1).padStart(7)}%  ${String(stats.holeCount).padStart(6)}`
+    + `  ${(stats.holeAreaShare * 100).toFixed(2).padStart(6)}%  ${stats.perimeterPerArea.toFixed(4).padStart(8)}`);
+  const bandRowKm = globeRowKm.slice(y60, y60 + bandHeight);
+  const globeShapes = {
+    reference: componentStats(cropField(globe.thick, 0, y60, GLOBE_W, bandHeight), SHAPE_THRESHOLD, true, bandRowKm, GLOBE_KM_PER_PX),
+    generated: componentStats(cropField(globe.coverage, 0, y60, GLOBE_W, bandHeight), SHAPE_THRESHOLD, true, bandRowKm, GLOBE_KM_PER_PX),
+  };
+  printShapeRow('全球 ±60°', '実写厚', globeShapes.reference);
+  printShapeRow('全球 ±60°', '被覆率', globeShapes.generated);
+  const capShapes = [];
+  for (const region of REGIONS) {
+    const cap = caps.get(region.name);
+    const reference = componentStats(cap.thick, SHAPE_THRESHOLD, false, capRowKm, CAP_KM_PER_PX);
+    const generated = componentStats(cap.coverage, SHAPE_THRESHOLD, false, capRowKm, CAP_KM_PER_PX);
+    printShapeRow(region.name, '実写厚', reference);
+    printShapeRow(region.name, '被覆率', generated);
+    capShapes.push({ region: region.name, reference, generated });
+  }
+  report.sections.shapes = { threshold: SHAPE_THRESHOLD, globe: globeShapes, caps: capShapes };
 
   console.log('\n=== 地形との関係(全球面・±60°、帯状平均を引いた偏差の相関) ===');
   console.log('場      平年雲量   標高');
