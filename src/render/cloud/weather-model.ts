@@ -83,10 +83,11 @@ const RAINBAND_ONSET = 5;
 const RAINBAND_WIDTH = 4;
 // 帯が飽和した所で立つ上昇流 [m/s]。深い谷の芯と同じだけ持ち上げるよう、頭打ち(LIFT_LIMIT)に揃える。
 const BAND_LIFT = 0.06;
-// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 1.4 倍で、帯の芯では
-// 上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き、途切れない帯になる
+// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 0.45 倍に取る —
+// 帯の芯では上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き途切れない帯に
+// なるが、前線帯の面全体が湿度の上限へ張り付いて一枚の台地にはならない
 // (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
-const BAND_HUMIDITY = 0.3;
+const BAND_HUMIDITY = 0.1;
 // 温帯と熱帯の境界緯度。温帯では前線、熱帯では雨帯の伝達関数を使い、暖気流入の補正は温帯に
 // 限定して適用する。
 const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
@@ -142,9 +143,9 @@ const CONVECTION_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
 // 取る。上層を深く引いて、薄い雲の穴を厚い雲の目よりひとまわり広く開ける。
 const SURFACE_EYE_DRYNESS = 0.8;
 const UPPER_EYE_DRYNESS = 2;
-// 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の下の円盤が隙間なく埋まるよう、並の湿度からでも
-// 雲量が飽和する分を足す。
-const ANVIL_HUMIDITY = 0.5;
+// 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の芯では並の湿度からでも雲量が飽和する分を足すが、
+// 円盤の縁まで一様に上限へ張り付かせないよう、天蓋自身の濃さの落ち際と合わせて効かせる。
+const ANVIL_HUMIDITY = 0.2;
 // 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入（0.26 rad）で伝達関数幅の約半分が
 // 変位する係数。本項の期待値が正のため、基底湿度 (SURFACE_HUMIDITY_BASE) をオフセットして均衡させる。
 const WARM_HUMIDITY = 0.6;
