@@ -1,12 +1,12 @@
 // 建造セッションの表示と操作可能状態を同期し、建造操作を通知するパネル。
 // 「いま何を手に持ち、どこへ置けて、船体全体がどう変わるか」に答える区画で組む。
-import { Button, buildSpan, Meter, ValueInput } from '../../../hud/widgets';
+// 手持ちと選択の操作は手元バー(ship-construction-hand)、右ペインは性能・候補・履歴のタブ。
+import { Button, buildSpan, Meter, TabBar } from '../../../hud/widgets';
 import { ARMOR_WARNING_RATIO, armorAlarmLevel } from '../../alarm/alarm-level';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { ShipConstructionCatalog } from './ship-construction-catalog';
-import {
-  formatConstructionMetric, formatConstructionNumber, formatConstructionOrientation,
-} from './ship-construction-format';
+import { ShipConstructionHand } from './ship-construction-hand';
+import { formatConstructionMetric, formatConstructionNumber } from './ship-construction-format';
 import { hiddenShipConstructionModel } from '../../ship/ship-construction-types';
 import type {
   ConstructionCardDragEvent, ConstructionRole, ShipConstructionPanelModel,
@@ -29,6 +29,13 @@ interface CapabilityElements {
 
 type MobilePane = 'catalog' | 'status';
 
+// 右ペインの読み替えタブ。性能が既定。
+type StatePane = 'performance' | 'targets' | 'history';
+
+const STATE_PANE_ITEMS: readonly (readonly [StatePane, string])[] = [
+  ['performance', '性能'], ['targets', '候補'], ['history', '履歴'],
+];
+
 export class ShipConstructionPanel {
   public get element(): HTMLElement { return this.panel; }
   public onSelectionChange: ((definitionId: string) => void) | null = null;
@@ -41,6 +48,7 @@ export class ShipConstructionPanel {
   public onRemove: (() => void) | null = null;
   public onDuplicate: (() => void) | null = null;
   public onRelease: (() => void) | null = null;
+  public onDeselect: (() => void) | null = null;
   public onRotate: ((delta: 1 | -1) => void) | null = null;
   public onSwapEnds: (() => void) | null = null;
   public onCycleSymmetry: (() => void) | null = null;
@@ -53,11 +61,6 @@ export class ShipConstructionPanel {
 
   private readonly panel: HTMLElement;
   private readonly shipName: HTMLElement;
-  private readonly heldName: HTMLElement;
-  private readonly heldOrientation: HTMLElement;
-  private readonly heldSymmetry: HTMLElement;
-  private readonly selectedName: HTMLElement;
-  private readonly blueprintNote: HTMLElement;
   private readonly count: HTMLElement;
   private readonly mass: HTMLElement;
   private readonly massPreview: HTMLElement;
@@ -66,20 +69,12 @@ export class ShipConstructionPanel {
   private readonly hpPreview: HTMLElement;
   private readonly capabilities: CapabilityElements;
   private readonly role: HTMLElement;
-  private readonly warning: HTMLElement;
   private readonly catalog: ShipConstructionCatalog;
+  private readonly hand: ShipConstructionHand;
+  private readonly stateTabs: TabBar<StatePane>;
+  private readonly stateBodies: Readonly<Record<StatePane, HTMLElement>>;
   private readonly slotList: HTMLElement;
   private readonly historyList: HTMLElement;
-  private readonly blueprintName: ValueInput;
-  private readonly rollLeft: Button;
-  private readonly rollRight: Button;
-  private readonly swapEnds: Button;
-  private readonly symmetry: Button;
-  private readonly release: Button;
-  private readonly remove: Button;
-  private readonly duplicate: Button;
-  private readonly saveBlueprint: Button;
-  private readonly place: Button;
   private readonly undo: Button;
   private readonly redo: Button;
   private readonly finish: Button;
@@ -95,11 +90,6 @@ export class ShipConstructionPanel {
   public constructor(els: HudEls) {
     this.panel = els.get('ship-construction-panel');
     this.shipName = els.get('construction-ship-name');
-    this.heldName = els.get('construction-held-name');
-    this.heldOrientation = els.get('construction-held-orientation');
-    this.heldSymmetry = els.get('construction-held-symmetry');
-    this.selectedName = els.get('construction-selected-name');
-    this.blueprintNote = els.get('construction-blueprint-note');
     this.count = els.get('construction-count');
     this.mass = els.get('construction-mass');
     this.massPreview = els.get('construction-mass-preview');
@@ -113,7 +103,6 @@ export class ShipConstructionPanel {
       radiation: this.metricPair(els, 'construction-radiation', 'construction-radiation-preview'),
     };
     this.role = els.get('construction-role');
-    this.warning = els.get('construction-warning');
     this.slotList = els.get('construction-slots');
     this.historyList = els.get('construction-history-list');
 
@@ -135,52 +124,51 @@ export class ShipConstructionPanel {
       },
     );
 
-    // 小画面用のペイン切替を組む。
+    // 小画面用のペイン切替を組む。手元バーと 3D は切り替えによらず常に見える。
     const mobileTabs = els.get('construction-mobile-tabs');
     this.catalogPaneButton = new Button('部品', () => this.setMobilePane('catalog'), undefined, 'secondary');
-    this.statusPaneButton = new Button('性能', () => this.setMobilePane('status'), undefined, 'secondary');
+    this.statusPaneButton = new Button('船体', () => this.setMobilePane('status'), undefined, 'secondary');
     mobileTabs.append(this.catalogPaneButton.element, this.statusPaneButton.element);
     this.setMobilePane('catalog');
 
-    // 手持ちの操作: ロール左右・取り付ける端・対称数・手放す。キー割り当てと同じ操作。
-    const heldActions = els.get('construction-held-actions');
-    this.rollLeft = new Button(`⟲ [${K.constructionRollLeft.label}]`, () => this.onRotate?.(-1), undefined, 'secondary');
-    this.rollRight = new Button(`⟳ [${K.constructionRollRight.label}]`, () => this.onRotate?.(1), undefined, 'secondary');
-    this.swapEnds = new Button(`端 [${K.constructionSwapEnds.label}]`, () => this.onSwapEnds?.(), undefined, 'secondary');
-    this.symmetry = new Button(`対称 [${K.constructionSymmetry.label}]`, () => this.onCycleSymmetry?.(), undefined, 'secondary');
-    this.release = new Button('手放す', () => this.onRelease?.(), undefined, 'secondary');
-    heldActions.append(
-      this.rollLeft.element, this.rollRight.element, this.swapEnds.element,
-      this.symmetry.element, this.release.element,
-    );
+    // 3D の下の手元バー。状態の言い切りと、その状態で効く操作だけを持つ。
+    this.hand = new ShipConstructionHand(els, {
+      onPlace: () => this.onPlace?.(),
+      onRelease: () => this.onRelease?.(),
+      onDeselect: () => this.onDeselect?.(),
+      onRotate: (delta) => this.onRotate?.(delta),
+      onSwapEnds: () => this.onSwapEnds?.(),
+      onCycleSymmetry: () => this.onCycleSymmetry?.(),
+      onRemove: () => this.onRemove?.(),
+      onDuplicate: () => this.onDuplicate?.(),
+      onSaveBlueprint: (name) => this.onSaveBlueprint?.(name),
+    });
 
-    // 選択中の操作: 撤去・複製・設計図として保存(名前付き)。
-    const selectionActions = els.get('construction-selection-actions');
-    this.remove = new Button(`撤去 [${K.constructionRemove.label}]`, () => this.onRemove?.(), undefined, 'secondary');
-    this.duplicate = new Button(`複製 [${K.constructionDuplicate.label}]`, () => this.onDuplicate?.(), undefined, 'secondary');
-    selectionActions.append(this.remove.element, this.duplicate.element);
-    const blueprintForm = els.get('construction-blueprint-form');
-    this.blueprintName = new ValueInput({ type: 'text', placeholder: '設計図の名前' }, () => undefined);
-    this.saveBlueprint = new Button(
-      '設計図として保存', () => this.onSaveBlueprint?.(this.blueprintName.element.value), undefined, 'secondary',
-    );
-    blueprintForm.append(this.blueprintName.element, this.saveBlueprint.element);
+    // 右ペインの読み替えタブとその本文。
+    this.stateBodies = {
+      performance: els.get('construction-state-performance'),
+      targets: els.get('construction-state-targets'),
+      history: els.get('construction-state-history'),
+    };
+    this.stateTabs = new TabBar<StatePane>(STATE_PANE_ITEMS, (pane) => this.setStatePane(pane));
+    els.get('construction-state-tabs').appendChild(this.stateTabs.element);
+    this.setStatePane('performance');
 
     // 履歴の取り消し・やり直し。
     const historyActions = els.get('construction-history-actions');
-    this.undo = new Button(`取り消し [${K.constructionUndo.label}]`, () => this.onUndo?.(), undefined, 'secondary');
-    this.redo = new Button(`やり直し [${K.constructionRedo.label}]`, () => this.onRedo?.(), undefined, 'secondary');
+    this.undo = new Button('取り消し', () => this.onUndo?.(), undefined, 'secondary', K.constructionUndo.label);
+    this.redo = new Button('やり直し', () => this.onRedo?.(), undefined, 'secondary', K.constructionRedo.label);
     historyActions.append(this.undo.element, this.redo.element);
 
-    // 建造の締めくくり: 配置・終了・全取り消し。
-    const actions = els.get('construction-actions');
-    this.place = new Button(`配置 [${K.constructionPlace.label}]`, () => this.onPlace?.(), undefined, 'primary');
-    this.finish = new Button('建造終了', () => this.onFinish?.(), undefined, 'primary');
+    // 建造の締めくくり。タブによらず下端に常に見える。
+    const closeActions = els.get('construction-close-actions');
+    this.finish = new Button('建造終了', () => this.onFinish?.(), undefined, 'primary', K.pauseMenu.label);
     this.discard = new Button('変更をすべて取り消す', () => this.onDiscard?.(), undefined, 'secondary');
     const destructive = document.createElement('div');
     destructive.className = 'construction-destructive-actions';
     destructive.appendChild(this.discard.element);
-    actions.append(this.place.element, this.finish.element, destructive);
+    closeActions.append(this.finish.element, destructive);
+
     this.sync(hiddenShipConstructionModel());
   }
 
@@ -194,27 +182,8 @@ export class ShipConstructionPanel {
     this.panel.classList.toggle('hidden', !model.visible);
     this.shipName.textContent = model.shipName;
 
-    // 手持ち。
-    this.heldName.textContent = model.held?.name ?? '—';
-    this.heldOrientation.textContent = model.held === null
-      ? '—' : formatConstructionOrientation(model.held.orientation);
-    this.heldSymmetry.textContent = model.held === null ? '—' : `×${model.held.symmetry}`;
-    const heldActionsEnabled = model.held !== null;
-    this.rollLeft.setEnabled(heldActionsEnabled || model.selection?.canEdit === true);
-    this.rollRight.setEnabled(heldActionsEnabled || model.selection?.canEdit === true);
-    this.swapEnds.setEnabled(heldActionsEnabled || model.selection?.canEdit === true);
-    this.symmetry.setEnabled(heldActionsEnabled);
-    this.release.setEnabled(model.held !== null || model.selection !== null);
-
-    // 選択中と設計図の保存。
-    this.selectedName.textContent = model.selection?.name ?? '—';
-    this.remove.setEnabled(model.canRemove);
-    this.duplicate.setEnabled(model.selection?.canEdit === true);
-    const canSaveBlueprint = model.selection?.canEdit === true && model.blueprintRecordReason === null;
-    this.saveBlueprint.setEnabled(canSaveBlueprint);
-    this.blueprintName.element.disabled = !canSaveBlueprint;
-    this.blueprintNote.textContent = model.blueprintRecordReason ?? '';
-    this.blueprintNote.classList.toggle('hidden', model.blueprintRecordReason === null);
+    // 手元バーは3状態の言い切りと状態ごとの操作を自分で組む。
+    this.hand.sync(model);
 
     // 船体全体の性能と、指している候補へ置いたときの差分。
     this.count.textContent = String(model.moduleCount);
@@ -232,8 +201,6 @@ export class ShipConstructionPanel {
     this.syncMetric(this.capabilities.radiation, model.capabilities.radiation, model.preview?.capabilities.radiation ?? null, 'm²');
     this.role.textContent = roleLabel(model.role);
     this.role.dataset['role'] = model.role;
-    this.warning.textContent = model.warning ?? '';
-    this.warning.classList.toggle('hidden', model.warning === null);
 
     // 一覧と操作ボタンの可否を model の値へ揃える。
     this.catalog.sync(model.held?.catalogId ?? null, model.held?.blueprintId ?? null, model.blueprints);
@@ -241,9 +208,16 @@ export class ShipConstructionPanel {
     this.renderHistory(model);
     this.undo.setEnabled(model.history.canUndo);
     this.redo.setEnabled(model.history.canRedo);
-    this.place.setEnabled(model.canPlace);
     this.finish.setEnabled(model.visible);
     this.discard.setEnabled(model.visible && model.history.names.length > 1);
+  }
+
+  // 右ペインで読む本文をタブへ合わせる。タブ以外の部分(役割・締めのボタン)は常に見える。
+  private setStatePane(pane: StatePane): void {
+    this.stateTabs.setSelected(pane);
+    for (const [name, body] of Object.entries(this.stateBodies)) {
+      body.classList.toggle('hidden', name !== pane);
+    }
   }
 
   // 候補一覧に変更があった場合のみボタンを再生成し、選択状態は毎フレーム反映する。

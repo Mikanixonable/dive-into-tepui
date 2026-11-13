@@ -5,10 +5,10 @@ import { Button } from './button';
 export class TabBar<T> {
   public readonly element: HTMLElement;
   private readonly buttons = new Map<T, Button>();
-  private items: readonly (readonly [T, string])[] = [];
+  private items: readonly (readonly [T, string, string?])[] = [];
 
-  // items は [値, 表示ラベル] の並びで、その順にタブを並べる。
-  public constructor(items: readonly (readonly [T, string])[], private readonly onSelect: (value: T) => void) {
+  // items は [値, 表示ラベル, 任意のキーキャップ] の並びで、その順にタブを並べる。
+  public constructor(items: readonly (readonly [T, string, string?])[], private readonly onSelect: (value: T) => void) {
     this.element = document.createElement('div');
     this.element.className = 'w-tabs';
     this.element.setAttribute('role', 'tablist');
@@ -28,23 +28,23 @@ export class TabBar<T> {
   }
 
   // タブ列を items へ一括で差し替える。SegmentedControl と同じく、同じ内容なら作り直さない。
-  public setItems(items: readonly (readonly [T, string])[]): void {
+  public setItems(items: readonly (readonly [T, string, string?])[]): void {
     // 同じ内容なら作り直さない — 差し替えると押しかけのタブが消えてクリックが届かなくなる。
-    const same = (pair: readonly [T, string], i: number): boolean => {
+    const same = (triple: readonly [T, string, string?], i: number): boolean => {
       const cur = this.items[i];
-      return cur !== undefined && pair[0] === cur[0] && pair[1] === cur[1];
+      return cur !== undefined && triple[0] === cur[0] && triple[1] === cur[1] && triple[2] === cur[2];
     };
     if (items.length === this.items.length && items.every(same)) return;
     // 内容が変わった分だけ全タブを組み直す。
     for (const btn of this.buttons.values()) btn.element.remove();
     this.buttons.clear();
-    for (const [value, label] of items) {
-      const btn = new Button(label, () => this.onSelect(value));
+    for (const [value, label, keyLabel] of items) {
+      const btn = new Button(label, () => this.onSelect(value), undefined, undefined, keyLabel);
       btn.element.setAttribute('role', 'tab');
       this.element.appendChild(btn.element);
       this.buttons.set(value, btn);
     }
-    this.items = items.map(([value, label]) => [value, label] as const);
+    this.items = items.map(([value, label, keyLabel]) => [value, label, keyLabel] as const);
   }
 
   // 値に対応するタブボタンの要素。タブパネルとの aria-controls 関連付けなど、
