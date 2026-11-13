@@ -287,6 +287,7 @@ export class RunEventPresenter {
         this.notifier.hint(`${body.name} の設計図を入手した`, 5000);
         return;
 
+      case 'salvageAwarded':
       case 'blueprintRenamed':
       case 'blueprintDeleted':
         return;
