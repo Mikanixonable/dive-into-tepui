@@ -283,7 +283,6 @@ export class RunEventPresenter {
         this.notifier.hint(SHIP_REQUIRED_TEXT[body.action], undefined, 'warn');
         return;
 
-      case 'blueprintRecorded':
       case 'blueprintRenamed':
       case 'blueprintDeleted':
         return;

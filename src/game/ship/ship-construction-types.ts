@@ -138,8 +138,6 @@ export interface ShipConstructionPanelModel {
   readonly targets: readonly ConstructionTargetState[];
   readonly history: ConstructionHistoryView;
   readonly blueprints: readonly ShipBlueprintCardView[];
-  // 設計図を記録できない理由。記録できるときは null。
-  readonly blueprintRecordReason: string | null;
   readonly canPlace: boolean;
   readonly canRemove: boolean;
 }
@@ -167,7 +165,7 @@ export function hiddenShipConstructionModel(): ShipConstructionPanelModel {
     }, preview: null,
     role: 'material', placeBlockReason: null, pointedTargetId: null, targets: [],
     history: { names: [], position: 0, canUndo: false, canRedo: false },
-    blueprints: [], blueprintRecordReason: null,
+    blueprints: [],
     canPlace: false, canRemove: false,
   };
 }
