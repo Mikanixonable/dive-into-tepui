@@ -137,4 +137,22 @@ export function register(): void {
     assert.equal(presenter.live.length, 1);
     assert.equal(presenter.live[0]?.age, frozen);
   });
+
+  test('flash-presenter: 撃破の黒煙は閃光より遅れて始まり、閃光が消えたあとも残る', () => {
+    const presenter = presentOne({ kind: 'shipExploded', state: source(0), modelScale: 1 }, 0);
+    // 撃破の瞬間には黒煙はまだ出ていない。
+    assert.ok(presenter.live.every((e) => e.blend !== 'smoke'), '撃破と同時に黒煙が出ている');
+
+    presenter.present([], 1.0, false);
+    const smokeAt1 = presenter.live.filter((e) => e.blend === 'smoke');
+    assert.equal(smokeAt1.length, 1, '撃破から遅れて黒煙が出ていない');
+    assert.ok(smokeAt1[0]!.age > 0 && smokeAt1[0]!.age < smokeAt1[0]!.duration, '黒煙の経過が範囲外');
+
+    // 閃光の寿命(爆炎の寿命)を過ぎても、黒煙だけが残る。
+    presenter.present([], 2.0, false);
+    assert.ok(presenter.live.length >= 1 && presenter.live.every((e) => e.blend === 'smoke'),
+      '閃光が消えたあとに黒煙以外が残っている');
+    presenter.present([], 3.5, false);
+    assert.equal(presenter.live.length, 0, '黒煙の寿命を過ぎても残っている');
+  });
 }
