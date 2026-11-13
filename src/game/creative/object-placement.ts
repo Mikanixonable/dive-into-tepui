@@ -23,7 +23,7 @@ import {
   type ObjectPlacerForm, type ReferenceCelestialBody,
 } from './object-placer-panel';
 import {
-  validateBaseReferenceFields, validateEllipticPlacementFields, validateLagrangePlacementFields,
+  validateEllipticPlacementFields, validateLagrangePlacementFields,
   type PlacementFieldIssue,
 } from './placement-validation';
 import { orbitSlotFromHalo, orbitSlotFromLissajous } from '../navigation/orbit-slot-source';
@@ -116,14 +116,14 @@ export class ObjectPlacement {
     this.panel.open(focusId !== undefined ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
   }
 
-  // 種類と軌道要素を引き継いで配置パネルを開く。state を軌道要素へ逆算できないか基地の基準天体
-  // 制約に反するときは、種類だけを引き継ぎ、軌道を複製できなかったことを記録する。
+  // 種類と軌道要素を引き継いで配置パネルを開く。state を軌道要素へ逆算できないときは、
+  // 種類だけを引き継ぎ、軌道を複製できなかったことを記録する。
   public openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void {
     const selection: ObjectPlacementSelection = entityKind === 'player' ? 'combat-ship'
       : entityKind === 'base' ? 'base-ship' : entityKind;
     const form = elementsFormFromState(
       state, this.celestialSystem, state.t, this.celestialSystem.origin.id);
-    if (form && validateBaseReferenceFields(selection, 'elements', form.celestialBody).length === 0) {
+    if (form) {
       this.panel.open({ kind: 'form', selection, form });
       return;
     }
@@ -346,10 +346,7 @@ export class ObjectPlacement {
 
   // フォーム値をフィールド単位で検証する。
   private computeFieldIssues(form: ObjectPlacerForm): PlacementFieldIssue[] {
-    // 配置方法によらず効く、種類ごとの基準天体の制約。
-    const issues = [...validateBaseReferenceFields(
-      form.selection, form.placementMode, form.placementMode === 'elements' ? form.celestialBody : undefined,
-    )];
+    const issues: PlacementFieldIssue[] = [];
     // 配置方法ごとの制約。
     if (form.placementMode === 'elements') {
       const center = this.referenceCelestialBody(form);

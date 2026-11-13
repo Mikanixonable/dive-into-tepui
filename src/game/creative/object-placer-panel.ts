@@ -72,10 +72,9 @@ export type ObjectPlacementSelection =
 export type ObjectPlacerForm = { readonly selection: ObjectPlacementSelection } & (ElementsForm | LagrangeForm);
 
 // open() の事前入力: 'body' はその天体を基準天体とする軌道要素方式のフォームで開く
-// (その天体を基準天体に選べない種類を選んでいたときは、選べる種類へ戻してから合わせる。
-// 他の入力欄は前回の値のまま) — マップの現在フォーカスや天体のプロパティウィンドウから、
+// (他の入力欄は前回の値のまま) — マップの現在フォーカスや天体のプロパティウィンドウから、
 // 新規配置の基準天体を初期値にする経路。'selection' は preset/種類だけを合わせる —
-// 複製元の軌道要素一式は引き継げない(または引き継ぐと基地の基準天体制約に反する)ときの経路。
+// 複製元の軌道要素一式は引き継げないときの経路。
 // 'form' は preset/種類を selection に固定し、軌道要素一式をその値へ書き換える —
 // 軌道要素をそのまま引き継げる複製の経路。
 type ObjectPlacerPreset =
@@ -182,8 +181,6 @@ export class ObjectPlacerPanel implements OverlayHandle {
   private readonly libAz: HTMLInputElement;
   private readonly refreshPresets: () => void;
   private readonly celestialBodyItems: readonly (readonly [ReferenceCelestialBody, string])[];
-  // 基地は敵の射程となる惑星近傍を避けるため、軌道要素指定の基準天体を月だけに絞った選択肢。
-  private readonly baseCelestialBodyItems: readonly (readonly [ReferenceCelestialBody, string])[];
   private readonly lagrangeSystemItems: readonly (readonly [string, string])[];
   private readonly issueList: HTMLElement;
   private issueRows: readonly HTMLElement[] = [];
@@ -206,7 +203,6 @@ export class ObjectPlacerPanel implements OverlayHandle {
   ) {
     const orbitingIds = orbitingIdsOf(celestialSystem);
     this.celestialBodyItems = orbitingIds.map((id) => [id, celestialSystem.nameOf(id)] as const);
-    this.baseCelestialBodyItems = this.celestialBodyItems.filter(([id]) => id === 'moon');
     this.lagrangeSystemItems = lagrangeSystemItemsOf(celestialSystem, orbitingIds);
 
     this.panel = document.createElement('div');
@@ -441,20 +437,11 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.appendChild(btnRow);
   }
 
-// 種類を切り替える。基地は月基準の軌道要素かラグランジュ点指定でしか設置できない
-// (placement-validation.ts の validateBaseReferenceFields と対応)ので、基準天体の選択肢を
-// 月だけに絞り、月以外が選ばれていたら月へ寄せ直す。基地以外へ戻したら選択肢も元に戻す。
+// 種類を切り替える。基準天体の選択肢は種類にかかわらず全公転天体のままなので、
+// ここでは選択の反映だけを行う。
   private selectEntityKind(v: ObjectPlacementSelection): void {
     this.entityKindValue = v;
     this.entityKind.setSelected(v);
-    if (v === 'base-ship') {
-      if (this.celestialBodyValue !== 'moon') this.celestialBodyValue = 'moon';
-      this.celestialBody.setGroups([{ label: '', items: this.baseCelestialBodyItems }]);
-    } else {
-      this.celestialBody.setGroups(bodyGroupsOf(this.celestialSystem, this.celestialBodyItems, this.celestialBodyValue));
-    }
-    this.celestialBody.setSelected(this.celestialBodyValue);
-    this.refreshPresets();
   }
 
   // サイズ/形の入力組を切り替え、選ばれた組以外を隠す。
@@ -560,7 +547,6 @@ export class ObjectPlacerPanel implements OverlayHandle {
       case 'raan': return this.raan.element;
       case 'argumentOfPeriapsis': return this.argp.element;
       case 'trueAnomaly': return this.nu.element;
-      case 'referenceCelestialBody': return this.celestialBody.element;
       case 'inPlaneAmplitude': return this.libAx.parentElement as HTMLElement;
       case 'outOfPlaneAmplitude': return this.libAz.parentElement as HTMLElement;
     }
@@ -598,15 +584,8 @@ export class ObjectPlacerPanel implements OverlayHandle {
     } else if (preset?.kind === 'selection') {
       this.selectEntityKind(preset.selection);
     } else if (preset?.kind === 'body') {
-      // その天体を基準天体に選べない種類(基地=月のみ)を選んでいたときは、選べる種類へ戻す。
-      // 基準天体になれない天体の id が来たときは種類も含めて何も触らない。
-      if (this.entityKindValue === 'base-ship'
-        && !this.baseCelestialBodyItems.some(([id]) => id === preset.celestialBody)
-        && this.celestialBodyItems.some(([id]) => id === preset.celestialBody)) {
-        this.selectEntityKind('combat-ship');
-      }
-      const allowed = this.entityKindValue === 'base-ship' ? this.baseCelestialBodyItems : this.celestialBodyItems;
-      if (allowed.some(([id]) => id === preset.celestialBody)) {
+      // 基準天体になれない天体の id が来たときは何も触らない。
+      if (this.celestialBodyItems.some(([id]) => id === preset.celestialBody)) {
         this.celestialBodyValue = preset.celestialBody;
         this.celestialBody.setSelected(this.celestialBodyValue);
         this.refreshPresets();
@@ -688,7 +667,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
     row.rebase?.();
   }
 
-  // 軌道要素一式をフォームへ書き込む。form.celestialBody が現在の種類で選べる基準天体である
+  // 軌道要素一式をフォームへ書き込む。form.celestialBody が登録されている公転天体である
   // ことを前提にする。
   private applyElementsForm(form: ElementsForm): void {
     // まず表示する入力組を form に合わせる。

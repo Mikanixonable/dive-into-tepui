@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from '../harness';
 import { MU_EARTH, MU_MOON, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
 import {
-  validateEllipticPlacementFields, validateLagrangePlacementFields, validateBaseReferenceFields,
+  validateEllipticPlacementFields, validateLagrangePlacementFields,
   type EllipticPlacementInput, type PlacementFieldIssue,
 } from '../../src/game/creative/placement-validation';
 import { MAX_PLACED_SHIPS, reachesPlacedShipLimit } from '../../src/game/creative/object-placement';
@@ -131,20 +131,5 @@ export function register(): void {
   test('creative placement: lissajous flags both amplitudes at once when both are invalid', () => {
     const issues = validateLagrangePlacementFields({ orbitKind: 'lissajous', inPlaneAmplitudeKm: Number.NaN, outOfPlaneAmplitudeKm: -5 });
     assert.deepEqual(new Set(fields(issues)), new Set(['inPlaneAmplitude', 'outOfPlaneAmplitude']));
-  });
-
-  test('creative placement: base rejects an earth/jupiter elements reference on the referenceBody field', () => {
-    assert.deepEqual(fields(validateBaseReferenceFields('base-ship', 'elements', 'earth')), ['referenceCelestialBody']);
-    assert.deepEqual(fields(validateBaseReferenceFields('base-ship', 'elements', 'jupiter')), ['referenceCelestialBody']);
-  });
-  test('creative placement: base accepts a moon-elements reference and any libration reference', () => {
-    assert.deepEqual(validateBaseReferenceFields('base-ship', 'elements', 'moon'), []);
-    assert.deepEqual(validateBaseReferenceFields('base-ship', 'lagrange', 'earth'), []);
-    assert.deepEqual(validateBaseReferenceFields('base-ship', 'lagrange', undefined), []);
-  });
-  test('creative placement: non-base object types are never restricted regardless of reference body', () => {
-    assert.deepEqual(validateBaseReferenceFields('combat-ship', 'elements', 'earth'), []);
-    assert.deepEqual(validateBaseReferenceFields('enemy', 'elements', 'jupiter'), []);
-    assert.deepEqual(validateBaseReferenceFields('ammo', 'elements', 'earth'), []);
   });
 }
