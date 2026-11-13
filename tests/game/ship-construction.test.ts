@@ -3,21 +3,35 @@ import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { createBasePreset } from '../../src/game/ship/ship-presets';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
-import { enumerateConstructionTargets } from '../../src/game/ship/ship-construction-rules';
+import {
+  constructionTargetId, enumerateConstructionTargets,
+} from '../../src/game/ship/ship-construction-rules';
 import { restoreDockedVessels, serializeShipAssembly } from '../../src/game/ship/ship-save';
 import { CommandQueue } from '../../src/game/command-queue';
 import { CommandCompletion } from '../../src/game/command-completion';
+import {
+  ShipConstruction, type ConstructionFocus, type ShipConstructionPanelPort,
+} from '../../src/game/ship/ship-construction';
 import { ShipConstructionEdits, type ConstructionShip } from '../../src/game/ship/ship-construction-edits';
 import { ConstructionHistory } from '../../src/game/ship/ship-construction-history';
 import { ShipCapabilities } from '../../src/game/ship/ship-capabilities';
 import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { test } from '../harness';
-import { Q_IDENTITY } from '../../src/math/quat';
-import { v3 } from '../../src/math/vec3';
+import { Q_IDENTITY, qRotate } from '../../src/math/quat';
+import { add, sub, v3 } from '../../src/math/vec3';
+import type { Input } from '../../src/input/input';
+import type { OverlayManager } from '../../src/hud/overlay-manager';
+import type { Notifier } from '../../src/hud/notifier';
+import type { DisplayWindowManager } from '../../src/game/display-window-manager';
+import type { ModularShip } from '../../src/game/ship/modular-ship';
+import type { RunEventSink } from '../../src/game/run-events';
 import type { ModuleOrientation } from '../../src/game/ship/ship-assembly-transform';
 import type { AxialFace } from '../../src/game/ship/ship-assembly-transform';
 import type { TankInstance } from '../../src/game/ship/ship-module-instance';
+import type { SideSlot } from '../../src/game/ship/ship-assembly-types';
+import type { ShipBlueprint, ShipBlueprintShelf } from '../../src/game/ship/ship-blueprint';
+import type { ShipConstructionPanelModel } from '../../src/game/ship/ship-construction-types';
 
 const ORIENTATION: ModuleOrientation = { roll: 0, face: 'back' };
 
@@ -41,6 +55,35 @@ class ConstructionTestShip implements ConstructionShip {
 function axialFaceTarget(assembly: ShipAssembly, anchorId: string, parentId: string, face: AxialFace) {
   return enumerateConstructionTargets(assembly, anchorId).find(
     info => info.target.kind === 'axial-face' && info.target.parentId === parentId && info.target.face === face,
+  );
+}
+
+// 建造セッションを偽の装置へ繋いで作る。パネルへ同期した直近の model を返す口を添える。
+function createConstruction(ship: ConstructionTestShip, queue: CommandQueue, blueprints: ShipBlueprintShelf) {
+  let lastModel: ShipConstructionPanelModel | null = null;
+  const construction = new ShipConstruction(
+    {} as unknown as Input,
+    queue,
+    {
+      element: { contains: () => false },
+      selectCatalogCategory: () => {},
+      sync: (model: ShipConstructionPanelModel) => { lastModel = model; },
+    } as unknown as ShipConstructionPanelPort,
+    { openMode: () => {}, close: () => {}, isInputGated: () => false } as unknown as OverlayManager,
+    { current: { forceCurrent: false }, setForceCurrent: () => {} } as unknown as DisplayWindowManager,
+    { hint: () => {} } as unknown as Notifier,
+    { request: () => {}, close: () => {} },
+    blueprints,
+    { record: () => {} } as unknown as RunEventSink,
+  );
+  return { construction, lastModel: () => lastModel };
+}
+
+// 指定した側面スロットの取り付け先を、建造が列挙する候補の中から探す。
+function sideSlotTarget(construction: ShipConstruction, parentId: string, slot: SideSlot) {
+  return construction.targets().find(
+    info => info.target.kind === 'side-slot' && info.target.parentId === parentId
+      && info.target.slot === slot,
   );
 }
 
@@ -261,6 +304,33 @@ export function register(): void {
     assert.ok(rotated !== null);
   });
 
+  // 回転リングのドラッグを離したときのまとめ回し。複数段でも 1 命令 = 1 履歴エントリ。
+  test('ship construction: 複数段の回転は1つの操作として履歴へ載る', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const { construction, lastModel } = createConstruction(ship, queue, { blueprints: [] });
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+    construction.select('solar-left');
+    const namesBefore = lastModel()?.history.names.length ?? 0;
+    const before = ship.assembly.worldTransformOf('solar-left')!.rotation;
+
+    construction.rotateSteps(2);
+    queue.applyAll();
+    construction.sync();
+
+    const names = lastModel()?.history.names ?? [];
+    assert.equal(names.length, namesBefore + 1);
+    assert.ok(names[names.length - 1]?.includes('回転'));
+    assert.equal(construction.lastOperation?.kind, 'rotate');
+    // 2 段 = 180°。回転前後のクォータニオンは 4 次元内積でほぼ直交する。
+    const after = ship.assembly.worldTransformOf('solar-left')!.rotation;
+    const dot4 = Math.abs(
+      before.x * after.x + before.y * after.y + before.z * after.z + before.w * after.w,
+    );
+    assert.ok(dot4 < 0.5, `2 段回っていない(dot4=${dot4})`);
+    ship.assembly.assertValid();
+  });
+
   test('ship construction history: 上限を超えたら開始時を残して古い順に捨てる', () => {
     const start = serializeShipAssembly(createBasePreset());
     const history = new ConstructionHistory(start);
@@ -293,6 +363,52 @@ export function register(): void {
     assert.deepEqual(history.names, ['建造を開始', 'a', 'c']);
   });
 
+  test('ship construction: 視点寄せは選択中のモジュールへ、無ければ船体全体へ寄せる', () => {
+    const ship = new ConstructionTestShip();
+    const focuses: { ship: ModularShip; target: ConstructionFocus | null }[] = [];
+    const construction = new ShipConstruction(
+      {} as unknown as Input,
+      new CommandQueue(),
+      {
+        element: { contains: () => false },
+        selectCatalogCategory: () => {},
+        sync: () => {},
+      } as unknown as ShipConstructionPanelPort,
+      { openMode: () => {}, close: () => {}, isInputGated: () => false } as unknown as OverlayManager,
+      { current: { forceCurrent: false }, setForceCurrent: () => {} } as unknown as DisplayWindowManager,
+      { hint: () => {} } as unknown as Notifier,
+      { request: () => {}, close: () => {} },
+      { blueprints: [] },
+      { record: () => {} } as unknown as RunEventSink,
+      (s, target) => { focuses.push({ ship: s, target }); },
+    );
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+
+    // 建造開始時と選択なしの視点寄せは、船体全体へ寄せる(target は null)。
+    assert.equal(focuses.length, 1);
+    assert.equal(focuses[0]!.ship as unknown, ship);
+    assert.equal(focuses[0]!.target, null);
+    construction.focus();
+    assert.equal(focuses.length, 2);
+    assert.equal(focuses[1]!.target, null);
+
+    // 選択中はそのモジュールの ECI 位置と外接半径が渡る。
+    construction.select('cockpit');
+    construction.focus();
+    const target = focuses[2]?.target;
+    assert.ok(target !== null && target !== undefined);
+    const { motion } = ship;
+    const root = sub(motion.state.r, qRotate(motion.att.q, motion.centerOffset));
+    const expected = add(
+      root, qRotate(motion.att.q, ship.assembly.worldTransformOf('cockpit')!.position),
+    );
+    assert.ok(Math.abs(target.position.x - expected.x) < 1e-9);
+    assert.ok(Math.abs(target.position.y - expected.y) < 1e-9);
+    assert.ok(Math.abs(target.position.z - expected.z) < 1e-9);
+    const definition = ship.assembly.definition('cockpit')!;
+    assert.ok(Math.abs(target.radius - Math.hypot(definition.length, definition.diameter) / 2) < 1e-9);
+  });
+
   test('ship construction history: 戻す先の写しを返すだけで位置は確定を待つ', () => {
     const start = serializeShipAssembly(createBasePreset());
     const history = new ConstructionHistory(start);
@@ -306,5 +422,152 @@ export function register(): void {
     assert.equal(history.position, 0);
     history.moveTo(99);
     assert.equal(history.position, 0);
+  });
+
+  test('ship construction: カタログの手持ちは置くと手が空になり選択も残らない', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const { construction } = createConstruction(ship, queue, { blueprints: [] });
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+    construction.select('solar-left');
+    construction.hold({ kind: 'catalog', definitionId: 'tank-3-main' });
+    const target = axialFaceTarget(ship.assembly, 'dock-left', 'dock-left', 'front');
+    assert.ok(target !== undefined);
+
+    construction.placeAt(constructionTargetId(target.target));
+
+    assert.equal(construction.held, null);
+    assert.equal(construction.selectedModuleId, null);
+    // 命令は適用へ進み、置いたモジュールが船体へ出る。
+    queue.applyAll();
+    construction.sync();
+    assert.equal(construction.lastOperation?.kind, 'place');
+    assert.equal(construction.lastDenied, null);
+  });
+
+  test('ship construction: 複製した手持ちは置くと手が空になり選択も残らない', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const { construction } = createConstruction(ship, queue, { blueprints: [] });
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+    construction.select('solar-left');
+    construction.duplicateSelected();
+    assert.equal(construction.held?.kind, 'copy');
+    const target = sideSlotTarget(construction, 'main-tank', 'side:+y');
+    assert.ok(target !== undefined);
+
+    construction.placeAt(constructionTargetId(target.target));
+
+    assert.equal(construction.held, null);
+    assert.equal(construction.selectedModuleId, null);
+    queue.applyAll();
+    construction.sync();
+    assert.equal(construction.lastOperation?.kind, 'place');
+    assert.equal(construction.lastDenied, null);
+  });
+
+  test('ship construction: 設計図の手持ちは置くと手が空になり選択も残らない', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const piece = ship.assembly.clone().detachPiece('solar-left', 'dock-left');
+    const blueprint: ShipBlueprint = {
+      id: 'bp-panel', name: 'パネル', createdAtReal: 0, piece: serializeShipAssembly(piece),
+    };
+    const { construction, lastModel } = createConstruction(
+      ship, queue, { blueprints: [blueprint] },
+    );
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+    construction.select('main-tank');
+    construction.holdBlueprint('bp-panel');
+    assert.equal(construction.held?.kind, 'copy');
+    const target = sideSlotTarget(construction, 'main-tank', 'side:+y');
+    assert.ok(target !== undefined);
+
+    construction.placeAt(constructionTargetId(target.target));
+
+    assert.equal(construction.held, null);
+    assert.equal(construction.selectedModuleId, null);
+    queue.applyAll();
+    construction.sync();
+    assert.equal(construction.lastOperation?.kind, 'place');
+    // 手に持っていた設計図の印も消える。
+    assert.equal(lastModel()?.blueprints[0]?.held, false);
+  });
+
+  test('ship construction: 置けない取り付け先を指定しても手持ちは残る', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const { construction } = createConstruction(ship, queue, { blueprints: [] });
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+    // 太陽電池は側面にだけ取り付けられるので、軸方向の面へは置けない。
+    construction.hold({ kind: 'catalog', definitionId: 'solar-panel-standard' });
+    const target = axialFaceTarget(ship.assembly, 'dock-left', 'dock-left', 'front');
+    assert.ok(target !== undefined);
+
+    construction.placeAt(constructionTargetId(target.target));
+
+    assert.equal(construction.held?.kind, 'catalog');
+    assert.equal(construction.lastDenied !== null, true);
+  });
+
+  test('ship construction: 対称数は置いたあとも持ち越す', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const { construction, lastModel } = createConstruction(ship, queue, { blueprints: [] });
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+    construction.hold({ kind: 'catalog', definitionId: 'solar-panel-standard' });
+    construction.cycleSymmetry();
+    const target = sideSlotTarget(construction, 'main-tank', 'side:+y');
+    assert.ok(target !== undefined);
+    const sizeBefore = ship.assembly.size;
+
+    construction.placeAt(constructionTargetId(target.target));
+    queue.applyAll();
+
+    // 対称2の配置なので、指した +y と対向する -y の2か所へ置かれる。
+    assert.equal(ship.assembly.size, sizeBefore + 2);
+    construction.sync();
+    assert.equal(construction.held, null);
+    // 対称数は手持ちと別の状態なので、次に持ったときも変わっていない。
+    construction.hold({ kind: 'catalog', definitionId: 'tank-3-main' });
+    assert.equal(lastModel()?.held?.symmetry, 2);
+  });
+
+  test('ship construction: 付け替えるは選択中の先端部を手持ちにし、置くと付け替わって手が空になる', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const { construction } = createConstruction(ship, queue, { blueprints: [] });
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+    construction.select('rcs-tank');
+
+    construction.holdSelectedPiece();
+
+    assert.deepEqual(construction.held, { kind: 'piece', moduleId: 'rcs-tank' });
+    const target = axialFaceTarget(ship.assembly, 'dock-left', 'cockpit', 'front');
+    assert.ok(target !== undefined);
+    construction.placeAt(constructionTargetId(target.target));
+    assert.equal(construction.held, null);
+
+    queue.applyAll();
+    construction.sync();
+    assert.equal(construction.lastOperation?.kind, 'place');
+    assert.equal(construction.lastDenied, null);
+    // 先端部ごと cockpit の前端へ付け替わり、識別子は保つ。
+    assert.equal(
+      ship.assembly.graph.find(edge => edge.childId === 'rcs-tank')?.parentId, 'cockpit',
+    );
+    assert.ok(ship.assembly.module('radiator-left') !== null);
+    ship.assembly.assertValid();
+  });
+
+  test('ship construction: 選択が無い付け替えは拒否して手持ちを変えない', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const { construction } = createConstruction(ship, queue, { blueprints: [] });
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+
+    construction.holdSelectedPiece();
+    assert.equal(construction.held, null);
+    assert.equal(construction.lastDenied !== null, true);
   });
 }

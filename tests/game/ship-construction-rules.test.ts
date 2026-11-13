@@ -131,7 +131,7 @@ export function register(): void {
   });
 
   // (c) 前後反転は両端に面を持つ定義だけで有効。
-  test('ship construction rules: 取り付け端の入れ替えは両端に面を持つ部品だけで効く', () => {
+  test('ship construction rules: 向きの反転は両端に面を持つ部品だけで効く', () => {
     const assembly = createBasePreset();
     const target = faceTarget(assembly, 'cockpit', 'front').target;
     for (const face of ['front', 'back'] as const) {
