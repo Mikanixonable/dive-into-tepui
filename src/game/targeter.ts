@@ -10,7 +10,7 @@ import { ModularShip } from './ship/modular-ship';
 import { aliveCombatTarget, isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { Viewport } from '../render/viewport';
-import { GroupedMarkers, withTargetRole, type GroupedMarkerItem } from './marker/grouped-markers';
+import { GroupedMarkers, withHitFlash, withTargetRole, type GroupedMarkerItem } from './marker/grouped-markers';
 import type { ThemePalette } from '../theme';
 import { LeadMarkers } from './marker/lead-markers';
 import type { ActiveCelestialLabel } from './marker/celestial-markers';
@@ -186,7 +186,8 @@ export class Targeter {
       if (visibility && !visibility.pickable) continue;
       // 戦闘ビューのカメラ直下にいる自機は、マーカーを重ねると視界を遮るため除外する。
       if (!mapView && tgt === viewer) continue;
-      const item = tgt.markerItem(viewerPos, ds.r, ds.v, view, tgt === viewer);
+      const built = tgt.markerItem(viewerPos, ds.r, ds.v, view, tgt === viewer);
+      const item = tgt instanceof Enemy && tgt.struckWithin(displayTime) ? withHitFlash(built) : built;
       const mapOccluded = mapView && isOccluded(camera.position, ds.r, this.celestialBodies, displayTime);
       const mapOpacity = mapOccluded
         ? 0

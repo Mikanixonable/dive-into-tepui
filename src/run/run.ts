@@ -4,7 +4,7 @@ import { Game, type SerializedGame } from '../game/game';
 import { GamePresentation } from '../game/game-presentation';
 import { proteinMotionFrameSample, type ProteinMotionFrameSample } from '../game/protein/protein-motion-metrics';
 import type { PageDevices } from './page-devices';
-import type { StageClass } from '../game/stages/stage';
+import type { RunOptions, StageClass } from '../game/stages/stage';
 import type { FrameSections } from '../game/frame-sections';
 import type { LoadingProgress } from '../game/loading-progress';
 import type { RunSummary } from '../game/run-summary';
@@ -46,11 +46,12 @@ export class Run implements SnapshotSource, PerfCountSource {
     blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
+    runOptions: RunOptions,
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
     const game = await Game.create(
-      stageClass, startEpoch, devices.scene, devices.hud, sections, blueprints, progress,
+      stageClass, startEpoch, devices.scene, devices.hud, sections, blueprints, progress, runOptions,
     );
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,

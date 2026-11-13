@@ -180,7 +180,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       for (const command of controls.commands) active.handleCommand(command, this);
     }
     this.updateControllables(active, controls, operable, dt, simDt, activeStage, stageRules);
-    this.behaveAll(active, operable && enemiesMayFire);
+    this.behaveAll(active, operable && enemiesMayFire, activeStage.enemyAttackLimit);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled(
       'update(指令決定)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
@@ -220,14 +220,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。追跡先の艦が1隻も無ければ何もしない。
-  // mayFire が偽の間は撃たない。
-  private behaveAll(active: Controllable | null, mayFire: boolean): void {
+  // mayFire が偽の間は撃たない。attackLimit は攻撃グループで同時に発砲してよい数。
+  private behaveAll(active: Controllable | null, mayFire: boolean, attackLimit: number): void {
     const player = this.trackedShip(active);
     if (player === null) return;
     const enemies = this.all().filter(isEnemy);
     for (const e of enemies) {
       if (e.motion.alive) {
-        e.updateBehavior(this.simTime, player, this, enemies, mayFire, this.celestialBodies);
+        e.updateBehavior(this.simTime, player, this, enemies, mayFire, this.celestialBodies, attackLimit);
       }
     }
   }

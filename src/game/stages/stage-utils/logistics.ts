@@ -1,9 +1,9 @@
 // 軌道上の弾薬/RCS燃料補給ピックアップの投入・回収・デスポーンを担う。
 import { randomQuat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
-import { add, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec3';
+import { add, addScaled, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../../math/vec3';
 import {
-  AmmoPickup, AMMO_PICKUP_RADIUS, isAmmoPickup,
+  AmmoPickup, AMMO_PICKUP_MAGS, AMMO_PICKUP_RADIUS, isAmmoPickup,
   isRcsFuelPickup, RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT,
 } from '../../dynamic/dynamic-entity/pickup';
 import { kinematicState, orbitAxes, type KinematicState } from '../../../physics/kinematic-state';
@@ -13,6 +13,7 @@ import type { ModularShip } from '../../ship/modular-ship';
 import type { EntityRoster } from '../../dynamic/entity-roster';
 import type { EntityRegistry } from '../../dynamic/entity-registry';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
+import type { FormationRole } from '../../dynamic/dynamic-entity/entity-kind';
 
 export interface SerializedLogistics {
   readonly resupplyCheckAt: number;
@@ -24,7 +25,6 @@ export const MAX_ACTIVE_AMMO_PICKUPS = 3; // 同時に存在する補給の最�
 export const LOGISTICS_SCRIPTED_MIN_DIST = 12.5; // 台本投入の配置距離(自機軌道上の位相シフト距離)下限 [m]
 export const LOGISTICS_SCRIPTED_MAX_DIST = 50; // 同上限 [m]
 
-const AMMO_PICKUP_MAGS = 6; // 補給 1 個の取り込みで増えるマガジン数
 const LOGISTICS_LOW_MAGS = 7; // 残りマガジンがこれ未満になると付近の軌道に補給を投入
 const LOGISTICS_LOW_FUEL_RATIO = 0.3; // この割合未満になると燃料補給を投入
 const MAX_ACTIVE_RCS_FUEL_PICKUPS = 3; // 同時に存在する燃料補給の最大数
@@ -32,6 +32,8 @@ const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
 const LOGISTICS_AUTO_MIN_DIST = 312.5; // 自動投入の配置距離(自機軌道上の位相シフト距離)下限 [m]
 const LOGISTICS_AUTO_MAX_DIST = 625; // 同上限 [m]
 const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給をデスポーンさせる距離 [m]
+// 撃破ドロップの速度へ残す、自機から見た敵機の相対速度の割合。近くで落とした補給ほど自機の近くを漂う。
+const DROP_RELATIVE_VELOCITY_KEEP = 0.15;
 
 // 補給物に与えるランダムな姿勢。どの投入経路でも同じ振る舞いで組む。
 function randomPickupAttitude(): Attitude {
@@ -40,6 +42,26 @@ function randomPickupAttitude(): Attitude {
     w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
     inertia: v3(1, 1.4, 1.2),
   };
+}
+
+// state の軌道上を dist [m] だけ先へ進めた位相の状態。速度も同じ向きへ回すので、同じ軌道の上で
+// 相対速度はほぼ生じない。
+export function phaseShiftedBy(state: KinematicState<'eci'>, dist: number): KinematicState<'eci'> {
+  const hHat = orbitAxes(state).nrm;
+  const ang = dist / len(state.r);
+  return kinematicState<'eci'>(state.t, rotateAxis(state.r, hHat, ang), rotateAxis(state.v, hHat, ang));
+}
+
+// 撃破ドロップのマガジン数の内訳(SPEC GAME.md 8)。盾役は補給の既定と同じ数、攻撃担当とエネルギー供給役は
+// それより少なく、陣形に属さない敵はさらに少ない。
+const DROP_MAGS_ATTACKER = 4;
+const DROP_MAGS_OTHER = 2;
+
+// 落とした敵の陣形での役割から、撃破ドロップのマガジン数を決める。
+export function dropMagsOf(formationRole: FormationRole | null): number {
+  if (formationRole === 'shield') return AMMO_PICKUP_MAGS;
+  if (formationRole === 'attacker' || formationRole === 'energy') return DROP_MAGS_ATTACKER;
+  return DROP_MAGS_OTHER;
 }
 
 export class Logistics {
@@ -97,19 +119,11 @@ export class Logistics {
     minDist = LOGISTICS_AUTO_MIN_DIST,
     maxDist = LOGISTICS_AUTO_MAX_DIST,
   ): void {
-    // 自機の軌道面内で minDist〜maxDist 先に相当する角度だけ位相をずらす
-    const r = player.motion.state.r;
-    const v = player.motion.state.v;
-    const hHat = orbitAxes(player.motion.state).nrm;
-    const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
-    // ずらした位置・速度と、ランダムな姿勢で補給エンティティを作る
+    // 自機の軌道上で minDist〜maxDist 先の位相へずらし、ランダムな乱れと姿勢で補給エンティティを作る
+    const shifted = phaseShiftedBy(player.motion.state, minDist + Math.random() * (maxDist - minDist));
     const ammoPickup = AmmoPickup.create(
       {
-        state: kinematicState<'eci'>(
-          player.motion.state.t,
-          rotateAxis(r, hHat, ang),
-          add(rotateAxis(v, hHat, ang), randVec(1.5)),
-        ),
+        state: kinematicState<'eci'>(shifted.t, shifted.r, add(shifted.v, randVec(1.5))),
         att: randomPickupAttitude(),
       },
       this._scene,
@@ -126,19 +140,11 @@ export class Logistics {
     minDist = LOGISTICS_AUTO_MIN_DIST,
     maxDist = LOGISTICS_AUTO_MAX_DIST,
   ): void {
-    // 自機の軌道面内で minDist〜maxDist 先に相当する角度だけ位相をずらす
-    const r = player.motion.state.r;
-    const v = player.motion.state.v;
-    const hHat = orbitAxes(player.motion.state).nrm;
-    const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
-    // ずらした位置・速度と、ランダムな姿勢で燃料補給エンティティを作る
+    // 自機の軌道上で minDist〜maxDist 先の位相へずらし、ランダムな乱れと姿勢で燃料補給エンティティを作る
+    const shifted = phaseShiftedBy(player.motion.state, minDist + Math.random() * (maxDist - minDist));
     const fuelPickup = RcsFuelPickup.create(
       {
-        state: kinematicState<'eci'>(
-          player.motion.state.t,
-          rotateAxis(r, hHat, ang),
-          add(rotateAxis(v, hHat, ang), randVec(1.5)),
-        ),
+        state: kinematicState<'eci'>(shifted.t, shifted.r, add(shifted.v, randVec(1.5))),
         att: randomPickupAttitude(),
       },
       this._scene,
@@ -149,17 +155,23 @@ export class Logistics {
     this.dynamicSystem.events.record({ kind: 'rcsFuelResupplyDeployed' });
   }
 
-  // state の位置へ弾薬補給を1個放出する。補給は state の速度へ小さな乱れを足して飛び、
-  // 以後は通常の補給と同じ回収・遠方デスポーンの規則に従う。自動投入の可否と同時数の
-  // 上限とは無関係に置く。
-  public dropAt(state: KinematicState): void {
+  // state の位置へ弾薬補給を1個放出する。補給の速度は、自機(playerState、居なければ null)の速度へ
+  // 「自機から見た敵機の相対速度」の DROP_RELATIVE_VELOCITY_KEEP 倍を足し、小さな乱れを加えたもの。
+  // 自機が居ないときは state の速度を引き継ぐ。補給は mags のマガジン数を持ち、以後は通常の補給と同じ
+  // 回収・遠方デスポーンの規則に従う。
+  public dropAt(state: KinematicState, playerState: KinematicState | null, mags: number): void {
+    // 自機が居ればその速度を基準に、敵機との相対速度の一部だけを乗せる。
+    const baseV = playerState === null
+      ? state.v
+      : addScaled(playerState.v, sub(state.v, playerState.v), DROP_RELATIVE_VELOCITY_KEEP);
     const ammoPickup = AmmoPickup.create(
       {
-        state: kinematicState<'eci'>(state.t, state.r, add(state.v, randVec(1.5))),
+        state: kinematicState<'eci'>(state.t, state.r, add(baseV, randVec(1.5))),
         att: randomPickupAttitude(),
       },
       this._scene,
       this.dynamicSystem.idAllocators,
+      mags,
     );
     this.dynamicSystem.add(ammoPickup);
   }
@@ -232,8 +244,8 @@ export class Logistics {
       ) continue;
       // 取り込んで消し、取り込んだことを記録する
       ammoPickup.motion.kill();
-      player.onPickup(AMMO_PICKUP_MAGS);
-      this.dynamicSystem.events.record({ kind: 'ammoPickedUp', mags: AMMO_PICKUP_MAGS });
+      player.onPickup(ammoPickup.mags);
+      this.dynamicSystem.events.record({ kind: 'ammoPickedUp', mags: ammoPickup.mags });
     }
   }
 

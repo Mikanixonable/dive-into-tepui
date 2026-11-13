@@ -138,7 +138,7 @@ export class StageDebug extends Stage {
     return generateWave(
       player.motion.state, this.waveCount++, this._celestialSystem.celestialMotions,
       this._scene, this._dynamicSystem.idAllocators, 'random',
-    );
+    ).enemies;
   }
 
   // 補給を進める。

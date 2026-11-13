@@ -47,7 +47,6 @@ export function shipMotionOptions(
   };
 }
 
-export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 
 // パーツ式の被弾モデルを持つ艦(自機・敵機)。HP と性能はパーツの合計から求める。
 export abstract class Ship extends DynamicEntity {
