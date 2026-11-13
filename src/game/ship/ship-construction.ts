@@ -99,7 +99,6 @@ export interface ShipConstructionPanelPort {
   onJumpHistory: ((index: number) => void) | null;
   onFinish: (() => void) | null;
   onDiscard: (() => void) | null;
-  onFocus: (() => void) | null;
   // カタログの表示カテゴリをタブの並び順の index で選ぶ。
   selectCatalogCategory(index: number): void;
   sync(model: ShipConstructionPanelModel): void;
@@ -181,7 +180,6 @@ export class ShipConstruction implements OverlayHandle {
     panel.onReattach = () => this.holdSelectedPiece();
     panel.onRelease = () => this.release();
     panel.onDeselect = () => this.select(null);
-    panel.onFocus = () => this.focus();
     panel.onRotate = (delta) => this.rotate(delta);
     panel.onSwapEnds = () => this.swapEnds();
     panel.onCycleSymmetry = () => this.cycleSymmetry();
@@ -790,7 +788,6 @@ export class ShipConstruction implements OverlayHandle {
     this.panel.onReattach = null;
     this.panel.onRelease = null;
     this.panel.onDeselect = null;
-    this.panel.onFocus = null;
     this.panel.onRotate = null;
     this.panel.onSwapEnds = null;
     this.panel.onCycleSymmetry = null;
