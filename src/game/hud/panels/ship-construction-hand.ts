@@ -18,6 +18,7 @@ export interface ShipConstructionHandCallbacks {
   readonly onPlace: () => void;
   readonly onRelease: () => void;
   readonly onDeselect: () => void;
+  readonly onFocus: () => void;
   readonly onRotate: (delta: 1 | -1) => void;
   readonly onSwapEnds: () => void;
   readonly onCycleSymmetry: () => void;
@@ -44,6 +45,7 @@ export class ShipConstructionHand {
   private readonly blueprintName: ValueInput;
   private readonly saveBlueprint: Button;
   private readonly deselect: Button;
+  private readonly focus: Button;
   private currentSymmetry: ConstructionSymmetry = 1;
 
   // 静的な手元バーの枠へ、状態に応じて出し入れする操作部品を差し込む。
@@ -77,11 +79,14 @@ export class ShipConstructionHand {
     );
     this.blueprintForm.append(this.blueprintName.element, this.saveBlueprint.element);
     this.deselect = new Button('選択を解く', () => callbacks.onDeselect(), undefined, 'secondary');
+    this.focus = new Button(
+      '視点を寄せる', () => callbacks.onFocus(), undefined, 'secondary', K.constructionFocus.label,
+    );
 
     els.get('construction-hand-actions').append(
       this.rollLeft.element, this.rollRight.element, this.swapEnds.element, this.symmetry.element,
       this.confirm.element, this.release.element, this.remove.element, this.duplicate.element,
-      this.blueprintForm, this.deselect.element,
+      this.blueprintForm, this.deselect.element, this.focus.element,
     );
   }
 
@@ -116,6 +121,7 @@ export class ShipConstructionHand {
     show(this.remove.element, editable);
     show(this.duplicate.element, editable);
     show(this.deselect.element, selection !== null);
+    show(this.focus.element, selection !== null);
 
     const canSave = editable && model.blueprintRecordReason === null;
     this.saveBlueprint.setEnabled(canSave);

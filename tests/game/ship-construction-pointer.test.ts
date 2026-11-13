@@ -125,7 +125,7 @@ class FakeHost implements ConstructionPointerHost {
   public removeSelected(): void {}
   public undo(): void {}
   public redo(): void {}
-  public focusShip(): void {}
+  public focus(): void {}
   public selectCatalogCategory(): void {}
 }
 
