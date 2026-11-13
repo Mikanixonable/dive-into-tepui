@@ -288,12 +288,12 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   }
 
   // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
-  // 間は撃たない。
+  // 間は撃たない。attackLimit は攻撃グループで同時に発砲してよい数。
   public updateBehavior(
     simTime: number, player: ModularShip, registry: EntityRegistry, enemies: readonly Enemy[],
-    mayFire: boolean, celestialBodies: CelestialBodies,
+    mayFire: boolean, celestialBodies: CelestialBodies, attackLimit: number,
   ): void {
-    this.fireController.updateBehavior(simTime, player, registry, enemies, mayFire, celestialBodies);
+    this.fireController.updateBehavior(simTime, player, registry, enemies, mayFire, celestialBodies, attackLimit);
   }
 
   // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。
