@@ -7,14 +7,23 @@ import { enumerateConstructionTargets } from '../../src/game/ship/ship-construct
 import { restoreDockedVessels, serializeShipAssembly } from '../../src/game/ship/ship-save';
 import { CommandQueue } from '../../src/game/command-queue';
 import { CommandCompletion } from '../../src/game/command-completion';
+import {
+  ShipConstruction, type ConstructionFocus, type ShipConstructionPanelPort,
+} from '../../src/game/ship/ship-construction';
 import { ShipConstructionEdits, type ConstructionShip } from '../../src/game/ship/ship-construction-edits';
 import { ConstructionHistory } from '../../src/game/ship/ship-construction-history';
 import { ShipCapabilities } from '../../src/game/ship/ship-capabilities';
 import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { test } from '../harness';
-import { Q_IDENTITY } from '../../src/math/quat';
-import { v3 } from '../../src/math/vec3';
+import { Q_IDENTITY, qRotate } from '../../src/math/quat';
+import { add, sub, v3 } from '../../src/math/vec3';
+import type { Input } from '../../src/input/input';
+import type { OverlayManager } from '../../src/hud/overlay-manager';
+import type { Notifier } from '../../src/hud/notifier';
+import type { DisplayWindowManager } from '../../src/game/display-window-manager';
+import type { ModularShip } from '../../src/game/ship/modular-ship';
+import type { RunEventSink } from '../../src/game/run-events';
 import type { ModuleOrientation } from '../../src/game/ship/ship-assembly-transform';
 import type { AxialFace } from '../../src/game/ship/ship-assembly-transform';
 import type { TankInstance } from '../../src/game/ship/ship-module-instance';
@@ -291,6 +300,52 @@ export function register(): void {
     assert.equal(history.canRedo, false);
     assert.equal(history.canUndo, true);
     assert.deepEqual(history.names, ['建造を開始', 'a', 'c']);
+  });
+
+  test('ship construction: 視点寄せは選択中のモジュールへ、無ければ船体全体へ寄せる', () => {
+    const ship = new ConstructionTestShip();
+    const focuses: { ship: ModularShip; target: ConstructionFocus | null }[] = [];
+    const construction = new ShipConstruction(
+      {} as unknown as Input,
+      new CommandQueue(),
+      {
+        element: { contains: () => false },
+        selectCatalogCategory: () => {},
+        sync: () => {},
+      } as unknown as ShipConstructionPanelPort,
+      { openMode: () => {}, close: () => {}, isInputGated: () => false } as unknown as OverlayManager,
+      { current: { forceCurrent: false }, setForceCurrent: () => {} } as unknown as DisplayWindowManager,
+      { hint: () => {} } as unknown as Notifier,
+      { request: () => {}, close: () => {} },
+      { blueprints: [], canRecord: false },
+      { record: () => {} } as unknown as RunEventSink,
+      (s, target) => { focuses.push({ ship: s, target }); },
+    );
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+
+    // 建造開始時と選択なしの視点寄せは、船体全体へ寄せる(target は null)。
+    assert.equal(focuses.length, 1);
+    assert.equal(focuses[0]!.ship as unknown, ship);
+    assert.equal(focuses[0]!.target, null);
+    construction.focus();
+    assert.equal(focuses.length, 2);
+    assert.equal(focuses[1]!.target, null);
+
+    // 選択中はそのモジュールの ECI 位置と外接半径が渡る。
+    construction.select('cockpit');
+    construction.focus();
+    const target = focuses[2]?.target;
+    assert.ok(target !== null && target !== undefined);
+    const { motion } = ship;
+    const root = sub(motion.state.r, qRotate(motion.att.q, motion.centerOffset));
+    const expected = add(
+      root, qRotate(motion.att.q, ship.assembly.worldTransformOf('cockpit')!.position),
+    );
+    assert.ok(Math.abs(target.position.x - expected.x) < 1e-9);
+    assert.ok(Math.abs(target.position.y - expected.y) < 1e-9);
+    assert.ok(Math.abs(target.position.z - expected.z) < 1e-9);
+    const definition = ship.assembly.definition('cockpit')!;
+    assert.ok(Math.abs(target.radius - Math.hypot(definition.length, definition.diameter) / 2) < 1e-9);
   });
 
   test('ship construction history: 戻す先の写しを返すだけで位置は確定を待つ', () => {
