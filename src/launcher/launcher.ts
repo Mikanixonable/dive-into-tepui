@@ -16,7 +16,8 @@ import type { ViewOptionsSettings } from '../game/hud/panels/view-options-contro
 import type { ThemePalette } from '../theme';
 import type { CurrentGameSource } from './save-browser/save-browser';
 import type { HudShell } from '../hud/hud-shell';
-import type { GamePhase, Stage, StageClass, StageResult } from '../game/stages/stage';
+import type { GamePhase, RunOptions, RunStats, Stage, StageClass, StageResult } from '../game/stages/stage';
+import { StageRecords, FORECAST_LOSS_STREAK, bestDetailHtml, type BestComparison } from './stage-records';
 import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
 import type { SnapshotService } from './save/snapshot-service';
@@ -43,7 +44,9 @@ function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): St
 
 // セーブに含まれない StageResult の代わりに、決着した phase から見出しだけを組む。
 function fallbackResult(phase: GamePhase): StageResult {
-  return { win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません' };
+  return {
+    win: phase !== 'lost', title: null, detailHtml: '結果の記録がありません', stats: null, lossCause: null,
+  };
 }
 
 // 周回の遷移(起動・再出撃・タイトル復帰・スナップショットのロード・スロット切替)を担う。
@@ -51,6 +54,8 @@ function fallbackResult(phase: GamePhase): StageResult {
 export class Launcher implements RunTransitions, CurrentGameSource {
   private readonly resultScreen: ResultScreen;
   private readonly blueprintShelf: BlueprintShelf;
+  // ステージごとのベストと連敗。ランを跨いで保たれる。
+  private readonly stageRecords = new StageRecords();
   private run: Run | null = null;
   private launchedStage: StageClass | null = null;
   // 遷移中に再入すると、組み立て中の Run が dispose されないまま取り残される。
@@ -126,10 +131,17 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   }
 
   // 現在の周回を畳んだ上で、再開する記録があればそこから、無ければ新しく Run を組み、起動をスロットへ記録する。
-  private async startRun(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): Promise<void> {
+  // reinforced は援護付きの再出撃か。新しく始めるランには、連敗の予告の選択もここで決める。
+  private async startRun(
+    stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate, reinforced = false,
+  ): Promise<void> {
     this.endRun();
     this.blueprintShelf.reload();
     const initialSave = this.initialSaveFor(stageClass, snapshotId, startEpoch);
+    const runOptions: RunOptions = {
+      reinforced,
+      forecast: this.stageRecords.lossStreak(stageClass.id) >= FORECAST_LOSS_STREAK,
+    };
     showLoading();
     try {
       const progress = new LoadingProgress(setLoadingProgress);
@@ -137,6 +149,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
         ? await Run.create(
           stageClass, startEpoch, this.devices, this.viewOptions, this.themePalette,
           this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
+          runOptions,
         )
         : await Run.resume(
           initialSave, stageClass, this.devices, this.viewOptions, this.themePalette,
@@ -160,7 +173,16 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.recordBlueprintEvents(events.recent);
     if (!events.recent.some(({ body }) => body.kind === 'stageDecided')) return;
     if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.devices.hud);
-    this.showResult(stage);
+    const stats = stage.result?.stats ?? null;
+    const comparison = stats === null ? null : this.noteOutcome(stage, stats);
+    this.showResult(stage, comparison);
+  }
+
+  // 決着した成績を、ベストと比べてから記録する。比べた結果を返す。
+  private noteOutcome(stage: Stage, stats: RunStats): BestComparison {
+    const comparison = this.stageRecords.compare(stage.id, stats);
+    this.stageRecords.record(stage.id, stage.phase, stats);
+    return comparison;
   }
 
   // 直近の進行が記録した設計図の記録を棚へ写す。記録できなかった操作があれば警告を出す。
@@ -195,11 +217,16 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (failed) this.devices.hud.hint('設計図を記録できませんでした', undefined, 'warn');
   }
 
-  // 決着したランを締め、結果画面を出す。
-  private showResult(stage: Stage): void {
+  // 決着したランを締め、結果画面を出す。comparison は今回の決着をベストと比べた結果。読み直した
+  // 決着では比べていないので null で、ベストの行は出さない。
+  private showResult(stage: Stage, comparison: BestComparison | null = null): void {
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
-    this.resultScreen.show(stage.result ?? fallbackResult(stage.phase));
+    const result = stage.result ?? fallbackResult(stage.phase);
+    const withBest = comparison !== null && result.stats !== null
+      ? { ...result, detailHtml: result.detailHtml + bestDetailHtml(result.stats, comparison) }
+      : result;
+    this.resultScreen.show(withBest);
   }
 
   // 周回の初期セーブ。snapshotId があればそれを、無ければ終わっていない周回の再開(直近の周回と同じ
@@ -231,12 +258,12 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (commandId === K.restart.code && this.run !== null && !this.run.game.activeStage.isPlaying) this.restart();
   }
 
-  // 現在の起動ステージへ作り直す。まだ何も起動していなければ何もしない。
-  public restart(): void {
+  // 現在の起動ステージへ作り直す。reinforced なら援護付きで作る。まだ何も起動していなければ何もしない。
+  public restart(reinforced = false): void {
     if (this.launchedStage === null) return;
     if (this.transitioning) return;
     this.transitioning = true;
-    this.startRun(this.launchedStage)
+    this.startRun(this.launchedStage, undefined, undefined, reinforced)
       .catch((err) => this.fail(err))
       .finally(() => { this.transitioning = false; });
   }
