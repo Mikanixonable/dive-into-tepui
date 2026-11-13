@@ -7,6 +7,7 @@ import type { DynamicReactionServices, EntityContactParticipant } from '../dynam
 import type { ModularShipMotion } from './modular-ship-motion';
 import type { ShipAssembly } from './ship-assembly';
 import type { PlayerEffects } from '../player/player-effects';
+import type { PlayerLossCause } from '../stages/stage-outcome';
 
 const RADIATOR_BULLET_DAMAGE = 0.25;
 const BULLET_IMPACT_HEAT = 3.0e5;
@@ -38,7 +39,7 @@ export class ModularShipReactions {
     _body: unknown, _contact: Contact, services: DynamicReactionServices,
   ): void {
     if (!this.port.motion.alive) return;
-    this.lose('天体の地表へ到達し機体は失われた', services);
+    this.lose('天体の地表へ到達し機体は失われた', 'surface', services);
   }
 
   public receiveRadiatorContact(
@@ -55,14 +56,16 @@ export class ModularShipReactions {
 
   public receiveStructuralLoss(services: DynamicReactionServices): void {
     if (!this.port.motion.alive) return;
-    this.lose('動圧が構造限界を超え、機体は空力的に分解した', services);
+    this.lose('動圧が構造限界を超え、機体は空力的に分解した', 'structural', services);
   }
 
   public receiveBurnUp(services: DynamicReactionServices): void {
+    const aerodynamic = this.port.motion.aero.heatingAerodynamically;
     this.lose(
-      this.port.motion.aero.heatingAerodynamically
+      aerodynamic
         ? '断熱圧縮による加熱で熱防御が飽和し、機体は焼失した'
         : '排熱が追いつかず、機体は熱で機能不全に陥った',
+      aerodynamic ? 'heatSaturated' : 'heatOverload',
       services,
     );
   }
@@ -105,9 +108,10 @@ export class ModularShipReactions {
     }
   }
 
-  private lose(reason: string, services: DynamicReactionServices): void {
+  // 機体を失わせ、原因を添えて周回の敗北として記録する。
+  private lose(reason: string, cause: PlayerLossCause, services: DynamicReactionServices): void {
     this.port.motion.kill();
     this.port.effects.destroy(this.port.motion.state);
-    services.activeStage.recordPlayerLost(reason);
+    services.activeStage.recordPlayerLost(reason, cause);
   }
 }
