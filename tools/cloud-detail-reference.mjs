@@ -110,6 +110,8 @@ async function main() {
     entries.push({
       name: scene.name,
       kind: scene.kind,
+      surface: scene.surface ?? 'sea',
+      category: scene.category,
       date: scene.date,
       layer: scene.layer,
       center: scene.center,

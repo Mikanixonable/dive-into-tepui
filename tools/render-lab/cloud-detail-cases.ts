@@ -36,6 +36,12 @@ const SCENES: readonly CloudDetailScene[] = [
   { id: 'npac-jet', scene: 'jet-cirrus-npacific', latitudeDeg: 42, longitudeDeg: -150 },
   // 西太平洋収束帯のかなとこ雲の流出。
   { id: 'wpac-itcz', scene: 'anvil-cirrus-wpacific', latitudeDeg: 10, longitudeDeg: 150 },
+  // 南大洋の寒気流の積雲(高緯度の海)。
+  { id: 'south-hl', scene: 'highlat-cumulus-southern', latitudeDeg: -57, longitudeDeg: -120 },
+  // ノルウェー海の寒気流の積雲(高緯度の海)。
+  { id: 'norw-hl', scene: 'highlat-cumulus-norwegian', latitudeDeg: 68, longitudeDeg: 5 },
+  // 西太平洋の冬の寒気流の積雲(温帯の海)。
+  { id: 'pac-temp', scene: 'temperate-cumulus-japansea', latitudeDeg: 38, longitudeDeg: 150 },
 ];
 
 // 段の目標 km/px と表示時刻 [s]。段ごとの高度は海域の緯度ごとに引く(地表の扁平ぶんを
