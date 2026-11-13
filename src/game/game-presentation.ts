@@ -45,7 +45,7 @@ import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
 import { ShipConstructionView } from './ship/ship-construction-view';
 import type { ShipBlueprintShelf } from './ship/ship-blueprint';
-import { ConstructionEntry, hasUsableConstructionDock } from './ship/construction-entry';
+import { ConstructionEntry } from './ship/construction-entry';
 import { FrameControls } from './hud/frame/frame-controls';
 import { HudPanelPresenter } from './hud/hud-panel-presenter';
 import { ViewOptionsControl, type ViewOptionsSettings } from './hud/panels/view-options-control';
@@ -277,19 +277,18 @@ export class GamePresentation {
       game.orbitSlots, celestialSystem.orbitGuide.orbitCatalog,
       hud.overlayManager, (message) => hud.hint(message), () => game.simTime,
     );
-    this.hudPanels = new HudPanelPresenter(
-      hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
-      activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
-      this.navigationCommand,
-    );
-    // 最寄りの使用可能ドックから建造を始める。Bキーのポートと常設ボタンが共有する。
+    // 最寄りの使用可能ドックから建造を始める。Bキーと艦のステータスパネルの「建造」が共有する。
     const startConstructionNearest = (): void => {
       const controlled = game.activeControllable;
       const camera = this.cameraFrame;
       if (controlled === null || camera === null || !isModularShip(controlled)) return;
       this.constructionEntry.startNearestDock(controlled, camera.viewpoint.position);
     };
-    hud.onConstructionStart = startConstructionNearest;
+    this.hudPanels = new HudPanelPresenter(
+      hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
+      activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
+      this.navigationCommand, startConstructionNearest, () => this.shipConstruction.active,
+    );
     const inputSource: GameInputSource = {
       commands: game.commands,
       simSpeedManager: game.simSpeedManager,
@@ -414,11 +413,6 @@ export class GamePresentation {
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime } = displayWindow;
     const view = this.viewManager.current;
-    // 常設の建造ボタンは、戦闘ビューで操作対象の船体が使えるドックを持つ間だけ出す。
-    this.devices.hud.syncConstructionBadge(
-      view === 'combat' && !this.shipConstruction.active
-        && controlled !== null && isModularShip(controlled) && hasUsableConstructionDock(controlled),
-    );
     // 最初にカメラを確定し、後続の同期とマーカー投影が読む行列を揃える。
     const camera = this.syncCamera(displayWindow, view, viewport, nowMs);
     // 描く対象と選べる対象を同じ判定から出すため、ビューが確定させた可否を読む。

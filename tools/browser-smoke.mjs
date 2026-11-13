@@ -742,18 +742,23 @@ async function checkConstructionLayout() {
 }
 
 async function constructMaterialFromBaseDock() {
-  // 配置した基地は配置時点で操作対象になる。マップから戦闘ビューへ入り、常設の
-  // 建造バッジ(B キーと同じ入口)から建造を始める。
+  // 配置した基地は配置時点で操作対象になる。マップから戦闘ビューへ入り、艦の
+  // ステータスパネルの「建造」(B キーと同じ入口)から建造を始める。
   await pressKey('m', 'KeyM', 77);
   await waitFor(
     `Boolean(document.querySelector('.hud-combat-root.active'))`,
     '[M] to enter the combat view with the placed base',
   );
   await waitFor(
-    `!document.getElementById('hud-construction-badge')?.classList.contains('hidden')`,
-    'the construction badge to appear for the usable dock',
+    `(() => {
+      const button = document.querySelector('#hud-vessel-status [data-id="vessel-construction"]');
+      return Boolean(button) && !button.closest('.vessel-construction')?.classList.contains('hidden');
+    })()`,
+    'the construction entry to appear in the vessel status panel',
   );
-  await devTools.evaluate(`document.getElementById('hud-construction-badge')?.click()`);
+  await devTools.evaluate(
+    `document.querySelector('#hud-vessel-status [data-id="vessel-construction"]')?.click()`,
+  );
   await waitFor(
     `Boolean(document.querySelector('.hud-combat-root.active'))
       && !document.getElementById('ship-construction-panel')?.classList.contains('hidden')`,

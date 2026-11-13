@@ -26,7 +26,7 @@ import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../view/view-mode';
-import { Button, type CollapseToggleLabels } from '../../hud/widgets';
+import type { CollapseToggleLabels } from '../../hud/widgets';
 import type { PanelCollapse } from './panel-shell';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
@@ -44,7 +44,6 @@ interface HudDomRefs {
   readonly combatRoot: HudViewRoot;
   readonly mapRoot: HudViewRoot;
   readonly helpPanel: HelpPanel;
-  readonly constructionBadge: Button;
   readonly els: HudEls;
 }
 
@@ -153,7 +152,9 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
     </div>
     <div class="vessel-deploy-controls" data-id="vessel-deploy-controls" role="group" aria-label="太陽電池パドル・放熱板の収納展開"></div>
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
-    <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
+    <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作">
+      <div class="vessel-construction hidden" data-id="vessel-construction-row"></div>
+    </div>`;
 }
 
 // 常設 ORBIT パネルを左レールへ組む。軌道は map の主情報なので、compact 以外では開いて始める。
@@ -413,25 +414,10 @@ function buildChaseReset(root: HTMLElement): void {
   });
 }
 
-// 右上の常設バッジ列(建造開始・ヘルプ)を組む。右レール収納トグルの左へ一列に並ぶ。
-// 建造バッジの押下は onConstructionStart へ委ね、表示は呼び出し側が毎フレーム切り替える。
-function buildChromeActions(
-  chrome: HTMLElement, helpPanel: HelpPanel, onConstructionStart: () => void,
-): Button {
+// 右上の常設バッジ列(ヘルプ)を組む。右レール収納トグルの左へ並ぶ。
+function buildChromeActions(chrome: HTMLElement, helpPanel: HelpPanel): void {
   const actions = createHudElement('div', 'hud-chrome-actions', chrome);
-  const badge = new Button('建造', onConstructionStart, undefined, undefined, K.constructionStart.label);
-  badge.element.id = 'hud-construction-badge';
-  badge.element.dataset.id = 'construction-badge';
-  badge.element.classList.add('ui-surface-quiet', 'hidden');
-  badge.element.setAttribute('aria-label', '建造を始める');
-  const code = document.createElement('span');
-  code.className = 'hud-mini-code';
-  code.setAttribute('aria-hidden', 'true');
-  code.textContent = 'BLD';
-  badge.element.prepend(code);
-  actions.appendChild(badge.element);
   buildHelpBadge(actions, helpPanel);
-  return badge;
 }
 
 // H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
@@ -481,10 +467,8 @@ function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRa
 }
 
 // HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
-// onConstructionStart は常設の建造バッジの押下先で、呼び出し側の状態を遅延参照する。
 export function buildHudDom(
   shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle,
-  onConstructionStart: () => void,
 ): HudDomRefs {
   injectStyle();
   startViewportTracking();
@@ -504,12 +488,12 @@ export function buildHudDom(
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
   buildTopBar(chrome);
   buildChaseReset(chrome);
-  const constructionBadge = buildChromeActions(chrome, helpPanel, onConstructionStart);
+  buildChromeActions(chrome, helpPanel);
   trackHudChromeInset(root, chrome);
 
   buildMapScale(mapRoot.element);
   createHudElement('div', 'hud-toast', layers.notify, 'ui-surface-focus');
 
   const els = new HudEls(root);
-  return { combatRoot, mapRoot, helpPanel, constructionBadge, els };
+  return { combatRoot, mapRoot, helpPanel, els };
 }

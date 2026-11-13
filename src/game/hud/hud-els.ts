@@ -19,7 +19,6 @@ export const HUD_ELEMENT_IDS = [
   'chase-reset',
   'construction-acceleration',
   'construction-acceleration-preview',
-  'construction-badge',
   'construction-category-tabs',
   'construction-close-actions',
   'construction-count',
@@ -115,6 +114,7 @@ export const HUD_ELEMENT_IDS = [
   'tgtname',
   'throttle-meter',
   'throttle-value',
+  'vessel-construction-row',
   'vessel-deploy-controls',
 ] as const;
 

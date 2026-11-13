@@ -114,7 +114,7 @@ export function helpRows(): readonly HelpRow[] {
       'マップビューで選択中のノードを削除する。ノードを選択していなければ計画全体を破棄する。',
     ),
     ...constructionRows(),
-    keyRow('system', [K.constructionStart], '建造開始', '操作対象の船体の建造ドックから建造を始める。'),
+    keyRow('system', [K.constructionStart], '建造開始', '艦のステータスパネルの「建造」、ドックのクリック、[B] のいずれでも始められる。'),
     keyRow('system', [K.help], 'このヘルプ', '操作説明を開閉する。'),
     keyRow('system', [K.pauseMenu], 'ESC メニュー', '開いているウィンドウを1つ閉じる。何も開いていなければ ESC メニューを開く。'),
     keyRow(
