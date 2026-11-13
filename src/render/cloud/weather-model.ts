@@ -69,7 +69,7 @@ const LIFT_LIMIT = 0.06;
 // 前線帯の強度計算。気団の圧縮度が立ち上がり閾値から遷移幅に達する間に、帯の強度が 0 から 1 へ推移する。開始閾値は 35〜60° 緯度帯の
 // 背景圧縮度（90パーセンタイルで 1.19〜1.28）の 2 割増に設定する。
 // 遷移幅は圧縮の稜線が飽和する狭さに調整し、最も高密度の中心核に帯幅を確保する。
-const FRONT_ONSET = 1.45;
+const FRONT_ONSET = 1.65;
 const FRONT_WIDTH = 0.35;
 // 前線を強化する湿度水平勾配の開始閾値と遷移幅 [1/rad]。乾湿境界にも雲帯を生成する。
 // 遷移幅は湿度テクスチャの量子化誤差に対して十分なマージンを確保する。
@@ -279,13 +279,16 @@ export class WeatherModel {
 
     // 湿度: 流した写しへ、場所と渦に貼り付く項(平年の雲量・上昇流・帯・金床・目)を足し引きする。
     const meanCloudiness = this.climate.meanCloudiness(direction);
+    // 平年雲量バイアスの重みを緯度で絞る: 熱帯は 1.0 のまま、中緯度では半分にする。
+    // 最長波長の担い手のうち中緯度側の分だけを切り、ITCZ は保つ。
+    const surfaceBiasWeight = extratropical.oneMinus().mul(0.5).add(0.5);
     const landFraction = this.climate.landFraction(direction);
     const eye = this.cyclones.eyeAt(direction);
     const anvil = this.cyclones.anvilAt(direction);
     const deviation = advected.surfaceHumidity.sub(SURFACE_HUMIDITY_BASE);
     const surfaceHumidity = clamp(
       advected.surfaceHumidity.add(deviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
-        .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT))
+        .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT).mul(surfaceBiasWeight))
         .add(max(lift, 0).mul(SURFACE_LIFT_HUMIDITY)).add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
         .add(warmth.mul(WARM_HUMIDITY)).add(band.mul(BAND_HUMIDITY))
         .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(SURFACE_EYE_DRYNESS)), 0, 1);
