@@ -19,6 +19,8 @@ export interface EnemyReactionPort {
   readonly modelScale: number;
   // 弾によるダメージを適用する。部位を持つ個体は impactPoint から被弾部位を判定する。
   applyBulletDamage(damage: number, impactPoint: Vec3, events: RunEventSink): void;
+  // 弾が命中した時刻を伝える。命中の瞬間の表示(マーカーの閃き)に使う。
+  noteStruck(simTime: number): void;
   // 接触の相対速度によるダメージを入れる。ダメージが実際に入ったら true。
   applyImpactDamage(damageSpeed: number): boolean;
   // まだ生き残る体力が残っているか。
@@ -75,6 +77,8 @@ export class EnemyReactions {
   ): void {
     activeStage.recordHit();
     this.port.applyBulletDamage(damage, impactPoint, registry.events);
+    // 命中の時刻は、撃破の有無に関わらず表示の閃きへ渡す。
+    this.port.noteStruck(simTime);
     if (this.port.hasHealth()) {
       this.recordImpact(bulletType, impactPoint, registry);
       return;

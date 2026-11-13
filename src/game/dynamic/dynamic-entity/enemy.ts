@@ -5,7 +5,7 @@ import type { Contact } from './contact';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { len, sub, v3, type Vec3 } from '../../../math/vec3';
 import type { ModularShip } from '../../ship/modular-ship';
-import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
+import { ENTITY_GLYPH, enemyMarkerColor } from '../../marker/marker-identity';
 import { randomQuat, type Quat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
@@ -33,6 +33,9 @@ export const ENEMY_MODEL_SCALE = 20;
 export const ENEMY_MAX_HP = 6; // 敵機の総 HP
 
 export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾した際のダメージ [HP]
+
+// 命中した敵のマーカーが明るく閃いている長さ [s]。
+const MARKER_HIT_FLASH_DURATION = 0.25;
 
 // 敵に共通する直列化の項目。具象の直列化した形がこれを継ぐ。
 export interface SerializedEnemy extends SerializedDynamicEntityFields {
@@ -128,8 +131,17 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
 
   private readonly fireController: EnemyFireController;
   private readonly reactions: EnemyReactions;
+  // 最後に弾が命中した時刻。命中したことのない機体では null。保存はしない(一時的な表示の状態)。
+  private lastStruckAt: number | null = null;
 
   public get isBursting(): boolean { return this.fireController.isBursting; }
+
+  // 時刻 displayTime に、命中の閃きが出ているか。
+  public struckWithin(displayTime: number): boolean {
+    return this.lastStruckAt !== null
+      && displayTime >= this.lastStruckAt
+      && displayTime - this.lastStruckAt < MARKER_HIT_FLASH_DURATION;
+  }
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を
   // placement に置く。id は採番器が配った識別子。alive は生死、burstLeft から後ろは射撃の途中経過と
@@ -190,6 +202,7 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
       applyBulletDamage: (damage, impactPoint, events) => (
         this.applyBulletDamage(damage, impactPoint, events)
       ),
+      noteStruck: simTime => { this.lastStruckAt = simTime; },
       applyImpactDamage: damageSpeed => this.applyImpactDamage(damageSpeed),
       hasHealth: () => this.hp > 0,
       recordDeath: (activeStage, simTime, cause) => activeStage.recordEnemyDeath(this, simTime, cause),
@@ -230,6 +243,8 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem {
     // 代表選出の優先度は、同じ種別の中では視点に近い個体ほど高くする
     const priority = viewerPos ? MARKER_PRIORITY.ENEMY - len(sub(pos, viewerPos)) / 1e9 : MARKER_PRIORITY.ENEMY;
+    // 敵本体と画面外方位マーカーは同じ色で統一する。残 HP に応じて損傷色へ寄せる。
+    const color = enemyMarkerColor(this.maxHp > 0 ? this.hp / this.maxHp : 0);
     return {
       key: this.markerKey,
       kind: this.mapKind,
@@ -239,12 +254,11 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
       vel,
       priority,
       name: this.name,
-      // 敵本体と画面外方位マーカーは同じ色で統一する。
       bearing: {
-        cls: 'mk-dir mk-bearing-triangle', sym: ENTITY_GLYPH.enemyShip, color: COLOR_MARKER_ENEMY,
+        cls: 'mk-dir mk-bearing-triangle', sym: ENTITY_GLYPH.enemyShip, color,
         visible: true, clustered: false,
       },
-      color: COLOR_MARKER_ENEMY,
+      color,
       symMarkup: true,
     };
   }
@@ -274,12 +288,12 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   }
 
   // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
-  // 間は撃たない。
+  // 間は撃たない。attackLimit は攻撃グループで同時に発砲してよい数。
   public updateBehavior(
     simTime: number, player: ModularShip, registry: EntityRegistry, enemies: readonly Enemy[],
-    mayFire: boolean, celestialBodies: CelestialBodies,
+    mayFire: boolean, celestialBodies: CelestialBodies, attackLimit: number,
   ): void {
-    this.fireController.updateBehavior(simTime, player, registry, enemies, mayFire, celestialBodies);
+    this.fireController.updateBehavior(simTime, player, registry, enemies, mayFire, celestialBodies, attackLimit);
   }
 
   // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。

@@ -1,17 +1,18 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
-import { len, sub, v3 } from '../../src/math/vec3';
+import { len, scale, sub, v3 } from '../../src/math/vec3';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { Stage, type GamePhase } from '../../src/game/stages/stage';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
 import { Logistics } from '../../src/game/stages/stage-utils/logistics';
 import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
-import { isAmmoPickup } from '../../src/game/dynamic/dynamic-entity/pickup';
+import { AmmoPickup, isAmmoPickup, type SerializedAmmoPickup } from '../../src/game/dynamic/dynamic-entity/pickup';
 import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry, SpawnRecord } from '../../src/game/dynamic/entity-registry';
 import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
 import type { Enemy } from '../../src/game/dynamic/dynamic-entity/enemy';
+import type { FormationRole } from '../../src/game/dynamic/dynamic-entity/entity-kind';
 import type { ModularShip } from '../../src/game/ship/modular-ship';
 import type { SimSpeedManager } from '../../src/game/dynamic/sim-speed-manager';
 import type { RunEventBody } from '../../src/game/run-events';
@@ -48,7 +49,10 @@ interface BareStageFields {
   grantedSalvageNames: Set<string>;
 }
 
-function bareStage(system: TestDynamicSystem): { stage: Stage; logistics: Logistics } {
+// playerState が null なら自機が居ない。居るときは、撃破記録が読む自機の運動状態だけを持つ面を差し込む。
+function bareStage(
+  system: TestDynamicSystem, playerState: KinematicState | null = null,
+): { stage: Stage; logistics: Logistics } {
   const stage = Object.create(Stage.prototype) as Stage;
   const logistics = new Logistics(new THREE.Scene(), system, false);
   const fields = stage as unknown as BareStageFields;
@@ -58,12 +62,15 @@ function bareStage(system: TestDynamicSystem): { stage: Stage; logistics: Logist
   fields._dynamicSystem = system;
   fields.blueprintShelf = { blueprints: [] };
   fields.grantedSalvageNames = new Set();
+  Object.defineProperty(stage, 'ship', {
+    value: playerState === null ? null : { motion: { state: playerState, alive: true } },
+  });
   return { stage, logistics };
 }
 
-// 撃破記録が読む面(表示名と最後の運動状態)だけを持つ敵機の代役。
-function enemyAt(state: KinematicState): Enemy {
-  return { name: '敵機', motion: { state } } as unknown as Enemy;
+// 撃破記録が読む面(表示名・最後の運動状態・陣形の役割)だけを持つ敵機の代役。
+function enemyAt(state: KinematicState, formationRole: FormationRole | null = null): Enemy {
+  return { name: '敵機', motion: { state }, formationRole } as unknown as Enemy;
 }
 
 export function register(): void {
@@ -80,7 +87,7 @@ export function register(): void {
     assert.deepEqual(pickups[0]?.motion.state.r, enemyState.r);
   });
 
-  test('撃破ドロップ: 補給は敵機の速度を引き継ぎ小さな乱れで散る', () => {
+  test('撃破ドロップ: 自機が居ないとき補給は敵機の速度を引き継ぎ小さな乱れで散る', () => {
     const system = new TestDynamicSystem();
     const { stage } = bareStage(system);
     const enemyState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(50, 7500, -30));
@@ -94,6 +101,21 @@ export function register(): void {
     assert.ok(Math.abs(dv.y) <= 1.5);
     assert.ok(Math.abs(dv.z) <= 1.5);
     assert.ok(len(dv) <= 1.5 * Math.sqrt(3));
+  });
+
+  test('撃破ドロップ: 自機があるとき補給は自機から見た敵機の相対速度の 0.15 倍を残して飛ぶ', () => {
+    const system = new TestDynamicSystem();
+    const playerState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7600, 0));
+    const enemyState = kinematicState<'eci'>(0, v3(7000e3 + 500, 0, 0), v3(300, 7600, 0));
+    const { stage } = bareStage(system, playerState);
+
+    stage.recordEnemyDeath(enemyAt(enemyState), 0, 'killed');
+
+    const pickup = system.all().filter(isAmmoPickup)[0];
+    assert.ok(pickup);
+    // 乱れは成分ごとに ±1.5 m/s なので、残す量からのずれはその対角以内に収まる。
+    const offset = sub(sub(pickup.motion.state.v, playerState.v), scale(sub(enemyState.v, playerState.v), 0.15));
+    assert.ok(len(offset) <= 1.5 * Math.sqrt(3));
   });
 
   test('撃破ドロップ: 焼失・衝突・離脱では補給が出ない', () => {
@@ -112,7 +134,7 @@ export function register(): void {
     const system = new TestDynamicSystem();
     const { logistics } = bareStage(system);
     const dropState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0));
-    logistics.dropAt(dropState);
+    logistics.dropAt(dropState, null, 6);
 
     let pickedMags = 0;
     const player = {
@@ -127,5 +149,38 @@ export function register(): void {
     assert.equal(pickups.length, 1);
     assert.equal(pickups[0]?.motion.alive, false);
     assert.equal(pickedMags, 6);
+  });
+
+  test('撃破ドロップ: 落とした敵の陣形での役割でマガジン数が決まり、取り込むとその数が増える', () => {
+    const cases: readonly (readonly [FormationRole | null, number])[] = [
+      ['shield', 6], ['attacker', 4], ['energy', 4], [null, 2],
+    ];
+    for (const [role, mags] of cases) {
+      const system = new TestDynamicSystem();
+      const { stage, logistics } = bareStage(system);
+      const enemyState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0));
+      stage.recordEnemyDeath(enemyAt(enemyState, role), 0, 'killed');
+      assert.equal(system.all().filter(isAmmoPickup)[0]?.mags, mags);
+
+      let pickedMags = 0;
+      const player = {
+        motion: { state: kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0)) },
+        onPickup: (picked: number): void => { pickedMags += picked; },
+      } as unknown as ModularShip;
+      logistics.updateLogistics(0, player, { canResupplyAmmo: false } as unknown as SimSpeedManager);
+      assert.equal(pickedMags, mags);
+    }
+  });
+
+  test('補給の直列化はマガジン数を保ち、記録に無ければ 6 で読む', () => {
+    const system = new TestDynamicSystem();
+    const scene = new THREE.Scene();
+    const state = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0));
+    const pickup = AmmoPickup.create({ state }, scene, system.idAllocators, 4);
+    assert.equal(AmmoPickup.deserialize(pickup.serialize(), system, scene).mags, 4);
+
+    // マガジン数の項目が無い旧い記録は、既定の 6 で読む。
+    const legacy = { ...pickup.serialize(), mags: undefined } as SerializedAmmoPickup;
+    assert.equal(AmmoPickup.deserialize(legacy, system, scene).mags, 6);
   });
 }
