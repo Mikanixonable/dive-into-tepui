@@ -204,6 +204,15 @@ export class ShipConstruction implements OverlayHandle {
   // クライアント座標、離した位置(押している間は null)を返す。
   public get cardDrag(): ConstructionCardDrag | null { return this.cardDragValue; }
 
+  // 持ち運び中のドラッグの画面位置(キャンバス座標)。カード・先端部のどちらのドラッグも
+  // 無ければ null。表示の導出が持ち物をポインタの先へ浮かべる材料。
+  public get dragPoint(): { readonly x: number; readonly y: number } | null {
+    return this.pointer.dragPoint;
+  }
+
+  // 手持ちに対して効く向き(回転・端)。
+  public get heldOrientation(): ModuleOrientation { return this.orientation; }
+
   // 回転リングを掴んだドラッグ中の角度。表示の導出が弧とスナップ位置を組む。
   public get rotationDrag(): ConstructionRotationDrag | null { return this.pointer.rotationDrag; }
 
