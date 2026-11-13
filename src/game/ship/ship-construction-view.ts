@@ -195,9 +195,9 @@ export function constructionNodesVisible(
 function nodeLabel(
   guide: ConstructionTargetGuide, valid: boolean, pointed: boolean,
   trial: ConstructionTrial | null,
-): string | undefined {
-  if (valid || !pointed) return undefined;
-  return (guide.placement.valid ? trial?.reason : guide.placement.reason) ?? undefined;
+): string | null {
+  if (valid || !pointed) return null;
+  return (guide.placement.valid ? trial?.reason : guide.placement.reason) ?? null;
 }
 
 // 全取り付け先のガイドを、接続ノードのマーカー宣言へ写す。有効/無効は取り付け規則
@@ -216,6 +216,7 @@ export function constructionNodeDeclarations(
     const pointed = targetId === pointedTargetId;
     const valid = guide.placement.valid && (!pointed || (trial?.valid ?? true));
     const projected = project(guide.guideEci);
+    const label = nodeLabel(guide, valid, pointed, trial);
     declarations.push({
       id: `construction-node:${targetId}`,
       cls: nodeClass(valid, pointed),
@@ -223,7 +224,7 @@ export function constructionNodeDeclarations(
       x: projected.x,
       y: projected.y,
       front: projected.front,
-      label: nodeLabel(guide, valid, pointed, trial),
+      ...(label === null ? {} : { label }),
       occluded: occluded(guide.guideEci),
       dist: len(sub(guide.guideEci, cameraPos)),
       priority: MARKER_PRIORITY.NONE,
