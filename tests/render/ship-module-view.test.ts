@@ -17,7 +17,8 @@ function modelFactory(modelId: string): THREE.Group {
   anchor.userData.semanticAnchor = modelId === 'tank-3-main' ? 'tank-only' : 'connection:forward';
   anchor.position.set(0, 0, 1);
   root.add(anchor);
-  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial());
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 4), new THREE.MeshBasicMaterial());
+  mesh.geometry.translate(0.5, 0, 0);
   mesh.userData.ownsGeometry = true;
   mesh.userData.ownsMaterial = true;
   root.add(mesh);
@@ -133,7 +134,7 @@ export function register(): void {
     view.dispose();
   });
 
-  test('ship module view: 強調の宣言で加算の殻が現れ、ずらしが位置へ乗り、消すと元へ戻る', () => {
+  test('ship module view: 選択の宣言で白い輪郭の殻が現れ、ずらしが位置へ乗り、消すと元へ戻る', () => {
     const module = at(moduleInput('cockpit-standard', 'cockpit-1', 'cockpit'), v3(2, 3, 4));
     const view = new ShipModuleView(module, modelFactory);
     assert.deepEqual(view.object.position.toArray(), [2, 3, 4]);
@@ -144,22 +145,33 @@ export function register(): void {
     assert.ok(shell !== undefined && shell.visible);
     assert.deepEqual(view.object.position.toArray(), [2, 3, 4.5]);
     const shellMesh = shell.getObjectByProperty('isMesh', true) as THREE.Mesh;
-    const shellMaterial = shellMesh.material as THREE.MeshBasicMaterial;
-    assert.equal(shellMaterial.transparent, true);
-    assert.equal(shellMaterial.blending, THREE.AdditiveBlending);
-    assert.equal(shellMaterial.depthTest, true);
-    assert.equal(shellMaterial.depthWrite, false);
-    assert.equal(shellMaterial.toneMapped, false);
-    assert.equal(shellMaterial.opacity, 0.45);
+    const outlineMaterial = shellMesh.material as THREE.MeshBasicMaterial;
+    assert.equal(outlineMaterial.transparent, true);
+    assert.equal(outlineMaterial.side, THREE.BackSide);
+    assert.equal(outlineMaterial.depthTest, true);
+    assert.equal(outlineMaterial.depthWrite, false);
+    assert.equal(outlineMaterial.toneMapped, false);
+    assert.equal(outlineMaterial.color.getHex(), 0xffffff);
+    assert.equal(outlineMaterial.opacity, 0.9);
     assert.equal(shellMesh.layers.isEnabled(3), true, '殻が overlay チャンネルに無い');
-    // 殻は本体と同じ形状を共有する。
+    // 殻は本体と同じ形状を共有し、bounding box の中心を基点に両側へ 0.12m ずつ膨らませる。
     const bodyMesh = view.object.children[0]!.getObjectByProperty('isMesh', true) as THREE.Mesh;
     assert.equal(shellMesh.geometry, bodyMesh.geometry);
+    // 中心が x へ 0.5 ずれた 2×1×4 の box: x は 1+0.24/2、y は 1+0.24/1、z は 1+0.24/4。
+    assert.ok(Math.abs(shell.scale.x - 1.12) < 1e-9);
+    assert.ok(Math.abs(shell.scale.y - 1.24) < 1e-9);
+    assert.ok(Math.abs(shell.scale.z - 1.06) < 1e-9);
+    assert.ok(Math.abs(shell.position.x - -0.06) < 1e-9);
 
-    // tone で色が、intensity で不透明度が変わる。
+    // tone が変わると加算の殻へ切り替わり、色と不透明度と拡大を戻す。
     view.sync(module, v3(), { tone: 'conflict', intensity: 0.5, offset: v3(0, 0, 0.5) });
-    assert.equal(shellMaterial.color.getHex(), 0xff5b63);
-    assert.equal(shellMaterial.opacity, 0.225);
+    const washMaterial = shellMesh.material as THREE.MeshBasicMaterial;
+    assert.notEqual(washMaterial, outlineMaterial);
+    assert.equal(washMaterial.blending, THREE.AdditiveBlending);
+    assert.equal(washMaterial.color.getHex(), 0xff5b63);
+    assert.equal(washMaterial.opacity, 0.225);
+    assert.deepEqual(shell.scale.toArray(), [1, 1, 1]);
+    assert.deepEqual(shell.position.toArray(), [0, 0, 0]);
 
     // 宣言が消えれば殻は伏せられ、位置も元へ戻る。
     view.sync(module);

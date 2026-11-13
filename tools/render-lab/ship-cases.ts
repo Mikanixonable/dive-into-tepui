@@ -9,6 +9,7 @@ import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { deployablePanelPoses } from '../../src/physics/ship-panel-layout';
 import { SOLAR_PANEL_COLUMNS, SOLAR_PANEL_COUNT, SOLAR_PANEL_LENGTH } from '../../src/physics/player-shape';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
+import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
@@ -16,7 +17,9 @@ import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-
 import { ShipModuleView } from '../../src/render/dynamic/ship/ship-module-view';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { WeaponDrives, type WeaponRecoilInput } from '../../src/render/dynamic/ship/weapon-drives';
-import type { ShipModuleRenderInput } from '../../src/render/dynamic/ship/ship-render-contract';
+import type {
+  ShipModuleEmphasis, ShipModuleRenderInput,
+} from '../../src/render/dynamic/ship/ship-render-contract';
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
 import magazineData from '../../src/assets/models/magazine.json';
 import casingData from '../../src/assets/models/casing.json';
@@ -607,8 +610,44 @@ function construction(): LabCase {
   };
 }
 
+// 建造の強調: 選んだモジュールは白い輪郭、それと一緒に動く先端部は青の洗い、置くと
+// 重なる相手は赤の洗いで出す。戦闘艦の主タンクを選んだ状態を再現する。
+function constructionEmphasis(): LabCase {
+  const assembly = combatShipDeployed(1);
+  const shape = shipPhysicsShape(assembly);
+  if (shape === null) throw new Error('construction emphasis assembly is empty');
+  const view = new ModularShipView(buildShipModuleModel, undefined, false);
+  const emphasis = new Map<string, ShipModuleEmphasis>([
+    ['main-tank', { tone: 'selected', intensity: 1, offset: v3() }],
+    ['solar-left', { tone: 'piece', intensity: 0.5, offset: v3() }],
+    ['solar-right', { tone: 'piece', intensity: 0.5, offset: v3() }],
+    ['rcs-tank', { tone: 'piece', intensity: 0.5, offset: v3() }],
+    ['rcs', { tone: 'piece', intensity: 0.5, offset: v3() }],
+    ['main-thruster', { tone: 'piece', intensity: 0.5, offset: v3() }],
+    ['docking-port', { tone: 'conflict', intensity: 0.8, offset: v3() }],
+  ]);
+  view.sync(shipRenderAssembly(assembly).modules, shape.centerOffset, emphasis);
+  const obj = at(view.object, 0, -1, -30);
+  obj.rotation.set(0.35, -2.35, 0.1);
+  return {
+    objects: [obj],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, -1, -30),
+    dispose: () => view.dispose(),
+    shots: {
+      // 船全体: 選んだタンクの白い輪郭と、先端部の青・重なりの赤が見分けられること。
+      'construction-emphasis': { view: {} },
+      // 選んだタンクへ寄って、輪郭が本体表面と隣接モジュールへどう乗るかを読む。
+      'construction-emphasis-close': {
+        view: { cameraAzimuthDeg: -25, cameraElevationDeg: 18, cameraDistanceLog: -0.3 },
+      },
+    },
+  };
+}
+
 export const SHIP_CASES = {
   'modular-ship-construction': construction,
+  'modular-ship-construction-emphasis': constructionEmphasis,
   'modular-ship-cockpit': cockpit,
   'modular-ship-dock': dock,
   'modular-ship-base': base,
