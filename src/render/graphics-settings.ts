@@ -4,6 +4,7 @@
 // 真偽は独立した描画物を消すもの、選択肢は品質と負荷を刻む値か見え方を選ぶ値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
+import { CIRRUS_DETAIL } from './cloud/cloud-detail';
 import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
@@ -145,6 +146,17 @@ export const GRAPHICS_OPTIONS = {
     ],
     presets: {
       low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.standard, high: CUMULUS_DETAIL.standard,
+    },
+  },
+  // 巻雲の繊維をどれだけ細かく写すか。粗では巻雲は雲場の濃淡だけで描かれ、段を上げるほど細かい筋が
+  // 写る(粗 0・標準 4・精細 6 オクターブ)。
+  cirrusDetail: {
+    kind: 'choice', group: 'element', label: '巻雲の精細さ',
+    items: [
+      [CIRRUS_DETAIL.coarse, '粗'], [CIRRUS_DETAIL.standard, '標準'], [CIRRUS_DETAIL.fine, '精細'],
+    ],
+    presets: {
+      low: CIRRUS_DETAIL.coarse, medium: CIRRUS_DETAIL.standard, high: CIRRUS_DETAIL.standard,
     },
   },
   // レンズ効果(ブルーム・光条・ゴースト)。

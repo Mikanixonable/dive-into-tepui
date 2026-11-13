@@ -4,6 +4,7 @@ import { maxShadowedFraction } from '../../../physics/shadow';
 import { len, sub } from '../../../math/vec3';
 import { MAX_SHADOW_BODIES } from './body-shadow';
 import { CUMULUS_DETAIL, cumulusOctavesOf } from '../../opaque-cloud-surface-renderer';
+import { cirrusOctavesOf } from '../../cloud/cloud-detail';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
 import type { RingBand } from './ring-shadow';
@@ -69,6 +70,8 @@ export interface CloudShadowKinds {
   readonly cirrus: boolean;
   // 積雲の影が写す細部の段数。表面の雲と同じ段数で、影の細部を雲の立体と揃える。
   readonly cumulusOctaves: number;
+  // 巻雲の影が写す筋の細部の段数。巻雲の殻と同じ段数で揃える。
+  readonly cirrusOctaves: number;
 }
 
 // 描画品質設定から、雲の種類ごとに影を落とすかと、影の細部の段数を読む。
@@ -78,6 +81,7 @@ export function cloudShadowKinds(graphics: GraphicsSettingsData): CloudShadowKin
     cumulus: clouds && graphics.cumulusDetail !== CUMULUS_DETAIL.off,
     cirrus: clouds && graphics.cirrus,
     cumulusOctaves: cumulusOctavesOf(graphics.cumulusDetail),
+    cirrusOctaves: cirrusOctavesOf(graphics.cirrusDetail),
   };
 }
 

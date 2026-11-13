@@ -40,8 +40,10 @@ export function register(): void {
         'cumulusDetail', c.cumulusOff ? CUMULUS_DETAIL.off : CUMULUS_DETAIL.standard);
       const kinds = cloudShadowKinds(graphics);
       assert.deepEqual({ cumulus: kinds.cumulus, cirrus: kinds.cirrus }, c.expected);
-      // 積雲の細部の段数は積雲の精細さに従い、標準は 4 オクターブ、オフは 0。
+      // 積雲の細部の段数は積雲の精細さに従い、標準は 4 オクターブ、オフは 0。巻雲の段数は
+      // 巻雲の精細さ(既定は標準)に従う。
       assert.equal(kinds.cumulusOctaves, c.cumulusOff ? 0 : 4);
+      assert.equal(kinds.cirrusOctaves, 4);
     });
   }
 }

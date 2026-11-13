@@ -2,9 +2,10 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, abs, clamp, dot, exp, float, greaterThan, length, max, min, normalize, select,
+  Fn, If, Loop, abs, and, clamp, dot, exp, float, greaterThan, length, max, min, normalize, select,
   sqrt, uniform, vec4,
 } from 'three/tsl';
+import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator } from '../../cloud/cloud-detail';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
@@ -53,6 +54,8 @@ export class CloudShadowRenderer {
   // 雲場の読み取りと形状式は共有入力層へ置く。ここは太陽光路の透過率だけを所有する。
   private readonly fieldSampler = new CloudFieldSampler();
   private readonly shape: CloudShapeEvaluator;
+  // 巻雲の筋の細部。
+  private readonly cirrusDetail = new CirrusDetailEvaluator();
 
   // 殻 1 体ぶんの uniform を確保する。殻の有無と種類ごとの有無は uniform で切るので、
   // グラフの形は変わらない。
@@ -72,6 +75,7 @@ export class CloudShadowRenderer {
   public set(cloud: ShadowCloud | null, kinds: CloudShadowKinds): void {
     // 細部の段数は表面の雲と同じ値を置く。段数は uniform なので、グラフは組み直さない。
     this.shape.setDetailOctaves(kinds.cumulusOctaves);
+    this.cirrusDetail.setOctaves(kinds.cirrusOctaves);
     this.cumulusActive.value = cloud !== null && kinds.cumulus ? 1 : 0;
     this.cirrusActive.value = cloud !== null && kinds.cirrus ? 1 : 0;
     if (cloud === null) return;
@@ -146,8 +150,13 @@ export class CloudShadowRenderer {
           // 分けて合計 1 回ぶんの横断になり、斜めの光路ぶん(stepLength/rise)伸ばした τ を足す。
           const cirrusCrossing = max(
             float(1).sub(abs(altitude.sub(cirrusTopAltitudeNode(cloud.cirrus))).div(max(rise, 1))), 0);
+          // 筋の細部は、層を横切るタップで、その場所の筋の向きに沿って読む。
+          const cirrusDetail = float(1).toVar();
+          If(and(greaterThan(cloud.cirrus, CIRRUS_PRESENT_AMOUNT), greaterThan(cirrusCrossing, 0)), () => {
+            cirrusDetail.assign(this.cirrusDetail.multiplierAt(up, bodyRadius, sampleWidth, cloud.cirrusFlow));
+          });
           opticalDepth.addAssign(cirrusColumnOpticalDepthNode(cloud.cirrus)
-            .mul(cirrusCrossing).mul(min(stepLength.div(max(rise, 1)), CIRRUS_MAX_SLANT))
+            .mul(cirrusDetail).mul(cirrusCrossing).mul(min(stepLength.div(max(rise, 1)), CIRRUS_MAX_SLANT))
             .mul(this.cirrusActive));
         });
         transmittance.assign(exp(opticalDepth.negate()));

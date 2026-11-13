@@ -8,11 +8,12 @@
 // 配ったサンプル点の数だけ。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
-import { Fn, length, screenUV, sub, texture, uniform, vec4 } from 'three/tsl';
+import { Fn, dFdx, dFdy, length, max, normalize, screenUV, sub, texture, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffRadius } from '../atmosphere';
 import { AtmosphereIntegrator } from './atmosphere-integrator';
 import { viewPositionAt, viewRayAt } from './view-ray';
+import { cirrusOctavesOf, type CirrusDetail } from '../cloud/cloud-detail';
 import type { CloudSpecies } from './cloud-atmosphere-renderer';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
@@ -92,7 +93,11 @@ export class AtmospherePass {
     const opaqueDist = length(sub(opaquePos, rayOrigin));
 
     const composed = Fn(() => {
-      const { transmittance, inscatter } = this.layer.contribution(rayOrigin, rayDir, opaqueDist);
+      // 1 画素が張る角は視線の向きの変化率から引く。画面微分は分岐の外で取る。
+      const pixelAngle = max(length(dFdx(normalize(rayDir))), length(dFdy(normalize(rayDir))));
+      const { transmittance, inscatter } = this.layer.contribution(
+        rayOrigin, rayDir, opaqueDist, pixelAngle,
+      );
       return inscatter.add(texture(this.backdropTarget.texture, screenUV).rgb.mul(transmittance));
     })();
 
@@ -108,6 +113,11 @@ export class AtmospherePass {
   // 種類ごとに、雲の殻を描くかを置き直す。
   public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.layer.setCloudShellEnabled(species, enabled);
+  }
+
+  // 巻雲の細部の精細さを置く。段数は uniform なので、グラフは組み直さない。
+  public setCirrusDetail(detail: CirrusDetail): void {
+    this.layer.setCirrusOctaves(cirrusOctavesOf(detail));
   }
 
   // このフレームで大気を描く天体を、**視点に近い順**に、それぞれのサンプル点の数と一緒に渡す。
