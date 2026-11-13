@@ -44,6 +44,14 @@ function randomPickupAttitude(): Attitude {
   };
 }
 
+// state の軌道上を dist [m] だけ先へ進めた位相の状態。速度も同じ向きへ回すので、同じ軌道の上で
+// 相対速度はほぼ生じない。
+export function phaseShiftedBy(state: KinematicState<'eci'>, dist: number): KinematicState<'eci'> {
+  const hHat = orbitAxes(state).nrm;
+  const ang = dist / len(state.r);
+  return kinematicState<'eci'>(state.t, rotateAxis(state.r, hHat, ang), rotateAxis(state.v, hHat, ang));
+}
+
 // 撃破ドロップのマガジン数の内訳(SPEC GAME.md 8)。盾役は補給の既定と同じ数、攻撃担当とエネルギー供給役は
 // それより少なく、陣形に属さない敵はさらに少ない。
 const DROP_MAGS_ATTACKER = 4;
@@ -111,19 +119,11 @@ export class Logistics {
     minDist = LOGISTICS_AUTO_MIN_DIST,
     maxDist = LOGISTICS_AUTO_MAX_DIST,
   ): void {
-    // 自機の軌道面内で minDist〜maxDist 先に相当する角度だけ位相をずらす
-    const r = player.motion.state.r;
-    const v = player.motion.state.v;
-    const hHat = orbitAxes(player.motion.state).nrm;
-    const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
-    // ずらした位置・速度と、ランダムな姿勢で補給エンティティを作る
+    // 自機の軌道上で minDist〜maxDist 先の位相へずらし、ランダムな乱れと姿勢で補給エンティティを作る
+    const shifted = phaseShiftedBy(player.motion.state, minDist + Math.random() * (maxDist - minDist));
     const ammoPickup = AmmoPickup.create(
       {
-        state: kinematicState<'eci'>(
-          player.motion.state.t,
-          rotateAxis(r, hHat, ang),
-          add(rotateAxis(v, hHat, ang), randVec(1.5)),
-        ),
+        state: kinematicState<'eci'>(shifted.t, shifted.r, add(shifted.v, randVec(1.5))),
         att: randomPickupAttitude(),
       },
       this._scene,
@@ -140,19 +140,11 @@ export class Logistics {
     minDist = LOGISTICS_AUTO_MIN_DIST,
     maxDist = LOGISTICS_AUTO_MAX_DIST,
   ): void {
-    // 自機の軌道面内で minDist〜maxDist 先に相当する角度だけ位相をずらす
-    const r = player.motion.state.r;
-    const v = player.motion.state.v;
-    const hHat = orbitAxes(player.motion.state).nrm;
-    const ang = (minDist + Math.random() * (maxDist - minDist)) / len(r);
-    // ずらした位置・速度と、ランダムな姿勢で燃料補給エンティティを作る
+    // 自機の軌道上で minDist〜maxDist 先の位相へずらし、ランダムな乱れと姿勢で燃料補給エンティティを作る
+    const shifted = phaseShiftedBy(player.motion.state, minDist + Math.random() * (maxDist - minDist));
     const fuelPickup = RcsFuelPickup.create(
       {
-        state: kinematicState<'eci'>(
-          player.motion.state.t,
-          rotateAxis(r, hHat, ang),
-          add(rotateAxis(v, hHat, ang), randVec(1.5)),
-        ),
+        state: kinematicState<'eci'>(shifted.t, shifted.r, add(shifted.v, randVec(1.5))),
         att: randomPickupAttitude(),
       },
       this._scene,

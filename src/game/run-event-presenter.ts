@@ -287,6 +287,10 @@ export class RunEventPresenter {
         this.notifier.hint(`${body.name} の設計図を入手した`, 5000);
         return;
 
+      case 'salvageTenderArrived':
+        this.notifier.hint('補給艇が鹵獲品を積んで現れた — 建造ドックへ接続すると積荷を使える', 6000);
+        return;
+
       case 'salvageAwarded':
       case 'blueprintRenamed':
       case 'blueprintDeleted':
