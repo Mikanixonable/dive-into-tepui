@@ -38,6 +38,9 @@ export class WeaponState {
 
   // mags は予備を含めて残っているマガジン数、muzzleIdx は次に撃つ砲口。
   // 省いた値は既定の積載で始める。
+  // 直近の tickCooldown でクールダウンが尽きたとき、dt のうち超過した分 [s]。次の発射間隔から引く。
+  private overshoot = 0;
+
   public constructor(
     private _mags = DEFAULT_MAGS,
     private _rounds = MAG_ROUNDS,
@@ -100,12 +103,28 @@ export class WeaponState {
 
   // クールダウンを dt 秒ぶん減らす。0 で止まる。
   public tickCooldown(dt: number): void {
-    if (this._cooldown > 0) this._cooldown = Math.max(0, this._cooldown - Math.max(0, dt));
+    const step = Math.max(0, dt);
+    this.overshoot = this._cooldown > 0 ? Math.max(0, step - this._cooldown) : 0;
+    if (this._cooldown > 0) this._cooldown = Math.max(0, this._cooldown - step);
   }
 
   // 次の発射までのクールダウンを seconds [s] にする。
   public setCooldown(seconds: number): void {
     this._cooldown = seconds;
+    this.overshoot = 0;
+  }
+
+  // 連射の発射間隔 seconds [s] を次の発射までに置く。今フレームで超過した分は間隔から引き、
+  // フレーム長への切り上げで連射が遅くならないようにする。
+  public setShotInterval(seconds: number): void {
+    this._cooldown = Math.max(0, seconds - this.overshoot);
+    this.overshoot = 0;
+  }
+
+  // 残りのクールダウンが seconds [s] に満たなければ seconds まで延ばす。短くはしない。
+  public extendCooldown(seconds: number): void {
+    this._cooldown = Math.max(this._cooldown, seconds);
+    this.overshoot = 0;
   }
 
   // トリガーを引いた状態へ移行し、空撃ち記録フラグをリセットする。
