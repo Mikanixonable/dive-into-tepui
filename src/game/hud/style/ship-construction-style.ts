@@ -123,8 +123,6 @@ export const SHIP_CONSTRUCTION_STYLE = `
 #ship-construction-panel .construction-hp-row { grid-column: 1 / -1; }
 #ship-construction-panel .construction-hp-meter,
 #ship-construction-panel .construction-hp-meter .w-meter-track { width: 100%; }
-#ship-construction-panel .ui-delta[data-delta="up"] { color: var(--color-primary); }
-#ship-construction-panel .ui-delta[data-delta="down"] { color: var(--color-warning); }
 #ship-construction-panel .construction-slots {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px;
   max-height: 154px; overflow-y: auto; scrollbar-width: thin;

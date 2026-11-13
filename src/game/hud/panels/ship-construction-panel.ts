@@ -6,7 +6,9 @@ import { ARMOR_WARNING_RATIO, armorAlarmLevel } from '../../alarm/alarm-level';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { ShipConstructionCatalog } from './ship-construction-catalog';
 import { ShipConstructionHand } from './ship-construction-hand';
-import { formatConstructionMetric, formatConstructionNumber } from './ship-construction-format';
+import {
+  formatConstructionDelta, formatConstructionMetric, formatConstructionNumber,
+} from './ship-construction-format';
 import { hiddenShipConstructionModel } from '../../ship/ship-construction-types';
 import type {
   ConstructionCardDragEvent, ConstructionRole, ShipConstructionPanelModel,
@@ -20,6 +22,8 @@ interface MetricPair {
 }
 
 interface CapabilityElements {
+  readonly deltaV: MetricPair;
+  readonly acceleration: MetricPair;
   readonly thrust: MetricPair;
   readonly mainFuel: MetricPair;
   readonly rcsFuel: MetricPair;
@@ -96,6 +100,8 @@ export class ShipConstructionPanel {
     this.hp = els.get('construction-hp');
     this.hpPreview = els.get('construction-hp-preview');
     this.capabilities = {
+      deltaV: this.metricPair(els, 'construction-delta-v', 'construction-delta-v-preview'),
+      acceleration: this.metricPair(els, 'construction-acceleration', 'construction-acceleration-preview'),
       thrust: this.metricPair(els, 'construction-thrust', 'construction-thrust-preview'),
       mainFuel: this.metricPair(els, 'construction-main-fuel', 'construction-main-fuel-preview'),
       rcsFuel: this.metricPair(els, 'construction-rcs-fuel', 'construction-rcs-fuel-preview'),
@@ -188,17 +194,20 @@ export class ShipConstructionPanel {
     // 船体全体の性能と、指している候補へ置いたときの差分。
     this.count.textContent = String(model.moduleCount);
     this.mass.textContent = formatConstructionMetric(model.totalMass, 'kg');
-    this.syncPreview(this.massPreview, model.totalMass, model.preview?.mass ?? null, 'kg');
+    const preview = model.preview;
+    this.syncPreview(this.massPreview, model.totalMass, preview?.mass ?? null, preview !== null, 'kg');
     this.hp.textContent = `${formatConstructionNumber(model.hp)} / ${formatConstructionNumber(model.maxHp)}`;
-    this.syncPreview(this.hpPreview, model.maxHp, model.preview?.maxHp ?? null, '');
+    this.syncPreview(this.hpPreview, model.maxHp, preview?.maxHp ?? null, preview !== null, '');
     this.hpMeter.setRatio(model.maxHp > 0 ? model.hp / model.maxHp : 0);
     this.hpMeter.setLevel(armorAlarmLevel(model.hp, model.maxHp));
     this.hpMeter.setLabel(`${formatConstructionNumber(model.hp)} / ${formatConstructionNumber(model.maxHp)}`);
-    this.syncMetric(this.capabilities.thrust, model.capabilities.thrust, model.preview?.capabilities.thrust ?? null, 'N');
-    this.syncMetric(this.capabilities.mainFuel, model.capabilities.mainFuel, model.preview?.capabilities.mainFuel ?? null, '');
-    this.syncMetric(this.capabilities.rcsFuel, model.capabilities.rcsFuel, model.preview?.capabilities.rcsFuel ?? null, '');
-    this.syncMetric(this.capabilities.power, model.capabilities.power, model.preview?.capabilities.power ?? null, 'W');
-    this.syncMetric(this.capabilities.radiation, model.capabilities.radiation, model.preview?.capabilities.radiation ?? null, 'm²');
+    this.syncMetric(this.capabilities.deltaV, model.capabilities.deltaV, preview?.capabilities.deltaV ?? null, preview !== null, 'm/s');
+    this.syncMetric(this.capabilities.acceleration, model.capabilities.acceleration, preview?.capabilities.acceleration ?? null, preview !== null, 'm/s²');
+    this.syncMetric(this.capabilities.thrust, model.capabilities.thrust, preview?.capabilities.thrust ?? null, preview !== null, 'N');
+    this.syncMetric(this.capabilities.mainFuel, model.capabilities.mainFuel, preview?.capabilities.mainFuel ?? null, preview !== null, '');
+    this.syncMetric(this.capabilities.rcsFuel, model.capabilities.rcsFuel, preview?.capabilities.rcsFuel ?? null, preview !== null, '');
+    this.syncMetric(this.capabilities.power, model.capabilities.power, preview?.capabilities.power ?? null, preview !== null, 'W');
+    this.syncMetric(this.capabilities.radiation, model.capabilities.radiation, preview?.capabilities.radiation ?? null, preview !== null, 'm²');
     this.role.textContent = roleLabel(model.role);
     this.role.dataset['role'] = model.role;
 
@@ -276,22 +285,32 @@ export class ShipConstructionPanel {
     this.statusPaneButton.setOn(pane === 'status');
   }
 
-  // 現在値と配置後の増減を対応する表示へ反映する。
-  private syncMetric(pair: MetricPair, value: number, preview: number | null, unit: ConstructionMetricUnit): void {
-    pair.value.textContent = formatConstructionMetric(value, unit);
-    this.syncPreview(pair.preview, value, preview, unit);
+  // 現在値と配置後の増減を対応する表示へ反映する。値が無い(null)項目は「—」とする。
+  private syncMetric(
+    pair: MetricPair, value: number | null, preview: number | null, hasPreview: boolean,
+    unit: ConstructionMetricUnit,
+  ): void {
+    pair.value.textContent = value === null ? '—' : formatConstructionMetric(value, unit);
+    this.syncPreview(pair.preview, value, preview, hasPreview, unit);
   }
 
-  // 配置後差分の文字と、増減の向きを色で分ける印を同期する。
-  private syncPreview(el: HTMLElement, current: number, preview: number | null, unit: ConstructionMetricUnit): void {
-    if (preview === null || Math.abs(preview - current) < 1e-9) {
+  // 配置後差分を「→ 変化後の値 (±差)」の形で同期する。hasPreview は試し置きの見積りの有無。
+  // 値なし(null)が絡む変化は変化後の値だけを出す。
+  private syncPreview(
+    el: HTMLElement, current: number | null, preview: number | null, hasPreview: boolean,
+    unit: ConstructionMetricUnit,
+  ): void {
+    if (!hasPreview || preview === current
+      || (preview !== null && current !== null && Math.abs(preview - current) < 1e-9)) {
       el.textContent = '';
-      el.dataset['delta'] = '';
+      return;
+    }
+    if (current === null || preview === null) {
+      el.textContent = `→ ${preview === null ? '—' : formatConstructionMetric(preview, unit)}`;
       return;
     }
     const delta = preview - current;
-    el.textContent = `→ ${formatConstructionMetric(preview, unit)} · ${delta > 0 ? '+' : ''}${formatConstructionMetric(delta, unit)}`;
-    el.dataset['delta'] = delta > 0 ? 'up' : 'down';
+    el.textContent = `→ ${formatConstructionMetric(preview, unit)} (${delta > 0 ? '+' : ''}${formatConstructionDelta(delta, unit)})`;
   }
 
   // 現在値と配置後差分の表示要素を組にする。

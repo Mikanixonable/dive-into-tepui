@@ -3,13 +3,15 @@
 import {
   constructionModuleLabel, constructionTargetId, placementFor, type ConstructionTargetInfo,
 } from './ship-construction-rules';
+import { deltaVBudget, effectiveExhaustVelocity } from '../../physics/rocket';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import type { ShipAssembly } from './ship-assembly';
+import type { ShipAssemblyTotals } from './ship-assembly-types';
 import type { ModuleOrientation } from './ship-assembly-transform';
 import type { ShipBlueprint } from './ship-blueprint';
 import type { ConstructionTrial } from './ship-construction-preview';
 import type {
-  ConstructionHeld, ConstructionHistoryView, ConstructionSymmetry,
+  ConstructionCapabilities, ConstructionHeld, ConstructionHistoryView, ConstructionSymmetry,
   ShipConstructionPanelModel,
 } from './ship-construction-types';
 
@@ -43,22 +45,38 @@ export interface ShipConstructionPanelSource {
   readonly canRecordBlueprints: boolean;
 }
 
+// 集計から主推進の満載性能を求める。推力か燃料消費率が無ければ、どちらも null。
+// Δv は満載質量と満載の主燃料へ同じロケット式を当てた値で、航法の計画が出す Δv と一致する。
+function constructionPropulsion(totals: ShipAssemblyTotals): {
+  readonly deltaV: number | null;
+  readonly acceleration: number | null;
+} {
+  const consumption = totals.mainFuelConsumptionRate * totals.mainFuelMassPerUnit; // kg/s
+  if (!(totals.thrust > 0) || !(consumption > 0)) {
+    return { deltaV: null, acceleration: null };
+  }
+  return {
+    deltaV: deltaVBudget(
+      effectiveExhaustVelocity(totals.thrust, consumption), totals.fullMass, totals.maxMainFuelMass,
+    ),
+    acceleration: totals.thrust / totals.fullMass,
+  };
+}
+
 // 集めた値から建造パネルの表示モデルを組む。
 export function shipConstructionPanelModel(
   source: ShipConstructionPanelSource,
 ): ShipConstructionPanelModel {
   const { assembly, trial } = source;
   const totals = assembly.totals();
-  const capabilities = {
-    thrust: totals.thrust, mainFuel: totals.mainFuel, rcsFuel: totals.rcsFuel,
-    power: totals.power, radiation: totals.radiation,
-  };
+  const capabilitiesOf = (t: ShipAssemblyTotals): ConstructionCapabilities => ({
+    thrust: t.thrust, mainFuel: t.mainFuel, rcsFuel: t.rcsFuel,
+    power: t.power, radiation: t.radiation, ...constructionPropulsion(t),
+  });
+  const capabilities = capabilitiesOf(totals);
   const preview = trial !== null && trial.valid && trial.totals !== null ? {
     mass: trial.totals.mass, maxHp: trial.totals.maxHp,
-    capabilities: {
-      thrust: trial.totals.thrust, mainFuel: trial.totals.mainFuel, rcsFuel: trial.totals.rcsFuel,
-      power: trial.totals.power, radiation: trial.totals.radiation,
-    },
+    capabilities: capabilitiesOf(trial.totals),
   } : null;
   const pointedTarget = source.pointedTargetId === null ? null
     : source.targets.find(info => constructionTargetId(info.target) === source.pointedTargetId) ?? null;

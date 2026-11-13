@@ -273,6 +273,8 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
             <span class="ui-data-label">HP</span><div data-id="construction-hp-meter"></div>
             <output data-id="construction-hp">0 / 0</output><small class="ui-delta" data-id="construction-hp-preview"></small>
           </div>
+          <div class="construction-metric"><span class="ui-data-label">Δv(満載)</span><output data-id="construction-delta-v">—</output><small class="ui-delta" data-id="construction-delta-v-preview"></small></div>
+          <div class="construction-metric"><span class="ui-data-label">加速度(満載)</span><output data-id="construction-acceleration">—</output><small class="ui-delta" data-id="construction-acceleration-preview"></small></div>
           <div class="construction-metric"><span class="ui-data-label">推力</span><output data-id="construction-thrust">0</output><small class="ui-delta" data-id="construction-thrust-preview"></small></div>
           <div class="construction-metric"><span class="ui-data-label">主燃料容量</span><output data-id="construction-main-fuel">0</output><small class="ui-delta" data-id="construction-main-fuel-preview"></small></div>
           <div class="construction-metric"><span class="ui-data-label">RCS 燃料容量</span><output data-id="construction-rcs-fuel">0</output><small class="ui-delta" data-id="construction-rcs-fuel-preview"></small></div>

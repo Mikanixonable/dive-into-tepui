@@ -11,6 +11,9 @@ export interface ConstructionCapabilities {
   readonly rcsFuel: number;
   readonly power: number;
   readonly radiation: number;
+  // 主推進の満載性能。推力か燃料消費率が無ければ null。
+  readonly deltaV: number | null; // m/s
+  readonly acceleration: number | null; // m/s²
 }
 
 export interface ConstructionPreview {
@@ -156,7 +159,10 @@ export function hiddenShipConstructionModel(): ShipConstructionPanelModel {
   return {
     visible: false, shipName: '—', held: null, selection: null,
     moduleCount: 0, totalMass: 0, hp: 0, maxHp: 0,
-    capabilities: { thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0 }, preview: null,
+    capabilities: {
+      thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0,
+      deltaV: null, acceleration: null,
+    }, preview: null,
     role: 'material', placeBlockReason: null, pointedTargetId: null, targets: [],
     history: { names: [], position: 0, canUndo: false, canRedo: false },
     blueprints: [], blueprintRecordReason: null,
