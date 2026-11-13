@@ -43,7 +43,8 @@ const SURFACE_HUMIDITY_EPOCH_MAX_FREQUENCY = 16;
 const UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY = 8;
 
 // 場の振れ幅。CirculatingNoiseが段の振幅の総和で割って返すので、段数を変えてもここは動かない。
-export const SURFACE_HUMIDITY_BASE = 0.405;
+// 地表付近の基底湿度。平年の雲量の重みを半分に弱めたぶんの平均をここで埋める(cloud-lab Phase 3-10)。
+export const SURFACE_HUMIDITY_BASE = 0.435;
 const UPPER_HUMIDITY_BASE = 0.42;
 const SURFACE_HUMIDITY_NOISE_AMPLITUDE = 0.5625;
 const CONVECTION_NOISE_AMPLITUDE = 0.30;
