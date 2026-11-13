@@ -71,6 +71,7 @@ export const CLOUD_SHELL_SPECIES: readonly CloudSpecies[] = CLOUD_SHELL_DEFINITI
   ({ species }) => species,
 );
 
+// 種類の定義を引く。未知の種類は例外にする。
 function shellDefinitionOf(species: CloudSpecies): (typeof CLOUD_SHELL_DEFINITIONS)[number] {
   const definition = CLOUD_SHELL_DEFINITIONS.find((candidate) => candidate.species === species);
   if (definition === undefined) throw new Error(`Unknown cloud shell species: ${species}`);

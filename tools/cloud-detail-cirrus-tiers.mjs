@@ -6,8 +6,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
-import { decodePng } from './png.mjs';
-import { cropField } from './gray-image.mjs';
+import { centerCrop, linearLuminanceField } from './cloud-detail-field.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const renderLabDir = path.join(root, '.render-lab');
@@ -19,40 +18,8 @@ const debugPort = 9450;
 
 // 箱の一辺 [km]。
 const BOX_KM = 50;
-// 中央から切り出す一辺の上限 [px](計測と同じ)。
-const MAX_CROP_PX = 512;
 // 箱ごとの比が 1 からこの幅の中に入るかの判定。
 const TOLERANCE = 0.05;
-
-// sRGB の 1 チャンネル(0..255)を線形輝度(0..1)へ戻す。
-function srgbToLinear(byte) {
-  const c = byte / 255;
-  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-}
-
-// PNG を線形輝度の場へ(Rec.709 の輝度係数。計測と同じ定義)。
-function linearLuminanceField(png) {
-  const { width, height, channels, data } = decodePng(png);
-  const out = new Float32Array(width * height);
-  for (let i = 0; i < width * height; i++) {
-    if (channels === 1) {
-      out[i] = srgbToLinear(data[i]);
-    } else {
-      const r = srgbToLinear(data[i * channels]);
-      const g = srgbToLinear(data[i * channels + 1]);
-      const b = srgbToLinear(data[i * channels + 2]);
-      out[i] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    }
-  }
-  return { width, height, data: out };
-}
-
-// 中央の正方形(一辺は 512 以下の 2 の冪)を切り出す。
-function centerCrop(field) {
-  const limit = Math.min(MAX_CROP_PX, field.width, field.height);
-  const n = 1 << Math.floor(Math.log2(limit));
-  return cropField(field, Math.floor((field.width - n) / 2), Math.floor((field.height - n) / 2), n, n);
-}
 
 // 正方形の場を一辺 box 画素の箱へ区切り、箱ごとの平均を行優先で返す。端の余りは捨てる。
 function boxMeans(field, box) {

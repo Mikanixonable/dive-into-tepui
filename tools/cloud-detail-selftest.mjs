@@ -6,7 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fft2, measureCloudDetail } from './cloud-detail-metrics.mjs';
-import { decodePng } from './png.mjs';
+import { linearLuminanceField } from './cloud-detail-field.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -76,30 +76,6 @@ function syntheticField(n, ampOf, seed) {
   const data = new Float32Array(n * n);
   for (let i = 0; i < re.length; i++) data[i] = (re[i] - mean) * scale;
   return { width: n, height: n, data };
-}
-
-// sRGB の 1 チャンネル(0..255)を線形輝度(0..1)へ戻す。
-function srgbToLinear(byte) {
-  const c = byte / 255;
-  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-}
-
-// PNG を線形輝度の場へ。Rec.601 ではなく Rec.709 の輝度係数 — 実写の真色画像の
-// モニタ輝度として読むため。
-function linearLuminanceField(png) {
-  const { width, height, channels, data } = decodePng(png);
-  const out = new Float32Array(width * height);
-  for (let i = 0; i < width * height; i++) {
-    if (channels === 1) {
-      out[i] = srgbToLinear(data[i]);
-    } else {
-      const r = srgbToLinear(data[i * channels]);
-      const g = srgbToLinear(data[i * channels + 1]);
-      const b = srgbToLinear(data[i * channels + 2]);
-      out[i] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    }
-  }
-  return { width, height, data: out };
 }
 
 // manifest.json から { file, kmPerPx, label } の一覧を取り出す。段の km/px が
