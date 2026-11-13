@@ -112,6 +112,10 @@ class FakeHost implements ConstructionPointerHost {
     this.calls.push(`select:${moduleId}`);
     this.selectedModuleId = moduleId;
   }
+  public hoveredModuleId: string | null = null;
+  public setHoveredModule(moduleId: string | null): void {
+    this.hoveredModuleId = moduleId;
+  }
   public canEditModule(): boolean { return true; }
   public clearCardDrag(): void { this.calls.push('clearCardDrag'); this.cardDrag = null; }
   public rotate(): void {}
