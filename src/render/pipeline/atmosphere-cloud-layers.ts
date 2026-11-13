@@ -51,10 +51,12 @@ export interface CloudShellEvent {
 export class AtmosphereCloudLayers {
   private readonly clouds = new CloudAtmosphereRenderer();
 
+  // 評価対象の雲の定義を置く。null なら雲の殻を立てない。
   public setClouds(clouds: Parameters<CloudAtmosphereRenderer['set']>[0]): void {
     this.clouds.set(clouds);
   }
 
+  // 種類ごとに、その殻を描くかを置く。
   public setShellEnabled(species: CloudSpecies, enabled: boolean): void {
     this.clouds.setShellEnabled(species, enabled);
   }
@@ -64,6 +66,7 @@ export class AtmosphereCloudLayers {
     this.clouds.setCirrusOctaves(count);
   }
 
+  // 距離 distance までに通過する雲イベントの透過率の積を返す。
   public transmittanceAt(events: readonly CloudShellEvent[], distance: FloatNode): FloatNode {
     const product = float(1).toVar();
     for (const event of events) {
@@ -72,6 +75,7 @@ export class AtmosphereCloudLayers {
     return product;
   }
 
+  // 雲イベントを視線の順に畳み、大気の透過率と内部散乱へ雲の寄与を合成する。
   public compose(
     atmosphereTransmittance: Vec3Node, atmosphereRadiance: Vec3Node,
     events: readonly CloudShellEvent[],
