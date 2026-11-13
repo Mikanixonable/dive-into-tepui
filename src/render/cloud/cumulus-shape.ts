@@ -55,3 +55,11 @@ export const CUMULUS_GRAIN_OCTAVES: readonly { readonly sizeM: number; readonly 
   { sizeM: 12000, weight: 0.8 },
   { sizeM: 6000, weight: 1.3 },
 ];
+
+// 粒の細胞の寿命 [h]。粒はこの周期で成長→成熟→崩壊を繰り返す。周期は、実写の微細帯の
+// 寿命(相関の 1/e 交差 ≈ 0.6 h)に包絡だけの 1/e 交差(≈ 0.19 周期)を合わせる値に取る。
+export const GRAIN_LIFECYCLE_HOURS = 2;
+
+// 粒の細胞の位相が 1 周する実寸 [m]。場所ごとに位相がずれるので、隣り合う細胞の寿命は
+// ずれて進む。風速 10 m/s なら周期のあいだに細胞は 0.36 周ぶんずれ、粒は風向きに伸びる。
+export const GRAIN_LIFECYCLE_CELL_M = 200000;
