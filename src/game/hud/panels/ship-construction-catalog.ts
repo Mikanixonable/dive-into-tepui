@@ -5,6 +5,7 @@ import { CLICK_MOVE_THRESHOLD } from '../../../input/input';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { SHIP_MODULE_CATALOG } from '../../ship/ship-module-catalog';
 import { formatConstructionMetric, formatConstructionNumber } from './ship-construction-format';
+import { moduleThumbnailUrl } from './ship-module-thumbnails';
 import type { ShipModuleCategory, ShipModuleDefinition } from '../../ship/ship-module-definition';
 import type { ConstructionCardDragEvent, ShipBlueprintCardView } from '../../ship/ship-construction-types';
 
@@ -93,18 +94,22 @@ export class ShipConstructionCatalog {
       for (const definition of definitions) {
         const card = document.createElement('div');
         card.className = 'construction-module-card';
+        card.dataset['id'] = definition.id;
         // click の解釈は wireCardDrag 側の tap が担う(ドラッグ後の click を抑制するため、
         // Button の活性化と二重に呼ばない)。
         const button = new Button('', () => {}, undefined, 'secondary');
         button.element.title = moduleDescription(definition);
-        // 名称・寸法・主要能力をカードへ載せる。
+        // タイルはサムネイルと名称を常に出し、寸法・質量・主要能力は副行と title で読める。
         button.element.replaceChildren(
-          buildSpan('construction-module-name', definition.name),
-          buildSpan(
-            'construction-module-spec',
-            `${formatDimension(definition.length)} m · ${formatConstructionMetric(definition.dryMass, 'kg')} · HP ${formatConstructionNumber(definition.maxHp)}`,
+          ...withThumbnail(
+            moduleThumbnail(definition.modelId),
+            buildSpan('construction-module-name', definition.name),
+            buildSpan(
+              'construction-module-spec',
+              `${formatDimension(definition.length)} m · ${formatConstructionMetric(definition.dryMass, 'kg')} · HP ${formatConstructionNumber(definition.maxHp)}`,
+            ),
+            buildSpan('construction-module-ability', moduleCardAbility(definition)),
           ),
-          buildSpan('construction-module-ability', moduleCardAbility(definition)),
         );
         this.wireCardDrag(
           button.element, () => this.callbacks.onSelectModule(definition.id),
@@ -125,7 +130,7 @@ export class ShipConstructionCatalog {
   private renderBlueprints(heldId: string | null, blueprints: readonly ShipBlueprintCardView[]): void {
     if (this.activeCategory !== 'blueprints') return;
     const signature = `blueprints:${this.renamingId ?? ''}:${
-      blueprints.map(entry => `${entry.id}:${entry.name}:${entry.moduleCount}:${entry.mass}`).join(',')
+      blueprints.map(entry => `${entry.id}:${entry.name}:${entry.modelId ?? ''}:${entry.moduleCount}:${entry.mass}`).join(',')
     }`;
     if (this.blueprintSignature !== signature) {
       this.moduleCards.replaceChildren();
@@ -149,6 +154,7 @@ export class ShipConstructionCatalog {
   private blueprintCard(blueprint: ShipBlueprintCardView): HTMLElement {
     const card = document.createElement('div');
     card.className = 'construction-module-card construction-blueprint-card';
+    card.dataset['id'] = blueprint.id;
     // click の解釈は wireCardDrag 側の tap が担う。
     const body = new Button('', () => {}, undefined, 'secondary');
     body.element.title = `${blueprint.name} を手に取る`;
@@ -158,6 +164,11 @@ export class ShipConstructionCatalog {
         source: { kind: 'blueprint', blueprintId: blueprint.id }, phase, clientX: x, clientY: y,
       }),
     );
+    // サムネイルは根元のモジュールのもので、モジュール数をバッジで添える。
+    const thumb = moduleThumbnail(blueprint.modelId);
+    if (thumb !== null) {
+      thumb.appendChild(buildSpan('construction-module-count', `×${blueprint.moduleCount}`));
+    }
     const nameEl = buildSpan('construction-module-name', blueprint.name);
     const specEl = buildSpan(
       'construction-module-spec',
@@ -174,10 +185,10 @@ export class ShipConstructionCatalog {
       );
       input.setValue(blueprint.name);
       input.element.classList.add('construction-blueprint-rename');
-      body.element.replaceChildren(input.element, specEl);
+      body.element.replaceChildren(...withThumbnail(thumb, input.element, specEl));
       requestAnimationFrame(() => input.element.focus());
     } else {
-      body.element.replaceChildren(nameEl, specEl);
+      body.element.replaceChildren(...withThumbnail(thumb, nameEl, specEl));
     }
     card.appendChild(body.element);
 
@@ -280,6 +291,26 @@ export class ShipConstructionCatalog {
       tap();
     });
   }
+}
+
+// modelId のサムネイル画像を包む要素。画像が無い modelId では null。
+// カードのドラッグはポインタ操作で行うので、画像固有のドラッグは止める。
+function moduleThumbnail(modelId: string | null): HTMLElement | null {
+  const url = modelId === null ? undefined : moduleThumbnailUrl(modelId);
+  if (url === undefined) return null;
+  const wrap = document.createElement('span');
+  wrap.className = 'construction-module-thumb';
+  const image = document.createElement('img');
+  image.src = url;
+  image.alt = '';
+  image.draggable = false;
+  wrap.appendChild(image);
+  return wrap;
+}
+
+// カードの中身の先頭へサムネイル(あれば)を乗せた子要素の列を返す。
+function withThumbnail(thumb: HTMLElement | null, ...children: HTMLElement[]): HTMLElement[] {
+  return thumb === null ? children : [thumb, ...children];
 }
 
 // カテゴリ指定が省略された部品にも分類を与える。
