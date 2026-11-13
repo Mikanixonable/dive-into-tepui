@@ -160,6 +160,7 @@ export class Logistics {
   // 自機が居ないときは state の速度を引き継ぐ。補給は mags のマガジン数を持ち、以後は通常の補給と同じ
   // 回収・遠方デスポーンの規則に従う。
   public dropAt(state: KinematicState, playerState: KinematicState | null, mags: number): void {
+    // 自機が居ればその速度を基準に、敵機との相対速度の一部だけを乗せる。
     const baseV = playerState === null
       ? state.v
       : addScaled(playerState.v, sub(state.v, playerState.v), DROP_RELATIVE_VELOCITY_KEEP);
