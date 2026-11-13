@@ -2,14 +2,14 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select,
+  Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select, smoothstep,
   sqrt, uniform, vec4,
 } from 'three/tsl';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
-import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
+import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_OCTAVES, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 
@@ -101,7 +101,6 @@ export class CloudShadowRenderer {
         // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
         // 実寸と光路 1 歩の長さのうち粗いほうを取る。粒の振幅はこの幅が決める。
         const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR));
-        const grainAmplitude = this.shape.grainAmplitudeForWidth(sampleWidth).toVar();
         const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
@@ -112,10 +111,15 @@ export class CloudShadowRenderer {
           const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
           const cloud = this.fieldAt(up);
           // 粒は引けるときだけ引く。タップの数だけノイズを引くので、振幅が 0 になる遠さでは分岐ごと
-          // 飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
+          // 飛ばして費用を戻す(select では両辺が評価されて飛ばない)。段ごとの振幅はタップの柱の
+          // 天気で決め、殻と同じ規則で落とす — 影は殻のシルエットの下へ落ちる。いちばん粗い段が
+          // 0 なら全段が 0 なので、その段で分岐を切る。
           const grain = float(0).toVar();
-          If(greaterThan(grainAmplitude, 0), () => {
-            grain.assign(this.shape.grainAt(up, grainAmplitude));
+          const grainAmplitudes = CUMULUS_GRAIN_OCTAVES.map((octave) => CloudShapeEvaluator
+            .grainWeatherFactor(cloud.coverage, cloud.cloudTop.div(CLOUD_TOP_SPAN))
+            .mul(smoothstep(octave.sizeM, octave.sizeM * 2, sampleWidth).oneMinus()).toVar());
+          If(greaterThan(grainAmplitudes[0]!, 0), () => {
+            grain.assign(this.shape.grainAt(up, grainAmplitudes));
           });
           const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
