@@ -1,6 +1,6 @@
-// 建造カタログ用サムネイルのケース。カタログの modelId ごとにモジュールを1つ置き、固定の斜め視点と
-// 固定照明で画面中央の正方形へ収めて撮る。背景はケースごとの単色板で、書き出し側が黒・白の2枚の
-// 差からモジュールの覆い(α)を復元するので、-black と -white の対で登録する。
+// 建造カタログ用サムネイルのケース。カタログの modelId ごとにモジュールを1つ置き、長軸を立てた
+// 姿を斜め上からの固定視点と固定照明で画面中央の正方形へ収めて撮る。背景はケースごとの単色板で、
+// 書き出し側が黒・白の2枚の差からモジュールの覆い(α)を復元するので、-black と -white の対で登録する。
 import * as THREE from 'three/webgpu';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { buildShipModuleModel, getShipModuleTemplates } from '../../src/render/dynamic/ship/ship-module-models';
@@ -12,9 +12,9 @@ const MODEL_IDS: readonly string[] = [
   ...new Set(SHIP_MODULE_CATALOG.all().map((definition) => definition.modelId)),
 ];
 
-// 固定の斜め視点(方位・仰角 [deg])と、カメラの側からやや上へ回した固定の照明。
+// 固定の斜め上の視点(方位・仰角 [deg])と、カメラの側からやや上へ回した固定の照明。
 const CAMERA_AZIMUTH_DEG = -38;
-const CAMERA_ELEVATION_DEG = 24;
+const CAMERA_ELEVATION_DEG = 50;
 const SUN_DIRECTION = directionFromAngles(-70, 50, new THREE.Vector3());
 
 // モジュールを包む球が縦方向の画角へ写る割合。正方形の中央だけを切り出すので、横幅の
@@ -46,10 +46,25 @@ function shipModuleTemplatesLoaded(): boolean {
   }
 }
 
+// モデルの包み箱の最も長い軸を上方向(+Y)へ向ける。サムネイルでは部品の長軸が画面の
+// 上下方向へ並ぶ向きで撮る。
+function standLongAxisUpright(model: THREE.Object3D): void {
+  const bounds = new THREE.Box3().setFromObject(model);
+  const size = bounds.getSize(new THREE.Vector3());
+  const longAxis = size.x >= size.y && size.x >= size.z ? new THREE.Vector3(1, 0, 0)
+    : size.z >= size.y ? new THREE.Vector3(0, 0, 1)
+    : null;
+  if (longAxis === null) return;
+  model.applyQuaternion(
+    new THREE.Quaternion().setFromUnitVectors(longAxis, new THREE.Vector3(0, 1, 0)),
+  );
+}
+
 // modelId のモデルを1つ置き、背景色 backdropColor の板を挟んだケース。撮影名はケース名と同じ。
 // レンズ効果は切る — 背景の滲みが画素ごとの差へ混ざると、覆いの復元が斜めへ狂う。
 function thumbnail(modelId: string, backdropColor: number, backdropName: 'black' | 'white'): LabCase {
   const model = buildShipModuleModel(modelId);
+  standLongAxisUpright(model);
   const bounds = new THREE.Box3().setFromObject(model);
   const center = bounds.getCenter(new THREE.Vector3());
   const radius = bounds.getBoundingSphere(new THREE.Sphere()).radius;
