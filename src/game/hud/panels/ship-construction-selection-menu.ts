@@ -1,8 +1,8 @@
-// 建造中に選んだモジュールの脇へ追従する操作メニュー。回転(−90°/+90°)・端の入れ替え・
-// 付け替え・撤去・複製・選択解除を持ち、毎フレーム渡される画面座標へ
+// 建造中に選んだモジュールの脇へ追従する操作メニュー。回転(−90°/+90°)・向きを反転・
+// 付け替え・撤去・複製を持ち、毎フレーム渡される画面座標へ
 // 置き直す。画面の端からはみ出さないよう画面内へ寄せて置き、モジュールが画面の外へ
 // 出ても画面の縁へ寄せて残す。編集できない選択(接舷中の接続の先)では、効かない
-// 回転・端の入れ替え・付け替え・撤去を出さない。
+// 回転・向きを反転・付け替え・撤去を出さない。
 import { Button } from '../../../hud/widgets';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import type { Projected } from '../../../math/projection';
@@ -36,7 +36,7 @@ function injectStyle(): void {
 
 // 選択メニュー1フレーム分の表示内容。(x, y) は追従先のモジュールの画面座標 [px]。
 export interface ConstructionSelectionMenuSpec extends Projected {
-  // 回転・端の入れ替え・付け替え・撤去を出すか(編集できる選択のときだけ)。
+  // 回転・向きを反転・付け替え・撤去を出すか(編集できる選択のときだけ)。
   readonly canEdit: boolean;
 }
 
@@ -47,7 +47,6 @@ export interface ShipConstructionSelectionMenuCallbacks {
   readonly onReattach: () => void;
   readonly onRemove: () => void;
   readonly onDuplicate: () => void;
-  readonly onDeselect: () => void;
 }
 
 export class ShipConstructionSelectionMenu {
@@ -58,7 +57,6 @@ export class ShipConstructionSelectionMenu {
   private readonly reattach: Button;
   private readonly remove: Button;
   private readonly duplicate: Button;
-  private readonly deselect: Button;
 
   // 追従 DOM を marker レイヤ配下へ組み、操作を callbacks へ配線する。
   public constructor(parent: HTMLElement, callbacks: ShipConstructionSelectionMenuCallbacks) {
@@ -82,7 +80,7 @@ export class ShipConstructionSelectionMenu {
     );
     this.rollRight.element.dataset.id = 'construction-menu-roll-right';
     this.swapEnds = new Button(
-      '端の入れ替え', () => callbacks.onSwapEnds(), undefined, 'secondary', K.constructionSwapEnds.label,
+      '向きを反転', () => callbacks.onSwapEnds(), undefined, 'secondary', K.constructionSwapEnds.label,
     );
     this.swapEnds.element.dataset.id = 'construction-menu-swap-ends';
     this.reattach = new Button('付け替える', () => callbacks.onReattach(), undefined, 'primary');
@@ -93,14 +91,12 @@ export class ShipConstructionSelectionMenu {
       '複製', () => callbacks.onDuplicate(), undefined, 'secondary', K.constructionDuplicate.label,
     );
     this.duplicate.element.dataset.id = 'construction-menu-duplicate';
-    this.deselect = new Button('選択を解く', () => callbacks.onDeselect(), undefined, 'secondary');
-    this.deselect.element.dataset.id = 'construction-menu-deselect';
 
     const actions = document.createElement('div');
     actions.className = 'construction-selection-menu-actions';
     actions.append(
       this.rollLeft.element, this.rollRight.element, this.swapEnds.element,
-      this.reattach.element, this.remove.element, this.duplicate.element, this.deselect.element,
+      this.reattach.element, this.remove.element, this.duplicate.element,
     );
     this.root.append(actions);
     parent.appendChild(this.root);

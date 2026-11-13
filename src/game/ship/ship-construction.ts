@@ -87,8 +87,6 @@ export interface ShipConstructionPanelPort {
   // 「付け替える」。選択中の先端部を手持ちにする。
   onReattach: (() => void) | null;
   onRelease: (() => void) | null;
-  // 「選択を解く」。release とは別の操作で、選択だけを解く。
-  onDeselect: (() => void) | null;
   onRotate: ((delta: 1 | -1) => void) | null;
   onSwapEnds: (() => void) | null;
   onCycleSymmetry: (() => void) | null;
@@ -177,7 +175,6 @@ export class ShipConstruction implements OverlayHandle {
     panel.onDuplicate = () => this.duplicateSelected();
     panel.onReattach = () => this.holdSelectedPiece();
     panel.onRelease = () => this.release();
-    panel.onDeselect = () => this.select(null);
     panel.onRotate = (delta) => this.rotate(delta);
     panel.onSwapEnds = () => this.swapEnds();
     panel.onCycleSymmetry = () => this.cycleSymmetry();
@@ -517,7 +514,7 @@ export class ShipConstruction implements OverlayHandle {
     this.trialCache = null;
   }
 
-  // 手持ち・選択中の取り付ける端を入れ替える。両端に取り付け面を持つ部品だけで効く。
+  // 手持ち・選択中の部品の向きを反転する。両端に取り付け面を持つ部品だけで効く。
   public swapEnds(): void {
     const session = this.current;
     if (session === null) return;
@@ -525,7 +522,7 @@ export class ShipConstruction implements OverlayHandle {
       const definition = heldRootDefinition(session.ship.assembly, this.heldValue);
       const next = this.orientation.face === 'front' ? 'back' : 'front';
       if (definition === null || definition.axialFaces[next] !== 'structural') {
-        this.deny('この部品は端を入れ替えられません');
+        this.deny('この部品は向きを反転できません');
         return;
       }
       this.orientation = { ...this.orientation, face: next };
@@ -534,16 +531,16 @@ export class ShipConstruction implements OverlayHandle {
       return;
     }
     const moduleId = this.selectedId;
-    if (moduleId === null) { this.deny('端を入れ替える部品を選んでください'); return; }
+    if (moduleId === null) { this.deny('向きを反転する部品を選んでください'); return; }
     const definition = session.ship.assembly.definition(moduleId);
     const current = this.orientationOfPiece(session, moduleId) ?? { roll: 0 as const, face: 'back' as const };
     const next = current.face === 'front' ? 'back' : 'front';
     if (definition === null || definition.axialFaces[next] !== 'structural') {
-      this.deny('この部品は端を入れ替えられません');
+      this.deny('この部品は向きを反転できません');
       return;
     }
     this.submit(session, 'reorient',
-      `${constructionModuleLabel(session.ship.assembly, moduleId)} の端を入れ替え`, [moduleId], false, null,
+      `${constructionModuleLabel(session.ship.assembly, moduleId)} の向きを反転`, [moduleId], false, null,
       () => session.edits.reorient(moduleId, { ...current, face: next }));
     this.trialCache = null;
   }
@@ -767,7 +764,6 @@ export class ShipConstruction implements OverlayHandle {
     this.panel.onDuplicate = null;
     this.panel.onReattach = null;
     this.panel.onRelease = null;
-    this.panel.onDeselect = null;
     this.panel.onRotate = null;
     this.panel.onSwapEnds = null;
     this.panel.onCycleSymmetry = null;
