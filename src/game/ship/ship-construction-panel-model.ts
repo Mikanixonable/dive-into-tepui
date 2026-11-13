@@ -113,14 +113,21 @@ export function shipConstructionPanelModel(
       };
     }),
     history: source.history,
-    blueprints: source.blueprints.map(entry => ({
-      id: entry.id, name: entry.name,
-      moduleCount: entry.piece.modules.length,
-      mass: entry.piece.modules.reduce(
-        (sum, module) => sum + (SHIP_MODULE_CATALOG.get(module.definitionId)?.dryMass ?? 0), 0,
-      ),
-      held: source.heldBlueprintId === entry.id,
-    })),
+    blueprints: source.blueprints.map(entry => {
+      // 先端部の根元は、どの接続の子でもないモジュール(piece は根を1つ持つ木)。
+      const childIds = new Set(entry.piece.connections.map(edge => edge.childId));
+      const root = entry.piece.modules.find(module => !childIds.has(module.id));
+      return {
+        id: entry.id, name: entry.name,
+        modelId: root === undefined
+          ? null : SHIP_MODULE_CATALOG.get(root.definitionId)?.modelId ?? null,
+        moduleCount: entry.piece.modules.length,
+        mass: entry.piece.modules.reduce(
+          (sum, module) => sum + (SHIP_MODULE_CATALOG.get(module.definitionId)?.dryMass ?? 0), 0,
+        ),
+        held: source.heldBlueprintId === entry.id,
+      };
+    }),
     blueprintRecordReason: source.canRecordBlueprints
       ? null : '記録先のセーブデータが無いため、設計図を保存できません',
     canPlace: (source.held !== null || source.selection !== null)
