@@ -1,4 +1,4 @@
-// 積雲(雲の場の R = 被覆率、G = 雲頂高度)を、地表の上に立つ不透明な雲頂として描く殻。天体の
+// 積雲(雲の場の R = 積雲の量)を、地表の上に立つ不透明な雲頂として描く殻。天体の
 // 子として置き、見かけ直径から分割段を選ぶ。雲頂は深度と法線を持つ不透明な面として照らされ、
 // 場の texel より細かい起伏は天体固定の粒で足す。
 import * as THREE from 'three/webgpu';
@@ -14,6 +14,7 @@ import { CloudFieldSampler } from './cloud/cloud-field-sampler';
 import type { CloudRenderInput } from './cloud/cloud-render-input';
 import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
+import { cumulusOpacityNode, cumulusTopAltitudeNode } from './cloud/cloud-kind-node';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './celestial/screen-lod';
@@ -226,11 +227,11 @@ export class OpaqueCloudSurfaceRenderer {
     const cloud = this.fieldAt(direction);
     const grain = this.shape.grainAt(direction, grainAmplitude);
     // 粒は覆いの縁を texel より細かく千切る。
-    const present = step(threshold, this.shape.opaqueFraction(cloud.coverage, grain));
+    const present = step(threshold, this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), grain));
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに粒が湧く。
     const clearance = radius.sub(this.shape.cloudTopRadius(
-      this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain), this.groundRadius));
+      this.shape.cloudTop(cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), grain), this.groundRadius));
     return select(present.greaterThan(0.5), clearance, float(1));
   }
 
@@ -243,7 +244,7 @@ export class OpaqueCloudSurfaceRenderer {
     // その向きの雲頂(物体空間の半径)。
     const topAt = (direction: Vec3Node): FloatNode => this.shape.cloudTopRadius(
       this.shape.cloudTop(
-        this.fieldAt(direction).cloudTop.div(CLOUD_TOP_SPAN),
+        cumulusTopAltitudeNode(this.fieldAt(direction).cumulus).div(CLOUD_TOP_SPAN),
         this.shape.grainAt(direction, grainAmplitude),
       ),
       this.groundRadius,
