@@ -13,11 +13,17 @@ export interface SalvageBlueprint {
   readonly kills: number;
   readonly id: string;
   readonly name: string;
+  readonly kind: SalvageKind;
   readonly piece: SerializedShipAssembly;
 }
 
 // 鹵獲品の種類。
 export type SalvageKind = 'gunpod' | 'supply-pod' | 'assault-craft';
+
+// value が鹵獲品の種類の名前か。
+export function isSalvageKind(value: unknown): value is SalvageKind {
+  return typeof value === 'string' && Object.hasOwn(CARGO_CHAINS, value);
+}
 
 // 先端部を根から外へ組む1部品。id は先端部の中での名前で、連ねるときは接頭辞を付けて使う。
 interface CargoLink {
@@ -95,25 +101,52 @@ function salvagePiece(kind: SalvageKind): SerializedShipAssembly {
 
 // 撃破数の節目と授与する設計図の対応。節目の小さい順に並べる。
 export const SALVAGE_BLUEPRINTS: readonly SalvageBlueprint[] = [
-  { kills: 3, id: 'salvage-gunpod', name: '鹵獲: 砲座', piece: salvagePiece('gunpod') },
-  { kills: 10, id: 'salvage-supply-pod', name: '鹵獲: 物資ポッド', piece: salvagePiece('supply-pod') },
-  { kills: 25, id: 'salvage-assault-craft', name: '鹵獲: 強襲艇', piece: salvagePiece('assault-craft') },
+  { kills: 3, id: 'salvage-gunpod', name: '鹵獲: 砲座', kind: 'gunpod', piece: salvagePiece('gunpod') },
+  { kills: 10, id: 'salvage-supply-pod', name: '鹵獲: 物資ポッド', kind: 'supply-pod', piece: salvagePiece('supply-pod') },
+  { kills: 25, id: 'salvage-assault-craft', name: '鹵獲: 強襲艇', kind: 'assault-craft', piece: salvagePiece('assault-craft') },
 ];
+
+// 物資ポッドの節目の雛形と、最後の節目の撃破数。
+const SUPPLY_POD_ENTRY = SALVAGE_BLUEPRINTS.find(entry => entry.kind === 'supply-pod')!;
+const LAST_SALVAGE_KILLS = SALVAGE_BLUEPRINTS[SALVAGE_BLUEPRINTS.length - 1]!.kills;
+
+// ステージ00で、最後の節目より後に物資ポッドを授与する撃破数の間隔 [機](SPEC GAME.md 3.1)。
+export const SALVAGE_REPEAT_EVERY = 15;
+
+// 撃破数 kills までに到達する節目を小さい順に返す。repeatEvery を与えると、最後の節目より後は
+// 物資ポッドの節目が repeatEvery ごとに続く。
+function milestonesUpTo(kills: number, repeatEvery: number | null): SalvageBlueprint[] {
+  const milestones = SALVAGE_BLUEPRINTS.filter(entry => entry.kills <= kills);
+  if (repeatEvery === null) return milestones;
+  for (let k = LAST_SALVAGE_KILLS + repeatEvery; k <= kills; k += repeatEvery) {
+    milestones.push({ ...SUPPLY_POD_ENTRY, kills: k });
+  }
+  return milestones;
+}
+
+// 撃破数が previous から kills へ増えたときに跨いだ鹵獲の節目。1撃破で複数を跨いだら全部返す。
+// 授与はラン内で毎回起きるので、棚の内容は見ない。
+export function crossedSalvageMilestones(
+  previous: number, kills: number, repeatEvery: number | null,
+): readonly SalvageBlueprint[] {
+  return milestonesUpTo(kills, repeatEvery).filter(entry => entry.kills > previous);
+}
+
+// 次の鹵獲の節目までの残り撃破数。repeatEvery を与えたときは、最後の節目より後も必ず次がある。
+export function nextSalvageMilestoneRemaining(kills: number, repeatEvery: number | null): number | null {
+  const fixed = SALVAGE_BLUEPRINTS.find(entry => entry.kills > kills);
+  if (fixed !== undefined) return fixed.kills - kills;
+  if (repeatEvery === null) return null;
+  const steps = Math.floor((kills - LAST_SALVAGE_KILLS) / repeatEvery) + 1;
+  return LAST_SALVAGE_KILLS + steps * repeatEvery - kills;
+}
 
 // 節目の設計図が既に授与済みか。このランで授与を記録した名前と、棚に既にある名前の両方で見る —
 // 棚への書き戻しは授与の記録より遅れ得るので、片方だけでは重複や抜けが出る。
-function salvageGranted(name: string, grantedNames: ReadonlySet<string>, shelf: ShipBlueprintShelf): boolean {
+export function salvageGranted(name: string, grantedNames: ReadonlySet<string>, shelf: ShipBlueprintShelf): boolean {
   return grantedNames.has(name) || shelf.blueprints.some(blueprint => blueprint.name === name);
 }
 
-// 撃破数が previous から kills へ増えたときに跨いだ節目の設計図のうち、まだ授与されていないもの。
-// 1撃破で複数の節目を跨いだときは全部返す。
-export function crossedSalvageBlueprints(
-  previous: number, kills: number, grantedNames: ReadonlySet<string>, shelf: ShipBlueprintShelf,
-): readonly SalvageBlueprint[] {
-  return SALVAGE_BLUEPRINTS.filter(entry =>
-    previous < entry.kills && entry.kills <= kills && !salvageGranted(entry.name, grantedNames, shelf));
-}
 
 // 次の鹵獲までの残り撃破数。残る節目がすべて授与済みなら null。
 export function nextSalvageRemaining(
