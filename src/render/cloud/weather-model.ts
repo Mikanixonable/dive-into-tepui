@@ -51,6 +51,7 @@ interface PressureField {
 
 // ノイズのオクターブ定義表。周波数は 1 rad あたりの山数で、角波長 [km] は 6371 ÷ 周波数。気圧は単一オクターブ
 // のみとする — 上昇流が気圧値の直接の関数であるため、オクターブを重ねると高周波の格子が雲へそのまま現れてしまうため。
+// この段はエポックの混ぜ替えに参加し、気圧の谷と峰は流れに乗るだけでなくその場でも発達・衰退する。
 const PRESSURE_NOISE: readonly NoiseOctave[] = [
   { frequency: 1.2, amplitude: 1 }, // 5300 km
 ];
@@ -82,10 +83,11 @@ const RAINBAND_ONSET = 5;
 const RAINBAND_WIDTH = 4;
 // 帯が飽和した所で立つ上昇流 [m/s]。深い谷の芯と同じだけ持ち上げるよう、頭打ち(LIFT_LIMIT)に揃える。
 const BAND_LIFT = 0.06;
-// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 1.4 倍で、帯の芯では
-// 上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き、途切れない帯になる
+// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 0.45 倍に取る —
+// 帯の芯では上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き途切れない帯に
+// なるが、前線帯の面全体が湿度の上限へ張り付いて一枚の台地にはならない
 // (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
-const BAND_HUMIDITY = 0.3;
+const BAND_HUMIDITY = 0.1;
 // 温帯と熱帯の境界緯度。温帯では前線、熱帯では雨帯の伝達関数を使い、暖気流入の補正は温帯に
 // 限定して適用する。
 const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
@@ -141,16 +143,18 @@ const CONVECTION_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
 // 取る。上層を深く引いて、薄い雲の穴を厚い雲の目よりひとまわり広く開ける。
 const SURFACE_EYE_DRYNESS = 0.8;
 const UPPER_EYE_DRYNESS = 2;
-// 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の下の円盤が隙間なく埋まるよう、並の湿度からでも
-// 雲量が飽和する分を足す。
-const ANVIL_HUMIDITY = 0.5;
+// 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の芯では並の湿度からでも雲量が飽和する分を足すが、
+// 円盤の縁まで一様に上限へ張り付かせないよう、天蓋自身の濃さの落ち際と合わせて効かせる。
+const ANVIL_HUMIDITY = 0.2;
 // 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入（0.26 rad）で伝達関数幅の約半分が
 // 変位する係数。本項の期待値が正のため、基底湿度 (SURFACE_HUMIDITY_BASE) をオフセットして均衡させる。
 const WARM_HUMIDITY = 0.6;
 // 移流後に足す平年の雲量の重み(地表付近と上層)。雲量の地理的な差が凝結のしきい値をまたぐ幅に
 // 取る — 小さいと砂漠にも海と同じだけ雲が湧き、大きいと雲の多い海が覆われたまま平年の雲量図が
-// 貼り付く。
-const SURFACE_MEAN_CLOUDINESS_WEIGHT = 0.30;
+// 貼り付く。地表付近は、貼り付いた図が中緯度の長波長スペクトルの過剰の支配項だったので半分に
+// 弱め、減った平均ぶんは基底湿度の底上げで埋める(cloud-lab Phase 3-10)。上層は薄い雲の分布が
+// 平年の図へ素直に従うため据え置く。
+const SURFACE_MEAN_CLOUDINESS_WEIGHT = 0.15;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.24;
 // 平年の雲量を湿度へ渡す S 字の裾と肩。線形では、砂漠を晴らす重みで雲の多い海が覆われたまま動かなく
 // なる。裾は砂漠(0.14)の下、肩は年中曇りの海(0.89)の側に置く — 狭めると乾いた大陸(0.43〜0.51)や
@@ -181,7 +185,8 @@ export class WeatherModel {
     this.surfaceCirculation = new Circulation(SURFACE_BANDS, surfaceRadius);
     this.upperCirculation = new Circulation(UPPER_BANDS, surfaceRadius);
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
-    this.pressureNoise = new CirculatingNoise(this.surfaceCirculation, PRESSURE_NOISE, texel);
+    this.pressureNoise = new CirculatingNoise(
+      this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
     this.transport = new WeatherTransport(
       this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius);
     this.pressure = new BakedField(
@@ -207,6 +212,7 @@ export class WeatherModel {
     this.upperCirculation.syncTime(seconds);
     this.rossbyWave.syncTime(seconds);
     this.cyclones.syncTime(seconds);
+    this.pressureNoise.syncTime(seconds);
     this.transport.syncTime(seconds);
   }
 
