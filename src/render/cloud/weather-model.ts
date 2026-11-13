@@ -3,7 +3,7 @@
 import { abs, clamp, cos, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
-import { AtmosphericWindField, SURFACE_HEIGHT } from './atmospheric-wind';
+import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
@@ -26,6 +26,7 @@ import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 export interface WeatherSample {
   readonly pressure: FloatNode; // 平年からの偏差 [hPa]
   readonly surfaceWind: Vec2Node; // 地表の風の東向き・北向きの成分 [m/s]
+  readonly upperWind: Vec2Node; // 上層の風の東向き・北向きの成分 [m/s]
   readonly lift: FloatNode; // 上昇流 [m/s](負なら下降)
   readonly surfaceHumidity: FloatNode; // 地表付近の湿度 0..1
   readonly upperHumidity: FloatNode; // 上層の湿度 0..1
@@ -241,6 +242,10 @@ export class WeatherModel {
       this.surfaceRadius, this.rotationPeriod,
     );
     const surfaceWind = composeWind(surfaceLocal, surfaceBackground);
+    // 上層の風: 上層の背景風へ、局所の釣り合い風とロスビー波を重ねる。巻雲の筋が従う流れ。
+    const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
+    const upperBackground = east.mul(upperMean.x).add(north.mul(upperMean.y)).add(rossby);
+    const upperWind = eastNorthComponents(composeWind(upperLocal, upperBackground).velocity, east, north);
 
     // 風で流した湿度・対流と、前線を強める湿度の勾配。移流の遡りは、大循環の平均風からの
     // 偏差(局所の釣り合い風とロスビー波の摂動)で取る — 源の模様の平行移動は、写しを焼く
@@ -297,6 +302,7 @@ export class WeatherModel {
     return {
       pressure,
       surfaceWind: windComponents,
+      upperWind,
       lift,
       surfaceHumidity,
       upperHumidity,
