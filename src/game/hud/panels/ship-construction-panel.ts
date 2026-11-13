@@ -56,7 +56,6 @@ export class ShipConstructionPanel {
   public onDuplicate: (() => void) | null = null;
   public onReattach: (() => void) | null = null;
   public onRelease: (() => void) | null = null;
-  public onDeselect: (() => void) | null = null;
   public onRotate: ((delta: 1 | -1) => void) | null = null;
   public onSwapEnds: (() => void) | null = null;
   public onCycleSymmetry: (() => void) | null = null;
@@ -163,7 +162,6 @@ export class ShipConstructionPanel {
       onReattach: () => this.onReattach?.(),
       onRemove: () => this.onRemove?.(),
       onDuplicate: () => this.onDuplicate?.(),
-      onDeselect: () => this.onDeselect?.(),
     });
 
     // 右ペインの読み替えタブとその本文。

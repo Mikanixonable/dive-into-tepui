@@ -164,7 +164,7 @@ function constructionRows(): readonly HelpRow[] {
     ),
     keyRow(
       'construction',
-      [K.constructionSwapEnds], '取り付け端の入れ替え',
+      [K.constructionSwapEnds], '向きを反転',
       '両端に取り付け面を持つモジュールの、どちらの端で付くかを入れ替える。',
     ),
     keyRow(
