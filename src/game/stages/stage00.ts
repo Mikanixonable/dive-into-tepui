@@ -87,6 +87,7 @@ export class Stage00 extends Stage {
   public onLull(): boolean {
     const player = this.ship;
     if (player === null || this.salvageCargo.pending.length === 0) return false;
+    // 同じ軌道の上へずらして置くので、自機との相対速度は小さく保たれ、ドッキングの速度条件を満たせる。
     const dist = TENDER_MIN_DIST + Math.random() * (TENDER_MAX_DIST - TENDER_MIN_DIST);
     const tender = ModularShip.create(
       {

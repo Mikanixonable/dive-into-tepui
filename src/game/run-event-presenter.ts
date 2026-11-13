@@ -299,7 +299,6 @@ export class RunEventPresenter {
         this.notifier.hint('補給艇が鹵獲品を積んで現れた — 建造ドックへ接続すると積荷を使える', 6000);
         return;
 
-      case 'salvageAwarded':
       case 'blueprintRenamed':
       case 'blueprintDeleted':
         return;

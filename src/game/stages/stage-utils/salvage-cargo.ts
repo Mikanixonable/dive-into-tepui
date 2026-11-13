@@ -11,7 +11,7 @@ export class SalvageCargo {
   }
 
   // 直列化した積荷を復元する。知らない種類の記録は読み捨て、記録が無ければ空から始まる。
-  public static deserialize(kinds: readonly unknown[] | undefined): SalvageCargo {
+  public static deserialize(kinds: readonly unknown[] | null): SalvageCargo {
     return new SalvageCargo((kinds ?? []).filter(isSalvageKind));
   }
 

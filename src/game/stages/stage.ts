@@ -234,7 +234,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       logistics == null
         ? undefined
         : Logistics.deserialize(logistics, scene, dynamicSystem, rules.automaticResupply),
-      SalvageCargo.deserialize(serialized?.pendingSalvageCargo),
+      SalvageCargo.deserialize(serialized?.pendingSalvageCargo ?? null),
     ];
   }
 

@@ -86,6 +86,7 @@ export function appendSalvageCargo(
 ): string {
   const { side, links } = CARGO_CHAINS[kind];
   const ids = links.map(link => `${idPrefix}${link.id}`);
+  // 先頭の部品は根(anchorId があればその外側)へ置き、残りは直前の部品の側へ連ねる。
   links.forEach((link, i) => {
     const definition = SHIP_MODULE_CATALOG.require(link.definitionId);
     const state: ShipModuleState = condition === 'salvaged' && definition.kind === 'cockpit' ? { hp: 0 } : {};
