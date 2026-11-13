@@ -5,6 +5,7 @@ import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
 import { MAX_ACTIVE_AMMO_PICKUPS, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
+import { SURVIVAL_STAGE_RULES } from './stage-rules';
 
 export interface SerializedStage00 extends SerializedStage {
   readonly waveAttack: SerializedWaveAttack;
@@ -16,6 +17,7 @@ export class Stage00 extends Stage {
   public static readonly selectLabel = 'stage 00';
   public static readonly selectSub = '【無限耐久サバイバル】 常時選択可。弾薬を拾ってから始まる無限の波状攻撃。自機が破壊されるまで続く';
   public static readonly selectKey = 'Digit0';
+  public static readonly stageRules = SURVIVAL_STAGE_RULES;
 
   private readonly waveAttack: WaveAttack;
 
