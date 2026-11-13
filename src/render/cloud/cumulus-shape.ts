@@ -9,10 +9,12 @@ import type { FloatUniform } from '../tsl-types';
 // 層の反射は拡散反射の極限へ漸近する。
 export const CLOUD_ALBEDO = 0.8;
 
-// 雲場未設定の天体スロットへ割り当てる、量 0 のテクスチャ。**サンプリング仕様を実フィールドと統一する** —
+// 雲場未設定の天体スロットへ割り当てる、量 0 のテクスチャ。**A も 0 でなければならない** —
+// B・A は巻雲の筋の倍角ベクトルで、A = 1 は「北向きに揃った筋」と読まれる。
+// **サンプリング仕様を実フィールドと統一する** —
 // シェーダグラフはここに結んだテクスチャのフィルタと巻きから組まれるので、既定の Nearest の
 // ままだと補間の無い texel フェッチが焼き込まれ、あとで本物へ差し替えても格子が出たままになる。
-export const EMPTY_CLOUD_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
+export const EMPTY_CLOUD_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 0]), 1, 1);
 EMPTY_CLOUD_FIELD.minFilter = THREE.LinearFilter;
 EMPTY_CLOUD_FIELD.magFilter = THREE.LinearFilter;
 EMPTY_CLOUD_FIELD.wrapS = THREE.RepeatWrapping;
