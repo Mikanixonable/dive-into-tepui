@@ -140,6 +140,11 @@ function constructionRows(): readonly HelpRow[] {
       description: 'モジュールを先端部ごと掴み、別の候補へ付け替える。候補以外で離すと元へ戻る。',
     },
     {
+      category: 'construction', input: '回転リングをドラッグ', label: 'モジュールを回す',
+      description: '選んだモジュールの回りの円をドラッグして回す。離した位置を 90° 単位へ丸めて適用する。'
+        + '円の上を押してすぐ離しても、近い矢印の向きへ 1 段回る。モジュールの脇のメニューにも回転のボタンがある。',
+    },
+    {
       category: 'construction', input: 'カタログのカードをドラッグ', label: 'カードから置く',
       description: 'カードを画面へドラッグし、候補の上で離すと置く。タッチは長押ししてからドラッグする。',
     },
