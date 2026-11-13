@@ -200,4 +200,29 @@ export function register(): void {
     weapon.fire(2);
     assert.equal(weapon.muzzleIdx, 0);
   });
+
+  test('weapon state: 連射間隔はフレーム長へ切り上がらず、超過分を次の間隔から引く', () => {
+    const weapon = new WeaponState();
+    const interval = 0.06, dt = 1 / 60;
+    let shots = 0;
+    weapon.setShotInterval(interval);
+    for (let frame = 0; frame < 600; frame++) {
+      weapon.tickCooldown(dt);
+      if (weapon.cooldown > 0) continue;
+      shots++;
+      weapon.setShotInterval(interval);
+    }
+    // 10 秒で約 166 発。切り上げ(4 フレーム間隔)なら 150 発になる。
+    assert.ok(shots >= 164, `shots=${shots}`);
+  });
+
+  test('weapon state: 起動遅延はリロード中の残りクールダウンを短くしない', () => {
+    const weapon = new WeaponState();
+    weapon.setCooldown(1.0);
+    weapon.extendCooldown(0.15);
+    assert.equal(weapon.cooldown, 1.0);
+    weapon.setCooldown(0);
+    weapon.extendCooldown(0.15);
+    assert.equal(weapon.cooldown, 0.15);
+  });
 }
