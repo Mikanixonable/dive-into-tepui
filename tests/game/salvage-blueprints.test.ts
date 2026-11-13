@@ -214,8 +214,8 @@ export function register(): void {
   test('鹵獲: 同じ船体へ鹵獲品を二度連ねても識別子が衝突せず、組み立ては妥当なまま', () => {
     const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
     assembly.addRoot(createShipModuleInstance(SHIP_MODULE_CATALOG.require('tank-combat-main'), 'tank'));
-    const first = appendSalvageCargo(assembly, 'supply-pod', 'tank', 'a-');
-    appendSalvageCargo(assembly, 'assault-craft', first, 'b-');
+    const first = appendSalvageCargo(assembly, 'supply-pod', 'tank', 'a-', 'intact');
+    appendSalvageCargo(assembly, 'assault-craft', first, 'b-', 'salvaged');
 
     const ids = assembly.modules.map(module => module.id);
     assert.equal(new Set(ids).size, ids.length);
