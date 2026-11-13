@@ -23,6 +23,13 @@ export class BlueprintShelf implements ShipBlueprintShelf {
     return this.list;
   }
 
+  // 設計図を一覧の先頭へ足して記録する。同名または同じ識別子の設計図が既にある、
+  // または書き込めなければ一覧を変えず false。
+  public add(blueprint: ShipBlueprint): boolean {
+    if (this.list.some((b) => b.name === blueprint.name || b.id === blueprint.id)) return false;
+    return this.record([blueprint, ...this.list]);
+  }
+
   // id の設計図の名前を変えて記録する。無い id では false。
   public rename(id: string, name: string): boolean {
     if (!this.list.some((b) => b.id === id)) return false;
