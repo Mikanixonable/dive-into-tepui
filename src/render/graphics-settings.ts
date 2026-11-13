@@ -191,10 +191,11 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
     presets: { low: false, medium: true, high: true },
   },
-  // 積雲が地表・艦艇へ落とす影。積雲を描かない設定(「雲」がオフ、「積雲の精細さ」がオフ)では、
+  // 積雲と巻雲が地表・艦艇・雲へ落とす影。積雲の影は積雲の立体を描くとき(「積雲の精細さ」が
+  // オフ以外)だけ、巻雲の影は巻雲を描くとき(「巻雲」がオン)だけ落ちる。「雲」がオフでは、
   // この値によらず影は落ちない。
-  cumulusShadow: {
-    kind: 'toggle', group: 'shadow', label: '積雲の影',
+  cloudShadow: {
+    kind: 'toggle', group: 'shadow', label: '雲の影',
     presets: { low: false, medium: true, high: true },
   },
   // 細かい影を同時に落とせる箇所の数。減らすほど影パスの描画命令が減り、要求の緩い受け手から
