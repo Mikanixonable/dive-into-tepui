@@ -11,6 +11,7 @@ import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
 import { SHIP_CASES } from './ship-cases';
+import { THUMBNAIL_CASES } from './thumbnail-cases';
 import { EARTH_CASES } from './earth-cases';
 import { MATERIAL_CASES } from './material-cases';
 import { SHADOW_CASES } from './shadow-cases';
@@ -177,6 +178,7 @@ export const CASES = {
   ...CASING_CASES,
   ...PROTEIN_CASES,
   ...ASSEMBLY_CASES,
+  ...THUMBNAIL_CASES,
 } as const satisfies Record<string, CaseBuilder>;
 
 export type CaseName = keyof typeof CASES;
