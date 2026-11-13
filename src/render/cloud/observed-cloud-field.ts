@@ -2,7 +2,7 @@
 // プロシージャル生成雲場と一致する。読み出し側のサンプリング処理を球面キャップ1枚に統一するため、
 // 全球正距円筒画像を同一仕様の球面キャップ投影テクスチャへ再投影して供給する。
 import * as THREE from 'three/webgpu';
-import { float, int, log2, max, texture } from 'three/tsl';
+import { float, int, log2, max, texture, vec4 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
@@ -20,8 +20,8 @@ export class ObservedCloudField implements CloudFieldSource {
   private bakedRevision = -1;
   private generationValue = 0;
 
-  // url は地表と同じ正距円筒の雲場画像(R = 積雲の量、G = 巻雲の量)、
-  // projection は焼き直す先の持ち方。
+  // url は地表と同じ正距円筒の雲場画像(R = 積雲の量、G = 巻雲の量、B・A = 巻雲の筋の
+  // 倍角ベクトル 0..1)、projection は焼き直す先の持ち方。
   public constructor(url: string, private readonly projection: FieldProjection) {
     this.map = new DeferredTexture(url, THREE.NoColorSpace);
     // 正距円筒の経度は周期的なので、画像は経度方向へ巻く。
@@ -34,7 +34,12 @@ export class ObservedCloudField implements CloudFieldSource {
     const lod = max(log2(projection.texelAngle.mul(imageHeight).div(Math.PI)), 0);
     this.field = new BakedField(
       'observedCloud', THREE.RGBAFormat, projection,
-      (direction) => image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node,
+      (direction) => {
+        const texel = image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node;
+        // 画像の B・A に 0..1 で畳まれた筋の倍角ベクトルは、生成側と同じ符号付き −1..1 へ
+        // 戻してから焼く。
+        return vec4(texel.r, texel.g, texel.b.mul(2).sub(1), texel.a.mul(2).sub(1));
+      },
       GPU_PASS.cloudBake,
     );
   }
