@@ -264,6 +264,11 @@ function earth(): LabCase {
         view: EARTH_LOW_SUN,
         graphics: { cumulusDetail: CUMULUS_DETAIL.off },
       },
+      // 同じ構図で巻雲を切った対照。巻雲の影と地表の暗化を、巻雲の有無の差分で確かめるためのもの。
+      'earth-cirrus-shadow-nocirrus': {
+        view: EARTH_LOW_SUN,
+        graphics: { cumulusDetail: CUMULUS_DETAIL.off, cirrus: false },
+      },
       // 日食。**大気の明暗は入射角だけでなく影の濃さにも比例する**ので、リムともやの両方へ影の落ちた
       // 斑が出る。斑は本影(半径 60km)を半影(340km)が縁取る。
       'earth-eclipse': { view: EARTH_ECLIPSE_SUN },
