@@ -186,6 +186,16 @@ export const CLOUD_DETAIL_CIRRUS_COARSE_SHOTS: Readonly<Record<string, CloudDeta
     }]),
 );
 
+// 巻雲の筋の影が太陽の向きに沿うかを、近くで見るための撮影。sepac-open の 12 時・0.25 km/px で巻雲だけを描き、
+// 太陽は表面の天頂から 70 度(高度 20 度)へ置く。計測の一覧(CLOUD_DETAIL_SHOT_INFOS)には載せない。
+const LOWSUN_BASE = CLOUD_DETAIL_SHOTS['sepac-open-12h-0.25km-cirrus'];
+if (LOWSUN_BASE === undefined) throw new Error('sepac-open-12h-0.25km-cirrus が無い');
+export const CLOUD_DETAIL_CHECK_SHOTS: Readonly<Record<string, CloudDetailShot>> = {
+  'sepac-open-lowsun-12h-0.25km-cirrus': {
+    ...LOWSUN_BASE, view: { ...LOWSUN_BASE.view, sunAzimuthDeg: 70, sunElevationDeg: 0 },
+  },
+};
+
 // 雲の細部の撮影が共有するケース。地球だけを置き、カメラは描画原点から直下点の地表を見る。
 // 観察の向きと描画設定は撮影ごとの差分で決まる。巡回のケースには登録しない。
 export function cloudDetailCase(): LabCase {
@@ -196,6 +206,6 @@ export function cloudDetailCase(): LabCase {
     viewTarget: new THREE.Vector3(0, 0, -altitudeFor(1, 0)),
     sunDirection: NADIR_SUN_DIRECTION,
     earth: NADIR_EARTH,
-    shots: { ...CLOUD_DETAIL_SHOTS, ...CLOUD_DETAIL_CIRRUS_COARSE_SHOTS },
+    shots: { ...CLOUD_DETAIL_SHOTS, ...CLOUD_DETAIL_CIRRUS_COARSE_SHOTS, ...CLOUD_DETAIL_CHECK_SHOTS },
   };
 }
