@@ -2,22 +2,24 @@
 // 成分から鉛直柱光学深さを引くか、掠める視線の光路をどこで頭打ちにするかを持ち、殻と交わる
 // 1つの入口/出口イベントが、雲自身の透過率と局所放射輝度を返す。
 //
-// **輝度は多重散乱の極限近似で算出する。** 場の階調は被覆率を表すため、殻は「その被覆割合分が
-// 拡散反射する層」として振る舞う。到達光は引数で渡されるため、入射光の減衰・影・地平線は
+// **輝度は多重散乱の極限近似で算出する。** 殻は「その柱の光学深さぶんだけ拡散反射する層」として
+// 振る舞う。到達光は引数で渡されるため、入射光の減衰・影・地平線は
 // 大気と同一の共通関数で評価される。イベント位置までの背景大気透過と、イベント間の雲透過の合成は
 // AtmosphereCloudLayersが所有し、ここでは二重に適用しない。
 import * as THREE from 'three/webgpu';
 import { dot, greaterThan, max, min, uniform, vec4 } from 'three/tsl';
 import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
 import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../cloud/cloud-optics-node';
+import { cirrusColumnOpticalDepthNode } from '../cloud/cloud-kind-node';
+import { CUMULUS_MAX_OPTICAL_DEPTH } from '../cloud/cloud-kind';
 import { CloudShapeEvaluator } from '../cloud/cloud-shape-evaluator';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { CloudSample } from '../cloud/cloud-field-sample';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
 
-// 鉛直の光学的厚みへ張る上限。ゲインを上げた柱はここで飽和する。積雲の柱が取りうる厚みの上限
-// (被覆率 0.99 で ≈4.6)の上に置き、ゲイン 1 では効かない。
-const MAX_SHELL_OPTICAL_DEPTH = 5;
+// 鉛直の光学的厚みへ張る上限。ゲインを上げた柱はここで飽和する。積雲の柱が取りうる厚みは
+// 切らない値に取る。
+const MAX_SHELL_OPTICAL_DEPTH = CUMULUS_MAX_OPTICAL_DEPTH;
 
 // 層の厚みへ張る下限 [m]。掠める視線の光路は厚みぶんの弦で頭打ちにするので、厚み 0 では
 // 地平線ぎわの視線が飽和する。
@@ -44,7 +46,7 @@ const CLOUD_SHELL_DEFINITIONS = [
       cutoff: uniform(0), gain: uniform(1), albedo: uniform(1),
       bottomAltitude: uniform(15e3), topAltitude: uniform(16e3),
     },
-    columnOpticalDepth: (field: CloudSample): FloatNode => field.translucent,
+    columnOpticalDepth: (field: CloudSample): FloatNode => cirrusColumnOpticalDepthNode(field.cirrus),
   },
   {
     species: 'cumulus',
@@ -53,7 +55,7 @@ const CLOUD_SHELL_DEFINITIONS = [
       bottomAltitude: uniform(0), topAltitude: uniform(2e3),
     },
     columnOpticalDepth: (field: CloudSample): FloatNode =>
-      CLOUD_SHAPE_EVALUATOR.columnOpticalDepth(field.coverage),
+      CLOUD_SHAPE_EVALUATOR.columnOpticalDepth(field.cumulus),
   },
 ] as const;
 
@@ -84,7 +86,7 @@ export function shellAltitudeOf(species: CloudSpecies): FloatNode {
 
 // 殻と交わる 1 点ぶんの、視線が受ける減衰と、その点が視線へ足す放射輝度。
 export interface CloudShellSample {
-  // 場から得た鉛直柱光学深さ。巻雲はtranslucentを直接、積雲はcoverageから変換する。
+  // 場の量から種類別の曲線で得た鉛直柱光学深さ。
   readonly columnOpticalDepth: FloatNode;
   // 鉛直柱を視線へ写す倍率。球殻の厚みで接線側の発散を有限化する。
   readonly airmass: FloatNode;
@@ -93,7 +95,7 @@ export interface CloudShellSample {
   readonly radiance: Vec3Node;
 }
 
-// 雲場データの解釈仕様は CloudSample が定義する。巻雲は translucent を直接適用し、積雲は coverage を鉛直柱光学厚みへ換算する。
+// 雲場データの解釈仕様は CloudSample が定義する。どちらの種類も、量から種類別の曲線で鉛直柱光学深さを引く。
 //
 // 不透明な積雲として描画された成分は減算しない。不透明な雲殻が G バッファに深度を書き込むため、その
 // 手前で終端するレイでは交点が積分区間外となり自然に寄与が除外される。減算を行うと同一遮蔽が二重に積算され、

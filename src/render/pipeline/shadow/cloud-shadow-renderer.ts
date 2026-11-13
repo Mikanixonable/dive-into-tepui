@@ -9,6 +9,8 @@ import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
+import { cumulusOpacityNode, cumulusTopAltitudeNode } from '../../cloud/cloud-kind-node';
+import { columnOpticalDepthFromOpacityNode } from '../../cloud/cloud-optics-node';
 import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
@@ -117,9 +119,12 @@ export class CloudShadowRenderer {
           If(greaterThan(grainAmplitude, 0), () => {
             grain.assign(this.shape.grainAt(up, grainAmplitude));
           });
-          const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
+          const cloudTop = this.shape.cloudTop(
+            cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
-          const columnDepth = this.shape.columnOpticalDepth(this.shape.opaqueFraction(cloud.coverage, grain));
+          // 柱の光学的厚みは、ディザを掛けた不透明度から τ へ戻して引く。
+          const columnDepth = columnOpticalDepthFromOpacityNode(
+            this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), grain));
           // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
@@ -151,7 +156,8 @@ export class CloudShadowRenderer {
   private receiverFloorAltitude(offset: Vec3Node, bodyRadius: FloatNode): FloatNode {
     const radius = max(length(offset), 1e-6);
     const altitude = max(radius.sub(1), 0).mul(bodyRadius);
-    const top = this.fieldAt(offset.div(radius)).cloudTop.div(CLOUD_TOP_SPAN).mul(this.topAltitude);
+    const top = cumulusTopAltitudeNode(this.fieldAt(offset.div(radius)).cumulus)
+      .div(CLOUD_TOP_SPAN).mul(this.topAltitude);
     const uncertainty = this.topAltitude.mul(CloudShapeEvaluator.cloudTopUncertainty);
     return select(greaterThan(altitude, top.sub(uncertainty)), top, float(0));
   }

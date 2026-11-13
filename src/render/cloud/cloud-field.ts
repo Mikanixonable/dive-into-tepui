@@ -1,5 +1,5 @@
 // 気象モデルから凝結した雲テクスチャ（ベイクドフィールド）。ベイク時とサンプリング時の4基底割り当てを一括管理し、
-// 出入りをどちらも CloudSample で受け渡す。cloudTop は basis の連続重みから導出される。
+// 出入りをどちらも CloudSample で受け渡す。
 import * as THREE from 'three/webgpu';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';

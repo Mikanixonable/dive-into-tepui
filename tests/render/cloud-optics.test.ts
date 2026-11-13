@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import {
-  columnOpticalDepthFromCoverage,
+  columnOpticalDepthFromOpacity,
   composeCloudEvents,
   shellAirmass,
   transmittanceFromColumnOpticalDepth,
@@ -15,10 +15,10 @@ function event(
 }
 
 export function register(): void {
-  test('cloud optics: Rは柱光学深さへ変換しGを混ぜない', () => {
-    assert.equal(columnOpticalDepthFromCoverage(0), 0);
-    assert.equal(columnOpticalDepthFromCoverage(0.5), Math.log(2));
-    assert.ok(Math.abs(columnOpticalDepthFromCoverage(1) + Math.log(0.01)) < 1e-14);
+  test('cloud optics: 不透明度は柱光学深さへ変換する', () => {
+    assert.equal(columnOpticalDepthFromOpacity(0), 0);
+    assert.equal(columnOpticalDepthFromOpacity(0.5), Math.log(2));
+    assert.ok(Math.abs(columnOpticalDepthFromOpacity(1) + Math.log(0.01)) < 1e-14);
   });
 
   test('cloud optics: 柱光学深さとairmassはexp(-tau)を一度だけ適用する', () => {

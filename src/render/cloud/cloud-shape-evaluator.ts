@@ -1,14 +1,14 @@
-// 雲テクスチャ値を各表現の形状・光学量へ変換する共有評価器。被覆率・雲頂高度・粒子感・
+// 雲テクスチャ値を各表現の形状・光学量へ変換する共有評価器。不透明度・雲頂高度・粒子感・
 // 光学的厚みの計算式を集約し、各レンダラーのシェーダーグラフへ展開する。
 import { clamp, min, smoothstep } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
-import { columnOpticalDepthFromCoverageNode } from './cloud-optics-node';
+import { cumulusColumnOpticalDepthNode } from './cloud-kind-node';
 import {
   CUMULUS_DITHER_KNOB, CUMULUS_GRAIN_SIZE, CLOUD_TOP_SPAN,
 } from './cumulus-shape';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
-const GRAIN_COVERAGE_DEPTH = 0.25;
+const GRAIN_OPACITY_DEPTH = 0.25;
 const GRAIN_TOP_RELIEF = 0.15;
 const FIELD_TOP_STEP = 1 / 256;
 
@@ -22,11 +22,11 @@ export class CloudShapeEvaluator {
   }
 
   // 粒を足してからディザの帯へ通す。空の柱に粒だけで雲を生やさない共有規則である。
-  public opaqueFraction(coverage: FloatNode, grain: FloatNode): FloatNode {
+  public opaqueFraction(opacity: FloatNode, grain: FloatNode): FloatNode {
     const band = CUMULUS_DITHER_KNOB.halfWidth.mul(2);
     const center = CUMULUS_DITHER_KNOB.center;
     const clampedBand = min(band, center.mul(2));
-    const covered = coverage.add(grain.mul(GRAIN_COVERAGE_DEPTH));
+    const covered = opacity.add(grain.mul(GRAIN_OPACITY_DEPTH));
     return clamp(covered.sub(center.sub(clampedBand.mul(0.5))).div(clampedBand), 0, 1);
   }
 
@@ -38,8 +38,9 @@ export class CloudShapeEvaluator {
     return cloudTop.mul(groundRadius.oneMinus()).add(groundRadius);
   }
 
-  public columnOpticalDepth(coverage: FloatNode): FloatNode {
-    return columnOpticalDepthFromCoverageNode(coverage);
+  // 積雲の量から鉛直柱光学深さ。
+  public columnOpticalDepth(amount: FloatNode): FloatNode {
+    return cumulusColumnOpticalDepthNode(amount);
   }
 
   public grainAmplitudeForWidth(width: FloatNode): FloatNode {
