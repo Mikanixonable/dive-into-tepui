@@ -13,7 +13,7 @@ const CASES: readonly {
   readonly cloudShadow: boolean;
   readonly cirrus: boolean;
   readonly cumulusOff: boolean;
-  readonly expected: CloudShadowKinds;
+  readonly expected: Pick<CloudShadowKinds, 'cumulus' | 'cirrus'>;
 }[] = [
   { clouds: true, cloudShadow: true, cirrus: true, cumulusOff: false, expected: { cumulus: true, cirrus: true } },
   { clouds: true, cloudShadow: true, cirrus: true, cumulusOff: true, expected: { cumulus: false, cirrus: true } },
@@ -38,7 +38,12 @@ export function register(): void {
             'cloudShadow', c.cloudShadow),
           'cirrus', c.cirrus),
         'cumulusDetail', c.cumulusOff ? CUMULUS_DETAIL.off : CUMULUS_DETAIL.standard);
-      assert.deepEqual(cloudShadowKinds(graphics), c.expected);
+      const kinds = cloudShadowKinds(graphics);
+      assert.deepEqual({ cumulus: kinds.cumulus, cirrus: kinds.cirrus }, c.expected);
+      // 積雲の細部の段数は積雲の精細さに従い、標準は 4 オクターブ、オフは 0。巻雲の段数は
+      // 巻雲の精細さ(既定は標準)に従う。
+      assert.equal(kinds.cumulusOctaves, c.cumulusOff ? 0 : 4);
+      assert.equal(kinds.cirrusOctaves, 4);
     });
   }
 }
