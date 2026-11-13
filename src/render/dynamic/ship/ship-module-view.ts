@@ -1,5 +1,6 @@
 // 1モジュールの model、assembly transform、semantic anchor と表示状態を所有する。
-// 強調の宣言がある間は、model と形状を共有する加算合成の殻を重ねて描く。
+// 強調の宣言がある間は、model と形状を共有する殻を重ねて描く。選択中は背面に膨らませた
+// 殻で白い輪郭を、それ以外の強調は加算合成で色を重ねる。
 import * as THREE from 'three/webgpu';
 import type { Quat } from '../../../math/quat';
 import { qNormalize } from '../../../math/quat';
@@ -26,16 +27,24 @@ export interface ShipModuleVisualState {
 }
 
 const ZERO = v3();
+const IDENTITY_SCALE = new THREE.Vector3(1, 1, 1);
+const ZERO_POSITION = new THREE.Vector3();
 
-// 強調の殻の色。UI の配色トークンは 3D 描画へ届かないので、描画側の定数として持つ。
-const EMPHASIS_COLORS: Record<ShipModuleEmphasisTone, number> = {
-  selected: 0xffc85c,
+// 色を重ねる強調(先端部・重なりの相手)の殻の色。UI の配色トークンは 3D 描画へ届かないので、
+// 描画側の定数として持つ。
+const WASH_COLORS: Record<'piece' | 'conflict', number> = {
   piece: 0x53c8f0,
   conflict: 0xff5b63,
 };
 
 // 殻の不透明度の上限。宣言の intensity が掛かる。
 const EMPHASIS_OPACITY = 0.45;
+
+// 選択の輪郭の色と不透明度の上限。intensity が掛かる。
+const OUTLINE_COLOR = 0xffffff;
+const OUTLINE_OPACITY = 0.9;
+// 選択の輪郭がモジュールの外側へ出る幅 [m]。シルエットを越えて一定の太さで見える。
+const OUTLINE_OFFSET = 0.12;
 
 function copyQuat(q: Quat): Quat {
   return qNormalize(q);
@@ -55,8 +64,17 @@ export class ShipModuleView {
   private inputValue: ShipModuleRenderInput;
   private centerOffsetValue: Vec3 = ZERO;
   private readonly anchors = new Map<string, THREE.Object3D>();
-  // 強調の宣言が来たフレームにだけ組む、加算合成の殻とその material。
-  private shell: { object: THREE.Object3D; material: THREE.MeshBasicMaterial } | null = null;
+  // 強調の宣言が来たフレームにだけ組む殻。洗い(加算)と輪郭(背面に膨らませた複製)の2つの
+  // material を持ち、tone に応じてどちらかを貼る。outlineScale/outlineShift は輪郭用の
+  // 拡大で、bounding box の中心を基点に両側へ OUTLINE_OFFSET ずつ出る。
+  private shell: {
+    object: THREE.Object3D;
+    wash: THREE.MeshBasicMaterial;
+    outline: THREE.MeshBasicMaterial;
+    outlineScale: THREE.Vector3;
+    outlineShift: THREE.Vector3;
+    appliedTone: ShipModuleEmphasisTone | null;
+  } | null = null;
   private disposed = false;
 
   public constructor(
@@ -134,7 +152,8 @@ export class ShipModuleView {
     return model;
   }
 
-  // 強調の宣言を殻へ反映する。殻は model の形状を共有する複製で、熱発光とは別に加算で重ねる。
+  // 強調の宣言を殻へ反映する。選択中は bounding box の中心から膨らませた背面の殻で白い
+  // 輪郭を描き、それ以外は model の形状を共有する複製へ加算で色を重ねる。
   private syncEmphasis(emphasis: ShipModuleEmphasis | null): void {
     if (emphasis === null) {
       if (this.shell !== null) this.shell.object.visible = false;
@@ -142,15 +161,32 @@ export class ShipModuleView {
     }
     const shell = this.shell ?? this.buildShell();
     shell.object.visible = true;
-    shell.material.color.setHex(EMPHASIS_COLORS[emphasis.tone]);
-    shell.material.opacity = EMPHASIS_OPACITY * Math.min(1, Math.max(0, emphasis.intensity));
+    const outlined = emphasis.tone === 'selected';
+    if (shell.appliedTone !== emphasis.tone) {
+      shell.appliedTone = emphasis.tone;
+      shell.object.scale.copy(outlined ? shell.outlineScale : IDENTITY_SCALE);
+      shell.object.position.copy(outlined ? shell.outlineShift : ZERO_POSITION);
+      const material = outlined ? shell.outline : shell.wash;
+      shell.object.traverse((child) => {
+        const mesh = child as THREE.Mesh;
+        if (mesh.isMesh) mesh.material = material;
+      });
+    }
+    const intensity = Math.min(1, Math.max(0, emphasis.intensity));
+    if (outlined) {
+      shell.outline.opacity = OUTLINE_OPACITY * intensity;
+    } else {
+      shell.wash.color.setHex(WASH_COLORS[emphasis.tone as 'piece' | 'conflict']);
+      shell.wash.opacity = EMPHASIS_OPACITY * intensity;
+    }
   }
 
   // model の複製(geometry は共有)へ殻の material を貼り、overlay チャンネルへ置いて返す。
-  // 本体メッシュと同じ面を覆うので、深度の縁取りで手前へ引いてちらつきを避ける。
-  private buildShell(): { object: THREE.Object3D; material: THREE.MeshBasicMaterial } {
-    const material = new THREE.MeshBasicMaterial({
-      name: 'ship-module-emphasis',
+  // 輪郭用の拡大は複製のローカル bounding box から、軸ごとに両側へ OUTLINE_OFFSET ずつ
+  // 出る縮尺と、拡大の基点を box の中心へ置くずらしで求める。
+  private buildShell(): NonNullable<ShipModuleView['shell']> {
+    const wash = new THREE.MeshBasicMaterial({
+      name: 'ship-module-emphasis-wash',
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthTest: true,
@@ -160,6 +196,16 @@ export class ShipModuleView {
       polygonOffsetUnits: -1,
       toneMapped: false,
     });
+    // 輪郭は本体を一回り大きくした殻の背面だけを描いて、シルエットを白く縁取る。
+    const outline = new THREE.MeshBasicMaterial({
+      name: 'ship-module-emphasis-outline',
+      color: OUTLINE_COLOR,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+      side: THREE.BackSide,
+      toneMapped: false,
+    });
     const object = this.model.clone(true);
     object.name = `ship-module-emphasis:${this.inputValue.id}`;
     object.traverse((child) => {
@@ -167,11 +213,12 @@ export class ShipModuleView {
       child.userData.ownsGeometry = false;
       child.userData.ownsMaterial = false;
       const mesh = child as THREE.Mesh;
-      if (mesh.isMesh) mesh.material = material;
+      if (mesh.isMesh) mesh.material = wash;
     });
     markOverlay(object);
     this.object.add(object);
-    this.shell = { object, material };
+    const { outlineScale, outlineShift } = outlineExpansion(object);
+    this.shell = { object, wash, outline, outlineScale, outlineShift, appliedTone: null };
     return this.shell;
   }
 
@@ -179,7 +226,8 @@ export class ShipModuleView {
   private disposeShell(): void {
     if (this.shell === null) return;
     this.object.remove(this.shell.object);
-    this.shell.material.dispose();
+    this.shell.wash.dispose();
+    this.shell.outline.dispose();
     this.shell = null;
   }
 
@@ -245,4 +293,38 @@ export class ShipModuleView {
 
 function toThreeVec(value: Vec3): THREE.Vector3 {
   return new THREE.Vector3(value.x, value.y, value.z);
+}
+
+// 殻の複製のローカル bounding box から、輪郭用の拡大の縮尺とずらしを求める。軸ごとの縮尺は
+// 面から両側へ OUTLINE_OFFSET ずつ出る値、ずらしは拡大の基点を box の中心へ置くためのもの。
+// 空の box しか無い複製は拡大しない。
+function outlineExpansion(object: THREE.Object3D): {
+  outlineScale: THREE.Vector3;
+  outlineShift: THREE.Vector3;
+} {
+  object.updateMatrixWorld(true);
+  const inverse = new THREE.Matrix4().copy(object.matrixWorld).invert();
+  const relative = new THREE.Matrix4();
+  const meshBounds = new THREE.Box3();
+  const bounds = new THREE.Box3();
+  object.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    if (mesh.geometry.boundingBox === null) mesh.geometry.computeBoundingBox();
+    relative.multiplyMatrices(inverse, mesh.matrixWorld);
+    meshBounds.copy(mesh.geometry.boundingBox as THREE.Box3).applyMatrix4(relative);
+    bounds.union(meshBounds);
+  });
+  const outlineScale = new THREE.Vector3(1, 1, 1);
+  const outlineShift = new THREE.Vector3();
+  if (bounds.isEmpty()) return { outlineScale, outlineShift };
+  const size = bounds.getSize(new THREE.Vector3());
+  const center = bounds.getCenter(new THREE.Vector3());
+  for (const axis of ['x', 'y', 'z'] as const) {
+    if (size[axis] < 1e-6) continue;
+    const scale = 1 + (2 * OUTLINE_OFFSET) / size[axis];
+    outlineScale[axis] = scale;
+    outlineShift[axis] = center[axis] * (1 - scale);
+  }
+  return { outlineScale, outlineShift };
 }
