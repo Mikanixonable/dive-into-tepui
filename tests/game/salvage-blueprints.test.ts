@@ -10,8 +10,11 @@ import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
 import { Logistics } from '../../src/game/stages/stage-utils/logistics';
 import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
 import {
-  SALVAGE_BLUEPRINTS, crossedSalvageBlueprints, nextSalvageRemaining,
+  SALVAGE_BLUEPRINTS, appendSalvageCargo, crossedSalvageBlueprints, nextSalvageRemaining,
 } from '../../src/game/ship/salvage-blueprints';
+import { ShipAssembly } from '../../src/game/ship/ship-assembly';
+import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
+import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { isShipBlueprint, type ShipBlueprintShelf } from '../../src/game/ship/ship-blueprint';
 import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry, SpawnRecord } from '../../src/game/dynamic/entity-registry';
@@ -148,5 +151,16 @@ export function register(): void {
     assert.equal(nextSalvageRemaining(4, new Set(['鹵獲: 砲座', '鹵獲: 物資ポッド', '鹵獲: 強襲艇']), shelf()), null);
     // 節目を過ぎた分は残数として出さない。
     assert.equal(nextSalvageRemaining(26, new Set(), shelf()), null);
+  });
+
+  test('鹵獲: 同じ船体へ鹵獲品を二度連ねても識別子が衝突せず、組み立ては妥当なまま', () => {
+    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    assembly.addRoot(createShipModuleInstance(SHIP_MODULE_CATALOG.require('tank-combat-main'), 'tank'));
+    const first = appendSalvageCargo(assembly, 'supply-pod', 'tank', 'a-');
+    appendSalvageCargo(assembly, 'assault-craft', first, 'b-');
+
+    const ids = assembly.modules.map(module => module.id);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.doesNotThrow(() => assembly.assertValid());
   });
 }
