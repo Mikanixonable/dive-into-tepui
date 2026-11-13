@@ -25,6 +25,8 @@ export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof
 // 雲データ供給源のインターフェース。texture はキャップへ投影されたテクスチャであり、供給元が寿命を管理する。
 export interface CloudFieldSource {
   readonly texture: THREE.Texture;
+  // 描画時の風のテクスチャ。風を焼かない出どころでは null。
+  readonly windTexture: THREE.Texture | null;
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
@@ -38,6 +40,8 @@ export class CloudPresentation {
   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
   // 現在選択されている雲データ供給源。
   private source: CloudFieldSource;
+  // 最後に焼いた表示時刻 [s]。粒の時計になる。
+  private lastDisplayTime = 0;
   private cloudVisible = false;
   private cirrusVisible = true;
   private translucentCumulusVisible = true;
@@ -54,12 +58,13 @@ export class CloudPresentation {
     this.aim(INITIAL_CAP_DIRECTION, 1);
   }
 
-  // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
+  // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度・表示時刻。
   public get renderInput(): CloudRenderInput {
     return {
-      field: { texture: this.source.texture, cap: this.cap.placement },
+      field: { texture: this.source.texture, windTexture: this.source.windTexture, cap: this.cap.placement },
       generation: this.source.generation,
       topAltitude: this.topAltitude,
+      displayTime: this.lastDisplayTime,
     };
   }
   public get visible(): boolean { return this.surface.visible; }
@@ -137,6 +142,7 @@ export class CloudPresentation {
   // 渡すと、焼いた GPU 時間をそこへ計上する。
   public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     if (!this.fieldContributes) return;
+    this.lastDisplayTime = displayTime;
     this.source.prepare(renderer, displayTime, gpu);
   }
 
