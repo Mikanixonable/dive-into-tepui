@@ -286,7 +286,7 @@ function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void
   const target = new PanelShell(rightRail, collapse, 'hud-target', 'TGT', 'ターゲット');
   configureCombatPanel(target);
   target.setHidden(true);
-  // 識別行・距離と接近速度(答え)・相対速度と装甲の行・タンパク質標的の詳細欄・案内。
+  // 識別行・距離と接近速度(答え)・相対速度と装甲の行・案内。
   target.body.innerHTML = `
     <div data-id="tgtbody">
       <div class="ui-ident is-tgt">
@@ -307,13 +307,6 @@ function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void
         ${instrumentRowHtml({ label: '相対速度', valueId: 'tgt-relative-speed' })}
         ${instrumentRowHtml({ label: '装甲', rowId: 'tgt-armor-row', gaugeId: 'tgt-armor-meter', valueId: 'tgt-armor-value' })}
       </div>
-      <section id="tgt-protein" data-id="tgt-protein" class="protein-target-details hidden" aria-label="タンパク質構造">
-        <div class="protein-target-heading"><span>タンパク質</span><output data-id="tgt-protein-phase">INTACT</output></div>
-        <div class="ui-rows">
-          ${instrumentRowHtml({ label: '構造安定性', valueId: 'tgt-integrity-value' })}
-        </div>
-        <div data-id="tgt-protein-sites"></div>
-      </section>
       <p class="target-help">軌道要素は右クリック / 長押しで表示</p>
     </div>`;
 }

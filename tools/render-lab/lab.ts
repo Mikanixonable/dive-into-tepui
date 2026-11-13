@@ -3,9 +3,6 @@
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
-import {
-  ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
-} from '../../src/game/protein/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { farClip } from '../../src/render/camera/camera-view';
@@ -55,8 +52,6 @@ export interface LabMeasurement {
   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
   readonly gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu';
   readonly gpuPassRenderCallCpuMs: Readonly<Record<string, SampleDistribution>>;
-  readonly proteinMotion: ProteinMotionMetricSummary;
-  readonly proteinCase?: LabCase['proteinMotion'];
 }
 
 const ORIGIN = new THREE.Vector3();
@@ -209,7 +204,6 @@ export class LabView {
   private build(name: CaseName): void {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
-      this.current.disposeProteinMotion?.();
       this.current.dispose?.();
       for (const root of this.current.objects) disposeOwnedRenderResources(root);
     }
@@ -408,13 +402,12 @@ export class LabView {
     // 表示時刻は 60fps で進める — 雲場は表示時刻が変わったフレームにだけ焼くので、止めると生成を測れない。
     for (let frame = 0; frame < warmupFrames; frame++) {
       const displayTime = (frame + 1) / 60;
-      this.current?.updateProteinMotion?.(displayTime);
       this.render(displayTime);
       await this.gpu.waitForResolve();
     }
     this.gpu.reset();
 
-    // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
+    // 本計測。フレームごとに CPU 時間・GPU のパス時間を集める。
     const cpuSamples: number[] = [];
     const gpuPassTotalSamples: number[] = [];
     const observedRenderSamples: (number | null)[] = [];
@@ -425,7 +418,6 @@ export class LabView {
     const observedComputeResolvedQueryCounts: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
     const renderCallCpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => Array(sampleFrames).fill(0) as number[]);
-    const motion = new ProteinMotionMetricsRecorder();
     let measuredFrameIndex: number | null = null;
     let pendingPass: number | null = null;
     let activePass: number | null = null;
@@ -464,7 +456,6 @@ export class LabView {
         measuredFrameIndex = frame;
         const displayTime = (warmupFrames + frame + 1) / 60;
         this.gpu.beginObservedFrame();
-        const motionSample = this.current?.updateProteinMotion?.(displayTime);
         this.render(displayTime, true);
         measuredFrameIndex = null;
         cpuSamples.push(this.lastRenderCpuMs);
@@ -482,7 +473,6 @@ export class LabView {
         }
         gpuPassTotalSamples.push(passTotalMs);
         for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
-        motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
       }
     } finally {
       measuredFrameIndex = null;
@@ -521,8 +511,6 @@ export class LabView {
       gpuPassRenderCallCpuMs: Object.fromEntries(
         GPU_PASS_LABELS.map((label, index) => [label, distributionOf(renderCallCpuSamples[index]!)]),
       ),
-      proteinMotion: motion.summary(),
-      proteinCase: this.current?.proteinMotion,
     };
   }
 
@@ -572,7 +560,6 @@ export class LabView {
     // 部品(雲など)があり、前の撮影の設定のまま待つと、読み込み前の姿を撮る。
     this.setGraphics({ ...this.startupGraphics, ...graphics });
     this.show(name);
-    this.current?.updateProteinMotion?.(1);
     await this.waitUntilReady();
     const pngs: Record<string, string> = {};
     for (const shotName of this.shotNames) {

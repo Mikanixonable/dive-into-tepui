@@ -3,7 +3,6 @@ import { len, sub } from '../../math/vec3';
 import { frameRoleOf } from '../../physics/frame';
 import { orbitInfo, relativeInfo } from '../orbit-info';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
-import { isProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
 import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { isModularShip } from '../ship/modular-ship';
 import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-commands';
@@ -238,7 +237,6 @@ export class HudPanelPresenter {
       relativeSpeedMps: relative.relSpeed,
       hp: target.hp,
       maxHp: target.maxHp,
-      protein: isProteinEnemy(target) ? target.combatReadout : null,
       onSelectRight: (x, y) => this.objectWindows.openTarget(x, y),
     };
   }

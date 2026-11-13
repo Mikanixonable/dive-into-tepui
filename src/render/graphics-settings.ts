@@ -151,11 +151,6 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: 'レンズ効果',
     presets: { low: false, medium: true, high: true },
   },
-  // タンパク質型の敵の構造の揺らぎ。
-  proteinVibration: {
-    kind: 'toggle', group: 'element', label: 'タンパク質の敵の揺らぎ',
-    presets: { low: false, medium: true, high: true },
-  },
   // 主推進の排気プルームの描き方。体積は排気を透過する立体として、簡易は発光板として描く。
   thrustPlume: {
     kind: 'choice', group: 'element', label: '噴射プルーム',

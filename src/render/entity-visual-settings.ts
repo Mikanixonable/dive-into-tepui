@@ -3,7 +3,6 @@
 import type { ThrustPlumeMode } from './dynamic/player/thrust-effects';
 
 export interface EntityVisualSettings {
-  readonly proteinVibration: boolean;
   // 主推進プルームの描き方。
   readonly thrustPlume: ThrustPlumeMode;
 }
