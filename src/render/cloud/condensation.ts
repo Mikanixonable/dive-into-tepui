@@ -1,6 +1,7 @@
 // 天気から凝結する雲。地表付近の湿度と対流が不透明な雲に、上層の湿度が薄く透ける雲になる。
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
 import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
+import { cirrusFlowFromWindNode } from './cirrus-flow-node';
 import {
   cirrusAmountFromOpticalDepthNode, cumulusAmountFromOpacityNode, cumulusAmountFromTopAltitudeNode,
 } from './cloud-kind-node';
@@ -157,5 +158,10 @@ export function condense(weather: WeatherSample): CloudSample {
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
   const opticalDepth = tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT);
-  return { cumulus, cirrus: cirrusAmountFromOpticalDepthNode(opticalDepth) };
+  // 巻雲の筋の向きは、その場所の上層の風へ沿う。揃い度は風速から組む。
+  return {
+    cumulus,
+    cirrus: cirrusAmountFromOpticalDepthNode(opticalDepth),
+    cirrusFlow: cirrusFlowFromWindNode(weather.upperWind),
+  };
 }
