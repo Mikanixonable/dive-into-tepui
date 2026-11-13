@@ -153,7 +153,7 @@ function buildViewAngleSliders(view: LabView): () => void {
 function buildCloudSliders(view: LabView): void {
   const redraw = (knob: FloatUniform, value: number): void => { knob.value = value; view.render(); };
 
-  // 積雲の飽和とディザの幅。被覆率が 中央値±半幅 に入る柱がディザに掛かるので、半幅を広げるほど
+  // 積雲の飽和とディザの幅。不透明度が 中央値±半幅 に入る柱がディザに掛かるので、半幅を広げるほど
   // 半透明として読める画素が増える。生成側の場へ差し替えたあとの追い込みまで残す。
   const dither = CUMULUS_DITHER_KNOB;
   buildSlider('cumulus-dither', '中央値', 0, 1, 0.001,
