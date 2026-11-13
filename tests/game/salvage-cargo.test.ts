@@ -19,6 +19,6 @@ export function register(): void {
   });
 
   test('積荷: 記録が無ければ空の待ち行列から始まる', () => {
-    assert.deepEqual(SalvageCargo.deserialize(undefined).pending, []);
+    assert.deepEqual(SalvageCargo.deserialize(null).pending, []);
   });
 }
