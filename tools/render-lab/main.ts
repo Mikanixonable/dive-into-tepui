@@ -20,6 +20,7 @@ import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
+import { CLOUD_DETAIL_SHOT_INFOS, type CloudDetailShotInfo } from './cloud-detail-cases';
 import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
 import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
@@ -59,6 +60,9 @@ declare global {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
+      // 雲の細部の撮影。巡回の撮影(cases + shoot)には載せない別口。
+      cloudDetailShots: () => readonly CloudDetailShotInfo[];
+      shootCloudDetail: (name: string) => Promise<string>;
       capture: () => Promise<string>;
       show: (name: CaseName) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
@@ -260,6 +264,10 @@ async function init(): Promise<void> {
     earthSurfaceCapture,
     cases: CASE_NAMES,
     shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
+    cloudDetailShots: () => CLOUD_DETAIL_SHOT_INFOS,
+    shootCloudDetail: async (name) => {
+      const png = await view.shootCloudDetail(name); syncAngles(); return png;
+    },
     capture: () => view.capture(),
     show: (name) => { view.show(name); syncAngles(); },
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
