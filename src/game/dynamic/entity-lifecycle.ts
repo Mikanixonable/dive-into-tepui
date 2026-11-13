@@ -11,8 +11,6 @@ import { EntityIdAllocators } from './dynamic-entity/entity-id';
 import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
 import { findEntityClass } from './dynamic-entity/entity-dictionary';
 import { isSerializedEnemy } from './dynamic-entity/enemy';
-import { ProteinEnemy } from './dynamic-entity/protein-enemy';
-import { proteinAssetGate } from '../protein/protein-asset-loader';
 import { ENTITY_CAP, type CapKind } from './dynamic-entity/entity-kind';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
@@ -55,14 +53,12 @@ export interface EntityLifecyclePort
   extends EntityAdditionPort, PendingEntitySpawnPort, EntityDeathPort, EntityRemovalPort {}
 
 function readyToSpawn(record: SpawnRecord): boolean {
-  const gate: SpawnGate | null = record.kind === 'protein-enemy'
-    ? proteinAssetGate(record.request.assetId)
-    : findEntityClass(record.entity.kind)?.spawnGate(record.entity) ?? null;
+  const gate: SpawnGate | null = findEntityClass(record.entity.kind)?.spawnGate(record.entity) ?? null;
   return gate === null || gate();
 }
 
 function isEnemyRecord(record: SpawnRecord): boolean {
-  return record.kind === 'protein-enemy' || isSerializedEnemy(record.entity);
+  return isSerializedEnemy(record.entity);
 }
 
 // DynamicSystem からエンティティの collection、pending spawn、上限、回収を分離した所有者。
@@ -128,6 +124,9 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
   }
 
   public spawnWhenReady(record: SpawnRecord): void {
+    // 直列化された記録は未検証の値なので、実体の無い待機記録は捨てる(旧い記録に残る
+    // 廃止済み種別の要求がここへ来る)。
+    if (record.entity === undefined) return;
     if (readyToSpawn(record)) this.materialize(record);
     else this.pendingSpawns.push(record);
   }
@@ -193,10 +192,6 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
   }
 
   private materialize(record: SpawnRecord): void {
-    if (record.kind === 'protein-enemy') {
-      this.add(ProteinEnemy.create(record.request, this.idAllocators, this.scene));
-      return;
-    }
     const entityClass = findEntityClass(record.entity.kind);
     if (entityClass !== null) this.add(entityClass.deserialize(record.entity, this, this.scene));
   }
