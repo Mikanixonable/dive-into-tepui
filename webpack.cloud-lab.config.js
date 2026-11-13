@@ -57,8 +57,9 @@ module.exports = {
     // cloud-lab:reference が取り込んだ台風の実写で、compare が比較の相手に読む。
     // reference-timeseries/ は cloud-lab:reference-timeseries が取り込んだひまわりの時系列で、
     // compare が実物の動きの相手に読む。history/ は compare が残す数値レポートの履歴で、
-    // 変更の前後の差分を引く根拠になる。ビルドの掃除で消さない。
-    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|history)[\\/]/ },
+    // 変更の前後の差分を引く根拠になる。history-polar-masked/ は極帯マスク後の距離で
+    // 履歴を計算し直した複製で、同じく残す。ビルドの掃除で消さない。
+    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|history|history-polar-masked)[\\/]/ },
   },
   optimization: {
     minimizer: [

@@ -10,10 +10,18 @@
 const mean = (values) => (values.length === 0 ? 0 : values.reduce((sum, v) => sum + v, 0) / values.length);
 const absLogRatio = (generated, reference) => Math.abs(Math.log(generated / reference));
 
+// 帯状平均の距離。緯度帯の全域が |lat| 70° より極側にある帯は除く — 帯は 5.625° 刻み
+// (半幅 2.8125°)なので中心緯度の絶対値が 72.8125° を超える帯が該当する。実写の「厚い雲」は
+// 極で氷床の明るさを拾っており雲の量ではないため、その帯の参照値を距離に入れると氷の量を
+// 雲の量として比べることになる。±70.3125° の帯は境界をまたぎ厚みが帯状の値と同程度なので残す。
+const ZONAL_POLAR_LIMIT_DEG = 70;
+const ZONAL_BAND_HALF_WIDTH_DEG = 2.8125;
+
 function zonalDistance(zonal) {
   let squaredError = 0;
   let squaredReference = 0;
   for (const band of zonal) {
+    if (Math.abs(band.latitudeDeg) - ZONAL_BAND_HALF_WIDTH_DEG > ZONAL_POLAR_LIMIT_DEG) continue;
     squaredError += (band.means.coverage - band.means.thick) ** 2;
     squaredReference += band.means.thick ** 2;
   }
