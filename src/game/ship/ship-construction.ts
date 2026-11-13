@@ -8,9 +8,9 @@ import {
 import {
   constructionTargetGuide, type ConstructionTargetGuide,
 } from './ship-construction-candidates';
+import { shipConstructionPanelModel } from './ship-construction-panel-model';
 import { ShipConstructionPointer } from './ship-construction-pointer';
 import { tryConstructionPlacement, type ConstructionTrial } from './ship-construction-preview';
-import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import { ShipConstructionEdits } from './ship-construction-edits';
 import { ConstructionHistory } from './ship-construction-history';
 import { pieceOfModule } from './ship-assembly-graft';
@@ -922,67 +922,32 @@ export class ShipConstruction implements OverlayHandle {
   private syncPanel(): void {
     const session = this.current;
     if (session === null) return;
-    const { assembly } = session.ship;
     const held = this.heldValue;
     const effective = this.effectiveHeld();
-    const target = this.pointedTarget();
-    const trial = this.pointedTrial();
-    const totals = assembly.totals();
-    const capabilities = {
-      thrust: totals.thrust, mainFuel: totals.mainFuel, rcsFuel: totals.rcsFuel,
-      power: totals.power, radiation: totals.radiation,
-    };
-    const preview = trial !== null && trial.valid && trial.totals !== null ? {
-      mass: trial.totals.mass, maxHp: trial.totals.maxHp,
-      capabilities: {
-        thrust: trial.totals.thrust, mainFuel: trial.totals.mainFuel, rcsFuel: trial.totals.rcsFuel,
-        power: trial.totals.power, radiation: trial.totals.radiation,
+    const selectedId = this.selectedId;
+    this.panel.sync(shipConstructionPanelModel({
+      shipName: session.ship.name,
+      assembly: session.ship.assembly,
+      anchorId: session.anchorId,
+      held: held === null ? null : { item: held, name: this.heldName(session, held) },
+      heldBlueprintId: this.heldBlueprintId,
+      selection: selectedId === null ? null : {
+        moduleId: selectedId, editable: this.pieceEditable(session, selectedId),
       },
-    } : null;
-    const history = this.history();
-    this.panel.sync({
-      visible: true, shipName: session.ship.name,
-      held: held === null ? null : {
-        name: this.heldName(session, held),
-        catalogId: held.kind === 'catalog' ? held.definitionId : null,
-        blueprintId: this.heldBlueprintId,
-        orientation: this.orientation, symmetry: this.symmetry,
+      orientation: this.orientation,
+      symmetry: this.symmetry,
+      effective: effective === null ? null : {
+        held: effective,
+        orientation: this.effectiveOrientation(session, effective),
+        symmetry: this.placementSymmetry(effective),
       },
-      selection: this.selectedId === null ? null : {
-        name: constructionModuleLabel(assembly, this.selectedId),
-        canEdit: this.pieceEditable(session, this.selectedId),
-      },
-      moduleCount: assembly.size, totalMass: totals.mass,
-      hp: totals.hp, maxHp: totals.maxHp, capabilities, preview,
-      role: assembly.role,
-      warning: trial !== null && !trial.valid ? trial.reason : null,
       pointedTargetId: this.pointedId,
-      targets: this.targets().map(info => {
-        // 色は規則だけで決める — 重なりは指している取り付け先の試し置きだけが見る。
-        const placement = effective === null ? null : placementFor(
-          assembly, session.anchorId, effective, info.target,
-          this.effectiveOrientation(session, effective), this.placementSymmetry(effective),
-        );
-        return {
-          id: constructionTargetId(info.target), label: info.label,
-          valid: placement?.valid ?? true, reason: placement?.reason ?? null,
-        };
-      }),
-      history,
-      blueprints: this.blueprints.blueprints.map(entry => ({
-        id: entry.id, name: entry.name,
-        moduleCount: entry.piece.modules.length,
-        mass: entry.piece.modules.reduce(
-          (sum, module) => sum + (SHIP_MODULE_CATALOG.get(module.definitionId)?.dryMass ?? 0), 0,
-        ),
-        held: this.heldBlueprintId === entry.id,
-      })),
-      blueprintRecordReason: this.blueprints.canRecord
-        ? null : '記録先のセーブデータが無いため、設計図を保存できません',
-      canPlace: (held !== null || this.selectedId !== null)
-        && target !== null && (trial?.valid ?? false),
-      canRemove: this.selectedId !== null && this.pieceEditable(session, this.selectedId),
-    });
+      trial: this.pointedTrial(),
+      targets: this.targets(),
+      history: this.history(),
+      blueprints: this.blueprints.blueprints,
+      canRecordBlueprints: this.blueprints.canRecord,
+    }));
   }
 
   // 選択中の先端部が撤去・付け替え・回転を受け付けるか。接舷の継ぎ目の先は対象外。
