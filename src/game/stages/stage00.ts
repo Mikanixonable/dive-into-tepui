@@ -3,9 +3,17 @@ import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STO
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
-import { MAX_ACTIVE_AMMO_PICKUPS, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
+import {
+  MAX_ACTIVE_AMMO_PICKUPS, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST, phaseShiftedBy,
+} from './stage-utils/logistics';
+import { ModularShip } from '../ship/modular-ship';
+import { createSalvageTenderPreset } from '../ship/ship-presets';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import { SURVIVAL_STAGE_RULES } from './stage-rules';
+
+// 補給艇が現れる、自機の軌道上の前方の距離の範囲 [m](SPEC GAME.md 2.3)。
+const TENDER_MIN_DIST = 300;
+const TENDER_MAX_DIST = 500;
 
 export interface SerializedStage00 extends SerializedStage {
   readonly waveAttack: SerializedWaveAttack;
@@ -73,6 +81,25 @@ export class Stage00 extends Stage {
 
     this.logistics.updateLogistics(simTime, player, simSpeed, true);
     this.waveAttack.update(dt, player, this._dynamicSystem.all().filter(isEnemy), simTime, this);
+  }
+
+  // 交戦中の集団が 0 になった波間に、積荷があれば補給艇を自機の前方へ届ける。届けたら true。
+  public onLull(): boolean {
+    const player = this.ship;
+    if (player === null || this.salvageCargo.pending.length === 0) return false;
+    const dist = TENDER_MIN_DIST + Math.random() * (TENDER_MAX_DIST - TENDER_MIN_DIST);
+    const tender = ModularShip.create(
+      {
+        name: '補給艇',
+        state: phaseShiftedBy(player.motion.state, dist),
+        assembly: createSalvageTenderPreset(this.salvageCargo.takeAll()),
+      },
+      this._dynamicSystem,
+      this._scene,
+    );
+    this._dynamicSystem.add(tender);
+    this._dynamicSystem.events.record({ kind: 'salvageTenderArrived' });
+    return true;
   }
 
   // 撃破数では決着させず、自機の喪失まで続ける。

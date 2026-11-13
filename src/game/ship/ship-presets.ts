@@ -2,6 +2,7 @@
 import { SHIP_MODULE_CATALOG, type ShipModuleCatalog } from './ship-module-catalog';
 import { ShipAssembly } from './ship-assembly';
 import { createShipModuleInstance, type ShipModuleState } from './ship-module-instance';
+import { appendSalvageCargo, salvageCargoSide, type SalvageKind } from './salvage-blueprints';
 
 function instance(catalog: ShipModuleCatalog, definitionId: string, id: string, state?: ShipModuleState) {
   return createShipModuleInstance(catalog.require(definitionId), id, state);
@@ -41,6 +42,21 @@ export function createBasePreset(catalog: ShipModuleCatalog = SHIP_MODULE_CATALO
   assembly.connectSide(instance(catalog, 'dock-standard', 'dock-right'), 'main-tank', 'side:+x', 'dock-right-edge');
   assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-left'), 'rcs-tank', 'side:-x');
   assembly.connectSide(instance(catalog, 'radiator-standard', 'radiator-right'), 'rcs-tank', 'side:+x');
+  assembly.assertValid();
+  return assembly;
+}
+
+// 補給艇の preset。建造ドックを1基持つコックピットのない物資。鹵獲品の積荷は、授与の順に根のタンクの
+// 連なる側へ連ね、積荷のコックピットは損傷したまま積む(SPEC GAME.md 2.3)。
+export function createSalvageTenderPreset(cargo: readonly SalvageKind[]): ShipAssembly {
+  const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+  assembly.addRoot(instance(SHIP_MODULE_CATALOG, 'tank-combat-main', 'tender-tank'));
+  assembly.connectSide(instance(SHIP_MODULE_CATALOG, 'dock-standard', 'tender-dock'), 'tender-tank', 'side:+x');
+  const tails: Record<'bow' | 'stern', string> = { bow: 'tender-tank', stern: 'tender-tank' };
+  cargo.forEach((kind, index) => {
+    const side = salvageCargoSide(kind);
+    tails[side] = appendSalvageCargo(assembly, kind, tails[side], `cargo${index}-`, 'salvaged');
+  });
   assembly.assertValid();
   return assembly;
 }
