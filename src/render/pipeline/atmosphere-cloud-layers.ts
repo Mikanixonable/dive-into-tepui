@@ -59,6 +59,11 @@ export class AtmosphereCloudLayers {
     this.clouds.setShellEnabled(species, enabled);
   }
 
+  // 巻雲の筋の細部の段数を、雲の殻の描画へ渡す。0 なら細部を足さない。
+  public setCirrusOctaves(count: number): void {
+    this.clouds.setCirrusOctaves(count);
+  }
+
   public transmittanceAt(events: readonly CloudShellEvent[], distance: FloatNode): FloatNode {
     const product = float(1).toVar();
     for (const event of events) {
@@ -86,9 +91,10 @@ export class AtmosphereCloudLayers {
     };
   }
 
+  // pixelAngle は視線の 1 画素が張る角 [rad]。交点までの距離に掛けて、交点で画素の張る実寸を出す。
   public build(
     ray: AtmosphereCloudRay, segment: AtmosphereCloudSegment,
-    rayOrigin: Vec3Node, rayDir: Vec3Node, geometry: AtmosphereCloudGeometry,
+    rayOrigin: Vec3Node, rayDir: Vec3Node, geometry: AtmosphereCloudGeometry, pixelAngle: FloatNode,
   ): readonly CloudShellEvent[] {
     const shells = CLOUD_SHELL_SPECIES.map((species) => {
       const radius = geometry.shellRadiusOf(species);
@@ -114,6 +120,7 @@ export class AtmosphereCloudLayers {
         const sunDir = normalize(geometry.sunDirectionAt(point));
         const sample: CloudShellSample = this.clouds.scatteredAt(
           shell.species, shell.radius, offset, ray.unitDir, sunDir, geometry.sunRadianceAt(point),
+          pixelAngle.mul(distance),
         );
         cloudTransmittance.assign(sample.transmittance);
         localRadiance.assign(sample.radiance);

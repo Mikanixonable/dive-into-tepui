@@ -7,6 +7,7 @@ import { R_EARTH, R_EARTH_EQ, EARTH } from '../../src/game/celestial/solar-syste
 import { shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { metersPerPixelAtDepth, tanHalfFov } from '../../src/math/projection';
 import { CUMULUS_DETAIL } from '../../src/render/opaque-cloud-surface-renderer';
+import { CIRRUS_DETAIL } from '../../src/render/cloud/cloud-detail';
 import { FOV_DEG, labCamera, VIEW_HEIGHT, type LabCase, type LabShot } from './lab-case';
 import type { EarthAngleKey, LabViewAngles } from './view-angles';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
@@ -168,6 +169,17 @@ export const CLOUD_DETAIL_SHOT_INFOS: readonly CloudDetailShotInfo[] =
     altitudeM: shot.altitudeM,
   }));
 
+// 巻雲の精細さ「粗」の撮影。標準の巻雲の撮影と同じ構図で、細部だけを切る。標準と比べて濃さの
+// 平均が変わらないことを確かめるための組で、計測の一覧(CLOUD_DETAIL_SHOT_INFOS)には載せない。
+// 撮影名は標準の撮影名に -coarse を足したもの。
+export const CLOUD_DETAIL_CIRRUS_COARSE_SHOTS: Readonly<Record<string, CloudDetailShot>> = Object.fromEntries(
+  Object.entries(CLOUD_DETAIL_SHOTS)
+    .filter(([, shot]) => shot.kind === 'cirrus')
+    .map(([name, shot]) => [`${name}-coarse`, {
+      ...shot, graphics: { ...shot.graphics, cirrusDetail: CIRRUS_DETAIL.coarse },
+    }]),
+);
+
 // 雲の細部の撮影が共有するケース。地球だけを置き、カメラは描画原点から直下点の地表を見る。
 // 観察の向きと描画設定は撮影ごとの差分で決まる。巡回のケースには登録しない。
 export function cloudDetailCase(): LabCase {
@@ -178,6 +190,6 @@ export function cloudDetailCase(): LabCase {
     viewTarget: new THREE.Vector3(0, 0, -altitudeFor(1, 0)),
     sunDirection: NADIR_SUN_DIRECTION,
     earth: NADIR_EARTH,
-    shots: CLOUD_DETAIL_SHOTS,
+    shots: { ...CLOUD_DETAIL_SHOTS, ...CLOUD_DETAIL_CIRRUS_COARSE_SHOTS },
   };
 }

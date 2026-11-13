@@ -163,6 +163,11 @@ export class AtmosphereIntegrator {
     this.cloudLayers.setShellEnabled(species, enabled);
   }
 
+  // 巻雲の細部の段数を置く。
+  public setCirrusOctaves(count: number): void {
+    this.cloudLayers.setCirrusOctaves(count);
+  }
+
   // 描画対象とする天体 1 体分の光学パラメータと雲情報を設定する。cutoffRadius は大気の裾を
   // 打ち切る半径 [m]。
   public write(body: AtmosphereBody, steps: number, cutoffRadius: number): void {
@@ -194,19 +199,23 @@ export class AtmosphereIntegrator {
   }
 
   // 視線 1 本がこの層を通って受ける透過率と、この層が視線へ足す内部散乱。opaqueDist は視線が
-  // 不透明面へ届くまでの距離 [m] で、積分はその手前で止まる。**Fn の中から呼ぶこと。**
+  // 不透明面へ届くまでの距離 [m] で、積分はその手前で止まる。pixelAngle は視線の 1 画素が張る角 [rad]。
+  // **Fn の中から呼ぶこと。**
   //
   // **重い側はすべて分岐の中に置く。** 大気に掛からない視線は区間の判定だけで早期脱出する —
   // select で混ぜると、捨てるぶんまで毎画素走る。
   public contribution(
-    rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode,
+    rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode, pixelAngle: FloatNode,
   ): LayerContribution {
+    // 視線を真球の空間へ写し、大気の区間を求めてから、区間に掛かるときだけ雲と積分を解く。
     const ray = this.sphereSpaceRay(rayOrigin, rayDir);
     const segment = this.raySegment(ray, opaqueDist);
     const transmittance = vec3(1, 1, 1).toVar();
     const inscatter = vec3(0, 0, 0).toVar();
     If(segment.hitsAtmosphere, () => {
-      const shells = this.cloudLayers.build(ray, segment, rayOrigin, rayDir, this.cloudGeometry());
+      const shells = this.cloudLayers.build(
+        ray, segment, rayOrigin, rayDir, this.cloudGeometry(), pixelAngle,
+      );
       const layer = this.integrated(ray, segment, rayOrigin, rayDir, shells);
       transmittance.assign(layer.transmittance);
       inscatter.assign(layer.inscatter);
