@@ -11,6 +11,8 @@ import { addPrimaryRelative, kinematicState, type KinematicState } from '../../p
 import { v3 } from '../../math/vec3';
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
+import { crossedSalvageBlueprints, nextSalvageRemaining } from '../ship/salvage-blueprints';
+import type { ShipBlueprintShelf } from '../ship/ship-blueprint';
 import type * as THREE from 'three/webgpu';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { HudLayers } from '../hud/hud-layers';
@@ -51,6 +53,8 @@ export type StageDeps = [
   controlSelection: ControlSelection,
   commandQueue: CommandQueue,
   orbitSlots: OrbitSlotRegistry,
+  // セーブスロットの設計図の棚の読み取り面。鹵獲の授与が既に棚にある同名を除くために読む。
+  blueprintShelf: ShipBlueprintShelf,
 ];
 
 // 全ステージ共通の状態(スコア・決着状態・補給)。基底のコンストラクタが deps の後ろに受け、
@@ -162,6 +166,11 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   protected readonly _commandQueue: CommandQueue;
   // このランの軌道標識の台帳。
   protected readonly _orbitSlots: OrbitSlotRegistry;
+  // セーブスロットの設計図の棚の読み取り面。鹵獲の授与の重複判定にだけ読む。
+  private readonly blueprintShelf: ShipBlueprintShelf;
+  // このランで授与を記録した鹵獲の設計図名。棚への書き戻しはランの外で遅れて行われるので、
+  // ランの中ではこの控えで重複授与を防ぐ。
+  private readonly grantedSalvageNames = new Set<string>();
 
   public get phase(): GamePhase { return this._phase; }
   public get isPlaying(): boolean { return this._phase === 'playing'; }
@@ -184,7 +193,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     private _phase: GamePhase = 'playing',
     logistics?: Logistics,
   ) {
-    const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue, orbitSlots] = deps;
+    const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue, orbitSlots, blueprintShelf] = deps;
     this._hud = hud;
     this._scene = scene;
     this._dynamicSystem = dynamicSystem;
@@ -192,6 +201,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._controlSelection = controlSelection;
     this._commandQueue = commandQueue;
     this._orbitSlots = orbitSlots;
+    this.blueprintShelf = blueprintShelf;
     this.logistics = logistics ?? new Logistics(scene, dynamicSystem, this.stageRules.automaticResupply);
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
@@ -244,7 +254,11 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   private syncStatusPanel(mapView: boolean): void {
     const message = this.hudSubStatus();
     const show = message !== null && !mapView;
-    this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills);
+    // 鹵獲を数えないステージでは残数を出さない(SPEC GAME.md 3.1)。
+    const salvageRemaining = this.stageRules.salvageRewards
+      ? nextSalvageRemaining(this.scoreCounter.kills, this.grantedSalvageNames, this.blueprintShelf)
+      : null;
+    this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills, salvageRemaining);
   }
 
   // 台本が相手にする自艦。操作対象が基地でも台本は止まらないので、そのときは生存中の先頭の艦を使う。
@@ -336,8 +350,10 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 撃破以外の消滅でも、残存数が 0 になれば勝利で決着させる。
   public recordEnemyDeath(enemy: Enemy, simTime: number, cause: EnemyDeathCause = 'killed'): void {
     if (cause === 'killed') {
+      const killsBefore = this.scoreCounter.kills;
       this.scoreCounter.recordKill();
       this.logistics.dropAt(enemy.motion.state);
+      this.grantSalvageBlueprints(killsBefore);
     } else {
       this.scoreCounter.recordEnemyLoss();
     }
@@ -345,6 +361,19 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
     // isPlaying ガード: 敗北後に残存敵が再突入で消えても勝利判定が上書きしないよう。
     if (this.isPlaying && this.checkWin()) this.onWin(simTime);
+  }
+
+  // 撃破数が跨いだ節目の分だけ、棚にまだ無い鹵獲の設計図の授与を記録する(SPEC GAME.md 3.1)。
+  // 鹵獲を数えないステージでは記録しない。
+  private grantSalvageBlueprints(killsBefore: number): void {
+    if (!this.stageRules.salvageRewards) return;
+    const grants = crossedSalvageBlueprints(
+      killsBefore, this.scoreCounter.kills, this.grantedSalvageNames, this.blueprintShelf,
+    );
+    for (const grant of grants) {
+      this.grantedSalvageNames.add(grant.name);
+      this._dynamicSystem.events.record({ kind: 'salvageBlueprintGranted', name: grant.name });
+    }
   }
 
   // 敗北を記録し、reason を添えて決着を「敗北」で確定させる。
