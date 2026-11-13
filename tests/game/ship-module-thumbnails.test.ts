@@ -8,7 +8,7 @@ export function register(): void {
   // modelId を共有する定義は重複して数えない。
   test('module thumbnails: カタログの全 modelId がサムネイルを解決できる', () => {
     const modelIds = new Set(SHIP_MODULE_CATALOG.all().map(definition => definition.modelId));
-    const missing = [...modelIds].filter(modelId => moduleThumbnailUrl(modelId) === undefined);
+    const missing = [...modelIds].filter(modelId => moduleThumbnailUrl(modelId) === null);
     assert.deepEqual(missing, []);
   });
 }
