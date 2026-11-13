@@ -13,7 +13,7 @@ import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../cloud/cloud-kind-node';
 import { columnOpticalDepthFromOpacityNode } from '../../cloud/cloud-optics-node';
-import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
+import { CLOUD_TOP_SPAN } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 import type { CloudShadowKinds } from './shadow-select';
@@ -65,11 +65,13 @@ export class CloudShadowRenderer {
     this.bodyFromWorld = uniform(new THREE.Matrix4());
     this.cumulusActive = uniform(0);
     this.cirrusActive = uniform(0);
-    this.shape = new CloudShapeEvaluator(this.surfaceRadius.div(CUMULUS_GRAIN_SIZE));
+    this.shape = new CloudShapeEvaluator(this.surfaceRadius);
   }
 
   // このフレームに影を落とす天体と、雲の種類ごとの有無。cloud が null なら雲の影は落ちない。
   public set(cloud: ShadowCloud | null, kinds: CloudShadowKinds): void {
+    // 細部の段数は表面の雲と同じ値を置く。段数は uniform なので、グラフは組み直さない。
+    this.shape.setDetailOctaves(kinds.cumulusOctaves);
     this.cumulusActive.value = cloud !== null && kinds.cumulus ? 1 : 0;
     this.cirrusActive.value = cloud !== null && kinds.cirrus ? 1 : 0;
     if (cloud === null) return;
@@ -92,7 +94,7 @@ export class CloudShadowRenderer {
   // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配分するので、柱を 1 本抜ける
   // 合計はどれだけ斜めでも τ に一致する。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
-  // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、粒の振幅を決める。
+  // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、細部の段を決める。
   public transmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
     const sunDir = this.sunLight.directionFrom(worldPos);
     return Fn(() => {
@@ -108,14 +110,13 @@ export class CloudShadowRenderer {
         const shellRadius = float(1).add(this.topAltitude.div(bodyRadius));
         const along = dot(offset, rayDir);
         // 光路が殻を出るまでの距離。殻より上の受け手では負になり、影は落ちない。長さは殻の空間の
-        // 半径 1 を基準半径として測る(真の実寸との差は扁平率ぶんで、粒の振幅と光路の上限にしか効かない)。
+        // 半径 1 を基準半径として測る(真の実寸との差は扁平率ぶんで、細部の段と光路の上限にしか効かない)。
         const exit = sqrt(max(shellRadius.mul(shellRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
           .sub(along).mul(bodyRadius);
         const stepLength = clamp(exit, 0, MAX_LIGHT_PATH).div(SHADOW_TAPS);
         // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
-        // 実寸と光路 1 歩の長さのうち粗いほうを取る。粒の振幅はこの幅が決める。
+        // 実寸と光路 1 歩の長さのうち粗いほうを取る。細部の段はこの幅で打ち切る。
         const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR));
-        const grainAmplitude = this.shape.grainAmplitudeForWidth(sampleWidth).toVar();
         // 受け手の床は自分の積雲の柱のためのもの。積雲の影が無い設定で張ると、巻雲の層を跨ぐ
         // 高さの判定がずれる。
         const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius).mul(this.cumulusActive);
@@ -127,18 +128,15 @@ export class CloudShadowRenderer {
           const up = sampleOffset.div(sampleRadius);
           const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
           const cloud = this.fieldAt(up);
-          // 粒は引けるときだけ引く。タップの数だけノイズを引くので、振幅が 0 になる遠さでは分岐ごと
-          // 飛ばして費用を戻す(select では両辺が評価されて飛ばない)。
-          const grain = float(0).toVar();
-          If(greaterThan(grainAmplitude, 0), () => {
-            grain.assign(this.shape.grainAt(up, grainAmplitude));
-          });
+          // 細部はタップごとに、幅の上で解像できる段だけを重ねる。
+          const detail = this.shape.detailAt(
+            up, sampleWidth, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus);
           const cloudTop = this.shape.cloudTop(
-            cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
+            cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), detail).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
           // 柱の光学的厚みは、ディザを掛けた不透明度から τ へ戻して引く。
           const columnDepth = columnOpticalDepthFromOpacityNode(
-            this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), grain));
+            this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), detail));
           // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
