@@ -19,7 +19,7 @@ function panelSource(assembly: ShipAssembly, trial: ConstructionTrial | null): S
     orientation: { roll: 0, face: 'back' }, symmetry: 1,
     effective: null, pointedTargetId: null, trial,
     targets: [], history: { names: [], position: 0, canUndo: false, canRedo: false },
-    blueprints: [], canRecordBlueprints: true,
+    blueprints: [],
   };
 }
 

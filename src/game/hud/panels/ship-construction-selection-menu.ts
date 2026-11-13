@@ -1,9 +1,9 @@
 // 建造中に選んだモジュールの脇へ追従する操作メニュー。回転(−90°/+90°)・端の入れ替え・
-// 付け替え・撤去・複製・設計図として保存・選択解除を持ち、毎フレーム渡される画面座標へ
+// 付け替え・撤去・複製・選択解除を持ち、毎フレーム渡される画面座標へ
 // 置き直す。画面の端からはみ出さないよう画面内へ寄せて置き、モジュールが画面の外へ
 // 出ても画面の縁へ寄せて残す。編集できない選択(接舷中の接続の先)では、効かない
 // 回転・端の入れ替え・付け替え・撤去を出さない。
-import { Button, ValueInput } from '../../../hud/widgets';
+import { Button } from '../../../hud/widgets';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import type { Projected } from '../../../math/projection';
 
@@ -22,9 +22,6 @@ const STYLE = `
 #construction-selection-menu .construction-selection-menu-actions {
   display: flex; flex-wrap: wrap; gap: var(--space-2); max-width: 260px;
 }
-#construction-selection-menu .construction-selection-menu-blueprint {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2);
-}
 `;
 
 let styleInjected = false;
@@ -41,8 +38,6 @@ function injectStyle(): void {
 export interface ConstructionSelectionMenuSpec extends Projected {
   // 回転・端の入れ替え・付け替え・撤去を出すか(編集できる選択のときだけ)。
   readonly canEdit: boolean;
-  // 「設計図として保存」を出すか。
-  readonly canSaveBlueprint: boolean;
 }
 
 // メニューの操作を建造セッションへ渡す口。パネルの on* へ委譲する。
@@ -52,7 +47,6 @@ export interface ShipConstructionSelectionMenuCallbacks {
   readonly onReattach: () => void;
   readonly onRemove: () => void;
   readonly onDuplicate: () => void;
-  readonly onSaveBlueprint: (name: string) => void;
   readonly onDeselect: () => void;
 }
 
@@ -64,9 +58,6 @@ export class ShipConstructionSelectionMenu {
   private readonly reattach: Button;
   private readonly remove: Button;
   private readonly duplicate: Button;
-  private readonly blueprintRow: HTMLElement;
-  private readonly blueprintName: ValueInput;
-  private readonly saveBlueprint: Button;
   private readonly deselect: Button;
 
   // 追従 DOM を marker レイヤ配下へ組み、操作を callbacks へ配線する。
@@ -105,22 +96,13 @@ export class ShipConstructionSelectionMenu {
     this.deselect = new Button('選択を解く', () => callbacks.onDeselect(), undefined, 'secondary');
     this.deselect.element.dataset.id = 'construction-menu-deselect';
 
-    this.blueprintRow = document.createElement('div');
-    this.blueprintRow.className = 'construction-selection-menu-blueprint';
-    this.blueprintName = new ValueInput({ type: 'text', placeholder: '設計図の名前' }, () => undefined);
-    this.saveBlueprint = new Button(
-      '設計図として保存', () => callbacks.onSaveBlueprint(this.blueprintName.element.value), undefined, 'secondary',
-    );
-    this.saveBlueprint.element.dataset.id = 'construction-menu-save-blueprint';
-    this.blueprintRow.append(this.blueprintName.element, this.saveBlueprint.element);
-
     const actions = document.createElement('div');
     actions.className = 'construction-selection-menu-actions';
     actions.append(
       this.rollLeft.element, this.rollRight.element, this.swapEnds.element,
       this.reattach.element, this.remove.element, this.duplicate.element, this.deselect.element,
     );
-    this.root.append(actions, this.blueprintRow);
+    this.root.append(actions);
     parent.appendChild(this.root);
   }
 
@@ -137,7 +119,6 @@ export class ShipConstructionSelectionMenu {
     show(this.swapEnds.element, spec.canEdit);
     show(this.reattach.element, spec.canEdit);
     show(this.remove.element, spec.canEdit);
-    show(this.blueprintRow, spec.canSaveBlueprint);
 
     // 画面からはみ出す向きへ出る分は画面内へ寄せる。カメラ背後(front=false)や
     // 画面外の投影もこの寄せで画面の縁に残る。

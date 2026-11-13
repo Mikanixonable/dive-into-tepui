@@ -308,7 +308,7 @@ export function register(): void {
   test('ship construction: 複数段の回転は1つの操作として履歴へ載る', () => {
     const ship = new ConstructionTestShip();
     const queue = new CommandQueue();
-    const { construction, lastModel } = createConstruction(ship, queue, { blueprints: [], canRecord: false });
+    const { construction, lastModel } = createConstruction(ship, queue, { blueprints: [] });
     construction.start(ship as unknown as ModularShip, 'dock-left');
     construction.select('solar-left');
     const namesBefore = lastModel()?.history.names.length ?? 0;
@@ -378,7 +378,7 @@ export function register(): void {
       { current: { forceCurrent: false }, setForceCurrent: () => {} } as unknown as DisplayWindowManager,
       { hint: () => {} } as unknown as Notifier,
       { request: () => {}, close: () => {} },
-      { blueprints: [], canRecord: false },
+      { blueprints: [] },
       { record: () => {} } as unknown as RunEventSink,
       (s, target) => { focuses.push({ ship: s, target }); },
     );
@@ -427,7 +427,7 @@ export function register(): void {
   test('ship construction: カタログの手持ちは置くと手が空になり選択も残らない', () => {
     const ship = new ConstructionTestShip();
     const queue = new CommandQueue();
-    const { construction } = createConstruction(ship, queue, { blueprints: [], canRecord: false });
+    const { construction } = createConstruction(ship, queue, { blueprints: [] });
     construction.start(ship as unknown as ModularShip, 'dock-left');
     construction.select('solar-left');
     construction.hold({ kind: 'catalog', definitionId: 'tank-3-main' });
@@ -448,7 +448,7 @@ export function register(): void {
   test('ship construction: 複製した手持ちは置くと手が空になり選択も残らない', () => {
     const ship = new ConstructionTestShip();
     const queue = new CommandQueue();
-    const { construction } = createConstruction(ship, queue, { blueprints: [], canRecord: false });
+    const { construction } = createConstruction(ship, queue, { blueprints: [] });
     construction.start(ship as unknown as ModularShip, 'dock-left');
     construction.select('solar-left');
     construction.duplicateSelected();
@@ -474,7 +474,7 @@ export function register(): void {
       id: 'bp-panel', name: 'パネル', createdAtReal: 0, piece: serializeShipAssembly(piece),
     };
     const { construction, lastModel } = createConstruction(
-      ship, queue, { blueprints: [blueprint], canRecord: false },
+      ship, queue, { blueprints: [blueprint] },
     );
     construction.start(ship as unknown as ModularShip, 'dock-left');
     construction.select('main-tank');
@@ -497,7 +497,7 @@ export function register(): void {
   test('ship construction: 置けない取り付け先を指定しても手持ちは残る', () => {
     const ship = new ConstructionTestShip();
     const queue = new CommandQueue();
-    const { construction } = createConstruction(ship, queue, { blueprints: [], canRecord: false });
+    const { construction } = createConstruction(ship, queue, { blueprints: [] });
     construction.start(ship as unknown as ModularShip, 'dock-left');
     // 太陽電池は側面にだけ取り付けられるので、軸方向の面へは置けない。
     construction.hold({ kind: 'catalog', definitionId: 'solar-panel-standard' });
@@ -513,7 +513,7 @@ export function register(): void {
   test('ship construction: 対称数は置いたあとも持ち越す', () => {
     const ship = new ConstructionTestShip();
     const queue = new CommandQueue();
-    const { construction, lastModel } = createConstruction(ship, queue, { blueprints: [], canRecord: false });
+    const { construction, lastModel } = createConstruction(ship, queue, { blueprints: [] });
     construction.start(ship as unknown as ModularShip, 'dock-left');
     construction.hold({ kind: 'catalog', definitionId: 'solar-panel-standard' });
     construction.cycleSymmetry();
@@ -536,7 +536,7 @@ export function register(): void {
   test('ship construction: 付け替えるは選択中の先端部を手持ちにし、置くと付け替わって手が空になる', () => {
     const ship = new ConstructionTestShip();
     const queue = new CommandQueue();
-    const { construction } = createConstruction(ship, queue, { blueprints: [], canRecord: false });
+    const { construction } = createConstruction(ship, queue, { blueprints: [] });
     construction.start(ship as unknown as ModularShip, 'dock-left');
     construction.select('rcs-tank');
 
@@ -563,7 +563,7 @@ export function register(): void {
   test('ship construction: 選択が無い付け替えは拒否して手持ちを変えない', () => {
     const ship = new ConstructionTestShip();
     const queue = new CommandQueue();
-    const { construction } = createConstruction(ship, queue, { blueprints: [], canRecord: false });
+    const { construction } = createConstruction(ship, queue, { blueprints: [] });
     construction.start(ship as unknown as ModularShip, 'dock-left');
 
     construction.holdSelectedPiece();

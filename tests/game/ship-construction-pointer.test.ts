@@ -329,7 +329,7 @@ export function register(): void {
       { current: { forceCurrent: false }, setForceCurrent: () => {} } as unknown as DisplayWindowManager,
       { hint: () => {} } as unknown as Notifier,
       { request: () => {}, close: () => {} },
-      { blueprints: [], canRecord: false },
+      { blueprints: [] },
       { record: () => {} } as unknown as RunEventSink,
     );
     construction.start(ship as unknown as ModularShip, 'dock-left');
