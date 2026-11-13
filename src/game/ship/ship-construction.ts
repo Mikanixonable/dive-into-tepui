@@ -330,6 +330,12 @@ export class ShipConstruction implements OverlayHandle {
     this.syncPanel();
   }
 
+  // 理由を出してから手に持ったものを手放す。
+  public releaseWithReason(reason: string): void {
+    this.deny(reason);
+    this.release();
+  }
+
   // 配置済みモジュールを選ぶ。起点ドックは選べない。
   public select(moduleId: string | null): void {
     const session = this.current;

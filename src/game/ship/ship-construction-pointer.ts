@@ -1,6 +1,7 @@
 // 建造中のポインタとショートカットキーの解釈: ホバーが取り付け先を指し、クリックで配置・
 // 選択、選択中モジュールの上から始まったドラッグで先端部を掴んで付け替える。
-// 指す先の判定は候補の画面位置への距離、モジュールの選択は船体へのレイキャストで行う。
+// 指す先の判定は候補の画面位置への距離とポインタの下のモジュール、モジュールの選択は
+// 船体へのレイキャストで行う。
 import { type KeyBinding, KEY_MAPPING as K } from '../../input/key-mapping';
 import { screenProjection } from '../../math/projection';
 import type { Ray } from '../../math/ray';
@@ -10,10 +11,11 @@ import type { Input, PointerPoint, PointerPress } from '../../input/input';
 import type { Viewport } from '../../render/viewport';
 import type { CameraSystem } from '../camera/camera-system';
 import {
-  CONSTRUCTION_TARGET_PICK_RADIUS_SQ, pickConstructionTargetAtScreenPoint,
+  CONSTRUCTION_TARGET_PICK_RADIUS_SQ, constructionTargetModuleIds, pickConstructionTarget,
   type ConstructionTargetGuide,
 } from './ship-construction-candidates';
 import { constructionTargetId } from './ship-construction-rules';
+import type { ShipAssembly } from './ship-assembly';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import type { ConstructionTrial } from './ship-construction-preview';
 import type { ConstructionCardDrag, ConstructionHeld } from './ship-construction-types';
@@ -36,8 +38,9 @@ const CATEGORY_KEYS: readonly KeyBinding[] = [
   K.constructionCategory4, K.constructionCategory5, K.constructionCategory6,
 ];
 
-// 入力の解釈が船体へ求める面。配置済みモジュールの当たり判定だけを使う。
+// 入力の解釈が船体へ求める面。接続の構造と配置済みモジュールの当たり判定だけを使う。
 interface ConstructionPointerShip {
+  readonly assembly: ShipAssembly;
   readonly motion: {
     readonly state: { readonly r: Vec3 };
     raycastCompound(ray: Ray, pos: Vec3): CompoundCylinderRayHit | null;
@@ -60,6 +63,8 @@ export interface ConstructionPointerHost {
   moveSelectedTo(targetId: string): void;
   hold(held: ConstructionHeld): void;
   release(): void;
+  // 理由を出してから手に持ったものを手放す。
+  releaseWithReason(reason: string): void;
   select(moduleId: string | null): void;
   // moduleId を根とする先端部が撤去・付け替え・回転を受け付けるか。
   canEditModule(moduleId: string): boolean;
@@ -130,32 +135,29 @@ export class ShipConstructionPointer {
       : input.pointerPoint;
     if (point !== null) {
       const canPoint = host.held !== null || host.selectedModuleId !== null;
-      host.setPointedTarget(canPoint ? this.pickTarget(camera, viewport, point) : null);
+      host.setPointedTarget(canPoint ? this.pickTarget(ship, camera, viewport, point) : null);
     }
     // 掴んだ先端部を離す: 有効な取り付け先なら置き、それ以外なら手放して選択へ戻る。
     if (drag !== null && drag.released !== null) {
-      this.dropHeld(camera, viewport, drag.released);
+      this.dropHeld(ship, camera, viewport, drag.released);
       this.grabbedPressId = null;
     }
     // カタログのカードのドラッグを離した位置で確定する。
     if (cardDrag !== null && cardDrag.released !== null) {
-      this.dropHeld(camera, viewport, input.canvasPoint(cardDrag.released.x, cardDrag.released.y));
+      this.dropHeld(ship, camera, viewport, input.canvasPoint(cardDrag.released.x, cardDrag.released.y));
       host.clearCardDrag();
     }
-    // クリック: 手に持っている間は指した取り付け先へ置き、それ以外はモジュールを選ぶ。
+    // クリック: 手に持っている間は押した位置の候補を選び直して置き、候補が無ければ
+    // 何もしない。それ以外は当たったモジュールを選ぶ。
     input.takeClicks(click => {
-      if (host.held !== null && host.pointedTargetId !== null) {
+      if (host.held !== null) {
+        const targetId = this.pickTarget(ship, camera, viewport, click);
+        if (targetId === null) return true;
+        host.setPointedTarget(targetId);
         host.placeAt();
         return true;
       }
-      const moduleId = this.hitModuleId(ship, camera, viewport, click);
-      if (moduleId === null) {
-        host.select(null);
-      } else {
-        host.select(moduleId);
-        // 選べたときだけ手に持ったものを手放す(起点ドックは選べない)。
-        if (host.selectedModuleId === moduleId) host.release();
-      }
+      host.select(this.hitModuleId(ship, camera, viewport, click));
       return true;
     });
     // 右クリック(動かず離した)・長押し: 手に持ったものを放し、選択を解く。
@@ -244,22 +246,42 @@ export class ShipConstructionPointer {
     return true;
   }
 
-  // 離した位置の取り付け先が有効なら手持ちを置き、無効か空白なら手放す。
-  private dropHeld(camera: CameraSystem, viewport: Viewport, point: PointerPoint): void {
+  // 離した位置の取り付け先が有効なら手持ちを置き、候補があって置けないなら理由を
+  // 出して手放す。候補の無い場所ではそのまま手放す。
+  private dropHeld(
+    ship: ConstructionPointerShip, camera: CameraSystem, viewport: Viewport, point: PointerPoint,
+  ): void {
     const host = this.host;
-    const targetId = this.pickTarget(camera, viewport, point);
+    const targetId = this.pickTarget(ship, camera, viewport, point);
     host.setPointedTarget(targetId);
-    if (targetId !== null && host.pointedTrial()?.valid === true) host.placeAt();
-    else host.release();
+    const trial = targetId === null ? null : host.pointedTrial();
+    if (trial?.valid === true) {
+      host.placeAt();
+      return;
+    }
+    if (targetId !== null) {
+      host.releaseWithReason(trial?.reason ?? 'ここには置けません');
+      return;
+    }
+    host.release();
   }
 
-  // 画面位置 point [px] に最も近い取り付け先の id。半径内に候補が無ければ null。
-  private pickTarget(camera: CameraSystem, viewport: Viewport, point: PointerPoint): string | null {
+  // 画面位置 point [px] に最も近い取り付け先の id。ノードの半径内に候補が無ければ、
+  // ポインタの下のモジュールに属する候補のうち最も近いものを選ぶ。
+  private pickTarget(
+    ship: ConstructionPointerShip, camera: CameraSystem, viewport: Viewport, point: PointerPoint,
+  ): string | null {
     const project = screenProjection(camera.activeViewpoint, viewport.width, viewport.height);
     const candidates = this.host.targetGuides().map(guide => ({
-      id: constructionTargetId(guide.target), ...project(guide.guideEci),
+      id: constructionTargetId(guide.target),
+      // 置けない候補は所属を空にし、モジュール経由の吸着から外す(掴んだ先端部自身の上で離すと拒否になるため)。
+      moduleIds: guide.placement.valid ? constructionTargetModuleIds(ship.assembly, guide.target) : [],
+      ...project(guide.guideEci),
     }));
-    return pickConstructionTargetAtScreenPoint(candidates, point, CONSTRUCTION_TARGET_PICK_RADIUS_SQ);
+    return pickConstructionTarget(
+      candidates, point, CONSTRUCTION_TARGET_PICK_RADIUS_SQ,
+      () => this.hitModuleId(ship, camera, viewport, point),
+    );
   }
 
   // 画面位置を通る視線が当たるモジュールの id。船体の外なら null。
