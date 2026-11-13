@@ -46,6 +46,13 @@ export function axialMountTransform(
   };
 }
 
+// 向きを、その向きで取り付けたときの回転へ写す。axialMountTransform の回転部分と同じ組み方で、
+// 親の前端へ付いたものとして扱う — 取り付け先が決まっていない手持ちの姿を組むときに使う。
+export function orientationRotation(orientation: ModuleOrientation): Quat {
+  const flip = orientation.face === 'front' ? Y_FLIP : Q_IDENTITY;
+  return qMul(flip, rollRotation(orientation.roll));
+}
+
 // 剛体変換の逆変換。
 export function inverseTransform(transform: ModuleTransform): ModuleTransform {
   const rotation = qInvert(transform.rotation);

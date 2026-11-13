@@ -26,7 +26,7 @@ import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../view/view-mode';
-import { Button, type CollapseToggleLabels } from '../../hud/widgets';
+import type { CollapseToggleLabels } from '../../hud/widgets';
 import type { PanelCollapse } from './panel-shell';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
@@ -44,7 +44,6 @@ interface HudDomRefs {
   readonly combatRoot: HudViewRoot;
   readonly mapRoot: HudViewRoot;
   readonly helpPanel: HelpPanel;
-  readonly constructionBadge: Button;
   readonly els: HudEls;
 }
 
@@ -153,7 +152,9 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
     </div>
     <div class="vessel-deploy-controls" data-id="vessel-deploy-controls" role="group" aria-label="太陽電池パドル・放熱板の収納展開"></div>
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
-    <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作"></div>`;
+    <div class="panel-actions" data-id="status-actions" role="group" aria-label="機体の主要操作">
+      <div class="vessel-construction hidden" data-id="vessel-construction-row"></div>
+    </div>`;
 }
 
 // 常設 ORBIT パネルを左レールへ組む。軌道は map の主情報なので、compact 以外では開いて始める。
@@ -229,13 +230,11 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
   construction.dataset['mobilePane'] = 'catalog';
   construction.setAttribute('aria-label', '船体建造');
 
-  // 部品選択・配置地点・建造結果を一画面で追えるよう、3区画の役割を保つ。
+  // カタログ(左)・手元バー(中央下)・船体の状態(右)の3区画。中央の残りは3D船体のため意図的に空ける。
   construction.innerHTML = `
     <nav class="construction-mobile-tabs" data-id="construction-mobile-tabs" aria-label="建造表示切替"></nav>
     <aside class="construction-pane construction-pane-left ui-surface-focus" aria-label="モジュールカタログ">
       <header class="construction-target">
-        <span class="ui-section-code">BLD</span>
-        <span class="ui-data-context">CONSTRUCTION WORKSPACE</span>
         <strong data-id="construction-ship-name">—</strong>
       </header>
       <section class="construction-catalog" aria-label="モジュールカタログ">
@@ -244,55 +243,54 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
       </section>
     </aside>
 
-    <div class="construction-center" aria-hidden="true">
-      <span class="ui-section-code">ASM</span>
-      <span class="ui-data-context">3D ASSEMBLY / SELECT A MOUNT POINT</span>
-      <span class="construction-center-note">カードを押して手に取る · ドラッグして候補へ置く</span>
+    <div class="construction-hand ui-surface-focus" data-id="construction-hand" aria-label="手元">
+      <div class="construction-hand-status">
+        <span class="construction-hand-state" data-id="construction-hand-state">—</span>
+        <strong class="construction-hand-name" data-id="construction-hand-name">—</strong>
+        <output class="construction-hand-orientation" data-id="construction-hand-orientation"></output>
+      </div>
+      <div class="construction-button-row" data-id="construction-hand-actions" role="group" aria-label="手元の操作">
+        <div class="construction-hand-blueprint" data-id="construction-hand-blueprint"></div>
+      </div>
+      <p class="construction-hand-reason ui-status-note ui-status-note--warning hidden" data-id="construction-hand-reason"></p>
+      <p class="construction-note hidden" data-id="construction-hand-note"></p>
     </div>
 
-    <aside class="construction-pane construction-pane-right ui-surface-focus" aria-label="建造結果">
-      <section class="construction-held" aria-label="手持ち">
-        <div class="construction-section-head"><span class="ui-data-label">手持ち</span><strong data-id="construction-held-name">—</strong></div>
-        <div class="construction-held-row"><span>向き</span><output data-id="construction-held-orientation">—</output></div>
-        <div class="construction-held-row"><span>対称</span><output data-id="construction-held-symmetry">—</output></div>
-        <div class="construction-button-row" data-id="construction-held-actions" role="group" aria-label="手持ちの操作"></div>
+    <aside class="construction-pane construction-pane-right ui-surface-focus" aria-label="船体の状態">
+      <div class="construction-role-row">
+        <span class="ui-data-label">役割</span><output data-id="construction-role">物資</output>
+      </div>
+      <div class="construction-state-tabs" data-id="construction-state-tabs"></div>
+      <section class="construction-state-body" data-id="construction-state-performance" aria-label="性能">
+        <div class="construction-metrics" aria-label="船体全体の性能">
+          <div class="construction-metric">
+            <span class="ui-data-label">モジュール数</span><output data-id="construction-count">0</output>
+          </div>
+          <div class="construction-metric">
+            <span class="ui-data-label">質量</span><output data-id="construction-mass">0 kg</output>
+            <small class="ui-delta" data-id="construction-mass-preview"></small>
+          </div>
+          <div class="construction-metric construction-hp-row">
+            <span class="ui-data-label">HP</span><div data-id="construction-hp-meter"></div>
+            <output data-id="construction-hp">0 / 0</output><small class="ui-delta" data-id="construction-hp-preview"></small>
+          </div>
+          <div class="construction-metric"><span class="ui-data-label">Δv(満載)</span><output data-id="construction-delta-v">—</output><small class="ui-delta" data-id="construction-delta-v-preview"></small></div>
+          <div class="construction-metric"><span class="ui-data-label">加速度(満載)</span><output data-id="construction-acceleration">—</output><small class="ui-delta" data-id="construction-acceleration-preview"></small></div>
+          <div class="construction-metric"><span class="ui-data-label">推力</span><output data-id="construction-thrust">0</output><small class="ui-delta" data-id="construction-thrust-preview"></small></div>
+          <div class="construction-metric"><span class="ui-data-label">主燃料容量</span><output data-id="construction-main-fuel">0</output><small class="ui-delta" data-id="construction-main-fuel-preview"></small></div>
+          <div class="construction-metric"><span class="ui-data-label">RCS 燃料容量</span><output data-id="construction-rcs-fuel">0</output><small class="ui-delta" data-id="construction-rcs-fuel-preview"></small></div>
+          <div class="construction-metric"><span class="ui-data-label">発電</span><output data-id="construction-power">0</output><small class="ui-delta" data-id="construction-power-preview"></small></div>
+          <div class="construction-metric"><span class="ui-data-label">放熱面積</span><output data-id="construction-radiation">0</output><small class="ui-delta" data-id="construction-radiation-preview"></small></div>
+        </div>
       </section>
-      <section class="construction-selection" aria-label="選択中の部品">
-        <div class="construction-section-head"><span class="ui-data-label">選択中</span><strong data-id="construction-selected-name">—</strong></div>
-        <div class="construction-button-row" data-id="construction-selection-actions" role="group" aria-label="選択中の部品の操作"></div>
-        <div class="construction-blueprint-form" data-id="construction-blueprint-form"></div>
-        <p class="construction-note hidden" data-id="construction-blueprint-note"></p>
-      </section>
-      <section class="construction-targets" aria-label="取り付け候補">
-        <div class="construction-section-head"><span class="ui-data-label">取り付け候補</span></div>
+      <section class="construction-state-body hidden" data-id="construction-state-targets" aria-label="取り付け候補">
         <div class="construction-slots" data-id="construction-slots" aria-label="接続候補"></div>
       </section>
-      <div class="construction-metrics" aria-label="船体全体の性能">
-        <div class="construction-metric">
-          <span class="ui-data-label">MODULES</span><output data-id="construction-count">0</output>
-        </div>
-        <div class="construction-metric">
-          <span class="ui-data-label">MASS</span><output data-id="construction-mass">0 kg</output>
-          <small class="ui-delta" data-id="construction-mass-preview"></small>
-        </div>
-        <div class="construction-metric construction-hp-row">
-          <span class="ui-data-label">HP</span><div data-id="construction-hp-meter"></div>
-          <output data-id="construction-hp">0 / 0</output><small class="ui-delta" data-id="construction-hp-preview"></small>
-        </div>
-        <div class="construction-metric"><span class="ui-data-label">THRUST</span><output data-id="construction-thrust">0</output><small class="ui-delta" data-id="construction-thrust-preview"></small></div>
-        <div class="construction-metric"><span class="ui-data-label">MAIN FUEL CAPACITY</span><output data-id="construction-main-fuel">0</output><small class="ui-delta" data-id="construction-main-fuel-preview"></small></div>
-        <div class="construction-metric"><span class="ui-data-label">RCS FUEL CAPACITY</span><output data-id="construction-rcs-fuel">0</output><small class="ui-delta" data-id="construction-rcs-fuel-preview"></small></div>
-        <div class="construction-metric"><span class="ui-data-label">POWER GENERATION</span><output data-id="construction-power">0</output><small class="ui-delta" data-id="construction-power-preview"></small></div>
-        <div class="construction-metric"><span class="ui-data-label">RADIATOR AREA</span><output data-id="construction-radiation">0</output><small class="ui-delta" data-id="construction-radiation-preview"></small></div>
-        <div class="construction-metric"><span class="ui-data-label">ROLE</span><output data-id="construction-role">物資</output></div>
-      </div>
-      <section class="construction-history" aria-label="操作履歴">
-        <div class="construction-section-head"><span class="ui-data-label">履歴</span></div>
+      <section class="construction-state-body hidden" data-id="construction-state-history" aria-label="操作履歴">
         <div class="construction-history-list" data-id="construction-history-list" aria-label="操作履歴の一覧"></div>
         <div class="construction-button-row" data-id="construction-history-actions" role="group" aria-label="取り消しとやり直し"></div>
       </section>
-      <p class="construction-warning ui-status-note ui-status-note--warning hidden" data-id="construction-warning"></p>
-      <div class="construction-actions" data-id="construction-actions" role="group" aria-label="船体建造操作"></div>
+      <div class="construction-close-actions" data-id="construction-close-actions" role="group" aria-label="建造の締めくくり"></div>
     </aside>`;
 }
 
@@ -416,25 +414,10 @@ function buildChaseReset(root: HTMLElement): void {
   });
 }
 
-// 右上の常設バッジ列(建造開始・ヘルプ)を組む。右レール収納トグルの左へ一列に並ぶ。
-// 建造バッジの押下は onConstructionStart へ委ね、表示は呼び出し側が毎フレーム切り替える。
-function buildChromeActions(
-  chrome: HTMLElement, helpPanel: HelpPanel, onConstructionStart: () => void,
-): Button {
+// 右上の常設バッジ列(ヘルプ)を組む。右レール収納トグルの左へ並ぶ。
+function buildChromeActions(chrome: HTMLElement, helpPanel: HelpPanel): void {
   const actions = createHudElement('div', 'hud-chrome-actions', chrome);
-  const badge = new Button(`建造 [${K.constructionStart.label}]`, onConstructionStart);
-  badge.element.id = 'hud-construction-badge';
-  badge.element.dataset.id = 'construction-badge';
-  badge.element.classList.add('ui-surface-quiet', 'hidden');
-  badge.element.setAttribute('aria-label', `建造を始める [${K.constructionStart.label}]`);
-  const code = document.createElement('span');
-  code.className = 'hud-mini-code';
-  code.setAttribute('aria-hidden', 'true');
-  code.textContent = 'BLD';
-  badge.element.prepend(code);
-  actions.appendChild(badge.element);
   buildHelpBadge(actions, helpPanel);
-  return badge;
 }
 
 // H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
@@ -484,10 +467,8 @@ function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRa
 }
 
 // HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
-// onConstructionStart は常設の建造バッジの押下先で、呼び出し側の状態を遅延参照する。
 export function buildHudDom(
   shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle,
-  onConstructionStart: () => void,
 ): HudDomRefs {
   injectStyle();
   startViewportTracking();
@@ -507,12 +488,12 @@ export function buildHudDom(
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
   buildTopBar(chrome);
   buildChaseReset(chrome);
-  const constructionBadge = buildChromeActions(chrome, helpPanel, onConstructionStart);
+  buildChromeActions(chrome, helpPanel);
   trackHudChromeInset(root, chrome);
 
   buildMapScale(mapRoot.element);
   createHudElement('div', 'hud-toast', layers.notify, 'ui-surface-focus');
 
   const els = new HudEls(root);
-  return { combatRoot, mapRoot, helpPanel, constructionBadge, els };
+  return { combatRoot, mapRoot, helpPanel, els };
 }

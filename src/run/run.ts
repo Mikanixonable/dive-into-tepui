@@ -49,7 +49,9 @@ export class Run implements SnapshotSource, PerfCountSource {
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
-    const game = await Game.create(stageClass, startEpoch, devices.scene, devices.hud, sections, progress);
+    const game = await Game.create(
+      stageClass, startEpoch, devices.scene, devices.hud, sections, blueprints, progress,
+    );
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
       blueprints, progressReader, progress,
@@ -72,7 +74,9 @@ export class Run implements SnapshotSource, PerfCountSource {
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
-    const game = await Game.deserialize(serialized, stageClass, devices.scene, devices.hud, sections, progress);
+    const game = await Game.deserialize(
+      serialized, stageClass, devices.scene, devices.hud, sections, blueprints, progress,
+    );
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
       blueprints, progressReader, progress,

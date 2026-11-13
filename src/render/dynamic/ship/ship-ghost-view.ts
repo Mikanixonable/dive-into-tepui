@@ -9,14 +9,18 @@ import type { ShipModuleModelFactory } from './ship-module-view';
 
 const VALID_COLOR = 0x53f089;
 const INVALID_COLOR = 0xff5b63;
+// 持ち運んでいるものの色。配置の可否が決まっていない姿なので、可否の色とは別の中間色にする。
+const CARRIED_COLOR = 0x9db8d8;
 const GHOST_OPACITY = 0.35;
 
-// 建造候補1つぶんの world transform と配置可否。
+// 建造候補1つぶんの world transform と配置可否。floating を立てると持ち運び中の姿として、
+// 可否の色の代わりに中間色で描く。
 export interface ShipGhostDisplay {
   readonly modelId: string;
   readonly position: Vec3;
   readonly rotation: Quat;
   readonly valid: boolean;
+  readonly floating?: boolean;
 }
 
 // 宣言1件が占有する表示単位。modelId が変わったときだけ model を差し替える。
@@ -60,7 +64,10 @@ export class ShipGhostView {
       slot.object.position.set(display.position.x, display.position.y, display.position.z);
       const q = qNormalize(display.rotation);
       slot.object.quaternion.set(q.x, q.y, q.z, q.w);
-      this.tint(slot, display.valid ? VALID_COLOR : INVALID_COLOR);
+      this.tint(
+        slot,
+        display.floating === true ? CARRIED_COLOR : display.valid ? VALID_COLOR : INVALID_COLOR,
+      );
       slot.object.userData.shipGhostModelId = display.modelId;
       slot.object.userData.shipGhostValid = display.valid;
     }
