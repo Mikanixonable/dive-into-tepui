@@ -148,12 +148,13 @@ export class LabView {
   // 起動時の描画品質設定。撮影はこれへ差分を重ねる。
   private readonly startupGraphics: GraphicsSettingsData;
 
-  // graphics は描く描画品質設定の器。
+  // graphics は描く描画品質設定の器。captureOnly は撮影専用(captureTarget へだけ描く)。
   private constructor(
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
     private readonly gpu: GpuTimings,
     private readonly graphics: StoredSetting<GraphicsSettingsData>,
+    private readonly captureOnly: boolean = false,
   ) {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
@@ -168,6 +169,7 @@ export class LabView {
   // 描き直す。
   public static async create(
     canvas: HTMLCanvasElement, graphics: StoredSetting<GraphicsSettingsData>,
+    options?: { readonly captureOnly?: boolean },
   ): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、深度の分解能と
     // 描画順の並べ替えが本番と別物になる。
@@ -181,7 +183,7 @@ export class LabView {
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, graphics.current, gpu);
-    return new LabView(renderer, pipeline, gpu, graphics);
+    return new LabView(renderer, pipeline, gpu, graphics, options?.captureOnly ?? false);
   }
 
   // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
@@ -343,11 +345,25 @@ export class LabView {
     ));
     const startedAt = performance.now();
     try {
-      this.pipeline.render(this.scene, camera, this.style);
+      if (this.captureOnly) this.renderToCaptureTarget(camera);
+      else this.pipeline.render(this.scene, camera, this.style);
     } finally {
       this.lastRenderCpuMs = performance.now() - startedAt;
       if (observedFrame) this.gpu.endObservedFrame();
       this.gpu.resolve();
+    }
+  }
+
+  // 撮影専用の描画。最終合成の出力先を captureTarget に替えて描く。
+  // ソフトウェア WebGPU では、キャンバスへの提示が共有イメージを作れず device を落とし、
+  // その後の読み出し(mapAsync)まで道連れにする。提示を避けると読み出しが生きる。
+  private renderToCaptureTarget(camera: THREE.Camera): void {
+    const previousOutput = this.renderer.getOutputRenderTarget();
+    try {
+      this.renderer.setOutputRenderTarget(this.captureTarget);
+      this.pipeline.render(this.scene, camera, this.style);
+    } finally {
+      this.renderer.setOutputRenderTarget(previousOutput);
     }
   }
 
@@ -576,14 +592,14 @@ export class LabView {
   }
 
   // いまのケースの部品と、地球を置くなら地球が揃い、絵として比べられる状態になったか。
-  private get ready(): boolean {
+  public get ready(): boolean {
     const built = this.current;
     if (built === null) return true;
     return (built.ready?.() ?? true) && (built.earth === undefined || this.earth.ready);
   }
 
   // ready が真になるまで、1 フレームずつ描いて待つ。上限を過ぎたらそのまま戻る。
-  private async waitUntilReady(): Promise<void> {
+  public async waitUntilReady(): Promise<void> {
     const deadline = performance.now() + READY_TIMEOUT_MS;
     while (!this.ready && performance.now() < deadline) {
       // **描かずに待っても進まない** — テクスチャの GPU 投入は 1 回の描画につき 1 枚しか進まない。
