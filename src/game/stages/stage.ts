@@ -351,6 +351,11 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     });
   }
 
+  // 交戦中の集団が 0 になった波間に、積まれた鹵獲を補給艇で届ける。既定では届けない(SPEC GAME.md 2.3)。
+  public onLull(): boolean {
+    return false;
+  }
+
   // ステータスパネルに表示する補助メッセージ。既定では非表示(null)。
   protected hudSubStatus(): string | null {
     return null;
