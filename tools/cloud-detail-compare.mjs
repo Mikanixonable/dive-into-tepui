@@ -22,7 +22,13 @@ import { centerCrop, linearLuminanceField } from './cloud-detail-field.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const renderLabDir = path.join(root, '.render-lab');
 const detailDir = path.join(root, '.cloud-detail');
-const shotsDir = path.join(detailDir, 'shots');
+// 撮影の組。既定は .cloud-detail/shots/。--shots <dir> で別の組(改修前の撮影など)を同じ物差しで採点する。
+const shotsArgIndex = process.argv.indexOf('--shots');
+if (shotsArgIndex >= 0 && process.argv[shotsArgIndex + 1] === undefined) throw new Error('usage: --shots <dir>');
+const shotsArgGiven = shotsArgIndex >= 0;
+const shotsDir = shotsArgGiven
+  ? path.resolve(root, process.argv[shotsArgIndex + 1])
+  : path.join(detailDir, 'shots');
 const compareDir = path.join(detailDir, 'compare');
 const historyDir = path.join(detailDir, 'history');
 const referenceManifestFile = path.join(detailDir, 'reference', 'manifest.json');
@@ -41,6 +47,44 @@ const MIN_ENVELOPE_WIDTH = 1e-6;
 // 距離の前後判定の横ばいの幅(相対)。計測は決定的だが、実行環境の浮動小数の揺れを
 // 悪化と誤判定しないための幅。
 const VERDICT_BAND = 0.05;
+// 雲場がほぼ空の撮影の水準。局所の起伏が 8 bit の 2 階調分(中間の明るさで約 0.005)に満たないと、尖度と変動係数は
+// 階調の刻みで決まり、実写と比べる相手がない。
+const MIN_STRUCTURE_CONTRAST = 0.005;
+// 判定から外す撮影。雲場がほぼ空で、局所コントラストが MIN_STRUCTURE_CONTRAST を下回るもの。距離・ばらつき・外れ値・
+// 周期性・帯のパワー・梯子の判定に入れず、報告には残す。組は雲場から決まるので、描画の状態によらず同じ組を外す
+// (描画ごとに外す組が変わると、平らな描画ほど判定が甘くなる)。組は 71f7696a1 の撮影の局所コントラストから取った。
+// 雲場の生成を変えたら、この組を取り直す。
+const EXCLUDED_NEAR_CLEAR_SHOTS = new Set([
+  'natl-front-0h-0.25km-both',
+  'natl-front-0h-0.25km-cirrus',
+  'natl-front-0h-0.25km-cumulus',
+  'natl-front-12h-0.25km-cumulus',
+  'natl-trade-0h-4km-cirrus',
+  'natl-trade-12h-0.25km-cumulus',
+  'natl-trade-12h-1km-cumulus',
+  'natl-trade-12h-4km-cumulus',
+  'natl-trade-6h-1km-cumulus',
+  'natl-trade-6h-4km-both',
+  'natl-trade-6h-4km-cirrus',
+  'natl-trade-6h-4km-cumulus',
+  'peru-sc-0h-0.25km-cumulus',
+  'peru-sc-12h-0.25km-cumulus',
+  'peru-sc-12h-4km-cumulus',
+  'peru-sc-6h-1km-cumulus',
+  'peru-sc-6h-4km-cumulus',
+  'sepac-open-0h-0.25km-both',
+  'sepac-open-0h-0.25km-cirrus',
+  'sepac-open-0h-0.25km-cumulus',
+  'sepac-open-0h-1km-cirrus',
+  'sepac-open-12h-0.25km-cumulus',
+  'sepac-open-12h-4km-cumulus',
+  'sepac-open-6h-1km-cumulus',
+  'sepac-open-6h-4km-cumulus',
+  'wpac-itcz-12h-0.25km-cumulus',
+  'wpac-itcz-6h-0.25km-cumulus',
+  'wpac-itcz-6h-1km-cumulus',
+  'wpac-itcz-6h-4km-cumulus'
+]);
 
 // 特徴量の定義。id の接頭語 → 家族・値の集め方・正規化前の領域。
 // scope 'band' は尺度の帯(オクターブ番号 j、帯 [2^j, 2^(j+1)] km)ごと、'scale' は
@@ -352,7 +396,7 @@ async function main() {
   }
   const taken = await shootMissing(shotInfos);
   console.log(`撮影: 全 ${shotInfos.length} 枚のうち ${taken} 枚を新たに撮った(既存は飛ばす)`);
-  writeFileSync(path.join(shotsDir, 'manifest.json'), `${JSON.stringify({
+  if (!shotsArgGiven) writeFileSync(path.join(shotsDir, 'manifest.json'), `${JSON.stringify({
     tool: 'cloud-detail-compare',
     generatedAt: new Date().toISOString(),
     gitHead: gitHead(root),
@@ -408,6 +452,15 @@ async function main() {
     if (shotIndex % 20 === 0) console.log(`shot 計測 ${shotIndex}/${shotInfos.length}`);
   }
   console.log(`撮影 ${shots.size} 枚を計測した`);
+  // 判定から外す撮影。局所コントラストが MIN_STRUCTURE_CONTRAST を下回るものは判定に入れない。
+  for (const shot of shots.values()) shot.judged = !EXCLUDED_NEAR_CLEAR_SHOTS.has(shot.name);
+  const judgedShots = [...shots.values()].filter((shot) => shot.judged);
+  const excludedShots = [...shots.values()].filter((shot) => !shot.judged).map((shot) => shot.name);
+  const flatButJudged = judgedShots.filter((shot) => shot.contrast < MIN_STRUCTURE_CONTRAST).map((shot) => shot.name);
+  console.log(`判定する撮影 ${judgedShots.length} 枚(雲場がほぼ空の ${excludedShots.length} 枚は判定から外す)`);
+  if (flatButJudged.length > 0) {
+    console.log(`注意: 局所コントラストが ${MIN_STRUCTURE_CONTRAST} 未満なのに判定へ残る撮影 ${flatButJudged.length} 枚(この描画では組と合わない)`);
+  }
 
   // --- 封筒: 同じ種類の場面の最小〜最大 + 幅の 10%。混合場面はどちらにも入れない ---
   const envelopes = { cumulus: newEnvelope(), cirrus: newEnvelope() };
@@ -459,7 +512,7 @@ async function main() {
   for (const kind of ['cumulus', 'cirrus', 'both']) {
     kindFamilySum.set(kind, new Map());
   }
-  for (const shot of shots.values()) {
+  for (const shot of judgedShots) {
     const baseKey = envelopeOfShot(shot);
     const categoryKey = shot.sceneCategory && baseKey !== 'union' ? `${shot.sceneCategory}|${baseKey}` : null;
     const useCategory = categoryKey !== null && envelopesByCategory.has(categoryKey);
@@ -488,7 +541,7 @@ async function main() {
         .filter((image) => referenceKinds.includes(image.kind) && image.kmPerPx === tier)
         .map((image) => image.contrast);
       const sceneMeans = new Map();
-      for (const shot of shots.values()) {
+      for (const shot of judgedShots) {
         if (shot.kind !== shotKind || shot.tierKmPerPx !== tier) continue;
         const list = sceneMeans.get(shot.scene) ?? [];
         list.push(shot.contrast);
@@ -531,7 +584,7 @@ async function main() {
 
   // --- 区分ごとの距離: 撮影の区分(熱帯・温帯・高緯度の海)ごとに家族の平均と index ---
   const categoryTable = new Map();
-  for (const shot of shots.values()) {
+  for (const shot of judgedShots) {
     if (!shot.distances || !shot.sceneCategory) continue;
     const perCategory = categoryTable.get(shot.sceneCategory) ?? new Map();
     categoryTable.set(shot.sceneCategory, perCategory);
@@ -557,7 +610,7 @@ async function main() {
   // --- 封筒から外れた特徴量の一覧(正規化距離の大きい順) ---
   console.log('\n=== 封筒から外れた特徴量(正規化距離の上位) ===');
   const offenders = [];
-  for (const shot of shots.values()) {
+  for (const shot of judgedShots) {
     for (const [id, distance] of Object.entries(shot.distances)) {
       if (distance > 0) offenders.push({ shot: shot.name, id, distance });
     }
@@ -566,14 +619,14 @@ async function main() {
   for (const offender of offenders.slice(0, 25)) {
     console.log(`${offender.distance.toFixed(2).padStart(7)}  ${offender.shot}  ${offender.id}`);
   }
-  console.log(`封筒外の特徴量: ${offenders.length}(判定した全特徴量は撮影 ${shots.size} 枚ぶん)`);
+  console.log(`封筒外の特徴量: ${offenders.length}(判定した全特徴量は撮影 ${judgedShots.length} 枚ぶん)`);
 
   // --- 周期性(積雲の撮影のピーク尺度と超過比) ---
   console.log('\n=== 周期性(冪乗則からの超過比とピーク尺度) ===');
   for (const kind of ['cumulus', 'cirrus']) {
     const peaks = new Map();
     const excesses = [];
-    for (const shot of shots.values()) {
+    for (const shot of judgedShots) {
       if (shot.kind !== kind) continue;
       const peak = shot.measured.periodicity.peakScaleKm;
       if (peak !== null) {
@@ -608,7 +661,7 @@ async function main() {
     let below = 0;
     let inside = 0;
     let above = 0;
-    for (const shot of shots.values()) {
+    for (const shot of judgedShots) {
       if (shot.kind !== 'cirrus') continue;
       const entry = shot.features.find((feature) => feature.id === id);
       if (entry === undefined) continue;
@@ -675,7 +728,7 @@ async function main() {
     const row = { bandKm: [2 ** band, 2 ** (band + 1)] };
     for (const [kind, key] of [['cumulus', 'cumulus'], ['cirrus', 'cirrus']]) {
       const generated = [];
-      for (const shot of shots.values()) {
+      for (const shot of judgedShots) {
         if (shot.kind !== kind) continue;
         const entry = shot.features.find((feature) => feature.id === id);
         if (entry !== undefined) generated.push(entry.value);
@@ -713,6 +766,7 @@ async function main() {
   console.log(`\n比較画像 ${compareCount} 枚を .cloud-detail/compare/ へ書いた(左=撮影・右=実写、同じ km/px)`);
 
   // --- レポート ---
+  const shotsOrigin = JSON.parse(readFileSync(path.join(shotsDir, 'manifest.json'), 'utf8'));
   const featureTableOf = (image) => Object.fromEntries(image.features.map((entry) => [entry.id, entry.value]));
   const envelopeTableOf = (envelope) => {
     const out = { band: {}, tier: {} };
@@ -734,6 +788,10 @@ async function main() {
       generatedAt: new Date().toISOString(),
       gitHead: gitHead(root),
       shots: shots.size,
+      judgedShots: judgedShots.length,
+      excludedShots,
+      minStructureContrast: MIN_STRUCTURE_CONTRAST,
+      shotsGitHead: shotsOrigin.gitHead ?? null,
       references: references.length,
       labHistory: labPreviousName ?? null,
     },
