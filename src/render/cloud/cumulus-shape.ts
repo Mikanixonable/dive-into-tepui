@@ -35,3 +35,15 @@ export const CUMULUS_DITHER_KNOB: {
 // 細かく、かつ低軌道から見下ろして解像できる大きさ(高度 900km 以下で全振幅)に取る。これより
 // 細かくすると、実際の積雲の塊には近づく代わりに軌道上のどの構図でも 1 画素を切って消える。
 export const CUMULUS_GRAIN_SIZE = 6000;
+
+// 積雲の粒のオクターブ表: 1 辺 [m] と重み。6 km の 1 段だけだった粒を、対流の 48 km から
+// 6 km のあいだを埋める 24 km・12 km の段と重ねる。重みは、場の天気による掛け率
+// (0.4〜1.0) で弱められたあとの効き目で決める — 細かい段は 1 段のときの
+// 強さをほぼ保ち (2〜20 km 帯の電力が落ちない)、中規模の段はその半分ほどの効き目で
+// 20〜200 km 帯へ電力を足す。並びは粗い段から細かい段へ — 呼び出し側はこの並びで
+// 段ごとの振幅を渡す。
+export const CUMULUS_GRAIN_OCTAVES: readonly { readonly sizeM: number; readonly weight: number }[] = [
+  { sizeM: 24000, weight: 0.8 },
+  { sizeM: 12000, weight: 0.8 },
+  { sizeM: 6000, weight: 1.3 },
+];
