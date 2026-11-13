@@ -7,11 +7,12 @@ import { Stage, type GamePhase } from '../../src/game/stages/stage';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
 import { Logistics } from '../../src/game/stages/stage-utils/logistics';
 import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
-import { isAmmoPickup } from '../../src/game/dynamic/dynamic-entity/pickup';
+import { AmmoPickup, isAmmoPickup, type SerializedAmmoPickup } from '../../src/game/dynamic/dynamic-entity/pickup';
 import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry, SpawnRecord } from '../../src/game/dynamic/entity-registry';
 import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
 import type { Enemy } from '../../src/game/dynamic/dynamic-entity/enemy';
+import type { FormationRole } from '../../src/game/dynamic/dynamic-entity/entity-kind';
 import type { ModularShip } from '../../src/game/ship/modular-ship';
 import type { SimSpeedManager } from '../../src/game/dynamic/sim-speed-manager';
 import type { RunEventBody } from '../../src/game/run-events';
@@ -67,9 +68,9 @@ function bareStage(
   return { stage, logistics };
 }
 
-// 撃破記録が読む面(表示名と最後の運動状態)だけを持つ敵機の代役。
-function enemyAt(state: KinematicState): Enemy {
-  return { name: '敵機', motion: { state } } as unknown as Enemy;
+// 撃破記録が読む面(表示名・最後の運動状態・陣形の役割)だけを持つ敵機の代役。
+function enemyAt(state: KinematicState, formationRole: FormationRole | null = null): Enemy {
+  return { name: '敵機', motion: { state }, formationRole } as unknown as Enemy;
 }
 
 export function register(): void {
@@ -133,7 +134,7 @@ export function register(): void {
     const system = new TestDynamicSystem();
     const { logistics } = bareStage(system);
     const dropState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0));
-    logistics.dropAt(dropState, null);
+    logistics.dropAt(dropState, null, 6);
 
     let pickedMags = 0;
     const player = {
@@ -148,5 +149,38 @@ export function register(): void {
     assert.equal(pickups.length, 1);
     assert.equal(pickups[0]?.motion.alive, false);
     assert.equal(pickedMags, 6);
+  });
+
+  test('撃破ドロップ: 落とした敵の陣形での役割でマガジン数が決まり、取り込むとその数が増える', () => {
+    const cases: readonly (readonly [FormationRole | null, number])[] = [
+      ['shield', 6], ['attacker', 4], ['energy', 4], [null, 2],
+    ];
+    for (const [role, mags] of cases) {
+      const system = new TestDynamicSystem();
+      const { stage, logistics } = bareStage(system);
+      const enemyState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0));
+      stage.recordEnemyDeath(enemyAt(enemyState, role), 0, 'killed');
+      assert.equal(system.all().filter(isAmmoPickup)[0]?.mags, mags);
+
+      let pickedMags = 0;
+      const player = {
+        motion: { state: kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0)) },
+        onPickup: (picked: number): void => { pickedMags += picked; },
+      } as unknown as ModularShip;
+      logistics.updateLogistics(0, player, { canResupplyAmmo: false } as unknown as SimSpeedManager);
+      assert.equal(pickedMags, mags);
+    }
+  });
+
+  test('補給の直列化はマガジン数を保ち、記録に無ければ 6 で読む', () => {
+    const system = new TestDynamicSystem();
+    const scene = new THREE.Scene();
+    const state = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0));
+    const pickup = AmmoPickup.create({ state }, scene, system.idAllocators, 4);
+    assert.equal(AmmoPickup.deserialize(pickup.serialize(), system, scene).mags, 4);
+
+    // マガジン数の項目が無い旧い記録は、既定の 6 で読む。
+    const legacy = { ...pickup.serialize(), mags: undefined } as SerializedAmmoPickup;
+    assert.equal(AmmoPickup.deserialize(legacy, system, scene).mags, 6);
   });
 }
