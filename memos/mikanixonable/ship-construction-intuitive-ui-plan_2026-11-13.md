@@ -3,7 +3,7 @@
 作成日: 2026-11-13  
 コードのスナップショット: `1992fc17b`(本文の行番号はこの時点)  
 作業ブランチ(予定): `feat/ship-construction-intuitive-ui`  
-状態: 実施中。手順 1〜5(仕様、表示モデルの分離、指し方と置き方、3D 上の手がかり、画面の組み直し)は済み。次は手順 6。目視確認(各画面幅での手元バー、ノードのラベル、写実/模式図)とフレーム時間の実測は未実施 — 手順 8 で行う。
+状態: 実施中。手順 1〜6 は済み。次は手順 7。目視確認(各画面幅での手元バー、ノードのラベル、Δv と差分の表示、写実/模式図)とフレーム時間の実測は未実施 — 手順 8 で行う。
 
 ---
 
@@ -157,35 +157,6 @@
   ウィジェット側に口を足すか、キーキャップを外へ出すかを決める。
 
 ## 手順
-
-### 手順 6. 性能を「どれだけ動けるか」まで読めるようにする
-
-#### 目的
-
-K7・K8。Δv と加速度を足し、差分を符号付きの中立な表記にする。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/ship/ship-construction-types.ts`(`ConstructionCapabilities` / `ConstructionPreview`) | Δv [m/s] と加速度 [m/s²] を足す |
-| `src/game/ship/ship-construction-panel-model.ts` | 集計値から Δv と加速度を求める関数を置く。Δv は `deltaVBudget(effectiveExhaustVelocity(推力, 消費率 × 単位あたり質量), 満載質量, 主燃料の満載質量)`、加速度は 推力 ÷ 満載質量。消費率は船体の集計(`src/game/ship/modular-ship.ts:139` の `totalFuelConsumptionRate` と同じ求め方)を、試し置きの写しにも適用できる形で引く。推力が 0 なら Δv・加速度とも「—」 |
-| `src/game/ship/ship-assembly-types.ts:40-`(`ShipAssemblyTotals`)と集計の実装(`src/game/ship/` の `shipAssemblyTotals`) | 主推進の燃料消費率と主燃料の満載質量が集計に無ければ足す。既にある値(`maxMainFuel`)は使い回す |
-| `src/game/hud/hud-root.ts`(性能の区画) | Δv と加速度の行を、質量・HP の次へ足す |
-| `src/game/hud/panels/ship-construction-panel.ts:312-321`(`syncPreview`) | 表記を「→ 変化後 (±差)」にし、`data-delta` を書かない |
-| `src/game/hud/panels/ship-construction-format.ts` | 単位 `m/s`・`m/s²` を足す |
-| `src/game/hud/style/ship-construction-style.ts` | `.ui-delta[data-delta="up"]`・`[data-delta="down"]` の2行を消す |
-| `tests/game/ship-construction-panel-model.test.ts`(新規) | ①推力の無い船体で Δv が出ない ②タンクを足すと Δv が増え加速度が減る ③同じ船体で、航法の計画が出す Δv(`src/game/navigation/navigation-command.ts:102-103` の式)と一致する |
-
-#### 達成条件と検証
-
-- `npm run typecheck`、`npm run test:game` が通る。新しいテスト3件が通る。
-- `grep -n "data-delta" src/` が 0 件。
-- `npm run dev` で確かめる: 推進器の無い船体では Δv が「—」。推進器を手に取って候補を指すと、Δv と加速度の横に
-  「→ 値 (+差)」が中立の文字色で出る。
-- commit: `feat(ship): 建造の性能に Δv と加速度を足し、差分を符号で示す`
-
----
 
 ### 手順 7. `[F]` を選択中のモジュールへ寄せる
 
