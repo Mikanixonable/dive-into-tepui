@@ -106,6 +106,8 @@ export class ShipConstruction implements OverlayHandle {
   private orientation: ModuleOrientation = { roll: 0, face: 'back' };
   private symmetry: ConstructionSymmetry = 1;
   private pointedId: string | null = null;
+  // ポインタの下にあるモジュール。
+  private hoveredId: string | null = null;
   // カタログのカードから持ち上げている最中のドラッグ(R5-4 の操作途中の状態)。
   private cardDragValue: ConstructionCardDrag | null = null;
   private previousForceCurrent = false;
@@ -179,9 +181,8 @@ export class ShipConstruction implements OverlayHandle {
   public get anchorId(): string | null { return this.current?.anchorId ?? null; }
   public get held(): ConstructionHeld | null { return this.heldValue; }
   public get selectedModuleId(): string | null { return this.selectedId; }
-  public get currentOrientation(): ModuleOrientation { return this.orientation; }
-  public get symmetryCount(): ConstructionSymmetry { return this.symmetry; }
   public get pointedTargetId(): string | null { return this.pointedId; }
+  public get hoveredModuleId(): string | null { return this.hoveredId; }
   public get lastOperation(): ConstructionOperationRecord | null { return this.operation; }
   public get lastDenied(): ConstructionDeniedRecord | null { return this.denied; }
 
@@ -273,6 +274,7 @@ export class ShipConstruction implements OverlayHandle {
     this.orientation = { roll: 0, face: 'back' };
     this.symmetry = 1;
     this.pointedId = null;
+    this.hoveredId = null;
     this.cardDragValue = null;
     this.trialCache = null;
     // 建造モードの入力と表示時刻の境界を開く。
@@ -294,6 +296,7 @@ export class ShipConstruction implements OverlayHandle {
     this.heldBlueprintId = null;
     this.selectedId = null;
     this.pointedId = null;
+    this.hoveredId = null;
     this.cardDragValue = null;
     this.trialCache = null;
     this.overlayManager.close('ship-construction-mode');
@@ -345,6 +348,11 @@ export class ShipConstruction implements OverlayHandle {
     if (session.ship.assembly.module(moduleId) === null) { this.deny('その部品は選べません'); return; }
     this.selectedId = moduleId;
     this.syncPanel();
+  }
+
+  // ポインタの下にあるモジュールを記録する。
+  public setHoveredModule(moduleId: string | null): void {
+    this.hoveredId = moduleId;
   }
 
   // 指している取り付け先を変える。列挙に無い id は指せない。
@@ -789,6 +797,9 @@ export class ShipConstruction implements OverlayHandle {
       this.heldValue = null;
     }
     if (this.pointedId !== null && this.pointedTarget() === null) this.pointedId = null;
+    if (this.hoveredId !== null && session.ship.assembly.module(this.hoveredId) === null) {
+      this.hoveredId = null;
+    }
   }
 
   // 配置済みモジュールの根元の接続から、いまの向きを読み戻す。読めなければ null。

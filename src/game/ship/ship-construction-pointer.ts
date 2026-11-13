@@ -59,6 +59,8 @@ export interface ConstructionPointerHost {
   // 指している取り付け先へ手持ちを置いた結果の試し置き。
   pointedTrial(): ConstructionTrial | null;
   setPointedTarget(targetId: string | null): void;
+  // ポインタの下にあるモジュールを記録する。タッチ環境や船体の外では null。
+  setHoveredModule(moduleId: string | null): void;
   placeAt(targetId?: string): void;
   moveSelectedTo(targetId: string): void;
   hold(held: ConstructionHeld): void;
@@ -137,6 +139,13 @@ export class ShipConstructionPointer {
       const canPoint = host.held !== null || host.selectedModuleId !== null;
       host.setPointedTarget(canPoint ? this.pickTarget(ship, camera, viewport, point) : null);
     }
+    // ポインタの下のモジュールをホバーとして追う。手持ち・ドラッグの間は空を記録する。
+    const hovering = host.held === null && drag === null && cardDrag === null;
+    host.setHoveredModule(
+      hovering && input.pointerPoint !== null
+        ? this.hitModuleId(ship, camera, viewport, input.pointerPoint)
+        : null,
+    );
     // 掴んだ先端部を離す: 有効な取り付け先なら置き、それ以外なら手放して選択へ戻る。
     if (drag !== null && drag.released !== null) {
       this.dropHeld(ship, camera, viewport, drag.released);
