@@ -230,7 +230,8 @@ export function register(): void {
       sources, 0, camera,
       withGraphicsOption(DEFAULT_GRAPHICS, 'cumulusDetail', CUMULUS_DETAIL.off), null, v3(1, 0, 0));
     assert.ok(targets.cloudCasters[0] !== null, '巻雲だけの空で影の源が切られた');
-    assert.deepEqual(targets.cloudKinds[0], { cumulus: false, cirrus: true }, '種類ごとの有無が違う');
+    const kinds = targets.cloudKinds[0]!;
+    assert.deepEqual({ cumulus: kinds.cumulus, cirrus: kinds.cirrus }, { cumulus: false, cirrus: true }, '種類ごとの有無が違う');
 
     // 「雲の影」を切れば、源があっても書き込まれない。
     illumination.sync(
