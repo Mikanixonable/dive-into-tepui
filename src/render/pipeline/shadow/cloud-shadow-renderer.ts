@@ -1,14 +1,18 @@
-// 積雲の殻が落とす影。描画座標の点へ恒星の直射光がどれだけ届くかを、雲の層を抜ける光路の
+// 積雲の柱と巻雲の層が落とす影。描画座標の点へ恒星の直射光がどれだけ届くかを、雲の層を抜ける光路の
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select,
+  Fn, If, Loop, abs, clamp, dot, exp, float, greaterThan, length, max, min, normalize, select,
   sqrt, uniform, vec4,
 } from 'three/tsl';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
+import {
+  cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+} from '../../cloud/cloud-kind-node';
+import { columnOpticalDepthFromOpacityNode } from '../../cloud/cloud-optics-node';
 import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
@@ -32,6 +36,9 @@ const MAX_LIGHT_PATH = 3e5;
 // 光路 1 歩が代表する幅を、場のぼかしへ何倍で写すか。**等倍では足りない** — 隣り合うタップの
 // 覆う範囲が接するだけなので、あいだに影の抜けた縞が残る。
 const STEP_BLUR = 2;
+// 巻雲の層を斜めに抜ける光路の伸びへ張る上限。恒星が地平線へ寄ると 1/cos は発散するので、
+// 層の厚みぶんの弦を通る程度で頭打ちにする。
+const CIRRUS_MAX_SLANT = 20;
 
 export class CloudShadowRenderer {
   private readonly center: Vec3Uniform;
@@ -72,7 +79,8 @@ export class CloudShadowRenderer {
   public casts(): boolean { return this.active.value > 0; }
 
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
-  // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
+  // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。巻雲はその場の
+  // 雲頂高度の薄い層として、光路が横切る所で柱と同じ減衰の規則で足す。
   //
   // 柱の光学的厚みも覆いの形も殻が雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、
   // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配分するので、柱を 1 本抜ける
@@ -117,13 +125,22 @@ export class CloudShadowRenderer {
           If(greaterThan(grainAmplitude, 0), () => {
             grain.assign(this.shape.grainAt(up, grainAmplitude));
           });
-          const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
+          const cloudTop = this.shape.cloudTop(
+            cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
-          const columnDepth = this.shape.columnOpticalDepth(this.shape.opaqueFraction(cloud.coverage, grain));
+          // 柱の光学的厚みは、ディザを掛けた不透明度から τ へ戻して引く。
+          const columnDepth = columnOpticalDepthFromOpacityNode(
+            this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), grain));
           // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
           opticalDepth.addAssign(columnDepth.mul(rise).mul(inside).div(max(cloudTop, 1)));
+          // 巻雲は、その場の量が雲頂高度へ写る薄い層。高度帯がその高さを跨ぐタップへ三角に
+          // 分けて合計 1 回ぶんの横断になり、斜めの光路ぶん(stepLength/rise)伸ばした τ を足す。
+          const cirrusCrossing = max(
+            float(1).sub(abs(altitude.sub(cirrusTopAltitudeNode(cloud.cirrus))).div(max(rise, 1))), 0);
+          opticalDepth.addAssign(cirrusColumnOpticalDepthNode(cloud.cirrus)
+            .mul(cirrusCrossing).mul(min(stepLength.div(max(rise, 1)), CIRRUS_MAX_SLANT)));
         });
         transmittance.assign(exp(opticalDepth.negate()));
       });
@@ -151,7 +168,8 @@ export class CloudShadowRenderer {
   private receiverFloorAltitude(offset: Vec3Node, bodyRadius: FloatNode): FloatNode {
     const radius = max(length(offset), 1e-6);
     const altitude = max(radius.sub(1), 0).mul(bodyRadius);
-    const top = this.fieldAt(offset.div(radius)).cloudTop.div(CLOUD_TOP_SPAN).mul(this.topAltitude);
+    const top = cumulusTopAltitudeNode(this.fieldAt(offset.div(radius)).cumulus)
+      .div(CLOUD_TOP_SPAN).mul(this.topAltitude);
     const uncertainty = this.topAltitude.mul(CloudShapeEvaluator.cloudTopUncertainty);
     return select(greaterThan(altitude, top.sub(uncertainty)), top, float(0));
   }
