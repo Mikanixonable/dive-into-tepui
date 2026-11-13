@@ -193,7 +193,10 @@ function constructionRows(): readonly HelpRow[] {
       'カテゴリ', 'カタログのカテゴリ(指令・燃料・推進・戦闘・設備・設計図)を選ぶ。',
     ),
     keyRow('construction', [K.constructionPlace], '置く', '手に持ったものを、選んでいる候補へ置く。'),
-    keyRow('construction', [K.constructionFocus], '視点', '選択中のモジュールへ視点を寄せる。'),
+    keyRow(
+      'construction', [K.constructionFocus], '視点',
+      '選択中のモジュールへ視点を寄せる。選んでいなければ船体全体へ寄せる。',
+    ),
     keyRow('construction', [K.help], 'このヘルプ', '操作説明を開閉する。'),
     keyRow('construction', [K.pauseMenu], '建造を終える', '変更を残して建造を閉じる。'),
   ];

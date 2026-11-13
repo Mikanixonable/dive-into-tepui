@@ -194,7 +194,9 @@ export class GamePresentation {
     this.shipConstruction = new ShipConstruction(
       this.input, commands, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
       hud, hud.constructionConfirm, blueprints, game.events,
-      (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
+      (ship, target) => this.cameraSystem.focusConstruction(
+        ship.id, target?.radius ?? ship.motion.radius, target?.position,
+      ),
     );
     this.shipConstructionView = new ShipConstructionView(scene.scene, markers);
     this.constructionEntry = new ConstructionEntry(this.shipConstruction, hud);
