@@ -148,6 +148,34 @@ function motionReferenceDistance(referenceMotion) {
   return mean(terms);
 }
 
+// 雲頂高度の分布の距離。地域・部位ごとに、生成の雲頂分位と MODIS の雲頂分位を比べる。
+// 中央値と四分位幅のずれを 5000 m で割って無次元化し、高さ帯の割合のずれと平均する。
+// 雲のある面積は入れない — 生成は被覆率 > 0.3、実写は MODIS の雲マスクと、「雲がある」
+// の定義が違うため。面積のずれは capMeans と zonal が既に測っている。
+// 実写の above12 は 0 で固定される — カラーマップが 12000 m で切れ、それ以上は 1 色に
+// 潰れるため、12000 m 超の割合を実写側は持たない。above12 の項は、生成の 12000 m 超の
+// 割合を 0 と比べる片側の項になる。
+const CLOUD_TOP_SCALE_M = 5000;
+
+function cloudTopDistance(generated, reference) {
+  const referenceByKey = new Map(reference.entries.map((entry) => [`${entry.region}/${entry.part}`, entry.stats]));
+  const terms = [];
+  for (const entry of generated) {
+    const ref = referenceByKey.get(`${entry.region}/${entry.part}`);
+    if (!ref) continue;
+    const gen = entry.stats;
+    terms.push(
+      Math.abs(gen.median - ref.median) / CLOUD_TOP_SCALE_M,
+      Math.abs(gen.iqr - ref.iqr) / CLOUD_TOP_SCALE_M,
+      Math.abs(gen.below3 - ref.below3),
+      Math.abs(gen.middle - ref.middle),
+      Math.abs(gen.above9 - ref.above9),
+      Math.abs(gen.above12 - ref.above12),
+    );
+  }
+  return mean(terms);
+}
+
 // sections を受けて、家族ごとの距離と追跡用の index を返す。節が欠けているレポート
 // (古い版) では、その家族は 0 でなく「測れない」として落とし、index の平均からも除く。
 export function computeDistances(sections) {
@@ -165,6 +193,9 @@ export function computeDistances(sections) {
   if (sections.motion?.drift) families.motionConsistency = motionConsistencyDistance(sections.motion.drift);
   if (sections.referenceMotion?.boxes?.length) {
     families.motionReference = motionReferenceDistance(sections.referenceMotion);
+  }
+  if (sections.cloudTop && sections.cloudTopReference?.entries?.length) {
+    families.cloudTop = cloudTopDistance(sections.cloudTop, sections.cloudTopReference);
   }
   return { families, index: mean(Object.values(families)) };
 }

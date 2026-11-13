@@ -17,6 +17,7 @@ import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session
 import { componentStats } from './cloud-components.mjs';
 import { computeDistances } from './cloud-distances.mjs';
 import { bestShift, centroidOffset, crossingTime } from './cloud-motion.mjs';
+import { cloudTopStats, quantile } from './cloud-top-stats.mjs';
 import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
 import { cropField, cropLatLonBox, decodeChannelPng, decodeRedPng, fieldToGrayPng } from './gray-image.mjs';
 import { decodePng } from './png.mjs';
@@ -118,12 +119,6 @@ const GLOBE_EXTENT = { north: 90, south: -90, west: -180, east: 180 };
 
 // 場の G(雲頂高度)が張る高さ [m]。tools/cloud-lab/views.ts の CLOUD_TOP_SPAN と対。
 const CLOUD_TOP_SPAN = 15000;
-// 雲頂の分位に入れる texel の被覆率のしきい。
-const CLOUD_TOP_COVERAGE = 0.3;
-// 金床の判定。この高さ [m] を超える texel のうち、周り ANVIL_RADIUS_KM [km] の雲の雲頂の平均も
-// 超えているものを平らな天蓋と見なす。
-const ANVIL_HEIGHT = 9000;
-const ANVIL_RADIUS_KM = 100;
 
 // 台風の径方向プロファイル。中心からの距離を PROFILE_BIN_KM 刻みで PROFILE_MAX_KM まで方位平均する。
 const PROFILE_BIN_KM = 50;
@@ -350,11 +345,6 @@ function centralAngle(latitude, longitude, otherLatitude, otherLongitude) {
   return Math.acos(Math.min(1, Math.max(-1, cosAngle)));
 }
 
-// 昇順に並んだ値の fraction 分位。空なら 0。
-function quantile(sorted, fraction) {
-  return sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
-}
-
 // 全球面の風の速さ [m/s] の最大と 99 パーセンタイル。熱帯低気圧 tropical(緯度・経度 [rad]。居なければ
 // null)の中心から TROPICAL_EXCLUDE_DEG 以内は数えない。speed は地表の風ビューの B(速さ / WIND_SPAN)。
 function windAnomaly(speed, tropical) {
@@ -476,62 +466,6 @@ function printStructureTable(header, rows) {
     scaleKm: scale,
     fields: STRUCTURE_FIELDS.map((field, index) => ({ field: field.key, ...cells[index] })),
   }));
-}
-
-// 雲頂 [m] の分位。被覆率が CLOUD_TOP_COVERAGE を超え、mask(null なら全域)が立つ texel だけを
-// 数える。area は数えた範囲に対する雲域の割合、金床は周り ANVIL_RADIUS_KM の雲の雲頂の平均も
-// ANVIL_HEIGHT を超えているものの、ANVIL_HEIGHT を超える texel に対する割合。
-function cloudTopStats(top, coverage, kmPerPx, mask) {
-  const { width, height } = top;
-  const stride = width + 1;
-  // 周りの雲の雲頂の平均を半径に依らず一定の手数で引くための積算表。
-  const sumTop = new Float64Array(stride * (height + 1));
-  const sumCount = new Float64Array(stride * (height + 1));
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const cloudy = coverage.data[y * width + x] > CLOUD_TOP_COVERAGE ? 1 : 0;
-      const i = (y + 1) * stride + (x + 1);
-      sumTop[i] = cloudy * top.data[y * width + x] + sumTop[i - 1] + sumTop[i - stride] - sumTop[i - stride - 1];
-      sumCount[i] = cloudy + sumCount[i - 1] + sumCount[i - stride] - sumCount[i - stride - 1];
-    }
-  }
-  const boxSum = (table, x0, y0, x1, y1) => table[(y1 + 1) * stride + x1 + 1] - table[y0 * stride + x1 + 1]
-    - table[(y1 + 1) * stride + x0] + table[y0 * stride + x0];
-  const radius = Math.max(1, Math.round(ANVIL_RADIUS_KM / kmPerPx));
-
-  const tops = [];
-  let considered = 0;
-  let high = 0;
-  let anvils = 0;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = y * width + x;
-      if (mask !== null && mask[i] === 0) continue;
-      considered++;
-      if (coverage.data[i] <= CLOUD_TOP_COVERAGE) continue;
-      tops.push(top.data[i]);
-      if (top.data[i] <= ANVIL_HEIGHT) continue;
-      high++;
-      const x0 = Math.max(0, x - radius);
-      const y0 = Math.max(0, y - radius);
-      const x1 = Math.min(width - 1, x + radius);
-      const y1 = Math.min(height - 1, y + radius);
-      const count = boxSum(sumCount, x0, y0, x1, y1);
-      if (count > 0 && boxSum(sumTop, x0, y0, x1, y1) / count > ANVIL_HEIGHT) anvils++;
-    }
-  }
-  tops.sort((a, b) => a - b);
-  const share = (test) => tops.filter(test).length / Math.max(1, tops.length);
-  return {
-    area: tops.length / Math.max(1, considered),
-    median: quantile(tops, 0.5),
-    iqr: quantile(tops, 0.75) - quantile(tops, 0.25),
-    below3: share((v) => v <= 3000),
-    middle: share((v) => v > 3000 && v <= 7000),
-    above9: share((v) => v > 9000),
-    above12: share((v) => v > 12000),
-    anvil: anvils / Math.max(1, high),
-  };
 }
 
 // 実写と生成のオクターブ束スペクトルを波長帯ごとに並べ、比を添えて出す。wavelengthOf は
@@ -1190,6 +1124,34 @@ async function main() {
     cloudTop.push({ region: region.name, part: 'outside', stats: outsideStats });
   }
   report.sections.cloudTop = cloudTop;
+
+  // 雲頂の実写参照 (MODIS Terra の雲頂高度)。生成の cloudTop 節と同じ地域・部位で、
+  // 同じ分位の定義 (tools/cloud-top-stats.mjs) の値を並べ、cloudTop の距離の入力にする。
+  // 参照が無ければこの節だけ飛ばす (typhoonReference と同じ扱い)。
+  console.log('\n=== 雲頂の実写参照(MODIS Terra・雲頂高度、生成の同じ地域・部位) ===');
+  console.log('地域                                    生成中央値  実写中央値  生成≤3km  実写≤3km  生成>9km  実写>9km');
+  const cloudtopManifest = path.join(buildDir, 'reference-cloudtop', 'manifest.json');
+  if (!existsSync(cloudtopManifest)) {
+    console.log('.cloud-lab/reference-cloudtop/manifest.json が無い — npm run cloud-lab:reference-cloudtop で取り込む');
+  } else {
+    const manifest = JSON.parse(readFileSync(cloudtopManifest, 'utf8'));
+    const referenceByKey = new Map(manifest.frames.flatMap((frame) => frame.stats.map((entry) =>
+      [`${frame.region}/${entry.part}`, entry.stats])));
+    const cloudTopReference = [];
+    for (const entry of cloudTop) {
+      const stats = referenceByKey.get(`${entry.region}/${entry.part}`);
+      if (!stats) continue;
+      cloudTopReference.push({ region: entry.region, part: entry.part, stats });
+      const label = entry.part === 'all' ? entry.region : `${entry.region} ${entry.part}`;
+      console.log(`${label.padEnd(30)}  ${(entry.stats.median / 1000).toFixed(1).padStart(6)} km  `
+        + `${(stats.median / 1000).toFixed(1).padStart(6)} km  ${(entry.stats.below3 * 100).toFixed(0).padStart(5)}%  `
+        + `${(stats.below3 * 100).toFixed(0).padStart(5)}%  ${(entry.stats.above9 * 100).toFixed(1).padStart(5)}%  `
+        + `${(stats.above9 * 100).toFixed(1).padStart(5)}%`);
+    }
+    report.sections.cloudTopReference = {
+      layer: manifest.layer, date: manifest.date, colormap: manifest.colormap, entries: cloudTopReference,
+    };
+  }
 
   console.log(`\n=== 台風の径方向プロファイル(cap の中央 362×362・${PROFILE_BIN_KM} km 刻みの方位平均、全 texel) ===`);
   const typhoonRadial = [];
