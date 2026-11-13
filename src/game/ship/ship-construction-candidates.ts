@@ -73,9 +73,27 @@ export function constructionTargetGuide(
   };
 }
 
+// 取り付け先が属するモジュールの id。軸方向の面・側面スロットは親モジュールに、
+// 継ぎ目は両側のモジュールに属する。
+export function constructionTargetModuleIds(
+  assembly: ShipAssembly, target: ConstructionTarget,
+): readonly string[] {
+  switch (target.kind) {
+    case 'axial-face':
+    case 'side-slot':
+      return [target.parentId];
+    case 'joint': {
+      const edge = assembly.graph.find(connection => connection.id === target.connectionId);
+      return edge === undefined ? [] : [edge.parentId, edge.childId];
+    }
+  }
+}
+
 // 画面へ写した取り付け先候補の1点。x/y はポインタと同じ画面座標 [px]。
 export interface ConstructionTargetScreenPoint {
   readonly id: string;
+  // この候補が属するモジュールの id。継ぎ目の候補は両側の2つを持つ。
+  readonly moduleIds: readonly string[];
   readonly x: number;
   readonly y: number;
   // カメラの手前にあるか。視点の背後にある候補は指せない。
@@ -100,6 +118,35 @@ export function pickConstructionTargetAtScreenPoint(
     const dy = target.y - point.y;
     const distSq = dx * dx + dy * dy;
     if (distSq <= radiusSquared && distSq < bestSq) {
+      best = target.id;
+      bestSq = distSq;
+    }
+  }
+  return best;
+}
+
+// point に最も近い取り付け先候補の id。まずノードの画面位置へ半径内で最も近い候補を
+// 選び、半径内に無ければ hitModule() が返すモジュールに属する候補のうち最も近いものを
+// 半径の制限なしに選ぶ(モジュールの面を指しても候補へ吸着させる)。カメラの手前に
+// 無い候補は対象外。hitModule() は半径内に候補が無いときだけ呼ぶ。
+export function pickConstructionTarget(
+  targets: readonly ConstructionTargetScreenPoint[],
+  point: { readonly x: number; readonly y: number },
+  radiusSquared: number,
+  hitModule: () => string | null,
+): string | null {
+  const near = pickConstructionTargetAtScreenPoint(targets, point, radiusSquared);
+  if (near !== null) return near;
+  const moduleId = hitModule();
+  if (moduleId === null) return null;
+  let best: string | null = null;
+  let bestSq = Number.POSITIVE_INFINITY;
+  for (const target of targets) {
+    if (!target.front || !target.moduleIds.includes(moduleId)) continue;
+    const dx = target.x - point.x;
+    const dy = target.y - point.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < bestSq) {
       best = target.id;
       bestSq = distSq;
     }

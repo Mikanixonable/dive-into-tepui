@@ -6,8 +6,9 @@ import {
   AmmoPickup, AMMO_PICKUP_RADIUS, isAmmoPickup,
   isRcsFuelPickup, RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT,
 } from '../../dynamic/dynamic-entity/pickup';
-import { kinematicState, orbitAxes } from '../../../physics/kinematic-state';
+import { kinematicState, orbitAxes, type KinematicState } from '../../../physics/kinematic-state';
 import type * as THREE from 'three/webgpu';
+import type { Attitude } from '../../../physics/attitude';
 import type { ModularShip } from '../../ship/modular-ship';
 import type { EntityRoster } from '../../dynamic/entity-roster';
 import type { EntityRegistry } from '../../dynamic/entity-registry';
@@ -31,6 +32,15 @@ const LOGISTICS_CHECK_INTERVAL = 20; // 補給投入判定の間隔 [sim s]
 const LOGISTICS_AUTO_MIN_DIST = 312.5; // 自動投入の配置距離(自機軌道上の位相シフト距離)下限 [m]
 const LOGISTICS_AUTO_MAX_DIST = 625; // 同上限 [m]
 const LOGISTICS_DESPAWN_DIST = 50000; // これ以上自機から離れた補給をデスポーンさせる距離 [m]
+
+// 補給物に与えるランダムな姿勢。どの投入経路でも同じ振る舞いで組む。
+function randomPickupAttitude(): Attitude {
+  return {
+    q: randomQuat(),
+    w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
+    inertia: v3(1, 1.4, 1.2),
+  };
+}
 
 export class Logistics {
   // 弾薬補給を自動投入するかどうか。回収・デスポーンはこの値によらず走る。
@@ -100,11 +110,7 @@ export class Logistics {
           rotateAxis(r, hHat, ang),
           add(rotateAxis(v, hHat, ang), randVec(1.5)),
         ),
-        att: {
-          q: randomQuat(),
-          w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
-          inertia: v3(1, 1.4, 1.2),
-        },
+        att: randomPickupAttitude(),
       },
       this._scene,
       this.dynamicSystem.idAllocators,
@@ -133,11 +139,7 @@ export class Logistics {
           rotateAxis(r, hHat, ang),
           add(rotateAxis(v, hHat, ang), randVec(1.5)),
         ),
-        att: {
-          q: randomQuat(),
-          w: v3(randSym(0.15), randSym(0.15), randSym(0.15)),
-          inertia: v3(1, 1.4, 1.2),
-        },
+        att: randomPickupAttitude(),
       },
       this._scene,
       this.dynamicSystem.idAllocators,
@@ -145,6 +147,21 @@ export class Logistics {
     // エンティティ一覧へ追加し、投入を記録する
     this.dynamicSystem.add(fuelPickup);
     this.dynamicSystem.events.record({ kind: 'rcsFuelResupplyDeployed' });
+  }
+
+  // state の位置へ弾薬補給を1個放出する。補給は state の速度へ小さな乱れを足して飛び、
+  // 以後は通常の補給と同じ回収・遠方デスポーンの規則に従う。自動投入の可否と同時数の
+  // 上限とは無関係に置く。
+  public dropAt(state: KinematicState): void {
+    const ammoPickup = AmmoPickup.create(
+      {
+        state: kinematicState<'eci'>(state.t, state.r, add(state.v, randVec(1.5))),
+        att: randomPickupAttitude(),
+      },
+      this._scene,
+      this.dynamicSystem.idAllocators,
+    );
+    this.dynamicSystem.add(ammoPickup);
   }
 
   // 近傍の補給を回収し、遠方のものをデスポーンし、残弾・残燃料が少なければ定期的に新規投入する。

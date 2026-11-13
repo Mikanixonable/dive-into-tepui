@@ -1,10 +1,12 @@
 // 建造中の表示導出。建造セッションの読み取り面から、接続ノードのマーカー宣言・
-// スナップガイド・ゴースト・モジュール強調の宣言と、操作音の種別を毎フレーム組む。
+// スナップガイド・回転リング・ゴースト・モジュール強調の宣言と、操作音の種別を毎フレーム組む。
 // 操作音は装置の語彙を持ち込まず、抽象的な種別の列として返す。
 import { LOCAL_FORWARD, qFromUnitVectors, qMul, qRotate, type Quat } from '../../math/quat';
+import { rayThroughScreen, type Projected, type ProjectFn } from '../../math/projection';
 import type { Ray } from '../../math/ray';
 import { add, len, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import { DockSnapGuideView, type DockSnapGuideDisplay } from '../../render/dynamic/ship/dock-snap-guide-view';
+import { RotationRingView } from '../../render/dynamic/ship/rotation-ring-view';
 import { ShipGhostView, type ShipGhostDisplay } from '../../render/dynamic/ship/ship-ghost-view';
 import type { ShipModuleEmphasis, ShipModuleEmphasisMap } from '../../render/dynamic/ship/ship-render-contract';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -15,17 +17,16 @@ import type { MarkerSink } from '../../marker/marker-sink';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pieceOfModule } from './ship-assembly-graft';
 import type { ShipAssembly } from './ship-assembly';
-import type { ModuleOrientation } from './ship-assembly-transform';
-import {
-  constructionTargetGuide, type ConstructionTargetGuide,
-} from './ship-construction-candidates';
+import type { ConstructionTargetGuide } from './ship-construction-candidates';
 import type { ConstructionTrial } from './ship-construction-preview';
-import {
-  constructionTargetId, heldRootDefinition, type ConstructionTargetInfo,
-} from './ship-construction-rules';
+import { constructionTargetId, heldRootDefinition } from './ship-construction-rules';
+import { orientationRotation, type ModuleOrientation } from './ship-assembly-transform';
 import type {
-  ConstructionDeniedRecord, ConstructionHeld, ConstructionOperationRecord, ConstructionSymmetry,
+  ConstructionDeniedRecord, ConstructionHeld, ConstructionOperationRecord,
 } from './ship-construction-types';
+import {
+  constructionRotationRing, type ConstructionRotationDrag,
+} from './ship-construction-rotation';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import type * as THREE from 'three/webgpu';
 
@@ -42,6 +43,7 @@ export const INSERTION_OFFSET_DURATION_MS = 250;
 const CONFLICT_BLINK_HZ = 2;
 
 const SELECTED_INTENSITY = 1;
+const HOVERED_INTENSITY = 0.5;
 const PIECE_INTENSITY = 0.5;
 const ZERO = v3();
 
@@ -64,21 +66,33 @@ export interface ConstructionViewShip {
   };
 }
 
-// 表示導出が読む建造セッションの面。命令は持たず、読み取りだけを要求する。
+// 表示導出が読む建造セッションの面。命令は持たず、読み取りと、選択メニューの
+// 追従位置を書き込む口(syncSelectionMenu)だけを要求する。
 export interface ShipConstructionViewSource {
   readonly sessionShip: ConstructionViewShip | null;
   readonly anchorId: string | null;
   readonly held: ConstructionHeld | null;
   readonly selectedModuleId: string | null;
   readonly pointedTargetId: string | null;
-  readonly currentOrientation: ModuleOrientation;
-  readonly symmetryCount: ConstructionSymmetry;
+  // ポインタの下にあるモジュール。タッチ環境や船体の外では null。
+  readonly hoveredModuleId: string | null;
+  // 持ち運び中のドラッグの画面位置(キャンバス座標)。どちらのドラッグも無ければ null。
+  readonly dragPoint: { readonly x: number; readonly y: number } | null;
+  // 手持ちに対して効く向き(回転・端)。
+  readonly heldOrientation: ModuleOrientation;
+  // 回転リングを掴んだドラッグ中の角度。掴んでいなければ null。
+  readonly rotationDrag: ConstructionRotationDrag | null;
   readonly lastOperation: ConstructionOperationRecord | null;
   readonly lastDenied: ConstructionDeniedRecord | null;
-  targets(): readonly ConstructionTargetInfo[];
+  // 全取り付け先の接続面ガイド(ECI 座標)。手持ち・選択中の部品への可否を評価済み。
+  targetGuides(): readonly ConstructionTargetGuide[];
   pointedTrial(): ConstructionTrial | null;
   // 指している取り付け先の接続面ガイド(ECI 座標)。持つもの・指す先が無ければ null。
   pointedGuide(): ConstructionTargetGuide | null;
+  // moduleId を根とする先端部が撤去・付け替え・回転を受け付けるか。
+  canEditModule(moduleId: string): boolean;
+  // 選択中モジュールの画面位置を選択メニューへ渡す口。選択が無い・読めないときは null。
+  syncSelectionMenu(anchor: Projected | null): void;
 }
 
 // 1フレームの同期結果。shipModuleEmphasis はモジュール船の強調宣言、sounds は鳴らす
@@ -180,11 +194,125 @@ function nodeClass(valid: boolean, pointed: boolean): string {
   return cls;
 }
 
+// 接続ノードを出す間か。手に何かを持っている間と、付け替え先として編集できる
+// モジュールを選んでいる間。
+export function constructionNodesVisible(
+  held: ConstructionHeld | null, selectedModuleId: string | null,
+  canEditModule: (moduleId: string) => boolean,
+): boolean {
+  return held !== null || (selectedModuleId !== null && canEditModule(selectedModuleId));
+}
+
+// ドラッグで持ち運んでいるものの姿。ポインタを通る視線の、注視距離の位置へ置き、
+// 先端部・設計図は形ごと運ぶ。配置の可否が決まっていない姿なので、色は中間色
+// (floating)で出す。
+function carriedGhostDisplays(
+  ship: ConstructionViewShip, anchorId: string, camera: CameraFrame,
+  held: ConstructionHeld, point: { readonly x: number; readonly y: number },
+  orientation: ModuleOrientation,
+): ShipGhostDisplay[] {
+  const ray = rayThroughScreen(
+    camera.viewpoint, point.x, point.y, camera.viewport.width, camera.viewport.height,
+  );
+  const focusDist = len(sub(camera.viewpoint.lookTarget, camera.viewpoint.position));
+  const anchorEci = add(ray.origin, scale(ray.dir, focusDist));
+  const att = ship.motion.att.q;
+  const display = (modelId: string, offset: Vec3, rotation: Quat): ShipGhostDisplay => ({
+    modelId,
+    position: displayPosition(camera, add(anchorEci, qRotate(att, offset))),
+    rotation: qMul(att, rotation),
+    valid: true,
+    floating: true,
+  });
+  const mountRot = orientationRotation(orientation);
+  if (held.kind === 'catalog') {
+    const modelId = heldRootDefinition(ship.assembly, held)?.modelId ?? 'cockpit-standard';
+    return [display(modelId, ZERO, mountRot)];
+  }
+  if (held.kind === 'piece') {
+    // 船体から切り離す前の先端部を、現在の形のまま運ぶ。
+    const piece = pieceOfModule(ship.assembly.graph, anchorId, held.moduleId);
+    const rootPos = ship.assembly.worldTransformOf(held.moduleId)?.position;
+    if (piece === null || rootPos === undefined) return [];
+    const displays: ShipGhostDisplay[] = [];
+    for (const id of piece.moduleIds) {
+      const transform = ship.assembly.worldTransformOf(id);
+      const modelId = ship.assembly.definition(id)?.modelId ?? null;
+      if (transform === null || modelId === null) continue;
+      displays.push(display(modelId, sub(transform.position, rootPos), transform.rotation));
+    }
+    return displays;
+  }
+  // 設計図の写し。根元へ向きを当てた姿でまとめて運ぶ。
+  const rootId = held.piece.moduleIds.find(
+    id => !held.piece.graph.some(edge => edge.childId === id));
+  const rootTransform = rootId === undefined ? null : held.piece.worldTransformOf(rootId);
+  if (rootId === undefined || rootTransform === null) return [];
+  const displays: ShipGhostDisplay[] = [];
+  for (const id of held.piece.moduleIds) {
+    const transform = held.piece.worldTransformOf(id);
+    const modelId = held.piece.definition(id)?.modelId ?? null;
+    if (transform === null || modelId === null) continue;
+    displays.push(display(
+      modelId,
+      qRotate(mountRot, sub(transform.position, rootTransform.position)),
+      qMul(mountRot, transform.rotation),
+    ));
+  }
+  return displays;
+}
+
+// 指している不適合ノードの脇へ出す理由。規則の判定が不適合なら規則の理由、規則を
+// 通るが試し置きが不適合(重なり)なら試し置きの理由。指していないノードと有効な
+// ノードには付けない。
+function nodeLabel(
+  guide: ConstructionTargetGuide, valid: boolean, pointed: boolean,
+  trial: ConstructionTrial | null,
+): string | null {
+  if (valid || !pointed) return null;
+  return (guide.placement.valid ? trial?.reason : guide.placement.reason) ?? null;
+}
+
+// 全取り付け先のガイドを、接続ノードのマーカー宣言へ写す。有効/無効は取り付け規則
+// だけで決め、指している候補には試し置きの結果も畳む。
+export function constructionNodeDeclarations(
+  guides: readonly ConstructionTargetGuide[],
+  pointedTargetId: string | null,
+  trial: ConstructionTrial | null,
+  project: ProjectFn,
+  occluded: (nodeEci: Vec3) => boolean,
+  cameraPos: Vec3,
+): MarkerDeclaration[] {
+  const declarations: MarkerDeclaration[] = [];
+  for (const guide of guides) {
+    const targetId = constructionTargetId(guide.target);
+    const pointed = targetId === pointedTargetId;
+    const valid = guide.placement.valid && (!pointed || (trial?.valid ?? true));
+    const projected = project(guide.guideEci);
+    const label = nodeLabel(guide, valid, pointed, trial);
+    declarations.push({
+      id: `construction-node:${targetId}`,
+      cls: nodeClass(valid, pointed),
+      sym: CONSTRUCTION_NODE_GLYPH,
+      x: projected.x,
+      y: projected.y,
+      front: projected.front,
+      ...(label === null ? {} : { label }),
+      occluded: occluded(guide.guideEci),
+      dist: len(sub(guide.guideEci, cameraPos)),
+      priority: MARKER_PRIORITY.NONE,
+      iconHidable: false,
+    });
+  }
+  return declarations;
+}
+
 // 建造セッションの読み取り面を、接続ノードのマーカー群と 3D のガイド・ゴーストへ同期する。
 // 指している候補の追跡・処理済みの操作記録は表示履歴として持つ(捨ててよい記憶)。
 export class ShipConstructionView {
   private readonly ghost: ShipGhostView;
   private readonly guide: DockSnapGuideView;
+  private readonly ring: RotationRingView;
   private readonly nodes: MarkerSink;
   // 直近の配置・付け替えの差し込み。開始時刻とモジュールごとの差し込み方向(assembly 座標)。
   private insertion: {
@@ -200,6 +328,7 @@ export class ShipConstructionView {
   public constructor(scene: THREE.Scene, markers: MarkerDevice) {
     this.ghost = new ShipGhostView(scene);
     this.guide = new DockSnapGuideView(scene);
+    this.ring = new RotationRingView(scene);
     this.nodes = markers.createGroup();
   }
 
@@ -212,16 +341,20 @@ export class ShipConstructionView {
     const anchorId = source.anchorId;
     const sounds = this.soundCues(source, ship);
     if (ship === null || anchorId === null) {
+      source.syncSelectionMenu(null);
       this.ghost.sync([]);
       this.guide.syncAll([]);
+      this.ring.sync(null);
       this.nodes.sync([], nowMs);
       this.insertion = null;
       return { shipModuleEmphasis: null, sounds };
     }
     const trial = source.pointedTrial();
-    this.syncNodes(source, ship, anchorId, camera, trial, nowMs);
+    source.syncSelectionMenu(this.selectionAnchor(source, ship, camera));
+    this.syncNodes(source, ship, camera, trial, nowMs);
     this.syncGuide(source, camera, trial);
-    this.syncGhosts(source, ship, camera, trial);
+    this.syncRotationRing(source, ship, camera);
+    this.syncGhosts(source, ship, anchorId, camera, trial);
     const emphasis = this.emphasisOf(source, ship, anchorId, trial, nowMs);
     return {
       shipModuleEmphasis: emphasis === null ? null : new Map([[ship.id, emphasis]]),
@@ -233,47 +366,41 @@ export class ShipConstructionView {
   public dispose(): void {
     this.ghost.dispose();
     this.guide.dispose();
+    this.ring.dispose();
     this.nodes.dispose();
   }
 
   // ---- 内部の導出 ----
 
-  // 接続ノード: 手に何か持っている間、全取り付け先を画面へ写して宣言する。有効/無効は
-  // 取り付け規則だけで決め、指している候補には試し置きの結果も畳む。
+  // 選択中モジュールの ECI 位置を画面座標へ投影した、選択メニューの追従先。
+  // 選択が無い・モジュールが読めないときは null。画面外やカメラ背後(front=false)の
+  // 投影もそのまま渡し、画面内へ寄せて残すのはメニュー側の仕事。
+  private selectionAnchor(
+    source: ShipConstructionViewSource, ship: ConstructionViewShip, camera: CameraFrame,
+  ): Projected | null {
+    const moduleId = source.selectedModuleId;
+    if (moduleId === null) return null;
+    const transform = ship.assembly.worldTransformOf(moduleId);
+    if (transform === null) return null;
+    return camera.project(eciOfAssembly(ship, transform.position));
+  }
+
+  // 接続ノード: 手に持っている間と、付け替え先として編集できるモジュールを選んでいる
+  // 間、全取り付け先を画面へ写して宣言する。
   private syncNodes(
-    source: ShipConstructionViewSource, ship: ConstructionViewShip, anchorId: string,
+    source: ShipConstructionViewSource, ship: ConstructionViewShip,
     camera: CameraFrame, trial: ConstructionTrial | null, nowMs: number,
   ): void {
-    const held = source.held;
-    const declarations: MarkerDeclaration[] = [];
-    if (held !== null) {
-      // 対称数は新しく置くものにだけ効く。付け替え中の先端部は 1 で評価する。
-      const symmetry = held.kind === 'piece' ? 1 : source.symmetryCount;
-      for (const info of source.targets()) {
-        const guide = constructionTargetGuide(
-          ship.assembly, anchorId, held, info,
-          source.currentOrientation, symmetry,
-          ship.motion.state.r, ship.motion.att.q, ship.motion.centerOffset,
-        );
-        if (guide === null) continue;
-        const targetId = constructionTargetId(info.target);
-        const pointed = targetId === source.pointedTargetId;
-        const valid = guide.placement.valid && (!pointed || (trial?.valid ?? true));
-        const projected = camera.project(guide.guideEci);
-        declarations.push({
-          id: `construction-node:${targetId}`,
-          cls: nodeClass(valid, pointed),
-          sym: CONSTRUCTION_NODE_GLYPH,
-          x: projected.x,
-          y: projected.y,
-          front: projected.front,
-          occluded: this.occludedByHull(ship, camera, guide.guideEci),
-          dist: len(sub(guide.guideEci, camera.position)),
-          priority: MARKER_PRIORITY.NONE,
-          iconHidable: false,
-        });
-      }
-    }
+    const declarations = constructionNodesVisible(
+      source.held, source.selectedModuleId,
+      (moduleId) => source.canEditModule(moduleId),
+    )
+      ? constructionNodeDeclarations(
+        source.targetGuides(), source.pointedTargetId, trial,
+        camera.project, (nodeEci) => this.occludedByHull(ship, camera, nodeEci),
+        camera.position,
+      )
+      : [];
     this.nodes.sync(declarations, nowMs);
   }
 
@@ -308,9 +435,27 @@ export class ShipConstructionView {
     this.guide.syncAll(displays);
   }
 
+  // 選択中モジュールの回転リング。編集できるモジュールを選んでいて、手に何も
+  // 持っていない間だけ出す。ドラッグ中は弧とスナップ位置をリングへ渡す。
+  private syncRotationRing(
+    source: ShipConstructionViewSource, ship: ConstructionViewShip, camera: CameraFrame,
+  ): void {
+    const moduleId = source.selectedModuleId;
+    const ring = moduleId !== null && source.held === null && source.canEditModule(moduleId)
+      ? constructionRotationRing(ship, moduleId)
+      : null;
+    this.ring.sync(ring === null ? null : {
+      position: displayPosition(camera, ring.centerEci),
+      rotation: ring.rotation,
+      radius: ring.radius,
+      drag: source.rotationDrag,
+    });
+  }
+
   // 試し置きで置いたモジュールをゴーストとして出す。置くものを持っていなければ出さない。
+  // 指している候補が無い間は、ドラッグで持ち運んでいるものをポインタの先へ浮かべる。
   private syncGhosts(
-    source: ShipConstructionViewSource, ship: ConstructionViewShip,
+    source: ShipConstructionViewSource, ship: ConstructionViewShip, anchorId: string,
     camera: CameraFrame, trial: ConstructionTrial | null,
   ): void {
     const displays: ShipGhostDisplay[] = [];
@@ -325,12 +470,17 @@ export class ShipConstructionView {
           valid: trial.valid,
         });
       }
+    } else if (held !== null && source.dragPoint !== null) {
+      displays.push(...carriedGhostDisplays(
+        ship, anchorId, camera, held, source.dragPoint, source.heldOrientation,
+      ));
     }
     this.ghost.sync(displays);
   }
 
   // モジュールごとの強調とずらしの宣言を組む。選んだモジュールとその先端部、置くと重なる
-  // 相手、直近の操作で差し込み中のモジュールが対象。
+  // 相手、直近の操作で差し込み中のモジュール、手が空いている間のポインタの下の
+  // モジュールが対象。
   private emphasisOf(
     source: ShipConstructionViewSource, ship: ConstructionViewShip, anchorId: string,
     trial: ConstructionTrial | null, nowMs: number,
@@ -347,6 +497,13 @@ export class ShipConstructionView {
         }
       }
       emphasis.set(selectedId, { tone: 'selected', intensity: SELECTED_INTENSITY, offset: ZERO });
+    }
+    // ホバー中の選べるモジュールは選択中より弱く光らせる。選択・先端部・重なりの
+    // 強調のほうを優先する。
+    const hoveredId = source.held === null ? source.hoveredModuleId : null;
+    if (hoveredId !== null && hoveredId !== selectedId && hoveredId !== anchorId
+      && source.canEditModule(hoveredId) && !emphasis.has(hoveredId)) {
+      emphasis.set(hoveredId, { tone: 'selected', intensity: HOVERED_INTENSITY, offset: ZERO });
     }
     for (const id of trial?.overlapModuleIds ?? []) {
       emphasis.set(id, { tone: 'conflict', intensity: conflictIntensityAt(nowMs), offset: ZERO });

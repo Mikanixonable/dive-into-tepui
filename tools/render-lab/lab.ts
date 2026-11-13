@@ -11,6 +11,9 @@ import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/su
 import { farClip } from '../../src/render/camera/camera-view';
 import { planetRadiance, type PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
+import {
+  WORK_LIGHT_INTENSITY, workLightPlacement,
+} from '../../src/render/pipeline/lighting/work-light-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
 import { atmosphereDraws, withAirglowEnabled, type AtmosphereBody } from '../../src/render/atmosphere';
@@ -160,7 +163,9 @@ export class LabView {
     this.scene.layers.enableAll();
     this.ringMaterials = new RingMaterials(pipeline.bodyShadow, pipeline.sunLight);
     this.sun.addTo(this.scene);
-    this.startupGraphics = graphics.current;
+    // lab には建造モードが無い — 作業灯は撮影の描画設定差分で明示的に点ける形にし、
+    // 起動時の基準値だけは消灯に倒しておく(消さないと全撮影の基線が変わる)。
+    this.startupGraphics = { ...graphics.current, constructionWorkLight: false };
     graphics.subscribe((next) => this.rebuildForGraphics(next));
   }
 
@@ -324,6 +329,14 @@ export class LabView {
     this.pipeline.exposure.setReference(ORIGIN, this.sun.position, this.sun.intensity);
     // 天体照の光源は地球だけ、影・大気の源は地球のぶんとケースのぶんを合わせて渡す。
     this.pipeline.planetLight.set(earth === null ? [] : [earthLightValue(earth, this.sun, graphics.airglow)]);
+    // 建造の作業灯。設定が効いている間だけ、ゲーム本体と同じ式でカメラへ追従して置く。
+    if (graphics.constructionWorkLight) {
+      const focusDist = camera.position.distanceTo(this.pivot);
+      const lamp = workLightPlacement(camera, focusDist);
+      this.pipeline.workLight.set(lamp.position, lamp.radius, WORK_LIGHT_INTENSITY);
+    } else {
+      this.pipeline.workLight.setIntensity(0);
+    }
     this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);

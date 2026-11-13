@@ -46,6 +46,8 @@ export interface VesselPanelViewModel {
   // 太陽電池パドル・放熱板を積んでいない操作対象では null。
   readonly solar: Record<SolarSide, DeployState> | null;
   readonly radiator: Record<RadiatorSide, DeployState> | null;
+  // 操作対象の船体に使える建造ドックがある間だけ非 null。押すと建造を始める。
+  readonly startConstruction: (() => void) | null;
   // キー入力と同じ経路で発火する代替操作。
   tapKey(key: KeyBinding): void;
   toggleSolar(side: SolarSide): void;
@@ -89,6 +91,7 @@ export class VesselPanel {
   private readonly throttle = new SyncThrottle(SYNC_INTERVAL_MS);
   // 直近の sync で受け取った状態。ボタン押下はフレーム外で発生するため、現在のコールバックをここから取得する。
   private view: VesselPanelViewModel | null = null;
+  private readonly constructionRow: HTMLElement;
   private followButton: Button | null = null;
   private readonly throttleControl: SegmentedControl<number>;
   private readonly throttleMeter: VesselMeterDom;
@@ -105,6 +108,7 @@ export class VesselPanel {
     this.fuelMeter = this.mountMeter('rcs-fuel-meter', 'RCS 燃料');
     // 動圧とRCS燃料には、それぞれの危険境界を示す目盛りを持たせる。
     this.fuelMeter.setMarks(FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO);
+    this.constructionRow = this.els.get('vessel-construction-row');
     this.buildActionButtons();
     this.throttleControl = this.buildThrottleControl();
     const deployContainer = this.els.get('vessel-deploy-controls');
@@ -124,9 +128,22 @@ export class VesselPanel {
     return { meter: this.mountMeter(gaugeId, label), value: this.els.get(valueId) };
   }
 
-  // R/F/G/T の代替操作ボタンを組み立てて status-actions プレースホルダへ足す。
+  // 建造の入口(主操作のボタンと説明1行)と、R/F/G/T の代替操作ボタンを組み立てて
+  // status-actions プレースホルダへ足す。建造の行は区画の先頭に置く。
   private buildActionButtons(): void {
     const container = this.els.get('status-actions');
+    const constructionButton = new Button(
+      '建造', () => this.view?.startConstruction?.(),
+      undefined, 'primary', K.constructionStart.label,
+    );
+    constructionButton.element.dataset.id = 'vessel-construction';
+    constructionButton.element.title = '建造ドックから船体を組み替える';
+    constructionButton.element.setAttribute('aria-label', `建造、キー ${K.constructionStart.label}`);
+    constructionButton.element.setAttribute('aria-keyshortcuts', K.constructionStart.label);
+    const note = document.createElement('p');
+    note.className = 'vessel-construction-note';
+    note.textContent = '建造ドックから船体を組み替えられます';
+    this.constructionRow.append(constructionButton.element, note);
     // 操作名と割り当てキーをボタンに結び付ける。
     const addAction = (label: string, title: string, key: KeyBinding, isPrimary = false): Button => {
       const variants = isPrimary ? (['dense', 'primary'] as const) : (['dense', 'secondary'] as const);
@@ -206,6 +223,8 @@ export class VesselPanel {
 
     if (!this.throttle.due(nowMs)) return;
 
+    // 建造の入口は、使えるドックがある間だけ出す。
+    this.constructionRow.classList.toggle('hidden', view.startConstruction === null);
     this.syncDeployButtons(view);
 
     // 制動・微調整・進行方向ホールドは自分が掛けているモード(自分の色)、視点追従は中立。

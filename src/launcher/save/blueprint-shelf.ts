@@ -1,5 +1,5 @@
 // アクティブなセーブデータの設計図の棚。ランへ読み取り専用の面として渡し、
-// 設計図の記録(追加・改名・削除)を受けてセーブデータへ書き戻す。
+// 設計図の記録(改名・削除)を受けてセーブデータへ書き戻す。
 import type { SaveSlots } from './save-slots';
 import type { ShipBlueprint, ShipBlueprintShelf } from '../../game/ship/ship-blueprint';
 
@@ -23,13 +23,10 @@ export class BlueprintShelf implements ShipBlueprintShelf {
     return this.list;
   }
 
-  // アクティブなセーブデータがあれば記録できる。
-  public get canRecord(): boolean {
-    return this.slots.activeSlotId !== null;
-  }
-
-  // 設計図を一覧の先頭へ足し、セーブデータへ記録する。
+  // 設計図を一覧の先頭へ足して記録する。同名または同じ識別子の設計図が既にある、
+  // または書き込めなければ一覧を変えず false。
   public add(blueprint: ShipBlueprint): boolean {
+    if (this.list.some((b) => b.name === blueprint.name || b.id === blueprint.id)) return false;
     return this.record([blueprint, ...this.list]);
   }
 

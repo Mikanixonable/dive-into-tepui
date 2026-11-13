@@ -114,7 +114,7 @@ export function helpRows(): readonly HelpRow[] {
       'マップビューで選択中のノードを削除する。ノードを選択していなければ計画全体を破棄する。',
     ),
     ...constructionRows(),
-    keyRow('system', [K.constructionStart], '建造開始', '操作対象の船体の建造ドックから建造を始める。'),
+    keyRow('system', [K.constructionStart], '建造開始', '艦のステータスパネルの「建造」、ドックのクリック、[B] のいずれでも始められる。'),
     keyRow('system', [K.help], 'このヘルプ', '操作説明を開閉する。'),
     keyRow('system', [K.pauseMenu], 'ESC メニュー', '開いているウィンドウを1つ閉じる。何も開いていなければ ESC メニューを開く。'),
     keyRow(
@@ -132,11 +132,17 @@ function constructionRows(): readonly HelpRow[] {
   return [
     {
       category: 'construction', input: 'クリック / タップ', label: '置く / 選ぶ',
-      description: '手に持ったものを指した取り付け候補へ置く。配置済みモジュールを指せば選ぶ。',
+      description: '手に持っている間は、押した位置の取り付け候補へ置く(候補が無い場所では何もしない)。'
+        + '手に何も持っていなければ、押した位置の配置済みモジュールを選ぶ。',
     },
     {
       category: 'construction', input: '選択中のモジュールからドラッグ', label: '付け替え',
       description: 'モジュールを先端部ごと掴み、別の候補へ付け替える。候補以外で離すと元へ戻る。',
+    },
+    {
+      category: 'construction', input: '回転リングをドラッグ', label: 'モジュールを回す',
+      description: '選んだモジュールの回りの円をドラッグして回す。離した位置を 90° 単位へ丸めて適用する。'
+        + '円の上を押してすぐ離しても、近い矢印の向きへ 1 段回る。モジュールの脇のメニューにも回転のボタンがある。',
     },
     {
       category: 'construction', input: 'カタログのカードをドラッグ', label: 'カードから置く',
@@ -158,7 +164,7 @@ function constructionRows(): readonly HelpRow[] {
     ),
     keyRow(
       'construction',
-      [K.constructionSwapEnds], '取り付け端の入れ替え',
+      [K.constructionSwapEnds], '向きを反転',
       '両端に取り付け面を持つモジュールの、どちらの端で付くかを入れ替える。',
     ),
     keyRow(
@@ -192,7 +198,10 @@ function constructionRows(): readonly HelpRow[] {
       'カテゴリ', 'カタログのカテゴリ(指令・燃料・推進・戦闘・設備・設計図)を選ぶ。',
     ),
     keyRow('construction', [K.constructionPlace], '置く', '手に持ったものを、選んでいる候補へ置く。'),
-    keyRow('construction', [K.constructionFocus], '視点', '選択中のモジュールへ視点を寄せる。'),
+    keyRow(
+      'construction', [K.constructionFocus], '視点',
+      '選択中のモジュールへ視点を寄せる。選んでいなければ船体全体へ寄せる。',
+    ),
     keyRow('construction', [K.help], 'このヘルプ', '操作説明を開閉する。'),
     keyRow('construction', [K.pauseMenu], '建造を終える', '変更を残して建造を閉じる。'),
   ];

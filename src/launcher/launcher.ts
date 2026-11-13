@@ -7,6 +7,7 @@ import { selectStage } from './stage-select';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 import { BlueprintShelf } from './save/blueprint-shelf';
+import { SALVAGE_BLUEPRINTS } from '../game/ship/salvage-blueprints';
 import type { SerializedGame } from '../game/game';
 import type { RunEvent } from '../game/run-events';
 import type { PageDevices } from '../run/page-devices';
@@ -165,8 +166,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 直近の進行が記録した設計図の記録を棚へ写す。記録できなかった操作があれば警告を出す。
   private recordBlueprintEvents(events: readonly RunEvent[]): void {
     const records = events.filter(
-      ({ body }) => body.kind === 'blueprintRecorded'
-        || body.kind === 'blueprintRenamed' || body.kind === 'blueprintDeleted',
+      ({ body }) => body.kind === 'blueprintRenamed' || body.kind === 'blueprintDeleted'
+        || body.kind === 'salvageBlueprintGranted',
     );
     if (records.length === 0) return;
     // 棚の一覧がアクティブなセーブデータの切り替えに乗り遅れていると、別の一覧へ重ねて書き込む。
@@ -174,15 +175,19 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     let failed = false;
     for (const { body } of records) {
       switch (body.kind) {
-        case 'blueprintRecorded':
-          if (!this.blueprintShelf.add(body.blueprint)) failed = true;
-          break;
         case 'blueprintRenamed':
           if (!this.blueprintShelf.rename(body.id, body.name)) failed = true;
           break;
         case 'blueprintDeleted':
           if (!this.blueprintShelf.delete(body.id)) failed = true;
           break;
+        case 'salvageBlueprintGranted': {
+          const salvage = SALVAGE_BLUEPRINTS.find((entry) => entry.name === body.name);
+          if (salvage === undefined || !this.blueprintShelf.add({
+            id: salvage.id, name: salvage.name, createdAtReal: Date.now(), piece: salvage.piece,
+          })) failed = true;
+          break;
+        }
         default:
           break;
       }

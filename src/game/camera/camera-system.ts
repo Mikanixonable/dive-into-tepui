@@ -17,7 +17,7 @@ import type { ViewMode } from '../view/view-mode';
 import type { CameraCommands } from '../viewer/camera-commands';
 import { COMBAT_CAMERA_FOV, type CameraFrameSamples, type CameraSelectionSource } from '../viewer/camera-selection';
 import type { CameraFrameSample, FocusCameraSource } from '../viewer/focus-camera-selection';
-import { focusTargetId, type FocusTarget } from '../viewer/focus-target';
+import { focusPoint, focusTargetId, type FocusTarget } from '../viewer/focus-target';
 import type { ViewSelectionSource } from '../viewer/view-selection';
 import { cameraOperation } from './camera-operator';
 import { CameraRig } from './camera-rig';
@@ -60,7 +60,7 @@ export class CameraSystem {
   // 2台のリグと入力ハンドラを構成する。
   public constructor(
     hud: Pick<HudLayers, 'root'>,
-    celestialBodies: CelestialBodies,
+    private readonly celestialBodies: CelestialBodies,
     private readonly cameraSelection: CameraSelectionSource,
     private readonly commands: CameraCommands,
     private readonly viewSelection: Pick<ViewSelectionSource, 'current'>,
@@ -122,10 +122,22 @@ export class CameraSystem {
     return screenRay(this.activeViewpoint, viewport, clientX, clientY);
   }
 
-  // 建造対象の艦へ戦闘カメラを寄せる。以後の orbit／zoom 操作は通常のカメラ命令が担う。
-  public focusConstruction(shipId: string, radius: number): void {
-    this.commands.combat.setFocus({ kind: 'object', id: shipId });
+  // 建造対象の艦へ戦闘カメラを寄せる。positionEci を渡すと、船体中心を原点とする
+  // 座標系へ焼き込んだ固定点を注視する。以後の orbit／zoom 操作は通常のカメラ命令が担う。
+  public focusConstruction(shipId: string, radius: number, positionEci?: Vec3): void {
+    this.commands.combat.setFocus(positionEci === undefined
+      ? { kind: 'object', id: shipId }
+      : this.shipPointFocus(shipId, positionEci));
     this.commands.combat.setDistance(Math.max(12, radius * 2.5));
+  }
+
+  // positionEci を、船体の位置を原点とする座標系へ焼き込んだ固定点フォーカスへ写す。
+  private shipPointFocus(shipId: string, positionEci: Vec3): FocusTarget {
+    const sample = this.samples.combat;
+    const { frames } = this.celestialBodies;
+    return focusPoint(
+      frames, frames.frameOf(shipId, null), positionEci, sample.displayTime, sample.frameAnchors,
+    );
   }
 
   // 入力を現在のビューの視点命令へ変換する。命令は同じフレームの進行先頭で適用される。

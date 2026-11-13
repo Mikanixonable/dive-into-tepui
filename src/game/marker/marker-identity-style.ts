@@ -87,6 +87,7 @@ const MARKER_IDENTITY_STYLE = `
 .mk-construction-node-invalid { color: var(--color-error); }
 .mk-construction-node .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-element)); }
 .mk-construction-node-pointed .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-element) * 1.5); }
+.mk-construction-node .lbl { color: var(--color-error); font-size: var(--font-xxs); line-height: 1.2; white-space: pre; }
 
 .mk-poi { color: var(--text-strong); }
 .mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-poi)); }
