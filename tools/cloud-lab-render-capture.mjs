@@ -87,11 +87,19 @@ try {
   const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
   if (failure) throw new Error(`Render capture page failed to initialise: ${failure}`);
 
+  // 出力先は、撮影が始まる直前に作り直す — ready 待ちで落ちても前回の撮影を残す。
+  await devTools.evaluate('window.cloudRenderCapture.waitUntilReady()');
+  let ready = await devTools.evaluate('window.cloudRenderCapture.ready()');
+  // 1 回の waitUntilReady (上限 60 s) では届かないことがある — SwiftShader のフレームが
+  // 重く、地球の画像の GPU 投入が 1 枚ずつ進むため。届くまで繰り返し、届かなければ投げる。
+  for (let round = 2; round <= 4 && !ready; round++) {
+    await devTools.evaluate('window.cloudRenderCapture.waitUntilReady()');
+    ready = await devTools.evaluate('window.cloudRenderCapture.ready()');
+  }
+  if (!ready) throw new Error('Render capture page is not ready: earth textures did not arrive');
+
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(outDir, { recursive: true });
-  await devTools.evaluate('window.cloudRenderCapture.waitUntilReady()');
-  const ready = await devTools.evaluate('window.cloudRenderCapture.ready()');
-  if (!ready) throw new Error('Render capture page is not ready: earth textures did not arrive');
 
   for (const capture of CAPTURES) {
     const captureStartedAt = Date.now();
