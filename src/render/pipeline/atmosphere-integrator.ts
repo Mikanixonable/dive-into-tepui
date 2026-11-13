@@ -340,6 +340,7 @@ export class AtmosphereIntegrator {
 
   // 雲 renderer へ渡す天体空間の幾何・光学パラメータ。殻の交差順序と場の解釈は AtmosphereCloudLayers が担い、
   // 大気側は球空間幾何・太陽輝度・大気透過率を提供する。
+  // 大気の幾何を雲の入力へ写す。雲の殻の交差と場の解釈は雲の層が担う。
   private cloudGeometry(): AtmosphereCloudGeometry {
     return {
       shellRadiusOf: (species) => this.slot.surfaceRadius.add(shellAltitudeOf(species)),
