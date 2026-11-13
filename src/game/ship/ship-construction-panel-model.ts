@@ -73,11 +73,15 @@ export function shipConstructionPanelModel(
     selection: source.selection === null ? null : {
       name: constructionModuleLabel(assembly, source.selection.moduleId),
       canEdit: source.selection.editable,
+      orientation: source.effective?.orientation ?? source.orientation,
     },
     moduleCount: assembly.size, totalMass: totals.mass,
     hp: totals.hp, maxHp: totals.maxHp, capabilities, preview,
     role: assembly.role,
-    warning: trial !== null && !trial.valid ? trial.reason : null,
+    placeBlockReason: source.held === null && source.selection === null ? null
+      : pointedTarget === null ? '取り付け先を指してください'
+      : trial !== null && !trial.valid ? trial.reason ?? 'ここには置けません'
+      : null,
     pointedTargetId: source.pointedTargetId,
     targets: source.targets.map(info => {
       // 色は規則だけで決める — 重なりは指している取り付け先の試し置きだけが見る。
