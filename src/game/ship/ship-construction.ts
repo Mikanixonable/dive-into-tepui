@@ -10,6 +10,7 @@ import {
 } from './ship-construction-candidates';
 import { shipConstructionPanelModel } from './ship-construction-panel-model';
 import { ShipConstructionPointer } from './ship-construction-pointer';
+import type { ConstructionRotationDrag } from './ship-construction-rotation';
 import { tryConstructionPlacement, type ConstructionTrial } from './ship-construction-preview';
 import { ShipConstructionEdits } from './ship-construction-edits';
 import { ConstructionHistory } from './ship-construction-history';
@@ -207,6 +208,9 @@ export class ShipConstruction implements OverlayHandle {
   // カタログのカードから持ち上げている最中のドラッグ。持ち上げている手持ちと
   // クライアント座標、離した位置(押している間は null)を返す。
   public get cardDrag(): ConstructionCardDrag | null { return this.cardDragValue; }
+
+  // 回転リングを掴んだドラッグ中の角度。表示の導出が弧とスナップ位置を組む。
+  public get rotationDrag(): ConstructionRotationDrag | null { return this.pointer.rotationDrag; }
 
   // ドラッグを閉じる。離した位置を読み終えた入力の解釈が呼ぶ。
   public clearCardDrag(): void { this.cardDragValue = null; }
@@ -477,12 +481,21 @@ export class ShipConstruction implements OverlayHandle {
 
   // 手持ちがあればその向きを、無ければ選択中のモジュールを先端部ごと 90° 回す。
   public rotate(delta: 1 | -1): void {
+    this.rotateSteps(delta);
+  }
+
+  // 手持ちがあればその向きを、無ければ選択中のモジュールを先端部ごと steps 段
+  // (90° 単位)回す。1 回の呼び出しは 1 つの命令として履歴へ記録されるので、
+  // 回転リングのドラッグを離したときのまとめ回しもここへ来る。
+  public rotateSteps(steps: number): void {
     const session = this.current;
     if (session === null) return;
+    const step = ((Math.trunc(steps) % 4) + 4) % 4;
+    if (step === 0) return;
     if (this.heldValue !== null) {
       this.orientation = {
         ...this.orientation,
-        roll: ((this.orientation.roll + delta + 4) % 4) as ModuleOrientation['roll'],
+        roll: ((this.orientation.roll + step) % 4) as ModuleOrientation['roll'],
       };
       this.trialCache = null;
       this.syncPanel();
@@ -492,7 +505,7 @@ export class ShipConstruction implements OverlayHandle {
     if (moduleId === null) { this.deny('回す部品を選んでください'); return; }
     const current = this.orientationOfPiece(session, moduleId) ?? { roll: 0 as const, face: 'back' as const };
     const orientation: ModuleOrientation = {
-      roll: ((current.roll + delta + 4) % 4) as ModuleOrientation['roll'], face: current.face,
+      roll: ((current.roll + step) % 4) as ModuleOrientation['roll'], face: current.face,
     };
     this.submit(session, 'reorient',
       `${constructionModuleLabel(session.ship.assembly, moduleId)} を回転`, [moduleId], false, null,
