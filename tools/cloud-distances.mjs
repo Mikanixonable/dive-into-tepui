@@ -7,6 +7,8 @@
 // 総和の index は家族の平均で、追跡用の指数にすぎない。判定は家族ごとに行うこと —
 // 1 つの家族の悪化を、平均が他の改善で隠すためではない。
 
+import { orientationDifferenceDeg } from './cloud-fine-structure.mjs';
+
 const mean = (values) => (values.length === 0 ? 0 : values.reduce((sum, v) => sum + v, 0) / values.length);
 const absLogRatio = (generated, reference) => Math.abs(Math.log(generated / reference));
 
@@ -176,8 +178,74 @@ function cloudTopDistance(generated, reference) {
   return mean(terms);
 }
 
-// sections を受けて、家族ごとの距離と追跡用の index を返す。節が欠けているレポート
-// (古い版) では、その家族は 0 でなく「測れない」として落とし、index の平均からも除く。
+// 微細構造の距離。描画の撮影と実写の高解像度参照を、尺度帯 [2000–200 / 200–20 / 20–2 km]
+// ごとに比べる。帯の電力割合・箱次元・空隙率・帯域成分の形を項にし、主の梯子で測った帯だけを
+// 入れる (2000 km の梯子での 200–20 km 帯は交叉確認で、距離には入れない)。
+// 項が 1 つも無ければ測れない (null) とし、0 (一致) とは区別する。
+function fineSpectrumDistance(fineStructure) {
+  const terms = [];
+  const logRatio = (generated, reference) => Math.abs(
+    Math.log2(Math.max(1e-9, generated) / Math.max(1e-9, reference)));
+  for (const pair of fineStructure.pairs) {
+    if (pair.distance === false) continue;
+    for (const band of pair.visible.bands) {
+      if (!band.primary) continue;
+      terms.push(logRatio(band.generatedShare, band.referenceShare));
+      if (band.boxDimension !== null) {
+        terms.push(Math.abs(band.boxDimension.generated - band.boxDimension.reference));
+      }
+      if (band.lacunarity !== null) {
+        terms.push(Math.abs(band.lacunarity.generated - band.lacunarity.reference));
+      }
+      const generated = band.components.generated;
+      const reference = band.components.reference;
+      terms.push(
+        Math.abs(Math.log2(Math.max(1, generated.count) / Math.max(1, reference.count))),
+        logRatio(generated.medianAreaKm2, reference.medianAreaKm2),
+        Math.abs(generated.largestShare - reference.largestShare),
+        logRatio(generated.perimeterPerArea, reference.perimeterPerArea),
+      );
+    }
+  }
+  return terms.length === 0 ? null : mean(terms);
+}
+
+// 巻雲の筋の距離。向きのずれ (90° のずれを 1 とする — 既存の structure 家族は向きの
+// 値を比べず、90° のずれも 0 のずれと同じに扱っていた)、向きの相関長 Lθ の比、
+// 帯ごとの揃いのずれを項にする。向きと Lθ は 63 km の尺度・400 km の梯子で読む。
+// 項が 1 つも無ければ測れない (null) とし、0 (一致) とは区別する。
+function fineStreaksDistance(fineStructure) {
+  const terms = [];
+  for (const pair of fineStructure.pairs) {
+    if (pair.distance === false || pair.streak === null) continue;
+    if (pair.ladder === '400km') {
+      const scale63 = pair.streak.scales.find((scale) => scale.scaleKm === 63);
+      if (scale63 !== undefined) {
+        terms.push(orientationDifferenceDeg(
+          scale63.generated.orientationDeg, scale63.reference.orientationDeg) / 90);
+      }
+      const lTheta = pair.streak.lThetaKm;
+      if (lTheta !== null && lTheta.generated !== null && lTheta.reference !== null) {
+        terms.push(Math.abs(Math.log2(lTheta.generated / lTheta.reference)));
+      }
+    }
+    for (const band of pair.visible.bands) {
+      if (!band.primary) continue;
+      const centerKm = Math.sqrt(band.loKm * band.hiKm);
+      let nearest = null;
+      for (const scale of pair.streak.scales) {
+        if (nearest === null
+          || Math.abs(Math.log(scale.scaleKm / centerKm)) < Math.abs(Math.log(nearest.scaleKm / centerKm))) {
+          nearest = scale;
+        }
+      }
+      if (nearest !== null) {
+        terms.push(Math.abs(nearest.generated.coherence - nearest.reference.coherence));
+      }
+    }
+  }
+  return terms.length === 0 ? null : mean(terms);
+}
 export function computeDistances(sections) {
   const families = {};
   if (sections.zonal) families.zonal = zonalDistance(sections.zonal);
@@ -196,6 +264,12 @@ export function computeDistances(sections) {
   }
   if (sections.cloudTop && sections.cloudTopReference?.entries?.length) {
     families.cloudTop = cloudTopDistance(sections.cloudTop, sections.cloudTopReference);
+  }
+  if (sections.fineStructure?.pairs?.length) {
+    const fineSpectrum = fineSpectrumDistance(sections.fineStructure);
+    if (fineSpectrum !== null) families.fineSpectrum = fineSpectrum;
+    const fineStreaks = fineStreaksDistance(sections.fineStructure);
+    if (fineStreaks !== null) families.fineStreaks = fineStreaks;
   }
   return { families, index: mean(Object.values(families)) };
 }
