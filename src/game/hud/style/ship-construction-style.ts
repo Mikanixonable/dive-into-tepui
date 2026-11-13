@@ -39,13 +39,33 @@ export const SHIP_CONSTRUCTION_STYLE = `
 #ship-construction-panel .construction-category-tabs .w-btn {
   min-width: 0; padding: var(--space-2) 2px; font-size: var(--font-xxs);
 }
+/* カードはサムネイルを持つタイルとして複数列に並べる。タイル幅の下限はタップ最小寸法の
+   2倍で、これより狭い列は作らず列数を減らす。 */
 #ship-construction-panel .construction-module-cards {
   display: grid; flex: 1 1 auto; min-height: 0; align-content: start; gap: var(--space-2);
+  grid-template-columns: repeat(auto-fill, minmax(calc(var(--hit-target-min) * 2), 1fr));
   overflow-y: auto; padding-right: 2px; scrollbar-width: thin;
 }
+#ship-construction-panel .construction-module-card {
+  display: flex; min-width: 0; flex-direction: column;
+}
 #ship-construction-panel .construction-module-card .w-btn {
-  display: grid; width: 100%; min-height: 58px; gap: 2px; padding: var(--space-3);
-  text-align: left; white-space: normal; touch-action: none;
+  display: grid; flex: 1 1 auto; width: 100%; gap: var(--space-1); padding: var(--space-3);
+  justify-items: center; align-content: start; text-align: center; white-space: normal;
+  touch-action: none;
+}
+#ship-construction-panel .construction-module-thumb {
+  position: relative; display: block; width: 100%; aspect-ratio: 1; overflow: hidden;
+  border-radius: var(--radius-micro); background: var(--glass-inset);
+}
+#ship-construction-panel .construction-module-thumb img {
+  display: block; width: 100%; height: 100%; object-fit: contain;
+}
+#ship-construction-panel .construction-module-count {
+  position: absolute; right: var(--space-1); bottom: var(--space-1);
+  padding: 0 var(--space-2); border-radius: var(--radius-pill);
+  background: var(--glass-focus); color: var(--text);
+  font-size: var(--font-xxs); font-variant-numeric: tabular-nums;
 }
 #ship-construction-panel .construction-module-name { color: var(--text); font-size: var(--font-xs); font-weight: 650; }
 #ship-construction-panel .construction-module-spec,
