@@ -1,7 +1,7 @@
 // 全ステージ共通の骨格。撃破数による勝利判定・常時解放・HUD補助表示なしを既定実装として持ち、
 // 必要なステージだけ override する。
 import { isModularShip, ModularShip, type ModularShipInit } from '../ship/modular-ship';
-import { Logistics, type SerializedLogistics } from './stage-utils/logistics';
+import { dropMagsOf, Logistics, type SerializedLogistics } from './stage-utils/logistics';
 import { ScoreCounter, type SerializedScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
@@ -11,7 +11,11 @@ import { addPrimaryRelative, kinematicState, type KinematicState } from '../../p
 import { v3 } from '../../math/vec3';
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
-import { crossedSalvageBlueprints, nextSalvageRemaining } from '../ship/salvage-blueprints';
+import {
+  crossedSalvageMilestones, nextSalvageMilestoneRemaining, nextSalvageRemaining, SALVAGE_REPEAT_EVERY,
+  salvageGranted, type SalvageKind,
+} from '../ship/salvage-blueprints';
+import { SalvageCargo } from './stage-utils/salvage-cargo';
 import type { ShipBlueprintShelf } from '../ship/ship-blueprint';
 import type * as THREE from 'three/webgpu';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
@@ -62,6 +66,7 @@ export type StageDeps = [
 // 省いたものは新しいランの初期値から始まる。
 export type CommonStageState = [
   scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics, reinforced?: boolean,
+  salvageCargo?: SalvageCargo,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -105,6 +110,8 @@ export interface SerializedStage {
   readonly logistics: SerializedLogistics;
   // 援護付きの再出撃か。古い記録には無いので欠けは援護なしとして読む。
   readonly reinforced?: boolean;
+  // 補給艇で届けていない積荷。欠けた記録は空の待ち行列から始まる。
+  readonly pendingSalvageCargo?: readonly SalvageKind[];
 }
 
 // 1周回の成績。撃破・命中・生存の値を結果画面と記録の両方が読む。
@@ -222,6 +229,8 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // このランで授与を記録した鹵獲の設計図名。棚への書き戻しはランの外で遅れて行われるので、
   // ランの中ではこの控えで重複授与を防ぐ。
   private readonly grantedSalvageNames = new Set<string>();
+  // まだ補給艇で届けていない積荷(SPEC GAME.md 2.3)。
+  protected readonly salvageCargo: SalvageCargo;
 
   public get phase(): GamePhase { return this._phase; }
   public get isPlaying(): boolean { return this._phase === 'playing'; }
@@ -244,6 +253,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     private _phase: GamePhase = 'playing',
     logistics?: Logistics,
     private _reinforced = false,
+    salvageCargo?: SalvageCargo,
   ) {
     const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue, orbitSlots, blueprintShelf] = deps;
     this._hud = hud;
@@ -255,6 +265,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._orbitSlots = orbitSlots;
     this.blueprintShelf = blueprintShelf;
     this.logistics = logistics ?? new Logistics(scene, dynamicSystem, this.stageRules.automaticResupply);
+    this.salvageCargo = salvageCargo ?? new SalvageCargo();
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
@@ -276,6 +287,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
         ? undefined
         : Logistics.deserialize(logistics, scene, dynamicSystem, rules.automaticResupply),
       reinforced ?? undefined,
+      SalvageCargo.deserialize(serialized?.pendingSalvageCargo ?? null),
     ];
   }
 
@@ -308,10 +320,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   private syncStatusPanel(mapView: boolean): void {
     const message = this.hudSubStatus();
     const show = message !== null && !mapView;
-    // 鹵獲を数えないステージでは残数を出さない(SPEC GAME.md 3.1)。
-    const salvageRemaining = this.stageRules.salvageRewards
-      ? nextSalvageRemaining(this.scoreCounter.kills, this.grantedSalvageNames, this.blueprintShelf)
-      : null;
+    const salvageRemaining = this.salvageRemaining();
     this.statusPanel.sync(show ? this.ship : null, message ?? '', this.scoreCounter.kills, salvageRemaining);
   }
 
@@ -410,6 +419,11 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._reinforced = options.reinforced;
   }
 
+  // 交戦中の集団が 0 になった波間に、積まれた鹵獲を補給艇で届ける。既定では届けない(SPEC GAME.md 2.3)。
+  public onLull(): boolean {
+    return false;
+  }
+
   // ステータスパネルに表示する補助メッセージ。既定では非表示(null)。
   protected hudSubStatus(): string | null {
     return null;
@@ -421,7 +435,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     if (cause === 'killed') {
       const killsBefore = this.scoreCounter.kills;
       this.scoreCounter.recordKill();
-      this.logistics.dropAt(enemy.motion.state);
+      this.logistics.dropAt(enemy.motion.state, this.ship?.motion.state ?? null, dropMagsOf(enemy.formationRole));
       this.grantSalvageBlueprints(killsBefore);
     } else {
       this.scoreCounter.recordEnemyLoss();
@@ -432,17 +446,29 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     if (this.isPlaying && this.checkWin()) this.onWin(simTime);
   }
 
-  // 撃破数が跨いだ節目の分だけ、棚にまだ無い鹵獲の設計図の授与を記録する(SPEC GAME.md 3.1)。
-  // 鹵獲を数えないステージでは記録しない。
+  // 撃破数が跨いだ節目の鹵獲を授与する(SPEC GAME.md 3.1)。授与はラン内で毎回記録し、補給艇のある
+  // ステージでは積荷の待ち行列へ積む。設計図棚へは同名が無いときだけ書く。鹵獲を数えないステージでは
+  // 記録しない。
   private grantSalvageBlueprints(killsBefore: number): void {
-    if (!this.stageRules.salvageRewards) return;
-    const grants = crossedSalvageBlueprints(
-      killsBefore, this.scoreCounter.kills, this.grantedSalvageNames, this.blueprintShelf,
-    );
-    for (const grant of grants) {
-      this.grantedSalvageNames.add(grant.name);
-      this._dynamicSystem.events.record({ kind: 'salvageBlueprintGranted', name: grant.name });
+    const rules = this.stageRules;
+    if (!rules.salvageRewards) return;
+    const repeatEvery = rules.salvageTender ? SALVAGE_REPEAT_EVERY : null;
+    for (const milestone of crossedSalvageMilestones(killsBefore, this.scoreCounter.kills, repeatEvery)) {
+      this._dynamicSystem.events.record({ kind: 'salvageAwarded', name: milestone.name });
+      if (rules.salvageTender) this.salvageCargo.add(milestone.kind);
+      if (salvageGranted(milestone.name, this.grantedSalvageNames, this.blueprintShelf)) continue;
+      this.grantedSalvageNames.add(milestone.name);
+      this._dynamicSystem.events.record({ kind: 'salvageBlueprintGranted', name: milestone.name });
     }
+  }
+
+  // HUD に出す次の鹵獲までの残り撃破数(SPEC GAME.md 3.1)。鹵獲を数えないステージでは出さない。
+  // 補給艇のあるステージでは、このランでまだ越えていない次の節目までを出す。
+  private salvageRemaining(): number | null {
+    const rules = this.stageRules;
+    if (!rules.salvageRewards) return null;
+    if (rules.salvageTender) return nextSalvageMilestoneRemaining(this.scoreCounter.kills, SALVAGE_REPEAT_EVERY);
+    return nextSalvageRemaining(this.scoreCounter.kills, this.grantedSalvageNames, this.blueprintShelf);
   }
 
   // 敗北を記録し、reason と原因に応じた助言を添えて決着を「敗北」で確定させる。
@@ -473,6 +499,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       phase: this._phase,
       logistics: this.logistics.serialize(),
       reinforced: this._reinforced,
+      pendingSalvageCargo: this.salvageCargo.serialize(),
     };
   }
 }

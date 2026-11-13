@@ -217,7 +217,11 @@ export type RunEventBody =
   | { readonly kind: 'blueprintRenamed'; readonly id: string; readonly name: string }
   // 設計図を削除した。
   | { readonly kind: 'blueprintDeleted'; readonly id: string }
-  // ラン内の撃破数の節目を跨ぎ、鹵獲の設計図が授与された。name は棚へ追加する設計図の名前。
+  // ラン内の撃破数の節目を跨ぎ、鹵獲が授与された。name は鹵獲品の名前。
+  | { readonly kind: 'salvageAwarded'; readonly name: string }
+  // 授与された鹵獲の積荷を載せた補給艇が、波間に自機の前方へ現れた。
+  | { readonly kind: 'salvageTenderArrived' }
+  // 授与された鹵獲のうち、設計図棚へ追加すべきもの。name は棚へ追加する設計図の名前。
   | { readonly kind: 'salvageBlueprintGranted'; readonly name: string };
 
 // 記録された出来事1件。

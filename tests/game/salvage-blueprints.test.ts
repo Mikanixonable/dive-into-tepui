@@ -6,12 +6,18 @@ import { v3 } from '../../src/math/vec3';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { Stage, type GamePhase } from '../../src/game/stages/stage';
 import { CreativeStage } from '../../src/game/stages/creative-stage';
+import { Stage00 } from '../../src/game/stages/stage00';
+import { SalvageCargo } from '../../src/game/stages/stage-utils/salvage-cargo';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
 import { Logistics } from '../../src/game/stages/stage-utils/logistics';
 import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
 import {
-  SALVAGE_BLUEPRINTS, crossedSalvageBlueprints, nextSalvageRemaining,
+  SALVAGE_BLUEPRINTS, SALVAGE_REPEAT_EVERY, appendSalvageCargo, crossedSalvageMilestones,
+  nextSalvageMilestoneRemaining, nextSalvageRemaining,
 } from '../../src/game/ship/salvage-blueprints';
+import { ShipAssembly } from '../../src/game/ship/ship-assembly';
+import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
+import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { isShipBlueprint, type ShipBlueprintShelf } from '../../src/game/ship/ship-blueprint';
 import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry, SpawnRecord } from '../../src/game/dynamic/entity-registry';
@@ -54,6 +60,7 @@ interface BareStageFields {
   _dynamicSystem: EntityRegistry & EntityRoster;
   blueprintShelf: ShipBlueprintShelf;
   grantedSalvageNames: Set<string>;
+  salvageCargo: SalvageCargo;
 }
 
 function bareStage(
@@ -67,6 +74,9 @@ function bareStage(
   fields._dynamicSystem = system;
   fields.blueprintShelf = blueprintShelf;
   fields.grantedSalvageNames = new Set();
+  fields.salvageCargo = new SalvageCargo();
+  // 撃破記録は撃破ドロップの速度に自機を読むので、自機の居ない骨組みとして差し込む。
+  Object.defineProperty(stage, 'ship', { value: null });
   return stage;
 }
 
@@ -83,6 +93,18 @@ function grantedNames(system: TestDynamicSystem): readonly string[] {
     .map((body) => (body as { name: string }).name);
 }
 
+// 授与が記録された鹵獲品の名前。棚への書き戻しとは別に、毎ラン記録される。
+function awardedNames(system: TestDynamicSystem): readonly string[] {
+  return system.bodies
+    .filter((body) => body.kind === 'salvageAwarded')
+    .map((body) => (body as { name: string }).name);
+}
+
+// 補給艇で届けていない積荷の種類。
+function cargoOf(stage: Stage): readonly string[] {
+  return (stage as unknown as BareStageFields).salvageCargo.pending;
+}
+
 export function register(): void {
   test('鹵獲: 撃破数が節目 3・10・25 を跨ぐと、それぞれの設計図の授与が記録される', () => {
     const cases: readonly [number, string][] = [
@@ -97,16 +119,57 @@ export function register(): void {
   });
 
   test('鹵獲: 1撃破で複数の節目を跨いだら全部の授与が出る', () => {
-    const grants = crossedSalvageBlueprints(0, 26, new Set(), shelf());
+    const grants = crossedSalvageMilestones(0, 26, null);
     assert.deepEqual(grants.map((grant) => grant.name), ['鹵獲: 砲座', '鹵獲: 物資ポッド', '鹵獲: 強襲艇']);
   });
 
-  test('鹵獲: 節目の設計図が棚に同名であるとき授与は記録されない', () => {
+  test('鹵獲: 棚に同名があるとき、授与は記録するが設計図棚への追加は記録しない', () => {
     const blueprint = { id: 'salvage-gunpod', name: '鹵獲: 砲座', createdAtReal: 0, piece: SALVAGE_BLUEPRINTS[0]!.piece };
     const system = new TestDynamicSystem();
     const stage = bareStage(Stage.prototype, system, 2, shelf([blueprint]));
     stage.recordEnemyDeath(enemyAt(ENEMY_STATE), 0, 'killed');
+    assert.deepEqual(awardedNames(system), ['鹵獲: 砲座']);
     assert.deepEqual(grantedNames(system), []);
+  });
+
+  test('鹵獲: 授与は棚に同名があっても毎ラン記録し、補給艇のあるステージでは積荷の待ち行列へ積む', () => {
+    const system = new TestDynamicSystem();
+    const stage = bareStage(Stage00.prototype, system, 24, shelf());
+    stage.recordEnemyDeath(enemyAt(ENEMY_STATE), 0, 'killed');
+    assert.deepEqual(awardedNames(system), ['鹵獲: 強襲艇']);
+    assert.deepEqual(grantedNames(system), ['鹵獲: 強襲艇']);
+    assert.deepEqual(cargoOf(stage), ['assault-craft']);
+
+    const owned = [{ id: 'x', name: '鹵獲: 強襲艇', createdAtReal: 0, piece: SALVAGE_BLUEPRINTS[2]!.piece }];
+    const ownedSystem = new TestDynamicSystem();
+    const ownedStage = bareStage(Stage00.prototype, ownedSystem, 24, shelf(owned));
+    ownedStage.recordEnemyDeath(enemyAt(ENEMY_STATE), 0, 'killed');
+    assert.deepEqual(awardedNames(ownedSystem), ['鹵獲: 強襲艇']);
+    assert.deepEqual(grantedNames(ownedSystem), []);
+    assert.deepEqual(cargoOf(ownedStage), ['assault-craft']);
+  });
+
+  test('鹵獲: 補給艇のないステージでは、授与しても積荷の待ち行列へ積まない', () => {
+    const system = new TestDynamicSystem();
+    const stage = bareStage(Stage.prototype, system, 24, shelf());
+    stage.recordEnemyDeath(enemyAt(ENEMY_STATE), 0, 'killed');
+    assert.deepEqual(awardedNames(system), ['鹵獲: 強襲艇']);
+    assert.deepEqual(cargoOf(stage), []);
+  });
+
+  test('鹵獲: 補給艇のあるステージは最後の節目より後も、間隔ごとに物資ポッドを授与する', () => {
+    const grants = crossedSalvageMilestones(24, 41, SALVAGE_REPEAT_EVERY);
+    assert.deepEqual(grants.map((grant) => [grant.kills, grant.name]), [
+      [25, '鹵獲: 強襲艇'], [40, '鹵獲: 物資ポッド'],
+    ]);
+  });
+
+  test('鹵獲: 次の節目までの残り撃破数は、補給艇のあるステージでは間隔ごとに続く', () => {
+    assert.equal(nextSalvageMilestoneRemaining(25, SALVAGE_REPEAT_EVERY), 15);
+    assert.equal(nextSalvageMilestoneRemaining(39, SALVAGE_REPEAT_EVERY), 1);
+    assert.equal(nextSalvageMilestoneRemaining(40, SALVAGE_REPEAT_EVERY), 15);
+    assert.equal(nextSalvageMilestoneRemaining(2, SALVAGE_REPEAT_EVERY), 1);
+    assert.equal(nextSalvageMilestoneRemaining(26, null), null);
   });
 
   test('鹵獲: 授与済みの設計図は同じランで二度記録されない', () => {
@@ -146,5 +209,16 @@ export function register(): void {
     assert.equal(nextSalvageRemaining(4, new Set(['鹵獲: 砲座', '鹵獲: 物資ポッド', '鹵獲: 強襲艇']), shelf()), null);
     // 節目を過ぎた分は残数として出さない。
     assert.equal(nextSalvageRemaining(26, new Set(), shelf()), null);
+  });
+
+  test('鹵獲: 同じ船体へ鹵獲品を二度連ねても識別子が衝突せず、組み立ては妥当なまま', () => {
+    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    assembly.addRoot(createShipModuleInstance(SHIP_MODULE_CATALOG.require('tank-combat-main'), 'tank'));
+    const first = appendSalvageCargo(assembly, 'supply-pod', 'tank', 'a-', 'intact');
+    appendSalvageCargo(assembly, 'assault-craft', first, 'b-', 'salvaged');
+
+    const ids = assembly.modules.map(module => module.id);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.doesNotThrow(() => assembly.assertValid());
   });
 }

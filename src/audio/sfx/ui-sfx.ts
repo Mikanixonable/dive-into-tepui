@@ -4,13 +4,15 @@ import type { SoundCue } from './sound-cue';
 
 // UI 効果音の種別。'warp' は時間加速の切り替え、計画ノード操作、通知音に対応する。
 // 'construction-*' は建造中の操作音で、吸着・配置・撤去・不可・建造終了を聞き分ける(SPEC/AUDIO.md「操作音」)。
+// 'salvage-award' は鹵獲の授与を知らせる通知音(SPEC/AUDIO.md「操作音」、GAME.md 3.1)。
 export type UiSound =
   | 'warp'
   | 'construction-snap'
   | 'construction-place'
   | 'construction-remove'
   | 'construction-deny'
-  | 'construction-finish';
+  | 'construction-finish'
+  | 'salvage-award';
 
 export class UiSfx {
   // 鳴らした音のうち、最も新しい id。
@@ -38,6 +40,7 @@ export class UiSfx {
       case 'construction-remove': this.constructionRemove(); return;
       case 'construction-deny': this.constructionDeny(); return;
       case 'construction-finish': this.constructionFinish(); return;
+      case 'salvage-award': this.salvageAward(); return;
     }
   }
 
@@ -102,6 +105,26 @@ export class UiSfx {
   }
 
   // 建造終了: 上へ進む3音(C5 → E5 → G5)。
+  // 鹵獲の授与: 上へ向かう三音の和音。立ち上がりを強くし、残響は短くする。
+  private salvageAward(): void {
+    const ctx = this.engine.ctx;
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(392.0, t);
+    osc.frequency.setValueAtTime(523.25, t + 0.12);
+    osc.frequency.setValueAtTime(659.25, t + 0.24);
+    const gain = ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, t);
+    gain.gain.linearRampToValueAtTime(0.1, t + 0.02);
+    gain.gain.setValueAtTime(0.1, t + 0.3);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.56);
+  }
+
   private constructionFinish(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
