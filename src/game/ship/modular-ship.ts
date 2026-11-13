@@ -137,9 +137,7 @@ export class ModularShip extends Ship implements Controllable {
   public override get totalTorque(): number { return this.capabilities.totalTorque; }
   public override get totalThrust(): number { return this.capabilities.totalThrust; }
   public override get totalFuelConsumptionRate(): number {
-    return this.capabilities.modules('thruster', true).reduce(
-      (sum, module) => sum + (this.assembly.definition(module.id)?.abilities.fuelConsumptionRate ?? 0), 0,
-    );
+    return this.capabilities.totals.mainFuelConsumptionRate;
   }
   public get rcsFuelConsumptionRate(): number {
     return this.capabilities.modules('rcs', true).reduce(

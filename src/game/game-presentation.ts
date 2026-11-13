@@ -45,7 +45,7 @@ import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
 import { ShipConstructionView } from './ship/ship-construction-view';
 import type { ShipBlueprintShelf } from './ship/ship-blueprint';
-import { ConstructionEntry, hasUsableConstructionDock } from './ship/construction-entry';
+import { ConstructionEntry } from './ship/construction-entry';
 import { FrameControls } from './hud/frame/frame-controls';
 import { HudPanelPresenter } from './hud/hud-panel-presenter';
 import { ViewOptionsControl, type ViewOptionsSettings } from './hud/panels/view-options-control';
@@ -56,6 +56,8 @@ import type { GameInputSource } from './input/game-input-ports';
 import { DisplayPhase, type DisplayPhaseSource } from './runtime/display-phase';
 import type { GameInputPort } from './input/game-input-router';
 import { ConfirmationOverlay } from '../hud/windows/confirmation-overlay';
+import { len, sub } from '../math/vec3';
+import { WORK_LIGHT_INTENSITY, workLightPlacement } from '../render/pipeline/lighting/work-light-source';
 import type { Game } from './game';
 import type { PageDevices } from '../run/page-devices';
 import type { MarkerSink } from '../marker/marker-sink';
@@ -194,7 +196,9 @@ export class GamePresentation {
     this.shipConstruction = new ShipConstruction(
       this.input, commands, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
       hud, hud.constructionConfirm, blueprints, game.events,
-      (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
+      (ship, target) => this.cameraSystem.focusConstruction(
+        ship.id, target?.radius ?? ship.motion.radius, target?.position,
+      ),
     );
     this.shipConstructionView = new ShipConstructionView(scene.scene, markers);
     this.constructionEntry = new ConstructionEntry(this.shipConstruction, hud);
@@ -273,19 +277,18 @@ export class GamePresentation {
       game.orbitSlots, celestialSystem.orbitGuide.orbitCatalog,
       hud.overlayManager, (message) => hud.hint(message), () => game.simTime,
     );
-    this.hudPanels = new HudPanelPresenter(
-      hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
-      activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
-      this.navigationCommand,
-    );
-    // 最寄りの使用可能ドックから建造を始める。Bキーのポートと常設ボタンが共有する。
+    // 最寄りの使用可能ドックから建造を始める。Bキーと艦のステータスパネルの「建造」が共有する。
     const startConstructionNearest = (): void => {
       const controlled = game.activeControllable;
       const camera = this.cameraFrame;
       if (controlled === null || camera === null || !isModularShip(controlled)) return;
       this.constructionEntry.startNearestDock(controlled, camera.viewpoint.position);
     };
-    hud.onConstructionStart = startConstructionNearest;
+    this.hudPanels = new HudPanelPresenter(
+      hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
+      activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
+      this.navigationCommand, startConstructionNearest, () => this.shipConstruction.active,
+    );
     const inputSource: GameInputSource = {
       commands: game.commands,
       simSpeedManager: game.simSpeedManager,
@@ -410,11 +413,6 @@ export class GamePresentation {
     // 表示時刻 = 未来ゴーストのスライダーぶん先取りした simTime。
     const { displayTime } = displayWindow;
     const view = this.viewManager.current;
-    // 常設の建造ボタンは、戦闘ビューで操作対象の船体が使えるドックを持つ間だけ出す。
-    this.devices.hud.syncConstructionBadge(
-      view === 'combat' && !this.shipConstruction.active
-        && controlled !== null && isModularShip(controlled) && hasUsableConstructionDock(controlled),
-    );
     // 最初にカメラを確定し、後続の同期とマーカー投影が読む行列を揃える。
     const camera = this.syncCamera(displayWindow, view, viewport, nowMs);
     // 描く対象と選べる対象を同じ判定から出すため、ビューが確定させた可否を読む。
@@ -474,6 +472,7 @@ export class GamePresentation {
     this.shipConstruction.sync();
     const construction = this.shipConstructionView.sync(this.shipConstruction, camera, nowMs);
     for (const sound of construction.sounds) this.uiSounds.push(`construction-${sound}`);
+    this.syncWorkLight(graphics, camera);
     dynamicSystem.sync(
       displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay,
       construction.shipModuleEmphasis,
@@ -495,6 +494,20 @@ export class GamePresentation {
       displayTime, view, camera,
       this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, visibilityPolicy, nowMs,
     );
+  }
+
+  // 建造中だけ、カメラの右上後方へ作業灯を置く。灯距は注視距離(建造で視点寄せに使う
+  // 距離と同じ量)に比例し、建造モード以外や設定オフでは強さ 0 で消灯する。
+  private syncWorkLight(graphics: GraphicsSettingsData, camera: CameraFrame): void {
+    const workLight = this.devices.scene.pipeline.workLight;
+    if (!this.shipConstruction.active || !graphics.constructionWorkLight) {
+      workLight.setIntensity(0);
+      return;
+    }
+    // 注視距離は ECI・描画座標で同じ尺(フローティング原点は平行移動のみ)。
+    const focusDist = len(sub(camera.viewpoint.lookTarget, camera.viewpoint.position));
+    const { position, radius } = workLightPlacement(camera.camera, focusDist);
+    workLight.set(position, radius, WORK_LIGHT_INTENSITY);
   }
 
   // このフレームの出来事を通知・音・閃光・対象・航法ターゲットの宣言へ写す。

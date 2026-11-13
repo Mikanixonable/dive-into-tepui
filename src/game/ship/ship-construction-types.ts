@@ -11,6 +11,9 @@ export interface ConstructionCapabilities {
   readonly rcsFuel: number;
   readonly power: number;
   readonly radiation: number;
+  // 主推進の満載性能。推力か燃料消費率が無ければ null。
+  readonly deltaV: number | null; // m/s
+  readonly acceleration: number | null; // m/s²
 }
 
 export interface ConstructionPreview {
@@ -78,15 +81,19 @@ export interface ShipConstructionHeldView {
 }
 
 // 選択中の配置済みモジュールの表示用の写し。canEdit は撤去・付け替え・回転を受け付けるか。
+// orientation はそのモジュールの現在の取り付け向き。
 export interface ShipConstructionSelectionView {
   readonly name: string;
   readonly canEdit: boolean;
+  readonly orientation: ModuleOrientation;
 }
 
 // 設計図タブのカード1枚分の表示用の写し。質量は乾燥質量 [kg]。
 export interface ShipBlueprintCardView {
   readonly id: string;
   readonly name: string;
+  // 根元のモジュールの modelId。タイルのサムネイルを引く鍵で、定義を引けなければ null。
+  readonly modelId: string | null;
   readonly moduleCount: number;
   readonly mass: number;
   // いま手に持っている設計図なら true。
@@ -125,13 +132,12 @@ export interface ShipConstructionPanelModel {
   // 指している取り付け先へ手持ちを置いたときの適用後の見積り。無ければ null。
   readonly preview: ConstructionPreview | null;
   readonly role: ConstructionRole;
-  readonly warning: string | null;
+  // 「置く」「付け替える」が押せない理由。押せるとき、確定ボタン自体を出さない状態では null。
+  readonly placeBlockReason: string | null;
   readonly pointedTargetId: string | null;
   readonly targets: readonly ConstructionTargetState[];
   readonly history: ConstructionHistoryView;
   readonly blueprints: readonly ShipBlueprintCardView[];
-  // 設計図を記録できない理由。記録できるときは null。
-  readonly blueprintRecordReason: string | null;
   readonly canPlace: boolean;
   readonly canRemove: boolean;
 }
@@ -153,10 +159,13 @@ export function hiddenShipConstructionModel(): ShipConstructionPanelModel {
   return {
     visible: false, shipName: '—', held: null, selection: null,
     moduleCount: 0, totalMass: 0, hp: 0, maxHp: 0,
-    capabilities: { thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0 }, preview: null,
-    role: 'material', warning: null, pointedTargetId: null, targets: [],
+    capabilities: {
+      thrust: 0, mainFuel: 0, rcsFuel: 0, power: 0, radiation: 0,
+      deltaV: null, acceleration: null,
+    }, preview: null,
+    role: 'material', placeBlockReason: null, pointedTargetId: null, targets: [],
     history: { names: [], position: 0, canUndo: false, canRedo: false },
-    blueprints: [], blueprintRecordReason: null,
+    blueprints: [],
     canPlace: false, canRemove: false,
   };
 }
