@@ -132,7 +132,8 @@ function constructionRows(): readonly HelpRow[] {
   return [
     {
       category: 'construction', input: 'クリック / タップ', label: '置く / 選ぶ',
-      description: '手に持ったものを指した取り付け候補へ置く。配置済みモジュールを指せば選ぶ。',
+      description: '手に持っている間は、押した位置の取り付け候補へ置く(候補が無い場所では何もしない)。'
+        + '手に何も持っていなければ、押した位置の配置済みモジュールを選ぶ。',
     },
     {
       category: 'construction', input: '選択中のモジュールからドラッグ', label: '付け替え',

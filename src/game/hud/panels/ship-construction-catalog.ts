@@ -2,6 +2,7 @@
 // 持ち上げるドラッグを通知する。設計図カテゴリは棚の一覧から組む。
 import { Button, buildSpan, TabBar, ValueInput } from '../../../hud/widgets';
 import { CLICK_MOVE_THRESHOLD } from '../../../input/input';
+import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { SHIP_MODULE_CATALOG } from '../../ship/ship-module-catalog';
 import { formatConstructionMetric, formatConstructionNumber } from './ship-construction-format';
 import type { ShipModuleCategory, ShipModuleDefinition } from '../../ship/ship-module-definition';
@@ -13,9 +14,11 @@ const TOUCH_CARD_LIFT_MS = 300;
 // カタログのタブ。設計図は部品のカテゴリではないが、同じ一覧面を切り替える。
 type CatalogTab = ShipModuleCategory | 'blueprints';
 
-const CATEGORY_ITEMS: readonly (readonly [CatalogTab, string])[] = [
-  ['command', '指令'], ['fuel', '燃料'], ['propulsion', '推進'], ['combat', '戦闘'], ['utility', '設備'],
-  ['blueprints', '設計図'],
+// カテゴリタブは選ぶキー(1〜6)をキーキャップで添える。
+const CATEGORY_ITEMS: readonly (readonly [CatalogTab, string, string?])[] = [
+  ['command', '指令', K.constructionCategory1.label], ['fuel', '燃料', K.constructionCategory2.label],
+  ['propulsion', '推進', K.constructionCategory3.label], ['combat', '戦闘', K.constructionCategory4.label],
+  ['utility', '設備', K.constructionCategory5.label], ['blueprints', '設計図', K.constructionCategory6.label],
 ];
 
 const CATEGORY_BY_KIND: Readonly<Record<ShipModuleDefinition['kind'], ShipModuleCategory>> = {

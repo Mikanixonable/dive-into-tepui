@@ -79,6 +79,8 @@ export interface ShipConstructionPanelPort {
   onRemove: (() => void) | null;
   onDuplicate: (() => void) | null;
   onRelease: (() => void) | null;
+  // 「選択を解く」。release とは別の操作で、選択だけを解く。
+  onDeselect: (() => void) | null;
   onRotate: ((delta: 1 | -1) => void) | null;
   onSwapEnds: (() => void) | null;
   onCycleSymmetry: (() => void) | null;
@@ -162,7 +164,8 @@ export class ShipConstruction implements OverlayHandle {
     };
     panel.onRemove = () => this.removeSelected();
     panel.onDuplicate = () => this.duplicateSelected();
-    panel.onRelease = () => { this.release(); this.select(null); };
+    panel.onRelease = () => this.release();
+    panel.onDeselect = () => this.select(null);
     panel.onRotate = (delta) => this.rotate(delta);
     panel.onSwapEnds = () => this.swapEnds();
     panel.onCycleSymmetry = () => this.cycleSymmetry();
@@ -737,6 +740,7 @@ export class ShipConstruction implements OverlayHandle {
     this.panel.onRemove = null;
     this.panel.onDuplicate = null;
     this.panel.onRelease = null;
+    this.panel.onDeselect = null;
     this.panel.onRotate = null;
     this.panel.onSwapEnds = null;
     this.panel.onCycleSymmetry = null;
