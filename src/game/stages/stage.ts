@@ -18,7 +18,6 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
-import type { ProteinDisplayControl } from '../creative/stage-controls-panel';
 import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
@@ -27,7 +26,6 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
-import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
 import type { ViewMode } from '../view/view-mode';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。ステージの epoch の
@@ -147,8 +145,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public readonly executesPlans: boolean = false;
   // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。
   public readonly authoring: ObjectAuthoring | null = null;
-  // タンパク質の表示形態と着色を選ぶ UI を持つステージはそれを差し出す。既定では持たない。
-  public readonly proteinDisplayControl: ProteinDisplayControl | null = null;
 
   protected readonly logistics: Logistics;
   private readonly statusPanel: StatusPanel;
@@ -294,13 +290,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.scoreCounter.recordSpawnEnemy();
   }
 
-  // タンパク質の敵を要求し、出撃数をスコアへ記録する。敵はアセットが揃い次第実体化する。
-  protected addProteinEnemy(request: ProteinEnemyRequest): void {
-    this._dynamicSystem.spawnWhenReady({ kind: 'protein-enemy', request });
-    this.scoreCounter.recordSpawnEnemy();
-  }
-
-  // 戦場に現れた敵の数。アセットを待つ敵は、実体化した時点から数える(SPEC/PROTEIN.md「出現」節)。
+  // 戦場に現れた敵の数。実体化を待つ敵は、実体化した時点から数える。
   public get enemiesAppeared(): number {
     return this.scoreCounter.totalEnemiesSpawned - this._dynamicSystem.pendingEnemyCount;
   }

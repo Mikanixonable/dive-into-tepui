@@ -10,7 +10,6 @@ import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '..
 import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
 import { ThrustEffects } from '../../src/render/dynamic/player/thrust-effects';
 import { RcsEffects } from '../../src/render/dynamic/player/rcs-effects';
-import { DEFAULT_PROTEIN_DISPLAY } from '../../src/render/protein/protein-display';
 import { SunLight } from '../../src/render/pipeline/sun-light';
 import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
@@ -65,8 +64,7 @@ function viewFrame(camera: CameraFrame, pools: InstancedPools): DynamicViewFrame
     displayTime: DISPLAY_TIME,
     camera,
     style: 'realistic',
-    visual: { proteinVibration: false, thrustPlume: 'simple' },
-    proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
+    visual: { thrustPlume: 'simple' },
     sunLight,
     bodyShadow: new BodyShadow(sunLight),
     pools,
