@@ -20,6 +20,8 @@ import type { RunEventSink } from '../../run-events';
 export interface WaveAttackStage extends StageOutcome {
   // 敵を登録し、出撃数をスコアへ記録する。
   addEnemy(enemy: Enemy): void;
+  // 交戦中の集団が 0 になった波間に呼ぶ。補給艇を届けたら true。
+  onLull(): boolean;
 }
 
 const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m]
@@ -30,6 +32,7 @@ const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くする
 const STAGE00_ALT_OFFSET_MAX = -200;
 const STAGE00_SPAWN_INTERVAL = 30.0; // 波状攻撃の間隔 [s]
 const STAGE00_CLEARED_SPAWN_INTERVAL = 2.0; // 交戦中の集団が 0 になったときの波状攻撃の間隔 [s]
+const STAGE00_TENDER_LULL = 60.0; // 補給艇が届いた波間の、次の波までの待ち [s](SPEC GAME.md 2.3)
 const STAGE00_SPAWN_DIST_MIN = 10000; // 敵集団のスポーン距離
 const STAGE00_SPAWN_DIST_MAX = 14000;
 const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
@@ -54,6 +57,8 @@ export interface SerializedWaveAttack {
   readonly waveState: WaveState;
   readonly spawnTimer: number;
   readonly waveCount: number;
+  // 補給艇が届いた波間か。欠けた記録は false から始まる。
+  readonly lullHeld?: boolean;
 }
 
 export class WaveAttack {
@@ -68,6 +73,8 @@ export class WaveAttack {
     private waveState: WaveState = 'waiting_for_ammo',
     private spawnTimer = 0,
     private _waveCount = 0,
+    // 補給艇が届いた波間か。その間は全滅による待ちの短縮を受けず、届いた時点の待ちを保つ。
+    private lullHeld = false,
   ) {}
 
   // 直列化した進行から復元する。
@@ -78,10 +85,11 @@ export class WaveAttack {
     attractors: readonly CelestialBody[],
     idAllocators: EntityIdAllocators,
   ): WaveAttack {
-    const { waveState, spawnTimer, waveCount } = serialized;
+    const { waveState, spawnTimer, waveCount, lullHeld } = serialized;
     // null も欠けと同じく新しい進行の初期値から始める(既定引数は undefined でしか働かない)。
     return new WaveAttack(
-      events, scene, attractors, idAllocators, waveState ?? undefined, spawnTimer ?? undefined, waveCount ?? undefined,
+      events, scene, attractors, idAllocators, waveState ?? undefined, spawnTimer ?? undefined,
+      waveCount ?? undefined, lullHeld ?? undefined,
     );
   }
 
@@ -129,21 +137,30 @@ export class WaveAttack {
   ): void {
     despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, stage);
     const activeGroups = countActiveWaveGroups(enemies);
-    if (activeGroups === 0) {
+    if (activeGroups > 0) {
+      this.lullHeld = false;
+    } else {
       // 短縮先を 0 にすると、湧いた波が同じフレームで離脱しきる時間加速下で毎フレーム湧き続ける。
-      this.spawnTimer = Math.min(this.spawnTimer, STAGE00_CLEARED_SPAWN_INTERVAL);
+      if (!this.lullHeld) this.spawnTimer = Math.min(this.spawnTimer, STAGE00_CLEARED_SPAWN_INTERVAL);
+      if (stage.onLull()) {
+        this.lullHeld = true;
+        this.spawnTimer = Math.max(this.spawnTimer, STAGE00_TENDER_LULL);
+      }
     }
     if (activeGroups >= maxWaveGroups(this._waveCount)) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, stage);
     this.spawnTimer = STAGE00_SPAWN_INTERVAL;
+    this.lullHeld = false;
     this.events.record({ kind: 'waveSpawned', wave: this._waveCount });
   }
 
   // 進行を直列化した形へ畳む。
   public serialize(): SerializedWaveAttack {
-    return { waveState: this.waveState, spawnTimer: this.spawnTimer, waveCount: this._waveCount };
+    return {
+      waveState: this.waveState, spawnTimer: this.spawnTimer, waveCount: this._waveCount, lullHeld: this.lullHeld,
+    };
   }
 }
 
