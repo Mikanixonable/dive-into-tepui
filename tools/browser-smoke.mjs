@@ -786,15 +786,8 @@ async function constructMaterialFromBaseDock() {
     'the second placement to appear in the history',
   );
 
-  // 手放してから接合面のあった位置をクリックすると、その面のモジュールが選ばれる。
-  // 手元バーは「手放す」を押すと案内文へ、選ぶと「選択: <名前>」へ切り替わる。
-  await clickPanelButton(
-    '#ship-construction-panel [data-id="construction-hand-actions"]', '手放す', 'release the held module',
-  );
-  await waitFor(
-    `document.querySelector('#ship-construction-panel [data-id="construction-hand-state"]')?.textContent?.startsWith('カードを押して') === true`,
-    'the held module to be released',
-  );
+  // 置くと手は空になるので、接合面のあった位置をそのままクリックすると、その面の
+  // モジュールが選ばれる。手元バーは選ぶと「選択: <名前>」へ切り替わる。
   await leftClickAt(attachPoint.x, attachPoint.y);
   await waitFor(
     `document.querySelector('#ship-construction-panel [data-id="construction-hand-state"]')?.textContent === '選択:'`,

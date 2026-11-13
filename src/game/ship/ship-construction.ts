@@ -403,12 +403,13 @@ export class ShipConstruction implements OverlayHandle {
       : info.target.kind === 'joint'
         ? `${this.heldName(session, held)} を割り込み`
         : `${this.heldName(session, held)} を配置`;
-    // 手持ちの写しから置くものは、置いた時点で手から離れるのではなく持ち続ける。
-    const releasesHand = held.kind === 'piece';
     this.submit(session, 'place', name, this.placedIds(session, held, newIds), false, null, () => {
       session.edits.place(held, info.target, this.orientation, this.placementSymmetry(held), newIds);
     });
-    if (releasesHand) this.heldValue = null;
+    // 置きを受け付けた時点で手を空にし、置いたモジュールは選ばない。対称数は持ち越す。
+    this.heldValue = null;
+    this.heldBlueprintId = null;
+    this.selectedId = null;
     this.trialCache = null;
   }
 

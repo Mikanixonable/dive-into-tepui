@@ -7,18 +7,33 @@ import type { Viewport } from '../../src/render/viewport';
 import type { CameraSystem } from '../../src/game/camera/camera-system';
 import type { Ray } from '../../src/math/ray';
 import { screenProjection, type Viewpoint } from '../../src/math/projection';
-import { v3, type Vec3 } from '../../src/math/vec3';
+import { add, scale, sub, v3, type Vec3 } from '../../src/math/vec3';
+import { Q_IDENTITY, qRotate } from '../../src/math/quat';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import type { CompoundCylinderRayHit } from '../../src/physics/compound-cylinder-contact';
+import { kinematicState } from '../../src/physics/kinematic-state';
+import { CommandQueue } from '../../src/game/command-queue';
+import {
+  ShipConstruction, type ShipConstructionPanelPort,
+} from '../../src/game/ship/ship-construction';
+import { createBasePreset } from '../../src/game/ship/ship-presets';
+import { ShipCapabilities } from '../../src/game/ship/ship-capabilities';
+import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
 import {
   ShipConstructionPointer, type ConstructionPointerHost,
 } from '../../src/game/ship/ship-construction-pointer';
+import type { ConstructionShip } from '../../src/game/ship/ship-construction-edits';
 import type { ConstructionTargetGuide } from '../../src/game/ship/ship-construction-candidates';
 import { constructionTargetId } from '../../src/game/ship/ship-construction-rules';
 import type { ConstructionTrial } from '../../src/game/ship/ship-construction-preview';
 import type {
   ConstructionCardDrag, ConstructionHeld, ConstructionTarget,
 } from '../../src/game/ship/ship-construction-types';
+import type { ModularShip } from '../../src/game/ship/modular-ship';
+import type { OverlayManager } from '../../src/hud/overlay-manager';
+import type { Notifier } from '../../src/hud/notifier';
+import type { DisplayWindowManager } from '../../src/game/display-window-manager';
+import type { RunEventSink } from '../../src/game/run-events';
 import { test } from '../harness';
 
 // interpretPointer が使う面だけを持つ偽の入力。掴んだ押下はドラッグとして残し、
@@ -152,6 +167,22 @@ function screenPoint(guideEci: Vec3): PointerPoint {
   return { x: projected.x, y: projected.y };
 }
 
+// 実際の船体と命令列で ShipConstruction を動かすための、構造編集後に物性を同期する最小の船。
+class PointerTestShip implements ConstructionShip {
+  public readonly name = 'test';
+  public readonly assembly = createBasePreset();
+  public readonly capabilities = new ShipCapabilities(this.assembly);
+  public readonly motion = new ModularShipMotion(
+    this.assembly, kinematicState<'eci'>(0, v3(100, 200, 300), v3()),
+    { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) },
+  );
+
+  public synchronizeAssemblyState(): void {
+    this.motion.synchronizeAssembly();
+    this.capabilities.reconcileOperatingCockpit();
+  }
+}
+
 export function register(): void {
   test('construction pointer: 手持ち中に候補の無い位置をクリックしても手放さず選ばない', () => {
     const host = new FakeHost();
@@ -212,5 +243,73 @@ export function register(): void {
       'hold', 'pointed:null', `pointed:${id}`, `pointed:${id}`,
       'release:その取り付け面はふさがっています',
     ]);
+  });
+
+  test('construction pointer: 置くと手が空になり、同じ位置のクリックで置いたモジュールが選ばれる', () => {
+    const ship = new PointerTestShip();
+    const queue = new CommandQueue();
+    const construction = new ShipConstruction(
+      {} as unknown as Input,
+      queue,
+      {
+        element: { contains: () => false },
+        selectCatalogCategory: () => {},
+        sync: () => {},
+      } as unknown as ShipConstructionPanelPort,
+      { openMode: () => {}, close: () => {}, isInputGated: () => false } as unknown as OverlayManager,
+      { current: { forceCurrent: false }, setForceCurrent: () => {} } as unknown as DisplayWindowManager,
+      { hint: () => {} } as unknown as Notifier,
+      { request: () => {}, close: () => {} },
+      { blueprints: [], canRecord: false },
+      { record: () => {} } as unknown as RunEventSink,
+    );
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+    construction.hold({ kind: 'catalog', definitionId: 'tank-3-main' });
+
+    // ドックの自由端のガイドが画面に映る視点から、その画面位置を押す。
+    const guide = construction.targetGuides().find(
+      entry => entry.target.kind === 'axial-face' && entry.target.parentId === 'dock-left'
+        && entry.target.face === 'front',
+    );
+    assert.ok(guide !== undefined);
+    const viewpoint: Viewpoint = {
+      position: add(guide.guideEci, scale(guide.normalEci, 50)),
+      lookTarget: guide.guideEci, up: v3(0, 1, 0), fovDeg: 60, aspect: 4 / 3,
+    };
+    // 置いたあとのクリックでモジュールを選ぶため、視線の照準を差し替えられる偽カメラ。
+    let aim: Vec3 | null = null;
+    const camera = {
+      activeViewpoint: viewpoint,
+      rayThroughScreen: (): Ray => aim === null
+        ? { origin: v3(), dir: v3(0, 0, 1) }
+        : { origin: add(aim, scale(guide.normalEci, 50)), dir: scale(guide.normalEci, -1) },
+    } as unknown as CameraSystem;
+    const point = screenProjection(viewpoint, VIEWPORT.width, VIEWPORT.height)(guide.guideEci);
+    const input = new FakeInput();
+    input.pointerPoint = { x: point.x, y: point.y };
+    input.click({ x: point.x, y: point.y });
+
+    construction.handlePointer(input as unknown as Input, camera, VIEWPORT);
+
+    // 置きを受け付けた時点で手は空になる。船体への反映は命令の適用を待つ。
+    assert.equal(construction.held, null);
+    queue.applyAll();
+    construction.sync();
+    const placedId = construction.lastOperation?.moduleIds[0];
+    assert.ok(placedId !== undefined);
+    assert.ok(ship.assembly.module(placedId) !== null);
+
+    // 次のフレームとして、置いたモジュールへ当たる視線で同じ位置をクリックする。
+    aim = add(
+      sub(ship.motion.state.r, qRotate(ship.motion.att.q, ship.motion.centerOffset)),
+      qRotate(ship.motion.att.q, ship.assembly.worldTransformOf(placedId)!.position),
+    );
+    const next = new FakeInput();
+    next.pointerPoint = { x: point.x, y: point.y };
+    next.click({ x: point.x, y: point.y });
+
+    construction.handlePointer(next as unknown as Input, camera, VIEWPORT);
+
+    assert.equal(construction.selectedModuleId, placedId);
   });
 }
