@@ -792,20 +792,29 @@ async function constructMaterialFromBaseDock() {
   );
 
   // 置くと手は空になるので、接合面のあった位置をそのままクリックすると、その面の
-  // モジュールが選ばれる。手元バーは選ぶと「選択: <名前>」へ切り替わる。
+  // モジュールが選ばれる。手元バーは選ぶと「選択: <名前>」へ切り替わり、操作は
+  // モジュールの脇へ追従する選択メニューに出る。
   await leftClickAt(attachPoint.x, attachPoint.y);
   await waitFor(
     `document.querySelector('#ship-construction-panel [data-id="construction-hand-state"]')?.textContent === '選択:'`,
     'the placed module to be selected by clicking its attach face',
   );
+  await waitFor(
+    `(() => {
+      const menu = document.querySelector('[data-id="construction-selection-menu"]');
+      return menu !== null && !menu.classList.contains('hidden');
+    })()`,
+    'the selection menu to appear beside the selected module',
+  );
   const selectedName = await devTools.evaluate(
     `document.querySelector('#ship-construction-panel [data-id="construction-hand-name"]')?.textContent`,
   );
 
-  // 選んだモジュールを先端部ごと撤去する。撤去したモジュールより先に置いたモジュールは
-  // 先端部として一緒に外れるため、個数は減ることだけを見て、戻りは撤去前との一致で見る。
+  // 選んだモジュールを先端部ごと撤去する。撤去は選択メニューのボタンで行う。
+  // 撤去したモジュールより先に置いたモジュールは先端部として一緒に外れるため、
+  // 個数は減ることだけを見て、戻りは撤去前との一致で見る。
   await clickPanelButton(
-    '#ship-construction-panel [data-id="construction-hand-actions"]', '撤去', `remove ${selectedName}`,
+    '[data-id="construction-selection-menu"]', '撤去', `remove ${selectedName}`,
   );
   await waitFor(
     `(() => {
