@@ -396,7 +396,14 @@ async function main() {
   }
   const taken = await shootMissing(shotInfos);
   console.log(`撮影: 全 ${shotInfos.length} 枚のうち ${taken} 枚を新たに撮った(既存は飛ばす)`);
-  if (!shotsArgGiven) writeFileSync(path.join(shotsDir, 'manifest.json'), `${JSON.stringify({
+  // 撮影の記録(manifest)は、撮ったとき・撮影の一覧が変わったとき・記録が無いときだけ書く。撮り直さない
+  // 実行で現在の HEAD を書くと、撮影がどの HEAD で撮られたかの記録が嘘になる。
+  const manifestFile = path.join(shotsDir, 'manifest.json');
+  const recordedNames = existsSync(manifestFile)
+    ? JSON.parse(readFileSync(manifestFile, 'utf8')).shots.map((shot) => shot.name).join('\n')
+    : null;
+  const listChanged = recordedNames !== shotInfos.map((shot) => shot.name).join('\n');
+  if (!shotsArgGiven && (taken > 0 || listChanged)) writeFileSync(manifestFile, `${JSON.stringify({
     tool: 'cloud-detail-compare',
     generatedAt: new Date().toISOString(),
     gitHead: gitHead(root),
