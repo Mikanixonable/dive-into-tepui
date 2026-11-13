@@ -40,6 +40,9 @@ export class CloudShadowRenderer {
   private readonly topAltitude: FloatUniform;
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
+  // 粒の時計になる表示時刻 [s] と、風が結ばれているかの 0/1。set で写し取る。
+  private readonly displayTime: FloatUniform;
+  private readonly windEnabled: FloatUniform;
   // 雲場の読み取りと形状式は共有入力層へ置く。ここは太陽光路の透過率だけを所有する。
   private readonly fieldSampler = new CloudFieldSampler();
   private readonly shape: CloudShapeEvaluator;
@@ -53,6 +56,8 @@ export class CloudShadowRenderer {
     this.topAltitude = uniform(0);
     this.bodyFromWorld = uniform(new THREE.Matrix4());
     this.active = uniform(0);
+    this.displayTime = uniform(0);
+    this.windEnabled = uniform(0);
     this.shape = new CloudShapeEvaluator(this.surfaceRadius.div(CUMULUS_GRAIN_SIZE));
   }
 
@@ -66,6 +71,8 @@ export class CloudShadowRenderer {
     this.topAltitude.value = cumulus.cloud.topAltitude;
     this.bodyFromWorld.value.copy(cumulus.bodyFromWorld);
     this.fieldSampler.bind(cumulus.cloud.field);
+    this.displayTime.value = cumulus.cloud.displayTime;
+    this.windEnabled.value = cumulus.cloud.field.windTexture === null ? 0 : 1;
   }
 
   // このフレームに積雲の殻の影があるか。
@@ -119,7 +126,7 @@ export class CloudShadowRenderer {
             .grainWeatherFactor(cloud.coverage, cloud.cloudTop.div(CLOUD_TOP_SPAN))
             .mul(smoothstep(octave.sizeM, octave.sizeM * 2, sampleWidth).oneMinus()).toVar());
           If(greaterThan(grainAmplitudes[0]!, 0), () => {
-            grain.assign(this.shape.grainAt(up, grainAmplitudes));
+            grain.assign(this.shape.grainAt(up, grainAmplitudes, this.displayTime, this.windEnabled));
           });
           const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);

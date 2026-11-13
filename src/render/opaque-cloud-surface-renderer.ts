@@ -66,6 +66,9 @@ export class OpaqueCloudSurfaceRenderer {
   // 場の起伏と粒の起伏が同じ 1 つの法線に出る。
   private readonly grainFrequency: FloatUniform;
   private readonly gradientAngle: FloatUniform;
+  // 粒の時計になる表示時刻 [s] と、風が結ばれているかの 0/1。bind で写し取る。
+  private readonly displayTime: FloatUniform;
+  private readonly windEnabled: FloatUniform;
   // 分割段ごとの球。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
@@ -80,6 +83,8 @@ export class OpaqueCloudSurfaceRenderer {
     this.grainFrequency = uniform(grainFrequency);
     this.shape = new CloudShapeEvaluator(this.grainFrequency);
     this.gradientAngle = uniform(0.5 / grainFrequency);
+    this.displayTime = uniform(0);
+    this.windEnabled = uniform(0);
     this.material = this.buildMaterial();
 
     // 詳細度ごとのメッシュを同じ雲場へ束ねる。
@@ -114,6 +119,8 @@ export class OpaqueCloudSurfaceRenderer {
   // 読む雲場と cap の置き方を写し取る。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
   public bind(input: CloudRenderInput): void {
     this.fieldSampler.bind(input.field);
+    this.displayTime.value = input.displayTime;
+    this.windEnabled.value = input.field.windTexture === null ? 0 : 1;
   }
 
   // 標本の配り方を置き直す。回数はシェーダへ展開されるので、変わればマテリアルを組み直す。
@@ -225,7 +232,7 @@ export class OpaqueCloudSurfaceRenderer {
     const radius = max(length(point), 1e-6);
     const direction = point.div(radius);
     const cloud = this.fieldAt(direction);
-    const grain = this.shape.grainAt(direction, grainAmplitudes);
+    const grain = this.shape.grainAt(direction, grainAmplitudes, this.displayTime, this.windEnabled);
     // 粒は覆いの縁を texel より細かく千切る。
     const present = step(threshold, this.shape.opaqueFraction(cloud.coverage, grain));
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
@@ -245,7 +252,7 @@ export class OpaqueCloudSurfaceRenderer {
     const topAt = (direction: Vec3Node): FloatNode => this.shape.cloudTopRadius(
       this.shape.cloudTop(
         this.fieldAt(direction).cloudTop.div(CLOUD_TOP_SPAN),
-        this.shape.grainAt(direction, grainAmplitudes),
+        this.shape.grainAt(direction, grainAmplitudes, this.displayTime, this.windEnabled),
       ),
       this.groundRadius,
     );
