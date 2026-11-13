@@ -67,6 +67,8 @@ function bareStage(
   fields._dynamicSystem = system;
   fields.blueprintShelf = blueprintShelf;
   fields.grantedSalvageNames = new Set();
+  // 撃破記録は撃破ドロップの速度に自機を読むので、自機の居ない骨組みとして差し込む。
+  Object.defineProperty(stage, 'ship', { value: null });
   return stage;
 }
 

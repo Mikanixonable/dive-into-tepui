@@ -352,7 +352,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     if (cause === 'killed') {
       const killsBefore = this.scoreCounter.kills;
       this.scoreCounter.recordKill();
-      this.logistics.dropAt(enemy.motion.state);
+      this.logistics.dropAt(enemy.motion.state, this.ship?.motion.state ?? null);
       this.grantSalvageBlueprints(killsBefore);
     } else {
       this.scoreCounter.recordEnemyLoss();
