@@ -296,8 +296,8 @@ export class ShipConstructionCatalog {
 // modelId のサムネイル画像を包む要素。画像が無い modelId では null。
 // カードのドラッグはポインタ操作で行うので、画像固有のドラッグは止める。
 function moduleThumbnail(modelId: string | null): HTMLElement | null {
-  const url = modelId === null ? undefined : moduleThumbnailUrl(modelId);
-  if (url === undefined) return null;
+  const url = modelId === null ? null : moduleThumbnailUrl(modelId);
+  if (url === null) return null;
   const wrap = document.createElement('span');
   wrap.className = 'construction-module-thumb';
   const image = document.createElement('img');
