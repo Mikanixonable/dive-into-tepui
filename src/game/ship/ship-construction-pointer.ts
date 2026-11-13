@@ -78,8 +78,8 @@ export interface ConstructionPointerHost {
   removeSelected(): void;
   undo(): void;
   redo(): void;
-  // 建造対象の船体へ視点を寄せる。
-  focusShip(): void;
+  // 選択中のモジュールへ、選んでいなければ建造対象の船体へ視点を寄せる。
+  focus(): void;
   // カタログのカテゴリをタブの並び順の index で選ぶ。
   selectCatalogCategory(index: number): void;
 }
@@ -231,7 +231,7 @@ export class ShipConstructionPointer {
       return true;
     }
     if (bindingMatches(K.constructionFocus, code, input)) {
-      host.focusShip();
+      host.focus();
       return true;
     }
     const category = CATEGORY_KEYS.findIndex(binding => bindingMatches(binding, code, input));
