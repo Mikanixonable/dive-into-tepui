@@ -47,7 +47,7 @@ export class ShipConstructionHand {
     this.rollLeft = new Button('左へ回す', () => callbacks.onRotate(-1), '⟲', 'secondary', K.constructionRollLeft.label);
     this.rollRight = new Button('右へ回す', () => callbacks.onRotate(1), '⟳', 'secondary', K.constructionRollRight.label);
     this.swapEnds = new Button(
-      '端の入れ替え', () => callbacks.onSwapEnds(), undefined, 'secondary', K.constructionSwapEnds.label,
+      '向きを反転', () => callbacks.onSwapEnds(), undefined, 'secondary', K.constructionSwapEnds.label,
     );
     this.symmetry = new SegmentedControl<ConstructionSymmetry>('対称数', SYMMETRY_STEPS.map(s => [s, String(s)] as const), (value) => {
       const steps = (SYMMETRY_STEPS.indexOf(value) - SYMMETRY_STEPS.indexOf(this.currentSymmetry) + 3) % 3;
