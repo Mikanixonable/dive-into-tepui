@@ -56,9 +56,11 @@ export class StatusPanel {
     return meter;
   }
 
-  // 毎フレーム(sync 時)呼ぶ。player が null ならパネルを畳む。DOM の書き換えは
-  // 内容が変わったフレームだけに絞る。
-  public sync(player: ModularShip | null, message: string, kills: number): void {
+  // 毎フレーム(sync 時)呼ぶ。player が null ならパネルを畳む。salvageRemaining は次の
+  // 鹵獲までの残り撃破数で、出さないときは null。DOM の書き換えは内容が変わったフレームだけに絞る。
+  public sync(
+    player: ModularShip | null, message: string, kills: number, salvageRemaining: number | null,
+  ): void {
     this.panel.classList.toggle('hidden', !player);
     if (!player) return;
 
@@ -78,7 +80,8 @@ export class StatusPanel {
     this.powerMeter.setRatio(player.motion.power.chargeRatio);
     this.powerMeter.setLabel(`${fmtEnergy(chargeJ)} / ${fmtEnergy(POWER_CAPACITY)}`);
 
-    const leftHtml = message ? `<div>${message}</div><div>撃墜 ${kills}</div>` : `<div>撃墜 ${kills}</div>`;
+    const killsText = salvageRemaining === null ? `撃墜 ${kills}` : `撃墜 ${kills}(あと ${salvageRemaining} で鹵獲)`;
+    const leftHtml = message ? `<div>${message}</div><div>${killsText}</div>` : `<div>${killsText}</div>`;
     if (this.lastLeftHtml !== leftHtml) {
       this.leftText.innerHTML = leftHtml;
       this.lastLeftHtml = leftHtml;

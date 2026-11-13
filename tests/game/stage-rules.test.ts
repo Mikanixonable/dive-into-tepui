@@ -22,12 +22,12 @@ function logistics(automaticResupply: boolean): Logistics {
 }
 
 export function register(): void {
-  test('stage rules: キャンペーンは自動補給と自然修復を許可しない', () => {
-    assert.deepEqual(CAMPAIGN_STAGE_RULES, { automaticResupply: false, selfRepair: false });
+  test('stage rules: キャンペーンは自動補給と自然修復を許可せず、鹵獲を数える', () => {
+    assert.deepEqual(CAMPAIGN_STAGE_RULES, { automaticResupply: false, selfRepair: false, salvageRewards: true });
   });
 
-  test('stage rules: 自由検証は自動補給と自然修復を許可する', () => {
-    assert.deepEqual(FREE_PLAY_STAGE_RULES, { automaticResupply: true, selfRepair: true });
+  test('stage rules: 自由検証は自動補給と自然修復を許可し、鹵獲は数えない', () => {
+    assert.deepEqual(FREE_PLAY_STAGE_RULES, { automaticResupply: true, selfRepair: true, salvageRewards: false });
   });
 
   test('logistics: 直列化した自動補給設定よりステージルールを優先する', () => {
