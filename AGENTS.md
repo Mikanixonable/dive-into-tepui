@@ -235,10 +235,14 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run render-lab` | 描画の実験環境(http://localhost:8082) | 描画を目で確かめるとき |
 | `npm run render-lab:shot` | 描画の実験環境の撮影(`-- <組の名前>` で `.render-lab-shots/<組の名前>/`、省くと `.render-lab/shots/`) | 描画を画像で確かめるとき |
 | `npm run render-lab:compare` | 描画の実験環境の撮影の前後比較(`.render-lab-shots/compare-<after の名前>/`) | 描画の変更の前後を見比べるとき |
+| `npm run render-lab:measure` | パス別 GPU 時間の計測(大気の段の表と、earth の雲の段の 3 パスの表) | 描画の費用を出すとき |
 | `npm run cloud-lab` | 雲の実験環境(http://localhost:8083) | 雲の生成を目で確かめるとき |
 | `npm run cloud-lab:shot` | 雲の実験環境の撮影(`.cloud-lab/shots/`) | 雲を画像で確かめるとき |
 | `npm run cloud-lab:compare` | 生成と実写の統計比較(`.cloud-lab/compare/`) | 雲の生成を実写(8k_clouds)と見比べるとき |
 | `npm run cloud-lab:separate` | 実写を被覆率・雲頂高度・薄い雲へ推定分離(`.cloud-lab/separated/`) | 実写から描画用の仮テクスチャを作るとき |
+| `npm run cloud-detail:reference` | 雲の細部比較用の実写を Worldview から取り込む(`.cloud-detail/reference/`) | 実写の目録を増やす・取り直すとき |
+| `npm run cloud-detail:selftest` | 雲の細部の物差しの自己検査(合成場の傾き・周期性と実写の文献検算) | 物差し(`tools/cloud-detail-metrics.mjs`)を触ったとき |
+| `npm run cloud-detail:compare` | 雲の細部の撮影→計測→実写との距離→履歴→前回との差(`.cloud-detail/`) | 雲の細部の変更を定量で追うとき・前後を比べるとき |
 | `npm run export-assets` | `src/assets/` の焼き込みアセット再生成 | モデルかノズル表を変えたときだけ |
 | `npm run ship-modules:author` | Blender で船モジュールの原型 `assets-src/ship-modules/*.glb` を再生成(続けて `export-assets`) | 船モジュールの造形か寸法を変えたときだけ |
 

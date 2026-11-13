@@ -10,10 +10,12 @@
 // 表に出した数値はすべて、機械可読なレポートとして .cloud-lab/history/ へも残す(1 回の比較に
 // つき 1 ファイル、消さない)。変更の前後で「どの特徴量がどれだけ動いたか」を後から引くためで、
 // レポートの形は sections の節立てが表の節立てと対になる。
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
+import {
+  collectNumericDiffs, formatDiffValue, gitHead, previousReportName, readReport, saveReport,
+} from './cloud-report-history.mjs';
 import { componentStats } from './cloud-components.mjs';
 import { computeDistances } from './cloud-distances.mjs';
 import { bestShift, centroidOffset, crossingTime } from './cloud-motion.mjs';
@@ -727,44 +729,6 @@ function printRadialTable(header, columns) {
   return columns.map((column) => ({ label: column.label, values: Array.from(column.values) }));
 }
 
-// 差分の表示用の数値の整形。スペクトルのような小さな値と雲頂 [m] のような大きな値が混ざるので、
-// 桁の端では指数表記へ倒し、それ以外は有効数字 6 桁で丸める。
-function formatDiffValue(value) {
-  const magnitude = Math.abs(value);
-  if (magnitude !== 0 && (magnitude < 1e-4 || magnitude >= 1e6)) return value.toExponential(3);
-  return String(Number(value.toPrecision(6)));
-}
-
-// 2 つのレポートの sections を辿り、両方にある数値のリーフについて { path, before, after } を集める。
-// 形が変わった(節やキーの増減)ものは数えない — 形の変更は差分でなく版の変更として扱う。
-function collectNumericDiffs(before, after, path, out) {
-  if (typeof before === 'number' && typeof after === 'number') {
-    out.compared++;
-    if (before !== after) out.changed.push({ path, before, after });
-    return;
-  }
-  if (Array.isArray(before) && Array.isArray(after)) {
-    for (let i = 0; i < Math.min(before.length, after.length); i++) {
-      collectNumericDiffs(before[i], after[i], `${path}[${i}]`, out);
-    }
-    return;
-  }
-  if (before !== null && after !== null && typeof before === 'object' && typeof after === 'object') {
-    for (const key of Object.keys(before)) {
-      if (key in after) collectNumericDiffs(before[key], after[key], path === '' ? key : `${path}.${key}`, out);
-    }
-  }
-}
-
-// レポートへ焼く、いまの HEAD の短い SHA。git が読めない環境では unknown として、比較自体は止めない。
-function gitHead() {
-  try {
-    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-  } catch {
-    return 'unknown';
-  }
-}
-
 // 2 つの時刻の場の移流。bestShift のずらし [texel] を [m/s] へ換算し、渡された平均風
 // (null なら風との比較をしない)との向きの差と速さ比を添える。箱の実物の動きと生成の動きを
 // 同じ定義で測るためのもので、全球面の帯の移流は従来どおり main の中で測る。
@@ -971,7 +935,7 @@ async function main() {
       tool: 'cloud-lab-compare',
       reportVersion: 1,
       generatedAt: new Date().toISOString(),
-      gitHead: gitHead(),
+      gitHead: gitHead(root),
       regions: REGIONS.map((region) => region.name),
       views: VIEWS,
     },
@@ -1558,20 +1522,13 @@ async function main() {
   // (webpack の保持対象に .cloud-lab/history を加えてある — webpack.cloud-lab.config.js)。
   // 書く前に直近のレポートとの差分を出す — 変更 → 計測 → 何が動いたか、の輪の出口。
   const historyDir = path.join(buildDir, 'history');
-  mkdirSync(historyDir, { recursive: true });
-  const previousName = readdirSync(historyDir).filter((name) => name.endsWith('.json')).sort().at(-1);
-  const stamp = report.meta.generatedAt.replace(/[:.]/g, '-');
-  writeFileSync(path.join(historyDir, `${stamp}-${report.meta.gitHead}.json`), `${JSON.stringify(report, null, 2)}\n`);
+  const previousName = previousReportName(historyDir);
+  saveReport(historyDir, report);
   console.log('\n=== 前回レポートとの差分 ===');
   if (previousName === undefined) {
     console.log('前回のレポートが無い(今回が初回)');
   } else {
-    let previous = null;
-    try {
-      previous = JSON.parse(readFileSync(path.join(historyDir, previousName), 'utf8'));
-    } catch {
-      // 読めなければ null のままにする。
-    }
+    const previous = readReport(historyDir, previousName);
     if (previous === null || previous.sections === undefined) {
       console.log(`${previousName} が読めないため差分を出せない`);
     } else {
@@ -1591,12 +1548,7 @@ async function main() {
   // 距離の定義を変えても履歴と比較できるようにするため。変化が相対 5% 以内なら横ばい
   // とする (計測は決定的だが、実行環境の浮動小数の揺れを悪化と誤判定しないための幅)。
   if (previousName !== undefined) {
-    let prior = null;
-    try {
-      prior = JSON.parse(readFileSync(path.join(historyDir, previousName), 'utf8'));
-    } catch {
-      // 読めなければ null のままにする。
-    }
+    const prior = readReport(historyDir, previousName);
     if (prior?.sections) {
       const before = computeDistances(prior.sections);
       let improved = 0;
