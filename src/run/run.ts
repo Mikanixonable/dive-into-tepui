@@ -2,7 +2,6 @@
 // 入力の解釈 → 進行 → 導出と同期 → 描画の順に呼ぶ(R8)。
 import { Game, type SerializedGame } from '../game/game';
 import { GamePresentation } from '../game/game-presentation';
-import { proteinMotionFrameSample, type ProteinMotionFrameSample } from '../game/protein/protein-motion-metrics';
 import type { PageDevices } from './page-devices';
 import type { StageClass } from '../game/stages/stage';
 import type { FrameSections } from '../game/frame-sections';
@@ -216,10 +215,5 @@ export class Run implements SnapshotSource, PerfCountSource {
       ...shown,
       warp: game.simSpeedManager.simSpeed,
     };
-  }
-
-  // タンパク質敵モーションの集計値。
-  public proteinMotionFrameSample(): ProteinMotionFrameSample {
-    return proteinMotionFrameSample(this.game.dynamicSystem.all());
   }
 }
