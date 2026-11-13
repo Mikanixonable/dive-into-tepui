@@ -31,6 +31,4 @@ export function isShipBlueprint(value: unknown): value is ShipBlueprint {
 // ランへ渡す、設計図一覧の読み取り専用の面。一覧の更新はこの面の実装側が受け持つ。
 export interface ShipBlueprintShelf {
   readonly blueprints: readonly ShipBlueprint[];
-  // 設計図を新たに記録できるか。記録先のセーブデータが無いとき false。
-  readonly canRecord: boolean;
 }
