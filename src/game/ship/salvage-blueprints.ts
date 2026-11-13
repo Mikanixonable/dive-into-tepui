@@ -3,7 +3,7 @@
 // (SPEC GAME.md 3.1)。補給艇の積荷も、同じ組み立てを船体の外側へ連ねて作る。
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import { ShipAssembly } from './ship-assembly';
-import { createShipModuleInstance } from './ship-module-instance';
+import { createShipModuleInstance, type ShipModuleState } from './ship-module-instance';
 import { serializeShipAssembly, type SerializedShipAssembly } from './ship-save';
 import type { ShipBlueprintShelf } from './ship-blueprint';
 
@@ -19,6 +19,11 @@ export interface SalvageBlueprint {
 
 // 鹵獲品の種類。
 export type SalvageKind = 'gunpod' | 'supply-pod' | 'assault-craft';
+
+// 鹵獲品の連なる側(船首 'bow' か船尾 'stern')。
+export function salvageCargoSide(kind: SalvageKind): 'bow' | 'stern' {
+  return CARGO_CHAINS[kind].side;
+}
 
 // value が鹵獲品の種類の名前か。
 export function isSalvageKind(value: unknown): value is SalvageKind {
@@ -69,20 +74,22 @@ const CARGO_CHAINS: Readonly<Record<SalvageKind, CargoChain>> = {
   },
 };
 
-function instance(definitionId: string, id: string) {
-  return createShipModuleInstance(SHIP_MODULE_CATALOG.require(definitionId), id);
-}
+// 鹵獲品の部品の状態。intact は設計図どおりの新品、salvaged は鹵獲品として積まれた状態で、
+// コックピットは損傷している(SPEC GAME.md 2.3)。
+export type SalvageCondition = 'intact' | 'salvaged';
 
 // 鹵獲品 kind の部品を assembly へ連ねる。anchorId が null なら先頭の部品を根に置き、そうでなければ
 // anchorId の外側へ連ねる。idPrefix は部品の識別子の前に付け、同じ船体へ複数の鹵獲品を入れても
 // 識別子が衝突しないようにする。連ねた最後の部品の識別子を返す。
 export function appendSalvageCargo(
-  assembly: ShipAssembly, kind: SalvageKind, anchorId: string | null, idPrefix: string,
+  assembly: ShipAssembly, kind: SalvageKind, anchorId: string | null, idPrefix: string, condition: SalvageCondition,
 ): string {
   const { side, links } = CARGO_CHAINS[kind];
   const ids = links.map(link => `${idPrefix}${link.id}`);
   links.forEach((link, i) => {
-    const module = instance(link.definitionId, ids[i]!);
+    const definition = SHIP_MODULE_CATALOG.require(link.definitionId);
+    const state: ShipModuleState = condition === 'salvaged' && definition.kind === 'cockpit' ? { hp: 0 } : {};
+    const module = createShipModuleInstance(definition, ids[i]!, state);
     const parentId = i === 0 ? anchorId : ids[i - 1]!;
     if (parentId === null) assembly.addRoot(module);
     else if (side === 'bow') assembly.prepend(module, parentId);
@@ -94,7 +101,7 @@ export function appendSalvageCargo(
 // 鹵獲品1種の先端部を根から連ねて、設計図として直列化する。
 function salvagePiece(kind: SalvageKind): SerializedShipAssembly {
   const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
-  appendSalvageCargo(assembly, kind, null, '');
+  appendSalvageCargo(assembly, kind, null, '', 'intact');
   assembly.assertValid();
   return serializeShipAssembly(assembly);
 }
