@@ -1,11 +1,12 @@
 // 建造中の表示導出。建造セッションの読み取り面から、接続ノードのマーカー宣言・
-// スナップガイド・ゴースト・モジュール強調の宣言と、操作音の種別を毎フレーム組む。
+// スナップガイド・回転リング・ゴースト・モジュール強調の宣言と、操作音の種別を毎フレーム組む。
 // 操作音は装置の語彙を持ち込まず、抽象的な種別の列として返す。
 import { LOCAL_FORWARD, qFromUnitVectors, qMul, qRotate, type Quat } from '../../math/quat';
 import type { Projected, ProjectFn } from '../../math/projection';
 import type { Ray } from '../../math/ray';
 import { add, len, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import { DockSnapGuideView, type DockSnapGuideDisplay } from '../../render/dynamic/ship/dock-snap-guide-view';
+import { RotationRingView } from '../../render/dynamic/ship/rotation-ring-view';
 import { ShipGhostView, type ShipGhostDisplay } from '../../render/dynamic/ship/ship-ghost-view';
 import type { ShipModuleEmphasis, ShipModuleEmphasisMap } from '../../render/dynamic/ship/ship-render-contract';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -22,6 +23,9 @@ import { constructionTargetId, heldRootDefinition } from './ship-construction-ru
 import type {
   ConstructionDeniedRecord, ConstructionHeld, ConstructionOperationRecord,
 } from './ship-construction-types';
+import {
+  constructionRotationRing, type ConstructionRotationDrag,
+} from './ship-construction-rotation';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import type * as THREE from 'three/webgpu';
 
@@ -71,6 +75,8 @@ export interface ShipConstructionViewSource {
   readonly pointedTargetId: string | null;
   // ポインタの下にあるモジュール。タッチ環境や船体の外では null。
   readonly hoveredModuleId: string | null;
+  // 回転リングを掴んだドラッグ中の角度。掴んでいなければ null。
+  readonly rotationDrag: ConstructionRotationDrag | null;
   readonly lastOperation: ConstructionOperationRecord | null;
   readonly lastDenied: ConstructionDeniedRecord | null;
   // 全取り付け先の接続面ガイド(ECI 座標)。手持ち・選択中の部品への可否を評価済み。
@@ -242,6 +248,7 @@ export function constructionNodeDeclarations(
 export class ShipConstructionView {
   private readonly ghost: ShipGhostView;
   private readonly guide: DockSnapGuideView;
+  private readonly ring: RotationRingView;
   private readonly nodes: MarkerSink;
   // 直近の配置・付け替えの差し込み。開始時刻とモジュールごとの差し込み方向(assembly 座標)。
   private insertion: {
@@ -257,6 +264,7 @@ export class ShipConstructionView {
   public constructor(scene: THREE.Scene, markers: MarkerDevice) {
     this.ghost = new ShipGhostView(scene);
     this.guide = new DockSnapGuideView(scene);
+    this.ring = new RotationRingView(scene);
     this.nodes = markers.createGroup();
   }
 
@@ -272,6 +280,7 @@ export class ShipConstructionView {
       source.syncSelectionMenu(null);
       this.ghost.sync([]);
       this.guide.syncAll([]);
+      this.ring.sync(null);
       this.nodes.sync([], nowMs);
       this.insertion = null;
       return { shipModuleEmphasis: null, sounds };
@@ -280,6 +289,7 @@ export class ShipConstructionView {
     source.syncSelectionMenu(this.selectionAnchor(source, ship, camera));
     this.syncNodes(source, ship, camera, trial, nowMs);
     this.syncGuide(source, camera, trial);
+    this.syncRotationRing(source, ship, camera);
     this.syncGhosts(source, ship, camera, trial);
     const emphasis = this.emphasisOf(source, ship, anchorId, trial, nowMs);
     return {
@@ -292,6 +302,7 @@ export class ShipConstructionView {
   public dispose(): void {
     this.ghost.dispose();
     this.guide.dispose();
+    this.ring.dispose();
     this.nodes.dispose();
   }
 
@@ -358,6 +369,23 @@ export class ShipConstructionView {
       });
     }
     this.guide.syncAll(displays);
+  }
+
+  // 選択中モジュールの回転リング。編集できるモジュールを選んでいて、手に何も
+  // 持っていない間だけ出す。ドラッグ中は弧とスナップ位置をリングへ渡す。
+  private syncRotationRing(
+    source: ShipConstructionViewSource, ship: ConstructionViewShip, camera: CameraFrame,
+  ): void {
+    const moduleId = source.selectedModuleId;
+    const ring = moduleId !== null && source.held === null && source.canEditModule(moduleId)
+      ? constructionRotationRing(ship, moduleId)
+      : null;
+    this.ring.sync(ring === null ? null : {
+      position: displayPosition(camera, ring.centerEci),
+      rotation: ring.rotation,
+      radius: ring.radius,
+      drag: source.rotationDrag,
+    });
   }
 
   // 試し置きで置いたモジュールをゴーストとして出す。置くものを持っていなければ出さない。
