@@ -1,8 +1,8 @@
 // Stage 00: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く。
-import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type CommonStageState, type RunOptions, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
-import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
+import { WaveAttack, waveForecastLine, type SerializedWaveAttack } from './stage-utils/wave-attack';
 import { MAX_ACTIVE_AMMO_PICKUPS, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 
@@ -18,6 +18,8 @@ export class Stage00 extends Stage {
   public static readonly selectKey = 'Digit0';
 
   private readonly waveAttack: WaveAttack;
+  // ブリーフィングに最初の波の予告を足すか(連敗のあとの周回)。
+  private forecast = false;
 
   // 波状攻撃の進行と共通の状態から組む。省いた波状攻撃は新しい進行から始まる。
   private constructor(deps: StageDeps, waveAttack?: WaveAttack, ...common: CommonStageState) {
@@ -54,12 +56,23 @@ export class Stage00 extends Stage {
     );
   }
 
-  // ミッション概要のブリーフィング文(HTML)を返す。
+  // 連敗の予告を出す周回では、ブリーフィングへ最初の 3 波の予告を足す。周回を組んだ後に呼ぶ。
+  public applyRunOptions(options: RunOptions): void {
+    super.applyRunOptions(options);
+    this.forecast = options.forecast;
+    this.composeBriefing();
+  }
+
+  // ミッション概要のブリーフィング文(HTML)を返す。予告が要る周回では、操作の案内の直前に予告を挟む。
   protected briefingHtml(): string {
+    const forecastHtml = this.forecast
+      ? '<br><b>最初の 3 波の予告</b><br>' + [1, 2, 3].map(waveForecastLine).join('<br>') + '<br>'
+      : '';
     return (
       '<b>サバイバル任務: 弾薬を回収し、無限の敵から生き残れ！</b><br>' +
       '敵は次々と波状攻撃を仕掛けてくる。<br>' +
       '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
+      forecastHtml +
       `[${K.help.label}] キーで操作方法を表示`
     );
   }
