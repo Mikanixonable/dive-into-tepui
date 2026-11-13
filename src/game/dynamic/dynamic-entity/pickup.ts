@@ -33,6 +33,8 @@ export const AMMO_PICKUP_RADIUS = 100;
 export const RCS_FUEL_PICKUP_RADIUS = 100;
 // 1 個の取り込みで増える RCS 燃料 [kg]。
 export const RCS_FUEL_PICKUP_AMOUNT = 1000;
+// 1 個の取り込みで増える弾薬マガジン数。撃破ドロップ以外の補給はこの数を持つ。
+export const AMMO_PICKUP_MAGS = 6;
 
 // 補給物に共通する直列化の項目。慣性は作る場所ごとに違い、種別からは決まらないので記録に持つ。
 interface SerializedPickupFields extends SerializedDynamicEntityFields {
@@ -43,6 +45,8 @@ interface SerializedPickupFields extends SerializedDynamicEntityFields {
 
 export interface SerializedAmmoPickup extends SerializedPickupFields {
   readonly kind: 'ammo';
+  // 取り込みで増えるマガジン数。欠けた記録は AMMO_PICKUP_MAGS で読む。
+  readonly mags?: number;
 }
 
 export interface SerializedRcsFuelPickup extends SerializedPickupFields {
@@ -244,22 +248,36 @@ export class AmmoPickup extends Pickup {
   protected override readonly bearingColor = 'var(--color-primary-hover)';
   protected override readonly pickupRadius = AMMO_PICKUP_RADIUS;
 
-  // 弾薬補給の見た目・既定名で組む。id は採番器が配った識別子、alive は生死。
-  private constructor(placement: PickupPlacement, scene: THREE.Scene, id: string, alive?: boolean) {
+  // 取り込むと増えるマガジン数。
+  public readonly mags: number;
+
+  // 弾薬補給の見た目・既定名で組む。id は採番器が配った識別子、mags は取り込みで増えるマガジン数、alive は生死。
+  private constructor(placement: PickupPlacement, scene: THREE.Scene, id: string, mags: number, alive?: boolean) {
     super(placement, new AmmoPickupView(scene), id, '弾薬', AmmoPickup.kind, alive);
+    this.mags = mags;
   }
 
-  // placement に新しく置く。
-  public static create(placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators): AmmoPickup {
-    return new AmmoPickup(placement, scene, idAllocators.ammoPickup.next(placement.id));
+  // placement に新しく置く。mags を省くと AMMO_PICKUP_MAGS を持つ。
+  public static create(
+    placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators, mags = AMMO_PICKUP_MAGS,
+  ): AmmoPickup {
+    return new AmmoPickup(placement, scene, idAllocators.ammoPickup.next(placement.id), mags);
   }
 
-  // 直列化した弾薬補給を復元する。
+  // 直列化した弾薬補給を復元する。マガジン数の項目が無ければ AMMO_PICKUP_MAGS で読む。
   public static deserialize(
     serialized: SerializedAmmoPickup, registry: EntityRegistry, scene: THREE.Scene,
   ): AmmoPickup {
     const placement = deserializePickupPlacement(serialized);
-    return new AmmoPickup(placement, scene, registry.idAllocators.ammoPickup.next(placement.id), serialized.alive);
+    return new AmmoPickup(
+      placement, scene, registry.idAllocators.ammoPickup.next(placement.id),
+      serialized.mags ?? AMMO_PICKUP_MAGS, serialized.alive,
+    );
+  }
+
+  // 直列化した形へ、マガジン数を足す。
+  public override serialize(): SerializedAmmoPickup {
+    return { ...super.serialize(), kind: AmmoPickup.kind, mags: this.mags };
   }
 }
 
