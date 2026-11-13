@@ -133,6 +133,9 @@ function bindingMatches(binding: KeyBinding, code: string, input: Input): boolea
 export class ShipConstructionPointer {
   // 掴んだ押下の識別子(Input.PointerPress.id)。選択中モジュールのドラッグだけが掴まれる。
   private grabbedPressId: number | null = null;
+  // 持ち運び中のドラッグの画面位置(キャンバス座標)。カード・先端部のどちらのドラッグでも
+  // 持ち、どちらも無ければ null。表示の導出が持ち物をポインタの先へ浮かべる材料。
+  private dragPointValue: { x: number; y: number } | null = null;
   // 回転リングを掴んだドラッグ。リングは掴んだときの幾何のまま追い、離した位置で
   // 90° 単位へ丸めて適用する。リングを掴んでいないドラッグでは null。
   private ringDrag: {
@@ -143,6 +146,11 @@ export class ShipConstructionPointer {
   } | null = null;
 
   public constructor(private readonly host: ConstructionPointerHost) {}
+
+  // 持ち運び中のドラッグの画面位置(キャンバス座標)。どちらのドラッグも無ければ null。
+  public get dragPoint(): { readonly x: number; readonly y: number } | null {
+    return this.dragPointValue;
+  }
 
   // リングのドラッグ中の角度情報。表示の導出が弧とスナップ位置を組む材料。
   public get rotationDrag(): ConstructionRotationDrag | null {
@@ -184,6 +192,7 @@ export class ShipConstructionPointer {
     const point = cardDrag !== null ? input.canvasPoint(cardDrag.point.x, cardDrag.point.y)
       : pieceDrag !== null ? pieceDrag.point
       : input.pointerPoint;
+    this.dragPointValue = cardDrag !== null || pieceDrag !== null ? point : null;
     if (point !== null) {
       const canPoint = !ringDragActive
         && (host.held !== null || host.selectedModuleId !== null);

@@ -2,7 +2,7 @@
 // スナップガイド・回転リング・ゴースト・モジュール強調の宣言と、操作音の種別を毎フレーム組む。
 // 操作音は装置の語彙を持ち込まず、抽象的な種別の列として返す。
 import { LOCAL_FORWARD, qFromUnitVectors, qMul, qRotate, type Quat } from '../../math/quat';
-import type { Projected, ProjectFn } from '../../math/projection';
+import { rayThroughScreen, type Projected, type ProjectFn } from '../../math/projection';
 import type { Ray } from '../../math/ray';
 import { add, len, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import { DockSnapGuideView, type DockSnapGuideDisplay } from '../../render/dynamic/ship/dock-snap-guide-view';
@@ -20,6 +20,7 @@ import type { ShipAssembly } from './ship-assembly';
 import type { ConstructionTargetGuide } from './ship-construction-candidates';
 import type { ConstructionTrial } from './ship-construction-preview';
 import { constructionTargetId, heldRootDefinition } from './ship-construction-rules';
+import { orientationRotation, type ModuleOrientation } from './ship-assembly-transform';
 import type {
   ConstructionDeniedRecord, ConstructionHeld, ConstructionOperationRecord,
 } from './ship-construction-types';
@@ -75,6 +76,10 @@ export interface ShipConstructionViewSource {
   readonly pointedTargetId: string | null;
   // ポインタの下にあるモジュール。タッチ環境や船体の外では null。
   readonly hoveredModuleId: string | null;
+  // 持ち運び中のドラッグの画面位置(キャンバス座標)。どちらのドラッグも無ければ null。
+  readonly dragPoint: { readonly x: number; readonly y: number } | null;
+  // 手持ちに対して効く向き(回転・端)。
+  readonly heldOrientation: ModuleOrientation;
   // 回転リングを掴んだドラッグ中の角度。掴んでいなければ null。
   readonly rotationDrag: ConstructionRotationDrag | null;
   readonly lastOperation: ConstructionOperationRecord | null;
@@ -198,6 +203,65 @@ export function constructionNodesVisible(
   return held !== null || (selectedModuleId !== null && canEditModule(selectedModuleId));
 }
 
+// ドラッグで持ち運んでいるものの姿。ポインタを通る視線の、注視距離の位置へ置き、
+// 先端部・設計図は形ごと運ぶ。配置の可否が決まっていない姿なので、色は中間色
+// (floating)で出す。
+function carriedGhostDisplays(
+  ship: ConstructionViewShip, anchorId: string, camera: CameraFrame,
+  held: ConstructionHeld, point: { readonly x: number; readonly y: number },
+  orientation: ModuleOrientation,
+): ShipGhostDisplay[] {
+  const ray = rayThroughScreen(
+    camera.viewpoint, point.x, point.y, camera.viewport.width, camera.viewport.height,
+  );
+  const focusDist = len(sub(camera.viewpoint.lookTarget, camera.viewpoint.position));
+  const anchorEci = add(ray.origin, scale(ray.dir, focusDist));
+  const att = ship.motion.att.q;
+  const display = (modelId: string, offset: Vec3, rotation: Quat): ShipGhostDisplay => ({
+    modelId,
+    position: displayPosition(camera, add(anchorEci, qRotate(att, offset))),
+    rotation: qMul(att, rotation),
+    valid: true,
+    floating: true,
+  });
+  const mountRot = orientationRotation(orientation);
+  if (held.kind === 'catalog') {
+    const modelId = heldRootDefinition(ship.assembly, held)?.modelId ?? 'cockpit-standard';
+    return [display(modelId, ZERO, mountRot)];
+  }
+  if (held.kind === 'piece') {
+    // 船体から切り離す前の先端部を、現在の形のまま運ぶ。
+    const piece = pieceOfModule(ship.assembly.graph, anchorId, held.moduleId);
+    const rootPos = ship.assembly.worldTransformOf(held.moduleId)?.position;
+    if (piece === null || rootPos === undefined) return [];
+    const displays: ShipGhostDisplay[] = [];
+    for (const id of piece.moduleIds) {
+      const transform = ship.assembly.worldTransformOf(id);
+      const modelId = ship.assembly.definition(id)?.modelId ?? null;
+      if (transform === null || modelId === null) continue;
+      displays.push(display(modelId, sub(transform.position, rootPos), transform.rotation));
+    }
+    return displays;
+  }
+  // 設計図の写し。根元へ向きを当てた姿でまとめて運ぶ。
+  const rootId = held.piece.moduleIds.find(
+    id => !held.piece.graph.some(edge => edge.childId === id));
+  const rootTransform = rootId === undefined ? null : held.piece.worldTransformOf(rootId);
+  if (rootId === undefined || rootTransform === null) return [];
+  const displays: ShipGhostDisplay[] = [];
+  for (const id of held.piece.moduleIds) {
+    const transform = held.piece.worldTransformOf(id);
+    const modelId = held.piece.definition(id)?.modelId ?? null;
+    if (transform === null || modelId === null) continue;
+    displays.push(display(
+      modelId,
+      qRotate(mountRot, sub(transform.position, rootTransform.position)),
+      qMul(mountRot, transform.rotation),
+    ));
+  }
+  return displays;
+}
+
 // 指している不適合ノードの脇へ出す理由。規則の判定が不適合なら規則の理由、規則を
 // 通るが試し置きが不適合(重なり)なら試し置きの理由。指していないノードと有効な
 // ノードには付けない。
@@ -290,7 +354,7 @@ export class ShipConstructionView {
     this.syncNodes(source, ship, camera, trial, nowMs);
     this.syncGuide(source, camera, trial);
     this.syncRotationRing(source, ship, camera);
-    this.syncGhosts(source, ship, camera, trial);
+    this.syncGhosts(source, ship, anchorId, camera, trial);
     const emphasis = this.emphasisOf(source, ship, anchorId, trial, nowMs);
     return {
       shipModuleEmphasis: emphasis === null ? null : new Map([[ship.id, emphasis]]),
@@ -389,8 +453,9 @@ export class ShipConstructionView {
   }
 
   // 試し置きで置いたモジュールをゴーストとして出す。置くものを持っていなければ出さない。
+  // 指している候補が無い間は、ドラッグで持ち運んでいるものをポインタの先へ浮かべる。
   private syncGhosts(
-    source: ShipConstructionViewSource, ship: ConstructionViewShip,
+    source: ShipConstructionViewSource, ship: ConstructionViewShip, anchorId: string,
     camera: CameraFrame, trial: ConstructionTrial | null,
   ): void {
     const displays: ShipGhostDisplay[] = [];
@@ -405,6 +470,10 @@ export class ShipConstructionView {
           valid: trial.valid,
         });
       }
+    } else if (held !== null && source.dragPoint !== null) {
+      displays.push(...carriedGhostDisplays(
+        ship, anchorId, camera, held, source.dragPoint, source.heldOrientation,
+      ));
     }
     this.ghost.sync(displays);
   }
