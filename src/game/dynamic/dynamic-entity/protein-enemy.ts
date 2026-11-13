@@ -46,6 +46,8 @@ export interface ProteinEnemyRequest {
   readonly assetId: ProteinAssetId;
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
+  // 所属する波状攻撃の波の番号。波に属さない要求(台本の配置など)は null か省く。
+  readonly waveId?: number | null;
 }
 
 // 同じ陣形に生存中のエネルギー役が存在するかを判定する。攻撃担当以外や、陣形に属さない敵
@@ -158,7 +160,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
         orbitLineColor: 0xffffff,
         // 陣形に属する個体は、陣形を攻撃グループとして同時発砲数を共有する。
         attackGroupId: formationId ?? undefined,
-        waveId: null,
+        waveId: request.waveId ?? null,
         formationId,
         formationRole: request.formationRole,
       },
