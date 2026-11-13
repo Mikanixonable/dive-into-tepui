@@ -165,8 +165,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 直近の進行が記録した設計図の記録を棚へ写す。記録できなかった操作があれば警告を出す。
   private recordBlueprintEvents(events: readonly RunEvent[]): void {
     const records = events.filter(
-      ({ body }) => body.kind === 'blueprintRecorded'
-        || body.kind === 'blueprintRenamed' || body.kind === 'blueprintDeleted',
+      ({ body }) => body.kind === 'blueprintRenamed' || body.kind === 'blueprintDeleted',
     );
     if (records.length === 0) return;
     // 棚の一覧がアクティブなセーブデータの切り替えに乗り遅れていると、別の一覧へ重ねて書き込む。
@@ -174,9 +173,6 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     let failed = false;
     for (const { body } of records) {
       switch (body.kind) {
-        case 'blueprintRecorded':
-          if (!this.blueprintShelf.add(body.blueprint)) failed = true;
-          break;
         case 'blueprintRenamed':
           if (!this.blueprintShelf.rename(body.id, body.name)) failed = true;
           break;
