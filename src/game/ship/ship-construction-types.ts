@@ -92,6 +92,8 @@ export interface ShipConstructionSelectionView {
 export interface ShipBlueprintCardView {
   readonly id: string;
   readonly name: string;
+  // 根元のモジュールの modelId。タイルのサムネイルを引く鍵で、定義を引けなければ null。
+  readonly modelId: string | null;
   readonly moduleCount: number;
   readonly mass: number;
   // いま手に持っている設計図なら true。
