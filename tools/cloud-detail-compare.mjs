@@ -16,8 +16,8 @@ import { measureCloudDetail } from './cloud-detail-metrics.mjs';
 import {
   collectNumericDiffs, formatDiffValue, gitHead, previousReportName, readReport, saveReport,
 } from './cloud-report-history.mjs';
-import { cropField } from './gray-image.mjs';
 import { decodePng, encodeRgbPng } from './png.mjs';
+import { centerCrop, linearLuminanceField } from './cloud-detail-field.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const renderLabDir = path.join(root, '.render-lab');
@@ -30,8 +30,6 @@ const scenesFile = path.join(import.meta.dirname, 'cloud-detail', 'scenes.json')
 const port = 8772;
 const debugPort = 9449;
 
-// measureCloudDetail と同じ、計測に使う中央切り出しの一辺の上限 [px]。
-const MAX_CROP_PX = 512;
 // 封筒の余白。同じ種類の場面の最小〜最大へ、その幅のこの割合を両端へ足す。
 const ENVELOPE_PAD = 0.1;
 // 場面どうしのばらつきの判定下限(達成目標: 実写の場面どうしのばらつきのこの比以上)。
@@ -74,37 +72,6 @@ const FAMILIES = ['spectrum', 'intermittency', 'periodicity', 'shapes', 'anisotr
 // 尺度の梯子に並べる帯(オクターブ番号 j = 帯 [2^j, 2^(j+1)] km)。0.5 km から 1024 km まで。
 const LADDER_BANDS = [];
 for (let j = -1; j <= 9; j++) LADDER_BANDS.push(j);
-
-// sRGB の 1 チャンネル(0..255)を線形輝度(0..1)へ戻す。
-function srgbToLinear(byte) {
-  const c = byte / 255;
-  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-}
-
-// PNG を線形輝度の場へ。Rec.601 ではなく Rec.709 の輝度係数 — 実写の真色画像の
-// モニタ輝度として読むため(cloud-detail-selftest と同じ定義)。
-function linearLuminanceField(png) {
-  const { width, height, channels, data } = decodePng(png);
-  const out = new Float32Array(width * height);
-  for (let i = 0; i < width * height; i++) {
-    if (channels === 1) {
-      out[i] = srgbToLinear(data[i]);
-    } else {
-      const r = srgbToLinear(data[i * channels]);
-      const g = srgbToLinear(data[i * channels + 1]);
-      const b = srgbToLinear(data[i * channels + 2]);
-      out[i] = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    }
-  }
-  return { width, height, data: out };
-}
-
-// 計測と階調で共有する、中央からの切り出し(measureCloudDetail と同じ一辺)。
-function centerCrop(field) {
-  const limit = Math.min(MAX_CROP_PX, field.width, field.height);
-  const n = 1 << Math.floor(Math.log2(limit));
-  return cropField(field, Math.floor((field.width - n) / 2), Math.floor((field.height - n) / 2), n, n);
-}
 
 // 線形輝度の場の階調。平均と分位。
 function toneStats(data) {
