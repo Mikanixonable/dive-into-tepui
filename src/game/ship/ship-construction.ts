@@ -27,8 +27,9 @@ import {
   type ConstructionSymmetry, type ShipConstructionPanelModel,
 } from './ship-construction-types';
 import type { ShipBlueprint, ShipBlueprintShelf } from './ship-blueprint';
-import { qRotate } from '../../math/quat';
-import { add, sub, type Vec3 } from '../../math/vec3';
+import {
+  constructionModuleFocus, type ConstructionFocus,
+} from './ship-construction-focus';
 import type { RunEventSink } from '../run-events';
 import { CommandCompletion } from '../command-completion';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
@@ -69,11 +70,7 @@ interface PendingConstructionCommand {
 let nextConstructionModule = 1;
 let nextBlueprintSequence = 1;
 
-// 視点を寄せる対象。船体の中の1点(ECI [m])と、それを収める外接半径 [m]。
-export interface ConstructionFocus {
-  readonly position: Vec3;
-  readonly radius: number;
-}
+export type { ConstructionFocus };
 
 export interface ShipConstructionPanelPort {
   readonly element: { contains(target: Node): boolean };
@@ -723,22 +720,7 @@ export class ShipConstruction implements OverlayHandle {
   public focus(): void {
     const session = this.current;
     if (session === null) return;
-    this.focusSubject?.(session.ship, this.focusedModule(session));
-  }
-
-  // 選択中モジュールの ECI 位置と外接半径。選んでいない・読めないときは null。
-  private focusedModule(session: ConstructionSession): ConstructionFocus | null {
-    const moduleId = this.selectedId;
-    if (moduleId === null) return null;
-    const transform = session.ship.assembly.worldTransformOf(moduleId);
-    const definition = session.ship.assembly.definition(moduleId);
-    if (transform === null || definition === null) return null;
-    const { motion } = session.ship;
-    const root = sub(motion.state.r, qRotate(motion.att.q, motion.centerOffset));
-    return {
-      position: add(root, qRotate(motion.att.q, transform.position)),
-      radius: Math.hypot(definition.length, definition.diameter) / 2,
-    };
+    this.focusSubject?.(session.ship, constructionModuleFocus(session.ship, this.selectedId));
   }
 
   // カタログの表示カテゴリをタブの並び順の index で選ぶ。
