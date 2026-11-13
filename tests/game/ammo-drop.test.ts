@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
-import { len, sub, v3 } from '../../src/math/vec3';
+import { len, scale, sub, v3 } from '../../src/math/vec3';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { Stage, type GamePhase } from '../../src/game/stages/stage';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
@@ -48,7 +48,10 @@ interface BareStageFields {
   grantedSalvageNames: Set<string>;
 }
 
-function bareStage(system: TestDynamicSystem): { stage: Stage; logistics: Logistics } {
+// playerState が null なら自機が居ない。居るときは、撃破記録が読む自機の運動状態だけを持つ面を差し込む。
+function bareStage(
+  system: TestDynamicSystem, playerState: KinematicState | null = null,
+): { stage: Stage; logistics: Logistics } {
   const stage = Object.create(Stage.prototype) as Stage;
   const logistics = new Logistics(new THREE.Scene(), system, false);
   const fields = stage as unknown as BareStageFields;
@@ -58,6 +61,9 @@ function bareStage(system: TestDynamicSystem): { stage: Stage; logistics: Logist
   fields._dynamicSystem = system;
   fields.blueprintShelf = { blueprints: [] };
   fields.grantedSalvageNames = new Set();
+  Object.defineProperty(stage, 'ship', {
+    value: playerState === null ? null : { motion: { state: playerState, alive: true } },
+  });
   return { stage, logistics };
 }
 
@@ -80,7 +86,7 @@ export function register(): void {
     assert.deepEqual(pickups[0]?.motion.state.r, enemyState.r);
   });
 
-  test('撃破ドロップ: 補給は敵機の速度を引き継ぎ小さな乱れで散る', () => {
+  test('撃破ドロップ: 自機が居ないとき補給は敵機の速度を引き継ぎ小さな乱れで散る', () => {
     const system = new TestDynamicSystem();
     const { stage } = bareStage(system);
     const enemyState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(50, 7500, -30));
@@ -94,6 +100,21 @@ export function register(): void {
     assert.ok(Math.abs(dv.y) <= 1.5);
     assert.ok(Math.abs(dv.z) <= 1.5);
     assert.ok(len(dv) <= 1.5 * Math.sqrt(3));
+  });
+
+  test('撃破ドロップ: 自機があるとき補給は自機から見た敵機の相対速度の 0.15 倍を残して飛ぶ', () => {
+    const system = new TestDynamicSystem();
+    const playerState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7600, 0));
+    const enemyState = kinematicState<'eci'>(0, v3(7000e3 + 500, 0, 0), v3(300, 7600, 0));
+    const { stage } = bareStage(system, playerState);
+
+    stage.recordEnemyDeath(enemyAt(enemyState), 0, 'killed');
+
+    const pickup = system.all().filter(isAmmoPickup)[0];
+    assert.ok(pickup);
+    // 乱れは成分ごとに ±1.5 m/s なので、残す量からのずれはその対角以内に収まる。
+    const offset = sub(sub(pickup.motion.state.v, playerState.v), scale(sub(enemyState.v, playerState.v), 0.15));
+    assert.ok(len(offset) <= 1.5 * Math.sqrt(3));
   });
 
   test('撃破ドロップ: 焼失・衝突・離脱では補給が出ない', () => {
@@ -112,7 +133,7 @@ export function register(): void {
     const system = new TestDynamicSystem();
     const { logistics } = bareStage(system);
     const dropState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0));
-    logistics.dropAt(dropState);
+    logistics.dropAt(dropState, null);
 
     let pickedMags = 0;
     const player = {
