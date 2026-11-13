@@ -27,7 +27,7 @@ import {
   type ConstructionHeld, type ConstructionHistoryView, type ConstructionOperationRecord,
   type ConstructionSymmetry, type ShipConstructionPanelModel,
 } from './ship-construction-types';
-import type { ShipBlueprint, ShipBlueprintShelf } from './ship-blueprint';
+import type { ShipBlueprintShelf } from './ship-blueprint';
 import {
   constructionModuleFocus, type ConstructionFocus,
 } from './ship-construction-focus';
@@ -70,7 +70,6 @@ interface PendingConstructionCommand {
 }
 
 let nextConstructionModule = 1;
-let nextBlueprintSequence = 1;
 
 export type { ConstructionFocus };
 
@@ -93,7 +92,6 @@ export interface ShipConstructionPanelPort {
   onRotate: ((delta: 1 | -1) => void) | null;
   onSwapEnds: (() => void) | null;
   onCycleSymmetry: (() => void) | null;
-  onSaveBlueprint: ((name: string) => void) | null;
   onUndo: (() => void) | null;
   onRedo: (() => void) | null;
   onJumpHistory: ((index: number) => void) | null;
@@ -183,7 +181,6 @@ export class ShipConstruction implements OverlayHandle {
     panel.onRotate = (delta) => this.rotate(delta);
     panel.onSwapEnds = () => this.swapEnds();
     panel.onCycleSymmetry = () => this.cycleSymmetry();
-    panel.onSaveBlueprint = (name) => this.saveSelectionAsBlueprint(name);
     panel.onUndo = () => this.undo();
     panel.onRedo = () => this.redo();
     panel.onJumpHistory = (index) => this.jumpToHistory(index);
@@ -590,32 +587,6 @@ export class ShipConstruction implements OverlayHandle {
     }
   }
 
-  // 選択中のモジュールの先端部を、名前付きで設計図として記録する命令を積む。
-  public saveSelectionAsBlueprint(name: string): void {
-    const session = this.current;
-    const moduleId = this.selectedId;
-    if (session === null) return;
-    if (moduleId === null) { this.deny('設計図にする部品を選んでください'); return; }
-    if (!this.blueprints.canRecord) { this.deny('記録先のセーブデータが無いため設計図を保存できません'); return; }
-    const trimmed = name.trim();
-    if (trimmed === '') { this.deny('設計図の名前を入力してください'); return; }
-    if (!this.pieceEditable(session, moduleId)) {
-      this.deny('接舷中の接続の先は、設計図にできません');
-      return;
-    }
-    this.submit(session, 'blueprint', '', [], false, null, () => {
-      // 命令の中で、適用時点の船体の写しから先端部を取り出して直列化する。
-      const piece = session.ship.assembly.clone().detachPiece(moduleId, session.anchorId);
-      const blueprint: ShipBlueprint = {
-        id: `blueprint-${Date.now()}-${nextBlueprintSequence++}`,
-        name: trimmed,
-        createdAtReal: Date.now(),
-        piece: serializeShipAssembly(piece),
-      };
-      this.events.record({ kind: 'blueprintRecorded', blueprint });
-    });
-  }
-
   // id の設計図の名前を変える記録を積む。
   public renameBlueprint(id: string, name: string): void {
     const session = this.current;
@@ -791,7 +762,6 @@ export class ShipConstruction implements OverlayHandle {
     this.panel.onRotate = null;
     this.panel.onSwapEnds = null;
     this.panel.onCycleSymmetry = null;
-    this.panel.onSaveBlueprint = null;
     this.panel.onUndo = null;
     this.panel.onRedo = null;
     this.panel.onJumpHistory = null;
@@ -1014,7 +984,6 @@ export class ShipConstruction implements OverlayHandle {
       targets: this.targets(),
       history: this.history(),
       blueprints: this.blueprints.blueprints,
-      canRecordBlueprints: this.blueprints.canRecord,
     }));
   }
 

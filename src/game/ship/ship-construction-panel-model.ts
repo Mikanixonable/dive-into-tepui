@@ -41,8 +41,6 @@ export interface ShipConstructionPanelSource {
   readonly targets: readonly ConstructionTargetInfo[];
   readonly history: ConstructionHistoryView;
   readonly blueprints: readonly ShipBlueprint[];
-  // 設計図を新たに記録できるか。
-  readonly canRecordBlueprints: boolean;
 }
 
 // 集計から主推進の満載性能を求める。推力か燃料消費率が無ければ、どちらも null。
@@ -128,8 +126,6 @@ export function shipConstructionPanelModel(
         held: source.heldBlueprintId === entry.id,
       };
     }),
-    blueprintRecordReason: source.canRecordBlueprints
-      ? null : '記録先のセーブデータが無いため、設計図を保存できません',
     canPlace: (source.held !== null || source.selection !== null)
       && pointedTarget !== null && (trial?.valid ?? false),
     canRemove: source.selection !== null && source.selection.editable,

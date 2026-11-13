@@ -60,7 +60,6 @@ export class ShipConstructionPanel {
   public onRotate: ((delta: 1 | -1) => void) | null = null;
   public onSwapEnds: (() => void) | null = null;
   public onCycleSymmetry: (() => void) | null = null;
-  public onSaveBlueprint: ((name: string) => void) | null = null;
   public onUndo: (() => void) | null = null;
   public onRedo: (() => void) | null = null;
   public onJumpHistory: ((index: number) => void) | null = null;
@@ -97,7 +96,7 @@ export class ShipConstructionPanel {
   // 選択メニューの追従先(表示の導出が毎フレーム書き込む選択モジュールの画面位置)と、
   // 直近の model から導いたメニューの可否。両方が揃ったときだけメニューを出す。
   private selectionAnchor: Projected | null = null;
-  private menuSelection: { canEdit: boolean; canSaveBlueprint: boolean } | null = null;
+  private menuSelection: { canEdit: boolean } | null = null;
 
   // 静的 workspace へ既存Widgetを差し込み、動的なカタログ/候補/履歴の再構築点を固定する。
   public constructor(els: HudEls) {
@@ -164,7 +163,6 @@ export class ShipConstructionPanel {
       onReattach: () => this.onReattach?.(),
       onRemove: () => this.onRemove?.(),
       onDuplicate: () => this.onDuplicate?.(),
-      onSaveBlueprint: (name) => this.onSaveBlueprint?.(name),
       onDeselect: () => this.onDeselect?.(),
     });
 
@@ -212,10 +210,7 @@ export class ShipConstructionPanel {
     // 選択メニューが出せるのは選んでいて手が空いている間だけ。可否は model から、
     // 追従位置は syncSelectionMenu から別々に届くのでここで合わせる。
     this.menuSelection = model.visible && model.selection !== null && model.held === null
-      ? {
-        canEdit: model.selection.canEdit,
-        canSaveBlueprint: model.selection.canEdit && model.blueprintRecordReason === null,
-      }
+      ? { canEdit: model.selection.canEdit }
       : null;
     this.updateSelectionMenu();
 
@@ -262,7 +257,7 @@ export class ShipConstructionPanel {
     const anchor = this.selectionAnchor;
     this.selectionMenu.sync(selection === null || anchor === null ? null : {
       x: anchor.x, y: anchor.y, front: anchor.front,
-      canEdit: selection.canEdit, canSaveBlueprint: selection.canSaveBlueprint,
+      canEdit: selection.canEdit,
     });
   }
 
