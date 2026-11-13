@@ -18,6 +18,8 @@ const debugPort = 9450;
 
 // 箱の一辺 [km]。
 const BOX_KM = 50;
+// 低い太陽の近景の撮影(render-lab の CLOUD_DETAIL_CHECK_SHOTS)。筋の影が太陽の向きに沿うかを目で見る。
+const CHECK_SHOT_NAMES = ['sepac-open-lowsun-12h-0.25km-cirrus'];
 // 箱ごとの比が 1 からこの幅の中に入るかの判定。
 const TOLERANCE = 0.05;
 
@@ -52,8 +54,8 @@ function summarize(ratios) {
   };
 }
 
-// 粗の撮影のうち、まだ無いものを撮る。撮影名は標準の撮影名 + -coarse。
-async function shootMissingCoarse(names) {
+// 撮影の一覧のうち、まだ無いものを撮って .cloud-detail/cirrus-tiers/ へ書く。
+async function shootMissing(names) {
   const missing = names.filter((name) => !existsSync(path.join(coarseDir, `${name}.png`)));
   if (missing.length === 0) return 0;
   mkdirSync(coarseDir, { recursive: true });
@@ -95,8 +97,8 @@ async function main() {
   const cirrusShots = manifest.shots.filter((shot) => shot.kind === 'cirrus');
   const coarseNames = cirrusShots.map((shot) => `${shot.name}-coarse`);
 
-  const taken = await shootMissingCoarse(coarseNames);
-  console.log(`粗の撮影: ${coarseNames.length} 枚のうち ${taken} 枚を新たに撮った(既存は飛ばす)`);
+  const taken = await shootMissing([...coarseNames, ...CHECK_SHOT_NAMES]);
+  console.log(`粗の撮影と近景: ${coarseNames.length + CHECK_SHOT_NAMES.length} 枚のうち ${taken} 枚を新たに撮った(既存は飛ばす)`);
 
   const byTier = new Map();
   for (const shot of cirrusShots) {
