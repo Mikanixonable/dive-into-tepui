@@ -1,9 +1,9 @@
 // 建造の表示導出の純粋な部分: 画面ピックと差し込みの動き。
-// ピックは「半径内で最も近い候補」、差し込みは「2 m から 0.25 秒で 0 へ単調に収まる」
-// という仕様由来の不変条件を固定する。
+// ピックは「半径内で最も近い候補、無ければ指したモジュールに属する最寄りの候補」、
+// 差し込みは「2 m から 0.25 秒で 0 へ単調に収まる」という仕様由来の不変条件を固定する。
 import * as assert from 'node:assert/strict';
 import {
-  CONSTRUCTION_TARGET_PICK_RADIUS_SQ, pickConstructionTargetAtScreenPoint,
+  CONSTRUCTION_TARGET_PICK_RADIUS_SQ, pickConstructionTarget, pickConstructionTargetAtScreenPoint,
   type ConstructionTargetScreenPoint,
 } from '../../src/game/ship/ship-construction-candidates';
 import {
@@ -11,8 +11,10 @@ import {
 } from '../../src/game/ship/ship-construction-view';
 import { test } from '../harness';
 
-function point(id: string, x: number, y: number, front = true): ConstructionTargetScreenPoint {
-  return { id, x, y, front };
+function point(
+  id: string, x: number, y: number, front = true, moduleIds: readonly string[] = [],
+): ConstructionTargetScreenPoint {
+  return { id, moduleIds, x, y, front };
 }
 
 export function register(): void {
@@ -47,6 +49,46 @@ export function register(): void {
     );
     assert.equal(
       pickConstructionTargetAtScreenPoint([point('behind', 5, 0, false)], { x: 0, y: 0 }, 2500),
+      null,
+    );
+  });
+
+  test('construction target pick: 半径内にノードがあればモジュールの候補よりノードを優先する', () => {
+    const targets = [
+      point('node', 10, 0, true, ['other-module']),
+      point('module-candidate', 100, 0, true, ['hit-module']),
+    ];
+    let hitModuleCalled = false;
+    const picked = pickConstructionTarget(targets, { x: 0, y: 0 }, 2500, () => {
+      hitModuleCalled = true;
+      return 'hit-module';
+    });
+    assert.equal(picked, 'node');
+    // 半径内に候補がある間はポインタの下のモジュールを読まない。
+    assert.equal(hitModuleCalled, false);
+  });
+
+  test('construction target pick: 半径内に無ければモジュールに属する最寄りの候補を選ぶ', () => {
+    const targets = [
+      point('far-side', 500, 0, true, ['hit-module']),
+      point('near-side', 100, 0, true, ['hit-module']),
+      point('other-module', 80, 0, true, ['other-module']),
+      point('behind', 60, 0, false, ['hit-module']),
+    ];
+    assert.equal(
+      pickConstructionTarget(targets, { x: 0, y: 0 }, 2500, () => 'hit-module'),
+      'near-side',
+    );
+  });
+
+  test('construction target pick: 当たったモジュールに候補が無ければ null', () => {
+    const targets = [point('other', 100, 0, true, ['other-module'])];
+    assert.equal(
+      pickConstructionTarget(targets, { x: 0, y: 0 }, 2500, () => 'hit-module'),
+      null,
+    );
+    assert.equal(
+      pickConstructionTarget(targets, { x: 0, y: 0 }, 2500, () => null),
       null,
     );
   });

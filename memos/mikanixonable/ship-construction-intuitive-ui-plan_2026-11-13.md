@@ -3,7 +3,7 @@
 作成日: 2026-11-13  
 コードのスナップショット: `1992fc17b`(本文の行番号はこの時点)  
 作業ブランチ(予定): `feat/ship-construction-intuitive-ui`  
-状態: 実施中。仕様の書き換えは済み(`3cec68cb9`)。次は手順 2。
+状態: 実施中。仕様の書き換え(`3cec68cb9`)と表示モデルの分離(`ship-construction-panel-model.ts`、`ship-construction.ts` は 958 行)は済み。次は手順 3。
 
 ---
 
@@ -145,29 +145,6 @@
 
 ## 手順
 
-### 手順 2. 表示モデルの組み立てを別ファイルへ出す
-
-#### 目的
-
-`ship-construction.ts` は 993 行で、後続の手順が表示項目を足す場所でもある。パネルへ渡す表示モデルの組み立てを純粋な関数へ
-出して、足す余地を作る。**この時点で挙動は変えない。**
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/ship/ship-construction-panel-model.ts`(新規) | `syncPanel` の中身(`ship-construction.ts:922-986`)を、セッションの読み取り面を引数に取り `ShipConstructionPanelModel` を返す関数として置く。置き場は建造の他のファイルと同じ `src/game/ship/`(同じ層・同じ依存) |
-| `src/game/ship/ship-construction.ts` | `syncPanel` は上の関数を呼んで `panel.sync` へ渡すだけにする。設計図カードの質量計算(L970-978)も一緒に移す |
-| `tests/game/ship-construction.test.ts` | 既存のテストが通ることを確かめる。新しい関数の単体テストは手順 6 で足す |
-
-#### 達成条件と検証
-
-- `wc -l src/game/ship/ship-construction.ts` が 993 より小さい。
-- `npm run typecheck`、`npm run test:game`、`npm run check:boundaries` が通る。
-- commit: `refactor(ship): 建造パネルの表示モデルの組み立てを分離`
-
----
-
 ### 手順 3. 指し方と置き方を直す
 
 #### 目的
@@ -262,7 +239,7 @@ Focus(`ui-surface-focus`)。
 | `src/game/hud/panels/ship-construction-panel.ts:193-247`(`sync`) | 手元バーへ表示モデルを渡す。`release` の有効条件(L207)は手元バー側で状態ごとのボタンに分かれる |
 | `src/game/hud/panels/ship-construction-catalog.ts:16-19, 56-61` | カテゴリタブへキー(1〜6)をキーキャップで添える。`TabBar` が項目にキーを添える引数を持たなければ、`TabBar` へ最小限の引数を足す(`src/hud/widgets/tab-bar.ts`) |
 | `src/game/ship/ship-construction-types.ts:115-136`(`ShipConstructionPanelModel`) | 手元バーが要る項目を足す: 確定ボタンが押せない理由(文字列または null)、選択中のモジュールの向き。`canPlace` はそのまま |
-| `src/game/ship/ship-construction-panel-model.ts`(手順 2 で新設) | 押せない理由を組む: 手持ちも選択も無い → null(ボタン自体を出さない)、候補を指していない → 「取り付け先を指してください」、指している候補が置けない → 試し置きの理由 |
+| `src/game/ship/ship-construction-panel-model.ts` | 押せない理由を組む: 手持ちも選択も無い → null(ボタン自体を出さない)、候補を指していない → 「取り付け先を指してください」、指している候補が置けない → 試し置きの理由 |
 | `src/game/ship/ship-construction.ts:131-175`(パネルの配線) | `onRelease`(L164)を「手放す」(`release` だけ)と「選択を解く」(`select(null)` だけ)の2つへ分ける。`ShipConstructionPanelPort`(L70-95)へ口を1つ足す |
 | `src/game/hud/style/ship-construction-style.ts` | グリッドを組み直す(L5-10: 3列 × 2行、手元バーは中央列の下段。L164-188: コンパクトでは 3D・手元バー・切り替え・ペインの4行)。`construction-center` の規則(L62-72)、`.ui-delta[data-delta]` の色(手順 6 で消す)を整理する。寸法と色はトークンから引く(CODING-RULE 1.12) |
 | `src/game/hud/windows/help-content.ts:130-197` | 「置く / 選ぶ」の説明を CONTROLS.md「建造中の操作」の左クリック/タップの項に合わせる |
