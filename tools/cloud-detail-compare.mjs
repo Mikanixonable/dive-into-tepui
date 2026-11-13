@@ -324,6 +324,7 @@ async function main() {
   }
   const scenes = JSON.parse(readFileSync(scenesFile, 'utf8'));
   const sceneKind = new Map(scenes.map((scene) => [scene.name, scene.kind]));
+  const sceneCategory = new Map(scenes.map((scene) => [scene.name, scene.category ?? null]));
   const referenceManifest = JSON.parse(readFileSync(referenceManifestFile, 'utf8'));
 
   // --- 撮影: 一覧をページから引き、足りない分だけ撮って manifest を書き直す ---
@@ -374,11 +375,14 @@ async function main() {
 
   const references = [];
   for (const scene of referenceManifest.scenes) {
+    // 陸は地表の模様が雲の統計へ混ざるため、陸を外す方法を決めるまで判定に入れない。
+    if (scene.surface === 'land') continue;
     for (const tier of scene.tiers) {
       const file = path.join(root, tier.file);
       const image = {
         id: `${scene.name}-${tier.kmPerPx}`,
         scene: scene.name,
+        category: scene.category,
         kind: scene.kind,
         kmPerPx: tier.kmPerPx,
         file: tier.file,
@@ -397,6 +401,7 @@ async function main() {
     shots.set(info.name, {
       ...info,
       sceneKind: sceneKind.get(info.scene) ?? 'mixed',
+      sceneCategory: sceneCategory.get(info.scene) ?? null,
       ...measureImage(png, info.centerKmPerPx),
     });
     shotIndex++;
@@ -411,6 +416,26 @@ async function main() {
     for (const entry of image.features) envelopeAdd(envelopes[image.kind], entry, image.kmPerPx);
   }
   envelopes.union = mergedEnvelope(envelopes.cumulus, envelopes.cirrus);
+  // 区分ごとの封筒: 同じ区分・同じ種類の実写が 2 場面以上あるときだけ作る。足りない区分は種類の封筒へ戻す。
+  const categoryScenes = new Map();
+  for (const image of references) {
+    if (image.kind !== 'cumulus' && image.kind !== 'cirrus') continue;
+    const key = `${image.category}|${image.kind}`;
+    if (!categoryScenes.has(key)) categoryScenes.set(key, new Set());
+    categoryScenes.get(key).add(image.scene);
+  }
+  const envelopesByCategory = new Map();
+  for (const image of references) {
+    if (image.kind !== 'cumulus' && image.kind !== 'cirrus') continue;
+    const key = `${image.category}|${image.kind}`;
+    if (categoryScenes.get(key).size < 2) continue;
+    if (!envelopesByCategory.has(key)) envelopesByCategory.set(key, newEnvelope());
+    for (const entry of image.features) envelopeAdd(envelopesByCategory.get(key), entry, image.kmPerPx);
+  }
+  const categoryFallback = [...categoryScenes.keys()].filter((key) => !envelopesByCategory.has(key));
+  if (categoryFallback.length > 0) {
+    console.log(`注意: 場面が 2 未満の区分は種類の封筒で判定する: ${categoryFallback.join(', ')}`);
+  }
 
   // 撮影がどの封筒で判定されるか。cumulus/cirrus 撮影はその種類の封筒、
   // both 撮影は場面の種類の封筒(混合場面では 2 種類の和集合)。
@@ -435,8 +460,11 @@ async function main() {
     kindFamilySum.set(kind, new Map());
   }
   for (const shot of shots.values()) {
-    const envelopeKey = envelopeOfShot(shot);
-    const envelope = envelopes[envelopeKey];
+    const baseKey = envelopeOfShot(shot);
+    const categoryKey = shot.sceneCategory && baseKey !== 'union' ? `${shot.sceneCategory}|${baseKey}` : null;
+    const useCategory = categoryKey !== null && envelopesByCategory.has(categoryKey);
+    const envelopeKey = useCategory ? categoryKey : baseKey;
+    const envelope = useCategory ? envelopesByCategory.get(categoryKey) : envelopes[baseKey];
     shot.envelope = envelopeKey;
     shot.distances = {};
     for (const entry of shot.features) {
@@ -500,6 +528,31 @@ async function main() {
     console.log(`${family.padEnd(15)} ${cell === undefined ? '  -   ' : (cell.sum / cell.count).toFixed(3).padStart(6)} ${columns.join('  ')}`);
   }
   console.log(`${'index (家族の平均)'.padEnd(15)} ${index.toFixed(3)}`);
+
+  // --- 区分ごとの距離: 撮影の区分(熱帯・温帯・高緯度の海)ごとに家族の平均と index ---
+  const categoryTable = new Map();
+  for (const shot of shots.values()) {
+    if (!shot.distances || !shot.sceneCategory) continue;
+    const perCategory = categoryTable.get(shot.sceneCategory) ?? new Map();
+    categoryTable.set(shot.sceneCategory, perCategory);
+    for (const entry of shot.features) {
+      if (shot.distances[entry.id] === undefined) continue;
+      const cell = perCategory.get(entry.family) ?? { sum: 0, count: 0 };
+      cell.sum += shot.distances[entry.id];
+      cell.count++;
+      perCategory.set(entry.family, cell);
+    }
+  }
+  const categoryIndex = {};
+  console.log('\n=== 区分ごとの距離(撮影の区分 × 家族、0 が一致) ===');
+  for (const [category, perCategory] of [...categoryTable.entries()].sort()) {
+    const fams = {};
+    for (const [family, cell] of perCategory) fams[family] = cell.sum / cell.count;
+    const values = Object.values(fams);
+    categoryIndex[category] = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
+    console.log(`${category.padEnd(16)} index ${categoryIndex[category]?.toFixed(3)}  ` +
+      Object.entries(fams).map(([f, v]) => `${f} ${v.toFixed(2)}`).join('  '));
+  }
 
   // --- 封筒から外れた特徴量の一覧(正規化距離の大きい順) ---
   console.log('\n=== 封筒から外れた特徴量(正規化距離の上位) ===');
