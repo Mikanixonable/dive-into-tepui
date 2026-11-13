@@ -52,6 +52,7 @@ export function createSalvageTenderPreset(cargo: readonly SalvageKind[]): ShipAs
   const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
   assembly.addRoot(instance(SHIP_MODULE_CATALOG, 'tank-combat-main', 'tender-tank'));
   assembly.connectSide(instance(SHIP_MODULE_CATALOG, 'dock-standard', 'tender-dock'), 'tender-tank', 'side:+x');
+  // 船首側と船尾側のそれぞれの末端を覚え、種類ごとに連なる側の末端へ続けて連ねる。
   const tails: Record<'bow' | 'stern', string> = { bow: 'tender-tank', stern: 'tender-tank' };
   cargo.forEach((kind, index) => {
     const side = salvageCargoSide(kind);
