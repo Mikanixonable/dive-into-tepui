@@ -1,4 +1,4 @@
-// 設計図の棚が、アクティブなセーブデータの一覧を読み、改名・削除の記録をセーブデータへ残すことを検査する。
+// 設計図の棚が、アクティブなセーブデータの一覧を読み、追加・改名・削除の記録をセーブデータへ残すことを検査する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { SaveSlots } from '../../src/launcher/save/save-slots';
@@ -47,5 +47,29 @@ export function register(): void {
     assert.equal(shelf.rename('bp-x', '名前'), false);
     assert.equal(shelf.delete('bp-x'), false);
     assert.deepEqual(slots.blueprints(first).map((b) => b.id), ['bp-1']);
+  });
+
+  test('blueprint-shelf: add は新しい設計図を先頭へ足して記録し、同名・同 id を拒否する', () => {
+    const store = new MemorySaveStore();
+    const slots = SaveSlots.load(store);
+    const slotId = slots.activeSlotId;
+    assert.ok(slotId !== null);
+    assert.equal(slots.writeBlueprints(slotId, [blueprint('bp-1')]), true);
+    const shelf = new BlueprintShelf(slots);
+
+    // 新しい設計図は復元可能な形のまま一覧の先頭へ足され、セーブデータにも残る。
+    assert.equal(shelf.add(blueprint('bp-2')), true);
+    assert.deepEqual(shelf.blueprints.map((b) => b.id), ['bp-2', 'bp-1']);
+    assert.deepEqual(slots.blueprints(slotId).map((b) => b.id), ['bp-2', 'bp-1']);
+
+    // 同名の設計図は足さない(プレイヤーが同名で自作していても授与しない)。
+    const sameName = { ...blueprint('bp-3'), name: '設計図 bp-1' };
+    assert.equal(shelf.add(sameName), false);
+    assert.equal(shelf.blueprints.length, 2);
+    // 同じ識別子も足さない。
+    const sameId = { ...blueprint('bp-1'), name: '別の名前' };
+    assert.equal(shelf.add(sameId), false);
+    assert.equal(shelf.blueprints.length, 2);
+    assert.deepEqual(slots.blueprints(slotId).map((b) => b.id), ['bp-2', 'bp-1']);
   });
 }

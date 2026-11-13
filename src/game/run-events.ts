@@ -216,7 +216,9 @@ export type RunEventBody =
   // 設計図の名前を変えた。
   | { readonly kind: 'blueprintRenamed'; readonly id: string; readonly name: string }
   // 設計図を削除した。
-  | { readonly kind: 'blueprintDeleted'; readonly id: string };
+  | { readonly kind: 'blueprintDeleted'; readonly id: string }
+  // ラン内の撃破数の節目を跨ぎ、鹵獲の設計図が授与された。name は棚へ追加する設計図の名前。
+  | { readonly kind: 'salvageBlueprintGranted'; readonly name: string };
 
 // 記録された出来事1件。
 export interface RunEvent {

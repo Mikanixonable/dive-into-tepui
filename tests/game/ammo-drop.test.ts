@@ -15,6 +15,7 @@ import type { Enemy } from '../../src/game/dynamic/dynamic-entity/enemy';
 import type { ModularShip } from '../../src/game/ship/modular-ship';
 import type { SimSpeedManager } from '../../src/game/dynamic/sim-speed-manager';
 import type { RunEventBody } from '../../src/game/run-events';
+import type { ShipBlueprintShelf } from '../../src/game/ship/ship-blueprint';
 
 // エンティティを配列へ積むだけの、補給と撃破記録が受け取る台帳の最小の代役。
 class TestDynamicSystem implements EntityRegistry, EntityRoster {
@@ -43,6 +44,8 @@ interface BareStageFields {
   logistics: Logistics;
   _phase: GamePhase;
   _dynamicSystem: EntityRegistry & EntityRoster;
+  blueprintShelf: ShipBlueprintShelf;
+  grantedSalvageNames: Set<string>;
 }
 
 function bareStage(system: TestDynamicSystem): { stage: Stage; logistics: Logistics } {
@@ -53,6 +56,8 @@ function bareStage(system: TestDynamicSystem): { stage: Stage; logistics: Logist
   fields.logistics = logistics;
   fields._phase = 'playing';
   fields._dynamicSystem = system;
+  fields.blueprintShelf = { blueprints: [] };
+  fields.grantedSalvageNames = new Set();
   return { stage, logistics };
 }
 
