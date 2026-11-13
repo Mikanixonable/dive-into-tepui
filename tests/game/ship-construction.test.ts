@@ -505,4 +505,42 @@ export function register(): void {
     construction.hold({ kind: 'catalog', definitionId: 'tank-3-main' });
     assert.equal(lastModel()?.held?.symmetry, 2);
   });
+
+  test('ship construction: 付け替えるは選択中の先端部を手持ちにし、置くと付け替わって手が空になる', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const { construction } = createConstruction(ship, queue, { blueprints: [], canRecord: false });
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+    construction.select('rcs-tank');
+
+    construction.holdSelectedPiece();
+
+    assert.deepEqual(construction.held, { kind: 'piece', moduleId: 'rcs-tank' });
+    const target = axialFaceTarget(ship.assembly, 'dock-left', 'cockpit', 'front');
+    assert.ok(target !== undefined);
+    construction.placeAt(constructionTargetId(target.target));
+    assert.equal(construction.held, null);
+
+    queue.applyAll();
+    construction.sync();
+    assert.equal(construction.lastOperation?.kind, 'place');
+    assert.equal(construction.lastDenied, null);
+    // 先端部ごと cockpit の前端へ付け替わり、識別子は保つ。
+    assert.equal(
+      ship.assembly.graph.find(edge => edge.childId === 'rcs-tank')?.parentId, 'cockpit',
+    );
+    assert.ok(ship.assembly.module('radiator-left') !== null);
+    ship.assembly.assertValid();
+  });
+
+  test('ship construction: 選択が無い付け替えは拒否して手持ちを変えない', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const { construction } = createConstruction(ship, queue, { blueprints: [], canRecord: false });
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+
+    construction.holdSelectedPiece();
+    assert.equal(construction.held, null);
+    assert.equal(construction.lastDenied !== null, true);
+  });
 }
