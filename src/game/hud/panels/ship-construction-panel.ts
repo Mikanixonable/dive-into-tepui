@@ -57,7 +57,6 @@ export class ShipConstructionPanel {
   public onReattach: (() => void) | null = null;
   public onRelease: (() => void) | null = null;
   public onDeselect: (() => void) | null = null;
-  public onFocus: (() => void) | null = null;
   public onRotate: ((delta: 1 | -1) => void) | null = null;
   public onSwapEnds: (() => void) | null = null;
   public onCycleSymmetry: (() => void) | null = null;
