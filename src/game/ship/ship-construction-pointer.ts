@@ -1,13 +1,16 @@
 // 建造中のポインタとショートカットキーの解釈: ホバーが取り付け先を指し、クリックで配置・
 // 選択、選択中モジュールの上から始まったドラッグで先端部を掴んで付け替える。
+// 編集できるモジュールを選んでいる間は、その接続軸まわりの回転リングを掴める。
 // 指す先の判定は候補の画面位置への距離とポインタの下のモジュール、モジュールの選択は
-// 船体へのレイキャストで行う。
+// 船体へのレイキャスト、リングの掴みはリング面への視線の交点で行う。
 import { type KeyBinding, KEY_MAPPING as K } from '../../input/key-mapping';
-import { screenProjection } from '../../math/projection';
+import { metersPerPixel, screenProjection } from '../../math/projection';
+import type { Quat } from '../../math/quat';
 import type { Ray } from '../../math/ray';
 import type { Vec3 } from '../../math/vec3';
 import type { CompoundCylinderRayHit } from '../../physics/compound-cylinder-contact';
-import type { Input, PointerPoint, PointerPress } from '../../input/input';
+import type { GrabbedDrag, Input, PointerPoint, PointerPress } from '../../input/input';
+import { pickRadiusSq } from '../../input/pointer-precision';
 import type { Viewport } from '../../render/viewport';
 import type { CameraSystem } from '../camera/camera-system';
 import {
@@ -19,6 +22,10 @@ import type { ShipAssembly } from './ship-assembly';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import type { ConstructionTrial } from './ship-construction-preview';
 import type { ConstructionCardDrag, ConstructionHeld } from './ship-construction-types';
+import {
+  appliedRotationSteps, constructionRotationRing, ringPlaneHit, wrapAnglePi,
+  type ConstructionRotationDrag, type ConstructionRotationRing,
+} from './ship-construction-rotation';
 
 // 修飾キーの押下判定用。キー割り当てではなく、割り当てに伴う修飾の照合にだけ使う。
 const CTRL_OR_META: readonly KeyBinding[] = [
@@ -32,17 +39,24 @@ const SHIFT: readonly KeyBinding[] = [
   { code: 'ShiftRight', label: 'Shift' },
 ];
 
+// 回転リングの帯の片側の太さ [px]。押した位置がリングの半径からこの幅の内側なら掴む。
+// タップターゲットの最小 44 px に合わせ、粗いポインタでは片側 22 px まで広げる。
+const RING_HIT_PX = Math.sqrt(pickRadiusSq(12 * 12, 22 * 22));
+
 // カタログのカテゴリを選ぶキー。並びはカタログのタブの並びと対応する。
 const CATEGORY_KEYS: readonly KeyBinding[] = [
   K.constructionCategory1, K.constructionCategory2, K.constructionCategory3,
   K.constructionCategory4, K.constructionCategory5, K.constructionCategory6,
 ];
 
-// 入力の解釈が船体へ求める面。接続の構造と配置済みモジュールの当たり判定だけを使う。
+// 入力の解釈が船体へ求める面。接続の構造と配置済みモジュールの当たり判定、
+// 回転リングの姿勢を求める姿勢・重心だけを使う。
 interface ConstructionPointerShip {
   readonly assembly: ShipAssembly;
   readonly motion: {
     readonly state: { readonly r: Vec3 };
+    readonly att: { readonly q: Quat };
+    readonly centerOffset: Vec3;
     raycastCompound(ray: Ray, pos: Vec3): CompoundCylinderRayHit | null;
   };
 }
@@ -72,6 +86,8 @@ export interface ConstructionPointerHost {
   canEditModule(moduleId: string): boolean;
   clearCardDrag(): void;
   rotate(delta: 1 | -1): void;
+  // 手持ち・選択中を steps 段(90° 単位)回す。1 回の呼び出しは 1 つの操作。
+  rotateSteps(steps: number): void;
   swapEnds(): void;
   cycleSymmetry(): void;
   duplicateSelected(): void;
@@ -117,8 +133,26 @@ function bindingMatches(binding: KeyBinding, code: string, input: Input): boolea
 export class ShipConstructionPointer {
   // 掴んだ押下の識別子(Input.PointerPress.id)。選択中モジュールのドラッグだけが掴まれる。
   private grabbedPressId: number | null = null;
+  // 回転リングを掴んだドラッグ。リングは掴んだときの幾何のまま追い、離した位置で
+  // 90° 単位へ丸めて適用する。リングを掴んでいないドラッグでは null。
+  private ringDrag: {
+    readonly ring: ConstructionRotationRing;
+    readonly startAngle: number;
+    previousAngle: number;
+    angle: number;
+  } | null = null;
 
   public constructor(private readonly host: ConstructionPointerHost) {}
+
+  // リングのドラッグ中の角度情報。表示の導出が弧とスナップ位置を組む材料。
+  public get rotationDrag(): ConstructionRotationDrag | null {
+    const drag = this.ringDrag;
+    return drag === null ? null : {
+      startAngle: drag.startAngle,
+      angle: drag.angle,
+      appliedSteps: appliedRotationSteps(drag.startAngle, drag.angle),
+    };
+  }
 
   // このフレームのポインタ入力を読み、指す先の追従とクリック・ドラッグの操作を組む。
   // 掴んだドラッグはカメラへ流れないよう、カメラの入力解釈より先に呼ぶ。
@@ -129,14 +163,30 @@ export class ShipConstructionPointer {
     // 選択中モジュールの上から始まった押下だけを掴む。それ以外の押下はカメラへ流す。
     input.takePresses(press => this.tryGrab(ship, camera, viewport, press));
     const drag = this.grabbedPressId === null ? null : input.grabbedDrag(this.grabbedPressId);
-    if (this.grabbedPressId !== null && drag === null) this.grabbedPressId = null;
+    if (this.grabbedPressId !== null && drag === null) {
+      this.grabbedPressId = null;
+      this.ringDrag = null;
+    }
+    // 掴んだリングのドラッグ: 回した角を追い、離した位置で 90° 単位へ丸めて適用する。
+    // リングを掴んだドラッグは、離したフレームも含めて先端部の掴み取りへ扱わない。
+    const ringDragActive = this.ringDrag !== null;
+    if (ringDragActive && drag !== null) {
+      this.updateRingDrag(camera, viewport, drag);
+      if (drag.released !== null) {
+        this.finishRingDrag();
+        this.grabbedPressId = null;
+        this.ringDrag = null;
+      }
+    }
+    const pieceDrag = ringDragActive ? null : drag;
     // 指す先の追従。カードのドラッグ・掴んだドラッグ・ホバーの順で位置を読む。
     const cardDrag = host.cardDrag;
     const point = cardDrag !== null ? input.canvasPoint(cardDrag.point.x, cardDrag.point.y)
-      : drag !== null ? drag.point
+      : pieceDrag !== null ? pieceDrag.point
       : input.pointerPoint;
     if (point !== null) {
-      const canPoint = host.held !== null || host.selectedModuleId !== null;
+      const canPoint = !ringDragActive
+        && (host.held !== null || host.selectedModuleId !== null);
       host.setPointedTarget(canPoint ? this.pickTarget(ship, camera, viewport, point) : null);
     }
     // ポインタの下のモジュールをホバーとして追う。手持ち・ドラッグの間は空を記録する。
@@ -147,8 +197,8 @@ export class ShipConstructionPointer {
         : null,
     );
     // 掴んだ先端部を離す: 有効な取り付け先なら置き、それ以外なら手放して選択へ戻る。
-    if (drag !== null && drag.released !== null) {
-      this.dropHeld(ship, camera, viewport, drag.released);
+    if (pieceDrag !== null && pieceDrag.released !== null) {
+      this.dropHeld(ship, camera, viewport, pieceDrag.released);
       this.grabbedPressId = null;
     }
     // カタログのカードのドラッグを離した位置で確定する。
@@ -242,17 +292,58 @@ export class ShipConstructionPointer {
     return false;
   }
 
-  // 選択中モジュールの上から始まった押下だけ掴み、その先端部を手持ちにする。
+  // 選択中モジュールの上から始まった押下だけ掴む。回転リングの帯の上ならリングの
+  // ドラッグとして、モジュールの上なら先端部を手持ちにする。それ以外は掴まない。
   private tryGrab(
     ship: ConstructionPointerShip, camera: CameraSystem, viewport: Viewport, press: PointerPress,
   ): boolean {
     const host = this.host;
     const moduleId = host.selectedModuleId;
     if (moduleId === null || !host.canEditModule(moduleId)) return false;
+    // リングは手持ちの間は出ていないので、先端部の掴み取りより先に解釈する。
+    if (host.held === null && this.tryGrabRing(ship, camera, viewport, press)) return true;
     if (this.hitModuleId(ship, camera, viewport, press.point) !== moduleId) return false;
     host.hold({ kind: 'piece', moduleId });
     this.grabbedPressId = press.id;
     return true;
+  }
+
+  // 押した位置が選択中モジュールの回転リングの帯の内側なら掴む。帯の太さは交点の
+  // 深さの画素あたりの長さから求め、角度はリング面の交点から取る。
+  private tryGrabRing(
+    ship: ConstructionPointerShip, camera: CameraSystem, viewport: Viewport, press: PointerPress,
+  ): boolean {
+    const ring = constructionRotationRing(ship, this.host.selectedModuleId!);
+    if (ring === null) return false;
+    const hit = ringPlaneHit(ring, camera.rayThroughScreen(press.point.x, press.point.y, viewport));
+    if (hit === null) return false;
+    const band = metersPerPixel(camera.activeViewpoint, hit.point, viewport.height) * RING_HIT_PX;
+    if (Math.abs(hit.distance - ring.radius) > band) return false;
+    this.ringDrag = {
+      ring, startAngle: hit.angle, previousAngle: hit.angle, angle: 0,
+    };
+    this.grabbedPressId = press.id;
+    return true;
+  }
+
+  // ドラッグ中は面の交点の角を追い、±π を跨いでも向きが反転しないよう差分を畳んで足す。
+  private updateRingDrag(
+    camera: CameraSystem, viewport: Viewport, drag: GrabbedDrag,
+  ): void {
+    const ringDrag = this.ringDrag;
+    if (ringDrag === null) return;
+    const hit = ringPlaneHit(ringDrag.ring, camera.rayThroughScreen(drag.point.x, drag.point.y, viewport));
+    if (hit === null) return;
+    ringDrag.angle += wrapAnglePi(hit.angle - ringDrag.previousAngle);
+    ringDrag.previousAngle = hit.angle;
+  }
+
+  // 離したときの回転を適用する。累積角は 90° 単位へ丸め、動かさず離した
+  // クリックは最も近い矢印の向きへ 1 段回す。
+  private finishRingDrag(): void {
+    const ringDrag = this.ringDrag;
+    if (ringDrag === null) return;
+    this.host.rotateSteps(appliedRotationSteps(ringDrag.startAngle, ringDrag.angle));
   }
 
   // 離した位置の取り付け先が有効なら手持ちを置き、候補があって置けないなら理由を

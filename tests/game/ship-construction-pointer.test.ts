@@ -6,9 +6,9 @@ import type { GrabbedDrag, Input, PointerPoint, PointerPress } from '../../src/i
 import type { Viewport } from '../../src/render/viewport';
 import type { CameraSystem } from '../../src/game/camera/camera-system';
 import type { Ray } from '../../src/math/ray';
-import { screenProjection, type Viewpoint } from '../../src/math/projection';
+import { rayThroughScreen, screenProjection, type Viewpoint } from '../../src/math/projection';
 import { add, scale, sub, v3, type Vec3 } from '../../src/math/vec3';
-import { Q_IDENTITY, qRotate } from '../../src/math/quat';
+import { Q_IDENTITY, qRotate, type Quat } from '../../src/math/quat';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import type { CompoundCylinderRayHit } from '../../src/physics/compound-cylinder-contact';
 import { kinematicState } from '../../src/physics/kinematic-state';
@@ -22,6 +22,9 @@ import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
 import {
   ShipConstructionPointer, type ConstructionPointerHost,
 } from '../../src/game/ship/ship-construction-pointer';
+import {
+  constructionRotationRing, type ConstructionRotationRing,
+} from '../../src/game/ship/ship-construction-rotation';
 import type { ConstructionShip } from '../../src/game/ship/ship-construction-edits';
 import type { ConstructionTargetGuide } from '../../src/game/ship/ship-construction-candidates';
 import { constructionTargetId } from '../../src/game/ship/ship-construction-rules';
@@ -89,20 +92,38 @@ class FakeInput {
 
 // 呼び出しを記録する偽のホスト。候補・ポインタの下のモジュール・試し置きの結果は
 // テストが差し込む。
+// 回転リングの幾何が要る試験では、本物の assembly と差し替える。
+interface FakeShip {
+  assembly: ShipAssembly;
+  motion: {
+    state: { r: Vec3 };
+    att: { q: Quat };
+    centerOffset: Vec3;
+    raycastCompound(ray: Ray, pos: Vec3): CompoundCylinderRayHit | null;
+  };
+}
+
 class FakeHost implements ConstructionPointerHost {
   public hitModuleId: string | null = null;
   public held: ConstructionHeld | null = null;
   public selectedModuleId: string | null = null;
   public pointedTargetId: string | null = null;
   public cardDrag: ConstructionCardDrag | null = null;
+  public editable = true;
   public guides: readonly ConstructionTargetGuide[] = [];
   public trial: ConstructionTrial | null = null;
   public readonly calls: string[] = [];
 
-  public readonly sessionShip = {
-    assembly: { graph: [] } as unknown as ShipAssembly,
+  public sessionShip: FakeShip | null = {
+    assembly: {
+      graph: [],
+      worldTransformOf: () => null,
+      definition: () => null,
+    } as unknown as ShipAssembly,
     motion: {
       state: { r: v3() },
+      att: { q: Q_IDENTITY },
+      centerOffset: v3(),
       raycastCompound: (_ray: Ray, _pos: Vec3): CompoundCylinderRayHit | null =>
         this.hitModuleId === null ? null
           : { point: v3(), normal: v3(), distance: 1, moduleId: this.hitModuleId },
@@ -131,9 +152,10 @@ class FakeHost implements ConstructionPointerHost {
   public setHoveredModule(moduleId: string | null): void {
     this.hoveredModuleId = moduleId;
   }
-  public canEditModule(): boolean { return true; }
+  public canEditModule(): boolean { return this.editable; }
   public clearCardDrag(): void { this.calls.push('clearCardDrag'); this.cardDrag = null; }
   public rotate(): void {}
+  public rotateSteps(steps: number): void { this.calls.push(`rotateSteps:${steps}`); }
   public swapEnds(): void {}
   public cycleSymmetry(): void {}
   public duplicateSelected(): void {}
@@ -164,6 +186,53 @@ function guide(target: ConstructionTarget, guideEci: Vec3): ConstructionTargetGu
 // guideEci が映る画面位置。クリック・ドロップ位置をノードの半径内へ置くために使う。
 function screenPoint(guideEci: Vec3): PointerPoint {
   const projected = screenProjection(VIEWPOINT, VIEWPORT.width, VIEWPORT.height)(guideEci);
+  return { x: projected.x, y: projected.y };
+}
+
+// 本物の assembly と、raycastCompound だけ差し替えた船体。リングの幾何は本物で、
+// ポインタの下のモジュールの判定は hitModuleId へ委ねる。
+function ringShip(assembly: ShipAssembly, hitModuleId: string | null): FakeShip {
+  return {
+    assembly,
+    motion: {
+      state: { r: v3() },
+      att: { q: Q_IDENTITY },
+      centerOffset: v3(),
+      raycastCompound: (_ray: Ray, _pos: Vec3): CompoundCylinderRayHit | null =>
+        hitModuleId === null ? null
+          : { point: v3(), normal: v3(), distance: 1, moduleId: hitModuleId },
+    },
+  };
+}
+
+// リングの中心を軸の正側 50 m から見る視点。上方向は面内の基底でずらす。
+function ringViewpoint(ring: ConstructionRotationRing): Viewpoint {
+  return {
+    position: add(ring.centerEci, scale(ring.axisEci, 50)),
+    lookTarget: ring.centerEci, up: ring.vEci, fovDeg: 60, aspect: 4 / 3,
+  };
+}
+
+// viewpoint に合わせた偽カメラ。画面位置からの視線は本物の投影の逆で取る。
+function screenCamera(viewpoint: Viewpoint): CameraSystem {
+  return {
+    activeViewpoint: viewpoint,
+    rayThroughScreen: (x: number, y: number, viewport: Viewport): Ray =>
+      rayThroughScreen(viewpoint, x, y, viewport.width, viewport.height),
+  } as unknown as CameraSystem;
+}
+
+// リング上の基準角 angle の位置(ECI)。
+function ringPointAt(ring: ConstructionRotationRing, angle: number): Vec3 {
+  return add(ring.centerEci, add(
+    scale(ring.uEci, ring.radius * Math.cos(angle)),
+    scale(ring.vEci, ring.radius * Math.sin(angle)),
+  ));
+}
+
+// ECI の点が viewpoint へ映る画面位置。
+function screenPointAt(viewpoint: Viewpoint, point: Vec3): PointerPoint {
+  const projected = screenProjection(viewpoint, VIEWPORT.width, VIEWPORT.height)(point);
   return { x: projected.x, y: projected.y };
 }
 
@@ -311,5 +380,135 @@ export function register(): void {
     construction.handlePointer(next as unknown as Input, camera, VIEWPORT);
 
     assert.equal(construction.selectedModuleId, placedId);
+  });
+
+  test('construction pointer: 回転リングのドラッグは角度を追い、離した位置で 90° 単位へ丸めて1操作で回す', () => {
+    const host = new FakeHost();
+    host.sessionShip = ringShip(createBasePreset(), 'main-tank');
+    host.selectedModuleId = 'main-tank';
+    const ring = constructionRotationRing(host.sessionShip!, 'main-tank');
+    assert.ok(ring !== null);
+    const viewpoint = ringViewpoint(ring);
+    const camera = screenCamera(viewpoint);
+    const input = new FakeInput();
+    const pointer = new ShipConstructionPointer(host);
+    const at = (angle: number): PointerPoint =>
+      screenPointAt(viewpoint, ringPointAt(ring, angle));
+
+    // リングの上で押すと、モジュールの掴み取りではなくリングのドラッグになる。
+    input.press(1, at(0));
+    pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    assert.equal(host.held, null);
+    assert.ok(input.grabbedDrag(1) !== null);
+
+    // 0.99π まで回す(累積は ±π を跨がず向きを保つ)。rotationDrag が追いかける角度を持つ。
+    for (const t of [0.2, 0.4, 0.6, 0.8, 0.99]) {
+      input.moveGrab(1, at(t * Math.PI), null);
+      pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    }
+    const drag = pointer.rotationDrag;
+    assert.ok(drag !== null);
+    assert.ok(Math.abs(drag.angle - 0.99 * Math.PI) < 1e-6);
+    assert.ok(Math.abs(drag.startAngle) < 1e-6);
+
+    // 離すと 178° → 2 段へ丸めて 1 回の回転操作が出る。
+    input.moveGrab(1, at(0.99 * Math.PI), at(0.99 * Math.PI));
+    pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    assert.deepEqual(host.calls.filter(call => call.startsWith('rotateSteps')), ['rotateSteps:2']);
+    assert.equal(pointer.rotationDrag, null);
+    // リングを掴んだドラッグは先端部の掴み取り・手放しへ流れない。
+    assert.ok(!host.calls.includes('hold'));
+    assert.ok(!host.calls.includes('release'));
+  });
+
+  test('construction pointer: 反対方向へ回したリングは負の段数へ丸める', () => {
+    const host = new FakeHost();
+    host.sessionShip = ringShip(createBasePreset(), 'main-tank');
+    host.selectedModuleId = 'main-tank';
+    const ring = constructionRotationRing(host.sessionShip!, 'main-tank');
+    assert.ok(ring !== null);
+    const viewpoint = ringViewpoint(ring);
+    const camera = screenCamera(viewpoint);
+    const input = new FakeInput();
+    const pointer = new ShipConstructionPointer(host);
+    const at = (angle: number): PointerPoint =>
+      screenPointAt(viewpoint, ringPointAt(ring, angle));
+
+    input.press(1, at(0));
+    pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    // −1.3π(−234°)まで段階的に回し、±π を跨いでも向きを保つ。
+    for (const t of [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.3]) {
+      input.moveGrab(1, at(-t * Math.PI), null);
+      pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    }
+    input.moveGrab(1, at(-1.3 * Math.PI), at(-1.3 * Math.PI));
+    pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    assert.deepEqual(host.calls.filter(call => call.startsWith('rotateSteps')), ['rotateSteps:-3']);
+  });
+
+  test('construction pointer: リング上のクリックは最も近い矢印の向きへ1段回す', () => {
+    const host = new FakeHost();
+    host.sessionShip = ringShip(createBasePreset(), 'main-tank');
+    host.selectedModuleId = 'main-tank';
+    const ring = constructionRotationRing(host.sessionShip!, 'main-tank');
+    assert.ok(ring !== null);
+    const viewpoint = ringViewpoint(ring);
+    const camera = screenCamera(viewpoint);
+    const input = new FakeInput();
+    const pointer = new ShipConstructionPointer(host);
+    const at = (angle: number): PointerPoint =>
+      screenPointAt(viewpoint, ringPointAt(ring, angle));
+
+    // 基準角 0(正の矢印)の上で押してそのまま離す → +1 段。
+    input.press(1, at(0));
+    pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    input.moveGrab(1, at(0), at(0));
+    pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    // 基準角 π(負の矢印)の上でも同様 → −1 段。
+    input.press(2, at(Math.PI));
+    pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    input.moveGrab(2, at(Math.PI), at(Math.PI));
+    pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+
+    assert.deepEqual(host.calls.filter(call => call.startsWith('rotateSteps')),
+      ['rotateSteps:1', 'rotateSteps:-1']);
+  });
+
+  test('construction pointer: リングの帯の外では従来どおりモジュールの掴み取りになる', () => {
+    const host = new FakeHost();
+    host.sessionShip = ringShip(createBasePreset(), 'main-tank');
+    host.selectedModuleId = 'main-tank';
+    const ring = constructionRotationRing(host.sessionShip!, 'main-tank');
+    assert.ok(ring !== null);
+    const viewpoint = ringViewpoint(ring);
+    const camera = screenCamera(viewpoint);
+    const input = new FakeInput();
+    const pointer = new ShipConstructionPointer(host);
+
+    // モジュールの中心を押す。リングの帯の内側ではないので先端部を掴む。
+    input.press(1, screenPointAt(viewpoint, ring.centerEci));
+    pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    assert.equal(host.held?.kind, 'piece');
+    assert.equal(pointer.rotationDrag, null);
+  });
+
+  test('construction pointer: 編集できないモジュールのリングは掴めない', () => {
+    const host = new FakeHost();
+    host.sessionShip = ringShip(createBasePreset(), 'main-tank');
+    host.selectedModuleId = 'main-tank';
+    host.editable = false;
+    const ring = constructionRotationRing(host.sessionShip!, 'main-tank');
+    assert.ok(ring !== null);
+    const viewpoint = ringViewpoint(ring);
+    const camera = screenCamera(viewpoint);
+    const input = new FakeInput();
+    const pointer = new ShipConstructionPointer(host);
+
+    input.press(1, screenPointAt(viewpoint, ringPointAt(ring, 0)));
+    pointer.interpretPointer(input as unknown as Input, camera, VIEWPORT);
+    // 押下は掴まれずカメラへ流れ、掴み取りも回転も起きない。
+    assert.equal(input.grabbedDrag(1), null);
+    assert.equal(host.held, null);
+    assert.ok(!host.calls.includes('hold'));
   });
 }
