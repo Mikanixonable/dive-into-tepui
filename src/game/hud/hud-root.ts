@@ -419,11 +419,11 @@ function buildChromeActions(
   chrome: HTMLElement, helpPanel: HelpPanel, onConstructionStart: () => void,
 ): Button {
   const actions = createHudElement('div', 'hud-chrome-actions', chrome);
-  const badge = new Button(`建造 [${K.constructionStart.label}]`, onConstructionStart);
+  const badge = new Button('建造', onConstructionStart, undefined, undefined, K.constructionStart.label);
   badge.element.id = 'hud-construction-badge';
   badge.element.dataset.id = 'construction-badge';
   badge.element.classList.add('ui-surface-quiet', 'hidden');
-  badge.element.setAttribute('aria-label', `建造を始める [${K.constructionStart.label}]`);
+  badge.element.setAttribute('aria-label', '建造を始める');
   const code = document.createElement('span');
   code.className = 'hud-mini-code';
   code.setAttribute('aria-hidden', 'true');
