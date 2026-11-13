@@ -257,7 +257,6 @@ Node.js 20 以上、WebGPU 対応ブラウザを推奨します。
 | **惑星全球モザイク** | USGS Astrogeology Science Center |
 | **地球表面 / 地形 / 気象** | NASA Earth Observatory、NOAA NCEI ETOPO、ERA5 |
 | **海岸線** | Natural Earth |
-| **タンパク質構造** | RCSB Protein Data Bank |
 
 ---
 
