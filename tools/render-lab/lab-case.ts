@@ -73,7 +73,7 @@ export interface LabCase {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
-  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・積雲の影の源になる。省略すると
+  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・雲の影の源になる。省略すると
   // 地球を置かない。
   readonly earth?: Pick<LabViewAngles, EarthAngleKey>;
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
