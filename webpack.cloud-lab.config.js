@@ -61,8 +61,9 @@ module.exports = {
     // compare が実物の動きの相手に読む。history/ は compare が残す数値レポートの履歴で、
     // 変更の前後の差分を引く根拠になる。history-polar-masked/ は極帯マスク後の距離で
     // 履歴を計算し直した複製で、同じく残す。render-capture/ は描画経路の多スケール撮影で、
-    // Slice B/C が実写・特徴量と突き合わせる根拠になる。ビルドの掃除で消さない。
-    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|history|history-polar-masked|render-capture)[\\/]/ },
+    // Slice B/C が実写・特徴量と突き合わせる根拠になる。reference-fine/ は Slice B の
+    // 微細スケール実写参照で、Slice C が特徴量の相手に読む。ビルドの掃除で消さない。
+    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-fine|history|history-polar-masked|render-capture)[\\/]/ },
   },
   optimization: {
     minimizer: [
