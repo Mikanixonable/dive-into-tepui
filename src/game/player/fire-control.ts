@@ -121,7 +121,7 @@ export class FireControl {
     // 起動時のタイムラグ
     if (justStartedFiring) {
       this.registry.events.record({ kind: 'gunSpunUp' });
-      this.weapon.setCooldown(SPINUP_TIME);
+      this.weapon.extendCooldown(SPINUP_TIME);
       return;
     }
 
@@ -141,12 +141,12 @@ export class FireControl {
     // マガジンを撃ち尽くしたら空の外枠を排出し、次の発射までの間隔を決める
     switch (command.consumption) {
       case 'normal':
-        this.weapon.setCooldown(1 / this.player.totalFireRate);
+        this.weapon.setShotInterval(1 / this.player.totalFireRate);
         return;
       case 'mag-reload':
         this.spawnEjectedMagazineFrame(muzzle.weapon);
         this.registry.events.record({ kind: 'gunMagazineFed' });
-        this.weapon.setCooldown(1 / this.player.totalFireRate);
+        this.weapon.setShotInterval(1 / this.player.totalFireRate);
         return;
     }
   }
@@ -184,7 +184,8 @@ export class FireControl {
     celestialBodies: CelestialBodies,
     cycleDuration: number,
   ): void {
-    const fwd = qRotate(this.player.motion.att.q, LOCAL_FORWARD);
+    // 弾は砲を載せたモジュールの前方へ出す。
+    const fwd = this.worldDir(muzzle.weapon.rotation, LOCAL_FORWARD);
     const muzzleWorld = this.worldPoint(muzzle.position);
 
     const bullet = this.spawnBullet(muzzleWorld, fwd, celestialBodies);
