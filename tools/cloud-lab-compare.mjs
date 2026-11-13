@@ -1,8 +1,8 @@
 // 雲の実験環境の生成と実写(8k_clouds)の統計比較。ヘッドレス Chrome で .cloud-lab/ を開き、
-// 全球と地域別 cap の両面を撮って、帯状平均・階調・圧縮の分位・行方向スペクトル・構造の異方性・
-// 地形との関係・雲頂の分布・台風の径方向プロファイルの表を出す。
+// 全球と地域別 cap の両面を撮って、帯状平均・階調・種類ごとの分布・圧縮の分位・行方向スペクトル・
+// 構造の異方性・地形との関係・雲頂の分布・台風の径方向プロファイルの表を出す。
 // 実写は低い厚い雲と高層の巻雲が 1 枚に重なっているので、`npm run cloud-lab:separate` が
-// 分離した成分(src/assets の仮テクスチャと .cloud-lab/separated/)を読み、撮影の面(全球の
+// 分離した成分(.cloud-lab/separated/ の厚い雲の不透明度と巻雲の輝度)を読み、撮影の面(全球の
 // 正距円筒と cap の正射影)へ再標本化して成分ごとに比べる。**先に separate を実行しておく。**
 // 再標本化した実写厚・実写薄も画像で .cloud-lab/compare/ に残る。
 // 台風は 8k_clouds に写っていないので、`npm run cloud-lab:reference` が取り込んだ Worldview の実写
@@ -54,7 +54,7 @@ const REGIONS = [
   { name: 'typhoon', label: '熱帯低気圧(19N 136E・時刻 0 の最盛期・数値目標外)', latitude: 19, longitude: 136,
     coreRadiusKm: 250, upperReadsOutside: false },
 ];
-const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop', 'surfaceWind', 'front'];
+const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop', 'cumulus', 'cirrus', 'surfaceWind', 'front'];
 
 // 地表の風ビューの B が張る速さ [m/s]。tools/cloud-lab/views.ts の WIND_SPAN と対。
 const WIND_SPAN = 45;
@@ -90,6 +90,10 @@ const CONTRAST_WINDOW = 5;
 // 雲の塊と見なす値のしきい。階調の刻み(TONE_LEVELS)の 1 つで、のっぺり判定の区間の上限でも
 // ある — 中間調より上を「塊」として形を測る。
 const SHAPE_THRESHOLD = 0.25;
+// 「雲がある」と見なす量のしきい。8bit の面で 1 段目を超える texel。
+const AMOUNT_PRESENT_THRESHOLD = 1 / 255;
+// 種類ごとの分布に出す分位。
+const KIND_QUANTILES = [0.1, 0.5, 0.9];
 
 // 動きの計測のサンプル時刻 [h]。decorrelation の桁を見るために対数刻みにする。
 const MOTION_SAMPLE_HOURS = [0, 1, 2, 4, 8, 16, 32, 64];
@@ -102,7 +106,7 @@ const DRIFT_MAX_DY = 6;
 // 熱帯低気圧のトラックを読む時刻 [h] と、描画中心のずれを測る時刻 [h]。
 const TRACK_SAMPLE_HOURS = [0, 12, 24, 36, 48, 60, 72];
 const CENTER_SAMPLE_HOURS = [0, 24, 48];
-// 描画中心のずれは、解析中心からこの半径 [km] の内側の被覆率の重心で測る。cap 全面で取ると
+// 描画中心のずれは、解析中心からこの半径 [km] の内側の積雲の不透明度の重心で測る。cap 全面で取ると
 // 渦の外の雲(前線や別の擾乱)に重心が引かれて「ずれ」でなく環境の非対称を測ってしまう。
 const CENTER_CORE_RADIUS_KM = 500;
 
@@ -116,19 +120,25 @@ const SCALE_LATITUDE_LIMIT = 80;
 // 正距円筒の全球が張る範囲 [°]。
 const GLOBE_EXTENT = { north: 90, south: -90, west: -180, east: 180 };
 
-// 場の G(雲頂高度)が張る高さ [m]。tools/cloud-lab/views.ts の CLOUD_TOP_SPAN と対。
-const CLOUD_TOP_SPAN = 15000;
-// 雲頂の分位に入れる texel の被覆率のしきい。
+// 雲頂ビューの表示値 1 が張る高さ [m]。tools/cloud-lab/views.ts の積雲・巻雲の雲頂ビューの
+// 目盛り(src/render/cloud/cloud-kind.ts の CUMULUS_TOP_ALTITUDE)と対。
+const CLOUD_TOP_SPAN = 17000;
+// 雲頂の分位に入れる texel の積雲の不透明度のしきい。
 const CLOUD_TOP_COVERAGE = 0.3;
 // 金床の判定。この高さ [m] を超える texel のうち、周り ANVIL_RADIUS_KM [km] の雲の雲頂の平均も
 // 超えているものを平らな天蓋と見なす。
 const ANVIL_HEIGHT = 9000;
 const ANVIL_RADIUS_KM = 100;
+// 巻雲の雲頂高度の両端 [m]。量からの換算と「積雲の雲頂が巻雲より高い」判定に使う。
+// 値は src/render/cloud/cloud-kind.ts の CIRRUS_BOTTOM_ALTITUDE / CIRRUS_TOP_ALTITUDE と
+// 一致させること。
+const CIRRUS_BOTTOM_ALTITUDE = 9000;
+const CIRRUS_TOP_ALTITUDE = 13000;
 
 // 台風の径方向プロファイル。中心からの距離を PROFILE_BIN_KM 刻みで PROFILE_MAX_KM まで方位平均する。
 const PROFILE_BIN_KM = 50;
 const PROFILE_MAX_KM = 1000;
-// 中間調と見なす被覆率の範囲。台風の中心濃密雲域の外(PROFILE_MAX_KM まで)で、この範囲の texel の
+// 中間調と見なす積雲の不透明度の範囲。台風の中心濃密雲域の外(PROFILE_MAX_KM まで)で、この範囲の texel の
 // 割合を出す。
 const MID_TONE_MIN = 0.06;
 const MID_TONE_MAX = 0.25;
@@ -478,7 +488,7 @@ function printStructureTable(header, rows) {
   }));
 }
 
-// 雲頂 [m] の分位。被覆率が CLOUD_TOP_COVERAGE を超え、mask(null なら全域)が立つ texel だけを
+// 雲頂 [m] の分位。積雲の不透明度が CLOUD_TOP_COVERAGE を超え、mask(null なら全域)が立つ texel だけを
 // 数える。area は数えた範囲に対する雲域の割合、金床は周り ANVIL_RADIUS_KM の雲の雲頂の平均も
 // ANVIL_HEIGHT を超えているものの、ANVIL_HEIGHT を超える texel に対する割合。
 function cloudTopStats(top, coverage, kmPerPx, mask) {
@@ -532,6 +542,63 @@ function cloudTopStats(top, coverage, kmPerPx, mask) {
     above12: share((v) => v > 12000),
     anvil: anvils / Math.max(1, high),
   };
+}
+
+// 「雲のある」texel(量 > AMOUNT_PRESENT_THRESHOLD)の分布を、帯(行 y0 から h 行)で
+// cos 緯度の面積重み付きに取る。雲のある面積率と、量・雲頂 [km]・不透明度の p10/p50/p90 を
+// 返す。雲頂と不透明度は量の単調関数なので、量での整列 1 回で 3 つの分位を同じ順で取れる。
+function kindDistribution(amount, topMetres, opacity, y0, h) {
+  const samples = [];
+  let totalWeight = 0;
+  let presentWeight = 0;
+  for (let y = y0; y < y0 + h; y++) {
+    const weight = Math.cos(latitudeOfRow(y, amount.height));
+    for (let x = 0; x < amount.width; x++) {
+      const i = y * amount.width + x;
+      totalWeight += weight;
+      const v = amount.data[i];
+      if (v <= AMOUNT_PRESENT_THRESHOLD) continue;
+      presentWeight += weight;
+      samples.push({ amount: v, topKm: topMetres.data[i] / 1000, opacity: opacity.data[i], weight });
+    }
+  }
+  samples.sort((a, b) => a.amount - b.amount);
+  const quantiles = (key) => {
+    const out = {};
+    let acc = 0;
+    let index = 0;
+    for (const fraction of KIND_QUANTILES) {
+      while (index < samples.length && acc < fraction * presentWeight) {
+        acc += samples[index].weight;
+        index++;
+      }
+      out[`p${Math.round(fraction * 100)}`] = index === 0 ? 0 : samples[index - 1][key];
+    }
+    return out;
+  };
+  return {
+    presentShare: presentWeight / Math.max(1e-30, totalWeight),
+    amount: quantiles('amount'),
+    topKm: quantiles('topKm'),
+    opacity: quantiles('opacity'),
+  };
+}
+
+// 「雲のある」texel のうち、雲頂が CIRRUS_TOP_ALTITUDE を超えるものの面積率。
+// kindDistribution と同じ帯と面積重みで数える。
+function overshootShareOf(amount, topMetres, y0, h) {
+  let present = 0;
+  let overshoot = 0;
+  for (let y = y0; y < y0 + h; y++) {
+    const weight = Math.cos(latitudeOfRow(y, amount.height));
+    for (let x = 0; x < amount.width; x++) {
+      const i = y * amount.width + x;
+      if (amount.data[i] <= AMOUNT_PRESENT_THRESHOLD) continue;
+      present += weight;
+      if (topMetres.data[i] > CIRRUS_TOP_ALTITUDE) overshoot += weight;
+    }
+  }
+  return overshoot / Math.max(1e-30, present);
 }
 
 // 実写と生成のオクターブ束スペクトルを波長帯ごとに並べ、比を添えて出す。wavelengthOf は
@@ -753,8 +820,8 @@ function decodeLuminancePng(png) {
 }
 
 async function main() {
-  // 分離済みの成分を先に読む(無いなら撮影の前に気付かせる)。仮テクスチャは R が被覆率。
-  const separatedThick = loadSeparated(path.join('src', 'assets', 'cloud-field.png'));
+  // 分離済みの成分を先に読む(無いなら撮影の前に気付かせる)。厚い雲の不透明度と巻雲の輝度。
+  const separatedThick = loadSeparated(path.join('.cloud-lab', 'separated', 'thick.png'));
   const separatedVeil = loadSeparated(path.join('.cloud-lab', 'separated', 'veil.png'));
   // 気候の事前分布(G が平年の雲量、B が標高)。天気のモデルが読んでいるものと同じ写し。
   const climate = readFileSync(path.join(root, 'src', 'assets', 'earth-climate.png'));
@@ -768,9 +835,9 @@ async function main() {
   const shots = new Map();
   // 時刻 0 の低気圧の谷の配置(緯度・経度 [rad]、深さ [hPa]、半径 [m])。ページの進路モジュールから引く。
   let cyclonesAtZero;
-  // 動きの計測用の追加撮影の受け皿。全球の被覆率の時系列と、熱帯低気圧の解析配置の時系列、
-  // 解析中心へ合わせた cap の被覆率。合成ビューも同じ時刻で撮る — 実物は衛星の見た輝度なので、
-  // 被覆率ではなく描画そのものの輝度と比べる。
+  // 動きの計測用の追加撮影の受け皿。全球の積雲の不透明度の時系列と、熱帯低気圧の解析配置の
+  // 時系列、解析中心へ合わせた cap の積雲の不透明度。合成ビューも同じ時刻で撮る — 実物は
+  // 衛星の見た輝度なので、積雲の不透明度ではなく描画そのものの輝度と比べる。
   let motionCoverage;
   let motionComposite;
   let cycloneTrack;
@@ -803,7 +870,7 @@ async function main() {
       }
     }
 
-    // 動きの計測用の追加撮影。被覆率の全球面をサンプル時刻ごとに撮る。熱帯低気圧の cap は
+    // 動きの計測用の追加撮影。積雲の不透明度の全球面をサンプル時刻ごとに撮る。熱帯低気圧の cap は
     // 解析中心へ照準を合わせ直して撮るので、地域別の撮影が終わってから行う (照準が移る)。
     motionCoverage = new Map();
     await devTools.evaluate("window.cloudLab.show('coverage')");
@@ -825,7 +892,7 @@ async function main() {
     }
     cycloneTrack = JSON.parse(await devTools.evaluate(
       `JSON.stringify([${TRACK_SAMPLE_HOURS.join(',')}].map((hours) => ({ hours, ...window.cloudLab.cyclonesAt(hours) })))`));
-    // 中心のずれは被覆率の重心で測るので、ビューを coverage へ戻す(composite の撮影の後)。
+    // 中心のずれは積雲の不透明度の重心で測るので、ビューを coverage へ戻す(composite の撮影の後)。
     await devTools.evaluate("window.cloudLab.show('coverage')");
     cycloneCenters = new Map();
     const capBoxX = GLOBE_W + (CAP_W - CAP_BOX) / 2;
@@ -857,6 +924,8 @@ async function main() {
     photo: globeOf('photo'),
     thick: downsampleTo(separatedThick, GLOBE_W, HEIGHT),
     veil: downsampleTo(separatedVeil, GLOBE_W, HEIGHT),
+    cumulus: globeOf('cumulus'),
+    cirrus: globeOf('cirrus'),
     coverage: globeOf('coverage'),
     translucent: brightnessOf(globeOf('translucent')),
     composite: globeOf('composite'),
@@ -946,6 +1015,32 @@ async function main() {
     console.log(`${label}: ${(flatness[key] * 100).toFixed(1)}%`);
   }
   report.sections.flatness = flatness;
+
+  console.log('\n=== 種類ごとの分布(全球面・±60°、cos 緯度の面積重み、量 > 1/255 の texel のみ) ===');
+  console.log('種類   雲のある面積   量 p10/p50/p90    雲頂 [km] p10/p50/p90   不透明度 p10/p50/p90');
+  // 高度と不透明度はビューが換算済みの面から取る — 積雲は雲頂と不透明度のビュー、巻雲の
+  // 不透明度は τ の面からの輝度。巻雲の雲頂は量から式の両端(9 km と 13 km)で換算する。
+  const cumulusTop = metresOf(globeOf('cloudTop'));
+  const cirrusTop = {
+    width: globe.cirrus.width,
+    height: globe.cirrus.height,
+    data: Float32Array.from(globe.cirrus.data,
+      (amount) => CIRRUS_BOTTOM_ALTITUDE + (CIRRUS_TOP_ALTITUDE - CIRRUS_BOTTOM_ALTITUDE) * amount),
+  };
+  const kinds = {
+    cumulus: kindDistribution(globe.cumulus, cumulusTop, globe.coverage, y60, bandHeight),
+    cirrus: kindDistribution(globe.cirrus, cirrusTop, globe.translucent, y60, bandHeight),
+  };
+  for (const [label, stats] of [['積雲', kinds.cumulus], ['巻雲', kinds.cirrus]]) {
+    const q = (group, digits) =>
+      `${group.p10.toFixed(digits)}/${group.p50.toFixed(digits)}/${group.p90.toFixed(digits)}`;
+    console.log(`${label.padEnd(6)}  ${(stats.presentShare * 100).toFixed(1).padStart(6)}%`
+      + `   ${q(stats.amount, 2)}   ${q(stats.topKm, 1)}   ${q(stats.opacity, 2)}`);
+  }
+  const overshootShare = overshootShareOf(globe.cumulus, cumulusTop, y60, bandHeight);
+  console.log(`積雲域のうち、雲頂が巻雲の上端(${(CIRRUS_TOP_ALTITUDE / 1000).toFixed(0)} km)を超える割合: `
+    + `${(overshootShare * 100).toFixed(1)}%`);
+  report.sections.kinds = { ...kinds, overshootShare };
 
   console.log('\n=== 風の異常(全球面・熱帯低気圧の中心 10° 以内を除く) ===');
   const wind = windAnomaly(windSpeed, cyclonesAtZero.tropical);

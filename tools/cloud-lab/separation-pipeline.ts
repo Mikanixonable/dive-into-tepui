@@ -1,5 +1,6 @@
-// 実写の雲画像を GPU(TSL の多段パス)で 3 チャンネル — 厚い雲の被覆率・雲頂高度・薄い雲 —
-// へ推定分離する。高度の次元は原理的に欠けているので、巻雲の特徴だけに頼る:
+// 実写の雲画像を GPU(TSL の多段パス)で積雲の量・巻雲の量へ推定分離する — 描画の雲場と同じ
+// 単位(0..1、雲頂高度・光学深さ・不透明度は cloud-kind.ts の曲線が導く)。高度の次元は
+// 原理的に欠けているので、巻雲の特徴だけに頼る:
 // 積雲・層積雲の粒は全方向に細かいが、巻雲は滑らかか筋状(1 方向にだけ細かい)。
 //
 // パスの流れ(すべて実写と同じ大きさの半精度の写し):
@@ -12,14 +13,21 @@
 //      veil = min(候補の伝播, 上界) とする。細かい穴(等方で暗い画素)は「そこは veil では
 //      なかった」証拠なので、穴 1 つが周囲を巻き込んで veil を引き下げ、veil に細かい穴は
 //      写らない。veil ≤ 実写がほぼ保たれるので再合成も崩れない(ソフト最小のゆるみぶんだけ誤差)。
-//   4. thick = (実写 − veil)/(1 − veil)(スクリーン合成の逆算)。雲頂高度は thick の広い濃さを
+//   4. thick = (実写 − veil)/(1 − veil)(スクリーン合成の逆算)。雲頂の推定は thick の広い濃さを
 //      土台に細かい起伏を増幅して重ねる。
+// 積雲の量は thick(不透明度)の逆写像に、thick が飽和する所で雲頂の起伏を足したもの。巻雲の量は
+// veil の光学深さ τ = −ln(1−veil) から写す。写す式は表示の段で組み、曲線は雲場と同じものを引く。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, atan, clamp, cos, exp, float, log, max, min, mrt, screenUV, sin, sqrt, texture, uniform, vec2, vec3, vec4,
+  Fn, atan, clamp, cos, exp, float, log, max, min, mrt, screenUV, sin, smoothstep, sqrt, texture,
+  uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { pixelsToPngDataUrl } from '../lab-png';
+import {
+  cirrusAmountFromOpticalDepthNode, cirrusColumnOpticalDepthNode,
+  cumulusAmountFromOpacityNode, cumulusOpacityNode,
+} from '../../src/render/cloud/cloud-kind-node';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 // 調整パラメータ。長さはすべて km(図法・解像度に依らない)、輝度は 0..1、起伏は [輝度²/(100km)²]。
@@ -51,14 +59,15 @@ const METRIC_W = 512;
 const METRIC_H = 256;
 
 export type SeparationView =
-  | 'photo' | 'selection' | 'veil' | 'coverage' | 'cloudTop' | 'translucent' | 'recomposed';
+  | 'photo' | 'selection' | 'veil' | 'thick' | 'top' | 'cumulus' | 'cirrus' | 'recomposed';
 export const SEPARATION_VIEWS: readonly (readonly [SeparationView, string])[] = [
   ['photo', '実写'],
   ['selection', '選択の重み'],
   ['veil', '巻雲の輝度'],
-  ['coverage', '被覆率'],
-  ['cloudTop', '雲頂高度'],
-  ['translucent', '薄い雲 τ'],
+  ['thick', '厚い雲'],
+  ['top', '雲頂の推定'],
+  ['cumulus', '積雲の量'],
+  ['cirrus', '巻雲の量'],
   ['recomposed', '再合成'],
 ];
 
@@ -331,7 +340,7 @@ export class SeparationPipeline {
       return vec4(clamp(p.sub(v).div(float(1).sub(v)), 0, 1), 0, 0, 0);
     }));
 
-    // 11. 雲頂高度: thick の広い濃さ(横 → 縦のならし)を土台に、細かい起伏を増幅して重ねる。
+    // 11. 雲頂の推定: thick の広い濃さ(横 → 縦のならし)を土台に、細かい起伏を増幅して重ねる。
     passes.push(this.blurPass(this.thick.textures[0]!, this.infillA, true, u.topSmoothKm));
     passes.push(this.blurPass(this.infillA.textures[0]!, this.infillB, false, u.topSmoothKm));
     passes.push(this.pass(this.top, () => {
@@ -344,21 +353,43 @@ export class SeparationPipeline {
     return passes;
   }
 
-  // 量 view の表示値 0..1 の色(グレースケール)。薄い雲は光学的厚み τ = −ln(1−veil) を 0..1 で。
+  // 量 view の表示値 0..1 の色(グレースケール)。積雲・巻雲・再合成は、分離の中間量から
+  // 雲場と同じ曲線で写す。
   private displayMaterial(view: SeparationView): THREE.MeshBasicNodeMaterial {
     const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
     material.colorNode = Fn((): Vec3Node => {
-      const p = texture(this.photo, screenUV).r;
-      const v = texture(this.veil.textures[0]!, screenUV).r;
-      const t = texture(this.thick.textures[0]!, screenUV).r;
-      if (view === 'photo') return vec3(p);
+      if (view === 'photo') return vec3(texture(this.photo, screenUV).r);
       if (view === 'selection') return vec3(texture(this.feature.textures[0]!, screenUV).r);
-      if (view === 'veil') return vec3(v);
-      if (view === 'coverage') return vec3(t);
-      if (view === 'cloudTop') return vec3(texture(this.top.textures[0]!, screenUV).r);
-      if (view === 'translucent') return vec3(clamp(log(float(1).sub(v).max(0.02)).negate(), 0, 1));
-      return vec3(v.add(t.mul(float(1).sub(v))));
+      if (view === 'veil') return vec3(texture(this.veil.textures[0]!, screenUV).r);
+      if (view === 'thick') return vec3(texture(this.thick.textures[0]!, screenUV).r);
+      if (view === 'top') return vec3(texture(this.top.textures[0]!, screenUV).r);
+      if (view === 'cumulus') return vec3(this.cumulusAmountAt(screenUV));
+      if (view === 'cirrus') return vec3(this.cirrusAmountAt(screenUV));
+      // 再合成 — 量への写しで実写がどれだけ崩れるかを見る。晴れた所が透ける割合
+      // (1 − 積雲の不透明度)·e^(−巻雲τ) の補。
+      const clear = cumulusOpacityNode(this.cumulusAmountAt(screenUV)).oneMinus()
+        .mul(exp(cirrusColumnOpticalDepthNode(this.cirrusAmountAt(screenUV)).negate()));
+      return vec3(clear.oneMinus());
     })();
     return material;
+  }
+
+  // 厚い雲の不透明度 thick と雲頂の推定 top(どちらも 0..1)から積雲の量 0..1。主項は不透明度の
+  // 逆写像で、thick が飽和する所では雲頂の起伏を量へ残す項が効く。
+  private cumulusAmountAt(uv: Vec2Node): FloatNode {
+    const thick = texture(this.thick.textures[0]!, uv).r;
+    const top = texture(this.top.textures[0]!, uv).r;
+    return clamp(max(
+      cumulusAmountFromOpacityNode(thick),
+      sqrt(top).mul(smoothstep(0.5, 0.9, thick)),
+    ), 0, 1);
+  }
+
+  // 巻雲の輝度 veil から巻雲の量 0..1。veil は輝度なので光学深さ τ = −ln(1 − veil) へ直して
+  // から写す(0.02 の底は veil → 1 で log が発散しないための下限)。
+  private cirrusAmountAt(uv: Vec2Node): FloatNode {
+    const veil = texture(this.veil.textures[0]!, uv).r;
+    const tau = log(float(1).sub(veil).max(0.02)).negate();
+    return cirrusAmountFromOpticalDepthNode(tau);
   }
 }

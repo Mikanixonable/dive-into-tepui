@@ -1,8 +1,8 @@
 // 実写の分離環境(.cloud-lab/separate.html)をヘッドレス Chrome で開き、分離した各チャンネルを
-// PNG に書く。層境界の 3 チャンネル(被覆率・雲頂高度・薄い雲 τ)は描画側が仮テクスチャとして
-// 読む生成アセットなので、**1 枚の RGB へ詰めて** src/assets/ へ直接焼く(export-climate などと
-// 同じ流儀)。veil(巻雲の輝度)と recomposed(再合成 — 入力と見比べて分離の癖を探す)は検分用で
-// .cloud-lab/separated/ へ。分離の方法と調整パラメータは tools/cloud-lab/separation-pipeline.ts。
+// PNG に書く。積雲の量と巻雲の量は描画側が仮テクスチャとして読む生成アセットなので、
+// **1 枚の RGB へ詰めて** src/assets/ へ直接焼く(export-climate などと同じ流儀)。
+// thick(厚い雲の不透明度)・veil(巻雲の輝度)・recomposed(再合成 — 入力と見比べて分離の癖を探す)は
+// 検分と計測(tools/cloud-lab-compare.mjs が実写側の参照として読む)用で .cloud-lab/separated/ へ。分離の方法と調整パラメータは tools/cloud-lab/separation-pipeline.ts。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
@@ -17,24 +17,26 @@ const port = 8771;
 const debugPort = 9447;
 
 // 仮テクスチャ 1 枚へ詰める量と、その並び。**RGB の割り当ては生成側の出力規約に合わせる**
-// — src/render/cloud/cloud-field.ts が焼く vec4(被覆率, 雲頂高度, 薄い雲 τ) と同じ順。
-const FIELD_VIEWS = ['coverage', 'cloudTop', 'translucent'];
+// — cloudFieldTexelFromSample(src/render/cloud/cloud-field-sample.ts)が焼く
+// vec4(積雲の量, 巻雲の量, 0, 1) と同じ順。
+const FIELD_VIEWS = ['cumulus', 'cirrus'];
 const FIELD_FILE = path.join(assetsDir, 'cloud-field.png');
 
-// 検分用に別途撮る量と書き先。
+// 検分と計測用に別途撮る量と書き先。
 const INSPECTION_SHOTS = [
+  ['thick', path.join(outDir, 'thick.png')],
   ['veil', path.join(outDir, 'veil.png')],
   ['recomposed', path.join(outDir, 'recomposed.png')],
 ];
 
-// 3 つの 0..1 の場を、R/G/B へ 8bit で量子化した 1 枚の走査線へ詰める。
+// 2 つの 0..1 の場を、R/G へ 8bit で量子化した 1 枚の走査線へ詰める。B は規約上 0。
 function packRgb(fields) {
-  const [r, g, b] = fields;
+  const [r, g] = fields;
   const rgb = new Uint8Array(r.width * r.height * 3);
   for (let i = 0; i < r.width * r.height; i++) {
     rgb[i * 3] = quantize(r.data[i]);
     rgb[i * 3 + 1] = quantize(g.data[i]);
-    rgb[i * 3 + 2] = quantize(b.data[i]);
+    rgb[i * 3 + 2] = 0;
   }
   return encodeRgbPng(r.width, r.height, rgb);
 }

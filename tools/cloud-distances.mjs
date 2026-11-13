@@ -111,7 +111,7 @@ function motionConsistencyDistance(drift) {
 
 // 実物の動きと生成の動きの距離。箱ごとに、相関曲線の差(時刻 0 を除く各時刻の |Δ相関| の
 // 平均)と、移流ベクトルの差(向きの差と速さ比)を項とする。移流は生成の composite 対 実物
-// 赤外で比べる(被覆率は参考値で、距離には入れない)。片方の速さだけが 0 のとき、向きの差
+// 赤外で比べる(積雲の不透明度は参考値で、距離には入れない)。片方の速さだけが 0 のとき、向きの差
 // と速さ比はどちらも「最も違う」として 1 とする。
 function motionReferenceDistance(referenceMotion) {
   const terms = [];
