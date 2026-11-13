@@ -1,14 +1,15 @@
-// 雲場と積雲表現が共有する定数と、雲場未設定の天体へ割り当てる空のダミーテクスチャ。被覆率・雲頂・粒・光学的厚みの
+// 雲場と積雲表現が共有する定数と、雲場未設定の天体へ割り当てる空のダミーテクスチャ。不透明度・雲頂・粒・光学的厚みの
 // GPU 式は CloudShapeEvaluator へ、cap の uv でのテクスチャ読みは CloudFieldSampler へ置く。
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
+import { CUMULUS_TOP_ALTITUDE } from './cloud-kind';
 import type { FloatUniform } from '../tsl-types';
 
 // 雲のアルベド。厚い雲の白さは多重散乱の産物で、単散乱アルベド ≈ 1・光学的厚みが十分に大きい
 // 層の反射は拡散反射の極限へ漸近する。
 export const CLOUD_ALBEDO = 0.8;
 
-// 雲場未設定の天体スロットへ割り当てる、被覆率 0 のテクスチャ。**サンプリング仕様を実フィールドと統一する** —
+// 雲場未設定の天体スロットへ割り当てる、量 0 のテクスチャ。**サンプリング仕様を実フィールドと統一する** —
 // シェーダグラフはここに結んだテクスチャのフィルタと巻きから組まれるので、既定の Nearest の
 // ままだと補間の無い texel フェッチが焼き込まれ、あとで本物へ差し替えても格子が出たままになる。
 export const EMPTY_CLOUD_FIELD = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
@@ -17,10 +18,10 @@ EMPTY_CLOUD_FIELD.magFilter = THREE.LinearFilter;
 EMPTY_CLOUD_FIELD.wrapS = THREE.RepeatWrapping;
 EMPTY_CLOUD_FIELD.needsUpdate = true;
 
-// 場の G(雲頂高度)を実寸へ戻す上限 [m]。場の G 自体は 0..1 で持つ。
-export const CLOUD_TOP_SPAN = 15000;
+// 正規化した雲頂 0..1 が張る高さ [m]。積雲の上端高度に合わせる。
+export const CLOUD_TOP_SPAN = CUMULUS_TOP_ALTITUDE;
 
-// 被覆率を二値化する境目(center)と、その前後でディザへ渡す半幅(halfWidth)。被覆率が
+// 不透明度を二値化する境目(center)と、その前後でディザへ渡す半幅(halfWidth)。不透明度が
 // center±halfWidth に入る柱だけがディザに掛かり、外は 0 か 1 へ飽和する。どちらも目で追い込んだ
 // 値で、場を差し替えたら追い込み直す。
 //

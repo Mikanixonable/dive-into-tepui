@@ -1,6 +1,9 @@
 // 天気から凝結する雲。地表付近の湿度と対流が不透明な雲に、上層の湿度が薄く透ける雲になる。
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
 import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
+import {
+  cirrusAmountFromOpticalDepthNode, cumulusAmountFromOpacityNode, cumulusAmountFromTopAltitudeNode,
+} from './cloud-kind-node';
 import type { CloudSample } from './cloud-field-sample';
 import type { WeatherSample } from './weather-model';
 export type { CloudSample } from './cloud-field-sample';
@@ -80,10 +83,15 @@ const TRANSLUCENT_STREAK_GAIN = 1.75;
 const TRANSLUCENT_KNEE = 0.25;
 const TRANSLUCENT_LIMIT = 0.63;
 
-// weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
-// 雲頂高度は層状の雲から立つ塔と、渦の芯が敷く金床の高いほうを雲底からの高さへ写して出す —
-// 覆う広さは湿度が、層の高さは上昇流と暖気の流入と気団の折り目の帯が、塔は粒の峰が、平らな
-// 天蓋は渦の芯が決める。**雲底からの高さは被覆率が低いほど縮み、広く覆う雲ほど元の高さを保つ**。
+// 雲頂の高さが積雲の量へ効き始める被覆率と、効ききる被覆率。これより覆いの薄い柱は、被覆率だけが
+// 量を決める。
+const DEEP_COVERAGE_ONSET = 0.7;
+const DEEP_COVERAGE_FULL = 0.93;
+
+// weather から凝結する雲のグラフ。積雲の量は、湿度(低周波)へ対流(高周波)を足した伝達関数の
+// 被覆率と、層状の雲から立つ塔と渦の芯が敷く金床の高いほうの雲頂から決まり、巻雲の量は
+// 上層の湿度が作る靄と筋の柱 τ で出す — 覆う広さは湿度が、層の高さは上昇流と暖気の流入と気団の
+// 折り目の帯が、塔は粒の峰が、平らな天蓋は渦の芯が決める。
 // **対流活発度は被覆率および雲塔の高さに反映され、沈降域の海洋性層積雲では層状起伏も低減する** — 一面に
 // 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
 export function condense(weather: WeatherSample): CloudSample {
@@ -137,18 +145,17 @@ export function condense(weather: WeatherSample): CloudSample {
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
-  // 小さな雲を高い柱にしないため、雲底からの高さだけを被覆率で縮める。被覆率 0 では雲底へ
-  // 落ちるが、その柱は CloudShapeEvaluator の連続したcoverage境界を通らないので晴天に雲や影が
-  // 現れることはない。
+  // 積雲の量は、まばらな覆いでは被覆率を不透明度として写した量、広く覆う所ではそれと雲頂の量の
+  // 高いほう。**覆いの薄い柱は雲頂が何であれ低く透ける雲になる** — 小さな雲が高い柱として立たず、
+  // texel の中で雲が占める割合がそのまま不透明度に残る。
   const cloudTop = max(tower, anvil);
-  const scaledCloudTop = max(cloudTop.sub(CLOUD_BASE_HEIGHT), 0).mul(coverage).add(CLOUD_BASE_HEIGHT);
-  // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。
+  const sparse = cumulusAmountFromOpacityNode(coverage);
+  const deep = max(sparse, cumulusAmountFromTopAltitudeNode(cloudTop));
+  const cumulus = mix(sparse, deep, smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage));
+  // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
-  return {
-    coverage,
-    cloudTop: scaledCloudTop,
-    translucent: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
-  };
+  const opticalDepth = tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT);
+  return { cumulus, cirrus: cirrusAmountFromOpticalDepthNode(opticalDepth) };
 }
