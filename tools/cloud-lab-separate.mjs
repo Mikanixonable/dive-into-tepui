@@ -13,7 +13,7 @@ const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.cloud-lab');
 const assetsDir = path.join(root, 'src', 'assets');
 const outDir = path.join(buildDir, 'separated');
-const port = 8770;
+const port = 8771;
 const debugPort = 9447;
 
 // 仮テクスチャ 1 枚へ詰める量と、その並び。**RGB の割り当ては生成側の出力規約に合わせる**
