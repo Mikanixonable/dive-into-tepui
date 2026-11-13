@@ -3,7 +3,7 @@
 作成日: 2026-11-13  
 コードのスナップショット: `1992fc17b`(本文の行番号はこの時点)  
 作業ブランチ(予定): `feat/ship-construction-intuitive-ui`  
-状態: 実施中。仕様の書き換え(`3cec68cb9`、`85a4bef07`)、表示モデルの分離(`cd4bb01e1`)、指し方と置き方の修正(`5a379926f`)は済み。次は手順 4。
+状態: 実施中。仕様の書き換え、表示モデルの分離、指し方と置き方の修正、3D 上の手がかり(手順 1〜4)は済み。次は手順 5。手順 4 の目視確認(ノードのラベルの読みやすさ、選択中のノードのうるささ、写実/模式図)とフレーム時間の実測は未実施 — 手順 8 で行う。
 
 ---
 
@@ -144,36 +144,6 @@
 ---
 
 ## 手順
-
-### 手順 4. 3D 上の手がかりを足す
-
-#### 目的
-
-置ける場所・置けない理由・選べるモジュールを、パネルを見なくても 3D 上で読めるようにする(K5)。
-
-#### 変更が必要な箇所
-
-| ファイル | 何をするか |
-| --- | --- |
-| `src/game/ship/ship-construction-view.ts:243-278`(`syncNodes`) | ノードを出す条件を「手持ちがある」から「手持ちがある、または選択中のモジュールがある」へ広げる。選択中は、ゴースト(L317-318)と同じく選択モジュールを `piece` の手持ちとして評価する。指しているノードが不適合のとき、宣言の `label` へ理由を入れる(規則の理由、または試し置きの理由) |
-| `src/game/ship/ship-construction-view.ts`(`ShipConstructionViewSource`) | ホバー中のモジュール id を読む口を足す |
-| `src/game/ship/ship-construction-view.ts:333-353`(`emphasisOf`) | 手持ちが無く、ホバー中のモジュールが選択中でなく編集可能なとき、tone `selected` を選択中より低い強さで宣言する。**新しい tone は作らない**(`src/render/dynamic/ship/ship-render-contract.ts:31` の3種のまま) |
-| `src/game/ship/ship-construction-pointer.ts:127-134` | 手持ちが無いとき、`input.pointerPoint` の位置で `hitModuleId` を引き、ホバー中のモジュールとして host へ渡す。`pointerPoint` が null(タッチ)なら null を渡す |
-| `src/game/ship/ship-construction.ts` | ホバー中のモジュール id を状態として持つ(`pointedId` と同じ扱いで、`close`(L289-302)で消す) |
-| `src/game/marker/marker-identity-style.ts:84-89` | 接続ノードのラベルの文字サイズと色を足す。色は不適合ノードと同じ `--color-error`、文字サイズは既存トークン |
-| `tests/game/ship-construction-view.test.ts` | 選択中だけ(手持ち無し)でノードの宣言が出ること、指している不適合ノードに `label` が付くことのテストを足す |
-| `tools/browser-smoke.mjs:654-703` | `mk-construction-node-pointed` を使う検査が、変更後も通ることを確かめる(クラス名は変えない) |
-
-#### 達成条件と検証
-
-- `npm run typecheck`、`npm run test:game`、`npm run test:render` が通る。
-- `npm run dev` で確かめる: ①モジュールを選ぶと、その時点で緑/赤のノードが出る ②太陽電池パネルを手に取って軸方向の端を
-  指すと、ノードの脇に「太陽電池・ラジエータは側面専用」の類の理由が出る ③手に何も持たずにモジュールへマウスを載せると
-  光り、起点ドックへ載せても光らない。
-- 描画に触れるので `/rendering-workflow` を通す。写実・模式図の両方でノードのラベルが読めることを目で確かめる。
-- commit: `feat(ship): 建造で付け替え先のノードと置けない理由を3D上に出す`
-
----
 
 ### 手順 5. 画面を組み直す
 
