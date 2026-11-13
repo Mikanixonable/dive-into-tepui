@@ -7,7 +7,7 @@ const THUMBNAILS: Readonly<Record<string, string>> = Object.fromEntries(
   context.keys().map(key => [key.replace(/^\.\//, '').replace(/\.png$/, ''), context(key)]),
 );
 
-// modelId のサムネイル URL。表に無い modelId では undefined。
-export function moduleThumbnailUrl(modelId: string): string | undefined {
-  return THUMBNAILS[modelId];
+// modelId のサムネイル URL。表に無い modelId では null。
+export function moduleThumbnailUrl(modelId: string): string | null {
+  return THUMBNAILS[modelId] ?? null;
 }
