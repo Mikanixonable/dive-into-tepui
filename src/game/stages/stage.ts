@@ -21,7 +21,8 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { ProteinDisplayControl } from '../creative/stage-controls-panel';
-import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
+import type { EnemyDeathCause, PlayerLossCause, StageOutcome } from './stage-outcome';
+import { ENEMY_MAX_ATTACKERS_PER_GROUP } from '../dynamic/dynamic-entity/enemy-fire-controller';
 import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
 import type { CommandQueue } from '../command-queue';
@@ -59,7 +60,9 @@ export type StageDeps = [
 
 // 全ステージ共通の状態(スコア・決着状態・補給)。基底のコンストラクタが deps の後ろに受け、
 // 省いたものは新しいランの初期値から始まる。
-export type CommonStageState = [scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics];
+export type CommonStageState = [
+  scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics, reinforced?: boolean,
+];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
@@ -100,14 +103,62 @@ export interface SerializedStage {
   readonly scoreCounter: SerializedScoreCounter;
   readonly phase: GamePhase;
   readonly logistics: SerializedLogistics;
+  // 援護付きの再出撃か。古い記録には無いので欠けは援護なしとして読む。
+  readonly reinforced?: boolean;
 }
 
-// 決着した周回の結果画面に出す内容。
+// 1周回の成績。撃破・命中・生存の値を結果画面と記録の両方が読む。
+export interface RunStats {
+  readonly kills: number;
+  readonly appeared: number; // 戦場に現れた敵の数
+  readonly shots: number;
+  readonly hits: number;
+  readonly survivalSec: number; // シミュレーション時間 [s]
+}
+
+// 決着した周回の結果画面に出す内容。stats と lossCause は、ステージが決着を記録したときだけ持つ
+// (セーブに含まれない結果の代わりには null)。
 export interface StageResult {
   readonly win: boolean;
   // 結果画面の見出し。null なら勝敗から決まる既定の見出し。
   readonly title: string | null;
   readonly detailHtml: string;
+  readonly stats: RunStats | null;
+  // 敗北の原因。勝利と原因の無い決着では null。
+  readonly lossCause: PlayerLossCause | null;
+}
+
+// 周回の始め方で決まる選択。再出撃のたびに launcher が決めて、周回を組むときに渡す。
+export interface RunOptions {
+  // 援護付きの再出撃か(→ applyRunOptions)。
+  readonly reinforced: boolean;
+  // 連敗の予告を出すか。予告を持つステージだけが読む。
+  readonly forecast: boolean;
+}
+
+// 原因ごとの次の一手の助言。結果画面の敗北の本文に一行で添える。
+const LOSS_ADVICE: Readonly<Record<PlayerLossCause, string>> = {
+  surface: '次は降下の角度を先に見る — 近地点が地表へ届いていないかを、交戦の前に確かめる',
+  structural: '次は濃い大気の中で速度を落としすぎない — 動圧は速度の二乗で効く',
+  heatSaturated: '次は加熱が始まったら、射撃より先に姿勢と速度を下げる',
+  heatOverload: '次は連射の前に排熱の余裕を見る',
+};
+
+// 生存時間を T+ の時分秒で書く。
+export function missionTimeText(seconds: number): string {
+  return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m ${Math.floor(seconds % 60)}s`;
+}
+
+// 撃破・命中・生存の要約。勝敗に関わらず結果画面の本文に同じ形で出す。
+export function summaryHtml(stats: RunStats): string {
+  const rate = stats.appeared > 0 ? (stats.kills / stats.appeared) * 100 : 0;
+  const accuracy = stats.shots > 0 ? (stats.hits / stats.shots) * 100 : 0;
+  const perKill = stats.kills > 0 ? (stats.shots / stats.kills).toFixed(1) : '—';
+  return (
+    `撃破 ${stats.kills}/${stats.appeared} 機（撃破率 ${rate.toFixed(0)}%）<br>` +
+    `命中率 ${accuracy.toFixed(1)}%（${stats.hits}/${stats.shots} 発）・撃破あたり ${perKill} 発<br>` +
+    `生存時間 T+ ${missionTimeText(stats.survivalSec)}`
+  );
 }
 
 export abstract class Stage implements StageOutcome, StageSimulationEvents {
@@ -192,6 +243,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     public readonly scoreCounter = new ScoreCounter(),
     private _phase: GamePhase = 'playing',
     logistics?: Logistics,
+    private _reinforced = false,
   ) {
     const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue, orbitSlots, blueprintShelf] = deps;
     this._hud = hud;
@@ -215,6 +267,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     const scoreCounter = serialized?.scoreCounter;
     const phase = serialized?.phase;
     const logistics = serialized?.logistics;
+    const reinforced = serialized?.reinforced;
     // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
     return [
       scoreCounter == null ? undefined : ScoreCounter.deserialize(scoreCounter),
@@ -222,6 +275,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       logistics == null
         ? undefined
         : Logistics.deserialize(logistics, scene, dynamicSystem, rules.automaticResupply),
+      reinforced ?? undefined,
     ];
   }
 
@@ -309,7 +363,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   }
 
   // タンパク質の敵を要求し、出撃数をスコアへ記録する。敵はアセットが揃い次第実体化する。
-  protected addProteinEnemy(request: ProteinEnemyRequest): void {
+  public addProteinEnemy(request: ProteinEnemyRequest): void {
     this._dynamicSystem.spawnWhenReady({ kind: 'protein-enemy', request });
     this.scoreCounter.recordSpawnEnemy();
   }
@@ -333,12 +387,27 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     return this.enemiesAppeared - this.scoreCounter.kills - this.scoreCounter.losses <= 0;
   }
   // 決着を「勝利」で確定させる。
-  protected onWin(simTime: number): void {
-    this.decide('won', {
-      win: true,
-      title: null,
-      detailHtml: winDetailHtml(this.scoreCounter, this.enemiesAppeared, simTime),
-    });
+  protected onWin(_simTime: number): void {
+    const stats = this.runStats;
+    this.decide('won', { win: true, title: null, detailHtml: summaryHtml(stats), stats, lossCause: null });
+  }
+
+  // いまの周回の成績。生存時間は自機が生きていた時間ではなく、周回の開始からのシミュレーション時間。
+  public get runStats(): RunStats {
+    const { shots, hits, kills } = this.scoreCounter;
+    return {
+      kills, appeared: this.enemiesAppeared, shots, hits, survivalSec: this._dynamicSystem.simTime,
+    };
+  }
+
+  // 同じ攻撃グループで同時に発砲してよい敵の数。援護付きの周回では 1 つ減る(1 を下回らない)。
+  public get enemyAttackLimit(): number {
+    return Math.max(1, ENEMY_MAX_ATTACKERS_PER_GROUP - (this._reinforced ? 1 : 0));
+  }
+
+  // 再出撃のときの選択を、周回を始める前に当てる。省いた選択は既定のまま。
+  public applyRunOptions(options: RunOptions): void {
+    this._reinforced = options.reinforced;
   }
 
   // ステータスパネルに表示する補助メッセージ。既定では非表示(null)。
@@ -376,14 +445,17 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     }
   }
 
-  // 敗北を記録し、reason を添えて決着を「敗北」で確定させる。
-  public recordPlayerLost(reason: string): void {
+  // 敗北を記録し、reason と原因に応じた助言を添えて決着を「敗北」で確定させる。
+  public recordPlayerLost(reason: string, cause: PlayerLossCause): void {
     // isPlaying ガード: 勝利後に自機が再突入しても敗北で上書きしないよう。
     if (!this.isPlaying) return;
+    const stats = this.runStats;
     this.decide('lost', {
       win: false,
       title: null,
-      detailHtml: `${reason}<br>撃破 ${this.scoreCounter.kills}/${this.enemiesAppeared} 機`,
+      detailHtml: `${reason}<br>${summaryHtml(stats)}<br>${LOSS_ADVICE[cause]}`,
+      stats,
+      lossCause: cause,
     });
   }
 
@@ -400,17 +472,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       scoreCounter: this.scoreCounter.serialize(),
       phase: this._phase,
       logistics: this.logistics.serialize(),
+      reinforced: this._reinforced,
     };
   }
-}
-
-// 全機撃破・ミッション時間・命中率をまとめた勝利画面の本文。
-function winDetailHtml(scoreCounter: ScoreCounter, totalEnemies: number, simTime: number): string {
-  const { shots, hits } = scoreCounter;
-  const acc = shots > 0 ? ((hits / shots) * 100).toFixed(1) : '0.0';
-  return (
-    `全 ${totalEnemies} 機撃破<br>` +
-    `ミッション時間 T+ ${Math.floor(simTime / 3600)}h ${Math.floor((simTime % 3600) / 60)}m ${Math.floor(simTime % 60)}s<br>` +
-    `発射 ${shots} 発 / 命中 ${hits} 発 (命中率 ${acc}%)`
-  );
 }
