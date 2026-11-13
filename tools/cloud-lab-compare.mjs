@@ -16,6 +16,7 @@ import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { componentStats } from './cloud-components.mjs';
 import { computeDistances } from './cloud-distances.mjs';
+import { FINE_BANDS, FINE_PRIMARY_LADDER, measureFinePair, resampleCaptureToBox } from './cloud-fine-structure.mjs';
 import { bestShift, centroidOffset, crossingTime } from './cloud-motion.mjs';
 import { cloudTopStats, quantile } from './cloud-top-stats.mjs';
 import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
@@ -1150,6 +1151,121 @@ async function main() {
     }
     report.sections.cloudTopReference = {
       layer: manifest.layer, date: manifest.date, colormap: manifest.colormap, entries: cloudTopReference,
+    };
+  }
+
+  // --- 微細構造: 描画の撮影を実写の高解像度参照の箱へ載せ替え、尺度帯ごとに比べる ---
+  console.log('\n=== 微細構造(描画の撮影と実写の高解像度参照、尺度帯ごと) ===');
+  const capManifestPath = path.join(root, '.cloud-lab/render-capture/manifest.json');
+  const fineManifestPath = path.join(root, '.cloud-lab/reference-fine/manifest.json');
+  if (!existsSync(capManifestPath)) {
+    console.log('  (撮影の manifest が無いので微細構造は未計測)');
+  } else if (!existsSync(fineManifestPath)) {
+    console.log('  (実写の微細参照の manifest が無いので微細構造は未計測)');
+  } else {
+    const capManifest = JSON.parse(readFileSync(capManifestPath, 'utf8'));
+    const fineManifest = JSON.parse(readFileSync(fineManifestPath, 'utf8'));
+    const finePairs = [];
+    for (const region of REGIONS) {
+      for (const ladder of ['400km', '2000km']) {
+        const capture = capManifest.captures.find(
+          (entry) => entry.region === region.name && entry.name === `${region.name}-${ladder}`);
+        const visibleFrame = fineManifest.frames.find(
+          (frame) => frame.region === region.name && frame.ladder === ladder
+            && ['band3', 'band2', 'viirs'].includes(frame.suffix));
+        if (capture === undefined || visibleFrame === undefined) {
+          console.log(`  ${region.label} ${ladder}: 撮影または可視の参照が無く、対を組めない`);
+          continue;
+        }
+        const streakFrame = fineManifest.frames.find(
+          (frame) => frame.region === region.name && frame.ladder === ladder && frame.suffix === 'band13');
+        const captureField = decodeLuminancePng(
+          readFileSync(path.join(root, '.cloud-lab/render-capture', capture.file)));
+        const resampled = resampleCaptureToBox(
+          captureField, capture.latitudeDeg, capture.longitudeDeg, capture.cameraDistanceKm,
+          capManifest.fovDeg, visibleFrame.box, 960, 540);
+        if (resampled.validRect === null) {
+          console.log(`  ${region.label} ${ladder}: 撮影が箱を覆わず、有効矩形が無い`);
+          continue;
+        }
+        const rect = resampled.validRect;
+        const generatedVisible = cropField(resampled, rect.x0, rect.y0, rect.width, rect.height);
+        const referenceVisibleField = decodeLuminancePng(readFileSync(path.join(root, visibleFrame.file)));
+        const referenceVisible = cropField(
+          referenceVisibleField, rect.x0, rect.y0, rect.width, rect.height);
+        let referenceStreak = null;
+        if (streakFrame !== undefined) {
+          const streakField = decodeLuminancePng(readFileSync(path.join(root, streakFrame.file)));
+          referenceStreak = cropField(streakField, rect.x0, rect.y0, rect.width, rect.height);
+        }
+        const features = measureFinePair(
+          generatedVisible, referenceVisible, referenceStreak, visibleFrame.kmPerPx, ladder);
+        const validCount = resampled.valid.reduce((sum, value) => sum + (value ? 1 : 0), 0);
+        const pair = {
+          region: region.name,
+          ladder,
+          kmPerPx: visibleFrame.kmPerPx,
+          widthKm: +(visibleFrame.box.east - visibleFrame.box.west) * 111.32
+            * Math.cos((visibleFrame.box.north + visibleFrame.box.south) / 2 * Math.PI / 180),
+          heightKm: +(visibleFrame.box.north - visibleFrame.box.south) * 111.32,
+          validFraction: +(validCount / (960 * 540)).toFixed(4),
+          validRect: rect,
+          distance: true,
+          visible: { bands: features.bands },
+          streak: features.streak,
+        };
+        // typhoon 400 km: 実写の嵐の中心は箱の北辺の外 (北緯 20.68° の外側に目がある) で、
+        // 枠内は嵐の南側の裾しか写っていないのに、生成側は目と眼の壁が枠を埋める。
+        // 同じ嵐の同じ場所を比べていないので、この対だけ距離の項から外す。
+        if (region.name === 'typhoon' && ladder === '400km') {
+          pair.distance = false;
+          pair.distanceReason = 'typhoon-content-mismatch';
+        }
+        finePairs.push(pair);
+        console.log(`--- ${region.label} ${ladder} (${pair.widthKm.toFixed(0)}x${pair.heightKm.toFixed(0)} km、`
+          + `有効 ${rect.width}x${rect.height}・${(pair.validFraction * 100).toFixed(1)}%) ---`);
+        console.log('  帯[km]  電力割合 生成/実写  箱次元 生成/実写  log空隙率 生成/実写'
+          + '  成分数 生成/実写  面積中央値 生成/実写[km2]  最大の割合 生成/実写');
+        for (const band of features.bands) {
+          if (band.boxDimension === null) {
+            console.log(`  ${band.loKm}-${band.hiKm}  ${band.generatedShare.toFixed(3)}/${band.referenceShare.toFixed(3)}`
+              + '  (測れない)');
+            continue;
+          }
+          const dimension = band.boxDimension;
+          const lacunarity = band.lacunarity;
+          const components = band.components;
+          console.log(`  ${band.loKm}-${band.hiKm}${band.primary ? '*' : ' '}  `
+            + `${band.generatedShare.toFixed(3)}/${band.referenceShare.toFixed(3)}  `
+            + `${dimension.generated.toFixed(2)}/${dimension.reference.toFixed(2)}  `
+            + `${lacunarity === null ? '-' : lacunarity.generated.toFixed(2) + '/' + lacunarity.reference.toFixed(2)}  `
+            + `${components.generated.count}/${components.reference.count}  `
+            + `${components.generated.medianAreaKm2.toFixed(0)}/${components.reference.medianAreaKm2.toFixed(0)}  `
+            + `${components.generated.largestShare.toFixed(3)}/${components.reference.largestShare.toFixed(3)}`);
+        }
+        if (features.streak === null) {
+          console.log('  筋: 赤外の参照が無く未計測');
+        } else {
+          const scale63 = features.streak.scales.find((scale) => scale.scaleKm === 63);
+          const lTheta = features.streak.lThetaKm;
+          const coherence = features.streak.scales.map((scale) =>
+            `${scale.scaleKm}:${scale.generated.coherence.toFixed(2)}/${scale.reference.coherence.toFixed(2)}`).join(' ');
+          console.log(`  筋 63km: 向き ${scale63 === undefined ? '-' : scale63.generated.orientationDeg.toFixed(0) + '/'
+            + scale63.reference.orientationDeg.toFixed(0) + '°'}  Lθ `
+            + `${lTheta === null || lTheta.generated === null ? '-' : lTheta.generated.toFixed(0) + '/'
+            + (lTheta.reference === null ? '-' : lTheta.reference.toFixed(0)) + ' km'}  揃い ${coherence}`);
+        }
+      }
+    }
+    report.sections.fineStructure = {
+      capture: { gitHead: capManifest.gitHead, fovDeg: capManifest.fovDeg, viewport: capManifest.viewport },
+      reference: { source: fineManifest.source },
+      bands: FINE_BANDS.map((band) => ({
+        loKm: band.loKm,
+        hiKm: band.hiKm,
+        primaryLadder: FINE_PRIMARY_LADDER[`${band.loKm}-${band.hiKm}`],
+      })),
+      pairs: finePairs,
     };
   }
 

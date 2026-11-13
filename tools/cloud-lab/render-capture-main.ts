@@ -38,13 +38,18 @@ async function init(): Promise<void> {
   const view = await LabView.create(
     document.getElementById('view') as HTMLCanvasElement, settings.graphics, { captureOnly: true });
   view.show('earth');
+  // 注視点までの固定距離。show() が観察の向きを既定へ戻した直後なので cameraDistanceLog は 0 で、
+  // ここで読む値はケースの既定距離そのものになる。setCapture のたびに view.cameraDistance を
+  // 読み直すと、前回の撮影で変えた cameraDistanceLog が残った値を返し、高度が呼び出し順で
+  // ずれる — 2000 km の梯子が 8〜12 Mm の全球像になり、400 km の cap の一部が 119 km の
+  // 接写になった原因。直下点の配置とカメラ距離の両方がこの 1 つの値から決まる。
+  const pivotM = view.cameraDistance;
   window.cloudRenderCapture = {
     ready: () => view.ready,
     waitUntilReady: () => view.waitUntilReady(),
     setCapture: (spec) => {
       // 直下点をケースの固定 pivot へ置く。地球の高度は、赤道面の地表が pivot に来る値
       // (earth-nadir の置き方と同じ式)。カメラはその天頂へ置く。
-      const pivotM = view.cameraDistance;
       view.setViewAngles({
         earthAzimuthDeg: 180,
         earthElevationDeg: 0,
@@ -59,6 +64,13 @@ async function init(): Promise<void> {
         sunElevationDeg: spec.sunElevationDeg,
         sunDistanceLogAu: 0,
       });
+      // 要求した高度に置けたことをその場で確かめる。cameraDistance は既定距離 × 10^cameraDistanceLog
+      // なので、pivotM が既定距離とずれるとここで落ちる。
+      const actualM = view.cameraDistance;
+      if (Math.abs(actualM - spec.cameraDistanceKm * 1000) > 1) {
+        throw new Error(
+          `render-capture: camera distance ${actualM} m, expected ${spec.cameraDistanceKm * 1000} m`);
+      }
       view.setDisplayTime(spec.displayHours * 3600);
     },
     captureSettled: async () => {
