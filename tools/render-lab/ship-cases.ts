@@ -575,7 +575,40 @@ function deployablesStowed(): LabCase {
   };
 }
 
+// 作業灯: 逆光の戦闘艦(影ケースの ship-backlit と同じ恒星の置き方 — 画面に出る面がほぼ
+// すべて陰側)。作業灯のオン/オフで、陰側のモジュールが読めるかを比較する。
+function construction(): LabCase {
+  const target = new THREE.Vector3(0, -1, -25);
+  const obj = shipObject(combatShipDeployed(1));
+  obj.position.copy(target);
+  obj.rotation.set(0.35, -2.35, 0.1);
+  const camera = labCamera();
+  camera.position.set(target.x, target.y, target.z + 18);
+  camera.lookAt(target);
+  camera.updateMatrixWorld(true);
+  return {
+    objects: [obj],
+    camera,
+    // 恒星は被写体の向こう側の低い空(ship-backlit と同じ方位 180・仰角 5.14)。
+    sunDirection: new THREE.Vector3(0, Math.sin(THREE.MathUtils.degToRad(5.14)), -Math.cos(THREE.MathUtils.degToRad(5.14))).normalize(),
+    viewTarget: target,
+    shots: {
+      // 作業灯あり: 陰側のモジュールの形と継ぎ目が読めるはず。
+      'construction-work-light': {
+        graphics: { constructionWorkLight: true },
+        view: {},
+      },
+      // 作業灯なし: 陰側は環境光だけでほぼ黒く残る。
+      'construction-work-light-off': {
+        graphics: { constructionWorkLight: false },
+        view: {},
+      },
+    },
+  };
+}
+
 export const SHIP_CASES = {
+  'modular-ship-construction': construction,
   'modular-ship-cockpit': cockpit,
   'modular-ship-dock': dock,
   'modular-ship-base': base,

@@ -56,6 +56,8 @@ import type { GameInputSource } from './input/game-input-ports';
 import { DisplayPhase, type DisplayPhaseSource } from './runtime/display-phase';
 import type { GameInputPort } from './input/game-input-router';
 import { ConfirmationOverlay } from '../hud/windows/confirmation-overlay';
+import { len, sub } from '../math/vec3';
+import { WORK_LIGHT_INTENSITY, workLightPlacement } from '../render/pipeline/lighting/work-light-source';
 import type { Game } from './game';
 import type { PageDevices } from '../run/page-devices';
 import type { MarkerSink } from '../marker/marker-sink';
@@ -476,6 +478,7 @@ export class GamePresentation {
     this.shipConstruction.sync();
     const construction = this.shipConstructionView.sync(this.shipConstruction, camera, nowMs);
     for (const sound of construction.sounds) this.uiSounds.push(`construction-${sound}`);
+    this.syncWorkLight(graphics, camera);
     dynamicSystem.sync(
       displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay,
       construction.shipModuleEmphasis,
@@ -497,6 +500,20 @@ export class GamePresentation {
       displayTime, view, camera,
       this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, visibilityPolicy, nowMs,
     );
+  }
+
+  // 建造中だけ、カメラの右上後方へ作業灯を置く。灯距は注視距離(建造で視点寄せに使う
+  // 距離と同じ量)に比例し、建造モード以外や設定オフでは強さ 0 で消灯する。
+  private syncWorkLight(graphics: GraphicsSettingsData, camera: CameraFrame): void {
+    const workLight = this.devices.scene.pipeline.workLight;
+    if (!this.shipConstruction.active || !graphics.constructionWorkLight) {
+      workLight.setIntensity(0);
+      return;
+    }
+    // 注視距離は ECI・描画座標で同じ尺(フローティング原点は平行移動のみ)。
+    const focusDist = len(sub(camera.viewpoint.lookTarget, camera.viewpoint.position));
+    const { position, radius } = workLightPlacement(camera.camera, focusDist);
+    workLight.set(position, radius, WORK_LIGHT_INTENSITY);
   }
 
   // このフレームの出来事を通知・音・閃光・対象・航法ターゲットの宣言へ写す。
