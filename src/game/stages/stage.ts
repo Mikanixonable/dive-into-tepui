@@ -332,10 +332,15 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     return null;
   }
 
-  // 敵1体の消滅を原因ごとに数えて記録する。撃破以外の消滅でも、残存数が 0 になれば勝利で決着させる。
+  // 敵1体の消滅を原因ごとに数えて記録する。撃破では敵機の位置へ弾薬補給を1個放出する。
+  // 撃破以外の消滅でも、残存数が 0 になれば勝利で決着させる。
   public recordEnemyDeath(enemy: Enemy, simTime: number, cause: EnemyDeathCause = 'killed'): void {
-    if (cause === 'killed') this.scoreCounter.recordKill();
-    else this.scoreCounter.recordEnemyLoss();
+    if (cause === 'killed') {
+      this.scoreCounter.recordKill();
+      this.logistics.dropAt(enemy.motion.state);
+    } else {
+      this.scoreCounter.recordEnemyLoss();
+    }
     this._dynamicSystem.events.record({ kind: 'enemyDied', name: enemy.name, cause });
 
     // isPlaying ガード: 敗北後に残存敵が再突入で消えても勝利判定が上書きしないよう。
