@@ -1,5 +1,5 @@
-// 影パスがこの1フレームに扱う天体・環・積雲の殻を選ぶ。絵に出ない影を落とす閾値も、環を
-// 1体に絞る判断も、積雲の影を出す設定の読み方も、影パスのグラフの形が決めるものなのでここが持つ。
+// 影パスがこの1フレームに扱う天体・環・雲の影の源を選ぶ。絵に出ない影を落とす閾値も、環を
+// 1体に絞る判断も、雲の影を出す設定の読み方も、影パスのグラフの形が決めるものなのでここが持つ。
 import { maxShadowedFraction } from '../../../physics/shadow';
 import { len, sub } from '../../../math/vec3';
 import { MAX_SHADOW_BODIES } from './body-shadow';
@@ -62,10 +62,20 @@ export function selectShadowBodies<T extends CelestialBody>(
     .map(({ celestialBody }) => celestialBody);
 }
 
-// 積雲の殻を影の源として数える設定か。積雲を描かない設定(雲オフ・積雲の段オフ)では影も消える。
-export function castsCumulusShadow(graphics: GraphicsSettingsData): boolean {
-  return graphics.clouds && graphics.cumulusShadow
-    && graphics.cumulusDetail !== CUMULUS_DETAIL.off;
+// 雲の種類ごとの、影を落とすかの読み分け。どちらも「雲」と「雲の影」がオンのときだけで、
+// 積雲はその立体を描くとき(積雲の精細さがオフ以外)、巻雲は巻雲を描くときだけ落ちる。
+export interface CloudShadowKinds {
+  readonly cumulus: boolean;
+  readonly cirrus: boolean;
+}
+
+// 描画品質設定から、雲の種類ごとに影を落とすかを読む。
+export function cloudShadowKinds(graphics: GraphicsSettingsData): CloudShadowKinds {
+  const clouds = graphics.clouds && graphics.cloudShadow;
+  return {
+    cumulus: clouds && graphics.cumulusDetail !== CUMULUS_DETAIL.off,
+    cirrus: clouds && graphics.cirrus,
+  };
 }
 
 // 環の影を落とす天体を1体選ぶ。画面に環付き天体が複数写る状況は実質起きないので、最も大きく

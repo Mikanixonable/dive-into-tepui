@@ -12,7 +12,7 @@ import { farClip } from '../../src/render/camera/camera-view';
 import { planetRadiance, type PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
+import { cloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-select';
 import { atmosphereDraws, withAirglowEnabled, type AtmosphereBody } from '../../src/render/atmosphere';
 import { RingMaterials } from '../../src/render/celestial/ring';
 import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-render-resources';
@@ -327,7 +327,7 @@ export class LabView {
     this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    this.pipeline.cumulusShadow.set(castsCumulusShadow(graphics) ? earth?.cumulus ?? null : null);
+    this.pipeline.cloudShadow.set(earth?.shadowCloud ?? null, cloudShadowKinds(graphics));
     earth?.bake(this.renderer, displayTime, this.gpu);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
