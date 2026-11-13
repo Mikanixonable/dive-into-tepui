@@ -56,6 +56,8 @@ const MARKER_IDENTITY_STYLE = `
 
 .mk-target { color: var(--color-signal); }
 .mk-enemy { color: var(--text-strong); }
+/* 命中した敵マーカーの閃き。記号を一瞬明るく光らせ、命中を遠距離からでも読ませる。 */
+#hud .mk-hit .sym { filter: brightness(2.2) drop-shadow(0 0 5px currentColor); }
 .mk-ally { color: ${COLOR_MARKER_ALLY}; }
 .mk-lead { color: var(--color-primary); }
 .mk-pro { color: var(--axis-prograde); }
