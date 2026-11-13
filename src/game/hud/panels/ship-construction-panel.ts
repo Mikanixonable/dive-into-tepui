@@ -1,11 +1,13 @@
 // 建造セッションの表示と操作可能状態を同期し、建造操作を通知するパネル。
 // 「いま何を手に持ち、どこへ置けて、船体全体がどう変わるか」に答える区画で組む。
-// 手持ちと選択の操作は手元バー(ship-construction-hand)、右ペインは性能・候補・履歴のタブ。
+// 手持ちの操作は手元バー(ship-construction-hand)、選択中モジュールの操作は脇へ
+// 追従するメニュー(ship-construction-selection-menu)、右ペインは性能・候補・履歴のタブ。
 import { Button, buildSpan, Meter, TabBar } from '../../../hud/widgets';
 import { ARMOR_WARNING_RATIO, armorAlarmLevel } from '../../alarm/alarm-level';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { ShipConstructionCatalog } from './ship-construction-catalog';
 import { ShipConstructionHand } from './ship-construction-hand';
+import { ShipConstructionSelectionMenu } from './ship-construction-selection-menu';
 import {
   formatConstructionDelta, formatConstructionMetric, formatConstructionNumber,
 } from './ship-construction-format';
@@ -15,6 +17,7 @@ import type {
 } from '../../ship/ship-construction-types';
 import type { HudEls, HudElId } from '../hud-els';
 import type { ConstructionMetricUnit } from './ship-construction-format';
+import type { Projected } from '../../../math/projection';
 
 interface MetricPair {
   readonly value: HTMLElement;
@@ -51,6 +54,7 @@ export class ShipConstructionPanel {
   public onPlace: (() => void) | null = null;
   public onRemove: (() => void) | null = null;
   public onDuplicate: (() => void) | null = null;
+  public onReattach: (() => void) | null = null;
   public onRelease: (() => void) | null = null;
   public onDeselect: (() => void) | null = null;
   public onFocus: (() => void) | null = null;
@@ -76,6 +80,7 @@ export class ShipConstructionPanel {
   private readonly role: HTMLElement;
   private readonly catalog: ShipConstructionCatalog;
   private readonly hand: ShipConstructionHand;
+  private readonly selectionMenu: ShipConstructionSelectionMenu;
   private readonly stateTabs: TabBar<StatePane>;
   private readonly stateBodies: Readonly<Record<StatePane, HTMLElement>>;
   private readonly slotList: HTMLElement;
@@ -90,6 +95,10 @@ export class ShipConstructionPanel {
   private readonly slotButtons = new Map<string, Button>();
   private historySignature = '';
   private readonly historyButtons: Button[] = [];
+  // 選択メニューの追従先(表示の導出が毎フレーム書き込む選択モジュールの画面位置)と、
+  // 直近の model から導いたメニューの可否。両方が揃ったときだけメニューを出す。
+  private selectionAnchor: Projected | null = null;
+  private menuSelection: { canEdit: boolean; canSaveBlueprint: boolean } | null = null;
 
   // 静的 workspace へ既存Widgetを差し込み、動的なカタログ/候補/履歴の再構築点を固定する。
   public constructor(els: HudEls) {
@@ -138,18 +147,26 @@ export class ShipConstructionPanel {
     mobileTabs.append(this.catalogPaneButton.element, this.statusPaneButton.element);
     this.setMobilePane('catalog');
 
-    // 3D の下の手元バー。状態の言い切りと、その状態で効く操作だけを持つ。
+    // 3D の下の手元バー。状態の言い切りと、手持ちの間に効く操作だけを持つ。
     this.hand = new ShipConstructionHand(els, {
       onPlace: () => this.onPlace?.(),
       onRelease: () => this.onRelease?.(),
-      onDeselect: () => this.onDeselect?.(),
-      onFocus: () => this.onFocus?.(),
       onRotate: (delta) => this.onRotate?.(delta),
       onSwapEnds: () => this.onSwapEnds?.(),
       onCycleSymmetry: () => this.onCycleSymmetry?.(),
+    });
+
+    // 選んだモジュールの脇へ追従する操作メニュー。marker レイヤの子として組む。
+    const menuLayer = this.panel.closest('#hud')?.querySelector<HTMLElement>('#hud-layer-marker')
+      ?? this.panel;
+    this.selectionMenu = new ShipConstructionSelectionMenu(menuLayer, {
+      onRotate: (delta) => this.onRotate?.(delta),
+      onSwapEnds: () => this.onSwapEnds?.(),
+      onReattach: () => this.onReattach?.(),
       onRemove: () => this.onRemove?.(),
       onDuplicate: () => this.onDuplicate?.(),
       onSaveBlueprint: (name) => this.onSaveBlueprint?.(name),
+      onDeselect: () => this.onDeselect?.(),
     });
 
     // 右ペインの読み替えタブとその本文。
@@ -193,6 +210,16 @@ export class ShipConstructionPanel {
     // 手元バーは3状態の言い切りと状態ごとの操作を自分で組む。
     this.hand.sync(model);
 
+    // 選択メニューが出せるのは選んでいて手が空いている間だけ。可否は model から、
+    // 追従位置は syncSelectionMenu から別々に届くのでここで合わせる。
+    this.menuSelection = model.visible && model.selection !== null && model.held === null
+      ? {
+        canEdit: model.selection.canEdit,
+        canSaveBlueprint: model.selection.canEdit && model.blueprintRecordReason === null,
+      }
+      : null;
+    this.updateSelectionMenu();
+
     // 船体全体の性能と、指している候補へ置いたときの差分。
     this.count.textContent = String(model.moduleCount);
     this.mass.textContent = formatConstructionMetric(model.totalMass, 'kg');
@@ -221,6 +248,23 @@ export class ShipConstructionPanel {
     this.redo.setEnabled(model.history.canRedo);
     this.finish.setEnabled(model.visible);
     this.discard.setEnabled(model.visible && model.history.names.length > 1);
+  }
+
+  // 選択中モジュールの画面位置を受け取り、選択メニューの追従先として記録する。
+  // 表示の導出が毎フレーム呼ぶ。選択が無い・投影できないときは null。
+  public syncSelectionMenu(anchor: Projected | null): void {
+    this.selectionAnchor = anchor;
+    this.updateSelectionMenu();
+  }
+
+  // model 由来の可否と追従位置を合わせてメニューを同期する。両方揃うまでは出さない。
+  private updateSelectionMenu(): void {
+    const selection = this.menuSelection;
+    const anchor = this.selectionAnchor;
+    this.selectionMenu.sync(selection === null || anchor === null ? null : {
+      x: anchor.x, y: anchor.y, front: anchor.front,
+      canEdit: selection.canEdit, canSaveBlueprint: selection.canSaveBlueprint,
+    });
   }
 
   // 右ペインで読む本文をタブへ合わせる。タブ以外の部分(役割・締めのボタン)は常に見える。
