@@ -32,6 +32,7 @@ import {
 } from './ship-construction-focus';
 import type { RunEventSink } from '../run-events';
 import { CommandCompletion } from '../command-completion';
+import type { Projected } from '../../math/projection';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
 import type { Input } from '../../input/input';
 import type { Viewport } from '../../render/viewport';
@@ -83,6 +84,8 @@ export interface ShipConstructionPanelPort {
   onPlace: (() => void) | null;
   onRemove: (() => void) | null;
   onDuplicate: (() => void) | null;
+  // 「付け替える」。選択中の先端部を手持ちにする。
+  onReattach: (() => void) | null;
   onRelease: (() => void) | null;
   // 「選択を解く」。release とは別の操作で、選択だけを解く。
   onDeselect: (() => void) | null;
@@ -99,6 +102,8 @@ export interface ShipConstructionPanelPort {
   // カタログの表示カテゴリをタブの並び順の index で選ぶ。
   selectCatalogCategory(index: number): void;
   sync(model: ShipConstructionPanelModel): void;
+  // 選択メニューの追従先となる選択モジュールの画面位置。無い・読めないときは null。
+  syncSelectionMenu(anchor: Projected | null): void;
 }
 
 // 一度に一つの建造セッションを所有し、船体の編集を命令へ、表示へ同期する。
@@ -172,6 +177,7 @@ export class ShipConstruction implements OverlayHandle {
     };
     panel.onRemove = () => this.removeSelected();
     panel.onDuplicate = () => this.duplicateSelected();
+    panel.onReattach = () => this.holdSelectedPiece();
     panel.onRelease = () => this.release();
     panel.onDeselect = () => this.select(null);
     panel.onFocus = () => this.focus();
@@ -532,6 +538,19 @@ export class ShipConstruction implements OverlayHandle {
     this.syncPanel();
   }
 
+  // 選択中のモジュールの先端部を手に取って付け替えを始める。編集できない選択では拒否する。
+  public holdSelectedPiece(): void {
+    const session = this.current;
+    const moduleId = this.selectedId;
+    if (session === null) return;
+    if (moduleId === null) { this.deny('付け替える部品を選んでください'); return; }
+    if (!this.pieceEditable(session, moduleId)) {
+      this.deny('接舷中の接続の先は、建造では編集できません');
+      return;
+    }
+    this.hold({ kind: 'piece', moduleId });
+  }
+
   // 選択中のモジュールの先端部の写しを手に取る。
   public duplicateSelected(): void {
     const session = this.current;
@@ -651,6 +670,11 @@ export class ShipConstruction implements OverlayHandle {
     }, (confirmed) => { if (confirmed) this.revertTo(0); });
   }
 
+  // 選択中モジュールの画面位置を、選択メニューを持つパネルへ流す。表示の導出が毎フレーム呼ぶ。
+  public syncSelectionMenu(anchor: Projected | null): void {
+    this.panel.syncSelectionMenu(anchor);
+  }
+
   // 建造パネル内の操作かを判定する。
   public contains(target: Node): boolean { return this.panel.element.contains(target); }
 
@@ -750,6 +774,7 @@ export class ShipConstruction implements OverlayHandle {
     this.panel.onPlace = null;
     this.panel.onRemove = null;
     this.panel.onDuplicate = null;
+    this.panel.onReattach = null;
     this.panel.onRelease = null;
     this.panel.onDeselect = null;
     this.panel.onFocus = null;

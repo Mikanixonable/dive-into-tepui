@@ -2,7 +2,7 @@
 // スナップガイド・ゴースト・モジュール強調の宣言と、操作音の種別を毎フレーム組む。
 // 操作音は装置の語彙を持ち込まず、抽象的な種別の列として返す。
 import { LOCAL_FORWARD, qFromUnitVectors, qMul, qRotate, type Quat } from '../../math/quat';
-import type { ProjectFn } from '../../math/projection';
+import type { Projected, ProjectFn } from '../../math/projection';
 import type { Ray } from '../../math/ray';
 import { add, len, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import { DockSnapGuideView, type DockSnapGuideDisplay } from '../../render/dynamic/ship/dock-snap-guide-view';
@@ -61,7 +61,8 @@ export interface ConstructionViewShip {
   };
 }
 
-// 表示導出が読む建造セッションの面。命令は持たず、読み取りだけを要求する。
+// 表示導出が読む建造セッションの面。命令は持たず、読み取りと、選択メニューの
+// 追従位置を書き込む口(syncSelectionMenu)だけを要求する。
 export interface ShipConstructionViewSource {
   readonly sessionShip: ConstructionViewShip | null;
   readonly anchorId: string | null;
@@ -79,6 +80,8 @@ export interface ShipConstructionViewSource {
   pointedGuide(): ConstructionTargetGuide | null;
   // moduleId を根とする先端部が撤去・付け替え・回転を受け付けるか。
   canEditModule(moduleId: string): boolean;
+  // 選択中モジュールの画面位置を選択メニューへ渡す口。選択が無い・読めないときは null。
+  syncSelectionMenu(anchor: Projected | null): void;
 }
 
 // 1フレームの同期結果。shipModuleEmphasis はモジュール船の強調宣言、sounds は鳴らす
@@ -266,6 +269,7 @@ export class ShipConstructionView {
     const anchorId = source.anchorId;
     const sounds = this.soundCues(source, ship);
     if (ship === null || anchorId === null) {
+      source.syncSelectionMenu(null);
       this.ghost.sync([]);
       this.guide.syncAll([]);
       this.nodes.sync([], nowMs);
@@ -273,6 +277,7 @@ export class ShipConstructionView {
       return { shipModuleEmphasis: null, sounds };
     }
     const trial = source.pointedTrial();
+    source.syncSelectionMenu(this.selectionAnchor(source, ship, camera));
     this.syncNodes(source, ship, camera, trial, nowMs);
     this.syncGuide(source, camera, trial);
     this.syncGhosts(source, ship, camera, trial);
@@ -291,6 +296,19 @@ export class ShipConstructionView {
   }
 
   // ---- 内部の導出 ----
+
+  // 選択中モジュールの ECI 位置を画面座標へ投影した、選択メニューの追従先。
+  // 選択が無い・モジュールが読めないときは null。画面外やカメラ背後(front=false)の
+  // 投影もそのまま渡し、画面内へ寄せて残すのはメニュー側の仕事。
+  private selectionAnchor(
+    source: ShipConstructionViewSource, ship: ConstructionViewShip, camera: CameraFrame,
+  ): Projected | null {
+    const moduleId = source.selectedModuleId;
+    if (moduleId === null) return null;
+    const transform = ship.assembly.worldTransformOf(moduleId);
+    if (transform === null) return null;
+    return camera.project(eciOfAssembly(ship, transform.position));
+  }
 
   // 接続ノード: 手に持っている間と、付け替え先として編集できるモジュールを選んでいる
   // 間、全取り付け先を画面へ写して宣言する。
