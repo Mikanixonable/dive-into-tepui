@@ -1,24 +1,27 @@
-// 積雲の殻が落とす影。描画座標の点へ恒星の直射光がどれだけ届くかを、雲の層を抜ける光路の
+// 積雲の柱と巻雲の層が落とす影。描画座標の点へ恒星の直射光がどれだけ届くかを、雲の層を抜ける光路の
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, clamp, dot, exp, float, greaterThan, length, max, normalize, select,
+  Fn, If, Loop, abs, clamp, dot, exp, float, greaterThan, length, max, min, normalize, select,
   sqrt, uniform, vec4,
 } from 'three/tsl';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
-import { cumulusOpacityNode, cumulusTopAltitudeNode } from '../../cloud/cloud-kind-node';
+import {
+  cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+} from '../../cloud/cloud-kind-node';
 import { columnOpticalDepthFromOpacityNode } from '../../cloud/cloud-optics-node';
 import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
+import type { CloudShadowKinds } from './shadow-select';
 
-// 影を落とす積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準
-// 半径 [m]、axes は天体固定の半軸 [m]、topAltitude は殻の高さ [m]、bodyFromWorld は描画座標の
-// ベクトルを天体固定の向きへ回す行列、field は焼いた雲場と、それを焼いた cap の置き方の組。
-export interface ShadowCumulus {
+// 影を落とす雲を持つ天体 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準
+// 半径 [m]、axes は天体固定の半軸 [m]、bodyFromWorld は描画座標のベクトルを天体固定の向きへ
+// 回す行列、cloud は焼いた雲場と、それを焼いた cap の置き方・雲頂高度の組。
+export interface ShadowCloud {
   readonly center: THREE.Vector3;
   readonly surfaceRadius: number;
   readonly axes: THREE.Vector3;
@@ -34,6 +37,9 @@ const MAX_LIGHT_PATH = 3e5;
 // 光路 1 歩が代表する幅を、場のぼかしへ何倍で写すか。**等倍では足りない** — 隣り合うタップの
 // 覆う範囲が接するだけなので、あいだに影の抜けた縞が残る。
 const STEP_BLUR = 2;
+// 巻雲の層を斜めに抜ける光路の伸びへ張る上限。恒星が地平線へ寄ると 1/cos は発散するので、
+// 層の厚みぶんの弦を通る程度で頭打ちにする。
+const CIRRUS_MAX_SLANT = 20;
 
 export class CloudShadowRenderer {
   private readonly center: Vec3Uniform;
@@ -41,12 +47,15 @@ export class CloudShadowRenderer {
   private readonly axes: Vec3Uniform;
   private readonly topAltitude: FloatUniform;
   private readonly bodyFromWorld: Mat4Uniform;
-  private readonly active: FloatUniform;
+  // 種類ごとの影の有無。影の項ごとに掛けるので分けて持つ。
+  private readonly cumulusActive: FloatUniform;
+  private readonly cirrusActive: FloatUniform;
   // 雲場の読み取りと形状式は共有入力層へ置く。ここは太陽光路の透過率だけを所有する。
   private readonly fieldSampler = new CloudFieldSampler();
   private readonly shape: CloudShapeEvaluator;
 
-  // 殻 1 体ぶんの uniform を確保する。殻の有無は active で切るので、グラフの形は変わらない。
+  // 殻 1 体ぶんの uniform を確保する。殻の有無と種類ごとの有無は uniform で切るので、
+  // グラフの形は変わらない。
   public constructor(private readonly sunLight: SunLight) {
     this.center = uniform(new THREE.Vector3());
     this.surfaceRadius = uniform(0);
@@ -54,27 +63,30 @@ export class CloudShadowRenderer {
     this.axes = uniform(new THREE.Vector3(1, 1, 1));
     this.topAltitude = uniform(0);
     this.bodyFromWorld = uniform(new THREE.Matrix4());
-    this.active = uniform(0);
+    this.cumulusActive = uniform(0);
+    this.cirrusActive = uniform(0);
     this.shape = new CloudShapeEvaluator(this.surfaceRadius.div(CUMULUS_GRAIN_SIZE));
   }
 
-  // このフレームに影を落とす殻。null なら雲の影は落ちない。
-  public set(cumulus: ShadowCumulus | null): void {
-    this.active.value = cumulus === null ? 0 : 1;
-    if (cumulus === null) return;
-    this.center.value.copy(cumulus.center);
-    this.surfaceRadius.value = cumulus.surfaceRadius;
-    this.axes.value.copy(cumulus.axes);
-    this.topAltitude.value = cumulus.cloud.topAltitude;
-    this.bodyFromWorld.value.copy(cumulus.bodyFromWorld);
-    this.fieldSampler.bind(cumulus.cloud.field);
+  // このフレームに影を落とす天体と、雲の種類ごとの有無。cloud が null なら雲の影は落ちない。
+  public set(cloud: ShadowCloud | null, kinds: CloudShadowKinds): void {
+    this.cumulusActive.value = cloud !== null && kinds.cumulus ? 1 : 0;
+    this.cirrusActive.value = cloud !== null && kinds.cirrus ? 1 : 0;
+    if (cloud === null) return;
+    this.center.value.copy(cloud.center);
+    this.surfaceRadius.value = cloud.surfaceRadius;
+    this.axes.value.copy(cloud.axes);
+    this.topAltitude.value = cloud.cloud.topAltitude;
+    this.bodyFromWorld.value.copy(cloud.bodyFromWorld);
+    this.fieldSampler.bind(cloud.cloud.field);
   }
 
-  // このフレームに積雲の殻の影があるか。
-  public casts(): boolean { return this.active.value > 0; }
+  // このフレームに雲の影があるか。どちらかの種類が落ちれば真。
+  public casts(): boolean { return this.cumulusActive.value > 0 || this.cirrusActive.value > 0; }
 
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
-  // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。
+  // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。巻雲はその場の
+  // 雲頂高度の薄い層として、光路が横切る所で柱と同じ減衰の規則で足す。
   //
   // 柱の光学的厚みも覆いの形も殻が雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、
   // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配分するので、柱を 1 本抜ける
@@ -85,8 +97,8 @@ export class CloudShadowRenderer {
     const sunDir = this.sunLight.directionFrom(worldPos);
     return Fn(() => {
       const transmittance = float(1).toVar();
-      // 場を持たないフレームで、タップぶんのフェッチを丸ごと飛ばす。
-      If(greaterThan(this.active, 0.5), () => {
+      // どちらの種類の影も無いフレームで、タップぶんのフェッチを丸ごと飛ばす。
+      If(greaterThan(max(this.cumulusActive, this.cirrusActive), 0.5), () => {
         const bodyRadius = max(this.surfaceRadius, 1);
         const offset = this.toShellSpace(worldPos.sub(this.center));
         // **光路の向きも殻の空間で取り直す** — 半軸で割ると向きが傾くので、描画座標の恒星方向を
@@ -104,7 +116,9 @@ export class CloudShadowRenderer {
         // 実寸と光路 1 歩の長さのうち粗いほうを取る。粒の振幅はこの幅が決める。
         const sampleWidth = max(footprint, stepLength.mul(STEP_BLUR));
         const grainAmplitude = this.shape.grainAmplitudeForWidth(sampleWidth).toVar();
-        const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius);
+        // 受け手の床は自分の積雲の柱のためのもの。積雲の影が無い設定で張ると、巻雲の層を跨ぐ
+        // 高さの判定がずれる。
+        const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius).mul(this.cumulusActive);
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
         Loop({ start: 0, end: SHADOW_TAPS, type: 'int', condition: '<' }, ({ i }) => {
@@ -128,7 +142,15 @@ export class CloudShadowRenderer {
           // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
           // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
           const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
-          opticalDepth.addAssign(columnDepth.mul(rise).mul(inside).div(max(cloudTop, 1)));
+          opticalDepth.addAssign(columnDepth.mul(rise).mul(inside).div(max(cloudTop, 1))
+            .mul(this.cumulusActive));
+          // 巻雲は、その場の量が雲頂高度へ写る薄い層。高度帯がその高さを跨ぐタップへ三角に
+          // 分けて合計 1 回ぶんの横断になり、斜めの光路ぶん(stepLength/rise)伸ばした τ を足す。
+          const cirrusCrossing = max(
+            float(1).sub(abs(altitude.sub(cirrusTopAltitudeNode(cloud.cirrus))).div(max(rise, 1))), 0);
+          opticalDepth.addAssign(cirrusColumnOpticalDepthNode(cloud.cirrus)
+            .mul(cirrusCrossing).mul(min(stepLength.div(max(rise, 1)), CIRRUS_MAX_SLANT))
+            .mul(this.cirrusActive));
         });
         transmittance.assign(exp(opticalDepth.negate()));
       });

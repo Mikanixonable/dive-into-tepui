@@ -7,11 +7,11 @@
 // 大気と同一の共通関数で評価される。イベント位置までの背景大気透過と、イベント間の雲透過の合成は
 // AtmosphereCloudLayersが所有し、ここでは二重に適用しない。
 import * as THREE from 'three/webgpu';
-import { dot, greaterThan, max, min, uniform, vec4 } from 'three/tsl';
+import { dot, greaterThan, max, min, normalize, sign, uniform, vec4 } from 'three/tsl';
 import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
 import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../cloud/cloud-optics-node';
-import { cirrusColumnOpticalDepthNode } from '../cloud/cloud-kind-node';
-import { CUMULUS_MAX_OPTICAL_DEPTH } from '../cloud/cloud-kind';
+import { cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode } from '../cloud/cloud-kind-node';
+import { CIRRUS_BOTTOM_ALTITUDE, CIRRUS_TOP_ALTITUDE, CUMULUS_MAX_OPTICAL_DEPTH } from '../cloud/cloud-kind';
 import { CloudShapeEvaluator } from '../cloud/cloud-shape-evaluator';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { CloudSample } from '../cloud/cloud-field-sample';
@@ -37,16 +37,18 @@ export interface CloudShellKnob {
   readonly topAltitude: FloatUniform;
 }
 
-// 種類ごとの殻。順序・調整値・場のどの意味を光学深さへ使うかをここへ集約し、入口を増やしたときに
+// 種類ごとの殻。順序・調整値・場のどの意味を光学深さと雲頂高度へ使うかをここへ集約し、入口を増やしたときに
 // 大気とrender-labの片方だけへ種類が増える状態を防ぐ。**仮設**: uniformはrender-labから動かせる。
 const CLOUD_SHELL_DEFINITIONS = [
   {
     species: 'cirrus',
     knob: {
       cutoff: uniform(0), gain: uniform(1), albedo: uniform(1),
-      bottomAltitude: uniform(15e3), topAltitude: uniform(16e3),
+      bottomAltitude: uniform(CIRRUS_BOTTOM_ALTITUDE), topAltitude: uniform(CIRRUS_TOP_ALTITUDE),
     },
     columnOpticalDepth: (field: CloudSample): FloatNode => cirrusColumnOpticalDepthNode(field.cirrus),
+    // 場の量からその場所の雲頂高度 [m]。これを持つ種類は、殻との交点をこの高さへ寄せて場を読み直す。
+    localTopAltitude: (field: CloudSample): FloatNode => cirrusTopAltitudeNode(field.cirrus),
   },
   {
     species: 'cumulus',
@@ -56,6 +58,7 @@ const CLOUD_SHELL_DEFINITIONS = [
     },
     columnOpticalDepth: (field: CloudSample): FloatNode =>
       CLOUD_SHAPE_EVALUATOR.columnOpticalDepth(field.cumulus),
+    localTopAltitude: null,
   },
 ] as const;
 
@@ -149,25 +152,38 @@ export class CloudAtmosphereRenderer {
   // 殻と交わる 1 点が視線へ与える減衰と放射輝度。offset は天体中心から交点へのベクトル、
   // rayDir は視線の向き、sunDir は交点から恒星への向き(いずれも天体を真球にした空間で、
   // 向きは単位長)。sunRadiance はその交点へ届く恒星の輝度。
+  // 量が雲頂高度へ写る種類では、交点は殻の高さからその場所の雲頂高度へ視線に沿って寄せてから場を読む。
   public scatteredAt(
     species: CloudSpecies, shellRadius: FloatNode, offset: Vec3Node, rayDir: Vec3Node,
     sunDir: Vec3Node, sunRadiance: Vec3Node,
   ): CloudShellSample {
-    const knob = cloudShellKnobOf(species);
+    const definition = shellDefinitionOf(species);
+    const knob = definition.knob;
     const up = offset.div(shellRadius);
-    const field = this.fieldAt(up);
+    const thickness = max(knob.topAltitude.sub(knob.bottomAltitude), MIN_SHELL_THICKNESS);
+    // 量が雲頂高度へ写る種類では、殻の高さとの差ぶん視線に沿って交点をずらしてから場を読み直す。
+    // ずらし量は鉛直余弦の逆数(高い雲ほど入口は手前・出口は奥へずれる)なので、接線側は層の厚みぶんの
+    // 弦を通る視線(airmass と同じ下限)で有限化する。
+    const localTopAltitude = definition.localTopAltitude;
+    const shellField = this.fieldAt(up);
+    const cosine = dot(up, rayDir);
+    const sampleUp = localTopAltitude === null ? up : normalize(offset.add(rayDir.mul(
+      localTopAltitude(shellField).sub(shellAltitudeOf(species))
+        .mul(sign(cosine))
+        .mul(shellAirmassNode(cosine, thickness, shellRadius)),
+    )));
+    const field = localTopAltitude === null ? shellField : this.fieldAt(sampleUp);
     const columnOpticalDepth = opticalDepthOf(species, field).mul(this.shellPresence(species));
     // 視線が層を斜めに抜けるぶんの倍率。**水平では発散する**ので、層の厚みぶんの弦 √(2RΔh) を
     // 通る視線を上限に取る(地球の 1 km 厚なら光路 226 km、天頂の 113 倍)。
-    const thickness = max(knob.topAltitude.sub(knob.bottomAltitude), MIN_SHELL_THICKNESS);
-    const airmass = shellAirmassNode(dot(up, rayDir), thickness, shellRadius);
+    const airmass = shellAirmassNode(dot(sampleUp, rayDir), thickness, shellRadius);
     const transmittance = transmittanceFromColumnOpticalDepthNode(columnOpticalDepth, airmass);
     const covered = transmittance.oneMinus();
     return {
       columnOpticalDepth,
       airmass,
       transmittance,
-      radiance: sunRadiance.mul(covered.mul(max(dot(up, sunDir), 0)).mul(knob.albedo)),
+      radiance: sunRadiance.mul(covered.mul(max(dot(sampleUp, sunDir), 0)).mul(knob.albedo)),
     };
   }
 
