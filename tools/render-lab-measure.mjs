@@ -1,8 +1,7 @@
 // 描画テスト環境の計測。ヘッドレス Chrome で .render-lab/ を開き、構図 × 大気の段の組ごとに
 // window.renderLab.measure() を呼んで、パス別 GPU 時間の「大気」行を表にする。続けて
-// earth ケースで積雲の精細さ 粗/標準/精細 × 巻雲(現行は cirrus フラグのオン/オフで代用、
-// cirrusDetail 設定はまだ無い)の組を測り、雲の 3 パス(cloudSurface・cloudAtmosphere・
-// cloudShadow)の GPU 時間を表に出す。
+// earth ケースで積雲の精細さ 粗/標準/精細 × 巻雲の精細さ 粗/標準/精細 の組を測り、雲の 3 パス
+// (cloudSurface・cloudAtmosphere・cloudShadow)の GPU 時間を表に出す。
 //
 // 熱によるドリフトを差と切り分けるため、同じ組を複数回巡り、偶数回目は逆順で回す。巡る回数は
 // 第 1 引数(既定 2)。結果は巡ごとの平均と、その中央値で出す。
@@ -25,10 +24,10 @@ const FRAMINGS = [
 const QUALITIES = [['オフ', 0], ['低', 1], ['中', 2], ['高', 3]];
 
 // 雲の段の組。積雲の精細さは src/render/opaque-cloud-surface-renderer.ts の CUMULUS_DETAIL、
-// 巻雲は現行の cirrus フラグで代用する(cirrusDetail 設定はまだ無い)。大気は「高」、
-// 雲と雲の影はオンに固定して、3 パスが全部描く状態で測る。
+// 巻雲の精細さは src/render/cloud/cloud-detail.ts の CIRRUS_DETAIL。大気は「高」、雲と雲の影と
+// 巻雲はオンに固定して、3 パスが全部描く状態で測る。
 const CLOUD_DETAIL_TIERS = [['粗', 1], ['標準', 2], ['精細', 3]];
-const CIRRUS_TIERS = [['巻雲オン', true], ['巻雲オフ', false]];
+const CIRRUS_TIERS = [['巻雲粗', 0], ['巻雲標準', 1], ['巻雲精細', 2]];
 const CLOUD_PASSES = [['表面雲', 'cloudSurface'], ['大気(雲あり)', 'cloudAtmosphere'], ['雲影', 'cloudShadow']];
 
 // 巡ごとの標本から中央値を出す。
@@ -103,7 +102,8 @@ async function main() {
         await devTools.evaluate(`window.renderLab.setGraphicsOption('clouds', true)`);
         await devTools.evaluate(`window.renderLab.setGraphicsOption('cloudShadow', true)`);
         await devTools.evaluate(`window.renderLab.setGraphicsOption('cumulusDetail', ${detail})`);
-        await devTools.evaluate(`window.renderLab.setGraphicsOption('cirrus', ${cirrus})`);
+        await devTools.evaluate(`window.renderLab.setGraphicsOption('cirrus', true)`);
+        await devTools.evaluate(`window.renderLab.setGraphicsOption('cirrusDetail', ${cirrus})`);
         const result = await devTools.evaluate('window.renderLab.measure("earth", {})');
         const key = `積雲${detailLabel} × ${cirrusLabel}`;
         const entry = cloudRows.get(key) ?? { supported: result.gpuSupported, runs: [] };
