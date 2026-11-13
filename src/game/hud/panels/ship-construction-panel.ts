@@ -53,6 +53,7 @@ export class ShipConstructionPanel {
   public onDuplicate: (() => void) | null = null;
   public onRelease: (() => void) | null = null;
   public onDeselect: (() => void) | null = null;
+  public onFocus: (() => void) | null = null;
   public onRotate: ((delta: 1 | -1) => void) | null = null;
   public onSwapEnds: (() => void) | null = null;
   public onCycleSymmetry: (() => void) | null = null;
@@ -142,6 +143,7 @@ export class ShipConstructionPanel {
       onPlace: () => this.onPlace?.(),
       onRelease: () => this.onRelease?.(),
       onDeselect: () => this.onDeselect?.(),
+      onFocus: () => this.onFocus?.(),
       onRotate: (delta) => this.onRotate?.(delta),
       onSwapEnds: () => this.onSwapEnds?.(),
       onCycleSymmetry: () => this.onCycleSymmetry?.(),
