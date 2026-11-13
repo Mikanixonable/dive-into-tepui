@@ -1,7 +1,7 @@
 // 描画テスト環境の撮影。ヘッドレス Chrome で .render-lab/ を開き、ケースごとに
 // window.renderLab.shoot() を呼んで、ケースが宣言した向きごとの PNG を 1 枚ずつ受け取り、撮影名で書く。
 // 書き先は第 1 引数に撮影の組の名前を渡せば .render-lab-shots/<名前>/、省けば .render-lab/shots で、
-// 撮影の前に作り直す。
+// 撮影の前に作り直す。第 2 引数にカンマ区切りの名前を渡すと、一致または前方一致するケースだけを撮る。
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
@@ -48,8 +48,13 @@ async function main() {
     rmSync(outDir, { recursive: true, force: true });
     mkdirSync(outDir, { recursive: true });
     const names = await devTools.evaluate('window.renderLab.cases');
+    // 第 2 引数のカンマ区切りに一致・前方一致するケースだけへ絞る。
+    const filter = process.argv[3]?.split(',').map((s) => s.trim()).filter(Boolean) ?? [];
+    const targetNames = filter.length === 0 ? names : names.filter(
+      (name) => filter.some((prefix) => name === prefix || name.startsWith(prefix)),
+    );
     const shotNames = new Set();
-    for (const name of names) {
+    for (const name of targetNames) {
       // **PNG は 1 枚ずつ受け取る** — CDP の 1 メッセージが約 4 MB を超えると接続が閉じるので、ケースの
       // 全撮影をまとめて返させると、撮影の多いケースで落ちる。
       const repeatCount = name === 'earth' ? EARTH_REPEAT_COUNT : 1;
