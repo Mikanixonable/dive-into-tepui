@@ -139,7 +139,7 @@ export class ShipConstructionCatalog {
       if (blueprints.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'construction-blueprint-empty';
-        empty.textContent = '選択中の部品を「設計図として保存」すると、ここに並びます';
+        empty.textContent = '記録された設計図がここに並びます';
         this.moduleCards.appendChild(empty);
       }
       for (const blueprint of blueprints) {
