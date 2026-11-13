@@ -4,6 +4,7 @@
 import { exp, float, length, select, texture, vec3 } from 'three/tsl';
 import { equirectUvFromDirection } from '../../src/render/field-projection';
 import { CUMULUS_TOP_ALTITUDE } from '../../src/render/cloud/cloud-kind';
+import { cirrusFlowColor } from './cirrus-flow-color';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../src/render/cloud/cloud-kind-node';
@@ -18,7 +19,8 @@ export type CloudLabViewId =
   | 'pressure' | 'surfaceWind' | 'traceWind' | 'front' | 'airMass' | 'lift'
   | 'surfaceHumiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'surfaceHumidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
-  | 'cumulus' | 'cirrus' | 'coverage' | 'cloudTop' | 'cirrusTop' | 'translucent' | 'composite' | 'photo';
+  | 'cumulus' | 'cirrus' | 'coverage' | 'cloudTop' | 'cirrusTop' | 'translucent' | 'cirrusFlow'
+  | 'composite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
 // 写しを描画と同じ読み取りで読んで色を組む。'photo' のビューは実写の雲テクスチャを読むだけで、生成の系には
@@ -116,6 +118,9 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     } },
   { id: 'translucent', label: '巻雲の厚み', reads: 'cloud',
     color: (d, cloudAt) => vec3(cirrusColumnOpticalDepthNode(cloudAt(d).cirrus).div(TRANSLUCENT_SPAN)) },
+  // 巻雲の筋の向きを色相、揃い度を明度で。揃い度の無い所は黒。
+  { id: 'cirrusFlow', label: '巻雲の筋の向き', reads: 'cloud',
+    color: (d, cloudAt) => cirrusFlowColor(cloudAt(d).cirrusFlow) },
   // 積雲と巻雲を 1 枚に重ねた見え。晴れた空が透ける割合 (1 − 不透明度)·e^(−τ) の補で、
   // 加算と違って飽和しない。実写と見比べるための面で、描画側の合成の仕様ではない。
   { id: 'composite', label: '合成', reads: 'cloud',
