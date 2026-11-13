@@ -32,7 +32,6 @@ import { Exposure } from './exposure';
 import { SunLight } from './sun-light';
 import { ShadowMaps } from './shadow/shadow-maps';
 import { viewPositionAt } from './view-ray';
-import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein/protein-motion-material';
 import { FilmLut } from './film-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
@@ -87,7 +86,6 @@ export class RenderPipeline {
   private readonly drawingBufferSize = new THREE.Vector2();
   // 天体照の写しの基準点(カメラの描画座標)の書き込み先。同じく使い回し領域。
   private readonly cameraPosition = new THREE.Vector3();
-  private readonly unregisterProteinMotionRenderer: () => void;
 
   // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。
   private debugTarget: DebugTargetId = 'off';
@@ -107,7 +105,6 @@ export class RenderPipeline {
   public constructor(
     private readonly renderer: WebGPURenderer, graphics: GraphicsSettingsData, private readonly gpu: GpuTimings,
   ) {
-    this.unregisterProteinMotionRenderer = registerProteinMotionRenderer(renderer);
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
     this._exposure = new Exposure();
@@ -402,9 +399,6 @@ export class RenderPipeline {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
 
-    // 影マップパスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
-    flushProteinMotionComputes(this.renderer);
-
     // 太陽光の影マップパス。G バッファを必要としないので、その前に置く。
     this.shadowMaps.render(scene, camera, height, this._sunLight);
 
@@ -476,7 +470,6 @@ export class RenderPipeline {
 
   // 保持している GPU 資源を解放する。QuadMesh の板は three が全インスタンスで共有するので解放しない。
   public dispose(): void {
-    this.unregisterProteinMotionRenderer();
     this.gbuffer.dispose();
     this.shadowPass.dispose();
     this.shadowMaps.dispose();

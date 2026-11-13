@@ -9,7 +9,6 @@ import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/sa
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { v3 } from '../../src/math/vec3';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
-import { PROTEIN_CASES } from './protein-cases';
 import { SHIP_CASES } from './ship-cases';
 import { EARTH_CASES } from './earth-cases';
 import { MATERIAL_CASES } from './material-cases';
@@ -175,7 +174,6 @@ export const CASES = {
   ...PLUME_CASES,
   ...BELT_CASES,
   ...CASING_CASES,
-  ...PROTEIN_CASES,
   ...ASSEMBLY_CASES,
 } as const satisfies Record<string, CaseBuilder>;
 
