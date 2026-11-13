@@ -67,7 +67,6 @@
 | いつ・どの順で・どんな条件で走るか(per-frame) | `/callstack` |
 | 誰がその関数を呼んでいるか / 消せるか・影響範囲はどこか | `/inv-callstack` |
 | 実行時の動作確認を求められた | `/verify` |
-| タンパク質の追加を求められた | `/add-protain` |
 
 **「計画を書いて」と明示されない限り、実行まで完遂する。** 段取りのために計画を書くと自分で決めた
 のなら、書き先を決めるのも、判断材料を仕様・コード・実測から集めて計画を監査し直すのも、全手順を
@@ -230,7 +229,7 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run dev` | 開発サーバ(http://localhost:8080) | 実機で動かすとき |
 | `npm run smoke:browser` | ヘッドレスでの起動・操作スモーク | 実行時の確認を求められたとき |
 | `npm run build` | `docs/` への本番ビルド | **main へ送る前**(`/send-pr`)。公開は CI が行う |
-| `npm run ci` | 上記の検証一式 + 生成物(protein・地表)とテーマ・リリース物の点検 | 任意。main へ送る検証は `/send-pr` |
+| `npm run ci` | 上記の検証一式 + 生成物(地表)とテーマ・リリース物の点検 | 任意。main へ送る検証は `/send-pr` |
 | `npm run bgm-lab` | BGM の試聴環境(http://localhost:8081) | 曲を調整するとき |
 | `npm run render-lab` | 描画の実験環境(http://localhost:8082) | 描画を目で確かめるとき |
 | `npm run render-lab:shot` | 描画の実験環境の撮影(`-- <組の名前>` で `.render-lab-shots/<組の名前>/`、省くと `.render-lab/shots/`) | 描画を画像で確かめるとき |
