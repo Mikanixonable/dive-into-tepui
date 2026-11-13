@@ -304,6 +304,33 @@ export function register(): void {
     assert.ok(rotated !== null);
   });
 
+  // 回転リングのドラッグを離したときのまとめ回し。複数段でも 1 命令 = 1 履歴エントリ。
+  test('ship construction: 複数段の回転は1つの操作として履歴へ載る', () => {
+    const ship = new ConstructionTestShip();
+    const queue = new CommandQueue();
+    const { construction, lastModel } = createConstruction(ship, queue, { blueprints: [], canRecord: false });
+    construction.start(ship as unknown as ModularShip, 'dock-left');
+    construction.select('solar-left');
+    const namesBefore = lastModel()?.history.names.length ?? 0;
+    const before = ship.assembly.worldTransformOf('solar-left')!.rotation;
+
+    construction.rotateSteps(2);
+    queue.applyAll();
+    construction.sync();
+
+    const names = lastModel()?.history.names ?? [];
+    assert.equal(names.length, namesBefore + 1);
+    assert.ok(names[names.length - 1]?.includes('回転'));
+    assert.equal(construction.lastOperation?.kind, 'rotate');
+    // 2 段 = 180°。回転前後のクォータニオンは 4 次元内積でほぼ直交する。
+    const after = ship.assembly.worldTransformOf('solar-left')!.rotation;
+    const dot4 = Math.abs(
+      before.x * after.x + before.y * after.y + before.z * after.z + before.w * after.w,
+    );
+    assert.ok(dot4 < 0.5, `2 段回っていない(dot4=${dot4})`);
+    ship.assembly.assertValid();
+  });
+
   test('ship construction history: 上限を超えたら開始時を残して古い順に捨てる', () => {
     const start = serializeShipAssembly(createBasePreset());
     const history = new ConstructionHistory(start);
