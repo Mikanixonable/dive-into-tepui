@@ -6,7 +6,7 @@ import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import { capRadiusFor, snapCap } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { CloudRenderInput } from './cloud-render-input';
+import type { CloudDetailClockInput, CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
 
@@ -25,6 +25,8 @@ export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof
 // 雲データ供給源のインターフェース。texture はキャップへ投影されたテクスチャであり、供給元が寿命を管理する。
 export interface CloudFieldSource {
   readonly texture: THREE.Texture;
+  // 雲を運ぶ風の写し(texture と同じ cap、R・G = 地表付近、B・A = 上層の東・北の成分 [m/s])。
+  readonly motionTexture: THREE.Texture;
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
@@ -41,6 +43,8 @@ export class CloudPresentation {
   private cloudVisible = false;
   private cirrusVisible = true;
   private translucentCumulusVisible = true;
+  // 細部の時刻。bake で表示時刻へ進める。
+  private clock: CloudDetailClockInput = { displayTime: 0, simSpeed: 0 };
 
   // 各供給源（generated / observed）を管理し、キャップの視点追従と雲メッシュの描画を同期する。
   // bodyRadius は雲層を配置する天体の基準半径 [m]。
@@ -57,9 +61,10 @@ export class CloudPresentation {
   // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
   public get renderInput(): CloudRenderInput {
     return {
-      field: { texture: this.source.texture, cap: this.cap.placement },
+      field: { texture: this.source.texture, motion: this.source.motionTexture, cap: this.cap.placement },
       generation: this.source.generation,
       topAltitude: this.topAltitude,
+      clock: this.clock,
     };
   }
   public get visible(): boolean { return this.surface.visible; }
@@ -138,11 +143,16 @@ export class CloudPresentation {
     else this.surface.hide();
   }
 
-  // 雲場が描画に寄与するフレームで、選んでいる出どころの場を表示時刻 displayTime [s] へ焼く。gpu を
-  // 渡すと、焼いた GPU 時間をそこへ計上する。
-  public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+  // 雲場が描画に寄与するフレームで、選んでいる出どころの場を表示時刻 displayTime [s] へ焼き、細部の
+  // 時刻を進める。simSpeed は実時間 1 秒あたりに進む表示時刻 [s]。gpu を渡すと、焼いた GPU 時間を
+  // そこへ計上する。**実写の雲場では細部の時刻も止める** — 分布が止まっている空で、細部だけが
+  // 流れたり入れ替わったりしない。
+  public bake(renderer: WebGPURenderer, displayTime: number, simSpeed: number, gpu?: GpuTimingSink): void {
     if (!this.fieldContributes) return;
     this.source.prepare(renderer, displayTime, gpu);
+    const moving = this.source === this.sources.generated;
+    this.clock = { displayTime: moving ? displayTime : 0, simSpeed: moving ? simSpeed : 0 };
+    this.surface.syncClock(this.clock);
   }
 
   // 不透明表面と、選べる雲場の出どころをすべて解放する。
