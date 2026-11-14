@@ -16,15 +16,15 @@ const CONTACT_MAX_RESOLUTIONS_PER_SUBSTEP = 8;
 const CONTACT_GRID_MIN_CELL_SIZE = 1;
 
 // 薬莢の剛体接触を判定する艦(アンカー)からの最大距離 [m](SPEC/COMBAT.md「薬莢」)。
-export const CASING_CONTACT_MAX_DISTANCE = 30;
+const CASING_CONTACT_MAX_DISTANCE = 30;
 const CASING_CONTACT_MAX_DISTANCE_SQ = CASING_CONTACT_MAX_DISTANCE ** 2;
 
 // 薬莢同士の剛体接触を判定する艦(アンカー)からの最大距離 [m](SPEC/COMBAT.md「薬莢」)。
-export const CASING_CASING_CONTACT_MAX_DISTANCE = 15;
+const CASING_CASING_CONTACT_MAX_DISTANCE = 15;
 const CASING_CASING_CONTACT_MAX_DISTANCE_SQ = CASING_CASING_CONTACT_MAX_DISTANCE ** 2;
 
 // 密集時に1個の薬莢が同時に接触判定を行う最大相手数(過密時のペア爆発防止)。
-export const CASING_MAX_PAIRS_PER_ENTITY = 4;
+const CASING_MAX_PAIRS_PER_ENTITY = 4;
 
 // 1 substep 分の接触候補1件。当事者は参加者列の添字 ai / bi で指す。
 // evaluated は response の幾何計算を行ったかを表し、未評価の候補は earliestContact で遅延評価する。
