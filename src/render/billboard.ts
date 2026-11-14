@@ -71,3 +71,16 @@ export function flashResources(): { geometry: THREE.BufferGeometry; material: TH
   });
   return { geometry: new THREE.PlaneGeometry(1, 1), material };
 }
+
+// 黒煙用の共有ジオメトリ/マテリアル。加算ではなく通常合成で、暗い色の塊として背景を置き換える。
+// 不透明度は 1 のままにし、輪郭のぼけはグローテクスチャの α に任せる。
+export function smokeResources(): { geometry: THREE.BufferGeometry; material: THREE.Material } {
+  const material = new THREE.MeshBasicMaterial({
+    map: getGlowTexture(),
+    color: 0xffffff,
+    transparent: true,
+    blending: THREE.NormalBlending,
+    depthWrite: false,
+  });
+  return { geometry: new THREE.PlaneGeometry(1, 1), material };
+}

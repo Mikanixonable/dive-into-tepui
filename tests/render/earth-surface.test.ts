@@ -11,7 +11,7 @@ import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tile-key';
 import { EarthSurfaceView } from '../../src/render/earth-surface-tile-projection';
 import type { EarthSurfaceResidentFrame } from '../../src/render/earth-surface-resident';
 import type { EarthSurfaceSource } from '../../src/render/earth-surface-source';
-import { EARTH_SURFACE_LEGACY_COLOR_CALIBRATION } from '../../src/render/earth-surface-source';
+import { EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION } from '../../src/render/earth-surface-source';
 import type {
   CelestialSurfaceFrame,
   CelestialSurfaceLike,
@@ -21,7 +21,7 @@ import type {
 const SOURCE = {
   datasetId: 'earth-test',
   sourceManifestSha256: '0'.repeat(64),
-  colorCalibration: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
+  colorCalibration: EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION,
   climateEncoding: {
     temperatureK: { min: 180, max: 330 },
     cloudFraction: { min: 0, max: 1 },
@@ -34,7 +34,6 @@ const SOURCE = {
   manifestUrl: 'https://example.test/earth/manifest.json',
   colorTileTemplate: 'https://example.test/earth/tiles/{z}/{x}/{y}.jpg',
   terrainTileTemplate: 'https://example.test/earth/tiles/{z}/{x}/{y}.bin.gz',
-  terrainFormat: 'normal-xyz-rgb8-roughness-a8',
   baseColorUrl: 'https://example.test/earth/base-color.jpg',
   baseTerrainUrl: 'https://example.test/earth/base-terrain.bin.gz',
   climateMapUrls: [],
@@ -55,6 +54,7 @@ class FallbackSpy implements CelestialSurfaceLike {
   public dispose(): void { this.calls.push('dispose'); }
 }
 
+// 既定の天体表面フレーム値。camera は差し替えられる。
 function frame(camera: THREE.Camera = new THREE.Camera()): CelestialSurfaceFrame {
   return {
     camera,

@@ -33,6 +33,7 @@ import { EnemyInspection } from './enemy-inspection';
 import { Pickup } from '../dynamic/dynamic-entity/pickup';
 import { LagrangePointMarker } from '../marker/lagrange-point-marker';
 import { OrbitPointMarker } from '../marker/orbit-point-marker';
+import { OrbitSlotPickable } from './orbit-slot-pickable';
 import type { ObjectMenuCommands } from './object-menu-commands';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
@@ -67,11 +68,13 @@ export class ObjectWindowActions {
     private readonly hint: (message: string, durationMs?: number, kind?: HintKind) => void,
   ) {}
 
+  // id の敵を窓の対象へ写す。名簿に居なければ null。
   public inspectedEnemy(id: string): InspectedObject | null {
     const enemy = this.roster.all().filter(isEnemy).find((candidate) => candidate.id === id);
     return enemy ? objectPickableOf(enemy) : null;
   }
 
+  // 生存中の航法ターゲットを窓の対象へ写す。照準していなければ null。
   public inspectedTarget(): InspectedObject | null {
     const target = this.targeter.aliveTarget;
     return target ? objectPickableOf(target) : null;
@@ -88,8 +91,11 @@ export class ObjectWindowActions {
           return this.navTargetPresenter.canTarget(
             target.id, this.roster, this.celestialBodies, simTime);
         case 'duplicate':
-        case 'openObjectPlacer':
           return this.authoring !== null;
+        case 'openObjectPlacer':
+          // 天体の窓からはその天体を基準天体にして開くので、基準天体になれない恒星の窓には出さない。
+          return this.authoring !== null
+            && (!(target instanceof CelestialEntity) || target.motion.kind !== 'star');
         case 'planExecCycle':
           return this.activeStage.executesPlans;
         default:
@@ -115,10 +121,12 @@ export class ObjectWindowActions {
     return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
   }
 
+  // プロパティ窓へ渡す内容全体を組む。
   public buildContent(
     target: InspectedObject, simTime: number, opener: PropertyWindowOpener,
   ): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
+    // 種別コードと種別名は、対象の具象型で決める。
     const kind = target instanceof CelestialEntity
       ? { kindCode: 'BDY', kindLabel: 'CELESTIAL BODY' }
       : target instanceof ShipInspection
@@ -131,7 +139,9 @@ export class ObjectWindowActions {
               ? { kindCode: 'POI', kindLabel: 'REFERENCE POINT' }
               : target instanceof OrbitPointMarker
                 ? { kindCode: 'EVT', kindLabel: 'ORBIT EVENT' }
-                : { kindCode: 'OBJ', kindLabel: 'OBJECT' };
+                : target instanceof OrbitSlotPickable
+                  ? { kindCode: 'SLT', kindLabel: 'ORBIT SLOT' }
+                  : { kindCode: 'OBJ', kindLabel: 'OBJECT' };
     return {
       title,
       subtitle,
@@ -154,8 +164,10 @@ export class ObjectWindowActions {
     else if (act === 'toggleTrajectoryLine') this.entityDisplayCommands.toggleTrajectoryLine(target.id);
     else if (act === 'openSettings') this.pauseMenu.toggle(true);
     else if (act === 'openObjectPlacer') {
-      this.authoring?.openObjectPlacer(focusTargetId(this.camera.map.focus));
+      this.authoring?.openObjectPlacer(
+        target instanceof CelestialEntity ? target.id : focusTargetId(this.camera.map.focus));
     } else {
+      // 対象固有の操作は命令口へ渡す。
       this.commands.runMenu(target, act, this.authoring, this.planEditor);
     }
   }
@@ -184,6 +196,7 @@ export class ObjectWindowActions {
     for (const item of this.activeView().pickables) {
       if (item.id === target.id) continue;
       const state = item.orbitState;
+      // 軌道状態を引けない対象は、天体台帳の親で周回を判断する。
       const isOrbiting = state === null
         ? this.celestialBodies.bodyParentId(item.id) === target.id
         : orbitingAttractorOf(state, this.celestialBodies.celestialMotions, pivot)?.id === target.id;
@@ -220,10 +233,12 @@ export class ObjectWindowActions {
     this.hint(`${name} にフォーカス`, undefined, 'nav');
   }
 
+  // マップ表示中の編集面。それ以外のビューでは null。
   private get authoring(): ObjectAuthoring | null {
     return this.view.current === 'map' ? this.activeStage.authoring : null;
   }
 
+  // 表示中のビューが持つ計画エディタ。ビューが持たなければ null。
   private get planEditor(): PlanEditor | null {
     return this.activeView().planEditor;
   }

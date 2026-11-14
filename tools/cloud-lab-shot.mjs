@@ -19,7 +19,7 @@ async function main() {
   });
   try {
     const { devTools } = session;
-    await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
+    await devTools.send('Page.navigate', { url: `${session.baseUrl}/?capture-only` });
     await waitFor(
       devTools,
       "(document.getElementById('error')?.textContent || typeof window.cloudLab === 'object')",
