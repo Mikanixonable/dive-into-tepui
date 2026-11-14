@@ -9,11 +9,11 @@ import { formatConstructionOrientation } from './ship-construction-format';
 import type { ConstructionSymmetry, ShipConstructionPanelModel } from '../../ship/ship-construction-types';
 import type { HudEls } from '../hud-els';
 
-// 対称数のセグメントの選択肢。セッション側は 1→2→4 の巡回口だけを持つので、
-// 現在値からの歩数だけ巡回させて選んだ値へ合わせる。
+// 対称数のセグメントの選択肢。通知口(onCycleSymmetry)は1歩進める巡回なので、
+// 現在値からの歩数ぶん呼んで選んだ値へ合わせる。
 const SYMMETRY_STEPS: readonly ConstructionSymmetry[] = [1, 2, 4];
 
-// 手元バーの操作を建造セッションへ渡す口。パネルの on* へ委譲する。
+// 手元バーの操作を建造セッションへ渡す口。
 export interface ShipConstructionHandCallbacks {
   readonly onPlace: () => void;
   readonly onRelease: () => void;
@@ -44,6 +44,7 @@ export class ShipConstructionHand {
     this.reason = els.get('construction-hand-reason');
     this.note = els.get('construction-hand-note');
 
+    // 回転・反転・対称数・確定・手放しの操作部品を組む。
     this.rollLeft = new Button('左へ回す', () => callbacks.onRotate(-1), '⟲', 'secondary', K.constructionRollLeft.label);
     this.rollRight = new Button('右へ回す', () => callbacks.onRotate(1), '⟳', 'secondary', K.constructionRollRight.label);
     this.swapEnds = new Button(
@@ -61,8 +62,6 @@ export class ShipConstructionHand {
       this.rollLeft.element, this.rollRight.element, this.swapEnds.element, this.symmetry.element,
       this.confirm.element, this.release.element,
     );
-    // 選択中の操作がモジュール脇のメニューへ移ったので、設計図フォームの枠は使わない。
-    els.get('construction-hand-blueprint').classList.add('hidden');
   }
 
   // 3状態の言い切りと、各状態で効く操作の出し分けを表示モデルへ揃える。
