@@ -247,6 +247,7 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run cloud-lab:reference-fine` | render-capture と同じ尺度の実写参照を GIBS から取り込み(`.cloud-lab/reference-fine/`) | 細かい尺度の実写目録を増やす・取り直すとき |
 | `npm run cloud-lab:reference-fine-timeseries` | 実写の可視時系列を GIBS から取り込み(`.cloud-lab/reference-fine-timeseries/`) | 時系列の実写目録を増やす・取り直すとき |
 | `npm run cloud-lab:reference-cloudtop` | MODIS Terra の雲頂高度を取り込み(`.cloud-lab/reference-cloudtop/`) | 雲頂の実写参照を取り直すとき |
+| `npm run cloud-lab:reference-timeseries` | ひまわり AHI 赤外の実写時系列を GIBS から取り込み(`.cloud-lab/reference-timeseries/`) | compare の動きの節の実写参照を取り直すとき |
 | `npm run cloud-detail:reference` | 雲の細部比較用の実写を Worldview から取り込む(`.cloud-detail/reference/`) | 実写の目録を増やす・取り直すとき |
 | `npm run cloud-detail:selftest` | 雲の細部の物差しの自己検査(合成場の傾き・周期性と実写の文献検算) | 物差し(`tools/cloud-detail-metrics.mjs`)を触ったとき |
 | `npm run cloud-detail:compare` | 雲の細部の撮影→計測→実写との距離→履歴→前回との差(`.cloud-detail/`) | 雲の細部の変更を定量で追うとき・前後を比べるとき |
