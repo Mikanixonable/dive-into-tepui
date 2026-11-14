@@ -16,7 +16,7 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ModularShip } from '../ship/modular-ship';
 
 // デバッグステージの内訳。敵の射撃の可否と、次に出す敵集団の通し番号を持つ。
-export interface SerializedStageDebug extends SerializedStage {
+interface SerializedStageDebug extends SerializedStage {
   readonly enemyFireEnabled: boolean;
   readonly waveCount: number;
 }

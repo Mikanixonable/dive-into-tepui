@@ -15,7 +15,7 @@ interface InstrumentRowBaseSpec {
   readonly rowId?: string;
 }
 
-export type InstrumentRowSpec = InstrumentRowBaseSpec & (
+type InstrumentRowSpec = InstrumentRowBaseSpec & (
   | { readonly valueId: string; readonly valueHtml?: never }
   | { readonly valueId?: never; readonly valueHtml: string }
 );
