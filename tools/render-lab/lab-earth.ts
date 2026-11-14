@@ -78,7 +78,7 @@ export class LabEarth {
 
   // 地表を寄り切った分割段で組む。置き方は place で決める。
   public constructor() {
-    const shape = shapeAxes(R_EARTH_EQ, EARTH.shape);
+    const shape = shapeAxes(R_EARTH_EQ, EARTH.shape ?? null);
     const axes = new THREE.Vector3(shape.x, shape.y, shape.z);
     this.object.scale.copy(axes);
     this.surface.addTo(this.object);
@@ -94,7 +94,7 @@ export class LabEarth {
     };
     // 大気の地表は地表メッシュと同じ楕円体に採る。**真球で渡すと**、極で地表と空のあいだに
     // 隙間が開く。
-    const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
+    const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape ?? null);
     this.atmosphere = {
       center: this.center,
       surfaceRadius: radii.equatorRadius,
