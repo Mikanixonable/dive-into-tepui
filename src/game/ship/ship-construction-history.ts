@@ -1,6 +1,6 @@
 // 建造セッションの取り消し履歴。「操作の名前 + 操作直後の船体の写し」の列と現在位置を持つ
 // 純粋な状態で、モデルは書かない — 戻す先の写しを返すだけで、適用は呼び手が命令として行う。
-import type { SerializedShipAssembly } from './ship-save';
+import type { SerializedShipAssembly } from './ship-assembly-serialization';
 
 // 履歴1件。assembly は操作直後(先頭は開始時)の船体の直列化。
 export interface ConstructionHistoryEntry {

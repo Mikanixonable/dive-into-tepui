@@ -19,7 +19,7 @@ import {
   axialPlacementFromTransform, inverseTransform, sideRollFromTransform,
   type ModuleOrientation,
 } from './ship-assembly-transform';
-import { restoreShipAssembly, serializeShipAssembly } from './ship-save';
+import { deserializeShipAssembly, serializeShipAssembly } from './ship-assembly-serialization';
 import {
   hiddenShipConstructionModel,
   type ConstructionCardDrag, type ConstructionCardDragEvent,
@@ -43,6 +43,7 @@ import type { Notifier } from '../../hud/notifier';
 import type { CommandQueue } from '../command-queue';
 import type { ModularShip } from './modular-ship';
 
+// 開いている建造セッション。対象の船体・起点ドック・編集口・取り消し履歴。
 interface ConstructionSession {
   readonly ship: ModularShip;
   readonly anchorId: string;
@@ -54,6 +55,7 @@ interface ConstructionSession {
 // 'blueprint' は船体を変えない記録系で、成功時に履歴も操作記録も積まない。
 type ConstructionAction = 'place' | 'move' | 'remove' | 'reorient' | 'restore' | 'blueprint';
 
+// 適用待ちの命令。成功時に履歴へ積む材料を持つ。
 interface PendingConstructionCommand {
   readonly session: ConstructionSession;
   readonly action: ConstructionAction;
@@ -68,8 +70,6 @@ interface PendingConstructionCommand {
   // 適用の中で捕捉した、その操作直後の船体の写し。
   snapshot: ReturnType<typeof serializeShipAssembly> | null;
 }
-
-let nextConstructionModule = 1;
 
 export type { ConstructionFocus };
 
@@ -123,9 +123,12 @@ export class ShipConstruction implements OverlayHandle {
   private operationSequence = 0;
   private operation: ConstructionOperationRecord | null = null;
   private denied: ConstructionDeniedRecord | null = null;
+  // 置いたモジュールへ順に振る `construction-N` の次の番号。assembly の既存 id との衝突は
+  // allocateIds 側で避ける。
+  private nextModuleId = 1;
   private trialCache: { readonly signature: string; readonly trial: ConstructionTrial } | null = null;
 
-  // 建造規則の結果を、既存のHUD・入力・表示時刻の各装置へ接続する。
+  // 建造セッションを、パネル・入力・表示時刻の各装置へ繋ぐ。
   public constructor(
     private readonly input: Input,
     private readonly commands: CommandQueue,
@@ -213,7 +216,7 @@ export class ShipConstruction implements OverlayHandle {
   // 回転リングを掴んだドラッグ中の角度。表示の導出が弧とスナップ位置を組む。
   public get rotationDrag(): ConstructionRotationDrag | null { return this.pointer.rotationDrag; }
 
-  // ドラッグを閉じる。離した位置を読み終えた入力の解釈が呼ぶ。
+  // カードのドラッグを畳む。
   public clearCardDrag(): void { this.cardDragValue = null; }
 
   // 船体全体の空いている取り付け先。
@@ -230,6 +233,7 @@ export class ShipConstruction implements OverlayHandle {
     const target = this.pointedTarget();
     if (session === null || held === null || target === null) return null;
     const orientation = this.effectiveOrientation(session, held);
+    // 結果が効く入力の署名が変わったときだけ試し置きをやり直す。
     const signature = this.trialSignature(session, held, target, orientation);
     if (this.trialCache?.signature !== signature) {
       this.trialCache = {
@@ -310,10 +314,11 @@ export class ShipConstruction implements OverlayHandle {
     this.syncPanel();
   }
 
-  // 変更を残して閉じる。ESC(共通オーバーレイ管理)もこの口を通る。
+  // 変更を残して閉じる。
   public close(): void {
     if (this.current === null) return;
     this.confirmation.close();
+    // セッションの状態を戻し、入力モードと表示時刻を解放してパネルを畳む。
     this.current = null;
     this.heldValue = null;
     this.heldBlueprintId = null;
@@ -331,6 +336,7 @@ export class ShipConstruction implements OverlayHandle {
   public hold(held: ConstructionHeld): void {
     const session = this.current;
     if (session === null) return;
+    // piece はいまの取り付け向きを読み戻し、それ以外は取り付け面のある端を向ける。
     if (held.kind === 'piece') {
       if (held.moduleId === session.anchorId) { this.deny('起点のドックは動かせません'); return; }
       if (session.ship.assembly.module(held.moduleId) === null) { this.deny('その部品は掴めません'); return; }
@@ -432,6 +438,7 @@ export class ShipConstruction implements OverlayHandle {
     if (moduleId === null) { this.deny('付け替える部品を選んでください'); return; }
     const info = this.targets().find(entry => constructionTargetId(entry.target) === targetId) ?? null;
     if (info === null) { this.deny('取り付け先を選んでください'); return; }
+    // 選択中の先端部をそのまま手持ちとして試し置きし、置けたら命令を積む。
     const held: ConstructionHeld = { kind: 'piece', moduleId };
     const orientation = this.orientationOfPiece(session, moduleId) ?? this.orientation;
     const trial = tryConstructionPlacement(
@@ -455,6 +462,7 @@ export class ShipConstruction implements OverlayHandle {
       this.deny('接舷中の接続の先は、建造では編集できません');
       return;
     }
+    // 撤去した写しで、健全なコックピットを失うかを確かめる。
     const work = session.ship.assembly.clone();
     try {
       work.detachPiece(moduleId, session.anchorId);
@@ -465,6 +473,7 @@ export class ShipConstruction implements OverlayHandle {
     const losesCockpit = !work.modules.some(module => module.kind === 'cockpit' && module.hp > 0);
     const name = `${constructionModuleLabel(session.ship.assembly, moduleId)} を撤去`;
     const apply = (): void => session.edits.remove(moduleId);
+    // 失うなら確認を挟み、確定した撤去が成功したら閉じる。
     if (losesCockpit) {
       this.confirmation.request({
         title: '健全なコックピットを失う撤去',
@@ -486,13 +495,13 @@ export class ShipConstruction implements OverlayHandle {
   }
 
   // 手持ちがあればその向きを、無ければ選択中のモジュールを先端部ごと steps 段
-  // (90° 単位)回す。1 回の呼び出しは 1 つの命令として履歴へ記録されるので、
-  // 回転リングのドラッグを離したときのまとめ回しもここへ来る。
+  // (90° 単位)回す。1 回の呼び出しは 1 つの命令として履歴へ記録される。
   public rotateSteps(steps: number): void {
     const session = this.current;
     if (session === null) return;
     const step = ((Math.trunc(steps) % 4) + 4) % 4;
     if (step === 0) return;
+    // 手持ちがあればその向きを回す。
     if (this.heldValue !== null) {
       this.orientation = {
         ...this.orientation,
@@ -508,6 +517,7 @@ export class ShipConstruction implements OverlayHandle {
     const orientation: ModuleOrientation = {
       roll: ((current.roll + step) % 4) as ModuleOrientation['roll'], face: current.face,
     };
+    // なければ選択中の先端部を回す命令を積む。
     this.submit(session, 'reorient',
       `${constructionModuleLabel(session.ship.assembly, moduleId)} を回転`, [moduleId], false, null,
       () => session.edits.reorient(moduleId, orientation));
@@ -518,6 +528,7 @@ export class ShipConstruction implements OverlayHandle {
   public swapEnds(): void {
     const session = this.current;
     if (session === null) return;
+    // 手持ちがあればその向きを反転する。
     if (this.heldValue !== null) {
       const definition = heldRootDefinition(session.ship.assembly, this.heldValue);
       const next = this.orientation.face === 'front' ? 'back' : 'front';
@@ -539,6 +550,7 @@ export class ShipConstruction implements OverlayHandle {
       this.deny('この部品は向きを反転できません');
       return;
     }
+    // なければ選択中の先端部を反転する命令を積む。
     this.submit(session, 'reorient',
       `${constructionModuleLabel(session.ship.assembly, moduleId)} の向きを反転`, [moduleId], false, null,
       () => session.edits.reorient(moduleId, { ...current, face: next }));
@@ -571,6 +583,7 @@ export class ShipConstruction implements OverlayHandle {
     const moduleId = this.selectedId;
     if (session === null) return;
     if (moduleId === null) { this.deny('複製する部品を選んでください'); return; }
+    // 選択中の先端部を写しとして切り出して手持ちにする。
     try {
       const piece = session.ship.assembly.clone().detachPiece(moduleId, session.anchorId);
       this.hold({ kind: 'copy', piece });
@@ -586,7 +599,7 @@ export class ShipConstruction implements OverlayHandle {
     const blueprint = this.blueprints.blueprints.find(entry => entry.id === id) ?? null;
     if (blueprint === null) { this.deny('その設計図はありません'); return; }
     try {
-      this.hold({ kind: 'copy', piece: restoreShipAssembly(blueprint.piece) });
+      this.hold({ kind: 'copy', piece: deserializeShipAssembly(blueprint.piece) });
       this.heldBlueprintId = id;
     } catch (error) {
       this.deny(error instanceof Error ? error.message : 'その設計図は読み込めません');
@@ -609,6 +622,7 @@ export class ShipConstruction implements OverlayHandle {
     if (session === null) return;
     const blueprint = this.blueprints.blueprints.find(entry => entry.id === id) ?? null;
     if (blueprint === null) return;
+    // 確認のうえで削除の記録を積み、手に持っていれば手放す。
     this.confirmation.request({
       title: '設計図を削除',
       message: `設計図「${blueprint.name}」を削除します。続けますか？`,
@@ -634,11 +648,13 @@ export class ShipConstruction implements OverlayHandle {
     this.trialCache = null;
   }
 
+  // 直前の操作を取り消して1つ前の船体へ戻す。
   public undo(): void {
     const position = this.current?.history.position ?? 0;
     this.revertTo(position - 1);
   }
 
+  // 取り消した操作をやり直す。
   public redo(): void {
     const position = this.current?.history.position ?? 0;
     this.revertTo(position + 1);
@@ -658,7 +674,7 @@ export class ShipConstruction implements OverlayHandle {
     }, (confirmed) => { if (confirmed) this.revertTo(0); });
   }
 
-  // 選択中モジュールの画面位置を、選択メニューを持つパネルへ流す。表示の導出が毎フレーム呼ぶ。
+  // 選択中モジュールの画面位置を、選択メニューを持つパネルへ流す。
   public syncSelectionMenu(anchor: Projected | null): void {
     this.panel.syncSelectionMenu(anchor);
   }
@@ -673,6 +689,7 @@ export class ShipConstruction implements OverlayHandle {
     if (this.current === null) return;
     const point = { x: event.clientX, y: event.clientY };
     switch (event.phase) {
+      // 持ち上げたカードを手持ちにし、ドラッグを開始する。
       case 'start': {
         let held: ConstructionHeld;
         let blueprintId: string | null = null;
@@ -694,6 +711,7 @@ export class ShipConstruction implements OverlayHandle {
       case 'move':
         if (this.cardDragValue !== null) this.cardDragValue = { ...this.cardDragValue, point };
         return;
+      // 離した位置を記録する。
       case 'end':
         if (this.cardDragValue !== null) this.cardDragValue = { ...this.cardDragValue, point, released: point };
         return;
@@ -706,7 +724,7 @@ export class ShipConstruction implements OverlayHandle {
   private blueprintPiece(id: string) {
     const blueprint = this.blueprints.blueprints.find(entry => entry.id === id) ?? null;
     if (blueprint === null) throw new Error(`unknown blueprint: ${id}`);
-    return restoreShipAssembly(blueprint.piece);
+    return deserializeShipAssembly(blueprint.piece);
   }
 
   // ポインタ入力を建造の操作へ写す。建造中だけ呼ぶ。
@@ -750,9 +768,10 @@ export class ShipConstruction implements OverlayHandle {
     this.syncPanel();
   }
 
-  // モード終了時にDOM callbackを同じ所有者から解放する。
+  // モード終了時にセッションを畳み、パネルへ渡した callback をすべて外す。
   public dispose(): void {
     this.close();
+    // パネルがセッションの callback を握り続けないよう、すべて外す。
     this.panel.onSelectionChange = null;
     this.panel.onBlueprintHold = null;
     this.panel.onCardDrag = null;
@@ -816,12 +835,14 @@ export class ShipConstruction implements OverlayHandle {
   private normalizeSelection(): void {
     const session = this.current;
     if (session === null) return;
+    // 消えたモジュールを指している選択と手持ちを戻す。
     if (this.selectedId !== null && session.ship.assembly.module(this.selectedId) === null) {
       this.selectedId = null;
     }
     if (this.heldValue?.kind === 'piece' && session.ship.assembly.module(this.heldValue.moduleId) === null) {
       this.heldValue = null;
     }
+    // 取り付け先の列挙から落ちた指し示しを戻す。
     if (this.pointedId !== null && this.pointedTarget() === null) this.pointedId = null;
     if (this.hoveredId !== null && session.ship.assembly.module(this.hoveredId) === null) {
       this.hoveredId = null;
@@ -833,11 +854,13 @@ export class ShipConstruction implements OverlayHandle {
     const { assembly } = session.ship;
     const piece = pieceOfModule(assembly.graph, session.anchorId, moduleId);
     if (piece === null) return null;
+    // 先端部の根元の接続と、親の根へ向かう側から見た変換を取り出す。
     const edge = piece.rootConnection;
     const mounted = edge.parentId === moduleId ? inverseTransform(edge.childTransform) : edge.childTransform;
     if (edge.kind === 'axial' || edge.kind === 'construction') {
       return axialPlacementFromTransform(mounted)?.orientation ?? null;
     }
+    // 側面スロットでは、スロットを持つ側の枠組でロール角を読み戻す。
     if (edge.kind === 'side' && edge.sideSlot !== undefined) {
       const ownerId = edge.sideReversed === true ? edge.childId : edge.parentId;
       const ownerDefinition = assembly.definition(ownerId);
@@ -862,9 +885,10 @@ export class ShipConstruction implements OverlayHandle {
       session.ship.assembly, session.anchorId, held, target.target, this.orientation, this.symmetry,
     );
     const ids: string[] = [];
+    // 接ぎ木ごとに、船体の中で未使用の識別子を採る。
     for (const _plan of placement.attachments) {
       let id: string;
-      do id = `construction-${nextConstructionModule++}`;
+      do id = `construction-${this.nextModuleId++}`;
       while (session.ship.assembly.module(id) !== null || ids.includes(id));
       ids.push(id);
     }
@@ -924,6 +948,7 @@ export class ShipConstruction implements OverlayHandle {
       session, action, completion, historyName, historyIndex, moduleIds,
       closeOnSuccess, snapshot: null,
     };
+    // 適用のあとで船体の写しを取る命令を積み、完了を待つ保留へ載せる。
     this.pending.push(pending);
     this.commands.submitWithCompletion(() => {
       apply();
@@ -968,6 +993,7 @@ export class ShipConstruction implements OverlayHandle {
     const held = this.heldValue;
     const effective = this.effectiveHeld();
     const selectedId = this.selectedId;
+    // いまのセッションの状態から表示用の情報を組んでパネルへ流す。
     this.panel.sync(shipConstructionPanelModel({
       shipName: session.ship.name,
       assembly: session.ship.assembly,
