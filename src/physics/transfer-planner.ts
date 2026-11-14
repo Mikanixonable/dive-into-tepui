@@ -19,7 +19,7 @@ import { solveLambert } from './lambert';
 // - low-energy: 遷移弧の途中で完全周回を挟む長時間の解。
 // - bi-elliptic: 高い中間遠点を経る3インパルス遷移(近円・同面のときだけ出る)。
 // - aerobrake: 目標側天体の大気で遠点を削る遷移(大気と弾道係数があるときだけ出る)。
-export type TransferMethod = 'lambert' | 'low-energy' | 'bi-elliptic' | 'aerobrake';
+type TransferMethod = 'lambert' | 'low-energy' | 'bi-elliptic' | 'aerobrake';
 
 // 求解済みの1候補。nodes は計画ノードへそのまま書ける噴射後の絶対状態の列で、
 // 先頭が出発インパルス、末尾が到着インパルス。
