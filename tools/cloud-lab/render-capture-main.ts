@@ -6,7 +6,6 @@ import { LabView } from '../render-lab/lab';
 import type { LabViewAngles } from '../render-lab/view-angles';
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
-import { CUMULUS_DETAIL } from '../../src/render/opaque-cloud-surface-renderer';
 import { R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 
 declare global {
@@ -53,12 +52,12 @@ async function init(): Promise<void> {
     waitUntilReady: () => view.waitUntilReady(),
     setCapture: (spec) => {
       if (cirrusOnly) {
-        // 巻雲層だけを残す。積雲の精細さをオフにすると不透明殻とその影が消える。適用は
+        // 巻雲層だけを残す。積雲をオフにすると不透明殻とその影が消える。適用は
         // earth-nadir の shot 経由で、視点と表示時刻は直後の指定が上書きする。2 枚目以降は
         // 同じ設定なので組み直しは起きない。
         view.applyShot('earth-nadir', {
           clouds: true,
-          cumulusDetail: CUMULUS_DETAIL.off,
+          cumulus: false,
         });
       }
       // 直下点をケースの固定 pivot へ置く。地球の高度は、赤道面の地表が pivot に来る値

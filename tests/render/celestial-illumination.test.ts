@@ -11,7 +11,6 @@ import { CameraView } from '../../src/render/camera/camera-view';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3, type Vec3 } from '../../src/math/vec3';
 import { DEFAULT_GRAPHICS, withGraphicsOption } from '../../src/render/graphics-settings';
-import { CUMULUS_DETAIL } from '../../src/render/opaque-cloud-surface-renderer';
 import type { AtmosphereDraw } from '../../src/render/atmosphere';
 import type { PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
@@ -226,10 +225,10 @@ export function register(): void {
     const sources = [source(body('a', 1e6, v3()), cloudyView)];
     const camera = cameraFrame();
 
-    // 積雲の精細さがオフでも巻雲が描かれていれば源は残り、有無は kinds が伝える。
+    // 積雲がオフでも巻雲が描かれていれば源は残り、有無は kinds が伝える。
     illumination.sync(
       sources, 0, camera,
-      withGraphicsOption(DEFAULT_GRAPHICS, 'cumulusDetail', CUMULUS_DETAIL.off), null, v3(1, 0, 0));
+      withGraphicsOption(DEFAULT_GRAPHICS, 'cumulus', false), null, v3(1, 0, 0));
     assert.ok(targets.cloudCasters[0] !== null, '巻雲だけの空で影の源が切られた');
     const kinds = targets.cloudKinds[0]!;
     assert.deepEqual({ cumulus: kinds.cumulus, cirrus: kinds.cirrus }, { cumulus: false, cirrus: true }, '種類ごとの有無が違う');
@@ -268,4 +267,3 @@ const SHADOW_CLOUD: ShadowCloud = {
     clock: { displayTime: 0, simSpeed: 0 },
   },
 };
-
