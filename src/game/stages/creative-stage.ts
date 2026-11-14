@@ -242,7 +242,7 @@ export class CreativeStage extends Stage {
   ): void {
     super.sync(camera, view, displayTime);
     const ship = this.ship;
-    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
+    this.stageControlsPanel.setShipRequiredButtonsEnabled(ship !== null && ship.motion.alive);
     // 設定パネルは戦闘ビューでのみ出す(SPEC/GAME.md「9.2 設定パネル」)。レールは
     // 戦闘側に固定し、マップでは隠す。
     this.mountStageControlsPanel(false);
