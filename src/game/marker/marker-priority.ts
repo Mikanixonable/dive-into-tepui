@@ -13,7 +13,6 @@ export const MARKER_PRIORITY = {
   AMMO: 300,
   MANEUVER_NODE: 150,
   ORBITAL_NODE: 100,
-  PROTEIN_SITE: 50,
   // 種別に応じた度合いを持たないマーカー(方向・照準・目盛・計画位置など)。
   NONE: 0,
 } as const;

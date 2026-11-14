@@ -1,3 +1,5 @@
+// 建造ゴーストが共有 material を侵さず、宣言どおりの姿・色・チャンネルへ同期し、
+// スナップガイドと同じ接続面を共有することを固定する。
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { Q_IDENTITY, qFromAxisAngle } from '../../src/math/quat';
@@ -6,6 +8,7 @@ import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
 import { test } from '../harness';
 
+// テスト用の model: modelId を名に持つ Group と、所有を印したメッシュ1枚。
 function modelFactory(modelId: string): THREE.Group {
   const model = new THREE.Group();
   model.name = modelId;
@@ -18,6 +21,7 @@ function modelFactory(modelId: string): THREE.Group {
   return model;
 }
 
+// root 配下の最初のメッシュの material を返す。メッシュが無い・material が配列なら失敗。
 function materialOf(root: THREE.Object3D): THREE.Material & { color?: THREE.Color } {
   const mesh = root.getObjectByProperty('isMesh', true) as THREE.Mesh;
   if (!mesh?.isMesh || Array.isArray(mesh.material)) throw new Error('ghost mesh is missing');
@@ -28,6 +32,7 @@ export function register(): void {
   test('ship construction ghost: hidden, valid, invalid, and module switch keep private translucent materials', () => {
     const scene = new THREE.Scene();
     const shared = new THREE.MeshBasicMaterial({ color: 0x456789 });
+    // 全メッシュが同じ共有 material を持つ model を返し、ゴースト側の複製を検査できるようにする。
     const factory = (modelId: string) => {
       const model = modelFactory(modelId);
       const mesh = model.getObjectByProperty('isMesh', true) as THREE.Mesh;
@@ -36,7 +41,7 @@ export function register(): void {
     };
     const ghost = new ShipGhostView(scene, factory);
     assert.equal(ghost.object.visible, false);
-    ghost.sync({ modelId: 'tank-3-main', position: v3(1, 2, 3), rotation: Q_IDENTITY, valid: true });
+    ghost.sync([{ modelId: 'tank-3-main', position: v3(1, 2, 3), rotation: Q_IDENTITY, valid: true }]);
     const validMaterial = materialOf(ghost.object);
     assert.notEqual(validMaterial, shared);
     assert.equal(validMaterial.transparent, true);
@@ -51,13 +56,13 @@ export function register(): void {
     assert.equal(ghost.object.layers.isEnabled(3), true);
     assert.equal(ghostMesh.layers.isEnabled(3), true);
 
-    ghost.sync({ modelId: 'tank-3-main', position: v3(1, 2, 3), rotation: Q_IDENTITY, valid: false });
+    ghost.sync([{ modelId: 'tank-3-main', position: v3(1, 2, 3), rotation: Q_IDENTITY, valid: false }]);
     assert.equal(materialOf(ghost.object), validMaterial);
     assert.equal(validMaterial.color?.getHex(), 0xff5b63);
 
-    ghost.sync({ modelId: 'tank-6-main', position: v3(), rotation: Q_IDENTITY, valid: true });
+    ghost.sync([{ modelId: 'tank-6-main', position: v3(), rotation: Q_IDENTITY, valid: true }]);
     assert.notEqual(materialOf(ghost.object), validMaterial);
-    ghost.sync(null);
+    ghost.sync([]);
     assert.equal(ghost.object.visible, false);
     ghost.dispose();
     ghost.dispose();
@@ -69,11 +74,13 @@ export function register(): void {
     const guide = new DockSnapGuideView(undefined, false);
     const position = v3(10, 20, 30);
     const rotation = qFromAxisAngle(v3(0, 1, 0), Math.PI / 2);
-    ghost.sync({ modelId: 'dock-standard', position, rotation, valid: true });
+    ghost.sync([{ modelId: 'dock-standard', position, rotation, valid: true }]);
     guide.sync({ position, rotation, radius: 3, valid: false });
-    assert.deepEqual(ghost.object.position.toArray(), [10, 20, 30]);
+    const slot = ghost.object.children[0] as THREE.Object3D;
+    assert.ok(slot !== undefined);
+    assert.deepEqual(slot.position.toArray(), [10, 20, 30]);
     assert.deepEqual(guide.object.position.toArray(), [10, 20, 30]);
-    assert.ok(ghost.object.quaternion.angleTo(guide.object.quaternion) < 1e-12);
+    assert.ok(slot.quaternion.angleTo(guide.object.quaternion) < 1e-12);
     assert.deepEqual(guide.object.scale.toArray(), [3, 3, 3]);
     const guideLine = guide.object.children[0] as THREE.Line;
     assert.equal((guideLine.material as THREE.LineBasicMaterial).color.getHex(), 0xff5b63);
@@ -99,5 +106,47 @@ export function register(): void {
     guide.syncAll([{ id: 'cockpit:side+x', position: v3(), rotation: Q_IDENTITY, radius: 2, valid: true }]);
     assert.equal(guide.object.parent?.children.length, 1);
     guide.dispose();
+  });
+
+  test('ship construction ghost: declaration list drives one ghost each and shrink/empty hides the rest', () => {
+    const ghost = new ShipGhostView(undefined, modelFactory, false);
+    ghost.sync([
+      { modelId: 'tank-3-main', position: v3(1, 0, 0), rotation: Q_IDENTITY, valid: true },
+      { modelId: 'tank-6-main', position: v3(0, 5, 0), rotation: qFromAxisAngle(v3(0, 1, 0), Math.PI / 2), valid: false },
+      { modelId: 'dock-standard', position: v3(0, 0, 7), rotation: Q_IDENTITY, valid: true },
+    ]);
+    assert.equal(ghost.object.visible, true);
+    assert.equal(ghost.object.children.length, 3);
+    const [first, second, third] = ghost.object.children as THREE.Group[];
+    assert.deepEqual(first!.position.toArray(), [1, 0, 0]);
+    assert.equal(first!.userData.shipGhostValid, true);
+    assert.deepEqual(second!.position.toArray(), [0, 5, 0]);
+    assert.equal(second!.userData.shipGhostModelId, 'tank-6-main');
+    assert.equal(second!.userData.shipGhostValid, false);
+    assert.equal(second!.layers.isEnabled(3), true);
+    assert.equal(materialOf(second!).color?.getHex(), 0xff5b63);
+    assert.ok(third!.quaternion.angleTo(new THREE.Quaternion()) < 1e-12);
+
+    // 宣言が減った分のスロットは伏せ、残った宣言は独立して更新される。
+    ghost.sync([
+      { modelId: 'tank-3-main', position: v3(2, 0, 0), rotation: Q_IDENTITY, valid: false },
+      { modelId: 'dock-standard', position: v3(0, 5, 0), rotation: Q_IDENTITY, valid: true },
+    ]);
+    assert.equal(ghost.object.children.length, 3);
+    assert.equal(ghost.object.children[2]!.visible, false);
+    assert.deepEqual(ghost.object.children[0]!.position.toArray(), [2, 0, 0]);
+    assert.equal(ghost.object.children[0]!.userData.shipGhostValid, false);
+    // modelId が変わったスロットだけ model を差し替える。
+    const firstModel = ghost.object.children[0]!.children[0];
+    ghost.sync([{ modelId: 'tank-3-main', position: v3(2, 0, 0), rotation: Q_IDENTITY, valid: true }]);
+    assert.equal(ghost.object.children[0]!.children[0], firstModel, '同じ modelId で model を作り直している');
+    assert.equal(ghost.object.children[1]!.visible, false);
+
+    ghost.sync([]);
+    assert.equal(ghost.object.visible, false);
+    assert.ok(ghost.object.children.every((child) => !child.visible));
+    ghost.dispose();
+    ghost.dispose();
+    assert.equal(ghost.object.children.length, 0);
   });
 }

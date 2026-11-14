@@ -2,7 +2,6 @@
 // 戻ることを1つの表で検査する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import rawProteinAsset from '../../src/assets/models/pdb5i4rProtein.json';
 import { v3 } from '../../src/math/vec3';
 import { kinematicState, type SerializedKinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
@@ -19,17 +18,11 @@ import { POWER_CAPACITY, PowerSystem, type SerializedPowerSystem } from '../../s
 import { RadiatorSystem, type SerializedRadiatorSystem } from '../../src/game/player/radiator';
 import { THROTTLE_LEVELS, Throttle, type SerializedThrottle } from '../../src/game/player/throttle';
 import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
-import {
-  ProteinCombatState, type SerializedProteinCombatState,
-} from '../../src/game/protein/protein-combat-state';
 import { RunEventLog } from '../../src/game/run-events';
 import {
   ScoreAttackTimer, type SerializedScoreAttackTimer,
 } from '../../src/game/stages/stage-utils/score-attack-timer';
 import { ScoreCounter, type SerializedScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
-import type { ProteinAssetDefinition } from '../../src/game/protein/protein-schema';
-
-const proteinAsset = rawProteinAsset as unknown as ProteinAssetDefinition;
 
 // 所有者1つぶんの往復。serialized はどの項目も新しく作ったときと違う値を持つ記録、reserialized は
 // それを所有者の復元に通してから直列化し直したもの。
@@ -47,19 +40,6 @@ function roundTrip<T>(owner: string, serialized: T, restore: (serialized: T) => 
 // 時刻 t [s] の、地球を回る位置・速度の記録。
 function serializedState(t: number): SerializedKinematicState {
   return { t, r: { x: 7e6 + t, y: 0, z: 0 }, v: { x: 0, y: 7.5e3, z: t } };
-}
-
-// 先頭の部位が半分まで削れ、構造全体も削れ、修飾がどれも既定と違う状態になり、撃つ部位の巡回が
-// 1つ進んだ戦闘状態の記録。
-function damagedProtein(): SerializedProteinCombatState {
-  return {
-    integrityHp: proteinAsset.integrity.maxHp * 0.8,
-    sites: proteinAsset.sites.map((site, i) => ({ id: site.id, hp: i === 0 ? site.maxHp / 2 : site.maxHp })),
-    modifications: Object.fromEntries(proteinAsset.modificationSlots.map((slot) => [
-      slot.id, slot.states.find((state) => state !== slot.defaultState) ?? slot.defaultState,
-    ])),
-    attackSiteCursor: 1,
-  };
 }
 
 // 往復を確かめる所有者の表。
@@ -116,11 +96,6 @@ function roundTrips(): readonly RoundTrip[] {
         wasEmptyClick: true,
       },
       (serialized) => WeaponState.deserialize(serialized),
-    ),
-    roundTrip<SerializedProteinCombatState>(
-      'ProteinCombatState',
-      damagedProtein(),
-      (serialized) => ProteinCombatState.deserialize(serialized, proteinAsset),
     ),
     roundTrip<SerializedPlan>(
       'Plan',
