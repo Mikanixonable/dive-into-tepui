@@ -1,9 +1,10 @@
-// 点から恒星へ向かう経路が、大気 1 体ぶんに受ける光学的厚みを出す式。大気の描画(視線の
-// 透過率・内部散乱の積分)と地表・雲・艦へ届く直射光の減衰が**同じ式・同じ関数**を通るための
-// 共有場所 — どちらかだけが変わると、薄明で大気と地表の明るさが食い違う。
-// 扁平な天体では、極軸方向へ引き伸ばして真球へ写した空間で評価する。
+// 点から恒星へ向かう経路の、大気 1 体ぶんの幾何と、散乱係数 1 あたりの光学的厚みを出す式。
+// 大気の描画(視線区間の透過率・内部散乱の積分)・直射光の透過率表・天空光表の焼き込みが
+// **同じ経路式**を通るための共有場所 — どれかだけが変わると、薄明で大気と地表の明るさが
+// 食い違う。扁平な天体では、極軸方向へ引き伸ばして真球へ写した空間で評価する。
+// GPU で走る式は TSL、表を焼く側・テストが使う式は値版の孪生で、行対応で並べて持つ。
 import {
-  PI, abs, dot, exp, float, greaterThan, length, max, normalize, select, sqrt, sub, vec3,
+  PI, abs, dot, exp, float, greaterThan, length, max, normalize, select, sqrt, sub,
 } from 'three/tsl';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
@@ -50,16 +51,37 @@ export function depthToSpace(
   return select(greaterThan(mu, 0), ascending, descending);
 }
 
-// 大気 1 体ぶんの、太陽方向の光学的厚みを決める幾何と光学。値は TSL ノードで受ける。
+// 半径 radius・天頂角余弦 mu の点から、地表の上 [center−halfThickness, center+halfThickness]
+// にある薄い層を通り抜けるまでの幾何学的な路長。層の密度形は問わず、殻の中を通る長さだけを
+// 返す — 層内の密度の重みは係数側が畳み込む(テントなら層を通る長さに平均密度比を掛ける)。
+// mu<0 の経路は depthToSpace と同じく、最接近点で折り返す2本として数える。
+export function layerDepthValue(
+  radius: number, mu: number, surfaceRadius: number,
+  center: number, halfThickness: number,
+): number {
+  const perpSq = radius * radius * (1 - mu * mu);
+  const inner = surfaceRadius + center - halfThickness;
+  const outer = surfaceRadius + center + halfThickness;
+  const innerSpan = Math.sqrt(Math.max(inner * inner - perpSq, 0));
+  const outerSpan = Math.sqrt(Math.max(outer * outer - perpSq, 0));
+  const descending = mu < 0;
+  // 層の下からは両殻を順に抜ける長さ。層の中からは外殻までの長さから、内殻へ潜って戻る
+  // 2 往復ぶんを引く(潜らない mu では内殻の項が 0 に潰れる)。層の上からは、降りる経路だけが
+  // 内外の殻を 2 往復ぶん通る。
+  const below = outerSpan - innerSpan;
+  const inside = -radius * mu + outerSpan - (descending ? innerSpan * 2 : 0);
+  const above = descending ? (outerSpan - innerSpan) * 2 : 0;
+  return radius < inner ? below : radius < outer ? inside : above;
+}
+
+// 大気を持つ天体 1 体ぶんの、太陽方向の経路を真球空間で引くための幾何。値は TSL ノードで受ける。
+// **光学係数はここには置かない** — 経路の消衰は、透過率表(sun-transmittance-tables.ts)が
+// 焼き込み側でこの幾何の値版を使って評価する。
 export interface SunPathAtmosphere {
   readonly center: Vec3Node;
   readonly surfaceRadius: FloatNode;
   readonly polarAxis: Vec3Node;
   readonly polarStretch: FloatNode;
-  readonly rayleigh: Vec3Node;
-  readonly rayleighScaleHeight: FloatNode;
-  readonly mie: FloatNode;
-  readonly mieScaleHeight: FloatNode;
 }
 
 // 点(描画座標)から恒星の位置(描画座標)へ向かう経路の、真球空間での形。
@@ -91,15 +113,27 @@ export function sunPathGeometry(
   return { offset, radius, toSun, sunMu, sunPathScale };
 }
 
-// 点から恒星へ向かう経路が大気 1 体ぶんに受ける、波長別の光学的厚み [m]。RGB の vec3 で返す。
-export function sunPathDepth(geometry: SunPathGeometry, atmosphere: SunPathAtmosphere): Vec3Node {
-  return atmosphere.rayleigh
-    .mul(depthToSpace(
-      geometry.radius, geometry.sunMu, atmosphere.surfaceRadius, atmosphere.rayleighScaleHeight,
-    ).mul(geometry.sunPathScale))
-    .add(vec3(atmosphere.mie.mul(
-      depthToSpace(
-        geometry.radius, geometry.sunMu, atmosphere.surfaceRadius, atmosphere.mieScaleHeight,
-      ).mul(geometry.sunPathScale),
-    )));
+// 三角テントの密度の、ピークに対する平均の比。層を通る幾何学的な路長に掛けて、
+// ピーク密度での係数が受ける実効の厚みに直す。
+export const TENT_MEAN_DENSITY = 0.5;
+
+// ---- 値版(焼き込みとテストが使う) -------------------------------------------
+
+// outwardDepth の値版。式は TSL 版と同じ(対応が崩れたら焼く表と GPU の絵が食い違う)。
+export function outwardDepthValue(
+  radius: number, mu: number, surfaceRadius: number, scaleHeight: number,
+): number {
+  const chapmanZero = Math.sqrt(Math.PI * radius / scaleHeight * 0.5);
+  const chapman = chapmanZero / ((chapmanZero - 1) * mu + 1);
+  return scaleHeight * Math.exp((surfaceRadius - radius) / scaleHeight) * chapman;
+}
+
+// depthToSpace の値版。式は TSL 版と同じ。
+export function depthToSpaceValue(
+  radius: number, mu: number, surfaceRadius: number, scaleHeight: number,
+): number {
+  const ascending = outwardDepthValue(radius, Math.abs(mu), surfaceRadius, scaleHeight);
+  if (mu > 0) return ascending;
+  const perigee = Math.max(radius * Math.sqrt(Math.max(1 - mu * mu, 0)), surfaceRadius);
+  return outwardDepthValue(perigee, 0, surfaceRadius, scaleHeight) * 2 - ascending;
 }
