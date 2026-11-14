@@ -14,18 +14,18 @@ export const DEPTH_GUARD_RATIO = 3;
 export const DEPTH_GUARD_EXIT_RATIO = 2;
 
 // a・b のうち隠す側を 'a' | 'b' で返す。優先度が等しく tieBreakOnEqualPriority が false の
-// ときは、どちらも隠さない(undefined)— 呼び出し元が別の手段(ラベル位置の反発など)で
+// ときは、どちらも隠さない(null)— 呼び出し元が別の手段(ラベル位置の反発など)で
 // 共存させる前提の組。depth は優先度が等しいときの決定論的タイブレークにのみ使う値で、
 // 持たない呼び出し元は省略してよい(既定 0 同士は id によるタイブレークへ落ちる)。
 export function resolveCrowdingWinner(
-  aId: string, aPriority: number, aDist: number | undefined, aWasHidden: boolean,
-  bId: string, bPriority: number, bDist: number | undefined, bWasHidden: boolean,
+  aId: string, aPriority: number, aDist: number | null, aWasHidden: boolean,
+  bId: string, bPriority: number, bDist: number | null, bWasHidden: boolean,
   depthGuardRatio: number, depthGuardExitRatio: number,
   tieBreakOnEqualPriority: boolean,
   aDepth = 0, bDepth = 0,
-): 'a' | 'b' | undefined {
+): 'a' | 'b' | null {
   // 片方が著しく奥にあるなら、優先度より先に奥側を隠す。
-  if (aDist !== undefined && bDist !== undefined) {
+  if (aDist !== null && bDist !== null) {
     const aRatio = aWasHidden ? depthGuardExitRatio : depthGuardRatio;
     const bRatio = bWasHidden ? depthGuardExitRatio : depthGuardRatio;
     if (aDist > bDist * aRatio) return 'a';
@@ -34,7 +34,7 @@ export function resolveCrowdingWinner(
   if (aPriority > bPriority) return 'b';
   if (bPriority > aPriority) return 'a';
   // 優先度が並んだ組は、フレームをまたいで選び直さないよう不変の値で順序を付ける。
-  if (!tieBreakOnEqualPriority) return undefined;
+  if (!tieBreakOnEqualPriority) return null;
   if (aDepth > bDepth) return 'a';
   if (bDepth > aDepth) return 'b';
   return aId > bId ? 'a' : 'b';
