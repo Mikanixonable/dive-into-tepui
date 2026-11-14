@@ -71,14 +71,13 @@ export function binaryMask(field) {
 
 const degToRad = (deg) => (deg * Math.PI) / 180;
 
-// 直下点 (latitudeDeg, longitudeDeg)・高度 cameraDistanceKm [km]・垂直画角 fovDeg の天底
-// カメラで撮った場を、箱 { south, north, west, east } [°] の正距円筒 (width × height) へ
-// 双一次で載せ替える。像の右が東・上が北 (LabView の天底配置の解析結果)。
-// 枠の外 (地平線の向こう) は valid が 0 になる。返す validRect は valid がすべて 1 の
-// 最大の矩形 { x0, y0, width, height } で、特徴量はこの矩形で測る。
-// 箱の中心が直下点からずれている対 (npac-storm 2000 km) では、箱の東端が枠から出る。
-export function resampleCaptureToBox(capture, latitudeDeg, longitudeDeg, cameraDistanceKm, fovDeg, box, width, height) {
-  const fPx = (capture.height / 2) / Math.tan(degToRad(fovDeg) / 2);
+// 箱の各画素が撮影のどこを読むか (双一次の元画素)。直下点・高度・画角・箱が同じなら
+// 時刻によらず同じ写像になるので、時系列では 1 回だけ作って使い回す。
+// srcX/srcY は撮影の画素座標 (双一次の左上の角が整数)。枠の外 (地平線の向こう) は
+// valid が 0 になる。返す validRect は valid がすべて 1 の最大の矩形。
+export function captureBoxMapping(latitudeDeg, longitudeDeg, cameraDistanceKm, fovDeg, box,
+  width, height, captureWidth, captureHeight) {
+  const fPx = (captureHeight / 2) / Math.tan(degToRad(fovDeg) / 2);
   const lat0 = degToRad(latitudeDeg);
   const lon0 = degToRad(longitudeDeg);
   // 直下点の天体固定の東・北・上 (正距円筒の取り決め: 経度 0 が +Z、東が +X、北極が +Y)。
@@ -90,7 +89,8 @@ export function resampleCaptureToBox(capture, latitudeDeg, longitudeDeg, cameraD
     Math.cos(lat0) * Math.sin(lon0), Math.sin(lat0), Math.cos(lat0) * Math.cos(lon0),
   ];
   const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-  const out = new Float32Array(width * height);
+  const srcX = new Float64Array(width * height);
+  const srcY = new Float64Array(width * height);
   const valid = new Uint8Array(width * height);
   for (let y = 0; y < height; y++) {
     const lat = degToRad(box.north - ((y + 0.5) / height) * (box.north - box.south));
@@ -105,24 +105,51 @@ export function resampleCaptureToBox(capture, latitudeDeg, longitudeDeg, cameraD
       // 視線の深さ (forward = -up)。z <= 0 は地平線の向こう。
       const z = EARTH_RADIUS_KM + cameraDistanceKm - EARTH_RADIUS_KM * c;
       if (z <= 0) continue;
-      const px = capture.width / 2 + (fPx * EARTH_RADIUS_KM * e) / z;
-      const py = capture.height / 2 - (fPx * EARTH_RADIUS_KM * n) / z;
-      if (px < 0 || px > capture.width - 1 || py < 0 || py > capture.height - 1) continue;
-      const x0 = Math.floor(px);
-      const y0 = Math.floor(py);
-      const fx = px - x0;
-      const fy = py - y0;
-      const x1 = Math.min(capture.width - 1, x0 + 1);
-      const y1 = Math.min(capture.height - 1, y0 + 1);
-      const { data, width: w } = capture;
-      out[y * width + x] = data[y0 * w + x0] * (1 - fx) * (1 - fy)
-        + data[y0 * w + x1] * fx * (1 - fy)
-        + data[y1 * w + x0] * (1 - fx) * fy
-        + data[y1 * w + x1] * fx * fy;
+      const px = captureWidth / 2 + (fPx * EARTH_RADIUS_KM * e) / z;
+      const py = captureHeight / 2 - (fPx * EARTH_RADIUS_KM * n) / z;
+      if (px < 0 || px > captureWidth - 1 || py < 0 || py > captureHeight - 1) continue;
+      srcX[y * width + x] = px;
+      srcY[y * width + x] = py;
       valid[y * width + x] = 1;
     }
   }
-  return { width, height, data: out, valid, validRect: largestValidRect(valid, width, height) };
+  return { width, height, srcX, srcY, valid, validRect: largestValidRect(valid, width, height) };
+}
+
+// 写像で撮影を箱へ載せ替える (双一次)。像の右が東・上が北。
+export function applyCaptureMapping(capture, mapping) {
+  const { width, height, srcX, srcY, valid } = mapping;
+  const out = new Float32Array(width * height);
+  const { data, width: w } = capture;
+  for (let i = 0; i < width * height; i++) {
+    if (valid[i] === 0) continue;
+    const px = srcX[i];
+    const py = srcY[i];
+    const x0 = Math.floor(px);
+    const y0 = Math.floor(py);
+    const fx = px - x0;
+    const fy = py - y0;
+    const x1 = Math.min(capture.width - 1, x0 + 1);
+    const y1 = Math.min(capture.height - 1, y0 + 1);
+    out[i] = data[y0 * w + x0] * (1 - fx) * (1 - fy)
+      + data[y0 * w + x1] * fx * (1 - fy)
+      + data[y1 * w + x0] * (1 - fx) * fy
+      + data[y1 * w + x1] * fx * fy;
+  }
+  return { width, height, data: out, valid, validRect: mapping.validRect };
+}
+
+// 直下点 (latitudeDeg, longitudeDeg)・高度 cameraDistanceKm [km]・垂直画角 fovDeg の天底
+// カメラで撮った場を、箱 { south, north, west, east } [°] の正距円筒 (width × height) へ
+// 双一次で載せ替える。像の右が東・上が北 (LabView の天底配置の解析結果)。
+// 枠の外 (地平線の向こう) は valid が 0 になる。返す validRect は valid がすべて 1 の
+// 最大の矩形 { x0, y0, width, height } で、特徴量はこの矩形で測る。
+// 箱の中心が直下点からずれている対 (npac-storm 2000 km) では、箱の東端が枠から出る。
+export function resampleCaptureToBox(capture, latitudeDeg, longitudeDeg, cameraDistanceKm, fovDeg, box, width, height) {
+  const mapping = captureBoxMapping(
+    latitudeDeg, longitudeDeg, cameraDistanceKm, fovDeg, box, width, height,
+    capture.width, capture.height);
+  return applyCaptureMapping(capture, mapping);
 }
 
 // valid がすべて 1 の最大の矩形。行ごとの有効区間を上から下へ伸ばしながら、
@@ -345,16 +372,23 @@ function blurKm(field, sigmaKm, kmPerPx) {
   return { width: field.width, height: field.height, data: blurred };
 }
 
-// 帯 [loKm, hiKm] の成分統計。2 つのぼかしの差 (DoG) で帯域だけを抜き、
-// 正のふくらみ (その尺度の明るい構造) をしきい 0 で成分に分ける。面積と周囲は地表の km 換算。
-export function bandComponents(field, kmPerPx, loKm, hiKm) {
+// 帯 [loKm, hiKm] だけを抜いた場。2 つのぼかしの差 (DoG) で、その尺度の明るい構造を残す。
+// bandComponents と時系列の動きの計測 (cloud-fine-motion.mjs) で共有する。
+export function bandPassField(field, kmPerPx, loKm, hiKm) {
   const fine = blurKm(field, loKm / 4, kmPerPx);
   const coarse = blurKm(field, hiKm / 4, kmPerPx);
   const dog = new Float32Array(field.data.length);
   for (let i = 0; i < dog.length; i++) dog[i] = fine.data[i] - coarse.data[i];
+  return { width: field.width, height: field.height, data: dog };
+}
+
+// 帯 [loKm, hiKm] の成分統計。2 つのぼかしの差 (DoG) で帯域だけを抜き、
+// 正のふくらみ (その尺度の明るい構造) をしきい 0 で成分に分ける。面積と周囲は地表の km 換算。
+export function bandComponents(field, kmPerPx, loKm, hiKm) {
+  const dog = bandPassField(field, kmPerPx, loKm, hiKm);
   const rowKmPerPx = new Array(field.height).fill(kmPerPx);
   const stats = componentStats(
-    { width: field.width, height: field.height, data: dog }, 0, false, rowKmPerPx, kmPerPx);
+    { width: field.width, height: field.height, data: dog.data }, 0, false, rowKmPerPx, kmPerPx);
   return {
     count: stats.count,
     medianAreaKm2: stats.areaKm2.median,
