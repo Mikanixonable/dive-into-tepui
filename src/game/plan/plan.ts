@@ -117,9 +117,9 @@ export class Plan {
     return this.data ?? { anchor: shipState, nodes: NO_NODES };
   }
 
-  // 最初に実行されるノードを返す。ノードが無ければ undefined。
-  public firstNode(): KinematicState | undefined {
-    return this.data?.nodes[0];
+  // 最初に実行されるノードを返す。ノードが無ければ null。
+  public firstNode(): KinematicState | null {
+    return this.data?.nodes[0] ?? null;
   }
 
   // 起点を anchor とする計画で、実行時刻 t のノードが実行時刻順で何番目になるか。起点の時刻以前は
