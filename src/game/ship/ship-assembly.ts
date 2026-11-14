@@ -328,11 +328,6 @@ export class ShipAssembly {
   public get maxHp(): number { return this.totals().maxHp; }
   public get totalThrust(): number { return this.totals().thrust; }
   public get totalTorque(): number { return this.totals().torque; }
-  // 主・RCS・ブースター燃料の残量の合計 [unit]。
-  public get totalFuel(): number {
-    const t = this.totals();
-    return t.mainFuel + t.rcsFuel + t.boosterFuel;
-  }
   public get totalMass(): number { return this.totals().mass; }
   public get totalPower(): number { return this.totals().power; }
   public get totalRadiation(): number { return this.totals().radiation; }
