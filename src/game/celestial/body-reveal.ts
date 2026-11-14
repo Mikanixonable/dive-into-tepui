@@ -5,9 +5,13 @@
 // 解放の記録が無いとき(新しいセーブ枠・古い記録)から始まる、解放された天体の id。
 export const BODY_REVEAL_BASE: readonly string[] = ['sun', 'earth', 'moon'];
 
-// ステージのクリアで解放する天体の対応。対応はまだ定まっていないので空であり、クリアで増えるのは
-// 空の表に従う分だけになる(SPEC/GAME.md「未確定の案」)。
-const BODIES_REVEALED_BY_CLEAR: Readonly<Record<string, readonly string[]>> = {};
+// ステージのクリアで解放する天体の対応(SPEC/GAME.md「天体の解放」)。解放されるのは惑星
+// 本体だけで、その衛星は含まない。
+const BODIES_REVEALED_BY_CLEAR: Readonly<Record<string, readonly string[]>> = {
+  '0': ['mars'],
+  '1': ['venus', 'mercury'],
+  '2': ['jupiter'],
+};
 
 // revealed の天体に、stageId をクリアしたときに解放される天体を加えた集合。重複は除く。
 export function revealedAfterClear(revealed: readonly string[], stageId: string): readonly string[] {
