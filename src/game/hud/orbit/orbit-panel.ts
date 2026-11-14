@@ -142,7 +142,7 @@ export class OrbitPanel {
       { value: view.temperatureK.toFixed(0), unit: 'K' },
     );
 
-    // 畳んだ見出しには高度を出し、高度・動圧・船体温度のうち最も重い段を色と記号で残す。
+    // 畳んだ見出しには高度を出し、高度・動圧・機体温度のうち最も重い段を色と記号で残す。
     const altitude = fmtDistParts(view.altitudeM);
     this.els.setText('hud-orbit-summary', `${altitude.value} ${altitude.unit}`.trim());
     applyAlarmLevel(this.els.get('hud-orbit-summary'), worstAlarmLevel(altitudeLevel, qdynLevel, tempLevel));
