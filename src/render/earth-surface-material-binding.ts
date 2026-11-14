@@ -5,9 +5,8 @@ import { normalView, positionLocal, uniform } from 'three/tsl';
 import type { CelestialSurfaceFrame } from './celestial/celestial-surface';
 import { DeferredTexture } from './deferred-texture';
 import {
-  EARTH_BASE_TERRAIN_HEIGHT, EARTH_BASE_TERRAIN_WIDTH, loadEarthBaseTerrainForFormat,
+  EARTH_BASE_TERRAIN_HEIGHT, EARTH_BASE_TERRAIN_WIDTH, loadEarthBaseTerrain,
 } from './earth-surface-terrain-codec';
-import { EARTH_TERRAIN_LAYOUT, type EarthSurfaceTerrainFormat } from './earth-surface-format';
 import type { EarthSurfaceGpuTextures } from './earth-surface-gpu';
 import { createEarthSurfaceNodeMaterial } from './earth-surface-material-node';
 import { configureEarthSurfaceTexture } from './earth-surface-texture';
@@ -26,8 +25,8 @@ export interface EarthSurfaceMaterialBinding {
   dispose(): void;
 }
 
-// 未取得のbase地形を平面法線・最大粗さで埋めるRGBA8データを作る。
-// 全球fallback用の楕円体法線と最大粗さをRGBA8へ焼く。
+// base地形が届くまでのfallbackとして、画素の地理座標の楕円体法線と最大粗さを焼いた
+// RGBA8データを作る。
 function defaultTerrainData(): Uint8Array {
   // 各画素を地理座標へ対応させ、楕円体の放射法線を符号化する。
   const data = new Uint8Array(EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
@@ -62,7 +61,6 @@ function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; read
 // 楕円体法線と粗さ1で描く。
 export function createEarthSurfaceMaterialBinding(
   textures: EarthSurfaceGpuTextures, baseColorUrl: string, baseTerrainUrl: string, fetchImpl?: typeof fetch,
-  terrainFormat: EarthSurfaceTerrainFormat = EARTH_TERRAIN_LAYOUT,
   albedoScale = 1,
 ): EarthSurfaceMaterialBinding {
   let disposed = false;
@@ -105,7 +103,7 @@ export function createEarthSurfaceMaterialBinding(
     throw error;
   }
   // baseTerrainは届いた時点で初期データへ上書きする。
-  void loadEarthBaseTerrainForFormat(baseTerrainUrl, fetchImpl ?? fetch, abortController.signal, terrainFormat)
+  void loadEarthBaseTerrain(baseTerrainUrl, fetchImpl ?? fetch, abortController.signal)
     .then((data) => {
       if (disposed) return;
       baseTerrain.data.set(data);

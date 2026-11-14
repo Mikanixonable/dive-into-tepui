@@ -15,6 +15,9 @@ import type { RunEvent, RunEventBody, ShipRequiredAction } from './run-events';
 
 // 内部エラーの告知を出しておく時間 [ms]。読み落とさないよう、通常の告知より長く置く。
 const CORRUPTION_TOAST_MS = 60000;
+// 鹵獲の告知を出す時間と、授与の後で出し始めるまでの遅れ [ms]。撃墜の演出と重ならないよう遅らせる(SPEC GAME.md 3.1)。
+const SALVAGE_TOAST_MS = 3000;
+const SALVAGE_TOAST_DELAY_MS = 500;
 
 // 自然損耗の理由ごとの文言。cause を足すと文言の追加漏れが型検査で落ちる。
 const ENEMY_LOSS_TEXT: Record<Exclude<EnemyDeathCause, 'killed'>, string> = {
@@ -281,6 +284,23 @@ export class RunEventPresenter {
         return;
       case 'shipRequiredForAction':
         this.notifier.hint(SHIP_REQUIRED_TEXT[body.action], undefined, 'warn');
+        return;
+
+      case 'salvageAwarded':
+        this.uiSounds.push('salvage-award');
+        setTimeout(() => this.notifier.toast(`<b>${body.name} を授与</b>`, SALVAGE_TOAST_MS), SALVAGE_TOAST_DELAY_MS);
+        return;
+
+      case 'salvageBlueprintGranted':
+        this.notifier.hint(`${body.name} の設計図を設計図棚へ追加した`, 5000);
+        return;
+
+      case 'salvageTenderArrived':
+        this.notifier.hint('補給艇が鹵獲品を積んで現れた — 建造ドックへ接続すると積荷を使える', 6000);
+        return;
+
+      case 'blueprintRenamed':
+      case 'blueprintDeleted':
         return;
     }
   }
