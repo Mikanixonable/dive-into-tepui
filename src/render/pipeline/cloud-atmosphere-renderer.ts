@@ -30,7 +30,7 @@ const CLOUD_SHAPE_EVALUATOR = new CloudShapeEvaluator(0);
 // 殻 1 枚の見え方。鉛直の光学的厚みは、場から引いた厚みを cutoff で足切りし、gain を掛けたもの。
 // albedo は殻の拡散反射率、bottomAltitude と topAltitude はその殻が代表する層の高度 [m] で、
 // 殻は層の中央に立ち、層の厚みが掠める視線の光路を決める。
-export interface CloudShellKnob {
+interface CloudShellKnob {
   readonly cutoff: FloatUniform;
   readonly gain: FloatUniform;
   readonly albedo: FloatUniform;

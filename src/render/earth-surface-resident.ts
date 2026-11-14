@@ -366,4 +366,3 @@ export class EarthSurfaceResidentCoordinator {
   }
 }
 
-export { EarthSurfaceResidentCoordinator as EarthSurfaceResident };

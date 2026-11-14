@@ -43,11 +43,6 @@ export function cirrusColumnOpticalDepthNode(amount: FloatNode): FloatNode {
   return amount.mul(amount).mul(CIRRUS_MAX_OPTICAL_DEPTH);
 }
 
-// 巻雲の量から不透明度(1 − e^−τ)。
-export function cirrusOpacityNode(amount: FloatNode): FloatNode {
-  return exp(cirrusColumnOpticalDepthNode(amount).negate()).oneMinus();
-}
-
 // 巻雲の鉛直柱光学深さから量。光学深さは上限で頭打ちにする。
 export function cirrusAmountFromOpticalDepthNode(opticalDepth: FloatNode): FloatNode {
   return sqrt(clamp(opticalDepth.div(CIRRUS_MAX_OPTICAL_DEPTH), 0, 1));

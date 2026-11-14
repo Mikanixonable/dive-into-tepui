@@ -11,7 +11,7 @@ export const CIRRUS_FLOW_SPEED_ONSET = 5;
 export const CIRRUS_FLOW_SPEED_FULL = 30;
 
 // 倍角ベクトルの成分。局所の東・北の基底で (cos 2θ, sin 2θ) × 揃い度。
-export interface CirrusFlow {
+interface CirrusFlow {
   readonly east: number;
   readonly north: number;
 }

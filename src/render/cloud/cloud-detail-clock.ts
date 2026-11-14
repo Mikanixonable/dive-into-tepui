@@ -28,7 +28,7 @@ const MIN_VISIBLE_LIFETIME = 3;
 const RESEED_SPAN = 97;
 
 // 波長 wavelength [m] の段の寿命 [s]。
-export function detailLifetime(wavelength: number): number {
+function detailLifetime(wavelength: number): number {
   return LIFETIME_AT_1KM * (wavelength / 1000) ** LIFETIME_EXPONENT;
 }
 
@@ -49,7 +49,7 @@ function writeReseed(cycle: number, out: THREE.Vector3): void {
 
 // 読む位置の線形の写し。単位ベクトル axis の向きの成分を 1/factor に縮めてから読む — 模様は axis の向きに
 // factor 倍長く伸びる。
-export interface LinearStretch {
+interface LinearStretch {
   readonly axis: Vec3Node;
   readonly factor: FloatNode;
 }
