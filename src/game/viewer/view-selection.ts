@@ -5,6 +5,7 @@ import type { ViewMode } from '../view/view-mode';
 // ビュー遷移の可否判定および遷移時の計画件数を参照するインターフェース。
 export interface ViewControlSource {
   readonly current: {
+    readonly id: string;
     readonly plan: { readonly nodes: readonly unknown[] };
   } | null;
 }
@@ -60,7 +61,7 @@ export class ViewSelection implements ViewSelectionSource {
   public toggle(): void {
     if (this.view === 'combat') {
       this.view = 'map';
-      this.events.record({ kind: 'orbitPlanningOpened' });
+      this.events.record({ kind: 'orbitPlanningOpened', shipId: this.control.current?.id ?? null });
       return;
     }
 
