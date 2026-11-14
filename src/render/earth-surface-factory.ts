@@ -180,8 +180,4 @@ export function createEarthSurfaceRuntime(options: EarthSurfaceFactoryOptions = 
   return { surface, ready };
 }
 
-// runtimeのready完了まで待ち、surfaceと最終状態を返す。
-export async function createEarthSurface(options: EarthSurfaceFactoryOptions = {}): Promise<EarthSurfaceFactoryResult> {
-  // 起動時の全球表示を返し、詳細接続の完了を待って最終状態を返す。
-  return createEarthSurfaceRuntime(options).ready;
-}
+
