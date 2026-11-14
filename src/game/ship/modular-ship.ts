@@ -1,4 +1,4 @@
-// モジュール船 entity の船体・操縦・戦闘・接舷・分離・保存ライフサイクルを所有する。
+// モジュール船 entity の船体・操縦・戦闘・接舷・分離・直列化のライフサイクルを所有する。
 import type * as THREE from 'three/webgpu';
 import type { ViewMode } from '../view/view-mode';
 import { deserializeAttitude, type Attitude } from '../../physics/attitude';
@@ -44,12 +44,10 @@ import { shipRenderAssembly } from './ship-render-adapter';
 import { ShipCapabilities } from './ship-capabilities';
 import { shipPhysicsShape } from './ship-physics-shape';
 import type { ControlSelection } from '../control-selection';
-import { ShipDockState } from './ship-dock-state';
 import {
-  restoreConstructionDrafts, restoreShipAssembly, serializeShipAssembly,
+  deserializeShipAssembly, serializeShipAssembly,
   type SerializedCollisionGrace, type SerializedDockedVessel, type SerializedShipAssembly,
-  type SerializedShipConstructionDraft,
-} from './ship-save';
+} from './ship-assembly-serialization';
 import { ModularShipConnectionOperations } from './modular-ship-connection-operations';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { StageOutcome } from '../stages/stage-outcome';
@@ -57,17 +55,13 @@ import type { StageRules } from '../stages/stage-rules';
 
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
 
-// 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
-// 船体への直撃(PLASMA_BULLET_DAMAGE)より軽い。
 const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
 
 // 給弾ベルトの節点数。たわみ物理の鎖の長さと、表示するリンクメッシュの本数を揃える。
 const BELT_MAX_VISIBLE = 18;
 
-// 軌道計画の実行モードの巡回順。ボタン1つで次のモードへ進める。
-// 新規配置は name/state/id/ammo を任意指定し、省略時は高度 INITIAL_ALT・傾斜 INITIAL_INC_DEG の
-// 円軌道に機首プログレードで初期配置する。スナップショットからの再開は saved を simTime 付きの
-// 状態として展開する。
+// 新規配置するモジュール船の初期値。省略した項目は既定値で組み、
+// assembly 未指定なら既定戦闘船、state 未指定なら原点近傍の静止状態で配置する。
 export interface ModularShipInit {
   readonly name?: string;
   readonly state?: KinematicState;
@@ -75,7 +69,6 @@ export interface ModularShipInit {
   readonly ammo?: AmmoLoad;
   readonly assembly?: ShipAssembly;
   readonly att?: Attitude;
-  readonly dockState?: readonly SerializedShipConstructionDraft[];
   readonly operatingCockpitId?: string | null;
 }
 
@@ -83,7 +76,6 @@ export interface SerializedModularShip extends SerializedDynamicEntityFields {
   readonly kind: 'ship';
   readonly name: string;
   readonly assembly: SerializedShipAssembly;
-  readonly dockState: readonly SerializedShipConstructionDraft[];
   readonly dockedVessels: readonly SerializedDockedVessel[];
   readonly collisionGrace: readonly SerializedCollisionGrace[];
   readonly operatingCockpitId: string | null;
@@ -118,7 +110,6 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   public declare readonly motion: ModularShipMotion;
   public readonly assembly: ShipAssembly;
   public readonly capabilities: ShipCapabilities;
-  public readonly docks: ShipDockState;
   public readonly connections: ModularShipConnectionOperations;
   public readonly throttle: Throttle;
   public readonly fire: FireControl;
@@ -141,11 +132,11 @@ export class ModularShip extends CombatShipEntity implements Controllable {
 
   public get totalTorque(): number { return this.capabilities.totalTorque; }
   public get totalThrust(): number { return this.capabilities.totalThrust; }
+  // 健全な主推進器の燃料消費率の合計 [unit/s]。
   public get totalFuelConsumptionRate(): number {
-    return this.capabilities.modules('thruster', true).reduce(
-      (sum, module) => sum + (this.assembly.definition(module.id)?.abilities.fuelConsumptionRate ?? 0), 0,
-    );
+    return this.capabilities.totals.mainFuelConsumptionRate;
   }
+  // 健全な RCS モジュールの燃料消費率の合計 [unit/s]。
   public get rcsFuelConsumptionRate(): number {
     return this.capabilities.modules('rcs', true).reduce(
       (sum, module) => sum + (this.assembly.definition(module.id)?.abilities.fuelConsumptionRate ?? 0), 0,
@@ -155,23 +146,27 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   public get totalMaxFuel(): number { return this.capabilities.maxFuel('main'); }
   public get totalRcsFuel(): number { return this.capabilities.fuel('rcs'); }
   public get totalMaxRcsFuel(): number { return this.capabilities.maxFuel('rcs'); }
+  // 主推進燃料を amount だけ消費し、消費できた割合(0..1)を返す。amount <= 0 なら 1。
   public consumeFuel(amount: number): number {
     if (amount <= 0) return 1;
     const consumed = this.capabilities.consumeFuel('main', amount);
     if (consumed > 0) this.motion.synchronizeAssembly();
     return consumed / amount;
   }
+  // 主推進燃料を amount だけ補給し、実際に入った量を返す。
   public refuelFuel(amount: number): number {
     const added = this.capabilities.refuel('main', amount);
     if (added > 0) this.motion.synchronizeAssembly();
     return added;
   }
+  // RCS 燃料を amount だけ消費し、消費できた割合(0..1)を返す。amount <= 0 なら 1。
   public consumeRcsFuel(amount: number): number {
     if (amount <= 0) return 1;
     const consumed = this.capabilities.consumeFuel('rcs', amount);
     if (consumed > 0) this.motion.synchronizeAssembly();
     return consumed / amount;
   }
+  // RCS 燃料を amount だけ補給し、実際に入った量を返す。
   public refuelRcsFuel(amount: number): number {
     const added = this.capabilities.refuel('rcs', amount);
     if (added > 0) this.motion.synchronizeAssembly();
@@ -197,28 +192,33 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     return new ModularShip(registry, scene, { serialized });
   }
 
+  // placement なら新規配置、serialized なら直列化された記録からの復元として組む。
   private constructor(
     registry: EntityRegistry,
     scene: THREE.Scene,
     init: { readonly placement: ModularShipInit } | { readonly serialized: SerializedModularShip },
   ) {
-    const saved = 'serialized' in init ? init.serialized : undefined;
+    // 記録と配置どちらの入力かで、assembly・名前・運動状態・姿勢を解決する。
+    const serialized = 'serialized' in init ? init.serialized : undefined;
     const placement = 'placement' in init ? init.placement : undefined;
-    const assembly = saved ? restoreShipAssembly(saved.assembly) : (placement?.assembly ?? createDefaultCombatPreset());
+    const assembly = serialized ? deserializeShipAssembly(serialized.assembly) : (placement?.assembly ?? createDefaultCombatPreset());
     const physics = shipPhysicsShape(assembly);
     if (physics === null) throw new Error('default modular ship preset is empty');
-    const name = saved ? (saved.name || saved.id) : (placement?.name ?? generateRandomName('player'));
-    const state = saved
-      ? deserializeKinematicState(saved)
+    const name = serialized ? (serialized.name || serialized.id) : (placement?.name ?? generateRandomName('player'));
+    const state = serialized
+      ? deserializeKinematicState(serialized)
       : (placement?.state ?? kinematicState<'eci'>(0, v3(1, 0, 0), v3(0, 1, 0)));
-    const id = registry.idAllocators.entity.next(saved?.id ?? placement?.id ?? name);
-    const att: Attitude = saved
-      ? deserializeAttitude(saved, physics.mass.inertia)
+    const id = registry.idAllocators.entity.next(serialized?.id ?? placement?.id ?? name);
+    const att: Attitude = serialized
+      ? deserializeAttitude(serialized, physics.mass.inertia)
       : (placement?.att === undefined
         ? ModularShip.progradeAttitude(state, physics.mass.inertia)
         : { ...placement.att, inertia: physics.mass.inertia });
 
+    // 接触帰結は motion が持つ反応契約経由で届くが、reactions 本体は motion より後に組めるので、
+    // 呼ばれた時点で解決する遅延参照にする。
     let reactionHandler: ModularShipReactions | null = null;
+    // 遅延参照を解決する。まだ組めていなければ失敗にする。
     const requiredReactions = (): ModularShipReactions => {
       if (reactionHandler === null) throw new Error('modular ship reactions are not initialized');
       return reactionHandler;
@@ -246,6 +246,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       stepAutopilot: (_self, dt, attractors, pivot) => owner.autopilot.step(dt, attractors, pivot),
       autopilotMaxStep: () => owner.autopilot.maxStepDuration(),
     });
+    // entity の基底へ、assembly を物理形状として運ぶ motion と表示資源を渡す。
     super(
       name,
       assembly.maxHp,
@@ -255,38 +256,32 @@ export class ModularShip extends CombatShipEntity implements Controllable {
         att,
         reactions(owner as ModularShip),
         {
-          temperature: saved?.thermal.temperature ?? HULL_START_TEMP,
+          temperature: serialized?.thermal.temperature ?? HULL_START_TEMP,
           beltLinkCount: BELT_MAX_VISIBLE,
-          beltSave: saved?.belt,
-          radiatorSave: saved?.radiator,
-          powerSave: saved?.power,
+          serializedBelt: serialized?.belt,
+          serializedRadiator: serialized?.radiator,
+          serializedPower: serialized?.power,
         },
       ),
       new ModularShipDynamicView(scene, id, BELT_MAX_VISIBLE),
       id,
     );
+    // assembly と、その周りに組む能力・接触帰結・接続系の協力者。
     this.assembly = assembly;
-    this.docks = new ShipDockState(saved
-      ? restoreConstructionDrafts(saved.dockState, assembly)
-      : placement?.dockState ? restoreConstructionDrafts(placement.dockState, assembly) : []);
     this.capabilities = new ShipCapabilities(
-      assembly, saved?.operatingCockpitId ?? placement?.operatingCockpitId ?? null,
+      assembly, serialized?.operatingCockpitId ?? placement?.operatingCockpitId ?? null,
     );
     this.mapKind = assembly.role === 'base' ? 'base' : 'player';
     this.showsEquatorNodesAlways = assembly.role === 'base';
     this.setHealth(assembly.totalHp, assembly.maxHp);
     this.registry = registry;
-    this.throttle = saved?.throttle ? Throttle.deserialize(saved.throttle) : new Throttle();
+    this.throttle = serialized?.throttle ? Throttle.deserialize(serialized.throttle) : new Throttle();
     this.effects = new PlayerEffects(registry);
     this.reactions = new ModularShipReactions({
       motion: this.motion,
       assembly: this.assembly,
       effects: this.effects,
-      syncAfterDamage: () => {
-        this.setHealth(this.assembly.totalHp, this.assembly.maxHp);
-        this.capabilities.reconcileOperatingCockpit();
-        this.syncDerivedRole();
-      },
+      syncAfterDamage: () => this.syncAssemblyIntegrity(),
     });
     reactionHandler = this.reactions;
     const thisShipName = (): string => this.name;
@@ -297,32 +292,28 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       scene,
       assembly: this.assembly,
       capabilities: this.capabilities,
-      docks: this.docks,
       motion: this.motion,
       createShip: (next, nextRegistry) => ModularShip.create(next, nextRegistry, scene),
       clearTransientCommands: () => this.clearTransientCommands(),
-      syncAssemblyDerivedState: () => {
-        this.setHealth(this.assembly.totalHp, this.assembly.maxHp);
-        this.capabilities.reconcileOperatingCockpit();
-        this.syncDerivedRole();
-      },
+      syncAssemblyDerivedState: () => this.syncAssemblyIntegrity(),
     });
-    this.plan = saved?.plan ? Plan.deserialize(saved.plan) : Plan.create();
-    this._planExecution = saved?.planExecution ?? 'instant';
-    this.autopilot = new ShipAutopilot(this, saved?.autopilot);
-    this._fineAttitude = saved?.fineAttitude ?? false;
-    if (saved) {
-      this.connections.restore(saved.dockedVessels, saved.collisionGrace, state.t);
+    // 計画・操縦・射撃系の部品と、記録があれば接舷 identity の復元。
+    this.plan = serialized?.plan ? Plan.deserialize(serialized.plan) : Plan.create();
+    this._planExecution = serialized?.planExecution ?? 'instant';
+    this.autopilot = new ShipAutopilot(this, serialized?.autopilot);
+    this._fineAttitude = serialized?.fineAttitude ?? false;
+    if (serialized) {
+      this.connections.deserializeConnectionState(serialized.dockedVessels, serialized.collisionGrace, state.t);
     }
     this.fire = new FireControl(
       this, registry, scene,
-      saved?.fire ? WeaponState.deserialize(saved.fire) : placement?.ammo ? WeaponState.create(placement.ammo) : undefined,
+      serialized?.fire ? WeaponState.deserialize(serialized.fire) : placement?.ammo ? WeaponState.create(placement.ammo) : undefined,
     );
-    this.altitudeAlarm = saved?.altitudeAlarm
-      ? AltitudeAlarm.deserialize(saved.altitudeAlarm, registry.events)
+    this.altitudeAlarm = serialized?.altitudeAlarm
+      ? AltitudeAlarm.deserialize(serialized.altitudeAlarm, registry.events)
       : new AltitudeAlarm(registry.events);
-    if (saved?.plan) {
-      const dropped = Plan.droppedNodeCount(saved.plan);
+    if (serialized?.plan) {
+      const dropped = Plan.droppedNodeCount(serialized.plan);
       if (dropped > 0) registry.events.record({ kind: 'planNodesDropped', ship: this.name, count: dropped });
     }
   }
@@ -345,12 +336,15 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   // 主推進燃料 1 unit あたりの質量 [kg/unit](自動操縦が燃焼時間へ換算する)。
   public mainFuelMassPerUnit(): number { return this.capabilities.fuelMassPerUnit('main'); }
 
+  // 計画ノードの実行方式(instant か autopilot か)を切り替える。
   public setPlanExecution(mode: PlanExecutionMode): void { this._planExecution = mode; }
 
+  // instant モードのときだけ、次に実行される計画ノードの時刻 [s]。それ以外は null。
   public get instantNodeTime(): number | null {
     return this._planExecution === 'instant' ? this.plan.firstNode()?.t ?? null : null;
   }
 
+  // instant モードで simTime までに来た計画ノードを消費し、最後のノードの状態へ運動を飛ばす。
   public executeInstantNodesUpTo(simTime: number): void {
     if (this._planExecution !== 'instant') return;
     const due = this.plan.nodes.filter(node => node.t <= simTime);
@@ -360,6 +354,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     this.motion.reset(reached);
   }
 
+  // dt 秒ぶんの回復量(HP = dt)を、健全な module の欠けた分へ先頭から順に配る。
   private hpRegen(dt: number): void {
     let remaining = Math.max(0, dt);
     for (const module of this.assembly.modules) {
@@ -390,6 +385,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   // 点火済み booster module を同時に進め、区間平均推力を現在質量の対数平均で加速度へ直す。
   private stepBoosters(simDt: number): Vec3 | null {
     if (!(simDt > 0)) return null;
+    // 区間で燃やせた割合だけ各 booster の推力を足す。
     const massBefore = this.motion.mass;
     let averageThrust = 0;
     let consumedAny = false;
@@ -406,6 +402,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     }
     if (consumedAny) this.motion.synchronizeAssembly();
     if (!(averageThrust > 0)) return null;
+    // 燃料消費で質量が動いたので、区間の対数平均質量で加速度へ直す。
     const massAfter = this.motion.mass;
     const meanMass = Math.abs(massBefore - massAfter) < 1e-12
       ? massAfter
@@ -416,6 +413,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       : null;
   }
 
+  // booster module の点火状態を切り替え、切替後の状態を返す。booster でなければ失敗にする。
   public toggleBoosterIgnition(moduleId: string): boolean {
     const booster = this.assembly.module(moduleId);
     if (booster?.kind !== 'booster') throw new Error(`not a booster module: ${moduleId}`);
@@ -463,21 +461,32 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     this.connections.syncAssemblyDerivedState();
   }
 
+  // 耐久値の合計・操縦基準・表示上の役割を、assembly の現在値へ揃え直す。
+  private syncAssemblyIntegrity(): void {
+    this.setHealth(this.assembly.totalHp, this.assembly.maxHp);
+    this.capabilities.reconcileOperatingCockpit();
+    this.syncDerivedRole();
+  }
+
+  // assembly の役割(ship/base/material)から mapKind と表示設定を導き直す。
   private syncDerivedRole(): void {
     this.mapKind = this.capabilities.role === 'base' ? 'base' : 'player';
     this.showsEquatorNodesAlways = this.capabilities.role === 'base';
   }
 
+  // デカプラーの切断も同じ接続所有者へ渡す。
   public decouple(decouplerId: string, registry: EntityRegistry): ModularShip {
     return this.connections.decouple(decouplerId, registry);
   }
 
+  // 衝突猶予の再適用も同じ接続所有者へ渡す。
   public restoreCollisionGrace(ships: readonly ModularShip[]): void {
     this.connections.restoreCollisionGrace(ships);
   }
 
   // ブースターとデカプラーがある艦の燃焼管理表示を組み立てる。
   public burnManagementViewModel(): BurnManagementViewModel | null {
+    // booster・decoupler がどちらも無ければ表示するものは無い。
     const boosters = this.capabilities.modules('booster');
     const decouplers = this.capabilities.modules('decoupler');
     if (boosters.length === 0 && decouplers.length === 0) return null;
@@ -486,6 +495,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       (total, module) => total + (this.assembly.definition(module.id)?.abilities.fuelCapacity ?? 0), 0,
     );
     const anyIgnited = boosters.some(module => module.ignited && module.fuel > 0 && module.hp > 0);
+    // 残量と点火状態から燃焼段の状態を決め、モジュール1つ1行の項目へ並べる。
     return {
       stageCount: boosters.length,
       totalMass: this.motion.mass,
@@ -555,8 +565,10 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     this.registry.events.record({ kind: 'fineAttitudeToggled', on: this._fineAttitude });
   }
 
+  // 1回きりの操縦命令を受け付け、命令ごとに担当の装備へ振り分ける。
   public handleCommand(command: PilotCommand): void {
     const events = this.registry.events;
+    // 命令種別ごとに担当の装備へ振り分ける網羅的な分岐。
     switch (command.kind) {
       case 'thrustLatchToggle': this.throttle.toggleThrustLatch(command.direction); return;
       case 'rcsDampToggle': this.throttle.toggleRcsDamp(events); return;
@@ -674,13 +686,12 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     super.dispose();
   }
 
-  // 現在の艦状態を保存用データへ変換する。
+  // 現在の艦状態を直列化された形へ写す。
   public override serialize(): SerializedModularShip {
     return {
       ...this.serializeEntityFields(ModularShip.kind),
       name: this.name,
       assembly: serializeShipAssembly(this.assembly),
-      dockState: this.docks.serialize(),
       dockedVessels: this.connections.serializeDockedVessels(),
       collisionGrace: this.connections.serializeCollisionGrace(this.motion.state.t),
       operatingCockpitId: this.capabilities.operatingCockpitId,

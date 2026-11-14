@@ -1,3 +1,4 @@
+// 動的物体1体の表示ツリーの基底と、種別を越えて共有する表示入力・表示同期の材料。
 import type * as THREE from 'three/webgpu';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -17,7 +18,7 @@ import { TargetRelativeLine } from '../lines/target-relative-line';
 import { TrajectoryLine } from '../lines/trajectory-line';
 import type { CelestialFrameSource } from '../lines/celestial-frame-source';
 import type { InstancedPools } from './instanced-pools';
-import type { ProteinDisplaySettings } from '../protein/protein-display';
+import type { ShipModuleEmphasisMap } from './ship/ship-render-contract';
 import type { SunLight } from '../pipeline/sun-light';
 import type { BodyShadow } from '../pipeline/shadow/body-shadow';
 import { syncThermalState } from '../thermal-emissive';
@@ -48,8 +49,8 @@ export interface DynamicViewFrame {
   readonly camera: CameraFrame;
   readonly style: RenderStyle;
   readonly visual: EntityVisualSettings;
-  // 全個体に共通のタンパク質の表示形態と着色。
-  readonly proteinDisplay: ProteinDisplaySettings;
+  // モジュール船のモジュールごとの表示上の強調と位置のずらし。宣言の無い個体は通常どおり描く。
+  readonly shipModuleEmphasis: ShipModuleEmphasisMap | null;
   // このフレームにシーンを照らす恒星の光と、天体が落とす影。
   readonly sunLight: SunLight;
   readonly bodyShadow: BodyShadow;
