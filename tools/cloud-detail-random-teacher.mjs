@@ -38,9 +38,24 @@ const WINDOW_GRID = 16;
 // 窓の陸海条件。海区分は海がこの割合以上、陸区分は陸がこの割合以上を、WINDOW_KM の両方の窓で要求する。
 const SEA_MIN_SHARE = 0.9;
 const LAND_MIN_SHARE = 0.7;
+// 乾燥の判定。窓の陸の平年の雲量(climate-map の G)の平均がこの値以下であること [0..1]。
+// 陸全体の中央値(約 0.42)より低く、砂漠の箱の多くが通る値に置く。
+const DRY_MAX_CLOUDINESS = 0.3;
+// 代表的な砂漠の箱 [deg]。乾燥区分はここから抽出し、窓の乾燥の判定で絞る。
+const DESERT_BOXES = [
+  { south: 18, north: 30, west: -10, east: 35 },
+  { south: 17, north: 30, west: 40, east: 58 },
+  { south: 37, north: 41, west: 77, east: 90 },
+  { south: 40, north: 45, west: 95, east: 110 },
+  { south: -30, north: -22, west: 125, east: 142 },
+  { south: -28, north: -20, west: 14, east: 25 },
+  { south: -27, north: -18, west: -71, east: -68 },
+  { south: 31, north: 37, west: -117, east: -110 },
+];
 
 // 区分の定義。緯度帯は |緯度| の範囲 [deg]、陸海の条件は窓の内訳。months は高緯度区分の
-// 季節制限(海氷・雪を避ける)で、北半球・南半球それぞれ許す月(1-12)。
+// 季節制限(海氷・雪を避ける)で、北半球・南半球それぞれ許す月(1-12)。boxes があれば
+// 緯度帯の代わりにその箱から抽出し、dry は窓の乾燥の判定を課す。
 const CATEGORIES = [
   { name: 'tropical-sea', surface: 'sea', latitudeBand: [0, 25] },
   { name: 'temperate-sea', surface: 'sea', latitudeBand: [25, 55] },
@@ -48,6 +63,7 @@ const CATEGORIES = [
   { name: 'tropical-land', surface: 'land', latitudeBand: [0, 25] },
   { name: 'temperate-land', surface: 'land', latitudeBand: [25, 55] },
   { name: 'highlat-land', surface: 'land', latitudeBand: [55, 65], months: { north: [6, 7, 8, 9], south: [12, 1, 2] } },
+  { name: 'arid-land', surface: 'land', boxes: DESERT_BOXES, dry: true },
 ];
 
 // 種から組む一様乱数(selftest と同じ mulberry32)。
@@ -70,37 +86,50 @@ const smoothstep = (edge0, edge1, x) => {
   return t * t * (3 - 2 * t);
 };
 
-// 緯度 latitudeDeg・経度 longitudeDeg [deg] の陸らしさ 0..1。正距円筒の取り決め
-// (u=0.5 が経度 0、v=0 が北極)で最近傍のテクセルを読む。
-function landFractionAt(latitudeDeg, longitudeDeg) {
+// 緯度 latitudeDeg・経度 longitudeDeg [deg] の最近傍テクセルの先頭チャンネルの添字。
+// 正距円筒の取り決め(u=0.5 が経度 0、v=0 が北極)で引く。
+function texelOffsetAt(latitudeDeg, longitudeDeg) {
   const u = (longitudeDeg / 360 + 0.5 + 1) % 1;
   const v = Math.min(1, Math.max(0, 0.5 - latitudeDeg / 180));
   const x = Math.min(climate.width - 1, Math.floor(u * climate.width));
   const y = Math.min(climate.height - 1, Math.floor(v * climate.height));
-  const elevation = (climate.data[(y * climate.width + x) * climate.channels + 2] / 255) * 8000;
+  return (y * climate.width + x) * climate.channels;
+}
+
+// 緯度経度 [deg] の陸らしさ 0..1。
+function landFractionAt(latitudeDeg, longitudeDeg) {
+  const elevation = (climate.data[texelOffsetAt(latitudeDeg, longitudeDeg) + 2] / 255) * 8000;
   return smoothstep(0, 100, elevation);
 }
 
-// 中心 (latitudeDeg, longitudeDeg) の一辺 windowKm の窓(BBOX)のうち陸が占める割合。
-// BBOX の領域を格子で走り、面積に近いよう cos(緯度) で重み付けする。
-function landShareInWindow(latitudeDeg, longitudeDeg, windowKm) {
+// 緯度経度 [deg] の平年の雲量 0..1。
+function cloudinessAt(latitudeDeg, longitudeDeg) {
+  return climate.data[texelOffsetAt(latitudeDeg, longitudeDeg) + 1] / 255;
+}
+
+// 中心 (latitudeDeg, longitudeDeg) の一辺 windowKm の窓(BBOX)の陸の割合と、窓の陸の平年の雲量の平均。
+// BBOX の領域を格子で走り、面積に近いよう cos(緯度) で重み付けする。雲量の平均は陸の重みで取る。
+function windowStats(latitudeDeg, longitudeDeg, windowKm) {
   const halfLatitude = (windowKm / 2) / KM_PER_DEGREE;
   const halfLongitude = (windowKm / 2) / (KM_PER_DEGREE * Math.cos((latitudeDeg * Math.PI) / 180));
   let land = 0;
+  let landCloudiness = 0;
   let total = 0;
   for (let j = 0; j < WINDOW_GRID; j++) {
     const latitude = latitudeDeg - halfLatitude + (j / (WINDOW_GRID - 1)) * 2 * halfLatitude;
     const weight = Math.max(0, Math.cos((latitude * Math.PI) / 180));
     for (let i = 0; i < WINDOW_GRID; i++) {
       const longitude = longitudeDeg - halfLongitude + (i / (WINDOW_GRID - 1)) * 2 * halfLongitude;
-      land += weight * landFractionAt(latitude, longitude);
+      const landWeight = weight * landFractionAt(latitude, longitude);
+      land += landWeight;
+      landCloudiness += landWeight * cloudinessAt(latitude, longitude);
       total += weight;
     }
   }
-  return land / total;
+  return { landShare: land / total, cloudiness: landCloudiness / land };
 }
 
-// 点が区分の条件を満たすか。緯度帯は抽出の段で既に絞るので、ここでは窓の陸海条件と
+// 点が区分の条件を満たすか。緯度帯・箱は抽出の段で既に絞るので、ここでは窓の陸海条件・乾燥条件と
 // BBOX が日付変更線・極を跨がないかを見る。
 function candidateValid(category, latitudeDeg, longitudeDeg) {
   const halfLatitudeMax = (Math.max(...WINDOW_KM) / 2) / KM_PER_DEGREE;
@@ -108,9 +137,11 @@ function candidateValid(category, latitudeDeg, longitudeDeg) {
   for (const windowKm of WINDOW_KM) {
     const halfLongitude = (windowKm / 2) / (KM_PER_DEGREE * Math.cos((latitudeDeg * Math.PI) / 180));
     if (longitudeDeg - halfLongitude < -180 || longitudeDeg + halfLongitude > 180) return false;
-    const landShare = landShareInWindow(latitudeDeg, longitudeDeg, windowKm);
+    const { landShare, cloudiness } = windowStats(latitudeDeg, longitudeDeg, windowKm);
     if (category.surface === 'sea' && landShare > 1 - SEA_MIN_SHARE) return false;
     if (category.surface === 'land' && landShare < LAND_MIN_SHARE) return false;
+    // 陸が無い窓では雲量が NaN になり、この比較で棄てられる。
+    if (category.dry && !(cloudiness <= DRY_MAX_CLOUDINESS)) return false;
   }
   return true;
 }
@@ -122,20 +153,29 @@ function dateAllowed(category, latitudeDeg, month) {
   return allowed.includes(month);
 }
 
-// 区分の候補を決定的に列挙する生成器。緯度は緯度帯の中で球面上の面積一様(sin 緯度を一様に)、
-// 経度は一様、日付は DATE_RANGE から一様に立て、オフラインの条件(季節・窓の陸海・BBOX)を
-// 通ったものだけを返す。得られる列は SEED だけで決まる。
+// 区分の候補を決定的に列挙する生成器。箱の指定が無いときは緯度を緯度帯の中で球面上の面積一様
+// (sin 緯度を一様に)、箱があるときは箱を一様に選んでその中の一様な点とし、経度は一様、日付は
+// DATE_RANGE から一様に立て、オフラインの条件(季節・窓の陸海・乾燥・BBOX)を通ったものだけを返す。
+// 得られる列は SEED だけで決まる。
 function* candidateStream(category, categoryIndex) {
   const rng = mulberry32(SEED + categoryIndex * 0x9e3779b9);
-  const [latMin, latMax] = category.latitudeBand;
+  const [latMin, latMax] = category.latitudeBand ?? [0, 0];
   const sinMin = Math.sin((latMin * Math.PI) / 180);
   const sinMax = Math.sin((latMax * Math.PI) / 180);
   const epoch = Date.parse(`${DATE_RANGE.start}T00:00:00Z`);
   let index = 0;
   while (true) {
-    const south = rng() < 0.5;
-    const latitude = (south ? -1 : 1) * Math.asin(sinMin + rng() * (sinMax - sinMin)) * 180 / Math.PI;
-    const longitude = rng() * 360 - 180;
+    let latitude;
+    let longitude;
+    if (category.boxes) {
+      const box = category.boxes[Math.floor(rng() * category.boxes.length)];
+      latitude = box.south + rng() * (box.north - box.south);
+      longitude = box.west + rng() * (box.east - box.west);
+    } else {
+      const south = rng() < 0.5;
+      latitude = (south ? -1 : 1) * Math.asin(sinMin + rng() * (sinMax - sinMin)) * 180 / Math.PI;
+      longitude = rng() * 360 - 180;
+    }
     const dayOffset = Math.floor(rng() * DATE_RANGE.days);
     const date = new Date(epoch + dayOffset * 86400e3).toISOString().slice(0, 10);
     const month = Number(date.slice(5, 7));
@@ -238,10 +278,12 @@ function saveManifest(points, rejected) {
 const SMOKE_CATEGORIES = ['tropical-sea'];
 const SMOKE_COUNT = 4;
 const smoke = (process.env.npm_lifecycle_event ?? '').includes('smoke');
+// 取る区分を絞る(カンマ区切り)。既存の区分の欠け点を埋め直さずに一部の区分だけ足すときに使う。
+const onlyCategories = process.env.CLOUD_DETAIL_RANDOM_CATEGORIES?.split(',').map((name) => name.trim()).filter(Boolean);
 
 async function main() {
   mkdirSync(outDir, { recursive: true });
-  const categoryNames = smoke ? SMOKE_CATEGORIES : CATEGORIES.map((category) => category.name);
+  const categoryNames = smoke ? SMOKE_CATEGORIES : onlyCategories ?? CATEGORIES.map((category) => category.name);
   const count = smoke ? SMOKE_COUNT : POINTS_PER_CATEGORY;
   const categories = CATEGORIES
     .map((category, index) => ({ ...category, streamIndex: index }))
