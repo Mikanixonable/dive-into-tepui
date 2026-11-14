@@ -69,7 +69,10 @@ function worldSoundOf(body: RunEventBody): WorldSound | null {
     case 'altitudeWarned': return { kind: 'altAlarm' };
     case 'boosterDecoupled': return { kind: 'decouple' };
     case 'ammoPickedUp':
-    case 'rcsFuelPickedUp': return { kind: 'pickup' };
+    case 'rcsFuelPickedUp':
+    case 'magazineAdded':
+    case 'rcsFuelRefilled': return { kind: 'pickup' };
+    case 'baseFuelRefilled': return body.ships > 0 ? { kind: 'pickup' } : null;
     default: return null;
   }
 }
@@ -207,6 +210,19 @@ export class RunEventPresenter {
         return;
       case 'rcsFuelPickedUp':
         this.notifier.hint(`補給取り込み — RCS燃料 +${Math.round(body.fuel)} kg`, 3000);
+        return;
+      case 'magazineAdded':
+        this.notifier.hint('チェーンへマガジンを1つ追加', 3000);
+        return;
+      case 'rcsFuelRefilled':
+        this.notifier.hint(body.fuel > 0
+          ? `RCS燃料を満タンに補充(+${Math.round(body.fuel)} kg)`
+          : 'RCS燃料はすでに満タン', 3000);
+        return;
+      case 'baseFuelRefilled':
+        this.notifier.hint(body.ships > 0
+          ? `基地 ${body.ships} 隻の燃料を満タンに補充`
+          : '基地がありません', 3000);
         return;
 
       case 'maneuverNodeApproaching':

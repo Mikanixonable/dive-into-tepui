@@ -103,6 +103,8 @@ export class StageDebugAltSystem extends Stage {
   public static readonly selectLabel = 'DEBUG(架空星系)';
   public static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
   public static readonly hiddenFromSelect = true;
+  // 撃破しても決着しない(GAME.md 2.7)。解放の記録も読まない。
+  public static readonly judgesOutcome = false;
 
   // 自機を zephyrus の高度 500km の赤道円軌道へ置いて始める。
   public static create(...deps: StageDeps): StageDebugAltSystem {

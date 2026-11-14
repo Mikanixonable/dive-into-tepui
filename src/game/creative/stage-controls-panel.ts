@@ -22,14 +22,15 @@ const STAGE_CONTROL_ENEMY_COLORS = [
 
 export class StageControlsPanel {
   public readonly element: HTMLElement;
-  // setSpawnButtonsEnabled がまとめて有効/無効を切り替える対象。
-  private readonly spawnEnemyButtons: readonly Button[];
+  // setShipRequiredButtonsEnabled がまとめて有効/無効を切り替える対象。
+  private readonly shipRequiredButtons: readonly Button[];
 
   public onToggleResupply: ((on: boolean) => void) | null = null;
   public onToggleFuelResupply: ((on: boolean) => void) | null = null;
   public onToggleWaveAttack: ((on: boolean) => void) | null = null;
   public onAddMagazine: (() => void) | null = null;
   public onRefillFuel: (() => void) | null = null;
+  public onRefillBaseFuel: (() => void) | null = null;
   public onSpawnDistanceChange: ((distanceM: number) => void) | null = null;
   public onSpawnEnemy: ((shape: EnemySpawnShape, colorValue: string) => void) | null = null;
 
@@ -60,7 +61,9 @@ export class StageControlsPanel {
     panel.insertBefore(compactToggle.element, body);
 
     // 補給・波状攻撃・手動スポーンの各セクションを body へ組み込む。
-    this.buildGeneralControls(body, resupplyEnabled, rcsFuelResupplyEnabled, waveAttackEnabled);
+    const generalControls = this.buildGeneralControls(
+      body, resupplyEnabled, rcsFuelResupplyEnabled, waveAttackEnabled,
+    );
     const conventional = this.buildConventionalEnemySection();
     const assembly = this.buildAssemblyEnemySection();
     this.appendEnemyTabs(
@@ -68,22 +71,24 @@ export class StageControlsPanel {
       [['conventional', '従来型の敵', conventional.element],
         ['assembly', '組み立て型の敵', assembly.element]],
     );
-    this.spawnEnemyButtons = [
+    this.shipRequiredButtons = [
+      ...generalControls.shipRequiredButtons,
       conventional.spawnButton, assembly.spawnButton,
     ];
 
     this.element = panel;
   }
 
-  // 操作艦の有無に応じて、敵スポーン系のボタンをまとめて有効/無効にする。
-  public setSpawnButtonsEnabled(enabled: boolean): void {
-    for (const button of this.spawnEnemyButtons) button.setEnabled(enabled);
+  // 操作艦の有無に応じて、操作艦を必要とするボタンをまとめて有効/無効にする。
+  public setShipRequiredButtonsEnabled(enabled: boolean): void {
+    for (const button of this.shipRequiredButtons) button.setEnabled(enabled);
   }
 
   // 補給2種・波状攻撃のトグルと、敵のスポーン距離入力を body へ足す。
+  // 操作艦を必要とするボタンは、無効化の管理へ回せるよう返す。
   private buildGeneralControls(
     body: HTMLElement, resupplyEnabled: boolean, rcsFuelResupplyEnabled: boolean, waveAttackEnabled: boolean,
-  ): void {
+  ): { shipRequiredButtons: readonly Button[] } {
     const resupplyToggle = new ToggleSwitch('弾薬の自動投入', (on) => this.onToggleResupply?.(on));
     resupplyToggle.setOn(resupplyEnabled);
     body.appendChild(resupplyToggle.element);
@@ -97,6 +102,9 @@ export class StageControlsPanel {
     body.appendChild(addMagazineButton.element);
     const refillFuelButton = new Button('RCS燃料を満タンにする', () => this.onRefillFuel?.());
     body.appendChild(refillFuelButton.element);
+    const refillBaseFuelButton = new Button('基地の燃料を満タンにする', () => this.onRefillBaseFuel?.());
+    body.appendChild(refillBaseFuelButton.element);
+    const shipRequiredButtons = [addMagazineButton, refillFuelButton];
 
     // 手動スポーンが使う距離の入力欄。無効値は直前の有効値へ戻す。
     const spawnDistanceWrapper = document.createElement('label');
@@ -115,6 +123,7 @@ export class StageControlsPanel {
     spawnDistanceInput.setValue(String(this.spawnDistance));
     spawnDistanceWrapper.appendChild(spawnDistanceInput.element);
     body.appendChild(spawnDistanceWrapper);
+    return { shipRequiredButtons };
   }
 
   // 従来型の敵(漂流/接近3種)の形状・色選択とスポーンボタンをまとめたセクションを組み立てる。
