@@ -1,4 +1,5 @@
-import { vec2, vec4 } from 'three/tsl';
+import type * as THREE from 'three/webgpu';
+import { mix, vec2, vec4 } from 'three/tsl';
 import type { FloatNode, Vec2Node, Vec4Node } from '../tsl-types';
 
 // 雲場の生成値と焼いたテクスチャの読み値。雲は種類ごとの量(0..1)で持ち、RGBAの配置を
@@ -21,11 +22,33 @@ export interface CloudSample {
   readonly anvil: FloatNode;
 }
 
+// 焼いた雲場の 1 枚ぶん。雲・風・環境の写しは同じ時刻と cap で焼かれている。
+export interface CloudFieldSlot {
+  readonly cloud: THREE.Texture;
+  readonly motion: THREE.Texture;
+  readonly environment: THREE.Texture;
+}
+
+// 焼いた雲場の 2 枚の混ぜ方。parity は古い側の枚の番号(0 か 1)、fraction は古い側から新しい側への混合比(0..1)。
+// 源が毎フレーム書き換えるので、読み手は読んだ時点の値を使う。
+export interface CloudBlend {
+  parity: 0 | 1;
+  fraction: number;
+}
+
 // 雲を運ぶ風。低い雲を運ぶ地表付近の風と、巻雲を運ぶ上層の風の、局所の東・北の成分 [m/s]。
 // 止まった雲場(実写)では 0。
 export interface CloudMotion {
   readonly surfaceWind: Vec2Node;
   readonly upperWind: Vec2Node;
+}
+
+// 焼いた 2 枚の RGBA を、古い側の枚 parity と混合比 fraction で混ぜる。古い側と新しい側の役割を
+// parity で入れ替え、テクスチャの参照は 2 枚のまま固定する。
+export function blendBakedTexels(a: Vec4Node, b: Vec4Node, parity: FloatNode, fraction: FloatNode): Vec4Node {
+  const older = mix(a, b, parity);
+  const newer = mix(b, a, parity);
+  return mix(older, newer, fraction);
 }
 
 // 焼いた雲場のRGBA(R = 積雲、G = 巻雲、B・A = 筋の倍角ベクトル)と環境のRGBA(R = 陸、G = 対流、

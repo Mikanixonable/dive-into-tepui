@@ -102,7 +102,6 @@ async function main() {
         await devTools.evaluate(`window.renderLab.setGraphicsOption('clouds', true)`);
         await devTools.evaluate(`window.renderLab.setGraphicsOption('cloudShadow', true)`);
         await devTools.evaluate(`window.renderLab.setGraphicsOption('cumulusDetail', ${detail})`);
-        await devTools.evaluate(`window.renderLab.setGraphicsOption('cirrus', true)`);
         await devTools.evaluate(`window.renderLab.setGraphicsOption('cirrusDetail', ${cirrus})`);
         const result = await devTools.evaluate('window.renderLab.measure("earth", {})');
         const key = `積雲${detailLabel} × ${cirrusLabel}`;

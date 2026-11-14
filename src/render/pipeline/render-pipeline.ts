@@ -6,7 +6,6 @@ import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { ATMOSPHERE_QUALITY } from '../atmosphere';
-import { CUMULUS_DETAIL } from '../opaque-cloud-surface-renderer';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
@@ -335,14 +334,10 @@ export class RenderPipeline {
     this._planetLight.setCount(graphics.planetLightCount);
     this._planetLight.setModel(graphics.planetLightModel);
     this.antialiasPass.setMethod(graphics.antialias);
-    this.atmospherePass.setCloudShellEnabled('cirrus', graphics.cirrus);
-    this.atmospherePass.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
     this.atmospherePass.setCirrusDetail(graphics.cirrusDetail);
     // 天体照の写しは、その天体の描画設定で見えている雲と大気を写す。
     this._planetLight.setAtmosphereEnabled(graphics.atmosphere !== ATMOSPHERE_QUALITY.off);
-    this._planetLight.setCumulusEnabled(graphics.cumulusDetail !== CUMULUS_DETAIL.off);
-    this._planetLight.setCloudShellEnabled('cirrus', graphics.cirrus);
-    this._planetLight.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
+    this._planetLight.setCumulusEnabled(graphics.cumulus);
     this.filmLut.select(graphics.filmLut);
   }
 

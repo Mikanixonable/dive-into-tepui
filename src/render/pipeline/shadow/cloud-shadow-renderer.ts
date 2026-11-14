@@ -5,7 +5,7 @@ import {
   Fn, If, Loop, abs, and, clamp, dot, exp, float, greaterThan, length, max, min, normalize, select,
   sqrt, uniform, vec4,
 } from 'three/tsl';
-import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator } from '../../cloud/cloud-detail';
+import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../../cloud/cloud-detail';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
@@ -161,7 +161,7 @@ export class CloudShadowRenderer {
           const cirrusDetail = float(1).toVar();
           If(and(greaterThan(cloud.cirrus, CIRRUS_PRESENT_AMOUNT), greaterThan(cirrusCrossing, 0)), () => {
             cirrusDetail.assign(this.cirrusDetail.multiplierAt(
-              up, bodyRadius, sampleWidth, cloud.cirrusFlow, upperWind));
+              up, bodyRadius, sampleWidth, cloud.cirrusFlow, upperWind, cirrusColumnInputOf(cloud)));
           });
           opticalDepth.addAssign(cirrusColumnOpticalDepthNode(cloud.cirrus)
             .mul(cirrusDetail).mul(cirrusCrossing).mul(min(stepLength.div(max(rise, 1)), CIRRUS_MAX_SLANT))

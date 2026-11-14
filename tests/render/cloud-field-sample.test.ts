@@ -39,7 +39,7 @@ export function register(): void {
   test('cirrus flow: 弱い風と無風は 0 ベクトル(向きの既定値を出さない)', () => {
     for (const flow of [
       cirrusFlowFromWind(0, 0),
-      cirrusFlowFromWind(3, 4), // ちょうど下の端 5 m/s
+      cirrusFlowFromWind(2, 2), // 下の端 4 m/s より弱い
       cirrusFlowFromWind(1, 0),
     ]) {
       assert.ok(Math.abs(flow.east) < CLOSE);
@@ -47,8 +47,8 @@ export function register(): void {
     }
   });
 
-  test('cirrus flow: 揃い度は 5 m/s で 0、30 m/s で 1 へ滑らかに張り付く', () => {
-    const speeds = [5, 10, 17.5, 25, 30, 50];
+  test('cirrus flow: 揃い度は 4 m/s で 0、16 m/s で 1 へ滑らかに張り付く', () => {
+    const speeds = [4, 8, 10, 13, 16, 50];
     let previous = 0;
     for (const speed of speeds) {
       const flow = cirrusFlowFromWind(speed, 0);
@@ -56,9 +56,9 @@ export function register(): void {
       assert.ok(alignment >= previous);
       previous = alignment;
     }
-    assert.ok(Math.abs(previous - 1) < CLOSE); // 30 m/s 以上は揃い度 1
-    // 30 m/s の東風は (1, 0) に張り付く。
-    const flow = cirrusFlowFromWind(30, 0);
+    assert.ok(Math.abs(previous - 1) < CLOSE); // 16 m/s 以上は揃い度 1
+    // 16 m/s の東風は (1, 0) に張り付く。
+    const flow = cirrusFlowFromWind(16, 0);
     assert.ok(Math.abs(flow.east - 1) < CLOSE);
     assert.ok(Math.abs(flow.north) < CLOSE);
   });

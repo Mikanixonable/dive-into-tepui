@@ -104,6 +104,8 @@ function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPer
 export interface AtmosphereClouds {
   readonly cloud: CloudRenderInput;
   readonly bodyFromWorld: THREE.Matrix4;
+  readonly cumulusVisible: boolean;
+  readonly cirrusVisible: boolean;
 }
 
 // 大気を持つ天体 1 体。中心は描画座標、半径は [m]。**地表も大気の等密度面も、自転軸まわりの
