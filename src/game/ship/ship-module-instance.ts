@@ -15,26 +15,26 @@ export interface TankInstance extends InstanceBase {
   readonly fuelKind: FuelKind;
   fuel: number;
 }
-export interface ThrusterInstance extends InstanceBase { readonly kind: 'thruster'; }
-export interface RcsInstance extends InstanceBase { readonly kind: 'rcs'; }
-export interface WeaponInstance extends InstanceBase { readonly kind: 'weapon'; }
-export interface ArmorInstance extends InstanceBase { readonly kind: 'armor'; }
-export interface RadiatorInstance extends InstanceBase {
+interface ThrusterInstance extends InstanceBase { readonly kind: 'thruster'; }
+interface RcsInstance extends InstanceBase { readonly kind: 'rcs'; }
+interface WeaponInstance extends InstanceBase { readonly kind: 'weapon'; }
+interface ArmorInstance extends InstanceBase { readonly kind: 'armor'; }
+interface RadiatorInstance extends InstanceBase {
   readonly kind: 'radiator';
   deployed: number; // 0..1
 }
-export interface SolarPanelInstance extends InstanceBase {
+interface SolarPanelInstance extends InstanceBase {
   readonly kind: 'solar_panel';
   deployed: number; // 0..1
 }
-export interface BoosterInstance extends InstanceBase {
+interface BoosterInstance extends InstanceBase {
   readonly kind: 'booster';
   fuel: number;
   ignited: boolean;
 }
-export interface DockingPortInstance extends InstanceBase { readonly kind: 'docking_port'; }
-export interface DockInstance extends InstanceBase { readonly kind: 'dock'; }
-export interface DecouplerInstance extends InstanceBase { readonly kind: 'decoupler'; }
+interface DockingPortInstance extends InstanceBase { readonly kind: 'docking_port'; }
+interface DockInstance extends InstanceBase { readonly kind: 'dock'; }
+interface DecouplerInstance extends InstanceBase { readonly kind: 'decoupler'; }
 
 export type ShipModuleInstance =
   | CockpitInstance | TankInstance | ThrusterInstance | RcsInstance | WeaponInstance | ArmorInstance

@@ -3,7 +3,7 @@
 // 本体(入力欄など)とボタンの意味は使い側が body と actions へ挟み込む。
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 
-export interface ModalOverlayRequest {
+interface ModalOverlayRequest {
   readonly title?: string;
   readonly message?: string;
 }
