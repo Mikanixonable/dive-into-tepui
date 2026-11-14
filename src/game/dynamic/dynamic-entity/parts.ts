@@ -23,7 +23,7 @@ export interface ArmorPart extends Part {
   readonly damageReduction: number; // 0-1
 }
 
-export interface ThrusterPart extends Part {
+interface ThrusterPart extends Part {
   readonly type: 'thruster';
   readonly torque: number;
   readonly thrust: number;
@@ -57,20 +57,6 @@ export interface WeaponPart extends Part {
 export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTankPart | RadiatorPart | SolarPanelPart | WeaponPart;
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
-
-// 船体が要求する最小限の部品コレクション定義。PartInventory や ShipAssembly のアダプタなど、
-// 具体的な部品コンテナの実装から Ship を疎結合に保つ。
-export interface ShipPartCollection {
-  readonly parts: readonly AnyPart[];
-  replace(parts: readonly Part[]): void;
-  has(part: Part): boolean;
-  ofType<T extends PartType>(type: T): readonly ExtractPart<T>[];
-  healthySum<T extends PartType>(type: T, valueOf: (part: ExtractPart<T>) => number): number;
-  totalFuel(): number;
-  totalMaxFuel(): number;
-  consumeFuel(amount: number): number;
-  refuelFuel(amount: number): number;
-}
 
 // type の既定値に overrides を重ねてパーツを作る。id は呼び出しごとにランダム発行される。
 export function createPart<TType extends PartType>(
