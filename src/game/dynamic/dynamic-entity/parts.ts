@@ -143,10 +143,10 @@ function deserializePart(serialized: AnyPart): AnyPart | null {
 }
 
 // 直列化された部品の一覧を復元する。種別が不正な部品は落とす。1つも残らなければ、既定の構成で
-// 組ませるため undefined を返す。
-export function deserializeParts(serialized: readonly AnyPart[]): AnyPart[] | undefined {
+// 組ませるため null を返す。
+export function deserializeParts(serialized: readonly AnyPart[]): AnyPart[] | null {
   const parts = Array.isArray(serialized)
     ? serialized.map(deserializePart).filter((part) => part !== null)
     : [];
-  return parts.length > 0 ? parts : undefined;
+  return parts.length > 0 ? parts : null;
 }
