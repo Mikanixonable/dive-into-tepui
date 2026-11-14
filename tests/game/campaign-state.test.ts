@@ -123,6 +123,20 @@ export function register(): void {
     assert.deepEqual(state.defeatedEnemyIds, []);
   });
 
+  test('campaign-state: 撃破によらない消滅も残存から消えたものとして記録され、撃破数には数えない', () => {
+    // GAME.md 11.2: 消滅の理由は問わず、一度消滅した敵は二度と戻らない。
+    // ただし撃破数の集計は撃破した敵だけが対象である。
+    const state = createCampaignState();
+    const next = applyCampaignEvents(state, [
+      { kind: 'enemyLost', enemyId: 'story-act2-enemy-2' },
+      { kind: 'enemyLost', enemyId: 'story-act2-enemy-2' },
+      { kind: 'enemyDefeated', enemyId: 'story-act2-enemy-1' },
+    ]);
+    assert.deepEqual(next.defeatedEnemyIds, ['story-act2-enemy-2', 'story-act2-enemy-1']);
+    assert.equal(next.stats.totalKills, 1);
+    assert.deepEqual(state.defeatedEnemyIds, []);
+  });
+
   test('campaign-state: 評価の集計は出来事で積まれ、撃破の総数は同じ敵を二度数えない', () => {
     // SAVE.md「キャンペーン状態」: 評価の集計はキャンペーンを通しての累計で持つ。
     const state = createCampaignState();

@@ -7,7 +7,9 @@ import { sideMountTransform, sideSlotFromTransform } from './ship-assembly-trans
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import type { ShipModuleDefinition } from './ship-module-definition';
 import { createShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
-import type { ShipConstructionDraftState } from './ship-dock-state';
+import type {
+  PendingConstructionModule, PendingRepair, ShipConstructionDraftState,
+} from './ship-dock-state';
 
 export type SerializedShipModule = {
   readonly id: string;
@@ -45,12 +47,21 @@ export interface SerializedShipConstructionDraft {
   readonly firstConnectionId: string | null;
   // 欠けた記録(この項目が増える前のセーブ)は、支払った部品が無いものとして読む。
   readonly paidModuleIds?: readonly string[];
+  // 欠けた記録(この項目が増える前のセーブ)は、建造中の部品が無いものとして読む。
+  readonly pendingModule?: PendingConstructionModule | null;
 }
 
 export interface SerializedDockedVessel {
   readonly connectionId: string;
   readonly id: string;
   readonly name: string;
+}
+
+// 修理中の作業の保存形。ドック1つにつき1件だけが進む。
+export interface SerializedPendingRepair {
+  readonly dockId: string;
+  readonly completesAt: number;
+  readonly materials: number;
 }
 
 export interface SerializedCollisionGrace {
@@ -265,7 +276,18 @@ export function restoreConstructionDrafts(
       }
     }
     const paidIds: readonly string[] = Array.isArray(draft.paidModuleIds) ? draft.paidModuleIds : [];
-    const valid = dock?.kind === 'dock'
+    // 建造中の部品は、まだ assembly に無く、追加済みにも含まれないことが形である。
+    const pending: PendingConstructionModule | null = draft.pendingModule ?? null;
+    const pendingValid = pending === null || (
+      typeof pending.id === 'string' && pending.id.length > 0
+      && typeof pending.definitionId === 'string' && pending.definitionId.length > 0
+      && typeof pending.slotId === 'string' && pending.slotId.length > 0
+      && Number.isFinite(pending.completesAt)
+      && !idSet.has(pending.id)
+      && assembly.module(pending.id) === null
+    );
+    const valid = pendingValid
+      && dock?.kind === 'dock'
       && paidIds.every((id: unknown) => typeof id === 'string' && idSet.has(id))
       && typeof draft.dockId === 'string'
       && typeof draft.axialTailId === 'string'
@@ -292,7 +314,31 @@ export function restoreConstructionDrafts(
     docks.add(draft.dockId);
     for (const id of ids) added.add(id);
     if (draft.firstConnectionId !== null) firstConnections.add(draft.firstConnectionId);
-    return { ...draft, addedIds: [...ids], paidModuleIds: [...paidIds] };
+    return {
+      ...draft,
+      addedIds: [...ids],
+      paidModuleIds: [...paidIds],
+      pendingModule: pending === null ? null : { ...pending },
+    };
+  });
+}
+
+// 修理中の作業が現在の dock を参照することを検証して複製する。
+export function restorePendingRepairs(
+  saved: readonly SerializedPendingRepair[], assembly: ShipAssembly,
+): readonly PendingRepair[] {
+  if (!Array.isArray(saved)) throw new Error('invalid ship repair state');
+  const docks = new Set<string>();
+  return saved.map((repair) => {
+    const valid = repair !== null && typeof repair === 'object'
+      && typeof repair.dockId === 'string'
+      && assembly.module(repair.dockId)?.kind === 'dock'
+      && Number.isFinite(repair.completesAt)
+      && Number.isFinite(repair.materials) && repair.materials >= 0
+      && !docks.has(repair.dockId);
+    if (!valid) throw new Error(`invalid pending repair: ${repair?.dockId}`);
+    docks.add(repair.dockId);
+    return { dockId: repair.dockId, completesAt: repair.completesAt, materials: repair.materials };
   });
 }
 

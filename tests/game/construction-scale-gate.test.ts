@@ -39,12 +39,13 @@ export function register(): void {
   test('construction-scale-gate: 月面基地(地表基地)では上限を超える枝を置けず、素材も払わない', () => {
     const { assembly, dockState } = buildStoryLunarBaseAssembly();
     const docks = new ShipDockState(dockState);
+    const time = { t: 0 };
     const facade: ConstructionShip = {
       id: STORY_LUNAR_BASE_ID,
       assembly,
       docks,
       capabilities: { controllable: true },
-      motion: { alive: true },
+      motion: { alive: true, state: time },
       synchronizeAssemblyState: () => undefined,
     };
     const economy = new StoryEconomy(new RunEventLog(), {
@@ -52,8 +53,14 @@ export function register(): void {
     });
     const gate = new ConstructionScaleGate({ [STORY_LUNAR_BASE_ID]: 'surface-base' });
     const edits = new ShipConstructionEdits(facade, 'dock-left', economy, gate);
+    // 経済つきの配置は着手であり、完了時刻を過ぎてから取り付けられる(GAME.md 11.4)。
+    const completePending = (): void => {
+      time.t += 100_000;
+      assert.ok(edits.completePending(time.t));
+    };
     edits.begin();
     edits.place('thruster-standard', 'axial', 'rocket-thruster');
+    completePending();
     // 枝(ロケット)の総質量は地表基地の上限に収まる。
     const rootEdge = assembly.graph.find((edge) => edge.childId === 'rocket-cockpit');
     assert.ok(rootEdge !== undefined);
@@ -63,13 +70,16 @@ export function register(): void {
     // ブースター(満載 1,000 kg)を2段足すと枝は 2,960 kg で上限に収まるが、3段目で
     // 上限を超えるため、理由つきで拒否され、船体にも台帳にも残らない。
     edits.place('booster-standard', 'axial', 'rocket-booster-1');
+    completePending();
     edits.place('booster-standard', 'axial', 'rocket-booster-2');
+    completePending();
     const balanceBefore = economy.stockpileOf(STORY_LUNAR_BASE_ID).materials;
     assert.throws(
       () => edits.place('booster-standard', 'axial', 'rocket-booster-3'),
       /この設備\(地表基地\)では総質量 3000 kg までしか建造できません/,
     );
     assert.equal(assembly.module('rocket-booster-3'), null);
+    assert.equal(docks.constructionDraft('dock-left')?.pendingModule, null);
     assert.equal(economy.stockpileOf(STORY_LUNAR_BASE_ID).materials, balanceBefore);
   });
 
@@ -81,7 +91,7 @@ export function register(): void {
       assembly,
       docks,
       capabilities: { controllable: true },
-      motion: { alive: true },
+      motion: { alive: true, state: { t: 0 } },
       synchronizeAssemblyState: () => undefined,
     };
     const gate = new ConstructionScaleGate({ [STORY_LUNAR_BASE_ID]: 'surface-base' });

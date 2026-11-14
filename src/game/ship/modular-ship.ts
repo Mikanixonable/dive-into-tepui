@@ -48,9 +48,9 @@ import { shipPhysicsShape } from './ship-physics-shape';
 import type { ControlSelection } from '../control-selection';
 import { ShipDockState } from './ship-dock-state';
 import {
-  restoreConstructionDrafts, restoreShipAssembly, serializeShipAssembly,
-  type SerializedCollisionGrace, type SerializedDockedVessel, type SerializedShipAssembly,
-  type SerializedShipConstructionDraft,
+  restoreConstructionDrafts, restorePendingRepairs, restoreShipAssembly, serializeShipAssembly,
+  type SerializedCollisionGrace, type SerializedDockedVessel, type SerializedPendingRepair,
+  type SerializedShipAssembly, type SerializedShipConstructionDraft,
 } from './ship-save';
 import { ModularShipConnectionOperations } from './modular-ship-connection-operations';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -88,6 +88,8 @@ export interface SerializedModularShip extends SerializedDynamicEntityFields {
   readonly name: string;
   readonly assembly: SerializedShipAssembly;
   readonly dockState: readonly SerializedShipConstructionDraft[];
+  // 修理中の作業。修理が進んでいない艦の記録には現れない。
+  readonly pendingRepairs?: readonly SerializedPendingRepair[];
   readonly dockedVessels: readonly SerializedDockedVessel[];
   readonly collisionGrace: readonly SerializedCollisionGrace[];
   readonly operatingCockpitId: string | null;
@@ -280,6 +282,10 @@ export class ModularShip extends Ship implements Controllable {
     this.docks = new ShipDockState(saved
       ? restoreConstructionDrafts(saved.dockState, assembly)
       : placement?.dockState ? restoreConstructionDrafts(placement.dockState, assembly) : []);
+    // 修理中の作業は、修理を始めた船とともに保存される(GAME.md 11.4)。
+    if (saved?.pendingRepairs !== undefined) {
+      this.docks.restorePendingRepairs(restorePendingRepairs(saved.pendingRepairs, assembly));
+    }
     this.capabilities = new ShipCapabilities(
       assembly, saved?.operatingCockpitId ?? placement?.operatingCockpitId ?? null,
     );
@@ -690,11 +696,13 @@ export class ModularShip extends Ship implements Controllable {
 
   // 現在の艦状態を保存用データへ変換する。
   public override serialize(): SerializedModularShip {
+    const pendingRepairs = this.docks.serializePendingRepairs();
     return {
       ...this.serializeEntityFields(ModularShip.kind),
       name: this.name,
       assembly: serializeShipAssembly(this.assembly),
       dockState: this.docks.serialize(),
+      ...(pendingRepairs.length === 0 ? {} : { pendingRepairs }),
       dockedVessels: this.connections.serializeDockedVessels(),
       collisionGrace: this.connections.serializeCollisionGrace(this.motion.state.t),
       operatingCockpitId: this.capabilities.operatingCockpitId,

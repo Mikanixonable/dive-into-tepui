@@ -31,6 +31,7 @@ import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
 import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
 import type { ViewMode } from '../view/view-mode';
 import type { StoryEconomy } from '../campaign/story-economy';
+import { advanceShipWorks } from '../campaign/story-works';
 import type { ConstructionScaleGate } from '../campaign/construction-scale-gate';
 import type { CampaignState } from '../campaign/campaign-state';
 
@@ -376,6 +377,15 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
 
   // 撃破した敵が落とす素材の量。落とすステージだけが返す。既定では落とさない。
   protected salvageDropMaterials(_enemy: Enemy): number | null { return null; }
+
+  // ストーリーの所要時間つき作業(建造・修理)を1フレーム分進める。完了時刻の来た
+  // 作業が船ごとに適用される。ストーリーのステージだけが update から呼ぶ
+  // (作業の状態はストーリーでのみ生まれる)。
+  protected advanceStoryWorks(simTime: number): void {
+    for (const ship of this._dynamicSystem.all().filter(isModularShip)) {
+      advanceShipWorks(ship, simTime, this.economy);
+    }
+  }
 
   // サルベージの回収を1フレーム分進め、回収分を経済の台帳と備蓄の出来事へ写す。
   // fallbackBaseId は、最寄りの基地が見つからないときの備蓄先。

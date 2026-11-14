@@ -1,16 +1,20 @@
 // 建造予約と船体の構造編集を一体で適用し、編集後の物性を同期する。
-// 経済が渡された場合(ストーリーモード)は、配置がその船体の拠点備蓄から素材を
-// 支払い、取り外しと破棄が返金する(GAME.md 11.4)。渡されなければ無償である。
+// 経済が渡された場合(ストーリーモード)は、配置は着手であり、素材を着手時に支払って
+// 部品は所要時間の経過後に船体へ取り付けられる。取り外しと破棄は支払った部品の素材を
+// 返金する(GAME.md 11.4)。渡されなければ無償で即時に取り付けられる。
 // 規模ゲートが渡された場合は、配置のたびに完成見込みの枝の総質量を設備の上限と
 // 照らす(GAME.md 11.2)。
 import { createShipModuleInstance } from './ship-module-instance';
 import { enumerateConstructionSlots, placementForSlot } from './ship-construction-rules';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
-import { moduleMaterialsCost, type StoryEconomy } from '../campaign/story-economy';
+import {
+  constructionDurationSeconds, moduleMaterialsCost, type StoryEconomy,
+} from '../campaign/story-economy';
 import {
   constructionBranchMassKg, type ConstructionScaleGate,
 } from '../campaign/construction-scale-gate';
 import type { ShipAssembly } from './ship-assembly';
+import type { ShipModuleDefinition } from './ship-module-definition';
 import type { ShipDockState, ShipConstructionDraftState } from './ship-dock-state';
 
 export interface ConstructionShip {
@@ -18,7 +22,7 @@ export interface ConstructionShip {
   readonly assembly: ShipAssembly;
   readonly docks: ShipDockState;
   readonly capabilities: { readonly controllable: boolean };
-  readonly motion: { readonly alive: boolean };
+  readonly motion: { readonly alive: boolean; readonly state: { readonly t: number } };
   synchronizeAssemblyState(): void;
 }
 
@@ -40,6 +44,8 @@ export class ShipConstructionEdits {
   }
 
   // 現在の予約でスロットを再検証し、部品と接続・予約・物性をまとめて更新する。
+  // 経済がある場合(ストーリーモード)は配置は着手になり、取り付けは完了時刻まで
+  // 遅れる(beginTimedPlacement / completePending)。
   public place(definitionId: string, slotId: string, moduleId: string): void {
     const draft = this.requireDraft();
     const { assembly } = this.ship;
@@ -50,6 +56,10 @@ export class ShipConstructionEdits {
     if (slot === undefined) throw new Error('配置候補が存在しません');
     const placement = placementForSlot(assembly, slot, definition);
     if (!placement.valid) throw new Error(placement.reason ?? '配置できません');
+    if (this.economy !== null) {
+      this.beginTimedPlacement(draft, definition, slotId, moduleId);
+      return;
+    }
 
     // 予約に記録する接続は、追加した部品へ向かうものを使う。
     assembly.addModule(createShipModuleInstance(definition, moduleId),
@@ -68,30 +78,101 @@ export class ShipConstructionEdits {
         throw new Error(reason);
       }
     }
-    // 支払えなければ、置いた部品を戻してから拒否する。支払った部品は予約に記録し、
-    // 取り外しと破棄の返金をその部品だけに限る。
-    let paid = false;
-    if (this.economy !== null) {
-      const cost = moduleMaterialsCost(definition);
-      if (!this.economy.charge(this.ship.id, cost, 0)) {
-        const balance = this.economy.stockpileOf(this.ship.id).materials;
-        assembly.removeModule(moduleId);
-        throw new Error(`素材が不足しています(必要 ${cost} / 備蓄 ${balance} — あと ${cost - balance})`);
-      }
-      paid = true;
-    }
     this.ship.docks.updateConstructionDraft({
       dockId: this.dockId, addedIds: [...draft.addedIds, moduleId],
       axialTailId: placement.kind === 'axial' ? moduleId : draft.axialTailId,
       firstConnectionId: draft.firstConnectionId ?? connection.id,
-      paidModuleIds: paid ? [...draft.paidModuleIds, moduleId] : [...draft.paidModuleIds],
+      paidModuleIds: [...draft.paidModuleIds],
+      pendingModule: null,
     });
     this.ship.synchronizeAssemblyState();
   }
 
-  // 最後に追加した部品を撤去し、残る枝の末尾と接続根を更新する。
+  // 配置の着手。規模ゲートと照らしてから素材を支払い、建造中の部品として予約へ
+  // 記録する。支払いは着手のときで、部品そのものは completePending が完了時刻に
+  // 取り付ける(GAME.md 11.4)。
+  private beginTimedPlacement(
+    draft: ShipConstructionDraftState, definition: ShipModuleDefinition,
+    slotId: string, moduleId: string,
+  ): void {
+    const economy = this.economy;
+    if (economy === null) throw new Error('timed placement requires an economy');
+    if (draft.pendingModule !== null) throw new Error('建造中の部品があります');
+    // 規模ゲート: 完成見込みは、現在の枝の総質量へ建造を始める部品(初期燃料の
+    // 質量を含む)を足したものと照らす。
+    if (this.scaleGate !== null) {
+      const branchMassKg = draft.firstConnectionId === null
+        ? 0 : constructionBranchMassKg(this.ship.assembly, draft.firstConnectionId);
+      const abilities = definition.abilities;
+      const moduleMassKg = definition.dryMass
+        + (abilities.fuelCapacity ?? 0) * (abilities.fuelMassPerUnit ?? 1);
+      const reason = this.scaleGate.excessReason(this.ship.id, branchMassKg + moduleMassKg);
+      if (reason !== null) throw new Error(reason);
+    }
+    const cost = moduleMaterialsCost(definition);
+    if (!economy.charge(this.ship.id, cost, 0)) {
+      const balance = economy.stockpileOf(this.ship.id).materials;
+      throw new Error(`素材が不足しています(必要 ${cost} / 備蓄 ${balance} — あと ${cost - balance})`);
+    }
+    this.ship.docks.updateConstructionDraft({
+      ...draft,
+      pendingModule: {
+        id: moduleId, definitionId: definition.id, slotId,
+        completesAt: this.ship.motion.state.t + constructionDurationSeconds(definition),
+      },
+    });
+  }
+
+  // 建造中の部品の完了時刻が来ていれば、スロットを再検証して船体へ取り付ける。
+  // まだ完了していない、または配置ができなくなっていれば何もせず false が返り、
+  // 建造中の部品は予約に残る(取り外しで取り消し、素材は戻る)。
+  public completePending(simTime: number): boolean {
+    const draft = this.draft;
+    if (draft === null || draft.pendingModule === null) return false;
+    const pending = draft.pendingModule;
+    if (pending.completesAt > simTime) return false;
+    const { assembly } = this.ship;
+    const definition = SHIP_MODULE_CATALOG.require(pending.definitionId);
+    const slot = enumerateConstructionSlots(
+      assembly, [this.dockId, ...draft.addedIds], draft.axialTailId,
+    ).find(candidate => candidate.id === pending.slotId);
+    if (slot === undefined) return false;
+    const placement = placementForSlot(assembly, slot, definition);
+    if (!placement.valid) return false;
+    assembly.addModule(createShipModuleInstance(definition, pending.id),
+      placement.parentId, placement.transform, placement.kind);
+    const connection = assembly.graph.find(edge => edge.childId === pending.id);
+    if (connection === undefined) {
+      assembly.removeModule(pending.id);
+      return false;
+    }
+    // 取り付けが済んだ部品は、支払った部品として返金の対象へ移る。
+    this.ship.docks.updateConstructionDraft({
+      dockId: this.dockId, addedIds: [...draft.addedIds, pending.id],
+      axialTailId: placement.kind === 'axial' ? pending.id : draft.axialTailId,
+      firstConnectionId: draft.firstConnectionId ?? connection.id,
+      paidModuleIds: [...draft.paidModuleIds, pending.id],
+      pendingModule: null,
+    });
+    this.ship.synchronizeAssemblyState();
+    return true;
+  }
+
+  // 最後に追加した部品を撤去し、残る枝の末尾と接続根を更新する。建造中の部品が
+  // あれば、その着手の取り消しが「最後の部品」の撤去になる。
   public removeLast(): void {
     const draft = this.requireDraft();
+    // 建造中の部品の取り消し。支払った素材は戻る(GAME.md 11.4)。
+    if (draft.pendingModule !== null) {
+      if (this.economy !== null) {
+        this.economy.refund(
+          this.ship.id,
+          moduleMaterialsCost(SHIP_MODULE_CATALOG.require(draft.pendingModule.definitionId)), 0,
+        );
+      }
+      this.ship.docks.updateConstructionDraft({ ...draft, pendingModule: null });
+      return;
+    }
     const id = draft.addedIds.at(-1);
     if (id === undefined) return;
     const { assembly } = this.ship;
@@ -115,6 +196,7 @@ export class ShipConstructionEdits {
       firstConnectionId: addedIds.length === 0
         ? null : assembly.graph.find(edge => edge.childId === addedIds[0])?.id ?? null,
       paidModuleIds: draft.paidModuleIds.filter(paidId => paidId !== id),
+      pendingModule: null,
     });
     this.ship.synchronizeAssemblyState();
   }
@@ -123,6 +205,13 @@ export class ShipConstructionEdits {
   // モード)は、完成した枝の乾燥質量の合計を建造の完了として台帳へ記録する。
   public finish(): void {
     const draft = this.requireDraft();
+    // 建造中の部品がある枝は、部品が取り付けられるまで完成できない(GAME.md 11.4)。
+    if (draft.pendingModule !== null) {
+      const remaining = Math.max(
+        0, Math.ceil(draft.pendingModule.completesAt - this.ship.motion.state.t),
+      );
+      throw new Error(`建造中の部品が完了していません(あと約 ${remaining} 秒)`);
+    }
     if (draft.firstConnectionId === null) throw new Error('部品を1個以上配置してください');
     if (this.economy !== null) {
       let builtMassKg = 0;
@@ -146,11 +235,18 @@ export class ShipConstructionEdits {
     const paidDefinitionIds = draft.paidModuleIds
       .map(id => this.ship.assembly.module(id)?.definitionId)
       .filter((definitionId): definitionId is string => definitionId !== undefined);
+    // 建造中の部品も、着手で支払った素材が戻る。
+    const pendingDefinitionId = draft.pendingModule?.definitionId ?? null;
     for (const id of [...draft.addedIds].reverse()) this.ship.assembly.removeModule(id);
     if (this.economy !== null) {
       for (const definitionId of paidDefinitionIds) {
         this.economy.refund(
           this.ship.id, moduleMaterialsCost(SHIP_MODULE_CATALOG.require(definitionId)), 0,
+        );
+      }
+      if (pendingDefinitionId !== null) {
+        this.economy.refund(
+          this.ship.id, moduleMaterialsCost(SHIP_MODULE_CATALOG.require(pendingDefinitionId)), 0,
         );
       }
     }

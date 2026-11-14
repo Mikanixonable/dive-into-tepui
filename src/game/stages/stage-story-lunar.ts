@@ -78,7 +78,7 @@ id: STORY_LUNAR_BASE_ID,
 assembly,
 docks,
 capabilities: { controllable: true},
-motion: { alive: true},
+motion: { alive: true, state: { t: 0 } },
 synchronizeAssemblyState: () => undefined,
 };
 const edits = new ShipConstructionEdits(facade, CONSTRUCTION_DOCK_ID);
@@ -282,6 +282,9 @@ return (
 public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
 const player = this.ship;
 if (player!== null) this.logistics.updateLogistics(simTime, player, simSpeed);
+
+// 所要時間つき建造の完了を進める(GAME.md 11.4)。
+this.advanceStoryWorks(simTime);
 
 // 初期備蓄は作成時に台帳へ入れてある。キャンペーンへは最初のフレームで1度だけ送る。
 if (!this.seedAnnounced) {

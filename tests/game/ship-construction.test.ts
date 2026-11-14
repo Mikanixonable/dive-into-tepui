@@ -5,7 +5,9 @@ import { createBasePreset } from '../../src/game/ship/ship-presets';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { enumerateConstructionSlots, placementForSlot } from '../../src/game/ship/ship-construction-rules';
-import { restoreConstructionDrafts, restoreDockedVessels } from '../../src/game/ship/ship-save';
+import {
+  restoreConstructionDrafts, restoreDockedVessels, restorePendingRepairs,
+} from '../../src/game/ship/ship-save';
 import { CommandQueue } from '../../src/game/command-queue';
 import { CommandCompletion } from '../../src/game/command-completion';
 import { ShipConstructionEdits, type ConstructionShip } from '../../src/game/ship/ship-construction-edits';
@@ -44,15 +46,18 @@ export function register(): void {
     docks.beginBuilding(assembly, 'dock-left');
     assert.equal(docks.status(assembly, 'dock-left'), 'building');
     assert.deepEqual(docks.constructionDraft('dock-left'), {
-      dockId: 'dock-left', addedIds: [], axialTailId: 'dock-left', firstConnectionId: null, paidModuleIds: [],
+      dockId: 'dock-left', addedIds: [], axialTailId: 'dock-left', firstConnectionId: null,
+      paidModuleIds: [], pendingModule: null,
     });
 
     docks.updateConstructionDraft({
-      dockId: 'dock-left', addedIds: ['branch-1'], axialTailId: 'branch-1', firstConnectionId: 'edge-1', paidModuleIds: [],
+      dockId: 'dock-left', addedIds: ['branch-1'], axialTailId: 'branch-1', firstConnectionId: 'edge-1',
+      paidModuleIds: [], pendingModule: null,
     });
     const saved = docks.serialize();
     assert.deepEqual(saved, [{
-      dockId: 'dock-left', addedIds: ['branch-1'], axialTailId: 'branch-1', firstConnectionId: 'edge-1', paidModuleIds: [],
+      dockId: 'dock-left', addedIds: ['branch-1'], axialTailId: 'branch-1', firstConnectionId: 'edge-1',
+      paidModuleIds: [], pendingModule: null,
     }]);
 
     const resumed = new ShipDockState(saved);
@@ -72,7 +77,8 @@ export function register(): void {
     ));
     const merged = host.mergedAtDock(guest, 'dock-left', 'port', 'guest');
     const docks = new ShipDockState([{
-      dockId: 'dock-left', addedIds: [], axialTailId: 'dock-left', firstConnectionId: null, paidModuleIds: [],
+      dockId: 'dock-left', addedIds: [], axialTailId: 'dock-left', firstConnectionId: null,
+      paidModuleIds: [], pendingModule: null,
     }]);
 
     assert.equal(docks.status(merged.assembly, 'dock-left'), 'connected');
@@ -178,7 +184,8 @@ export function register(): void {
     assert.deepEqual(restoreConstructionDrafts([{
       dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id, paidModuleIds: [],
     }], assembly), [{
-      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id, paidModuleIds: [],
+      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+      paidModuleIds: [], pendingModule: null,
     }]);
     assert.throws(() => restoreConstructionDrafts([{
       dockId: 'dock', addedIds: ['tank', 'tank'], axialTailId: 'tank', firstConnectionId: edge.id, paidModuleIds: [],
@@ -187,6 +194,60 @@ export function register(): void {
       dockId: 'dock', addedIds: 'tank' as unknown as readonly string[],
       axialTailId: 'dock', firstConnectionId: null, paidModuleIds: [],
     }], assembly), /invalid construction draft/);
+  });
+
+  test('ship construction: 建造中の部品を含む予約は保存・復元で失われない', () => {
+    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    assembly.addRoot(createShipModuleInstance(
+      SHIP_MODULE_CATALOG.require('dock-standard'), 'dock',
+    ));
+    assembly.append(createShipModuleInstance(
+      SHIP_MODULE_CATALOG.require('tank-3-main'), 'tank',
+    ), 'dock');
+    const edge = assembly.graph[0];
+    assert.ok(edge !== undefined);
+    const pendingModule = {
+      id: 'next-part', definitionId: 'thruster-standard', slotId: 'axial', completesAt: 1234,
+    };
+    // 建造中の部品は、まだ assembly に無く追加済みにも含まれない形で復元される。
+    assert.deepEqual(restoreConstructionDrafts([{
+      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+      paidModuleIds: [], pendingModule,
+    }], assembly), [{
+      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+      paidModuleIds: [], pendingModule,
+    }]);
+    // 建造中の部品の id が実在の部品と重なる記録は壊れている。
+    assert.throws(() => restoreConstructionDrafts([{
+      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+      paidModuleIds: [], pendingModule: { ...pendingModule, id: 'tank' },
+    }], assembly), /invalid construction draft/);
+    // 項目を持たない旧い記録は、建造中の部品が無いものとして読む。
+    assert.deepEqual(restoreConstructionDrafts([{
+      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+      paidModuleIds: [],
+    }], assembly), [{
+      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+      paidModuleIds: [], pendingModule: null,
+    }]);
+  });
+
+  test('ship construction: 修理中の作業は検証して復元される', () => {
+    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, true);
+    assembly.addRoot(createShipModuleInstance(
+      SHIP_MODULE_CATALOG.require('dock-standard'), 'dock',
+    ));
+    assert.deepEqual(restorePendingRepairs([
+      { dockId: 'dock', completesAt: 500, materials: 42 },
+    ], assembly), [{ dockId: 'dock', completesAt: 500, materials: 42 }]);
+    // 実在しないドックへの修理と、同じドックの二重の修理は壊れている。
+    assert.throws(() => restorePendingRepairs([
+      { dockId: 'missing', completesAt: 500, materials: 42 },
+    ], assembly), /invalid pending repair/);
+    assert.throws(() => restorePendingRepairs([
+      { dockId: 'dock', completesAt: 500, materials: 42 },
+      { dockId: 'dock', completesAt: 600, materials: 1 },
+    ], assembly), /invalid pending repair/);
   });
 
   test('ship construction: 保存された docking identity は全 edge と一対一である', () => {

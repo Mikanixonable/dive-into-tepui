@@ -45,7 +45,8 @@ export interface CampaignState {
   readonly commandCore: CommandCoreState;
   // 拠点 id → その拠点の備蓄。備蓄が生まれた拠点だけが項目を持つ。
   readonly stockpiles: Readonly<Record<string, BaseStockpile>>;
-  // 撃破済みの敵の識別子。撃破した敵は二度と戻らない(GAME.md 11.2)。
+  // 消滅した敵の識別子。一度消滅した敵は、撃破か自然な喪失かを問わず二度と
+  // 戻らない(GAME.md 11.2)。
   readonly defeatedEnemyIds: readonly string[];
   // 軌道造船所が完成したかどうか。完成はキャンペーンの進行で、再入場しても失われない
   // (GAME.md 11.2)。
@@ -78,7 +79,7 @@ export function advanceCampaignAct(state: CampaignState, act: CampaignAct): Camp
   return act > state.act ? { ...state, act } : state;
 }
 
-// 敵1機の撃破を記録した状態。記録済みの敵では状態がそのまま返る。
+// 敵1機の消滅を記録した状態。記録済みの敵では状態がそのまま返る。
 export function recordEnemyDefeated(state: CampaignState, enemyId: string): CampaignState {
   if (state.defeatedEnemyIds.includes(enemyId)) return state;
   return { ...state, defeatedEnemyIds: [...state.defeatedEnemyIds, enemyId] };
@@ -148,6 +149,10 @@ export function applyCampaignEvents(
           stats: { ...next.stats, totalKills: next.stats.totalKills + 1 },
         };
       }
+    } else if (event.kind === 'enemyLost') {
+      // 撃破によらない消滅も、残存から消えたものとして記録する。撃破数には
+      // 数えない(GAME.md 11.2)。
+      next = recordEnemyDefeated(next, event.enemyId);
     } else if (event.kind === 'commandCoreDestroyed') {
       next = recordCommandCoreDestroyed(next);
     } else if (event.kind === 'storyShipLost') {

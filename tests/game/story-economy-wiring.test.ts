@@ -11,30 +11,35 @@ import {
 import {
   ModuleCommands, type ModuleCommandTarget, type ModuleCommandRoster,
 } from '../../src/game/pickable/module-commands';
+import { advanceShipWorks } from '../../src/game/campaign/story-works';
 import type { ControlSelection } from '../../src/game/control-selection';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { ShipDockState } from '../../src/game/ship/ship-dock-state';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
-import { createBasePreset } from '../../src/game/ship/ship-presets';
+import {
+  createBasePreset, createDefaultCombatPreset,
+} from '../../src/game/ship/ship-presets';
 import { ShipConstructionEdits, type ConstructionShip } from '../../src/game/ship/ship-construction-edits';
 import { buildStoryLunarBaseAssembly, STORY_LUNAR_BASE_ID } from '../../src/game/stages/stage-story-lunar';
 
 // 月面基地の開始状態(建造途中のロケットつき)を、経済つきの建造編集へ渡す。
+// time は船のシミュレーション時刻の代役で、テストが進めて完了を駆動する。
 function lunarEdits(economy: StoryEconomy | null): {
-  edits: ShipConstructionEdits; assembly: ShipAssembly; docks: ShipDockState;
+  edits: ShipConstructionEdits; assembly: ShipAssembly; docks: ShipDockState; time: { t: number };
 } {
   const { assembly, dockState } = buildStoryLunarBaseAssembly();
   const docks = new ShipDockState(dockState);
+  const time = { t: 0 };
   const facade: ConstructionShip = {
     id: STORY_LUNAR_BASE_ID,
     assembly,
     docks,
     capabilities: { controllable: true },
-    motion: { alive: true },
+    motion: { alive: true, state: time },
     synchronizeAssemblyState: () => undefined,
   };
-  return { edits: new ShipConstructionEdits(facade, 'dock-left', economy), assembly, docks };
+  return { edits: new ShipConstructionEdits(facade, 'dock-left', economy), assembly, docks, time };
 }
 
 // 基地へ別船体が接続した状態の assembly。修理と製造はこの形で使う。
@@ -45,12 +50,16 @@ function connectedAssembly(): ShipAssembly {
   return host.mergedAtDock(guest, 'dock-left', 'port', 'guest').assembly;
 }
 
-// ModuleCommands の対象の代役。修理と補給の呼び出しだけを記録する。
+// ModuleCommands の対象の代役。修理と補給の呼び出しだけを記録する。修理の
+// 進行(advanceShipWorks)へ渡せるよう、建造編集の対象の面も持つ。
 class FakeTarget implements ModuleCommandTarget {
   public readonly id = 'test-base';
-  public readonly motion = { alive: true };
-  public readonly capabilities = { selectOperatingCockpit: () => true };
+  public readonly docks = new ShipDockState();
+  public readonly time = { t: 0 };
+  public readonly motion = { alive: true, state: this.time };
+  public readonly capabilities = { selectOperatingCockpit: () => true, controllable: true };
   public repairedWith: string | null = null;
+  public failRepair = false;
   public pickedUpMags = 0;
 
   public constructor(public readonly assembly: ShipAssembly) {}
@@ -59,7 +68,11 @@ class FakeTarget implements ModuleCommandTarget {
   public toggleBoosterIgnition(): boolean { return false; }
   public decouple(): void {}
   public undock(): void {}
-  public repairAtDock(moduleId: string): void { this.repairedWith = moduleId; }
+  public synchronizeAssemblyState(): void {}
+  public repairAtDock(moduleId: string): void {
+    if (this.failRepair) throw new Error(`docking module is not connected: ${moduleId}`);
+    this.repairedWith = moduleId;
+  }
   public onPickup(mags: number): void { this.pickedUpMags += mags; }
 }
 
@@ -90,10 +103,18 @@ export function register(): void {
     const economy = new StoryEconomy(new RunEventLog(), {
       [STORY_LUNAR_BASE_ID]: { materials: 100, propellant: 0 },
     });
-    const { edits, assembly } = lunarEdits(economy);
+    const { edits, assembly, time } = lunarEdits(economy);
     edits.begin();
     edits.place('thruster-standard', 'axial', 'rocket-thruster');
     assert.equal(economy.stockpileOf(STORY_LUNAR_BASE_ID).materials, 100 - thrusterCost);
+    // 着手の時点では、部品はまだ船体の一部になっていない(GAME.md 11.4)。
+    assert.equal(assembly.module('rocket-thruster'), null);
+    // 完了時刻(推進器は乾燥質量 50 kg で 50 秒)が来るまでは取り付けられず、
+    // 来れば取り付けられる。
+    assert.equal(edits.completePending(time.t + 49), false);
+    assert.equal(assembly.module('rocket-thruster'), null);
+    time.t += 50;
+    assert.equal(edits.completePending(time.t), true);
     assert.ok(assembly.module('rocket-thruster') !== null);
 
     // 備蓄 5 では推進器(12)は置けず、船体も台帳も変わらない。
@@ -109,19 +130,24 @@ export function register(): void {
     assert.equal(poorRun.assembly.module('rocket-thruster'), null);
     assert.equal(poor.stockpileOf(STORY_LUNAR_BASE_ID).materials, 5);
     assert.deepEqual(poorRun.docks.constructionDraft('dock-left')?.addedIds.length, 8);
+    assert.equal(poorRun.docks.constructionDraft('dock-left')?.pendingModule, null);
   });
 
   test('story-economy wiring: 建造途中の取り外しと破棄は素材を備蓄へ戻す', () => {
     const economy = new StoryEconomy(new RunEventLog(), {
       [STORY_LUNAR_BASE_ID]: { materials: 100, propellant: 0 },
     });
-    const { edits } = lunarEdits(economy);
+    const { edits, time } = lunarEdits(economy);
     edits.begin();
+    // 建造中の部品の取り外しは着手の取り消しで、素材が戻る。
     edits.place('thruster-standard', 'axial', 'rocket-thruster');
     edits.removeLast();
     assert.equal(economy.stockpileOf(STORY_LUNAR_BASE_ID).materials, 100);
 
+    // 完成済みの部品と建造中の部品が混ざった破棄でも、支払った分は全て戻る。
     edits.place('thruster-standard', 'axial', 'rocket-thruster');
+    time.t += 50;
+    assert.equal(edits.completePending(time.t), true);
     edits.place('tank-3-main', 'axial', 'rocket-spare-tank');
     edits.discard();
     assert.equal(economy.stockpileOf(STORY_LUNAR_BASE_ID).materials, 100);
@@ -133,7 +159,7 @@ export function register(): void {
     assert.equal(economy.stockpileOf(STORY_LUNAR_BASE_ID).materials, 100);
   });
 
-  test('story-economy wiring: 修理は素材を払い、不足なら修理しない', () => {
+  test('story-economy wiring: 修理は着手で素材を払い、完了時刻に適用され、不足なら着手できない', () => {
     const assembly = connectedAssembly();
     const damagedId = assembly.moduleIds.find((id) => id !== 'dock-left')!;
     assembly.setHp(damagedId, 10);
@@ -146,6 +172,7 @@ export function register(): void {
     const failed = runCommand(poorRun.commands, poorTarget, 'dock-left', 'repairDockedModules', poorRun.queue);
     assert.equal(failed.state.kind, 'failed');
     assert.equal(poorTarget.repairedWith, null);
+    assert.equal(poorTarget.docks.pendingRepair('dock-left'), null);
     assert.equal(poor.stockpileOf('test-base').materials, cost - 1);
 
     const rich = new StoryEconomy(new RunEventLog(), { 'test-base': { materials: cost, propellant: 0 } });
@@ -153,8 +180,37 @@ export function register(): void {
     const richRun = commandsWith(rich, richTarget);
     const succeeded = runCommand(richRun.commands, richTarget, 'dock-left', 'repairDockedModules', richRun.queue);
     assert.equal(succeeded.state.kind, 'succeeded');
-    assert.equal(richTarget.repairedWith, 'dock-left');
+    // 着手では素材だけが動き、修理はまだ適用されない(GAME.md 11.4)。
+    assert.equal(richTarget.repairedWith, null);
     assert.equal(rich.stockpileOf('test-base').materials, 0);
+    const pending = richTarget.docks.pendingRepair('dock-left');
+    assert.ok(pending !== null);
+    assert.equal(pending.materials, cost);
+    // 修理中の二重の着手は、残り時間を示して拒否される。
+    const duplicate = runCommand(richRun.commands, richTarget, 'dock-left', 'repairDockedModules', richRun.queue);
+    assert.equal(duplicate.state.kind, 'failed');
+    // 完了時刻より前は適用されず、来れば作業の進行が修理を適用する。
+    advanceShipWorks(richTarget, pending.completesAt - 1, rich);
+    assert.equal(richTarget.repairedWith, null);
+    advanceShipWorks(richTarget, pending.completesAt, rich);
+    assert.equal(richTarget.repairedWith, 'dock-left');
+    assert.equal(richTarget.docks.pendingRepair('dock-left'), null);
+
+    // 完了時点で修理の条件を失っていれば、修理は行われず素材が戻る。
+    const refundEconomy = new StoryEconomy(new RunEventLog(), {
+      'test-base': { materials: cost, propellant: 0 },
+    });
+    const refundTarget = new FakeTarget(assembly);
+    refundTarget.failRepair = true;
+    const refundRun = commandsWith(refundEconomy, refundTarget);
+    const begun = runCommand(refundRun.commands, refundTarget, 'dock-left', 'repairDockedModules', refundRun.queue);
+    assert.equal(begun.state.kind, 'succeeded');
+    assert.equal(refundEconomy.stockpileOf('test-base').materials, 0);
+    const refundPending = refundTarget.docks.pendingRepair('dock-left');
+    assert.ok(refundPending !== null);
+    advanceShipWorks(refundTarget, refundPending.completesAt, refundEconomy);
+    assert.equal(refundTarget.repairedWith, null);
+    assert.equal(refundEconomy.stockpileOf('test-base').materials, cost);
   });
 
   test('story-economy wiring: マガジン製造は素材を払ってベルトへ足し、経済が無ければできない', () => {
@@ -197,5 +253,44 @@ export function register(): void {
     // タンクが満タンなら、それ以上は移らない。
     const again = runCommand(run.commands, target, 'dock-left', 'refuelFromStockpile', run.queue);
     assert.equal(again.state.kind, 'failed');
+  });
+
+  test('story-economy wiring: 推進剤補給は主推進の残りで RCS タンクも満たす', () => {
+    const assembly = createBasePreset();
+    assembly.consumeFuel('main', 100);
+    assembly.consumeFuel('rcs', 30);
+    const mainBefore = assembly.totals().mainFuel;
+    const rcsBefore = assembly.totals().rcsFuel;
+    const economy = new StoryEconomy(new RunEventLog(), {
+      'test-base': { materials: 0, propellant: 120 },
+    });
+    const target = new FakeTarget(assembly);
+    const run = commandsWith(economy, target);
+    const completion = runCommand(run.commands, target, 'dock-left', 'refuelFromStockpile', run.queue);
+    assert.equal(completion.state.kind, 'succeeded');
+    // 主推進(1 kg/unit)の空き 100 が先に埋まり、残り 20 kg で RCS が
+    // 1 kg/unit の換算で 20 unit 埋まる(GAME.md 11.4)。
+    assert.equal(assembly.totals().mainFuel - mainBefore, 100);
+    assert.equal(assembly.totals().rcsFuel - rcsBefore, 20);
+    assert.equal(economy.stockpileOf('test-base').propellant, 0);
+  });
+
+  test('story-economy wiring: 戦闘 RCS タンク(単位質量 0)も換算で会計に載る', () => {
+    const assembly = createDefaultCombatPreset();
+    assembly.consumeFuel('rcs', 80);
+    const mainBefore = assembly.totals().mainFuel;
+    const rcsBefore = assembly.totals().rcsFuel;
+    const economy = new StoryEconomy(new RunEventLog(), {
+      'test-base': { materials: 0, propellant: 50 },
+    });
+    const target = new FakeTarget(assembly);
+    const run = commandsWith(economy, target);
+    const completion = runCommand(run.commands, target, 'rcs-tank', 'refuelFromStockpile', run.queue);
+    assert.equal(completion.state.kind, 'succeeded');
+    // 戦闘 RCS タンクの単位質量は 0 だが、補給した 50 unit は 1 kg/unit の
+    // 換算で備蓄から引かれる。満杯の主推進タンクは動かない。
+    assert.equal(assembly.totals().rcsFuel - rcsBefore, 50);
+    assert.equal(assembly.totals().mainFuel, mainBefore);
+    assert.equal(economy.stockpileOf('test-base').propellant, 0);
   });
 }
