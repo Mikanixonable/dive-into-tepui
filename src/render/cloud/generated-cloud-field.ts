@@ -1,7 +1,6 @@
 // 気候から表示時刻の雲場を焼く所有者。気候・天気の中間場・出力場を同じ寿命で管理する。
 import type * as THREE from 'three/webgpu';
 import { CloudField } from './cloud-field';
-import { CloudWindField } from './cloud-wind-field';
 import { WeatherModel } from './weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { ClimateMap } from './climate-map';
@@ -14,7 +13,6 @@ import type { Vec3Node } from '../tsl-types';
 export class GeneratedCloudField implements CloudFieldSource {
   private readonly model: WeatherModel;
   private readonly field: CloudField;
-  private readonly wind: CloudWindField;
   // 最後に焼いた表示時刻。表示時刻が同じ間は生成済みの場を使う。
   private lastBakedDisplayTime: number | null = null;
   // 最後に焼いたときの気候の世代。読む画像が変われば、同じ表示時刻でも焼き直す。
@@ -31,13 +29,12 @@ export class GeneratedCloudField implements CloudFieldSource {
   ) {
     this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
     this.field = new CloudField(this.model, projection);
-    this.wind = new CloudWindField(this.model, projection);
   }
 
   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
   public get texture(): THREE.Texture { return this.field.texture; }
-  // 風場のテクスチャ。出力場の所有権はこのクラスに残す。
-  public get windTexture(): THREE.Texture { return this.wind.texture; }
+  public get motionTexture(): THREE.Texture { return this.field.motionTexture; }
+  public get environmentTexture(): THREE.Texture { return this.field.environmentTexture; }
   public get generation(): number { return this.generationValue; }
 
   // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。
@@ -62,7 +59,6 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.model.syncTime(displayTime);
     this.model.bake(renderer, gpu);
     this.field.render(renderer, gpu);
-    this.wind.render(renderer, gpu);
     this.generationValue += 1;
     this.lastBakedDisplayTime = displayTime;
     this.lastBakedClimateGeneration = climateGeneration;
@@ -72,7 +68,6 @@ export class GeneratedCloudField implements CloudFieldSource {
   // 保持している雲場を解放する。
   public dispose(): void {
     this.field.dispose();
-    this.wind.dispose();
     this.model.dispose();
     this.climate.dispose();
   }

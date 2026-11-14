@@ -3,7 +3,7 @@ import { rmqr } from 'rmqr';
 
 // The title is the source of truth.  The SVG is regenerated on every build so
 // changing this string automatically changes the actual rMQR payload.
-export const RMQR_TEXT = 'Dive into Tepui';
+const RMQR_TEXT = 'Dive into Tepui';
 const OUTPUT = new URL('../src/assets/tepui-rmqr.svg', import.meta.url);
 
 const data = await new rmqr().generate(RMQR_TEXT);

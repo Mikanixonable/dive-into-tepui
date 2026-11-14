@@ -9,6 +9,7 @@ import { sphereShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
 import { ATMOSPHERE_QUALITY } from '../../src/render/atmosphere';
+import { CUMULUS_DETAIL } from '../../src/render/opaque-cloud-surface-renderer';
 import { anglesFromDirection, directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import { earthCenterOf } from './lab-earth';
 import {
@@ -257,6 +258,17 @@ function earth(): LabCase {
       'earth-terminator': { view: EARTH_TERMINATOR_SUN },
       'earth-twilight': { view: EARTH_TERMINATOR_SUN },
       'earth-low-sun': { view: EARTH_LOW_SUN },
+      // 巻雲だけの空(積雲の精細さオフ)を低い太陽で照らす。巻雲の影は積雲の立体を描かない設定でも
+      // 落ちなければならない — 巻雲の筋の下の地表が暗くなるかを見る。
+      'earth-cirrus-shadow': {
+        view: EARTH_LOW_SUN,
+        graphics: { cumulusDetail: CUMULUS_DETAIL.off },
+      },
+      // 同じ構図で巻雲を切った対照。巻雲の影と地表の暗化を、巻雲の有無の差分で確かめるためのもの。
+      'earth-cirrus-shadow-nocirrus': {
+        view: EARTH_LOW_SUN,
+        graphics: { cumulusDetail: CUMULUS_DETAIL.off, cirrus: false },
+      },
       // 日食。**大気の明暗は入射角だけでなく影の濃さにも比例する**ので、リムともやの両方へ影の落ちた
       // 斑が出る。斑は本影(半径 60km)を半影(340km)が縁取る。
       'earth-eclipse': { view: EARTH_ECLIPSE_SUN },
@@ -299,7 +311,7 @@ const EARTH_MARS_PLACEMENT = placementBelowHorizon(
 function earthMars(): LabCase {
   const marsCenter = new THREE.Vector3(0, 0, -EARTH_MARS_DISTANCE);
   const mars = texturedBody(MARS_TEXTURE, MARS, marsCenter, CLOSE_UP_DIAMETER_PX);
-  const marsRadii = shapeSpheroidRadii(MARS.radius, MARS.shape);
+  const marsRadii = shapeSpheroidRadii(MARS.radius, MARS.shape ?? null);
   return {
     objects: [mars.object],
     camera: labCamera(),
