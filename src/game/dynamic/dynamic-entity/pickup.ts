@@ -31,7 +31,7 @@ import type { OrbitingObject } from './orbiting-object';
 export const AMMO_PICKUP_RADIUS = 100;
 // RCS 燃料補給を取り込む、ゲームプレイ上の吸収判定の距離 [m]。
 export const RCS_FUEL_PICKUP_RADIUS = 100;
-// 1 個の取り込みで増える RCS 燃料 [kg]。
+// 1 個の取り込みで増える RCS 燃料 [unit](燃料の質量換算は 1 unit = 1 kg)。
 export const RCS_FUEL_PICKUP_AMOUNT = 1000;
 // 1 個の取り込みで増える弾薬マガジン数。撃破ドロップ以外の補給はこの数を持つ。
 export const AMMO_PICKUP_MAGS = 6;
