@@ -12,6 +12,7 @@ import { earthTileKey } from '../../src/render/earth-surface-tile-key';
 const COLOR = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 const PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
 
+// key の正常系ESTNタイル。
 function terrain(key: ReturnType<typeof earthTileKey>): Uint8Array {
   const bytes = new Uint8Array(PAYLOAD_BYTES);
   bytes.set(new TextEncoder().encode('ESTN'));
@@ -23,10 +24,12 @@ function terrain(key: ReturnType<typeof earthTileKey>): Uint8Array {
   return bytes;
 }
 
+// bytes をbodyに持つ応答のfixture。
 function response(bytes: Uint8Array, status = 200): Response {
   return new Response(bytes.slice(), { status, headers: { 'content-length': String(bytes.length) } });
 }
 
+// resolve を外から呼べる Promise。
 function deferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => { resolve = done; });
@@ -40,11 +43,12 @@ export function register(): void {
       'https://example.test/earth/tiles/{z}/{x}/{y}.bin.gz',
     );
     assert.equal(source.descriptorFor(earthTileKey(4, 0, 0)), null);
-    assert.deepEqual(source.urlFor(earthTileKey(5, 3, 7)), {
-      color: 'https://example.test/earth/tiles/5/3/7.jpg',
-      terrain: 'https://example.test/earth/tiles/5/3/7.bin.gz',
+    assert.deepEqual(source.descriptorFor(earthTileKey(5, 3, 7)), {
+      key: earthTileKey(5, 3, 7),
+      colorUrl: 'https://example.test/earth/tiles/5/3/7.jpg',
+      terrainUrl: 'https://example.test/earth/tiles/5/3/7.bin.gz',
     });
-    assert.ok(source.urlFor(earthTileKey(8, 511, 255)) !== null);
+    assert.ok(source.descriptorFor(earthTileKey(8, 511, 255)) !== null);
     const z7 = new EarthSurfaceTileSource(
       'https://example.test/earth/tiles/{z}/{x}/{y}.jpg',
       'https://example.test/earth/tiles/{z}/{x}/{y}.bin.gz',
@@ -56,6 +60,7 @@ export function register(): void {
   test('earth requests: fetchImplをreceiverなしで決定URLの色・地形へ使う', async () => {
     const key = earthTileKey(5, 0, 0);
     const calls: string[] = [];
+    // receiver なしで呼ばれることを確かめながら応答を返す。
     const fetchImpl: typeof fetch = async function (this: unknown, input, _init) {
       if (this !== undefined) throw new Error('fetch receiver must be undefined');
       const url = String(input);

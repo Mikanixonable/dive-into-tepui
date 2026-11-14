@@ -4,7 +4,7 @@ export const EDITORIAL_DATA_STYLE = `
 #hud .ui-section-code {
   display: inline-block;
   margin-right: var(--space-2);
-  color: var(--color-primary);
+  color: var(--role-meta);
   font-size: var(--font-xxs);
   font-weight: 700;
   letter-spacing: .16em;

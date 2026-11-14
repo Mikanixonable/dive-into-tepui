@@ -1,8 +1,8 @@
 // 建造・preset・保存復元が共有する船体モジュール定義を検索可能な一覧として提供する。
 import { v3, type Vec3 } from '../../math/vec3';
 import {
-  bodyPrimitive, defineShipModule, type FuelKind, type LocalCappedCylinder, type ShipModuleCategory,
-  type ShipModuleDefinition, type ShipModuleKind,
+  bodyPrimitive, defineShipModule, type AxialFaces, type FuelKind, type LocalCappedCylinder,
+  type ShipModuleCategory, type ShipModuleDefinition, type ShipModuleKind,
 } from './ship-module-definition';
 
 const MODULE_NAMES: Readonly<Record<string, string>> = {
@@ -24,6 +24,26 @@ const CATEGORY_BY_KIND: Readonly<Record<ShipModuleKind, ShipModuleCategory>> = {
   weapon: 'combat', armor: 'combat', radiator: 'utility', solar_panel: 'utility', decoupler: 'utility',
 };
 
+// kind ごとの軸方向端面の既定の使い道。モデルの実形状(砲口・ノズル・結合面の向き)に対応する。
+const AXIAL_FACES_BY_KIND: Readonly<Record<ShipModuleKind, AxialFaces>> = {
+  cockpit: { front: 'structural', back: 'structural' },
+  tank: { front: 'structural', back: 'structural' },
+  armor: { front: 'structural', back: 'structural' },
+  rcs: { front: 'structural', back: 'structural' },
+  decoupler: { front: 'structural', back: 'structural' },
+  // 砲口側の前端は機能を持つ面なので、後端の結合面だけで付く。
+  weapon: { front: 'none', back: 'structural' },
+  // ノズル側の後端は機能を持つ面なので、前端の結合面だけで付く。
+  thruster: { front: 'structural', back: 'none' },
+  booster: { front: 'structural', back: 'none' },
+  // 後端の幹で付き、前端の結合面は接舷・建造で使う。建造ドックの結合面は他が付くための面。
+  dock: { front: 'receive', back: 'structural' },
+  docking_port: { front: 'none', back: 'structural' },
+  // 側面取り付け専用。
+  solar_panel: { front: 'none', back: 'none' },
+  radiator: { front: 'none', back: 'none' },
+};
+
 // 標準の円筒接触形状を既定にし、個別モジュールだけ固有の接触形状と直径を渡す。
 function moduleDefinition(
   id: string, kind: ShipModuleKind, length: number, maxHp: number, dryMass: number,
@@ -34,6 +54,7 @@ function moduleDefinition(
 ): ShipModuleDefinition {
   return defineShipModule({
     id, kind, name: MODULE_NAMES[id] ?? id, category: CATEGORY_BY_KIND[kind], length, diameter, dryMass, maxHp, modelId,
+    axialFaces: AXIAL_FACES_BY_KIND[kind],
     solidPrimitives: solids ?? [bodyPrimitive(length, radius)], muzzles, feedPort,
     ejectionPort: ports.ejection, linkExitPort: ports.linkExit, abilities,
   });
@@ -129,8 +150,10 @@ const definitions: readonly ShipModuleDefinition[] = [
   tank('tank-combat-main', 6, 'main', 1_000, 100, 0.6),
   // RCS の容量は持つが、推進剤質量は主タンク側の集計値に含まれる。
   tank('tank-combat-rcs', 3, 'rcs', 80, 25, 0, 'tank-3-rcs'),
+  // 推力は 400 m/s² 級の手触りを保ち、消費率は有効排気速度が化学ロケット級(約4.4 km/s)に
+  // なる値へ揃える。RCS の消費率はトルク基準で排気速度へ写像しないため据え置き。
   moduleDefinition('thruster-standard', 'thruster', 1, 80, 50, {
-    thrust: 400_000, fuelConsumptionRate: 1,
+    thrust: 400_000, fuelConsumptionRate: 90,
   }),
   moduleDefinition('rcs-standard', 'rcs', 1, 50, 50, { torque: RCS_MODULE_TORQUE, fuelConsumptionRate: 1 }),
   moduleDefinition(
@@ -148,7 +171,7 @@ const definitions: readonly ShipModuleDefinition[] = [
   moduleDefinition('solar-panel-standard', 'solar_panel', 1, 30, 5, { powerGeneration: 825 },
     3, 'solar-panel-standard', [], v3(), [DEPLOYABLE_MOUNT_PRIMITIVE]),
   moduleDefinition('booster-standard', 'booster', 6, 100, 200, {
-    fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 80,
+    fuelCapacity: 800, fuelMassPerUnit: 1, thrust: 600_000, fuelConsumptionRate: 135,
   }),
   moduleDefinition('docking-port-standard', 'docking_port', 1, 50, 40, {}, 1.5,
     'docking-port-standard', [], v3(), [DOCK_MODULE_PRIMITIVE], undefined, 3),

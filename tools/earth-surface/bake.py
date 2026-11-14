@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""明示された小領域の地理入力から、色・水域被覆・楕円体高・天体固定法線を生成する。"""
+"""地理入力から色・水域被覆・楕円体高・天体固定法線を生成し、全球タイルbundleを書き出す。"""
 
 import argparse
 from dataclasses import dataclass
@@ -14,8 +14,8 @@ from pathlib import Path
 import shutil
 import struct
 import sys
-import zipfile
 
+from common import contract_hash, source_file_paths
 from real_renderer import RendererUnavailable
 
 _spec = importlib.util.spec_from_file_location("earth_surface_fetch", Path(__file__).with_name("fetch-source.py"))
@@ -36,8 +36,8 @@ TERRAIN_HEIGHT = TERRAIN_WIDTH
 TERRAIN_CHANNELS = _LAYOUT["terrainChannels"]
 TERRAIN_TEXELS = TERRAIN_WIDTH * TERRAIN_HEIGHT
 TERRAIN_BYTES = TERRAIN_TEXELS * TERRAIN_CHANNELS
+# ESTN/ESTBは同一の32bytesヘッダーstructを共有する。
 TERRAIN_HEADER = struct.Struct("<4sHHHHBBIIBBII")
-BASE_HEADER = struct.Struct("<4sHHHHBBIIBBII")
 BASE_COLOR_Z = EARTH_BASE_COLOR_Z
 BASE_COLOR_ROOT_COUNT = 2 ** (BASE_COLOR_Z + 1) * 2 ** BASE_COLOR_Z
 BASE_COLOR_TILE_TEXELS = EARTH_TILE_TEXELS
@@ -82,88 +82,6 @@ def tile_grid(z, x, y, gutter=EARTH_TILE_GUTTER):
     return Grid(-180 + x * width - gutter * step, 90 - (y + 1) * height - gutter * step,
                 -180 + (x + 1) * width + gutter * step, 90 - y * height + gutter * step,
                 EARTH_TILE_TEXELS + 2 * gutter, EARTH_TILE_TEXELS + 2 * gutter, True)
-
-
-def read_geotiff_window(path, window=None):
-    """GDALがある環境だけで、全画像を配列化せず指定窓を読む。"""
-    try:
-        from osgeo import gdal
-    except ImportError as error:
-        raise RuntimeError("GeoTIFFの実データ生成にはGDALが必要です") from error
-    gdal.UseExceptions()
-    dataset = gdal.Open(str(path), gdal.GA_ReadOnly)
-    if dataset is None or dataset.RasterCount == 0:
-        raise ValueError("GeoTIFFを開けません")
-    projection = dataset.GetProjectionRef()
-    if "4326" not in projection and "WGS 84" not in projection:
-        raise ValueError("GeoTIFFのCRSはEPSG:4326が必要です")
-    if window is None:
-        raise ValueError("GeoTIFFは全体配列化せずwindowを指定してください")
-    x, y, width, height = window
-    if not (0 <= x < dataset.RasterXSize and 0 <= y < dataset.RasterYSize
-            and 0 < width <= dataset.RasterXSize - x and 0 < height <= dataset.RasterYSize - y):
-        raise ValueError("GeoTIFFの読み取り窓が範囲外です")
-    bands = [dataset.GetRasterBand(index).ReadAsArray(x, y, width, height) for index in range(1, dataset.RasterCount + 1)]
-    return {"width": width, "height": height, "bands": bands,
-            "noData": [dataset.GetRasterBand(index).GetNoDataValue() for index in range(1, dataset.RasterCount + 1)],
-            "geoTransform": dataset.GetGeoTransform(), "projection": projection}
-
-
-def read_gshhg_polygons(path, levels=(1, 2, 3, 4, 5)):
-    """GSHHG full-resolution Shapefileをring単位で読む。大域配列は作らない。"""
-    try:
-        import shapefile
-    except ImportError as error:
-        raise RuntimeError("GSHHGの実データ生成にはpyshpが必要です") from error
-    archive = zipfile.ZipFile(path) if str(path).lower().endswith(".zip") else None
-    polygons = []
-    try:
-        for level in levels:
-            prefix = f"GSHHS_f_L{level}"
-            if archive is None:
-                reader = shapefile.Reader(f"{path}/{prefix}")
-            else:
-                names = {name.rsplit("/", 1)[-1]: name for name in archive.namelist()}
-                needed = [names.get(f"{prefix}.{extension}") for extension in ("shp", "shx", "dbf")]
-                if any(item is None for item in needed):
-                    raise ValueError(f"GSHHGの{prefix}が欠落しています")
-                reader = shapefile.Reader(shp=io.BytesIO(archive.read(needed[0])),
-                                          shx=io.BytesIO(archive.read(needed[1])),
-                                          dbf=io.BytesIO(archive.read(needed[2])))
-            for shape in reader.shapes():
-                starts = list(shape.parts) + [len(shape.points)]
-                for start, end in zip(starts, starts[1:]):
-                    ring = shape.points[start:end]
-                    if len(ring) >= 4 and ring[0] != ring[-1]:
-                        ring.append(ring[0])
-                    polygons.append({"level": level, "coordinates": ring})
-    finally:
-        if archive is not None:
-            archive.close()
-    return polygons
-
-
-def read_era5_month(path, month, window=None):
-    """ERA5の指定月を読み、UTC時刻ごとの窓を返す。全世界を一度に展開しない。"""
-    try:
-        import netCDF4
-    except ImportError as error:
-        raise RuntimeError("ERA5の実データ生成にはnetCDF4が必要です") from error
-    if not 1 <= month <= 12:
-        raise ValueError("monthは1..12が必要です")
-    if window is None:
-        raise ValueError("ERA5は全体配列化せず緯度経度windowを指定してください")
-    with netCDF4.Dataset(path, "r") as dataset:
-        names = {"2m_temperature": "t2m", "total_cloud_cover": "tcc"}
-        result = {}
-        for logical, preferred in names.items():
-            name = preferred if preferred in dataset.variables else logical
-            if name not in dataset.variables:
-                raise ValueError(f"ERA5変数が欠落しています: {logical}")
-            variable = dataset.variables[name]
-            slices = (slice(None), *window)
-            result[logical] = variable[slices]
-        return result
 
 
 @dataclass(frozen=True)
@@ -298,62 +216,6 @@ def coverage(grid, polygons):
     return land, ice
 
 
-# 球面セル交差で面積平均する。欠測や入力窓の不足は明示的に失敗する。
-def regrid_mean(values, source_grid, target_grid):
-    if len(values) != source_grid.width * source_grid.height or any(value is None or not math.isfinite(value) for value in values):
-        raise ValueError("再格子化の入力に欠測があります")
-    if source_grid == target_grid:
-        return list(values)
-    result = []
-    for y in range(target_grid.height):
-        for x in range(target_grid.width):
-            target = target_grid.bounds(x, y)
-            weighted, area = 0.0, 0.0
-            for sy in range(source_grid.height):
-                for sx in range(source_grid.width):
-                    source = source_grid.bounds(sx, sy)
-                    shift = 360 * round(((target[0] + target[2]) - (source[0] + source[2])) / 720)
-                    overlap = max(target[0], source[0] + shift), max(target[1], source[1]), min(target[2], source[2] + shift), min(target[3], source[3])
-                    if overlap[0] < overlap[2] and overlap[1] < overlap[3]:
-                        weight = cell_area(overlap)
-                        weighted += values[sy * source_grid.width + sx] * weight
-                        area += weight
-            if not math.isclose(area, cell_area(target), rel_tol=1e-9, abs_tol=1e-15):
-                raise ValueError("再格子化の入力範囲が不足しています")
-            result.append(weighted / area)
-    return result
-
-
-# sRGB8の色を線形RGBで面積平均し、sRGB8へ戻す。
-def regrid_color(pixels, source_grid, target_grid):
-    channels = []
-    for channel in range(3):
-        values = [pixel[channel] / 255 for pixel in pixels]
-        linear = [value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4 for value in values]
-        averaged = regrid_mean(linear, source_grid, target_grid)
-        channels.append([round(255 * (12.92 * value if value <= 0.0031308 else 1.055 * value ** (1 / 2.4) - 0.055)) for value in averaged])
-    return list(zip(*channels))
-
-
-# 1991–2020の同月・全UTC24時刻がそろった2変数の平均を返す。
-def era5_month_mean(records, month):
-    expected = {(year, hour) for year in range(1991, 2021) for hour in range(24)}
-    samples = {}
-    for record in records:
-        if record["month"] != month:
-            raise ValueError("ERA5の月番号が不一致です")
-        key = record["year"], record["hourUtc"]
-        if key not in expected or key in samples:
-            raise ValueError("ERA5の時刻が重複または期間外です")
-        temperature, cloud = record["2m_temperature"], record["total_cloud_cover"]
-        if temperature is None or cloud is None or not math.isfinite(temperature) or temperature <= 0 or not math.isfinite(cloud) or not 0 <= cloud <= 1:
-            raise ValueError("ERA5の変数が欠測または単位範囲外です")
-        samples[key] = temperature, cloud
-    if not 1 <= month <= 12 or samples.keys() != expected:
-        raise ValueError("ERA5は1991–2020各年の全24時刻が必要です")
-    return tuple(math.fsum(samples[key][axis] for key in sorted(samples)) / len(expected) for axis in range(2))
-
-
 # 地理緯経度の東・北・上を、天体固定XYZへ変換する。
 def basis(lon, lat):
     return ((math.cos(lon), 0.0, -math.sin(lon)),
@@ -426,7 +288,7 @@ def bake_region(value, manifest):
     if value.get("schemaVersion") != 1 or value.get("kind") not in (
             "earth-surface-region-fixture", "earth-surface-region-window"):
         raise ValueError("小領域fixtureまたはwindow形式が必要です")
-    if value.get("datasetId") != manifest["datasetId"] or value.get("sourceManifestSha256") != _fetch.contract_hash(manifest):
+    if value.get("datasetId") != manifest["datasetId"] or value.get("sourceManifestSha256") != contract_hash(manifest):
         raise ValueError("fixtureとソースマニフェストの版が不一致です")
     if value.get("surfaceSourceId") != "etopo-2022-v1-ice-surface" or value.get("geoidSourceId") != "etopo-2022-v1-geoid":
         raise ValueError("ETOPO ice-surfaceと対応するgeoidが必要です")
@@ -469,13 +331,6 @@ def bake_region(value, manifest):
               "orthometricHeightM": orthometric, "landFraction": land, "iceFraction": ice,
               "iceUnknownFraction": [max(0.0, dry - frozen) for dry, frozen in zip(land, ice)],
               "normals": normals, "roughness": roughness}
-    if "era5" in value:
-        climate = value["era5"]
-        source = next(item for item in manifest["sources"] if item["id"] == climate["sourceId"])
-        if source["id"] != "era5-monthly-1991-2020" or source["product"] != "monthly_averaged_reanalysis_by_hour_of_day":
-            raise ValueError("ERA5のproductが不一致です")
-        temperature, cloud = era5_month_mean(climate["records"], climate["month"])
-        result["climateMonth"] = {"month": climate["month"], "temperatureK": temperature, "cloudFraction": cloud}
     return result
 
 
@@ -528,40 +383,29 @@ def validate_terrain_tile(payload, key, expected_sha):
             raise ValueError("地形本文に無効な法線またはroughnessがあります")
 
 
-def decode_terrain_tile(payload):
-    """検証済みESTN本文を復号し、テストと小規模producer検査へ返す。"""
-    header = TERRAIN_HEADER.unpack_from(payload)
-    validate_terrain_tile(payload, (header[5], header[7], header[8]), hashlib.sha256(payload).hexdigest())
-    normals, roughness = [], []
-    for red, green, blue, material in struct.iter_unpack("<4B", payload[32:]):
-        normals.append(decode_xyz_normal((red, green, blue)))
-        roughness.append(material / 255)
-    return normals, roughness
-
-
-def encode_base_terrain(terrain_payloads, root_columns=2, root_rows=1):
+def encode_base_terrain(terrain_payloads):
     """z=0の2枚のESTN本文をまとめたESTB。header後はESTN payloadを順番に格納する。"""
-    if (root_columns, root_rows) != (2, 1) or len(terrain_payloads) != 2:
+    if len(terrain_payloads) != 2:
         raise ValueError("base ESTBはz=0の2枚のroot payloadが必要です")
     for x, payload in enumerate(terrain_payloads):
         validate_terrain_tile(payload, (0, x, 0), hashlib.sha256(payload).hexdigest())
     body = b"".join(terrain_payloads)
-    header = BASE_HEADER.pack(b"ESTB", TERRAIN_FORMAT_VERSION, 32, TERRAIN_WIDTH, TERRAIN_HEIGHT, 0, 0, root_columns, root_rows,
-                              TERRAIN_HEADER.unpack_from(terrain_payloads[0])[9],
-                              UINT8_SCALAR, len(body), 0)
+    header = TERRAIN_HEADER.pack(b"ESTB", TERRAIN_FORMAT_VERSION, 32, TERRAIN_WIDTH, TERRAIN_HEIGHT, 0, 0, 2, 1,
+                                 TERRAIN_HEADER.unpack_from(terrain_payloads[0])[9],
+                                 UINT8_SCALAR, len(body), 0)
     return header + body
 
 
 def validate_base_terrain(payload, expected_root_count=2):
-    if len(payload) < BASE_HEADER.size:
+    if len(payload) < TERRAIN_HEADER.size:
         raise ValueError("ESTB headerが短すぎます")
-    magic, version, header_bytes, width, height, z, reserved, columns, rows, channels, scalar, data_bytes, reserved2 = BASE_HEADER.unpack_from(payload)
+    magic, version, header_bytes, width, height, z, reserved, columns, rows, channels, scalar, data_bytes, reserved2 = TERRAIN_HEADER.unpack_from(payload)
     if (magic, version, header_bytes, width, height, z, reserved, columns, rows, channels, scalar, reserved2) != (
             b"ESTB", TERRAIN_FORMAT_VERSION, 32, TERRAIN_WIDTH, TERRAIN_HEIGHT, 0, 0, 2, 1,
             TERRAIN_CHANNELS, UINT8_SCALAR, 0):
         raise ValueError("ESTB headerが不正です")
     expected = expected_root_count * TERRAIN_HEADER.size + expected_root_count * TERRAIN_BYTES
-    if data_bytes != expected or len(payload) != BASE_HEADER.size + expected:
+    if data_bytes != expected or len(payload) != TERRAIN_HEADER.size + expected:
         raise ValueError("ESTB payload長が不正です")
     return {"rootColumns": columns, "rootRows": rows, "payloadBytes": data_bytes}
 
@@ -658,25 +502,7 @@ class GlobalInputError(RuntimeError):
 
 def global_input_paths(manifest, raw_root):
     """manifestから必要入力のパスだけを列挙する。入力内容はメモリへ展開しない。"""
-    root = Path(raw_root)
-    suffix = {"geotiff": ".tif", "zip": ".zip", "netcdf": ".nc"}
-    paths = []
-    for source in manifest["sources"]:
-        source_root = root / source["id"]
-        explicit = source.get("inputFiles")
-        if explicit:
-            paths.extend(source_root / item for item in explicit)
-        elif source.get("regions"):
-            paths.extend(source_root / f"{region}{suffix[source['format']]}" for region in source["regions"])
-        elif source.get("regionGridDegrees"):
-            for latitude in range(90, -90, -15):
-                north_south = f"N{latitude:02d}" if latitude >= 0 else f"S{-latitude:02d}"
-                for longitude in range(-180, 180, 15):
-                    east_west = f"E{longitude:03d}" if longitude >= 0 else f"W{-longitude:03d}"
-                    paths.append(source_root / f"{north_south}{east_west}{suffix[source['format']]}" )
-        else:
-            paths.append(source_root / f"global{suffix[source['format']]}" )
-    return paths
+    return [path for source in manifest["sources"] for path in source_file_paths(raw_root, source)]
 
 
 def require_global_inputs(manifest, raw_root):
@@ -735,7 +561,7 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
     if staging.exists():
         shutil.rmtree(staging)
     staging.mkdir(parents=True)
-    source_hash = _fetch.contract_hash(manifest)
+    source_hash = contract_hash(manifest)
     climate_paths = [f"climate/{month:02d}.png" for month in range(1, 13)]
     source_manifest_file = Path(source_manifest_path)
     if not source_manifest_file.is_file():
@@ -796,29 +622,24 @@ def write_global_bundle(manifest, source_manifest_path, raw_root, output_root, r
     return result_manifest
 
 
-# fixtureを中間JSONとRGB8 PPMへ出力する。タイルキー指定時はESTN本文も検査して保存する。
+# 実データまたはsynthetic fixtureから全球bundleを生成する入口。
 def main():
     from real_renderer import create_fixture_renderer, create_real_renderer
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input")
     parser.add_argument("--global", action="store_true", dest="global_bundle",
                         help=f"z{EARTH_TILE_MIN_Z}..z{EARTH_TILE_MAX_Z}の全{global_tile_count()}タイルbundle生成入口。入力不足は生成前に失敗する")
     parser.add_argument("--fixture-global", metavar="PATH",
                         help="明示したsynthetic fixtureから小さなbundleを生成するテスト入口")
     parser.add_argument("--raw-root", default=".earth-surface/raw")
-    parser.add_argument("--climate-dir", default=".earth-surface/climate")
     parser.add_argument("--manifest", default="assets-src/earth-surface/sources.json")
     parser.add_argument("--output", default=".earth-surface/intermediate/region")
     parser.add_argument("--max-zoom", type=int, default=EARTH_TILE_MAX_Z)
-    parser.add_argument("--tile", nargs=3, type=int, metavar=("Z", "X", "Y"))
     args = parser.parse_args()
     manifest = _fetch.load_manifest(args.manifest)
     if args.global_bundle and args.fixture_global:
         parser.error("--globalと--fixture-globalは併用できません")
     if args.fixture_global:
-        if args.input is not None or args.tile is not None:
-            parser.error("--fixture-globalは--input/--tileと併用できません")
         renderer = create_fixture_renderer(manifest, args.fixture_global)
         climate_maps = renderer.climate_maps()
         write_global_bundle(manifest, args.manifest, args.raw_root, args.output,
@@ -827,45 +648,12 @@ def main():
         print(f"fixture全球bundle生成完了: {args.output}")
         return
     if args.global_bundle:
-        if args.input is not None or args.tile is not None:
-            parser.error("--globalは--input/--tileと併用できません")
         renderer = create_real_renderer(manifest, args.raw_root)
         write_global_bundle(manifest, args.manifest, args.raw_root, args.output,
                             renderer.render_tile, renderer.climate_maps(), max_zoom=args.max_zoom)
         print(f"全球bundle生成完了: {args.output}")
         return
-    if args.input is None:
-        parser.error("fixture生成では--input、全球生成では--globalが必要です")
-    raw = Path(args.input).read_bytes()
-    value = json.loads(raw)
-    result = bake_region(value, manifest)
-    result["fixtureSha256"] = hashlib.sha256(raw).hexdigest()
-    grid = Grid(**value["grid"])
-    output = Path(args.output)
-    output.mkdir(parents=True, exist_ok=True)
-    ppm = f"P6\n{grid.width} {grid.height}\n255\n".encode() + bytes(channel for pixel in result["colorSrgb"] for channel in pixel)
-    (output / "color.ppm").write_bytes(ppm)
-    result["files"] = [{"url": "color.ppm", "mime": "image/x-portable-pixmap", "encodedBytes": len(ppm), "payloadBytes": len(ppm), "sha256": hashlib.sha256(ppm).hexdigest()}]
-    if args.tile:
-        z, x, y = args.tile
-        span = 180 / 2 ** z
-        texel = span / EARTH_TILE_TEXELS
-        gutter = EARTH_TILE_GUTTER
-        expected = (-180 + x * span - gutter * texel, 90 - (y + 1) * span - gutter * texel,
-                    -180 + (x + 1) * span + gutter * texel, 90 - y * span + gutter * texel)
-        if grid.width != TERRAIN_WIDTH or grid.height != TERRAIN_HEIGHT or any(not math.isclose(actual, wanted, abs_tol=1e-10) for actual, wanted in zip((grid.west, grid.south, grid.east, grid.north), expected)):
-            raise ValueError(f"入力格子が指定タイルの{gutter}texelガター付き領域ではありません")
-        payload = encode_terrain_tile(result["normals"], result["roughness"], *args.tile)
-        digest = hashlib.sha256(payload).hexdigest()
-        validate_terrain_tile(payload, args.tile, digest)
-        encoded = gzip.compress(payload, mtime=0)
-        (output / "normal-material.bin").write_bytes(payload)
-        (output / "normal-material.bin.gz").write_bytes(encoded)
-        result["files"].extend({"url": name, "mime": "application/octet-stream", "encodedBytes": length,
-                                "payloadBytes": len(payload), "sha256": digest}
-                               for name, length in (("normal-material.bin", len(payload)), ("normal-material.bin.gz", len(encoded))))
-    (output / "region.json").write_text(json.dumps(result, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n")
-    print(f"生成完了: {output / 'region.json'}")
+    parser.error("--globalまたは--fixture-globalが必要です")
 
 
 if __name__ == "__main__":

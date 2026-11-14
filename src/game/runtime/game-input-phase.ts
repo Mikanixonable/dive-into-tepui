@@ -22,6 +22,7 @@ export class GameInputPhase {
   private readonly pilotInput = new PilotInput();
   private readonly pilotPorts: readonly GameInputPort[];
 
+  // 入力の解釈が渡す先(入力資源・HUD・カメラ・ビュー・建造)を受け、配分するポートの表を組む。
   public constructor(
     private readonly source: GameInputSource,
     private readonly hud: Hud,
@@ -77,18 +78,21 @@ export class GameInputPhase {
       this.viewManager.activeView.updateActions(dt);
     }
     this.inputRouter.routeAdditional(this.pilotPorts);
+    // 建造はカメラより先にポインタを読む。建造が掴んだドラッグを mouse() から外す効きを、
+    // 同じフレームのカメラへ反映させるため。
+    if (inputMode.construction && this.cameraFrameOf() !== null) {
+      this.sections.switchTo(SECTION.input, SECTION.pointer);
+      this.shipConstruction.handlePointer(this.input, this.cameraSystem, viewport);
+      this.sections.switchTo(SECTION.pointer, SECTION.input);
+    }
     if (inputMode.camera) {
       this.cameraSystem.handleInput(this.input, dt, viewport, this.source.activeControllable);
     }
     // ピッキング判定は直前の sync で確定したカメラおよび候補列に基づいて評価する — 入力解釈は本フレームの導出処理に先行して実行される。
     const cameraFrame = this.cameraFrameOf();
-    if ((inputMode.world || inputMode.construction) && cameraFrame !== null) {
+    if (inputMode.world && cameraFrame !== null) {
       this.sections.switchTo(SECTION.input, SECTION.pointer);
-      if (inputMode.construction) {
-        this.shipConstruction.handlePointer(this.input, this.cameraSystem, viewport);
-      } else {
-        this.viewManager.activeView.handlePointer(cameraFrame);
-      }
+      this.viewManager.activeView.handlePointer(cameraFrame);
       this.sections.switchTo(SECTION.pointer, SECTION.input);
     }
   }
