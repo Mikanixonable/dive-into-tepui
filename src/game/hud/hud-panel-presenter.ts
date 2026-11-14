@@ -97,7 +97,7 @@ export class HudPanelPresenter {
   // 候補・実体・天体名(未登録なら id)の順に引く。
   private focusName(pickables: readonly ObjectPickable[]): string {
     const id = focusTargetId(this.cameraSystem.activeFocus);
-    if (id === undefined) return '固定点';
+    if (id === null) return '固定点';
     const role = frameRoleOf(id);
     if (role !== null) return frameRoleName(role);
     const pickable = pickables.find((item) => item.id === id);

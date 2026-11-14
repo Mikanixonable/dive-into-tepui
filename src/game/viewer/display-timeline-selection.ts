@@ -101,9 +101,9 @@ export class DisplayTimelineSelection implements DisplayTimelineSource {
   public static create(
     frames: Pick<ReferenceFrames, 'inertialFrame' | 'frameOf'>,
     celestialBodies: Pick<CelestialBodies, 'has'>,
-    cameraFocusId: string | undefined,
+    cameraFocusId: string | null,
   ): DisplayTimelineSelection {
-    const frame = cameraFocusId === undefined
+    const frame = cameraFocusId === null
       ? null
       : frameCenteredOnFocus(frames, celestialBodies, cameraFocusId, frames.inertialFrame.rotatingWith);
     return new DisplayTimelineSelection(frames, celestialBodies, frame ?? undefined);
@@ -226,8 +226,8 @@ export class DisplayTimelineSelection implements DisplayTimelineSource {
   }
 
   // カメラの基準が登録天体 id へ移ったとき、描画基準の中心を合わせる。
-  public followCameraFocus(id: string | undefined): void {
-    if (!this._followCamera || id === undefined) return;
+  public followCameraFocus(id: string | null): void {
+    if (!this._followCamera || id === null) return;
     this._frame = frameCenteredOnFocus(this.frames, this.celestialBodies, id, this._frame.rotatingWith) ?? this._frame;
   }
 

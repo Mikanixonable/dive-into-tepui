@@ -21,7 +21,7 @@ export class PickupMotion extends DynamicMotion {
   // 小さな金属片と同じ物性で、質量と接触ダメージの重みを 0 にした漂流物として組む。thermal は熱の
   // 状態で、省くと環境温度から始める。alive は生死で、省くと生きた状態で始める。
   public constructor(
-    state: KinematicState, attitude: Attitude | undefined, kind: PickupKind, thermal?: DynamicMotionThermal,
+    state: KinematicState, attitude: Attitude | null, kind: PickupKind, thermal?: DynamicMotionThermal,
     alive?: boolean,
   ) {
     super(state, {

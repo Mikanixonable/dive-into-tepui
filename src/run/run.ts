@@ -35,7 +35,7 @@ export class Run implements SnapshotSource, PerfCountSource {
   // 表示パネルのタブの選択、themePalette は選ばれている配色。
   public static async create(
     stageClass: StageClass,
-    startEpoch: TdbJulianDate | undefined,
+    startEpoch: TdbJulianDate | null,
     devices: PageDevices,
     viewOptions: ViewOptionsSettings,
     themePalette: SettingValue<ThemePalette>,

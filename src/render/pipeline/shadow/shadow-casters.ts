@@ -131,8 +131,8 @@ export class ShadowCasters {
     if (!object.visible) return;
     const mesh = object as THREE.Mesh;
     if (mesh.isMesh && mesh.layers.isEnabled(SHADOW_CASTER_LAYER)) {
-      const extent = mesh.userData.shadowExtent as ShadowExtent | undefined;
-      if (extent === undefined) {
+      const extent = mesh.userData.shadowExtent as ShadowExtent | null;
+      if (extent == null) {
         this.scratchBox.expandByObject(mesh);
         this.takeMeshAnchor(mesh);
       } else if (!extent.worldBounds.isEmpty()) {

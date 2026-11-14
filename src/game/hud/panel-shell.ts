@@ -47,8 +47,8 @@ export class PanelCollapse {
   }
 
   // id の保存済み折りたたみ状態。一度も操作されていなければ undefined。
-  public collapsed(id: string): boolean | undefined {
-    return this.state.current[this.view][id];
+  public collapsed(id: string): boolean | null {
+    return this.state.current[this.view][id] ?? null;
   }
 
   // id の折りたたみ状態を、いま表に出ているビューの分として書き換える。

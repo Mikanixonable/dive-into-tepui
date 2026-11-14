@@ -54,7 +54,7 @@ export class MetalEnemy extends PartBasedEnemy {
   private constructor(
     placement: MetalEnemyPlacement,
     id: string,
-    scene: THREE.Scene | undefined,
+    scene?: THREE.Scene,
     // 金属の敵は、自機と同じ性能の推進器と機関砲を積む。
     parts: readonly Part[] = createShipDefaultParts(ENEMY_MAX_HP),
     alive?: boolean,
@@ -92,7 +92,7 @@ export class MetalEnemy extends PartBasedEnemy {
       placement,
       registry.idAllocators.entity.next(placement.id),
       scene,
-      deserializeParts(serialized.parts),
+      deserializeParts(serialized.parts) ?? createShipDefaultParts(ENEMY_MAX_HP),
       serialized.alive,
       // 射撃の途中経過と時刻
       serialized.fireController.burstLeft,

@@ -32,7 +32,7 @@ export interface DisplayTimelineCommands {
   // カメラの基準へ描画基準を追随させるかを切り替える。
   setFollowCamera(on: boolean): void;
   // カメラの基準が id へ移ったことを伝える。
-  followCameraFocus(id: string | undefined): void;
+  followCameraFocus(id: string | null): void;
   // 描画座標系の回転を外す。
   dropRotation(): void;
 }
