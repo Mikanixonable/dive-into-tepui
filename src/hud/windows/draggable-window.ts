@@ -124,7 +124,7 @@ export class DraggableWindow implements OverlayHandle {
     header.className = 'dg-window-header';
     const title = document.createElement('div');
     title.className = 'dg-window-title';
-    // アイコンは題名の行だけと横並びにする(サブタイトルを含めた全体で中央寄せすると、
+    // アイコンは題名の行にだけ横並びにする(サブタイトルを含めた全体で中央寄せすると、
     // サブタイトルの有無で題名との高さが揃わなくなるため)。
     const titleMain = document.createElement('div');
     titleMain.className = 'dg-window-title-top';
