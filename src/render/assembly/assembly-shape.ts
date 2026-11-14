@@ -312,3 +312,28 @@ function shapeInertia(parts: readonly AssemblyPartDef[]): Vec3 {
   const max = Math.max(ixx, iyy, izz);
   return max > 0 ? v3(ixx / max, iyy / max, izz / max) : v3(1, 1, 1);
 }
+
+// 部品1個を、重心を原点とする独立した物体として切り出した形。失われた部品が破片として飛ぶときに使う。
+export interface DetachedPart {
+  // 重心を原点とする部品。index と役割は元の部品のまま。
+  readonly part: AssemblyPartDef;
+  // 元の個体ローカル座標での重心 [m]。
+  readonly center: Vec3;
+  // 重心まわりの慣性の対角近似(最大成分で正規化)。
+  readonly inertia: Vec3;
+}
+
+// 部品を重心まわりの独立した物体として切り出す。
+export function detachPart(part: AssemblyPartDef): DetachedPart {
+  const center = midpointOf(part.centerline);
+  const shifted: AssemblyPartDef = {
+    ...part,
+    centerline: part.centerline.map((point) => sub(point, center)),
+  };
+  return { part: shifted, center, inertia: shapeInertia([shifted]) };
+}
+
+// seed の個体の index 番目の部品を、重心を原点とする形で組み直す。破片の表示はこの形を使う。
+export function detachedPartOf(seed: number, index: number): DetachedPart {
+  return detachPart(generateAssemblyShape(seed).parts[index]!);
+}

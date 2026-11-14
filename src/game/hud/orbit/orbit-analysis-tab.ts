@@ -7,7 +7,7 @@ import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity'
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 
-// 軌道分析のタブが読む盤面 —— 天体がいつどこにあるかと、未来をどこまで描くか、どの色で描くか。
+// 軌道分析のタブが描く状態 —— 天体がいつどこにあるかと、未来をどこまで描くか、どの色で描くか。
 export interface AnalysisChartSource {
   readonly celestialSystem: CelestialSystem;
   // 未来を描く期間 [s]。マップの未来表示が指す期間と揃える。
