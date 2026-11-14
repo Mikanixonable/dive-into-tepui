@@ -196,6 +196,69 @@ export const CLOUD_DETAIL_CHECK_SHOTS: Readonly<Record<string, CloudDetailShot>>
   },
 };
 
+// 視点を動かしただけで雲の形が変わらないかを測る撮影の組。同じ場面・同じ時刻を、基準(base)・
+// 直下点を北へ STABILITY_SHIFT_PX 画素ぶんずらした構図(shift)・高度を STABILITY_ZOOM 倍にした構図(zoom)で
+// 撮る。止まった雲なら、位置と縮尺を合わせた 3 枚は一致する。計測の一覧(CLOUD_DETAIL_SHOT_INFOS)には載せない。
+// 撮影名は <海域>-<時刻 h>h-<km/px>km-stab-<base|shift|zoom>。
+const STABILITY_SCENE_IDS = ['natl-front', 'npac-jet', 'pac-temp', 'south-hl', 'wpac-itcz'] as const;
+const STABILITY_DISPLAY_TIME_S = 21600;
+// ずらす画素数。cap の 1 texel(低軌道で約 10 km)より短く、細部の段(0.25 km/px で 1〜32 px)を跨ぐ長さ。
+const STABILITY_SHIFT_PX = 6;
+// 高度の倍率。cap の半径と細部の段の減衰の両方が動く幅。
+const STABILITY_ZOOM = 1.25;
+export type CloudDetailStabilityVariant = 'base' | 'shift' | 'zoom';
+
+export const CLOUD_DETAIL_STABILITY_SHOTS: Readonly<Record<string, CloudDetailShot>> = (() => {
+  const shots: Record<string, CloudDetailShot> = {};
+  for (const id of STABILITY_SCENE_IDS) {
+    const scene = SCENES.find((entry) => entry.id === id);
+    if (scene === undefined) throw new Error(`stability: no scene ${id}`);
+    for (const tierKmPerPx of TIERS_KM_PER_PX) {
+      const baseAltitude = altitudeFor(tierKmPerPx, scene.latitudeDeg);
+      const shiftDeg = THREE.MathUtils.radToDeg(
+        (STABILITY_SHIFT_PX * tierKmPerPx * 1000) / surfaceRadiusAt(scene.latitudeDeg));
+      const variants: Record<CloudDetailStabilityVariant, { altitudeM: number; latitudeDeg: number }> = {
+        base: { altitudeM: baseAltitude, latitudeDeg: scene.latitudeDeg },
+        shift: { altitudeM: baseAltitude, latitudeDeg: scene.latitudeDeg + shiftDeg },
+        zoom: { altitudeM: baseAltitude * STABILITY_ZOOM, latitudeDeg: scene.latitudeDeg },
+      };
+      for (const [variant, placement] of Object.entries(variants)) {
+        const name = `${scene.id}-${STABILITY_DISPLAY_TIME_S / 3600}h-${tierKmPerPx}km-stab-${variant}`;
+        shots[name] = {
+          scene: scene.scene,
+          latitudeDeg: placement.latitudeDeg,
+          longitudeDeg: scene.longitudeDeg,
+          displayTime: STABILITY_DISPLAY_TIME_S,
+          kind: 'both',
+          tierKmPerPx,
+          centerKmPerPx: centerKmPerPxOf(placement.altitudeM, placement.latitudeDeg),
+          altitudeM: placement.altitudeM,
+          view: {
+            earthAltitudeLog: Math.log10(placement.altitudeM),
+            earthLatitudeDeg: placement.latitudeDeg,
+            earthLongitudeDeg: scene.longitudeDeg,
+          },
+          graphics: KIND_GRAPHICS.both,
+        };
+      }
+    }
+  }
+  return shots;
+})();
+
+export const CLOUD_DETAIL_STABILITY_SHOT_INFOS: readonly CloudDetailShotInfo[] =
+  Object.entries(CLOUD_DETAIL_STABILITY_SHOTS).map(([name, shot]) => ({
+    name,
+    scene: shot.scene,
+    latitudeDeg: shot.latitudeDeg,
+    longitudeDeg: shot.longitudeDeg,
+    displayTime: shot.displayTime,
+    kind: shot.kind,
+    tierKmPerPx: shot.tierKmPerPx,
+    centerKmPerPx: shot.centerKmPerPx,
+    altitudeM: shot.altitudeM,
+  }));
+
 // 雲の細部の撮影が共有するケース。地球だけを置き、カメラは描画原点から直下点の地表を見る。
 // 観察の向きと描画設定は撮影ごとの差分で決まる。巡回のケースには登録しない。
 export function cloudDetailCase(): LabCase {
@@ -206,6 +269,9 @@ export function cloudDetailCase(): LabCase {
     viewTarget: new THREE.Vector3(0, 0, -altitudeFor(1, 0)),
     sunDirection: NADIR_SUN_DIRECTION,
     earth: NADIR_EARTH,
-    shots: { ...CLOUD_DETAIL_SHOTS, ...CLOUD_DETAIL_CIRRUS_COARSE_SHOTS, ...CLOUD_DETAIL_CHECK_SHOTS },
+    shots: {
+      ...CLOUD_DETAIL_SHOTS, ...CLOUD_DETAIL_CIRRUS_COARSE_SHOTS, ...CLOUD_DETAIL_CHECK_SHOTS,
+      ...CLOUD_DETAIL_STABILITY_SHOTS,
+    },
   };
 }

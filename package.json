@@ -98,6 +98,7 @@
     "cloud-detail:selftest": "node tools/cloud-detail-selftest.mjs",
     "cloud-detail:compare": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-compare.mjs",
     "cloud-detail:tiers": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-cirrus-tiers.mjs",
+    "cloud-detail:stability": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-stability.mjs",
     "verify:hud-layout": "node tools/verify-hud-layout.mjs",
     "smoke:layout": "node tools/layout-smoke-retry.mjs"
   },
