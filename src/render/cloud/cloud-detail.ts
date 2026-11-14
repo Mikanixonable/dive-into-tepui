@@ -4,8 +4,8 @@
 // その勾配で決まり、読み取り方向は低周波のノイズで歪ませて格子の並びを崩す。各段は風に乗って
 // 流れ、段の寿命で湧いて崩れる(cloud-detail-clock.ts)。
 import {
-  If, abs, atan, clamp, cos, cross, dot, exp, float, greaterThan, length, max, min, normalize, select,
-  sin, smoothstep, sqrt, step, uniform, vec3,
+  If, clamp, exp, float, greaterThan, length, max, min, normalize, select,
+  smoothstep, sqrt, step, uniform, vec3,
 } from 'three/tsl';
 import { DetailClock } from './cloud-detail-clock';
 import { gradientNoise } from './gradient-noise';
@@ -190,34 +190,11 @@ const CIRRUS_STRETCH_LAST_OCTAVE = 4;
 
 // 揃いの強い筋が流れ方向へ伸びる倍率の上限。揃い度 0 の場所は等方に読む。
 const CIRRUS_STRETCH_MAX = 3;
-// 大円の弧座標の原点を定める基準軸。大円の法線と重なりにくい 2 軸から、重なりの弱い側を選ぶ。
-const ARC_AXIS_X = vec3(1, 0, 0);
-const ARC_AXIS_Y = vec3(0, 1, 0);
-// 弧座標の圧縮を利かせなくする継ぎ目の帯。弧座標の絶対値がこの範囲へ入るほど圧縮率を 1 へ戻す。
-const SEAM_FADE_LO = Math.PI * 0.55;
-const SEAM_FADE_HI = Math.PI * 0.95;
 // 光学深さの対数の標準偏差。筋の濃淡の強さで、平均を 1 に保つ補正と組で使う。尺度の梯子で巻雲の
 // 細かい帯(1〜16 km)が大きい帯(64 km 以上)に対して強すぎない高さに取る。
 const CIRRUS_LOG_SIGMA = 0.4;
 // この量を下回る巻雲の柱では細部を評価しない。乗数は 1 のままで、光学深さは 0 に近い。
 export const CIRRUS_PRESENT_AMOUNT = 0.001;
-
-// 単位方向 direction を、その点を通る流れ方向 flowDir(direction に直交する接ベクトル)の大円に沿って写す。
-// 弧座標を 1/stretch に圧縮した方向を返し、stretch が 1 のときは direction へ戻る。接ベクトルだけでは伸ばせない —
-// 単位方向との内積は常に 0 なので、弧の原点 z(円上で基準軸へ最も近い点)と接線 t = m × z へ座標を取ってから
-// 圧縮し直す。継ぎ目(弧 ±π、大円上で −z の場所)の近くでは圧縮率を 1 へ戻す — 利かせたままだと継ぎ目の両側が
-// 2π/stretch の隙間へ写り、読む方向が飛んでノイズの切断面が細かい帯へ出る。
-export function stretchAlongFlow(direction: Vec3Node, flowDir: Vec3Node, stretch: FloatNode): Vec3Node {
-  const m = cross(direction, flowDir);
-  const reference = select(greaterThan(abs(dot(m, ARC_AXIS_X)), 0.7), ARC_AXIS_Y, ARC_AXIS_X);
-  const z = normalize(reference.sub(m.mul(dot(reference, m))));
-  const t = cross(m, z);
-  const arcRaw = atan(dot(direction, t), dot(direction, z));
-  const seam = smoothstep(float(SEAM_FADE_LO), float(SEAM_FADE_HI), abs(arcRaw));
-  const compression = float(1).div(stretch).add(seam.mul(float(1).sub(float(1).div(stretch))));
-  const arc = arcRaw.mul(compression);
-  return z.mul(cos(arc)).add(t.mul(sin(arc)));
-}
 
 export class CirrusDetailEvaluator {
   // 使う段数(粗い側から数える)。uniform なので、段数を変えてもシェーダのグラフは組み直さない。
@@ -247,9 +224,8 @@ export class CirrusDetailEvaluator {
     const sinTheta = select(axis.y.lessThan(0), float(-1), float(1))
       .mul(sqrt(max(axis.x.oneMinus().mul(0.5), 0)));
     const flowDir = normalize(east.mul(cosTheta).add(north.mul(sinTheta)));
-    // 流れ方向へ伸ばす。方向の写しは stretchAlongFlow が担う。
+    // 流れの向きへ伸ばす。揃いの弱い場所は等方に読む。
     const stretch = float(1).add(float(CIRRUS_STRETCH_MAX - 1).mul(coherence));
-    const stretched = stretchAlongFlow(direction, flowDir, stretch).toVar();
     const windVector = east.mul(wind.x).add(north.mul(wind.y));
 
     const sum = float(0).toVar();
@@ -260,8 +236,9 @@ export class CirrusDetailEvaluator {
         .mul(this.clock.presence(index)).toVar();
       If(greaterThan(live, 0), () => {
         const weight = live.mul(OCTAVE_WEIGHTS[index]!);
-        const readAt = index <= CIRRUS_STRETCH_LAST_OCTAVE ? stretched : direction;
-        const value = this.clock.evolvingNoise(index, readAt, radius, windVector).toVar();
+        // 粗い段は流れの向きへ伸ばして読み、細かい段は等方に読む。
+        const streak = index <= CIRRUS_STRETCH_LAST_OCTAVE ? { axis: flowDir, factor: stretch } : undefined;
+        const value = this.clock.evolvingNoise(index, direction, radius, windVector, streak).toVar();
         sum.addAssign(value.mul(weight));
         energy.addAssign(weight.mul(weight));
       });
