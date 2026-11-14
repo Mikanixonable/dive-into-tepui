@@ -3,15 +3,16 @@
 // 育ち、崩れ、分かれる。生まれてから経った時間ぶん読む位置を風上へ戻すので、模様は風に乗って流れる。
 // 戻す距離が溜まりすぎないよう段ごとの周期で読み直し、周期の継ぎ目の前後だけ次の周期と重ねて渡す。
 import * as THREE from 'three/webgpu';
-import { If, cos, float, greaterThan, normalize, sin, smoothstep, uniform } from 'three/tsl';
+import { If, cos, dot, float, greaterThan, normalize, sin, smoothstep, uniform } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 // 1 km の段の寿命 [s]。段の寿命は波長の 2/3 乗に比例する — 乱流の渦の回転時間は、エネルギー散逸率 ε を
 // 一定として ε^(−1/3)・L^(2/3) で、雲の時空の尺度則(Lovejoy & Schertzer)もこの冪を示す。
-// **細部の入れ替わりの速さを決める唯一のつまみ**で、時間の計測(尺度ごとに相関が落ちる時間)へ結ぶ。
-// 1 km で約 17 分は、浅い積雲の一生(15〜30 分)の下の端。
-const LIFETIME_AT_1KM = 1000;
+// **細部の入れ替わりの速さを決める唯一のつまみ**で、時間の計測(cloud-detail:stability の τ、尺度ごとに相関が
+// 1/e へ落ちる時間)へ結ぶ。勾配ノイズの相関は 1 格子滑らせる前に 1/e を切るので、ここで置く寿命は測った τ より
+// 長い。値は、積雲の 2〜20 km 帯の τ が実写の可視時系列の目安(約 0.6 時間)へ近づく高さに取る。
+const LIFETIME_AT_1KM = 2400;
 const LIFETIME_EXPONENT = 2 / 3;
 // 読み直しの周期は寿命のこの倍(上限 MAX_RECYCLE_PERIOD)。長いほど継ぎ目は稀で、風上へ戻す距離が溜まる。
 const RECYCLE_LIFETIMES = 4;
@@ -44,6 +45,13 @@ function writeReseed(cycle: number, out: THREE.Vector3): void {
     return x - Math.floor(x);
   };
   out.set(hash(12.9898), hash(78.233), hash(37.719)).multiplyScalar(RESEED_SPAN);
+}
+
+// 読む位置の線形の写し。単位ベクトル axis の向きの成分を 1/factor に縮めてから読む — 模様は axis の向きに
+// factor 倍長く伸びる。
+export interface LinearStretch {
+  readonly axis: Vec3Node;
+  readonly factor: FloatNode;
 }
 
 // 段ごとの時刻の uniform。表示時刻そのものはシェーダへ渡さず、段の周期で割った位相の端数と、いまと
@@ -84,7 +92,9 @@ export class DetailClock {
   // 段 index の、天体固定の単位方向 direction での値。振れ幅は勾配ノイズ 1 回ぶんと同じ。radius は天体の
   // 基準半径 [m]、wind は局所の東・北を張る接ベクトルで表した風 [m/s]。wind は数百キロで均した流れで
   // なければならない — 場所ごとに大きく変わると、周期のあいだに戻す距離の差で模様がねじれる。
-  public evolvingNoise(index: number, direction: Vec3Node, radius: FloatNode, wind: Vec3Node): FloatNode {
+  public evolvingNoise(
+    index: number, direction: Vec3Node, radius: FloatNode, wind: Vec3Node, linearStretch?: LinearStretch,
+  ): FloatNode {
     const wavelength = this.wavelengths[index]!;
     const period = recyclePeriod(wavelength);
     const scale = radius.div(wavelength);
@@ -94,7 +104,12 @@ export class DetailClock {
     // 周期の中の経過 age(継ぎ目の後なら負)と、その周期に読む位置のずらし seed で読む値。
     const valueAt = (age: FloatNode, seed: Vec3Node): FloatNode => {
       const origin = normalize(direction.sub(drift.mul(age)));
-      return gradientNoise(origin.mul(scale.add(age.mul(slide))).add(seed));
+      const position = origin.mul(scale.add(age.mul(slide)));
+      // 軸の向きへ位置を 1/factor に縮める線形の写し。軸に直交する成分は動かさない。
+      const domain = linearStretch === undefined ? position : position.sub(
+        linearStretch.axis.mul(dot(position, linearStretch.axis)).mul(float(1).sub(float(1).div(linearStretch.factor))),
+      );
+      return gradientNoise(domain.add(seed));
     };
     const age = this.ages[index]!;
     const value = valueAt(age, this.seeds[index]!).toVar();
