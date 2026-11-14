@@ -1,5 +1,6 @@
 // 船体の搭載モジュールから、検査ウィンドウの表示内容と選べる操作を導出する。
 import type { PropertyWindowContent, PropertyWindowItem } from '../../hud/windows/property-window-content';
+import { MAGAZINE_MATERIALS } from '../campaign/story-economy';
 import type { ShipAssembly } from '../ship/ship-assembly';
 import type { ShipDockState } from '../ship/ship-dock-state';
 import type { ShipModuleInstance } from '../ship/ship-module-instance';
@@ -14,7 +15,8 @@ export interface ModuleInspectionShip {
 
 export type ModuleInspectionAction =
   | 'deployModule' | 'stowModule' | 'toggleBoosterModule' | 'decoupleModule' | 'selectCockpitModule'
-  | 'repairDockedModules' | 'undockModule' | 'startConstructionModule' | 'dockModule';
+  | 'repairDockedModules' | 'undockModule' | 'startConstructionModule' | 'dockModule'
+  | 'manufactureMagazine' | 'refuelFromStockpile';
 
 // 損耗率を0〜100%へ収め、残存HPを併記する。
 function wearText(module: ShipModuleInstance, maxHp: number): string {
@@ -32,6 +34,9 @@ export function moduleItems(ship: ModuleInspectionShip, module: ShipModuleInstan
     label: module.ignited ? '燃焼停止' : '点火', act: 'toggleBoosterModule', keepOpen: true,
   }];
   if (module.kind === 'decoupler') return [{ label: 'この接続を分離', act: 'decoupleModule' }];
+  if (module.kind === 'weapon') return [
+    { label: `マガジンを製造 (素材 ${MAGAZINE_MATERIALS})`, act: 'manufactureMagazine' as const, keepOpen: true },
+  ];
   if (module.kind === 'cockpit') return [{
     label: ship.capabilities.operatingCockpitId === module.id ? '操作基準コックピット' : '操作基準に設定',
     act: 'selectCockpitModule', keepOpen: true,
@@ -42,7 +47,10 @@ export function moduleItems(ship: ModuleInspectionShip, module: ShipModuleInstan
     return status === 'connected'
       ? [
         ...(module.kind === 'dock' && ship.assembly.isDockingPortOccupied(module.id)
-          ? [{ label: '接続船体を修理', act: 'repairDockedModules' as const, keepOpen: true }]
+          ? [
+            { label: '接続船体を修理', act: 'repairDockedModules' as const, keepOpen: true },
+            { label: '推進剤を補給', act: 'refuelFromStockpile' as const, keepOpen: true },
+          ]
           : []),
         { label: '接続を解除して発進', act: 'undockModule' as const },
       ]

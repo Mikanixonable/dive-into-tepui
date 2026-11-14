@@ -19,6 +19,7 @@ import { add, sub, scale, len, v3 } from '../../src/math/vec3';
 
 // 船体構成・予約・運動を実部品で組み、構造編集後の物性を更新する。
 class ConstructionTestShip implements ConstructionShip {
+  public readonly id = 'test-ship';
   public readonly assembly = createBasePreset();
   public readonly docks = new ShipDockState();
   public readonly capabilities = new ShipCapabilities(this.assembly);
@@ -43,15 +44,15 @@ export function register(): void {
     docks.beginBuilding(assembly, 'dock-left');
     assert.equal(docks.status(assembly, 'dock-left'), 'building');
     assert.deepEqual(docks.constructionDraft('dock-left'), {
-      dockId: 'dock-left', addedIds: [], axialTailId: 'dock-left', firstConnectionId: null,
+      dockId: 'dock-left', addedIds: [], axialTailId: 'dock-left', firstConnectionId: null, paidModuleIds: [],
     });
 
     docks.updateConstructionDraft({
-      dockId: 'dock-left', addedIds: ['branch-1'], axialTailId: 'branch-1', firstConnectionId: 'edge-1',
+      dockId: 'dock-left', addedIds: ['branch-1'], axialTailId: 'branch-1', firstConnectionId: 'edge-1', paidModuleIds: [],
     });
     const saved = docks.serialize();
     assert.deepEqual(saved, [{
-      dockId: 'dock-left', addedIds: ['branch-1'], axialTailId: 'branch-1', firstConnectionId: 'edge-1',
+      dockId: 'dock-left', addedIds: ['branch-1'], axialTailId: 'branch-1', firstConnectionId: 'edge-1', paidModuleIds: [],
     }]);
 
     const resumed = new ShipDockState(saved);
@@ -71,7 +72,7 @@ export function register(): void {
     ));
     const merged = host.mergedAtDock(guest, 'dock-left', 'port', 'guest');
     const docks = new ShipDockState([{
-      dockId: 'dock-left', addedIds: [], axialTailId: 'dock-left', firstConnectionId: null,
+      dockId: 'dock-left', addedIds: [], axialTailId: 'dock-left', firstConnectionId: null, paidModuleIds: [],
     }]);
 
     assert.equal(docks.status(merged.assembly, 'dock-left'), 'connected');
@@ -175,16 +176,16 @@ export function register(): void {
     const edge = assembly.graph[0];
     assert.ok(edge !== undefined);
     assert.deepEqual(restoreConstructionDrafts([{
-      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id, paidModuleIds: [],
     }], assembly), [{
-      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+      dockId: 'dock', addedIds: ['tank'], axialTailId: 'tank', firstConnectionId: edge.id, paidModuleIds: [],
     }]);
     assert.throws(() => restoreConstructionDrafts([{
-      dockId: 'dock', addedIds: ['tank', 'tank'], axialTailId: 'tank', firstConnectionId: edge.id,
+      dockId: 'dock', addedIds: ['tank', 'tank'], axialTailId: 'tank', firstConnectionId: edge.id, paidModuleIds: [],
     }], assembly), /invalid construction draft/);
     assert.throws(() => restoreConstructionDrafts([{
       dockId: 'dock', addedIds: 'tank' as unknown as readonly string[],
-      axialTailId: 'dock', firstConnectionId: null,
+      axialTailId: 'dock', firstConnectionId: null, paidModuleIds: [],
     }], assembly), /invalid construction draft/);
   });
 

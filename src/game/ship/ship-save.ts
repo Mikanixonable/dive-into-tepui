@@ -43,6 +43,8 @@ export interface SerializedShipConstructionDraft {
   readonly addedIds: readonly string[];
   readonly axialTailId: string;
   readonly firstConnectionId: string | null;
+  // 欠けた記録(この項目が増える前のセーブ)は、支払った部品が無いものとして読む。
+  readonly paidModuleIds?: readonly string[];
 }
 
 export interface SerializedDockedVessel {
@@ -262,7 +264,9 @@ export function restoreConstructionDrafts(
         for (const child of assembly.graph.filter(connection => connection.parentId === id)) pending.push(child.childId);
       }
     }
+    const paidIds: readonly string[] = Array.isArray(draft.paidModuleIds) ? draft.paidModuleIds : [];
     const valid = dock?.kind === 'dock'
+      && paidIds.every((id: unknown) => typeof id === 'string' && idSet.has(id))
       && typeof draft.dockId === 'string'
       && typeof draft.axialTailId === 'string'
       && (draft.firstConnectionId === null || typeof draft.firstConnectionId === 'string')
@@ -288,7 +292,7 @@ export function restoreConstructionDrafts(
     docks.add(draft.dockId);
     for (const id of ids) added.add(id);
     if (draft.firstConnectionId !== null) firstConnections.add(draft.firstConnectionId);
-    return { ...draft, addedIds: [...ids] };
+    return { ...draft, addedIds: [...ids], paidModuleIds: [...paidIds] };
   });
 }
 

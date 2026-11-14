@@ -80,7 +80,8 @@ export class ModuleWindows implements ModuleWindowOpener {
       if (!ship.inspection.hasModule(moduleId)) return;
       // 確認不要な操作はそのまま命令へ送る。
       if (act === 'deployModule' || act === 'stowModule' || act === 'toggleBoosterModule'
-        || act === 'repairDockedModules' || act === 'selectCockpitModule') {
+        || act === 'repairDockedModules' || act === 'selectCockpitModule'
+        || act === 'manufactureMagazine' || act === 'refuelFromStockpile') {
         this.submit(entry, act);
       } else if (act === 'decoupleModule') {
         this.confirmation.open({ message: `${moduleId} を作動させますか？` }, (confirmed) => {
@@ -262,6 +263,8 @@ export class ModuleWindows implements ModuleWindowOpener {
       case 'dockCandidate': return '接舷できません';
       case 'undockModule': return '発進できません';
       case 'repairDockedModules': return '修理できません';
+      case 'manufactureMagazine': return 'マガジンを製造できません';
+      case 'refuelFromStockpile': return '推進剤を補給できません';
       case 'selectCockpitModule': return '全損したコックピットは選択できません';
       default: return 'モジュールを操作できません';
     }
