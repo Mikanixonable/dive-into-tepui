@@ -1,79 +1,82 @@
-// 雲テクスチャ値を各表現の形状・光学量へ変換する共有評価器。被覆率・雲頂高度・粒子感・
+// 雲テクスチャ値を各表現の形状・光学量へ変換する共有評価器。不透明度・雲頂高度・細部・
 // 光学的厚みの計算式を集約し、各レンダラーのシェーダーグラフへ展開する。
-import { If, TWO_PI, abs, clamp, cos, float, fract, greaterThan, min, mix } from 'three/tsl';
-import { gradientNoise } from './gradient-noise';
-import { columnOpticalDepthFromCoverageNode } from './cloud-optics-node';
-import {
-  CUMULUS_DITHER_KNOB, CUMULUS_GRAIN_OCTAVES, CUMULUS_GRAIN_SIZE, CLOUD_TOP_SPAN,
-  GRAIN_LIFECYCLE_CELL_M, GRAIN_LIFECYCLE_HOURS,
-} from './cumulus-shape';
-import type { FloatNode, Vec3Node } from '../tsl-types';
+import { clamp, min, smoothstep } from 'three/tsl';
+import { CloudDetailEvaluator, DETAIL_AMPLITUDE_MAX } from './cloud-detail';
+import { cumulusColumnOpticalDepthNode } from './cloud-kind-node';
+import { CUMULUS_DITHER_KNOB, CLOUD_TOP_SPAN } from './cumulus-shape';
+import type { CloudSample } from './cloud-field-sample';
+import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
-const GRAIN_COVERAGE_DEPTH = 0.25;
-const GRAIN_TOP_RELIEF = 0.15;
+const DETAIL_OPACITY_DEPTH = 0.25;
+const DETAIL_TOP_RELIEF = 0.15;
 const FIELD_TOP_STEP = 1 / 256;
+// 細部が覆いへ効き始める不透明度。雲の無い柱は、細部が大きくても覆いが 0 のまま残す。
+const DETAIL_GATE_OPACITY = 0.05;
+
+// 粒の細かさへ効く陸らしさと対流の活発さの重み。
+const GRAIN_LAND_WEIGHT = 0.7;
+const GRAIN_CONVECTION_WEIGHT = 0.3;
 
 export class CloudShapeEvaluator {
-  public static readonly cloudTopUncertainty = GRAIN_TOP_RELIEF + FIELD_TOP_STEP;
+  public static readonly cloudTopUncertainty =
+    DETAIL_AMPLITUDE_MAX * DETAIL_TOP_RELIEF + FIELD_TOP_STEP;
 
-  public constructor(private readonly grainFrequency: FloatNode | number) {}
+  private readonly detail: CloudDetailEvaluator;
 
-  // 場の値から粒の振幅の天気による掛け率。雲頂が高く、被覆率が半ばの空ほど粒立ち、
-  // 低く一面に覆った空ほど板になる — 粒立つ空とべったり覆う空が同時にあって、
-  // その境目が数百キロの尺度で滑らかに移る。cloudTop は 0..1 へ正規化した雲頂高度。
-  public static grainWeatherFactor(coverage: FloatNode, cloudTop: FloatNode): FloatNode {
-    const broken = float(1).sub(abs(coverage.mul(2).sub(1)));
-    return float(0.4).add(cloudTop.mul(0.3)).add(broken.mul(0.3));
+  // bodyRadius は雲を載せる天体の基準半径 [m]。細部の段数は 0(細部なし)から始まる。
+  public constructor(bodyRadius: FloatNode | number) {
+    this.detail = new CloudDetailEvaluator(bodyRadius);
   }
 
-  // 単位方向における粒。amplitudes は CUMULUS_GRAIN_OCTAVES と同じ並びの
-  // 段ごとの振幅で、呼び出し側が標本化できる細かさごとに段を落とす。振幅 0 の段は
-  // 計算ごと飛ばす — タップの数だけノイズを引く影では、遠さで費用が戻る。
-  //
-  // 風が結ばれているとき、粒は場所ごとの位相で成長→成熟→崩壊を繰り返す。
-  // windEnabled は風の結び目の 0/1 で、0 なら包絡は 1 になる。
-  public grainAt(
-    direction: Vec3Node, amplitudes: readonly FloatNode[],
-    timeSeconds: FloatNode, windEnabled: FloatNode,
+  // 使う細部の段数を置く。
+  public setDetailOctaves(count: number): void {
+    this.detail.setOctaves(count);
+  }
+
+  // 表示時刻 displayTime [s] と、実時間 1 秒あたりに進む表示時刻 rate を置く。細部はこの時刻で流れ、生まれ直す。
+  public syncClock(displayTime: number, rate: number): void {
+    this.detail.syncClock(displayTime, rate);
+  }
+
+  // 雲標本の柱での粒の細かさ 0..1。陸で細かく、対流の活発な陸でさらに細かい。海は対流が強くても組織化した
+  // 大きな細胞になるので、対流は陸にだけ効かせ、海は粗いまま。
+  public grainOf(cloud: CloudSample): FloatNode {
+    return clamp(cloud.land.mul(cloud.convection.mul(GRAIN_CONVECTION_WEIGHT).add(GRAIN_LAND_WEIGHT)), 0, 1);
+  }
+
+  // 単位方向 direction での、場の texel より細かい起伏 −1..1。width はその位置で読み手の
+  // 1 画素・1 タップが張る実寸 [m]、amount はその場所の量、amountAt は任意の方向の量を読む。
+  // wind はそこで雲を運ぶ風の東・北の成分 [m/s]、grain は粒の細かさ 0..1。
+  public detailAt(
+    direction: Vec3Node, width: FloatNode, amount: FloatNode,
+    amountAt: (direction: Vec3Node) => FloatNode, wind: Vec2Node, grain: FloatNode,
   ): FloatNode {
-    // 場所の細胞の位相。ノイズの 1 波長が位相の 1 周ぶんの実寸に当たるよう方向を伸ばし、
-    // [0, 1) へ折る。
-    const phase = fract(gradientNoise(direction.mul(this.grainFrequency)
-      .mul(CUMULUS_GRAIN_SIZE / GRAIN_LIFECYCLE_CELL_M)));
-    // 周期に対する位置。生まれで 0、成熟で 0.5、崩壊で 1 へ戻る。
-    const cycle = fract(timeSeconds.div(GRAIN_LIFECYCLE_HOURS * 3600).add(phase));
-    // 生まれと崩壊で 0、成熟で 2、平均 1 の包絡。
-    const envelope = float(1).sub(cos(cycle.mul(TWO_PI)));
-    const grain = float(0).toVar();
-    for (const [index, octave] of CUMULUS_GRAIN_OCTAVES.entries()) {
-      const amplitude = amplitudes[index]!;
-      If(greaterThan(amplitude, 0), () => {
-        grain.addAssign(gradientNoise(direction.mul(this.grainFrequency)
-          .div(octave.sizeM / CUMULUS_GRAIN_SIZE)).mul(octave.weight).mul(amplitude));
-      });
-    }
-    return grain.mul(mix(1, envelope, windEnabled));
+    return this.detail.at(direction, width, amount, amountAt, wind, grain);
   }
 
-  // 粒を足してからディザの帯へ通す。空の柱に粒だけで雲を生やさない共有規則である。
-  public opaqueFraction(coverage: FloatNode, grain: FloatNode): FloatNode {
+  // 細部を足してからディザの帯へ通す。空の柱に細部だけで雲を生やさない共有規則である。
+  public opaqueFraction(opacity: FloatNode, detail: FloatNode): FloatNode {
     const band = CUMULUS_DITHER_KNOB.halfWidth.mul(2);
     const center = CUMULUS_DITHER_KNOB.center;
     const clampedBand = min(band, center.mul(2));
-    const covered = coverage.add(grain.mul(GRAIN_COVERAGE_DEPTH));
+    const gate = smoothstep(0, DETAIL_GATE_OPACITY, opacity);
+    const covered = opacity.add(detail.mul(DETAIL_OPACITY_DEPTH).mul(gate));
     return clamp(covered.sub(center.sub(clampedBand.mul(0.5))).div(clampedBand), 0, 1);
   }
 
-  public cloudTop(fieldTop: FloatNode, grain: FloatNode): FloatNode {
-    return clamp(fieldTop.add(grain.mul(GRAIN_TOP_RELIEF)), 0, 1);
+  // 場の雲頂高度(0..1)へ細部を足し、0..1 へ収めた雲頂高度を返す。
+  public cloudTop(fieldTop: FloatNode, detail: FloatNode): FloatNode {
+    return clamp(fieldTop.add(detail.mul(DETAIL_TOP_RELIEF)), 0, 1);
   }
 
+  // 正規化した雲頂高度を、天体中心からの雲頂の半径(地表の半径 1 基準)へ写す。
   public cloudTopRadius(cloudTop: FloatNode, groundRadius: FloatNode): FloatNode {
     return cloudTop.mul(groundRadius.oneMinus()).add(groundRadius);
   }
 
-  public columnOpticalDepth(coverage: FloatNode): FloatNode {
-    return columnOpticalDepthFromCoverageNode(coverage);
+  // 積雲の量から鉛直柱光学深さ。
+  public columnOpticalDepth(amount: FloatNode): FloatNode {
+    return cumulusColumnOpticalDepthNode(amount);
   }
 
   public get cloudTopSpan(): number { return CLOUD_TOP_SPAN; }
