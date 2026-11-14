@@ -11,10 +11,10 @@ docs/
 .bgm-lab/
 .render-lab/
 .render-lab-shots/
-.venv-protein-builder/
 __pycache__/
 .cloud-lab/
 .cloud-lab-shots/
+.cloud-detail/
 reference/
 assets-src/climate/
 .earth-surface/raw/
