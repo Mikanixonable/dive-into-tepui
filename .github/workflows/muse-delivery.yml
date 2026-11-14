@@ -37,6 +37,7 @@ jobs:
           git config user.name "Muse (delivery)"
           git config user.email "muse@muse.local"
           ledger=.muse/deliveries-applied.txt
+          mkdir -p "$(dirname "$ledger")"
           touch "$ledger"
           git fetch origin muse/inbox
           rm -rf /tmp/deliveries
