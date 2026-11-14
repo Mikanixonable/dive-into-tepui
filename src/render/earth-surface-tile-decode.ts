@@ -25,7 +25,7 @@ export interface EarthSurfaceTilePayload {
   readonly terrain: Uint8Array;
 }
 
-export interface EarthSurfaceTileBytes {
+interface EarthSurfaceTileBytes {
   readonly key: EarthTileKey;
   readonly generation: number;
   readonly color: Uint8Array;
