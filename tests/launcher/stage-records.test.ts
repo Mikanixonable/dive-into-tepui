@@ -5,6 +5,7 @@ import { test } from '../harness';
 import { StageRecords, FORECAST_LOSS_STREAK, bestDetailHtml } from '../../src/launcher/stage-records';
 import type { RunStats } from '../../src/game/stages/stage';
 
+// 検査が使う kills/survivalSec だけ指定した成績。残りの項目はどの検査でも読まない固定値。
 function stats(kills: number, survivalSec: number): RunStats {
   return { kills, appeared: 10, shots: 40, hits: 20, survivalSec };
 }

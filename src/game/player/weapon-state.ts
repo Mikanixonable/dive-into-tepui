@@ -1,3 +1,4 @@
+// 機関砲の弾薬と砲口の状態。マガジン・装填・クールダウン・トリガーの進行と、その直列化・復元。
 import { MAG_ROUNDS } from './ammo-spec';
 
 export interface SerializedWeaponState {
