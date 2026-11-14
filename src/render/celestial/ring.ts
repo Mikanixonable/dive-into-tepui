@@ -164,8 +164,8 @@ function wrapDeg(deg: number): number {
 }
 
 // 帯を、アークの重なりが変わらない扇形へ切った並び。アークが無ければ全周 1 つ。
-function sectorParts(arcs: readonly RingArcDef[] | undefined): readonly RingSector[] {
-  if (arcs === undefined || arcs.length === 0) return [{ start: 0, length: Math.PI * 2, scale: 1 }];
+function sectorParts(arcs: readonly RingArcDef[] | null): readonly RingSector[] {
+  if (arcs === null || arcs.length === 0) return [{ start: 0, length: Math.PI * 2, scale: 1 }];
   // 全アークの端点で全周を切る。
   const bounds = [0, 360];
   for (const arc of arcs) bounds.push(wrapDeg(arc.fromDeg), wrapDeg(arc.toDeg));
@@ -233,7 +233,7 @@ export function createAnnulusRing(
   materials: RingMaterials,
   arcs?: readonly RingArcDef[],
 ): RingVisual {
-  return combineSectors(sectorParts(arcs).map((part) => buildAnnulusMesh({
+  return combineSectors(sectorParts(arcs ?? null).map((part) => buildAnnulusMesh({
     ...optics,
     normalOpticalDepth: optics.normalOpticalDepth * part.scale,
   }, innerRadius, outerRadius, part.start, part.length, materials)));
@@ -281,7 +281,7 @@ export function createRingLine(
   materials: RingMaterials,
   arcs?: readonly RingArcDef[],
 ): RingLineVisual {
-  return combineLineSectors(sectorParts(arcs).map((part) => buildLineRingSegment({
+  return combineLineSectors(sectorParts(arcs ?? null).map((part) => buildLineRingSegment({
     ...optics,
     normalOpticalDepth: optics.normalOpticalDepth * part.scale,
   }, radius, part.start, part.length, part.length >= Math.PI * 1.9 ? 256 : 32, materials)));

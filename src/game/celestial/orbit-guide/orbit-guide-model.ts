@@ -78,7 +78,7 @@ type GuideLineEntry = GuideLineFamily & {
   readonly key: string;
   readonly index: number;
   // 適応分割の頂点予算。既定でよい線は undefined。
-  readonly maxVertices: number | undefined;
+  readonly maxVertices: number | null;
   // 表示時刻から引き直すまで、また引けなかった時刻では null(その線は描かれない)。
   geometry: GuideLineGeometry | null;
 };
@@ -100,7 +100,7 @@ function lineStyle(color: number, opacity: number): LineStyle {
 
 // 線1本ぶんの、表示時刻に依らない識別情報。
 function lineEntry(
-  family: GuideLineFamily, index: number, maxVertices: number | undefined,
+  family: GuideLineFamily, index: number, maxVertices: number | null,
 ): GuideLineEntry {
   return {
     ...family,
@@ -150,11 +150,11 @@ function pointOf(familyId: string): string | null {
 
 // 族 id の表示設定を1つに解決する。小題に属する族は、押されている軸値から組める候補に入るかで
 // on を決め、他の欄は小題の共有設定を使う。小題に属さない族は settings.kinds のまま。
-function effectiveKind(settings: OrbitGuideSettings, familyId: string): GuideKindSettings | undefined {
+function effectiveKind(settings: OrbitGuideSettings, familyId: string): GuideKindSettings | null {
   const parsed = parseGuideKindId(familyId);
-  if (parsed === null || parsed.combinedKey === null) return settings.kinds[familyId];
+  if (parsed === null || parsed.combinedKey === null) return settings.kinds[familyId] ?? null;
   const combined = settings.combinedKinds[parsed.combinedKey];
-  if (combined === undefined) return undefined;
+  if (combined === undefined) return null;
   const on = combinedCandidateIds(parsed.combinedKey, combined.axisValues).includes(familyId);
   return { ...combined, on };
 }
@@ -369,7 +369,7 @@ export class OrbitGuideModel {
         key: entry.key, familyId: entry.familyId, system: entry.system, point: entry.point,
         origin: geometry.origin, shape: geometry.shape, revolutions: geometry.loop.revolutions,
         style: visual.style, colorAt: visual.colorAt, direction: visual.direction,
-        animate: visual.animate, markerColor: visual.markerColor, maxVertices: entry.maxVertices,
+        animate: visual.animate, markerColor: visual.markerColor, maxVertices: entry.maxVertices ?? undefined,
       });
     }
     return displays;
@@ -439,7 +439,7 @@ export class OrbitGuideModel {
         // その系に無い族の線は、何も描かれないのに線数の警告だけを膨らませる。
         if (!this.catalog.hasFamily(system, familyId)) continue;
         for (let i = 0; i < kind.count; i++) {
-          this.lines.push(lineEntry({ source: 'catalog', familyId, system, point }, i, undefined));
+          this.lines.push(lineEntry({ source: 'catalog', familyId, system, point }, i, null));
         }
       }
     }
@@ -460,7 +460,7 @@ export class OrbitGuideModel {
     // 地球専用参照軌道は系トグルの対象外なので system は null。
     for (const kind of REFERENCE_ORBIT_KINDS) {
       if (!settings[kind].on) continue;
-      this.lines.push(lineEntry({ source: 'reference', familyId: kind, system: null, point: null }, 0, undefined));
+      this.lines.push(lineEntry({ source: 'reference', familyId: kind, system: null, point: null }, 0, null));
     }
   }
 }

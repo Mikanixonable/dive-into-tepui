@@ -16,13 +16,13 @@ const MARKER_CROWDING_RELEASE_PX = 60;
 const ICON_HIDE_PRIORITY_GAP = 100;
 
 // 間引きの判定に要る、投影済みのマーカー1件。
-export interface DeclutterTarget {
+interface DeclutterTarget {
   readonly id: string;
   readonly x: number;
   readonly y: number;
   readonly priority: number;
-  // 視点からの距離。持たない対象は undefined(depth-guard を評価しない)。
-  readonly dist: number | undefined;
+  // 視点からの距離。持たない対象は null(depth-guard を評価しない)。
+  readonly dist: number | null;
   // ラベル位置を固定する対象はアイコンを消さない。
   readonly fixedLabel: boolean;
   // 混雑してもアイコンを残す対象は false。
@@ -34,7 +34,7 @@ export interface DeclutterTarget {
 }
 
 // 間引きで隠すマーカーの id。どちらの集合も次回の compute まで有効。
-export interface HiddenMarkerIds {
+interface HiddenMarkerIds {
   readonly labels: ReadonlySet<string>;
   readonly icons: ReadonlySet<string>;
 }
@@ -64,7 +64,7 @@ export class LabelDeclutter {
           b.id, b.priority, b.dist, b.prevLabelHidden,
           DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO, false,
         );
-        if (pick === undefined) continue;
+        if (pick === null) continue;
         const [loser, winner] = pick === 'a' ? [a, b] : [b, a];
         const threshold = loser.prevLabelHidden ? MARKER_CROWDING_RELEASE_PX : MARKER_CROWDING_PX;
         if (Math.hypot(a.x - b.x, a.y - b.y) >= threshold) continue;
