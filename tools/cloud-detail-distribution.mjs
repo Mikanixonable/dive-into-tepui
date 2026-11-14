@@ -10,6 +10,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { measureDetailImage } from './cloud-detail-features.mjs';
+import { fitLine } from './cloud-detail-metrics.mjs';
 import {
   collectNumericDiffs, formatDiffValue, gitHead, readReport, saveReport,
 } from './cloud-report-history.mjs';
@@ -41,6 +42,20 @@ const CATEGORY_ORDER = [
 // 動作確認(smoke の npm script)で撮る区分と点数。
 const SMOKE_CATEGORY = 'tropical-sea';
 const SMOKE_SLOTS = 4;
+// 撮影の太陽の時角(現地の太陽時刻 10:30)。撮影側の定義(tools/render-lab/cloud-detail-cases.ts
+// の sunAnglesForLocal1030)と同じ — 赤緯は分点固定なので、直下点の緯度だけで天頂角が決まる。
+const SHOT_SUN_HOUR_ANGLE_RAD = (22.5 * Math.PI) / 180;
+// 撮影の描画設定で点いている一様な環境光の、太陽放射照度に対する割合
+// (src/render/pipeline/lighting/ambient-source.ts の AMBIENT_FRACTION)。拡散面へ届く照明は
+// 直射の cos(天頂角) にこの値が足される — 放射輝度を反射率相当へ割る除数の一部。
+const SHOT_AMBIENT_FRACTION = 0.03;
+// 監査で個別に比と天頂角の関係を出す特徴量。
+const ZENITH_AUDIT_FEATURES = ['toneMean', 'toneP50', 'toneP90', 'toneP99'];
+
+// 撮影の太陽天頂角の余弦。直下点の緯度 latitudeDeg [deg] で、cosZ = cos(緯度)·cos(時角)。
+function sunCosZenithOf(latitudeDeg) {
+  return Math.cos((latitudeDeg * Math.PI) / 180) * Math.cos(SHOT_SUN_HOUR_ANGLE_RAD);
+}
 const FAMILIES = ['spectrum', 'intermittency', 'periodicity', 'shapes', 'anisotropy', 'heterogeneity', 'tone'];
 // 分位点を個別に並べて出す特徴量。分布の中心と幅のずれが直接見えるものを選ぶ。
 const KEY_FEATURES = ['cloudyShare', 'toneMean', 'toneP90', 'toneP99', 'hetSlope', 'hetI@64', 'hetI@256'];
@@ -111,6 +126,15 @@ async function main() {
     throw new Error(`${teacherManifestFile} が無い — 先に npm run cloud-detail:random-teacher を実行する`);
   }
   const teacher = JSON.parse(readFileSync(teacherManifestFile, 'utf8'));
+  // 反復用の設定(作業ツリー直下の .loop-random-config.json)。slots は区分ごとに撮る
+  // 番号の上限、fresh は対象の撮影を撮り直す、reflectanceNormalize は生成の撮影を
+  // 反射率相当へ換算してから測る(既定で有効)。
+  const loopConfigFile = path.join(root, '.loop-random-config.json');
+  const loopConfig = existsSync(loopConfigFile)
+    ? JSON.parse(readFileSync(loopConfigFile, 'utf8'))
+    : {};
+  const slotLimits = loopConfig.slots ?? {};
+  const reflectanceNormalize = loopConfig.reflectanceNormalize !== false;
   // 動作確認は少数の点だけを撮る軽い版。npm script cloud-detail:distribution-smoke
   // (npm_lifecycle_event に 'smoke' が入る)で、この区分の先頭数点へ絞る。
   const smoke = (process.env.npm_lifecycle_event ?? '').includes('smoke');
@@ -119,7 +143,8 @@ async function main() {
   // 生成の撮影は実写と同じ緯度経度を要るので緯度経度のある点だけ。実写側の計測は
   // 画像があれば緯度経度を持たない点(manifest の無い既存を採用したもの)も数える —
   // 分布の比較なので 1 対 1 の対応は要らない。
-  const genPoints = eligible.filter((point) => point.latitude !== null);
+  const genPoints = eligible.filter((point) => point.latitude !== null
+    && point.slot <= (slotLimits[point.category] ?? Infinity));
 
   // --- 撮影の対象: 実写の点 × 段。既にある撮影は飛ばし、--fresh は撮り直す ---
   const targets = [];
@@ -142,7 +167,7 @@ async function main() {
     }
   }
   mkdirSync(shotsDir, { recursive: true });
-  if (process.argv.includes('--fresh')) {
+  if (process.argv.includes('--fresh') || loopConfig.fresh === true) {
     for (const target of targets) rmSync(path.join(shotsDir, `${target.name}.png`), { force: true });
   }
   const missing = targets.filter((target) => !existsSync(path.join(shotsDir, `${target.name}.png`)));
@@ -164,6 +189,7 @@ async function main() {
     displayTime: target.point.displayTime,
     latitudeDeg: target.point.latitudeDeg,
     longitudeDeg: target.point.longitudeDeg,
+    sunCosZenith: sunCosZenithOf(target.point.latitudeDeg),
     centerKmPerPx: target.centerKmPerPx ?? shotInfoByName.get(target.name)?.centerKmPerPx ?? null,
     altitudeM: target.altitudeM ?? shotInfoByName.get(target.name)?.altitudeM ?? null,
   }));
@@ -179,12 +205,16 @@ async function main() {
   // 区分 × 段 × 特徴量 id で、実写と生成の値の列を集める。
   const columns = new Map();
   const columnKey = (category, kmPerPx, id) => `${category}|${kmPerPx}|${id}`;
-  const addValue = (category, kmPerPx, entry, side) => {
+  const addValue = (category, kmPerPx, entry, side, sunCosZenith = null) => {
     const key = columnKey(category, kmPerPx, entry.id);
     if (!columns.has(key)) {
-      columns.set(key, { category, kmPerPx, id: entry.id, family: entry.family, real: [], gen: [] });
+      columns.set(key, {
+        category, kmPerPx, id: entry.id, family: entry.family, real: [], gen: [], genCosZenith: [],
+      });
     }
-    columns.get(key)[side].push(entry.value);
+    const column = columns.get(key);
+    column[side].push(entry.value);
+    if (sunCosZenith !== null) column.genCosZenith.push(sunCosZenith);
   };
 
   let realCount = 0;
@@ -206,10 +236,15 @@ async function main() {
     const file = path.join(shotsDir, `${target.name}.png`);
     if (!existsSync(file)) { genMissing++; continue; }
     const info = shotInfos.find((shot) => shot.name === target.name);
+    const sunCosZenith = info?.sunCosZenith ?? sunCosZenithOf(target.point.latitudeDeg);
     // 物差しの段は画像中心の実寸 km/px。値の列は段の目標 km/px で揃える — 扁平のぶんだけ
     // ずれる実寸で列を分けると、同じ段の実写と同じ列に乗らない。
-    const { features } = measureDetailImage(readFileSync(file), info?.centerKmPerPx ?? target.kmPerPx);
-    for (const entry of features) addValue(target.category, target.kmPerPx, entry, 'gen');
+    const { features } = measureDetailImage(
+      readFileSync(file), info?.centerKmPerPx ?? target.kmPerPx,
+      reflectanceNormalize ? sunCosZenith + SHOT_AMBIENT_FRACTION : 1);
+    for (const entry of features) {
+      addValue(target.category, target.kmPerPx, entry, 'gen', sunCosZenith);
+    }
     genCount++;
   }
   console.log(`撮影 ${genCount} 枚を計測した${genMissing > 0 ? `(欠測 ${genMissing} 枚)` : ''}`);
@@ -276,6 +311,49 @@ async function main() {
     }
   }
 
+  // --- 太陽天頂角の監査 ---
+  // 生成の撮影の値を、同じ列(区分 × 段)の実写の中央値で割った比を取り、撮影の照明
+  // (太陽天頂角の余弦 + 環境光)と並べる。比が照明に比例するなら(両対数の傾きが 1 なら)、
+  // 生成の画の暗さは雲の性質ではなく、放射輝度を反射率と読んでいた測り方の不整合である。
+  // 「補正後」は比をその点の照明で割ったもの — 反射率へ換算したあとに残る本物の比。
+  console.log('\n=== 太陽天頂角の監査(生成の値 / 実写の中央値 と照明) ===');
+  console.log(`生成側の換算: ${reflectanceNormalize ? `トーンマップを戻して cosZ+${SHOT_AMBIENT_FRACTION} で割って計測済み` : '素通し'}`);
+  for (const id of ZENITH_AUDIT_FEATURES) {
+    const pairs = [];
+    const rows = [];
+    for (const column of columns.values()) {
+      if (column.id !== id || column.real.length === 0 || column.genCosZenith.length === 0) continue;
+      const realMedian = quantiles(column.real, [0.5])[0];
+      if (realMedian <= 0) continue;
+      const ratios = column.gen.map((value, i) => {
+        const cosZ = column.genCosZenith[i];
+        return { ratio: value / realMedian, illumination: cosZ + SHOT_AMBIENT_FRACTION };
+      });
+      const medRatio = quantiles(ratios.map((r) => r.ratio), [0.5])[0];
+      // 反射率へ換算したあとに残る比。換算済みで計測しているときは計測値そのもの。
+      const medCorrected = reflectanceNormalize
+        ? medRatio
+        : quantiles(ratios.map((r) => r.ratio / r.illumination), [0.5])[0];
+      rows.push({
+        category: column.category,
+        kmPerPx: column.kmPerPx,
+        medCosZ: quantiles(ratios.map((r) => r.illumination - SHOT_AMBIENT_FRACTION), [0.5])[0],
+        medRatio,
+        medCorrected,
+      });
+      for (const r of ratios) {
+        if (r.ratio > 0) pairs.push([Math.log(r.illumination), Math.log(r.ratio)]);
+      }
+    }
+    if (rows.length === 0) continue;
+    const { slope, intercept } = fitLine(pairs);
+    console.log(`\n${id}: 点 ${pairs.length} — log(比) vs log(照明) 傾き ${slope.toFixed(2)}・切片での比 ${Math.exp(intercept).toFixed(2)}`);
+    console.log(`${'区分'.padEnd(15)} ${'段'.padStart(4)}  ${'cosZ中央'.padStart(8)} ${'比中央'.padStart(8)} ${'補正後'.padStart(8)}`);
+    for (const row of rows) {
+      console.log(`${row.category.padEnd(15)} ${`${row.kmPerPx}km`.padStart(4)}  ${row.medCosZ.toFixed(3).padStart(8)} ${row.medRatio.toFixed(3).padStart(8)} ${row.medCorrected.toFixed(3).padStart(8)}`);
+    }
+  }
+
   // --- レポート ---
   const report = {
     meta: {
@@ -284,6 +362,7 @@ async function main() {
       generatedAt: new Date().toISOString(),
       gitHead: gitHead(root),
       teacherSeed: teacher.seed ?? null,
+      reflectanceNormalize,
       points: genPoints.length,
       realImages: realCount,
       realMissing,
