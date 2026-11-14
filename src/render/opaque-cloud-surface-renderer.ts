@@ -183,8 +183,8 @@ export class OpaqueCloudSurfaceRenderer {
       const entry = positionLocal.toVar();
       const origin = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
       const direction = normalize(entry.sub(origin)).toVar();
-      const threshold = this.ditherThreshold().toVar();
-      const width = this.pixelWidthAt(normalize(entry)).toVar();
+      const pixelAngle = this.pixelAngleAt(normalize(entry)).toVar();
+      const width = pixelAngle.mul(this.bodyRadius).toVar();
 
       // 殻に入ってから地表の球へ達するまで(掠めるなら殻を出るまで)を等分してたどる。
       const along = dot(entry, direction);
@@ -205,7 +205,7 @@ export class OpaqueCloudSurfaceRenderer {
       for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
         const distance = stepLength.mul(stepIndex);
         const inside = this.clearanceAt(
-          entry.add(direction.mul(distance)), threshold, width).lessThan(0);
+          entry.add(direction.mul(distance)), pixelAngle, width).lessThan(0);
         If(inside.and(hit.lessThan(0.5)), () => {
           hit.assign(1);
           below.assign(distance);
@@ -216,7 +216,7 @@ export class OpaqueCloudSurfaceRenderer {
       for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
         const middle = above.add(below).mul(0.5);
         const inside = this.clearanceAt(
-          entry.add(direction.mul(middle)), threshold, width).lessThan(0);
+          entry.add(direction.mul(middle)), pixelAngle, width).lessThan(0);
         If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
       }
 
@@ -228,13 +228,16 @@ export class OpaqueCloudSurfaceRenderer {
     })();
   }
 
-  // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。
-  private clearanceAt(point: Vec3Node, threshold: FloatNode, width: FloatNode): FloatNode {
+  // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。pixelAngle は画素が張る角 [rad]、
+  // width はその実寸 [m]。
+  private clearanceAt(point: Vec3Node, pixelAngle: FloatNode, width: FloatNode): FloatNode {
     const radius = max(length(point), 1e-6);
     const direction = point.div(radius);
     const cloud = this.fieldAt(direction);
     const detail = this.detailAt(direction, width, cloud.cumulus);
-    // 細部は覆いの縁を texel より細かく千切る。
+    // 細部は覆いの縁を texel より細かく千切る。**ディザはその柱の方向に貼る** — 視線の入口に貼ると、
+    // 雲頂と入口の高さの差ぶんの視差で、視点が動くたびにディザが雲の上を滑る。
+    const threshold = this.ditherThreshold(direction, pixelAngle);
     const present = step(threshold, this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), detail));
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに細部が湧く。
@@ -277,12 +280,11 @@ export class OpaqueCloudSurfaceRenderer {
     return this.fieldSampler.sampleCloud(direction);
   }
 
-  // 画素が張る実寸 [m]。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
+  // 画素が張る角 [rad]。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
   // 大気圏のすぐ上から見下ろす構図で 1 桁ずれる。解像できない細かさは細部の段ごとに 0 へ落ちるので、
   // 引きの構図では場の分布だけが残る。
-  private pixelWidthAt(entryDirection: Vec3Node): FloatNode {
-    const pixelAngle = max(length(dFdx(entryDirection)), length(dFdy(entryDirection)));
-    return pixelAngle.mul(this.bodyRadius);
+  private pixelAngleAt(entryDirection: Vec3Node): FloatNode {
+    return max(length(dFdx(entryDirection)), length(dFdy(entryDirection)));
   }
 
   // 天体固定の単位方向 direction の細部。width は画素の実寸 [m]、amount はその柱の積雲の量。
@@ -290,9 +292,10 @@ export class OpaqueCloudSurfaceRenderer {
     return this.shape.detailAt(direction, width, amount, (neighbor) => this.fieldAt(neighbor).cumulus);
   }
 
-  // 画素ごとに固定の、覆い尽くされている割合と比べるディザの閾値。
-  private ditherThreshold(): FloatNode {
-    return this.blueNoise.atScreenPixel()
+  // 覆い尽くされている割合と比べるディザの閾値。**天体に貼った値** — 画面の画素に固定すると、雲が
+  // 画面上を動くたびに縁の画素がディザの網目の下を滑ってちらつく。pixelAngle は画素が張る角 [rad]。
+  private ditherThreshold(columnDirection: Vec3Node, pixelAngle: FloatNode): FloatNode {
+    return this.blueNoise.atSurface(columnDirection, pixelAngle)
       .mul((DITHER_LEVELS - 1) / DITHER_LEVELS).add(0.5 / DITHER_LEVELS);
   }
 }
