@@ -11,7 +11,7 @@ import { equirectUvFromDirection, type FieldProjection } from '../field-projecti
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldSource } from './cloud-presentation';
-import type { CloudBlend, CloudFieldSlot } from './cloud-field-sample';
+import { CloudBlendState, type CloudBlend, type CloudFieldSlot } from './cloud-field-sample';
 import type { Vec4Node } from '../tsl-types';
 
 export class ObservedCloudField implements CloudFieldSource {
@@ -21,7 +21,7 @@ export class ObservedCloudField implements CloudFieldSource {
   private readonly environment: THREE.DataTexture;
   // 2 枚とも同じ写し。混ぜ方は 0 に止めて、古い側の枚だけを読む。
   public readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
-  public readonly blend: CloudBlend = { parity: 0, fraction: 0 };
+  public readonly blend: CloudBlend = new CloudBlendState();
   // 焼いたときの画像の世代と cap の版。どちらかが変わったときだけ焼き直す。
   private bakedGeneration = -1;
   private bakedRevision = -1;

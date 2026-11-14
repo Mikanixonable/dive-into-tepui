@@ -78,7 +78,10 @@ export class CloudShadowRenderer {
     this.cirrusDetail.setOctaves(kinds.cirrusOctaves);
     this.cumulusActive.value = cloud !== null && kinds.cumulus ? 1 : 0;
     this.cirrusActive.value = cloud !== null && kinds.cirrus ? 1 : 0;
-    if (cloud === null) return;
+    if (cloud === null || (!kinds.cumulus && !kinds.cirrus)) {
+      this.fieldSampler.unbind();
+      return;
+    }
     this.center.value.copy(cloud.center);
     this.surfaceRadius.value = cloud.surfaceRadius;
     this.axes.value.copy(cloud.axes);
