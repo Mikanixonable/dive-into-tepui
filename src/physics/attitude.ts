@@ -1,7 +1,7 @@
 // 剛体姿勢力学: クォータニオン + 機体座標系角速度をオイラーの運動方程式で積分。
 // 非対称な慣性主軸を与えると中間軸まわりの回転が不安定化し、
 // ジャニベコフ効果(デブリの周期的な反転)が自然に現れる。
-import { type Vec3, add, addScaled, len, scale, v3, type SerializedVec3 } from '../math/vec3';
+import { type Vec3, add, addScaled, len, scale, sub, v3, type SerializedVec3 } from '../math/vec3';
 import { type Quat, qMul, qNormalize, qFromAxisAngle, qInvert, qRotate, qFromForwardUp } from '../math/quat';
 
 export interface Attitude {
@@ -93,6 +93,29 @@ export function stepAttitude(att: Attitude, torque: Vec3, dt: number): Attitude 
     }
   }
   return { q, w, inertia: I };
+}
+
+// 回転する基準系。慣性系から見た姿勢 q と角速度 omega [rad/s](ECI 成分)。
+export interface RotatingFrame {
+  readonly q: Quat;
+  readonly omega: Vec3;
+}
+
+// 姿勢 att のうち、基準系に対する機体座標系の相対角速度 [rad/s]。基準系に対して静止していれば 0。
+export function relativeSpin(att: Attitude, frame: RotatingFrame): Vec3 {
+  return sub(att.w, qRotate(qInvert(att.q), frame.omega));
+}
+
+// 回転する基準系 from から to へ dt の間に進みながら、姿勢を進める。基準系の中で相対姿勢を
+// stepAttitude で積分し、結果を to の基準系へ戻す。絶対の q と w は引き続き絶対値で返す。
+// 基準系の回転そのものは from と to の姿勢から厳密に与えるので、大きな dt でも基準系へ同期したまま進む。
+export function stepAttitudeInFrame(
+  att: Attitude, torque: Vec3, dt: number, from: RotatingFrame, to: RotatingFrame,
+): Attitude {
+  const relQ = qMul(qInvert(from.q), att.q);
+  const rel = stepAttitude({ q: relQ, w: relativeSpin(att, from), inertia: att.inertia }, torque, dt);
+  const q = qNormalize(qMul(to.q, rel.q));
+  return { q, w: add(rel.w, qRotate(qInvert(q), to.omega)), inertia: att.inertia };
 }
 
 // 現在姿勢 q を目標 forward/up へ合わせるための誤差回転。angle は [-π, π]、axisBody は
