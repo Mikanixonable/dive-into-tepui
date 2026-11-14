@@ -78,9 +78,9 @@ export class SpatialGrid<T> {
     bucket.push(item);
   }
 
-  // セル添字 (cx, cy, cz) に登録済みの要素。そのセルが空なら undefined。
-  private bucketAt(cx: number, cy: number, cz: number): T[] | undefined {
-    return this.cells.get(cx)?.get(cy)?.get(cz);
+  // セル添字 (cx, cy, cz) に登録済みの要素。そのセルが空なら null。
+  private bucketAt(cx: number, cy: number, cz: number): T[] | null {
+    return this.cells.get(cx)?.get(cy)?.get(cz) ?? null;
   }
 
   // 点 pos を含むセルと、その26近傍セルに登録済みの要素を out へ列挙する。
@@ -120,7 +120,7 @@ export class SpatialGrid<T> {
           // 隣接セルは、辞書順で正の側の13方向を引く。
           for (const offset of FORWARD_CELL_OFFSETS) {
             const neighbor = this.bucketAt(cx + offset[0], cy + offset[1], cz + offset[2]);
-            if (neighbor === undefined) continue;
+            if (neighbor === null) continue;
             for (const a of bucket) {
               for (const b of neighbor) out.push(a, b);
             }
