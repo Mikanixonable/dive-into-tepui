@@ -4,7 +4,9 @@
 // ここでは「実装の性質」(連続、非負、単調減少)を検証する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { type Atmosphere, airspeed, atmosphericDensity, dragAccel, ellipsoidAltitude } from '../../src/physics/atmosphere';
+import {
+  type Atmosphere, airspeed, airflow, atmosphericDensity, dragAccel, ellipsoidAltitude,
+} from '../../src/physics/atmosphere';
 import { EARTH_ATMOSPHERE } from '../../src/game/celestial/solar-system/earth-system';
 import { len, v3 } from '../../src/math/vec3';
 
@@ -92,6 +94,15 @@ export function register(): void {
     assert.ok(len(dragAccel(rLow, v, 3.3e-3, EARTH, 1)) > 0);
     // 大気の届かない高高度では、bcInv が正でも密度の下限で切られてゼロになる。
     assert.equal(len(dragAccel(v3(EARTH_ATMOSPHERE.equatorRadius + 3000e3, 0, 0), v, 3.3e-3, EARTH, 1)), 0);
+  });
+
+  test('atmosphere: airflow exposes the same co-rotating air-relative velocity used for its speed', () => {
+    const r = v3(EARTH_ATMOSPHERE.equatorRadius, 0, 0);
+    const inertialVelocity = v3(0, 0, 0);
+    const flow = airflow(r, inertialVelocity, EARTH);
+    const expected = airspeed(r, inertialVelocity, EARTH);
+    assert.deepEqual(flow.airspeed, expected);
+    assert.equal(flow.speed, len(expected));
   });
 
   test('atmosphere: 抗力が1ステップで奪う対気速度は、対気速度そのものを超えない', () => {
