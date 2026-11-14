@@ -84,8 +84,6 @@ export class WorldSfx {
 
   // 一回きりの音を1つ鳴らす。
   private play(sound: WorldSound): void {
-    // TEMP-DEBUG: 鳴った音の種類を観測するための一時ログ。調査後に外す。
-    console.debug('[sfx]', sound.kind);
     switch (sound.kind) {
       case 'fire': this.fire(); return;
       case 'reload': this.reload(); return;
