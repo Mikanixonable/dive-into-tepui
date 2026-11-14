@@ -24,14 +24,14 @@ export const EARTH_TERRAIN_SCALAR_UINT8 = 2;
 export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS;
 export const EARTH_TERRAIN_LAYOUT = 'normal-xyz-rgb8-roughness-a8';
 export const EARTH_TERRAIN_PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
-export const EARTH_BASE_MAGIC = 'ESTB';
-export const EARTH_BASE_ROOT_COLUMNS = 2;
-export const EARTH_BASE_ROOT_ROWS = 1;
+const EARTH_BASE_MAGIC = 'ESTB';
+const EARTH_BASE_ROOT_COLUMNS = 2;
+const EARTH_BASE_ROOT_ROWS = 1;
 export const EARTH_BASE_COLOR_WIDTH = 2 ** (EARTH_BASE_COLOR_Z + 1) * EARTH_TILE_TEXELS;
 export const EARTH_BASE_COLOR_HEIGHT = 2 ** EARTH_BASE_COLOR_Z * EARTH_TILE_TEXELS;
 export const EARTH_BASE_COLOR_COMPONENTS = 3;
 
-export function earthTileCount(maxZoom) {
+function earthTileCount(maxZoom) {
   if (!Number.isSafeInteger(maxZoom) || maxZoom < EARTH_TILE_MIN_Z || maxZoom > EARTH_TILE_MAX_Z) {
     fail(`maxZoom must be ${EARTH_TILE_MIN_Z}..${EARTH_TILE_MAX_Z}`);
   }
@@ -47,7 +47,7 @@ const SHA256 = /^[0-9a-f]{64}$/;
 const COLOR_TILE_TEMPLATE = 'tiles/{z}/{x}/{y}.jpg';
 const TERRAIN_TILE_TEMPLATE = 'tiles/{z}/{x}/{y}.bin.gz';
 
-export class EarthSurfaceContractError extends Error {
+class EarthSurfaceContractError extends Error {
   constructor(message, options) {
     super(message, options);
     this.name = 'EarthSurfaceContractError';
@@ -184,7 +184,7 @@ export function validateRuntimeManifest(value) {
   return validateManifest(value);
 }
 
-export function tileKeys(maxZoom = EARTH_TILE_MAX_Z) {
+function tileKeys(maxZoom = EARTH_TILE_MAX_Z) {
   if (!Number.isSafeInteger(maxZoom) || maxZoom < EARTH_BASE_COLOR_Z || maxZoom > EARTH_TILE_MAX_Z) {
     fail(`maxZoom must be ${EARTH_BASE_COLOR_Z}..${EARTH_TILE_MAX_Z}`);
   }

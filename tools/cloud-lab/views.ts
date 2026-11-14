@@ -26,7 +26,7 @@ export type CloudLabViewId =
 // 写しを描画と同じ読み取りで読んで色を組む。'photo' のビューは実写の雲テクスチャを読むだけで、生成の系には
 // 触れない — 生成と同じ図法・同じ解像度で実写を出し、他のビューと切り替えて見比べるためにある。
 // 雲場を単位方向で読む口。面は自分の投影の uv で直に読む。
-export type CloudAt = (direction: Vec3Node) => CloudSample;
+type CloudAt = (direction: Vec3Node) => CloudSample;
 
 export type CloudLabView = {
   readonly id: CloudLabViewId;
