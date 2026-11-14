@@ -1,4 +1,4 @@
-// 雲の細部の計測のための撮影。海の上の雲を、実写(衛星写真)と同じ km/px・同じ真下見下ろしで、
+// 雲の細部の計測のための撮影。海上と陸上の雲を、実写(衛星写真)と同じ km/px・同じ真下見下ろしで、
 // 積雲だけ・巻雲だけ・両方の3種で撮る。巡回の撮影(render-lab:shot)には載せない別口で、
 // window.renderLab.cloudDetailShots() が撮影名とメタデータの一覧を、shootCloudDetail() が
 // 1 枚の PNG を返す。
@@ -12,8 +12,8 @@ import { FOV_DEG, labCamera, VIEW_HEIGHT, type LabCase, type LabShot } from './l
 import type { EarthAngleKey, LabViewAngles } from './view-angles';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
-// 直下点に取る海の上の場面。center は tools/cloud-detail/scenes.json(実写の目録)と同じ海域の
-// 中心を使うので、撮った画像は同じ場所の実写と同じ物差しで比べられる。
+// 直下点に取る場面。center は tools/cloud-detail/scenes.json(実写の目録)と同じ地点の中心を
+// 使うので、撮った画像は同じ場所の実写と同じ物差しで比べられる。
 interface CloudDetailScene {
   // 撮影名に使う短い名。
   readonly id: string;
@@ -42,9 +42,15 @@ const SCENES: readonly CloudDetailScene[] = [
   { id: 'norw-hl', scene: 'highlat-cumulus-norwegian', latitudeDeg: 68, longitudeDeg: 5 },
   // 西太平洋の冬の寒気流の積雲(温帯の海)。
   { id: 'pac-temp', scene: 'temperate-cumulus-japansea', latitudeDeg: 38, longitudeDeg: 150 },
+  // アマゾンの積雲(熱帯の陸)。
+  { id: 'trop-land', scene: 'land-cumulus-amazon', latitudeDeg: -5, longitudeDeg: -60 },
+  // ウクライナの対流雲(温帯の陸)。
+  { id: 'temp-land', scene: 'land-convective-ukraine', latitudeDeg: 49, longitudeDeg: 32 },
+  // カナダの積雲(高緯度の陸)。
+  { id: 'hl-land', scene: 'land-boreal-canada', latitudeDeg: 58, longitudeDeg: -100 },
 ];
 
-// 段の目標 km/px と表示時刻 [s]。段ごとの高度は海域の緯度ごとに引く(地表の扁平ぶんを
+// 段の目標 km/px と表示時刻 [s]。段ごとの高度は直下点の緯度ごとに引く(地表の扁平ぶんを
 // 高度側で吸収して、画像中心の km/px を目標へ揃える)。
 const TIERS_KM_PER_PX = [0.25, 1, 4] as const;
 const DISPLAY_TIMES_S = [0, 21600, 43200] as const;
@@ -115,8 +121,8 @@ export interface CloudDetailShot extends LabShot {
   readonly altitudeM: number;
 }
 
-// 撮影の表。名前は <海域>-<時刻 h>h-<km/px>km-<種類>(例: npac-jet-6h-1km-cirrus)、
-// 総数は 6 海域 × 3 時刻 × 3 段 × 3 種類 = 162。
+// 撮影の表。名前は <場面>-<時刻 h>h-<km/px>km-<種類>(例: npac-jet-6h-1km-cirrus)、
+// 総数は 12 場面 × 3 時刻 × 3 段 × 3 種類 = 324。
 export const CLOUD_DETAIL_SHOTS: Readonly<Record<string, CloudDetailShot>> = (() => {
   const shots: Record<string, CloudDetailShot> = {};
   for (const scene of SCENES) {
@@ -202,7 +208,7 @@ export const CLOUD_DETAIL_CHECK_SHOTS: Readonly<Record<string, CloudDetailShot>>
 // 基準・shift・zoom は一致する。base・later10・later30 は種類ごと(両方・積雲だけ・巻雲だけ)にも撮る —
 // 層ごとに風が違うので、時間の計測を層別の位置合わせで読めるようにするため。計測の一覧
 // (CLOUD_DETAIL_SHOT_INFOS)には載せない。
-// 撮影名は <海域>-<時刻 h>h-<km/px>km-stab-<base|shift|zoom|later10|later30>。
+// 撮影名は <場面>-<時刻 h>h-<km/px>km-stab-<base|shift|zoom|later10|later30>。
 // 積雲だけ・巻雲だけは末尾へ -cumulus / -cirrus を足す(種類の無標は両方)。
 const STABILITY_SCENE_IDS = ['natl-front', 'npac-jet', 'pac-temp', 'south-hl', 'wpac-itcz'] as const;
 const STABILITY_DISPLAY_TIME_S = 21600;
