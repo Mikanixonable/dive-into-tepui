@@ -8,7 +8,7 @@ import { RingView } from '../../src/render/celestial/ring-view';
 import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { Q_IDENTITY } from '../../src/math/quat';
-import { v3, type Vec3 } from '../../src/math/vec3';
+import { sub, v3, type Vec3 } from '../../src/math/vec3';
 import { createBasePreset } from '../../src/game/ship/ship-presets';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { constructionRotationRing } from '../../src/game/ship/ship-construction-rotation';
@@ -183,12 +183,16 @@ function constructionRing(): LabCase {
   ship.position.set(0, 0, SHIP_POSITION);
   const face = {
     assembly,
-    motion: { state: { r: v3() }, att: { q: Q_IDENTITY }, centerOffset: shape.centerOffset },
+    motion: {
+      state: { r: v3() }, att: { q: Q_IDENTITY }, centerOffset: shape.centerOffset,
+      assemblyToEci: (local: Vec3): Vec3 => sub(local, shape.centerOffset),
+    },
   };
   const shift = (p: Vec3): Vec3 => v3(p.x, p.y, p.z + SHIP_POSITION);
   const main = constructionRotationRing(face, 'main-tank');
   const solar = constructionRotationRing(face, 'solar-left');
   if (main === null || solar === null) throw new Error('construction rotation ring is missing');
+  // 静止中とドラッグ中のリングを、艦上の2モジュールへ同期する。
   const idle = new RotationRingView(undefined, false);
   idle.sync({ position: shift(main.centerEci), rotation: main.rotation, radius: main.radius, drag: null });
   const dragging = new RotationRingView(undefined, false);

@@ -18,8 +18,8 @@ export const WORK_LIGHT_INTENSITY = 3000;
 // 灯距と注視距離の比、および灯球の半径と灯距の比。灯距を注視距離に比例させるので、
 // カメラが寄れば灯も近付き、離れれば退いて弱まる。半径は灯距の小さな割合で、柔らかい
 // 近距離照明になる。
-export const WORK_LIGHT_DISTANCE_RATIO = 2.5;
-export const WORK_LIGHT_RADIUS_RATIO = 0.15;
+const WORK_LIGHT_DISTANCE_RATIO = 2.5;
+const WORK_LIGHT_RADIUS_RATIO = 0.15;
 
 // 灯のカメラ基準オフセット(右・上・後の重み)。「右上後方」はカメラの右肩越し —
 // 視線の後ろへ置くので、照らされるのはカメラから見えている面である。
@@ -69,9 +69,9 @@ export class WorkLightSource implements LightSource {
     return this.cached;
   }
 
-  // 一様な球光源の寄与(sphere-light.ts と同じモデル、影は掛けない)。拡散は放射照度
-  // I/d² に球光源のクリップ係数を、鏡面は放射輝度 I/(πR²) に LTC の係数を掛ける。
+  // 一様な球光源の寄与(sphere-light.ts と同じモデル、影は掛けない)。
   private contribution(sample: ShadingSample): LightContribution {
+    // 灯心を view 座標へ写し、その画素からの距離と法線との角度を取る。
     const center = sample.viewPositionOf(this.center);
     const toCenter = center.sub(sample.position);
     const distSqr = dot(toCenter, toCenter);
@@ -79,8 +79,10 @@ export class WorkLightSource implements LightSource {
     const cosBeta = dot(sample.normal, toCenter.div(dist));
     const sinSigmaSqr = clamp(
       this.radius.mul(this.radius).div(distSqr), 0, 1);
+    // 拡散の寄与: 放射照度 I/d² に球光源のクリップ係数を掛ける。
     const diffuse: Vec3Node = vec3(this.intensity).div(distSqr)
       .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr));
+    // 鏡面の寄与: 放射輝度 I/(πR²) に LTC の係数を掛ける。
     const radiance: Vec3Node = vec3(this.intensity)
       .div(this.radius.mul(this.radius).mul(PI));
     const specular: Vec3Node = radiance
