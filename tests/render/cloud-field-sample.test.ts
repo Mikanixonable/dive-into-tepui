@@ -19,6 +19,7 @@ function assertFlow(angleRad: number, speedMs: number): void {
   assert.ok(Math.abs(flow.north - Math.sin(2 * angleRad) * alignment) < CLOSE);
 }
 
+// 雲場の混合同期と、風から導く巻雲の向きを検査する。
 export function register(): void {
   test('cirrus flow: 倍角ベクトルは定義 (cos 2θ, sin 2θ) × 揃い度 に一致する', () => {
     for (const deg of [0, 15, 45, 80, 90, 120, 170]) {
