@@ -159,6 +159,8 @@ export type RunEventBody =
   | { readonly kind: 'magazineAdded' }
   // 設定パネルの操作で、操作艦の RCS 燃料を満タンへ補充した。fuel は補充した量 [kg]。
   | { readonly kind: 'rcsFuelRefilled'; readonly fuel: number }
+  // 設定パネルの操作で、すべての基地の燃料を満タンへ補充した。ships は補充した基地の数。
+  | { readonly kind: 'baseFuelRefilled'; readonly ships: number }
 
   // -------------------------------------------------------------------- 計画
   // 直近ノードの実行の窓に入った。
