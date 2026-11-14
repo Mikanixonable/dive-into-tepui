@@ -142,6 +142,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       (sum, module) => sum + (this.assembly.definition(module.id)?.abilities.fuelConsumptionRate ?? 0), 0,
     );
   }
+  // 主推進燃料の残量と容量 [unit]。RCS 燃料は totalRcsFuel/totalMaxRcsFuel。
   public get totalFuel(): number { return this.capabilities.fuel('main'); }
   public get totalMaxFuel(): number { return this.capabilities.maxFuel('main'); }
   public get totalRcsFuel(): number { return this.capabilities.fuel('rcs'); }
@@ -432,10 +433,12 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     return this.connections.dock(other, localPortId, otherPortId, selection);
   }
 
+  // portId が関わる接舷接続を切り離し、外側の部分を新しい船として返す。
   public undock(portId: string, registry: EntityRegistry): ModularShip {
     return this.connections.undock(portId, registry);
   }
 
+  // portId の接舷接続で繋がる両側を修理し、実際に回復した HP を返す。
   public repairAtDock(portId: string): number {
     return this.connections.repairAtDock(portId);
   }
