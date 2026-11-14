@@ -128,7 +128,10 @@ export class CloudAtmosphereRenderer {
   // 評価対象の雲定義。null の場合は雲殻を生成しない。
   public set(clouds: AtmosphereClouds | null): void {
     this.active.value = clouds === null || !clouds.cirrusVisible ? 0 : 1;
-    if (clouds === null) return;
+    if (clouds === null || !clouds.cirrusVisible) {
+      this.fieldSampler.unbind();
+      return;
+    }
     this.bodyFromWorld.value.copy(clouds.bodyFromWorld);
     this.fieldSampler.bind(clouds.cloud.field);
     this.cirrusDetail.syncClock(clouds.cloud.clock.displayTime, clouds.cloud.clock.simSpeed);
