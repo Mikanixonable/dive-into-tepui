@@ -4,8 +4,8 @@
 // その勾配で決まり、読み取り方向は低周波のノイズで歪ませて格子の並びを崩す。各段は風に乗って
 // 流れ、段の寿命で湧いて崩れる(cloud-detail-clock.ts)。
 import {
-  If, clamp, dot, exp, float, floor, greaterThan, int, length, max, min, mix, normalize, select,
-  sin, smoothstep, sqrt, step, uniform, uint, vec3,
+  If, clamp, cross, dot, exp, float, floor, greaterThan, int, length, max, min, mix, normalize, select,
+  smoothstep, sqrt, step, uniform, uint, vec3,
 } from 'three/tsl';
 import { DetailClock } from './cloud-detail-clock';
 import { gradientNoise } from './gradient-noise';
@@ -234,6 +234,9 @@ const CIRRUS_REGIME_GAIN = 3;
 const CIRRUS_REGIME_OFFSETS = [
   vec3(11.3, 4.7, 9.1), vec3(2.9, 17.3, 5.6), vec3(23.1, 1.9, 14.4), vec3(7.7, 21.2, 3.3),
 ] as const;
+// 鱗雲状の列に使う段の添字(DETAIL_WAVELENGTHS の 4 km)と、流れに直交する向きへ伸ばす倍率。
+const CIRRUS_ROW_OCTAVE = 3;
+const CIRRUS_ROW_STRETCH = 5;
 // 鱗雲状の塊の間隔 [m](列の波長も同じ)の範囲。どの間隔になるかは静的な領域の勾配ノイズで決める。
 const CIRRUS_CELL_PITCH_MIN = 1500;
 const CIRRUS_CELL_PITCH_MAX = 7000;
@@ -404,10 +407,10 @@ export class CirrusDetailEvaluator {
       const scaled = direction.mul(radius).div(pitch);
       const core = float(1).sub(smoothstep(0, 0.55, nearestCellDistance(scaled).mul(2)));
       const cells = core.sub(CIRRUS_CELL_MEAN).div(CIRRUS_CELL_STD);
-      // 列は sin の位相で、振幅 1 の正弦の分散 1/2 を √2 で割り戻す。
-      const phase = dot(direction.mul(radius), flowDir).mul(2 * Math.PI).div(pitch)
-        .add(gradientNoise(direction.mul(radius).div(pitch.mul(4))).mul(1.6));
-      const rows = sin(phase).mul(Math.SQRT2);
+      // 列は、流れに直交する接ベクトルへ伸ばした 4 km の段で、流れに直交する波の筋になる。位置と接ベクトルの
+      // 内積は 0 なので、正弦の位相を位置と流れから直には組めない。
+      const rows = this.clock.flowNoise(
+        CIRRUS_ROW_OCTAVE, direction, radius, windVector, normalize(cross(direction, flowDir)), float(CIRRUS_ROW_STRETCH));
       cellsZ.assign(mix(cells, rows, smoothstep(-0.3, 0.3, regimeAt(CIRRUS_REGIME_OFFSETS[3]))));
     });
 
