@@ -27,7 +27,7 @@ import {
   type ConstructionRotationDrag, type ConstructionRotationRing,
 } from './ship-construction-rotation';
 
-// 修飾キーの押下判定用。キー割り当てではなく、割り当てに伴う修飾の照合にだけ使う。
+// キー割り当ての修飾宣言(withCtrlOrMeta)を照合するときの押下判定用。
 const CTRL_OR_META: readonly KeyBinding[] = [
   { code: 'ControlLeft', label: 'Ctrl' },
   { code: 'ControlRight', label: 'Ctrl' },
@@ -57,6 +57,7 @@ interface ConstructionPointerShip {
     readonly state: { readonly r: Vec3 };
     readonly att: { readonly q: Quat };
     readonly centerOffset: Vec3;
+    assemblyToEci(local: Vec3): Vec3;
     raycastCompound(ray: Ray, pos: Vec3): CompoundCylinderRayHit | null;
   };
 }
@@ -111,10 +112,12 @@ export function nextCatalogDefinitionId(
   return definitionIds[(index + delta + definitionIds.length) % definitionIds.length]!;
 }
 
+// Ctrl か ⌘(Meta)キーが押されていれば真。
 function ctrlOrMetaDown(input: Input): boolean {
   return CTRL_OR_META.some(binding => input.down(binding));
 }
 
+// Shift キーが押されていれば真。
 function shiftDown(input: Input): boolean {
   return SHIFT.some(binding => input.down(binding));
 }
@@ -328,6 +331,7 @@ export class ShipConstructionPointer {
     if (hit === null) return false;
     const band = metersPerPixel(camera.activeViewpoint, hit.point, viewport.height) * RING_HIT_PX;
     if (Math.abs(hit.distance - ring.radius) > band) return false;
+    // 帯の内側なら掴み、開始角つきのドラッグを記録する。
     this.ringDrag = {
       ring, startAngle: hit.angle, previousAngle: hit.angle, angle: 0,
     };
@@ -368,6 +372,7 @@ export class ShipConstructionPointer {
       host.placeAt();
       return;
     }
+    // 候補があるのに置けないなら、理由を出して手放す。
     if (targetId !== null) {
       host.releaseWithReason(trial?.reason ?? 'ここには置けません');
       return;
