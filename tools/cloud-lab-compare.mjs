@@ -16,7 +16,8 @@ import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { componentStats } from './cloud-components.mjs';
 import { computeDistances } from './cloud-distances.mjs';
-import { FINE_BANDS, FINE_PRIMARY_LADDER, measureFinePair, resampleCaptureToBox } from './cloud-fine-structure.mjs';
+import { FINE_BANDS, FINE_PRIMARY_LADDER, applyCaptureMapping, captureBoxMapping, largestValidRect, measureFinePair, resampleCaptureToBox } from './cloud-fine-structure.mjs';
+import { FINE_MOTION_DRIFT_LAG_HOURS, FINE_MOTION_SAMPLE_HOURS, measureFineMotionPair } from './cloud-fine-motion.mjs';
 import { bestShift, centroidOffset, crossingTime } from './cloud-motion.mjs';
 import { cloudTopStats, quantile } from './cloud-top-stats.mjs';
 import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
@@ -1267,6 +1268,169 @@ async function main() {
       })),
       pairs: finePairs,
     };
+  }
+
+  // --- 微細な動き: 描画の時系列撮影と実写の可視時系列を、帯域ごとに動きで比べる ---
+  // 写像 (箱の画素が撮影のどこを読むか) は時刻によらず同じなので、1 つの対で 1 回だけ
+  // 作って 5 時刻に使い回す。測る矩形は、生成の有効域と実写の全 5 時刻の有効域 (輝度が黒 =
+  // 円盤外・夜側として除く。実写フェッチャの黒の取り方 (ガンマで 3/255 未満) と同じ) の
+  // 共通部分の最大の矩形で、生成と実写の両方に同じ格子で切り出す。輝度は線形化してあるので
+  // しきいも線形へ直す (linearOf(3) ≈ 0.00091)。3/255 を線形のまま使うと、暗いだけの
+  // 海 (ガンマで 26/255 まで) まで除いて矩形が潰れる。
+  // 陸らしさ = smoothstep(0, 100 m, 標高) で、箱の格子へ双一次で載せ替えたもの
+  // (climate-map.ts の landFraction と同じ。標高は 200 km でぼかしてあるので、海岸の
+  // 200 km 以内は陸寄りに読む — 層別は大まかな陸海の別で、細かい海岸線は解かない)。
+  // 風は箱の平均の地表風 (t=0。成分 = (値 − 0.5) × 2 × WIND_SPAN)。
+  console.log('\n=== 微細な動き(描画の時系列撮影と実写の可視時系列、帯域ごと) ===');
+  const tsCapManifestPath = path.join(root, '.cloud-lab/render-capture-timeseries/manifest.json');
+  const tsFineManifestPath = path.join(root, '.cloud-lab/reference-fine-timeseries/manifest.json');
+  if (!existsSync(tsCapManifestPath)) {
+    console.log('  (時系列の撮影の manifest が無いので微細な動きは未計測)');
+  } else if (!existsSync(tsFineManifestPath)) {
+    console.log('  (実写の可視時系列の manifest が無いので微細な動きは未計測)');
+  } else {
+    const tsCapManifest = JSON.parse(readFileSync(tsCapManifestPath, 'utf8'));
+    const tsFineManifest = JSON.parse(readFileSync(tsFineManifestPath, 'utf8'));
+    if (JSON.stringify(tsCapManifest.sampleHours) !== JSON.stringify(FINE_MOTION_SAMPLE_HOURS)
+      || JSON.stringify(tsFineManifest.sampleHours) !== JSON.stringify(FINE_MOTION_SAMPLE_HOURS)) {
+      console.log('  (時刻梯子が想定と違うので微細な動きは未計測)');
+    } else {
+      const fineMotionPairs = [];
+      const landFractionOnGrid = (box, width, height) => {
+        const data = new Float32Array(width * height);
+        for (let y = 0; y < height; y++) {
+          const lat = box.north - ((y + 0.5) / height) * (box.north - box.south);
+          for (let x = 0; x < width; x++) {
+            const lon = box.west + ((x + 0.5) / width) * (box.east - box.west);
+            const elevM = sampleBilinear(
+              elevation, ((lon + 180) / 360) * GLOBE_W - 0.5, ((90 - lat) / 180) * HEIGHT - 0.5) * 8000;
+            const t = Math.min(1, Math.max(0, elevM / 100));
+            data[y * width + x] = t * t * (3 - 2 * t);
+          }
+        }
+        return { width, height, data };
+      };
+      const windMeanOfBox = (box) => {
+        const east = cropLatLonBox(windEast, box.north, box.south, box.west, box.east);
+        const north = cropLatLonBox(windNorth, box.north, box.south, box.west, box.east);
+        let u = 0;
+        let v = 0;
+        for (let i = 0; i < east.data.length; i++) {
+          u += (east.data[i] - 0.5) * 2 * WIND_SPAN;
+          v += (north.data[i] - 0.5) * 2 * WIND_SPAN;
+        }
+        return { east: u / east.data.length, north: v / north.data.length };
+      };
+      for (const region of tsFineManifest.regions) {
+        for (const ladder of ['400km', '2000km']) {
+          const firstCapture = tsCapManifest.captures.find(
+            (entry) => entry.region === region.name && entry.ladder === ladder && entry.hours === 0);
+          const frames = FINE_MOTION_SAMPLE_HOURS.map((hours) => tsFineManifest.frames.find(
+            (frame) => frame.region === region.name && frame.ladder === ladder && frame.hours === hours));
+          const captures = FINE_MOTION_SAMPLE_HOURS.map((hours) => tsCapManifest.captures.find(
+            (entry) => entry.region === region.name && entry.ladder === ladder && entry.hours === hours));
+          if (firstCapture === undefined || frames.some((frame) => frame === undefined)
+            || captures.some((entry) => entry === undefined)) {
+            console.log(`  ${region.label} ${ladder}: 時系列の撮影または実写が揃わず、対を組めない`);
+            continue;
+          }
+          const box = frames[0].box;
+          if (frames.some((frame) => JSON.stringify(frame.box) !== JSON.stringify(box))) {
+            console.log(`  ${region.label} ${ladder}: 時刻で箱が違い、対を組めない`);
+            continue;
+          }
+          const mapping = captureBoxMapping(
+            firstCapture.latitudeDeg, firstCapture.longitudeDeg, firstCapture.cameraDistanceKm,
+            tsCapManifest.fovDeg, box, 960, 540, 960, 540);
+          if (mapping.validRect === null) {
+            console.log(`  ${region.label} ${ladder}: 撮影が箱を覆わず、有効矩形が無い`);
+            continue;
+          }
+          const generatedFields = captures.map((entry) => applyCaptureMapping(
+            decodeLuminancePng(readFileSync(path.join(root, '.cloud-lab/render-capture-timeseries', entry.file))),
+            mapping));
+          const referenceFields = frames.map((frame) => decodeLuminancePng(
+            readFileSync(path.join(root, frame.file))));
+          const commonValid = new Uint8Array(960 * 540);
+          for (let i = 0; i < 960 * 540; i++) {
+            commonValid[i] = mapping.valid[i]
+              && referenceFields.every((field) => field.data[i] >= linearOf(3)) ? 1 : 0;
+          }
+          const rect = largestValidRect(commonValid, 960, 540);
+          if (rect === null) {
+            console.log(`  ${region.label} ${ladder}: 生成と実写の共通の有効矩形が無い`);
+            continue;
+          }
+          const generated = generatedFields.map(
+            (field) => cropField(field, rect.x0, rect.y0, rect.width, rect.height));
+          const reference = referenceFields.map(
+            (field) => cropField(field, rect.x0, rect.y0, rect.width, rect.height));
+          const landField = cropField(
+            landFractionOnGrid(box, 960, 540), rect.x0, rect.y0, rect.width, rect.height);
+          const windMs = windMeanOfBox(box);
+          const motion = measureFineMotionPair({
+            generated, reference, kmPerPx: frames[0].kmPerPx, ladder,
+            sampleHours: FINE_MOTION_SAMPLE_HOURS, driftLagHours: FINE_MOTION_DRIFT_LAG_HOURS,
+            windMs, landField,
+          });
+          const validCount = commonValid.reduce((sum, value) => sum + value, 0);
+          const pair = {
+            region: region.name,
+            ladder,
+            kmPerPx: frames[0].kmPerPx,
+            widthKm: +(box.east - box.west) * 111.32
+              * Math.cos((box.north + box.south) / 2 * Math.PI / 180),
+            heightKm: +(box.north - box.south) * 111.32,
+            validFraction: +(validCount / (960 * 540)).toFixed(4),
+            validRect: rect,
+            distance: true,
+            windMs,
+            bands: motion.bands,
+            strata: motion.strata,
+          };
+          // typhoon 400 km: t=0 の対と同じ理由 (実写の嵐の中心が箱の外で、生成側は目が枠を
+          // 埋める) で、距離の項から外す。時系列でも同じ内容のずれが入る。
+          if (region.name === 'typhoon' && ladder === '400km') {
+            pair.distance = false;
+            pair.distanceReason = 'typhoon-content-mismatch';
+          }
+          fineMotionPairs.push(pair);
+          const fmt = (value, digits = 1) => (value === null ? '-' : value.toFixed(digits));
+          console.log(`--- ${region.label} ${ladder} (${pair.widthKm.toFixed(0)}x${pair.heightKm.toFixed(0)} km、`
+            + `有効 ${rect.width}x${rect.height}・${(pair.validFraction * 100).toFixed(1)}%) ---`);
+          console.log(`  風 (箱平均・地表) 東 ${windMs.east.toFixed(1)} / 北 ${windMs.north.toFixed(1)} m/s`);
+          console.log('  帯[km]  移流 東 生成/実写 [m/s]  北 生成/実写 [m/s]  風角 生成/実写 [°]'
+            + '  速比 生成/実写  τ 生成/実写 [h]');
+          for (const band of motion.bands) {
+            const g = band.generated;
+            const r = band.reference;
+            console.log(`  ${band.loKm}-${band.hiKm}${band.primary ? '*' : ' '}  `
+              + `${fmt(g.drift.driftMs.east)}/${fmt(r.drift.driftMs.east)}  `
+              + `${fmt(g.drift.driftMs.north)}/${fmt(r.drift.driftMs.north)}  `
+              + `${fmt(g.drift.angleDeg, 0)}/${fmt(r.drift.angleDeg, 0)}  `
+              + `${fmt(g.drift.speedRatio, 2)}/${fmt(r.drift.speedRatio, 2)}  `
+              + `${fmt(g.tauHours)}/${fmt(r.tauHours)}`);
+          }
+          console.log('  層別 陸 τ 生成/実写 [h] (タイル数)  海 τ 生成/実写 [h] (タイル数)');
+          for (const band of motion.strata) {
+            if (band.generated === null) continue;
+            const g = band.generated;
+            const r = band.reference;
+            console.log(`  ${band.loKm}-${band.hiKm}${band.primary ? '*' : ' '}  `
+              + `${fmt(g.land.tauHours)}/${fmt(r.land.tauHours)} (${g.land.tiles}/${r.land.tiles})  `
+              + `${fmt(g.sea.tauHours)}/${fmt(r.sea.tauHours)} (${g.sea.tiles}/${r.sea.tiles})`);
+          }
+        }
+      }
+      report.sections.fineMotion = {
+        capture: {
+          gitHead: tsCapManifest.gitHead, fovDeg: tsCapManifest.fovDeg,
+          sampleHours: FINE_MOTION_SAMPLE_HOURS, driftLagHours: FINE_MOTION_DRIFT_LAG_HOURS,
+        },
+        reference: { source: tsFineManifest.source, sampleHours: FINE_MOTION_SAMPLE_HOURS },
+        pairs: fineMotionPairs,
+      };
+    }
   }
 
   console.log(`\n=== 台風の径方向プロファイル(cap の中央 362×362・${PROFILE_BIN_KM} km 刻みの方位平均、全 texel) ===`);
