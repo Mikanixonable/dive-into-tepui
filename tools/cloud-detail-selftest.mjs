@@ -1,6 +1,7 @@
 // cloud-detail-metrics の自己検査。傾き β が既知の合成場(乱相位の FFT 合成)と
 // 帯域の限られたノイズ場へ物差しを当て、傾きを ±0.1 で取り戻すこと、周期性の指標が
-// 1 オクターブの場でだけ閾値を超えることを判定する。続けて .cloud-detail/reference/ の
+// 1 オクターブの場でだけ閾値を超えることを判定する。二値の合成場へ雲マスクの偏り指数 I_B を当て、
+// 一様な雑音・市松・塊の大きさの違いで値が期待どおりに出ることを判定する。続けて .cloud-detail/reference/ の
 // 実写へ塊の寸法分布の冪 b と周長–面積の D を当て、文献値の検算をする(無ければその節は飛ばす)。
 // 使い方: node tools/cloud-detail-selftest.mjs — 判定に 1 つでも失敗すれば非 0 で終わる。
 import { existsSync, readFileSync } from 'node:fs';
@@ -136,6 +137,49 @@ const powerLawField = syntheticField(FIELD_N, (k) => Math.pow(k, -(5 / 3 + 1) / 
 const powerLawRatio = measureCloudDetail(powerLawField, FIELD_KM_PER_PX).periodicity.maxExcessRatio;
 judge(powerLawRatio <= PERIODICITY_THRESHOLD, '多オクターブ(β = 5/3)',
   `超過比 ${powerLawRatio.toFixed(2)} <= ${PERIODICITY_THRESHOLD}`);
+
+// 二値の合成場。cloud(x, y) が真の画素を雲(1)、残りを晴れ(0)とする。
+function binaryField(n, cloud) {
+  const data = new Float32Array(n * n);
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) data[y * n + x] = cloud(x, y) ? 1 : 0;
+  }
+  return { width: n, height: n, data };
+}
+
+// 一辺 s px の市松(雲の割合が半分未満になるよう左上の 1 ブロックを晴れにする)。
+// 雲の割合がちょうど半分だと、雲のしきいが雲の階調そのものに当たって雲マスクが空になる。
+function checkerField(s) {
+  return binaryField(FIELD_N, (x, y) => {
+    const bx = Math.floor(x / s);
+    const by = Math.floor(y / s);
+    return (bx + by) % 2 === 0 && (bx !== 0 || by !== 0);
+  });
+}
+
+console.log('\n=== 偏りの指数 I_B(二値の合成場 512² × 1 km/px。I_B = Var(m_b) / (p(1 − p))) ===');
+const heterogeneityOf = (field) => measureCloudDetail(field, FIELD_KM_PER_PX).heterogeneity;
+const noiseRand = mulberry32(21);
+const noiseBlocks = heterogeneityOf(binaryField(FIELD_N, () => noiseRand() < 0.3)).blocks;
+// 一様な雑音では I_B·B_px² の期待値は 1(N 個のブロックの分散の推定は相対誤差が約 √(2/(N−1)))。
+// 各尺度の値を、そのブロック数の誤差の 4 倍の幅で判定する。
+const noiseFits = noiseBlocks.map((block) => {
+  const side = Math.floor(FIELD_N / block.blockPx);
+  const ratio = block.index * block.blockPx * block.blockPx;
+  return { blockKm: block.blockKm, ratio, ok: Math.abs(ratio - 1) <= 4 * Math.sqrt(2 / (side * side - 1)) };
+});
+const noiseOk = noiseFits.length > 0 && noiseFits.every((fit) => fit.ok);
+judge(noiseOk, '一様な雑音(雲の割合 0.3)', noiseFits.length === 0
+  ? 'I_B を測れなかった'
+  : noiseFits.map((fit) => `${fit.blockKm}km ${fit.ratio.toFixed(2)}`).join('  ') + '(期待値 1)');
+const checkerIndex = heterogeneityOf(checkerField(64)).blocks.find((block) => block.blockKm === 64)?.index ?? null;
+judge(checkerIndex !== null && checkerIndex >= 0.5, '市松(64 px 四方の塊)', checkerIndex === null
+  ? 'I_64 を測れなかった'
+  : `I_64 = ${checkerIndex.toFixed(3)} >= 0.5`);
+const smallSlope = heterogeneityOf(checkerField(32)).slope;
+const largeSlope = heterogeneityOf(checkerField(128)).slope;
+judge(smallSlope !== null && largeSlope !== null && largeSlope > smallSlope, '塊の大きさと hetSlope',
+  `32 px 市松 ${smallSlope === null ? 'n/a' : smallSlope.toFixed(2)} < 128 px 市松 ${largeSlope === null ? 'n/a' : largeSlope.toFixed(2)}`);
 
 console.log('\n=== 実写の検算(b = 1.66 ± 0.3、D = 1.35 ± 0.1) ===');
 // 実写の節は判定を表に出すだけで終了コードへは入れない — 幅外が出たときに物差しと
