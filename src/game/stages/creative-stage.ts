@@ -227,7 +227,7 @@ export class CreativeStage extends Stage {
     this._dynamicSystem.events.record({ kind: 'objectPlaced', name: slot.name });
   }
 
-  // ステージ操作パネルを、指定したビューの右ドックへ置く。
+  // ステージ操作パネルを、指定したビューの右レールへ置く。
   private mountStageControlsPanel(inMapView: boolean): void {
     const root = inMapView ? this._hud.mapRoot : this._hud.combatRoot;
     const rightRail = hudRail(root, 'right');
