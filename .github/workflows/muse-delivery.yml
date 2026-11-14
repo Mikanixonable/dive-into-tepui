@@ -1,0 +1,93 @@
+# Muse delivery applier.
+# A push to muse/inbox carrying .muse/deliveries/<id>/ directories is applied
+# to muse/dev in sorted order: patch files are replayed with `git am`
+# (original authors and messages preserved), then deletions.txt paths are
+# removed in one commit. Applied delivery ids are recorded in
+# .muse/deliveries-applied.txt on muse/dev (the ledger makes re-runs
+# idempotent). muse/dev is pushed once, after every pending delivery applied
+# cleanly; on any failure nothing is pushed and the deliveries stay in the
+# inbox for reconciliation. Applied deliveries are removed from muse/inbox
+# by a cleanup commit (GITHUB_TOKEN pushes do not retrigger this workflow).
+name: muse-delivery
+
+on:
+  push:
+    branches: [muse/inbox]
+    paths: ['.muse/deliveries/**']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: muse-delivery
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: muse/dev
+          fetch-depth: 0
+
+      - name: Apply pending deliveries to muse/dev
+        run: |
+          set -euo pipefail
+          git config user.name "Muse (delivery)"
+          git config user.email "muse@muse.local"
+          ledger=.muse/deliveries-applied.txt
+          touch "$ledger"
+          git fetch origin muse/inbox
+          rm -rf /tmp/deliveries
+          mkdir -p /tmp/deliveries
+          if git cat-file -e origin/muse/inbox:.muse/deliveries 2>/dev/null; then
+            git archive origin/muse/inbox .muse/deliveries | tar -x -C /tmp/deliveries
+          fi
+          shopt -s nullglob
+          deliveries=(/tmp/deliveries/.muse/deliveries/*/)
+          if [ ${#deliveries[@]} -eq 0 ]; then
+            echo "No pending deliveries."
+            exit 0
+          fi
+          newly=()
+          cleanup=()
+          for d in "${deliveries[@]}"; do
+            id="$(basename "$d")"
+            cleanup+=("$id")
+            if grep -qx "$id" "$ledger"; then
+              echo "== $id already applied, skipping"
+              continue
+            fi
+            manifest="$d/manifest.json"
+            echo "== Applying $id"
+            while IFS= read -r p; do
+              [ -n "$p" ] && git am "$d/$p"
+            done < <(jq -r '.patches[]?' "$manifest")
+            if [ -s "$d/deletions.txt" ]; then
+              while IFS= read -r f; do
+                [ -n "$f" ] && git rm -q --ignore-unmatch -- "$f"
+              done < "$d/deletions.txt"
+              if ! git diff --cached --quiet; then
+                git commit -q -m "$(jq -r .deletion_message "$manifest")"
+              fi
+            fi
+            echo "$id" >> "$ledger"
+            newly+=("$id")
+          done
+          if [ ${#newly[@]} -gt 0 ]; then
+            git add "$ledger"
+            git commit -q -m "chore(muse-delivery): delivery 適用を記録 (${newly[*]})"
+            git push origin HEAD:muse/dev
+          fi
+          # Cleanup: drop every delivered directory from muse/inbox.
+          git worktree add -B muse/inbox /tmp/inbox-wt origin/muse/inbox
+          for id in "${cleanup[@]}"; do
+            rm -rf "/tmp/inbox-wt/.muse/deliveries/$id"
+          done
+          cd /tmp/inbox-wt
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -q -m "chore(muse-delivery): 適用済み delivery を除去"
+            git push origin muse/inbox
+          fi
