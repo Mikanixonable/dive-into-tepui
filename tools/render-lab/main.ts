@@ -72,6 +72,8 @@ declare global {
         name: string, point: CloudDetailRandomPoint,
       ) => Promise<{ png: string, centerKmPerPx: number, altitudeM: number }>;
       capture: () => Promise<string>;
+      // 値を結ぶ前に組んだシェーダで、同じテクスチャを指す 2 つのテクスチャノードが別々の値を読めるかの GPU 検査。
+      dedupeProbe: () => Promise<Record<string, number[]>>;
       // 観察の向きを変えた次の 1 フレームを、描画をちょうど 1 回だけ回して撮る(ドラッグ中の 1 フレーム)。
       captureAfterMove: (changes: Partial<LabViewAngles>, displayTime?: number) => Promise<string>;
       show: (name: CaseName) => void;
@@ -279,6 +281,7 @@ async function init(): Promise<void> {
       const result = await view.shootCloudDetailRandom(name, point); syncAngles(); return result;
     },
     capture: () => view.capture(),
+    dedupeProbe: () => view.dedupeProbe(),
     captureAfterMove: async (changes, displayTime) => {
       const png = await view.captureAfterMove(changes, displayTime); syncAngles(); return png;
     },
