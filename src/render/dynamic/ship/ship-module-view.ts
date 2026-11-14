@@ -16,7 +16,7 @@ import type {
 export type ShipModuleModelFactory = (modelId: string) => THREE.Object3D;
 
 // module 表示 hook が読む損傷率と展開率。
-export interface ShipModuleVisualState {
+interface ShipModuleVisualState {
   readonly id: string;
   readonly kind: ShipModuleRenderKind;
   readonly hp: number;

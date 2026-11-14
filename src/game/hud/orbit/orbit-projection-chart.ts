@@ -19,7 +19,7 @@ export interface ProjectionSeriesSpec {
   readonly currentStyle: 'filled' | 'ring';
 }
 
-export interface ProjectionChartSpec {
+interface ProjectionChartSpec {
   readonly textureImage: HTMLImageElement | null;
   readonly series: readonly ProjectionSeriesSpec[];
   readonly emptyMessage?: string;

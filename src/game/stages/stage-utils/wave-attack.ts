@@ -28,7 +28,7 @@ export interface WaveAttackStage extends StageOutcome {
 const WAVE_BOSS_PERIOD = 3;
 
 // 波 1 回の形。ships は機数で、boss は難関(波の番号が周期の倍数)か、rest は息抜きか。
-export interface WaveShape {
+interface WaveShape {
   readonly ships: number;
   readonly boss: boolean;
   readonly rest: boolean;
@@ -348,7 +348,7 @@ function waveShipPosition(
 }
 
 // 1 波ぶんの生成結果(接近する敵艦の列)。
-export interface WaveSpawn {
+interface WaveSpawn {
   readonly enemies: Enemy[];
 }
 

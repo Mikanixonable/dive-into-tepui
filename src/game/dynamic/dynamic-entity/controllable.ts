@@ -13,7 +13,7 @@ import type { DynamicEntity } from './dynamic-entity';
 import type { StageRules } from '../../stages/stage-rules';
 
 // 操作量から推力とトルクを決め、推力のラッチ・RCS 減衰・プログレード保持を持つスロットルインターフェース。
-export interface ThrottlePort {
+interface ThrottlePort {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
   readonly progradeHold: boolean;
@@ -45,7 +45,7 @@ export interface FuelConsumer {
 }
 
 // フレームごとの操作入力および単発コマンドを受け付けるインターフェース。
-export interface PilotCommandReceiver {
+interface PilotCommandReceiver {
   // controls はこのフレームの操作量で、操作されない個体は null。dt [s] は実時間、simDt [sim s] は
   // シミュレーション時間の刻み。
   updateControls(
@@ -59,7 +59,7 @@ export interface PilotCommandReceiver {
 }
 
 // マニューバ計画と、その実行方法・姿勢操作の微調整の有無。
-export interface NavigationController {
+interface NavigationController {
   readonly plan: Plan;
   readonly planExecution: PlanExecutionMode;
   readonly fineAttitude: boolean;

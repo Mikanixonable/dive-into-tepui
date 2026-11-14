@@ -31,7 +31,7 @@ export interface ChartMark {
   readonly style: 'current' | 'target';
 }
 
-export interface ChartSpec {
+interface ChartSpec {
   // null は「ここで線が切れる」印。折り返しをまたぐ点のように、繋ぐと実在しない線になる
   // 隣り合わせを分割する。
   readonly points: readonly (ChartPoint | null)[];

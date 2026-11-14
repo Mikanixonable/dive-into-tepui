@@ -485,7 +485,7 @@ export class GamePresentation {
       displayTime, controlled, camera, style, graphics,
       construction.shipModuleEmphasis,
       this.devices.scene.pipeline.sunLight, this.devices.scene.pipeline.bodyShadow,
-      orbitRef ?? undefined,
+      orbitRef,
     );
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
     this.playerMarkers.sync(
@@ -554,14 +554,14 @@ export class GamePresentation {
     this.moduleWindows.sync();
     this.planDisplay.sync(camera, view, displayWindow, nowMs);
     this.entityLines.sync(
-      controlled, this.targeter.aliveTarget, view, displayWindow, visibilityPolicy, orbitRef ?? undefined,
+      controlled, this.targeter.aliveTarget, view, displayWindow, visibilityPolicy, orbitRef,
       camera, this.frameAnchors, celestialSystem, palette,
     );
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
     activeStage.sync(camera, view, displayTime);
-    this.hudPanels.sync(view, displayWindow, orbitRef ?? undefined, palette, camera, nowMs);
+    this.hudPanels.sync(view, displayWindow, orbitRef, palette, camera, nowMs);
     this.syncFrameMarkers(nowMs);
     // このフレームのマーカーが出揃った後でなければならないので最後に通す。
     this.devices.markers.resolveOverlaps(view === 'map');
