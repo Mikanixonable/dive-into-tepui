@@ -22,7 +22,7 @@ export class ValueInput {
   public readonly element: HTMLInputElement;
   private readonly escapeBehavior: EscapeBehavior;
   private readonly onCommit: (value: string) => void;
-  private readonly onCancel: (() => void) | undefined;
+  private readonly onCancel?: () => void;
   private committedValue = '';
   private suppressBlurCommit = false;
 
