@@ -24,7 +24,6 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
-import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { EnemyDeathCause, PlayerLossCause, StageOutcome } from './stage-outcome';
 import { ENEMY_MAX_ATTACKERS_PER_GROUP } from '../dynamic/dynamic-entity/enemy-fire-controller';
 import type { StageSimulationEvents } from './stage-simulation-events';
