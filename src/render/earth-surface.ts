@@ -22,7 +22,7 @@ import {
 } from './celestial/celestial-surface-material';
 
 // 地表要求1件ぶんの世代とキャンセル信号。使い終えたら release する(信号は中断される)。
-export interface EarthSurfaceRequestLease {
+interface EarthSurfaceRequestLease {
   readonly generation: number;
   readonly signal: AbortSignal;
   release(): void;
@@ -32,7 +32,7 @@ export type EarthSurfaceStatus = CelestialSurfaceStatus;
 
 // 実GPU実装を直接所有せず、ゲーム側から差し込める地表常駐の最小境界。
 // 具象coordinatorはタイル要求とGPU寿命を持つため、EarthSurfaceはこの2操作だけを知る。
-export interface EarthSurfaceResidentCoordinatorLike {
+interface EarthSurfaceResidentCoordinatorLike {
   sync(input: EarthSurfaceResidentFrame): unknown;
   readonly residentMaxZ?: number | null;
   readonly failureReason?: string | null;
