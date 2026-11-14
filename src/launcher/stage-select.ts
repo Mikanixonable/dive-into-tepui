@@ -258,9 +258,9 @@ class StageSelectScreen {
   public constructor(
     unlockManager: UnlockManager,
     palette: ThemePalette,
-    private readonly onEscape: (() => void) | undefined,
-    private readonly onClose: (() => void) | undefined,
-    onSettings: (() => void) | undefined,
+    private readonly onEscape: (() => void) | null,
+    private readonly onClose: (() => void) | null,
+    onSettings: (() => void) | null,
     private readonly onSelect: (selection: StageSelection) => void,
   ) {
     injectStageSelectStyle();
@@ -390,6 +390,6 @@ export function selectStage(
   onSettings?: () => void,
 ): Promise<StageSelection> {
   return new Promise((resolve) => {
-    new StageSelectScreen(unlockManager, palette, onEscape, onClose, onSettings, resolve);
+    new StageSelectScreen(unlockManager, palette, onEscape ?? null, onClose ?? null, onSettings ?? null, resolve);
   });
 }

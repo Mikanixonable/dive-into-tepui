@@ -375,7 +375,7 @@ export class PhysicalObjectListPanel {
     if (filteringActive && filterChanged) {
       for (const item of items) {
         if (!this.order.matches(item)) continue;
-        for (let cur: string | undefined = item.id; cur !== undefined; cur = parentOf.get(cur)) matchAncestors.add(cur);
+        for (let cur: string | null = item.id; cur !== null; cur = parentOf.get(cur) ?? null) matchAncestors.add(cur);
       }
     }
     if (filteringJustDeactivated) {
