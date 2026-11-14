@@ -15,7 +15,7 @@ type SizeDistribution =
   | { readonly kind: 'jupiterSemiMajor' }
   | { readonly kind: 'perihelion'; readonly qRangeAu: readonly [number, number] };
 
-export type PointFieldJupiterReference = Pick<KeplerOrbit, 'a' | 'l0' | 'lRate'>;
+type PointFieldJupiterReference = Pick<KeplerOrbit, 'a' | 'l0' | 'lRate'>;
 
 // 木星との平均運動共鳴で経度方向に偏らせる群(トロヤ群・ヒルダ群)の分布。
 // 共鳴角 σ = p·λ_J − q·λ_H − (p−q)·ϖ_H を、librationCenterDeg の周りに
