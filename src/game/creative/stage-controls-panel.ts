@@ -46,6 +46,7 @@ export class StageControlsPanel implements ProteinDisplayControl {
   public onToggleWaveAttack: ((on: boolean) => void) | null = null;
   public onAddMagazine: (() => void) | null = null;
   public onRefillFuel: (() => void) | null = null;
+  public onRefillBaseFuel: (() => void) | null = null;
   public onSpawnDistanceChange: ((distanceM: number) => void) | null = null;
   public onSpawnEnemy: ((shape: EnemySpawnShape, colorValue: string) => void) | null = null;
   public onSpawnFormation: (() => void) | null = null;
@@ -175,6 +176,8 @@ export class StageControlsPanel implements ProteinDisplayControl {
     body.appendChild(addMagazineButton.element);
     const refillFuelButton = new Button('RCS燃料を満タンにする', () => this.onRefillFuel?.());
     body.appendChild(refillFuelButton.element);
+    const refillBaseFuelButton = new Button('基地の燃料を満タンにする', () => this.onRefillBaseFuel?.());
+    body.appendChild(refillBaseFuelButton.element);
     const shipRequiredButtons = [addMagazineButton, refillFuelButton];
 
     // 手動スポーンが使う距離の入力欄。無効値は直前の有効値へ戻す。
