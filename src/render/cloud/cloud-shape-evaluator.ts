@@ -4,7 +4,7 @@ import { clamp, min, smoothstep } from 'three/tsl';
 import { CloudDetailEvaluator, DETAIL_AMPLITUDE_MAX } from './cloud-detail';
 import { cumulusColumnOpticalDepthNode } from './cloud-kind-node';
 import { CUMULUS_DITHER_KNOB, CLOUD_TOP_SPAN } from './cumulus-shape';
-import type { FloatNode, Vec3Node } from '../tsl-types';
+import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 const DETAIL_OPACITY_DEPTH = 0.25;
 const DETAIL_TOP_RELIEF = 0.15;
@@ -28,13 +28,19 @@ export class CloudShapeEvaluator {
     this.detail.setOctaves(count);
   }
 
+  // 表示時刻 displayTime [s] と、実時間 1 秒あたりに進む表示時刻 rate を置く。細部はこの時刻で流れ、生まれ直す。
+  public syncClock(displayTime: number, rate: number): void {
+    this.detail.syncClock(displayTime, rate);
+  }
+
   // 単位方向 direction での、場の texel より細かい起伏 −1..1。width はその位置で読み手の
   // 1 画素・1 タップが張る実寸 [m]、amount はその場所の量、amountAt は任意の方向の量を読む。
+  // wind はそこで雲を運ぶ風の東・北の成分 [m/s]。
   public detailAt(
     direction: Vec3Node, width: FloatNode, amount: FloatNode,
-    amountAt: (direction: Vec3Node) => FloatNode,
+    amountAt: (direction: Vec3Node) => FloatNode, wind: Vec2Node,
   ): FloatNode {
-    return this.detail.at(direction, width, amount, amountAt);
+    return this.detail.at(direction, width, amount, amountAt, wind);
   }
 
   // 細部を足してからディザの帯へ通す。空の柱に細部だけで雲を生やさない共有規則である。

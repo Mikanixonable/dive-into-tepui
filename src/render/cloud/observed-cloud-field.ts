@@ -4,6 +4,7 @@
 import * as THREE from 'three/webgpu';
 import { float, int, log2, max, texture, vec4 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
+import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { equirectUvFromDirection, type FieldProjection } from '../field-projection';
@@ -45,6 +46,8 @@ export class ObservedCloudField implements CloudFieldSource {
   }
 
   public get texture(): THREE.Texture { return this.field.texture; }
+  // 実写の雲場は止まっているので、運ぶ風は 0。
+  public get motionTexture(): THREE.Texture { return EMPTY_CLOUD_FIELD; }
   public get generation(): number { return this.generationValue; }
 
   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。

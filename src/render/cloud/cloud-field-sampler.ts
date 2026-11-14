@@ -4,12 +4,14 @@ import * as THREE from 'three/webgpu';
 import { dot, step, texture, uniform } from 'three/tsl';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { orthographicCapUv, type CapPlacement } from '../field-projection';
-import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
+import { cloudMotionFromTexel, cloudSampleFromTexel, type CloudMotion, type CloudSample } from './cloud-field-sample';
 import type { FloatUniform, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
 
 // 焼いた雲場と、それを焼いた cap の置き方の組。場を出す側が毎フレーム公開し、読み手が写し取る。
 export interface CloudFieldBinding {
   readonly texture: THREE.Texture;
+  // 雲を運ぶ風の写し。texture と同じ cap に焼かれている。
+  readonly motion: THREE.Texture;
   readonly cap: CapPlacement;
 }
 
@@ -17,6 +19,7 @@ export class CloudFieldSampler {
   // 読む雲場のテクスチャノード。場が結ばれるまでは EMPTY_CLOUD_FIELD を読み、bind は同じノードの
   // 値を差し替える。
   private readonly field = texture(EMPTY_CLOUD_FIELD);
+  private readonly motion = texture(EMPTY_CLOUD_FIELD);
   // 焼いた側の cap の置き方。グラフは一度組めば済み、値だけが毎フレーム入れ替わる。
   private readonly center: Vec3Uniform = uniform(new THREE.Vector3(0, 0, 1));
   private readonly east: Vec3Uniform = uniform(new THREE.Vector3(1, 0, 0));
@@ -27,6 +30,7 @@ export class CloudFieldSampler {
   // 焼いた場と、それを焼いた cap の置き方を写し取る。テクスチャの所有権は移らない。
   public bind(binding: CloudFieldBinding): void {
     this.field.value = binding.texture;
+    this.motion.value = binding.motion;
     this.center.value.copy(binding.cap.center);
     this.east.value.copy(binding.cap.east);
     this.north.value.copy(binding.cap.north);
@@ -40,5 +44,12 @@ export class CloudFieldSampler {
     const inside = step(this.cosRadius, dot(direction, this.center));
     const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
     return cloudSampleFromTexel(this.field.sample(uv).mul(inside) as Vec4Node);
+  }
+
+  // 単位方向 direction で雲を運ぶ風。cap の外は 0。
+  public sampleMotion(direction: Vec3Node): CloudMotion {
+    const inside = step(this.cosRadius, dot(direction, this.center));
+    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    return cloudMotionFromTexel(this.motion.sample(uv).mul(inside) as Vec4Node);
   }
 }

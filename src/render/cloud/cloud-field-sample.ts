@@ -13,6 +13,13 @@ export interface CloudSample {
   readonly cirrusFlow: Vec2Node;
 }
 
+// 雲を運ぶ風。低い雲を運ぶ地表付近の風と、巻雲を運ぶ上層の風の、局所の東・北の成分 [m/s]。
+// 止まった雲場(実写)では 0。
+export interface CloudMotion {
+  readonly surfaceWind: Vec2Node;
+  readonly upperWind: Vec2Node;
+}
+
 // 焼いた雲場のRGBA(R = 積雲、G = 巻雲、B・A = 筋の倍角ベクトル)を、生成側と同じ単位の
 // 雲標本へ戻す。写しは半精度なので、倍角ベクトルは符号付き(−1..1)のまま入っている。
 export function cloudSampleFromTexel(texel: Vec4Node): CloudSample {
@@ -26,4 +33,14 @@ export function cloudSampleFromTexel(texel: Vec4Node): CloudSample {
 // 雲標本を焼き込み用のRGBAへ戻す。読み出し側の復号と同じ契約をここで対にして持つ。
 export function cloudFieldTexelFromSample(sample: CloudSample): Vec4Node {
   return vec4(sample.cumulus, sample.cirrus, sample.cirrusFlow.x, sample.cirrusFlow.y);
+}
+
+// 焼いた風の RGBA(R・G = 地表付近、B・A = 上層)を風へ戻す。
+export function cloudMotionFromTexel(texel: Vec4Node): CloudMotion {
+  return { surfaceWind: vec2(texel.r, texel.g), upperWind: vec2(texel.b, texel.a) };
+}
+
+// 風を焼き込み用の RGBA へ。
+export function cloudMotionTexel(motion: CloudMotion): Vec4Node {
+  return vec4(motion.surfaceWind.x, motion.surfaceWind.y, motion.upperWind.x, motion.upperWind.y);
 }

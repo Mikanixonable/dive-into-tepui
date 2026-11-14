@@ -354,9 +354,9 @@ export class CelestialSystem implements CelestialBodies {
     };
   }
 
-  // このフレームに積雲殻を描く天体の雲場を焼く。
-  public bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
-    for (const body of this.entities) body.view.bakeClouds(renderer, displayTime, gpu);
+  // このフレームに積雲殻を描く天体の雲場を焼く。simSpeed は実時間 1 秒あたりに進む表示時刻 [s]。
+  public bakeClouds(renderer: WebGPURenderer, displayTime: number, simSpeed: number, gpu?: GpuTimingSink): void {
+    for (const body of this.entities) body.view.bakeClouds(renderer, displayTime, simSpeed, gpu);
   }
 
   // 参照軌道線を出すかを表示ポリシーから決め、毎フレームの enabled 値として個体へ渡す。
