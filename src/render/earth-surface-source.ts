@@ -28,7 +28,7 @@ export interface EarthSurfaceSource {
 // 地表色の入力転送、面積平均後の表現、表示用RGBから拡散アルベドへ合わせる校正値。
 // bondAlbedoは地表画像の平均輝度ではなく、地球を光源として扱うときの全地球測光値なので、
 // diffuseAlbedoScaleとは別の値として持つ。
-export interface EarthSurfaceColorCalibration {
+interface EarthSurfaceColorCalibration {
   readonly inputEncoding: 'sRGB8';
   readonly aggregation: 'linear_rgb_area_mean';
   readonly outputEncoding: 'sRGB8';
@@ -51,12 +51,12 @@ export const EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION: EarthSurfaceColorCalibrat
   averageHue: [0.9703, 0.9940, 1.1471],
 };
 
-export interface EarthSurfaceClimateRange {
+interface EarthSurfaceClimateRange {
   readonly min: number;
   readonly max: number;
 }
 
-export interface EarthSurfaceClimateEncoding {
+interface EarthSurfaceClimateEncoding {
   readonly temperatureK: EarthSurfaceClimateRange;
   readonly cloudFraction: EarthSurfaceClimateRange;
   readonly orthometricElevation: EarthSurfaceClimateRange;
@@ -82,20 +82,20 @@ export interface EarthSurfaceAssetManifest extends EarthSurfaceAssetManifestBase
   readonly coverage: EarthSurfaceCoverage;
 }
 
-export interface EarthSurfaceCoverage {
+interface EarthSurfaceCoverage {
   readonly kind: 'complete';
   readonly minZoom: 5;
   readonly maxZoom: number;
   readonly expectedTiles: number;
 }
 
-export interface EarthSurfaceTileTemplates {
+interface EarthSurfaceTileTemplates {
   readonly color: 'tiles/{z}/{x}/{y}.jpg';
   readonly terrain: 'tiles/{z}/{x}/{y}.bin.gz';
 }
 
 // manifestが宣言するESTN/ESTBのチャンネル配置と固定値。
-export interface EarthSurfaceTerrainEncoding {
+interface EarthSurfaceTerrainEncoding {
   readonly formatVersion: typeof EARTH_SURFACE_TERRAIN_FORMAT_VERSION;
   readonly layout: typeof EARTH_TERRAIN_LAYOUT;
   readonly width: typeof EARTH_TERRAIN_WIDTH;
