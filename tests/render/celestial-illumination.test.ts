@@ -46,6 +46,7 @@ interface RecordedTargets extends IlluminationTargets {
   readonly planetLights: PlanetLightValue[][];
   readonly atmosphereDraws: (readonly AtmosphereDraw[])[];
   readonly extinctionBodies: (readonly AtmosphereBody[])[];
+  readonly skyBodies: (readonly AtmosphereBody[])[];
   readonly cloudCasters: (ShadowCloud | null)[];
   readonly cloudKinds: CloudShadowKinds[];
   readonly ambientFractions: number[];
@@ -70,6 +71,7 @@ function recordingTargets(): RecordedTargets {
   const planetLights: PlanetLightValue[][] = [];
   const atmosphereDraws: (readonly AtmosphereDraw[])[] = [];
   const extinctionBodies: (readonly AtmosphereBody[])[] = [];
+  const skyBodies: (readonly AtmosphereBody[])[] = [];
   const cloudCasters: (ShadowCloud | null)[] = [];
   const cloudKinds: CloudShadowKinds[] = [];
   const ambientFractions: number[] = [];
@@ -88,9 +90,11 @@ function recordingTargets(): RecordedTargets {
     ambient: { setFraction: (fraction: number) => { ambientFractions.push(fraction); } },
     atmosphere: { setDraws: (draws: readonly AtmosphereDraw[]) => { atmosphereDraws.push([...draws]); } },
     sunExtinction: { set: (bodies: readonly AtmosphereBody[]) => { extinctionBodies.push([...bodies]); } },
+    skyLight: { set: (bodies: readonly AtmosphereBody[]) => { skyBodies.push([...bodies]); } },
     planetLights,
     atmosphereDraws,
     extinctionBodies,
+    skyBodies,
     cloudCasters,
     cloudKinds,
     ambientFractions,
