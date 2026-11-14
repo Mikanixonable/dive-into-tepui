@@ -18,12 +18,10 @@ import type { SunLight } from '../../src/render/pipeline/sun-light';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { LineStyle } from '../../src/render/line-style';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
-import type { ProteinLabCaseMetadata } from './protein-cases';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
-import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -99,12 +97,6 @@ export interface LabCase {
   // earthCenter は地球の中心(描画座標)で、地球を置かないケースでは null。毎フレーム、カメラと地球を
   // 置いたあとに呼ばれるので、同値なら何もしないこと。
   readonly sync?: (graphics: GraphicsSettingsData, earthCenter: THREE.Vector3 | null) => void;
-  // 計測結果へ添える、タンパク質ケースの識別。
-  readonly proteinMotion?: ProteinLabCaseMetadata;
-  // 表示時刻 displayTime [s] まで残基 motion を進め、そのフレームの計測値を返す。
-  readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
-  // 残基 motion が握る資源を解放する。
-  readonly disposeProteinMotion?: () => void;
   // ケースが THREE のシーン資源所有走査で扱えない補助資源を解放する。
   readonly dispose?: () => void;
 }

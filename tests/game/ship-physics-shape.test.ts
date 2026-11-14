@@ -16,6 +16,7 @@ const MULTI_TANK = defineShipModule({
   name: 'test multi tank',
   length: 4,
   diameter: 2,
+  axialFaces: { front: 'structural', back: 'structural' },
   dryMass: 10,
   maxHp: 100,
   modelId: 'test-multi-tank',
@@ -30,24 +31,29 @@ const MULTI_TANK = defineShipModule({
   abilities: { fuelKind: 'main', fuelCapacity: 10, fuelMassPerUnit: 2 },
 });
 
+// MULTI_TANK だけを載せた試験用カタログ。
 function multiCatalog(): ShipModuleCatalog {
   return new ShipModuleCatalog([MULTI_TANK]);
 }
 
+// MULTI_TANK の試験用 instance。fuel は単位 [unit]。
 function multi(id: string, fuel = 0) {
   return createShipModuleInstance(MULTI_TANK, id, { fuel });
 }
 
+// 許容誤差つきの数値一致を確かめる。
 function close(actual: number, expected: number, message: string): void {
   assert.ok(Math.abs(actual - expected) < 1e-9, `${message}: ${actual} !== ${expected}`);
 }
 
+// shape を組み、空の assembly ならその場で失敗にする。
 function physicsShape(assembly: ShipAssembly): NonNullable<ReturnType<typeof shipPhysicsShape>> {
   const result = shipPhysicsShape(assembly);
   assert.ok(result !== null);
   return result;
 }
 
+// 重心から円柱プリミティブの最遠端までの距離を手計算で求める。
 function primitiveExtentFromCom(
   center: Vec3,
   axis: Vec3,
@@ -59,6 +65,7 @@ function primitiveExtentFromCom(
   return Math.hypot(Math.abs(axial) + halfLength, perpendicular + radius);
 }
 
+// 接続木から組む物理形状が、プリミティブ配置・重心原点・質量の追従を守ることを確かめる。
 export function register(): void {
   test('ship physics shape: cockpit contact columns span 9m and preserve paired side indents', () => {
     const assembly = new ShipAssembly(SHIP_MODULE_CATALOG);
