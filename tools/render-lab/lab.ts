@@ -12,7 +12,7 @@ import {
   WORK_LIGHT_INTENSITY, workLightPlacement,
 } from '../../src/render/pipeline/lighting/work-light-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
-import { castsCumulusShadow } from '../../src/render/pipeline/shadow/shadow-select';
+import { cloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-select';
 import { atmosphereDraws, withAirglowEnabled, type AtmosphereBody } from '../../src/render/atmosphere';
 import { RingMaterials } from '../../src/render/celestial/ring';
 import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-render-resources';
@@ -20,7 +20,13 @@ import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { distributionOf, type SampleDistribution } from '../../src/math/sample-distribution';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CASES, type CaseName } from './cases';
-import { type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH } from './lab-case';
+import {
+  cloudDetailCase, CLOUD_DETAIL_CHECK_SHOTS, CLOUD_DETAIL_CIRRUS_COARSE_SHOTS, CLOUD_DETAIL_SHOTS,
+  CLOUD_DETAIL_STABILITY_SHOTS,
+} from './cloud-detail-cases';
+import {
+  type CaseBuilder, type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH,
+} from './lab-case';
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
 import { LabSun } from './lab-sun';
 import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
@@ -115,16 +121,16 @@ export class LabView {
     depthBuffer: true,
   });
   private current: LabCase | null = null;
-  // スタイルを差し替えるとケースを組み直すので、いま出ているケースの名前も持つ。
+  // スタイルを差し替えるとケースを組み直すので、いま出ているケースの組み方も持つ。
+  private currentBuilder: CaseBuilder | null = null;
+  // いま出ているケースの、巡回のケース表での名前。巡回に載せないケース(細部の撮影)では null。
   private currentName: CaseName | null = null;
   // 画面全体の見せ方。起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
   // 直前の render がパイプラインの描画に費やした CPU 時間 [ms]。
   private lastRenderCpuMs = 0;
-  // setDisplayTime で最後に指定した表示時刻 [s]。capture() は画面に出ているものを撮るので、
-  // render() の既定 (0) ではなくこの時刻で描き直す — 既定で描き直すと、表示時刻を指定した
-  // 撮影 (時系列の撮影や displayTime 付きの shot) がすべて時刻 0 の絵になる。
-  private lastDisplayTime = 0;
+  // 最後に render が描いたフレームの表示時刻 [s]。capture はこの時刻の絵を撮る。
+  private displayTime = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
   // ケース既定のカメラ距離 [m]。cameraDistanceLog の基準になる。
@@ -170,7 +176,7 @@ export class LabView {
   }
 
   // graphics は描く描画品質設定の器。この時点の値を起動時の設定として控え、以後はその変更を受けて
-  // 描き直す。
+  // 描き直す。options.captureOnly を立てると、キャンバスへ提示せず captureTarget へだけ描く。
   public static async create(
     canvas: HTMLCanvasElement, graphics: StoredSetting<GraphicsSettingsData>,
     options?: { readonly captureOnly?: boolean },
@@ -201,23 +207,30 @@ export class LabView {
   // 写実と模式図を同じ構図で見比べるための切り替え。
   public setStyle(style: RenderStyle): void {
     this.style = style;
-    if (this.currentName !== null) this.build(this.currentName);
+    if (this.currentBuilder !== null) this.buildCase(this.currentBuilder, this.currentName);
     this.render();
   }
 
-  // ケースをいまのスタイルで組み直してシーンへ載せ、それを現在のケースにする。前のケースは解放する。
+  // 巡回のケース表のケース name を組み直す。
   private build(name: CaseName): void {
+    this.buildCase(CASES[name], name);
+  }
+
+  // ケースをいまのスタイルで組み直してシーンへ載せ、それを現在のケースにする。前のケースは解放する。
+  // name はケースが撮影を宣言しないときの既定の撮影名になるので、巡回に載せないケースは null。
+  private buildCase(builder: CaseBuilder, name: CaseName | null): void {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
       this.current.dispose?.();
       for (const root of this.current.objects) disposeOwnedRenderResources(root);
     }
-    const built = CASES[name](
+    const built = builder(
       this.style, this.ringMaterials, this.pipeline.sunLight, this.pipeline.bodyShadow,
     );
     // **1 つずつ足す** — 地球のほかに物体を持たないケースで空の引数を渡すと、three.js がエラーを出す。
     for (const object of built.objects) this.scene.add(object);
     this.current = built;
+    this.currentBuilder = builder;
     this.currentName = name;
     // 地球はケースが置き方を宣言したときだけ出し、まずその既定の置き方へ置く。
     if (built.earth !== undefined) {
@@ -305,6 +318,7 @@ export class LabView {
   // いまのケースを、観察の向きと描画品質設定の現在値で、表示時刻 displayTime [s] の 1 フレームとして描く。
   public render(displayTime = 0, observedFrame = false): void {
     if (this.current === null) return;
+    this.displayTime = displayTime;
     const graphics = this.graphics.current;
     // カメラを観察の向きへ置く。画角と遠クリップ距離の書き換えは、投影行列を組み直すまで無言で効かない。
     // 遠クリップ距離は、周回の中心までの距離を注視距離としてゲーム本体と同じ式で引く。
@@ -340,7 +354,7 @@ export class LabView {
     this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    this.pipeline.cumulusShadow.set(castsCumulusShadow(graphics) ? earth?.cumulus ?? null : null);
+    this.pipeline.cloudShadow.set(earth?.shadowCloud ?? null, cloudShadowKinds(graphics));
     earth?.bake(this.renderer, displayTime, this.gpu);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     this.pipeline.atmosphere.setDraws(atmosphereDraws(
@@ -529,8 +543,9 @@ export class LabView {
 
   // いまのケースの撮影。ケースが宣言していなければ、ケース名で既定の向きを 1 枚撮る。
   private get shots(): Readonly<Record<string, LabShot>> {
-    if (this.current === null || this.currentName === null) return {};
-    return this.current.shots ?? { [this.currentName]: { view: {} } };
+    if (this.current === null) return {};
+    if (this.current.shots !== undefined) return this.current.shots;
+    return this.currentName === null ? {} : { [this.currentName]: { view: {} } };
   }
 
   // いまのケースの撮影名。
@@ -549,7 +564,6 @@ export class LabView {
   // 可動部を指定表示時刻 [s] に合わせ、静止した1フレームとして描く。時刻は capture() が
   // 同じ時刻で描き直せるよう控える。
   public setDisplayTime(displayTime: number): void {
-    this.lastDisplayTime = displayTime;
     this.current?.syncMotion?.(displayTime);
     this.render(displayTime);
   }
@@ -580,6 +594,24 @@ export class LabView {
       pngs[shotName] = await this.captureSettled(shotName);
     }
     return pngs;
+  }
+
+  // 雲の細部の撮影 name を当てて 1 枚の PNG(データ URL)を返す。name は CLOUD_DETAIL_SHOT_INFOS の
+  // ものだけを受ける。ケースは巡回の表には無い専用のものを使い回す。準備待ちと絵の落ち着きの
+  // 判定は shoot() と同じ経路を通る。
+  public async shootCloudDetail(name: string): Promise<string> {
+    const shot = CLOUD_DETAIL_SHOTS[name] ?? CLOUD_DETAIL_CIRRUS_COARSE_SHOTS[name] ?? CLOUD_DETAIL_CHECK_SHOTS[name]
+      ?? CLOUD_DETAIL_STABILITY_SHOTS[name];
+    if (shot === undefined) throw new Error(`render-lab: no cloud detail shot "${name}"`);
+    if (this.currentBuilder !== cloudDetailCase) {
+      // **ケースは撮影の描画品質設定が効いた状態で組んで待つ**(shoot() と同じ理由)。
+      this.setGraphics({ ...this.startupGraphics, ...shot.graphics });
+      this.buildCase(cloudDetailCase, null);
+      this.resetView();
+      await this.waitUntilReady();
+    }
+    this.applyShot(name);
+    return this.captureSettled(name);
   }
 
   // 連続する 2 回の capture が一致するまで撮り直し、一致した絵を返す。MAX_SETTLE_CAPTURES 回撮っても
@@ -636,7 +668,9 @@ export class LabView {
       this.renderer.setClearColor(previousClearColor, previousClearAlpha);
       this.renderer.setRenderTarget(previousTarget);
       this.renderer.setOutputRenderTarget(this.captureTarget);
-      this.render(this.lastDisplayTime);
+      // 最後に描いた表示時刻のまま撮る — 雲場は時刻が変わると焼き直されるので、別の時刻へ
+      // 戻して撮ると撮影が宣言した時刻の絵にならない。
+      this.render(this.displayTime);
       // timestamp 解決後に readback する。readRenderTargetPixelsAsync は captureTarget の GPU 書き込みも待つ。
       await this.gpu.waitForResolve();
     } finally {

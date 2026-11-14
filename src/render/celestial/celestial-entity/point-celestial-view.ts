@@ -20,7 +20,7 @@ import type { GeostationaryOverlay } from './geostationary-overlay';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { LineOverlay } from '../line-overlay';
 import type { MapOverlayLabel } from './celestial-view';
-import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer';
+import type { ShadowCloud } from '../../pipeline/shadow/cloud-shadow-renderer';
 import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';
 import type { AtmosphereClouds, AtmosphereOptics } from '../../atmosphere';
@@ -58,7 +58,7 @@ function sunIrradianceAt(star: StellarLightSource | null, pos: Vec3, displayTime
 export class PointCelestialView extends SphereCelestialView {
   // 輝点スプライト。build で作る(グローテクスチャの生成が DOM を要する)。
   private billboard!: Billboard;
-  // cumulusShadowAt が呼ばれるたびに書き換えて返す、描画座標から天体固定の向きへの回転。
+  // cloudShadowAt が呼ばれるたびに書き換えて返す、描画座標から天体固定の向きへの回転。
   private readonly bodyFromWorld = new THREE.Matrix4();
   // 表面へ渡すフレーム番号。
   private surfaceFrame = 0;
@@ -123,12 +123,12 @@ export class PointCelestialView extends SphereCelestialView {
     this.billboard.hide();
   }
 
-  // 影パスへ渡す積雲の殻。本体と雲殻を描いているフレームでだけ返す。返す bodyFromWorld は
+  // 影パスへ渡す雲の影の源。本体と雲を描いているフレームでだけ返す。返す bodyFromWorld は
   // 使い回しの実体で、次の呼び出しで書き換わる。
-  public override cumulusShadowAt(
+  public override cloudShadowAt(
     motion: DefinedCelestialBody, fo: FloatingOrigin, displayTime: number,
-  ): ShadowCumulus | null {
-    if (this.cumulus === null || !this.cumulus.visible) return null;
+  ): ShadowCloud | null {
+    if (this.cumulus === null || !this.cumulus.cloudsVisible) return null;
     // 表示時刻の、描画座標から天体固定の向きへの回転。
     writeBodyFromWorld(this.bodyFromWorld, motion, displayTime);
     return {
@@ -141,7 +141,7 @@ export class PointCelestialView extends SphereCelestialView {
   }
 
   // 大気の散乱へ立てる雲。本体と雲を描いているフレームでだけ返す。姿勢の行列は毎回新しく作る
-  // — 描画時まで読まれるので、cumulusShadowAt の使い回しの実体では同期中に書き換わる。
+  // — 描画時まで読まれるので、cloudShadowAt の使い回しの実体では同期中に書き換わる。
   public override atmosphereCloudsAt(
     motion: DefinedCelestialBody, displayTime: number,
   ): AtmosphereClouds | null {
@@ -153,9 +153,11 @@ export class PointCelestialView extends SphereCelestialView {
   }
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
-  public override bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+  public override bakeClouds(
+    renderer: WebGPURenderer, displayTime: number, simSpeed: number, gpu?: GpuTimingSink,
+  ): void {
     if (!this.cumulus?.cloudsVisible) return;
-    this.cumulus.bake(renderer, displayTime, gpu);
+    this.cumulus.bake(renderer, displayTime, simSpeed, gpu);
   }
 
   // マップ専用の同期軌道リングを、この1フレームの表示状態へ同期し、高度ラベルを返す。

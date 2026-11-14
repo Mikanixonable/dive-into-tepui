@@ -1,9 +1,10 @@
-// 衛星写真から被覆率・雲頂高度・薄層雲の光学的厚みに分離した静的雲場。チャンネル構成は
+// 衛星写真から積雲と巻雲の量に分離した静的雲場。チャンネル構成は
 // プロシージャル生成雲場と一致する。読み出し側のサンプリング処理を球面キャップ1枚に統一するため、
 // 全球正距円筒画像を同一仕様の球面キャップ投影テクスチャへ再投影して供給する。
 import * as THREE from 'three/webgpu';
-import { float, int, log2, max, texture } from 'three/tsl';
+import { float, int, log2, max, texture, vec4 } from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
+import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { equirectUvFromDirection, type FieldProjection } from '../field-projection';
@@ -15,17 +16,27 @@ import type { Vec4Node } from '../tsl-types';
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
   private readonly field: BakedField;
+  // 実写には環境の量の場がないので、どの方向でも同じ値を返す 1 texel の写し。
+  private readonly environment: THREE.DataTexture;
   // 焼いたときの画像の世代と cap の版。どちらかが変わったときだけ焼き直す。
   private bakedGeneration = -1;
   private bakedRevision = -1;
   private generationValue = 0;
 
-  // url は地表と同じ正距円筒の雲場画像(R = 被覆率、G = 雲頂高度、B = 薄い雲の光学的厚み)、
-  // projection は焼き直す先の持ち方。
+  // url は地表と同じ正距円筒の雲場画像(R = 積雲の量、G = 巻雲の量、B・A = 巻雲の筋の
+  // 倍角ベクトル 0..1)、projection は焼き直す先の持ち方。
   public constructor(url: string, private readonly projection: FieldProjection) {
     this.map = new DeferredTexture(url, THREE.NoColorSpace);
     // 正距円筒の経度は周期的なので、画像は経度方向へ巻く。
     this.map.texture.wrapS = THREE.RepeatWrapping;
+    // 陸・対流・金床は 0、気候の雲量は中立の 0.5(半精度の 0x3800)。
+    this.environment = new THREE.DataTexture(
+      new Uint16Array([0, 0, 0x3800, 0]), 1, 1, THREE.RGBAFormat, THREE.HalfFloatType);
+    this.environment.minFilter = THREE.LinearFilter;
+    this.environment.magFilter = THREE.LinearFilter;
+    this.environment.wrapS = THREE.RepeatWrapping;
+    this.environment.wrapT = THREE.RepeatWrapping;
+    this.environment.needsUpdate = true;
     const image = texture(this.map.texture);
     // **読む段は焼くときに 1 回だけ決める** — 画面微分に任せると、経度の巻き目(u が 1 から 0 へ
     // 跳ぶ列)で最も粗い段が選ばれ、日付変更線に 1 本の線が出る。画像の 1 texel が張る角は
@@ -34,14 +45,20 @@ export class ObservedCloudField implements CloudFieldSource {
     const lod = max(log2(projection.texelAngle.mul(imageHeight).div(Math.PI)), 0);
     this.field = new BakedField(
       'observedCloud', THREE.RGBAFormat, projection,
-      (direction) => image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node,
+      (direction) => {
+        const texel = image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node;
+        // 画像の B・A に 0..1 で畳まれた筋の倍角ベクトルは、生成側と同じ符号付き −1..1 へ
+        // 戻してから焼く。
+        return vec4(texel.r, texel.g, texel.b.mul(2).sub(1), texel.a.mul(2).sub(1));
+      },
       GPU_PASS.cloudBake,
     );
   }
 
   public get texture(): THREE.Texture { return this.field.texture; }
-  // 観測場は風を焼かないので、粒は静止する。
-  public get windTexture(): THREE.Texture | null { return null; }
+  // 実写の雲場は止まっているので、運ぶ風は 0。
+  public get motionTexture(): THREE.Texture { return EMPTY_CLOUD_FIELD; }
+  public get environmentTexture(): THREE.Texture { return this.environment; }
   public get generation(): number { return this.generationValue; }
 
   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。
@@ -60,5 +77,6 @@ export class ObservedCloudField implements CloudFieldSource {
   public dispose(): void {
     this.map.dispose();
     this.field.dispose();
+    this.environment.dispose();
   }
 }

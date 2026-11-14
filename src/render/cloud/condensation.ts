@@ -1,6 +1,10 @@
 // 天気から凝結する雲。地表付近の湿度と対流が不透明な雲に、上層の湿度が薄く透ける雲になる。
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
 import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
+import { cirrusFlowFromWindNode } from './cirrus-flow-node';
+import {
+  cirrusAmountFromOpticalDepthNode, cumulusAmountFromOpacityNode, cumulusAmountFromTopAltitudeNode,
+} from './cloud-kind-node';
 import type { CloudSample } from './cloud-field-sample';
 import type { WeatherSample } from './weather-model';
 export type { CloudSample } from './cloud-field-sample';
@@ -57,13 +61,18 @@ const TOWER_WIDTH = 0.09;
 const TOWER_LIFT_GATE = 0.005;
 // 海洋性層積雲へ移る気候の門。平年の雲量が高い海で、沈降と低い対流が重なるほど閉じた細胞の
 // 板へ寄せる。海岸と気候の境界は climate map の補間と smoothstep で連続に渡る。
-const STRATOCUMULUS_SUBSIDENCE_SCALE = 50;
-const STRATOCUMULUS_HUMIDITY_ONSET = 0.42;
+// 沈降門の膝 [per m/s] は、亜熱帯高圧の広く弱い吹きおろし(数 hPa で 0.003〜0.008 m/s)が
+// 半開きにしかならないよう、吹きおろしの上限(0.02 m/s)より細かい目盛りに取る。
+const STRATOCUMULUS_SUBSIDENCE_SCALE = 150;
+const STRATOCUMULUS_HUMIDITY_ONSET = 0.35;
 const STRATOCUMULUS_HUMIDITY_WIDTH = 0.20;
 const STRATOCUMULUS_CLOUDINESS_ONSET = 0.48;
 const STRATOCUMULUS_CLOUDINESS_WIDTH = 0.24;
 const STRATOCUMULUS_ACTIVITY_ONSET = 0.35;
 const STRATOCUMULUS_ACTIVITY_WIDTH = 0.45;
+// 板へ足す湿度の高さ。門が部分的にしか開かない所でも板が一面へ繋がるよう、被覆率の
+// 伝達関数の幅の 1.5 倍強に取る — 全域が飽和する高さではなく、板の中にも濃淡が残る。
+const STRATOCUMULUS_DECK_ADD = 0.35;
 // 対流の形が網目から粒へ渡る湿度。雲の少ない所では細胞の壁(網目)、多い所では細胞の芯(粒)が
 // 見える。**形を決める量は粒より低周波でなければならない** — 粒ごとに形が変わると並びが読めない
 // ので、粒を足す前の湿度で決める。渡り始めは覆いの効き始めの少し下、渡り終わりはその 1 単位ぶん上。
@@ -75,20 +84,25 @@ const SHAPE_GRAIN_HUMIDITY = 0.70;
 // 漸近させる tanh の頭打ちで、下地が常に e^−τ だけ透けることを保証する — 巻雲は不透明にならない。
 // **2 つの利得と上限は同じ率で動かす** — そうすると τ がそのまま定数倍になり、靄と筋の濃さの比も
 // 階調の順番も変わらないまま、薄い雲だけが一様に薄くなる。率は、±60° の輝度の平均が実写(分離した
-// 薄い雲、0.135)の 3 分の 2 に収まる高さに取る — 薄い雲は下地を隠す幕ではなく、地表の色をわずかに
+// 薄い雲、0.135)の 9 割に収まる高さに取る — 薄い雲は下地を隠す幕ではなく、地表の色をわずかに
 // 白ませるものとして見える(`DEVELOP/SPEC/RENDERING.md`「薄い雲の大半はごく薄い靄」)。いまの率では
-// 上層の湿度 0.5 で τ 0.06、0.6 で 0.20、0.7 で 0.41、上端でも下地が半分以上透ける。
+// 上層の湿度 0.5 で τ 0.08、0.6 で τ 0.27、0.7 で τ 0.56、上端でも下地が半分近く透ける。
 const TRANSLUCENT_HAZE_ONSET = 0.38;
-const TRANSLUCENT_HAZE_GAIN = 0.49;
+const TRANSLUCENT_HAZE_GAIN = 0.66;
 const TRANSLUCENT_STREAK_ONSET = 0.48;
-const TRANSLUCENT_STREAK_GAIN = 1.75;
+const TRANSLUCENT_STREAK_GAIN = 2.36;
 const TRANSLUCENT_KNEE = 0.25;
-const TRANSLUCENT_LIMIT = 0.63;
+const TRANSLUCENT_LIMIT = 0.85;
 
-// weather から凝結する雲のグラフ。被覆率は湿度(低周波)へ対流(高周波)を足した伝達関数から、
-// 雲頂高度は層状の雲から立つ塔と、渦の芯が敷く金床の高いほうを雲底からの高さへ写して出す —
-// 覆う広さは湿度が、層の高さは上昇流と暖気の流入と気団の折り目の帯が、塔は粒の峰が、平らな
-// 天蓋は渦の芯が決める。**雲底からの高さは被覆率が低いほど縮み、広く覆う雲ほど元の高さを保つ**。
+// 雲頂の高さが積雲の量へ効き始める被覆率と、効ききる被覆率。これより覆いの薄い柱は、被覆率だけが
+// 量を決める。
+const DEEP_COVERAGE_ONSET = 0.7;
+const DEEP_COVERAGE_FULL = 0.93;
+
+// weather から凝結する雲のグラフ。積雲の量は、湿度(低周波)へ対流(高周波)を足した伝達関数の
+// 被覆率と、層状の雲から立つ塔と渦の芯が敷く金床の高いほうの雲頂から決まり、巻雲の量は
+// 上層の湿度が作る靄と筋の柱 τ で出す — 覆う広さは湿度が、層の高さは上昇流と暖気の流入と気団の
+// 折り目の帯が、塔は粒の峰が、平らな天蓋は渦の芯が決める。
 // **対流活発度は被覆率および雲塔の高さに反映され、沈降域の海洋性層積雲では層状起伏も低減する** — 一面に
 // 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
 export function condense(weather: WeatherSample): CloudSample {
@@ -138,22 +152,30 @@ export function condense(weather: WeatherSample): CloudSample {
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が開始閾値を超過した量を遷移幅で正規化した値に基づく晴天率の補数。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
-  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(COVERAGE_WIDTH));
+  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(STRATOCUMULUS_DECK_ADD));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.pow(COVERAGE_EXCESS_POWER).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
-  // 小さな雲を高い柱にしないため、雲底からの高さだけを被覆率で縮める。被覆率 0 では雲底へ
-  // 落ちるが、その柱は CloudShapeEvaluator の連続したcoverage境界を通らないので晴天に雲や影が
-  // 現れることはない。
+  // 積雲の量は、まばらな覆いでは被覆率を不透明度として写した量、広く覆う所ではそれと雲頂の量の
+  // 高いほう。**覆いの薄い柱は雲頂が何であれ低く透ける雲になる** — 小さな雲が高い柱として立たず、
+  // texel の中で雲が占める割合がそのまま不透明度に残る。
   const cloudTop = max(tower, anvil);
-  const scaledCloudTop = max(cloudTop.sub(CLOUD_BASE_HEIGHT), 0).mul(coverage).add(CLOUD_BASE_HEIGHT);
-  // 薄い雲: 靄の項と筋の項の和を、上限へ漸近させる。
+  const sparse = cumulusAmountFromOpacityNode(coverage);
+  const deep = max(sparse, cumulusAmountFromTopAltitudeNode(cloudTop));
+  const cumulus = mix(sparse, deep, smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage));
+  // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
+  const opticalDepth = tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT);
+  // 巻雲の筋の向きは、その場所の上層の風へ沿う。揃い度は風速から組む。
   return {
-    coverage,
-    cloudTop: scaledCloudTop,
-    translucent: tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT),
+    cumulus,
+    cirrus: cirrusAmountFromOpticalDepthNode(opticalDepth),
+    cirrusFlow: cirrusFlowFromWindNode(weather.upperWind),
+    land: weather.landFraction,
+    convection: weather.convectiveActivity,
+    climateCloudiness: weather.meanCloudiness,
+    anvil: weather.anvil,
   };
 }

@@ -17,7 +17,7 @@ const LAND_ELEVATION = 100;
 const SLOPE_STEP = 0.02;
 
 // 天体の気候を単位方向で答える入力。generation は入力(読む画像か、その選択)が変わるたびに進む世代。
-export interface ClimateData {
+interface ClimateData {
   readonly generation: number;
   temperatureK(direction: Vec3Node): FloatNode;
   meanCloudiness(direction: Vec3Node): FloatNode;
@@ -32,7 +32,7 @@ export interface ClimateData {
 // landHeight [m] は陸へ上乗せする高さで、海と陸の比熱の差で海岸へ吹き込む風が持ち上げられる分を、
 // 人工の斜面として代用する。surfaceRadius [m] はこの天体の半径で、勾配を角あたりから長さあたりへ
 // 直すのに要る。
-export function climateSlope(
+function climateSlope(
   climate: ClimateData, direction: Vec3Node, landHeight: number, surfaceRadius: number,
 ): Vec2Node {
   const east = eastAt(direction).mul(SLOPE_STEP);

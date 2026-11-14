@@ -2,22 +2,25 @@
 // 成分から鉛直柱光学深さを引くか、掠める視線の光路をどこで頭打ちにするかを持ち、殻と交わる
 // 1つの入口/出口イベントが、雲自身の透過率と局所放射輝度を返す。
 //
-// **輝度は多重散乱の極限近似で算出する。** 場の階調は被覆率を表すため、殻は「その被覆割合分が
-// 拡散反射する層」として振る舞う。到達光は引数で渡されるため、入射光の減衰・影・地平線は
+// **輝度は多重散乱の極限近似で算出する。** 殻は「その柱の光学深さぶんだけ拡散反射する層」として
+// 振る舞う。到達光は引数で渡されるため、入射光の減衰・影・地平線は
 // 大気と同一の共通関数で評価される。イベント位置までの背景大気透過と、イベント間の雲透過の合成は
 // AtmosphereCloudLayersが所有し、ここでは二重に適用しない。
 import * as THREE from 'three/webgpu';
-import { dot, greaterThan, max, min, uniform, vec4 } from 'three/tsl';
+import { If, dot, float, greaterThan, max, min, normalize, sign, uniform, vec4 } from 'three/tsl';
+import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator } from '../cloud/cloud-detail';
 import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
 import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../cloud/cloud-optics-node';
+import { cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode } from '../cloud/cloud-kind-node';
+import { CIRRUS_BOTTOM_ALTITUDE, CIRRUS_TOP_ALTITUDE, CUMULUS_MAX_OPTICAL_DEPTH } from '../cloud/cloud-kind';
 import { CloudShapeEvaluator } from '../cloud/cloud-shape-evaluator';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { CloudSample } from '../cloud/cloud-field-sample';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
 
-// 鉛直の光学的厚みへ張る上限。ゲインを上げた柱はここで飽和する。積雲の柱が取りうる厚みの上限
-// (被覆率 0.99 で ≈4.6)の上に置き、ゲイン 1 では効かない。
-const MAX_SHELL_OPTICAL_DEPTH = 5;
+// 鉛直の光学的厚みへ張る上限。ゲインを上げた柱はここで飽和する。積雲の柱が取りうる厚みは
+// 切らない値に取る。
+const MAX_SHELL_OPTICAL_DEPTH = CUMULUS_MAX_OPTICAL_DEPTH;
 
 // 層の厚みへ張る下限 [m]。掠める視線の光路は厚みぶんの弦で頭打ちにするので、厚み 0 では
 // 地平線ぎわの視線が飽和する。
@@ -27,7 +30,7 @@ const CLOUD_SHAPE_EVALUATOR = new CloudShapeEvaluator(0);
 // 殻 1 枚の見え方。鉛直の光学的厚みは、場から引いた厚みを cutoff で足切りし、gain を掛けたもの。
 // albedo は殻の拡散反射率、bottomAltitude と topAltitude はその殻が代表する層の高度 [m] で、
 // 殻は層の中央に立ち、層の厚みが掠める視線の光路を決める。
-export interface CloudShellKnob {
+interface CloudShellKnob {
   readonly cutoff: FloatUniform;
   readonly gain: FloatUniform;
   readonly albedo: FloatUniform;
@@ -35,16 +38,18 @@ export interface CloudShellKnob {
   readonly topAltitude: FloatUniform;
 }
 
-// 種類ごとの殻。順序・調整値・場のどの意味を光学深さへ使うかをここへ集約し、入口を増やしたときに
+// 種類ごとの殻。順序・調整値・場のどの意味を光学深さと雲頂高度へ使うかをここへ集約し、入口を増やしたときに
 // 大気とrender-labの片方だけへ種類が増える状態を防ぐ。**仮設**: uniformはrender-labから動かせる。
 const CLOUD_SHELL_DEFINITIONS = [
   {
     species: 'cirrus',
     knob: {
       cutoff: uniform(0), gain: uniform(1), albedo: uniform(1),
-      bottomAltitude: uniform(15e3), topAltitude: uniform(16e3),
+      bottomAltitude: uniform(CIRRUS_BOTTOM_ALTITUDE), topAltitude: uniform(CIRRUS_TOP_ALTITUDE),
     },
-    columnOpticalDepth: (field: CloudSample): FloatNode => field.translucent,
+    columnOpticalDepth: (field: CloudSample): FloatNode => cirrusColumnOpticalDepthNode(field.cirrus),
+    // 場の量からその場所の雲頂高度 [m]。これを持つ種類は、殻との交点をこの高さへ寄せて場を読み直す。
+    localTopAltitude: (field: CloudSample): FloatNode => cirrusTopAltitudeNode(field.cirrus),
   },
   {
     species: 'cumulus',
@@ -53,7 +58,8 @@ const CLOUD_SHELL_DEFINITIONS = [
       bottomAltitude: uniform(0), topAltitude: uniform(2e3),
     },
     columnOpticalDepth: (field: CloudSample): FloatNode =>
-      CLOUD_SHAPE_EVALUATOR.columnOpticalDepth(field.coverage),
+      CLOUD_SHAPE_EVALUATOR.columnOpticalDepth(field.cumulus),
+    localTopAltitude: null,
   },
 ] as const;
 
@@ -65,6 +71,7 @@ export const CLOUD_SHELL_SPECIES: readonly CloudSpecies[] = CLOUD_SHELL_DEFINITI
   ({ species }) => species,
 );
 
+// 種類の定義を引く。未知の種類は例外にする。
 function shellDefinitionOf(species: CloudSpecies): (typeof CLOUD_SHELL_DEFINITIONS)[number] {
   const definition = CLOUD_SHELL_DEFINITIONS.find((candidate) => candidate.species === species);
   if (definition === undefined) throw new Error(`Unknown cloud shell species: ${species}`);
@@ -84,7 +91,7 @@ export function shellAltitudeOf(species: CloudSpecies): FloatNode {
 
 // 殻と交わる 1 点ぶんの、視線が受ける減衰と、その点が視線へ足す放射輝度。
 export interface CloudShellSample {
-  // 場から得た鉛直柱光学深さ。巻雲はtranslucentを直接、積雲はcoverageから変換する。
+  // 場の量から種類別の曲線で得た鉛直柱光学深さ。
   readonly columnOpticalDepth: FloatNode;
   // 鉛直柱を視線へ写す倍率。球殻の厚みで接線側の発散を有限化する。
   readonly airmass: FloatNode;
@@ -93,7 +100,7 @@ export interface CloudShellSample {
   readonly radiance: Vec3Node;
 }
 
-// 雲場データの解釈仕様は CloudSample が定義する。巻雲は translucent を直接適用し、積雲は coverage を鉛直柱光学厚みへ換算する。
+// 雲場データの解釈仕様は CloudSample が定義する。どちらの種類も、量から種類別の曲線で鉛直柱光学深さを引く。
 //
 // 不透明な積雲として描画された成分は減算しない。不透明な雲殻が G バッファに深度を書き込むため、その
 // 手前で終端するレイでは交点が積分区間外となり自然に寄与が除外される。減算を行うと同一遮蔽が二重に積算され、
@@ -102,10 +109,11 @@ function columnOpticalDepthOf(species: CloudSpecies, field: CloudSample): FloatN
   return shellDefinitionOf(species).columnOpticalDepth(field);
 }
 
-// つまみを通した殻の鉛直の光学的厚み。足切りを引いた残りへゲインを掛け、上限で頭打ちにする。
-function opticalDepthOf(species: CloudSpecies, field: CloudSample): FloatNode {
+// つまみを通した殻の鉛直の光学的厚み。細部の乗数を掛けた柱の厚みから足切りを引き、ゲインを掛けて、
+// 上限で頭打ちにする。
+function opticalDepthOf(species: CloudSpecies, field: CloudSample, detail: FloatNode): FloatNode {
   const knob = cloudShellKnobOf(species);
-  const raised = max(columnOpticalDepthOf(species, field).sub(knob.cutoff), 0).mul(knob.gain);
+  const raised = max(columnOpticalDepthOf(species, field).mul(detail).sub(knob.cutoff), 0).mul(knob.gain);
   return min(raised, MAX_SHELL_OPTICAL_DEPTH);
 }
 
@@ -114,6 +122,8 @@ export class CloudAtmosphereRenderer {
   private readonly fieldSampler = new CloudFieldSampler();
   private readonly bodyFromWorld: Mat4Uniform;
   private readonly active: FloatUniform;
+  // 巻雲の筋の細部。
+  private readonly cirrusDetail = new CirrusDetailEvaluator();
   // 種類ごとに、その殻を描くか。
   private readonly enabled: Readonly<Record<CloudSpecies, FloatUniform>> = Object.fromEntries(
     CLOUD_SHELL_SPECIES.map((species) => [species, uniform(1)]),
@@ -126,12 +136,18 @@ export class CloudAtmosphereRenderer {
     this.active = uniform(0);
   }
 
+  // 巻雲の細部の段数を置く。段数は uniform なので、グラフは組み直さない。
+  public setCirrusOctaves(count: number): void {
+    this.cirrusDetail.setOctaves(count);
+  }
+
   // 評価対象の雲定義。null の場合は雲殻を生成しない。
   public set(clouds: AtmosphereClouds | null): void {
     this.active.value = clouds === null ? 0 : 1;
     if (clouds === null) return;
     this.bodyFromWorld.value.copy(clouds.bodyFromWorld);
     this.fieldSampler.bind(clouds.cloud.field);
+    this.cirrusDetail.syncClock(clouds.cloud.clock.displayTime, clouds.cloud.clock.simSpeed);
   }
 
   // 種類ごとに、その殻を描くかを置き直す。
@@ -146,26 +162,48 @@ export class CloudAtmosphereRenderer {
 
   // 殻と交わる 1 点が視線へ与える減衰と放射輝度。offset は天体中心から交点へのベクトル、
   // rayDir は視線の向き、sunDir は交点から恒星への向き(いずれも天体を真球にした空間で、
-  // 向きは単位長)。sunRadiance はその交点へ届く恒星の輝度。
+  // 向きは単位長)。sunRadiance はその交点へ届く恒星の輝度。width は交点で画素の張る実寸 [m]。
+  // 量が雲頂高度へ写る種類では、交点は殻の高さからその場所の雲頂高度へ視線に沿って寄せてから場を読む。
   public scatteredAt(
     species: CloudSpecies, shellRadius: FloatNode, offset: Vec3Node, rayDir: Vec3Node,
-    sunDir: Vec3Node, sunRadiance: Vec3Node,
+    sunDir: Vec3Node, sunRadiance: Vec3Node, width: FloatNode,
   ): CloudShellSample {
-    const knob = cloudShellKnobOf(species);
+    const definition = shellDefinitionOf(species);
+    const knob = definition.knob;
     const up = offset.div(shellRadius);
-    const field = this.fieldAt(up);
-    const columnOpticalDepth = opticalDepthOf(species, field).mul(this.shellPresence(species));
+    const thickness = max(knob.topAltitude.sub(knob.bottomAltitude), MIN_SHELL_THICKNESS);
+    // 量が雲頂高度へ写る種類では、殻の高さとの差ぶん視線に沿って交点をずらしてから場を読み直す。
+    // ずらし量は鉛直余弦の逆数(高い雲ほど入口は手前・出口は奥へずれる)なので、接線側は層の厚みぶんの
+    // 弦を通る視線(airmass と同じ下限)で有限化する。
+    const localTopAltitude = definition.localTopAltitude;
+    const shellField = this.fieldAt(up);
+    const cosine = dot(up, rayDir);
+    const sampleUp = localTopAltitude === null ? up : normalize(offset.add(rayDir.mul(
+      localTopAltitude(shellField).sub(shellAltitudeOf(species))
+        .mul(sign(cosine))
+        .mul(shellAirmassNode(cosine, thickness, shellRadius)),
+    )));
+    const field = localTopAltitude === null ? shellField : this.fieldAt(sampleUp);
+    // 巻雲の筋の細部は、交点の場所の筋の向きに沿って読む。量の無い所では読まない。
+    const detail = float(1).toVar();
+    if (species === 'cirrus') {
+      const bodyUp = this.bodyFromWorld.mul(vec4(sampleUp, 0)).xyz;
+      If(greaterThan(field.cirrus, CIRRUS_PRESENT_AMOUNT), () => {
+        detail.assign(this.cirrusDetail.multiplierAt(
+          bodyUp, shellRadius, width, field.cirrusFlow, this.fieldSampler.sampleMotion(bodyUp).upperWind));
+      });
+    }
+    const columnOpticalDepth = opticalDepthOf(species, field, detail).mul(this.shellPresence(species));
     // 視線が層を斜めに抜けるぶんの倍率。**水平では発散する**ので、層の厚みぶんの弦 √(2RΔh) を
     // 通る視線を上限に取る(地球の 1 km 厚なら光路 226 km、天頂の 113 倍)。
-    const thickness = max(knob.topAltitude.sub(knob.bottomAltitude), MIN_SHELL_THICKNESS);
-    const airmass = shellAirmassNode(dot(up, rayDir), thickness, shellRadius);
+    const airmass = shellAirmassNode(dot(sampleUp, rayDir), thickness, shellRadius);
     const transmittance = transmittanceFromColumnOpticalDepthNode(columnOpticalDepth, airmass);
     const covered = transmittance.oneMinus();
     return {
       columnOpticalDepth,
       airmass,
       transmittance,
-      radiance: sunRadiance.mul(covered.mul(max(dot(up, sunDir), 0)).mul(knob.albedo)),
+      radiance: sunRadiance.mul(covered.mul(max(dot(sampleUp, sunDir), 0)).mul(knob.albedo)),
     };
   }
 

@@ -17,7 +17,7 @@ import { packageEarthSurface } from './package.mjs';
 const DEFAULT_DATASET = 'earth-pages-fixture';
 // GitHub documents the published-site limit as 1 GB; use decimal bytes so the
 // release gate never publishes a bundle above the stated limit.
-export const DEFAULT_MAX_BYTES = 1_000_000_000;
+const DEFAULT_MAX_BYTES = 1_000_000_000;
 
 async function createFixtureBundle(root) {
   const source = fixtureSourceManifest(DEFAULT_DATASET);

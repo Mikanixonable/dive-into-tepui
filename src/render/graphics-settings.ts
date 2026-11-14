@@ -4,6 +4,7 @@
 // 真偽は独立した描画物を消すもの、選択肢は品質と負荷を刻む値か見え方を選ぶ値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
+import { CIRRUS_DETAIL } from './cloud/cloud-detail';
 import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
@@ -134,8 +135,9 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: '半透明の積雲',
     presets: { low: true, medium: true, high: true },
   },
-  // 積雲の球殻を評価するレイマーチングの精細度。オフでは雲殻およびその影を描画しない。「精細」は
-  // 積雲の描画アーティファクトを地表側の乱れから切り分けるための設定レベル。
+  // 積雲の球殻を評価するレイマーチングの精細度と、雲頂の細部の段数(粗 4・標準 6・精細 8 オクターブ)。
+  // オフでは雲殻およびその影を描画しない。「精細」は積雲の描画アーティファクトを地表側の乱れから
+  // 切り分けるための設定レベル。
   cumulusDetail: {
     kind: 'choice', group: 'element', label: '積雲の精細さ',
     items: [
@@ -144,6 +146,17 @@ export const GRAPHICS_OPTIONS = {
     ],
     presets: {
       low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.standard, high: CUMULUS_DETAIL.standard,
+    },
+  },
+  // 巻雲の繊維をどれだけ細かく写すか。粗では巻雲は雲場の濃淡だけで描かれ、段を上げるほど細かい筋が
+  // 写る(粗 0・標準 4・精細 6 オクターブ)。
+  cirrusDetail: {
+    kind: 'choice', group: 'element', label: '巻雲の精細さ',
+    items: [
+      [CIRRUS_DETAIL.coarse, '粗'], [CIRRUS_DETAIL.standard, '標準'], [CIRRUS_DETAIL.fine, '精細'],
+    ],
+    presets: {
+      low: CIRRUS_DETAIL.coarse, medium: CIRRUS_DETAIL.standard, high: CIRRUS_DETAIL.standard,
     },
   },
   // レンズ効果(ブルーム・光条・ゴースト)。
@@ -191,10 +204,11 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
     presets: { low: false, medium: true, high: true },
   },
-  // 積雲が地表・艦艇へ落とす影。積雲を描かない設定(「雲」がオフ、「積雲の精細さ」がオフ)では、
+  // 積雲と巻雲が地表・艦艇・雲へ落とす影。積雲の影は積雲の立体を描くとき(「積雲の精細さ」が
+  // オフ以外)だけ、巻雲の影は巻雲を描くとき(「巻雲」がオン)だけ落ちる。「雲」がオフでは、
   // この値によらず影は落ちない。
-  cumulusShadow: {
-    kind: 'toggle', group: 'shadow', label: '積雲の影',
+  cloudShadow: {
+    kind: 'toggle', group: 'shadow', label: '雲の影',
     presets: { low: false, medium: true, high: true },
   },
   // 細かい影を同時に落とせる箇所の数。減らすほど影パスの描画命令が減り、要求の緩い受け手から

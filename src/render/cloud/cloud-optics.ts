@@ -10,18 +10,17 @@ export interface CloudOpticalEvent {
   readonly transmittance: number;
 }
 
-export interface CloudOpticalComposite {
+interface CloudOpticalComposite {
   readonly transmittance: number;
   readonly radiance: number;
 }
 
-// CPUの基準式とGPUのTSL式が共有する入力の上限。被覆率1は無限大のtauになるので、有限の雲を保つ。
-export const MAX_COLUMN_COVERAGE = 0.99;
+// CPUの基準式とGPUのTSL式が共有する入力の上限。不透明度1は無限大のtauになるので、有限の雲を保つ。
+export const MAX_COLUMN_OPACITY = 0.99;
 
-// 積雲のR(coverage)を鉛直柱光学深さへ変換する。Rは無次元の被覆率、戻り値は無次元のtau。
-// 巻雲のBはすでに鉛直柱光学深さなので、この変換を通さず値を使う。
-export function columnOpticalDepthFromCoverage(coverage: number): number {
-  const bounded = Math.min(Math.max(coverage, 0), MAX_COLUMN_COVERAGE);
+// 不透明度を鉛直柱光学深さへ変換する。入力は無次元の不透明度、戻り値は無次元のtau。
+export function columnOpticalDepthFromOpacity(opacity: number): number {
+  const bounded = Math.min(Math.max(opacity, 0), MAX_COLUMN_OPACITY);
   return -Math.log1p(-bounded);
 }
 

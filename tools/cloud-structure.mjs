@@ -62,10 +62,18 @@ export function blurField(data, width, height, rowKmPerPx, kmPerPxY, wrapX, sigm
 
 // field を尺度 scaleKm [km] で見た構造テンソルの不変量。rowKmPerPx は行ごとの横 1 px の地表距離
 // [km]、kmPerPxY は縦 1 px の地表距離 [km]、wrapX は横が経度で巻くかどうか。返す mean と diff は
-// 固有値の和・差の半分、angle は勾配の主軸 [rad](東から反時計回り)。
-export function structureTensor(field, rowKmPerPx, kmPerPxY, wrapX, scaleKm) {
+// 固有値の和・差の半分、angle は勾配の主軸 [rad](東から反時計回り)。highPassKm が null でないとき、
+// 勾配は field から highPassKm の大域成分を引いた場で取る。滑らかな傾斜やビネットの明暗は
+// 63 km 尺度の勾配を一様にそろえてしまうため、それを除く。
+export function structureTensor(field, rowKmPerPx, kmPerPxY, wrapX, scaleKm, highPassKm = null) {
   const { width, height, data } = field;
-  const smoothed = blurField(data, width, height, rowKmPerPx, kmPerPxY, wrapX, scaleKm / 4);
+  let source = data;
+  if (highPassKm !== null) {
+    const low = blurField(data, width, height, rowKmPerPx, kmPerPxY, wrapX, highPassKm);
+    source = new Float32Array(data.length);
+    for (let i = 0; i < data.length; i++) source[i] = data[i] - low[i];
+  }
+  const smoothed = blurField(source, width, height, rowKmPerPx, kmPerPxY, wrapX, scaleKm / 4);
   const xx = new Float32Array(data.length);
   const yy = new Float32Array(data.length);
   const xy = new Float32Array(data.length);

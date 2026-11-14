@@ -23,6 +23,8 @@ class MockMotion {
     public readonly att: Attitude,
     public readonly mass: number,
   ) {}
+  // 周回の局所系がないモックでは、制御の姿勢は慣性系の姿勢そのもの。
+  public get controlAttitude(): Attitude { return this.att; }
   public setThrust(thrust: Vec3 | null): void { this.thrust = thrust; }
   public setTorque(torque: Vec3): void { this.torque = torque; }
 }

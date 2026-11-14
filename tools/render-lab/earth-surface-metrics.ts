@@ -14,23 +14,23 @@ export const EARTH_SURFACE_CAPTURE_CASES = [
   'negative-elevation-land', 'seabed', 'schematic', 'lod-fallback',
 ] as const;
 
-export type EarthSurfaceCaptureCase = typeof EARTH_SURFACE_CAPTURE_CASES[number];
-export type EarthSurfaceCaptureStatus = 'complete' | 'unavailable' | 'failed';
+type EarthSurfaceCaptureCase = typeof EARTH_SURFACE_CAPTURE_CASES[number];
+type EarthSurfaceCaptureStatus = 'complete' | 'unavailable' | 'failed';
 
-export interface EarthSurfaceCaptureEnvironment {
+interface EarthSurfaceCaptureEnvironment {
   readonly browser: string | null;
   readonly backend: string | null;
   readonly webgpu: 'available' | 'unavailable' | 'unknown';
   readonly drawingBuffer: 'available' | 'unavailable' | 'unknown';
 }
 
-export interface EarthSurfaceCaptureReplayScenario {
+interface EarthSurfaceCaptureReplayScenario {
   readonly id: string;
   readonly status: 'covered-by-tests' | 'unavailable';
   readonly test: string | null;
 }
 
-export interface EarthSurfaceCaptureBuffer {
+interface EarthSurfaceCaptureBuffer {
   readonly status: EarthSurfaceCaptureStatus;
   readonly path: string | null;
   readonly sha256: string | null;
@@ -38,7 +38,7 @@ export interface EarthSurfaceCaptureBuffer {
   readonly reason: string | null;
 }
 
-export interface EarthSurfaceCaptureCaseResult {
+interface EarthSurfaceCaptureCaseResult {
   readonly caseName: EarthSurfaceCaptureCase;
   readonly status: EarthSurfaceCaptureStatus;
   readonly datasetId: string | null;
@@ -72,9 +72,8 @@ export interface EarthSurfaceCaptureDocument {
   readonly cases: readonly EarthSurfaceCaptureCaseResult[];
 }
 
-export const EARTH_SURFACE_CAPTURE_CASE_SET: ReadonlySet<string> = new Set(EARTH_SURFACE_CAPTURE_CASES);
 
-export interface EarthSurfaceAdjacentDifference {
+interface EarthSurfaceAdjacentDifference {
   readonly sampleCount: number;
   readonly maxAbsoluteDifference: number;
   readonly meanAbsoluteDifference: number;
@@ -82,7 +81,7 @@ export interface EarthSurfaceAdjacentDifference {
   readonly exceedsThreshold: boolean;
 }
 
-export interface RgbaRangeCheck {
+interface RgbaRangeCheck {
   readonly valid: boolean;
   readonly finite: boolean;
   readonly inRange: boolean;
@@ -90,13 +89,13 @@ export interface RgbaRangeCheck {
   readonly invalidIndex: number | null;
 }
 
-export interface EarthSurfaceImageMetric {
+interface EarthSurfaceImageMetric {
   readonly caseName: string;
   readonly sha256: string;
   readonly byteLength: number;
 }
 
-export interface EarthSurfaceMetrics {
+interface EarthSurfaceMetrics {
   readonly schemaVersion: 1;
   readonly viewport: { readonly width: number; readonly height: number };
   readonly cases: readonly EarthSurfaceImageMetric[];

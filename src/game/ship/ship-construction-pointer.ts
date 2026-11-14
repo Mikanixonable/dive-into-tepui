@@ -19,7 +19,6 @@ import {
 } from './ship-construction-candidates';
 import { constructionTargetId } from './ship-construction-rules';
 import type { ShipAssembly } from './ship-assembly';
-import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import type { ConstructionTrial } from './ship-construction-preview';
 import type { ConstructionCardDrag, ConstructionHeld } from './ship-construction-types';
 import {
@@ -99,17 +98,6 @@ export interface ConstructionPointerHost {
   focus(): void;
   // カタログのカテゴリをタブの並び順の index で選ぶ。
   selectCatalogCategory(index: number): void;
-}
-
-// カタログ定義順で currentId から delta 先の定義 id。currentId が一覧に無ければ、
-// 次へは先頭、前へは末尾へ送る。一覧が空なら null。
-export function nextCatalogDefinitionId(
-  definitionIds: readonly string[], currentId: string | null, delta: 1 | -1,
-): string | null {
-  if (definitionIds.length === 0) return null;
-  const index = currentId === null ? -1 : definitionIds.indexOf(currentId);
-  if (index === -1) return definitionIds[delta > 0 ? 0 : definitionIds.length - 1]!;
-  return definitionIds[(index + delta + definitionIds.length) % definitionIds.length]!;
 }
 
 // Ctrl か ⌘(Meta)キーが押されていれば真。
@@ -273,15 +261,6 @@ export class ShipConstructionPointer {
     }
     if (bindingMatches(K.constructionRemove, code, input)) {
       host.removeSelected();
-      return true;
-    }
-    // Tab は修飾の宣言を持たないので、Shift は送る向きとして読む。
-    if (code === K.constructionCyclePart.code && !ctrlOrMetaDown(input)) {
-      const current = host.held?.kind === 'catalog' ? host.held.definitionId : null;
-      const next = nextCatalogDefinitionId(
-        SHIP_MODULE_CATALOG.all().map(definition => definition.id), current, shiftDown(input) ? -1 : 1,
-      );
-      if (next !== null) host.hold({ kind: 'catalog', definitionId: next });
       return true;
     }
     if (bindingMatches(K.constructionPlace, code, input)) {

@@ -67,7 +67,7 @@ export class ShadowPass {
   public constructor(
     private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
-    bodyShadow: BodyShadow, ringShadow: RingShadow, cumulusShadow: CloudShadowRenderer,
+    bodyShadow: BodyShadow, ringShadow: RingShadow, cloudShadow: CloudShadowRenderer,
     meshShadow: MeshShadow,
     private readonly gpu: GpuTimings,
   ) {
@@ -89,7 +89,7 @@ export class ShadowPass {
     // 広い範囲を覆うので、掠める構図では正対したときの何倍にもなる。
     const viewDistance = length(viewPos);
     const incidence = max(dot(normalize(viewPos).negate(), viewNormal), MIN_INCIDENCE_COSINE);
-    const cumulusFootprint = this.pixelAngle.mul(viewDistance).div(incidence);
+    const cloudFootprint = this.pixelAngle.mul(viewDistance).div(incidence);
     const covered = gbuffer.covered();
     this.sources = [
       {
@@ -103,8 +103,8 @@ export class ShadowPass {
         gpuPass: GPU_PASS.shadow,
       },
       {
-        casts: () => cumulusShadow.casts(),
-        material: multiplyingMaterial(covered, cumulusShadow.transmittance(worldPos, cumulusFootprint)),
+        casts: () => cloudShadow.casts(),
+        material: multiplyingMaterial(covered, cloudShadow.transmittance(worldPos, cloudFootprint)),
         gpuPass: GPU_PASS.cloudShadow,
       },
       {

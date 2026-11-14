@@ -19,7 +19,7 @@ function corsHeaders(origin, allowedOrigins) {
   return allowedOrigins.length === 0 ? { 'Access-Control-Allow-Origin': '*' } : {};
 }
 
-export function earthSurfaceServer(root, port = 8084, options = {}) {
+function earthSurfaceServer(root, port = 8084, options = {}) {
   const base = resolve(root);
   const allowedOrigins = options.allowedOrigins ?? [];
   return createServer(async (request, response) => {
