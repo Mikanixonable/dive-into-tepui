@@ -212,7 +212,7 @@ export const CLOUD_DETAIL_CHECK_SHOTS: Readonly<Record<string, CloudDetailShot>>
 // 積雲だけ・巻雲だけは末尾へ -cumulus / -cirrus を足す(種類の無標は両方)。
 const STABILITY_SCENE_IDS = ['natl-front', 'npac-jet', 'pac-temp', 'south-hl', 'wpac-itcz'] as const;
 const STABILITY_DISPLAY_TIME_S = 21600;
-// ずらす画素数。cap の 1 texel(低軌道で約 10 km)より短く、細部の段(0.25 km/px で 1〜32 px)を跨ぐ長さ。
+// ずらす画素数。cap の 1 texel(低軌道で約 10 km)より短く、細部の段(0.25 km/px で 1〜128 px)を跨ぐ長さ。
 const STABILITY_SHIFT_PX = 6;
 // 高度の倍率。cap の半径と細部の段の減衰の両方が動く幅。
 const STABILITY_ZOOM = 1.25;
