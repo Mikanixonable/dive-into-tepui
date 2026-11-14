@@ -11,6 +11,7 @@ import { SalvageCargo } from '../../src/game/stages/stage-utils/salvage-cargo';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
 import { Logistics } from '../../src/game/stages/stage-utils/logistics';
 import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
+import { BODY_REVEAL_BASE } from '../../src/game/celestial/body-reveal';
 import {
   SALVAGE_BLUEPRINTS, SALVAGE_REPEAT_EVERY, appendSalvageCargo, crossedSalvageMilestones,
   nextSalvageMilestoneRemaining, nextSalvageRemaining,
@@ -61,6 +62,7 @@ interface BareStageFields {
   blueprintShelf: ShipBlueprintShelf;
   grantedSalvageNames: Set<string>;
   salvageCargo: SalvageCargo;
+  _revealedBodies: readonly string[];
 }
 
 // prototype からコンストラクタを通さず Stage を作り、撃破記録が読む欄だけ差し込む。
@@ -69,6 +71,7 @@ function bareStage(
 ): Stage {
   const stage = Object.create(prototype) as Stage;
   const fields = stage as unknown as BareStageFields;
+  fields._revealedBodies = BODY_REVEAL_BASE;
   fields.scoreCounter = new ScoreCounter(0, 0, kills);
   fields.logistics = new Logistics(new THREE.Scene(), system, false);
   fields._phase = 'playing';

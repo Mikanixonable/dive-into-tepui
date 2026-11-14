@@ -25,6 +25,7 @@ import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 import { EnemyInspection } from '../../pickable/enemy-inspection';
 import { EnemyFireController, type SerializedEnemyFireController } from './enemy-fire-controller';
 import { EnemyReactions } from './enemy-reactions';
+import { enemyDestroyFragments } from './debris-piece';
 
 // 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
 // 全ての敵がこの1つの倍率を共有する。
@@ -198,9 +199,10 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
     this.reactions = new EnemyReactions({
       motion: this.motion,
       modelScale: ENEMY_MODEL_SCALE,
-      applyBulletDamage: (damage, impactPoint, events) => (
-        this.applyBulletDamage(damage, impactPoint, events)
+      applyBulletDamage: (damage, impactPoint, registry) => (
+        this.applyBulletDamage(damage, impactPoint, registry)
       ),
+      scatterDebris: registry => this.scatterDebris(registry),
       noteStruck: simTime => { this.lastStruckAt = simTime; },
       applyImpactDamage: damageSpeed => this.applyImpactDamage(damageSpeed),
       hasHealth: () => this.hp > 0,
@@ -220,9 +222,16 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   // プラズマ弾1発のダメージ [HP]。
   protected abstract plasmaDamage(): number;
   // 弾の被弾ダメージを HP へ適用する。撃破判定は、適用後の残 HP に基づいて別途行われる。
+  // 失われた部位の破片は registry へ足す。
   protected abstract applyBulletDamage(
-    damage: number, impactPoint: Vec3, events: RunEventSink,
+    damage: number, impactPoint: Vec3, registry: EntityRegistry,
   ): void;
+  // 本体が失われるとき残る破片を registry へ足す。既定は金属の敵機と同じ撃破の破片。
+  protected scatterDebris(registry: EntityRegistry): void {
+    for (const piece of enemyDestroyFragments(
+      this.motion.state, ENEMY_MODEL_SCALE, registry.idAllocators,
+    )) registry.add(piece);
+  }
   // 衝突ダメージを適用し、ダメージが発生したかを返す。しきい値未満なら false。
   protected abstract applyImpactDamage(damageSpeed: number): boolean;
   // 1発撃ったことを受ける。muzzleState は砲口の位置と機体の速度。

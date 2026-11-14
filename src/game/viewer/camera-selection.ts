@@ -71,6 +71,11 @@ function mapCameraConfig(originId: string): FocusCameraConfig {
   };
 }
 
+// マップを開いた瞬間の注視対象。操作対象の船が周回軌道にあればその主天体、なければ船そのもの。
+function mapEntryFocusId(shipId: string, sample: CameraFrameSample): string {
+  return sample.frameAnchors.attractorOf(shipId, sample.displayTime) ?? shipId;
+}
+
 export class CameraSelection implements CameraSelectionSource {
   // 直前に追従した表示ビュー。マップから戦闘へ入る瞬間の補正にだけ使う。
   private followedView: ViewMode | null = null;
@@ -114,6 +119,9 @@ export class CameraSelection implements CameraSelectionSource {
     let controlChanged = false;
     for (const { body } of events) {
       if (body.kind === 'controllableRemoved') this.map.clearFocusIf(body.id);
+      if (body.kind === 'orbitPlanningOpened' && body.shipId !== null) {
+        this.map.setFocus({ kind: 'object', id: mapEntryFocusId(body.shipId, samples.map) });
+      }
       if (body.kind === 'controlTargetSelected' || body.kind === 'controlTargetReleased') {
         controlChanged = true;
         this.combat.setFocus({ kind: 'object', id: frameRoleAnchorId('controlled') });

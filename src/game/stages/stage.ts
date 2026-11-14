@@ -10,6 +10,7 @@ import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from 
 import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { v3 } from '../../math/vec3';
 import { solarSystem } from '../celestial/solar-system/solar-system';
+import { BODY_REVEAL_BASE, revealedAfterClear } from '../celestial/body-reveal';
 import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
 import {
   crossedSalvageMilestones, nextSalvageMilestoneRemaining, nextSalvageRemaining, SALVAGE_REPEAT_EVERY,
@@ -24,7 +25,6 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
-import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { EnemyDeathCause, PlayerLossCause, StageOutcome } from './stage-outcome';
 import { ENEMY_MAX_ATTACKERS_PER_GROUP } from '../dynamic/dynamic-entity/enemy-fire-controller';
 import type { StageSimulationEvents } from './stage-simulation-events';
@@ -87,6 +87,8 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public static readonly selectKey: string | null = null;
   // 開始前に開始日時の指定画面を挟まない。挟むステージだけが true を宣言する。
   public static readonly picksStartEpoch: boolean = false;
+  // 勝敗を判定する。判定しないステージ(CREATIVE・デバッグ専用)は、判定するステージだけが true のままにする。
+  public static readonly judgesOutcome: boolean = true;
   // 選択画面でこのステージを並べるタブの名前。
   public static readonly selectGroup: string = 'ステージモード';
 
@@ -133,10 +135,15 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public get enemiesMayFire(): boolean { return true; }
   private _result: StageResult | null = null;
   public get result(): StageResult | null { return this._result; }
-  // 勝敗と結果画面の内容を同時に確定させ、確定したことを出来事として記録する。
+  // このランで解放されている天体の id。勝利で増える。
+  private _revealedBodies: readonly string[];
+  public get revealedBodies(): readonly string[] { return this._revealedBodies; }
+  // 勝敗と結果画面の内容を同時に確定させ、確定したことを出来事として記録する。勝利したときは、
+  // そのステージに対応する天体を解放する。
   protected decide(phase: Exclude<GamePhase, 'playing'>, result: StageResult): void {
     this._phase = phase;
     this._result = result;
+    if (phase === 'won') this._revealedBodies = revealedAfterClear(this._revealedBodies, this.id);
     this._dynamicSystem.events.record({ kind: 'stageDecided' });
   }
   // 協力者 deps と全ステージ共通の状態から組む。省いた状態は新しいランの初期値(スコア 0・進行中・
@@ -149,6 +156,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     logistics?: Logistics,
     private _reinforced = false,
     salvageCargo?: SalvageCargo,
+    revealedBodies: readonly string[] = BODY_REVEAL_BASE,
   ) {
     const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue, orbitSlots, blueprintShelf] = deps;
     this._hud = hud;
@@ -162,6 +170,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     // 補給・積荷・パネルは共通部品としてここで組む。記録があるものは復元済みの値が渡る。
     this.logistics = logistics ?? new Logistics(scene, dynamicSystem, this.stageRules.automaticResupply);
     this.salvageCargo = salvageCargo ?? new SalvageCargo();
+    this._revealedBodies = revealedBodies;
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
@@ -184,6 +193,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
         : Logistics.deserialize(logistics, scene, dynamicSystem, rules.automaticResupply),
       reinforced ?? undefined,
       SalvageCargo.deserialize(serialized?.pendingSalvageCargo ?? null),
+      serialized?.revealedBodies ?? BODY_REVEAL_BASE,
     ];
   }
 
@@ -308,6 +318,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 再出撃のときの選択を、周回を始める前に当てる。省いた選択は既定のまま。
   public applyRunOptions(options: RunOptions): void {
     this._reinforced = options.reinforced;
+    this._revealedBodies = options.revealedBodies;
   }
 
   // 交戦中の集団が 0 になった波間に、積まれた鹵獲を補給艇で届ける。既定では届けない(SPEC GAME.md 2.3)。
@@ -392,6 +403,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       logistics: this.logistics.serialize(),
       reinforced: this._reinforced,
       pendingSalvageCargo: this.salvageCargo.serialize(),
+      revealedBodies: this._revealedBodies,
     };
   }
 }
