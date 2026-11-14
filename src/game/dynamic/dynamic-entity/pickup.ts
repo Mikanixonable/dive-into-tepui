@@ -208,6 +208,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     const rows: PropertyRow[] = [];
+    // 距離と回収圏の行。自艦が居るときだけ出す。
     if (viewer) {
       const distance = len(sub(this.motion.state.r, viewer.motion.state.r));
       rows.push({
@@ -220,6 +221,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
         presentation: 'major',
       });
     }
+    // 補給の中身の行(kind ごとの具象が組む)と、軌道の行。
     rows.push(...this.supplyRows().map((row) => ({
       ...row, presentation: row.presentation ?? 'major' as const,
     })));

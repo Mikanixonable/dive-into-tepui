@@ -57,6 +57,8 @@ export class RotationRingView {
   private readonly spoke = new THREE.Group();
   private disposed = false;
 
+  // リング・両回りの矢印・弧・スポーク・目盛りを組む。非表示のまま組み、
+  // addToScene なら scene へ足す。
   public constructor(private readonly scene?: THREE.Scene, addToScene = true) {
     this.object.name = 'rotation-ring';
     this.object.visible = false;
@@ -106,6 +108,7 @@ export class RotationRingView {
     if (this.disposed) return;
     this.disposed = true;
     this.scene?.remove(this.object);
+    // 確保した geometry と material を解放する。
     this.ringGeometry.dispose();
     this.arrowsGeometry.dispose();
     this.arcGeometry.dispose();
@@ -118,6 +121,7 @@ export class RotationRingView {
   // 掴んだ点から現在の角までの弧と、離したときに適用される 90° 単位の位置を書く。
   // 段数ごとの目盛りは適用される向きへ並べ、終端の放射線が掴んだ点からの合成角を示す。
   private syncDrag(drag: RotationRingDrag): void {
+    // 弧の頂点を、掴んだ点から現在の角まで並べ直す。
     const positions = this.arcGeometry.getAttribute('position') as THREE.BufferAttribute;
     const vertices = Math.max(
       2, Math.min(ARC_VERTICES, Math.ceil(Math.abs(drag.angle) / (2 * Math.PI) * RING_SEGMENTS) + 1),
@@ -129,6 +133,7 @@ export class RotationRingView {
     positions.needsUpdate = true;
     this.arcGeometry.setDrawRange(0, vertices);
 
+    // 段数ごとの目盛りを、いま離したときに適用される向きへ並べる。
     const ticks = this.ticksGeometry.getAttribute('position') as THREE.BufferAttribute;
     const count = Math.min(MAX_STEP_TICKS, Math.abs(drag.appliedSteps));
     const direction = Math.sign(drag.appliedSteps) || 1;
@@ -143,6 +148,7 @@ export class RotationRingView {
   }
 }
 
+// リング系の線の material。深度を切るので船体に隠れても見える。
 function ringMaterial(opacity: number): THREE.LineBasicMaterial {
   return new THREE.LineBasicMaterial({
     color: RING_COLOR, transparent: true, opacity, depthTest: false, depthWrite: false,
@@ -167,8 +173,10 @@ function buildRingGeometry(): THREE.BufferGeometry {
 // π の矢印(点は対極)は負の回転を指す。
 function buildArrowsGeometry(): THREE.BufferGeometry {
   const positions = new Float32Array(8 * 3);
+  // tipAngle の円周上の点を先端とし、positions の offset から2線分ぶんを書き込む。
   const barb = (tipAngle: number, offset: number): void => {
     const tip = new THREE.Vector3(Math.cos(tipAngle), Math.sin(tipAngle), 0);
+    // 羽根の傾きは常に +Y 固定。tip が対極に来ると接線に対する向きが反転する。
     const dir = new THREE.Vector3(0, 1, 0);
     const back = dir.multiplyScalar(-Math.cos(ARROW_BARB_ANGLE) * ARROW_BARB_LENGTH);
     const spread = tip.clone().multiplyScalar(Math.sin(ARROW_BARB_ANGLE) * ARROW_BARB_LENGTH);

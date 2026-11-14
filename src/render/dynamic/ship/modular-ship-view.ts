@@ -6,12 +6,13 @@ import type { ShipModuleEmphasis, ShipModuleRenderInput } from './ship-render-co
 
 const ZERO = v3();
 
-// ShipAssembly の module ごとの model view を一体で所有する。
+// assembly の module ごとの model view を一体で所有する。
 export class ModularShipView {
   public readonly object = new THREE.Group();
   private readonly modules = new Map<string, ShipModuleView>();
   private disposed = false;
 
+  // 表示ツリーの根 object を組む。addToScene なら scene へ足す。
   public constructor(
     private readonly modelFactory: ShipModuleModelFactory,
     private readonly scene?: THREE.Scene,
@@ -37,6 +38,7 @@ export class ModularShipView {
   ): void {
     if (this.disposed) throw new Error('cannot sync a disposed ModularShipView');
     const live = new Set<string>();
+    // 宣言の列へ module view を揃える。新規は組み、modelId が変われば差し替える。
     for (const module of modules) {
       live.add(module.id);
       const id = module.id;
@@ -52,6 +54,7 @@ export class ModularShipView {
         view.sync(module, centerOffset, declared);
       }
     }
+    // 宣言から消えた module の view を畳む。
     for (const [id, view] of this.modules) {
       if (live.has(id)) continue;
       this.modules.delete(id);
@@ -66,10 +69,12 @@ export class ModularShipView {
     return this.modules.get(moduleId)?.semanticAnchor(name) ?? null;
   }
 
+  // 指定 module の、prefix で始まる名前付き local anchor を返す。欠けていれば空。
   public semanticAnchors(moduleId: string, prefix: string): readonly THREE.Object3D[] {
     return this.modules.get(moduleId)?.semanticAnchors(prefix) ?? [];
   }
 
+  // 保持している module view をすべて畳み、scene から根を外す。二重呼び出しは無害。
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;

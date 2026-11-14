@@ -45,10 +45,12 @@ function stage00EarthProjection(): EarthSurfaceView {
   const inclination = THREE.MathUtils.degToRad(97);
   const radial = new THREE.Vector3(1, 0, 0);
   const prograde = new THREE.Vector3(0, Math.sin(inclination), -Math.cos(inclination));
+  // 放射方向を上、進行方向を前とする姿勢を組む。
   const z = prograde.clone().normalize();
   const x = radial.clone().cross(z).normalize();
   const y = z.clone().cross(x);
   const attitude = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
+  // ピッチを下げたカメラ位置と、実画素の透視カメラを置く。
   const pitch = THREE.MathUtils.degToRad(0.3) - THREE.MathUtils.degToRad(10);
   const cameraOffset = new THREE.Vector3(0, Math.sin(pitch), -Math.cos(pitch))
     .applyQuaternion(attitude).multiplyScalar(38);

@@ -85,6 +85,7 @@ export function bestDetailHtml(stats: RunStats, comparison: BestComparison): str
     : comparison.survival.beaten
       ? 'ベスト更新'
       : `ベストまであと ${missionTimeText(comparison.survival.best - stats.survivalSec)}`;
+  // 撃破数も生存時間と同じ3分岐で行を組む。
   const kills = comparison.kills.best === null
     ? '初回の記録'
     : comparison.kills.beaten

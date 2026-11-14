@@ -118,6 +118,7 @@ export class CameraSystem {
     return view === 'map' ? this.samples.map : this.samples.combat;
   }
 
+  // 表に出ているビューの視点から、画面位置を通るレイ。
   public rayThroughScreen(clientX: number, clientY: number, viewport: Viewport): Ray {
     return screenRay(this.activeViewpoint, viewport, clientX, clientY);
   }

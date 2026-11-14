@@ -17,6 +17,7 @@ function resolveTemplate(template: string, key: EarthTileKey): string {
 }
 
 export class EarthSurfaceTileSource {
+  // 色・地形のURLテンプレートと、配信する最大段を受ける。範囲外の maxZoom は投げる。
   public constructor(
     private readonly colorTemplate: string,
     private readonly terrainTemplate: string,

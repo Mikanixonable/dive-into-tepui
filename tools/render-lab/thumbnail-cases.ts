@@ -30,6 +30,7 @@ function backdrop(center: THREE.Vector3, cameraOffset: THREE.Vector3, distance: 
     new THREE.PlaneGeometry(halfHeight * 2 * (VIEW_WIDTH / VIEW_HEIGHT) * 1.2, halfHeight * 2 * 1.2),
     new THREE.MeshBasicMaterial({ color }),
   );
+  // 板を視線の奥へ置き、物体側へ向ける。
   mesh.position.copy(center).addScaledVector(cameraOffset, -distance);
   mesh.lookAt(new THREE.Vector3().copy(center).addScaledVector(cameraOffset, distance));
   mesh.userData.ownsGeometry = true;

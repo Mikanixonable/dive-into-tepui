@@ -153,6 +153,7 @@ function mainTank(): LabCase {
     objects: [model],
     camera: labCamera(),
     viewTarget: new THREE.Vector3(0, 0, -25),
+    // 白と黒の塗装面を、横と斜めの2方向で読む。
     shots: {
       'main-tank-surface-side': {
         view: { cameraAzimuthDeg: -90, cameraElevationDeg: 12, cameraDistanceLog: -0.42,

@@ -154,7 +154,7 @@ export interface ConstructionConfirmationPort {
   close(): void;
 }
 
-// 閉じた建造パネルへ同期する、表示資源を持たない空のmodel。
+// 閉じた建造パネルへ同期する、何も持たない表示モデル。
 export function hiddenShipConstructionModel(): ShipConstructionPanelModel {
   return {
     visible: false, shipName: '—', held: null, selection: null,

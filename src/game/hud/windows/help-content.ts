@@ -130,6 +130,7 @@ export function helpRows(): readonly HelpRow[] {
 // 建造中の操作の行。タッチ・マウスの行を先に、キーボードの行を後に並べる。
 function constructionRows(): readonly HelpRow[] {
   return [
+    // タッチ・マウスの操作。
     {
       category: 'construction', input: 'クリック / タップ', label: '置く / 選ぶ',
       description: '手に持っている間は、押した位置の取り付け候補へ置く(候補が無い場所では何もしない)。'
@@ -156,6 +157,7 @@ function constructionRows(): readonly HelpRow[] {
       category: 'construction', input: '右クリック / 長押し', label: '手放す',
       description: '手に持っているものを手放し、選択を解く。',
     },
+    // キーボードの操作。
     keyRow(
       'construction',
       [K.constructionRollLeft, K.constructionRollRight], '回転',

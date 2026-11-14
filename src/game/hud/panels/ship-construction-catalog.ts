@@ -87,6 +87,8 @@ export class ShipConstructionCatalog {
     this.renderBlueprints(heldBlueprintId, blueprints);
   }
 
+  // 表示カテゴリの部品カードを組み、選択中の部品を押下表示にする。カードの並びが
+  // 変わったときだけ DOM を組み直す。
   private renderModules(selectedId: string | null): void {
     if (this.activeCategory === 'blueprints') return;
     const definitions = this.definitions.filter(definition => moduleCategory(definition) === this.activeCategory);
@@ -130,6 +132,8 @@ export class ShipConstructionCatalog {
     for (const [id, button] of this.moduleButtons) button.setOn(id === selectedId);
   }
 
+  // 設計図カードを組み、手持ちの設計図を押下表示にする。カードの並びが変わった
+  // ときだけ DOM を組み直す。
   private renderBlueprints(heldId: string | null, blueprints: readonly ShipBlueprintCardView[]): void {
     if (this.activeCategory !== 'blueprints') return;
     const signature = `blueprints:${this.renamingId ?? ''}:${
@@ -139,6 +143,7 @@ export class ShipConstructionCatalog {
       this.moduleCards.replaceChildren();
       this.moduleButtons.clear();
       this.blueprintHeld.clear();
+      // 一覧が空なら案内の1行だけを出す。
       if (blueprints.length === 0) {
         const empty = document.createElement('p');
         empty.className = 'construction-blueprint-empty';
@@ -150,6 +155,7 @@ export class ShipConstructionCatalog {
       }
       this.blueprintSignature = signature;
     }
+    // 手持ちの設計図を押下表示にする。
     for (const [id, button] of this.blueprintHeld) button.setOn(id === heldId);
   }
 
@@ -262,6 +268,7 @@ export class ShipConstructionCatalog {
       if (dragging) notify('move', e.clientX, e.clientY);
     });
 
+    // ポインタを離したときの処理。ドラッグ中なら 'end' を通知し、直後の click を抑制する。
     const end = (e: PointerEvent): void => {
       if (pointerId !== e.pointerId) return;
       cancelLift();

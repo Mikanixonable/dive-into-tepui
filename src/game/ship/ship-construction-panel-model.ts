@@ -49,6 +49,7 @@ function constructionPropulsion(totals: ShipAssemblyTotals): {
   readonly deltaV: number | null;
   readonly acceleration: number | null;
 } {
+  // 主燃料の消費率を質量の流量(kg/s)へ直す。
   const consumption = totals.mainFuelConsumptionRate * totals.mainFuelMassPerUnit; // kg/s
   if (!(totals.thrust > 0) || !(consumption > 0)) {
     return { deltaV: null, acceleration: null };

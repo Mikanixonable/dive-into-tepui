@@ -36,6 +36,7 @@ export class ShipGhostView {
   private readonly slots: GhostSlot[] = [];
   private disposed = false;
 
+  // ゴーストの根 object を組む。addToScene なら scene へ足す。
   public constructor(
     private readonly scene?: THREE.Scene,
     private readonly modelFactory: ShipModuleModelFactory = buildShipModuleModel,
@@ -47,19 +48,21 @@ export class ShipGhostView {
     if (addToScene) scene?.add(this.object);
   }
 
-  // 宣言の列をそのまま表示する。空なら全て隠す。スロットは宣言数ぶんまで増やして使い回し、
-  // 余った分は model を保ったまま伏せる。
+  // 宣言の列をそのまま表示する。空なら全て隠す。
   public sync(displays: readonly ShipGhostDisplay[]): void {
     if (this.disposed) throw new Error('cannot sync a disposed ShipGhostView');
     this.object.visible = displays.length > 0;
+    // スロットは宣言数ぶんまで増やして使い回す。
     while (this.slots.length < displays.length) this.slots.push(this.createSlot());
     for (const [index, slot] of this.slots.entries()) {
       const display = displays[index];
+      // 宣言を受けなかったスロットは model を保ったまま伏せる。
       if (display === undefined) {
         slot.object.visible = false;
         continue;
       }
       slot.object.visible = true;
+      // modelId が変わったときだけ model を差し替え、transform と色を宣言へ合わせる。
       if (display.modelId !== slot.modelId) this.replaceModel(slot, display.modelId);
       slot.object.position.set(display.position.x, display.position.y, display.position.z);
       const q = qNormalize(display.rotation);
@@ -73,6 +76,7 @@ export class ShipGhostView {
     }
   }
 
+  // 全スロットの表示資源を解放し、scene から根を外す。
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -84,6 +88,7 @@ export class ShipGhostView {
     this.scene?.remove(this.object);
   }
 
+  // 宣言1件ぶんの表示枠を object 配下へ組んで返す。
   private createSlot(): GhostSlot {
     const object = new THREE.Group();
     object.name = `ship-ghost:${this.slots.length}`;
@@ -93,6 +98,7 @@ export class ShipGhostView {
     return { object, model: null, modelId: null };
   }
 
+  // スロットの model を modelId のものへ差し替え、古い model を解放する。
   private replaceModel(slot: GhostSlot, modelId: string): void {
     this.removeModel(slot);
     const model = this.modelFactory(modelId);
@@ -105,6 +111,7 @@ export class ShipGhostView {
     slot.modelId = modelId;
   }
 
+  // スロットから model を外して解放する。model の無いスロットでは何もしない。
   private removeModel(slot: GhostSlot): void {
     if (slot.model === null) return;
     slot.object.remove(slot.model);
@@ -122,6 +129,7 @@ export class ShipGhostView {
       readonly ghost: THREE.Material[];
       readonly ownsOriginal: boolean;
     }[] = [];
+    // メッシュごとに元 material → ゴースト用 material の対応を集める。
     model.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -136,6 +144,7 @@ export class ShipGhostView {
         ownsOriginal: mesh.userData.ownsMaterial === true,
       });
     });
+    // この model が所有する元 material は重複なく解放し、ゴースト用へ張り替えて所有を移す。
     const disposed = new Set<THREE.Material>();
     for (const replacement of replacements) {
       if (replacement.ownsOriginal) {
@@ -152,12 +161,14 @@ export class ShipGhostView {
     }
   }
 
+  // 元 material から、面の向きを引き継いだ透過のゴースト用 material を作る。
   private ghostMaterial(source: THREE.Material): THREE.Material {
     return new THREE.MeshBasicMaterial({
       name: `${source.name}:construction-ghost`,
       color: VALID_COLOR,
       transparent: true,
       opacity: GHOST_OPACITY,
+      // 深度は読むが書かない — 船体に隠れた面は透けて見え、後に描くものも遮らない。
       depthTest: true,
       depthWrite: false,
       side: source.side,
@@ -165,6 +176,7 @@ export class ShipGhostView {
     });
   }
 
+  // スロット内の全メッシュの material の色を書き換える。color を持たない material は触らない。
   private tint(slot: GhostSlot, color: number): void {
     slot.model?.traverse((object) => {
       const mesh = object as THREE.Mesh;

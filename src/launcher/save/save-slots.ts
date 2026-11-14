@@ -103,6 +103,7 @@ export class SaveSlots {
   public deleteSlot(id: string): void {
     const slot = this.index.slots.find((s) => s.id === id);
     if (!slot) return;
+    // スロットが参照する本体(手動セーブ・自動セーブ・設計図)を先に消す。
     for (const history of slot.stages) {
       for (const meta of history.snapshots) this.store.deleteSnapshot(meta.id);
       if (history.autoSaveId) this.store.deleteSnapshot(history.autoSaveId);

@@ -30,6 +30,7 @@ const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 const state = kinematicState<'eci'>(0, v3(), v3());
 
 class TestShip extends Ship {
+  // 既定部品と固定の運動状態で組む。
   public constructor(name: string, id = 'test-ship') {
     super(
       name, 1_000, () => new DynamicMotion(state, { mass: 1_000 }), new NullView(),

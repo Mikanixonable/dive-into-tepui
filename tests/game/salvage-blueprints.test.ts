@@ -63,6 +63,7 @@ interface BareStageFields {
   salvageCargo: SalvageCargo;
 }
 
+// prototype からコンストラクタを通さず Stage を作り、撃破記録が読む欄だけ差し込む。
 function bareStage(
   prototype: object, system: TestDynamicSystem, kills: number, blueprintShelf: ShipBlueprintShelf,
 ): Stage {
@@ -87,6 +88,7 @@ function enemyAt(state: KinematicState): Enemy {
 
 const ENEMY_STATE = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0));
 
+// 棚への設計図追加が記録された鹵獲品の名前。棚に同名があると記録されない。
 function grantedNames(system: TestDynamicSystem): readonly string[] {
   return system.bodies
     .filter((body) => body.kind === 'salvageBlueprintGranted')

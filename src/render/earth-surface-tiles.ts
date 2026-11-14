@@ -22,8 +22,8 @@ interface DisplayedTile extends EarthTileResident {
   readonly fadeStartMs: number | null;
 }
 
-// 暗黙の全球基底と同じz4区画から可視性を絞り、z5全数の評価を避ける。
-// 詳細選択の起点となるz4相当の全球区画。固定なので1回だけ構築する。
+// 詳細選択の起点となるz4相当の全球区画。暗黙の全球基底と同じ区画から可視性を絞り、
+// z5全数の評価を避ける。固定なので1回だけ構築する。
 const SELECTION_ROOTS: readonly EarthTileKey[] = (() => {
   const z = EARTH_TILE_MIN_Z - 1;
   const rows = 2 ** z;
@@ -47,6 +47,7 @@ export class EarthSurfaceTiles {
   private fadeStarts = new Map<string, number>();
   private drawingTimeMs = 0;
 
+  // 表示するタイルの最大段を受ける。配信範囲の外は投げる。
   public constructor(private readonly maxZoom: number = EARTH_TILE_MAX_Z) {
     if (!Number.isInteger(maxZoom) || maxZoom < EARTH_TILE_MIN_Z || maxZoom > EARTH_TILE_MAX_Z) {
       throw new RangeError('Invalid Earth surface display max zoom');

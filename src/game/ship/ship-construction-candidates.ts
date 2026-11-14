@@ -110,6 +110,7 @@ export function pickConstructionTargetAtScreenPoint(
   point: { readonly x: number; readonly y: number },
   radiusSquared: number,
 ): string | null {
+  // 半径内で最も近い候補を線形に探す。
   let best: string | null = null;
   let bestSq = Number.POSITIVE_INFINITY;
   for (const target of targets) {
@@ -137,6 +138,7 @@ export function pickConstructionTarget(
 ): string | null {
   const near = pickConstructionTargetAtScreenPoint(targets, point, radiusSquared);
   if (near !== null) return near;
+  // ノードの半径内に無ければ、ポインタの下のモジュールに属する最寄りの候補へ吸着する。
   const moduleId = hitModule();
   if (moduleId === null) return null;
   let best: string | null = null;

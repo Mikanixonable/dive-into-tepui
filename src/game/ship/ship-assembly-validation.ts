@@ -7,6 +7,7 @@ import {
   isDockingModule, type ShipAssemblyNode, type ShipAssemblyValidation, type ShipConnection,
 } from './ship-assembly-types';
 
+// 接続木の構造的妥当性を検査し、見つかった違反をすべて列挙して返す。
 export function validateShipAssembly(
   nodes: ReadonlyMap<string, ShipAssemblyNode>, connections: readonly ShipConnection[], catalog: ShipModuleCatalog,
 ): ShipAssemblyValidation {
@@ -92,6 +93,7 @@ export function validateShipAssembly(
       occupied.add(moduleId);
     }
   }
+  // 木は根を1つだけ持ち、根から全 module へ循環なしに辿れること。
   const roots = [...nodes.keys()].filter(id => !childIds.has(id));
   if (nodes.size > 0 && roots.length !== 1) errors.push(`assembly must have one root, got ${roots.length}`);
   const visiting = new Set<string>(), visited = new Set<string>();

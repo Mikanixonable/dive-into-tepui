@@ -1,3 +1,5 @@
+// タンパク質の敵と、その配置要求。機能部位ごとの被弾モデルが HP の正本で、判定形状は
+// アセットが持つ球列に固定する。
 import type * as THREE from 'three/webgpu';
 import {
   deserializeKinematicState, kinematicState, type KinematicState, type SerializedKinematicState,

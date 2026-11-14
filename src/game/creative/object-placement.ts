@@ -47,6 +47,7 @@ import type { ViewMode } from '../view/view-mode';
 // 軌道上へ配置できる自機の上限隻数。
 export const MAX_PLACED_SHIPS = 50;
 
+// この種類の配置が、軌道上へ配置できる自機の上限隻数に掛かるかを答える。
 export function reachesPlacedShipLimit(selection: ObjectPlacementSelection, currentShipCount: number): boolean {
   return (selection === 'combat-ship' || selection === 'base-ship')
     && currentShipCount >= MAX_PLACED_SHIPS;
@@ -119,6 +120,7 @@ export class ObjectPlacement {
   // 種類と軌道要素を引き継いで配置パネルを開く。state を軌道要素へ逆算できないときは、
   // 種類だけを引き継ぎ、軌道を複製できなかったことを記録する。
   public openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void {
+    // entityKind をフォームの種類へ写し、軌道要素への逆算を試す。
     const selection: ObjectPlacementSelection = entityKind === 'player' ? 'combat-ship'
       : entityKind === 'base' ? 'base-ship' : entityKind;
     const form = elementsFormFromState(
@@ -295,6 +297,7 @@ export class ObjectPlacement {
     const elements = orbitalElementsFromClassical(
       a, e, form.incDeg, form.raanDeg, form.argpDeg, center, center.stateAt(t),
     );
+    // フォームの真近点角から、元期の平均近点角へ換算する。
     const meanAnomaly0 = meanMotionFromSemiMajor(a, center.def.mu)
       * timeSincePeriapsis(elements, form.nuDeg * DEG);
     return {
@@ -311,6 +314,7 @@ export class ObjectPlacement {
       throw new Error(`buildSlotOrbit: ${form.lagrangeSecondary} は公転していないのでラグランジュ点を持たない`);
     }
     const secondaryId = form.lagrangeSecondary;
+    // ハローは面外振幅だけ、リサジューは面内・面外を記述へ載せる。
     if (form.lagrangeOrbitKind === 'halo') {
       return orbitSlotFromHalo(motion.primary.id, secondaryId, form.lagrangePoint, form.azKm * 1e3);
     }

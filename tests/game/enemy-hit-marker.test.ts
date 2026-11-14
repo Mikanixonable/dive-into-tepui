@@ -12,6 +12,7 @@ function rgb(hex: string): [number, number, number] {
   return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
 }
 
+// cls だけを指定した項目。他の欄はこの点検では読まない。
 function item(cls: string): GroupedMarkerItem {
   return {
     key: 'enemy-1', kind: 'enemy', cls, sym: '', pos: v3(), vel: v3(), priority: 0, name: 'e',

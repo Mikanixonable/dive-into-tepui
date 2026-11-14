@@ -109,6 +109,7 @@ export class StageDebug extends Stage {
   public spawnAssemblyEnemy(): void {
     const player = this.ship;
     if (player === null) return;
+    // 自機の機首方向 2km 先へ、自機と同じ速度で置く。
     const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
     const position = addScaled(player.motion.state.r, forward, 2000);
     const state = kinematicState<'eci'>(player.motion.state.t, position, player.motion.state.v);

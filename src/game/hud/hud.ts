@@ -134,6 +134,7 @@ export class Hud implements HudLayers, Notifier {
     document.body.classList.remove('hud-construction-mode');
     this.constructionMode = false;
     this.applyHudProfile(this.chromeView ?? 'combat', false);
+    // パネルが掴んでいるランの値と操作の口を、null の状態へ同期する。
     this.topBar.sync(null, 0);
     this.vesselPanel.sync(null, 0);
     this.orbitPanel.sync(null, 0);

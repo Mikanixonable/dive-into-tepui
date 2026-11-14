@@ -10,6 +10,7 @@ import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/render
 import { earthTileKey } from '../../src/render/earth-surface-tile-key';
 import { EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION } from '../../src/render/earth-surface-source';
 
+// 入力検査を通る固定のmanifest fixture。
 function manifest(): EarthSurfaceAssetManifest {
   return {
     schemaVersion: 3, datasetId: 'earth-2026-09-09-a', sourceManifestSha256: '0'.repeat(64),
@@ -31,6 +32,7 @@ function manifest(): EarthSurfaceAssetManifest {
   };
 }
 
+// そのmanifestから組んだ入力fixture。
 function source() {
   return earthSurfaceSourceFromManifest('https://example.test/earth/', 'https://example.test/earth/earth-surface.json', manifest());
 }

@@ -72,11 +72,8 @@ export type ObjectPlacementSelection =
 export type ObjectPlacerForm = { readonly selection: ObjectPlacementSelection } & (ElementsForm | LagrangeForm);
 
 // open() の事前入力: 'body' はその天体を基準天体とする軌道要素方式のフォームで開く
-// (他の入力欄は前回の値のまま) — マップの現在フォーカスや天体のプロパティウィンドウから、
-// 新規配置の基準天体を初期値にする経路。'selection' は preset/種類だけを合わせる —
-// 複製元の軌道要素一式は引き継げないときの経路。
-// 'form' は preset/種類を selection に固定し、軌道要素一式をその値へ書き換える —
-// 軌道要素をそのまま引き継げる複製の経路。
+// (他の入力欄は前回の値のまま)。'selection' は preset/種類だけを合わせる。
+// 'form' は preset/種類を selection に固定し、軌道要素一式をその値へ書き換える。
 type ObjectPlacerPreset =
   | { readonly kind: 'body'; readonly celestialBody: ReferenceCelestialBody }
   | { readonly kind: 'selection'; readonly selection: ObjectPlacementSelection }

@@ -14,6 +14,8 @@ const serialized: SerializedLogistics = {
   rcsFuelResupplyEnabled: true,
 };
 
+// 固定の記録から、ステージルールの自動補給フラグだけ違う Logistics を復元して組む。
+// 復元では参照されない entityRegistry/dynamicSystem はスタブで済ませる。
 function logistics(automaticResupply: boolean): Logistics {
   return Logistics.deserialize(
     serialized,

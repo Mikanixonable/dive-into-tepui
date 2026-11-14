@@ -23,6 +23,7 @@ function panelSource(assembly: ShipAssembly, trial: ConstructionTrial | null): S
   };
 }
 
+// 置き換え後の船体を載せた、有効な試し置きの結果を組む。
 function trialOf(assembly: ShipAssembly): ConstructionTrial {
   return {
     valid: true, reason: null, placed: [], totals: assembly.totals(),
@@ -30,6 +31,7 @@ function trialOf(assembly: ShipAssembly): ConstructionTrial {
   };
 }
 
+// 建造パネルの表示モデル導出のテストを登録する。
 export function register(): void {
   test('construction panel model: 主推進の無い船体は Δv と加速度が null', () => {
     // 基地 preset は thruster を持たない。
