@@ -147,8 +147,10 @@ export class CelestialMarkers {
     this.bodyPickableItems.length = 0;
     this.labelledIds.clear();
 
-    // 登録天体。円盤は表示トグルによらず描かれるので全件を候補に残し、記号を出すかだけを分ける。
+    // 登録天体。円盤は表示トグルによらず描かれるので解放済みの全件を候補に残し、記号を出すかだけを分ける。
+    // 未解放の天体は円盤が描かれていても候補に残さない(GAME.md「天体の解放」)。
     for (const body of this.celestialSystem.entities) {
+      if (!visibilityPolicy.isRevealed(body.id)) continue;
       this.bodyPickableItems.push(body);
       if (visibilityPolicy.body(body.id).pickable) this.labelledIds.add(body.id);
     }

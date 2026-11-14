@@ -271,7 +271,7 @@ export class ObjectPicker<T> implements OverlayHandle {
     const restoreOptionFocus = this.isOpen && this.list.contains(document.activeElement);
     const needle = this.filter.value.trim().toLowerCase();
     this.list.innerHTML = '';
-    // 1件も残らなかったら「該当なし」を出す — 空のポップアップは壊れて見える。
+    // 1件も残らなかったら「該当なし」を出す — 空のポップアップは表示が崩れて見える。
     let shown = 0;
     // グループごとに絞り込みへ一致する項目だけを残し、見出し→各行の順に積む。
     for (const group of this.groups) {
