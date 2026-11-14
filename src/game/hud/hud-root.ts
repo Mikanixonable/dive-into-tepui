@@ -250,7 +250,6 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
         <output class="construction-hand-orientation" data-id="construction-hand-orientation"></output>
       </div>
       <div class="construction-button-row" data-id="construction-hand-actions" role="group" aria-label="手元の操作">
-        <div class="construction-hand-blueprint" data-id="construction-hand-blueprint"></div>
       </div>
       <p class="construction-hand-reason ui-status-note ui-status-note--warning hidden" data-id="construction-hand-reason"></p>
       <p class="construction-note hidden" data-id="construction-hand-note"></p>

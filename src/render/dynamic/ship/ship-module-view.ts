@@ -2,7 +2,6 @@
 // 強調の宣言がある間は、model と形状を共有する殻を重ねて描く。選択中は背面に膨らませた
 // 殻で白い輪郭を、それ以外の強調は加算合成で色を重ねる。
 import * as THREE from 'three/webgpu';
-import type { Quat } from '../../../math/quat';
 import { qNormalize } from '../../../math/quat';
 import { add, sub, v3, type Vec3 } from '../../../math/vec3';
 import { deployablePanelPoses, type DeployablePanelKind } from '../../../physics/ship-panel-layout';
@@ -46,10 +45,8 @@ const OUTLINE_OPACITY = 0.9;
 // 選択の輪郭がモジュールの外側へ出る幅 [m]。シルエットを越えて一定の太さで見える。
 const OUTLINE_OFFSET = 0.12;
 
-function copyQuat(q: Quat): Quat {
-  return qNormalize(q);
-}
-
+// object の semantic anchor 名を返す。userData.semanticAnchor を優先し、'anchor:'
+// 接頭辞の object.name も同名として扱う。anchor でなければ null。
 function semanticName(object: THREE.Object3D): string | null {
   const value = object.userData.semanticAnchor;
   if (typeof value === 'string') return value;
@@ -77,6 +74,7 @@ export class ShipModuleView {
   } | null = null;
   private disposed = false;
 
+  // model を組んで object へ足し、最初の表示状態へ同期する。
   public constructor(
     input: ShipModuleRenderInput,
     private readonly modelFactory: ShipModuleModelFactory,
@@ -112,9 +110,11 @@ export class ShipModuleView {
     }
     this.inputValue = input;
     this.centerOffsetValue = v3(centerOffset.x, centerOffset.y, centerOffset.z);
+    // 表示位置は COM 原点へ寄せ、強調のずらしを乗せる。
     const offset = emphasis?.offset ?? ZERO;
-    this.object.position.copy(toThreeVec(add(sub(input.transform.position, centerOffset), offset)));
-    const q = copyQuat(input.transform.rotation);
+    const position = add(sub(input.transform.position, centerOffset), offset);
+    this.object.position.set(position.x, position.y, position.z);
+    const q = qNormalize(input.transform.rotation);
     this.object.quaternion.set(q.x, q.y, q.z, q.w);
     this.syncEmphasis(emphasis);
     this.syncVisualState();
@@ -125,6 +125,7 @@ export class ShipModuleView {
     return this.anchors.get(name) ?? null;
   }
 
+  // prefix で始まる名前付きの module-local anchor を返す。
   public semanticAnchors(prefix: string): readonly THREE.Object3D[] {
     return [...this.anchors]
       .filter(([name]) => name.startsWith(prefix))
@@ -144,6 +145,7 @@ export class ShipModuleView {
     };
   }
 
+  // modelId の model を組み、不透明・影の描画チャンネルへ印す。
   private buildModel(modelId: string): THREE.Object3D {
     const model = this.modelFactory(modelId);
     if (!(model instanceof THREE.Object3D)) throw new Error(`ship model factory returned no Object3D: ${modelId}`);
@@ -155,12 +157,14 @@ export class ShipModuleView {
   // 強調の宣言を殻へ反映する。選択中は bounding box の中心から膨らませた背面の殻で白い
   // 輪郭を描き、それ以外は model の形状を共有する複製へ加算で色を重ねる。
   private syncEmphasis(emphasis: ShipModuleEmphasis | null): void {
+    // 宣言が無ければ殻を伏せて戻る。
     if (emphasis === null) {
       if (this.shell !== null) this.shell.object.visible = false;
       return;
     }
     const shell = this.shell ?? this.buildShell();
     shell.object.visible = true;
+    // tone が切り替わったときだけ、殻の material と拡大を貼り直す。
     const outlined = emphasis.tone === 'selected';
     if (shell.appliedTone !== emphasis.tone) {
       shell.appliedTone = emphasis.tone;
@@ -172,6 +176,7 @@ export class ShipModuleView {
         if (mesh.isMesh) mesh.material = material;
       });
     }
+    // 強さを殻の色・不透明度へ掛ける。
     const intensity = Math.min(1, Math.max(0, emphasis.intensity));
     if (outlined) {
       shell.outline.opacity = OUTLINE_OPACITY * intensity;
@@ -231,6 +236,7 @@ export class ShipModuleView {
     this.shell = null;
   }
 
+  // model 配下の semantic anchor 名 → object の索引を組み直す。同名は先勝ち。
   private indexAnchors(): void {
     this.anchors.clear();
     this.model.traverse((object) => {
@@ -239,8 +245,10 @@ export class ShipModuleView {
     });
   }
 
+  // 展開パネルの姿勢を展開率へ合わせ、module の表示状態を userData へ記録する。
   private syncVisualState(): void {
     const state = this.visualState;
+    // panel-hinge 付きの model は、展開率に応じた姿勢へ各パネルを置く。全損では畳んだままにする。
     const hinge = this.semanticAnchor('panel-hinge');
     if (hinge !== null && state.deployed !== null) {
       hinge.visible = state.hp > 0;
@@ -277,10 +285,12 @@ export class ShipModuleView {
     disposeOwnedRenderResources(old);
     this.object.add(this.model);
     this.indexAnchors();
+    // 殻は古い形状の複製なので畳み、次の sync で新しい形状へ組み直される。
     this.disposeShell();
     this.sync(input, centerOffset, emphasis);
   }
 
+  // 殻と model の表示資源を解放し、anchor 索引を空にする。
   public dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
@@ -291,10 +301,6 @@ export class ShipModuleView {
   }
 }
 
-function toThreeVec(value: Vec3): THREE.Vector3 {
-  return new THREE.Vector3(value.x, value.y, value.z);
-}
-
 // 殻の複製のローカル bounding box から、輪郭用の拡大の縮尺とずらしを求める。軸ごとの縮尺は
 // 面から両側へ OUTLINE_OFFSET ずつ出る値、ずらしは拡大の基点を box の中心へ置くためのもの。
 // 空の box しか無い複製は拡大しない。
@@ -302,6 +308,7 @@ function outlineExpansion(object: THREE.Object3D): {
   outlineScale: THREE.Vector3;
   outlineShift: THREE.Vector3;
 } {
+  // 複製のローカル座標へ全メッシュの bounding box を畳み込む。
   object.updateMatrixWorld(true);
   const inverse = new THREE.Matrix4().copy(object.matrixWorld).invert();
   const relative = new THREE.Matrix4();
@@ -320,6 +327,7 @@ function outlineExpansion(object: THREE.Object3D): {
   if (bounds.isEmpty()) return { outlineScale, outlineShift };
   const size = bounds.getSize(new THREE.Vector3());
   const center = bounds.getCenter(new THREE.Vector3());
+  // 軸ごとに、box の面から両側へ OUTLINE_OFFSET 出る縮尺と、中心基点のずらしを求める。
   for (const axis of ['x', 'y', 'z'] as const) {
     if (size[axis] < 1e-6) continue;
     const scale = 1 + (2 * OUTLINE_OFFSET) / size[axis];

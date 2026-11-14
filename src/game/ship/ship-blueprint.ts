@@ -1,5 +1,5 @@
 // 設計図: 先端部の構成を名前付きで保存した値と、その形の検証。ランへ渡す一覧の面もここで宣言する。
-import { restoreShipAssembly, type SerializedShipAssembly } from './ship-save';
+import { deserializeShipAssembly, type SerializedShipAssembly } from './ship-assembly-serialization';
 
 // 設計図1件。識別子・名前・作成した実時刻と、先端部を直列化した形を持つ。
 // 不変で JSON の素の値だけから成るので、この型をそのまま記録の形に使う(R12)。
@@ -21,7 +21,7 @@ export function isShipBlueprint(value: unknown): value is ShipBlueprint {
   if (!Number.isFinite(blueprint.createdAtReal)) return false;
   try {
     // 接続木の妥当性と根が1つであることは、復元が検証に含める。
-    restoreShipAssembly(blueprint.piece);
+    deserializeShipAssembly(blueprint.piece);
   } catch {
     return false;
   }

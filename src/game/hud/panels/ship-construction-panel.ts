@@ -92,8 +92,8 @@ export class ShipConstructionPanel {
   private readonly slotButtons = new Map<string, Button>();
   private historySignature = '';
   private readonly historyButtons: Button[] = [];
-  // 選択メニューの追従先(表示の導出が毎フレーム書き込む選択モジュールの画面位置)と、
-  // 直近の model から導いたメニューの可否。両方が揃ったときだけメニューを出す。
+  // 選択メニューの追従先(選択モジュールの画面位置)と、直近の model から導いた
+  // メニューの可否。両方が揃ったときだけメニューを出す。
   private selectionAnchor: Projected | null = null;
   private menuSelection: { canEdit: boolean } | null = null;
 
@@ -202,7 +202,6 @@ export class ShipConstructionPanel {
     this.panel.classList.toggle('hidden', !model.visible);
     this.shipName.textContent = model.shipName;
 
-    // 手元バーは3状態の言い切りと状態ごとの操作を自分で組む。
     this.hand.sync(model);
 
     // 選択メニューが出せるのは選んでいて手が空いている間だけ。可否は model から、
@@ -243,7 +242,7 @@ export class ShipConstructionPanel {
   }
 
   // 選択中モジュールの画面位置を受け取り、選択メニューの追従先として記録する。
-  // 表示の導出が毎フレーム呼ぶ。選択が無い・投影できないときは null。
+  // 選択が無い・投影できないときは null。
   public syncSelectionMenu(anchor: Projected | null): void {
     this.selectionAnchor = anchor;
     this.updateSelectionMenu();
@@ -269,7 +268,7 @@ export class ShipConstructionPanel {
 
   // 候補一覧に変更があった場合のみボタンを再生成し、選択状態は毎フレーム反映する。
   private renderSlots(model: ShipConstructionPanelModel): void {
-    const signature = model.targets.map(slot => `${slot.id}:${slot.valid}:${slot.reason ?? ''}`).join('|');
+    const signature = model.targets.map(slot => `${slot.id}:${slot.valid}:${slot.reason ?? ''}:${slot.label}`).join('|');
     if (signature !== this.slotSignature) {
       this.slotList.replaceChildren();
       this.slotButtons.clear();
@@ -296,12 +295,13 @@ export class ShipConstructionPanel {
     }
   }
 
-  // 履歴一覧に変更があった場合のみボタンを再生成する。新しい操作が先頭に来るよう逆順で並べる。
+  // 履歴一覧を model.history へ揃える。件名の並びが変わったときだけボタンを組み直す。
   private renderHistory(model: ShipConstructionPanelModel): void {
     const signature = model.history.names.join('|');
     if (signature !== this.historySignature) {
       this.historyList.replaceChildren();
       this.historyButtons.length = 0;
+      // 新しい操作が先頭に来るよう逆順で並べる。
       for (let index = model.history.names.length - 1; index >= 0; index--) {
         const position = index;
         const button = new Button(model.history.names[index] ?? '', () => this.onJumpHistory?.(position), undefined, 'dense');
@@ -311,6 +311,7 @@ export class ShipConstructionPanel {
       }
       this.historySignature = signature;
     }
+    // 履歴の現在位置にある項目を押下表示にする。
     for (const [offset, button] of this.historyButtons.entries()) {
       button.setOn(model.history.names.length - 1 - offset === model.history.position);
     }
@@ -333,16 +334,17 @@ export class ShipConstructionPanel {
   }
 
   // 配置後差分を「→ 変化後の値 (±差)」の形で同期する。hasPreview は試し置きの見積りの有無。
-  // 値なし(null)が絡む変化は変化後の値だけを出す。
   private syncPreview(
     el: HTMLElement, current: number | null, preview: number | null, hasPreview: boolean,
     unit: ConstructionMetricUnit,
   ): void {
+    // 見積りが無い、または差が出ないときは出さない。
     if (!hasPreview || preview === current
       || (preview !== null && current !== null && Math.abs(preview - current) < 1e-9)) {
       el.textContent = '';
       return;
     }
+    // 値なし(null)が絡む変化は差を組めないので、変化後の値だけを出す。
     if (current === null || preview === null) {
       el.textContent = `→ ${preview === null ? '—' : formatConstructionMetric(preview, unit)}`;
       return;

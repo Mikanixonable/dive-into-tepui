@@ -4,7 +4,7 @@
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import { ShipAssembly } from './ship-assembly';
 import { createShipModuleInstance, type ShipModuleState } from './ship-module-instance';
-import { serializeShipAssembly, type SerializedShipAssembly } from './ship-save';
+import { serializeShipAssembly, type SerializedShipAssembly } from './ship-assembly-serialization';
 import type { ShipBlueprintShelf } from './ship-blueprint';
 
 // 鹵獲の設計図1件。kills は授与されるラン内の撃破数、id・name は棚での重複判定に使う固定値。

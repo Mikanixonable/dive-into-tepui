@@ -1,7 +1,6 @@
 // 建造の入口: 操作対象の船体が持つ使用可能な建造ドックの列挙と、指定・最寄りのドックから
 // 建造セッションを開く処理。始められない理由はヒントで通知する。
-import { qRotate } from '../../math/quat';
-import { add, lenSq, sub, type Vec3 } from '../../math/vec3';
+import { lenSq, sub, type Vec3 } from '../../math/vec3';
 import type { ShipModuleInstance } from './ship-module-instance';
 import type { ModularShip } from './modular-ship';
 import type { Notifier } from '../../hud/notifier';
@@ -13,7 +12,7 @@ export function isUsableConstructionDock(module: ShipModuleInstance): boolean {
 }
 
 // ship が持つ使用可能な建造ドックの一覧。
-export function usableConstructionDocks(ship: ModularShip): readonly ShipModuleInstance[] {
+function usableConstructionDocks(ship: ModularShip): readonly ShipModuleInstance[] {
   return ship.assembly.modules.filter(isUsableConstructionDock);
 }
 
@@ -52,6 +51,7 @@ export class ConstructionEntry {
       this.notifier.hint('使用可能な建造ドックがありません', undefined, 'warn');
       return;
     }
+    // 使用可能なドックのうち、カメラに最も近いものを選んで始める。
     let nearest: ShipModuleInstance | null = null;
     let nearestDistance = Infinity;
     for (const dock of docks) {
@@ -70,6 +70,5 @@ export class ConstructionEntry {
 function moduleEci(ship: ModularShip, moduleId: string): Vec3 | null {
   const transform = ship.assembly.worldTransformOf(moduleId);
   if (transform === null) return null;
-  const root = sub(ship.motion.state.r, qRotate(ship.motion.att.q, ship.motion.centerOffset));
-  return add(root, qRotate(ship.motion.att.q, transform.position));
+  return ship.motion.assemblyToEci(transform.position);
 }

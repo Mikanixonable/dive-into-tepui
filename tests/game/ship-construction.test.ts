@@ -6,7 +6,7 @@ import { createShipModuleInstance } from '../../src/game/ship/ship-module-instan
 import {
   constructionTargetId, enumerateConstructionTargets,
 } from '../../src/game/ship/ship-construction-rules';
-import { restoreDockedVessels, serializeShipAssembly } from '../../src/game/ship/ship-save';
+import { deserializeDockedVessels, serializeShipAssembly } from '../../src/game/ship/ship-assembly-serialization';
 import { CommandQueue } from '../../src/game/command-queue';
 import { CommandCompletion } from '../../src/game/command-completion';
 import {
@@ -76,6 +76,7 @@ function createConstruction(ship: ConstructionTestShip, queue: CommandQueue, blu
     blueprints,
     { record: () => {} } as unknown as RunEventSink,
   );
+  // 同期された直近の model を読む口を添えて返す。
   return { construction, lastModel: () => lastModel };
 }
 
@@ -87,6 +88,7 @@ function sideSlotTarget(construction: ShipConstruction, parentId: string, slot: 
   );
 }
 
+// ShipConstruction のセッションと各操作のテストを登録する。
 export function register(): void {
   test('ship construction: catalog definitions expose presentation metadata', () => {
     assert.equal(SHIP_MODULE_CATALOG.require('cockpit-standard').name, 'コックピット');
@@ -101,12 +103,12 @@ export function register(): void {
       SHIP_MODULE_CATALOG.require('docking-port-standard'), 'port',
     ));
     const merged = host.mergedAtDock(guest, 'dock-left', 'port', 'guest');
-    assert.deepEqual(restoreDockedVessels([{
+    assert.deepEqual(deserializeDockedVessels([{
       connectionId: merged.connectionId, id: 'guest-ship', name: 'guest',
     }], merged.assembly), [{
       connectionId: merged.connectionId, id: 'guest-ship', name: 'guest',
     }]);
-    assert.throws(() => restoreDockedVessels([], merged.assembly), /do not match docking connections/);
+    assert.throws(() => deserializeDockedVessels([], merged.assembly), /do not match docking connections/);
   });
 
   // (a) 撤去は先端部ごと消え、起点側は残る

@@ -410,6 +410,7 @@ export class Input {
     const grab = this.grabs.get(e.pointerId);
     if (grab !== undefined) this.releaseGrab(grab, e);
     this.pointers.delete(e.pointerId);
+    // 掴んでいた指でなければ、押下中・ドラッグ中のジェスチャ状態ごと畳む。
     if (grab === undefined) {
       this.dragging = false;
       this.panDragging = false;
@@ -422,6 +423,7 @@ export class Input {
     this._pointerPoint = null;
   };
 
+  // ポインタがキャンバスを出たら、追跡しているポインタ位置を消す。
   private readonly handlePointerLeave = (): void => {
     this._pointerPoint = null;
   };
@@ -560,10 +562,10 @@ export class Input {
 
   // ポインタがキャンバス内にあれば最後の位置を記録し、外に出ていれば null にする。
   private syncPointerPoint(e: PointerEvent): void {
+    const point = this.canvasPoint(e.clientX, e.clientY);
     const rect = this.target.getBoundingClientRect();
-    const inside = e.clientX >= rect.left && e.clientX < rect.right
-      && e.clientY >= rect.top && e.clientY < rect.bottom;
-    this._pointerPoint = inside ? { x: e.clientX - rect.left, y: e.clientY - rect.top } : null;
+    this._pointerPoint = point.x >= 0 && point.x < rect.width && point.y >= 0 && point.y < rect.height
+      ? point : null;
   }
 
   // code が押下中かつ未確保か返す。
@@ -661,6 +663,7 @@ export class Input {
   public grabbedDrag(id: number): GrabbedDrag | null {
     for (const grab of this.grabs.values()) {
       if (grab.id !== id) continue;
+      // 該当する掴みを見つけたらコピーして返す(呼び手が中身を変えても記録へ影響しない)。
       return {
         id: grab.id,
         start: { ...grab.start },
@@ -729,7 +732,7 @@ export class Input {
     return this.frameMouse;
   }
 
-  // window/document/canvas(target)に張った12個のリスナーを外し、releaseAll() で
+  // window/document/canvas(target)に張った13個のリスナーを外し、releaseAll() で
   // 押下中・ドラッグ中の状態も畳む。target は GameScene 所有で Input 自身より長生きするため、
   // ここで確実に外さないと次に構築する Input へも同じイベントが二重に配送され続ける。
   public dispose(): void {

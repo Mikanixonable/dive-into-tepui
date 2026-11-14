@@ -1,7 +1,7 @@
 // 建造の船体編集命令: 置く・付け替える・撤去する・割り込む・回す・写しで置き換える。
 // 各命令は適用時に規則(placementFor)で再検証し、写しへの適用が終わってから実体を差し替える。
 import { createShipModuleInstance } from './ship-module-instance';
-import { placementFor } from './ship-construction-rules';
+import { pieceRootId, placementFor } from './ship-construction-rules';
 import { tryConstructionPlacement } from './ship-construction-preview';
 import { pieceOfModule, type AssemblyPiece } from './ship-assembly-graft';
 import {
@@ -10,7 +10,7 @@ import {
 } from './ship-assembly-transform';
 import type { ModuleTransform, SideSlot } from './ship-assembly-types';
 import type { ShipAssembly } from './ship-assembly';
-import { restoreShipAssembly, type SerializedShipAssembly } from './ship-save';
+import { deserializeShipAssembly, type SerializedShipAssembly } from './ship-assembly-serialization';
 import type { ConstructionHeld, ConstructionSymmetry, ConstructionTarget } from './ship-construction-types';
 
 // 編集を受ける船体の読み取り・同期面。ドックの状態は assembly の接続から読む。
@@ -50,7 +50,7 @@ export class ShipConstructionEdits {
     for (const [index, plan] of placement.attachments.entries()) {
       if (held.kind === 'piece') {
         const piece = detached!;
-        placedRootId ??= pieceRootIdOf(piece);
+        placedRootId ??= pieceRootId(piece);
         work.attachPiece(
           piece, plan.parentId, plan.transform, plan.connectionKind,
           plan.sideSlot ?? undefined, undefined, detachedConnectionId ?? undefined,
@@ -68,7 +68,7 @@ export class ShipConstructionEdits {
         placedRootId ??= id;
       } else {
         const piece = held.piece.copiedAsNew(id);
-        placedRootId ??= pieceRootIdOf(piece);
+        placedRootId ??= pieceRootId(piece);
         work.attachPiece(
           piece, plan.parentId, plan.transform, plan.connectionKind,
           plan.sideSlot ?? undefined,
@@ -157,12 +157,12 @@ export class ShipConstructionEdits {
   // 船体を直列化した写しの時点へ戻す。戻す先に起点ドックが無い写しは拒否する。
   public replaceAssembly(serialized: SerializedShipAssembly): void {
     this.validateAnchor();
-    const restored = restoreShipAssembly(serialized);
-    const anchor = restored.module(this.anchorId);
+    const deserialized = deserializeShipAssembly(serialized);
+    const anchor = deserialized.module(this.anchorId);
     if (anchor?.kind !== 'dock' || anchor.hp <= 0) {
       throw new Error('戻す先の船体に起点のドックがありません');
     }
-    this.ship.assembly.replaceWith(restored);
+    this.ship.assembly.replaceWith(deserialized);
     this.ship.synchronizeAssemblyState();
   }
 
@@ -185,10 +185,4 @@ export class ShipConstructionEdits {
     if (module?.kind !== 'dock') throw new Error(`not a construction dock: ${this.anchorId}`);
     if (module.hp <= 0) throw new Error('健全な接舷部が必要です');
   }
-}
-
-// 接ぎ木の根(取り付けるモジュール)の id。piece は attachPiece で消費済みでも moduleIds は残る。
-function pieceRootIdOf(piece: ShipAssembly): string | null {
-  const childIds = new Set(piece.graph.map(edge => edge.childId));
-  return piece.moduleIds.find(id => !childIds.has(id)) ?? null;
 }

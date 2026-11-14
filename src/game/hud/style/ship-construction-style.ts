@@ -104,9 +104,6 @@ export const SHIP_CONSTRUCTION_STYLE = `
   min-width: 0; overflow: hidden; color: var(--text-dim); font-size: var(--font-xxs);
   margin-left: auto; text-overflow: ellipsis; white-space: nowrap;
 }
-#ship-construction-panel .construction-hand-blueprint {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2); align-items: center;
-}
 #ship-construction-panel .construction-hand-reason { margin: 0; }
 #ship-construction-panel .construction-button-row {
   display: flex; flex-wrap: wrap; gap: var(--space-2);

@@ -5,7 +5,7 @@ import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { isShipBlueprint } from '../../src/game/ship/ship-blueprint';
-import { serializeShipAssembly, type SerializedShipAssembly } from '../../src/game/ship/ship-save';
+import { serializeShipAssembly, type SerializedShipAssembly } from '../../src/game/ship/ship-assembly-serialization';
 
 // tank → thruster の2モジュールから成る先端部。
 function piece(): SerializedShipAssembly {

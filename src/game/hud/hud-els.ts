@@ -26,7 +26,6 @@ export const HUD_ELEMENT_IDS = [
   'construction-delta-v-preview',
   'construction-hand',
   'construction-hand-actions',
-  'construction-hand-blueprint',
   'construction-hand-name',
   'construction-hand-note',
   'construction-hand-orientation',

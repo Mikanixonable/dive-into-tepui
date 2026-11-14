@@ -133,24 +133,24 @@ export class ShipAutopilot {
   // 燃焼ごとの終わりに呼ぶ再求解のコールバック口(求解本体は別フェーズ)。
   private burnCompleted: ((host: AutopilotHost, node: KinematicState) => void) | null = null;
 
-  // host はこの自動操縦が指令する艦。saved があれば記録から段・予定・中断を復元する。
+  // host はこの自動操縦が指令する艦。serialized があれば記録から段・予定・中断を復元する。
   public constructor(
     private readonly host: AutopilotHost,
-    saved?: SerializedShipAutopilot,
+    serialized?: SerializedShipAutopilot,
   ) {
-    if (saved !== undefined) {
-      this.phase = saved.phase;
-      this.abortedNode = saved.abortedNode && deserializeKinematicState(saved.abortedNode);
-      if (saved.aimStart !== null && saved.burnStart !== null && saved.burnEnd !== null
-        && saved.burnNode !== null) {
+    if (serialized !== undefined) {
+      this.phase = serialized.phase;
+      this.abortedNode = serialized.abortedNode && deserializeKinematicState(serialized.abortedNode);
+      if (serialized.aimStart !== null && serialized.burnStart !== null && serialized.burnEnd !== null
+        && serialized.burnNode !== null) {
         this.scheduled = {
-          node: deserializeKinematicState(saved.burnNode),
-          aimStart: saved.aimStart,
-          burnStart: saved.burnStart,
-          burnEnd: saved.burnEnd,
+          node: deserializeKinematicState(serialized.burnNode),
+          aimStart: serialized.aimStart,
+          burnStart: serialized.burnStart,
+          burnEnd: serialized.burnEnd,
         };
-        this.hardEnd = saved.burnStart
-          + BURN_OVERRUN_FACTOR * (saved.burnEnd - saved.burnStart) + BURN_OVERRUN_FLAT;
+        this.hardEnd = serialized.burnStart
+          + BURN_OVERRUN_FACTOR * (serialized.burnEnd - serialized.burnStart) + BURN_OVERRUN_FLAT;
       }
     }
   }

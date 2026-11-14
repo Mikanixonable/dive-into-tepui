@@ -60,6 +60,7 @@ function validSideSlot(value: unknown): value is SideSlot {
   return typeof value === 'string' && SIDE_SLOTS.includes(value as SideSlot);
 }
 
+// 接続変換が有限で、回転がゼロでないか。
 function validTransform(connection: SerializedShipConnection): boolean {
   const { position: p, rotation: q } = connection;
   return finite(p.x) && finite(p.y) && finite(p.z)
@@ -83,39 +84,41 @@ function cockpitAxialMigrationSpacing(
 }
 
 // definition の discriminant と可変値を検証し、正規化済み instance を返す。
-function moduleState(saved: SerializedShipModule): ShipModuleInstance {
-  const definition = SHIP_MODULE_CATALOG.get(saved.definitionId);
-  if (definition === null || definition.kind !== saved.kind) {
-    throw new Error(`unknown or mismatched ship module definition: ${saved.definitionId}`);
+function moduleState(serialized: SerializedShipModule): ShipModuleInstance {
+  const definition = SHIP_MODULE_CATALOG.get(serialized.definitionId);
+  if (definition === null || definition.kind !== serialized.kind) {
+    throw new Error(`unknown or mismatched ship module definition: ${serialized.definitionId}`);
   }
-  if (saved.id.length === 0 || !finite(saved.hp) || !finite(saved.temperature)) {
-    throw new Error(`invalid ship module state: ${saved.id}`);
+  if (serialized.id.length === 0 || !finite(serialized.hp) || !finite(serialized.temperature)) {
+    throw new Error(`invalid ship module state: ${serialized.id}`);
   }
-  if (saved.kind === 'tank') {
-    if (!finite(saved.fuel) || definition.abilities.fuelKind !== saved.fuelKind) {
-      throw new Error(`invalid tank state: ${saved.id}`);
+  // kind ごとに、その kind が持つ可変欄を検査して instance を組む。
+  if (serialized.kind === 'tank') {
+    if (!finite(serialized.fuel) || definition.abilities.fuelKind !== serialized.fuelKind) {
+      throw new Error(`invalid tank state: ${serialized.id}`);
     }
-    return createShipModuleInstance(definition, saved.id, saved);
+    return createShipModuleInstance(definition, serialized.id, serialized);
   }
-  if (saved.kind === 'booster') {
-    if (!finite(saved.fuel) || typeof saved.ignited !== 'boolean') {
-      throw new Error(`invalid booster state: ${saved.id}`);
+  if (serialized.kind === 'booster') {
+    if (!finite(serialized.fuel) || typeof serialized.ignited !== 'boolean') {
+      throw new Error(`invalid booster state: ${serialized.id}`);
     }
-    return createShipModuleInstance(definition, saved.id, saved);
+    return createShipModuleInstance(definition, serialized.id, serialized);
   }
-  if (saved.kind === 'radiator' || saved.kind === 'solar_panel') {
-    if (!finite(saved.deployed)) throw new Error(`invalid deployable state: ${saved.id}`);
-    return createShipModuleInstance(definition, saved.id, saved);
+  if (serialized.kind === 'radiator' || serialized.kind === 'solar_panel') {
+    if (!finite(serialized.deployed)) throw new Error(`invalid deployable state: ${serialized.id}`);
+    return createShipModuleInstance(definition, serialized.id, serialized);
   }
-  return createShipModuleInstance(definition, saved.id, saved);
+  return createShipModuleInstance(definition, serialized.id, serialized);
 }
 
-// assembly の module state と接続木を v4 の平坦な保存形へ畳む。
+// assembly の module state と接続木を v4 の平坦な直列化形へ畳む。
 export function serializeShipAssembly(assembly: ShipAssembly): SerializedShipAssembly {
   return {
     playerOwned: assembly.playerOwned,
     explicitTransforms: true,
     modules: assembly.modules.map(module => ({ ...module })),
+    // 接続は変換を分解して素の値へ畳む。任意項目は値があるときだけ載せる。
     connections: assembly.graph.map(connection => ({
       id: connection.id,
       parentId: connection.parentId,
@@ -129,24 +132,24 @@ export function serializeShipAssembly(assembly: ShipAssembly): SerializedShipAss
   };
 }
 
-// v4 の保存形を検証し、接続木の親から子へ assembly を復元する。
-export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly {
-  if (typeof saved?.playerOwned !== 'boolean' || !Array.isArray(saved.modules)
-    || !Array.isArray(saved.connections) || saved.modules.length === 0) {
-    throw new Error('invalid ship assembly save data');
+// v4 の直列化形を検証し、接続木の親から子へ assembly を復元する。
+export function deserializeShipAssembly(serialized: SerializedShipAssembly): ShipAssembly {
+  if (typeof serialized?.playerOwned !== 'boolean' || !Array.isArray(serialized.modules)
+    || !Array.isArray(serialized.connections) || serialized.modules.length === 0) {
+    throw new Error('invalid ship assembly serialized data');
   }
   // module state と ID の一意性を接続木より先に確定する。
   const modules = new Map<string, ShipModuleInstance>();
-  for (const value of saved.modules) {
+  for (const value of serialized.modules) {
     const module = moduleState(value);
-    if (modules.has(module.id)) throw new Error(`duplicate saved ship module: ${module.id}`);
+    if (modules.has(module.id)) throw new Error(`duplicate serialized ship module: ${module.id}`);
     modules.set(module.id, module);
   }
-  if (saved.connections.length !== modules.size - 1) throw new Error('saved ship assembly is not a tree');
+  if (serialized.connections.length !== modules.size - 1) throw new Error('serialized ship assembly is not a tree');
   // 各 edge の参照・種別・変換と、子の親が一意であることを検証する。
   const incoming = new Set<string>();
   const connectionIds = new Set<string>();
-  for (const connection of saved.connections) {
+  for (const connection of serialized.connections) {
     if (typeof connection?.id !== 'string' || connection.id.length === 0
       || typeof connection.parentId !== 'string' || typeof connection.childId !== 'string'
       || !validConnectionKind(connection.kind)
@@ -156,36 +159,36 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
       || connection.parentId === connection.childId
       || !modules.has(connection.parentId) || !modules.has(connection.childId)
       || !validTransform(connection)) {
-      throw new Error(`invalid saved ship connection: ${connection.id}`);
+      throw new Error(`invalid serialized ship connection: ${connection.id}`);
     }
     connectionIds.add(connection.id);
     incoming.add(connection.childId);
   }
   const roots = [...modules.keys()].filter(id => !incoming.has(id));
-  if (roots.length !== 1) throw new Error('saved ship assembly must have one root');
+  if (roots.length !== 1) throw new Error('serialized ship assembly must have one root');
 
   // root から到達可能になった edge を順に取り込み、cycle と切断を検出する。
-  const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, saved.playerOwned);
+  const assembly = new ShipAssembly(SHIP_MODULE_CATALOG, serialized.playerOwned);
   const rootId = roots[0];
   const root = rootId === undefined ? undefined : modules.get(rootId);
-  if (root === undefined) throw new Error('saved ship assembly root is missing');
+  if (root === undefined) throw new Error('serialized ship assembly root is missing');
   assembly.addRoot(root);
-  const pending = [...saved.connections];
+  const pending = [...serialized.connections];
   while (pending.length > 0) {
     const index = pending.findIndex(connection => assembly.module(connection.parentId) !== null);
-    if (index < 0) throw new Error('saved ship assembly contains a cycle');
+    if (index < 0) throw new Error('serialized ship assembly contains a cycle');
     const connection = pending[index];
-    if (connection === undefined) throw new Error('saved ship connection is missing');
+    if (connection === undefined) throw new Error('serialized ship connection is missing');
     pending.splice(index, 1);
     const module = modules.get(connection.childId);
-    if (module === undefined) throw new Error(`saved ship module is missing: ${connection.childId}`);
+    if (module === undefined) throw new Error(`serialized ship module is missing: ${connection.childId}`);
     let childTransform = {
       position: v3(connection.position.x, connection.position.y, connection.position.z),
       rotation: { ...connection.rotation },
     };
     let sideSlot = connection.sideSlot;
     // 旧形式の記録だけを補正する。印のある記録の変換は検証済みのまま使う。
-    if (saved.explicitTransforms !== true) {
+    if (serialized.explicitTransforms !== true) {
       if (connection.kind === 'side') {
         const parentDefinition = assembly.definition(connection.parentId);
         const childDefinition = SHIP_MODULE_CATALOG.get(module.definitionId);
@@ -235,15 +238,16 @@ export function restoreShipAssembly(saved: SerializedShipAssembly): ShipAssembly
 }
 
 // 接舷船 identity が現在の docking edge と一対一に対応することを検証する。
-export function restoreDockedVessels(
-  saved: readonly SerializedDockedVessel[], assembly: ShipAssembly,
+export function deserializeDockedVessels(
+  serialized: readonly SerializedDockedVessel[], assembly: ShipAssembly,
 ): readonly SerializedDockedVessel[] {
-  if (!Array.isArray(saved)) throw new Error('invalid docked vessel state');
+  if (!Array.isArray(serialized)) throw new Error('invalid docked vessel state');
   const connectionIds = new Set(assembly.dockingConnections().map(connection => connection.id));
-  if (saved.length !== connectionIds.size) throw new Error('docked vessel records do not match docking connections');
+  if (serialized.length !== connectionIds.size) throw new Error('docked vessel records do not match docking connections');
   const seen = new Set<string>();
   const vesselIds = new Set<string>();
-  return saved.map((record) => {
+  // 各記録の connectionId・船 id・name を検査して写す。
+  return serialized.map((record) => {
     if (record === null || typeof record !== 'object'
       || typeof record.connectionId !== 'string'
       || !connectionIds.has(record.connectionId) || seen.has(record.connectionId)
