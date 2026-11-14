@@ -276,7 +276,7 @@ export function bandShares(rowPowers, bands) {
 
 // 二値マスクの箱数え。1 辺 ε [px] (2 の冪) の箱で覆い、雲を含む箱の数を数える。
 // ε は 2 px から min(width, height) / 2 まで。
-function boxCounts(mask, width, height) {
+export function boxCounts(mask, width, height) {
   const counts = [];
   for (let epsilon = 2; epsilon * 2 <= Math.min(width, height); epsilon *= 2) {
     const boxesX = Math.ceil(width / epsilon);
