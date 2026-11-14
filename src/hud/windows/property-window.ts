@@ -2,7 +2,7 @@
 // 関連物体一覧・改名 UI という4つの副概念を束ね、本文でのそれぞれの並び順と、本文の高さが
 // 変わったときのはみ出し補正(reclamp)をいつ行うかを決める。表示専用で、プロパティの値を
 // 対応するコンポーネントが導出する。複数存続できる想定のため ContextMenu と異なり呼び出し
-// ごとに個別のインスタンスを持つ。#hud の子として window レイヤへ置くため、
+// ごとに個別のインスタンスを持つ。#hud の子として window レイヤへ置き、
 // HUD 内の他ウィンドウとスコープを分けるため、主要セレクタを `#hud` から始める。
 import { injectOnce } from '../inject-style';
 import { MQ_COMPACT } from '../breakpoints';
@@ -321,7 +321,7 @@ export class PropertyWindow<A extends string = string> {
     return this.win.clipped;
   }
 
-  // 操作ウィジェットを本文の先頭に起き、プロパティ行が伸びても先頭から操作できる位置に置く。
+  // 操作ウィジェットを本文の先頭に置き、プロパティ行が伸びても先頭から操作できる位置に置く。
   // 所有権は導入元に残り、null で取り外す。
   public setControls(controls: HTMLElement | null): void {
     this.controlsEl.replaceChildren();

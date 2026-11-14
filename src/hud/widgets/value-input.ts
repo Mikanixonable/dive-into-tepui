@@ -43,7 +43,7 @@ export class ValueInput {
     stopDragPropagation(this.element);
     expandHitTarget(this.element);
     this.element.addEventListener('keydown', (e) => {
-      // 打鍵をゲーム操作と誤認されないよう伝播を止める。
+      // 打鍵がゲーム操作と誤認されないよう伝播を止める。
       e.stopPropagation();
       if (e.key === 'Enter') {
         e.preventDefault();

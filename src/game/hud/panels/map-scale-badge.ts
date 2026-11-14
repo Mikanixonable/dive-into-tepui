@@ -19,7 +19,7 @@ export class MapScaleBadge {
   // 同じ対象を見ている間、表示値はズームに追従する。縮尺が決まらなければパネルを隠す。
   public sync(screenScale: ScaleFn, focus: Vec3): void {
     const panel = this.els.get('map-scale');
-    // 基底の CSS 規則(#hud-map-scale)が display:none なので、'' へ戻すと表示に復帰しない。
+    // ベースの CSS 規則(#hud-map-scale)が display:none なので、'' へ戻すと表示に復帰しない。
     panel.style.display = 'block';
 
     const metersPerPixel = screenScale(focus);

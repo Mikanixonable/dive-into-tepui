@@ -42,7 +42,7 @@ import type { ThemePalette } from '../../theme';
 
 export class HudPanelPresenter {
   private readonly viewBadge: ViewBadge;
-  // パネル操作コマンドをキューへエンキューするインターフェース。
+  // パネル操作コマンドをキューへ積むインターフェース。
   private readonly simSpeedCommands: SimSpeedCommands;
   private readonly deployableCommands: DeployableCommands;
   private readonly orbitReferenceCommands: OrbitReferenceCommands;
@@ -62,7 +62,7 @@ export class HudPanelPresenter {
     private readonly objectWindows: ObjectWindows,
     private readonly cameraSystem: CameraSystem,
     private readonly navigationCommand: NavigationCommand,
-    // 艦のステータスパネルの「建造」の押下先と、建造中かの読み取り。
+    // 艦のステータスパネルの「建造」の押下先と、建造中かどうかの読み取り。
     private readonly startConstruction: () => void,
     private readonly constructionActive: () => boolean,
   ) {

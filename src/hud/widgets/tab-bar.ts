@@ -29,13 +29,13 @@ export class TabBar<T> {
 
   // タブ列を items へ一括で差し替える。SegmentedControl と同じく、同じ内容なら作り直さない。
   public setItems(items: readonly (readonly [T, string, string?, string?])[]): void {
-    // 同じ内容なら作り直さない — 差し替えると押しかけのタブが消えてクリックが届かなくなる。
+    // 同じ内容なら作り直さない — 差し替えると押下中のタブが消えてクリックが届かなくなる。
     const same = (item: readonly [T, string, string?, string?], i: number): boolean => {
       const cur = this.items[i];
       return cur !== undefined && item[0] === cur[0] && item[1] === cur[1] && item[2] === cur[2] && item[3] === cur[3];
     };
     if (items.length === this.items.length && items.every(same)) return;
-    // 内容が変わった分だけ全タブを組み直す。
+    // 内容が変わったときだけ全タブを組み直す。
     for (const btn of this.buttons.values()) btn.element.remove();
     this.buttons.clear();
     for (const [value, label, keyLabel, icon] of items) {

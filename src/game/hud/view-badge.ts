@@ -64,7 +64,7 @@ export class ViewBadge {
   private readonly focusEl: HTMLElement;
   private readonly controlEl: HTMLElement;
   private readonly targetEl: HTMLElement;
-  // ビュー遷移メニューは特定の対象を持たないので、target には固定で true を使う。
+  // ビュー遷移メニューは特定の対象を持たないので、target には固定値 true を使う。
   private readonly menu: ContextMenu<true, ViewMode>;
   private readonly stopPointerDown = (e: Event): void => e.stopPropagation();
   // 直近の sync が受けた値。遷移メニューはフレームの外で開くので、遷移先をここから引く。

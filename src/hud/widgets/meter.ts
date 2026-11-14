@@ -10,7 +10,7 @@ export class Meter {
   private valueEl: HTMLElement | null = null;
   private level: AlarmLevel = 'normal';
 
-  // 地(track)・満ち幅(fill)の2層を組む。線の脇の数値表示は、初めて setLabel を呼んだ時点で
+  // 地(track)・満ち幅(fill)の2層を組む。線の脇の数値表示は、初めて setLabel を呼ばれた時点で
   // だけ作る — 右寄せの数値を別要素で持つ場面では表示層を持たせない。
   // label は読み上げ名(aria-label)。
   public constructor(label?: string) {

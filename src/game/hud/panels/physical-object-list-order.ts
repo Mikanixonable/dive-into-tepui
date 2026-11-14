@@ -53,7 +53,7 @@ interface ListSortKey {
   readonly inFocusedSystem: boolean;
 }
 
-// 候補列に載っていない行が持つ並び順。絞り込みは通し、距離は最前に置く。
+// 候補列に載っていない行が持つ並び順。絞り込みには全件通し、距離は最前に置く。
 const ABSENT_SORT_KEY: ListSortKey = {
   priority: 0, distance: 0, distanceFromStar: 0, inFocusedSystem: true,
 };

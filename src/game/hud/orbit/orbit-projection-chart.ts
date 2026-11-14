@@ -166,7 +166,7 @@ export class OrbitProjectionChart {
   }
 
   // 経緯度(lonDeg, latDeg)を、表示範囲 win に対するプロット領域内のピクセル座標へ変換する。
-  // 経度は左から右、緯度は上(latMax)から下(latMin)へ向かって増えるので、y だけ向きを反転する。
+  // 経度は左から右、緯度は下(latMin)から上(latMax)へ向かって増えるので、y だけ向きを反転する。
   private toPx(
     lonDeg: number, latDeg: number, win: Window,
     plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,

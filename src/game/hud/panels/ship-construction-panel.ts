@@ -36,7 +36,7 @@ interface CapabilityElements {
 
 type MobilePane = 'catalog' | 'status';
 
-// 右ペインの読み替えタブ。性能が既定。
+// 右ペインの表示切替タブ。性能が既定。
 type StatePane = 'performance' | 'targets' | 'history';
 
 const STATE_PANE_ITEMS: readonly (readonly [StatePane, string])[] = [
@@ -164,7 +164,7 @@ export class ShipConstructionPanel {
       onDuplicate: () => this.onDuplicate?.(),
     });
 
-    // 右ペインの読み替えタブとその本文。
+    // 右ペインの表示切替タブとその本文。
     this.stateBodies = {
       performance: els.get('construction-state-performance'),
       targets: els.get('construction-state-targets'),

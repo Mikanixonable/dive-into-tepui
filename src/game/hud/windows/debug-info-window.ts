@@ -62,7 +62,7 @@ function newPhaseStats(): PhaseStats {
 const BUDGET_MS = 16.7;
 const BAR_CELLS = 8;
 
-// 窓を開く既定位置 [px]。マップビューの左ドック(left 12px + 幅 300px まで)の右隣。
+// 窓を開く既定位置 [px]。マップビューの左レール(left 12px + 幅 300px まで)の右隣。
 const DEFAULT_X = 324;
 const DEFAULT_Y = 12;
 
