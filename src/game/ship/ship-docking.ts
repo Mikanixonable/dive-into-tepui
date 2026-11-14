@@ -4,9 +4,9 @@ import { add, cross, dot, len, norm, scale, sub, type Vec3 } from '../../math/ve
 import type { ModularShip } from './modular-ship';
 import { isDockingModule } from './ship-assembly';
 
-export const DOCKING_MAX_DISTANCE = 3;
-export const DOCKING_MAX_ANGLE = 10 * Math.PI / 180;
-export const DOCKING_MAX_RELATIVE_SPEED = 1;
+const DOCKING_MAX_DISTANCE = 3;
+const DOCKING_MAX_ANGLE = 10 * Math.PI / 180;
+const DOCKING_MAX_RELATIVE_SPEED = 1;
 
 export interface DockingPortPose {
   readonly point: Vec3;
@@ -24,7 +24,7 @@ export interface DockingEligibility {
 }
 
 /** module の外向き +Z 端面を world space の接舷点へ展開する。 */
-export function dockingPortPose(ship: ModularShip, moduleId: string): DockingPortPose | null {
+function dockingPortPose(ship: ModularShip, moduleId: string): DockingPortPose | null {
   const module = ship.assembly.module(moduleId);
   const definition = ship.assembly.definition(moduleId);
   const transform = ship.assembly.worldTransformOf(moduleId);
