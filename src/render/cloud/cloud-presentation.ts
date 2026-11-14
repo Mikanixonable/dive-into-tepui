@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { OpaqueCloudSurfaceRenderer, type CumulusDetail } from '../opaque-cloud-surface-renderer';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
-import { capRadiusFor } from './cloud-cap';
+import { capRadiusFor, snapCap } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
@@ -105,11 +105,16 @@ export class CloudPresentation {
     this.aim(toObserver.divideScalar(rho), rho);
   }
 
-  // cap を、天体固定・半軸で割った殻の空間で見た直下点 subpoint(単位方向)へ置き直す。
+  // cap を、天体固定・半軸で割った殻の空間で見た直下点 subpoint(単位方向)の近くの格子点へ置き直す。
   // rho は同じ空間で測った観測点の中心距離(地表が 1)。置き直した結果は不透明表面のサンプリングへ
   // 即座に反映する — 反映しないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
+  // **置き方は地表に固定した格子へ揃える**(`snapCap`) — 直下点へ連続に置くと、texel の格子が
+  // 地表に対して滑り、止まった雲がちらつく。
   private aim(subpoint: THREE.Vector3, rho: number): void {
-    this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
+    const latitude = Math.asin(Math.max(-1, Math.min(1, subpoint.y)));
+    const longitude = Math.atan2(subpoint.x, subpoint.z);
+    const snapped = snapCap(latitude, longitude, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
+    this.cap.aim(snapped.latitude, snapped.longitude, snapped.radius);
     this.surface.bind(this.renderInput);
   }
 
