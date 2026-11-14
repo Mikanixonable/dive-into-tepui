@@ -479,7 +479,7 @@
           <tr><td>BakedField.render</td><td>source(direction), FieldProjection</td><td>RenderTarget texture</td><td>各焼成パス</td></tr>
           <tr><td>CloudFieldSampler.sampleCloud</td><td>body-fixed unit direction</td><td>texture.sample(uv) → CloudSample</td><td>各消費側</td></tr>
           <tr><td>CloudShapeEvaluator.detailAt</td><td>direction, width, amount, amountAt, wind</td><td>32 km〜0.25 km の段の細部 −1..1</td><td>surface / shadow</td></tr>
-          <tr><td>CirrusDetailEvaluator.multiplierAt</td><td>direction, radius, width, flow, wind</td><td>光学深さに掛ける乗数(平均 1)</td><td>大気の殻・巻雲の影</td></tr>
+          <tr><td>CirrusDetailEvaluator.multiplierAt</td><td>direction, radius, width, flow, wind, column</td><td>光学深さに掛ける乗数(平均 1)</td><td>大気の殻・巻雲の影</td></tr>
           <tr><td>OpaqueCloudSurfaceRenderer.marchedSurface</td><td>camera ray, field, detail</td><td>first cloud-top hit → depth / normal</td><td>画素</td></tr>
           <tr><td>CloudAtmosphereRenderer.scatteredAt</td><td>species, shell, ray, sun</td><td>cloudTransmittance / localRadiance</td><td>殻の交差点</td></tr>
           <tr><td>CloudShadowRenderer.transmittance</td><td>worldPos, footprint, sun ray</td><td>receiver transmittance</td><td>影パスの画素</td></tr>
