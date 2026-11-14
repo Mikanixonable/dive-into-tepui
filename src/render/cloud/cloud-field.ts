@@ -6,7 +6,8 @@ import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { condense } from './condensation';
 import {
-  cloudFieldTexelFromSample, cloudMotionTexel, cloudSampleFromTexel, type CloudMotion, type CloudSample,
+  cloudEnvironmentTexel, cloudFieldTexelFromSample, cloudMotionTexel, cloudSampleFromTexels,
+  type CloudMotion, type CloudSample,
 } from './cloud-field-sample';
 import { eastAt, northAt } from './sphere-frame';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -19,6 +20,8 @@ export class CloudField {
   private readonly field: BakedField;
   // 雲を運ぶ風の写し。
   private readonly motion: BakedField;
+  // 陸・対流・気候の雲量・金床の写し。
+  private readonly environment: BakedField;
 
   // model の現在時刻における雲を、指定された projection に従ってベイクするテクスチャ。サンプリング時も projection の uv を参照する。
   public constructor(model: WeatherModel, projection: FieldProjection) {
@@ -29,12 +32,17 @@ export class CloudField {
     this.motion = new BakedField(
       'cloudMotion', THREE.RGBAFormat, projection,
       (direction) => cloudMotionTexel(smoothedWindsAt(model, direction)), GPU_PASS.cloudBake);
+    this.environment = new BakedField('cloudEnvironment', THREE.RGBAFormat, projection, (direction) => {
+      const cloud = condense(model.weatherAt(direction));
+      return cloudEnvironmentTexel(cloud);
+    }, GPU_PASS.cloudBake);
   }
 
   // 現在時刻の雲をベイクドテクスチャへレンダリングする。at() でサンプリングする前に必ず一度呼び出す。
   public render(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
     this.field.render(renderer, gpu);
     this.motion.render(renderer, gpu);
+    this.environment.render(renderer, gpu);
   }
 
   // 焼いた雲の場。テクスチャの所有権は BakedField に残す。
@@ -43,16 +51,20 @@ export class CloudField {
   // 焼いた雲を運ぶ風の場(R・G = 地表付近、B・A = 上層の東・北の成分 [m/s])。
   public get motionTexture(): THREE.Texture { return this.motion.texture; }
 
+  // 焼いた環境の場(R = 陸、G = 対流、B = 気候の雲量、A = 金床)。
+  public get environmentTexture(): THREE.Texture { return this.environment.texture; }
+
   // 単位方向 direction での雲を、投影自身の uv で直接サンプリングする。cap による領域切り出しを行わないため、テクスチャ
   // 全域を参照できる。
   public at(direction: Vec3Node): CloudSample {
-    return cloudSampleFromTexel(this.field.at(direction));
+    return cloudSampleFromTexels(this.field.at(direction), this.environment.at(direction));
   }
 
   // 保持している GPU 資源を解放する。
   public dispose(): void {
     this.field.dispose();
     this.motion.dispose();
+    this.environment.dispose();
   }
 }
 

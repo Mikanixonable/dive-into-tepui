@@ -16,6 +16,8 @@ import type { Vec4Node } from '../tsl-types';
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
   private readonly field: BakedField;
+  // 実写には環境の量の場がないので、どの方向でも同じ値を返す 1 texel の写し。
+  private readonly environment: THREE.DataTexture;
   // 焼いたときの画像の世代と cap の版。どちらかが変わったときだけ焼き直す。
   private bakedGeneration = -1;
   private bakedRevision = -1;
@@ -27,6 +29,14 @@ export class ObservedCloudField implements CloudFieldSource {
     this.map = new DeferredTexture(url, THREE.NoColorSpace);
     // 正距円筒の経度は周期的なので、画像は経度方向へ巻く。
     this.map.texture.wrapS = THREE.RepeatWrapping;
+    // 陸・対流・金床は 0、気候の雲量は中立の 0.5(半精度の 0x3800)。
+    this.environment = new THREE.DataTexture(
+      new Uint16Array([0, 0, 0x3800, 0]), 1, 1, THREE.RGBAFormat, THREE.HalfFloatType);
+    this.environment.minFilter = THREE.LinearFilter;
+    this.environment.magFilter = THREE.LinearFilter;
+    this.environment.wrapS = THREE.RepeatWrapping;
+    this.environment.wrapT = THREE.RepeatWrapping;
+    this.environment.needsUpdate = true;
     const image = texture(this.map.texture);
     // **読む段は焼くときに 1 回だけ決める** — 画面微分に任せると、経度の巻き目(u が 1 から 0 へ
     // 跳ぶ列)で最も粗い段が選ばれ、日付変更線に 1 本の線が出る。画像の 1 texel が張る角は
@@ -48,6 +58,7 @@ export class ObservedCloudField implements CloudFieldSource {
   public get texture(): THREE.Texture { return this.field.texture; }
   // 実写の雲場は止まっているので、運ぶ風は 0。
   public get motionTexture(): THREE.Texture { return EMPTY_CLOUD_FIELD; }
+  public get environmentTexture(): THREE.Texture { return this.environment; }
   public get generation(): number { return this.generationValue; }
 
   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。
@@ -66,5 +77,6 @@ export class ObservedCloudField implements CloudFieldSource {
   public dispose(): void {
     this.map.dispose();
     this.field.dispose();
+    this.environment.dispose();
   }
 }

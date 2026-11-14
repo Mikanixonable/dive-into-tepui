@@ -14,8 +14,8 @@ const FIELD_TOP_STEP = 1 / 256;
 const DETAIL_GATE_OPACITY = 0.05;
 
 // 粒の細かさへ効く陸らしさと対流の活発さの重み。
-const GRAIN_LAND_WEIGHT = 1;
-const GRAIN_CONVECTION_WEIGHT = 0.5;
+const GRAIN_LAND_WEIGHT = 0.7;
+const GRAIN_CONVECTION_WEIGHT = 0.3;
 
 export class CloudShapeEvaluator {
   public static readonly cloudTopUncertainty =
@@ -38,10 +38,10 @@ export class CloudShapeEvaluator {
     this.detail.syncClock(displayTime, rate);
   }
 
-  // 雲標本の柱での粒の細かさ 0..1。陸と活発な対流で細かく、穏やかな海で粗い。
+  // 雲標本の柱での粒の細かさ 0..1。陸で細かく、対流の活発な陸でさらに細かい。海は対流が強くても組織化した
+  // 大きな細胞になるので、対流は陸にだけ効かせ、海は粗いまま。
   public grainOf(cloud: CloudSample): FloatNode {
-    return clamp(
-      cloud.land.mul(GRAIN_LAND_WEIGHT).add(cloud.convection.mul(GRAIN_CONVECTION_WEIGHT)), 0, 1);
+    return clamp(cloud.land.mul(cloud.convection.mul(GRAIN_CONVECTION_WEIGHT).add(GRAIN_LAND_WEIGHT)), 0, 1);
   }
 
   // 単位方向 direction での、場の texel より細かい起伏 −1..1。width はその位置で読み手の
