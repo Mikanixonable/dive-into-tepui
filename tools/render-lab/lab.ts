@@ -1,7 +1,9 @@
 // 描画テスト環境の 1 ビュー。ケースを組み、ゲーム本体と同じ RenderPipeline でキャンバスへ描く。
 // 絵の撮影(PNG)と、CPU / GPU それぞれの所要時間の計測もここが担う。
 import * as THREE from 'three/webgpu';
-import { WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { texture, vec2, vec4 } from 'three/tsl';
+import { distinctTextureNode } from '../../src/render/distinct-texture-node';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
@@ -652,6 +654,38 @@ export class LabView {
       png: await this.captureSettled(name),
       centerKmPerPx: shot.centerKmPerPx,
       altitudeM: shot.altitudeM,
+    };
+  }
+
+  // 値を結ぶ前に組んだシェーダで、2 つのテクスチャノードが別々のテクスチャを読めるかを GPU で確かめる。plain は
+  // 既定のノード(同じテクスチャを指すと結びが合わさり、2 つ目が 1 つ目を読む = [255, 0, 0, 255])、distinct は
+  // distinctTextureNode(別々に読む = [255, 255, 0, 255])。
+  public async dedupeProbe(): Promise<Record<string, number[]>> {
+    const pixel = (r: number, g: number, b: number): THREE.DataTexture => {
+      const t = new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1);
+      t.needsUpdate = true;
+      return t;
+    };
+    const run = async (make: (t: THREE.Texture) => THREE.TextureNode): Promise<number[]> => {
+      const placeholder = pixel(0, 0, 0);
+      const a = make(placeholder);
+      const b = make(placeholder);
+      const material = new THREE.MeshBasicNodeMaterial();
+      material.colorNode = vec4(a.sample(vec2(0.5, 0.5)).x, b.sample(vec2(0.5, 0.5)).y, 0, 1);
+      const quad = new QuadMesh(material);
+      const target = new THREE.RenderTarget(1, 1, { depthBuffer: false });
+      this.renderer.setRenderTarget(target);
+      quad.render(this.renderer);
+      a.value = pixel(255, 0, 0);
+      b.value = pixel(0, 255, 0);
+      quad.render(this.renderer);
+      const data = await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
+      this.renderer.setRenderTarget(null);
+      return Array.from(new Uint8Array(data.buffer, data.byteOffset, 4));
+    };
+    return {
+      plain: await run((t) => texture(t)),
+      distinct: await run((t) => distinctTextureNode(t)),
     };
   }
 
