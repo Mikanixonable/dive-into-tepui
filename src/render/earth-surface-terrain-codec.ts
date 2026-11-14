@@ -14,10 +14,6 @@ const EARTH_BASE_TERRAIN_TILE_COUNT = 2;
 const EARTH_BASE_TERRAIN_DATA_BYTES = EARTH_BASE_TERRAIN_TILE_COUNT * (EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
 const EARTH_BASE_TERRAIN_PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_BASE_TERRAIN_DATA_BYTES;
 
-export type EarthSurfaceTerrainDecoder = (
-  compressed: Uint8Array, key: EarthTileKey, limit: number, expectedSha256?: string, signal?: AbortSignal,
-) => Promise<Uint8Array>;
-
 // バイナリヘッダーが要求されたタイルの本文かを検査する。
 function assertKey(key: EarthTileKey, z: number, x: number, y: number): void {
   if (key.z !== z || key.x !== x || key.y !== y) throw new EarthSurfaceDecodeError('Terrain tile key does not match its header');

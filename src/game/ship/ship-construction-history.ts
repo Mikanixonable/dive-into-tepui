@@ -3,7 +3,7 @@
 import type { SerializedShipAssembly } from './ship-assembly-serialization';
 
 // 履歴1件。assembly は操作直後(先頭は開始時)の船体の直列化。
-export interface ConstructionHistoryEntry {
+interface ConstructionHistoryEntry {
   readonly name: string;
   readonly assembly: SerializedShipAssembly;
 }

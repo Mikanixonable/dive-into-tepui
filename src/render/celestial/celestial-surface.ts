@@ -80,10 +80,7 @@ export function setCelestialSurfaceViewport(width: number, height: number): void
   surfaceViewport = { width, height };
 }
 
-// 最後に設定した描画先の大きさ [px]。未設定なら 1×1。
-export function celestialSurfaceViewport(): { readonly width: number; readonly height: number } {
-  return surfaceViewport;
-}
+
 
 const UNIT_SCALE = new THREE.Vector3(1, 1, 1);
 

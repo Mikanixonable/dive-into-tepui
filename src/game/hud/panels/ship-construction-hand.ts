@@ -14,7 +14,7 @@ import type { HudEls } from '../hud-els';
 const SYMMETRY_STEPS: readonly ConstructionSymmetry[] = [1, 2, 4];
 
 // 手元バーの操作を建造セッションへ渡す口。
-export interface ShipConstructionHandCallbacks {
+interface ShipConstructionHandCallbacks {
   readonly onPlace: () => void;
   readonly onRelease: () => void;
   readonly onRotate: (delta: 1 | -1) => void;

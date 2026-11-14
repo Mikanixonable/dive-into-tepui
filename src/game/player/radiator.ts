@@ -11,14 +11,14 @@ import type { DynamicReactionServices, EntityContactParticipant } from '../dynam
 import type { ShipAssembly } from '../ship/ship-assembly';
 import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
-export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
+const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
 const RADIATOR_FOLD_MASS = 5; // 接触で押し合うときの、蛇腹1折りの質量 [kg]
 
 export type RadiatorSide = 'up' | 'down';
 
-export interface SerializedRadiatorPanel {
+interface SerializedRadiatorPanel {
   readonly id: string;
   readonly state: SerializedDeployablePanelState;
 }

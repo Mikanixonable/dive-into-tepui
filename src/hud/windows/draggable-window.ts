@@ -62,7 +62,7 @@ const STYLE = `
 }
 `;
 
-export interface DraggableWindowOptions {
+interface DraggableWindowOptions {
   readonly title: string;
   readonly subtitle?: string;
   // タイトル前に添える対象種別のグリフ。Unicode 文字または SVG マークアップ(信頼できる

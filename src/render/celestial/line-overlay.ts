@@ -13,7 +13,7 @@ export type LatLonPolyline = readonly (readonly [number, number])[];
 export type UnitSphereLoop = readonly (readonly [number, number, number])[];
 
 // 地表へ貼る線の頂点データ。折れ線は隣接点どうしを繋ぎ、ループはさらに始点と終点も繋いで輪を閉じる。
-export type SurfaceLines =
+type SurfaceLines =
   | { readonly kind: 'latLonPolylines'; readonly polylines: readonly LatLonPolyline[] }
   | { readonly kind: 'unitSphereLoops'; readonly loops: readonly UnitSphereLoop[] };
 

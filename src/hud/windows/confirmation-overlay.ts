@@ -26,7 +26,7 @@ const STYLE = `
 #hud .confirmation-overlay-actions { display: flex; justify-content: center; gap: var(--space-3); }
 `;
 
-export interface ConfirmationOverlayRequest {
+interface ConfirmationOverlayRequest {
   readonly title?: string;
   readonly message: string;
   readonly confirmLabel?: string;

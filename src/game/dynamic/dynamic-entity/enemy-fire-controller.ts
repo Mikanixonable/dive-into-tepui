@@ -25,7 +25,7 @@ const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト1回の弾数の候補
 const PLASMA_SPREAD_DEG = 0.05; // 太陽グレアの倍率が 1 のときの、プラズマ弾の散布角の最大 [deg]
 
 // 射撃を行う敵ユニットが、射撃判定および弾丸生成のために提供するインターフェース。
-export interface EnemyFireControllerPort {
+interface EnemyFireControllerPort {
   readonly motion: DynamicMotion;
   readonly attackGroupId: string;
   canFire(enemies: readonly Enemy[]): boolean;

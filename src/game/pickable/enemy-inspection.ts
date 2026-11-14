@@ -26,7 +26,7 @@ import { MenuCommon } from '../hud/windows/menu-actions';
 const ENEMY_APPROACH_DIST = 2e5;
 
 // 敵の表示・一覧・検査に必要なインターフェース。
-export interface EnemyInspectionSource extends OrbitingObject {
+interface EnemyInspectionSource extends OrbitingObject {
   readonly name: string;
   readonly mapKind: DynamicEntityKind;
   readonly motion: DynamicMotion;

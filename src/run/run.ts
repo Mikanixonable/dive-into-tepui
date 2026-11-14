@@ -23,7 +23,7 @@ import type { TdbJulianDate } from '../physics/time';
 const MAX_FRAME_DT = 0.1;
 
 // 進行と導出の間で、モデル層だけが確定した瞬間のランを毎フレーム読む者。
-export interface ProgressReader {
+interface ProgressReader {
   update(source: SnapshotSource): void;
 }
 

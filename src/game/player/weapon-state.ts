@@ -11,7 +11,7 @@ export interface SerializedWeaponState {
   readonly shots?: readonly SerializedWeaponShot[];
 }
 
-export interface SerializedWeaponShot {
+interface SerializedWeaponShot {
   readonly moduleId: string;
   readonly muzzleIndex: number;
   readonly firedAt: number;
@@ -23,9 +23,9 @@ export type WeaponShotRecord = SerializedWeaponShot;
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export interface AmmoLoad { readonly mags: number; readonly rounds: number }
 
-export type AmmoConsumption = 'normal' | 'mag-reload';
+type AmmoConsumption = 'normal' | 'mag-reload';
 
-export interface WeaponFireCommand {
+interface WeaponFireCommand {
   readonly consumption: AmmoConsumption;
   readonly muzzleIndex: number;
 }

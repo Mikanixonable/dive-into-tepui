@@ -19,7 +19,7 @@ export const CELESTIAL_SHELL_SCALE = CELESTIAL_SHELL_RADIUS / STAR_SHELL_RADIUS;
 
 // 露出に順応しない表示物へ掛ける明るさ係数の供給元。照明がこのフレームの露出を確定させた後に
 // 読むと、そのフレームの値になる。
-export interface FixedBrightness {
+interface FixedBrightness {
   readonly fixedBrightnessScale: number;
 }
 

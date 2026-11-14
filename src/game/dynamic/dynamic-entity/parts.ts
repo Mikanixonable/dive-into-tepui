@@ -85,7 +85,7 @@ function nonNegative(value: unknown): number {
 
 // 直列化された部品を id ごと復元する。種別が不正なら null、ほかの項目が不正ならその項目を安全な値へ
 // 落とす。
-export function deserializePart(serialized: AnyPart): AnyPart | null {
+function deserializePart(serialized: AnyPart): AnyPart | null {
   if (serialized === null || typeof serialized !== 'object'
     || !PART_TYPES.includes(serialized.type as PartType)) return null;
   // 種別に共通の項目。

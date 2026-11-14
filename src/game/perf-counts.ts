@@ -2,7 +2,7 @@
 import type { EntityCountKind } from './dynamic/dynamic-entity/entity-kind';
 import type { CelestialSurfaceDiagnostics } from '../render/celestial/celestial-surface';
 
-export interface SurfacePerfCount {
+interface SurfacePerfCount {
   readonly id: string;
   readonly name: string;
   readonly diagnostics: CelestialSurfaceDiagnostics;

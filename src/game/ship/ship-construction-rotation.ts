@@ -19,7 +19,7 @@ export interface ConstructionRotationRing {
 }
 
 // リング面への視線の交点。angle は uEci/vEci 基準の角 [rad]。
-export interface RotationRingHit {
+interface RotationRingHit {
   readonly point: Vec3; // 交点 ECI [m]
   readonly distance: number; // リング中心からの距離 [m]
   readonly angle: number; // 基準角 [rad]

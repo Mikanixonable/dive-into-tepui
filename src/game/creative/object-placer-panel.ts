@@ -66,7 +66,7 @@ export type LagrangeForm = {
 
 // 確定時点のフォーム値。placementMode を判別子とし、選ばれた配置方法(・サイズ/形・軌道種別)が
 // 実際に使う値だけを持つ。
-export type ShipPlacementPreset = 'combat-ship' | 'base-ship';
+type ShipPlacementPreset = 'combat-ship' | 'base-ship';
 export type ObjectPlacementSelection =
   | ShipPlacementPreset | Exclude<DynamicEntityKind, 'player' | 'base'> | 'orbit-slot';
 export type ObjectPlacerForm = { readonly selection: ObjectPlacementSelection } & (ElementsForm | LagrangeForm);

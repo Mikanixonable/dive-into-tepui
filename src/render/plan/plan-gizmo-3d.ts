@@ -21,14 +21,14 @@ const LATCH_STRETCH_MAX = 0.5; // ラッチで伸ばす割合の上限
 
 // 伸ばして見せる Δv アーム1本。axis は 0=PRO/RET, 1=NRM/ANM, 2=OUT/IN、sign はその正負側。
 // excessPx はラッチ閾値の超過量 [px] で、ラッチ前は null。
-export interface StretchedArm {
+interface StretchedArm {
   readonly axis: 0 | 1 | 2;
   readonly sign: 1 | -1;
   readonly excessPx: number | null;
 }
 
 // そのフレームのギズモの表示値。
-export interface PlanGizmoDisplay {
+interface PlanGizmoDisplay {
   readonly position: THREE.Vector3; // 描画フレームでのノード位置
   readonly prograde: Vec3; // 表示座標での進行方向
   readonly normal: Vec3; // 表示座標での軌道面法線

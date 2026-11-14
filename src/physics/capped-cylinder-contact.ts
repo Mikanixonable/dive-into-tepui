@@ -8,13 +8,13 @@ export interface CappedCylinder {
   readonly radius: number;
 }
 
-export interface CappedCylinderHit {
+interface CappedCylinderHit {
   readonly point: Vec3;
   readonly normal: Vec3;
   readonly depth: number;
 }
 
-export interface CappedCylinderRayHit {
+interface CappedCylinderRayHit {
   readonly point: Vec3;
   readonly normal: Vec3;
   readonly distance: number;
