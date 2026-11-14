@@ -20,6 +20,7 @@ import type {
 } from '../../tsl-types';
 import type { BodyShadow } from '../shadow/body-shadow';
 import type { SunLight } from '../sun-light';
+import type { SunTransmittanceTables } from '../sun-transmittance-tables';
 
 // 天体 1 体ぶんの見た目。すべて描画座標系の値。
 //
@@ -81,9 +82,9 @@ export class PlanetLightSubject {
   private readonly cumulusEnabled: BoolUniform = uniform(true);
 
   // sunLight と bodyShadow は、大気の中の点へ届く太陽光を引くのに使う。
-  public constructor(sunLight: SunLight, bodyShadow: BodyShadow) {
+  public constructor(sunLight: SunLight, bodyShadow: BodyShadow, sunTables: SunTransmittanceTables) {
     this.baseColor = texture(this.white);
-    this.integrator = new AtmosphereIntegrator(sunLight, bodyShadow);
+    this.integrator = new AtmosphereIntegrator(sunLight, bodyShadow, sunTables);
   }
 
   // このフレームの天体を置く。center は描画座標、radius は地表の球の半径 [m]。
