@@ -14,7 +14,7 @@ import type { EarthSurfaceTileRequestQueue } from './earth-surface-tile-queue';
 export type EarthSurfaceColorToRgba8 =
   (color: unknown, key: EarthTileKey) => Uint8Array | Promise<Uint8Array>;
 
-export interface EarthSurfaceResidentCoordinatorDependencies {
+interface EarthSurfaceResidentCoordinatorDependencies {
   readonly tiles: EarthSurfaceTiles;
   readonly queue: EarthSurfaceTileRequestQueue;
   readonly gpu: EarthSurfaceGpuAdapter;
@@ -30,7 +30,7 @@ export interface EarthSurfaceResidentFrame {
   readonly frame?: number;
 }
 
-export interface EarthSurfaceResidentFrameResult {
+interface EarthSurfaceResidentFrameResult {
   readonly frontier: readonly EarthTileResident[];
   readonly requested: readonly EarthTileKey[];
   readonly published: boolean;
