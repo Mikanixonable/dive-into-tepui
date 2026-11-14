@@ -1,4 +1,14 @@
 {
+  "src/physics/celestial-body-def.ts": {
+    "no-restricted-syntax": {
+      "count": 6
+    }
+  },
+  "src/render/pipeline/shadow/shadow-casters.ts": {
+    "no-restricted-syntax": {
+      "count": 1
+    }
+  },
   "src/types/cube-shims.d.ts": {
     "no-restricted-syntax": {
       "count": 1
