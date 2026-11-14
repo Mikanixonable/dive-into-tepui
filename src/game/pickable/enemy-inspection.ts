@@ -8,16 +8,12 @@ import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
-import type { Quat } from '../../math/quat';
 import type { Ray } from '../../math/ray';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import type { ProteinCombatReadout } from '../protein/protein-schema';
-import type { ProteinSiteMarker } from '../../render/dynamic/dynamic-entity/protein-enemy-view';
 import { len, sub } from '../../math/vec3';
 import { fmtDist, fmtSpeed } from '../../hud/utils';
 import { relativeInfo } from '../orbit-info';
@@ -29,12 +25,6 @@ import { MenuCommon } from '../hud/windows/menu-actions';
 // 一覧で「接近」として数える、viewer からの距離 [m]。
 const ENEMY_APPROACH_DIST = 2e5;
 
-// タンパク質の敵が差し出す、戦闘状態の読み出しと部位マーカー。
-export interface EnemyProteinInspection {
-  combatReadout(): ProteinCombatReadout;
-  siteMarkers(displayPos: Vec3, attitude: Quat): readonly ProteinSiteMarker[];
-}
-
 // 敵の表示・一覧・検査に必要なインターフェース。
 export interface EnemyInspectionSource extends OrbitingObject {
   readonly name: string;
@@ -43,7 +33,6 @@ export interface EnemyInspectionSource extends OrbitingObject {
   readonly hp: number;
   readonly maxHp: number;
   readonly pickable: boolean;
-  readonly proteinInspection: EnemyProteinInspection | null;
   markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem;
   hitBodyByRay(ray: Ray, pos: Vec3): boolean;
   mapVisibility(policy: MapVisibilityPolicy, viewer: OrbitingObject | null): MapVisibility;
@@ -65,8 +54,6 @@ export class EnemyInspection implements InspectedObject {
   public readonly rename = null;
   public readonly onMapSelect = null;
   public readonly onMapFocus = null;
-
-  public get protein(): EnemyProteinInspection | null { return this.source.proteinInspection; }
 
   // 表示位置 pos・速度 vel に置く敵のマーカー項目。
   public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode, _isActive: boolean): GroupedMarkerItem {
@@ -146,8 +133,3 @@ export class EnemyInspection implements InspectedObject {
   }
 }
 
-// entity がタンパク質の検査面を持てばそれを返す。持たなければ null。
-export function proteinInspectionOf(entity: DynamicEntity): EnemyProteinInspection | null {
-  const candidate = entity as DynamicEntity & Partial<Pick<EnemyInspectionSource, 'proteinInspection'>>;
-  return candidate.proteinInspection ?? null;
-}
