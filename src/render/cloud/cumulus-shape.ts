@@ -20,6 +20,14 @@ EMPTY_CLOUD_FIELD.magFilter = THREE.LinearFilter;
 EMPTY_CLOUD_FIELD.wrapS = THREE.RepeatWrapping;
 EMPTY_CLOUD_FIELD.needsUpdate = true;
 
+// 風場未設定の天体スロットへ割り当てる、風速 0・陸 0 のテクスチャ。texel (0.5, 0.5, 0) は
+// 風 (0, 0) へ復号される。雲の空テクスチャと同じ仕様でフィルタと巻きを揃える。
+export const EMPTY_WIND_FIELD = new THREE.DataTexture(new Uint8Array([128, 128, 0, 255]), 1, 1);
+EMPTY_WIND_FIELD.minFilter = THREE.LinearFilter;
+EMPTY_WIND_FIELD.magFilter = THREE.LinearFilter;
+EMPTY_WIND_FIELD.wrapS = THREE.RepeatWrapping;
+EMPTY_WIND_FIELD.needsUpdate = true;
+
 // 正規化した雲頂 0..1 が張る高さ [m]。積雲の上端高度に合わせる。
 export const CLOUD_TOP_SPAN = CUMULUS_TOP_ALTITUDE;
 
@@ -33,3 +41,5 @@ export const CUMULUS_DITHER_KNOB: {
   readonly center: FloatUniform;
   readonly halfWidth: FloatUniform;
 } = { center: uniform(0.34), halfWidth: uniform(0.12) };
+
+
