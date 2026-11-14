@@ -19,7 +19,9 @@ import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
-import { CLOUD_DETAIL_SHOT_INFOS, type CloudDetailShotInfo } from './cloud-detail-cases';
+import {
+  CLOUD_DETAIL_SHOT_INFOS, CLOUD_DETAIL_STABILITY_SHOT_INFOS, type CloudDetailShotInfo,
+} from './cloud-detail-cases';
 import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
 import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
@@ -61,6 +63,8 @@ declare global {
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
       // 雲の細部の撮影。巡回の撮影(cases + shoot)には載せない別口。
       cloudDetailShots: () => readonly CloudDetailShotInfo[];
+      // 視点の安定性の撮影の組(基準・横ずらし・高度違い)。
+      cloudDetailStabilityShots: () => readonly CloudDetailShotInfo[];
       shootCloudDetail: (name: string) => Promise<string>;
       capture: () => Promise<string>;
       show: (name: CaseName) => void;
@@ -261,6 +265,7 @@ async function init(): Promise<void> {
     cases: CASE_NAMES,
     shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
     cloudDetailShots: () => CLOUD_DETAIL_SHOT_INFOS,
+    cloudDetailStabilityShots: () => CLOUD_DETAIL_STABILITY_SHOT_INFOS,
     shootCloudDetail: async (name) => {
       const png = await view.shootCloudDetail(name); syncAngles(); return png;
     },

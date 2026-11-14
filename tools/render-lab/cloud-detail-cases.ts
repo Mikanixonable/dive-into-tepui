@@ -1,4 +1,4 @@
-// 雲の細部の計測のための撮影。海の上の雲を、実写(衛星写真)と同じ km/px・同じ真下見下ろしで、
+// 雲の細部の計測のための撮影。海上と陸上の雲を、実写(衛星写真)と同じ km/px・同じ真下見下ろしで、
 // 積雲だけ・巻雲だけ・両方の3種で撮る。巡回の撮影(render-lab:shot)には載せない別口で、
 // window.renderLab.cloudDetailShots() が撮影名とメタデータの一覧を、shootCloudDetail() が
 // 1 枚の PNG を返す。
@@ -12,8 +12,8 @@ import { FOV_DEG, labCamera, VIEW_HEIGHT, type LabCase, type LabShot } from './l
 import type { EarthAngleKey, LabViewAngles } from './view-angles';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
-// 直下点に取る海の上の場面。center は tools/cloud-detail/scenes.json(実写の目録)と同じ海域の
-// 中心を使うので、撮った画像は同じ場所の実写と同じ物差しで比べられる。
+// 直下点に取る場面。center は tools/cloud-detail/scenes.json(実写の目録)と同じ地点の中心を
+// 使うので、撮った画像は同じ場所の実写と同じ物差しで比べられる。
 interface CloudDetailScene {
   // 撮影名に使う短い名。
   readonly id: string;
@@ -42,9 +42,15 @@ const SCENES: readonly CloudDetailScene[] = [
   { id: 'norw-hl', scene: 'highlat-cumulus-norwegian', latitudeDeg: 68, longitudeDeg: 5 },
   // 西太平洋の冬の寒気流の積雲(温帯の海)。
   { id: 'pac-temp', scene: 'temperate-cumulus-japansea', latitudeDeg: 38, longitudeDeg: 150 },
+  // アマゾンの積雲(熱帯の陸)。
+  { id: 'trop-land', scene: 'land-cumulus-amazon', latitudeDeg: -5, longitudeDeg: -60 },
+  // ウクライナの対流雲(温帯の陸)。
+  { id: 'temp-land', scene: 'land-convective-ukraine', latitudeDeg: 49, longitudeDeg: 32 },
+  // カナダの積雲(高緯度の陸)。
+  { id: 'hl-land', scene: 'land-boreal-canada', latitudeDeg: 58, longitudeDeg: -100 },
 ];
 
-// 段の目標 km/px と表示時刻 [s]。段ごとの高度は海域の緯度ごとに引く(地表の扁平ぶんを
+// 段の目標 km/px と表示時刻 [s]。段ごとの高度は直下点の緯度ごとに引く(地表の扁平ぶんを
 // 高度側で吸収して、画像中心の km/px を目標へ揃える)。
 const TIERS_KM_PER_PX = [0.25, 1, 4] as const;
 const DISPLAY_TIMES_S = [0, 21600, 43200] as const;
@@ -115,8 +121,8 @@ export interface CloudDetailShot extends LabShot {
   readonly altitudeM: number;
 }
 
-// 撮影の表。名前は <海域>-<時刻 h>h-<km/px>km-<種類>(例: npac-jet-6h-1km-cirrus)、
-// 総数は 6 海域 × 3 時刻 × 3 段 × 3 種類 = 162。
+// 撮影の表。名前は <場面>-<時刻 h>h-<km/px>km-<種類>(例: npac-jet-6h-1km-cirrus)、
+// 総数は 12 場面 × 3 時刻 × 3 段 × 3 種類 = 324。
 export const CLOUD_DETAIL_SHOTS: Readonly<Record<string, CloudDetailShot>> = (() => {
   const shots: Record<string, CloudDetailShot> = {};
   for (const scene of SCENES) {
@@ -196,6 +202,82 @@ export const CLOUD_DETAIL_CHECK_SHOTS: Readonly<Record<string, CloudDetailShot>>
   },
 };
 
+// 視点を動かしただけで雲の形が変わらないかと、時間とともにどう流れ入れ替わるかを測る撮影の組。同じ場面を、
+// 基準(base)・直下点を北へ STABILITY_SHIFT_PX 画素ぶんずらした構図(shift)・高度を STABILITY_ZOOM 倍にした
+// 構図(zoom)・同じ構図の 10 分後(later10)と 30 分後(later30)で撮る。止まった雲なら、位置と縮尺を合わせた
+// 基準・shift・zoom は一致する。base・later10・later30 は種類ごと(両方・積雲だけ・巻雲だけ)にも撮る —
+// 層ごとに風が違うので、時間の計測を層別の位置合わせで読めるようにするため。計測の一覧
+// (CLOUD_DETAIL_SHOT_INFOS)には載せない。
+// 撮影名は <場面>-<時刻 h>h-<km/px>km-stab-<base|shift|zoom|later10|later30>。
+// 積雲だけ・巻雲だけは末尾へ -cumulus / -cirrus を足す(種類の無標は両方)。
+const STABILITY_SCENE_IDS = ['natl-front', 'npac-jet', 'pac-temp', 'south-hl', 'wpac-itcz'] as const;
+const STABILITY_DISPLAY_TIME_S = 21600;
+// ずらす画素数。cap の 1 texel(低軌道で約 10 km)より短く、細部の段(0.25 km/px で 1〜128 px)を跨ぐ長さ。
+const STABILITY_SHIFT_PX = 6;
+// 高度の倍率。cap の半径と細部の段の減衰の両方が動く幅。
+const STABILITY_ZOOM = 1.25;
+export type CloudDetailStabilityVariant = 'base' | 'shift' | 'zoom' | 'later10' | 'later30';
+
+export const CLOUD_DETAIL_STABILITY_SHOTS: Readonly<Record<string, CloudDetailShot>> = (() => {
+  const shots: Record<string, CloudDetailShot> = {};
+  for (const id of STABILITY_SCENE_IDS) {
+    const scene = SCENES.find((entry) => entry.id === id);
+    if (scene === undefined) throw new Error(`stability: no scene ${id}`);
+    for (const tierKmPerPx of TIERS_KM_PER_PX) {
+      const baseAltitude = altitudeFor(tierKmPerPx, scene.latitudeDeg);
+      const shiftDeg = THREE.MathUtils.radToDeg(
+        (STABILITY_SHIFT_PX * tierKmPerPx * 1000) / surfaceRadiusAt(scene.latitudeDeg));
+      const variants: Record<
+        CloudDetailStabilityVariant, { altitudeM: number; latitudeDeg: number; laterS: number }
+      > = {
+        base: { altitudeM: baseAltitude, latitudeDeg: scene.latitudeDeg, laterS: 0 },
+        shift: { altitudeM: baseAltitude, latitudeDeg: scene.latitudeDeg + shiftDeg, laterS: 0 },
+        zoom: { altitudeM: baseAltitude * STABILITY_ZOOM, latitudeDeg: scene.latitudeDeg, laterS: 0 },
+        later10: { altitudeM: baseAltitude, latitudeDeg: scene.latitudeDeg, laterS: 600 },
+        later30: { altitudeM: baseAltitude, latitudeDeg: scene.latitudeDeg, laterS: 1800 },
+      };
+      for (const [variant, placement] of Object.entries(variants)) {
+        const stem = `${scene.id}-${STABILITY_DISPLAY_TIME_S / 3600}h-${tierKmPerPx}km-stab-${variant}`;
+        // 視点の安定性を見る構図(shift / zoom)は両方だけ。時間の計測に使う構図は層別にも撮る。
+        const kinds: readonly CloudDetailKind[] =
+          variant === 'shift' || variant === 'zoom' ? ['both'] : ['both', 'cumulus', 'cirrus'];
+        for (const kind of kinds) {
+          shots[kind === 'both' ? stem : `${stem}-${kind}`] = {
+            scene: scene.scene,
+            latitudeDeg: placement.latitudeDeg,
+            longitudeDeg: scene.longitudeDeg,
+            displayTime: STABILITY_DISPLAY_TIME_S + placement.laterS,
+            kind,
+            tierKmPerPx,
+            centerKmPerPx: centerKmPerPxOf(placement.altitudeM, placement.latitudeDeg),
+            altitudeM: placement.altitudeM,
+            view: {
+              earthAltitudeLog: Math.log10(placement.altitudeM),
+              earthLatitudeDeg: placement.latitudeDeg,
+              earthLongitudeDeg: scene.longitudeDeg,
+            },
+            graphics: KIND_GRAPHICS[kind],
+          };
+        }
+      }
+    }
+  }
+  return shots;
+})();
+
+export const CLOUD_DETAIL_STABILITY_SHOT_INFOS: readonly CloudDetailShotInfo[] =
+  Object.entries(CLOUD_DETAIL_STABILITY_SHOTS).map(([name, shot]) => ({
+    name,
+    scene: shot.scene,
+    latitudeDeg: shot.latitudeDeg,
+    longitudeDeg: shot.longitudeDeg,
+    displayTime: shot.displayTime,
+    kind: shot.kind,
+    tierKmPerPx: shot.tierKmPerPx,
+    centerKmPerPx: shot.centerKmPerPx,
+    altitudeM: shot.altitudeM,
+  }));
+
 // 雲の細部の撮影が共有するケース。地球だけを置き、カメラは描画原点から直下点の地表を見る。
 // 観察の向きと描画設定は撮影ごとの差分で決まる。巡回のケースには登録しない。
 export function cloudDetailCase(): LabCase {
@@ -206,6 +288,9 @@ export function cloudDetailCase(): LabCase {
     viewTarget: new THREE.Vector3(0, 0, -altitudeFor(1, 0)),
     sunDirection: NADIR_SUN_DIRECTION,
     earth: NADIR_EARTH,
-    shots: { ...CLOUD_DETAIL_SHOTS, ...CLOUD_DETAIL_CIRRUS_COARSE_SHOTS, ...CLOUD_DETAIL_CHECK_SHOTS },
+    shots: {
+      ...CLOUD_DETAIL_SHOTS, ...CLOUD_DETAIL_CIRRUS_COARSE_SHOTS, ...CLOUD_DETAIL_CHECK_SHOTS,
+      ...CLOUD_DETAIL_STABILITY_SHOTS,
+    },
   };
 }
