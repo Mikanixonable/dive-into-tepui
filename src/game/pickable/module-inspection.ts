@@ -4,7 +4,7 @@ import type { ShipAssembly } from '../ship/ship-assembly';
 import type { ShipModuleInstance } from '../ship/ship-module-instance';
 
 // 検査に必要な船体の読み取り面。ドックの状態は assembly の接続から読む。
-export interface ModuleInspectionShip {
+interface ModuleInspectionShip {
   readonly name: string;
   readonly assembly: ShipAssembly;
   readonly capabilities: { readonly operatingCockpitId: string | null };

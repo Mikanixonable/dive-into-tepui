@@ -7,7 +7,7 @@ import { shipPhysicsShape } from './ship-physics-shape';
 const SHIP_DECOUPLING_SPEED = 8;
 export const SHIP_DECOUPLING_COLLISION_GRACE = 0.5;
 
-export interface ShipDecouplingSplit {
+interface ShipDecouplingSplit {
   readonly retained: ShipAssembly;
   readonly detached: ShipAssembly;
   readonly separationAxis: Vec3;

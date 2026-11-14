@@ -242,9 +242,17 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run cloud-lab:shot` | 雲の実験環境の撮影(`.cloud-lab/shots/`) | 雲を画像で確かめるとき |
 | `npm run cloud-lab:compare` | 生成と実写の統計比較(`.cloud-lab/compare/`) | 雲の生成を実写(8k_clouds)と見比べるとき |
 | `npm run cloud-lab:separate` | 実写を被覆率・雲頂高度・薄い雲へ推定分離(`.cloud-lab/separated/`) | 実写から描画用の仮テクスチャを作るとき |
+| `npm run cloud-lab:render-capture` | 描画経路で地域 cap×高度と全球を決定的に撮影(`.cloud-lab/render-capture/`。`--regions=`・`--ladders=` で枠を絞れる) | 描画経路の絵を教師比較へ回すとき |
+| `npm run cloud-lab:render-capture-timeseries` | 同じ構図の時刻梯子 [0,1,2,4,8] h の撮影(`.cloud-lab/render-capture-timeseries/`。全枠で 1 時間ほどかかる) | compare の fineMotion 節の入力を作るとき |
+| `npm run cloud-lab:reference-fine` | render-capture と同じ尺度の実写参照を GIBS から取り込み(`.cloud-lab/reference-fine/`) | 細かい尺度の実写目録を増やす・取り直すとき |
+| `npm run cloud-lab:reference-fine-timeseries` | 実写の可視時系列を GIBS から取り込み(`.cloud-lab/reference-fine-timeseries/`) | 時系列の実写目録を増やす・取り直すとき |
+| `npm run cloud-lab:reference-cloudtop` | MODIS Terra の雲頂高度を取り込み(`.cloud-lab/reference-cloudtop/`) | 雲頂の実写参照を取り直すとき |
+| `npm run cloud-lab:reference-timeseries` | ひまわり AHI 赤外の実写時系列を GIBS から取り込み(`.cloud-lab/reference-timeseries/`) | compare の動きの節の実写参照を取り直すとき |
 | `npm run cloud-detail:reference` | 雲の細部比較用の実写を Worldview から取り込む(`.cloud-detail/reference/`) | 実写の目録を増やす・取り直すとき |
 | `npm run cloud-detail:selftest` | 雲の細部の物差しの自己検査(合成場の傾き・周期性と実写の文献検算) | 物差し(`tools/cloud-detail-metrics.mjs`)を触ったとき |
 | `npm run cloud-detail:compare` | 雲の細部の撮影→計測→実写との距離→履歴→前回との差(`.cloud-detail/`) | 雲の細部の変更を定量で追うとき・前後を比べるとき |
+| `npm run cloud-detail:tiers` | 巻雲の精細さ「粗」と「標準」で濃さの平均が変わらない検査(`.cloud-detail/cirrus-tiers/`) | 巻雲の細部を触ったとき |
+| `npm run cloud-detail:stability` | 視点を動かしただけで雲の形が変わらないかと、時間で雲がどう流れ入れ替わるかの計測(`.cloud-detail/stability/`) | ちらつきや細部の動きを定量で追うとき |
 | `npm run export-assets` | `src/assets/` の焼き込みアセット再生成 | モデルかノズル表を変えたときだけ |
 | `npm run export-module-thumbnails` | `src/assets/module-thumbnails/` の再生成 | モジュールの見た目を変えたときだけ |
 | `npm run ship-modules:author` | Blender で船モジュールの原型 `assets-src/ship-modules/*.glb` を再生成(続けて `export-assets`) | 船モジュールの造形か寸法を変えたときだけ |
