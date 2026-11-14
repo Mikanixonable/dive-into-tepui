@@ -9,7 +9,7 @@ import type { ShipModuleInstance } from '../ship/ship-module-instance';
 export interface ModuleInspectionShip {
   readonly name: string;
   readonly assembly: ShipAssembly;
-  readonly docks: Pick<ShipDockState, 'status'>;
+  readonly docks: Pick<ShipDockState, 'status' | 'pendingRepair'>;
   readonly capabilities: { readonly operatingCockpitId: string | null };
 }
 
@@ -48,7 +48,12 @@ export function moduleItems(ship: ModuleInspectionShip, module: ShipModuleInstan
       ? [
         ...(module.kind === 'dock' && ship.assembly.isDockingPortOccupied(module.id)
           ? [
-            { label: '接続船体を修理', act: 'repairDockedModules' as const, keepOpen: true },
+            {
+              // 修理が進んでいるドックでは、その旨を操作名に添える(GAME.md 11.4)。
+              label: ship.docks.pendingRepair(module.id) !== null
+                ? '接続船体を修理(修理中)' : '接続船体を修理',
+              act: 'repairDockedModules' as const, keepOpen: true,
+            },
             { label: '推進剤を補給', act: 'refuelFromStockpile' as const, keepOpen: true },
           ]
           : []),

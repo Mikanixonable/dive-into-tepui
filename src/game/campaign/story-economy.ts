@@ -29,6 +29,18 @@ export const LUNAR_BASE_INITIAL_PROPELLANT = 200;
 // 軌道造船所の建設費 [素材]。観測拠点の備蓄から払い、格上げする(GAME.md 11.2)。
 // 敵ドロップ(1機で最大 120)数機ぶんを拠点へ運び込む規模に置く。
 export const SHIPYARD_CONSTRUCTION_MATERIALS = 300;
+// 建造1部品の所要時間 [sim s]。乾燥質量に比例し、小さい部品にも下限がある。
+// 推進器(50 kg)で約1分、タンク級(250 kg)で約4分になる水準。
+export const CONSTRUCTION_SECONDS_PER_DRY_KG = 1;
+export const CONSTRUCTION_MIN_SECONDS = 10;
+// 修理の所要時間 [sim s]。失われた HP の合計に比例し、下限がある。全損に近い
+// 船体(喪失 HP 1,500 程度)で約5分になる水準。
+export const REPAIR_SECONDS_PER_HP = 0.2;
+export const REPAIR_MIN_SECONDS = 10;
+// RCS タンクへの補給の換算 [kg/unit]。標準タンクの単位質量は 1 kg/unit で、
+// 戦闘 RCS タンクだけが物理側の簡略化で単位質量 0 になっているため、推進剤の
+// 会計はタンク定義に寄らずこの換算で統一する(GAME.md 11.4)。
+export const RCS_PROPELLANT_KG_PER_UNIT = 1;
 
 // モジュール1つの建造費 [素材]。最小でも 1 かかる。
 export function moduleMaterialsCost(definition: ShipModuleDefinition): number {
@@ -47,6 +59,22 @@ export function repairMaterialsCost(assembly: ShipAssembly): number {
     if (missing > 0) total += moduleMaterialsCost(definition) * (missing / definition.maxHp);
   }
   return Math.ceil(total * REPAIR_MATERIALS_RATIO);
+}
+
+// 部品1つの建造にかかる時間 [sim s]。乾燥質量に比例する(GAME.md 11.4)。
+export function constructionDurationSeconds(definition: ShipModuleDefinition): number {
+  return Math.max(CONSTRUCTION_MIN_SECONDS, definition.dryMass * CONSTRUCTION_SECONDS_PER_DRY_KG);
+}
+
+// 船体全体の修理にかかる時間 [sim s]。失われた HP の合計に比例する(GAME.md 11.4)。
+export function repairDurationSeconds(assembly: ShipAssembly): number {
+  let missingHp = 0;
+  for (const module of assembly.modules) {
+    const definition = assembly.definition(module.id);
+    if (definition === null || definition.maxHp <= 0) continue;
+    missingHp += Math.max(0, definition.maxHp - module.hp);
+  }
+  return Math.max(REPAIR_MIN_SECONDS, missingHp * REPAIR_SECONDS_PER_HP);
 }
 
 // 質量 massKg [kg] の敵を撃破したときのドロップ素材。

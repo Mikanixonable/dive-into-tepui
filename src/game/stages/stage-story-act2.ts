@@ -293,14 +293,17 @@ export class StageStoryAct2 extends Stage {
     }
   }
 
-  // 敵の消滅を記録する。撃破した敵は id つきでキャンペーンへ知らせ、再入場時に
-  // 再配置されないようにする(GAME.md 11.2)。
+  // 敵の消滅を記録する。消滅した敵は id つきでキャンペーンへ知らせ、再入場時に
+  // 再配置されないようにする。撃破によらない消滅も残存から消えたものとして
+  // 知らせるが、撃破数には数えない(GAME.md 11.2)。
   public override recordEnemyDeath(
     enemy: Enemy, simTime: number, cause: EnemyDeathCause = 'killed',
   ): void {
     super.recordEnemyDeath(enemy, simTime, cause);
     if (cause === 'killed') {
       this._dynamicSystem.events.record({ kind: 'enemyDefeated', enemyId: enemy.id });
+    } else if (STORY_ACT2_ENEMIES.some((spec) => spec.id === enemy.id)) {
+      this._dynamicSystem.events.record({ kind: 'enemyLost', enemyId: enemy.id });
     }
   }
 
@@ -319,6 +322,9 @@ export class StageStoryAct2 extends Stage {
   public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (player !== null) this.logistics.updateLogistics(simTime, player, simSpeed);
+
+    // 所要時間つき建造の完了を進める(GAME.md 11.4)。
+    this.advanceStoryWorks(simTime);
 
     // 初期備蓄は作成時に台帳へ入れてある。キャンペーンへは最初のフレームで1度だけ送る。
     if (!this.seedAnnounced) {

@@ -405,6 +405,9 @@ export class StageStoryAct4 extends Stage {
     const player = this.ship;
     if (player !== null) this.logistics.updateLogistics(simTime, player, simSpeed);
 
+    // 所要時間つき建造の完了を進める(GAME.md 11.4)。
+    this.advanceStoryWorks(simTime);
+
     // 初期備蓄は作成時に台帳へ入れてある。キャンペーンへは最初のフレームで1度だけ送る。
     if (!this.seedAnnounced) {
       this.seedAnnounced = true;
@@ -435,7 +438,9 @@ export class StageStoryAct4 extends Stage {
     this.updateSalvageRecovery(STORY_LUNAR_BASE_ID);
   }
 
-  // 敵の消滅を記録する。撃破した敵は id つきでキャンペーンへ知らせる。指揮中枢が
+  // 敵の消滅を記録する。消滅した敵は id つきでキャンペーンへ知らせ、再入場時に
+  // 再配置されないようにする。撃破によらない消滅も残存から消えたものとして
+  // 知らせるが、撃破数には数えない(GAME.md 11.2)。指揮中枢が
   // 失われれば、その原因によらず決着として記録し、残存する自動兵器は無力化する
   // (GAME.md 11.3)。決着は一度だけで、以後は覆らない。
   public override recordEnemyDeath(
@@ -444,6 +449,8 @@ export class StageStoryAct4 extends Stage {
     super.recordEnemyDeath(enemy, simTime, cause);
     if (cause === 'killed') {
       this._dynamicSystem.events.record({ kind: 'enemyDefeated', enemyId: enemy.id });
+    } else if (STORY_ACT4_ALL_ENEMY_IDS.includes(enemy.id)) {
+      this._dynamicSystem.events.record({ kind: 'enemyLost', enemyId: enemy.id });
     }
     if (STORY_ACT4_ALL_ENEMY_IDS.includes(enemy.id)) {
       this.removedEnemyIds.add(enemy.id);

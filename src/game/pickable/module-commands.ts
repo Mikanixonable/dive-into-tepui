@@ -1,15 +1,18 @@
 // 搭載モジュールの操作を受け付け、対象の有効性を確かめて進行の位相で適用する。
 // 経済が渡された場合(ストーリーモード)は、修理・マガジン製造・推進剤補給が対象の
-// 拠点備蓄を消費し、足りなければ理由つきで拒否する(GAME.md 11.4)。
+// 拠点備蓄を消費し、足りなければ理由つきで拒否する。修理は着手時に素材を支払い、
+// 所要時間の経過時点で適用される(GAME.md 11.4)。
 import { dockingEligibility } from '../ship/ship-docking';
 import {
-  MAGAZINE_MATERIALS, repairMaterialsCost, type StoryEconomy,
+  MAGAZINE_MATERIALS, RCS_PROPELLANT_KG_PER_UNIT, repairDurationSeconds, repairMaterialsCost,
+  type StoryEconomy,
 } from '../campaign/story-economy';
 import type { CommandQueue } from '../command-queue';
 import type { CommandCompletion } from '../command-completion';
 import type { ControlSelection } from '../control-selection';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { ShipAssembly } from '../ship/ship-assembly';
+import type { ShipDockState } from '../ship/ship-dock-state';
 import type { ModularShip } from '../ship/modular-ship';
 import type { ModuleInspectionAction } from './module-inspection';
 
@@ -19,7 +22,8 @@ export type ModuleCommandAction = Exclude<ModuleInspectionAction, 'startConstruc
 export interface ModuleCommandTarget {
   readonly id: string;
   readonly assembly: ShipAssembly;
-  readonly motion: { readonly alive: boolean };
+  readonly docks: ShipDockState;
+  readonly motion: { readonly alive: boolean; readonly state: { readonly t: number } };
   readonly capabilities: { selectOperatingCockpit(moduleId: string): boolean };
   setModuleDeployment(moduleId: string, deployed: boolean): void;
   toggleBoosterIgnition(moduleId: string): boolean;
@@ -106,7 +110,8 @@ export class ModuleCommands {
     }, completion);
   }
 
-  // 接続船体を修理する。経済がある場合は、先に修理の条件を確かめてから素材を支払う。
+  // 接続船体を修理する。経済がある場合は着手であり、先に修理の条件を確かめて
+  // から素材を支払い、修理そのものは所要時間の経過時点で適用される。
   private repairWithCost(ship: ModuleCommandTarget, moduleId: string): void {
     if (this.economy === null) {
       ship.repairAtDock(moduleId);
@@ -119,12 +124,29 @@ export class ModuleCommands {
     if (!ship.assembly.isDockingPortOccupied(moduleId)) {
       throw new Error(`docking module is not connected: ${moduleId}`);
     }
+    // 同じドックの修理は1件だけが進む。二重の着手は残り時間を示して拒否する。
+    const pending = ship.docks.pendingRepair(moduleId);
+    if (pending !== null) {
+      const remaining = Math.max(0, Math.ceil(pending.completesAt - ship.motion.state.t));
+      throw new Error(`修理中です(完了まであと約 ${remaining} 秒)`);
+    }
     const cost = repairMaterialsCost(ship.assembly);
-    if (cost > 0 && !this.economy.charge(ship.id, cost, 0)) {
+    // 損傷が無ければ直すものは無く、待ち時間も素材も要らない。
+    if (cost <= 0) {
+      ship.repairAtDock(moduleId);
+      return;
+    }
+    if (!this.economy.charge(ship.id, cost, 0)) {
       const balance = this.economy.stockpileOf(ship.id).materials;
       throw new Error(`素材が不足しています(修理費 ${cost} / 備蓄 ${balance} — あと ${cost - balance})`);
     }
-    ship.repairAtDock(moduleId);
+    // 着手。完了時刻と支払った素材をドックの作業として持ち、適用は作業の進行
+    // (campaign/story-works)が完了時刻に行う。
+    ship.docks.scheduleRepair({
+      dockId: moduleId,
+      completesAt: ship.motion.state.t + repairDurationSeconds(ship.assembly),
+      materials: cost,
+    });
   }
 
   // マガジンを1つ製造し、対象のベルトへ追加する。製造は接続中の建造ドックを介し、
@@ -144,18 +166,41 @@ export class ModuleCommands {
     ship.onPickup(1);
   }
 
-  // 拠点の推進剤備蓄から、接続中の船体の主推進タンクへ補給する。備蓄の単位は kg で、
-  // 換算は受け取るタンクの単位質量による。空きが無ければ何も移らない。
+  // 拠点の推進剤備蓄から、接続中の船体のタンクへ補給する。備蓄の単位は kg で、
+  // 主推進タンクは受け取るタンクの単位質量で換算する。RCS タンクの燃料も推進剤
+  // であり、経済の換算(RCS_PROPELLANT_KG_PER_UNIT)で会計に載せる — 戦闘 RCS
+  // タンクは単位質量が 0 のため、タンク定義の換算では備蓄から引けない
+  // (GAME.md 11.4)。空きが無ければ何も移らない。
   private refuelFromStockpile(ship: ModuleCommandTarget): void {
     const economy = this.requireEconomy('推進剤の補給はストーリーモードの拠点でのみ行えます');
     const stock = economy.stockpileOf(ship.id).propellant;
     if (stock <= 0) throw new Error('推進剤の備蓄がありません');
-    const kgPerUnit = mainTankKgPerUnit(ship.assembly);
-    if (kgPerUnit === null) throw new Error('主推進タンクがありません');
-    const added = ship.assembly.refuel('main', Math.floor(stock / kgPerUnit));
-    if (added <= 0) throw new Error('主推進タンクに空きがありません');
-    // 移した分だけを備蓄から引く。換算の端数は備蓄に残る。
-    if (!economy.charge(ship.id, 0, Math.round(added * kgPerUnit))) {
+    const mainKgPerUnit = mainTankKgPerUnit(ship.assembly);
+    const hasRcsTank = ship.assembly.modules.some((module) => (
+      module.kind === 'tank' && module.hp > 0
+      && ship.assembly.definition(module.id)?.abilities.fuelKind === 'rcs'
+    ));
+    if (mainKgPerUnit === null && !hasRcsTank) throw new Error('タンクがありません');
+    // 主推進を先に満たし、残った備蓄で RCS を満たす。移した分だけを備蓄から
+    // 引くため、換算の端数は備蓄に残る。
+    let remaining = stock;
+    let moved = false;
+    if (mainKgPerUnit !== null) {
+      const added = ship.assembly.refuel('main', Math.floor(remaining / mainKgPerUnit));
+      if (added > 0) {
+        remaining -= Math.round(added * mainKgPerUnit);
+        moved = true;
+      }
+    }
+    if (hasRcsTank) {
+      const added = ship.assembly.refuel('rcs', Math.floor(remaining / RCS_PROPELLANT_KG_PER_UNIT));
+      if (added > 0) {
+        remaining -= Math.round(added * RCS_PROPELLANT_KG_PER_UNIT);
+        moved = true;
+      }
+    }
+    if (!moved) throw new Error('タンクに空きがありません');
+    if (!economy.charge(ship.id, 0, stock - remaining)) {
       throw new Error('推進剤の備蓄が不足しています');
     }
   }

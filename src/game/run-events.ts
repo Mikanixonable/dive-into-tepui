@@ -228,6 +228,9 @@ export type RunEventBody =
   | { readonly kind: 'storyDebrisReplaced' }
   // 敵1機を撃破した。enemyId は撃破した敵の識別子で、キャンペーンが撃破済みとして記録する。
   | { readonly kind: 'enemyDefeated'; readonly enemyId: string }
+  // 敵1機が撃破によらず消滅した(再突入による焼失・表面への衝突・交戦圏からの離脱)。
+  // キャンペーンは残存から消えたものとして記録するが、撃破数には数えない(GAME.md 11.2)。
+  | { readonly kind: 'enemyLost'; readonly enemyId: string }
   // 軌道造船所が完成した。キャンペーンは完成を進行として記録する。
   | { readonly kind: 'storyShipyardBuilt' }
   // 軌道造船所の建設が素材不足でできなかった。missing は不足している素材の量。

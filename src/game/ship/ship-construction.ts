@@ -220,6 +220,11 @@ export class ShipConstruction implements OverlayHandle {
   // 選択時点の部品とスロットを捕捉し、配置の命令を受け付ける。
   private place(): void {
     const session = this.current;
+    // 建造中の部品がある間は、次の配置を始められない(GAME.md 11.4)。
+    if (session !== null && this.currentDraft()?.pendingModule) {
+      this.notifier.hint('建造中の部品があります', undefined, 'warn');
+      return;
+    }
     const candidate = this.selectedCandidate();
     if (session === null || candidate === null || !candidate.placement.valid) {
       if (candidate?.placement.reason) this.notifier.hint(candidate.placement.reason, undefined, 'warn');
@@ -274,6 +279,14 @@ export class ShipConstruction implements OverlayHandle {
     if (session === null) return;
     const draft = this.currentDraft();
     if (draft === null || draft.firstConnectionId === null) return;
+    // 建造中の部品がある枝は完成できない。残り時間はパネルの警告にも出ている。
+    if (draft.pendingModule) {
+      const remaining = Math.max(
+        0, Math.ceil(draft.pendingModule.completesAt - draft.ship.motion.state.t),
+      );
+      this.notifier.hint(`建造中の部品が完了していません(あと約 ${remaining} 秒)`, undefined, 'warn');
+      return;
+    }
     // 追加枝の役割を判定し、操縦不能な物資なら確定前に確認を挟む。
     const branch = draft.ship.assembly.clone().splitAt(draft.firstConnectionId)[1];
     if (branch.role === 'material') {
@@ -442,7 +455,13 @@ export class ShipConstruction implements OverlayHandle {
     const gateReason = this.scaleGate === null
       ? null
       : this.scaleGate.excessReason(draft.ship.id, this.projectedBranchMassKg(draft, definition));
-    const warning = shortage ?? gateReason ?? selected?.placement.reason ?? selectedState?.reason
+    // 建造中の部品がある場合は、その進行(部品名と完了までの残り時間)を状態として
+    // 示す。建造中は次の配置も完成もできない(GAME.md 11.4)。
+    const pending = draft.pendingModule;
+    const pendingNotice = pending === null ? null
+      : `建造中: ${SHIP_MODULE_CATALOG.require(pending.definitionId).name}`
+        + `(完了まであと約 ${Math.max(0, Math.ceil(pending.completesAt - draft.ship.motion.state.t))} 秒)`;
+    const warning = pendingNotice ?? shortage ?? gateReason ?? selected?.placement.reason ?? selectedState?.reason
       ?? (role === 'material' && draft.addedIds.length > 0 ? '操縦不能な物資として完成します' : null);
     const dockDefinition = draft.ship.assembly.definition(draft.dockId);
     this.panel.sync({
@@ -452,8 +471,10 @@ export class ShipConstruction implements OverlayHandle {
       hp: totals?.hp ?? 0, maxHp: totals?.maxHp ?? 0, capabilities, preview, role, warning,
       selectedDefinitionId: definition.id, selectedModuleName: definition.name,
       selectedSlotId: this.selectedSlotId, slots: slotStates,
-      canPlace: (selected?.placement.valid ?? false) && shortage === null && gateReason === null,
-      canRemove: draft.addedIds.length > 0, canFinish: draft.firstConnectionId !== null,
+      canPlace: (selected?.placement.valid ?? false) && shortage === null && gateReason === null
+        && pending === null,
+      canRemove: draft.addedIds.length > 0 || pending !== null,
+      canFinish: draft.firstConnectionId !== null && pending === null,
     });
   }
 }

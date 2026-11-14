@@ -99,7 +99,7 @@ export function register(): void {
       assembly,
       docks,
       capabilities: { controllable: true },
-      motion: { alive: true },
+      motion: { alive: true, state: { t: 0 } },
       synchronizeAssemblyState: () => undefined,
     };
     const edits = new ShipConstructionEdits(facade, 'dock-left');
