@@ -19,7 +19,7 @@ export interface MarkerRecord {
   x: number;
   y: number;
   priority: number;
-  dist: number | undefined;
+  dist: number | null;
   iconHidable: boolean;
   clustered: boolean;
   // 遮蔽で畳み始めた実時刻 [ms]。畳んでいる途中でなければ null。
@@ -106,7 +106,7 @@ export class MarkerGroup implements MarkerSink {
     m.x = item.x;
     m.y = item.y;
     m.priority = item.priority;
-    m.dist = item.dist;
+    m.dist = item.dist ?? null;
     m.iconHidable = item.iconHidable !== false;
     m.clustered = item.clustered === true;
     // 前フレームの間引きを解いてから、手前にあれば描く。
@@ -136,8 +136,8 @@ export class MarkerGroup implements MarkerSink {
     m.root.style.color = item.color ?? '';
     m.root.style.textShadow = '';
     // 回転だけを扱う — シンボルの中心合わせは CSS が持つので、平行移動を足すと二重にかかる。
-    // rotationDeg が undefined なら前回の角度を保つ(向きが不定な瞬間に 0° へ戻るちらつきを防ぐ)。
-    if (item.rotationDeg !== undefined) m.sym.style.transform = `rotate(${item.rotationDeg}deg)`;
+    // rotationDeg が無いなら前回の角度を保つ(向きが不定な瞬間に 0° へ戻るちらつきを防ぐ)。
+    if (item.rotationDeg != null) m.sym.style.transform = `rotate(${item.rotationDeg}deg)`;
   }
 
   // 遮蔽で畳む。透明化は CSS の遷移に任せ、遷移が終わる時刻を過ぎたフレームで伏せる。
@@ -172,7 +172,7 @@ export class MarkerGroup implements MarkerSink {
       x: item.x,
       y: item.y,
       priority: item.priority,
-      dist: item.dist,
+      dist: item.dist ?? null,
       iconHidable: true,
       clustered: false,
       fadeStartMs: null,
