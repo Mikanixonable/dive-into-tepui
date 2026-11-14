@@ -87,7 +87,6 @@ export const KEY_MAPPING = {
   constructionUndo: { code: 'KeyZ', label: 'Ctrl+Z', withCtrlOrMeta: true },
   constructionRedo: { code: 'KeyZ', label: 'Ctrl+Shift+Z', withCtrlOrMeta: true, withShift: true },
   constructionRedoAlt: { code: 'KeyY', label: 'Ctrl+Y', withCtrlOrMeta: true },
-  constructionCyclePart: { code: 'Tab', label: 'TAB' },
   constructionCategory1: { code: 'Digit1', label: '1' },
   constructionCategory2: { code: 'Digit2', label: '2' },
   constructionCategory3: { code: 'Digit3', label: '3' },
@@ -99,6 +98,7 @@ export const KEY_MAPPING = {
 
   // 画面
   help: { code: 'KeyH', label: 'H' },
+  wideScreenToggle: { code: 'Tab', label: 'TAB' },
   pauseMenu: { code: 'Escape', label: 'ESC' },
   restart: { code: 'KeyR', label: 'R' },
   toggleDebugInfoWindow: { code: 'F3', label: 'F3' },
