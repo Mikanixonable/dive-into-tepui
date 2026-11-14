@@ -62,7 +62,7 @@ const STYLE = `
 }
 `;
 
-export interface DraggableWindowOptions {
+interface DraggableWindowOptions {
   readonly title: string;
   readonly subtitle?: string;
   // タイトル前に添える対象種別のグリフ。Unicode 文字または SVG マークアップ(信頼できる
@@ -92,7 +92,7 @@ export class DraggableWindow implements OverlayHandle {
   private readonly titleSubEl: HTMLDivElement;
   private readonly clipBtn: Button;
   private lastTitle = '';
-  private lastSubtitle: string | undefined | typeof DraggableWindow.UNSET = DraggableWindow.UNSET;
+  private lastSubtitle: string | null | typeof DraggableWindow.UNSET = DraggableWindow.UNSET;
   private _clipped: boolean;
   private disposed = false;
 
@@ -177,7 +177,7 @@ export class DraggableWindow implements OverlayHandle {
 
     this.unsubscribeViewport = onViewportChange(() => this.reclamp());
 
-    this.setHeader(options.title, options.subtitle);
+    this.setHeader(options.title, options.subtitle ?? null);
     // 先に登録して要素を DOM へ置いてから、実寸を測って位置を決める。
     this.overlayManager.open(this.overlayId, this.element, this, this.currentSpec());
     this.moveTo(clientX, clientY);
@@ -216,7 +216,7 @@ export class DraggableWindow implements OverlayHandle {
   }
 
   // タイトル・サブタイトルを変化があった要素だけ差分更新する。
-  public setHeader(title: string, subtitle: string | undefined): void {
+  public setHeader(title: string, subtitle: string | null): void {
     if (title !== this.lastTitle) {
       this.lastTitle = title;
       this.titleMainEl.textContent = title;

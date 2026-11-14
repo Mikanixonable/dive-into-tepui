@@ -11,7 +11,7 @@ import type { PickCandidate } from './pick-candidate';
 
 export interface ObjectPickable extends ListedObject, InspectedObject, MapPickable {}
 
-export interface ObjectPickableProvider {
+interface ObjectPickableProvider {
   readonly objectPickable: ObjectPickable;
 }
 

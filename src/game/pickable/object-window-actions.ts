@@ -39,7 +39,7 @@ import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
 import type { ModuleWindowOpener } from './module-windows';
 
-export interface ObjectWindowParts {
+interface ObjectWindowParts {
   readonly title: string;
   readonly subtitle?: string;
   readonly items: readonly PropertyWindowItem<MenuAction>[];

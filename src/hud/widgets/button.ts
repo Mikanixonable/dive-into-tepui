@@ -5,7 +5,7 @@ import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-b
 
 // ボタンの意味(Primary/Secondary)と密度・形状(Dense/Icon)を、画面側の個別 CSS ではなく
 // 共通スタイルへ渡すための見た目バリアント。状態(on/pressed/disabled)とは別軸で持つ。
-export type ButtonVariant = 'primary' | 'secondary' | 'dense' | 'icon';
+type ButtonVariant = 'primary' | 'secondary' | 'dense' | 'icon';
 
 export class Button {
   public readonly element: HTMLElement;
