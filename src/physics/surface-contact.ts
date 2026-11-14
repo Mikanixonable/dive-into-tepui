@@ -26,7 +26,7 @@ interface SurfaceContact {
   readonly geometry: ContactGeometry;
 }
 
-export type SurfaceBodyStateAt = (
+type SurfaceBodyStateAt = (
   body: CelestialBody, pivot: number, time: number,
 ) => KinematicState;
 
