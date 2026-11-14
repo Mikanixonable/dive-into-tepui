@@ -199,8 +199,11 @@ export const CLOUD_DETAIL_CHECK_SHOTS: Readonly<Record<string, CloudDetailShot>>
 // 視点を動かしただけで雲の形が変わらないかと、時間とともにどう流れ入れ替わるかを測る撮影の組。同じ場面を、
 // 基準(base)・直下点を北へ STABILITY_SHIFT_PX 画素ぶんずらした構図(shift)・高度を STABILITY_ZOOM 倍にした
 // 構図(zoom)・同じ構図の 10 分後(later10)と 30 分後(later30)で撮る。止まった雲なら、位置と縮尺を合わせた
-// 基準・shift・zoom は一致する。計測の一覧(CLOUD_DETAIL_SHOT_INFOS)には載せない。
+// 基準・shift・zoom は一致する。base・later10・later30 は種類ごと(両方・積雲だけ・巻雲だけ)にも撮る —
+// 層ごとに風が違うので、時間の計測を層別の位置合わせで読めるようにするため。計測の一覧
+// (CLOUD_DETAIL_SHOT_INFOS)には載せない。
 // 撮影名は <海域>-<時刻 h>h-<km/px>km-stab-<base|shift|zoom|later10|later30>。
+// 積雲だけ・巻雲だけは末尾へ -cumulus / -cirrus を足す(種類の無標は両方)。
 const STABILITY_SCENE_IDS = ['natl-front', 'npac-jet', 'pac-temp', 'south-hl', 'wpac-itcz'] as const;
 const STABILITY_DISPLAY_TIME_S = 21600;
 // ずらす画素数。cap の 1 texel(低軌道で約 10 km)より短く、細部の段(0.25 km/px で 1〜32 px)を跨ぐ長さ。
@@ -228,23 +231,28 @@ export const CLOUD_DETAIL_STABILITY_SHOTS: Readonly<Record<string, CloudDetailSh
         later30: { altitudeM: baseAltitude, latitudeDeg: scene.latitudeDeg, laterS: 1800 },
       };
       for (const [variant, placement] of Object.entries(variants)) {
-        const name = `${scene.id}-${STABILITY_DISPLAY_TIME_S / 3600}h-${tierKmPerPx}km-stab-${variant}`;
-        shots[name] = {
-          scene: scene.scene,
-          latitudeDeg: placement.latitudeDeg,
-          longitudeDeg: scene.longitudeDeg,
-          displayTime: STABILITY_DISPLAY_TIME_S + placement.laterS,
-          kind: 'both',
-          tierKmPerPx,
-          centerKmPerPx: centerKmPerPxOf(placement.altitudeM, placement.latitudeDeg),
-          altitudeM: placement.altitudeM,
-          view: {
-            earthAltitudeLog: Math.log10(placement.altitudeM),
-            earthLatitudeDeg: placement.latitudeDeg,
-            earthLongitudeDeg: scene.longitudeDeg,
-          },
-          graphics: KIND_GRAPHICS.both,
-        };
+        const stem = `${scene.id}-${STABILITY_DISPLAY_TIME_S / 3600}h-${tierKmPerPx}km-stab-${variant}`;
+        // 視点の安定性を見る構図(shift / zoom)は両方だけ。時間の計測に使う構図は層別にも撮る。
+        const kinds: readonly CloudDetailKind[] =
+          variant === 'shift' || variant === 'zoom' ? ['both'] : ['both', 'cumulus', 'cirrus'];
+        for (const kind of kinds) {
+          shots[kind === 'both' ? stem : `${stem}-${kind}`] = {
+            scene: scene.scene,
+            latitudeDeg: placement.latitudeDeg,
+            longitudeDeg: scene.longitudeDeg,
+            displayTime: STABILITY_DISPLAY_TIME_S + placement.laterS,
+            kind,
+            tierKmPerPx,
+            centerKmPerPx: centerKmPerPxOf(placement.altitudeM, placement.latitudeDeg),
+            altitudeM: placement.altitudeM,
+            view: {
+              earthAltitudeLog: Math.log10(placement.altitudeM),
+              earthLatitudeDeg: placement.latitudeDeg,
+              earthLongitudeDeg: scene.longitudeDeg,
+            },
+            graphics: KIND_GRAPHICS[kind],
+          };
+        }
       }
     }
   }
