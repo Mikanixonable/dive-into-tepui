@@ -109,7 +109,8 @@ export class PlanetLightSubject {
     const clouds = atmosphere?.clouds ?? null;
     this.atmospherePresent.value = atmosphere !== null;
     this.cloudsPresent.value = clouds?.cumulusVisible ?? false;
-    if (clouds !== null) this.cloudField.bind(clouds.cloud.field);
+    if (clouds === null || !clouds.cumulusVisible) this.cloudField.unbind();
+    else this.cloudField.bind(clouds.cloud.field);
     if (atmosphere === null) return;
     this.integrator.write(
       atmosphere, ATMOSPHERE_STEPS, cutoffRadius(atmosphere.optics, atmosphere.surfaceRadius));
@@ -180,6 +181,7 @@ export class PlanetLightSubject {
 
   // 保持している GPU 資源を解放する。
   public dispose(): void {
+    this.cloudField.unbind();
     this.integrator.dispose();
     this.white.dispose();
   }
