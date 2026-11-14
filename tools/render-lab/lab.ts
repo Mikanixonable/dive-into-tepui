@@ -639,6 +639,7 @@ export class LabView {
     name: string, point: CloudDetailRandomPoint,
   ): Promise<{ png: string, centerKmPerPx: number, altitudeM: number }> {
     const shot = cloudDetailRandomShot(point);
+    // 専用ケースを組み、描画準備が整ってから撮影設定を適用する。
     if (this.currentBuilder !== cloudDetailCase) {
       this.setGraphics({ ...this.startupGraphics, ...shot.graphics });
       this.buildCase(cloudDetailCase, null);
