@@ -45,6 +45,8 @@ export class CreativeStage extends Stage {
   public static readonly epoch = STORY_EPOCH;
   // 開始日時の指定画面を挟む(SPEC GAME.md 9.0)。epoch はその欄の既定値になる。
   public static readonly picksStartEpoch = true;
+  // 勝敗を判定しない(GAME.md 2.6)。解放の記録も読まない。
+  public static readonly judgesOutcome = false;
   public static readonly selectLabel = 'CREATIVE';
   public static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   public static readonly selectGroup = 'クリエイティブモード';
@@ -103,6 +105,7 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.onToggleWaveAttack = (on) => this.commands.setWaveAttackEnabled(on);
     this.stageControlsPanel.onAddMagazine = () => this.commands.addMagazineToShip();
     this.stageControlsPanel.onRefillFuel = () => this.commands.refillShipRcsFuel();
+    this.stageControlsPanel.onRefillBaseFuel = () => this.commands.refillBaseFuel();
     this.stageControlsPanel.onSpawnDistanceChange = (distance) => this.commands.setSpawnDistance(distance);
     this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.commands.spawnManualEnemy(shape, colorValue);
     hudRail(this._hud.mapRoot, 'right').appendChild(this.stageControlsPanel.element);
@@ -163,6 +166,7 @@ export class CreativeStage extends Stage {
       return;
     }
     player.onPickup(1);
+    this._dynamicSystem.events.record({ kind: 'magazineAdded' });
   }
 
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければ、操作艦が要ることを記録する。
@@ -172,7 +176,20 @@ export class CreativeStage extends Stage {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'refillRcsFuel' });
       return;
     }
-    player.refuelRcsFuel(player.totalMaxRcsFuel);
+    const added = player.refuelRcsFuel(player.totalMaxRcsFuel);
+    this._dynamicSystem.events.record({ kind: 'rcsFuelRefilled', fuel: added });
+  }
+
+  // すべての基地(健全な建造ドックを持つ船体)の主推進燃料と RCS 燃料を満タンにし、補充した隻数を記録する。
+  public refillBaseFuel(): void {
+    let ships = 0;
+    for (const ship of this._dynamicSystem.all().filter(isModularShip)) {
+      if (!ship.motion.alive || ship.capabilities.role !== 'base') continue;
+      ship.refuelFuel(ship.totalMaxFuel);
+      ship.refuelRcsFuel(ship.totalMaxRcsFuel);
+      ships++;
+    }
+    this._dynamicSystem.events.record({ kind: 'baseFuelRefilled', ships });
   }
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければ、操作艦が要ることを記録する。
@@ -210,7 +227,7 @@ export class CreativeStage extends Stage {
     this._dynamicSystem.events.record({ kind: 'objectPlaced', name: slot.name });
   }
 
-  // ステージ操作パネルを、指定したビューの右ドックへ置く。
+  // ステージ操作パネルを、指定したビューの右レールへ置く。
   private mountStageControlsPanel(inMapView: boolean): void {
     const root = inMapView ? this._hud.mapRoot : this._hud.combatRoot;
     const rightRail = hudRail(root, 'right');
@@ -226,7 +243,7 @@ export class CreativeStage extends Stage {
   ): void {
     super.sync(camera, view, displayTime);
     const ship = this.ship;
-    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
+    this.stageControlsPanel.setShipRequiredButtonsEnabled(ship !== null && ship.motion.alive);
     // 設定パネルは戦闘ビューでのみ出す(SPEC/GAME.md「9.2 設定パネル」)。レールは
     // 戦闘側に固定し、マップでは隠す。
     this.mountStageControlsPanel(false);

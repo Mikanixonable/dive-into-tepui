@@ -18,6 +18,8 @@ export interface CreativeStageCommands {
   addMagazineToShip(): void;
   // 操作艦の RCS 燃料を満タンにする。
   refillShipRcsFuel(): void;
+  // すべての基地の燃料を満タンにする。
+  refillBaseFuel(): void;
   // 手動スポーンが使う距離 [m] を差し替える。
   setSpawnDistance(distanceM: number): void;
   // shape で選んだ形・色の敵を1体、自機の前方へ出す。
@@ -36,6 +38,7 @@ export function creativeStageCommands(queue: CommandQueue, stage: CreativeStage)
     setWaveAttackEnabled: (on) => queue.submit(() => stage.setWaveAttackEnabled(on)),
     addMagazineToShip: () => queue.submit(() => stage.addMagazineToShip()),
     refillShipRcsFuel: () => queue.submit(() => stage.refillShipRcsFuel()),
+    refillBaseFuel: () => queue.submit(() => stage.refillBaseFuel()),
     setSpawnDistance: (distanceM) => queue.submit(() => stage.setSpawnDistance(distanceM)),
     spawnManualEnemy: (shape, colorValue) => queue.submit(() => stage.spawnManualEnemy(shape, colorValue)),
     placeObject: (name, selection, state) => queue.submit(() => stage.placeObject(name, selection, state)),

@@ -17,6 +17,7 @@ import type { ThemePalette } from '../theme';
 import type { CurrentGameSource } from './save-browser/save-browser';
 import type { HudShell } from '../hud/hud-shell';
 import type { GamePhase, RunOptions, RunStats, Stage, StageClass, StageResult } from '../game/stages/stage';
+import { BODY_REVEAL_BASE } from '../game/celestial/body-reveal';
 import { StageRecords, FORECAST_LOSS_STREAK, bestDetailHtml, type BestComparison } from './stage-records';
 import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';
@@ -130,6 +131,12 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.devices.pauseMenu.toggle(false);
   }
 
+  // 勝敗を判定するステージだけが、遊んでいるセーブ枠の解放の記録を読む。判定しないステージは基底の天体から始める。
+  private revealedBodiesFor(stageClass: StageClass): readonly string[] {
+    const slot = this.slots.activeSlot();
+    return stageClass.judgesOutcome && slot !== null ? slot.revealedBodies ?? BODY_REVEAL_BASE : BODY_REVEAL_BASE;
+  }
+
   // 現在の周回を畳んだ上で、再開する記録があればそこから、無ければ新しく Run を組み、起動をスロットへ記録する。
   // reinforced は援護付きの再出撃か。新しく始めるランには、連敗の予告の選択もここで決める。
   private async startRun(
@@ -141,6 +148,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const runOptions: RunOptions = {
       reinforced,
       forecast: this.stageRecords.lossStreak(stageClass.id) >= FORECAST_LOSS_STREAK,
+      revealedBodies: this.revealedBodiesFor(stageClass),
     };
     showLoading();
     try {
@@ -172,7 +180,12 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const { activeStage: stage, events } = this.run.game;
     this.recordBlueprintEvents(events.recent);
     if (!events.recent.some(({ body }) => body.kind === 'stageDecided')) return;
-    if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.devices.hud);
+    if (stage.phase === 'won') {
+      this.unlockManager.reportClear(stage.id, this.devices.hud);
+      // 勝利で解放された天体を、遊んでいるセーブ枠へ記録する。
+      const slotId = this.slots.activeSlotId;
+      if (slotId !== null) this.slots.setRevealedBodies(slotId, stage.revealedBodies);
+    }
     const stats = stage.result?.stats ?? null;
     const comparison = stats === null ? null : this.noteOutcome(stage, stats);
     this.showResult(stage, comparison);

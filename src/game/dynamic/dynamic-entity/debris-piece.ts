@@ -1,13 +1,15 @@
 import type * as THREE from 'three/webgpu';
-import { randomQuat } from '../../../math/quat';
+import { qRotate, randomQuat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
-import { add, randVec, type SerializedVec3, type Vec3, v3 } from '../../../math/vec3';
+import { add, cross, randVec, type SerializedVec3, type Vec3, v3 } from '../../../math/vec3';
 import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import { deserializeKinematicState, kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { CapKind } from './entity-kind';
+import { AssemblyPartDebrisView } from '../../../render/dynamic/dynamic-entity/assembly-part-debris-view';
 import { CasingView } from '../../../render/dynamic/dynamic-entity/casing-view';
 import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debris-fragment-view';
 import { MagazineFrameView } from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
+import { detachedPartOf, detachPart, type AssemblyPartDef } from '../../../render/assembly/assembly-shape';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
@@ -24,7 +26,8 @@ export const DESTROY_FRAG_SIZE_MAX = 6.0;
 export const PLAYER_DESTROY_FRAG_COLOR = '#9fd8e8';
 const ENEMY_DESTROY_FRAG_COLOR = '#ff6a4a';
 
-// 論理種別から、その破片を描く View を組み立てる。
+// 論理種別から、その破片を描く View を組み立てる。組み立て型の部品は形を記録せず、seed と部品番号から
+// 組み直すので、復元したときも敵にいた形と同じ view になる。
 function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicView {
   switch (debrisKind.kind) {
     case 'fragment': return new DebrisFragmentView(debrisKind.accent, debrisKind.size, scene);
@@ -32,6 +35,10 @@ function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicVi
     case 'magazineFrame': return new MagazineFrameView(scene);
     case 'casing': return new CasingView(scene);
     case 'decouplerPanel': return new DebrisFragmentView('#a9c8d6', 0.8, scene);
+    case 'assemblyPart': return new AssemblyPartDebrisView(
+      detachedPartOf(debrisKind.seed, debrisKind.partIndex).part,
+      debrisKind.seed, debrisKind.accent, scene,
+    );
   }
 }
 
@@ -168,6 +175,33 @@ export function enemyDestroyFragments(
   return buildDestroyFragments(
     state.t, state.r, state.v, 11, ENEMY_DESTROY_FRAG_COLOR,
     (DESTROY_FRAG_SIZE_MIN * meshScale) / 3, (DESTROY_FRAG_SIZE_MAX * meshScale) / 3, 20.0,
+    idAllocators,
+  );
+}
+
+// 組み立て型の部品が飛び出すときの、重心の速度と角速度のばらつき。部品ごとにわずかに散らす。
+const PART_SEPARATION_SPEED = 2.0; // [m/s]
+const PART_SPIN_KICK = 0.3; // [rad/s]
+
+// 組み立て型の敵から部品1個が飛び出す破片。state と attitude は部品を失った瞬間の敵の運動で、
+// 部品はその剛体の一部として、重心の位置と速度を引き継いで飛ぶ。part は敵の個体ローカル座標の部品。
+export function assemblyPartDebris(
+  state: KinematicState, attitude: Attitude, seed: number, part: AssemblyPartDef,
+  accent: string | number, idAllocators: EntityIdAllocators,
+): DebrisPiece {
+  const detached = detachPart(part);
+  // 重心の敵に対する位置と、敵の回転が重心へ与える速度
+  const lever = qRotate(attitude.q, detached.center);
+  const spin = qRotate(attitude.q, attitude.w);
+  const partState = kinematicState<'eci'>(
+    state.t,
+    add(state.r, lever),
+    add(add(state.v, cross(spin, lever)), randVec(PART_SEPARATION_SPEED)),
+  );
+  return DebrisPiece.create(
+    partState,
+    { kind: 'assemblyPart', seed, partIndex: part.index, accent },
+    { q: { ...attitude.q }, w: add(attitude.w, randVec(PART_SPIN_KICK)), inertia: detached.inertia },
     idAllocators,
   );
 }

@@ -22,7 +22,7 @@ export class Slider {
     if (options.step !== undefined) this.element.step = String(options.step);
     stopDragPropagation(this.element);
     expandHitTarget(this.element);
-    // 矢印キー等の打鍵をゲーム操作と誤認されないよう伝播を止める。
+    // 矢印キー等の打鍵がゲーム操作と誤認されないよう伝播を止める。
     this.element.addEventListener('keydown', (e) => e.stopPropagation());
     this.element.addEventListener('input', () => onInput(Number(this.element.value)));
   }

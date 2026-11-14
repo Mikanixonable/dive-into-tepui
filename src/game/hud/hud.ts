@@ -143,7 +143,7 @@ export class Hud implements HudLayers, Notifier {
     this.burnManagementPanel.sync(null);
   }
 
-  // view で表に出ている常設パネルと、控えられたトーストを panels の値へ合わせる。
+  // view で表に出ている常設パネルと、控えられたトーストを同期する。
   // camera はこのフレームの表示カメラで、縮尺表示が読む。nowMs はフレームの実時刻 [ms]。
   public syncPanels(
     view: ViewMode, panels: HudPanelViewModels, camera: CameraFrame, nowMs: number,

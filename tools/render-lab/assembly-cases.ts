@@ -1,17 +1,18 @@
 // Render Lab の組み立て型の敵ケース。枝分かれ型と結び目型の個体を異なる seed で並べ、
-// 部品を失った個体も出す。
+// 部品を失った個体も出す。失われた部品が破片として飛ぶ姿も出す。
 import * as THREE from 'three/webgpu';
-import { generateAssemblyShape } from '../../src/render/assembly/assembly-shape';
+import { detachPart, generateAssemblyShape } from '../../src/render/assembly/assembly-shape';
 import { FloatingOrigin } from '../../src/render/camera/floating-origin';
 import {
   AssemblyEnemyView, type AssemblyVisualSource,
 } from '../../src/render/dynamic/dynamic-entity/assembly-enemy-view';
+import { AssemblyPartDebrisView } from '../../src/render/dynamic/dynamic-entity/assembly-part-debris-view';
 import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
 import { SunLight } from '../../src/render/pipeline/sun-light';
 import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { qFromAxisAngle } from '../../src/math/quat';
-import { norm, v3 } from '../../src/math/vec3';
+import { qFromAxisAngle, qRotate } from '../../src/math/quat';
+import { add, norm, scale, v3 } from '../../src/math/vec3';
 import {
   FOV_DEG, labCamera, VIEW_HEIGHT, VIEW_WIDTH, type CaseBuilder, type LabCase,
 } from './lab-case';
@@ -90,6 +91,44 @@ function assemblyEnemies(): LabCase {
   };
 }
 
+// 部品を外へずらす距離 [m]。飛び出した直後の、部品どうしが離れた姿を見せるための値。
+const DEBRIS_OFFSET = 18;
+
+// seed 8 の個体の全部品を、それぞれ飛ぶ破片として並べる。各部品は個体の姿勢のまま、重心から
+// 外向きへ DEBRIS_OFFSET ずらして置く。
+function assemblyDebris(): LabCase {
+  const seed = 8;
+  const accent = 0x4f8fd0;
+  const position = v3(0, 5, -290);
+  const attitude = qFromAxisAngle(norm(v3(1, 0.3, -0.2)), 2.1);
+  const views = generateAssemblyShape(seed).parts.map((part) => {
+    const detached = detachPart(part);
+    const outward = qRotate(attitude, norm(detached.center));
+    const at = add(add(position, qRotate(attitude, detached.center)), scale(outward, DEBRIS_OFFSET));
+    const view = new AssemblyPartDebrisView(detached.part, seed, accent);
+    view.sync({
+      id: `assembly-part-${part.index}`,
+      name: `assembly-part-${part.index}`,
+      alive: true,
+      stateAt: (t) => kinematicState<'eci'>(t, at, v3()),
+      attitude,
+      thermal: null,
+    }, staticFrame());
+    return view;
+  });
+  return {
+    objects: views.map((view) => view.object),
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 5, -290),
+    shots: {
+      'assembly-debris': { view: {} },
+      // 飛んだ部品の端の半球キャップと、外へ離れた部品の照りを読む。
+      'assembly-debris-near': { view: { cameraDistanceLog: -0.33 } },
+    },
+  };
+}
+
 export const ASSEMBLY_CASES = {
   'assembly-enemy': assemblyEnemies,
+  'assembly-debris': assemblyDebris,
 } as const satisfies Record<string, CaseBuilder>;

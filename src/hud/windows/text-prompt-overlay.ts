@@ -54,7 +54,7 @@ export class TextPromptOverlay implements OverlayHandle {
     this.confirm = new Button('OK', () => this.shell.resolve(this.input.element.value), undefined, 'primary');
     this.cancel = new Button('キャンセル', () => this.shell.resolve(null), undefined, 'secondary');
     this.shell.actions.append(this.confirm.element, this.cancel.element);
-    // モーダル内の入力欄の確定契約(blur=確定)をボタン押下と見誤らないよう、
+    // モーダル内の入力欄の確定契約(blur=確定)を誤って起こさないよう、
     // パネル上の mousedown ではフォーカスを動かさない — 確定はボタンか Enter だけが起こす。
     this.shell.element.addEventListener('mousedown', (event) => {
       if (event.target !== this.input.element) event.preventDefault();

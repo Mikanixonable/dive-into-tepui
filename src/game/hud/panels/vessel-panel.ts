@@ -39,8 +39,12 @@ export interface VesselPanelViewModel {
   readonly fineAttitude: boolean;
   readonly cameraFollowsAttitude: boolean;
   readonly progradeHold: boolean;
-  readonly totalFuel: number;
-  readonly totalMaxFuel: number;
+  // 主推進燃料の残量と容量。RCS/主の区別を持たない操作対象では全推進剤。
+  readonly mainFuel: number;
+  readonly maxMainFuel: number;
+  // RCS 燃料の残量と容量。区別を持たない操作対象では mainFuel と同じ値。
+  readonly rcsFuel: number;
+  readonly maxRcsFuel: number;
   // 機関砲を積んでいない操作対象では null。
   readonly ammo: { readonly rounds: number; readonly mags: number; readonly cooldown: number } | null;
   // 太陽電池パドル・放熱板を積んでいない操作対象では null。
@@ -259,8 +263,8 @@ export class VesselPanel {
     this.followButton?.setOn(view.cameraFollowsAttitude);
     setStatePip(this.els.get('prohold'), view.progradeHold, true);
 
-    const maxFuel = view.totalMaxFuel;
-    const clampedFuel = Math.max(0, Math.min(maxFuel, view.totalFuel));
+    const maxFuel = view.maxRcsFuel;
+    const clampedFuel = Math.max(0, Math.min(maxFuel, view.rcsFuel));
     const fuelLevel = fuelAlarmLevel(clampedFuel, maxFuel);
     this.syncMeter(
       { meter: this.fuelMeter, value: this.els.get('rcs-fuel-value') },
@@ -277,7 +281,7 @@ export class VesselPanel {
       ammoSummary = ammo.rounds <= 0 && ammo.mags <= 0 ? '弾切れ' : `予備 ${ammo.mags}連`;
       this.els.setText('ammo', fmtAmmoStatus(ammo.rounds, ammo.mags, ammo.cooldown));
     } else {
-      this.els.setText('ammo', `Fuel: ${Math.round(view.totalFuel)} / ${maxFuel}`);
+      this.els.setText('ammo', `Fuel: ${Math.round(view.mainFuel)} / ${view.maxMainFuel}`);
     }
     applyAlarmLevel(ammoEl, ammoLevel);
 

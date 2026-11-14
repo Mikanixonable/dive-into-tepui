@@ -35,7 +35,7 @@ export interface PropertyWindowRelatedItem {
 export interface PropertyWindowContent<A extends string = string> {
   readonly title: string;
   readonly subtitle?: string;
-  // Technical Sheet 上で対象種別を示す短いコードと英字ラベル。
+  // Inspection Sheet 上で対象種別を示す短いコードと英字ラベル。
   readonly kindCode?: string;
   readonly kindLabel?: string;
   // true の対象はクリップ時に主要値だけを残した Monitor 表示へ縮退する。
