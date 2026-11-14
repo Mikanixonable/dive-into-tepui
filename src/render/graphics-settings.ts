@@ -135,7 +135,7 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: '半透明の積雲',
     presets: { low: true, medium: true, high: true },
   },
-  // 積雲の球殻を評価するレイマーチングの精細度と、雲頂の細部の段数(粗 2・標準 4・精細 6 オクターブ)。
+  // 積雲の球殻を評価するレイマーチングの精細度と、雲頂の細部の段数(粗 4・標準 6・精細 8 オクターブ)。
   // オフでは雲殻およびその影を描画しない。「精細」は積雲の描画アーティファクトを地表側の乱れから
   // 切り分けるための設定レベル。
   cumulusDetail: {

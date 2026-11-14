@@ -4,13 +4,18 @@ import { clamp, min, smoothstep } from 'three/tsl';
 import { CloudDetailEvaluator, DETAIL_AMPLITUDE_MAX } from './cloud-detail';
 import { cumulusColumnOpticalDepthNode } from './cloud-kind-node';
 import { CUMULUS_DITHER_KNOB, CLOUD_TOP_SPAN } from './cumulus-shape';
-import type { FloatNode, Vec3Node } from '../tsl-types';
+import type { CloudSample } from './cloud-field-sample';
+import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 const DETAIL_OPACITY_DEPTH = 0.25;
 const DETAIL_TOP_RELIEF = 0.15;
 const FIELD_TOP_STEP = 1 / 256;
 // 細部が覆いへ効き始める不透明度。雲の無い柱は、細部が大きくても覆いが 0 のまま残す。
 const DETAIL_GATE_OPACITY = 0.05;
+
+// 粒の細かさへ効く陸らしさと対流の活発さの重み。
+const GRAIN_LAND_WEIGHT = 1;
+const GRAIN_CONVECTION_WEIGHT = 0.5;
 
 export class CloudShapeEvaluator {
   public static readonly cloudTopUncertainty =
@@ -28,13 +33,25 @@ export class CloudShapeEvaluator {
     this.detail.setOctaves(count);
   }
 
+  // 表示時刻 displayTime [s] と、実時間 1 秒あたりに進む表示時刻 rate を置く。細部はこの時刻で流れ、生まれ直す。
+  public syncClock(displayTime: number, rate: number): void {
+    this.detail.syncClock(displayTime, rate);
+  }
+
+  // 雲標本の柱での粒の細かさ 0..1。陸と活発な対流で細かく、穏やかな海で粗い。
+  public grainOf(cloud: CloudSample): FloatNode {
+    return clamp(
+      cloud.land.mul(GRAIN_LAND_WEIGHT).add(cloud.convection.mul(GRAIN_CONVECTION_WEIGHT)), 0, 1);
+  }
+
   // 単位方向 direction での、場の texel より細かい起伏 −1..1。width はその位置で読み手の
   // 1 画素・1 タップが張る実寸 [m]、amount はその場所の量、amountAt は任意の方向の量を読む。
+  // wind はそこで雲を運ぶ風の東・北の成分 [m/s]、grain は粒の細かさ 0..1。
   public detailAt(
     direction: Vec3Node, width: FloatNode, amount: FloatNode,
-    amountAt: (direction: Vec3Node) => FloatNode,
+    amountAt: (direction: Vec3Node) => FloatNode, wind: Vec2Node, grain: FloatNode,
   ): FloatNode {
-    return this.detail.at(direction, width, amount, amountAt);
+    return this.detail.at(direction, width, amount, amountAt, wind, grain);
   }
 
   // 細部を足してからディザの帯へ通す。空の柱に細部だけで雲を生やさない共有規則である。

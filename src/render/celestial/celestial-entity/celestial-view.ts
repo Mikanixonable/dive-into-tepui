@@ -134,8 +134,10 @@ export abstract class CelestialView {
     _motion: DefinedCelestialBody, _displayTime: number,
   ): AtmosphereClouds | null { return null; }
 
-  // この天体が持つ動的な雲場を表示時刻へ焼く。
-  public bakeClouds(_renderer: WebGPURenderer, _displayTime: number, _gpu?: GpuTimingSink): void {}
+  // この天体が持つ動的な雲場を表示時刻へ焼く。simSpeed は実時間 1 秒あたりに進む表示時刻 [s]。
+  public bakeClouds(
+    _renderer: WebGPURenderer, _displayTime: number, _simSpeed: number, _gpu?: GpuTimingSink,
+  ): void {}
 
   // 影パスへ渡す雲の影の源。雲を持たない天体では null。
   public cloudShadowAt(

@@ -250,6 +250,7 @@ const SHADOW_CLOUD: ShadowCloud = {
   cloud: {
     field: {
       texture: new THREE.Texture(),
+      motion: new THREE.Texture(),
       cap: {
         center: new THREE.Vector3(0, 0, 1),
         east: new THREE.Vector3(1, 0, 0),
@@ -260,6 +261,7 @@ const SHADOW_CLOUD: ShadowCloud = {
     },
     generation: 0,
     topAltitude: 1e4,
+    clock: { displayTime: 0, simSpeed: 0 },
   },
 };
 

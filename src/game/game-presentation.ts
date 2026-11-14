@@ -463,7 +463,8 @@ export class GamePresentation {
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
-    celestialSystem.bakeClouds(this.devices.scene.renderer, displayTime, this.devices.scene.gpu);
+    celestialSystem.bakeClouds(
+      this.devices.scene.renderer, displayTime, this.game.simSpeedManager.simSpeed, this.devices.scene.gpu);
     // 建造の読み取り面を確定させてから表示導出へ渡す — 適用済み命令の記録・選択の整合が
     // shipConstruction.sync で更新され、shipConstructionView.sync がそれを読んで強調と音を組む。
     this.shipConstruction.sync();
