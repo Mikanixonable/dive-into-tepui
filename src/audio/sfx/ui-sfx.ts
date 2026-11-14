@@ -25,8 +25,6 @@ export class UiSfx {
     for (const cue of cues) {
       if (cue.id <= this.lastCueId) continue;
       this.lastCueId = cue.id;
-      // TEMP-DEBUG: UI 音の発生を観測するための一時ログ。調査後に外す。
-      console.debug('[ui-sfx]', cue.sound);
       this.play(cue.sound);
     }
   }
@@ -71,14 +69,17 @@ export class UiSfx {
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
     osc.type = 'triangle';
+    // 音高: 880 → 280 Hz へ下げる。
     osc.frequency.setValueAtTime(880, t);
     osc.frequency.exponentialRampToValueAtTime(280, t + 0.15);
     const gain = ctx.createGain();
+    // 音量の包絡: 短く立って急速に減衰する。
     gain.gain.setValueAtTime(0.07, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.17);
     osc.connect(gain).connect(ctx.destination);
     osc.start(t);
     osc.stop(t + 0.19);
+    // 引き抜きのノイズを重ねる。
     this.engine.noiseBurst(0.06, 'lowpass', 900, 0.05);
   }
 
@@ -88,9 +89,11 @@ export class UiSfx {
     if (!ctx) return;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
+    // 音高: 低めのブザー(160 Hz, 矩形波)。
     osc.type = 'square';
     osc.frequency.value = 160;
     const gain = ctx.createGain();
+    // 音量の包絡: 短い休止を挟んで2回鳴る形。
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.linearRampToValueAtTime(0.05, t + 0.01);
     gain.gain.setValueAtTime(0.05, t + 0.06);
@@ -104,7 +107,6 @@ export class UiSfx {
     osc.stop(t + 0.22);
   }
 
-  // 建造終了: 上へ進む3音(C5 → E5 → G5)。
   // 鹵獲の授与: 上へ向かう三音の和音。立ち上がりを強くし、残響は短くする。
   private salvageAward(): void {
     const ctx = this.engine.ctx;
@@ -112,10 +114,12 @@ export class UiSfx {
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
     osc.type = 'sine';
+    // 音高: G4 → C5 → E5 へ進む。
     osc.frequency.setValueAtTime(392.0, t);
     osc.frequency.setValueAtTime(523.25, t + 0.12);
     osc.frequency.setValueAtTime(659.25, t + 0.24);
     const gain = ctx.createGain();
+    // 音量の包絡。
     gain.gain.setValueAtTime(0.0001, t);
     gain.gain.linearRampToValueAtTime(0.1, t + 0.02);
     gain.gain.setValueAtTime(0.1, t + 0.3);
@@ -125,12 +129,14 @@ export class UiSfx {
     osc.stop(t + 0.56);
   }
 
+  // 建造終了: 上へ進む3音。
   private constructionFinish(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
     const osc = ctx.createOscillator();
     osc.type = 'triangle';
+    // 音高: C5 → E5 → G5 へ進む。
     osc.frequency.setValueAtTime(523.25, t);
     osc.frequency.setValueAtTime(659.25, t + 0.09);
     osc.frequency.setValueAtTime(783.99, t + 0.18);
