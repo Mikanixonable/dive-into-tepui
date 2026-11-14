@@ -15,6 +15,7 @@ import { CUMULUS_DETAIL } from '../../src/render/opaque-cloud-surface-renderer';
 import type { AtmosphereDraw } from '../../src/render/atmosphere';
 import type { PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
+import type { CloudFieldSlot } from '../../src/render/cloud/cloud-field-sample';
 import type { CloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-select';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type {
@@ -242,6 +243,9 @@ export function register(): void {
 }
 
 // 雲の影の源が実在することだけを見るので、中身は読まれない置き場でよい。
+const SHADOW_CLOUD_SLOT: CloudFieldSlot = {
+  cloud: new THREE.Texture(), motion: new THREE.Texture(), environment: new THREE.Texture(),
+};
 const SHADOW_CLOUD: ShadowCloud = {
   center: new THREE.Vector3(),
   surfaceRadius: 1e6,
@@ -249,9 +253,8 @@ const SHADOW_CLOUD: ShadowCloud = {
   bodyFromWorld: new THREE.Matrix4(),
   cloud: {
     field: {
-      texture: new THREE.Texture(),
-      motion: new THREE.Texture(),
-      environment: new THREE.Texture(),
+      slots: [SHADOW_CLOUD_SLOT, SHADOW_CLOUD_SLOT],
+      blend: { parity: 0, fraction: 0 },
       cap: {
         center: new THREE.Vector3(0, 0, 1),
         east: new THREE.Vector3(1, 0, 0),
