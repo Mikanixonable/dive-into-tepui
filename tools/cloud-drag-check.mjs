@@ -42,6 +42,8 @@ const KINDS = [
   { name: 'both', options: [] },
   { name: 'cirrus', options: [['cumulus', false]] },
 ];
+// 結びの検査(dedupeProbe)で、別々に読めたときの画素。赤を読むノードと緑を読むノードの出力 (R, G, 0, 1)。
+const EXPECTED_DISTINCT_PIXEL = [255, 255, 0, 255];
 // 絵が落ち着くまで撮り直す上限。
 const MAX_SETTLE_CAPTURES = 8;
 
@@ -137,6 +139,10 @@ try {
   );
   const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
   if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
+  // 値を結ぶ前にシェーダを組んだとき(ゲームは起動時にそうする)に、2 つのテクスチャノードが別々の値を読めるか。
+  const binding = await devTools.evaluate('window.renderLab.dedupeProbe()');
+  const bindingPass = binding.distinct.join() === EXPECTED_DISTINCT_PIXEL.join();
+  rows.push({ site: 'texture-binding', kind: 'distinct', move: 'probe', worstFrame: -1, worstNcc: bindingPass ? 1 : 0, pass: bindingPass });
   for (const site of SITES) {
     for (const kind of KINDS) {
       for (const move of MOVES) {
@@ -199,7 +205,8 @@ try {
 console.log(`ドラッグ中の雲の検査(連続 vs 静止の相関。合格は ${NCC_MIN} 以上)`);
 for (const row of rows) {
   console.log(`${row.pass ? 'ok  ' : 'FAIL'} ${row.site.padEnd(5)} ${row.kind.padEnd(7)} ${row.move.padEnd(16)} `
-    + `最悪 k=${String(row.worstFrame).padStart(2)} NCC=${row.worstNcc.toFixed(3)}`);
+    + (row.site === 'texture-binding' ? `結びの検査 ${row.pass ? '別々に読めた' : '1 つの結びへ合わさった'}`
+      : `最悪 k=${String(row.worstFrame).padStart(2)} NCC=${row.worstNcc.toFixed(3)}`));
 }
 writeFileSync(path.join(outDir, 'report.json'), `${JSON.stringify({ nccMin: NCC_MIN, rows }, null, 2)}\n`);
 if (rows.some((row) => !row.pass)) {
