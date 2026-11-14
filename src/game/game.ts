@@ -82,7 +82,7 @@ export class Game {
   // セーブスロットの設計図の棚の読み取り面。
   public static async create(
     stageClass: StageClass,
-    startEpoch: TdbJulianDate | undefined,
+    startEpoch: TdbJulianDate | null,
     scene: GameScene,
     hud: HudLayers,
     sections: FrameSections,

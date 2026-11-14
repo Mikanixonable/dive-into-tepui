@@ -153,9 +153,9 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     showLoading();
     try {
       const progress = new LoadingProgress(setLoadingProgress);
-      this.run = initialSave === undefined
+      this.run = initialSave === null
         ? await Run.create(
-          stageClass, startEpoch, this.devices, this.viewOptions, this.themePalette,
+          stageClass, startEpoch ?? null, this.devices, this.viewOptions, this.themePalette,
           this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
           runOptions,
         )
@@ -255,7 +255,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // noteLaunched より前に呼ぶ。復元できなければ undefined。
   private initialSaveFor(
     stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate,
-  ): SerializedGame | undefined {
+  ): SerializedGame | null {
     const activeSlotId = this.slots.activeSlotId;
     const lastRun = this.slots.activeSlot()?.lastRun ?? null;
     const resumesRunInProgress = startEpoch === undefined && activeSlotId !== null
@@ -263,8 +263,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const initialSnapshotId = snapshotId
       ?? (resumesRunInProgress ? this.slots.autoSaveId(activeSlotId, stageClass.id) : null);
     return initialSnapshotId !== null
-      ? this.snapshotService.load(initialSnapshotId, stageClass.id) ?? undefined
-      : undefined;
+      ? this.snapshotService.load(initialSnapshotId, stageClass.id) ?? null
+      : null;
   }
 
   // 実際に遊び始めたステージをスロットへ記録し、作り直しのために覚えておく。
