@@ -16,6 +16,13 @@ export interface DebrisSlide {
 
 export type DebrisKind =
   | { readonly kind: 'fragment'; readonly accent: string | number; readonly size: number; }
+  // 組み立て型の敵から飛び出した部品1個。形は seed と部品番号から組み直す。
+  | {
+    readonly kind: 'assemblyPart';
+    readonly seed: number;
+    readonly partIndex: number;
+    readonly accent: string | number;
+  }
   | { readonly kind: 'magazineFrame'; readonly slide?: DebrisSlide; }
   | { readonly kind: 'casing'; readonly bornSim: number; }
   | { readonly kind: 'decouplerPanel'; readonly segment: number; readonly bornSim: number; }

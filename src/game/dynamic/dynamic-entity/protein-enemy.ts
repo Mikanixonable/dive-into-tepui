@@ -252,7 +252,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
 
   // 被弾位置に最も近い機能部位へダメージを割り振る。
   protected override applyBulletDamage(
-    damage: number, impactPoint: Vec3, events: RunEventSink,
+    damage: number, impactPoint: Vec3, registry: EntityRegistry,
   ): void {
     // 着弾点を、部位の静止座標と同じ模型座標へ戻して比べる
     const localPoint = proteinLocalImpactPoint(
@@ -266,7 +266,7 @@ export class ProteinEnemy extends Enemy implements ProteinCombatTarget {
     const siteDisabled = siteId !== null
       && this.combat.combatReadout().sites.some((site) => site.id === siteId && site.disabled);
     if (siteDisabled || phase !== previousPhase) {
-      events.record({
+      registry.events.record({
         kind: 'proteinStateChanged',
         state: kinematicState<'eci'>(this.motion.state.t, impactPoint, this.motion.state.v),
         transition: phase !== previousPhase ? phase : 'site-disabled',
