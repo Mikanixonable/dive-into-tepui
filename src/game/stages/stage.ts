@@ -25,7 +25,6 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
-import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
 import type { EnemyDeathCause, PlayerLossCause, StageOutcome } from './stage-outcome';
 import { ENEMY_MAX_ATTACKERS_PER_GROUP } from '../dynamic/dynamic-entity/enemy-fire-controller';
 import type { StageSimulationEvents } from './stage-simulation-events';
@@ -236,6 +235,13 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     const controlled = this._controlSelection.current;
     if (controlled instanceof ModularShip) return controlled;
     return this._dynamicSystem.all().filter(isModularShip).find((ship) => ship.motion.alive) ?? null;
+  }
+
+  // 操作対象そのものがモジュール艦ならそれ、そうでなければ null。操作艦へ直接作用する
+  // ユーザー操作はこちらを使う — ship のフォールバックでは選んでいない別の艦へ作用しうる。
+  protected get controlledShip(): ModularShip | null {
+    const controlled = this._controlSelection.current;
+    return controlled instanceof ModularShip ? controlled : null;
   }
 
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。state を省いた新規配置は

@@ -8,8 +8,7 @@ import { ellipsoidAltitude } from '../../../physics/atmosphere';
 import { frameOfCelestialBody, framePoint, toFramePoint, toFrameState, toInertialPoint } from '../../../physics/frame';
 import { strongestAttractor } from '../../../physics/attractor';
 import { add, addScaled, len, norm, randPerp, randVec, scale, sub, v3, type Vec3 } from '../../../math/vec3';
-import { generateApproachingEnemy, proteinFormationRequests } from '../spawner/enemy-generator';
-import type { ProteinEnemyRequest } from '../../dynamic/dynamic-entity/protein-enemy';
+import { generateApproachingEnemy } from '../spawner/enemy-generator';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
@@ -21,8 +20,6 @@ import type { RunEventSink } from '../../run-events';
 export interface WaveAttackStage extends StageOutcome {
   // 敵を登録し、出撃数をスコアへ記録する。
   addEnemy(enemy: Enemy): void;
-  // タンパク質陣形の 1 役を要求し、出撃数をスコアへ記録する。
-  addProteinEnemy(request: ProteinEnemyRequest): void;
   // 交戦中の集団が 0 になった波間に呼ぶ。補給艇を届けたら true。
   onLull(): boolean;
 }
@@ -30,7 +27,7 @@ export interface WaveAttackStage extends StageOutcome {
 // 難関になる波の周期(番号が周期の倍数の波が難関、その次の波が息抜き)。
 const WAVE_BOSS_PERIOD = 3;
 
-// 波 1 回の形。ships は陣形を除いた機数で、boss は難関(タンパク質陣形を 1 組含む)か、rest は息抜きか。
+// 波 1 回の形。ships は機数で、boss は難関(波の番号が周期の倍数)か、rest は息抜きか。
 export interface WaveShape {
   readonly ships: number;
   readonly boss: boolean;
@@ -52,7 +49,7 @@ export function waveShape(waveNumber: number): WaveShape {
 // 波の番号ごとに、ブリーフィングへ出す予告の一行を組む。
 export function waveForecastLine(waveNumber: number): string {
   const shape = waveShape(waveNumber);
-  const kind = shape.boss ? '難関(タンパク質陣形を含む)' : shape.rest ? '息抜き' : '通常';
+  const kind = shape.boss ? '難関' : shape.rest ? '息抜き' : '通常';
   const from = waveNumber === 1 ? '・後方から' : '';
   return `第${waveNumber}波: ${shape.ships} 機・${kind}${from}`;
 }
@@ -126,9 +123,9 @@ export class WaveAttack {
     );
   }
 
-  // ウェーブ番号を1つ進め、生成した敵と陣形を stage へ足す。
+  // ウェーブ番号を1つ進め、生成した敵を stage へ足す。
   public spawnWave(
-    player: ModularShip, stage: Pick<WaveAttackStage, 'addEnemy' | 'addProteinEnemy'>,
+    player: ModularShip, stage: Pick<WaveAttackStage, 'addEnemy'>,
     forcedPattern?: 'linear' | 'random',
   ): void {
     const wave = ++this._waveCount;
@@ -137,7 +134,6 @@ export class WaveAttack {
       this.scene, this.idAllocators, forcedPattern,
     );
     for (const enemy of spawn.enemies) stage.addEnemy(enemy);
-    for (const request of spawn.formation) stage.addProteinEnemy(request);
   }
 
   // フェーズ機械を1フレーム分進める。敵は stage へ足し、交戦圏外へ出た敵の消滅を stage へ記録する。
@@ -351,13 +347,12 @@ function waveShipPosition(
   return toInertialPoint(frame, framePoint(placed.x, placed.y, placed.z));
 }
 
-// 1 波ぶんの生成結果。enemies は艦、formation は難関のタンパク質陣形の 3 役(難関でなければ空)。
+// 1 波ぶんの生成結果(接近する敵艦の列)。
 export interface WaveSpawn {
   readonly enemies: Enemy[];
-  readonly formation: readonly ProteinEnemyRequest[];
 }
 
-// ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列と難関の陣形を生成する。
+// ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
 export function generateWave(
   player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[],
   scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random',
@@ -383,12 +378,5 @@ export function generateWave(
     ));
   }
 
-  // 難関は艦の列と同じ飛来の中心に、3 役をまとめて置く。所属する波の番号を添えて、同じ 1 組として数える。
-  const formation = shape.boss
-    ? proteinFormationRequests(
-      `W${waveNumber}-PROTEIN`, kinematicState<'eci'>(player.t, centerR, centerV), player.r,
-      `wave-${waveNumber}-formation`,
-    ).map((request) => ({ ...request, waveId: waveNumber }))
-    : [];
-  return { enemies, formation };
+  return { enemies };
 }

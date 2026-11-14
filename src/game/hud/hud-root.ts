@@ -330,7 +330,7 @@ function buildEnemiesPanel(rightRail: HTMLElement, collapse: PanelCollapse): voi
   enemies.body.innerHTML = `<ol class="ui-list" data-id="elist" aria-label="距離順の戦闘対象"></ol>`;
 }
 
-// 常設の情報パネル群を左右のドックへ組む。
+// 常設の情報パネル群を左右のレールへ組む。
 function buildInfoPanels(leftRail: HTMLElement, rightRail: HTMLElement, collapse: PanelCollapse): void {
   buildVesselStatusPanel(rightRail, collapse);
   buildOrbitInfoPanel(leftRail, collapse);
