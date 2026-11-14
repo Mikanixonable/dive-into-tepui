@@ -78,6 +78,10 @@ export interface ModularShipInit {
   readonly assembly?: ShipAssembly;
   readonly att?: Attitude;
   readonly dockState?: readonly SerializedShipConstructionDraft[];
+  // 修理中の作業。修理を始めた艦とともに運ぶ(GAME.md 11.4)。
+  readonly pendingRepairs?: readonly SerializedPendingRepair[];
+  // この艦へ接舷している艦の identity。
+  readonly dockedVessels?: readonly SerializedDockedVessel[];
   readonly operatingCockpitId?: string | null;
   // 地表固定の錨。渡すと、この艦は実軌道を持たず錨の天体の自転とともに運動する(GAME.md 7.4)。
   readonly surfaceAnchor?: SurfaceAnchor;
@@ -283,8 +287,9 @@ export class ModularShip extends Ship implements Controllable {
       ? restoreConstructionDrafts(saved.dockState, assembly)
       : placement?.dockState ? restoreConstructionDrafts(placement.dockState, assembly) : []);
     // 修理中の作業は、修理を始めた船とともに保存される(GAME.md 11.4)。
-    if (saved?.pendingRepairs !== undefined) {
-      this.docks.restorePendingRepairs(restorePendingRepairs(saved.pendingRepairs, assembly));
+    const pendingRepairs = saved?.pendingRepairs ?? placement?.pendingRepairs;
+    if (pendingRepairs !== undefined) {
+      this.docks.restorePendingRepairs(restorePendingRepairs(pendingRepairs, assembly));
     }
     this.capabilities = new ShipCapabilities(
       assembly, saved?.operatingCockpitId ?? placement?.operatingCockpitId ?? null,
@@ -333,6 +338,8 @@ export class ModularShip extends Ship implements Controllable {
     this._fineAttitude = saved?.fineAttitude ?? false;
     if (saved) {
       this.connections.restore(saved.dockedVessels, saved.collisionGrace, state.t);
+    } else if (placement?.dockedVessels !== undefined) {
+      this.connections.restore(placement.dockedVessels, [], state.t);
     }
     this.fire = new FireControl(
       this, registry, scene,

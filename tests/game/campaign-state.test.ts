@@ -6,13 +6,30 @@ import {
   advanceCampaignAct,
   applyCampaignEvents,
   createCampaignState,
+  fillCampaignDefaults,
   isCampaignCleared,
   recordCommandCoreDestroyed,
   recordEnemyDefeated,
   recordShipyardBuilt,
   spendStockpile,
   stockpileOf,
+  type CampaignState,
+  type CarriedShip,
 } from '../../src/game/campaign/campaign-state';
+
+// 引き継ぎ艦1隻ぶんの最小の記録。キャンペーン状態の遷移では中身は検証されない。
+function carriedShip(id: string): CarriedShip {
+  return {
+    id,
+    name: `艦-${id}`,
+    assembly: { playerOwned: true, modules: [], connections: [] },
+    dockState: [],
+    pendingRepairs: [],
+    dockedVessels: [],
+    operatingCockpitId: null,
+    ammo: null,
+  };
+}
 
 export function register(): void {
   test('campaign-state: 初期状態は第1幕・中枢は健在・備蓄と撃破記録は空で、クリアではない', () => {
@@ -170,5 +187,34 @@ export function register(): void {
     // GAME.md 11.3: 第4幕の決着は幕進行ではなく指揮中枢の破壊である。
     const state = advanceCampaignAct(createCampaignState(), 4);
     assert.equal(applyCampaignEvents(state, [{ kind: 'storyActCompleted', act: 4 }]), state);
+  });
+
+  test('campaign-state: 初期状態は引き継ぎ艦を持たず、旧い記録は引き継ぎ艦なしとして読む', () => {
+    // SAVE.md「キャンペーン状態」: 引き継ぎ艦を持たない旧い記録は、引き継ぎ艦が無い
+    // キャンペーンとして読む。
+    assert.deepEqual(createCampaignState().carriedShips, []);
+    const legacy = JSON.parse(JSON.stringify(createCampaignState())) as Record<string, unknown>;
+    delete legacy.carriedShips;
+    const filled = fillCampaignDefaults(legacy as unknown as CampaignState);
+    assert.deepEqual(filled.carriedShips, []);
+    // 項目が揃っている状態はそのまま返る。
+    const complete = createCampaignState();
+    assert.equal(fillCampaignDefaults(complete), complete);
+  });
+
+  test('campaign-state: 艦隊の報告は引き継ぎ艦を丸ごと差し替え、同じ内容では状態を変えない', () => {
+    // GAME.md 11.2: 艦は幕を跨いで引き継がれ、記録はステージの報告で差し替わる。
+    const state = createCampaignState();
+    const ships = [carriedShip('ship-1'), carriedShip('ship-2')];
+    const reported = applyCampaignEvents(state, [{ kind: 'storyFleetReported', ships }]);
+    assert.deepEqual(reported.carriedShips, ships);
+    assert.deepEqual(state.carriedShips, []);
+    // 同じ内容の再報告は状態を変えない(書き戻しが起きない)。
+    assert.equal(applyCampaignEvents(reported, [{ kind: 'storyFleetReported', ships }]), reported);
+    // 艦が減った報告はそのまま差し替わる — 喪失した艦は引き継がれない。
+    const reduced = applyCampaignEvents(reported, [
+      { kind: 'storyFleetReported', ships: [carriedShip('ship-2')] },
+    ]);
+    assert.deepEqual(reduced.carriedShips.map((ship) => ship.id), ['ship-2']);
   });
 }

@@ -2,6 +2,11 @@
 // 状態は不変な JSON の素の値だけで組み、遷移は新しい状態を返す純粋関数として書く。
 // どのスロットに属し、いつ書き戻すかという永続化は launcher が持つ(SAVE.md「キャンペーン状態」)。
 import type { RunEventBody } from '../run-events';
+import type {
+  SerializedDockedVessel, SerializedPendingRepair, SerializedShipAssembly,
+  SerializedShipConstructionDraft,
+} from '../ship/ship-save';
+import type { AmmoLoad } from '../player/weapon-state';
 
 // キャンペーンの幕(GAME.md 11.2)。
 export type CampaignAct = 1 | 2 | 3 | 4;
@@ -39,6 +44,26 @@ export const EMPTY_CAMPAIGN_STATS: CampaignStats = {
 // たまってから出来事として送り、端数はステージ側に残る。
 export const CAMPAIGN_ELAPSED_REPORT_SECONDS = 3600;
 
+// ストーリーのステージが引き継ぎ艦隊をキャンペーンへ報告する間隔 [sim s]。この量以上
+// たまってから出来事として送る。
+export const CAMPAIGN_FLEET_REPORT_SECONDS = 60;
+
+// 幕を跨いで引き継がれるプレイヤーの艦1隻ぶんの記録(GAME.md 11.2)。組立は艦の保存形式と
+// 同じ形で持つ。建造・修理の完了時刻は、記録したランの時刻ではなく、引き継ぎ先のランの
+// simTime(入場が 0)で表す。
+export interface CarriedShip {
+  readonly id: string;
+  readonly name: string;
+  readonly assembly: SerializedShipAssembly;
+  readonly dockState: readonly SerializedShipConstructionDraft[];
+  readonly pendingRepairs: readonly SerializedPendingRepair[];
+  // この艦へ接舷している艦の identity。
+  readonly dockedVessels: readonly SerializedDockedVessel[];
+  readonly operatingCockpitId: string | null;
+  // 搭載した弾薬。切り出しで生まれた艦など、積載が定まらない艦では null(既定の積載で始まる)。
+  readonly ammo: AmmoLoad | null;
+}
+
 // キャンペーンの進行状態。セーブスロットがステージ履歴とは別に1つ持つ。
 export interface CampaignState {
   readonly act: CampaignAct;
@@ -51,6 +76,8 @@ export interface CampaignState {
   // 軌道造船所が完成したかどうか。完成はキャンペーンの進行で、再入場しても失われない
   // (GAME.md 11.2)。
   readonly shipyardBuilt: boolean;
+  // 幕を跨いで引き継がれるプレイヤーの艦。ステージが報告するたびに差し替わる。
+  readonly carriedShips: readonly CarriedShip[];
   // クリア後の評価に使う集計。
   readonly stats: CampaignStats;
 }
@@ -59,14 +86,17 @@ export interface CampaignState {
 export function createCampaignState(): CampaignState {
   return {
     act: 1, commandCore: 'intact', stockpiles: {}, defeatedEnemyIds: [], shipyardBuilt: false,
-    stats: EMPTY_CAMPAIGN_STATS,
+    carriedShips: [], stats: EMPTY_CAMPAIGN_STATS,
   };
 }
 
-// 記録に無い項目を基底値で補った状態(SAVE.md「形式の版」)。集計を持たない旧い記録を
-// 読むために使う。項目が揃っていれば状態はそのまま返る。
+// 記録に無い項目を基底値で補った状態(SAVE.md「形式の版」)。集計や引き継ぎ艦を持たない
+// 旧い記録を読むために使う。項目が揃っていれば状態はそのまま返る。
 export function fillCampaignDefaults(state: CampaignState): CampaignState {
-  return state.stats == null ? { ...state, stats: EMPTY_CAMPAIGN_STATS } : state;
+  let next = state;
+  if (next.stats == null) next = { ...next, stats: EMPTY_CAMPAIGN_STATS };
+  if (next.carriedShips == null) next = { ...next, carriedShips: [] };
+  return next;
 }
 
 // クリア済みかどうか。中枢の破壊そのものがクリアである(GAME.md 11.3)。
@@ -163,6 +193,11 @@ export function applyCampaignEvents(
       next = { ...next, stats: { ...next.stats, elapsedSeconds: next.stats.elapsedSeconds + event.seconds } };
     } else if (event.kind === 'storyShipyardBuilt') {
       next = recordShipyardBuilt(next);
+    } else if (event.kind === 'storyFleetReported') {
+      // 艦隊の報告は丸ごと差し替える。内容が同じ報告では状態を変えない。
+      if (JSON.stringify(event.ships) !== JSON.stringify(next.carriedShips)) {
+        next = { ...next, carriedShips: event.ships };
+      }
     } else if (event.kind === 'storyActCompleted' && event.act < 4) {
       next = advanceCampaignAct(next, (event.act + 1) as CampaignAct);
     }

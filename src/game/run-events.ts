@@ -1,7 +1,7 @@
 // 直近の進行で起きた一回きりの出来事の記録。進行の位相が起きたことを領域の言葉で積み、
 // 表示の導出が通し番号を鍵に読んで、音・通知・閃光の宣言へ写す(R7)。
 import type { CommandQueue } from './command-queue';
-import type { CampaignAct } from './campaign/campaign-state';
+import type { CampaignAct, CarriedShip } from './campaign/campaign-state';
 import type { BulletType } from './dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
 import type { EnemyDeathCause } from './stages/stage-outcome';
@@ -250,7 +250,10 @@ export type RunEventBody =
   // 建造が1件完了した。massKg は完成した枝の乾燥質量の合計 [kg] で、評価の集計へ積む。
   | { readonly kind: 'storyConstructionCompleted'; readonly massKg: number }
   // ゲーム内時間が進んだ。seconds は前回の報告から進んだ量 [sim s] で、評価の集計へ積む。
-  | { readonly kind: 'storyElapsedTime'; readonly seconds: number };
+  | { readonly kind: 'storyElapsedTime'; readonly seconds: number }
+  // ストーリーのステージが、いま存在するプレイヤーの艦隊を引き継ぎ用に報告した。
+  // キャンペーンは艦隊をこの内容へ差し替える(GAME.md 11.2)。
+  | { readonly kind: 'storyFleetReported'; readonly ships: readonly CarriedShip[] };
 
 // 記録された出来事1件。
 export interface RunEvent {
