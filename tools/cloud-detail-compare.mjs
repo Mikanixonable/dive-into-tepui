@@ -4,7 +4,9 @@
 // 撮る(既にあるものは飛ばす)。各撮影と .cloud-detail/reference/ の実写へ
 // cloud-detail-metrics の物差しを当て、同じ種類(積雲主体/巻雲主体)の実写場面の測定値の
 // 幅(封筒 = 最小〜最大 + 幅の 10%)からの距離を、特徴量の家族ごとに正規化して出し、
-// 家族の平均を index とする。混合場面の実写はどちらの封筒にも入れず、撮影の比較相手
+// 家族の平均を index とする。区分(海域の類型 × 種類 × 段の km/px)の実写が少なすぎる
+// ときは、その区分の封筒を index と家族ごとの距離から外す(距離の表示は残る)。
+// 混合場面の実写はどちらの封筒にも入れず、撮影の比較相手
 // (両方撮影の封筒と並べる画像)として使う。
 // 最新の .cloud-lab/history/ の全球・cap スペクトルと繋いで 0.5〜1024 km の尺度の梯子を
 // 1 表にし、実写と撮影を同じ km/px で左右に並べた画像を .cloud-detail/compare/ へ書き、
@@ -44,6 +46,9 @@ const VARIETY_FLOOR = 0.5;
 const CONTRAST_WINDOW_KM = 4;
 // 距離の正規化の分母の下限。封筒の幅が 0 のとき、外れた量そのものを返す。
 const MIN_ENVELOPE_WIDTH = 1e-6;
+// 区分の封筒を判定へ使う実写の下限 [枚]。これ未満では最小〜最大の幅が場面どうしの
+// ばらつきを表せず、外れた量を幅で割る正規化距離が発散して index を支配する。
+const MIN_ENVELOPE_REFERENCES = 3;
 // 距離の前後判定の横ばいの幅(相対)。計測は決定的だが、実行環境の浮動小数の揺れを
 // 悪化と誤判定しないための幅。
 const VERDICT_BAND = 0.05;
@@ -478,11 +483,16 @@ async function main() {
   envelopes.union = mergedEnvelope(envelopes.cumulus, envelopes.cirrus);
   // 区分ごとの封筒: 同じ区分・同じ種類の実写が 2 場面以上あるときだけ作る。足りない区分は種類の封筒へ戻す。
   const categoryScenes = new Map();
+  // 区分(類型|種類|段の km/px)ごとの実写の枚数。段まで入れるのは、tier 領域の封筒の器が段別で、
+  // 帯・尺度の器の標本数も段ごとの画像で決まるため — 薄い段だけを選んで外せるようにする。
+  const categoryTierCounts = new Map();
   for (const image of references) {
     if (image.kind !== 'cumulus' && image.kind !== 'cirrus') continue;
     const key = `${image.category}|${image.kind}`;
     if (!categoryScenes.has(key)) categoryScenes.set(key, new Set());
     categoryScenes.get(key).add(image.scene);
+    const tierKey = `${key}|${image.kmPerPx}`;
+    categoryTierCounts.set(tierKey, (categoryTierCounts.get(tierKey) ?? 0) + 1);
   }
   const envelopesByCategory = new Map();
   for (const image of references) {
@@ -508,6 +518,8 @@ async function main() {
   // --- 距離: 特徴量ごとの正規化距離を家族ごとに集める ---
   const familySum = new Map();
   const kindFamilySum = new Map();
+  // 実写が少なくて index・家族の集計から外した区分(類型|種類|段) → { references, shots, shotNames }。
+  const thinEnvelopes = new Map();
   const accumulate = (family, distance, kind) => {
     for (const table of [familySum, kindFamilySum.get(kind)]) {
       const cell = table.get(family) ?? { sum: 0, count: 0 };
@@ -526,13 +538,25 @@ async function main() {
     const envelopeKey = useCategory ? categoryKey : baseKey;
     const envelope = useCategory ? envelopesByCategory.get(categoryKey) : envelopes[baseKey];
     shot.envelope = envelopeKey;
+    // 実写が MIN_ENVELOPE_REFERENCES 未満の区分の封筒は、幅がばらつきを表せず正規化距離が
+    // 発散する。距離は表示へ残すが、index と家族ごとの距離の集計へは入れない。
+    const thinTierKey = useCategory ? `${categoryKey}|${shot.tierKmPerPx}` : null;
+    const thinEnvelope = thinTierKey !== null
+      && (categoryTierCounts.get(thinTierKey) ?? 0) < MIN_ENVELOPE_REFERENCES;
+    if (thinEnvelope) {
+      const cell = thinEnvelopes.get(thinTierKey) ?? { references: 0, shots: 0, shotNames: [] };
+      cell.references = categoryTierCounts.get(thinTierKey) ?? 0;
+      cell.shots++;
+      cell.shotNames.push(shot.name);
+      thinEnvelopes.set(thinTierKey, cell);
+    }
     shot.distances = {};
     for (const entry of shot.features) {
       const cell = envelopeCell(envelope, entry, shot.tierKmPerPx);
       if (cell === null) continue;
       const { distance } = distanceOf(entry.value, cell);
       shot.distances[entry.id] = distance;
-      accumulate(entry.family, distance, shot.kind);
+      if (!thinEnvelope) accumulate(entry.family, distance, shot.kind);
     }
   }
 
@@ -612,6 +636,10 @@ async function main() {
     categoryIndex[category] = values.length ? values.reduce((a, b) => a + b, 0) / values.length : null;
     console.log(`${category.padEnd(16)} index ${categoryIndex[category]?.toFixed(3)}  ` +
       Object.entries(fams).map(([f, v]) => `${f} ${v.toFixed(2)}`).join('  '));
+  }
+  if (thinEnvelopes.size > 0) {
+    console.log(`注意: 実写が ${MIN_ENVELOPE_REFERENCES} 枚未満の区分の封筒は index と家族ごとの距離から外す(距離の表示は残る): `
+      + [...thinEnvelopes.entries()].map(([key, cell]) => `${key}(実写 ${cell.references} 枚・撮影 ${cell.shots} 枚)`).join('  '));
   }
 
   // --- 封筒から外れた特徴量の一覧(正規化距離の大きい順) ---
@@ -798,6 +826,7 @@ async function main() {
       judgedShots: judgedShots.length,
       excludedShots,
       minStructureContrast: MIN_STRUCTURE_CONTRAST,
+      minEnvelopeReferences: MIN_ENVELOPE_REFERENCES,
       shotsGitHead: shotsOrigin.gitHead ?? null,
       references: references.length,
       labHistory: labPreviousName ?? null,
@@ -816,6 +845,7 @@ async function main() {
       }])),
       variety,
       ladder,
+      excludedEnvelopes: Object.fromEntries(thinEnvelopes),
     },
     distances,
   };
