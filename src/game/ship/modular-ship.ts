@@ -434,10 +434,12 @@ export class ModularShip extends Ship implements Controllable {
     return this.connections.dock(other, localPortId, otherPortId, selection);
   }
 
+  // portId が関わる接舷接続を切り離し、外側の部分を新しい船として返す。
   public undock(portId: string, registry: EntityRegistry): ModularShip {
     return this.connections.undock(portId, registry);
   }
 
+  // portId の接舷接続で繋がる両側を修理し、実際に回復した HP を返す。
   public repairAtDock(portId: string): number {
     return this.connections.repairAtDock(portId);
   }
