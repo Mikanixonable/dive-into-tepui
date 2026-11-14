@@ -116,7 +116,7 @@ export interface CloudDetailShot extends LabShot {
 }
 
 // 撮影の表。名前は <海域>-<時刻 h>h-<km/px>km-<種類>(例: npac-jet-6h-1km-cirrus)、
-// 総数は 6 海域 × 3 時刻 × 3 段 × 3 種類 = 162。
+// 総数は 9 海域 × 3 時刻 × 3 段 × 3 種類 = 243。
 export const CLOUD_DETAIL_SHOTS: Readonly<Record<string, CloudDetailShot>> = (() => {
   const shots: Record<string, CloudDetailShot> = {};
   for (const scene of SCENES) {
