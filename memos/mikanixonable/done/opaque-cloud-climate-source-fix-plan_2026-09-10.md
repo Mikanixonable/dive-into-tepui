@@ -19,7 +19,7 @@
   `npm run earth-surface:test`、`npm run earth-surface:pages-test`を通過した。
 
 実ERA5データの取得・気象精度・全世界bundle生成は、この計画のスコープ外であり、残タスクとして
-[残タスク一覧](../remaining-tasks_2026-09-12.md)に分離した。
+[残タスク一覧](remaining-tasks_2026-09-12.md)に分離した。
 
 ## 1. 調査結果
 
