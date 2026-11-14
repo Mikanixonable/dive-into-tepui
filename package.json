@@ -98,6 +98,7 @@
     "cloud-detail:tiers": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-cirrus-tiers.mjs",
     "cloud-detail:temporal": "node tools/cloud-temporal-check.mjs",
     "cloud-detail:stability": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-stability.mjs",
+    "cloud-detail:drag": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-drag-check.mjs",
     "verify:hud-layout": "node tools/verify-hud-layout.mjs",
     "smoke:layout": "node tools/layout-smoke-retry.mjs"
   },
