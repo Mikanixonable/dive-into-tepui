@@ -1,9 +1,11 @@
-// 視点を動かしただけで雲の形が変わらないかの計測。render-lab の撮影の組(基準・直下点を数画素ずらした
-// 構図・高度を変えた構図。CLOUD_DETAIL_STABILITY_SHOTS)を .cloud-detail/stability/ へ撮り(既にあるものは
-// 飛ばす)、基準と各構図を位置と縮尺で合わせてから、尺度の帯ごとに
+// 視点を動かしただけで雲の形が変わらないかと、時間とともに雲がどう流れ入れ替わるかの計測。render-lab の
+// 撮影の組(基準・直下点を数画素ずらした構図・高度を変えた構図・同じ構図の 10 分後と 30 分後。
+// CLOUD_DETAIL_STABILITY_SHOTS)を .cloud-detail/stability/ へ撮り(既にあるものは飛ばす)、基準と各構図を
+// 位置と縮尺で合わせてから、尺度の帯ごとに
 //   比 = √(差のパワー ÷ (基準のパワー + 構図のパワー))
 // を出す。止まった雲なら 0、無相関なら 1。現実の雲は 0 で、描画が視点に引きずられて形を変えるほど上がる。
-// 位置は位相相関の峰を放物線で詰めてサブ画素まで合わせ、構図側をフーリエの位相の傾きで動かす。
+// 位置は位相相関の峰を放物線で詰めてサブ画素まで合わせ、構図側をフーリエの位相の傾きで動かす。時間をずらした
+// 組では、合わせたずれが模様の流れた距離(速さ)で、帯の比は流れを差し引いたあとの入れ替わり(寿命)を表す。
 // 高度違いの構図は、基準の km/px へ双線形で拡大してから同じ手順を通す(拡大前に解像していない細かい帯は判定しない)。
 // 報告を .cloud-detail/stability/report.json と .cloud-detail/stability-history/ へ残す。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -225,7 +227,7 @@ function main() {
 
     const byKey = new Map();
     for (const info of infos) {
-      const key = info.name.replace(/-stab-(base|shift|zoom)$/, '');
+      const key = info.name.replace(/-stab-[a-z0-9]+$/, '');
       const variant = info.name.slice(info.name.lastIndexOf('-') + 1);
       const entry = byKey.get(key) ?? {};
       entry[variant] = info;
@@ -237,8 +239,9 @@ function main() {
       const load = (info) => linearLuminanceField(readFileSync(path.join(shotsDir, `${info.name}.png`)));
       const base = load(entry.base);
       const baseCrop = resampledCrop(base, 1);
-      for (const variant of ['shift', 'zoom']) {
+      for (const variant of ['shift', 'zoom', 'later10', 'later30']) {
         const info = entry[variant];
+        if (info === undefined) continue;
         const field = load(info);
         // 構図側を基準の km/px へ合わせる: 構図の 1 px が基準の scale 倍なら、構図の場を 1/scale で読む。
         const scale = entry.base.centerKmPerPx / info.centerKmPerPx;
@@ -247,14 +250,20 @@ function main() {
         const aligned = shiftedBack(crop, dx, dy);
         const minWavelengthPx = variant === 'zoom' ? ZOOM_MIN_WAVELENGTH_PX / scale : 2;
         const bands = bandRatios(baseCrop, aligned, entry.base.centerKmPerPx, minWavelengthPx);
-        pairs.push({ key, variant, tierKmPerPx: entry.base.tierKmPerPx, dx, dy, peak, bands });
+        // 時間をずらした組では、位置合わせのずれが模様の流れた距離。速さ [m/s] に直す。
+        const laterS = info.displayTime - entry.base.displayTime;
+        const speed = laterS > 0 ? (Math.hypot(dx, dy) * entry.base.centerKmPerPx * 1000) / laterS : null;
+        pairs.push({ key, variant, tierKmPerPx: entry.base.tierKmPerPx, dx, dy, peak, speed, bands });
       }
     }
 
     // 段 × 構図ごとに、帯の比の中央値を表にする。
     console.log(`\n=== 視点の安定性(帯ごとの 差 ÷ 模様 の振幅比の中央値。0 で安定、1 で無相関。目標 < ${STABLE_RATIO}) ===`);
     const summary = {};
-    for (const variant of ['shift', 'zoom']) {
+    for (const variant of ['shift', 'zoom', 'later10', 'later30']) {
+      if (variant === 'later10') {
+        console.log('\n=== 時間の計測(同じ構図の 10 分後・30 分後。帯の比が寿命で、位置合わせのずれが流れ) ===');
+      }
       for (const tier of [...new Set(pairs.map((pair) => pair.tierKmPerPx))].sort((a, b) => a - b)) {
         const group = pairs.filter((pair) => pair.variant === variant && pair.tierKmPerPx === tier);
         if (group.length === 0) continue;
@@ -264,11 +273,12 @@ function main() {
           return { bandKm: band.bandKm, median: values.length > 0 ? values[values.length >> 1] : null, max: values.at(-1) ?? null };
         });
         summary[`${variant}@${tier}`] = columns;
-        console.log(`\n[${variant}] ${tier} km/px(${group.length} 場面。位置合わせ: ${group.map((pair) => `${pair.dx.toFixed(2)},${pair.dy.toFixed(2)}`).join(' / ')})`);
+        const speeds = group.map((pair) => (pair.speed === null ? '' : ` ${pair.speed.toFixed(1)} m/s`));
+        console.log(`\n[${variant}] ${tier} km/px(${group.length} 場面。位置合わせ: ${group.map((pair, index) => `${pair.dx.toFixed(2)},${pair.dy.toFixed(2)}${speeds[index]}`).join(' / ')})`);
         for (const column of columns) {
           if (column.median === null) continue;
           const [lo, hi] = column.bandKm;
-          const flag = column.median >= STABLE_RATIO ? '  ×' : '';
+          const flag = variant.startsWith('later') || column.median < STABLE_RATIO ? '' : '  ×';
           console.log(`  ${`${lo.toPrecision(3)}-${hi.toPrecision(3)} km`.padStart(18)}  中央値 ${column.median.toFixed(3)}  最大 ${column.max.toFixed(3)}${flag}`);
         }
       }
