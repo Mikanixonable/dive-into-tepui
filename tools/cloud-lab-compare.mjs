@@ -29,8 +29,9 @@ import { decodePng } from './png.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.cloud-lab');
 const outDir = path.join(buildDir, 'compare');
-const port = 8769;
-const debugPort = 9446;
+// 配信と CDP のポート。環境変数で上書きでき、別の作業ツリーの計測と並行して走らせられる。
+const port = Number(process.env.CLOUD_LAB_PORT ?? 8769);
+const debugPort = Number(process.env.CLOUD_LAB_DEBUG_PORT ?? 9446);
 
 // 撮る面の大きさ。tools/cloud-lab/lab.ts の VIEW_HEIGHT / GLOBE_WIDTH / CAP_SIZE と対。
 const GLOBE_W = 1024;
@@ -128,12 +129,6 @@ const GLOBE_EXTENT = { north: 90, south: -90, west: -180, east: 180 };
 // 雲頂ビューの表示値 1 が張る高さ [m]。tools/cloud-lab/views.ts の積雲・巻雲の雲頂ビューの
 // 目盛り(src/render/cloud/cloud-kind.ts の CUMULUS_TOP_ALTITUDE)と対。
 const CLOUD_TOP_SPAN = 17000;
-// 雲頂の分位に入れる texel の積雲の不透明度のしきい。
-const CLOUD_TOP_COVERAGE = 0.3;
-// 金床の判定。この高さ [m] を超える texel のうち、周り ANVIL_RADIUS_KM [km] の雲の雲頂の平均も
-// 超えているものを平らな天蓋と見なす。
-const ANVIL_HEIGHT = 9000;
-const ANVIL_RADIUS_KM = 100;
 // 巻雲の雲頂高度の両端 [m]。量からの換算と「積雲の雲頂が巻雲より高い」判定に使う。
 // 値は src/render/cloud/cloud-kind.ts の CIRRUS_BOTTOM_ALTITUDE / CIRRUS_TOP_ALTITUDE と
 // 一致させること。
@@ -486,62 +481,6 @@ function printStructureTable(header, rows) {
     scaleKm: scale,
     fields: STRUCTURE_FIELDS.map((field, index) => ({ field: field.key, ...cells[index] })),
   }));
-}
-
-// 雲頂 [m] の分位。積雲の不透明度が CLOUD_TOP_COVERAGE を超え、mask(null なら全域)が立つ texel だけを
-// 数える。area は数えた範囲に対する雲域の割合、金床は周り ANVIL_RADIUS_KM の雲の雲頂の平均も
-// ANVIL_HEIGHT を超えているものの、ANVIL_HEIGHT を超える texel に対する割合。
-function cloudTopStats(top, coverage, kmPerPx, mask) {
-  const { width, height } = top;
-  const stride = width + 1;
-  // 周りの雲の雲頂の平均を半径に依らず一定の手数で引くための積算表。
-  const sumTop = new Float64Array(stride * (height + 1));
-  const sumCount = new Float64Array(stride * (height + 1));
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const cloudy = coverage.data[y * width + x] > CLOUD_TOP_COVERAGE ? 1 : 0;
-      const i = (y + 1) * stride + (x + 1);
-      sumTop[i] = cloudy * top.data[y * width + x] + sumTop[i - 1] + sumTop[i - stride] - sumTop[i - stride - 1];
-      sumCount[i] = cloudy + sumCount[i - 1] + sumCount[i - stride] - sumCount[i - stride - 1];
-    }
-  }
-  const boxSum = (table, x0, y0, x1, y1) => table[(y1 + 1) * stride + x1 + 1] - table[y0 * stride + x1 + 1]
-    - table[(y1 + 1) * stride + x0] + table[y0 * stride + x0];
-  const radius = Math.max(1, Math.round(ANVIL_RADIUS_KM / kmPerPx));
-
-  const tops = [];
-  let considered = 0;
-  let high = 0;
-  let anvils = 0;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = y * width + x;
-      if (mask !== null && mask[i] === 0) continue;
-      considered++;
-      if (coverage.data[i] <= CLOUD_TOP_COVERAGE) continue;
-      tops.push(top.data[i]);
-      if (top.data[i] <= ANVIL_HEIGHT) continue;
-      high++;
-      const x0 = Math.max(0, x - radius);
-      const y0 = Math.max(0, y - radius);
-      const x1 = Math.min(width - 1, x + radius);
-      const y1 = Math.min(height - 1, y + radius);
-      const count = boxSum(sumCount, x0, y0, x1, y1);
-      if (count > 0 && boxSum(sumTop, x0, y0, x1, y1) / count > ANVIL_HEIGHT) anvils++;
-    }
-  }
-  tops.sort((a, b) => a - b);
-  const share = (test) => tops.filter(test).length / Math.max(1, tops.length);
-  return {
-    area: tops.length / Math.max(1, considered),
-    median: quantile(tops, 0.5),
-    iqr: quantile(tops, 0.75) - quantile(tops, 0.25),
-    below3: share((v) => v <= 3000),
-    middle: share((v) => v > 3000 && v <= 7000),
-    above9: share((v) => v > 9000),
-    above12: share((v) => v > 12000),
-    anvil: anvils / Math.max(1, high),
-  };
 }
 
 // 「雲のある」texel(量 > AMOUNT_PRESENT_THRESHOLD)の分布を、帯(行 y0 から h 行)で
