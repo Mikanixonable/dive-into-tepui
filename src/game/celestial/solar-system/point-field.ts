@@ -15,7 +15,7 @@ type SizeDistribution =
   | { readonly kind: 'jupiterSemiMajor' }
   | { readonly kind: 'perihelion'; readonly qRangeAu: readonly [number, number] };
 
-export type PointFieldJupiterReference = Pick<KeplerOrbit, 'a' | 'l0' | 'lRate'>;
+type PointFieldJupiterReference = Pick<KeplerOrbit, 'a' | 'l0' | 'lRate'>;
 
 // 木星との平均運動共鳴で経度方向に偏らせる群(トロヤ群・ヒルダ群)の分布。
 // 共鳴角 σ = p·λ_J − q·λ_H − (p−q)·ϖ_H を、librationCenterDeg の周りに
@@ -153,7 +153,7 @@ export function jupiterMeanLongitude(t: number, orbit: PointFieldJupiterReferenc
 function sampleSemiMajorAu(
   rand: () => number,
   [minAu, maxAu]: readonly [number, number],
-  gapsAu: readonly number[] | undefined,
+  gapsAu: readonly number[] | null,
 ): number {
   // 空隙が無ければ一様分布そのもの。あれば採択率 keep で棄却法にかける。
   if (!gapsAu || gapsAu.length === 0) return uniform(rand, [minAu, maxAu]);
@@ -214,7 +214,7 @@ function generatePoint(
   } else if (def.size.kind === 'jupiterSemiMajor') {
     a = jupiterA;
   } else {
-    a = sampleSemiMajorAu(rand, def.size.aRangeAu, def.gapsAu) * AU;
+    a = sampleSemiMajorAu(rand, def.size.aRangeAu, def.gapsAu ?? null) * AU;
   }
 
   const { lonPeri, l0, meanMotion } = def.resonance

@@ -63,7 +63,7 @@ export type ContactKind =
 
 // 断面積質量比 × 放射率で見積もる、球とみなした個体の日射を吸収する質量あたりの面積 [m^2/kg]。
 // bcInv は弾道係数の逆数 [m^2/kg]。
-export function sphereSolarAbsorbAreaPerMass(emissivity: number, bcInv: number): number {
+function sphereSolarAbsorbAreaPerMass(emissivity: number, bcInv: number): number {
   return (emissivity * bcInv) / DRAG_COEFFICIENT;
 }
 
@@ -132,7 +132,7 @@ export interface DynamicMotionBehavior {
 // DynamicMotion の物性と初期値。省いた項目は既定値になる。
 export interface DynamicMotionProperties {
   readonly alive?: boolean;
-  readonly attitude?: Attitude;
+  readonly attitude?: Attitude | null;
   readonly hasAttitude?: boolean;
   readonly mass?: number;
   readonly radius?: number;

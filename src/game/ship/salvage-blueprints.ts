@@ -9,7 +9,7 @@ import type { ShipBlueprintShelf } from './ship-blueprint';
 
 // 鹵獲の設計図1件。kills は授与されるラン内の撃破数、id・name は棚での重複判定に使う固定値。
 // 設計図として棚へ入れるときは授与の記録側が作成時刻を刻んで ShipBlueprint へ組む。
-export interface SalvageBlueprint {
+interface SalvageBlueprint {
   readonly kills: number;
   readonly id: string;
   readonly name: string;
@@ -76,7 +76,7 @@ const CARGO_CHAINS: Readonly<Record<SalvageKind, CargoChain>> = {
 
 // 鹵獲品の部品の状態。intact は設計図どおりの新品、salvaged は鹵獲品として積まれた状態で、
 // コックピットは損傷している(SPEC GAME.md 2.3)。
-export type SalvageCondition = 'intact' | 'salvaged';
+type SalvageCondition = 'intact' | 'salvaged';
 
 // 鹵獲品 kind の部品を assembly へ連ねる。anchorId が null なら先頭の部品を根に置き、そうでなければ
 // anchorId の外側へ連ねる。idPrefix は部品の識別子の前に付け、同じ船体へ複数の鹵獲品を入れても

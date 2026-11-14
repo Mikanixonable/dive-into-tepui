@@ -3,7 +3,7 @@
 // 補助)のための即時通知。
 import { expandHitTarget, stopDragPropagation } from './widget-base';
 
-export interface SliderOptions {
+interface SliderOptions {
   readonly min: number;
   readonly max: number;
   readonly step?: number;

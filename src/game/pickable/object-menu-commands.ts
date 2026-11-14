@@ -7,7 +7,7 @@ import type { PlanEditor } from '../plan/plan-editor';
 import type { InspectedObject, ObjectAuthoring } from './inspected-object';
 
 // 搭載部品の展開目標を受け付けるインターフェース。
-export interface PartDeployer {
+interface PartDeployer {
   setPartDeployment(part: Part, deployed: boolean): void;
 }
 

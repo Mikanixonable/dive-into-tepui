@@ -12,7 +12,7 @@ import { pieceRootId, placementFor } from './ship-construction-rules';
 import type { ConstructionHeld, ConstructionSymmetry, ConstructionTarget } from './ship-construction-types';
 
 // 試し置きで置いた(動かした)モジュールと、その船体座標でのワールド変換。
-export interface ConstructionTrialModule {
+interface ConstructionTrialModule {
   readonly moduleId: string;
   readonly transform: ModuleTransform;
 }

@@ -15,8 +15,8 @@ import {
   SHIP_RADIATING_AREA_PER_MASS,
   SHIP_BCINV,
   SHIP_SRP_COEFF,
-  shipMotionOptions,
-} from '../dynamic/dynamic-entity/ship';
+  shipMotionProperties,
+} from '../dynamic/dynamic-entity/combat-ship-entity';
 import type { SerializedPowerSystem } from '../player/power';
 import type { SerializedRadiatorSystem } from '../player/radiator';
 import { AeroLoad } from '../player/aero-load';
@@ -61,7 +61,7 @@ export interface ModularShipMotionReactions {
   autopilotMaxStep?(self: DynamicMotion): number;
 }
 
-export interface ModularShipMotionSystems {
+interface ModularShipMotionSystems {
   readonly temperature?: number;
   readonly beltLinkCount?: number;
   readonly serializedBelt?: SerializedBeltController;
@@ -258,7 +258,7 @@ export class ModularShipMotion extends DynamicMotion {
     // 船体形状から初期質量・慣性・衝突特性を得る。
     const shape = shipPhysicsShape(assembly);
     if (shape === null) throw new Error('modular ship requires a non-empty valid assembly');
-    super(state, shipMotionOptions(withInertia(attitude, shape), shape.mass.boundingRadius, {
+    super(state, shipMotionProperties(withInertia(attitude, shape), shape.mass.boundingRadius, {
       mass: shape.mass.totalMass,
       collides: true,
       engagementAnchor: assembly.playerOwned,
@@ -437,7 +437,4 @@ function modularShipMotionOf(motion: DynamicMotion): ModularShipMotion {
   return motion;
 }
 
-// motion がモジュール船の剛体運動かを判定する。
-export function isModularShipMotion(motion: DynamicMotion): motion is ModularShipMotion {
-  return motion instanceof ModularShipMotion;
-}
+

@@ -1,7 +1,7 @@
 import type { ContinuousGameAction, GameInputBinding } from './game-actions';
 import type { GameCommand } from './game-commands';
 
-export interface GameInputMode {
+interface GameInputMode {
   readonly camera: boolean;
   readonly construction: boolean;
   readonly world: boolean;

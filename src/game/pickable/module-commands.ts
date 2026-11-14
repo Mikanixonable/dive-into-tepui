@@ -11,7 +11,7 @@ import type { ModuleInspectionAction } from './module-inspection';
 export type ModuleCommandAction = Exclude<ModuleInspectionAction, 'startConstructionModule' | 'dockModule'>;
 
 // モジュール命令の対象が公開する、存在確認と操作の面。
-export interface ModuleCommandTarget {
+interface ModuleCommandTarget {
   readonly assembly: Pick<ShipAssembly, 'module'>;
   readonly motion: { readonly alive: boolean };
   readonly capabilities: { selectOperatingCockpit(moduleId: string): boolean };
@@ -23,7 +23,7 @@ export interface ModuleCommandTarget {
 }
 
 // 登録先と、命令対象がまだ属しているかを確認する面。
-export interface ModuleCommandRoster extends EntityRegistry {
+interface ModuleCommandRoster extends EntityRegistry {
   all(): readonly object[];
 }
 

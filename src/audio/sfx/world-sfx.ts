@@ -24,7 +24,7 @@ export type WorldSound =
   | { readonly kind: 'hit'; readonly impactDistance: number };
 
 // そのフレームに鳴らすべき音の全体。
-export interface WorldSfxDeclaration {
+interface WorldSfxDeclaration {
   readonly loops: LoopSfx;
   readonly cues: readonly SoundCue<WorldSound>[];
 }

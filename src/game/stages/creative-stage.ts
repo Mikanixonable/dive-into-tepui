@@ -26,7 +26,7 @@ import type { PlayerLossCause } from './stage-outcome';
 
 // クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
 // 保つ(ON に戻したとき波数を続きから再開する)。手動スポーンと物体配置の設定・連番も持つ。
-export interface SerializedCreativeStage extends SerializedStage {
+interface SerializedCreativeStage extends SerializedStage {
   readonly waveAttackEnabled: boolean;
   readonly waveAttack: SerializedWaveAttack;
   readonly manualSpawn: SerializedManualSpawn;

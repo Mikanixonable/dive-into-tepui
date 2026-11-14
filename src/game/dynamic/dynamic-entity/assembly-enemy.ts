@@ -20,14 +20,13 @@ import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
 import type { FormationRole } from './entity-kind';
-import type { DynamicEntity } from './dynamic-entity';
 import type { EnemyCollisionShape } from './enemy-motion';
 import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../../orbit-reference';
 
 // 新しく置く組み立て型の敵の要求。seed が個体の形状を決める。陣形に属さない個体は
 // formationId と役割が null。
-export interface AssemblyEnemyRequest {
+interface AssemblyEnemyRequest {
   readonly name: string;
   readonly state: SerializedKinematicState;
   readonly seed: number;
@@ -221,7 +220,7 @@ export class AssemblyEnemy extends Enemy {
 
   // 被弾で失われた部品を表示入力へ足す。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, active: boolean, orbitReference?: OrbitReference,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | null,
   ): AssemblyVisualSource {
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
@@ -240,7 +239,4 @@ export class AssemblyEnemy extends Enemy {
   }
 }
 
-// この個体が組み立て型の敵か。
-export function isAssemblyEnemy(entity: DynamicEntity): entity is AssemblyEnemy {
-  return entity instanceof AssemblyEnemy;
-}
+

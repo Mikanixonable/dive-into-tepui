@@ -103,7 +103,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     private readonly pickupKind: PickupKind,
     alive?: boolean,
   ) {
-    super(() => new PickupMotion(placement.state, placement.att, pickupKind, placement.thermal, alive), view, id);
+    super(() => new PickupMotion(placement.state, placement.att ?? null, pickupKind, placement.thermal, alive), view, id);
     this.setName(placement.name ?? defaultName);
   }
 

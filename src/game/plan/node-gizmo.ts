@@ -61,7 +61,7 @@ export interface AxisHandleSpec {
 }
 
 // ドラッグ中の Δv アーム。excessPx はラッチ前は null、ラッチ後は基点からの超過量 [px]。
-export interface AxisHandleDrag {
+interface AxisHandleDrag {
   readonly axis: 0 | 1 | 2;
   readonly sign: 1 | -1;
   readonly excessPx: number | null;

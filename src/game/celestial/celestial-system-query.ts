@@ -5,7 +5,7 @@ import { lenSq, type Vec3 } from '../../math/vec3';
 import { isLagrangeId, lagrangeParentId } from './lagrange-id';
 import { STICKY_MARGIN_SQ } from './nearby-system-tracker';
 
-export interface CelestialQueryEntity {
+interface CelestialQueryEntity {
   readonly id: string;
   readonly motion: CelestialMotion;
 }

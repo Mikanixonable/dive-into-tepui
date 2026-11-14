@@ -7,7 +7,7 @@ import type { ModuleTransform, SideSlot } from './ship-assembly-types';
 import type { ShipModuleInstance } from './ship-module-instance';
 
 // 接続軸まわりの 90° 単位のロール。
-export type ModuleRoll = 0 | 1 | 2 | 3;
+type ModuleRoll = 0 | 1 | 2 | 3;
 
 // モジュールの軸方向の端。front は +Z 端、back は −Z 端。
 export type AxialFace = 'front' | 'back';
@@ -19,7 +19,7 @@ export interface ModuleOrientation {
 }
 
 // 軸方向接続の取り付け位置と向き。parentFace は親のどちらの端へ付いたか。
-export interface AxialPlacement {
+interface AxialPlacement {
   readonly parentFace: AxialFace;
   readonly orientation: ModuleOrientation;
 }

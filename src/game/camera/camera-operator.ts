@@ -11,7 +11,7 @@ const CAM_KEY_PAN_RATE = 600; // キーによるパン [px/s]
 const DRAG_RAD_PER_PX = 0.005; // ドラッグ1pxあたりの回転量 [rad]
 const WHEEL_ZOOM_RATE = 0.0015; // ホイール量を指数ズーム率へ換算する係数
 
-export interface CameraOperatorResult {
+interface CameraOperatorResult {
   readonly input: CameraInput;
   readonly rollReset: boolean;
 }

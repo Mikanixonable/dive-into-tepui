@@ -62,7 +62,7 @@ export class MapPicking {
     );
     // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md「軌道物体一覧パネル」)。
     this.listPanel.onFocus = (id) => {
-      this.focusTarget(id, this.pickables.listPickables.find((i) => i.id === id));
+      this.focusTarget(id, this.pickables.listPickables.find((i) => i.id === id) ?? null);
     };
     this.listPanel.onNavTarget = (id) => {
       const target = this.pickables.listPickables.find((i) => i.id === id);
@@ -167,7 +167,7 @@ export class MapPicking {
 
   // マップ視点のフォーカスを id の対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md「軌道物体一覧パネル」)。
   // target は候補列で見つかっていれば渡し、表示名と操作対象の切り替えに使う。
-  private focusTarget(id: string, target: MapPickable | undefined): void {
+  private focusTarget(id: string, target: MapPickable | null): void {
     this.mapFocusCommands.setFocus({ kind: 'object', id });
     this.hud.hint(`${target?.name ?? id} にフォーカス`, undefined, 'nav');
     target?.onMapFocus?.(this.controlCommands);
@@ -179,7 +179,7 @@ export class MapPicking {
     const parentOf = new Map<string, string>();
     for (const item of this.celestialMarkers.allItems) {
       const parent = this.celestialBodies.bodyParentId(item.id);
-      if (parent !== undefined && parent !== null) parentOf.set(item.id, parent);
+      if (parent !== null) parentOf.set(item.id, parent);
     }
     this.listPanel.setVisible(true);
     this.listPanel.sync(

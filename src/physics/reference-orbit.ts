@@ -19,7 +19,7 @@ export type OrbitFamilyDescriptor =
   | { readonly kind: 'lissajous'; readonly point: CollinearPoint; readonly ax: number; readonly az: number; readonly psi: number };
 
 // 基準天体まわりの標識。要素は元期 epoch の平均軌道要素(角度は [rad]、距離は [m])。
-export interface ReferenceOrbitElements {
+interface ReferenceOrbitElements {
   readonly kind: 'elements';
   readonly bodyId: string;
   readonly epoch: number; // 元期 [s](simTime)

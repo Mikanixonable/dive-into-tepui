@@ -1,7 +1,7 @@
 // 決定論的なオーロラ場モデル。地磁気座標系と発光計算を担当し、描画バッファは Aurora クラスが持つ。
 import { dot, v3, type Vec3 } from '../math/vec3';
 
-export interface AuroraFieldOptions {
+interface AuroraFieldOptions {
   readonly ovalLatitudeDeg: number;
   readonly magneticPoleLatitudeDeg?: number;
   readonly magneticPoleLongitudeDeg?: number;
@@ -11,7 +11,7 @@ export interface AuroraFieldOptions {
   readonly sign: 1 | -1;
 }
 
-export interface AuroraFrame {
+interface AuroraFrame {
   readonly magneticPoleLatitudeDeg: number;
   readonly magneticLocalTime: number;
   readonly latitudeDeg: number;

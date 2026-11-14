@@ -8,7 +8,7 @@ import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import type { ShipModuleDefinition } from './ship-module-definition';
 import { createShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
 
-export type SerializedShipModule = {
+type SerializedShipModule = {
   readonly id: string;
   readonly definitionId: string;
   readonly hp: number;
@@ -20,7 +20,7 @@ export type SerializedShipModule = {
   | { readonly kind: 'booster'; readonly fuel: number; readonly ignited: boolean }
 );
 
-export interface SerializedShipConnection {
+interface SerializedShipConnection {
   readonly id: string;
   readonly parentId: string;
   readonly childId: string;

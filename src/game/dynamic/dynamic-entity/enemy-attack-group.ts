@@ -1,5 +1,5 @@
 // 敵の攻撃グループ判定に必要な、Enemy本体から独立した読み取りインターフェース。
-export interface EnemyAttackGroupMember {
+interface EnemyAttackGroupMember {
   readonly motion: { readonly alive: boolean };
   readonly attackGroupId: string;
   readonly isBursting: boolean;

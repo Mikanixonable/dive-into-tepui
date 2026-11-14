@@ -36,7 +36,7 @@ export interface ConstructionTargetInfo {
 }
 
 // 1つの接ぎ木の内容。対称配置では同じ形が対称の位置の数だけ並ぶ。
-export interface ConstructionAttachPlan {
+interface ConstructionAttachPlan {
   readonly parentId: string;
   readonly transform: ModuleTransform;
   readonly connectionKind: ConnectionKind;
@@ -45,7 +45,7 @@ export interface ConstructionAttachPlan {
 
 // 継ぎ目への割り込みで、継ぎ目の先の部分を置いたモジュールへ付き直す内容。
 // transform は置いたモジュールのローカルでの先端部の根の取り付け変換。
-export interface ConstructionReattachPlan {
+interface ConstructionReattachPlan {
   readonly connectionId: string;
   readonly farModuleId: string;
   readonly transform: ModuleTransform;
@@ -102,7 +102,7 @@ function anchorDistances(assembly: ShipAssembly, anchorId: string): ReadonlyMap<
 
 // 軸方向の継ぎ目の、起点ドックに近い側と遠い側。nearFace は近い側の継ぎ目の面、
 // farOrientation は遠い側が近い側へ向けていた端と回し。接続でなければ null。
-export interface JointEnds {
+interface JointEnds {
   readonly nearId: string;
   readonly farId: string;
   readonly nearFace: AxialFace;

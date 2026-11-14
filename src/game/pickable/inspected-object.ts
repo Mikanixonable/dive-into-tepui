@@ -14,7 +14,7 @@ import type { PickCandidate } from './pick-candidate';
 // 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
 // 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
 export interface ObjectAuthoring {
-  openObjectPlacer(focusId?: string): void;
+  openObjectPlacer(focusId?: string | null): void;
   openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void;
 }
 

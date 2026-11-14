@@ -20,8 +20,8 @@ export type SerializedFocusTarget =
   };
 
 // 天体・実体・役割を指す対象なら id を返す。固定点には対応する id が無い。
-export function focusTargetId(target: FocusTarget): string | undefined {
-  return target.kind === 'object' ? target.id : undefined;
+export function focusTargetId(target: FocusTarget): string | null {
+  return target.kind === 'object' ? target.id : null;
 }
 
 // ECI 位置 pos を時刻 t の frame に焼き込んだ固定点フォーカスを組む。

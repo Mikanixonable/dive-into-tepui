@@ -14,7 +14,7 @@ const LEGACY_SOLAR_EFFICIENCY = 0.25;
 
 export type SolarSide = 'up' | 'down';
 
-export interface SerializedPowerPanel {
+interface SerializedPowerPanel {
   readonly id: string;
   readonly state: SerializedDeployablePanelState;
 }

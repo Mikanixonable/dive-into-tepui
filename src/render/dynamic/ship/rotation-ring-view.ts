@@ -26,14 +26,14 @@ const MAX_STEP_TICKS = 12;
 // ドラッグ中の回転の強調。startAngle は掴んだ点の基準角、angle は掴んだ点からの
 // 累積角 [rad](リングの局所 +Z まわりに右手則)。appliedSteps はいま離したときに
 // 適用される 90° 単位の段数で、弧の長さとは独立に受け取る。
-export interface RotationRingDrag {
+interface RotationRingDrag {
   readonly startAngle: number;
   readonly angle: number;
   readonly appliedSteps: number;
 }
 
 // 回転リング1つぶんの宣言。position/rotation/radius は表示座標。
-export interface RotationRingDisplay {
+interface RotationRingDisplay {
   readonly position: Vec3;
   readonly rotation: Quat;
   readonly radius: number;

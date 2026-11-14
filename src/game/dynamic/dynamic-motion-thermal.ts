@@ -18,7 +18,7 @@ export interface DynamicMotionThermal {
   readonly pendingSpecificHeat: number; // 次の熱の歩で温度へ足す熱量 [J/kg]
 }
 
-export interface DynamicMotionThermalStepInput {
+interface DynamicMotionThermalStepInput {
   readonly dt: number;
   readonly samples: readonly DynamicsEnvironmentSample[];
   readonly radiantIntensity: number;
@@ -34,7 +34,7 @@ export interface DynamicMotionThermalStepInput {
   readonly solarAbsorbAreaPerMass: (sunDir: Vec3) => number;
 }
 
-export interface DynamicMotionThermalStepResult {
+interface DynamicMotionThermalStepResult {
   readonly temperature: number;
   readonly thermalDeviation: number;
   readonly pendingSpecificHeat: number;

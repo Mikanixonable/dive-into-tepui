@@ -15,7 +15,7 @@ const RADIATOR_BULLET_DAMAGE = 0.25;
 // 被弾の着弾熱 [J]。
 const BULLET_IMPACT_HEAT = 3.0e5;
 
-export interface ModularShipReactionPort {
+interface ModularShipReactionPort {
   readonly motion: ModularShipMotion;
   readonly assembly: ShipAssembly;
   readonly effects: PlayerEffects;

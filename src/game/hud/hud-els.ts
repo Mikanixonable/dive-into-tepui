@@ -3,7 +3,7 @@
 // どちらか片方だけの改名は構築時点のエラーになる。
 
 // HUD の静的 DOM が data-id で公開する要素の id 一覧。
-export const HUD_ELEMENT_IDS = [
+const HUD_ELEMENT_IDS = [
   'alt',
   'ammo',
   'ammo-row',
