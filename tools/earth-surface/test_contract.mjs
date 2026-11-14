@@ -116,8 +116,6 @@ async function run() {
   }
 }
 
-export { createBundle };
-
 if (process.argv[1] && new URL(`file://${process.argv[1]}`).href === import.meta.url) {
   run().catch((error) => { console.error(error); process.exitCode = 1; });
 }

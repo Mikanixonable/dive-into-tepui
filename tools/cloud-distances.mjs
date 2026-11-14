@@ -122,7 +122,7 @@ function motionConsistencyDistance(drift) {
 
 // 実物の動きと生成の動きの距離。箱ごとに、相関曲線の差(時刻 0 を除く各時刻の |Δ相関| の
 // 平均)と、移流ベクトルの差(向きの差と速さ比)を項とする。移流は生成の composite 対 実物
-// 赤外で比べる(被覆率は参考値で、距離には入れない)。片方の速さだけが 0 のとき、向きの差
+// 赤外で比べる(積雲の不透明度は参考値で、距離には入れない)。片方の速さだけが 0 のとき、向きの差
 // と速さ比はどちらも「最も違う」として 1 とする。
 function motionReferenceDistance(referenceMotion) {
   const terms = [];
@@ -231,6 +231,60 @@ function fineStreaksDistance(fineStructure) {
       }
     }
     for (const band of pair.visible.bands) {
+      if (!band.primary) continue;
+      const centerKm = Math.sqrt(band.loKm * band.hiKm);
+      let nearest = null;
+      for (const scale of pair.streak.scales) {
+        if (nearest === null
+          || Math.abs(Math.log(scale.scaleKm / centerKm)) < Math.abs(Math.log(nearest.scaleKm / centerKm))) {
+          nearest = scale;
+        }
+      }
+      if (nearest !== null) {
+        terms.push(Math.abs(nearest.generated.coherence - nearest.reference.coherence));
+      }
+    }
+  }
+  return terms.length === 0 ? null : mean(terms);
+}
+// 巻雲層だけの電力割合の距離。巻雲層だけの撮影と、帯 13 の輝度温度から切り分けた
+// 高層雲の冷たさの場を、尺度帯ごとに比べる。項は主の梯子で測った帯だけ (微細構造の
+// 電力割合と同じ取り方)。合成画の fineSpectrum と違い、積雲の明るさが混ざらないので、
+// 半透明殻そのものの帯域配分がそのまま出る。
+// 項が 1 つも無ければ測れない (null) とし、0 (一致) とは区別する。
+function cirrusSpectrumDistance(cirrusStructure) {
+  const terms = [];
+  const logRatio = (generated, reference) => Math.abs(
+    Math.log2(Math.max(1e-9, generated) / Math.max(1e-9, reference)));
+  for (const pair of cirrusStructure.pairs) {
+    if (pair.distance === false) continue;
+    for (const band of pair.bands) {
+      if (!band.primary) continue;
+      terms.push(logRatio(band.generatedShare, band.referenceShare));
+    }
+  }
+  return terms.length === 0 ? null : mean(terms);
+}
+
+// 巻雲層だけの筋の距離。項の作りは fineStreaksDistance と同じ: 向きのずれ (90° を 1)、
+// 向きの相関長 Lθ の比、帯ごとの揃いのずれ。向きと Lθ は 63 km の尺度・400 km の梯子。
+// 項が 1 つも無ければ測れない (null) とし、0 (一致) とは区別する。
+function cirrusStreaksDistance(cirrusStructure) {
+  const terms = [];
+  for (const pair of cirrusStructure.pairs) {
+    if (pair.distance === false || pair.streak === null) continue;
+    if (pair.ladder === '400km') {
+      const scale63 = pair.streak.scales.find((scale) => scale.scaleKm === 63);
+      if (scale63 !== undefined) {
+        terms.push(orientationDifferenceDeg(
+          scale63.generated.orientationDeg, scale63.reference.orientationDeg) / 90);
+      }
+      const lTheta = pair.streak.lThetaKm;
+      if (lTheta !== null && lTheta.generated !== null && lTheta.reference !== null) {
+        terms.push(Math.abs(Math.log2(lTheta.generated / lTheta.reference)));
+      }
+    }
+    for (const band of pair.bands) {
       if (!band.primary) continue;
       const centerKm = Math.sqrt(band.loKm * band.hiKm);
       let nearest = null;
@@ -391,6 +445,14 @@ export function computeDistances(sections) {
       const fineStreakWind = fineStreakWindDistance(sections.fineStructure, sections.fineMotion);
       if (fineStreakWind !== null) families.fineStreakWind = fineStreakWind;
     }
+  }
+  // 巻雲の 2 家族は既存の家族と同じく index の平均へ加える (新しい家族は現れた
+  // commit から index に入る — 微細構造・微細な動きの追加時と同じ流儀)。
+  if (sections.cirrusStructure?.pairs?.length) {
+    const cirrusSpectrum = cirrusSpectrumDistance(sections.cirrusStructure);
+    if (cirrusSpectrum !== null) families.cirrusSpectrum = cirrusSpectrum;
+    const cirrusStreaks = cirrusStreaksDistance(sections.cirrusStructure);
+    if (cirrusStreaks !== null) families.cirrusStreaks = cirrusStreaks;
   }
   return { families, index: mean(Object.values(families)) };
 }

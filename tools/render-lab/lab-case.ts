@@ -71,7 +71,7 @@ export interface LabCase {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
-  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・積雲の影の源になる。省略すると
+  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・雲の影の源になる。省略すると
   // 地球を置かない。
   readonly earth?: Pick<LabViewAngles, EarthAngleKey>;
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
@@ -146,7 +146,7 @@ const texturedSurfaces = new Map<CelestialTexture, CelestialSurface>();
 export function texturedBody(
   texture: CelestialTexture, def: PlanetDef, center: THREE.Vector3, apparentDiameterPx: number,
 ): { readonly object: THREE.Object3D; readonly axes: THREE.Vector3; readonly ready: () => boolean } {
-  const shape = shapeAxes(def.radius, def.shape);
+  const shape = shapeAxes(def.radius, def.shape ?? null);
   const axes = new THREE.Vector3(shape.x, shape.y, shape.z);
   const group = new THREE.Group();
   group.position.copy(center);
