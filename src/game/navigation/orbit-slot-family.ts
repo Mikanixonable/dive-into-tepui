@@ -16,8 +16,8 @@ import { catalogSystemScale } from '../celestial/orbit-guide/orbit-guide-catalog
 
 const TAU = 2 * Math.PI;
 
-export type RotatingSample = readonly [number, number, number, number, number, number];
-export interface OrbitFamilyMember {
+type RotatingSample = readonly [number, number, number, number, number, number];
+interface OrbitFamilyMember {
   readonly period: number; // メンバーの周期 [s]
   sample(phase: number): RotatingSample;
 }
