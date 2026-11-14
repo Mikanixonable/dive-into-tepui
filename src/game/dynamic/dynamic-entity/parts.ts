@@ -23,7 +23,7 @@ export interface ArmorPart extends Part {
   readonly damageReduction: number; // 0-1
 }
 
-export interface ThrusterPart extends Part {
+interface ThrusterPart extends Part {
   readonly type: 'thruster';
   readonly torque: number;
   readonly thrust: number;

@@ -20,38 +20,38 @@ import type { DynamicSimulationRoster, SimulationLifecycle } from './dynamic-sim
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 
 // pending spawn が実体化可能かを判定する条件関数。待機理由は本関数の判定外にカプセル化する。
-export type EntitySpawnGate = () => boolean;
+type EntitySpawnGate = () => boolean;
 
 // pending spawn 一件の内容。汎用 Options/Params ではなく、生成順序に必要な値だけを持つ。
-export interface PendingEntitySpawn {
+interface PendingEntitySpawn {
   readonly gate: EntitySpawnGate;
   readonly build: () => DynamicEntity;
   readonly onSpawned?: () => void;
 }
 
 // 追加を担当する named port。
-export interface EntityAdditionPort {
+interface EntityAdditionPort {
   add(entity: DynamicEntity): void;
 }
 
 // pending spawn の待機と処理を担当する named port。
-export interface PendingEntitySpawnPort {
+interface PendingEntitySpawnPort {
   queuePendingSpawn(spawn: PendingEntitySpawn): void;
   processPendingSpawns(): void;
 }
 
 // 死亡をエンティティ一覧からの除去へ進める前の境界。死亡判定そのものは DynamicEntity/Motion が持つ。
-export interface EntityDeathPort {
+interface EntityDeathPort {
   markDead(entity: DynamicEntity): void;
 }
 
 // 除去と所有資源の解放を担当する named port。
-export interface EntityRemovalPort {
+interface EntityRemovalPort {
   remove(entity: DynamicEntity): void;
 }
 
 // DynamicSystem が後続配線で実装を委譲できる寿命ポート。メソッド順が一体の寿命の流れを示す。
-export interface EntityLifecyclePort
+interface EntityLifecyclePort
   extends EntityAdditionPort, PendingEntitySpawnPort, EntityDeathPort, EntityRemovalPort {}
 
 function readyToSpawn(record: SpawnRecord): boolean {
