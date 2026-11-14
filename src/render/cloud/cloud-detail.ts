@@ -15,7 +15,7 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 // 細部のオクターブが張る波長 [m](粗→細、比 2)。粗い端は cap で場が担う最も細かい段(対流の
 // 24 km、上層の湿度の 25 km)へ重なる 32 km まで — 場と細部のあいだに担い手のいない尺度を残さない。
 // 細かい端は実写の放射の平滑化が折れ始める 0.25 km まで。
-export const DETAIL_WAVELENGTHS = [32000, 16000, 8000, 4000, 2000, 1000, 500, 250] as const;
+const DETAIL_WAVELENGTHS = [32000, 16000, 8000, 4000, 2000, 1000, 500, 250] as const;
 
 // 最も細かいオクターブの波長 [m]。法線の差分幅はこの半分に取る。
 export const FINEST_DETAIL_WAVELENGTH = DETAIL_WAVELENGTHS[DETAIL_WAVELENGTHS.length - 1]!;

@@ -2,14 +2,14 @@
 // 確定した時点の値だけを通知する。
 import { expandHitTarget, stopDragPropagation } from './widget-base';
 
-export type ValueInputType = 'text' | 'number' | 'search' | 'color';
+type ValueInputType = 'text' | 'number' | 'search' | 'color';
 
 // Escape で編集を破棄する際の挙動。既定は 'revert'(確定済みの値へ復帰)。'clear'(空にする)の
 // 指定は検索フィールドに限定する — 安易なクリア挙動の拡散を防ぐため、
 // 明示的な型指定を必須とする。
-export type EscapeBehavior = 'revert' | 'clear';
+type EscapeBehavior = 'revert' | 'clear';
 
-export interface ValueInputOptions {
+interface ValueInputOptions {
   readonly type: ValueInputType;
   readonly min?: number;
   readonly max?: number;
