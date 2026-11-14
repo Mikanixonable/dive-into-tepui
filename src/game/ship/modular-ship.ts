@@ -673,6 +673,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       torque: motion.torque,
       dynamicPressure: motion.aero.qdyn,
       ambientDensity: motion.aero.density,
+      airspeed: motion.aero.airspeed,
       belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
       magsLeft: this.magsLeft,
       gunFireRate: this.fire.isFiring ? this.totalFireRate : 0,
