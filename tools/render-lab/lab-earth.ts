@@ -90,7 +90,10 @@ export class LabEarth {
     const bodyFromWorld = this.bodyFromWorld;
     // **組は毎フレーム取り直す** — 雲の分布を切り替えると写しが別のテクスチャになる。
     const atmosphereClouds: AtmosphereClouds = {
-      get cloud() { return clouds.renderInput; }, bodyFromWorld,
+      get cloud() { return clouds.renderInput; },
+      bodyFromWorld,
+      get cumulusVisible() { return clouds.cumulusEnabled; },
+      get cirrusVisible() { return clouds.cirrusEnabled; },
     };
     // 大気の地表は地表メッシュと同じ楕円体に採る。**真球で渡すと**、極で地表と空のあいだに
     // 隙間が開く。
