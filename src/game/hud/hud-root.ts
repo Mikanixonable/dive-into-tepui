@@ -138,6 +138,7 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
   // 計器の行(燃料・RCS・出力・動圧・各モード・弾薬)と、展開・スロットル・主要操作の置き場。
   status.body.innerHTML = `
     <div class="ui-rows has-keys">
+      ${instrumentRowHtml({ label: '主燃料', gaugeId: 'main-fuel-meter', valueId: 'main-fuel-value' })}
       ${instrumentRowHtml({ label: 'RCS 燃料', gaugeId: 'rcs-fuel-meter', valueId: 'rcs-fuel-value' })}
       ${instrumentRowHtml({ label: 'RCS 制動', keys: K.rcsDampToggle.label, valueHtml: pip('rcs') })}
       ${instrumentRowHtml({
@@ -148,7 +149,7 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
       ${instrumentRowHtml({ label: '微調整', keys: K.fineAttitudeToggle.label, valueHtml: pip('fine') })}
       ${instrumentRowHtml({ label: '進行方向ホールド', keys: K.progradeHoldToggle.label, valueHtml: pip('prohold') })}
       ${instrumentRowHtml({ label: '視点RCS追従', keys: K.followAttitudeToggle.label, valueHtml: pip('camfollow') })}
-      ${instrumentRowHtml({ label: '弾薬', valueId: 'ammo' })}
+      ${instrumentRowHtml({ label: '弾薬', rowId: 'ammo-row', valueId: 'ammo' })}
     </div>
     <div class="vessel-deploy-controls" data-id="vessel-deploy-controls" role="group" aria-label="太陽電池パドル・放熱板の収納展開"></div>
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>

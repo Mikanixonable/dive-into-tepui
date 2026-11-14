@@ -237,6 +237,13 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     return this._dynamicSystem.all().filter(isModularShip).find((ship) => ship.motion.alive) ?? null;
   }
 
+  // 操作対象そのものがモジュール艦ならそれ、そうでなければ null。操作艦へ直接作用する
+  // ユーザー操作はこちらを使う — ship のフォールバックでは選んでいない別の艦へ作用しうる。
+  protected get controlledShip(): ModularShip | null {
+    const controlled = this._controlSelection.current;
+    return controlled instanceof ModularShip ? controlled : null;
+  }
+
   // 自機を1隻置き、操作対象が居なければそれを操作対象にする。state を省いた新規配置は
   // 既定の円軌道(defaultPlayerState)に置き、機首と上面はその位置で最も強く引く天体を基準に向ける。
   protected addPlayer(init: ModularShipInit = {}): ModularShip {

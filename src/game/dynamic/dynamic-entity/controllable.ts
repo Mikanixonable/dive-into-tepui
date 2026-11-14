@@ -30,7 +30,8 @@ export interface ThrottlePort {
   clearTransientState(): void;
 }
 
-// スロットルが推力・トルクの上限と燃料を読み、燃料 [kg] を消費させる相手。
+// スロットルが推力・トルクの上限と燃料を読み、燃料を消費させる相手。
+// 燃料の単位は実装依存(旧部品型は kg、モジュール型は fuel unit;1 unit = 1 kg)。
 export interface FuelConsumer {
   readonly totalThrust: number;
   readonly totalTorque: number;
