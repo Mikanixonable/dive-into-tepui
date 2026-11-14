@@ -108,7 +108,8 @@
 
 タンパク質型の敵の表示、構造の揺らぎ、機能部位、integrity、phase、セーブ状態は
 [PROTEIN.md](PROTEIN.md) に定める。組み立て型の敵の構成・表示・部品の被弾は
-[ASSEMBLY.md](ASSEMBLY.md) に定める。
+[ASSEMBLY.md](ASSEMBLY.md) に定める。結節体の構成・表示・索の被弾とほどけは
+[KNOT.md](KNOT.md) に定める。
 
 ### 配置のバリエーション
 - 敵機は、自機に対して位相をずらした軌道・同一形状で高度違いの軌道(コエリプティック)・
