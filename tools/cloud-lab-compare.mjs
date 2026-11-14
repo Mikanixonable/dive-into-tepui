@@ -18,7 +18,10 @@ import {
 } from './cloud-report-history.mjs';
 import { componentStats } from './cloud-components.mjs';
 import { computeDistances } from './cloud-distances.mjs';
+import { FINE_BANDS, FINE_PRIMARY_LADDER, applyCaptureMapping, captureBoxMapping, largestValidRect, measureFinePair, resampleCaptureToBox } from './cloud-fine-structure.mjs';
+import { FINE_MOTION_DRIFT_LAG_HOURS, FINE_MOTION_SAMPLE_HOURS, measureFineMotionPair } from './cloud-fine-motion.mjs';
 import { bestShift, centroidOffset, crossingTime } from './cloud-motion.mjs';
+import { cloudTopStats, quantile } from './cloud-top-stats.mjs';
 import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
 import { cropField, cropLatLonBox, decodeChannelPng, decodeRedPng, fieldToGrayPng } from './gray-image.mjs';
 import { decodePng } from './png.mjs';
@@ -125,12 +128,6 @@ const GLOBE_EXTENT = { north: 90, south: -90, west: -180, east: 180 };
 // 雲頂ビューの表示値 1 が張る高さ [m]。tools/cloud-lab/views.ts の積雲・巻雲の雲頂ビューの
 // 目盛り(src/render/cloud/cloud-kind.ts の CUMULUS_TOP_ALTITUDE)と対。
 const CLOUD_TOP_SPAN = 17000;
-// 雲頂の分位に入れる texel の積雲の不透明度のしきい。
-const CLOUD_TOP_COVERAGE = 0.3;
-// 金床の判定。この高さ [m] を超える texel のうち、周り ANVIL_RADIUS_KM [km] の雲の雲頂の平均も
-// 超えているものを平らな天蓋と見なす。
-const ANVIL_HEIGHT = 9000;
-const ANVIL_RADIUS_KM = 100;
 // 巻雲の雲頂高度の両端 [m]。量からの換算と「積雲の雲頂が巻雲より高い」判定に使う。
 // 値は src/render/cloud/cloud-kind.ts の CIRRUS_BOTTOM_ALTITUDE / CIRRUS_TOP_ALTITUDE と
 // 一致させること。
@@ -362,11 +359,6 @@ function centralAngle(latitude, longitude, otherLatitude, otherLongitude) {
   return Math.acos(Math.min(1, Math.max(-1, cosAngle)));
 }
 
-// 昇順に並んだ値の fraction 分位。空なら 0。
-function quantile(sorted, fraction) {
-  return sorted.length === 0 ? 0 : sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
-}
-
 // 全球面の風の速さ [m/s] の最大と 99 パーセンタイル。熱帯低気圧 tropical(緯度・経度 [rad]。居なければ
 // null)の中心から TROPICAL_EXCLUDE_DEG 以内は数えない。speed は地表の風ビューの B(速さ / WIND_SPAN)。
 function windAnomaly(speed, tropical) {
@@ -488,62 +480,6 @@ function printStructureTable(header, rows) {
     scaleKm: scale,
     fields: STRUCTURE_FIELDS.map((field, index) => ({ field: field.key, ...cells[index] })),
   }));
-}
-
-// 雲頂 [m] の分位。積雲の不透明度が CLOUD_TOP_COVERAGE を超え、mask(null なら全域)が立つ texel だけを
-// 数える。area は数えた範囲に対する雲域の割合、金床は周り ANVIL_RADIUS_KM の雲の雲頂の平均も
-// ANVIL_HEIGHT を超えているものの、ANVIL_HEIGHT を超える texel に対する割合。
-function cloudTopStats(top, coverage, kmPerPx, mask) {
-  const { width, height } = top;
-  const stride = width + 1;
-  // 周りの雲の雲頂の平均を半径に依らず一定の手数で引くための積算表。
-  const sumTop = new Float64Array(stride * (height + 1));
-  const sumCount = new Float64Array(stride * (height + 1));
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const cloudy = coverage.data[y * width + x] > CLOUD_TOP_COVERAGE ? 1 : 0;
-      const i = (y + 1) * stride + (x + 1);
-      sumTop[i] = cloudy * top.data[y * width + x] + sumTop[i - 1] + sumTop[i - stride] - sumTop[i - stride - 1];
-      sumCount[i] = cloudy + sumCount[i - 1] + sumCount[i - stride] - sumCount[i - stride - 1];
-    }
-  }
-  const boxSum = (table, x0, y0, x1, y1) => table[(y1 + 1) * stride + x1 + 1] - table[y0 * stride + x1 + 1]
-    - table[(y1 + 1) * stride + x0] + table[y0 * stride + x0];
-  const radius = Math.max(1, Math.round(ANVIL_RADIUS_KM / kmPerPx));
-
-  const tops = [];
-  let considered = 0;
-  let high = 0;
-  let anvils = 0;
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const i = y * width + x;
-      if (mask !== null && mask[i] === 0) continue;
-      considered++;
-      if (coverage.data[i] <= CLOUD_TOP_COVERAGE) continue;
-      tops.push(top.data[i]);
-      if (top.data[i] <= ANVIL_HEIGHT) continue;
-      high++;
-      const x0 = Math.max(0, x - radius);
-      const y0 = Math.max(0, y - radius);
-      const x1 = Math.min(width - 1, x + radius);
-      const y1 = Math.min(height - 1, y + radius);
-      const count = boxSum(sumCount, x0, y0, x1, y1);
-      if (count > 0 && boxSum(sumTop, x0, y0, x1, y1) / count > ANVIL_HEIGHT) anvils++;
-    }
-  }
-  tops.sort((a, b) => a - b);
-  const share = (test) => tops.filter(test).length / Math.max(1, tops.length);
-  return {
-    area: tops.length / Math.max(1, considered),
-    median: quantile(tops, 0.5),
-    iqr: quantile(tops, 0.75) - quantile(tops, 0.25),
-    below3: share((v) => v <= 3000),
-    middle: share((v) => v > 3000 && v <= 7000),
-    above9: share((v) => v > 9000),
-    above12: share((v) => v > 12000),
-    anvil: anvils / Math.max(1, high),
-  };
 }
 
 // 「雲のある」texel(量 > AMOUNT_PRESENT_THRESHOLD)の分布を、帯(行 y0 から h 行)で
@@ -795,6 +731,9 @@ async function main() {
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-cloud-compare-', onEvent,
+    // 並走する Chrome があると最初の評価だけで 60 秒を超えることがある。
+    // 撮影ツールと同じ 300 秒にする。
+    requestTimeoutMs: 300_000,
   });
   const shots = new Map();
   // 時刻 0 の低気圧の谷の配置(緯度・経度 [rad]、深さ [hPa]、半径 [m])。ページの進路モジュールから引く。
@@ -1249,6 +1188,312 @@ async function main() {
     cloudTop.push({ region: region.name, part: 'outside', stats: outsideStats });
   }
   report.sections.cloudTop = cloudTop;
+
+  // 雲頂の実写参照 (MODIS Terra の雲頂高度)。生成の cloudTop 節と同じ地域・部位で、
+  // 同じ分位の定義 (tools/cloud-top-stats.mjs) の値を並べ、cloudTop の距離の入力にする。
+  // 参照が無ければこの節だけ飛ばす (typhoonReference と同じ扱い)。
+  console.log('\n=== 雲頂の実写参照(MODIS Terra・雲頂高度、生成の同じ地域・部位) ===');
+  console.log('地域                                    生成中央値  実写中央値  生成≤3km  実写≤3km  生成>9km  実写>9km');
+  const cloudtopManifest = path.join(buildDir, 'reference-cloudtop', 'manifest.json');
+  if (!existsSync(cloudtopManifest)) {
+    console.log('.cloud-lab/reference-cloudtop/manifest.json が無い — npm run cloud-lab:reference-cloudtop で取り込む');
+  } else {
+    const manifest = JSON.parse(readFileSync(cloudtopManifest, 'utf8'));
+    const referenceByKey = new Map(manifest.frames.flatMap((frame) => frame.stats.map((entry) =>
+      [`${frame.region}/${entry.part}`, entry.stats])));
+    const cloudTopReference = [];
+    for (const entry of cloudTop) {
+      const stats = referenceByKey.get(`${entry.region}/${entry.part}`);
+      if (!stats) continue;
+      cloudTopReference.push({ region: entry.region, part: entry.part, stats });
+      const label = entry.part === 'all' ? entry.region : `${entry.region} ${entry.part}`;
+      console.log(`${label.padEnd(30)}  ${(entry.stats.median / 1000).toFixed(1).padStart(6)} km  `
+        + `${(stats.median / 1000).toFixed(1).padStart(6)} km  ${(entry.stats.below3 * 100).toFixed(0).padStart(5)}%  `
+        + `${(stats.below3 * 100).toFixed(0).padStart(5)}%  ${(entry.stats.above9 * 100).toFixed(1).padStart(5)}%  `
+        + `${(stats.above9 * 100).toFixed(1).padStart(5)}%`);
+    }
+    report.sections.cloudTopReference = {
+      layer: manifest.layer, date: manifest.date, colormap: manifest.colormap, entries: cloudTopReference,
+    };
+  }
+
+  // --- 微細構造: 描画の撮影を実写の高解像度参照の箱へ載せ替え、尺度帯ごとに比べる ---
+  console.log('\n=== 微細構造(描画の撮影と実写の高解像度参照、尺度帯ごと) ===');
+  const capManifestPath = path.join(root, '.cloud-lab/render-capture/manifest.json');
+  const fineManifestPath = path.join(root, '.cloud-lab/reference-fine/manifest.json');
+  if (!existsSync(capManifestPath)) {
+    console.log('  (撮影の manifest が無いので微細構造は未計測)');
+  } else if (!existsSync(fineManifestPath)) {
+    console.log('  (実写の微細参照の manifest が無いので微細構造は未計測)');
+  } else {
+    const capManifest = JSON.parse(readFileSync(capManifestPath, 'utf8'));
+    const fineManifest = JSON.parse(readFileSync(fineManifestPath, 'utf8'));
+    const finePairs = [];
+    for (const region of REGIONS) {
+      for (const ladder of ['400km', '2000km']) {
+        const capture = capManifest.captures.find(
+          (entry) => entry.region === region.name && entry.name === `${region.name}-${ladder}`);
+        const visibleFrame = fineManifest.frames.find(
+          (frame) => frame.region === region.name && frame.ladder === ladder
+            && ['band3', 'band2', 'viirs'].includes(frame.suffix));
+        if (capture === undefined || visibleFrame === undefined) {
+          console.log(`  ${region.label} ${ladder}: 撮影または可視の参照が無く、対を組めない`);
+          continue;
+        }
+        const streakFrame = fineManifest.frames.find(
+          (frame) => frame.region === region.name && frame.ladder === ladder && frame.suffix === 'band13');
+        const captureField = decodeLuminancePng(
+          readFileSync(path.join(root, '.cloud-lab/render-capture', capture.file)));
+        const resampled = resampleCaptureToBox(
+          captureField, capture.latitudeDeg, capture.longitudeDeg, capture.cameraDistanceKm,
+          capManifest.fovDeg, visibleFrame.box, 960, 540);
+        if (resampled.validRect === null) {
+          console.log(`  ${region.label} ${ladder}: 撮影が箱を覆わず、有効矩形が無い`);
+          continue;
+        }
+        const rect = resampled.validRect;
+        const generatedVisible = cropField(resampled, rect.x0, rect.y0, rect.width, rect.height);
+        const referenceVisibleField = decodeLuminancePng(readFileSync(path.join(root, visibleFrame.file)));
+        const referenceVisible = cropField(
+          referenceVisibleField, rect.x0, rect.y0, rect.width, rect.height);
+        let referenceStreak = null;
+        if (streakFrame !== undefined) {
+          const streakField = decodeLuminancePng(readFileSync(path.join(root, streakFrame.file)));
+          referenceStreak = cropField(streakField, rect.x0, rect.y0, rect.width, rect.height);
+        }
+        const features = measureFinePair(
+          generatedVisible, referenceVisible, referenceStreak, visibleFrame.kmPerPx, ladder);
+        const validCount = resampled.valid.reduce((sum, value) => sum + (value ? 1 : 0), 0);
+        const pair = {
+          region: region.name,
+          ladder,
+          kmPerPx: visibleFrame.kmPerPx,
+          widthKm: +(visibleFrame.box.east - visibleFrame.box.west) * 111.32
+            * Math.cos((visibleFrame.box.north + visibleFrame.box.south) / 2 * Math.PI / 180),
+          heightKm: +(visibleFrame.box.north - visibleFrame.box.south) * 111.32,
+          validFraction: +(validCount / (960 * 540)).toFixed(4),
+          validRect: rect,
+          distance: true,
+          visible: { bands: features.bands },
+          streak: features.streak,
+        };
+        // typhoon 400 km: 実写の嵐の中心は箱の北辺の外 (北緯 20.68° の外側に目がある) で、
+        // 枠内は嵐の南側の裾しか写っていないのに、生成側は目と眼の壁が枠を埋める。
+        // 同じ嵐の同じ場所を比べていないので、この対だけ距離の項から外す。
+        if (region.name === 'typhoon' && ladder === '400km') {
+          pair.distance = false;
+          pair.distanceReason = 'typhoon-content-mismatch';
+        }
+        finePairs.push(pair);
+        console.log(`--- ${region.label} ${ladder} (${pair.widthKm.toFixed(0)}x${pair.heightKm.toFixed(0)} km、`
+          + `有効 ${rect.width}x${rect.height}・${(pair.validFraction * 100).toFixed(1)}%) ---`);
+        console.log('  帯[km]  電力割合 生成/実写  箱次元 生成/実写  log空隙率 生成/実写'
+          + '  成分数 生成/実写  面積中央値 生成/実写[km2]  最大の割合 生成/実写');
+        for (const band of features.bands) {
+          if (band.boxDimension === null) {
+            console.log(`  ${band.loKm}-${band.hiKm}  ${band.generatedShare.toFixed(3)}/${band.referenceShare.toFixed(3)}`
+              + '  (測れない)');
+            continue;
+          }
+          const dimension = band.boxDimension;
+          const lacunarity = band.lacunarity;
+          const components = band.components;
+          console.log(`  ${band.loKm}-${band.hiKm}${band.primary ? '*' : ' '}  `
+            + `${band.generatedShare.toFixed(3)}/${band.referenceShare.toFixed(3)}  `
+            + `${dimension.generated.toFixed(2)}/${dimension.reference.toFixed(2)}  `
+            + `${lacunarity === null ? '-' : lacunarity.generated.toFixed(2) + '/' + lacunarity.reference.toFixed(2)}  `
+            + `${components.generated.count}/${components.reference.count}  `
+            + `${components.generated.medianAreaKm2.toFixed(0)}/${components.reference.medianAreaKm2.toFixed(0)}  `
+            + `${components.generated.largestShare.toFixed(3)}/${components.reference.largestShare.toFixed(3)}`);
+        }
+        if (features.streak === null) {
+          console.log('  筋: 赤外の参照が無く未計測');
+        } else {
+          const scale63 = features.streak.scales.find((scale) => scale.scaleKm === 63);
+          const lTheta = features.streak.lThetaKm;
+          const coherence = features.streak.scales.map((scale) =>
+            `${scale.scaleKm}:${scale.generated.coherence.toFixed(2)}/${scale.reference.coherence.toFixed(2)}`).join(' ');
+          console.log(`  筋 63km: 向き ${scale63 === undefined ? '-' : scale63.generated.orientationDeg.toFixed(0) + '/'
+            + scale63.reference.orientationDeg.toFixed(0) + '°'}  Lθ `
+            + `${lTheta === null || lTheta.generated === null ? '-' : lTheta.generated.toFixed(0) + '/'
+            + (lTheta.reference === null ? '-' : lTheta.reference.toFixed(0)) + ' km'}  揃い ${coherence}`);
+        }
+      }
+    }
+    report.sections.fineStructure = {
+      capture: { gitHead: capManifest.gitHead, fovDeg: capManifest.fovDeg, viewport: capManifest.viewport },
+      reference: { source: fineManifest.source },
+      bands: FINE_BANDS.map((band) => ({
+        loKm: band.loKm,
+        hiKm: band.hiKm,
+        primaryLadder: FINE_PRIMARY_LADDER[`${band.loKm}-${band.hiKm}`],
+      })),
+      pairs: finePairs,
+    };
+  }
+
+  // --- 微細な動き: 描画の時系列撮影と実写の可視時系列を、帯域ごとに動きで比べる ---
+  // 写像 (箱の画素が撮影のどこを読むか) は時刻によらず同じなので、1 つの対で 1 回だけ
+  // 作って 5 時刻に使い回す。測る矩形は、生成の有効域と実写の全 5 時刻の有効域 (輝度が黒 =
+  // 円盤外・夜側として除く。実写フェッチャの黒の取り方 (ガンマで 3/255 未満) と同じ) の
+  // 共通部分の最大の矩形で、生成と実写の両方に同じ格子で切り出す。輝度は線形化してあるので
+  // しきいも線形へ直す (linearOf(3) ≈ 0.00091)。3/255 を線形のまま使うと、暗いだけの
+  // 海 (ガンマで 26/255 まで) まで除いて矩形が潰れる。
+  // 陸らしさ = smoothstep(0, 100 m, 標高) で、箱の格子へ双一次で載せ替えたもの
+  // (climate-map.ts の landFraction と同じ。標高は 200 km でぼかしてあるので、海岸の
+  // 200 km 以内は陸寄りに読む — 層別は大まかな陸海の別で、細かい海岸線は解かない)。
+  // 風は箱の平均の地表風 (t=0。成分 = (値 − 0.5) × 2 × WIND_SPAN)。
+  console.log('\n=== 微細な動き(描画の時系列撮影と実写の可視時系列、帯域ごと) ===');
+  const tsCapManifestPath = path.join(root, '.cloud-lab/render-capture-timeseries/manifest.json');
+  const tsFineManifestPath = path.join(root, '.cloud-lab/reference-fine-timeseries/manifest.json');
+  if (!existsSync(tsCapManifestPath)) {
+    console.log('  (時系列の撮影の manifest が無いので微細な動きは未計測)');
+  } else if (!existsSync(tsFineManifestPath)) {
+    console.log('  (実写の可視時系列の manifest が無いので微細な動きは未計測)');
+  } else {
+    const tsCapManifest = JSON.parse(readFileSync(tsCapManifestPath, 'utf8'));
+    const tsFineManifest = JSON.parse(readFileSync(tsFineManifestPath, 'utf8'));
+    if (JSON.stringify(tsCapManifest.sampleHours) !== JSON.stringify(FINE_MOTION_SAMPLE_HOURS)
+      || JSON.stringify(tsFineManifest.sampleHours) !== JSON.stringify(FINE_MOTION_SAMPLE_HOURS)) {
+      console.log('  (時刻梯子が想定と違うので微細な動きは未計測)');
+    } else {
+      const fineMotionPairs = [];
+      const landFractionOnGrid = (box, width, height) => {
+        const data = new Float32Array(width * height);
+        for (let y = 0; y < height; y++) {
+          const lat = box.north - ((y + 0.5) / height) * (box.north - box.south);
+          for (let x = 0; x < width; x++) {
+            const lon = box.west + ((x + 0.5) / width) * (box.east - box.west);
+            const elevM = sampleBilinear(
+              elevation, ((lon + 180) / 360) * GLOBE_W - 0.5, ((90 - lat) / 180) * HEIGHT - 0.5) * 8000;
+            const t = Math.min(1, Math.max(0, elevM / 100));
+            data[y * width + x] = t * t * (3 - 2 * t);
+          }
+        }
+        return { width, height, data };
+      };
+      const windMeanOfBox = (box) => {
+        const east = cropLatLonBox(windEast, box.north, box.south, box.west, box.east);
+        const north = cropLatLonBox(windNorth, box.north, box.south, box.west, box.east);
+        let u = 0;
+        let v = 0;
+        for (let i = 0; i < east.data.length; i++) {
+          u += (east.data[i] - 0.5) * 2 * WIND_SPAN;
+          v += (north.data[i] - 0.5) * 2 * WIND_SPAN;
+        }
+        return { east: u / east.data.length, north: v / north.data.length };
+      };
+      for (const region of tsFineManifest.regions) {
+        for (const ladder of ['400km', '2000km']) {
+          const firstCapture = tsCapManifest.captures.find(
+            (entry) => entry.region === region.name && entry.ladder === ladder && entry.hours === 0);
+          const frames = FINE_MOTION_SAMPLE_HOURS.map((hours) => tsFineManifest.frames.find(
+            (frame) => frame.region === region.name && frame.ladder === ladder && frame.hours === hours));
+          const captures = FINE_MOTION_SAMPLE_HOURS.map((hours) => tsCapManifest.captures.find(
+            (entry) => entry.region === region.name && entry.ladder === ladder && entry.hours === hours));
+          if (firstCapture === undefined || frames.some((frame) => frame === undefined)
+            || captures.some((entry) => entry === undefined)) {
+            console.log(`  ${region.label} ${ladder}: 時系列の撮影または実写が揃わず、対を組めない`);
+            continue;
+          }
+          const box = frames[0].box;
+          if (frames.some((frame) => JSON.stringify(frame.box) !== JSON.stringify(box))) {
+            console.log(`  ${region.label} ${ladder}: 時刻で箱が違い、対を組めない`);
+            continue;
+          }
+          const mapping = captureBoxMapping(
+            firstCapture.latitudeDeg, firstCapture.longitudeDeg, firstCapture.cameraDistanceKm,
+            tsCapManifest.fovDeg, box, 960, 540, 960, 540);
+          if (mapping.validRect === null) {
+            console.log(`  ${region.label} ${ladder}: 撮影が箱を覆わず、有効矩形が無い`);
+            continue;
+          }
+          const generatedFields = captures.map((entry) => applyCaptureMapping(
+            decodeLuminancePng(readFileSync(path.join(root, '.cloud-lab/render-capture-timeseries', entry.file))),
+            mapping));
+          const referenceFields = frames.map((frame) => decodeLuminancePng(
+            readFileSync(path.join(root, frame.file))));
+          const commonValid = new Uint8Array(960 * 540);
+          for (let i = 0; i < 960 * 540; i++) {
+            commonValid[i] = mapping.valid[i]
+              && referenceFields.every((field) => field.data[i] >= linearOf(3)) ? 1 : 0;
+          }
+          const rect = largestValidRect(commonValid, 960, 540);
+          if (rect === null) {
+            console.log(`  ${region.label} ${ladder}: 生成と実写の共通の有効矩形が無い`);
+            continue;
+          }
+          const generated = generatedFields.map(
+            (field) => cropField(field, rect.x0, rect.y0, rect.width, rect.height));
+          const reference = referenceFields.map(
+            (field) => cropField(field, rect.x0, rect.y0, rect.width, rect.height));
+          const landField = cropField(
+            landFractionOnGrid(box, 960, 540), rect.x0, rect.y0, rect.width, rect.height);
+          const windMs = windMeanOfBox(box);
+          const motion = measureFineMotionPair({
+            generated, reference, kmPerPx: frames[0].kmPerPx, ladder,
+            sampleHours: FINE_MOTION_SAMPLE_HOURS, driftLagHours: FINE_MOTION_DRIFT_LAG_HOURS,
+            windMs, landField,
+          });
+          const validCount = commonValid.reduce((sum, value) => sum + value, 0);
+          const pair = {
+            region: region.name,
+            ladder,
+            kmPerPx: frames[0].kmPerPx,
+            widthKm: +(box.east - box.west) * 111.32
+              * Math.cos((box.north + box.south) / 2 * Math.PI / 180),
+            heightKm: +(box.north - box.south) * 111.32,
+            validFraction: +(validCount / (960 * 540)).toFixed(4),
+            validRect: rect,
+            distance: true,
+            windMs,
+            bands: motion.bands,
+            strata: motion.strata,
+          };
+          // typhoon 400 km: t=0 の対と同じ理由 (実写の嵐の中心が箱の外で、生成側は目が枠を
+          // 埋める) で、距離の項から外す。時系列でも同じ内容のずれが入る。
+          if (region.name === 'typhoon' && ladder === '400km') {
+            pair.distance = false;
+            pair.distanceReason = 'typhoon-content-mismatch';
+          }
+          fineMotionPairs.push(pair);
+          const fmt = (value, digits = 1) => (value === null ? '-' : value.toFixed(digits));
+          console.log(`--- ${region.label} ${ladder} (${pair.widthKm.toFixed(0)}x${pair.heightKm.toFixed(0)} km、`
+            + `有効 ${rect.width}x${rect.height}・${(pair.validFraction * 100).toFixed(1)}%) ---`);
+          console.log(`  風 (箱平均・地表) 東 ${windMs.east.toFixed(1)} / 北 ${windMs.north.toFixed(1)} m/s`);
+          console.log('  帯[km]  移流 東 生成/実写 [m/s]  北 生成/実写 [m/s]  風角 生成/実写 [°]'
+            + '  速比 生成/実写  τ 生成/実写 [h]');
+          for (const band of motion.bands) {
+            const g = band.generated;
+            const r = band.reference;
+            console.log(`  ${band.loKm}-${band.hiKm}${band.primary ? '*' : ' '}  `
+              + `${fmt(g.drift.driftMs.east)}/${fmt(r.drift.driftMs.east)}  `
+              + `${fmt(g.drift.driftMs.north)}/${fmt(r.drift.driftMs.north)}  `
+              + `${fmt(g.drift.angleDeg, 0)}/${fmt(r.drift.angleDeg, 0)}  `
+              + `${fmt(g.drift.speedRatio, 2)}/${fmt(r.drift.speedRatio, 2)}  `
+              + `${fmt(g.tauHours)}/${fmt(r.tauHours)}`);
+          }
+          console.log('  層別 陸 τ 生成/実写 [h] (タイル数)  海 τ 生成/実写 [h] (タイル数)');
+          for (const band of motion.strata) {
+            if (band.generated === null) continue;
+            const g = band.generated;
+            const r = band.reference;
+            console.log(`  ${band.loKm}-${band.hiKm}${band.primary ? '*' : ' '}  `
+              + `${fmt(g.land.tauHours)}/${fmt(r.land.tauHours)} (${g.land.tiles}/${r.land.tiles})  `
+              + `${fmt(g.sea.tauHours)}/${fmt(r.sea.tauHours)} (${g.sea.tiles}/${r.sea.tiles})`);
+          }
+        }
+      }
+      report.sections.fineMotion = {
+        capture: {
+          gitHead: tsCapManifest.gitHead, fovDeg: tsCapManifest.fovDeg,
+          sampleHours: FINE_MOTION_SAMPLE_HOURS, driftLagHours: FINE_MOTION_DRIFT_LAG_HOURS,
+        },
+        reference: { source: tsFineManifest.source, sampleHours: FINE_MOTION_SAMPLE_HOURS },
+        pairs: fineMotionPairs,
+      };
+    }
+  }
 
   console.log(`\n=== 台風の径方向プロファイル(cap の中央 362×362・${PROFILE_BIN_KM} km 刻みの方位平均、全 texel) ===`);
   const typhoonRadial = [];
