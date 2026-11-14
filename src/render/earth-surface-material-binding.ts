@@ -12,7 +12,7 @@ import { createEarthSurfaceNodeMaterial } from './earth-surface-material-node';
 import { configureEarthSurfaceTexture } from './earth-surface-texture';
 import type { Mat3Uniform, Vec3Node, Vec3Uniform, BoolUniform } from './tsl-types';
 
-export interface EarthSurfaceMaterialBinding {
+interface EarthSurfaceMaterialBinding {
   readonly material: THREE.MeshStandardNodeMaterial;
   readonly deferredTextures: readonly DeferredTexture[];
   readonly textures: readonly THREE.Texture[];

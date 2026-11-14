@@ -15,7 +15,7 @@ import { SURVIVAL_STAGE_RULES } from './stage-rules';
 const TENDER_MIN_DIST = 300;
 const TENDER_MAX_DIST = 500;
 
-export interface SerializedStage00 extends SerializedStage {
+interface SerializedStage00 extends SerializedStage {
   readonly waveAttack: SerializedWaveAttack;
 }
 

@@ -5,7 +5,7 @@
 // THREE/DOM 非依存。
 import { addScaled, cross, dot, len, norm, scale, sub, type Vec3 } from '../math/vec3';
 
-export interface LambertSolution {
+interface LambertSolution {
   readonly v1: Vec3; // r1 での遷移軌道速度(中心天体相対) [m/s]
   readonly v2: Vec3; // r2 での遷移軌道速度 [m/s]
   readonly revolutions: number; // 途中の完全周回数
