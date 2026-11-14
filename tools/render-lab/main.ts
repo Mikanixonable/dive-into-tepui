@@ -72,6 +72,8 @@ declare global {
         name: string, point: CloudDetailRandomPoint,
       ) => Promise<{ png: string, centerKmPerPx: number, altitudeM: number }>;
       capture: () => Promise<string>;
+      // 観察の向きを変えた次の 1 フレームを、描画をちょうど 1 回だけ回して撮る(ドラッグ中の 1 フレーム)。
+      captureAfterMove: (changes: Partial<LabViewAngles>) => Promise<string>;
       show: (name: CaseName) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
       setDisplayTime: (displayTime: number) => void;
@@ -277,6 +279,7 @@ async function init(): Promise<void> {
       const result = await view.shootCloudDetailRandom(name, point); syncAngles(); return result;
     },
     capture: () => view.capture(),
+    captureAfterMove: async (changes) => { const png = await view.captureAfterMove(changes); syncAngles(); return png; },
     show: (name) => { view.show(name); syncAngles(); },
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setDisplayTime: (displayTime) => view.setDisplayTime(displayTime),
