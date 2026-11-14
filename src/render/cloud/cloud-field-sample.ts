@@ -1,4 +1,4 @@
-import { vec2, vec4 } from 'three/tsl';
+import { float, vec2, vec4 } from 'three/tsl';
 import type { FloatNode, Vec2Node, Vec4Node } from '../tsl-types';
 
 // 雲場の生成値と焼いたテクスチャの読み値。雲は種類ごとの量(0..1)で持ち、RGBAの配置を
@@ -11,6 +11,10 @@ export interface CloudSample {
   // 巻雲の筋の向き θ の倍角ベクトル (cos 2θ, sin 2θ) × 揃い度(0..1)。局所の東・北の基底で
   // 符号付き(−1..1)。向きの無い所は 0 ベクトル。組み方の基準式は cirrus-flow.ts。
   readonly cirrusFlow: Vec2Node;
+  // 陸らしさ(0 が海、1 が陸)。生成時の値は天気の landFraction。
+  readonly land: FloatNode;
+  // 対流の活発さ 0..1。生成時の値は天気の convectiveActivity。
+  readonly convection: FloatNode;
 }
 
 // 雲を運ぶ風。低い雲を運ぶ地表付近の風と、巻雲を運ぶ上層の風の、局所の東・北の成分 [m/s]。
@@ -27,6 +31,9 @@ export function cloudSampleFromTexel(texel: Vec4Node): CloudSample {
     cumulus: texel.r,
     cirrus: texel.g,
     cirrusFlow: vec2(texel.b, texel.a),
+    // 焼き込みの RGBA にこの2量のチャンネルはないので 0。
+    land: float(0),
+    convection: float(0),
   };
 }
 
