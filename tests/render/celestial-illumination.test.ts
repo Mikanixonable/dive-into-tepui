@@ -251,6 +251,7 @@ const SHADOW_CLOUD: ShadowCloud = {
     field: {
       texture: new THREE.Texture(),
       motion: new THREE.Texture(),
+      environment: new THREE.Texture(),
       cap: {
         center: new THREE.Vector3(0, 0, 1),
         east: new THREE.Vector3(1, 0, 0),
