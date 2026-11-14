@@ -132,7 +132,7 @@ export interface DynamicMotionBehavior {
 // DynamicMotion の物性と初期値。省いた項目は既定値になる。
 export interface DynamicMotionProperties {
   readonly alive?: boolean;
-  readonly attitude?: Attitude;
+  readonly attitude?: Attitude | null;
   readonly hasAttitude?: boolean;
   readonly mass?: number;
   readonly radius?: number;

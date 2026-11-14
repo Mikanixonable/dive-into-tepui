@@ -150,7 +150,7 @@ export abstract class CelestialMotion implements CelestialBody, EphemerisBody {
   // 2次重力場も大気も1度しか組み直さない。
   private eciAt(pivot: number): EciValues {
     const cached = this.eciCache.get(pivot);
-    if (cached !== undefined) return cached;
+    if (cached !== null) return cached;
     const eci = this.eci;
     return this.eciCache.put(pivot, {
       state: eci.stateAt(pivot, this),
@@ -204,7 +204,7 @@ export class StarMotion extends CelestialMotion {
   // 恒星の太陽系重心状態。同じ時刻に多数から引かれるので1度へ畳む。
   public analyticStateAt(t: number): KinematicState<'analytic'> {
     const cached = this.analyticCache.get(t);
-    if (cached !== undefined) return cached;
+    if (cached !== null) return cached;
     return this.analyticCache.put(t, this.computeAnalyticStateAt(t));
   }
 
