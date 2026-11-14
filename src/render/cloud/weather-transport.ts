@@ -38,6 +38,10 @@ const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 16, amplitude: 0.30 }, // 400 km
   { frequency: 32, amplitude: 0.12 }, // 200 km
   { frequency: 64, amplitude: 0.10 }, // 100 km
+  // 上層の湿度の細かい段。低軌道の cap で解像できる尺度まで巻雲の帯と斑を下ろし、描画の細部(32 km 以下)へ
+  // 担い手を途切れさせずに渡す。全球の写しでは texel より細かいので消え、全球の統計は変えない。
+  { frequency: 128, amplitude: 0.14 }, // 50 km
+  { frequency: 256, amplitude: 0.09 }, // 25 km
 ];
 
 // エポックの混ぜ替えに参加する段の周波数の上限 [1 rad あたりの山数]。地表付近は 400 km 以上、
@@ -45,13 +49,15 @@ const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
 const SURFACE_HUMIDITY_EPOCH_MAX_FREQUENCY = 16;
 const UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY = 8;
 
-// 場の振れ幅。CirculatingNoiseが段の振幅の総和で割って返すので、段数を変えてもここは動かない。
+// 場の振れ幅。CirculatingNoiseが段の振幅の総和で割って返すので、全段を解像する写しの振れ幅は段数によらない。
 // 地表付近の基底湿度。平年の雲量の重みを半分に弱めたぶんの平均をここで埋める(cloud-lab Phase 3-10)。
 export const SURFACE_HUMIDITY_BASE = 0.435;
 const UPPER_HUMIDITY_BASE = 0.42;
 const SURFACE_HUMIDITY_NOISE_AMPLITUDE = 0.5625;
 const CONVECTION_NOISE_AMPLITUDE = 0.30;
-const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.65625;
+// 上層は 50・25 km の段を足したぶん振幅の和で割られて弱まるので、足す前の和(1.84)に対する比を掛けて、
+// その段を解像しない全球の写しの振れ幅を足す前と同じに保つ。
+const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.65625 * (1.84 + 0.14 + 0.09) / 1.84;
 
 // 移流の源を風で流す2位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が
 // 目に付く。背景の雲がどれだけ伸びるかは、1歩のあいだに風が空間で変わる量から決まる。
