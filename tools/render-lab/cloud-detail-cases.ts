@@ -55,7 +55,7 @@ const SCENES: readonly CloudDetailScene[] = [
 const TIERS_KM_PER_PX = [0.25, 1, 4] as const;
 const DISPLAY_TIMES_S = [0, 21600, 43200] as const;
 
-export type CloudDetailKind = 'both' | 'cumulus' | 'cirrus';
+type CloudDetailKind = 'both' | 'cumulus' | 'cirrus';
 
 // 種類ごとの描画設定の差分。全撮影でレンズ効果は切る — 実写との輝度比較にブルームが混ざらない
 // ようにするため。
@@ -105,7 +105,7 @@ const NADIR_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
 const NADIR_SUN_DIRECTION = new THREE.Vector3(0, Math.sin(Math.PI / 6), Math.cos(Math.PI / 6));
 
 // 撮影 1 枚ぶんの差分と、そのメタデータ。
-export interface CloudDetailShot extends LabShot {
+interface CloudDetailShot extends LabShot {
   // 実写の目録(scenes.json)の場面名。
   readonly scene: string;
   readonly latitudeDeg: number;
@@ -216,7 +216,7 @@ const STABILITY_DISPLAY_TIME_S = 21600;
 const STABILITY_SHIFT_PX = 6;
 // 高度の倍率。cap の半径と細部の段の減衰の両方が動く幅。
 const STABILITY_ZOOM = 1.25;
-export type CloudDetailStabilityVariant = 'base' | 'shift' | 'zoom' | 'later10' | 'later30';
+type CloudDetailStabilityVariant = 'base' | 'shift' | 'zoom' | 'later10' | 'later30';
 
 export const CLOUD_DETAIL_STABILITY_SHOTS: Readonly<Record<string, CloudDetailShot>> = (() => {
   const shots: Record<string, CloudDetailShot> = {};

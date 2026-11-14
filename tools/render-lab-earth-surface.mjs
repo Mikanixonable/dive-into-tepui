@@ -220,7 +220,7 @@ if (process.argv.includes('--contract')) {
 }
 
 // Only bytes received from the renderer may become an output image.
-export function imageMetric(bytes) {
+function imageMetric(bytes) {
   return {
     status: 'complete',
     path: null,

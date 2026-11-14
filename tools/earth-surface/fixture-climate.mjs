@@ -1,8 +1,8 @@
 // Earth surfaceの開発・Pages fixtureへ入れる、契約範囲内の決定的なRGBA気候入力を生成する。
 import { encodeRgbaPng } from '../png.mjs';
 
-export const FIXTURE_CLIMATE_WIDTH = 1024;
-export const FIXTURE_CLIMATE_HEIGHT = 512;
+const FIXTURE_CLIMATE_WIDTH = 1024;
+const FIXTURE_CLIMATE_HEIGHT = 512;
 
 function clamp01(value) {
   return Math.min(1, Math.max(0, value));
@@ -18,7 +18,7 @@ function byte(value) {
 }
 
 // 月ごとの気候RGBAを生成する。R=気温、G=雲量、B=正高、A=陸地被覆率。
-export function fixtureClimateRgba(monthIndex) {
+function fixtureClimateRgba(monthIndex) {
   const phase = (monthIndex / 12) * Math.PI * 2;
   const pixels = new Uint8Array(FIXTURE_CLIMATE_WIDTH * FIXTURE_CLIMATE_HEIGHT * 4);
   for (let y = 0; y < FIXTURE_CLIMATE_HEIGHT; y += 1) {
