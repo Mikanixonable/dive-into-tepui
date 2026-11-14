@@ -4,8 +4,8 @@
 // その勾配で決まり、読み取り方向は低周波のノイズで歪ませて格子の並びを崩す。各段は風に乗って
 // 流れ、段の寿命で湧いて崩れる(cloud-detail-clock.ts)。
 import {
-  If, clamp, dot, exp, float, greaterThan, length, max, min, normalize, select, smoothstep, sqrt, step,
-  uniform, vec3,
+  If, abs, atan, clamp, cos, cross, dot, exp, float, greaterThan, length, max, min, normalize, select,
+  sin, smoothstep, sqrt, step, uniform, vec3,
 } from 'three/tsl';
 import { DetailClock } from './cloud-detail-clock';
 import { gradientNoise } from './gradient-noise';
@@ -172,8 +172,18 @@ export function cirrusOctavesOf(detail: CirrusDetail): number {
 // 変えてしまう。16〜50 km は上層の湿度の細かい段(雲場)が担う。
 const CIRRUS_FIRST_OCTAVE = 1;
 
+// 流れへの伸縮を掛ける最も細かい段(DETAIL_WAVELENGTHS の添字、ここでは 2 km)。より細かい段は等方に読む。
+// 細かい段まで伸ばすと細帯が針状になるため。
+const CIRRUS_STRETCH_LAST_OCTAVE = 3;
+
 // 揃いの強い筋が流れ方向へ伸びる倍率の上限。揃い度 0 の場所は等方に読む。
-const CIRRUS_STRETCH_MAX = 6;
+const CIRRUS_STRETCH_MAX = 3;
+// 大円の弧座標の原点を定める基準軸。大円の法線と重なりにくい 2 軸から、重なりの弱い側を選ぶ。
+const ARC_AXIS_X = vec3(1, 0, 0);
+const ARC_AXIS_Y = vec3(0, 1, 0);
+// 弧座標の圧縮を利かせなくする継ぎ目の帯。弧座標の絶対値がこの範囲へ入るほど圧縮率を 1 へ戻す。
+const SEAM_FADE_LO = Math.PI * 0.55;
+const SEAM_FADE_HI = Math.PI * 0.95;
 // 光学深さの対数の標準偏差。筋の濃淡の強さで、平均を 1 に保つ補正と組で使う。尺度の梯子で巻雲の
 // 細かい帯(1〜16 km)が大きい帯(64 km 以上)に対して強すぎない高さに取る。
 const CIRRUS_LOG_SIGMA = 0.4;
@@ -208,11 +218,21 @@ export class CirrusDetailEvaluator {
     const sinTheta = select(axis.y.lessThan(0), float(-1), float(1))
       .mul(sqrt(max(axis.x.oneMinus().mul(0.5), 0)));
     const flowDir = normalize(east.mul(cosTheta).add(north.mul(sinTheta)));
-    // 流れ方向の成分を 1/stretch に縮めた方向で読む。同じ段の起伏が流れに沿って長く伸びて見える。
-    // 縮めるのは天体中心を通る平面の上の成分なので、縮めた方向も単位方向へ戻して読む。
+    // 流れ方向へ伸ばす。その場を通る flow 向きの大円(法線 m = direction × flowDir)の弧座標を
+    // 1/stretch に圧縮した方向で読む。接ベクトルだけでは伸ばせない — 単位方向との内積は常に 0 なので、
+    // 弧の原点 z(円上で基準軸へ最も近い点)と接線 t = m × z へ座標を取ってから圧縮し直す。
+    // 継ぎ目(弧 ±π、大円上で −z の場所)の近くでは圧縮率を 1 へ戻す — 利かせたままだと継ぎ目の
+    // 両側が 2π/stretch の隙間へ写り、読む方向が飛んでノイズの切断面が細かい帯へ出る。
     const stretch = float(1).add(float(CIRRUS_STRETCH_MAX - 1).mul(coherence));
-    const along = dot(direction, flowDir);
-    const stretched = normalize(direction.sub(flowDir.mul(along.mul(float(1).sub(float(1).div(stretch))))));
+    const m = cross(direction, flowDir);
+    const reference = select(greaterThan(abs(dot(m, ARC_AXIS_X)), 0.7), ARC_AXIS_Y, ARC_AXIS_X);
+    const z = normalize(reference.sub(m.mul(dot(reference, m))));
+    const t = cross(m, z);
+    const arcRaw = atan(dot(direction, t), dot(direction, z));
+    const seam = smoothstep(float(SEAM_FADE_LO), float(SEAM_FADE_HI), abs(arcRaw));
+    const compression = float(1).div(stretch).add(seam.mul(float(1).sub(float(1).div(stretch))));
+    const arc = arcRaw.mul(compression);
+    const stretched = z.mul(cos(arc)).add(t.mul(sin(arc))).toVar();
     const windVector = east.mul(wind.x).add(north.mul(wind.y));
 
     const sum = float(0).toVar();
@@ -223,7 +243,8 @@ export class CirrusDetailEvaluator {
         .mul(this.clock.presence(index)).toVar();
       If(greaterThan(live, 0), () => {
         const weight = live.mul(OCTAVE_WEIGHTS[index]!);
-        const value = this.clock.evolvingNoise(index, stretched, radius, windVector).toVar();
+        const readAt = index <= CIRRUS_STRETCH_LAST_OCTAVE ? stretched : direction;
+        const value = this.clock.evolvingNoise(index, readAt, radius, windVector).toVar();
         sum.addAssign(value.mul(weight));
         energy.addAssign(weight.mul(weight));
       });
