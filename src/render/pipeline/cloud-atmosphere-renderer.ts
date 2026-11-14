@@ -8,7 +8,7 @@
 // AtmosphereCloudLayersが所有し、ここでは二重に適用しない。
 import * as THREE from 'three/webgpu';
 import { If, dot, float, greaterThan, max, min, normalize, sign, uniform, vec4 } from 'three/tsl';
-import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator } from '../cloud/cloud-detail';
+import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../cloud/cloud-detail';
 import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
 import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../cloud/cloud-optics-node';
 import { cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode } from '../cloud/cloud-kind-node';
@@ -190,7 +190,7 @@ export class CloudAtmosphereRenderer {
       const bodyUp = this.bodyFromWorld.mul(vec4(sampleUp, 0)).xyz;
       If(greaterThan(field.cirrus, CIRRUS_PRESENT_AMOUNT), () => {
         detail.assign(this.cirrusDetail.multiplierAt(
-          bodyUp, shellRadius, width, field.cirrusFlow, this.fieldSampler.sampleMotion(bodyUp).upperWind));
+          bodyUp, shellRadius, width, field.cirrusFlow, this.fieldSampler.sampleMotion(bodyUp).upperWind, cirrusColumnInputOf(field)));
       });
     }
     const columnOpticalDepth = opticalDepthOf(species, field, detail).mul(this.shellPresence(species));
