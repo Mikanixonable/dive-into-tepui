@@ -274,6 +274,12 @@ export class LabView {
 
   // 観察の向きを部分的に差し替え、その場で描き直す。仰角は姿勢が決まる範囲へ丸める。
   public setViewAngles(changes: Partial<LabViewAngles>): void {
+    this.mergeViewAngles(changes);
+    this.render();
+  }
+
+  // 観察の向きだけを差し替える。描き直しは呼び出し側が決める。
+  private mergeViewAngles(changes: Partial<LabViewAngles>): void {
     const merged = { ...this.angles, ...changes };
     this.angles = {
       ...merged,
@@ -281,7 +287,14 @@ export class LabView {
         merged.cameraElevationDeg, -MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ELEVATION_DEG,
       ),
     };
-    this.render();
+  }
+
+  // 観察の向きを変えた次の 1 フレームを、落ち着くのを待たずにそのまま撮る。ドラッグで視点が毎フレーム動く
+  // ときの絵に当たる。**captureSettled と setViewAngles は描き直すので、状態が 1 フレーム遅れて追いつく不具合を
+  // 隠す** — この撮影は向きを置いたあと描画をちょうど 1 回だけ回す。
+  public async captureAfterMove(changes: Partial<LabViewAngles>): Promise<string> {
+    this.mergeViewAngles(changes);
+    return this.capture();
   }
 
   // ケースのカメラと注視点から、観察の向きの既定値を引き直す。
