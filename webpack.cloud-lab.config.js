@@ -64,7 +64,7 @@ module.exports = {
     // Slice B/C が実写・特徴量と突き合わせる根拠になる。reference-fine/ は Slice B の
     // 微細スケール実写参照で、Slice C が特徴量の相手に読む。reference-cloudtop/ は
     // MODIS Terra の雲頂高度の参照で、compare が雲頂の距離の相手に読む。ビルドの掃除で消さない。
-    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-fine|reference-fine-timeseries|reference-cloudtop|history|history-polar-masked|render-capture|render-capture-timeseries)[\\/]/ },
+    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-fine|reference-fine-timeseries|reference-cloudtop|reference-cirrus|history|history-polar-masked|render-capture|render-capture-timeseries|render-capture-cirrus)[\\/]/ },
   },
   optimization: {
     minimizer: [
