@@ -1,0 +1,19 @@
+{
+  "id": "20261114T0433Z-track4-model-slice",
+  "slug": "track4-model-slice",
+  "base": "34b9ec02b",
+  "tip": "bfd11a5f3",
+  "subjects": [
+    "fix(cloud-lab): compare の Chrome 応答待ちを 300 秒へ延ばす",
+    "feat(cloud): 粒に成長と崩壊のライフサイクルを入れる",
+    "feat(cloud): 描画時の風と表示時刻を配管する",
+    "test(cloud-lab): 撮影ツールに地域・梯子の部分指定を追加"
+  ],
+  "patches": [
+    "0001-test-cloud-lab.patch",
+    "0002-feat-cloud.patch",
+    "0003-feat-cloud.patch",
+    "0004-fix-cloud-lab-compare-Chrome-300.patch"
+  ],
+  "deletion_message": "chore(muse-delivery): track4-model-slice の削除 0 件を反映\n\nlocal commits:\n- fix(cloud-lab): compare の Chrome 応答待ちを 300 秒へ延ばす\n- feat(cloud): 粒に成長と崩壊のライフサイクルを入れる\n- feat(cloud): 描画時の風と表示時刻を配管する\n- test(cloud-lab): 撮影ツールに地域・梯子の部分指定を追加"
+}
