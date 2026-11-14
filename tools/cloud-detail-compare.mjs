@@ -10,8 +10,10 @@
 // (両方撮影の封筒と並べる画像)として使う。
 // 最新の .cloud-lab/history/ の全球・cap スペクトルと繋いで 0.5〜1024 km の尺度の梯子を
 // 1 表にし、実写と撮影を同じ km/px で左右に並べた画像を .cloud-detail/compare/ へ書き、
-// レポートを .cloud-detail/history/ へ残して前回との差分を出す。
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+// レポートを .cloud-detail/history/ へ残して前回との差分を出す。--kind/--tier/--time/--scene
+// で撮影を絞ったときは対象をその条件へ限り、差分も同じ絞り込みの前回とだけ比べる
+// (改修→計測の反復を短くするため)。
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { measureCloudDetail } from './cloud-detail-metrics.mjs';
@@ -31,6 +33,50 @@ const shotsArgGiven = shotsArgIndex >= 0;
 const shotsDir = shotsArgGiven
   ? path.resolve(root, process.argv[shotsArgIndex + 1])
   : path.join(detailDir, 'shots');
+// 撮影の絞り込み。--kind <both|cumulus|cirrus>、--tier <段の km/px>、--time <時刻 h>、
+// --scene <撮影名の前置の場面 id(natl-trade など)>。値はカンマ区切りで複数取れ、
+// 指定が無い次元は絞らず、条件は AND で結ぶ。meta.subset へこの形で記録する。
+const subset = (() => {
+  const readList = (flag) => {
+    const index = process.argv.indexOf(flag);
+    if (index < 0) return null;
+    const raw = process.argv[index + 1];
+    if (raw === undefined) throw new Error(`usage: ${flag} <a,b,c>`);
+    return raw.split(',').map((token) => token.trim());
+  };
+  const number = (token, flag) => {
+    const value = Number(token);
+    if (!Number.isFinite(value)) throw new Error(`usage: ${flag} <...> — 読めない値: ${token}`);
+    return value;
+  };
+  const kind = readList('--kind');
+  const tier = readList('--tier');
+  const time = readList('--time');
+  const scene = readList('--scene');
+  if (kind === null && tier === null && time === null && scene === null) return null;
+  for (const token of kind ?? []) {
+    if (!['both', 'cumulus', 'cirrus'].includes(token)) {
+      throw new Error(`usage: --kind <both|cumulus|cirrus> — 読めない値: ${token}`);
+    }
+  }
+  return {
+    kind: kind?.sort() ?? null,
+    tier: tier?.map((token) => number(token, '--tier')).sort((a, b) => a - b) ?? null,
+    time: time?.map((token) => number(token, '--time')).sort((a, b) => a - b) ?? null,
+    scene: scene?.sort() ?? null,
+  };
+})();
+
+// 撮影 1 件が絞り込みへ残るか。--time [h] は displayTime [s] と、--scene は撮影名の前置の
+// 場面 id と照合する。
+function inSubset(info) {
+  if (subset === null) return true;
+  if (subset.kind !== null && !subset.kind.includes(info.kind)) return false;
+  if (subset.tier !== null && !subset.tier.includes(info.tierKmPerPx)) return false;
+  if (subset.time !== null && !subset.time.includes(info.displayTime / 3600)) return false;
+  if (subset.scene !== null && !subset.scene.some((id) => info.name.startsWith(`${id}-`))) return false;
+  return true;
+}
 const compareDir = path.join(detailDir, 'compare');
 const historyDir = path.join(detailDir, 'history');
 const referenceManifestFile = path.join(detailDir, 'reference', 'manifest.json');
@@ -333,6 +379,25 @@ function median(values) {
     : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2;
 }
 
+// meta.subset の正規形。絞り込みなしは null、ありは 4 次元を固定順のキーへ揃える —
+// 履歴のレポートとの一致を JSON 文字列の一致で取るため。
+function canonicalSubset(raw) {
+  if (raw === null || raw === undefined) return null;
+  return { kind: raw.kind ?? null, tier: raw.tier ?? null, time: raw.time ?? null, scene: raw.scene ?? null };
+}
+
+// 履歴の中で、meta.subset が一致するいちばん新しいレポート名。無ければ undefined。
+function previousReportNameForSubset(historyDir, wanted) {
+  if (!existsSync(historyDir)) return undefined;
+  const key = JSON.stringify(canonicalSubset(wanted));
+  const names = readdirSync(historyDir).filter((name) => name.endsWith('.json')).sort().reverse();
+  for (const name of names) {
+    const report = readReport(historyDir, name);
+    if (report !== null && JSON.stringify(canonicalSubset(report.meta?.subset)) === key) return name;
+  }
+  return undefined;
+}
+
 async function shootMissing(shotInfos) {
   const missing = shotInfos.filter((info) => !existsSync(path.join(shotsDir, `${info.name}.png`)));
   if (missing.length === 0) return 0;
@@ -399,6 +464,25 @@ async function main() {
     if (fatalEvents.length > 0) throw new Error(`Page reported errors:\n${fatalEvents.join('\n')}`);
   } finally {
     await session.close();
+  }
+  // 絞り込みは撮影・計測・判定のすべてに効く。参照の封筒は全実写から作るので影響しない。
+  if (subset !== null) {
+    const allInfos = shotInfos;
+    shotInfos = allInfos.filter(inSubset);
+    if (shotInfos.length === 0) {
+      const unique = (pick, compareFn) => [...new Set(allInfos.map(pick))].sort(compareFn);
+      const candidates = {
+        kind: unique((info) => info.kind),
+        tier: unique((info) => info.tierKmPerPx, (a, b) => a - b),
+        time: unique((info) => info.displayTime / 3600, (a, b) => a - b),
+        scene: unique((info) => info.name.replace(/-\d+h-.*$/, '')),
+      };
+      throw new Error(
+        `絞り込みに一致する撮影が無い(条件: ${JSON.stringify(subset)})\n`
+        + `候補: ${JSON.stringify(candidates)}`,
+      );
+    }
+    console.log(`絞り込み: ${shotInfos.length}/${allInfos.length} 枚(条件: ${JSON.stringify(subset)})`);
   }
   const taken = await shootMissing(shotInfos);
   console.log(`撮影: 全 ${shotInfos.length} 枚のうち ${taken} 枚を新たに撮った(既存は飛ばす)`);
@@ -823,6 +907,7 @@ async function main() {
       reportVersion: 1,
       generatedAt: new Date().toISOString(),
       gitHead: gitHead(root),
+      subset,
       shots: shots.size,
       judgedShots: judgedShots.length,
       excludedShots,
@@ -851,11 +936,13 @@ async function main() {
     distances,
   };
 
-  const previousName = previousReportName(historyDir);
+  const previousName = previousReportNameForSubset(historyDir, subset);
   saveReport(historyDir, report);
   console.log('\n=== 前回レポートとの差分 ===');
   if (previousName === undefined) {
-    console.log('前回のレポートが無い(今回が初回)');
+    console.log(subset === null
+      ? '前回のレポートが無い(今回が初回)'
+      : '同じ絞り込みの前回レポートが無い');
   } else {
     const previous = readReport(historyDir, previousName);
     if (previous === null || previous.sections === undefined) {
