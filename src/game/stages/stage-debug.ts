@@ -100,17 +100,17 @@ export class StageDebug extends Stage {
     this.enemyFireEnabled = on;
   }
 
-  // 敵集団を1つ、自艦のまわりへ出す。自艦がいなければ何も出さない。
+  // 敵集団を1つ、操作艦のまわりへ出す。操作艦がいなければ何も出さない。
   public spawnEnemyWave(): void {
-    const player = this.ship;
-    if (player === null) return;
+    const player = this.controlledShip;
+    if (player === null || !player.motion.alive) return;
     for (const enemy of this.generateWaveAround(player)) this.addEnemy(enemy);
   }
 
-  // 組み立て型の敵を1体、自艦の前方へ出す。自艦がいなければ何も出さない。
+  // 組み立て型の敵を1体、操作艦の前方へ出す。操作艦がいなければ何も出さない。
   public spawnAssemblyEnemy(): void {
-    const player = this.ship;
-    if (player === null) return;
+    const player = this.controlledShip;
+    if (player === null || !player.motion.alive) return;
     // 自機の機首方向 2km 先へ、自機と同じ速度で置く。
     const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
     const position = addScaled(player.motion.state.r, forward, 2000);
@@ -122,17 +122,17 @@ export class StageDebug extends Stage {
     ));
   }
 
-  // 弾薬を1つ、自艦の近くへ出す。自艦がいなければ何も出さない。
+  // 弾薬を1つ、操作艦の近くへ出す。操作艦がいなければ何も出さない。
   public spawnAmmo(): void {
-    const player = this.ship;
-    if (player === null) return;
+    const player = this.controlledShip;
+    if (player === null || !player.motion.alive) return;
     this.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
   }
 
-  // RCS燃料を1つ、自艦の近くへ出す。自艦がいなければ何も出さない。
+  // RCS燃料を1つ、操作艦の近くへ出す。操作艦がいなければ何も出さない。
   public spawnRcsFuel(): void {
-    const player = this.ship;
-    if (player === null) return;
+    const player = this.controlledShip;
+    if (player === null || !player.motion.alive) return;
     this.logistics.spawnRcsFuelForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
   }
 
