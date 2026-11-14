@@ -34,6 +34,7 @@ export class GeneratedCloudField implements CloudFieldSource {
   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
   public get texture(): THREE.Texture { return this.field.texture; }
   public get motionTexture(): THREE.Texture { return this.field.motionTexture; }
+  public get environmentTexture(): THREE.Texture { return this.field.environmentTexture; }
   public get generation(): number { return this.generationValue; }
 
   // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。

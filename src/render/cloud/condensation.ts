@@ -175,5 +175,7 @@ export function condense(weather: WeatherSample): CloudSample {
     cirrusFlow: cirrusFlowFromWindNode(weather.upperWind),
     land: weather.landFraction,
     convection: weather.convectiveActivity,
+    climateCloudiness: weather.meanCloudiness,
+    anvil: weather.anvil,
   };
 }
