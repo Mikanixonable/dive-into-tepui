@@ -1,0 +1,155 @@
+From e263534e0572ce54ace893e17a4b60adb96a839c Mon Sep 17 00:00:00 2001
+From: Muse <muse@muse.local>
+Date: Sat, 14 Nov 2026 06:59:23 +0000
+Subject: [PATCH 2/2] =?UTF-8?q?fix(game):=20=E3=82=BF=E3=83=B3=E3=83=91?=
+ =?UTF-8?q?=E3=82=AF=E8=B3=AA=E5=BB=83=E6=AD=A2=E3=81=AE=E6=AE=8B=E9=AA=B8?=
+ =?UTF-8?q?=E5=8F=82=E7=85=A7=E3=82=92=E9=99=A4=E5=8E=BB=E3=81=97=20muse/d?=
+ =?UTF-8?q?ev=20=E3=81=AE=E5=9E=8B=E6=A4=9C=E6=9F=BB=E3=82=92=E9=80=9A?=
+ =?UTF-8?q?=E3=81=99?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+main マージ(8289f54e7)が持ち込んだ波状攻撃のタンパク質陣形が、廃止済みの addProteinEnemy / proteinFormationRequests / protein-enemy モジュールを参照して型検査が 10 件落ちていた。
+
+- wave-attack.ts: WaveAttackStage から addProteinEnemy を外し、WaveSpawn の formation を廃止。難関は先行する docs(spec) の通り、通常の機数に加えて通常の敵機 3 機を 1 つの攻撃グループ(wave-N-formation)として生成する形に置き換えた。予告文は「難関」表記に統一
+- stage.ts: マージで重複した stage-outcome の型 import(部分集合側)を削除
+
+検証: npm run typecheck 緑、npm run test:game 446/446 通過
+---
+ src/game/stages/stage-utils/wave-attack.ts | 40 ++++++++--------------
+ src/game/stages/stage.ts                   |  1 -
+ 2 files changed, 15 insertions(+), 26 deletions(-)
+
+diff --git a/src/game/stages/stage-utils/wave-attack.ts b/src/game/stages/stage-utils/wave-attack.ts
+index 1759d92ca..eee820ea5 100644
+--- a/src/game/stages/stage-utils/wave-attack.ts
++++ b/src/game/stages/stage-utils/wave-attack.ts
+@@ -8,8 +8,7 @@ import { ellipsoidAltitude } from '../../../physics/atmosphere';
+ import { frameOfCelestialBody, framePoint, toFramePoint, toFrameState, toInertialPoint } from '../../../physics/frame';
+ import { strongestAttractor } from '../../../physics/attractor';
+ import { add, addScaled, len, norm, randPerp, randVec, scale, sub, v3, type Vec3 } from '../../../math/vec3';
+-import { generateApproachingEnemy, proteinFormationRequests } from '../spawner/enemy-generator';
+-import type { ProteinEnemyRequest } from '../../dynamic/dynamic-entity/protein-enemy';
++import { generateApproachingEnemy } from '../spawner/enemy-generator';
+ import type { CelestialBody } from '../../../physics/celestial-body';
+ import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
+ import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
+@@ -21,8 +20,6 @@ import type { RunEventSink } from '../../run-events';
+ export interface WaveAttackStage extends StageOutcome {
+   // 敵を登録し、出撃数をスコアへ記録する。
+   addEnemy(enemy: Enemy): void;
+-  // タンパク質陣形の 1 役を要求し、出撃数をスコアへ記録する。
+-  addProteinEnemy(request: ProteinEnemyRequest): void;
+   // 交戦中の集団が 0 になった波間に呼ぶ。補給艇を届けたら true。
+   onLull(): boolean;
+ }
+@@ -30,7 +27,7 @@ export interface WaveAttackStage extends StageOutcome {
+ // 難関になる波の周期(番号が周期の倍数の波が難関、その次の波が息抜き)。
+ const WAVE_BOSS_PERIOD = 3;
+ 
+-// 波 1 回の形。ships は陣形を除いた機数で、boss は難関(タンパク質陣形を 1 組含む)か、rest は息抜きか。
++// 波 1 回の形。ships は難関の追加分を除いた機数で、boss は難関(出現中心に 3 機を追加)か、rest は息抜きか。
+ export interface WaveShape {
+   readonly ships: number;
+   readonly boss: boolean;
+@@ -52,7 +49,7 @@ export function waveShape(waveNumber: number): WaveShape {
+ // 波の番号ごとに、ブリーフィングへ出す予告の一行を組む。
+ export function waveForecastLine(waveNumber: number): string {
+   const shape = waveShape(waveNumber);
+-  const kind = shape.boss ? '難関(タンパク質陣形を含む)' : shape.rest ? '息抜き' : '通常';
++  const kind = shape.boss ? '難関' : shape.rest ? '息抜き' : '通常';
+   const from = waveNumber === 1 ? '・後方から' : '';
+   return `第${waveNumber}波: ${shape.ships} 機・${kind}${from}`;
+ }
+@@ -72,6 +69,7 @@ const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
+ const STAGE00_WAVE_BASE_SHIPS = 5; // 第1波の機数
+ const STAGE00_WAVE_SHIPS_PER_WAVE = 2; // 波が進むごとに増える機数
+ const STAGE00_WAVE_MAX_SHIPS = 30; // 1ウェーブの最大機数上限
++const STAGE00_BOSS_EXTRA_SHIPS = 3; // 難関で出現中心へまとめて加える機数
+ const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距離下限 [m]
+ const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
+ const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]
+@@ -126,9 +124,9 @@ export class WaveAttack {
+     );
+   }
+ 
+-  // ウェーブ番号を1つ進め、生成した敵と陣形を stage へ足す。
++  // ウェーブ番号を1つ進め、生成した敵を stage へ足す。
+   public spawnWave(
+-    player: ModularShip, stage: Pick<WaveAttackStage, 'addEnemy' | 'addProteinEnemy'>,
++    player: ModularShip, stage: Pick<WaveAttackStage, 'addEnemy'>,
+     forcedPattern?: 'linear' | 'random',
+   ): void {
+     const wave = ++this._waveCount;
+@@ -137,7 +135,6 @@ export class WaveAttack {
+       this.scene, this.idAllocators, forcedPattern,
+     );
+     for (const enemy of spawn.enemies) stage.addEnemy(enemy);
+-    for (const request of spawn.formation) stage.addProteinEnemy(request);
+   }
+ 
+   // フェーズ機械を1フレーム分進める。敵は stage へ足し、交戦圏外へ出た敵の消滅を stage へ記録する。
+@@ -351,13 +348,12 @@ function waveShipPosition(
+   return toInertialPoint(frame, framePoint(placed.x, placed.y, placed.z));
+ }
+ 
+-// 1 波ぶんの生成結果。enemies は艦、formation は難関のタンパク質陣形の 3 役(難関でなければ空)。
++// 1 波ぶんの生成結果。
+ export interface WaveSpawn {
+   readonly enemies: Enemy[];
+-  readonly formation: readonly ProteinEnemyRequest[];
+ }
+ 
+-// ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列と難関の陣形を生成する。
++// ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
+ export function generateWave(
+   player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[],
+   scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random',
+@@ -371,24 +367,18 @@ export function generateWave(
+   const typeIndex = Math.floor(Math.random() * 3);
+   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
+ 
+-  // 隻数分、位置と識別カラーを割り当てて敵艦を生成する
++  // 隻数分、位置と識別カラーを割り当てて敵艦を生成する。難関は通常の機数に加えて 3 機を足し、
++  // 追加分は 1 つの攻撃グループとしてまとめる。
++  const totalShips = shipCount + (shape.boss ? STAGE00_BOSS_EXTRA_SHIPS : 0);
+   const enemies: Enemy[] = [];
+-  for (let i = 0; i < shipCount; i++) {
++  for (let i = 0; i < totalShips; i++) {
+     const accent = subGroups[i % subGroups.length]!;
+-    const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir, attractors, player.t);
++    const position = waveShipPosition(pattern, i, totalShips, centerR, approachDir, attractors, player.t);
+     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
+     enemies.push(generateApproachingEnemy(
+       `W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, scene, idAllocators,
+-      `wave-${waveNumber}-group-${i % subGroups.length}`,
++      i < shipCount ? `wave-${waveNumber}-group-${i % subGroups.length}` : `wave-${waveNumber}-formation`,
+     ));
+   }
+-
+-  // 難関は艦の列と同じ飛来の中心に、3 役をまとめて置く。所属する波の番号を添えて、同じ 1 組として数える。
+-  const formation = shape.boss
+-    ? proteinFormationRequests(
+-      `W${waveNumber}-PROTEIN`, kinematicState<'eci'>(player.t, centerR, centerV), player.r,
+-      `wave-${waveNumber}-formation`,
+-    ).map((request) => ({ ...request, waveId: waveNumber }))
+-    : [];
+-  return { enemies, formation };
++  return { enemies };
+ }
+diff --git a/src/game/stages/stage.ts b/src/game/stages/stage.ts
+index fd1388942..4f9306c7a 100644
+--- a/src/game/stages/stage.ts
++++ b/src/game/stages/stage.ts
+@@ -24,7 +24,6 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
+ import type { CameraFrame } from '../../render/camera/camera-frame';
+ import type { MarkerDeclaration } from '../../marker/marker-declaration';
+ import type { ObjectAuthoring } from '../pickable/inspected-object';
+-import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
+ import type { EnemyDeathCause, PlayerLossCause, StageOutcome } from './stage-outcome';
+ import { ENEMY_MAX_ATTACKERS_PER_GROUP } from '../dynamic/dynamic-entity/enemy-fire-controller';
+ import type { StageSimulationEvents } from './stage-simulation-events';
+-- 
+2.43.0
+
