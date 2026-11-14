@@ -126,14 +126,17 @@ function requireDatasetId(datasetId: string): void {
 
 // 気候入力の固定wire範囲を検査する。
 function validateClimateEncoding(encoding: EarthSurfaceClimateEncoding): void {
+  // 各範囲が有限で min<max か。
   for (const range of [encoding.temperatureK, encoding.cloudFraction, encoding.orthometricElevation, encoding.landFraction]) {
     if (!Number.isFinite(range.min) || !Number.isFinite(range.max) || range.min >= range.max) {
       throw new Error('Invalid Earth surface climate encoding');
     }
   }
+  // 海面の高度基準は 0 固定。
   if (encoding.waterOrthometricElevationM !== 0) {
     throw new Error('Earth surface water orthometric elevation must be 0');
   }
+  // wire 契約の固定範囲と一致するか。
   if (encoding.temperatureK.min !== 180 || encoding.temperatureK.max !== 330
     || encoding.cloudFraction.min !== 0 || encoding.cloudFraction.max !== 1
     || encoding.orthometricElevation.min !== -1000 || encoding.orthometricElevation.max !== 9000
@@ -149,6 +152,7 @@ function validateColorCalibration(calibration: EarthSurfaceColorCalibration): vo
     || calibration.outputEncoding !== 'sRGB8') {
     throw new Error('Unsupported Earth surface color calibration encoding');
   }
+  // 校正の数値が有限で、正の範囲内か。
   const values = [...calibration.meanLinearRgb, ...calibration.averageHue,
     calibration.diffuseAlbedoScale, calibration.meanRec709Albedo, calibration.bondAlbedo];
   if (values.some((value) => !Number.isFinite(value))) throw new Error('Invalid Earth surface color calibration');
@@ -182,6 +186,7 @@ function validateTerrainGeometry(terrain: { readonly width: number; readonly hei
 export function earthSurfaceSourceFromManifest(
   baseUrl: string, manifestUrl: string, manifest: EarthSurfaceAssetManifest,
 ): EarthSurfaceSource {
+  // 宣言がこの形式の完全な全球データセットを指すか検査する。
   if (manifest.schemaVersion !== EARTH_SURFACE_MANIFEST_SCHEMA_VERSION) {
     throw new Error('Unsupported Earth surface manifest schema');
   }
@@ -202,6 +207,7 @@ export function earthSurfaceSourceFromManifest(
     throw new Error('Unsupported Earth surface current manifest');
   }
   validateColorCalibration(manifest.colorCalibration);
+  // 検査を通った宣言から、タイルURLテンプレートとアセットURLを解決して入力を組む。
   return {
     datasetId: manifest.datasetId,
     sourceManifestSha256: manifest.sourceManifestSha256,

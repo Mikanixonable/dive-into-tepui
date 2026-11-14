@@ -54,6 +54,7 @@ class FallbackSpy implements CelestialSurfaceLike {
   public dispose(): void { this.calls.push('dispose'); }
 }
 
+// 既定の天体表面フレーム値。camera は差し替えられる。
 function frame(camera: THREE.Camera = new THREE.Camera()): CelestialSurfaceFrame {
   return {
     camera,

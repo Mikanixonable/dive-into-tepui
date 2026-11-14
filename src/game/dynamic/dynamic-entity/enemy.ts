@@ -1,3 +1,4 @@
+// 敵の動的物体の基底と、敵に共通する物性・配置・直列化の材料。
 import type { ViewMode } from '../../view/view-mode';
 import { CombatShipEntity } from './combat-ship-entity';
 import type { DynamicEntity, SerializedDynamicEntityFields } from './dynamic-entity';

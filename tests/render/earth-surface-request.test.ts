@@ -12,6 +12,7 @@ import { earthTileKey } from '../../src/render/earth-surface-tile-key';
 const COLOR = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 const PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;
 
+// key の正常系ESTNタイル。
 function terrain(key: ReturnType<typeof earthTileKey>): Uint8Array {
   const bytes = new Uint8Array(PAYLOAD_BYTES);
   bytes.set(new TextEncoder().encode('ESTN'));
@@ -23,10 +24,12 @@ function terrain(key: ReturnType<typeof earthTileKey>): Uint8Array {
   return bytes;
 }
 
+// bytes をbodyに持つ応答のfixture。
 function response(bytes: Uint8Array, status = 200): Response {
   return new Response(bytes.slice(), { status, headers: { 'content-length': String(bytes.length) } });
 }
 
+// resolve を外から呼べる Promise。
 function deferred(): { readonly promise: Promise<void>; readonly resolve: () => void } {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => { resolve = done; });
@@ -57,6 +60,7 @@ export function register(): void {
   test('earth requests: fetchImplをreceiverなしで決定URLの色・地形へ使う', async () => {
     const key = earthTileKey(5, 0, 0);
     const calls: string[] = [];
+    // receiver なしで呼ばれることを確かめながら応答を返す。
     const fetchImpl: typeof fetch = async function (this: unknown, input, _init) {
       if (this !== undefined) throw new Error('fetch receiver must be undefined');
       const url = String(input);
