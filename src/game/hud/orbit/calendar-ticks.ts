@@ -107,7 +107,7 @@ function monthBoundaries(fromUnix: number, toUnix: number): number[] {
   return result;
 }
 
-// 年初(UTC 1/1 00:00)を列挙する。この文書の想定年代は5桁に達するため Date.UTC(y, 0, 1) の
+// 年初(UTC 1/1 00:00)を列挙する。このモジュールの想定年代は5桁に達するため Date.UTC(y, 0, 1) の
 // year 引数をそのまま増減させる(Date.parse/toISOString は5桁年を扱えない)。
 function yearBoundaries(fromUnix: number, toUnix: number): number[] {
   // y を1ずつ増やして Date.UTC(y, 0, 1) を求め直す。
