@@ -83,13 +83,14 @@ const WARP_OFFSET = vec3(5.2, 1.3, 7.9);
 
 // 積雲の細部を低層の風向きへ伸ばす倍率の上限。風速が CUMULUS_STREAK_WIND [m/s] で満額になる。
 // 伸ばすのは DETAIL_WAVELENGTHS の添字 CUMULUS_STREAK_FIRST_OCTAVE〜CUMULUS_STREAK_LAST_OCTAVE の段(8 km と 4 km)
-// だけ — 流れに沿った複数点を読むので 1 段あたり最大 3 倍の費用がかかり、32・16 km の段は風向きが見える尺度では
-// ない。段数が CUMULUS_STREAK_MIN_OCTAVES 未満の粗い精細さでは、伸ばさず費用を増やさない。
+// だけ — 流れに沿った複数点を読むので 1 段あたり最大 3 倍の費用がかかり(標準で 3 パス計 +17%)、32・16 km の段は
+// 風向きが見える尺度ではない。段数が CUMULUS_STREAK_MIN_OCTAVES 未満の精細さでは、伸ばさず費用を増やさない。
+// 利得が費用に見合うまで、最も精細な設定(8 段)だけで伸ばす。
 const CUMULUS_STREAK_MAX = 2;
 const CUMULUS_STREAK_WIND = 10;
 const CUMULUS_STREAK_FIRST_OCTAVE = 2;
 const CUMULUS_STREAK_LAST_OCTAVE = 3;
-const CUMULUS_STREAK_MIN_OCTAVES = 6;
+const CUMULUS_STREAK_MIN_OCTAVES = 8;
 
 export class CloudDetailEvaluator {
   // 使う段数(粗い側から数える)。uniform なので、段数を変えてもシェーダのグラフは組み直さない。
