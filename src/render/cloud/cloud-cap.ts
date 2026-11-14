@@ -28,10 +28,10 @@ const CAP_RADIUS_LEVEL_RATIO = 2 ** (1 / 4);
 const CAP_RADIUS_LEVEL_BASE = (1 * Math.PI) / 180;
 // 中心を揃える格子の刻み [texel]。直下点がこれだけ動くまで cap は置き直されない。刻みの半分の対角が
 // 余白へ足されるので、余白(5 度)より十分小さい角に収まる刻みに取る — 半径 pi/2 で 1.8 度。
-export const CLOUD_CAP_SNAP_TEXELS = 8;
+const CLOUD_CAP_SNAP_TEXELS = 8;
 
 // 地表に固定した格子へ揃えた cap の置き方。latitude・longitude は中心 [rad]、radius は角半径 [rad]。
-export interface SnappedCap {
+interface SnappedCap {
   readonly latitude: number;
   readonly longitude: number;
   readonly radius: number;
