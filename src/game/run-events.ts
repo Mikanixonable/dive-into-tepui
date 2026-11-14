@@ -146,6 +146,12 @@ export type RunEventBody =
   | { readonly kind: 'ammoPickedUp'; readonly mags: number }
   // RCS 燃料の補給を取り込んだ。fuel は増えた燃料 [kg]。
   | { readonly kind: 'rcsFuelPickedUp'; readonly fuel: number }
+  // 設定パネルの操作で、操作艦の弾薬チェーンへマガジンを1つ即時追加した。
+  | { readonly kind: 'magazineAdded' }
+  // 設定パネルの操作で、操作艦の RCS 燃料を満タンへ補充した。fuel は補充した量 [kg]。
+  | { readonly kind: 'rcsFuelRefilled'; readonly fuel: number }
+  // 設定パネルの操作で、すべての基地の燃料を満タンへ補充した。ships は補充した基地の数。
+  | { readonly kind: 'baseFuelRefilled'; readonly ships: number }
 
   // -------------------------------------------------------------------- 計画
   // 直近ノードの実行の窓に入った。
@@ -160,8 +166,8 @@ export type RunEventBody =
   | { readonly kind: 'combatViewUnavailable' }
   // 計画ノードを確定して戦闘ビューへ戻った。nodeCount は確定したノード数。
   | { readonly kind: 'maneuverPlanConfirmed'; readonly nodeCount: number }
-  // 軌道計画のためにマップビューへ入った。
-  | { readonly kind: 'orbitPlanningOpened' }
+  // 軌道計画のためにマップビューへ入った。shipId は入った瞬間の操作対象の船で、いなければ null。
+  | { readonly kind: 'orbitPlanningOpened'; readonly shipId: string | null }
 
   // ------------------------------------------------------------------ カメラ
   // ビューの視点をリセットした。
