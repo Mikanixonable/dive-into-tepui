@@ -1,0 +1,322 @@
+From 154af3cec97704d5636f91ba46f971653a49f442 Mon Sep 17 00:00:00 2001
+From: Muse <muse@muse.local>
+Date: Fri, 13 Nov 2026 23:41:03 +0000
+Subject: [PATCH 2/4] =?UTF-8?q?feat(cloud):=20=E6=8F=8F=E7=94=BB=E6=99=82?=
+ =?UTF-8?q?=E3=81=AE=E9=A2=A8=E3=81=A8=E8=A1=A8=E7=A4=BA=E6=99=82=E5=88=BB?=
+ =?UTF-8?q?=E3=82=92=E9=85=8D=E7=AE=A1=E3=81=99=E3=82=8B?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+地表風と陸海を雲場と同じ投影で焼く風テクスチャを追加し、描画時の
+風と表示時刻を粒の評価器まで届ける配管を整える。粒そのものの挙動は
+まだ変えない。
+
+- CloudWindField: 風 (東, 北) と陸らしさを RGBA HalfFloat へ焼く
+  (WIND_SPAN 45 m/s、lab の風ビューと同じ尺度)。焼き込みは
+  GPU_PASS.cloudBake の行に計上される
+- CloudFieldSampler: 風の読み sampleWind を追加。cap の外は風なし
+  (復号がアフィン変換なので texel ではなく復号した風へ掛ける)
+- CloudFieldSource: windTexture を追加。観測場は null で粒は静止する
+- CloudPresentation: bake() の表示時刻を保持し renderInput へ出す
+
+検証: typecheck / lint / check:boundaries / test:render 268/268 green
+---
+ src/render/cloud/cloud-field-sampler.ts   | 30 ++++++++++++++++---
+ src/render/cloud/cloud-presentation.ts    | 10 +++++--
+ src/render/cloud/cloud-render-input.ts    |  2 ++
+ src/render/cloud/cloud-wind-field.ts      | 35 +++++++++++++++++++++++
+ src/render/cloud/cloud-wind-sample.ts     | 26 +++++++++++++++++
+ src/render/cloud/cumulus-shape.ts         |  8 ++++++
+ src/render/cloud/generated-cloud-field.ts |  7 +++++
+ src/render/cloud/observed-cloud-field.ts  |  2 ++
+ 8 files changed, 114 insertions(+), 6 deletions(-)
+ create mode 100644 src/render/cloud/cloud-wind-field.ts
+ create mode 100644 src/render/cloud/cloud-wind-sample.ts
+
+diff --git a/src/render/cloud/cloud-field-sampler.ts b/src/render/cloud/cloud-field-sampler.ts
+index 4600eb25d..b8367e073 100644
+--- a/src/render/cloud/cloud-field-sampler.ts
++++ b/src/render/cloud/cloud-field-sampler.ts
+@@ -2,21 +2,27 @@
+ // で読む。差し込まれたテクスチャは借り物で、解放は差し込んだ側が行う。
+ import * as THREE from 'three/webgpu';
+ import { dot, step, texture, uniform } from 'three/tsl';
+-import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
++import { EMPTY_CLOUD_FIELD, EMPTY_WIND_FIELD } from './cumulus-shape';
+ import { orthographicCapUv, type CapPlacement } from '../field-projection';
+ import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
+-import type { FloatUniform, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
++import { windSampleFromTexel, type WindSample } from './cloud-wind-sample';
++import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
+ 
+ // 焼いた雲場と、それを焼いた cap の置き方の組。場を出す側が毎フレーム公開し、読み手が写し取る。
+ export interface CloudFieldBinding {
+   readonly texture: THREE.Texture;
+   readonly cap: CapPlacement;
++  // 描画時の風のテクスチャ。風を焼かない出どころでは null。
++  readonly windTexture: THREE.Texture | null;
+ }
+ 
+ export class CloudFieldSampler {
+   // 読む雲場のテクスチャノード。場が結ばれるまでは EMPTY_CLOUD_FIELD を読み、bind は同じノードの
+   // 値を差し替える。
+   private readonly field = texture(EMPTY_CLOUD_FIELD);
++  // 読む風場のテクスチャノード。場が結ばれるまでは EMPTY_WIND_FIELD を読み、bind は同じノードの
++  // 値を差し替える。
++  private readonly wind = texture(EMPTY_WIND_FIELD);
+   // 焼いた側の cap の置き方。グラフは一度組めば済み、値だけが毎フレーム入れ替わる。
+   private readonly center: Vec3Uniform = uniform(new THREE.Vector3(0, 0, 1));
+   private readonly east: Vec3Uniform = uniform(new THREE.Vector3(1, 0, 0));
+@@ -27,6 +33,7 @@ export class CloudFieldSampler {
+   // 焼いた場と、それを焼いた cap の置き方を写し取る。テクスチャの所有権は移らない。
+   public bind(binding: CloudFieldBinding): void {
+     this.field.value = binding.texture;
++    this.wind.value = binding.windTexture ?? EMPTY_WIND_FIELD;
+     this.center.value.copy(binding.cap.center);
+     this.east.value.copy(binding.cap.east);
+     this.north.value.copy(binding.cap.north);
+@@ -34,11 +41,26 @@ export class CloudFieldSampler {
+     this.cosRadius.value = binding.cap.cosRadius;
+   }
+ 
++  // 単位方向 direction の、cap へ写した uv と cap の内側かどうかの 0/1。雲と風の読みで共有する。
++  private capUv(direction: Vec3Node): { uv: Vec2Node; inside: FloatNode } {
++    return {
++      uv: orthographicCapUv(direction, this.east, this.north, this.sinRadius),
++      inside: step(this.cosRadius, dot(direction, this.center)),
++    };
++  }
++
+   // 単位方向 direction の雲標本を、生成時と同じ単位で読む。**cap の外は「雲なし」を返す** —
+   // 返さないと縁の値が外へ伸び、裏側の半球では表側の雲を鏡映しに読む。
+   public sampleCloud(direction: Vec3Node): CloudSample {
+-    const inside = step(this.cosRadius, dot(direction, this.center));
+-    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
++    const { uv, inside } = this.capUv(direction);
+     return cloudSampleFromTexel(this.field.sample(uv).mul(inside) as Vec4Node);
+   }
++
++  // 単位方向 direction の風標本を、雲と同じ cap の置き方で読む。cap の外は風なしを返す。
++  // 復号がアフィン変換なので、雲と違って texel へ掛けるのではなく復号した風と陸へ掛ける。
++  public sampleWind(direction: Vec3Node): WindSample {
++    const { uv, inside } = this.capUv(direction);
++    const sample = windSampleFromTexel(this.wind.sample(uv) as Vec4Node);
++    return { wind: sample.wind.mul(inside), land: sample.land.mul(inside) };
++  }
+ }
+diff --git a/src/render/cloud/cloud-presentation.ts b/src/render/cloud/cloud-presentation.ts
+index 15e927895..d0beabddc 100644
+--- a/src/render/cloud/cloud-presentation.ts
++++ b/src/render/cloud/cloud-presentation.ts
+@@ -25,6 +25,8 @@ export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof
+ // 雲データ供給源のインターフェース。texture はキャップへ投影されたテクスチャであり、供給元が寿命を管理する。
+ export interface CloudFieldSource {
+   readonly texture: THREE.Texture;
++  // 描画時の風のテクスチャ。風を焼かない出どころでは null。
++  readonly windTexture: THREE.Texture | null;
+   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
+   readonly generation: number;
+   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
+@@ -38,6 +40,8 @@ export class CloudPresentation {
+   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
+   // 現在選択されている雲データ供給源。
+   private source: CloudFieldSource;
++  // 最後に焼いた表示時刻 [s]。粒の時計になる。
++  private lastDisplayTime = 0;
+   private cloudVisible = false;
+   private cirrusVisible = true;
+   private translucentCumulusVisible = true;
+@@ -54,12 +58,13 @@ export class CloudPresentation {
+     this.aim(INITIAL_CAP_DIRECTION, 1);
+   }
+ 
+-  // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
++  // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度・表示時刻。
+   public get renderInput(): CloudRenderInput {
+     return {
+-      field: { texture: this.source.texture, cap: this.cap.placement },
++      field: { texture: this.source.texture, windTexture: this.source.windTexture, cap: this.cap.placement },
+       generation: this.source.generation,
+       topAltitude: this.topAltitude,
++      displayTime: this.lastDisplayTime,
+     };
+   }
+   public get visible(): boolean { return this.surface.visible; }
+@@ -137,6 +142,7 @@ export class CloudPresentation {
+   // 渡すと、焼いた GPU 時間をそこへ計上する。
+   public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+     if (!this.fieldContributes) return;
++    this.lastDisplayTime = displayTime;
+     this.source.prepare(renderer, displayTime, gpu);
+   }
+ 
+diff --git a/src/render/cloud/cloud-render-input.ts b/src/render/cloud/cloud-render-input.ts
+index 422fdfd39..a51c59b5b 100644
+--- a/src/render/cloud/cloud-render-input.ts
++++ b/src/render/cloud/cloud-render-input.ts
+@@ -7,4 +7,6 @@ export interface CloudRenderInput {
+   readonly field: CloudFieldBinding;
+   readonly generation: number;
+   readonly topAltitude: number;
++  // 表示時刻 [s]。粒の移流と寿命はこの時刻で進む。
++  readonly displayTime: number;
+ }
+diff --git a/src/render/cloud/cloud-wind-field.ts b/src/render/cloud/cloud-wind-field.ts
+new file mode 100644
+index 000000000..8dbaff4e5
+--- /dev/null
++++ b/src/render/cloud/cloud-wind-field.ts
+@@ -0,0 +1,35 @@
++// 気象モデルから地表風と陸海を焼く風テクスチャ(ベイクドフィールド)。粒の移流と陸海の
++// 条件づけが描画時に読む、雲場と同じ投影の場。
++import * as THREE from 'three/webgpu';
++import { BakedField } from '../baked-field';
++import { GPU_PASS } from '../gpu-timings';
++import { windTexelFromSample } from './cloud-wind-sample';
++import type { WebGPURenderer } from 'three/webgpu';
++import type { GpuTimingSink } from '../gpu-timings';
++import type { FieldProjection } from '../field-projection';
++import type { WeatherModel } from './weather-model';
++
++export class CloudWindField {
++  private readonly field: BakedField;
++
++  // model の現在時刻における地表風と陸海を、指定された projection に従ってベイクするテクスチャ。
++  public constructor(model: WeatherModel, projection: FieldProjection) {
++    this.field = new BakedField('wind', THREE.RGBAFormat, projection, (direction) => {
++      const weather = model.weatherAt(direction);
++      return windTexelFromSample({ wind: weather.surfaceWind, land: weather.landFraction });
++    }, GPU_PASS.cloudBake);
++  }
++
++  // 現在時刻の風をベイクドテクスチャへレンダリングする。読む前に必ず一度呼び出す。
++  public render(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
++    this.field.render(renderer, gpu);
++  }
++
++  // 焼いた風の場。テクスチャの所有権は BakedField に残す。
++  public get texture(): THREE.Texture { return this.field.texture; }
++
++  // 保持している GPU 資源を解放する。
++  public dispose(): void {
++    this.field.dispose();
++  }
++}
+diff --git a/src/render/cloud/cloud-wind-sample.ts b/src/render/cloud/cloud-wind-sample.ts
+new file mode 100644
+index 000000000..8cba7a10b
+--- /dev/null
++++ b/src/render/cloud/cloud-wind-sample.ts
+@@ -0,0 +1,26 @@
++// 風テクスチャの生成値と焼いたテクスチャの読み値。風速は m/s、陸海は 0..1 で扱い、
++// RGBA の配置を表現側へ漏らさない。
++import { vec2, vec4 } from 'three/tsl';
++import type { FloatNode, Vec2Node, Vec4Node } from '../tsl-types';
++
++// 地表風の尺度。風速 [m/s] の正負の両端。lab の風ビューも同じ尺度で風を描く。
++export const WIND_SPAN = 45;
++
++// 描画時の風の標本。wind は (東, 北) 成分の地表風 [m/s]、land は陸らしさ 0..1。
++export interface WindSample {
++  readonly wind: Vec2Node;
++  readonly land: FloatNode;
++}
++
++// 焼いた風テクスチャの RGBA を、生成側と同じ単位の風標本へ戻す。
++export function windSampleFromTexel(texel: Vec4Node): WindSample {
++  return {
++    wind: vec2(texel.r, texel.g).sub(0.5).mul(2 * WIND_SPAN),
++    land: texel.b,
++  };
++}
++
++// 風標本を焼き込み用の RGBA へ戻す。読み出し側の復号と同じ契約をここで対にして持つ。
++export function windTexelFromSample(sample: WindSample): Vec4Node {
++  return vec4(sample.wind.div(2 * WIND_SPAN).add(0.5), sample.land, 1);
++}
+diff --git a/src/render/cloud/cumulus-shape.ts b/src/render/cloud/cumulus-shape.ts
+index d8e036c49..f24a2f068 100644
+--- a/src/render/cloud/cumulus-shape.ts
++++ b/src/render/cloud/cumulus-shape.ts
+@@ -17,6 +17,14 @@ EMPTY_CLOUD_FIELD.magFilter = THREE.LinearFilter;
+ EMPTY_CLOUD_FIELD.wrapS = THREE.RepeatWrapping;
+ EMPTY_CLOUD_FIELD.needsUpdate = true;
+ 
++// 風場未設定の天体スロットへ割り当てる、風速 0・陸 0 のテクスチャ。texel (0.5, 0.5, 0) は
++// 風 (0, 0) へ復号される。雲の空テクスチャと同じ仕様でフィルタと巻きを揃える。
++export const EMPTY_WIND_FIELD = new THREE.DataTexture(new Uint8Array([128, 128, 0, 255]), 1, 1);
++EMPTY_WIND_FIELD.minFilter = THREE.LinearFilter;
++EMPTY_WIND_FIELD.magFilter = THREE.LinearFilter;
++EMPTY_WIND_FIELD.wrapS = THREE.RepeatWrapping;
++EMPTY_WIND_FIELD.needsUpdate = true;
++
+ // 場の G(雲頂高度)を実寸へ戻す上限 [m]。場の G 自体は 0..1 で持つ。
+ export const CLOUD_TOP_SPAN = 15000;
+ 
+diff --git a/src/render/cloud/generated-cloud-field.ts b/src/render/cloud/generated-cloud-field.ts
+index 9ba8dfada..ec3531b8f 100644
+--- a/src/render/cloud/generated-cloud-field.ts
++++ b/src/render/cloud/generated-cloud-field.ts
+@@ -1,6 +1,7 @@
+ // 気候から表示時刻の雲場を焼く所有者。気候・天気の中間場・出力場を同じ寿命で管理する。
+ import type * as THREE from 'three/webgpu';
+ import { CloudField } from './cloud-field';
++import { CloudWindField } from './cloud-wind-field';
+ import { WeatherModel } from './weather-model';
+ import type { WebGPURenderer } from 'three/webgpu';
+ import type { ClimateMap } from './climate-map';
+@@ -13,6 +14,7 @@ import type { Vec3Node } from '../tsl-types';
+ export class GeneratedCloudField implements CloudFieldSource {
+   private readonly model: WeatherModel;
+   private readonly field: CloudField;
++  private readonly wind: CloudWindField;
+   // 最後に焼いた表示時刻。表示時刻が同じ間は生成済みの場を使う。
+   private lastBakedDisplayTime: number | null = null;
+   // 最後に焼いたときの気候の世代。読む画像が変われば、同じ表示時刻でも焼き直す。
+@@ -29,10 +31,13 @@ export class GeneratedCloudField implements CloudFieldSource {
+   ) {
+     this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
+     this.field = new CloudField(this.model, projection);
++    this.wind = new CloudWindField(this.model, projection);
+   }
+ 
+   // 雲場のテクスチャ。出力場の所有権はこのクラスに残す。
+   public get texture(): THREE.Texture { return this.field.texture; }
++  // 風場のテクスチャ。出力場の所有権はこのクラスに残す。
++  public get windTexture(): THREE.Texture { return this.wind.texture; }
+   public get generation(): number { return this.generationValue; }
+ 
+   // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。
+@@ -57,6 +62,7 @@ export class GeneratedCloudField implements CloudFieldSource {
+     this.model.syncTime(displayTime);
+     this.model.bake(renderer, gpu);
+     this.field.render(renderer, gpu);
++    this.wind.render(renderer, gpu);
+     this.generationValue += 1;
+     this.lastBakedDisplayTime = displayTime;
+     this.lastBakedClimateGeneration = climateGeneration;
+@@ -66,6 +72,7 @@ export class GeneratedCloudField implements CloudFieldSource {
+   // 保持している雲場を解放する。
+   public dispose(): void {
+     this.field.dispose();
++    this.wind.dispose();
+     this.model.dispose();
+     this.climate.dispose();
+   }
+diff --git a/src/render/cloud/observed-cloud-field.ts b/src/render/cloud/observed-cloud-field.ts
+index a2db75bba..2ab2ff843 100644
+--- a/src/render/cloud/observed-cloud-field.ts
++++ b/src/render/cloud/observed-cloud-field.ts
+@@ -40,6 +40,8 @@ export class ObservedCloudField implements CloudFieldSource {
+   }
+ 
+   public get texture(): THREE.Texture { return this.field.texture; }
++  // 観測場は風を焼かないので、粒は静止する。
++  public get windTexture(): THREE.Texture | null { return null; }
+   public get generation(): number { return this.generationValue; }
+ 
+   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。
+-- 
+2.43.0
+
