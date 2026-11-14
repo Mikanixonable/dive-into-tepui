@@ -140,7 +140,8 @@ export class LabEarth {
   }
 
   // 動的な雲場を表示時刻 displayTime [s] へ焼く。gpu を渡すと、焼いた GPU 時間をそこへ計上する。
+  // 実験環境の絵は止まった一瞬なので、時間の進み方は等倍として細部を全段写す。
   public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
-    this.clouds.bake(renderer, displayTime, gpu);
+    this.clouds.bake(renderer, displayTime, 1, gpu);
   }
 }
