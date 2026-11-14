@@ -47,10 +47,12 @@ class FakeInput {
   private readonly clicks: PointerPoint[] = [];
   private readonly grabs = new Map<number, GrabbedDrag>();
 
+  // ポインタの押下を記録する。
   public press(id: number, point: PointerPoint): void {
     this.presses.push({ id, point });
   }
 
+  // クリックを記録する。
   public click(point: PointerPoint): void {
     this.clicks.push(point);
   }
@@ -61,6 +63,7 @@ class FakeInput {
     if (drag !== undefined) this.grabs.set(id, { ...drag, point, released });
   }
 
+  // 記録した押下を順に handler へ渡し、掴まれたものをドラッグへ移す。
   public takePresses(handler: (press: PointerPress) => boolean): void {
     for (const press of [...this.presses]) {
       if (!handler(press)) continue;
@@ -69,14 +72,17 @@ class FakeInput {
     }
   }
 
+  // id の掴んだドラッグの状態。掴まれていなければ null。
   public grabbedDrag(id: number): GrabbedDrag | null {
     return this.grabs.get(id) ?? null;
   }
 
+  // 画面座標の PointerPoint を組む。
   public canvasPoint(x: number, y: number): PointerPoint {
     return { x, y };
   }
 
+  // 記録したクリックを順に handler へ渡し、消費したものを除く。
   public takeClicks(handler: (point: PointerPoint) => boolean): void {
     for (const click of [...this.clicks]) {
       if (handler(click)) this.clicks.splice(this.clicks.indexOf(click), 1);
@@ -85,6 +91,7 @@ class FakeInput {
 
   public takeRightClicks(_handler: (point: PointerPoint) => boolean): void {}
 
+  // キーは押されていないものとして扱う。
   public down(): boolean {
     return false;
   }
@@ -99,6 +106,7 @@ interface FakeShip {
     state: { r: Vec3 };
     att: { q: Quat };
     centerOffset: Vec3;
+    assemblyToEci(local: Vec3): Vec3;
     raycastCompound(ray: Ray, pos: Vec3): CompoundCylinderRayHit | null;
   };
 }
@@ -124,6 +132,7 @@ class FakeHost implements ConstructionPointerHost {
       state: { r: v3() },
       att: { q: Q_IDENTITY },
       centerOffset: v3(),
+      assemblyToEci: (local: Vec3): Vec3 => local,
       raycastCompound: (_ray: Ray, _pos: Vec3): CompoundCylinderRayHit | null =>
         this.hitModuleId === null ? null
           : { point: v3(), normal: v3(), distance: 1, moduleId: this.hitModuleId },
@@ -132,6 +141,7 @@ class FakeHost implements ConstructionPointerHost {
 
   public targetGuides(): readonly ConstructionTargetGuide[] { return this.guides; }
   public pointedTrial(): ConstructionTrial | null { return this.trial; }
+  // 指している取り付け先を記録して更新する。
   public setPointedTarget(targetId: string | null): void {
     this.calls.push(`pointed:${targetId}`);
     this.pointedTargetId = targetId;
@@ -140,15 +150,18 @@ class FakeHost implements ConstructionPointerHost {
   public moveSelectedTo(targetId: string): void { this.calls.push(`move:${targetId}`); }
   public hold(held: ConstructionHeld): void { this.calls.push('hold'); this.held = held; }
   public release(): void { this.calls.push('release'); this.held = null; }
+  // 理由つきの手放しを記録して手持ちを戻す。
   public releaseWithReason(reason: string): void {
     this.calls.push(`release:${reason}`);
     this.held = null;
   }
+  // 選択を記録して更新する。
   public select(moduleId: string | null): void {
     this.calls.push(`select:${moduleId}`);
     this.selectedModuleId = moduleId;
   }
   public hoveredModuleId: string | null = null;
+  // ポインタの下のモジュールを更新する。
   public setHoveredModule(moduleId: string | null): void {
     this.hoveredModuleId = moduleId;
   }
@@ -176,6 +189,7 @@ const CAMERA = {
   rayThroughScreen: (): Ray => ({ origin: v3(), dir: v3(0, 0, 1) }),
 } as unknown as CameraSystem;
 
+// 有効な配置を持つ取り付け先のガイドを組む。
 function guide(target: ConstructionTarget, guideEci: Vec3): ConstructionTargetGuide {
   return {
     target, label: '', guideEci, normalEci: v3(0, 0, 1), guideRadius: 1,
@@ -198,6 +212,7 @@ function ringShip(assembly: ShipAssembly, hitModuleId: string | null): FakeShip 
       state: { r: v3() },
       att: { q: Q_IDENTITY },
       centerOffset: v3(),
+      assemblyToEci: (local: Vec3): Vec3 => local,
       raycastCompound: (_ray: Ray, _pos: Vec3): CompoundCylinderRayHit | null =>
         hitModuleId === null ? null
           : { point: v3(), normal: v3(), distance: 1, moduleId: hitModuleId },
@@ -246,12 +261,14 @@ class PointerTestShip implements ConstructionShip {
     { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) },
   );
 
+  // 編集後の物性と操作基準を船体へ合わせる。
   public synchronizeAssemblyState(): void {
     this.motion.synchronizeAssembly();
     this.capabilities.reconcileOperatingCockpit();
   }
 }
 
+// ポインタ入力の解釈のテストを登録する。
 export function register(): void {
   test('construction pointer: 手持ち中に候補の無い位置をクリックしても手放さず選ばない', () => {
     const host = new FakeHost();

@@ -45,6 +45,7 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   private readonly belt: BeltView;
   private readonly weaponDrives = new WeaponDrives();
 
+  // モジュール表示と RCS・再突入・給弾・武装の駆動を ship root の下へ組む。
   public constructor(
     private readonly effectScene: THREE.Scene,
     private readonly ownerId: string,
@@ -61,6 +62,7 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     this.belt = new BeltView(this.object, beltLinkCount);
   }
 
+  // そのフレームの source へモジュール表示と各エフェクト・駆動を同期する。
   protected override syncModel(
     source: ModularShipRenderSource,
     displayed: KinematicState | null,
@@ -75,8 +77,9 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     const effectVisible = this.object.visible;
     const cameraQuat = viewFrame.camera.camera.quaternion;
     const zoomActive = viewFrame.camera.zoomed;
-    const rcsAnchors = this.anchors(source.assembly.modules, 'rcs', 'rcs:');
+    const rcsAnchors = this.rcsAnchors(source.assembly.modules);
 
+    // プルーム・RCS は module の anchor の world 座標を読むので、先に ship root の行列を確定させる。
     this.object.updateWorldMatrix(true, true);
     this.syncEnginePlumes(source, effectVisible, cameraQuat, zoomActive, viewFrame);
     this.rcsEffects.syncFromAnchors(
@@ -94,18 +97,16 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
       this.modules, source.assembly.modules, source.gunFireRate, viewFrame.displayTime,
       source.recentShotRecords,
     );
+    // 照準ズームは操作している実体の視点なので、active な実体の本体だけを隠す。
     if (source.active && zoomActive) this.object.visible = false;
   }
 
-  private anchors(
-    modules: readonly ShipModuleRenderInput[],
-    kind: 'rcs',
-    prefix: string,
-  ): readonly THREE.Object3D[] {
+  // 健全(hp > 0)な rcs module が持つ 'rcs:' 名前付き anchor を集める。
+  private rcsAnchors(modules: readonly ShipModuleRenderInput[]): readonly THREE.Object3D[] {
     const anchors: THREE.Object3D[] = [];
     for (const module of modules) {
-      if (module.kind !== kind || module.hp <= 0) continue;
-      anchors.push(...this.modules.semanticAnchors(module.id, prefix));
+      if (module.kind !== 'rcs' || module.hp <= 0) continue;
+      anchors.push(...this.modules.semanticAnchors(module.id, 'rcs:'));
     }
     return anchors;
   }
@@ -139,6 +140,7 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     for (let i = index; i < this.thrustEffects.length; i++) this.thrustEffects[i]!.hide();
   }
 
+  // 各エフェクトとモジュール表示の資源を解放し、基底の破棄へ回す。
   public override dispose(): void {
     for (const effects of this.thrustEffects) effects.dispose(this.effectScene);
     this.rcsEffects.dispose(this.effectScene);
