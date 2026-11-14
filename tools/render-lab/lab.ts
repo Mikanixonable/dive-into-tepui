@@ -21,8 +21,8 @@ import { distributionOf, type SampleDistribution } from '../../src/math/sample-d
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CASES, type CaseName } from './cases';
 import {
-  cloudDetailCase, CLOUD_DETAIL_CHECK_SHOTS, CLOUD_DETAIL_CIRRUS_COARSE_SHOTS, CLOUD_DETAIL_SHOTS,
-  CLOUD_DETAIL_STABILITY_SHOTS,
+  cloudDetailCase, cloudDetailRandomShot, CLOUD_DETAIL_CHECK_SHOTS, CLOUD_DETAIL_CIRRUS_COARSE_SHOTS,
+  CLOUD_DETAIL_SHOTS, CLOUD_DETAIL_STABILITY_SHOTS, type CloudDetailRandomPoint,
 } from './cloud-detail-cases';
 import {
   type CaseBuilder, type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH,
@@ -556,6 +556,11 @@ export class LabView {
   public applyShot(name: string, graphics: Partial<GraphicsSettingsData> = {}): void {
     const shot = this.shots[name];
     if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
+    this.applyShotObject(shot, graphics);
+  }
+
+  // 撮影の実体 shot を当てて描き直す。applyShot との共通部分。
+  private applyShotObject(shot: LabShot, graphics: Partial<GraphicsSettingsData>): void {
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
     this.setDisplayTime(shot.displayTime ?? 0);
@@ -612,6 +617,27 @@ export class LabView {
     }
     this.applyShot(name);
     return this.captureSettled(name);
+  }
+
+  // ランダム抽出の実写の教師と同じ点(緯度・経度)・同じ段で撮った雲の PNG(データ URL)と、
+  // 画像中心の実寸 km/px・描画原点の高度 [m]。ケースは shootCloudDetail と同じ専用のものを
+  // 使い回し、準備待ちと絵の落ち着きの判定も同じ経路を通る。
+  public async shootCloudDetailRandom(
+    name: string, point: CloudDetailRandomPoint,
+  ): Promise<{ png: string, centerKmPerPx: number, altitudeM: number }> {
+    const shot = cloudDetailRandomShot(point);
+    if (this.currentBuilder !== cloudDetailCase) {
+      this.setGraphics({ ...this.startupGraphics, ...shot.graphics });
+      this.buildCase(cloudDetailCase, null);
+      this.resetView();
+      await this.waitUntilReady();
+    }
+    this.applyShotObject(shot, {});
+    return {
+      png: await this.captureSettled(name),
+      centerKmPerPx: shot.centerKmPerPx,
+      altitudeM: shot.altitudeM,
+    };
   }
 
   // 連続する 2 回の capture が一致するまで撮り直し、一致した絵を返す。MAX_SETTLE_CAPTURES 回撮っても
