@@ -7,7 +7,7 @@ import type { FloatUniform } from '../tsl-types';
 
 // 雲のアルベド。厚い雲の白さは多重散乱の産物で、単散乱アルベド ≈ 1・光学的厚みが十分に大きい
 // 層の反射は拡散反射の極限へ漸近する。
-export const CLOUD_ALBEDO = 0.8;
+export const CLOUD_ALBEDO = 0.97;
 
 // 雲場未設定の天体スロットへ割り当てる、量 0 のテクスチャ。**A も 0 でなければならない** —
 // B・A は巻雲の筋の倍角ベクトルで、A = 1 は「北向きに揃った筋」と読まれる。
