@@ -13,7 +13,7 @@ export const MARKER_DIR_DIST = 5e4;
 const MARKER_BEARING_RING_RATIO = 0.8;
 
 // マーカー1件を置く画面座標と、画面手前にあるか。
-export interface ScreenPlacement {
+interface ScreenPlacement {
   readonly x: number;
   readonly y: number;
   readonly front: boolean;

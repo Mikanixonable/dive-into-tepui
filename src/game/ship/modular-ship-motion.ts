@@ -61,7 +61,7 @@ export interface ModularShipMotionReactions {
   autopilotMaxStep?(self: DynamicMotion): number;
 }
 
-export interface ModularShipMotionSystems {
+interface ModularShipMotionSystems {
   readonly temperature?: number;
   readonly beltLinkCount?: number;
   readonly serializedBelt?: SerializedBeltController;
@@ -437,7 +437,4 @@ function modularShipMotionOf(motion: DynamicMotion): ModularShipMotion {
   return motion;
 }
 
-// motion がモジュール船の剛体運動かを判定する。
-export function isModularShipMotion(motion: DynamicMotion): motion is ModularShipMotion {
-  return motion instanceof ModularShipMotion;
-}
+
