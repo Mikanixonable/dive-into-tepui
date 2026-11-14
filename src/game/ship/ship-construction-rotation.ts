@@ -3,7 +3,7 @@
 // 表示の導出(リングの描画宣言)とポインタの解釈(掴み・角度追従)が同じ面を読む。
 import { LOCAL_FORWARD, qFromBasis, qRotate, type Quat } from '../../math/quat';
 import type { Ray } from '../../math/ray';
-import { add, addScaled, cross, dot, len, norm, scale, sub, v3, type Vec3 } from '../../math/vec3';
+import { addScaled, cross, dot, len, norm, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import type { ShipAssembly } from './ship-assembly';
 
 // 回転リングの幾何(ECI)。axisEci まわりに右手則で角度を取る。uEci/vEci は面内の
@@ -40,9 +40,8 @@ export interface ConstructionRotationDrag {
 interface RotationRingShip {
   readonly assembly: ShipAssembly;
   readonly motion: {
-    readonly state: { readonly r: Vec3 };
     readonly att: { readonly q: Quat };
-    readonly centerOffset: Vec3;
+    assemblyToEci(local: Vec3): Vec3;
   };
 }
 
@@ -50,7 +49,7 @@ interface RotationRingShip {
 const RING_RADIUS_MARGIN_M = 0.6;
 
 // 回転の 1 段 [rad]。
-export const ROTATION_STEP_RAD = Math.PI / 2;
+const ROTATION_STEP_RAD = Math.PI / 2;
 
 const WORLD_UP = v3(0, 1, 0);
 const WORLD_RIGHT = v3(1, 0, 0);
@@ -66,7 +65,6 @@ export function constructionRotationRing(
   const definition = assembly.definition(moduleId);
   if (transform === null || definition === null) return null;
   const q = ship.motion.att.q;
-  const root = sub(ship.motion.state.r, qRotate(q, ship.motion.centerOffset));
   const axis = norm(qRotate(q, qRotate(transform.rotation, LOCAL_FORWARD)));
   // 面内の角度基準は環境の上方向から取る。軸がほぼ上向きなら基準を横へ換えて
   // 基底が縮退しないようにする。
@@ -74,7 +72,7 @@ export function constructionRotationRing(
   const u = norm(cross(up, axis));
   const v = cross(axis, u);
   return {
-    centerEci: add(root, qRotate(q, transform.position)),
+    centerEci: ship.motion.assemblyToEci(transform.position),
     axisEci: axis,
     uEci: u,
     vEci: v,
@@ -94,6 +92,7 @@ export function ringPlaneHit(ring: ConstructionRotationRing, ray: Ray): Rotation
   const offset = sub(point, ring.centerEci);
   const distance = len(offset);
   if (!(distance > 1e-9)) return null;
+  // 中心へのオフセットを面内の基底へ投影して基準角を取る。
   const dir = scale(offset, 1 / distance);
   return {
     point,
@@ -103,7 +102,7 @@ export function ringPlaneHit(ring: ConstructionRotationRing, ray: Ray): Rotation
 }
 
 // 累積角を 90° 単位の段数へ丸める。正負は角の向きを保つ。
-export function rotationSteps(angle: number): number {
+function rotationSteps(angle: number): number {
   return Math.round(angle / ROTATION_STEP_RAD);
 }
 
@@ -114,7 +113,7 @@ export function wrapAnglePi(a: number): number {
 
 // 押した位置の基準角から、最も近い回転矢印の向きを答える。
 // 矢印は基準角 0(右回り = +1)と π(左回り = −1)の2箇所にあり、等距離なら +1。
-export function ringArrowDelta(angle: number): 1 | -1 {
+function ringArrowDelta(angle: number): 1 | -1 {
   const nearRight = Math.abs(wrapAnglePi(angle)) <= Math.abs(wrapAnglePi(angle - Math.PI));
   return nearRight ? 1 : -1;
 }
