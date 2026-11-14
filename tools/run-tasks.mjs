@@ -1,6 +1,6 @@
 // 複数の子プロセスを同時に走らせ、各行へ [label] を付けて標準出力/標準エラーへ流す
-// 共用ランナー。run-ci.mjs(段内の検査)と protein-builder/run-all.mjs(蛋白ごとの
-// 処理)が使う。resolve される値には {label, code, error?, elapsed} が入る。
+// 共用ランナー。run-ci.mjs(段内の検査)が使う。
+// resolve される値には {label, code, error?, elapsed} が入る。
 import { spawn } from 'node:child_process';
 
 export function runTask({ label, command, args, cwd }) {

@@ -1,9 +1,9 @@
 // 天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流の天気を TSL の
 // グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
-import { abs, clamp, cos, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
+import { abs, clamp, cos, cross, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
-import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
+import { AtmosphericWindField, SURFACE_HEIGHT } from './atmospheric-wind';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
@@ -51,9 +51,17 @@ interface PressureField {
 
 // ノイズのオクターブ定義表。周波数は 1 rad あたりの山数で、角波長 [km] は 6371 ÷ 周波数。気圧は単一オクターブ
 // のみとする — 上昇流が気圧値の直接の関数であるため、オクターブを重ねると高周波の格子が雲へそのまま現れてしまうため。
+// この段はエポックの混ぜ替えに参加し、気圧の谷と峰は流れに乗るだけでなくその場でも発達・衰退する。
 const PRESSURE_NOISE: readonly NoiseOctave[] = [
   { frequency: 1.2, amplitude: 1 }, // 5300 km
 ];
+// 上層の風へ重ねる中規模の蛇行。単一オクターブ (800 km) のノイズで、総観規模のロスビー波と
+// 渦だけだった筋の向きの場に、100〜1000 km の尺度で滑らかに変わる自由度を足す。向きの
+// 振れ幅は ±14° ほどで、向きが画素ごとにばらつくほどではない。
+const UPPER_MEANDER_NOISE: readonly NoiseOctave[] = [
+  { frequency: 8, amplitude: 1 }, // 800 km
+];
+const UPPER_MEANDER_MAX_ANGLE = 0.25; // [rad]
 // 場の振れ幅 [hPa]。オクターブ数によらない。
 const PRESSURE_NOISE_AMPLITUDE = 18;
 
@@ -68,7 +76,7 @@ const LIFT_LIMIT = 0.06;
 // 前線帯の強度計算。気団の圧縮度が立ち上がり閾値から遷移幅に達する間に、帯の強度が 0 から 1 へ推移する。開始閾値は 35〜60° 緯度帯の
 // 背景圧縮度（90パーセンタイルで 1.19〜1.28）の 2 割増に設定する。
 // 遷移幅は圧縮の稜線が飽和する狭さに調整し、最も高密度の中心核に帯幅を確保する。
-const FRONT_ONSET = 1.45;
+const FRONT_ONSET = 1.65;
 const FRONT_WIDTH = 0.35;
 // 前線を強化する湿度水平勾配の開始閾値と遷移幅 [1/rad]。乾湿境界にも雲帯を生成する。
 // 遷移幅は湿度テクスチャの量子化誤差に対して十分なマージンを確保する。
@@ -82,10 +90,11 @@ const RAINBAND_ONSET = 5;
 const RAINBAND_WIDTH = 4;
 // 帯が飽和した所で立つ上昇流 [m/s]。深い谷の芯と同じだけ持ち上げるよう、頭打ち(LIFT_LIMIT)に揃える。
 const BAND_LIFT = 0.06;
-// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 1.4 倍で、帯の芯では
-// 上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き、途切れない帯になる
+// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 0.45 倍に取る —
+// 帯の芯では上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き途切れない帯に
+// なるが、前線帯の面全体が湿度の上限へ張り付いて一枚の台地にはならない
 // (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
-const BAND_HUMIDITY = 0.3;
+const BAND_HUMIDITY = 0.1;
 // 温帯と熱帯の境界緯度。温帯では前線、熱帯では雨帯の伝達関数を使い、暖気流入の補正は温帯に
 // 限定して適用する。
 const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
@@ -141,16 +150,18 @@ const CONVECTION_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
 // 取る。上層を深く引いて、薄い雲の穴を厚い雲の目よりひとまわり広く開ける。
 const SURFACE_EYE_DRYNESS = 0.8;
 const UPPER_EYE_DRYNESS = 2;
-// 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の下の円盤が隙間なく埋まるよう、並の湿度からでも
-// 雲量が飽和する分を足す。
-const ANVIL_HUMIDITY = 0.5;
+// 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の芯では並の湿度からでも雲量が飽和する分を足すが、
+// 円盤の縁まで一様に上限へ張り付かせないよう、天蓋自身の濃さの落ち際と合わせて効かせる。
+const ANVIL_HUMIDITY = 0.2;
 // 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入（0.26 rad）で伝達関数幅の約半分が
 // 変位する係数。本項の期待値が正のため、基底湿度 (SURFACE_HUMIDITY_BASE) をオフセットして均衡させる。
 const WARM_HUMIDITY = 0.6;
 // 移流後に足す平年の雲量の重み(地表付近と上層)。雲量の地理的な差が凝結のしきい値をまたぐ幅に
 // 取る — 小さいと砂漠にも海と同じだけ雲が湧き、大きいと雲の多い海が覆われたまま平年の雲量図が
-// 貼り付く。
-const SURFACE_MEAN_CLOUDINESS_WEIGHT = 0.30;
+// 貼り付く。地表付近は、貼り付いた図が中緯度の長波長スペクトルの過剰の支配項だったので半分に
+// 弱め、減った平均ぶんは基底湿度の底上げで埋める(cloud-lab Phase 3-10)。上層は薄い雲の分布が
+// 平年の図へ素直に従うため据え置く。
+const SURFACE_MEAN_CLOUDINESS_WEIGHT = 0.15;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.24;
 // 平年の雲量を湿度へ渡す S 字の裾と肩。線形では、砂漠を晴らす重みで雲の多い海が覆われたまま動かなく
 // なる。裾は砂漠(0.14)の下、肩は年中曇りの海(0.89)の側に置く — 狭めると乾いた大陸(0.43〜0.51)や
@@ -166,6 +177,7 @@ export class WeatherModel {
   private readonly rossbyWave = new RossbyWave();
   private readonly cyclones: Cyclones;
   private readonly pressureNoise: CirculatingNoise;
+  private readonly upperMeander: CirculatingNoise;
   private readonly transport: WeatherTransport;
   private readonly pressure: BakedField;
   private readonly convectiveActivity: ConvectiveActivity;
@@ -181,7 +193,9 @@ export class WeatherModel {
     this.surfaceCirculation = new Circulation(SURFACE_BANDS, surfaceRadius);
     this.upperCirculation = new Circulation(UPPER_BANDS, surfaceRadius);
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
-    this.pressureNoise = new CirculatingNoise(this.surfaceCirculation, PRESSURE_NOISE, texel);
+    this.pressureNoise = new CirculatingNoise(
+      this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
+    this.upperMeander = new CirculatingNoise(this.upperCirculation, UPPER_MEANDER_NOISE, texel);
     this.transport = new WeatherTransport(
       this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius);
     this.pressure = new BakedField(
@@ -207,6 +221,8 @@ export class WeatherModel {
     this.upperCirculation.syncTime(seconds);
     this.rossbyWave.syncTime(seconds);
     this.cyclones.syncTime(seconds);
+    this.pressureNoise.syncTime(seconds);
+    this.upperMeander.syncTime(seconds);
     this.transport.syncTime(seconds);
   }
 
@@ -221,24 +237,32 @@ export class WeatherModel {
     // 風: 局所的な気圧風へ、大循環の背景風(地表付近/上層)とロスビー波を重ねる。
     const rossby = this.rossbyWave.perturbationAt(direction, this.surfaceRadius);
     const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
-    const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
     const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
-    const upperBackground = east.mul(upperMean.x).add(north.mul(upperMean.y)).add(rossby);
-    const surfaceWind = composeWind(balancedWind(
+    const surfaceLocal = balancedWind(
       gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
       this.surfaceRadius, this.rotationPeriod,
-    ), surfaceBackground);
-    const convectionWind = composeWind(balancedWind(
+    );
+    const convectionLocal = balancedWind(
       gradient, isobar, bend, latitude, CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT,
       this.surfaceRadius, this.rotationPeriod,
-    ), surfaceBackground);
-    const upperWind = composeWind(balancedWind(
+    );
+    const upperLocal = balancedWind(
       gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
       this.surfaceRadius, this.rotationPeriod,
-    ), upperBackground);
+    );
+    const surfaceWind = composeWind(surfaceLocal, surfaceBackground);
 
-    // 風で流した湿度・対流と、前線を強める湿度の勾配。
-    const advected = this.transport.advectedAt(direction, surfaceWind, upperWind, convectionWind);
+    // 風で流した湿度・対流と、前線を強める湿度の勾配。移流の遡りは、大循環の平均風からの
+    // 偏差(局所の釣り合い風とロスビー波の摂動)で取る — 源の模様の平行移動は、写しを焼く
+    // 循環が平均風で既に担っている。平均風まで遡りに含めると両者が打ち消し合い、模様は
+    // 周期の中で混ざり合うだけで流れも形の変化も鈍る。上層の偏差風だけに中規模の蛇行を
+    // 重ねる — 筋の向きがその尺度で滑らかに変わる。
+    const advected = this.transport.advectedAt(
+      direction,
+      composeWind(surfaceLocal, rossby),
+      this.meanderUpperWind(composeWind(upperLocal, rossby), direction),
+      composeWind(convectionLocal, rossby),
+    );
     const moistureGradient = this.moistureGradientAt(direction, east, north);
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
@@ -266,13 +290,16 @@ export class WeatherModel {
 
     // 湿度: 流した写しへ、場所と渦に貼り付く項(平年の雲量・上昇流・帯・金床・目)を足し引きする。
     const meanCloudiness = this.climate.meanCloudiness(direction);
+    // 平年雲量バイアスの重みを緯度で絞る: 熱帯は 1.0 のまま、中緯度では半分にする。
+    // 最長波長の担い手のうち中緯度側の分だけを切り、ITCZ は保つ。
+    const surfaceBiasWeight = extratropical.oneMinus().mul(0.5).add(0.5);
     const landFraction = this.climate.landFraction(direction);
     const eye = this.cyclones.eyeAt(direction);
     const anvil = this.cyclones.anvilAt(direction);
     const deviation = advected.surfaceHumidity.sub(SURFACE_HUMIDITY_BASE);
     const surfaceHumidity = clamp(
       advected.surfaceHumidity.add(deviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
-        .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT))
+        .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT).mul(surfaceBiasWeight))
         .add(max(lift, 0).mul(SURFACE_LIFT_HUMIDITY)).add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
         .add(warmth.mul(WARM_HUMIDITY)).add(band.mul(BAND_HUMIDITY))
         .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(SURFACE_EYE_DRYNESS)), 0, 1);
@@ -297,6 +324,17 @@ export class WeatherModel {
       meanCloudiness,
       landFraction,
       tropopause: tropopauseAt(latitude),
+    };
+  }
+
+  // 上層の偏差風へ中規模の蛇行を重ねる。風速を保ったまま向きだけを回す — 流れ自身の
+  // 曲がり (turn) は気圧場のものなので触らない。蛇行のノイズは上層の湿度の源と同じ
+  // 循環で運ぶので、向きの変わり目が筋そのものと一緒に流れる。
+  private meanderUpperWind(wind: BalancedWind, direction: Vec3Node): BalancedWind {
+    const angle = this.upperMeander.at(direction).mul(UPPER_MEANDER_MAX_ANGLE);
+    return {
+      velocity: wind.velocity.mul(cos(angle)).add(cross(direction, wind.velocity).mul(sin(angle))),
+      turn: wind.turn,
     };
   }
 
