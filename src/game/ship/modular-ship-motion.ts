@@ -51,14 +51,22 @@ export interface ModularShipMotionReactions {
   ): void;
   receiveStructuralLoss?(services: DynamicReactionServices): void;
   receiveBurnUp?(services: DynamicReactionServices): void;
+  // 自動操縦の次の時刻指定出来事(回頭・燃焼の開始・燃焼の終了)。予定が無ければ null。
+  nextAutopilotEventTime?(self: DynamicMotion, simTime: number): number | null;
+  // 積分ステップの直前に呼ぶ自動操縦の指令。燃焼中は倍率によらない刻みで進む。
+  stepAutopilot?(
+    self: DynamicMotion, dt: number, attractors: readonly CelestialBody[], pivot: number,
+  ): void;
+  // 自動操縦が要求する積分刻みの上限 [s]。制約しないなら Infinity。
+  autopilotMaxStep?(self: DynamicMotion): number;
 }
 
 export interface ModularShipMotionSystems {
   readonly temperature?: number;
   readonly beltLinkCount?: number;
-  readonly beltSave?: SerializedBeltController;
-  readonly radiatorSave?: SerializedRadiatorSystem;
-  readonly powerSave?: SerializedPowerSystem;
+  readonly serializedBelt?: SerializedBeltController;
+  readonly serializedRadiator?: SerializedRadiatorSystem;
+  readonly serializedPower?: SerializedPowerSystem;
 }
 
 class ModularShipBehavior implements DynamicMotionBehavior {
@@ -118,10 +126,9 @@ class ModularShipBehavior implements DynamicMotionBehavior {
   // 重心位置からラジエーターと給弾ベルトの接触代理を配置する。
   public placeContactProxies(self: DynamicMotion, simTime: number, dt: number): void {
     const motion = modularShipMotionOf(self);
-    const rootOffset = qRotate(motion.att.q, motion.centerOffset);
     const rootVelocityOffset = qRotate(motion.att.q, cross(motion.att.w, motion.centerOffset));
     motion.radiator.placeContactFolds(
-      sub(motion.state.r, rootOffset), sub(motion.state.v, rootVelocityOffset), motion.att, simTime,
+      motion.assemblyOriginEci(), sub(motion.state.v, rootVelocityOffset), motion.att, simTime,
     );
     motion.belt.placeContactSections(
       motion, this.reactions.magsLeft?.() ?? 0, simTime, dt, motion.state.r, motion.state.v, motion.att,
@@ -169,9 +176,25 @@ class ModularShipBehavior implements DynamicMotionBehavior {
     return modularShipMotionOf(self).contactsAllowedWith(other, simTime);
   }
 
-  // 接触猶予のうち、次にシミュレーションを区切る時刻を返す。
+  // 接触猶予と自動操縦の予定のうち、次にシミュレーションを区切る時刻を返す。
   public nextSimulationEventTime(self: DynamicMotion, simTime: number): number | null {
-    return modularShipMotionOf(self).nextCollisionGraceBoundary(simTime);
+    const grace = modularShipMotionOf(self).nextCollisionGraceBoundary(simTime);
+    const burn = this.reactions.nextAutopilotEventTime?.(self, simTime) ?? null;
+    if (grace === null) return burn;
+    if (burn === null) return grace;
+    return Math.min(grace, burn);
+  }
+
+  // 積分ステップの直前に自動操縦の指令を進める。
+  public stepCommands(
+    self: DynamicMotion, dt: number, attractors: readonly CelestialBody[], pivot: number,
+  ): void {
+    this.reactions.stepAutopilot?.(self, dt, attractors, pivot);
+  }
+
+  // 自動操縦が要求する積分刻みの上限 [s]。
+  public maxSubstepDuration(self: DynamicMotion): number | null {
+    return this.reactions.autopilotMaxStep?.(self) ?? null;
   }
 
   // 船体表面への接触を反応先へ渡す。
@@ -254,8 +277,8 @@ export class ModularShipMotion extends DynamicMotion {
       surfaceShape: shape.surfaceShape,
     });
     // 補助系の記録を復元するか、既定値から組み立てる。
-    this.belt = systems.beltSave
-      ? BeltController.deserialize(systems.beltSave)
+    this.belt = systems.serializedBelt
+      ? BeltController.deserialize(systems.serializedBelt)
       : BeltController.create(systems.beltLinkCount ?? 18);
     this.synchronizeBeltMount(shape);
     // ラジエーター接触を船体側の反応口へ渡す。
@@ -263,11 +286,11 @@ export class ModularShipMotion extends DynamicMotion {
       services: DynamicReactionServices): void => {
       reactions.receiveRadiatorContact?.(moduleId, other, contact, services);
     };
-    this.radiator = systems.radiatorSave === undefined
+    this.radiator = systems.serializedRadiator === undefined
       ? new RadiatorSystem(this, onRadiatorContact, undefined, undefined, assembly)
-      : RadiatorSystem.deserialize(systems.radiatorSave, this, onRadiatorContact, assembly);
-    this.power = systems.powerSave
-      ? PowerSystem.deserialize(systems.powerSave, assembly)
+      : RadiatorSystem.deserialize(systems.serializedRadiator, this, onRadiatorContact, assembly);
+    this.power = systems.serializedPower
+      ? PowerSystem.deserialize(systems.serializedPower, assembly)
       : new PowerSystem(undefined, undefined, undefined, assembly);
     this.radiator.syncAssembly(assembly);
     this.power.syncAssembly(assembly);
@@ -275,6 +298,17 @@ export class ModularShipMotion extends DynamicMotion {
 
   public get physicsShape(): ShipPhysicsShape { return this.physicsShapeValue; }
   public get centerOffset(): Vec3 { return this.physicsShapeValue.centerOffset; }
+
+  // assembly 座標(船体座標)の原点の ECI 位置 [m]。state.r は COM なので、姿勢で回した
+  // COM オフセットを差し引く。
+  public assemblyOriginEci(): Vec3 {
+    return sub(this.state.r, qRotate(this.att.q, this.centerOffset));
+  }
+
+  // assembly 座標(船体座標)の点を ECI へ写す。
+  public assemblyToEci(local: Vec3): Vec3 {
+    return add(this.assemblyOriginEci(), qRotate(this.att.q, local));
+  }
 
   // 並進と回転の初期状態をまとめて差し替える。
   public resetRigidState(state: KinematicState, attitude: Attitude = this.att): void {

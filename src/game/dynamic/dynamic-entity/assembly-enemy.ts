@@ -15,6 +15,7 @@ import {
   type EnemyPlacement, type SerializedEnemy,
 } from './enemy';
 import { AssemblyEnemyView, type AssemblyVisualSource } from '../../../render/dynamic/dynamic-entity/assembly-enemy-view';
+import { assemblyPartDebris } from './debris-piece';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
 import type { EntityIdAllocators } from './entity-id';
@@ -170,9 +171,9 @@ export class AssemblyEnemy extends Enemy {
   }
 
   // 被弾位置に最も近い生存部品へダメージを割り振る。部品が失われたら判定からも外し、
-  // その位置で閃光を記録する。
+  // その位置で閃光を記録し、部品を破片として飛ばす。
   protected override applyBulletDamage(
-    damage: number, impactPoint: Vec3, events: RunEventSink,
+    damage: number, impactPoint: Vec3, registry: EntityRegistry,
   ): void {
     // 着弾点を敵ローカル座標へ戻して部品を特定する
     const localPoint = qRotate(
@@ -184,7 +185,7 @@ export class AssemblyEnemy extends Enemy {
     this.collision.excludePart(broken);
     const part = this.shape.parts[broken]!;
     const midpoint = part.centerline[Math.floor(part.centerline.length / 2)]!;
-    events.record({
+    registry.events.record({
       kind: 'assemblyPartBroken',
       state: kinematicState<'eci'>(
         this.motion.state.t,
@@ -192,6 +193,22 @@ export class AssemblyEnemy extends Enemy {
         this.motion.state.v,
       ),
     });
+    this.launchPart(part.index, registry);
+  }
+
+  // 本体が失われるとき、なお残っていた部品もそれぞれ飛ぶ。
+  protected override scatterDebris(registry: EntityRegistry): void {
+    for (const part of this.shape.parts) {
+      if (this.combat.partAlive(part.index)) this.launchPart(part.index, registry);
+    }
+  }
+
+  // 部品 index を、敵の運動を引き継いで飛ぶ破片として registry へ足す。
+  private launchPart(index: number, registry: EntityRegistry): void {
+    registry.add(assemblyPartDebris(
+      this.motion.state, this.motion.att, this.seed, this.shape.parts[index]!,
+      this.accent, registry.idAllocators,
+    ));
   }
 
   // 接触は部品を選ばず integrity 全体を削る。

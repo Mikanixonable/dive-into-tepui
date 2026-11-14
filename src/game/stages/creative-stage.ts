@@ -6,7 +6,7 @@ import {
 } from '../creative/object-placement';
 import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
 import {
-  StageControlsPanel, type EnemySpawnShape, type ProteinDisplayControl,
+  StageControlsPanel, type EnemySpawnShape,
 } from '../creative/stage-controls-panel';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { hudRail } from '../hud/hud-root';
@@ -16,11 +16,13 @@ import { creativeStageCommands, type CreativeStageCommands } from './creative-st
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import { queuedEventSink, type RunEventSink } from '../run-events';
 import type { KinematicState } from '../../physics/kinematic-state';
+import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ViewMode } from '../view/view-mode';
+import type { PlayerLossCause } from './stage-outcome';
 
 // クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
 // 保つ(ON に戻したとき波数を続きから再開する)。手動スポーンと物体配置の設定・連番も持つ。
@@ -43,12 +45,13 @@ export class CreativeStage extends Stage {
   public static readonly epoch = STORY_EPOCH;
   // 開始日時の指定画面を挟む(SPEC GAME.md 9.0)。epoch はその欄の既定値になる。
   public static readonly picksStartEpoch = true;
+  // 勝敗を判定しない(GAME.md 2.6)。解放の記録も読まない。
+  public static readonly judgesOutcome = false;
   public static readonly selectLabel = 'CREATIVE';
   public static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   public static readonly selectGroup = 'クリエイティブモード';
   public readonly executesPlans = true;
   public readonly authoring: ObjectAuthoring;
-  public readonly proteinDisplayControl: ProteinDisplayControl;
 
   private readonly objectPlacement: ObjectPlacement;
   private readonly manualSpawn: ManualSpawn;
@@ -97,15 +100,14 @@ export class CreativeStage extends Stage {
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
       this.manualSpawn.spawnDistance,
     );
-    this.proteinDisplayControl = this.stageControlsPanel;
     this.stageControlsPanel.onToggleResupply = (on) => this.commands.setResupplyEnabled(on);
     this.stageControlsPanel.onToggleFuelResupply = (on) => this.commands.setFuelResupplyEnabled(on);
     this.stageControlsPanel.onToggleWaveAttack = (on) => this.commands.setWaveAttackEnabled(on);
     this.stageControlsPanel.onAddMagazine = () => this.commands.addMagazineToShip();
     this.stageControlsPanel.onRefillFuel = () => this.commands.refillShipRcsFuel();
+    this.stageControlsPanel.onRefillBaseFuel = () => this.commands.refillBaseFuel();
     this.stageControlsPanel.onSpawnDistanceChange = (distance) => this.commands.setSpawnDistance(distance);
     this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.commands.spawnManualEnemy(shape, colorValue);
-    this.stageControlsPanel.onSpawnFormation = () => this.commands.spawnProteinFormation();
     hudRail(this._hud.mapRoot, 'right').appendChild(this.stageControlsPanel.element);
   }
 
@@ -164,6 +166,7 @@ export class CreativeStage extends Stage {
       return;
     }
     player.onPickup(1);
+    this._dynamicSystem.events.record({ kind: 'magazineAdded' });
   }
 
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければ、操作艦が要ることを記録する。
@@ -173,7 +176,20 @@ export class CreativeStage extends Stage {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'refillRcsFuel' });
       return;
     }
-    player.refuelRcsFuel(player.totalMaxRcsFuel);
+    const added = player.refuelRcsFuel(player.totalMaxRcsFuel);
+    this._dynamicSystem.events.record({ kind: 'rcsFuelRefilled', fuel: added });
+  }
+
+  // すべての基地(健全な建造ドックを持つ船体)の主推進燃料と RCS 燃料を満タンにし、補充した隻数を記録する。
+  public refillBaseFuel(): void {
+    let ships = 0;
+    for (const ship of this._dynamicSystem.all().filter(isModularShip)) {
+      if (!ship.motion.alive || ship.capabilities.role !== 'base') continue;
+      ship.refuelFuel(ship.totalMaxFuel);
+      ship.refuelRcsFuel(ship.totalMaxRcsFuel);
+      ships++;
+    }
+    this._dynamicSystem.events.record({ kind: 'baseFuelRefilled', ships });
   }
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければ、操作艦が要ることを記録する。
@@ -183,20 +199,9 @@ export class CreativeStage extends Stage {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
       return;
     }
-    const spawn = this.manualSpawn.enemy(player, shape, colorValue);
-    if (spawn === null) return;
-    if (spawn.kind === 'enemy') this.addEnemy(spawn.enemy);
-    else this.addProteinEnemy(spawn.request);
-  }
-
-  // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
-  public spawnProteinFormation(): void {
-    const player = this.ship;
-    if (player === null || !player.motion.alive) {
-      this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
-      return;
-    }
-    for (const request of this.manualSpawn.proteinFormation(player)) this.addProteinEnemy(request);
+    const enemy = this.manualSpawn.enemy(player, shape, colorValue);
+    if (enemy === null) return;
+    this.addEnemy(enemy);
   }
 
   // 検証を通過した配置指定からオブジェクトを生成し、システムへ追加して配置を記録する。
@@ -216,7 +221,13 @@ export class CreativeStage extends Stage {
     this._dynamicSystem.events.record({ kind: 'objectPlaced', name: placed.entity.name });
   }
 
-  // ステージ操作パネルは、表示中のビューの右ドックへ追従させる。
+  // 検証を通過した配置指定から軌道標識を作り、台帳へ追加して配置を記録する。
+  public placeOrbitSlot(name: string, orbit: OrbitSlotOrbit): void {
+    const slot = this._orbitSlots.add(orbit, name);
+    this._dynamicSystem.events.record({ kind: 'objectPlaced', name: slot.name });
+  }
+
+  // ステージ操作パネルを、指定したビューの右レールへ置く。
   private mountStageControlsPanel(inMapView: boolean): void {
     const root = inMapView ? this._hud.mapRoot : this._hud.combatRoot;
     const rightRail = hudRail(root, 'right');
@@ -232,10 +243,12 @@ export class CreativeStage extends Stage {
   ): void {
     super.sync(camera, view, displayTime);
     const ship = this.ship;
-    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
-    this.mountStageControlsPanel(view === 'map');
+    this.stageControlsPanel.setShipRequiredButtonsEnabled(ship !== null && ship.motion.alive);
+    // 設定パネルは戦闘ビューでのみ出す(SPEC/GAME.md「9.2 設定パネル」)。レールは
+    // 戦闘側に固定し、マップでは隠す。
+    this.mountStageControlsPanel(false);
+    this.stageControlsPanel.element.classList.toggle('hidden', view === 'map');
     this.objectPlacement.sync(camera, view, displayTime);
-    this.stageControlsPanel.element.classList.remove('hidden');
   }
 
   // 直近の sync が組んだ、配置プレビューのマーカーの宣言。
@@ -276,7 +289,7 @@ export class CreativeStage extends Stage {
   }
 
   // 艦の喪失を出来事として記録する。
-  public recordPlayerLost(reason: string): void {
+  public recordPlayerLost(reason: string, _cause: PlayerLossCause): void {
     this._dynamicSystem.events.record({ kind: 'shipLost', reason });
   }
 

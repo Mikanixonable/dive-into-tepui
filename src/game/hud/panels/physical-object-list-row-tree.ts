@@ -153,7 +153,7 @@ export class PhysicalObjectListRowTree {
 
   // 行 + トグルボタン + 子コンテナを1組生成する。子を持つかどうかはフレームごとに
   // 変わりうるので、トグルボタンと子コンテナは常に作っておき可視性だけ切り替える。
-  // 既定は畳んだ状態 — 衛星・ラグランジュ点は候補数が多く、常に見る必要は薄いため。
+  // 既定は畳んだ状態 — 衛星・ラグランジュ点は候補数が多く、常時表示する必要は薄いため。
   private createRowNode(id: string): RowNode {
     const row = document.createElement('div');
     row.className = 'erow';

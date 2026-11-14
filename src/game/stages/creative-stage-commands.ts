@@ -3,6 +3,7 @@ import type { CommandQueue } from '../command-queue';
 import type { EnemySpawnShape } from '../creative/stage-controls-panel';
 import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
+import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
 import type { CreativeStage } from './creative-stage';
 
 // クリエイティブステージの状態を外から変える命令。どれも受け付けるだけで、適用は次の進行の位相。
@@ -17,14 +18,16 @@ export interface CreativeStageCommands {
   addMagazineToShip(): void;
   // 操作艦の RCS 燃料を満タンにする。
   refillShipRcsFuel(): void;
+  // すべての基地の燃料を満タンにする。
+  refillBaseFuel(): void;
   // 手動スポーンが使う距離 [m] を差し替える。
   setSpawnDistance(distanceM: number): void;
   // shape で選んだ形・色の敵を1体、自機の前方へ出す。
   spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void;
-  // タンパク質陣形を自機の前方へ一括で出す。
-  spawnProteinFormation(): void;
   // 検証を通った配置の指定から物体を作り、シミュレーション対象へ追加する。
   placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void;
+  // 検証を通った配置の指定から軌道標識を作り、台帳へ追加する。
+  placeOrbitSlot(name: string, orbit: OrbitSlotOrbit): void;
 }
 
 // stage へのコマンドを queue へエンキューする実装を構築する。
@@ -35,9 +38,10 @@ export function creativeStageCommands(queue: CommandQueue, stage: CreativeStage)
     setWaveAttackEnabled: (on) => queue.submit(() => stage.setWaveAttackEnabled(on)),
     addMagazineToShip: () => queue.submit(() => stage.addMagazineToShip()),
     refillShipRcsFuel: () => queue.submit(() => stage.refillShipRcsFuel()),
+    refillBaseFuel: () => queue.submit(() => stage.refillBaseFuel()),
     setSpawnDistance: (distanceM) => queue.submit(() => stage.setSpawnDistance(distanceM)),
     spawnManualEnemy: (shape, colorValue) => queue.submit(() => stage.spawnManualEnemy(shape, colorValue)),
-    spawnProteinFormation: () => queue.submit(() => stage.spawnProteinFormation()),
     placeObject: (name, selection, state) => queue.submit(() => stage.placeObject(name, selection, state)),
+    placeOrbitSlot: (name, orbit) => queue.submit(() => stage.placeOrbitSlot(name, orbit)),
   };
 }
