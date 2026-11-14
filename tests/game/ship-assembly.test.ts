@@ -7,16 +7,18 @@ import { ShipCapabilities } from '../../src/game/ship/ship-capabilities';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
-import { restoreShipAssembly, serializeShipAssembly } from '../../src/game/ship/ship-save';
+import { deserializeShipAssembly, serializeShipAssembly } from '../../src/game/ship/ship-assembly-serialization';
 import {
   axialMountTransform, inverseTransform, sameTransform, sideMountTransform, sideSlotRotation,
 } from '../../src/game/ship/ship-assembly-transform';
 import { test } from '../harness';
 
+// 既定カタログから試験用の module instance を組む省略形。
 function module(definitionId: string, id: string, state = {}) {
   return createShipModuleInstance(SHIP_MODULE_CATALOG.require(definitionId), id, state);
 }
 
+// 組み立て木の追加・切断・移管・変換・検査の不変条件を確かめる。
 export function register(): void {
   test('ship assembly: 既定戦闘船は規定の HP と性能、質量を持つ', () => {
     const assembly = createDefaultCombatPreset();
@@ -217,7 +219,7 @@ export function register(): void {
     const assembly = new ShipAssembly();
     assembly.addRoot(module('tank-3-main', 'tank', { fuel: 10 }));
     assembly.append(module('booster-standard', 'booster', { fuel: 2 }));
-    assembly.append(module('radiator-standard', 'radiator'));
+    assembly.append(module('radiator-standard', 'radiator', { temperature: 500 }));
     assembly.setIgnited('booster', true);
     assert.equal(assembly.consumeFuel('main', 3), 3);
     const boosterBefore = assembly.module('booster');
@@ -228,7 +230,6 @@ export function register(): void {
     assert.ok(booster !== null);
     assert.equal(booster.kind, 'booster');
     assembly.setDeployment('radiator', 0.4);
-    assembly.setTemperature('radiator', 500);
     const radiator = assembly.module('radiator');
     assert.ok(radiator !== null);
     assert.equal(radiator.temperature, 500);
@@ -257,7 +258,7 @@ export function register(): void {
         },
       ],
     };
-    const restored = restoreShipAssembly(oldSaved);
+    const restored = deserializeShipAssembly(oldSaved);
     assert.equal(restored.validate().valid, true);
     const edge = restored.graph.find(c => c.id === 'connection-8');
     assert.ok(edge !== undefined);
@@ -287,7 +288,7 @@ export function register(): void {
         },
       ],
     };
-    const restored = restoreShipAssembly(oldSaved);
+    const restored = deserializeShipAssembly(oldSaved);
     assert.equal(restored.validate().valid, true);
     const edge = restored.graph.find(c => c.id === 'connection-1');
     assert.ok(edge !== undefined);
@@ -378,7 +379,7 @@ export function register(): void {
 
       // セーブ＆ロードの検証
       const serializedA = serializeShipAssembly(mergedA.assembly);
-      const restoredA = restoreShipAssembly(serializedA);
+      const restoredA = deserializeShipAssembly(serializedA);
       assert.equal(restoredA.validate().valid, true);
       const restoredEdgeA = restoredA.graph.find(e => e.childId === mappedCockpitId);
       assert.ok(restoredEdgeA !== undefined);
@@ -410,7 +411,7 @@ export function register(): void {
 
       // セーブ＆ロードの検証
       const serializedB = serializeShipAssembly(mergedB.assembly);
-      const restoredB = restoreShipAssembly(serializedB);
+      const restoredB = deserializeShipAssembly(serializedB);
       assert.equal(restoredB.validate().valid, true);
       const restoredEdgeB = restoredB.graph.find(e => e.childId === mappedTankId);
       assert.ok(restoredEdgeB !== undefined);
@@ -496,7 +497,7 @@ export function register(): void {
     );
     const saved = serializeShipAssembly(assembly);
     assert.equal(saved.explicitTransforms, true);
-    const restored = restoreShipAssembly(saved);
+    const restored = deserializeShipAssembly(saved);
     assert.equal(restored.validate().valid, true);
     for (const id of ['child', 'solar']) {
       assert.ok(sameTransform(restored.transformOf(id)!, assembly.transformOf(id)!), id);

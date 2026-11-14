@@ -21,8 +21,6 @@ import {
   WeaponState, type SerializedWeaponState, type WeaponShotRecord,
 } from './weapon-state';
 
-export type { AmmoLoad } from './weapon-state';
-
 const EJECTED_MAG_PHYS_RADIUS = 1.4;
 // 空マガジン外枠がリンク排出口へ出るスライド。内側へ潜った位置から面の外まで [m]・[s]。
 const MAG_FRAME_SLIDE_DEPTH = 0.55;
