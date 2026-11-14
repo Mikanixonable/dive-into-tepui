@@ -55,14 +55,13 @@ const SCENES: readonly CloudDetailScene[] = [
 const TIERS_KM_PER_PX = [0.25, 1, 4] as const;
 const DISPLAY_TIMES_S = [0, 21600, 43200] as const;
 
-type CloudDetailKind = 'both' | 'cumulus' | 'cirrus';
+type CloudDetailKind = 'both' | 'cirrus';
 
 // 種類ごとの描画設定の差分。全撮影でレンズ効果は切る — 実写との輝度比較にブルームが混ざらない
 // ようにするため。
 const KIND_GRAPHICS: Readonly<Record<CloudDetailKind, Partial<GraphicsSettingsData>>> = {
   both: { lens: false },
-  cumulus: { lens: false, cirrus: false },
-  cirrus: { lens: false, cumulusDetail: CUMULUS_DETAIL.off, translucentCumulus: false },
+  cirrus: { lens: false, cumulusDetail: CUMULUS_DETAIL.off },
 };
 
 const EARTH_RADII = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape ?? null);
@@ -122,7 +121,7 @@ interface CloudDetailShot extends LabShot {
 }
 
 // 撮影の表。名前は <場面>-<時刻 h>h-<km/px>km-<種類>(例: npac-jet-6h-1km-cirrus)、
-// 総数は 12 場面 × 3 時刻 × 3 段 × 3 種類 = 324。
+// 総数は 12 場面 × 3 時刻 × 3 段 × 2 種類 = 216。
 export const CLOUD_DETAIL_SHOTS: Readonly<Record<string, CloudDetailShot>> = (() => {
   const shots: Record<string, CloudDetailShot> = {};
   for (const scene of SCENES) {
@@ -205,11 +204,11 @@ export const CLOUD_DETAIL_CHECK_SHOTS: Readonly<Record<string, CloudDetailShot>>
 // 視点を動かしただけで雲の形が変わらないかと、時間とともにどう流れ入れ替わるかを測る撮影の組。同じ場面を、
 // 基準(base)・直下点を北へ STABILITY_SHIFT_PX 画素ぶんずらした構図(shift)・高度を STABILITY_ZOOM 倍にした
 // 構図(zoom)・同じ構図の 10 分後(later10)と 30 分後(later30)で撮る。止まった雲なら、位置と縮尺を合わせた
-// 基準・shift・zoom は一致する。base・later10・later30 は種類ごと(両方・積雲だけ・巻雲だけ)にも撮る —
+// 基準・shift・zoom は一致する。base・later10・later30 は種類ごと(両方・巻雲だけ)にも撮る —
 // 層ごとに風が違うので、時間の計測を層別の位置合わせで読めるようにするため。計測の一覧
 // (CLOUD_DETAIL_SHOT_INFOS)には載せない。
 // 撮影名は <場面>-<時刻 h>h-<km/px>km-stab-<base|shift|zoom|later10|later30>。
-// 積雲だけ・巻雲だけは末尾へ -cumulus / -cirrus を足す(種類の無標は両方)。
+// 巻雲だけは末尾へ -cirrus を足す(種類の無標は両方)。
 const STABILITY_SCENE_IDS = ['natl-front', 'npac-jet', 'pac-temp', 'south-hl', 'wpac-itcz'] as const;
 const STABILITY_DISPLAY_TIME_S = 21600;
 // ずらす画素数。cap の 1 texel(低軌道で約 10 km)より短く、細部の段(0.25 km/px で 1〜128 px)を跨ぐ長さ。
@@ -240,7 +239,7 @@ export const CLOUD_DETAIL_STABILITY_SHOTS: Readonly<Record<string, CloudDetailSh
         const stem = `${scene.id}-${STABILITY_DISPLAY_TIME_S / 3600}h-${tierKmPerPx}km-stab-${variant}`;
         // 視点の安定性を見る構図(shift / zoom)は両方だけ。時間の計測に使う構図は層別にも撮る。
         const kinds: readonly CloudDetailKind[] =
-          variant === 'shift' || variant === 'zoom' ? ['both'] : ['both', 'cumulus', 'cirrus'];
+          variant === 'shift' || variant === 'zoom' ? ['both'] : ['both', 'cirrus'];
         for (const kind of kinds) {
           shots[kind === 'both' ? stem : `${stem}-${kind}`] = {
             scene: scene.scene,

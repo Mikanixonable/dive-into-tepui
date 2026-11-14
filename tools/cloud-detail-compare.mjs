@@ -125,33 +125,12 @@ const MIN_STRUCTURE_CONTRAST = 0.005;
 const EXCLUDED_NEAR_CLEAR_SHOTS = new Set([
   'natl-front-0h-0.25km-both',
   'natl-front-0h-0.25km-cirrus',
-  'natl-front-0h-0.25km-cumulus',
-  'natl-front-12h-0.25km-cumulus',
   'natl-trade-0h-4km-cirrus',
-  'natl-trade-12h-0.25km-cumulus',
-  'natl-trade-12h-1km-cumulus',
-  'natl-trade-12h-4km-cumulus',
-  'natl-trade-6h-1km-cumulus',
   'natl-trade-6h-4km-both',
   'natl-trade-6h-4km-cirrus',
-  'natl-trade-6h-4km-cumulus',
-  'peru-sc-0h-0.25km-cumulus',
-  'peru-sc-12h-0.25km-cumulus',
-  'peru-sc-12h-4km-cumulus',
-  'peru-sc-6h-1km-cumulus',
-  'peru-sc-6h-4km-cumulus',
   'sepac-open-0h-0.25km-both',
   'sepac-open-0h-0.25km-cirrus',
-  'sepac-open-0h-0.25km-cumulus',
   'sepac-open-0h-1km-cirrus',
-  'sepac-open-12h-0.25km-cumulus',
-  'sepac-open-12h-4km-cumulus',
-  'sepac-open-6h-1km-cumulus',
-  'sepac-open-6h-4km-cumulus',
-  'wpac-itcz-12h-0.25km-cumulus',
-  'wpac-itcz-6h-0.25km-cumulus',
-  'wpac-itcz-6h-1km-cumulus',
-  'wpac-itcz-6h-4km-cumulus'
 ]);
 
 // 特徴量の定義。id の接頭語 → 家族・値の集め方・正規化前の領域。
