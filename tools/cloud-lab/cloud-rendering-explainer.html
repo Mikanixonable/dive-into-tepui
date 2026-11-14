@@ -410,8 +410,8 @@
             <tr><td>100–3200 km</td><td><code>WeatherTransport.humiditySourceAt</code><br><code>SURFACE_HUMIDITY_NOISE</code></td><td><code>CirculatingNoise.at</code></td><td>雲塊、湿潤域、乾燥域</td></tr>
             <tr><td>24 / 48 km</td><td><code>CONVECTION_NOISE</code><br><code>CirculatingNoise.pairAt</code></td><td><code>gradientNoise(position)</code></td><td>細胞の網目と粒。生成雲の cellular pattern</td></tr>
             <tr><td>17 km 上限</td><td><code>CloudShapeEvaluator.cloudTop</code><br><code>CLOUD_TOP_SPAN</code></td><td>fieldTop + detail × 0.15</td><td>雲頂の高さ場。雲底からの起伏</td></tr>
-            <tr><td>8 km → 0.25 km</td><td><code>CloudDetailEvaluator.at</code><br><code>DETAIL_WAVELENGTHS</code></td><td>画面微分 <code>dFdx/dFdy</code> と量の勾配 + 段数</td><td>実写・生成どちらにも加わる sub-texel の細部と法線起伏。段ごとに画素の実寸で fade</td></tr>
-            <tr><td>流れ方向へ 1–6 倍</td><td><code>CirrusDetailEvaluator.multiplierAt</code></td><td>雲場の倍角ベクトル(筋の向きと揃い度)+ 画素の実寸</td><td>巻雲の光学深さに掛ける平均 1 の乗数。筋が上層の流れに沿って伸びる</td></tr>
+            <tr><td>32 km → 0.25 km</td><td><code>CloudDetailEvaluator.at</code><br><code>DETAIL_WAVELENGTHS</code></td><td>画面微分 <code>dFdx/dFdy</code> と量の勾配 + 段数 + 低層の風</td><td>実写・生成どちらにも加わる sub-texel の細部と法線起伏。段ごとに画素の実寸で fade。32〜4 km の段は低層の風向きへ最大 3 倍まで伸ばして読む(風速 10 m/s で満額)</td></tr>
+            <tr><td>流れ方向へ 1–3 倍</td><td><code>CirrusDetailEvaluator.multiplierAt</code></td><td>雲場の倍角ベクトル(筋の向きと揃い度)+ 画素の実寸</td><td>巻雲の光学深さに掛ける平均 1 の乗数。筋が上層の流れに沿って伸びる</td></tr>
             <tr><td>2–4 px</td><td><code>fadeOf</code>(段ごと)</td><td>段の波長 ÷ 画素の実寸</td><td>解像できない段を 0 へ落とす。遠景のモアレを抑える</td></tr>
           </tbody>
         </table>
@@ -428,7 +428,7 @@
           <div class="subpanel-head"><h3>OpaqueCloudSurfaceRenderer</h3><p>不透明な雲頂。G-buffer の雲殻レイヤーへ書く。</p></div>
           <div class="subpanel-body"><div class="mini-sequence">
             <div class="mini-row"><div class="mini-number">IN</div><div><strong>fieldSampler.sampleCloud(direction)</strong><span>CloudSample: cumulus / cirrus</span></div></div>
-            <div class="mini-row"><div class="mini-number">01</div><div><strong>CloudShapeEvaluator.detailAt</strong><span>8 km〜0.25 km の 6 段。量の勾配と画素の実寸で段ごとに fade</span></div></div>
+            <div class="mini-row"><div class="mini-number">01</div><div><strong>CloudShapeEvaluator.detailAt</strong><span>32 km〜0.25 km の段(段数は精細さで変わる)。量の勾配と画素の実寸で段ごとに fade</span></div></div>
             <div class="mini-row"><div class="mini-number">02</div><div><strong>opaqueFraction</strong><span>積雲の不透明度 + detail × 0.25 × gate(不透明度) をディザ帯へ変換。雲の無い柱には効かない</span></div></div>
             <div class="mini-row"><div class="mini-number">03</div><div><strong>clearanceAt / cloudTopRadius</strong><span>雲頂の内外を判定。最初の交点を探す</span></div></div>
             <div class="mini-row"><div class="mini-number">OUT</div><div><strong>marchedSurface → depthNode / normalNode</strong><span><code>GBuffer.render</code> の LIT_CLOUD_SHELL_LAYER</span></div></div>
@@ -456,7 +456,7 @@
         <div class="subpanel">
           <div class="subpanel-head"><h3>設定・LODの意味</h3><p>解像度の変更と、形状サンプリングの変更を分離している。</p></div>
           <div class="subpanel-body"><div class="mini-sequence">
-            <div class="mini-row"><div class="mini-number">A</div><div><strong>GraphicsSettings.cumulusDetail</strong><span>ray march: coarse 1+5 / standard 6+3 / fine 12+3。巻雲の細部: 粗 0 / 標準 4 / 精細 6 段</span></div></div>
+            <div class="mini-row"><div class="mini-number">A</div><div><strong>GraphicsSettings.cumulusDetail</strong><span>ray march: coarse 1+5 / standard 6+3 / fine 12+3。積雲の細部: 粗 4 / 標準 6 / 精細 8 段。巻雲の細部: 粗 0 / 標準 4 / 精細 6 段</span></div></div>
             <div class="mini-row"><div class="mini-number">B</div><div><strong>sphereLodLevel(apparentDiameterPx)</strong><span>球メッシュ: 64×48 / 160×120 / 384×288</span></div></div>
             <div class="mini-row"><div class="mini-number">C</div><div><strong>CloudPresentation.aim</strong><span>capRadiusFor(rho, topOverRadius) で視点中心へ再配置</span></div></div>
             <div class="mini-row"><div class="mini-number">D</div><div><strong>CloudFieldSampler.bind</strong><span>texture と CapPlacement を同じスナップショットで更新</span></div></div>
@@ -478,8 +478,8 @@
           <tr><td>condense</td><td>WeatherSample</td><td>CloudSample: cumulus / cirrus</td><td>CloudField の各 texel</td></tr>
           <tr><td>BakedField.render</td><td>source(direction), FieldProjection</td><td>RenderTarget texture</td><td>各焼成パス</td></tr>
           <tr><td>CloudFieldSampler.sampleCloud</td><td>body-fixed unit direction</td><td>texture.sample(uv) → CloudSample</td><td>各消費側</td></tr>
-          <tr><td>CloudShapeEvaluator.detailAt</td><td>direction, width, amount, amountAt</td><td>8 km〜0.25 km の段の細部 −1..1</td><td>surface / shadow</td></tr>
-          <tr><td>CirrusDetailEvaluator.multiplierAt</td><td>direction, radius, width, flow</td><td>光学深さに掛ける乗数(平均 1)</td><td>大気の殻・巻雲の影</td></tr>
+          <tr><td>CloudShapeEvaluator.detailAt</td><td>direction, width, amount, amountAt, wind</td><td>32 km〜0.25 km の段の細部 −1..1</td><td>surface / shadow</td></tr>
+          <tr><td>CirrusDetailEvaluator.multiplierAt</td><td>direction, radius, width, flow, wind</td><td>光学深さに掛ける乗数(平均 1)</td><td>大気の殻・巻雲の影</td></tr>
           <tr><td>OpaqueCloudSurfaceRenderer.marchedSurface</td><td>camera ray, field, detail</td><td>first cloud-top hit → depth / normal</td><td>画素</td></tr>
           <tr><td>CloudAtmosphereRenderer.scatteredAt</td><td>species, shell, ray, sun</td><td>cloudTransmittance / localRadiance</td><td>殻の交差点</td></tr>
           <tr><td>CloudShadowRenderer.transmittance</td><td>worldPos, footprint, sun ray</td><td>receiver transmittance</td><td>影パスの画素</td></tr>
