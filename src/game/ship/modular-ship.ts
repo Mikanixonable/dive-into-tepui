@@ -5,7 +5,7 @@ import { deserializeAttitude, type Attitude } from '../../physics/attitude';
 import { LOCAL_FORWARD, qFromBasis, qRotate } from '../../math/quat';
 import { deserializeKinematicState, kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { add, scale, v3, len, sub, type Vec3 } from '../../math/vec3';
-import { Ship } from '../dynamic/dynamic-entity/ship';
+import { CombatShipEntity } from '../dynamic/dynamic-entity/combat-ship-entity';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { DynamicEntity, SerializedDynamicEntityFields } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry } from '../dynamic/entity-registry';
@@ -101,7 +101,7 @@ export interface SerializedModularShip extends SerializedDynamicEntityFields {
 }
 
 // モジュール船の操縦・射撃・ブースター・接触帰結・保存を合成する entity。
-export class ModularShip extends Ship implements Controllable {
+export class ModularShip extends CombatShipEntity implements Controllable {
   public static readonly kind = 'ship';
   public static spawnGate(): null { return null; }
   public override mapKind: DynamicEntityKind;
@@ -139,9 +139,9 @@ export class ModularShip extends Ship implements Controllable {
   public readonly toggleSolarPanel = (side: 'up' | 'down'): void => this.motion.power.toggle(side);
   public readonly toggleRadiator = (side: 'up' | 'down'): void => this.motion.radiator.toggle(side);
 
-  public override get totalTorque(): number { return this.capabilities.totalTorque; }
-  public override get totalThrust(): number { return this.capabilities.totalThrust; }
-  public override get totalFuelConsumptionRate(): number {
+  public get totalTorque(): number { return this.capabilities.totalTorque; }
+  public get totalThrust(): number { return this.capabilities.totalThrust; }
+  public get totalFuelConsumptionRate(): number {
     return this.capabilities.modules('thruster', true).reduce(
       (sum, module) => sum + (this.assembly.definition(module.id)?.abilities.fuelConsumptionRate ?? 0), 0,
     );
@@ -151,17 +151,17 @@ export class ModularShip extends Ship implements Controllable {
       (sum, module) => sum + (this.assembly.definition(module.id)?.abilities.fuelConsumptionRate ?? 0), 0,
     );
   }
-  public override get totalFuel(): number { return this.capabilities.fuel('main'); }
-  public override get totalMaxFuel(): number { return this.capabilities.maxFuel('main'); }
+  public get totalFuel(): number { return this.capabilities.fuel('main'); }
+  public get totalMaxFuel(): number { return this.capabilities.maxFuel('main'); }
   public get totalRcsFuel(): number { return this.capabilities.fuel('rcs'); }
   public get totalMaxRcsFuel(): number { return this.capabilities.maxFuel('rcs'); }
-  public override consumeFuel(amount: number): number {
+  public consumeFuel(amount: number): number {
     if (amount <= 0) return 1;
     const consumed = this.capabilities.consumeFuel('main', amount);
     if (consumed > 0) this.motion.synchronizeAssembly();
     return consumed / amount;
   }
-  public override refuelFuel(amount: number): number {
+  public refuelFuel(amount: number): number {
     const added = this.capabilities.refuel('main', amount);
     if (added > 0) this.motion.synchronizeAssembly();
     return added;
@@ -177,11 +177,11 @@ export class ModularShip extends Ship implements Controllable {
     if (added > 0) this.motion.synchronizeAssembly();
     return added;
   }
-  public override get totalCoolingRate(): number { return this.capabilities.totalCoolingRate; }
-  public override get totalPowerGeneration(): number { return this.capabilities.totalPowerGeneration; }
-  public override get weaponDamage(): number { return this.capabilities.weaponDamage; }
-  public override get totalFireRate(): number { return this.capabilities.totalFireRate; }
-  public override get averageMuzzleVelocity(): number { return this.capabilities.averageMuzzleVelocity; }
+  public get totalCoolingRate(): number { return this.capabilities.totalCoolingRate; }
+  public get totalPowerGeneration(): number { return this.capabilities.totalPowerGeneration; }
+  public get weaponDamage(): number { return this.capabilities.weaponDamage; }
+  public get totalFireRate(): number { return this.capabilities.totalFireRate; }
+  public get averageMuzzleVelocity(): number { return this.capabilities.averageMuzzleVelocity; }
 
   // placement に新しいモジュール船を置く。
   public static create(
@@ -274,8 +274,7 @@ export class ModularShip extends Ship implements Controllable {
     );
     this.mapKind = assembly.role === 'base' ? 'base' : 'player';
     this.showsEquatorNodesAlways = assembly.role === 'base';
-    this.hp = assembly.totalHp;
-    this.maxHp = assembly.maxHp;
+    this.setHealth(assembly.totalHp, assembly.maxHp);
     this.registry = registry;
     this.throttle = saved?.throttle ? Throttle.deserialize(saved.throttle) : new Throttle();
     this.effects = new PlayerEffects(registry);
@@ -284,8 +283,7 @@ export class ModularShip extends Ship implements Controllable {
       assembly: this.assembly,
       effects: this.effects,
       syncAfterDamage: () => {
-        this.hp = this.assembly.totalHp;
-        this.maxHp = this.assembly.maxHp;
+        this.setHealth(this.assembly.totalHp, this.assembly.maxHp);
         this.capabilities.reconcileOperatingCockpit();
         this.syncDerivedRole();
       },
@@ -304,8 +302,7 @@ export class ModularShip extends Ship implements Controllable {
       createShip: (next, nextRegistry) => ModularShip.create(next, nextRegistry, scene),
       clearTransientCommands: () => this.clearTransientCommands(),
       syncAssemblyDerivedState: () => {
-        this.hp = this.assembly.totalHp;
-        this.maxHp = this.assembly.maxHp;
+        this.setHealth(this.assembly.totalHp, this.assembly.maxHp);
         this.capabilities.reconcileOperatingCockpit();
         this.syncDerivedRole();
       },
@@ -372,7 +369,7 @@ export class ModularShip extends Ship implements Controllable {
       if (repaired > 0) this.assembly.setHp(module.id, module.hp + repaired);
       remaining -= repaired;
     }
-    this.hp = this.assembly.totalHp;
+    this.setHealth(this.assembly.totalHp);
   }
 
   // -------------------------------------------------------- 移動/射撃 状態
