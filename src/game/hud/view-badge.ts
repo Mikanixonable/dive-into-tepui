@@ -47,7 +47,7 @@ function setFieldValue(el: HTMLElement, value: string | null): void {
 }
 
 // ビューバッジが1フレームに映す値。名前の欄は、対象が定まっていなければ null。
-export interface ViewBadgeViewModel {
+interface ViewBadgeViewModel {
   readonly modeLabel: string;
   readonly view: ViewMode;
   // 遷移メニューに並べるビュー。いま入れるものだけが入る。
