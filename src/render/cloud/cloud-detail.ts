@@ -1,18 +1,21 @@
-// 積雲の細部 — 雲場の texel より細かい尺度の起伏を張る共有評価器。8 km から 0.25 km まで
+// 積雲の細部 — 雲場の texel より細かい尺度の起伏を張る共有評価器。16 km から 0.25 km まで
 // 比 2 のオクターブの勾配ノイズを重ね、細かいオクターブの振幅を 1 つ粗いオクターブの実現値で
 // 掛け合わせて、細部の強さを場所ごとに偏らせる(間欠性)。全体の振幅は評価点の場の量と
-// その勾配で決まり、読み取り方向は低周波のノイズで歪ませて格子の並びを崩す。
+// その勾配で決まり、読み取り方向は低周波のノイズで歪ませて格子の並びを崩す。各段は風に乗って
+// 流れ、段の寿命で湧いて崩れる(cloud-detail-clock.ts)。
 import {
   If, clamp, dot, exp, float, greaterThan, length, max, min, normalize, select, smoothstep, sqrt, step,
   uniform, vec3,
 } from 'three/tsl';
+import { DetailClock } from './cloud-detail-clock';
 import { gradientNoise } from './gradient-noise';
 import { eastAt, northAt } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
-// 細部のオクターブが張る波長 [m](粗→細、比 2)。粗い端は場の texel(低軌道の cap で
-// 約 10 km)のすぐ下、細かい端は実写の放射の平滑化が折れ始める 0.25 km まで。
-export const DETAIL_WAVELENGTHS = [8000, 4000, 2000, 1000, 500, 250] as const;
+// 細部のオクターブが張る波長 [m](粗→細、比 2)。粗い端は低軌道の cap で場が担う最も細かい段
+// (対流の 24 km、上層の湿度の 25 km)のすぐ下 — 場と細部のあいだに担い手のいない尺度を残さない。
+// 細かい端は実写の放射の平滑化が折れ始める 0.25 km まで。
+export const DETAIL_WAVELENGTHS = [16000, 8000, 4000, 2000, 1000, 500, 250] as const;
 
 // 最も細かいオクターブの波長 [m]。法線の差分幅はこの半分に取る。
 export const FINEST_DETAIL_WAVELENGTH = DETAIL_WAVELENGTHS[DETAIL_WAVELENGTHS.length - 1]!;
@@ -24,10 +27,16 @@ export const DETAIL_AMPLITUDE_MAX = 1;
 // この量を下回る柱では細部を評価しない。覆いの利得が 0 へ落ちる量の範囲で、見えの差はない。
 const DETAIL_PRESENT_AMOUNT = 0.001;
 
-// オクターブごとの名目振幅。実写の雲の輝度が持つ 1 次元波数スペクトルの傾き k^−5/3 に
-// 合わせ、帯域ごとの二乗平均振幅が波長の 1/3 乗に比例するよう取り、和を 1 に正規化する。
+// オクターブごとの名目振幅の、波長に対する冪(帯域ごとの二乗平均振幅 ∝ 波長^冪)。**細部の尺度の
+// 梯子の傾きを決める唯一のつまみ**で、cloud-detail:compare の尺度の梯子(生成 ÷ 実写のパワーが
+// 帯によらず揃うか)へ結ぶ。輝度の k^−5/3 は冪 1/3 にあたるが、細部は覆いの二値化と雲頂の起伏を
+// 通って輝度になるので、そのままでは細かい段が実写より強く出る(1/3 で 0.5〜1 km が実写の約 6 倍、
+// 8〜64 km が約 0.2〜0.3 倍)。
+const DETAIL_SPECTRAL_EXPONENT = 0.7;
+
+// オクターブごとの名目振幅。波長の DETAIL_SPECTRAL_EXPONENT 乗に比例させ、和を 1 に正規化する。
 const OCTAVE_WEIGHTS = (() => {
-  const raw = DETAIL_WAVELENGTHS.map((wavelength) => Math.cbrt(wavelength));
+  const raw = DETAIL_WAVELENGTHS.map((wavelength) => wavelength ** DETAIL_SPECTRAL_EXPONENT);
   const total = raw.reduce((sum, weight) => sum + weight, 0);
   return raw.map((weight) => weight / total);
 })();
@@ -69,6 +78,7 @@ const WARP_OFFSET = vec3(5.2, 1.3, 7.9);
 export class CloudDetailEvaluator {
   // 使う段数(粗い側から数える)。uniform なので、段数を変えてもシェーダのグラフは組み直さない。
   private readonly octaves: FloatUniform = uniform(0);
+  private readonly clock = new DetailClock(DETAIL_WAVELENGTHS);
 
   // bodyRadius は雲を載せる天体の基準半径 [m](単位方向と波長・実寸の換算に使う)。
   public constructor(private readonly bodyRadius: FloatNode | number) {}
@@ -76,12 +86,15 @@ export class CloudDetailEvaluator {
   // 使う段数を置く。幅で落ちる段は、この段数によらず評価しない。
   public setOctaves(count: number): void { this.octaves.value = count; }
 
+  // 表示時刻 displayTime [s] と、実時間 1 秒あたりに進む表示時刻 rate を置く。
+  public syncClock(displayTime: number, rate: number): void { this.clock.sync(displayTime, rate); }
+
   // 天体固定の単位方向 direction での細部、おおむね −1..1。width はその位置で読み手の
-  // 1 画素・1 タップが張る実寸 [m]、amount はその場所の量。勾配は東と北へ width ぶん離した
-  // 2 点を amountAt で読んで取る。
+  // 1 画素・1 タップが張る実寸 [m]、amount はその場所の量、wind はそこで雲を運ぶ風の東・北の成分 [m/s]。
+  // 勾配は東と北へ width ぶん離した 2 点を amountAt で読んで取る。
   public at(
     direction: Vec3Node, width: FloatNode, amount: FloatNode,
-    amountAt: (direction: Vec3Node) => FloatNode,
+    amountAt: (direction: Vec3Node) => FloatNode, wind: Vec2Node,
   ): FloatNode {
     const radius = typeof this.bodyRadius === 'number' ? float(this.bodyRadius) : this.bodyRadius;
     const span = max(width, 1);
@@ -112,15 +125,17 @@ export class CloudDetailEvaluator {
         east.mul(gradientNoise(warp)).add(north.mul(gradientNoise(warp.add(WARP_OFFSET))))
           .mul(float(WARP_DISPLACEMENT).div(radius)),
       ));
+      const windVector = east.mul(wind.x).add(north.mul(wind.y));
 
       const sum = float(0).toVar();
       const gate = float(1).toVar();
       for (const [index, wavelength] of DETAIL_WAVELENGTHS.entries()) {
         // 段数の上限の外と、幅で解像できない段は評価しない。消えた段は常に細い側なので、飛ばしても
         // 乗法の鎖は残る段で完結する。
-        const live = fadeOf(wavelength, span).mul(step(float(index + 1), this.octaves)).toVar();
+        const live = fadeOf(wavelength, span).mul(step(float(index + 1), this.octaves))
+          .mul(this.clock.presence(index)).toVar();
         If(greaterThan(live, 0), () => {
-          const value = gradientNoise(warped.mul(radius).div(wavelength)).toVar();
+          const value = this.clock.evolvingNoise(index, warped, radius, windVector).toVar();
           sum.addAssign(value.mul(OCTAVE_WEIGHTS[index]!).mul(live).mul(gate));
           gate.mulAssign(exp(value.mul(OCTAVE_COUPLING).sub(COUPLING_SHIFT).mul(live)));
         });
@@ -136,8 +151,8 @@ function fadeOf(wavelength: number, span: FloatNode): FloatNode {
   return smoothstep(FADE_ZERO_RATIO, FADE_FULL_RATIO, float(wavelength).div(span));
 }
 
-// 巻雲の細部の段。粗は細部を足さず、標準と精細は段数の上限を 4・6 とする。値は保存された設定を
-// 読む鍵なので、段を足すときも既存の値を動かさない。
+// 巻雲の細部の段。粗は細部を足さず、標準と精細は段数の上限を 4・6 とする(8 km から数えて、標準は 1 km まで、
+// 精細は 0.25 km まで)。値は保存された設定を読む鍵なので、段を足すときも既存の値を動かさない。
 export const CIRRUS_DETAIL = { coarse: 0, standard: 1, fine: 2 } as const;
 export type CirrusDetail = (typeof CIRRUS_DETAIL)[keyof typeof CIRRUS_DETAIL];
 
@@ -147,28 +162,41 @@ const CIRRUS_OCTAVES: Readonly<Record<CirrusDetail, number>> = {
   [CIRRUS_DETAIL.fine]: 6,
 };
 
-// 巻雲の細部の段数(粗い側から数える)。
+// 巻雲の細部の段数(巻雲の最も粗い段から数える)。
 export function cirrusOctavesOf(detail: CirrusDetail): number {
   return CIRRUS_OCTAVES[detail];
 }
 
+// 巻雲の細部が使う最も粗い段の番号(DETAIL_WAVELENGTHS の添字)。巻雲は 16 km の段を飛ばして 8 km から
+// 始める — 光学深さへの乗数は 16 km の起伏を 50 km の範囲で均しきれず、細部が数十キロで均した濃さを
+// 変えてしまう。16〜50 km は上層の湿度の細かい段(雲場)が担う。
+const CIRRUS_FIRST_OCTAVE = 1;
+
 // 揃いの強い筋が流れ方向へ伸びる倍率の上限。揃い度 0 の場所は等方に読む。
 const CIRRUS_STRETCH_MAX = 6;
-// 光学深さの対数の標準偏差。筋の濃淡の強さで、平均を 1 に保つ補正と組で使う。
-const CIRRUS_LOG_SIGMA = 0.5;
+// 光学深さの対数の標準偏差。筋の濃淡の強さで、平均を 1 に保つ補正と組で使う。尺度の梯子で巻雲の
+// 細かい帯(1〜16 km)が大きい帯(64 km 以上)に対して強すぎない高さに取る。
+const CIRRUS_LOG_SIGMA = 0.4;
 // この量を下回る巻雲の柱では細部を評価しない。乗数は 1 のままで、光学深さは 0 に近い。
 export const CIRRUS_PRESENT_AMOUNT = 0.001;
 
 export class CirrusDetailEvaluator {
   // 使う段数(粗い側から数える)。uniform なので、段数を変えてもシェーダのグラフは組み直さない。
   private readonly octaves: FloatUniform = uniform(0);
+  private readonly clock = new DetailClock(DETAIL_WAVELENGTHS);
 
   // 使う段数を置く。0 のときは乗数が 1 になる。
   public setOctaves(count: number): void { this.octaves.value = count; }
 
+  // 表示時刻 displayTime [s] と、実時間 1 秒あたりに進む表示時刻 rate を置く。
+  public syncClock(displayTime: number, rate: number): void { this.clock.sync(displayTime, rate); }
+
   // 天体固定の単位方向 direction の光学深さに掛ける乗数(正で、平均は 1)。radius は天体の基準半径 [m]、
-  // width は画素・タップが張る実寸 [m]、flow は場の倍角ベクトル(筋の向きと揃い度)。
-  public multiplierAt(direction: Vec3Node, radius: FloatNode, width: FloatNode, flow: Vec2Node): FloatNode {
+  // width は画素・タップが張る実寸 [m]、flow は場の倍角ベクトル(筋の向きと揃い度)、wind は巻雲を運ぶ
+  // 上層の風の東・北の成分 [m/s]。
+  public multiplierAt(
+    direction: Vec3Node, radius: FloatNode, width: FloatNode, flow: Vec2Node, wind: Vec2Node,
+  ): FloatNode {
     const span = max(width, 1);
     const east = eastAt(direction);
     const north = northAt(direction);
@@ -180,19 +208,23 @@ export class CirrusDetailEvaluator {
     const sinTheta = select(axis.y.lessThan(0), float(-1), float(1))
       .mul(sqrt(max(axis.x.oneMinus().mul(0.5), 0)));
     const flowDir = normalize(east.mul(cosTheta).add(north.mul(sinTheta)));
-    // 流れ方向の成分を 1/stretch に縮めた位置で読む。同じ段の起伏が流れに沿って長く伸びて見える。
+    // 流れ方向の成分を 1/stretch に縮めた方向で読む。同じ段の起伏が流れに沿って長く伸びて見える。
+    // 縮めるのは天体中心を通る平面の上の成分なので、縮めた方向も単位方向へ戻して読む。
     const stretch = float(1).add(float(CIRRUS_STRETCH_MAX - 1).mul(coherence));
-    const position = direction.mul(radius);
-    const along = dot(position, flowDir);
-    const stretched = position.sub(flowDir.mul(along.mul(float(1).sub(float(1).div(stretch)))));
+    const along = dot(direction, flowDir);
+    const stretched = normalize(direction.sub(flowDir.mul(along.mul(float(1).sub(float(1).div(stretch))))));
+    const windVector = east.mul(wind.x).add(north.mul(wind.y));
 
     const sum = float(0).toVar();
     const energy = float(0).toVar();
     for (const [index, wavelength] of DETAIL_WAVELENGTHS.entries()) {
-      const live = fadeOf(wavelength, span).mul(step(float(index + 1), this.octaves)).toVar();
+      if (index < CIRRUS_FIRST_OCTAVE) continue;
+      const live = fadeOf(wavelength, span).mul(step(float(index - CIRRUS_FIRST_OCTAVE + 1), this.octaves))
+        .mul(this.clock.presence(index)).toVar();
       If(greaterThan(live, 0), () => {
         const weight = live.mul(OCTAVE_WEIGHTS[index]!);
-        sum.addAssign(gradientNoise(stretched.div(wavelength)).mul(weight));
+        const value = this.clock.evolvingNoise(index, stretched, radius, windVector).toVar();
+        sum.addAssign(value.mul(weight));
         energy.addAssign(weight.mul(weight));
       });
     }
