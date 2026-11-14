@@ -31,7 +31,6 @@ export const RADIATOR_SEGMENT_LENGTH = 0.8 * Math.sqrt(10); // ≈ 2.530 m
 export const RADIATOR_PANEL_WIDTH = 1.0 * Math.sqrt(10); // ≈ 3.162 m
 // 放熱板1折りの厚み [m]。
 export const RADIATOR_PANEL_THICKNESS = 0.08;
-export const RADIATOR_MODULE_AREA = RADIATOR_FOLD_COUNT * RADIATOR_SEGMENT_LENGTH * RADIATOR_PANEL_WIDTH;
 
 // 全開時に各折りが展開軸から残す傾き [rad]。
 export const RADIATOR_DEPLOY_TILT = 15 * Math.PI / 180;
@@ -45,7 +44,7 @@ export const MAG_PLANAR_SCALE = 1.4;
 // マガジンのベルト方向寸法・横幅と、端面の間に残す継手すき間 [m]。
 export const MAG_WIDTH = MAG_THICKNESS * 4 * (2 / 3) * MAG_PLANAR_SCALE;
 export const MAG_DEPTH = MAG_THICKNESS * 3 * (2 / 3) * MAG_PLANAR_SCALE;
-export const MAG_JOINT_GAP = 0.36;
+const MAG_JOINT_GAP = 0.36;
 export const MAG_BELT_PITCH = MAG_WIDTH + MAG_JOINT_GAP;
 
 // ベルトが機体へ入る給弾口の機体座標系 X 位置 [m]。

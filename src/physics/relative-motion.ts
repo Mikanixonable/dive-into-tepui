@@ -26,7 +26,7 @@ const c_ = (n: number, t: number) => Math.cos(n * t);
 // [ 4−3c,   0,    0 ]
 // [ 6(s−nt), 1,   0 ]
 // [ 0,      0,    c ]
-export function cwPhiRR(n: number, t: number): Mat3 {
+function cwPhiRR(n: number, t: number): Mat3 {
   const s = s_(n, t), c = c_(n, t);
   return [
     4 - 3 * c, 0, 0,
@@ -39,7 +39,7 @@ export function cwPhiRR(n: number, t: number): Mat3 {
 // [ s/n,        2(1−c)/n, 0 ]
 // [ −2(1−c)/n, (4s−3nt)/n, 0 ]
 // [ 0,          0,        s/n ]
-export function cwPhiRV(n: number, t: number): Mat3 {
+function cwPhiRV(n: number, t: number): Mat3 {
   const s = s_(n, t), c = c_(n, t);
   return [
     s / n, (2 * (1 - c)) / n, 0,
@@ -52,7 +52,7 @@ export function cwPhiRV(n: number, t: number): Mat3 {
 // [ 3n s,   0,    0 ]
 // [ 6n(c−1), 0,   0 ]
 // [ 0,      0,   −n s ]
-export function cwPhiVR(n: number, t: number): Mat3 {
+function cwPhiVR(n: number, t: number): Mat3 {
   const s = s_(n, t), c = c_(n, t);
   return [
     3 * n * s, 0, 0,
@@ -65,7 +65,7 @@ export function cwPhiVR(n: number, t: number): Mat3 {
 // [ c,     2s,    0 ]
 // [ −2s,   4c−3,  0 ]
 // [ 0,     0,     c ]
-export function cwPhiVV(n: number, t: number): Mat3 {
+function cwPhiVV(n: number, t: number): Mat3 {
   const s = s_(n, t), c = c_(n, t);
   return [
     c, 2 * s, 0,
