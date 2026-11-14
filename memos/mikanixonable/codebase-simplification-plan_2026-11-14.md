@@ -25,7 +25,11 @@
 - 手順2は完了。`src/game/dynamic/entity-lifecycle.ts` の差分は3行追加・65行削除で、純減は62行。
   `SpawnRecord` の待機と復元は維持し、呼び出し元のないコールバック queue と `markDead()` を除いた。
 - 手順2の `npm run typecheck`、`npm run test:game` (462/462)、`npm run check:boundaries` と対象ファイルの ESLint は成功した。
-- 完了済み手順の所要時間は記録していない。以下は未実施の手順だけの見積り。
+- 手順3は完了。`engagementZones()` を削除し、既存テストを builder へ切り替えた。差分は2行の純減で、
+  追跡ファイル数の増減はない。交戦圏の境界・連結・contains・配列再利用の各テストは維持した。
+- 手順3の `npm run typecheck`、`npm run test:game` (462/462)、`npm run check:boundaries` と対象ファイルの ESLint は成功した。
+- 全手順の合計は955行の純減、対象コードの追跡ファイル3件減、新規コードファイル0件。
+- 実行に要した時間は記録していない。
 
 ## 仕様に書かれている保存対象と直す挙動
 
@@ -49,35 +53,14 @@
 
 ## 手順
 
-### 手順 3. 交戦圏の単発互換ラッパーを除く
+## 実績
 
-**目的**
-
-本番から使われず、新しい builder を毎回作るだけの `engagementZones()` を取り除く。
-交戦圏の判定アルゴリズムや、毎サブステップ builder を再利用する実行経路は変えない。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/game/dynamic/engagement-zone.ts:109-115` | `EngagementZoneBuilder` を包むだけの `engagementZones()` を削除する。 |
-| `tests/game/engagement-zone.test.ts:23-80` | 既存の境界・重なり・連結・contains・死亡中心の検査を `EngagementZoneBuilder.build()` へ移す。buffer 再利用のテストも残す。 |
-
-`src/game/dynamic/simulator.ts` は現在すでに `EngagementZoneBuilder` を直接使うため変更しない。
-各ケースのテストでは必要に応じて新しい builder を作り、単発呼び出しと同じ入力・出力条件を保つ。
-
-**達成条件と検証**
-
-- `src/` で `engagementZones(` が0件。
-- `ENGAGEMENT_RANGE`、生存中心の選別、30 km 球の連結、所属中心の並び、contains 判定、builder の配列再利用を既存テストが検査する。
-- `npm run typecheck` と `npm run test:game` が成功する。
-
-## 見積り
-
-| 手順 | 削減見込み | 作業時間の導出 |
+| 手順 | 純減 | 追跡ファイル数 | 検証 |
 | --- | ---: | --- |
-| 3 | 約7行 | 1ラッパー削除 + 既存ケースを builder に接続(15〜25分) + game テストと型検査(10〜15分) = 25〜40分 |
-| **残り** | **約7行** | **25〜40分** |
+| 1 | 891行 | 3減 | typecheck、test:physics、test:game 成功 |
+| 2 | 62行 | 増減なし | typecheck、test:game、check:boundaries、対象 ESLint 成功 |
+| 3 | 2行 | 増減なし | typecheck、test:game、check:boundaries、対象 ESLint 成功 |
+| **合計** | **955行** | **3減** | **所要時間は未記録** |
 
 ## リスクと落とし穴
 
@@ -86,17 +69,19 @@
 | `cylinder-contact.ts` に静的検索で見えない loader / 動的 import がある | 特定の物体接触が失われる | 手順1で対象関数の全参照を検索済み。`test:physics` と `test:game` は成功 |
 | 旧 cylinder テスト削除と同時に capped / compound の回帰テストまで消す | 接触形状の欠落が後から発覚する | 手順1で削除対象を指定ファイルに限定し、両方を含む物理・ゲームのテストが成功 |
 | `EntityLifecycle` の整理で保存済み `SpawnRecord` の待機まで消す | 復元直後に外部条件待ちの個体が欠落する | 手順2で `SpawnRecord` 経路を diff で確認済み。`test:game` が成功 |
-| 単発テストを builder 再利用テストへ置き換える際に境界ケースが減る | 交戦圏の広がりや連結規則が変わる | 手順3。各既存の位置・生存・倍率ケースを維持し、`test:game` を実行 |
+| 単発テストを builder 再利用テストへ置き換える際に境界ケースが減る | 交戦圏の広がりや連結規則が変わる | 手順3で既存の位置・生存・倍率ケースを維持し、`test:game` が成功 |
 | 説明ページを手動で開く利用者がいる | Cloud Lab のコード案内へ直接アクセスできなくなる | 手順1でビルド対象外と古いソース行リンクを確認して削除済み |
-| 雲の分析ツールや性能計測を行数だけで削る | 雲の見た目や描画負荷の改善が難しくなる | 全手順。対象外一覧を維持し、差分レビューで `tools/cloud-*` と `tests/perf/` の削除が0件であることを確認 |
+| 雲の分析ツールや性能計測を行数だけで削る | 雲の見た目や描画負荷の改善が難しくなる | `tools/cloud-lab/cloud-rendering-explainer.html` 以外の分析ツール、`tests/perf/` に削除なし |
 
 ## 全手順後の検証
 
-- `npm run typecheck`
-- `npm run test`
-- `npm run build`
-- `git diff --check`
-- 比較基準 `3e62e5109` から計画対象パスだけを `git diff --numstat` で比べ、純減が900行以上、
-  削除ファイルが3つ以上、`src/`・`tests/`・`tools/` に追加コードファイルが0であることを確認する。
-- `git status --short` で計画対象外の差分を保持していることを確認する。無関係な差分とこの計画 memo 自体は集計しない。
-- 差分に操作、戦闘、物理、描画品質、報酬、ステージ進行、セーブ形式の変更が無いことをレビューする。
+- `npm run typecheck`: 成功。
+- `npm run test`: 1,337/1,337 成功。
+- `npm run build`: 成功。Webpack の bundle サイズに関する警告が3件出たが、ビルドは完了した。
+- 計画対象パスに対する `git diff --check`: 成功。全ワークツリーでの実行は、作業開始前からある
+  `memos/mikanixonable/dev.md:597` の末尾空白で失敗したため、その無関係な変更は保持した。
+- 比較基準 `3e62e5109` から計画対象パスだけの差分を計測し、955行純減、追跡ファイル3件削除、
+  `src/`・`tests/`・`tools/` の追加コードファイル0件を確認した。計画 memo と既存の無関係な差分は除外した。
+- `src/`・`tests/`・`tools/` 内で対象の旧識別子は0件。`EntityLifecycle` の `SpawnRecord` 待機・実体化・復元、
+  `Simulator` の builder 経路、および capped / compound 接触テストは維持されている。
+- 差分レビューで操作、戦闘、物理、描画品質、報酬、ステージ進行、セーブ形式の変更がないことを確認した。
