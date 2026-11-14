@@ -311,7 +311,7 @@ const EARTH_MARS_PLACEMENT = placementBelowHorizon(
 function earthMars(): LabCase {
   const marsCenter = new THREE.Vector3(0, 0, -EARTH_MARS_DISTANCE);
   const mars = texturedBody(MARS_TEXTURE, MARS, marsCenter, CLOSE_UP_DIAMETER_PX);
-  const marsRadii = shapeSpheroidRadii(MARS.radius, MARS.shape);
+  const marsRadii = shapeSpheroidRadii(MARS.radius, MARS.shape ?? null);
   return {
     objects: [mars.object],
     camera: labCamera(),
