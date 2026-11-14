@@ -10,10 +10,14 @@ import type { CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-presentation';
 import type { Vec3Node } from '../tsl-types';
 
+// 雲場を焼き直す表示時刻の刻み [s]。前回のベイクからこの幅のあいだは、気候と投影が同じ限り
+// 前回の場を使い続ける。この幅では場の変化が texel より細かく、焼き直しても見えの差が出ない。
+const CLOUD_BAKE_DISPLAY_TIME_STEP = 6;
+
 export class GeneratedCloudField implements CloudFieldSource {
   private readonly model: WeatherModel;
   private readonly field: CloudField;
-  // 最後に焼いた表示時刻。表示時刻が同じ間は生成済みの場を使う。
+  // 最後に焼いた表示時刻。表示時刻が CLOUD_BAKE_DISPLAY_TIME_STEP より近い間は生成済みの場を使う。
   private lastBakedDisplayTime: number | null = null;
   // 最後に焼いたときの気候の世代。読む画像が変われば、同じ表示時刻でも焼き直す。
   private lastBakedClimateGeneration: number | null = null;
@@ -49,10 +53,12 @@ export class GeneratedCloudField implements CloudFieldSource {
   public prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
     // 気候画像の取得を始める。
     this.climate.request();
-    // 表示時刻・気候の入力・投影の置き方が前回と同じなら、焼いた場をそのまま使う。
+    // 表示時刻が前回のベイクに近く、気候の入力と投影の置き方が同じなら、焼いた場をそのまま使う。
+    // 時刻の差は絶対値で見る — 止まっている間と、巻き戻しの中も同じ場で足りる。
     const climateGeneration = this.climate.generation;
     const projectionRevision = this.projection.revision;
-    if (this.lastBakedDisplayTime === displayTime
+    if (this.lastBakedDisplayTime !== null
+      && Math.abs(displayTime - this.lastBakedDisplayTime) < CLOUD_BAKE_DISPLAY_TIME_STEP
       && this.lastBakedClimateGeneration === climateGeneration
       && this.lastBakedProjectionRevision === projectionRevision) return;
     // 天気の中間場から雲場まで順に焼く。
