@@ -3,7 +3,7 @@
 // 育ち、崩れ、分かれる。生まれてから経った時間ぶん読む位置を風上へ戻すので、模様は風に乗って流れる。
 // 戻す距離が溜まりすぎないよう段ごとの周期で読み直し、周期の継ぎ目の前後だけ次の周期と重ねて渡す。
 import * as THREE from 'three/webgpu';
-import { If, cos, dot, float, greaterThan, normalize, sin, smoothstep, uniform } from 'three/tsl';
+import { If, clamp, cos, float, greaterThan, normalize, sin, smoothstep, sqrt, uniform } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
@@ -26,6 +26,11 @@ const RECYCLE_BLEND = 0.15;
 const MIN_VISIBLE_LIFETIME = 3;
 // 読み直すたびに読む位置を飛ばす量(ノイズの格子の単位)。前の周期と相関しない遠さ。
 const RESEED_SPAN = 97;
+// 流れに沿って中心の両側に並べる点の数の上限。stretch が 2·FLOW_HALF_POINTS + 1 のとき全点が満額になる。
+const FLOW_HALF_POINTS = 3;
+// 流れに沿った点どうしの相関。添字は点の間隔の番号(段の波長の半分ずつ)で、勾配ノイズを格子で測った値。
+// 重みの二乗和ではなく、この相関を含めた分散で割って和を単位分散に保つ。
+const FLOW_CORRELATION = [1, 0.4, -0.06, -0.02];
 
 // 波長 wavelength [m] の段の寿命 [s]。
 function detailLifetime(wavelength: number): number {
@@ -45,13 +50,6 @@ function writeReseed(cycle: number, out: THREE.Vector3): void {
     return x - Math.floor(x);
   };
   out.set(hash(12.9898), hash(78.233), hash(37.719)).multiplyScalar(RESEED_SPAN);
-}
-
-// 読む位置の線形の写し。単位ベクトル axis の向きの成分を 1/factor に縮めてから読む — 模様は axis の向きに
-// factor 倍長く伸びる。
-interface LinearStretch {
-  readonly axis: Vec3Node;
-  readonly factor: FloatNode;
 }
 
 // 段ごとの時刻の uniform。表示時刻そのものはシェーダへ渡さず、段の周期で割った位相の端数と、いまと
@@ -92,9 +90,7 @@ export class DetailClock {
   // 段 index の、天体固定の単位方向 direction での値。振れ幅は勾配ノイズ 1 回ぶんと同じ。radius は天体の
   // 基準半径 [m]、wind は局所の東・北を張る接ベクトルで表した風 [m/s]。wind は数百キロで均した流れで
   // なければならない — 場所ごとに大きく変わると、周期のあいだに戻す距離の差で模様がねじれる。
-  public evolvingNoise(
-    index: number, direction: Vec3Node, radius: FloatNode, wind: Vec3Node, linearStretch?: LinearStretch,
-  ): FloatNode {
+  public evolvingNoise(index: number, direction: Vec3Node, radius: FloatNode, wind: Vec3Node): FloatNode {
     const wavelength = this.wavelengths[index]!;
     const period = recyclePeriod(wavelength);
     const scale = radius.div(wavelength);
@@ -105,11 +101,7 @@ export class DetailClock {
     const valueAt = (age: FloatNode, seed: Vec3Node): FloatNode => {
       const origin = normalize(direction.sub(drift.mul(age)));
       const position = origin.mul(scale.add(age.mul(slide)));
-      // 軸の向きへ位置を 1/factor に縮める線形の写し。軸に直交する成分は動かさない。
-      const domain = linearStretch === undefined ? position : position.sub(
-        linearStretch.axis.mul(dot(position, linearStretch.axis)).mul(float(1).sub(float(1).div(linearStretch.factor))),
-      );
-      return gradientNoise(domain.add(seed));
+      return gradientNoise(position.add(seed));
     };
     const age = this.ages[index]!;
     const value = valueAt(age, this.seeds[index]!).toVar();
@@ -120,5 +112,42 @@ export class DetailClock {
       value.assign(value.mul(cos(blend)).add(valueAt(age.sub(1), this.nextSeeds[index]!).mul(sin(blend))));
     });
     return value;
+  }
+
+  // 段 index の、流れの向き axis に沿って平均した値。origin は読み位置の単位方向、axis は origin での単位接ベクトル、
+  // stretch は伸ばす倍率(1 以上)。点は段の波長の半分ずつ流れに沿って並べ、中心の両側へ stretch に応じた重みで
+  // 加えるので、stretch 1 では evolvingNoise と同じ値になり、伸ばすほど流れに沿って相関が延びる。
+  // wind と radius は evolvingNoise と同じ。
+  public flowNoise(
+    index: number, origin: Vec3Node, radius: FloatNode, wind: Vec3Node, axis: Vec3Node, stretch: FloatNode,
+  ): FloatNode {
+    const spacing = this.wavelengths[index]! / 2;
+    const half = stretch.sub(1).div(2);
+    // 点 m(−H..H)の重み。中心は 1、外の点は伸ばし量から連続に 0 から 1 へ加わる。
+    const weights = Array.from({ length: 2 * FLOW_HALF_POINTS + 1 }, (_, slot) => {
+      const offset = Math.abs(slot - FLOW_HALF_POINTS);
+      return offset === 0 ? float(1) : clamp(half.sub(offset - 1), 0, 1).toVar();
+    });
+    const sum = this.evolvingNoise(index, origin, radius, wind).toVar();
+    for (let m = 1; m <= FLOW_HALF_POINTS; m++) {
+      for (const sign of [1, -1]) {
+        const weight = weights[FLOW_HALF_POINTS + sign * m]!;
+        const point = normalize(origin.add(axis.mul(float(sign * m * spacing).div(radius))));
+        If(greaterThan(weight, 0), () => {
+          sum.addAssign(this.evolvingNoise(index, point, radius, wind).mul(weight));
+        });
+      }
+    }
+    // 重みの相関付きの二乗和で割り、重みを掛けた和の分散を 1 に保つ。
+    const variance = float(0).toVar();
+    for (let a = 0; a < weights.length; a++) {
+      for (let b = 0; b < weights.length; b++) {
+        const lag = Math.abs(a - b);
+        if (lag < FLOW_CORRELATION.length) {
+          variance.addAssign(weights[a]!.mul(weights[b]!).mul(FLOW_CORRELATION[lag]!));
+        }
+      }
+    }
+    return sum.div(sqrt(variance));
   }
 }

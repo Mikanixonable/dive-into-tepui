@@ -82,10 +82,15 @@ const WARP_WAVELENGTH = 32000;
 const WARP_OFFSET = vec3(5.2, 1.3, 7.9);
 
 // 積雲の細部を低層の風向きへ伸ばす倍率の上限。風速が CUMULUS_STREAK_WIND [m/s] で満額になる。
-// 伸ばすのは DETAIL_WAVELENGTHS の添字 CUMULUS_STREAK_LAST_OCTAVE 以下の段(4 km 以上の段)だけ。
-const CUMULUS_STREAK_MAX = 3;
+// 伸ばすのは DETAIL_WAVELENGTHS の添字 CUMULUS_STREAK_FIRST_OCTAVE〜CUMULUS_STREAK_LAST_OCTAVE の段(8 km と 4 km)
+// だけ — 流れに沿った複数点を読むので 1 段あたり最大 3 倍の費用がかかり(標準で 3 パス計 +17%)、32・16 km の段は
+// 風向きが見える尺度ではない。段数が CUMULUS_STREAK_MIN_OCTAVES 未満の精細さでは、伸ばさず費用を増やさない。
+// 利得が費用に見合うまで、最も精細な設定(8 段)だけで伸ばす。
+const CUMULUS_STREAK_MAX = 2;
 const CUMULUS_STREAK_WIND = 10;
+const CUMULUS_STREAK_FIRST_OCTAVE = 2;
 const CUMULUS_STREAK_LAST_OCTAVE = 3;
+const CUMULUS_STREAK_MIN_OCTAVES = 8;
 
 export class CloudDetailEvaluator {
   // 使う段数(粗い側から数える)。uniform なので、段数を変えてもシェーダのグラフは組み直さない。
@@ -142,7 +147,8 @@ export class CloudDetailEvaluator {
       // 低層の風向きへ伸ばす。風が弱い所は等方に読む。東の接ベクトルを小さく足すのは、風速 0 でも向きを定めるため。
       const windDir = normalize(windVector.add(east.mul(1e-6)));
       const windCoherence = clamp(length(windVector).div(CUMULUS_STREAK_WIND), 0, 1);
-      const streakStretch = float(1).add(float(CUMULUS_STREAK_MAX - 1).mul(windCoherence));
+      const streakTier = step(float(CUMULUS_STREAK_MIN_OCTAVES - 0.5), this.octaves);
+      const streakStretch = float(1).add(float(CUMULUS_STREAK_MAX - 1).mul(windCoherence).mul(streakTier));
 
       // 粒の細かさに応じて名目振幅を細かい段へ傾ける(陸・対流で粒が細かくなる)。
       // 重みの二乗和を保つよう割り戻すので、傾けても細部の全体の振幅は変わらない。
@@ -162,8 +168,9 @@ export class CloudDetailEvaluator {
           .mul(this.clock.presence(index)).toVar();
         If(greaterThan(live, 0), () => {
           // 粗い段は風向きへ伸ばして読み、細かい段は等方に読む。
-          const streak = index <= CUMULUS_STREAK_LAST_OCTAVE ? { axis: windDir, factor: streakStretch } : undefined;
-          const value = this.clock.evolvingNoise(index, warped, radius, windVector, streak).toVar();
+          const value = (index >= CUMULUS_STREAK_FIRST_OCTAVE && index <= CUMULUS_STREAK_LAST_OCTAVE
+            ? this.clock.flowNoise(index, warped, radius, windVector, windDir, streakStretch)
+            : this.clock.evolvingNoise(index, warped, radius, windVector)).toVar();
           sum.addAssign(value.mul(OCTAVE_WEIGHTS[index]!).mul(tilt[index]!).mul(weightScale).mul(live).mul(gate));
           gate.mulAssign(exp(value.mul(OCTAVE_COUPLING).sub(COUPLING_SHIFT).mul(live)));
         });
@@ -205,7 +212,7 @@ const CIRRUS_FIRST_OCTAVE = 2;
 const CIRRUS_STRETCH_LAST_OCTAVE = 4;
 
 // 揃いの強い筋が流れ方向へ伸びる倍率の上限。揃い度 0 の場所は等方に読む。
-const CIRRUS_STRETCH_MAX = 3;
+const CIRRUS_STRETCH_MAX = 7;
 // 光学深さの対数の標準偏差。筋の濃淡の強さで、平均を 1 に保つ補正と組で使う。尺度の梯子で巻雲の
 // 細かい帯(1〜16 km)が大きい帯(64 km 以上)に対して強すぎない高さに取る。
 const CIRRUS_LOG_SIGMA = 0.4;
@@ -253,8 +260,9 @@ export class CirrusDetailEvaluator {
       If(greaterThan(live, 0), () => {
         const weight = live.mul(OCTAVE_WEIGHTS[index]!);
         // 粗い段は流れの向きへ伸ばして読み、細かい段は等方に読む。
-        const streak = index <= CIRRUS_STRETCH_LAST_OCTAVE ? { axis: flowDir, factor: stretch } : undefined;
-        const value = this.clock.evolvingNoise(index, direction, radius, windVector, streak).toVar();
+        const value = (index <= CIRRUS_STRETCH_LAST_OCTAVE
+          ? this.clock.flowNoise(index, direction, radius, windVector, flowDir, stretch)
+          : this.clock.evolvingNoise(index, direction, radius, windVector)).toVar();
         sum.addAssign(value.mul(weight));
         energy.addAssign(weight.mul(weight));
       });

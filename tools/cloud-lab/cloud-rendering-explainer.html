@@ -410,8 +410,8 @@
             <tr><td>100–3200 km</td><td><code>WeatherTransport.humiditySourceAt</code><br><code>SURFACE_HUMIDITY_NOISE</code></td><td><code>CirculatingNoise.at</code></td><td>雲塊、湿潤域、乾燥域</td></tr>
             <tr><td>24 / 48 km</td><td><code>CONVECTION_NOISE</code><br><code>CirculatingNoise.pairAt</code></td><td><code>gradientNoise(position)</code></td><td>細胞の網目と粒。生成雲の cellular pattern</td></tr>
             <tr><td>17 km 上限</td><td><code>CloudShapeEvaluator.cloudTop</code><br><code>CLOUD_TOP_SPAN</code></td><td>fieldTop + detail × 0.15</td><td>雲頂の高さ場。雲底からの起伏</td></tr>
-            <tr><td>32 km → 0.25 km</td><td><code>CloudDetailEvaluator.at</code><br><code>DETAIL_WAVELENGTHS</code></td><td>画面微分 <code>dFdx/dFdy</code> と量の勾配 + 段数 + 低層の風</td><td>実写・生成どちらにも加わる sub-texel の細部と法線起伏。段ごとに画素の実寸で fade。32〜4 km の段は低層の風向きへ最大 3 倍まで伸ばして読む(風速 10 m/s で満額)</td></tr>
-            <tr><td>流れ方向へ 1–3 倍</td><td><code>CirrusDetailEvaluator.multiplierAt</code></td><td>雲場の倍角ベクトル(筋の向きと揃い度)+ 画素の実寸</td><td>巻雲の光学深さに掛ける平均 1 の乗数。筋が上層の流れに沿って伸びる</td></tr>
+            <tr><td>32 km → 0.25 km</td><td><code>CloudDetailEvaluator.at</code><br><code>DETAIL_WAVELENGTHS</code></td><td>画面微分 <code>dFdx/dFdy</code> と量の勾配 + 段数 + 低層の風</td><td>実写・生成どちらにも加わる sub-texel の細部と法線起伏。段ごとに画素の実寸で fade。8・4 km の段は、最も精細な設定でだけ低層の風向きへ最大 2 倍まで伸ばして読む(風速 10 m/s で満額)</td></tr>
+            <tr><td>流れ方向へ 1–7 倍</td><td><code>CirrusDetailEvaluator.multiplierAt</code></td><td>雲場の倍角ベクトル(筋の向きと揃い度)+ 画素の実寸</td><td>巻雲の光学深さに掛ける平均 1 の乗数。筋が上層の流れに沿って伸びる</td></tr>
             <tr><td>2–4 px</td><td><code>fadeOf</code>(段ごと)</td><td>段の波長 ÷ 画素の実寸</td><td>解像できない段を 0 へ落とす。遠景のモアレを抑える</td></tr>
           </tbody>
         </table>
