@@ -56,6 +56,7 @@ const PROGRESS_ROOTS = [
   'src/game/creative/',
   'src/game/protein/',
   'src/game/assembly/',
+  'src/game/knot/',
   'src/game/control-selection.ts',
 ];
 

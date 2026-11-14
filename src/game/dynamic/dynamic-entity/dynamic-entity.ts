@@ -19,7 +19,7 @@ export interface SerializedDynamicEntityFields extends SerializedKinematicState 
   readonly id: string;
   // 具象クラスのタグ。
   readonly kind:
-    | 'ship' | 'player' | 'metal-enemy' | 'protein-enemy' | 'assembly-enemy'
+    | 'ship' | 'player' | 'metal-enemy' | 'protein-enemy' | 'assembly-enemy' | 'knot-enemy'
     | 'ammo' | 'rcs-fuel' | 'booster' | 'base' | 'bullet' | 'debris';
   readonly q: Quat;
   readonly w: SerializedVec3;
