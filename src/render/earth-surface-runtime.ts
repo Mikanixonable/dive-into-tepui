@@ -8,7 +8,7 @@ import {
 import { EarthSurfaceTileSource } from './earth-surface-tile-source';
 
 
-export type EarthSurfaceBootstrapState = 'loading' | 'ready' | 'error' | 'fallback';
+type EarthSurfaceBootstrapState = 'loading' | 'ready' | 'error' | 'fallback';
 
 export interface EarthSurfaceBootstrapResult {
   readonly state: Exclude<EarthSurfaceBootstrapState, 'loading'>;
