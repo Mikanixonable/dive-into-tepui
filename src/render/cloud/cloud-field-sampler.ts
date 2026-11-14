@@ -1,8 +1,9 @@
 // 雲場テクスチャを、天体固定の単位方向から読む。焼いた側と同じ cap の置き方を写し取り、同じ uv
 // で読む。差し込まれたテクスチャは借り物で、解放は差し込んだ側が行う。
 import * as THREE from 'three/webgpu';
-import { dot, step, texture, uniform } from 'three/tsl';
+import { dot, step, uniform } from 'three/tsl';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
+import { distinctTextureNode } from '../distinct-texture-node';
 import { orthographicCapUv, type CapPlacement } from '../field-projection';
 import {
   bindCloudBlend, blendBakedTexels, cloudMotionFromTexel, cloudSampleFromTexels,
@@ -20,10 +21,12 @@ export interface CloudFieldBinding {
 
 export class CloudFieldSampler {
   // 読む雲場 2 枚ぶんのテクスチャノード(雲・風・環境の枚ごと)。場が結ばれるまでは EMPTY_CLOUD_FIELD を読み、
-  // bind は同じノードの値を差し替える。
-  private readonly clouds = [texture(EMPTY_CLOUD_FIELD), texture(EMPTY_CLOUD_FIELD)] as const;
-  private readonly motions = [texture(EMPTY_CLOUD_FIELD), texture(EMPTY_CLOUD_FIELD)] as const;
-  private readonly environments = [texture(EMPTY_CLOUD_FIELD), texture(EMPTY_CLOUD_FIELD)] as const;
+  // bind は同じノードの値を差し替える。**6 つとも結びを別々に固定する** — 起動時に場を結ぶ前にシェーダを組むと、
+  // 全部が同じ空の写しを指して 1 つの結びへ合わさり、あとから別々の枚を結んでも、雲・風・環境の 6 つの読みが
+  // 全部、先に使われた 1 枚(雲の 0 枚目)を読む。2 枚の補間も、風・環境も効かなくなる。
+  private readonly clouds = [distinctTextureNode(EMPTY_CLOUD_FIELD), distinctTextureNode(EMPTY_CLOUD_FIELD)] as const;
+  private readonly motions = [distinctTextureNode(EMPTY_CLOUD_FIELD), distinctTextureNode(EMPTY_CLOUD_FIELD)] as const;
+  private readonly environments = [distinctTextureNode(EMPTY_CLOUD_FIELD), distinctTextureNode(EMPTY_CLOUD_FIELD)] as const;
   // 2 枚の混ぜ方。古い側の枚の番号と混合比。
   private readonly parity: FloatUniform = uniform(0);
   private readonly fraction: FloatUniform = uniform(0);
