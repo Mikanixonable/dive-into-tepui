@@ -9,7 +9,7 @@ export interface Cylinder {
   readonly radius: number;
 }
 
-export interface CylinderHit {
+interface CylinderHit {
   readonly point: Vec3;
   readonly normal: Vec3;
   readonly depth: number;

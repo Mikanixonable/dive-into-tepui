@@ -6,7 +6,7 @@ import { type PointElements, pointPositionAt } from '../../physics/point-orbit';
 import type { FloatingOrigin } from '../camera/floating-origin';
 
 // 表示する点群1群。drawRadius と color は群ごとの見た目。
-export interface PointFieldGroup {
+interface PointFieldGroup {
   readonly id: string;
   readonly points: readonly PointElements[];
   readonly drawRadius: number; // [m]
