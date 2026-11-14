@@ -3,7 +3,7 @@
 import { maxShadowedFraction } from '../../../physics/shadow';
 import { len, sub } from '../../../math/vec3';
 import { MAX_SHADOW_BODIES } from './body-shadow';
-import { CUMULUS_DETAIL, cumulusOctavesOf } from '../../opaque-cloud-surface-renderer';
+import { cumulusOctavesOf } from '../../opaque-cloud-surface-renderer';
 import { cirrusOctavesOf } from '../../cloud/cloud-detail';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
@@ -63,8 +63,7 @@ export function selectShadowBodies<T extends CelestialBody>(
     .map(({ celestialBody }) => celestialBody);
 }
 
-// 雲の種類ごとの、影を落とすかの読み分け。どちらも「雲」と「雲の影」がオンのときだけで、
-// 積雲はその立体を描くとき(積雲の精細さがオフ以外)、巻雲は巻雲を描くときだけ落ちる。
+// 雲の種類ごとの、影を落とすかの読み分け。「雲」「雲の影」と各種類の表示がオンのときだけ落ちる。
 export interface CloudShadowKinds {
   readonly cumulus: boolean;
   readonly cirrus: boolean;
@@ -78,7 +77,7 @@ export interface CloudShadowKinds {
 export function cloudShadowKinds(graphics: GraphicsSettingsData): CloudShadowKinds {
   const clouds = graphics.clouds && graphics.cloudShadow;
   return {
-    cumulus: clouds && graphics.cumulusDetail !== CUMULUS_DETAIL.off,
+    cumulus: clouds && graphics.cumulus,
     cirrus: clouds && graphics.cirrus,
     cumulusOctaves: cumulusOctavesOf(graphics.cumulusDetail),
     cirrusOctaves: cirrusOctavesOf(graphics.cirrusDetail),
