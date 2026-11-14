@@ -292,8 +292,10 @@ export class LabView {
   // 観察の向きを変えた次の 1 フレームを、落ち着くのを待たずにそのまま撮る。ドラッグで視点が毎フレーム動く
   // ときの絵に当たる。**captureSettled と setViewAngles は描き直すので、状態が 1 フレーム遅れて追いつく不具合を
   // 隠す** — この撮影は向きを置いたあと描画をちょうど 1 回だけ回す。
-  public async captureAfterMove(changes: Partial<LabViewAngles>): Promise<string> {
+  public async captureAfterMove(changes: Partial<LabViewAngles>, displayTime?: number): Promise<string> {
     this.mergeViewAngles(changes);
+    // 時間が進みながら視点が動くとき(時間加速中のドラッグ)の 1 フレーム。表示時刻は capture() が使う控えへ置く。
+    if (displayTime !== undefined) this.displayTime = displayTime;
     return this.capture();
   }
 
