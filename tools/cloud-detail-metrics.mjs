@@ -303,19 +303,22 @@ function interiorComponents(data, n, kmPerPx, threshold) {
   return { stats, interior };
 }
 
-// 場を分位のしきいで二値化し、塊の寸法分布の冪 b と周長–面積の次元 D を返す。
-// しきいは場面の分位 p50 + 0.3×(p99 − p50) — 晴れの底上げ(大気の霞など)を打ち消すため、
-// 絶対値ではなく場面ごとの分布から取る。
-// b は累積本数 N(≥L) ∝ L^−b の b(L = √面積 [km]、両対数の傾きを反転)。上限は設けず、
-// 面の大きさそのものを上限とする。
-// D は P ∝ (√A)^D = L^D の D(log P vs log L の回帰)。文献の検算区間(1〜100 km)に
-// 合わせて L ≤ 100 km の塊だけを使う。
-function shapeStats(data, n, kmPerPx) {
+// 雲のしきい。場面の分位 p50 + 0.3×(p99 − p50) — 晴れの底上げ(大気の霞など)を打ち消すため、
+// 絶対値ではなく場面ごとの分布から取る。二値化の定義は shapeStats と heterogeneity で共有する。
+function cloudThreshold(data) {
   const sorted = Float64Array.from(data).sort();
   const at = (fraction) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))];
   const p50 = at(0.5);
   const p99 = at(0.99);
-  const threshold = p50 + 0.3 * (p99 - p50);
+  return p50 + 0.3 * (p99 - p50);
+}
+
+// 場を threshold で二値化し、塊の寸法分布の冪 b と周長–面積の次元 D を返す。
+// b は累積本数 N(≥L) ∝ L^−b の b(L = √面積 [km]、両対数の傾きを反転)。上限は設けず、
+// 面の大きさそのものを上限とする。
+// D は P ∝ (√A)^D = L^D の D(log P vs log L の回帰)。文献の検算区間(1〜100 km)に
+// 合わせて L ≤ 100 km の塊だけを使う。
+function shapeStats(data, n, kmPerPx, threshold) {
   const { stats, interior } = interiorComponents(data, n, kmPerPx, threshold);
   const minKm = shapeFitMinKm(kmPerPx);
   const inRange = (component) => Math.sqrt(component.areaKm2) >= minKm;
@@ -337,6 +340,87 @@ function shapeStats(data, n, kmPerPx) {
     fitMinKm: minKm,
     sizeExponent,
     perimeterAreaDimension,
+  };
+}
+
+// 偏りを測るブロックの一辺 [km]。
+const HETEROGENEITY_BLOCKS_KM = [16, 32, 64, 128, 256];
+// 偏りを測る全体の雲の割合の範囲。外では p(1 − p) が 0 に近づき、指数が意味を持たない。
+const HETEROGENEITY_COVER_RANGE = [0.02, 0.98];
+// ブロックの一辺の下限 [px] と、切り出しの一辺に並ぶブロックの下限数。
+const HETEROGENEITY_MIN_BLOCK_PX = 4;
+const HETEROGENEITY_MIN_BLOCKS_PER_SIDE = 4;
+// 晴れ間・厚い層と数えるブロックの雲の割合の境界。
+const CLEAR_BLOCK_MAX = 0.05;
+const DENSE_BLOCK_MIN = 0.95;
+// 晴れ間・厚い層の割合を取るブロックの一辺 [km]。測れた中で最も近い大きさを使う。
+const HETEROGENEITY_REFERENCE_KM = 64;
+// 傾きの当てはめに要る、測れたブロックの大きさの数。
+const HETEROGENEITY_SLOPE_MIN_SIZES = 3;
+
+// 一辺 blockPx の重ならないブロックごとの雲の割合。割り切れない端の余りは捨てる。
+function blockCoverFractions(data, n, blockPx, side, threshold) {
+  const fractions = new Float64Array(side * side);
+  const area = blockPx * blockPx;
+  for (let by = 0; by < side; by++) {
+    for (let bx = 0; bx < side; bx++) {
+      let count = 0;
+      for (let y = by * blockPx; y < (by + 1) * blockPx; y++) {
+        for (let x = bx * blockPx; x < (bx + 1) * blockPx; x++) {
+          if (data[y * n + x] > threshold) count++;
+        }
+      }
+      fractions[by * side + bx] = count / area;
+    }
+  }
+  return fractions;
+}
+
+// 雲マスクの偏りを、ブロックの大きさごとに測る。ブロックの雲の割合 m_b の分散を
+// p(1 − p) で割った偏り指数 I_B は、一様に散らばる雲では約 1/B_px²、雲の塊と晴れ間が
+// 分かれるほど 1 に近づく。slope は log I_B 対 log B_km の傾きで、偏りが尺度とともに
+// どう残るかを表す。clearShare・denseShare は基準の大きさのブロックのうち晴れ間・厚い層の割合。
+function heterogeneityStats(data, n, kmPerPx, threshold) {
+  let covered = 0;
+  for (const v of data) if (v > threshold) covered++;
+  const cover = covered / data.length;
+  const [coverMin, coverMax] = HETEROGENEITY_COVER_RANGE;
+  const sizes = [];
+  if (cover >= coverMin && cover <= coverMax) {
+    for (const blockKm of HETEROGENEITY_BLOCKS_KM) {
+      const blockPx = Math.round(blockKm / kmPerPx);
+      const side = Math.floor(n / blockPx);
+      if (blockPx < HETEROGENEITY_MIN_BLOCK_PX || side < HETEROGENEITY_MIN_BLOCKS_PER_SIDE) continue;
+      const fractions = blockCoverFractions(data, n, blockPx, side, threshold);
+      let mean = 0;
+      for (const f of fractions) mean += f;
+      mean /= fractions.length;
+      let variance = 0;
+      for (const f of fractions) variance += (f - mean) * (f - mean);
+      variance /= fractions.length;
+      sizes.push({ blockKm, blockPx, index: variance / (cover * (1 - cover)), fractions });
+    }
+  }
+
+  const positive = sizes.filter((size) => size.index > 0);
+  const slope = positive.length >= HETEROGENEITY_SLOPE_MIN_SIZES
+    ? fitLine(positive.map((size) => [Math.log(size.blockKm), Math.log(size.index)])).slope
+    : null;
+  let reference = null;
+  for (const size of sizes) {
+    if (reference === null || Math.abs(size.blockKm - HETEROGENEITY_REFERENCE_KM)
+      < Math.abs(reference.blockKm - HETEROGENEITY_REFERENCE_KM)) reference = size;
+  }
+  const shareOf = (predicate) => reference === null
+    ? null
+    : reference.fractions.filter(predicate).length / reference.fractions.length;
+  return {
+    cover,
+    blocks: sizes.map(({ blockKm, blockPx, index }) => ({ blockKm, blockPx, index })),
+    slope,
+    clearDenseKm: reference?.blockKm ?? null,
+    clearShare: shareOf((f) => f < CLEAR_BLOCK_MAX),
+    denseShare: shareOf((f) => f > DENSE_BLOCK_MIN),
   };
 }
 
@@ -366,6 +450,7 @@ export function measureCloudDetail(field, kmPerPx) {
     scaleKm: scale,
     ...summarizeStructure(structureTensor(crop, rowKmPerPx, kmPerPx, false, scale), 0, 0, n, n),
   }));
+  const threshold = cloudThreshold(crop.data);
 
   return {
     kmPerPx,
@@ -373,7 +458,8 @@ export function measureCloudDetail(field, kmPerPx) {
     spectrum: { beta, octaves },
     intermittency: intermittencyStats(crop.data, n, kmPerPx),
     periodicity: periodicityStats(octaves),
-    shapes: shapeStats(crop.data, n, kmPerPx),
+    shapes: shapeStats(crop.data, n, kmPerPx, threshold),
+    heterogeneity: heterogeneityStats(crop.data, n, kmPerPx, threshold),
     anisotropy,
   };
 }
