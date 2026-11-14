@@ -8,12 +8,12 @@ import { PartInventory } from './part-inventory';
 export class PartDamageModel {
   private readonly inventory: PartInventory;
   // 以下は部品一覧から組むキャッシュ(性能と致死判定で使う部品の参照と、装甲値)。
-  private readonly radiatorPartRefs: [RadiatorPart | undefined, RadiatorPart | undefined] = [undefined, undefined];
-  private readonly solarPanelPartRefs: [SolarPanelPart | undefined, SolarPanelPart | undefined] = [undefined, undefined];
+  private readonly radiatorPartRefs: [RadiatorPart | null, RadiatorPart | null] = [null, null];
+  private readonly solarPanelPartRefs: [SolarPanelPart | null, SolarPanelPart | null] = [null, null];
   private readonly weaponPartRefs: WeaponPart[] = [];
   private readonly armorPartRefs: ArmorPart[] = [];
-  private hullPart: Part | undefined;
-  private cockpitPart: CockpitPart | undefined;
+  private hullPart: Part | null = null;
+  private cockpitPart: CockpitPart | null = null;
   public readonly maxHp: number;
 
   // parts を積んだ機体の被弾モデルを組む。
@@ -123,8 +123,8 @@ export class PartDamageModel {
   public consumeFuel(amount: number): void { this.inventory.consumeFuel(amount); }
   public refuelFuel(amount: number): void { this.inventory.refuelFuel(amount); }
 
-  public get radiatorParts(): readonly (RadiatorPart | undefined)[] { return this.radiatorPartRefs; }
-  public get solarParts(): readonly (SolarPanelPart | undefined)[] { return this.solarPanelPartRefs; }
+  public get radiatorParts(): readonly (RadiatorPart | null)[] { return this.radiatorPartRefs; }
+  public get solarParts(): readonly (SolarPanelPart | null)[] { return this.solarPanelPartRefs; }
   // 健全な放熱板の実効放熱面積の合計 [m^2]。
   public get totalCoolingRate(): number {
     return this.radiatorPartRefs.reduce((total, part) => total + (part && part.hp > 0 ? part.coolingRate : 0), 0);

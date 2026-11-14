@@ -61,8 +61,8 @@ export function parseGuideKindId(id: string): ParsedGuideKindId | null {
   if (base === 'dro') return { id, group: 'secondary', base, segment, combinedKey: null, axes: null };
   if (base === 'butterfly' || base === 'dragonfly') {
     const point = parts[1];
-    const branch = parts[2] as 'N' | 'S' | undefined;
-    if (point === undefined || branch === undefined) return null;
+    const branch = parts[2];
+    if (point === undefined || (branch !== 'N' && branch !== 'S')) return null;
     return { id, group: 'collinear', base, point, branch, segment, combinedKey: null, axes: null };
   }
 
@@ -72,8 +72,8 @@ export function parseGuideKindId(id: string): ParsedGuideKindId | null {
 
   if (base === 'dpo') return { id, group: 'secondary', base, segment, combinedKey: 'secondary-dpo', axes };
   if (base === 'lpo') {
-    const ew = parts[1] as 'E' | 'W' | undefined;
-    if (ew === undefined) return null;
+    const ew = parts[1];
+    if (ew !== 'E' && ew !== 'W') return null;
     return { id, group: 'secondary', base, ew, segment, combinedKey: 'secondary-lpo', axes };
   }
 
@@ -84,8 +84,8 @@ export function parseGuideKindId(id: string): ParsedGuideKindId | null {
   const group: GuideGroupId = base === 'short' || base === 'longp' || isTriangularPoint ? 'triangular' : 'collinear';
 
   if (axes.branch) {
-    const branch = parts[2] as 'N' | 'S' | undefined;
-    if (branch === undefined) return null;
+    const branch = parts[2];
+    if (branch !== 'N' && branch !== 'S') return null;
     return { id, group, base, point, branch, segment, combinedKey: `${group}-${base}`, axes };
   }
   return { id, group, base, point, segment, combinedKey: `${group}-${base}`, axes };
@@ -93,10 +93,10 @@ export function parseGuideKindId(id: string): ParsedGuideKindId | null {
 
 // parseGuideKindId の逆変換。軸値の組から id を組む。組んだ id がカタログに実在するとは限らない。
 function buildCombinedId(
-  base: string, point: string | undefined, branch: 'N' | 'S' | undefined, ew: 'E' | 'W' | undefined,
+  base: string, point: string | null, branch: 'N' | 'S' | null, ew: 'E' | 'W' | null,
   segment: number,
 ): string {
-  const body = [base, point ?? ew, branch].filter((v): v is string => v !== undefined).join('-');
+  const body = [base, point ?? ew, branch].filter((v): v is string => v !== null).join('-');
   return segment > 0 ? `${body}${SEGMENT_MARK}${segment}` : body;
 }
 
@@ -159,7 +159,7 @@ export function combinedCandidateIds(
     for (const branch of branches) {
       for (const ew of ews) {
         for (const segment of segments) {
-          ids.push(buildCombinedId(base, point, branch, ew, segment));
+          ids.push(buildCombinedId(base, point ?? null, branch ?? null, ew ?? null, segment));
         }
       }
     }

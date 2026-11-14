@@ -15,14 +15,14 @@ const DEFS = solarSystemParts();
 export function register(): void {
   test('shapeAxes: 土星の縦横比 Rp/Re = 0.902', () => {
     const def = SATURN;
-    const axes = shapeAxes(def.radius, def.shape);
+    const axes = shapeAxes(def.radius, def.shape ?? null);
     const ratio = axes.y / axes.x;
     assert.ok(Math.abs(ratio - 0.902) < 0.001, `Rp/Re = ${ratio}`);
   });
 
   test('shapeAxes: 木星の縦横比 Rp/Re = 0.9350', () => {
     const def = JUPITER;
-    const axes = shapeAxes(def.radius, def.shape);
+    const axes = shapeAxes(def.radius, def.shape ?? null);
     const ratio = axes.y / axes.x;
     assert.ok(Math.abs(ratio - 0.935) < 0.0005, `Rp/Re = ${ratio}`);
   });
@@ -31,7 +31,7 @@ export function register(): void {
     for (const motion of DEFS.bodies) {
       const def = motion.def;
       if (!('shape' in def) || def.shape === undefined) continue;
-      const axes = shapeAxes(def.radius, def.shape);
+      const axes = shapeAxes(def.radius, def.shape ?? null);
       const maxAxis = Math.max(axes.x, axes.y, axes.z);
       assert.ok(def.radius >= maxAxis - 1e-6, `${def.id}: radius=${def.radius} < max軸=${maxAxis}`);
     }
@@ -39,12 +39,12 @@ export function register(): void {
 
   test('shapeAxes: 三軸データが §4.3 の軸比と一致する(フォボス・ケレス)', () => {
     const phobos = PHOBOS;
-    const pAxes = shapeAxes(phobos.radius, phobos.shape);
+    const pAxes = shapeAxes(phobos.radius, phobos.shape ?? null);
     // 出典表: 25.90 × 22.60 × 18.32 km(直径)→ c/a = 18.32/25.90 = 0.7073
     assert.ok(Math.abs(pAxes.y / pAxes.x - 18.32 / 25.9) < 0.001);
 
     const ceres = CERES;
-    const cAxes = shapeAxes(ceres.radius, ceres.shape);
+    const cAxes = shapeAxes(ceres.radius, ceres.shape ?? null);
     // 出典表: 966.2 × 962.0 × 891.8 km(直径)→ c/a = 891.8/966.2 = 0.9230
     assert.ok(Math.abs(cAxes.y / cAxes.x - 891.8 / 966.2) < 0.001);
   });
@@ -52,7 +52,7 @@ export function register(): void {
   test('shapeAxes: shape 省略時は radius による真球', () => {
     const venus = VENUS;
     assert.equal(venus.shape, undefined);
-    const axes = shapeAxes(venus.radius, venus.shape);
+    const axes = shapeAxes(venus.radius, venus.shape ?? null);
     assert.deepEqual(axes, { x: venus.radius, y: venus.radius, z: venus.radius });
   });
 }

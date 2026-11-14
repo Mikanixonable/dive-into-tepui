@@ -110,7 +110,7 @@ export abstract class CelestialView {
     if (optics === null) return null;
     const center = motion.stateAt(displayTime).r;
     const def = motion.def;
-    const radii = shapeSpheroidRadii(def.radius, 'shape' in def ? def.shape : undefined);
+    const radii = shapeSpheroidRadii(def.radius, 'shape' in def ? def.shape ?? null : null);
     const axis = motion.orientationAt(displayTime)?.axis ?? null;
     // 形状・雲・画面密度を同じ表示時刻とカメラ基準でまとめる。
     return {
