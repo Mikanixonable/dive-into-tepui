@@ -77,6 +77,27 @@ export function localContrast(field, kmPerPx) {
   return total / data.length;
 }
 
+// ニュートラルトーンマップ(Khronos PBR Neutral)の圧縮開始点と、彩度床として全チャネルから
+// 引かれる量。描画パイプラインの表示変換と同じ値 — ずれると換算後の反射率が系統的にずれる。
+const NEUTRAL_COMPRESSION_START = 0.76;
+const NEUTRAL_DESATURATION_FLOOR = 0.04;
+// トーンマップは 1 へ漸近するので、その近傍では逆写像が発散する。8bit の量子化を増幅して
+// 分位を壊さないよう、逆変換へ渡す表示値はこの値で頭打ちにする。
+const NEUTRAL_INVERSE_INPUT_MAX = 0.98;
+
+// 表示用の輝度を、トーンマップ前の放射輝度相当へ戻す。圧縮域は解析的に逆へ写し、床ぶんを
+// 加えて戻す。床の実際の深さは画素の最小チャネルで決まるが、輝度では各画素自身を最小
+// チャネルとみなす近似で戻す — 白に近い雲頂では誤差が小さい。単調なので、分位点で
+// 閾値を取る特徴量(形状・被覆率)にはこの変換を掛けても結果が変わらない。
+function invertNeutralDisplay(value) {
+  const s = NEUTRAL_COMPRESSION_START;
+  const d = 1 - s;
+  const peak = value > s
+    ? (s - d) + (d * d) / (1 - Math.min(value, NEUTRAL_INVERSE_INPUT_MAX))
+    : value;
+  return peak >= NEUTRAL_DESATURATION_FLOOR ? peak + NEUTRAL_DESATURATION_FLOOR : Math.sqrt(peak / 6.25);
+}
+
 // 1 画像の測定値から、封筒・距離に使う特徴量の一覧を組む。
 // 各要素は { id, family, scope, key, value } — id は接頭語@帯・尺度。value は
 // domain 'log' のものを log10 へ写した後の値。null・非正の log は載せない。
@@ -125,8 +146,16 @@ export function featureEntries(measured, tone) {
 }
 
 // PNG のバイト列から場を読み、物差し・階調・局所コントラスト・特徴量の一覧を 1 回で取る。
-export function measureDetailImage(png, kmPerPx) {
+// illumination を渡すと、表示値をトーンマップ前の放射輝度へ戻してからその値で割って測る —
+// 生成の撮影(放射輝度を表示用へ写した画)を、実写の補正反射率と同じ反射率相当へ換算するときに
+// 使う。照明には太陽の入射に比例しない項(環境光など)も含めて渡す。
+export function measureDetailImage(png, kmPerPx, illumination = 1) {
   const field = linearLuminanceField(png);
+  if (illumination !== 1) {
+    for (let i = 0; i < field.data.length; i++) {
+      field.data[i] = invertNeutralDisplay(field.data[i]) / illumination;
+    }
+  }
   const crop = centerCrop(field);
   const tone = toneStats(crop.data);
   const contrast = localContrast(crop, kmPerPx);
