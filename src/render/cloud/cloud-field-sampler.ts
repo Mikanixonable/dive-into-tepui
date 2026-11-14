@@ -88,6 +88,13 @@ export class CloudFieldSampler {
     return cloudSampleFromTexels(cloudTexel, environmentTexel);
   }
 
+  // 単位方向 direction の場の texel(積雲・巻雲・筋の向き)だけを、2 枚の混ぜ方で読む。環境は読まない。cap の外は 0。
+  public sampleField(direction: Vec3Node): Vec4Node {
+    const inside = step(this.cosRadius, dot(direction, this.center));
+    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    return this.blend(this.clouds, uv).mul(inside) as Vec4Node;
+  }
+
   // 単位方向 direction で雲を運ぶ風。cap の外は 0。
   public sampleMotion(direction: Vec3Node): CloudMotion {
     const inside = step(this.cosRadius, dot(direction, this.center));
