@@ -8,7 +8,7 @@ const COLLISION_BUCKET_SIZE = 64;
 const COLLISION_PADDING = 4;
 
 // 押し出しの対象になるラベル1件。
-export interface LayoutTarget {
+interface LayoutTarget {
   readonly id: string;
   readonly x: number;
   readonly y: number;

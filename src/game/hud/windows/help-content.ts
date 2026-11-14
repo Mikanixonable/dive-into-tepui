@@ -8,7 +8,7 @@ export type HelpCategory = 'flight' | 'camera' | 'combat' | 'map' | 'constructio
 
 // 対応表の1行。category は載せる章、input は操作する入力の表記、label と description は
 // それで起きること。
-export interface HelpRow {
+interface HelpRow {
   readonly category: HelpCategory;
   readonly input: string;
   readonly label: string;
