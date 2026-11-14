@@ -6,7 +6,7 @@ import {
 } from './cloud-atmosphere-renderer';
 import type { BoolNode, FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
-export interface AtmosphereCloudRay {
+interface AtmosphereCloudRay {
   readonly toOrigin: Vec3Node;
   readonly unitDir: Vec3Node;
   readonly unitsPerMeter: FloatNode;
@@ -14,13 +14,13 @@ export interface AtmosphereCloudRay {
   readonly perpSq: FloatNode;
 }
 
-export interface AtmosphereCloudCrossings {
+interface AtmosphereCloudCrossings {
   readonly entry: FloatNode;
   readonly exit: FloatNode;
   readonly crosses: BoolNode;
 }
 
-export interface AtmosphereCloudSegment {
+interface AtmosphereCloudSegment {
   readonly near: FloatNode;
   readonly far: FloatNode;
 }

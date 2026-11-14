@@ -1,6 +1,6 @@
 // マップビューの縮尺バーに使う、DOM/カメラ非依存の数値計算。
 
-export interface MapScaleData {
+interface MapScaleData {
   readonly distanceM: number;
   readonly widthPx: number;
 }
