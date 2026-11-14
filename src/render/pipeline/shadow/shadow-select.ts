@@ -64,7 +64,7 @@ export function selectShadowBodies<T extends CelestialBody>(
 }
 
 // 雲の種類ごとの、影を落とすかの読み分け。どちらも「雲」と「雲の影」がオンのときだけで、
-// 積雲はその立体を描くとき(積雲の精細さがオフ以外)、巻雲は巻雲を描くときだけ落ちる。
+// 積雲はその立体を描くとき(積雲の精細さがオフ以外)だけ落ちる。
 export interface CloudShadowKinds {
   readonly cumulus: boolean;
   readonly cirrus: boolean;
@@ -79,7 +79,7 @@ export function cloudShadowKinds(graphics: GraphicsSettingsData): CloudShadowKin
   const clouds = graphics.clouds && graphics.cloudShadow;
   return {
     cumulus: clouds && graphics.cumulusDetail !== CUMULUS_DETAIL.off,
-    cirrus: clouds && graphics.cirrus,
+    cirrus: clouds,
     cumulusOctaves: cumulusOctavesOf(graphics.cumulusDetail),
     cirrusOctaves: cirrusOctavesOf(graphics.cirrusDetail),
   };

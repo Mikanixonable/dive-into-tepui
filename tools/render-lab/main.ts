@@ -187,7 +187,6 @@ function buildCloudSliders(view: LabView): void {
     buildSlider(rowId, 'アルベド', 0, 1, 0.01,
       () => knob.albedo.value.toFixed(2), (v) => redraw(knob.albedo, v))(knob.albedo.value);
   };
-  buildShellSliders('cumulus-shell', 'cumulus');
   buildShellSliders('cirrus-shell', 'cirrus');
 }
 

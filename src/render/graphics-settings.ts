@@ -125,16 +125,6 @@ export const GRAPHICS_OPTIONS = {
       high: CLOUD_FIELD_SOURCE_KIND.generated,
     },
   },
-  // 圏界面付近に薄く張る巻雲の層。
-  cirrus: {
-    kind: 'toggle', group: 'element', label: '巻雲',
-    presets: { low: true, medium: true, high: true },
-  },
-  // 積雲のうち、不透明な雲頂のまわりを埋める半透明の広がり。
-  translucentCumulus: {
-    kind: 'toggle', group: 'element', label: '半透明の積雲',
-    presets: { low: true, medium: true, high: true },
-  },
   // 積雲の球殻を評価するレイマーチングの精細度と、雲頂の細部の段数(粗 4・標準 6・精細 8 オクターブ)。
   // オフでは雲殻およびその影を描画しない。「精細」は積雲の描画アーティファクトを地表側の乱れから
   // 切り分けるための設定レベル。
@@ -205,8 +195,7 @@ export const GRAPHICS_OPTIONS = {
     presets: { low: false, medium: true, high: true },
   },
   // 積雲と巻雲が地表・艦艇・雲へ落とす影。積雲の影は積雲の立体を描くとき(「積雲の精細さ」が
-  // オフ以外)だけ、巻雲の影は巻雲を描くとき(「巻雲」がオン)だけ落ちる。「雲」がオフでは、
-  // この値によらず影は落ちない。
+  // オフ以外)だけ落ちる。「雲」がオフでは、この値によらず影は落ちない。
   cloudShadow: {
     kind: 'toggle', group: 'shadow', label: '雲の影',
     presets: { low: false, medium: true, high: true },
