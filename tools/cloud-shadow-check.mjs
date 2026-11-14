@@ -60,6 +60,8 @@ const VIEWS = [
   nadir('sea-1km-z10', 0, 0, 1000, 10),
   nadir('sea-1km-z30', 0, 0, 1000, 30),
   nadir('sea-1km-z60', 0, 0, 1000, 60),
+  nadir('sea-1km-z75', 0, 0, 1000, 75),
+  nadir('sea-1km-z85', 0, 0, 1000, 85),
   nadir('sea-025-z30', 0, 0, 250, 30),
   nadir('sea-025-z60', 0, 0, 250, 60),
   nadir('land-1km-z30', 0, 20, 1000, 30),
