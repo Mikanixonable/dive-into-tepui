@@ -1,7 +1,6 @@
 // 地表地形Workerの要求識別、キャンセル、異常終了を管理する。
-import { EarthSurfaceDecodeError } from './earth-surface-decode-errors';
-import { decodeEarthTerrainBytesForFormat } from './earth-surface-terrain-codec';
-import { EARTH_TERRAIN_LAYOUT, type EarthSurfaceTerrainFormat } from './earth-surface-format';
+import { EarthSurfaceDecodeError } from './earth-surface-errors';
+import { decodeEarthTerrainBytes } from './earth-surface-terrain-codec';
 import type { EarthTileKey } from './earth-surface-tile-key';
 
 interface PendingTerrain {
@@ -53,10 +52,10 @@ function terrainWorker(): Worker {
 // Web Worker が利用可能であればバッファを転送して並行デコードし、未対応環境ではメインスレッドでフォールバック実行する。
 export function decodeEarthTerrainOffThread(
   compressed: Uint8Array, key: EarthTileKey, limit: number, expectedSha256?: string,
-  signal?: AbortSignal, format: EarthSurfaceTerrainFormat = EARTH_TERRAIN_LAYOUT,
+  signal?: AbortSignal,
 ): Promise<Uint8Array> {
   if (typeof Worker === 'undefined') {
-    return decodeEarthTerrainBytesForFormat(compressed, key, limit, expectedSha256, signal, format);
+    return decodeEarthTerrainBytes(compressed, key, limit, expectedSha256, signal);
   }
   if (signal?.aborted) return Promise.reject(new DOMException('Earth surface request was aborted', 'AbortError'));
   const id = nextId++;
@@ -75,7 +74,7 @@ export function decodeEarthTerrainOffThread(
       ? compressed : compressed.slice();
     try {
       terrainWorker().postMessage({
-        id, compressed: bytes.buffer, z: key.z, x: key.x, y: key.y, limit, expectedSha256, format,
+        id, compressed: bytes.buffer, z: key.z, x: key.x, y: key.y, limit, expectedSha256,
       }, [bytes.buffer]);
     } catch (error) {
       pending.delete(id);

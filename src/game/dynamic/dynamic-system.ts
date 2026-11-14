@@ -25,7 +25,7 @@ import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { PilotControls } from './dynamic-entity/pilot-controls';
 import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
-import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
+import type { ShipModuleEmphasisMap } from '../../render/dynamic/ship/ship-render-contract';
 import type { SunLight } from '../../render/pipeline/sun-light';
 import type { BodyShadow } from '../../render/pipeline/shadow/body-shadow';
 import type { StageRules } from '../stages/stage-rules';
@@ -179,7 +179,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       for (const command of controls.commands) active.handleCommand(command, this);
     }
     this.updateControllables(active, controls, operable, dt, simDt, activeStage, stageRules);
-    this.behaveAll(active, operable && enemiesMayFire);
+    this.behaveAll(active, operable && enemiesMayFire, activeStage.enemyAttackLimit);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled(
       'update(指令決定)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
@@ -219,14 +219,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。追跡先の艦が1隻も無ければ何もしない。
-  // mayFire が偽の間は撃たない。
-  private behaveAll(active: Controllable | null, mayFire: boolean): void {
+  // mayFire が偽の間は撃たない。attackLimit は攻撃グループで同時に発砲してよい数。
+  private behaveAll(active: Controllable | null, mayFire: boolean, attackLimit: number): void {
     const player = this.trackedShip(active);
     if (player === null) return;
     const enemies = this.all().filter(isEnemy);
     for (const e of enemies) {
       if (e.motion.alive) {
-        e.updateBehavior(this.simTime, player, this, enemies, mayFire, this.celestialBodies);
+        e.updateBehavior(this.simTime, player, this, enemies, mayFire, this.celestialBodies, attackLimit);
       }
     }
   }
@@ -237,16 +237,17 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return this.all().filter(isModularShip).find((p) => p.motion.alive) ?? null;
   }
 
-  // 当該フレームの表示オブジェクトを、エンティティ一覧を走査して同期する。proteinDisplay はタンパク質の敵に
-  // 共通の表示形態と着色。
+  // 当該フレームの表示オブジェクトを、エンティティ一覧を走査して同期する。shipModuleEmphasis は
+  // モジュール船のモジュールごとの強調とずらしの宣言。
   public sync(
     displayTime: number, active: Controllable | null, camera: CameraFrame, style: RenderStyle,
-    visual: EntityVisualSettings, proteinDisplay: ProteinDisplaySettings,
+    visual: EntityVisualSettings,
+    shipModuleEmphasis: ShipModuleEmphasisMap | null,
     sunLight: SunLight, bodyShadow: BodyShadow, orbitRef: OrbitReference | undefined,
   ): void {
     // 全個体が同じ1つのフレーム入力を読むよう、走査の前に組んでおく。
     const viewFrame = {
-      displayTime, camera, style, visual, proteinDisplay, sunLight, bodyShadow,
+      displayTime, camera, style, visual, shipModuleEmphasis, sunLight, bodyShadow,
       pools: this.instancedPools,
     };
     // instance pool の受付期間で全 Entity を挟む。

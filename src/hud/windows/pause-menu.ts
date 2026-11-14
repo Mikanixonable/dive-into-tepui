@@ -39,7 +39,7 @@ export class PauseMenu implements OverlayHandle {
 
   public onQuitToTitle: (() => void) | null = null;
   public onBgmVolumeChange: ((vol: number) => void) | null = null;
-  // 消音ボタンが押されたときに、求められた消音の有無を渡して呼ばれる。
+  // 消音ボタンが押されたときに、要求された消音の有無を渡して呼ばれる。
   public onBgmMutedChange: ((muted: boolean) => void) | null = null;
   public onSave: (() => void) | null = null;
   public onOpenSaveBrowser: (() => void) | null = null;

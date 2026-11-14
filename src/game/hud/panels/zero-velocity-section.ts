@@ -118,7 +118,7 @@ export class ZeroVelocitySection {
   private buildRangeFields(parent: HTMLElement): RangeFields {
     const row = document.createElement('div');
     row.className = 'orbit-guide-zero-velocity-range';
-    // 下限・上限は互いに独立して動かせる。大小関係の整えは設定を組み直す側が行う。
+    // 下限・上限は互いに独立して動かせる。大小関係を整えるのは設定を組み直す側が行う。
     const minField = buildValueField('ヤコビ定数(下限)', JACOBI_MAPPING, (v) => this.onChange?.({ jacobiMin: v }));
     const maxField = buildValueField('ヤコビ定数(上限)', JACOBI_MAPPING, (v) => this.onChange?.({ jacobiMax: v }));
     const countField = buildValueField('本数', ZERO_VELOCITY_COUNT_MAPPING, (count) => this.onChange?.({ count: Math.round(count) }));

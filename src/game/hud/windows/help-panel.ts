@@ -15,6 +15,7 @@ const HELP_TABS: readonly (readonly [HelpCategory, string])[] = [
   ['camera', 'CAMERA'],
   ['combat', 'COMBAT'],
   ['map', 'MAP & ORBIT'],
+  ['construction', 'CONSTRUCTION'],
   ['system', 'SYSTEM'],
 ];
 
@@ -55,6 +56,7 @@ export class HelpPanel implements OverlayHandle {
     this.tabs.element.setAttribute('aria-label', 'ヘルプの章');
     this.el.appendChild(this.tabs.element);
 
+    // 章ごとのタブパネル殻を作る。
     const body = document.createElement('div');
     body.className = 'help-body';
     for (const [category, label] of HELP_TABS) {
@@ -70,6 +72,7 @@ export class HelpPanel implements OverlayHandle {
       this.sections.set(category, section);
     }
 
+    // 対応表の行を章のリストへ配る。
     for (const row of helpRows()) {
       const list = this.sections.get(row.category)?.querySelector<HTMLElement>('.help-reference-list');
       if (list === null || list === undefined) continue;
@@ -99,6 +102,7 @@ export class HelpPanel implements OverlayHandle {
   // 開いているかどうか。台帳への登録の有無が正本。
   public get isOpen(): boolean { return this.overlayManager.isOverlayOpen(OVERLAY_ID); }
 
+  // 章の表示を切り替え、タブの選択と題字へ反映する。
   private setCategory(category: HelpCategory): void {
     this.tabs.setSelected(category);
     for (const [candidate, section] of this.sections) section.hidden = candidate !== category;
@@ -118,7 +122,8 @@ export class HelpPanel implements OverlayHandle {
   public open(): void {
     if (this.isOpen) return;
     const workspace = document.getElementById('hud')?.dataset['workspace'];
-    const category: HelpCategory = workspace === 'map' ? 'map' : 'flight';
+    const category: HelpCategory =
+      workspace === 'construction' ? 'construction' : workspace === 'map' ? 'map' : 'flight';
     this.contextEl.textContent = workspace === 'map' ? 'MAP' : workspace === 'construction' ? 'BUILD' : 'FLIGHT';
     this.setCategory(category);
     this.el.style.display = 'flex';

@@ -2,9 +2,8 @@
 // 入力の解釈 → 進行 → 導出と同期 → 描画の順に呼ぶ(R8)。
 import { Game, type SerializedGame } from '../game/game';
 import { GamePresentation } from '../game/game-presentation';
-import { proteinMotionFrameSample, type ProteinMotionFrameSample } from '../game/protein/protein-motion-metrics';
 import type { PageDevices } from './page-devices';
-import type { StageClass } from '../game/stages/stage';
+import type { RunOptions, StageClass } from '../game/stages/stage';
 import type { FrameSections } from '../game/frame-sections';
 import type { LoadingProgress } from '../game/loading-progress';
 import type { RunSummary } from '../game/run-summary';
@@ -16,6 +15,7 @@ import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { Viewport } from '../render/viewport';
 import type { SettingValue } from '../settings/setting-value';
+import type { ShipBlueprintShelf } from '../game/ship/ship-blueprint';
 import type { ThemePalette } from '../theme';
 import type { TdbJulianDate } from '../physics/time';
 
@@ -42,15 +42,19 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
+    runOptions: RunOptions,
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
-    const game = await Game.create(stageClass, startEpoch, devices.scene, devices.hud, sections, progress);
+    const game = await Game.create(
+      stageClass, startEpoch, devices.scene, devices.hud, sections, blueprints, progress, runOptions,
+    );
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
-      progressReader, progress,
+      blueprints, progressReader, progress,
     );
   }
 
@@ -64,15 +68,18 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
-    const game = await Game.deserialize(serialized, stageClass, devices.scene, devices.hud, sections, progress);
+    const game = await Game.deserialize(
+      serialized, stageClass, devices.scene, devices.hud, sections, blueprints, progress,
+    );
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
-      progressReader, progress,
+      blueprints, progressReader, progress,
     );
   }
 
@@ -88,10 +95,11 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
-    const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections);
+    const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections, blueprints);
     const run = new Run(game, presentation, devices, graphics, renderStyle, sections, progressReader);
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
     // ここで視点に反映してプレゼンテーション層へ反映しておく。新規開始のブリーフィングもこの場で表示する。
@@ -216,10 +224,5 @@ export class Run implements SnapshotSource, PerfCountSource {
       ...shown,
       warp: game.simSpeedManager.simSpeed,
     };
-  }
-
-  // タンパク質敵モーションの集計値。
-  public proteinMotionFrameSample(): ProteinMotionFrameSample {
-    return proteinMotionFrameSample(this.game.dynamicSystem.all());
   }
 }

@@ -73,7 +73,9 @@ export class Hud implements HudLayers, Notifier {
   public constructor(
     private readonly shell: HudShell, public readonly panelCollapse: PanelCollapse, renderStyle: RenderStyle,
   ) {
-    const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(shell, panelCollapse, renderStyle);
+    const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(
+      shell, panelCollapse, renderStyle,
+    );
     this.combatRoot = combatRoot.element;
     this.mapRoot = mapRoot.element;
     this.helpPanel = helpPanel;
@@ -132,6 +134,7 @@ export class Hud implements HudLayers, Notifier {
     document.body.classList.remove('hud-construction-mode');
     this.constructionMode = false;
     this.applyHudProfile(this.chromeView ?? 'combat', false);
+    // パネルが掴んでいるランの値と操作の口を、null の状態へ同期する。
     this.topBar.sync(null, 0);
     this.vesselPanel.sync(null, 0);
     this.orbitPanel.sync(null, 0);
@@ -140,7 +143,7 @@ export class Hud implements HudLayers, Notifier {
     this.burnManagementPanel.sync(null);
   }
 
-  // view で表に出ている常設パネルと、控えられたトーストを panels の値へ合わせる。
+  // view で表に出ている常設パネルと、控えられたトーストを同期する。
   // camera はこのフレームの表示カメラで、縮尺表示が読む。nowMs はフレームの実時刻 [ms]。
   public syncPanels(
     view: ViewMode, panels: HudPanelViewModels, camera: CameraFrame, nowMs: number,

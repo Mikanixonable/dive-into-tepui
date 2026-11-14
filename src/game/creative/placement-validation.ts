@@ -1,13 +1,12 @@
 // クリエイティブモードの物体配置フォームの入力値を、入力欄ごとに検証する。
 import { semiMajorFromPeriod } from '../../physics/elements';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
-import type { ObjectPlacementSelection } from './object-placer-panel';
 
 // 検証に落ちた入力欄の識別子。
 export type PlacementFieldId =
   | 'periapsisAltitude' | 'apoapsisAltitude' | 'semiMajorAxis' | 'eccentricity' | 'period'
   | 'inclination' | 'raan' | 'argumentOfPeriapsis' | 'trueAnomaly'
-  | 'referenceCelestialBody' | 'inPlaneAmplitude' | 'outOfPlaneAmplitude';
+  | 'inPlaneAmplitude' | 'outOfPlaneAmplitude';
 
 export interface PlacementFieldIssue { readonly field: PlacementFieldId; readonly message: string }
 
@@ -84,15 +83,4 @@ export function validateLagrangePlacementFields(input: LagrangePlacementInput): 
     issues.push({ field: 'inPlaneAmplitude', message: '面内振幅には有限の正数を入力してください' });
   }
   return issues;
-}
-
-// 基地の設置先の制約(SPEC GAME.md 9.1「基地の設置先」)を検証する。問題がなければ空配列を返す。
-export function validateBaseReferenceFields(
-  selection: ObjectPlacementSelection, placementMode: 'elements' | 'lagrange', celestialBody?: string,
-): PlacementFieldIssue[] {
-  if (selection !== 'base-ship') return [];
-  if (placementMode === 'elements' && celestialBody !== 'moon') {
-    return [{ field: 'referenceCelestialBody', message: '基地は月を基準天体とする軌道要素指定かラグランジュ点指定でのみ配置できます' }];
-  }
-  return [];
 }

@@ -29,12 +29,15 @@ const CONVECTION_NOISE: readonly NoiseOctave[] = [
   { frequency: 133, amplitude: 1 }, // 48 km
   { frequency: 266, amplitude: 0.65 }, // 24 km
 ];
+// 上層雲の濃淡は千キロ級の板がいちばん強く、それより細かい尺度(数百キロの斑と 100 km 級の
+// 繊維)へ向かって痩せる — 100 km 級の段を厚くすると、筋の向きがその尺度でばらついて
+// 向きの相関長が短くなる。細かい段は板の縁や渦のまわりで向きを変えるぶんだけ残す。
 const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 3.75, amplitude: 0.45 }, // 1700 km
-  { frequency: 8, amplitude: 0.7 }, // 800 km
-  { frequency: 16, amplitude: 0.28 }, // 400 km
-  { frequency: 32, amplitude: 0.18 }, // 200 km
-  { frequency: 64, amplitude: 0.23 }, // 100 km
+  { frequency: 8, amplitude: 0.75 }, // 800 km
+  { frequency: 16, amplitude: 0.30 }, // 400 km
+  { frequency: 32, amplitude: 0.12 }, // 200 km
+  { frequency: 64, amplitude: 0.10 }, // 100 km
 ];
 
 // エポックの混ぜ替えに参加する段の周波数の上限 [1 rad あたりの山数]。地表付近は 400 km 以上、

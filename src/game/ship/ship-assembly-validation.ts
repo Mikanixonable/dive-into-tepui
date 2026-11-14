@@ -1,14 +1,13 @@
-import { qInvert, qRotate } from '../../math/quat';
-import { v3 } from '../../math/vec3';
 import type { ShipModuleCatalog } from './ship-module-catalog';
 import {
-  finiteQuaternion, finiteVector, isIdentityRotation, isSideChild, isSideParent, sameTransform,
-  sideMountTransform,
+  axialPlacementFromTransform, finiteQuaternion, finiteVector, inverseTransform, isSideChild,
+  isSideParent, sideRollFromTransform,
 } from './ship-assembly-transform';
 import {
   isDockingModule, type ShipAssemblyNode, type ShipAssemblyValidation, type ShipConnection,
 } from './ship-assembly-types';
 
+// 接続木の構造的妥当性を検査し、見つかった違反をすべて列挙して返す。
 export function validateShipAssembly(
   nodes: ReadonlyMap<string, ShipAssemblyNode>, connections: readonly ShipConnection[], catalog: ShipModuleCatalog,
 ): ShipAssemblyValidation {
@@ -40,20 +39,18 @@ export function validateShipAssembly(
         errors.push(`invalid docking endpoints: ${connection.id}`);
       }
     } else if (connection.kind === 'construction') {
-      if (parent?.instance.kind !== 'dock') errors.push(`invalid construction parent: ${connection.id}`);
+      if (parent?.instance.kind !== 'dock' && child?.instance.kind !== 'dock') {
+        errors.push(`invalid construction endpoints: ${connection.id}`);
+      }
     } else if (connection.kind === 'axial' && parent !== undefined && child !== undefined) {
       const parentDef = catalog.get(parent.instance.definitionId);
       const childDef = catalog.get(child.instance.definitionId);
       const expected = (parentDef?.length ?? 0) / 2 + (childDef?.length ?? 0) / 2;
       const p = connection.childTransform.position;
-      const rot = connection.childTransform.rotation;
-      const isDockParent = parentDef?.kind === 'dock' || parentDef?.kind === 'docking_port';
-      const isDockTurn = isDockParent
-        && Math.abs(rot.x) < 1e-9 && Math.abs(Math.abs(rot.y) - 1) < 1e-9
-        && Math.abs(rot.z) < 1e-9 && Math.abs(rot.w) < 1e-9;
-      const validRotation = isIdentityRotation(rot) || isDockTurn;
       if (Math.abs(p.x) > 1e-9 || Math.abs(p.y) > 1e-9 || Math.abs(Math.abs(p.z) - expected) > 1e-9
-        || !validRotation) errors.push(`invalid axial snap: ${connection.id}`);
+        || axialPlacementFromTransform(connection.childTransform) === null) {
+        errors.push(`invalid axial snap: ${connection.id}`);
+      }
     }
     if (connection.kind === 'side' && parent !== undefined && child !== undefined) {
       const slotOwnerId = connection.sideReversed ? connection.childId : connection.parentId;
@@ -66,25 +63,21 @@ export function validateShipAssembly(
       }
       if (connection.sideSlot === undefined) errors.push(`missing side slot: ${connection.id}`);
       else {
-        const expected = connection.sideReversed
-          ? (() => {
-            const forward = sideMountTransform(
-              catalog.require(child.instance.definitionId),
-              catalog.require(parent.instance.definitionId),
-              connection.sideSlot,
-            );
-            const invRot = qInvert(forward.rotation);
-            return {
-              position: qRotate(invRot, v3(-forward.position.x, -forward.position.y, -forward.position.z)),
-              rotation: invRot,
-            };
-          })()
-          : sideMountTransform(
+        // スロットの持ち主に対する装着側の変換へ戻してから、標準の変換 ∘ 4 通りのロールと照合する。
+        const validMount = connection.sideReversed
+          ? sideRollFromTransform(
+            catalog.require(child.instance.definitionId),
+            catalog.require(parent.instance.definitionId),
+            connection.sideSlot,
+            inverseTransform(connection.childTransform),
+          ) !== null
+          : sideRollFromTransform(
             catalog.require(parent.instance.definitionId),
             catalog.require(child.instance.definitionId),
             connection.sideSlot,
-          );
-        if (!sameTransform(connection.childTransform, expected)) errors.push(`invalid side mount: ${connection.id}`);
+            connection.childTransform,
+          ) !== null;
+        if (!validMount) errors.push(`invalid side mount: ${connection.id}`);
         const duplicate = connections.some(other => other !== connection
           && other.kind === 'side'
           && (other.sideReversed ? other.childId : other.parentId) === slotOwnerId
@@ -100,6 +93,7 @@ export function validateShipAssembly(
       occupied.add(moduleId);
     }
   }
+  // 木は根を1つだけ持ち、根から全 module へ循環なしに辿れること。
   const roots = [...nodes.keys()].filter(id => !childIds.has(id));
   if (nodes.size > 0 && roots.length !== 1) errors.push(`assembly must have one root, got ${roots.length}`);
   const visiting = new Set<string>(), visited = new Set<string>();
