@@ -1,10 +1,9 @@
 // Stage 0: 近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック。タイムアップで終了。
-import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
+import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH, summaryHtml } from './stage';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 import { generateCluster, STAGE0_PER_GROUP, STAGE0_MAX_RANGE, COLOR_STAGE0_GROUP_ACCENTS } from './spawner/enemy-spawner';
 import { ScoreAttackTimer, type SerializedScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { ScoreCounter } from './stage-utils/score-counter';
 
 // 制限時間 [実秒]。
 const STAGE0_TIME_LIMIT = 120;
@@ -88,7 +87,10 @@ export class Stage0 extends Stage {
     const running = this.timer.timeLeft > 0;
     this.timer.update(dt);
     if (running && this.timer.timeLeft <= 0) {
-      this.decide('timeup', { win: true, title: 'TIME UP', detailHtml: scoreAttackDetailHtml(this.scoreCounter) });
+      const stats = this.runStats;
+      this.decide('timeup', {
+        win: true, title: 'TIME UP', detailHtml: summaryHtml(stats), stats, lossCause: null,
+      });
     }
   }
 
@@ -105,11 +107,4 @@ export class Stage0 extends Stage {
   public serialize(): SerializedStage0 {
     return { ...super.serialize(), timeLeft: this.timer.serialize() };
   }
-}
-
-// 撃墜数・命中率をまとめたタイムアップ画面の本文。
-function scoreAttackDetailHtml(scoreCounter: ScoreCounter): string {
-  const { shots, hits, kills } = scoreCounter;
-  const acc = shots > 0 ? ((hits / shots) * 100).toFixed(1) : '0.0';
-  return `撃墜数 ${kills} 機<br>発射 ${shots} 発 / 命中 ${hits} 発 (命中率 ${acc}%)`;
 }
