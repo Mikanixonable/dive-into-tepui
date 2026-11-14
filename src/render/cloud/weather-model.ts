@@ -1,6 +1,6 @@
 // 天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流の天気を TSL の
 // グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
-import { abs, clamp, cos, cross, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
+import { abs, clamp, cos, cross, dot, exp, float, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
 import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
@@ -20,6 +20,7 @@ import type { NoiseOctave } from './circulating-noise';
 import type { ClimateMap } from './climate-map';
 import type { FieldProjection } from '../field-projection';
 import type { BalancedWind } from './wind-law';
+import type { HumidityModulation } from './weather-transport';
 import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 単位方向における天気。
@@ -170,6 +171,29 @@ const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.24;
 const MEAN_CLOUDINESS_DRY = 0.10;
 const MEAN_CLOUDINESS_WET = 0.85;
 
+// 移流前の湿度へ掛ける環境変調の係数表。coupling(κ)は、1 つ粗い段の実現値を細かい段の振幅へ
+// 掛ける乗法の鎖の強さ — κ = 熱帯 ×(base + (活発度 − ACTIVITY_MID) ×ACT) − 温帯 ×(折り目 ×BAND + POLAR)。
+// envelope は、低周波の段(NoiseOctave.envelope)の振幅の倍率を 1 + 熱帯の海 ×TROPIC で振る。
+// 帯(前線・雨帯)そのものは移流前の湿度の勾配を含むので源の場では引けず、折り目の代理に
+// 気団の押し縮まりを使う — 押し縮まりが立ち上がる幅は、温帯の前線(1.65 から)と熱帯の雨帯
+// (5 から)のあいだを覆う広さ。活発度の中立点は海上の平年程度の値。値はすべて見えのための調整値。
+const ORGANIZATION_FOLD_ONSET = 1.8;
+const ORGANIZATION_FOLD_WIDTH = 1.4;
+const ORGANIZATION_ACTIVITY_MID = 0.55;
+const SURFACE_COUPLING_BASE = 0.7;
+const SURFACE_COUPLING_ACTIVITY = 0.5;
+const SURFACE_COUPLING_FOLD = 0.3;
+const UPPER_COUPLING_BASE = 0.7;
+const UPPER_COUPLING_ACTIVITY = 0.4;
+const UPPER_COUPLING_FOLD = 0.2;
+// 包絡は熱帯では正・温帯以降では負にする — 段の応答係数を正に取れば、熱帯では段の振幅が
+// 膨らみ、温帯以降では痩せる。温帯以降の細かい段の散らばりは実写より大きいので、
+// そこを削る向きが必要。
+const SURFACE_ENVELOPE_TROPIC = 0.7;
+const SURFACE_ENVELOPE_POLAR = 0.8;
+const UPPER_ENVELOPE_TROPIC = 0.3;
+const UPPER_ENVELOPE_POLAR = 0.6;
+
 export class WeatherModel {
   // 大循環の平均風。地表付近と上層の背景風をここから引く。
   private readonly atmosphericWind = new AtmosphericWindField();
@@ -197,13 +221,15 @@ export class WeatherModel {
     this.pressureNoise = new CirculatingNoise(
       this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
     this.upperMeander = new CirculatingNoise(this.upperCirculation, UPPER_MEANDER_NOISE, texel);
-    this.transport = new WeatherTransport(
-      this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius);
     this.pressure = new BakedField(
       'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1),
       GPU_PASS.cloudBake);
     this.convectiveActivity = new ConvectiveActivity(this.surfaceCirculation, projection);
     this.airMass = new AirMass(projection, (direction) => this.traceFlowAt(direction), surfaceRadius);
+    // 湿度の源の変調が気圧・気団・活発度を読むので、それらのあとに組む。
+    this.transport = new WeatherTransport(
+      this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius,
+      (direction) => this.humidityModulationAt(direction));
     this.syncTime(0);
   }
 
@@ -212,8 +238,9 @@ export class WeatherModel {
     this.pressure.render(renderer, gpu);
     // 気団は気圧の写しを読んで遡るので、気圧の後に焼く。
     this.airMass.bake(renderer, gpu);
-    this.transport.bake(renderer, gpu);
     this.convectiveActivity.bake(renderer, gpu);
+    // 湿度の源は気圧・気団・活発度の写しを読むので、それらの後に焼く。
+    this.transport.bake(renderer, gpu);
   }
 
   // 時刻 [s] を各サブシステムの uniform へ反映する。
@@ -435,6 +462,37 @@ export class WeatherModel {
   // 気候の分布が雲を筋に引く変位ぶん歪む。
   public humiditySourceAt(direction: Vec3Node): Vec2Node {
     return this.transport.humiditySourceAt(direction);
+  }
+
+  // 移流前の湿度の源へ掛ける環境変調。活発度は帯の項を除いて引く — 帯は移流前の湿度の勾配を
+  // 含むので源の場の中では組めず、折り目の代理に気団の押し縮まりを使う。上昇流も、帯が立てる
+  // 分を欠いた気圧の項だけを渡す。
+  private humidityModulationAt(direction: Vec3Node): HumidityModulation {
+    const latitude = latitudeOf(direction);
+    const extratropical = smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
+    const pressure = this.pressure.at(direction).r;
+    const airMass = this.airMass.at(direction, latitude);
+    const land = this.climate.landFraction(direction);
+    const activity = this.convectiveActivity.at(
+      direction, liftFromPressure(pressure), airMass.warmth.mul(extratropical), land, float(0));
+    const fold = smoothstep(
+      ORGANIZATION_FOLD_ONSET, ORGANIZATION_FOLD_ONSET + ORGANIZATION_FOLD_WIDTH, airMass.compression);
+    // κ は熱帯に限る。被覆率の間欠性が不足するのは熱帯だけで、温帯以降はむしろ過剰 — 前線の
+    // 折り目では温帯側だけ κ を削る(熱帯の雨帯は組織化した対流の座なので削らない)。地表側は
+    // 陸に限る — 海上では κ が小さい粒の散らばりを増やして、かえって間欠性の実写との差を
+    // 広げることが実測で分かった(陸では対流の集団化が観測どおり改善する)。
+    const tropical = extratropical.oneMinus();
+    const coupling = (base: number, activityGain: number, foldGain: number): FloatNode =>
+      tropical.mul(float(base).add(activity.sub(ORGANIZATION_ACTIVITY_MID).mul(activityGain)))
+        .sub(fold.mul(extratropical).mul(foldGain));
+    return {
+      surfaceCoupling: land.mul(
+        coupling(SURFACE_COUPLING_BASE, SURFACE_COUPLING_ACTIVITY, SURFACE_COUPLING_FOLD)),
+      surfaceEnvelope: tropical.mul(land.oneMinus()).mul(SURFACE_ENVELOPE_TROPIC)
+        .sub(extratropical.mul(SURFACE_ENVELOPE_POLAR)),
+      upperCoupling: coupling(UPPER_COUPLING_BASE, UPPER_COUPLING_ACTIVITY, UPPER_COUPLING_FOLD),
+      upperEnvelope: tropical.mul(UPPER_ENVELOPE_TROPIC).sub(extratropical.mul(UPPER_ENVELOPE_POLAR)),
+    };
   }
 
   // 単位方向 direction における高度1 kmの大循環の平均風(東向き・北向きの成分 [m/s])。
