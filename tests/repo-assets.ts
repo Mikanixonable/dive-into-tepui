@@ -35,12 +35,12 @@ host._resolveFilename = function (request, parent, ...rest): string {
   return resolveFilename.call(this, request, parent, ...rest);
 };
 
-// 画像は webpack の asset/resource ローダーが最終出力 URL の文字列へ、.cube は asset/source
-// ローダーが中身のテキストへ変換する。node には同じ変換が無いので、実ファイルのパスと中身を
-// それぞれ返すローダーを立てる。
+// 画像と暦パック(.epk)は webpack の asset/resource ローダーが最終出力 URL の文字列へ、
+// .cube は asset/source ローダーが中身のテキストへ変換する。node には同じ変換が無いので、
+// 実ファイルのパスと中身をそれぞれ返すローダーを立てる。
 // webpack 用に `require` がグローバル宣言されているので、node のローダー登録はここで作る。
 const nodeRequire = createRequire(__filename);
-for (const extension of ['.jpg', '.png', '.glb']) {
+for (const extension of ['.jpg', '.png', '.glb', '.epk']) {
   nodeRequire.extensions[extension] = (module, filename) => {
     module.exports = filename;
   };

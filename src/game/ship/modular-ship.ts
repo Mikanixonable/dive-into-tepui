@@ -33,6 +33,8 @@ import { baseMarkerSvg } from '../marker/marker-shapes';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { ModularShipMotion, type ModularShipMotionReactions } from './modular-ship-motion';
+import { AnchoredShipMotion } from './anchored-ship-motion';
+import type { SurfaceAnchor } from './surface-anchor';
 import type { DynamicMotionThermal } from '../dynamic/dynamic-motion';
 import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
 import { ShipInspection } from '../pickable/ship-inspection';
@@ -77,6 +79,8 @@ export interface ModularShipInit {
   readonly att?: Attitude;
   readonly dockState?: readonly SerializedShipConstructionDraft[];
   readonly operatingCockpitId?: string | null;
+  // 地表固定の錨。渡すと、この艦は実軌道を持たず錨の天体の自転とともに運動する(GAME.md 7.4)。
+  readonly surfaceAnchor?: SurfaceAnchor;
 }
 
 export interface SerializedModularShip extends SerializedDynamicEntityFields {
@@ -98,6 +102,8 @@ export interface SerializedModularShip extends SerializedDynamicEntityFields {
   readonly planExecution: PlanExecutionMode;
   readonly autopilot?: SerializedShipAutopilot;
   readonly fineAttitude: boolean;
+  // 地表固定の錨。地表固定でない艦の記録には現れない。
+  readonly surfaceAnchor?: SurfaceAnchor;
 }
 
 // モジュール船の操縦・射撃・ブースター・接触帰結・保存を合成する entity。
@@ -117,6 +123,8 @@ export class ModularShip extends Ship implements Controllable {
 
   public declare readonly motion: ModularShipMotion;
   public readonly assembly: ShipAssembly;
+  // 地表固定の錨。地表固定でない艦では null。
+  private readonly surfaceAnchor: SurfaceAnchor | null;
   public readonly capabilities: ShipCapabilities;
   public readonly docks: ShipDockState;
   public readonly connections: ModularShipConnectionOperations;
@@ -217,6 +225,7 @@ export class ModularShip extends Ship implements Controllable {
       : (placement?.att === undefined
         ? ModularShip.progradeAttitude(state, physics.mass.inertia)
         : { ...placement.att, inertia: physics.mass.inertia });
+    const surfaceAnchor = saved?.surfaceAnchor ?? placement?.surfaceAnchor ?? null;
 
     let reactionHandler: ModularShipReactions | null = null;
     const requiredReactions = (): ModularShipReactions => {
@@ -249,23 +258,25 @@ export class ModularShip extends Ship implements Controllable {
     super(
       name,
       assembly.maxHp,
-      owner => new ModularShipMotion(
-        assembly,
-        state,
-        att,
-        reactions(owner as ModularShip),
-        {
+      owner => {
+        const systems = {
           temperature: saved?.thermal.temperature ?? HULL_START_TEMP,
           beltLinkCount: BELT_MAX_VISIBLE,
           beltSave: saved?.belt,
           radiatorSave: saved?.radiator,
           powerSave: saved?.power,
-        },
-      ),
+        };
+        return surfaceAnchor === null
+          ? new ModularShipMotion(assembly, state, att, reactions(owner as ModularShip), systems)
+          : new AnchoredShipMotion(
+            assembly, state, att, reactions(owner as ModularShip), systems, surfaceAnchor,
+          );
+      },
       new ModularShipDynamicView(scene, id, BELT_MAX_VISIBLE),
       id,
     );
     this.assembly = assembly;
+    this.surfaceAnchor = surfaceAnchor;
     this.docks = new ShipDockState(saved
       ? restoreConstructionDrafts(saved.dockState, assembly)
       : placement?.dockState ? restoreConstructionDrafts(placement.dockState, assembly) : []);
@@ -700,6 +711,7 @@ export class ModularShip extends Ship implements Controllable {
       autopilot: this.autopilot.serialize(),
       fineAttitude: this.fineAttitude,
       plan: this.plan.serialize(),
+      ...(this.surfaceAnchor === null ? {} : { surfaceAnchor: this.surfaceAnchor }),
     };
   }
 
