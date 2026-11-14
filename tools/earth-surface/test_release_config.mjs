@@ -5,7 +5,10 @@ import {
   validateEarthSurfaceReleaseConfig,
   releaseConfigFromEnvironment,
 } from './release-config.mjs';
-import { fixtureManifest, jpegFixture } from './fixture-builders.mjs';
+import { gzipSync } from 'node:zlib';
+import {
+  baseTerrainPayload, fixtureManifest, jpegFixture, terrainPayload,
+} from './fixture-builders.mjs';
 
 const valid = { baseUrl: 'https://cdn.example.test/earth/v1', datasetId: 'etopo-gshhg-2026' };
 
@@ -51,21 +54,58 @@ const legacyManifest = {
 
 const releaseRequests = [];
 const releaseManifestUrl = 'https://cdn.example.test/earth/earth-surface.json';
+
+// 配信側のバイト列を差し替えられる fetch。地形は契約どおりの gzip を既定にする。
+function releaseFetch({
+  baseTerrain = gzipSync(baseTerrainPayload(), { mtime: 0 }),
+  tile = gzipSync(terrainPayload({ z: 5 }), { mtime: 0 }),
+  requests,
+} = {}) {
+  return async (input) => {
+    const url = String(input);
+    requests?.push(url);
+    if (url === releaseManifestUrl) return new Response(JSON.stringify(manifest), { status: 200 });
+    if (url.endsWith('/base/earth.jpg')) return new Response(jpegFixture({ width: 8192, height: 4096 }), { status: 200 });
+    if (url.endsWith('/base/earth.bin.gz')) return new Response(baseTerrain, { status: 200 });
+    if (url.endsWith('/tiles/5/0/0.bin.gz')) return new Response(tile, { status: 200 });
+    return new Response('ok', { status: 200 });
+  };
+}
+
 const releaseResult = await checkEarthSurfaceRelease({
   baseUrl: 'https://cdn.example.test/earth/',
   manifestUrl: releaseManifestUrl,
   datasetId: manifest.datasetId,
-}, async (input) => {
-  const url = String(input);
-  releaseRequests.push(url);
-  return url === releaseManifestUrl
-    ? new Response(JSON.stringify(manifest), { status: 200 })
-    : url.endsWith('/base/earth.jpg')
-      ? new Response(jpegFixture({ width: 8192, height: 4096 }), { status: 200 })
-    : new Response('ok', { status: 200 });
-});
+}, releaseFetch({ requests: releaseRequests }));
 assert.equal(releaseResult.manifestSchemaVersion, 3);
 assert.equal(releaseRequests.length, 6);
+
+// 配信中の base 地形が、法線を B へ・roughness を A へ書いた旧配置(R2 の障害と同じ形)なら、
+// HTTP 200 でも release 検査で弾く。
+const swappedTile = (x) => {
+  const tileBytes = terrainPayload({ x });
+  for (let texel = 32; texel < tileBytes.length; texel += 4) { tileBytes[texel + 2] = 204; tileBytes[texel + 3] = 255; }
+  return tileBytes;
+};
+const swappedBase = Buffer.concat([baseTerrainPayload().subarray(0, 32), swappedTile(0), swappedTile(1)]);
+await assert.rejects(checkEarthSurfaceRelease({
+  baseUrl: 'https://cdn.example.test/earth/',
+  manifestUrl: releaseManifestUrl,
+  datasetId: manifest.datasetId,
+}, releaseFetch({ baseTerrain: gzipSync(swappedBase, { mtime: 0 }) })),
+/baseTerrain bytes violate the terrain contract/);
+await assert.rejects(checkEarthSurfaceRelease({
+  baseUrl: 'https://cdn.example.test/earth/',
+  manifestUrl: releaseManifestUrl,
+  datasetId: manifest.datasetId,
+}, releaseFetch({ tile: gzipSync(swappedTile(0), { mtime: 0 }) })),
+/terrain tile 5\/0\/0 bytes violate the terrain contract/);
+await assert.rejects(checkEarthSurfaceRelease({
+  baseUrl: 'https://cdn.example.test/earth/',
+  manifestUrl: releaseManifestUrl,
+  datasetId: manifest.datasetId,
+}, releaseFetch({ baseTerrain: Buffer.from('not-gzip') })),
+/baseTerrain bytes violate the terrain contract/);
 assert.throws(() => validateEarthSurfaceReleaseConfig({
   baseUrl: 'https://cdn.example.test/earth/',
   manifestUrl: 'https://other.example.test/earth-surface.json',

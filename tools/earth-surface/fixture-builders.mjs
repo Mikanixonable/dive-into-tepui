@@ -8,6 +8,7 @@ import {
   EARTH_TERRAIN_BYTES,
   EARTH_TERRAIN_CHANNELS,
   EARTH_TERRAIN_FORMAT_VERSION,
+  EARTH_TERRAIN_HEADER_BYTES,
   EARTH_TERRAIN_LAYOUT,
   EARTH_TERRAIN_PAYLOAD_BYTES,
   EARTH_TERRAIN_SCALAR_UINT8,
@@ -41,10 +42,13 @@ export function jpegFixture({ width = EARTH_BASE_COLOR_WIDTH, height = EARTH_BAS
   ]);
 }
 
-// 検査を通る最小のESTN地形payloadを組み立てる。
+// 検査を通る最小のESTN地形payloadを組み立てる。本文は放射法線(0,0,1)と水のroughness 0.05で埋める。
 export function terrainPayload({ z = 0, x = 0, y = 0 } = {}) {
   const payload = Buffer.alloc(EARTH_TERRAIN_PAYLOAD_BYTES);
   payload.write('ESTN', 0, 'ascii');
+  for (let texel = EARTH_TERRAIN_HEADER_BYTES; texel < payload.length; texel += EARTH_TERRAIN_CHANNELS) {
+    payload[texel] = 128; payload[texel + 1] = 128; payload[texel + 2] = 255; payload[texel + 3] = 13;
+  }
   payload.writeUInt16LE(EARTH_TERRAIN_FORMAT_VERSION, 4); payload.writeUInt16LE(32, 6);
   payload.writeUInt16LE(260, 8); payload.writeUInt16LE(260, 10);
   payload.writeUInt8(z, 12); payload.writeUInt8(0, 13);
