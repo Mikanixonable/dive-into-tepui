@@ -44,6 +44,8 @@ export class CloudPresentation {
   // 現在選択されている雲データ供給源。
   private source: CloudFieldSource;
   private cloudVisible = false;
+  private cumulusVisible = true;
+  private cirrusVisible = true;
   // 細部の時刻。bake で表示時刻へ進める。
   private clock: CloudDetailClockInput = { displayTime: 0, simSpeed: 0 };
 
@@ -73,7 +75,11 @@ export class CloudPresentation {
     };
   }
   public get visible(): boolean { return this.surface.visible; }
-  public get cloudsVisible(): boolean { return this.cloudVisible; }
+  public get cloudsVisible(): boolean {
+    return this.cloudVisible && (this.cumulusVisible || this.cirrusVisible);
+  }
+  public get cumulusEnabled(): boolean { return this.cloudsVisible && this.cumulusVisible; }
+  public get cirrusEnabled(): boolean { return this.cloudsVisible && this.cirrusVisible; }
   public get topAltitude(): number { return this.surface.topAltitude; }
 
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
@@ -82,6 +88,9 @@ export class CloudPresentation {
   public syncGraphics(graphics: GraphicsSettingsData, apparentDiameterPx: number): void {
     // 雲全体を描くかと、描くときの雲場の出どころ・積雲の精細さ・殻の分割段。
     this.setCloudsVisible(graphics.clouds);
+    this.cumulusVisible = graphics.cumulus;
+    this.cirrusVisible = graphics.cirrus;
+    this.syncSurfaceVisibility();
     if (graphics.clouds) {
       this.setSource(graphics.cloudFieldSource);
       this.setDetail(graphics.cumulusDetail);
@@ -128,12 +137,16 @@ export class CloudPresentation {
   // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   public setCloudsVisible(visible: boolean): void {
     this.cloudVisible = visible;
-    if (!visible) this.surface.hide();
+    this.syncSurfaceVisibility();
+  }
+
+  private syncSurfaceVisibility(): void {
+    if (!this.cloudVisible || !this.cumulusVisible) this.surface.hide();
   }
 
   // 見かけ直径 [px] から不透明表面の分割段を選ぶ。雲を描かないなら隠す。
   private syncLod(apparentDiameterPx: number): void {
-    if (this.cloudVisible) this.surface.syncLod(apparentDiameterPx);
+    if (this.cumulusEnabled) this.surface.syncLod(apparentDiameterPx);
     else this.surface.hide();
   }
 
@@ -158,6 +171,6 @@ export class CloudPresentation {
   // 雲場がこのフレームの描画に寄与するか。巻雲は雲を描く限り常に大気へ立つので、
   // 雲が見える限り場は常に寄与する。
   private get fieldContributes(): boolean {
-    return this.cloudVisible;
+    return this.cloudsVisible;
   }
 }
