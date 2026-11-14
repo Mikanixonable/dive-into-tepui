@@ -123,6 +123,10 @@ export class LabView {
   private style: RenderStyle = 'realistic';
   // 直前の render がパイプラインの描画に費やした CPU 時間 [ms]。
   private lastRenderCpuMs = 0;
+  // setDisplayTime で最後に指定した表示時刻 [s]。capture() は画面に出ているものを撮るので、
+  // render() の既定 (0) ではなくこの時刻で描き直す — 既定で描き直すと、表示時刻を指定した
+  // 撮影 (時系列の撮影や displayTime 付きの shot) がすべて時刻 0 の絵になる。
+  private lastDisplayTime = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
   // ケース既定のカメラ距離 [m]。cameraDistanceLog の基準になる。
@@ -541,8 +545,10 @@ export class LabView {
     this.setDisplayTime(shot.displayTime ?? 0);
   }
 
-  // 可動部を指定表示時刻 [s] に合わせ、静止した1フレームとして描く。
+  // 可動部を指定表示時刻 [s] に合わせ、静止した1フレームとして描く。時刻は capture() が
+  // 同じ時刻で描き直せるよう控える。
   public setDisplayTime(displayTime: number): void {
+    this.lastDisplayTime = displayTime;
     this.current?.syncMotion?.(displayTime);
     this.render(displayTime);
   }
@@ -611,7 +617,9 @@ export class LabView {
     }
   }
 
-  // いま画面に出ているものを、ケースも観察の向きも変えずに撮る。
+  // いま画面に出ているものを、ケースも観察の向きも変えずに撮る。描き直しは最後に指定した
+  // 表示時刻で行う (setDisplayTime が控えたもの)。既定の 0 で描き直すと、表示時刻を指定
+  // した撮影が時刻 0 の絵になってしまう。
   public async capture(): Promise<string> {
     // 前回の timestamp resolve を排出してから描く。render() の resolve がこのフレームを対象にできる。
     await this.gpu.waitForResolve();
@@ -628,7 +636,7 @@ export class LabView {
       this.renderer.setClearColor(previousClearColor, previousClearAlpha);
       this.renderer.setRenderTarget(previousTarget);
       this.renderer.setOutputRenderTarget(this.captureTarget);
-      this.render();
+      this.render(this.lastDisplayTime);
       // timestamp 解決後に readback する。readRenderTargetPixelsAsync は captureTarget の GPU 書き込みも待つ。
       await this.gpu.waitForResolve();
     } finally {

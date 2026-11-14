@@ -91,10 +91,12 @@
     "cloud-lab:shot": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-shot.mjs",
     "cloud-lab:compare": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-compare.mjs",
     "cloud-lab:render-capture": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-render-capture.mjs",
+    "cloud-lab:render-capture-timeseries": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-render-capture-timeseries.mjs",
     "cloud-lab:separate": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-separate.mjs",
     "cloud-lab:reference": "node tools/cloud-lab-reference.mjs",
     "cloud-lab:reference-timeseries": "node tools/cloud-lab-reference-timeseries.mjs",
     "cloud-lab:reference-fine": "node tools/cloud-lab-reference-fine.mjs",
+    "cloud-lab:reference-fine-timeseries": "node tools/cloud-lab-reference-fine-timeseries.mjs",
     "cloud-lab:reference-cloudtop": "node tools/cloud-lab-reference-cloudtop.mjs",
     "verify:hud-layout": "node tools/verify-hud-layout.mjs",
     "smoke:layout": "node tools/layout-smoke-retry.mjs"
