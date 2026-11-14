@@ -83,7 +83,7 @@ const WARP_OFFSET = vec3(5.2, 1.3, 7.9);
 
 // 積雲の細部を低層の風向きへ伸ばす倍率の上限。風速が CUMULUS_STREAK_WIND [m/s] で満額になる。
 // 伸ばすのは DETAIL_WAVELENGTHS の添字 CUMULUS_STREAK_LAST_OCTAVE 以下の段(4 km 以上の段)だけ。
-const CUMULUS_STREAK_MAX = 3;
+const CUMULUS_STREAK_MAX = 2;
 const CUMULUS_STREAK_WIND = 10;
 const CUMULUS_STREAK_LAST_OCTAVE = 3;
 
@@ -162,8 +162,9 @@ export class CloudDetailEvaluator {
           .mul(this.clock.presence(index)).toVar();
         If(greaterThan(live, 0), () => {
           // 粗い段は風向きへ伸ばして読み、細かい段は等方に読む。
-          const streak = index <= CUMULUS_STREAK_LAST_OCTAVE ? { axis: windDir, factor: streakStretch } : undefined;
-          const value = this.clock.evolvingNoise(index, warped, radius, windVector, streak).toVar();
+          const value = (index <= CUMULUS_STREAK_LAST_OCTAVE
+            ? this.clock.flowNoise(index, warped, radius, windVector, windDir, streakStretch)
+            : this.clock.evolvingNoise(index, warped, radius, windVector)).toVar();
           sum.addAssign(value.mul(OCTAVE_WEIGHTS[index]!).mul(tilt[index]!).mul(weightScale).mul(live).mul(gate));
           gate.mulAssign(exp(value.mul(OCTAVE_COUPLING).sub(COUPLING_SHIFT).mul(live)));
         });
@@ -205,7 +206,7 @@ const CIRRUS_FIRST_OCTAVE = 2;
 const CIRRUS_STRETCH_LAST_OCTAVE = 4;
 
 // 揃いの強い筋が流れ方向へ伸びる倍率の上限。揃い度 0 の場所は等方に読む。
-const CIRRUS_STRETCH_MAX = 3;
+const CIRRUS_STRETCH_MAX = 7;
 // 光学深さの対数の標準偏差。筋の濃淡の強さで、平均を 1 に保つ補正と組で使う。尺度の梯子で巻雲の
 // 細かい帯(1〜16 km)が大きい帯(64 km 以上)に対して強すぎない高さに取る。
 const CIRRUS_LOG_SIGMA = 0.4;
@@ -253,8 +254,9 @@ export class CirrusDetailEvaluator {
       If(greaterThan(live, 0), () => {
         const weight = live.mul(OCTAVE_WEIGHTS[index]!);
         // 粗い段は流れの向きへ伸ばして読み、細かい段は等方に読む。
-        const streak = index <= CIRRUS_STRETCH_LAST_OCTAVE ? { axis: flowDir, factor: stretch } : undefined;
-        const value = this.clock.evolvingNoise(index, direction, radius, windVector, streak).toVar();
+        const value = (index <= CIRRUS_STRETCH_LAST_OCTAVE
+          ? this.clock.flowNoise(index, direction, radius, windVector, flowDir, stretch)
+          : this.clock.evolvingNoise(index, direction, radius, windVector)).toVar();
         sum.addAssign(value.mul(weight));
         energy.addAssign(weight.mul(weight));
       });
