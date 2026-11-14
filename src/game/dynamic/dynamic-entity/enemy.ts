@@ -23,7 +23,6 @@ import type { DynamicMotionThermal } from '../dynamic-motion';
 import type { EntityContactParticipant } from '../dynamic-simulation-participant';
 import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 import { EnemyInspection } from '../../pickable/enemy-inspection';
-import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
 import { EnemyFireController, type SerializedEnemyFireController } from './enemy-fire-controller';
 import { EnemyReactions } from './enemy-reactions';
 
@@ -40,7 +39,7 @@ const MARKER_HIT_FLASH_DURATION = 0.25;
 
 // 敵に共通する直列化の項目。具象の直列化した形がこれを継ぐ。
 export interface SerializedEnemy extends SerializedDynamicEntityFields {
-  readonly kind: 'metal-enemy' | 'protein-enemy' | 'assembly-enemy';
+  readonly kind: 'metal-enemy' | 'assembly-enemy';
   readonly name: string;
   readonly thermal: DynamicMotionThermal;
   // マーカーに使う個体色と、軌道線の色。
@@ -58,7 +57,7 @@ export interface SerializedEnemy extends SerializedDynamicEntityFields {
 
 // 敵の直列化した形が取る種別タグ。
 const SERIALIZED_ENEMY_KINDS: Record<SerializedEnemy['kind'], true> = {
-  'metal-enemy': true, 'protein-enemy': true, 'assembly-enemy': true,
+  'metal-enemy': true, 'assembly-enemy': true,
 };
 
 // 直列化した実体が敵のものか。
@@ -121,7 +120,6 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   public override readonly pickable = true;
   public readonly inspection = new EnemyInspection(this);
   public readonly objectPickable = this.inspection;
-  public get proteinInspection(): EnemyProteinInspection | null { return null; }
 
   public readonly accent: string | number; // マーカー色。攻撃グループとは独立
   public readonly orbitLineColor: string | number;
