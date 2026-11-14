@@ -8,8 +8,11 @@ import { stepAttitude } from '../../src/physics/attitude';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import type { FuelConsumer } from '../../src/game/dynamic/dynamic-entity/controllable';
-import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/ship';
+import {
+  CombatShipEntity, SHIP_BCINV, SHIP_SRP_COEFF,
+} from '../../src/game/dynamic/dynamic-entity/combat-ship-entity';
 import type { PilotControls } from '../../src/game/dynamic/dynamic-entity/pilot-controls';
+import { PartDamageModel } from '../../src/game/dynamic/dynamic-entity/part-damage-model';
 import { createShipDefaultParts } from '../../src/game/dynamic/dynamic-entity/ship-default-parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
@@ -29,11 +32,11 @@ import type { SerializedDynamicEntity } from '../../src/game/dynamic/dynamic-ent
 const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 const state = kinematicState<'eci'>(0, v3(), v3());
 
-class TestShip extends Ship {
+class TestShip extends CombatShipEntity {
   public constructor(name: string, id = 'test-ship') {
     super(
       name, 1_000, () => new DynamicMotion(state, { mass: 1_000 }), new NullView(),
-      id, createShipDefaultParts(1_000),
+      id,
     );
   }
 
@@ -52,22 +55,22 @@ class NullView extends DynamicView {
 }
 
 export function register(): void {
-  test('default ship: 固定ロードアウトの集計値を維持する', () => {
-    const ship = new TestShip('default');
+  test('default parts: 固定ロードアウトの集計値を維持する', () => {
+    const model = new PartDamageModel(createShipDefaultParts(1_000));
 
     // FLIGHT.md の既定船: HP 1,000、既定部品の出力・資源・装備を合計した値。
-    assert.equal(ship.hp, 1_000);
-    assert.equal(ship.maxHp, 1_000);
-    assert.equal(ship.totalThrust, 400_000);
-    assert.ok(Math.abs(ship.totalTorque - 24_000) < 1e-12);
-    assert.equal(ship.totalFuel, 1_000);
-    assert.equal(ship.totalMaxFuel, 1_000);
-    assert.equal(ship.totalFuelConsumptionRate, 1);
-    assert.equal(ship.totalPowerGeneration, 1_650);
-    assert.equal(ship.totalCoolingRate, 9.6);
-    assert.equal(ship.weaponDamage, 1);
-    assert.equal(ship.totalFireRate, 1 / 0.06);
-    assert.equal(ship.averageMuzzleVelocity, 1_000);
+    assert.equal(model.overallHp(), 1_000);
+    assert.equal(model.maxHp, 1_000);
+    assert.equal(model.totalThrust, 400_000);
+    assert.ok(Math.abs(model.totalTorque - 24_000) < 1e-12);
+    assert.equal(model.totalFuel, 1_000);
+    assert.equal(model.totalMaxFuel, 1_000);
+    assert.equal(model.totalFuelConsumptionRate, 1);
+    assert.equal(model.totalPowerGeneration, 1_650);
+    assert.equal(model.totalCoolingRate, 9.6);
+    assert.equal(model.weaponDamage, 1);
+    assert.equal(model.totalFireRate, 1 / 0.06);
+    assert.equal(model.averageMuzzleVelocity, 1_000);
   });
 
   test('default ship: 実慣性に対して RCS が姿勢を変える角加速度を出す', () => {
