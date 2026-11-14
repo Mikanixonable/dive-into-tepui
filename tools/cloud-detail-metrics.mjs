@@ -81,7 +81,7 @@ export function fft2(re, im, n, inverse) {
 }
 
 // [[x, y], ...] の対への最小二乗直線。{slope, intercept}。
-function fitLine(pairs) {
+export function fitLine(pairs) {
   let sx = 0;
   let sy = 0;
   let sxx = 0;
