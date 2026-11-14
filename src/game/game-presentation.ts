@@ -267,6 +267,7 @@ export class GamePresentation {
       this.planDisplay, this.planPath, planCommands(commands), this.orbitSlots,
       scene.scene, hud, this.uiSounds, this.navTargetPresenter, targetCommands,
       viewOptionsSettings.mapDisplay,
+      () => game.activeStage.revealedBodies,
     );
     this.viewManager = new ViewManager(
       viewer.view, this.touchControls, { combat: this.combatView, map: this.mapView },
