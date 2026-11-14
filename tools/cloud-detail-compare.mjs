@@ -168,6 +168,10 @@ const FEATURE_DEFS = {
   beta: { family: 'spectrum', scope: 'tier', domain: 'linear' },
   excess: { family: 'periodicity', scope: 'tier', domain: 'log' },
   fitSlope: { family: 'periodicity', scope: 'tier', domain: 'linear' },
+  hetI: { family: 'heterogeneity', scope: 'scale', domain: 'log' },
+  hetSlope: { family: 'heterogeneity', scope: 'tier', domain: 'linear' },
+  hetClear: { family: 'heterogeneity', scope: 'tier', domain: 'linear' },
+  hetDense: { family: 'heterogeneity', scope: 'tier', domain: 'linear' },
   b: { family: 'shapes', scope: 'tier', domain: 'linear' },
   D: { family: 'shapes', scope: 'tier', domain: 'linear' },
   cloudyShare: { family: 'shapes', scope: 'tier', domain: 'linear' },
@@ -179,7 +183,7 @@ const FEATURE_DEFS = {
 };
 
 // 特徴量の家族。index はこの平均。
-const FAMILIES = ['spectrum', 'intermittency', 'periodicity', 'shapes', 'anisotropy', 'variety', 'tone'];
+const FAMILIES = ['spectrum', 'intermittency', 'periodicity', 'shapes', 'anisotropy', 'heterogeneity', 'variety', 'tone'];
 
 // 尺度の梯子に並べる帯(オクターブ番号 j = 帯 [2^j, 2^(j+1)] km)。0.5 km から 1024 km まで。
 const LADDER_BANDS = [];
@@ -264,6 +268,10 @@ function featureEntries(measured, tone) {
     add('anisoCoherence', cell.scaleKm, cell.coherence);
     add('anisoR', cell.scaleKm, cell.r);
   }
+  for (const block of measured.heterogeneity.blocks) add('hetI', block.blockKm, block.index);
+  add('hetSlope', null, measured.heterogeneity.slope);
+  add('hetClear', null, measured.heterogeneity.clearShare);
+  add('hetDense', null, measured.heterogeneity.denseShare);
   add('toneMean', null, tone.mean);
   add('toneP50', null, tone.p50);
   add('toneP90', null, tone.p90);
