@@ -75,6 +75,12 @@ const WARP_WAVELENGTH = 32000;
 // 2 つ目の歪み成分の標本位置。第 1 成分と同じ場を別の場所で読んで独立にする。
 const WARP_OFFSET = vec3(5.2, 1.3, 7.9);
 
+// 積雲の細部を低層の風向きへ伸ばす倍率の上限。風速が CUMULUS_STREAK_WIND [m/s] で満額になる。
+// 伸ばすのは DETAIL_WAVELENGTHS の添字 CUMULUS_STREAK_LAST_OCTAVE 以下の段(4 km より粗い側)だけ。
+const CUMULUS_STREAK_MAX = 3;
+const CUMULUS_STREAK_WIND = 10;
+const CUMULUS_STREAK_LAST_OCTAVE = 2;
+
 export class CloudDetailEvaluator {
   // 使う段数(粗い側から数える)。uniform なので、段数を変えてもシェーダのグラフは組み直さない。
   private readonly octaves: FloatUniform = uniform(0);
@@ -126,6 +132,10 @@ export class CloudDetailEvaluator {
           .mul(float(WARP_DISPLACEMENT).div(radius)),
       ));
       const windVector = east.mul(wind.x).add(north.mul(wind.y));
+      // 低層の風向きへ伸ばす。風が弱い所は等方に読む。東の接ベクトルを小さく足すのは、風速 0 でも向きを定めるため。
+      const windDir = normalize(windVector.add(east.mul(1e-6)));
+      const windCoherence = clamp(length(windVector).div(CUMULUS_STREAK_WIND), 0, 1);
+      const streakStretch = float(1).add(float(CUMULUS_STREAK_MAX - 1).mul(windCoherence));
 
       const sum = float(0).toVar();
       const gate = float(1).toVar();
@@ -135,7 +145,9 @@ export class CloudDetailEvaluator {
         const live = fadeOf(wavelength, span).mul(step(float(index + 1), this.octaves))
           .mul(this.clock.presence(index)).toVar();
         If(greaterThan(live, 0), () => {
-          const value = this.clock.evolvingNoise(index, warped, radius, windVector).toVar();
+          // 粗い段は風向きへ伸ばして読み、細かい段は等方に読む。
+          const streak = index <= CUMULUS_STREAK_LAST_OCTAVE ? { axis: windDir, factor: streakStretch } : undefined;
+          const value = this.clock.evolvingNoise(index, warped, radius, windVector, streak).toVar();
           sum.addAssign(value.mul(OCTAVE_WEIGHTS[index]!).mul(live).mul(gate));
           gate.mulAssign(exp(value.mul(OCTAVE_COUPLING).sub(COUPLING_SHIFT).mul(live)));
         });
@@ -190,6 +202,23 @@ const CIRRUS_LOG_SIGMA = 0.4;
 // この量を下回る巻雲の柱では細部を評価しない。乗数は 1 のままで、光学深さは 0 に近い。
 export const CIRRUS_PRESENT_AMOUNT = 0.001;
 
+// 単位方向 direction を、その点を通る流れ方向 flowDir(direction に直交する接ベクトル)の大円に沿って写す。
+// 弧座標を 1/stretch に圧縮した方向を返し、stretch が 1 のときは direction へ戻る。接ベクトルだけでは伸ばせない —
+// 単位方向との内積は常に 0 なので、弧の原点 z(円上で基準軸へ最も近い点)と接線 t = m × z へ座標を取ってから
+// 圧縮し直す。継ぎ目(弧 ±π、大円上で −z の場所)の近くでは圧縮率を 1 へ戻す — 利かせたままだと継ぎ目の両側が
+// 2π/stretch の隙間へ写り、読む方向が飛んでノイズの切断面が細かい帯へ出る。
+export function stretchAlongFlow(direction: Vec3Node, flowDir: Vec3Node, stretch: FloatNode): Vec3Node {
+  const m = cross(direction, flowDir);
+  const reference = select(greaterThan(abs(dot(m, ARC_AXIS_X)), 0.7), ARC_AXIS_Y, ARC_AXIS_X);
+  const z = normalize(reference.sub(m.mul(dot(reference, m))));
+  const t = cross(m, z);
+  const arcRaw = atan(dot(direction, t), dot(direction, z));
+  const seam = smoothstep(float(SEAM_FADE_LO), float(SEAM_FADE_HI), abs(arcRaw));
+  const compression = float(1).div(stretch).add(seam.mul(float(1).sub(float(1).div(stretch))));
+  const arc = arcRaw.mul(compression);
+  return z.mul(cos(arc)).add(t.mul(sin(arc)));
+}
+
 export class CirrusDetailEvaluator {
   // 使う段数(粗い側から数える)。uniform なので、段数を変えてもシェーダのグラフは組み直さない。
   private readonly octaves: FloatUniform = uniform(0);
@@ -218,21 +247,9 @@ export class CirrusDetailEvaluator {
     const sinTheta = select(axis.y.lessThan(0), float(-1), float(1))
       .mul(sqrt(max(axis.x.oneMinus().mul(0.5), 0)));
     const flowDir = normalize(east.mul(cosTheta).add(north.mul(sinTheta)));
-    // 流れ方向へ伸ばす。その場を通る flow 向きの大円(法線 m = direction × flowDir)の弧座標を
-    // 1/stretch に圧縮した方向で読む。接ベクトルだけでは伸ばせない — 単位方向との内積は常に 0 なので、
-    // 弧の原点 z(円上で基準軸へ最も近い点)と接線 t = m × z へ座標を取ってから圧縮し直す。
-    // 継ぎ目(弧 ±π、大円上で −z の場所)の近くでは圧縮率を 1 へ戻す — 利かせたままだと継ぎ目の
-    // 両側が 2π/stretch の隙間へ写り、読む方向が飛んでノイズの切断面が細かい帯へ出る。
+    // 流れ方向へ伸ばす。方向の写しは stretchAlongFlow が担う。
     const stretch = float(1).add(float(CIRRUS_STRETCH_MAX - 1).mul(coherence));
-    const m = cross(direction, flowDir);
-    const reference = select(greaterThan(abs(dot(m, ARC_AXIS_X)), 0.7), ARC_AXIS_Y, ARC_AXIS_X);
-    const z = normalize(reference.sub(m.mul(dot(reference, m))));
-    const t = cross(m, z);
-    const arcRaw = atan(dot(direction, t), dot(direction, z));
-    const seam = smoothstep(float(SEAM_FADE_LO), float(SEAM_FADE_HI), abs(arcRaw));
-    const compression = float(1).div(stretch).add(seam.mul(float(1).sub(float(1).div(stretch))));
-    const arc = arcRaw.mul(compression);
-    const stretched = z.mul(cos(arc)).add(t.mul(sin(arc))).toVar();
+    const stretched = stretchAlongFlow(direction, flowDir, stretch).toVar();
     const windVector = east.mul(wind.x).add(north.mul(wind.y));
 
     const sum = float(0).toVar();
