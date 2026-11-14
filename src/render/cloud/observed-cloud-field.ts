@@ -11,6 +11,7 @@ import { equirectUvFromDirection, type FieldProjection } from '../field-projecti
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldSource } from './cloud-presentation';
+import type { CloudBlend, CloudFieldSlot } from './cloud-field-sample';
 import type { Vec4Node } from '../tsl-types';
 
 export class ObservedCloudField implements CloudFieldSource {
@@ -18,6 +19,9 @@ export class ObservedCloudField implements CloudFieldSource {
   private readonly field: BakedField;
   // 実写には環境の量の場がないので、どの方向でも同じ値を返す 1 texel の写し。
   private readonly environment: THREE.DataTexture;
+  // 2 枚とも同じ写し。混ぜ方は 0 に止めて、古い側の枚だけを読む。
+  public readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
+  public readonly blend: CloudBlend = { parity: 0, fraction: 0 };
   // 焼いたときの画像の世代と cap の版。どちらかが変わったときだけ焼き直す。
   private bakedGeneration = -1;
   private bakedRevision = -1;
@@ -53,12 +57,13 @@ export class ObservedCloudField implements CloudFieldSource {
       },
       GPU_PASS.cloudBake,
     );
+    // 実写の雲場は止まっているので、運ぶ風は 0。
+    const slot: CloudFieldSlot = {
+      cloud: this.field.texture, motion: EMPTY_CLOUD_FIELD, environment: this.environment,
+    };
+    this.slots = [slot, slot];
   }
 
-  public get texture(): THREE.Texture { return this.field.texture; }
-  // 実写の雲場は止まっているので、運ぶ風は 0。
-  public get motionTexture(): THREE.Texture { return EMPTY_CLOUD_FIELD; }
-  public get environmentTexture(): THREE.Texture { return this.environment; }
   public get generation(): number { return this.generationValue; }
 
   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。
