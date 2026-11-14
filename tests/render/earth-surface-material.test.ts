@@ -24,6 +24,7 @@ class MaterialReader implements EarthSurfaceMaterialLayerReader {
 
   public constructor(private readonly base: EarthSurfaceLayerSample, private readonly details: ReadonlyMap<number, EarthSurfaceLayerSample>) {}
 
+  // 要求された uv を記録し、登録済みの詳細層の標本を返す。未登録は投げる。
   public sampleDetail(layerNumber: number, uv: THREE.Vector2): EarthSurfaceLayerSample {
     this.detailUvs.push({ layer: layerNumber, uv: uv.clone() });
     const sample = this.details.get(layerNumber);

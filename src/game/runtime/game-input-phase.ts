@@ -22,6 +22,7 @@ export class GameInputPhase {
   private readonly pilotInput = new PilotInput();
   private readonly pilotPorts: readonly GameInputPort[];
 
+  // 入力の解釈が渡す先(入力資源・HUD・カメラ・ビュー・建造)を受け、配分するポートの表を組む。
   public constructor(
     private readonly source: GameInputSource,
     private readonly hud: Hud,

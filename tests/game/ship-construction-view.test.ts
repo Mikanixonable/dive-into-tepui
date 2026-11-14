@@ -17,6 +17,7 @@ import {
 } from '../../src/game/ship/ship-construction-view';
 import { test } from '../harness';
 
+// 画面上の取り付け先の点を組む。
 function point(
   id: string, x: number, y: number, front = true, moduleIds: readonly string[] = [],
 ): ConstructionTargetScreenPoint {
@@ -26,6 +27,7 @@ function point(
 // テスト用の投影。投影先の座標値は読まないので ECI の x/y をそのまま画面座標へ返す。
 const NODE_PROJECT: ProjectFn = (position) => ({ x: position.x, y: position.y, front: true });
 
+// 有効・無効と理由を選べる取り付け先のガイドを組む。
 function nodeGuide(target: ConstructionTarget, valid: boolean, reason: string | null = null): ConstructionTargetGuide {
   return {
     target, label: '', guideEci: v3(), normalEci: v3(0, 0, 1), guideRadius: 1,
@@ -33,6 +35,7 @@ function nodeGuide(target: ConstructionTarget, valid: boolean, reason: string | 
   };
 }
 
+// 有効・無効と理由を選べる試し置きの結果を組む。
 function trial(valid: boolean, reason: string | null): ConstructionTrial {
   return {
     valid, reason, placed: [], totals: null,
@@ -40,6 +43,7 @@ function trial(valid: boolean, reason: string | null): ConstructionTrial {
   };
 }
 
+// 表示導出の純粋な部分(ピック・ノード宣言・差し込み)のテストを登録する。
 export function register(): void {
   test('construction target pick: 半径内で最も近い候補を選ぶ', () => {
     const targets = [

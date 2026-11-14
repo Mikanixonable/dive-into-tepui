@@ -78,6 +78,7 @@ export class Stage00 extends Stage {
     const forecastHtml = this.forecast
       ? '<br><b>最初の 3 波の予告</b><br>' + [1, 2, 3].map(waveForecastLine).join('<br>') + '<br>'
       : '';
+    // 任務・補給・予告・操作案内の順で本文を組む。
     return (
       '<b>サバイバル任務: 弾薬を回収し、無限の敵から生き残れ！</b><br>' +
       '敵は次々と波状攻撃を仕掛けてくる。<br>' +

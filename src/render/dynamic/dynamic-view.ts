@@ -1,3 +1,4 @@
+// 動的物体1体の表示ツリーの基底と、種別を越えて共有する表示入力・表示同期の材料。
 import type * as THREE from 'three/webgpu';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { KinematicState } from '../../physics/kinematic-state';

@@ -119,6 +119,7 @@ export function createUnavailableEarthSurfaceCapture(input: {
     webgpu: input.environment?.webgpu ?? 'unavailable',
     drawingBuffer: input.environment?.drawingBuffer ?? 'unavailable',
   };
+  // 再現一覧と全ケースを「測れていない」値で埋めた文書を返す。
   return {
     schemaVersion: 2,
     capturedAt: input.capturedAt,
@@ -166,6 +167,7 @@ export function measureAdjacent8BitDifference(
   samples: readonly number[],
   threshold = EARTH_SURFACE_ADJACENT_THRESHOLD,
 ): EarthSurfaceAdjacentDifference {
+  // 8bit値の範囲としきい値を検査する。
   if (!Number.isFinite(threshold) || threshold < 0) {
     throw new RangeError('threshold must be a finite non-negative number');
   }
@@ -173,6 +175,7 @@ export function measureAdjacent8BitDifference(
     throw new RangeError('samples must contain 8bit unsigned integers');
   }
 
+  // 隣接差の最大と平均を集計する。
   let maxAbsoluteDifference = 0;
   let sumAbsoluteDifference = 0;
   for (let index = 1; index < samples.length; index++) {
@@ -197,6 +200,7 @@ export function checkRgbaRange(rgba: readonly number[]): RgbaRangeCheck {
   let finite = true;
   let inRange = rgba.length % 4 === 0;
   let invalidIndex: number | null = rgba.length % 4 === 0 ? null : rgba.length;
+  // 各成分を走査し、最初の違反位置を記録する。
   for (const [index, value] of rgba.entries()) {
     if (!Number.isFinite(value)) {
       finite = false;
@@ -215,6 +219,7 @@ export function checkRgbaRange(rgba: readonly number[]): RgbaRangeCheck {
   };
 }
 
+// 非空の文字列でなければ TypeError を投げる。
 function assertString(value: unknown, field: string): asserts value is string {
   if (typeof value !== 'string' || value.length === 0) throw new TypeError(`${field} must be a non-empty string`);
 }
@@ -229,6 +234,7 @@ export function normalizeEarthSurfaceMetrics(input: {
   if (!Number.isSafeInteger(width) || width <= 0 || !Number.isSafeInteger(height) || height <= 0) {
     throw new RangeError('viewport dimensions must be positive safe integers');
   }
+  // 各ケースの項目を検査し、名前順へそろえる。
   const cases = input.cases.map((entry) => {
     assertString(entry.caseName, 'caseName');
     assertString(entry.sha256, 'sha256');
@@ -236,6 +242,7 @@ export function normalizeEarthSurfaceMetrics(input: {
     if (!Number.isSafeInteger(entry.byteLength) || entry.byteLength < 0) throw new RangeError('byteLength must be a non-negative safe integer');
     return { caseName: entry.caseName, sha256: entry.sha256, byteLength: entry.byteLength };
   }).sort((left, right) => left.caseName < right.caseName ? -1 : left.caseName > right.caseName ? 1 : 0);
+  // ケース名の重複を拒否する。
   if (new Set(cases.map((entry) => entry.caseName)).size !== cases.length) {
     throw new RangeError('caseName must be unique');
   }
