@@ -1,0 +1,173 @@
+From 76682eb247bd2850aed13aca30463e60764171db Mon Sep 17 00:00:00 2001
+From: Muse <muse@muse.local>
+Date: Fri, 13 Nov 2026 20:08:05 +0000
+Subject: [PATCH 3/3] =?UTF-8?q?chore(assets):=20=E3=82=BF=E3=83=B3?=
+ =?UTF-8?q?=E3=83=91=E3=82=AF=E8=B3=AA=E3=81=AE=E3=82=A2=E3=82=BB=E3=83=83?=
+ =?UTF-8?q?=E3=83=88=E3=81=A8=E7=94=9F=E6=88=90=E3=83=91=E3=82=A4=E3=83=97?=
+ =?UTF-8?q?=E3=83=A9=E3=82=A4=E3=83=B3=E3=82=92=E5=89=8A=E9=99=A4=E3=81=99?=
+ =?UTF-8?q?=E3=82=8B?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- src/assets/models のタンパク質 JSON 16件(97.1 MB: 1mbn/5i4r/6n2y/8ruc の Protein/Structure/Motion/Backbone)を削除。ammo.json・magazine.json・ship-modules.glb など非タンパク質モデルは存続
+- assets-src/proteins(7.7 MB)と tools/protein-builder(1,767行)を削除
+- package.json の protein:* スクリプト15件と tools/run-ci.mjs の検査6ステップを削除
+- webpack 両 config のタンパク質 JSON 専用 asset/resource ルールを削除
+- .claude/skills/add-protain を削除し、AGENTS.md(CLAUDE.md は symlink)のスキル表と CI 行を整合。README の RCSB Protein Data Bank クレジット行を削除
+---
+ .claude/hooks/check-boundaries.mjs |  2 +-
+ AGENTS.md                          |  3 +--
+ README.md                          |  1 -
+ package.json                       | 15 ---------------
+ tools/run-ci.mjs                   |  6 ------
+ tools/run-tasks.mjs                |  4 ++--
+ webpack.config.js                  |  9 ---------
+ webpack.render-lab.config.js       |  9 ---------
+ 8 files changed, 4 insertions(+), 45 deletions(-)
+
+diff --git a/.claude/hooks/check-boundaries.mjs b/.claude/hooks/check-boundaries.mjs
+index 9e1cb2294..93424f78c 100644
+--- a/.claude/hooks/check-boundaries.mjs
++++ b/.claude/hooks/check-boundaries.mjs
+@@ -17,7 +17,7 @@
+ // 繰り返すので、配線で占められる位置は移っていく。移ったらこの表を書き換える —
+ // 表から外すのも正しい直し方のうちで、外れたモジュールは普通のモジュールとして見る。
+ const ORCHESTRATORS = new Map([
+-  ['src/game/game.ts', ['pause', 'resume', 'handleInput', 'perfCounts', 'proteinMotionFrameSample', 'runSummary']],
++  ['src/game/game.ts', ['pause', 'resume', 'handleInput', 'perfCounts', 'runSummary']],
+ ]);
+ 
+ // 持ち主にしか書けないもの。何をいくつ持っているかを知っているのは持ち主だけなので、
+diff --git a/AGENTS.md b/AGENTS.md
+index b643f942e..9754c76af 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -67,7 +67,6 @@
+ | いつ・どの順で・どんな条件で走るか(per-frame) | `/callstack` |
+ | 誰がその関数を呼んでいるか / 消せるか・影響範囲はどこか | `/inv-callstack` |
+ | 実行時の動作確認を求められた | `/verify` |
+-| タンパク質の追加を求められた | `/add-protain` |
+ 
+ **「計画を書いて」と明示されない限り、実行まで完遂する。** 段取りのために計画を書くと自分で決めた
+ のなら、書き先を決めるのも、判断材料を仕様・コード・実測から集めて計画を監査し直すのも、全手順を
+@@ -230,7 +229,7 @@ fix(ship): ドッキング時のモジュール干渉を修正
+ | `npm run dev` | 開発サーバ(http://localhost:8080) | 実機で動かすとき |
+ | `npm run smoke:browser` | ヘッドレスでの起動・操作スモーク | 実行時の確認を求められたとき |
+ | `npm run build` | `docs/` への本番ビルド | **main へ送る前**(`/send-pr`)。公開は CI が行う |
+-| `npm run ci` | 上記の検証一式 + 生成物(protein・地表)とテーマ・リリース物の点検 | 任意。main へ送る検証は `/send-pr` |
++| `npm run ci` | 上記の検証一式 + 生成物(地表)とテーマ・リリース物の点検 | 任意。main へ送る検証は `/send-pr` |
+ | `npm run bgm-lab` | BGM の試聴環境(http://localhost:8081) | 曲を調整するとき |
+ | `npm run render-lab` | 描画の実験環境(http://localhost:8082) | 描画を目で確かめるとき |
+ | `npm run render-lab:shot` | 描画の実験環境の撮影(`-- <組の名前>` で `.render-lab-shots/<組の名前>/`、省くと `.render-lab/shots/`) | 描画を画像で確かめるとき |
+diff --git a/README.md b/README.md
+index 8757d1662..219f3e2c7 100644
+--- a/README.md
++++ b/README.md
+@@ -257,7 +257,6 @@ Node.js 20 以上、WebGPU 対応ブラウザを推奨します。
+ | **惑星全球モザイク** | USGS Astrogeology Science Center |
+ | **地球表面 / 地形 / 気象** | NASA Earth Observatory、NOAA NCEI ETOPO、ERA5 |
+ | **海岸線** | Natural Earth |
+-| **タンパク質構造** | RCSB Protein Data Bank |
+ 
+ ---
+ 
+diff --git a/package.json b/package.json
+index 52ff269bd..76e937bcf 100644
+--- a/package.json
++++ b/package.json
+@@ -68,21 +68,6 @@
+     "earth-surface:capture": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-earth-surface.mjs",
+     "earth-surface:serve": "node tools/earth-surface/serve.mjs",
+     "export-moon-features": "node tools/export-moon-features.mjs",
+-    "protein:author": "python3 tools/protein-builder/build-protein.py --require-blender",
+-    "protein:validate": "node tools/protein-builder/run-all.mjs validate && node tools/protein-builder/run-all.mjs validate-motion",
+-    "protein:generate": "node tools/protein-builder/run-all.mjs generate && node tools/protein-builder/run-all.mjs generate-motion",
+-    "protein:generate:check": "node tools/protein-builder/run-all.mjs generate --check && node tools/protein-builder/run-all.mjs generate-motion --check",
+-    "protein:motion": "node tools/protein-builder/run-all.mjs generate-motion",
+-    "protein:motion:check": "node tools/protein-builder/run-all.mjs generate-motion --check",
+-    "protein:motion:validate": "node tools/protein-builder/run-all.mjs validate-motion",
+-    "protein:fetch-source": "node tools/protein-builder/run-all.mjs fetch-source",
+-    "protein:fetch-source:check": "node tools/protein-builder/run-all.mjs fetch-source --check",
+-    "protein:backbone": "node tools/protein-builder/run-all.mjs backbone",
+-    "protein:generate-structure": "node tools/protein-builder/run-all.mjs generate-structure",
+-    "protein:generate-structure:check": "node tools/protein-builder/run-all.mjs generate-structure --check",
+-    "protein:validate-structure": "node tools/protein-builder/run-all.mjs validate-structure",
+-    "protein:catalog": "node tools/protein-builder/generate-protein-catalog.mjs",
+-    "protein:catalog:check": "node tools/protein-builder/generate-protein-catalog.mjs --check",
+     "bgm-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.bgm-lab.config.js --mode development",
+     "render-lab": "node node_modules/webpack-cli/bin/cli.js serve --config webpack.render-lab.config.js --mode development",
+     "render-lab:shot": "webpack --config webpack.render-lab.config.js --mode production && node tools/render-lab-shot.mjs",
+diff --git a/tools/run-ci.mjs b/tools/run-ci.mjs
+index 107bd724b..5a5cab784 100644
+--- a/tools/run-ci.mjs
++++ b/tools/run-ci.mjs
+@@ -18,12 +18,6 @@ const STAGES = [
+     run('lint', NPM, ['run', 'lint']),
+     run('check:boundaries', NPM, ['run', 'check:boundaries']),
+     run('typecheck', NPM, ['run', 'typecheck']),
+-    run('protein:generate:check', 'node', ['tools/protein-builder/run-all.mjs', 'generate', '--check']),
+-    run('protein:generate-motion:check', 'node', ['tools/protein-builder/run-all.mjs', 'generate-motion', '--check']),
+-    run('protein:validate', 'node', ['tools/protein-builder/run-all.mjs', 'validate']),
+-    run('protein:validate-motion', 'node', ['tools/protein-builder/run-all.mjs', 'validate-motion']),
+-    run('protein:validate-structure', NPM, ['run', 'protein:validate-structure']),
+-    run('protein:catalog:check', NPM, ['run', 'protein:catalog:check']),
+     run('test', NPM, ['run', 'test']),
+     run('earth-surface:test:contract', 'node', ['tools/earth-surface/test_contract.mjs']),
+     run('earth-surface:test:dev-delivery', NPM, ['run', 'earth-surface:test:dev-delivery']),
+diff --git a/tools/run-tasks.mjs b/tools/run-tasks.mjs
+index 75e52e250..07900980d 100644
+--- a/tools/run-tasks.mjs
++++ b/tools/run-tasks.mjs
+@@ -1,6 +1,6 @@
+ // 複数の子プロセスを同時に走らせ、各行へ [label] を付けて標準出力/標準エラーへ流す
+-// 共用ランナー。run-ci.mjs(段内の検査)と protein-builder/run-all.mjs(蛋白ごとの
+-// 処理)が使う。resolve される値には {label, code, error?, elapsed} が入る。
++// 共用ランナー。run-ci.mjs(段内の検査)が使う。
++// resolve される値には {label, code, error?, elapsed} が入る。
+ import { spawn } from 'node:child_process';
+ 
+ export function runTask({ label, command, args, cwd }) {
+diff --git a/webpack.config.js b/webpack.config.js
+index ad128a080..092b71c15 100644
+--- a/webpack.config.js
++++ b/webpack.config.js
+@@ -71,15 +71,6 @@ module.exports = {
+         type: 'asset/resource',
+         generator: { filename: 'assets/[hash][ext]' },
+       },
+-      {
+-        // タンパク質の主鎖・構造・モーション JSON はバンドルへインライン化せず、
+-        // 別ファイルとして書き出して import 元へは URL 文字列を渡す(起動時ダウンロード量を
+-        // 抑えるため)。semantic など他の JSON は既定どおりバンドルへ含める。
+-        test: /(Backbone|Structure|Motion)\.json$/,
+-        include: path.resolve(__dirname, 'src/assets/models'),
+-        type: 'asset/resource',
+-        generator: { filename: 'assets/[hash][ext]' },
+-      },
+       {
+         test: /\.css$/,
+         use: ['style-loader', 'css-loader'],
+diff --git a/webpack.render-lab.config.js b/webpack.render-lab.config.js
+index 31c2473be..7383bc351 100644
+--- a/webpack.render-lab.config.js
++++ b/webpack.render-lab.config.js
+@@ -37,15 +37,6 @@ module.exports = {
+         type: 'asset/resource',
+         generator: { filename: 'assets/[hash][ext]' },
+       },
+-      {
+-        // タンパク質の主鎖・構造・モーション JSON(数十MB)は本体と同じく別ファイルへ書き出し、
+-        // import 元へは URL 文字列を渡す。ここを落とすと fetch 先が生成されず、
+-        // タンパク質のケースだけが「asset が無い」で落ちる。
+-        test: /(Backbone|Structure|Motion)\.json$/,
+-        include: path.resolve(__dirname, 'src/assets/models'),
+-        type: 'asset/resource',
+-        generator: { filename: 'assets/[hash][ext]' },
+-      },
+     ],
+   },
+   output: {
+-- 
+2.43.0
+

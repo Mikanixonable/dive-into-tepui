@@ -1,0 +1,2069 @@
+From 81922d83c557669a52c8e58ebe658b625c7d0416 Mon Sep 17 00:00:00 2001
+From: Muse <muse@muse.local>
+Date: Fri, 13 Nov 2026 20:07:54 +0000
+Subject: [PATCH 2/3] =?UTF-8?q?refactor(game):=20=E3=82=BF=E3=83=B3?=
+ =?UTF-8?q?=E3=83=91=E3=82=AF=E8=B3=AA=E5=9E=8B=E3=81=AE=E6=95=B5=E3=82=92?=
+ =?UTF-8?q?=E6=92=A4=E5=8E=BB=E3=81=99=E3=82=8B?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+SPEC の廃止決定(docs(spec): 7c5bc618c)に続くコード撤去。タンパク質専用モジュール(game/protein・render/protein・protein-enemy・protein-enemy-view・protein-site-geometry)を削除し、統合部をすべて外した。
+
+- 生成: enemy-generator の陣形要求、manual-spawn のタンパク質分岐、Stage.addProteinEnemy、CREATIVE の陣形スポーン命令を削除
+- CREATIVE パネル: タンパク質型タブ(形状・表示形態・着色)と陣形ボタンを削除。従来型・組み立て型は存続
+- 戦闘/表示: 機能部位マーカー(targeter)、TARGET パネルの部位一覧、ProteinCombatTarget、protein 由来の RunEvent 2種と閃光3種、モーション計測(PerfCounts・デバッグ窓・render pipeline の compute 合成)を削除
+- 表示設定: EntityDisplaySelection の proteinDisplay と graphics の proteinVibration トグルを削除
+- 保存互換: 未知の entity 種別は findEntityClass が null を返し復元時にスキップされる既存の仕組みで、旧セーブのタンパク質個体は読み飛ばされる。実体の無い待機記録(旧形式の要求)は EntityLifecycle.spawnWhenReady で捨てるガードを追加。旧 viewer/graphics 設定の余分な項目は destructure で無視される
+- FormationRole は組み立て型の陣形でも使う共有の語彙なので存続し、コメントのタンパク質言及だけ外した
+
+検証: typecheck / check:boundaries / lint green、test:game 349/349、test:render 236/236、test:physics 516/516、test:launcher 2/2、test:math 67/67、test:settings 6/6、verify:theme / verify:ui-style / verify:hud-layout green。
+---
+ src/game/creative/manual-spawn.ts             |  50 ++-----
+ src/game/creative/stage-controls-panel.ts     | 134 +-----------------
+ .../dynamic-entity/damage-capabilities.ts     |   4 -
+ .../dynamic/dynamic-entity/dynamic-entity.ts  |   2 +-
+ src/game/dynamic/dynamic-entity/enemy.ts      |   6 +-
+ .../dynamic-entity/entity-dictionary.ts       |   4 +-
+ .../dynamic/dynamic-entity/entity-kind.ts     |   4 +-
+ src/game/dynamic/dynamic-system.ts            |   8 +-
+ src/game/dynamic/entity-contact-response.ts   |   4 +-
+ src/game/dynamic/entity-lifecycle.ts          |  15 +-
+ src/game/dynamic/entity-registry.ts           |  10 +-
+ src/game/flash-presenter.ts                   |  39 +----
+ src/game/game-presentation.ts                 |   9 +-
+ src/game/hud/hud-els.ts                       |   4 -
+ src/game/hud/hud-panel-presenter.ts           |   2 -
+ src/game/hud/hud-root.ts                      |   9 +-
+ src/game/hud/panels/target-panel.ts           |  26 +---
+ src/game/hud/style/combat-panel-rows-style.ts |  11 +-
+ src/game/hud/style/stage-controls-style.ts    |  14 +-
+ src/game/hud/windows/debug-info-window.ts     |  20 ---
+ src/game/marker/marker-identity-style.ts      |   5 +-
+ src/game/marker/marker-priority.ts            |   1 -
+ src/game/perf-counts.ts                       |   2 -
+ src/game/pickable/enemy-inspection.ts         |  18 ---
+ src/game/run-events.ts                        |   9 --
+ src/game/stages/creative-stage-commands.ts    |   3 -
+ src/game/stages/creative-stage.ts             |  22 +--
+ src/game/stages/spawner/enemy-generator.ts    |  31 +---
+ src/game/stages/stage.ts                      |  12 +-
+ src/game/targeter.ts                          |  39 +----
+ src/game/viewer/entity-display-commands.ts    |   4 -
+ src/game/viewer/entity-display-selection.ts   |  21 +--
+ src/launcher/title-scene.ts                   |   4 +-
+ src/render/dynamic/dynamic-view.ts            |   3 -
+ src/render/entity-visual-settings.ts          |   1 -
+ src/render/graphics-settings.ts               |   5 -
+ src/render/pipeline/render-pipeline.ts        |   7 -
+ src/run/run.ts                                |   6 -
+ src/types/json-shims.d.ts                     |   2 +-
+ tests/game/entity-display-selection.test.ts   |  26 ++--
+ tests/game/progress-serialization.test.ts     |  25 ----
+ tests/game/viewer-serialization.test.ts       |   2 -
+ tests/render/dynamic-view-source.test.ts      |   4 +-
+ tools/check-boundaries.mjs                    |   6 +-
+ tools/render-lab/assembly-cases.ts            |   4 +-
+ tools/render-lab/cases.ts                     |   2 -
+ tools/render-lab/lab-case.ts                  |   8 --
+ tools/render-lab/lab.ts                       |  15 +-
+ tools/render-lab/main.ts                      |   8 +-
+ 49 files changed, 75 insertions(+), 595 deletions(-)
+
+diff --git a/src/game/creative/manual-spawn.ts b/src/game/creative/manual-spawn.ts
+index ce6e430b2..537617ce6 100644
+--- a/src/game/creative/manual-spawn.ts
++++ b/src/game/creative/manual-spawn.ts
+@@ -1,29 +1,21 @@
+-// クリエイティブモードの手動スポーン。形・色から、自機の前方へ出す敵を組み立てる。タンパク質の
+-// 敵はアセットの取得を待つ形があるので、実体ではなく要求で表す。
++// クリエイティブモードの手動スポーン。形・色から、自機の前方へ出す敵を組み立てる。
+ import { LOCAL_FORWARD, qRotate } from '../../math/quat';
+ import { addScaled } from '../../math/vec3';
+ import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
+ import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
+ import {
+-  generateApproachingEnemy, generateAssemblyEnemy, generateDriftingEnemy, proteinFormationRequests,
++  generateApproachingEnemy, generateAssemblyEnemy, generateDriftingEnemy,
+ } from '../stages/spawner/enemy-generator';
+ import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './stage-controls-panel';
+ import type * as THREE from 'three/webgpu';
+ import type { CelestialBody } from '../../physics/celestial-body';
+ import type { Enemy } from '../dynamic/dynamic-entity/enemy';
+ import type { ModularShip } from '../ship/modular-ship';
+-import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
+ 
+-// 手動スポーンで出す敵1体。その場で組んだ敵か、アセットの取得を待つタンパク質の敵の要求。
+-export type ManualEnemySpawn =
+-  | { readonly kind: 'enemy'; readonly enemy: Enemy }
+-  | { readonly kind: 'protein-enemy'; readonly request: ProteinEnemyRequest };
+-
+-// 敵を出す距離 [m] と、敵の名前・陣形 id の次に発番する連番。
++// 敵を出す距離 [m] と、敵の名前の次に発番する連番。
+ export interface SerializedManualSpawn {
+   readonly spawnDistance: number;
+   readonly enemyNameAllocator: number;
+-  readonly formationIdAllocator: number;
+ }
+ 
+ // 敵を出す、自機前方の既定距離 [m]。
+@@ -31,20 +23,17 @@ const DEFAULT_SPAWN_DISTANCE = 2000;
+ 
+ export class ManualSpawn {
+   private readonly enemyNameAllocator: EntityIdAllocator;
+-  private readonly formationIdAllocator: EntityIdAllocator;
+ 
+-  // _spawnDistance は自機前方の、敵を出す距離 [m]。enemyNameCounter・formationIdCounter は敵の名前と
+-  // 陣形 id の次に発番する連番で、省けば連番の初めから発番する。
++  // _spawnDistance は自機前方の、敵を出す距離 [m]。enemyNameCounter は敵の名前の次に発番する
++  // 連番で、省けば連番の初めから発番する。
+   private constructor(
+     private readonly scene: THREE.Scene,
+     private readonly attractors: readonly CelestialBody[],
+     private readonly idAllocators: EntityIdAllocators,
+     private _spawnDistance = DEFAULT_SPAWN_DISTANCE,
+     enemyNameCounter = 0,
+-    formationIdCounter = 0,
+   ) {
+     this.enemyNameAllocator = new EntityIdAllocator('MANUAL-', enemyNameCounter);
+-    this.formationIdAllocator = new EntityIdAllocator('FORMATION-', formationIdCounter);
+   }
+ 
+   // 新しいランの手動スポーンを、既定の距離と連番の初めから組む。
+@@ -59,8 +48,8 @@ export class ManualSpawn {
+     serialized: SerializedManualSpawn,
+     scene: THREE.Scene, attractors: readonly CelestialBody[], idAllocators: EntityIdAllocators,
+   ): ManualSpawn {
+-    const { spawnDistance, enemyNameAllocator, formationIdAllocator } = serialized;
+-    return new ManualSpawn(scene, attractors, idAllocators, spawnDistance, enemyNameAllocator, formationIdAllocator);
++    const { spawnDistance, enemyNameAllocator } = serialized;
++    return new ManualSpawn(scene, attractors, idAllocators, spawnDistance, enemyNameAllocator);
+   }
+ 
+   // 敵を出す距離と連番を直列化した形へ畳む。
+@@ -68,7 +57,6 @@ export class ManualSpawn {
+     return {
+       spawnDistance: this._spawnDistance,
+       enemyNameAllocator: this.enemyNameAllocator.serialize(),
+-      formationIdAllocator: this.formationIdAllocator.serialize(),
+     };
+   }
+ 
+@@ -80,40 +68,24 @@ export class ManualSpawn {
+   }
+ 
+   // shape で選んだ形の敵を1体、自機の前方へ出す。知らない形なら null。
+-  public enemy(player: ModularShip, shape: EnemySpawnShape, colorValue: string): ManualEnemySpawn | null {
++  public enemy(player: ModularShip, shape: EnemySpawnShape, colorValue: string): Enemy | null {
+     const color = Number(colorValue);
+     const state = this.frontOf(player);
+     const name = this.enemyNameAllocator.next();
+-    // 形ごとに生成器が違う。タンパク質はアセットの取得を待つので、要求で返す。
++    // 形ごとに生成器が違う。
+     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
+     if (shapeDefinition === undefined) return null;
+-    if (shapeDefinition.kind === 'protein') {
+-      return {
+-        kind: 'protein-enemy',
+-        request: { name, state, assetId: shapeDefinition.assetId, formationId: null, formationRole: null },
+-      };
+-    }
+     if (shapeDefinition.kind === 'assembly') {
+       // seed は出た個体の形を決めるだけなので、呼ぶたびに新しい乱数でよい。
+       const seed = Math.floor(Math.random() * 2 ** 31);
+-      return {
+-        kind: 'enemy',
+-        enemy: generateAssemblyEnemy(name, state, seed, color, color, this.scene, this.idAllocators),
+-      };
++      return generateAssemblyEnemy(name, state, seed, color, color, this.scene, this.idAllocators);
+     }
+-    const enemy = shapeDefinition.kind === 'drifting'
++    return shapeDefinition.kind === 'drifting'
+       ? generateDriftingEnemy(name, state, color, color, this.scene, this.idAllocators)
+       : generateApproachingEnemy(
+         name, state, this.attractors, color, color, shapeDefinition.typeIndex, null,
+         this.scene, this.idAllocators,
+       );
+-    return { kind: 'enemy', enemy };
+-  }
+-
+-  // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機の前方へ出す要求を返す。
+-  public proteinFormation(player: ModularShip): readonly ProteinEnemyRequest[] {
+-    const formationId = this.formationIdAllocator.next();
+-    return proteinFormationRequests(formationId, this.frontOf(player), player.motion.state.r, formationId);
+   }
+ 
+   // 自機の前方 spawnDistance [m]、自機と同じ速度の状態。
+diff --git a/src/game/creative/stage-controls-panel.ts b/src/game/creative/stage-controls-panel.ts
+index b2e7b4c48..02b424466 100644
+--- a/src/game/creative/stage-controls-panel.ts
++++ b/src/game/creative/stage-controls-panel.ts
+@@ -1,18 +1,10 @@
+ // クリエイティブモードの「ステージ操作」パネル: 補給・波状攻撃のトグルと、手動スポーンの入力
+-// (距離・敵の形状/色)と、タンパク質の表示設定の DOM と UI 状態を持ち、確定した値を onXxx の
+-// コールバックで知らせる。
++// (距離・敵の形状/色)の DOM と UI 状態を持ち、確定した値を onXxx のコールバックで知らせる。
+ import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud/widgets';
+-import { PROTEIN_ASSET_IDS, requestProteinAsset, type ProteinAssetId } from '../protein/protein-asset-loader';
+-import {
+-  DEFAULT_PROTEIN_DISPLAY, defaultProteinDisplayFor, PROTEIN_COLOR_LABELS, PROTEIN_DISPLAY_LABELS,
+-  proteinColorModesFor, proteinDisplayWithColor, type ProteinColorMode, type ProteinDisplaySettings,
+-  type ProteinRepresentation,
+-} from '../../render/protein/protein-display';
+ 
+ type EnemyShapeDefinition =
+   | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
+   | { readonly id: 'variant-a' | 'variant-b' | 'variant-c'; readonly family: 'conventional'; readonly kind: 'variant'; readonly typeIndex: number }
+-  | { readonly id: ProteinAssetId; readonly family: 'protein'; readonly kind: 'protein'; readonly assetId: ProteinAssetId }
+   | { readonly id: 'assembly'; readonly family: 'assembly'; readonly kind: 'assembly' };
+ 
+ export const STAGE_CONTROL_ENEMY_SHAPES: readonly EnemyShapeDefinition[] = [
+@@ -20,7 +12,6 @@ export const STAGE_CONTROL_ENEMY_SHAPES: readonly EnemyShapeDefinition[] = [
+   { id: 'variant-a', family: 'conventional', kind: 'variant', typeIndex: 0 },
+   { id: 'variant-b', family: 'conventional', kind: 'variant', typeIndex: 1 },
+   { id: 'variant-c', family: 'conventional', kind: 'variant', typeIndex: 2 },
+-  ...PROTEIN_ASSET_IDS.map((assetId) => ({ id: assetId, family: 'protein', kind: 'protein', assetId } as const)),
+   { id: 'assembly', family: 'assembly', kind: 'assembly' },
+ ];
+ export type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
+@@ -29,14 +20,7 @@ const STAGE_CONTROL_ENEMY_COLORS = [
+   [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],
+ ] as const;
+ 
+-// タンパク質の表示形態と着色を選ぶ UI。選択は onProteinDisplayChange で返し、現在値は毎フレーム
+-// syncProteinDisplay で受ける。
+-export interface ProteinDisplayControl {
+-  onProteinDisplayChange: ((display: ProteinDisplaySettings) => void) | null;
+-  syncProteinDisplay(display: ProteinDisplaySettings): void;
+-}
+-
+-export class StageControlsPanel implements ProteinDisplayControl {
++export class StageControlsPanel {
+   public readonly element: HTMLElement;
+   // setSpawnButtonsEnabled がまとめて有効/無効を切り替える対象。
+   private readonly spawnEnemyButtons: readonly Button[];
+@@ -48,29 +32,9 @@ export class StageControlsPanel implements ProteinDisplayControl {
+   public onRefillFuel: (() => void) | null = null;
+   public onSpawnDistanceChange: ((distanceM: number) => void) | null = null;
+   public onSpawnEnemy: ((shape: EnemySpawnShape, colorValue: string) => void) | null = null;
+-  public onSpawnFormation: (() => void) | null = null;
+-  public onProteinDisplayChange: ((display: ProteinDisplaySettings) => void) | null = null;
+ 
+   // 入力欄が無効値を弾いたときに直前の有効値へ戻すための保持値。
+   private spawnDistance: number;
+-  // タンパク質型セクションの現在の表示選択。表示形態を切り替えても前回選んだ着色を覚えている。
+-  private proteinDisplay: ProteinDisplaySettings = DEFAULT_PROTEIN_DISPLAY;
+-  private readonly proteinDisplayByRepresentation = new Map<ProteinRepresentation, ProteinDisplaySettings>([
+-    ['molecular', defaultProteinDisplayFor('molecular')],
+-    ['ribbon', DEFAULT_PROTEIN_DISPLAY],
+-    ['silhouette', defaultProteinDisplayFor('silhouette')],
+-  ]);
+-  // 表示形態と着色の選択。選べる着色は表示形態ごとに異なるので、着色の選択肢は表示形態に
+-  // 合わせて差し替える。
+-  private readonly representationControl = new SegmentedControl<ProteinRepresentation>(
+-    '表示形態',
+-    (Object.keys(PROTEIN_DISPLAY_LABELS) as ProteinRepresentation[])
+-      .map((representation) => [representation, PROTEIN_DISPLAY_LABELS[representation]] as const),
+-    (representation) => this.selectRepresentation(representation),
+-  );
+-  private readonly colorControl = new SegmentedControl<ProteinColorMode>(
+-    '着色', [], (mode) => this.selectColorMode(mode),
+-  );
+ 
+   // 各引数はパネルの初期値。以後の変更は onXxx コールバックで知らせる。
+   public constructor(
+@@ -98,17 +62,14 @@ export class StageControlsPanel implements ProteinDisplayControl {
+     // 補給・波状攻撃・手動スポーンの各セクションを body へ組み込む。
+     this.buildGeneralControls(body, resupplyEnabled, rcsFuelResupplyEnabled, waveAttackEnabled);
+     const conventional = this.buildConventionalEnemySection();
+-    const protein = this.buildProteinEnemySection();
+     const assembly = this.buildAssemblyEnemySection();
+     this.appendEnemyTabs(
+       body,
+       [['conventional', '従来型の敵', conventional.element],
+-        ['protein', 'タンパク質型の敵', protein.element],
+         ['assembly', '組み立て型の敵', assembly.element]],
+-      protein.requestSelectedAsset,
+     );
+     this.spawnEnemyButtons = [
+-      conventional.spawnButton, protein.spawnButton, protein.formationButton, assembly.spawnButton,
++      conventional.spawnButton, assembly.spawnButton,
+     ];
+ 
+     this.element = panel;
+@@ -119,41 +80,6 @@ export class StageControlsPanel implements ProteinDisplayControl {
+     for (const button of this.spawnEnemyButtons) button.setEnabled(enabled);
+   }
+ 
+-  // 表示形態と着色の選択を display に合わせる。いまの選択と同じなら何もしない。
+-  public syncProteinDisplay(display: ProteinDisplaySettings): void {
+-    if (display.representation === this.proteinDisplay.representation
+-      && display.colorMode === this.proteinDisplay.colorMode) return;
+-    this.proteinDisplay = display;
+-    this.proteinDisplayByRepresentation.set(display.representation, display);
+-    this.showProteinDisplay();
+-  }
+-
+-  // 表示形態を選ぶ。その形態で前回選んだ着色へ戻し、onProteinDisplayChange で知らせる。
+-  private selectRepresentation(representation: ProteinRepresentation): void {
+-    this.proteinDisplay = this.proteinDisplayByRepresentation.get(representation) ?? defaultProteinDisplayFor(representation);
+-    this.proteinDisplayByRepresentation.set(representation, this.proteinDisplay);
+-    this.showProteinDisplay();
+-    this.onProteinDisplayChange?.(this.proteinDisplay);
+-  }
+-
+-  // いまの表示形態で着色 mode を選び、onProteinDisplayChange で知らせる。選べない着色なら何もしない。
+-  private selectColorMode(mode: ProteinColorMode): void {
+-    const next = proteinDisplayWithColor(this.proteinDisplay.representation, mode);
+-    if (next === null) return;
+-    this.proteinDisplay = next;
+-    this.proteinDisplayByRepresentation.set(next.representation, next);
+-    this.colorControl.setSelected(mode);
+-    this.onProteinDisplayChange?.(next);
+-  }
+-
+-  // 表示形態の選択と、着色の選択肢・選択を、いまの表示選択に合わせる。
+-  private showProteinDisplay(): void {
+-    this.representationControl.setSelected(this.proteinDisplay.representation);
+-    const modes = proteinColorModesFor(this.proteinDisplay.representation);
+-    this.colorControl.setItems(modes.map((mode) => [mode, PROTEIN_COLOR_LABELS[mode]] as const));
+-    this.colorControl.setSelected(this.proteinDisplay.colorMode);
+-  }
+-
+   // 補給2種・波状攻撃のトグルと、敵のスポーン距離入力を body へ足す。
+   private buildGeneralControls(
+     body: HTMLElement, resupplyEnabled: boolean, rcsFuelResupplyEnabled: boolean, waveAttackEnabled: boolean,
+@@ -222,56 +148,6 @@ export class StageControlsPanel implements ProteinDisplayControl {
+     return { element: section, spawnButton };
+   }
+ 
+-  // タンパク質型の敵の形状・表示形態・着色選択と、単体/陣形スポーンボタンをまとめたセクションを
+-  // 組み立てる。
+-  private buildProteinEnemySection(): {
+-    element: HTMLElement; spawnButton: Button; formationButton: Button; requestSelectedAsset: () => void;
+-  } {
+-    const shapes = STAGE_CONTROL_ENEMY_SHAPES.filter(
+-      (shape): shape is Extract<EnemyShapeDefinition, { family: 'protein' }> => shape.family === 'protein',
+-    );
+-    let selectedShape: ProteinAssetId = shapes[0]!.assetId;
+-    // 選択そのものが取得の起点(SPEC/PROTEIN.md「出現」)。
+-    const selectShape = (assetId: ProteinAssetId): void => {
+-      selectedShape = assetId;
+-      shapeControl.setSelected(assetId);
+-      void requestProteinAsset(assetId);
+-    };
+-    const section = document.createElement('div');
+-    section.className = 'stage-control-section';
+-    section.id = 'stage-control-panel-protein';
+-    section.setAttribute('role', 'tabpanel');
+-    section.setAttribute('aria-label', 'タンパク質型の敵');
+-    const title = document.createElement('div');
+-    title.className = 'stage-control-section-title';
+-    title.textContent = 'タンパク質型の敵';
+-    section.appendChild(title);
+-    // 形状の選択。
+-    const shapeControl = new SegmentedControl<ProteinAssetId>(
+-      '敵の形状', shapes.map(({ assetId }) => [assetId, assetId] as const), selectShape,
+-    );
+-    shapeControl.element.classList.add('stage-control-shapes');
+-    shapeControl.setSelected(selectedShape);
+-    section.appendChild(shapeControl.element);
+-
+-    // 表示形態と着色の選択。
+-    this.representationControl.element.classList.add('stage-control-protein-representation');
+-    section.appendChild(this.representationControl.element);
+-    this.colorControl.element.classList.add('stage-control-protein-colors');
+-    section.appendChild(this.colorControl.element);
+-    this.showProteinDisplay();
+-
+-    // 単体スポーンと陣形スポーンのボタン。
+-    const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.(selectedShape, String(0xffffff)));
+-    section.appendChild(spawnButton.element);
+-    const formationButton = new Button('陣形をスポーン', () => this.onSpawnFormation?.());
+-    section.appendChild(formationButton.element);
+-    return {
+-      element: section, spawnButton, formationButton,
+-      requestSelectedAsset: () => { void requestProteinAsset(selectedShape); },
+-    };
+-  }
+-
+   // 組み立て型の敵の色選択とスポーンボタンをまとめたセクションを組み立てる。
+   // 形状は seed の手続き生成で選ぶものがないので、色だけを選ばせる。
+   private buildAssemblyEnemySection(): { element: HTMLElement; spawnButton: Button } {
+@@ -292,12 +168,9 @@ export class StageControlsPanel implements ProteinDisplayControl {
+   }
+ 
+   // 敵の種類ごとのタブ切り替えを body へ追加し、選ばれた側のセクションだけを表示する。
+-  // onProteinShown はタンパク質型のタブが選ばれるたびに呼ぶ — 選ぶ画面が開いた時点が、
+-  // 既定で選ばれている体の取得の起点になる(SPEC/PROTEIN.md「出現」)。
+   private appendEnemyTabs(
+     body: HTMLElement,
+     entries: readonly (readonly [family: string, label: string, element: HTMLElement])[],
+-    onProteinShown: () => void,
+   ): void {
+     let selectedFamily = entries[0]![0];
+     const tabs = new TabBar<string>(
+@@ -310,7 +183,6 @@ export class StageControlsPanel implements ProteinDisplayControl {
+           section.classList.toggle('hidden', !visible);
+           section.setAttribute('aria-hidden', String(!visible));
+         }
+-        if (family === 'protein') onProteinShown();
+       },
+     );
+     tabs.element.classList.add('stage-control-enemy-tabs');
+diff --git a/src/game/dynamic/dynamic-entity/damage-capabilities.ts b/src/game/dynamic/dynamic-entity/damage-capabilities.ts
+index c9aa8918c..912572807 100644
+--- a/src/game/dynamic/dynamic-entity/damage-capabilities.ts
++++ b/src/game/dynamic/dynamic-entity/damage-capabilities.ts
+@@ -1,6 +1,5 @@
+ import type { DynamicMotion } from '../dynamic-motion';
+ import type { Part } from './parts';
+-import type { ProteinCombatReadout } from '../../protein/protein-schema';
+ 
+ // 戦闘対象の共通ライフサイクルと、実装ごとのダメージモデルを分離するインターフェース定義。
+ export interface CombatEntity {
+@@ -13,6 +12,3 @@ export interface PartDamageTarget extends CombatEntity {
+   readonly parts: readonly Part[];
+ }
+ 
+-export interface ProteinCombatTarget extends CombatEntity {
+-  readonly combatReadout: ProteinCombatReadout;
+-}
+diff --git a/src/game/dynamic/dynamic-entity/dynamic-entity.ts b/src/game/dynamic/dynamic-entity/dynamic-entity.ts
+index 3260b0080..33d38892e 100644
+--- a/src/game/dynamic/dynamic-entity/dynamic-entity.ts
++++ b/src/game/dynamic/dynamic-entity/dynamic-entity.ts
+@@ -19,7 +19,7 @@ export interface SerializedDynamicEntityFields extends SerializedKinematicState
+   readonly id: string;
+   // 具象クラスのタグ。
+   readonly kind:
+-    | 'ship' | 'player' | 'metal-enemy' | 'protein-enemy' | 'assembly-enemy'
++    | 'ship' | 'player' | 'metal-enemy' | 'assembly-enemy'
+     | 'ammo' | 'rcs-fuel' | 'booster' | 'base' | 'bullet' | 'debris';
+   readonly q: Quat;
+   readonly w: SerializedVec3;
+diff --git a/src/game/dynamic/dynamic-entity/enemy.ts b/src/game/dynamic/dynamic-entity/enemy.ts
+index 206749841..f4e027f02 100644
+--- a/src/game/dynamic/dynamic-entity/enemy.ts
++++ b/src/game/dynamic/dynamic-entity/enemy.ts
+@@ -22,7 +22,6 @@ import type { DynamicMotionThermal } from '../dynamic-motion';
+ import type { EntityContactParticipant } from '../dynamic-simulation-participant';
+ import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
+ import { EnemyInspection } from '../../pickable/enemy-inspection';
+-import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
+ import { EnemyFireController, type SerializedEnemyFireController } from './enemy-fire-controller';
+ import { EnemyReactions } from './enemy-reactions';
+ 
+@@ -36,7 +35,7 @@ export const PLASMA_BULLET_DAMAGE = 1.25; // 自機がプラズマ弾で被弾
+ 
+ // 敵に共通する直列化の項目。具象の直列化した形がこれを継ぐ。
+ export interface SerializedEnemy extends SerializedDynamicEntityFields {
+-  readonly kind: 'metal-enemy' | 'protein-enemy' | 'assembly-enemy';
++  readonly kind: 'metal-enemy' | 'assembly-enemy';
+   readonly name: string;
+   readonly thermal: DynamicMotionThermal;
+   // マーカーに使う個体色と、軌道線の色。
+@@ -54,7 +53,7 @@ export interface SerializedEnemy extends SerializedDynamicEntityFields {
+ 
+ // 敵の直列化した形が取る種別タグ。
+ const SERIALIZED_ENEMY_KINDS: Record<SerializedEnemy['kind'], true> = {
+-  'metal-enemy': true, 'protein-enemy': true, 'assembly-enemy': true,
++  'metal-enemy': true, 'assembly-enemy': true,
+ };
+ 
+ // 直列化した実体が敵のものか。
+@@ -117,7 +116,6 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
+   public override readonly pickable = true;
+   public readonly inspection = new EnemyInspection(this);
+   public readonly objectPickable = this.inspection;
+-  public get proteinInspection(): EnemyProteinInspection | null { return null; }
+ 
+   public readonly accent: string | number; // マーカー色。攻撃グループとは独立
+   public readonly orbitLineColor: string | number;
+diff --git a/src/game/dynamic/dynamic-entity/entity-dictionary.ts b/src/game/dynamic/dynamic-entity/entity-dictionary.ts
+index 30ac704ce..ebd0b3ad4 100644
+--- a/src/game/dynamic/dynamic-entity/entity-dictionary.ts
++++ b/src/game/dynamic/dynamic-entity/entity-dictionary.ts
+@@ -5,7 +5,6 @@ import { ModularShip, type SerializedModularShip } from '../../ship/modular-ship
+ import { Bullet, type SerializedBullet } from './bullet';
+ import { DebrisPiece, type SerializedDebrisPiece } from './debris-piece';
+ import { MetalEnemy, type SerializedMetalEnemy } from './metal-enemy';
+-import { ProteinEnemy, type SerializedProteinEnemy } from './protein-enemy';
+ import { AssemblyEnemy, type SerializedAssemblyEnemy } from './assembly-enemy';
+ import { AmmoPickup, RcsFuelPickup, type SerializedAmmoPickup, type SerializedRcsFuelPickup } from './pickup';
+ import type { DynamicEntity } from './dynamic-entity';
+@@ -15,7 +14,6 @@ import type { EntityRegistry, SpawnGate } from '../entity-registry';
+ export type SerializedDynamicEntity =
+   | SerializedModularShip
+   | SerializedMetalEnemy
+-  | SerializedProteinEnemy
+   | SerializedAssemblyEnemy
+   | SerializedAmmoPickup
+   | SerializedRcsFuelPickup
+@@ -34,7 +32,7 @@ export interface DynamicEntityClass {
+ }
+ 
+ const ENTITY_CLASSES: readonly DynamicEntityClass[] = [
+-  ModularShip, MetalEnemy, ProteinEnemy, AssemblyEnemy, AmmoPickup, RcsFuelPickup, Bullet, DebrisPiece,
++  ModularShip, MetalEnemy, AssemblyEnemy, AmmoPickup, RcsFuelPickup, Bullet, DebrisPiece,
+ ];
+ 
+ // 直列化された種別タグは未検証の文字列なので、知らない種別なら null を返す。
+diff --git a/src/game/dynamic/dynamic-entity/entity-kind.ts b/src/game/dynamic/dynamic-entity/entity-kind.ts
+index 681d689d9..f279148cc 100644
+--- a/src/game/dynamic/dynamic-entity/entity-kind.ts
++++ b/src/game/dynamic/dynamic-entity/entity-kind.ts
+@@ -1,5 +1,5 @@
+ // ゲーム内 entity を分類する語彙。マップ表示のトグルが引く種別、同時存在数の枠、
+-// タンパク質陣形での役割。
++// 陣形での役割。
+ export type DynamicEntityKind = 'player' | 'enemy' | 'ammo' | 'fuel' | 'base';
+ 
+ // 同時に存在してよい数の枠。個体は自分がどの枠から取るかを DynamicEntity.capKind で宣言する。
+@@ -16,5 +16,5 @@ export const ENTITY_CAP: Record<CapKind, number> = {
+   debris: 600,
+ };
+ 
+-// タンパク質陣形における敵の役割。
++// 陣形における敵の役割。
+ export type FormationRole = 'attacker' | 'shield' | 'energy';
+diff --git a/src/game/dynamic/dynamic-system.ts b/src/game/dynamic/dynamic-system.ts
+index f2e85e7a0..647aacf2f 100644
+--- a/src/game/dynamic/dynamic-system.ts
++++ b/src/game/dynamic/dynamic-system.ts
+@@ -25,7 +25,6 @@ import type { StageSimulationEvents } from '../stages/stage-simulation-events';
+ import type { PilotControls } from './dynamic-entity/pilot-controls';
+ import type { EntityVisualSettings } from '../../render/entity-visual-settings';
+ import type { RenderStyle } from '../../render/render-style';
+-import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
+ import type { SunLight } from '../../render/pipeline/sun-light';
+ import type { BodyShadow } from '../../render/pipeline/shadow/body-shadow';
+ import type { StageRules } from '../stages/stage-rules';
+@@ -237,16 +236,15 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
+     return this.all().filter(isModularShip).find((p) => p.motion.alive) ?? null;
+   }
+ 
+-  // 当該フレームの表示オブジェクトを、エンティティ一覧を走査して同期する。proteinDisplay はタンパク質の敵に
+-  // 共通の表示形態と着色。
++  // 当該フレームの表示オブジェクトを、エンティティ一覧を走査して同期する。
+   public sync(
+     displayTime: number, active: Controllable | null, camera: CameraFrame, style: RenderStyle,
+-    visual: EntityVisualSettings, proteinDisplay: ProteinDisplaySettings,
++    visual: EntityVisualSettings,
+     sunLight: SunLight, bodyShadow: BodyShadow, orbitRef: OrbitReference | undefined,
+   ): void {
+     // 全個体が同じ1つのフレーム入力を読むよう、走査の前に組んでおく。
+     const viewFrame = {
+-      displayTime, camera, style, visual, proteinDisplay, sunLight, bodyShadow,
++      displayTime, camera, style, visual, sunLight, bodyShadow,
+       pools: this.instancedPools,
+     };
+     // instance pool の受付期間で全 Entity を挟む。
+diff --git a/src/game/dynamic/entity-contact-response.ts b/src/game/dynamic/entity-contact-response.ts
+index da6f371a4..6b353b64e 100644
+--- a/src/game/dynamic/entity-contact-response.ts
++++ b/src/game/dynamic/entity-contact-response.ts
+@@ -96,7 +96,7 @@ function compoundContactGeometry(
+   return hit === null ? null : reverseContactGeometry(compoundGeometry(hit));
+ }
+ 
+-// タンパク質の球列など、球の外接半径ではなく種別固有の当たり形状を持つ側の狭域判定。
++// 球列など、球の外接半径ではなく種別固有の当たり形状を持つ側の狭域判定。
+ // 接触解決器へ渡す法線は常に a → b に揃える。
+ function customContactGeometry(
+   a: EntityContactParticipant, aWork: KinematicState,
+@@ -161,7 +161,7 @@ function customContactGeometry(
+     return reverseContactGeometry({ normal: sphereHitB.normal, toi: 1, pushOut: sphereHitB.depth, contactPoint: sphereHitB.point });
+   }
+ 
+-  // protein／mesh の既存固有形状を優先し、その次に compound の正確な狭域判定を使う。
++  // 既存の固有形状を優先し、その次に compound の正確な狭域判定を使う。
+   // compound が外れた場合は外接球へ戻さず、形状間の空間を接触にしない。
+   const compound = compoundContactGeometry(
+     a as AttitudeHistoryParticipant, aWork,
+diff --git a/src/game/dynamic/entity-lifecycle.ts b/src/game/dynamic/entity-lifecycle.ts
+index 540348693..80ab304e9 100644
+--- a/src/game/dynamic/entity-lifecycle.ts
++++ b/src/game/dynamic/entity-lifecycle.ts
+@@ -11,8 +11,6 @@ import { EntityIdAllocators } from './dynamic-entity/entity-id';
+ import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
+ import { findEntityClass } from './dynamic-entity/entity-dictionary';
+ import { isSerializedEnemy } from './dynamic-entity/enemy';
+-import { ProteinEnemy } from './dynamic-entity/protein-enemy';
+-import { proteinAssetGate } from '../protein/protein-asset-loader';
+ import { ENTITY_CAP, type CapKind } from './dynamic-entity/entity-kind';
+ import type { StageOutcome } from '../stages/stage-outcome';
+ import type { EngagementParticipant, EngagementZone } from './engagement-zone';
+@@ -55,14 +53,12 @@ export interface EntityLifecyclePort
+   extends EntityAdditionPort, PendingEntitySpawnPort, EntityDeathPort, EntityRemovalPort {}
+ 
+ function readyToSpawn(record: SpawnRecord): boolean {
+-  const gate: SpawnGate | null = record.kind === 'protein-enemy'
+-    ? proteinAssetGate(record.request.assetId)
+-    : findEntityClass(record.entity.kind)?.spawnGate(record.entity) ?? null;
++  const gate: SpawnGate | null = findEntityClass(record.entity.kind)?.spawnGate(record.entity) ?? null;
+   return gate === null || gate();
+ }
+ 
+ function isEnemyRecord(record: SpawnRecord): boolean {
+-  return record.kind === 'protein-enemy' || isSerializedEnemy(record.entity);
++  return isSerializedEnemy(record.entity);
+ }
+ 
+ // DynamicSystem からエンティティの collection、pending spawn、上限、回収を分離した所有者。
+@@ -128,6 +124,9 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
+   }
+ 
+   public spawnWhenReady(record: SpawnRecord): void {
++    // 直列化された記録は未検証の値なので、実体の無い待機記録は捨てる(旧い記録に残る
++    // 廃止済み種別の要求がここへ来る)。
++    if (record.entity === undefined) return;
+     if (readyToSpawn(record)) this.materialize(record);
+     else this.pendingSpawns.push(record);
+   }
+@@ -193,10 +192,6 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
+   }
+ 
+   private materialize(record: SpawnRecord): void {
+-    if (record.kind === 'protein-enemy') {
+-      this.add(ProteinEnemy.create(record.request, this.idAllocators, this.scene));
+-      return;
+-    }
+     const entityClass = findEntityClass(record.entity.kind);
+     if (entityClass !== null) this.add(entityClass.deserialize(record.entity, this, this.scene));
+   }
+diff --git a/src/game/dynamic/entity-registry.ts b/src/game/dynamic/entity-registry.ts
+index 29dd391a4..27728ee3d 100644
+--- a/src/game/dynamic/entity-registry.ts
++++ b/src/game/dynamic/entity-registry.ts
+@@ -2,17 +2,17 @@
+ import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
+ import type { EntityIdAllocators } from './dynamic-entity/entity-id';
+ import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
+-import type { ProteinEnemyRequest } from './dynamic-entity/protein-enemy';
+ import type { RunEventSink } from '../run-events';
+ 
+ // 個体を実体化可能かを判定する述語関数。何を待機するかは、待機を決定した側のみが保持する。
+ export type SpawnGate = () => boolean;
+ 
+-// 実体化を待てる個体の記録。直列化した個体を戻すものと、新しく置くタンパク質の敵の要求がある。
++// 実体化を待てる個体の記録。直列化した個体を戻す。
+ // 待つあいだも直列化できる値だけで表す。
+-export type SpawnRecord =
+-  | { readonly kind: 'entity'; readonly entity: SerializedDynamicEntity }
+-  | { readonly kind: 'protein-enemy'; readonly request: ProteinEnemyRequest };
++export interface SpawnRecord {
++  readonly kind: 'entity';
++  readonly entity: SerializedDynamicEntity;
++}
+ 
+ export interface EntityRegistry {
+   // このランの id 採番器。生む側はここから自分の種別の id を取る。
+diff --git a/src/game/flash-presenter.ts b/src/game/flash-presenter.ts
+index 7f1ae097d..f30624337 100644
+--- a/src/game/flash-presenter.ts
++++ b/src/game/flash-presenter.ts
+@@ -5,7 +5,6 @@ import { addScaled } from '../math/vec3';
+ import { kinematicState } from '../physics/kinematic-state';
+ import type { KinematicState } from '../physics/kinematic-state';
+ import type { FlashEffect } from '../render/vfx/flash-effects-view';
+-import type { ProteinPhase } from '../render/protein/protein-display';
+ import type { BulletType } from './dynamic/dynamic-entity/bullet-reaction';
+ import type { RunEvent, RunEventBody } from './run-events';
+ 
+@@ -18,10 +17,7 @@ type FlashKind =
+   | 'destroy2'
+   | 'gasPuff1'
+   | 'gasPuff2'
+-  | 'partBreak'
+-  | 'proteinCritical'
+-  | 'proteinDissociated'
+-  | 'proteinDamaged';
++  | 'partBreak';
+ 
+ // 種別1つぶんの見え方。板の一辺は発生直後の size0 から寿命末の size1 まで広がる。
+ interface FlashAppearance {
+@@ -34,11 +30,6 @@ interface FlashAppearance {
+ 
+ const ZOOM_DIM_SCALE = 0.02; // 照準ズーム中に減光する種別の明るさ倍率(完全には消さない)
+ 
+-// タンパク質の状態遷移フラッシュの大きさ [m] と明るさ。危篤・解離・それ以外の損傷で共通にし、色だけで分ける。
+-const PROTEIN_STATE_FLASH_SIZE0 = 2.5;
+-const PROTEIN_STATE_FLASH_SIZE1 = 13;
+-const PROTEIN_STATE_FLASH_BRIGHTNESS = 0.9;
+-
+ // TODO: 明るさは 1 天文単位を基準にした目盛りへ手で置いた表示値。ボリュームレンダリングで放射量として組み直す。
+ const FLASH_APPEARANCE: Record<FlashKind, FlashAppearance> = {
+   bulletImpact: { color: '#ffe2a0', size0: 1.5, size1: 6, peakBrightness: 1, dimsInGunsight: false },
+@@ -52,18 +43,6 @@ const FLASH_APPEARANCE: Record<FlashKind, FlashAppearance> = {
+   gasPuff2: { color: '#ffffff', size0: 0.5, size1: 6.0, peakBrightness: 0.4, dimsInGunsight: false },
+   // 組み立て型の敵の部品1個が折れた閃光。撃破(destroy1/2)より小さく、着弾より大きい。
+   partBreak: { color: '#ffc890', size0: 3, size1: 22, peakBrightness: 1, dimsInGunsight: false },
+-  proteinCritical: {
+-    color: 0xff3d88, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
+-    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
+-  },
+-  proteinDissociated: {
+-    color: 0xa76dff, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
+-    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
+-  },
+-  proteinDamaged: {
+-    color: 0x59e7ff, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
+-    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
+-  },
+ };
+ 
+ // 種別ごとの寿命 [s]。
+@@ -74,19 +53,8 @@ const DESTROY_FLASH1_DURATION = 1.1;
+ const DESTROY_FLASH2_DURATION = 0.5;
+ const GAS_PUFF1_DURATION = 0.45;
+ const GAS_PUFF2_DURATION = 0.35;
+-const PROTEIN_STATE_FLASH_DURATION = 0.34;
+ const PART_BREAK_FLASH_DURATION = 0.5;
+ 
+-// タンパク質の遷移先のフェーズ、または部位の機能停止('site-disabled')ごとの閃光の種別。
+-// 危篤・解離はそれぞれの種別、それ以外は損傷として示す。
+-const PROTEIN_STATE_FLASH_KIND: Readonly<Record<ProteinPhase | 'site-disabled', FlashKind>> = {
+-  intact: 'proteinDamaged',
+-  exposed: 'proteinDamaged',
+-  dissociated: 'proteinDissociated',
+-  critical: 'proteinCritical',
+-  'site-disabled': 'proteinDamaged',
+-};
+-
+ // 起きた閃光1件。発生時の状態(位置・発生源速度とその時刻)だけを持ち、経過・現在位置は
+ // そのフレームの表示時刻から出す(R5)。
+ interface SpawnedFlash {
+@@ -143,7 +111,6 @@ export class FlashPresenter {
+   private spawn(body: RunEventBody): void {
+     switch (body.kind) {
+       case 'gunFired':
+-      case 'proteinSiteFired':
+       case 'assemblyEmitterFired':
+         this.add(body.muzzleState, 'muzzle', MUZZLE_FLASH_DURATION);
+         return;
+@@ -165,10 +132,6 @@ export class FlashPresenter {
+         this.add(body.state, 'destroy1', DESTROY_FLASH1_DURATION, body.modelScale);
+         this.add(body.state, 'destroy2', DESTROY_FLASH2_DURATION, body.modelScale);
+         return;
+-      case 'proteinStateChanged':
+-        this.add(
+-          body.state, PROTEIN_STATE_FLASH_KIND[body.transition], PROTEIN_STATE_FLASH_DURATION);
+-        return;
+       case 'assemblyPartBroken':
+         this.add(body.state, 'partBreak', PART_BREAK_FLASH_DURATION);
+         return;
+diff --git a/src/game/game-presentation.ts b/src/game/game-presentation.ts
+index be45f2ffc..88d4c38e2 100644
+--- a/src/game/game-presentation.ts
++++ b/src/game/game-presentation.ts
+@@ -161,10 +161,6 @@ export class GamePresentation {
+     this.celestialMarkers = new CelestialMarkers(markers, celestialSystem);
+     hud.beginRun(activeStage.id);
+     const entityDisplayPort = entityDisplayCommands(commands, viewer.entityDisplay);
+-    const proteinDisplayControl = activeStage.proteinDisplayControl;
+-    if (proteinDisplayControl !== null) {
+-      proteinDisplayControl.onProteinDisplayChange = (display) => entityDisplayPort.setProteinDisplay(display);
+-    }
+     this.entityLines = new EntityLineManager(dynamicSystem, viewer.entityDisplay);
+     const cameraCommandPort = cameraCommands(commands, viewer.camera);
+     const targetCommands = navTargetCommands(commands, viewer.navTarget);
+@@ -445,7 +441,7 @@ export class GamePresentation {
+     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
+     celestialSystem.bakeClouds(this.devices.scene.renderer, displayTime, this.devices.scene.gpu);
+     dynamicSystem.sync(
+-      displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay,
++      displayTime, controlled, camera, style, graphics,
+       this.devices.scene.pipeline.sunLight, this.devices.scene.pipeline.bodyShadow,
+       orbitRef ?? undefined,
+     );
+@@ -497,7 +493,7 @@ export class GamePresentation {
+     controlled: Controllable | null, orbitRef: OrbitReference | null,
+     visibilityPolicy: MapVisibilityPolicy | null, palette: ThemePalette, camera: CameraFrame,
+   ): void {
+-    const { celestialSystem, activeStage, viewer } = this.game;
++    const { celestialSystem, activeStage } = this.game;
+     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
+     this.objectWindows.sync();
+     this.moduleWindows.sync();
+@@ -510,7 +506,6 @@ export class GamePresentation {
+     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
+     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
+     activeStage.sync(camera, view, displayTime);
+-    activeStage.proteinDisplayControl?.syncProteinDisplay(viewer.entityDisplay.proteinDisplay);
+     this.hudPanels.sync(view, displayWindow, orbitRef ?? undefined, palette, camera, nowMs);
+     this.syncFrameMarkers(nowMs);
+     // このフレームのマーカーが出揃った後でなければならないので最後に通す。
+diff --git a/src/game/hud/hud-els.ts b/src/game/hud/hud-els.ts
+index 12b7a6c0f..a45a551f7 100644
+--- a/src/game/hud/hud-els.ts
++++ b/src/game/hud/hud-els.ts
+@@ -92,10 +92,6 @@ export const HUD_ELEMENT_IDS = [
+   'tgt-armor-value',
+   'tgt-closing',
+   'tgt-dist',
+-  'tgt-integrity-value',
+-  'tgt-protein',
+-  'tgt-protein-phase',
+-  'tgt-protein-sites',
+   'tgt-relative-speed',
+   'tgtbody',
+   'tgtname',
+diff --git a/src/game/hud/hud-panel-presenter.ts b/src/game/hud/hud-panel-presenter.ts
+index 2c163c4dc..8b5762de0 100644
+--- a/src/game/hud/hud-panel-presenter.ts
++++ b/src/game/hud/hud-panel-presenter.ts
+@@ -3,7 +3,6 @@ import { len, sub } from '../../math/vec3';
+ import { frameRoleOf } from '../../physics/frame';
+ import { orbitInfo, relativeInfo } from '../orbit-info';
+ import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+-import { isProteinEnemy } from '../dynamic/dynamic-entity/protein-enemy';
+ import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
+ import { isModularShip } from '../ship/modular-ship';
+ import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-commands';
+@@ -238,7 +237,6 @@ export class HudPanelPresenter {
+       relativeSpeedMps: relative.relSpeed,
+       hp: target.hp,
+       maxHp: target.maxHp,
+-      protein: isProteinEnemy(target) ? target.combatReadout : null,
+       onSelectRight: (x, y) => this.objectWindows.openTarget(x, y),
+     };
+   }
+diff --git a/src/game/hud/hud-root.ts b/src/game/hud/hud-root.ts
+index d570b5f91..ce34a088f 100644
+--- a/src/game/hud/hud-root.ts
++++ b/src/game/hud/hud-root.ts
+@@ -286,7 +286,7 @@ function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void
+   const target = new PanelShell(rightRail, collapse, 'hud-target', 'TGT', 'ターゲット');
+   configureCombatPanel(target);
+   target.setHidden(true);
+-  // 識別行・距離と接近速度(答え)・相対速度と装甲の行・タンパク質標的の詳細欄・案内。
++  // 識別行・距離と接近速度(答え)・相対速度と装甲の行・案内。
+   target.body.innerHTML = `
+     <div data-id="tgtbody">
+       <div class="ui-ident is-tgt">
+@@ -307,13 +307,6 @@ function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void
+         ${instrumentRowHtml({ label: '相対速度', valueId: 'tgt-relative-speed' })}
+         ${instrumentRowHtml({ label: '装甲', rowId: 'tgt-armor-row', gaugeId: 'tgt-armor-meter', valueId: 'tgt-armor-value' })}
+       </div>
+-      <section id="tgt-protein" data-id="tgt-protein" class="protein-target-details hidden" aria-label="タンパク質構造">
+-        <div class="protein-target-heading"><span>タンパク質</span><output data-id="tgt-protein-phase">INTACT</output></div>
+-        <div class="ui-rows">
+-          ${instrumentRowHtml({ label: '構造安定性', valueId: 'tgt-integrity-value' })}
+-        </div>
+-        <div data-id="tgt-protein-sites"></div>
+-      </section>
+       <p class="target-help">軌道要素は右クリック / 長押しで表示</p>
+     </div>`;
+ }
+diff --git a/src/game/hud/panels/target-panel.ts b/src/game/hud/panels/target-panel.ts
+index e7cfa4f7b..c1e4a385a 100644
+--- a/src/game/hud/panels/target-panel.ts
++++ b/src/game/hud/panels/target-panel.ts
+@@ -4,10 +4,8 @@ import { fmtDist, fmtDistParts, fmtSpeedParts } from '../../../hud/utils';
+ import { setReadout } from '../../../hud/readout';
+ import { SyncThrottle } from '../sync-throttle';
+ import type { HudEls } from '../hud-els';
+-import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
+ import { Meter } from '../../../hud/widgets';
+ import { applyAlarmLevel } from '../../../hud/alarm-level';
+-import type { ProteinCombatReadout } from '../../protein/protein-schema';
+ 
+ const SYNC_INTERVAL_MS = 100;
+ 
+@@ -20,8 +18,6 @@ export interface TargetPanelViewModel {
+   // 装甲を持たない対象(基地)では null。
+   readonly hp: number | null;
+   readonly maxHp: number | null;
+-  // タンパク質構造を持たない対象では null。
+-  readonly protein: ProteinCombatReadout | null;
+   onSelectRight(clientX: number, clientY: number): void;
+ }
+ 
+@@ -52,11 +48,10 @@ export class TargetPanel {
+     this.syncTarget(view);
+   }
+ 
+-  // 値を既存の DOM へ書き込む。target が null なら名前を空欄にし、タンパク質欄を畳む。
++  // 値を既存の DOM へ書き込む。target が null なら名前を空欄にする。
+   private syncTarget(target: TargetPanelViewModel | null): void {
+     if (!target) {
+       this.els.setText('tgtname', '—');
+-      this.els.get('tgt-protein').classList.add('hidden');
+       this.els.setText('hud-target-summary', '—');
+       applyAlarmLevel(this.els.get('hud-target-summary'), 'normal');
+       return;
+@@ -84,24 +79,5 @@ export class TargetPanel {
+       this.armorMeter.setProgress(clampedHp, maxHp, `${armorValue} ${armorUnit}`, 'normal');
+       setReadout(this.els.get('tgt-armor-value'), armorValue, armorUnit);
+     }
+-    // タンパク質構造を持つ標的なら、フェーズと部位ごとの状態も表示する。
+-    const proteinPanel = this.els.get('tgt-protein');
+-    proteinPanel.classList.toggle('hidden', target.protein === null);
+-    if (target.protein) {
+-      this.els.setText('tgt-protein-phase', target.protein.phase.toUpperCase());
+-      const rows = target.protein.sites.map((site) => {
+-        const ratio = site.maxHp > 0 ? Math.max(0, Math.min(1, site.hp / site.maxHp)) : 0;
+-        const status = site.disabled ? '停止' : `${Math.floor(site.hp)} / ${site.maxHp}`;
+-        const glyph = site.disabled ? '▽' : site.attackable ? '▲' : '△';
+-        const hpIcon = triangleHpMarkerSvg(site.hp, site.maxHp);
+-        return `<div class="protein-site-row${site.disabled ? ' disabled' : ''}" style="--protein-site-hp:${ratio.toFixed(3)}"><span class="protein-site-glyph" aria-hidden="true">${glyph}</span><span class="protein-site-label">${site.abbreviation}</span><span class="protein-site-hp-icon">${hpIcon}</span><output>${status}</output></div>`;
+-      }).join('');
+-      const siteRows = this.els.get('tgt-protein-sites');
+-      if (siteRows.innerHTML !== rows) siteRows.innerHTML = rows;
+-      setReadout(
+-        this.els.get('tgt-integrity-value'), `${Math.floor(target.protein.integrityHp)}`,
+-        `/ ${target.protein.integrityMaxHp}`,
+-      );
+-    }
+   }
+ }
+diff --git a/src/game/hud/style/combat-panel-rows-style.ts b/src/game/hud/style/combat-panel-rows-style.ts
+index 69cbfb9ad..27668abd0 100644
+--- a/src/game/hud/style/combat-panel-rows-style.ts
++++ b/src/game/hud/style/combat-panel-rows-style.ts
+@@ -1,14 +1,5 @@
+-// タンパク質対象詳細、艦の展開操作、燃焼管理パネルの CSS。
++// 艦の展開操作、燃焼管理パネルの CSS。
+ export const COMBAT_PANEL_ROWS_STYLE = `
+-  .protein-target-details { margin-top: var(--space-3); padding-top: var(--space-3); }
+-  .protein-target-heading { display: flex; justify-content: space-between; color: var(--text-muted); font-size: var(--font-xxs); letter-spacing: .08em; }
+-  .protein-site-row { display: grid; grid-template-columns: 1rem 5.2rem minmax(3rem, 1fr) auto; gap: var(--space-2); align-items: center; margin-top: var(--space-2); font-size: var(--font-xxs); }
+-  .protein-site-glyph { color: var(--color-signal); font-size: var(--font-xs); line-height: 1; opacity: calc(.25 + var(--protein-site-hp) * .75); }
+-  .protein-site-row.disabled .protein-site-glyph { color: var(--text-dim); }
+-  .protein-site-label { min-width: 0; }
+-  .protein-site-hp-icon { color: var(--color-signal); font-size: var(--font-xs); line-height: 1; }
+-  .protein-site-hp-icon svg { display: block; width: 1em; height: 1em; }
+-  .protein-site-row.disabled .protein-site-hp-icon { color: var(--text-dim); }
+ /* 通常のマップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
+    SHIP STATUS は畳んでパネル占有面積を減らす。クリエイティブでは配置後の操作用に表示する。 */
+ #hud:not(.creative-mode) .hud-map-root.active #hud-vessel-status { display: none; }
+diff --git a/src/game/hud/style/stage-controls-style.ts b/src/game/hud/style/stage-controls-style.ts
+index 05b76d39a..127294e86 100644
+--- a/src/game/hud/style/stage-controls-style.ts
++++ b/src/game/hud/style/stage-controls-style.ts
+@@ -1,4 +1,4 @@
+-// ステージ操作パネル(#hud-stage-controls、クリエイティブモードの敵/形状/タンパク質設定)の CSS。
++// ステージ操作パネル(#hud-stage-controls、クリエイティブモードの敵/形状設定)の CSS。
+ export const STAGE_CONTROLS_STYLE = `
+ #hud-stage-controls { width: 100%; pointer-events: auto; }
+ #hud-stage-controls .editorial-panel-head { margin-bottom: var(--space-3); }
+@@ -19,18 +19,6 @@ export const STAGE_CONTROLS_STYLE = `
+ #hud-stage-controls .stage-control-shapes .w-group-title { flex: 0 0 100%; }
+ #hud-stage-controls .stage-control-shapes .w-btn { flex: 1 1 0; min-width: 0; }
+ #hud-stage-controls .stage-control-shapes .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
+-#hud-stage-controls .stage-control-protein-representation,
+-#hud-stage-controls .stage-control-protein-colors { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+-#hud-stage-controls .stage-control-protein-representation .w-group-title,
+-#hud-stage-controls .stage-control-protein-colors .w-group-title { flex: 0 0 100%; }
+-#hud-stage-controls .stage-control-protein-representation .w-btn,
+-#hud-stage-controls .stage-control-protein-colors .w-btn { flex: 1 1 0; min-width: 0; }
+-/* 着色は長い分析用ラベルを含むため2列へ折り返し、全文をボタン内に収める。 */
+-#hud-stage-controls .stage-control-protein-colors .w-btn {
+-  flex: 1 1 calc(50% - var(--space-2)); min-width: 110px; white-space: normal; overflow-wrap: anywhere;
+-}
+-#hud-stage-controls .stage-control-protein-representation .w-btn.on,
+-#hud-stage-controls .stage-control-protein-colors .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
+ #hud-stage-controls .stage-control-select { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--text-dim); font-size: var(--font-xxs); }
+ #hud-stage-controls .stage-control-select .w-select { min-width: 86px; }
+ #hud-stage-controls .stage-control-select .w-input { width: 72px; text-align: right; }
+diff --git a/src/game/hud/windows/debug-info-window.ts b/src/game/hud/windows/debug-info-window.ts
+index 5cc70b78a..99942d106 100644
+--- a/src/game/hud/windows/debug-info-window.ts
++++ b/src/game/hud/windows/debug-info-window.ts
+@@ -11,8 +11,6 @@ import { type FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } fro
+ import { GPU_PASS_COUNT, GPU_PASS_LABELS, type GpuTimings, type GpuPassId } from '../../../render/gpu-timings';
+ import type { OverlayManager } from '../../../hud/overlay-manager';
+ import { KEY_MAPPING as K } from '../../../input/key-mapping';
+-import { ProteinMotionMetricsRecorder } from '../../protein/protein-motion-metrics';
+-import { LODS_FINE_TO_COARSE } from '../../../render/protein/protein-display';
+ import type { PerfCounts, PerfCountSource } from '../../perf-counts';
+ import type { EntityCountKind } from '../../dynamic/dynamic-entity/entity-kind';
+ import type { PropertyRow } from '../../../hud/windows/property-window-content';
+@@ -117,7 +115,6 @@ export class DebugInfoWindow {
+   private readonly controls: HTMLElement;
+   private activeTab: DebugInfoTab = 'metrics';
+   private _debugTarget: DebugTargetId = 'off';
+-  private readonly proteinMotion = new ProteinMotionMetricsRecorder();
+ 
+   // 計測が走っているか。窓が開いている間だけ真になる。
+   public get on(): boolean { return this.win !== null; }
+@@ -173,7 +170,6 @@ export class DebugInfoWindow {
+     for (const s of this.sectionStats) this.resetStats(s);
+     for (const s of this.gpuStats) this.resetStats(s);
+     for (const s of this.rateStats) this.resetStats(s);
+-    this.proteinMotion.reset();
+     this.sections.enabled = true;
+     this.gpu.enabled = true;
+     this.frames = 0;
+@@ -237,7 +233,6 @@ export class DebugInfoWindow {
+     for (const [i, stats] of this.gpuStats.entries()) this.addSample(stats, this.gpu.msOf(i as GpuPassId));
+     const c = counts.perfCounts();
+     for (const [i, stats] of this.rateStats.entries()) this.addSample(stats, RATE_COUNTS[i]!.read(c));
+-    this.proteinMotion.record(counts.proteinMotionFrameSample());
+     this.frames++;
+     this.flush(c, now);
+   }
+@@ -289,7 +284,6 @@ export class DebugInfoWindow {
+     for (const s of this.sectionStats) this.resetStats(s);
+     for (const s of this.gpuStats) this.resetStats(s);
+     for (const s of this.rateStats) this.resetStats(s);
+-    this.proteinMotion.reset();
+     this.frames = 0;
+     this.lastFlush = now;
+   }
+@@ -326,7 +320,6 @@ export class DebugInfoWindow {
+     this.lastTimeHits = c.timeCacheHits;
+     this.lastTimeMisses = c.timeCacheMisses;
+     const mem = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+-    const proteinSummary = this.proteinMotion.summary();
+ 
+     return [
+       {
+@@ -384,19 +377,6 @@ export class DebugInfoWindow {
+ 
+       { key: 'heap', label: 'JS heap', group: 'メモリ',
+         value: mem ? `${(mem.usedJSHeapSize / 1048576).toFixed(1)} MB` : '--' },
+-
+-      {
+-        key: 'protein-motion-cpu', label: 'Motion CPU', group: 'タンパク質モーション',
+-        value: `${barText(proteinSummary.cpuMs.avg)} p95 ${proteinSummary.cpuMs.p95.toFixed(2)} max ${proteinSummary.cpuMs.max.toFixed(2)}`,
+-      },
+-      {
+-        key: 'protein-motion-upload', label: 'Upload', group: 'タンパク質モーション',
+-        value: `avg ${(proteinSummary.uploadBytes.avg / 1024).toFixed(1)}KiB max ${(proteinSummary.uploadBytes.max / 1024).toFixed(1)}KiB`,
+-      },
+-      ...LODS_FINE_TO_COARSE.map((lod) => ({
+-        key: `protein-motion-lod-${lod}`, label: lod, group: 'タンパク質モーション',
+-        value: `${proteinSummary.lodCounts[lod].toFixed(1)}`,
+-      })),
+     ];
+   }
+ }
+diff --git a/src/game/marker/marker-identity-style.ts b/src/game/marker/marker-identity-style.ts
+index cdd0656e3..ba42261fd 100644
+--- a/src/game/marker/marker-identity-style.ts
++++ b/src/game/marker/marker-identity-style.ts
+@@ -28,7 +28,7 @@ const MARKER_IDENTITY_STYLE = `
+ }
+ 
+ #hud .mk { z-index: var(--z-mk-base); }
+-#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight, #hud .mk-protein-site { z-index: var(--z-mk-node); }
++#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight { z-index: var(--z-mk-node); }
+ #hud .mk-ammo { z-index: var(--z-mk-ammo); }
+ #hud .mk-fuel { z-index: var(--z-mk-ammo); }
+ #hud .mk-enemy, #hud .mk-target, #hud .mk-ally { z-index: var(--z-mk-enemy); }
+@@ -77,9 +77,6 @@ const MARKER_IDENTITY_STYLE = `
+ .mk-apsis { color: ${COLOR_MARKER_PLANNED}; }
+ .mk-impact { color: var(--color-error); }
+ .mk-plantick { color: var(--text-dim); }
+-.mk-protein-site { color: var(--text-dim); }
+-.mk-protein-site .sym { font-size: calc(var(--glyph-base) * 0.25); }
+-.mk-protein-site .lbl { font-size: var(--font-xxs); }
+ 
+ .mk-poi { color: var(--text-strong); }
+ .mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-poi)); }
+diff --git a/src/game/marker/marker-priority.ts b/src/game/marker/marker-priority.ts
+index 20faf3f61..02ae6361d 100644
+--- a/src/game/marker/marker-priority.ts
++++ b/src/game/marker/marker-priority.ts
+@@ -13,7 +13,6 @@ export const MARKER_PRIORITY = {
+   AMMO: 300,
+   MANEUVER_NODE: 150,
+   ORBITAL_NODE: 100,
+-  PROTEIN_SITE: 50,
+   // 種別に応じた度合いを持たないマーカー(方向・照準・目盛・計画位置など)。
+   NONE: 0,
+ } as const;
+diff --git a/src/game/perf-counts.ts b/src/game/perf-counts.ts
+index d6f6858aa..e12d659c4 100644
+--- a/src/game/perf-counts.ts
++++ b/src/game/perf-counts.ts
+@@ -1,6 +1,5 @@
+ // ランの規模の計測値。
+ import type { EntityCountKind } from './dynamic/dynamic-entity/entity-kind';
+-import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
+ import type { CelestialSurfaceDiagnostics } from '../render/celestial/celestial-surface';
+ 
+ export interface SurfacePerfCount {
+@@ -27,5 +26,4 @@ export interface PerfCounts {
+ // 1フレームぶんの計測値を差し出す口。
+ export interface PerfCountSource {
+   perfCounts(): PerfCounts;
+-  proteinMotionFrameSample(): ProteinMotionFrameSample;
+ }
+diff --git a/src/game/pickable/enemy-inspection.ts b/src/game/pickable/enemy-inspection.ts
+index 7b14c2710..fa0b93370 100644
+--- a/src/game/pickable/enemy-inspection.ts
++++ b/src/game/pickable/enemy-inspection.ts
+@@ -8,16 +8,12 @@ import type { MenuItem } from '../hud/windows/context-menu';
+ import type { MenuAction } from '../hud/windows/menu-actions';
+ import type { PropertyRow } from '../../hud/windows/property-window-content';
+ import type { DynamicMotion } from '../dynamic/dynamic-motion';
+-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+ import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+ import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
+-import type { Quat } from '../../math/quat';
+ import type { Ray } from '../../math/ray';
+ import type { KinematicState } from '../../physics/kinematic-state';
+ import type { Vec3 } from '../../math/vec3';
+ import type { GroupedMarkerItem } from '../marker/grouped-markers';
+-import type { ProteinCombatReadout } from '../protein/protein-schema';
+-import type { ProteinSiteMarker } from '../../render/dynamic/dynamic-entity/protein-enemy-view';
+ import { len, sub } from '../../math/vec3';
+ import { fmtDist, fmtSpeed } from '../../hud/utils';
+ import { relativeInfo } from '../orbit-info';
+@@ -29,12 +25,6 @@ import { MenuCommon } from '../hud/windows/menu-actions';
+ // 一覧で「接近」として数える、viewer からの距離 [m]。
+ const ENEMY_APPROACH_DIST = 2e5;
+ 
+-// タンパク質の敵が差し出す、戦闘状態の読み出しと部位マーカー。
+-export interface EnemyProteinInspection {
+-  combatReadout(): ProteinCombatReadout;
+-  siteMarkers(displayPos: Vec3, attitude: Quat): readonly ProteinSiteMarker[];
+-}
+-
+ // 敵の表示・一覧・検査に必要なインターフェース。
+ export interface EnemyInspectionSource extends OrbitingObject {
+   readonly name: string;
+@@ -43,7 +33,6 @@ export interface EnemyInspectionSource extends OrbitingObject {
+   readonly hp: number;
+   readonly maxHp: number;
+   readonly pickable: boolean;
+-  readonly proteinInspection: EnemyProteinInspection | null;
+   markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode): GroupedMarkerItem;
+   hitBodyByRay(ray: Ray, pos: Vec3): boolean;
+   mapVisibility(policy: MapVisibilityPolicy, viewer: OrbitingObject | null): MapVisibility;
+@@ -66,8 +55,6 @@ export class EnemyInspection implements InspectedObject {
+   public readonly onMapSelect = null;
+   public readonly onMapFocus = null;
+ 
+-  public get protein(): EnemyProteinInspection | null { return this.source.proteinInspection; }
+-
+   // 表示位置 pos・速度 vel に置く敵のマーカー項目。
+   public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode, _isActive: boolean): GroupedMarkerItem {
+     return this.source.markerItem(viewerPos, pos, vel, view);
+@@ -146,8 +133,3 @@ export class EnemyInspection implements InspectedObject {
+   }
+ }
+ 
+-// entity がタンパク質の検査面を持てばそれを返す。持たなければ null。
+-export function proteinInspectionOf(entity: DynamicEntity): EnemyProteinInspection | null {
+-  const candidate = entity as DynamicEntity & Partial<Pick<EnemyInspectionSource, 'proteinInspection'>>;
+-  return candidate.proteinInspection ?? null;
+-}
+diff --git a/src/game/run-events.ts b/src/game/run-events.ts
+index 17e57fb88..6cba09681 100644
+--- a/src/game/run-events.ts
++++ b/src/game/run-events.ts
+@@ -6,7 +6,6 @@ import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
+ import type { EnemyDeathCause } from './stages/stage-outcome';
+ import type { Attitude } from '../physics/attitude';
+ import type { KinematicState } from '../physics/kinematic-state';
+-import type { ProteinPhase } from '../render/protein/protein-display';
+ import type { Vec3 } from '../math/vec3';
+ 
+ // クリエイティブモードで、操作艦が要る操作。
+@@ -91,14 +90,6 @@ export type RunEventBody =
+     readonly state: KinematicState;
+     readonly modelScale: number;
+   }
+-  // 敵機がタンパク質の機能部位から1発撃った。muzzleState は砲口の位置と機体の速度。
+-  | { readonly kind: 'proteinSiteFired'; readonly muzzleState: KinematicState }
+-  // タンパク質敵の被弾で、機能部位が停止したか構造フェーズが遷移した。state は着弾点と機体の速度。
+-  | {
+-    readonly kind: 'proteinStateChanged';
+-    readonly state: KinematicState;
+-    readonly transition: ProteinPhase | 'site-disabled';
+-  }
+   // 組み立て型の敵が発射部から1発撃った。muzzleState は発射位置と機体の速度。
+   | { readonly kind: 'assemblyEmitterFired'; readonly muzzleState: KinematicState }
+   // 組み立て型の敵の部品が被弾で失われた。state は失われた部品の位置と機体の速度。
+diff --git a/src/game/stages/creative-stage-commands.ts b/src/game/stages/creative-stage-commands.ts
+index ae7476561..2334cfc50 100644
+--- a/src/game/stages/creative-stage-commands.ts
++++ b/src/game/stages/creative-stage-commands.ts
+@@ -22,8 +22,6 @@ export interface CreativeStageCommands {
+   setSpawnDistance(distanceM: number): void;
+   // shape で選んだ形・色の敵を1体、自機の前方へ出す。
+   spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void;
+-  // タンパク質陣形を自機の前方へ一括で出す。
+-  spawnProteinFormation(): void;
+   // 検証を通った配置の指定から物体を作り、シミュレーション対象へ追加する。
+   placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void;
+   // 検証を通った配置の指定から軌道標識を作り、台帳へ追加する。
+@@ -40,7 +38,6 @@ export function creativeStageCommands(queue: CommandQueue, stage: CreativeStage)
+     refillShipRcsFuel: () => queue.submit(() => stage.refillShipRcsFuel()),
+     setSpawnDistance: (distanceM) => queue.submit(() => stage.setSpawnDistance(distanceM)),
+     spawnManualEnemy: (shape, colorValue) => queue.submit(() => stage.spawnManualEnemy(shape, colorValue)),
+-    spawnProteinFormation: () => queue.submit(() => stage.spawnProteinFormation()),
+     placeObject: (name, selection, state) => queue.submit(() => stage.placeObject(name, selection, state)),
+     placeOrbitSlot: (name, orbit) => queue.submit(() => stage.placeOrbitSlot(name, orbit)),
+   };
+diff --git a/src/game/stages/creative-stage.ts b/src/game/stages/creative-stage.ts
+index c411dd2b7..b0705bb46 100644
+--- a/src/game/stages/creative-stage.ts
++++ b/src/game/stages/creative-stage.ts
+@@ -6,7 +6,7 @@ import {
+ } from '../creative/object-placement';
+ import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
+ import {
+-  StageControlsPanel, type EnemySpawnShape, type ProteinDisplayControl,
++  StageControlsPanel, type EnemySpawnShape,
+ } from '../creative/stage-controls-panel';
+ import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+ import { hudRail } from '../hud/hud-root';
+@@ -49,7 +49,6 @@ export class CreativeStage extends Stage {
+   public static readonly selectGroup = 'クリエイティブモード';
+   public readonly executesPlans = true;
+   public readonly authoring: ObjectAuthoring;
+-  public readonly proteinDisplayControl: ProteinDisplayControl;
+ 
+   private readonly objectPlacement: ObjectPlacement;
+   private readonly manualSpawn: ManualSpawn;
+@@ -98,7 +97,6 @@ export class CreativeStage extends Stage {
+       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
+       this.manualSpawn.spawnDistance,
+     );
+-    this.proteinDisplayControl = this.stageControlsPanel;
+     this.stageControlsPanel.onToggleResupply = (on) => this.commands.setResupplyEnabled(on);
+     this.stageControlsPanel.onToggleFuelResupply = (on) => this.commands.setFuelResupplyEnabled(on);
+     this.stageControlsPanel.onToggleWaveAttack = (on) => this.commands.setWaveAttackEnabled(on);
+@@ -106,7 +104,6 @@ export class CreativeStage extends Stage {
+     this.stageControlsPanel.onRefillFuel = () => this.commands.refillShipRcsFuel();
+     this.stageControlsPanel.onSpawnDistanceChange = (distance) => this.commands.setSpawnDistance(distance);
+     this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.commands.spawnManualEnemy(shape, colorValue);
+-    this.stageControlsPanel.onSpawnFormation = () => this.commands.spawnProteinFormation();
+     hudRail(this._hud.mapRoot, 'right').appendChild(this.stageControlsPanel.element);
+   }
+ 
+@@ -184,20 +181,9 @@ export class CreativeStage extends Stage {
+       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
+       return;
+     }
+-    const spawn = this.manualSpawn.enemy(player, shape, colorValue);
+-    if (spawn === null) return;
+-    if (spawn.kind === 'enemy') this.addEnemy(spawn.enemy);
+-    else this.addProteinEnemy(spawn.request);
+-  }
+-
+-  // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
+-  public spawnProteinFormation(): void {
+-    const player = this.ship;
+-    if (player === null || !player.motion.alive) {
+-      this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
+-      return;
+-    }
+-    for (const request of this.manualSpawn.proteinFormation(player)) this.addProteinEnemy(request);
++    const enemy = this.manualSpawn.enemy(player, shape, colorValue);
++    if (enemy === null) return;
++    this.addEnemy(enemy);
+   }
+ 
+   // 検証を通過した配置指定からオブジェクトを生成し、システムへ追加して配置を記録する。
+diff --git a/src/game/stages/spawner/enemy-generator.ts b/src/game/stages/spawner/enemy-generator.ts
+index 0950abdb1..b0ec3f380 100644
+--- a/src/game/stages/spawner/enemy-generator.ts
++++ b/src/game/stages/spawner/enemy-generator.ts
+@@ -1,4 +1,4 @@
+-// 個々の敵機とタンパク質陣形の要求を、座標・色・機種などのパラメータから直接組む。
++// 個々の敵機を、座標・色・機種などのパラメータから直接組む。
+ // **軌道は、置く位置で最も強く引く天体を中心とする二体の幾何で置く、ゲームバランスのための簡易な置き方。**
+ // 高度はその天体の表面半径の球面から測る(扁平な天体の基準楕円体とのずれ — 地球の極で 21km — は
+ // 出現高度の余裕に埋もれる)。
+@@ -7,13 +7,12 @@ import { addPrimaryRelative, kinematicState, type KinematicState } from '../../.
+ import { strongestAttractor } from '../../../physics/attractor';
+ import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
+ import { stateFromOrbitalElements } from '../../../physics/elements';
+-import { addScaled, cross, len, norm, rotateAxis, scale, sub, v3, type Vec3 } from '../../../math/vec3';
++import { cross, len, norm, rotateAxis, scale, v3 } from '../../../math/vec3';
+ import { driftingAttitude, type Enemy } from '../../dynamic/dynamic-entity/enemy';
+ import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
+ import type * as THREE from 'three/webgpu';
+ import type { CelestialBody } from '../../../physics/celestial-body';
+ import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
+-import type { ProteinEnemyRequest } from '../../dynamic/dynamic-entity/protein-enemy';
+ import { AssemblyEnemy } from '../../dynamic/dynamic-entity/assembly-enemy';
+ 
+ // 自機軌道(referenceState)を、中心天体 center まわりの軌道面内で弧長 dAlong [m] だけ進めた、center 相対の状態。
+@@ -52,32 +51,6 @@ export function generateAssemblyEnemy(
+   );
+ }
+ 
+-// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)の要求を、centerState を中心に共通の
+-// 時刻・速度で組む。name は各役の名前の接頭辞。
+-export function proteinFormationRequests(
+-  name: string, centerState: KinematicState, playerPosition: Vec3, formationId: string,
+-): readonly ProteinEnemyRequest[] {
+-  // 盾役はプレイヤー側、エネルギー役は反対側へずらした状態に置く
+-  const towardPlayer = norm(sub(playerPosition, centerState.r));
+-  const offset = 450;
+-  const shieldState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, offset), centerState.v);
+-  const energyState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
+-  return [
+-    {
+-      name: `${name}-ATTACKER`, state: centerState, assetId: 'pdb-5i4r',
+-      formationId, formationRole: 'attacker',
+-    },
+-    {
+-      name: `${name}-SHIELD`, state: shieldState, assetId: 'pdb-8ruc-rubisco',
+-      formationId, formationRole: 'shield',
+-    },
+-    {
+-      name: `${name}-ENERGY`, state: energyState, assetId: 'pdb-6n2y-atp-synthase',
+-      formationId, formationRole: 'energy',
+-    },
+-  ];
+-}
+-
+ // referenceState から dAlong だけ進んだ位置に漂う敵を生成する。
+ export function generatePhasedEnemy(
+   name: string, referenceState: KinematicState, attractors: readonly CelestialBody[], dAlong: number,
+diff --git a/src/game/stages/stage.ts b/src/game/stages/stage.ts
+index 29ba20b72..12bfbf613 100644
+--- a/src/game/stages/stage.ts
++++ b/src/game/stages/stage.ts
+@@ -18,7 +18,6 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
+ import type { CameraFrame } from '../../render/camera/camera-frame';
+ import type { MarkerDeclaration } from '../../marker/marker-declaration';
+ import type { ObjectAuthoring } from '../pickable/inspected-object';
+-import type { ProteinDisplayControl } from '../creative/stage-controls-panel';
+ import type { EnemyDeathCause, StageOutcome } from './stage-outcome';
+ import type { StageSimulationEvents } from './stage-simulation-events';
+ import type { ControlSelection } from '../control-selection';
+@@ -27,7 +26,6 @@ import type { CelestialSystem } from '../celestial/celestial-system';
+ import type { EntityRoster } from '../dynamic/entity-roster';
+ import type { EntityRegistry } from '../dynamic/entity-registry';
+ import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
+-import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
+ import type { ViewMode } from '../view/view-mode';
+ 
+ // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。ステージの epoch の
+@@ -147,8 +145,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
+   public readonly executesPlans: boolean = false;
+   // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。
+   public readonly authoring: ObjectAuthoring | null = null;
+-  // タンパク質の表示形態と着色を選ぶ UI を持つステージはそれを差し出す。既定では持たない。
+-  public readonly proteinDisplayControl: ProteinDisplayControl | null = null;
+ 
+   protected readonly logistics: Logistics;
+   private readonly statusPanel: StatusPanel;
+@@ -294,13 +290,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
+     this.scoreCounter.recordSpawnEnemy();
+   }
+ 
+-  // タンパク質の敵を要求し、出撃数をスコアへ記録する。敵はアセットが揃い次第実体化する。
+-  protected addProteinEnemy(request: ProteinEnemyRequest): void {
+-    this._dynamicSystem.spawnWhenReady({ kind: 'protein-enemy', request });
+-    this.scoreCounter.recordSpawnEnemy();
+-  }
+-
+-  // 戦場に現れた敵の数。アセットを待つ敵は、実体化した時点から数える(SPEC/PROTEIN.md「出現」節)。
++  // 戦場に現れた敵の数。実体化を待つ敵は、実体化した時点から数える。
+   public get enemiesAppeared(): number {
+     return this.scoreCounter.totalEnemiesSpawned - this._dynamicSystem.pendingEnemyCount;
+   }
+diff --git a/src/game/targeter.ts b/src/game/targeter.ts
+index bb60a4499..ee23cc842 100644
+--- a/src/game/targeter.ts
++++ b/src/game/targeter.ts
+@@ -4,7 +4,6 @@ import type { Vec3 } from '../math/vec3';
+ import { add, len, norm, scale, sub } from '../math/vec3';
+ import { Enemy } from './dynamic/dynamic-entity/enemy';
+ import { isAmmoPickup, isRcsFuelPickup } from './dynamic/dynamic-entity/pickup';
+-import { ProteinEnemy } from './dynamic/dynamic-entity/protein-enemy';
+ import type { EntityRoster } from './dynamic/entity-roster';
+ import { ModularShip } from './ship/modular-ship';
+ import { aliveCombatTarget, isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
+@@ -19,7 +18,7 @@ import { directionPlacement, pointPlacement } from './marker/marker-placement';
+ import type { MarkerDeclaration } from '../marker/marker-declaration';
+ import type { MarkerDevice } from '../marker/marker-device';
+ import type { MarkerSink } from '../marker/marker-sink';
+-import { DIRECTION_GLYPH, COLOR_MARKER_ENEMY } from './marker/marker-identity';
++import { DIRECTION_GLYPH } from './marker/marker-identity';
+ import { pickNearest } from './pickable/object-pickable';
+ import { fmtMarkerDist } from '../hud/utils';
+ import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
+@@ -41,7 +40,6 @@ const MAX_BOARD_MARKS = 1; // 同時に出す通過点の数。増やすと照
+ const MAP_AMMO_FADE_START = 5e7;
+ const MAP_AMMO_FADE_END = 1e8;
+ 
+-const PROTEIN_SITE_MARKER_RANGE = 3000; // タンパク質敵の機能部位マーカーを表示する距離上限 [m]
+ 
+ // マップ上の弾薬・燃料マーカーの不透明度。視点から MAP_AMMO_FADE_START で薄れ始め、MAP_AMMO_FADE_END で消える。
+ function ammoFadeOpacity(pos: Vec3, viewerPos: Vec3 | null): number {
+@@ -54,7 +52,7 @@ export class Targeter {
+   // 毎フレーム組み直す作業用配列。
+   private readonly aliveScratch: CombatTarget[] = [];
+   private readonly markerItemScratch: GroupedMarkerItem[] = [];
+-  // 照準に属するマーカー(的通過マーク・ターゲット方向・タンパク質の機能部位)の宣言。
++  // 照準に属するマーカー(的通過マーク・ターゲット方向)の宣言。
+   private readonly declarations: MarkerDeclaration[] = [];
+   private readonly aimGroup: MarkerSink;
+ 
+@@ -197,12 +195,6 @@ export class Targeter {
+         tgt === this.aliveTarget ? withTargetRole(item, palette) : item,
+         viewerPos, mapView, visibility, mapOpacity, mapOccluded);
+     }
+-    // 部位マーカーは死んだ個体まで辿る — 生存個体だけだと撃破直後の部位マーカーが残る。
+-    for (const tgt of targets) {
+-      if (!(tgt instanceof ProteinEnemy)) continue;
+-      const ds = tgt.motion.alive ? tgt.motion.stateAt(displayTime) : null;
+-      this.pushProteinSiteMarkers(tgt, ds?.r ?? null, viewerPos, mapView, project, camera.position);
+-    }
+     // 弾薬・燃料のマーカー。マップでは視点から遠いほど薄れる。
+     for (const ammo of ammoPickups) {
+       if (!ammo.motion.alive) continue;
+@@ -255,33 +247,6 @@ export class Targeter {
+     } : { ...item, detail, opacity, occluded });
+   }
+ 
+-  // タンパク質敵が視点から PROTEIN_SITE_MARKER_RANGE 以内にある間、通常の敵マーカーへ加えて
+-  // 各機能部位の HP・名称マーカーを表示する。
+-  private pushProteinSiteMarkers(
+-    enemy: ProteinEnemy, displayPos: Vec3 | null, viewerPos: Vec3 | null, mapView: boolean, project: ProjectFn,
+-    cameraPos: Vec3,
+-  ): void {
+-    const inRange = !mapView && displayPos !== null && viewerPos !== null
+-      && len(sub(displayPos, viewerPos)) <= PROTEIN_SITE_MARKER_RANGE;
+-    const sites = enemy.view.siteMarkers(
+-      displayPos ?? enemy.motion.state.r, enemy.motion.att.q, enemy.combatReadout.sites,
+-    );
+-    // 範囲外でも全部位を宣言し、前フレームのマーカーを確実に伏せる。
+-    for (const site of sites) {
+-      const base = {
+-        id: `psite-${enemy.id}-${site.id}`, cls: 'mk-protein-site', sym: '●',
+-        priority: MARKER_PRIORITY.PROTEIN_SITE,
+-      };
+-      if (!inRange) { this.declarations.push({ ...base, x: 0, y: 0, front: false }); continue; }
+-      this.declarations.push({
+-        ...base,
+-        ...pointPlacement(site.worldPos, project, cameraPos),
+-        label: `${site.abbreviation} ${Math.max(0, Math.round(site.hp))}/${site.maxHp}`,
+-        color: site.disabled ? 'var(--text-dim)' : site.attackable ? COLOR_MARKER_ENEMY : undefined,
+-      });
+-    }
+-  }
+-
+   // ターゲット標的面を通過した自弾の位置を、的に貼り付いた光点として宣言する。
+   private pushBoardMarkers(project: ProjectFn, displayTime: number): void {
+     const target = this.aliveTarget;
+diff --git a/src/game/viewer/entity-display-commands.ts b/src/game/viewer/entity-display-commands.ts
+index 1dbe347c3..9358f5bbb 100644
+--- a/src/game/viewer/entity-display-commands.ts
++++ b/src/game/viewer/entity-display-commands.ts
+@@ -1,14 +1,11 @@
+ // 実体ごとの表示設定へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
+ import type { CommandQueue } from '../command-queue';
+-import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
+ import type { EntityDisplaySelection } from './entity-display-selection';
+ 
+ // 実体ごとの表示設定を外から変える命令。受け付けるだけで、適用は次の進行の位相。
+ export interface EntityDisplayCommands {
+   // id の実体の予測線・過去線を、出していれば消し、消していれば出す。
+   toggleTrajectoryLine(id: string): void;
+-  // タンパク質の敵の表示形態と着色を display へ差し替える。
+-  setProteinDisplay(display: ProteinDisplaySettings): void;
+ }
+ 
+ // selection へのコマンドを queue へエンキューする実装を構築する。
+@@ -17,6 +14,5 @@ export function entityDisplayCommands(
+ ): EntityDisplayCommands {
+   return {
+     toggleTrajectoryLine: (id) => queue.submit(() => selection.toggleTrajectoryLine(id)),
+-    setProteinDisplay: (display) => queue.submit(() => selection.setProteinDisplay(display)),
+   };
+ }
+diff --git a/src/game/viewer/entity-display-selection.ts b/src/game/viewer/entity-display-selection.ts
+index 8fa1221b6..4bd110075 100644
+--- a/src/game/viewer/entity-display-selection.ts
++++ b/src/game/viewer/entity-display-selection.ts
+@@ -1,53 +1,38 @@
+-// 実体ごとの表示設定。予測線・過去線を出す実体と、タンパク質の敵に共通の表示形態・着色を持つ。
+-import {
+-  DEFAULT_PROTEIN_DISPLAY, isProteinDisplaySettings, type ProteinDisplaySettings,
+-} from '../../render/protein/protein-display';
++// 実体ごとの表示設定。予測線・過去線を出す実体を持つ。
+ 
+ export interface SerializedEntityDisplaySelection {
+   readonly trajectoryLineIds: readonly string[];
+-  readonly proteinDisplay: ProteinDisplaySettings;
+ }
+ 
+ // 実体ごとの表示設定を読む面。
+ export interface EntityDisplaySource {
+   // id の実体の予測線・過去線を、操作対象でなくても出すか。
+   showsTrajectoryLine(id: string): boolean;
+-  // タンパク質の敵の表示形態と着色。全個体で共通。
+-  readonly proteinDisplay: ProteinDisplaySettings;
+ }
+ 
+ export class EntityDisplaySelection implements EntityDisplaySource {
+   public constructor(
+     // 予測線・過去線を表示する実体の id。アセットロード待機中で一覧にまだ存在しない個体の id も保持する。
+     private readonly trajectoryLineIds: Set<string> = new Set(),
+-    private _proteinDisplay: ProteinDisplaySettings = DEFAULT_PROTEIN_DISPLAY,
+   ) {}
+ 
+-  // 直列化した表示設定から復元する。タンパク質の表示が不正なら既定から始める。
++  // 直列化した表示設定から復元する。
+   public static deserialize(serialized: SerializedEntityDisplaySelection): EntityDisplaySelection {
+     return new EntityDisplaySelection(
+       new Set(serialized.trajectoryLineIds),
+-      isProteinDisplaySettings(serialized.proteinDisplay) ? serialized.proteinDisplay : undefined,
+     );
+   }
+ 
+   // 直列化した形へ畳む。
+   public serialize(): SerializedEntityDisplaySelection {
+-    return { trajectoryLineIds: [...this.trajectoryLineIds], proteinDisplay: this._proteinDisplay };
++    return { trajectoryLineIds: [...this.trajectoryLineIds] };
+   }
+ 
+   public showsTrajectoryLine(id: string): boolean { return this.trajectoryLineIds.has(id); }
+ 
+-  public get proteinDisplay(): ProteinDisplaySettings { return this._proteinDisplay; }
+-
+   // id の実体の予測線・過去線を、出していれば消し、消していれば出す。
+   public toggleTrajectoryLine(id: string): void {
+     if (this.trajectoryLineIds.has(id)) this.trajectoryLineIds.delete(id);
+     else this.trajectoryLineIds.add(id);
+   }
+-
+-  // タンパク質の敵の表示形態と着色を display へ差し替える。
+-  public setProteinDisplay(display: ProteinDisplaySettings): void {
+-    this._proteinDisplay = display;
+-  }
+ }
+diff --git a/src/launcher/title-scene.ts b/src/launcher/title-scene.ts
+index 657ecc010..a75d47166 100644
+--- a/src/launcher/title-scene.ts
++++ b/src/launcher/title-scene.ts
+@@ -1,5 +1,5 @@
+-// タイトル画面の背景となる3D場面。タンパク質を抽象化した形(捻れたチューブ、枝分かれするロッド、
+-// 結節、リング、カプセル)を光沢プラスチックで多数配置し、ゆっくり漂わせる。
++// タイトル画面の背景となる3D場面。捻れたチューブ、枝分かれするロッド、結節、リング、
++// カプセルといった有機的な形を光沢プラスチックで多数配置し、ゆっくり漂わせる。
+ import * as THREE from 'three/webgpu';
+ import type { ThemePalette } from '../theme';
+ 
+diff --git a/src/render/dynamic/dynamic-view.ts b/src/render/dynamic/dynamic-view.ts
+index c343fcc76..f35c6064e 100644
+--- a/src/render/dynamic/dynamic-view.ts
++++ b/src/render/dynamic/dynamic-view.ts
+@@ -17,7 +17,6 @@ import { TargetRelativeLine } from '../lines/target-relative-line';
+ import { TrajectoryLine } from '../lines/trajectory-line';
+ import type { CelestialFrameSource } from '../lines/celestial-frame-source';
+ import type { InstancedPools } from './instanced-pools';
+-import type { ProteinDisplaySettings } from '../protein/protein-display';
+ import type { SunLight } from '../pipeline/sun-light';
+ import type { BodyShadow } from '../pipeline/shadow/body-shadow';
+ import { syncThermalState } from '../thermal-emissive';
+@@ -48,8 +47,6 @@ export interface DynamicViewFrame {
+   readonly camera: CameraFrame;
+   readonly style: RenderStyle;
+   readonly visual: EntityVisualSettings;
+-  // 全個体に共通のタンパク質の表示形態と着色。
+-  readonly proteinDisplay: ProteinDisplaySettings;
+   // このフレームにシーンを照らす恒星の光と、天体が落とす影。
+   readonly sunLight: SunLight;
+   readonly bodyShadow: BodyShadow;
+diff --git a/src/render/entity-visual-settings.ts b/src/render/entity-visual-settings.ts
+index 177234480..b6acd4de1 100644
+--- a/src/render/entity-visual-settings.ts
++++ b/src/render/entity-visual-settings.ts
+@@ -3,7 +3,6 @@
+ import type { ThrustPlumeMode } from './dynamic/player/thrust-effects';
+ 
+ export interface EntityVisualSettings {
+-  readonly proteinVibration: boolean;
+   // 主推進プルームの描き方。
+   readonly thrustPlume: ThrustPlumeMode;
+ }
+diff --git a/src/render/graphics-settings.ts b/src/render/graphics-settings.ts
+index 016d52333..8f76c139f 100644
+--- a/src/render/graphics-settings.ts
++++ b/src/render/graphics-settings.ts
+@@ -151,11 +151,6 @@ export const GRAPHICS_OPTIONS = {
+     kind: 'toggle', group: 'element', label: 'レンズ効果',
+     presets: { low: false, medium: true, high: true },
+   },
+-  // タンパク質型の敵の構造の揺らぎ。
+-  proteinVibration: {
+-    kind: 'toggle', group: 'element', label: 'タンパク質の敵の揺らぎ',
+-    presets: { low: false, medium: true, high: true },
+-  },
+   // 主推進の排気プルームの描き方。体積は排気を透過する立体として、簡易は発光板として描く。
+   thrustPlume: {
+     kind: 'choice', group: 'element', label: '噴射プルーム',
+diff --git a/src/render/pipeline/render-pipeline.ts b/src/render/pipeline/render-pipeline.ts
+index 948084377..b631d5659 100644
+--- a/src/render/pipeline/render-pipeline.ts
++++ b/src/render/pipeline/render-pipeline.ts
+@@ -32,7 +32,6 @@ import { Exposure } from './exposure';
+ import { SunLight } from './sun-light';
+ import { ShadowMaps } from './shadow/shadow-maps';
+ import { viewPositionAt } from './view-ray';
+-import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein/protein-motion-material';
+ import { FilmLut } from './film-lut';
+ import { compileInto, compileIntoOutput } from './compile-into';
+ import { DeferredTexture } from '../deferred-texture';
+@@ -87,7 +86,6 @@ export class RenderPipeline {
+   private readonly drawingBufferSize = new THREE.Vector2();
+   // 天体照の写しの基準点(カメラの描画座標)の書き込み先。同じく使い回し領域。
+   private readonly cameraPosition = new THREE.Vector3();
+-  private readonly unregisterProteinMotionRenderer: () => void;
+ 
+   // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。
+   private debugTarget: DebugTargetId = 'off';
+@@ -107,7 +105,6 @@ export class RenderPipeline {
+   public constructor(
+     private readonly renderer: WebGPURenderer, graphics: GraphicsSettingsData, private readonly gpu: GpuTimings,
+   ) {
+-    this.unregisterProteinMotionRenderer = registerProteinMotionRenderer(renderer);
+     this.gbuffer = new GBufferPass(renderer, gpu);
+     this._sunLight = new SunLight();
+     this._exposure = new Exposure();
+@@ -402,9 +399,6 @@ export class RenderPipeline {
+     DeferredTexture.publishOne(this.renderer);
+     const { x: width, y: height } = this.syncTargetSize();
+ 
+-    // 影マップパスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
+-    flushProteinMotionComputes(this.renderer);
+-
+     // 太陽光の影マップパス。G バッファを必要としないので、その前に置く。
+     this.shadowMaps.render(scene, camera, height, this._sunLight);
+ 
+@@ -476,7 +470,6 @@ export class RenderPipeline {
+ 
+   // 保持している GPU 資源を解放する。QuadMesh の板は three が全インスタンスで共有するので解放しない。
+   public dispose(): void {
+-    this.unregisterProteinMotionRenderer();
+     this.gbuffer.dispose();
+     this.shadowPass.dispose();
+     this.shadowMaps.dispose();
+diff --git a/src/run/run.ts b/src/run/run.ts
+index 14400480f..71a25b1b2 100644
+--- a/src/run/run.ts
++++ b/src/run/run.ts
+@@ -2,7 +2,6 @@
+ // 入力の解釈 → 進行 → 導出と同期 → 描画の順に呼ぶ(R8)。
+ import { Game, type SerializedGame } from '../game/game';
+ import { GamePresentation } from '../game/game-presentation';
+-import { proteinMotionFrameSample, type ProteinMotionFrameSample } from '../game/protein/protein-motion-metrics';
+ import type { PageDevices } from './page-devices';
+ import type { StageClass } from '../game/stages/stage';
+ import type { FrameSections } from '../game/frame-sections';
+@@ -217,9 +216,4 @@ export class Run implements SnapshotSource, PerfCountSource {
+       warp: game.simSpeedManager.simSpeed,
+     };
+   }
+-
+-  // タンパク質敵モーションの集計値。
+-  public proteinMotionFrameSample(): ProteinMotionFrameSample {
+-    return proteinMotionFrameSample(this.game.dynamicSystem.all());
+-  }
+ }
+diff --git a/src/types/json-shims.d.ts b/src/types/json-shims.d.ts
+index 4457655f9..dca983e87 100644
+--- a/src/types/json-shims.d.ts
++++ b/src/types/json-shims.d.ts
+@@ -1,6 +1,6 @@
+ // JSON は焼き込みアセットの入れ物で、その中身の型は実行時に validate する側が持つ。
+ // resolveJsonModule で tsc に読ませると、src/assets/ の 110MB を型検査のたびに構文解析する
+-// ことになる(protein の structure/motion だけで 94MB)ので、値の形は宣言しない。
++// ことになるので、値の形は宣言しない。
+ declare module '*.json' {
+   const value: unknown;
+   export default value;
+diff --git a/tests/game/entity-display-selection.test.ts b/tests/game/entity-display-selection.test.ts
+index a183ba771..5a7a9a065 100644
+--- a/tests/game/entity-display-selection.test.ts
++++ b/tests/game/entity-display-selection.test.ts
+@@ -2,13 +2,12 @@
+ import * as assert from 'node:assert/strict';
+ import { test } from '../harness';
+ import { EntityDisplaySelection } from '../../src/game/viewer/entity-display-selection';
+-import { DEFAULT_PROTEIN_DISPLAY, type ProteinDisplaySettings } from '../../src/render/protein/protein-display';
+ 
+ // 実体ごとの表示設定の規則を登録する。
+ export function register(): void {
+   test('entity-display-selection: 記録にある id だけ線を出す', () => {
+     const selection = EntityDisplaySelection.deserialize({
+-      trajectoryLineIds: ['entity-0', 'base-0'], proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
++      trajectoryLineIds: ['entity-0', 'base-0'],
+     });
+ 
+     assert.equal(selection.showsTrajectoryLine('entity-0'), true);
+@@ -17,31 +16,28 @@ export function register(): void {
+     assert.equal(new EntityDisplaySelection().showsTrajectoryLine('entity-0'), false);
+   });
+ 
+-  test('entity-display-selection: 直列化と復元で線とタンパク質の表示が往復する', () => {
+-    const silhouette: ProteinDisplaySettings = { representation: 'silhouette', colorMode: 'hydrophobicity' };
++  test('entity-display-selection: 直列化と復元で線の表示が往復する', () => {
+     const selection = new EntityDisplaySelection();
+     selection.toggleTrajectoryLine('entity-3');
+-    selection.setProteinDisplay(silhouette);
+ 
+     const restored = EntityDisplaySelection.deserialize(JSON.parse(JSON.stringify(selection.serialize())));
+     assert.deepEqual(restored.serialize(), selection.serialize());
+     assert.equal(restored.showsTrajectoryLine('entity-3'), true);
+-    assert.deepEqual(restored.proteinDisplay, silhouette);
+   });
+ 
+-  test('entity-display-selection: 不正な表示や新しいゲームでは既定の表示から始める', () => {
+-    const invalid = { representation: 'molecular', colorMode: 'chain' } as unknown as ProteinDisplaySettings;
+-
+-    assert.deepEqual(
+-      EntityDisplaySelection.deserialize({ trajectoryLineIds: [], proteinDisplay: invalid }).proteinDisplay,
+-      DEFAULT_PROTEIN_DISPLAY,
+-    );
+-    assert.deepEqual(new EntityDisplaySelection().proteinDisplay, DEFAULT_PROTEIN_DISPLAY);
++  test('entity-display-selection: 旧い記録に残る廃止済みの項目は読み飛ばす', () => {
++    const legacy = JSON.parse(JSON.stringify({
++      trajectoryLineIds: ['entity-9'],
++      proteinDisplay: { representation: 'silhouette', colorMode: 'hydrophobicity' },
++    }));
++    const selection = EntityDisplaySelection.deserialize(legacy);
++    assert.equal(selection.showsTrajectoryLine('entity-9'), true);
++    assert.deepEqual(selection.serialize(), { trajectoryLineIds: ['entity-9'] });
+   });
+ 
+   test('entity-display-selection: toggleTrajectoryLine は出す・消すを往復する', () => {
+     const selection = EntityDisplaySelection.deserialize({
+-      trajectoryLineIds: ['entity-0'], proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
++      trajectoryLineIds: ['entity-0'],
+     });
+ 
+     selection.toggleTrajectoryLine('entity-1');
+diff --git a/tests/game/progress-serialization.test.ts b/tests/game/progress-serialization.test.ts
+index be2e626c2..1e00c9fec 100644
+--- a/tests/game/progress-serialization.test.ts
++++ b/tests/game/progress-serialization.test.ts
+@@ -2,7 +2,6 @@
+ // 戻ることを1つの表で検査する。
+ import * as assert from 'node:assert/strict';
+ import { test } from '../harness';
+-import rawProteinAsset from '../../src/assets/models/pdb5i4rProtein.json';
+ import { v3 } from '../../src/math/vec3';
+ import { kinematicState, type SerializedKinematicState } from '../../src/physics/kinematic-state';
+ import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
+@@ -19,17 +18,11 @@ import { POWER_CAPACITY, PowerSystem, type SerializedPowerSystem } from '../../s
+ import { RadiatorSystem, type SerializedRadiatorSystem } from '../../src/game/player/radiator';
+ import { THROTTLE_LEVELS, Throttle, type SerializedThrottle } from '../../src/game/player/throttle';
+ import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
+-import {
+-  ProteinCombatState, type SerializedProteinCombatState,
+-} from '../../src/game/protein/protein-combat-state';
+ import { RunEventLog } from '../../src/game/run-events';
+ import {
+   ScoreAttackTimer, type SerializedScoreAttackTimer,
+ } from '../../src/game/stages/stage-utils/score-attack-timer';
+ import { ScoreCounter, type SerializedScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
+-import type { ProteinAssetDefinition } from '../../src/game/protein/protein-schema';
+-
+-const proteinAsset = rawProteinAsset as unknown as ProteinAssetDefinition;
+ 
+ // 所有者1つぶんの往復。serialized はどの項目も新しく作ったときと違う値を持つ記録、reserialized は
+ // それを所有者の復元に通してから直列化し直したもの。
+@@ -49,19 +42,6 @@ function serializedState(t: number): SerializedKinematicState {
+   return { t, r: { x: 7e6 + t, y: 0, z: 0 }, v: { x: 0, y: 7.5e3, z: t } };
+ }
+ 
+-// 先頭の部位が半分まで削れ、構造全体も削れ、修飾がどれも既定と違う状態になり、撃つ部位の巡回が
+-// 1つ進んだ戦闘状態の記録。
+-function damagedProtein(): SerializedProteinCombatState {
+-  return {
+-    integrityHp: proteinAsset.integrity.maxHp * 0.8,
+-    sites: proteinAsset.sites.map((site, i) => ({ id: site.id, hp: i === 0 ? site.maxHp / 2 : site.maxHp })),
+-    modifications: Object.fromEntries(proteinAsset.modificationSlots.map((slot) => [
+-      slot.id, slot.states.find((state) => state !== slot.defaultState) ?? slot.defaultState,
+-    ])),
+-    attackSiteCursor: 1,
+-  };
+-}
+-
+ // 往復を確かめる所有者の表。
+ function roundTrips(): readonly RoundTrip[] {
+   const events = new RunEventLog();
+@@ -117,11 +97,6 @@ function roundTrips(): readonly RoundTrip[] {
+       },
+       (serialized) => WeaponState.deserialize(serialized),
+     ),
+-    roundTrip<SerializedProteinCombatState>(
+-      'ProteinCombatState',
+-      damagedProtein(),
+-      (serialized) => ProteinCombatState.deserialize(serialized, proteinAsset),
+-    ),
+     roundTrip<SerializedPlan>(
+       'Plan',
+       { anchor: serializedState(0), nodes: [serializedState(600), serializedState(1200)] },
+diff --git a/tests/game/viewer-serialization.test.ts b/tests/game/viewer-serialization.test.ts
+index 990a82658..0995bf33a 100644
+--- a/tests/game/viewer-serialization.test.ts
++++ b/tests/game/viewer-serialization.test.ts
+@@ -85,7 +85,6 @@ export function register(): void {
+     viewer.camera.combat.followProgress(sample(null));
+     viewer.camera.combat.setFocus({ kind: 'object', id: 'moon' });
+     viewer.entityDisplay.toggleTrajectoryLine('entity-3');
+-    viewer.entityDisplay.setProteinDisplay({ representation: 'silhouette', colorMode: 'hydrophobicity' });
+     viewer.navTarget.toggle('moon', '月');
+     const serialized = viewer.serialize();
+ 
+@@ -98,7 +97,6 @@ export function register(): void {
+     assert.notEqual(serialized.camera.combat.staleFollowFrames, initial.camera.combat.staleFollowFrames);
+     assert.notEqual(serialized.camera.combat.focusReplaced, initial.camera.combat.focusReplaced);
+     assert.notDeepEqual(serialized.entityDisplay.trajectoryLineIds, initial.entityDisplay.trajectoryLineIds);
+-    assert.notDeepEqual(serialized.entityDisplay.proteinDisplay, initial.entityDisplay.proteinDisplay);
+ 
+     assertSameViewer(restoredViewer(serialized, system).serialize(), serialized);
+   });
+diff --git a/tests/render/dynamic-view-source.test.ts b/tests/render/dynamic-view-source.test.ts
+index 4380ccf0f..39c8792bf 100644
+--- a/tests/render/dynamic-view-source.test.ts
++++ b/tests/render/dynamic-view-source.test.ts
+@@ -10,7 +10,6 @@ import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '..
+ import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
+ import { ThrustEffects } from '../../src/render/dynamic/player/thrust-effects';
+ import { RcsEffects } from '../../src/render/dynamic/player/rcs-effects';
+-import { DEFAULT_PROTEIN_DISPLAY } from '../../src/render/protein/protein-display';
+ import { SunLight } from '../../src/render/pipeline/sun-light';
+ import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';
+ import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
+@@ -65,8 +64,7 @@ function viewFrame(camera: CameraFrame, pools: InstancedPools): DynamicViewFrame
+     displayTime: DISPLAY_TIME,
+     camera,
+     style: 'realistic',
+-    visual: { proteinVibration: false, thrustPlume: 'simple' },
+-    proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
++    visual: { thrustPlume: 'simple' },
+     sunLight,
+     bodyShadow: new BodyShadow(sunLight),
+     pools,
+diff --git a/tools/check-boundaries.mjs b/tools/check-boundaries.mjs
+index 3a7a2e946..f4776c377 100644
+--- a/tools/check-boundaries.mjs
++++ b/tools/check-boundaries.mjs
+@@ -54,7 +54,6 @@ const PROGRESS_ROOTS = [
+   'src/game/stages/',
+   'src/game/plan/',
+   'src/game/creative/',
+-  'src/game/protein/',
+   'src/game/assembly/',
+   'src/game/control-selection.ts',
+ ];
+@@ -146,8 +145,6 @@ const FORBIDDEN = [
+     targets: ['src/render/', 'src/marker/', 'src/hud/', 'src/game/hud/'],
+     // 自分の処理にかかった時間を測るための壁時計は、表示する時刻ではないので例外にする。
+     exempt: [
+-      'src/render/protein/protein-runtime.ts',
+-      'src/render/dynamic/dynamic-entity/protein-enemy-view.ts',
+       'src/render/cloud/cloud-local-field-baker.ts',
+       // 分割ジョブの step 予算・試行の壁時計を測るため — baker と同じ計測用途。
+       'src/render/cloud/meteorological-cloud-field.ts',
+@@ -237,8 +234,7 @@ const FORBIDDEN = [
+       'src/game/dynamic/',
+       'src/game/player/',
+       'src/game/stages/',
+-      'src/game/protein/',
+-      'src/game/control-selection.ts',
++          'src/game/control-selection.ts',
+       'src/game/creative/manual-spawn.ts',
+       'src/game/creative/object-placement.ts',
+       'src/game/plan/plan-node-rules.ts',
+diff --git a/tools/render-lab/assembly-cases.ts b/tools/render-lab/assembly-cases.ts
+index 83774e136..fc9276432 100644
+--- a/tools/render-lab/assembly-cases.ts
++++ b/tools/render-lab/assembly-cases.ts
+@@ -7,7 +7,6 @@ import {
+   AssemblyEnemyView, type AssemblyVisualSource,
+ } from '../../src/render/dynamic/dynamic-entity/assembly-enemy-view';
+ import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
+-import { DEFAULT_PROTEIN_DISPLAY } from '../../src/render/protein/protein-display';
+ import { SunLight } from '../../src/render/pipeline/sun-light';
+ import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';
+ import { kinematicState } from '../../src/physics/kinematic-state';
+@@ -41,8 +40,7 @@ function staticFrame(): DynamicViewFrame {
+       radialScale: () => 1,
+     },
+     style: 'realistic',
+-    visual: { proteinVibration: false, thrustPlume: 'simple' },
+-    proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
++    visual: { thrustPlume: 'simple' },
+     sunLight,
+     bodyShadow: new BodyShadow(sunLight),
+     pools: new InstancedPools([]),
+diff --git a/tools/render-lab/cases.ts b/tools/render-lab/cases.ts
+index 0e4dd49f5..20729c56c 100644
+--- a/tools/render-lab/cases.ts
++++ b/tools/render-lab/cases.ts
+@@ -9,7 +9,6 @@ import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/sa
+ import { metersPerPixelAtDepth } from '../../src/math/projection';
+ import { v3 } from '../../src/math/vec3';
+ import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
+-import { PROTEIN_CASES } from './protein-cases';
+ import { SHIP_CASES } from './ship-cases';
+ import { EARTH_CASES } from './earth-cases';
+ import { MATERIAL_CASES } from './material-cases';
+@@ -175,7 +174,6 @@ export const CASES = {
+   ...PLUME_CASES,
+   ...BELT_CASES,
+   ...CASING_CASES,
+-  ...PROTEIN_CASES,
+   ...ASSEMBLY_CASES,
+ } as const satisfies Record<string, CaseBuilder>;
+ 
+diff --git a/tools/render-lab/lab-case.ts b/tools/render-lab/lab-case.ts
+index b240420ce..68bab2fe7 100644
+--- a/tools/render-lab/lab-case.ts
++++ b/tools/render-lab/lab-case.ts
+@@ -18,12 +18,10 @@ import type { SunLight } from '../../src/render/pipeline/sun-light';
+ import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
+ import type { LineStyle } from '../../src/render/line-style';
+ import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
+-import type { ProteinLabCaseMetadata } from './protein-cases';
+ import type { AtmosphereBody } from '../../src/render/atmosphere';
+ import type { RenderStyle } from '../../src/render/render-style';
+ import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
+ import type { CelestialTexture } from '../../src/render/celestial-textures';
+-import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
+ 
+ // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
+ export const VIEW_WIDTH = 960;
+@@ -99,12 +97,6 @@ export interface LabCase {
+   // earthCenter は地球の中心(描画座標)で、地球を置かないケースでは null。毎フレーム、カメラと地球を
+   // 置いたあとに呼ばれるので、同値なら何もしないこと。
+   readonly sync?: (graphics: GraphicsSettingsData, earthCenter: THREE.Vector3 | null) => void;
+-  // 計測結果へ添える、タンパク質ケースの識別。
+-  readonly proteinMotion?: ProteinLabCaseMetadata;
+-  // 表示時刻 displayTime [s] まで残基 motion を進め、そのフレームの計測値を返す。
+-  readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
+-  // 残基 motion が握る資源を解放する。
+-  readonly disposeProteinMotion?: () => void;
+   // ケースが THREE のシーン資源所有走査で扱えない補助資源を解放する。
+   readonly dispose?: () => void;
+ }
+diff --git a/tools/render-lab/lab.ts b/tools/render-lab/lab.ts
+index b4ba5dbd5..79c2904e9 100644
+--- a/tools/render-lab/lab.ts
++++ b/tools/render-lab/lab.ts
+@@ -3,9 +3,6 @@
+ import * as THREE from 'three/webgpu';
+ import { WebGPURenderer } from 'three/webgpu';
+ import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
+-import {
+-  ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
+-} from '../../src/game/protein/protein-motion-metrics';
+ import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
+ import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
+ import { farClip } from '../../src/render/camera/camera-view';
+@@ -55,8 +52,6 @@ export interface LabMeasurement {
+   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
+   readonly gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu';
+   readonly gpuPassRenderCallCpuMs: Readonly<Record<string, SampleDistribution>>;
+-  readonly proteinMotion: ProteinMotionMetricSummary;
+-  readonly proteinCase?: LabCase['proteinMotion'];
+ }
+ 
+ const ORIGIN = new THREE.Vector3();
+@@ -205,7 +200,6 @@ export class LabView {
+   private build(name: CaseName): void {
+     if (this.current !== null) {
+       this.scene.remove(...this.current.objects);
+-      this.current.disposeProteinMotion?.();
+       this.current.dispose?.();
+       for (const root of this.current.objects) disposeOwnedRenderResources(root);
+     }
+@@ -404,13 +398,12 @@ export class LabView {
+     // 表示時刻は 60fps で進める — 雲場は表示時刻が変わったフレームにだけ焼くので、止めると生成を測れない。
+     for (let frame = 0; frame < warmupFrames; frame++) {
+       const displayTime = (frame + 1) / 60;
+-      this.current?.updateProteinMotion?.(displayTime);
+       this.render(displayTime);
+       await this.gpu.waitForResolve();
+     }
+     this.gpu.reset();
+ 
+-    // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
++    // 本計測。フレームごとに CPU 時間・GPU のパス時間を集める。
+     const cpuSamples: number[] = [];
+     const gpuPassTotalSamples: number[] = [];
+     const observedRenderSamples: (number | null)[] = [];
+@@ -421,7 +414,6 @@ export class LabView {
+     const observedComputeResolvedQueryCounts: number[] = [];
+     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
+     const renderCallCpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => Array(sampleFrames).fill(0) as number[]);
+-    const motion = new ProteinMotionMetricsRecorder();
+     let measuredFrameIndex: number | null = null;
+     let pendingPass: number | null = null;
+     let activePass: number | null = null;
+@@ -460,7 +452,6 @@ export class LabView {
+         measuredFrameIndex = frame;
+         const displayTime = (warmupFrames + frame + 1) / 60;
+         this.gpu.beginObservedFrame();
+-        const motionSample = this.current?.updateProteinMotion?.(displayTime);
+         this.render(displayTime, true);
+         measuredFrameIndex = null;
+         cpuSamples.push(this.lastRenderCpuMs);
+@@ -478,7 +469,6 @@ export class LabView {
+         }
+         gpuPassTotalSamples.push(passTotalMs);
+         for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
+-        motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
+       }
+     } finally {
+       measuredFrameIndex = null;
+@@ -517,8 +507,6 @@ export class LabView {
+       gpuPassRenderCallCpuMs: Object.fromEntries(
+         GPU_PASS_LABELS.map((label, index) => [label, distributionOf(renderCallCpuSamples[index]!)]),
+       ),
+-      proteinMotion: motion.summary(),
+-      proteinCase: this.current?.proteinMotion,
+     };
+   }
+ 
+@@ -566,7 +554,6 @@ export class LabView {
+     // 部品(雲など)があり、前の撮影の設定のまま待つと、読み込み前の姿を撮る。
+     this.setGraphics({ ...this.startupGraphics, ...graphics });
+     this.show(name);
+-    this.current?.updateProteinMotion?.(1);
+     await this.waitUntilReady();
+     const pngs: Record<string, string> = {};
+     for (const shotName of this.shotNames) {
+diff --git a/tools/render-lab/main.ts b/tools/render-lab/main.ts
+index 07db280b4..4f423648f 100644
+--- a/tools/render-lab/main.ts
++++ b/tools/render-lab/main.ts
+@@ -1,7 +1,6 @@
+ // 描画テスト環境の画面。ケース(とその撮影)と、表示スタイルと、画面へ出す中間バッファを選ぶと、その絵を
+ // ゲーム本体と同じ描画経路で描く。描画品質設定の操作はゲーム本体の設定パネル(GraphicsPanel)を
+ // そのまま組む。
+-import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
+ import { loadShipModuleModels } from '../../src/render/dynamic/ship/ship-module-models';
+ import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
+ import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
+@@ -186,7 +185,7 @@ function buildCloudSliders(view: LabView): void {
+ 
+ // 画面を組み、最初のケースを描き、CDP の入口を window へ生やす。
+ async function init(): Promise<void> {
+-  // 地表の計測の口は、タンパク質のアセットを待つ前に公開する — 別ケースのアセットが 404 でも
++  // 地表の計測の口は、大型アセットを待つ前に公開する — 別ケースのアセットが 404 でも
+   // 「データ未投入」を返せるように。
+   const earthSurfaceCapture = createEarthSurfaceCaptureApi();
+   window.renderLab = { earthSurfaceCapture } as Window['renderLab'];
+@@ -196,10 +195,7 @@ async function init(): Promise<void> {
+   injectOnce('widget-style', WIDGET_STYLE);
+ 
+   // fetch で来る大型アセットは、同期 factory を使うケースを組む前にまとめて待つ。
+-  await Promise.all([
+-    ...PROTEIN_ASSET_IDS.map((id) => requestProteinAsset(id)),
+-    loadShipModuleModels(),
+-  ]);
++  await loadShipModuleModels();
+   // **この実行の中だけで生きる設定**。残すと、撮影が「人間が最後に押した状態」に依存して黙って変わる。
+   const settings = new UserSettings(new MemorySettingStorage());
+   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement, settings.graphics);
+-- 
+2.43.0
+

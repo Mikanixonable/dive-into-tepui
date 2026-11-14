@@ -1,0 +1,18 @@
+{
+  "id": "20261114T0401Z-protein-retirement",
+  "slug": "protein-retirement",
+  "base": "9b57022fe",
+  "tip": "76682eb24",
+  "subjects": [
+    "chore(assets): タンパク質のアセットと生成パイプラインを削除する",
+    "refactor(game): タンパク質型の敵を撤去する",
+    "docs(spec): タンパク質型の敵を廃止する",
+    "refactor(game): 参照のないインターフェース定義3ファイルを削除"
+  ],
+  "patches": [
+    "0001-docs-spec.patch",
+    "0002-refactor-game.patch",
+    "0003-chore-assets.patch"
+  ],
+  "deletion_message": "chore(muse-delivery): protein-retirement の削除 87 件を反映\n\nlocal commits:\n- chore(assets): タンパク質のアセットと生成パイプラインを削除する\n- refactor(game): タンパク質型の敵を撤去する\n- docs(spec): タンパク質型の敵を廃止する\n- refactor(game): 参照のないインターフェース定義3ファイルを削除"
+}
