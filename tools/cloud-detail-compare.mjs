@@ -35,8 +35,9 @@ const compareDir = path.join(detailDir, 'compare');
 const historyDir = path.join(detailDir, 'history');
 const referenceManifestFile = path.join(detailDir, 'reference', 'manifest.json');
 const scenesFile = path.join(import.meta.dirname, 'cloud-detail', 'scenes.json');
-const port = 8772;
-const debugPort = 9449;
+// 配信と CDP のポート。環境変数で上書きでき、別の作業ツリーの計測と並行して走らせられる。
+const port = Number(process.env.CLOUD_DETAIL_PORT ?? 8772);
+const debugPort = Number(process.env.CLOUD_DETAIL_DEBUG_PORT ?? 9449);
 
 // 封筒の余白。同じ種類の場面の最小〜最大へ、その幅のこの割合を両端へ足す。
 const ENVELOPE_PAD = 0.1;
