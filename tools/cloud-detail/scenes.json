@@ -82,6 +82,7 @@
   {
     "name": "jet-cirrus-npacific",
     "kind": "cirrus",
+    "type": "streak",
     "date": "2023-03-01",
     "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
     "center": {
@@ -106,6 +107,7 @@
   {
     "name": "anvil-cirrus-wpacific",
     "kind": "cirrus",
+    "type": "anvil",
     "date": "2023-08-15",
     "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
     "center": {
@@ -126,6 +128,7 @@
   {
     "name": "cirrus-canopy-spacific",
     "kind": "cirrus",
+    "type": "veil",
     "date": "2024-01-15",
     "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
     "center": {
@@ -437,6 +440,7 @@
   {
     "name": "anvil-cirrus-wpac3",
     "kind": "cirrus",
+    "type": "anvil",
     "date": "2023-10-05",
     "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
     "center": {
@@ -480,6 +484,7 @@
   {
     "name": "jet-cirrus-npac3",
     "kind": "cirrus",
+    "type": "streak",
     "date": "2023-02-10",
     "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
     "center": {
@@ -503,6 +508,7 @@
   {
     "name": "anvil-cirrus-indian2",
     "kind": "cirrus",
+    "type": "anvil",
     "date": "2024-05-25",
     "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
     "center": {
@@ -657,5 +663,820 @@
     ],
     "surface": "land",
     "category": "temperate-land"
+  },
+  {
+    "name": "streak-natl-ridge-20240227",
+    "kind": "cirrus",
+    "type": "streak",
+    "date": "2024-02-27",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 45,
+      "longitude": -30
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "streak-npac-ridge-20230418",
+    "kind": "cirrus",
+    "type": "streak",
+    "date": "2023-04-18",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 40,
+      "longitude": -170
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "streak-kamchatka-lee-20240123",
+    "kind": "cirrus",
+    "type": "streak",
+    "date": "2024-01-23",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 55,
+      "longitude": 160
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "land",
+    "category": "highlat-land"
+  },
+  {
+    "name": "streak-southern-ocean-a-20230522",
+    "kind": "cirrus",
+    "type": "streak",
+    "date": "2023-05-22",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -48,
+      "longitude": 40
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "streak-andes-lee-20230418",
+    "kind": "cirrus",
+    "type": "streak",
+    "date": "2023-04-18",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -36,
+      "longitude": -66
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "land",
+    "category": "temperate-land"
+  },
+  {
+    "name": "streak-andes-lee-20230905",
+    "kind": "cirrus",
+    "type": "streak",
+    "date": "2023-09-05",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -36,
+      "longitude": -66
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "land",
+    "category": "temperate-land"
+  },
+  {
+    "name": "streak-arabia-20240110",
+    "kind": "cirrus",
+    "type": "streak",
+    "date": "2024-01-10",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 26,
+      "longitude": 40
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "land",
+    "category": "tropical-land"
+  },
+  {
+    "name": "streak-arabia-20240125",
+    "kind": "cirrus",
+    "type": "streak",
+    "date": "2024-01-25",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 26,
+      "longitude": 40
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "land",
+    "category": "tropical-land"
+  },
+  {
+    "name": "streak-s-africa-indian-20230705",
+    "kind": "cirrus",
+    "type": "streak",
+    "date": "2023-07-05",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -35,
+      "longitude": 50
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-natl-ridge-20230314",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "rows",
+    "date": "2023-03-14",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 45,
+      "longitude": -30
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-natl-warmfront2-20231010",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "cells",
+    "date": "2023-10-10",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 52,
+      "longitude": -25
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-natl-warmfront2-20231219",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "cells",
+    "date": "2023-12-19",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 52,
+      "longitude": -25
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-biscay-20230418",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "rows",
+    "date": "2023-04-18",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 47,
+      "longitude": -10
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-biscay-20231010",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "rows",
+    "date": "2023-10-10",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 47,
+      "longitude": -10
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-npac-ridge-20240227",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "rows",
+    "date": "2024-02-27",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 40,
+      "longitude": -170
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-npac-gulf-20230314",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "cells",
+    "date": "2023-03-14",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 50,
+      "longitude": -145
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-npac-gulf-20230905",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "cells",
+    "date": "2023-09-05",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 50,
+      "longitude": -145
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-southern-ocean-a-20230905",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "rows",
+    "date": "2023-09-05",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -48,
+      "longitude": 40
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-andes-lee-20230522",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "rows",
+    "date": "2023-05-22",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -36,
+      "longitude": -66
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "land",
+    "category": "temperate-land"
+  },
+  {
+    "name": "scaly-andes-lee-20230626",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "rows",
+    "date": "2023-06-26",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -36,
+      "longitude": -66
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "land",
+    "category": "temperate-land"
+  },
+  {
+    "name": "scaly-andes-lee-20231010",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "rows",
+    "date": "2023-10-10",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -36,
+      "longitude": -66
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "land",
+    "category": "temperate-land"
+  },
+  {
+    "name": "scaly-scandinavia-20231020",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "rows",
+    "date": "2023-10-20",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 61,
+      "longitude": 8
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "highlat-sea"
+  },
+  {
+    "name": "scaly-southern-ocean-20230718",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "rows",
+    "date": "2023-07-18",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -50,
+      "longitude": 80
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "scaly-natl-warmfront-20231120",
+    "kind": "cirrus",
+    "type": "scaly",
+    "shape": "cells",
+    "date": "2023-11-20",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 52,
+      "longitude": -25
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "veil-npac-front-20240312",
+    "kind": "cirrus",
+    "type": "veil",
+    "date": "2024-03-12",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 45,
+      "longitude": -160
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "veil-warmpool-thin-20231212",
+    "kind": "cirrus",
+    "type": "veil",
+    "date": "2023-12-12",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -3,
+      "longitude": 80
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "tropical-sea"
+  },
+  {
+    "name": "anvil-great-plains-20230525",
+    "kind": "cirrus",
+    "type": "anvil",
+    "date": "2023-05-25",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 37,
+      "longitude": -98
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "land",
+    "category": "temperate-land"
+  },
+  {
+    "name": "anvil-maritime-continent-20240118",
+    "kind": "cirrus",
+    "type": "anvil",
+    "date": "2024-01-18",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 0,
+      "longitude": 115
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "tropical-sea"
+  },
+  {
+    "name": "veil-natl-warmfront2-20230314",
+    "kind": "cirrus",
+    "type": "veil",
+    "date": "2023-03-14",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 52,
+      "longitude": -25
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "veil-natl-warmfront2-20240227",
+    "kind": "cirrus",
+    "type": "veil",
+    "date": "2024-02-27",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 52,
+      "longitude": -25
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
+  },
+  {
+    "name": "veil-kamchatka-lee-20230418",
+    "kind": "cirrus",
+    "type": "veil",
+    "date": "2023-04-18",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 55,
+      "longitude": 160
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "land",
+    "category": "highlat-land"
+  },
+  {
+    "name": "veil-southern-ocean-20230820",
+    "kind": "cirrus",
+    "type": "veil",
+    "date": "2023-08-20",
+    "layer": "MODIS_Terra_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -50,
+      "longitude": 80
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4,
+        "size": 512
+      }
+    ],
+    "surface": "sea",
+    "category": "temperate-sea"
   }
 ]
