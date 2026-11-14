@@ -1,0 +1,405 @@
+From 1684e8231f3b55c5a138260ff5f077b35969ad77 Mon Sep 17 00:00:00 2001
+From: Muse <muse@muse.local>
+Date: Sat, 14 Nov 2026 05:34:27 +0000
+Subject: [PATCH 1/4] =?UTF-8?q?feat(cloud-lab):=20=E5=B8=AF13=E8=BC=9D?=
+ =?UTF-8?q?=E5=BA=A6=E6=B8=A9=E5=BA=A6=E3=81=AE=E5=8F=8D=E8=BB=A2=E3=81=A8?=
+ =?UTF-8?q?=E5=B7=BB=E9=9B=B2=E6=95=99=E5=B8=AB=E3=81=AE=E6=9D=90=E6=96=99?=
+ =?UTF-8?q?=E5=8F=96=E5=BE=97=E3=82=92=E8=BF=BD=E5=8A=A0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+巻雲基盤改訂の教師側の層分離のため、GIBS の帯 13(クリーン長波赤外窓)
+描画 PNG から輝度温度を復元する cloud-brightness-temperature を追加する。
+カラーマップは単調でなく -70..-80 ℃ にグレーの巻き返しがあるため、
+色票への最近色で候補を出し、曖昧なグレーは場の連続性による緩和で解く。
+閾値 -30 ℃(高層雲の切り分け、飽和 -70 ℃)の根拠として、既存の微細参照の
+帯 13 フレーム 12 枚の分布を reference-cirrus マニフェストへ記録する。
+あわせて撮影・参照の出力先を webpack の clean.keep へ追加する。
+---
+ package.json                           |   1 +
+ tools/cloud-brightness-temperature.mjs | 230 +++++++++++++++++++++++++
+ tools/cloud-lab-reference-cirrus.mjs   | 108 ++++++++++++
+ webpack.cloud-lab.config.js            |   2 +-
+ 4 files changed, 340 insertions(+), 1 deletion(-)
+ create mode 100644 tools/cloud-brightness-temperature.mjs
+ create mode 100644 tools/cloud-lab-reference-cirrus.mjs
+
+diff --git a/package.json b/package.json
+index 94cd0be1c..644be2ec6 100644
+--- a/package.json
++++ b/package.json
+@@ -98,6 +98,7 @@
+     "cloud-lab:reference-fine": "node tools/cloud-lab-reference-fine.mjs",
+     "cloud-lab:reference-fine-timeseries": "node tools/cloud-lab-reference-fine-timeseries.mjs",
+     "cloud-lab:reference-cloudtop": "node tools/cloud-lab-reference-cloudtop.mjs",
++    "cloud-lab:reference-cirrus": "node tools/cloud-lab-reference-cirrus.mjs",
+     "verify:hud-layout": "node tools/verify-hud-layout.mjs",
+     "smoke:layout": "node tools/layout-smoke-retry.mjs"
+   },
+diff --git a/tools/cloud-brightness-temperature.mjs b/tools/cloud-brightness-temperature.mjs
+new file mode 100644
+index 000000000..03e366e6b
+--- /dev/null
++++ b/tools/cloud-brightness-temperature.mjs
+@@ -0,0 +1,230 @@
++// 帯 13(クリーン長波赤外窓)の描画 PNG から輝度温度 [℃] を復元する。巻雲基盤改訂で教師側の
++// 層分離(低温 = 高層雲)に使う。描画は GIBS の Clean_Longwave_Infrared_Window_Band カラー
++// マップで、色づけは単調でない: -19.1 ℃ までは虹色の強調、そこから暖側はグレーの濃淡、
++// さらに -70.1..-80.1 ℃ には暖側と重なるグレーの濃淡が巻き返している(同じグレー値が
++// 「非常に冷たい」と「暖かい」の両方を表す)。そのため単純な輝度や色の近さだけでは反転
++// できない。本モジュールは色票への最近色で候補を出し、グレーの巻き返しは空間的な連結で
++// 解く: -80..-70 ℃ の芯は輝度温度の連続性から必ず -70..-60 ℃ の色帯に囲まれるので、
++// 色帯の低温画素に連結したグレー成分だけを冷たい側、残りを暖かい側と読む。
++//
++// 高層雲の切り分けの閾値: HIGH_CLOUD_THRESHOLD_C = -30 ℃。根拠は reference-cirrus の
++// マニフェストに残した帯 13 フレーム実測分布で、(1) 熱帯・中緯度の暖かい峰(海面と下層・
++// 中層雲、およそ -20 ℃ 以上)と冷たい尾(対流圏上部の雲頂)の境目にあたる、(2) 対流圏
++// 上部(熱帯でおおよそ 8 km 以上)の雲頂に対応し、生成側の半透明殻(巻雲層)が表す層と
++// 対応する、(3) カラーマップ自身の強調が始まる -19.1 ℃ より十分に冷たく、薄い中層雲の
++// 混入が小さい。冷たさの飽和は -70 ℃(深い対流の芯はこれより冷たくても層としては同じ)。
++
++import { createHash } from 'node:crypto';
++
++export const COLORMAP_URL =
++  'https://gibs.earthdata.nasa.gov/colormaps/v1.3/Clean_Longwave_Infrared_Window_Band.xml';
++export const HIGH_CLOUD_THRESHOLD_C = -30;
++export const HIGH_CLOUD_SATURATION_C = -70;
++
++// カラーマップ XML を色票の並びにする。bin の [lo, hi) と代表値(中点)を持つ。
++export function parseBand13Colormap(xmlText) {
++  const entries = [];
++  for (const m of xmlText.matchAll(
++    /<ColorMapEntry[^>]*rgb="(\d+),(\d+),(\d+)"[^>]*sourceValue="\(([-\d.]+),([-\d.]+)\]"/g,
++  )) {
++    const lo = parseFloat(m[4]);
++    const hi = parseFloat(m[5]);
++    entries.push({
++      r: Number(m[1]),
++      g: Number(m[2]),
++      b: Number(m[3]),
++      loC: lo,
++      hiC: hi,
++      midC: (lo + hi) / 2,
++      gray: Number(m[1]) === Number(m[2]) && Number(m[2]) === Number(m[3]),
++    });
++  }
++  entries.sort((a, b) => a.midC - b.midC);
++  return entries;
++}
++
++// 色票の健全性を確かめる(フェッチャが取得時に呼ぶ)。bin が低温から高温まで切れ目なく
++// 並び、グレーの巻き返し区間が想定どおりにあることを見る。
++export function validateBand13Colormap(entries) {
++  if (entries.length < 200) throw new Error(`カラーマップの色数が不足: ${entries.length}`);
++  for (let i = 1; i < entries.length; i++) {
++    if (Math.abs(entries[i].loC - entries[i - 1].hiC) > 0.6) {
++      throw new Error(`カラーマップの bin が連続していない: ${entries[i - 1].hiC} → ${entries[i].loC}`);
++    }
++  }
++  const coldGray = entries.filter((e) => e.gray && e.midC < -65);
++  const warmGray = entries.filter((e) => e.gray && e.midC > -25);
++  if (coldGray.length < 5 || warmGray.length < 50) {
++    throw new Error('カラーマップにグレーの巻き返し区間が見当たらない');
++  }
++  const sha256 = createHash('sha256')
++    .update(entries.map((e) => `${e.r},${e.g},${e.b}@${e.midC}`).join(';'))
++    .digest('hex');
++  return { count: entries.length, minC: entries[0].loC, maxC: entries[entries.length - 1].hiC, sha256 };
++}
++
++// グレーの 2 区間について、グレー値 → 輝度温度の補間関数を作る。
++function grayRamp(entries, predicate) {
++  const points = entries
++    .filter((e) => e.gray && predicate(e))
++    .map((e) => ({ level: e.r, midC: e.midC }))
++    .sort((a, b) => b.level - a.level);
++  return (level) => {
++    if (points.length === 0) return null;
++    if (level >= points[0].level) return points[0].midC;
++    if (level <= points[points.length - 1].level) return points[points.length - 1].midC;
++    for (let i = 1; i < points.length; i++) {
++      if (level >= points[i].level) {
++        const a = points[i - 1];
++        const b = points[i];
++        const t = (level - b.level) / (a.level - b.level);
++        return b.midC + t * (a.midC - b.midC);
++      }
++    }
++    return points[points.length - 1].midC;
++  };
++}
++
++// 描画 PNG(RGB/RGBA の生デコード結果)を輝度温度の場へ反転する。戻り値の bt は
++// 復元できなかった画素が NaN。stats は反転の内訳(診断用)。
++export function invertBrightnessTemperature(image, entries) {
++  const { width, height, channels, data } = image;
++  const count = width * height;
++  const bt = new Float32Array(count).fill(NaN);
++  // 完全一致の早見と、5bit/軸の最近色 LUT(ブレンド画素用)。
++  const exact = new Map();
++  entries.forEach((e, i) => exact.set((e.r << 16) | (e.g << 8) | e.b, i));
++  const LUT_BITS = 5;
++  const LUT_SIZE = 1 << LUT_BITS;
++  const SHIFT = 8 - LUT_BITS;
++  const lut = new Int32Array(LUT_SIZE ** 3);
++  for (let r = 0; r < LUT_SIZE; r++)
++    for (let g = 0; g < LUT_SIZE; g++)
++      for (let b = 0; b < LUT_SIZE; b++) {
++        const cr = (r << SHIFT) + (1 << (SHIFT - 1));
++        const cg = (g << SHIFT) + (1 << (SHIFT - 1));
++        const cb = (b << SHIFT) + (1 << (SHIFT - 1));
++        let best = Infinity;
++        let bestIdx = 0;
++        entries.forEach((e, i) => {
++          const d = (e.r - cr) ** 2 + (e.g - cg) ** 2 + (e.b - cb) ** 2;
++          if (d < best) {
++            best = d;
++            bestIdx = i;
++          }
++        });
++        lut[(r * LUT_SIZE + g) * LUT_SIZE + b] = bestIdx;
++      }
++  const warmOfLevel = grayRamp(entries, (e) => e.midC > -25);
++  const coldOfLevel = grayRamp(entries, (e) => e.midC < -65);
++  const coldLevels = entries.filter((e) => e.gray && e.midC < -65).map((e) => e.r);
++  const coldLevelMin = Math.min(...coldLevels);
++  const coldLevelMax = Math.max(...coldLevels);
++  const warmLevels = entries.filter((e) => e.gray && e.midC > -25).map((e) => e.r);
++  const warmLevelMin = Math.min(...warmLevels);
++  const warmLevelMax = Math.max(...warmLevels);
++
++  let exactCount = 0;
++  let distanceSum = 0;
++  const ambiguous = []; // { index, warmC, coldC }
++  for (let i = 0; i < count; i++) {
++    const p = i * channels;
++    const r = data[p];
++    const g = data[p + 1];
++    const b = data[p + 2];
++    const key = (r << 16) | (g << 8) | b;
++    let entry;
++    if (exact.has(key)) {
++      entry = entries[exact.get(key)];
++      exactCount++;
++    } else {
++      entry = entries[lut[(((r >> SHIFT) * LUT_SIZE + (g >> SHIFT)) * LUT_SIZE) + (b >> SHIFT)]];
++      distanceSum += Math.hypot(entry.r - r, entry.g - g, entry.b - b);
++    }
++    const spread = Math.max(r, g, b) - Math.min(r, g, b);
++    if (spread > 8) {
++      // 色のついた画素は色帯の中で一意。
++      bt[i] = entry.midC;
++      continue;
++    }
++    // グレー画素: 自分のグレー値を 2 区間の物差しで読む。
++    const level = Math.round((r + g + b) / 3);
++    if (level >= 250) {
++      // 最も冷たい bin が白。暖側の物差しには無い。
++      bt[i] = entries[0].midC;
++      continue;
++    }
++    const warmC = level >= warmLevelMin - 4 && level <= warmLevelMax + 4 ? warmOfLevel(level) : null;
++    const coldC = level >= coldLevelMin && level <= coldLevelMax ? coldOfLevel(level) : null;
++    if (warmC !== null && coldC !== null) {
++      ambiguous.push({ index: i, warmC, coldC });
++    } else if (coldC !== null) {
++      bt[i] = coldC;
++    } else if (warmC !== null) {
++      bt[i] = warmC;
++    }
++  }
++  // 曖昧なグレーは「輝度温度の場は滑らか」という拘束で解く。冷たいグレーの区間
++  // (-80..-70 ℃)は深い対流の芯にしか現れず、周囲は必ず色帯の低温画素に囲まれる。
++  // 逆に暖かい側のグレーは大陸のように広く連結しているので、連結成分で伝播させると
++  // 画面全体が冷たい側へ倒れる。そこで曖昧な画素は暖かい候補から出発し、近傍の
++  // 決定済み画素の平均に近い候補へ繰り返し寄せていく(値の連続性による緩和)。
++  const choice = new Float32Array(count);
++  for (let i = 0; i < count; i++) if (!Number.isNaN(bt[i])) choice[i] = bt[i];
++  for (const a of ambiguous) choice[a.index] = a.warmC;
++  for (let iteration = 0; iteration < 100; iteration++) {
++    let changed = 0;
++    for (const a of ambiguous) {
++      const x = a.index % width;
++      const y = Math.floor(a.index / width);
++      let sum = 0;
++      let n = 0;
++      for (let dy = -1; dy <= 1; dy++)
++        for (let dx = -1; dx <= 1; dx++) {
++          if (dx === 0 && dy === 0) continue;
++          const nx = x + dx;
++          const ny = y + dy;
++          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
++          sum += choice[ny * width + nx];
++          n++;
++        }
++      if (n === 0) continue;
++      const mean = sum / n;
++      const next = Math.abs(a.coldC - mean) < Math.abs(a.warmC - mean) ? a.coldC : a.warmC;
++      if (next !== choice[a.index]) {
++        choice[a.index] = next;
++        changed++;
++      }
++    }
++    if (changed === 0) break;
++  }
++  let coldGrayCount = 0;
++  for (const a of ambiguous) {
++    bt[a.index] = choice[a.index];
++    if (choice[a.index] === a.coldC) coldGrayCount++;
++  }
++  const blended = count - exactCount;
++  return {
++    width,
++    height,
++    data: bt,
++    stats: {
++      exactFraction: exactCount / count,
++      meanBlendDistance: blended > 0 ? distanceSum / blended : 0,
++      ambiguousFraction: ambiguous.length / count,
++      coldGrayFraction: coldGrayCount / count,
++    },
++  };
++}
++
++// 輝度温度の場から「冷たさ」の場を作る。閾値より暖かい側は 0、飽和より冷たい側は 1、
++// その間は線形。NaN は 0(層の外)として扱う。これが教師側の巻雲層の場になる。
++export function coldnessField(btField, thresholdC = HIGH_CLOUD_THRESHOLD_C, saturationC = HIGH_CLOUD_SATURATION_C) {
++  const out = new Float32Array(btField.data.length);
++  const span = thresholdC - saturationC;
++  for (let i = 0; i < btField.data.length; i++) {
++    const v = btField.data[i];
++    out[i] = Number.isNaN(v) ? 0 : Math.min(1, Math.max(0, (thresholdC - v) / span));
++  }
++  return { width: btField.width, height: btField.height, data: out };
++}
+diff --git a/tools/cloud-lab-reference-cirrus.mjs b/tools/cloud-lab-reference-cirrus.mjs
+new file mode 100644
+index 000000000..0c94b7638
+--- /dev/null
++++ b/tools/cloud-lab-reference-cirrus.mjs
+@@ -0,0 +1,108 @@
++// 巻雲基盤改訂の教師側の材料を揃える: 帯 13 カラーマップの取得と検証、既存の微細参照
++// (reference-fine)の帯 13 フレーム全てについて輝度温度の分布を測って記録する。
++// 閾値 -30 ℃ の根拠(フレームごとの分位点と閾値ごとの面積率)をマニフェストへ残すのが
++// 目的で、特徴量そのものは比較(cloud-lab:compare)がカラーマップからその場で復元する。
++//
++// 実行: npm run cloud-lab:reference-cirrus
++
++import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
++import path from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { decodePng } from './png.mjs';
++import {
++  COLORMAP_URL,
++  HIGH_CLOUD_SATURATION_C,
++  HIGH_CLOUD_THRESHOLD_C,
++  invertBrightnessTemperature,
++  parseBand13Colormap,
++  validateBand13Colormap,
++} from './cloud-brightness-temperature.mjs';
++
++const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
++const outDir = path.join(root, '.cloud-lab', 'reference-cirrus');
++const fineDir = path.join(root, '.cloud-lab', 'reference-fine');
++const THRESHOLDS_C = [-20, -25, HIGH_CLOUD_THRESHOLD_C, -40, -50, HIGH_CLOUD_SATURATION_C];
++
++function quantile(sorted, f) {
++  return sorted[Math.min(sorted.length - 1, Math.floor(f * sorted.length))];
++}
++
++async function main() {
++  mkdirSync(outDir, { recursive: true });
++  const response = await fetch(COLORMAP_URL);
++  if (!response.ok) throw new Error(`カラーマップの取得に失敗: HTTP ${response.status}`);
++  const xml = await response.text();
++  const entries = parseBand13Colormap(xml);
++  const colormap = validateBand13Colormap(entries);
++  const colormapPath = path.join(outDir, 'colormap.xml');
++  writeFileSync(colormapPath, xml);
++  console.log(
++    `カラーマップ: ${colormap.count} 色、${colormap.minC}..${colormap.maxC} ℃、sha256 ${colormap.sha256.slice(0, 12)}…`,
++  );
++
++  const fineManifestPath = path.join(fineDir, 'manifest.json');
++  if (!existsSync(fineManifestPath)) {
++    throw new Error('reference-fine のマニフェストが無い。先に cloud-lab:reference-fine を実行すること');
++  }
++  const fineManifest = JSON.parse(readFileSync(fineManifestPath, 'utf8'));
++  const band13Frames = fineManifest.frames.filter((f) => f.suffix === 'band13');
++  if (band13Frames.length === 0) throw new Error('reference-fine に帯 13 フレームが無い');
++
++  const frames = [];
++  for (const frame of band13Frames) {
++    const image = decodePng(readFileSync(path.join(root, frame.file)));
++    const inverted = invertBrightnessTemperature(image, entries);
++    const values = [];
++    for (const v of inverted.data) if (!Number.isNaN(v)) values.push(v);
++    values.sort((a, b) => a - b);
++    const fractionAtMost = (t) => {
++      let n = 0;
++      for (const v of values) if (v <= t) n++;
++      return n / values.length;
++    };
++    const record = {
++      region: frame.region,
++      ladder: frame.ladder,
++      file: path.basename(frame.file),
++      box: frame.box,
++      stats: inverted.stats,
++      quantilesC: {
++        q05: quantile(values, 0.05),
++        q25: quantile(values, 0.25),
++        q50: quantile(values, 0.5),
++        q75: quantile(values, 0.75),
++        q95: quantile(values, 0.95),
++      },
++      fractionAtMostC: Object.fromEntries(THRESHOLDS_C.map((t) => [String(t), fractionAtMost(t)])),
++      highCloudFraction: fractionAtMost(HIGH_CLOUD_THRESHOLD_C),
++    };
++    frames.push(record);
++    console.log(
++      `${frame.region} ${frame.ladder}: 中央値 ${record.quantilesC.q50.toFixed(0)} ℃、` +
++        `高層雲(≦${HIGH_CLOUD_THRESHOLD_C} ℃) ${(record.highCloudFraction * 100).toFixed(1)}%、` +
++        `冷グレー ${(inverted.stats.coldGrayFraction * 100).toFixed(2)}%、完全一致 ${(inverted.stats.exactFraction * 100).toFixed(0)}%`,
++    );
++  }
++
++  const manifest = {
++    tool: 'cloud-lab-reference-cirrus',
++    generatedAt: new Date().toISOString(),
++    gitHead: process.env.GIT_HEAD ?? null,
++    colormap: { url: COLORMAP_URL, file: 'colormap.xml', ...colormap },
++    threshold: {
++      highCloudC: HIGH_CLOUD_THRESHOLD_C,
++      saturationC: HIGH_CLOUD_SATURATION_C,
++      basis:
++        '帯 13 フレーム実測分布で暖かい峰(海面と下層・中層雲)と冷たい尾(対流圏上部の雲頂)の境目にあたり、' +
++        '生成側の半透明殻(巻雲層)が表す対流圏上部の層に対応する固定閾値。冷たさは飽和温度まで線形に正規化する。',
++    },
++    frames,
++  };
++  writeFileSync(path.join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
++  console.log(`記録: ${frames.length} フレーム → .cloud-lab/reference-cirrus/manifest.json`);
++}
++
++main().catch((error) => {
++  console.error(error);
++  process.exit(1);
++});
+diff --git a/webpack.cloud-lab.config.js b/webpack.cloud-lab.config.js
+index 367531be9..4ee997e5f 100644
+--- a/webpack.cloud-lab.config.js
++++ b/webpack.cloud-lab.config.js
+@@ -64,7 +64,7 @@ module.exports = {
+     // Slice B/C が実写・特徴量と突き合わせる根拠になる。reference-fine/ は Slice B の
+     // 微細スケール実写参照で、Slice C が特徴量の相手に読む。reference-cloudtop/ は
+     // MODIS Terra の雲頂高度の参照で、compare が雲頂の距離の相手に読む。ビルドの掃除で消さない。
+-    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-fine|reference-fine-timeseries|reference-cloudtop|history|history-polar-masked|render-capture|render-capture-timeseries)[\\/]/ },
++    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-fine|reference-fine-timeseries|reference-cloudtop|reference-cirrus|history|history-polar-masked|render-capture|render-capture-timeseries|render-capture-cirrus)[\\/]/ },
+   },
+   optimization: {
+     minimizer: [
+-- 
+2.43.0
+
