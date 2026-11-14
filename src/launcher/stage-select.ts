@@ -9,6 +9,8 @@ import { injectStageSelectStyle } from './stage-select-style';
 import { StartEpochForm } from './start-epoch-form';
 import { TITLE_SCENE_PATTERNS, TitleScene } from './title-scene';
 import type { StageClass } from '../game/stages/stage';
+import type { CampaignState } from '../game/campaign/campaign-state';
+import { isCampaignCleared } from '../game/campaign/campaign-state';
 import type { TdbJulianDate } from '../physics/time';
 import type { ThemePalette } from '../theme';
 import type { UnlockManager } from './unlock-manager';
@@ -155,11 +157,11 @@ const TITLE_FLAVORS: readonly TitleFlavor[] = [
   },
 ];
 
-// 選ばれたステージ。開始日時を選ぶステージなら、入力された元期も持つ。
-interface StageSelection {
-  readonly stageClass: StageClass;
-  readonly startEpoch?: TdbJulianDate;
-}
+// 選ばれた開始先。予備開発ステージを選んだ形と、本編(ストーリーモード)を選んだ形の2つ。
+// 開始日時を選ぶステージなら、入力された元期も持つ。
+export type StageSelection =
+  | { readonly kind: 'stage'; readonly stageClass: StageClass; readonly startEpoch?: TdbJulianDate }
+  | { readonly kind: 'story' };
 
 // 一様な32bit符号なし整数の乱数。crypto が使えない環境では Math.random から作る。
 function randomUint32(): number {
@@ -242,6 +244,7 @@ function createScreenElement(): HTMLElement {
 // onSelect を呼ぶ。
 class StageSelectScreen {
   private readonly root = createScreenElement();
+  private readonly storyRow = document.createElement('div');
   private readonly stageList = document.createElement('div');
   private readonly tabBar: TabBar<string>;
   private readonly debugLink = document.createElement('div');
@@ -254,10 +257,11 @@ class StageSelectScreen {
   private closed = false;
 
   // onEscape は ESC キーで、onClose は選択が済んで画面を畳むときに、onSettings は設定ボタンで呼ばれる。
-  // palette は3D場面の材質と光の色。
+  // palette は3D場面の材質と光の色。campaign はアクティブスロットのキャンペーンで、未開始なら null。
   public constructor(
     unlockManager: UnlockManager,
     palette: ThemePalette,
+    campaign: CampaignState | null,
     private readonly onEscape: (() => void) | undefined,
     private readonly onClose: (() => void) | undefined,
     onSettings: (() => void) | undefined,
@@ -266,6 +270,18 @@ class StageSelectScreen {
     injectStageSelectStyle();
     this.unlockedStages = new Set(STAGE_CLASSES.filter((stageClass) => unlockManager.isUnlocked(stageClass.id)));
     const stageWindow = this.root.querySelector<HTMLElement>('.ss-window')!;
+
+    // 本編の入口はタブより上に主項目として置く(GAME.md 1)。添え書きはキャンペーンの進み具合で変わる。
+    const storySub = campaign === null
+      ? '本編 · 月面基地から始まるキャンペーン'
+      : isCampaignCleared(campaign)
+        ? '本編 · クリア済み — 掃討と回収は続けられる'
+        : `本編 · 第${campaign.act}幕 — つづきから再開`;
+    this.storyRow.className = 'ss-stage ss-story ui-selectable';
+    this.storyRow.innerHTML =
+      '<div class="ss-stage-label"><span>ストーリー</span></div>' +
+      `<div class="ss-stage-sub">${storySub}</div>`;
+    this.storyRow.addEventListener('click', () => this.selectStory());
 
     // タブは selectGroup の初出順に並べ、選んだタブのステージを一覧へ出す。
     const groups: string[] = [];
@@ -276,7 +292,7 @@ class StageSelectScreen {
     this.tabBar = new TabBar<string>(groups.map((group) => [group, group] as const), (group) => this.showGroup(group));
     this.tabBar.element.classList.add('ui-surface-inset');
     this.stageList.className = 'ss-list';
-    stageWindow.append(this.tabBar.element, this.stageList);
+    stageWindow.append(this.storyRow, this.tabBar.element, this.stageList);
     if (groups[0]) this.showGroup(groups[0]);
 
     // 隅の控えめなリンクからデバッグステージへ移動できる。
@@ -349,7 +365,7 @@ class StageSelectScreen {
   // 一覧・タブ・デバッグリンク・設定ボタンの表示を切り替える。ss-window は overflow:hidden の固定高さ
   // なので、開始日時の入力欄を出す間はこれらを隠さないと、入力欄が窓の下端からはみ出して見えなくなる。
   private setStageListVisible(visible: boolean): void {
-    for (const element of [this.stageList, this.tabBar.element, this.debugLink, this.settingsButton]) {
+    for (const element of [this.storyRow, this.stageList, this.tabBar.element, this.debugLink, this.settingsButton]) {
       element.classList.toggle('hidden', !visible);
     }
   }
@@ -368,28 +384,40 @@ class StageSelectScreen {
     if (stageClass !== undefined) this.select(stageClass);
   };
 
-  // 選択を確定する。キーの監視・3D 場面・画面を片付けてから onSelect を呼ぶ。
+  // ステージの選択を確定する。
   private select(stageClass: StageClass, startEpoch?: TdbJulianDate): void {
+    this.finish({ kind: 'stage', stageClass, startEpoch });
+  }
+
+  // 本編の選択を確定する。
+  private selectStory(): void {
+    this.finish({ kind: 'story' });
+  }
+
+  // 選択を確定する。キーの監視・3D 場面・画面を片付けてから onSelect を呼ぶ。
+  private finish(selection: StageSelection): void {
     window.removeEventListener('keydown', this.onKey);
     this.onClose?.();
     this.closed = true;
     this.titleScene?.dispose();
     this.root.remove();
     document.body.classList.remove('title-screen-open');
-    this.onSelect({ stageClass, startEpoch });
+    this.onSelect(selection);
   }
 }
 
-// 起動選択画面(各ステージの selectGroup ごとのタブ)を表示し、選ばれたステージクラス(クリエイティブ
-// なら指定した開始日時の元期も併せて)で解決される Promise を返す。
+// 起動選択画面(本編の主項目と、各ステージの selectGroup ごとのタブ)を表示し、選ばれた開始先
+// (クリエイティブなら指定した開始日時の元期も併せて)で解決される Promise を返す。
+// campaign はアクティブスロットのキャンペーンで、本編の添え書きに使う。未開始なら null。
 export function selectStage(
   unlockManager: UnlockManager,
   palette: ThemePalette,
+  campaign: CampaignState | null,
   onEscape?: () => void,
   onClose?: () => void,
   onSettings?: () => void,
 ): Promise<StageSelection> {
   return new Promise((resolve) => {
-    new StageSelectScreen(unlockManager, palette, onEscape, onClose, onSettings, resolve);
+    new StageSelectScreen(unlockManager, palette, campaign, onEscape, onClose, onSettings, resolve);
   });
 }

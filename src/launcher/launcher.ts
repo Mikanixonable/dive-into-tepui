@@ -2,8 +2,10 @@ import { LoadingProgress } from '../game/loading-progress';
 import { Run } from '../run/run';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { ResultScreen, type RunTransitions } from './result-screen';
-import { findStageClass } from '../game/stages/stage-dictionary';
-import { selectStage } from './stage-select';
+import { findStageClass, storyStageClassForAct } from '../game/stages/stage-dictionary';
+import { applyCampaignEvents, type CampaignState } from '../game/campaign/campaign-state';
+import type { RunEventBody } from '../game/run-events';
+import { selectStage, type StageSelection } from './stage-select';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 import type { SerializedGame } from '../game/game';
@@ -37,6 +39,9 @@ function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): St
   if (stageClass === null || stageClass.hiddenFromSelect || !unlockManager.isUnlocked(stageClass.id)) return null;
   return stageClass;
 }
+
+// ストーリーモードの開始先は、キャンペーンの現在の幕に対応する内部ステージ
+// (GAME.md 11.2)。振り分けは storyStageClassForAct が持つ。
 
 // セーブに含まれない StageResult の代わりに、決着した phase から見出しだけを組む。
 function fallbackResult(phase: GamePhase): StageResult {
@@ -79,8 +84,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (this.transitioning) return;
     this.transitioning = true;
     try {
-      const { stageClass, startEpoch } = await this.resolveStage();
-      await this.startRun(stageClass, undefined, startEpoch);
+      await this.launchSelection(await this.resolveStage());
     } catch (err) {
       this.fail(err);
     } finally {
@@ -88,28 +92,45 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     }
   }
 
-  // 始めるステージを決める。?title=1 なら選択画面、?stage= があればそのステージ、どちらも無ければ
+  // 始める開始先を決める。?title=1 なら選択画面、?stage= があればそのステージ、どちらも無ければ
   // アクティブスロットの終わっていない周回を再開し、それも無ければ選択画面で選ばせる。
-  private async resolveStage(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
+  private async resolveStage(): Promise<StageSelection> {
     const params = new URLSearchParams(location.search);
     if (params.get('title') !== '1') {
       const fromParam = findStageClass(params.get('stage'));
-      if (fromParam !== null) return { stageClass: fromParam };
+      if (fromParam !== null) return { kind: 'stage', stageClass: fromParam };
       const resumed = resumableStageClass(this.unlockManager, this.slots);
-      if (resumed !== null) return { stageClass: resumed };
+      if (resumed !== null) return { kind: 'stage', stageClass: resumed };
     }
     return this.selectStageScreen();
   }
 
-  // 選択画面を出し、選ばれたステージクラス(クリエイティブなら開始日時も)で解決される Promise を返す。
-  private selectStageScreen(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
+  // 選択画面を出し、選ばれた開始先(クリエイティブなら開始日時も)で解決される Promise を返す。
+  private selectStageScreen(): Promise<StageSelection> {
+    const activeSlotId = this.slots.activeSlotId;
+    const campaign = activeSlotId === null ? null : this.slots.campaign(activeSlotId);
     return selectStage(
       this.unlockManager,
       this.themePalette.current,
+      campaign,
       () => { if (!this.shell.overlayManager.closeTopmostOnEscape()) this.devices.pauseMenu.toggle(); },
       () => this.devices.pauseMenu.toggle(false),
       () => this.devices.pauseMenu.openSettings(),
     );
+  }
+
+  // 選ばれた開始先で周回を起こす。本編ならアクティブスロットのキャンペーンを開始(再開)してから
+  // 開始先のステージへ入る。
+  private async launchSelection(selection: StageSelection): Promise<void> {
+    if (selection.kind === 'story') {
+      const activeSlotId = this.slots.activeSlotId;
+      const campaign = activeSlotId === null ? null : this.slots.startCampaign(activeSlotId);
+      await this.startRun(
+        storyStageClassForAct(campaign?.act ?? 1), undefined, undefined, campaign ?? undefined,
+      );
+      return;
+    }
+    await this.startRun(selection.stageClass, undefined, selection.startEpoch);
   }
 
   // 現在の周回を畳む。何も動いていない状態で呼んでも安全。
@@ -121,7 +142,10 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   }
 
   // 現在の周回を畳んだ上で、再開する記録があればそこから、無ければ新しく Run を組み、起動をスロットへ記録する。
-  private async startRun(stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate): Promise<void> {
+  private async startRun(
+    stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate,
+    campaign?: CampaignState,
+  ): Promise<void> {
     this.endRun();
     const initialSave = this.initialSaveFor(stageClass, snapshotId, startEpoch);
     showLoading();
@@ -130,7 +154,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.run = initialSave === undefined
         ? await Run.create(
           stageClass, startEpoch, this.devices, this.viewOptions, this.themePalette,
-          this.graphics, this.renderStyle, this.sections, this.autoSave, progress,
+          this.graphics, this.renderStyle, this.sections, this.autoSave, progress, campaign ?? null,
         )
         : await Run.resume(
           initialSave, stageClass, this.devices, this.viewOptions, this.themePalette,
@@ -151,9 +175,21 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   public followProgress(): void {
     if (this.run === null) return;
     const { activeStage: stage, events } = this.run.game;
+    this.applyCampaignProgress(events.recent.map(({ body }) => body));
     if (!events.recent.some(({ body }) => body.kind === 'stageDecided')) return;
     if (stage.phase === 'won') this.unlockManager.reportClear(stage.id, this.devices.hud);
     this.showResult(stage);
+  }
+
+  // このフレームの出来事をアクティブスロットのキャンペーンへ適用し、変われば書き戻す。
+  // キャンペーンを持たないスロットや、関わる出来事が無いフレームでは何もしない。
+  private applyCampaignProgress(bodies: readonly RunEventBody[]): void {
+    const activeSlotId = this.slots.activeSlotId;
+    if (activeSlotId === null) return;
+    const campaign = this.slots.campaign(activeSlotId);
+    if (campaign === null) return;
+    const next = applyCampaignEvents(campaign, bodies);
+    if (next !== campaign) this.slots.updateCampaign(activeSlotId, next);
   }
 
   // 決着したランを締め、結果画面を出す。
@@ -211,7 +247,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const activeSlotId = this.slots.activeSlotId;
     if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
     this.selectStageScreen()
-      .then(({ stageClass, startEpoch }) => this.startRun(stageClass, undefined, startEpoch))
+      .then((selection) => this.launchSelection(selection))
       .catch((err) => this.fail(err))
       .finally(() => { this.transitioning = false; });
   }
@@ -235,10 +271,10 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     // 前のスロットの周回を畳んでから、次の起動先を決める。
     this.endRun();
     const resumed = resumableStageClass(this.unlockManager, this.slots);
-    const resolved: Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> =
-      resumed !== null ? Promise.resolve({ stageClass: resumed }) : this.selectStageScreen();
+    const resolved: Promise<StageSelection> =
+      resumed !== null ? Promise.resolve({ kind: 'stage', stageClass: resumed }) : this.selectStageScreen();
     resolved
-      .then(({ stageClass, startEpoch }) => this.startRun(stageClass, undefined, startEpoch))
+      .then((selection) => this.launchSelection(selection))
       .catch((err) => this.fail(err))
       .finally(() => { this.transitioning = false; });
   }
