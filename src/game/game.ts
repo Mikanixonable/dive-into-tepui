@@ -17,6 +17,7 @@ import type { GameScene } from '../render/scene';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
 import type { SerializedStage, Stage, StageClass } from './stages/stage';
 import type { HudLayers } from './hud/hud-layers';
+import type { CampaignState } from './campaign/campaign-state';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { LoadingProgress } from './loading-progress';
 import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
@@ -85,6 +86,7 @@ export class Game {
     hud: HudLayers,
     sections: FrameSections,
     progress: LoadingProgress,
+    campaign: CampaignState | null = null,
   ): Promise<Game> {
     const celestialSystem = await Game.buildCelestialSystem(
       stageClass, startEpoch ?? stageClass.epoch, scene, progress,
@@ -96,9 +98,14 @@ export class Game {
     const simSpeedManager = SimSpeedManager.create(events);
     const controlSelection = ControlSelection.create(dynamicSystem);
     const orbitSlots = OrbitSlotRegistry.create();
-    const stage = stageClass.create(
-      hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands, orbitSlots,
-    );
+    // キャンペーンが渡され、ステージが引き継ぎの口を持てば、台帳はキャンペーンから組まれる。
+    const stage = campaign !== null && stageClass.createFromCampaign !== undefined
+      ? stageClass.createFromCampaign(
+        campaign, hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands, orbitSlots,
+      )
+      : stageClass.create(
+        hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands, orbitSlots,
+      );
     const planNodeRules = PlanNodeRules.create(events);
     const viewer = Viewer.create(controlSelection, events, celestialSystem);
     return new Game(
