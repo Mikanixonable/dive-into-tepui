@@ -29,7 +29,7 @@ const STYLE = `
 }
 `;
 
-export interface TextPromptOverlayRequest {
+interface TextPromptOverlayRequest {
   readonly title?: string;
   readonly message?: string;
   // 入力欄の初期値。

@@ -16,7 +16,7 @@ export interface ConstructionCapabilities {
   readonly acceleration: number | null; // m/s²
 }
 
-export interface ConstructionPreview {
+interface ConstructionPreview {
   readonly mass: number;
   readonly maxHp: number;
   readonly capabilities: ConstructionCapabilities;
@@ -40,7 +40,7 @@ export type ConstructionHeld =
 export type ConstructionSymmetry = 1 | 2 | 4;
 
 // 取り付け先一覧の1行。内部識別子は表示に出さず、説明はラベルと理由だけで組む。
-export interface ConstructionTargetState {
+interface ConstructionTargetState {
   readonly id: string;
   readonly label: string;
   readonly valid: boolean;
@@ -48,7 +48,7 @@ export interface ConstructionTargetState {
 }
 
 // 直近に成功した編集の記録。操作音と差し込みの動きが読む。通し番号は単調増加。
-export type ConstructionOperationKind = 'place' | 'move' | 'remove' | 'rotate' | 'restore';
+type ConstructionOperationKind = 'place' | 'move' | 'remove' | 'rotate' | 'restore';
 
 export interface ConstructionOperationRecord {
   readonly kind: ConstructionOperationKind;
@@ -72,7 +72,7 @@ export interface ConstructionHistoryView {
 
 // 手に持っているものの表示用の写し。catalogId はカタログ由来のときだけ定義 id を、
 // blueprintId は設計図由来のときだけ設計図 id を持つ。
-export interface ShipConstructionHeldView {
+interface ShipConstructionHeldView {
   readonly name: string;
   readonly catalogId: string | null;
   readonly blueprintId: string | null;
@@ -82,7 +82,7 @@ export interface ShipConstructionHeldView {
 
 // 選択中の配置済みモジュールの表示用の写し。canEdit は撤去・付け替え・回転を受け付けるか。
 // orientation はそのモジュールの現在の取り付け向き。
-export interface ShipConstructionSelectionView {
+interface ShipConstructionSelectionView {
   readonly name: string;
   readonly canEdit: boolean;
   readonly orientation: ModuleOrientation;
@@ -142,7 +142,7 @@ export interface ShipConstructionPanelModel {
   readonly canRemove: boolean;
 }
 
-export interface ConstructionConfirmationRequest {
+interface ConstructionConfirmationRequest {
   readonly title: string;
   readonly message: string;
   readonly confirmLabel: string;
