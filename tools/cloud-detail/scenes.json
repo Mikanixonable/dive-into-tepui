@@ -519,5 +519,143 @@
     ],
     "surface": "sea",
     "category": "tropical-sea"
+  },
+  {
+    "name": "land-cumulus-amazon",
+    "kind": "cumulus",
+    "date": "2023-09-10",
+    "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -5,
+      "longitude": -60
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4
+      }
+    ],
+    "surface": "land",
+    "category": "tropical-land"
+  },
+  {
+    "name": "land-cumulus-india",
+    "kind": "cumulus",
+    "date": "2023-05-20",
+    "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 18,
+      "longitude": 78
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4
+      }
+    ],
+    "surface": "land",
+    "category": "tropical-land"
+  },
+  {
+    "name": "land-boreal-canada",
+    "kind": "cumulus",
+    "date": "2023-07-20",
+    "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 58,
+      "longitude": -100
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4
+      }
+    ],
+    "surface": "land",
+    "category": "highlat-land"
+  },
+  {
+    "name": "land-boreal-siberia2",
+    "kind": "cumulus",
+    "date": "2023-07-25",
+    "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 65,
+      "longitude": 130
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4
+      }
+    ],
+    "surface": "land",
+    "category": "highlat-land"
+  },
+  {
+    "name": "land-convective-ukraine",
+    "kind": "cumulus",
+    "date": "2023-07-05",
+    "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": 49,
+      "longitude": 32
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4
+      }
+    ],
+    "surface": "land",
+    "category": "temperate-land"
+  },
+  {
+    "name": "land-convective-argentina",
+    "kind": "cumulus",
+    "date": "2023-01-10",
+    "layer": "MODIS_Aqua_CorrectedReflectance_TrueColor",
+    "center": {
+      "latitude": -34,
+      "longitude": -62
+    },
+    "tiers": [
+      {
+        "kmPerPx": 0.25
+      },
+      {
+        "kmPerPx": 1
+      },
+      {
+        "kmPerPx": 4
+      }
+    ],
+    "surface": "land",
+    "category": "temperate-land"
   }
 ]
