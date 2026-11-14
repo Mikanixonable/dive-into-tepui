@@ -66,6 +66,13 @@ const LAYOUT_HELPERS = `
     .filter((el) => el.tagName === 'INPUT' || el.tagName === 'SELECT' || (el.textContent?.trim().length ?? 0) > 0)
     .map((el) => ({ tag: el.tagName, id: el.id, text: el.textContent?.trim().slice(0, 32) ?? '', size: parseFloat(getComputedStyle(el).fontSize) }))
     .filter((item) => Number.isFinite(item.size) && item.size < 10);
+  const undersizedTouchTargets = (scope = document) => {
+    if (!matchMedia('(pointer: coarse)').matches) return [];
+    return [...scope.querySelectorAll('.w-hit, #touch-ui.shown .tbtn, button, input, select, [role="button"], [role="switch"]')]
+      .filter(visible)
+      .map((el) => ({ tag: el.tagName, id: el.id, text: el.textContent?.trim().slice(0, 32) ?? '', ...rect(el) }))
+      .filter((item) => item.width < 44 || item.height < 44);
+  };
 `;
 
 async function pressKey(key, code, keyCode) {
@@ -196,10 +203,15 @@ async function checkOverlayGeometry(selector, label) {
     const state = await devTools.evaluate(`(() => {
       ${LAYOUT_HELPERS}
       const el = document.querySelector(${JSON.stringify(selector)});
-      if (!visible(el)) return { visible: false, inside: false, tiny: [] };
-      return { visible: true, inside: insideViewport(rect(el)), tiny: tinyInteractiveText(el) };
+      if (!visible(el)) return { visible: false, inside: false, tiny: [], undersized: [] };
+      return {
+        visible: true,
+        inside: insideViewport(rect(el)),
+        tiny: tinyInteractiveText(el),
+        undersized: undersizedTouchTargets(el),
+      };
     })()`);
-    if (!state.visible || !state.inside || state.tiny.length) {
+    if (!state.visible || !state.inside || state.tiny.length || state.undersized.length) {
       throw new Error(`${label} geometry failed at ${viewport.name} ${viewport.width}x${viewport.height}: ${JSON.stringify(state)}`);
     }
   }
@@ -324,7 +336,9 @@ async function checkCombatLayout() {
       }
       const tiny = tinyInteractiveText(document.getElementById('hud'));
       if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
-      return { errors, shelf, rails, shelfPanels, floating, chromeRect, tiny };
+      const undersized = undersizedTouchTargets();
+      if (undersized.length) errors.push('touch target below 44px: ' + JSON.stringify(undersized));
+      return { errors, shelf, rails, shelfPanels, floating, chromeRect, tiny, undersized };
     })()`);
     if (layout.errors.length) {
       throw new Error(`Combat layout failed at ${viewport.name} ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
@@ -405,7 +419,9 @@ async function checkMapLayout() {
       }
       const tiny = tinyInteractiveText(document.getElementById('hud'));
       if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
-      return { errors, rails, panels, predictRect, chromeRect, occupied, actual, tiny };
+      const undersized = undersizedTouchTargets();
+      if (undersized.length) errors.push('touch target below 44px: ' + JSON.stringify(undersized));
+      return { errors, rails, panels, predictRect, chromeRect, occupied, actual, tiny, undersized };
     })()`);
     if (layout.errors.length) {
       throw new Error(`Map layout failed at ${viewport.name} ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
@@ -517,6 +533,24 @@ async function checkPauseMenu() {
   })()`);
   expectAll('Pause menu shielding failed', state);
   await checkOverlayGeometry('#hud-pause-menu', 'Pause menu');
+  await applyViewport({ width: 320, height: 568 });
+  const settingsScroll = await devTools.evaluate(`(() => {
+    const settingsTab = [...document.querySelectorAll('#hud-pause-menu .pm-tabs .w-btn')]
+      .find((button) => button.textContent?.trim() === 'SETTINGS');
+    settingsTab?.click();
+    const content = document.querySelector('#hud-pause-menu .pm-tab-content');
+    if (!content) return { exists: false, scrollable: false, reachedEnd: false };
+    const scrollable = ['auto', 'scroll'].includes(getComputedStyle(content).overflowY)
+      && content.scrollHeight > content.clientHeight;
+    content.scrollTop = content.scrollHeight;
+    return {
+      exists: true,
+      scrollable,
+      reachedEnd: scrollable && content.scrollTop + content.clientHeight >= content.scrollHeight - 1,
+    };
+  })()`);
+  expectAll('Pause menu settings content must scroll to its end on a compact viewport', settingsScroll);
+  await clearViewport();
   await pressKey('Escape', 'Escape', 27);
   await waitFor(
     `(document.getElementById('hud-pause-menu') === null || getComputedStyle(document.getElementById('hud-pause-menu')).display === 'none')`,
@@ -732,7 +766,9 @@ async function checkConstructionLayout() {
       }
       const tiny = tinyInteractiveText(workspace);
       if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
-      return { errors, rects, tiny };
+      const undersized = undersizedTouchTargets(workspace);
+      if (undersized.length) errors.push('touch target below 44px: ' + JSON.stringify(undersized));
+      return { errors, rects, tiny, undersized };
     })()`);
     if (state.errors.length) {
       throw new Error(`Construction layout failed at ${viewport.name} ${viewport.width}x${viewport.height}: ${state.errors.join('; ')}; ${JSON.stringify(state)}`);
@@ -892,7 +928,10 @@ async function bootAndCheckReady() {
 }
 
 async function runConfiguredScenario() {
-  if (emulateTouch) await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  if (emulateTouch) {
+    await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await waitFor(`matchMedia('(pointer: coarse)').matches`, 'coarse pointer emulation');
+  }
   const pageQuery = layoutOnly
     ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=1`
     : query;
