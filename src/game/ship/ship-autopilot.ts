@@ -206,10 +206,10 @@ export class ShipAutopilot {
     const first = this.host.plan.firstNode();
     if (this.phase === 'idle') {
       // 中断したノードが先頭に居るあいだは予定を立てない。先頭が変われば中断は解ける。
-      if (first !== undefined && this.abortedNode !== null && !sameNode(this.abortedNode, first)) {
+      if (first !== null && this.abortedNode !== null && !sameNode(this.abortedNode, first)) {
         this.abortedNode = null;
       }
-      if (first === undefined || this.abortedNode !== null) {
+      if (first === null || this.abortedNode !== null) {
         this.scheduled = null;
         return;
       }
@@ -218,7 +218,7 @@ export class ShipAutopilot {
       return;
     }
     // 予定のノードが編集・消費で先頭から外れたら、現在の段を畳んで立て直す。
-    if (this.scheduled !== null && (first === undefined || !sameNode(this.scheduled.node, first))) {
+    if (this.scheduled !== null && (first === null || !sameNode(this.scheduled.node, first))) {
       this.stop();
       return;
     }
@@ -239,7 +239,7 @@ export class ShipAutopilot {
     const scheduled = this.scheduled;
     if (scheduled === null) { this.phase = 'idle'; return; }
     const first = this.host.plan.firstNode();
-    if (first === undefined || !sameNode(scheduled.node, first)) { this.stop(); return; }
+    if (first === null || !sameNode(scheduled.node, first)) { this.stop(); return; }
 
     const vgo = velocityToGo(scheduled.node, motion.state, attractors, pivot);
     const vgoMag = len(vgo);
@@ -275,7 +275,7 @@ export class ShipAutopilot {
   // 再武装しない(航行指令の中断へ繋ぐ口)。
   public interrupt(): void {
     const first = this.host.plan.firstNode();
-    if (first === undefined) return;
+    if (first === null) return;
     if (this.phase === 'idle' && this.scheduled === null) return;
     this.abortedNode = first;
     this.stop();
@@ -312,7 +312,7 @@ export class ShipAutopilot {
   // ランベルトで修正点へ乗り継ぐノードを残り計画の先頭へ足す。
   private replanAfterBurn(attractors: readonly CelestialBody[], pivot: number): void {
     const next = this.host.plan.firstNode();
-    if (next === undefined) return;
+    if (next === null) return;
     const state = this.host.motion.state;
     const tof = next.t - state.t;
     const tC = state.t + Math.max(CORRECTION_LEAD_MIN, tof * CORRECTION_FRACTION);
