@@ -15,8 +15,8 @@ import {
   SHIP_RADIATING_AREA_PER_MASS,
   SHIP_BCINV,
   SHIP_SRP_COEFF,
-  shipMotionOptions,
-} from '../dynamic/dynamic-entity/ship';
+  shipMotionProperties,
+} from '../dynamic/dynamic-entity/combat-ship-entity';
 import type { SerializedPowerSystem } from '../player/power';
 import type { SerializedRadiatorSystem } from '../player/radiator';
 import { AeroLoad } from '../player/aero-load';
@@ -259,7 +259,7 @@ export class ModularShipMotion extends DynamicMotion {
     // 船体形状から初期質量・慣性・衝突特性を得る。
     const shape = shipPhysicsShape(assembly);
     if (shape === null) throw new Error('modular ship requires a non-empty valid assembly');
-    super(state, shipMotionOptions(withInertia(attitude, shape), shape.mass.boundingRadius, {
+    super(state, shipMotionProperties(withInertia(attitude, shape), shape.mass.boundingRadius, {
       mass: shape.mass.totalMass,
       collides: true,
       engagementAnchor: assembly.playerOwned,
