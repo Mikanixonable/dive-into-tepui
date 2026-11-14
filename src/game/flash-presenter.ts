@@ -5,6 +5,7 @@ import { addScaled } from '../math/vec3';
 import { kinematicState } from '../physics/kinematic-state';
 import type { KinematicState } from '../physics/kinematic-state';
 import type { FlashEffect } from '../render/vfx/flash-effects-view';
+import type { FlashBlend } from '../render/vfx/flash-effects-view';
 import type { BulletType } from './dynamic/dynamic-entity/bullet-reaction';
 import type { RunEvent, RunEventBody } from './run-events';
 
@@ -15,6 +16,7 @@ type FlashKind =
   | 'muzzle'
   | 'destroy1'
   | 'destroy2'
+  | 'smoke'
   | 'gasPuff1'
   | 'gasPuff2'
   | 'partBreak';
@@ -26,6 +28,7 @@ interface FlashAppearance {
   readonly size1: number; // 寿命末の一辺 [m]
   readonly peakBrightness: number; // 発生直後の最大の明るさ倍率
   readonly dimsInGunsight: boolean; // 照準ズーム中に減光するか
+  readonly blend?: FlashBlend; // 省けば加算合成
 }
 
 const ZOOM_DIM_SCALE = 0.02; // 照準ズーム中に減光する種別の明るさ倍率(完全には消さない)
@@ -38,6 +41,8 @@ const FLASH_APPEARANCE: Record<FlashKind, FlashAppearance> = {
   // 撃破の芯(1)と外殻(2)の2枚。
   destroy1: { color: '#ffb36b', size0: 10, size1: 110, peakBrightness: 1, dimsInGunsight: false },
   destroy2: { color: '#fffbe8', size0: 6, size1: 40, peakBrightness: 1, dimsInGunsight: false },
+  // 爆炎の盛りを過ぎてから広がる黒煙。通常合成の暗い塊として描く。
+  smoke: { color: '#2a2a30', size0: 20, size1: 160, peakBrightness: 1, dimsInGunsight: false, blend: 'smoke' },
   // ガスの放出。薄く広がる灰色の板を2枚重ねて気体らしさを出す。
   gasPuff1: { color: '#aaaaaa', size0: 1.0, size1: 8.0, peakBrightness: 0.3, dimsInGunsight: false },
   gasPuff2: { color: '#ffffff', size0: 0.5, size1: 6.0, peakBrightness: 0.4, dimsInGunsight: false },
@@ -51,10 +56,17 @@ const PLASMA_IMPACT_FLASH_DURATION = 0.3;
 const MUZZLE_FLASH_DURATION = 0.07;
 const DESTROY_FLASH1_DURATION = 1.1;
 const DESTROY_FLASH2_DURATION = 0.5;
+// 黒煙は撃破の瞬間から遅れて始まり、閃光と爆炎が消えたあとも残る [s]。
+const SMOKE_DELAY = 0.3;
+const SMOKE_DURATION = 3.0;
 const GAS_PUFF1_DURATION = 0.45;
 const GAS_PUFF2_DURATION = 0.35;
 const PART_BREAK_FLASH_DURATION = 0.5;
 
+// 発生時の状態を dt 秒後へ送った状態。発生源の速度で運んだ位置と、その時刻を持つ。
+function delayed(state: KinematicState, dt: number): KinematicState {
+  return kinematicState<'eci'>(state.t + dt, addScaled(state.r, state.v, dt), state.v);
+}
 // 起きた閃光1件。発生時の状態(位置・発生源速度とその時刻)だけを持ち、経過・現在位置は
 // そのフレームの表示時刻から出す(R5)。
 interface SpawnedFlash {
@@ -89,6 +101,8 @@ export class FlashPresenter {
       const age = displayTime - flash.state.t;
       if (age >= flash.duration) continue;
       spawned.push(flash);
+      // 遅れて始まる閃光は、開始時刻までは保持しておくだけで描かない。
+      if (age < 0) continue;
       // 軌道速度で流れて見えないよう、発生源の速度で表示時刻まで運ぶ。
       const { r, v, t } = flash.state;
       const appearance = FLASH_APPEARANCE[flash.kind];
@@ -101,6 +115,7 @@ export class FlashPresenter {
         size0: appearance.size0 * flash.sizeScale,
         size1: appearance.size1 * flash.sizeScale,
         brightness: appearance.peakBrightness * (dimmed ? ZOOM_DIM_SCALE : 1),
+        blend: appearance.blend ?? 'additive',
       });
     }
     this.spawned = spawned;
@@ -131,6 +146,7 @@ export class FlashPresenter {
         // 撃破の芯と外殻の2枚を、機体模型の倍率へ見合った大きさで重ねる。
         this.add(body.state, 'destroy1', DESTROY_FLASH1_DURATION, body.modelScale);
         this.add(body.state, 'destroy2', DESTROY_FLASH2_DURATION, body.modelScale);
+        this.add(delayed(body.state, SMOKE_DELAY), 'smoke', SMOKE_DURATION, body.modelScale);
         return;
       case 'assemblyPartBroken':
         this.add(body.state, 'partBreak', PART_BREAK_FLASH_DURATION);

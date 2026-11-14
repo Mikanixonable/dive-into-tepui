@@ -11,13 +11,10 @@ import unittest
 import bake
 import real_renderer
 
+from common import contract_hash
+
 
 ROOT = Path(__file__).resolve().parents[2]
-
-
-def contract_hash(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
-                                      ensure_ascii=False, allow_nan=False).encode()).hexdigest()
 
 
 class RendererTests(unittest.TestCase):

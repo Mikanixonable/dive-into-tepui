@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>表示の文法</title>
+<link rel="stylesheet" href="foundation/tepui-base.css">
+<link rel="stylesheet" href="foundation/ref.css">
+<style>
+  .sys-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: var(--space-5); }
+  .sys-role { display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); align-items: center; }
+  .sys-role .rf-swatch { width: 40px; height: 40px; border-radius: var(--radius-control); grid-row: span 2; }
+  .sys-role b { font-size: var(--font-m); }
+  .sys-role span { font-size: var(--font-xs); color: var(--text-dim); }
+  .sys-widths { display: flex; flex-wrap: wrap; gap: var(--space-5); align-items: start; }
+  .sys-widths .ix-panel { flex: 0 0 auto; }
+  .sys-w-cap { font-size: var(--font-xxs); color: var(--text-dim); margin-bottom: var(--space-3); letter-spacing: var(--tracking-label); }
+  .sys-ok { color: var(--color-success); }
+  .sys-ng { color: var(--color-error); }
+  .sys-stack { display: grid; gap: var(--space-4); }
+  .sys-demo-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+</style>
+</head>
+<body class="rf" data-title="01 表示の文法" data-sub="色・行・状態・キー・メーター・強弱・警報 — 全画面が共有する規則">
+<main class="rf-main">
+
+<p class="rf-intro">
+  現行の HUD は、部品(ガラス面・ウィジェット・トークン)は揃っているのに、<b>その上で「何を何色で、どの形で出すか」の規則が無い</b>。
+  そのため同じ赤が「選択中」「ON」「主要ボタン」「満タン」「危険」を同時に意味し、ショートカットの書き方は4通りあり、値は右端で切れる。
+  このページは、改修後の全画面が共有する<b>表示の文法</b>を定める。部品は <code>foundation/ref.css</code> の <code>.ix-*</code> で、値はすべて既存トークンから導いている。
+  上の「配色」で11プリセットを切り替えて、どの配色でも規則が保たれることを確かめられる。
+</p>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">01</span>色は意味で引く</h2>
+<p class="rf-lead">
+  色を「目立たせたい度合い」ではなく<b>意味</b>に割り当てる。意味は5つだけで、<b>正常な値は色を持たない</b>。
+  色が付いている=「自分のもの」「狙っている相手」「見ておくべき」「いま対処が要る」のどれかであり、それ以外の色は画面に無い。
+</p>
+<div class="sys-grid">
+  <div class="rf-cell"><div class="sys-role"><i class="rf-swatch" style="background: var(--ix-data)"></i><b>データ</b><span>中立の文字色 <code>--text</code>。値・名前。正常値はすべてこれ</span></div></div>
+  <div class="rf-cell"><div class="sys-role"><i class="rf-swatch" style="background: var(--ix-own)"></i><b>自分</b><span>主役色 <code>--color-primary</code>。自機・自分の選択・自分が掛けているモード</span></div></div>
+  <div class="rf-cell"><div class="sys-role"><i class="rf-swatch" style="background: var(--ix-tgt)"></i><b>ターゲット</b><span>第二色 <code>--color-signal</code>。ロック中の敵・航法目標</span></div></div>
+  <div class="rf-cell"><div class="sys-role"><i class="rf-swatch" style="background: var(--ix-caution)"></i><b>注意</b><span><code>--color-warning</code> + △。見ておくべき(閾値に近い)</span></div></div>
+  <div class="rf-cell"><div class="sys-role"><i class="rf-swatch" style="background: var(--ix-warning)"></i><b>警告</b><span><code>--color-error</code> + ▲。いま対処が要る</span></div></div>
+</div>
+
+<h3>現行の主役色の使われ方</h3>
+<div class="rf-scroll"><table class="rf-table">
+  <tr><th>現行で主役色が付いているもの</th><th>意味</th><th>改修後</th></tr>
+  <tr><td>セクション記号 ORB / VSL / TGT / CNT / MIS / CAM</td><td>装飾</td><td>中立(<code>--text-faint</code>)。見出しは記号でなく題名で読む</td></tr>
+  <tr><td>RCS 燃料・並進出力・船体温度のメーターの塗り</td><td>量</td><td>中立の細線。閾値を越えたときだけ注意/警告色</td></tr>
+  <tr><td>RCS制動 On・進行方向ホールド On(<code>.ui-near</code>)</td><td>自分が掛けているモード</td><td><b>自分</b>の色のままでよいが、文字色ではなく状態ピップで</td></tr>
+  <tr><td>弾薬 40/40 +2連(<code>.ui-danger</code>)</td><td>正常(満タン)</td><td>データ。残弾が閾値を切ったら注意</td></tr>
+  <tr><td>パドル左[7] 展開 などの点灯ボタン</td><td>状態</td><td>ボタンではなく行+ピップ。操作はキーと行のタップ</td></tr>
+  <tr><td>「ターゲット [T]」ボタン(<code>.w-btn--primary</code>)</td><td>操作</td><td>面(<code>--glass-control</code>)で押せることを示す。色は付けない</td></tr>
+  <tr><td>左右レールの開閉 ◀ ▶・HLP バッジ</td><td>操作</td><td>中立。押せることは面と形で示す</td></tr>
+  <tr><td>ターゲットパネルの左縁の線</td><td>ターゲット</td><td>第二色へ(縁ではなく識別行の面と名前に)</td></tr>
+</table></div>
+
+<h3>配色プリセットの検査 — 主役色と警告色は見分けられるか</h3>
+<p class="rf-lead">
+  「自分」と「警告」が近い色だと、規則を守っても読めない。全プリセットについて、主役色・第二色と警告色・注意色の RGB 距離(0〜441)を、
+  ゲームの <code>themeCssVariables()</code> の出力から計算している。<b>80 未満</b>を衝突とする。
+</p>
+<div class="rf-scroll"><table class="rf-table" id="preset-check"></table></div>
+<p class="rf-lead" id="preset-verdict"></p>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">02</span>1行の文法</h2>
+<p class="rf-lead">
+  すべての計器行は <b>[ラベル] [メーター] [値 単位] [キー]</b> の4要素で、ラベルは左、値は右に揃う。
+  <b>値は決して切らない・折り返さない。</b>幅が足りなければ、まずメーターが縮み、次にキーの列が畳まれ、最後にラベルが省略記号になる。単位は値より一段小さく淡い。
+</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>右レール 300px</span></div><img src="foundation/current/crops/vessel.jpg" alt="現行の艦ステータス。値が右端で切れている" width="300" height="372"></div>
+  <div class="rf-cell is-space">
+    <div class="rf-cell-cap"><b>改修案</b><span>同じ値・同じ幅</span></div>
+    <section class="ix-panel rf-rail-sample">
+      <header class="ix-head"><span class="ix-code">VSL</span><span class="ix-title">艦のステータス</span><span class="ix-head-meta"></span><span class="ix-collapse">▾</span></header>
+      <div class="ix-rows has-keys">
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">RCS 燃料</span></span><span class="ix-gauge" style="--at: 20%"><i style="--v: 100%"></i></span><span class="ix-v">1000<span class="ix-u">/ 1000</span></span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">並進出力</span></span><span class="ix-gauge"><i style="--v: 50%"></i></span><span class="ix-v">中<span class="ix-u">20.0 m/s²</span></span><kbd class="key ix-key">1–4</kbd></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">動圧</span></span><span class="ix-gauge" style="--at: 70%"><i style="--v: 0%"></i></span><span class="ix-v">0<span class="ix-u">Pa</span></span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">船体温度</span></span><span class="ix-gauge" style="--at: 75%"><i style="--v: 38%"></i></span><span class="ix-v">334<span class="ix-u">K</span></span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">弾薬</span></span><span class="ix-v">40<span class="ix-u">/ 40 · 予備 2連</span></span><kbd class="key ix-key">R</kbd></div>
+      </div>
+      <div class="ix-sub">モード</div>
+      <div class="ix-rows has-keys">
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">RCS 制動</span></span><span class="ix-v"><span class="ix-pip on is-own">ON</span></span><kbd class="key ix-key">P</kbd></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">微調整</span></span><span class="ix-v"><span class="ix-pip">OFF</span></span><kbd class="key ix-key">V</kbd></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">進行方向ホールド</span></span><span class="ix-v"><span class="ix-pip on is-own">ON</span></span><kbd class="key ix-key">C</kbd></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">視点の RCS 追従</span></span><span class="ix-v"><span class="ix-pip on">ON</span></span><kbd class="key ix-key">G</kbd></div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<h3>幅が縮んだとき — 300px / 220px(medium のレール)/ 180px</h3>
+<div class="sys-widths">
+  <div><div class="sys-w-cap">300px</div><section class="ix-panel" style="width: 300px"><div class="ix-rows has-keys" id="rows-300"></div></section></div>
+  <div><div class="sys-w-cap">220px</div><section class="ix-panel" style="width: 220px"><div class="ix-rows has-keys" id="rows-220"></div></section></div>
+  <div><div class="sys-w-cap">180px</div><section class="ix-panel" style="width: 180px"><div class="ix-rows has-keys" id="rows-180"></div></section></div>
+</div>
+<p class="rf-lead">どの幅でも値と単位は残り、メーター → キー → ラベルの順に譲る(行の内側が 180px 未満ではキーの列を畳む)。現行はこの順序が逆で、値が先に切れる。</p>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">03</span>状態は形で、キーは1種で</h2>
+<div class="rf-pair">
+  <div class="rf-cell">
+    <div class="rf-cell-cap"><b>状態</b><span>ON / OFF / 自分が掛けているモード</span></div>
+    <div class="sys-stack">
+      <div class="sys-demo-row"><span class="ix-pip">OFF</span><span class="ix-pip on">ON</span><span class="ix-pip on is-own">ON(自分のモード)</span></div>
+      <p class="rf-lead" style="margin:0">現行は <span style="color: var(--color-primary-hover)">On</span> / <span style="color: var(--color-signal)">On</span> / Off を文字色で区別しており、赤い On は警告と区別できない。改修後は点(塗り/輪)と語で示し、色は「自分のモード」にだけ付ける。</p>
+      <div class="w-toggle"><span class="w-toggle-title">切替の操作はトグル(既存の w-toggle)</span><span class="w-toggle-track on"><span class="w-toggle-knob"></span></span></div>
+    </div>
+  </div>
+  <div class="rf-cell">
+    <div class="rf-cell-cap"><b>キーキャップ</b><span>ショートカットの表記は1種</span></div>
+    <table class="rf-table">
+      <tr><th>現行</th><th>改修後</th></tr>
+      <tr><td><code>RCS制動 &lt;kbd&gt;P&lt;/kbd&gt;</code></td><td>RCS 制動 <kbd class="key">P</kbd></td></tr>
+      <tr><td><code>並進出力 1–4</code></td><td>並進出力 <kbd class="key">1–4</kbd></td></tr>
+      <tr><td><code>パドル左[7] 展開</code></td><td>パドル左 <kbd class="key">7</kbd></td></tr>
+      <tr><td><code>進行方向 [F]</code>(ボタン内)</td><td><span class="w-btn w-btn--secondary">進行方向<kbd class="key">F</kbd></span></td></tr>
+      <tr><td><code>視点追従 [G]</code>(点灯ボタン)</td><td><span class="w-btn on">視点追従<kbd class="key">G</kbd></span></td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">04</span>メーター — 量は中立、閾値で色</h2>
+<p class="rf-lead">
+  現行の <code>.w-meter</code> は高さ 12px・主役色の塗りで、満タンの燃料が最も強く主張する。改修後は細い中立の線にし、<b>閾値の目盛り</b>を持たせ、越えたときだけ注意/警告色にする。
+  「自機の量」「ターゲットの装甲」のように持ち主を示したいときだけ、自分/ターゲットの色を使う。
+</p>
+<div class="rf-cell"><div class="ix-rows" style="max-width: 420px">
+  <div class="ix-row"><span class="ix-k"><span class="ix-k-text">正常(燃料 100%)</span></span><span class="ix-gauge" style="--at: 20%"><i style="--v: 100%"></i></span><span class="ix-v">1000<span class="ix-u">kg</span></span></div>
+  <div class="ix-row"><span class="ix-k"><span class="ix-k-text">注意(燃料 18%)</span></span><span class="ix-gauge is-caution" style="--at: 20%"><i style="--v: 18%"></i></span><span class="ix-v is-caution">180<span class="ix-u">kg</span></span></div>
+  <div class="ix-row is-warning"><span class="ix-k"><span class="ix-k-text">警告(船体温度)</span></span><span class="ix-gauge is-warning" style="--at: 75%"><i style="--v: 92%"></i></span><span class="ix-v is-warning">1840<span class="ix-u">K</span></span></div>
+  <div class="ix-row"><span class="ix-k"><span class="ix-k-text">ターゲットの装甲</span></span><span class="ix-gauge is-tgt"><i style="--v: 64%"></i></span><span class="ix-v">7<span class="ix-u">/ 11</span></span></div>
+</div></div>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">05</span>強弱は3段</h2>
+<p class="rf-lead">1枚のパネルには「答え」が1つある(UI-DESIGN §1 原則1)。答えを主読み値にし、根拠を行に、記号・単位・注記を補足にする。3段より細かく強弱を作らない。</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b></div><img src="foundation/current/crops/orbit.jpg" alt="現行の軌道パネル" width="300" height="416"></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>答え=高度と速度</span></div>
+    <section class="ix-panel rf-rail-sample">
+      <header class="ix-head"><span class="ix-code">ORB</span><span class="ix-title">軌道</span><span class="ix-head-meta">基準 地球</span><span class="ix-collapse">▾</span></header>
+      <div class="ix-pair">
+        <div class="ix-readout"><span class="ix-readout-value">420.00<span class="ix-u">km</span></span><span class="ix-readout-cap">高度</span></div>
+        <div class="ix-readout is-s" style="align-self: end"><span class="ix-readout-value">7.66<span class="ix-u">km/s</span></span><span class="ix-readout-cap">速度</span></div>
+      </div>
+      <div class="ix-rows" style="margin-top: var(--space-4)">
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">遠地点 / 近地点</span></span><span class="ix-v">420.05<span class="ix-u">/</span> 419.95<span class="ix-u">km</span></span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">傾斜角 · 周期</span></span><span class="ix-v">97.00°<span class="ix-u">·</span> 1:32:58</span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">動圧</span></span><span class="ix-gauge" style="--at: 70%"><i style="--v: 0%"></i></span><span class="ix-v">0.00<span class="ix-u">kPa</span></span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">船体温度</span></span><span class="ix-gauge" style="--at: 75%"><i style="--v: 30%"></i></span><span class="ix-v">334<span class="ix-u">K</span></span></div>
+      </div>
+      <div class="w-group" style="margin-top: var(--space-4)"><span class="w-group-title">基準</span><span class="w-btn w-btn--dense on">自動</span><span class="w-btn w-btn--dense">地球</span><span class="w-btn w-btn--dense">月</span></div>
+    </section>
+  </div>
+</div>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">06</span>警報は1箇所、案内は短く</h2>
+<p class="rf-lead">注意・警告は上部ストリップの警報灯(件数つき)と、中央上部の警報帯の2箇所だけに出す。警報帯は「何が起きたか」と「取るべき行動のキー」を本文に持ち、右端は確認(<kbd class="key">B</kbd>: 点滅と警報音を止める。警報は条件が戻るまで残る)。操作の案内は文章の帯ではなく、キーと語の短いチップにする。詳細は 05。</p>
+<div class="rf-cell is-space"><div class="sys-stack">
+  <div class="sys-demo-row"><span class="ix-annun"><span class="ix-lamp">CAUTION</span><span class="ix-lamp">WARNING</span></span><span class="rf-lead" style="margin:0">平常</span></div>
+  <div class="sys-demo-row"><span class="ix-annun"><span class="ix-lamp is-caution">CAUTION<span class="ix-lamp-n">1</span></span><span class="ix-lamp">WARNING</span></span><span class="ix-alert is-caution"><span class="ix-alert-level">CAUTION</span><span class="ix-alert-body"><span class="ix-alert-msg"><b>FUEL</b>RCS 燃料 18% — 帰投に要る量を下回る</span><span class="ix-alert-act"><span class="ix-hint-step">噴射を控える</span></span></span><span class="w-btn w-btn--dense w-btn--secondary">確認<kbd class="key">B</kbd></span></span></div>
+  <div class="sys-demo-row"><span class="ix-annun"><span class="ix-lamp is-caution">CAUTION<span class="ix-lamp-n">1</span></span><span class="ix-lamp is-warning">WARNING<span class="ix-lamp-n">1</span></span></span><span class="ix-alert is-warning"><span class="ix-alert-level">WARNING</span><span class="ix-alert-body"><span class="ix-alert-msg"><b>TEMP</b>船体温度 1840 K — 大気圏から離脱する</span><span class="ix-alert-act"><span class="ix-hint-step"><kbd class="key">W</kbd>前進で引き起こし</span><span class="ix-hint-step"><kbd class="key">9</kbd><kbd class="key">0</kbd>放熱板を展開</span></span></span><span class="w-btn w-btn--dense w-btn--secondary">確認<kbd class="key">B</kbd></span></span></div>
+  <div class="sys-demo-row"><span class="ix-hint"><span class="ix-hint-step">軌道をクリック</span><span class="ix-hint-step">ノードをドラッグ</span><span class="ix-hint-step">矢印で Δv</span><span class="ix-hint-step"><kbd class="key">M</kbd> で確定</span></span></div>
+</div></div>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">07</span>追加するトークンと、ゲームへの移し方</h2>
+<p class="rf-lead">新しい色の値は1つも増やさない。足すのは<b>既存トークンへの意味の別名</b>だけで、配色プリセットを切り替えれば全部が追従する。</p>
+<div class="rf-scroll"><table class="rf-table">
+  <tr><th>提案トークン</th><th>導出元</th><th>移す先</th></tr>
+  <tr><td><code>--ix-own</code> / <code>--ix-own-fill</code></td><td><code>--color-primary</code> / <code>--color-primary-fill</code></td><td rowspan="5"><code>src/theme.ts</code> の <code>themeCssVariables()</code> に意味の別名として追加(<code>--role-own</code> 等の名前で)。値を新しく持たない</td></tr>
+  <tr><td><code>--ix-tgt</code> / <code>-fill</code> / <code>-edge</code></td><td><code>--color-signal</code> の 14% / 46%</td></tr>
+  <tr><td><code>--ix-caution</code> / <code>-fill</code> / <code>-edge</code></td><td><code>--color-warning</code> 系</td></tr>
+  <tr><td><code>--ix-warning</code> / <code>-fill</code> / <code>-edge</code></td><td><code>--color-error</code> 系</td></tr>
+  <tr><td><code>--ix-data</code> / <code>-label</code> / <code>-meta</code> / <code>-hairline</code></td><td><code>--text</code> / <code>--text-dim</code> / <code>--text-faint</code> / <code>--fill-2</code></td></tr>
+  <tr><td><code>--ix-gauge-h</code> / <code>-track</code> / <code>-fill</code></td><td><code>--space-2</code> / <code>--fill-2</code> / <code>--text-dim</code></td><td><code>src/hud/widgets/widget-style.ts</code> の <code>.w-meter</code> を細線・中立へ。閾値は <code>Meter</code> の引数に</td></tr>
+</table></div>
+<div class="rf-scroll"><table class="rf-table" style="margin-top: var(--space-5)">
+  <tr><th>部品</th><th>移す先</th><th>既存との関係</th></tr>
+  <tr><td><code>.ix-row</code> <code>.ix-k</code> <code>.ix-v</code> <code>.ix-u</code></td><td><code>src/game/hud/style/combat-panel-rows-style.ts</code> の <code>.row.metric</code> を置き換え</td><td><code>#hud .row</code>(<code>skeleton-style.ts</code>)の flex を grid へ</td></tr>
+  <tr><td><code>.ix-pip</code></td><td><code>src/hud/style/common-ui-style.ts</code></td><td>表示専用。対話部品ではない(ウィジェット11種は増えない)</td></tr>
+  <tr><td><code>.key</code></td><td><code>src/hud/style/common-ui-style.ts</code></td><td><code>#hud kbd</code> の既存規則と、ラベル内の <code>[7]</code> 書きを置き換え</td></tr>
+  <tr><td><code>.ix-gauge</code></td><td><code>src/hud/widgets/widget-style.ts</code>(<code>.w-meter</code>)</td><td>メーターはウィジェットの1種。見た目と閾値の引数を足す</td></tr>
+  <tr><td><code>.ix-head</code> <code>.ix-code</code></td><td><code>src/game/hud/panel-shell.ts</code> と <code>skeleton-style.ts</code> の <code>.panel-shell-head</code></td><td><code>.ui-section-code</code> の色を中立へ</td></tr>
+  <tr><td><code>.ix-strip</code> <code>.ix-warp</code> <code>.ix-annun</code></td><td><code>src/game/hud/panels/top-bar.ts</code> / <code>view-badge.ts</code></td><td>全体ステータスバー(画面固定バッジ)の作り直し。SPEC UI-DESIGN §8 の更新が要る</td></tr>
+  <tr><td><code>.ix-alert</code> <code>.ix-hint</code></td><td><code>src/game/hud/hud-toast.ts</code> ほか</td><td>トーストの2種を、警報帯・通知・案内チップへ分ける。SPEC §8「通知」の更新が要る</td></tr>
+</table></div>
+
+</main>
+<script src="foundation/themes.js"></script>
+<script src="foundation/ref.js"></script>
+<script>
+// 幅を変えた同じ行(02 の幅比較)。
+(function () {
+  const rows = `
+    <div class="ix-row"><span class="ix-k"><span class="ix-k-text">RCS 燃料</span></span><span class="ix-gauge" style="--at: 20%"><i style="--v: 100%"></i></span><span class="ix-v">1000<span class="ix-u">/ 1000</span></span></div>
+    <div class="ix-row"><span class="ix-k"><span class="ix-k-text">並進出力</span></span><span class="ix-gauge"><i style="--v: 50%"></i></span><span class="ix-v">中<span class="ix-u">20.0 m/s²</span></span><kbd class="key ix-key">1–4</kbd></div>
+    <div class="ix-row"><span class="ix-k"><span class="ix-k-text">進行方向ホールド</span></span><span class="ix-v"><span class="ix-pip on is-own">ON</span></span><kbd class="key ix-key">C</kbd></div>`;
+  for (const id of ['rows-300', 'rows-220', 'rows-180']) document.getElementById(id).innerHTML = rows;
+})();
+
+// 配色プリセットの検査: 主役色・第二色と、警告色・注意色の RGB 距離。
+(function () {
+  const rgb = (hex) => { const v = parseInt(hex.slice(1), 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255]; };
+  const dist = (a, b) => { const x = rgb(a), y = rgb(b); return Math.round(Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2])); };
+  const LIMIT = 80;
+  const cell = (d) => `<td class="${d < LIMIT ? 'sys-ng' : 'sys-ok'}">${d}${d < LIMIT ? ' ✕' : ''}</td>`;
+  const sw = (c) => `<i class="rf-swatch" style="background:${c}"></i>`;
+  const table = document.getElementById('preset-check');
+  let html = '<tr><th>プリセット</th><th>主役</th><th>第二</th><th>警告</th><th>主役↔警告</th><th>主役↔注意</th><th>第二↔警告</th><th>主役↔第二</th></tr>';
+  const clean = [];
+  for (const t of window.TEPUI_THEMES) {
+    const v = t.vars;
+    const p = v['--color-primary'], s = v['--color-signal'], e = v['--color-error'], w = v['--color-warning'];
+    const ds = [dist(p, e), dist(p, w), dist(s, e), dist(p, s)];
+    if (ds.every((d) => d >= LIMIT)) clean.push(t.name);
+    html += `<tr><td>${t.name}${t.id === window.TEPUI_DEFAULT_THEME ? '(既定)' : ''}</td><td>${sw(p)}</td><td>${sw(s)}</td><td>${sw(e)}</td>${ds.map(cell).join('')}</tr>`;
+  }
+  table.innerHTML = html;
+  document.getElementById('preset-verdict').innerHTML =
+    `4つの組すべてで ${LIMIT} 以上を保つプリセット: <b>${clean.join('、') || 'なし'}</b>。` +
+    '既定のプリセットは、主役色と警告色が衝突している。改修では、既定を衝突しないプリセットへ替えるか、既定の主役色を警告色から離す。';
+})();
+</script>
+</body>
+</html>
