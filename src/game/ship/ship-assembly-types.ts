@@ -1,6 +1,5 @@
 import type { Quat } from '../../math/quat';
 import type { Vec3 } from '../../math/vec3';
-import type { ShipModuleCatalog } from './ship-module-catalog';
 import type { ShipModuleInstance } from './ship-module-instance';
 import type { ShipAssembly } from './ship-assembly';
 
@@ -76,4 +75,4 @@ export function isDockingModule(
   return module?.kind === 'dock' || module?.kind === 'docking_port';
 }
 
-export type ShipAssemblyCatalog = ShipModuleCatalog;
+
