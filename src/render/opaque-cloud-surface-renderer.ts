@@ -160,6 +160,7 @@ export class OpaqueCloudSurfaceRenderer {
   // 全段のメッシュを親から外し、マテリアルを解放する。雲場のテクスチャは出どころが解放する。
   public dispose(): void {
     this.hide();
+    this.fieldSampler.unbind();
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
     this.material.dispose();
     this.blueNoise.dispose();
