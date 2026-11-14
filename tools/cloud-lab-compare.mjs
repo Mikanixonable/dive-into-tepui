@@ -29,8 +29,9 @@ import { decodePng } from './png.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.cloud-lab');
 const outDir = path.join(buildDir, 'compare');
-const port = 8769;
-const debugPort = 9446;
+// 配信と CDP のポート。環境変数で上書きでき、別の作業ツリーの計測と並行して走らせられる。
+const port = Number(process.env.CLOUD_LAB_PORT ?? 8769);
+const debugPort = Number(process.env.CLOUD_LAB_DEBUG_PORT ?? 9446);
 
 // 撮る面の大きさ。tools/cloud-lab/lab.ts の VIEW_HEIGHT / GLOBE_WIDTH / CAP_SIZE と対。
 const GLOBE_W = 1024;
