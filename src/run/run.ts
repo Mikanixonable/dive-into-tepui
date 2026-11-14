@@ -5,6 +5,7 @@ import { GamePresentation } from '../game/game-presentation';
 import { proteinMotionFrameSample, type ProteinMotionFrameSample } from '../game/protein/protein-motion-metrics';
 import type { PageDevices } from './page-devices';
 import type { StageClass } from '../game/stages/stage';
+import type { CampaignState } from '../game/campaign/campaign-state';
 import type { FrameSections } from '../game/frame-sections';
 import type { LoadingProgress } from '../game/loading-progress';
 import type { RunSummary } from '../game/run-summary';
@@ -32,7 +33,8 @@ export class Run implements SnapshotSource, PerfCountSource {
   private disposed = false;
 
   // stageClass の新しいランを組む。startEpoch は選ばれた開始日時。viewOptions はマップ・天球の表示設定と
-  // 表示パネルのタブの選択、themePalette は選ばれている配色。
+  // 表示パネルのタブの選択、themePalette は選ばれている配色。campaign は引き継ぐキャンペーンの
+  // 状態で、ストーリーのステージが台帳をそこから組む。
   public static async create(
     stageClass: StageClass,
     startEpoch: TdbJulianDate | undefined,
@@ -44,10 +46,13 @@ export class Run implements SnapshotSource, PerfCountSource {
     sections: FrameSections,
     progressReader: ProgressReader,
     progress: LoadingProgress,
+    campaign: CampaignState | null = null,
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
-    const game = await Game.create(stageClass, startEpoch, devices.scene, devices.hud, sections, progress);
+    const game = await Game.create(
+      stageClass, startEpoch, devices.scene, devices.hud, sections, progress, campaign,
+    );
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
       progressReader, progress,
