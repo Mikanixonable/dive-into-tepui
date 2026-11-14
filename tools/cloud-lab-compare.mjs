@@ -1355,6 +1355,13 @@ async function main() {
           pair.distance = false;
           pair.distanceReason = 'typhoon-content-mismatch';
         }
+        // 教師側に層がほぼ無い対 (高層雲の面積率 1% 未満) では、層の内側の構造は
+        // 測れない — 冷たさの場はまばらな冷たい画素の寄せ集めで、その帯配分は
+        // 巻雲の質感ではなく点の分布を映す。対は記録に残し、距離の項からだけ外す。
+        if (pair.highCloudFraction !== null && pair.highCloudFraction < 0.01) {
+          pair.distance = false;
+          pair.distanceReason = 'reference-layer-absent';
+        }
         cirrusPairs.push(pair);
         console.log(`--- ${region.label} ${ladder} (${pair.widthKm.toFixed(0)}x${pair.heightKm.toFixed(0)} km、`
           + `有効 ${rect.width}x${rect.height}・${(pair.validFraction * 100).toFixed(1)}%、`
