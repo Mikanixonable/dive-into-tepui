@@ -32,8 +32,11 @@ import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enem
 import type { ViewMode } from '../view/view-mode';
 import type { StoryEconomy } from '../campaign/story-economy';
 import { advanceShipWorks } from '../campaign/story-works';
+import { captureCarriedFleet, createCarriedShip } from '../campaign/campaign-fleet';
 import type { ConstructionScaleGate } from '../campaign/construction-scale-gate';
-import type { CampaignState } from '../campaign/campaign-state';
+import {
+  CAMPAIGN_FLEET_REPORT_SECONDS, type CampaignState, type CarriedShip,
+} from '../campaign/campaign-state';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。ステージの epoch の
 // 宣言以外から読まない(元期は共有の定数ではなく、ステージの宣言)。
@@ -385,6 +388,41 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     for (const ship of this._dynamicSystem.all().filter(isModularShip)) {
       advanceShipWorks(ship, simTime, this.economy);
     }
+  }
+
+  // 引き継ぎ艦隊の前回の報告時刻と内容。復元したランでは初期値に戻り、最初の
+  // 報告でそのランの艦隊がキャンペーンへ行き直す。
+  private lastFleetReportAt = Number.NEGATIVE_INFINITY;
+  private lastFleetReportJson = '';
+
+  // 引き継ぎ艦隊をキャンペーンへ報告する(GAME.md 11.2)。報告の間隔が空いたときだけ
+  // 艦隊を捕捉し、内容が前回と変わっていれば出来事として送る。force は幕の完了など、
+  // 間隔を待たずにその時点の艦隊を確定させたいときに使う。ストーリーのステージだけが
+  // 呼ぶ。facilityIds はそのステージの拠点(設備船)の id の集合。
+  protected reportCarriedFleet(
+    simTime: number, facilityIds: ReadonlySet<string>, force = false,
+  ): void {
+    if (!force && simTime - this.lastFleetReportAt < CAMPAIGN_FLEET_REPORT_SECONDS) return;
+    this.lastFleetReportAt = simTime;
+    const ships = captureCarriedFleet(
+      this._dynamicSystem.all().filter(isModularShip), facilityIds, simTime,
+    );
+    const json = JSON.stringify(ships);
+    if (json === this.lastFleetReportJson) return;
+    this.lastFleetReportJson = json;
+    this._dynamicSystem.events.record({ kind: 'storyFleetReported', ships });
+  }
+
+  // 引き継ぎ艦を、このステージの開始位置へ置く。stateAt は艦の並び順から置く状態を
+  // 返す。操作対象が居なければ、先頭の艦が操作対象になる。
+  protected placeCarriedFleet(
+    records: readonly CarriedShip[], stateAt: (index: number) => KinematicState,
+  ): void {
+    records.forEach((record, index) => {
+      const ship = createCarriedShip(record, stateAt(index), this._dynamicSystem, this._scene);
+      this._dynamicSystem.add(ship);
+      this._controlSelection.claimIfNone(ship);
+    });
   }
 
   // サルベージの回収を1フレーム分進め、回収分を経済の台帳と備蓄の出来事へ写す。

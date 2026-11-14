@@ -37,7 +37,9 @@ import {
 import {
   ConstructionScaleGate, type ConstructionFacilityTier,
 } from '../campaign/construction-scale-gate';
-import { CAMPAIGN_ELAPSED_REPORT_SECONDS, type CampaignState } from '../campaign/campaign-state';
+import {
+  CAMPAIGN_ELAPSED_REPORT_SECONDS, type CampaignState, type CarriedShip,
+} from '../campaign/campaign-state';
 import {
   nextRaidMilestoneAt, raidPhaseAt, raidPlanEntry, type RaidPlanEntry,
 } from '../campaign/story-raid-calendar';
@@ -55,6 +57,8 @@ const EARTH_POST_ALTITUDE = 420_000;
 // プレイヤー船の開始位置: 月周回軌道の高度 [m] と、中継ドックからの位相のずらし [rad]。
 const PLAYER_ORBIT_ALTITUDE = 100_000;
 const PLAYER_PHASE_RAD = (-30 * Math.PI) / 180 + (0.3 * Math.PI) / 180;
+// 引き継ぎ艦を置く位相の間隔 [rad]。開始位置から艦ごとにずらす。
+const PLAYER_PHASE_STEP_RAD = (0.3 * Math.PI) / 180;
 // 襲撃編隊の出現位置: 対象拠点から軌道面内で遅れる弧長 [m] と、機ごとの間隔 [m]。
 const RAID_SPAWN_D_ALONG = -90_000;
 const RAID_SPAWN_SPACING = 4_000;
@@ -147,6 +151,10 @@ export class StageStoryAct3 extends Stage {
   private readonly facilityTiers: Record<string, ConstructionFacilityTier>;
   // 規模ゲート。拠点の格は facilityTiers が持ち、造船所の完成で書き換わる。
   private readonly scaleGate: ConstructionScaleGate;
+  // このステージの拠点(設備船)の id の集合。引き継ぎ艦隊の捕捉で、拠点そのものを対象から外す。
+  private readonly facilityIds: ReadonlySet<string>;
+  // キャンペーンから引き継いだ艦。入場時に支給船の代わりに置かれる。
+  private carriedShips: readonly CarriedShip[] = [];
 
   // 残存から消えた第3幕の敵の id。幕の完了判定が数える。
   private readonly removedEnemyIds: Set<string>;
@@ -184,6 +192,7 @@ export class StageStoryAct3 extends Stage {
       [STORY_EARTH_OBSERVATION_POST_ID]: this.shipyardBuilt ? 'orbital-shipyard' : 'orbital-dock',
     };
     this.scaleGate = new ConstructionScaleGate(this.facilityTiers);
+    this.facilityIds = new Set(Object.keys(this.facilityTiers));
 
     const shipyardButton = new Button(
       `軌道造船所を建設(素材 ${SHIPYARD_CONSTRUCTION_MATERIALS})`,
@@ -226,7 +235,7 @@ export class StageStoryAct3 extends Stage {
         STORY_LUNAR_BASE_ID, LUNAR_BASE_INITIAL_MATERIALS, LUNAR_BASE_INITIAL_PROPELLANT,
       );
     }
-    stage.setupInitialPlacement();
+    stage.setupInitialPlacement(campaign.carriedShips);
     stage.composeBriefing();
     return stage;
   }
@@ -257,18 +266,26 @@ export class StageStoryAct3 extends Stage {
   }
 
   // 開始状態を置く。第2幕と同じ3拠点に、プレイヤー船を月周回軌道の中継ドック近傍へ、
-  // 第3幕の敵を観測拠点の近傍と地球周回軌道へ置く。
-  private setupInitialPlacement(): void {
+  // 第3幕の敵を観測拠点の近傍と地球周回軌道へ置く。引き継ぎ艦があるときは、支給船の
+  // 代わりにそれらを置く(GAME.md 11.2)。
+  private setupInitialPlacement(carriedShips: readonly CarriedShip[] = []): void {
+    this.carriedShips = carriedShips;
     const moon = this._celestialSystem.find('moon')?.motion;
     const earth = this._celestialSystem.find('earth')?.motion;
     if (moon === undefined || moon === null) throw new Error('story act3: moon not found');
     if (earth === undefined || earth === null) throw new Error('story act3: earth not found');
 
-    this.addPlayer({
-      name: '主力船',
-      assembly: createDefaultCombatPreset(),
-      state: storyAct2CircularOrbitState(moon, 0, PLAYER_ORBIT_ALTITUDE, PLAYER_PHASE_RAD),
-    });
+    if (carriedShips.length > 0) {
+      this.placeCarriedFleet(carriedShips, (index) => storyAct2CircularOrbitState(
+        moon, 0, PLAYER_ORBIT_ALTITUDE, PLAYER_PHASE_RAD + PLAYER_PHASE_STEP_RAD * index,
+      ));
+    } else {
+      this.addPlayer({
+        name: '主力船',
+        assembly: createDefaultCombatPreset(),
+        state: storyAct2CircularOrbitState(moon, 0, PLAYER_ORBIT_ALTITUDE, PLAYER_PHASE_RAD),
+      });
+    }
 
     const { assembly, dockState } = buildStoryLunarBaseAssembly();
     const anchor = surfaceAnchorAtLatLon(
@@ -360,6 +377,9 @@ export class StageStoryAct3 extends Stage {
     return (
       '<b>第3幕 造船</b><br>' +
       '観測拠点の備蓄から素材を払って軌道造船所を建設し、第3幕の自動兵器をすべて排除せよ<br>' +
+      (this.carriedShips.length > 0
+        ? '前幕の艦を引き継いだ。造船所が完成すれば、その場で建造・修理・再編成ができる<br>'
+        : '') +
       '編隊指揮機を落とせば僚機は黙る。襲撃は軌道暦で予報される — 迎撃するか、やり過ごすかは選べる<br>' +
       `[${K.help.label}] キーで操作方法を表示`
     );
@@ -391,6 +411,9 @@ export class StageStoryAct3 extends Stage {
 
     // 所要時間つき建造の完了を進める(GAME.md 11.4)。
     this.advanceStoryWorks(simTime);
+
+    // 引き継ぎ艦隊をキャンペーンへ報告する(GAME.md 11.2)。
+    this.reportCarriedFleet(simTime, this.facilityIds);
 
     // 初期備蓄は作成時に台帳へ入れてある。キャンペーンへは最初のフレームで1度だけ送る。
     if (!this.seedAnnounced) {
@@ -428,6 +451,7 @@ export class StageStoryAct3 extends Stage {
       && this.removedEnemyIds.size >= STORY_ACT3_ENEMY_COUNT) {
       this.actCompleted = true;
       this._dynamicSystem.events.record({ kind: 'storyActCompleted', act: 3 });
+      this.reportCarriedFleet(simTime, this.facilityIds, true);
     }
   }
 

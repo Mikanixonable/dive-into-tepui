@@ -31,7 +31,9 @@ import {
 import {
   ConstructionScaleGate, type ConstructionFacilityTier,
 } from '../campaign/construction-scale-gate';
-import { CAMPAIGN_ELAPSED_REPORT_SECONDS, type CampaignState } from '../campaign/campaign-state';
+import {
+  CAMPAIGN_ELAPSED_REPORT_SECONDS, type CampaignState, type CarriedShip,
+} from '../campaign/campaign-state';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { EnemyDeathCause } from './stage-outcome';
 
@@ -48,6 +50,9 @@ export const STORY_ACT2_FACILITY_TIERS: Readonly<Record<string, ConstructionFaci
   [STORY_LUNAR_ORBIT_DOCK_ID]: 'orbital-dock',
   [STORY_EARTH_OBSERVATION_POST_ID]: 'orbital-dock',
 };
+
+// このステージの拠点(設備船)の id の集合。引き継ぎ艦隊の捕捉で、拠点そのものを対象から外す。
+const FACILITY_IDS: ReadonlySet<string> = new Set(Object.keys(STORY_ACT2_FACILITY_TIERS));
 
 // 中継ドックの軌道高度 [m]、基地の子午線からの位相 [rad]、プレイヤー船の位相のずらし [rad]。
 const LUNAR_ORBIT_ALTITUDE = 100_000;
@@ -131,6 +136,9 @@ export class StageStoryAct2 extends Stage {
   // 規模ゲート。第2幕の拠点の格は STORY_ACT2_FACILITY_TIERS が持つ(GAME.md 11.2)。
   private readonly scaleGate = new ConstructionScaleGate(STORY_ACT2_FACILITY_TIERS);
 
+  // キャンペーンから引き継いだ艦。入場時に支給船の代わりに置かれる。
+  private carriedShips: readonly CarriedShip[] = [];
+
   // 台本の進行(幕完了の記録済みかどうか)と共通の状態から組む。経済の台帳は、復元で
   // なければ動的システムのイベント記録を送り先に新しく作る。初期備蓄を知らせ済みか
   // どうかと、生産の積算に使う前回の時刻も台本の進行として持つ。defeatedEnemyIds は
@@ -181,7 +189,7 @@ export class StageStoryAct2 extends Stage {
         STORY_LUNAR_BASE_ID, LUNAR_BASE_INITIAL_MATERIALS, LUNAR_BASE_INITIAL_PROPELLANT,
       );
     }
-    stage.setupInitialPlacement();
+    stage.setupInitialPlacement(campaign.carriedShips);
     stage.composeBriefing();
     return stage;
   }
@@ -206,20 +214,28 @@ export class StageStoryAct2 extends Stage {
 
   // 開始状態を置く。プレイヤー船(操作対象)を月周回軌道の中継ドックの近傍へ、月面基地を
   // 第1幕と同じ地表固定の開始状態で、観測拠点を地球低軌道へ置き、敵を観測拠点の
-  // 近傍軌道へ散らす。
-  private setupInitialPlacement(): void {
+  // 近傍軌道へ散らす。引き継ぎ艦があるときは、支給船の代わりにそれらを置く
+  // (GAME.md 11.2)。
+  private setupInitialPlacement(carriedShips: readonly CarriedShip[] = []): void {
+    this.carriedShips = carriedShips;
     const moon = this._celestialSystem.find('moon')?.motion;
     const earth = this._celestialSystem.find('earth')?.motion;
     if (moon === undefined || moon === null) throw new Error('story act2: moon not found');
     if (earth === undefined || earth === null) throw new Error('story act2: earth not found');
 
-    this.addPlayer({
-      name: '進出船',
-      assembly: createDefaultCombatPreset(),
-      state: storyAct2CircularOrbitState(
-        moon, 0, LUNAR_ORBIT_ALTITUDE, DOCK_PHASE_RAD + PLAYER_PHASE_OFFSET_RAD,
-      ),
-    });
+    if (carriedShips.length > 0) {
+      this.placeCarriedFleet(carriedShips, (index) => storyAct2CircularOrbitState(
+        moon, 0, LUNAR_ORBIT_ALTITUDE, DOCK_PHASE_RAD + PLAYER_PHASE_OFFSET_RAD * (index + 1),
+      ));
+    } else {
+      this.addPlayer({
+        name: '進出船',
+        assembly: createDefaultCombatPreset(),
+        state: storyAct2CircularOrbitState(
+          moon, 0, LUNAR_ORBIT_ALTITUDE, DOCK_PHASE_RAD + PLAYER_PHASE_OFFSET_RAD,
+        ),
+      });
+    }
 
     const { assembly, dockState } = buildStoryLunarBaseAssembly();
     const anchor = surfaceAnchorAtLatLon(
@@ -312,6 +328,9 @@ export class StageStoryAct2 extends Stage {
     return (
       '<b>第2幕 進出</b><br>' +
       '月軌道ドックを中継して地球低軌道へ進出し、観測拠点の周囲の自動兵器を全て撃破せよ<br>' +
+      (this.carriedShips.length > 0
+        ? '前幕の艦を引き継いだ。敵は地球の近傍にいる — 月の拠点で整備と武装を整えてから進出せよ<br>'
+        : '') +
       '撃破した敵は素材を落とす — 回収して拠点へ持ち帰れば、修理と建造に使える<br>' +
       `[${K.help.label}] キーで操作方法を表示`
     );
@@ -325,6 +344,9 @@ export class StageStoryAct2 extends Stage {
 
     // 所要時間つき建造の完了を進める(GAME.md 11.4)。
     this.advanceStoryWorks(simTime);
+
+    // 引き継ぎ艦隊をキャンペーンへ報告する(GAME.md 11.2)。
+    this.reportCarriedFleet(simTime, FACILITY_IDS);
 
     // 初期備蓄は作成時に台帳へ入れてある。キャンペーンへは最初のフレームで1度だけ送る。
     if (!this.seedAnnounced) {
@@ -360,6 +382,7 @@ export class StageStoryAct2 extends Stage {
       && this.scoreCounter.kills + this.scoreCounter.losses >= this.enemiesAppeared) {
       this.actCompleted = true;
       this._dynamicSystem.events.record({ kind: 'storyActCompleted', act: 2 });
+      this.reportCarriedFleet(simTime, FACILITY_IDS, true);
     }
   }
 

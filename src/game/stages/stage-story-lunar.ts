@@ -33,7 +33,9 @@ type SerializedStoryEconomy,
 } from '../campaign/story-economy';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import { ConstructionScaleGate } from '../campaign/construction-scale-gate';
-import { CAMPAIGN_ELAPSED_REPORT_SECONDS, type CampaignState } from '../campaign/campaign-state';
+import {
+CAMPAIGN_ELAPSED_REPORT_SECONDS, type CampaignState, type CarriedShip,
+} from '../campaign/campaign-state';
 
 // 月面基地のエンティティ id。回収した素材の備蓄先として、キャンペーン出来事もこの id を指す。
 export const STORY_LUNAR_BASE_ID = 'story-lunar-base';
@@ -43,6 +45,10 @@ export const STORY_LUNAR_DEBRIS_ID = 'story-lunar-debris';
 export const STORY_LUNAR_DEBRIS_MATERIALS = 120;
 // ロケットの建造が進む基地のドック。
 const CONSTRUCTION_DOCK_ID = 'dock-left';
+// このステージの拠点(設備船)の id。引き継ぎ艦隊の捕捉で、拠点そのものを対象から外す。
+const FACILITY_IDS: ReadonlySet<string> = new Set([STORY_LUNAR_BASE_ID]);
+// 引き継ぎ艦を置く位相の間隔 [rad]。デブリの位相から艦ごとにずらす。
+const CARRIED_PHASE_STEP_RAD = (2 * Math.PI) / 180;
 // デブリの軌道高度 [m] と、基地の子午線からの位相 [rad]。
 const DEBRIS_ALTITUDE = 100_000;
 const DEBRIS_PHASE_RAD = (50 * Math.PI) / 180;
@@ -108,22 +114,29 @@ assembly.assertValid();
 return assembly;
 }
 
-// 時刻 t のデブリの初期状態: 天体の赤道上を、基地の子午線から位相ぶん先行する円軌道。
+// 時刻 t の円軌道の状態: 天体の赤道上を、基地の子午線から位相 phaseRad ぶん先行する。
 // 基地を置く天体ならどれでも同じ形に置ける。
-export function storyLunarDebrisState(body: CelestialBody, t: number): KinematicState {
+export function storyLunarCircularOrbitState(
+body: CelestialBody, t: number, altitude: number, phaseRad: number,
+): KinematicState {
 const spin = body.spinRotationAt(t);
 const meridian = spin === null? v3(1, 0, 0): qRotate(spin.q, v3(1, 0, 0));
 const east = spin === null? v3(0, 1, 0): qRotate(spin.q, v3(0, 1, 0));
 const pole = spin === null? v3(0, 0, 1): qRotate(spin.q, v3(0, 0, 1));
 const direction = add(
-scale(meridian, Math.cos(DEBRIS_PHASE_RAD)), scale(east, Math.sin(DEBRIS_PHASE_RAD)),
+scale(meridian, Math.cos(phaseRad)), scale(east, Math.sin(phaseRad)),
 );
-const radius = body.def.radius + DEBRIS_ALTITUDE;
+const radius = body.def.radius + altitude;
 const speed = Math.sqrt(body.def.mu / radius);
 const rel = kinematicState<'primaryRel'>(
 t, scale(direction, radius), scale(cross(pole, direction), speed),
 );
 return addPrimaryRelative(body.stateAt(t), rel);
+}
+
+// 時刻 t のデブリの初期状態: 基地の子午線から位相ぶん先行する円軌道。
+export function storyLunarDebrisState(body: CelestialBody, t: number): KinematicState {
+return storyLunarCircularOrbitState(body, t, DEBRIS_ALTITUDE, DEBRIS_PHASE_RAD);
 }
 
 // state が天体 body のまわりで、地表より上に近地点を持つ軌道へ投入されたかどうか。
@@ -151,6 +164,7 @@ private readonly economyLedger: StoryEconomy;
 private readonly scaleGate = new ConstructionScaleGate({
 [STORY_LUNAR_BASE_ID]: 'surface-base',
 });
+
 
 // 台本の進行(軌道投入・デブリ回収・幕完了の記録済みかどうか)と共通の状態から組む。
 // 経済の台帳は、復元でなければ動的システムのイベント記録を送り先に新しく作る。
@@ -207,7 +221,7 @@ stage.economyLedger.credit(
 STORY_LUNAR_BASE_ID, LUNAR_BASE_INITIAL_MATERIALS, LUNAR_BASE_INITIAL_PROPELLANT,
 );
 }
-stage.setupInitialPlacement();
+stage.setupInitialPlacement(campaign.carriedShips);
 stage.composeBriefing();
 return stage;
 }
@@ -234,8 +248,8 @@ serialized?.lastElapsedReportAt?? 0,
 }
 
 // 開始状態を置く。基地は月の赤道・本初子午線の地表に固定し、その横のドックで建造中の
-// ロケットごと錨へ載せる。
-private setupInitialPlacement(): void {
+// ロケットごと錨へ載せる。引き継ぎ艦はデブリと同じ高度の軌道へ、位相をずらして置く。
+private setupInitialPlacement(carriedShips: readonly CarriedShip[] = []): void {
 const moon = this._celestialSystem.find('moon')?.motion;
 if (moon === undefined || moon === null) throw new Error('story lunar: moon not found');
 const { assembly, dockState} = buildStoryLunarBaseAssembly();
@@ -265,6 +279,9 @@ this._dynamicSystem,
 this._scene,
 );
 this._dynamicSystem.add(debris);
+this.placeCarriedFleet(carriedShips, (index) => storyLunarCircularOrbitState(
+moon, 0, DEBRIS_ALTITUDE, DEBRIS_PHASE_RAD + CARRIED_PHASE_STEP_RAD * (index + 1),
+));
 }
 
 // ステージ開始時のブリーフィング文言を返す。
@@ -285,6 +302,9 @@ if (player!== null) this.logistics.updateLogistics(simTime, player, simSpeed);
 
 // 所要時間つき建造の完了を進める(GAME.md 11.4)。
 this.advanceStoryWorks(simTime);
+
+// 引き継ぎ艦隊をキャンペーンへ報告する(GAME.md 11.2)。
+this.reportCarriedFleet(simTime, FACILITY_IDS);
 
 // 初期備蓄は作成時に台帳へ入れてある。キャンペーンへは最初のフレームで1度だけ送る。
 if (!this.seedAnnounced) {
@@ -331,6 +351,7 @@ if (!this.debrisRecovered) this.updateDebrisRecovery(ships, moon, simTime);
 if (this.orbitReached && this.debrisRecovered &&!this.actCompleted) {
 this.actCompleted = true;
 this._dynamicSystem.events.record({ kind: 'storyActCompleted', act: 1});
+this.reportCarriedFleet(simTime, FACILITY_IDS, true);
 }
 }
 
