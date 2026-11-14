@@ -1,29 +1,21 @@
-// クリエイティブモードの手動スポーン。形・色から、自機の前方へ出す敵を組み立てる。タンパク質の
-// 敵はアセットの取得を待つ形があるので、実体ではなく要求で表す。
+// クリエイティブモードの手動スポーン。形・色から、自機の前方へ出す敵を組み立てる。
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { addScaled } from '../../math/vec3';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
 import {
-  generateApproachingEnemy, generateAssemblyEnemy, generateDriftingEnemy, proteinFormationRequests,
+  generateApproachingEnemy, generateAssemblyEnemy, generateDriftingEnemy,
 } from '../stages/spawner/enemy-generator';
 import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './stage-controls-panel';
 import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import type { ModularShip } from '../ship/modular-ship';
-import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
 
-// 手動スポーンで出す敵1体。その場で組んだ敵か、アセットの取得を待つタンパク質の敵の要求。
-export type ManualEnemySpawn =
-  | { readonly kind: 'enemy'; readonly enemy: Enemy }
-  | { readonly kind: 'protein-enemy'; readonly request: ProteinEnemyRequest };
-
-// 敵を出す距離 [m] と、敵の名前・陣形 id の次に発番する連番。
+// 敵を出す距離 [m] と、敵の名前の次に発番する連番。
 export interface SerializedManualSpawn {
   readonly spawnDistance: number;
   readonly enemyNameAllocator: number;
-  readonly formationIdAllocator: number;
 }
 
 // 敵を出す、自機前方の既定距離 [m]。
@@ -31,20 +23,17 @@ const DEFAULT_SPAWN_DISTANCE = 2000;
 
 export class ManualSpawn {
   private readonly enemyNameAllocator: EntityIdAllocator;
-  private readonly formationIdAllocator: EntityIdAllocator;
 
-  // _spawnDistance は自機前方の、敵を出す距離 [m]。enemyNameCounter・formationIdCounter は敵の名前と
-  // 陣形 id の次に発番する連番で、省けば連番の初めから発番する。
+  // _spawnDistance は自機前方の、敵を出す距離 [m]。enemyNameCounter は敵の名前の次に発番する
+  // 連番で、省けば連番の初めから発番する。
   private constructor(
     private readonly scene: THREE.Scene,
     private readonly attractors: readonly CelestialBody[],
     private readonly idAllocators: EntityIdAllocators,
     private _spawnDistance = DEFAULT_SPAWN_DISTANCE,
     enemyNameCounter = 0,
-    formationIdCounter = 0,
   ) {
     this.enemyNameAllocator = new EntityIdAllocator('MANUAL-', enemyNameCounter);
-    this.formationIdAllocator = new EntityIdAllocator('FORMATION-', formationIdCounter);
   }
 
   // 新しいランの手動スポーンを、既定の距離と連番の初めから組む。
@@ -59,8 +48,8 @@ export class ManualSpawn {
     serialized: SerializedManualSpawn,
     scene: THREE.Scene, attractors: readonly CelestialBody[], idAllocators: EntityIdAllocators,
   ): ManualSpawn {
-    const { spawnDistance, enemyNameAllocator, formationIdAllocator } = serialized;
-    return new ManualSpawn(scene, attractors, idAllocators, spawnDistance, enemyNameAllocator, formationIdAllocator);
+    const { spawnDistance, enemyNameAllocator } = serialized;
+    return new ManualSpawn(scene, attractors, idAllocators, spawnDistance, enemyNameAllocator);
   }
 
   // 敵を出す距離と連番を直列化した形へ畳む。
@@ -68,7 +57,6 @@ export class ManualSpawn {
     return {
       spawnDistance: this._spawnDistance,
       enemyNameAllocator: this.enemyNameAllocator.serialize(),
-      formationIdAllocator: this.formationIdAllocator.serialize(),
     };
   }
 
@@ -80,40 +68,24 @@ export class ManualSpawn {
   }
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。知らない形なら null。
-  public enemy(player: ModularShip, shape: EnemySpawnShape, colorValue: string): ManualEnemySpawn | null {
+  public enemy(player: ModularShip, shape: EnemySpawnShape, colorValue: string): Enemy | null {
     const color = Number(colorValue);
     const state = this.frontOf(player);
     const name = this.enemyNameAllocator.next();
-    // 形ごとに生成器が違う。タンパク質はアセットの取得を待つので、要求で返す。
+    // 形ごとに生成器が違う。
     const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
     if (shapeDefinition === undefined) return null;
-    if (shapeDefinition.kind === 'protein') {
-      return {
-        kind: 'protein-enemy',
-        request: { name, state, assetId: shapeDefinition.assetId, formationId: null, formationRole: null },
-      };
-    }
     if (shapeDefinition.kind === 'assembly') {
       // seed は出た個体の形を決めるだけなので、呼ぶたびに新しい乱数でよい。
       const seed = Math.floor(Math.random() * 2 ** 31);
-      return {
-        kind: 'enemy',
-        enemy: generateAssemblyEnemy(name, state, seed, color, color, this.scene, this.idAllocators),
-      };
+      return generateAssemblyEnemy(name, state, seed, color, color, this.scene, this.idAllocators);
     }
-    const enemy = shapeDefinition.kind === 'drifting'
+    return shapeDefinition.kind === 'drifting'
       ? generateDriftingEnemy(name, state, color, color, this.scene, this.idAllocators)
       : generateApproachingEnemy(
         name, state, this.attractors, color, color, shapeDefinition.typeIndex, null,
         this.scene, this.idAllocators,
       );
-    return { kind: 'enemy', enemy };
-  }
-
-  // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機の前方へ出す要求を返す。
-  public proteinFormation(player: ModularShip): readonly ProteinEnemyRequest[] {
-    const formationId = this.formationIdAllocator.next();
-    return proteinFormationRequests(formationId, this.frontOf(player), player.motion.state.r, formationId);
   }
 
   // 自機の前方 spawnDistance [m]、自機と同じ速度の状態。

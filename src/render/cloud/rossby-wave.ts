@@ -14,7 +14,11 @@ const WAVE_PHASE_SPEED = (3 * Math.PI / 180) / 86400;
 // 位相角の進む速さ [rad/s](波数 × 位相速度)。
 const WAVE_PHASE_RATE = WAVE_NUMBER * WAVE_PHASE_SPEED;
 // 流線関数から出る南北風の代表速度 [m/s]。中緯度の上層平均風より小さく、蛇行を読める振幅にする。
-const MERIDIONAL_SPEED = 8;
+// 8 では波数 5 の波が S 帯の k=4..8 に尖りを作り、中緯度の相関時間も実写より長くなるため
+// 半分へ (cloud-lab Phase 3-12: S 帯の尖り 14.65 → 7.90、中緯度の相関時間 12.1/11.3 h →
+// 8.3/7.7 h)。波そのものは SPEC「中緯度の偏西風は全球規模のロスビー波によって蛇行する」の
+// とおり残す — 全除去は移流の速さ比を崩して motionReference を悪化させる。
+const MERIDIONAL_SPEED = 4;
 
 // 半径 surfaceRadius [m] の天体で、代表速度を与える流線関数の振幅 [m²/s]。
 function streamfunctionAmplitude(surfaceRadius: number): number {

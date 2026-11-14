@@ -25,7 +25,6 @@ import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { PilotControls } from './dynamic-entity/pilot-controls';
 import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
-import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
 import type { ShipModuleEmphasisMap } from '../../render/dynamic/ship/ship-render-contract';
 import type { SunLight } from '../../render/pipeline/sun-light';
 import type { BodyShadow } from '../../render/pipeline/shadow/body-shadow';
@@ -238,17 +237,17 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return this.all().filter(isModularShip).find((p) => p.motion.alive) ?? null;
   }
 
-  // 当該フレームの表示オブジェクトを、エンティティ一覧を走査して同期する。proteinDisplay はタンパク質の敵に
-  // 共通の表示形態と着色、shipModuleEmphasis はモジュール船のモジュールごとの強調とずらしの宣言。
+  // 当該フレームの表示オブジェクトを、エンティティ一覧を走査して同期する。shipModuleEmphasis は
+  // モジュール船のモジュールごとの強調とずらしの宣言。
   public sync(
     displayTime: number, active: Controllable | null, camera: CameraFrame, style: RenderStyle,
-    visual: EntityVisualSettings, proteinDisplay: ProteinDisplaySettings,
+    visual: EntityVisualSettings,
     shipModuleEmphasis: ShipModuleEmphasisMap | null,
     sunLight: SunLight, bodyShadow: BodyShadow, orbitRef: OrbitReference | undefined,
   ): void {
     // 全個体が同じ1つのフレーム入力を読むよう、走査の前に組んでおく。
     const viewFrame = {
-      displayTime, camera, style, visual, proteinDisplay, shipModuleEmphasis, sunLight, bodyShadow,
+      displayTime, camera, style, visual, shipModuleEmphasis, sunLight, bodyShadow,
       pools: this.instancedPools,
     };
     // instance pool の受付期間で全 Entity を挟む。

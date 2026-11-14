@@ -46,7 +46,7 @@ function blurColumn(src, dst, x, width, height, radius) {
 
 // data(width × height)を地表で σ [km] のガウスに近い幅で均す。rowKmPerPx は行ごとの横 1 px の
 // 地表距離 [km] なので、正距円筒では高緯度ほど広い画素幅で均される。
-function blurField(data, width, height, rowKmPerPx, kmPerPxY, wrapX, sigmaKm) {
+export function blurField(data, width, height, rowKmPerPx, kmPerPxY, wrapX, sigmaKm) {
   const columnRadius = boxRadiusFor(sigmaKm / kmPerPxY);
   const rowRadius = Array.from(rowKmPerPx, (km) => boxRadiusFor(sigmaKm / km));
   let src = Float32Array.from(data);

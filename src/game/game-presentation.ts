@@ -171,10 +171,6 @@ export class GamePresentation {
     this.celestialMarkers = new CelestialMarkers(markers, celestialSystem);
     hud.beginRun(activeStage.id);
     const entityDisplayPort = entityDisplayCommands(commands, viewer.entityDisplay);
-    const proteinDisplayControl = activeStage.proteinDisplayControl;
-    if (proteinDisplayControl !== null) {
-      proteinDisplayControl.onProteinDisplayChange = (display) => entityDisplayPort.setProteinDisplay(display);
-    }
     this.entityLines = new EntityLineManager(dynamicSystem, viewer.entityDisplay);
     const cameraCommandPort = cameraCommands(commands, viewer.camera);
     const targetCommands = navTargetCommands(commands, viewer.navTarget);
@@ -474,7 +470,7 @@ export class GamePresentation {
     for (const sound of construction.sounds) this.uiSounds.push(`construction-${sound}`);
     this.syncWorkLight(graphics, camera);
     dynamicSystem.sync(
-      displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay,
+      displayTime, controlled, camera, style, graphics,
       construction.shipModuleEmphasis,
       this.devices.scene.pipeline.sunLight, this.devices.scene.pipeline.bodyShadow,
       orbitRef ?? undefined,
@@ -540,7 +536,7 @@ export class GamePresentation {
     controlled: Controllable | null, orbitRef: OrbitReference | null,
     visibilityPolicy: MapVisibilityPolicy | null, palette: ThemePalette, camera: CameraFrame,
   ): void {
-    const { celestialSystem, activeStage, viewer } = this.game;
+    const { celestialSystem, activeStage } = this.game;
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
     this.objectWindows.sync();
     this.moduleWindows.sync();
@@ -553,7 +549,6 @@ export class GamePresentation {
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
     activeStage.sync(camera, view, displayTime);
-    activeStage.proteinDisplayControl?.syncProteinDisplay(viewer.entityDisplay.proteinDisplay);
     this.hudPanels.sync(view, displayWindow, orbitRef ?? undefined, palette, camera, nowMs);
     this.syncFrameMarkers(nowMs);
     // このフレームのマーカーが出揃った後でなければならないので最後に通す。

@@ -4,8 +4,8 @@
 import { addScaled } from '../math/vec3';
 import { kinematicState } from '../physics/kinematic-state';
 import type { KinematicState } from '../physics/kinematic-state';
-import type { FlashBlend, FlashEffect } from '../render/vfx/flash-effects-view';
-import type { ProteinPhase } from '../render/protein/protein-display';
+import type { FlashEffect } from '../render/vfx/flash-effects-view';
+import type { FlashBlend } from '../render/vfx/flash-effects-view';
 import type { BulletType } from './dynamic/dynamic-entity/bullet-reaction';
 import type { RunEvent, RunEventBody } from './run-events';
 
@@ -19,10 +19,7 @@ type FlashKind =
   | 'smoke'
   | 'gasPuff1'
   | 'gasPuff2'
-  | 'partBreak'
-  | 'proteinCritical'
-  | 'proteinDissociated'
-  | 'proteinDamaged';
+  | 'partBreak';
 
 // 種別1つぶんの見え方。板の一辺は発生直後の size0 から寿命末の size1 まで広がる。
 interface FlashAppearance {
@@ -35,11 +32,6 @@ interface FlashAppearance {
 }
 
 const ZOOM_DIM_SCALE = 0.02; // 照準ズーム中に減光する種別の明るさ倍率(完全には消さない)
-
-// タンパク質の状態遷移フラッシュの大きさ [m] と明るさ。危篤・解離・それ以外の損傷で共通にし、色だけで分ける。
-const PROTEIN_STATE_FLASH_SIZE0 = 2.5;
-const PROTEIN_STATE_FLASH_SIZE1 = 13;
-const PROTEIN_STATE_FLASH_BRIGHTNESS = 0.9;
 
 // TODO: 明るさは 1 天文単位を基準にした目盛りへ手で置いた表示値。ボリュームレンダリングで放射量として組み直す。
 const FLASH_APPEARANCE: Record<FlashKind, FlashAppearance> = {
@@ -56,18 +48,6 @@ const FLASH_APPEARANCE: Record<FlashKind, FlashAppearance> = {
   gasPuff2: { color: '#ffffff', size0: 0.5, size1: 6.0, peakBrightness: 0.4, dimsInGunsight: false },
   // 組み立て型の敵の部品1個が折れた閃光。撃破(destroy1/2)より小さく、着弾より大きい。
   partBreak: { color: '#ffc890', size0: 3, size1: 22, peakBrightness: 1, dimsInGunsight: false },
-  proteinCritical: {
-    color: 0xff3d88, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
-    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
-  },
-  proteinDissociated: {
-    color: 0xa76dff, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
-    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
-  },
-  proteinDamaged: {
-    color: 0x59e7ff, size0: PROTEIN_STATE_FLASH_SIZE0, size1: PROTEIN_STATE_FLASH_SIZE1,
-    peakBrightness: PROTEIN_STATE_FLASH_BRIGHTNESS, dimsInGunsight: true,
-  },
 };
 
 // 種別ごとの寿命 [s]。
@@ -81,24 +61,12 @@ const SMOKE_DELAY = 0.3;
 const SMOKE_DURATION = 3.0;
 const GAS_PUFF1_DURATION = 0.45;
 const GAS_PUFF2_DURATION = 0.35;
-const PROTEIN_STATE_FLASH_DURATION = 0.34;
 const PART_BREAK_FLASH_DURATION = 0.5;
-
-// タンパク質の遷移先のフェーズ、または部位の機能停止('site-disabled')ごとの閃光の種別。
-// 危篤・解離はそれぞれの種別、それ以外は損傷として示す。
-const PROTEIN_STATE_FLASH_KIND: Readonly<Record<ProteinPhase | 'site-disabled', FlashKind>> = {
-  intact: 'proteinDamaged',
-  exposed: 'proteinDamaged',
-  dissociated: 'proteinDissociated',
-  critical: 'proteinCritical',
-  'site-disabled': 'proteinDamaged',
-};
 
 // 発生時の状態を dt 秒後へ送った状態。発生源の速度で運んだ位置と、その時刻を持つ。
 function delayed(state: KinematicState, dt: number): KinematicState {
   return kinematicState<'eci'>(state.t + dt, addScaled(state.r, state.v, dt), state.v);
 }
-
 // 起きた閃光1件。発生時の状態(位置・発生源速度とその時刻)だけを持ち、経過・現在位置は
 // そのフレームの表示時刻から出す(R5)。
 interface SpawnedFlash {
@@ -158,7 +126,6 @@ export class FlashPresenter {
   private spawn(body: RunEventBody): void {
     switch (body.kind) {
       case 'gunFired':
-      case 'proteinSiteFired':
       case 'assemblyEmitterFired':
         this.add(body.muzzleState, 'muzzle', MUZZLE_FLASH_DURATION);
         return;
@@ -180,10 +147,6 @@ export class FlashPresenter {
         this.add(body.state, 'destroy1', DESTROY_FLASH1_DURATION, body.modelScale);
         this.add(body.state, 'destroy2', DESTROY_FLASH2_DURATION, body.modelScale);
         this.add(delayed(body.state, SMOKE_DELAY), 'smoke', SMOKE_DURATION, body.modelScale);
-        return;
-      case 'proteinStateChanged':
-        this.add(
-          body.state, PROTEIN_STATE_FLASH_KIND[body.transition], PROTEIN_STATE_FLASH_DURATION);
         return;
       case 'assemblyPartBroken':
         this.add(body.state, 'partBreak', PART_BREAK_FLASH_DURATION);

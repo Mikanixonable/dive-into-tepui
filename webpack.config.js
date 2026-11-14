@@ -75,15 +75,6 @@ module.exports = (env, argv) => ({
         generator: { filename: 'assets/[hash][ext]' },
       },
       {
-        // タンパク質の主鎖・構造・モーション JSON はバンドルへインライン化せず、
-        // 別ファイルとして書き出して import 元へは URL 文字列を渡す(起動時ダウンロード量を
-        // 抑えるため)。semantic など他の JSON は既定どおりバンドルへ含める。
-        test: /(Backbone|Structure|Motion)\.json$/,
-        include: path.resolve(__dirname, 'src/assets/models'),
-        type: 'asset/resource',
-        generator: { filename: 'assets/[hash][ext]' },
-      },
-      {
         test: /\.css$/,
         use: ['style-loader', 'css-loader'],
       },
