@@ -29,8 +29,8 @@ export type PoleModel =
 // 自転モデルの元期を simZeroEt ぶん進めたもの。基準方向・本初子午線の位相はどちらも時刻の
 // 一次式なので係数へ畳める。cassini は位相の原点を軌道が与えるので、そのまま返す。
 // **本初子午線は必ず畳む** — 1日1周規模で進むので、畳まないと 1e7 deg まで積み上がる。
-function poleModelForSimZero(pole: PoleModel | undefined, simZeroEt: number): PoleModel | undefined {
-  if (pole === undefined || pole.kind === 'cassini') return pole;
+function poleModelForSimZero(pole: PoleModel | null, simZeroEt: number): PoleModel | null {
+  if (pole === null || pole.kind === 'cassini') return pole;
   if (pole.kind === 'eciPole') {
     return { ...pole, w0Deg: wrapDegrees(pole.w0Deg + pole.spinRate * simZeroEt * (180 / Math.PI)) };
   }
@@ -92,14 +92,14 @@ export interface RingSystemDef {
 
 // ShapeDef を天体固定座標の半軸 (x, y, z) [m] へ直す。y が自転軸(極半径)、x・z が赤道面の半軸で、
 // 三軸楕円体では x が最長軸。shape 省略時は `radius` による真球。
-export function shapeAxes(radius: number, shape: ShapeDef | undefined): Vec3 {
-  if (shape === undefined) return v3(radius, radius, radius);
+export function shapeAxes(radius: number, shape: ShapeDef | null): Vec3 {
+  if (shape === null) return v3(radius, radius, radius);
   if (shape.kind === 'spheroid') return v3(shape.equatorRadius, shape.polarRadius, shape.equatorRadius);
   return v3(shape.a, shape.c, shape.b);
 }
 
 // ShapeDef の楕円体に内接する最大の球の半径 [m](最短の半軸)。shape 省略時は radius。
-export function shapeInscribedRadius(radius: number, shape: ShapeDef | undefined): number {
+export function shapeInscribedRadius(radius: number, shape: ShapeDef | null): number {
   const axes = shapeAxes(radius, shape);
   return Math.min(axes.x, axes.y, axes.z);
 }
@@ -107,7 +107,7 @@ export function shapeInscribedRadius(radius: number, shape: ShapeDef | undefined
 // ShapeDef を自転軸まわりの回転楕円体の半径 [m] へ丸める。三軸楕円体では短いほうの赤道軸を
 // 赤道半径に採り、元の形に内接する側へ丸める。
 export function shapeSpheroidRadii(
-  radius: number, shape: ShapeDef | undefined,
+  radius: number, shape: ShapeDef | null,
 ): { readonly equatorRadius: number; readonly polarRadius: number } {
   const axes = shapeAxes(radius, shape);
   return { equatorRadius: Math.min(axes.x, axes.z), polarRadius: axes.y };
@@ -148,8 +148,8 @@ export function isStar<T extends CelestialBody>(body: T): body is T & StarCelest
 }
 
 // 天体の形(歪み)。恒星は形を持たず、`radius` による真球として扱う。
-export function shapeOf(def: CelestialBodyDef): ShapeDef | undefined {
-  return 'shape' in def ? def.shape : undefined;
+export function shapeOf(def: CelestialBodyDef): ShapeDef | null {
+  return 'shape' in def ? def.shape ?? null : null;
 }
 
 // pole 定義から自転角速度 [rad/s] を取り出す。自転モデルを持たない天体は null。符号は自転の
@@ -172,7 +172,7 @@ export function planetDefForSimZero(def: PlanetDef, simZeroEt: number): PlanetDe
   return {
     ...def,
     orbit: keplerOrbitForSimZero(def.orbit, simZeroEt),
-    pole: poleModelForSimZero(def.pole, simZeroEt),
+    pole: poleModelForSimZero(def.pole ?? null, simZeroEt) ?? undefined,
   };
 }
 
@@ -181,6 +181,6 @@ export function satelliteDefForSimZero(def: SatelliteDef, simZeroEt: number): Sa
   return {
     ...def,
     orbit: satelliteOrbitForSimZero(def.orbit, simZeroEt),
-    pole: poleModelForSimZero(def.pole, simZeroEt),
+    pole: poleModelForSimZero(def.pole ?? null, simZeroEt) ?? undefined,
   };
 }
