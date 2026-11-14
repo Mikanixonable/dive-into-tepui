@@ -3,7 +3,6 @@
 
 import argparse
 import datetime
-import hashlib
 import json
 import math
 import os
@@ -16,29 +15,11 @@ import urllib.request
 import uuid
 import zipfile
 
+from common import SOURCE_SUFFIXES, contract_hash, file_hash, normalized_unit, write_json
+
 
 class InvalidSource(ValueError):
     """取得した実体がソース契約を満たさない場合のエラー。"""
-
-
-# JSONの表現差を除いたソース契約の識別子を返す。
-def contract_hash(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
-                                     ensure_ascii=False, allow_nan=False).encode()).hexdigest()
-
-
-# ストリームで読み、ファイル全体のSHA-256を返す。
-def file_hash(path):
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
-
-
-# NetCDFの単位表記は変換器によって空白や大文字小文字が変わるため正規化する。
-def normalized_unit(value):
-    return re.sub(r"\s+", "", value.strip().lower()) if isinstance(value, str) else value
 
 
 # 固定版・座標・変数を持つソースマニフェストを読み込む。
@@ -282,13 +263,6 @@ def validate_file(path, source, content_type=""):
         raise InvalidSource("データ形式が壊れています") from error
 
 
-# JSONを隣接する一時ファイルから原子的に置き換える。
-def write_json(path, value):
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
-    os.replace(temporary, path)
-
-
 # 中断データを再開し、形式・長さ・任意の固定hashを検証して取得記録へ確定する。
 def fetch_region(source, region, url, directory, manifest_sha, expected_sha=None, expected_bytes=None,
                  max_bytes=1024 * 1024 * 1024):
@@ -298,7 +272,7 @@ def fetch_region(source, region, url, directory, manifest_sha, expected_sha=None
         raise InvalidSource("取得長の上限が不正です")
     directory = Path(directory) / source["id"]
     directory.mkdir(parents=True, exist_ok=True)
-    suffix = {"geotiff": ".tif", "zip": ".zip", "netcdf": ".nc"}[source["format"]]
+    suffix = SOURCE_SUFFIXES[source["format"]]
     target = directory / (region + suffix)
     receipt_path = target.with_suffix(target.suffix + ".json")
     partial = target.with_suffix(target.suffix + ".part")

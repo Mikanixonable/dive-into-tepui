@@ -17,6 +17,7 @@ import type { MapDisplayToggles } from '../map/display-toggles';
 import { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { DisplayWindow } from '../display-window-manager';
 import type { EquatorNodeManager } from '../marker/equator-node-manager';
+import type { OrbitSlotPresenter } from '../navigation/orbit-slot-presenter';
 import type { Vec3 } from '../../math/vec3';
 
 export class ObjectPickables {
@@ -49,6 +50,7 @@ export class ObjectPickables {
     private readonly planDisplay: PlanDisplay,
     private readonly frameAnchors: FrameAnchorSource,
     private readonly equatorNodes: EquatorNodeManager,
+    private readonly orbitSlots: OrbitSlotPresenter,
   ) {}
 
   // 候補列と可視性ポリシーを空へ戻す。マップを離れるときに呼ぶ。
@@ -62,7 +64,10 @@ export class ObjectPickables {
   // 候補列と可視性ポリシーを組み直し、天体マーカーと航法ターゲットをこの表示時刻へ進める。
   // 候補は天体・ラグランジュ点・選択対象となる個体・航法ターゲット・AN/DN・近点。物理積分の
   // 後に呼ぶ — 前だと同フレームのメッシュと1ステップずれる。
-  public refresh(displayWindow: DisplayWindow, mapDisplay: MapDisplayToggles, cameraPos: Vec3): void {
+  public refresh(
+    displayWindow: DisplayWindow, mapDisplay: MapDisplayToggles, cameraPos: Vec3,
+    revealed: ReadonlySet<string>,
+  ): void {
     const { displayTime } = displayWindow;
     // この回の可視性ポリシーを組み、マーカーと航法ターゲットをその時刻へ進める。
     const focusId = focusTargetId(this.camera.map.focus);
@@ -71,6 +76,7 @@ export class ObjectPickables {
     const visibilityPolicy = new MapVisibilityPolicy(
       this.celestialBodies,
       mapDisplay,
+      revealed,
       focusId,
       this.nearbyTracker.membersAt(
         this.celestialBodies, cameraPos, displayTime),
@@ -108,5 +114,6 @@ export class ObjectPickables {
     for (const node of this.navTargetPresenter.pickables()) append(node);
     for (const apsis of this.planDisplay.apsisMarkers) append(apsis);
     for (const node of this.equatorNodes.pickables) append(node);
+    for (const slot of this.orbitSlots.pickables) append(slot);
   }
 }

@@ -1,5 +1,6 @@
 // セーブの索引(スロット・ステージ履歴・手動セーブのメタ)と、書き出しファイルの形。
 import type { GamePhase } from '../../game/stages/stage';
+import type { ShipBlueprint } from '../../game/ship/ship-blueprint';
 import type { SavedGame } from './save-store';
 
 // 索引が指す id を1つ作る。同一ミリ秒内に続けて作っても衝突しない。
@@ -47,6 +48,8 @@ export interface SaveSlotMeta {
   // タイトルへ戻ったかで、どちらもその周回はもう再開しない。
   lastRun: { readonly stageId: string; readonly ended: boolean } | null;
   stages: StageHistoryMeta[];
+  // このスロットで解放された天体の id(GAME.md「天体の解放」)。欠けたスロットは太陽・地球・月だけから始める。
+  revealedBodies?: readonly string[];
 }
 
 // 全スロットのメタを束ねた索引。記録本体は id で指し、索引とは別に置く。
@@ -69,4 +72,6 @@ export interface SlotExport {
   slot: SaveSlotMeta;
   // スナップショット id → 本体。
   snapshots: Record<string, SavedGame>;
+  // 設計図の一覧。設計図を含まない頃に書き出されたファイルでは欠ける。
+  blueprints?: readonly ShipBlueprint[];
 }

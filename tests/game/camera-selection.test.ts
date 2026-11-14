@@ -2,7 +2,8 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { bodyAnchorSource } from '../../src/physics/attractor';
-import { frameRoleAnchorId } from '../../src/physics/frame';
+import { frameRoleAnchorId, type FrameAnchorSource } from '../../src/physics/frame';
+import { kinematicState } from '../../src/physics/kinematic-state';
 import { LOCAL_FORWARD, qFromAxisAngle, qFromBasis, qMul, qRotate } from '../../src/math/quat';
 import { len, sub, v3 } from '../../src/math/vec3';
 import { CommandQueue } from '../../src/game/command-queue';
@@ -145,4 +146,57 @@ export function register(): void {
 
     assert.deepEqual(camera.combat.focus, { kind: 'object', id: frameRoleAnchorId('controlled') });
   });
+
+  test('camera-selection: マップを開くと、フォーカスは操作対象の船へ移る', () => {
+    const events = new RunEventLog();
+    const camera = CameraSelection.deserialize({
+      combat: serializedCamera(),
+      map: serializedCamera({ focus: { kind: 'object', id: 'moon' } }),
+    }, solarSystemParts().system, events);
+
+    events.beginStep();
+    events.record({ kind: 'orbitPlanningOpened', shipId: 'ship-1' });
+    camera.followProgress(events.recent, { combat: sample(), map: { ...sample(), frameAnchors: liveAnchors(null) } }, 'map');
+
+    assert.deepEqual(camera.map.focus, { kind: 'object', id: 'ship-1' });
+  });
+
+  test('camera-selection: 操作対象の船が周回軌道にあれば、マップを開いたときのフォーカスはその主天体になる', () => {
+    const events = new RunEventLog();
+    const camera = CameraSelection.deserialize({
+      combat: serializedCamera(),
+      map: serializedCamera({ focus: { kind: 'object', id: 'earth' } }),
+    }, solarSystemParts().system, events);
+
+    events.beginStep();
+    events.record({ kind: 'orbitPlanningOpened', shipId: 'ship-1' });
+    camera.followProgress(events.recent, { combat: sample(), map: { ...sample(), frameAnchors: liveAnchors('moon') } }, 'map');
+
+    assert.deepEqual(camera.map.focus, { kind: 'object', id: 'moon' });
+  });
+
+  test('camera-selection: 操作対象の船がいなければ、マップを開いてもフォーカスは動かない', () => {
+    const events = new RunEventLog();
+    const camera = CameraSelection.deserialize({
+      combat: serializedCamera(),
+      map: serializedCamera({ focus: { kind: 'object', id: 'moon' } }),
+    }, solarSystemParts().system, events);
+
+    events.beginStep();
+    events.record({ kind: 'orbitPlanningOpened', shipId: null });
+    camera.followProgress(events.recent, { combat: sample(), map: { ...sample(), frameAnchors: liveAnchors(null) } }, 'map');
+
+    assert.deepEqual(camera.map.focus, { kind: 'object', id: 'moon' });
+  });
+}
+
+// どの基準も ECI 上に生きて解決でき、ship-1 だけが orbitedBody を主天体として周回する代役。
+// 見失われた注視が原点天体へ戻る経路を、テストの結果に混ぜないために使う。
+function liveAnchors(orbitedBody: string | null): FrameAnchorSource {
+  return {
+    bodies: [],
+    bodiesPivot: 120,
+    stateOf: () => kinematicState<'eci'>(120, v3(), v3()),
+    attractorOf: (id: string) => (id === 'ship-1' ? orbitedBody : null),
+  };
 }

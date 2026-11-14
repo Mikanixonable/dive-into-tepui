@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>スマホ横持ちとタッチ</title>
+<link rel="stylesheet" href="foundation/tepui-base.css">
+<link rel="stylesheet" href="foundation/ref.css">
+<style>
+  /* ============================================================================================
+   * このページ固有。値は var(--…) から導く。px で書くのは「端末の寸法(844×390 / 390×844・セーフエリア)」と
+   * 「ステージ内の配置座標」だけ。.ix- 接頭辞のものは ref.css へ昇格する候補(報告に挙げる)。
+   * ========================================================================================== */
+
+  /* --- ステージの共通: セーフエリア(iPhone 横持ちのノッチ・ホームインジケータ相当)を --safe-* で与える --- */
+  .ph { --ph-gap: var(--space-4); --ph-hit: var(--hit-target-min); }
+  .ph-abs { position: absolute; }
+  .ph-row { display: grid; grid-template-columns: minmax(0, 844px) minmax(320px, 1fr); gap: var(--space-6); align-items: start; margin-bottom: var(--space-6); }
+  .ph-row.is-portrait { grid-template-columns: minmax(0, 390px) minmax(320px, 1fr); }
+  @media (max-width: 1260px) { .ph-row, .ph-row.is-portrait { grid-template-columns: minmax(0, 1fr); } }
+  .ph-row .rf-notes { margin-top: 0; grid-template-columns: 1fr; }
+
+  /* --- 画面端の読み取り専用の小計器(常時) --- */
+  .ph-micro {
+    position: absolute; background: var(--glass-quiet); border-radius: var(--radius-panel);
+    backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+    -webkit-backdrop-filter: blur(var(--glass-blur-quiet)) saturate(var(--glass-saturation));
+    padding: var(--space-3) var(--space-5); font-size: var(--font-xs); line-height: 1.4; color: var(--ix-data);
+  }
+  .ph-micro .ix-row { grid-template-columns: auto minmax(0, 44px) auto; column-gap: var(--space-3); }
+  .ph-micro .ix-readout-value { font-size: var(--font-xl); }
+
+  /* --- ix-strip のタッチ版: 高さを --hit-target-min にし、中の押せる部品も 44px --- */
+  .ix-strip.is-touch { height: var(--hit-target-min); padding: 0 var(--space-3); gap: var(--space-3); }
+  .ix-strip.is-touch .w-btn {
+    min-height: var(--hit-target-min); display: inline-flex; align-items: center; gap: var(--space-2);
+    border-radius: var(--radius-pill); background: transparent; font-size: var(--font-xs);
+  }
+  .ix-strip.is-touch .w-btn:hover { background: var(--glass-control-hover); }
+  .ix-warp.is-touch { padding: 0; gap: 0; background: transparent; }
+  .ix-warp.is-touch > span { min-width: var(--hit-target-min); height: var(--hit-target-min); font-size: var(--font-xs); }
+  .ix-warp.is-touch > span.on { background: transparent; color: var(--text-strong); }
+  .ix-lamp { height: 22px; }
+
+  /* 画面固定の丸ボタン(HLP): 44px の円 */
+  .ix-fab {
+    display: grid; place-items: center; width: var(--hit-target-min); height: var(--hit-target-min); padding: 0;
+    border-radius: 50%; background: var(--glass-quiet); color: var(--text-muted); font-size: var(--font-m); font-weight: 700;
+    backdrop-filter: blur(var(--glass-blur-quiet)); -webkit-backdrop-filter: blur(var(--glass-blur-quiet));
+  }
+
+  /* --- 仮想パッド: ボタン = 44px 角のガラス面。ラベルは 11px で 3 字以内 --- */
+  .ix-pad { display: grid; grid-template-columns: repeat(3, var(--hit-target-min)); grid-auto-rows: var(--hit-target-min); gap: var(--space-2); }
+  .ix-tbtn {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; line-height: 1.1;
+    min-width: var(--hit-target-min); min-height: var(--hit-target-min);
+    background: var(--glass-quiet); border-radius: var(--radius-control); color: var(--text-muted);
+    backdrop-filter: blur(var(--glass-blur-quiet)); -webkit-backdrop-filter: blur(var(--glass-blur-quiet));
+  }
+  .ix-tbtn .g { font-size: var(--font-xl); }
+  .ix-tbtn .l { font-size: var(--font-xxs); color: var(--ix-label); margin-top: var(--space-1); white-space: nowrap; }
+  .ix-tbtn.on, .ix-tbtn.pressed { background: var(--ix-own-fill); color: var(--ix-own); }
+  .ix-tbtn.is-round { border-radius: 50%; }
+  .ix-fire {
+    display: grid; place-items: center; border-radius: 50%; color: var(--ix-own); font-size: var(--font-m); letter-spacing: var(--tracking-label);
+    width: calc(var(--hit-target-min) * 1.75); height: calc(var(--hit-target-min) * 1.75);
+    background: var(--glass-quiet); box-shadow: inset 0 0 0 2px var(--ix-own-fill);
+    backdrop-filter: blur(var(--glass-blur-quiet)); -webkit-backdrop-filter: blur(var(--glass-blur-quiet));
+  }
+  .ix-ctl-cap { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-label); text-shadow: 0 0 3px var(--bg); }
+
+  /* 推力段: 縦に 4 つ並ぶ排他選択(既存 SegmentedControl = .w-btn の列)。上が大。 */
+  .ix-seg-col { display: grid; gap: var(--space-2); justify-items: center; }
+  .ix-seg-row { display: flex; gap: var(--space-2); }
+  .ix-seg-cell { display: grid; place-items: center; width: var(--hit-target-min); height: var(--hit-target-min); padding: 0; background: var(--glass-quiet); }
+  .ix-seg-cell.on { background: var(--ix-own-fill); }
+
+  /* モードドック: 制動・微動・ホールドのトグル(状態ピップ付き)+ 計器シートの取っ手 */
+  .ix-modedock { display: flex; gap: var(--space-3); }
+  .ix-modedock .w-btn {
+    display: inline-flex; align-items: center; gap: var(--space-3); min-height: var(--hit-target-min);
+    padding: 0 var(--space-4); background: var(--glass-quiet); font-size: var(--font-xs); white-space: nowrap;
+    backdrop-filter: blur(var(--glass-blur-quiet)); -webkit-backdrop-filter: blur(var(--glass-blur-quiet));
+  }
+  .ix-modedock .w-btn.on { background: var(--ix-own-fill); }
+  .ix-modedock .w-btn .key { margin-left: 0; }
+
+  /* --- 世界座標のマーカー(HUD の一部。3D は描かない) --- */
+  .ph-mk { position: absolute; color: var(--text); font-size: var(--font-xxs); white-space: nowrap; text-shadow: 0 0 3px var(--bg), 0 0 6px var(--bg); }
+  .ph-mk.is-tgt { color: var(--ix-tgt); }
+  .ph-reticle { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; overflow: visible; }
+  .ph .ix-alert, .ph .ix-weapon, .ph .ix-hint { white-space: nowrap; width: max-content; }
+  .ph-clrow { display: flex; align-items: baseline; gap: var(--space-3); }
+
+  /* --- 計器シート(下から出る面)。レールがこの画面だけ取る形。高さは --overlay-max-h-s = min(56dvh,520px) --- */
+  .ix-sheet {
+    position: relative; background: var(--glass-focus); border-radius: var(--radius-panel) var(--radius-panel) 0 0;
+    box-shadow: var(--glass-shadow); color: var(--ix-data); font-size: var(--font-s); line-height: 1.4;
+    backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+    -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+    padding: var(--space-3) var(--space-5) var(--safe-b); display: grid; grid-template-rows: auto auto minmax(0, 1fr); row-gap: var(--space-2);
+    height: 218px; min-width: 0;
+  }
+  .ix-sheet.ph-abs { position: absolute; }
+  .ix-sheet::after { content: ''; position: absolute; bottom: var(--space-3); left: 50%; width: 134px; height: 4px; margin-left: -67px; border-radius: var(--radius-pill); background: var(--fill-4); }
+  .ix-sheet-grab { justify-self: center; width: 36px; height: 4px; border-radius: var(--radius-pill); background: var(--fill-3); }
+  .ix-sheet-tabs { display: flex; align-items: center; gap: var(--space-2); }
+  .ix-sheet-tabs .w-btn { min-height: var(--hit-target-min); display: inline-flex; align-items: center; background: var(--fill-1); font-size: var(--font-xs); padding: 0 var(--space-5); }
+  .ix-sheet-tabs .w-btn.on { background: var(--ix-own-fill); }
+  .ix-sheet-tabs .ix-sheet-x { margin-left: auto; width: var(--hit-target-min); padding: 0; justify-content: center; border-radius: 50%; background: transparent; }
+  .ix-sheet-tabs .n { margin-left: var(--space-2); color: var(--ix-meta); font-size: var(--font-xxs); }
+  .ix-sheet-body { display: grid; grid-template-columns: 1.3fr 1fr 1fr; column-gap: var(--space-5); min-height: 0; overflow: hidden; }
+  .ix-sheet-col { display: grid; align-content: start; gap: var(--space-2); min-width: 0; }
+  .ix-sheet-col .ix-sub { margin: 0; }
+  .ix-sheet .w-btn { min-height: var(--hit-target-min); display: inline-flex; align-items: center; justify-content: center; }
+  .ix-sheet .w-btn.is-stack { flex-direction: column; gap: 0; line-height: 1.25; }
+  .ix-sheet .w-btn.is-warning { color: var(--ix-warning); }
+  .ix-btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  .ix-btn-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .ix-trow { display: flex; align-items: center; justify-content: space-between; min-height: var(--hit-target-min); color: var(--ix-label); cursor: pointer; }
+  .ix-scroll-x { display: flex; gap: var(--space-2); overflow-x: auto; scrollbar-width: none; }
+  .ix-scroll-x .w-btn { flex: 0 0 auto; }
+  .ph-line { display: flex; align-items: center; gap: var(--space-3); min-height: var(--hit-target-min); }
+  .ph-line > .ix-k { flex: 0 0 auto; min-width: 2.2em; }
+  .ph-line .w-input { width: 56px; min-height: var(--hit-target-min); }
+  .ph-line .w-select { min-height: var(--hit-target-min); }
+  .ph-line .w-btn { padding: 0 var(--space-4); }
+  .ph-sel-name { color: var(--ix-label); font-size: var(--font-xxs); letter-spacing: var(--tracking-label); }
+
+  /* --- マップの下部バー: 時間の1本の帯(.ix-scrub のタッチ版)+ 3つの取っ手 --- */
+  .ix-scrub-track.is-touch { height: var(--hit-target-min); flex: 1 1 auto; min-width: 0; }
+  .ix-scrub-track.is-touch .ph-scrub-t { position: absolute; left: var(--space-5); top: var(--space-2); font-size: var(--font-s); color: var(--text); font-variant-numeric: tabular-nums; }
+  .ix-scrub-track.is-touch .ph-scrub-p { position: absolute; right: var(--space-5); top: var(--space-2); font-size: var(--font-xxs); color: var(--ix-label); letter-spacing: var(--tracking-label); }
+  .ix-scrub-track.is-touch .ix-scrub-axis { position: absolute; left: var(--space-5); right: var(--space-5); bottom: var(--space-1); }
+  .ix-scrub-tick.is-node { top: 0; bottom: 0; width: 3px; background: var(--ix-own); }
+  .ph-mapbar { position: absolute; display: flex; align-items: center; gap: var(--space-3); }
+  .ph-mapbar .w-btn { min-height: var(--hit-target-min); display: inline-flex; align-items: center; gap: var(--space-2); background: var(--glass-quiet); font-size: var(--font-xs); padding: 0 var(--space-4); white-space: nowrap; }
+  .ph-scale-pos { position: absolute; }
+
+  /* --- 親指の届く範囲(図) --- */
+  .ph-hatch { position: absolute; background: repeating-linear-gradient(135deg, var(--fill-2) 0 4px, transparent 4px 8px); font-size: var(--font-xxs); color: var(--ix-label); display: grid; place-items: center; }
+  .ph-reach { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .ph-zone { position: absolute; border: 1px dashed var(--ix-meta); border-radius: var(--radius-control); display: grid; place-items: center; text-align: center; padding: var(--space-4); font-size: var(--font-xs); color: var(--ix-label); line-height: 1.6; }
+  .ph-anno { position: absolute; font-size: var(--font-xxs); color: var(--text); background: var(--surface-weak); border-radius: var(--radius-pill); padding: var(--space-1) var(--space-4); white-space: nowrap; }
+  .ph-thumbmap .ix-tbtn, .ph-thumbmap .ix-seg-cell, .ph-thumbmap .ix-modedock .w-btn, .ph-thumbmap .ix-fire { outline: 1px dashed var(--ix-label); outline-offset: 0; }
+
+  .ph-frames { display: grid; gap: var(--space-5); grid-template-columns: repeat(auto-fit, minmax(min(100%, 760px), 1fr)); --safe-b: 21px; }
+  .ph-frames .ix-sheet { width: 100%; max-width: 780px; border-radius: var(--radius-panel); }
+  .ph-frames .rf-cell-cap { margin-bottom: var(--space-3); }
+  .ph-spec th, .ph-spec td { white-space: normal; }
+  .ph-ok { color: var(--color-success); }
+  .ph-ng { color: var(--color-error); }
+</style>
+</head>
+<body class="rf" data-title="07 スマホ横持ちとタッチ" data-sub="844×390 の戦闘・マップ / 仮想パッド / 計器シート / 縦持ち(補助)">
+<main class="rf-main">
+
+<p class="rf-intro">
+  844×390 の横持ちスマホは、現行のレイアウトの前提(左右に幅 220〜260px のレールが立ち、全体ステータスが 2 行)がそのまま崩れる。
+  戦闘では左右レールだけで画面の 57% を覆い(<code>--rail-w-left: 220px</code> + <code>--rail-w-right: 260px</code>)、マップでは案内帯が物体一覧に重なり、軌道パネルの値は「…」で切れる(監査 10)。
+  そのうえ<b>撮影画面には出ていない仮想パッド</b>(<code>#touch-ui</code>。最初のタッチで現れる)が、レールの上にさらに重なる。
+  実際には、並進パッド(左下)・回転パッド(右下)・FIRE・ZOOM・推力段・制動/微動・ホールド・ワープ・ヘルプが、レールのパネルと同じ領域を取り合う。<br><br>
+  方針は 3 つ。<b>(1) 縦 390px では、常時出すものを「いまの判断に要る読み値だけ」に絞る</b>(位置と速度・燃料・ターゲットまでの距離・弾薬)。
+  <b>(2) それ以外の計器は、レールの代わりに「計器シート」へ逃がす</b>(下から出る面。タブで 艦/軌道/ターゲット/敵 を切り替える)。
+  <b>(3) 親指の届く下の両端を操作面に、中央は 1 本指ドラッグ(カメラ)のために空ける。</b>
+  ブレークポイントは新設しない — <code>MQ_COARSE_SHORT</code>(coarse かつ高さ 500px 未満)を「スマホ横持ち」の判定として使う。
+  部品は 01 で定めた <code>.ix-*</code> をそのまま使い、密度だけを上げた(文字は 11px 未満にしていない)。
+  上部ツールバーの「現行/改修案/比較」は、現行の撮影がある戦闘・マップの 2 面だけが意味を持つ。シート・縦持ち・親指の図には現行が無いので、「現行」にすると空になる。
+</p>
+
+<!-- ================================================================== -->
+<h2 id="sA"><span class="ix-code">A</span>戦闘 — 横持ち 844×390</h2>
+<p class="rf-lead">
+  画面を 3 つに分ける。<b>上端</b>は読むだけ(ストリップ・位置/燃料・警報)、<b>中央</b>はカメラのドラッグと照準、<b>下の両端</b>が親指。
+  セーフエリアは iPhone 横持ち相当(左右 47px・下 21px)で描いている — 端の部品は <code>--safe-*</code> の内側に置く。
+</p>
+<div class="ph-row">
+<div>
+<div class="rf-stage-wrap"><div class="rf-stage" id="st-combat" data-w="844" data-h="390" style="--safe-t:0px;--safe-r:47px;--safe-b:21px;--safe-l:47px">
+  <div class="rf-layer rf-before"><img src="foundation/current/combat-phone.jpg" alt="現行のスマホ横持ち戦闘ビュー"></div>
+  <div class="rf-layer rf-after ph">
+    <canvas class="rf-scene" data-scene="combat"></canvas>
+
+    <!-- 上端: 全体ステータスを 1 行・高さ 44px へ -->
+    <div class="ph-abs" style="top: calc(var(--safe-t) + var(--space-3)); left: 50%; transform: translateX(-50%)" data-note="1">
+      <div class="ix-strip is-touch">
+        <span class="w-btn">COMBAT ▾</span>
+        <span class="ix-strip-sep"></span>
+        <span class="ix-strip-label">STAGE 1</span>
+        <span class="ix-strip-time">T+ 00:00:04</span>
+        <span class="ix-strip-sep"></span>
+        <span class="ix-warp is-touch"><span>«</span><span class="on">×1</span><span>»</span></span>
+        <span class="ix-strip-sep"></span>
+        <span class="ix-annun"><span class="ix-lamp">CAUTION</span><span class="ix-lamp">WARNING</span></span>
+      </div>
+    </div>
+    <span class="ix-fab ph-abs" style="top: calc(var(--safe-t) + var(--space-3)); right: calc(var(--safe-r) + var(--space-4))">?</span>
+
+    <!-- 常時の小計器 -->
+    <div class="ph-micro" style="left: calc(var(--safe-l) + var(--space-4)); top: calc(var(--safe-t) + 58px)" data-note="3">
+      <div class="ix-readout is-s">
+        <div class="ix-readout-cap">ALTITUDE</div>
+        <div class="ix-readout-value">420.00<span class="ix-u">km</span></div>
+        <div class="ix-readout-cap">VELOCITY 7.66 km/s</div>
+      </div>
+    </div>
+    <div class="ph-micro" style="right: calc(var(--safe-r) + var(--space-4)); top: calc(var(--safe-t) + 58px); width: 176px" data-note="3">
+      <div class="ix-rows">
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">RCS</span></span><span class="ix-gauge" style="--at: 20%"><i style="--v: 100%"></i></span><span class="ix-v">1000</span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">出力</span></span><span class="ix-gauge"><i style="--v: 50%"></i></span><span class="ix-v">中</span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">船体</span></span><span class="ix-gauge" style="--at: 75%"><i style="--v: 18%"></i></span><span class="ix-v">290<span class="ix-u">K</span></span></div>
+      </div>
+    </div>
+
+    <!-- NAV + 視点リセット -->
+    <div class="ph-abs" style="top: calc(var(--safe-t) + 58px); left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: var(--space-4)" data-note="9">
+      <div class="ix-alert is-info" style="font-size: var(--font-xs)"><span class="ix-alert-level">NAV</span><span>ターゲット固定 HOSTILE-ε</span></div>
+      <span class="w-btn w-btn--secondary" style="min-height: var(--hit-target-min); display: inline-flex; align-items: center; background: var(--glass-quiet)">CAM ⟲</span>
+    </div>
+
+    <!-- 世界座標のマーカー -->
+    <svg class="ph-reticle" style="left: 422px; top: 183px" viewBox="-22 -22 44 44" fill="none" stroke="var(--text)" stroke-width="1.4"><circle r="10"/><path d="M0 -10 V-18 M-5 -18 H5"/><path d="M-10 0 H-18 M10 0 H18" stroke-width="1"/></svg>
+    <div class="ph-mk" style="left: 336px; top: 228px">△ γ 2.2 km</div>
+    <div class="ix-edge" style="left: calc(var(--safe-l) + var(--space-4) + 2px); top: 126px; --dir: -48deg"></div>
+    <div class="ph-mk is-tgt" style="left: calc(var(--safe-l) + var(--space-4) + 40px); top: 136px">ε 60 km</div>
+
+    <!-- 照準まわりの3値 -->
+    <div class="ix-cluster" style="left: 452px; top: 160px" data-note="8">
+      <div class="ph-clrow"><span class="ix-cluster-v">60.00 km</span><span class="ix-cluster-k">距離</span></div>
+      <div class="ph-clrow"><span class="ix-cluster-v">0.0 m/s</span><span class="ix-cluster-k">接近</span></div>
+      <div class="ph-clrow"><span class="ix-cluster-v">11 / 11</span><span class="ix-cluster-k">装甲</span></div>
+    </div>
+    <div class="ix-weapon ph-abs" style="left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + var(--space-4) + var(--hit-target-min) + var(--space-4))" data-note="8">
+      <span>弾薬 <b>40</b> / 40</span>
+      <span class="ix-belt"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+      <span>予備 +2連</span>
+      <span>弾速 1000 m/s</span>
+    </div>
+
+    <!-- 操作面(親指)。.ph-ctl は親指の図が複製して使う -->
+    <div class="ph-abs ph-ctl ix-seg-col" data-build="throttle-v" data-note="4" style="left: calc(var(--safe-l) + var(--space-4)); bottom: calc(var(--safe-b) + var(--space-4))"></div>
+    <div class="ph-abs ph-ctl" data-build="movepad" data-note="5" style="left: calc(var(--safe-l) + var(--space-4) + var(--hit-target-min) + var(--space-4)); bottom: calc(var(--safe-b) + var(--space-4))"></div>
+    <div class="ph-abs ph-ctl" data-build="dock" data-note="7" style="left: 50%; transform: translateX(-50%); bottom: calc(var(--safe-b) + var(--space-4))"></div>
+    <div class="ph-abs ph-ctl" data-build="rotpad" data-note="5" style="right: calc(var(--safe-r) + var(--space-4)); bottom: calc(var(--safe-b) + var(--space-4))"></div>
+    <div class="ix-fire ph-abs ph-ctl" data-note="6" style="right: calc(var(--safe-r) + var(--space-4)); bottom: calc(var(--safe-b) + var(--space-4) + 2 * var(--hit-target-min) + var(--space-2) + var(--space-5))">FIRE</div>
+    <span class="ix-tbtn is-round ph-abs ph-ctl" data-note="6" style="right: calc(var(--safe-r) + var(--space-4) + var(--hit-target-min) * 1.75 + var(--space-4)); bottom: calc(var(--safe-b) + var(--space-4) + 2 * var(--hit-target-min) + var(--space-2) + var(--space-5))"><span class="l" style="margin: 0; color: var(--text-muted)">ZOOM</span></span>
+  </div>
+</div></div>
+</div>
+<ol class="rf-notes">
+  <li data-n="1"><b>全体ステータスを 1 行・高さ 44px のストリップへ。</b>「MISSION STATUS / FLIGHT / MISSION TIME / SIM RATE」の見出しと 2 行構成(820×100px)をやめ、[ビュー切替][STAGE][MET][« ×1 »][警報灯]を並べる。時刻は MET だけにし(暦の時刻はプロパティ/シート側)、時間加速の « » はここへ移して、下部の util 行(減速・加速)を無くす。44px はタップ最小(SPEC §6)。上端に HLP と重ならない幅(約 600px)に収まる。解く監査: 5・10。
+    <span class="rf-where">src/game/hud/style/skeleton-style.ts(<code>MQ_COARSE_SHORT</code> で <code>#hud-topbar</code> を 1 行化・<code>.gs-metrics</code> を横並び)・ src/game/hud/panels/top-bar.ts ・ src/game/hud/view-badge.ts ・ SPEC UI-DESIGN §8「全体ステータスバー」</span></li>
+  <li data-n="3"><b>常時出す小計器は 2 枚だけ。</b>左上=高度・速度(軌道情報の主読み値)、右上=RCS 燃料・出力段・船体温度(艦の最小限)。細い中立のメーターで、閾値(目盛り)を越えたときだけ色が付く — 満タン燃料が警告色になる現行の問題(監査 1)も同時に解く。動圧・温度の「危険」は上のストリップの警報灯(CAUTION / WARNING、体系は 05)が受け持つ。値の全体はシート。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts ・ src/game/hud/orbit/orbit-panel.ts ・ 新設: 常時小計器(coarse-short だけ組む) ・ SPEC §8 軌道情報・艦のステータス</span></li>
+  <li data-n="9"><b>案内の行は NAV 1 行 + 視点リセット(CAM ⟲)。</b>ターゲット固定の旨と、44px の CAM ボタンだけ。戦闘中は他の案内帯を出さない。
+    <span class="rf-where">src/game/hud/hud-toast.ts ・ src/game/hud/skeleton-style.ts(<code>#hud-chase-reset</code> は既に coarse で 44px) ・ SPEC §8「視点リセットボタン」</span></li>
+  <li data-n="8"><b>撃つ判断に要る数値を照準の脇へ、弾薬は 1 本の帯へ。</b>距離・接近速度・装甲を照準の右に置き(現行は右レールにあり照準から遠い。監査 6)、弾薬・予備連数・弾速は弾帯のセルを持つ武装の帯 1 本に集約する(AMMO/BELT/弾速の文字列が自機に重なっていた)。帯は下の両パッドの間に収まる幅(約 340px)。
+    <span class="rf-where">src/game/hud/ammo-status.ts ・ src/game/hud/panels/target-panel.ts ・ SPEC §8 ターゲット情報</span></li>
+  <li data-n="4"><b>推力段(1–4)は左端の縦 4 段へ。</b>現行は艦ステータスパネル内の SegmentedControl(<code>.status-throttle-touch</code>。<code>body.touch-ui-active</code> のときだけ表示)で、パネルが畳まれる/見えないとタッチで出力段が選べない。パッドの隣に出して、親指のまま上下で選ぶ。選択中の段は自分の色の面。上が大。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts(<code>buildThrottleControl</code> を touch-controls 側へ移す) ・ src/game/hud/style/combat-panel-rows-style.ts ・ src/game/hud/touch-controls.ts ・ SPEC CONTROLS「タッチ操作」(出現条件は変えない=仮想パッドが出ている間だけ)</span></li>
+  <li data-n="5"><b>並進・回転パッドを下の両端へ、セーフエリアの内側で、レールと重ねない。</b>6 ボタン(3×2)×2 は現行のまま。変えたのは 3 点: ①現行は coarse/short/compact の 3 つの <code>@media</code> が <code>left:6px; bottom:6px</code> で上書きしており <code>--safe-l/b</code> を捨てている(ノッチ・ホームインジケータの下に潜る)→ <code>--safe-*</code> + <code>--space-4</code> に統一。②ラベルを 3 字以内に(現行の「機首下げ/機首上げ」は 11px×4 字=44px でボタン幅いっぱい)→「ピッチ」。③レールが消えるのでパッドの下に何も重ならない。
+    <span class="rf-where">src/game/hud/touch-controls.ts(3 つの <code>@media</code> を <code>MQ_COARSE</code> 1 つに統合し、座標を --safe-* から導く。<code>buildRotationPad</code> のラベル) ・ SPEC UI-DESIGN §6 / CONTROLS「タッチ操作」</span></li>
+  <li data-n="6"><b>FIRE は右端、パッドの真上に大(約 77px)。ZOOM はその左。</b>FIRE は自分の色。射撃は押しっぱなしなので、回転パッドから親指を滑らせて届く位置に置く。現行は FIRE が右レールの上に重なる。
+    <span class="rf-where">src/game/hud/touch-controls.ts(<code>#touch-fire</code> <code>#touch-zoom</code>) ・ SPEC CONTROLS</span></li>
+  <li data-n="7"><b>モードドック: 制動(P)・微動(V)・ホールド(C)+ 計器シートの取っ手。</b>常時見たい「自分が掛けているモード」は、状態ピップ+自分の色の面(ON のとき)で形と色の二重に示す(監査 4)。艦ステータスの行(制動・微調整・ホールド)と touch-controls の <code>#touch-mode-col</code>/util の 3 重表現が 1 つになる。取っ手「計器 ⌃」でシートを開く(→ B)。マップ移行は上のビュー切替でできるので M は載せない。
+    <span class="rf-where">src/game/hud/touch-controls.ts(<code>buildModeColumn</code>/<code>buildUtilRow</code> を統合) ・ src/game/hud/panels/vessel-panel.ts ・ SPEC §8 艦のステータス・CONTROLS</span></li>
+</ol>
+</div>
+
+<!-- ================================================================== -->
+<h2 id="sB"><span class="ix-code">B</span>戦闘 — 計器シートを開いた状態</h2>
+<p class="rf-lead">
+  左右レールの中身(軌道情報・艦のステータス・ターゲット・敵一覧)は、<b>レールが画面端に立つ代わりに下端から出る「シート」</b>へ移す。置き場の分類(SPEC §5)としては、レール(置き場 1・2)が
+  coarse かつ short のときに取る別の姿であり、新しい置き場を足さない。高さは既存の <code>--overlay-max-h-s</code>(= <code>min(56dvh,520px)</code> → 390px では 218px)。
+  開いている間は仮想パッドを隠す(既存の <code>body.hud-overlay-modal-open #touch-ui { display: none }</code> と同じ扱い)。ゲームは止まらない。
+  <b>この面には現行の撮影が無い</b>(ツールバーで「現行」にすると空になる)。
+</p>
+<div class="ph-row">
+<div>
+<div class="rf-stage-wrap"><div class="rf-stage" id="st-sheet" data-w="844" data-h="390" style="--safe-t:0px;--safe-r:47px;--safe-b:21px;--safe-l:47px">
+  <div class="rf-layer rf-after ph">
+    <canvas class="rf-scene" data-scene="combat"></canvas>
+    <div class="ph-abs" style="top: calc(var(--safe-t) + var(--space-3)); left: 50%; transform: translateX(-50%)">
+      <div class="ix-strip is-touch">
+        <span class="w-btn">COMBAT ▾</span><span class="ix-strip-sep"></span>
+        <span class="ix-strip-label">STAGE 1</span><span class="ix-strip-time">T+ 00:00:04</span><span class="ix-strip-sep"></span>
+        <span class="ix-warp is-touch"><span>«</span><span class="on">×1</span><span>»</span></span><span class="ix-strip-sep"></span>
+        <span class="ix-annun"><span class="ix-lamp">CAUTION</span><span class="ix-lamp">WARNING</span></span>
+      </div>
+    </div>
+    <span class="ix-fab ph-abs" style="top: calc(var(--safe-t) + var(--space-3)); right: calc(var(--safe-r) + var(--space-4))">?</span>
+    <svg class="ph-reticle" style="left: 422px; top: 118px" viewBox="-22 -22 44 44" fill="none" stroke="var(--text)" stroke-width="1.4"><circle r="10"/><path d="M0 -10 V-18 M-5 -18 H5"/><path d="M-10 0 H-18 M10 0 H18" stroke-width="1"/></svg>
+
+    <div class="ix-sheet ph-abs" style="left: var(--safe-l); right: var(--safe-r); bottom: 0" data-note="1">
+      <span class="ix-sheet-grab"></span>
+      <div class="ix-sheet-tabs" data-note="2">
+        <span class="w-btn">軌道</span><span class="w-btn on">艦</span><span class="w-btn">ターゲット<span class="n">ε</span></span><span class="w-btn">敵<span class="n">5</span></span>
+        <span class="w-btn ix-sheet-x">✕</span>
+      </div>
+      <div class="ix-sheet-body" data-note="3">
+        <div class="ix-sheet-col">
+          <div class="ix-sub">計器</div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">RCS 燃料</span></span><span class="ix-gauge" style="--at: 20%"><i style="--v: 100%"></i></span><span class="ix-v">1000<span class="ix-u">/ 1000</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">並進出力</span><kbd class="key">1–4</kbd></span><span class="ix-gauge"><i style="--v: 50%"></i></span><span class="ix-v">中<span class="ix-u">20.0 m/s²</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">弾薬</span><kbd class="key">R</kbd></span><span class="ix-v">40<span class="ix-u">/ 40 · 予備 +2連</span></span></div>
+        </div>
+        <div class="ix-sheet-col">
+          <div class="ix-sub">操作</div>
+          <div class="ix-btn-grid">
+            <span class="w-btn w-btn--secondary w-btn--dense">進行方向<kbd class="key">F</kbd></span>
+            <span class="w-btn w-btn--dense on">視点追従<kbd class="key">G</kbd></span>
+            <span class="w-btn w-btn--secondary w-btn--dense">装填<kbd class="key">R</kbd></span>
+          </div>
+        </div>
+        <div class="ix-sheet-col">
+          <div class="ix-sub">展開部品</div>
+          <div class="ix-btn-grid">
+            <span class="w-btn w-btn--secondary w-btn--dense is-stack"><span>パドル左 <kbd class="key">7</kbd></span><span class="ix-u" style="margin: 0">展開</span></span>
+            <span class="w-btn w-btn--secondary w-btn--dense is-stack"><span>パドル右 <kbd class="key">8</kbd></span><span class="ix-u" style="margin: 0">展開</span></span>
+            <span class="w-btn w-btn--secondary w-btn--dense is-stack"><span>放熱板左 <kbd class="key">9</kbd></span><span class="ix-u" style="margin: 0">収納 · 損耗 2%</span></span>
+            <span class="w-btn w-btn--secondary w-btn--dense is-stack is-warning"><span>放熱板右 <kbd class="key">0</kbd></span><span class="ix-u" style="margin: 0; color: inherit">▲ 収納 · 100%</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></div>
+</div>
+<ol class="rf-notes">
+  <li data-n="1"><b>レールを下端のシートへ。</b>coarse かつ short(<code>MQ_COARSE_SHORT</code>)では左右レールの幅を 0 にし(<code>--rail-w-*</code>)、同じ PanelShell のパネルを 1 枚のシートへ入れ直す。高さ 218px・幅はセーフエリア内いっぱい。ホームインジケータの帯(<code>--safe-b</code>)を下余白に取る。取っ手はモードドックの「計器 ⌃」、閉じるのはグラバーのスワイプ・✕・上の空き(タップ)。解く監査: 10。
+    <span class="rf-where">src/game/hud/style/layout-tokens.ts(<code>MQ_COARSE_SHORT</code> に <code>--rail-w-left/right: 0</code>・<code>--hud-sheet-h: var(--overlay-max-h-s)</code> を足す。いまは <code>--hud-rail-bottom: 52px</code> だけ) ・ src/game/hud/hud-root.ts(レール生成部) ・ src/game/hud/panel-shell.ts ・ SPEC §5(レール=coarse-short ではシートの姿を取る、と1文) 要更新</span></li>
+  <li data-n="2"><b>タブ 4 つ(軌道 / 艦 / ターゲット / 敵)。</b>選択中のタブだけが自分の色の面(自分の選択)。各タブは 44px 高。ターゲットがロックされていないときは「ターゲット」タブを畳む(SPEC §8「ロック時のみ表示」を守る)。直前に開いたタブを覚えて、次回はそこから開く。
+    <span class="rf-where">src/game/hud/panels/*.ts(各パネルの <code>PanelShell</code> を、タブの 1 面として再利用) ・ src/game/hud/hud-selection.ts ・ SPEC §8 常設パネル</span></li>
+  <li data-n="3"><b>中身は 01 の行の文法のまま、3 列に並べる。</b>左=計器(ラベル・メーター・値)、中=操作、右=展開部品。操作ボタンの高さは 44px(<code>--hit-target-min</code>)。ラジエーターの損耗 100% は色+▲の二重符号で警告。ボタン内の <code>[7]</code> 等はキーキャップ 1 種へ(監査 3)。タッチで行や列が伸びるのは SPEC §6 が許す挙動。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts(<code>buildSolarButtons</code> など) ・ src/game/hud/style/combat-panel-rows-style.ts</span></li>
+</ol>
+</div>
+
+<h3>シートの他のタブ(844×390 のシートと同じ寸法・同じ 3 列)</h3>
+<div class="ph-frames">
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>軌道</b><span>左レール「Orbit」の中身</span></div>
+    <div class="ix-sheet"><span class="ix-sheet-grab"></span>
+      <div class="ix-sheet-tabs"><span class="w-btn on">軌道</span><span class="w-btn">艦</span><span class="w-btn">ターゲット<span class="n">ε</span></span><span class="w-btn">敵<span class="n">5</span></span><span class="w-btn ix-sheet-x">✕</span></div>
+      <div class="ix-sheet-body">
+        <div class="ix-sheet-col">
+          <div class="ix-readout is-m"><div class="ix-readout-cap">ALTITUDE · 基準 自動 / 地球</div><div class="ix-readout-value">420.00<span class="ix-u">km</span></div></div>
+          <div class="ix-btn-row"><span class="w-btn w-btn--dense on">自動</span><span class="w-btn w-btn--dense w-btn--secondary">地球</span><span class="w-btn w-btn--dense w-btn--secondary">月</span></div>
+        </div>
+        <div class="ix-sheet-col">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">遠地点 AP</span></span><span class="ix-v">420.05<span class="ix-u">km</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">近地点 PE</span></span><span class="ix-v">419.95<span class="ix-u">km</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">軌道傾斜 INC</span></span><span class="ix-v">97.00<span class="ix-u">°</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">周期 PRD</span></span><span class="ix-v">01:32:58</span></div>
+        </div>
+        <div class="ix-sheet-col">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">動圧 Q</span></span><span class="ix-gauge" style="--at: 70%"><i style="--v: 0%"></i></span><span class="ix-v">0.00<span class="ix-u">kPa</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">船体温度</span></span><span class="ix-gauge" style="--at: 75%"><i style="--v: 18%"></i></span><span class="ix-v">290<span class="ix-u">K</span></span></div>
+          <div class="ix-btn-row"><span class="w-btn w-btn--dense w-btn--secondary">航法ターゲット</span><span class="w-btn w-btn--dense w-btn--secondary">軌道分析</span></div>
+        </div>
+      </div>
+    </div></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>ターゲット</b><span>右レール「Target」の中身(ロック時のみ)</span></div>
+    <div class="ix-sheet"><span class="ix-sheet-grab"></span>
+      <div class="ix-sheet-tabs"><span class="w-btn">軌道</span><span class="w-btn">艦</span><span class="w-btn on">ターゲット<span class="n">ε</span></span><span class="w-btn">敵<span class="n">5</span></span><span class="w-btn ix-sheet-x">✕</span></div>
+      <div class="ix-sheet-body">
+        <div class="ix-sheet-col">
+          <div class="ix-ident is-tgt"><span class="ix-ident-glyph">⌖</span><span class="ix-ident-name">HOSTILE-ε</span><span class="ix-ident-role">ターゲット</span></div>
+          <div class="ix-readout is-m is-tgt"><div class="ix-readout-cap">距離</div><div class="ix-readout-value">60.00<span class="ix-u">km</span></div></div>
+        </div>
+        <div class="ix-sheet-col">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">接近速度</span></span><span class="ix-v">0.0<span class="ix-u">m/s</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">相対速度</span></span><span class="ix-v">67.6<span class="ix-u">m/s</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">装甲</span></span><span class="ix-gauge is-tgt"><i style="--v: 100%"></i></span><span class="ix-v">11<span class="ix-u">/ 11</span></span></div>
+        </div>
+        <div class="ix-sheet-col">
+          <div class="ix-btn-row"><span class="w-btn w-btn--dense on">ターゲット<kbd class="key">T</kbd></span></div>
+          <div class="ix-u" style="margin: 0; line-height: 1.5">軌道要素は長押し(右クリック)でプロパティウィンドウに表示</div>
+        </div>
+      </div>
+    </div></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>敵</b><span>右レール「Contacts」の中身。タッチでは 1 行 44px</span></div>
+    <div class="ix-sheet"><span class="ix-sheet-grab"></span>
+      <div class="ix-sheet-tabs"><span class="w-btn">軌道</span><span class="w-btn">艦</span><span class="w-btn">ターゲット<span class="n">ε</span></span><span class="w-btn on">敵<span class="n">5</span></span><span class="w-btn ix-sheet-x">✕</span></div>
+      <div class="ix-sheet-body" style="grid-template-columns: 1fr 1fr">
+        <div class="ix-list ix-sheet-col" style="gap: 0">
+          <div class="ix-item is-touch is-near"><span class="ix-item-glyph">01</span><span class="ix-item-name">HOSTILE-α</span><span class="ix-item-v">1.40 km</span><span class="ix-item-tag">隣接</span></div>
+          <div class="ix-item is-touch"><span class="ix-item-glyph">02</span><span class="ix-item-name">HOSTILE-γ</span><span class="ix-item-v">2.21 km</span><span class="ix-item-tag"></span></div>
+          <div class="ix-item is-touch"><span class="ix-item-glyph">03</span><span class="ix-item-name">HOSTILE-β</span><span class="ix-item-v">3.77 km</span><span class="ix-item-tag"></span></div>
+        </div>
+        <div class="ix-list ix-sheet-col" style="gap: 0">
+          <div class="ix-item is-touch"><span class="ix-item-glyph">04</span><span class="ix-item-name">HOSTILE-δ</span><span class="ix-item-v">18.4 km</span><span class="ix-item-tag"></span></div>
+          <div class="ix-item is-touch is-tgt"><span class="ix-item-glyph">05</span><span class="ix-item-name">HOSTILE-ε</span><span class="ix-item-v">60.00 km</span><span class="ix-item-tag">TGT</span></div>
+        </div>
+      </div>
+    </div></div>
+</div>
+
+<!-- ================================================================== -->
+<h2 id="sC"><span class="ix-code">C</span>マップ — 横持ち 844×390</h2>
+<p class="rf-lead">
+  マップで常に要るのは<b>軌道そのもの</b>と<b>時間を掴む操作</b>。現行は 960×280px の「ORBIT TIMELINE」パネル(<code>display-timeline-panel.ts</code>)が下を塞ぎ、案内の長文帯が右の物体一覧に重なっていた。
+  下部は <b>1 本の時間帯 + 3 つの取っ手</b>(44px)に畳み、期間の選択・物体一覧・視点・表示は計器シート(→ 下の図)へ。仮想パッドは既存の <code>setView('map')</code> どおり隠れる。
+</p>
+<div class="ph-row">
+<div>
+<div class="rf-stage-wrap"><div class="rf-stage" id="st-map" data-w="844" data-h="390" style="--safe-t:0px;--safe-r:47px;--safe-b:21px;--safe-l:47px">
+  <div class="rf-layer rf-before"><img src="foundation/current/map-phone.jpg" alt="現行のスマホ横持ちマップビュー"></div>
+  <div class="rf-layer rf-after ph">
+    <canvas class="rf-scene" data-scene="map"></canvas>
+    <svg class="ph-abs" style="left: 0; top: 0" width="844" height="390" viewBox="0 0 844 390" fill="none">
+      <g transform="rotate(-28 422 164)">
+        <ellipse cx="422" cy="164" rx="96" ry="78" stroke="var(--ix-own)" stroke-width="1.5"/>
+        <circle cx="481.7" cy="225.1" r="3.5" fill="var(--ix-own)"/>
+        <circle cx="516.1" cy="148.5" r="6" stroke="var(--ix-own)" stroke-width="1.5" fill="var(--glass-quiet)"/>
+        <path d="M522 148.5 H540 M536 144.5 L540 148.5 L536 152.5" stroke="var(--ix-own)" stroke-width="1.5"/>
+      </g>
+    </svg>
+    <div class="ph-mk" style="left: 406px; top: 156px">地球</div>
+    <div class="ph-mk" style="left: 468px; top: 114px; color: var(--ix-own)">N1</div>
+
+    <div class="ph-abs" style="top: calc(var(--safe-t) + var(--space-3)); left: 50%; transform: translateX(-50%)" data-note="1">
+      <div class="ix-strip is-touch">
+        <span class="w-btn">MAP ▾</span>
+        <span class="ix-strip-sep"></span>
+        <span class="ix-strip-label">Focus</span><span class="ix-strip-time">地球</span>
+        <span class="ix-strip-sep"></span>
+        <span class="ix-strip-time">T+ 00:00:07</span>
+        <span class="ix-strip-sep"></span>
+        <span class="ix-warp is-touch"><span>«</span><span class="on">×1</span><span>»</span></span>
+        <span class="ix-strip-sep"></span>
+        <span class="ix-annun"><span class="ix-lamp">CAUTION</span><span class="ix-lamp">WARNING</span></span>
+      </div>
+    </div>
+    <span class="ix-fab ph-abs" style="top: calc(var(--safe-t) + var(--space-3)); right: calc(var(--safe-r) + var(--space-4))">?</span>
+
+    <div class="ph-micro" style="left: calc(var(--safe-l) + var(--space-4)); top: calc(var(--safe-t) + 58px)" data-note="3">
+      <div class="ix-readout is-s">
+        <div class="ix-readout-cap">ALTITUDE</div>
+        <div class="ix-readout-value">420.00<span class="ix-u">km</span></div>
+        <div class="ix-readout-cap">AP 420.08 · PE 419.91 km</div>
+      </div>
+    </div>
+
+    <div class="ph-abs" style="top: calc(var(--safe-t) + 58px); left: 56%; transform: translateX(-50%)" data-note="2">
+      <div class="ix-hint"><span class="ix-code">PLN</span><span class="ix-hint-step">タップ: ノード配置</span><span class="ix-hint-step">ドラッグ: Δv</span><span class="ix-hint-step">長押し: メニュー</span></div>
+    </div>
+
+    <div class="ph-scale-pos" style="right: calc(var(--safe-r) + var(--space-4)); bottom: calc(var(--safe-b) + var(--space-4) + var(--hit-target-min) + var(--space-4))"><div class="ix-scale"><span class="ix-strip-label">SCL</span><span>10 Mm</span><i class="ix-scale-ruler"></i></div></div>
+
+    <div class="ph-mapbar" style="left: calc(var(--safe-l) + var(--space-4)); right: calc(var(--safe-r) + var(--space-4)); bottom: calc(var(--safe-b) + var(--space-4))" data-note="4">
+      <div class="ix-scrub-track is-touch" style="--now: 1.5%">
+        <div class="ix-scrub-past"></div>
+        <div class="ix-scrub-band is-shadow" style="--from: 1.5%; --len: 98.5%"></div>
+        <i class="ix-scrub-tick is-node" style="--at: 38%"></i>
+        <div class="ix-scrub-head" style="--at: 1.5%"></div>
+        <span class="ph-scrub-t">T+0</span><span class="ph-scrub-p">予測 100%</span>
+        <div class="ix-scrub-axis"><span></span><span>+30m</span><span>+60m</span><span>+90m</span></div>
+      </div>
+      <span class="w-btn">ノードへ<kbd class="key">N</kbd></span>
+      <span class="w-btn">戦闘へ<kbd class="key">M</kbd></span>
+      <span class="w-btn">計器 ⌃</span>
+    </div>
+  </div>
+</div></div>
+</div>
+<ol class="rf-notes">
+  <li data-n="1"><b>上のストリップは戦闘と同じ部品。</b>違いはビュー名(MAP)と、現在の視点対象(Focus 地球)だけ。現行はビュー切替・STAGE・Focus・Control・Target・時刻・SIM RATE の 2 行で HLP と重なっていた。Control/Target はシートに回す(Target は「ターゲット」タブ)。
+    <span class="rf-where">src/game/hud/panels/top-bar.ts ・ src/game/hud/view-badge.ts ・ src/game/hud/style/skeleton-style.ts ・ SPEC §8「全体ステータスバー」</span></li>
+  <li data-n="2"><b>案内の長文帯を「キー(操作)と語」の 3 ステップのチップへ。</b>「軌道計画モード: 軌道をクリックして…[M] で確定」を、タッチの語(タップ/ドラッグ/長押し)の短いチップにし、右の物体一覧と重ねない(監査 9・10)。デスクトップの語彙(クリック・右クリック・[M])はキー表記のチップ版に分ける。確定の操作に触れるタッチの語彙が現行 SPEC に無い(下の「判断に迷った点」)。
+    <span class="rf-where">src/game/hud/hud-toast.ts(案内の出し方) ・ SPEC MAP.md「軌道計画」(確定の操作) ・ CONTROLS「タッチ操作」</span></li>
+  <li data-n="3"><b>左の小計器は戦闘と同じ高度・速度に、AP/PE を足す。</b>マップ左レールの ORB(軌道情報)は「畳まれる」(SPEC §8)ので、常時出すのは操作対象の位置の要約だけ。残りは物体の詳細(プロパティ)側。
+    <span class="rf-where">src/game/hud/orbit/orbit-panel.ts ・ SPEC §8 軌道情報(マップビューでは畳まれる)</span></li>
+  <li data-n="4"><b>下部バーを 1 行 44px へ: 時間の帯 + ノードへ(N)・戦闘へ(M)・計器。</b>現行の 960×280px パネル(未来/過去 × 期間ピル 7 個+数値入力+単位 4 個 の 2 段と 3 つのトグル)から、<b>掴んで動かす 1 本の帯</b>だけを残す(監査 8)。帯は <code>.ix-scrub</code> の 44px 版で、現在位置の頭・予定ノードの目盛り(自分の色)・予測が確かな範囲を示す。期間ピルやトグルはシートの「時間」タブ。「ノードへ」はノードがあるときだけ出す。現行 touch-controls の map-mode の util 行(下部中央・nowrap)は、この行へ吸収される。
+    <span class="rf-where">src/game/hud/panels/display-timeline-panel.ts ・ src/game/hud/touch-controls.ts(<code>.map-mode #touch-util</code>、<code>setView</code>) ・ SPEC MAP.md(タイムライン)・ UI-DESIGN §8</span></li>
+</ol>
+</div>
+
+<h3>マップのシート(戦闘と同じ寸法。タブは 物体 / 時間 / 軌道 / 視点 / 表示)</h3>
+<div class="ph-frames">
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>物体</b><span>右レール「Orbital Objects」の中身。129 件。タップで焦点、長押しでプロパティ</span></div>
+    <div class="ix-sheet"><span class="ix-sheet-grab"></span>
+      <div class="ix-sheet-tabs"><span class="w-btn on">物体<span class="n">129</span></span><span class="w-btn">時間</span><span class="w-btn">軌道</span><span class="w-btn">視点</span><span class="w-btn">表示</span><span class="w-btn ix-sheet-x">✕</span></div>
+      <div class="ix-sheet-body" style="grid-template-columns: 1.5fr 1fr">
+        <div class="ix-sheet-col">
+          <div class="ph-line"><input class="w-input" style="flex: 1 1 auto; width: auto; min-height: var(--hit-target-min)" placeholder="検索"><span class="w-btn w-btn--dense on">太陽系順</span><span class="w-btn w-btn--dense w-btn--secondary">近さ</span><span class="w-btn w-btn--dense w-btn--secondary">名前</span></div>
+          <div class="ix-scroll-x"><span class="w-btn w-btn--dense w-btn--secondary">惑星</span><span class="w-btn w-btn--dense w-btn--secondary">衛星</span><span class="w-btn w-btn--dense w-btn--secondary">準惑星</span><span class="w-btn w-btn--dense w-btn--secondary">小天体</span><span class="w-btn w-btn--dense w-btn--secondary">ラグランジュ点</span><span class="w-btn w-btn--dense w-btn--secondary">人工物</span><span class="w-btn w-btn--dense w-btn--secondary">敵</span></div>
+        </div>
+        <div class="ix-list ix-sheet-col" style="gap: 0">
+          <div class="ph-sel-name">太陽 › 地球</div>
+          <div class="ix-item is-touch"><span class="ix-item-glyph">▾</span><span class="ix-item-name">太陽</span><span class="ix-item-v"></span><span class="ix-item-tag">恒星</span></div>
+          <div class="ix-item is-touch is-focus"><span class="ix-item-glyph">▾</span><span class="ix-item-name">地球</span><span class="ix-item-v"></span><span class="ix-item-tag">惑星</span></div>
+        </div>
+      </div>
+    </div></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>時間</b><span>下部パネルの「期間ピル・数値入力・単位・トグル」の受け皿</span></div>
+    <div class="ix-sheet"><span class="ix-sheet-grab"></span>
+      <div class="ix-sheet-tabs"><span class="w-btn">物体<span class="n">129</span></span><span class="w-btn on">時間</span><span class="w-btn">軌道</span><span class="w-btn">視点</span><span class="w-btn">表示</span><span class="w-btn ix-sheet-x">✕</span></div>
+      <div class="ix-sheet-body" style="grid-template-columns: 1.7fr 1fr">
+        <div class="ix-sheet-col" style="gap: 0">
+          <div class="ph-line"><span class="ix-k">未来</span><span class="ix-btn-row" style="flex-wrap: nowrap"><span class="w-btn w-btn--dense on">1周</span><span class="w-btn w-btn--dense w-btn--secondary">1日</span><span class="w-btn w-btn--dense w-btn--secondary">10日</span><span class="w-btn w-btn--dense w-btn--secondary">1ヶ月</span><span class="w-btn w-btn--dense w-btn--secondary">3ヶ月</span></span><input class="w-input" value="0.06"><select class="w-select"><option>日</option></select></div>
+          <div class="ph-line"><span class="ix-k">過去</span><span class="ix-btn-row" style="flex-wrap: nowrap"><span class="w-btn w-btn--dense on">なし</span><span class="w-btn w-btn--dense w-btn--secondary">1周</span><span class="w-btn w-btn--dense w-btn--secondary">1日</span><span class="w-btn w-btn--dense w-btn--secondary">10日</span><span class="w-btn w-btn--dense w-btn--secondary">1ヶ月</span></span><input class="w-input" value="0"><select class="w-select"><option>日</option></select></div>
+        </div>
+        <div class="ix-sheet-col" style="gap: 0">
+          <div class="ix-trow"><span>目盛りを相対表記</span><span class="w-toggle-track"><span class="w-toggle-knob"></span></span></div>
+          <div class="ix-trow"><span>目盛りを表示</span><span class="w-toggle-track on"><span class="w-toggle-knob"></span></span></div>
+          <div class="ix-trow"><span>軌道要素の時刻を表示</span><span class="w-toggle-track"><span class="w-toggle-knob"></span></span></div>
+        </div>
+      </div>
+    </div></div>
+</div>
+<p class="rf-lead" style="margin-top: var(--space-4)">
+  「軌道(基準・軌道要素)」「視点(焦点・画角・基準)」「表示(ガイド・可視性)」のタブは、現行の左レール ORB/CAM/DSP の中身を同じ行の文法で 3 列に並べる。新しい部品は要らない。
+  トグル行は<b>行全体を 44px の押せる面</b>にしている(<code>w-toggle-track</code> 自体は 34×18 のまま)。
+</p>
+
+<!-- ================================================================== -->
+<h2 id="sD"><span class="ix-code">D</span>補助: 縦持ち 390×844(戦闘)</h2>
+<p class="rf-lead">
+  縦持ちは幅 390px で、現行の幅クラスでは compact(&lt;760px)にあたる。左右にレールを立てる余地は無いので、横持ちと<b>同じ部品・同じ文法</b>で、上から「ストリップ → 警報と視点 → 小計器 → 照準 → 武装 → ドック → 親指」の縦の流れに並べ替えるだけにしている。
+  <b>比較の撮影は無い</b>(ツールバーの「現行」「比較」は意味を持たない)。上 47px はノッチ、下 34px はホームインジケータ。シートを開くと下 473px(<code>56dvh</code>)を占めてパッドを隠す。
+</p>
+<div class="ph-row is-portrait">
+<div>
+<div class="rf-stage-wrap"><div class="rf-stage" id="st-portrait" data-w="390" data-h="844" style="--safe-t:47px;--safe-r:0px;--safe-b:34px;--safe-l:0px">
+  <div class="rf-layer rf-after ph">
+    <canvas class="rf-scene" data-scene="combat"></canvas>
+    <div class="ph-abs" style="top: calc(var(--safe-t) + var(--space-3)); left: var(--space-4); right: var(--space-4)" data-note="1">
+      <div class="ix-strip is-touch" style="display: flex; justify-content: space-between; width: 100%">
+        <span class="w-btn">COMBAT ▾</span>
+        <span class="ix-strip-time">T+ 00:00:04</span>
+        <span class="ix-warp is-touch"><span>«</span><span class="on">×1</span><span>»</span></span>
+        <span class="ix-fab" style="box-shadow: none; background: transparent">?</span>
+      </div>
+    </div>
+    <div class="ph-abs" style="top: calc(var(--safe-t) + 60px); left: var(--space-4); right: var(--space-4); display: flex; align-items: center; justify-content: space-between" data-note="2">
+      <span class="ix-annun"><span class="ix-lamp">CAUTION</span><span class="ix-lamp">WARNING</span></span>
+      <span class="w-btn w-btn--secondary" style="min-height: var(--hit-target-min); display: inline-flex; align-items: center; background: var(--glass-quiet)">CAM ⟲</span>
+    </div>
+    <div class="ph-abs" style="top: calc(var(--safe-t) + 112px); left: 50%; transform: translateX(-50%)">
+      <div class="ix-alert is-info" style="font-size: var(--font-xs)"><span class="ix-alert-level">NAV</span><span>ターゲット固定 HOSTILE-ε</span></div>
+    </div>
+    <div class="ph-micro" style="left: var(--space-4); top: calc(var(--safe-t) + 158px)" data-note="3">
+      <div class="ix-readout is-s"><div class="ix-readout-cap">ALTITUDE</div><div class="ix-readout-value">420.00<span class="ix-u">km</span></div><div class="ix-readout-cap">VELOCITY 7.66 km/s</div></div>
+    </div>
+    <div class="ph-micro" style="right: var(--space-4); top: calc(var(--safe-t) + 158px); width: 176px" data-note="3">
+      <div class="ix-rows">
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">RCS</span></span><span class="ix-gauge" style="--at: 20%"><i style="--v: 100%"></i></span><span class="ix-v">1000</span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">出力</span></span><span class="ix-gauge"><i style="--v: 50%"></i></span><span class="ix-v">中</span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">船体</span></span><span class="ix-gauge" style="--at: 75%"><i style="--v: 18%"></i></span><span class="ix-v">290<span class="ix-u">K</span></span></div>
+      </div>
+    </div>
+    <svg class="ph-reticle" style="left: 195px; top: 400px" viewBox="-22 -22 44 44" fill="none" stroke="var(--text)" stroke-width="1.4"><circle r="10"/><path d="M0 -10 V-18 M-5 -18 H5"/><path d="M-10 0 H-18 M10 0 H18" stroke-width="1"/></svg>
+    <div class="ph-mk" style="left: 110px; top: 448px">△ γ 2.2 km</div>
+    <div class="ix-cluster" style="left: 226px; top: 376px">
+      <div class="ph-clrow"><span class="ix-cluster-v">60.00 km</span><span class="ix-cluster-k">距離</span></div>
+      <div class="ph-clrow"><span class="ix-cluster-v">0.0 m/s</span><span class="ix-cluster-k">接近</span></div>
+      <div class="ph-clrow"><span class="ix-cluster-v">11 / 11</span><span class="ix-cluster-k">装甲</span></div>
+    </div>
+    <div class="ix-weapon ph-abs" style="left: 50%; transform: translateX(-50%); top: 516px" data-note="4">
+      <span>弾薬 <b>40</b> / 40</span><span class="ix-belt"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span>+2連</span><span>1000 m/s</span>
+    </div>
+    <div class="ph-abs" data-build="dock" data-note="5" style="left: 50%; transform: translateX(-50%); top: 560px"></div>
+    <div class="ph-abs ix-seg-col" data-build="throttle-h" data-note="6" style="left: var(--space-4); top: 648px"></div>
+    <div class="ix-fire ph-abs" style="right: var(--space-4); top: 616px">FIRE</div>
+    <span class="ix-tbtn is-round ph-abs" style="right: calc(var(--space-4) + var(--hit-target-min) * 1.75 + var(--space-4)); top: 654px"><span class="l" style="margin: 0; color: var(--text-muted)">ZOOM</span></span>
+    <div class="ph-abs" data-build="movepad" data-note="6" style="left: var(--space-4); bottom: calc(var(--safe-b) + var(--space-4))"></div>
+    <div class="ph-abs" data-build="rotpad" data-note="6" style="right: var(--space-4); bottom: calc(var(--safe-b) + var(--space-4))"></div>
+  </div>
+</div></div>
+</div>
+<ol class="rf-notes">
+  <li data-n="1"><b>ストリップは 1 行のまま幅 374px に収める。</b>[ビュー切替][MET][« ×1 »][HLP]。STAGE 表示と警報灯は 2 段目へ。タップ最小 44px。
+    <span class="rf-where">src/game/hud/style/skeleton-style.ts(<code>MQ_COMPACT</code> の <code>#hud-topbar</code>。現行は <code>.gs-metrics</code> を 2 列に詰めるだけ)</span></li>
+  <li data-n="2"><b>警報灯と視点リセットを 2 段目に。</b>警報は 1 箇所(警報灯)にまとめる原則どおり。
+    <span class="rf-where">src/game/hud/skeleton-style.ts ・ SPEC UI-DESIGN §1</span></li>
+  <li data-n="3"><b>小計器は左右に 2 枚並べる(横持ちと同じ中身)。</b>縦に余裕があるので、横持ちより下に置いてよい。照準(画面中央)を覆わない高さ(上から約 280px まで)。</li>
+  <li data-n="4"><b>武装の帯は中段へ。</b>親指の届く範囲の外側(上)に置く — 撃つ前に見る情報で、押す必要はない。</li>
+  <li data-n="5"><b>モードドックを 1 行 374px に。</b>4 つの取っ手が幅いっぱいに並ぶ。親指で押す最上段。</li>
+  <li data-n="6"><b>推力段は横 4 段で左パッドの上へ、FIRE は右パッドの上へ。</b>パッドは下の両端。<code>--safe-b</code>(34px)の内側。縦持ちでは下から 270px 以内にすべての操作が収まる(片手でも届く)。
+    <span class="rf-where">src/game/hud/touch-controls.ts(<code>MQ_COMPACT</code> のブロック。現行は <code>#touch-mode-col</code> を <code>left: calc(50% - 38px)</code> に置くのでパッド同士の間に挟まる)</span></li>
+</ol>
+</div>
+
+<!-- ================================================================== -->
+<h2 id="sE"><span class="ix-code">E</span>親指の届く範囲とタップ寸法</h2>
+<p class="rf-lead">
+  横持ちの両手持ちでは、親指の根元は下の両端(約 x=110 / x=734、y=390 付近)にあり、<b>楽に動かせるのは根元から約 230px(約 40mm)</b>、伸ばして届くのは約 330px。
+  図の濃い緑が「楽」、薄い緑が「伸ばして届く」。中央の破線は<b>1 本指ドラッグでカメラを回す領域</b>(SPEC CONTROLS)で、何も置かない。上端は親指が届かないので読み取り専用の小計器とストリップ(ただしストリップのタップは持ち替えで押す想定の低頻度操作 — ビュー切替・ワープ・ヘルプ)。
+  破線の枠はすべて 44px 以上(<code>--hit-target-min</code>)。ボタン同士の間隔は <code>--space-2</code>(4px)で、現行と同じ。
+  図の半径は 6.5 インチ級スマホの目安で、実機の測定ではない。<b>この面にも現行の撮影は無い。</b>
+</p>
+<div class="ph-row">
+<div>
+<div class="rf-stage-wrap"><div class="rf-stage ph-thumbmap" id="st-thumb" data-w="844" data-h="390" style="--safe-t:0px;--safe-r:47px;--safe-b:21px;--safe-l:47px">
+  <div class="rf-layer rf-after ph">
+    <canvas class="rf-scene" data-scene="plain"></canvas>
+    <svg class="ph-reach" viewBox="0 0 844 390">
+      <circle cx="110" cy="400" r="330" fill="color-mix(in srgb, var(--color-success) 7%, transparent)"/>
+      <circle cx="734" cy="400" r="330" fill="color-mix(in srgb, var(--color-success) 7%, transparent)"/>
+      <circle cx="110" cy="400" r="230" fill="color-mix(in srgb, var(--color-success) 14%, transparent)"/>
+      <circle cx="734" cy="400" r="230" fill="color-mix(in srgb, var(--color-success) 14%, transparent)"/>
+    </svg>
+    <div class="ph-hatch" style="left: 0; top: 0; bottom: 0; width: var(--safe-l)">ノッチ 47</div>
+    <div class="ph-hatch" style="right: 0; top: 0; bottom: 0; width: var(--safe-r)">ノッチ 47</div>
+    <div class="ph-hatch" style="left: var(--safe-l); right: var(--safe-r); bottom: 0; height: var(--safe-b)">ホームインジケータ 21</div>
+    <div class="ph-zone" style="left: 262px; top: 62px; width: 320px; height: 150px" data-note="1">1 本指ドラッグ: カメラのヨー・ピッチ<br>ダブルタップ: フォーカス / 長押し: メニュー<br><b>何も置かない</b></div>
+    <div class="ph-zone" style="left: 262px; top: 6px; width: 320px; height: 44px; border-color: var(--ix-meta); color: var(--ix-meta)" data-note="2">上端: 読み取り専用+低頻度の操作</div>
+    <div class="ph-anno" style="left: 156px; top: 150px" data-note="3">44px 以上(--hit-target-min)</div>
+    <div class="ph-anno" style="right: 100px; top: 120px">親指の届く範囲(楽 / 伸ばす)</div>
+  </div>
+</div></div>
+</div>
+<ol class="rf-notes">
+  <li data-n="1"><b>中央は空ける。</b>カメラ操作(1 本指ドラッグ・2 本指のパン/ピンチ/ひねり)は画面全体のジェスチャで、どこにでも指を置ける前提。中央にボタンや枠を置くとその下でドラッグが始まらない。現行はレールが画面の 57% を占めていた。</li>
+  <li data-n="2"><b>上端は「読む」。</b>押す頻度が低い操作(ビュー切替・時間加速・ヘルプ)は上端に置いてよい。戦闘中に繰り返し押す操作(並進・回転・射撃・制動・微動・ホールド・推力段)は、すべて下の両端に置く。</li>
+  <li data-n="3"><b>タップ最小 44px。</b>現行の <code>.rail-toggle</code> は 30px(<code>--hud-rail-toggle-size</code>)で、<code>pointer: coarse</code> でも広げていない — SPEC §6「タップターゲットは最小 44px」に反している。coarse-short ではレールごと無くなるので問題は消えるが、coarse の中間幅(タブレット)では別途 44px に直す必要がある。
+    <span class="rf-where">src/game/hud/style/skeleton-style.ts(<code>#hud .rail-toggle</code>) ・ src/game/hud/style/layout-tokens.ts(<code>--hud-rail-toggle-size</code>) ・ SPEC UI-DESIGN §6</span></li>
+</ol>
+</div>
+
+<!-- ================================================================== -->
+<h2 id="sF"><span class="ix-code">F</span>仮想パッドの一覧(何があり、どこへ行くか)</h2>
+<p class="rf-lead">
+  <code>src/game/hud/touch-controls.ts</code> が組む仮想パッドは、現行は 5 領域・計 26 個のボタン。<b>撮影画面には出ていない</b>(最初のタッチまで不可視)。改修案では「常時の操作面」「ドック」「ストリップ」「ビュー切替」に再配置し、重複する表現(制動・微動・ホールドは艦ステータスの行・touch-mode-col・util の 3 つ)を 1 つにする。
+</p>
+<div class="rf-scroll"><table class="rf-table ph-spec">
+  <tr><th>現行の領域(id)</th><th>ボタン</th><th>現行の置き場(横持ち)</th><th>改修案</th></tr>
+  <tr><td><code>#touch-pad-move</code></td><td>上・前・下・左・後・右(3×2)</td><td>左下 <code>left:6px; bottom:6px</code>(<code>--safe-*</code> 無視)</td><td>左下。<code>--safe-l/b</code> + <code>--space-4</code>。推力段の右隣</td></tr>
+  <tr><td><code>#touch-pad-rot</code></td><td>ロール左右・ピッチ上下・ヨー左右(3×2)</td><td>右下 <code>right:6px; bottom:6px</code></td><td>右下。ラベルを 3 字以内に(ピッチ)</td></tr>
+  <tr><td><code>#touch-fire</code></td><td>FIRE(56px)</td><td>右下の上。右レールに重なる</td><td>右端・回転パッドの真上、約 77px</td></tr>
+  <tr><td><code>#touch-zoom</code></td><td>ZOOM(44px)</td><td>FIRE の左</td><td>FIRE の左(同じ)</td></tr>
+  <tr><td><code>#touch-mode-col</code></td><td>制動 P・微動 V</td><td><code>left:180px; bottom:6px</code>(左パッドの右。中央がレールに食われる)</td><td>下中央のモードドック(状態ピップ付き)</td></tr>
+  <tr><td><code>#touch-util</code></td><td>« » M N H C</td><td><code>bottom:110px</code>、左端。左レールに重なる</td><td>« » → ストリップ / M → ビュー切替 / N → マップの下部バー / H → HLP / C → ドック</td></tr>
+  <tr><td>(艦ステータス内)</td><td>推力段 1–4</td><td>右レールの艦ステータスパネル内</td><td>左端の縦 4 段(touch-controls へ移す)</td></tr>
+</table></div>
+
+<h3>現行コードから拾った小さな問題(改修で一緒に直す)</h3>
+<div class="rf-scroll"><table class="rf-table ph-spec">
+  <tr><th>どこ</th><th>何が起きているか</th></tr>
+  <tr><td><code>touch-controls.ts</code> の <code>MQ_COARSE</code>/<code>MQ_SHORT</code>/<code>MQ_COMPACT</code> 3 ブロック</td><td>同じ <code>grid-template-columns</code> / <code>left:6px; bottom:6px</code> を 3 回書き、基底の <code>calc(10px + var(--safe-l))</code> を捨てている。ノッチ端末でパッドがセーフエリアに食い込む。<code>MQ_SHORT</code> は coarse を問わないが、<code>#touch-ui</code> は初回タッチまで出ないので実害は無い。</td></tr>
+  <tr><td><code>buildRotationPad</code> の並び</td><td>下段が [→ ヨー][↑ ピッチ][← ヨー] の順で、矢印と位置が逆(→ が左)。意図(スティックの向き)かどうかを確かめて、そうでなければ [← ヨー][↑][→ ヨー] へ揃える。このページは現行の並びのまま描いた。</td></tr>
+  <tr><td><code>layout-tokens.ts</code> と SPEC §5「ブレークポイント」</td><td>SPEC は 700/1100px、コード(<code>breakpoints.ts</code>)は 760/1184px。844px は SPEC では「中間」、コードでも medium(760 以上)。スマホ横持ちは幅クラスでなく <code>MQ_COARSE_SHORT</code> で扱う方針なので、どちらでも結論は変わらないが、閾値の食い違いは別途 SPEC に合わせて直す。</td></tr>
+</table></div>
+
+<!-- ================================================================== -->
+<h2 id="sG"><span class="ix-code">G</span>改修の手順(小さく入れられる順)</h2>
+<ol class="rf-lead" style="padding-left: 1.4em; display: grid; gap: var(--space-3)">
+  <li><b>パッドのセーフエリア対応と重複の整理</b>(<code>touch-controls.ts</code>)。3 つの <code>@media</code> を <code>MQ_COARSE</code> 1 つにまとめ、座標を <code>--safe-*</code> から導く。ラベル「機首下げ/上げ」→「ピッチ」。見た目の変更はほぼ無く、実機で最初に効く。</li>
+  <li><b>タップ寸法の是正</b>(<code>skeleton-style.ts</code> / <code>layout-tokens.ts</code>)。<code>.rail-toggle</code> を coarse で 44px に。<code>#hud-chase-reset</code> と <code>#hud-help-badge</code> は既に 44px。</li>
+  <li><b>上部ストリップの 1 行化</b>(<code>top-bar.ts</code> / <code>skeleton-style.ts</code>)。<code>MQ_COARSE_SHORT</code> で 2 行の全体ステータスを 1 行 44px に。ワープの « » をここへ移し、util 行を縮める。</li>
+  <li><b>シートの導入</b>(<code>layout-tokens.ts</code> / <code>hud-root.ts</code> / <code>panel-shell.ts</code>)。<code>MQ_COARSE_SHORT</code> でレール幅を 0 にして、同じパネルをシートのタブに入れる。まず「艦」「軌道」の 2 タブから。SPEC §5 に 1 文(レール=coarse-short ではシート)を足す。</li>
+  <li><b>モードドック・推力段・常時小計器</b>。推力段の SegmentedControl を touch-controls へ移し、制動・微動・ホールドを 1 つのドックにまとめる。小計器 2 枚を足す。</li>
+  <li><b>マップの下部バー</b>(<code>display-timeline-panel.ts</code>)。巨大パネルを 1 本の帯 + 取っ手に畳み、期間ピルを「時間」タブへ。物体一覧を「物体」タブへ。縦持ちは同じ部品を縦に並べ替えるだけ。</li>
+</ol>
+
+<h3>判断に迷った点</h3>
+<div class="rf-scroll"><table class="rf-table ph-spec">
+  <tr><th>点</th><th>どう決めたか / 確認が要ること</th></tr>
+  <tr><td>シートという「下から出る面」は SPEC §5 の置き場 4 種のどれか</td><td>新しい置き場を足さず、レール(置き場 1・2)が coarse-short で取る別の姿とした。SPEC の「レール」の定義に「coarse かつ short では下端のシート」と 1 文足す必要がある。</td></tr>
+  <tr><td>マップの軌道計画の「確定」をタッチでどう押すか</td><td>現行の案内は「[M] で確定」。touch-controls の M は「マップ切替」で、確定のタッチ手段が SPEC(CONTROLS・MAP)に見当たらない。このページは確定を描かず、手段を決めてから足す。</td></tr>
+  <tr><td>モバイルの ESC(ポーズメニュー)</td><td>撮影・コードを見る限り、タッチでポーズメニューを開く常設ボタンが見つからない(<code>overlay-manager.ts</code> はあるが入口が touch-controls に無い)。ストリップのビュー切替かシートの外側に置くことになるが、確認が取れていないので描いていない。</td></tr>
+  <tr><td>戦闘中にシートを開いている間、仮想パッドを隠してよいか</td><td>既存の <code>hud-overlay-modal-open</code> と同じ扱いにした。ゲームは止まらない。パッドを残すなら、シートの高さを 218px から減らす。</td></tr>
+</table></div>
+
+</main>
+<script>
+(function () {
+  // 繰り返しの部品を組む。ゲームの DOM ではなく、このリファレンスの記述量を減らすための道具。
+  const tbtn = (g, l, on) => `<span class="ix-tbtn${on ? ' on' : ''}"><span class="g">${g}</span><span class="l">${l}</span></span>`;
+  const seg = (n, on) => `<span class="w-btn ix-seg-cell${on ? ' on' : ''}">${n}</span>`;
+  const pip = (on) => `<span class="ix-pip${on ? ' on is-own' : ''}"></span>`;
+  const dockBtn = (label, key, on) => `<span class="w-btn${on ? ' on' : ''}">${pip(on)}${label}${key ? `<kbd class="key">${key}</kbd>` : ''}</span>`;
+  const builders = {
+    movepad: () => '<div class="ix-pad">' + [['▲', '上'], ['●', '前'], ['▼', '下'], ['◀', '左'], ['○', '後'], ['▶', '右']].map(([g, l]) => tbtn(g, l)).join('') + '</div>',
+    rotpad: () => '<div class="ix-pad">' + [['⟲', 'ロール'], ['↓', 'ピッチ'], ['⟳', 'ロール'], ['→', 'ヨー'], ['↑', 'ピッチ'], ['←', 'ヨー']].map(([g, l]) => tbtn(g, l)).join('') + '</div>',
+    'throttle-v': () => '<span class="ix-ctl-cap">出力</span>' + [4, 3, 2, 1].map((n) => seg(n, n === 2)).join(''),
+    'throttle-h': () => '<span class="ix-ctl-cap">出力</span><div class="ix-seg-row">' + [1, 2, 3, 4].map((n) => seg(n, n === 2)).join('') + '</div>',
+    dock: () => '<div class="ix-modedock">' + dockBtn('制動', 'P', true) + dockBtn('微動', 'V', false) + dockBtn('ホールド', 'C', true) + '<span class="w-btn">計器 ⌃</span></div>',
+  };
+  document.querySelectorAll('[data-build]').forEach((el) => { el.innerHTML = builders[el.dataset.build](); });
+  // 親指の図: 戦闘ステージの操作面(.ph-ctl)を同じ座標で複製する。
+  const src = document.querySelectorAll('#st-combat .ph-ctl');
+  const dst = document.querySelector('#st-thumb .rf-after');
+  src.forEach((el) => {
+    const c = el.cloneNode(true);
+    c.removeAttribute('data-note');
+    c.querySelectorAll('[data-note]').forEach((n) => n.removeAttribute('data-note'));
+    dst.appendChild(c);
+  });
+})();
+</script>
+<script src="foundation/themes.js"></script>
+<script src="foundation/ref.js"></script>
+</body></html>

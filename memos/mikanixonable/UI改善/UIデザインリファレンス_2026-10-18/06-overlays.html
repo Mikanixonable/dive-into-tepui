@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ウィンドウとモーダル</title>
+<link rel="stylesheet" href="foundation/tepui-base.css">
+<link rel="stylesheet" href="foundation/ref.css">
+<style>
+  /* ============================================================================================
+   * このページ固有の部品。.ix- 接頭辞のものは ref.css へ昇格する候補(ページ末尾の表を参照)。
+   * 値はトークンだけから導く。px は配置座標(ステージ内の left/top/width)にだけ使う。
+   * ========================================================================================== */
+
+  /* --- ウィンドウ枠: [グリフ][名前 種別タグ][ピン][閉じる] ------------------------------------ */
+  .ix-win { position: relative; border-radius: var(--radius-window); overflow: hidden; font-size: var(--font-s); line-height: 1.45; color: var(--ix-data); }
+  .ix-win-head {
+    display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; column-gap: var(--space-4);
+    padding: var(--space-5) var(--space-5) var(--space-4) var(--space-6); cursor: move;
+  }
+  .ix-win-glyph { display: inline-grid; place-items: center; width: 1.3em; height: 1.3em; color: var(--ix-label); font-size: var(--font-xl); }
+  .ix-win-glyph svg { width: 100%; height: 100%; display: block; }
+  .ix-win-id { display: flex; align-items: center; gap: var(--space-4); min-width: 0; }
+  .ix-win-name {
+    font-size: var(--font-xl); font-weight: 650; letter-spacing: var(--tracking-title); color: var(--text-strong);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ix-win-kind { font-size: var(--font-xxs); letter-spacing: var(--tracking-code); color: var(--ix-meta); white-space: nowrap; }
+  .ix-win.is-own .ix-win-glyph, .ix-win.is-own .ix-win-name { color: var(--ix-own); }
+  .ix-win.is-tgt .ix-win-glyph, .ix-win.is-tgt .ix-win-name { color: var(--ix-tgt); }
+  .ix-win-body { display: grid; gap: var(--space-4); padding: var(--space-2) var(--space-6) var(--space-6); }
+  .ix-win-read { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: var(--space-6); align-items: center; }
+  .ix-win-read .ix-rows { min-width: 0; }
+
+  /* 折り畳み: 見出し行1本。線ではなく余白で分ける。 */
+  .ix-fold {
+    display: flex; align-items: center; gap: var(--space-3); min-height: var(--row-min-h-s);
+    color: var(--ix-label); font-size: var(--font-xs); letter-spacing: var(--tracking-label); cursor: pointer;
+    border-radius: var(--radius-micro);
+  }
+  .ix-fold:hover { color: var(--color-primary-hover); }
+  .ix-fold-n { margin-left: auto; color: var(--ix-meta); font-variant-numeric: tabular-nums; }
+
+  /* 操作の列: 面のボタン。ターゲットは第二色の面、取り消せないものは警告面で右端へ離す。 */
+  .ix-win .ix-actions { margin-top: var(--space-2); align-items: center; }
+  .ix-actions .ix-spacer { margin-left: auto; }
+  .ix-btn-tgt { background: var(--ix-tgt-fill); color: var(--ix-tgt); }
+  .ix-btn-tgt:hover { background: color-mix(in srgb, var(--color-signal) 24%, transparent); color: var(--ix-tgt); }
+  .ix-btn-danger { background: var(--ix-warning-fill); color: var(--ix-warning); }
+  .ix-btn-danger:hover { background: color-mix(in srgb, var(--color-error) 22%, transparent); color: var(--ix-warning); }
+  .ix-btn-caution { background: transparent; color: var(--ix-caution); }
+  .ix-btn-caution:hover { background: var(--ix-caution-fill); color: var(--ix-caution); }
+  .ix-win .w-btn, .ix-menu .w-btn { display: inline-flex; align-items: center; }
+  .ix-btn-tgt .ix-glyph { margin-right: var(--space-3); }
+
+  /* 搭載部品・ドック */
+  .ix-modules { display: grid; grid-template-columns: 1fr 1fr; column-gap: var(--space-6); }
+  .ix-dock {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-5);
+    min-height: var(--row-min-h-s); padding-block: var(--space-2);
+  }
+  .ix-dock-name { display: flex; align-items: center; gap: var(--space-4); min-width: 0; color: var(--ix-label); }
+  .ix-dock-name b { font-weight: 400; color: var(--ix-data); }
+  .ix-dock-btns { display: inline-flex; gap: var(--space-2); }
+  .ix-dock-why { grid-column: 1 / -1; font-size: var(--font-xxs); color: var(--ix-caution); }
+  .ix-dock-why::before { content: '△'; margin-right: var(--space-2); }
+
+  /* --- 外側タブ・内側タブ: 選択は主役色ではなく中立の面で --------------------------------------- */
+  .ix-tabs { display: flex; gap: var(--space-1); padding: var(--space-1); border-radius: var(--radius-control); background: var(--glass-inset); }
+  .ix-tabs .w-btn {
+    flex: 1 1 0; min-width: 0; text-align: center; justify-content: center; background: transparent; color: var(--ix-label);
+    border-radius: var(--radius-control); display: inline-flex; align-items: center; gap: var(--space-3);
+  }
+  .ix-tabs .w-btn:hover { background: var(--glass-control-hover); color: var(--text); }
+  .ix-tabs .w-btn.on { background: var(--fill-3); color: var(--text-strong); }
+  /* 「いまの画面」の章の印。 */
+  .ix-tabs .w-btn.is-here::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--ix-label); }
+  .ix-tabs.is-dense .w-btn { padding: var(--space-3) var(--space-4); font-size: var(--font-xs); }
+
+  /* --- ESC メニュー ------------------------------------------------------------------------- */
+  .ix-pause { display: grid; grid-template-columns: minmax(0, .4fr) minmax(0, 1.6fr); column-gap: var(--space-6); padding: var(--space-6); }
+  .ix-brand { display: grid; align-content: space-between; gap: var(--space-5); min-width: 0; cursor: move; }
+  .ix-brand-meta { display: grid; gap: var(--space-2); }
+  .ix-brand-meta .ix-code { color: var(--ix-label); }
+  .ix-brand-ver { font-size: var(--font-xxs); color: var(--ix-meta); letter-spacing: var(--tracking-label); }
+  .ix-pause-main { display: grid; align-content: start; gap: var(--space-5); min-width: 0; }
+  .ix-pause-top { display: flex; align-items: center; gap: var(--space-4); cursor: move; }
+  .ix-pause-top .ix-tabs { flex: 1 1 auto; }
+  .ix-bgm { display: grid; grid-template-columns: auto minmax(0, 1fr) 3.4em auto; align-items: center; column-gap: var(--space-5); min-height: var(--hit-target-min); }
+  .ix-bgm .w-slider { width: 100%; accent-color: var(--text-muted); }
+  .ix-bgm .ix-v { justify-self: end; color: var(--ix-label); }
+  .ix-menu { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+  .ix-menu .w-btn { min-height: var(--hit-target-min); justify-content: space-between; text-align: left; font-size: var(--font-m); padding-inline: var(--space-5); }
+  .ix-menu .ix-menu-end { grid-column: 1 / -1; margin-top: var(--space-4); }
+  .ix-icon { width: 1.1em; height: 1.1em; display: block; }
+  /* ロゴタイプ(src/hud/title-logotype.ts と同じ組み。書体の配信は省き、フォールバックで組む) */
+  .ix-logo { margin: 0; color: var(--text); font-family: "Arimo", "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif; font-weight: 500;
+    letter-spacing: -0.07em; line-height: 0.82; font-size: calc(var(--font-3xl) * 1.35); }
+  .ix-logo > span { position: relative; display: block; width: fit-content; white-space: nowrap; }
+  .ix-logo > span:nth-child(2) { margin-left: 0.42em; }
+  .ix-logo > span:nth-child(3) { margin-left: 0.84em; color: var(--color-primary-hover); }
+  .ix-logo sup, .ix-logo sub { position: absolute; left: calc(100% + var(--space-4)); color: var(--color-signal);
+    font-size: var(--font-xxs); font-weight: 500; letter-spacing: 0.08em; line-height: 1; }
+  .ix-logo > span:nth-child(1) sup { top: 0.1em; }
+  .ix-logo > span:nth-child(2) sub { bottom: 0.1em; }
+  .ix-logo > span:nth-child(3) sup { top: 0.1em; }
+
+  /* 設定タブ: ラベル領域と操作領域を分け、操作領域を縦に揃える。 */
+  .ix-set { display: grid; gap: var(--space-5); }
+  .ix-set-row { display: grid; grid-template-columns: minmax(8em, 1fr) minmax(0, 1.4fr); column-gap: var(--space-5); align-items: center; min-height: var(--row-min-h-s); }
+  .ix-set-row > .ix-k { color: var(--ix-label); }
+  .ix-set-body { padding: var(--space-5); border-radius: var(--radius-control); background: var(--glass-inset); display: grid; gap: var(--space-2); }
+
+  /* --- ヘルプ ------------------------------------------------------------------------------- */
+  .ix-help { padding: var(--space-6); display: grid; gap: var(--space-5); }
+  .ix-help-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; column-gap: var(--space-5); }
+  .ix-help-title { font-size: var(--font-2xl); font-weight: 650; letter-spacing: var(--tracking-title); color: var(--text-strong); }
+  .ix-help-ctx { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-label); display: inline-flex; align-items: center; gap: var(--space-3); }
+  .ix-help-row { display: grid; grid-template-columns: minmax(0, .42fr) minmax(0, 1fr); column-gap: var(--space-6); align-items: start; padding-block: var(--space-3); }
+  .ix-help-in { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-height: calc(var(--font-s) * 1.45); }
+  .ix-help-in .ix-or { font-size: var(--font-xxs); color: var(--ix-meta); }
+  .ix-help-name { font-size: var(--font-s); color: var(--text); font-weight: 600; }
+  .ix-help-desc { font-size: var(--font-xs); color: var(--ix-label); line-height: 1.55; margin-top: var(--space-1); }
+  /* ジェスチャの表記: キーキャップ(四角)と区別する丸い札。 */
+  .ix-chip {
+    display: inline-flex; align-items: center; height: 1.7em; padding: 0 var(--space-4); border-radius: var(--radius-pill);
+    background: var(--fill-1); color: var(--text-muted); font-size: var(--font-xxs); white-space: nowrap;
+  }
+  .ix-help-scroll { display: grid; }
+  .ix-crop { aspect-ratio: 920 / 600; border-radius: var(--radius-control); background-repeat: no-repeat; background-size: 173.9% auto; background-position: 50% 52%; }
+
+  /* --- 確認 --------------------------------------------------------------------------------- */
+  .ix-confirm { width: min(32rem, 100%); margin-inline: auto; padding: var(--space-6); display: grid; gap: var(--space-5); border-radius: var(--radius-panel); }
+  .ix-confirm-title { display: flex; align-items: center; gap: var(--space-4); margin: 0; font-size: var(--font-l); font-weight: 600; color: var(--text-strong); }
+  .ix-confirm-title .ix-lvl { color: var(--ix-warning); font-size: var(--font-s); }
+  .ix-confirm-msg { margin: 0; color: var(--text-muted); white-space: pre-wrap; line-height: 1.6; }
+  .ix-confirm-act { display: flex; justify-content: flex-end; gap: var(--space-3); margin-top: var(--space-2); }
+  .ix-confirm-act .w-btn { display: inline-flex; align-items: center; }
+  .ix-scrimmed { position: relative; padding: calc(var(--space-6) * 2) var(--space-6); border-radius: var(--radius-control); overflow: hidden; }
+  .ix-scrimmed::before { content: ''; position: absolute; inset: 0; background: color-mix(in srgb, var(--bg) 62%, transparent); }
+  .ix-scrimmed > * { position: relative; }
+  /* 現行(CSS から再現) */
+  .cur-confirm { width: min(32rem, 100%); margin-inline: auto; padding: var(--space-6); text-align: center; border-radius: var(--radius-panel); }
+  .cur-confirm h3 { margin: 0 0 var(--space-3); font-size: var(--font-s); font-weight: 600; color: var(--color-warning); }
+  .cur-confirm p { margin: 0 0 var(--space-5); }
+  .cur-confirm div { display: flex; justify-content: center; gap: var(--space-3); }
+
+  /* --- ステージ上の配置 ------------------------------------------------------------------------ */
+  .p6-at { position: absolute; }
+  .p6-ghost { position: absolute; border-radius: var(--radius-panel); box-shadow: inset 0 0 0 1px var(--fill-2); display: grid; place-items: center;
+    font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-meta); }
+  .p6-mark { position: absolute; display: grid; justify-items: center; gap: var(--space-1); font-size: var(--font-xxs); color: var(--text); text-align: center; text-shadow: 0 0 3px var(--bg); }
+  .p6-mark svg { width: 16px; height: 16px; }
+  .p6-cap { font-size: var(--font-xxs); color: var(--text-dim); margin: 0 0 var(--space-3); letter-spacing: var(--tracking-label); }
+  .p6-flow { display: grid; gap: var(--space-5); justify-items: center; }
+  .p6-steps { margin: var(--space-4) 0 0; padding-left: 1.4em; color: var(--text-muted); line-height: 1.8; max-width: 980px; }
+  .p6-steps b { color: var(--text); }
+  .p6-cur { color: var(--text-muted); font-size: var(--font-s); line-height: 1.7; }
+  .p6-cur code { color: var(--text); }
+</style>
+</head>
+<body class="rf" data-title="06 ウィンドウとモーダル" data-sub="プロパティウィンドウ・ESC メニュー・ヘルプ・確認 — 「いま何が起きているか」を先に、操作は対象にできることそのものを">
+<main class="rf-main">
+
+<p class="rf-intro">
+  このページは<b>重なって出る面</b>の作り直し。現行の撮影で目立つのは3点で、どれも <a href="01-system.html">01 表示の文法</a> の規則で解ける。
+  (1) プロパティウィンドウの操作が<b>番号付きの文字列リスト</b>(01〜05)で、番号は押せるキーに見えるが何も起きない。5行が各44pxを取り、ウィンドウが画面下端へ迫る。
+  (2) ESC メニューのタブ・ボタン・BGM の帯が<b>主役色の赤い面</b>で塗られ、「選択中」と「押せる」が区別できない。ここも項目に番号が振られ、キーは <code>[F3]</code> が1つだけ文字の中に混じる。
+  (3) ヘルプのキー表記が<b>赤い小文字の列</b>で、タッチのジェスチャとキーが同じ見た目。
+  方針は、<b>ウィンドウの本文を「読む → 畳む → 操作」の順に</b>、操作は<b>キー付きのボタン</b>、状態は<b>トグル・ピップ</b>、選択は<b>中立の面</b>に統一すること。SPEC UI-DESIGN §4・§8 の挙動(クリップ・排他・背景を暗転しない・操作項目は対象ごと)はすべて保存している。
+</p>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">01</span>プロパティウィンドウ — 敵 HOSTILE-α(戦闘ビュー)</h2>
+<p class="rf-lead">
+  現行 <code>property.jpg</code> と同じ位置・同じ状況(戦闘ビュー、HOSTILE-α を右クリック、ターゲットは HOSTILE-ε のまま)。
+  比較モードで左右にワイプできる。左右のレール・上部ストリップは別ページの担当なので、ここでは破線の枠で位置だけ示す。
+</p>
+
+<div class="rf-stage-wrap"><div class="rf-stage" data-w="1600" data-h="900">
+  <div class="rf-layer rf-before"><img src="foundation/current/property.jpg" alt="現行のプロパティウィンドウ(HOSTILE-α)"></div>
+  <div class="rf-layer rf-after">
+    <canvas class="rf-scene" data-scene="combat"></canvas>
+    <div class="p6-ghost" style="left:390px; top:0; width:820px; height:100px">上部ストリップ</div>
+    <div class="p6-ghost" style="left:12px; top:137px; width:300px; height:495px">左レール</div>
+    <div class="p6-ghost" style="left:1288px; top:137px; width:300px; height:262px">右レール</div>
+    <div class="p6-mark" style="left:664px; top:336px; width:40px"><svg viewBox="0 0 16 16"><path d="M8 2 L14 13 H2 Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg><span>HOSTILE-α<br>2.2km</span></div>
+
+    <!-- 改修案: 敵 HOSTILE-α(ターゲットではない) -->
+    <section class="ix-win ui-surface-focus p6-at" style="left:1034px; top:402px; width:560px" data-note="6">
+      <header class="ix-win-head" data-note="1">
+        <span class="ix-win-glyph"><svg viewBox="0 0 16 16"><path d="M8 2 L14 13 H2 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
+        <div class="ix-win-id"><span class="ix-win-name">HOSTILE-α</span><span class="ix-win-kind">CNT · 敵機</span></div>
+        <span class="w-btn w-btn--icon" title="クリップ" aria-label="クリップ"><svg class="ix-icon" viewBox="0 0 16 16"><path d="M10 1.5l4.5 4.5-2 .6-2.6 2.6.4 3.3-1.2 1.2-2.9-2.9-3.6 3.6-.7-.7 3.6-3.6-2.9-2.9L3 6.9l3.3.4 2.6-2.6z" fill="currentColor"/></svg></span>
+        <span class="w-close" aria-label="閉じる">✕</span>
+      </header>
+      <div class="ix-win-body">
+        <div class="ix-win-read" data-note="2">
+          <div class="ix-readout"><span class="ix-readout-value">1.40<span class="ix-u">km</span></span><span class="ix-readout-cap">距離</span></div>
+          <div class="ix-rows">
+            <div class="ix-row"><span class="ix-k"><span class="ix-k-text">接近速度</span></span><span class="ix-v">0.0<span class="ix-u">m/s</span></span></div>
+            <div class="ix-row"><span class="ix-k"><span class="ix-k-text">装甲</span></span><span class="ix-gauge"><i style="--v: 100%"></i></span><span class="ix-v">11<span class="ix-u">/ 11</span></span></div>
+          </div>
+        </div>
+        <div class="ix-fold" role="button" data-note="3"><span>▸</span><span>軌道と相対値</span><span class="ix-fold-n">9</span></div>
+        <div class="ix-rows">
+          <div class="ix-row" data-note="4"><span class="ix-k"><span class="ix-k-text">予測線・過去線を表示</span></span><span class="ix-v"><span class="w-toggle-track"><span class="w-toggle-knob"></span></span></span></div>
+        </div>
+        <div class="ix-actions" data-note="5">
+          <span class="w-btn ix-btn-tgt">ターゲットに設定</span>
+          <span class="w-btn">フォーカスを移動</span>
+          <span class="w-btn ix-btn-danger ix-spacer">削除</span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div></div>
+
+<ol class="rf-notes">
+  <li data-n="1"><b>題名を1行に。</b>種別グリフ・名前・種別タグ(<code>CNT · 敵機</code>)・ピン・閉じるを1行へ。現行は題名の下に赤い <code>CNT CONTACT</code> の行が別にあり、ピンは色付きの絵文字(📌)で警告と見分けにくい。タグは中立色へ、ピンは文字色が付く円形アイコンボタン(クリップ中は <code>.w-btn.on</code>)へ。グリフはターゲット中なら第二色、操作対象の自艦なら主役色(SPEC §4)。解く問題: 監査 1・3。
+    <span class="rf-where">src/hud/windows/property-window.ts(<code>.prop-window-kind*</code> と kind 行の生成を廃し、<code>kindCode</code>/<code>kindLabel</code> をタイトル行のタグへ)・src/hud/windows/draggable-window.ts(<code>new Button('📌'…)</code> を SVG へ、<code>.dg-window-title-top</code>)・src/game/pickable/object-window-actions.ts(<code>buildContent</code> の kind 表) ・ SPEC UI-DESIGN §3・§4・§8</span></li>
+  <li data-n="2"><b>主読み値=距離、根拠=行。</b>戦闘で最初に読む距離を主読み値(<code>.ix-readout</code>)に、接近速度と装甲を右の行(<code>.ix-row</code>)にする。装甲は細いメーターを持つ(満タンは中立色。ターゲットではないので第二色にしない)。現行は 11/11 が接近速度と同じ大きさで、ラベルが数値の下に離れて対応が読みにくい。<b>「刻々変わる値が先」を保存</b>したまま、行の文法 <code>[ラベル][メーター][値 単位]</code> に揃える。解く問題: 監査 2・7。
+    <span class="rf-where">src/hud/windows/property-window-rows.ts(<code>hero</code>/<code>major</code> の描き分け)・src/hud/windows/property-window.ts(<code>.prop-window-summary*</code> の CSS)・ SPEC §8「いま何が起きているかを読む行が先」 — 変更なし</span></li>
+  <li data-n="3"><b>折り畳みは1本に。</b>現行は <code>▸ ORBIT (8)</code> と <code>▸ DETAILS / 1</code> の2本が別物として並ぶ(後者は相対速度1行だけ)。軌道要素と相対値を1本「軌道と相対値」にまとめ、右端に行数を置く。末尾の折り畳みという SPEC の規則は保存。英字の見出し名(<code>ORBIT</code>/<code>DETAILS</code>)も日本語へ。
+    <span class="rf-where">src/game/pickable/orbit-rows.ts(<code>group = 'ORBIT'</code>)・src/game/pickable/enemy-inspection.ts(<code>relspeed</code> の <code>presentation: 'detail'</code> を同じ group へ。ラベル <code>相対傾斜 [AN/DN]</code> の <code>[…]</code> も文字から外す)・src/hud/windows/property-window-rows.ts(<code>groupToggleLabel</code>・<code>syncToggleLabel</code>) ・ SPEC §8「軌道要素は末尾の折り畳み」 — 変更なし</span></li>
+  <li data-n="4"><b>軌道線の表示は、ボタンではなくトグル。</b>現行は「予測線・過去線で表示」が選択状態を持つ行(<code>selected</code> + <code>keepOpen</code>)で、押すと赤く光る。SPEC §8 が「トグルスイッチがある」と定めているので、2値は<code>.w-toggle-track</code>の行にする。自艦の「軌道計画の実行: OFF/自動実行」も同じ(いまは押すたびに循環する項目)。解く問題: 監査 4。
+    <span class="rf-where">src/hud/windows/property-window-content.ts(<code>PropertyWindowItem</code> に <code>toggle</code> 種別、または <code>PropertyWindowContent</code> に <code>toggles</code> を追加)・src/hud/windows/property-window-items.ts・src/game/pickable/object-window-actions.ts(<code>windowParts</code> が <code>selected</code> 付き項目をトグルへ振り分ける)・src/game/pickable/ship-inspection.ts(<code>planExecCycle</code>) ・ SPEC §3・§8 — 変更なし(実装が SPEC に追いつく)</span></li>
+  <li data-n="5"><b>操作はキー付きのボタン列。</b>番号 01〜05 は廃止(押せるキーに見えて無効、という偽の手掛かり)。<b>ターゲットに設定</b>は第二色の面(ターゲットになる行為だから)、<b>削除</b>は警告面で右端へ離して誤タップを避ける。<b>キャンセル</b>は ✕・ESC と重複するので出さない。ショートカットはマップビューの窓でだけ有効なので、そのときだけ <code>.key</code> を添える(下の自艦の例)。取り消せない <b>削除</b> に確認を挟むかは SPEC に無く、現行も挟まない — 挙動は変えない。解く問題: 監査 3・4。
+    <span class="rf-where">src/hud/windows/property-window-items.ts(行を <code>.w-btn</code> に、<code>shortcutKeyLabel</code> を <code>.key</code> へ。<code>dataset.index</code> と <code>.editorial-index-row</code> を外す)・src/hud/windows/property-window.ts(<code>.prop-window-items::before { content: 'ACTIONS' }</code> を廃止)・src/game/pickable/object-window-actions.ts(<code>windowParts</code> で <code>act === 'cancel'</code> を除く)・src/game/hud/windows/menu-actions.ts(<code>MenuCommon.cancel</code> はコンテキストメニュー側に残す) ・ SPEC §8 の「<code>[Esc]</code> キャンセルなど」の例示を更新</span></li>
+  <li data-n="6"><b>高さが収まる。</b>現行は ACTIONS の5行が各44px(<code>.w-hit</code> のタップ最小寸法)で、ウィンドウ全体で約 490px になり、下端からはみ出しかける。改修案は約 230px。位置は現行どおり「右クリック位置を左上にして、はみ出したら <code>reclamp</code> で収める」。タッチ(<code>pointer: coarse</code>)ではボタンが44pxへ広がるが、行ではなく列の折り返しで高さを増やすので、はみ出しは起きにくい。コンパクト幅のボトムシートは現行どおり。
+    <span class="rf-where">src/hud/windows/draggable-window.ts(<code>reclamp</code>・<code>@media MQ_COMPACT</code>)・src/hud/windows/property-window.ts ・ SPEC §5・§6 — 変更なし</span></li>
+</ol>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">02</span>ESC メニュー — 一時停止タブ(マップビュー)</h2>
+<p class="rf-lead">
+  現行 <code>pause.jpg</code> と同じ状況(マップビューで ESC)。背景は暗転しない(SPEC §8)。
+  一時停止タブを開いている間は背景の見回しが効く(入力を遮断しない)ので、背後の HUD は他ページの担当として破線で示すだけにしている。
+</p>
+
+<div class="rf-stage-wrap"><div class="rf-stage" data-w="1600" data-h="900">
+  <div class="rf-layer rf-before"><img src="foundation/current/pause.jpg" alt="現行の ESC メニュー(一時停止タブ)"></div>
+  <div class="rf-layer rf-after">
+    <canvas class="rf-scene" data-scene="map"></canvas>
+    <div class="p6-ghost" style="left:390px; top:0; width:820px; height:100px">上部ストリップ</div>
+    <div class="p6-ghost" style="left:12px; top:137px; width:300px; height:760px">左レール</div>
+    <div class="p6-ghost" style="left:1288px; top:137px; width:300px; height:575px">右レール</div>
+
+    <section class="ix-pause ui-surface-focus p6-at" style="left:340px; top:297px; width:920px" data-note="6">
+      <div class="ix-brand" data-note="1">
+        <div class="ix-logo" role="heading" aria-level="3"><span>Dive<sup>∴03</sup></span><span>into<sub>ECI₀</sub></span><span>Tepui<sup>Ω⁺</sup></span></div>
+        <div class="ix-brand-meta">
+          <span class="ix-code">CISLUNAR OPERATIONS</span>
+          <span class="ix-brand-ver">v0.0.1</span>
+          <span class="ix-pip on" style="margin-top: var(--space-3)">時間停止中</span>
+        </div>
+      </div>
+      <div class="ix-pause-main">
+        <div class="ix-pause-top">
+          <div class="ix-tabs" data-note="2"><span class="w-btn on">一時停止</span><span class="w-btn">設定</span></div>
+          <span class="w-btn w-btn--icon" title="最小化する" aria-label="最小化する">▾</span>
+          <span class="w-close" aria-label="閉じる">✕</span>
+        </div>
+        <div class="ix-bgm" data-note="3">
+          <span class="ix-k">BGM</span>
+          <input class="w-slider" type="range" min="0" max="100" value="100" aria-label="BGM 音量">
+          <span class="ix-v">100%</span>
+          <span class="w-btn w-btn--icon" title="消音" aria-label="消音"><svg class="ix-icon" viewBox="0 0 16 16"><path d="M2 6h3l4-3.5v11L5 10H2z" fill="currentColor"/><path d="M11.5 5.5a3.5 3.5 0 010 5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></span>
+        </div>
+        <div class="ix-menu" data-note="4">
+          <span class="w-btn w-btn--primary">ゲームに戻る<kbd class="key">ESC</kbd></span>
+          <span class="w-btn">セーブ<kbd class="key">F5</kbd></span>
+          <span class="w-btn">セーブデータの管理<kbd class="key">F9</kbd></span>
+          <span class="w-btn">デバッグ<kbd class="key">F3</kbd></span>
+          <span class="w-btn ix-btn-caution ix-menu-end" data-note="5">タイトル画面に戻る<span class="ix-u">→</span></span>
+        </div>
+      </div>
+    </section>
+  </div>
+</div></div>
+
+<ol class="rf-notes">
+  <li data-n="1"><b>ブランドは残し、英字の見出しを外す。</b>ロゴ(Dive into Tepui)・版・<code>CISLUNAR OPERATIONS</code> は SPEC §8 どおり保存。<code>SYS / PAUSE</code> と <code>APPLICATION STATE · SUSPENDED</code> は、右のタブ「一時停止」と同じことを英語で繰り返しているだけなので外し、「いまゲームは止まっている」という状態を<b>ピップ1つ(時間停止中)</b>で示す。ロゴ列が空いた高さを使って、メニュー全体の高さは現行の約 306px と同程度(約 280px)。
+    <span class="rf-where">src/hud/windows/pause-menu.ts(<code>buildBrand</code>・ヘッダの <code>pm-system-heading</code> / <code>pm-system-sub</code> を廃止、<code>.ix-pip</code> を足す)・src/hud/style/pause-menu-style.ts(<code>.pm-system-*</code>・<code>.pm-brand</code> の <code>min-height</code>) ・ SPEC §8「上部にゲームタイトルとバージョン番号」 — 変更なし</span></li>
+  <li data-n="2"><b>タブは日本語・中立の面。</b>タブ名を SPEC どおりの「一時停止」「設定」に(現行は <code>PAUSE</code>/<code>SETTINGS</code>)。選択中は主役色の赤い面ではなく<b>中立の面</b>(<code>--fill-3</code>)。最小化・✕ と同じ行に置き、右上端という SPEC の位置関係を保つ。現行の「ボタンが赤・選択が赤・音量が赤」で何が選択なのか読めない問題(監査 1)を解く。
+    <span class="rf-where">src/hud/windows/pause-menu.ts(<code>TabBar</code> のラベル、<code>headerActions</code> をタブ行へ)・src/hud/style/pause-menu-style.ts(<code>.pm-tabs .w-btn.on</code>)・src/hud/windows/settings-view.ts(内側タブ <code>.sv-tabs</code> も同じ規則) ・ SPEC §8「『一時停止』『設定』の外側タブ」 — 変更なし</span></li>
+  <li data-n="3"><b>BGM の行。</b>ラベルを <code>BGM</code> に短くし、<b>値(%)</b>を数字で見せ、消音は円形のアイコンボタン(SPEC §3 のアイコン主体ボタン規則)に。スライダーは既存の <code>.w-slider</code> だが、音量は「自分」ではないので塗りは中立色(<code>accent-color</code>)に。
+    <span class="rf-where">src/hud/windows/pause-menu.ts(<code>buildBgmRow</code>・<code>bgmMute</code> を <code>w-btn--icon</code> へ、値の表示を追加)・src/hud/style/pause-menu-style.ts(<code>.pm-row</code>)</span></li>
+  <li data-n="4"><b>項目は2列・番号なし・キーキャップ。</b>現行の <code>01 ゲームに戻る</code> … の番号は廃止し、実在するキー(<kbd class="key">ESC</kbd> <kbd class="key">F5</kbd> <kbd class="key">F9</kbd> <kbd class="key">F3</kbd>)を <code>.key</code> で右端に揃える(現行は F3 だけが <code>[F3]</code> と文字に混じり、F5・F9 は表記なし)。SPEC は「中間〜ワイド幅で2列、コンパクト幅で1列」と定めているが、現行は常に1列なので、ここで SPEC に追いつく。「ゲームに戻る」だけ主要ボタン(<code>.w-btn--primary</code>)。解く問題: 監査 3。
+    <span class="rf-where">src/hud/windows/pause-menu.ts(<code>buildActionGrid</code>。ラベルから <code>01&nbsp;&nbsp;</code> を除き、<code>K.manualSave.label</code> などを <code>.key</code> に)・src/hud/style/pause-menu-style.ts(<code>.pm-actions</code> を2列に、<code>span.pm-menu-btn</code> の下線を廃止)・src/input/key-mapping.ts(キー名はここから引く)</span></li>
+  <li data-n="5"><b>「タイトル画面に戻る」を離す。</b>他の項目と同じ行に並べず、最下段へ離して注意色(<code>△</code> 系)の文字だけにする(面は付けない)。進行を失う操作を、ゲームに戻る・セーブと同列に置かない。<b>未保存のときに確認を挟むか</b>は SPEC に書かれておらず、現行も直接戻る。確認(§8「取り消せない結果を伴う操作」)に該当しうるが、挙動の変更なので判断を仰ぐ — このページは確認なしのまま。
+    <span class="rf-where">src/hud/windows/pause-menu.ts(<code>quitBtn</code>)・src/hud/style/pause-menu-style.ts(<code>span.pm-quit</code>) ・ SPEC §8「確認」に該当するか要判断</span></li>
+  <li data-n="6"><b>面の挙動は保存。</b>背景を暗転しない・ヘッダでドラッグ・最小化・他モーダルと排他・一時停止タブは入力を素通し、はすべて現行と同じ。変えたのは見た目と並び順だけ。
+    <span class="rf-where">src/hud/windows/pause-menu.ts(<code>overlaySpec</code>)・SPEC §4・§8 — 変更なし</span></li>
+</ol>
+
+<h3>設定タブ — 内側タブ「描画 / BGM / 配色」</h3>
+<p class="rf-lead">
+  現行は設定タブの先頭に「設定 / SYSTEM / SETTINGS」の見出しと「描画・BGM・配色の設定を切り替えられます。」の説明文が付く。外側のタブがすでに「設定」なので、どちらも情報がない。
+  外して内側タブを先頭へ上げ、ラベル(左)と操作(右)を<b>2つの領域に分けて、操作側を縦に揃える</b>(SPEC §8「設定タブの詳細面」)。撮影は無いので、現行の構成を文で示す。
+</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行の構成</b><span>src から読み取り</span></div>
+    <div class="p6-cur">
+      見出し <code>設定</code>(<code>h2</code>)+ 主役色の <code>SYSTEM / SETTINGS</code><br>
+      説明文 <code>描画・BGM・配色の設定を切り替えられます。</code><br>
+      内側タブ 描画 / BGM / 配色(選択中は主役色の面)<br>
+      各タブは <code>01 描画</code> のように番号付きの節見出し(<code>counter(settings-section)</code>、番号は主役色)<br>
+      描画: 品質プリセット(セグメント)→ 基本・要素の群 → 項目ごとにトグル・セグメント・プルダウン
+    </div>
+    <p class="p6-cap" style="margin-top: var(--space-5)">改修: 外すもの = 見出し・説明文・節番号 / 変えるもの = 選択の面を中立に、操作領域を揃える</p>
+  </div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>設定タブ・描画</span></div>
+    <section class="ix-pause ui-surface-focus" style="grid-template-columns: 1fr">
+      <div class="ix-pause-main">
+        <div class="ix-pause-top">
+          <div class="ix-tabs"><span class="w-btn">一時停止</span><span class="w-btn on">設定</span></div>
+          <span class="w-btn w-btn--icon">▾</span><span class="w-close">✕</span>
+        </div>
+        <div class="ix-tabs is-dense"><span class="w-btn on">描画</span><span class="w-btn">BGM</span><span class="w-btn">配色</span></div>
+        <div class="ix-set-body">
+          <div class="ix-set-row"><span class="ix-k">品質プリセット</span><div class="w-group"><span class="w-btn w-btn--dense">低</span><span class="w-btn w-btn--dense on">中</span><span class="w-btn w-btn--dense">高</span></div></div>
+          <div class="ix-set-row"><span class="ix-k">解像度</span><div class="w-group"><span class="w-btn w-btn--dense">0.5×</span><span class="w-btn w-btn--dense">0.75×</span><span class="w-btn w-btn--dense on">1×</span></div></div>
+          <div class="ix-set-row"><span class="ix-k">アンチエイリアス</span><div class="w-group"><span class="w-btn w-btn--dense">なし</span><span class="w-btn w-btn--dense on">FXAA</span><span class="w-btn w-btn--dense">MSAA</span></div></div>
+          <div class="ix-set-row"><span class="ix-k">雲</span><span class="w-toggle-track on"><span class="w-toggle-knob"></span></span></div>
+          <div class="ix-set-row"><span class="ix-k">オーロラ</span><span class="w-toggle-track"><span class="w-toggle-knob"></span></span></div>
+          <div class="ix-set-row"><span class="ix-k">フィルムのルック</span><select class="w-select"><option>標準</option></select></div>
+        </div>
+      </div>
+    </section>
+    <p class="p6-cap" style="margin-top: var(--space-4)">項目名・選択肢は描画設定の表(<code>GRAPHICS_OPTIONS</code>)の例示。値は実際と異なりうる。</p>
+  </div>
+</div>
+<ol class="rf-notes">
+  <li data-n="1"><b>設定タブの頭を軽く。</b>見出し・説明文・節番号(主役色の <code>01</code> 〜)を外し、内側タブを先頭へ。ラベル領域と操作領域を分ける(<code>.ix-set-row</code>: ラベル左・操作右)。<b>ウィンドウ全体の収め直しは内側タブ切替で継続</b>(SPEC)。解く問題: 監査 1。
+    <span class="rf-where">src/hud/windows/settings-view.ts(<code>buildHeader</code>・<code>description</code> を廃止)・src/hud/style/settings-view-style.ts(<code>.sv-header</code>・<code>.sv-description</code>・<code>counter-reset</code>・<code>.sv-section h3::before</code> を廃止、<code>.sv-tabs .w-btn.on</code> を中立面に)・src/hud/panels/graphics-panel.ts(内容は他ページ・本件の担当外。ラベル/操作の2領域化は <code>.gp-*</code> の CSS) ・ SPEC §8「設定タブの詳細面」 — 変更なし</span></li>
+</ol>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">03</span>プロパティウィンドウ — 自艦と、ターゲット中の敵</h2>
+<p class="rf-lead">
+  左は<b>操作対象の自艦 Boree-65</b>(マップビュー。項目ショートカットが有効)。SPEC §8 が定める「搭載部品の一覧が状態行より上」「ドッキングポート・建造ドックの接続状態と操作」「✎ で改名」をすべて含む。
+  右は<b>ターゲット中の敵 HOSTILE-ε(60 km)</b>で、題名と「ターゲットに設定」の面が第二色を帯びる(SPEC §4)。
+  現行の自艦ウィンドウの撮影は無く、構造は敵と同じで先頭に <code>▸ MODULES / 9</code> の折り畳みが付く。
+</p>
+<div class="rf-pair">
+  <div class="rf-cell is-space">
+    <div class="rf-cell-cap"><b>改修案 · 自艦(マップビュー)</b><span>幅 560</span></div>
+    <section class="ix-win is-own ui-surface-focus" style="max-width: 560px" data-note="1">
+      <header class="ix-win-head">
+        <span class="ix-win-glyph"><svg viewBox="0 0 16 16"><path d="M8 1.5L13 14 8 11 3 14z" fill="currentColor"/></svg></span>
+        <div class="ix-win-id"><span class="ix-win-name">Boree-65</span><span class="w-btn w-btn--icon" title="名前を変更" aria-label="名前を変更">✎</span><span class="ix-win-kind">VSL · 自艦</span><span class="ix-pip on is-own">操作中</span></div>
+        <span class="w-btn w-btn--icon on" title="クリップ" aria-label="クリップ"><svg class="ix-icon" viewBox="0 0 16 16"><path d="M10 1.5l4.5 4.5-2 .6-2.6 2.6.4 3.3-1.2 1.2-2.9-2.9-3.6 3.6-.7-.7 3.6-3.6-2.9-2.9L3 6.9l3.3.4 2.6-2.6z" fill="currentColor"/></svg></span>
+        <span class="w-close">✕</span>
+      </header>
+      <div class="ix-win-body">
+        <div>
+          <div class="ix-fold" role="button" style="margin-bottom: var(--space-1)"><span>▾</span><span>搭載部品</span><span class="ix-fold-n">9</span></div>
+          <div class="ix-modules" data-note="2">
+            <div class="ix-item"><span class="ix-item-glyph">▪</span><span class="ix-item-name">コックピット</span><span class="ix-item-v">100%</span><span></span></div>
+            <div class="ix-item"><span class="ix-item-glyph">▪</span><span class="ix-item-name">燃料タンク 12</span><span class="ix-item-v">100%</span><span></span></div>
+            <div class="ix-item"><span class="ix-item-glyph">▪</span><span class="ix-item-name">スラスタ</span><span class="ix-item-v">100%</span><span></span></div>
+            <div class="ix-item"><span class="ix-item-glyph">▪</span><span class="ix-item-name">RCS</span><span class="ix-item-v">100%</span><span></span></div>
+            <div class="ix-item"><span class="ix-item-glyph">▪</span><span class="ix-item-name">ラジエーター</span><span class="ix-item-v" style="color: var(--ix-caution)">△ 62%</span><span></span></div>
+            <div class="ix-item"><span class="ix-item-glyph">▪</span><span class="ix-item-name">太陽電池パドル</span><span class="ix-item-v">100%</span><span></span></div>
+            <div class="ix-item"><span class="ix-item-glyph">▪</span><span class="ix-item-name">機関砲</span><span class="ix-item-v">100%</span><span></span></div>
+            <div class="ix-item"><span class="ix-item-glyph">▪</span><span class="ix-item-name">建造ドック</span><span class="ix-item-v">100%</span><span></span></div>
+            <div class="ix-item"><span class="ix-item-glyph">▪</span><span class="ix-item-name">ドッキングポート</span><span class="ix-item-v">100%</span><span></span></div>
+          </div>
+        </div>
+        <div class="ix-win-read">
+          <div class="ix-readout is-m"><span class="ix-readout-value">100<span class="ix-u">%</span></span><span class="ix-readout-cap">船体 1000 / 1000</span></div>
+          <div class="ix-rows">
+            <div class="ix-row"><span class="ix-k"><span class="ix-k-text">温度</span></span><span class="ix-gauge" style="--at: 75%"><i style="--v: 38%"></i></span><span class="ix-v">334<span class="ix-u">K</span></span></div>
+            <div class="ix-row"><span class="ix-k"><span class="ix-k-text">電力</span></span><span class="ix-gauge"><i style="--v: 86%"></i></span><span class="ix-v">8.6<span class="ix-u">MJ</span></span></div>
+            <div class="ix-row"><span class="ix-k"><span class="ix-k-text">弾薬</span></span><span class="ix-v">40<span class="ix-u">/ 40 · 予備 2連</span></span></div>
+          </div>
+        </div>
+        <div data-note="3">
+          <div class="ix-sub" style="margin-top: 0">ドック</div>
+          <div class="ix-dock"><span class="ix-dock-name"><span class="ix-pip on">接続中</span><b>建造ドック D1</b><span class="ix-u">第2船体</span></span><span class="ix-dock-btns"><span class="w-btn w-btn--dense">建造 / 更新</span><span class="w-btn w-btn--dense">修理</span><span class="w-btn w-btn--dense ix-btn-caution">切り離し</span></span></div>
+          <div class="ix-dock"><span class="ix-dock-name"><span class="ix-pip">空き</span><b>建造ドック D2</b></span><span class="ix-dock-btns"><span class="w-btn w-btn--dense">建造開始</span></span></div>
+          <div class="ix-dock"><span class="ix-dock-name"><span class="ix-pip">空き</span><b>ドッキングポート P1</b></span><span class="ix-dock-btns"><span class="w-btn w-btn--dense disabled">ドッキング</span></span><span class="ix-dock-why">相手が遠い(1.40 km。接近 &lt; 50 m で有効)</span></div>
+        </div>
+        <div class="ix-fold" role="button"><span>▸</span><span>軌道</span><span class="ix-fold-n">7</span></div>
+        <div class="ix-rows">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">軌道計画の自動実行</span></span><span class="ix-v"><span class="w-toggle-track"><span class="w-toggle-knob"></span></span></span></div>
+        </div>
+        <div class="ix-actions" data-note="4">
+          <span class="w-btn">フォーカスを移動<kbd class="key">F</kbd></span>
+          <span class="w-btn">複製</span>
+          <span class="w-btn ix-spacer">操作対象を解除</span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="rf-cell is-space">
+    <div class="rf-cell-cap"><b>改修案 · ターゲット中の敵(戦闘ビュー)</b><span>HOSTILE-ε</span></div>
+    <section class="ix-win is-tgt ui-surface-focus" style="max-width: 560px" data-note="5">
+      <header class="ix-win-head">
+        <span class="ix-win-glyph"><svg viewBox="0 0 16 16"><path d="M8 2 L14 13 H2 Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></span>
+        <div class="ix-win-id"><span class="ix-win-name">HOSTILE-ε</span><span class="ix-win-kind">CNT · 敵機</span><span class="ix-pip on" style="color: var(--ix-tgt)">ターゲット中</span></div>
+        <span class="w-btn w-btn--icon"><svg class="ix-icon" viewBox="0 0 16 16"><path d="M10 1.5l4.5 4.5-2 .6-2.6 2.6.4 3.3-1.2 1.2-2.9-2.9-3.6 3.6-.7-.7 3.6-3.6-2.9-2.9L3 6.9l3.3.4 2.6-2.6z" fill="currentColor"/></svg></span>
+        <span class="w-close">✕</span>
+      </header>
+      <div class="ix-win-body">
+        <div class="ix-win-read">
+          <div class="ix-readout is-tgt"><span class="ix-readout-value">60.0<span class="ix-u">km</span></span><span class="ix-readout-cap">距離</span></div>
+          <div class="ix-rows">
+            <div class="ix-row"><span class="ix-k"><span class="ix-k-text">接近速度</span></span><span class="ix-v">-12.4<span class="ix-u">m/s</span></span></div>
+            <div class="ix-row"><span class="ix-k"><span class="ix-k-text">装甲</span></span><span class="ix-gauge is-tgt"><i style="--v: 64%"></i></span><span class="ix-v">7<span class="ix-u">/ 11</span></span></div>
+          </div>
+        </div>
+        <div class="ix-fold" role="button"><span>▸</span><span>軌道と相対値</span><span class="ix-fold-n">9</span></div>
+        <div class="ix-rows">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">予測線・過去線を表示</span></span><span class="ix-v"><span class="w-toggle-track on"><span class="w-toggle-knob"></span></span></span></div>
+        </div>
+        <div class="ix-actions">
+          <span class="w-btn ix-btn-tgt">ターゲット解除</span>
+          <span class="w-btn">フォーカスを移動</span>
+          <span class="w-btn ix-btn-danger ix-spacer">削除</span>
+        </div>
+      </div>
+    </section>
+    <p class="p6-cap" style="margin-top: var(--space-4)">戦闘ビューの窓なのでショートカットは持たせない(<code>[F]</code>/<code>[T]</code> が自機の操作に使われているため。現行の仕様どおり)。</p>
+  </div>
+</div>
+<ol class="rf-notes">
+  <li data-n="1"><b>自艦: 題名で「自分」を示す。</b>グリフ・名前は主役色(操作対象の自艦=自分)、✎ は題名の隣の円形ボタン、<code>操作中</code> はピップ。種別タグは中立。名前変更は SPEC どおり自艦と基地にだけ出る。
+    <span class="rf-where">src/hud/windows/property-window-rename.ts(<code>renameBtn</code> を <code>w-btn--icon</code> へ。題名行内に置く)・src/hud/windows/property-window.ts ・ SPEC §8「✎ ボタンで改名」 — 変更なし</span></li>
+  <li data-n="2"><b>搭載部品は状態行より上。</b>SPEC のとおり先頭に置き、現行は1列の文字列だったのを2列の行にする。行の右に<b>損耗度(%)</b>を足す案: 傷んだ部品を、部品ウィンドウを開かずに見つけられる(閾値を切れば <code>△</code> + 注意色)。行の右クリックで部品ウィンドウ、ダブルクリックでフォーカスは現行どおり。ここは<b>表示の追加</b>であり、データは <code>ShipModuleInstance.hp</code> にある。
+    <span class="rf-where">src/hud/windows/property-window-related-items.ts(行の描画と <code>PropertyWindowRelatedItem</code> への値の追加)・src/hud/windows/property-window-content.ts・src/game/pickable/object-window-actions.ts(<code>relatedItemsFor</code>) ・ SPEC §8「搭載部品の一覧」 — 損耗度の併記は仕様の追加</span></li>
+  <li data-n="3"><b>ドックは行の中で完結。</b>1行=1つのポートまたはドック。左に状態ピップ+名前、右にその状態でできる操作(空き建造ドック→建造開始、接続中→建造/更新・修理・切り離し、空きポート→ドッキング)。条件を満たさない操作は<b>項目を残して無効にし、理由を <code>△</code> 付きで1行</b>(SPEC §3「適用できない操作の見せ方」)。操作は <code>w-btn--dense</code>。
+    <span class="rf-where">src/game/pickable/ship-inspection.ts(<code>propertyRows</code> の <code>dockRows</code> は文字列の行。操作つきの行へ)・src/hud/windows/property-window-content.ts(行に操作を持たせる拡張)・src/hud/windows/property-window-rows.ts ・ SPEC §8「プレイヤー所属艦では…」 — 変更なし。操作の実体(建造開始など)の実装状況は未確認</span></li>
+  <li data-n="4"><b>キーはマップビューの窓でだけ。</b>操作は <code>.w-btn</code> + <code>.key</code>。「複製」は役割上キーが無い。操作対象を解除する項目は、操作中の自艦にだけ出る。自艦の「削除」「ターゲットに設定」は出さない(現行どおり、できないことは並べない)。
+    <span class="rf-where">src/game/pickable/ship-inspection.ts(<code>menuItems</code>)・src/hud/windows/property-window-items.ts</span></li>
+  <li data-n="5"><b>ターゲット中は第二色を帯びる。</b>題名とグリフ、主読み値(距離)、装甲メーター、ボタン(<code>ターゲット解除</code>)、ピップ。縁は塗らない(ターゲットパネルと同じ規則、<a href="01-system.html">01</a>)。SPEC §4「ターゲットなら第二色」の保存。
+    <span class="rf-where">src/hud/windows/property-window.ts(<code>PropertyWindow.syncBadge</code> と <code>#hud .dg-window.tgt</code> が現行は主役色 16% の面。第二色へ)・src/hud/windows/draggable-window.ts(<code>setBadge</code>) ・ SPEC §4 — 変更なし(現行実装が SPEC の「第二色」とずれている)</span></li>
+</ol>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">04</span>ヘルプ — マップの章</h2>
+<p class="rf-lead">
+  現行 <code>help.jpg</code>(マップビューで H)と同じ章。SPEC §8 は「<b>タッチジェスチャの行を先頭に、キーボードの行をその後に</b>」と定める。
+  現行は両方が同じ赤い小文字の列に並び、ジェスチャとキーの区別が見た目に無い。
+  改修案は<b>ジェスチャを丸い札(<code>.ix-chip</code>)、キーをキーキャップ(<code>.key</code>)</b>に分け、小見出し「タッチ・マウス / キーボード」で2群に区切る。
+</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>help.jpg を切り出し</span></div>
+    <div class="ix-crop" style="background-image: url('foundation/current/help.jpg')" role="img" aria-label="現行のヘルプ(マップの章)"></div>
+  </div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>同じ内容・同じ幅</span></div>
+    <section class="ix-help ui-surface-focus" style="border-radius: var(--radius-panel)" data-note="1">
+      <div class="ix-help-head">
+        <div class="ix-help-title">操作</div>
+        <span class="ix-help-ctx"><i style="width:6px;height:6px;border-radius:50%;background:var(--ix-label);display:inline-block"></i>いま マップ</span>
+        <span class="w-close">✕</span>
+      </div>
+      <div class="ix-tabs is-dense" data-note="2"><span class="w-btn">飛行</span><span class="w-btn">視点</span><span class="w-btn">戦闘</span><span class="w-btn on is-here">マップ</span><span class="w-btn">システム</span></div>
+      <div class="ix-help-scroll">
+        <div class="ix-sub" style="margin-top: 0" data-note="3">タッチ・マウス</div>
+        <div class="ix-help-row"><div class="ix-help-in"><span class="ix-chip">長押し</span><span class="ix-or">/</span><span class="ix-chip">右クリック</span></div><div><div class="ix-help-name">プロパティ・メニュー</div><div class="ix-help-desc">対象のプロパティウィンドウ、または空域・ノード・計画軌道のメニューを開く。</div></div></div>
+        <div class="ix-help-row"><div class="ix-help-in"><span class="ix-chip">計画軌道をタップ</span><span class="ix-or">/</span><span class="ix-chip">クリック</span></div><div><div class="ix-help-name">ノードを配置</div><div class="ix-help-desc">計画軌道にノードを置く。丸ハンドルをドラッグすると軌道上の時刻を移動する。</div></div></div>
+        <div class="ix-help-row"><div class="ix-help-in"><span class="ix-chip">Δv ハンドルをドラッグ</span></div><div><div class="ix-help-name">ノードの Δv 編集</div><div class="ix-help-desc">選択中ノードの PRO/RET・NRM/ANM・OUT/IN ハンドルで Δv 成分を調整する。</div></div></div>
+        <div class="ix-sub" data-note="4">キーボード</div>
+        <div class="ix-help-row"><div class="ix-help-in"><kbd class="key">,</kbd><kbd class="key">.</kbd></div><div><div class="ix-help-name">時間加速</div><div class="ix-help-desc"><kbd class="key">,</kbd> で 1 段下げ、<kbd class="key">.</kbd> で 1 段上げる。</div></div></div>
+        <div class="ix-help-row"><div class="ix-help-in"><kbd class="key">M</kbd></div><div><div class="ix-help-name">ビュー切替</div><div class="ix-help-desc">戦闘ビューとマップビューを切り替える。時間は進み続けるのでワープも使える。</div></div></div>
+        <div class="ix-help-row"><div class="ix-help-in"><kbd class="key">N</kbd></div><div><div class="ix-help-name">ノードまで自動ワープ</div><div class="ix-help-desc">直近のマニューバノードまで時間を自動加速し、実行点の直前で解除する。</div></div></div>
+        <div class="ix-help-row"><div class="ix-help-in"><kbd class="key">W</kbd><kbd class="key">S</kbd><kbd class="key">A</kbd><kbd class="key">D</kbd><kbd class="key">E</kbd><kbd class="key">Q</kbd></div><div><div class="ix-help-name">ノードの Δv 編集</div><div class="ix-help-desc">ノードを選択している間、並進の代わりに Δv を PRO / RET / NRM / ANM / OUT / IN へ調整する。</div></div></div>
+        <div class="ix-help-row"><div class="ix-help-in"><kbd class="key">X</kbd></div><div><div class="ix-help-name">ノードを削除</div><div class="ix-help-desc">選択中のノードを削除する。選択がなければ計画全体を破棄する。</div></div></div>
+      </div>
+    </section>
+  </div>
+</div>
+<ol class="rf-notes">
+  <li data-n="1"><b>見出しを軽く。</b><code>HLP REFERENCE MANUAL</code>・<code>MAP &amp; ORBIT REFERENCE</code>・<code>CURRENT CONTEXT · MAP</code> の3行(英字、章名を2回言っている)を、題名「操作」と「いま マップ」の1語に。記号 <code>HLP</code> は中立へ。解く問題: 監査 1・3。
+    <span class="rf-where">src/game/hud/windows/help-panel.ts(<code>header.innerHTML</code>・<code>setCategory</code> が題名を <code>${label} REFERENCE</code> に書き換えている)・src/game/hud/style/help-panel-style.ts(<code>.help-kicker</code>・<code>.help-context</code>) ・ SPEC §8「ヘルプ」 — 変更なし</span></li>
+  <li data-n="2"><b>章のタブ。</b>日本語の章名(飛行/視点/戦闘/マップ/システム)にし、選択は中立の面、<b>いま居る画面の章には小さな点</b>を付ける(現行はヘルプを開いた時点でその章へ飛ぶだけで、後からタブを動かすと「いまの画面」がどれか分からなくなる)。章名を英語のまま残すか日本語にするかは判断が要る(画面全体は日本語が主)。
+    <span class="rf-where">src/game/hud/windows/help-panel.ts(<code>HELP_TABS</code>・<code>open()</code> の <code>workspace</code> 判定)・src/hud/widgets/tab-bar.ts(<code>is-here</code> の付与は呼び出し側のクラス)</span></li>
+  <li data-n="3"><b>ジェスチャは丸い札、先頭の群。</b>SPEC が定める順(タッチ・マウス → キー)を、章の中でも保つ。<code>/</code> は「または」で、同じ操作を指すタッチ表記とマウス表記を札で並べる。現行は <code>helpRows()</code> の配列順がたまたまこの順なだけで、群の見出しも見た目の区別も無い。群は <code>HelpRow</code> に種別(<code>kind: 'gesture' | 'key'</code>)を足すか、<code>input</code> を札/キーの配列にして描画側で分ける。
+    <span class="rf-where">src/game/hud/windows/help-content.ts(<code>HelpRow.input</code> が1本の文字列。<code>keyRow</code> が <code>' / '</code> で連結している)・src/game/hud/windows/help-panel.ts(<code>.help-input-code</code> の生成) ・ SPEC §8「ヘルプ」 — 順序の規則は保存</span></li>
+  <li data-n="4"><b>キーはキーキャップ、説明の中のキーもキーキャップ。</b>入力列の赤い文字(<code>W / S / A / D / E / Q</code>)を <code>.key</code> の並びに。説明文中の <code>,</code> と <code>.</code> も同じ <code>.key</code> にして、表記を1種に(<a href="01-system.html">01</a> の規則)。<code>keyRow</code> が説明文へキー名を文字列で埋めているので、説明は文字列 + キー参照の列にする必要がある。解く問題: 監査 3。
+    <span class="rf-where">src/game/hud/windows/help-content.ts(<code>keyRow</code> の description へのキー埋め込み)・src/game/hud/style/help-panel-style.ts(<code>.help-reference-input</code> の主役色)</span></li>
+</ol>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">05</span>確認 — 船体の破棄</h2>
+<p class="rf-lead">
+  <code>ConfirmationOverlay</code> は建造の確定確認を含む1枚で、<code>src/game/ship/ship-construction.ts</code> が「建造中の船体を破棄」「操縦不能な物資として完成」で呼ぶ(いずれも <code>destructive: true</code>)。
+  現行は撮影が無いので、左は CSS(<code>confirmation-overlay.ts</code>)から再現した。背景は暗転し(<code>dimsBackground</code>)、ゲームは止まり、ESC は取消。
+</p>
+<div class="rf-pair">
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>現行(CSS から再現)</b><span>建造中の船体を破棄</span></div>
+    <div class="ix-scrimmed">
+      <section class="cur-confirm ui-surface-focus">
+        <h3>建造中の船体を破棄</h3>
+        <p>建造中に追加した部品をすべて破棄し、ドックを空き状態へ戻します。続けますか？</p>
+        <div><span class="w-btn w-btn--primary">船体を破棄</span><span class="w-btn w-btn--secondary">キャンセル</span></div>
+      </section>
+    </div>
+  </div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>同じ文言</span></div>
+    <div class="ix-scrimmed">
+      <section class="ix-confirm ui-surface-focus" data-note="1">
+        <h3 class="ix-confirm-title"><span class="ix-lvl">▲</span>建造中の船体を破棄</h3>
+        <p class="ix-confirm-msg" data-note="2">建造中に追加した部品をすべて破棄し、
+ドックを空き状態へ戻します。続けますか？</p>
+        <div class="ix-confirm-act" data-note="3">
+          <span class="w-btn">キャンセル<kbd class="key">ESC</kbd></span>
+          <span class="w-btn ix-btn-danger">船体を破棄</span>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+<ol class="rf-notes">
+  <li data-n="1"><b>危険は題名の文字色でなく、記号 + 確定ボタンの面で。</b>現行は題名を警告色(<code>--color-warning</code>、琥珀)に塗るだけで、確定ボタンは通常の主要ボタン(主役色)と同じ見た目。取り消せない操作では、<b>▲ と警告面の確定ボタン</b>の二重符号にする(色だけに頼らない、<a href="01-system.html">01</a>)。題名は強い文字色で左寄せ(中央揃えを廃し、題・説明・操作を同じ左線に)。解く問題: 監査 1。
+    <span class="rf-where">src/hud/windows/confirmation-overlay.ts(<code>.confirmation-overlay-title</code>・<code>data-destructive</code> の CSS、<code>Button</code> の種類を <code>destructive</code> で切り替える)・src/hud/windows/modal-overlay.ts(題の組み立て) ・ SPEC §8「確認」 — 変更なし</span></li>
+  <li data-n="2"><b>説明は短く、改行で区切る。</b>説明文の中身(<code>message</code>)は呼び出し側の文字列なので変えない。<code>white-space: pre-wrap</code> は既にあるので、呼び出し側が句ごとに改行を入れれば読み切れる。「結果を短く説明し」という SPEC の要請に沿う。
+    <span class="rf-where">src/game/ship/ship-construction.ts(<code>message</code> の文面)・src/hud/windows/confirmation-overlay.ts</span></li>
+  <li data-n="3"><b>操作の並びと既定のフォーカス。</b>取消を左(ESC のキーキャップ付き)、確定を右に置く。現行は「実行」が先で、さらに <code>open()</code> が<b>確定ボタンへフォーカスを渡す</b>ので、破壊的な操作で Enter を押すと即実行される。<code>destructive: true</code> のときは<b>取消へフォーカス</b>を渡す案(挙動の変更。判断を仰ぐ)。確定ラベルは呼び出し側の <code>confirmLabel</code>(「船体を破棄」)をそのまま使う。
+    <span class="rf-where">src/hud/windows/confirmation-overlay.ts(<code>constructor</code> の <code>actions.append</code> の順、<code>open</code> の <code>this.confirm.element.focus()</code>、<code>ConfirmationOverlayRequest.destructive</code>)・src/hud/widgets/button.ts ・ SPEC §8「確認」・§4「ESC」 — 既定フォーカスは SPEC に無く、決めるなら §8 に追記</span></li>
+</ol>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">06</span>ref.css へ昇格すべき部品と、改修の手順</h2>
+<div class="rf-scroll"><table class="rf-table">
+  <tr><th>このページの <code>&lt;style&gt;</code> にある部品</th><th>用途</th><th>ゲームへの移し先</th></tr>
+  <tr><td><code>.ix-win</code> <code>.ix-win-head</code> <code>.ix-win-glyph</code> <code>.ix-win-id</code> <code>.ix-win-name</code> <code>.ix-win-kind</code> <code>.ix-win-body</code> <code>.ix-win-read</code></td><td>ウィンドウの題名行と本文の枠(プロパティ・部品ウィンドウ共通)。<code>.is-own</code>/<code>.is-tgt</code> で題名の色</td><td>src/hud/windows/draggable-window.ts と property-window.ts の <code>STYLE</code></td></tr>
+  <tr><td><code>.ix-fold</code> <code>.ix-fold-n</code></td><td>折り畳みの見出し行(軌道と相対値・搭載部品・軌道)</td><td>property-window-rows.ts の <code>.prop-window-row-toggle</code>・<code>-group-toggle</code> を置き換え</td></tr>
+  <tr><td><code>.ix-btn-tgt</code> <code>.ix-btn-danger</code> <code>.ix-btn-caution</code> <code>.ix-spacer</code></td><td>ボタンの意味の3種(第二色=ターゲット操作、警告面=取り消せない、注意=進行を失う)</td><td>src/hud/widgets/widget-style.ts の <code>.w-btn--*</code> に役割として追加(ウィジェットは11種のまま。ボタンの役割が増えるだけ)</td></tr>
+  <tr><td><code>.ix-tabs</code>(<code>.is-dense</code> <code>.is-here</code>)</td><td>タブバーの見た目(選択は中立の面。いまの章の点)</td><td>src/hud/widgets/tab-bar.ts の CSS。ESC メニュー・設定・ヘルプが同じ規則を使う</td></tr>
+  <tr><td><code>.ix-chip</code></td><td>ジェスチャの表記(キーキャップの丸い版)</td><td>src/hud/style/common-ui-style.ts の <code>.key</code> の隣</td></tr>
+  <tr><td><code>.ix-dock</code> <code>.ix-dock-*</code> <code>.ix-modules</code></td><td>ドック・搭載部品の行(自艦のウィンドウ専用)</td><td>property-window-related-items.ts と、操作つき行の新設</td></tr>
+  <tr><td><code>.ix-menu</code> <code>.ix-bgm</code> <code>.ix-pause*</code> <code>.ix-brand*</code></td><td>ESC メニューの面(ページ固有で良い。昇格は <code>.ix-tabs</code>・<code>.ix-btn-*</code> のみ)</td><td>src/hud/style/pause-menu-style.ts を置き換え</td></tr>
+  <tr><td><code>.w-slider</code> の <code>accent-color</code> を中立に</td><td>音量など「量」のスライダーは主役色を使わない</td><td>src/hud/widgets/widget-style.ts(<code>.w-slider</code>)</td></tr>
+  <tr><td><code>.ix-set-row</code> <code>.ix-set-body</code></td><td>設定の「ラベル領域/操作領域」の2領域</td><td>src/hud/panels/graphics-panel.ts ほか設定パネル群の共通行</td></tr>
+  <tr><td><code>.ix-help-*</code></td><td>ヘルプの行(入力列/名前+説明)</td><td>src/game/hud/style/help-panel-style.ts を置き換え</td></tr>
+  <tr><td><code>.ix-confirm*</code></td><td>確認オーバーレイの本文(記号つき題・左線揃え・取消左/確定右)</td><td>src/hud/windows/confirmation-overlay.ts の <code>STYLE</code></td></tr>
+</table></div>
+
+<h3>改修の手順(小さく入れられる順)</h3>
+<ol class="p6-steps">
+  <li><b>ボタンの役割と選択の面を揃える。</b><code>.ix-btn-*</code> と <code>.ix-tabs</code> を widget-style に追加。ESC メニューのタブ・項目の赤い面をやめる(挙動不変。見た目だけ)。確認オーバーレイもここで ▲ + 警告面に。</li>
+  <li><b>キーキャップへの置換。</b>プロパティウィンドウの項目(<code>shortcutKeyLabel</code> → <code>.key</code>)と、ESC メニューの項目・ヘルプの入力列。番号 <code>01–05</code> を外し、キャンセル項目をプロパティウィンドウから除く(SPEC §8 の例示を更新)。</li>
+  <li><b>プロパティウィンドウの本文を作り直す。</b>題名行にタグ・ピン(SVG)・閉じるを寄せ、<code>hero</code>/<code>major</code> を主読み値+行へ、折り畳みを1本へ。表示専用の変更で、<code>PropertyRow</code> のデータ形は変えない。</li>
+  <li><b>トグルと操作つき行。</b><code>PropertyWindowItem</code> にトグル種別を足し、軌道線表示・計画実行を <code>.w-toggle-track</code> の行へ。続けてドック行(操作を持つ行)と搭載部品の損耗度(SPEC §8 の追記が要る)。</li>
+  <li><b>ESC メニューの再編。</b>2列・BGM 値表示・ブランド列(英字見出しを外す)・設定タブの見出し/説明/節番号を外す。</li>
+  <li><b>ヘルプの行モデル。</b><code>HelpRow</code> にジェスチャ/キーの種別とキー参照付きの説明を足し、札とキーキャップで描き分ける。最後に確認のフォーカス・並び順(挙動の判断が要る)。</li>
+</ol>
+
+</main>
+<script src="foundation/themes.js"></script>
+<script src="foundation/ref.js"></script>
+</body></html>

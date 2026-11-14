@@ -19,7 +19,7 @@ export class Pulldown<Cols extends readonly PulldownColumn<unknown>[]> {
   public readonly element: HTMLElement;
   private readonly selects: readonly HTMLSelectElement[];
   // 列ごとに直近で外部状態から反映した値。setSelected() は毎フレーム呼ばれるが、この値と
-  // 変わっていなければ selectedIndex に触れない——毎フレーム書き込むと、セットボタンへの
+  // 変わっていなければ selectedIndex に触れない——毎フレーム書き込むと、反映ボタンへの
   // クリックがフォーカスを外してから click イベントが発火するまでの一瞬に setSelected の
   // 呼び出しが割り込み、ユーザーが選び直した内容を反映前に元へ戻してしまう
   // (フォーカス中判定だけでは防げない)。
@@ -34,7 +34,7 @@ export class Pulldown<Cols extends readonly PulldownColumn<unknown>[]> {
       select.className = 'w-select';
       stopDragPropagation(select);
       expandHitTarget(select);
-      // 打鍵をゲーム操作と誤認されないよう伝播を止める。
+      // 打鍵がゲーム操作と誤認されないよう伝播を止める。
       select.addEventListener('keydown', (e) => e.stopPropagation());
       if (column.description !== undefined) {
         select.title = column.description;

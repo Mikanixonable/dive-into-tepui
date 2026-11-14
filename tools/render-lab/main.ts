@@ -1,7 +1,6 @@
 // 描画テスト環境の画面。ケース(とその撮影)と、表示スタイルと、画面へ出す中間バッファを選ぶと、その絵を
 // ゲーム本体と同じ描画経路で描く。描画品質設定の操作はゲーム本体の設定パネル(GraphicsPanel)を
 // そのまま組む。
-import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
 import { loadShipModuleModels } from '../../src/render/dynamic/ship/ship-module-models';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
@@ -25,7 +24,7 @@ import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
 import { createEarthSurfaceCaptureApi, type EarthSurfaceCaptureInput } from './earth-surface-capture';
 import type { FloatUniform } from '../../src/render/tsl-types';
-import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
+import type { EarthSurfaceCaptureDocument } from './earth-surface-metrics';
 import type { LabViewAngles } from './view-angles';
 
 // 恒星の距離のつまみの下限・上限。つまみは距離を**天文単位の常用対数で持つ** — 見かけ径が 1px を切る
@@ -186,7 +185,7 @@ function buildCloudSliders(view: LabView): void {
 
 // 画面を組み、最初のケースを描き、CDP の入口を window へ生やす。
 async function init(): Promise<void> {
-  // 地表の計測の口は、タンパク質のアセットを待つ前に公開する — 別ケースのアセットが 404 でも
+  // 地表の計測の口は、大型アセットを待つ前に公開する — 別ケースのアセットが 404 でも
   // 「データ未投入」を返せるように。
   const earthSurfaceCapture = createEarthSurfaceCaptureApi();
   window.renderLab = { earthSurfaceCapture } as Window['renderLab'];
@@ -196,10 +195,7 @@ async function init(): Promise<void> {
   injectOnce('widget-style', WIDGET_STYLE);
 
   // fetch で来る大型アセットは、同期 factory を使うケースを組む前にまとめて待つ。
-  await Promise.all([
-    ...PROTEIN_ASSET_IDS.map((id) => requestProteinAsset(id)),
-    loadShipModuleModels(),
-  ]);
+  await loadShipModuleModels();
   // **この実行の中だけで生きる設定**。残すと、撮影が「人間が最後に押した状態」に依存して黙って変わる。
   const settings = new UserSettings(new MemorySettingStorage());
   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement, settings.graphics);

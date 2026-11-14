@@ -29,6 +29,21 @@ export interface WorldSfxDeclaration {
   readonly cues: readonly SoundCue<WorldSound>[];
 }
 
+// 優先順位の最も低い音(SPEC/AUDIO.md「同時に鳴る効果音の優先順位」の順位4)が、同時に鳴ってよい数。
+const LOW_PRIORITY_VOICE_LIMIT = 4;
+
+// 順位4の音が鳴っている長さの見積もり [s]。同時数を数えるためだけに使う。この表に載らない音は
+// 順位1〜3で、上限によらず必ず鳴る。
+const LOW_PRIORITY_SPAN: Partial<Record<WorldSound['kind'], number>> = {
+  fire: 0.11,
+  reload: 1.2,
+  spinUp: 0.34,
+  clank: 0.05,
+  magFeed: 0.1,
+  pickup: 0.12,
+  emptyClick: 0.03,
+};
+
 export class WorldSfx {
   // 連続音のチャンネル。組めるまでと、畳んだ後は null。
   private loops: { thrust: GainNode; rcs: GainNode } | null = null;
@@ -38,18 +53,33 @@ export class WorldSfx {
   private readonly loopSources: AudioBufferSourceNode[] = [];
   // 鳴らした一回きりの音のうち、最も新しい id。
   private lastCueId = -1;
+  // 順位4の音が鳴り終わる見込みの時刻 [s](ctx の時刻)。上限の判定に使う。
+  private lowPriorityEnds: number[] = [];
 
   public constructor(private readonly engine: AudioEngine) { }
 
   // そのフレームに鳴らすべき音の全体 declaration を受ける。一回きりの音は、まだ鳴らしていない id の
-  // ものを鳴らす。
+  // ものを鳴らす。上限に達した順位4の音は、鳴らさずに捨てる。
   public sync(declaration: WorldSfxDeclaration): void {
     for (const cue of declaration.cues) {
       if (cue.id <= this.lastCueId) continue;
       this.lastCueId = cue.id;
+      if (!this.admit(cue.sound)) continue;
       this.play(cue.sound);
     }
     this.syncLoops(declaration.loops);
+  }
+
+  // この音を鳴らしてよいかを決める。順位4の音は、鳴っている数が上限に達していれば鳴らさない。
+  // 鳴らすと決めたときは、その音が鳴り終わる時刻を数え始める。
+  private admit(sound: WorldSound): boolean {
+    const span = LOW_PRIORITY_SPAN[sound.kind];
+    if (span === undefined) return true;
+    const now = this.engine.ctx?.currentTime ?? 0;
+    this.lowPriorityEnds = this.lowPriorityEnds.filter((end) => end > now);
+    if (this.lowPriorityEnds.length >= LOW_PRIORITY_VOICE_LIMIT) return false;
+    this.lowPriorityEnds.push(now + span);
+    return true;
   }
 
   // 一回きりの音を1つ鳴らす。

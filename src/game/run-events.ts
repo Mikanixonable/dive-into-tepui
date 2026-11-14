@@ -6,7 +6,6 @@ import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
 import type { EnemyDeathCause } from './stages/stage-outcome';
 import type { Attitude } from '../physics/attitude';
 import type { KinematicState } from '../physics/kinematic-state';
-import type { ProteinPhase } from '../render/protein/protein-display';
 import type { Vec3 } from '../math/vec3';
 
 // クリエイティブモードで、操作艦が要る操作。
@@ -91,14 +90,6 @@ export type RunEventBody =
     readonly state: KinematicState;
     readonly modelScale: number;
   }
-  // 敵機がタンパク質の機能部位から1発撃った。muzzleState は砲口の位置と機体の速度。
-  | { readonly kind: 'proteinSiteFired'; readonly muzzleState: KinematicState }
-  // タンパク質敵の被弾で、機能部位が停止したか構造フェーズが遷移した。state は着弾点と機体の速度。
-  | {
-    readonly kind: 'proteinStateChanged';
-    readonly state: KinematicState;
-    readonly transition: ProteinPhase | 'site-disabled';
-  }
   // 組み立て型の敵が発射部から1発撃った。muzzleState は発射位置と機体の速度。
   | { readonly kind: 'assemblyEmitterFired'; readonly muzzleState: KinematicState }
   // 組み立て型の敵の部品が被弾で失われた。state は失われた部品の位置と機体の速度。
@@ -155,6 +146,12 @@ export type RunEventBody =
   | { readonly kind: 'ammoPickedUp'; readonly mags: number }
   // RCS 燃料の補給を取り込んだ。fuel は増えた燃料 [kg]。
   | { readonly kind: 'rcsFuelPickedUp'; readonly fuel: number }
+  // 設定パネルの操作で、操作艦の弾薬チェーンへマガジンを1つ即時追加した。
+  | { readonly kind: 'magazineAdded' }
+  // 設定パネルの操作で、操作艦の RCS 燃料を満タンへ補充した。fuel は補充した量 [kg]。
+  | { readonly kind: 'rcsFuelRefilled'; readonly fuel: number }
+  // 設定パネルの操作で、すべての基地の燃料を満タンへ補充した。ships は補充した基地の数。
+  | { readonly kind: 'baseFuelRefilled'; readonly ships: number }
 
   // -------------------------------------------------------------------- 計画
   // 直近ノードの実行の窓に入った。
@@ -169,8 +166,8 @@ export type RunEventBody =
   | { readonly kind: 'combatViewUnavailable' }
   // 計画ノードを確定して戦闘ビューへ戻った。nodeCount は確定したノード数。
   | { readonly kind: 'maneuverPlanConfirmed'; readonly nodeCount: number }
-  // 軌道計画のためにマップビューへ入った。
-  | { readonly kind: 'orbitPlanningOpened' }
+  // 軌道計画のためにマップビューへ入った。shipId は入った瞬間の操作対象の船で、いなければ null。
+  | { readonly kind: 'orbitPlanningOpened'; readonly shipId: string | null }
 
   // ------------------------------------------------------------------ カメラ
   // ビューの視点をリセットした。
@@ -210,7 +207,19 @@ export type RunEventBody =
   // 複製しようとした軌道を軌道要素へ逆算できなかった。
   | { readonly kind: 'orbitNotDuplicable' }
   // 操作艦が要る操作を、操作艦が居ない状態で行おうとした。
-  | { readonly kind: 'shipRequiredForAction'; readonly action: ShipRequiredAction };
+  | { readonly kind: 'shipRequiredForAction'; readonly action: ShipRequiredAction }
+
+  // ------------------------------------------------------------------ 設計図
+  // 設計図の名前を変えた。
+  | { readonly kind: 'blueprintRenamed'; readonly id: string; readonly name: string }
+  // 設計図を削除した。
+  | { readonly kind: 'blueprintDeleted'; readonly id: string }
+  // ラン内の撃破数の節目を跨ぎ、鹵獲が授与された。name は鹵獲品の名前。
+  | { readonly kind: 'salvageAwarded'; readonly name: string }
+  // 授与された鹵獲の積荷を載せた補給艇が、波間に自機の前方へ現れた。
+  | { readonly kind: 'salvageTenderArrived' }
+  // 授与された鹵獲のうち、設計図棚へ追加すべきもの。name は棚へ追加する設計図の名前。
+  | { readonly kind: 'salvageBlueprintGranted'; readonly name: string };
 
 // 記録された出来事1件。
 export interface RunEvent {

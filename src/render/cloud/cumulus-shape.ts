@@ -17,6 +17,14 @@ EMPTY_CLOUD_FIELD.magFilter = THREE.LinearFilter;
 EMPTY_CLOUD_FIELD.wrapS = THREE.RepeatWrapping;
 EMPTY_CLOUD_FIELD.needsUpdate = true;
 
+// 風場未設定の天体スロットへ割り当てる、風速 0・陸 0 のテクスチャ。texel (0.5, 0.5, 0) は
+// 風 (0, 0) へ復号される。雲の空テクスチャと同じ仕様でフィルタと巻きを揃える。
+export const EMPTY_WIND_FIELD = new THREE.DataTexture(new Uint8Array([128, 128, 0, 255]), 1, 1);
+EMPTY_WIND_FIELD.minFilter = THREE.LinearFilter;
+EMPTY_WIND_FIELD.magFilter = THREE.LinearFilter;
+EMPTY_WIND_FIELD.wrapS = THREE.RepeatWrapping;
+EMPTY_WIND_FIELD.needsUpdate = true;
+
 // 場の G(雲頂高度)を実寸へ戻す上限 [m]。場の G 自体は 0..1 で持つ。
 export const CLOUD_TOP_SPAN = 15000;
 
@@ -35,3 +43,23 @@ export const CUMULUS_DITHER_KNOB: {
 // 細かく、かつ低軌道から見下ろして解像できる大きさ(高度 900km 以下で全振幅)に取る。これより
 // 細かくすると、実際の積雲の塊には近づく代わりに軌道上のどの構図でも 1 画素を切って消える。
 export const CUMULUS_GRAIN_SIZE = 6000;
+
+// 積雲の粒のオクターブ表: 1 辺 [m] と重み。6 km の 1 段だけだった粒を、対流の 48 km から
+// 6 km のあいだを埋める 24 km・12 km の段と重ねる。重みは、場の天気による掛け率
+// (0.4〜1.0) で弱められたあとの効き目で決める — 細かい段は 1 段のときの
+// 強さをほぼ保ち (2〜20 km 帯の電力が落ちない)、中規模の段はその半分ほどの効き目で
+// 20〜200 km 帯へ電力を足す。並びは粗い段から細かい段へ — 呼び出し側はこの並びで
+// 段ごとの振幅を渡す。
+export const CUMULUS_GRAIN_OCTAVES: readonly { readonly sizeM: number; readonly weight: number }[] = [
+  { sizeM: 24000, weight: 0.8 },
+  { sizeM: 12000, weight: 0.8 },
+  { sizeM: 6000, weight: 1.3 },
+];
+
+// 粒の細胞の寿命 [h]。粒はこの周期で成長→成熟→崩壊を繰り返す。周期は、実写の微細帯の
+// 寿命(相関の 1/e 交差 ≈ 0.6 h)に包絡だけの 1/e 交差(≈ 0.19 周期)を合わせる値に取る。
+export const GRAIN_LIFECYCLE_HOURS = 2;
+
+// 粒の細胞の位相が 1 周する実寸 [m]。場所ごとに位相がずれるので、隣り合う細胞の寿命は
+// ずれて進む。風速 10 m/s なら周期のあいだに細胞は 0.36 周ぶんずれ、粒は風向きに伸びる。
+export const GRAIN_LIFECYCLE_CELL_M = 200000;

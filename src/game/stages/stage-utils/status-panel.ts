@@ -1,13 +1,14 @@
-// ステージ固有の状況表示パネル(左部: ステージ補助メッセージ・撃墜数 / 中央部: 自機の装甲・温度・電力)。
-// 表示内容がステージごとに決まるので Stage が所有する。
+// ステージの補助メッセージ・撃墜数と、自機の装甲・温度・電力を示す状況パネル。
 
 import type { ModularShip } from '../../ship/modular-ship';
 import { fmtEnergy } from '../../../hud/utils';
 import { Meter } from '../../../hud/widgets';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/combat-ship-entity';
 import { POWER_CAPACITY } from '../../player/power';
-
-const LOW_HP_RATIO = 0.3;
+import {
+  ARMOR_WARNING_RATIO, TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,
+  armorAlarmLevel, temperatureAlarmLevel,
+} from '../../alarm/alarm-level';
 
 export class StatusPanel {
   private readonly panel: HTMLElement;
@@ -32,8 +33,11 @@ export class StatusPanel {
     this.centerCol = this.panel.querySelector<HTMLElement>('.t')!;
     root.appendChild(this.panel);
 
+    // 装甲と温度の警報段は、表示する物理量の境界に合わせる。
     this.hpMeter = this.buildMeterRow('装甲');
+    this.hpMeter.setMarks(null, ARMOR_WARNING_RATIO);
     this.tempMeter = this.buildMeterRow('温度');
+    this.tempMeter.setMarks(TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO);
     this.powerMeter = this.buildMeterRow('電力');
   }
 
@@ -52,32 +56,32 @@ export class StatusPanel {
     return meter;
   }
 
-  // 毎フレーム(sync 時)呼ぶ。player が null ならパネルを畳む。DOM の書き換えは
-  // 内容が変わったフレームだけに絞る。
-  public sync(player: ModularShip | null, message: string, kills: number): void {
+  // 毎フレーム(sync 時)呼ぶ。player が null ならパネルを畳む。salvageRemaining は次の
+  // 鹵獲までの残り撃破数で、出さないときは null。DOM の書き換えは内容が変わったフレームだけに絞る。
+  public sync(
+    player: ModularShip | null, message: string, kills: number, salvageRemaining: number | null,
+  ): void {
     this.panel.classList.toggle('hidden', !player);
     if (!player) return;
 
     const { hp, maxHp } = player;
-    const low = hp <= maxHp * LOW_HP_RATIO;
     const temp = Math.round(player.motion.temperature);
-    const tempHigh = temp > 0.7 * MAX_HULL_TEMP;
     const chargeJ = player.motion.power.chargeJ;
 
+    // 装甲・温度の表示値と警報段を同じ値から更新する。
     this.hpMeter.setRatio(hp / maxHp);
-    this.hpMeter.setDanger(low);
+    this.hpMeter.setLevel(armorAlarmLevel(hp, maxHp));
     this.hpMeter.setLabel(`${Math.floor(hp)} / ${maxHp}`);
 
     this.tempMeter.setRatio(temp / MAX_HULL_TEMP);
-    this.tempMeter.setDanger(tempHigh);
+    this.tempMeter.setLevel(temperatureAlarmLevel(temp, MAX_HULL_TEMP));
     this.tempMeter.setLabel(`${temp} / ${MAX_HULL_TEMP} K`);
 
     this.powerMeter.setRatio(player.motion.power.chargeRatio);
     this.powerMeter.setLabel(`${fmtEnergy(chargeJ)} / ${fmtEnergy(POWER_CAPACITY)}`);
 
-    this.centerCol.classList.toggle('warn', low);
-
-    const leftHtml = message ? `<div>${message}</div><div>撃墜 ${kills}</div>` : `<div>撃墜 ${kills}</div>`;
+    const killsText = salvageRemaining === null ? `撃墜 ${kills}` : `撃墜 ${kills}(あと ${salvageRemaining} で鹵獲)`;
+    const leftHtml = message ? `<div>${message}</div><div>${killsText}</div>` : `<div>${killsText}</div>`;
     if (this.lastLeftHtml !== leftHtml) {
       this.leftText.innerHTML = leftHtml;
       this.lastLeftHtml = leftHtml;
@@ -85,8 +89,7 @@ export class StatusPanel {
     this.panel.classList.remove('hidden');
   }
 
-  // root へ追加したパネル DOM を取り除く。左部ウィジェット枠に他クラスが差し込んだ要素も
-  // その配下なので一緒に消える。
+  // このパネルの DOM を破棄する。
   public dispose(): void {
     this.panel.remove();
   }

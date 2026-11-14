@@ -54,7 +54,6 @@ const PROGRESS_ROOTS = [
   'src/game/stages/',
   'src/game/plan/',
   'src/game/creative/',
-  'src/game/protein/',
   'src/game/assembly/',
   'src/game/control-selection.ts',
 ];
@@ -146,8 +145,6 @@ const FORBIDDEN = [
     targets: ['src/render/', 'src/marker/', 'src/hud/', 'src/game/hud/'],
     // 自分の処理にかかった時間を測るための壁時計は、表示する時刻ではないので例外にする。
     exempt: [
-      'src/render/protein/protein-runtime.ts',
-      'src/render/dynamic/dynamic-entity/protein-enemy-view.ts',
       'src/render/cloud/cloud-local-field-baker.ts',
       // 分割ジョブの step 予算・試行の壁時計を測るため — baker と同じ計測用途。
       'src/render/cloud/meteorological-cloud-field.ts',
@@ -237,8 +234,7 @@ const FORBIDDEN = [
       'src/game/dynamic/',
       'src/game/player/',
       'src/game/stages/',
-      'src/game/protein/',
-      'src/game/control-selection.ts',
+          'src/game/control-selection.ts',
       'src/game/creative/manual-spawn.ts',
       'src/game/creative/object-placement.ts',
       'src/game/plan/plan-node-rules.ts',

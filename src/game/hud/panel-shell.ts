@@ -1,4 +1,4 @@
-// 見出し(h3)+折りたたみトグル+本文の共通パネル外枠と、折りたたみトグルの配線役。
+// 見出し(記号・題名・補足・開閉)+本文の共通パネル外枠と、折りたたみトグルの配線役。
 import {
   COLLAPSE_COLLAPSED_GLYPH,
   COLLAPSE_EXPANDED_GLYPH,
@@ -86,10 +86,11 @@ export class PanelShell {
   public readonly titleEl: HTMLHeadingElement;
   public readonly body: HTMLElement;
 
-  // parent の子として id のパネルを組む。title は見出しの初期テキストで、titleEl へ要素(件数
-  // バッジ等)を足してよい。折りたたみ状態は現在のビューでのこの id の保存値、無ければ defaultCollapsed。
+  // parent の子として id のパネルを組む。見出しは [記号][題名] ……… [補足][開閉] の並びで、code が記号、
+  // title が題名。補足は `${id}-meta`、畳んだときの要約は `${id}-summary` の data-id で引ける。
+  // 折りたたみ状態は現在のビューでのこの id の保存値、無ければ defaultCollapsed。
   public constructor(
-    parent: HTMLElement, collapse: PanelCollapse, id: string, title: string,
+    parent: HTMLElement, collapse: PanelCollapse, id: string, code: string, title: string,
     defaultCollapsed: PanelDefaultCollapsed = false,
   ) {
     this.el = document.createElement('div');
@@ -97,12 +98,22 @@ export class PanelShell {
     this.el.dataset['id'] = id;
     this.el.className = 'panel panel-shell';
 
-    // 見出し行と本文を組む。
+    // 見出し行(記号・題名・補足・畳んだときの要約)と本文を組む。開閉ボタンは配線時に末尾へ足される。
     const head = document.createElement('div');
-    head.className = 'panel-shell-head';
+    head.className = 'ui-head';
+    const codeEl = document.createElement('span');
+    codeEl.className = 'ui-section-code';
+    codeEl.setAttribute('aria-hidden', 'true');
+    codeEl.textContent = code;
     this.titleEl = document.createElement('h3');
     this.titleEl.textContent = title;
-    head.appendChild(this.titleEl);
+    const metaEl = document.createElement('span');
+    metaEl.className = 'ui-head-meta';
+    metaEl.dataset['id'] = `${id}-meta`;
+    const summaryEl = document.createElement('span');
+    summaryEl.className = 'ui-head-meta is-summary';
+    summaryEl.dataset['id'] = `${id}-summary`;
+    head.append(codeEl, this.titleEl, metaEl, summaryEl);
     this.el.appendChild(head);
 
     this.body = document.createElement('div');

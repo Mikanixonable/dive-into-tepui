@@ -18,6 +18,7 @@ export interface MapDisplayToggles {
   readonly ammoName: boolean; readonly ammoOrbit: boolean;
   readonly fuelName: boolean; readonly fuelOrbit: boolean;
   readonly baseName: boolean; readonly baseOrbit: boolean;
+  readonly orbitSlotName: boolean; readonly orbitSlotOrbit: boolean;
 }
 
 export type MapDisplayMode = 'orbit' | 'label' | 'hidden';
@@ -25,7 +26,8 @@ export type MapDisplayMode = 'orbit' | 'label' | 'hidden';
 // 表示パネルの1行にあたる、ラベル・軌道線をまとめたクラス全体トグル。
 export type MapDisplayCategory =
   | 'planetVisible' | 'dwarfVisible' | 'satelliteVisible' | 'smallBodyVisible' | 'lagrangeVisible'
-  | 'playerVisible' | 'enemyVisible' | 'ammoVisible' | 'fuelVisible' | 'baseVisible';
+  | 'playerVisible' | 'enemyVisible' | 'ammoVisible' | 'fuelVisible' | 'baseVisible'
+  | 'orbitSlotVisible';
 
 // 既定値(SPEC/MAP.md「表示するオブジェクトの選択」)。準惑星・小天体の軌道線は、数が多く
 // 内側太陽系を埋めるので off。
@@ -41,6 +43,7 @@ export const DEFAULT_MAP_DISPLAY_TOGGLES: MapDisplayToggles = {
   ammoName: true, ammoOrbit: false,
   fuelName: true, fuelOrbit: false,
   baseName: true, baseOrbit: true,
+  orbitSlotName: true, orbitSlotOrbit: true,
 };
 
 // 各クラス全体トグルの配下にある子トグル(ラベル・軌道線)。軌道を持たない lagrange は orbit が null。
@@ -58,6 +61,7 @@ const MAP_DISPLAY_CATEGORIES: Readonly<Record<MapDisplayCategory, {
   ammoVisible: { name: 'ammoName', orbit: 'ammoOrbit' },
   fuelVisible: { name: 'fuelName', orbit: 'fuelOrbit' },
   baseVisible: { name: 'baseName', orbit: 'baseOrbit' },
+  orbitSlotVisible: { name: 'orbitSlotName', orbit: 'orbitSlotOrbit' },
 };
 
 // クラス全体トグルの状態。配下の子トグルが1つでも on なら on、全て off なら off。

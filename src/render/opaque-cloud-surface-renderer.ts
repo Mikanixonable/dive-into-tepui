@@ -13,7 +13,7 @@ import type { CloudSample } from './cloud/cloud-field-sample';
 import { CloudFieldSampler } from './cloud/cloud-field-sampler';
 import type { CloudRenderInput } from './cloud/cloud-render-input';
 import { unitSphereGeometry } from './celestial/celestial-surface';
-import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
+import { CLOUD_ALBEDO, CLOUD_TOP_SPAN, CUMULUS_GRAIN_OCTAVES, CUMULUS_GRAIN_SIZE } from './cloud/cumulus-shape';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './celestial/screen-lod';
@@ -66,6 +66,9 @@ export class OpaqueCloudSurfaceRenderer {
   // 場の起伏と粒の起伏が同じ 1 つの法線に出る。
   private readonly grainFrequency: FloatUniform;
   private readonly gradientAngle: FloatUniform;
+  // 粒の時計になる表示時刻 [s] と、風が結ばれているかの 0/1。bind で写し取る。
+  private readonly displayTime: FloatUniform;
+  private readonly windEnabled: FloatUniform;
   // 分割段ごとの球。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
@@ -80,6 +83,8 @@ export class OpaqueCloudSurfaceRenderer {
     this.grainFrequency = uniform(grainFrequency);
     this.shape = new CloudShapeEvaluator(this.grainFrequency);
     this.gradientAngle = uniform(0.5 / grainFrequency);
+    this.displayTime = uniform(0);
+    this.windEnabled = uniform(0);
     this.material = this.buildMaterial();
 
     // 詳細度ごとのメッシュを同じ雲場へ束ねる。
@@ -114,6 +119,8 @@ export class OpaqueCloudSurfaceRenderer {
   // 読む雲場と cap の置き方を写し取る。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
   public bind(input: CloudRenderInput): void {
     this.fieldSampler.bind(input.field);
+    this.displayTime.value = input.displayTime;
+    this.windEnabled.value = input.field.windTexture === null ? 0 : 1;
   }
 
   // 標本の配り方を置き直す。回数はシェーダへ展開されるので、変わればマテリアルを組み直す。
@@ -174,8 +181,9 @@ export class OpaqueCloudSurfaceRenderer {
       const entry = positionLocal.toVar();
       const origin = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
       const direction = normalize(entry.sub(origin)).toVar();
+      const entryDirection = normalize(entry).toVar();
+      const grainAmplitudes = this.grainAmplitudesAt(entryDirection, this.fieldAt(entryDirection));
       const threshold = this.ditherThreshold().toVar();
-      const grainAmplitude = this.grainAmplitudeAt(normalize(entry)).toVar();
 
       // 殻に入ってから地表の球へ達するまで(掠めるなら殻を出るまで)を等分してたどる。
       const along = dot(entry, direction);
@@ -196,7 +204,7 @@ export class OpaqueCloudSurfaceRenderer {
       for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
         const distance = stepLength.mul(stepIndex);
         const inside = this.clearanceAt(
-          entry.add(direction.mul(distance)), threshold, grainAmplitude).lessThan(0);
+          entry.add(direction.mul(distance)), threshold, grainAmplitudes).lessThan(0);
         If(inside.and(hit.lessThan(0.5)), () => {
           hit.assign(1);
           below.assign(distance);
@@ -207,24 +215,24 @@ export class OpaqueCloudSurfaceRenderer {
       for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
         const middle = above.add(below).mul(0.5);
         const inside = this.clearanceAt(
-          entry.add(direction.mul(middle)), threshold, grainAmplitude).lessThan(0);
+          entry.add(direction.mul(middle)), threshold, grainAmplitudes).lessThan(0);
         If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
       }
 
       const hitPoint = entry.add(direction.mul(below)).toVar();
       const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
-      const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, grainAmplitude)));
+      const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, grainAmplitudes)));
       Discard(hit.lessThan(0.5));
       return vec4(viewNormal, clip.z.div(clip.w));
     })();
   }
 
   // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。
-  private clearanceAt(point: Vec3Node, threshold: FloatNode, grainAmplitude: FloatNode): FloatNode {
+  private clearanceAt(point: Vec3Node, threshold: FloatNode, grainAmplitudes: readonly FloatNode[]): FloatNode {
     const radius = max(length(point), 1e-6);
     const direction = point.div(radius);
     const cloud = this.fieldAt(direction);
-    const grain = this.shape.grainAt(direction, grainAmplitude);
+    const grain = this.shape.grainAt(direction, grainAmplitudes, this.displayTime, this.windEnabled);
     // 粒は覆いの縁を texel より細かく千切る。
     const present = step(threshold, this.shape.opaqueFraction(cloud.coverage, grain));
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
@@ -236,7 +244,7 @@ export class OpaqueCloudSurfaceRenderer {
 
   // 交点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに断ち切られた
   // 崖ではなく、雲頂そのものの起伏を法線に出す。
-  private cloudTopNormalAt(hitPoint: Vec3Node, grainAmplitude: FloatNode): Vec3Node {
+  private cloudTopNormalAt(hitPoint: Vec3Node, grainAmplitudes: readonly FloatNode[]): Vec3Node {
     const up = hitPoint.div(max(length(hitPoint), 1e-6));
     const east = eastAt(up);
     const north = northAt(up);
@@ -244,7 +252,7 @@ export class OpaqueCloudSurfaceRenderer {
     const topAt = (direction: Vec3Node): FloatNode => this.shape.cloudTopRadius(
       this.shape.cloudTop(
         this.fieldAt(direction).cloudTop.div(CLOUD_TOP_SPAN),
-        this.shape.grainAt(direction, grainAmplitude),
+        this.shape.grainAt(direction, grainAmplitudes, this.displayTime, this.windEnabled),
       ),
       this.groundRadius,
     );
@@ -265,13 +273,20 @@ export class OpaqueCloudSurfaceRenderer {
     return this.fieldSampler.sampleCloud(direction);
   }
 
-  // 粒の振幅。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
-  // 大気圏のすぐ上から見下ろす構図で 1 桁ずれる。解像できない細かさになったら 0 へ落ちるので、
-  // 引きの構図では場の分布だけが残る。
-  private grainAmplitudeAt(entryDirection: Vec3Node): FloatNode {
+  // 粒の段ごとの振幅。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
+  // 大気圏のすぐ上から見下ろす構図で 1 桁ずれる。段の 1 波長が 2 画素を切ったらその段は消し、
+  // 4 画素まで残す — 解像できない細かさになったら 0 へ落ちるので、引きの構図では場の分布だけが残る。
+  // 振幅には場の天気による掛け率を掛ける — 柱ごとの雲頂と被覆率で決まるので、粒の強さが
+  // 数百キロの尺度で滑らかに移り変わる。
+  private grainAmplitudesAt(entryDirection: Vec3Node, cloud: CloudSample): readonly FloatNode[] {
     const pixelAngle = max(length(dFdx(entryDirection)), length(dFdy(entryDirection)));
     const wavelengthPixels = max(pixelAngle.mul(this.grainFrequency), 1e-9).reciprocal();
-    return smoothstep(GRAIN_FADE_MIN_PIXELS, GRAIN_FADE_FULL_PIXELS, wavelengthPixels);
+    const factor = CloudShapeEvaluator.grainWeatherFactor(
+      cloud.coverage, cloud.cloudTop.div(CLOUD_TOP_SPAN));
+    return CUMULUS_GRAIN_OCTAVES.map((octave) => smoothstep(
+      GRAIN_FADE_MIN_PIXELS, GRAIN_FADE_FULL_PIXELS,
+      wavelengthPixels.mul(octave.sizeM / CUMULUS_GRAIN_SIZE),
+    ).mul(factor).toVar());
   }
 
   // 画素ごとに固定の、覆い尽くされている割合と比べるディザの閾値。

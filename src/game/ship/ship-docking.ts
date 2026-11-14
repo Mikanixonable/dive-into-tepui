@@ -29,10 +29,9 @@ export function dockingPortPose(ship: ModularShip, moduleId: string): DockingPor
   const definition = ship.assembly.definition(moduleId);
   const transform = ship.assembly.worldTransformOf(moduleId);
   if (module === null || definition === null || transform === null || !isDockingModule(module)) return null;
-  const root = sub(ship.motion.state.r, qRotate(ship.motion.att.q, ship.motion.centerOffset));
   const rotation = qMul(ship.motion.att.q, transform.rotation);
   const axis = norm(qRotate(rotation, LOCAL_FORWARD));
-  const center = add(root, qRotate(ship.motion.att.q, transform.position));
+  const center = ship.motion.assemblyToEci(transform.position);
   const point = add(center, scale(axis, definition.length / 2));
   const angularVelocity = qRotate(ship.motion.att.q, ship.motion.att.w);
   const velocity = add(ship.motion.state.v, cross(angularVelocity, sub(point, ship.motion.state.r)));

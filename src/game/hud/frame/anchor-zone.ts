@@ -61,7 +61,7 @@ export class AnchorZone {
   }
 
   // クイックボタンを、渡された系の天体列(+その衛星・ラグランジュ点)へ合わせる。
-  // 候補に無い id は出さない(押せてから拒否することになるため)。
+  // 候補に無い id は出さない(選べてから拒否されることになるため)。
   public setNearby(members: readonly string[], pickables: readonly ListedObject[]): void {
     const byId = new Map(pickables.map((p) => [p.id, p] as const));
 

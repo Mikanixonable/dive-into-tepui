@@ -25,7 +25,7 @@ export function register(): void {
 
   test('view-selection: 外部命令は列の適用までビューを変えない', () => {
     const events = new RunEventLog();
-    const control: MutableViewControlSource = { current: { plan: { nodes: [] } } };
+    const control: MutableViewControlSource = { current: { id: 'ship-1', plan: { nodes: [] } } };
     const selection = new ViewSelection(control, events);
     const queue = new CommandQueue();
     const commands = viewCommands(queue, selection);
@@ -49,7 +49,7 @@ export function register(): void {
     assert.equal(selection.current, 'map');
     assert.deepEqual(events.recent.map((event) => event.body), [{ kind: 'combatViewUnavailable' }]);
 
-    control.current = { plan: { nodes: [] } };
+    control.current = { id: 'ship-1', plan: { nodes: [] } };
     commands.toggle();
     queue.applyAll();
     assert.equal(selection.current, 'combat');
@@ -57,5 +57,30 @@ export function register(): void {
     commands.toggle();
     queue.applyAll();
     assert.equal(selection.current, 'map');
+  });
+
+  test('view-selection: マップへ入る出来事は、入った瞬間の操作対象の船を記録する', () => {
+    const events = new RunEventLog();
+    const control: MutableViewControlSource = { current: { id: 'ship-1', plan: { nodes: [] } } };
+    const selection = ViewSelection.deserialize('combat', control, events);
+    const queue = new CommandQueue();
+    const commands = viewCommands(queue, selection);
+
+    commands.toggle();
+    queue.applyAll();
+    assert.deepEqual(events.recent.map((event) => event.body), [{ kind: 'orbitPlanningOpened', shipId: 'ship-1' }]);
+  });
+
+  test('view-selection: 戦闘ビューで操作対象を失ってからマップへ入ると、船の無いことを記録する', () => {
+    const events = new RunEventLog();
+    const control: MutableViewControlSource = { current: { id: 'ship-1', plan: { nodes: [] } } };
+    const selection = ViewSelection.deserialize('combat', control, events);
+    const queue = new CommandQueue();
+    const commands = viewCommands(queue, selection);
+
+    control.current = null;
+    commands.toggle();
+    queue.applyAll();
+    assert.deepEqual(events.recent.map((event) => event.body), [{ kind: 'orbitPlanningOpened', shipId: null }]);
   });
 }

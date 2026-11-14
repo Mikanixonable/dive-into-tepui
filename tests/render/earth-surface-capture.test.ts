@@ -4,7 +4,7 @@ import {
   EARTH_SURFACE_CAPTURE_CASES,
   EARTH_SURFACE_CAPTURE_FRAMES,
   EARTH_SURFACE_CAPTURE_VIEWPORT,
-} from '../../src/render/earth-surface-metrics';
+} from '../../tools/render-lab/earth-surface-metrics';
 import { createEarthSurfaceCaptureApi } from '../../tools/render-lab/earth-surface-capture';
 
 export function register(): void {
