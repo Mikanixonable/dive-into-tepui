@@ -10,7 +10,7 @@ export interface CloudOpticalEvent {
   readonly transmittance: number;
 }
 
-export interface CloudOpticalComposite {
+interface CloudOpticalComposite {
   readonly transmittance: number;
   readonly radiance: number;
 }
