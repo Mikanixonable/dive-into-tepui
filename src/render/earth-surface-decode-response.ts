@@ -1,6 +1,6 @@
 // HTTP本文の上限・中断・ハッシュ検証を共通化する。
-import { EarthSurfaceDecodeError } from './earth-surface-decode-errors';
-import { EarthSurfaceHttpError } from './earth-surface-request-errors';
+import { EarthSurfaceDecodeError } from './earth-surface-errors';
+import { EarthSurfaceHttpError } from './earth-surface-errors';
 
 // 中断済みの信号を検出して、共通のAbortErrorへ変換する。
 export function ensureEarthSurfaceNotAborted(signal?: AbortSignal): void {

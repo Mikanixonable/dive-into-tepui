@@ -4,17 +4,12 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { extname, join, resolve, sep } from 'node:path';
+import { cacheControlForPages } from './stage-pages.mjs';
 
 const MIME = {
   '.bin': 'application/octet-stream', '.gz': 'application/gzip', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
   '.json': 'application/json', '.png': 'image/png',
 };
-
-function cacheControl(relative) {
-  return relative.endsWith('earth-surface.json') || relative.endsWith('receipt.json')
-    ? 'public, max-age=60, must-revalidate'
-    : 'public, max-age=31536000, immutable';
-}
 
 function corsHeaders(origin, allowedOrigins) {
   if (allowedOrigins.includes('*')) return { 'Access-Control-Allow-Origin': '*' };
@@ -55,7 +50,7 @@ export function earthSurfaceServer(root, port = 8084, options = {}) {
       if (!info.isFile()) { response.writeHead(404); response.end(); return; }
       response.writeHead(200, {
         'Content-Type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
-        'Cache-Control': cacheControl(relative),
+        'Cache-Control': cacheControlForPages(relative),
         ...cors,
       });
       if (request.method === 'HEAD') { response.end(); return; }

@@ -42,12 +42,17 @@ export interface ShipAssemblyTotals {
   readonly maxHp: number;
   readonly thrust: number;
   readonly torque: number;
+  // 主推進(thruster)の燃料消費率の合計 [unit/s]。
+  readonly mainFuelConsumptionRate: number;
   readonly mainFuel: number;
   readonly rcsFuel: number;
   readonly boosterFuel: number;
   readonly maxMainFuel: number;
   readonly maxRcsFuel: number;
   readonly maxBoosterFuel: number;
+  // 主燃料タンク満載時の推進剤質量 [kg] と、容量で加重平均した 1 unit あたり質量 [kg/unit]。
+  readonly maxMainFuelMass: number;
+  readonly mainFuelMassPerUnit: number;
   readonly power: number;
   readonly radiation: number;
   readonly weaponDamage: number;
@@ -55,6 +60,8 @@ export interface ShipAssemblyTotals {
   readonly muzzleVelocity: number;
   readonly dryMass: number;
   readonly mass: number;
+  // 全タンク・ブースター満載時の質量 [kg]。
+  readonly fullMass: number;
 }
 
 export interface ShipAssemblyNode {
@@ -62,6 +69,7 @@ export interface ShipAssemblyNode {
   transform: ModuleTransform;
 }
 
+// 接舷接続の端点になれる module(dock または docking_port)か。
 export function isDockingModule(
   module: ShipModuleInstance | null,
 ): module is ShipModuleInstance & { readonly kind: 'dock' | 'docking_port' } {

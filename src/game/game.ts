@@ -15,13 +15,14 @@ import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { summarizeRun, type RunSummary } from './run-summary';
 import type { GameScene } from '../render/scene';
 import type { Controllable } from './dynamic/dynamic-entity/controllable';
-import type { SerializedStage, Stage, StageClass } from './stages/stage';
+import type { RunOptions, SerializedStage, Stage, StageClass } from './stages/stage';
 import type { HudLayers } from './hud/hud-layers';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { LoadingProgress } from './loading-progress';
 import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
 import type { TrajectoryDemand } from './dynamic/trajectory-demand';
 import type { CameraFrameSamples } from './viewer/camera-selection';
+import type { ShipBlueprintShelf } from './ship/ship-blueprint';
 
 // 1ランの直列化した形。進行と視点を分けて持つ(R4)。
 export interface SerializedGame {
@@ -77,14 +78,17 @@ export class Game {
 
   // stageClass の新しいランを組む。元期は開始日時 startEpoch、無ければステージの宣言から採る。
   // 段の切れ目で描画を明け渡すので、組み立て中の Game は誰にも観測されないまま数フレームをまたぐ。
-  // scene は天体系と実体の表示物の置き場、hud はステージのパネルの置き場。
+  // scene は天体系と実体の表示物の置き場、hud はステージのパネルの置き場、blueprints は
+  // セーブスロットの設計図の棚の読み取り面。
   public static async create(
     stageClass: StageClass,
     startEpoch: TdbJulianDate | undefined,
     scene: GameScene,
     hud: HudLayers,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progress: LoadingProgress,
+    runOptions: RunOptions,
   ): Promise<Game> {
     const celestialSystem = await Game.buildCelestialSystem(
       stageClass, startEpoch ?? stageClass.epoch, scene, progress,
@@ -97,8 +101,10 @@ export class Game {
     const controlSelection = ControlSelection.create(dynamicSystem);
     const orbitSlots = OrbitSlotRegistry.create();
     const stage = stageClass.create(
-      hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands, orbitSlots,
+      hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands, orbitSlots, blueprints,
     );
+    // 周回を始める前に、再出撃の選択を当てる(初期配置の後でも、最初のフレームより前)。
+    stage.applyRunOptions(runOptions);
     const planNodeRules = PlanNodeRules.create(events);
     const viewer = Viewer.create(controlSelection, events, celestialSystem);
     return new Game(
@@ -108,13 +114,14 @@ export class Game {
   }
 
   // 直列化したラン serialized を、stageClass のランとして復元する。元期は記録から採る — 記録の
-  // simTime はその元期からの経過秒なので、別の元期で組むと全天体がずれる。scene・hud は create と同じ。
+  // simTime はその元期からの経過秒なので、別の元期で組むと全天体がずれる。scene・hud・blueprints は create と同じ。
   public static async deserialize(
     serialized: SerializedGame,
     stageClass: StageClass,
     scene: GameScene,
     hud: HudLayers,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progress: LoadingProgress,
   ): Promise<Game> {
     const { progress: serializedProgress } = serialized;
@@ -134,7 +141,7 @@ export class Game {
     const stage = stageClass.deserialize(
       // 記録にステージの内訳が無い・null なら、新しいランの初期値で補う(初期配置はしない)。
       serializedProgress.stage ?? null,
-      hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands, orbitSlots,
+      hud, scene.scene, dynamicSystem, celestialSystem, controlSelection, commands, orbitSlots, blueprints,
     );
     const planNodeRules = PlanNodeRules.deserialize(serializedProgress.planNodeRules, events);
     const viewer = Viewer.deserialize(serialized.viewer, dynamicSystem, controlSelection, events, celestialSystem);

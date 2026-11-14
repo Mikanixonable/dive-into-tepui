@@ -108,6 +108,7 @@ export class CelestialEntity implements ObjectPickable {
       { type: 'header', label: this.name, subLabel },
       MenuCommon.focus(),
       MenuCommon.target(navTargetId === this.id),
+      { label: '周回する物体を配置', act: 'openObjectPlacer' },
       MenuCommon.cancel(),
     ];
   }

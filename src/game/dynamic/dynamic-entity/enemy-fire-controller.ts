@@ -1,3 +1,4 @@
+// 敵1体の射撃制御。照準・発射機会・バーストの進行とプラズマ弾の生成、その途中経過の直列化。
 import { sunGlareSpreadScale } from '../../combat/sun-glare-spread';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ModularShip } from '../../ship/modular-ship';
@@ -18,7 +19,7 @@ const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
 const ENEMY_FIRE_INTERVAL = 1.0; // 敵の射撃間隔 [s]
 const ENEMY_BURST_INTERVAL = 0.08; // 敵のバースト射撃時の連射間隔 [s]
 const ENEMY_AI_MIN_RANGE = 50; // 射撃する最短距離 [m]
-const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 攻撃グループ内で同時にバーストする敵の上限
+export const ENEMY_MAX_ATTACKERS_PER_GROUP = 3; // 攻撃グループ内で同時にバーストする敵の上限
 const ENEMY_ATTACK_CHANCE = 0.6; // 射撃の機会ごとにバーストを始める確率
 const ENEMY_BURST_COUNTS = [3, 5, 7, 20]; // バースト1回の弾数の候補
 const PLASMA_SPREAD_DEG = 0.05; // 太陽グレアの倍率が 1 のときの、プラズマ弾の散布角の最大 [deg]
@@ -67,10 +68,10 @@ export class EnemyFireController {
   }
 
   // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
-  // 間は撃たない。
+  // 間は撃たない。attackLimit は攻撃グループで同時に発砲してよい数。
   public updateBehavior(
     simTime: number, player: ModularShip, registry: EntityRegistry, enemies: readonly Enemy[],
-    mayFire: boolean, celestialBodies: CelestialBodies,
+    mayFire: boolean, celestialBodies: CelestialBodies, attackLimit: number,
   ): void {
     const behaviorDt = this.lastBehaviorSim === null ? 0 : Math.max(0, simTime - this.lastBehaviorSim);
     this.lastBehaviorSim = simTime;
@@ -101,7 +102,7 @@ export class EnemyFireController {
     if (simTime - this.lastFireSim <= ENEMY_FIRE_INTERVAL) return;
     this.lastFireSim = simTime;
     const countInGroup = countAttackingEnemiesInGroup(enemies, this.port.attackGroupId);
-    if (countInGroup >= ENEMY_MAX_ATTACKERS_PER_GROUP || Math.random() >= ENEMY_ATTACK_CHANCE) return;
+    if (countInGroup >= attackLimit || Math.random() >= ENEMY_ATTACK_CHANCE) return;
     const burstCount = ENEMY_BURST_COUNTS[Math.floor(Math.random() * ENEMY_BURST_COUNTS.length)] ?? 1;
     this.burstLeft = burstCount - 1;
     this.burstDelay = ENEMY_BURST_INTERVAL;

@@ -41,6 +41,7 @@ function staticFrame(): DynamicViewFrame {
     },
     style: 'realistic',
     visual: { thrustPlume: 'simple' },
+    shipModuleEmphasis: null,
     sunLight,
     bodyShadow: new BodyShadow(sunLight),
     pools: new InstancedPools([]),
@@ -54,6 +55,7 @@ function enemyAt(
 ): AssemblyEnemyView {
   const shape = generateAssemblyShape(seed);
   const view = new AssemblyEnemyView(shape, accent);
+  // 個体の形と欠損を反映した視覚源を組む。
   const source: AssemblyVisualSource = {
     id: `assembly-${seed}`,
     name: `assembly-${seed}`,

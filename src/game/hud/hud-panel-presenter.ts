@@ -5,6 +5,7 @@ import { orbitInfo, relativeInfo } from '../orbit-info';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { isModularShip } from '../ship/modular-ship';
+import { hasUsableConstructionDock } from '../ship/construction-entry';
 import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import { deployableCommands, type DeployableCommands } from '../player/deployable-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from '../viewer/orbit-reference-commands';
@@ -61,6 +62,9 @@ export class HudPanelPresenter {
     private readonly objectWindows: ObjectWindows,
     private readonly cameraSystem: CameraSystem,
     private readonly navigationCommand: NavigationCommand,
+    // 艦のステータスパネルの「建造」の押下先と、建造中かの読み取り。
+    private readonly startConstruction: () => void,
+    private readonly constructionActive: () => boolean,
   ) {
     this.viewBadge = new ViewBadge(
       hud.viewBadgeRow, hud.overlayManager, viewCommands(commands, viewer.view),
@@ -132,7 +136,7 @@ export class HudPanelPresenter {
         autoWarpSimRemainSec: this.simSpeedManager.remainingSimulationSeconds(simTime),
         setSimSpeed: (speed) => this.simSpeedCommands.setSpeed(speed),
       },
-      vessel: combatControlled === null ? null : this.vesselViewModel(combatControlled),
+      vessel: combatControlled === null ? null : this.vesselViewModel(combatControlled, view),
       orbit: controlled === null || orbitRef === undefined
         ? null
         : this.orbitViewModel(controlled, orbitRef),
@@ -157,8 +161,8 @@ export class HudPanelPresenter {
     };
   }
 
-  // 操作対象の装備・燃料・姿勢の状態と、代替操作用のコールバック。
-  private vesselViewModel(controlled: Controllable): VesselPanelViewModel {
+  // 操作対象の装備・燃料・姿勢の状態と、建造の入口・代替操作用のコールバック。
+  private vesselViewModel(controlled: Controllable, view: ViewMode): VesselPanelViewModel {
     const ship = isModularShip(controlled) ? controlled : null;
     const motion = ship?.motion ?? null;
     const power = motion?.power ?? null;
@@ -183,6 +187,11 @@ export class HudPanelPresenter {
         up: { deploy: radiator.deployOf('up'), wear: radiator.wearOf('up') },
         down: { deploy: radiator.deployOf('down'), wear: radiator.wearOf('down') },
       },
+      // 建造の入口は、戦闘ビューで船体に使えるドックがあり、建造中でない間だけ。
+      startConstruction:
+        view === 'combat' && !this.constructionActive() && ship !== null && hasUsableConstructionDock(ship)
+          ? () => this.startConstruction()
+          : null,
       tapKey: (key) => this.input.tapKey(key),
       toggleSolar: (side) => { if (power !== null) this.deployableCommands.toggleSolar(power, side); },
       toggleRadiator: (side) => { if (radiator !== null) this.deployableCommands.toggleRadiator(radiator, side); },

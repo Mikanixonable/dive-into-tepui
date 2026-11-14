@@ -138,18 +138,12 @@ export class EarthSurfaceResidentCoordinator {
 
     const visible = this.dependencies.tiles.requestCandidates(input.projection);
     const prefetch = this.dependencies.tiles.prefetchCandidates(input.projection, visible);
-    const residents = this.dependencies.gpu.mode === 'tiles' ? this.dependencies.gpu.uploadedTiles() : [];
+    const residents = this.dependencies.gpu.uploadedTiles();
     this.dependencies.tiles.sync(input.projection, residents, input.timeMs, visible);
     this.lastProjection = input.projection;
     this.lastGeneration = input.generation;
     this.lastTimeMs = input.timeMs;
     this.lastResidentRevision = this.residentRevision;
-    if (this.dependencies.gpu.mode === 'base') {
-      this.lastResult = {
-        frontier: this.dependencies.tiles.frontier.slice(), requested: [], published: false,
-      };
-      return this.lastResult;
-    }
     const page = this.dependencies.tiles.pageTable();
     this.touchPinned(page);
     this.dependencies.gpu.stagePageTable(page);

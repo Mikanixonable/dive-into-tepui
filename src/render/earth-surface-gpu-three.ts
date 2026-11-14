@@ -2,7 +2,7 @@
 // タイル選択・世代・公開順はEarthSurfaceGpuAdapterが所有し、このクラスは実テクスチャの
 // 生成と非公開層へのバッファ書込みだけを担当する。WebGPU非対応時は配列層を作らずbaseへ固定する。
 import * as THREE from 'three/webgpu';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-page-table';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-layout';
 import { EARTH_TILE_EXTENT, EARTH_TILE_LAYERS } from './earth-surface-tile-key';
 import {
   supportsEarthSurfaceTiles,

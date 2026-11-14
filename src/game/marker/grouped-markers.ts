@@ -44,6 +44,11 @@ export interface GroupedMarkerItem {
   occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
 }
 
+// 命中した直後の敵マーカーへ、閃きの見え方を被せる。見え方は CSS の mk-hit が決める。
+export function withHitFlash(item: GroupedMarkerItem): GroupedMarkerItem {
+  return { ...item, cls: `${item.cls} mk-hit` };
+}
+
 // ターゲットに指定された対象のマーカーへ、代表選出の優先度と palette の強調色を被せる。
 export function withTargetRole(item: GroupedMarkerItem, palette: ThemePalette): GroupedMarkerItem {
   const signal = palette.signal;

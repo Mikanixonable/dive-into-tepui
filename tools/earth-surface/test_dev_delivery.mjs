@@ -36,7 +36,7 @@ function webpackConfigWithEnvironment({ baseUrl, manifestUrl, localBundle = 'v3'
   nodeFs.existsSync = (filePath) => filePath === localManifest;
   try {
     delete require.cache[require.resolve('../../webpack.config.js')];
-    return require('../../webpack.config.js');
+    return require('../../webpack.config.js')({}, { mode: 'development' });
   } finally {
     nodeFs.existsSync = previousExistsSync;
     if (previousBase === undefined) delete process.env.EARTH_SURFACE_BASE_URL;

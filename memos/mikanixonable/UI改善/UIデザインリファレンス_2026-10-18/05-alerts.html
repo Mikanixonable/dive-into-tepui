@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>警報と通知</title>
+<link rel="stylesheet" href="foundation/tepui-base.css">
+<link rel="stylesheet" href="foundation/ref.css">
+<style>
+  /* 警報帯はこのページでは中央の列いっぱいに広げる(部品は ref.css)。 */
+  .ix-alert { width: 100%; }
+  .ix-alert.is-info { width: auto; }
+  /* 動きを減らす設定(OS 設定の再現。ref.css の @media と同じ内容) */
+  .al-rm .ix-lamp.is-warning { animation: none; }
+
+  /* ============ このページ固有の配置 ============ */
+  .al-strip { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); }
+  .al-stack { position: absolute; top: 60px; left: 50%; transform: translateX(-50%); width: 640px; display: grid; gap: var(--space-3); align-content: start; min-height: 4px; }
+  .al-notice { position: absolute; left: 50%; transform: translateX(-50%); bottom: 150px; min-width: 4px; min-height: 4px; }
+  .al-rail { position: absolute; top: 137px; width: 300px; }
+  .al-rail.l { left: 12px; }
+  .al-rail.r { left: 1288px; }
+  .al-controls { display: grid; gap: var(--space-4); margin-bottom: var(--space-4); }
+  .al-controls .w-group { gap: var(--space-3); }
+  .al-ctl-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4) var(--space-6); }
+  .al-ctl-row label { font-size: var(--font-xs); color: var(--text-dim); display: inline-flex; align-items: center; gap: var(--space-3); }
+  .al-caption { margin: 0; min-height: 3.4em; color: var(--text-muted); font-size: var(--font-s); line-height: 1.7; max-width: 1100px; }
+  .al-caption b { color: var(--text); }
+  .al-scrub-axis { display: grid; grid-template-columns: repeat(5, 1fr); font-size: var(--font-xxs); color: var(--ix-meta); font-variant-numeric: tabular-nums; text-align: center; margin-top: var(--space-2); }
+  .al-scrub-axis span.on { color: var(--text); }
+  .ix-scrub-track .al-slot { position: absolute; top: 0; bottom: 0; width: 20%; }
+  .al-sheet { display: grid; gap: var(--space-4); }
+  .al-sample { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); gap: var(--space-4) var(--space-5); align-items: start; }
+  .al-sample-k { font-size: var(--font-xs); color: var(--text-dim); line-height: 2.2; }
+  .al-grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); gap: var(--space-4); }
+  .al-crop { border-radius: var(--radius-control); background-repeat: no-repeat; background-color: #000; }
+  .al-hy { width: 100%; max-width: 760px; height: auto; display: block; }
+  .al-hy text { font-size: 11px; fill: var(--text-dim); font-family: var(--font-family); }
+  .al-hy .grid { stroke: var(--fill-2); stroke-width: 1; }
+  .al-hy .c-in, .al-hy .c-out { stroke: var(--ix-caution); stroke-width: 1; }
+  .al-hy .w-in, .al-hy .w-out { stroke: var(--ix-warning); stroke-width: 1; }
+  .al-hy .c-out, .al-hy .w-out { stroke-dasharray: 2 4; }
+  .al-hy .c-in, .al-hy .w-in { stroke-dasharray: 8 4; }
+  .al-hy .series { fill: none; stroke: var(--text); stroke-width: 1.6; stroke-linejoin: round; }
+  .al-hy .rib-1 { fill: var(--ix-caution); }
+  .al-hy .rib-2 { fill: var(--ix-warning); }
+  .al-hy .rib-0 { fill: var(--fill-2); }
+  .al-hy .dot { fill: var(--bg); stroke: var(--text); stroke-width: 1.2; }
+  .al-hy .num { fill: var(--text); font-weight: 700; text-anchor: middle; }
+  .al-rules { margin: 0; padding-left: 1.4em; color: var(--text-muted); font-size: var(--font-s); line-height: 1.75; display: grid; gap: var(--space-3); }
+  .al-rules b { color: var(--text); }
+  .al-tag { display: inline-block; font-size: var(--font-xxs); letter-spacing: var(--tracking-label); padding: 0 var(--space-3); border-radius: var(--radius-pill); background: var(--fill-2); color: var(--text-muted); vertical-align: 1px; }
+  .al-tag.is-new { background: var(--ix-caution-fill); color: var(--ix-caution); }
+  .al-layer { display: inline-flex; align-items: center; gap: var(--space-3); }
+  .rf-table td.num, .rf-table th.num { font-variant-numeric: tabular-nums; }
+  .rf-table td { line-height: 1.55; }
+</style>
+</head>
+<body class="rf" data-title="05 警報と通知" data-sub="警報灯・警報帯・通知・案内チップ・行内状態 — 出す条件と取り下げる条件を持つ体系">
+<main class="rf-main">
+
+<p class="rf-intro">
+  いまのゲームは、<b>性質のまったく違う知らせを、同じトースト1枚と同じ赤字で出している</b>。「RCS 回転制動: ON」(確認)、「弾薬切れ」(操作の拒否)、
+  「警告: 高度が80km以下です」(状態の警告)、「PLN 軌道計画モード: …」(長い案内)、作戦目標(ブリーフィング)が、すべて上部中央の同じ帯へ、時間で消える形で出る。
+  <b>状態</b>(温度が高い・燃料が少ない=条件が戻るまで続く)と<b>出来事</b>(ONにした・拒否された=一瞬で終わる)が区別されず、
+  しかも危険の赤は満タンの弾薬にも付く(監査1)。このページは、知らせを出す層を5つに分け、<b>警報には出す・取り下げる条件(ヒステリシス)・並び・確認・点滅の規則</b>を与える。
+  部品は 01 §06 の <code>.ix-lamp</code> <code>.ix-alert</code> <code>.ix-hint</code> をそのまま使い、足りない状態だけをこのページの <code>&lt;style&gt;</code> に <code>.ix-*</code> で足した(報告に昇格候補として挙げる)。
+</p>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">01</span>時系列で見る — 平常 → 注意 → 警告 → 確認 → 解消</h2>
+<p class="rf-lead">
+  低軌道でステージ1を遊んでいて、RCS 燃料が減り、軌道が下がり、大気圏へ入りかけ、引き起こして戻るまで(数値は規則を見せるための仮の経過)。下のボタンかタイムラインで状態を切り替える。
+  ツールバーの「比較」で現行の戦闘ビュー(NAV の帯が出ている状態)とワイプで見比べられる。確認ボタン(<kbd class="key">B</kbd>)は ③ の帯からも押せる。
+</p>
+
+<div class="rf-cell al-controls">
+  <div class="al-ctl-row">
+    <div class="w-group" role="group" aria-label="状態" id="al-steps"></div>
+    <span class="w-btn w-btn--dense w-btn--secondary" id="al-play">▶ 自動再生</span>
+    <label><input type="checkbox" id="al-rm"> 動きを減らす設定(reduced-motion)で見る</label>
+  </div>
+  <div>
+    <div class="ix-scrub"><div class="ix-scrub-track" id="al-track"></div></div>
+    <div class="al-scrub-axis" id="al-axis"></div>
+  </div>
+  <p class="al-caption" id="al-caption"></p>
+</div>
+
+<div class="rf-stage-wrap"><div class="rf-stage" data-w="1600" data-h="900" id="al-stage">
+  <div class="rf-layer rf-before"><img src="foundation/current/combat.jpg" alt="現行の戦闘ビュー(NAV のトーストが出ている)"></div>
+  <div class="rf-layer rf-after">
+    <canvas class="rf-scene" data-scene="combat"></canvas>
+    <div class="al-strip" id="al-strip" data-note="1"></div>
+    <div class="al-stack" id="al-stack" data-note="2"></div>
+    <div class="al-notice" id="al-notice" data-note="5"></div>
+    <div class="al-rail l" id="al-left" data-note="4"></div>
+    <div class="al-rail r" id="al-right"></div>
+  </div>
+</div></div>
+
+<ol class="rf-notes">
+  <li data-n="1"><b>警報灯 — 上部ストリップの右端に CAUTION / WARNING の2灯だけ。</b>灯は「いま何件あるか」の集計で、件数を添える。<b>注意は点灯のみ(点滅しない)、未確認の警告だけが1Hzで点滅</b>し、確認すると淡い面+縁の静かな点灯へ移る。
+    どの項目が原因かは帯と行で読む(灯は項目を持たない)。解く問題: 監査1(危険の赤と同色の主役色)・5(上部が重い。灯は1行に収まる)。
+    <span class="rf-where">src/game/hud/panels/top-bar.ts(<code>TopBar.sync</code> に灯の同期を足す。DOM は <code>hud-root.ts</code> の <code>#hud-topbar</code>。01 と同じ1行化) ・ 灯が読む状態は新規 src/game/hud/hud-alert.ts ・ SPEC UI-DESIGN §8「常設バッジ・スケール」全体ステータスバー</span></li>
+  <li data-n="2"><b>警報帯 — 中央上部に積む。「レベル / 何が・いくつ / 取るべき行動(キー付き)」の3段。</b>最大2枚、並びは「警告 → 注意、同じ段なら新しいものが上」。溢れた分は「他に注意 n 件」のチップへ畳む(灯の件数と一致する)。
+    行動はキーキャップと短い語の連鎖で書き、文章にしない。<b>01 §06 の見本は右端が行動ボタン(引き起こし <kbd class="key">W</kbd>)だが、W は押し続ける推力でありクリック操作ではないので、行動は本文側のキー列とし、右端は「確認」に統一した。</b>
+    現行は温度・動圧・高度・燃料の「注意すべき状態」が、トースト(高度のみ)か行内の赤字(他)に散り、行動が書かれていない。
+    <span class="rf-where">新規 src/game/hud/hud-alert.ts(HudToast と同じ通知レイヤへ。<code>hud-root.ts</code> の <code>createHudElement('div', 'hud-toast', layers.notify, …)</code> の隣)+ スタイルは <code>skeleton-style.ts</code> の <code>#hud-toast</code> の隣 ・ SPEC UI-DESIGN §8「通知」</span></li>
+  <li data-n="3"><b>確認 <kbd class="key">B</kbd> — マスター確認。</b>押すと表示中の全警報を確認済みにし、点滅と警報音を止める。<b>確認は解除ではない</b>(条件が残る間、帯は静かな1行で行動を示し続け、灯は点灯のまま)。新しい警告・昇格が起きれば再び未確認に戻る。
+    B は <code>KEY_MAPPING</code> で未使用。01 §06 の見本が確認に使っている <kbd class="key">C</kbd> は進行方向ホールドと衝突するので使わない。タッチでは確認ボタンのタップ(44px、<code>.w-hit</code>)で同じ。
+    <span class="rf-where">src/input/key-mapping.ts(<code>acknowledgeAlarm</code> を足す) ・ SPEC CONTROLS.md「ゲーム進行」のキー表</span></li>
+  <li data-n="4"><b>行内状態 — 帯と同じ判定から導く。</b>閾値を越えた行だけが <code>.ix-v.is-caution</code>(△)/<code>.is-warning</code>(▲)になり、警告の行は面(<code>.ix-row.is-warning</code>)も付く。メーターは中立の細線に<b>注意・警告の2本の目盛り</b>が入り、越えたときだけ色が付く。
+    現行は <code>orbit-panel.ts</code>(動圧 50%・温度 70%)、<code>vessel-panel.ts</code>(燃料 20%・弾薬 mags&lt;4)、<code>status-panel.ts</code>(装甲 30%・温度 70%)が閾値を別々に直書きし、1段の赤しか持たない。
+    <b>判定を1か所の関数へ寄せ、行・メーター・帯・灯が同じ結果を読む</b>(同じ物理量の閾値が食い違わない)。解く問題: 監査1(満タンの 40/40 +2連が赤い。<code>ammo.mags &lt; 4</code> が開始直後から真)。
+    <span class="rf-where">src/game/hud/orbit/orbit-panel.ts ・ src/game/hud/panels/vessel-panel.ts ・ src/game/stages/stage-utils/status-panel.ts ・ 判定は新規 src/game/alarm-evaluator.ts ・ SPEC FLIGHT.md「危険域」</span></li>
+  <li data-n="5"><b>通知(情報) — 下部中央に1行。時間で消える出来事だけ。</b>「ターゲット固定: HOSTILE-ε」「RCS 回転制動: ON」のような確認と、操作の拒否の理由。<b>上部中央は「対処が要るもの」(警報帯・ブリーフィング・案内チップ)だけに使い、確認の一言は視線の邪魔にならない下へ分ける。</b>
+    位置は <code>bottom: calc(var(--hud-stage-bottom-occupied, 0px) + …)</code> で、既存の下端予約(<code>stage-status-style.ts</code>)の上に積む。現行の NAV「ターゲット固定」は常設表示ではなく <code>navTargetLocked</code> の1.8秒トースト(<code>nav-target-presenter.ts</code> は AN/DN/再接近点のマーカーを描くだけで文言を持たない)。
+    <span class="rf-where">src/game/hud/hud-toast.ts ・ src/hud/notifier.ts(<code>HintKind</code>) ・ src/game/run-event-presenter.ts ・ src/game/hud/style/skeleton-style.ts の <code>#hud-toast</code> ・ SPEC UI-DESIGN §8「通知」</span></li>
+  <li data-n="6"><b>解消の通知 — 警告から戻った項目だけ「✓ … 警報を解除」を3秒(⑤)。</b>灯と帯が静かに消えるだけだと「直った」のか「見落とした」のか分からない。注意から戻ったときは出さない(ノイズになる)。⑤ では FUEL の注意が残るので、CAUTION 灯だけが点灯し続ける。</li>
+  <li data-n="7"><b>値の見せ方 — 値は切らず、行は同じ文法。</b>「高度 / 降下率 / 動圧 / 船体温度」「RCS 燃料 / 弾薬 / 装甲」は <code>.ix-row</code>(ラベル・メーター・値)で、右端で切れない(監査2)。満タンの燃料・40/40 の弾薬は<b>色を持たない</b>(監査1)。レールの他の行は別ページの担当で、ここでは警報に関わる行だけを抜いた。</li>
+</ol>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">02</span>いまの通知の洗い出しと、改修後の層</h2>
+<p class="rf-lead">ソースから拾った、画面へ何かを出す経路の全種。<b>性質(状態か出来事か)で層を決める</b>のが振り分けの規則で、文言の重さや色では決めない。</p>
+<div class="rf-scroll"><table class="rf-table">
+  <tr><th>現行の通知</th><th>出どころ(src)</th><th>性質</th><th>現行の出し方</th><th>改修後の層</th></tr>
+  <tr><td>高度が 120 / 100 / 80 km を下回った</td><td><code>player/altitude-alarm.ts</code> → <code>altitudeWarned</code> → <code>run-event-presenter.ts</code></td><td>状態</td><td>WARN トースト3秒+警報音。各しきい値で一度きり。ORBIT の高度の赤字は降下率(−3 m/s)で別判定</td><td><span class="al-layer">警報灯+警報帯</span> ALT。100 km は帯の数値更新のみ</td></tr>
+  <tr><td>動圧が上限の 50% 超 / 船体温度が上限の 70% 超</td><td><code>hud/orbit/orbit-panel.ts</code>、<code>stages/stage-utils/status-panel.ts</code></td><td>状態</td><td>値・行・メーターが赤。<b>SPEC FLIGHT.md は警告ヒントと警告音を出すと書くが、<code>src/</code> に対応する出来事が見当たらない</b></td><td><span class="al-layer">警報灯+警報帯</span> Q / TEMP(2段)+行内状態</td></tr>
+  <tr><td>RCS 燃料 20% 未満 / 弾薬 mags&lt;4 / 装甲 30% 以下</td><td><code>hud/panels/vessel-panel.ts</code>、<code>status-panel.ts</code>、<code>ship-construction-panel.ts</code></td><td>状態</td><td>メーターか値が赤。帯・音なし。弾薬は満タンでも赤</td><td><span class="al-layer">警報灯+警報帯</span> FUEL / AMMO / ARM+行内状態</td></tr>
+  <tr><td>敵の接近・衝突コース</td><td><code>plasmaPassedClose</code>(音のみ)、<code>enemies-panel.ts</code> の「隣接」タグ(距離順の表示)</td><td>状態</td><td>警報としては無い</td><td><span class="al-layer">警報灯+警報帯</span> PROX <span class="al-tag is-new">新規</span></td></tr>
+  <tr><td>被弾</td><td><code>shipStruck</code> → 音(<code>hit</code>)と閃光(<code>flash-presenter.ts</code>)</td><td>出来事</td><td>文言なし。装甲の数値が減るだけ</td><td>警報にしない(音と閃光のまま)。装甲が閾値を割ったとき ARM が立つ</td></tr>
+  <tr><td>機体喪失の理由</td><td><code>shipLost</code> ← <code>ship/modular-ship-reactions.ts</code> の <code>lose</code></td><td>出来事(終端)</td><td>WARN トースト+結果画面の本文。CREATIVE では結果画面が無くトーストのみ</td><td>結果画面へ。結果画面が無いステージだけ通知(拒否型・6秒)。出た瞬間に警報帯は全消去</td></tr>
+  <tr><td>操作の拒否の理由(武装損傷・弾薬切れ・ブースター上限・配置不可・操作艦なし・計画の時刻通過 ほか約20種)</td><td><code>run-event-presenter.ts</code>、<code>plan/plan-editor.ts</code>、<code>ship/ship-construction.ts</code>、<code>launcher/snapshot-controls.ts</code></td><td>出来事</td><td>WARN バッジの警告色トースト 1.8〜5秒</td><td><span class="al-layer">通知</span> 拒否型(⊘、色なし)。警告色は状態の警報だけのものにする</td></tr>
+  <tr><td>状態切替の確認(RCS制動・ホールド・微調整・出力段・ブースター・視点・撃破・補給取り込み・配置)</td><td><code>run-event-presenter.ts</code></td><td>出来事</td><td>SYS トースト 1.8〜3秒</td><td><span class="al-layer">通知</span> 情報型。行・ピップがすでに状態を示すものは出さなくてよい</td></tr>
+  <tr><td>航法の案内(時間加速・自動ワープ・ターゲット/固定・フォーカス・補給投入)</td><td><code>run-event-presenter.ts</code>、<code>pickable/*.ts</code></td><td>出来事</td><td>NAV トースト 1.8〜5秒</td><td><span class="al-layer">通知</span> 情報型(NAV 記号)</td></tr>
+  <tr><td>PLN 軌道計画モードの案内(長文)・ノード達成/確定/削除/接近</td><td><code>orbitPlanningOpened</code> ほか、<code>plan/plan-editor.ts</code></td><td>案内=状態 / 達成=出来事</td><td>PLN トースト5秒。長文の帯がマップ上部を塞ぎ、5秒で消えて以後は手がかりが無い</td><td>案内は<span class="al-layer">案内チップ</span>(段階表示、モードの間ずっと)。達成・確定・削除は通知</td></tr>
+  <tr><td>ステージ開始のブリーフィング</td><td><code>game-presentation.ts</code> の <code>presentRunStart</code> ← <code>stages/stage*.ts</code> の <code>briefingHtml</code></td><td>案内(一度)</td><td>タイトル-説明型トースト12秒(HTML 文字列)</td><td><span class="al-layer">ブリーフィング</span> 上部中央のカード。最初の操作か12秒で畳む。警報が出たら先に畳む</td></tr>
+  <tr><td>波状攻撃の接近・アンロック解放</td><td><code>waveAttackArmed/Spawned</code>、<code>launcher/unlock-manager.ts</code></td><td>出来事</td><td>タイトル-説明型トースト3〜8秒(後者は style 直書きの主役色)</td><td>通知 情報型</td></tr>
+  <tr><td>内部エラー(状態の NaN/Infinity)</td><td><code>controlledStateCorrupted</code> ほか</td><td>状態(開発者向け)</td><td>太字トースト60秒</td><td>警報帯 WARNING 扱いで、閉じるまで残す(<code>.w-close</code>)</td></tr>
+  <tr><td>時間加速・NODE WARP の残り・一時停止</td><td><code>hud/panels/top-bar.ts</code></td><td>状態(警報でない)</td><td><code>ui-accent</code> の文字色、<code>node-warp-active</code></td><td>行内状態 ストリップの <code>.ix-warp</code>・ピップ。警報の層へは入れない</td></tr>
+  <tr><td>閃光・ガスパフ</td><td><code>game/flash-presenter.ts</code></td><td>世界の演出</td><td>3D の一時エフェクト</td><td>対象外。UI の通知ではない(被弾の知らせは音と ARM のみ)</td></tr>
+</table></div>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">03</span>5つの層 — 問い・性質・置き場</h2>
+<p class="rf-lead">層ごとに「答える問い」を1つに絞る(UI-DESIGN 原則1)。<b>状態の層は条件で消え、出来事の層は時間で消える</b>。同じ文言が2つの層へまたがらない。</p>
+<div class="rf-scroll"><table class="rf-table">
+  <tr><th>層</th><th>答える問い</th><th>性質</th><th>置き場(§5)</th><th>部品</th><th>消えるとき</th><th>色・音</th></tr>
+  <tr><td><b>警報灯</b></td><td>いま見ておくべきことはあるか</td><td>状態の集計</td><td>④画面固定バッジ(全体ステータスバー内)</td><td><code>.ix-annun</code> <code>.ix-lamp</code></td><td>条件が戻る</td><td>注意=琥珀の面+△ / 警告=赤+▲(未確認は点滅)</td></tr>
+  <tr><td><b>警報帯</b></td><td>何が起きていて、何をすればよいか</td><td>状態</td><td>④中央上部(最大2枚)</td><td><code>.ix-alert.is-caution/.is-warning</code></td><td>条件が戻る(注意は確認か8秒で灯だけへ畳む)</td><td>縁と見出しだけ色を帯びる(面は中立)。注意=音1回 / 警告=確認まで繰り返す</td></tr>
+  <tr><td><b>通知</b></td><td>いま何が起きたか・なぜ拒否されたか</td><td>出来事</td><td>④下部中央(下端予約の上)</td><td><code>.ix-alert.is-info</code></td><td>1.8〜5秒</td><td>色なし(情報・拒否)。音は無し</td></tr>
+  <tr><td><b>案内チップ</b></td><td>次に何を押せばよいか</td><td>状態(モード中)</td><td>④上部中央(帯と同じ枠)</td><td><code>.ix-hint</code> + <code>.key</code></td><td>段階が進む / モードを出る</td><td>色なし。キーは <code>.key</code> 1種</td></tr>
+  <tr><td><b>行内状態</b></td><td>この値は大丈夫か</td><td>状態</td><td>各パネルの行(レール・常設計器)</td><td><code>.ix-v.is-caution/.is-warning</code> <code>.ix-gauge</code> <code>.ix-row.is-warning</code></td><td>条件が戻る</td><td>色+△/▲ の二重符号</td></tr>
+  <tr><td><b>ブリーフィング</b></td><td>このステージで何をするか</td><td>案内(一度)</td><td>④上部中央</td><td><code>.ix-panel.is-focus</code> + <code>.ix-hint</code></td><td>最初の操作か12秒</td><td>色なし</td></tr>
+</table></div>
+
+<h3>実物の見本(同じ部品・配色プリセットに追従)</h3>
+<div class="rf-cell is-space"><div class="al-sheet">
+  <div class="al-sample"><span class="al-sample-k">警報灯</span><div style="display:flex;flex-wrap:wrap;gap:var(--space-5);align-items:center">
+    <span class="ix-annun"><span class="ix-lamp">CAUTION</span><span class="ix-lamp">WARNING</span></span><span class="al-sample-k">平常(消灯)</span>
+    <span class="ix-annun"><span class="ix-lamp is-caution">CAUTION<b class="ix-lamp-n">2</b></span><span class="ix-lamp">WARNING</span></span><span class="al-sample-k">注意2件</span>
+    <span class="ix-annun"><span class="ix-lamp is-caution">CAUTION<b class="ix-lamp-n">1</b></span><span class="ix-lamp is-warning">WARNING<b class="ix-lamp-n">2</b></span></span><span class="al-sample-k">警告2件・未確認(点滅)</span>
+    <span class="ix-annun"><span class="ix-lamp is-caution">CAUTION<b class="ix-lamp-n">1</b></span><span class="ix-lamp is-warning is-acked">WARNING<b class="ix-lamp-n">2</b></span></span><span class="al-sample-k">確認済み(点滅しない)</span></div></div>
+  <div class="al-sample"><span class="al-sample-k">警報帯</span><div style="max-width:640px;display:grid;gap:var(--space-3)">
+    <div class="ix-alert is-warning"><span class="ix-alert-level">WARNING</span><span class="ix-alert-body"><span class="ix-alert-msg"><b>TEMP</b>船体温度 1,190 K — 上限 1,300 K で熱防御が飽和</span><span class="ix-alert-act"><span class="ix-hint-step"><kbd class="key">9</kbd><kbd class="key">0</kbd>放熱板を展開</span><span class="ix-hint-step">射撃を止める</span></span></span><span class="w-btn w-btn--dense w-btn--secondary w-hit">確認<kbd class="key">B</kbd></span></div>
+    <div class="ix-alert is-warning is-acked"><span class="ix-alert-level">WARNING</span><span class="ix-alert-body"><span class="ix-alert-msg"><b>TEMP</b>船体温度 1,190 K — 上限 1,300 K で熱防御が飽和</span><span class="ix-alert-act"><span class="ix-hint-step"><kbd class="key">9</kbd><kbd class="key">0</kbd>放熱板を展開</span><span class="ix-hint-step">射撃を止める</span></span></span><span class="ix-alert-state">確認済</span></div>
+  </div></div>
+  <div class="al-sample"><span class="al-sample-k">通知</span><div style="display:flex;flex-wrap:wrap;gap:var(--space-3)">
+    <span class="ix-alert is-info"><span class="ix-alert-level">NAV</span><span>ターゲット固定: HOSTILE-ε</span></span>
+    <span class="ix-alert is-info"><span class="ix-alert-level">SYS</span><span>RCS 回転制動: ON</span></span>
+    <span class="ix-alert is-info"><span class="ix-alert-level">PLN</span><span>✓ ノード達成 — 残り 2 件</span></span>
+    <span class="ix-alert is-info is-denied"><span class="ix-alert-level">不可</span><span>弾薬切れ — 軌道上の補給 ▣ を回収せよ</span></span>
+    <span class="ix-alert is-info is-cleared"><span class="ix-alert-level">解除</span><span>✓ 高度・船体温度の警報を解除</span></span></div></div>
+  <div class="al-sample"><span class="al-sample-k">行内状態</span><div class="ix-panel" style="max-width:300px"><div class="ix-rows" id="al-sample-rows"></div></div></div>
+</div></div>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">04</span>警報の規則</h2>
+<p class="rf-lead">警報は<b>状態</b>なので、出る条件と同じだけ「取り下げる条件」を持つ。条件が閾値の近くで揺れても灯が明滅しないように、入る閾値と戻る閾値を分ける(ヒステリシス)。</p>
+
+<h3>項目・閾値</h3>
+<div class="rf-scroll"><table class="rf-table">
+  <tr><th>項目</th><th class="num">注意に入る</th><th class="num">注意から戻る</th><th class="num">警告に入る</th><th class="num">警告から戻る</th><th>現行</th></tr>
+  <tr><td><b>TEMP</b> 船体温度</td><td class="num">≥ 70%(910 K)</td><td class="num">&lt; 62%(800 K)</td><td class="num">≥ 90%(1,170 K)</td><td class="num">&lt; 82%(1,070 K)</td><td>70% 超で赤(1段)。上限 1,300 K</td></tr>
+  <tr><td><b>Q</b> 動圧</td><td class="num">≥ 50%(17.5 kPa)</td><td class="num">&lt; 40%(14 kPa)</td><td class="num">≥ 80%(28 kPa)</td><td class="num">&lt; 70%(24.5 kPa)</td><td>50% 超で赤(1段)。上限 35 kPa で破壊</td></tr>
+  <tr><td><b>ALT</b> 高度・大気圏突入</td><td class="num">降下率 &lt; −3 m/s、または高度 &lt; 120 km</td><td class="num">降下率 &gt; −1 m/s かつ高度 &gt; 125 km</td><td class="num">高度 &lt; 80 km</td><td class="num">高度 &gt; 85 km</td><td>降下率 −3/−1 m/s と +5 km の幅は既存(<code>altitude-alarm.ts</code>)。120/100/80 km は3回の一度きり警告</td></tr>
+  <tr><td><b>FUEL</b> RCS 燃料</td><td class="num">&lt; 20%</td><td class="num">≥ 25%</td><td class="num">&lt; 5%</td><td class="num">≥ 8%</td><td>20% 未満で赤(メーター)</td></tr>
+  <tr><td><b>AMMO</b> 弾薬</td><td class="num">総残弾 &lt; 25%</td><td class="num">≥ 35%</td><td class="num">0(射撃できない)</td><td class="num">≥ 1</td><td><code>mags &lt; 4</code> または冷却中で赤。<b>満タンでも赤</b></td></tr>
+  <tr><td><b>ARM</b> 装甲</td><td class="num">≤ 50%</td><td class="num">&gt; 55%</td><td class="num">≤ 30%</td><td class="num">&gt; 35%</td><td>30% 以下で赤(<code>LOW_HP_RATIO</code>)</td></tr>
+  <tr><td><b>PROX</b> 接近 <span class="al-tag is-new">新規</span></td><td class="num">衝突コースで最接近 &lt; 1 km かつ 120 秒以内</td><td class="num">&gt; 1.5 km または &gt; 180 秒</td><td class="num">最接近 &lt; 200 m かつ 30 秒以内</td><td class="num">&gt; 300 m または &gt; 45 秒</td><td>無い。<code>findClosestApproach</code>(<code>nav-target-presenter.ts</code>)はターゲット限定で、非ターゲットへの拡張が要る</td></tr>
+</table></div>
+<p class="rf-lead" style="margin-top:var(--space-3)">割合は上限値(<code>MAX_HULL_TEMP</code>・<code>MAX_DYN_PRESSURE</code> など)から導き、帯の文言・行の目盛り・音が同じ表から読む。数値は提案で、既存値(70%・50%・20%・30%・120/80 km)は「注意に入る」へ温存した。</p>
+
+<h3>ヒステリシスの動き — 温度の例</h3>
+<div class="rf-cell"><svg class="al-hy" id="al-hy" viewBox="0 0 760 250" role="img" aria-label="船体温度の時系列と警報レベル"></svg>
+  <ol class="al-rules" style="margin-top:var(--space-4)">
+    <li>① 910 K を越えて<b>注意に入る</b>。② 903 K へ戻っても、戻る閾値(800 K)を下回るまで<b>注意のまま</b>(灯は明滅しない)。③ 1,170 K 以上で<b>警告へ昇格</b>(未確認で点滅・音)。</li>
+    <li>④ 1,070 K を下回って<b>警告から注意へ降格</b>(音なし。確認済みなら確認済みのまま)。⑤ 800 K を下回って<b>取り下げ</b>(解除の通知を3秒)。この図は上の閾値表と同じ規則で描いている。</li>
+  </ol></div>
+
+<h3>並べ方・確認・点滅・取り下げ</h3>
+<ol class="al-rules">
+  <li><b>並べ方。</b>レベル降順(警告 → 注意)、同じ段では発生が新しいものが上。同じ項目が警告へ昇格したら、注意の帯は消えて警告の帯1枚になる(1項目1枚)。帯は最大2枚で、溢れた分は「他に注意 n 件」へ畳む。灯の件数は畳んだ分も含めた集計。</li>
+  <li><b>確認(マスター確認 <kbd class="key">B</kbd>)。</b>全警報を確認済みにして、点滅と繰り返しの警報音を止める。帯は確認ボタンを外した静かな1行になり、行動の列は残す(条件がある間は「何をすればよいか」が要る)。確認は解除ではなく、新しい警告や昇格は再び未確認で出る。注意は確認しなくても8秒で帯が灯だけへ畳まれる。</li>
+  <li><b>点滅を止める条件。</b>未確認の WARNING 灯だけが点滅する(1Hz、<code>steps(1)</code>)。確認・条件の解消・降格のいずれかで止まる。帯は点滅しない(点滅する要素は画面に1つ)。注意は点滅しない。</li>
+  <li><b>reduced-motion。</b>点滅しない。未確認の警告灯は<b>塗りつぶしの赤</b>、確認済みは<b>淡い面+縁</b>で分かれるので、動きなしでも未確認と確認済みが区別できる。音は視覚の設定と無関係に維持する。上の「動きを減らす設定で見る」で確かめられる。</li>
+  <li><b>取り下げ。</b>戻る閾値を下回り、最短保持(3秒)が過ぎたら、灯・帯・行の色が同時に消える。警告から戻った項目だけ「✓ … 警報を解除」の通知を3秒出す。<b>喪失(結果画面)に至った瞬間は全警報を消し、結果画面が引き取る。</b></li>
+  <li><b>1つの判定。</b>判定は「物理量 → レベル」の純関数1つに寄せ、灯・帯・行・メーターの目盛り・警報音がその結果を読む。警報の状態は導出なので保存しない(ロード直後は確認済みで再開し、音を鳴らさない)。</li>
+  <li><b>警報にしないもの。</b>被弾そのもの(音と閃光)・操作の拒否・状態切替の確認・時間加速・NODE WARP の残り。これらは出来事か状態表示であって、対処を促すものではない。</li>
+</ol>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">05</span>警報帯の型 — 項目ごとの文言と行動</h2>
+<p class="rf-lead">文言は「項目名 / 値 / 一言の理由」、行動は<b>キーと短い語の連鎖</b>。行動が決まらない項目は行動の列を持たない。</p>
+<div class="rf-cell is-space"><div class="al-sheet" id="al-gallery"></div></div>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">06</span>案内チップとブリーフィング — 文章の帯をやめる</h2>
+<p class="rf-lead">案内は「いまのモードで次に押すもの」だけを、キーキャップと短い語で示す。<b>出来事として5秒出して消す形をやめ、モードが続く間は段階に応じて出し続ける。</b></p>
+
+<h3>PLN 軌道計画の案内 — 4段階</h3>
+<div class="rf-pair" style="margin-bottom:var(--space-5)">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>map.jpg を切り出し</span></div>
+    <div class="al-crop" style="width:100%;height:68px;background-image:url(foundation/current/map.jpg);background-size:1600px 900px;background-position:-432px -132px;max-width:740px"></div>
+    <p class="al-caption" style="min-height:0;margin-top:var(--space-3)">長文1つ(「軌道をクリックしてノード配置 → ドラッグで移動・矢印ハンドルでΔv調整 → 右クリックでメニュー → [M] で確定」)が5秒だけ出て消え、2行に折れてマップ上部を塞ぐ(監査9)。</p></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>同じ枠(上部中央)・1行</span></div>
+    <div style="display:grid;justify-items:center;padding:var(--space-4) 0"><span class="ix-hint"><span class="ix-hint-step"><kbd class="key">クリック</kbd>軌道にノードを置く</span></span></div></div>
+</div>
+<div class="rf-pair" id="al-plan"></div>
+
+<h3>通知とブリーフィング</h3>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行 NAV</b><span>combat.jpg を切り出し</span></div>
+    <div class="al-crop" style="width:260px;height:48px;background-image:url(foundation/current/combat.jpg);background-size:1600px 900px;background-position:-670px -130px"></div>
+    <p class="al-caption" style="min-height:0;margin-top:var(--space-3)">NAV「ターゲット固定: HOSTILE-ε」は固定表示ではなく、1.8秒で消えるトースト。常設の情報は右レールの TGT にある。</p></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>下部中央・色なし</span></div>
+    <span class="ix-alert is-info"><span class="ix-alert-level">NAV</span><span>ターゲット固定: HOSTILE-ε</span></span></div>
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行ブリーフィング</b><span>stage1.ts の文面を再現</span></div>
+    <div class="ui-surface-focus" style="padding:var(--space-3) var(--space-4);font-size:var(--font-s);line-height:1.45;color:var(--text)"><span style="color:var(--color-primary);font-size:var(--font-xxs);font-weight:700;letter-spacing:var(--tracking-code)">SYS</span>
+      <b>作戦目標: 敵機 5 機を全機撃破せよ</b><br>敵を右クリックでターゲット固定 → 機首を向けて並進で接近 → [,]/[.] 時間加速で会合を短縮<br>[H] キーで操作方法を表示</div></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>上部中央のカード・12秒か最初の操作で畳む</span></div>
+    <div class="ix-panel is-focus" style="max-width:560px">
+      <div class="ix-head"><span class="ix-code">MIS</span><span class="ix-title">作戦目標</span><span class="ix-head-meta">STAGE 1</span><span></span></div>
+      <div class="ix-readout is-s"><span class="ix-readout-value">敵機 5 機を全機撃破</span></div>
+      <div style="margin-top:var(--space-4)"><span class="ix-hint"><span class="ix-hint-step"><kbd class="key">右クリック</kbd>ターゲット固定</span><span class="ix-hint-step">並進で接近</span><span class="ix-hint-step"><kbd class="key">,</kbd><kbd class="key">.</kbd>時間加速</span></span></div>
+      <div class="ix-sub" style="margin-top:var(--space-4)"><kbd class="key">H</kbd> 操作方法</div></div></div>
+</div>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">07</span>SPEC への書き足し先</h2>
+<p class="rf-lead"><b>警報灯は SPEC に無い新しい要素。</b>画面から見える挙動が変わるので、実装の前に <code>/modify-feature</code> で SPEC を更新し、<code>docs(spec):</code> の単独 commit にする(CLAUDE.md の運用規則)。</p>
+<div class="rf-scroll"><table class="rf-table">
+  <tr><th>書き足す先</th><th>書くこと</th></tr>
+  <tr><td><code>DEVELOP/SPEC/UI-DESIGN.md</code> §8「通知」</td><td>「トースト2種」の記述を、5層(警報灯・警報帯・通知・案内チップ・行内状態)とブリーフィングへ書き換える。<b>状態は条件で消え、出来事は時間で消える</b>という振り分けの規則、警報帯の最大枚数と並び、確認、点滅、reduced-motion。</td></tr>
+  <tr><td><code>DEVELOP/SPEC/UI-DESIGN.md</code> §8「常設バッジ・スケール」全体ステータスバー</td><td>警報灯(CAUTION/WARNING の2灯・件数・点滅の条件)をバーの構成要素として足す。表示専用で、§3 の「11種に閉じる」ウィジェットの集合は増えない。</td></tr>
+  <tr><td><code>DEVELOP/SPEC/UI-DESIGN.md</code> §2 色 / §5 置き場</td><td>注意色・警告色を2段の意味色として明記(現行は警告色1色)。通知・警報帯・案内チップは④画面固定バッジに属する(置き場は増えない)。</td></tr>
+  <tr><td><code>DEVELOP/SPEC/FLIGHT.md</code> 「危険域」(温度70%・動圧50%)</td><td>1段の「赤色」と「警告ヒントと警告音」を、注意/警告の2段・ヒステリシス・確認の規則へ。<b>現行の記述(警告ヒントと警告音)に対応する出来事が <code>src/</code> に見当たらない</b>ので、SPEC が先行している状態を実装で埋める。</td></tr>
+  <tr><td><code>DEVELOP/SPEC/CONTROLS.md</code> 「ゲーム進行」</td><td>マスター確認キー(<kbd class="key">B</kbd>)を足す。タッチは帯の確認ボタン。</td></tr>
+  <tr><td><code>DEVELOP/SPEC/AUDIO.md</code></td><td>警報音を、注意(1回)・警告(確認まで繰り返し)へ。現行は <code>altAlarm</code> が高度のしきい値ごとの一度きり。</td></tr>
+  <tr><td><code>DEVELOP/SPEC/GAME.md</code> §2.1・§9.4</td><td>変更不要。「喪失理由はヒントとして通知される」(§9.4)は<b>通知(拒否型)</b>と読み替えられる。結果画面があるステージでは結果画面が理由を示す。</td></tr>
+</table></div>
+
+<h2><span class="ix-code">08</span>改修の手順</h2>
+<ol class="al-rules">
+  <li><b>判定を1か所へ寄せる(見た目は変えない)。</b>閾値表を持つ <code>alarm-evaluator.ts</code> を作り、<code>orbit-panel.ts</code>・<code>vessel-panel.ts</code>・<code>status-panel.ts</code> が直書きしている 0.7/0.5/0.2/0.3 をそこから読ませる。まず1段のまま、満タンの弾薬が赤くなる誤りだけ直る。</li>
+  <li><b>行内状態を2段にする。</b><code>.ix-v.is-caution/.is-warning</code> と <code>.ix-gauge</code> の2本目の目盛りを入れ、<code>ui-danger</code> を置き換える(01 の規則そのもの)。</li>
+  <li><b>通知を層に分ける。</b><code>HintKind</code> の <code>warn</code> を拒否型へ改め、高度などの状態の警告を <code>Notifier</code> から外す。通知を下部中央へ移し、案内チップ(PLN の4段階)とブリーフィングのカードを作る。</li>
+  <li><b>警報帯と灯を入れる。</b><code>hud-alert.ts</code> と <code>TopBar</code> の灯、最大2枚・並び・「他に n 件」。まだ確認は無く、注意・警告の帯が出る・消えるところまで。</li>
+  <li><b>確認・点滅・音・解消の通知。</b>キー <kbd class="key">B</kbd>、未確認だけ点滅、reduced-motion、<code>alarmRaised/Escalated/Cleared</code> の出来事から警報音を鳴らす。最後に PROX の判定(非ターゲットの最接近)を足す。</li>
+  <li><b>SPEC を先に更新する。</b>手順3以降は画面から見える挙動が変わるので、その前に07の表のとおり SPEC を更新して <code>docs(spec):</code> の単独 commit にする。</li>
+</ol>
+
+</main>
+<script src="foundation/themes.js"></script>
+<script src="foundation/ref.js"></script>
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const key = (k) => `<kbd class="key">${k}</kbd>`;
+  const step = (keys, text) => `<span class="ix-hint-step">${keys.map(key).join('')}${text}</span>`;
+
+  // ---- 行(レールの抜粋) -----------------------------------------------------------------------
+  function row(k, v, u, opt = {}) {
+    const lv = opt.lv ? ` is-${opt.lv}` : '';
+    const gauge = opt.pct === undefined ? '' :
+      `<span class="ix-gauge${opt.lv ? ' is-' + opt.lv : ''}" style="--at:${opt.at};--at2:${opt.at2}"><i style="--v:${opt.pct}%"></i></span>`;
+    const fill = opt.lv === 'warning' ? ' is-warning' : '';
+    return `<div class="ix-row${fill}"><span class="ix-k"><span class="ix-k-text">${k}</span></span>${gauge}` +
+      `<span class="ix-v${lv}">${v}${u ? `<span class="ix-u">${u}</span>` : ''}</span></div>`;
+  }
+  function head(code, title, meta) {
+    return `<div class="ix-head"><span class="ix-code">${code}</span><span class="ix-title">${title}</span><span class="ix-head-meta">${meta}</span><span class="ix-collapse">▾</span></div>`;
+  }
+
+  // ---- 状態の定義 ---------------------------------------------------------------------------
+  const S = [
+    { id: 'calm', label: '① 平常', t: '00:00:04', cl: 0, wl: 0, acked: false, bands: [], more: null,
+      notice: { code: 'NAV', text: 'ターゲット固定: HOSTILE-ε' },
+      alt: ['420.00', 'km', ''], rate: ['±0.0', 'm/s', ''], q: ['0.00', 'kPa', '', 0], temp: ['311', 'K', '', 24],
+      fuel: ['1000 / 1000', '', '', 100], armor: ['100 / 100', '', '', 100],
+      cap: '<b>平常。</b>灯は消灯、帯は無い。値はどれも中立の文字色で、満タンの RCS 燃料も 40/40 の弾薬も色を持たない。上部中央が空くので、現行の NAV トーストは下部の通知へ移る。' },
+    { id: 'caution', label: '② 注意', t: '00:46:10', cl: 2, wl: 0, acked: false,
+      bands: [
+        { lv: 'caution', sys: 'FUEL', msg: 'RCS 燃料 <b>18%</b> — 帰投に要る量を下回る', acts: [step(['◈'], '補給を回収')], ack: true },
+        { lv: 'caution', sys: 'ALT', msg: '高度 <b>116 km</b> — 降下中 −42 m/s', acts: [step(['C'], '進行方向ホールド'), step(['W'], '前進で高度を保つ')], ack: false },
+      ], more: null, notice: null,
+      alt: ['116.4', 'km', 'caution'], rate: ['−42', 'm/s', 'caution'], q: ['0.00', 'kPa', '', 0], temp: ['342', 'K', '', 26],
+      fuel: ['180 / 1000', '', 'caution', 18], armor: ['100 / 100', '', '', 100],
+      cap: '<b>注意2件。</b>CAUTION 灯が2件で点灯(点滅しない・音は1回)。並びは「新しいものが上」で FUEL が先。注意は確認しなくても8秒で帯が灯だけへ畳まれる。行は値が琥珀に△、メーターは注意の目盛りを越えた色。' },
+    { id: 'warning', label: '③ 警告', t: '00:51:30', cl: 1, wl: 2, acked: false,
+      bands: [
+        { lv: 'warning', sys: 'TEMP', msg: '船体温度 <b>1,190 K</b> — 上限 1,300 K で熱防御が飽和', acts: [step(['9', '0'], '放熱板を展開'), '<span class="ix-hint-step">射撃を止める</span>'], ack: true },
+        { lv: 'warning', sys: 'ALT', msg: '高度 <b>78 km</b> — 80 km 以下は大気圏突入', acts: [step(['C'], 'ホールド'), step(['W'], '前進して引き起こす')], ack: false },
+      ], more: '△ 他に注意 1 件 — FUEL 15%', notice: null,
+      alt: ['78.2', 'km', 'warning'], rate: ['−61', 'm/s', 'caution'], q: ['0.58', 'kPa', '', 2], temp: ['1,190', 'K', 'warning', 92],
+      fuel: ['150 / 1000', '', 'caution', 15], armor: ['58 / 100', '', '', 58],
+      cap: '<b>警告2件(TEMP と ALT)。</b>WARNING 灯が赤で点滅し、警報音が繰り返す。警告が注意の上に並び、溢れた FUEL の注意は「他に注意 1 件」へ畳まれる(灯の CAUTION 1 と一致)。警告の行は面も付く。ALT は昇格したので、注意の帯は消えて警告の1枚になっている。確認ボタンは帯の右端。' },
+    { id: 'acked', label: '④ 確認', t: '00:51:34', cl: 1, wl: 2, acked: true,
+      bands: [
+        { lv: 'warning', sys: 'TEMP', msg: '船体温度 <b>1,196 K</b> — 上限 1,300 K で熱防御が飽和', acts: [step(['9', '0'], '放熱板を展開'), '<span class="ix-hint-step">射撃を止める</span>'], ack: false, acked: true },
+        { lv: 'warning', sys: 'ALT', msg: '高度 <b>77.9 km</b> — 80 km 以下は大気圏突入', acts: [step(['C'], 'ホールド'), step(['W'], '前進して引き起こす')], ack: false, acked: true },
+      ], more: null, notice: null,
+      alt: ['77.9', 'km', 'warning'], rate: ['−58', 'm/s', 'caution'], q: ['0.61', 'kPa', '', 2], temp: ['1,196', 'K', 'warning', 92],
+      fuel: ['150 / 1000', '', 'caution', 15], armor: ['58 / 100', '', '', 58],
+      cap: '<b>B を押した。</b>点滅と警報音が止まる。帯は確認ボタンを外した静かな1行になり、条件が残る間は行動を示し続ける。WARNING 灯は点滅をやめて淡い面+縁の点灯へ。FUEL の注意は8秒たったので帯が灯だけへ畳まれ、CAUTION 灯は点灯したまま。' },
+    { id: 'cleared', label: '⑤ 解消', t: '00:55:20', cl: 1, wl: 0, acked: false, bands: [], more: null,
+      notice: { code: '解除', text: '✓ 高度・船体温度の警報を解除', cls: 'is-cleared' },
+      alt: ['131.0', 'km', ''], rate: ['+3.2', 'm/s', ''], q: ['0.00', 'kPa', '', 0], temp: ['790', 'K', '', 61],
+      fuel: ['140 / 1000', '', 'caution', 14], armor: ['58 / 100', '', '', 58],
+      cap: '<b>解消。</b>高度が 125 km を、温度が 800 K / 1,070 K を戻る側へ越えたので、灯・帯・行の色が同時に消えた。警告から戻った項目だけ「警報を解除」を3秒出す。FUEL は自然には戻らないので、CAUTION 灯だけが点灯し続ける。' },
+  ];
+
+  // ---- 描画 -----------------------------------------------------------------------------------
+  function lamps(s) {
+    const c = s.cl > 0 ? ' is-caution' : '';
+    const w = s.wl > 0 ? ` is-warning${s.acked ? ' is-acked' : ''}` : '';
+    return `<span class="ix-annun"><span class="ix-lamp${c}">CAUTION${s.cl ? `<b class="ix-lamp-n">${s.cl}</b>` : ''}</span>` +
+      `<span class="ix-lamp${w}">WARNING${s.wl ? `<b class="ix-lamp-n">${s.wl}</b>` : ''}</span></span>`;
+  }
+  function strip(s) {
+    return `<div class="ix-strip"><span class="ix-strip-label">STAGE 1</span><span>COMBAT</span><i class="ix-strip-sep"></i>` +
+      `<span class="ix-strip-time">T+ ${s.t}</span><i class="ix-strip-sep"></i><span class="ix-warp"><span class="on">×1</span></span>` +
+      `<i class="ix-strip-sep"></i>${lamps(s)}</div>`;
+  }
+  function band(b) {
+    const lvl = b.lv === 'warning' ? 'WARNING' : 'CAUTION';
+    const right = b.ack ? `<span class="w-btn w-btn--dense w-btn--secondary w-hit" data-ack>確認${key('B')}</span>`
+      : (b.acked ? '<span class="ix-alert-state">確認済</span>' : '<span></span>');
+    return `<div class="ix-alert is-${b.lv}${b.acked ? ' is-acked' : ''}"><span class="ix-alert-level">${lvl}</span>` +
+      `<span class="ix-alert-body"><span class="ix-alert-msg"><b>${b.sys}</b>${b.msg}</span><span class="ix-alert-act">${b.acts.join('')}</span></span>${right}</div>`;
+  }
+  function panels(s) {
+    const q = s.q, t = s.temp, f = s.fuel, a = s.armor;
+    const left = `<section class="ix-panel">${head('ORB', '軌道', '基準 地球')}<div class="ix-rows">` +
+      row('高度', s.alt[0], s.alt[1], { lv: s.alt[2] }) + row('降下率', s.rate[0], s.rate[1], { lv: s.rate[2] }) +
+      row('動圧', q[0], q[1], { lv: q[2], pct: q[3], at: '50%', at2: '80%' }) +
+      row('船体温度', t[0], t[1], { lv: t[2], pct: t[3], at: '70%', at2: '90%' }) + '</div></section>';
+    const right = `<section class="ix-panel">${head('VSL', '艦のステータス', '')}<div class="ix-rows">` +
+      row('RCS 燃料', f[0], '', { lv: f[2], pct: f[3], at: '20%', at2: '5%' }) +
+      row('弾薬', '40 / 40<span class="ix-u">+2連</span>', '', {}) +
+      row('装甲', a[0], '', { lv: a[2], pct: a[3], at: '50%', at2: '30%' }) + '</div></section>';
+    return [left, right];
+  }
+  function noticeHtml(n) {
+    if (!n) return '';
+    return `<span class="ix-alert is-info ${n.cls ?? ''}"><span class="ix-alert-level">${n.code}</span><span>${n.text}</span></span>`;
+  }
+
+  // ---- 切り替え -------------------------------------------------------------------------------
+  let cur = 0, timer = null;
+  const steps = $('al-steps'), track = $('al-track'), axis = $('al-axis');
+  S.forEach((s, i) => {
+    const b = document.createElement('span');
+    b.className = 'w-btn w-btn--dense'; b.textContent = s.label; b.dataset.i = i;
+    b.addEventListener('click', () => { stop(); set(i); });
+    steps.appendChild(b);
+    const tick = document.createElement('div');
+    tick.className = 'ix-scrub-tick' + (i === 1 ? ' is-caution' : i === 2 ? ' is-warning' : i === 3 ? ' is-own' : '');
+    tick.style.setProperty('--at', `${i * 20 + 10}%`);
+    track.appendChild(tick);
+    const ax = document.createElement('span'); ax.textContent = `T+ ${s.t}`; ax.dataset.i = i; axis.appendChild(ax);
+  });
+  const past = document.createElement('div'); past.className = 'ix-scrub-past'; track.appendChild(past);
+  const headEl = document.createElement('div'); headEl.className = 'ix-scrub-head'; track.appendChild(headEl);
+  track.addEventListener('click', (e) => {
+    const r = track.getBoundingClientRect();
+    stop(); set(Math.max(0, Math.min(4, Math.floor(((e.clientX - r.left) / r.width) * 5))));
+  });
+
+  function set(i) {
+    cur = i;
+    const s = S[i];
+    $('al-strip').innerHTML = strip(s);
+    $('al-stack').innerHTML = s.bands.map(band).join('') + (s.more ? `<span class="ix-more">${s.more}</span>` : '');
+    $('al-notice').innerHTML = noticeHtml(s.notice);
+    const [l, r] = panels(s);
+    $('al-left').innerHTML = l; $('al-right').innerHTML = r;
+    $('al-caption').innerHTML = s.cap;
+    steps.querySelectorAll('.w-btn').forEach((b) => b.classList.toggle('on', Number(b.dataset.i) === i));
+    axis.querySelectorAll('span').forEach((b) => b.classList.toggle('on', Number(b.dataset.i) === i));
+    past.style.setProperty('--now', `${i * 20 + 10}%`);
+    headEl.style.setProperty('--at', `${i * 20 + 10}%`);
+    document.querySelectorAll('[data-ack]').forEach((b) => b.addEventListener('click', () => { stop(); set(3); }));
+    if (window.TepuiRef) requestAnimationFrame(window.TepuiRef.placePins);
+  }
+  function stop() { if (timer) { clearInterval(timer); timer = null; $('al-play').textContent = '▶ 自動再生'; } }
+  $('al-play').addEventListener('click', () => {
+    if (timer) { stop(); return; }
+    $('al-play').textContent = '■ 停止';
+    timer = setInterval(() => set((cur + 1) % S.length), 3200);
+  });
+  $('al-rm').addEventListener('change', (e) => $('al-stage').classList.toggle('al-rm', e.target.checked));
+  addEventListener('keydown', (e) => {
+    if (e.code === 'KeyB' && cur === 2 && !/INPUT|SELECT|TEXTAREA/.test(document.activeElement?.tagName ?? '')) { stop(); set(3); }
+  });
+  const hs = /#s=(\d)/.exec(location.hash);
+  set(hs ? Math.min(4, Number(hs[1])) : 0);
+
+  // ---- 見本の行 -------------------------------------------------------------------------------
+  $('al-sample-rows').innerHTML =
+    row('RCS 燃料', '1000 / 1000', '', { pct: 100, at: '20%', at2: '5%' }) +
+    row('船体温度', '936', 'K', { lv: 'caution', pct: 72, at: '70%', at2: '90%' }) +
+    row('船体温度', '1,190', 'K', { lv: 'warning', pct: 92, at: '70%', at2: '90%' });
+
+  // ---- 型一覧 ---------------------------------------------------------------------------------
+  const GALLERY = [
+    ['TEMP 船体温度',
+      { lv: 'caution', sys: 'TEMP', msg: '船体温度 <b>936 K</b> — 上限 1,300 K の 72%', acts: [step(['9', '0'], '放熱板を展開'), step(['SPACE'], '射撃を控える')] },
+      { lv: 'warning', sys: 'TEMP', msg: '船体温度 <b>1,190 K</b> — 熱防御が飽和に近い', acts: [step(['9', '0'], '放熱板を展開'), '<span class="ix-hint-step">射撃を止める</span>'] }],
+    ['Q 動圧',
+      { lv: 'caution', sys: 'Q', msg: '動圧 <b>19 kPa</b> — 上限 35 kPa の 54%', acts: [step(['C'], 'ホールド'), step(['W'], '前進で上昇')] },
+      { lv: 'warning', sys: 'Q', msg: '動圧 <b>29 kPa</b> — 35 kPa で機体が壊れる', acts: [step(['W'], '前進して引き起こす')] }],
+    ['ALT 高度',
+      { lv: 'caution', sys: 'ALT', msg: '高度 <b>116 km</b> — 降下中 −42 m/s', acts: [step(['C'], '進行方向ホールド'), step(['W'], '前進')] },
+      { lv: 'warning', sys: 'ALT', msg: '高度 <b>78 km</b> — 大気圏突入', acts: [step(['W'], '前進して引き起こす')] }],
+    ['FUEL RCS 燃料',
+      { lv: 'caution', sys: 'FUEL', msg: 'RCS 燃料 <b>18%</b> — 帰投に要る量を下回る', acts: [step(['◈'], '補給を回収')] },
+      { lv: 'warning', sys: 'FUEL', msg: 'RCS 燃料 <b>4%</b> — 姿勢制御が失われる', acts: [step(['P'], '回転制動を切る')] }],
+    ['AMMO 弾薬',
+      { lv: 'caution', sys: 'AMMO', msg: '残弾 <b>24%</b> — 補給の位置を確認', acts: [step(['▣'], '補給を回収')] },
+      { lv: 'warning', sys: 'AMMO', msg: '<b>弾薬切れ</b> — 射撃できない', acts: [step(['▣'], '補給へ接近')] }],
+    ['ARM 装甲',
+      { lv: 'caution', sys: 'ARM', msg: '装甲 <b>48%</b> — 被弾が続いている', acts: [] },
+      { lv: 'warning', sys: 'ARM', msg: '装甲 <b>26%</b> — 次の被弾で失うおそれ', acts: [step(['A', 'D'], '射線から外れる')] }],
+    ['PROX 接近(新規)',
+      { lv: 'caution', sys: 'PROX', msg: 'HOSTILE-γ <b>衝突コース</b> — 最接近 0.6 km / 90 秒後', acts: [step(['T'], '目標を確認'), '<span class="ix-hint-step">並進で回避</span>'] },
+      { lv: 'warning', sys: 'PROX', msg: 'HOSTILE-γ <b>衝突コース</b> — 最接近 0.1 km / 25 秒後', acts: [step(['A', 'D'], '横へ並進')] }],
+  ];
+  $('al-gallery').innerHTML = GALLERY.map(([k, c, w]) =>
+    `<div class="al-sample"><span class="al-sample-k">${k}</span><div class="al-grid2">${[c, w].map((b) => {
+      const lvl = b.lv === 'warning' ? 'WARNING' : 'CAUTION';
+      return `<div class="ix-alert is-${b.lv}"><span class="ix-alert-level">${lvl}</span><span class="ix-alert-body"><span class="ix-alert-msg"><b>${b.sys}</b>${b.msg}</span>` +
+        `${b.acts.length ? `<span class="ix-alert-act">${b.acts.join('')}</span>` : ''}</span><span class="w-btn w-btn--dense w-btn--secondary">確認${key('B')}</span></div>`;
+    }).join('')}</div></div>`).join('');
+
+  // ---- PLN の4段階 ----------------------------------------------------------------------------
+  const PLAN = [
+    ['① 計画を始めた', '出す: <code>orbitPlanningOpened</code>(マップで計画モードに入った)。消す: ノードを置いたら ② へ。', [step(['クリック'], '軌道にノードを置く')]],
+    ['② ノードを置いた', '出す: ノードが1つ以上あり、選択が無い。消す: ノードを選んだら ③ へ。', [step(['ドラッグ'], '時刻を動かす'), step(['矢印'], 'Δv を調整'), step(['右クリック'], 'メニュー')]],
+    ['③ Δv を編集している', '出す: ノードを選択中。消す: 選択を外したら ④ へ。', [step(['W', 'S'], '加減速'), step(['A', 'D'], '軌道面'), step(['Q', 'E'], '高度'), step(['X'], '削除')]],
+    ['④ 確定できる', '出す: 計画があり編集中でない。消す: 計画モードを出る(<code>maneuverPlanConfirmed</code> ほか)。', [step(['M'], '確定して戦闘へ'), step(['N'], 'ノードへ自動ワープ')]],
+  ];
+  $('al-plan').innerHTML = PLAN.map(([h, cap, st]) =>
+    `<div class="rf-cell is-space"><div class="rf-cell-cap"><b>${h}</b><span>案内チップ</span></div>` +
+    `<div style="display:grid;justify-items:center;padding:var(--space-3) 0 var(--space-4)"><span class="ix-hint">${st.join('')}</span></div>` +
+    `<p class="al-caption" style="min-height:0;font-size:var(--font-xs)">${cap}</p></div>`).join('');
+
+  // ---- ヒステリシスの図(閾値表と同じ規則で状態を求める) -------------------------------------------
+  const TH = { cIn: 910, cOut: 800, wIn: 1170, wOut: 1070 };
+  const level = (prev, v) => {
+    let l = prev;
+    if (l === 2 && v < TH.wOut) l = 1;
+    if (l === 1 && v < TH.cOut) l = 0;
+    if (l < 2 && v >= TH.wIn) l = 2;
+    if (l < 1 && v >= TH.cIn) l = 1;
+    return l;
+  };
+  const series = [700, 720, 760, 820, 880, 905, 915, 903, 918, 925, 940, 980, 1040, 1100, 1160, 1180, 1195, 1190, 1150, 1120, 1090, 1075, 1060, 1040, 1010, 960, 910, 890, 860, 830, 805, 795, 780, 760];
+  const X0 = 56, X1 = 740, YT = 16, YB = 176, VMIN = 600, VMAX = 1300;
+  const x = (i) => X0 + (i / (series.length - 1)) * (X1 - X0);
+  const y = (v) => YB - ((v - VMIN) / (VMAX - VMIN)) * (YB - YT);
+  let lv = 0; const lvs = series.map((v) => (lv = level(lv, v)));
+  let svg = '';
+  for (let v = 600; v <= 1300; v += 100) svg += `<line class="grid" x1="${X0}" x2="${X1}" y1="${y(v)}" y2="${y(v)}"/><text x="${X0 - 8}" y="${y(v) + 4}" text-anchor="end">${v}</text>`;
+  [['c-in', TH.cIn, '注意に入る 910 K'], ['c-out', TH.cOut, '注意から戻る 800 K'], ['w-in', TH.wIn, '警告に入る 1,170 K'], ['w-out', TH.wOut, '警告から戻る 1,070 K']].forEach(([c, v, t]) => {
+    svg += `<line class="${c}" x1="${X0}" x2="${X1}" y1="${y(v)}" y2="${y(v)}"/><text x="${X0 + 4}" y="${y(v) - 4}">${t}</text>`;
+  });
+  svg += `<polyline class="series" points="${series.map((v, i) => `${x(i)},${y(v)}`).join(' ')}"/>`;
+  [[6, 1], [7, 2], [15, 3], [21, 4], [31, 5]].forEach(([i, n]) => {
+    svg += `<circle class="dot" cx="${x(i)}" cy="${y(series[i])}" r="9"/><text class="num" x="${x(i)}" y="${y(series[i]) + 4}">${n}</text>`;
+  });
+  svg += `<text x="${X0 - 8}" y="${YB + 36}" text-anchor="end">レベル</text>`;
+  for (let i = 0; i < series.length - 1; i++) svg += `<rect class="rib-${lvs[i]}" x="${x(i)}" y="${YB + 24}" width="${x(i + 1) - x(i) + 0.5}" height="16"/>`;
+  svg += `<text x="${X0}" y="${YB + 62}">時間 →</text><text x="${X1}" y="${YB + 62}" text-anchor="end">帯の色: 灰=平常 / 琥珀=注意 / 赤=警告</text>`;
+  $('al-hy').innerHTML = svg;
+})();
+</script>
+</body>
+</html>

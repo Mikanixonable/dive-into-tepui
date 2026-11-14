@@ -65,6 +65,7 @@ function viewFrame(camera: CameraFrame, pools: InstancedPools): DynamicViewFrame
     camera,
     style: 'realistic',
     visual: { thrustPlume: 'simple' },
+    shipModuleEmphasis: null,
     sunLight,
     bodyShadow: new BodyShadow(sunLight),
     pools,

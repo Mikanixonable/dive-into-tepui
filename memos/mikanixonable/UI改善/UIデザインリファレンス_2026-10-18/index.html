@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UI デザインリファレンス</title>
+<link rel="stylesheet" href="foundation/tepui-base.css">
+<link rel="stylesheet" href="foundation/ref.css">
+<style>
+  .ix-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: var(--space-5); }
+  .ix-card {
+    display: grid; grid-template-rows: auto 1fr; border-radius: var(--radius-panel); overflow: hidden; text-decoration: none;
+    background: var(--surface-1); box-shadow: 0 0 0 1px var(--edge); color: var(--text);
+    transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  }
+  .ix-card:hover { transform: translateY(-2px); box-shadow: 0 0 0 1px var(--fill-4); }
+  .ix-card:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+  .ix-card-shot { aspect-ratio: 16 / 9; background: #000 center / cover no-repeat; }
+  .ix-card-body { padding: var(--space-5); display: grid; gap: var(--space-3); align-content: start; }
+  .ix-card-body b { font-size: var(--font-l); font-weight: 600; }
+  .ix-card-body span { font-size: var(--font-s); color: var(--text-muted); line-height: 1.6; }
+  .rf .ix-card { color: var(--text); }
+  .audit { counter-reset: a; list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-3);
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
+  .audit li { counter-increment: a; position: relative; padding: var(--space-4) var(--space-5) var(--space-4) 52px;
+    border-radius: var(--radius-control); background: var(--surface-1); color: var(--text-muted); font-size: var(--font-s); line-height: 1.6; }
+  .audit li::before { content: counter(a); position: absolute; left: 16px; top: 12px; width: 24px; height: 24px; border-radius: 50%;
+    display: grid; place-items: center; font-size: var(--font-xs); color: var(--ix-warning); box-shadow: inset 0 0 0 1px var(--ix-warning-edge); }
+  .audit b { color: var(--text); }
+  .principles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-3); }
+  .principles div { padding: var(--space-4) var(--space-5); border-radius: var(--radius-control); background: var(--surface-1); font-size: var(--font-s); color: var(--text-muted); line-height: 1.6; }
+  .principles b { display: block; color: var(--text); font-size: var(--font-m); margin-bottom: var(--space-2); }
+  .shots { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: var(--space-3); }
+  .shots figure { margin: 0; }
+  .shots img { width: 100%; display: block; border-radius: var(--radius-control); box-shadow: 0 0 0 1px var(--edge); }
+  .shots figcaption { font-size: var(--font-xs); color: var(--text-dim); margin-top: var(--space-2); }
+</style>
+</head>
+<body class="rf" data-index="true" data-title="UI デザインリファレンス" data-sub="現行の画面を出発点に、ゼロベースで設計し直した改修後の姿">
+<main class="rf-main">
+
+<p class="rf-intro">
+  ゲーム UI の改修に使うデザインリファレンス。<b>現行の画面を撮影したものを出発点に、ゼロベースで設計し直した改修後の姿</b>を、
+  ゲームの実ソースから書き出したトークンとウィジェットの CSS で組んである。各ページの「比較」で現行と改修案をワイプで見比べられ、
+  番号つきの注記が、そのまま「どのファイルの何を変えるか」の指示になる。上の「配色」はゲームと同じ11プリセットを切り替える。
+</p>
+
+<h2><span class="ix-code">REF</span>ページ</h2>
+<div class="ix-cards">
+  <a class="ix-card" href="01-system.html"><div class="ix-card-shot" style="background-image: url('foundation/current/crops/vessel.jpg'); background-size: contain; background-color: var(--surface-0)"></div>
+    <div class="ix-card-body"><b>01 表示の文法</b><span>色を意味で引く・1行の文法・状態とキー・メーター・強弱3段・警報。全ページが共有する規則と、配色プリセットの衝突検査。</span></div></a>
+  <a class="ix-card" href="02-combat.html"><div class="ix-card-shot" style="background-image: url('foundation/current/combat.jpg')"></div>
+    <div class="ix-card-body"><b>02 戦闘ビュー</b><span>上部ストリップ・照準まわりの読み値・武装の帯・レールの並べ替え。</span></div></a>
+  <a class="ix-card" href="03-map.html"><div class="ix-card-shot" style="background-image: url('foundation/current/map.jpg')"></div>
+    <div class="ix-card-body"><b>03 マップビュー</b><span>巨大な下部タイムラインを、掴んで動かす1本の時間軸へ。物体一覧と左レールの整理。</span></div></a>
+  <a class="ix-card" href="04-panels.html"><div class="ix-card-shot" style="background-image: url('foundation/current/crops/target.jpg'); background-size: contain; background-color: var(--surface-0)"></div>
+    <div class="ix-card-body"><b>04 レールのパネル</b><span>艦・ターゲット・敵一覧・軌道・物体一覧を、レール幅で現行と1対1に。状態のバリエーションと src の対応。</span></div></a>
+  <a class="ix-card" href="05-alerts.html"><div class="ix-card-shot" style="background-image: url('foundation/current/combat.jpg'); background-position: center top"></div>
+    <div class="ix-card-body"><b>05 警報と通知</b><span>通知の棚卸しと、警報灯・警報帯・通知・案内チップへの振り分け。平常 → 注意 → 警告 → 解消。</span></div></a>
+  <a class="ix-card" href="06-overlays.html"><div class="ix-card-shot" style="background-image: url('foundation/current/property.jpg')"></div>
+    <div class="ix-card-body"><b>06 ウィンドウとモーダル</b><span>プロパティウィンドウ・ESC メニュー・ヘルプ・確認。</span></div></a>
+  <a class="ix-card" href="07-phone.html"><div class="ix-card-shot" style="background-image: url('foundation/current/combat-phone.jpg')"></div>
+    <div class="ix-card-body"><b>07 スマホ横持ち</b><span>844×390 の戦闘・マップとタッチ操作。</span></div></a>
+</div>
+
+<h2><span class="ix-code">AUD</span>現行 UI の監査</h2>
+<ol class="audit">
+  <li><b>主役色の過負荷。</b>主役色がセクション記号・ON 表示・主要ボタン・メーターの塗り・選択中のタブ・開閉ボタンを兼ね、警告色とほぼ同色。満タンの燃料が危険と同じ赤で出る。</li>
+  <li><b>値の切れと折返し。</b>右レールで艦ステータスの値が右端で切れ、ターゲットの「装甲」が縦に折れる。</li>
+  <li><b>ショートカット表記が4通り。</b><code>P</code>・<code>1–4</code>・ラベル内の <code>[7]</code>・ボタン内の <code>[F]</code>。</li>
+  <li><b>状態の表し方が3通り。</b>文字色の On/Off、トグルスイッチ、点灯ボタン。</li>
+  <li><b>上部の全体ステータスが重い。</b>820×100px の2行に見出しばかりが並ぶ。</li>
+  <li><b>中央の衝突と、撃つ判断の遠さ。</b>自機の周りで文字が重なり、距離・接近速度は右レールにある。</li>
+  <li><b>艦ステータスの責務過多。</b>計器・モード・弾薬・展開部品・推力段・操作ボタンが1枚に同居。</li>
+  <li><b>マップの下部タイムラインが巨大。</b>960×280px の大半が期間ピルで、時間を掴む操作は細いスライダー1本。</li>
+  <li><b>案内が文章の帯。</b>計画モードの案内が長文で中央上部を塞ぐ。</li>
+  <li><b>スマホ横持ちで崩れる。</b>上部ステータスと HLP が重なり、値が切れ、案内帯が物体一覧に重なる。</li>
+</ol>
+
+<h2><span class="ix-code">CUR</span>撮影した現行画面</h2>
+<div class="shots">
+  <figure><img src="foundation/current/combat.jpg" alt="戦闘ビュー"><figcaption>戦闘ビュー(ターゲット固定中)</figcaption></figure>
+  <figure><img src="foundation/current/map.jpg" alt="マップビュー"><figcaption>マップビュー</figcaption></figure>
+  <figure><img src="foundation/current/property.jpg" alt="プロパティウィンドウ"><figcaption>プロパティウィンドウ</figcaption></figure>
+  <figure><img src="foundation/current/pause.jpg" alt="ESC メニュー"><figcaption>ESC メニュー</figcaption></figure>
+  <figure><img src="foundation/current/help.jpg" alt="ヘルプ"><figcaption>ヘルプ</figcaption></figure>
+  <figure><img src="foundation/current/combat-phone.jpg" alt="スマホ横持ちの戦闘ビュー"><figcaption>スマホ横持ち 844×390 — 戦闘</figcaption></figure>
+  <figure><img src="foundation/current/map-phone.jpg" alt="スマホ横持ちのマップビュー"><figcaption>スマホ横持ち 844×390 — マップ</figcaption></figure>
+</div>
+
+<h2><span class="ix-code">PRN</span>改修の原則</h2>
+<div class="principles">
+  <div><b>色は意味で引く</b>中立=データ / 主役色=自分 / 第二色=ターゲット / 注意 △・警告 ▲。正常値は色を持たない。</div>
+  <div><b>1行の文法</b>[ラベル] [メーター] [値 単位] [キー]。値は切らない。縮むのはメーター → ラベルの順。</div>
+  <div><b>状態は形で、キーは1種で</b>ON/OFF は状態ピップかトグル。ショートカットはキーキャップ1種。</div>
+  <div><b>強弱は3段</b>主読み値(パネルの答え)/行/補足。</div>
+  <div><b>周辺は静かに</b>撃つ判断に要る値は照準の近くへ。レールは参照用。</div>
+  <div><b>警報は1箇所</b>上部の警報灯と中央上部の警報帯だけ。案内はキーと語の短いチップ。</div>
+  <div><b>基盤は変えない</b>ガラス面3段・ウィジェット11種・置き場4種はそのまま。色の値は増やさず、意味の別名だけを足す。</div>
+</div>
+
+<p class="rf-lead" style="margin-top: var(--space-6)">改修の順序・土台の作り直し方・決めていないことは <a href="README.md">README.md</a>。</p>
+</main>
+<script src="foundation/themes.js"></script>
+<script src="foundation/ref.js"></script>
+</body>
+</html>

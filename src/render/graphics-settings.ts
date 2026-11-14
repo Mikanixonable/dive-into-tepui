@@ -181,6 +181,11 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'light', label: '環境光',
     presets: { low: true, medium: true, high: true },
   },
+  // 建造中にカメラへ追従して船体を照らす作業灯。建造中でなければ点かない。
+  constructionWorkLight: {
+    kind: 'toggle', group: 'light', label: '建造の作業灯',
+    presets: { low: true, medium: true, high: true },
+  },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',

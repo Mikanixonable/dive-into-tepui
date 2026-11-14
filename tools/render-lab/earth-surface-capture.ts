@@ -4,8 +4,8 @@ import {
   EARTH_SURFACE_CAPTURE_CASES,
   EARTH_SURFACE_CAPTURE_FRAMES,
   EARTH_SURFACE_CAPTURE_VIEWPORT,
-} from '../../src/render/earth-surface-metrics';
-import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
+} from './earth-surface-metrics';
+import type { EarthSurfaceCaptureDocument } from './earth-surface-metrics';
 
 // 地表の計測条件。ケースの並び・画面の大きさ・フレーム数は、どれも固定条件と一致しなければならない。
 export interface EarthSurfaceCaptureInput {

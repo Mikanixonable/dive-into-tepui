@@ -7,11 +7,11 @@ import {
   earthSurfaceBodyNormalToView, earthSurfaceEllipsoidUv, earthSurfaceNormalForView,
   earthSurfacePageCell, earthSurfaceTileLocalUv, mixEarthSurfaceMaterial, roughnessFromGshhgCoverage,
   sampleEarthSurfacePage, srgbChannelToLinear,
-} from '../../src/render/earth-surface-material';
+} from './earth-surface-material-reference';
 import type {
   EarthSurfaceLayerSample, EarthSurfaceMaterialLayerReader,
-} from '../../src/render/earth-surface-material';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-page-table';
+} from './earth-surface-material-reference';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-layout';
 import { earthTileKey } from '../../src/render/earth-surface-tile-key';
 
 function layer(colorSrgb: { readonly r: number; readonly g: number; readonly b: number }, roughness: number,
@@ -24,6 +24,7 @@ class MaterialReader implements EarthSurfaceMaterialLayerReader {
 
   public constructor(private readonly base: EarthSurfaceLayerSample, private readonly details: ReadonlyMap<number, EarthSurfaceLayerSample>) {}
 
+  // 要求された uv を記録し、登録済みの詳細層の標本を返す。未登録は投げる。
   public sampleDetail(layerNumber: number, uv: THREE.Vector2): EarthSurfaceLayerSample {
     this.detailUvs.push({ layer: layerNumber, uv: uv.clone() });
     const sample = this.details.get(layerNumber);
