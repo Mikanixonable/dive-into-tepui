@@ -21,8 +21,8 @@ import { distributionOf, type SampleDistribution } from '../../src/math/sample-d
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CASES, type CaseName } from './cases';
 import {
-  cloudDetailCase, CLOUD_DETAIL_CHECK_SHOTS, CLOUD_DETAIL_CIRRUS_COARSE_SHOTS, CLOUD_DETAIL_SHOTS,
-  CLOUD_DETAIL_STABILITY_SHOTS,
+  cloudDetailCase, cloudDetailRandomShot, CLOUD_DETAIL_CHECK_SHOTS, CLOUD_DETAIL_CIRRUS_COARSE_SHOTS,
+  CLOUD_DETAIL_SHOTS, CLOUD_DETAIL_STABILITY_SHOTS, type CloudDetailRandomPoint,
 } from './cloud-detail-cases';
 import {
   type CaseBuilder, type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH,
@@ -274,6 +274,12 @@ export class LabView {
 
   // 観察の向きを部分的に差し替え、その場で描き直す。仰角は姿勢が決まる範囲へ丸める。
   public setViewAngles(changes: Partial<LabViewAngles>): void {
+    this.mergeViewAngles(changes);
+    this.render();
+  }
+
+  // 観察の向きだけを差し替える。描き直しは呼び出し側が決める。
+  private mergeViewAngles(changes: Partial<LabViewAngles>): void {
     const merged = { ...this.angles, ...changes };
     this.angles = {
       ...merged,
@@ -281,7 +287,14 @@ export class LabView {
         merged.cameraElevationDeg, -MAX_CAMERA_ELEVATION_DEG, MAX_CAMERA_ELEVATION_DEG,
       ),
     };
-    this.render();
+  }
+
+  // 観察の向きを変えた次の 1 フレームを、落ち着くのを待たずにそのまま撮る。ドラッグで視点が毎フレーム動く
+  // ときの絵に当たる。**captureSettled と setViewAngles は描き直すので、状態が 1 フレーム遅れて追いつく不具合を
+  // 隠す** — この撮影は向きを置いたあと描画をちょうど 1 回だけ回す。
+  public async captureAfterMove(changes: Partial<LabViewAngles>): Promise<string> {
+    this.mergeViewAngles(changes);
+    return this.capture();
   }
 
   // ケースのカメラと注視点から、観察の向きの既定値を引き直す。
@@ -556,6 +569,11 @@ export class LabView {
   public applyShot(name: string, graphics: Partial<GraphicsSettingsData> = {}): void {
     const shot = this.shots[name];
     if (shot === undefined) throw new Error(`render-lab: the current case has no shot "${name}"`);
+    this.applyShotObject(shot, graphics);
+  }
+
+  // 撮影の実体 shot を当てて描き直す。applyShot との共通部分。
+  private applyShotObject(shot: LabShot, graphics: Partial<GraphicsSettingsData>): void {
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
     this.setDisplayTime(shot.displayTime ?? 0);
@@ -612,6 +630,28 @@ export class LabView {
     }
     this.applyShot(name);
     return this.captureSettled(name);
+  }
+
+  // ランダム抽出の実写の教師と同じ点(緯度・経度)・同じ段で撮った雲の PNG(データ URL)と、
+  // 画像中心の実寸 km/px・描画原点の高度 [m]。ケースは shootCloudDetail と同じ専用のものを
+  // 使い回し、準備待ちと絵の落ち着きの判定も同じ経路を通る。
+  public async shootCloudDetailRandom(
+    name: string, point: CloudDetailRandomPoint,
+  ): Promise<{ png: string, centerKmPerPx: number, altitudeM: number }> {
+    const shot = cloudDetailRandomShot(point);
+    // 専用ケースを組み、描画準備が整ってから撮影設定を適用する。
+    if (this.currentBuilder !== cloudDetailCase) {
+      this.setGraphics({ ...this.startupGraphics, ...shot.graphics });
+      this.buildCase(cloudDetailCase, null);
+      this.resetView();
+      await this.waitUntilReady();
+    }
+    this.applyShotObject(shot, {});
+    return {
+      png: await this.captureSettled(name),
+      centerKmPerPx: shot.centerKmPerPx,
+      altitudeM: shot.altitudeM,
+    };
   }
 
   // 連続する 2 回の capture が一致するまで撮り直し、一致した絵を返す。MAX_SETTLE_CAPTURES 回撮っても

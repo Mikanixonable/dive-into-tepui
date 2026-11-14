@@ -11,10 +11,10 @@ import { CameraView } from '../../src/render/camera/camera-view';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3, type Vec3 } from '../../src/math/vec3';
 import { DEFAULT_GRAPHICS, withGraphicsOption } from '../../src/render/graphics-settings';
-import { CUMULUS_DETAIL } from '../../src/render/opaque-cloud-surface-renderer';
 import type { AtmosphereDraw } from '../../src/render/atmosphere';
 import type { PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
+import type { CloudFieldSlot } from '../../src/render/cloud/cloud-field-sample';
 import type { CloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-select';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type {
@@ -225,10 +225,10 @@ export function register(): void {
     const sources = [source(body('a', 1e6, v3()), cloudyView)];
     const camera = cameraFrame();
 
-    // 積雲の精細さがオフでも巻雲が描かれていれば源は残り、有無は kinds が伝える。
+    // 積雲がオフでも巻雲が描かれていれば源は残り、有無は kinds が伝える。
     illumination.sync(
       sources, 0, camera,
-      withGraphicsOption(DEFAULT_GRAPHICS, 'cumulusDetail', CUMULUS_DETAIL.off), null, v3(1, 0, 0));
+      withGraphicsOption(DEFAULT_GRAPHICS, 'cumulus', false), null, v3(1, 0, 0));
     assert.ok(targets.cloudCasters[0] !== null, '巻雲だけの空で影の源が切られた');
     const kinds = targets.cloudKinds[0]!;
     assert.deepEqual({ cumulus: kinds.cumulus, cirrus: kinds.cirrus }, { cumulus: false, cirrus: true }, '種類ごとの有無が違う');
@@ -242,6 +242,9 @@ export function register(): void {
 }
 
 // 雲の影の源が実在することだけを見るので、中身は読まれない置き場でよい。
+const SHADOW_CLOUD_SLOT: CloudFieldSlot = {
+  cloud: new THREE.Texture(), motion: new THREE.Texture(), environment: new THREE.Texture(),
+};
 const SHADOW_CLOUD: ShadowCloud = {
   center: new THREE.Vector3(),
   surfaceRadius: 1e6,
@@ -249,9 +252,8 @@ const SHADOW_CLOUD: ShadowCloud = {
   bodyFromWorld: new THREE.Matrix4(),
   cloud: {
     field: {
-      texture: new THREE.Texture(),
-      motion: new THREE.Texture(),
-      environment: new THREE.Texture(),
+      slots: [SHADOW_CLOUD_SLOT, SHADOW_CLOUD_SLOT],
+      blend: { parity: 0, fraction: 0 },
       cap: {
         center: new THREE.Vector3(0, 0, 1),
         east: new THREE.Vector3(1, 0, 0),
@@ -265,4 +267,3 @@ const SHADOW_CLOUD: ShadowCloud = {
     clock: { displayTime: 0, simSpeed: 0 },
   },
 };
-

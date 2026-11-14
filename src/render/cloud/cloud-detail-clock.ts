@@ -19,8 +19,12 @@ const RECYCLE_LIFETIMES = 4;
 // 読み直しの周期の上限 [s]。戻す距離の場所ごとの差が模様を歪めるので、均した風の勾配(数百キロで
 // 10 m/s 程度)と掛けた歪みが 0.15 程度に収まる長さに取る。
 const MAX_RECYCLE_PERIOD = 7200;
-// 継ぎ目で次の周期と重ねる長さ(周期の割合)。
-const RECYCLE_BLEND = 0.15;
+// 継ぎ目で次の周期と重ねる長さ(周期の割合)。重なりの間は 2 つのノイズを cos・sin の重みで足すので振れ幅は
+// 保たれ、長いほど入れ替わりが緩やかになる。代わりに、重なりの間は 1 段あたり評価が 2 回になる。
+const RECYCLE_BLEND = 0.4;
+// 段ごとに周期の位相をずらす割合(黄金比の小数部の倍数)。ほぼ全段の周期が同じ 7200 s なので、そろえると全段が
+// 同じ瞬間に別のパターンへ入れ替わり、一定の時間間隔で画面全体が急変して見える。ずらせば入れ替わりが時間に分散する。
+const PHASE_STAGGER = 0.6180339887;
 // 段の入れ替わり 1 回が実時間でこれより短い段は、時間加速の中では明滅にしか見えないので消す [s]。
 // この 2 倍で満額。粒の個体性は失われるが、細部は場の濃さを配り直すだけなので、均した濃さは変わらない。
 const MIN_VISIBLE_LIFETIME = 3;
@@ -73,7 +77,7 @@ export class DetailClock {
   public sync(displayTime: number, simSpeed: number): void {
     // 段ごとに、周期の中の経過・いまと次の周期の読み位置・時間加速の中で見えている割合を置く。
     for (const [index, wavelength] of this.wavelengths.entries()) {
-      const elapsed = displayTime / recyclePeriod(wavelength);
+      const elapsed = displayTime / recyclePeriod(wavelength) + (index * PHASE_STAGGER) % 1;
       const cycle = Math.floor(elapsed);
       this.ages[index]!.value = elapsed - cycle;
       writeReseed(cycle, this.seeds[index]!.value);

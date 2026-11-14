@@ -1,70 +1,81 @@
-// 気象モデルから凝結した雲テクスチャ（ベイクドフィールド）と、雲を運ぶ風の写し。ベイク時とサンプリング時の
-// 4基底割り当てを一括管理し、出入りをどちらも CloudSample で受け渡す。
+// 気象モデルから凝結した雲テクスチャ(2 枚・時刻の違う組)と、雲を運ぶ風・環境の写し。ベイク時と
+// サンプリング時の 4基底割り当てを一括管理し、出入りをどちらも CloudSample で受け渡す。
 import * as THREE from 'three/webgpu';
-import { normalize } from 'three/tsl';
+import { normalize, uniform } from 'three/tsl';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { condense } from './condensation';
 import {
-  cloudEnvironmentTexel, cloudFieldTexelFromSample, cloudMotionTexel, cloudSampleFromTexels,
-  type CloudMotion, type CloudSample,
+  blendBakedTexels, cloudEnvironmentTexel, cloudFieldTexelFromSample, cloudMotionTexel, cloudSampleFromTexels,
+  type CloudBlend, type CloudFieldSlot, type CloudMotion, type CloudSample,
 } from './cloud-field-sample';
 import { eastAt, northAt } from './sphere-frame';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from '../field-projection';
 import type { WeatherModel } from './weather-model';
-import type { Vec2Node, Vec3Node } from '../tsl-types';
+import type { FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
 
 export class CloudField {
-  private readonly field: BakedField;
-  // 雲を運ぶ風の写し。
-  private readonly motion: BakedField;
-  // 陸・対流・気候の雲量・金床の写し。
-  private readonly environment: BakedField;
+  // 枚ごとの雲・風・環境の写し。どの枚も同じ投影へ、同じ時刻の天気から焼く。
+  private readonly clouds: readonly [BakedField, BakedField];
+  private readonly motions: readonly [BakedField, BakedField];
+  private readonly environments: readonly [BakedField, BakedField];
+  // 読み手に渡す 2 枚の組。枚の中身は焼くたびに入れ替わる。
+  public readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
+  // 2 枚の混ぜ方。setBlend で書き、読み手は同じ値を参照する。
+  private readonly blendValue: CloudBlend = { parity: 0, fraction: 0 };
+  private readonly parity: FloatUniform = uniform(0);
+  private readonly fraction: FloatUniform = uniform(0);
 
   // model の現在時刻における雲を、指定された projection に従ってベイクするテクスチャ。サンプリング時も projection の uv を参照する。
   public constructor(model: WeatherModel, projection: FieldProjection) {
-    this.field = new BakedField('cloud', THREE.RGBAFormat, projection, (direction) => {
-      const cloud = condense(model.weatherAt(direction));
-      return cloudFieldTexelFromSample(cloud);
-    }, GPU_PASS.cloudBake);
-    this.motion = new BakedField(
-      'cloudMotion', THREE.RGBAFormat, projection,
-      (direction) => cloudMotionTexel(smoothedWindsAt(model, direction)), GPU_PASS.cloudBake);
-    this.environment = new BakedField('cloudEnvironment', THREE.RGBAFormat, projection, (direction) => {
-      const cloud = condense(model.weatherAt(direction));
-      return cloudEnvironmentTexel(cloud);
-    }, GPU_PASS.cloudBake);
+    // 2 時刻分の雲・風・環境を同じ投影で読めるテクスチャ群へ焼く。
+    const cloudTexelAt = (direction: Vec3Node) => cloudFieldTexelFromSample(condense(model.weatherAt(direction)));
+    const motionTexelAt = (direction: Vec3Node) => cloudMotionTexel(smoothedWindsAt(model, direction));
+    const environmentTexelAt = (direction: Vec3Node) => cloudEnvironmentTexel(condense(model.weatherAt(direction)));
+    const bake = (name: string, source: (direction: Vec3Node) => Vec4Node) =>
+      new BakedField(name, THREE.RGBAFormat, projection, source, GPU_PASS.cloudBake);
+    this.clouds = [bake('cloudA', cloudTexelAt), bake('cloudB', cloudTexelAt)];
+    this.motions = [bake('cloudMotionA', motionTexelAt), bake('cloudMotionB', motionTexelAt)];
+    this.environments = [bake('cloudEnvironmentA', environmentTexelAt), bake('cloudEnvironmentB', environmentTexelAt)];
+    this.slots = [
+      { cloud: this.clouds[0].texture, motion: this.motions[0].texture, environment: this.environments[0].texture },
+      { cloud: this.clouds[1].texture, motion: this.motions[1].texture, environment: this.environments[1].texture },
+    ];
   }
 
-  // 現在時刻の雲をベイクドテクスチャへレンダリングする。at() でサンプリングする前に必ず一度呼び出す。
-  public render(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
-    this.field.render(renderer, gpu);
-    this.motion.render(renderer, gpu);
-    this.environment.render(renderer, gpu);
+  // 2 枚の混ぜ方。読み手はこの値を読んだ時点の混ぜ方で雲を読む。
+  public get blend(): CloudBlend { return this.blendValue; }
+
+  // 混ぜ方を置く。parity は古い側の枚の番号、fraction は古い側から新しい側への混合比。
+  public setBlend(parity: 0 | 1, fraction: number): void {
+    this.blendValue.parity = parity;
+    this.blendValue.fraction = fraction;
+    this.parity.value = parity;
+    this.fraction.value = fraction;
   }
 
-  // 焼いた雲の場。テクスチャの所有権は BakedField に残す。
-  public get texture(): THREE.Texture { return this.field.texture; }
-
-  // 焼いた雲を運ぶ風の場(R・G = 地表付近、B・A = 上層の東・北の成分 [m/s])。
-  public get motionTexture(): THREE.Texture { return this.motion.texture; }
-
-  // 焼いた環境の場(R = 陸、G = 対流、B = 気候の雲量、A = 金床)。
-  public get environmentTexture(): THREE.Texture { return this.environment.texture; }
+  // 現在時刻の雲・風・環境を枚 slot へレンダリングする。at() でサンプリングする前に、その枚を焼いておく。
+  public renderSlot(slot: 0 | 1, renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
+    this.clouds[slot].render(renderer, gpu);
+    this.motions[slot].render(renderer, gpu);
+    this.environments[slot].render(renderer, gpu);
+  }
 
   // 単位方向 direction での雲を、投影自身の uv で直接サンプリングする。cap による領域切り出しを行わないため、テクスチャ
   // 全域を参照できる。
   public at(direction: Vec3Node): CloudSample {
-    return cloudSampleFromTexels(this.field.at(direction), this.environment.at(direction));
+    const cloud = blendBakedTexels(
+      this.clouds[0].at(direction), this.clouds[1].at(direction), this.parity, this.fraction);
+    const environment = blendBakedTexels(
+      this.environments[0].at(direction), this.environments[1].at(direction), this.parity, this.fraction);
+    return cloudSampleFromTexels(cloud, environment);
   }
 
   // 保持している GPU 資源を解放する。
   public dispose(): void {
-    this.field.dispose();
-    this.motion.dispose();
-    this.environment.dispose();
+    for (const field of [...this.clouds, ...this.motions, ...this.environments]) field.dispose();
   }
 }
 

@@ -7,7 +7,24 @@ import {
   DEFAULT_GRAPHICS, QUALITY_PRESETS, parseGraphics, withGraphicsOption,
 } from '../../src/render/graphics-settings';
 
+// 雲の表示切替と既存の描画設定の保存値互換性を検査する。
 export function register(): void {
+  test('graphics-settings: 積雲と巻雲は全プリセットで既定オン', () => {
+    for (const preset of Object.values(QUALITY_PRESETS)) {
+      assert.equal(preset.cumulus, true);
+      assert.equal(preset.cirrus, true);
+    }
+  });
+
+  test('graphics-settings: 保存されていない雲トグルはオンで補完し、明示値は保持する', () => {
+    const older = parseGraphics('{"clouds":true}');
+    assert.equal(older.cumulus, true);
+    assert.equal(older.cirrus, true);
+    const saved = parseGraphics('{"cumulus":false,"cirrus":false}');
+    assert.equal(saved.cumulus, false);
+    assert.equal(saved.cirrus, false);
+  });
+
   test('graphics-settings: 建造の作業灯は全プリセットで既定オン', () => {
     assert.equal(QUALITY_PRESETS.low.constructionWorkLight, true);
     assert.equal(QUALITY_PRESETS.medium.constructionWorkLight, true);

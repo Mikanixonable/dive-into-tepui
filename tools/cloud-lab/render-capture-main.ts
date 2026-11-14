@@ -1,12 +1,11 @@
 // 雲の描画経路の多スケール撮影。render-lab と同じ LabView と地球ケースで、地域 cap × 高度と
 // 全球を captureTarget へだけ描く。window.cloudRenderCapture が駆動口。
-// URL の ?layer=cirrus では、上層の半透明殻(巻雲層)だけを描く撮影になる — 不透明な積雲殻と
-// 半透明の積雲殻をグラフィックス設定で落とし、合成画と同じ画角・時刻で層だけを切り分ける。
+// URL の ?layer=cirrus では、上層の半透明殻(巻雲層)だけを描く撮影になる — 不透明な積雲殻を
+// グラフィックス設定で落とし、合成画と同じ画角・時刻で層だけを切り分ける。
 import { LabView } from '../render-lab/lab';
 import type { LabViewAngles } from '../render-lab/view-angles';
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
-import { CUMULUS_DETAIL } from '../../src/render/opaque-cloud-surface-renderer';
 import { R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 
 declare global {
@@ -36,6 +35,7 @@ interface CloudRenderCapture {
 // 落ち着き判定の上限。capture() を繰り返し、連続 2 回の絵が一致したら決定的とみなす。
 const MAX_SETTLE_CAPTURES = 6;
 
+// 描画用の雲場を読み込んで、指定構図の撮影口を用意する。
 async function init(): Promise<void> {
   const settings = new UserSettings(new MemorySettingStorage());
   const view = await LabView.create(
@@ -53,15 +53,12 @@ async function init(): Promise<void> {
     waitUntilReady: () => view.waitUntilReady(),
     setCapture: (spec) => {
       if (cirrusOnly) {
-        // 巻雲層だけを残す。積雲の精細さをオフにすると不透明殻とその影が消え、半透明の
-        // 積雲を落とすと下層の半透明殻が消える。適用は earth-nadir の shot 経由で、
-        // 視点と表示時刻は直後の指定が上書きする。2 枚目以降は同じ設定なので組み直しは
-        // 起きない。
+        // 巻雲層だけを残す。積雲をオフにすると不透明殻とその影が消える。適用は
+        // earth-nadir の shot 経由で、視点と表示時刻は直後の指定が上書きする。2 枚目以降は
+        // 同じ設定なので組み直しは起きない。
         view.applyShot('earth-nadir', {
           clouds: true,
-          cirrus: true,
-          translucentCumulus: false,
-          cumulusDetail: CUMULUS_DETAIL.off,
+          cumulus: false,
         });
       }
       // 直下点をケースの固定 pivot へ置く。地球の高度は、赤道面の地表が pivot に来る値
