@@ -3,7 +3,7 @@
 // 育ち、崩れ、分かれる。生まれてから経った時間ぶん読む位置を風上へ戻すので、模様は風に乗って流れる。
 // 戻す距離が溜まりすぎないよう段ごとの周期で読み直し、周期の継ぎ目の前後だけ次の周期と重ねて渡す。
 import * as THREE from 'three/webgpu';
-import { If, cos, float, greaterThan, normalize, sin, smoothstep, uniform } from 'three/tsl';
+import { If, cos, dot, float, greaterThan, normalize, sin, smoothstep, uniform } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
@@ -47,6 +47,13 @@ function writeReseed(cycle: number, out: THREE.Vector3): void {
   out.set(hash(12.9898), hash(78.233), hash(37.719)).multiplyScalar(RESEED_SPAN);
 }
 
+// 読む位置の線形の写し。単位ベクトル axis の向きの成分を 1/factor に縮めてから読む — 模様は axis の向きに
+// factor 倍長く伸びる。
+export interface LinearStretch {
+  readonly axis: Vec3Node;
+  readonly factor: FloatNode;
+}
+
 // 段ごとの時刻の uniform。表示時刻そのものはシェーダへ渡さず、段の周期で割った位相の端数と、いまと
 // 次の周期に読む位置のずらしに分けて渡す — 長い走行の表示時刻は float の精度に収まらない。
 export class DetailClock {
@@ -85,7 +92,9 @@ export class DetailClock {
   // 段 index の、天体固定の単位方向 direction での値。振れ幅は勾配ノイズ 1 回ぶんと同じ。radius は天体の
   // 基準半径 [m]、wind は局所の東・北を張る接ベクトルで表した風 [m/s]。wind は数百キロで均した流れで
   // なければならない — 場所ごとに大きく変わると、周期のあいだに戻す距離の差で模様がねじれる。
-  public evolvingNoise(index: number, direction: Vec3Node, radius: FloatNode, wind: Vec3Node): FloatNode {
+  public evolvingNoise(
+    index: number, direction: Vec3Node, radius: FloatNode, wind: Vec3Node, linearStretch?: LinearStretch,
+  ): FloatNode {
     const wavelength = this.wavelengths[index]!;
     const period = recyclePeriod(wavelength);
     const scale = radius.div(wavelength);
@@ -95,7 +104,12 @@ export class DetailClock {
     // 周期の中の経過 age(継ぎ目の後なら負)と、その周期に読む位置のずらし seed で読む値。
     const valueAt = (age: FloatNode, seed: Vec3Node): FloatNode => {
       const origin = normalize(direction.sub(drift.mul(age)));
-      return gradientNoise(origin.mul(scale.add(age.mul(slide))).add(seed));
+      const position = origin.mul(scale.add(age.mul(slide)));
+      // 軸の向きへ位置を 1/factor に縮める線形の写し。軸に直交する成分は動かさない。
+      const domain = linearStretch === undefined ? position : position.sub(
+        linearStretch.axis.mul(dot(position, linearStretch.axis)).mul(float(1).sub(float(1).div(linearStretch.factor))),
+      );
+      return gradientNoise(domain.add(seed));
     };
     const age = this.ages[index]!;
     const value = valueAt(age, this.seeds[index]!).toVar();
