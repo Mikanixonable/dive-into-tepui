@@ -46,13 +46,6 @@ export interface UtcOffsetProvider {
   taiMinusUtcSeconds(utc: UtcCalendarDate): number;
 }
 
-/** TDB - TT, in seconds, supplied by an ephemeris/time-scale implementation. */
-export interface TdbOffsetProvider {
-  tdbMinusTtSeconds(tt: TtJulianDate): number;
-}
-
-export type AstronomicalTimeOffsetProvider = UtcOffsetProvider & TdbOffsetProvider;
-
 const TT_MINUS_TAI_SECONDS = 32.184;
 export const J2000_JULIAN_DATE = 2451545.0;
 export const SECONDS_PER_DAY = 86400;
@@ -250,54 +243,8 @@ export function ttToUtc(input: TtJulianDate, provider: UtcOffsetProvider): UtcJu
   return createJulianDate('UTC', utcValue);
 }
 
-export function ttToTdb(input: TtJulianDate, provider: TdbOffsetProvider): TdbJulianDate {
-  assertScale(input.scale);
-  if (input.scale !== 'TT') throw new RangeError('TT input required');
-  assertFinite(input.value, 'Julian Date');
-  const delta = offsetSeconds(provider.tdbMinusTtSeconds(input), 'TDB-TT offset');
-  return createJulianDate('TDB', input.value + delta / SECONDS_PER_DAY);
-}
 
-export function tdbToTt(input: TdbJulianDate, provider: TdbOffsetProvider): TtJulianDate {
-  assertScale(input.scale);
-  if (input.scale !== 'TDB') throw new RangeError('TDB input required');
-  assertFinite(input.value, 'Julian Date');
-  let ttValue = input.value;
-  for (let i = 0; i < 4; i++) {
-    const tt = createJulianDate('TT', ttValue);
-    ttValue = input.value - offsetSeconds(provider.tdbMinusTtSeconds(tt), 'TDB-TT offset') / SECONDS_PER_DAY;
-  }
-  return createJulianDate('TT', ttValue);
-}
 
-export function utcToTdb(input: UtcCalendarDate | UtcJulianDate, provider: AstronomicalTimeOffsetProvider): TdbJulianDate {
-  return ttToTdb(utcToTt(input, provider), provider);
-}
 
-export function tdbToUtc(input: TdbJulianDate, provider: AstronomicalTimeOffsetProvider): UtcJulianDate {
-  return ttToUtc(tdbToTt(input, provider), provider);
-}
 
-export function convertJulianDate(
-  input: JulianDate,
-  targetScale: TimeScale,
-  provider?: AstronomicalTimeOffsetProvider,
-): JulianDate {
-  assertScale(input.scale);
-  assertScale(targetScale);
-  if (input.scale === targetScale) return createJulianDate(targetScale, input.value);
-  if (!provider) throw new Error('a UTC/TDB offset provider is required for time-scale conversion');
-  if (input.scale === 'UTC') {
-    const utc = createJulianDate('UTC', input.value);
-    if (targetScale === 'TT') return utcToTt(utc, provider);
-    return utcToTdb(utc, provider);
-  }
-  if (input.scale === 'TT') {
-    const tt = createJulianDate('TT', input.value);
-    if (targetScale === 'UTC') return ttToUtc(tt, provider);
-    return ttToTdb(tt, provider);
-  }
-  const tdb = createJulianDate('TDB', input.value);
-  if (targetScale === 'TT') return tdbToTt(tdb, provider);
-  return tdbToUtc(tdb, provider);
-}
+

@@ -30,7 +30,7 @@ const BURN_DONE_EPSILON = 0.05;
 const IGNITE_ANGLE_TOLERANCE = 0.05;
 
 // 燃焼後の修正燃焼を省く下限 [m/s]。後続ノードの解き直しが提案する修正 Δv がこれ未満なら打たない。
-export const MIN_RESOLVE_CORRECTION = 0.1;
+const MIN_RESOLVE_CORRECTION = 0.1;
 
 // 整列トルクの PD ゲイン。進行方向ホールドと同じ制御律を燃焼方向へ向けるのに使う。
 const AIM_KP = 3.2;

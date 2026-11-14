@@ -4,7 +4,7 @@ import { addScaled, type Vec3 } from '../../math/vec3';
 import type { ModuleTransform, ShipAssembly } from './ship-assembly';
 import { shipPhysicsShape } from './ship-physics-shape';
 
-export const SHIP_DECOUPLING_SPEED = 8;
+const SHIP_DECOUPLING_SPEED = 8;
 export const SHIP_DECOUPLING_COLLISION_GRACE = 0.5;
 
 export interface ShipDecouplingSplit {

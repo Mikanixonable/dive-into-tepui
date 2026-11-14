@@ -12,7 +12,7 @@ const RUN_END_FADE_SEC = 2.5; // ランの外へ出たときのフェードア�
 
 // 保存が無いときのユーザー音量と消音。
 export const DEFAULT_BGM_VOLUME = 1;
-export const DEFAULT_BGM_MUTED = false;
+const DEFAULT_BGM_MUTED = false;
 
 // 保存された文字列をユーザー音量へ読み直す。数として読めない値は既定へ落とし、読めた値は 0〜1 へ収める。
 export function parseBgmVolume(text: string | null): number {
