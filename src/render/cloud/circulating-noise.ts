@@ -2,8 +2,8 @@
 // 違う向きへ流れながら形を変える。書き込み先の texel で標本化できないオクターブは除外するが、除外の境界となる 1 段は
 // 端数分の振幅で重畳する — 解像度が連続的に変化しても、オクターブが急峻に出現・消失しない。
 import * as THREE from 'three/webgpu';
-import { If, abs, clamp, exp, float, greaterThan, log2, mix, uniform, vec2 } from 'three/tsl';
-import { gradientNoise } from './gradient-noise';
+import { If, abs, clamp, float, greaterThan, log2, mix, uniform, vec2 } from 'three/tsl';
+import { gateFactor, gradientNoise } from './gradient-noise';
 import type { Circulation } from './circulation';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 
@@ -27,11 +27,6 @@ export interface NoiseOctave {
 // どちらの波形もオクターブごとに平均 0・同一標準偏差となるため、解像度が粗く高周波オクターブが間引かれても場の平均や強度は変動しない。
 const CELL_ABSOLUTE_MEAN = 0.2164;
 const CELL_TO_NOISE_SCALE = 1.728;
-
-// 勾配ノイズの標準偏差の実測値(上の CELL_* と同じ 60 万点標本化)。乗法の鎖の各因子の平均を
-// 1 へ戻す補正項 exp(−κ²σ²/2) に使う。
-const NOISE_SIGMA = 0.265;
-const COUPLING_SHIFT = NOISE_SIGMA * NOISE_SIGMA / 2;
 
 // 場へ掛ける変調。coupling は段間の乗法の鎖の強さ κ、envelope は包絡の場の値 — 評価は
 // 書き込み先の方向で一度だけ行い、変調は緯度帯などの気候の型へ張り付く。
@@ -131,7 +126,7 @@ export class CirculatingNoise {
         sum.addAssign(value.mul(weight).mul(gate));
         const coupling = modulation?.coupling;
         if (coupling !== undefined) {
-          gate.mulAssign(exp(value.x.mul(coupling).sub(coupling.mul(coupling).mul(COUPLING_SHIFT))));
+          gate.mulAssign(gateFactor(value.x, coupling));
         }
       });
     }
