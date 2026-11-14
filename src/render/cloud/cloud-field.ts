@@ -6,7 +6,8 @@ import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { condense } from './condensation';
 import {
-  blendBakedTexels, cloudEnvironmentTexel, cloudFieldTexelFromSample, cloudMotionTexel, cloudSampleFromTexels,
+  blendBakedTexels, CloudBlendState, cloudEnvironmentTexel, cloudFieldTexelFromSample, cloudMotionTexel,
+  cloudSampleFromTexels,
   type CloudBlend, type CloudFieldSlot, type CloudMotion, type CloudSample,
 } from './cloud-field-sample';
 import { eastAt, northAt } from './sphere-frame';
@@ -24,7 +25,7 @@ export class CloudField {
   // 読み手に渡す 2 枚の組。枚の中身は焼くたびに入れ替わる。
   public readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
   // 2 枚の混ぜ方。setBlend で書き、読み手は同じ値を参照する。
-  private readonly blendValue: CloudBlend = { parity: 0, fraction: 0 };
+  private readonly blendValue = new CloudBlendState();
   private readonly parity: FloatUniform = uniform(0);
   private readonly fraction: FloatUniform = uniform(0);
 
@@ -49,8 +50,7 @@ export class CloudField {
 
   // 混ぜ方を置く。parity は古い側の枚の番号、fraction は古い側から新しい側への混合比。
   public setBlend(parity: 0 | 1, fraction: number): void {
-    this.blendValue.parity = parity;
-    this.blendValue.fraction = fraction;
+    this.blendValue.set(parity, fraction);
     this.parity.value = parity;
     this.fraction.value = fraction;
   }
