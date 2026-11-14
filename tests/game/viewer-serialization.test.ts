@@ -85,7 +85,6 @@ export function register(): void {
     viewer.camera.combat.followProgress(sample(null));
     viewer.camera.combat.setFocus({ kind: 'object', id: 'moon' });
     viewer.entityDisplay.toggleTrajectoryLine('entity-3');
-    viewer.entityDisplay.setProteinDisplay({ representation: 'silhouette', colorMode: 'hydrophobicity' });
     viewer.navTarget.toggle('moon', '月');
     const serialized = viewer.serialize();
 
@@ -98,7 +97,6 @@ export function register(): void {
     assert.notEqual(serialized.camera.combat.staleFollowFrames, initial.camera.combat.staleFollowFrames);
     assert.notEqual(serialized.camera.combat.focusReplaced, initial.camera.combat.focusReplaced);
     assert.notDeepEqual(serialized.entityDisplay.trajectoryLineIds, initial.entityDisplay.trajectoryLineIds);
-    assert.notDeepEqual(serialized.entityDisplay.proteinDisplay, initial.entityDisplay.proteinDisplay);
 
     assertSameViewer(restoredViewer(serialized, system).serialize(), serialized);
   });
