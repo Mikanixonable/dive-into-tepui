@@ -7,4 +7,6 @@ export interface CloudRenderInput {
   readonly field: CloudFieldBinding;
   readonly generation: number;
   readonly topAltitude: number;
+  // 表示時刻 [s]。粒の移流と寿命はこの時刻で進む。
+  readonly displayTime: number;
 }
