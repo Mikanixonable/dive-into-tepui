@@ -4,7 +4,7 @@
 // THREE/DOM 非依存。
 import { keplerPeriod, meanMotionFromSemiMajor, semiMajorFromPeriod } from './elements';
 
-export interface TransferImpulses {
+interface TransferImpulses {
   readonly deltaV1: number; // 出発軌道から遷移軌道へ [m/s]
   readonly deltaV2: number; // 遷移軌道から目標軌道へ [m/s]
   readonly transferTime: number; // 遷移弧の飛行時間 [s]
@@ -78,7 +78,7 @@ export function phasing(
 }
 
 // ランデブーの位相幾何。追う側(チェイサー)の平均運動 n_c と目標 n_t [rad/s]。
-export interface RendezvousPhasing {
+interface RendezvousPhasing {
   readonly idealLeadAngle: number; // 出発時の目標のリード角 [rad]
   readonly leadAngleError: number; // 現在の位相配置と理想のずれ [rad] (−π〜π)
   readonly waitTime: number; // 次に同じ位相配置が来るまでの時間 [s]

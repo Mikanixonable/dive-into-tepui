@@ -10,11 +10,11 @@ import {
   EARTH_TILE_TEXELS,
 } from './earth-surface-tile-key';
 
-export interface EarthSurfaceMaterialCapabilities {
+interface EarthSurfaceMaterialCapabilities {
   readonly useBaseFallback: boolean;
 }
 
-export interface EarthSurfaceMaterialNodeTextures {
+interface EarthSurfaceMaterialNodeTextures {
   readonly pageTable: THREE.Texture;
   readonly color: THREE.Texture;
   readonly terrain: THREE.Texture;
@@ -22,7 +22,7 @@ export interface EarthSurfaceMaterialNodeTextures {
   readonly baseTerrain: THREE.Texture;
 }
 
-export interface EarthSurfaceMaterialNodeInputs {
+interface EarthSurfaceMaterialNodeInputs {
   // bodyDirectionは地球中心からフラグメントへ向かう天体固定の放射方向。
   readonly bodyDirection: Vec3Node;
   readonly axes: Vec3Node;
@@ -34,7 +34,7 @@ export interface EarthSurfaceMaterialNodeInputs {
   readonly albedoScale: number;
 }
 
-export interface EarthSurfaceMaterialNodes {
+interface EarthSurfaceMaterialNodes {
   readonly colorNode: Vec3Node;
   readonly roughnessNode: FloatNode;
   readonly normalNode: Vec3Node;
@@ -117,7 +117,7 @@ export function decodeEarthSurfaceNormalNode(encoded: Vec3Node): Vec3Node {
 
 // 地球固定法線→共通地理UV→ページ表→現在/親層→色・法線・roughnessを一つのTSLグラフへ組む。
 // colorテクスチャはSRGBColorSpaceで設定されているため、texture()の出力は線形作業色空間へ変換される。
-export function earthSurfaceMaterialNodes(
+function earthSurfaceMaterialNodes(
   textures: EarthSurfaceMaterialNodeTextures,
   inputs: EarthSurfaceMaterialNodeInputs,
 ): EarthSurfaceMaterialNodes {

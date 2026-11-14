@@ -31,7 +31,7 @@ export interface SerializedGame {
 }
 
 // 進行の直列化した形。Game 自身の値と、Game が持つ進行の所有者ごとの記録から成る。
-export interface SerializedProgress {
+interface SerializedProgress {
   readonly stageId: string;
   // そのランの元期と、それが選ぶ暦データの識別。元期は読み込み側が継承する値で、照合するのは
   // 暦データの識別。
@@ -82,7 +82,7 @@ export class Game {
   // セーブスロットの設計図の棚の読み取り面。
   public static async create(
     stageClass: StageClass,
-    startEpoch: TdbJulianDate | undefined,
+    startEpoch: TdbJulianDate | null,
     scene: GameScene,
     hud: HudLayers,
     sections: FrameSections,

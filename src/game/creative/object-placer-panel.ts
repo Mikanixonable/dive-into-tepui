@@ -66,7 +66,7 @@ export type LagrangeForm = {
 
 // 確定時点のフォーム値。placementMode を判別子とし、選ばれた配置方法(・サイズ/形・軌道種別)が
 // 実際に使う値だけを持つ。
-export type ShipPlacementPreset = 'combat-ship' | 'base-ship';
+type ShipPlacementPreset = 'combat-ship' | 'base-ship';
 export type ObjectPlacementSelection =
   | ShipPlacementPreset | Exclude<DynamicEntityKind, 'player' | 'base'> | 'orbit-slot';
 export type ObjectPlacerForm = { readonly selection: ObjectPlacementSelection } & (ElementsForm | LagrangeForm);
@@ -531,7 +531,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
 
   // PlacementFieldId をハイライト対象の行要素へ対応させる。離心率は sizeMode が選んだ組の
   // 入力欄だけがハイライト対象になる(もう一方は非表示なので指しても意味がない)。
-  private fieldRowFor(field: PlacementFieldId): HTMLElement | undefined {
+  private fieldRowFor(field: PlacementFieldId): HTMLElement | null {
     switch (field) {
       case 'periapsisAltitude': return this.peAlt.element;
       case 'apoapsisAltitude': return this.apAlt.element;
@@ -539,7 +539,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
       case 'period': return this.period.element;
       case 'eccentricity':
         return this.sizeModeValue === 'semiMajorEcc' ? this.eccSemiMajor.element
-          : this.sizeModeValue === 'periodEcc' ? this.eccPeriod.element : undefined;
+          : this.sizeModeValue === 'periodEcc' ? this.eccPeriod.element : null;
       case 'inclination': return this.inc.element;
       case 'raan': return this.raan.element;
       case 'argumentOfPeriapsis': return this.argp.element;

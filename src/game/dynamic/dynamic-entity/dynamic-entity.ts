@@ -92,7 +92,7 @@ export abstract class DynamicEntity {
   // active はこの個体が操作対象か、orbitReference は軌道の基準として選ばれている天体。
   protected renderSource(
     _viewFrame: DynamicViewFrame, _active: boolean,
-    _orbitReference: OrbitReference | undefined,
+    _orbitReference: OrbitReference | null,
   ): DynamicRenderSource {
     const motion = this.motion;
     return {
@@ -114,7 +114,7 @@ export abstract class DynamicEntity {
 
   // このフレームの表示入力を組み立てて View へ渡す。
   public sync(
-    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | null,
   ): void {
     this.view.sync(this.renderSource(viewFrame, active, orbitReference), viewFrame);
   }

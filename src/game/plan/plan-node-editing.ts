@@ -14,7 +14,7 @@ import type { Plan } from './plan';
 const PE_WARN_DENSITY = 2.4e-8; // 噴射後の軌道の近点がこの大気密度に達したら警告する [kg/m^3]
 
 // i 番目のノードの Δv(噴射後速度 − 到達時点速度)を ECI で返す。
-export function nodeDeltaV(
+function nodeDeltaV(
   plan: Plan, i: number, arriving: readonly (KinematicState | null)[],
 ): Vec3 | null {
   const node = plan.nodes[i];

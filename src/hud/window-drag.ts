@@ -3,7 +3,7 @@
 import { CLICK_MOVE_THRESHOLD } from '../input/input';
 import type { Point2 } from './layout';
 
-export interface WindowDragSession {
+interface WindowDragSession {
   // ドラッグ開始時点のウィンドウ位置(offsetLeft/offsetTop と同じ基準)。
   position(): Point2;
   // クランプ済みの配置へウィンドウを動かす。

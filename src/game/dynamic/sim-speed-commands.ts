@@ -15,7 +15,7 @@ export interface SimSpeedCommands {
   // 進行中の自動ワープを解除する。
   cancelAutoWarp(): void;
   // firstNode の実行時刻までの自動ワープをトグルする。ノードが無ければ、起こせなかったことを記録する。
-  toggleAutoWarpToFirstNode(firstNode: KinematicState | undefined, simTime: number): void;
+  toggleAutoWarpToFirstNode(firstNode: KinematicState | null, simTime: number): void;
 }
 
 // manager への命令を queue へ積む口を組む。

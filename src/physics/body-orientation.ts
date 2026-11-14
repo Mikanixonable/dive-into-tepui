@@ -60,7 +60,7 @@ export function spinOrientation(axis: Vec3, spinAngle: number): Quat | null {
 }
 
 // 天体固定の緯度 [rad](北極方向が正)・経度 [rad, (-pi, pi]、IAU惑星地理座標の規約)。
-export interface LatLon {
+interface LatLon {
   readonly latRad: number;
   readonly lonRad: number;
 }

@@ -26,7 +26,7 @@ const SYSTEM = PARTS.system;
 // マーカーの点か名前のどちらかが出る天体の集合。クラストグルで足される天体と、恒星・
 // フォーカス系・カメラ近傍として無条件に足される天体の和になる。
 function visibleBodyIds(
-  focusId: string | undefined, toggles: MapDisplayToggles,
+  focusId: string | null, toggles: MapDisplayToggles,
   nearbyIds: Iterable<string> = [],
 ): ReadonlySet<string> {
   const forced = alwaysFullyVisibleIds(SYSTEM, focusId, nearbyIds, toggles);
@@ -193,19 +193,19 @@ export function register(): void {
     assert.ok(visible.has('sun'));
   });
 
-  test('visibility: focusId が undefined でも恒星・惑星とトグルで足したクラスは見える', () => {
-    const visible = visibleBodyIds(undefined, { ...SATELLITES_OFF, satelliteName: true });
+  test('visibility: focusId が null でも恒星・惑星とトグルで足したクラスは見える', () => {
+    const visible = visibleBodyIds(null, { ...SATELLITES_OFF, satelliteName: true });
     assert.ok(visible.has('earth'));
     assert.ok(visible.has('sun'));
     assert.ok(visible.has('moon'), 'トグルで足したクラスは無条件で見える');
     // フォーカス由来の親子・兄弟の追加が無いことを、衛星トグルを畳んだ状態で確認する。
-    const visibleNoSatellites = visibleBodyIds(undefined, SATELLITES_OFF);
+    const visibleNoSatellites = visibleBodyIds(null, SATELLITES_OFF);
     assert.ok(!visibleNoSatellites.has('moon'), 'フォーカスが無ければ親子関係による追加も無い');
   });
 
   test('visibility: フォーカス解除後もカメラ近傍の惑星系の衛星は見える', () => {
     const nearby = SYSTEM.systemMembersAt(v3(), 0);
-    const visible = visibleBodyIds(undefined, SATELLITES_OFF, nearby);
+    const visible = visibleBodyIds(null, SATELLITES_OFF, nearby);
     assert.ok(nearby.includes('earth'));
     assert.ok(nearby.includes('moon'));
     assert.ok(visible.has('moon'), '地球近傍カメラではフォーカス解除後も月を残す');

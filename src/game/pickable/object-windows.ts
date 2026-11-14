@@ -109,7 +109,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     for (const [key, entry] of [...this.windows]) {
       if (entry.target.gone) { this.closeWindow(key); continue; }
       const { title, subtitle, items: menuItems } = this.actions.windowParts(entry.target, simTime);
-      entry.win.syncHeader(title, subtitle);
+      entry.win.syncHeader(title, subtitle ?? null);
       entry.win.syncRelatedItems(
         this.actions.relatedItemsFor(entry.target, simTime, this),
         this.actions.relatedTitleFor(entry.target),

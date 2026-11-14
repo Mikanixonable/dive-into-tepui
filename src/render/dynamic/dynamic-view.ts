@@ -24,7 +24,7 @@ import type { BodyShadow } from '../pipeline/shadow/body-shadow';
 import { syncThermalState } from '../thermal-emissive';
 
 // 熱による発光の表示入力。温度と過熱の振幅は [K]。
-export interface DynamicThermalSource {
+interface DynamicThermalSource {
   readonly temperature: number;
   readonly deviation: number;
   readonly emissivity: number;
@@ -78,7 +78,7 @@ export interface DynamicLineDisplay {
   readonly actual: LineStyle | null;
 }
 
-export interface DynamicLineSamples {
+interface DynamicLineSamples {
   readonly method: 'analytic' | 'numeric';
   readonly points: readonly Vec3[];
 }

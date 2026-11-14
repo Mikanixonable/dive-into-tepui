@@ -23,7 +23,7 @@ export interface ArmorPart extends Part {
   readonly damageReduction: number; // 0-1
 }
 
-export interface ThrusterPart extends Part {
+interface ThrusterPart extends Part {
   readonly type: 'thruster';
   readonly torque: number;
   readonly thrust: number;
@@ -58,20 +58,6 @@ export type AnyPart = HullPart | CockpitPart | ArmorPart | ThrusterPart | RcsTan
 
 type ExtractPart<TType extends PartType> = Extract<AnyPart, { type: TType }>;
 
-// 船体が要求する最小限の部品コレクション定義。PartInventory や ShipAssembly のアダプタなど、
-// 具体的な部品コンテナの実装から Ship を疎結合に保つ。
-export interface ShipPartCollection {
-  readonly parts: readonly AnyPart[];
-  replace(parts: readonly Part[]): void;
-  has(part: Part): boolean;
-  ofType<T extends PartType>(type: T): readonly ExtractPart<T>[];
-  healthySum<T extends PartType>(type: T, valueOf: (part: ExtractPart<T>) => number): number;
-  totalFuel(): number;
-  totalMaxFuel(): number;
-  consumeFuel(amount: number): number;
-  refuelFuel(amount: number): number;
-}
-
 // type の既定値に overrides を重ねてパーツを作る。id は呼び出しごとにランダム発行される。
 export function createPart<TType extends PartType>(
   type: TType,
@@ -99,7 +85,7 @@ function nonNegative(value: unknown): number {
 
 // 直列化された部品を id ごと復元する。種別が不正なら null、ほかの項目が不正ならその項目を安全な値へ
 // 落とす。
-export function deserializePart(serialized: AnyPart): AnyPart | null {
+function deserializePart(serialized: AnyPart): AnyPart | null {
   if (serialized === null || typeof serialized !== 'object'
     || !PART_TYPES.includes(serialized.type as PartType)) return null;
   // 種別に共通の項目。
@@ -157,10 +143,10 @@ export function deserializePart(serialized: AnyPart): AnyPart | null {
 }
 
 // 直列化された部品の一覧を復元する。種別が不正な部品は落とす。1つも残らなければ、既定の構成で
-// 組ませるため undefined を返す。
-export function deserializeParts(serialized: readonly AnyPart[]): AnyPart[] | undefined {
+// 組ませるため null を返す。
+export function deserializeParts(serialized: readonly AnyPart[]): AnyPart[] | null {
   const parts = Array.isArray(serialized)
     ? serialized.map(deserializePart).filter((part) => part !== null)
     : [];
-  return parts.length > 0 ? parts : undefined;
+  return parts.length > 0 ? parts : null;
 }

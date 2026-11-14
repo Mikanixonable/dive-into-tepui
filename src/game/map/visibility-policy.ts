@@ -35,8 +35,8 @@ const ENTITY_KEYS: Record<DynamicEntityKind, {
 
 // フォーカス対象が属する惑星系の代表 id(惑星なら自分、衛星なら親惑星)。ラグランジュ点の
 // id は所属天体の id へ戻してから引く。天体でない・恒星をフォーカスしているなら null。
-function focusSystemOf(celestialBodies: CelestialBodies, focusId: string | undefined): string | null {
-  if (focusId === undefined) return null;
+function focusSystemOf(celestialBodies: CelestialBodies, focusId: string | null): string | null {
+  if (focusId === null) return null;
   const motion = celestialBodies.findMotion(lagrangeParentId(focusId));
   if (motion === null) return null;
   if (motion.kind === 'planet') return motion.id;
@@ -47,7 +47,7 @@ function focusSystemOf(celestialBodies: CelestialBodies, focusId: string | undef
 // 状態に関わらず名前が見える id の集合。「距離が近いもの」をズーム距離で判定
 // すると操作の途中で行が明滅するので、カメラ位置から求めた重力系のメンバーで代用する。
 export function alwaysFullyVisibleIds(
-  celestialBodies: CelestialBodies, focusId: string | undefined,
+  celestialBodies: CelestialBodies, focusId: string | null,
   nearbyIds: Iterable<string> = [],
   toggles?: MapDisplayToggles,
 ): ReadonlySet<string> {
@@ -64,7 +64,7 @@ export function alwaysFullyVisibleIds(
     if (celestialBodies.has(id) && classVisible(id)) ids.add(id);
   }
 
-  if (focusId === undefined) return ids;
+  if (focusId === null) return ids;
 
   for (const id of celestialBodies.ancestorsOf(focusId)) {
     if (classVisible(id)) ids.add(id);
@@ -110,11 +110,11 @@ export class MapVisibilityPolicy {
     private readonly celestialBodies: CelestialBodies,
     private readonly toggles: MapDisplayToggles,
     revealed?: ReadonlySet<string>,
-    private readonly focusId?: string,
+    private readonly focusId?: string | null,
     nearbyIds: Iterable<string> = [],
   ) {
     this.revealed = revealed ?? null;
-    this.alwaysVisible = alwaysFullyVisibleIds(celestialBodies, focusId, nearbyIds, toggles);
+    this.alwaysVisible = alwaysFullyVisibleIds(celestialBodies, focusId ?? null, nearbyIds, toggles);
     this.nearby = new Set(nearbyIds);
   }
 
@@ -197,7 +197,7 @@ export class MapVisibilityPolicy {
         const planetId = this.celestialBodies.motionOf(id).primary?.id ?? null;
         if (planetId === null) return false;
         return this.toggles.satelliteOrbit
-          && (focusSystemOf(this.celestialBodies, this.focusId) === planetId || this.nearby.has(id));
+          && (focusSystemOf(this.celestialBodies, this.focusId ?? null) === planetId || this.nearby.has(id));
       }
       default: return false;
     }

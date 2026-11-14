@@ -64,7 +64,7 @@ const DEG = Math.PI / 180;
 const PREVIEW_MARKER_ID = 'creative-preview';
 
 // 置くと決まった物体。自機は実体ではなく配置の指定で表す。
-export type PlacedObject =
+type PlacedObject =
   | { readonly kind: 'ship'; readonly init: ModularShipInit }
   | { readonly kind: 'entity'; readonly entity: DynamicEntity };
 
@@ -75,7 +75,7 @@ export interface SerializedObjectPlacement {
 
 // 検証を通った配置の指定の受け手。実体を作るのは受け手の側。軌道標識は実体ではないので
 // 別の口へ渡す。
-export interface ObjectPlacementSink {
+interface ObjectPlacementSink {
   placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void;
   placeOrbitSlot(name: string, orbit: OrbitSlotOrbit): void;
 }
@@ -113,8 +113,8 @@ export class ObjectPlacement {
   }
 
   // オブジェクト配置モーダルを開く。focusId が基準天体になれる ID なら、基準天体の初期選択に使う。
-  public openObjectPlacer(focusId?: string): void {
-    this.panel.open(focusId !== undefined ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
+  public openObjectPlacer(focusId?: string | null): void {
+    this.panel.open(focusId != null ? { kind: 'body', celestialBody: focusId as ReferenceCelestialBody } : undefined);
   }
 
   // 種類と軌道要素を引き継いで配置パネルを開く。state を軌道要素へ逆算できないときは、

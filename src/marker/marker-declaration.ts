@@ -18,13 +18,13 @@ export interface MarkerDeclaration {
   // 要素の色。省略すると cls の CSS が決める色になる。
   readonly color?: string;
   // シンボルの回転 [deg]。省略すると直前のフレームの角度を保つ。
-  readonly rotationDeg?: number;
+  readonly rotationDeg?: number | null;
   // ラベルを既定位置へ固定し、押し出しの対象から外すか。
   readonly fixedLabel?: boolean;
   // 重なったときに残す度合い。大きいほど残る。
   readonly priority: number;
   // 視点からの距離。持たない宣言は奥行きの比較に加わらない。
-  readonly dist?: number;
+  readonly dist?: number | null;
   // 遮蔽で畳むか。立て続けているあいだに透明になり、そのまま伏せる。
   readonly occluded?: boolean;
   // 混雑したときにアイコンを消してよいか。既定は消してよい。

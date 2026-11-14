@@ -11,7 +11,7 @@ import type { OverlayLayers, OverlayLayerName } from './overlay-layer';
 
 // 表面を持つオーバーレイの種別。'mode' は表面を持たない論理登録(建造モードのように
 // ESC・一時停止・入力の取り合いだけを要するもの)で、openMode からだけ積まれる。
-export type OverlayKind = 'modal' | 'popup' | 'window' | 'mode';
+type OverlayKind = 'modal' | 'popup' | 'window' | 'mode';
 type SurfaceKind = Exclude<OverlayKind, 'mode'>;
 
 // kind と #hud 直下の物理層の対応。モーダルはゲート層の遮蔽幕より上でなければならない
@@ -28,7 +28,7 @@ export const UNCLIPPED_WINDOW_GROUP = 'unclipped-window';
 // 排他グループ名。
 export const SYSTEM_MODAL_GROUP = 'system-modal';
 
-export interface OverlaySpec {
+interface OverlaySpec {
   readonly kind: OverlayKind;
   readonly closeOnEscape: boolean;
   readonly closeOnOutsideClick: boolean;
@@ -47,7 +47,7 @@ export interface OverlaySpec {
 export type SurfaceSpec = Omit<OverlaySpec, 'kind'> & { readonly kind: SurfaceKind };
 
 // 表面を持たない登録の宣言。openMode() が受ける。kind は 'mode' に固定される。
-export type ModeSpec = Omit<OverlaySpec, 'kind'>;
+type ModeSpec = Omit<OverlaySpec, 'kind'>;
 
 // 各オーバーレイの持ち主が実装する、開閉判定に使うハンドル。閉じる実処理・対象要素の判定は
 // 実装側が持つ。
@@ -113,7 +113,7 @@ export class OverlayManager {
   public open(id: string, element: HTMLElement, handle: OverlayHandle, spec: SurfaceSpec): void {
     this.layers[KIND_LAYER[spec.kind]].appendChild(element);
     this.close(id);
-    this.evictGroup(id, spec.exclusiveGroup);
+    this.evictGroup(id, spec.exclusiveGroup ?? null);
     this.stack.push({ id, element, handle, spec });
     this.sync();
   }
@@ -122,7 +122,7 @@ export class OverlayManager {
   // kind は 'mode' になり、DOM の置き場はここでは扱わない。
   public openMode(id: string, handle: OverlayHandle, spec: ModeSpec): void {
     this.close(id);
-    this.evictGroup(id, spec.exclusiveGroup);
+    this.evictGroup(id, spec.exclusiveGroup ?? null);
     this.stack.push({ id, element: null, handle, spec: { ...spec, kind: 'mode' } });
     this.sync();
   }
@@ -143,7 +143,7 @@ export class OverlayManager {
     const entry = this.stack.find((e) => e.id === id);
     if (!entry) return;
     entry.spec = spec;
-    this.evictGroup(id, spec.exclusiveGroup);
+    this.evictGroup(id, spec.exclusiveGroup ?? null);
     this.sync();
   }
 
@@ -156,8 +156,8 @@ export class OverlayManager {
   }
 
   // exceptId 以外で group に属する開いているオーバーレイを閉じる。
-  private evictGroup(exceptId: string, group: string | undefined): void {
-    if (group === undefined) return;
+  private evictGroup(exceptId: string, group: string | null): void {
+    if (group === null) return;
     for (const other of [...this.stack]) {
       if (other.id !== exceptId && other.spec.exclusiveGroup === group) other.handle.close();
     }

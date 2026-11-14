@@ -108,7 +108,7 @@ export class SimSpeedManager {
   }
 
   // 直近ノードの実行時刻までの自動ワープをトグルする。
-  public toggleAutoWarpToFirstNode(firstNode: KinematicState | undefined, simTime: number): void {
+  public toggleAutoWarpToFirstNode(firstNode: KinematicState | null, simTime: number): void {
     // ノードがなければ、起こせなかったこととその理由だけを記録する
     if (!firstNode) {
       this.events.record({ kind: 'autoWarpUnavailable', reason: 'noNode' });

@@ -63,7 +63,7 @@ export class PhysicalObjectListRowTree {
   // このフレームで組み直されたか — 真なら既存行も並び順どおりの位置へ移す。
   public syncRow(
     rows: Map<string, RowNode>, id: string,
-    childrenOf: ReadonlyMap<string, string[]>, focusId: string | undefined, container: HTMLElement,
+    childrenOf: ReadonlyMap<string, string[]>, focusId: string | null, container: HTMLElement,
     focusAncestors: ReadonlySet<string>, matchAncestors: ReadonlySet<string>, reorder: boolean,
     seen: Set<string>,
   ): void {

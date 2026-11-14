@@ -25,7 +25,6 @@ import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ControlSelection } from '../control-selection';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
 import type { Stage } from '../stages/stage';
 import type { Viewer } from '../viewer/viewer';
 import type { ObjectPickable } from '../pickable/object-pickable';
@@ -98,12 +97,12 @@ export class HudPanelPresenter {
   // 候補・実体・天体名(未登録なら id)の順に引く。
   private focusName(pickables: readonly ObjectPickable[]): string {
     const id = focusTargetId(this.cameraSystem.activeFocus);
-    if (id === undefined) return '固定点';
+    if (id === null) return '固定点';
     const role = frameRoleOf(id);
     if (role !== null) return frameRoleName(role);
     const pickable = pickables.find((item) => item.id === id);
     if (pickable) return pickable.name;
-    const entity: DynamicEntity | undefined = this.dynamicSystem.all().find((item) => item.id === id);
+    const entity = this.dynamicSystem.all().find((item) => item.id === id);
     if (entity) return entity.name;
     return this.celestialSystem.nameOf(id);
   }
@@ -111,7 +110,7 @@ export class HudPanelPresenter {
   // view で表に出ている常設パネルを、表示窓 displayWindow・軌道要素の基準 orbitRef・配色 palette で
   // 組んだ値へ合わせる。camera はこのフレームの表示カメラ、nowMs はフレームの実時刻 [ms]。
   public sync(
-    view: ViewMode, displayWindow: DisplayWindow, orbitRef: OrbitReference | undefined, palette: ThemePalette,
+    view: ViewMode, displayWindow: DisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
     camera: CameraFrame, nowMs: number,
   ): void {
     this.hud.syncPanels(view, this.viewModels(view, displayWindow, orbitRef, palette), camera, nowMs);
@@ -119,7 +118,7 @@ export class HudPanelPresenter {
 
   // 常設パネルの値を束ねる。表に出ているビューのパネルのぶんだけを組む。
   private viewModels(
-    view: ViewMode, displayWindow: DisplayWindow, orbitRef: OrbitReference | undefined, palette: ThemePalette,
+    view: ViewMode, displayWindow: DisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
   ): HudPanelViewModels {
     const controlled = this.controlSelection.current;
     // 戦闘ビューにしか出ないパネルは、マップでは値を組まない。
@@ -137,7 +136,7 @@ export class HudPanelPresenter {
         setSimSpeed: (speed) => this.simSpeedCommands.setSpeed(speed),
       },
       vessel: combatControlled === null ? null : this.vesselViewModel(combatControlled, view),
-      orbit: controlled === null || orbitRef === undefined
+      orbit: controlled === null || orbitRef === null
         ? null
         : this.orbitViewModel(controlled, orbitRef),
       target: this.targetViewModel(combatControlled),
@@ -155,7 +154,7 @@ export class HudPanelPresenter {
         windowDurationSec: displayWindow.duration,
         palette,
       },
-      analysisSubject: controlled === null || orbitRef === undefined
+      analysisSubject: controlled === null || orbitRef === null
         ? null
         : { entity: controlled, reference: orbitRef, target: this.approachTarget() },
     };

@@ -8,7 +8,7 @@ import type { CameraFrame } from '../../camera/camera-frame';
 
 // 描く曲線の形。閉じた式で書けるものと、離散サンプルの節点列の2つがある。sample と knots は
 // 基準点(GuideCurveDisplay.origin)からの相対位置を返す。
-export type GuideCurveShape =
+type GuideCurveShape =
   | { readonly kind: 'analytic'; readonly sample: CurveSampler; readonly initialSegments?: number }
   | { readonly kind: 'hermite'; readonly knots: CurveKnots };
 
