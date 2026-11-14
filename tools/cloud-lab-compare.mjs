@@ -700,6 +700,9 @@ async function main() {
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
     serveDir: buildDir, port, debugPort, profilePrefix: 'tepui-cloud-compare-', onEvent,
+    // 並走する Chrome があると最初の評価だけで 60 秒を超えることがある。
+    // 撮影ツールと同じ 300 秒にする。
+    requestTimeoutMs: 300_000,
   });
   const shots = new Map();
   // 時刻 0 の低気圧の谷の配置(緯度・経度 [rad]、深さ [hPa]、半径 [m])。ページの進路モジュールから引く。
