@@ -160,7 +160,7 @@ export class CreativeStage extends Stage {
 
   // 操作艦の弾薬チェーンへマガジンを1つ追加する。操作艦がいなければ、操作艦が要ることを記録する。
   public addMagazineToShip(): void {
-    const player = this.ship;
+    const player = this.controlledShip;
     if (player === null || !player.motion.alive) {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'addMagazine' });
       return;
@@ -171,7 +171,7 @@ export class CreativeStage extends Stage {
 
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければ、操作艦が要ることを記録する。
   public refillShipRcsFuel(): void {
-    const player = this.ship;
+    const player = this.controlledShip;
     if (player === null || !player.motion.alive) {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'refillRcsFuel' });
       return;
@@ -194,7 +194,7 @@ export class CreativeStage extends Stage {
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければ、操作艦が要ることを記録する。
   public spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
-    const player = this.ship;
+    const player = this.controlledShip;
     if (player === null || !player.motion.alive) {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
       return;
@@ -242,7 +242,7 @@ export class CreativeStage extends Stage {
     camera: CameraFrame, view: ViewMode, displayTime: number,
   ): void {
     super.sync(camera, view, displayTime);
-    const ship = this.ship;
+    const ship = this.controlledShip;
     this.stageControlsPanel.setShipRequiredButtonsEnabled(ship !== null && ship.motion.alive);
     // 設定パネルは戦闘ビューでのみ出す(SPEC/GAME.md「9.2 設定パネル」)。レールは
     // 戦闘側に固定し、マップでは隠す。
