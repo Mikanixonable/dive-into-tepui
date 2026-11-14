@@ -14,7 +14,6 @@ import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { constructionRotationRing } from '../../src/game/ship/ship-construction-rotation';
 import { RotationRingView } from '../../src/render/dynamic/ship/rotation-ring-view';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
-import { PROTEIN_CASES } from './protein-cases';
 import { SHIP_CASES } from './ship-cases';
 import { THUMBNAIL_CASES } from './thumbnail-cases';
 import { EARTH_CASES } from './earth-cases';
@@ -226,7 +225,6 @@ export const CASES = {
   ...PLUME_CASES,
   ...BELT_CASES,
   ...CASING_CASES,
-  ...PROTEIN_CASES,
   ...ASSEMBLY_CASES,
   ...THUMBNAIL_CASES,
 } as const satisfies Record<string, CaseBuilder>;

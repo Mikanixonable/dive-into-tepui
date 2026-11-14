@@ -96,7 +96,7 @@ function compoundContactGeometry(
   return hit === null ? null : reverseContactGeometry(compoundGeometry(hit));
 }
 
-// タンパク質の球列など、球の外接半径ではなく種別固有の当たり形状を持つ側の狭域判定。
+// 球列など、球の外接半径ではなく種別固有の当たり形状を持つ側の狭域判定。
 // 接触解決器へ渡す法線は常に a → b に揃える。
 function customContactGeometry(
   a: EntityContactParticipant, aWork: KinematicState,
@@ -161,7 +161,7 @@ function customContactGeometry(
     return reverseContactGeometry({ normal: sphereHitB.normal, toi: 1, pushOut: sphereHitB.depth, contactPoint: sphereHitB.point });
   }
 
-  // protein／mesh の既存固有形状を優先し、その次に compound の正確な狭域判定を使う。
+  // 既存の固有形状を優先し、その次に compound の正確な狭域判定を使う。
   // compound が外れた場合は外接球へ戻さず、形状間の空間を接触にしない。
   const compound = compoundContactGeometry(
     a as AttitudeHistoryParticipant, aWork,

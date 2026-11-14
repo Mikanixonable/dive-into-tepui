@@ -11,9 +11,11 @@ const BAND_LATITUDES = [75, 45, 15, -15, -45, -75] as const;
 export class AtmosphericWindField {
   public sample(latitudeRad: number, heightM: number): WindVector {
     const a = Math.abs(latitudeRad);
-    const trade = smoothstep(0.18, 0.32, a);
-    const westerly = smoothstep(0.28, 0.55, a) * (1 - smoothstep(0.58, 0.72, a));
-    const polar = smoothstep(0.62, 1.25, a);
+    // 緯度帯の重み。貿易風は 0〜30° で東向き成分が負、偏西風は 30〜60° で正、
+    // 極偏東風は 60〜90° で負になるよう、帯の窓を実際の緯度帯へ付ける。
+    const trade = smoothstep(0.18, 0.32, a) * (1 - smoothstep(0.42, 0.58, a));
+    const westerly = smoothstep(0.42, 0.58, a) * (1 - smoothstep(0.94, 1.15, a));
+    const polar = smoothstep(0.98, 1.25, a);
     const layer = smoothstep(SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT, heightM);
     const hemisphere = latitudeRad < 0 ? -1 : 1;
     const eastSurface = -6 * trade + 7 * westerly - 6 * polar;
@@ -27,10 +29,11 @@ export class AtmosphericWindField {
   // TSL シェーダーグラフ向けサンプリング。CPU 側とシェーダー側の風速プロファイルを一元化する。
   public sampleNode(latitudeRad: FloatNode, heightM: number): Vec2Node {
     const absolute = abs(latitudeRad);
-    const trade = nodeSmoothstep(float(0.18), float(0.32), absolute);
-    const westerly = nodeSmoothstep(float(0.28), float(0.55), absolute)
-      .mul(nodeSmoothstep(float(0.58), float(0.72), absolute).oneMinus());
-    const polar = nodeSmoothstep(float(0.62), float(1.25), absolute);
+    const trade = nodeSmoothstep(float(0.18), float(0.32), absolute)
+      .mul(nodeSmoothstep(float(0.42), float(0.58), absolute).oneMinus());
+    const westerly = nodeSmoothstep(float(0.42), float(0.58), absolute)
+      .mul(nodeSmoothstep(float(0.94), float(1.15), absolute).oneMinus());
+    const polar = nodeSmoothstep(float(0.98), float(1.25), absolute);
     const layer = nodeSmoothstep(float(SURFACE_HEIGHT), float(UPPER_CLOUD_HEIGHT), float(heightM));
     const hemisphere = sign(latitudeRad);
     const eastSurface = trade.mul(-6).add(westerly.mul(7)).sub(polar.mul(6));

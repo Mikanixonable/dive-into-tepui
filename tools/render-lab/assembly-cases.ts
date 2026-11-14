@@ -8,7 +8,6 @@ import {
 } from '../../src/render/dynamic/dynamic-entity/assembly-enemy-view';
 import { AssemblyPartDebrisView } from '../../src/render/dynamic/dynamic-entity/assembly-part-debris-view';
 import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
-import { DEFAULT_PROTEIN_DISPLAY } from '../../src/render/protein/protein-display';
 import { SunLight } from '../../src/render/pipeline/sun-light';
 import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';
 import { kinematicState } from '../../src/physics/kinematic-state';
@@ -42,8 +41,7 @@ function staticFrame(): DynamicViewFrame {
       radialScale: () => 1,
     },
     style: 'realistic',
-    visual: { proteinVibration: false, thrustPlume: 'simple' },
-    proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
+    visual: { thrustPlume: 'simple' },
     shipModuleEmphasis: null,
     sunLight,
     bodyShadow: new BodyShadow(sunLight),

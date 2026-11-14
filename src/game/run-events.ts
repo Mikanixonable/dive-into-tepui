@@ -6,7 +6,6 @@ import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
 import type { EnemyDeathCause } from './stages/stage-outcome';
 import type { Attitude } from '../physics/attitude';
 import type { KinematicState } from '../physics/kinematic-state';
-import type { ProteinPhase } from '../render/protein/protein-display';
 import type { Vec3 } from '../math/vec3';
 
 // クリエイティブモードで、操作艦が要る操作。
@@ -90,14 +89,6 @@ export type RunEventBody =
     readonly kind: 'shipExploded';
     readonly state: KinematicState;
     readonly modelScale: number;
-  }
-  // 敵機がタンパク質の機能部位から1発撃った。muzzleState は砲口の位置と機体の速度。
-  | { readonly kind: 'proteinSiteFired'; readonly muzzleState: KinematicState }
-  // タンパク質敵の被弾で、機能部位が停止したか構造フェーズが遷移した。state は着弾点と機体の速度。
-  | {
-    readonly kind: 'proteinStateChanged';
-    readonly state: KinematicState;
-    readonly transition: ProteinPhase | 'site-disabled';
   }
   // 組み立て型の敵が発射部から1発撃った。muzzleState は発射位置と機体の速度。
   | { readonly kind: 'assemblyEmitterFired'; readonly muzzleState: KinematicState }
