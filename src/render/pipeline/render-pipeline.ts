@@ -17,6 +17,7 @@ import { AmbientSource } from './lighting/ambient-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
 import { SphereSpecular } from './lighting/sphere-light';
 import { SunSource } from './lighting/sun-source';
+import { SunExtinction } from './sun-extinction';
 import { WorkLightSource } from './lighting/work-light-source';
 import { MaterialPass } from './material-pass';
 import { ShadowPass } from './shadow/shadow-pass';
@@ -59,6 +60,7 @@ export class RenderPipeline {
   private readonly antialiasPass: AntialiasPass;
   private readonly lensPass: LensPass;
   private readonly _sunLight: SunLight;
+  private readonly _sunExtinction: SunExtinction;
   private readonly _exposure: Exposure;
   private readonly target: THREE.RenderTarget;
   // composite パスと 3D UI パスの描画先。トーンマッピングと表示用色空間への変換を終えた絵が入る。
@@ -94,6 +96,7 @@ export class RenderPipeline {
   // 以下は、毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・環境光の割合・
   // 大気を持つ天体)の書き込み先。
   public get sunLight(): SunLight { return this._sunLight; }
+  public get sunExtinction(): SunExtinction { return this._sunExtinction; }
   public get exposure(): Exposure { return this._exposure; }
   public get bodyShadow(): BodyShadow { return this._bodyShadow; }
   public get ringShadow(): RingShadow { return this._ringShadow; }
@@ -109,6 +112,7 @@ export class RenderPipeline {
   ) {
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
+    this._sunExtinction = new SunExtinction(this._sunLight);
     this._exposure = new Exposure();
     this.shadowMaps = new ShadowMaps(
       renderer, gpu, graphics.meshShadow,
@@ -124,7 +128,7 @@ export class RenderPipeline {
     );
     this.sphereSpecular = new SphereSpecular();
     this.sunSource = new SunSource(
-      this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
+      this._sunLight, this.shadowPass, this.sphereSpecular, this._sunExtinction, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
       this._sunLight, this._bodyShadow, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel);
     this._ambient = new AmbientSource(this._sunLight);

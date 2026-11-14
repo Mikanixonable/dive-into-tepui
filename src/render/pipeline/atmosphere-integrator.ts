@@ -19,12 +19,12 @@ import type { AtmosphereBody } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { BodyShadow } from './shadow/body-shadow';
 import type { SunLight } from './sun-light';
+import {
+  depthToSpace, polarStretchOf, sunPathDepth, sunPathGeometry, toSphereSpace,
+} from './sun-path-depth';
 
 // 消散係数の下限 [1/m]。散乱の割合を消散で割るときの 0/0 を塞ぐ。
 const MIN_EXTINCTION = 1e-30;
-
-// 極半径/赤道半径の下限。潰し量はこの逆数なので、0 を塞ぐ。太陽系で最も扁平な土星でも 0.90。
-const MIN_POLAR_RATIO = 1e-3;
 
 const NO_AIRGLOW_COLOR = new THREE.Vector3();
 
@@ -86,33 +86,6 @@ interface LayerContribution {
   readonly inscatter: Vec3Node;
 }
 
-// 半径 r の点から天頂角余弦 mu(0 以上)の向きへ大気の外まで抜けるまでの、散乱係数 1 あたりの
-// 光学的厚み。Chapman 関数を Ch0/((Ch0−1)·mu+1) で近似する — mu=1 で 1、mu=0 で √(πr/2H) と
-// 両端で厳密値に一致し、その間を単調に埋める。
-const outwardDepth = Fn((
-  [radius, mu, surfaceRadius, scaleHeight]: readonly [FloatNode, FloatNode, FloatNode, FloatNode],
-) => {
-  const chapmanZero = sqrt(PI.mul(radius).div(scaleHeight).mul(0.5));
-  const chapman = chapmanZero.div(chapmanZero.sub(1).mul(mu).add(1));
-  return scaleHeight.mul(exp(surfaceRadius.sub(radius).div(scaleHeight))).mul(chapman);
-});
-
-// 半径 radius・天頂角余弦 mu の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。
-// 降る向き(mu<0)の経路は、最接近点で折り返す2本の上向きの経路として組み、最接近点が地表より
-// 内側へ落ちる向きでは地表で打ち切る。**打ち切った値は、地平線を掠める経路の厚みの続きである**
-// — 天体内部を貫通する直射日光の遮蔽は horizonVisibility が判定する。
-//
-// **どちらの枝も outwardDepth へ渡す余弦を非負に保つ** — select は選ばれない枝も評価するので、
-// 負の余弦を通すと Chapman 近似の分母が 0 を跨ぎ、選ばれない側で無限大が湧く。
-const depthToSpace = Fn((
-  [radius, mu, surfaceRadius, scaleHeight]: readonly [FloatNode, FloatNode, FloatNode, FloatNode],
-) => {
-  const ascending = outwardDepth(radius, abs(mu), surfaceRadius, scaleHeight);
-  const perigee = max(radius.mul(sqrt(max(float(1).sub(mu.mul(mu)), 0))), surfaceRadius);
-  const descending = outwardDepth(perigee, float(0), surfaceRadius, scaleHeight).mul(2).sub(ascending);
-  return select(greaterThan(mu, 0), ascending, descending);
-});
-
 // レイリー散乱の位相関数。等方散乱を 1 とする目盛りなので、前後で 1.5、側方で 0.75 になる。
 const rayleighPhase = (cosTheta: FloatNode): FloatNode => cosTheta.mul(cosTheta).add(1).mul(0.75);
 
@@ -173,7 +146,7 @@ export class AtmosphereIntegrator {
     this.slot.cutoffRadius.value = cutoffRadius;
     // **極軸は単位ベクトルでなければならない** — ノルムが 1 でない場合、扁平率の圧縮係数が二乗で過剰に掛かる。
     this.slot.polarAxis.value.copy(body.polarAxis).normalize();
-    this.slot.polarStretch.value = 1 / Math.max(body.polarRatio, MIN_POLAR_RATIO) - 1;
+    this.slot.polarStretch.value = polarStretchOf(body.polarRatio);
     this.slot.rayleigh.value.copy(body.optics.rayleigh);
     this.slot.rayleighScaleHeight.value = body.optics.rayleighScaleHeight;
     this.slot.mie.value = body.optics.mie;
@@ -229,7 +202,7 @@ export class AtmosphereIntegrator {
   // **この空間の長さは描画座標の長さではない。** 引き伸ばした向きぶん伸びているので、距離を
   // 実寸として使う値は、その向きの伸び率で割ってから返すこと。
   private toSphereSpace(vector: Vec3Node): Vec3Node {
-    return vector.add(this.slot.polarAxis.mul(dot(vector, this.slot.polarAxis).mul(this.slot.polarStretch)));
+    return toSphereSpace(vector, this.slot.polarAxis, this.slot.polarStretch);
   }
 
   // 視線を真球にした空間へ写した形。この空間では地表も裾も等密度面も殻も中心を共有する
@@ -434,21 +407,12 @@ export class AtmosphereIntegrator {
   // 太陽へ正対した濃い大気は、同じ場所のアルベド 1 の拡散面と同じ表示値になる。
   private sunRadianceAt(point: Vec3Node): Vec3Node {
     // 太陽光がその点まで通ってきた大気の光学的厚み。天頂角の余弦だけで決まる。
-    const offset = this.toSphereSpace(sub(point, this.slot.center));
-    const radius = max(length(offset), max(this.slot.surfaceRadius, 1));
-    const toSun = sub(this.sunLight.position, point);
-    const stretchedToSun = this.toSphereSpace(toSun);
-    const sunMu = dot(offset.div(radius), normalize(stretchedToSun));
-    // 厚みは引き伸ばした空間の長さで出るので、その向きの伸び率で実寸へ戻す。
-    const sunPathScale = max(length(toSun), 1).div(max(length(stretchedToSun), 1));
-    const sunDepth: Vec3Node = this.slot.rayleigh
-      .mul(depthToSpace(radius, sunMu, this.slot.surfaceRadius, this.slot.rayleighScaleHeight).mul(sunPathScale))
-      .add(vec3(this.slot.mie
-        .mul(depthToSpace(radius, sunMu, this.slot.surfaceRadius, this.slot.mieScaleHeight)).mul(sunPathScale)));
-    const irradiance = this.sunLight.intensity.div(max(dot(toSun, toSun), 1));
+    const sunPath = sunPathGeometry(point, this.sunLight.position, this.slot);
+    const sunDepth = sunPathDepth(sunPath, this.slot);
+    const irradiance = this.sunLight.intensity.div(max(dot(sunPath.toSun, sunPath.toSun), 1));
     const shadow = this.bodyShadow
       .transmittance(point)
-      .mul(this.horizonVisibility(radius, sunMu, toSun));
+      .mul(this.horizonVisibility(sunPath.radius, sunPath.sunMu, sunPath.toSun));
     return exp(sunDepth.negate()).mul(irradiance.div(PI)).mul(shadow).mul(this.sunLight.color);
   }
 
