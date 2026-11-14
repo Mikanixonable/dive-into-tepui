@@ -5,7 +5,6 @@ import { ModularShip, type SerializedModularShip } from '../../ship/modular-ship
 import { Bullet, type SerializedBullet } from './bullet';
 import { DebrisPiece, type SerializedDebrisPiece } from './debris-piece';
 import { MetalEnemy, type SerializedMetalEnemy } from './metal-enemy';
-import { ProteinEnemy, type SerializedProteinEnemy } from './protein-enemy';
 import { AssemblyEnemy, type SerializedAssemblyEnemy } from './assembly-enemy';
 import { AmmoPickup, RcsFuelPickup, type SerializedAmmoPickup, type SerializedRcsFuelPickup } from './pickup';
 import type { DynamicEntity } from './dynamic-entity';
@@ -15,7 +14,6 @@ import type { EntityRegistry, SpawnGate } from '../entity-registry';
 export type SerializedDynamicEntity =
   | SerializedModularShip
   | SerializedMetalEnemy
-  | SerializedProteinEnemy
   | SerializedAssemblyEnemy
   | SerializedAmmoPickup
   | SerializedRcsFuelPickup
@@ -34,7 +32,7 @@ export interface DynamicEntityClass {
 }
 
 const ENTITY_CLASSES: readonly DynamicEntityClass[] = [
-  ModularShip, MetalEnemy, ProteinEnemy, AssemblyEnemy, AmmoPickup, RcsFuelPickup, Bullet, DebrisPiece,
+  ModularShip, MetalEnemy, AssemblyEnemy, AmmoPickup, RcsFuelPickup, Bullet, DebrisPiece,
 ];
 
 // 直列化された種別タグは未検証の文字列なので、知らない種別なら null を返す。
