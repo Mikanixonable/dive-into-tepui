@@ -37,10 +37,10 @@ const SITES = [
 const TIER_KM_PER_PX = 4;
 const FRAMES = 12;
 const START_DISPLAY_TIME_S = 21600;
-// 雲の種類。both は積雲・巻雲・雲影、cirrus は積雲の細部をオフにして巻雲(大気)だけを見る。
+// 雲の種類。both は積雲・巻雲・雲影、cirrus は積雲のトグルを切って巻雲(大気)だけを見る。
 const KINDS = [
   { name: 'both', options: [] },
-  { name: 'cirrus', options: [['cumulusDetail', 0]] },
+  { name: 'cirrus', options: [['cumulus', false]] },
 ];
 // 絵が落ち着くまで撮り直す上限。
 const MAX_SETTLE_CAPTURES = 8;
