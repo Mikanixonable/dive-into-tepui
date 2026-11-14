@@ -19,6 +19,7 @@ import type {
 } from '../../tsl-types';
 import type { BodyShadow } from '../shadow/body-shadow';
 import type { SunLight } from '../sun-light';
+import type { SunTransmittanceTables } from '../sun-transmittance-tables';
 import type { ShadingSample } from './shading-sample';
 
 // 用意するスロットの本数。同時に使う本数は描画設定 planetLightCount(0〜この値)で決まる。
@@ -117,8 +118,9 @@ class PlanetLightSlot implements LightSource {
     private readonly sphereSpecular: SphereSpecular,
     private readonly slot: SlotUniforms,
     private model: number,
+    sunTables: SunTransmittanceTables,
   ) {
-    this.image = new PlanetLightImage(sunLight, bodyShadow);
+    this.image = new PlanetLightImage(sunLight, bodyShadow, sunTables);
   }
 
   public hasContribution(): boolean { return this.slot.radius.value > 0; }
@@ -241,10 +243,10 @@ export class PlanetLightSource {
   // スロットの本数(描画設定 planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
   public constructor(
     sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular, private count: number,
-    model: number,
+    model: number, sunTables: SunTransmittanceTables,
   ) {
     this.slotSources = this.slots.map(
-      (slot) => new PlanetLightSlot(sunLight, bodyShadow, sphereSpecular, slot, model));
+      (slot) => new PlanetLightSlot(sunLight, bodyShadow, sphereSpecular, slot, model, sunTables));
   }
 
   // 同時に使用するスロット本数を変更する。次回の set() 呼び出し時から適用される。

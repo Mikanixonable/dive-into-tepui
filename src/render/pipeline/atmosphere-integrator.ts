@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, greaterThanEqual, length,
-  lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, uniform, vec2,
+  lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, texture, uniform, vec2,
   vec3,
 } from 'three/tsl';
 import { rayMarch, type MediumSample } from '../ray-march';
@@ -20,13 +20,17 @@ import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform
 import type { BodyShadow } from './shadow/body-shadow';
 import type { SunLight } from './sun-light';
 import {
-  depthToSpace, polarStretchOf, sunPathDepth, sunPathGeometry, toSphereSpace,
+  depthToSpace, polarStretchOf, sunPathGeometry, toSphereSpace,
 } from './sun-path-depth';
+import {
+  sunTransmittanceUv, type SunTransmittanceTables,
+} from './sun-transmittance-tables';
 
 // 消散係数の下限 [1/m]。散乱の割合を消散で割るときの 0/0 を塞ぐ。
 const MIN_EXTINCTION = 1e-30;
 
 const NO_AIRGLOW_COLOR = new THREE.Vector3();
+const NO_OZONE_ABSORPTION = new THREE.Vector3();
 
 // 天体 1 体ぶんの uniform。surfaceRadius は赤道半径、cutoffRadius は大気の裾を打ち切る半径
 // (赤道半径 + 打ち切り高度)、steps はこの層の積分におけるサンプル点数。polarAxis は扁平化する極軸方向の
@@ -43,10 +47,16 @@ interface BodySlot {
   readonly mie: FloatUniform;
   readonly mieScaleHeight: FloatUniform;
   readonly mieAnisotropy: FloatUniform;
+  readonly ozone: Vec3Uniform;
+  readonly ozoneCenter: FloatUniform;
+  readonly ozoneHalfThickness: FloatUniform;
   readonly airglowColor: Vec3Uniform;
   readonly airglowStrength: FloatUniform;
   readonly airglowAltitude: FloatUniform;
   readonly airglowScaleHeight: FloatUniform;
+  // その天体の光学から焼いた直射光の透過率表と、表の高度軸の上限 [m]。
+  readonly sunTransmittance: THREE.TextureNode;
+  readonly sunAltitudeMax: FloatUniform;
 }
 
 // 視線を、天体を自転軸方向へ引き伸ばして真球にした空間で見た形。**この空間の長さは描画座標の
@@ -110,6 +120,7 @@ export class AtmosphereIntegrator {
   public constructor(
     private readonly sunLight: SunLight,
     private readonly bodyShadow: BodyShadow,
+    private readonly sunTables: SunTransmittanceTables,
   ) {
     this.slot = {
       steps: uniform(1),
@@ -123,10 +134,15 @@ export class AtmosphereIntegrator {
       mie: uniform(0),
       mieScaleHeight: uniform(1),
       mieAnisotropy: uniform(0),
+      ozone: uniform(new THREE.Vector3()),
+      ozoneCenter: uniform(0),
+      ozoneHalfThickness: uniform(1),
       airglowColor: uniform(new THREE.Vector3()),
       airglowStrength: uniform(0),
       airglowAltitude: uniform(0),
       airglowScaleHeight: uniform(1),
+      sunTransmittance: texture(sunTables.forEmpty().texture),
+      sunAltitudeMax: uniform(1),
     };
     this.cloudLayers = new AtmosphereCloudLayers();
   }
@@ -152,6 +168,14 @@ export class AtmosphereIntegrator {
     this.slot.mie.value = body.optics.mie;
     this.slot.mieScaleHeight.value = body.optics.mieScaleHeight;
     this.slot.mieAnisotropy.value = body.optics.mieAnisotropy;
+    const ozone = body.optics.ozone;
+    if (ozone === undefined) {
+      this.slot.ozone.value.copy(NO_OZONE_ABSORPTION);
+    } else {
+      this.slot.ozone.value.copy(ozone.absorption);
+      this.slot.ozoneCenter.value = ozone.centerAltitude;
+      this.slot.ozoneHalfThickness.value = ozone.halfThickness;
+    }
     const airglow = body.optics.airglow;
     if (airglow === undefined) {
       this.slot.airglowColor.value.copy(NO_AIRGLOW_COLOR);
@@ -164,6 +188,10 @@ export class AtmosphereIntegrator {
       this.slot.airglowAltitude.value = airglow.altitude;
       this.slot.airglowScaleHeight.value = airglow.scaleHeight;
     }
+    // 太陽光が層へ届くまでの透過率は、地表へ届く直射光と同じ表を引く — 同じ経路モデル。
+    const table = this.sunTables.forBody(body);
+    this.slot.sunTransmittance.value = table.texture;
+    this.slot.sunAltitudeMax.value = table.altitudeMax;
   }
 
   // 視線 1 本がこの層を通って受ける透過率と、この層が視線へ足す内部散乱。opaqueDist は視線が
@@ -377,7 +405,13 @@ export class AtmosphereIntegrator {
     const altitude = radius.sub(this.slot.surfaceRadius);
     const rayleigh: Vec3Node = this.slot.rayleigh.mul(exp(altitude.div(this.slot.rayleighScaleHeight).negate()));
     const mie = this.slot.mie.mul(exp(altitude.div(this.slot.mieScaleHeight).negate()));
-    const extinction: Vec3Node = rayleigh.add(vec3(mie));
+    // オゾン層は高度のテント状の吸収。散乱には足さず消散だけに効く — 消す光が増えるので、
+    // 散乱が消散に占める割合はそのぶん下がり、層の中を通る視線と内部散乱の両方が暗くなる。
+    const ozoneDensity = max(
+      float(0),
+      float(1).sub(abs(altitude.sub(this.slot.ozoneCenter)).div(this.slot.ozoneHalfThickness)),
+    );
+    const extinction: Vec3Node = rayleigh.add(vec3(mie)).add(this.slot.ozone.mul(ozoneDensity));
 
     // 視線へ向かう散乱は、成分ごとの散乱係数に位相関数を掛けて重みを付けた和。
     const sunVector = sub(this.sunLight.position, point);
@@ -406,14 +440,18 @@ export class AtmosphereIntegrator {
   // 目盛りは拡散面と揃える(放射照度を π で割る)。散乱した割合をアルベドと見なすので、
   // 太陽へ正対した濃い大気は、同じ場所のアルベド 1 の拡散面と同じ表示値になる。
   private sunRadianceAt(point: Vec3Node): Vec3Node {
-    // 太陽光がその点まで通ってきた大気の光学的厚み。天頂角の余弦だけで決まる。
+    // 太陽光がその点まで通ってきた大気の透過率。地表へ届く直射光と同じ表を、
+    // 天頂角余弦と高度で引く(同じ経路モデルの値が共有される)。
     const sunPath = sunPathGeometry(point, this.sunLight.position, this.slot);
-    const sunDepth = sunPathDepth(sunPath, this.slot);
+    const uv = sunTransmittanceUv(
+      sunPath.sunMu, sunPath.radius.sub(this.slot.surfaceRadius), this.slot.sunAltitudeMax,
+    );
     const irradiance = this.sunLight.intensity.div(max(dot(sunPath.toSun, sunPath.toSun), 1));
     const shadow = this.bodyShadow
       .transmittance(point)
       .mul(this.horizonVisibility(sunPath.radius, sunPath.sunMu, sunPath.toSun));
-    return exp(sunDepth.negate()).mul(irradiance.div(PI)).mul(shadow).mul(this.sunLight.color);
+    return this.slot.sunTransmittance.sample(uv).rgb
+      .mul(irradiance.div(PI)).mul(shadow).mul(this.sunLight.color);
   }
 
   // 大気の中の 1 点から見て、恒星がその天体自身の地平線の上に出ている割合 0..1。

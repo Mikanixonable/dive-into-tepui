@@ -50,6 +50,8 @@ export interface IlluminationTargets {
   readonly atmosphere: { setDraws(draws: readonly AtmosphereDraw[]): void };
   // 直射光が抜ける大気。atmosphere へ渡すのと同じ天体の列を受ける。
   readonly sunExtinction: { set(bodies: readonly AtmosphereBody[]): void };
+  // 天空光を届ける大気。sunExtinction と同じ列を受ける。
+  readonly skyLight: { set(bodies: readonly AtmosphereBody[]): void };
 }
 
 export class CelestialIllumination {
@@ -103,7 +105,9 @@ export class CelestialIllumination {
     // 大気パスが描く天体と同じ列を、直射光の消衰へも渡す — 描かない大気は光も減らさない。
     const draws = atmosphereDraws([...atmospheres.values()], graphics.atmosphere);
     this.targets.atmosphere.setDraws(draws);
-    this.targets.sunExtinction.set(draws.map((draw) => draw.body));
+    const bodies = draws.map((draw) => draw.body);
+    this.targets.sunExtinction.set(bodies);
+    this.targets.skyLight.set(bodies);
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
