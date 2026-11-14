@@ -140,7 +140,8 @@ export class CloudShadowRenderer {
           const cloud = this.fieldAt(up);
           // 細部はタップごとに、幅の上で解像できる段だけを重ねる。
           const detail = this.shape.detailAt(
-            up, sampleWidth, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus, surfaceWind);
+            up, sampleWidth, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus, surfaceWind,
+            this.shape.grainOf(cloud));
           const cloudTop = this.shape.cloudTop(
             cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), detail).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);

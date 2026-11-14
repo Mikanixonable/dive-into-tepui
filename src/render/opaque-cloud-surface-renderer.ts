@@ -298,7 +298,8 @@ export class OpaqueCloudSurfaceRenderer {
   // 運ぶ風の東・北の成分 [m/s]。
   private detailAt(direction: Vec3Node, width: FloatNode, cloud: CloudSample, wind: Vec2Node): FloatNode {
     return this.shape.detailAt(
-      direction, width, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus, wind);
+      direction, width, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus, wind,
+      this.shape.grainOf(cloud));
   }
 
   // 覆い尽くされている割合と比べるディザの閾値。**天体に貼った値** — 画面の画素に固定すると、雲が
