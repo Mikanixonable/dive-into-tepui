@@ -186,10 +186,13 @@ export class GamePresentation {
       scene.scene, commands, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
       hud, hud.constructionConfirm,
       (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
+      activeStage.economy,
+      activeStage.constructionGate,
     );
     const viewSelectionCommands = viewCommands(commands, viewer.view);
     this.moduleWindows = new ModuleWindows(
-      hud, controlSelection, dynamicSystem, new ModuleCommands(commands, controlSelection, dynamicSystem),
+      hud, controlSelection, dynamicSystem,
+      new ModuleCommands(commands, controlSelection, dynamicSystem, activeStage.economy),
       this.shipConstruction,
       this.confirmation,
       () => {

@@ -9,6 +9,11 @@ import {
 import { constructionCandidate, hitsConstructionCandidate, type ConstructionCandidate } from './ship-construction-candidates';
 import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
 import { ShipConstructionEdits } from './ship-construction-edits';
+import { moduleMaterialsCost, type StoryEconomy } from '../campaign/story-economy';
+import {
+  constructionBranchMassKg, type ConstructionScaleGate,
+} from '../campaign/construction-scale-gate';
+import type { ShipModuleDefinition } from './ship-module-definition';
 import { hiddenShipConstructionModel } from './ship-construction-types';
 import { CommandCompletion } from '../command-completion';
 import type * as THREE from 'three/webgpu';
@@ -77,6 +82,10 @@ export class ShipConstruction implements OverlayHandle {
     private readonly notifier: Notifier,
     private readonly confirmation: ConstructionConfirmationPort,
     private readonly focusDock: ((ship: ModularShip) => void) | null = null,
+    // ストーリーの経済の台帳。ある場合は配置が素材を消費し、不足は理由つきで拒否する。
+    private readonly economy: StoryEconomy | null = null,
+    // 建造の規模ゲート。ある場合は配置が設備の総質量上限と照らされ、超過は理由つきで拒否する。
+    private readonly scaleGate: ConstructionScaleGate | null = null,
   ) {
     this.ghost = new ShipGhostView(scene);
     this.guide = new DockSnapGuideView(scene);
@@ -107,7 +116,9 @@ export class ShipConstruction implements OverlayHandle {
     }
     if (this.current !== null) this.close();
     // セッションを開き、予約の開始を命令へ送る。
-    const session: ConstructionSession = { ship, dockId, edits: new ShipConstructionEdits(ship, dockId) };
+    const session: ConstructionSession = {
+      ship, dockId, edits: new ShipConstructionEdits(ship, dockId, this.economy, this.scaleGate),
+    };
     this.current = session;
     this.submit(session, 'begin', () => session.edits.begin());
     this.normalizeSelection();
@@ -213,6 +224,32 @@ export class ShipConstruction implements OverlayHandle {
     if (session === null || candidate === null || !candidate.placement.valid) {
       if (candidate?.placement.reason) this.notifier.hint(candidate.placement.reason, undefined, 'warn');
       return;
+    }
+    // 備蓄が足りない配置は、命令へ送る前に不足分を示して断る(適用側でも再検証する)。
+    if (this.economy !== null) {
+      const cost = moduleMaterialsCost(SHIP_MODULE_CATALOG.require(this.definitionId));
+      const balance = this.economy.stockpileOf(session.ship.id).materials;
+      if (balance < cost) {
+        this.notifier.hint(
+          `素材が不足しています(必要 ${cost} / 備蓄 ${balance} — あと ${cost - balance})`, undefined, 'warn',
+        );
+        return;
+      }
+    }
+    // 完成見込みの総質量が設備の上限を超える配置も、命令へ送る前に理由を示して断る
+    // (適用側でも再検証する)。
+    if (this.scaleGate !== null) {
+      const draft = this.currentDraft();
+      if (draft !== null) {
+        const reason = this.scaleGate.excessReason(
+          session.ship.id,
+          this.projectedBranchMassKg(draft, SHIP_MODULE_CATALOG.require(this.definitionId)),
+        );
+        if (reason !== null) {
+          this.notifier.hint(reason, undefined, 'warn');
+          return;
+        }
+      }
     }
     const definitionId = this.definitionId;
     const slotId = this.selectedSlotId;
@@ -321,6 +358,17 @@ export class ShipConstruction implements OverlayHandle {
     if (draft !== null && this.slots(draft).some(slot => slot.id === slotId)) this.selectedSlotId = slotId;
   }
 
+  // 部品 definition を足したあとの、建造中の枝の完成見込みの総質量 [kg]。
+  private projectedBranchMassKg(draft: ConstructionDraft, definition: ShipModuleDefinition): number {
+    const branchMass = draft.firstConnectionId === null
+      ? 0
+      : constructionBranchMassKg(draft.ship.assembly, draft.firstConnectionId);
+    const abilities = definition.abilities;
+    const moduleMass = definition.dryMass
+      + (abilities.fuelCapacity ?? 0) * (abilities.fuelMassPerUnit ?? 1);
+    return branchMass + moduleMass;
+  }
+
   // 船側の予約から、表示に使う建造枝を読み取る。予約開始前・終了後はnull。
   private currentDraft(): ConstructionDraft | null {
     const session = this.current;
@@ -384,7 +432,17 @@ export class ShipConstruction implements OverlayHandle {
       return slotState(slot, placement);
     });
     const selectedState = slotStates.find(slot => slot.id === this.selectedSlotId);
-    const warning = selected?.placement.reason ?? selectedState?.reason
+    // 経済がある場合、選択中の部品の価格と備蓄を併記し、足りなければ不足を警告にする。
+    const cost = this.economy === null ? null : moduleMaterialsCost(definition);
+    const balance = this.economy?.stockpileOf(draft.ship.id).materials ?? null;
+    const shortage = cost !== null && balance !== null && balance < cost
+      ? `素材が不足しています(必要 ${cost} / 備蓄 ${balance} — あと ${cost - balance})`
+      : null;
+    // 規模ゲートがある場合、選択中の部品を足した完成見込みが上限を超えれば理由を警告にする。
+    const gateReason = this.scaleGate === null
+      ? null
+      : this.scaleGate.excessReason(draft.ship.id, this.projectedBranchMassKg(draft, definition));
+    const warning = shortage ?? gateReason ?? selected?.placement.reason ?? selectedState?.reason
       ?? (role === 'material' && draft.addedIds.length > 0 ? '操縦不能な物資として完成します' : null);
     const dockDefinition = draft.ship.assembly.definition(draft.dockId);
     this.panel.sync({
@@ -394,7 +452,7 @@ export class ShipConstruction implements OverlayHandle {
       hp: totals?.hp ?? 0, maxHp: totals?.maxHp ?? 0, capabilities, preview, role, warning,
       selectedDefinitionId: definition.id, selectedModuleName: definition.name,
       selectedSlotId: this.selectedSlotId, slots: slotStates,
-      canPlace: selected?.placement.valid ?? false,
+      canPlace: (selected?.placement.valid ?? false) && shortage === null && gateReason === null,
       canRemove: draft.addedIds.length > 0, canFinish: draft.firstConnectionId !== null,
     });
   }

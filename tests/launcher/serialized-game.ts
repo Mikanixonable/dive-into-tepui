@@ -31,6 +31,7 @@ export function serializedGame(stageId: string): SavedGame {
         scoreCounter: new ScoreCounter().serialize(),
         phase: 'playing',
         logistics: { resupplyCheckAt: 0, resupplyEnabled: false, rcsFuelResupplyEnabled: false },
+        salvage: { amounts: {} },
       },
       planNodeRules: PlanNodeRules.create(events).serialize(),
       orbitSlots: OrbitSlotRegistry.create().serialize(),

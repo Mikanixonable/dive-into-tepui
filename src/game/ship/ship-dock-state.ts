@@ -8,6 +8,9 @@ export interface ShipConstructionDraftState {
   readonly addedIds: readonly string[];
   readonly axialTailId: string;
   readonly firstConnectionId: string | null;
+  // 追加済みのうち、拠点の備蓄から素材を支払って置いた部品。取り外しと破棄で
+  // 返金されるのはこれだけ(無償で置かれた開始状態の部品は返金の対象にならない)。
+  readonly paidModuleIds: readonly string[];
 }
 
 // 建造予約を保持し、接続状態は assembly の detachable edge から導出する。
@@ -33,7 +36,7 @@ export class ShipDockState {
     if (module.hp <= 0) throw new Error(`docking module is destroyed: ${moduleId}`);
     if (this.status(assembly, moduleId) !== 'empty') throw new Error(`docking module is not empty: ${moduleId}`);
     this.building.set(moduleId, {
-      dockId: moduleId, addedIds: [], axialTailId: moduleId, firstConnectionId: null,
+      dockId: moduleId, addedIds: [], axialTailId: moduleId, firstConnectionId: null, paidModuleIds: [],
     });
   }
 
@@ -86,12 +89,19 @@ export class ShipDockState {
       if (addedIds.length !== draft.addedIds.length) {
         throw new Error(`cannot remap construction modules: ${draft.dockId}`);
       }
+      const paidModuleIds = (draft.paidModuleIds ?? [])
+        .map(id => moduleIds.get(id))
+        .filter((id): id is string => id !== undefined);
+      if (paidModuleIds.length !== (draft.paidModuleIds ?? []).length) {
+        throw new Error(`cannot remap construction modules: ${draft.dockId}`);
+      }
       const remappedFirstConnectionId = firstConnectionId ?? null;
       this.building.set(dockId, {
         dockId,
         addedIds,
         axialTailId,
         firstConnectionId: remappedFirstConnectionId,
+        paidModuleIds,
       });
     }
   }
@@ -102,6 +112,6 @@ export class ShipDockState {
   }
 
   private copy(draft: ShipConstructionDraftState): ShipConstructionDraftState {
-    return { ...draft, addedIds: [...draft.addedIds] };
+    return { ...draft, addedIds: [...draft.addedIds], paidModuleIds: [...(draft.paidModuleIds ?? [])] };
   }
 }
