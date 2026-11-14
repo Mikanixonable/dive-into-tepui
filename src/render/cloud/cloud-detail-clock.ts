@@ -9,9 +9,10 @@ import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-type
 
 // 1 km の段の寿命 [s]。段の寿命は波長の 2/3 乗に比例する — 乱流の渦の回転時間は、エネルギー散逸率 ε を
 // 一定として ε^(−1/3)・L^(2/3) で、雲の時空の尺度則(Lovejoy & Schertzer)もこの冪を示す。
-// **細部の入れ替わりの速さを決める唯一のつまみ**で、時間の計測(尺度ごとに相関が落ちる時間)へ結ぶ。
-// 1 km で約 17 分は、浅い積雲の一生(15〜30 分)の下の端。
-const LIFETIME_AT_1KM = 1000;
+// **細部の入れ替わりの速さを決める唯一のつまみ**で、時間の計測(cloud-detail:stability の τ、尺度ごとに相関が
+// 1/e へ落ちる時間)へ結ぶ。勾配ノイズの相関は 1 格子滑らせる前に 1/e を切るので、ここで置く寿命は測った τ より
+// 長い。値は、積雲の 2〜20 km 帯の τ が実写の可視時系列の目安(約 0.6 時間)へ近づく高さに取る。
+const LIFETIME_AT_1KM = 2400;
 const LIFETIME_EXPONENT = 2 / 3;
 // 読み直しの周期は寿命のこの倍(上限 MAX_RECYCLE_PERIOD)。長いほど継ぎ目は稀で、風上へ戻す距離が溜まる。
 const RECYCLE_LIFETIMES = 4;
