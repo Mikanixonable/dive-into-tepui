@@ -546,7 +546,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     this.fire.updateFireState(dt, controls, activeStage, celestialBodies);
 
     this.throttle.updateThrustLatches(controls);
-    this.throttle.updateThrustState(controls, this.motion.att, simDt, this);
+    this.throttle.updateThrustState(controls, this.motion.controlAttitude, simDt, this);
     const rcsThrust = this.throttle.thrust;
     this.motion.setThrust(rcsThrust && boosterThrust
       ? add(rcsThrust, boosterThrust)
@@ -605,7 +605,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     // 発砲中は姿勢微調整と同じ操作精度になる
     const fine = this.fineAttitude || this.fire.isFiring;
     this.throttle.updateTorque(
-      this.motion.att,
+      this.motion.controlAttitude,
       this.motion.state.r,
       this.motion.state.v,
       controls,

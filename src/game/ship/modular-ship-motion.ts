@@ -1,7 +1,8 @@
 // モジュール船を一体剛体として進め、船体由来の形状・質量・補助システムを同期する。
 import { cross, add, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import { LOCAL_RIGHT, qInvert, qRotate } from '../../math/quat';
-import type { Attitude } from '../../physics/attitude';
+import { type Attitude, type RotatingFrame, relativeSpin } from '../../physics/attitude';
+import { orbitLocalFrame } from '../../physics/orbit-local-frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import {
@@ -71,13 +72,23 @@ interface ModularShipMotionSystems {
 
 class ModularShipBehavior implements DynamicMotionBehavior {
   public readonly contactKind;
+  // 直近に組んだ周回の局所系。自艦が周回していなければ null。制御が相対角速度を読むために残す。
+  public frame: RotatingFrame | null = null;
 
   // playerOwned に対応する接触種別と船体反応口を設定する。
   public constructor(
-    playerOwned: boolean,
+    private readonly playerOwned: boolean,
     private readonly reactions: ModularShipMotionReactions,
   ) {
     this.contactKind = playerOwned ? 'player' as const : 'generic' as const;
+  }
+
+  // 自艦は周回の局所系を姿勢の基準にする。他の艦は慣性系のまま。
+  public attitudeFrame(
+    _self: DynamicMotion, state: KinematicState, attractors: readonly CelestialBody[], pivot: number,
+  ): RotatingFrame | null {
+    this.frame = this.playerOwned ? orbitLocalFrame(state, attractors, pivot) : null;
+    return this.frame;
   }
 
   // 質量に応じて基準の弾道係数を換算する。
@@ -246,6 +257,14 @@ export class ModularShipMotion extends DynamicMotion {
   public readonly aero = new AeroLoad();
   public readonly radiator: RadiatorSystem;
   public readonly power: PowerSystem;
+
+  // 制御が読む姿勢。周回の局所系があれば、角速度 w はその系に対する相対角速度になる(制動・保持が
+  // 周回の回転と戦わないように)。姿勢 q は att と同じ。
+  public get controlAttitude(): Attitude {
+    const frame: RotatingFrame | null = (this.behavior as ModularShipBehavior).frame;
+    const att = this.att;
+    return frame === null ? att : { ...att, w: relativeSpin(att, frame) };
+  }
 
   // assembly から剛体と補助系を構築し、systems の記録があれば復元する。
   public constructor(
