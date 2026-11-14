@@ -12,8 +12,8 @@
 // 1 表にし、実写と撮影を同じ km/px で左右に並べた画像を .cloud-detail/compare/ へ書き、
 // レポートを .cloud-detail/history/ へ残して前回との差分を出す。--kind/--tier/--time/--scene
 // で撮影を絞ったときは対象をその条件へ限り、差分も同じ絞り込みの前回とだけ比べる
-// (改修→計測の反復を短くするため)。
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+// (改修→計測の反復を短くするため)。--fresh はその撮影を撮り直す(既存の撮影を読まない)。
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { measureCloudDetail } from './cloud-detail-metrics.mjs';
@@ -483,6 +483,11 @@ async function main() {
       );
     }
     console.log(`絞り込み: ${shotInfos.length}/${allInfos.length} 枚(条件: ${JSON.stringify(subset)})`);
+  }
+  // --fresh: 対象の撮影を消してから撮る。描画を変えたあとに、古い撮影を読んで計測が変わらないのを
+  // 取り違えないための指定。
+  if (process.argv.includes('--fresh')) {
+    for (const info of shotInfos) rmSync(path.join(shotsDir, `${info.name}.png`), { force: true });
   }
   const taken = await shootMissing(shotInfos);
   console.log(`撮影: 全 ${shotInfos.length} 枚のうち ${taken} 枚を新たに撮った(既存は飛ばす)`);
