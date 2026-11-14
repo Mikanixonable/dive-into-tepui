@@ -66,7 +66,8 @@ function worldSoundOf(body: RunEventBody): WorldSound | null {
     case 'altitudeWarned': return { kind: 'altAlarm' };
     case 'boosterDecoupled': return { kind: 'decouple' };
     case 'ammoPickedUp':
-    case 'rcsFuelPickedUp': return { kind: 'pickup' };
+    case 'rcsFuelPickedUp':
+    case 'materialsRecovered': return { kind: 'pickup' };
     default: return null;
   }
 }
@@ -204,6 +205,43 @@ export class RunEventPresenter {
         return;
       case 'rcsFuelPickedUp':
         this.notifier.hint(`補給取り込み — RCS燃料 +${Math.round(body.fuel)} kg`, 3000);
+        return;
+      case 'materialsRecovered':
+        this.notifier.hint(`素材を回収 — 拠点の備蓄 +${body.materials}`, 3000);
+        return;
+      case 'storyActCompleted':
+        this.notifier.hint(`✓ 第${body.act}幕 完了`, 6000, 'nav');
+        return;
+      case 'commandCoreDestroyed':
+        this.notifier.hint(
+          '✓ 指揮中枢を破壊 — 自動兵器群は統率を失い、無力化した。キャンペーンクリア',
+          10000, 'nav',
+        );
+        return;
+      case 'storyDebrisReplaced':
+        this.notifier.hint('漂流デブリを失ったため、予備のデブリを再配置した', 5000, 'nav');
+        return;
+      case 'storyShipyardBuilt':
+        this.notifier.hint('✓ 軌道造船所が完成 — その場で建造・修理・再編成ができる', 6000, 'nav');
+        return;
+      case 'storyShipyardUnavailable':
+        this.notifier.hint(
+          `素材が ${body.missing} 足りないため、軌道造船所を建設できない`, undefined, 'warn',
+        );
+        return;
+      case 'storyRaidForecast':
+        this.notifier.hint(
+          `襲撃予報 — ${body.targetName}へ自動兵器が接近中(到達まで約 ${Math.max(1, Math.round(body.arrivalInSeconds / 3600))} 時間)`,
+          6000, 'warn',
+        );
+        return;
+      case 'storyRaidArrived':
+        this.notifier.hint(`襲撃 — ${body.targetName}へ自動兵器が接近した`, 6000, 'warn');
+        return;
+      case 'storyBaseStruck':
+        this.notifier.hint(
+          `${body.baseName}の建造ドックが損傷した — 修理するまで使えない`, 6000, 'warn',
+        );
         return;
 
       case 'maneuverNodeApproaching':

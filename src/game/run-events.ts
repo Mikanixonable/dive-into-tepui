@@ -1,6 +1,7 @@
 // 直近の進行で起きた一回きりの出来事の記録。進行の位相が起きたことを領域の言葉で積み、
 // 表示の導出が通し番号を鍵に読んで、音・通知・閃光の宣言へ写す(R7)。
 import type { CommandQueue } from './command-queue';
+import type { CampaignAct } from './campaign/campaign-state';
 import type { BulletType } from './dynamic/dynamic-entity/bullet-reaction';
 import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
 import type { EnemyDeathCause } from './stages/stage-outcome';
@@ -210,7 +211,43 @@ export type RunEventBody =
   // 複製しようとした軌道を軌道要素へ逆算できなかった。
   | { readonly kind: 'orbitNotDuplicable' }
   // 操作艦が要る操作を、操作艦が居ない状態で行おうとした。
-  | { readonly kind: 'shipRequiredForAction'; readonly action: ShipRequiredAction };
+  | { readonly kind: 'shipRequiredForAction'; readonly action: ShipRequiredAction }
+
+  // ------------------------------------------------------------ ストーリー
+  // 素材を回収し、拠点 baseId の備蓄へ加わった。materials は加わった素材の量。
+  | { readonly kind: 'materialsRecovered'; readonly baseId: string; readonly materials: number }
+  // 拠点 baseId の備蓄が変わった。materials / propellant は符号付きの増減で、支出は負。
+  // 回収による増加は materialsRecovered が持つため、ここに来るのは支出・返金・生産。
+  | {
+    readonly kind: 'stockpileChanged';
+    readonly baseId: string;
+    readonly materials: number;
+    readonly propellant: number;
+  }
+  // 第1幕の漂流デブリを失ったため、予備のデブリが再配置された。
+  | { readonly kind: 'storyDebrisReplaced' }
+  // 敵1機を撃破した。enemyId は撃破した敵の識別子で、キャンペーンが撃破済みとして記録する。
+  | { readonly kind: 'enemyDefeated'; readonly enemyId: string }
+  // 軌道造船所が完成した。キャンペーンは完成を進行として記録する。
+  | { readonly kind: 'storyShipyardBuilt' }
+  // 軌道造船所の建設が素材不足でできなかった。missing は不足している素材の量。
+  | { readonly kind: 'storyShipyardUnavailable'; readonly missing: number }
+  // 襲撃の予報が出た。targetName は対象拠点の表示名、arrivalInSeconds は接近までの残り [sim s]。
+  | { readonly kind: 'storyRaidForecast'; readonly targetName: string; readonly arrivalInSeconds: number }
+  // 襲撃編隊が対象拠点へ接近した。targetName は対象拠点の表示名。
+  | { readonly kind: 'storyRaidArrived'; readonly targetName: string }
+  // 襲撃で拠点の建造ドックが損傷した。baseName は損傷した拠点の表示名。
+  | { readonly kind: 'storyBaseStruck'; readonly baseName: string }
+  // ストーリーの幕 act が完了した。キャンペーンは次の幕へ進む。
+  | { readonly kind: 'storyActCompleted'; readonly act: CampaignAct }
+  // 指揮中枢が破壊された。この出来事がキャンペーンの決着である(GAME.md 11.3)。
+  | { readonly kind: 'commandCoreDestroyed' }
+  // プレイヤーの艦を1隻失った。評価の集計(失った船の数)へ数える。
+  | { readonly kind: 'storyShipLost' }
+  // 建造が1件完了した。massKg は完成した枝の乾燥質量の合計 [kg] で、評価の集計へ積む。
+  | { readonly kind: 'storyConstructionCompleted'; readonly massKg: number }
+  // ゲーム内時間が進んだ。seconds は前回の報告から進んだ量 [sim s] で、評価の集計へ積む。
+  | { readonly kind: 'storyElapsedTime'; readonly seconds: number };
 
 // 記録された出来事1件。
 export interface RunEvent {

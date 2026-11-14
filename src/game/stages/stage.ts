@@ -2,6 +2,7 @@
 // 必要なステージだけ override する。
 import { isModularShip, ModularShip, type ModularShipInit } from '../ship/modular-ship';
 import { Logistics, type SerializedLogistics } from './stage-utils/logistics';
+import { Salvage, type SerializedSalvage } from './stage-utils/salvage';
 import { ScoreCounter, type SerializedScoreCounter } from './stage-utils/score-counter';
 import { StatusPanel } from './stage-utils/status-panel';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
@@ -29,13 +30,16 @@ import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
 import type { ProteinEnemyRequest } from '../dynamic/dynamic-entity/protein-enemy';
 import type { ViewMode } from '../view/view-mode';
+import type { StoryEconomy } from '../campaign/story-economy';
+import type { ConstructionScaleGate } from '../campaign/construction-scale-gate';
+import type { CampaignState } from '../campaign/campaign-state';
 
 // 作中の日時。遠未来 UTC は定義できないため、天体力学では TDB として解釈する。ステージの epoch の
 // 宣言以外から読まない(元期は共有の定数ではなく、ステージの宣言)。
 export const STORY_EPOCH: TdbJulianDate =
   calendarDateToJulianDate(parseCalendarDate('20115-05-14T06:00:00', 'TDB'));
 
-export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
+export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load' | 'story-lunar' | 'story-act2' | 'story-act3' | 'story-act4';
 
 // 状態を指定せずに置く自機の既定の円軌道。高度は中心天体の表面半径から、傾斜角は中心天体の
 // 中心に置いた ECI 軸の Y から測る。
@@ -53,9 +57,11 @@ export type StageDeps = [
   orbitSlots: OrbitSlotRegistry,
 ];
 
-// 全ステージ共通の状態(スコア・決着状態・補給)。基底のコンストラクタが deps の後ろに受け、
-// 省いたものは新しいランの初期値から始まる。
-export type CommonStageState = [scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics];
+// 全ステージ共通の状態(スコア・決着状態・補給・サルベージ)。基底のコンストラクタが deps の
+// 後ろに受け、省いたものは新しいランの初期値から始まる。
+export type CommonStageState = [
+  scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics, salvage?: Salvage,
+];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
 export interface StageClass {
@@ -80,6 +86,10 @@ export interface StageClass {
   isUnlocked(clearCounts: ClearCounts): boolean;
   // 新しいランのステージを組み、初期配置を置く。
   create(...deps: StageDeps): Stage;
+  // キャンペーンの状態を引き継いで新しいランのステージを組む。引き継ぎを持つ
+  // ステージ(ストーリーモード)だけが実装する任意の口で、台帳はキャンペーンの
+  // 備蓄から組まれる(GAME.md 11.2)。
+  createFromCampaign?(campaign: CampaignState, ...deps: StageDeps): Stage;
   // このステージクラスが直列化した形 serialized から復元する。記録が欠けていれば(null)、
   // 新しいランの初期値で補う。
   deserialize(serialized: SerializedStage | null, ...deps: StageDeps): Stage;
@@ -96,6 +106,7 @@ export interface SerializedStage {
   readonly scoreCounter: SerializedScoreCounter;
   readonly phase: GamePhase;
   readonly logistics: SerializedLogistics;
+  readonly salvage: SerializedSalvage;
 }
 
 // 決着した周回の結果画面に出す内容。
@@ -149,8 +160,17 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public readonly authoring: ObjectAuthoring | null = null;
   // タンパク質の表示形態と着色を選ぶ UI を持つステージはそれを差し出す。既定では持たない。
   public readonly proteinDisplayControl: ProteinDisplayControl | null = null;
+  // ストーリーの経済の台帳。持つステージ(ストーリーモード)だけが差し出し、建造・修理・
+  // 製造・給油の支払いはこの台帳から行う。既定では持たない(それらの操作は無償)。
+  public get economy(): StoryEconomy | null { return null; }
+  // 建造の規模ゲート。持つステージ(ストーリーモード)だけが差し出し、建造の配置は
+  // その設備の上限と照らされる。既定では持たない(上限なし)。
+  public get constructionGate(): ConstructionScaleGate | null { return null; }
 
   protected readonly logistics: Logistics;
+  // 軌道上の素材サルベージの台帳。落とすのは撃破の記録経由、回収の走査は
+  // ストーリーのステージが毎フレーム呼ぶ。
+  protected readonly salvage: Salvage;
   private readonly statusPanel: StatusPanel;
 
   protected readonly _hud: HudLayers;
@@ -183,6 +203,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     public readonly scoreCounter = new ScoreCounter(),
     private _phase: GamePhase = 'playing',
     logistics?: Logistics,
+    salvage?: Salvage,
   ) {
     const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue, orbitSlots] = deps;
     this._hud = hud;
@@ -193,6 +214,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this._commandQueue = commandQueue;
     this._orbitSlots = orbitSlots;
     this.logistics = logistics ?? new Logistics(scene, dynamicSystem, this.stageRules.automaticResupply);
+    this.salvage = salvage ?? new Salvage();
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
@@ -205,6 +227,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     const scoreCounter = serialized?.scoreCounter;
     const phase = serialized?.phase;
     const logistics = serialized?.logistics;
+    const salvage = serialized?.salvage;
     // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
     return [
       scoreCounter == null ? undefined : ScoreCounter.deserialize(scoreCounter),
@@ -212,6 +235,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       logistics == null
         ? undefined
         : Logistics.deserialize(logistics, scene, dynamicSystem, rules.automaticResupply),
+      salvage == null ? undefined : Salvage.deserialize(salvage),
     ];
   }
 
@@ -338,8 +362,33 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     else this.scoreCounter.recordEnemyLoss();
     this._dynamicSystem.events.record({ kind: 'enemyDied', name: enemy.name, cause });
 
+    // 撃破した敵だけが素材サルベージを落とす。自然消滅は落とさない(GAME.md 11.4)。
+    if (cause === 'killed') {
+      const materials = this.salvageDropMaterials(enemy);
+      if (materials !== null && materials > 0) {
+        this.salvage.spawn(enemy.motion.state, materials, this._dynamicSystem, this._scene);
+      }
+    }
+
     // isPlaying ガード: 敗北後に残存敵が再突入で消えても勝利判定が上書きしないよう。
     if (this.isPlaying && this.checkWin()) this.onWin(simTime);
+  }
+
+  // 撃破した敵が落とす素材の量。落とすステージだけが返す。既定では落とさない。
+  protected salvageDropMaterials(_enemy: Enemy): number | null { return null; }
+
+  // サルベージの回収を1フレーム分進め、回収分を経済の台帳と備蓄の出来事へ写す。
+  // fallbackBaseId は、最寄りの基地が見つからないときの備蓄先。
+  protected updateSalvageRecovery(fallbackBaseId: string): void {
+    const economy = this.economy;
+    if (economy === null || this.salvage.trackedCount === 0) return;
+    const ships = this._dynamicSystem.all().filter(isModularShip);
+    for (const recovered of this.salvage.update(ships, fallbackBaseId)) {
+      economy.credit(recovered.baseId, recovered.materials, 0);
+      this._dynamicSystem.events.record({
+        kind: 'materialsRecovered', baseId: recovered.baseId, materials: recovered.materials,
+      });
+    }
   }
 
   // 敗北を記録し、reason を添えて決着を「敗北」で確定させる。
@@ -366,6 +415,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       scoreCounter: this.scoreCounter.serialize(),
       phase: this._phase,
       logistics: this.logistics.serialize(),
+      salvage: this.salvage.serialize(),
     };
   }
 }
