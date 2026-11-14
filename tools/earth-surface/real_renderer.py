@@ -8,7 +8,6 @@ data.
 """
 
 from dataclasses import dataclass
-import hashlib
 import importlib.util
 import json
 import math
@@ -16,6 +15,7 @@ from pathlib import Path
 
 import numpy as np
 
+from common import contract_hash, source_file_paths
 from real_source import OutputGrid, RasterCatalog, RasterCoverage, regrid_era5
 
 _LAYOUT = json.loads(Path(__file__).with_name("layout.json").read_text())
@@ -24,11 +24,6 @@ EARTH_TILE_MAX_Z = _LAYOUT["maxZoom"]
 
 class RendererUnavailable(RuntimeError):
     """A renderer cannot honestly produce a requested bundle."""
-
-
-def _contract_hash(value):
-    return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":"),
-                                      ensure_ascii=False, allow_nan=False).encode()).hexdigest()
 
 
 def _bake():
@@ -112,23 +107,6 @@ def geotiff_window_for_grid(grid, geo_transform, raster_width, raster_height):
     return left, top, right - left, bottom - top
 
 
-def _source_paths(manifest, raw_root, source):
-    """Resolve a source's declared local files without opening them."""
-    root = Path(raw_root) / source["id"]
-    suffix = {"geotiff": ".tif", "zip": ".zip", "netcdf": ".nc"}
-    explicit = source.get("inputFiles")
-    if explicit:
-        return tuple(root / item for item in explicit)
-    if source.get("regions"):
-        return tuple(root / f"{region}{suffix[source['format']]}" for region in source["regions"])
-    if source.get("regionGridDegrees"):
-        return tuple(root / f"{'N' if latitude >= 0 else 'S'}{abs(latitude):02d}"
-                     f"{'E' if longitude >= 0 else 'W'}{abs(longitude):03d}{suffix[source['format']]}"
-                     for latitude in range(90, -90, -15)
-                     for longitude in range(-180, 180, 15))
-    return (root / f"global{suffix[source['format']]}",)
-
-
 class RealSourceAdapter(SourceAdapter):
     """Local source boundary for production inputs.
 
@@ -145,7 +123,7 @@ class RealSourceAdapter(SourceAdapter):
             raise RendererUnavailable("実データrendererのsource manifestが必要製品と一致しません")
         self.manifest = manifest
         self.raw_root = Path(raw_root)
-        self.paths = {source_id: _source_paths(manifest, raw_root, source)
+        self.paths = {source_id: tuple(source_file_paths(raw_root, source))
                       for source_id, source in sources.items()}
         self._bake = bake
         self._color = self._surface = self._geoid = self._polygons = None
@@ -256,7 +234,7 @@ class FixtureSourceAdapter(SourceAdapter):
             raise ValueError("全球fixtureはsynthetic_fixture provenanceが必要です")
         if fixture.get("datasetId") != manifest["datasetId"]:
             raise ValueError("全球fixtureとソースmanifestのdatasetIdが不一致です")
-        if fixture.get("sourceManifestSha256") != _contract_hash(manifest):
+        if fixture.get("sourceManifestSha256") != contract_hash(manifest):
             raise ValueError("全球fixtureとソースmanifestの版が不一致です")
         if fixture.get("surfaceSourceId") != "etopo-2022-v1-ice-surface" or fixture.get("geoidSourceId") != "etopo-2022-v1-geoid":
             raise ValueError("全球fixtureはETOPO ice-surfaceと対応するgeoidが必要です")
@@ -376,7 +354,7 @@ class ArrayRenderer:
             "schemaVersion": 1,
             "kind": self.region_kind,
             "datasetId": self.manifest["datasetId"],
-            "sourceManifestSha256": _contract_hash(self.manifest),
+            "sourceManifestSha256": contract_hash(self.manifest),
             "surfaceSourceId": "etopo-2022-v1-ice-surface",
             "geoidSourceId": "etopo-2022-v1-geoid",
             "axesM": [6378137, 6356752.314245, 6378137],

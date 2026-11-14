@@ -64,7 +64,10 @@ export class ObjectPickables {
   // 候補列と可視性ポリシーを組み直し、天体マーカーと航法ターゲットをこの表示時刻へ進める。
   // 候補は天体・ラグランジュ点・選択対象となる個体・航法ターゲット・AN/DN・近点。物理積分の
   // 後に呼ぶ — 前だと同フレームのメッシュと1ステップずれる。
-  public refresh(displayWindow: DisplayWindow, mapDisplay: MapDisplayToggles, cameraPos: Vec3): void {
+  public refresh(
+    displayWindow: DisplayWindow, mapDisplay: MapDisplayToggles, cameraPos: Vec3,
+    revealed: ReadonlySet<string>,
+  ): void {
     const { displayTime } = displayWindow;
     // この回の可視性ポリシーを組み、マーカーと航法ターゲットをその時刻へ進める。
     const focusId = focusTargetId(this.camera.map.focus);
@@ -73,6 +76,7 @@ export class ObjectPickables {
     const visibilityPolicy = new MapVisibilityPolicy(
       this.celestialBodies,
       mapDisplay,
+      revealed,
       focusId,
       this.nearbyTracker.membersAt(
         this.celestialBodies, cameraPos, displayTime),

@@ -54,11 +54,6 @@
       "count": 1
     }
   },
-  "src/game/dynamic/dynamic-entity/protein-enemy.ts": {
-    "no-restricted-syntax": {
-      "count": 2
-    }
-  },
   "src/game/dynamic/dynamic-system.ts": {
     "no-restricted-syntax": {
       "count": 1
@@ -142,21 +137,6 @@
   "src/game/player/weapon-state.ts": {
     "no-restricted-syntax": {
       "count": 5
-    }
-  },
-  "src/game/protein/protein-combat-state.ts": {
-    "no-restricted-syntax": {
-      "count": 2
-    }
-  },
-  "src/game/protein/protein-motion-metrics.ts": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/game/stages/stage.ts": {
-    "no-restricted-syntax": {
-      "count": 2
     }
   },
   "src/game/targeter.ts": {
@@ -275,16 +255,6 @@
     }
   },
   "src/render/pipeline/shadow/shadow-casters.ts": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/render/protein/protein-motion-controller.ts": {
-    "no-restricted-syntax": {
-      "count": 1
-    }
-  },
-  "src/render/protein/protein-ribbon-color.ts": {
     "no-restricted-syntax": {
       "count": 1
     }

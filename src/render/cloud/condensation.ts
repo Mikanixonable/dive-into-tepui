@@ -16,11 +16,16 @@ export type { CloudSample } from './cloud-field-sample';
 const COVERAGE_ONSET = 0.50;
 const COVERAGE_WIDTH = 0.22;
 // 覆いの散らばり。texel の中では雲粒の湧く密度そのものが揺らぐので、晴れている割合は密度が一様な
-// ポアソンの exp(−t²) ではなく、密度をガンマ分布で混ぜた (1 + t²/散らばり)^(−散らばり) を取る。
+// ポアソンの exp(−t²) ではなく、密度をガンマ分布で混ぜた (1 + t^冪/散らばり)^(−散らばり) を取る。
 // **裾が代数なので、覆われた空の階調が上端で潰れない** — 指数の裾へ単純化すると、湿度が幅の 2 倍を
 // 超えたところから先が 8bit で数階調に収まり、前線と渦の芯が一様な白い台地になる。値は、湿度の
 // 上端で被覆率が 0.93 に収まる散らばりに取る。
 const COVERAGE_DISPERSION = 2;
+// 超過量の冪。晴天率の核は超過量の冪を雲粒密度の尺度として読む。冪が大きいほど、総観規模の
+// 湿度の波(正規化した超過量 x ≈ 1 の動作点)への被覆率の応答が急になり、その傾きの二乗で効く
+// 長波長の被覆パワーが育つ — 湿度の波が滑らかで大きい嵐帯の空では、応答を緩める側に取る。
+// 芯(x ≫ 1)では冪によらず飽和し、裾の代数性は散らばりが担うので、冪は動作点の傾きだけを決める。
+const COVERAGE_EXCESS_POWER = 1.5;
 // 湿度へ足す対流の重み。伝達関数の幅に対してどれだけ深く千切るかを決める。
 const CONVECTION_GAIN = 1.2;
 // 気団の折り目の帯(前線・雨帯)の中で、その重みを弱める割合(1 で帯の芯の粒が消える)。**帯は
@@ -149,7 +154,7 @@ export function condense(weather: WeatherSample): CloudSample {
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
   const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(STRATOCUMULUS_DECK_ADD));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
-  const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
+  const clear = excess.pow(COVERAGE_EXCESS_POWER).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
   // 積雲の量は、まばらな覆いでは被覆率を不透明度として写した量、広く覆う所ではそれと雲頂の量の
   // 高いほう。**覆いの薄い柱は雲頂が何であれ低く透ける雲になる** — 小さな雲が高い柱として立たず、

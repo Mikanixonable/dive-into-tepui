@@ -1,14 +1,5 @@
-// タンパク質対象詳細、艦の展開操作、燃焼管理パネルの CSS。
+// 艦の展開操作、燃焼管理パネルの CSS。
 export const COMBAT_PANEL_ROWS_STYLE = `
-  .protein-target-details { margin-top: var(--space-3); padding-top: var(--space-3); }
-  .protein-target-heading { display: flex; justify-content: space-between; color: var(--text-muted); font-size: var(--font-xxs); letter-spacing: .08em; }
-  .protein-site-row { display: grid; grid-template-columns: 1rem 5.2rem minmax(3rem, 1fr) auto; gap: var(--space-2); align-items: center; margin-top: var(--space-2); font-size: var(--font-xxs); }
-  .protein-site-glyph { color: var(--color-signal); font-size: var(--font-xs); line-height: 1; opacity: calc(.25 + var(--protein-site-hp) * .75); }
-  .protein-site-row.disabled .protein-site-glyph { color: var(--text-dim); }
-  .protein-site-label { min-width: 0; }
-  .protein-site-hp-icon { color: var(--color-signal); font-size: var(--font-xs); line-height: 1; }
-  .protein-site-hp-icon svg { display: block; width: 1em; height: 1em; }
-  .protein-site-row.disabled .protein-site-hp-icon { color: var(--text-dim); }
 /* 通常のマップビューでは艦固有の情報を右クリックのプロパティウィンドウで参照するので、常設の
    SHIP STATUS は畳んでパネル占有面積を減らす。クリエイティブでは配置後の操作用に表示する。 */
 #hud:not(.creative-mode) .hud-map-root.active #hud-vessel-status { display: none; }
@@ -46,6 +37,12 @@ export const COMBAT_PANEL_ROWS_STYLE = `
    いずれもタッチ・マウスどちらでも常設)。 */
 .combat-panel .panel-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .combat-panel .panel-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }
+/* 建造の入口は操作区画の先頭に置く主操作で、区画の全幅を使い、その下に1行の説明を添える。 */
+#hud-vessel-status .vessel-construction { flex: 0 0 100%; }
+#hud-vessel-status .vessel-construction .w-btn { width: 100%; }
+#hud-vessel-status .vessel-construction-note {
+  margin-top: var(--space-1); color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.45;
+}
 /* スロットル 1-4 の SegmentedControl。タッチ UI が出ている間だけ表示する — 表示条件は
    body.touch-ui-active と同じものに載せ、ここで別の判定を作らない。 */
 #hud-vessel-status .status-throttle-touch { display: none; margin-top: var(--space-3); }
