@@ -32,7 +32,7 @@ function cameraFrame(view: CameraView): CameraFrame {
 function effect(age = 0): FlashEffect {
   return {
     state: kinematicState<'eci'>(0, v3(100, 0, 0), v3()), age, duration: 1,
-    color: '#ffffff', size0: 1, size1: 4, brightness: 1,
+    color: '#ffffff', size0: 1, size1: 4, brightness: 1, blend: 'additive',
   };
 }
 
@@ -118,6 +118,38 @@ export function register(): void {
     view.sync([effect(0.75)], camera);
     const aged = brightnessAt(mesh, 0);
     assert.ok(aged < fresh, `寿命が進んでも暗くならない (${fresh} → ${aged})`);
+    view.dispose();
+  });
+
+  test('flash-effects-view: 黒煙は加算の枠とは別の枠へ積まれる', () => {
+    const scene = new THREE.Scene();
+    const view = new FlashEffectsView(scene);
+    const camera = cameraFrame(new CameraView());
+    const [additive, smoke] = scene.children.filter((child): child is THREE.InstancedMesh => child instanceof THREE.InstancedMesh);
+    assert.ok(additive && smoke, '加算と黒煙の 2 つの InstancedMesh が無い');
+
+    view.sync([{ ...effect(0.25), blend: 'smoke' }], camera);
+    assert.ok(!occupied(additive, 0), '黒煙が加算の枠へ積まれている');
+    assert.ok(occupied(smoke, 0), '黒煙の枠へ積まれていない');
+    view.dispose();
+  });
+
+  test('flash-effects-view: 黒煙は寿命の終わりに縮んで消える', () => {
+    const scene = new THREE.Scene();
+    const view = new FlashEffectsView(scene);
+    const camera = cameraFrame(new CameraView());
+    const smoke = scene.children.filter((child): child is THREE.InstancedMesh => child instanceof THREE.InstancedMesh)[1];
+    assert.ok(smoke, '黒煙の InstancedMesh が無い');
+    // 縮み具合は、列ベクトルの長さ(=板の一辺)で比べる。
+    const sideAt = (age: number): number => {
+      view.sync([{ ...effect(age), blend: 'smoke' }], camera);
+      const m = new THREE.Matrix4();
+      smoke.getMatrixAt(0, m);
+      return Math.hypot(m.elements[0]!, m.elements[1]!, m.elements[2]!);
+    };
+    const mid = sideAt(0.5);
+    const end = sideAt(0.99);
+    assert.ok(end < mid, `寿命の終わりに縮んでいない (${mid} → ${end})`);
     view.dispose();
   });
 }
