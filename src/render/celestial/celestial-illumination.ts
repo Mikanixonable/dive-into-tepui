@@ -22,7 +22,7 @@ import { ringShadowBands, type RingBand } from '../../render/pipeline/shadow/rin
 import { writeBodyFromWorld } from '../../render/celestial/body-frame';
 import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import type { AtmosphereCandidate, AtmosphereDraw } from '../../render/atmosphere';
+import type { AtmosphereBody, AtmosphereCandidate, AtmosphereDraw } from '../../render/atmosphere';
 import type { ShadowCloud } from '../../render/pipeline/shadow/cloud-shadow-renderer';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
@@ -48,6 +48,8 @@ export interface IlluminationTargets {
   readonly planetLight: { set(lights: readonly PlanetLightValue[]): void };
   readonly ambient: { setFraction(fraction: number): void };
   readonly atmosphere: { setDraws(draws: readonly AtmosphereDraw[]): void };
+  // 直射光が抜ける大気。atmosphere へ渡すのと同じ天体の列を受ける。
+  readonly sunExtinction: { set(bodies: readonly AtmosphereBody[]): void };
 }
 
 export class CelestialIllumination {
@@ -98,7 +100,10 @@ export class CelestialIllumination {
     const atmospheres = this.atmosphereCandidates(sources, displayTime, camera, graphics);
     this.syncPlanetLights(sources, atmospheres, displayTime, camera, sunPos);
     this.syncShadowSources(sources, fo, displayTime, focusPosition, graphics);
-    this.targets.atmosphere.setDraws(atmosphereDraws([...atmospheres.values()], graphics.atmosphere));
+    // 大気パスが描く天体と同じ列を、直射光の消衰へも渡す — 描かない大気は光も減らさない。
+    const draws = atmosphereDraws([...atmospheres.values()], graphics.atmosphere);
+    this.targets.atmosphere.setDraws(draws);
+    this.targets.sunExtinction.set(draws.map((draw) => draw.body));
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
