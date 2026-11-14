@@ -146,7 +146,7 @@ const texturedSurfaces = new Map<CelestialTexture, CelestialSurface>();
 export function texturedBody(
   texture: CelestialTexture, def: PlanetDef, center: THREE.Vector3, apparentDiameterPx: number,
 ): { readonly object: THREE.Object3D; readonly axes: THREE.Vector3; readonly ready: () => boolean } {
-  const shape = shapeAxes(def.radius, def.shape);
+  const shape = shapeAxes(def.radius, def.shape ?? null);
   const axes = new THREE.Vector3(shape.x, shape.y, shape.z);
   const group = new THREE.Group();
   group.position.copy(center);
