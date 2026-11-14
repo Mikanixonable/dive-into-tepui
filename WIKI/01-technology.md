@@ -43,9 +43,9 @@
   <img src="../.github/readme/wiki-tech-development.svg" alt="仕様、実装、テスト、PRの関係" width="100%">
 </p>
 
-開発では、**現在の実装＝コード、望ましい挙動＝SPEC、置き場と所有＝ARCHITECTURE、書き方＝CODING-RULE** と役割を分ける。仕様書を実装済み一覧にせず、コードの現状を文書へ重複して写さないことで、更新時の齟齬を減らしている。
+開発では、現在の実装＝コード、望ましい挙動＝SPEC、置き場と所有＝ARCHITECTURE、書き方＝CODING-RULE と役割を分ける。仕様書を実装済み一覧にせず、コードの現状を文書へ重複して写さないことで、更新時の齟齬を減らしている。
 
-通常の変更では `npm run typecheck` を基準とし、触った層に応じて `test:physics`、`test:game`、`test:render` などを追加する。import境界は `check:boundaries`、実ブラウザは `smoke:browser`、描画は Render Lab / Cloud Lab で確認する。mainへ送る前は全体テストとbuildまで通し、releaseはCIが生成する。
+通常の変更では `npm run typecheck` を基準とし、触った層に応じて `test:physics`、`test:game`、`test:render` などを追加する。import境界は `check:boundaries`、実際のブラウザでは `smoke:browser`、描画は Render Lab / Cloud Lab で確認する。mainへ送る前は全体テストとbuildまで通し、releaseはCIが生成する。
 
 <p align="center">
   <a href="README.md"><strong>← WIKI</strong></a>
