@@ -3,7 +3,7 @@ import { CombatShipEntity } from './combat-ship-entity';
 import type { DynamicEntity, SerializedDynamicEntityFields } from './dynamic-entity';
 import type { Contact } from './contact';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
-import { len, sub, v3, type Vec3 } from '../../../math/vec3';
+import { dot, len, sub, v3, type Vec3 } from '../../../math/vec3';
 import type { ModularShip } from '../../ship/modular-ship';
 import { ENTITY_GLYPH, COLOR_MARKER_ENEMY } from '../../marker/marker-identity';
 import { randomQuat, type Quat } from '../../../math/quat';
@@ -25,6 +25,9 @@ import { EnemyInspection } from '../../pickable/enemy-inspection';
 import type { EnemyProteinInspection } from '../../pickable/enemy-inspection';
 import { EnemyFireController, type SerializedEnemyFireController } from './enemy-fire-controller';
 import { EnemyReactions } from './enemy-reactions';
+import {
+  ENEMY_INTENT_INITIAL, enemyIntentAllowsFire, nextEnemyIntent, type EnemyIntent,
+} from './enemy-intent';
 
 // 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
 // 全ての敵がこの1つの倍率を共有する。
@@ -49,6 +52,10 @@ export interface SerializedEnemy extends SerializedDynamicEntityFields {
   // 陣形の識別子と役割。陣形に属さない敵は null。
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
+  // 編隊の指揮機の id。指揮機を持たない敵は null。
+  readonly commanderId: string | null;
+  // 4状態の意図を持つ敵かどうか(COMBAT.md「AI と射撃」)。
+  readonly tracksIntent: boolean;
   readonly fireController: SerializedEnemyFireController;
 }
 
@@ -79,6 +86,10 @@ export interface EnemyPlacement {
   // 陣形の識別子と役割。陣形に属さない敵は null。
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
+  // 編隊の指揮機の id。省けば指揮機を持たない。
+  readonly commanderId?: string | null;
+  // 4状態の意図を持つ敵かどうか。省けば意図を持たない。
+  readonly tracksIntent?: boolean;
 }
 
 // 自由回転で漂う敵に共通の初期姿勢: ランダムな姿勢・角速度を与える。
@@ -102,6 +113,8 @@ export function deserializeEnemyPlacement(serialized: SerializedEnemy): EnemyPla
     waveId: serialized.waveId ?? null,
     formationId: serialized.formationId ?? null,
     formationRole: serialized.formationRole ?? null,
+    commanderId: serialized.commanderId ?? null,
+    tracksIntent: serialized.tracksIntent ?? false,
   };
 }
 
@@ -125,11 +138,20 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   public readonly waveId: number | null; // 所属するウェーブの番号。ウェーブに属さない敵は null
   public readonly formationId: string | null;
   public readonly formationRole: FormationRole | null;
+  // 編隊の指揮機の id。指揮機を失った僚機は射撃を止める(GAME.md 11.1)。
+  public readonly commanderId: string | null;
+  // 4状態の意図を持つ敵かどうか。持つ敵は意図が射撃姿勢の間だけ撃つ。
+  public readonly tracksIntent: boolean;
 
   private readonly fireController: EnemyFireController;
   private readonly reactions: EnemyReactions;
+  // 現在の意図。意図を持つ敵だけが持ち、標的との距離の変化から毎回導き直す導出値。
+  private intentState: EnemyIntent | null = null;
 
   public get isBursting(): boolean { return this.fireController.isBursting; }
+
+  // 現在の意図。意図を持たない敵と、まだ行動していない敵では null。
+  public get intent(): EnemyIntent | null { return this.intentState; }
 
   // 具象が組み終えた機体(スケール適用済みのメッシュ・主慣性モーメント・接触半径・判定形状)を
   // placement に置く。id は採番器が配った識別子。alive は生死、burstLeft から後ろは射撃の途中経過と
@@ -175,6 +197,8 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
     this.waveId = placement.waveId;
     this.formationId = placement.formationId;
     this.formationRole = placement.formationRole;
+    this.commanderId = placement.commanderId ?? null;
+    this.tracksIntent = placement.tracksIntent ?? false;
     // 射撃と被弾の反応は、具象の機体を読む
     this.fireController = new EnemyFireController({
       motion: this.motion,
@@ -274,12 +298,22 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   }
 
   // simTime に1回行動し、条件が揃えば player を狙ったプラズマ弾を registry へ加える。mayFire が偽の
-  // 間は撃たない。
+  // 間は撃たない。意図を持つ敵は、標的との距離とその変化から意図を導き直し、射撃姿勢の
+  // 間だけ撃つ(COMBAT.md「AI と射撃」)。
   public updateBehavior(
     simTime: number, player: ModularShip, registry: EntityRegistry, enemies: readonly Enemy[],
     mayFire: boolean, celestialBodies: CelestialBodies,
   ): void {
-    this.fireController.updateBehavior(simTime, player, registry, enemies, mayFire, celestialBodies);
+    let fire = mayFire;
+    if (this.tracksIntent) {
+      const rel = sub(player.motion.state.r, this.motion.state.r);
+      const distance = len(rel);
+      const relVel = sub(player.motion.state.v, this.motion.state.v);
+      const radialRate = distance > 0 ? dot(rel, relVel) / distance : 0;
+      this.intentState = nextEnemyIntent(this.intentState ?? ENEMY_INTENT_INITIAL, distance, radialRate);
+      fire = fire && enemyIntentAllowsFire(this.intentState);
+    }
+    this.fireController.updateBehavior(simTime, player, registry, enemies, fire, celestialBodies);
   }
 
   // 敵に共通する直列化の項目。具象の serialize() がこれへ自分の項目を足す。
@@ -295,6 +329,8 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
       waveId: this.waveId,
       formationId: this.formationId,
       formationRole: this.formationRole,
+      commanderId: this.commanderId,
+      tracksIntent: this.tracksIntent,
       fireController: this.fireController.serialize(),
     };
   }

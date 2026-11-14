@@ -2,7 +2,7 @@ import type * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
 import {
   ENEMY_MAX_HP, ENEMY_MODEL_SCALE, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement,
-  type EnemyPlacement, type SerializedEnemy,
+  type Enemy, type EnemyPlacement, type SerializedEnemy,
 } from './enemy';
 import { PartBasedEnemy } from './part-based-enemy';
 import { createShipDefaultParts } from './ship-default-parts';
@@ -102,9 +102,11 @@ export class MetalEnemy extends PartBasedEnemy {
     );
   }
 
-  // 金属機体はいつでも撃てる。
-  protected override canFire(): boolean {
-    return true;
+  // 金属機体は、編隊の指揮機が生存している間だけ撃てる。指揮機を持たない機体は
+  // いつでも撃てる(GAME.md 11.1)。
+  protected override canFire(enemies: readonly Enemy[]): boolean {
+    if (this.commanderId === null) return true;
+    return enemies.some((enemy) => enemy.id === this.commanderId && enemy.motion.alive);
   }
 
   // 機体の中心から撃つ。
