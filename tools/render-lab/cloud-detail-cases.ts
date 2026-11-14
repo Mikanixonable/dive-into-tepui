@@ -65,7 +65,7 @@ const KIND_GRAPHICS: Readonly<Record<CloudDetailKind, Partial<GraphicsSettingsDa
   cirrus: { lens: false, cumulusDetail: CUMULUS_DETAIL.off, translucentCumulus: false },
 };
 
-const EARTH_RADII = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
+const EARTH_RADII = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape ?? null);
 
 // 直下点の緯度 latitudeDeg で、天体中心から地表までの距離 [m]。楕円体の方向半径。
 function surfaceRadiusAt(latitudeDeg: number): number {

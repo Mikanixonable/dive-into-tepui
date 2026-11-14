@@ -287,7 +287,7 @@ export class PropertyWindow<A extends string = string> {
   }
 
   // タイトル・サブタイトルを DraggableWindow へ差分更新で渡す。
-  public syncHeader(title: string, subtitle: string | undefined): void {
+  public syncHeader(title: string, subtitle: string | null): void {
     this.rename.updateTitle(title);
     this.win.setHeader(title, subtitle);
   }

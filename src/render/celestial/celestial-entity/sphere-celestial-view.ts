@@ -59,7 +59,7 @@ export class SphereCelestialView extends CelestialView {
   public build(motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials): void {
     // 本体形状と環の外半径は定義だけで決まるため、構築時に焼いて同期時に再利用する。
     const def = motion.def;
-    const axes = shapeAxes(def.radius, 'shape' in def ? def.shape : undefined);
+    const axes = shapeAxes(def.radius, 'shape' in def ? def.shape ?? null : null);
     this.axes.set(axes.x, axes.y, axes.z);
     const rings = this.rings(motion);
     this.outerRadius = rings === null
