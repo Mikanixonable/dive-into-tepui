@@ -107,6 +107,7 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.onToggleWaveAttack = (on) => this.commands.setWaveAttackEnabled(on);
     this.stageControlsPanel.onAddMagazine = () => this.commands.addMagazineToShip();
     this.stageControlsPanel.onRefillFuel = () => this.commands.refillShipRcsFuel();
+    this.stageControlsPanel.onRefillBaseFuel = () => this.commands.refillBaseFuel();
     this.stageControlsPanel.onSpawnDistanceChange = (distance) => this.commands.setSpawnDistance(distance);
     this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.commands.spawnManualEnemy(shape, colorValue);
     this.stageControlsPanel.onSpawnFormation = () => this.commands.spawnProteinFormation();
@@ -180,6 +181,18 @@ export class CreativeStage extends Stage {
     }
     const added = player.refuelRcsFuel(player.totalMaxRcsFuel);
     this._dynamicSystem.events.record({ kind: 'rcsFuelRefilled', fuel: added });
+  }
+
+  // すべての基地(健全な建造ドックを持つ船体)の主推進燃料と RCS 燃料を満タンにし、補充した隻数を記録する。
+  public refillBaseFuel(): void {
+    let ships = 0;
+    for (const ship of this._dynamicSystem.all().filter(isModularShip)) {
+      if (!ship.motion.alive || ship.capabilities.role !== 'base') continue;
+      ship.refuelFuel(ship.totalMaxFuel);
+      ship.refuelRcsFuel(ship.totalMaxRcsFuel);
+      ships++;
+    }
+    this._dynamicSystem.events.record({ kind: 'baseFuelRefilled', ships });
   }
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければ、操作艦が要ることを記録する。
