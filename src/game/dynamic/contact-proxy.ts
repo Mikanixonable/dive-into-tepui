@@ -14,7 +14,7 @@ import type { DynamicReactionServices, EntityContactParticipant } from './dynami
 const STILL_ATTITUDE: Attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 
 // 代理が他の個体と接触したときの、本体の側のゲーム上の反応。
-export type ContactProxyReaction = (
+type ContactProxyReaction = (
   other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
 ) => void;
 
