@@ -12,7 +12,8 @@ import {
   applyMapDisplayMode, mapDisplayModeOf, celestialClassVisible, celestialNameVisible,
   type MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, nextMapDisplayMode,
 } from '../../src/game/map/display-toggles';
-import { alwaysFullyVisibleIds } from '../../src/game/map/visibility-policy';
+import { alwaysFullyVisibleIds, MapVisibilityPolicy } from '../../src/game/map/visibility-policy';
+import { BODY_REVEAL_BASE, revealedAfterClear } from '../../src/game/celestial/body-reveal';
 import { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import { v3, addScaled } from '../../src/math/vec3';
 
@@ -277,5 +278,37 @@ export function register(): void {
     assert.ok(members.includes('earth'), '月の親である地球が足されるべき');
     assert.ok(members.includes('sun'));
     assert.equal(members.filter((id) => id === 'moon').length, 1, '月は重複しない');
+  });
+
+  test('reveal: 既定の解放は太陽・地球・月だけ', () => {
+    assert.deepEqual([...BODY_REVEAL_BASE], ['sun', 'earth', 'moon']);
+  });
+
+  test('reveal: 勝利で増える解放は、解放済みの天体を失わず重複させない', () => {
+    assert.deepEqual([...revealedAfterClear(['sun', 'earth', 'sun'], 'stage1')], ['sun', 'earth']);
+  });
+
+  test('reveal: 未解放の天体は、表示トグルが全部立っていても記号・ラベル・軌道線・選択に現れない', () => {
+    const policy = new MapVisibilityPolicy(SYSTEM, DEFAULT_MAP_DISPLAY_TOGGLES, new Set(BODY_REVEAL_BASE));
+    for (const id of ['mars', 'jupiter']) {
+      assert.equal(policy.isRevealed(id), false, id);
+      assert.deepEqual(policy.body(id), { icon: false, label: false, orbit: false, pickable: false }, id);
+    }
+    assert.equal(policy.body('earth').pickable, true, '解放された地球は見える');
+    assert.equal(policy.body('moon').pickable, true, '解放された月は見える');
+  });
+
+  test('reveal: ラグランジュ点は、その系の両方の天体が解放されているときだけ現れる', () => {
+    const toggles = { ...DEFAULT_MAP_DISPLAY_TOGGLES, lagrangeName: true };
+    const sunOnly = new MapVisibilityPolicy(SYSTEM, toggles, new Set(['sun']));
+    assert.equal(sunOnly.body('earth-l1').pickable, false, '地球が未解放の太陽-地球系は出ない');
+    const sunEarth = new MapVisibilityPolicy(SYSTEM, toggles, new Set(['sun', 'earth']));
+    assert.equal(sunEarth.body('earth-l1').pickable, true, '太陽と地球が解放されていれば出る');
+    assert.equal(sunEarth.body('jupiter-l1').pickable, false, '木星が未解放の系は出ない');
+  });
+
+  test('reveal: 解放の集合を渡さなければ、天体を伏せない', () => {
+    const policy = new MapVisibilityPolicy(SYSTEM, DEFAULT_MAP_DISPLAY_TOGGLES);
+    assert.equal(policy.body('mars').pickable, true);
   });
 }

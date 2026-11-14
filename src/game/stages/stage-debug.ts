@@ -28,6 +28,8 @@ export class StageDebug extends Stage {
   public static readonly selectLabel = 'DEBUG';
   public static readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
   public static readonly hiddenFromSelect = true;
+  // 撃破しても決着しない(GAME.md 2.7)。解放の記録も読まない。
+  public static readonly judgesOutcome = false;
 
   // パネルの操作を積む先。
   private readonly commands: StageDebugCommands;

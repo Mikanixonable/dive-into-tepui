@@ -77,6 +77,8 @@ export class MapFrame implements ViewFrame {
     navTargetPresenter: NavTargetPresenter,
     navTargetCommands: NavTargetCommands,
     private readonly mapDisplay: SettingValue<MapDisplayToggles>,
+    // いま遊んでいるランで解放されている天体の id。ランが変わると新しい値を返す。
+    private readonly revealedBodies: () => readonly string[],
   ) {
     // 軌道計画の編集口。
     this.planEditor = new PlanEditor(
@@ -148,6 +150,7 @@ export class MapFrame implements ViewFrame {
   public update(displayWindow: DisplayWindow): void {
     this.objectPickables.refresh(
       displayWindow, this.mapDisplay.current, this.cameraPresentation.activeCameraPos,
+      new Set(this.revealedBodies()),
     );
     this.displayWindowManager.dropStaleRotatingFrame(displayWindow.displayTime, this.frameAnchors);
     this.planEditor.update();

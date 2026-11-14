@@ -8,6 +8,7 @@ import { Stage, type GamePhase } from '../../src/game/stages/stage';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
 import { Logistics } from '../../src/game/stages/stage-utils/logistics';
 import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
+import { BODY_REVEAL_BASE } from '../../src/game/celestial/body-reveal';
 import { AmmoPickup, isAmmoPickup, type SerializedAmmoPickup } from '../../src/game/dynamic/dynamic-entity/pickup';
 import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry, SpawnRecord } from '../../src/game/dynamic/entity-registry';
@@ -48,6 +49,7 @@ interface BareStageFields {
   _dynamicSystem: EntityRegistry & EntityRoster;
   blueprintShelf: ShipBlueprintShelf;
   grantedSalvageNames: Set<string>;
+  _revealedBodies: readonly string[];
 }
 
 // playerState が null なら自機が居ない。居るときは、撃破記録が読む自機の運動状態だけを持つ面を差し込む。
@@ -63,6 +65,7 @@ function bareStage(
   fields._dynamicSystem = system;
   fields.blueprintShelf = { blueprints: [] };
   fields.grantedSalvageNames = new Set();
+  fields._revealedBodies = BODY_REVEAL_BASE;
   // 自機は getter として差し込む。
   Object.defineProperty(stage, 'ship', {
     value: playerState === null ? null : { motion: { state: playerState, alive: true } },
