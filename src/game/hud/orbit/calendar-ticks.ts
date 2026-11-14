@@ -159,7 +159,7 @@ export function calendarBoundaries(
   return unixList.map((unix) => ({ unix, rank: highestRank(unix) }));
 }
 
-// 通過時刻ラベルを書くのに要るものの束。**表示側がこれを1つ持ち回る** — 表記の種類・
+// 通過時刻ラベルを書くのに要るものの束。表示側がこれを1つ持ち回る — 表記の種類・
 // 相対表記の基準時刻・絶対表記の元期は、どれか1つだけ差し替えると表記が食い違う。
 // DisplayWindow から timeLabelSettingOf() で組む。
 export interface TimeLabelSetting {
