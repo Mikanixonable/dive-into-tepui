@@ -142,6 +142,7 @@ export class ModularShip extends Ship implements Controllable {
       (sum, module) => sum + (this.assembly.definition(module.id)?.abilities.fuelConsumptionRate ?? 0), 0,
     );
   }
+  // 主推進燃料の残量と容量 [unit]。RCS 燃料は totalRcsFuel/totalMaxRcsFuel。
   public override get totalFuel(): number { return this.capabilities.fuel('main'); }
   public override get totalMaxFuel(): number { return this.capabilities.maxFuel('main'); }
   public get totalRcsFuel(): number { return this.capabilities.fuel('rcs'); }
