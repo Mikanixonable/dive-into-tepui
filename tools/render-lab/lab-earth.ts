@@ -1,5 +1,5 @@
 // 描画テスト環境の地球。実写の地表・積雲の殻・模式図の経緯度グリッドと海岸線を一度だけ組み、観察の
-// つまみが決める置き方で描画座標へ置く。大気・天体照の光源・自身の影・積雲の影の源としての姿も持つ。
+// つまみが決める置き方で描画座標へ置く。大気・天体照の光源・自身の影・雲の影の源としての姿も持つ。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface, type LightSourceMap } from '../../src/render/celestial/celestial-surface';
 import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
@@ -15,7 +15,7 @@ import { CLOSE_UP_DIAMETER_PX } from './lab-case';
 import { directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import type { AtmosphereBody, AtmosphereClouds } from '../../src/render/atmosphere';
 import type { ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
-import type { ShadowCumulus } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
+import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GpuTimingSink } from '../../src/render/gpu-timings';
@@ -64,13 +64,13 @@ export class LabEarth {
   // 地表・雲の殻・線を載せる群。位置は中心、姿勢は自転姿勢、拡大は半軸。
   public readonly object = new THREE.Group();
   // 中心(描画座標)と、描画座標のベクトルを天体固定の向きへ回す行列。place がその場で書き換え、
-  // 大気・影・積雲の影は同じ実体を読む。
+  // 大気・影・雲の影は同じ実体を読む。
   public readonly center: THREE.Vector3 = this.object.position;
   public readonly bodyFromWorld = new THREE.Matrix4();
   public readonly atmosphere: AtmosphereBody;
   // 天体自身が落とす影。地表・雲頂・低い高度の大気が直射を失う境界はこれが決める。
   public readonly shadowBody: ShadowBody;
-  public readonly cumulus: ShadowCumulus;
+  public readonly shadowCloud: ShadowCloud;
   private readonly surface = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
   private readonly clouds = earthCloudPresentation();
   private readonly graticule = new BodyGraticule();
@@ -78,7 +78,7 @@ export class LabEarth {
 
   // 地表を寄り切った分割段で組む。置き方は place で決める。
   public constructor() {
-    const shape = shapeAxes(R_EARTH_EQ, EARTH.shape);
+    const shape = shapeAxes(R_EARTH_EQ, EARTH.shape ?? null);
     const axes = new THREE.Vector3(shape.x, shape.y, shape.z);
     this.object.scale.copy(axes);
     this.surface.addTo(this.object);
@@ -94,7 +94,7 @@ export class LabEarth {
     };
     // 大気の地表は地表メッシュと同じ楕円体に採る。**真球で渡すと**、極で地表と空のあいだに
     // 隙間が開く。
-    const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape);
+    const radii = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape ?? null);
     this.atmosphere = {
       center: this.center,
       surfaceRadius: radii.equatorRadius,
@@ -105,7 +105,7 @@ export class LabEarth {
       get clouds() { return clouds.cloudsVisible ? atmosphereClouds : null; },
     };
     this.shadowBody = { center: this.center, axes, bodyFromWorld };
-    this.cumulus = {
+    this.shadowCloud = {
       center: this.center,
       surfaceRadius: R_EARTH_EQ,
       axes,
@@ -134,13 +134,14 @@ export class LabEarth {
     // 殻の分割段は寄り切った 1 段に固定する — カメラ距離は観察のつまみで動くが、絵の比較は最も
     // 細かい段で行う。
     this.clouds.syncGraphics(graphics, CLOSE_UP_DIAMETER_PX);
-    if (graphics.clouds) this.clouds.aimFrom(camera.position, this.center, this.object.quaternion, this.cumulus.axes);
+    if (graphics.clouds) this.clouds.aimFrom(camera.position, this.center, this.object.quaternion, this.shadowCloud.axes);
     this.graticule.setVisible(style === 'schematic');
     this.coastline.setVisible(style === 'schematic');
   }
 
   // 動的な雲場を表示時刻 displayTime [s] へ焼く。gpu を渡すと、焼いた GPU 時間をそこへ計上する。
+  // 実験環境の絵は止まった一瞬なので、時間の進み方は等倍として細部を全段写す。
   public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
-    this.clouds.bake(renderer, displayTime, gpu);
+    this.clouds.bake(renderer, displayTime, 1, gpu);
   }
 }

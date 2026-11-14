@@ -19,6 +19,9 @@ import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
+import {
+  CLOUD_DETAIL_SHOT_INFOS, CLOUD_DETAIL_STABILITY_SHOT_INFOS, type CloudDetailShotInfo,
+} from './cloud-detail-cases';
 import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
 import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
@@ -58,6 +61,11 @@ declare global {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
+      // 雲の細部の撮影。巡回の撮影(cases + shoot)には載せない別口。
+      cloudDetailShots: () => readonly CloudDetailShotInfo[];
+      // 視点の安定性の撮影の組(基準・横ずらし・高度違い)。
+      cloudDetailStabilityShots: () => readonly CloudDetailShotInfo[];
+      shootCloudDetail: (name: string) => Promise<string>;
       capture: () => Promise<string>;
       show: (name: CaseName) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
@@ -152,7 +160,7 @@ function buildViewAngleSliders(view: LabView): () => void {
 function buildCloudSliders(view: LabView): void {
   const redraw = (knob: FloatUniform, value: number): void => { knob.value = value; view.render(); };
 
-  // 積雲の飽和とディザの幅。被覆率が 中央値±半幅 に入る柱がディザに掛かるので、半幅を広げるほど
+  // 積雲の飽和とディザの幅。不透明度が 中央値±半幅 に入る柱がディザに掛かるので、半幅を広げるほど
   // 半透明として読める画素が増える。生成側の場へ差し替えたあとの追い込みまで残す。
   const dither = CUMULUS_DITHER_KNOB;
   buildSlider('cumulus-dither', '中央値', 0, 1, 0.001,
@@ -256,6 +264,11 @@ async function init(): Promise<void> {
     earthSurfaceCapture,
     cases: CASE_NAMES,
     shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
+    cloudDetailShots: () => CLOUD_DETAIL_SHOT_INFOS,
+    cloudDetailStabilityShots: () => CLOUD_DETAIL_STABILITY_SHOT_INFOS,
+    shootCloudDetail: async (name) => {
+      const png = await view.shootCloudDetail(name); syncAngles(); return png;
+    },
     capture: () => view.capture(),
     show: (name) => { view.show(name); syncAngles(); },
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
