@@ -6,7 +6,7 @@
 import { type KinematicState, kinematicState } from './kinematic-state';
 import { add, addScaled, len, sub, v3, type Vec3 } from '../math/vec3';
 
-export interface ShootingResult {
+interface ShootingResult {
   readonly velocity: Vec3; // 補正済みの初速度 [m/s]
   readonly residual: number; // 終端位置の残り誤差 [m]
   readonly iterations: number;

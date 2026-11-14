@@ -41,7 +41,7 @@ export type TdbJulianDate = JulianDate<'TDB'>;
  * intentionally no built-in leap-second table: a future UTC instant cannot
  * be converted correctly until that information exists.
  */
-export interface UtcOffsetProvider {
+interface UtcOffsetProvider {
   /** TAI - UTC, in seconds, at the supplied UTC calendar instant. */
   taiMinusUtcSeconds(utc: UtcCalendarDate): number;
 }
