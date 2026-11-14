@@ -16,7 +16,7 @@ declare global {
 }
 
 // 1 枚の撮影の指定。緯度・経度は直下点、cameraDistanceKm は直下点からカメラまでの距離 [km]。
-export interface RenderCaptureSpec {
+interface RenderCaptureSpec {
   readonly latitudeDeg: number;
   readonly longitudeDeg: number;
   readonly cameraDistanceKm: number;
@@ -25,7 +25,7 @@ export interface RenderCaptureSpec {
   readonly displayHours: number;
 }
 
-export interface CloudRenderCapture {
+interface CloudRenderCapture {
   readonly ready: () => boolean;
   readonly waitUntilReady: () => Promise<void>;
   readonly setCapture: (spec: RenderCaptureSpec) => void;
