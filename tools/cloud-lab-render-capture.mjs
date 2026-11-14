@@ -1,6 +1,10 @@
 // 雲の描画経路の多スケール撮影。ヘッドレス Chrome で .cloud-lab/render-capture.html を開き、
 // 地域 cap × 高度と全球の 1 枚を、render-lab と同じ描画経路で撮る。時刻・太陽・画角・解像度は
 // 固定し、落ち着くまで撮り直して決定的な絵だけを .cloud-lab/render-capture/ へ残す。
+// 部分指定: --regions=npac-storm,usec --ladders=400 のように絞ると、その枠だけ撮り、
+// manifest にはその枠だけを残す (compare は無い対を飛ばすので、部分行列の測定になる)。
+// 部分指定時は出力先を作り直さない — 他の枠の PNG は残るが manifest からは外れる。
+// フル行列に戻すときは、引数無しで全枠を撮り直す (出力先を作り直す)。
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -59,6 +63,20 @@ const CAPTURES = [
 ];
 
 const gitHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+
+// 部分指定 (--regions=a,b --ladders=400,2000)。無ければ全枠 (全球を含む)。
+function filterArg(name) {
+  const arg = process.argv.find((entry) => entry.startsWith(`--${name}=`));
+  return arg === undefined ? null : arg.slice(name.length + 3).split(',').filter(Boolean);
+}
+const regionFilter = filterArg('regions');
+const ladderFilter = filterArg('ladders');
+const shootList = CAPTURES.filter((capture) =>
+  (regionFilter === null || (capture.region !== null && regionFilter.includes(capture.region)))
+  && (ladderFilter === null || ladderFilter.includes(String(capture.cameraDistanceKm))));
+if (shootList.length === 0) throw new Error('部分指定に合う撮影枠が無い');
+const filter = regionFilter === null && ladderFilter === null ? null
+  : { regions: regionFilter, ladders: ladderFilter };
 const startedAt = Date.now();
 const { fatalEvents, onEvent } = collectFatalEvents();
 const session = await openChromeSession({
@@ -70,6 +88,7 @@ const manifest = {
   reportVersion: 1,
   generatedAt: new Date().toISOString(),
   gitHead,
+  filter,
   displayHours: DISPLAY_HOURS,
   fovDeg: FOV_DEG,
   viewport: { width: 960, height: VIEW_HEIGHT },
@@ -98,10 +117,16 @@ try {
   }
   if (!ready) throw new Error('Render capture page is not ready: earth textures did not arrive');
 
-  rmSync(outDir, { recursive: true, force: true });
-  mkdirSync(outDir, { recursive: true });
+  // 出力先は、部分指定が無ければ撮影が始まる直前に作り直す — ready 待ちで落ちても前回の撮影を残す。
+  // 部分指定のときは作り直さない (他の枠の PNG は残る)。
+  if (filter === null) {
+    rmSync(outDir, { recursive: true, force: true });
+    mkdirSync(outDir, { recursive: true });
+  } else {
+    mkdirSync(outDir, { recursive: true });
+  }
 
-  for (const capture of CAPTURES) {
+  for (const capture of shootList) {
     const captureStartedAt = Date.now();
     const dataUrl = await devTools.evaluate(
       `window.cloudRenderCapture.setCapture(${JSON.stringify({

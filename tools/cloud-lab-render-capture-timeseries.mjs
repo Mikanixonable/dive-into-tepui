@@ -3,6 +3,10 @@
 // .cloud-lab/render-capture-timeseries/ へ残す。時刻 0 の行列 (render-capture) とは別で、
 // compare の fineMotion 節が読む。既にあって gitHead が同じ枠は取り直さない
 // (60 枚で 1 時間ほどかかるため、中断からの再開を想定する)。
+// 部分指定: --regions=npac-storm,usec --ladders=400 のように絞ると、その枠だけ撮り、
+// manifest にはその枠だけを残す (compare は無い対を飛ばすので、部分行列の測定になる)。
+// 部分指定時は出力先を作り直さない — 他の枠の PNG は残るが manifest からは外れる。
+// フル行列に戻すときは、撮る前に .cloud-lab/render-capture-timeseries/ を消して全枠を撮り直す。
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -58,6 +62,20 @@ const CAPTURES = REGIONS.flatMap((region) => ALTITUDES_KM.flatMap((altitudeKm) =
     cameraDistanceKm: altitudeKm,
   }))));
 
+// 部分指定 (--regions=a,b --ladders=400,2000)。無ければ全枠。
+function filterArg(name) {
+  const arg = process.argv.find((entry) => entry.startsWith(`--${name}=`));
+  return arg === undefined ? null : arg.slice(name.length + 3).split(',').filter(Boolean);
+}
+const regionFilter = filterArg('regions');
+const ladderFilter = filterArg('ladders');
+const shootList = CAPTURES.filter((capture) =>
+  (regionFilter === null || regionFilter.includes(capture.region))
+  && (ladderFilter === null || ladderFilter.includes(String(capture.cameraDistanceKm))));
+if (shootList.length === 0) throw new Error('部分指定に合う撮影枠が無い');
+const filter = regionFilter === null && ladderFilter === null ? null
+  : { regions: regionFilter, ladders: ladderFilter };
+
 const gitHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 const startedAt = Date.now();
 const { fatalEvents, onEvent } = collectFatalEvents();
@@ -79,6 +97,7 @@ const manifest = {
   reportVersion: 1,
   generatedAt: new Date().toISOString(),
   gitHead,
+  filter,
   sampleHours: SAMPLE_HOURS,
   fovDeg: FOV_DEG,
   viewport: { width: 960, height: VIEW_HEIGHT },
@@ -109,7 +128,7 @@ try {
   // 出力先は作り直さない — 中断した実行の続きから撮る (gitHead が変われば全枠を撮り直す)。
   mkdirSync(outDir, { recursive: true });
 
-  for (const capture of CAPTURES) {
+  for (const capture of shootList) {
     const file = `${capture.name}.png`;
     const target = path.join(outDir, file);
     const previous = previousManifest?.gitHead === gitHead
