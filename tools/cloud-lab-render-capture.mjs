@@ -5,6 +5,8 @@
 // manifest にはその枠だけを残す (compare は無い対を飛ばすので、部分行列の測定になる)。
 // 部分指定時は出力先を作り直さない — 他の枠の PNG は残るが manifest からは外れる。
 // フル行列に戻すときは、引数無しで全枠を撮り直す (出力先を作り直す)。
+// --layer=cirrus では上層の半透明殻(巻雲層)だけを撮る: 出力先は render-capture-cirrus、
+// 枠は微細基盤と同じ地域 × 400/2000 km に限る(層の静的構造が対象で、全球と 10000 km は無い)。
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -13,7 +15,10 @@ import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session
 
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.cloud-lab');
-const outDir = path.join(buildDir, 'render-capture');
+const layerArg = process.argv.find((entry) => entry.startsWith('--layer='))?.slice('--layer='.length) ?? null;
+if (layerArg !== null && layerArg !== 'cirrus') throw new Error(`未知の --layer 指定: ${layerArg}`);
+const cirrus = layerArg === 'cirrus';
+const outDir = path.join(buildDir, cirrus ? 'render-capture-cirrus' : 'render-capture');
 const port = 8770;
 const debugPort = 9447;
 
@@ -71,7 +76,11 @@ function filterArg(name) {
 }
 const regionFilter = filterArg('regions');
 const ladderFilter = filterArg('ladders');
-const shootList = CAPTURES.filter((capture) =>
+// 巻雲の撮影は地域 × 400/2000 km だけが対象(全球と 10000 km の枠は持たない)。
+const layerCaptures = cirrus
+  ? CAPTURES.filter((capture) => capture.region !== null && capture.cameraDistanceKm <= 2000)
+  : CAPTURES;
+const shootList = layerCaptures.filter((capture) =>
   (regionFilter === null || (capture.region !== null && regionFilter.includes(capture.region)))
   && (ladderFilter === null || ladderFilter.includes(String(capture.cameraDistanceKm))));
 if (shootList.length === 0) throw new Error('部分指定に合う撮影枠が無い');
@@ -88,6 +97,7 @@ const manifest = {
   reportVersion: 1,
   generatedAt: new Date().toISOString(),
   gitHead,
+  layer: cirrus ? 'cirrus' : 'composite',
   filter,
   displayHours: DISPLAY_HOURS,
   fovDeg: FOV_DEG,
@@ -97,7 +107,7 @@ const manifest = {
 };
 try {
   const { devTools } = session;
-  await devTools.send('Page.navigate', { url: `${session.baseUrl}/render-capture.html` });
+  await devTools.send('Page.navigate', { url: `${session.baseUrl}/render-capture.html${cirrus ? '?layer=cirrus' : ''}` });
   await waitFor(
     devTools,
     "(document.getElementById('error')?.textContent || typeof window.cloudRenderCapture === 'object')",
