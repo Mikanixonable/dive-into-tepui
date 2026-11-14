@@ -1,7 +1,7 @@
 # 未解決: 表示マガジン数が所持数と食い違って見える件
 
 ヘッドレス Chrome + CDP でステージ1を実機駆動して計測した、**未修正の**問題。
-ベルトの実装そのものの説明は [BELT.md](BELT.md)。
+ベルトの実装そのものの説明は [BELT.md](belt-behavior.md)。
 
 表示リンク数 `visibleCount = min(mags, 18)` 自体は `PlayerFire.mags` に忠実
 (約1300フレームの監視で、不一致は `Player.updatePlayerControls` 内の呼び出し順による1フレーム遅れのみ)。
