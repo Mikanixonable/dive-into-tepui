@@ -1,3 +1,5 @@
+// モジュール船の view が、宣言どおりに transform・semantic anchor・強調の殻・
+// 展開パネルへ同期し、model 差し替えで資源を組み直すことを固定する。
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { Q_IDENTITY, qFromAxisAngle } from '../../src/math/quat';
@@ -9,6 +11,8 @@ import { ShipModuleView } from '../../src/render/dynamic/ship/ship-module-view';
 import type { ShipModuleRenderInput, ShipModuleRenderKind } from '../../src/render/dynamic/ship/ship-render-contract';
 import { test } from '../harness';
 
+// テスト用の model: modelId に応じた名前付き anchor 1つと、中心が x へずれた
+// Box メッシュを持つ Group。
 function modelFactory(modelId: string): THREE.Group {
   const root = new THREE.Group();
   root.name = `module:${modelId}`;
@@ -18,6 +22,7 @@ function modelFactory(modelId: string): THREE.Group {
   anchor.position.set(0, 0, 1);
   root.add(anchor);
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 4), new THREE.MeshBasicMaterial());
+  // 輪郭の拡大が原点基点でないことを検査できるよう、box の中心を x へずらす。
   mesh.geometry.translate(0.5, 0, 0);
   mesh.userData.ownsGeometry = true;
   mesh.userData.ownsMaterial = true;
@@ -25,6 +30,7 @@ function modelFactory(modelId: string): THREE.Group {
   return root;
 }
 
+// 既定値(transform は原点・無回転)の ShipModuleRenderInput を組む。
 function moduleInput(
   modelId: string, id: string, kind: ShipModuleRenderKind, hp = 100, maxHp = 100,
   deployed: number | null = null,
@@ -35,6 +41,7 @@ function moduleInput(
   };
 }
 
+// input の位置だけ position へ差し替えたものを返す。
 function at(input: ShipModuleRenderInput, position: ReturnType<typeof v3>): ShipModuleRenderInput {
   return { ...input, transform: { position, rotation: input.transform.rotation } };
 }
@@ -104,11 +111,13 @@ export function register(): void {
   });
 
   test('ship module view: panel-hinge は module state の展開度と全損状態へ同期する', () => {
+    // テスト用の panel-hinge 付き model: hinge anchor と RADIATOR_FOLD_COUNT 枚のパネル。
     const panelFactory = () => {
       const root = new THREE.Group();
       const hinge = new THREE.Object3D();
       hinge.userData.semanticAnchor = 'panel-hinge';
       root.add(hinge);
+      // hinge 直下へ panel-hinge:N の名前を持つパネルを並べる。
       for (let index = 0; index < RADIATOR_FOLD_COUNT; index++) {
         const panel = new THREE.Object3D();
         panel.userData = { semanticAnchor: `panel-hinge:${index}`, panelKind: 'radiator', panelIndex: index };
@@ -117,6 +126,7 @@ export function register(): void {
       return root;
     };
     const view = new ShipModuleView(moduleInput('radiator-standard', 'radiator', 'radiator', 50, 50, 0), panelFactory);
+    // 全パネルの姿勢が deployablePanelPoses('radiator', 0, deployed) と一致することを確かめる。
     const assertPoses = (deployed: number): void => {
       const expected = deployablePanelPoses('radiator', 0, deployed);
       for (const panel of view.semanticAnchors('panel-hinge:')) {

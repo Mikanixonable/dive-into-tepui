@@ -20,6 +20,7 @@ export interface RunTransitions {
 export class ResultScreen implements OverlayHandle {
   private readonly element: HTMLElement;
 
+  // 結果画面の要素と振る舞いを組む。画面への表示は show() が行う。
   public constructor(
     private readonly shell: HudShell,
     private readonly transitions: RunTransitions,

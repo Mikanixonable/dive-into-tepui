@@ -15,10 +15,12 @@ import { test } from '../harness';
 
 const ANCHOR = 'dock-left';
 
+// カタログ定義を持つ手持ちを組む。
 function catalogHeld(definitionId: string): ConstructionHeld {
   return { kind: 'catalog', definitionId };
 }
 
+// parentId の face の軸方向の取り付け先を列挙の中から探す。無ければ失敗にする。
 function faceTarget(assembly: ShipAssembly, parentId: string, face: AxialFace): ConstructionTargetInfo {
   const info = enumerateConstructionTargets(assembly, ANCHOR).find(
     entry => entry.target.kind === 'axial-face'
@@ -28,6 +30,7 @@ function faceTarget(assembly: ShipAssembly, parentId: string, face: AxialFace): 
   return info;
 }
 
+// parentId の slot の側面の取り付け先を列挙の中から探す。無ければ失敗にする。
 function sideTarget(assembly: ShipAssembly, parentId: string, slot: SideSlot): ConstructionTargetInfo {
   const info = enumerateConstructionTargets(assembly, ANCHOR).find(
     entry => entry.target.kind === 'side-slot'
@@ -37,7 +40,9 @@ function sideTarget(assembly: ShipAssembly, parentId: string, slot: SideSlot): C
   return info;
 }
 
+// nearId–farId 間の継ぎ目の取り付け先を列挙の中から探す。無ければ失敗にする。
 function jointTarget(assembly: ShipAssembly, nearId: string, farId: string): ConstructionTargetInfo {
+  // 2モジュールを繋ぐ接続を見つけ、その id を持つ継ぎ目の候補を探す。
   const edge = assembly.graph.find(
     connection => (connection.kind === 'axial' || connection.kind === 'construction')
       && ((connection.parentId === nearId && connection.childId === farId)
@@ -51,6 +56,7 @@ function jointTarget(assembly: ShipAssembly, nearId: string, farId: string): Con
   return info;
 }
 
+// 取り付け先の列挙と配置規則のテストを登録する。
 export function register(): void {
   test('ship construction rules: 空いている面・側面・継ぎ目を全モジュールから列挙する', () => {
     const targets = enumerateConstructionTargets(createBasePreset(), ANCHOR);

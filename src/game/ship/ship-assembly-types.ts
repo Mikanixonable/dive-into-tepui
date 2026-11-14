@@ -69,6 +69,7 @@ export interface ShipAssemblyNode {
   transform: ModuleTransform;
 }
 
+// 接舷接続の端点になれる module(dock または docking_port)か。
 export function isDockingModule(
   module: ShipModuleInstance | null,
 ): module is ShipModuleInstance & { readonly kind: 'dock' | 'docking_port' } {

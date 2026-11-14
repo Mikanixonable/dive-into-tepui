@@ -40,7 +40,7 @@ export interface ConstructionSelectionMenuSpec extends Projected {
   readonly canEdit: boolean;
 }
 
-// メニューの操作を建造セッションへ渡す口。パネルの on* へ委譲する。
+// メニューの操作を建造セッションへ渡す口。
 export interface ShipConstructionSelectionMenuCallbacks {
   readonly onRotate: (delta: 1 | -1) => void;
   readonly onSwapEnds: () => void;

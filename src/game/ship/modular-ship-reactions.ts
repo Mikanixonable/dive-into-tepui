@@ -9,7 +9,10 @@ import type { ShipAssembly } from './ship-assembly';
 import type { PlayerEffects } from '../player/player-effects';
 import type { PlayerLossCause } from '../stages/stage-outcome';
 
+// 展開中の放熱板に当たった1発が放熱板パーツへ与えるダメージ [HP]。薄く大きい構造物なので
+// 船体への直撃より軽い。
 const RADIATOR_BULLET_DAMAGE = 0.25;
+// 被弾の着弾熱 [J]。
 const BULLET_IMPACT_HEAT = 3.0e5;
 
 export interface ModularShipReactionPort {
@@ -22,6 +25,7 @@ export interface ModularShipReactionPort {
 export class ModularShipReactions {
   public constructor(private readonly port: ModularShipReactionPort) {}
 
+  // 他実体との接触を受け取り、被弾と衝突へ振り分ける。死後の接触は捨てる。
   public receiveEntityContact(
     other: EntityContactParticipant, contact: Contact, _services: DynamicReactionServices,
   ): void {
@@ -42,6 +46,7 @@ export class ModularShipReactions {
     this.lose('天体の地表へ到達し機体は失われた', 'surface', services);
   }
 
+  // 展開中の放熱板パーツへの接触を受け取り、被弾と衝突へ振り分ける。死後の接触は捨てる。
   public receiveRadiatorContact(
     moduleId: string, other: EntityContactParticipant, contact: Contact, _services: DynamicReactionServices,
   ): void {
@@ -54,11 +59,13 @@ export class ModularShipReactions {
     this.damagedByContact(contactDamageSpeed(other, contact), moduleId);
   }
 
+  // 構造限界超過の通知を受け、機体喪失として処理する。死後の通知は捨てる。
   public receiveStructuralLoss(services: DynamicReactionServices): void {
     if (!this.port.motion.alive) return;
     this.lose('動圧が構造限界を超え、機体は空力的に分解した', 'structural', services);
   }
 
+  // 焼失の通知を受け、機体喪失として処理する。原因は空力加熱か排熱不足かで分ける。
   public receiveBurnUp(services: DynamicReactionServices): void {
     const aerodynamic = this.port.motion.aero.heatingAerodynamically;
     this.lose(
@@ -70,6 +77,7 @@ export class ModularShipReactions {
     );
   }
 
+  // 被弾の帰結: 着弾熱の吸収、assembly へのダメージ、放熱板の破断と着弾演出。
   private attackedByBullet(
     bulletType: BulletType, damage: number, impactPoint: Contact['point'], radiatorId: string | null = null,
   ): void {
@@ -81,6 +89,7 @@ export class ModularShipReactions {
     this.port.effects.impact(bulletType, this.port.motion.state, impactPoint);
   }
 
+  // 衝突速度に応じた割合ぶんのダメージを assembly へ与え、接触演出を出す。
   private damagedByContact(damageSpeed: number, radiatorId: string | null): void {
     const fraction = collisionDamageFraction(damageSpeed);
     if (fraction <= 0) return;
@@ -91,11 +100,13 @@ export class ModularShipReactions {
     this.port.effects.contact(this.port.motion.state);
   }
 
+  // assembly へ damage を与えて派生状態を同期する。対象は targetModuleId か乱択。
   private damageAssembly(amount: number, targetModuleId: string | null): void {
     this.port.assembly.damage(amount, Math.floor(Math.random() * 0x1_0000_0000), targetModuleId);
     this.port.syncAfterDamage();
   }
 
+  // 対象の放熱板が破壊されていれば、先端での破断演出を出す。
   private breakRadiatorIfDestroyed(
     radiatorId: string | null, radiator: ReturnType<ShipAssembly['module']>,
   ): void {

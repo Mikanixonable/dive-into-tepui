@@ -64,6 +64,7 @@ export function inverseTransform(transform: ModuleTransform): ModuleTransform {
   };
 }
 
+// 2つの回転が同じ向きを表すか。同一回転の ± のクォータニオンを両方許す。
 function sameRotation(a: Quat, b: Quat): boolean {
   const dot = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
   return Math.abs(Math.abs(dot) - 1) < 1e-9;
@@ -72,6 +73,7 @@ function sameRotation(a: Quat, b: Quat): boolean {
 // 軸方向の取り付け変換から向きを読み戻す。許容する回転は Z 軸まわり 90° 単位と
 // その Y 軸 180° との合成の 8 通り。位置が x = y = 0 でないか、どれにも当たらなければ null。
 export function axialPlacementFromTransform(transform: ModuleTransform): AxialPlacement | null {
+  // 位置の z 符号が親のどちら側かを決め、回転は 8 通りと順に照合する。
   const p = transform.position;
   if (Math.abs(p.x) > 1e-9 || Math.abs(p.y) > 1e-9 || Math.abs(p.z) <= 1e-9) return null;
   const parentFace: AxialFace = p.z > 0 ? 'front' : 'back';
@@ -98,6 +100,7 @@ export function sideRollFromTransform(
   return null;
 }
 
+// 位置と回転を新しいオブジェクトへ写した複製を返す。
 export function copyTransform(transform: ModuleTransform): ModuleTransform {
   return {
     position: v3(transform.position.x, transform.position.y, transform.position.z),
@@ -105,6 +108,7 @@ export function copyTransform(transform: ModuleTransform): ModuleTransform {
   };
 }
 
+// 変換の有限性を検査し、回転を正規化して返す。非有限・ゼロ回転は失敗にする。
 export function normalizedTransform(transform: ModuleTransform): ModuleTransform {
   if (!finiteVector(transform.position) || !finiteQuaternion(transform.rotation)) {
     throw new Error('module transform must be finite');
@@ -130,6 +134,7 @@ export function isIdentityRotation(value: Quat): boolean {
   return value.x === 0 && value.y === 0 && value.z === 0 && value.w === 1;
 }
 
+// スロットの外向きの単位ベクトル(親の機体座標系)。
 export function sideSlotDirection(slot: SideSlot): Vec3 {
   switch (slot) {
     case 'side:+x': return v3(1, 0, 0);
@@ -139,6 +144,7 @@ export function sideSlotDirection(slot: SideSlot): Vec3 {
   }
 }
 
+// 子の local +Z をスロットの外向きへ向ける基準回転。
 export function sideSlotRotation(slot: SideSlot): Quat {
   const INV_SQRT2 = Math.SQRT1_2;
   switch (slot) {
@@ -177,6 +183,7 @@ export function sideMountTransform(
   };
 }
 
+// 側面変換の位置が支配的な外向き成分からスロットを推す。軸方向成分が大きい・判定不能なら null。
 export function sideSlotFromTransform(transform: ModuleTransform): SideSlot | null {
   const p = transform.position;
   const values: readonly [SideSlot, number][] = [
@@ -187,6 +194,7 @@ export function sideSlotFromTransform(transform: ModuleTransform): SideSlot | nu
   return best[0];
 }
 
+// 位置と回転がともに十分近いか(回転は ± のクォータニオンを同一視する)。
 export function sameTransform(actual: ModuleTransform, expected: ModuleTransform): boolean {
   const p = actual.position;
   const e = expected.position;
@@ -194,10 +202,12 @@ export function sameTransform(actual: ModuleTransform, expected: ModuleTransform
   return sameRotation(actual.rotation, expected.rotation);
 }
 
+// 側面スロットを持ち、他の module を側面へ取り付けられる kind か。
 export function isSideParent(kind: ShipModuleInstance['kind']): boolean {
   return kind === 'cockpit' || kind === 'tank';
 }
 
+// 側面へ取り付けられる module の kind か。
 export function isSideChild(kind: ShipModuleInstance['kind']): boolean {
   return kind === 'dock' || kind === 'docking_port' || kind === 'solar_panel' || kind === 'radiator';
 }
