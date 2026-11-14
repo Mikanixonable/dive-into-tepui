@@ -443,7 +443,8 @@ export class GamePresentation {
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
-    celestialSystem.bakeClouds(this.devices.scene.renderer, displayTime, this.devices.scene.gpu);
+    celestialSystem.bakeClouds(
+      this.devices.scene.renderer, displayTime, this.game.simSpeedManager.simSpeed, this.devices.scene.gpu);
     dynamicSystem.sync(
       displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay,
       this.devices.scene.pipeline.sunLight, this.devices.scene.pipeline.bodyShadow,

@@ -7,4 +7,12 @@ export interface CloudRenderInput {
   readonly field: CloudFieldBinding;
   readonly generation: number;
   readonly topAltitude: number;
+  // 雲の細部が流れ、生まれ直す時刻。止まった雲場(実写)では、どちらも 0 に止める。
+  readonly clock: CloudDetailClockInput;
+}
+
+// 雲の細部の時刻。displayTime は表示時刻 [s]、simSpeed は実時間 1 秒あたりに進む表示時刻 [s]。
+export interface CloudDetailClockInput {
+  readonly displayTime: number;
+  readonly simSpeed: number;
 }
