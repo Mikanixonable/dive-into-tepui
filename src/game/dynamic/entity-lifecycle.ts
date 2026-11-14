@@ -15,11 +15,13 @@ import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { DynamicSimulationRoster, SimulationLifecycle } from './dynamic-simulation-participant';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 
+// 登録済みクラスの生成条件を調べ、待機が必要かを返す。
 function readyToSpawn(record: SpawnRecord): boolean {
   const gate: SpawnGate | null = findEntityClass(record.entity.kind)?.spawnGate(record.entity) ?? null;
   return gate === null || gate();
 }
 
+// 待機中の敵記録を敵数の集計対象か判定する。
 function isEnemyRecord(record: SpawnRecord): boolean {
   return isSerializedEnemy(record.entity);
 }
@@ -35,6 +37,7 @@ export class EntityLifecycle implements EntityRegistry, DynamicSimulationRoster,
   private motionCache: readonly DynamicMotion[] = [];
   private controllableCache: readonly Controllable[] = [];
 
+  // 初期記録を生成可能な個体と待機記録へ振り分ける。
   public constructor(
     private readonly scene: THREE.Scene,
     public readonly events: EntityRegistry['events'],
@@ -47,11 +50,13 @@ export class EntityLifecycle implements EntityRegistry, DynamicSimulationRoster,
 
   public get collectionRevision(): number { return this.collectionRevisionValue; }
 
+  // 現在の世代に対応する操作可能個体の読み取り専用一覧を返す。
   public get controllables(): readonly Controllable[] {
     this.refreshDerivedCollections();
     return this.controllableCache;
   }
 
+  // 実体化を待つ敵記録の数を返す。
   public get pendingEnemyCount(): number {
     let count = 0;
     for (const record of this.pendingSpawns) {
@@ -60,19 +65,23 @@ export class EntityLifecycle implements EntityRegistry, DynamicSimulationRoster,
     return count;
   }
 
+  // 現在のエンティティ集合を読み取り専用として返す。
   public all(): readonly DynamicEntity[] { return this.entities; }
 
+  // 現在の世代に対応する運動一覧を返す。
   public allMotions(): readonly DynamicMotion[] {
     this.refreshDerivedCollections();
     return this.motionCache;
   }
 
+  // 個体を管理対象へ加え、上限確認と派生一覧の更新を予約する。
   public add(entity: DynamicEntity): void {
     this.entities.push(entity);
     if (entity.capKind !== null) this.capsUncheckedSinceAdd = true;
     this.bumpCollectionRevision();
   }
 
+  // 生成条件が満たされていれば実体化し、そうでなければ待機列へ加える。
   public spawnWhenReady(record: SpawnRecord): void {
     // 直列化された記録は未検証の値なので、実体の無い待機記録は捨てる(旧い記録に残る
     // 廃止済み種別の要求がここへ来る)。
@@ -81,6 +90,7 @@ export class EntityLifecycle implements EntityRegistry, DynamicSimulationRoster,
     else this.pendingSpawns.push(record);
   }
 
+  // 条件を満たした待機記録を実体化し、残りを順序を保って待機列に残す。
   private processPendingSpawns(): void {
     if (this.pendingSpawns.length === 0) return;
     let w = 0;
@@ -91,21 +101,26 @@ export class EntityLifecycle implements EntityRegistry, DynamicSimulationRoster,
     this.pendingSpawns.length = w;
   }
 
+  // 管理対象から外れた個体の資源を解放する。
   public remove(entity: DynamicEntity): void {
     if (!this.detach(entity)) return;
     entity.dispose();
   }
 
+  // 管理中の全個体へ履歴の保持時間を渡す。
   public requestHistoryDuration(sec: number): void {
     for (const entity of this.entities) entity.motion.requestHistoryDuration(sec);
   }
 
+  // 管理中の個体を保存用の記録へ写す。
   public serializedEntities(): readonly SerializedDynamicEntity[] {
     return this.entities.map(entity => entity.serialize());
   }
 
+  // 現在の待機記録を読み取り専用として返す。
   public pendingSpawnRecords(): readonly SpawnRecord[] { return this.pendingSpawns; }
 
+  // 待機生成・寿命判定・上限適用・死亡個体の回収を進める。
   public cleanup(
     _dt: number, _simTime: number, activeStage: StageOutcome,
     zones: readonly EngagementZone<EngagementParticipant>[],
@@ -122,6 +137,7 @@ export class EntityLifecycle implements EntityRegistry, DynamicSimulationRoster,
     this.prune();
   }
 
+  // 管理中の個体を解放し、全ての記録を空にする。
   public dispose(): void {
     for (const entity of this.entities) entity.dispose();
     this.entities.length = 0;
@@ -129,11 +145,13 @@ export class EntityLifecycle implements EntityRegistry, DynamicSimulationRoster,
     this.bumpCollectionRevision();
   }
 
+  // 登録済みクラスがある記録を個体へ復元し、管理対象へ加える。
   private materialize(record: SpawnRecord): void {
     const entityClass = findEntityClass(record.entity.kind);
     if (entityClass !== null) this.add(entityClass.deserialize(record.entity, this, this.scene));
   }
 
+  // 個体が管理対象なら集合から外し、所属の有無を返す。
   private detach(entity: DynamicEntity): boolean {
     const index = this.entities.indexOf(entity);
     if (index < 0) return false;
@@ -142,6 +160,7 @@ export class EntityLifecycle implements EntityRegistry, DynamicSimulationRoster,
     return true;
   }
 
+  // 種別ごとの上限を超えた個体を死亡状態にする。
   private enforceCaps(): void {
     if (!this.capsUncheckedSinceAdd) return;
     this.capsUncheckedSinceAdd = false;
@@ -156,6 +175,7 @@ export class EntityLifecycle implements EntityRegistry, DynamicSimulationRoster,
     }
   }
 
+  // 寿命を終えた個体を解放し、残る集合の世代を更新する。
   private prune(): void {
     let write = 0;
     let changed = false;

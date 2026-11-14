@@ -20,12 +20,14 @@ function at(
   };
 }
 
+// 単発の判定ごとに builder を作り、返り値が後の build で変わらないようにする。
 function buildZones(
   entities: readonly EngagementParticipant[], canEngage: boolean,
 ) {
   return new EngagementZoneBuilder<EngagementParticipant>().build(entities, canEngage);
 }
 
+// 交戦圏の連結・範囲判定と、builder が結果の器を再利用する契約を検査する。
 export function register(): void {
   test('engagement-zone: 中心になる個体が無ければ交戦圏は無い', () => {
     assert.equal(buildZones([at(0, false), at(1e3, false)], true).length, 0);
