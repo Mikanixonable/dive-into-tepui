@@ -43,12 +43,12 @@ export interface CelestialBodies extends FrameCelestialBodies {
   // ECI の点 r から見た恒星方向の単位ベクトル。
   sunDirFrom(r: Vec3, t: number): Vec3;
 
-  // 天体 id の主天体。未登録なら undefined、主天体を持たなければ null。
-  bodyParentId(id: string): string | null | undefined;
+  // 天体 id の主天体。未登録か主天体を持たなければ null。
+  bodyParentId(id: string): string | null;
   // focusId から主星まで遡った id(近い順)。focusId 自身を含む。
   ancestorsOf(focusId: string): readonly string[];
   // focusId と同じ系に属する天体の id。focusId を省くと空集合。
-  sameSystemIds(focusId: string | undefined): ReadonlySet<string>;
+  sameSystemIds(focusId: string | null): ReadonlySet<string>;
   // id から主星までの系の鎖(内側から外側の順)。未登録の id では、その id 1つだけ。
   chainFrom(id: string): readonly string[];
   // 鎖の各段に属する天体の id をまとめたもの。重複は畳む。
@@ -56,5 +56,5 @@ export interface CelestialBodies extends FrameCelestialBodies {
   // カメラ位置がいる系の成員の id。pivot は天体位置を厳密に引く時刻。
   systemMembersAt(cameraPos: Vec3, pivot: number): readonly string[];
   // position が focusId の系の内側にあるか。focusId を省くと常に true。
-  isPositionInFocusedSystem(focusId: string | undefined, position: Vec3, pivot: number): boolean;
+  isPositionInFocusedSystem(focusId: string | null, position: Vec3, pivot: number): boolean;
 }

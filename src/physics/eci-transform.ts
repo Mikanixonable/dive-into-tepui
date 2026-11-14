@@ -54,7 +54,7 @@ export class EciTransform {
   // ECI 原点天体の一式。同じ時刻で全天体から引かれるので1回へ畳む。
   private originStateAt(t: number): OriginState {
     const cached = this.originCache.get(t);
-    if (cached !== undefined) return cached;
+    if (cached !== null) return cached;
     return this.originCache.put(t, {
       numeric: this.origin.numericStateAt(t),
       starRel: this.origin.analyticStarRelStateAt(t),
