@@ -35,6 +35,7 @@ interface CloudRenderCapture {
 // 落ち着き判定の上限。capture() を繰り返し、連続 2 回の絵が一致したら決定的とみなす。
 const MAX_SETTLE_CAPTURES = 6;
 
+// 描画用の雲場を読み込んで、指定構図の撮影口を用意する。
 async function init(): Promise<void> {
   const settings = new UserSettings(new MemorySettingStorage());
   const view = await LabView.create(

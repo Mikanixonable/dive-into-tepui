@@ -30,6 +30,7 @@ export class CloudField {
 
   // model の現在時刻における雲を、指定された projection に従ってベイクするテクスチャ。サンプリング時も projection の uv を参照する。
   public constructor(model: WeatherModel, projection: FieldProjection) {
+    // 2 時刻分の雲・風・環境を同じ投影で読めるテクスチャ群へ焼く。
     const cloudTexelAt = (direction: Vec3Node) => cloudFieldTexelFromSample(condense(model.weatherAt(direction)));
     const motionTexelAt = (direction: Vec3Node) => cloudMotionTexel(smoothedWindsAt(model, direction));
     const environmentTexelAt = (direction: Vec3Node) => cloudEnvironmentTexel(condense(model.weatherAt(direction)));

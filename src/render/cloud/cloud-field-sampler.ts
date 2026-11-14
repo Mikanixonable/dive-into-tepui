@@ -41,6 +41,7 @@ export class CloudFieldSampler {
       this.motions[slot].value = binding.slots[slot].motion;
       this.environments[slot].value = binding.slots[slot].environment;
     }
+    // 同じ供給源の値を焼き直し後も読み続けられるよう、参照と cap の枠を揃える。
     this.parity.value = binding.blend.parity;
     this.fraction.value = binding.blend.fraction;
     this.center.value.copy(binding.cap.center);

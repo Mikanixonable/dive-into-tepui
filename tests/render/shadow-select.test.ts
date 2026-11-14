@@ -22,6 +22,7 @@ const CASES: readonly {
 ];
 
 export function register(): void {
+  // 雲の有効状態と種類別トグルの全組み合わせを設定値へ写す。
   for (const c of CASES) {
     const label = `雲=${onOff(c.clouds)} 雲の影=${onOff(c.cloudShadow)}`
       + ` 積雲=${onOff(c.cumulus)} 巻雲=${onOff(c.cirrus)}`;
