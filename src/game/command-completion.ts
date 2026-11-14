@@ -1,5 +1,5 @@
 // 受け付けた命令が適用されるまで、その成否を操作の応答として保持する。
-export type CommandCompletionState =
+type CommandCompletionState =
   | { readonly kind: 'pending' }
   | { readonly kind: 'succeeded' }
   | { readonly kind: 'failed'; readonly error: unknown };

@@ -35,13 +35,13 @@ function injectStyle(): void {
 }
 
 // 選択メニュー1フレーム分の表示内容。(x, y) は追従先のモジュールの画面座標 [px]。
-export interface ConstructionSelectionMenuSpec extends Projected {
+interface ConstructionSelectionMenuSpec extends Projected {
   // 回転・向きを反転・付け替え・撤去を出すか(編集できる選択のときだけ)。
   readonly canEdit: boolean;
 }
 
 // メニューの操作を建造セッションへ渡す口。
-export interface ShipConstructionSelectionMenuCallbacks {
+interface ShipConstructionSelectionMenuCallbacks {
   readonly onRotate: (delta: 1 | -1) => void;
   readonly onSwapEnds: () => void;
   readonly onReattach: () => void;

@@ -57,7 +57,7 @@ export interface BgmAudition {
 // そのフレームに鳴らすべき BGM の全体。volume はユーザー音量 [0〜1]、inRun はランが進行中か(ゲーム中の
 // BGM を鳴らすか)。audition は試聴の期間の外なら null で、期間の間はゲーム中の BGM を伏せ、試聴している
 // 曲を鳴らす(曲を止めていれば 'silent')。
-export interface BgmDeclaration {
+interface BgmDeclaration {
   readonly volume: number;
   readonly inRun: boolean;
   readonly audition: BgmAudition | 'silent' | null;

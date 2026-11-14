@@ -81,7 +81,7 @@ interface RaySegment {
 }
 
 // 天体 1 体ぶんの、視線区間の透過率と内部散乱。
-export interface LayerContribution {
+interface LayerContribution {
   readonly transmittance: Vec3Node;
   readonly inscatter: Vec3Node;
 }

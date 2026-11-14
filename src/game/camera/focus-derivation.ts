@@ -21,7 +21,7 @@ export interface FocusResolveState {
   readonly lastResolvedFocus: Vec3;
 }
 
-export interface FocusResolveResult {
+interface FocusResolveResult {
   readonly pos: Vec3;
   // 注視点の ECI 速度。位置しか答えられない対象(候補配列の点マーカー)と、
   // 位置を直前の解へ保っているフレームでは null。

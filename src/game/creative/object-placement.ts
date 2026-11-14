@@ -64,7 +64,7 @@ const DEG = Math.PI / 180;
 const PREVIEW_MARKER_ID = 'creative-preview';
 
 // 置くと決まった物体。自機は実体ではなく配置の指定で表す。
-export type PlacedObject =
+type PlacedObject =
   | { readonly kind: 'ship'; readonly init: ModularShipInit }
   | { readonly kind: 'entity'; readonly entity: DynamicEntity };
 
@@ -75,7 +75,7 @@ export interface SerializedObjectPlacement {
 
 // 検証を通った配置の指定の受け手。実体を作るのは受け手の側。軌道標識は実体ではないので
 // 別の口へ渡す。
-export interface ObjectPlacementSink {
+interface ObjectPlacementSink {
   placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void;
   placeOrbitSlot(name: string, orbit: OrbitSlotOrbit): void;
 }

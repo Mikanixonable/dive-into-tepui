@@ -16,7 +16,7 @@ const MARKER_CROWDING_RELEASE_PX = 60;
 const ICON_HIDE_PRIORITY_GAP = 100;
 
 // 間引きの判定に要る、投影済みのマーカー1件。
-export interface DeclutterTarget {
+interface DeclutterTarget {
   readonly id: string;
   readonly x: number;
   readonly y: number;
@@ -34,7 +34,7 @@ export interface DeclutterTarget {
 }
 
 // 間引きで隠すマーカーの id。どちらの集合も次回の compute まで有効。
-export interface HiddenMarkerIds {
+interface HiddenMarkerIds {
   readonly labels: ReadonlySet<string>;
   readonly icons: ReadonlySet<string>;
 }

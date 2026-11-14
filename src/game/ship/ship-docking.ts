@@ -8,14 +8,14 @@ const DOCKING_MAX_DISTANCE = 3;
 const DOCKING_MAX_ANGLE = 10 * Math.PI / 180;
 const DOCKING_MAX_RELATIVE_SPEED = 1;
 
-export interface DockingPortPose {
+interface DockingPortPose {
   readonly point: Vec3;
   readonly axis: Vec3;
   readonly velocity: Vec3;
   readonly rotation: Quat;
 }
 
-export interface DockingEligibility {
+interface DockingEligibility {
   readonly eligible: boolean;
   readonly distance: number;
   readonly angle: number;

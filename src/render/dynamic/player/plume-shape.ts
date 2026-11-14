@@ -4,7 +4,7 @@
 
 // 排気領域の形状パラメータ。軸距離 s(出口断面から [m])に対し半径は
 // NOZZLE_EXIT_RADIUS + tanHalfAngle·s、径方向プロファイルは exp(−(r/半径)^radialExponent)。
-export interface PlumeShape {
+interface PlumeShape {
   // 円錐の半角の正接。軸方向に進むほど半径がこの割合で広がる。
   readonly tanHalfAngle: number;
   // 排気が届く領域の長さ [m]。

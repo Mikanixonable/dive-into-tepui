@@ -1,8 +1,8 @@
 // HUD の表示文脈。ViewMode（カメラ/描画の戦闘・マップ）とは分け、建造などの一時 UI を同じ軸へ混ぜない。
 import type { ViewMode } from '../view/view-mode';
 
-export type HudWorkspace = 'flight' | 'map' | 'construction';
-export type HudAttention = 'nominal' | 'engagement';
+type HudWorkspace = 'flight' | 'map' | 'construction';
+type HudAttention = 'nominal' | 'engagement';
 
 // 現在のビューと、通常ビューを上書きする建造セッションから HUD 全体の作業文脈を決める。
 export function hudWorkspace(view: ViewMode, constructionActive: boolean): HudWorkspace {

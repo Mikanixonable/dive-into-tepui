@@ -26,7 +26,7 @@ import type { OrbitReference } from '../../orbit-reference';
 
 // 新しく置く組み立て型の敵の要求。seed が個体の形状を決める。陣形に属さない個体は
 // formationId と役割が null。
-export interface AssemblyEnemyRequest {
+interface AssemblyEnemyRequest {
   readonly name: string;
   readonly state: SerializedKinematicState;
   readonly seed: number;

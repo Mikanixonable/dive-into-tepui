@@ -11,7 +11,7 @@ type Mat3 = readonly [number, number, number, number, number, number, number, nu
 
 // ヒル座標系: x = 動径方向(中心天体から外へ)、y = 軌道進行方向、z = 軌道面法線。
 // 状態は (x, y, z, vx, vy, vz) の6成分。ここでは Vec3 の対で受け渡す。
-export interface RelativeState {
+interface RelativeState {
   readonly r: Vec3;
   readonly v: Vec3;
 }

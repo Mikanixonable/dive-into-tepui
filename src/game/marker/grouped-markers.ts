@@ -16,7 +16,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { ViewMode } from '../view/view-mode';
 
 // 画面外へ出た対象を画面端の円周上で指す方位マーカーの見た目。
-export interface BearingMarker {
+interface BearingMarker {
   readonly cls: string;
   readonly sym: string; // 上向きの記号
   readonly color: string;
