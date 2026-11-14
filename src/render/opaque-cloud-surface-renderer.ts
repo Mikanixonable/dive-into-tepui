@@ -36,7 +36,7 @@ export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL]
 
 // 雲頂を探す標本の配り方と、細部の段数。march は殻の中を等間隔にたどる刻みの数(どの交点を
 // 見つけるかを決める)、refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を
-// 決める)、octaves は細部の段数(粗い側から数える。8 km・4 km が粗、0.25 km までが精細)。
+// 決める)、octaves は細部の段数(粗い側から数える。16〜4 km が粗、1 km までが標準、0.25 km までが精細)。
 interface CumulusSampling { readonly march: number; readonly refine: number; readonly octaves: number }
 
 // 段ごとの標本の配り方。費用は march + refine 回の標本化。march 0 は殻を描かない段。
@@ -44,9 +44,9 @@ interface CumulusSampling { readonly march: number; readonly refine: number; rea
 // 拾った雲頂が 2 枚の層に重なって見える。
 const SAMPLING_OF_DETAIL = {
   [CUMULUS_DETAIL.off]: { march: 0, refine: 0, octaves: 0 },
-  [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5, octaves: 2 },
-  [CUMULUS_DETAIL.standard]: { march: 6, refine: 3, octaves: 4 },
-  [CUMULUS_DETAIL.fine]: { march: 12, refine: 3, octaves: 6 },
+  [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5, octaves: 3 },
+  [CUMULUS_DETAIL.standard]: { march: 6, refine: 3, octaves: 5 },
+  [CUMULUS_DETAIL.fine]: { march: 12, refine: 3, octaves: 7 },
 } as const satisfies Readonly<Record<CumulusDetail, CumulusSampling>>;
 
 // 積雲の精細さの段が使う細部の段数。影も同じ段数で細部を写す。
