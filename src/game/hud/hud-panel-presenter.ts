@@ -177,8 +177,10 @@ export class HudPanelPresenter {
       fineAttitude: controlled.fineAttitude,
       cameraFollowsAttitude: this.viewer.camera.combat.rotationFollow?.kind === 'attitude',
       progradeHold: controlled.throttle.progradeHold,
-      totalFuel: controlled.totalFuel,
-      totalMaxFuel: controlled.totalMaxFuel,
+      mainFuel: controlled.totalFuel,
+      maxMainFuel: controlled.totalMaxFuel,
+      rcsFuel: ship?.totalRcsFuel ?? controlled.totalFuel,
+      maxRcsFuel: ship?.totalMaxRcsFuel ?? controlled.totalMaxFuel,
       ammo: fire === null ? null : { rounds: fire.rounds, mags: fire.mags, cooldown: fire.cooldown },
       solar: power === null ? null : {
         up: { deploy: power.deployOf('up'), wear: 0 },
