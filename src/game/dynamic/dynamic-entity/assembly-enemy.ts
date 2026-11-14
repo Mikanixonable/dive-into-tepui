@@ -34,6 +34,10 @@ export interface AssemblyEnemyRequest {
   readonly orbitLineColor: string | number;
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
+  // 個体の id。省けば採番器が発番する。
+  readonly id?: string;
+  // 4状態の意図を持つ敵かどうか。省けば意図を持たない。
+  readonly tracksIntent?: boolean;
 }
 
 export interface SerializedAssemblyEnemy extends SerializedEnemy {
@@ -113,12 +117,14 @@ export class AssemblyEnemy extends Enemy {
         accent: request.accent,
         orbitLineColor: request.orbitLineColor,
         attackGroupId: formationId ?? undefined,
+        id: request.id,
         waveId: null,
         formationId,
         formationRole: request.formationRole,
+        tracksIntent: request.tracksIntent,
       },
       generateAssemblyShape(request.seed),
-      idAllocators.entity.next(),
+      idAllocators.entity.next(request.id),
       scene,
     );
   }
