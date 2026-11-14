@@ -32,7 +32,7 @@ const DOWNSAMPLE = 4;
 const TILE_GRID = 3;
 
 // 場を factor × factor の箱平均で間引く。端の余りは切り捨てる。
-export function downsampleField(field, factor) {
+function downsampleField(field, factor) {
   const width = Math.floor(field.width / factor);
   const height = Math.floor(field.height / factor);
   const out = new Float32Array(width * height);
@@ -52,7 +52,7 @@ export function downsampleField(field, factor) {
 
 // a と、b を (dx, dy) だけずらしたもののピアソン相関。重なり域だけで取る —
 // dx が東への移動、dy が南への移動 (行の向き) が正。重なりが場の半分を切ったら 0 を返す。
-export function overlapCorrelation(a, b, dx, dy) {
+function overlapCorrelation(a, b, dx, dy) {
   const { width, height } = a;
   const x0 = Math.max(0, -dx);
   const x1 = Math.min(width, width - dx);
@@ -86,7 +86,7 @@ export function overlapCorrelation(a, b, dx, dy) {
 }
 
 // 相関が最大になるずらし (dx, dy) を総当たりで探す。重なりだけの相関で、箱は巻かない。
-export function bestShiftNoWrap(a, b, maxDx, maxDy) {
+function bestShiftNoWrap(a, b, maxDx, maxDy) {
   let best = { dx: 0, dy: 0, correlation: -Infinity };
   for (let dy = -maxDy; dy <= maxDy; dy++) {
     for (let dx = -maxDx; dx <= maxDx; dx++) {

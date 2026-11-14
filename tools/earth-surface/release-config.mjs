@@ -4,7 +4,7 @@ import { readBaseColorJpeg, validateRuntimeManifest } from './contract.mjs';
 
 const DATASET_ID = /^[a-z0-9-]+$/;
 
-export class EarthSurfaceReleaseConfigError extends Error {
+class EarthSurfaceReleaseConfigError extends Error {
   constructor(message, options) {
     super(message, options);
     this.name = 'EarthSurfaceReleaseConfigError';
