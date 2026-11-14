@@ -168,6 +168,7 @@ export class CreativeStage extends Stage {
       return;
     }
     player.onPickup(1);
+    this._dynamicSystem.events.record({ kind: 'magazineAdded' });
   }
 
   // 操作艦の RCS 燃料を満タンにする。操作艦がいなければ、操作艦が要ることを記録する。
@@ -177,7 +178,8 @@ export class CreativeStage extends Stage {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'refillRcsFuel' });
       return;
     }
-    player.refuelRcsFuel(player.totalMaxRcsFuel);
+    const added = player.refuelRcsFuel(player.totalMaxRcsFuel);
+    this._dynamicSystem.events.record({ kind: 'rcsFuelRefilled', fuel: added });
   }
 
   // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければ、操作艦が要ることを記録する。
