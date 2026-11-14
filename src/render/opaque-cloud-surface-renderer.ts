@@ -29,9 +29,9 @@ const CUMULUS_ROUGHNESS = 1;
 // 画素の描画欠落が生じる。
 const DITHER_LEVELS = 256;
 
-// 積雲の精細さの段。オフは殻を描かない段。**値は保存された設定を読む鍵なので、段を足すときも
-// 既存の値を動かさない** — 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
-export const CUMULUS_DETAIL = { off: 0, coarse: 1, standard: 2, fine: 3 } as const;
+// 積雲の精細さの段。**値は保存された設定を読む鍵なので、段を足すときも既存の値を動かさない** —
+// 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
+export const CUMULUS_DETAIL = { coarse: 1, standard: 2, fine: 3 } as const;
 export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL];
 
 // 雲頂を探す標本の配り方と、細部の段数。march は殻の中を等間隔にたどる刻みの数(どの交点を
@@ -43,7 +43,6 @@ interface CumulusSampling { readonly march: number; readonly refine: number; rea
 // いちばん粗い段は march を 1 本にして refine で補う — 粗い刻みを 2 本以上にすると、手前と奥で
 // 拾った雲頂が 2 枚の層に重なって見える。
 const SAMPLING_OF_DETAIL = {
-  [CUMULUS_DETAIL.off]: { march: 0, refine: 0, octaves: 0 },
   [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5, octaves: 4 },
   [CUMULUS_DETAIL.standard]: { march: 6, refine: 3, octaves: 6 },
   [CUMULUS_DETAIL.fine]: { march: 12, refine: 3, octaves: 8 },
@@ -112,10 +111,9 @@ export class OpaqueCloudSurfaceRenderer {
     for (const mesh of this.meshes.values()) parent.add(mesh);
   }
 
-  // 積雲の精細さの段を置き直す。オフなら全段を隠す。
+  // 積雲の精細さの段を置き直す。
   public setDetail(detail: CumulusDetail): void {
     this.setSampling(SAMPLING_OF_DETAIL[detail]);
-    if (detail === CUMULUS_DETAIL.off) this.hide();
   }
 
   // 読む雲場と cap の置き方を写し取る。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。

@@ -6,7 +6,6 @@ import * as THREE from 'three/webgpu';
 import { R_EARTH, R_EARTH_EQ, EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { metersPerPixelAtDepth, tanHalfFov } from '../../src/math/projection';
-import { CUMULUS_DETAIL } from '../../src/render/opaque-cloud-surface-renderer';
 import { CIRRUS_DETAIL } from '../../src/render/cloud/cloud-detail';
 import { FOV_DEG, labCamera, sunAnglesOf, VIEW_HEIGHT, type LabCase, type LabShot } from './lab-case';
 import type { EarthAngleKey, LabViewAngles } from './view-angles';
@@ -61,7 +60,7 @@ type CloudDetailKind = 'both' | 'cirrus';
 // ようにするため。
 const KIND_GRAPHICS: Readonly<Record<CloudDetailKind, Partial<GraphicsSettingsData>>> = {
   both: { lens: false },
-  cirrus: { lens: false, cumulusDetail: CUMULUS_DETAIL.off },
+  cirrus: { lens: false, cumulus: false },
 };
 
 const EARTH_RADII = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape ?? null);
