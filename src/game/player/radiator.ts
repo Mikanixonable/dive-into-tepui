@@ -18,7 +18,7 @@ const RADIATOR_FOLD_MASS = 5; // 接触で押し合うときの、蛇腹1折り�
 
 export type RadiatorSide = 'up' | 'down';
 
-export interface SerializedRadiatorPanel {
+interface SerializedRadiatorPanel {
   readonly id: string;
   readonly state: SerializedDeployablePanelState;
 }
