@@ -3,9 +3,6 @@
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
-import {
-  ProteinMotionMetricsRecorder, type ProteinMotionMetricSummary,
-} from '../../src/game/protein/protein-motion-metrics';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { farClip } from '../../src/render/camera/camera-view';
@@ -58,8 +55,6 @@ export interface LabMeasurement {
   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
   readonly gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu';
   readonly gpuPassRenderCallCpuMs: Readonly<Record<string, SampleDistribution>>;
-  readonly proteinMotion: ProteinMotionMetricSummary;
-  readonly proteinCase?: LabCase['proteinMotion'];
 }
 
 const ORIGIN = new THREE.Vector3();
@@ -126,6 +121,10 @@ export class LabView {
   private style: RenderStyle = 'realistic';
   // 直前の render がパイプラインの描画に費やした CPU 時間 [ms]。
   private lastRenderCpuMs = 0;
+  // setDisplayTime で最後に指定した表示時刻 [s]。capture() は画面に出ているものを撮るので、
+  // render() の既定 (0) ではなくこの時刻で描き直す — 既定で描き直すと、表示時刻を指定した
+  // 撮影 (時系列の撮影や displayTime 付きの shot) がすべて時刻 0 の絵になる。
+  private lastDisplayTime = 0;
   // カメラが周回する点。ケースの注視点を視線上へ落としたもの。
   private readonly pivot = new THREE.Vector3();
   // ケース既定のカメラ距離 [m]。cameraDistanceLog の基準になる。
@@ -151,12 +150,13 @@ export class LabView {
   // 起動時の描画品質設定。撮影はこれへ差分を重ねる。
   private readonly startupGraphics: GraphicsSettingsData;
 
-  // graphics は描く描画品質設定の器。
+  // graphics は描く描画品質設定の器。captureOnly は撮影専用(captureTarget へだけ描く)。
   private constructor(
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
     private readonly gpu: GpuTimings,
     private readonly graphics: StoredSetting<GraphicsSettingsData>,
+    private readonly captureOnly: boolean = false,
   ) {
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
@@ -173,6 +173,7 @@ export class LabView {
   // 描き直す。
   public static async create(
     canvas: HTMLCanvasElement, graphics: StoredSetting<GraphicsSettingsData>,
+    options?: { readonly captureOnly?: boolean },
   ): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、深度の分解能と
     // 描画順の並べ替えが本番と別物になる。
@@ -186,7 +187,7 @@ export class LabView {
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, graphics.current, gpu);
-    return new LabView(renderer, pipeline, gpu, graphics);
+    return new LabView(renderer, pipeline, gpu, graphics, options?.captureOnly ?? false);
   }
 
   // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
@@ -208,7 +209,6 @@ export class LabView {
   private build(name: CaseName): void {
     if (this.current !== null) {
       this.scene.remove(...this.current.objects);
-      this.current.disposeProteinMotion?.();
       this.current.dispose?.();
       for (const root of this.current.objects) disposeOwnedRenderResources(root);
     }
@@ -356,11 +356,25 @@ export class LabView {
     ));
     const startedAt = performance.now();
     try {
-      this.pipeline.render(this.scene, camera, this.style);
+      if (this.captureOnly) this.renderToCaptureTarget(camera);
+      else this.pipeline.render(this.scene, camera, this.style);
     } finally {
       this.lastRenderCpuMs = performance.now() - startedAt;
       if (observedFrame) this.gpu.endObservedFrame();
       this.gpu.resolve();
+    }
+  }
+
+  // 撮影専用の描画。最終合成の出力先を captureTarget に替えて描く。
+  // ソフトウェア WebGPU では、キャンバスへの提示が共有イメージを作れず device を落とし、
+  // その後の読み出し(mapAsync)まで道連れにする。提示を避けると読み出しが生きる。
+  private renderToCaptureTarget(camera: THREE.Camera): void {
+    const previousOutput = this.renderer.getOutputRenderTarget();
+    try {
+      this.renderer.setOutputRenderTarget(this.captureTarget);
+      this.pipeline.render(this.scene, camera, this.style);
+    } finally {
+      this.renderer.setOutputRenderTarget(previousOutput);
     }
   }
 
@@ -401,13 +415,12 @@ export class LabView {
     // 表示時刻は 60fps で進める — 雲場は表示時刻が変わったフレームにだけ焼くので、止めると生成を測れない。
     for (let frame = 0; frame < warmupFrames; frame++) {
       const displayTime = (frame + 1) / 60;
-      this.current?.updateProteinMotion?.(displayTime);
       this.render(displayTime);
       await this.gpu.waitForResolve();
     }
     this.gpu.reset();
 
-    // 本計測。フレームごとに CPU 時間・GPU のパス時間・残基 motion の計測値を集める。
+    // 本計測。フレームごとに CPU 時間・GPU のパス時間を集める。
     const cpuSamples: number[] = [];
     const gpuPassTotalSamples: number[] = [];
     const observedRenderSamples: (number | null)[] = [];
@@ -418,7 +431,6 @@ export class LabView {
     const observedComputeResolvedQueryCounts: number[] = [];
     const gpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => [] as number[]);
     const renderCallCpuSamples = Array.from({ length: GPU_PASS_COUNT }, () => Array(sampleFrames).fill(0) as number[]);
-    const motion = new ProteinMotionMetricsRecorder();
     let measuredFrameIndex: number | null = null;
     let pendingPass: number | null = null;
     let activePass: number | null = null;
@@ -457,7 +469,6 @@ export class LabView {
         measuredFrameIndex = frame;
         const displayTime = (warmupFrames + frame + 1) / 60;
         this.gpu.beginObservedFrame();
-        const motionSample = this.current?.updateProteinMotion?.(displayTime);
         this.render(displayTime, true);
         measuredFrameIndex = null;
         cpuSamples.push(this.lastRenderCpuMs);
@@ -475,7 +486,6 @@ export class LabView {
         }
         gpuPassTotalSamples.push(passTotalMs);
         for (const [index, samples] of gpuSamples.entries()) samples.push(timings.elapsedMs[index] ?? 0);
-        motion.record(motionSample ?? { cpuMs: 0, uploadBytes: 0, lodCounts: {} });
       }
     } finally {
       measuredFrameIndex = null;
@@ -514,8 +524,6 @@ export class LabView {
       gpuPassRenderCallCpuMs: Object.fromEntries(
         GPU_PASS_LABELS.map((label, index) => [label, distributionOf(renderCallCpuSamples[index]!)]),
       ),
-      proteinMotion: motion.summary(),
-      proteinCase: this.current?.proteinMotion,
     };
   }
 
@@ -538,8 +546,10 @@ export class LabView {
     this.setDisplayTime(shot.displayTime ?? 0);
   }
 
-  // 可動部を指定表示時刻 [s] に合わせ、静止した1フレームとして描く。
+  // 可動部を指定表示時刻 [s] に合わせ、静止した1フレームとして描く。時刻は capture() が
+  // 同じ時刻で描き直せるよう控える。
   public setDisplayTime(displayTime: number): void {
+    this.lastDisplayTime = displayTime;
     this.current?.syncMotion?.(displayTime);
     this.render(displayTime);
   }
@@ -563,7 +573,6 @@ export class LabView {
     // 部品(雲など)があり、前の撮影の設定のまま待つと、読み込み前の姿を撮る。
     this.setGraphics({ ...this.startupGraphics, ...graphics });
     this.show(name);
-    this.current?.updateProteinMotion?.(1);
     await this.waitUntilReady();
     const pngs: Record<string, string> = {};
     for (const shotName of this.shotNames) {
@@ -589,14 +598,14 @@ export class LabView {
   }
 
   // いまのケースの部品と、地球を置くなら地球が揃い、絵として比べられる状態になったか。
-  private get ready(): boolean {
+  public get ready(): boolean {
     const built = this.current;
     if (built === null) return true;
     return (built.ready?.() ?? true) && (built.earth === undefined || this.earth.ready);
   }
 
   // ready が真になるまで、1 フレームずつ描いて待つ。上限を過ぎたらそのまま戻る。
-  private async waitUntilReady(): Promise<void> {
+  public async waitUntilReady(): Promise<void> {
     const deadline = performance.now() + READY_TIMEOUT_MS;
     while (!this.ready && performance.now() < deadline) {
       // **描かずに待っても進まない** — テクスチャの GPU 投入は 1 回の描画につき 1 枚しか進まない。
@@ -608,7 +617,9 @@ export class LabView {
     }
   }
 
-  // いま画面に出ているものを、ケースも観察の向きも変えずに撮る。
+  // いま画面に出ているものを、ケースも観察の向きも変えずに撮る。描き直しは最後に指定した
+  // 表示時刻で行う (setDisplayTime が控えたもの)。既定の 0 で描き直すと、表示時刻を指定
+  // した撮影が時刻 0 の絵になってしまう。
   public async capture(): Promise<string> {
     // 前回の timestamp resolve を排出してから描く。render() の resolve がこのフレームを対象にできる。
     await this.gpu.waitForResolve();
@@ -625,7 +636,7 @@ export class LabView {
       this.renderer.setClearColor(previousClearColor, previousClearAlpha);
       this.renderer.setRenderTarget(previousTarget);
       this.renderer.setOutputRenderTarget(this.captureTarget);
-      this.render();
+      this.render(this.lastDisplayTime);
       // timestamp 解決後に readback する。readRenderTargetPixelsAsync は captureTarget の GPU 書き込みも待つ。
       await this.gpu.waitForResolve();
     } finally {
