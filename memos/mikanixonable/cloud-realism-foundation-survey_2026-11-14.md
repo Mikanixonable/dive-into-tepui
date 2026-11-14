@@ -4,6 +4,12 @@
 ユーザーの問い「描画経路段階の雲の形状を風向き・緯度・陸海で変え、風で移動し、セルの成長と崩壊を
 繰り返す — 実現しているか」と「雲を似せていく基盤の現状」への調査をまとめたもの。
 
+**追記(同日、devin/dev):** この調査は統合前の `muse/dev` で行った。`05a1c3223` で
+`feat/cloud-scale-continuity` が devin/dev へ統合され、3節の「未統合」「構想段階」と書いたもの —
+`cloud-detail:stability`、`cloud-lab:render-capture(-timeseries)`、`cloud-lab:reference-fine(-timeseries)`、
+`cloud-lab:reference-cloudtop`、`cloud-detail:tiers`、compare の fineMotion 節 — は devin/dev に
+全て存在する。4節の穴そのもの(8〜100 km の担い手・対流セルの寿命)の解消具合は別途評価が要る。
+
 ## 1. 要求された5機能の実装状況
 
 雲の描画経路は `src/render/cloud/` にある TSL(three.js shading language)製の閉形式 GPU 気象モデル
@@ -85,8 +91,7 @@ cloud-detail は render-lab 経由で**本番の `earthCloudPresentation()` 全�
 **足りない**
 
 - **8〜100km の尺度の穴** — 生成の最細段(対流24〜48km)と描画細部の最粗段(8km)の間に担い手が無い。
-  `feat/cloud-scale-continuity` で作業中(計画: `cloud-scale-continuity-plan_2026-11-14.md`)だが
-  `cloud-detail:stability` 等の該当ツールはこのツリー未統合。
+  `feat/cloud-scale-continuity` で作業中(計画: `cloud-scale-continuity-plan_2026-11-14.md`)。
 - **個別対流セルのライフサイクルと描画細部の環境応答・時間変化が無い** — 5機能表の「部分的」と同じ穴。
   閉形式セル寿命(suspended 提案)・cellular noise 組織化
   (`suspended/cloud-cell-organization-plan_2026-09-11.md`)ともに未承認。
@@ -94,8 +99,9 @@ cloud-detail は render-lab 経由で**本番の `earthCloudPresentation()` 全�
   `.cloud-lab/`・`.cloud-detail/`・`.render-lab*` は `.gitignore` で実写参照と履歴はローカル蓄積。
 - **封筒の場面数が少ない** — kind あたり数場面、陸3場面は判定外、外し撮影29枚はハードコード固定
   (`EXCLUDED_NEAR_CLEAR_SHOTS`)。
-- **教師付き基盤は構想段階** — 「環境が同じなら統計が同じ」教師(場面へ環境ラベルを付け記述子を
-  比較)は `cloud-scale-continuity-plan_2026-11-14.md` に考え方だけある。
+- **教師付き基盤は構想段階**(調査時点) — 「環境が同じなら統計が同じ」教師(場面へ環境ラベルを
+  付け記述子を比較)は `cloud-scale-continuity-plan_2026-11-14.md` に考え方だけある。
+  ※ 追記のとおり描画経路の教師比較(render-capture 系 + reference-fine 系)は devin/dev に実装済み。
 - `cloud-detail` と `cloud-lab` の統合が `dev.md:583` にユーザー指示メモとして残るが未実施。
 
 ## 4. 読み取れる方向
