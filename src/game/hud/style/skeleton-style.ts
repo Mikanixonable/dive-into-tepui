@@ -69,6 +69,8 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud.construction-mode #hud-map-scale,
 #hud.construction-mode #hud-chase-reset,
 #hud.construction-mode #hud-help-badge,
+#hud.construction-mode #hud-topbar-toggle,
+#hud.construction-mode #hud-wide-toggle,
 #hud.construction-mode .rail-toggle { display: none !important; }
 #hud .hud-view-root { position: absolute; inset: 0; display: none; pointer-events: none; }
 #hud .hud-view-root.active { display: block; }
@@ -272,6 +274,11 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 
 /* 右上の常設バッジ列。右レール収納トグルの左へ並べる。 */
+/* 画面を広く使うモード(Tab)は、レールとその収納トグル・上部バー・下部の帯を隠す。上部バーの収納は
+   上部バーだけを隠す。どちらも右上のボタン群は残し、そこから戻せるようにする。 */
+#hud.hud-wide .hud-rail, #hud.hud-wide .rail-toggle,
+#hud.hud-wide #hud-topbar, #hud.hud-wide #hud-stagestatus,
+#hud.topbar-collapsed #hud-topbar { display: none !important; }
 #hud-chrome-actions {
   position: absolute; top: var(--space-4);
   right: calc(var(--space-4) + var(--hud-rail-toggle-size) + var(--space-2));

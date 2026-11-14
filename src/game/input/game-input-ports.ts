@@ -51,7 +51,7 @@ export function gameInputPorts(
     },
     {
       feature: 'hud',
-      commands: [gameCommand(K.help.code, K.help)],
+      commands: [gameCommand(K.help.code, K.help), gameCommand(K.wideScreenToggle.code, K.wideScreenToggle)],
       handleCommand: command => hud.handleCommand(command.id),
     },
     {
