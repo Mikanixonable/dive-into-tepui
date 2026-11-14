@@ -85,6 +85,8 @@ export class CloudShadowRenderer {
     this.topAltitude.value = cloud.cloud.topAltitude;
     this.bodyFromWorld.value.copy(cloud.bodyFromWorld);
     this.fieldSampler.bind(cloud.cloud.field);
+    this.shape.syncClock(cloud.cloud.clock.displayTime, cloud.cloud.clock.simSpeed);
+    this.cirrusDetail.syncClock(cloud.cloud.clock.displayTime, cloud.cloud.clock.simSpeed);
   }
 
   // このフレームに雲の影があるか。どちらかの種類が落ちれば真。
@@ -124,6 +126,10 @@ export class CloudShadowRenderer {
         // 受け手の床は自分の積雲の柱のためのもの。積雲の影が無い設定で張ると、巻雲の層を跨ぐ
         // 高さの判定がずれる。
         const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius).mul(this.cumulusActive);
+        // 細部を運ぶ風は数百キロで均した流れなので、光路の数十キロのあいだは受け手の上で読んだ 1 つで足りる。
+        const motion = this.fieldSampler.sampleMotion(normalize(offset));
+        const surfaceWind = motion.surfaceWind.toVar();
+        const upperWind = motion.upperWind.toVar();
         const stepRadius = stepLength.div(bodyRadius);
         const opticalDepth = float(0).toVar();
         Loop({ start: 0, end: SHADOW_TAPS, type: 'int', condition: '<' }, ({ i }) => {
@@ -134,7 +140,8 @@ export class CloudShadowRenderer {
           const cloud = this.fieldAt(up);
           // 細部はタップごとに、幅の上で解像できる段だけを重ねる。
           const detail = this.shape.detailAt(
-            up, sampleWidth, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus);
+            up, sampleWidth, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus, surfaceWind,
+            this.shape.grainOf(cloud));
           const cloudTop = this.shape.cloudTop(
             cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), detail).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);
@@ -153,7 +160,8 @@ export class CloudShadowRenderer {
           // 筋の細部は、層を横切るタップで、その場所の筋の向きに沿って読む。
           const cirrusDetail = float(1).toVar();
           If(and(greaterThan(cloud.cirrus, CIRRUS_PRESENT_AMOUNT), greaterThan(cirrusCrossing, 0)), () => {
-            cirrusDetail.assign(this.cirrusDetail.multiplierAt(up, bodyRadius, sampleWidth, cloud.cirrusFlow));
+            cirrusDetail.assign(this.cirrusDetail.multiplierAt(
+              up, bodyRadius, sampleWidth, cloud.cirrusFlow, upperWind));
           });
           opticalDepth.addAssign(cirrusColumnOpticalDepthNode(cloud.cirrus)
             .mul(cirrusDetail).mul(cirrusCrossing).mul(min(stepLength.div(max(rise, 1)), CIRRUS_MAX_SLANT))
