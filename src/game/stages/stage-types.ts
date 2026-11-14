@@ -39,7 +39,7 @@ export type StageDeps = [
 // 省いたものは新しいランの初期値から始まる。
 export type CommonStageState = [
   scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics, reinforced?: boolean,
-  salvageCargo?: SalvageCargo,
+  salvageCargo?: SalvageCargo, revealedBodies?: readonly string[],
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -54,6 +54,8 @@ export interface StageClass {
   readonly epoch: TdbJulianDate;
   // 開始前にプレイヤーへ開始日時を選ばせるか(GAME.md 9.0)。選ばせないステージは epoch で始まる。
   readonly picksStartEpoch: boolean;
+  // 勝敗を判定するか。判定しないステージは勝利せず、セーブ枠の解放の記録を読まない(GAME.md「天体の解放」)。
+  readonly judgesOutcome: boolean;
   // 選択画面が読む項目。
   readonly selectLabel: string;
   readonly selectSub: string;
@@ -85,6 +87,8 @@ export interface SerializedStage {
   readonly reinforced?: boolean;
   // 補給艇で届けていない積荷。欠けた記録は空の待ち行列から始まる。
   readonly pendingSalvageCargo?: readonly SalvageKind[];
+  // 解放された天体の id。欠けた記録は太陽・地球・月だけから始める。
+  readonly revealedBodies?: readonly string[];
 }
 
 // 1周回の成績。撃破・命中・生存の値を結果画面と記録の両方が読む。
@@ -114,6 +118,8 @@ export interface RunOptions {
   readonly reinforced: boolean;
   // 連敗の予告を出すか。予告を持つステージだけが読む。
   readonly forecast: boolean;
+  // このランの開始時点で解放されている天体の id。勝敗を判定しないステージには基底の天体だけを渡す。
+  readonly revealedBodies: readonly string[];
 }
 
 // 生存時間を T+ の時分秒で書く。

@@ -24,6 +24,8 @@ export class StageDebugLoad extends Stage {
   public static readonly selectLabel = 'DEBUG(高負荷)';
   public static readonly selectSub = '【デバッグ】破片を多数配置し積分を高負荷にする・撃破しても終了しない';
   public static readonly hiddenFromSelect = true;
+  // 撃破しても決着しない(GAME.md 2.7)。解放の記録も読まない。
+  public static readonly judgesOutcome = false;
 
   // 自機を置き、破片を自機の周囲へ散らして始める。
   public static create(...deps: StageDeps): StageDebugLoad {
