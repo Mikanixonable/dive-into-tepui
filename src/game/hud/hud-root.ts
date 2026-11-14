@@ -408,9 +408,53 @@ function buildChaseReset(root: HTMLElement): void {
 }
 
 // 右上の常設バッジ列(ヘルプ)を組む。右レール収納トグルの左へ並ぶ。
-function buildChromeActions(chrome: HTMLElement, helpPanel: HelpPanel): void {
+function buildChromeActions(root: HTMLElement, chrome: HTMLElement, helpPanel: HelpPanel): void {
   const actions = createHudElement('div', 'hud-chrome-actions', chrome);
+  buildTopBarToggle(actions, root);
+  buildWideScreenToggle(actions, root);
   buildHelpBadge(actions, helpPanel);
+}
+
+// 根の class を反転し、対応するボタンの aria-pressed を合わせる。状態の正本は根の class。
+function flipRootClass(root: HTMLElement, className: string, buttonId: string): boolean {
+  const on = !root.classList.contains(className);
+  root.classList.toggle(className, on);
+  root.querySelector<HTMLElement>(`#${buttonId}`)?.setAttribute('aria-pressed', String(on));
+  return on;
+}
+
+// 画面を広く使うモード(Tab キーと右上ボタン)を切り替える。
+export function toggleHudWideScreen(root: HTMLElement): void {
+  flipRootClass(root, 'hud-wide', 'hud-wide-toggle');
+}
+
+// 上部の全体ステータスバーを収納・展開する。収納中も右上のボタンで戻せる。
+function buildTopBarToggle(root: HTMLElement, host: HTMLElement): void {
+  const button = createHudElement('button', 'hud-topbar-toggle', root, 'ui-surface-quiet');
+  button.setAttribute('type', 'button');
+  button.setAttribute('aria-pressed', 'false');
+  button.innerHTML = '<span aria-hidden="true">▲</span>';
+  const label = (collapsed: boolean): string => (collapsed ? '上部バーを開く' : '上部バーを収納');
+  button.setAttribute('aria-label', label(false));
+  button.title = label(false);
+  // 状態は根の class が持ち、字形と読み上げ名は切り替えのたびにその状態から組み直す。
+  button.addEventListener('click', () => {
+    const collapsed = flipRootClass(host, 'topbar-collapsed', 'hud-topbar-toggle');
+    button.querySelector('span')!.textContent = collapsed ? '▼' : '▲';
+    button.setAttribute('aria-label', label(collapsed));
+    button.title = label(collapsed);
+  });
+}
+
+// 画面を広く使うモードの切り替えバッジ。タッチだけの利用者の入口になる。
+function buildWideScreenToggle(root: HTMLElement, host: HTMLElement): void {
+  const button = createHudElement('button', 'hud-wide-toggle', root, 'ui-surface-quiet');
+  button.setAttribute('type', 'button');
+  button.setAttribute('aria-pressed', 'false');
+  button.setAttribute('aria-label', '画面を広く使う');
+  button.setAttribute('title', '画面を広く使う(TAB)');
+  button.innerHTML = `<span class="hud-mini-code" aria-hidden="true">${K.wideScreenToggle.label}</span><span aria-hidden="true">⤢</span>`;
+  button.addEventListener('click', () => toggleHudWideScreen(host));
 }
 
 // H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
@@ -481,7 +525,7 @@ export function buildHudDom(
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
   buildTopBar(chrome);
   buildChaseReset(chrome);
-  buildChromeActions(chrome, helpPanel);
+  buildChromeActions(root, chrome, helpPanel);
   trackHudChromeInset(root, chrome);
 
   buildMapScale(mapRoot.element);
