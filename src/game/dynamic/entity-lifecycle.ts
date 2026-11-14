@@ -1,6 +1,4 @@
-// DynamicSystem がエンティティの集合管理とライフサイクルを委譲するためのゲーム側ポート。生成済み個体の
-// 所有や表示資源の具体的な実装はここへ持ち込まず、追加・pending spawn・死亡・除去の順序を
-// 名前付きの境界として表す。
+// 動的エンティティの集合、実体化待ち、上限管理と寿命回収を担う。
 
 import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
 import type * as THREE from 'three/webgpu';
@@ -17,56 +15,20 @@ import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { DynamicSimulationRoster, SimulationLifecycle } from './dynamic-simulation-participant';
 import { isControllable, type Controllable } from './dynamic-entity/controllable';
 
-// pending spawn が実体化可能かを判定する条件関数。待機理由は本関数の判定外にカプセル化する。
-type EntitySpawnGate = () => boolean;
-
-// pending spawn 一件の内容。汎用 Options/Params ではなく、生成順序に必要な値だけを持つ。
-interface PendingEntitySpawn {
-  readonly gate: EntitySpawnGate;
-  readonly build: () => DynamicEntity;
-  readonly onSpawned?: () => void;
-}
-
-// 追加を担当する named port。
-interface EntityAdditionPort {
-  add(entity: DynamicEntity): void;
-}
-
-// pending spawn の待機と処理を担当する named port。
-interface PendingEntitySpawnPort {
-  queuePendingSpawn(spawn: PendingEntitySpawn): void;
-  processPendingSpawns(): void;
-}
-
-// 死亡をエンティティ一覧からの除去へ進める前の境界。死亡判定そのものは DynamicEntity/Motion が持つ。
-interface EntityDeathPort {
-  markDead(entity: DynamicEntity): void;
-}
-
-// 除去と所有資源の解放を担当する named port。
-interface EntityRemovalPort {
-  remove(entity: DynamicEntity): void;
-}
-
-// DynamicSystem が後続配線で実装を委譲できる寿命ポート。メソッド順が一体の寿命の流れを示す。
-interface EntityLifecyclePort
-  extends EntityAdditionPort, PendingEntitySpawnPort, EntityDeathPort, EntityRemovalPort {}
-
+// 登録済みクラスの生成条件を調べ、待機が必要かを返す。
 function readyToSpawn(record: SpawnRecord): boolean {
   const gate: SpawnGate | null = findEntityClass(record.entity.kind)?.spawnGate(record.entity) ?? null;
   return gate === null || gate();
 }
 
+// 待機中の敵記録を敵数の集計対象か判定する。
 function isEnemyRecord(record: SpawnRecord): boolean {
   return isSerializedEnemy(record.entity);
 }
 
-// DynamicSystem からエンティティの collection、pending spawn、上限、回収を分離した所有者。
-// Simulator へは roster/lifecycle、生成側へは registry として同じインスタンスを渡す。
-export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, DynamicSimulationRoster, SimulationLifecycle {
+export class EntityLifecycle implements EntityRegistry, DynamicSimulationRoster, SimulationLifecycle {
   private readonly entities: DynamicEntity[] = [];
   private readonly pendingSpawns: SpawnRecord[] = [];
-  private readonly deferredSpawns: PendingEntitySpawn[] = [];
   private collectionRevisionValue = 0;
   private capsUncheckedSinceAdd = false;
   // collectionRevision が同じ間は、全個体から導く読み取り専用の一覧も同じ内容になる。
@@ -75,6 +37,7 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
   private motionCache: readonly DynamicMotion[] = [];
   private controllableCache: readonly Controllable[] = [];
 
+  // 初期記録を生成可能な個体と待機記録へ振り分ける。
   public constructor(
     private readonly scene: THREE.Scene,
     public readonly events: EntityRegistry['events'],
@@ -87,11 +50,13 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
 
   public get collectionRevision(): number { return this.collectionRevisionValue; }
 
+  // 現在の世代に対応する操作可能個体の読み取り専用一覧を返す。
   public get controllables(): readonly Controllable[] {
     this.refreshDerivedCollections();
     return this.controllableCache;
   }
 
+  // 実体化を待つ敵記録の数を返す。
   public get pendingEnemyCount(): number {
     let count = 0;
     for (const record of this.pendingSpawns) {
@@ -100,29 +65,23 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
     return count;
   }
 
+  // 現在のエンティティ集合を読み取り専用として返す。
   public all(): readonly DynamicEntity[] { return this.entities; }
 
+  // 現在の世代に対応する運動一覧を返す。
   public allMotions(): readonly DynamicMotion[] {
     this.refreshDerivedCollections();
     return this.motionCache;
   }
 
+  // 個体を管理対象へ加え、上限確認と派生一覧の更新を予約する。
   public add(entity: DynamicEntity): void {
     this.entities.push(entity);
     if (entity.capKind !== null) this.capsUncheckedSinceAdd = true;
     this.bumpCollectionRevision();
   }
 
-  public queuePendingSpawn(spawn: PendingEntitySpawn): void {
-    if (spawn.gate()) {
-      const entity = spawn.build();
-      this.add(entity);
-      spawn.onSpawned?.();
-      return;
-    }
-    this.deferredSpawns.push(spawn);
-  }
-
+  // 生成条件が満たされていれば実体化し、そうでなければ待機列へ加える。
   public spawnWhenReady(record: SpawnRecord): void {
     // 直列化された記録は未検証の値なので、実体の無い待機記録は捨てる(旧い記録に残る
     // 廃止済み種別の要求がここへ来る)。
@@ -131,17 +90,8 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
     else this.pendingSpawns.push(record);
   }
 
-  public processPendingSpawns(): void {
-    let deferredWrite = 0;
-    for (const spawn of this.deferredSpawns) {
-      if (spawn.gate()) {
-        this.add(spawn.build());
-        spawn.onSpawned?.();
-      } else {
-        this.deferredSpawns[deferredWrite++] = spawn;
-      }
-    }
-    this.deferredSpawns.length = deferredWrite;
+  // 条件を満たした待機記録を実体化し、残りを順序を保って待機列に残す。
+  private processPendingSpawns(): void {
     if (this.pendingSpawns.length === 0) return;
     let w = 0;
     for (const record of this.pendingSpawns) {
@@ -151,23 +101,26 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
     this.pendingSpawns.length = w;
   }
 
-  public markDead(entity: DynamicEntity): void { entity.motion.kill(); }
-
+  // 管理対象から外れた個体の資源を解放する。
   public remove(entity: DynamicEntity): void {
     if (!this.detach(entity)) return;
     entity.dispose();
   }
 
+  // 管理中の全個体へ履歴の保持時間を渡す。
   public requestHistoryDuration(sec: number): void {
     for (const entity of this.entities) entity.motion.requestHistoryDuration(sec);
   }
 
+  // 管理中の個体を保存用の記録へ写す。
   public serializedEntities(): readonly SerializedDynamicEntity[] {
     return this.entities.map(entity => entity.serialize());
   }
 
+  // 現在の待機記録を読み取り専用として返す。
   public pendingSpawnRecords(): readonly SpawnRecord[] { return this.pendingSpawns; }
 
+  // 待機生成・寿命判定・上限適用・死亡個体の回収を進める。
   public cleanup(
     _dt: number, _simTime: number, activeStage: StageOutcome,
     zones: readonly EngagementZone<EngagementParticipant>[],
@@ -184,6 +137,7 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
     this.prune();
   }
 
+  // 管理中の個体を解放し、全ての記録を空にする。
   public dispose(): void {
     for (const entity of this.entities) entity.dispose();
     this.entities.length = 0;
@@ -191,11 +145,13 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
     this.bumpCollectionRevision();
   }
 
+  // 登録済みクラスがある記録を個体へ復元し、管理対象へ加える。
   private materialize(record: SpawnRecord): void {
     const entityClass = findEntityClass(record.entity.kind);
     if (entityClass !== null) this.add(entityClass.deserialize(record.entity, this, this.scene));
   }
 
+  // 個体が管理対象なら集合から外し、所属の有無を返す。
   private detach(entity: DynamicEntity): boolean {
     const index = this.entities.indexOf(entity);
     if (index < 0) return false;
@@ -204,6 +160,7 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
     return true;
   }
 
+  // 種別ごとの上限を超えた個体を死亡状態にする。
   private enforceCaps(): void {
     if (!this.capsUncheckedSinceAdd) return;
     this.capsUncheckedSinceAdd = false;
@@ -218,6 +175,7 @@ export class EntityLifecycle implements EntityLifecyclePort, EntityRegistry, Dyn
     }
   }
 
+  // 寿命を終えた個体を解放し、残る集合の世代を更新する。
   private prune(): void {
     let write = 0;
     let changed = false;
