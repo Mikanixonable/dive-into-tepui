@@ -146,7 +146,7 @@ export class PhysicalObjectListPanel {
   private readonly sections = new Map<MapListSection, Section>();
   private readonly order: PhysicalObjectListOrder;
   private readonly rowTree: PhysicalObjectListRowTree;
-  private lastFocusId: string | undefined = undefined;
+  private lastFocusId: string | null = null;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
   private readonly namesScratch = new Map<string, string>();
@@ -329,7 +329,7 @@ export class PhysicalObjectListPanel {
   // (天体の親子関係だけが載る)。focusId が undefined なら、どの行も強調しない。
   public sync(
     items: readonly ListedObject[],
-    focusId: string | undefined,
+    focusId: string | null,
     parentOf: ReadonlyMap<string, string>,
     viewer: OrbitingObject | null,
     displayTime: number,
@@ -347,7 +347,7 @@ export class PhysicalObjectListPanel {
     const names = this.namesScratch;
     const crumbs = this.crumbsScratch;
     crumbs.length = 0;
-    for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) crumbs.push(names.get(cur) ?? cur);
+    for (let cur = focusId; cur != null; cur = parentOf.get(cur) ?? null) crumbs.push(names.get(cur) ?? cur);
     this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
     const focusChanged = focusId !== this.lastFocusId;
     this.lastFocusId = focusId;
@@ -358,7 +358,7 @@ export class PhysicalObjectListPanel {
     // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
     const focusAncestors = this.focusAncestorsScratch;
     focusAncestors.clear();
-    if (focusChanged) for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) focusAncestors.add(cur);
+    if (focusChanged) for (let cur = focusId; cur != null; cur = parentOf.get(cur) ?? null) focusAncestors.add(cur);
 
     // 検索語・クラスフィルタが変わった瞬間だけ、その回に一致した行の祖先を自動展開する
     // 対象として渡す(focusAncestors と同じ「変化した回だけ」の考え方)。絞り込みが解除された
@@ -419,7 +419,7 @@ export class PhysicalObjectListPanel {
 
     // 対象行の展開が全区画へ反映された後でないと、祖先が畳まれたままの位置へスクロール
     // してしまう。
-    if (focusChanged && focusId !== undefined) this.findRowElement(focusId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (focusChanged && focusId !== null) this.findRowElement(focusId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   // id に対応する行要素を全区画から再帰的に探す。見当たらなければ null。
