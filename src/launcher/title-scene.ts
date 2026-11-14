@@ -290,6 +290,13 @@ function createDrifts(pattern: TitleScenePattern, materials: TitleSceneMaterials
   return drifts;
 }
 
+// 共鳴の時間配分(秒)。立ち上がり・保ち・減衰。(GAME.md 1.1 隠し要素「共鳴」)
+const RESONANCE_RISE = 1.5;
+const RESONANCE_HOLD_END = 8;
+const RESONANCE_END = 10;
+// 共鳴しきったときの揺れ幅の増し分(倍率は 1 + この値)。
+const RESONANCE_SWELL = 0.8;
+
 // タイトル画面の3D場面。canvas の CSS 寸法に追従して dispose まで描き続け、
 // pointerTarget 上のポインタ移動へカメラがわずかに追随する。
 export class TitleScene {
@@ -300,6 +307,9 @@ export class TitleScene {
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   private readonly resizeObserver = new ResizeObserver(() => this.resize());
   private readonly clock = new THREE.Clock();
+  // 共鳴の開始時刻(フレーム時刻)。null なら共鳴していない。要求は次のフレームで取り込む。
+  private resonanceStart: number | null = null;
+  private resonanceRequested = false;
 
   // ポインタ位置。視野中心からの ±0.5 の比率で、カメラはこれへ遅れて追随する。
   private pointerX = 0;
@@ -373,6 +383,29 @@ export class TitleScene {
     this.renderer.dispose();
   }
 
+  // 背景の物体を共鳴させる(隠し要素「共鳴」)。動きを減らす設定では何もしない。
+  public resonate(): void {
+    if (this.reducedMotion.matches) return;
+    this.resonanceRequested = true;
+  }
+
+  // 共鳴の強さ 0〜1 を時刻 t で求める。終わった共鳴は後始末する。
+  private resonanceWeight(t: number): number {
+    if (this.resonanceRequested) {
+      this.resonanceRequested = false;
+      this.resonanceStart = t;
+    }
+    if (this.resonanceStart === null) return 0;
+    const elapsed = t - this.resonanceStart;
+    if (elapsed >= RESONANCE_END) {
+      this.resonanceStart = null;
+      return 0;
+    }
+    if (elapsed < RESONANCE_RISE) return elapsed / RESONANCE_RISE;
+    if (elapsed < RESONANCE_HOLD_END) return 1;
+    return 1 - (elapsed - RESONANCE_HOLD_END) / (RESONANCE_END - RESONANCE_HOLD_END);
+  }
+
   // canvas の CSS 寸法へ描画解像度と投影行列を合わせる。
   private resize(): void {
     const width = Math.max(1, this.canvas.clientWidth);
@@ -385,11 +418,15 @@ export class TitleScene {
   // 経過時間に応じて物体を漂わせ、1フレーム描く。動きを減らす設定では静止させる。
   private renderFrame(): void {
     const t = this.reducedMotion.matches ? 0 : this.clock.getElapsedTime();
+    // 共鳴の強さ。1 のとき位相は物体どうしでそろい、揺れ幅が広がる。
+    const weight = this.resonanceWeight(t);
+    const swell = 1 + weight * RESONANCE_SWELL;
     for (const [i, drift] of this.drifts.entries()) {
+      const phase = drift.phase * (1 - weight);
       drift.object.position.set(
-        drift.base.x + Math.sin(t * drift.speed + drift.phase) * drift.amplitude,
-        drift.base.y + Math.cos(t * drift.speed * 0.82 + drift.phase) * 0.26,
-        drift.base.z + Math.sin(t * drift.speed * 0.57 + drift.phase) * 0.22,
+        drift.base.x + Math.sin(t * drift.speed + phase) * drift.amplitude * swell,
+        drift.base.y + Math.cos(t * drift.speed * 0.82 + phase) * 0.26 * swell,
+        drift.base.z + Math.sin(t * drift.speed * 0.57 + phase) * 0.22 * swell,
       );
       drift.object.rotation.x = drift.baseRotation.x + t * drift.speed * (i % 2 ? 0.34 : -0.28);
       drift.object.rotation.y = drift.baseRotation.y + t * drift.speed * (i % 3 ? -0.25 : 0.38);
