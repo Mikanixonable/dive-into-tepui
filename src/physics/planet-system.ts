@@ -41,7 +41,7 @@ function maxPrimaryDistance(orbit: SatelliteOrbit): number {
 interface SystemMembers {
   readonly body: KinematicState<'starRel'>;
   readonly angles: PlanetAngles;
-  readonly rels: (KinematicState<'primaryRel'> | undefined)[];
+  readonly rels: (KinematicState<'primaryRel'> | null)[];
 }
 
 export class PlanetSystem {
@@ -72,7 +72,7 @@ export class PlanetSystem {
   // 系の重心の主星相対状態。軌道だけで決まる二体解で、同じ時刻に複数回引かれるので1度へ畳む。
   public starRelStateAt(t: number): KinematicState<'starRel'> {
     const cached = this.starRelCache.get(t);
-    if (cached !== undefined) return cached;
+    if (cached !== null) return cached;
     // 惑星の軌道が乗っているのは主星なので、この二体解の中心は主星そのもの。
     const rel = keplerOrbitState(this.orbit, t);
     return this.starRelCache.put(t, kinematicState<'starRel'>(t, rel.r, rel.v));
@@ -126,7 +126,7 @@ export class PlanetSystem {
   private computeMembers(t: number): SystemMembers {
     const bary = this.starRelStateAt(t);
     const angles = this.anglesAt(t);
-    const rels: (KinematicState<'primaryRel'> | undefined)[] = new Array(this.moons.length);
+    const rels: (KinematicState<'primaryRel'> | null)[] = new Array(this.moons.length).fill(null);
     const muTotal = this.mu;
     // 位置 − 変位 = 位置。演算の途中は札の落ちた素の Vec3 で、名乗り直すのは kinematicState。
     let r: Vec3 = bary.r;
@@ -146,7 +146,7 @@ export class PlanetSystem {
   // できず、系まるごと1件へ畳む。
   private membersAt(t: number): SystemMembers {
     const cached = this.membersCache.get(t);
-    if (cached !== undefined) return cached;
+    if (cached !== null) return cached;
     return this.membersCache.put(t, this.computeMembers(t));
   }
 
@@ -154,7 +154,7 @@ export class PlanetSystem {
   // 表そのものが持つので、表と食い違う時刻で引かれることはない。
   private relFrom(members: SystemMembers, index: number): KinematicState<'primaryRel'> {
     const cached = members.rels[index];
-    if (cached !== undefined) return cached;
+    if (cached != null) return cached;
     const rel = satelliteState(this.moons[index]!.def.orbit, members.angles, members.body.t);
     members.rels[index] = rel;
     return rel;

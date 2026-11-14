@@ -100,7 +100,7 @@ export class CameraSystem {
       const base = { displayTime, frameAnchors };
       return {
         ...base,
-        attitude: id === undefined ? null : this.anchorEntities.attitudeOf(id, displayTime),
+        attitude: id === null ? null : this.anchorEntities.attitudeOf(id, displayTime),
         referenceUp: rig.referenceUp(base),
         lostFocus: rig.lostFocus,
       };
