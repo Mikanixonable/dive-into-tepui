@@ -3,6 +3,7 @@ import { gameInputMode } from '../../src/game/input/game-input-router';
 import { nextCatalogDefinitionId } from '../../src/game/ship/ship-construction-pointer';
 import { test } from '../harness';
 
+// 入力の振り分けとカタログ巡回のテストを登録する。
 export function register(): void {
   test('construction input routing: 建造中は camera と建造操作だけを通す', () => {
     assert.deepEqual(gameInputMode(false, false, true), {

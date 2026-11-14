@@ -29,6 +29,7 @@ export interface ConstructionTrial {
 // 接合面どうしの接触を重なりとみなさないための許容深度 [m]。
 const OVERLAP_DEPTH = 0.01;
 
+// 2つのモジュール id の、向きに依らない組の鍵。直接接続する組の照合に使う。
 function pairKey(a: string, b: string): string {
   return a < b ? `${a}\n${b}` : `${b}\n${a}`;
 }
@@ -44,6 +45,7 @@ function canonicalAxis(axis: Vec3): Vec3 {
     dominant === 'y' ? Math.sign(axis.y) : 0,
     dominant === 'z' ? Math.sign(axis.z) : 0,
   );
+  // ずれが閾値を超えるなら軸に揃っていないので吸着しない。
   if (Math.abs(axis.x - snapped.x) > 1e-9 || Math.abs(axis.y - snapped.y) > 1e-9
     || Math.abs(axis.z - snapped.z) > 1e-9) return axis;
   return snapped;
@@ -57,6 +59,7 @@ function freshModuleId(assembly: ShipAssembly, base: string): string {
   return id;
 }
 
+// 健全な(hp > 0 の)コックピットが残っているか。
 function hasHealthyCockpit(assembly: ShipAssembly): boolean {
   return assembly.modules.some(module => module.kind === 'cockpit' && module.hp > 0);
 }
@@ -72,6 +75,7 @@ function overlapModuleIdsOf(
     primitive => ({ ...primitive, axis: canonicalAxis(primitive.axis) }),
   );
   const heldPrimitives = primitives.filter(primitive => heldIds.has(primitive.moduleId));
+  // 手持ち以外の各 primitive と、手持ちの全 primitive のめり込みを調べる。
   const result = new Set<string>();
   for (const primitive of primitives) {
     if (heldIds.has(primitive.moduleId)) continue;
