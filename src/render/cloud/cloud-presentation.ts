@@ -27,6 +27,8 @@ export interface CloudFieldSource {
   readonly texture: THREE.Texture;
   // 雲を運ぶ風の写し(texture と同じ cap、R・G = 地表付近、B・A = 上層の東・北の成分 [m/s])。
   readonly motionTexture: THREE.Texture;
+  // 陸・対流・気候の雲量・金床の写し(texture と同じ cap、R = 陸、G = 対流、B = 気候の雲量、A = 金床)。
+  readonly environmentTexture: THREE.Texture;
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
@@ -61,7 +63,12 @@ export class CloudPresentation {
   // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
   public get renderInput(): CloudRenderInput {
     return {
-      field: { texture: this.source.texture, motion: this.source.motionTexture, cap: this.cap.placement },
+      field: {
+        texture: this.source.texture,
+        motion: this.source.motionTexture,
+        environment: this.source.environmentTexture,
+        cap: this.cap.placement,
+      },
       generation: this.source.generation,
       topAltitude: this.topAltitude,
       clock: this.clock,
