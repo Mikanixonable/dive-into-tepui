@@ -1,6 +1,6 @@
 // 雲の細部の比較ループ。render-lab の本番ビルドをヘッドレス Chrome で開き、
-// window.renderLab.cloudDetailShots() の全撮影(6 海域 × 3 時刻 × 3 段の km/px ×
-// 積雲だけ/巻雲だけ/両方 = 162 枚)を shootCloudDetail() で 1 枚ずつ .cloud-detail/shots/ へ
+// window.renderLab.cloudDetailShots() の全撮影(12 場面 × 3 時刻 × 3 段の km/px ×
+// 積雲だけ/巻雲だけ/両方 = 324 枚)を shootCloudDetail() で 1 枚ずつ .cloud-detail/shots/ へ
 // 撮る(既にあるものは飛ばす)。各撮影と .cloud-detail/reference/ の実写へ
 // cloud-detail-metrics の物差しを当て、同じ種類(積雲主体/巻雲主体)の実写場面の測定値の
 // 幅(封筒 = 最小〜最大 + 幅の 10%)からの距離を、特徴量の家族ごとに正規化して出し、
@@ -562,7 +562,7 @@ async function main() {
   }
 
   // --- variety: 場面どうしの局所統計(局所コントラスト)のばらつきの比 ---
-  // 実写はその種類の場面だけ(both は全場面)、撮影は全 6 海域(時刻は平均)。
+  // 実写はその種類の場面だけ(both は全場面)、撮影は全 12 場面(時刻は平均)。
   const variety = {};
   for (const [shotKind, referenceKinds] of [
     ['cumulus', ['cumulus']], ['cirrus', ['cirrus']], ['both', ['cumulus', 'cirrus', 'mixed']],
