@@ -48,7 +48,7 @@ function quantileOfSorted(sorted, fraction) {
 
 // 0..1 の場を自分の 5–95 パーセンタイルで 0..1 へ直す。センサの階調差を吸収するための
 // 相対化で、雲の明暗の順序だけを残す。
-export function normalizeField(field) {
+function normalizeField(field) {
   const sorted = Float32Array.from(field.data).sort();
   const low = quantileOfSorted(sorted, 0.05);
   const high = quantileOfSorted(sorted, 0.95);
@@ -62,7 +62,7 @@ export function normalizeField(field) {
 
 // 正規化した場の二値マスク。0.5 より明るい画素を「雲」とする — 絶対の輝度ではなく、
 // その枠の自分の階調の中央より明るいかどうかで決める。
-export function binaryMask(field) {
+function binaryMask(field) {
   const normalized = normalizeField(field);
   const mask = new Uint8Array(field.data.length);
   for (let i = 0; i < normalized.data.length; i++) mask[i] = normalized.data[i] > 0.5 ? 1 : 0;
@@ -276,7 +276,7 @@ export function bandShares(rowPowers, bands) {
 
 // 二値マスクの箱数え。1 辺 ε [px] (2 の冪) の箱で覆い、雲を含む箱の数を数える。
 // ε は 2 px から min(width, height) / 2 まで。
-export function boxCounts(mask, width, height) {
+function boxCounts(mask, width, height) {
   const counts = [];
   for (let epsilon = 2; epsilon * 2 <= Math.min(width, height); epsilon *= 2) {
     const boxesX = Math.ceil(width / epsilon);
@@ -320,7 +320,7 @@ export function boxDimension(counts, kmPerPx, loKm, hiKm) {
 // 二値マスクの空隙率 Λ(ε)。積算画像で 1 辺 ε のすべり箱の雲量を求め、
 // Λ = Var / Mean² + 1。ε は箱数えと同じ 2 の冪の格子で、すべりの刻みは ε/4。
 // 箱数が 25 未満の ε は当てにならないので除く。
-export function lacunarityValues(mask, width, height) {
+function lacunarityValues(mask, width, height) {
   // 積算画像 (summed-area table)。sat[(y+1)*(width+1) + (x+1)] は (0..x, 0..y) の和。
   const sat = new Float64Array((width + 1) * (height + 1));
   for (let y = 0; y < height; y++) {
@@ -357,7 +357,7 @@ export function lacunarityValues(mask, width, height) {
 }
 
 // 帯 [loKm, hiKm] の空隙率。帯に入る ε の log Λ の平均で、2 点以上なければ測れない (null)。
-export function bandLacunarity(values, kmPerPx, loKm, hiKm) {
+function bandLacunarity(values, kmPerPx, loKm, hiKm) {
   const logs = values
     .filter((entry) => entry.epsilonPx * kmPerPx >= loKm && entry.epsilonPx * kmPerPx <= hiKm)
     .map((entry) => Math.log(Math.max(1e-9, entry.lambda)));
@@ -384,7 +384,7 @@ export function bandPassField(field, kmPerPx, loKm, hiKm) {
 
 // 帯 [loKm, hiKm] の成分統計。2 つのぼかしの差 (DoG) で帯域だけを抜き、
 // 正のふくらみ (その尺度の明るい構造) をしきい 0 で成分に分ける。面積と周囲は地表の km 換算。
-export function bandComponents(field, kmPerPx, loKm, hiKm) {
+function bandComponents(field, kmPerPx, loKm, hiKm) {
   const dog = bandPassField(field, kmPerPx, loKm, hiKm);
   const rowKmPerPx = new Array(field.height).fill(kmPerPx);
   const stats = componentStats(

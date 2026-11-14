@@ -8,6 +8,7 @@ import {
 import { cutoffRadius } from '../../atmosphere';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
+import { cumulusOpacityNode } from '../../cloud/cloud-kind-node';
 import { CLOUD_ALBEDO } from '../../cloud/cumulus-shape';
 import { equirectUvFromDirection } from '../../field-projection';
 import { AtmosphereIntegrator } from '../atmosphere-integrator';
@@ -69,7 +70,7 @@ export class PlanetLightSubject {
   private readonly sunIrradiance: FloatUniform = uniform(0);
   private readonly starDirection: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly bodyFromWorld: Mat4Uniform = uniform(new THREE.Matrix4());
-  // 不透明な積雲を引く雲の場と、被覆率から雲頂の見える割合を出す積雲の殻と共通の規則。
+  // 不透明な積雲を引く雲の場と、不透明度から雲頂の見える割合を出す積雲の殻と共通の規則。
   private readonly cloudField = new CloudFieldSampler();
   private readonly cloudShape = new CloudShapeEvaluator(0);
   private readonly integrator: AtmosphereIntegrator;
@@ -136,7 +137,8 @@ export class PlanetLightSubject {
     // ディザを均した割合になる。
     const albedo = this.groundAlbedo(bodyNormal, origin, texelAngle).toVar();
     If(and(this.cumulusEnabled, this.cloudsPresent), () => {
-      const opaque = this.cloudShape.opaqueFraction(this.cloudField.sampleCloud(bodyNormal).coverage, float(0));
+      const opaque = this.cloudShape.opaqueFraction(
+        cumulusOpacityNode(this.cloudField.sampleCloud(bodyNormal).cumulus), float(0));
       albedo.assign(mix(albedo, vec3(CLOUD_ALBEDO), opaque));
     });
     // ランバート面の放射輝度。昼側だけが光る。
@@ -144,7 +146,9 @@ export class PlanetLightSubject {
       .toVar();
     // 視線が地表まで通る大気の透過率と内部散乱。
     If(and(this.atmosphereEnabled, this.atmospherePresent), () => {
-      const layer = this.integrator.contribution(origin, normalize(direction), length(hit.sub(origin)));
+      const layer = this.integrator.contribution(
+        origin, normalize(direction), length(hit.sub(origin)), texelAngle,
+      );
       radiance.assign(radiance.mul(layer.transmittance).add(layer.inscatter));
     });
     return radiance;

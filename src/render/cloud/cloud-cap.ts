@@ -21,3 +21,40 @@ export function capRadiusFor(rho: number, topOverRadius: number, margin = CLOUD_
   const cloudTop = Math.acos(1 / (1 + Math.max(topOverRadius, 0)));
   return Math.min(Math.PI / 2, horizon + cloudTop + margin);
 }
+
+// cap の半径を丸める段の比。半径は 1 段ごとにこの倍率で増える。段の中では texel の寸法が変わらない。
+const CAP_RADIUS_LEVEL_RATIO = 2 ** (1 / 4);
+// 丸めの段の基準 [rad]。どの高度でもこれ以上の段へ切り上がる。
+const CAP_RADIUS_LEVEL_BASE = (1 * Math.PI) / 180;
+// 中心を揃える格子の刻み [texel]。直下点がこれだけ動くまで cap は置き直されない。刻みの半分の対角が
+// 余白へ足されるので、余白(5 度)より十分小さい角に収まる刻みに取る — 半径 pi/2 で 1.8 度。
+const CLOUD_CAP_SNAP_TEXELS = 8;
+
+// 地表に固定した格子へ揃えた cap の置き方。latitude・longitude は中心 [rad]、radius は角半径 [rad]。
+interface SnappedCap {
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly radius: number;
+}
+
+// 直下点 latitude・longitude [rad] と、そこで要る角半径 radius [rad] から、地表に固定した格子へ揃えた
+// cap の置き方を返す。**視点が少し動いただけで texel の格子を地表に対して滑らせない** — 雲場は
+// 中間の場を何枚も cap へ焼いて読み直すので、格子が滑ると 2〜4 texel の模様の写り方が毎フレーム変わり、
+// 止まった雲がちらつく。半径は CAP_RADIUS_LEVEL_RATIO の段へ切り上げ、中心は CLOUD_CAP_SNAP_TEXELS
+// texel 刻みの緯度経度の格子点へ丸める。丸めでずれた中心のぶん半径を足してから段へ上げるので、
+// 揃えた cap は要る円板を必ず覆う。
+export function snapCap(latitude: number, longitude: number, radius: number, size = CLOUD_CAP_SIZE): SnappedCap {
+  // 刻みは半径に依るので、まず丸める前の半径で上限を見積もり、余白を足してから段へ上げる。
+  const stepFor = (r: number): number => (CLOUD_CAP_SNAP_TEXELS * 2 * Math.sin(Math.min(r, Math.PI / 2))) / size;
+  const padded = radius + stepFor(radius * CAP_RADIUS_LEVEL_RATIO) * Math.SQRT1_2;
+  const level = Math.ceil(Math.log(Math.max(padded, CAP_RADIUS_LEVEL_BASE) / CAP_RADIUS_LEVEL_BASE)
+    / Math.log(CAP_RADIUS_LEVEL_RATIO) - 1e-9);
+  const snappedRadius = Math.min(Math.PI / 2, CAP_RADIUS_LEVEL_BASE * CAP_RADIUS_LEVEL_RATIO ** level);
+  const step = stepFor(snappedRadius);
+  const snappedLatitude = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, Math.round(latitude / step) * step));
+  // 経度の刻みは、その緯度で東西の実長が step になる角。極の近くでは刻みが粗くなるが、地表の上での
+  // ずれは step のまま。
+  const longitudeStep = step / Math.max(Math.cos(snappedLatitude), step);
+  const snappedLongitude = Math.round(longitude / longitudeStep) * longitudeStep;
+  return { latitude: snappedLatitude, longitude: snappedLongitude, radius: snappedRadius };
+}
