@@ -1,4 +1,4 @@
-import { float, vec2, vec4 } from 'three/tsl';
+import { vec2, vec4 } from 'three/tsl';
 import type { FloatNode, Vec2Node, Vec4Node } from '../tsl-types';
 
 // 雲場の生成値と焼いたテクスチャの読み値。雲は種類ごとの量(0..1)で持ち、RGBAの配置を
@@ -15,6 +15,10 @@ export interface CloudSample {
   readonly land: FloatNode;
   // 対流の活発さ 0..1。生成時の値は天気の convectiveActivity。
   readonly convection: FloatNode;
+  // 気候の雲量 0..1(平年の雲の多さ。砂漠で小さい)。生成時の値は天気の meanCloudiness。
+  readonly climateCloudiness: FloatNode;
+  // 金床の濃さ 0..1。生成時の値は天気の anvil。
+  readonly anvil: FloatNode;
 }
 
 // 雲を運ぶ風。低い雲を運ぶ地表付近の風と、巻雲を運ぶ上層の風の、局所の東・北の成分 [m/s]。
@@ -24,22 +28,28 @@ export interface CloudMotion {
   readonly upperWind: Vec2Node;
 }
 
-// 焼いた雲場のRGBA(R = 積雲、G = 巻雲、B・A = 筋の倍角ベクトル)を、生成側と同じ単位の
-// 雲標本へ戻す。写しは半精度なので、倍角ベクトルは符号付き(−1..1)のまま入っている。
-export function cloudSampleFromTexel(texel: Vec4Node): CloudSample {
+// 焼いた雲場のRGBA(R = 積雲、G = 巻雲、B・A = 筋の倍角ベクトル)と環境のRGBA(R = 陸、G = 対流、
+// B = 気候の雲量、A = 金床)を、雲標本へ戻す。写しは半精度なので、倍角ベクトルは符号付き(−1..1)のまま入っている。
+export function cloudSampleFromTexels(cloudTexel: Vec4Node, environmentTexel: Vec4Node): CloudSample {
   return {
-    cumulus: texel.r,
-    cirrus: texel.g,
-    cirrusFlow: vec2(texel.b, texel.a),
-    // 焼き込みの RGBA にこの2量のチャンネルはないので 0。
-    land: float(0),
-    convection: float(0),
+    cumulus: cloudTexel.r,
+    cirrus: cloudTexel.g,
+    cirrusFlow: vec2(cloudTexel.b, cloudTexel.a),
+    land: environmentTexel.r,
+    convection: environmentTexel.g,
+    climateCloudiness: environmentTexel.b,
+    anvil: environmentTexel.a,
   };
 }
 
 // 雲標本を焼き込み用のRGBAへ戻す。読み出し側の復号と同じ契約をここで対にして持つ。
 export function cloudFieldTexelFromSample(sample: CloudSample): Vec4Node {
   return vec4(sample.cumulus, sample.cirrus, sample.cirrusFlow.x, sample.cirrusFlow.y);
+}
+
+// 雲標本の環境の量を焼き込み用のRGBAへ戻す。cloudSampleFromTexels の復号と対。
+export function cloudEnvironmentTexel(sample: CloudSample): Vec4Node {
+  return vec4(sample.land, sample.convection, sample.climateCloudiness, sample.anvil);
 }
 
 // 焼いた風の RGBA(R・G = 地表付近、B・A = 上層)を風へ戻す。
