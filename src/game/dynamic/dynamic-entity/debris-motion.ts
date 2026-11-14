@@ -52,7 +52,8 @@ export class DebrisMotion extends DynamicMotion {
       attitude,
       mass: 0,
       radius: properties.radius ?? 0,
-      collides: properties.kind !== 'fragment',
+      // 組み立て型の部品は、生まれた位置が親の機体の中にあるので、撃破の破片と同じく接触させない。
+      collides: properties.kind !== 'fragment' && properties.kind !== 'assemblyPart',
       contactDamageWeight: 0,
       bcInv: SMALL_DEBRIS_BCINV,
       srpCoeff: SMALL_DEBRIS_SRP_COEFF,
