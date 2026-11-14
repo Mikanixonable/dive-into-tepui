@@ -82,10 +82,14 @@ const WARP_WAVELENGTH = 32000;
 const WARP_OFFSET = vec3(5.2, 1.3, 7.9);
 
 // 積雲の細部を低層の風向きへ伸ばす倍率の上限。風速が CUMULUS_STREAK_WIND [m/s] で満額になる。
-// 伸ばすのは DETAIL_WAVELENGTHS の添字 CUMULUS_STREAK_LAST_OCTAVE 以下の段(4 km 以上の段)だけ。
+// 伸ばすのは DETAIL_WAVELENGTHS の添字 CUMULUS_STREAK_FIRST_OCTAVE〜CUMULUS_STREAK_LAST_OCTAVE の段(8 km と 4 km)
+// だけ — 流れに沿った複数点を読むので 1 段あたり最大 3 倍の費用がかかり、32・16 km の段は風向きが見える尺度では
+// ない。段数が CUMULUS_STREAK_MIN_OCTAVES 未満の粗い精細さでは、伸ばさず費用を増やさない。
 const CUMULUS_STREAK_MAX = 2;
 const CUMULUS_STREAK_WIND = 10;
+const CUMULUS_STREAK_FIRST_OCTAVE = 2;
 const CUMULUS_STREAK_LAST_OCTAVE = 3;
+const CUMULUS_STREAK_MIN_OCTAVES = 6;
 
 export class CloudDetailEvaluator {
   // 使う段数(粗い側から数える)。uniform なので、段数を変えてもシェーダのグラフは組み直さない。
@@ -142,7 +146,8 @@ export class CloudDetailEvaluator {
       // 低層の風向きへ伸ばす。風が弱い所は等方に読む。東の接ベクトルを小さく足すのは、風速 0 でも向きを定めるため。
       const windDir = normalize(windVector.add(east.mul(1e-6)));
       const windCoherence = clamp(length(windVector).div(CUMULUS_STREAK_WIND), 0, 1);
-      const streakStretch = float(1).add(float(CUMULUS_STREAK_MAX - 1).mul(windCoherence));
+      const streakTier = step(float(CUMULUS_STREAK_MIN_OCTAVES - 0.5), this.octaves);
+      const streakStretch = float(1).add(float(CUMULUS_STREAK_MAX - 1).mul(windCoherence).mul(streakTier));
 
       // 粒の細かさに応じて名目振幅を細かい段へ傾ける(陸・対流で粒が細かくなる)。
       // 重みの二乗和を保つよう割り戻すので、傾けても細部の全体の振幅は変わらない。
@@ -162,7 +167,7 @@ export class CloudDetailEvaluator {
           .mul(this.clock.presence(index)).toVar();
         If(greaterThan(live, 0), () => {
           // 粗い段は風向きへ伸ばして読み、細かい段は等方に読む。
-          const value = (index <= CUMULUS_STREAK_LAST_OCTAVE
+          const value = (index >= CUMULUS_STREAK_FIRST_OCTAVE && index <= CUMULUS_STREAK_LAST_OCTAVE
             ? this.clock.flowNoise(index, warped, radius, windVector, windDir, streakStretch)
             : this.clock.evolvingNoise(index, warped, radius, windVector)).toVar();
           sum.addAssign(value.mul(OCTAVE_WEIGHTS[index]!).mul(tilt[index]!).mul(weightScale).mul(live).mul(gate));
