@@ -2,11 +2,9 @@
 import { v3, type Vec3 } from '../../math/vec3';
 
 // 建造可能な部品の種別。表示・物理・保存はこのタグを共有するが、振る舞いは instance の状態を読む。
-const SHIP_MODULE_KINDS = [
-  'cockpit', 'tank', 'thruster', 'rcs', 'weapon', 'armor', 'radiator', 'solar_panel',
-  'booster', 'docking_port', 'dock', 'decoupler',
-] as const;
-export type ShipModuleKind = typeof SHIP_MODULE_KINDS[number];
+export type ShipModuleKind =
+  'cockpit' | 'tank' | 'thruster' | 'rcs' | 'weapon' | 'armor' | 'radiator' | 'solar_panel' |
+  'booster' | 'docking_port' | 'dock' | 'decoupler';
 export type FuelKind = 'main' | 'rcs';
 export type ShipModuleCategory = 'command' | 'fuel' | 'propulsion' | 'combat' | 'utility';
 
