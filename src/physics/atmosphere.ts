@@ -68,10 +68,12 @@ export function airspeed(rRel: Vec3, vRel: Vec3, atm: Atmosphere): Vec3 {
 // どれもこの2つだけから決まる。
 export function airflow(
   rRel: Vec3, vRel: Vec3, atm: Atmosphere,
-): { readonly density: number; readonly speed: number } {
+): { readonly density: number; readonly speed: number; readonly airspeed: Vec3 } {
+  const airspeedVector = airspeed(rRel, vRel, atm);
   return {
     density: atmosphericDensity(ellipsoidAltitude(rRel, atm), atm),
-    speed: len(airspeed(rRel, vRel, atm)),
+    speed: len(airspeedVector),
+    airspeed: airspeedVector,
   };
 }
 
@@ -89,4 +91,3 @@ export function dragAccel(rRel: Vec3, vRel: Vec3, bcInv: number, atm: Atmosphere
     dt > 0 ? -1 / dt : -Infinity);
   return v3(vrx * k, vry * k, vrz * k);
 }
-
