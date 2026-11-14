@@ -4,10 +4,8 @@ import { fmtDist, fmtDistParts, fmtSpeedParts } from '../../../hud/utils';
 import { setReadout } from '../../../hud/readout';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls } from '../hud-els';
-import { triangleHpMarkerSvg } from '../../marker/marker-shapes';
 import { Meter } from '../../../hud/widgets';
 import { applyAlarmLevel } from '../../../hud/alarm-level';
-import type { ProteinCombatReadout } from '../../protein/protein-schema';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -20,8 +18,6 @@ export interface TargetPanelViewModel {
   // 装甲を持たない対象(基地)では null。
   readonly hp: number | null;
   readonly maxHp: number | null;
-  // タンパク質構造を持たない対象では null。
-  readonly protein: ProteinCombatReadout | null;
   onSelectRight(clientX: number, clientY: number): void;
 }
 
@@ -52,11 +48,10 @@ export class TargetPanel {
     this.syncTarget(view);
   }
 
-  // 値を既存の DOM へ書き込む。target が null なら名前を空欄にし、タンパク質欄を畳む。
+  // 値を既存の DOM へ書き込む。target が null なら名前を空欄にする。
   private syncTarget(target: TargetPanelViewModel | null): void {
     if (!target) {
       this.els.setText('tgtname', '—');
-      this.els.get('tgt-protein').classList.add('hidden');
       this.els.setText('hud-target-summary', '—');
       applyAlarmLevel(this.els.get('hud-target-summary'), 'normal');
       return;
@@ -83,25 +78,6 @@ export class TargetPanel {
       // 装甲は減るほど撃破に近づくので、段を持たない。
       this.armorMeter.setProgress(clampedHp, maxHp, `${armorValue} ${armorUnit}`, 'normal');
       setReadout(this.els.get('tgt-armor-value'), armorValue, armorUnit);
-    }
-    // タンパク質構造を持つ標的なら、フェーズと部位ごとの状態も表示する。
-    const proteinPanel = this.els.get('tgt-protein');
-    proteinPanel.classList.toggle('hidden', target.protein === null);
-    if (target.protein) {
-      this.els.setText('tgt-protein-phase', target.protein.phase.toUpperCase());
-      const rows = target.protein.sites.map((site) => {
-        const ratio = site.maxHp > 0 ? Math.max(0, Math.min(1, site.hp / site.maxHp)) : 0;
-        const status = site.disabled ? '停止' : `${Math.floor(site.hp)} / ${site.maxHp}`;
-        const glyph = site.disabled ? '▽' : site.attackable ? '▲' : '△';
-        const hpIcon = triangleHpMarkerSvg(site.hp, site.maxHp);
-        return `<div class="protein-site-row${site.disabled ? ' disabled' : ''}" style="--protein-site-hp:${ratio.toFixed(3)}"><span class="protein-site-glyph" aria-hidden="true">${glyph}</span><span class="protein-site-label">${site.abbreviation}</span><span class="protein-site-hp-icon">${hpIcon}</span><output>${status}</output></div>`;
-      }).join('');
-      const siteRows = this.els.get('tgt-protein-sites');
-      if (siteRows.innerHTML !== rows) siteRows.innerHTML = rows;
-      setReadout(
-        this.els.get('tgt-integrity-value'), `${Math.floor(target.protein.integrityHp)}`,
-        `/ ${target.protein.integrityMaxHp}`,
-      );
     }
   }
 }

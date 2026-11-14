@@ -6,7 +6,7 @@ import {
 } from '../creative/object-placement';
 import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
 import {
-  StageControlsPanel, type EnemySpawnShape, type ProteinDisplayControl,
+  StageControlsPanel, type EnemySpawnShape,
 } from '../creative/stage-controls-panel';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { hudRail } from '../hud/hud-root';
@@ -50,7 +50,6 @@ export class CreativeStage extends Stage {
   public static readonly selectGroup = 'クリエイティブモード';
   public readonly executesPlans = true;
   public readonly authoring: ObjectAuthoring;
-  public readonly proteinDisplayControl: ProteinDisplayControl;
 
   private readonly objectPlacement: ObjectPlacement;
   private readonly manualSpawn: ManualSpawn;
@@ -99,7 +98,6 @@ export class CreativeStage extends Stage {
       this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
       this.manualSpawn.spawnDistance,
     );
-    this.proteinDisplayControl = this.stageControlsPanel;
     this.stageControlsPanel.onToggleResupply = (on) => this.commands.setResupplyEnabled(on);
     this.stageControlsPanel.onToggleFuelResupply = (on) => this.commands.setFuelResupplyEnabled(on);
     this.stageControlsPanel.onToggleWaveAttack = (on) => this.commands.setWaveAttackEnabled(on);
@@ -107,7 +105,6 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.onRefillFuel = () => this.commands.refillShipRcsFuel();
     this.stageControlsPanel.onSpawnDistanceChange = (distance) => this.commands.setSpawnDistance(distance);
     this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.commands.spawnManualEnemy(shape, colorValue);
-    this.stageControlsPanel.onSpawnFormation = () => this.commands.spawnProteinFormation();
     hudRail(this._hud.mapRoot, 'right').appendChild(this.stageControlsPanel.element);
   }
 
@@ -185,20 +182,9 @@ export class CreativeStage extends Stage {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
       return;
     }
-    const spawn = this.manualSpawn.enemy(player, shape, colorValue);
-    if (spawn === null) return;
-    if (spawn.kind === 'enemy') this.addEnemy(spawn.enemy);
-    else this.addProteinEnemy(spawn.request);
-  }
-
-  // タンパク質陣形(SPEC COMBAT.md「タンパク質陣形」節)の 3 役を、自機前方に一括スポーンする。
-  public spawnProteinFormation(): void {
-    const player = this.ship;
-    if (player === null || !player.motion.alive) {
-      this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
-      return;
-    }
-    for (const request of this.manualSpawn.proteinFormation(player)) this.addProteinEnemy(request);
+    const enemy = this.manualSpawn.enemy(player, shape, colorValue);
+    if (enemy === null) return;
+    this.addEnemy(enemy);
   }
 
   // 検証を通過した配置指定からオブジェクトを生成し、システムへ追加して配置を記録する。
