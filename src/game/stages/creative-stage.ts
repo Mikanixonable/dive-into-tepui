@@ -45,6 +45,8 @@ export class CreativeStage extends Stage {
   public static readonly epoch = STORY_EPOCH;
   // 開始日時の指定画面を挟む(SPEC GAME.md 9.0)。epoch はその欄の既定値になる。
   public static readonly picksStartEpoch = true;
+  // 勝敗を判定しない(GAME.md 2.6)。解放の記録も読まない。
+  public static readonly judgesOutcome = false;
   public static readonly selectLabel = 'CREATIVE';
   public static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   public static readonly selectGroup = 'クリエイティブモード';
@@ -240,7 +242,7 @@ export class CreativeStage extends Stage {
   ): void {
     super.sync(camera, view, displayTime);
     const ship = this.ship;
-    this.stageControlsPanel.setSpawnButtonsEnabled(ship !== null && ship.motion.alive);
+    this.stageControlsPanel.setShipRequiredButtonsEnabled(ship !== null && ship.motion.alive);
     // 設定パネルは戦闘ビューでのみ出す(SPEC/GAME.md「9.2 設定パネル」)。レールは
     // 戦闘側に固定し、マップでは隠す。
     this.mountStageControlsPanel(false);
