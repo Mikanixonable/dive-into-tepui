@@ -41,6 +41,12 @@ const OCTAVE_WEIGHTS = (() => {
   return raw.map((weight) => weight / total);
 })();
 
+// 名目振幅の二乗和の平方根。粒の細かさで傾けた重みをこの大きさへ割り戻す。
+const OCTAVE_WEIGHT_NORM = Math.sqrt(OCTAVE_WEIGHTS.reduce((sum, weight) => sum + weight * weight, 0));
+
+// 粒の細かさ(陸・対流で細かくなる)が名目振幅を細かい段へ傾ける強さ。
+const GRAIN_TILT = 0.3;
+
 // オクターブの波長が画素・タップの張る実寸の何倍で振幅を満額にし、何倍で消すか。
 // 解像できない細かさはモアレにしかならないので、Nyquist の 2 倍へ落ちるまでに 0 へ渡す。
 const FADE_FULL_RATIO = 4;
@@ -97,10 +103,11 @@ export class CloudDetailEvaluator {
 
   // 天体固定の単位方向 direction での細部、おおむね −1..1。width はその位置で読み手の
   // 1 画素・1 タップが張る実寸 [m]、amount はその場所の量、wind はそこで雲を運ぶ風の東・北の成分 [m/s]。
-  // 勾配は東と北へ width ぶん離した 2 点を amountAt で読んで取る。
+  // grain は粒の細かさ 0..1(0 が穏やかな海、1 が陸・対流の最も活発な所)。勾配は東と北へ
+  // width ぶん離した 2 点を amountAt で読んで取る。
   public at(
     direction: Vec3Node, width: FloatNode, amount: FloatNode,
-    amountAt: (direction: Vec3Node) => FloatNode, wind: Vec2Node,
+    amountAt: (direction: Vec3Node) => FloatNode, wind: Vec2Node, grain: FloatNode,
   ): FloatNode {
     const radius = typeof this.bodyRadius === 'number' ? float(this.bodyRadius) : this.bodyRadius;
     const span = max(width, 1);
@@ -137,6 +144,15 @@ export class CloudDetailEvaluator {
       const windCoherence = clamp(length(windVector).div(CUMULUS_STREAK_WIND), 0, 1);
       const streakStretch = float(1).add(float(CUMULUS_STREAK_MAX - 1).mul(windCoherence));
 
+      // 粒の細かさに応じて名目振幅を細かい段へ傾ける(陸・対流で粒が細かくなる)。
+      // 重みの二乗和を保つよう割り戻すので、傾けても細部の全体の振幅は変わらない。
+      const tilt = DETAIL_WAVELENGTHS.map((wavelength) =>
+        exp(grain.mul(-GRAIN_TILT * Math.log2(wavelength / 2000))));
+      const tiltedNorm = tilt.reduce(
+        (energy, weight, index) => energy.add(weight.mul(weight).mul(OCTAVE_WEIGHTS[index]! ** 2)),
+        float(0));
+      const weightScale = float(OCTAVE_WEIGHT_NORM).div(sqrt(tiltedNorm));
+
       const sum = float(0).toVar();
       const gate = float(1).toVar();
       for (const [index, wavelength] of DETAIL_WAVELENGTHS.entries()) {
@@ -148,7 +164,7 @@ export class CloudDetailEvaluator {
           // 粗い段は風向きへ伸ばして読み、細かい段は等方に読む。
           const streak = index <= CUMULUS_STREAK_LAST_OCTAVE ? { axis: windDir, factor: streakStretch } : undefined;
           const value = this.clock.evolvingNoise(index, warped, radius, windVector, streak).toVar();
-          sum.addAssign(value.mul(OCTAVE_WEIGHTS[index]!).mul(live).mul(gate));
+          sum.addAssign(value.mul(OCTAVE_WEIGHTS[index]!).mul(tilt[index]!).mul(weightScale).mul(live).mul(gate));
           gate.mulAssign(exp(value.mul(OCTAVE_COUPLING).sub(COUPLING_SHIFT).mul(live)));
         });
       }
