@@ -1,0 +1,330 @@
+From d3deefbc1adbaece0a91ee6a7021b389a9f7e7a0 Mon Sep 17 00:00:00 2001
+From: Muse <muse@muse.local>
+Date: Sat, 14 Nov 2026 05:58:05 +0000
+Subject: [PATCH 3/4] =?UTF-8?q?feat(cloud-lab):=20=E5=B7=BB=E9=9B=B2?=
+ =?UTF-8?q?=E5=B1=A4=E3=81=A0=E3=81=91=E3=82=92=E6=B8=AC=E3=82=8B=20cirrus?=
+ =?UTF-8?q?Spectrum=20/=20cirrusStreaks=20=E5=AE=B6=E6=97=8F=E3=82=92?=
+ =?UTF-8?q?=E8=BF=BD=E5=8A=A0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+compare に巻雲層の節を足す: 層だけの撮影を帯 13 フレームの箱へ載せ替え、
+教師は帯 13 を輝度温度へ反転して -30 ℃ で切り分けた冷たさの場にする。
+層の中だけで帯ごとの電力割合と筋(向き・Lθ・帯ごとの揃い)を測り、
+cirrusSpectrum / cirrusStreaks の 2 家族として距離化する。項の作りは
+fineSpectrum / fineStreaks と同じ流儀で、主の梯子の帯だけを入れる。
+2 家族は既存の流儀どおり index の平均へ加える(16 → 18 家族)。
+既存 16 家族の定義には触れていない。sahara は帯 13 が無く対を組めない、
+typhoon 400 km は微細構造と同じ理由で距離から外す。
+---
+ tools/cloud-cirrus.mjs      |  79 ++++++++++++++++++++++++
+ tools/cloud-distances.mjs   |  62 +++++++++++++++++++
+ tools/cloud-lab-compare.mjs | 119 ++++++++++++++++++++++++++++++++++++
+ 3 files changed, 260 insertions(+)
+ create mode 100644 tools/cloud-cirrus.mjs
+
+diff --git a/tools/cloud-cirrus.mjs b/tools/cloud-cirrus.mjs
+new file mode 100644
+index 000000000..c2830d04b
+--- /dev/null
++++ b/tools/cloud-cirrus.mjs
+@@ -0,0 +1,79 @@
++// 巻雲層だけの場どうしの微細構造の特徴量。比較の単位は (地域, 梯子) の対で、生成は
++// 巻雲層だけの撮影を実写の帯 13 の箱へ載せ替えた輝度、実写は帯 13 の輝度温度から
++// 切り分けた高層雲の「冷たさ」の場 (cloud-brightness-temperature)。測るのは微細構造
++// (cloud-fine-structure) と同じ流儀の、帯ごとの電力割合と筋の特徴だけで、場はどちらも
++// 自分の全電力・自分の分布で相対化して比べる。合成画の微細構造と違い、ここでは
++// 積雲の明るさに支配されず、半透明殻そのものの構造だけが残る。
++// 返す値は帯と梯子の対応付け (primary) を添えた生の特徴量で、距離への落とし方は
++// cloud-distances.mjs が決める。
++
++import { structureTensor, summarizeStructure } from './cloud-structure.mjs';
++import {
++  FINE_BANDS,
++  FINE_PRIMARY_LADDER,
++  FINE_STREAK_SCALES_KM,
++  bandShares,
++  orientationCorrelationLength,
++  rowBandPowers,
++} from './cloud-fine-structure.mjs';
++
++// 帯を測れる条件 (cloud-fine-structure の bandMeasurable と同じ)。長い側は枠の幅に
++// 収まり、短い側はナイキスト (2 px) より長いこと。
++function bandMeasurable(band, frameWidthKm, kmPerPx) {
++  return band.hiKm <= frameWidthKm && band.loKm >= 2 * kmPerPx;
++}
++
++// 筋のテンソルを測れる尺度 [km] (cloud-fine-structure の streakScaleMeasurable と同じ)。
++// ぼかしが枠に収まり、尺度が 4 px より長いこと。
++function streakScaleMeasurable(scaleKm, frameWidthKm, kmPerPx) {
++  return scaleKm <= frameWidthKm / 4 && scaleKm >= 4 * kmPerPx;
++}
++
++// 1 つの対の巻雲層の特徴量。generatedLayer は層だけの撮影の輝度、referenceLayer は
++// 冷たさの場で、どちらも同じ箱・同じ矩形に切り出してあること。
++export function measureCirrusPair(generatedLayer, referenceLayer, kmPerPx, ladder) {
++  const frameWidthKm = generatedLayer.width * kmPerPx;
++  const generatedShares = bandShares(rowBandPowers(generatedLayer, kmPerPx), FINE_BANDS);
++  const referenceShares = bandShares(rowBandPowers(referenceLayer, kmPerPx), FINE_BANDS);
++  const bands = [];
++  for (let i = 0; i < FINE_BANDS.length; i++) {
++    const band = FINE_BANDS[i];
++    const key = `${band.loKm}-${band.hiKm}`;
++    if (!bandMeasurable(band, frameWidthKm, kmPerPx)) continue;
++    bands.push({
++      ...band,
++      primary: FINE_PRIMARY_LADDER[key] === ladder,
++      generatedShare: generatedShares[i].share,
++      referenceShare: referenceShares[i].share,
++    });
++  }
++
++  const rowKmPerPx = new Array(generatedLayer.height).fill(kmPerPx);
++  const tensors = new Map();
++  for (const scaleKm of FINE_STREAK_SCALES_KM) {
++    if (!streakScaleMeasurable(scaleKm, frameWidthKm, kmPerPx)) continue;
++    tensors.set(scaleKm, {
++      generated: structureTensor(generatedLayer, rowKmPerPx, kmPerPx, false, scaleKm),
++      reference: structureTensor(referenceLayer, rowKmPerPx, kmPerPx, false, scaleKm),
++    });
++  }
++  const scales = [...tensors.entries()].map(([scaleKm, tensor]) => ({
++    scaleKm,
++    generated: summarizeStructure(tensor.generated, 0, 0, generatedLayer.width, generatedLayer.height),
++    reference: summarizeStructure(tensor.reference, 0, 0, referenceLayer.width, referenceLayer.height),
++  }));
++  // 向きの相関長は 63 km の尺度で読む (微細構造の筋と同じ)。2000 km の梯子では
++  // 遅れを 640 km まで伸ばす。
++  const lThetaTensor = tensors.get(63);
++  let lThetaKm = null;
++  if (lThetaTensor !== undefined) {
++    const generatedLTheta = orientationCorrelationLength(
++      lThetaTensor.generated, kmPerPx, ladder === '2000km' ? 640 : 320);
++    const referenceLTheta = orientationCorrelationLength(
++      lThetaTensor.reference, kmPerPx, ladder === '2000km' ? 640 : 320);
++    if (generatedLTheta !== null && referenceLTheta !== null) {
++      lThetaKm = { generated: generatedLTheta.lThetaKm, reference: referenceLTheta.lThetaKm };
++    }
++  }
++  return { bands, streak: { scales, lThetaKm } };
++}
+diff --git a/tools/cloud-distances.mjs b/tools/cloud-distances.mjs
+index f301aa97e..7b322b02d 100644
+--- a/tools/cloud-distances.mjs
++++ b/tools/cloud-distances.mjs
+@@ -247,6 +247,60 @@ function fineStreaksDistance(fineStructure) {
+   }
+   return terms.length === 0 ? null : mean(terms);
+ }
++// 巻雲層だけの電力割合の距離。巻雲層だけの撮影と、帯 13 の輝度温度から切り分けた
++// 高層雲の冷たさの場を、尺度帯ごとに比べる。項は主の梯子で測った帯だけ (微細構造の
++// 電力割合と同じ取り方)。合成画の fineSpectrum と違い、積雲の明るさが混ざらないので、
++// 半透明殻そのものの帯域配分がそのまま出る。
++// 項が 1 つも無ければ測れない (null) とし、0 (一致) とは区別する。
++function cirrusSpectrumDistance(cirrusStructure) {
++  const terms = [];
++  const logRatio = (generated, reference) => Math.abs(
++    Math.log2(Math.max(1e-9, generated) / Math.max(1e-9, reference)));
++  for (const pair of cirrusStructure.pairs) {
++    if (pair.distance === false) continue;
++    for (const band of pair.bands) {
++      if (!band.primary) continue;
++      terms.push(logRatio(band.generatedShare, band.referenceShare));
++    }
++  }
++  return terms.length === 0 ? null : mean(terms);
++}
++
++// 巻雲層だけの筋の距離。項の作りは fineStreaksDistance と同じ: 向きのずれ (90° を 1)、
++// 向きの相関長 Lθ の比、帯ごとの揃いのずれ。向きと Lθ は 63 km の尺度・400 km の梯子。
++// 項が 1 つも無ければ測れない (null) とし、0 (一致) とは区別する。
++function cirrusStreaksDistance(cirrusStructure) {
++  const terms = [];
++  for (const pair of cirrusStructure.pairs) {
++    if (pair.distance === false || pair.streak === null) continue;
++    if (pair.ladder === '400km') {
++      const scale63 = pair.streak.scales.find((scale) => scale.scaleKm === 63);
++      if (scale63 !== undefined) {
++        terms.push(orientationDifferenceDeg(
++          scale63.generated.orientationDeg, scale63.reference.orientationDeg) / 90);
++      }
++      const lTheta = pair.streak.lThetaKm;
++      if (lTheta !== null && lTheta.generated !== null && lTheta.reference !== null) {
++        terms.push(Math.abs(Math.log2(lTheta.generated / lTheta.reference)));
++      }
++    }
++    for (const band of pair.bands) {
++      if (!band.primary) continue;
++      const centerKm = Math.sqrt(band.loKm * band.hiKm);
++      let nearest = null;
++      for (const scale of pair.streak.scales) {
++        if (nearest === null
++          || Math.abs(Math.log(scale.scaleKm / centerKm)) < Math.abs(Math.log(nearest.scaleKm / centerKm))) {
++          nearest = scale;
++        }
++      }
++      if (nearest !== null) {
++        terms.push(Math.abs(nearest.generated.coherence - nearest.reference.coherence));
++      }
++    }
++  }
++  return terms.length === 0 ? null : mean(terms);
++}
+ // 1/e 交差時間の比。null は梯子の端 (8 h) を超えて 1/e を切らなかった (打ち切り) こと。
+ // 片方だけ打ち切りなら端の値を代わりにし (下限のずれ)、両方打ち切りなら比べようが無い
+ // ので項を落とす (0 とは区別する)。
+@@ -392,5 +446,13 @@ export function computeDistances(sections) {
+       if (fineStreakWind !== null) families.fineStreakWind = fineStreakWind;
+     }
+   }
++  // 巻雲の 2 家族は既存の家族と同じく index の平均へ加える (新しい家族は現れた
++  // commit から index に入る — 微細構造・微細な動きの追加時と同じ流儀)。
++  if (sections.cirrusStructure?.pairs?.length) {
++    const cirrusSpectrum = cirrusSpectrumDistance(sections.cirrusStructure);
++    if (cirrusSpectrum !== null) families.cirrusSpectrum = cirrusSpectrum;
++    const cirrusStreaks = cirrusStreaksDistance(sections.cirrusStructure);
++    if (cirrusStreaks !== null) families.cirrusStreaks = cirrusStreaks;
++  }
+   return { families, index: mean(Object.values(families)) };
+ }
+diff --git a/tools/cloud-lab-compare.mjs b/tools/cloud-lab-compare.mjs
+index 8aabbc4b1..6e26c9332 100644
+--- a/tools/cloud-lab-compare.mjs
++++ b/tools/cloud-lab-compare.mjs
+@@ -18,6 +18,8 @@ import { componentStats } from './cloud-components.mjs';
+ import { computeDistances } from './cloud-distances.mjs';
+ import { FINE_BANDS, FINE_PRIMARY_LADDER, applyCaptureMapping, captureBoxMapping, largestValidRect, measureFinePair, resampleCaptureToBox } from './cloud-fine-structure.mjs';
+ import { FINE_MOTION_DRIFT_LAG_HOURS, FINE_MOTION_SAMPLE_HOURS, measureFineMotionPair } from './cloud-fine-motion.mjs';
++import { HIGH_CLOUD_THRESHOLD_C, coldnessField, invertBrightnessTemperature, parseBand13Colormap } from './cloud-brightness-temperature.mjs';
++import { measureCirrusPair } from './cloud-cirrus.mjs';
+ import { bestShift, centroidOffset, crossingTime } from './cloud-motion.mjs';
+ import { cloudTopStats, quantile } from './cloud-top-stats.mjs';
+ import { structureTensor, structureToRgbPng, summarizeStructure } from './cloud-structure.mjs';
+@@ -1273,6 +1275,123 @@ async function main() {
+     };
+   }
+ 
++  // --- 巻雲層: 層だけの撮影と、帯 13 の輝度温度から切り分けた高層雲を比べる ---
++  // 合成画の微細構造は明るい積雲に支配され、巻雲のズレがどの距離にも出なかった。
++  // ここでは生成側も教師側も層だけに切り分け、層の中だけで帯の電力割合と筋を測る。
++  // 対の箱は帯 13 フレームの箱 (npac の 2000 km では帯 13 だけ中心がずれている —
++  // 生成は全球の場なのでどちらの箱へも載せ替えられ、対の中で同じ場所を比べることを
++  // 優先する)。sahara は帯 13 の参照が無いので対を組めない。
++  console.log('\n=== 巻雲層(層だけの撮影と帯 13 輝度温度の高層雲、尺度帯ごと) ===');
++  const cirrusCapManifestPath = path.join(root, '.cloud-lab/render-capture-cirrus/manifest.json');
++  const cirrusRefManifestPath = path.join(root, '.cloud-lab/reference-cirrus/manifest.json');
++  if (!existsSync(cirrusCapManifestPath)) {
++    console.log('  (巻雲の撮影の manifest が無いので巻雲層は未計測)');
++  } else if (!existsSync(fineManifestPath)) {
++    console.log('  (実写の微細参照の manifest が無いので巻雲層は未計測)');
++  } else if (!existsSync(cirrusRefManifestPath)) {
++    console.log('  (reference-cirrus の manifest が無いので巻雲層は未計測)');
++  } else {
++    const cirrusCapManifest = JSON.parse(readFileSync(cirrusCapManifestPath, 'utf8'));
++    const fineManifest = JSON.parse(readFileSync(fineManifestPath, 'utf8'));
++    const cirrusRefManifest = JSON.parse(readFileSync(cirrusRefManifestPath, 'utf8'));
++    const colormapEntries = parseBand13Colormap(
++      readFileSync(path.join(root, '.cloud-lab/reference-cirrus', cirrusRefManifest.colormap.file), 'utf8'));
++    const cirrusPairs = [];
++    for (const region of REGIONS) {
++      for (const ladder of ['400km', '2000km']) {
++        const capture = cirrusCapManifest.captures.find(
++          (entry) => entry.region === region.name && entry.name === `${region.name}-${ladder}`);
++        const btFrame = fineManifest.frames.find(
++          (frame) => frame.region === region.name && frame.ladder === ladder && frame.suffix === 'band13');
++        if (capture === undefined || btFrame === undefined) {
++          console.log(`  ${region.label} ${ladder}: 巻雲の撮影または帯 13 の参照が無く、対を組めない`);
++          continue;
++        }
++        const captureField = decodeLuminancePng(
++          readFileSync(path.join(root, '.cloud-lab/render-capture-cirrus', capture.file)));
++        const resampled = resampleCaptureToBox(
++          captureField, capture.latitudeDeg, capture.longitudeDeg, capture.cameraDistanceKm,
++          cirrusCapManifest.fovDeg, btFrame.box, 960, 540);
++        if (resampled.validRect === null) {
++          console.log(`  ${region.label} ${ladder}: 撮影が箱を覆わず、有効矩形が無い`);
++          continue;
++        }
++        const rect = resampled.validRect;
++        const generatedLayer = cropField(resampled, rect.x0, rect.y0, rect.width, rect.height);
++        const btField = invertBrightnessTemperature(
++          decodePng(readFileSync(path.join(root, btFrame.file))), colormapEntries);
++        const referenceLayer = cropField(coldnessField(btField), rect.x0, rect.y0, rect.width, rect.height);
++        const btCrop = cropField(btField, rect.x0, rect.y0, rect.width, rect.height);
++        let highCount = 0;
++        let btCount = 0;
++        for (const v of btCrop.data) {
++          if (Number.isNaN(v)) continue;
++          btCount++;
++          if (v <= HIGH_CLOUD_THRESHOLD_C) highCount++;
++        }
++        const features = measureCirrusPair(generatedLayer, referenceLayer, btFrame.kmPerPx, ladder);
++        const validCount = resampled.valid.reduce((sum, value) => sum + (value ? 1 : 0), 0);
++        const pair = {
++          region: region.name,
++          ladder,
++          kmPerPx: btFrame.kmPerPx,
++          widthKm: +(btFrame.box.east - btFrame.box.west) * 111.32
++            * Math.cos((btFrame.box.north + btFrame.box.south) / 2 * Math.PI / 180),
++          heightKm: +(btFrame.box.north - btFrame.box.south) * 111.32,
++          validFraction: +(validCount / (960 * 540)).toFixed(4),
++          validRect: rect,
++          distance: true,
++          highCloudFraction: btCount > 0 ? +(highCount / btCount).toFixed(4) : null,
++          inversion: {
++            exactFraction: +btField.stats.exactFraction.toFixed(4),
++            ambiguousFraction: +btField.stats.ambiguousFraction.toFixed(4),
++            coldGrayFraction: +btField.stats.coldGrayFraction.toFixed(4),
++          },
++          bands: features.bands,
++          streak: features.streak,
++        };
++        // 微細構造と同じ理由で、typhoon 400 km は同じ嵐の同じ場所を比べていない。
++        if (region.name === 'typhoon' && ladder === '400km') {
++          pair.distance = false;
++          pair.distanceReason = 'typhoon-content-mismatch';
++        }
++        cirrusPairs.push(pair);
++        console.log(`--- ${region.label} ${ladder} (${pair.widthKm.toFixed(0)}x${pair.heightKm.toFixed(0)} km、`
++          + `有効 ${rect.width}x${rect.height}・${(pair.validFraction * 100).toFixed(1)}%、`
++          + `高層雲の面積率 ${(pair.highCloudFraction * 100).toFixed(1)}%) ---`);
++        console.log('  帯[km]  電力割合 生成/実写');
++        for (const band of features.bands) {
++          console.log(`  ${band.loKm}-${band.hiKm}${band.primary ? '*' : ' '}  `
++            + `${band.generatedShare.toFixed(3)}/${band.referenceShare.toFixed(3)}`);
++        }
++        const scale63 = features.streak.scales.find((scale) => scale.scaleKm === 63);
++        const lTheta = features.streak.lThetaKm;
++        const coherence = features.streak.scales.map((scale) =>
++          `${scale.scaleKm}:${scale.generated.coherence.toFixed(2)}/${scale.reference.coherence.toFixed(2)}`).join(' ');
++        console.log(`  筋 63km: 向き ${scale63 === undefined ? '-' : scale63.generated.orientationDeg.toFixed(0) + '/'
++          + scale63.reference.orientationDeg.toFixed(0) + '°'}  Lθ `
++          + `${lTheta === null || lTheta.generated === null ? '-' : lTheta.generated.toFixed(0) + '/'
++          + (lTheta.reference === null ? '-' : lTheta.reference.toFixed(0)) + ' km'}  揃い ${coherence}`);
++      }
++    }
++    report.sections.cirrusStructure = {
++      capture: {
++        gitHead: cirrusCapManifest.gitHead, layer: cirrusCapManifest.layer,
++        fovDeg: cirrusCapManifest.fovDeg, viewport: cirrusCapManifest.viewport,
++      },
++      reference: {
++        source: fineManifest.source, colormap: cirrusRefManifest.colormap,
++        threshold: cirrusRefManifest.threshold,
++      },
++      bands: FINE_BANDS.map((band) => ({
++        loKm: band.loKm,
++        hiKm: band.hiKm,
++        primaryLadder: FINE_PRIMARY_LADDER[`${band.loKm}-${band.hiKm}`],
++      })),
++      pairs: cirrusPairs,
++    };
++  }
++
+   // --- 微細な動き: 描画の時系列撮影と実写の可視時系列を、帯域ごとに動きで比べる ---
+   // 写像 (箱の画素が撮影のどこを読むか) は時刻によらず同じなので、1 つの対で 1 回だけ
+   // 作って 5 時刻に使い回す。測る矩形は、生成の有効域と実写の全 5 時刻の有効域 (輝度が黒 =
+-- 
+2.43.0
+

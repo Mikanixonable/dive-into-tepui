@@ -1,0 +1,41 @@
+From 6c94e5c58d6b8e32791780801bffe680e9372136 Mon Sep 17 00:00:00 2001
+From: Muse <muse@muse.local>
+Date: Sat, 14 Nov 2026 06:37:13 +0000
+Subject: [PATCH 4/4] =?UTF-8?q?fix(cloud-lab):=20=E6=95=99=E5=B8=AB?=
+ =?UTF-8?q?=E3=81=AB=E5=B7=BB=E9=9B=B2=E5=B1=A4=E3=81=8C=E3=81=BB=E3=81=BC?=
+ =?UTF-8?q?=E7=84=A1=E3=81=84=E5=AF=BE=E3=82=92=20cirrus=20=E8=B7=9D?=
+ =?UTF-8?q?=E9=9B=A2=E3=81=8B=E3=82=89=E5=A4=96=E3=81=99?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+高層雲の面積率が 1% 未満の対 (npac 400 km 0.09%、so-ocean 400 km
+0.46%、sepac 400 km 0%) では、冷たさの場はまばらな冷たい画素の寄せ集めで、
+その帯配分は巻雲の質感ではなく点の分布を映し、share 0 の項が距離を
+支配していた。typhoon 400 km の除外と同じ流儀で、対は節に残したまま
+distanceReason=reference-layer-absent として項から外す。
+---
+ tools/cloud-lab-compare.mjs | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/tools/cloud-lab-compare.mjs b/tools/cloud-lab-compare.mjs
+index 6e26c9332..41720f164 100644
+--- a/tools/cloud-lab-compare.mjs
++++ b/tools/cloud-lab-compare.mjs
+@@ -1355,6 +1355,13 @@ async function main() {
+           pair.distance = false;
+           pair.distanceReason = 'typhoon-content-mismatch';
+         }
++        // 教師側に層がほぼ無い対 (高層雲の面積率 1% 未満) では、層の内側の構造は
++        // 測れない — 冷たさの場はまばらな冷たい画素の寄せ集めで、その帯配分は
++        // 巻雲の質感ではなく点の分布を映す。対は記録に残し、距離の項からだけ外す。
++        if (pair.highCloudFraction !== null && pair.highCloudFraction < 0.01) {
++          pair.distance = false;
++          pair.distanceReason = 'reference-layer-absent';
++        }
+         cirrusPairs.push(pair);
+         console.log(`--- ${region.label} ${ladder} (${pair.widthKm.toFixed(0)}x${pair.heightKm.toFixed(0)} km、`
+           + `有効 ${rect.width}x${rect.height}・${(pair.validFraction * 100).toFixed(1)}%、`
+-- 
+2.43.0
+
