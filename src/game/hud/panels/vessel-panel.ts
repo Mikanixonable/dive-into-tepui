@@ -1,4 +1,4 @@
-// 常設 VESSEL パネル(#hud-vessel-status)の同期: RCS燃料・出力・動圧・太陽電池パドル・放熱板・
+// 常設 VESSEL パネル(#hud-vessel-status)の同期: 主燃料・RCS燃料・出力・動圧・太陽電池パドル・放熱板・
 // RCS制動・微調整・進行方向ホールド・視点のRCS追従・弾薬。操作対象が無ければ隠す。
 // 装填/姿勢リセット/視点追従切替/ターゲット選択の4操作と、タッチ時のみのスロットル段は、
 // キー押下と同じ経路で発火するボタンとしてここに持つ — タッチでも到達できるようにするための、
@@ -100,7 +100,8 @@ export class VesselPanel {
   private readonly throttleControl: SegmentedControl<number>;
   private readonly throttleMeter: VesselMeterDom;
   private readonly qdynMeter: VesselMeterDom;
-  private readonly fuelMeter: Meter;
+  private readonly mainFuelMeter: VesselMeterDom;
+  private readonly rcsFuelMeter: VesselMeterDom;
   private readonly solarButtons: Record<SolarSide, DeployButtonDom>;
   private readonly radiatorButtons: Record<RadiatorSide, DeployButtonDom>;
 
@@ -109,9 +110,10 @@ export class VesselPanel {
     this.throttleMeter = this.buildMeter('throttle-meter', 'throttle-value', '並進出力');
     this.qdynMeter = this.buildMeter('qdyn-gauge', 'qdyn-value', '動圧');
     this.qdynMeter.meter.setMarks(DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO);
-    this.fuelMeter = this.mountMeter('rcs-fuel-meter', 'RCS 燃料');
-    // 動圧とRCS燃料には、それぞれの危険境界を示す目盛りを持たせる。
-    this.fuelMeter.setMarks(FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO);
+    this.mainFuelMeter = this.buildMeter('main-fuel-meter', 'main-fuel-value', '主燃料');
+    this.rcsFuelMeter = this.buildMeter('rcs-fuel-meter', 'rcs-fuel-value', 'RCS 燃料');
+    // 警報の閾値を持つ量(動圧・RCS燃料)だけ、危険境界を示す目盛りを持たせる。
+    this.rcsFuelMeter.meter.setMarks(FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO);
     this.constructionRow = this.els.get('vessel-construction-row');
     this.buildActionButtons();
     this.throttleControl = this.buildThrottleControl();
@@ -263,35 +265,48 @@ export class VesselPanel {
     this.followButton?.setOn(view.cameraFollowsAttitude);
     setStatePip(this.els.get('prohold'), view.progradeHold, true);
 
-    const maxFuel = view.maxRcsFuel;
-    const clampedFuel = Math.max(0, Math.min(maxFuel, view.rcsFuel));
-    const fuelLevel = fuelAlarmLevel(clampedFuel, maxFuel);
+    // 主燃料は警報の閾値を持たないので、中立のまま残量だけを示す。
+    const maxMainFuel = view.maxMainFuel;
+    const clampedMainFuel = Math.max(0, Math.min(maxMainFuel, view.mainFuel));
     this.syncMeter(
-      { meter: this.fuelMeter, value: this.els.get('rcs-fuel-value') },
-      clampedFuel, maxFuel, { value: `${Math.round(clampedFuel)}`, unit: `/ ${Math.round(maxFuel)}` }, fuelLevel,
+      this.mainFuelMeter,
+      clampedMainFuel, maxMainFuel,
+      { value: `${Math.round(clampedMainFuel)}`, unit: `/ ${Math.round(maxMainFuel)}` }, 'normal',
     );
 
-    // 機関砲を持たない操作対象では、同じ行に燃料の読み値を出す。
+    const maxRcsFuel = view.maxRcsFuel;
+    const clampedRcsFuel = Math.max(0, Math.min(maxRcsFuel, view.rcsFuel));
+    const rcsFuelLevel = fuelAlarmLevel(clampedRcsFuel, maxRcsFuel);
+    this.syncMeter(
+      this.rcsFuelMeter,
+      clampedRcsFuel, maxRcsFuel,
+      { value: `${Math.round(clampedRcsFuel)}`, unit: `/ ${Math.round(maxRcsFuel)}` }, rcsFuelLevel,
+    );
+
+    // 機関砲を持たない操作対象では、弾薬の行を畳む。
     const ammoEl = this.els.get('ammo');
     const ammo = view.ammo;
+    this.els.get('ammo-row').classList.toggle('hidden', ammo === null);
     let ammoLevel: AlarmLevel = 'normal';
     let ammoSummary = '';
     if (ammo) {
       ammoLevel = ammoAlarmLevel(ammo.rounds, ammo.mags);
       ammoSummary = ammo.rounds <= 0 && ammo.mags <= 0 ? '弾切れ' : `予備 ${ammo.mags}連`;
       this.els.setText('ammo', fmtAmmoStatus(ammo.rounds, ammo.mags, ammo.cooldown));
-    } else {
-      this.els.setText('ammo', `Fuel: ${Math.round(view.mainFuel)} / ${view.maxMainFuel}`);
     }
     applyAlarmLevel(ammoEl, ammoLevel);
 
-    // 畳んだ見出しには、最も重い状態を残す。平常なら燃料の残量。
+    // 畳んだ見出しには、最も重い状態を残す。平常なら主燃料の残量。
     const candidates = [
-      { level: fuelLevel, text: `燃料 ${maxFuel > 0 ? Math.round((clampedFuel / maxFuel) * 100) : 0}%` },
+      {
+        level: 'normal' as AlarmLevel,
+        text: `主燃料 ${maxMainFuel > 0 ? Math.round((clampedMainFuel / maxMainFuel) * 100) : 0}%`,
+      },
+      { level: rcsFuelLevel, text: `RCS燃料 ${maxRcsFuel > 0 ? Math.round((clampedRcsFuel / maxRcsFuel) * 100) : 0}%` },
       { level: qdynLevel, text: qdynText },
       { level: ammoLevel, text: ammoSummary },
     ];
-    const worstLevel = worstAlarmLevel(fuelLevel, qdynLevel, ammoLevel);
+    const worstLevel = worstAlarmLevel(rcsFuelLevel, qdynLevel, ammoLevel);
     const summary = candidates.find((entry) => entry.level === worstLevel)!;
     this.els.setText('hud-vessel-status-summary', summary.text);
     applyAlarmLevel(this.els.get('hud-vessel-status-summary'), summary.level);

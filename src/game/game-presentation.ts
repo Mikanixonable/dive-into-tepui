@@ -274,41 +274,52 @@ export class GamePresentation {
       game.orbitSlots, celestialSystem.orbitGuide.orbitCatalog,
       hud.overlayManager, (message) => hud.hint(message), () => game.simTime,
     );
-    // 最寄りの使用可能ドックから建造を始める。Bキーと艦のステータスパネルの「建造」が共有する。
-    const startConstructionNearest = (): void => {
-      const controlled = game.activeControllable;
-      const camera = this.cameraFrame;
-      if (controlled === null || camera === null || !isModularShip(controlled)) return;
-      this.constructionEntry.startNearestDock(controlled, camera.viewpoint.position);
-    };
     this.hudPanels = new HudPanelPresenter(
       hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
       activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
-      this.navigationCommand, startConstructionNearest, () => this.shipConstruction.active,
+      this.navigationCommand, () => this.startConstructionNearest(), () => this.shipConstruction.active,
     );
-    const inputSource: GameInputSource = {
+    this.inputPhase = new GameInputPhase(
+      this.gameInputSource(), hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
+      this.shipConstruction, this.input, () => this.cameraFrame, sections,
+    );
+    this.displayPhase = new DisplayPhase(
+      this.gameDisplaySource(), this.displayWindowManager, this.viewManager, this.frameAnchors, this.cameraSystem,
+      this.flashPresenter, this.targeter, this.planDisplay, this.equatorNodes, sections,
+    );
+  }
+
+  // 最寄りの使用可能ドックから建造を始める。Bキーと艦のステータスパネルの「建造」が共有する。
+  private startConstructionNearest(): void {
+    const controlled = this.game.activeControllable;
+    const camera = this.cameraFrame;
+    if (controlled === null || camera === null || !isModularShip(controlled)) return;
+    this.constructionEntry.startNearestDock(controlled, camera.viewpoint.position);
+  }
+
+  // 入力の解釈が読む、ランの操作の口。
+  private gameInputSource(): GameInputSource {
+    const game = this.game;
+    return {
       commands: game.commands,
       simSpeedManager: game.simSpeedManager,
       view: game.viewer.view,
       get activeControllable() { return game.activeControllable; },
       get stageIsPlaying() { return game.activeStage.isPlaying; },
-      startConstruction: startConstructionNearest,
+      startConstruction: () => this.startConstructionNearest(),
     };
-    const displaySource: DisplayPhaseSource = {
+  }
+
+  // 表示の導出が読む、ランの時刻・操作対象・出来事・ターゲットの口。
+  private gameDisplaySource(): DisplayPhaseSource {
+    const game = this.game;
+    return {
       get simTime() { return game.simTime; },
       get activeControllable() { return game.activeControllable; },
       get recentEvents() { return game.events.recent; },
       celestialSystem: game.celestialSystem,
       get navTargetId() { return game.viewer.navTarget.id; },
     };
-    this.inputPhase = new GameInputPhase(
-      inputSource, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
-      this.shipConstruction, this.input, () => this.cameraFrame, sections,
-    );
-    this.displayPhase = new DisplayPhase(
-      displaySource, this.displayWindowManager, this.viewManager, this.frameAnchors, this.cameraSystem,
-      this.flashPresenter, this.targeter, this.planDisplay, this.equatorNodes, sections,
-    );
   }
 
   // このランが scene・Hud・マーカー装置・window/document/canvas へ足したものを残らず取り除く。

@@ -182,9 +182,17 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (!events.recent.some(({ body }) => body.kind === 'stageDecided')) return;
     if (stage.phase === 'won') {
       this.unlockManager.reportClear(stage.id, this.devices.hud);
-      // 勝利で解放された天体を、遊んでいるセーブ枠へ記録する。
+      // 勝利で解放された天体を、遊んでいるセーブ枠へ記録し、新たに解放されたものを知らせる。
       const slotId = this.slots.activeSlotId;
-      if (slotId !== null) this.slots.setRevealedBodies(slotId, stage.revealedBodies);
+      if (slotId !== null) {
+        const revealedBefore = new Set(this.slots.activeSlot()?.revealedBodies ?? BODY_REVEAL_BASE);
+        this.slots.setRevealedBodies(slotId, stage.revealedBodies);
+        for (const id of stage.revealedBodies) {
+          if (revealedBefore.has(id)) continue;
+          const name = this.run.game.celestialSystem.nameOf(id);
+          this.devices.hud.toast(`<span style="color:var(--color-primary)">${name} が解放された</span>`);
+        }
+      }
     }
     const stats = stage.result?.stats ?? null;
     const comparison = stats === null ? null : this.noteOutcome(stage, stats);

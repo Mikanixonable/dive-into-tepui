@@ -288,6 +288,13 @@ export function register(): void {
     assert.deepEqual([...revealedAfterClear(['sun', 'earth', 'sun'], 'stage1')], ['sun', 'earth']);
   });
 
+  test('reveal: ステージのクリアは定められた惑星本体だけを解放する', () => {
+    assert.deepEqual([...revealedAfterClear(BODY_REVEAL_BASE, '0')], ['sun', 'earth', 'moon', 'mars']);
+    assert.deepEqual([...revealedAfterClear(BODY_REVEAL_BASE, '1')], ['sun', 'earth', 'moon', 'venus', 'mercury']);
+    assert.deepEqual([...revealedAfterClear(BODY_REVEAL_BASE, '2')], ['sun', 'earth', 'moon', 'jupiter']);
+    assert.ok(!revealedAfterClear(BODY_REVEAL_BASE, '2').includes('io'), '衛星は解放されない');
+  });
+
   test('reveal: 未解放の天体は、表示トグルが全部立っていても記号・ラベル・軌道線・選択に現れない', () => {
     const policy = new MapVisibilityPolicy(SYSTEM, DEFAULT_MAP_DISPLAY_TOGGLES, new Set(BODY_REVEAL_BASE));
     for (const id of ['mars', 'jupiter']) {

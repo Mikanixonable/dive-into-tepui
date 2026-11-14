@@ -6,6 +6,7 @@
 const HUD_ELEMENT_IDS = [
   'alt',
   'ammo',
+  'ammo-row',
   'ap',
   'ap-label',
   'burn-active-fuel-meter',
@@ -71,6 +72,8 @@ const HUD_ELEMENT_IDS = [
   'hud-vessel-status',
   'hud-vessel-status-summary',
   'inc',
+  'main-fuel-meter',
+  'main-fuel-value',
   'map-scale',
   'map-scale-ruler',
   'map-scale-value',
