@@ -11,10 +11,8 @@ import type { KinematicState } from '../../../physics/kinematic-state';
 import type { EntityContactParticipant } from '../dynamic-simulation-participant';
 
 // casing.json の縦方向の外形を、表示側の y 軸補正後の長さへ合わせる [m]。
-export const CASING_CAPSULE_HALF_LENGTH = 0.7333333333333334;
-export const CASING_CAPSULE_RADIUS = 0.231;
-export const CASING_CYLINDER_HALF_LENGTH = CASING_CAPSULE_HALF_LENGTH;
-export const CASING_CYLINDER_RADIUS = CASING_CAPSULE_RADIUS;
+const CASING_CAPSULE_HALF_LENGTH = 0.7333333333333334;
+const CASING_CAPSULE_RADIUS = 0.231;
 const CASING_LOCAL_CENTER_Y = -0.013333333333333308;
 const CASING_LOCAL_AXIS = v3(0, 1, 0);
 
