@@ -662,6 +662,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   ): ModularShipRenderSource {
     const motion = this.motion;
     const { belt } = motion;
+    // 動圧と対気速度は同じ空力状態から、このフレームの表示入力へ渡す。
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
       assembly: shipRenderAssembly(this.assembly),

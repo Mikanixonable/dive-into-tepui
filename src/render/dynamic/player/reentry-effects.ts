@@ -46,6 +46,7 @@ export class ReentryEffects {
       this.outer.hide();
       return;
     }
+    // 対気速度を再突入の前方軸として、2枚の発光板を機体前方へ置く。
     const dir = norm(airspeed);
     const sc = REENTRY_SIZE_MIN + REENTRY_SIZE_SPAN * intensity;
     this.core.sync(fo.RtoThreeV3(addScaled(state.r, dir, REENTRY_CORE_OFFSET)),

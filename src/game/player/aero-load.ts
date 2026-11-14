@@ -32,6 +32,7 @@ export class AeroLoad {
   ): void {
     const atm = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(atmospherePivot);
     if (atmosphereBody === null || atm === null) {
+      // 空力値が無いフレームでは、前回の密度・動圧・対気速度を残さない。
       this._qdyn = 0;
       this._density = 0;
       this._airspeed = null;

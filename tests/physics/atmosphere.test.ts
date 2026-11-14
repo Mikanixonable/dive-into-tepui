@@ -18,6 +18,7 @@ const TABLE_ALTS_KM = [
   250, 300, 350, 400, 450, 500, 600, 700, 800, 900, 1000,
 ];
 
+// 大気密度・対気速度・抗力の数値契約を検査する。
 export function register(): void {
   test('atmosphere: negative altitude clamps to sea-level density (h=max(0,alt))', () => {
     assert.equal(atmosphericDensity(-1000, EARTH), atmosphericDensity(0, EARTH));
