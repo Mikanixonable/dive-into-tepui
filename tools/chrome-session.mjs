@@ -98,10 +98,11 @@ async function waitForDebugPage(port) {
 
 // 1リクエストの待ち時間の上限。ページのレンダラが落ちるとその接続宛の応答は二度と返らないので、
 // 上限が無いと待ち続けて呼び出し側がそこで永久に止まる(実際に止まった)。重い条件では
-// 1フレームが1秒を超えるため、フレーム数十回ぶんの余裕を見る。
+// 1フレームが1秒を超えるため、フレーム数十回ぶんの余裕を見る。1回の評価がこれを超える重さの
+// 駆動(8k 全面の撮影など)は、openChromeSession の requestTimeoutMs で延ばせる。
 const REQUEST_TIMEOUT_MS = 60_000;
 
-function connectDevTools(url, onEvent) {
+function connectDevTools(url, onEvent, requestTimeoutMs = REQUEST_TIMEOUT_MS) {
   const socket = new WebSocket(url);
   let nextId = 1;
   const pending = new Map();
@@ -140,8 +141,8 @@ function connectDevTools(url, onEvent) {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           pending.delete(id);
-          reject(new Error(`Timed out after ${REQUEST_TIMEOUT_MS}ms: ${method}`));
-        }, REQUEST_TIMEOUT_MS);
+          reject(new Error(`Timed out after ${requestTimeoutMs}ms: ${method}`));
+        }, requestTimeoutMs);
         pending.set(id, { resolve, reject, timer });
         try {
           socket.send(JSON.stringify({ id, method, params }));
@@ -167,10 +168,10 @@ function connectDevTools(url, onEvent) {
 // 接続が死んでも続けられるように、張り直せる接続として扱う。レンダラが落ちるとその接続宛の
 // 応答は返らなくなるが、Chrome 自体は生きていて新しいページ target を持つので、target を
 // 取り直して繋ぎ直せば残りは続けられる。
-async function attachSession(debugPort, onEvent, windowSize) {
+async function attachSession(debugPort, onEvent, windowSize, requestTimeoutMs) {
   let current = null;
   const attach = async () => {
-    const devTools = connectDevTools(await waitForDebugPage(debugPort), onEvent);
+    const devTools = connectDevTools(await waitForDebugPage(debugPort), onEvent, requestTimeoutMs);
     await devTools.opened;
     await devTools.send('Runtime.enable');
     await devTools.send('Page.enable');
@@ -237,6 +238,7 @@ export function collectFatalEvents() {
 // プロファイルを畳む。
 export async function openChromeSession({
   serveDir, port, debugPort, profilePrefix, windowSize = null, onEvent = () => {}, extraLaunchArgs = [],
+  requestTimeoutMs,
 }) {
   const chrome = findChrome();
   const profile = mkdtempSync(path.join(tmpdir(), profilePrefix));
@@ -253,7 +255,7 @@ export async function openChromeSession({
       `--user-data-dir=${profile}`,
       'about:blank',
     ], { stdio: 'ignore' });
-    const devTools = await attachSession(debugPort, onEvent, windowSize);
+    const devTools = await attachSession(debugPort, onEvent, windowSize, requestTimeoutMs);
     return {
       devTools,
       baseUrl,

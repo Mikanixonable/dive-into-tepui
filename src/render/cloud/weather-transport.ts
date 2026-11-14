@@ -29,16 +29,25 @@ const CONVECTION_NOISE: readonly NoiseOctave[] = [
   { frequency: 133, amplitude: 1 }, // 48 km
   { frequency: 266, amplitude: 0.65 }, // 24 km
 ];
+// 上層雲の濃淡は千キロ級の板がいちばん強く、それより細かい尺度(数百キロの斑と 100 km 級の
+// 繊維)へ向かって痩せる — 100 km 級の段を厚くすると、筋の向きがその尺度でばらついて
+// 向きの相関長が短くなる。細かい段は板の縁や渦のまわりで向きを変えるぶんだけ残す。
 const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 3.75, amplitude: 0.45 }, // 1700 km
-  { frequency: 8, amplitude: 0.7 }, // 800 km
-  { frequency: 16, amplitude: 0.28 }, // 400 km
-  { frequency: 32, amplitude: 0.18 }, // 200 km
-  { frequency: 64, amplitude: 0.23 }, // 100 km
+  { frequency: 8, amplitude: 0.75 }, // 800 km
+  { frequency: 16, amplitude: 0.30 }, // 400 km
+  { frequency: 32, amplitude: 0.12 }, // 200 km
+  { frequency: 64, amplitude: 0.10 }, // 100 km
 ];
 
+// エポックの混ぜ替えに参加する段の周波数の上限 [1 rad あたりの山数]。地表付近は 400 km 以上、
+// 上層は 800 km 以上の段だけがその場で入れ替わり、それより細い段は模様の平行移動の足場として残る。
+const SURFACE_HUMIDITY_EPOCH_MAX_FREQUENCY = 16;
+const UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY = 8;
+
 // 場の振れ幅。CirculatingNoiseが段の振幅の総和で割って返すので、段数を変えてもここは動かない。
-export const SURFACE_HUMIDITY_BASE = 0.405;
+// 地表付近の基底湿度。平年の雲量の重みを半分に弱めたぶんの平均をここで埋める(cloud-lab Phase 3-10)。
+export const SURFACE_HUMIDITY_BASE = 0.435;
 const UPPER_HUMIDITY_BASE = 0.42;
 const SURFACE_HUMIDITY_NOISE_AMPLITUDE = 0.5625;
 const CONVECTION_NOISE_AMPLITUDE = 0.30;
@@ -77,9 +86,11 @@ export class WeatherTransport {
     private readonly surfaceRadius: number,
   ) {
     const texel = projection.texelAngle;
-    this.surfaceHumidityNoise = new CirculatingNoise(surfaceCirculation, SURFACE_HUMIDITY_NOISE, texel);
+    this.surfaceHumidityNoise = new CirculatingNoise(
+      surfaceCirculation, SURFACE_HUMIDITY_NOISE, texel, SURFACE_HUMIDITY_EPOCH_MAX_FREQUENCY);
     this.convectionNoise = new CirculatingNoise(surfaceCirculation, CONVECTION_NOISE, texel);
-    this.upperHumidityNoise = new CirculatingNoise(upperCirculation, UPPER_HUMIDITY_NOISE, texel);
+    this.upperHumidityNoise = new CirculatingNoise(
+      upperCirculation, UPPER_HUMIDITY_NOISE, texel, UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY);
     this.humiditySource = new BakedField(
       'humiditySource', THREE.RGFormat, projection,
       (direction) => vec4(this.humiditySourceAt(direction), 0, 1),
@@ -94,6 +105,8 @@ export class WeatherTransport {
   public syncTime(seconds: number): void {
     const cycle = (seconds / ADVECTION_PERIOD) % 1;
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
+    this.surfaceHumidityNoise.syncTime(seconds);
+    this.upperHumidityNoise.syncTime(seconds);
   }
 
   // 移流前の場をテクスチャへレンダリングする。advectedAt() と surfaceHumidityAt() のグラフを描く前に呼ぶ。
