@@ -109,6 +109,20 @@ async function run() {
     oldFormat.writeUInt16LE(2, 4);
     await writeFile(terrainPath, gzipSync(oldFormat, { mtime: 0 }));
     await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /ESTN header key or format mismatch/);
+
+    // Bへroughness・Aへ255を書いた本文は、法線が単位長へ戻らないので弾かれる。
+    const swapped = Buffer.from(fixture.terrain);
+    for (let texel = 32; texel < swapped.length; texel += 4) {
+      swapped[texel + 2] = 204; swapped[texel + 3] = 255;
+    }
+    await writeFile(terrainPath, gzipSync(swapped, { mtime: 0 }));
+    await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /ESTN normal is not unit length|ESTN roughness channel has no data/);
+
+    const opaqueAlpha = Buffer.from(fixture.terrain);
+    for (let texel = 32; texel < opaqueAlpha.length; texel += 4) opaqueAlpha[texel + 3] = 255;
+    await writeFile(terrainPath, gzipSync(opaqueAlpha, { mtime: 0 }));
+    await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /ESTN roughness channel has no data/);
+    await writeFile(terrainPath, gzipSync(fixture.terrain, { mtime: 0 }));
     console.log('earth-surface contract fixtures: ok');
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
