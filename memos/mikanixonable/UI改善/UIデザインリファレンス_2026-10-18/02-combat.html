@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>戦闘ビュー</title>
+<link rel="stylesheet" href="foundation/tepui-base.css">
+<link rel="stylesheet" href="foundation/ref.css">
+<style>
+  /* このページ固有の配置。値はトークンから。リテラルは配置座標(px)だけ。 */
+  .cb-abs { position: absolute; }
+  .cb-top { left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; }
+  .cb-rail { position: absolute; top: 44px; width: 300px; }
+  .cb-rail.l { left: 12px; }
+  .cb-rail.r { left: 1288px; }
+  .cb-rail .ix-panel + .ix-panel { margin-top: var(--space-4); }
+
+  /* 武装の帯の中の小さな区切りと予備弾数。 */
+  .ix-weapon .ix-strip-sep { height: 16px; }
+  .ix-weapon .ix-wcount { font-size: var(--font-m); color: var(--text); }
+  .ix-hint-line { margin-top: var(--space-3); font-size: var(--font-xxs); color: var(--ix-meta); }
+  .cb-rail-toggle { position: absolute; top: 10px; }
+
+  /* 部品単位の比較 */
+  .cb-strip-states { display: grid; gap: var(--space-5); }
+  .cb-strip-states .cb-cap { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--text-dim); margin-bottom: var(--space-3); }
+  .cb-zoom { position: relative; width: 420px; max-width: 100%; height: 230px; overflow: hidden; border-radius: var(--radius-control); background: #05060a; }
+  .cb-zoom .cb-aim { left: 50%; top: 82px; }
+  .cb-wipe-note { color: var(--text-dim); font-size: var(--font-xs); margin-top: var(--space-3); }
+  .cb-proc { max-width: 980px; color: var(--text-muted); line-height: 1.8; }
+  .cb-proc li { margin-bottom: var(--space-3); }
+  .cb-proc b { color: var(--text); }
+</style>
+</head>
+<body class="rf" data-title="02 戦闘ビュー" data-sub="1600×900 — 上部は1行、右レールは狙う→敵→艦の順、撃つ判断は照準のそばへ">
+<main class="rf-main">
+
+<p class="rf-intro">
+  現行の戦闘ビューは、<b>画面の四隅が情報で埋まる一方、撃つ判断に要る値(距離・接近・弾速・残弾)がばらばらの場所にある</b>。
+  上部は 820×100px の2行ブロック、右レールは「艦 → ターゲット → 敵一覧」の順で、いちばん見たいターゲットが艦ステータスの下に押し下げられ、
+  敵一覧は画面の下端で切れている。照準のまわりは AMMO / BELT / 弾速の文字列と PROGRADE・×3 が重なって読めない。<br>
+  この案は、戦闘中に問われる順に画面を組み直す。<b>(1) 上部は1行のストリップ</b>(ステージ・ビュー・時刻・時間加速・警報灯)。
+  <b>(2) 右レールは 狙う相手(TGT)→ 敵(CNT)→ 艦(VSL)</b>。<b>(3) 艦ステータスは3つに割る</b> — 計器は軌道・警報灯へ、弾薬は下中央の武装の帯へ、視点追従はカメラへ。
+  <b>(4) 撃つ判断に要る3つ(距離・接近・弾速)は照準の右に置く。</b>
+  上のツールバーの「比較」で、同じ位置関係の現行と見比べられる。
+</p>
+
+<div class="rf-stage-wrap"><div class="rf-stage" data-w="1600" data-h="900">
+  <div class="rf-layer rf-before"><img src="foundation/current/combat.jpg" alt="現行の戦闘ビュー"></div>
+  <div class="rf-layer rf-after">
+    <canvas class="rf-scene" data-scene="combat"></canvas>
+
+    <!-- 画面角: レールの開閉とヘルプ。中立の円形ボタン。 -->
+    <span class="w-btn w-btn--icon cb-rail-toggle" style="left: 10px" data-note="14" aria-label="左レールを畳む">◀</span>
+    <span class="w-btn w-btn--icon cb-rail-toggle" style="left: 1532px" aria-label="操作ガイド">?</span>
+    <span class="w-btn w-btn--icon cb-rail-toggle" style="left: 1566px" aria-label="右レールを畳む">▶</span>
+
+    <!-- 上部ストリップ(1行) -->
+    <div class="cb-abs cb-top" style="top: 10px">
+      <div class="ix-strip" data-note="1">
+        <span class="ix-strip-label">STAGE</span><span class="ix-strip-time">1</span>
+        <span class="w-btn w-btn--dense">COMBAT ▾</span>
+        <span class="ix-strip-sep"></span>
+        <span data-note="2" style="display:inline-flex; gap: var(--space-3); align-items: baseline">
+          <span class="ix-strip-time">20115-05-14 06:00:04</span>
+          <span class="ix-strip-label">T+</span><span class="ix-strip-time">00:00:04</span>
+        </span>
+        <span class="ix-strip-sep"></span>
+        <span class="ix-warp" data-note="3" aria-label="時間加速"><span class="on">×1</span><span>×4</span><span>▾</span></span>
+        <span class="ix-strip-sep"></span>
+        <span class="ix-annun" data-note="4" aria-label="警報灯">
+          <span class="ix-lamp">CAUTION</span><span class="ix-lamp">WARNING</span>
+        </span>
+      </div>
+    </div>
+    <div class="cb-abs cb-top" style="top: 58px"><span class="w-btn w-btn--dense w-btn--secondary" aria-label="視点をリセット">⟲ 視点リセット</span></div>
+    <div class="cb-abs cb-top" style="top: 92px"><div class="ix-alert is-info" style="padding-right: var(--space-5)"><span class="ix-alert-level">NAV</span><span>ターゲット固定: HOSTILE-ε</span></div></div>
+
+    <!-- 左レール: 自艦の軌道とカメラ -->
+    <div class="cb-rail l">
+      <section class="ix-panel" data-note="5">
+        <header class="ix-head"><span class="ix-code">ORB</span><span class="ix-title">軌道</span><span class="ix-head-meta">地球 · 自動</span><span class="ix-collapse">▾</span></header>
+        <div class="ix-pair">
+          <div class="ix-readout is-m"><span class="ix-readout-value">420.00<span class="ix-u">km</span></span><span class="ix-readout-cap">高度</span></div>
+          <div class="ix-readout is-m"><span class="ix-readout-value">7.66<span class="ix-u">km/s</span></span><span class="ix-readout-cap">速度</span></div>
+        </div>
+        <div class="ix-rows" style="margin-top: var(--space-4)">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">遠地点 AP</span></span><span class="ix-v">420.05<span class="ix-u">km</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">近地点 PE</span></span><span class="ix-v">419.95<span class="ix-u">km</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">傾斜角 INC</span></span><span class="ix-v">97.00<span class="ix-u">°</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">周期 PRD</span></span><span class="ix-v">01:32:58</span></div>
+        </div>
+        <div class="ix-sub">環境</div>
+        <div class="ix-rows">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">動圧 Q</span></span><span class="ix-gauge" style="--at: 50%"><i style="--v: 0%"></i></span><span class="ix-v">0.00<span class="ix-u">kPa</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">船体温度 T</span></span><span class="ix-gauge" style="--at: 70%"><i style="--v: 24%"></i></span><span class="ix-v">311<span class="ix-u">K</span></span></div>
+        </div>
+        <div class="ix-sub">基準</div>
+        <div class="w-group" role="group" aria-label="基準" style="margin: 0">
+          <span class="w-btn w-btn--dense on">自動</span><span class="w-btn w-btn--dense">地球</span><span class="w-btn w-btn--dense">月</span><span class="w-btn w-btn--dense">航法ターゲット</span>
+        </div>
+        <div class="ix-actions"><span class="w-btn w-btn--dense w-btn--secondary">軌道分析</span></div>
+      </section>
+      <section class="ix-panel" data-note="6">
+        <header class="ix-head"><span class="ix-code">CAM</span><span class="ix-title">カメラ</span><span class="ix-head-meta"></span><span class="ix-collapse">▾</span></header>
+        <div class="ix-rows has-keys">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">クォータニオン操作</span></span><span class="ix-v"><span class="w-toggle-track"><span class="w-toggle-knob"></span></span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">RCS 姿勢に追従</span></span><span class="ix-v"><span class="w-toggle-track on"><span class="w-toggle-knob"></span></span></span><kbd class="key ix-key">G</kbd></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 右レール: 狙う相手 → 敵 → 艦 -->
+    <div class="cb-rail r">
+      <section class="ix-panel is-tgt-panel" data-note="7">
+        <header class="ix-head"><span class="ix-code">TGT</span><span class="ix-title">ターゲット</span><span class="ix-head-meta">固定</span><span class="ix-collapse">▾</span></header>
+        <div class="ix-ident is-tgt"><span class="ix-ident-glyph">⌖</span><span class="ix-ident-name">HOSTILE-ε</span><span class="ix-ident-role">ターゲット</span></div>
+        <div class="ix-rows" style="margin-top: var(--space-3)">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">距離</span></span><span class="ix-v is-tgt">60.00<span class="ix-u">km</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">接近速度</span></span><span class="ix-v">0.0<span class="ix-u">m/s</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">相対速度</span></span><span class="ix-v">67.6<span class="ix-u">m/s</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">装甲</span></span><span class="ix-gauge is-tgt"><i style="--v: 100%"></i></span><span class="ix-v">11<span class="ix-u">/ 11</span></span></div>
+        </div>
+        <div class="ix-actions" style="margin-top: var(--space-3)"><span class="w-btn w-btn--dense w-btn--secondary">ターゲット選択<kbd class="key">T</kbd></span></div>
+        <div class="ix-hint-line">右クリックでプロパティ(軌道要素)</div>
+      </section>
+      <section class="ix-panel" data-note="8">
+        <header class="ix-head"><span class="ix-code">CNT</span><span class="ix-title">敵一覧</span><span class="ix-head-meta">5 / 5</span><span class="ix-collapse">▾</span></header>
+        <div class="ix-list">
+          <div class="ix-item is-near"><span class="ix-item-glyph">△</span><span class="ix-item-name">HOSTILE-α</span><span class="ix-item-v">1.40 km</span><span class="ix-item-tag">隣接</span></div>
+          <div class="ix-item"><span class="ix-item-glyph">△</span><span class="ix-item-name">HOSTILE-γ</span><span class="ix-item-v">2.21 km</span><span class="ix-item-tag"></span></div>
+          <div class="ix-item"><span class="ix-item-glyph">△</span><span class="ix-item-name">HOSTILE-β</span><span class="ix-item-v">3.77 km</span><span class="ix-item-tag"></span></div>
+          <div class="ix-item"><span class="ix-item-glyph">△</span><span class="ix-item-name">HOSTILE-δ</span><span class="ix-item-v">12.30 km</span><span class="ix-item-tag"></span></div>
+          <div class="ix-item is-tgt"><span class="ix-item-glyph">△</span><span class="ix-item-name">HOSTILE-ε</span><span class="ix-item-v">60.00 km</span><span class="ix-item-tag">固定</span></div>
+        </div>
+      </section>
+      <section class="ix-panel" data-note="9">
+        <header class="ix-head"><span class="ix-code">VSL</span><span class="ix-title">艦のステータス</span><span class="ix-head-meta">Boree-65</span><span class="ix-collapse">▾</span></header>
+        <div class="ix-rows has-keys">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">RCS 燃料</span></span><span class="ix-gauge" style="--at: 20%"><i style="--v: 100%"></i></span><span class="ix-v">1000<span class="ix-u">/ 1000</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">並進出力</span></span><span class="ix-gauge"><i style="--v: 50%"></i></span><span class="ix-v">中<span class="ix-u">20.0 m/s²</span></span><kbd class="key ix-key">1–4</kbd></div>
+        </div>
+        <div class="ix-sub">モード</div>
+        <div class="ix-rows has-keys">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">RCS 制動</span></span><span class="ix-v"><span class="ix-pip on is-own">ON</span></span><kbd class="key ix-key">P</kbd></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">微調整</span></span><span class="ix-v"><span class="ix-pip">OFF</span></span><kbd class="key ix-key">V</kbd></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">進行方向ホールド</span></span><span class="ix-v"><span class="ix-pip on is-own">ON</span></span><kbd class="key ix-key">C</kbd></div>
+        </div>
+        <div class="ix-actions" style="margin-top: var(--space-3)"><span class="w-btn w-btn--dense w-btn--secondary">進行方向へ向ける<kbd class="key">F</kbd></span></div>
+        <div class="ix-sub" data-note="10">展開部品</div>
+        <div class="ix-deploy"><span class="ix-k"><span class="ix-k-text">パドル</span></span>
+          <span class="w-btn w-btn--dense w-btn--secondary"><span class="ix-pip on">左</span><kbd class="key">7</kbd></span>
+          <span class="w-btn w-btn--dense w-btn--secondary"><span class="ix-pip on">右</span><kbd class="key">8</kbd></span></div>
+        <div class="ix-deploy"><span class="ix-k"><span class="ix-k-text">放熱板</span></span>
+          <span class="w-btn w-btn--dense w-btn--secondary"><span class="ix-pip">左</span><kbd class="key">9</kbd></span>
+          <span class="w-btn w-btn--dense w-btn--secondary"><span class="ix-pip">右</span><kbd class="key">0</kbd></span></div>
+        <div class="ix-rows">
+          <div class="ix-row is-warning"><span class="ix-k"><span class="ix-k-text">放熱板 右 損耗</span></span><span class="ix-gauge is-warning"><i style="--v: 100%"></i></span><span class="ix-v is-warning">100<span class="ix-u">%</span></span></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ワールド: 敵の記号、画面端の方位 -->
+    <div class="ix-mk is-enemy cb-abs" style="left: 705px; top: 343px">△<span class="ix-mk-label">HOSTILE-γ<br>2.2km</span></div>
+    <div class="ix-edge" style="left: 1236px; top: 206px; --dir: 52deg" data-note="13"></div>
+    <span class="ix-edge-label" style="right: 372px; top: 215px">ε 60 km</span>
+    <div class="ix-edge is-other" style="left: 332px; top: 620px; --dir: -78deg"></div>
+    <span class="ix-edge-label is-other" style="left: 372px; top: 628px">α 1.4 km</span>
+
+    <!-- 照準まわり: 記号3つ(ラベルなし)と、撃つ判断に要る3つの読み値 -->
+    <div class="cb-abs cb-aim" style="left: 800px; top: 340px" data-note="12" data-aim></div>
+
+    <!-- 武装の帯(下中央) -->
+    <div class="cb-abs cb-top" style="top: 846px">
+      <div class="ix-weapon" data-note="11" aria-label="武装">
+        <span class="ix-strip-label">弾</span>
+        <span class="ix-belt" data-belt="40"></span>
+        <span class="ix-wcount">40<span class="ix-u">/ 40</span></span>
+        <span class="ix-strip-sep"></span>
+        <span class="ix-strip-label">予備</span><span class="ix-wcount">2<span class="ix-u">連</span></span>
+        <span class="ix-strip-sep"></span>
+        <span class="w-btn w-btn--dense w-btn--secondary">装填<kbd class="key">R</kbd></span>
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<ol class="rf-notes">
+  <li data-n="1"><b>上部を 40px・1行のストリップへ。</b>現行の 820×100px・2行ブロック(「MISSION STATUS」「FLIGHT」「MISSION TIME」「SIM RATE」の見出し付き)をやめ、
+    ステージ・ビュー切替・時刻・時間加速・警報灯だけを一列に置く。見出しは値そのものが語るので持たない(監査 5)。タイトル・Focus/Control/Target の3欄は外す —
+    Control は VSL の見出し、Target は TGT に既にある。Focus は操作対象と違うときだけ「◎ 月」のように出す。
+    <span class="rf-where">src/game/hud/hud-root.ts(buildTopBar) ・ src/game/hud/panels/top-bar.ts ・ src/game/hud/view-badge.ts ・ src/game/hud/style/skeleton-style.ts(#hud-topbar) ・ combat-view-style.ts ・ SPEC UI-DESIGN §8「全体ステータスバー」(2行バッジ→1行)</span></li>
+  <li data-n="2"><b>時刻は日時と T+ を短く。</b>「20115-05-14T06:00:04 / T+ 0Y-00M-00D-00h-00m-04s」を「日時 T+ 00:00:04」へ。経過の年・月・日は0のあいだ省き、0でなくなった桁から出す。ストリップの幅を 800px 前後に保つための変更(監査 5)。
+    自動ワープ中だけ、末尾に「NODE WARP 残り」のチップが現れる(現行の gs-metric の hidden 切替と同じ条件)。
+    <span class="rf-where">src/hud/utils.ts(fmtElapsedUnits の桁省略) ・ src/game/hud/panels/top-bar.ts(met / node-warp-remain) ・ SPEC GAME.md の時刻表記があれば更新</span></li>
+  <li data-n="3"><b>時間加速は段のボタン列。</b>現行のプルダウン(「SIM RATE」見出し付き)を、いまの段を「面」で示す列へ。戦闘で射撃・推進が効くのは ×4 まで(<code>MAX_PHYS_SIM_SPEED</code>)なので、戦闘で押す段は ×1・×4 の2つ、残り12段は「▾」から選ぶ。
+    ×16 以上にしているあいだは、いまの段が列に加わり、警報灯の帯(.ix-alert)で「射撃・推進は停止中」を出す。主役色の On 表示は使わない(監査 1)。
+    実装は新部品を作らず、既存の SegmentedControl ウィジェットと Pulldown を並べる。<code>.ix-warp</code> はその見た目。
+    <span class="rf-where">src/game/hud/panels/top-bar.ts(Pulldown → SegmentedControl + Pulldown) ・ src/hud/widgets/segmented-control.ts ・ src/game/dynamic/sim-speed-manager.ts(SIM_SPEED_LEVELS, canShipAct)</span></li>
+  <li data-n="4"><b>警報は上部の警報灯1か所へ集める。</b>FUEL(燃料 20% 未満)・Q(動圧が上限の半分超)・TEMP(船体温度が上限の 70% 超)・ALT(降下警告)・AMMO(予備弾 ≤1 で注意、弾切れで警告)を判定し、上部には CAUTION / WARNING の2灯と件数だけを出す(どの項目かは警報帯と行内の △/▲ が示す。体系は 05)。
+    平常は暗い灯、注意は黄の灯+△、警告は赤の点滅灯+▲(下の部品比較)。現行は各行の値を赤くして警告を散らしており、満タンの燃料(監査 1)も弾薬 40/40(<code>mags &lt; 4</code> が赤になる)も警告色だった。
+    判定はいまの <code>ui-danger</code> の条件をそのまま使い、行側は閾値を越えたときだけ △/▲ を値に付ける(2か所に出るが、灯は「どこかが悪い」、行は「どこが悪い」)。
+    弾薬の注意の閾値は <code>mags &lt; 4</code> から <code>mags ≤ 1</code> へ緩める(要判断)。
+    <span class="rf-where">src/game/hud/panels/top-bar.ts(灯の同期を追加) ・ orbit/orbit-panel.ts と panels/vessel-panel.ts(ui-danger の付与元) ・ style/skeleton-style.ts(#hud .ui-danger) ・ SPEC UI-DESIGN §2「警告色」§8</span></li>
+  <li data-n="5"><b>ORB は「いまどこを飛んでいるか」だけ。</b>高度と速度を同じ大きさの主読み値に、AP・PE・INC・PRD は行へ、動圧と船体温度は細い中立のメーター(閾値の目盛りつき)へ。
+    見出し記号と基準セグメントの選択以外に主役色を使わない(監査 1)。基準の切替は既存のボタン列(.w-group)のまま。
+    VSL にあった動圧の行は ORB と重複していたので VSL から外した(監査 7)。
+    <span class="rf-where">src/game/hud/orbit/orbit-panel.ts ・ style/combat-panel-rows-style.ts(#hud-orbit …) ・ SPEC UI-DESIGN §8「軌道情報」(変更なし)</span></li>
+  <li data-n="6"><b>視点の追従は CAM へ。</b>現行は VSL に「視点RCS追従 G: On」の行と「視点追従 [G]」ボタンが二重にあった。視点の回し方はカメラの責務なので(SPEC §8「カメラ」)、CAM に1つのトグルとして置く。
+    トグルは「設定して放っておく値」、ピップは「飛行中に見る状態」と使い分ける(監査 4)。
+    <span class="rf-where">src/game/hud/frame/combat-camera-panel.ts(行を追加) ・ panels/vessel-panel.ts(camfollow 行と followButton を削除) ・ SPEC UI-DESIGN §8「カメラ」(変更なし)</span></li>
+  <li data-n="7"><b>右レールの先頭は TGT。</b>戦闘中に最初に問われるのは「いま狙っている相手を撃てるか」。TGT は、識別行(ターゲット色の面)→ 距離・接近・相対・装甲の行 → 選択キー。
+    「装甲」のラベルが縦に折れていた(監査 2)のは、メーターが幅を取りすぎていたため。行の文法(ラベルは省略記号、値は切らない)で解く。
+    縁の主役色の線はやめ、見出しの記号と識別行だけを第二色にする。ボタンを持つ「ターゲット選択 T」は VSL から TGT へ移した(ターゲットの操作はターゲットの側)。
+    <span class="rf-where">src/game/hud/panels/target-panel.ts ・ hud-root.ts(右レールの生成順: rightRail に hud-target を先に追加) ・ style/combat-view-style.ts(#hud-target …) ・ style/combat-panel-rows-style.ts(#hud[data-attention="engagement"] #hud-target の主役色の縁を削除) ・ SPEC §8「ターゲット情報」(変更なし)</span></li>
+  <li data-n="8"><b>CNT は2番目。画面下で切れない。</b>現行は VSL の下に押し下げられて3行目で切れていた。距離順は SPEC のまま、行は [記号][名前][距離][役割] で、役割は「隣接」(注意色)「固定」(ターゲット色の面)。連番「01」は記号 △ に替える(世界の敵マーカーと同じ形)。
+    <span class="rf-where">src/game/hud/panels/enemies-panel.ts ・ style/combat-view-style.ts(#hud-enemies .contact-row) ・ SPEC §8「敵一覧」(変更なし)</span></li>
+  <li data-n="9"><b>VSL は「艦はどう構えているか」だけ(監査 7)。</b>現行の1枚には、計器・モード・弾薬・展開部品・操作ボタン4つ・タッチ用推力段が同居していた。これを次のように割る。
+    <br>・<b>残す</b>: RCS 燃料、並進出力、モード3つ(制動・微調整・進行方向ホールド)、進行方向リセット、展開部品。
+    <br>・<b>動圧</b> → ORB(重複)。<b>弾薬・装填</b> → 武装の帯(注 11)。<b>視点追従</b> → CAM(注 6)。<b>ターゲット選択</b> → TGT(注 7)。
+    <br>・タッチ用の推力段(1–4)は従来どおり <code>body.touch-ui-active</code> のときだけ並進出力の下に出す。
+    モードは「ラベル+キー・ピップ・」の3行で、On/Off を文字の色で示す行・トグル・点灯ボタンの混在(監査 4)をなくす。ショートカットはすべて右端のキーキャップ1種(監査 3)。
+    部品ごとの作り込みは 04-panels。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts(buildActionButtons を分割、syncState を pip へ) ・ hud-root.ts(#hud-vessel-status のマークアップ) ・ style/combat-panel-rows-style.ts(#hud-vessel-status …) ・ SPEC UI-DESIGN §8「艦のステータス」(「切り替えの現在値と直に操作するボタン」は保てる。弾薬・動圧を持たない旨を足す)</span></li>
+  <li data-n="10"><b>展開部品は「ラベル+左右2つの面」。</b>現行は「パドル左[7] 展開 / 放熱板右[0] 収納 / 損耗100%」を4つの長い文のボタンに押し込み、右下の2つは折り返していた(監査 2・3)。
+    左右のボタンはピップ(● 展開 / ○ 収納)とキー1つだけにし、損耗は<b>損耗のある板があるときだけ</b>独立の行(▲ 警告)に出す。点灯ボタンの主役色の塗りは使わない(監査 1)。
+    <span class="rf-where">src/game/hud/panels/vessel-panel.ts(syncDeployButton: label を分割、wear の行を追加) ・ style/combat-panel-rows-style.ts(.vessel-deploy-btn)</span></li>
+  <li data-n="11"><b>武装は下中央の帯へ。</b>弾帯(40発をセルで)・残弾「40 / 40」・予備弾倉「2連」・装填キー。現行は VSL の1行(40/40 +2連)と照準上の文字列と「装填 [R]」ボタンに分散していた。
+    リロード中は帯の内容を「RELOADING」の語1つ+進行に替える(<code>fmtAmmoStatus</code> の分岐をそのまま使う)。残弾が少ないときは弾帯のセルが注意色に(<code>.ix-belt.is-caution</code>)。機関砲を持たない操作対象では帯ごと出さない。
+    <span class="rf-where">src/game/hud/ammo-status.ts ・ panels/vessel-panel.ts(ammo の sync を帯へ移す) ・ hud-root.ts(帯の生成。置き場は④画面固定バッジ) ・ SPEC UI-DESIGN §5/§8(武装の帯を画面固定バッジに足す)</span></li>
+  <li data-n="12"><b>撃つ判断に要る3つを照準の右へ(監査 6)。</b>距離・接近・弾速を、照準のすぐ右に1行ずつ。距離と接近はターゲット色、弾速は中立。値の出どころは TGT と同じ(同じ view-model の読み取り)で、右レールまで目を動かさずに撃てるようにするための<b>意図的な二重表示</b>。
+    ロックが無いときは距離・接近の行を畳み、弾速だけ残す。<b>判断が要る点</b>: SPEC §8 は「撃つ判断に要る値は TGT に出す」と書くので、TGT を残すか距離・接近を TGT から外すかは決めてほしい(この案は残している)。
+    <span class="rf-where">src/game/marker/player-markers.ts(boresight: label の文字列を .ix-cluster のマークアップへ。<code>markup: true</code> は既にある) ・ SPEC MARKERS.md(ボアサイトのラベル) ・ UI-DESIGN §8</span></li>
+  <li data-n="13"><b>方向マーカーは記号だけ。×N は記号の角のバッジ(監査 6)。</b>PROGRADE・RETROGRADE など6方向は、名前のラベルを常時出さず記号だけにする(名前はヘルプとツールチップ)。ボアサイトと PROGRADE が重なる機首方向の定常状態で、文字が衝突するのが現行の主因。
+    近接まとめの「×3」は、代表の記号の下ではなく右上の小バッジにして、照準と文字が重ならないようにする。
+    画面外の対象は画面端の矢印(.ix-edge)。ターゲットだけ第二色、ほかの敵は中立で、距離つきの短いラベルを添える。
+    <span class="rf-where">src/game/marker/player-markers.ts(pushOrbitAxes の label を空に) ・ src/game/marker/grouped-markers.ts(label: count ≥ 3 の <code>x${count}</code> をバッジ化、BearingMarker の色) ・ SPEC MARKERS.md(「×N の件数表示」「方向マーカーのラベル」)</span></li>
+  <li data-n="14"><b>画面角のボタンは中立の円。</b>左右レールの開閉(◀ ▶)とヘルプ(?)は、主役色の赤字・枠付きバッジをやめ、同じ 24px の中立の円形ボタン(.w-btn--icon)に揃える。SPEC §5 のとおり、ヘルプは右レールのトグルと同寸・同じ上下位置の隣にあり、互いの領域を重ねない(監査 1)。
+    <span class="rf-where">src/game/hud/style/skeleton-style.ts(.rail-toggle, #hud-help-badge) ・ hud-root.ts(buildHelpBadge: HLP の記号を外す) ・ SPEC UI-DESIGN §5(寸法・位置は変更なし)</span></li>
+</ol>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">A</span>部品の比較 — 上部ストリップ</h2>
+<p class="rf-lead">現行は2行・820×100px。改修案は1行・40px で、同じ情報(ステージ・ビュー・時刻・時間加速)に警報灯が加わる。下は3つの状態。</p>
+<div class="rf-pair" style="grid-template-columns: 1fr">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>820×100px(切り抜き)</span></div><img src="foundation/current/crops/topbar.jpg" alt="現行の上部ステータス" width="820" height="100"></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>800×40px・平常 / 注意 / 警告</span></div>
+    <div class="rf-scroll"><div class="cb-strip-states" style="min-width: 820px">
+      <div><div class="cb-cap">平常(いま) — 灯はすべて消灯</div>
+        <div class="ix-strip">
+          <span class="ix-strip-label">STAGE</span><span class="ix-strip-time">1</span><span class="w-btn w-btn--dense">COMBAT ▾</span><span class="ix-strip-sep"></span>
+          <span style="display:inline-flex; gap: var(--space-3); align-items: baseline"><span class="ix-strip-time">20115-05-14 06:00:04</span><span class="ix-strip-label">T+</span><span class="ix-strip-time">00:00:04</span></span><span class="ix-strip-sep"></span>
+          <span class="ix-warp"><span class="on">×1</span><span>×4</span><span>▾</span></span><span class="ix-strip-sep"></span>
+          <span class="ix-annun"><span class="ix-lamp">CAUTION</span><span class="ix-lamp">WARNING</span></span>
+        </div></div>
+      <div><div class="cb-cap">注意 — 予備弾が尽きかけ、時間加速を ×16 に上げた</div>
+        <div class="ix-strip">
+          <span class="ix-strip-label">STAGE</span><span class="ix-strip-time">1</span><span class="w-btn w-btn--dense">COMBAT ▾</span><span class="ix-strip-sep"></span>
+          <span style="display:inline-flex; gap: var(--space-3); align-items: baseline"><span class="ix-strip-time">20115-05-14 06:20:31</span><span class="ix-strip-label">T+</span><span class="ix-strip-time">20:31</span></span><span class="ix-strip-sep"></span>
+          <span class="ix-warp"><span>×1</span><span>×4</span><span class="on">×16</span><span>▾</span></span><span class="ix-strip-sep"></span>
+          <span class="ix-annun"><span class="ix-lamp is-caution">CAUTION<span class="ix-lamp-n">1</span></span><span class="ix-lamp">WARNING</span></span>
+        </div>
+        <div style="margin-top: var(--space-4)"><div class="ix-alert is-caution"><span class="ix-alert-level">CAUTION</span><span class="ix-alert-body"><span class="ix-alert-msg"><b>WARP</b>×16 のあいだ、射撃と推進は停止します</span><span class="ix-alert-act"><span class="ix-hint-step"><kbd class="key">,</kbd>×4 へ戻す</span></span></span><span class="w-btn w-btn--dense w-btn--secondary">確認<kbd class="key">B</kbd></span></div></div></div>
+      <div><div class="cb-cap">警告 — 船体温度が上限の 70% を越えた</div>
+        <div class="ix-strip">
+          <span class="ix-strip-label">STAGE</span><span class="ix-strip-time">1</span><span class="w-btn w-btn--dense">COMBAT ▾</span><span class="ix-strip-sep"></span>
+          <span style="display:inline-flex; gap: var(--space-3); align-items: baseline"><span class="ix-strip-time">20115-05-14 06:03:12</span><span class="ix-strip-label">T+</span><span class="ix-strip-time">03:12</span></span><span class="ix-strip-sep"></span>
+          <span class="ix-warp"><span class="on">×1</span><span>×4</span><span>▾</span></span><span class="ix-strip-sep"></span>
+          <span class="ix-annun"><span class="ix-lamp">CAUTION</span><span class="ix-lamp is-warning">WARNING<span class="ix-lamp-n">1</span></span></span>
+        </div>
+        <div style="margin-top: var(--space-4)"><div class="ix-alert is-warning"><span class="ix-alert-level">WARNING</span><span class="ix-alert-body"><span class="ix-alert-msg"><b>TEMP</b>船体温度 940 K — 上限の 70% を越えた</span><span class="ix-alert-act"><span class="ix-hint-step"><kbd class="key">9</kbd><kbd class="key">0</kbd>放熱板を展開</span></span></span><span class="w-btn w-btn--dense w-btn--secondary">確認<kbd class="key">B</kbd></span></div></div></div>
+    </div></div>
+  </div>
+</div>
+
+<h2><span class="ix-code">B</span>部品の比較 — 照準まわり</h2>
+<p class="rf-lead">現行は AMMO / BELT / 弾速の3行、PROGRADE、×3 が同じ場所に重なる。改修案は、記号3つ(ボアサイト・プログレード・近接した敵のまとまり)を縦に離し、文字は右に、撃つ判断の3値だけに絞る。</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>切り抜き</span></div><img src="foundation/current/crops/center.jpg" alt="現行の照準まわり" width="300" height="130"></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>同じ位置関係</span></div>
+    <div class="cb-zoom">
+      <div class="ix-mk is-enemy cb-abs" style="left: 32%; top: 78px">△<span class="ix-mk-label">HOSTILE-γ<br>2.2km</span></div>
+      <div class="cb-abs cb-aim" data-aim></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">C</span>改修の手順</h2>
+<ol class="cb-proc">
+  <li><b>色の割り当てを直す(CSS だけ)。</b>見出し記号・メーターの塗り・点灯ボタン・レール開閉・HLP から主役色を外し、<code>ui-danger</code> を満タン値に付けない。ここまでで監査 1 が解ける。
+    <code>style/skeleton-style.ts</code> <code>combat-view-style.ts</code> <code>combat-panel-rows-style.ts</code>。</li>
+  <li><b>行の文法と値の切れ(監査 2・3・4)。</b>各パネルの行を <code>.ix-row</code> へ、ショートカットを <code>.key</code> へ、On/Off をピップへ。パネルの順序は変えない。<code>vessel-panel.ts</code> <code>orbit-panel.ts</code> <code>target-panel.ts</code> <code>enemies-panel.ts</code>。</li>
+  <li><b>右レールの並べ替えと VSL の分割(監査 7)。</b>TGT → CNT → VSL の生成順にし、動圧・視点追従・ターゲット選択を出どころの側へ移す。弾薬は一旦 VSL に残す。<code>hud-root.ts</code> <code>vessel-panel.ts</code> <code>combat-camera-panel.ts</code>。</li>
+  <li><b>上部ストリップ(監査 5)。</b>2行ブロックを1行にし、ビューバッジのフィールド欄と時刻の書式を整え、時間加速を段のボタン列へ。警報灯はこの段で入れる。<code>top-bar.ts</code> <code>view-badge.ts</code> <code>utils.ts</code>。</li>
+  <li><b>武装の帯と照準まわり(監査 6)。</b>弾薬を帯へ移して VSL から外し、ボアサイトのラベルを3値の読み値へ、方向マーカーのラベルと ×N の置き方を変える。ここだけ <code>src/game/marker/</code> と SPEC MARKERS に触れるので最後に回す。</li>
+  <li><b>SPEC の更新(<code>docs(spec):</code> を単独 commit)。</b>UI-DESIGN §8 の全体ステータスバー・艦のステータス・武装の帯、MARKERS のボアサイト/方向マーカーのラベルを、実装の前に更新する(<code>/modify-feature</code>)。</li>
+</ol>
+
+</main>
+<script src="foundation/themes.js"></script>
+<script src="foundation/ref.js"></script>
+<script>
+  // 照準まわりの記号と読み値(ステージと部品比較で同じものを使う)。ref のための組み立てで、ゲームへは移さない。
+  const aimMarkup = `
+    <div class="ix-mk is-bore" style="left: 0; top: 0"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="currentColor" stroke-width="1.5" aria-label="ボアサイト"><path d="M11 2v6M11 14v6M2 11h6M14 11h6"/></svg></div>
+    <div class="ix-mk is-pro" style="left: 0; top: 30px"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-label="プログレード"><circle cx="8" cy="8" r="5"/><circle cx="8" cy="8" r="1" fill="currentColor"/></svg></div>
+    <div class="ix-mk is-enemy" style="left: 0; top: 60px">△<span class="ix-mk-badge">×3</span></div>
+    <div class="ix-cluster" style="left: 34px; top: -22px">
+      <div class="ix-cluster-row"><span class="ix-cluster-k">距離</span><span class="ix-cluster-v">60.00 km</span></div>
+      <div class="ix-cluster-row"><span class="ix-cluster-k">接近</span><span class="ix-cluster-v">0.0 m/s</span></div>
+      <div class="ix-cluster-row"><span class="ix-cluster-k">弾速</span><span class="ix-cluster-v is-data">1000 m/s</span></div>
+    </div>`;
+  document.querySelectorAll('[data-aim]').forEach((el) => { el.innerHTML = aimMarkup; });
+  document.querySelectorAll('[data-belt]').forEach((el) => {
+    el.innerHTML = '<i></i>'.repeat(Number(el.dataset.belt));
+  });
+  window.TepuiRef?.placePins();
+</script>
+<script>try { new Function(document.scripts[document.scripts.length - 1].textContent); } catch (e) { console.error('syntax', e); }</script>
+</body>
+</html>
