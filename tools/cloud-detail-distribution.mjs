@@ -36,7 +36,7 @@ const MIN_WIDTH = 1e-6;
 const SHOT_SEED = 20240507;
 // 区分の並び(manifest の抽出順)。報告の表もこの順にする。
 const CATEGORY_ORDER = [
-  'tropical-sea', 'temperate-sea', 'highlat-sea', 'tropical-land', 'temperate-land', 'highlat-land',
+  'tropical-sea', 'temperate-sea', 'highlat-sea', 'tropical-land', 'temperate-land', 'highlat-land', 'arid-land',
 ];
 // 動作確認(smoke の npm script)で撮る区分と点数。
 const SMOKE_CATEGORY = 'tropical-sea';
@@ -187,6 +187,14 @@ async function main() {
     columns.get(key)[side].push(entry.value);
   };
 
+  // 区分 × 段ごとに計測した画像の数(特徴量が出なかった画像を数えるための分母)。
+  const imageCounts = {};
+  const countImage = (category, kmPerPx, side) => {
+    const key = `${category}|${kmPerPx}`;
+    imageCounts[key] ??= { real: 0, gen: 0 };
+    imageCounts[key][side]++;
+  };
+
   let realCount = 0;
   let realMissing = 0;
   for (const point of eligible) {
@@ -195,6 +203,7 @@ async function main() {
       if (!existsSync(file)) { realMissing++; continue; }
       const { features } = measureDetailImage(readFileSync(file), kmPerPx);
       for (const entry of features) addValue(point.category, kmPerPx, entry, 'real');
+      countImage(point.category, kmPerPx, 'real');
       realCount++;
     }
   }
@@ -210,6 +219,7 @@ async function main() {
     // ずれる実寸で列を分けると、同じ段の実写と同じ列に乗らない。
     const { features } = measureDetailImage(readFileSync(file), info?.centerKmPerPx ?? target.kmPerPx);
     for (const entry of features) addValue(target.category, target.kmPerPx, entry, 'gen');
+    countImage(target.category, target.kmPerPx, 'gen');
     genCount++;
   }
   console.log(`撮影 ${genCount} 枚を計測した${genMissing > 0 ? `(欠測 ${genMissing} 枚)` : ''}`);
@@ -243,7 +253,11 @@ async function main() {
           families[family] = distances.reduce((sum, d) => sum + d, 0) / distances.length;
         }
       }
-      distributions[category][kmPerPx] = { families, features: featureRows };
+      distributions[category][kmPerPx] = {
+        families,
+        features: featureRows,
+        imageCounts: imageCounts[`${category}|${kmPerPx}`] ?? { real: 0, gen: 0 },
+      };
       samples[category][kmPerPx] = sampleRows;
     }
   }
@@ -273,6 +287,16 @@ async function main() {
         console.log(`${id.padEnd(12)} ${'実写'.padEnd(4)} ${row.realQ.map((q) => q.toFixed(3).padStart(9)).join(' ')}`);
         console.log(`${''.padEnd(12)} ${'生成'.padEnd(4)} ${row.genQ.map((q) => q.toFixed(3).padStart(9)).join(' ')}  距離 ${row.distance.toFixed(3)}`);
       }
+    }
+  }
+
+  console.log('\n=== 特徴量が出なかった画像の数(区分 × 段。周期の峰 excess・雲の塊 cloudCount) ===');
+  for (const category of CATEGORY_ORDER) {
+    for (const kmPerPx of TIERS_KM_PER_PX) {
+      const images = imageCounts[`${category}|${kmPerPx}`] ?? { real: 0, gen: 0 };
+      const unmeasured = (id, side) => images[side] - (columns.get(columnKey(category, kmPerPx, id))?.[side].length ?? 0);
+      const parts = ['excess', 'cloudCount'].map((id) => `${id} 実写 ${unmeasured(id, 'real')}/${images.real} 生成 ${unmeasured(id, 'gen')}/${images.gen}`);
+      console.log(`${category.padEnd(15)} ${`${kmPerPx}km`.padStart(4)}  ${parts.join('  ')}`);
     }
   }
 
