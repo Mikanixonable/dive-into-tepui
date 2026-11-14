@@ -80,6 +80,7 @@
     "cloud-lab:reference-fine": "node tools/cloud-lab-reference-fine.mjs",
     "cloud-lab:reference-fine-timeseries": "node tools/cloud-lab-reference-fine-timeseries.mjs",
     "cloud-lab:reference-cloudtop": "node tools/cloud-lab-reference-cloudtop.mjs",
+    "cloud-lab:reference-cirrus": "node tools/cloud-lab-reference-cirrus.mjs",
     "cloud-lab:reference-timeseries": "node tools/cloud-lab-reference-timeseries.mjs",
     "cloud-lab:compare": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-compare.mjs",
     "cloud-lab:separate": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-separate.mjs",
