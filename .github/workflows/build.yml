@@ -36,14 +36,14 @@ jobs:
       - run: npm run earth-surface:test
       - name: Verify external Earth surface release
         env:
-          EARTH_SURFACE_BASE_URL: ${{ vars.EARTH_SURFACE_BASE_URL || 'https://assets.mikanixonable.net/earth/earth-2026-09-09-a/' }}
-          EARTH_SURFACE_MANIFEST_URL: ${{ vars.EARTH_SURFACE_MANIFEST_URL || 'https://assets.mikanixonable.net/earth/earth-2026-09-09-a/earth-surface.json' }}
-          EARTH_SURFACE_DATASET_ID: ${{ vars.EARTH_SURFACE_DATASET_ID || 'earth-2026-09-09-a' }}
+          EARTH_SURFACE_BASE_URL: ${{ vars.EARTH_SURFACE_BASE_URL || 'https://assets.mikanixonable.net/earth/earth-2026-11-14-a/' }}
+          EARTH_SURFACE_MANIFEST_URL: ${{ vars.EARTH_SURFACE_MANIFEST_URL || 'https://assets.mikanixonable.net/earth/earth-2026-11-14-a/earth-surface.json' }}
+          EARTH_SURFACE_DATASET_ID: ${{ vars.EARTH_SURFACE_DATASET_ID || 'earth-2026-11-14-a' }}
         run: npm run earth-surface:release-check
       - name: Build with external Earth surface bundle
         env:
-          EARTH_SURFACE_BASE_URL: ${{ vars.EARTH_SURFACE_BASE_URL || 'https://assets.mikanixonable.net/earth/earth-2026-09-09-a/' }}
-          EARTH_SURFACE_MANIFEST_URL: ${{ vars.EARTH_SURFACE_MANIFEST_URL || 'https://assets.mikanixonable.net/earth/earth-2026-09-09-a/earth-surface.json' }}
+          EARTH_SURFACE_BASE_URL: ${{ vars.EARTH_SURFACE_BASE_URL || 'https://assets.mikanixonable.net/earth/earth-2026-11-14-a/' }}
+          EARTH_SURFACE_MANIFEST_URL: ${{ vars.EARTH_SURFACE_MANIFEST_URL || 'https://assets.mikanixonable.net/earth/earth-2026-11-14-a/earth-surface.json' }}
         run: npm run build
 
       # 地表の本体データはR2から配信し、Pagesには決定的なfixtureを配置して
