@@ -96,6 +96,11 @@ const MIN_ENVELOPE_WIDTH = 1e-6;
 // 区分の封筒を判定へ使う実写の下限 [枚]。これ未満では最小〜最大の幅が場面どうしの
 // ばらつきを表せず、外れた量を幅で割る正規化距離が発散して index を支配する。
 const MIN_ENVELOPE_REFERENCES = 3;
+// 封筒の作り方の名前。巻雲は区分を無視して 1 つにまとめ、積雲・混合は区分ごとに作る。
+// レポートの meta に残し、方式が違う前回との差分は比べない。
+const ENVELOPE_METHOD = 'pooled-cirrus';
+// 巻雲の型(scenes.json の type)。型ごとの封筒と型の報告に使う。
+const CIRRUS_TYPES = ['streak', 'scaly', 'veil', 'anvil'];
 // 距離の前後判定の横ばいの幅(相対)。計測は決定的だが、実行環境の浮動小数の揺れを
 // 悪化と誤判定しないための幅。
 const VERDICT_BAND = 0.05;
@@ -440,6 +445,7 @@ async function main() {
   const scenes = JSON.parse(readFileSync(scenesFile, 'utf8'));
   const sceneKind = new Map(scenes.map((scene) => [scene.name, scene.kind]));
   const sceneCategory = new Map(scenes.map((scene) => [scene.name, scene.category ?? null]));
+  const sceneType = new Map(scenes.map((scene) => [scene.name, scene.type ?? null]));
   const referenceManifest = JSON.parse(readFileSync(referenceManifestFile, 'utf8'));
 
   // --- 撮影: 一覧をページから引き、足りない分だけ撮って manifest を書き直す ---
@@ -530,6 +536,7 @@ async function main() {
         scene: scene.name,
         category: scene.category,
         kind: scene.kind,
+        type: sceneType.get(scene.name) ?? null,
         kmPerPx: tier.kmPerPx,
         file: tier.file,
         ...measureImage(readFileSync(file), tier.kmPerPx),
@@ -571,22 +578,25 @@ async function main() {
     for (const entry of image.features) envelopeAdd(envelopes[image.kind], entry, image.kmPerPx);
   }
   envelopes.union = mergedEnvelope(envelopes.cumulus, envelopes.cirrus);
-  // 区分ごとの封筒: 同じ区分・同じ種類の実写が 2 場面以上あるときだけ作る。足りない区分は種類の封筒へ戻す。
+  // 区分ごとの封筒(積雲のみ): 同じ区分の実写が 2 場面以上あるときだけ作る。足りない区分は種類の封筒へ戻す。
+  // 巻雲は区分を無視する — 巻雲の形は地表の区分ではなく上層の流れで決まるため、巻雲の実写を 1 つにまとめる。
   const categoryScenes = new Map();
-  // 区分(類型|種類|段の km/px)ごとの実写の枚数。段まで入れるのは、tier 領域の封筒の器が段別で、
-  // 帯・尺度の器の標本数も段ごとの画像で決まるため — 薄い段だけを選んで外せるようにする。
-  const categoryTierCounts = new Map();
+  // 封筒(区分|種類、または巻雲のまとめ)と段の km/px ごとの実写の枚数。段まで入れるのは、tier 領域の封筒の器が
+  // 段別で、帯・尺度の器の標本数も段ごとの画像で決まるため — 薄い段だけを選んで外せるようにする。
+  const envelopeTierCounts = new Map();
   for (const image of references) {
     if (image.kind !== 'cumulus' && image.kind !== 'cirrus') continue;
-    const key = `${image.category}|${image.kind}`;
-    if (!categoryScenes.has(key)) categoryScenes.set(key, new Set());
-    categoryScenes.get(key).add(image.scene);
+    const key = image.kind === 'cirrus' ? 'cirrus' : `${image.category}|${image.kind}`;
+    if (image.kind === 'cumulus') {
+      if (!categoryScenes.has(key)) categoryScenes.set(key, new Set());
+      categoryScenes.get(key).add(image.scene);
+    }
     const tierKey = `${key}|${image.kmPerPx}`;
-    categoryTierCounts.set(tierKey, (categoryTierCounts.get(tierKey) ?? 0) + 1);
+    envelopeTierCounts.set(tierKey, (envelopeTierCounts.get(tierKey) ?? 0) + 1);
   }
   const envelopesByCategory = new Map();
   for (const image of references) {
-    if (image.kind !== 'cumulus' && image.kind !== 'cirrus') continue;
+    if (image.kind !== 'cumulus') continue;
     const key = `${image.category}|${image.kind}`;
     if (categoryScenes.get(key).size < 2) continue;
     if (!envelopesByCategory.has(key)) envelopesByCategory.set(key, newEnvelope());
@@ -623,19 +633,20 @@ async function main() {
   }
   for (const shot of judgedShots) {
     const baseKey = envelopeOfShot(shot);
-    const categoryKey = shot.sceneCategory && baseKey !== 'union' ? `${shot.sceneCategory}|${baseKey}` : null;
+    const pooled = baseKey === 'cirrus';
+    const categoryKey = !pooled && shot.sceneCategory && baseKey !== 'union' ? `${shot.sceneCategory}|${baseKey}` : null;
     const useCategory = categoryKey !== null && envelopesByCategory.has(categoryKey);
-    const envelopeKey = useCategory ? categoryKey : baseKey;
-    const envelope = useCategory ? envelopesByCategory.get(categoryKey) : envelopes[baseKey];
+    const envelopeKey = pooled ? 'cirrus' : useCategory ? categoryKey : baseKey;
+    const envelope = pooled ? envelopes.cirrus : useCategory ? envelopesByCategory.get(categoryKey) : envelopes[baseKey];
     shot.envelope = envelopeKey;
     // 実写が MIN_ENVELOPE_REFERENCES 未満の区分の封筒は、幅がばらつきを表せず正規化距離が
     // 発散する。距離は表示へ残すが、index と家族ごとの距離の集計へは入れない。
-    const thinTierKey = useCategory ? `${categoryKey}|${shot.tierKmPerPx}` : null;
+    const thinTierKey = pooled || useCategory ? `${envelopeKey}|${shot.tierKmPerPx}` : null;
     const thinEnvelope = thinTierKey !== null
-      && (categoryTierCounts.get(thinTierKey) ?? 0) < MIN_ENVELOPE_REFERENCES;
+      && (envelopeTierCounts.get(thinTierKey) ?? 0) < MIN_ENVELOPE_REFERENCES;
     if (thinEnvelope) {
       const cell = thinEnvelopes.get(thinTierKey) ?? { references: 0, shots: 0, shotNames: [] };
-      cell.references = categoryTierCounts.get(thinTierKey) ?? 0;
+      cell.references = envelopeTierCounts.get(thinTierKey) ?? 0;
       cell.shots++;
       cell.shotNames.push(shot.name);
       thinEnvelopes.set(thinTierKey, cell);
@@ -731,6 +742,79 @@ async function main() {
     console.log(`注意: 実写が ${MIN_ENVELOPE_REFERENCES} 枚未満の区分の封筒は index と家族ごとの距離から外す(距離の表示は残る): `
       + [...thinEnvelopes.entries()].map(([key, cell]) => `${key}(実写 ${cell.references} 枚・撮影 ${cell.shots} 枚)`).join('  '));
   }
+
+  // --- 巻雲の型: 型ごとの封筒は、その型の巻雲の実写だけで段ごとに作る ---
+  const typeEnvelopes = new Map();
+  for (const type of CIRRUS_TYPES) {
+    const envelope = newEnvelope();
+    const tierCounts = new Map();
+    for (const image of references) {
+      if (image.kind !== 'cirrus' || image.type !== type) continue;
+      for (const entry of image.features) envelopeAdd(envelope, entry, image.kmPerPx);
+      tierCounts.set(image.kmPerPx, (tierCounts.get(image.kmPerPx) ?? 0) + 1);
+    }
+    typeEnvelopes.set(type, { envelope, tierCounts });
+  }
+  // 撮影 1 枚の、型の封筒への距離。家族ごとの平均をとってから家族の平均をとる(index と同じ)。
+  // 実写が MIN_ENVELOPE_REFERENCES 未満の段は distance を null にし、枚数を返す。
+  const typeDistanceOf = (shot, type) => {
+    const { envelope, tierCounts } = typeEnvelopes.get(type);
+    const count = tierCounts.get(shot.tierKmPerPx) ?? 0;
+    if (count < MIN_ENVELOPE_REFERENCES) return { count, distance: null };
+    const byFamily = new Map();
+    for (const entry of shot.features) {
+      const cell = envelopeCell(envelope, entry, shot.tierKmPerPx);
+      if (cell === null) continue;
+      const { distance } = distanceOf(entry.value, cell);
+      const sum = byFamily.get(entry.family) ?? { sum: 0, count: 0 };
+      sum.sum += distance;
+      sum.count++;
+      byFamily.set(entry.family, sum);
+    }
+    const means = [...byFamily.values()].map((cell) => cell.sum / cell.count);
+    return { count, distance: means.length > 0 ? means.reduce((a, b) => a + b, 0) / means.length : null };
+  };
+
+  const cirrusShots = judgedShots
+    .filter((shot) => shot.kind === 'cirrus')
+    .sort((a, b) => a.scene.localeCompare(b.scene) || a.tierKmPerPx - b.tierKmPerPx);
+  const typeCoverage = new Map(CIRRUS_TYPES.map((type) => [type, null]));
+  const typeRows = [];
+  console.log('\n=== 巻雲の型との距離(撮影の場面 × 型、0 が一致) ===');
+  console.log(`${'場面'.padEnd(30)} ${'段'.padStart(6)} ${CIRRUS_TYPES.map((type) => type.padStart(7)).join(' ')}  最近型`);
+  for (const shot of cirrusShots) {
+    const types = {};
+    const cells = [];
+    let nearest = null;
+    for (const type of CIRRUS_TYPES) {
+      const { count, distance } = typeDistanceOf(shot, type);
+      types[type] = { references: count, distance };
+      cells.push((distance === null ? (count < MIN_ENVELOPE_REFERENCES ? '不足' : '-') : distance.toFixed(3)).padStart(7));
+      if (distance === null) continue;
+      if (nearest === null || distance < nearest.distance) nearest = { type, distance };
+      const best = typeCoverage.get(type);
+      if (best === null || distance < best.distance) {
+        typeCoverage.set(type, { distance, scene: shot.scene, tierKmPerPx: shot.tierKmPerPx, references: count });
+      }
+    }
+    typeRows.push({ scene: shot.scene, tierKmPerPx: shot.tierKmPerPx, types, nearest });
+    console.log(`${shot.scene.padEnd(30)} ${`${shot.tierKmPerPx}km`.padStart(6)} ${cells.join(' ')}  `
+      + (nearest === null ? '-' : `${nearest.type}(${nearest.distance.toFixed(3)})`));
+  }
+
+  // 型の被覆: 型ごとに、最も近づいた撮影。最小が大きい型は、どの場面でも再現できていない型。
+  console.log('\n=== 巻雲の型の被覆(型ごとに最も近い場面) ===');
+  const typeMinimum = {};
+  for (const type of CIRRUS_TYPES) {
+    const best = typeCoverage.get(type);
+    typeMinimum[type] = best === null ? null : best.distance;
+    if (best === null) {
+      console.log(`${type.padEnd(8)} 不足(実写が ${MIN_ENVELOPE_REFERENCES} 枚未満の段しか無い、または撮影が無い)`);
+      continue;
+    }
+    console.log(`${type.padEnd(8)} 最小 ${best.distance.toFixed(3)}  ${best.scene} ${best.tierKmPerPx}km(型の実写 ${best.references} 枚)`);
+  }
+  distances.types = typeMinimum;
 
   // --- 封筒から外れた特徴量の一覧(正規化距離の大きい順) ---
   console.log('\n=== 封筒から外れた特徴量(正規化距離の上位) ===');
@@ -918,6 +1002,7 @@ async function main() {
       excludedShots,
       minStructureContrast: MIN_STRUCTURE_CONTRAST,
       minEnvelopeReferences: MIN_ENVELOPE_REFERENCES,
+      envelopeMethod: ENVELOPE_METHOD,
       shotsGitHead: shotsOrigin.gitHead ?? null,
       references: references.length,
       labHistory: labPreviousName ?? null,
@@ -937,6 +1022,7 @@ async function main() {
       variety,
       ladder,
       excludedEnvelopes: Object.fromEntries(thinEnvelopes),
+      cirrusTypes: { rows: typeRows, coverage: typeMinimum },
     },
     distances,
   };
@@ -950,8 +1036,12 @@ async function main() {
       : '同じ絞り込みの前回レポートが無い');
   } else {
     const previous = readReport(historyDir, previousName);
+    // 封筒の方式(meta.envelopeMethod)が無い前回は旧方式(区分ごとの封筒)。方式が違うと封筒が違うので数値は比べない。
+    const previousMethod = previous?.meta?.envelopeMethod ?? 'category';
     if (previous === null || previous.sections === undefined) {
       console.log(`${previousName} が読めないため差分を出せない`);
+    } else if (previousMethod !== ENVELOPE_METHOD) {
+      console.log(`${previousName} は封筒の方式 ${previousMethod}、今回は ${ENVELOPE_METHOD} — 方式が違うので比べない`);
     } else {
       const diffs = { compared: 0, changed: [] };
       collectNumericDiffs(previous.sections, report.sections, '', diffs);
@@ -966,7 +1056,7 @@ async function main() {
 
     // 距離の前後判定。相対 VERDICT_BAND 以内は横ばい — 撮り直し・計測の揺らぎの幅として出す。
     const priorDistances = previous?.distances;
-    if (priorDistances?.families) {
+    if (previousMethod === ENVELOPE_METHOD && priorDistances?.families) {
       let improved = 0;
       let worsened = 0;
       let unchanged = 0;
@@ -986,6 +1076,11 @@ async function main() {
       }
       console.log(`改善 ${improved} / 悪化 ${worsened} / 横ばい ${unchanged}`
         + `(index: ${priorDistances.index.toFixed(3)} → ${report.distances.index.toFixed(3)})`);
+      const formatMinimum = (value) => (value === null || value === undefined ? '不足' : value.toFixed(3));
+      for (const [type, after] of Object.entries(report.distances.types)) {
+        const prior = priorDistances.types?.[type];
+        console.log(`型 ${type.padEnd(8)} 最小距離 ${formatMinimum(prior)} → ${formatMinimum(after)}`);
+      }
     }
   }
 }
