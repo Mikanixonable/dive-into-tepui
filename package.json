@@ -83,6 +83,7 @@
     "cloud-lab:reference-fine": "node tools/cloud-lab-reference-fine.mjs",
     "cloud-lab:reference-fine-timeseries": "node tools/cloud-lab-reference-fine-timeseries.mjs",
     "cloud-lab:reference-cloudtop": "node tools/cloud-lab-reference-cloudtop.mjs",
+    "cloud-lab:reference-cirrus": "node tools/cloud-lab-reference-cirrus.mjs",
     "verify:hud-layout": "node tools/verify-hud-layout.mjs",
     "smoke:layout": "node tools/layout-smoke-retry.mjs"
   },
