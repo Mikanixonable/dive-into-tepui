@@ -72,6 +72,7 @@ function worldSoundOf(body: RunEventBody): WorldSound | null {
     case 'rcsFuelPickedUp':
     case 'magazineAdded':
     case 'rcsFuelRefilled': return { kind: 'pickup' };
+    case 'baseFuelRefilled': return body.ships > 0 ? { kind: 'pickup' } : null;
     default: return null;
   }
 }
@@ -217,6 +218,11 @@ export class RunEventPresenter {
         this.notifier.hint(body.fuel > 0
           ? `RCS燃料を満タンに補充(+${Math.round(body.fuel)} kg)`
           : 'RCS燃料はすでに満タン', 3000);
+        return;
+      case 'baseFuelRefilled':
+        this.notifier.hint(body.ships > 0
+          ? `基地 ${body.ships} 隻の燃料を満タンに補充`
+          : '基地がありません', 3000);
         return;
 
       case 'maneuverNodeApproaching':
