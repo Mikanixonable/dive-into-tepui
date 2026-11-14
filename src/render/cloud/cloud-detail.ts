@@ -276,6 +276,7 @@ function cellHash(base: Vec3Node): UintNode {
 function nearestCellDistance(q: Vec3Node): FloatNode {
   const cell = floor(q);
   const nearest = float(1e9).toVar();
+  // セル境界をまたいでも最寄りの核を見落とさないよう、隣接セルまで候補に含める。
   for (const dx of [-1, 0, 1]) {
     for (const dy of [-1, 0, 1]) {
       for (const dz of [-1, 0, 1]) {
