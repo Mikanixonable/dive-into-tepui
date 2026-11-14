@@ -147,6 +147,7 @@ export class CloudAtmosphereRenderer {
     if (clouds === null) return;
     this.bodyFromWorld.value.copy(clouds.bodyFromWorld);
     this.fieldSampler.bind(clouds.cloud.field);
+    this.cirrusDetail.syncClock(clouds.cloud.clock.displayTime, clouds.cloud.clock.simSpeed);
   }
 
   // 種類ごとに、その殻を描くかを置き直す。
@@ -188,7 +189,8 @@ export class CloudAtmosphereRenderer {
     if (species === 'cirrus') {
       const bodyUp = this.bodyFromWorld.mul(vec4(sampleUp, 0)).xyz;
       If(greaterThan(field.cirrus, CIRRUS_PRESENT_AMOUNT), () => {
-        detail.assign(this.cirrusDetail.multiplierAt(bodyUp, shellRadius, width, field.cirrusFlow));
+        detail.assign(this.cirrusDetail.multiplierAt(
+          bodyUp, shellRadius, width, field.cirrusFlow, this.fieldSampler.sampleMotion(bodyUp).upperWind));
       });
     }
     const columnOpticalDepth = opticalDepthOf(species, field, detail).mul(this.shellPresence(species));
