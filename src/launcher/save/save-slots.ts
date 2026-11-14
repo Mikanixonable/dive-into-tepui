@@ -9,6 +9,9 @@ import {
   newSaveId,
 } from './slot-data';
 import { type SaveStore, SAVE_INDEX_VERSION, type SavedGame } from './save-store';
+import {
+  createCampaignState, fillCampaignDefaults, type CampaignState,
+} from '../../game/campaign/campaign-state';
 
 // 履歴ごとに持てる手動セーブの件数の上限。
 export const MANUAL_SAVE_LIMIT = 30;
@@ -64,6 +67,7 @@ export class SaveSlots {
       createdAtReal: now,
       lastPlayedAtReal: now,
       lastRun: null,
+      campaign: null,
       stages: [],
     };
     this.index.slots.push(slot);
@@ -77,6 +81,33 @@ export class SaveSlots {
     if (!slot) return;
     slot.lastRun = { stageId, ended: false };
     slot.lastPlayedAtReal = Date.now();
+    this.persist();
+  }
+
+  // スロットのキャンペーン状態。未開始なら null。索引に項目が無い旧い記録も未開始として読む
+  // (SAVE.md「キャンペーン状態」)。
+  public campaign(slotId: string): CampaignState | null {
+    const slot = this.index.slots.find((s) => s.id === slotId);
+    return slot?.campaign == null ? null : fillCampaignDefaults(slot.campaign);
+  }
+
+  // スロットのキャンペーンを開始し、その状態を返す。既に始まっていれば進行中の状態を返す。
+  // スロットが無ければ null。
+  public startCampaign(slotId: string): CampaignState | null {
+    const slot = this.index.slots.find((s) => s.id === slotId);
+    if (!slot) return null;
+    if (slot.campaign == null) {
+      slot.campaign = createCampaignState();
+      this.persist();
+    }
+    return this.campaign(slotId);
+  }
+
+  // スロットのキャンペーン状態を差し替えて保存する。スロットが無ければ何もしない。
+  public updateCampaign(slotId: string, campaign: CampaignState): void {
+    const slot = this.index.slots.find((s) => s.id === slotId);
+    if (!slot) return;
+    slot.campaign = campaign;
     this.persist();
   }
 
@@ -315,6 +346,7 @@ export class SaveSlots {
       id: newSaveId(),
       name: this.uniqueName(exp.slot.name),
       lastRun: exp.slot.lastRun === null ? null : { stageId: exp.slot.lastRun.stageId, ended: true },
+      campaign: exp.slot.campaign ?? null,
       stages: [],
     };
 

@@ -1,4 +1,5 @@
 // セーブの索引(スロット・ステージ履歴・手動セーブのメタ)と、書き出しファイルの形。
+import type { CampaignState } from '../../game/campaign/campaign-state';
 import type { GamePhase } from '../../game/stages/stage';
 import type { SavedGame } from './save-store';
 
@@ -46,6 +47,8 @@ export interface SaveSlotMeta {
   // 直近に遊んだ周回。一度も遊んでいないスロットでは null。ended は決着したか、
   // タイトルへ戻ったかで、どちらもその周回はもう再開しない。
   lastRun: { readonly stageId: string; readonly ended: boolean } | null;
+  // ストーリーモードのキャンペーン状態。未開始のスロットでは null(SAVE.md「キャンペーン状態」)。
+  campaign: CampaignState | null;
   stages: StageHistoryMeta[];
 }
 

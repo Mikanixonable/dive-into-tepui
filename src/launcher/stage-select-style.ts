@@ -115,6 +115,7 @@ const STAGE_SELECT_STYLE = `
   height: auto; opacity: 0.13; pointer-events: none; image-rendering: pixelated;
   filter: grayscale(1) contrast(1.1) brightness(1.6); mix-blend-mode: screen;
 }
+#stage-select .ss-window > .ss-story,
 #stage-select .ss-window > .w-tabs,
 #stage-select .ss-window > .ss-list,
 #stage-select .ss-window > .ss-debug,
@@ -162,6 +163,8 @@ const STAGE_SELECT_STYLE = `
 #stage-select .ss-stage.locked .ss-stage-label { color: var(--text-faint); }
 #stage-select .ss-stage-key { font-family: ${TITLE_FONT_MONO}; font-size: 11px; font-weight: 500; color: var(--text-dim); }
 #stage-select .ss-stage-sub { margin-top: 3px; color: var(--text-dim); font-size: 12px; line-height: 1.55; }
+#stage-select .ss-story { flex: 0 0 auto; background: var(--color-primary-fill); }
+#stage-select .ss-story .ss-stage-label { color: var(--color-primary); font-weight: 600; }
 #stage-select .ss-debug {
   flex: 0 0 auto; padding-top: 12px; color: var(--text-faint);
   font-family: ${TITLE_FONT_MONO}; font-size: 11px; cursor: pointer;
