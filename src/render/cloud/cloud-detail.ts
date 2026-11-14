@@ -1,4 +1,4 @@
-// 積雲の細部 — 雲場の texel より細かい尺度の起伏を張る共有評価器。16 km から 0.25 km まで
+// 積雲の細部 — 雲場の texel より細かい尺度の起伏を張る共有評価器。32 km から 0.25 km まで
 // 比 2 のオクターブの勾配ノイズを重ね、細かいオクターブの振幅を 1 つ粗いオクターブの実現値で
 // 掛け合わせて、細部の強さを場所ごとに偏らせる(間欠性)。全体の振幅は評価点の場の量と
 // その勾配で決まり、読み取り方向は低周波のノイズで歪ませて格子の並びを崩す。各段は風に乗って
@@ -12,10 +12,10 @@ import { gradientNoise } from './gradient-noise';
 import { eastAt, northAt } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
-// 細部のオクターブが張る波長 [m](粗→細、比 2)。粗い端は低軌道の cap で場が担う最も細かい段
-// (対流の 24 km、上層の湿度の 25 km)のすぐ下 — 場と細部のあいだに担い手のいない尺度を残さない。
+// 細部のオクターブが張る波長 [m](粗→細、比 2)。粗い端は cap で場が担う最も細かい段(対流の
+// 24 km、上層の湿度の 25 km)へ重なる 32 km まで — 場と細部のあいだに担い手のいない尺度を残さない。
 // 細かい端は実写の放射の平滑化が折れ始める 0.25 km まで。
-export const DETAIL_WAVELENGTHS = [16000, 8000, 4000, 2000, 1000, 500, 250] as const;
+export const DETAIL_WAVELENGTHS = [32000, 16000, 8000, 4000, 2000, 1000, 500, 250] as const;
 
 // 最も細かいオクターブの波長 [m]。法線の差分幅はこの半分に取る。
 export const FINEST_DETAIL_WAVELENGTH = DETAIL_WAVELENGTHS[DETAIL_WAVELENGTHS.length - 1]!;
@@ -76,10 +76,10 @@ const WARP_WAVELENGTH = 32000;
 const WARP_OFFSET = vec3(5.2, 1.3, 7.9);
 
 // 積雲の細部を低層の風向きへ伸ばす倍率の上限。風速が CUMULUS_STREAK_WIND [m/s] で満額になる。
-// 伸ばすのは DETAIL_WAVELENGTHS の添字 CUMULUS_STREAK_LAST_OCTAVE 以下の段(4 km より粗い側)だけ。
+// 伸ばすのは DETAIL_WAVELENGTHS の添字 CUMULUS_STREAK_LAST_OCTAVE 以下の段(4 km 以上の段)だけ。
 const CUMULUS_STREAK_MAX = 3;
 const CUMULUS_STREAK_WIND = 10;
-const CUMULUS_STREAK_LAST_OCTAVE = 2;
+const CUMULUS_STREAK_LAST_OCTAVE = 3;
 
 export class CloudDetailEvaluator {
   // 使う段数(粗い側から数える)。uniform なので、段数を変えてもシェーダのグラフは組み直さない。
@@ -179,14 +179,14 @@ export function cirrusOctavesOf(detail: CirrusDetail): number {
   return CIRRUS_OCTAVES[detail];
 }
 
-// 巻雲の細部が使う最も粗い段の番号(DETAIL_WAVELENGTHS の添字)。巻雲は 16 km の段を飛ばして 8 km から
-// 始める — 光学深さへの乗数は 16 km の起伏を 50 km の範囲で均しきれず、細部が数十キロで均した濃さを
-// 変えてしまう。16〜50 km は上層の湿度の細かい段(雲場)が担う。
-const CIRRUS_FIRST_OCTAVE = 1;
+// 巻雲の細部が使う最も粗い段の番号(DETAIL_WAVELENGTHS の添字)。巻雲は 32 km と 16 km の段を飛ばして
+// 8 km から始める — 光学深さへの乗数は 16 km の起伏を 50 km の範囲で均しきれず、細部が数十キロで
+// 均した濃さを変えてしまう。16〜50 km は上層の湿度の細かい段(雲場)が担う。
+const CIRRUS_FIRST_OCTAVE = 2;
 
 // 流れへの伸縮を掛ける最も細かい段(DETAIL_WAVELENGTHS の添字、ここでは 2 km)。より細かい段は等方に読む。
 // 細かい段まで伸ばすと細帯が針状になるため。
-const CIRRUS_STRETCH_LAST_OCTAVE = 3;
+const CIRRUS_STRETCH_LAST_OCTAVE = 4;
 
 // 揃いの強い筋が流れ方向へ伸びる倍率の上限。揃い度 0 の場所は等方に読む。
 const CIRRUS_STRETCH_MAX = 3;
