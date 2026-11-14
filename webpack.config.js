@@ -5,7 +5,7 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 const { version } = require('./package.json');
 
-const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-09-09-a';
+const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-11-14-a';
 const EARTH_SURFACE_DEV_PUBLIC_PATH = `/earth/${DEFAULT_EARTH_SURFACE_DATASET_ID}/`;
 const EARTH_SURFACE_BUNDLE_ROOT_CANDIDATES = [
   // schema 3の生成物を優先し、R2へ未配備でも同じbundleを開発配信する。
