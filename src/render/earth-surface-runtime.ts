@@ -7,8 +7,8 @@ import {
 } from './earth-surface-source';
 import { EarthSurfaceTileSource } from './earth-surface-tile-source';
 
-const DATASET_ID = /^[a-z0-9-]+$/;
-export type EarthSurfaceBootstrapState = 'loading' | 'ready' | 'error' | 'fallback';
+
+type EarthSurfaceBootstrapState = 'loading' | 'ready' | 'error' | 'fallback';
 
 export interface EarthSurfaceBootstrapResult {
   readonly state: Exclude<EarthSurfaceBootstrapState, 'loading'>;
@@ -105,7 +105,7 @@ export async function bootstrapEarthSurface(
 }
 
 /** 本番で使える地表配信 URL を返す。空文字と開発用 URL は拒否する。 */
-export function requireEarthSurfaceBaseUrl(value = configuredBaseUrl()): string {
+function requireEarthSurfaceBaseUrl(value = configuredBaseUrl()): string {
   if (value.length === 0) throw new Error('Earth surface base URL is required for production');
   const url = parseAbsoluteUrl(value);
   if (url.protocol !== 'https:') throw new Error('Earth surface base URL must use HTTPS');
@@ -116,8 +116,4 @@ export function requireEarthSurfaceBaseUrl(value = configuredBaseUrl()): string 
   return value.endsWith('/') ? value : `${value}/`;
 }
 
-/** 配信 manifest の datasetId を検査する。 */
-export function requireEarthSurfaceDatasetId(datasetId: string): string {
-  if (!DATASET_ID.test(datasetId)) throw new Error(`Invalid Earth surface datasetId: ${datasetId}`);
-  return datasetId;
-}
+
