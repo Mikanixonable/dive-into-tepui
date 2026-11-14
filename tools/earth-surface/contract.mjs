@@ -277,6 +277,32 @@ async function verifyColor(root, key) {
   return { url, ...actual };
 }
 
+function checkBaseTerrainPayload(payload) {
+  readEstbHeader(payload);
+  for (let column = 0; column < EARTH_BASE_ROOT_COLUMNS; column += 1) {
+    const start = EARTH_TERRAIN_HEADER_BYTES + column * EARTH_TERRAIN_PAYLOAD_BYTES;
+    const tile = payload.subarray(start, start + EARTH_TERRAIN_PAYLOAD_BYTES);
+    const key = { id: `0/${column}/0`, z: 0, x: column, y: 0 };
+    readEstnHeader(tile, key);
+    checkTerrainTexels(tile, key.id);
+  }
+}
+
+// 配信済みの地形バイト列(gzip)を、ESTN/ESTB の形式と本文の契約で検査する。
+// release 検査が R2 上の実体に対して使う。ローカル bundle の検査と同じ関数を通す。
+export function checkTerrainTileGzip(compressed, key) {
+  let payload;
+  try { payload = gunzipSync(compressed); } catch (error) { throw new EarthSurfaceContractError(`terrain gzip is invalid: ${key.id}`, { cause: error }); }
+  readEstnHeader(payload, key);
+  checkTerrainTexels(payload, key.id);
+}
+
+export function checkBaseTerrainGzip(compressed) {
+  let payload;
+  try { payload = gunzipSync(compressed); } catch (error) { throw new EarthSurfaceContractError('baseTerrain gzip is invalid', { cause: error }); }
+  checkBaseTerrainPayload(payload);
+}
+
 async function verifyTerrain(root, key) {
   const url = `tiles/${key.z}/${key.x}/${key.y}.bin.gz`;
   const actual = await requiredFile(root, url, `terrain ${key.id}`);
@@ -473,14 +499,7 @@ export async function inspectEarthSurfaceBundle({ inputRoot, manifestName = 'ear
   const baseTerrain = await requiredFile(root, manifest.baseTerrain, 'baseTerrain');
   let baseTerrainPayload;
   try { baseTerrainPayload = gunzipSync(await readFile(baseTerrain.absolutePath)); } catch (error) { throw new EarthSurfaceContractError('baseTerrain gzip is invalid', { cause: error }); }
-  readEstbHeader(baseTerrainPayload);
-  for (let column = 0; column < EARTH_BASE_ROOT_COLUMNS; column += 1) {
-    const start = EARTH_TERRAIN_HEADER_BYTES + column * EARTH_TERRAIN_PAYLOAD_BYTES;
-    const tile = baseTerrainPayload.subarray(start, start + EARTH_TERRAIN_PAYLOAD_BYTES);
-    const key = { id: `0/${column}/0`, z: 0, x: column, y: 0 };
-    readEstnHeader(tile, key);
-    checkTerrainTexels(tile, key.id);
-  }
+  checkBaseTerrainPayload(baseTerrainPayload);
   const climateMaps = await Promise.all(manifest.climateMaps.map((path, index) => verifyClimateMap(root, path, index)));
   const tiles = manifest.coverage.kind === 'complete'
     ? tileKeys(manifest.coverage.maxZoom) : await sparseTileKeys(root);
