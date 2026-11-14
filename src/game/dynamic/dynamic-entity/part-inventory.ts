@@ -1,8 +1,8 @@
-import type { AnyPart, Part, PartType, ShipPartCollection } from './parts';
+import type { AnyPart, Part, PartType } from './parts';
 
 // 敵船部品を保持・管理するコレクション。replace はロードアウト復元用の浅い配列コピーを提供し、
 // 分割時の状態所有権移管は ShipAssembly が担当する。
-export class PartInventory implements ShipPartCollection {
+export class PartInventory {
   private items: AnyPart[] = [];
 
   public constructor(parts: readonly Part[] = []) { this.replace(parts); }
