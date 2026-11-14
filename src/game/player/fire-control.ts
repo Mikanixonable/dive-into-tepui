@@ -8,7 +8,6 @@ import type { Vec3 } from '../../math/vec3';
 import { add, addScaled, norm, randPerp, randVec, scale, sub, v3 } from '../../math/vec3';
 
 import type { PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
-import type { Ship } from '../dynamic/dynamic-entity/ship';
 import { Bullet } from '../dynamic/dynamic-entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { StageOutcome } from '../stages/stage-outcome';
@@ -31,7 +30,7 @@ const MAG_FRAME_SLIDE_TIME = 0.3;
 const GUN_HEAT_PER_ROUND = 5.5e5; // 1発あたりに外殻へ入る熱量 [J]
 
 // 砲口の位置とそのときの艦の速度。
-function muzzleState(ship: Ship, muzzle: Vec3): KinematicState {
+function muzzleState(ship: ModularShip, muzzle: Vec3): KinematicState {
   return kinematicState<'eci'>(ship.motion.state.t, muzzle, ship.motion.state.v);
 }
 
