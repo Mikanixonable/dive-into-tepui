@@ -43,8 +43,6 @@ export class CloudPresentation {
   // 現在選択されている雲データ供給源。
   private source: CloudFieldSource;
   private cloudVisible = false;
-  private cirrusVisible = true;
-  private translucentCumulusVisible = true;
   // 細部の時刻。bake で表示時刻へ進める。
   private clock: CloudDetailClockInput = { displayTime: 0, simSpeed: 0 };
 
@@ -89,11 +87,6 @@ export class CloudPresentation {
       this.setDetail(graphics.cumulusDetail);
       this.syncLod(apparentDiameterPx);
     }
-    // 大気の中へ立てる巻雲と半透明の積雲。
-    this.setAtmosphereCloudsVisible(
-      graphics.clouds && graphics.cirrus,
-      graphics.clouds && graphics.translucentCumulus,
-    );
   }
 
   // 雲場の出どころを選ぶ。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
@@ -138,12 +131,6 @@ export class CloudPresentation {
     if (!visible) this.surface.hide();
   }
 
-  // 大気の中へ立てる巻雲と半透明の積雲を、それぞれ描くかを置き直す。
-  private setAtmosphereCloudsVisible(cirrusVisible: boolean, translucentCumulusVisible: boolean): void {
-    this.cirrusVisible = cirrusVisible;
-    this.translucentCumulusVisible = translucentCumulusVisible;
-  }
-
   // 見かけ直径 [px] から不透明表面の分割段を選ぶ。雲を描かないなら隠す。
   private syncLod(apparentDiameterPx: number): void {
     if (this.cloudVisible) this.surface.syncLod(apparentDiameterPx);
@@ -168,9 +155,9 @@ export class CloudPresentation {
     for (const source of Object.values(this.sources)) source.dispose();
   }
 
-  // 雲場がこのフレームの描画に寄与するか。
+  // 雲場がこのフレームの描画に寄与するか。巻雲は雲を描く限り常に大気へ立つので、
+  // 雲が見える限り場は常に寄与する。
   private get fieldContributes(): boolean {
-    return this.cloudVisible && (
-      this.visible || this.cirrusVisible || this.translucentCumulusVisible);
+    return this.cloudVisible;
   }
 }

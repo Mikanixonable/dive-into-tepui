@@ -18,7 +18,6 @@ import type { LightSourceMap } from '../../celestial/celestial-surface';
 import type {
   BoolUniform, ColorUniform, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform,
 } from '../../tsl-types';
-import type { CloudSpecies } from '../cloud-atmosphere-renderer';
 import type { BodyShadow } from '../shadow/body-shadow';
 import type { SunLight } from '../sun-light';
 
@@ -121,11 +120,6 @@ export class PlanetLightSubject {
 
   // 不透明な積雲を焼き込むか(描画設定「積雲の精細さ」がオフでない)。
   public setCumulusEnabled(enabled: boolean): void { this.cumulusEnabled.value = enabled; }
-
-  // 種類ごとに、大気の中の雲の殻を描くかを置き直す。
-  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    this.integrator.setCloudShellEnabled(species, enabled);
-  }
 
   // origin から向き direction(どちらも描画座標)の視線が受け取る放射輝度。texelAngle は写しの
   // 1 texel が張る角 [rad] で、地表の画像を読む段を決める。**Fn の中から呼ぶこと。**
