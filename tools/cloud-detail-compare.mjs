@@ -403,7 +403,7 @@ async function main() {
     ? JSON.parse(readFileSync(manifestFile, 'utf8')).shots.map((shot) => shot.name).join('\n')
     : null;
   const listChanged = recordedNames !== shotInfos.map((shot) => shot.name).join('\n');
-  if (!shotsArgGiven && (taken > 0 || listChanged)) writeFileSync(manifestFile, `${JSON.stringify({
+  if (taken > 0 || listChanged) writeFileSync(manifestFile, `${JSON.stringify({
     tool: 'cloud-detail-compare',
     generatedAt: new Date().toISOString(),
     gitHead: gitHead(root),
