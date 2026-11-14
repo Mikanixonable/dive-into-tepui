@@ -70,7 +70,7 @@ const UPPER_ADVECTION = 1.6;
 const CONVECTION_WINDING = 2.5;
 
 // 移流後の場。地表付近と上層の湿度は0..1、対流は0中心の高周波(xが粒、yが網目)。
-export interface AdvectedFields {
+interface AdvectedFields {
   readonly surfaceHumidity: FloatNode;
   readonly upperHumidity: FloatNode;
   readonly convection: Vec2Node;
