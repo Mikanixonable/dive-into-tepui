@@ -106,8 +106,18 @@ export class RunEventPresenter {
     }
   }
 
-  // イベント1件を、対応する UI 効果音やトースト通知へ変換して発行する。
+  // イベント1件を、対応する UI 効果音やトースト通知へ変換して発行する。区画ごとに、担当する種類だけを
+  // 読み、他の区画の種類には触れない。
   private show(body: RunEventBody): void {
+    this.showTimeAndFaults(body);
+    this.showCombatAndFlight(body);
+    this.showSupply(body);
+    this.showManeuver(body);
+    this.showOperation(body);
+  }
+
+  // 時間加速・自動ワープと、機体状態の汚染の告知。
+  private showTimeAndFaults(body: RunEventBody): void {
     switch (body.kind) {
       case 'simSpeedChanged': {
         this.uiSounds.push('warp');
@@ -137,7 +147,12 @@ export class RunEventPresenter {
         this.showCorruption(corruptionMessage(body.phase, body.dt, body.simDt, detail));
         return;
       }
+    }
+  }
 
+  // 武装・撃破・飛行・ブースターの告知。
+  private showCombatAndFlight(body: RunEventBody): void {
+    switch (body.kind) {
       case 'gunDisabled':
         this.notifier.hint('武装が損傷しており発射できない', 3000, 'warn');
         return;
@@ -196,7 +211,12 @@ export class RunEventPresenter {
       case 'boosterDecoupled':
         this.notifier.hint(`ブースター分離: 残り ${body.stages} 段`);
         return;
+    }
+  }
 
+  // 補給の投入・取り込み・補充の告知。
+  private showSupply(body: RunEventBody): void {
+    switch (body.kind) {
       case 'ammoResupplyDeployed':
         this.uiSounds.push('warp');
         this.notifier.hint('付近の軌道に補給が投入された — ▣ 弾薬マーカーへ接近して回収', 5000, 'nav');
@@ -224,7 +244,12 @@ export class RunEventPresenter {
           ? `基地 ${body.ships} 隻の燃料を満タンに補充`
           : '基地がありません', 3000);
         return;
+    }
+  }
 
+  // 軌道計画のノードの達成と脱落の告知。
+  private showManeuver(body: RunEventBody): void {
+    switch (body.kind) {
       case 'maneuverNodeApproaching':
         this.notifier.hint('マニューバ実行点に接近 — BURN ガイドの方向へ加速せよ', 5000, 'plan');
         return;
@@ -236,7 +261,12 @@ export class RunEventPresenter {
       case 'planNodesDropped':
         this.notifier.hint(`${body.ship}: 起点より前のマニューバノード ${body.count} 件を復元できません`, undefined, 'warn');
         return;
+    }
+  }
 
+  // 視点・操作対象・ターゲット・配置・鹵獲・波状攻撃の告知。
+  private showOperation(body: RunEventBody): void {
+    switch (body.kind) {
       case 'combatViewUnavailable':
         this.notifier.hint('操作できる艦または基地がいません', undefined, 'warn');
         return;
