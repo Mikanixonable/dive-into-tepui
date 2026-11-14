@@ -99,8 +99,19 @@ const MIN_ENVELOPE_REFERENCES = 3;
 // 封筒の作り方の名前。巻雲は区分を無視して 1 つにまとめ、積雲・混合は区分ごとに作る。
 // レポートの meta に残し、方式が違う前回との差分は比べない。
 const ENVELOPE_METHOD = 'pooled-cirrus';
-// 巻雲の型(scenes.json の type)。型ごとの封筒と型の報告に使う。
+// 巻雲の型(scenes.json の type)。型の重心と型の報告に使う。
 const CIRRUS_TYPES = ['streak', 'scaly', 'veil', 'anvil'];
+// 型の距離の作り方の名前。型の重心への標準化距離。レポートの meta に残し、前回と方式が一致するかの照合に使う。
+const TYPE_DISTANCE_METHOD = 'standardized-centroid';
+// 型の重心を持つのに必要な実写の枚数(段ごと)。これ未満の型は「不足」。
+const MIN_TYPE_REFERENCES = 3;
+// 型内の標準偏差の下限の比(全巻雲の実写の標準偏差に対して)。型内のばらつきが 0 に近い特徴量で距離が発散しないため。
+const TYPE_SCALE_FLOOR = 0.1;
+// 分離度の偶然の水準(型が 4 つの一様な当て推量)と、分離できないとみなす正解率の上限。
+const CHANCE_LEVEL = 0.25;
+const CHANCE_LEVEL_CEILING = 0.4;
+// 分離度の F 値の表に出す件数。
+const TYPE_SEPARATION_TOP = 15;
 // 距離の前後判定の横ばいの幅(相対)。計測は決定的だが、実行環境の浮動小数の揺れを
 // 悪化と誤判定しないための幅。
 const VERDICT_BAND = 0.05;
@@ -331,6 +342,82 @@ function distanceOf(value, cell) {
   if (value < cell.lo) return { distance: (cell.lo - value) / width, side: -1 };
   if (value > cell.hi) return { distance: (value - cell.hi) / width, side: +1 };
   return { distance: 0, side: 0 };
+}
+
+// 段ごとの巻雲の型の模型。counts は型ごとの実写の枚数、types は枚数が MIN_TYPE_REFERENCES 以上の型の
+// 重心(id → 平均)、scale は id ごとの型内の標準偏差。入力は同じ段の巻雲の実写だけにする。
+function buildTypeModel(images) {
+  const counts = new Map();
+  const valuesByType = new Map();
+  const valuesById = new Map();
+  for (const image of images) {
+    counts.set(image.type, (counts.get(image.type) ?? 0) + 1);
+    const perId = valuesByType.get(image.type) ?? new Map();
+    valuesByType.set(image.type, perId);
+    for (const entry of image.features) {
+      perId.set(entry.id, [...(perId.get(entry.id) ?? []), entry.value]);
+      valuesById.set(entry.id, [...(valuesById.get(entry.id) ?? []), entry.value]);
+    }
+  }
+  const types = new Map();
+  const withinVariances = new Map();
+  for (const [type, perId] of valuesByType) {
+    if (counts.get(type) < MIN_TYPE_REFERENCES) continue;
+    const mean = new Map();
+    for (const [id, values] of perId) {
+      mean.set(id, values.reduce((sum, v) => sum + v, 0) / values.length);
+      if (values.length >= 2) withinVariances.set(id, [...(withinVariances.get(id) ?? []), variance(values)]);
+    }
+    types.set(type, { mean });
+  }
+  // 型内の標準偏差は、各型の分散の平均の平方根。下限は全実写の標準偏差の一部。
+  const scale = new Map();
+  for (const [id, values] of valuesById) {
+    const within = withinVariances.get(id) ?? [];
+    const pooled = within.length === 0 ? 0 : within.reduce((sum, v) => sum + v, 0) / within.length;
+    const width = Math.max(Math.sqrt(pooled), TYPE_SCALE_FLOOR * Math.sqrt(variance(values)));
+    if (width > 0) scale.set(id, width);
+  }
+  return { counts, types, scale };
+}
+
+// 撮影の特徴量の、型の重心への標準化距離。家族ごとに ((x − μ) / s)² の平均の平方根をとり、家族の平均を返す。
+// 型が不足か、重心と共通する特徴量が無ければ null。
+function standardizedDistance(features, model, type) {
+  const centroid = model.types.get(type);
+  if (centroid === undefined) return null;
+  const familyCells = new Map();
+  for (const entry of features) {
+    const mean = centroid.mean.get(entry.id);
+    const width = model.scale.get(entry.id);
+    if (mean === undefined || width === undefined) continue;
+    const z = (entry.value - mean) / width;
+    const cell = familyCells.get(entry.family) ?? { sum: 0, count: 0 };
+    cell.sum += z * z;
+    cell.count++;
+    familyCells.set(entry.family, cell);
+  }
+  const familyDistances = [...familyCells.values()].map((cell) => Math.sqrt(cell.sum / cell.count));
+  return familyDistances.length === 0 ? null : familyDistances.reduce((a, b) => a + b, 0) / familyDistances.length;
+}
+
+// 型ごとの値の群から一元配置の F 値(型間分散 / 型内分散)を返す。型が 2 つ未満、型内の自由度が無い、
+// 型内に散らばりが無いときは null。
+function anovaF(groups) {
+  const all = [...groups.values()].flat();
+  const k = groups.size;
+  const n = all.length;
+  if (k < 2 || n - k < 1) return null;
+  const grand = all.reduce((sum, v) => sum + v, 0) / n;
+  let between = 0;
+  let within = 0;
+  for (const values of groups.values()) {
+    const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+    between += values.length * (mean - grand) ** 2;
+    for (const v of values) within += (v - mean) ** 2;
+  }
+  if (within === 0) return null;
+  return (between / (k - 1)) / (within / (n - k));
 }
 
 // 中央切り出しの RGB(A) 画像 2 枚を、小さい方の辺に合わせて左右に並べた RGB 画素列を返す。
@@ -743,38 +830,13 @@ async function main() {
       + [...thinEnvelopes.entries()].map(([key, cell]) => `${key}(実写 ${cell.references} 枚・撮影 ${cell.shots} 枚)`).join('  '));
   }
 
-  // --- 巻雲の型: 型ごとの封筒は、その型の巻雲の実写だけで段ごとに作る ---
-  const typeEnvelopes = new Map();
-  for (const type of CIRRUS_TYPES) {
-    const envelope = newEnvelope();
-    const tierCounts = new Map();
-    for (const image of references) {
-      if (image.kind !== 'cirrus' || image.type !== type) continue;
-      for (const entry of image.features) envelopeAdd(envelope, entry, image.kmPerPx);
-      tierCounts.set(image.kmPerPx, (tierCounts.get(image.kmPerPx) ?? 0) + 1);
-    }
-    typeEnvelopes.set(type, { envelope, tierCounts });
-  }
-  // 撮影 1 枚の、型の封筒への距離。家族ごとの平均をとってから家族の平均をとる(index と同じ)。
-  // 実写が MIN_ENVELOPE_REFERENCES 未満の段は distance を null にし、枚数を返す。
-  const typeDistanceOf = (shot, type) => {
-    const { envelope, tierCounts } = typeEnvelopes.get(type);
-    const count = tierCounts.get(shot.tierKmPerPx) ?? 0;
-    if (count < MIN_ENVELOPE_REFERENCES) return { count, distance: null };
-    const byFamily = new Map();
-    for (const entry of shot.features) {
-      const cell = envelopeCell(envelope, entry, shot.tierKmPerPx);
-      if (cell === null) continue;
-      const { distance } = distanceOf(entry.value, cell);
-      const sum = byFamily.get(entry.family) ?? { sum: 0, count: 0 };
-      sum.sum += distance;
-      sum.count++;
-      byFamily.set(entry.family, sum);
-    }
-    const means = [...byFamily.values()].map((cell) => cell.sum / cell.count);
-    return { count, distance: means.length > 0 ? means.reduce((a, b) => a + b, 0) / means.length : null };
-  };
-
+  // --- 巻雲の型: 段ごとに型の模型(重心と型内の標準偏差)を作り、撮影の距離を標準化して測る ---
+  const cirrusReferences = references.filter((image) => image.kind === 'cirrus');
+  const typeTiers = [...new Set(cirrusReferences.map((image) => image.kmPerPx))].sort((a, b) => a - b);
+  const typeModels = new Map(typeTiers.map((tier) => [
+    tier, buildTypeModel(cirrusReferences.filter((image) => image.kmPerPx === tier)),
+  ]));
+  const emptyTypeModel = buildTypeModel([]);
   const cirrusShots = judgedShots
     .filter((shot) => shot.kind === 'cirrus')
     .sort((a, b) => a.scene.localeCompare(b.scene) || a.tierKmPerPx - b.tierKmPerPx);
@@ -783,13 +845,15 @@ async function main() {
   console.log('\n=== 巻雲の型との距離(撮影の場面 × 型、0 が一致) ===');
   console.log(`${'場面'.padEnd(30)} ${'段'.padStart(6)} ${CIRRUS_TYPES.map((type) => type.padStart(7)).join(' ')}  最近型`);
   for (const shot of cirrusShots) {
+    const model = typeModels.get(shot.tierKmPerPx) ?? emptyTypeModel;
     const types = {};
     const cells = [];
     let nearest = null;
     for (const type of CIRRUS_TYPES) {
-      const { count, distance } = typeDistanceOf(shot, type);
+      const count = model.counts.get(type) ?? 0;
+      const distance = standardizedDistance(shot.features, model, type);
       types[type] = { references: count, distance };
-      cells.push((distance === null ? (count < MIN_ENVELOPE_REFERENCES ? '不足' : '-') : distance.toFixed(3)).padStart(7));
+      cells.push((distance === null ? (count < MIN_TYPE_REFERENCES ? '不足' : '-') : distance.toFixed(3)).padStart(7));
       if (distance === null) continue;
       if (nearest === null || distance < nearest.distance) nearest = { type, distance };
       const best = typeCoverage.get(type);
@@ -809,12 +873,76 @@ async function main() {
     const best = typeCoverage.get(type);
     typeMinimum[type] = best === null ? null : best.distance;
     if (best === null) {
-      console.log(`${type.padEnd(8)} 不足(実写が ${MIN_ENVELOPE_REFERENCES} 枚未満の段しか無い、または撮影が無い)`);
+      console.log(`${type.padEnd(8)} 不足(実写が ${MIN_TYPE_REFERENCES} 枚未満の段しか無い、または撮影が無い)`);
       continue;
     }
     console.log(`${type.padEnd(8)} 最小 ${best.distance.toFixed(3)}  ${best.scene} ${best.tierKmPerPx}km(型の実写 ${best.references} 枚)`);
   }
   distances.types = typeMinimum;
+
+  // 型の分離度: 実写を 1 枚ずつ外し、残りの重心への距離で型を当てる。段ごとに混同行列と正解率を出す。
+  const separation = { perTier: {}, fRanking: [] };
+  console.log('\n=== 巻雲の型の分離度(実写の場面 × 型、自分を除いた重心への距離で分類) ===');
+  for (const tier of typeTiers) {
+    const images = cirrusReferences.filter((image) => image.kmPerPx === tier);
+    const confusion = Object.fromEntries(CIRRUS_TYPES.map((truth) => [
+      truth, Object.fromEntries(CIRRUS_TYPES.map((predicted) => [predicted, 0])),
+    ]));
+    let correct = 0;
+    let total = 0;
+    let unpredicted = 0;
+    for (const held of images) {
+      const model = buildTypeModel(images.filter((image) => image !== held));
+      let nearest = null;
+      for (const type of model.types.keys()) {
+        const distance = standardizedDistance(held.features, model, type);
+        if (distance !== null && (nearest === null || distance < nearest.distance)) nearest = { type, distance };
+      }
+      if (nearest === null) {
+        unpredicted++;
+        continue;
+      }
+      total++;
+      confusion[held.type][nearest.type]++;
+      if (nearest.type === held.type) correct++;
+    }
+    const accuracy = total === 0 ? null : correct / total;
+    separation.perTier[tier] = { references: images.length, total, correct, unpredicted, accuracy, confusion };
+    console.log(`\n段 ${tier}km(実写 ${images.length} 枚)`);
+    console.log(`${'正解＼予測'.padEnd(8)} ${CIRRUS_TYPES.map((type) => type.padStart(7)).join(' ')}`);
+    for (const truth of CIRRUS_TYPES) {
+      console.log(`${truth.padEnd(8)} ${CIRRUS_TYPES.map((predicted) => String(confusion[truth][predicted]).padStart(7)).join(' ')}`);
+    }
+    console.log(`正解率 ${accuracy === null ? '-' : accuracy.toFixed(2)}(判定 ${total} 枚、予測なし ${unpredicted} 枚)`);
+    if (accuracy !== null && accuracy <= CHANCE_LEVEL_CEILING) {
+      console.log(`分離できない: 正解率 ${accuracy.toFixed(2)} は偶然の水準 ${CHANCE_LEVEL}〜${CHANCE_LEVEL_CEILING} に近い`);
+    }
+  }
+
+  // 型を分けるのに効く特徴量: 段ごとに型の群の F 値を取り、大きい順に並べる。
+  const fRows = [];
+  for (const tier of typeTiers) {
+    const images = cirrusReferences.filter((image) => image.kmPerPx === tier);
+    const familyOfId = new Map();
+    for (const image of images) for (const entry of image.features) familyOfId.set(entry.id, entry.family);
+    for (const [id, family] of familyOfId) {
+      const groups = new Map();
+      for (const image of images) {
+        const entry = image.features.find((feature) => feature.id === id);
+        if (entry === undefined) continue;
+        groups.set(image.type, [...(groups.get(image.type) ?? []), entry.value]);
+      }
+      const F = anovaF(groups);
+      if (F !== null) fRows.push({ id, family, tierKmPerPx: tier, F });
+    }
+  }
+  fRows.sort((a, b) => b.F - a.F);
+  separation.fRanking = fRows.slice(0, TYPE_SEPARATION_TOP);
+  console.log(`\n=== 型を分けるのに効く特徴量(F 値 = 型間分散 / 型内分散、上位 ${TYPE_SEPARATION_TOP}) ===`);
+  console.log(`${'特徴量'.padEnd(24)} ${'家族'.padEnd(14)} ${'段'.padStart(6)} ${'F'.padStart(9)}`);
+  for (const row of separation.fRanking) {
+    console.log(`${row.id.padEnd(24)} ${row.family.padEnd(14)} ${`${row.tierKmPerPx}km`.padStart(6)} ${row.F.toFixed(2).padStart(9)}`);
+  }
 
   // --- 封筒から外れた特徴量の一覧(正規化距離の大きい順) ---
   console.log('\n=== 封筒から外れた特徴量(正規化距離の上位) ===');
@@ -1003,6 +1131,7 @@ async function main() {
       minStructureContrast: MIN_STRUCTURE_CONTRAST,
       minEnvelopeReferences: MIN_ENVELOPE_REFERENCES,
       envelopeMethod: ENVELOPE_METHOD,
+      typeDistanceMethod: TYPE_DISTANCE_METHOD,
       shotsGitHead: shotsOrigin.gitHead ?? null,
       references: references.length,
       labHistory: labPreviousName ?? null,
@@ -1023,6 +1152,7 @@ async function main() {
       ladder,
       excludedEnvelopes: Object.fromEntries(thinEnvelopes),
       cirrusTypes: { rows: typeRows, coverage: typeMinimum },
+      typeSeparation: separation,
     },
     distances,
   };
@@ -1036,6 +1166,8 @@ async function main() {
       : '同じ絞り込みの前回レポートが無い');
   } else {
     const previous = readReport(historyDir, previousName);
+    // 型の距離は方式が違うと数値の意味が変わる。方式が一致するときに限り、型の行を差分へ入れる。
+    const typeMethodMatches = previous?.meta?.typeDistanceMethod === TYPE_DISTANCE_METHOD;
     // 封筒の方式(meta.envelopeMethod)が無い前回は旧方式(区分ごとの封筒)。方式が違うと封筒が違うので数値は比べない。
     const previousMethod = previous?.meta?.envelopeMethod ?? 'category';
     if (previous === null || previous.sections === undefined) {
@@ -1044,7 +1176,10 @@ async function main() {
       console.log(`${previousName} は封筒の方式 ${previousMethod}、今回は ${ENVELOPE_METHOD} — 方式が違うので比べない`);
     } else {
       const diffs = { compared: 0, changed: [] };
-      collectNumericDiffs(previous.sections, report.sections, '', diffs);
+      const { cirrusTypes: priorTypes, ...priorSections } = previous.sections;
+      const { cirrusTypes: currentTypes, ...currentSections } = report.sections;
+      collectNumericDiffs(priorSections, currentSections, '', diffs);
+      if (typeMethodMatches) collectNumericDiffs(priorTypes, currentTypes, 'cirrusTypes', diffs);
       for (const { path: leaf, before, after } of diffs.changed) {
         const delta = after - before;
         console.log(`${leaf}: ${formatDiffValue(before)} → ${formatDiffValue(after)} (${delta >= 0 ? '+' : ''}${formatDiffValue(delta)})`);
@@ -1076,9 +1211,13 @@ async function main() {
       }
       console.log(`改善 ${improved} / 悪化 ${worsened} / 横ばい ${unchanged}`
         + `(index: ${priorDistances.index.toFixed(3)} → ${report.distances.index.toFixed(3)})`);
+    }
+    if (previous !== null && previous.sections !== undefined && !typeMethodMatches) {
+      console.log(`型との距離: ${previousName} は方式 ${previous.meta?.typeDistanceMethod ?? '(記録なし)'}、今回は ${TYPE_DISTANCE_METHOD} — 方式が違うので比べない`);
+    } else if (previous !== null && previous.sections !== undefined) {
       const formatMinimum = (value) => (value === null || value === undefined ? '不足' : value.toFixed(3));
       for (const [type, after] of Object.entries(report.distances.types)) {
-        const prior = priorDistances.types?.[type];
+        const prior = previous.distances?.types?.[type];
         console.log(`型 ${type.padEnd(8)} 最小距離 ${formatMinimum(prior)} → ${formatMinimum(after)}`);
       }
     }
