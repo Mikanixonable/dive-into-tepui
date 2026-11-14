@@ -56,13 +56,18 @@ const TOWER_WIDTH = 0.09;
 const TOWER_LIFT_GATE = 0.005;
 // 海洋性層積雲へ移る気候の門。平年の雲量が高い海で、沈降と低い対流が重なるほど閉じた細胞の
 // 板へ寄せる。海岸と気候の境界は climate map の補間と smoothstep で連続に渡る。
-const STRATOCUMULUS_SUBSIDENCE_SCALE = 50;
-const STRATOCUMULUS_HUMIDITY_ONSET = 0.42;
+// 沈降門の膝 [per m/s] は、亜熱帯高圧の広く弱い吹きおろし(数 hPa で 0.003〜0.008 m/s)が
+// 半開きにしかならないよう、吹きおろしの上限(0.02 m/s)より細かい目盛りに取る。
+const STRATOCUMULUS_SUBSIDENCE_SCALE = 150;
+const STRATOCUMULUS_HUMIDITY_ONSET = 0.35;
 const STRATOCUMULUS_HUMIDITY_WIDTH = 0.20;
 const STRATOCUMULUS_CLOUDINESS_ONSET = 0.48;
 const STRATOCUMULUS_CLOUDINESS_WIDTH = 0.24;
 const STRATOCUMULUS_ACTIVITY_ONSET = 0.35;
 const STRATOCUMULUS_ACTIVITY_WIDTH = 0.45;
+// 板へ足す湿度の高さ。門が部分的にしか開かない所でも板が一面へ繋がるよう、被覆率の
+// 伝達関数の幅の 1.5 倍強に取る — 全域が飽和する高さではなく、板の中にも濃淡が残る。
+const STRATOCUMULUS_DECK_ADD = 0.35;
 // 対流の形が網目から粒へ渡る湿度。雲の少ない所では細胞の壁(網目)、多い所では細胞の芯(粒)が
 // 見える。**形を決める量は粒より低周波でなければならない** — 粒ごとに形が変わると並びが読めない
 // ので、粒を足す前の湿度で決める。渡り始めは覆いの効き始めの少し下、渡り終わりはその 1 単位ぶん上。
@@ -74,15 +79,15 @@ const SHAPE_GRAIN_HUMIDITY = 0.70;
 // 漸近させる tanh の頭打ちで、下地が常に e^−τ だけ透けることを保証する — 巻雲は不透明にならない。
 // **2 つの利得と上限は同じ率で動かす** — そうすると τ がそのまま定数倍になり、靄と筋の濃さの比も
 // 階調の順番も変わらないまま、薄い雲だけが一様に薄くなる。率は、±60° の輝度の平均が実写(分離した
-// 薄い雲、0.135)の 3 分の 2 に収まる高さに取る — 薄い雲は下地を隠す幕ではなく、地表の色をわずかに
+// 薄い雲、0.135)の 9 割に収まる高さに取る — 薄い雲は下地を隠す幕ではなく、地表の色をわずかに
 // 白ませるものとして見える(`DEVELOP/SPEC/RENDERING.md`「薄い雲の大半はごく薄い靄」)。いまの率では
-// 上層の湿度 0.5 で τ 0.06、0.6 で 0.20、0.7 で 0.41、上端でも下地が半分以上透ける。
+// 上層の湿度 0.5 で τ 0.08、0.6 で τ 0.27、0.7 で τ 0.56、上端でも下地が半分近く透ける。
 const TRANSLUCENT_HAZE_ONSET = 0.38;
-const TRANSLUCENT_HAZE_GAIN = 0.49;
+const TRANSLUCENT_HAZE_GAIN = 0.66;
 const TRANSLUCENT_STREAK_ONSET = 0.48;
-const TRANSLUCENT_STREAK_GAIN = 1.75;
+const TRANSLUCENT_STREAK_GAIN = 2.36;
 const TRANSLUCENT_KNEE = 0.25;
-const TRANSLUCENT_LIMIT = 0.63;
+const TRANSLUCENT_LIMIT = 0.85;
 
 // 雲頂の高さが積雲の量へ効き始める被覆率と、効ききる被覆率。これより覆いの薄い柱は、被覆率だけが
 // 量を決める。
@@ -142,7 +147,7 @@ export function condense(weather: WeatherSample): CloudSample {
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が開始閾値を超過した量を遷移幅で正規化した値に基づく晴天率の補数。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
-  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(COVERAGE_WIDTH));
+  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(STRATOCUMULUS_DECK_ADD));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.mul(excess).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
