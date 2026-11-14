@@ -205,33 +205,43 @@ export class OpaqueCloudSurfaceRenderer {
       const sampling = this.sampling;
       const stepLength = marchEnd.div(sampling.march);
 
-      // 雲頂より内側へ入った最初の刻みを、その手前の刻みと一緒に覚える。
+      // 雲頂より内側へ入った最初の刻みを、その手前の刻みと一緒に覚える。命中したあとの
+      // 刻みは評価しない — 交点の区間は最初にまたいだ刻みで決まるので、それより先の刻みの
+      // 値はどこへも効かない。
       const hit = float(0).toVar();
       const above = float(0).toVar();
       const below = marchEnd.toVar();
       for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
         const distance = stepLength.mul(stepIndex);
-        const inside = this.clearanceAt(
-          entry.add(direction.mul(distance)), pixelAngle, width, wind).lessThan(0);
-        If(inside.and(hit.lessThan(0.5)), () => {
-          hit.assign(1);
-          below.assign(distance);
+        If(hit.lessThan(0.5), () => {
+          const inside = this.clearanceAt(
+            entry.add(direction.mul(distance)), pixelAngle, width, wind).lessThan(0);
+          If(inside, () => {
+            hit.assign(1);
+            below.assign(distance);
+          }).Else(() => {
+            above.assign(distance);
+          });
         });
-        If(hit.lessThan(0.5), () => { above.assign(distance); });
       }
-      // 雲頂をまたいだ区間を二分して縁を締める。
-      for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
-        const middle = above.add(below).mul(0.5);
-        const inside = this.clearanceAt(
-          entry.add(direction.mul(middle)), pixelAngle, width, wind).lessThan(0);
-        If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
-      }
-
-      const hitPoint = entry.add(direction.mul(below)).toVar();
-      const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
-      const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, width, wind)));
+      // 雲頂をまたいだ区間を二分して縁を締める。**外れた視線は締めず法線も引かない** — 捨てる
+      // 画素にはどちらの値も届かない。
+      const surface = vec4(0).toVar();
+      If(hit.greaterThan(0.5), () => {
+        for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
+          const middle = above.add(below).mul(0.5);
+          const inside = this.clearanceAt(
+            entry.add(direction.mul(middle)), pixelAngle, width, wind).lessThan(0);
+          If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
+        }
+        const hitPoint = entry.add(direction.mul(below)).toVar();
+        const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
+        surface.assign(vec4(
+          normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, width, wind))),
+          clip.z.div(clip.w)));
+      });
       Discard(hit.lessThan(0.5));
-      return vec4(viewNormal, clip.z.div(clip.w));
+      return surface;
     })();
   }
 
