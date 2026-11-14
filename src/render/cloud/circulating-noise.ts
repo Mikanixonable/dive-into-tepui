@@ -3,7 +3,7 @@
 // 端数分の振幅で重畳する — 解像度が連続的に変化しても、オクターブが急峻に出現・消失しない。
 import * as THREE from 'three/webgpu';
 import { If, abs, clamp, float, greaterThan, log2, mix, uniform, vec2 } from 'three/tsl';
-import { gradientNoise } from './gradient-noise';
+import { gateFactor, gradientNoise } from './gradient-noise';
 import type { Circulation } from './circulation';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 
@@ -13,9 +13,12 @@ const OCTAVE_FADE_START = 0.25;
 
 // ノイズのオクターブ(周波数階層) 1 つ。frequency は 1 rad あたりの山数(角波長 [km] = 6371 / frequency)、
 // amplitude はそのオクターブの寄与度。各オクターブ間の比率は任意で、等比数列である必要はない。
+// envelope は包絡への応答係数 — 段の振幅へ 1 + envelope × 係数 を掛ける(環境で段を強めたり
+// 弱めたりする入口。符号を変えれば同じ包絡で太い段を足し細かい段を引ける)。
 export interface NoiseOctave {
   readonly frequency: number;
   readonly amplitude: number;
+  readonly envelope?: number;
 }
 
 // 細胞状オクターブ = (CELL_ABSOLUTE_MEAN − |g|) × CELL_TO_NOISE_SCALE。零交差がセル壁となるため、格子に依存しない
@@ -24,6 +27,13 @@ export interface NoiseOctave {
 // どちらの波形もオクターブごとに平均 0・同一標準偏差となるため、解像度が粗く高周波オクターブが間引かれても場の平均や強度は変動しない。
 const CELL_ABSOLUTE_MEAN = 0.2164;
 const CELL_TO_NOISE_SCALE = 1.728;
+
+// 場へ掛ける変調。coupling は段間の乗法の鎖の強さ κ、envelope は包絡の場の値 — 評価は
+// 書き込み先の方向で一度だけ行い、変調は緯度帯などの気候の型へ張り付く。
+export interface NoiseModulation {
+  readonly coupling?: FloatNode;
+  readonly envelope?: FloatNode;
+}
 
 // エポック: 総観規模の段が、その場で発達・衰退するための実現の混ぜ替え。ノイズ空間で大きく
 // 離れた実現どうしを移行時間かけて混ぜると、模様は平行移動を保ったまま中身が入れ替わる —
@@ -88,24 +98,36 @@ export class CirculatingNoise {
   }
 
   // 単位方向 direction での滑らかなノイズ、おおむね −1..1(オクターブを重ねても全体の振幅は正規化される)。
-  public at(direction: Vec3Node): FloatNode {
-    return this.pairAt(direction).x;
+  // modulation を渡すと、coupling(段間の乗法の鎖の強さ κ、0 なら各段は独立に重なる)と
+  // envelope(包絡の場の値、0 で変わらない — 各段の振幅へ 1 + envelope × NoiseOctave.envelope)
+  // を場へ掛ける。
+  public at(direction: Vec3Node, modulation?: NoiseModulation): FloatNode {
+    return this.pairAt(direction, modulation).x;
   }
 
   // 単位方向 direction での、滑らかなオクターブ成分(x)と細胞状の網目(y)の対。**2 つは同じ勾配ノイズから
-  // 出るので、片方だけを取るのと同じ手数で済む。**
-  public pairAt(direction: Vec3Node): Vec2Node {
-    return this.circulation.carry(direction, (position) => this.fractalAt(position));
+  // 出るので、片方だけを取るのと同じ手数で済む。** modulation は at() と同じ。
+  public pairAt(direction: Vec3Node, modulation?: NoiseModulation): Vec2Node {
+    return this.circulation.carry(direction, (position) => this.fractalAt(position, modulation));
   }
 
   // 定義されたオクターブを合成し、全寄与の和で正規化した対(x が滑らか、y が網目)。振幅が 0 に落ちたオクターブは
   // 計算そのものをスキップする — 分岐の向きは texelAngle のみで決まり画面全域で揃うため、スレッド間の乖離は生じない。
-  private fractalAt(position: Vec3Node): Vec2Node {
+  private fractalAt(position: Vec3Node, modulation?: NoiseModulation): Vec2Node {
     const sum = vec2(0, 0).toVar();
+    // 乗法の鎖: 粗い段の実現値が高い所ほど、それより細かい段の振幅が膨らんで間欠的な場になる。
+    const gate = float(1).toVar();
     for (const [index, octave] of this.octaves.entries()) {
       const amplitude = this.amplitudes[index]!;
       If(greaterThan(amplitude, 0), () => {
-        sum.addAssign(this.octaveValueAt(position, octave).mul(amplitude));
+        const value = this.octaveValueAt(position, octave).toVar();
+        const weight = modulation?.envelope !== undefined && octave.envelope !== undefined
+          ? amplitude.mul(modulation.envelope.mul(octave.envelope).add(1)) : amplitude;
+        sum.addAssign(value.mul(weight).mul(gate));
+        const coupling = modulation?.coupling;
+        if (coupling !== undefined) {
+          gate.mulAssign(gateFactor(value.x, coupling));
+        }
       });
     }
     return sum.mul(this.normalization);

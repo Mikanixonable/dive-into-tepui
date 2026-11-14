@@ -2,7 +2,7 @@
 // グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
 import { abs, clamp, cos, cross, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
-import { AirMass } from './air-mass';
+import { AirMass, extratropicalAt } from './air-mass';
 import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
@@ -10,6 +10,7 @@ import { CirculatingNoise } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
+import { HumidityModulator } from './humidity-modulation';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
@@ -96,10 +97,6 @@ const BAND_LIFT = 0.06;
 // なるが、前線帯の面全体が湿度の上限へ張り付いて一枚の台地にはならない
 // (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
 const BAND_HUMIDITY = 0.1;
-// 温帯と熱帯の境界緯度。温帯では前線、熱帯では雨帯の伝達関数を使い、暖気流入の補正は温帯に
-// 限定して適用する。
-const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
-const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
 // 風が斜面を駆け上がる分の利得。等倍では偏西風や貿易風が山脈へ当たり続けるだけで上昇流が頭打ちに
 // 達し、地形の縞が年中貼り付く — 慢性的な湿潤・乾燥は平年の雲量が持つ。
 const TERRAIN_LIFT_GAIN = 0.35;
@@ -183,6 +180,7 @@ export class WeatherModel {
   private readonly pressure: BakedField;
   private readonly convectiveActivity: ConvectiveActivity;
   private readonly airMass: AirMass;
+  private readonly humidityModulator: HumidityModulator;
 
   // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方、
   // surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
@@ -197,13 +195,17 @@ export class WeatherModel {
     this.pressureNoise = new CirculatingNoise(
       this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
     this.upperMeander = new CirculatingNoise(this.upperCirculation, UPPER_MEANDER_NOISE, texel);
-    this.transport = new WeatherTransport(
-      this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius);
     this.pressure = new BakedField(
       'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1),
       GPU_PASS.cloudBake);
     this.convectiveActivity = new ConvectiveActivity(this.surfaceCirculation, projection);
     this.airMass = new AirMass(projection, (direction) => this.traceFlowAt(direction), surfaceRadius);
+    // 湿度の源の変調が気圧・気団・活発度を読むので、それらのあとに組む。
+    this.humidityModulator = new HumidityModulator(this.airMass, this.convectiveActivity, this.climate);
+    this.transport = new WeatherTransport(
+      this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius,
+      (direction) => this.humidityModulator.at(
+        direction, liftFromPressure(this.pressure.at(direction).r)));
     this.syncTime(0);
   }
 
@@ -212,8 +214,9 @@ export class WeatherModel {
     this.pressure.render(renderer, gpu);
     // 気団は気圧の写しを読んで遡るので、気圧の後に焼く。
     this.airMass.bake(renderer, gpu);
-    this.transport.bake(renderer, gpu);
     this.convectiveActivity.bake(renderer, gpu);
+    // 湿度の源は気圧・気団・活発度の写しを読むので、それらの後に焼く。
+    this.transport.bake(renderer, gpu);
   }
 
   // 時刻 [s] を各サブシステムの uniform へ反映する。
@@ -254,7 +257,7 @@ export class WeatherModel {
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
     const windComponents = eastNorthComponents(surfaceWind.velocity, east, north);
     const airMass = this.airMass.at(direction, latitude);
-    const extratropical = smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
+    const extratropical = extratropicalAt(latitude);
     const warmth = airMass.warmth.mul(extratropical);
     const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
       .mul(TERRAIN_LIFT_GAIN);
