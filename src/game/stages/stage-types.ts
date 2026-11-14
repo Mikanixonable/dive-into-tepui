@@ -49,7 +49,7 @@ export interface StageClass {
   createCelestialSystem(
     epoch: TdbJulianDate, onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem>;
-  // simTime=0 に置く絶対時刻。**基底に既定値は無く、全ステージが自分で宣言する** —
+  // simTime=0 に置く絶対時刻。基底に既定値は無く、全ステージが自分で宣言する —
   // 置くと宣言し忘れが型検査に落ちなくなり、元期が共有の定数へ静かに戻る。
   readonly epoch: TdbJulianDate;
   // 開始前にプレイヤーへ開始日時を選ばせるか(GAME.md 9.0)。選ばせないステージは epoch で始まる。
