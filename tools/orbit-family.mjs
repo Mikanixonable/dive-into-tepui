@@ -48,7 +48,7 @@ export function chainSteps(rows, order) {
 }
 
 // rows をいまの並びのまま見たときの、隣接ステップ距離。
-export function neighborSteps(rows) {
+function neighborSteps(rows) {
   return chainSteps(rows, rows.map((_, index) => index));
 }
 
@@ -61,15 +61,15 @@ export function median(values) {
 }
 
 // 大きなステップと見なす倍率(中央値に対する比)。
-export const LARGE_STEP_FACTOR = 8;
+const LARGE_STEP_FACTOR = 8;
 // 大きなステップがこの本数以下だけ連続していたら、刻みの粗い区間ではなくデータの断絶と見なす。
-export const BREAK_RUN_LIMIT = 2;
+const BREAK_RUN_LIMIT = 2;
 
 // 並びの中の「断絶」の位置(その添字の手前で切れる)を返す。
 // 中央値の LARGE_STEP_FACTOR 倍を超えるステップが連続する塊のうち、短いものだけを拾う。
 // 刻みが疎な区間では大きなステップが何十本も続くが、それは並びが正しくても起きるので断絶では
 // ない。逆に、繋がらない枝どうしの境目では大きなステップが1〜2本だけ孤立して現れる。
-export function breakIndices(steps) {
+function breakIndices(steps) {
   const typical = median(steps);
   if (!(typical > 0)) return [];
 
