@@ -175,22 +175,22 @@ export class CelestialSystem implements CelestialBodies {
   // 判定・提供する。
 
   // focusId と同じ親を持つ天体・その親・focusId 自身の id 集合。focusId 未指定なら空集合。
-  public sameSystemIds(focusId: string | undefined): ReadonlySet<string> {
-    return sameSystemIds(focusId ?? null, this.celestialMotions, this.entities);
+  public sameSystemIds(focusId: string | null): ReadonlySet<string> {
+    return sameSystemIds(focusId, this.celestialMotions, this.entities);
   }
 
   // position の主引力天体が、focus 天体と同じ惑星系に属するか。衛星をフォーカスした場合は親惑星を
   // 系の代表として扱う。天体以外(艦船・固定点など)へフォーカスしている場合は、どの天体系を表示
   // するかを恣意的に決めないため常に真。
-  public isPositionInFocusedSystem(focusId: string | undefined, position: Vec3, pivot: number): boolean {
-    return isPositionInFocusedSystem(focusId ?? null, position, pivot, this.celestialMotions, this.entities);
+  public isPositionInFocusedSystem(focusId: string | null, position: Vec3, pivot: number): boolean {
+    return isPositionInFocusedSystem(focusId, position, pivot, this.celestialMotions, this.entities);
   }
 
-  // 天体 id あるいはラグランジュ点 id の親。undefined は id が不正/古いこと、null は恒星など
-  // 親を持たない天体を表す。ラグランジュ点は id の親部分へ戻してから引く。
-  public bodyParentId(id: string): string | null | undefined {
+  // 天体 id あるいはラグランジュ点 id の親。null は id が不正/古いか、恒星など親を持たない
+  // 天体を表す。ラグランジュ点は id の親部分へ戻してから引く。
+  public bodyParentId(id: string): string | null {
     const parentId = bodyParentId(id, this.entities);
-    return this.has(id) || parentId !== null ? parentId : undefined;
+    return this.has(id) || parentId !== null ? parentId : null;
   }
 
   // focusId の親を辿って主星まで遡った id の列(focusId 自身を含む)。
@@ -305,7 +305,7 @@ export class CelestialSystem implements CelestialBodies {
     // 注視中の天体は、影の濃さをカメラ位置と並べて測る基準点になる。天体でない対象を
     // 注視しているフレームでは持たない。
     const focusId = focusTargetId(mapCamera.focus);
-    const focusPosition = focusId === undefined
+    const focusPosition = focusId === null
       ? null : this.findMotion(focusId)?.positionAt(displayTime) ?? null;
     this.illumination.sync(
       this.entities.map((body) => body.illuminationSource()),

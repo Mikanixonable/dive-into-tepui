@@ -52,10 +52,10 @@ const ZERO = v3();
 const OCCLUSION_MARGIN_M = 0.3;
 
 // 建造で鳴らす操作音の種別。装置の音名ではなく、建造側の語彙で表す。
-export type ConstructionSound = 'snap' | 'place' | 'remove' | 'deny' | 'finish';
+type ConstructionSound = 'snap' | 'place' | 'remove' | 'deny' | 'finish';
 
 // 建造セッションの対象船体が持つ、表示導出が読む面。
-export interface ConstructionViewShip {
+interface ConstructionViewShip {
   readonly id: string;
   readonly assembly: ShipAssembly;
   readonly motion: {
@@ -68,7 +68,7 @@ export interface ConstructionViewShip {
 
 // 表示導出が読む建造セッションの面。読み取りと、選択メニューの追従位置を
 // 書き込む口(syncSelectionMenu)を要求する。
-export interface ShipConstructionViewSource {
+interface ShipConstructionViewSource {
   readonly sessionShip: ConstructionViewShip | null;
   readonly anchorId: string | null;
   readonly held: ConstructionHeld | null;
@@ -97,7 +97,7 @@ export interface ShipConstructionViewSource {
 
 // 1フレームの同期結果。shipModuleEmphasis はモジュール船の強調宣言、sounds は鳴らす
 // 操作音の種別の列(発生順)。
-export interface ConstructionViewSyncResult {
+interface ConstructionViewSyncResult {
   readonly shipModuleEmphasis: ShipModuleEmphasisMap | null;
   readonly sounds: readonly ConstructionSound[];
 }
