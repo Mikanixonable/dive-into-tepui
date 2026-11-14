@@ -15,6 +15,10 @@ export class AeroLoad {
 
   public get qdyn(): number { return this._qdyn; }
 
+  private _airspeed: Vec3 | null = null;
+
+  public get airspeed(): Vec3 | null { return this._airspeed; }
+
   // いま浸っている外気の密度 [kg/m^3]。大気天体が無いとき 0。qdyn と同じく update が求め直す
   // キャッシュ。
   private _density = 0;
@@ -28,14 +32,17 @@ export class AeroLoad {
   ): void {
     const atm = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(atmospherePivot);
     if (atmosphereBody === null || atm === null) {
+      // 空力値が無いフレームでは、前回の密度・動圧・対気速度を残さない。
       this._qdyn = 0;
       this._density = 0;
+      this._airspeed = null;
       return;
     }
     const bodyState = atmosphereBody.stateAt(atmospherePivot);
-    const { density, speed } = airflow(sub(r, bodyState.r), sub(v, bodyState.v), atm);
+    const { density, speed, airspeed } = airflow(sub(r, bodyState.r), sub(v, bodyState.v), atm);
     this._density = density;
     this._qdyn = 0.5 * density * speed * speed;
+    this._airspeed = airspeed;
   }
 
   // 動圧が構造限界を超えたか。

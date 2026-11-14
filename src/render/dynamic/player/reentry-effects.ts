@@ -2,6 +2,7 @@
 // 対気速度方向の前方へ置く発光ビルボード2枚(コア+アウター)を所有する。
 import type * as THREE from 'three/webgpu';
 import { addScaled, lenSq, norm } from '../../../math/vec3';
+import type { Vec3 } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { Billboard } from '../../billboard';
 import type { FloatingOrigin } from '../../camera/floating-origin';
@@ -32,21 +33,21 @@ export class ReentryEffects {
     scene.add(this.outer.mesh);
   }
 
-  // 燃焼の表示を qdyn(動圧 [Pa])に応じた強度で速度方向前方に同期する。state は機体を置く
+  // 燃焼の表示を qdyn(動圧 [Pa])に応じた強度で対気速度方向前方に同期する。state は機体を置く
   // 表示時刻の運動状態で、引けないフレームは null。visible=false・強度 0・無速度では隠す。
   public sync(
-    fo: FloatingOrigin, state: KinematicState | null, qdyn: number,
+    fo: FloatingOrigin, state: KinematicState | null, qdyn: number, airspeed: Vec3 | null,
     visible: boolean, cameraQuat: THREE.Quaternion,
   ): void {
     const t = (qdyn - REENTRY_GLOW_MIN_Q) / (REENTRY_GLOW_FULL_Q - REENTRY_GLOW_MIN_Q);
     const intensity = Math.max(0, Math.min(1, t));
-    if (state === null || !visible || intensity <= 0 || lenSq(state.v) <= 1e-6) {
+    if (state === null || airspeed === null || !visible || intensity <= 0 || lenSq(airspeed) <= 1e-6) {
       this.core.hide();
       this.outer.hide();
       return;
     }
-    // TODO: 仕様(FLIGHT.md)は対気速度方向の前方だが、向きを ECI の絶対速度で決めている。
-    const dir = norm(state.v);
+    // 対気速度を再突入の前方軸として、2枚の発光板を機体前方へ置く。
+    const dir = norm(airspeed);
     const sc = REENTRY_SIZE_MIN + REENTRY_SIZE_SPAN * intensity;
     this.core.sync(fo.RtoThreeV3(addScaled(state.r, dir, REENTRY_CORE_OFFSET)),
       sc * REENTRY_CORE_SIZE_RATIO, REENTRY_CORE_BRIGHTNESS * intensity, cameraQuat);
