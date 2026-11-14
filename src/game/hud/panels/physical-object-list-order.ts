@@ -41,7 +41,7 @@ interface PrevInput {
   id: string;
   name: string;
   section: MapListSection | null;
-  parent: string | undefined;
+  parent: string | null;
   matched: boolean;
 }
 
@@ -66,7 +66,7 @@ export class PhysicalObjectListOrder {
   // 並べ替え・親子構造の入力を前フレームぶん保持し、変化した時だけ組み直す。
   private readonly prevInputs: PrevInput[] = [];
   private prevSort: PhysicalObjectListSort | null = null;
-  private prevFilter: PhysicalObjectListFilter | null | undefined = undefined;
+  private prevFilter: PhysicalObjectListFilter | null = null;
   // 今フレームの並べ替え・絞り込みの基準。refreshInputs が候補列から導き直す。
   private readonly sortKeys = new Map<string, ListSortKey>();
   private viewer: OrbitingObject | null = null;
@@ -105,13 +105,13 @@ export class PhysicalObjectListOrder {
   // 距離・所属系・優先度も候補列から導き直すので、他のメソッドより先に呼ぶこと。
   public refreshInputs(
     items: readonly ListedObject[], parentOf: ReadonlyMap<string, string>,
-    viewer: OrbitingObject | null, displayTime: number, focusId: string | undefined,
+    viewer: OrbitingObject | null, displayTime: number, focusId: string | null,
   ): boolean {
     this.rebuildSortKeys(items, viewer, displayTime, focusId);
     let changed = this.prevInputs.length !== items.length || this.prevSort !== this.sort || this.prevFilter !== this.filter;
     let i = 0;
     for (const item of items) {
-      const parent = parentOf.get(item.id);
+      const parent = parentOf.get(item.id) ?? null;
       const matched = this.matches(item);
       const prev = this.prevInputs[i];
       if (!changed && (!prev || prev.id !== item.id || prev.name !== item.name
@@ -135,7 +135,7 @@ export class PhysicalObjectListOrder {
   // 太陽系順、操作対象からの距離は近さ順、所属系は人工物と敵の絞り込みが読む。
   private rebuildSortKeys(
     items: readonly ListedObject[], viewer: OrbitingObject | null, displayTime: number,
-    focusId: string | undefined,
+    focusId: string | null,
   ): void {
     this.viewer = viewer;
     this.displayTime = displayTime;
@@ -200,10 +200,10 @@ export class PhysicalObjectListOrder {
     for (const list of order.childIds.values()) list.length = 0;
     order.rootIds.length = 0;
     for (const id of displayIds) {
-      const parent = parentOf.get(id);
+      const parent = parentOf.get(id) ?? null;
       // 親が今フレーム同じ区画に見当たらない(遮蔽等で一時的に消えた等)行は根として扱う —
       // 親が現れないせいで子ごと画面から消えてしまうより、優先して表示する側にフォールバックする。
-      if (parent === undefined || !idsInSection.has(parent)) { order.rootIds.push(id); continue; }
+      if (parent === null || !idsInSection.has(parent)) { order.rootIds.push(id); continue; }
       const list = order.childIds.get(parent);
       if (list) list.push(id); else order.childIds.set(parent, [id]);
     }
