@@ -154,11 +154,6 @@
       "count": 1
     }
   },
-  "src/game/stages/stage.ts": {
-    "no-restricted-syntax": {
-      "count": 2
-    }
-  },
   "src/game/targeter.ts": {
     "no-restricted-syntax": {
       "count": 1

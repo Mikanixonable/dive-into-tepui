@@ -1,3 +1,4 @@
+// パーツ式の被弾モデルを持つ艦の基底と、艦に共通する材質・物性の定数。
 import type { Attitude } from '../../../physics/attitude';
 import { DynamicEntity, type DynamicMotionFactory } from './dynamic-entity';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
@@ -47,7 +48,6 @@ export function shipMotionOptions(
   };
 }
 
-export const MUZZLE_SPEED = 1000; // 機関砲初速 [m/s]
 
 // パーツ式の被弾モデルを持つ艦(自機・敵機)。HP と性能はパーツの合計から求める。
 export abstract class Ship extends DynamicEntity {
@@ -60,9 +60,9 @@ export abstract class Ship extends DynamicEntity {
   protected get parts(): readonly Part[] { return this.inventory.parts; }
 
   public get hp(): number { return this._hp; }
-  public set hp(value: number) { this._hp = value; }
+  protected set hp(value: number) { this._hp = value; }
   public get maxHp(): number { return this._maxHp; }
-  public set maxHp(value: number) { this._maxHp = value; }
+  protected set maxHp(value: number) { this._maxHp = value; }
 
   // type 別のパーツ参照。parts を入れ替えたら組み直す。値ではなく参照を持つので、パーツの
   // HP・燃料の変化はそのまま読める。
@@ -233,7 +233,7 @@ export abstract class Ship extends DynamicEntity {
     return this.markerRenderer.headingHpMarker(this.hp, this.maxHp, isEnemy);
   }
 
-  // パーツベースの性能取得
+  // 健全なスラスターの姿勢制御トルクの合計 [N·m]。
   public get totalTorque(): number {
     return this.inventory.healthySum('thruster', p => p.torque);
   }

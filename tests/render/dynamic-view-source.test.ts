@@ -67,6 +67,7 @@ function viewFrame(camera: CameraFrame, pools: InstancedPools): DynamicViewFrame
     style: 'realistic',
     visual: { proteinVibration: false, thrustPlume: 'simple' },
     proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
+    shipModuleEmphasis: null,
     sunLight,
     bodyShadow: new BodyShadow(sunLight),
     pools,

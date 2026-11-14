@@ -9,6 +9,10 @@ export const EARTH_TILE_EXTENT = EARTH_TILE_TEXELS + 2 * EARTH_TILE_GUTTER;
 export const EARTH_TILE_LAYERS = 96;
 export const EARTH_BASE_LAYER = 255;
 
+// GPUページ表の寸法。各セルが1タイルを指し、経度の両端は同じセルへ畳む。
+export const EARTH_PAGE_WIDTH = 2 ** (EARTH_TILE_MAX_Z + 1);
+export const EARTH_PAGE_HEIGHT = 2 ** EARTH_TILE_MAX_Z;
+
 // minZoomから指定maxZoomまでの全球タイル総数を返す。
 export function earthSurfaceTileCount(maxZoom: number): number {
   if (!Number.isInteger(maxZoom) || maxZoom < EARTH_TILE_MIN_Z || maxZoom > EARTH_TILE_MAX_Z) {

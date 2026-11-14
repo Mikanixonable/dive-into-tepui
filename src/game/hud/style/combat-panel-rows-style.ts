@@ -46,6 +46,12 @@ export const COMBAT_PANEL_ROWS_STYLE = `
    いずれもタッチ・マウスどちらでも常設)。 */
 .combat-panel .panel-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
 .combat-panel .panel-actions .w-btn { font-size: var(--font-xxs); padding: var(--space-2) var(--space-3); }
+/* 建造の入口は操作区画の先頭に置く主操作で、区画の全幅を使い、その下に1行の説明を添える。 */
+#hud-vessel-status .vessel-construction { flex: 0 0 100%; }
+#hud-vessel-status .vessel-construction .w-btn { width: 100%; }
+#hud-vessel-status .vessel-construction-note {
+  margin-top: var(--space-1); color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.45;
+}
 /* スロットル 1-4 の SegmentedControl。タッチ UI が出ている間だけ表示する — 表示条件は
    body.touch-ui-active と同じものに載せ、ここで別の判定を作らない。 */
 #hud-vessel-status .status-throttle-touch { display: none; margin-top: var(--space-3); }

@@ -10,7 +10,7 @@ import {
   createUnavailableEarthSurfaceCapture,
   measureAdjacent8BitDifference,
   normalizeEarthSurfaceMetrics,
-} from '../../src/render/earth-surface-metrics';
+} from '../../tools/render-lab/earth-surface-metrics';
 
 export function register(): void {
   test('earth surface metrics: 隣接差0と2/255境界を丸めず記録する', () => {

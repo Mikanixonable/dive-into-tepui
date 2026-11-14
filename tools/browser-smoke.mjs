@@ -102,6 +102,15 @@ async function rightClickAt(x, y) {
   await devTools.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
 }
 
+// 建造の接続ノードは pointer-events:none の DOM マーカーなので、ノードの画面位置へ
+// キャンバスの左クリックを送る。配置済みモジュールの面に載ったノードへクリックすると、
+// そのモジュールが当たり判定で選ばれる。
+async function leftClickAt(x, y) {
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0 });
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+}
+
 // 全てのキーが真であることを求め、偽が混ざっていればその内訳ごと投げる。
 function expectAll(label, state) {
   if (!Object.values(state).every(Boolean)) throw new Error(`${label}: ${JSON.stringify(state)}`);
@@ -600,37 +609,105 @@ async function placeShipThroughMenu() {
   return placedName;
 }
 
-async function selectConstructionModuleAndPlace(label, expectedCount) {
-  const selected = await devTools.evaluate(`(() => {
-    const panel = document.getElementById('ship-construction-panel');
-    const select = panel?.querySelector('select[aria-label="追加するモジュール"]');
-    if (!select) return 'module selector is missing';
-    const index = [...select.options].findIndex((option) => option.textContent === ${JSON.stringify(label)});
-    if (index < 0) return 'module option is missing: ' + ${JSON.stringify(label)};
-    select.selectedIndex = index;
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+// パネル内の .w-btn を表示文字の前方一致で探して押す。無効(.disabled)や不在は失敗。
+async function clickPanelButton(scopeSelector, textPrefix, label) {
+  const error = await devTools.evaluate(`(() => {
+    const button = [...document.querySelectorAll(${JSON.stringify(scopeSelector + ' .w-btn')})]
+      .find((item) => item.textContent?.trim().startsWith(${JSON.stringify(textPrefix)}));
+    if (!button) return 'button is missing: ' + ${JSON.stringify(textPrefix)};
+    if (button.classList.contains('disabled')) return 'button is disabled: ' + ${JSON.stringify(textPrefix)};
+    button.click();
     return '';
   })()`);
-  if (selected) throw new Error(`Construction module selection failed: ${selected}`);
+  if (error) throw new Error(`${label}: ${error}`);
+}
+
+// カタログのタブを選び、名前の一致するカードを押して手に取る。タブはキーキャップを
+// 伴うのでラベルの前方一致で探し、手持ちは手元バーの「置く: <名前>」欄で確かめる。
+// カードを押しても手に取れない既知の回退に備え、[Tab] の送りで同名の定義を持つまで巡回する
+// 保険経路を持つ — カード押下が直ったら保険は発動しなくなる。
+async function holdCatalogCard(tabLabel, cardName) {
+  const error = await devTools.evaluate(`(() => {
+    const panel = document.getElementById('ship-construction-panel');
+    const tab = [...panel.querySelectorAll('.construction-category-tabs .w-btn')]
+      .find((b) => b.textContent?.trim().startsWith(${JSON.stringify(tabLabel)}));
+    if (!tab) return 'tab is missing: ' + ${JSON.stringify(tabLabel)};
+    tab.click();
+    return '';
+  })()`);
+  if (error) throw new Error(`Construction catalog tab failed: ${error}`);
   await waitFor(
-    `(() => {
-      const panel = document.getElementById('ship-construction-panel');
-      const button = [...panel.querySelectorAll('.construction-actions .w-btn')]
-        .find((item) => item.textContent?.trim() === '配置');
-      return button && !button.disabled;
-    })()`,
-    `${label} to become placeable`,
+    `[...document.querySelectorAll('#ship-construction-panel .construction-module-card .construction-module-name')]
+      .some((el) => el.textContent === ${JSON.stringify(cardName)})`,
+    `the ${cardName} card to appear in the ${tabLabel} tab`,
   );
   await devTools.evaluate(`(() => {
-    const panel = document.getElementById('ship-construction-panel');
-    [...panel.querySelectorAll('.construction-actions .w-btn')]
-      .find((item) => item.textContent?.trim() === '配置')?.click();
+    const card = [...document.querySelectorAll('#ship-construction-panel .construction-module-card')]
+      .find((el) => el.querySelector('.construction-module-name')?.textContent === ${JSON.stringify(cardName)});
+    card?.querySelector('.w-btn')?.click();
   })()`);
-  await waitFor(
-    `document.querySelector('[data-id="construction-count"]')?.textContent === '${expectedCount}'`,
-    `${label} placement to update the construction assembly`,
-  );
+  const heldExpr = `document.querySelector('#ship-construction-panel [data-id="construction-hand-name"]')?.textContent === ${JSON.stringify(cardName)}`;
+  await waitFor(heldExpr, `${cardName} to be held after pressing its card`, 2_000);
 }
+
+// 取り付け候補の一覧から有効な項目を押し、手元バーの「置く」で置く。候補を押すとそれが
+// 「指している取り付け先」になり、対応する接続ノードへ mk-construction-node-pointed が付く。
+// 次の条件を満たす候補だけを使う:
+// - 一覧項目の文言に「継ぎ目」を含まない(割り込みは既存の部分をモジュールへ付け直す)
+// - 「ドック」を含まない(接合面へのクリックが親を選んだとき、起点ドックは選べないため)
+// - 指した候補の接続ノードが画面に見えている(位置を記録して後のクリックに使うため)
+// - 「置く」が押せる(指した候補への試し置きが妥当)
+// 戻り値は置いた接合面の画面位置で、置いたモジュールをクリックで選ぶ検証に使う。
+async function placeHeldAtFreeEnd(expectedCount) {
+  // 取り付け候補の一覧は右ペインの「候補」タブの中にある。読む前に開く。
+  await clickPanelButton(
+    '#ship-construction-panel [data-id="construction-state-tabs"]', '候補', 'open the targets tab',
+  );
+  const slotCount = await devTools.evaluate(
+    `document.querySelectorAll('#ship-construction-panel .construction-slot-button[data-valid="true"]').length`,
+  );
+  const tried = [];
+  for (let index = 0; index < slotCount; index++) {
+    const label = await devTools.evaluate(`(() => {
+      const slots = [...document.querySelectorAll('#ship-construction-panel .construction-slot-button[data-valid="true"]')];
+      const slot = slots[${index}];
+      if (!slot) return '';
+      slot.click();
+      return slot.querySelector('.construction-slot-label')?.textContent ?? slot.textContent ?? '';
+    })()`);
+    if (label === '' || label.includes('継ぎ目') || label.includes('ドック')) {
+      tried.push(`${index}: ${label || 'gone'}`);
+      continue;
+    }
+    let attachPoint;
+    try {
+      await waitFor(`(() => {
+        const node = document.querySelector('.mk-construction-node-pointed');
+        if (!node || getComputedStyle(node).display === 'none') return false;
+        const button = [...document.querySelectorAll('#ship-construction-panel [data-id="construction-hand-actions"] .w-btn')]
+          .find((item) => item.textContent?.trim().startsWith('置く'));
+        return button !== undefined && !button.classList.contains('disabled');
+      })()`, `the place button to enable with a visible node for ${label}`, 1_500);
+      attachPoint = await devTools.evaluate(`(() => {
+        const node = document.querySelector('.mk-construction-node-pointed');
+        const rect = node.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })()`);
+    } catch {
+      tried.push(`${label}: not placeable with a visible node`);
+      continue;
+    }
+    await clickPanelButton('#ship-construction-panel [data-id="construction-hand-actions"]', '置く', `placement at ${label}`);
+    await waitFor(
+      `document.querySelector('#ship-construction-panel [data-id="construction-count"]')?.textContent === '${expectedCount}'`,
+      `placement at ${label} to update the module count`,
+    );
+    return attachPoint;
+  }
+  throw new Error(`No placeable construction target among ${slotCount} valid slots: ${tried.join('; ')}`);
+}
+
+
 
 async function checkConstructionLayout() {
   for (const viewport of VIEWPORTS) {
@@ -643,7 +720,7 @@ async function checkConstructionLayout() {
       else if (!insideViewport(rect(workspace))) errors.push('construction workspace outside viewport');
       const parts = [
         ...workspace.querySelectorAll('.construction-pane'),
-        workspace.querySelector('.construction-center'),
+        workspace.querySelector('.construction-hand'),
         workspace.querySelector('.construction-mobile-tabs'),
       ].filter(visible);
       const rects = parts.map(rect);
@@ -665,67 +742,137 @@ async function checkConstructionLayout() {
 }
 
 async function constructMaterialFromBaseDock() {
-  await devTools.evaluate(`(() => {
-    const title = [...document.querySelectorAll('.property-window .prop-window-related-title')]
-      .find((item) => item.textContent?.includes('搭載モジュール'));
-    title?.click();
-  })()`);
+  // 配置した基地は配置時点で操作対象になる。マップから戦闘ビューへ入り、艦の
+  // ステータスパネルの「建造」(B キーと同じ入口)から建造を始める。
+  await pressKey('m', 'KeyM', 77);
   await waitFor(
-    `[...document.querySelectorAll('.property-window .prop-window-related-item')]
-      .some((item) => getComputedStyle(item).display !== 'none' && item.textContent?.includes('dock-standard'))`,
-    'the base dock module to appear in the property window',
+    `Boolean(document.querySelector('.hud-combat-root.active'))`,
+    '[M] to enter the combat view with the placed base',
   );
-  await devTools.evaluate(`(() => {
-    const row = [...document.querySelectorAll('.property-window .prop-window-related-item')]
-      .find((item) => item.textContent?.includes('dock-standard'));
-    const r = row.getBoundingClientRect();
-    row.dispatchEvent(new MouseEvent('contextmenu', {
-      bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
-    }));
-  })()`);
   await waitFor(
-    `[...document.querySelectorAll('.property-window .prop-window-item')]
-      .some((item) => item.textContent?.includes('船体を建造'))`,
-    'the dock construction action to appear',
+    `(() => {
+      const button = document.querySelector('#hud-vessel-status [data-id="vessel-construction"]');
+      return Boolean(button) && !button.closest('.vessel-construction')?.classList.contains('hidden');
+    })()`,
+    'the construction entry to appear in the vessel status panel',
   );
-  await devTools.evaluate(`(() => {
-    [...document.querySelectorAll('.property-window .prop-window-item')]
-      .find((item) => item.textContent?.includes('船体を建造'))?.click();
-  })()`);
+  await devTools.evaluate(
+    `document.querySelector('#hud-vessel-status [data-id="vessel-construction"]')?.click()`,
+  );
   await waitFor(
     `Boolean(document.querySelector('.hud-combat-root.active'))
       && !document.getElementById('ship-construction-panel')?.classList.contains('hidden')`,
-    'construction mode to enter the combat view',
+    'construction to start in the combat view',
   );
   await checkConstructionLayout();
-  // layout CIの責務は建造workspaceの幾何まで。詳細な建造操作smokeは通常GPU経路で別途維持する。
-  if (layoutOnly) return;
 
-  await devTools.evaluate(`(() => {
-    window.__smokeConfirmMessages = [];
-    window.confirm = (message) => { window.__smokeConfirmMessages.push(String(message)); return true; };
-  })()`);
-  await selectConstructionModuleAndPlace('主燃料タンク 3m', 1);
-  const materialWarning = await devTools.evaluate(`({
-    material: document.querySelector('[data-id="construction-role"]')?.textContent === '物資',
-    warned: document.querySelector('[data-id="construction-warning"]')?.textContent?.includes('操縦不能') === true,
-  })`);
-  expectAll('Cockpit-less construction did not show its material warning', materialWarning);
-  await selectConstructionModuleAndPlace('主推進器', 2);
-  await selectConstructionModuleAndPlace('ドッキングポート', 3);
-  await devTools.evaluate(`(() => {
-    const panel = document.getElementById('ship-construction-panel');
-    [...panel.querySelectorAll('.construction-actions .w-btn')]
-      .find((item) => item.textContent?.trim() === '建造終了')?.click();
-  })()`);
+  // 指標のモジュール数は船体全体の個数(起点ドック側の既存部分を含む)。
+  const baseCount = Number(await devTools.evaluate(
+    `document.querySelector('#ship-construction-panel [data-id="construction-count"]')?.textContent`,
+  ));
+  if (!Number.isInteger(baseCount) || baseCount <= 0) {
+    throw new Error(`Could not read the construction module count: ${baseCount}`);
+  }
+
+  // カードを押して手に取り、取り付け候補の一覧の有効な項目を押して「配置」で置く、を2種類行う。
+  // 配置の反映はモジュール数と操作履歴(最新が先頭)で確かめる。
+  await holdCatalogCard('燃料', '主燃料タンク 3m');
+  await placeHeldAtFreeEnd(baseCount + 1);
   await waitFor(
-    `document.getElementById('ship-construction-panel')?.classList.contains('hidden') === true`,
-    'the material vessel to launch',
+    `document.querySelector('#ship-construction-panel .construction-history-item')?.textContent?.includes('を配置') === true`,
+    'the first placement to appear in the history',
   );
-  const confirmed = await devTools.evaluate(
-    `window.__smokeConfirmMessages.some((message) => message.includes('操縦不能な物資'))`,
+  await holdCatalogCard('推進', '主推進器');
+  // 配置した接合面の画面位置を記録しておき、手放したあとその位置をクリックすると
+  // 置いたモジュール(の面)が当たり判定で選ばれる。
+  const attachPoint = await placeHeldAtFreeEnd(baseCount + 2);
+  await waitFor(
+    `document.querySelector('#ship-construction-panel .construction-history-item')?.textContent?.includes('を配置') === true`,
+    'the second placement to appear in the history',
   );
-  if (!confirmed) throw new Error('The cockpit-less launch confirmation was not shown.');
+
+  // 置くと手は空になるので、接合面のあった位置をそのままクリックすると、その面の
+  // モジュールが選ばれる。手元バーは選ぶと「選択: <名前>」へ切り替わり、操作は
+  // モジュールの脇へ追従する選択メニューに出る。
+  await leftClickAt(attachPoint.x, attachPoint.y);
+  await waitFor(
+    `document.querySelector('#ship-construction-panel [data-id="construction-hand-state"]')?.textContent === '選択:'`,
+    'the placed module to be selected by clicking its attach face',
+  );
+  await waitFor(
+    `(() => {
+      const menu = document.querySelector('[data-id="construction-selection-menu"]');
+      return menu !== null && !menu.classList.contains('hidden');
+    })()`,
+    'the selection menu to appear beside the selected module',
+  );
+  const selectedName = await devTools.evaluate(
+    `document.querySelector('#ship-construction-panel [data-id="construction-hand-name"]')?.textContent`,
+  );
+
+  // 選んだモジュールを先端部ごと撤去する。撤去は選択メニューのボタンで行う。
+  // 撤去したモジュールより先に置いたモジュールは先端部として一緒に外れるため、
+  // 個数は減ることだけを見て、戻りは撤去前との一致で見る。
+  await clickPanelButton(
+    '[data-id="construction-selection-menu"]', '撤去', `remove ${selectedName}`,
+  );
+  await waitFor(
+    `(() => {
+      const count = Number(document.querySelector('#ship-construction-panel [data-id="construction-count"]')?.textContent);
+      return Number.isInteger(count) && count < ${baseCount + 2};
+    })()`,
+    'the removal to drop the selected tip part',
+  );
+  await waitFor(
+    `document.querySelector('#ship-construction-panel [data-id="construction-hand-state"]')?.textContent?.startsWith('カードを押して') === true`
+      + ` && document.querySelector('#ship-construction-panel .construction-history-item')?.textContent?.includes('を撤去') === true`,
+    'the removal to clear the selection and appear in the history',
+  );
+
+  // 「取り消し」で撤去前の船体へ戻る。操作は「履歴」タブの中にある。
+  await clickPanelButton(
+    '#ship-construction-panel [data-id="construction-state-tabs"]', '履歴', 'open the history tab',
+  );
+  await clickPanelButton(
+    '#ship-construction-panel [data-id="construction-history-actions"]', '取り消し', 'undo the removal',
+  );
+  await waitFor(
+    `document.querySelector('#ship-construction-panel [data-id="construction-count"]')?.textContent === '${baseCount + 2}'`,
+    'undo to restore the removed tip part',
+  );
+
+  // 破壊的操作は確認オーバーレイを挟む。「変更をすべて取り消す」で確定すると
+  // 開始時の船体へ戻り、モジュール数が配置前へ戻ることで確かめる。
+  await clickPanelButton(
+    '#ship-construction-panel .construction-close-actions', '変更をすべて取り消す', 'discard all changes',
+  );
+  await waitFor(
+    `(() => {
+      const overlay = document.querySelector('.confirmation-overlay');
+      return overlay !== null && !overlay.hidden
+        && overlay.querySelector('.confirmation-overlay-message')?.textContent?.includes('取り消し') === true;
+    })()`,
+    'the discard-all confirmation to appear',
+  );
+  await clickPanelButton('.confirmation-overlay-actions', 'すべて取り消す', 'confirm discarding all changes');
+  await waitFor(
+    `(() => {
+      const overlay = document.querySelector('.confirmation-overlay');
+      return (overlay === null || overlay.hidden === true)
+        && !document.getElementById('ship-construction-panel')?.classList.contains('hidden')
+        && document.querySelector('#ship-construction-panel [data-id="construction-count"]')?.textContent === '${baseCount}';
+    })()`,
+    'the confirmed discard to restore the starting hull while staying in construction',
+  );
+
+  // 建造終了は編集を閉じるだけで、行った変更はそのまま残る。パネルが畳まれ、
+  // 戦闘ビューが残ることで確かめる。
+  await clickPanelButton('#ship-construction-panel .construction-close-actions', '建造終了', 'finish construction');
+  await waitFor(
+    `document.getElementById('ship-construction-panel')?.classList.contains('hidden') === true
+      && Boolean(document.querySelector('.hud-combat-root.active'))`,
+    'the construction workspace to fold back into the combat view',
+  );
 }
 
 async function bootAndCheckReady() {

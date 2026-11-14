@@ -7,10 +7,16 @@ import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import { RingView } from '../../src/render/celestial/ring-view';
 import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
-import { v3 } from '../../src/math/vec3';
+import { Q_IDENTITY } from '../../src/math/quat';
+import { sub, v3, type Vec3 } from '../../src/math/vec3';
+import { createBasePreset } from '../../src/game/ship/ship-presets';
+import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
+import { constructionRotationRing } from '../../src/game/ship/ship-construction-rotation';
+import { RotationRingView } from '../../src/render/dynamic/ship/rotation-ring-view';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
 import { PROTEIN_CASES } from './protein-cases';
 import { SHIP_CASES } from './ship-cases';
+import { THUMBNAIL_CASES } from './thumbnail-cases';
 import { EARTH_CASES } from './earth-cases';
 import { MATERIAL_CASES } from './material-cases';
 import { SHADOW_CASES } from './shadow-cases';
@@ -19,7 +25,8 @@ import { CASING_CASES } from './casing-cases';
 import { ASSEMBLY_CASES } from './assembly-cases';
 import { PLUME_CASES } from './plume-cases';
 import {
-  circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, texturedBody, VIEW_HEIGHT, VIEW_WIDTH,
+  circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, shipObject, texturedBody,
+  VIEW_HEIGHT, VIEW_WIDTH,
   type CaseBuilder, type LabCase,
 } from './lab-case';
 import type { LabViewAngles } from './view-angles';
@@ -164,6 +171,49 @@ function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   };
 }
 
+// 建造の回転リング。選択中モジュールの接続軸まわりの円と両回りの矢印を、静止中の
+// 姿(main-tank)とドラッグ中の姿(solar-left、回した角の弧とスナップ位置)の両方で撮る。
+// リングは船体に隠れても消えない。
+function constructionRing(): LabCase {
+  const assembly = createBasePreset();
+  const shape = shipPhysicsShape(assembly);
+  if (shape === null) throw new Error('ship assembly is empty');
+  const SHIP_POSITION = -30;
+  const ship = shipObject(assembly);
+  ship.position.set(0, 0, SHIP_POSITION);
+  const face = {
+    assembly,
+    motion: {
+      state: { r: v3() }, att: { q: Q_IDENTITY }, centerOffset: shape.centerOffset,
+      assemblyToEci: (local: Vec3): Vec3 => sub(local, shape.centerOffset),
+    },
+  };
+  const shift = (p: Vec3): Vec3 => v3(p.x, p.y, p.z + SHIP_POSITION);
+  const main = constructionRotationRing(face, 'main-tank');
+  const solar = constructionRotationRing(face, 'solar-left');
+  if (main === null || solar === null) throw new Error('construction rotation ring is missing');
+  // 静止中とドラッグ中のリングを、艦上の2モジュールへ同期する。
+  const idle = new RotationRingView(undefined, false);
+  idle.sync({ position: shift(main.centerEci), rotation: main.rotation, radius: main.radius, drag: null });
+  const dragging = new RotationRingView(undefined, false);
+  dragging.sync({
+    position: shift(solar.centerEci), rotation: solar.rotation, radius: solar.radius,
+    drag: { startAngle: 0.4, angle: 2.6, appliedSteps: 2 },
+  });
+  return {
+    objects: [ship, idle.object, dragging.object],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, SHIP_POSITION),
+    dispose: () => { idle.dispose(); dragging.dispose(); },
+    shots: {
+      'construction-rotation-ring': { view: {} },
+      'construction-rotation-ring-drag': {
+        view: { cameraAzimuthDeg: -35, cameraElevationDeg: 20, cameraDistanceLog: -0.45 },
+      },
+    },
+  };
+}
+
 export const CASES = {
   ...EARTH_CASES,
   ...MATERIAL_CASES,
@@ -172,11 +222,13 @@ export const CASES = {
   'order': order,
   'march-slab': marchSlab,
   ...SHIP_CASES,
+  'construction-ring': constructionRing,
   ...PLUME_CASES,
   ...BELT_CASES,
   ...CASING_CASES,
   ...PROTEIN_CASES,
   ...ASSEMBLY_CASES,
+  ...THUMBNAIL_CASES,
 } as const satisfies Record<string, CaseBuilder>;
 
 export type CaseName = keyof typeof CASES;

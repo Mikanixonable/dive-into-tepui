@@ -18,6 +18,7 @@ import { AmbientSource } from './lighting/ambient-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
 import { SphereSpecular } from './lighting/sphere-light';
 import { SunSource } from './lighting/sun-source';
+import { WorkLightSource } from './lighting/work-light-source';
 import { MaterialPass } from './material-pass';
 import { ShadowPass } from './shadow/shadow-pass';
 import { BodyShadow } from './shadow/body-shadow';
@@ -53,6 +54,7 @@ export class RenderPipeline {
   private readonly sunSource: SunSource;
   private readonly _planetLight: PlanetLightSource;
   private readonly _ambient: AmbientSource;
+  private readonly _workLight: WorkLightSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
@@ -101,6 +103,7 @@ export class RenderPipeline {
   public get cumulusShadow(): CloudShadowRenderer { return this._cumulusShadow; }
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
+  public get workLight(): WorkLightSource { return this._workLight; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
 
   // graphics は構築時点の描画品質設定。以後の変更は rebuildForGraphics() で受ける。
@@ -129,8 +132,9 @@ export class RenderPipeline {
     this._planetLight = new PlanetLightSource(
       this._sunLight, this._bodyShadow, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel);
     this._ambient = new AmbientSource(this._sunLight);
+    this._workLight = new WorkLightSource(this.sphereSpecular);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
-      this.sunSource, ...this._planetLight.lightSources, this._ambient,
+      this.sunSource, ...this._planetLight.lightSources, this._ambient, this._workLight,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
 
