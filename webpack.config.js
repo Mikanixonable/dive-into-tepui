@@ -28,10 +28,13 @@ const earthSurfaceManifestUrl = configuredEarthSurfaceManifestUrl
       ? localEarthSurfaceManifestUrl
       : DEFAULT_EARTH_SURFACE_R2_MANIFEST_URL);
 
-module.exports = {
+module.exports = (env, argv) => ({
   cache: {
     type: 'filesystem',
-    name: 'tepui',
+    // production と development でキャッシュ名を分ける。同じ名前を共有すると、片方の
+    // モードが書いたモジュールをもう片方が読み、ソースが undefined として復元されて
+    // stats 生成が RawSource.size の ERR_INVALID_ARG_TYPE で落ちる。
+    name: `tepui-${argv.mode ?? 'development'}`,
     cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
   },
   entry: {
@@ -68,15 +71,6 @@ module.exports = {
       {
         // 船モジュールの統合 GLB バイナリは main JS へ埋め込まず、起動時に fetch する。
         test: /\.(glb|gltf)$/,
-        type: 'asset/resource',
-        generator: { filename: 'assets/[hash][ext]' },
-      },
-      {
-        // タンパク質の主鎖・構造・モーション JSON はバンドルへインライン化せず、
-        // 別ファイルとして書き出して import 元へは URL 文字列を渡す(起動時ダウンロード量を
-        // 抑えるため)。semantic など他の JSON は既定どおりバンドルへ含める。
-        test: /(Backbone|Structure|Motion)\.json$/,
-        include: path.resolve(__dirname, 'src/assets/models'),
         type: 'asset/resource',
         generator: { filename: 'assets/[hash][ext]' },
       },
@@ -143,4 +137,4 @@ module.exports = {
     liveReload: false,
     hot: false,
   },
-};
+});
