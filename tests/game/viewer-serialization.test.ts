@@ -13,7 +13,7 @@ import type { CelestialSystem } from '../../src/game/celestial/celestial-system'
 import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
 
 // 操作対象がいる進行。戦闘ビューへ入れる。
-const control = { current: { plan: { nodes: [] } } };
+const control = { current: { id: 'ship-1', plan: { nodes: [] } } };
 const emptyRoster: EntityRoster = { all: () => [], collectionRevision: 0, simTime: 0 };
 
 // 新しいゲームの視点を、celestialSystem の天体で組む。
