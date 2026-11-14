@@ -14,7 +14,6 @@ import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffRadius } from '../atm
 import { AtmosphereIntegrator } from './atmosphere-integrator';
 import { viewPositionAt, viewRayAt } from './view-ray';
 import { cirrusOctavesOf, type CirrusDetail } from '../cloud/cloud-detail';
-import type { CloudSpecies } from './cloud-atmosphere-renderer';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { BodyShadow } from './shadow/body-shadow';
@@ -108,11 +107,6 @@ export class AtmospherePass {
     });
     this.material.colorNode = composed;
     this.quad = new QuadMesh(this.material);
-  }
-
-  // 種類ごとに、雲の殻を描くかを置き直す。
-  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    this.layer.setCloudShellEnabled(species, enabled);
   }
 
   // 巻雲の細部の精細さを置く。段数は uniform なので、グラフは組み直さない。

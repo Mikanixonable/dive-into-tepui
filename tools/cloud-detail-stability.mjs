@@ -40,10 +40,10 @@ const STABLE_RATIO = 0.1;
 // 視点の安定性を見る構図(全体で位置合わせ)と、時間の計測に使う構図(小区画で位置合わせ)。
 const VIEWPOINT_VARIANTS = ['shift', 'zoom'];
 const LATER_VARIANTS = ['later10', 'later30'];
-// 時間の計測を行う種類。両方・積雲だけ・巻雲だけ。
-const KINDS = ['both', 'cumulus', 'cirrus'];
+// 時間の計測を行う種類。両方・巻雲だけ。
+const KINDS = ['both', 'cirrus'];
 // 撮影名の末尾の -stab-<構図>[-<種類>]。種類の無標は両方。
-const STABILITY_NAME = /-stab-(base|shift|zoom|later10|later30)(?:-(both|cumulus|cirrus))?$/;
+const STABILITY_NAME = /-stab-(base|shift|zoom|later10|later30)(?:-(both|cirrus))?$/;
 
 // 一覧のうち、まだ無いものを撮って shotsDir へ書く。
 async function shootMissing(names) {
