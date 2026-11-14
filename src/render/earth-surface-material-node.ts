@@ -4,7 +4,6 @@ import {
 } from 'three/tsl';
 import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
 import { earthSurfaceNormalFromRadialNode, earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
-import { EARTH_WATER_ROUGHNESS } from './earth-surface-material';
 import { configureEarthSurfaceTexture } from './earth-surface-texture';
 import {
   EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
@@ -101,6 +100,11 @@ function sampleLodTexture(
     return value;
   })() as Vec4Node;
 }
+
+// 水面・陸地・氷床の固定roughness。シェーダとテスト側の参照実装が共有する。
+export const EARTH_WATER_ROUGHNESS = 0.05;
+export const EARTH_LAND_ROUGHNESS = 0.80;
+export const EARTH_ICE_ROUGHNESS = 0.35;
 
 // 粗さチャンネルが水クラス(0.05)そのものの画素だけを通す閾値。地形テクスチャは A8 に
 // 量子化されるので、13/255 の水の値だけを拾い、粗さが混ざる陸・氷の画素は外す。

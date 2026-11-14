@@ -151,11 +151,6 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: 'レンズ効果',
     presets: { low: false, medium: true, high: true },
   },
-  // タンパク質型の敵の構造の揺らぎ。
-  proteinVibration: {
-    kind: 'toggle', group: 'element', label: 'タンパク質の敵の揺らぎ',
-    presets: { low: false, medium: true, high: true },
-  },
   // 主推進の排気プルームの描き方。体積は排気を透過する立体として、簡易は発光板として描く。
   thrustPlume: {
     kind: 'choice', group: 'element', label: '噴射プルーム',
@@ -184,6 +179,11 @@ export const GRAPHICS_OPTIONS = {
   // 面の向きによらない一様な環境光を足すか。
   ambient: {
     kind: 'toggle', group: 'light', label: '環境光',
+    presets: { low: true, medium: true, high: true },
+  },
+  // 建造中にカメラへ追従して船体を照らす作業灯。建造中でなければ点かない。
+  constructionWorkLight: {
+    kind: 'toggle', group: 'light', label: '建造の作業灯',
     presets: { low: true, medium: true, high: true },
   },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。

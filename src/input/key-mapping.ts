@@ -4,7 +4,9 @@
 export interface KeyBinding {
   readonly code: string; // KeyboardEvent.code。タッチ UI の仮想キーもこれを流す
   readonly altCodes?: readonly string[]; // 同じ操作を受け付ける別キー
-  readonly label: string; // 画面に出すキー名
+  readonly withCtrlOrMeta?: boolean; // Ctrl または ⌘(meta)の同時押しを要求する修飾の宣言
+  readonly withShift?: boolean; // Shift の同時押しを要求する修飾の宣言
+  readonly label: string; // 画面に出すキー名。修飾を伴うものは 'Ctrl+Z' のように含めて書く
   readonly altLabel?: string; // 別キーの表示名(併記する余裕のある説明でだけ使う)
 }
 
@@ -72,6 +74,28 @@ export const KEY_MAPPING = {
   dvAntinormal: { code: 'KeyD', label: 'D' },
   dvRadialOut: { code: 'KeyE', label: 'E' },
   dvRadialIn: { code: 'KeyQ', label: 'Q' },
+
+  // 建造。開始は建造中でないときだけ、残りは建造中の操作。並進・姿勢・計画と同じキーでも
+  // 意味が違うので別エントリ。修飾の宣言(withCtrlOrMeta / withShift)の照合は受け手が行う。
+  constructionStart: { code: 'KeyB', label: 'B' },
+  constructionRollLeft: { code: 'KeyQ', label: 'Q' },
+  constructionRollRight: { code: 'KeyE', label: 'E' },
+  constructionSwapEnds: { code: 'KeyR', label: 'R' },
+  constructionSymmetry: { code: 'KeyX', label: 'X' },
+  constructionDuplicate: { code: 'KeyC', label: 'C' },
+  constructionRemove: { code: 'Delete', altCodes: ['Backspace'], label: 'DEL', altLabel: 'BS' },
+  constructionUndo: { code: 'KeyZ', label: 'Ctrl+Z', withCtrlOrMeta: true },
+  constructionRedo: { code: 'KeyZ', label: 'Ctrl+Shift+Z', withCtrlOrMeta: true, withShift: true },
+  constructionRedoAlt: { code: 'KeyY', label: 'Ctrl+Y', withCtrlOrMeta: true },
+  constructionCyclePart: { code: 'Tab', label: 'TAB' },
+  constructionCategory1: { code: 'Digit1', label: '1' },
+  constructionCategory2: { code: 'Digit2', label: '2' },
+  constructionCategory3: { code: 'Digit3', label: '3' },
+  constructionCategory4: { code: 'Digit4', label: '4' },
+  constructionCategory5: { code: 'Digit5', label: '5' },
+  constructionCategory6: { code: 'Digit6', label: '6' },
+  constructionPlace: { code: 'Enter', label: 'ENTER' },
+  constructionFocus: { code: 'KeyF', label: 'F' },
 
   // 画面
   help: { code: 'KeyH', label: 'H' },
