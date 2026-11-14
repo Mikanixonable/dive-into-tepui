@@ -13,7 +13,7 @@ export const MARKER_DIR_DIST = 5e4;
 const MARKER_BEARING_RING_RATIO = 0.8;
 
 // マーカー1件を置く画面座標と、画面手前にあるか。
-export interface ScreenPlacement {
+interface ScreenPlacement {
   readonly x: number;
   readonly y: number;
   readonly front: boolean;
@@ -22,9 +22,9 @@ export interface ScreenPlacement {
 // 実在の点を投影する。cameraPos を渡すと、重なりの解決に使う視点からの距離も返す。
 export function pointPlacement(
   worldPos: Vec3, project: ProjectFn, cameraPos?: Vec3,
-): ScreenPlacement & { readonly dist: number | undefined } {
+): ScreenPlacement & { readonly dist: number | null } {
   const p = project(worldPos);
-  return { x: p.x, y: p.y, front: p.front, dist: cameraPos === undefined ? undefined : len(sub(worldPos, cameraPos)) };
+  return { x: p.x, y: p.y, front: p.front, dist: cameraPos === undefined ? null : len(sub(worldPos, cameraPos)) };
 }
 
 // 実在の位置を持たない方向を投影する。origin から dir の向きへ MARKER_DIR_DIST だけ離した
@@ -57,11 +57,11 @@ export function bearingPlacement(
 }
 
 // worldPos にいる対象の進行方向(最も強く引く天体に対する相対速度)へ上向きグリフを向ける
-// 角度 [deg]。速度が視線とほぼ平行で方位が定まらなければ undefined。
+// 角度 [deg]。速度が視線とほぼ平行で方位が定まらなければ null。
 export function headingRotationDeg(
   worldPos: Vec3, vel: Vec3, project: ProjectFn, scale: ScaleFn,
   celestialBodies: readonly CelestialBody[], celestialBodiesPivot = 0,
-): number | undefined {
+): number | null {
   const center = celestialBodies.length > 0
     ? strongestAttractor(worldPos, celestialBodies, celestialBodiesPivot) : null;
   const relVel = center ? sub(vel, center.stateAt(celestialBodiesPivot).v) : vel;
@@ -71,6 +71,6 @@ export function headingRotationDeg(
   const p1 = project(addScaled(worldPos, norm(relVel), probe));
   const dx = p1.x - p0.x;
   const dy = p1.y - p0.y;
-  if (Math.hypot(dx, dy) < 0.1) return undefined;
+  if (Math.hypot(dx, dy) < 0.1) return null;
   return (Math.atan2(dy, dx) * 180) / Math.PI + 90;
 }

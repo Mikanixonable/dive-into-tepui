@@ -1,6 +1,6 @@
 // リングバッファによる両端キュー
 export class Deque<T> {
-    private buffer: (T | undefined)[];
+    private buffer: (T | null)[];
     private start = 0;
     private count = 0;
 
@@ -42,10 +42,10 @@ export class Deque<T> {
         if (this.count < this.capacity)
             return;
 
-        const next = new Array<T | undefined>(this.capacity * 2);
+        const next = new Array<T | null>(this.capacity * 2);
 
         for (let i = 0; i < this.count; i++)
-            next[i] = this.buffer[this.index(this.start + i)];
+            next[i] = this.buffer[this.index(this.start + i)]!;
 
         this.buffer = next;
         this.start = 0;
@@ -94,7 +94,7 @@ export class Deque<T> {
         const idx = this.index(this.start);
         const value = this.buffer[idx]!;
 
-        this.buffer[idx] = undefined;
+        this.buffer[idx] = null;
 
         this.start++;
         this.count--;
@@ -110,7 +110,7 @@ export class Deque<T> {
         const idx = this.index(this.end - 1);
         const value = this.buffer[idx]!;
 
-        this.buffer[idx] = undefined;
+        this.buffer[idx] = null;
 
         this.count--;
 
@@ -124,7 +124,7 @@ export class Deque<T> {
 
         if (clear)
             for (let i = 0; i < n; i++)
-                this.buffer[this.index(this.start + i)] = undefined;
+                this.buffer[this.index(this.start + i)] = null;
 
         this.start += n;
         this.count -= n;
@@ -137,7 +137,7 @@ export class Deque<T> {
 
         if (clear)
             for (let i = 0; i < n; i++)
-                this.buffer[this.index(this.end - 1 - i)] = undefined;
+                this.buffer[this.index(this.end - 1 - i)] = null;
 
         this.count -= n;
     }
@@ -146,7 +146,7 @@ export class Deque<T> {
     public clear(clearMemory = false): void {
         if (clearMemory)
             for (let i = 0; i < this.count; i++)
-                this.buffer[this.index(this.start + i)] = undefined;
+                this.buffer[this.index(this.start + i)] = null;
 
         this.start = 0;
         this.count = 0;
