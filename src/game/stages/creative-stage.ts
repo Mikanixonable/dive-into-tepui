@@ -22,6 +22,7 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ObjectAuthoring } from '../pickable/inspected-object';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ViewMode } from '../view/view-mode';
+import type { PlayerLossCause } from './stage-outcome';
 
 // クリエイティブモードの内訳。波状攻撃のトグルと進行状態を持ち、進行状態はトグルが OFF の間も
 // 保つ(ON に戻したとき波数を続きから再開する)。手動スポーンと物体配置の設定・連番も持つ。
@@ -271,7 +272,7 @@ export class CreativeStage extends Stage {
   }
 
   // 艦の喪失を出来事として記録する。
-  public recordPlayerLost(reason: string): void {
+  public recordPlayerLost(reason: string, _cause: PlayerLossCause): void {
     this._dynamicSystem.events.record({ kind: 'shipLost', reason });
   }
 

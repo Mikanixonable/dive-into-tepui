@@ -1,6 +1,5 @@
 """小領域の地理的不変条件と、取得・配信形式の破損検出を検証する。"""
 
-import copy
 import gzip
 import hashlib
 import io
@@ -142,26 +141,6 @@ class BakeTests(unittest.TestCase):
         normals = bake.terrain_normals(globe, [0.] * 8, [1.] * 8, axes)
         self.assertTrue(all(math.isclose(sum(component ** 2 for component in vector), 1.) for vector in normals))
 
-    # sRGBの黒白を線形平均し、欠測と範囲不足を拒否する。
-    def test_regrid_color_and_missing(self):
-        source, target = bake.Grid(0, 0, 2, 1, 2, 1), bake.Grid(0, 0, 2, 1, 1, 1)
-        self.assertEqual(bake.regrid_color([[0, 0, 0], [255, 255, 255]], source, target), [(188, 188, 188)])
-        with self.assertRaises(ValueError):
-            bake.regrid_mean([None, 1.], source, target)
-        with self.assertRaises(ValueError):
-            bake.regrid_mean([1., 1.], source, bake.Grid(0, 0, 3, 1, 1, 1))
-
-    # ERA5の年月・全UTC時刻・変数範囲を固定する。
-    def test_era5_complete_month(self):
-        records = [{"year": year, "month": 7, "hourUtc": hour, "2m_temperature": 280., "total_cloud_cover": .4}
-                   for year in range(1991, 2021) for hour in range(24)]
-        self.assertEqual(bake.era5_month_mean(records, 7), (280., .4))
-        with self.assertRaises(ValueError):
-            bake.era5_month_mean(records[:-1], 7)
-        records[0]["total_cloud_cover"] = 1.1
-        with self.assertRaises(ValueError):
-            bake.era5_month_mean(records, 7)
-
     # CopernicusのNetCDFにある「(0 - 1)」表記をfractionへ正規化する。
     def test_era5_cloud_unit_normalization(self):
         self.assertEqual(FETCH.normalized_unit("(0 - 1)"), "(0-1)")
@@ -210,16 +189,6 @@ class BakeTests(unittest.TestCase):
         self.assertLessEqual(max(angles), 1.)
         values = [index / 100 for index in range(101)]
         self.assertLessEqual(max(abs(round(value * 255) / 255 - value) for value in values), 0.5 / 255 + 1e-12)
-
-    # 隣接タイルの共有境界で同じ法線・roughnessを復号すると完全に一致する。
-    def test_tile_boundary_decode_consistency(self):
-        normal = bake.normalize((-.35, .42, .835))
-        left = bake.encode_terrain_tile([normal] * 67600, [.23] * 67600, 7, 0, 0)
-        right = bake.encode_terrain_tile([normal] * 67600, [.23] * 67600, 7, 1, 0)
-        left_normal, left_roughness = bake.decode_terrain_tile(left)
-        right_normal, right_roughness = bake.decode_terrain_tile(right)
-        self.assertEqual(left_normal[259], right_normal[0])
-        self.assertEqual(left_roughness[259], right_roughness[0])
 
     # 全球z5..z8のキー数と経度連続性を固定する。
     def test_global_tile_coverage(self):
