@@ -49,7 +49,7 @@ export class TabBar<T> {
 
   // 値に対応するタブボタンの要素。タブパネルとの aria-controls 関連付けなど、
   // ボタン要素へ直接属性を追加設定する際に用いる。
-  public buttonFor(value: T): HTMLElement | undefined {
-    return this.buttons.get(value)?.element;
+  public buttonFor(value: T): HTMLElement | null {
+    return this.buttons.get(value)?.element ?? null;
   }
 }

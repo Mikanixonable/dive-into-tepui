@@ -17,7 +17,7 @@ export class PackEphemeris {
   public readonly validStartEt: number;
   public readonly validEndEt: number;
   // manifest が宣言する payload の SHA-256。profile の packId と突き合わせる識別子。
-  public readonly payloadSha256: string | undefined;
+  public readonly payloadSha256?: string;
 
   // **decoded は保持しない。** 係数は評価器が payload へのビューとして持ち、ここで要るのは
   // manifest のごく一部だけ — 参照を保持し続けると manifestJson(2.2 MB)と 10054 個の series

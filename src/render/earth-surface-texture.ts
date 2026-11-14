@@ -1,9 +1,9 @@
 // 地表のbase・詳細配列・ページ表で共有するThree.jsテクスチャ設定。
 import * as THREE from 'three/webgpu';
 
-export type EarthSurfaceTextureKind = 'pageTable' | 'color' | 'terrain';
+type EarthSurfaceTextureKind = 'pageTable' | 'color' | 'terrain';
 
-export interface EarthSurfaceTextureSettings {
+interface EarthSurfaceTextureSettings {
   readonly minFilter: typeof THREE.NearestFilter | typeof THREE.LinearFilter;
   readonly magFilter: typeof THREE.NearestFilter | typeof THREE.LinearFilter;
   readonly colorSpace: THREE.ColorSpace;
