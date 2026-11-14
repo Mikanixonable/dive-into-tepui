@@ -2,8 +2,8 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, abs, and, clamp, dot, exp, float, greaterThan, length, max, min, normalize, select,
-  sqrt, uniform, vec4,
+  Fn, If, Loop, abs, and, ceil, clamp, dot, exp, float, greaterThan, int, length, max, min,
+  normalize, select, sqrt, uniform, vec4,
 } from 'three/tsl';
 import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../../cloud/cloud-detail';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
@@ -30,10 +30,19 @@ export interface ShadowCloud {
   readonly cloud: CloudRenderInput;
 }
 
-// 光路のタップ数。積雲と巻雲で別の区間を別の本数でたどる。
+// 光路のタップ数。巻雲はその場の雲頂高度の薄い層を全光路で横切るので、層の厚みを分ける程度の
+// 本数で足りる。
 const SHADOW_TAPS = 6;
-// 積雲の届く高さを拾う粗い前走の点数。場の texel のフェッチだけで、細部は評価しない。
-const COARSE_TAPS = 10;
+// 積雲の届く高さと位置を拾う前走の間隔 [m] と本数の幅。**間隔は柱の幅より細かく** —
+// 光路を均した本数でたどると、低い恒星で光路が数百 km へ伸びたときに幅数 km の柱が間へ落ちて
+// 拾えず、斜めに落ちる影が抜ける。本数は光路の長さに比例させ、上限を持つ。
+const COARSE_STEP = 3e3;
+const COARSE_TAPS_MIN = 10;
+const COARSE_TAPS_MAX = 64;
+// 細部を評価する積雲のタップの間隔 [m] と上限。前走で拾った区間へこの間隔で配り、区間が
+// 長いときは本数の上限で間隔を緩める。
+const FINE_STEP = 1.5e3;
+const FINE_TAPS_MAX = 24;
 // この量を下回る積雲の柱は、細部を最大に乗せても不透明度のディザの帯の下端へ届かない。
 // 影への寄与は 0 なので、前走では「積雲がある」と数えない。
 const CUMULUS_PRESENT_AMOUNT = 0.003;
@@ -139,19 +148,29 @@ export class CloudShadowRenderer {
 
         // **積雲のタップを、積雲が占めうる高度帯へ絞る。** 殻の上端まで均した間隔では、雲頂より
         // 上を通るタップは消える段を引くだけで影に寄らない。場の texel を読むだけの粗い前走で
-        // 光路が通る範囲の積雲の雲頂の最大値を拾い、細部を評価するタップはその高さの殻を抜ける
-        // 区間だけへ等間隔で置く。細部で雲頂が伸びるぶんは不確かさぶん上乗せする。
-        const coarseStep = pathLength.div(COARSE_TAPS);
+        // 光路が通る範囲の積雲の雲頂の最大値と区間を拾い、細部を評価するタップはその区間だけへ
+        // 柱の幅より細かい間隔で置く。細部で雲頂が伸びるぶんは不確かさぶん上乗せする。
+        // 前走の本数は光路の長さに比例させる — 低い恒星で光路が伸びても間隔は変わらない。
+        const coarseTapsFloat = clamp(ceil(pathLength.div(COARSE_STEP)),
+          COARSE_TAPS_MIN, COARSE_TAPS_MAX);
+        const coarseStep = pathLength.div(coarseTapsFloat);
         const coarseRadius = coarseStep.div(bodyRadius);
         const cumulusTop = float(0).toVar();
+        // 積雲を拾ったタップの光路上の位置 [m] の幅。細部タップを置く区間のもとになる。
+        const cumulusFirst = float(MAX_LIGHT_PATH).toVar();
+        const cumulusLast = float(0).toVar();
         If(greaterThan(this.cumulusActive, 0.5), () => {
-          Loop({ start: 0, end: COARSE_TAPS, type: 'int', condition: '<' }, ({ i }) => {
-            const sampleOffset = offset.add(rayDir.mul(coarseRadius.mul(float(i).add(0.5))));
+          Loop({ start: 0, end: int(coarseTapsFloat), type: 'int', condition: '<' }, ({ i }) => {
+            const t = float(i).add(0.5);
+            const sampleOffset = offset.add(rayDir.mul(coarseRadius.mul(t)));
             const up = sampleOffset.div(max(length(sampleOffset), 1e-6));
             const amount = this.fieldSampler.sampleField(up).r;
             If(greaterThan(amount, CUMULUS_PRESENT_AMOUNT), () => {
               cumulusTop.assign(max(cumulusTop, cumulusTopAltitudeNode(amount)
                 .div(CLOUD_TOP_SPAN).mul(this.topAltitude)));
+              const tm = coarseStep.mul(t);
+              cumulusFirst.assign(min(cumulusFirst, tm));
+              cumulusLast.assign(max(cumulusLast, tm));
             });
           });
         });
@@ -164,14 +183,24 @@ export class CloudShadowRenderer {
         const cumulusEnd = sqrt(max(
           cumulusRadius.mul(cumulusRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
           .sub(along).mul(bodyRadius).clamp(0, pathLength);
-        const cumulusStep = cumulusEnd.div(SHADOW_TAPS);
+        // 細部タップの区間は、拾った位置の両側へ前走の間隔ぶん広げる — 拾い漏らしの縁と、
+        // 按分が前後の半歩ぶん広がるぶんを覆う。上限は雲頂の殻を抜ける距離。積雲を拾えなかった
+        // 光路では区間が潰れて、細部のループごと飛ばす。
+        const cumulusFrom = max(cumulusFirst.sub(coarseStep), 0);
+        const cumulusTo = min(cumulusLast.add(coarseStep), cumulusEnd);
+        const cumulusSpan = max(cumulusTo.sub(cumulusFrom), 0);
+        const cumulusTapsFloat = clamp(ceil(cumulusSpan.div(FINE_STEP)),
+          SHADOW_TAPS, FINE_TAPS_MAX);
+        const cumulusStep = cumulusSpan.div(cumulusTapsFloat);
         // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
         // 実寸と光路 1 歩の長さのうち粗いほうを取る。細部の段はこの幅で打ち切る。
         const cumulusWidth = max(footprint, cumulusStep.mul(STEP_BLUR));
+        const cumulusFromRadius = cumulusFrom.div(bodyRadius);
         const cumulusStepRadius = cumulusStep.div(bodyRadius);
-        If(greaterThan(cumulusEnd, 0), () => {
-          Loop({ start: 0, end: SHADOW_TAPS, type: 'int', condition: '<' }, ({ i }) => {
-            const sampleOffset = offset.add(rayDir.mul(cumulusStepRadius.mul(float(i).add(0.5))));
+        If(greaterThan(cumulusSpan, 0), () => {
+          Loop({ start: 0, end: int(cumulusTapsFloat), type: 'int', condition: '<' }, ({ i }) => {
+            const sampleOffset = offset.add(rayDir.mul(
+              cumulusFromRadius.add(cumulusStepRadius.mul(float(i).add(0.5)))));
             const sampleRadius = max(length(sampleOffset), 1e-6);
             const up = sampleOffset.div(sampleRadius);
             const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
