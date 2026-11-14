@@ -8,7 +8,7 @@ import { shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { metersPerPixelAtDepth, tanHalfFov } from '../../src/math/projection';
 import { CUMULUS_DETAIL } from '../../src/render/opaque-cloud-surface-renderer';
 import { CIRRUS_DETAIL } from '../../src/render/cloud/cloud-detail';
-import { FOV_DEG, labCamera, VIEW_HEIGHT, type LabCase, type LabShot } from './lab-case';
+import { FOV_DEG, labCamera, sunAnglesOf, VIEW_HEIGHT, type LabCase, type LabShot } from './lab-case';
 import type { EarthAngleKey, LabViewAngles } from './view-angles';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
@@ -103,6 +103,53 @@ const NADIR_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
 // 影が出る向き。ずらす方位は画面の上下方向に取る: 天頂角の半分の地表角ぶんずれて落ちる
 // サングリントが、最も広い段でも画面の上端の外(水平なら画角の内に残る)へ出るようにする。
 const NADIR_SUN_DIRECTION = new THREE.Vector3(0, Math.sin(Math.PI / 6), Math.cos(Math.PI / 6));
+
+// ランダム抽出の撮影の入力。実写のランダム教師の点(緯度・経度・区分)と、雲場の進行時刻
+// displayTime [s]、段の km/px。
+export interface CloudDetailRandomPoint {
+  readonly category: string;
+  readonly latitudeDeg: number;
+  readonly longitudeDeg: number;
+  readonly displayTime: number;
+  readonly tierKmPerPx: number;
+}
+
+// 現地の太陽時刻 10:30(MODIS Terra の通過時刻)の恒星の向き。直下点の置き方(NADIR_EARTH)では
+// 局所枠が描画座標の東 +X・北 +Y・上 +Z に重なるので、時角 -22.5°・赤緯 0° の太陽を
+// その枠で組む。赤緯は分点に固定 — 生成の気候画像は平年 1 枚で季節を持たない。
+const LOCAL_SOLAR_1030_HOUR_ANGLE_DEG = -22.5;
+function sunAnglesForLocal1030(latitudeDeg: number): Pick<LabViewAngles, 'sunAzimuthDeg' | 'sunElevationDeg'> {
+  const latitude = THREE.MathUtils.degToRad(latitudeDeg);
+  const hour = THREE.MathUtils.degToRad(LOCAL_SOLAR_1030_HOUR_ANGLE_DEG);
+  return sunAnglesOf(new THREE.Vector3(
+    -Math.sin(hour),
+    -Math.sin(latitude) * Math.cos(hour),
+    Math.cos(latitude) * Math.cos(hour),
+  ));
+}
+
+// ランダム抽出の点 point から撮影を組む。種類は両方 — 実写には積雲・巻雲の区別なく
+// 全部の雲が写っている。撮影名は <区分>-<番号>-<km/px>km を呼び出し側が付ける。
+export function cloudDetailRandomShot(point: CloudDetailRandomPoint): CloudDetailShot {
+  const altitudeM = altitudeFor(point.tierKmPerPx, point.latitudeDeg);
+  return {
+    scene: point.category,
+    latitudeDeg: point.latitudeDeg,
+    longitudeDeg: point.longitudeDeg,
+    displayTime: point.displayTime,
+    kind: 'both',
+    tierKmPerPx: point.tierKmPerPx,
+    centerKmPerPx: centerKmPerPxOf(altitudeM, point.latitudeDeg),
+    altitudeM,
+    view: {
+      earthAltitudeLog: Math.log10(altitudeM),
+      earthLatitudeDeg: point.latitudeDeg,
+      earthLongitudeDeg: point.longitudeDeg,
+      ...sunAnglesForLocal1030(point.latitudeDeg),
+    },
+    graphics: KIND_GRAPHICS.both,
+  };
+}
 
 // 撮影 1 枚ぶんの差分と、そのメタデータ。
 interface CloudDetailShot extends LabShot {

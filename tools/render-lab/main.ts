@@ -20,7 +20,8 @@ import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/c
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
 import {
-  CLOUD_DETAIL_SHOT_INFOS, CLOUD_DETAIL_STABILITY_SHOT_INFOS, type CloudDetailShotInfo,
+  CLOUD_DETAIL_SHOT_INFOS, CLOUD_DETAIL_STABILITY_SHOT_INFOS, type CloudDetailRandomPoint,
+  type CloudDetailShotInfo,
 } from './cloud-detail-cases';
 import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
 import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
@@ -66,6 +67,10 @@ declare global {
       // 視点の安定性の撮影の組(基準・横ずらし・高度違い)。
       cloudDetailStabilityShots: () => readonly CloudDetailShotInfo[];
       shootCloudDetail: (name: string) => Promise<string>;
+      // ランダム抽出の実写の教師と同じ点で撮る雲。name は PNG の名前。
+      shootCloudDetailRandom: (
+        name: string, point: CloudDetailRandomPoint,
+      ) => Promise<{ png: string, centerKmPerPx: number, altitudeM: number }>;
       capture: () => Promise<string>;
       show: (name: CaseName) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
@@ -268,6 +273,9 @@ async function init(): Promise<void> {
     cloudDetailStabilityShots: () => CLOUD_DETAIL_STABILITY_SHOT_INFOS,
     shootCloudDetail: async (name) => {
       const png = await view.shootCloudDetail(name); syncAngles(); return png;
+    },
+    shootCloudDetailRandom: async (name, point) => {
+      const result = await view.shootCloudDetailRandom(name, point); syncAngles(); return result;
     },
     capture: () => view.capture(),
     show: (name) => { view.show(name); syncAngles(); },
