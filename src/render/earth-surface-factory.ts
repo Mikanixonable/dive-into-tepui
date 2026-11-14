@@ -19,19 +19,19 @@ import type { CelestialTexture } from './celestial-textures';
 import earthSmoothnessUrl from '../assets/earth-smoothness.png';
 import { earthSurfaceColorToRgba8 } from './earth-surface-color';
 
-export interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
+interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
   readonly renderer?: WebGPURenderer | null;
   readonly colorToRgba8?: EarthSurfaceColorToRgba8;
   readonly decodeImage?: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown>;
 }
 
-export interface EarthSurfaceFactoryResult {
+interface EarthSurfaceFactoryResult {
   readonly surface: EarthSurface;
   readonly state: EarthSurfaceStatus;
   readonly bootstrap: EarthSurfaceBootstrapResult;
 }
 
-export interface EarthSurfaceRuntimeHandle {
+interface EarthSurfaceRuntimeHandle {
   readonly surface: EarthSurface;
   readonly ready: Promise<EarthSurfaceFactoryResult>;
 }
