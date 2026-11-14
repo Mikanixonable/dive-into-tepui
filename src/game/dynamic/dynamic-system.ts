@@ -243,7 +243,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     displayTime: number, active: Controllable | null, camera: CameraFrame, style: RenderStyle,
     visual: EntityVisualSettings,
     shipModuleEmphasis: ShipModuleEmphasisMap | null,
-    sunLight: SunLight, bodyShadow: BodyShadow, orbitRef: OrbitReference | undefined,
+    sunLight: SunLight, bodyShadow: BodyShadow, orbitRef: OrbitReference | null,
   ): void {
     // 全個体が同じ1つのフレーム入力を読むよう、走査の前に組んでおく。
     const viewFrame = {

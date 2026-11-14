@@ -658,8 +658,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   // マーカーの弾数と初速は装備の現在値から、このフレームぶんだけを組む。
   protected override renderSource(
     viewFrame: DynamicViewFrame, active: boolean,
-    // eslint-disable-next-line no-restricted-syntax
-    orbitReference: OrbitReference | undefined,
+    orbitReference: OrbitReference | null,
   ): ModularShipRenderSource {
     const motion = this.motion;
     const { belt } = motion;
