@@ -1,7 +1,7 @@
 # Linter違反の段階的な修正計画
 
 > 状態: 統合済み。現行の残件、実装順、受入条件は
-> [残タスク統合・実装計画](../remaining-work-consolidated-plan_2026-09-20.md) を正本とする。
+> [残タスク統合・実装計画](../archived/remaining-work-consolidated-plan_2026-09-20.md) を正本とする。
 > この文書は元計画の分類と判断を保持する履歴として `done/` に移動した。
 
 ## 統合時の更新
