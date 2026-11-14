@@ -8,7 +8,7 @@ import {
   smoothstep, sqrt, step, uniform, uint, vec3,
 } from 'three/tsl';
 import { DetailClock } from './cloud-detail-clock';
-import { gradientNoise } from './gradient-noise';
+import { NOISE_SIGMA, gateFactor, gradientNoise } from './gradient-noise';
 import { eastAt, northAt } from './sphere-frame';
 import type { FloatNode, FloatUniform, UintNode, Vec2Node, Vec3Node } from '../tsl-types';
 
@@ -55,11 +55,6 @@ const FADE_ZERO_RATIO = 2;
 // 細かいオクターブの振幅へ掛ける、粗いオクターブの実現値の強さ。0 なら各オクターブは
 // 独立に重なるだけ、大きいほど粗い起伏の芯へ細部が寄って間欠性が強くなる。
 const OCTAVE_COUPLING = 1.8;
-
-// 勾配ノイズの標準偏差の実測値(60 万点標本、circulating-noise.ts の CELL_* と同じ測り方)。
-// 乗法の各因子の平均を 1 へ戻す補正項 exp(−k²σ²/2) に使う。
-const NOISE_SIGMA = 0.265;
-const COUPLING_SHIFT = OCTAVE_COUPLING * OCTAVE_COUPLING * NOISE_SIGMA * NOISE_SIGMA / 2;
 
 // オクターブの重ね合わせで下がる分散を、標準偏差 0.25 程度の振れ幅へ戻す全体の振幅。
 const DETAIL_GAIN = 2.2;
@@ -172,7 +167,7 @@ export class CloudDetailEvaluator {
             ? this.clock.flowNoise(index, warped, radius, windVector, windDir, streakStretch)
             : this.clock.evolvingNoise(index, warped, radius, windVector)).toVar();
           sum.addAssign(value.mul(OCTAVE_WEIGHTS[index]!).mul(tilt[index]!).mul(weightScale).mul(live).mul(gate));
-          gate.mulAssign(exp(value.mul(OCTAVE_COUPLING).sub(COUPLING_SHIFT).mul(live)));
+          gate.mulAssign(gateFactor(value, OCTAVE_COUPLING, live));
         });
       }
       detail.assign(clamp(sum.mul(DETAIL_GAIN).mul(strength), -DETAIL_AMPLITUDE_MAX, DETAIL_AMPLITUDE_MAX));
