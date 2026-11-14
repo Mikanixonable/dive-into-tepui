@@ -7,7 +7,7 @@ import { mulberry32 } from '../../math/random';
 
 // 部品の役割。発射部はプラズマ弾の発射元、中核は壊すと個体を撃破できる部位。
 export type AssemblyPartRole = 'structure' | 'emitter' | 'core';
-export type AssemblyPartKind = 'tube' | 'knot';
+type AssemblyPartKind = 'tube' | 'knot';
 
 // 部品1個。中心線は敵ローカル座標 [m] の折れ線で、closed なら両端が接続する閉ループ。
 export interface AssemblyPartDef {
@@ -314,7 +314,7 @@ function shapeInertia(parts: readonly AssemblyPartDef[]): Vec3 {
 }
 
 // 部品1個を、重心を原点とする独立した物体として切り出した形。失われた部品が破片として飛ぶときに使う。
-export interface DetachedPart {
+interface DetachedPart {
   // 重心を原点とする部品。index と役割は元の部品のまま。
   readonly part: AssemblyPartDef;
   // 元の個体ローカル座標での重心 [m]。

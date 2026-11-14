@@ -1,18 +1,18 @@
 // hud/widgets/ の公開 API をまとめて再 export するバレル。
 export { buildGroupTitle, buildLabeledRow, buildSpan } from './widget-base';
-export { Button, type ButtonVariant } from './button';
+export { Button } from './button';
 export { ToggleSwitch } from './toggle-switch';
 export { SegmentedControl } from './segmented-control';
 export { Pulldown, type PulldownColumn } from './pulldown';
 export { HoldButton } from './hold-button';
 export { CloseButton } from './close-button';
-export { ValueInput, type ValueInputOptions, type ValueInputType, type EscapeBehavior } from './value-input';
+export { ValueInput } from './value-input';
 export { DurationValueInput, type DurationUnit } from './duration-value-input';
 export { ToggleValueEdit } from './toggle-value-edit';
 export { DurationPillRow } from './duration-pill-row';
 export { Meter } from './meter';
 export { TabBar } from './tab-bar';
-export { Slider, type SliderOptions } from './slider';
+export { Slider } from './slider';
 export {
   buildCollapseToggle,
   syncCollapseToggle,
