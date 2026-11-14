@@ -18,10 +18,14 @@
 
 ## 確定した前提
 
+- 実施開始時の比較基準は commit `3e62e5109`。
 - 手順1は完了。`tools/cloud-lab/cloud-rendering-explainer.html`、`src/physics/cylinder-contact.ts`、
   `tests/physics/cylinder-contact.test.ts` の3ファイル、合計891行を削除した。
 - 手順1の `npm run typecheck`、`npm run test:physics` (514/514)、`npm run test:game` (462/462) は成功した。
-- 手順1の所要時間は記録していない。以下は未実施の手順だけの見積り。
+- 手順2は完了。`src/game/dynamic/entity-lifecycle.ts` の差分は3行追加・65行削除で、純減は62行。
+  `SpawnRecord` の待機と復元は維持し、呼び出し元のないコールバック queue と `markDead()` を除いた。
+- 手順2の `npm run typecheck`、`npm run test:game` (462/462)、`npm run check:boundaries` と対象ファイルの ESLint は成功した。
+- 完了済み手順の所要時間は記録していない。以下は未実施の手順だけの見積り。
 
 ## 仕様に書かれている保存対象と直す挙動
 
@@ -44,29 +48,6 @@
 - 全手順の完了後に `npm run typecheck` と `npm run test` が成功する。
 
 ## 手順
-
-### 手順 2. 未使用のコールバック式 spawn 経路を除く
-
-**目的**
-
-`EntityLifecycle` に残る、呼び出し元の無いコールバック式 spawn queue と、その経路だけの private port を削除する。
-セーブデータから復元する spawn queue とは別経路なので、`SpawnRecord` による実体化待ちは維持する。
-
-**変更が必要な箇所**
-
-| ファイル | 変更 |
-| --- | --- |
-| `src/game/dynamic/entity-lifecycle.ts:20-53, 69, 116-124, 134-144` | `EntitySpawnGate`、`PendingEntitySpawn`、`EntityAdditionPort` / `PendingEntitySpawnPort` / `EntityDeathPort` / `EntityRemovalPort` / `EntityLifecyclePort`、`deferredSpawns`、未使用の `queuePendingSpawn()` と `processPendingSpawns()` 内の deferred queue 処理を除く。`processPendingSpawns()` は `SpawnRecord[]` の処理だけを残して private にする。 |
-
-`readyToSpawn()`、`spawnWhenReady()`、`pendingSpawns`、`pendingSpawnRecords()`、`EntityRegistry` と
-`SpawnGate` を使う直列化済みレコードの経路は残す。`DynamicSystem` の構築・cleanup・serialize /
-deserialize の順序は変えない。現在の `src/` と `tests/` に `queuePendingSpawn()` の呼び出しはない。
-
-**達成条件と検証**
-
-- `src/` と `tests/` で `EntitySpawnGate|PendingEntitySpawn|EntityLifecyclePort|deferredSpawns|queuePendingSpawn` が0件。
-- `SpawnRecord`、`spawnWhenReady()`、`pendingSpawnRecords()` と保存・復元の配線は残る。
-- `npm run typecheck` と `npm run test:game` が成功する。
 
 ### 手順 3. 交戦圏の単発互換ラッパーを除く
 
@@ -95,9 +76,8 @@ deserialize の順序は変えない。現在の `src/` と `tests/` に `queueP
 
 | 手順 | 削減見込み | 作業時間の導出 |
 | --- | ---: | --- |
-| 2 | 約50行 | 1クラスの未使用経路除去(25〜35分) + game テストと型検査(10〜20分) = 35〜55分 |
 | 3 | 約7行 | 1ラッパー削除 + 既存ケースを builder に接続(15〜25分) + game テストと型検査(10〜15分) = 25〜40分 |
-| **残り** | **約57行** | **60〜95分** |
+| **残り** | **約7行** | **25〜40分** |
 
 ## リスクと落とし穴
 
@@ -105,7 +85,7 @@ deserialize の順序は変えない。現在の `src/` と `tests/` に `queueP
 | --- | --- | --- |
 | `cylinder-contact.ts` に静的検索で見えない loader / 動的 import がある | 特定の物体接触が失われる | 手順1で対象関数の全参照を検索済み。`test:physics` と `test:game` は成功 |
 | 旧 cylinder テスト削除と同時に capped / compound の回帰テストまで消す | 接触形状の欠落が後から発覚する | 手順1で削除対象を指定ファイルに限定し、両方を含む物理・ゲームのテストが成功 |
-| `EntityLifecycle` の整理で保存済み `SpawnRecord` の待機まで消す | 復元直後に外部条件待ちの個体が欠落する | 手順2。`SpawnRecord` 系のメソッドと serialize / deserialize を diff で確認し、`test:game` を実行 |
+| `EntityLifecycle` の整理で保存済み `SpawnRecord` の待機まで消す | 復元直後に外部条件待ちの個体が欠落する | 手順2で `SpawnRecord` 経路を diff で確認済み。`test:game` が成功 |
 | 単発テストを builder 再利用テストへ置き換える際に境界ケースが減る | 交戦圏の広がりや連結規則が変わる | 手順3。各既存の位置・生存・倍率ケースを維持し、`test:game` を実行 |
 | 説明ページを手動で開く利用者がいる | Cloud Lab のコード案内へ直接アクセスできなくなる | 手順1でビルド対象外と古いソース行リンクを確認して削除済み |
 | 雲の分析ツールや性能計測を行数だけで削る | 雲の見た目や描画負荷の改善が難しくなる | 全手順。対象外一覧を維持し、差分レビューで `tools/cloud-*` と `tests/perf/` の削除が0件であることを確認 |
@@ -116,8 +96,7 @@ deserialize の順序は変えない。現在の `src/` と `tests/` に `queueP
 - `npm run test`
 - `npm run build`
 - `git diff --check`
-- 実施前に `git status --short` を確認し、計画対象外の変更は保持する。行数とファイル数はこの計画に列挙した
-  対象だけで比べ、既存の無関係な差分とこの計画 memo 自体は集計から外す。
-- 対象パスの `git diff --numstat` で純減が900行以上、削除ファイルが3つ以上、`src/`・`tests/`・`tools/` に
-  追加コードファイルが0であることを確認する。
+- 比較基準 `3e62e5109` から計画対象パスだけを `git diff --numstat` で比べ、純減が900行以上、
+  削除ファイルが3つ以上、`src/`・`tests/`・`tools/` に追加コードファイルが0であることを確認する。
+- `git status --short` で計画対象外の差分を保持していることを確認する。無関係な差分とこの計画 memo 自体は集計しない。
 - 差分に操作、戦闘、物理、描画品質、報酬、ステージ進行、セーブ形式の変更が無いことをレビューする。
