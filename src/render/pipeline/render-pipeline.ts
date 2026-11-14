@@ -43,7 +43,7 @@ export class RenderPipeline {
   private readonly shadowPass: ShadowPass;
   private readonly _bodyShadow: BodyShadow;
   private readonly _ringShadow: RingShadow;
-  private readonly _cumulusShadow: CloudShadowRenderer;
+  private readonly _cloudShadow: CloudShadowRenderer;
   private readonly meshShadow: MeshShadow;
   private readonly shadowMaps: ShadowMaps;
   private readonly lightPrepass: LightPrepass;
@@ -98,7 +98,7 @@ export class RenderPipeline {
   public get exposure(): Exposure { return this._exposure; }
   public get bodyShadow(): BodyShadow { return this._bodyShadow; }
   public get ringShadow(): RingShadow { return this._ringShadow; }
-  public get cumulusShadow(): CloudShadowRenderer { return this._cumulusShadow; }
+  public get cloudShadow(): CloudShadowRenderer { return this._cloudShadow; }
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
   public get workLight(): WorkLightSource { return this._workLight; }
@@ -117,11 +117,11 @@ export class RenderPipeline {
     );
     this._bodyShadow = new BodyShadow(this._sunLight);
     this._ringShadow = new RingShadow(this._sunLight);
-    this._cumulusShadow = new CloudShadowRenderer(this._sunLight);
+    this._cloudShadow = new CloudShadowRenderer(this._sunLight);
     this.meshShadow = new MeshShadow(this._sunLight, this.shadowMaps);
     this.shadowPass = new ShadowPass(
       renderer, this.gbuffer,
-      this._bodyShadow, this._ringShadow, this._cumulusShadow, this.meshShadow, gpu,
+      this._bodyShadow, this._ringShadow, this._cloudShadow, this.meshShadow, gpu,
     );
     this.sphereSpecular = new SphereSpecular();
     this.sunSource = new SunSource(
@@ -337,6 +337,7 @@ export class RenderPipeline {
     this.antialiasPass.setMethod(graphics.antialias);
     this.atmospherePass.setCloudShellEnabled('cirrus', graphics.cirrus);
     this.atmospherePass.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
+    this.atmospherePass.setCirrusDetail(graphics.cirrusDetail);
     // 天体照の写しは、その天体の描画設定で見えている雲と大気を写す。
     this._planetLight.setAtmosphereEnabled(graphics.atmosphere !== ATMOSPHERE_QUALITY.off);
     this._planetLight.setCumulusEnabled(graphics.cumulusDetail !== CUMULUS_DETAIL.off);

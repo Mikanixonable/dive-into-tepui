@@ -1,8 +1,13 @@
 // 雲の実験環境で表示できる量の表。並びがそのまま画面のボタンの並びで、構成の上流(気候の事前分布)から
 // 下流(雲)へ並ぶ。各ビューは表示値 0..1 の色を組み、その材料が天気のモデルなのか雲の写しなのかで
 // 2 種類に分かれる。
-import { exp, float, length, texture, vec3 } from 'three/tsl';
+import { exp, float, length, select, texture, vec3 } from 'three/tsl';
 import { equirectUvFromDirection } from '../../src/render/field-projection';
+import { CUMULUS_TOP_ALTITUDE } from '../../src/render/cloud/cloud-kind';
+import { cirrusFlowColor } from './cirrus-flow-color';
+import {
+  cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+} from '../../src/render/cloud/cloud-kind-node';
 import type * as THREE from 'three/webgpu';
 import type { ClimateMap } from '../../src/render/cloud/climate-map';
 import type { CloudSample } from '../../src/render/cloud/cloud-field-sample';
@@ -14,13 +19,14 @@ export type CloudLabViewId =
   | 'pressure' | 'surfaceWind' | 'traceWind' | 'front' | 'airMass' | 'lift'
   | 'surfaceHumiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'surfaceHumidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
-  | 'coverage' | 'cloudTop' | 'translucent' | 'composite' | 'photo';
+  | 'cumulus' | 'cirrus' | 'coverage' | 'cloudTop' | 'cirrusTop' | 'translucent' | 'cirrusFlow'
+  | 'composite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
 // 写しを描画と同じ読み取りで読んで色を組む。'photo' のビューは実写の雲テクスチャを読むだけで、生成の系には
 // 触れない — 生成と同じ図法・同じ解像度で実写を出し、他のビューと切り替えて見比べるためにある。
 // 雲場を単位方向で読む口。面は自分の投影の uv で直に読む。
-export type CloudAt = (direction: Vec3Node) => CloudSample;
+type CloudAt = (direction: Vec3Node) => CloudSample;
 
 export type CloudLabView = {
   readonly id: CloudLabViewId;
@@ -31,15 +37,14 @@ export type CloudLabView = {
   | { readonly reads: 'photo'; readonly color: (d: Vec3Node, photo: THREE.Texture) => Vec3Node }
 );
 
-// 表示値 0..1 へ写すときの目盛り。雲頂高度は 0..15000 m、薄い雲の光学的厚みは 0..1、気圧は
+// 表示値 0..1 へ写すときの目盛り。雲頂高度は積雲の上端高度まで、巻雲の光学的厚みは 0..1、気圧は
 // −70..+30 hPa、上昇流は ±0.1 m/s を、対流は ±0.5 をそれぞれ 0.5 中心に、対流の峰(対流 × 活発度、
 // 塔が立つかどうかを決める量)は 0..0.3、前線(気団の圧縮の 1 を超えた分)は 0..8、
 // 暖気の流入は ±0.4 rad(48 h の追跡で気団が動く緯度差の上限)を 0.5 中心に、
 // 風は ±45 m/s(台風の芯の風速まで飽和させない幅)を
 // 0.5 中心の R(東)G(北)に、速さを B に、標高は 0..8000 m。
-// 被覆率・湿度・対流の活発度はそのまま出す。**地表の風・平均風・追跡の風は同じ目盛りに乗せる** — 大循環が
+// 雲の量・不透明度・湿度・対流の活発度はそのまま出す。**地表の風・平均風・追跡の風は同じ目盛りに乗せる** — 大循環が
 // 運ぶ分と、気圧から出る分と、気団を遡らせる分の大きさを見比べるため。
-const CLOUD_TOP_SPAN = 15000;
 const CONVECTION_SPAN = 0.5;
 const CONVECTIVE_DEPTH_SPAN = 0.3;
 const TRANSLUCENT_SPAN = 1;
@@ -96,18 +101,34 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
       const weather = model.weatherAt(d);
       return vec3(weather.convection.y.mul(weather.convectiveActivity).div(CONVECTIVE_DEPTH_SPAN));
     } },
-  { id: 'coverage', label: '被覆率', reads: 'cloud',
-    color: (d, cloudAt) => vec3(cloudAt(d).coverage) },
-  { id: 'cloudTop', label: '雲頂高度', reads: 'cloud',
-    color: (d, cloudAt) => vec3(cloudAt(d).cloudTop.div(CLOUD_TOP_SPAN)) },
-  { id: 'translucent', label: '薄い雲', reads: 'cloud',
-    color: (d, cloudAt) => vec3(cloudAt(d).translucent.div(TRANSLUCENT_SPAN)) },
-  // 被覆率と薄い雲を 1 枚に重ねた見え。晴れた空が透ける割合 (1 − 被覆率)·e^(−τ) の補で、
+  { id: 'cumulus', label: '積雲の量', reads: 'cloud',
+    color: (d, cloudAt) => vec3(cloudAt(d).cumulus) },
+  { id: 'cirrus', label: '巻雲の量', reads: 'cloud',
+    color: (d, cloudAt) => vec3(cloudAt(d).cirrus) },
+  { id: 'coverage', label: '積雲の不透明度', reads: 'cloud',
+    color: (d, cloudAt) => vec3(cumulusOpacityNode(cloudAt(d).cumulus)) },
+  { id: 'cloudTop', label: '積雲の雲頂', reads: 'cloud',
+    color: (d, cloudAt) => vec3(cumulusTopAltitudeNode(cloudAt(d).cumulus).div(CUMULUS_TOP_ALTITUDE)) },
+  // 巻雲の量が 0 の所は雲そのものが無いので、高さも 0 へ落とす。
+  { id: 'cirrusTop', label: '巻雲の雲頂', reads: 'cloud',
+    color: (d, cloudAt) => {
+      const cloud = cloudAt(d);
+      return vec3(select(cloud.cirrus.greaterThan(0),
+        cirrusTopAltitudeNode(cloud.cirrus).div(CUMULUS_TOP_ALTITUDE), float(0)));
+    } },
+  { id: 'translucent', label: '巻雲の厚み', reads: 'cloud',
+    color: (d, cloudAt) => vec3(cirrusColumnOpticalDepthNode(cloudAt(d).cirrus).div(TRANSLUCENT_SPAN)) },
+  // 巻雲の筋の向きを色相、揃い度を明度で。揃い度の無い所は黒。
+  { id: 'cirrusFlow', label: '巻雲の筋の向き', reads: 'cloud',
+    color: (d, cloudAt) => cirrusFlowColor(cloudAt(d).cirrusFlow) },
+  // 積雲と巻雲を 1 枚に重ねた見え。晴れた空が透ける割合 (1 − 不透明度)·e^(−τ) の補で、
   // 加算と違って飽和しない。実写と見比べるための面で、描画側の合成の仕様ではない。
   { id: 'composite', label: '合成', reads: 'cloud',
     color: (d, cloudAt) => {
-      const cover = cloudAt(d);
-      return vec3(float(1).sub(float(1).sub(cover.coverage).mul(exp(cover.translucent.negate()))));
+      const cloud = cloudAt(d);
+      const clear = cumulusOpacityNode(cloud.cumulus).oneMinus()
+        .mul(exp(cirrusColumnOpticalDepthNode(cloud.cirrus).negate()));
+      return vec3(clear.oneMinus());
     } },
   { id: 'photo', label: '実写', reads: 'photo',
     color: (d, photo) => texture(photo, equirectUvFromDirection(d)).rgb },
