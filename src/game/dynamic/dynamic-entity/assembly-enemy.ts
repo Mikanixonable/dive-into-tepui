@@ -220,7 +220,7 @@ export class AssemblyEnemy extends Enemy {
 
   // 被弾で失われた部品を表示入力へ足す。
   protected override renderSource(
-    viewFrame: DynamicViewFrame, active: boolean, orbitReference?: OrbitReference,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | null,
   ): AssemblyVisualSource {
     return {
       ...super.renderSource(viewFrame, active, orbitReference),
