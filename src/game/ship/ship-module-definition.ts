@@ -69,15 +69,18 @@ export interface ShipModuleDefinition {
   readonly abilities: ShipModuleAbilities;
 }
 
+// value を新しいオブジェクトへ写して凍結する。
 function frozenVector(value: Vec3): Vec3 {
   return Object.freeze(v3(value.x, value.y, value.z));
 }
 
+// 正の有限数でなければ失敗にする。
 function finitePositive(value: number, label: string): number {
   if (!Number.isFinite(value) || value <= 0) throw new Error(`ship module ${label} must be positive`);
   return value;
 }
 
+// 定義と入れ子の配列・値をすべて凍結して返す。プリミティブの軸は単位化する。
 function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinition {
   const primitives = definition.solidPrimitives.map((primitive) => Object.freeze({
     center: frozenVector(primitive.center),
@@ -89,6 +92,7 @@ function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinitio
     halfLength: primitive.halfLength,
     radius: primitive.radius,
   }));
+  // 浅い複製を凍結し、入れ子だけ個別に写してから凍結したもので上書きする。
   return Object.freeze({
     ...definition,
     axialFaces: Object.freeze({ ...definition.axialFaces }),
@@ -107,6 +111,7 @@ export function defineShipModule(
     readonly solidPrimitives: readonly LocalCappedCylinder[];
   },
 ): ShipModuleDefinition {
+  // 寸法・識別子・端面の使い道の検査。
   finitePositive(definition.length, 'length');
   finitePositive(definition.diameter, 'diameter');
   finitePositive(definition.dryMass, 'dryMass');
@@ -119,6 +124,7 @@ export function defineShipModule(
       throw new Error(`invalid axial face use: ${definition.id}`);
     }
   }
+  // 接触プリミティブと砲口・排出口の位置の検査。
   if (definition.solidPrimitives.length === 0) throw new Error('ship module needs a solid primitive');
   for (const primitive of definition.solidPrimitives) {
     finitePositive(primitive.halfLength, 'primitive halfLength');

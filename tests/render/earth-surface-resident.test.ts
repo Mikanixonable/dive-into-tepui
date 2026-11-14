@@ -37,6 +37,7 @@ class ImmediateBackend implements EarthSurfaceGpuBackend {
   public dispose(): void { this.disposed = true; }
 }
 
+// key の正常系ESTNタイル。
 function terrain(key: EarthTileKey): Uint8Array {
   const bytes = new Uint8Array(EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
   bytes.set(new TextEncoder().encode('ESTN'));
@@ -50,6 +51,7 @@ function terrain(key: EarthTileKey): Uint8Array {
 
 class Projection implements EarthTileProjection {
   public constructor(public readonly splitError = 3, public readonly maximumLevel = EARTH_TILE_MIN_Z) {}
+  // maximumLevel までは分割誤差 splitError、それ以深は 0(分割しない)。
   public evaluate(key: EarthTileKey): { readonly visible: boolean; readonly errorPx: number; readonly priority: number } {
     return { visible: true, errorPx: key.z <= this.maximumLevel ? this.splitError : 0, priority: 1 / (1 + key.z) };
   }
@@ -77,10 +79,12 @@ class CandidateTiles extends EarthSurfaceTiles {
   }
 }
 
+// bytes をbodyに持つ応答のfixture。
 function response(bytes: Uint8Array, status = 200): Response {
   return new Response(bytes.slice(), { status, headers: { 'content-length': String(bytes.length) } });
 }
 
+// 要求→GPU→常駐の一式を、即時応答のfixtureで組んで返す。
 function coordinator(keys: readonly EarthTileKey[], fetchImpl: typeof fetch = async (input) => {
   const url = String(input);
   const isColor = url.endsWith('.jpg');
@@ -92,6 +96,7 @@ function coordinator(keys: readonly EarthTileKey[], fetchImpl: typeof fetch = as
   if (!(color instanceof Uint8Array)) throw new Error('fixture color is not RGBA8');
   return color;
 }, tiles = new EarthSurfaceTiles(), decodeImage: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown> = async () => COLOR.slice()) {
+  // 各差し替え点をfixtureで満たした一式を組む。
   const source = new EarthSurfaceTileSource('{z}/{x}/{y}.jpg', '{z}/{x}/{y}.bin.gz');
   const queue = new EarthSurfaceTileRequestQueue(source, {
     fetchImpl,
@@ -104,6 +109,7 @@ function coordinator(keys: readonly EarthTileKey[], fetchImpl: typeof fetch = as
   return { backend, gpu, queue, resident, tiles };
 }
 
+// z7 のタイルを y=0 行へ並べた候補。
 function candidateKeys(count: number): readonly EarthTileKey[] {
   return Array.from({ length: count }, (_, index) => earthTileKey(7, index, 0));
 }
@@ -121,17 +127,20 @@ class GatedBackend extends ImmediateBackend {
   private releaseGate!: () => void;
   public readonly started: Promise<void>;
   private resolveStarted!: () => void;
+  // 書き込みを gate が開くまで止める backend。started は最初の書き込み開始で解決する。
   public constructor() {
     super();
     this.gate = new Promise<void>((resolve) => { this.releaseGate = resolve; });
     this.started = new Promise<void>((resolve) => { this.resolveStarted = resolve; });
   }
   public release(): void { this.releaseGate(); }
+  // 開始を合図してから gate を待つ。
   public async writeColor(layer: number, pixels: Uint8Array): Promise<void> {
     this.resolveStarted();
     await this.gate;
     return super.writeColor(layer, pixels);
   }
+  // gate を待ってから記録する。
   public async writeTerrain(layer: number, pixels: Uint8Array): Promise<void> {
     await this.gate;
     return super.writeTerrain(layer, pixels);
@@ -147,6 +156,7 @@ class GenerationRaceBackend extends ImmediateBackend {
   public readonly secondFinished: Promise<void>;
   private resolveSecondFinished!: () => void;
 
+  // 層0の最初の書き込みを止め、層1の2回目の書き込み完了を合図する。
   public constructor() {
     super();
     this.firstGate = new Promise<void>((resolve) => { this.releaseFirstGate = resolve; });
@@ -156,11 +166,13 @@ class GenerationRaceBackend extends ImmediateBackend {
 
   public releaseFirst(): void { this.releaseFirstGate(); }
 
+  // 層1の2回目の書き込みで secondFinished を解決する。
   private markSecondWrite(): void {
     this.secondWrites++;
     if (this.secondWrites === 2) this.resolveSecondFinished();
   }
 
+  // 層0は最初の開始を合図して gate を待ち、層1は完了を数える。
   public async writeColor(layer: number, pixels: Uint8Array): Promise<void> {
     if (layer === 0) {
       this.resolveFirstStarted();
@@ -170,6 +182,7 @@ class GenerationRaceBackend extends ImmediateBackend {
     if (layer === 1) this.markSecondWrite();
   }
 
+  // 層0は gate、層1は合図の対象にする。
   public async writeTerrain(layer: number, pixels: Uint8Array): Promise<void> {
     if (layer === 0) await this.firstGate;
     await super.writeTerrain(layer, pixels);

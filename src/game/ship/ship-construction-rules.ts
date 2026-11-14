@@ -24,6 +24,7 @@ const OPPOSITE_SLOT: Readonly<Record<SideSlot, SideSlot>> = {
   'side:+x': 'side:-x', 'side:-x': 'side:+x', 'side:+y': 'side:-y', 'side:-y': 'side:+y',
 };
 
+// 前端と後端の対を返す。
 function oppositeFace(face: AxialFace): AxialFace {
   return face === 'front' ? 'back' : 'front';
 }
@@ -81,6 +82,7 @@ export function constructionTargetId(target: ConstructionTarget): string {
 
 // 起点ドックから各モジュールへの無向グラフ上の距離を求める。
 function anchorDistances(assembly: ShipAssembly, anchorId: string): ReadonlyMap<string, number> {
+  // 無向グラフを起点から幅優先で辿り、各モジュールの深さを記録する。
   const distances = new Map<string, number>([[anchorId, 0]]);
   const pending = [anchorId];
   while (pending.length > 0) {
@@ -107,6 +109,8 @@ export interface JointEnds {
   readonly farOrientation: ModuleOrientation;
 }
 
+// connectionId の継ぎ目の、起点ドックに近い側と遠い側。
+// 継ぎ目(軸方向・建造の接続)でなければ null。
 export function jointEndsOf(
   assembly: ShipAssembly, anchorId: string, connectionId: string,
 ): JointEnds | null {
@@ -129,6 +133,7 @@ export function jointEndsOf(
 function occupiedAxialFaces(
   assembly: ShipAssembly, moduleId: string, ignoreConnectionId: string | null,
 ): ReadonlySet<AxialFace> {
+  // moduleId に隣接する接続の、moduleId 側の取り付け面を集める。
   const faces = new Set<AxialFace>();
   for (const edge of assembly.graph) {
     if (edge.kind === 'side' || edge.id === ignoreConnectionId) continue;
@@ -159,6 +164,7 @@ export function enumerateConstructionTargets(
   assembly: ShipAssembly, anchorId: string,
 ): readonly ConstructionTargetInfo[] {
   const targets: ConstructionTargetInfo[] = [];
+  // 各モジュールの空いている軸方向の面と側面スロット。
   for (const instance of assembly.modules) {
     const definition = assembly.catalog.get(instance.definitionId);
     if (definition === null) continue;
@@ -184,6 +190,7 @@ export function enumerateConstructionTargets(
       }
     }
   }
+  // 軸方向の継ぎ目。
   for (const edge of assembly.graph) {
     const ends = jointEndsOf(assembly, anchorId, edge.id);
     if (ends === null) continue;
@@ -215,6 +222,7 @@ export function heldRootDefinition(
   }
 }
 
+// 置けない判定の結果。reason が拒否理由になる。
 function invalidResult(reason: string): ConstructionPlacementResult {
   return { valid: false, reason, attachments: [], reattachment: null };
 }
@@ -255,6 +263,8 @@ export function placementFor(
   }
 }
 
+// 軸方向の面への配置可否を判定する。親の面が空き、手持ちの根がその面で
+// 取り付けられるとき有効。ドックの結合面(前端)への配置は建造接続になる。
 function axialTargetPlacement(
   assembly: ShipAssembly, target: { readonly parentId: string; readonly face: AxialFace },
   orientation: ModuleOrientation, rootDefinition: ShipModuleDefinition,
@@ -276,6 +286,7 @@ function axialTargetPlacement(
   if (rootDefinition.axialFaces[orientation.face] !== 'structural') {
     return invalidResult('その面では自分から取り付けられません');
   }
+  // ドックの結合面へ付くものは、接舷の継ぎ目として扱える接続の種別にする。
   const connectionKind: ConnectionKind = parentDefinition.kind === 'dock' && target.face === 'front'
     ? 'construction' : 'axial';
   return {
@@ -289,6 +300,8 @@ function axialTargetPlacement(
   };
 }
 
+// 側面スロットへの配置可否を判定する。親が側面の持ち主・手持ちの根が側面の子で、
+// 対称の位置がすべて空いているとき有効。
 function sideTargetPlacement(
   assembly: ShipAssembly, target: { readonly parentId: string; readonly slot: SideSlot },
   orientation: ModuleOrientation, symmetry: ConstructionSymmetry, rootDefinition: ShipModuleDefinition,
@@ -307,6 +320,7 @@ function sideTargetPlacement(
     : symmetry === 2 ? [target.slot, OPPOSITE_SLOT[target.slot]]
     : [target.slot];
   const occupied = occupiedSideSlots(assembly, target.parentId, ignoreConnectionId);
+  // 対称の位置すべてが空いていることを確かめる。
   for (const slot of slots) {
     if (occupied.has(slot)) {
       return invalidResult(
@@ -325,6 +339,8 @@ function sideTargetPlacement(
   };
 }
 
+// 継ぎ目への割り込み可否を判定する。両端に取り付け面を持つカタログ定義だけを
+// 近い側のモジュールへ付け、遠い側の先端部を付き直す計画を返す。
 function jointTargetPlacement(
   assembly: ShipAssembly, anchorId: string, held: ConstructionHeld,
   target: { readonly connectionId: string }, orientation: ModuleOrientation,

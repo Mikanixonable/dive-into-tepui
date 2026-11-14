@@ -25,8 +25,8 @@ export interface EarthSurfaceMaterialBinding {
   dispose(): void;
 }
 
-// 未取得のbase地形を平面法線・最大粗さで埋めるRGBA8データを作る。
-// 全球fallback用の楕円体法線と最大粗さをRGBA8へ焼く。
+// base地形が届くまでのfallbackとして、画素の地理座標の楕円体法線と最大粗さを焼いた
+// RGBA8データを作る。
 function defaultTerrainData(): Uint8Array {
   // 各画素を地理座標へ対応させ、楕円体の放射法線を符号化する。
   const data = new Uint8Array(EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);

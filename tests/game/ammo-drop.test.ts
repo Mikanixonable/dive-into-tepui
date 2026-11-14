@@ -1,3 +1,4 @@
+// 撃破で敵機の位置へ落ちる弾薬補給(撃破ドロップ)と、その回収・直列化の回帰テスト。
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
@@ -62,6 +63,7 @@ function bareStage(
   fields._dynamicSystem = system;
   fields.blueprintShelf = { blueprints: [] };
   fields.grantedSalvageNames = new Set();
+  // 自機は getter として差し込む。
   Object.defineProperty(stage, 'ship', {
     value: playerState === null ? null : { motion: { state: playerState, alive: true } },
   });

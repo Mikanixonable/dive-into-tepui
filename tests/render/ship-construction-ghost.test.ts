@@ -1,3 +1,5 @@
+// 建造ゴーストが共有 material を侵さず、宣言どおりの姿・色・チャンネルへ同期し、
+// スナップガイドと同じ接続面を共有することを固定する。
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { Q_IDENTITY, qFromAxisAngle } from '../../src/math/quat';
@@ -6,6 +8,7 @@ import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
 import { test } from '../harness';
 
+// テスト用の model: modelId を名に持つ Group と、所有を印したメッシュ1枚。
 function modelFactory(modelId: string): THREE.Group {
   const model = new THREE.Group();
   model.name = modelId;
@@ -18,6 +21,7 @@ function modelFactory(modelId: string): THREE.Group {
   return model;
 }
 
+// root 配下の最初のメッシュの material を返す。メッシュが無い・material が配列なら失敗。
 function materialOf(root: THREE.Object3D): THREE.Material & { color?: THREE.Color } {
   const mesh = root.getObjectByProperty('isMesh', true) as THREE.Mesh;
   if (!mesh?.isMesh || Array.isArray(mesh.material)) throw new Error('ghost mesh is missing');
@@ -28,6 +32,7 @@ export function register(): void {
   test('ship construction ghost: hidden, valid, invalid, and module switch keep private translucent materials', () => {
     const scene = new THREE.Scene();
     const shared = new THREE.MeshBasicMaterial({ color: 0x456789 });
+    // 全メッシュが同じ共有 material を持つ model を返し、ゴースト側の複製を検査できるようにする。
     const factory = (modelId: string) => {
       const model = modelFactory(modelId);
       const mesh = model.getObjectByProperty('isMesh', true) as THREE.Mesh;

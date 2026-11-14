@@ -23,6 +23,7 @@ function neighborOf(connection: ShipConnection, current: string): string | null 
 function firstEdgeInto(
   connections: readonly ShipConnection[], from: string, to: string,
 ): ShipConnection | null {
+  // from から幅優先で辿り、to へ到達した時点で打ち切る。
   const seen = new Set([from]);
   const entering = new Map<string, ShipConnection>();
   const pending = [from];
