@@ -32,7 +32,7 @@ const CATEGORY_BY_KIND: Readonly<Record<ShipModuleDefinition['kind'], ShipModule
 };
 
 // カードの通知先。tap は押しただけ(動かさず離す)で手に取る操作。
-export interface ShipConstructionCatalogCallbacks {
+interface ShipConstructionCatalogCallbacks {
   readonly onSelectModule: (definitionId: string) => void;
   readonly onSelectBlueprint: (blueprintId: string) => void;
   readonly onRenameBlueprint: (id: string, name: string) => void;

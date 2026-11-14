@@ -12,7 +12,7 @@ const RUN_END_FADE_SEC = 2.5; // ランの外へ出たときのフェードア�
 
 // 保存が無いときのユーザー音量と消音。
 export const DEFAULT_BGM_VOLUME = 1;
-export const DEFAULT_BGM_MUTED = false;
+const DEFAULT_BGM_MUTED = false;
 
 // 保存された文字列をユーザー音量へ読み直す。数として読めない値は既定へ落とし、読めた値は 0〜1 へ収める。
 export function parseBgmVolume(text: string | null): number {
@@ -57,7 +57,7 @@ export interface BgmAudition {
 // そのフレームに鳴らすべき BGM の全体。volume はユーザー音量 [0〜1]、inRun はランが進行中か(ゲーム中の
 // BGM を鳴らすか)。audition は試聴の期間の外なら null で、期間の間はゲーム中の BGM を伏せ、試聴している
 // 曲を鳴らす(曲を止めていれば 'silent')。
-export interface BgmDeclaration {
+interface BgmDeclaration {
   readonly volume: number;
   readonly inRun: boolean;
   readonly audition: BgmAudition | 'silent' | null;
