@@ -285,7 +285,7 @@ export class ShipAutopilot {
   private aimAt(direction: Vec3, dt: number): void {
     const motion = this.host.motion;
     const totalTorque = this.host.totalTorque;
-    let torque = attitudeAlignTorque(direction, motion.state.r, motion.att, AIM_KP, AIM_KD);
+    let torque = attitudeAlignTorque(direction, motion.state.r, motion.controlAttitude, AIM_KP, AIM_KD);
     if (totalTorque > 0 && this.host.rcsFuelConsumptionRate > 0) {
       const fraction = Math.min(1, len(torque) / totalTorque);
       const ratio = this.host.consumeRcsFuel(this.host.rcsFuelConsumptionRate * fraction * dt);
