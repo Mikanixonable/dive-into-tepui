@@ -8,12 +8,11 @@ import {
 } from '../../src/render/earth-surface-terrain-codec';
 import {
   decodeEarthBaseTerrainPayload,
-  decodeEarthBaseTerrainPayloadOctahedral,
   decodeEarthTerrainPayload,
-  decodeEarthTerrainPayloadOctahedral,
 } from '../../src/render/earth-surface-terrain-codec';
-import { decodeEarthSurfaceTile } from '../../src/render/earth-surface-tile-decode';
-import { EarthSurfaceDecodeError } from '../../src/render/earth-surface-decode-errors';
+import { decodeEarthSurfaceTileBytes, downloadEarthSurfaceTile } from '../../src/render/earth-surface-tile-decode';
+import type { EarthSurfaceTileRequest } from '../../src/render/earth-surface-tile-decode';
+import { EarthSurfaceDecodeError } from '../../src/render/earth-surface-errors';
 import {
   EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES, EARTH_TERRAIN_HEIGHT, EARTH_TERRAIN_WIDTH,
 } from '../../src/render/earth-surface-format';
@@ -22,6 +21,7 @@ import { decodeEarthTerrainOffThread } from '../../src/render/earth-surface-terr
 
 const KEY = earthTileKey(5, 2, 1);
 
+// KEY の正常系ESTNタイル(地形部はゼロ埋め)。
 function terrainPayload(): Uint8Array {
   const payload = new Uint8Array(EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
   payload.set(new TextEncoder().encode('ESTN'), 0);
@@ -34,6 +34,7 @@ function terrainPayload(): Uint8Array {
   return payload;
 }
 
+// z0 タイルのESTN。
 function rootTerrainPayload(x: number): Uint8Array {
   const key = earthTileKey(0, x, 0);
   const payload = new Uint8Array(EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
@@ -44,10 +45,12 @@ function rootTerrainPayload(x: number): Uint8Array {
   view.setUint8(12, key.z); view.setUint8(13, 0);
   view.setUint32(14, key.x, true); view.setUint32(18, key.y, true);
   view.setUint8(22, 4); view.setUint8(23, 2); view.setUint32(24, EARTH_TERRAIN_BYTES, true); view.setUint32(28, 0, true);
+  // 地形部を識別用の値で埋める。
   new Uint8Array(payload.buffer, EARTH_TERRAIN_HEADER_BYTES).fill(x === 0 ? 0x1111 : 0x2222);
   return payload;
 }
 
+// z0 2枚を載せたESTB全球base payload。
 function baseTerrainPayload(): Uint8Array {
   const first = rootTerrainPayload(0);
   const second = rootTerrainPayload(1);
@@ -59,43 +62,21 @@ function baseTerrainPayload(): Uint8Array {
   view.setUint8(12, 0); view.setUint8(13, 0);
   view.setUint32(14, 2, true); view.setUint32(18, 1, true);
   view.setUint8(22, 4); view.setUint8(23, 2); view.setUint32(24, first.length + second.length, true); view.setUint32(28, 0, true);
+  // 2枚のESTNタイルを連結する。
   payload.set(first, 32); payload.set(second, 32 + first.length);
   return payload;
 }
 
-function legacyTerrainPayload(key: ReturnType<typeof earthTileKey>): Uint8Array {
-  const payload = new Uint8Array(EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
-  payload.set(new TextEncoder().encode('ESTN'), 0);
-  const view = new DataView(payload.buffer);
-  view.setUint16(4, 2, true); view.setUint16(6, 32, true);
-  view.setUint16(8, EARTH_TERRAIN_WIDTH, true); view.setUint16(10, EARTH_TERRAIN_HEIGHT, true);
-  view.setUint8(12, key.z); view.setUint8(13, 0);
-  view.setUint32(14, key.x, true); view.setUint32(18, key.y, true);
-  view.setUint8(22, 4); view.setUint8(23, 2); view.setUint32(24, EARTH_TERRAIN_BYTES, true); view.setUint32(28, 0, true);
-  const body = payload.subarray(EARTH_TERRAIN_HEADER_BYTES);
-  for (let offset = 0; offset < body.length; offset += 4) body.set([128, 128, 64, 2], offset);
-  return payload;
-}
-
-function legacyBaseTerrainPayload(): Uint8Array {
-  const first = legacyTerrainPayload(earthTileKey(0, 0, 0));
-  const second = legacyTerrainPayload(earthTileKey(0, 1, 0));
-  const payload = new Uint8Array(32 + first.length + second.length);
-  payload.set(new TextEncoder().encode('ESTB'), 0);
-  const view = new DataView(payload.buffer);
-  view.setUint16(4, 2, true); view.setUint16(6, 32, true);
-  view.setUint16(8, EARTH_TERRAIN_WIDTH, true); view.setUint16(10, EARTH_TERRAIN_HEIGHT, true);
-  view.setUint8(12, 0); view.setUint8(13, 0);
-  view.setUint32(14, 2, true); view.setUint32(18, 1, true);
-  view.setUint8(22, 4); view.setUint8(23, 2); view.setUint32(24, first.length + second.length, true); view.setUint32(28, 0, true);
-  payload.set(first, 32); payload.set(second, 32 + first.length);
-  return payload;
-}
-
+// bytes をbodyに持つ200応答のfixture。
 function response(bytes: Uint8Array, contentType = 'application/octet-stream'): Response {
   const body = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(body).set(bytes);
   return new Response(body, { status: 200, headers: { 'content-type': contentType, 'content-length': String(bytes.length) } });
+}
+
+// 要求から取得→復号まで通す。
+async function decodeEarthSurfaceTile(request: EarthSurfaceTileRequest) {
+  return decodeEarthSurfaceTileBytes(request, await downloadEarthSurfaceTile(request));
 }
 
 export function register(): void {
@@ -119,19 +100,6 @@ export function register(): void {
     assert.equal(result.length, EARTH_BASE_TERRAIN_WIDTH * EARTH_BASE_TERRAIN_HEIGHT * 4);
     assert.equal(result[0], 0x11);
     assert.equal(result[(EARTH_BASE_TERRAIN_WIDTH - 1) * 4], 0x22);
-  });
-
-  test('earth decode: schema1の八面体法線を現行のXYZ法線とroughnessへ変換する', () => {
-    const payload = legacyTerrainPayload(KEY);
-    const result = decodeEarthTerrainPayloadOctahedral(payload, KEY);
-    assert.deepEqual([...result.slice(0, 4)], [128, 128, 255, 64]);
-    const base = decodeEarthBaseTerrainPayloadOctahedral(legacyBaseTerrainPayload());
-    assert.deepEqual([...base.slice(0, 4)], [128, 128, 255, 64]);
-
-    // Nz < 0（八面体の裏側）の法線が正に反転せず負のZとして復号されることを検査する。
-    payload.subarray(EARTH_TERRAIN_HEADER_BYTES).set([255, 255, 64, 2], 0);
-    const resultNegativeZ = decodeEarthTerrainPayloadOctahedral(payload, KEY);
-    assert.deepEqual([...resultNegativeZ.slice(0, 4)], [128, 128, 0, 64]);
   });
 
   test('earth decode: 色とgzip地形を同じ世代でatomically decodeする', async () => {

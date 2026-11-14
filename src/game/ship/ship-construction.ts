@@ -1,118 +1,311 @@
-// ドック起点の建造セッションを持ち、ゲームの配置規則をHUD・ゴースト・候補ガイドへ同期する。
-import { v3, type Vec3 } from '../../math/vec3';
-import { DockSnapGuideView, type DockSnapGuideDisplay } from '../../render/dynamic/ship/dock-snap-guide-view';
-import { ShipGhostView } from '../../render/dynamic/ship/ship-ghost-view';
+// 建造セッションの状態と命令の所有者: 起点ドック・手持ち・選択・向き・対称数・
+// 指している取り付け先・取り消し履歴を持ち、船体への編集は命令として列へ積む。
+// ゴースト・ガイド・接続ノードの描画は読み取り面を通して表示の導出が行う。
 import {
-  constructionSlotId, enumerateConstructionSlots, placementForSlot, slotState,
-  type ConstructionSlot,
+  constructionModuleLabel, constructionTargetId, enumerateConstructionTargets, heldRootDefinition,
+  placementFor, type ConstructionTargetInfo,
 } from './ship-construction-rules';
-import { constructionCandidate, hitsConstructionCandidate, type ConstructionCandidate } from './ship-construction-candidates';
-import { SHIP_MODULE_CATALOG } from './ship-module-catalog';
+import {
+  constructionTargetGuide, type ConstructionTargetGuide,
+} from './ship-construction-candidates';
+import { shipConstructionPanelModel } from './ship-construction-panel-model';
+import { ShipConstructionPointer } from './ship-construction-pointer';
+import type { ConstructionRotationDrag } from './ship-construction-rotation';
+import { tryConstructionPlacement, type ConstructionTrial } from './ship-construction-preview';
 import { ShipConstructionEdits } from './ship-construction-edits';
-import { hiddenShipConstructionModel } from './ship-construction-types';
+import { ConstructionHistory } from './ship-construction-history';
+import { pieceOfModule } from './ship-assembly-graft';
+import {
+  axialPlacementFromTransform, inverseTransform, sideRollFromTransform,
+  type ModuleOrientation,
+} from './ship-assembly-transform';
+import { deserializeShipAssembly, serializeShipAssembly } from './ship-assembly-serialization';
+import {
+  hiddenShipConstructionModel,
+  type ConstructionCardDrag, type ConstructionCardDragEvent,
+  type ConstructionConfirmationPort, type ConstructionDeniedRecord,
+  type ConstructionHeld, type ConstructionHistoryView, type ConstructionOperationRecord,
+  type ConstructionSymmetry, type ShipConstructionPanelModel,
+} from './ship-construction-types';
+import type { ShipBlueprintShelf } from './ship-blueprint';
+import {
+  constructionModuleFocus, type ConstructionFocus,
+} from './ship-construction-focus';
+import type { RunEventSink } from '../run-events';
 import { CommandCompletion } from '../command-completion';
-import type * as THREE from 'three/webgpu';
-import type { CameraFrame } from '../../render/camera/camera-frame';
+import type { Projected } from '../../math/projection';
 import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
 import type { Input } from '../../input/input';
 import type { Viewport } from '../../render/viewport';
 import type { CameraSystem } from '../camera/camera-system';
 import type { DisplayWindowManager } from '../display-window-manager';
-import type {
-  ConstructionConfirmationPort, ConstructionSlotState, ShipConstructionPanelModel,
-} from './ship-construction-types';
 import type { Notifier } from '../../hud/notifier';
 import type { CommandQueue } from '../command-queue';
-import type { ShipConstructionDraftState } from './ship-dock-state';
 import type { ModularShip } from './modular-ship';
 
-interface ConstructionDraft extends ShipConstructionDraftState {
-  readonly ship: ModularShip;
-}
-
+// 開いている建造セッション。対象の船体・起点ドック・編集口・取り消し履歴。
 interface ConstructionSession {
   readonly ship: ModularShip;
-  readonly dockId: string;
+  readonly anchorId: string;
   readonly edits: ShipConstructionEdits;
+  readonly history: ConstructionHistory;
 }
 
-type ConstructionAction = 'begin' | 'place' | 'remove' | 'finish' | 'discard';
+// 命令の種別。'restore' は取り消し系で、成功時に履歴位置を動かす。
+// 'blueprint' は船体を変えない記録系で、成功時に履歴も操作記録も積まない。
+type ConstructionAction = 'place' | 'move' | 'remove' | 'reorient' | 'restore' | 'blueprint';
 
+// 適用待ちの命令。成功時に履歴へ積む材料を持つ。
 interface PendingConstructionCommand {
   readonly session: ConstructionSession;
   readonly action: ConstructionAction;
   readonly completion: CommandCompletion;
+  // 成功時に履歴へ積む操作名。restore は代わりに履歴の位置をここへ動かす。
+  readonly historyName: string;
+  readonly historyIndex: number | null;
+  // 成功時の操作記録へ載せる、動いたモジュールの識別子。
+  readonly moduleIds: readonly string[];
+  // 健全なコックピットを失う確定済みの操作は、成功したら閉じる。
+  readonly closeOnSuccess: boolean;
+  // 適用の中で捕捉した、その操作直後の船体の写し。
+  snapshot: ReturnType<typeof serializeShipAssembly> | null;
 }
 
-let nextConstructionModule = 1;
+export type { ConstructionFocus };
 
 export interface ShipConstructionPanelPort {
   readonly element: { contains(target: Node): boolean };
   onSelectionChange: ((definitionId: string) => void) | null;
+  onBlueprintHold: ((blueprintId: string) => void) | null;
+  onCardDrag: ((event: ConstructionCardDragEvent) => void) | null;
+  onBlueprintRename: ((id: string, name: string) => void) | null;
+  onBlueprintDelete: ((id: string) => void) | null;
   onSlotChange: ((slotId: string) => void) | null;
   onPlace: (() => void) | null;
   onRemove: (() => void) | null;
+  onDuplicate: (() => void) | null;
+  // 「付け替える」。選択中の先端部を手持ちにする。
+  onReattach: (() => void) | null;
+  onRelease: (() => void) | null;
+  onRotate: ((delta: 1 | -1) => void) | null;
+  onSwapEnds: (() => void) | null;
+  onCycleSymmetry: (() => void) | null;
+  onUndo: (() => void) | null;
+  onRedo: (() => void) | null;
+  onJumpHistory: ((index: number) => void) | null;
   onFinish: (() => void) | null;
   onDiscard: (() => void) | null;
+  // カタログの表示カテゴリをタブの並び順の index で選ぶ。
+  selectCatalogCategory(index: number): void;
   sync(model: ShipConstructionPanelModel): void;
+  // 選択メニューの追従先となる選択モジュールの画面位置。無い・読めないときは null。
+  syncSelectionMenu(anchor: Projected | null): void;
 }
 
-// 一度に一つの建造セッションを所有し、論理 assembly・HUD・ghost を同じ候補へ同期する。
+// 一度に一つの建造セッションを所有し、船体の編集を命令へ、表示へ同期する。
 export class ShipConstruction implements OverlayHandle {
-  private readonly ghost: ShipGhostView;
-  private readonly guide: DockSnapGuideView;
+  // ポインタとショートカットキーの解釈。操作途中の状態(掴んだドラッグ)を持つ部品。
+  private readonly pointer = new ShipConstructionPointer(this);
   private current: ConstructionSession | null = null;
   private pending: PendingConstructionCommand[] = [];
-  private definitionId = 'cockpit-standard';
-  private selectedSlotId = 'axial';
+  private heldValue: ConstructionHeld | null = null;
+  // 手持ちが設計図の写しのとき、その設計図の id。
+  private heldBlueprintId: string | null = null;
+  private selectedId: string | null = null;
+  private orientation: ModuleOrientation = { roll: 0, face: 'back' };
+  private symmetry: ConstructionSymmetry = 1;
+  private pointedId: string | null = null;
+  // ポインタの下にあるモジュール。
+  private hoveredId: string | null = null;
+  // カタログのカードから持ち上げている最中のドラッグ(R5-4 の操作途中の状態)。
+  private cardDragValue: ConstructionCardDrag | null = null;
   private previousForceCurrent = false;
+  private operationSequence = 0;
+  private operation: ConstructionOperationRecord | null = null;
+  private denied: ConstructionDeniedRecord | null = null;
+  // 置いたモジュールへ順に振る `construction-N` の次の番号。assembly の既存 id との衝突は
+  // allocateIds 側で避ける。
+  private nextModuleId = 1;
+  private trialCache: { readonly signature: string; readonly trial: ConstructionTrial } | null = null;
 
-  // 建造規則の結果を、既存のHUD・入力・表示時刻の各装置へ接続する。
+  // 建造セッションを、パネル・入力・表示時刻の各装置へ繋ぐ。
   public constructor(
-    scene: THREE.Scene,
+    private readonly input: Input,
     private readonly commands: CommandQueue,
     private readonly panel: ShipConstructionPanelPort,
     private readonly overlayManager: OverlayManager,
     private readonly displayWindow: DisplayWindowManager,
     private readonly notifier: Notifier,
     private readonly confirmation: ConstructionConfirmationPort,
-    private readonly focusDock: ((ship: ModularShip) => void) | null = null,
+    private readonly blueprints: ShipBlueprintShelf,
+    private readonly events: RunEventSink,
+    private readonly focusSubject: ((
+      ship: ModularShip, target: ConstructionFocus | null,
+    ) => void) | null = null,
   ) {
-    this.ghost = new ShipGhostView(scene);
-    this.guide = new DockSnapGuideView(scene);
-    // パネルの操作を建造の各手順へ繋ぐ。
+    // パネルの操作を建造の各操作へ繋ぐ。
     panel.onSelectionChange = (definitionId) => {
-      this.definitionId = definitionId;
+      if (this.heldValue?.kind === 'catalog' && this.heldValue.definitionId === definitionId) {
+        this.release();
+      } else {
+        this.hold({ kind: 'catalog', definitionId });
+      }
       this.syncPanel();
     };
+    panel.onBlueprintHold = (blueprintId) => {
+      if (this.heldBlueprintId === blueprintId && this.heldValue !== null) {
+        this.release();
+      } else {
+        this.holdBlueprint(blueprintId);
+      }
+    };
+    panel.onCardDrag = (event) => this.noteCardDrag(event);
+    panel.onBlueprintRename = (id, name) => this.renameBlueprint(id, name);
+    panel.onBlueprintDelete = (id) => this.deleteBlueprint(id);
     panel.onSlotChange = (slotId) => {
-      this.selectSlot(slotId);
+      this.setPointedTarget(slotId);
       this.syncPanel();
     };
-    panel.onPlace = () => this.place();
-    panel.onRemove = () => this.removeLast();
-    panel.onFinish = () => this.finish();
-    panel.onDiscard = () => this.discard();
+    panel.onPlace = () => {
+      // 手持ちが無く選択中のモジュールがあるとき、配置は付け替えとして働く。
+      if (this.heldValue !== null) this.placeAt();
+      else if (this.selectedId !== null && this.pointedId !== null) {
+        this.moveSelectedTo(this.pointedId);
+      }
+      this.syncPanel();
+    };
+    panel.onRemove = () => this.removeSelected();
+    panel.onDuplicate = () => this.duplicateSelected();
+    panel.onReattach = () => this.holdSelectedPiece();
+    panel.onRelease = () => this.release();
+    panel.onRotate = (delta) => this.rotate(delta);
+    panel.onSwapEnds = () => this.swapEnds();
+    panel.onCycleSymmetry = () => this.cycleSymmetry();
+    panel.onUndo = () => this.undo();
+    panel.onRedo = () => this.redo();
+    panel.onJumpHistory = (index) => this.jumpToHistory(index);
+    panel.onFinish = () => this.close();
+    panel.onDiscard = () => this.revertAll();
   }
 
   public get active(): boolean { return this.current !== null; }
 
-  // 保存済みドラフトを復元または新規作成し、建造モードの時間・入力境界を開く。
+  // ---- セッションの読み取り面 ----
+  public get sessionShip(): ModularShip | null { return this.current?.ship ?? null; }
+  public get anchorId(): string | null { return this.current?.anchorId ?? null; }
+  public get held(): ConstructionHeld | null { return this.heldValue; }
+  public get selectedModuleId(): string | null { return this.selectedId; }
+  public get pointedTargetId(): string | null { return this.pointedId; }
+  public get hoveredModuleId(): string | null { return this.hoveredId; }
+  public get lastOperation(): ConstructionOperationRecord | null { return this.operation; }
+  public get lastDenied(): ConstructionDeniedRecord | null { return this.denied; }
+
+  // カタログのカードから持ち上げている最中のドラッグ。持ち上げている手持ちと
+  // クライアント座標、離した位置(押している間は null)を返す。
+  public get cardDrag(): ConstructionCardDrag | null { return this.cardDragValue; }
+
+  // 持ち運び中のドラッグの画面位置(キャンバス座標)。カード・先端部のどちらのドラッグも
+  // 無ければ null。表示の導出が持ち物をポインタの先へ浮かべる材料。
+  public get dragPoint(): { readonly x: number; readonly y: number } | null {
+    return this.pointer.dragPoint;
+  }
+
+  // 手持ちに対して効く向き(回転・端)。
+  public get heldOrientation(): ModuleOrientation { return this.orientation; }
+
+  // 回転リングを掴んだドラッグ中の角度。表示の導出が弧とスナップ位置を組む。
+  public get rotationDrag(): ConstructionRotationDrag | null { return this.pointer.rotationDrag; }
+
+  // カードのドラッグを畳む。
+  public clearCardDrag(): void { this.cardDragValue = null; }
+
+  // 船体全体の空いている取り付け先。
+  public targets(): readonly ConstructionTargetInfo[] {
+    const session = this.current;
+    return session === null ? [] : enumerateConstructionTargets(session.ship.assembly, session.anchorId);
+  }
+
+  // 指している取り付け先へ手持ちを置いた結果。指す先・手持ち・向き・対称数・船体が
+  // 変わったときだけ計算し直してキャッシュする。
+  public pointedTrial(): ConstructionTrial | null {
+    const session = this.current;
+    const held = this.effectiveHeld();
+    const target = this.pointedTarget();
+    if (session === null || held === null || target === null) return null;
+    const orientation = this.effectiveOrientation(session, held);
+    // 結果が効く入力の署名が変わったときだけ試し置きをやり直す。
+    const signature = this.trialSignature(session, held, target, orientation);
+    if (this.trialCache?.signature !== signature) {
+      this.trialCache = {
+        signature,
+        trial: tryConstructionPlacement(
+          session.ship.assembly, session.anchorId, held, target.target, orientation,
+          this.placementSymmetry(held),
+        ),
+      };
+    }
+    return this.trialCache.trial;
+  }
+
+  // 指している取り付け先の接続面ガイド(ECI 座標)。持つもの・指す先が無ければ null。
+  public pointedGuide(): ConstructionTargetGuide | null {
+    const session = this.current;
+    const held = this.effectiveHeld();
+    const target = this.pointedTarget();
+    if (session === null || held === null || target === null) return null;
+    return this.guideFor(session, held, target);
+  }
+
+  // 全取り付け先の接続面ガイド(ECI 座標)。ポインタが指す候補の画面位置の材料。
+  public targetGuides(): readonly ConstructionTargetGuide[] {
+    const session = this.current;
+    const held = this.effectiveHeld();
+    if (session === null || held === null) return [];
+    const guides: ConstructionTargetGuide[] = [];
+    for (const info of this.targets()) {
+      const guide = this.guideFor(session, held, info);
+      if (guide !== null) guides.push(guide);
+    }
+    return guides;
+  }
+
+  // 履歴の名前の列・現在位置・取り消し/やり直し可否。適用待ちの編集がある間は動けない。
+  public history(): ConstructionHistoryView {
+    const history = this.current?.history ?? null;
+    const movable = this.pending.length === 0;
+    return {
+      names: history?.names ?? [],
+      position: history?.position ?? 0,
+      canUndo: movable && (history?.canUndo ?? false),
+      canRedo: movable && (history?.canRedo ?? false),
+    };
+  }
+
+  // ---- 命令 ----
+
+  // dock が健全で船体が操縦可能ならセッションを開く。接続中のドックでも始められる。
   public start(ship: ModularShip, dockId: string): void {
     const module = ship.assembly.module(dockId);
     if (module?.kind !== 'dock') throw new Error(`not a construction dock: ${dockId}`);
     if (!ship.capabilities.controllable) throw new Error('健全なコックピットから操作できる船体が必要です');
-    if (module.hp <= 0 || ship.assembly.isPortConnected(dockId)) {
-      throw new Error('空いている健全な接舷部が必要です');
-    }
+    if (module.hp <= 0 || !ship.motion.alive) throw new Error('健全な接舷部が必要です');
     if (this.current !== null) this.close();
-    // セッションを開き、予約の開始を命令へ送る。
-    const session: ConstructionSession = { ship, dockId, edits: new ShipConstructionEdits(ship, dockId) };
-    this.current = session;
-    this.submit(session, 'begin', () => session.edits.begin());
-    this.normalizeSelection();
+    this.current = {
+      ship, anchorId: dockId,
+      edits: new ShipConstructionEdits(ship, dockId),
+      history: new ConstructionHistory(serializeShipAssembly(ship.assembly)),
+    };
+    this.heldValue = null;
+    this.heldBlueprintId = null;
+    this.selectedId = null;
+    this.orientation = { roll: 0, face: 'back' };
+    this.symmetry = 1;
+    this.pointedId = null;
+    this.hoveredId = null;
+    this.cardDragValue = null;
+    this.trialCache = null;
     // 建造モードの入力と表示時刻の境界を開く。
-    this.focusDock?.(ship);
+    this.focusSubject?.(ship, null);
     this.previousForceCurrent = this.displayWindow.current.forceCurrent;
     this.displayWindow.setForceCurrent(true);
     this.overlayManager.openMode('ship-construction-mode', this, {
@@ -121,304 +314,713 @@ export class ShipConstruction implements OverlayHandle {
     this.syncPanel();
   }
 
-  // 建造パネル内の操作かを判定する。
-  public contains(target: Node): boolean { return this.panel.element.contains(target); }
-
-  // ESC では未完成枝を保持してセッションだけ閉じる。
+  // 変更を残して閉じる。
   public close(): void {
     if (this.current === null) return;
     this.confirmation.close();
+    // セッションの状態を戻し、入力モードと表示時刻を解放してパネルを畳む。
     this.current = null;
+    this.heldValue = null;
+    this.heldBlueprintId = null;
+    this.selectedId = null;
+    this.pointedId = null;
+    this.hoveredId = null;
+    this.cardDragValue = null;
+    this.trialCache = null;
     this.overlayManager.close('ship-construction-mode');
     this.displayWindow.setForceCurrent(this.previousForceCurrent);
     this.panel.sync(hiddenShipConstructionModel());
-    this.ghost.sync(null);
-    this.guide.syncAll([]);
   }
 
-  // 3D候補をクリックしたときは、未選択候補を先に選び、選択済み候補だけを確定する。
-  public handlePointer(input: Input, camera: CameraSystem, viewport: Viewport): boolean {
-    if (this.current === null) return false;
-    input.takeClicks((point) => {
-      // 当たった候補を選択へ進め、選択済みなら配置する。
-      const ray = camera.rayThroughScreen(point.x, point.y, viewport);
-      const hit = this.candidates().find(candidate => hitsConstructionCandidate(
-        ray, candidate, candidate.slot.id === this.selectedSlotId,
-      ));
-      if (hit === undefined) return true;
-      if (this.selectedSlotId !== hit.slot.id) {
-        this.selectSlot(hit.slot.id);
-        this.syncPanel();
-      } else {
-        this.place();
-      }
-      return true;
-    });
-    input.takeRightClicks(() => true);
-    return true;
-  }
-
-  // このフレームの全候補をガイドへ、選択中の候補だけをゴーストへ宣言する。
-  public sync(camera: CameraFrame): void {
-    this.syncCommandResults();
-    if (this.current === null) {
-      this.ghost.sync(null);
-      this.guide.syncAll([]);
-      return;
-    }
-    this.normalizeSelection();
-    const candidates = this.candidates();
-    // 全候補をガイドへ宣言する。
-    const displays: DockSnapGuideDisplay[] = candidates.map(candidate => ({
-      id: candidate.slot.id,
-      position: this.displayPosition(camera, candidate.guideEci),
-      rotation: candidate.rotationEci,
-      radius: candidate.guideRadius,
-      valid: candidate.placement.valid,
-      selected: candidate.slot.id === this.selectedSlotId,
-    }));
-    this.guide.syncAll(displays);
-    // 選択中の候補だけをゴーストへ置く。
-    const selected = candidates.find(candidate => candidate.slot.id === this.selectedSlotId) ?? null;
-    if (selected === null) {
-      this.ghost.sync(null);
+  // 手持ちにする。piece は配置済みモジュールの先端部、copy は写しの先端部。
+  public hold(held: ConstructionHeld): void {
+    const session = this.current;
+    if (session === null) return;
+    // piece はいまの取り付け向きを読み戻し、それ以外は取り付け面のある端を向ける。
+    if (held.kind === 'piece') {
+      if (held.moduleId === session.anchorId) { this.deny('起点のドックは動かせません'); return; }
+      if (session.ship.assembly.module(held.moduleId) === null) { this.deny('その部品は掴めません'); return; }
+      this.orientation = this.orientationOfPiece(session, held.moduleId) ?? this.orientation;
     } else {
-      this.ghost.sync({
-        modelId: SHIP_MODULE_CATALOG.require(this.definitionId).modelId,
-        position: this.displayPosition(camera, selected.centerEci),
-        rotation: selected.rotationEci,
-        valid: selected.placement.valid,
-      });
+      const definition = heldRootDefinition(session.ship.assembly, held);
+      this.orientation = {
+        roll: 0,
+        face: definition !== null && definition.axialFaces.back !== 'structural' ? 'front' : 'back',
+      };
     }
+    this.heldValue = held;
+    this.heldBlueprintId = null;
+    this.trialCache = null;
     this.syncPanel();
   }
 
-  // モード終了時にDOM callbackとGPU/3D資源を同じ所有者から解放する。
+  // 手に持ったものを手放す。
+  public release(): void {
+    this.heldValue = null;
+    this.heldBlueprintId = null;
+    this.trialCache = null;
+    this.syncPanel();
+  }
+
+  // 理由を出してから手に持ったものを手放す。
+  public releaseWithReason(reason: string): void {
+    this.deny(reason);
+    this.release();
+  }
+
+  // 配置済みモジュールを選ぶ。起点ドックは選べない。
+  public select(moduleId: string | null): void {
+    const session = this.current;
+    if (session === null) return;
+    if (moduleId === null) { this.selectedId = null; this.syncPanel(); return; }
+    if (moduleId === session.anchorId) { this.deny('起点のドックは選べません'); return; }
+    if (session.ship.assembly.module(moduleId) === null) { this.deny('その部品は選べません'); return; }
+    this.selectedId = moduleId;
+    this.syncPanel();
+  }
+
+  // ポインタの下にあるモジュールを記録する。
+  public setHoveredModule(moduleId: string | null): void {
+    this.hoveredId = moduleId;
+  }
+
+  // 指している取り付け先を変える。列挙に無い id は指せない。
+  public setPointedTarget(targetId: string | null): void {
+    if (targetId !== null && !this.targets().some(info => constructionTargetId(info.target) === targetId)) {
+      return;
+    }
+    if (this.pointedId !== targetId) this.trialCache = null;
+    this.pointedId = targetId;
+    this.syncPanel();
+  }
+
+  // 手持ちを指している/指定の取り付け先へ置く命令を受け付ける。
+  public placeAt(targetId?: string): void {
+    const session = this.current;
+    const held = this.heldValue;
+    if (session === null) return;
+    if (held === null) { this.deny('手に部品を持っていません'); return; }
+    const info = targetId !== undefined
+      ? this.targets().find(entry => constructionTargetId(entry.target) === targetId) ?? null
+      : this.pointedTarget();
+    if (info === null) { this.deny('取り付け先を選んでください'); return; }
+    const trial = targetId !== undefined
+      ? tryConstructionPlacement(
+        session.ship.assembly, session.anchorId, held, info.target, this.orientation,
+        this.placementSymmetry(held),
+      )
+      : this.pointedTrial();
+    if (trial === null || !trial.valid) {
+      this.deny(trial?.reason ?? 'ここには置けません');
+      return;
+    }
+    const newIds = this.allocateIds(session, held, info);
+    const name = held.kind === 'piece'
+      ? `${constructionModuleLabel(session.ship.assembly, held.moduleId)} を付け替え`
+      : info.target.kind === 'joint'
+        ? `${this.heldName(session, held)} を割り込み`
+        : `${this.heldName(session, held)} を配置`;
+    this.submit(session, 'place', name, this.placedIds(session, held, newIds), false, null, () => {
+      session.edits.place(held, info.target, this.orientation, this.placementSymmetry(held), newIds);
+    });
+    // 置きを受け付けた時点で手を空にし、置いたモジュールは選ばない。対称数は持ち越す。
+    this.heldValue = null;
+    this.heldBlueprintId = null;
+    this.selectedId = null;
+    this.trialCache = null;
+  }
+
+  // 選択中のモジュールを先端部ごと取り付け先へ付け替える。
+  public moveSelectedTo(targetId: string): void {
+    const session = this.current;
+    const moduleId = this.selectedId;
+    if (session === null) return;
+    if (moduleId === null) { this.deny('付け替える部品を選んでください'); return; }
+    const info = this.targets().find(entry => constructionTargetId(entry.target) === targetId) ?? null;
+    if (info === null) { this.deny('取り付け先を選んでください'); return; }
+    // 選択中の先端部をそのまま手持ちとして試し置きし、置けたら命令を積む。
+    const held: ConstructionHeld = { kind: 'piece', moduleId };
+    const orientation = this.orientationOfPiece(session, moduleId) ?? this.orientation;
+    const trial = tryConstructionPlacement(
+      session.ship.assembly, session.anchorId, held, info.target, orientation, 1,
+    );
+    if (!trial.valid) { this.deny(trial.reason ?? 'ここには付け替えられません'); return; }
+    const name = `${constructionModuleLabel(session.ship.assembly, moduleId)} を付け替え`;
+    this.submit(session, 'move', name, [moduleId], false, null,
+      () => session.edits.move(moduleId, info.target, orientation));
+    this.trialCache = null;
+  }
+
+  // 選択中のモジュールを先端部ごと撤去する。健全なコックピットを全て失うときは確認を挟み、
+  // 確定した操作が成功したら建造を閉じる。
+  public removeSelected(): void {
+    const session = this.current;
+    const moduleId = this.selectedId;
+    if (session === null) return;
+    if (moduleId === null) { this.deny('撤去する部品を選んでください'); return; }
+    if (!this.pieceEditable(session, moduleId)) {
+      this.deny('接舷中の接続の先は、建造では編集できません');
+      return;
+    }
+    // 撤去した写しで、健全なコックピットを失うかを確かめる。
+    const work = session.ship.assembly.clone();
+    try {
+      work.detachPiece(moduleId, session.anchorId);
+    } catch (error) {
+      this.deny(error instanceof Error ? error.message : 'その部品は撤去できません');
+      return;
+    }
+    const losesCockpit = !work.modules.some(module => module.kind === 'cockpit' && module.hp > 0);
+    const name = `${constructionModuleLabel(session.ship.assembly, moduleId)} を撤去`;
+    const apply = (): void => session.edits.remove(moduleId);
+    // 失うなら確認を挟み、確定した撤去が成功したら閉じる。
+    if (losesCockpit) {
+      this.confirmation.request({
+        title: '健全なコックピットを失う撤去',
+        message: 'この撤去で船体から健全なコックピットがすべて失われ、操縦不能な物資になります。続けますか？',
+        confirmLabel: '撤去して閉じる', destructive: true,
+      }, (confirmed) => {
+        if (confirmed) this.submit(session, 'remove', name, [moduleId], true, null, apply);
+      });
+      return;
+    }
+    this.submit(session, 'remove', name, [moduleId], false, null, apply);
+    this.selectedId = null;
+    this.trialCache = null;
+  }
+
+  // 手持ちがあればその向きを、無ければ選択中のモジュールを先端部ごと 90° 回す。
+  public rotate(delta: 1 | -1): void {
+    this.rotateSteps(delta);
+  }
+
+  // 手持ちがあればその向きを、無ければ選択中のモジュールを先端部ごと steps 段
+  // (90° 単位)回す。1 回の呼び出しは 1 つの命令として履歴へ記録される。
+  public rotateSteps(steps: number): void {
+    const session = this.current;
+    if (session === null) return;
+    const step = ((Math.trunc(steps) % 4) + 4) % 4;
+    if (step === 0) return;
+    // 手持ちがあればその向きを回す。
+    if (this.heldValue !== null) {
+      this.orientation = {
+        ...this.orientation,
+        roll: ((this.orientation.roll + step) % 4) as ModuleOrientation['roll'],
+      };
+      this.trialCache = null;
+      this.syncPanel();
+      return;
+    }
+    const moduleId = this.selectedId;
+    if (moduleId === null) { this.deny('回す部品を選んでください'); return; }
+    const current = this.orientationOfPiece(session, moduleId) ?? { roll: 0 as const, face: 'back' as const };
+    const orientation: ModuleOrientation = {
+      roll: ((current.roll + step) % 4) as ModuleOrientation['roll'], face: current.face,
+    };
+    // なければ選択中の先端部を回す命令を積む。
+    this.submit(session, 'reorient',
+      `${constructionModuleLabel(session.ship.assembly, moduleId)} を回転`, [moduleId], false, null,
+      () => session.edits.reorient(moduleId, orientation));
+    this.trialCache = null;
+  }
+
+  // 手持ち・選択中の部品の向きを反転する。両端に取り付け面を持つ部品だけで効く。
+  public swapEnds(): void {
+    const session = this.current;
+    if (session === null) return;
+    // 手持ちがあればその向きを反転する。
+    if (this.heldValue !== null) {
+      const definition = heldRootDefinition(session.ship.assembly, this.heldValue);
+      const next = this.orientation.face === 'front' ? 'back' : 'front';
+      if (definition === null || definition.axialFaces[next] !== 'structural') {
+        this.deny('この部品は向きを反転できません');
+        return;
+      }
+      this.orientation = { ...this.orientation, face: next };
+      this.trialCache = null;
+      this.syncPanel();
+      return;
+    }
+    const moduleId = this.selectedId;
+    if (moduleId === null) { this.deny('向きを反転する部品を選んでください'); return; }
+    const definition = session.ship.assembly.definition(moduleId);
+    const current = this.orientationOfPiece(session, moduleId) ?? { roll: 0 as const, face: 'back' as const };
+    const next = current.face === 'front' ? 'back' : 'front';
+    if (definition === null || definition.axialFaces[next] !== 'structural') {
+      this.deny('この部品は向きを反転できません');
+      return;
+    }
+    // なければ選択中の先端部を反転する命令を積む。
+    this.submit(session, 'reorient',
+      `${constructionModuleLabel(session.ship.assembly, moduleId)} の向きを反転`, [moduleId], false, null,
+      () => session.edits.reorient(moduleId, { ...current, face: next }));
+    this.trialCache = null;
+  }
+
+  // 側面へ置く対称数を 1 → 2 → 4 と巡らせる。
+  public cycleSymmetry(): void {
+    this.symmetry = this.symmetry === 1 ? 2 : this.symmetry === 2 ? 4 : 1;
+    this.trialCache = null;
+    this.syncPanel();
+  }
+
+  // 選択中のモジュールの先端部を手に取って付け替えを始める。編集できない選択では拒否する。
+  public holdSelectedPiece(): void {
+    const session = this.current;
+    const moduleId = this.selectedId;
+    if (session === null) return;
+    if (moduleId === null) { this.deny('付け替える部品を選んでください'); return; }
+    if (!this.pieceEditable(session, moduleId)) {
+      this.deny('接舷中の接続の先は、建造では編集できません');
+      return;
+    }
+    this.hold({ kind: 'piece', moduleId });
+  }
+
+  // 選択中のモジュールの先端部の写しを手に取る。
+  public duplicateSelected(): void {
+    const session = this.current;
+    const moduleId = this.selectedId;
+    if (session === null) return;
+    if (moduleId === null) { this.deny('複製する部品を選んでください'); return; }
+    // 選択中の先端部を写しとして切り出して手持ちにする。
+    try {
+      const piece = session.ship.assembly.clone().detachPiece(moduleId, session.anchorId);
+      this.hold({ kind: 'copy', piece });
+    } catch (error) {
+      this.deny(error instanceof Error ? error.message : 'その部品は複製できません');
+    }
+  }
+
+  // ---- 設計図 ----
+
+  // id の設計図の先端部を写しの手持ちにする。棚に無い id では何もしない。
+  public holdBlueprint(id: string): void {
+    const blueprint = this.blueprints.blueprints.find(entry => entry.id === id) ?? null;
+    if (blueprint === null) { this.deny('その設計図はありません'); return; }
+    try {
+      this.hold({ kind: 'copy', piece: deserializeShipAssembly(blueprint.piece) });
+      this.heldBlueprintId = id;
+    } catch (error) {
+      this.deny(error instanceof Error ? error.message : 'その設計図は読み込めません');
+    }
+  }
+
+  // id の設計図の名前を変える記録を積む。
+  public renameBlueprint(id: string, name: string): void {
+    const session = this.current;
+    if (session === null) return;
+    const trimmed = name.trim();
+    if (trimmed === '' || !this.blueprints.blueprints.some(entry => entry.id === id)) return;
+    this.submit(session, 'blueprint', '', [], false, null,
+      () => this.events.record({ kind: 'blueprintRenamed', id, name: trimmed }));
+  }
+
+  // id の設計図を消す記録を積む。確認を挟み、手に持っていれば手放す。
+  public deleteBlueprint(id: string): void {
+    const session = this.current;
+    if (session === null) return;
+    const blueprint = this.blueprints.blueprints.find(entry => entry.id === id) ?? null;
+    if (blueprint === null) return;
+    // 確認のうえで削除の記録を積み、手に持っていれば手放す。
+    this.confirmation.request({
+      title: '設計図を削除',
+      message: `設計図「${blueprint.name}」を削除します。続けますか？`,
+      confirmLabel: '削除する', destructive: true,
+    }, (confirmed) => {
+      if (!confirmed) return;
+      this.submit(session, 'blueprint', '', [], false, null,
+        () => this.events.record({ kind: 'blueprintDeleted', id }));
+      if (this.heldBlueprintId === id) this.release();
+    });
+  }
+
+  // ---- 履歴(適用待ちがある間は受け付けない) ----
+
+  private revertTo(index: number): void {
+    const session = this.current;
+    if (session === null) return;
+    if (this.pending.length > 0) { this.deny('適用待ちの編集があります'); return; }
+    const target = session.history.target(index);
+    if (target === null) { this.deny('その時点へは戻れません'); return; }
+    this.submit(session, 'restore', '履歴の時点へ戻す', [], false, index,
+      () => session.edits.replaceAssembly(target));
+    this.trialCache = null;
+  }
+
+  // 直前の操作を取り消して1つ前の船体へ戻す。
+  public undo(): void {
+    const position = this.current?.history.position ?? 0;
+    this.revertTo(position - 1);
+  }
+
+  // 取り消した操作をやり直す。
+  public redo(): void {
+    const position = this.current?.history.position ?? 0;
+    this.revertTo(position + 1);
+  }
+
+  public jumpToHistory(index: number): void { this.revertTo(index); }
+
+  // 建造を始めてからの変更をすべて取り消し、開始時の船体へ戻す。確認したときだけ行う。
+  public revertAll(): void {
+    const session = this.current;
+    if (session === null) return;
+    if (session.history.entriesView.length <= 1) return;
+    this.confirmation.request({
+      title: '変更をすべて取り消す',
+      message: '建造を始めてからの変更をすべて取り消し、開始時の船体へ戻します。続けますか？',
+      confirmLabel: 'すべて取り消す', destructive: true,
+    }, (confirmed) => { if (confirmed) this.revertTo(0); });
+  }
+
+  // 選択中モジュールの画面位置を、選択メニューを持つパネルへ流す。
+  public syncSelectionMenu(anchor: Projected | null): void {
+    this.panel.syncSelectionMenu(anchor);
+  }
+
+  // 建造パネル内の操作かを判定する。
+  public contains(target: Node): boolean { return this.panel.element.contains(target); }
+
+  // カタログのカードのドラッグ通知を操作途中の状態として持つ。start はそのカードを
+  // 手持ちにし、end は離した位置を記録する — 離した位置から取り付け先を決めるのは
+  // 入力の解釈の仕事で、ここでは状態を持つだけ。
+  private noteCardDrag(event: ConstructionCardDragEvent): void {
+    if (this.current === null) return;
+    const point = { x: event.clientX, y: event.clientY };
+    switch (event.phase) {
+      // 持ち上げたカードを手持ちにし、ドラッグを開始する。
+      case 'start': {
+        let held: ConstructionHeld;
+        let blueprintId: string | null = null;
+        if (event.source.kind === 'module') {
+          held = { kind: 'catalog', definitionId: event.source.definitionId };
+        } else {
+          try {
+            held = { kind: 'copy', piece: this.blueprintPiece(event.source.blueprintId) };
+            blueprintId = event.source.blueprintId;
+          } catch {
+            return;
+          }
+        }
+        this.cardDragValue = { held, point, released: null };
+        this.hold(held);
+        this.heldBlueprintId = blueprintId;
+        return;
+      }
+      case 'move':
+        if (this.cardDragValue !== null) this.cardDragValue = { ...this.cardDragValue, point };
+        return;
+      // 離した位置を記録する。
+      case 'end':
+        if (this.cardDragValue !== null) this.cardDragValue = { ...this.cardDragValue, point, released: point };
+        return;
+      default:
+        return;
+    }
+  }
+
+  // id の設計図の先端部を復元する。棚に無い・読めないときは例外にする。
+  private blueprintPiece(id: string) {
+    const blueprint = this.blueprints.blueprints.find(entry => entry.id === id) ?? null;
+    if (blueprint === null) throw new Error(`unknown blueprint: ${id}`);
+    return deserializeShipAssembly(blueprint.piece);
+  }
+
+  // ポインタ入力を建造の操作へ写す。建造中だけ呼ぶ。
+  public handlePointer(input: Input, camera: CameraSystem, viewport: Viewport): boolean {
+    if (this.current === null) return false;
+    this.pointer.interpretPointer(input, camera, viewport);
+    return true;
+  }
+
+  // OverlayHandle 実装: 建造モードのショートカットキーを操作へ写す。
+  // 入力を塞ぐモーダル(確認等)が開いている間は受け付けない。
+  public handleShortcut(code: string): boolean {
+    if (this.current === null || this.overlayManager.isInputGated()) return false;
+    return this.pointer.interpretKey(code, this.input);
+  }
+
+  // moduleId を根とする先端部が撤去・付け替え・回転を受け付けるか。
+  public canEditModule(moduleId: string): boolean {
+    const session = this.current;
+    return session !== null && this.pieceEditable(session, moduleId);
+  }
+
+  // 選択中のモジュールへ、選んでいなければ船体全体へ視点を寄せる。
+  public focus(): void {
+    const session = this.current;
+    if (session === null) return;
+    this.focusSubject?.(session.ship, constructionModuleFocus(session.ship, this.selectedId));
+  }
+
+  // カタログの表示カテゴリをタブの並び順の index で選ぶ。
+  public selectCatalogCategory(index: number): void {
+    this.panel.selectCatalogCategory(index);
+  }
+
+  // 適用済みの命令を読み、選択・指す先の整合性とパネルを同期する。
+  // 表示物への宣言は、この同期の後に読み取り面を経由して表示の導出が組む。
+  public sync(): void {
+    this.syncCommandResults();
+    if (this.current === null) return;
+    this.normalizeSelection();
+    this.syncPanel();
+  }
+
+  // モード終了時にセッションを畳み、パネルへ渡した callback をすべて外す。
   public dispose(): void {
     this.close();
-    this.ghost.dispose();
-    this.guide.dispose();
+    // パネルがセッションの callback を握り続けないよう、すべて外す。
     this.panel.onSelectionChange = null;
+    this.panel.onBlueprintHold = null;
+    this.panel.onCardDrag = null;
+    this.panel.onBlueprintRename = null;
+    this.panel.onBlueprintDelete = null;
     this.panel.onSlotChange = null;
     this.panel.onPlace = null;
     this.panel.onRemove = null;
+    this.panel.onDuplicate = null;
+    this.panel.onReattach = null;
+    this.panel.onRelease = null;
+    this.panel.onRotate = null;
+    this.panel.onSwapEnds = null;
+    this.panel.onCycleSymmetry = null;
+    this.panel.onUndo = null;
+    this.panel.onRedo = null;
+    this.panel.onJumpHistory = null;
     this.panel.onFinish = null;
     this.panel.onDiscard = null;
   }
 
-  // 選択時点の部品とスロットを捕捉し、配置の命令を受け付ける。
-  private place(): void {
-    const session = this.current;
-    const candidate = this.selectedCandidate();
-    if (session === null || candidate === null || !candidate.placement.valid) {
-      if (candidate?.placement.reason) this.notifier.hint(candidate.placement.reason, undefined, 'warn');
-      return;
+  // ---- 内部の導出 ----
+
+  // 試し置き・ガイドが読む手持ち。手が空いていて選択中のモジュールがあれば、その先端部を仮に持つ。
+  private effectiveHeld(): ConstructionHeld | null {
+    if (this.heldValue !== null) return this.heldValue;
+    return this.selectedId === null ? null : { kind: 'piece', moduleId: this.selectedId };
+  }
+
+  // 指している取り付け先の一覧項目。無ければ null。
+  private pointedTarget(): ConstructionTargetInfo | null {
+    if (this.pointedId === null) return null;
+    return this.targets().find(info => constructionTargetId(info.target) === this.pointedId) ?? null;
+  }
+
+  // 試し置きが読む向き。実際の手持ちは現在の向き、選択中モジュールの仮の手持ちはその根元の向き。
+  private effectiveOrientation(session: ConstructionSession, held: ConstructionHeld): ModuleOrientation {
+    if (held.kind === 'piece' && this.heldValue === null) {
+      return this.orientationOfPiece(session, held.moduleId) ?? this.orientation;
     }
-    const definitionId = this.definitionId;
-    const slotId = this.selectedSlotId;
-    this.submit(session, 'place', () => {
-      // まだ使われていない部品idを適用時に採る。
+    return this.orientation;
+  }
+
+  // 試し置きの結果が効く入力をすべて並べた署名。
+  private trialSignature(
+    session: ConstructionSession, held: ConstructionHeld,
+    target: ConstructionTargetInfo, orientation: ModuleOrientation,
+  ): string {
+    const heldKey = held.kind === 'catalog' ? `catalog:${held.definitionId}`
+      : held.kind === 'piece' ? `piece:${held.moduleId}`
+        : `copy:${held.piece.moduleIds.join(',')}`;
+    const { assembly } = session.ship;
+    return [
+      constructionTargetId(target.target), heldKey,
+      orientation.roll, orientation.face, this.symmetry,
+      assembly.size, assembly.graph.length, Math.round(assembly.totalHp * 8),
+    ].join('|');
+  }
+
+  // 手持ち・選択が消えたモジュールや列挙から落ちた取り付け先を指さないように戻す。
+  private normalizeSelection(): void {
+    const session = this.current;
+    if (session === null) return;
+    // 消えたモジュールを指している選択と手持ちを戻す。
+    if (this.selectedId !== null && session.ship.assembly.module(this.selectedId) === null) {
+      this.selectedId = null;
+    }
+    if (this.heldValue?.kind === 'piece' && session.ship.assembly.module(this.heldValue.moduleId) === null) {
+      this.heldValue = null;
+    }
+    // 取り付け先の列挙から落ちた指し示しを戻す。
+    if (this.pointedId !== null && this.pointedTarget() === null) this.pointedId = null;
+    if (this.hoveredId !== null && session.ship.assembly.module(this.hoveredId) === null) {
+      this.hoveredId = null;
+    }
+  }
+
+  // 配置済みモジュールの根元の接続から、いまの向きを読み戻す。読めなければ null。
+  private orientationOfPiece(session: ConstructionSession, moduleId: string): ModuleOrientation | null {
+    const { assembly } = session.ship;
+    const piece = pieceOfModule(assembly.graph, session.anchorId, moduleId);
+    if (piece === null) return null;
+    // 先端部の根元の接続と、親の根へ向かう側から見た変換を取り出す。
+    const edge = piece.rootConnection;
+    const mounted = edge.parentId === moduleId ? inverseTransform(edge.childTransform) : edge.childTransform;
+    if (edge.kind === 'axial' || edge.kind === 'construction') {
+      return axialPlacementFromTransform(mounted)?.orientation ?? null;
+    }
+    // 側面スロットでは、スロットを持つ側の枠組でロール角を読み戻す。
+    if (edge.kind === 'side' && edge.sideSlot !== undefined) {
+      const ownerId = edge.sideReversed === true ? edge.childId : edge.parentId;
+      const ownerDefinition = assembly.definition(ownerId);
+      const otherId = ownerId === edge.parentId ? edge.childId : edge.parentId;
+      const otherDefinition = assembly.definition(otherId);
+      if (ownerDefinition === null || otherDefinition === null) return null;
+      const inOwnerFrame = ownerId === moduleId ? inverseTransform(mounted) : mounted;
+      const roll = sideRollFromTransform(ownerDefinition, otherDefinition, edge.sideSlot, inOwnerFrame);
+      if (roll === null) return null;
+      return { roll, face: 'back' };
+    }
+    return null;
+  }
+
+  // 新しく置くモジュールの識別子。catalog は接ぎ木ごとの id、copy は接ぎ木ごとの接頭辞。
+  // 未使用の `construction-N` を接ぎ木の数だけ採る。
+  private allocateIds(
+    session: ConstructionSession, held: ConstructionHeld, target: ConstructionTargetInfo,
+  ): readonly string[] {
+    if (held.kind === 'piece') return [];
+    const placement = placementFor(
+      session.ship.assembly, session.anchorId, held, target.target, this.orientation, this.symmetry,
+    );
+    const ids: string[] = [];
+    // 接ぎ木ごとに、船体の中で未使用の識別子を採る。
+    for (const _plan of placement.attachments) {
       let id: string;
-      do id = `construction-${nextConstructionModule++}`;
-      while (session.ship.assembly.module(id) !== null);
-      session.edits.place(definitionId, slotId, id);
-    });
-  }
-
-  // 最後に追加した部品を撤去する命令を受け付ける。
-  private removeLast(): void {
-    const session = this.current;
-    if (session !== null) this.submit(session, 'remove', () => session.edits.removeLast());
-  }
-
-  // 物資化の結果だけを確認オーバーレイへ送り、確定処理は別の一回きりの命令へ分ける。
-  private finish(): void {
-    const session = this.current;
-    if (session === null) return;
-    const draft = this.currentDraft();
-    if (draft === null || draft.firstConnectionId === null) return;
-    // 追加枝の役割を判定し、操縦不能な物資なら確定前に確認を挟む。
-    const branch = draft.ship.assembly.clone().splitAt(draft.firstConnectionId)[1];
-    if (branch.role === 'material') {
-      this.confirmation.request({
-        title: '操縦不能な物資として完成',
-        message: 'この枝にはコックピットがないため、操縦不能な物資として分離されます。続けますか？',
-        confirmLabel: '物資として完成', destructive: true,
-      }, (confirmed) => { if (confirmed) this.finishConfirmed(session); });
-      return;
+      do id = `construction-${this.nextModuleId++}`;
+      while (session.ship.assembly.module(id) !== null || ids.includes(id));
+      ids.push(id);
     }
-    this.finishConfirmed(session);
+    return ids;
   }
 
-  // 確認したセッションの枝を完成させる命令を受け付ける。
-  private finishConfirmed(session: ConstructionSession): void {
-    this.submit(session, 'finish', () => session.edits.finish());
-  }
-
-  // 追加部品がある場合だけ、破棄対象と復帰状態を説明して確認する。
-  private discard(): void {
-    const session = this.current;
-    if (session === null) return;
-    const draft = this.currentDraft();
-    if (draft === null) return;
-    // 追加部品があるときだけ、破棄対象を説明する確認を挟む。
-    if (draft.addedIds.length > 0) {
-      this.confirmation.request({
-        title: '建造中の船体を破棄',
-        message: '建造中に追加した部品をすべて破棄し、ドックを空き状態へ戻します。続けますか？',
-        confirmLabel: '船体を破棄', destructive: true,
-      }, (confirmed) => { if (confirmed) this.discardConfirmed(session); });
-      return;
+  // 配置で動いたモジュールの識別子を、成功時の操作記録へ載せるために求める。
+  private placedIds(
+    session: ConstructionSession, held: ConstructionHeld, newIds: readonly string[],
+  ): readonly string[] {
+    if (held.kind === 'catalog') return newIds;
+    if (held.kind === 'piece') {
+      const piece = pieceOfModule(session.ship.assembly.graph, session.anchorId, held.moduleId);
+      return piece === null ? [] : [...piece.moduleIds];
     }
-    this.discardConfirmed(session);
+    return newIds.flatMap(prefix => held.piece.moduleIds.map(id => `${prefix}:${id}`));
   }
 
-  // 確認したセッションの追加部品を破棄する命令を受け付ける。
-  private discardConfirmed(session: ConstructionSession): void {
-    this.submit(session, 'discard', () => session.edits.discard());
+  // 手持ちの根の名前。付け替えは掴んだモジュール、それ以外は定義名。
+  private heldName(session: ConstructionSession, held: ConstructionHeld): string {
+    if (held.kind === 'piece') return constructionModuleLabel(session.ship.assembly, held.moduleId);
+    const definition = heldRootDefinition(session.ship.assembly, held);
+    return definition?.name ?? '部品';
   }
 
-  // 現在の定義に対する全候補のワールド表示情報を組む。
-  private candidates(): readonly ConstructionCandidate[] {
-    const draft = this.currentDraft();
-    if (draft === null) return [];
-    const slots = this.slots(draft);
-    const definition = SHIP_MODULE_CATALOG.require(this.definitionId);
-    // 各スロットの配置をECIへ写し、表示に使う候補として組む。
-    return slots.flatMap(slot => {
-      const candidate = constructionCandidate(
-        draft.ship.assembly, slot, definition,
-        draft.ship.motion.state.r, draft.ship.motion.att.q, draft.ship.motion.centerOffset,
-      );
-      return candidate === null ? [] : [candidate];
-    });
+  // 対称数は新しく置くもの(カタログ・写し)の側面配置にだけ効く。付け替える
+  // 先端部には対称が無いので 1 で評価する。
+  private placementSymmetry(held: ConstructionHeld): ConstructionSymmetry {
+    return held.kind === 'piece' ? 1 : this.symmetry;
   }
 
-  // パネル・クリック・ゴーストが同じ選択候補を見るための単一参照。
-  private selectedCandidate(): ConstructionCandidate | null {
-    return this.candidates().find(candidate => candidate.slot.id === this.selectedSlotId) ?? null;
-  }
-
-  // 保存ドラフト内の部品だけを対象にして、既存船体の別枝へ候補を漏らさない。
-  private slots(draft: ConstructionDraft): readonly ConstructionSlot[] {
-    return enumerateConstructionSlots(
-      draft.ship.assembly, [draft.dockId, ...draft.addedIds], draft.axialTailId,
+  // 取り付け先1つの接続面ガイド(ECI 座標)を求める。
+  private guideFor(
+    session: ConstructionSession, held: ConstructionHeld, info: ConstructionTargetInfo,
+  ): ConstructionTargetGuide | null {
+    return constructionTargetGuide(
+      session.ship.assembly, session.anchorId, held, info,
+      this.effectiveOrientation(session, held), this.placementSymmetry(held),
+      session.ship.motion.state.r, session.ship.motion.att.q, session.ship.motion.centerOffset,
     );
   }
 
-  // 撤去や保存データの変化で選択先が消えたとき、軸候補へ安全に戻す。
-  private normalizeSelection(): void {
-    const draft = this.currentDraft();
-    if (draft === null) return;
-    const slots = this.slots(draft);
-    if (slots.some(slot => slot.id === this.selectedSlotId)) return;
-    this.selectedSlotId = slots[0]?.id ?? constructionSlotId(draft.axialTailId, 'axial');
+  // 操作の拒否を記録し、理由をヒントへ出す。
+  private deny(reason: string): void {
+    this.denied = { reason, sequence: ++this.operationSequence };
+    this.notifier.hint(reason, undefined, 'warn');
   }
 
-  // パネルから来たスロットIDが現在のドラフトに属する場合だけ選択を変える。
-  private selectSlot(slotId: string): void {
-    const draft = this.currentDraft();
-    if (draft !== null && this.slots(draft).some(slot => slot.id === slotId)) this.selectedSlotId = slotId;
-  }
-
-  // 船側の予約から、表示に使う建造枝を読み取る。予約開始前・終了後はnull。
-  private currentDraft(): ConstructionDraft | null {
-    const session = this.current;
-    const saved = session?.edits.draft ?? null;
-    return session === null || saved === null ? null : { ...saved, ship: session.ship };
-  }
-
-  // 応答を操作途中の状態として保持し、モデル編集を次の進行へ送る。
-  private submit(session: ConstructionSession, action: ConstructionAction, apply: () => void): void {
-    if (this.pending.some(command => command.session === session
-      && (command.action === 'finish' || command.action === 'discard'))) return;
+  // 命令を列へ積み、成功時の履歴への記録材料を操作の中で捕捉する。
+  private submit(
+    session: ConstructionSession, action: ConstructionAction, historyName: string,
+    moduleIds: readonly string[], closeOnSuccess: boolean, historyIndex: number | null,
+    apply: () => void,
+  ): void {
     const completion = new CommandCompletion();
-    this.pending.push({ session, action, completion });
-    this.commands.submitWithCompletion(apply, completion);
+    const pending: PendingConstructionCommand = {
+      session, action, completion, historyName, historyIndex, moduleIds,
+      closeOnSuccess, snapshot: null,
+    };
+    // 適用のあとで船体の写しを取る命令を積み、完了を待つ保留へ載せる。
+    this.pending.push(pending);
+    this.commands.submitWithCompletion(() => {
+      apply();
+      pending.snapshot = serializeShipAssembly(session.ship.assembly);
+    }, completion);
   }
 
-  // 適用済みの応答を表示へ反映する。再開した別セッションの開閉には影響させない。
+  // 適用済みの応答を表示へ反映する。成功は履歴と操作記録へ、失敗は拒否記録へ。
   private syncCommandResults(): void {
     for (const command of this.pending) {
       const state = command.completion.state;
       if (state.kind === 'pending') continue;
       if (state.kind === 'failed') {
-        this.notifier.hint(state.error instanceof Error ? state.error.message : '建造操作に失敗しました', undefined, 'warn');
-        if (command.action === 'begin' && this.current === command.session) this.close();
-      } else if ((command.action === 'finish' || command.action === 'discard')
-        && this.current === command.session) {
-        this.close();
+        const reason = state.error instanceof Error ? state.error.message : '建造操作に失敗しました';
+        this.denied = { reason, sequence: ++this.operationSequence };
+        this.notifier.hint(reason, undefined, 'warn');
+      } else if (this.current === command.session) {
+        // 'blueprint' は船体を変えない記録系なので、履歴にも操作記録にも積まない。
+        if (command.action !== 'blueprint') {
+          if (command.action === 'restore' && command.historyIndex !== null) {
+            command.session.history.moveTo(command.historyIndex);
+          } else if (command.snapshot !== null) {
+            command.session.history.record(command.historyName, command.snapshot);
+          }
+          this.operation = {
+            kind: command.action === 'reorient' ? 'rotate'
+              : command.action === 'restore' ? 'restore' : command.action,
+            moduleIds: command.moduleIds,
+            sequence: ++this.operationSequence,
+          };
+        }
+        if (command.closeOnSuccess) this.close();
       }
     }
-    // 適用待ちの応答を次の同期へ残す。
     this.pending = this.pending.filter(command => command.completion.state.kind === 'pending');
   }
 
-  // 物理のECI座標を、このフレームのfloating origin表示座標へ写す。
-  private displayPosition(camera: CameraFrame, position: Vec3): Vec3 {
-    const p = camera.floatingOrigin.RtoThreeV3(position);
-    return v3(p.x, p.y, p.z);
-  }
-
-  // ゲーム状態を構造化したHUD snapshotへ変換し、無効候補も必ず表示へ残す。
+  // ゲーム状態を構造化したHUD snapshotへ変換する。
   private syncPanel(): void {
-    const draft = this.currentDraft();
-    if (draft === null) return;
-    this.normalizeSelection();
-    const slots = this.slots(draft);
-    const definition = SHIP_MODULE_CATALOG.require(this.definitionId);
-    const selected = this.selectedCandidate();
-    // 追加枝の集計と、部品を足した場合の見積りを組む。
-    const branch = draft.firstConnectionId === null
-      ? null : draft.ship.assembly.clone().splitAt(draft.firstConnectionId)[1];
-    const totals = branch?.totals();
-    const capabilities = {
-      thrust: totals?.thrust ?? 0, mainFuel: totals?.mainFuel ?? 0, rcsFuel: totals?.rcsFuel ?? 0,
-      power: totals?.power ?? 0, radiation: totals?.radiation ?? 0,
-    };
-    const preview = selected?.placement.valid ? previewFor(definition, capabilities, totals?.mass ?? 0, totals?.maxHp ?? 0) : null;
-    const role = branch?.role ?? 'material';
-    // 候補一覧の表示状態と、選択中候補に対応する警告を組む。
-    const slotStates: readonly ConstructionSlotState[] = slots.map(slot => {
-      const placement = placementForSlot(draft.ship.assembly, slot, definition);
-      return slotState(slot, placement);
-    });
-    const selectedState = slotStates.find(slot => slot.id === this.selectedSlotId);
-    const warning = selected?.placement.reason ?? selectedState?.reason
-      ?? (role === 'material' && draft.addedIds.length > 0 ? '操縦不能な物資として完成します' : null);
-    const dockDefinition = draft.ship.assembly.definition(draft.dockId);
-    this.panel.sync({
-      visible: true, shipName: draft.ship.name,
-      dockLabel: `${dockDefinition?.name ?? '建造ドック'} / ${draft.dockId}`,
-      moduleCount: draft.addedIds.length, totalMass: branch?.totalMass ?? 0,
-      hp: totals?.hp ?? 0, maxHp: totals?.maxHp ?? 0, capabilities, preview, role, warning,
-      selectedDefinitionId: definition.id, selectedModuleName: definition.name,
-      selectedSlotId: this.selectedSlotId, slots: slotStates,
-      canPlace: selected?.placement.valid ?? false,
-      canRemove: draft.addedIds.length > 0, canFinish: draft.firstConnectionId !== null,
-    });
+    const session = this.current;
+    if (session === null) return;
+    const held = this.heldValue;
+    const effective = this.effectiveHeld();
+    const selectedId = this.selectedId;
+    // いまのセッションの状態から表示用の情報を組んでパネルへ流す。
+    this.panel.sync(shipConstructionPanelModel({
+      shipName: session.ship.name,
+      assembly: session.ship.assembly,
+      anchorId: session.anchorId,
+      held: held === null ? null : { item: held, name: this.heldName(session, held) },
+      heldBlueprintId: this.heldBlueprintId,
+      selection: selectedId === null ? null : {
+        moduleId: selectedId, editable: this.pieceEditable(session, selectedId),
+      },
+      orientation: this.orientation,
+      symmetry: this.symmetry,
+      effective: effective === null ? null : {
+        held: effective,
+        orientation: this.effectiveOrientation(session, effective),
+        symmetry: this.placementSymmetry(effective),
+      },
+      pointedTargetId: this.pointedId,
+      trial: this.pointedTrial(),
+      targets: this.targets(),
+      history: this.history(),
+      blueprints: this.blueprints.blueprints,
+    }));
+  }
+
+  // 選択中の先端部が撤去・付け替え・回転を受け付けるか。接舷の継ぎ目の先は対象外。
+  private pieceEditable(session: ConstructionSession, moduleId: string): boolean {
+    const piece = pieceOfModule(session.ship.assembly.graph, session.anchorId, moduleId);
+    return piece !== null && piece.rootConnection.kind !== 'docking';
   }
 }
-
-// 初期配置される燃料を含めた、現在枝への追加後の表示見積りを作る。
-function previewFor(
-  definition: ReturnType<typeof SHIP_MODULE_CATALOG.require>,
-  current: ShipConstructionPanelModel['capabilities'], mass: number, maxHp: number,
-): NonNullable<ShipConstructionPanelModel['preview']> {
-  const abilities = definition.abilities;
-  const fuel = abilities.fuelCapacity ?? 0;
-  const fuelKind = abilities.fuelKind;
-  // 初期配置される燃料を含めた現在枝の合計へ、部品1つを足す。
-  return {
-    mass: mass + definition.dryMass + fuel * (abilities.fuelMassPerUnit ?? 1),
-    maxHp: maxHp + definition.maxHp,
-    capabilities: {
-      thrust: current.thrust + (abilities.thrust ?? 0),
-      mainFuel: current.mainFuel + (fuelKind === 'main' ? fuel : 0),
-      rcsFuel: current.rcsFuel + (fuelKind === 'rcs' ? fuel : 0),
-      power: current.power + (abilities.powerGeneration ?? 0),
-      radiation: current.radiation + (abilities.radiationArea ?? 0),
-    },
-  };
-}
-

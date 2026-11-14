@@ -1,0 +1,641 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>マップビュー</title>
+<link rel="stylesheet" href="foundation/tepui-base.css">
+<link rel="stylesheet" href="foundation/ref.css">
+<style>
+  /* このページ固有の配置。値はトークンから。座標だけがリテラル(ステージ内の配置座標)。 */
+  .m-abs { position: absolute; }
+  .m-strip-row { position: absolute; top: 12px; left: 0; right: 0; display: flex; justify-content: center; pointer-events: none; }
+  .m-strip-row > * { pointer-events: auto; }
+  .m-center { position: absolute; left: 0; right: 0; display: flex; justify-content: center; }
+  .m-rail { position: absolute; top: 52px; width: 300px; }
+  .m-rail.is-left { left: 12px; }
+  .m-rail.is-right { right: 12px; }
+  .m-tml-pos { position: absolute; left: 324px; right: 324px; bottom: 12px; }
+  .m-scale-pos { position: absolute; right: 12px; bottom: 12px; }
+  .m-corner { position: absolute; top: 12px; }
+  .ix-strip .ix-strip-who { display: inline-flex; gap: var(--space-3); align-items: baseline; }
+  .ix-strip .is-tgt { color: var(--ix-tgt); }
+  .ix-hint .ix-pip { margin-right: var(--space-2); }
+
+  /* --- ref.css へ昇格する候補(ix- 接頭辞) ---------------------------------------------------- */
+  /* .ix-row の中央列にスライダーを置く行 */
+  .ix-row.has-slider { grid-template-columns: minmax(4.5em, 1fr) minmax(0, 96px) auto; }
+  .ix-row.has-slider > .ix-slot { grid-column: 2; min-width: 0; display: flex; align-items: center; }
+  .ix-row.has-slider > .ix-slot .w-slider { width: 100%; margin: 0; }
+  .ix-row.has-slider > .ix-v { grid-column: 3; }
+  .ix-row .w-toggle { justify-self: end; }
+
+  /* 一覧の木: 字下げ + 開閉記号 + 記号 + 名前 + 区分。フォーカス中の行は「自分の選択」の面。 */
+  .ix-section {
+    display: flex; align-items: center; gap: var(--space-4); min-height: var(--row-min-h-s); margin-top: var(--space-3);
+    padding: 0 var(--space-2); font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-meta);
+    cursor: pointer; position: sticky; top: 0; background: var(--surface-opaque); border-radius: var(--radius-micro);
+  }
+  .ix-section b { font-weight: 400; color: var(--text); font-size: var(--font-xs); letter-spacing: 0; }
+  .ix-section .ix-section-n { font-variant-numeric: tabular-nums; }
+  .ix-section .ix-section-sum { margin-left: auto; }
+  .ix-section .ix-section-tools { margin-left: auto; display: inline-flex; gap: var(--space-2); }
+  .ix-section .ix-section-sum + .ix-section-tools { margin-left: 0; }
+  .ix-crumb { display: flex; gap: var(--space-3); align-items: baseline; padding: 0 var(--space-2); margin-top: var(--space-3); font-size: var(--font-xxs); color: var(--ix-meta); letter-spacing: var(--tracking-label); }
+  .ix-crumb span:last-child { color: var(--ix-label); letter-spacing: 0; font-size: var(--font-xs); }
+  .m-obj { display: flex; flex-direction: column; max-height: 788px; overflow: hidden; }
+  .m-obj-tools { display: flex; gap: var(--space-3); align-items: center; }
+  .m-obj-tools .w-input { flex: 1 1 auto; min-width: 0; }
+  .m-obj-tools .w-select { flex: 0 0 auto; width: 118px; }
+  .m-obj-sort { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
+  .m-obj-sort .ix-strip-label { margin-right: var(--space-2); }
+  .m-obj-body { flex: 1 1 auto; overflow: hidden; margin-inline: calc(-1 * var(--space-2)); padding-inline: var(--space-2); }
+
+  /* --- 軌道タイムライン(TML): 掴んで動かす1本の時間軸 -------------------------------------------- */
+  .ix-tml { position: relative; }
+  .ix-tml-panel { padding: var(--space-4) var(--space-5) var(--space-4); }
+  .ix-tml-top { display: flex; align-items: center; gap: var(--space-5); min-height: 32px; }
+  .ix-tml-read { display: flex; align-items: baseline; gap: var(--space-4); min-width: 0; white-space: nowrap; }
+  .ix-tml-read .ix-readout-value { font-size: var(--font-xl); }
+  .ix-tml-read .ix-tml-date { font-size: var(--font-xs); color: var(--ix-label); font-variant-numeric: tabular-nums; }
+  .ix-tml-top .ix-grow { flex: 1 1 auto; }
+  .ix-tml-top .w-btn { white-space: nowrap; }
+  .ix-tml-next .ix-tml-glyph { margin-right: var(--space-2); }
+  .ix-tml-pred { font-size: var(--font-xxs); letter-spacing: var(--tracking-label); color: var(--ix-meta); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .ix-tml-pred.is-caution { color: var(--ix-caution); }
+  .ix-tml-scrub { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: var(--space-4); align-items: start; margin-top: var(--space-3); }
+  /* 時間軸の両端の「掴み手」: 見ている範囲の端。押すと範囲選択が開く。 */
+  .ix-tml-end { display: inline-flex; align-items: center; gap: var(--space-3); height: 34px; padding: 0 var(--space-4); white-space: nowrap; }
+  .ix-tml-end .ix-strip-label { letter-spacing: var(--tracking-label); }
+  .ix-tml-end b { font-weight: 400; color: var(--text); font-size: var(--font-s); }
+  .ix-tml-end i { font-style: normal; color: var(--ix-label); font-size: var(--font-xxs); }
+  .ix-tml .ix-scrub-track { height: 34px; touch-action: none; box-shadow: inset 0 0 0 1px var(--fill-2); }
+  .ix-tml .ix-scrub-track:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+  .ix-tml .ix-scrub-band.is-shadow { opacity: .9; }
+  .ix-tml .ix-scrub-band.is-all { left: 0; width: 100%; }
+  .ix-tml .ix-scrub-tick { top: 16px; bottom: 4px; width: 2px; margin-left: -1px; color: var(--ix-label); }
+  .ix-tml .ix-scrub-tick::before {
+    content: attr(data-g); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    font-size: var(--font-xs); line-height: 1; margin-bottom: 1px; color: inherit;
+  }
+  .ix-tml .ix-scrub-tick.is-own { color: var(--ix-own); }
+  .ix-tml .ix-scrub-tick.is-tgt { color: var(--ix-tgt); }
+  .ix-tml .ix-scrub-now { position: absolute; top: 0; bottom: 0; left: var(--now); width: 1px; background: var(--fill-4); }
+  .ix-tml .ix-scrub-axis { display: block; position: relative; height: 14px; margin-top: var(--space-2); }
+  .ix-tml .ix-scrub-axis span { position: absolute; left: var(--at); white-space: nowrap; }
+  .ix-tml.no-ticks .ix-scrub-axis { visibility: hidden; }
+  /* 範囲選択・設定のポップオーバー(ガラス面の focus 段)。 */
+  .ix-pop {
+    position: absolute; bottom: calc(100% + var(--space-4)); z-index: 5; display: none;
+    padding: var(--space-5) var(--space-5) var(--space-4); border-radius: var(--radius-panel);
+    background: var(--glass-focus); box-shadow: var(--glass-shadow); font-size: var(--font-s);
+    backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+    -webkit-backdrop-filter: blur(var(--glass-blur-focus)) saturate(var(--glass-saturation));
+  }
+  .ix-pop.is-open { display: block; }
+  .ix-pop.at-left { left: 0; }
+  .ix-pop.at-right { right: 0; }
+  .ix-pop-range { width: 556px; max-width: 100%; }
+  .ix-pop-set { width: 288px; right: 0; }
+  .ix-pop-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+  .ix-pop-row { display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-4); padding: var(--space-2) var(--space-3); margin-inline: calc(-1 * var(--space-3)); border-radius: var(--radius-control); }
+  .ix-pop-row.is-active { background: var(--fill-1); }
+  .ix-pop-row .ix-k { color: var(--ix-label); }
+  .ix-pop-pills { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .ix-pop-row .w-input { width: 64px; text-align: right; font-variant-numeric: tabular-nums; }
+  .ix-pop-row .w-select { width: 62px; }
+  .ix-pop-foot { margin-top: var(--space-3); font-size: var(--font-xxs); color: var(--ix-meta); }
+  .ix-pop-toggles { display: grid; gap: var(--space-3); }
+  .ix-pop-toggles .w-toggle { justify-content: space-between; }
+  .ix-pop-toggles .w-toggle-title { font-size: var(--font-s); letter-spacing: 0; color: var(--text); }
+  .ix-legend { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2) var(--space-4); font-size: var(--font-xxs); color: var(--ix-label); }
+  .ix-legend b { font-weight: 400; display: inline-block; width: 1.4em; text-align: center; margin-right: var(--space-2); }
+  .ix-legend .is-tgt { color: var(--ix-tgt); }
+  .ix-legend .is-own { color: var(--ix-own); }
+
+  /* 縮尺バー */
+
+  /* 比較の枠 */
+  .m-variants { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: var(--space-5); margin-top: var(--space-5); }
+  .m-variants .rf-cell { display: flex; flex-direction: column; min-height: 330px; }
+  .m-variants .rf-cell.has-pop-tall { min-height: 400px; }
+  .m-variants .rf-cell .ix-tml { margin-top: auto; }
+  .rf-cell [data-mount="obj"] { width: 300px; max-width: 100%; }
+  .m-pair-obj { display: grid; grid-template-columns: 300px 300px; gap: var(--space-5); align-items: start; }
+  .m-pair-obj .ix-panel { width: 300px; }
+  .m-pair-obj .m-obj { max-height: 788px; }
+  .m-steps { margin: 0; padding-left: 1.4em; color: var(--text-muted); line-height: 1.8; max-width: 980px; }
+  .m-steps b { color: var(--text); }
+</style>
+</head>
+<body class="rf" data-title="03 マップビュー" data-sub="下部タイムラインを1本の時間軸へ / 左右レールの整理 / 案内文をチップへ">
+<main class="rf-main">
+
+<p class="rf-intro">
+  マップビューの現行 HUD は、中央の地図よりも<b>周りのパネルのほうが大きい</b>。とくに下部の軌道タイムラインは 960×280 px で、時間を「掴む」操作は細いスライダー1本だけなのに、
+  未来/過去の期間ピル(7個×2段+数値入力+単位4個)と3つのトグルが面積の大半を占める。左レールは ORB / DSP / CAM が縦にあふれて CAM の下半分が画面外に出る。
+  <b>改修案の主役は時間軸そのもの</b> — 過去・日陰帯・近地点/遠地点/赤道交点/最接近などの事象を1本の帯に並べ、再生ヘッドを掴んで動かす。
+  表示範囲(未来/過去)は時間軸の両端の「掴み手」から開く1つの範囲選択へ畳み、トグル類は ⋯ の中へ移す。下の時間軸は<b>実際にドラッグできる</b>(両端の掴み手と ⋯ も開く)。
+</p>
+
+<div class="rf-stage-wrap"><div class="rf-stage" data-w="1600" data-h="900">
+  <div class="rf-layer rf-before"><img src="foundation/current/map.jpg" alt="現行のマップビュー"></div>
+  <div class="rf-layer rf-after">
+    <canvas class="rf-scene" data-scene="map"></canvas>
+
+    <!-- 角: 左右レールの収納(円形アイコン)とヘルプ -->
+    <span class="w-btn w-btn--icon m-corner" style="left:12px" title="左レールを畳む">◀</span>
+    <span class="w-btn w-btn--icon m-corner" style="right:40px" title="操作ガイド">?</span>
+    <span class="w-btn w-btn--icon m-corner" style="right:12px" title="右レールを畳む">▶</span>
+
+    <!-- 上部ストリップ: 戦闘ビューと同じ。ビューだけ MAP -->
+    <div class="m-strip-row"><div class="ix-strip" data-note="1">
+      <span class="ix-strip-who"><span class="ix-strip-label">STAGE</span><span>1</span></span>
+      <span class="w-btn w-btn--dense w-btn--secondary" title="ビュー切替">MAP ▾</span>
+      <span class="ix-strip-sep"></span>
+      <span class="ix-strip-who"><span class="ix-strip-label">FOCUS</span><span>地球</span></span>
+      <span class="ix-strip-who"><span class="ix-strip-label">CONTROL</span><span>Boree-65</span></span>
+      <span class="ix-strip-who"><span class="ix-strip-label">TARGET</span><span class="is-tgt">HOSTILE-ε</span></span>
+      <span class="ix-strip-sep"></span>
+      <span class="ix-strip-time">20115-05-14 06:00:07</span><span class="ix-strip-label">T+7s</span>
+      <span class="ix-strip-sep"></span>
+      <span class="ix-warp"><span class="on">×1</span><span>×2</span><span>×5</span><span>×10</span><span>×50</span></span>
+      <span class="ix-strip-sep"></span>
+      <span class="ix-annun"><span class="ix-lamp">CAUTION</span><span class="ix-lamp">WARNING</span></span>
+    </div></div>
+
+    <!-- 視点リセット + 案内チップ -->
+    <div class="m-center" style="top:60px"><span class="w-btn w-btn--dense w-btn--secondary" title="マップビューの視点をリセット">CAM ⟲</span></div>
+    <div class="m-center" style="top:96px"><div class="ix-hint" data-note="2">
+      <span class="ix-pip on is-own">PLN</span>
+      <span class="ix-hint-step">軌道をクリック <span class="ix-meta" style="color:var(--ix-meta)">ノード配置</span></span>
+      <span class="ix-hint-step">ドラッグ <span style="color:var(--ix-meta)">移動</span></span>
+      <span class="ix-hint-step">矢印ハンドル <span style="color:var(--ix-meta)">Δv</span></span>
+      <span class="ix-hint-step">右クリック <span style="color:var(--ix-meta)">メニュー</span></span>
+      <span class="ix-hint-step"><kbd class="key">M</kbd> 確定</span>
+    </div></div>
+
+    <!-- 左レール: ORB / DSP / CAM -->
+    <div class="m-rail is-left">
+      <section class="ix-panel" data-note="3">
+        <header class="ix-head"><span class="ix-code">ORB</span><span class="ix-title">軌道</span><span class="ix-head-meta">基準 地球</span><span class="ix-collapse">▾</span></header>
+        <div class="ix-pair">
+          <div class="ix-readout is-m"><span class="ix-readout-value">420.00<span class="ix-u">km</span></span><span class="ix-readout-cap">高度</span></div>
+          <div class="ix-readout is-m"><span class="ix-readout-value">7.66<span class="ix-u">km/s</span></span><span class="ix-readout-cap">速度</span></div>
+        </div>
+        <div class="ix-rows" style="margin-top: var(--space-3)">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">遠地点 Ap</span></span><span class="ix-v">420.08<span class="ix-u">km</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">近地点 Pe</span></span><span class="ix-v">419.91<span class="ix-u">km</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">傾斜角 INC</span></span><span class="ix-v">97.00<span class="ix-u">°</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">周期 PRD</span></span><span class="ix-v">01:32:58</span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">動圧 Q</span></span><span class="ix-gauge" style="--v:0%"><i></i></span><span class="ix-v">0.00<span class="ix-u">kPa</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">船体温度 T</span></span><span class="ix-gauge" style="--v:20%;--at:55%"><i></i></span><span class="ix-v">368<span class="ix-u">K</span></span></div>
+        </div>
+        <div class="ix-sub">基準</div>
+        <div class="w-group"><span class="w-btn w-btn--dense on">自動</span><span class="w-btn w-btn--dense">地球</span><span class="w-btn w-btn--dense">月</span></div>
+        <div class="ix-actions" style="margin-top: var(--space-3)"><span class="w-btn w-btn--dense w-btn--secondary">航法ターゲット</span><span class="w-btn w-btn--dense w-btn--secondary">軌道分析 ▸</span></div>
+      </section>
+
+      <section class="ix-panel is-collapsed" data-note="4">
+        <header class="ix-head"><span class="ix-code">DSP</span><span class="ix-title">表示</span><span class="ix-head-meta">対象 · ガイド · 軌道ガイド</span><span class="ix-collapse">▸</span></header>
+      </section>
+
+      <section class="ix-panel">
+        <header class="ix-head"><span class="ix-code">CAM</span><span class="ix-title">カメラ</span><span class="ix-head-meta">透視 50°</span><span class="ix-collapse">▾</span></header>
+        <div class="ix-ident"><span class="ix-ident-glyph">◎</span><span class="ix-ident-name">地球</span><span class="ix-ident-role">FOCUS</span></div>
+        <div class="ix-rows" style="margin-top: var(--space-3)">
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">平行投影</span></span><span class="ix-v"><span class="w-toggle-track"><span class="w-toggle-knob"></span></span></span></div>
+          <div class="ix-row has-slider"><span class="ix-k"><span class="ix-k-text">画角</span></span><span class="ix-slot"><input class="w-slider" type="range" min="10" max="120" value="50" aria-label="画角"></span><span class="ix-v">50<span class="ix-u">°</span></span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">回転</span></span><span class="ix-v">慣性系</span></div>
+          <div class="ix-row"><span class="ix-k"><span class="ix-k-text">姿勢基準</span></span><span class="ix-v">EULER</span></div>
+        </div>
+        <div class="ix-sub">視点を合わせる</div>
+        <div class="ix-actions" style="margin-top: 0"><select class="w-select" aria-label="基準"><option>地球</option></select><span class="w-btn w-btn--dense w-btn--secondary">固定を解除</span></div>
+        <div class="ix-actions" style="margin-top: var(--space-3)"><select class="w-select" aria-label="面"><option>黄道面</option></select><select class="w-select" aria-label="視点"><option>真上</option></select><span class="w-btn w-btn--dense w-btn--secondary">セット</span></div>
+      </section>
+    </div>
+
+    <!-- 右レール: 軌道物体 -->
+    <div class="m-rail is-right"><div data-mount="obj" data-note="5"></div></div>
+
+    <!-- 縮尺 -->
+    <div class="m-scale-pos"><div class="ix-scale" data-note="10"><span class="ix-strip-label">SCL</span><span>5 Mm</span><i class="ix-scale-ruler"></i></div></div>
+
+    <!-- 下部: 軌道タイムライン -->
+    <div class="m-tml-pos"><div class="ix-tml" data-tml data-notes="1"></div></div>
+  </div>
+</div></div>
+
+<ol class="rf-notes">
+  <li data-n="1"><b>上部ストリップ(監査5)</b> — 820×100 px・2行・見出し4つのブロックを、戦闘ビューと同じ 1行 40 px の <code>.ix-strip</code> へ。ビュー切替だけ MAP。
+    フォーカス / 操作 / ターゲット(第二色)・時刻・時間加速の段・警報灯の順。ビューが違っても同じ場所に同じ形が出るので、画面を切り替えても目が迷わない。
+    <span class="rf-where">src/game/hud/panels/top-bar.ts ・ src/game/hud/view-badge.ts ・ SPEC UI-DESIGN §8「全体ステータスバー」(2行バッジ→1行ストリップ)の更新が要る</span></li>
+  <li data-n="2"><b>案内文をチップへ(監査9)</b> — 長文の帯を、モード印(PLN は「自分が掛けているモード」なので主役色のピップ)+ 操作の語+キーキャップ <kbd class="key">M</kbd> へ。
+    現行は 5 秒で消える通知(<code>hint(…, 5000, 'plan')</code>)で、読み終える前に消える。チップは短いので 5 秒でも読めるが、計画モードの間だけ出し続け、最初のノードを置いたら消す運用を勧める。
+    <span class="rf-where">src/game/run-event-presenter.ts(orbitPlanningOpened の文言) ・ src/game/hud/hud-toast.ts(plan 種の見た目)。出し続けるなら SPEC UI-DESIGN §8「通知」・PLAN §3 の更新が要る</span></li>
+  <li data-n="3"><b>ORB を主読み値+行へ(監査1・2)</b> — 高度と速度を <code>.ix-readout</code> の対にし、Ap/Pe/INC/PRD は「ラベル 値 単位」の行、動圧と船体温度は細い中立メーター(閾値の目盛り付き。368 K は赤くしない)。
+    基準の選択は「自動」だけが点灯(自分の選択)。記号 ORB は中立色。折りたたんだときも見出し右の要約(基準)で用が足りる。
+    <span class="rf-where">src/game/hud/orbit/orbit-panel.ts(担当外・01/02 と共通)。SPEC UI-DESIGN §8 は「マップビューでは畳まれる」だが現行は開いている — 開いたままの案を示した(下の「迷った点」)</span></li>
+  <li data-n="4"><b>左レールのあふれ(CAM / DSP)</b> — CAM は 4つの状態セルを4行(平行投影トグル・画角スライダー・回転・姿勢基準)に畳み、「基準」「角度」の2つのプルダウンは小見出し「視点を合わせる」の下の2行へ。
+    DSP は既定で畳まれたまま、見出しの要約(対象 · ガイド · 軌道ガイド)で中身が分かる。ORB 約330 + DSP 44 + CAM 約270 px で、左レールは約 670 px に収まる(現行は CAM の下半分が画面外)。
+    <span class="rf-where">src/game/hud/frame/camera-frame-panel.ts ・ src/game/hud/panels/view-options-panel.ts ・ src/game/hud/style/map-view-style.ts ・ SPEC MAP「座標系パネル」「表示パネル」は挙動不変(置き方だけ)</span></li>
+  <li data-n="5"><b>物体一覧の操作部(4行→2行)</b> — 検索欄と「分類」をプルダウンで1行、並び順を3つの小ボタンで1行へ。現行は「分類」7個を2段・「並び順」を1段の計4段で、木が始まるのが約 360 px 目だった。
+    分類は候補が7つで名前も長い(ラグランジュ点)ので UI-DESIGN §3 の「プルダウン」の条件に当たる。選択中の項目をもう一度選ぶと解除、の代わりに先頭の「すべて」で解除する。
+    <span class="rf-where">src/game/hud/panels/physical-object-list-panel.ts ・ SPEC MAP「軌道物体一覧パネル」の検索欄・フィルタの段落(「フィルタボタン…もう一度押すと解除」)の更新が要る</span></li>
+  <li data-n="6"><b>木を <code>.ix-item</code> の行へ(監査1・4)</b> — 行頭に字下げ+開閉記号、区分(惑星/小天体/L点)を右端の小さな語に。<b>地球はいまカメラが注視している=自分の選択</b>なので主役色の面(現行は赤い枠+赤い塗りの二重)。
+    ターゲット(HOSTILE-ε)は第二色、自艦の記号は主役色。区画見出しは「名前 件数 ▾」の1行で、敵の見出しに内訳(接近 1)、天体の見出しに「全展開 / 畳む」を寄せた(現行は木の上に独立の行)。
+    <span class="rf-where">src/game/hud/panels/physical-object-list-row-tree.ts(行の DOM) ・ physical-object-list-panel.ts の STYLE ・ map-view-style.ts の #hud-physical-object-list 規則 ・ SPEC MAP は挙動不変</span></li>
+  <li data-n="7"><b>タイムライン=1本の時間軸(監査8の本体)</b> — 960×280 px → 幅は同じで高さ約 108 px。主役は <code>.ix-scrub</code>: 過去区間(薄い面)・日陰帯(斜線)・事象の目盛り(◇ 近/遠地点、△▽ 赤道交点、✧ 最接近=第二色、◈ ノード=主役色)・再生ヘッド。
+    トラックのどこを押しても/掴んでもヘッドが動き、ヘッドは「現在」より左へは行かない(過去は静的な履歴線という PLAN §9 の規則どおり)。上段は読み値(T+ と UTC)・次の事象へ飛ぶボタン・予測率。
+    ヘッドを動かすと「次 ✧ …」が追従する。
+    <span class="rf-where">src/game/hud/panels/display-timeline-panel.ts(buildScrubberRow・renderTicks) ・ src/game/hud/style/predict-panel-style.ts ・ SPEC PLAN §9 の「スクラバーのトラック/目盛り」を更新。トラックは UI-DESIGN §3「スライダー」の派生として足す</span></li>
+  <li data-n="8"><b>表示範囲=時間軸の両端の掴み手(監査8)</b> — 左端「過去 なし ▾」・右端「未来 1周 ▾」。押すと<b>1つの範囲選択</b>が開き、未来/過去のプリセット+数値+単位が2行で並ぶ(押した側の行が薄く強調)。
+    常時並ぶのは「いま見ている範囲」を示す2語だけ — ピル13個+入力2個+単位8個が消える。プリセットを選ぶと時間軸の縮尺・目盛り・事象がその場で組み変わる(試せる)。
+    <span class="rf-where">src/hud/widgets/duration-pill-row.ts(2行ぶんの常設 → 範囲選択の中身へ) ・ display-timeline-panel.ts(buildDurationRows) ・ SPEC PLAN §9「未来側/過去側の表示期間」の「常時並べて表示」を更新</span></li>
+  <li data-n="9"><b>二次的なトグルは ⋯ へ</b> — 「目盛りを相対表記」「目盛りを表示」「軌道要素の時刻を表示」の3スイッチと、事象の凡例は ⋯ のポップオーバーへ。時間軸の邪魔をせず、探せば見つかる位置。スイッチ自体は既存の <code>.w-toggle</code> のまま。
+    <span class="rf-where">src/game/hud/panels/display-timeline-panel.ts(buildModeRow) ・ SPEC PLAN §9 の各スイッチの記述は挙動不変(置き場だけ変わる)</span></li>
+  <li data-n="10"><b>縮尺バー</b> — 「SCL / 5 Mm / 定規」をそのまま右下に残し、面を <code>--glass-quiet</code> にそろえた。右レール(物体一覧)は縮尺バーの上で止まる(現行も重ならない)。
+    <span class="rf-where">src/game/hud/panels/map-scale-badge.ts ・ src/game/hud/style/map-view-style.ts の #hud-map-scale ・ SPEC MAP「スケールバー」は挙動不変</span></li>
+</ol>
+
+<!-- ================================================================== -->
+<h2><span class="ix-code">A</span>部品の比較: 軌道タイムライン</h2>
+<p class="rf-lead">現行(左)と改修案(右)は同じ状況: 未来=1周・過去=なし・表示時刻 T+0。右は本物の DOM で、トラックを掴むとヘッドが動く。</p>
+<div class="rf-pair">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>960×280 px</span></div><img src="foundation/current/crops/map-timeline.jpg" alt="現行のタイムライン"></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>952×約108 px</span></div><div class="ix-tml" data-tml></div></div>
+</div>
+
+<h3>状態のバリエーション(どれも同じ部品)</h3>
+<div class="m-variants">
+  <div class="rf-cell is-space has-pop"><div class="rf-cell-cap"><b>範囲選択を開いた状態</b><span>右端「未来」から</span></div><div class="ix-tml" data-tml data-open="future" data-pinned="1"></div></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>過去 1日・未来 10日・ノードあり</b><span>◈ はノードを置くと現れる</span></div><div class="ix-tml" data-tml data-past="day" data-fut="tenDay" data-node="2950" data-head="30000"></div></div>
+  <div class="rf-cell is-space has-pop-tall"><div class="rf-cell-cap"><b>⋯ を開いた状態</b><span>トグル3つと凡例</span></div><div class="ix-tml" data-tml data-open="settings" data-pinned="1"></div></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>未来 3ヶ月(長期)</b><span>周期的な事象は間引き、最接近だけ残す</span></div><div class="ix-tml" data-tml data-fut="threeMonth" data-head="2000000"></div></div>
+</div>
+
+<h2><span class="ix-code">B</span>部品の比較: 物体一覧</h2>
+<p class="rf-lead">現行(左)は操作部が4段・木の字下げが深く、フォーカス行は赤い枠+赤い塗り+赤い文字。改修案(右)は操作部が2段で、木が約 140 px 目から始まり、自艦と敵まで同じ画面に入る。</p>
+<div class="rf-pair" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr))">
+  <div class="rf-cell"><div class="rf-cell-cap"><b>現行</b><span>300 px</span></div><img src="foundation/current/crops/map-objects.jpg" alt="現行の物体一覧" width="300"></div>
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>改修案</b><span>同じ幅</span></div><div data-mount="obj"></div></div>
+</div>
+
+<h2><span class="ix-code">C</span>出たときだけ現れるパネル</h2>
+<p class="rf-lead">ブースターのある機体では、左レールに燃焼管理(BRN)が出る。<b>マップ画面の撮影には映っていない</b>ので、同じ文法で組んだ姿だけを示す。燃料は細い中立メーター(残 20% 以下で注意)、状態はピップ。</p>
+<div class="rf-pair">
+  <div class="rf-cell is-space"><div class="rf-cell-cap"><b>燃焼管理(左レール)</b><span>燃料 74%・待機</span></div>
+    <section class="ix-panel rf-rail-sample">
+      <header class="ix-head"><span class="ix-code">BRN</span><span class="ix-title">燃焼管理</span><span class="ix-head-meta">2 段</span><span class="ix-collapse">▾</span></header>
+      <div class="ix-rows">
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">総質量</span></span><span class="ix-v">4,820<span class="ix-u">kg</span></span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">最後尾燃料</span></span><span class="ix-gauge" style="--v:74%;--at:20%"><i></i></span><span class="ix-v">740 / 1,000<span class="ix-u">kg</span></span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">状態</span></span><span class="ix-v"><span class="ix-pip">待機</span></span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">ブースター</span></span><span class="ix-v">B1: 待機</span></div>
+        <div class="ix-row"><span class="ix-k"><span class="ix-k-text">デカプラー</span></span><span class="ix-v">D1: 接続</span></div>
+      </div>
+    </section>
+  </div>
+  <div class="rf-cell"><div class="rf-cell-cap"><b>注記</b></div>
+    <p class="rf-lead" style="margin:0">現行は「燃料 740 / 1,000 kg」が文字とメーターの二重表示(<code>fuelValue</code> と <code>Meter</code> の値)。行の文法では<b>メーターと値を同じ行</b>に置くので二重にならない。「待機」は文字ではなく <code>.ix-pip</code>、点火中は <code>.ix-pip.on.is-own</code>。
+    <span class="rf-where" style="display:block;margin-top:var(--space-3);font-size:var(--font-xs);color:var(--text-dim)">src/game/hud/panels/burn-management-panel.ts(<code>.row.metric</code> → <code>.ix-row</code>、<code>Meter</code> → <code>.ix-gauge</code>)</span></p>
+    <p class="rf-lead" style="margin:var(--space-4) 0 0">計画ノードがあるとき、右レールの最上段には MANEUVER PLAN(<code>#hud-plan</code>)が出て、物体一覧はその分だけ低くなる。同じ <code>.ix-panel</code> で組み、物体一覧は「検索+分類」の1行だけが常に見える最小高さを持つ。
+    <span class="rf-where" style="display:block;margin-top:var(--space-3);font-size:var(--font-xs);color:var(--text-dim)">src/game/hud/style/plan-panel-style.ts ・ src/game/hud/style/map-view-style.ts(#hud-physical-object-list の max-height)</span></p>
+  </div>
+</div>
+
+<h2><span class="ix-code">D</span>改修の手順</h2>
+<ol class="m-steps">
+  <li><b>案内チップ</b>(最小・独立): <code>orbitPlanningOpened</code> の文言を短い語列にして <code>.ix-hint</code> の見た目へ。他に影響しない。</li>
+  <li><b>物体一覧の操作部と行</b>: 分類をプルダウンに、行を <code>.ix-item</code> の文法に。<code>physical-object-list-*</code> の3ファイルだけで閉じる。SPEC MAP の検索・フィルタの段落を先に更新。</li>
+  <li><b>左レール</b>(ORB・CAM・BRN): 状態セルを行へ。ORB と共通なので 01/02 の行の文法が入った後に。CAM の高さが収まったことを 1600×900 と 844×390 で確認。</li>
+  <li><b>タイムラインの縮約</b>(見た目だけ): 範囲選択のポップオーバーと ⋯ を足し、常設の2段のピル行と3つのトグルを畳む。時間軸はまだ <code>&lt;input type=range&gt;</code> のまま。SPEC PLAN §9 の「常時並べて表示」を先に更新。</li>
+  <li><b>時間軸ウィジェット</b>: <code>Slider</code> の派生として <code>.ix-scrub</code> を入れ、過去区間・目盛りを描く。UI-DESIGN §3 の更新。</li>
+  <li><b>事象と日陰</b>: 近/遠地点・赤道交点・最接近・ノードの時刻を <code>DisplayTimelinePanelState</code> へ渡し、日陰区間の計算を足す。データの追加を伴うので最後。</li>
+</ol>
+
+</main>
+
+<script src="foundation/themes.js"></script>
+<script>
+(function () {
+  'use strict';
+  // ---------------------------------------------------------------- 共通の小道具
+  const PERIOD = 5578;                       // 周期 01:32:58 [s]
+  const EPOCH = Date.UTC(20115, 4, 14, 6, 0, 7);
+  const UNITS = [['時', 3600], ['日', 86400], ['月', 30 * 86400], ['年', 365 * 86400]];
+  const FIXED = [['orbit', '1周', PERIOD], ['day', '1日', 86400], ['tenDay', '10日', 864000], ['month', '1ヶ月', 30 * 86400], ['threeMonth', '3ヶ月', 90 * 86400]];
+  const LADDER = [600, 1800, 3600, 3 * 3600, 6 * 3600, 12 * 3600, 86400, 2 * 86400, 5 * 86400, 10 * 86400, 30 * 86400, 90 * 86400, 365 * 86400];
+  const MAX = 365 * 86400;
+  const pad = (n, w = 2) => String(n).padStart(w, '0');
+  const trim = (x) => String(Math.round(x * 100) / 100);
+
+  function fmtDate(sec) {
+    const d = new Date(EPOCH + sec * 1000);
+    return pad(d.getUTCFullYear(), 5) + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()) + 'T' +
+      pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+  }
+  // T+ の読み値(正確): 1h 14m 05s の形。
+  function fmtElapsed(sec) {
+    const s = Math.round(Math.abs(sec));
+    if (s === 0) return 'T+0';
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+    const parts = [];
+    if (d) parts.push(d + 'd');
+    if (d || h) parts.push(h + 'h');
+    if (!d) parts.push(pad(m) + 'm');
+    if (!d && !h) parts.push(pad(r) + 's');
+    return 'T' + (sec < 0 ? '-' : '+') + parts.join(' ');
+  }
+  // 目盛りのラベル(粗い): 間隔の単位で出す。
+  function fmtTick(sec, interval, relative) {
+    if (!relative) {
+      const d = new Date(EPOCH + sec * 1000);
+      return interval >= 86400
+        ? pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate())
+        : pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+    }
+    const s = Math.abs(sec), sign = sec < 0 ? '-' : '+';
+    if (s === 0) return 'T+0';
+    if (interval < 3600) return 'T' + sign + Math.round(s / 60) + 'm';
+    if (interval < 86400) return 'T' + sign + trim(s / 3600) + 'h';
+    if (interval < 30 * 86400) return 'T' + sign + trim(s / 86400) + 'd';
+    if (interval < 365 * 86400) return 'T' + sign + trim(s / (30 * 86400)) + 'mo';
+    return 'T' + sign + trim(s / (365 * 86400)) + 'y';
+  }
+  function fmtSpan(side) {
+    if (side.key === 'none') return 'なし';
+    const f = FIXED.find((x) => x[0] === side.key);
+    if (f) return f[1];
+    const s = side.sec;
+    if (s < 86400) return trim(s / 3600) + '時間';
+    if (s < 30 * 86400) return trim(s / 86400) + '日';
+    if (s < 365 * 86400) return trim(s / (30 * 86400)) + 'ヶ月';
+    return trim(s / (365 * 86400)) + '年';
+  }
+  function sideOf(key, custom) {
+    if (key === 'none') return { key: 'none', sec: 0 };
+    const f = FIXED.find((x) => x[0] === key);
+    return f ? { key, sec: f[2] } : { key: 'custom', sec: custom || PERIOD };
+  }
+  function pickInterval(span, maxTicks) {
+    for (const c of LADDER) { if (Math.floor(span / c) + 1 <= maxTicks) return c; }
+    return LADDER[LADDER.length - 1];
+  }
+
+  // 事象。実データではなく、この画面の状況(LEO 420 km・ターゲット 60 km)に合わせた例。
+  const BASE = { pe: 1300, an: 2100, ap: 1300 + PERIOD / 2, dn: 2100 + PERIOD / 2 };
+  const EV = {
+    pe: { g: '◇', cls: '', name: '近地点' }, ap: { g: '◇', cls: '', name: '遠地点' },
+    an: { g: '△', cls: '', name: '昇交点' }, dn: { g: '▽', cls: '', name: '降交点' },
+    ca: { g: '✧', cls: 'is-tgt', name: 'HOSTILE-ε 最接近' }, nd: { g: '◈', cls: 'is-own', name: 'ノード N1' },
+  };
+  const SHADOW = [3300, 5400];               // 日陰に入る/出る(周期内)
+  const CA_TIMES = [4440, 150000, 423000, 1100000, 3500000, 6900000];
+  function events(from, to, node) {
+    const out = [];
+    const span = to - from;
+    if (span <= 6 * PERIOD) {
+      for (const k of Object.keys(BASE)) {
+        for (let n = Math.floor((from - BASE[k]) / PERIOD); n <= Math.ceil((to - BASE[k]) / PERIOD); n++) {
+          const t = BASE[k] + n * PERIOD;
+          if (t >= from && t <= to) out.push({ k, t });
+        }
+      }
+    }
+    for (const t of CA_TIMES) if (t >= from && t <= to) out.push({ k: 'ca', t });
+    if (node != null && node >= from && node <= to) out.push({ k: 'nd', t: node });
+    return out.sort((a, b) => a.t - b.t);
+  }
+
+  // ---------------------------------------------------------------- タイムライン
+  function mountTml(root) {
+    const ds = root.dataset;
+    const st = {
+      fut: sideOf(ds.fut || 'orbit'), past: sideOf(ds.past || 'none'), head: Number(ds.head || 0),
+      rel: true, ticks: true, elTimes: false, open: ds.open || '', pinned: ds.pinned === '1',
+      node: ds.node ? Number(ds.node) : null,
+    };
+    root.innerHTML = `
+      <div class="ix-panel ix-tml-panel">
+        <div class="ix-tml-top">
+          <span class="w-btn w-btn--icon" data-r="reset" title="現在に戻す" aria-label="現在に戻す">⏮</span>
+          <div class="ix-tml-read"><span class="ix-readout-value" data-r="elapsed"></span><span class="ix-tml-date" data-r="date"></span></div>
+          <span class="ix-grow"></span>
+          <span class="w-btn w-btn--dense w-btn--secondary ix-tml-next" data-r="next" title="次の事象へ飛ぶ"></span>
+          <span class="ix-tml-pred" data-r="pred">予測 100%</span>
+          <span class="w-btn w-btn--icon" data-r="set" title="目盛りと凡例" aria-label="目盛りと凡例">⋯</span>
+        </div>
+        <div class="ix-tml-scrub">
+          <span class="w-btn ix-tml-end" data-r="endPast" title="過去の表示範囲"><span class="ix-strip-label">過去</span><b data-r="pastLabel"></b><i>▾</i></span>
+          <div class="ix-scrub">
+            <div class="ix-scrub-track" data-r="track" role="slider" tabindex="0" aria-label="表示時刻" aria-valuemin="0"></div>
+            <div class="ix-scrub-axis" data-r="axis"></div>
+          </div>
+          <span class="w-btn ix-tml-end" data-r="endFut" title="未来の表示範囲"><span class="ix-strip-label">未来</span><b data-r="futLabel"></b><i>▾</i></span>
+        </div>
+        <div class="ix-pop ix-pop-range" data-r="popRange"></div>
+        <div class="ix-pop ix-pop-set" data-r="popSet"></div>
+      </div>`;
+    const $ = (n) => root.querySelector('[data-r="' + n + '"]');
+    const el = {
+      elapsed: $('elapsed'), date: $('date'), next: $('next'), pred: $('pred'), track: $('track'), axis: $('axis'),
+      pastLabel: $('pastLabel'), futLabel: $('futLabel'), popRange: $('popRange'), popSet: $('popSet'),
+    };
+
+    function buildRange() {
+      const rowHtml = (side, label, cur) => {
+        const pills = (side === 'past' ? [['none', 'なし']] : []).concat(FIXED.map((f) => [f[0], f[1]]));
+        const unit = cur.unit || (cur.sec >= 86400 * 2 ? 1 : 0);
+        return `<div class="ix-pop-row${st.open === side ? ' is-active' : ''}" data-side="${side}">
+          <span class="ix-k">${label}</span>
+          <span class="ix-pop-pills">${pills.map((p) => `<span class="w-btn w-btn--dense${cur.key === p[0] ? ' on' : ''}" data-pill="${p[0]}">${p[1]}</span>`).join('')}</span>
+          <input class="w-input" type="text" inputmode="decimal" value="${cur.key === 'none' ? '0' : trim(cur.sec / UNITS[unit][1])}" aria-label="${label}の期間">
+          <select class="w-select" aria-label="${label}の単位">${UNITS.map((u, i) => `<option${i === unit ? ' selected' : ''}>${u[0]}</option>`).join('')}</select>
+        </div>`;
+      };
+      el.popRange.innerHTML = `<div class="ix-pop-head"><span class="ix-strip-label">表示範囲</span><span class="w-close" data-r="closeRange" aria-label="閉じる">✕</span></div>` +
+        rowHtml('future', '未来', Object.assign({}, st.fut, { unit: st.futUnit })) + rowHtml('past', '過去', Object.assign({}, st.past, { unit: st.pastUnit })) +
+        `<div class="ix-pop-foot">1時間〜1年。「1周」は自機の周期に追従し、過去は飛行履歴の範囲まで。</div>`;
+    }
+    function buildSet() {
+      const tg = (key, label, on) => `<div class="w-toggle"><span class="w-toggle-title">${label}</span><span class="w-toggle-track${on ? ' on' : ''}" data-tg="${key}"><span class="w-toggle-knob"></span></span></div>`;
+      el.popSet.innerHTML = `<div class="ix-pop-head"><span class="ix-strip-label">目盛りと凡例</span><span class="w-close" data-r="closeSet" aria-label="閉じる">✕</span></div>
+        <div class="ix-pop-toggles">${tg('rel', '目盛りを相対表記', st.rel)}${tg('ticks', '目盛りを表示', st.ticks)}${tg('elTimes', '軌道要素の時刻を表示', st.elTimes)}</div>
+        <div class="ix-sub">凡例</div>
+        <div class="ix-legend"><span><b>◇</b>近地点 / 遠地点</span><span><b>△▽</b>昇交点 / 降交点</span><span class="is-tgt"><b>✧</b>最接近(ターゲット)</span><span class="is-own"><b>◈</b>ノード</span><span><b>▨</b>日陰</span><span><b>▏</b>現在</span></div>`;
+    }
+
+    function render() {
+      const fut = st.fut.sec, past = st.past.sec, total = fut + past;
+      st.head = Math.max(0, Math.min(fut, st.head));
+      const pct = (t) => ((t + past) / total * 100);
+      const nowPct = past / total * 100;
+      const evs = events(-past, fut, st.node);
+      // トラック
+      let h = '';
+      if (past > 0) h += `<div class="ix-scrub-past" style="--now:${nowPct}%"></div>`;
+      if (total <= 6 * PERIOD) {
+        for (let n = Math.floor((-past - SHADOW[0]) / PERIOD); n <= Math.ceil((fut - SHADOW[0]) / PERIOD); n++) {
+          const a = Math.max(-past, SHADOW[0] + n * PERIOD), b = Math.min(fut, SHADOW[1] + n * PERIOD);
+          if (b > a) h += `<div class="ix-scrub-band is-shadow" style="--from:${pct(a)}%;--len:${(b - a) / total * 100}%"></div>`;
+        }
+      } else {
+        h += '<div class="ix-scrub-band is-shadow is-all" style="opacity:.45"></div>';
+      }
+      if (past > 0) h += `<div class="ix-scrub-now" style="--now:${nowPct}%"></div>`;
+      for (const e of evs) h += `<div class="ix-scrub-tick ${EV[e.k].cls}" data-g="${EV[e.k].g}" style="--at:${pct(e.t)}%"></div>`;
+      h += `<div class="ix-scrub-head" style="--at:${pct(st.head)}%"></div>`;
+      el.track.innerHTML = h;
+      el.track.setAttribute('aria-valuemax', String(Math.round(fut)));
+      el.track.setAttribute('aria-valuenow', String(Math.round(st.head)));
+      el.track.setAttribute('aria-valuetext', fmtElapsed(st.head));
+      // 軸
+      const interval = pickInterval(total, 6);
+      let ax = '';
+      for (let t = Math.ceil(-past / interval) * interval; t <= fut; t += interval) {
+        const p = pct(t);
+        const tr = p < 2 ? 'none' : p > 98 ? 'translateX(-100%)' : 'translateX(-50%)';
+        ax += `<span style="--at:${p}%;transform:${tr}">${fmtTick(t, interval, st.rel)}</span>`;
+      }
+      el.axis.innerHTML = ax;
+      root.classList.toggle('no-ticks', !st.ticks);
+      // 読み値
+      el.elapsed.textContent = fmtElapsed(st.head);
+      el.date.textContent = fmtDate(st.head);
+      el.pastLabel.textContent = fmtSpan(st.past);
+      el.futLabel.textContent = fmtSpan(st.fut);
+      // 次の事象
+      const nx = evs.find((e) => e.t > st.head + 1);
+      if (nx) {
+        el.next.style.display = '';
+        el.next.dataset.t = String(nx.t);
+        el.next.innerHTML = `<span class="ix-tml-glyph" style="color:${nx.k === 'ca' ? 'var(--ix-tgt)' : nx.k === 'nd' ? 'var(--ix-own)' : 'inherit'}">${EV[nx.k].g}</span>次 ${EV[nx.k].name} ${fmtElapsed(nx.t - 0)}`;
+      } else { el.next.style.display = 'none'; }
+      // ポップオーバー
+      const range = st.open === 'future' || st.open === 'past';
+      el.popRange.classList.toggle('is-open', range);
+      el.popRange.classList.toggle('at-left', st.open === 'past');
+      el.popRange.classList.toggle('at-right', st.open === 'future');
+      el.popSet.classList.toggle('is-open', st.open === 'settings');
+      if (range) buildRange();
+      if (st.open === 'settings') buildSet();
+    }
+
+    // 掴んで動かす
+    function setFromX(clientX) {
+      const r = el.track.getBoundingClientRect();
+      const total = st.fut.sec + st.past.sec;
+      const t = ((clientX - r.left) / r.width) * total - st.past.sec;
+      st.head = Math.max(0, Math.min(st.fut.sec, t));
+      render();
+    }
+    el.track.addEventListener('pointerdown', (e) => {
+      el.track.setPointerCapture(e.pointerId);
+      setFromX(e.clientX);
+      const move = (ev) => setFromX(ev.clientX);
+      const up = () => { el.track.removeEventListener('pointermove', move); el.track.removeEventListener('pointerup', up); };
+      el.track.addEventListener('pointermove', move);
+      el.track.addEventListener('pointerup', up);
+    });
+    el.track.addEventListener('keydown', (e) => {
+      const step = st.fut.sec / 100;
+      if (e.key === 'ArrowRight') st.head += step;
+      else if (e.key === 'ArrowLeft') st.head -= step;
+      else if (e.key === 'Home') st.head = 0;
+      else if (e.key === 'End') st.head = st.fut.sec;
+      else return;
+      e.preventDefault(); render();
+    });
+
+    // クリック
+    root.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-r],[data-pill],[data-tg]');
+      if (!t) return;
+      if (t.dataset.r === 'reset') { st.head = 0; render(); return; }
+      if (t.dataset.r === 'next') { st.head = Number(t.dataset.t); render(); return; }
+      if (t.dataset.r === 'endFut') { st.open = st.open === 'future' ? '' : 'future'; render(); return; }
+      if (t.dataset.r === 'endPast') { st.open = st.open === 'past' ? '' : 'past'; render(); return; }
+      if (t.dataset.r === 'set') { st.open = st.open === 'settings' ? '' : 'settings'; render(); return; }
+      if (t.dataset.r === 'closeRange' || t.dataset.r === 'closeSet') { st.open = ''; render(); return; }
+      if (t.dataset.pill) {
+        const side = t.closest('[data-side]').dataset.side;
+        if (side === 'future') { st.fut = sideOf(t.dataset.pill); st.head = 0; } else { st.past = sideOf(t.dataset.pill); }
+        st.open = side; render(); return;
+      }
+      if (t.dataset.tg) {
+        const k = t.dataset.tg; st[k] = !st[k]; render(); return;
+      }
+    });
+    // 数値入力と単位
+    root.addEventListener('change', (e) => {
+      const row = e.target.closest('[data-side]');
+      if (!row) return;
+      const side = row.dataset.side;
+      const input = row.querySelector('input'), sel = row.querySelector('select');
+      const unit = sel.selectedIndex;
+      const v = parseFloat(input.value.replace(',', '.'));
+      if (!isFinite(v)) { render(); return; }
+      if (side === 'future') { st.futUnit = unit; st.fut = sideOf('custom', Math.max(3600, Math.min(MAX, v * UNITS[unit][1]))); st.head = 0; }
+      else { st.pastUnit = unit; st.past = v <= 0 ? sideOf('none') : sideOf('custom', Math.min(MAX, v * UNITS[unit][1])); }
+      render();
+    });
+    root.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.matches('.ix-pop input')) e.target.blur(); });
+    // 外側クリック・Esc で閉じる(固定表示のサンプルは閉じない)
+    document.addEventListener('pointerdown', (e) => {
+      if (st.open && !st.pinned && !root.contains(e.target)) { st.open = ''; render(); }
+    });
+    root.addEventListener('keydown', (e) => { if (e.key === 'Escape' && st.open) { st.open = ''; render(); } });
+    render();
+  }
+
+  // ---------------------------------------------------------------- 物体一覧
+  function objHTML() {
+    const item = (o) => `<div class="ix-item${o.cls ? ' ' + o.cls : ''}" style="--d:${o.d || 0}"><span class="ix-item-tog">${o.tog || ''}</span><span class="ix-item-glyph">${o.g}</span><span class="ix-item-name">${o.n}</span><span class="ix-item-tag">${o.t || ''}</span></div>`;
+    const sec = (name, n, open, sum) => `<div class="ix-section"><span>${open ? '▾' : '▸'}</span><b>${name}</b><span class="ix-section-n">${n}</span>${sum ? `<span class="ix-section-sum">${sum}</span>` : ''}</div>`;
+    const bodies = [
+      { n: '太陽', g: '◉', t: '恒星', tog: '▾' }, { n: '水星', g: '●', t: '惑星', d: 1 }, { n: '金星', g: '●', t: '惑星', d: 1 },
+      { n: 'アポフィス', g: '·', t: '小天体', d: 1 },
+      { n: '地球', g: '●', t: '惑星', d: 1, tog: '▾', cls: 'is-focus' },
+      { n: '地球-L1', g: '✦', t: 'L点', d: 2 }, { n: '地球-L2', g: '✦', t: 'L点', d: 2 }, { n: '月', g: '○', t: '衛星', d: 2, tog: '▸' },
+      { n: '火星', g: '●', t: '惑星', d: 1, tog: '▸' },
+    ];
+    const enemies = [
+      { n: 'HOSTILE-ε', g: '△', t: '60 km', cls: 'is-tgt' }, { n: 'HOSTILE-γ', g: '△', t: '95 km', cls: 'is-near' },
+      { n: 'HOSTILE-α', g: '△', t: '148 km' }, { n: 'HOSTILE-β', g: '△', t: '212 km' }, { n: 'HOSTILE-δ', g: '△', t: '380 km' },
+    ];
+    return `<section class="ix-panel m-obj">
+      <header class="ix-head"><span class="ix-code">OBJ</span><span class="ix-title">軌道物体</span><span class="ix-head-meta">129</span><span class="ix-collapse">▾</span></header>
+      <div class="m-obj-tools"><input class="w-input" type="search" placeholder="検索" aria-label="軌道物体を検索"><select class="w-select" aria-label="分類"><option>分類: すべて</option><option>惑星</option><option>衛星</option><option>準惑星</option><option>小天体</option><option>ラグランジュ点</option><option>人工物</option><option>敵</option></select></div>
+      <div class="m-obj-sort"><span class="ix-strip-label">並び</span><span class="w-btn w-btn--dense on">太陽系順</span><span class="w-btn w-btn--dense">近さ</span><span class="w-btn w-btn--dense">名前</span></div>
+      <div class="m-obj-body ix-tree">
+        <div class="ix-crumb"><span>FOCUS</span><span>太陽 › 地球</span></div>
+        <div class="ix-section"><span>▾</span><b>天体</b><span class="ix-section-n">118</span><span class="ix-section-tools"><span class="w-btn w-btn--dense w-btn--secondary">全展開</span><span class="w-btn w-btn--dense w-btn--secondary">畳む</span></span></div>
+        <div class="ix-list">${bodies.map(item).join('')}</div>
+        ${sec('自艦', 1, true)}
+        <div class="ix-list">${item({ n: 'Boree-65', g: '▲', t: '操作中', cls: 'is-own' })}</div>
+        ${sec('敵', 5, true, '接近 1')}
+        <div class="ix-list">${enemies.map(item).join('')}</div>
+        ${sec('弾薬', 3, false, '回収可 3')}${sec('RCS燃料', 1, false, '回収可 1')}${sec('基地', 1, false)}
+      </div>
+    </section>`;
+  }
+
+  document.querySelectorAll('[data-mount="obj"]').forEach((m) => {
+    m.innerHTML = objHTML();
+    if (m.dataset.note) {
+      m.firstElementChild.dataset.note = m.dataset.note; m.removeAttribute('data-note');
+      m.querySelector('.m-obj-body .ix-list').dataset.note = '6';
+    }
+  });
+  document.querySelectorAll('[data-tml]').forEach((r) => {
+    mountTml(r);
+    if (r.dataset.notes) {
+      r.querySelector('[data-r="track"]').dataset.note = '7';
+      r.querySelector('[data-r="endFut"]').dataset.note = '8';
+      r.querySelector('[data-r="set"]').dataset.note = '9';
+    }
+  });
+})();
+</script>
+<script src="foundation/ref.js"></script>
+</body></html>
