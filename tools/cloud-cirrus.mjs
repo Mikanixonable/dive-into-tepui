@@ -49,12 +49,14 @@ export function measureCirrusPair(generatedLayer, referenceLayer, kmPerPx, ladde
   }
 
   const rowKmPerPx = new Array(generatedLayer.height).fill(kmPerPx);
+  // 大域の明暗は 200 km で引く。どの梯子も枠は 663 km 以上あり、200 km は枠の 1/3 以下に収まる。
+  const highPassKm = 200;
   const tensors = new Map();
   for (const scaleKm of FINE_STREAK_SCALES_KM) {
     if (!streakScaleMeasurable(scaleKm, frameWidthKm, kmPerPx)) continue;
     tensors.set(scaleKm, {
-      generated: structureTensor(generatedLayer, rowKmPerPx, kmPerPx, false, scaleKm),
-      reference: structureTensor(referenceLayer, rowKmPerPx, kmPerPx, false, scaleKm),
+      generated: structureTensor(generatedLayer, rowKmPerPx, kmPerPx, false, scaleKm, highPassKm),
+      reference: structureTensor(referenceLayer, rowKmPerPx, kmPerPx, false, scaleKm, highPassKm),
     });
   }
   const scales = [...tensors.entries()].map(([scaleKm, tensor]) => ({
