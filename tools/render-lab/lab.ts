@@ -386,8 +386,10 @@ export class LabView {
       graphics.atmosphere,
     );
     this.pipeline.atmosphere.setDraws(draws);
-    // ゲーム本体と同じく、大気パスが描くのと同じ天体の列を直射光の消衰へ渡す。
-    this.pipeline.sunExtinction.set(draws.map((draw) => draw.body));
+    // ゲーム本体と同じく、大気パスが描くのと同じ天体の列を直射光の消衰と天空光へ渡す。
+    const bodies = draws.map((draw) => draw.body);
+    this.pipeline.sunExtinction.set(bodies);
+    this.pipeline.skyLight.set(bodies);
     const startedAt = performance.now();
     try {
       if (this.captureOnly) this.renderToCaptureTarget(camera);
