@@ -177,7 +177,7 @@ export class OverlayManager {
 
   // 最前面から順に、code に一致する項目ショートカットを持つオーバーレイを探して1つだけ
   // 実行する。handleShortcut を持たない/一致しないハンドルは素通りして1つ下を試すので、
-  // 手前の対象外なオーバーレイの下に積まれたものまで配送が届く。テキスト入力へフォーカスが
+  // 手前の対象外のオーバーレイの下に積まれたものまで配送が届く。テキスト入力へフォーカスが
   // ある間は誰にも配らない。
   public dispatchShortcut(code: string): boolean {
     if (isTextInputFocused()) return false;
