@@ -106,8 +106,8 @@ function coordinatorFor(
   if (bootstrap.tileSource === null) {
     return { coordinator: null, state: 'fallback', material: null, reason: 'tile source unavailable' };
   }
-  const backend = options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike | null | undefined;
-  if (backend === null || backend === undefined) {
+  const backend = options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike | null;
+  if (backend == null) {
     return { coordinator: null, state: 'fallback', material: null, reason: 'WebGPU backend unavailable' };
   }
   const queue = new EarthSurfaceTileRequestQueue(bootstrap.tileSource, {
