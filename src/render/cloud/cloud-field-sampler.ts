@@ -5,7 +5,7 @@ import { dot, step, texture, uniform } from 'three/tsl';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { orthographicCapUv, type CapPlacement } from '../field-projection';
 import {
-  blendBakedTexels, cloudMotionFromTexel, cloudSampleFromTexels,
+  bindCloudBlend, blendBakedTexels, cloudMotionFromTexel, cloudSampleFromTexels,
   type CloudBlend, type CloudFieldSlot, type CloudMotion, type CloudSample,
 } from './cloud-field-sample';
 import type { FloatUniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
@@ -33,6 +33,8 @@ export class CloudFieldSampler {
   private readonly north: Vec3Uniform = uniform(new THREE.Vector3(0, 1, 0));
   private readonly sinRadius: FloatUniform = uniform(1);
   private readonly cosRadius: FloatUniform = uniform(-1);
+  private boundBlend: CloudBlend | null = null;
+  private unsubscribeBlend: (() => void) | null = null;
 
   // 焼いた場と、それを焼いた cap の置き方を写し取る。テクスチャの所有権は移らない。
   public bind(binding: CloudFieldBinding): void {
@@ -41,13 +43,34 @@ export class CloudFieldSampler {
       this.motions[slot].value = binding.slots[slot].motion;
       this.environments[slot].value = binding.slots[slot].environment;
     }
-    this.parity.value = binding.blend.parity;
-    this.fraction.value = binding.blend.fraction;
+    if (this.boundBlend !== binding.blend) {
+      this.unsubscribeBlend?.();
+      this.boundBlend = binding.blend;
+      this.unsubscribeBlend = bindCloudBlend(binding.blend, this.parity, this.fraction);
+    }
     this.center.value.copy(binding.cap.center);
     this.east.value.copy(binding.cap.east);
     this.north.value.copy(binding.cap.north);
     this.sinRadius.value = binding.cap.sinRadius;
     this.cosRadius.value = binding.cap.cosRadius;
+  }
+
+  public unbind(): void {
+    this.unsubscribeBlend?.();
+    this.unsubscribeBlend = null;
+    this.boundBlend = null;
+    for (const slot of [0, 1] as const) {
+      this.clouds[slot].value = EMPTY_CLOUD_FIELD;
+      this.motions[slot].value = EMPTY_CLOUD_FIELD;
+      this.environments[slot].value = EMPTY_CLOUD_FIELD;
+    }
+    this.parity.value = 0;
+    this.fraction.value = 0;
+    this.center.value.set(0, 0, 1);
+    this.east.value.set(1, 0, 0);
+    this.north.value.set(0, 1, 0);
+    this.sinRadius.value = 1;
+    this.cosRadius.value = -1;
   }
 
   // 2 枚の同じ uv の読みを、混ぜ方で合わせる。
