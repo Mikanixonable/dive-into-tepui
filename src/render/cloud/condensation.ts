@@ -163,5 +163,7 @@ export function condense(weather: WeatherSample): CloudSample {
     cumulus,
     cirrus: cirrusAmountFromOpticalDepthNode(opticalDepth),
     cirrusFlow: cirrusFlowFromWindNode(weather.upperWind),
+    land: weather.landFraction,
+    convection: weather.convectiveActivity,
   };
 }
