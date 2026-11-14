@@ -21,6 +21,7 @@ import { decodeEarthTerrainOffThread } from '../../src/render/earth-surface-terr
 
 const KEY = earthTileKey(5, 2, 1);
 
+// KEY の正常系ESTNタイル(地形部はゼロ埋め)。
 function terrainPayload(): Uint8Array {
   const payload = new Uint8Array(EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
   payload.set(new TextEncoder().encode('ESTN'), 0);
@@ -33,6 +34,7 @@ function terrainPayload(): Uint8Array {
   return payload;
 }
 
+// z0 タイルのESTN。
 function rootTerrainPayload(x: number): Uint8Array {
   const key = earthTileKey(0, x, 0);
   const payload = new Uint8Array(EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
@@ -43,10 +45,12 @@ function rootTerrainPayload(x: number): Uint8Array {
   view.setUint8(12, key.z); view.setUint8(13, 0);
   view.setUint32(14, key.x, true); view.setUint32(18, key.y, true);
   view.setUint8(22, 4); view.setUint8(23, 2); view.setUint32(24, EARTH_TERRAIN_BYTES, true); view.setUint32(28, 0, true);
+  // 地形部を識別用の値で埋める。
   new Uint8Array(payload.buffer, EARTH_TERRAIN_HEADER_BYTES).fill(x === 0 ? 0x1111 : 0x2222);
   return payload;
 }
 
+// z0 2枚を載せたESTB全球base payload。
 function baseTerrainPayload(): Uint8Array {
   const first = rootTerrainPayload(0);
   const second = rootTerrainPayload(1);
@@ -58,16 +62,19 @@ function baseTerrainPayload(): Uint8Array {
   view.setUint8(12, 0); view.setUint8(13, 0);
   view.setUint32(14, 2, true); view.setUint32(18, 1, true);
   view.setUint8(22, 4); view.setUint8(23, 2); view.setUint32(24, first.length + second.length, true); view.setUint32(28, 0, true);
+  // 2枚のESTNタイルを連結する。
   payload.set(first, 32); payload.set(second, 32 + first.length);
   return payload;
 }
 
+// bytes をbodyに持つ200応答のfixture。
 function response(bytes: Uint8Array, contentType = 'application/octet-stream'): Response {
   const body = new ArrayBuffer(bytes.byteLength);
   new Uint8Array(body).set(bytes);
   return new Response(body, { status: 200, headers: { 'content-type': contentType, 'content-length': String(bytes.length) } });
 }
 
+// 要求から取得→復号まで通す。
 async function decodeEarthSurfaceTile(request: EarthSurfaceTileRequest) {
   return decodeEarthSurfaceTileBytes(request, await downloadEarthSurfaceTile(request));
 }
