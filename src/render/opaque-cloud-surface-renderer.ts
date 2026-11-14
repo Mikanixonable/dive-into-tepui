@@ -11,7 +11,7 @@ import { BlueNoise } from './blue-noise';
 import { CloudShapeEvaluator } from './cloud/cloud-shape-evaluator';
 import type { CloudSample } from './cloud/cloud-field-sample';
 import { CloudFieldSampler } from './cloud/cloud-field-sampler';
-import type { CloudRenderInput } from './cloud/cloud-render-input';
+import type { CloudDetailClockInput, CloudRenderInput } from './cloud/cloud-render-input';
 import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN } from './cloud/cumulus-shape';
 import { FINEST_DETAIL_WAVELENGTH } from './cloud/cloud-detail';
@@ -19,7 +19,7 @@ import { cumulusOpacityNode, cumulusTopAltitudeNode } from './cloud/cloud-kind-n
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './celestial/screen-lod';
-import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from './tsl-types';
+import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';
 
 // 雲の粗さ。雲は拡散する面なので、粗さは最大になる。
 const CUMULUS_ROUGHNESS = 1;
@@ -36,7 +36,7 @@ export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL]
 
 // 雲頂を探す標本の配り方と、細部の段数。march は殻の中を等間隔にたどる刻みの数(どの交点を
 // 見つけるかを決める)、refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を
-// 決める)、octaves は細部の段数(粗い側から数える。8 km・4 km が粗、0.25 km までが精細)。
+// 決める)、octaves は細部の段数(粗い側から数える。32〜4 km が粗、1 km までが標準、0.25 km までが精細)。
 interface CumulusSampling { readonly march: number; readonly refine: number; readonly octaves: number }
 
 // 段ごとの標本の配り方。費用は march + refine 回の標本化。march 0 は殻を描かない段。
@@ -44,9 +44,9 @@ interface CumulusSampling { readonly march: number; readonly refine: number; rea
 // 拾った雲頂が 2 枚の層に重なって見える。
 const SAMPLING_OF_DETAIL = {
   [CUMULUS_DETAIL.off]: { march: 0, refine: 0, octaves: 0 },
-  [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5, octaves: 2 },
-  [CUMULUS_DETAIL.standard]: { march: 6, refine: 3, octaves: 4 },
-  [CUMULUS_DETAIL.fine]: { march: 12, refine: 3, octaves: 6 },
+  [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5, octaves: 4 },
+  [CUMULUS_DETAIL.standard]: { march: 6, refine: 3, octaves: 6 },
+  [CUMULUS_DETAIL.fine]: { march: 12, refine: 3, octaves: 8 },
 } as const satisfies Readonly<Record<CumulusDetail, CumulusSampling>>;
 
 // 積雲の精細さの段が使う細部の段数。影も同じ段数で細部を写す。
@@ -123,6 +123,11 @@ export class OpaqueCloudSurfaceRenderer {
     this.fieldSampler.bind(input.field);
   }
 
+  // 細部が流れ、生まれ直す時刻を置く。
+  public syncClock(clock: CloudDetailClockInput): void {
+    this.shape.syncClock(clock.displayTime, clock.simSpeed);
+  }
+
   // 標本の配り方を置き直す。標本の回数はシェーダへ展開されるので、変わればマテリアルを組み直す。
   // 細部の段数は uniform なので、組み直さずに置く。
   private setSampling(sampling: CumulusSampling): void {
@@ -183,8 +188,10 @@ export class OpaqueCloudSurfaceRenderer {
       const entry = positionLocal.toVar();
       const origin = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
       const direction = normalize(entry.sub(origin)).toVar();
-      const threshold = this.ditherThreshold().toVar();
-      const width = this.pixelWidthAt(normalize(entry)).toVar();
+      const pixelAngle = this.pixelAngleAt(normalize(entry)).toVar();
+      const width = pixelAngle.mul(this.bodyRadius).toVar();
+      // 細部を運ぶ風は数百キロで均した流れなので、視線が殻を抜ける数キロのあいだは入口で読んだ 1 つで足りる。
+      const wind = this.fieldSampler.sampleMotion(normalize(entry)).surfaceWind.toVar();
 
       // 殻に入ってから地表の球へ達するまで(掠めるなら殻を出るまで)を等分してたどる。
       const along = dot(entry, direction);
@@ -205,7 +212,7 @@ export class OpaqueCloudSurfaceRenderer {
       for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
         const distance = stepLength.mul(stepIndex);
         const inside = this.clearanceAt(
-          entry.add(direction.mul(distance)), threshold, width).lessThan(0);
+          entry.add(direction.mul(distance)), pixelAngle, width, wind).lessThan(0);
         If(inside.and(hit.lessThan(0.5)), () => {
           hit.assign(1);
           below.assign(distance);
@@ -216,25 +223,28 @@ export class OpaqueCloudSurfaceRenderer {
       for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
         const middle = above.add(below).mul(0.5);
         const inside = this.clearanceAt(
-          entry.add(direction.mul(middle)), threshold, width).lessThan(0);
+          entry.add(direction.mul(middle)), pixelAngle, width, wind).lessThan(0);
         If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
       }
 
       const hitPoint = entry.add(direction.mul(below)).toVar();
       const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
-      const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, width)));
+      const viewNormal = normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, width, wind)));
       Discard(hit.lessThan(0.5));
       return vec4(viewNormal, clip.z.div(clip.w));
     })();
   }
 
-  // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。
-  private clearanceAt(point: Vec3Node, threshold: FloatNode, width: FloatNode): FloatNode {
+  // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。pixelAngle は画素が張る角 [rad]、
+  // width はその実寸 [m]、wind は細部を運ぶ風の東・北の成分 [m/s]。
+  private clearanceAt(point: Vec3Node, pixelAngle: FloatNode, width: FloatNode, wind: Vec2Node): FloatNode {
     const radius = max(length(point), 1e-6);
     const direction = point.div(radius);
     const cloud = this.fieldAt(direction);
-    const detail = this.detailAt(direction, width, cloud.cumulus);
-    // 細部は覆いの縁を texel より細かく千切る。
+    const detail = this.detailAt(direction, width, cloud, wind);
+    // 細部は覆いの縁を texel より細かく千切る。**ディザはその柱の方向に貼る** — 視線の入口に貼ると、
+    // 雲頂と入口の高さの差ぶんの視差で、視点が動くたびにディザが雲の上を滑る。
+    const threshold = this.ditherThreshold(direction, pixelAngle);
     const present = step(threshold, this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), detail));
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに細部が湧く。
@@ -245,7 +255,7 @@ export class OpaqueCloudSurfaceRenderer {
 
   // 交点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに断ち切られた
   // 崖ではなく、雲頂そのものの起伏を法線に出す。
-  private cloudTopNormalAt(hitPoint: Vec3Node, width: FloatNode): Vec3Node {
+  private cloudTopNormalAt(hitPoint: Vec3Node, width: FloatNode, wind: Vec2Node): Vec3Node {
     const up = hitPoint.div(max(length(hitPoint), 1e-6));
     const east = eastAt(up);
     const north = northAt(up);
@@ -255,7 +265,7 @@ export class OpaqueCloudSurfaceRenderer {
       return this.shape.cloudTopRadius(
         this.shape.cloudTop(
           cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN),
-          this.detailAt(direction, width, cloud.cumulus),
+          this.detailAt(direction, width, cloud, wind),
         ),
         this.groundRadius,
       );
@@ -277,22 +287,25 @@ export class OpaqueCloudSurfaceRenderer {
     return this.fieldSampler.sampleCloud(direction);
   }
 
-  // 画素が張る実寸 [m]。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
+  // 画素が張る角 [rad]。**1 画素が張る角は画面上の変化率から引く** — 天体の見かけ直径から出すと、
   // 大気圏のすぐ上から見下ろす構図で 1 桁ずれる。解像できない細かさは細部の段ごとに 0 へ落ちるので、
   // 引きの構図では場の分布だけが残る。
-  private pixelWidthAt(entryDirection: Vec3Node): FloatNode {
-    const pixelAngle = max(length(dFdx(entryDirection)), length(dFdy(entryDirection)));
-    return pixelAngle.mul(this.bodyRadius);
+  private pixelAngleAt(entryDirection: Vec3Node): FloatNode {
+    return max(length(dFdx(entryDirection)), length(dFdy(entryDirection)));
   }
 
-  // 天体固定の単位方向 direction の細部。width は画素の実寸 [m]、amount はその柱の積雲の量。
-  private detailAt(direction: Vec3Node, width: FloatNode, amount: FloatNode): FloatNode {
-    return this.shape.detailAt(direction, width, amount, (neighbor) => this.fieldAt(neighbor).cumulus);
+  // 天体固定の単位方向 direction の細部。width は画素の実寸 [m]、cloud はその柱の雲標本、wind は細部を
+  // 運ぶ風の東・北の成分 [m/s]。
+  private detailAt(direction: Vec3Node, width: FloatNode, cloud: CloudSample, wind: Vec2Node): FloatNode {
+    return this.shape.detailAt(
+      direction, width, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus, wind,
+      this.shape.grainOf(cloud));
   }
 
-  // 画素ごとに固定の、覆い尽くされている割合と比べるディザの閾値。
-  private ditherThreshold(): FloatNode {
-    return this.blueNoise.atScreenPixel()
+  // 覆い尽くされている割合と比べるディザの閾値。**天体に貼った値** — 画面の画素に固定すると、雲が
+  // 画面上を動くたびに縁の画素がディザの網目の下を滑ってちらつく。pixelAngle は画素が張る角 [rad]。
+  private ditherThreshold(columnDirection: Vec3Node, pixelAngle: FloatNode): FloatNode {
+    return this.blueNoise.atSurface(columnDirection, pixelAngle)
       .mul((DITHER_LEVELS - 1) / DITHER_LEVELS).add(0.5 / DITHER_LEVELS);
   }
 }

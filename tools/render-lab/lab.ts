@@ -22,6 +22,7 @@ import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { CASES, type CaseName } from './cases';
 import {
   cloudDetailCase, CLOUD_DETAIL_CHECK_SHOTS, CLOUD_DETAIL_CIRRUS_COARSE_SHOTS, CLOUD_DETAIL_SHOTS,
+  CLOUD_DETAIL_STABILITY_SHOTS,
 } from './cloud-detail-cases';
 import {
   type CaseBuilder, type LabCase, type LabShot, SUN_DIR, VIEW_HEIGHT, VIEW_WIDTH,
@@ -175,7 +176,7 @@ export class LabView {
   }
 
   // graphics は描く描画品質設定の器。この時点の値を起動時の設定として控え、以後はその変更を受けて
-  // 描き直す。
+  // 描き直す。options.captureOnly を立てると、キャンバスへ提示せず captureTarget へだけ描く。
   public static async create(
     canvas: HTMLCanvasElement, graphics: StoredSetting<GraphicsSettingsData>,
     options?: { readonly captureOnly?: boolean },
@@ -599,7 +600,8 @@ export class LabView {
   // ものだけを受ける。ケースは巡回の表には無い専用のものを使い回す。準備待ちと絵の落ち着きの
   // 判定は shoot() と同じ経路を通る。
   public async shootCloudDetail(name: string): Promise<string> {
-    const shot = CLOUD_DETAIL_SHOTS[name] ?? CLOUD_DETAIL_CIRRUS_COARSE_SHOTS[name] ?? CLOUD_DETAIL_CHECK_SHOTS[name];
+    const shot = CLOUD_DETAIL_SHOTS[name] ?? CLOUD_DETAIL_CIRRUS_COARSE_SHOTS[name] ?? CLOUD_DETAIL_CHECK_SHOTS[name]
+      ?? CLOUD_DETAIL_STABILITY_SHOTS[name];
     if (shot === undefined) throw new Error(`render-lab: no cloud detail shot "${name}"`);
     if (this.currentBuilder !== cloudDetailCase) {
       // **ケースは撮影の描画品質設定が効いた状態で組んで待つ**(shoot() と同じ理由)。
