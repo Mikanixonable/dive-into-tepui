@@ -86,6 +86,7 @@
     "cloud-lab:separate": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-separate.mjs",
     "cloud-lab:reference": "node tools/cloud-lab-reference.mjs",
     "cloud-detail:reference": "node tools/cloud-detail-reference.mjs",
+    "cloud-detail:candidates": "node tools/cloud-teacher-candidates.mjs",
     "cloud-detail:selftest": "node tools/cloud-detail-selftest.mjs",
     "cloud-detail:compare": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-compare.mjs",
     "cloud-detail:tiers": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-cirrus-tiers.mjs",
