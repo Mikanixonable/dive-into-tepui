@@ -9,7 +9,8 @@ import {
 } from 'three/tsl';
 import { DetailClock } from './cloud-detail-clock';
 import { NOISE_SIGMA, gateFactor, gradientNoise } from './gradient-noise';
-import { eastAt, northAt } from './sphere-frame';
+import { extratropicalAt } from './air-mass';
+import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { FloatNode, FloatUniform, UintNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 細部のオクターブが張る波長 [m](粗→細、比 2)。粗い端は cap で場が担う最も細かい段(対流の
@@ -209,6 +210,8 @@ const CIRRUS_STRETCH_LAST_OCTAVE = 4;
 // 揃いの強い筋が流れ方向へ伸びる倍率の上限。揃い度 0 の場所は等方に読む。
 const CIRRUS_STRETCH_MAX = 7;
 // 巻雲の場の混ぜ方。筋状・鱗雲状・薄く広がるの各場の振れ幅(対数の標準偏差)。
+// 実写の型の重心では薄く広がる型の細尺度のパワーがいちばん小さいが、振れ幅を開くと疎な
+// 巻雲の場面の斑点が立ちすぎて指標を悪化させる — 振れ幅は揃えて、型の違いは場の形が担う。
 const CIRRUS_STREAK_SIGMA = 0.3;
 const CIRRUS_CELL_SIGMA = 0.3;
 const CIRRUS_VEIL_SIGMA = 0.25;
@@ -220,6 +223,20 @@ const CIRRUS_THIN_STREAK_WEIGHT = 0.3;
 // ジェットの風速の窓 [m/s]。筋状の重みはこの窓で 0 から 1 へ渡る。
 const CIRRUS_JET_ONSET = 5;
 const CIRRUS_JET_FULL = 16;
+// 鉛直シア(上層と地表付近の風の差)の窓 [m/s]。筋状の巻雲はジェットに加えて深いシアの
+// 下で伸びるので、筋状の重みは両方の積で渡る。生成の風では、貿易風帯や収束帯の穏やかな
+// 上層が ~10 m/s 以下、嵐の走る帯とジェットの下が ~20-35 m/s に出る。
+const CIRRUS_SHEAR_ONSET = 10;
+const CIRRUS_SHEAR_FULL = 22;
+// 鱗雲状の重みを決める対流の活発さの窓。活発な空ほど上層の小対流で鱗状に割れる。
+const CIRRUS_CELL_CONVECTION_ONSET = 0.4;
+const CIRRUS_CELL_CONVECTION_FULL = 0.8;
+// 熱帯の対流の流出を金床とみなす窓。眼を持つ渦の金床(環境の anvil)は別の項が担うので、
+// こちらは活発さと巻雲の量(上層の湿りの写し)で選び、ジェットの外と熱帯へ限る。
+const CIRRUS_OUTFLOW_CONVECTION_ONSET = 0.5;
+const CIRRUS_OUTFLOW_CONVECTION_FULL = 0.85;
+const CIRRUS_OUTFLOW_HUMID_ONSET = 0.2;
+const CIRRUS_OUTFLOW_HUMID_FULL = 0.45;
 // 型の重みが、その型の場の評価を省く下限。
 const CIRRUS_TYPE_MIN_WEIGHT = 0.02;
 // 型の領域の静的な勾配ノイズ。波長 [m] と、勾配ノイズの標準偏差 0.265 を 1 寄りへ戻す倍率。
@@ -323,10 +340,11 @@ export class CirrusDetailEvaluator {
 
   // 天体固定の単位方向 direction の光学深さに掛ける乗数(正で、平均は 1)。radius は天体の基準半径 [m]、
   // width は画素・タップが張る実寸 [m]、flow は場の倍角ベクトル(筋の向きと揃い度)、wind は巻雲を運ぶ
-  // 上層の風の東・北の成分 [m/s]。column は場所の巻雲の量と環境の量(0..1)。
+  // 上層の風の東・北の成分 [m/s]、surfaceWind は地表付近の風の同じ成分(鉛直シアに使う)。
+  // column は場所の巻雲の量と環境の量(0..1)。
   public multiplierAt(
     direction: Vec3Node, radius: FloatNode, width: FloatNode, flow: Vec2Node, wind: Vec2Node,
-    column: CirrusColumnInput,
+    surfaceWind: Vec2Node, column: CirrusColumnInput,
   ): FloatNode {
     const { amount, land, convection, climateCloudiness } = column;
     const span = max(width, 1);
@@ -343,12 +361,18 @@ export class CirrusDetailEvaluator {
     // 流れの向きへ伸ばす。揃いの弱い場所は等方に読む。
     const stretch = float(1).add(float(CIRRUS_STRETCH_MAX - 1).mul(coherence));
     const windVector = east.mul(wind.x).add(north.mul(wind.y));
+    const surfaceVector = east.mul(surfaceWind.x).add(north.mul(surfaceWind.y));
 
-    // 型の領域。どの型の場を読むかを、数百 km の静的な勾配ノイズで決める。
+    // 型の領域。どの型の場を読むかは気象の環境(ジェット・鉛直シア・対流の活発さ・熱帯らしさ)が
+    // 決め、数百 km の静的な勾配ノイズは同じ環境の中での出方を揺らす調子にだけ使う。
     const regimeAt = (offset: Vec3Node): FloatNode => gradientNoise(
       direction.mul(radius.div(CIRRUS_REGIME_WAVELENGTH)).add(offset)).mul(CIRRUS_REGIME_GAIN);
+    const varietyAt = (offset: Vec3Node): FloatNode =>
+      smoothstep(-1.5, 1.5, regimeAt(offset)).mul(0.5).add(0.5);
     const jet = smoothstep(CIRRUS_JET_ONSET, CIRRUS_JET_FULL, length(windVector));
-    const streakRaw = jet.mul(smoothstep(-0.5, 0.3, regimeAt(CIRRUS_REGIME_OFFSETS[0])));
+    const shear = smoothstep(CIRRUS_SHEAR_ONSET, CIRRUS_SHEAR_FULL, length(windVector.sub(surfaceVector)));
+    // 筋状の重み。ジェットと深い鉛直シアの下で流れに沿った筋になる。
+    const streakRaw = jet.mul(shear).mul(varietyAt(CIRRUS_REGIME_OFFSETS[0]));
     // 鱗雲状の重み。塊の間隔が画素の実寸より細かいときは 0 へ落とす。
     // 対流の強い陸では塊が細かくなる(積雲の粒と同じ向き)。
     const pitch = mix(
@@ -358,12 +382,19 @@ export class CirrusDetailEvaluator {
     const cellFade = smoothstep(2, 4, pitch.div(span));
     // 乾いた陸(気候の雲量の少ない所)では鱗雲状を抑える。筋状と薄く広がるは抑えない。
     const humid = smoothstep(CIRRUS_ARID_LO, CIRRUS_ARID_HI, climateCloudiness);
-    const cellRaw = jet.mul(0.6).oneMinus().mul(smoothstep(-0.3, 0.5, regimeAt(CIRRUS_REGIME_OFFSETS[1])))
-      .mul(streakRaw.oneMinus()).mul(cellFade).mul(humid);
+    const cellRaw = jet.mul(0.6).oneMinus()
+      .mul(smoothstep(CIRRUS_CELL_CONVECTION_ONSET, CIRRUS_CELL_CONVECTION_FULL, convection))
+      .mul(streakRaw.oneMinus()).mul(cellFade).mul(humid).mul(varietyAt(CIRRUS_REGIME_OFFSETS[1]));
     const veilRaw = max(float(0.15), float(1).sub(streakRaw).sub(cellRaw));
-    // 金床の重み。量が多く、金床の濃い所で大きい。他の型は残りを分け合う。金床は 8 km の段から読むので、
+    // 金床の重み。眼を持つ渦の天蓋か、熱帯の対流の流出(活発で湿り、ジェットの外)の厚いかなとこ。
+    // 量が多く、金床の濃い所で大きい。他の型は残りを分け合う。金床は 8 km の段から読むので、
     // その段が使われないときは 0。
-    const anvilWeight = column.anvil.mul(smoothstep(0.3, 0.7, amount)).mul(step(float(1), this.octaves)).toVar();
+    const outflow = smoothstep(CIRRUS_OUTFLOW_CONVECTION_ONSET, CIRRUS_OUTFLOW_CONVECTION_FULL, convection)
+      .mul(smoothstep(CIRRUS_OUTFLOW_HUMID_ONSET, CIRRUS_OUTFLOW_HUMID_FULL, amount))
+      .mul(extratropicalAt(latitudeOf(direction)).oneMinus()).mul(jet.oneMinus());
+    const anvilWeight = max(
+      column.anvil.mul(smoothstep(0.3, 0.7, amount)), outflow,
+    ).mul(step(float(1), this.octaves)).toVar();
     const open = anvilWeight.oneMinus();
     const streakWeight = streakRaw.mul(open);
     const cellWeight = cellRaw.mul(open);
