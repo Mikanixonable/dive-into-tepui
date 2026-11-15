@@ -3,6 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { abs, float, fract, inverseSqrt, mix, normalize, uniform, vec2, vec4 } from 'three/tsl';
 import { BakedField } from '../baked-field';
+import { CLOUD_TUNING } from './cloud-tuning';
 import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
 import type { Circulation } from './circulation';
@@ -51,23 +52,23 @@ const UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY = 8;
 
 // 場の振れ幅。CirculatingNoiseが段の振幅の総和で割って返すので、全段を解像する写しの振れ幅は段数によらない。
 // 地表付近の基底湿度。平年の雲量の重みを半分に弱めたぶんの平均をここで埋める(cloud-lab Phase 3-10)。
-export const SURFACE_HUMIDITY_BASE = 0.435;
-const UPPER_HUMIDITY_BASE = 0.42;
-const SURFACE_HUMIDITY_NOISE_AMPLITUDE = 0.5625;
-const CONVECTION_NOISE_AMPLITUDE = 0.30;
+export const SURFACE_HUMIDITY_BASE = CLOUD_TUNING.surfaceHumidityBase;
+const UPPER_HUMIDITY_BASE = CLOUD_TUNING.upperHumidityBase;
+const SURFACE_HUMIDITY_NOISE_AMPLITUDE = CLOUD_TUNING.surfaceHumidityNoiseAmplitude;
+const CONVECTION_NOISE_AMPLITUDE = CLOUD_TUNING.convectionNoiseAmplitude;
 // 上層は 50・25 km の段を足したぶん振幅の和で割られて弱まるので、足す前の和(1.84)に対する比を掛けて、
 // その段を解像しない全球の写しの振れ幅を足す前と同じに保つ。
-const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.65625 * (1.84 + 0.14 + 0.09) / 1.84;
+const UPPER_HUMIDITY_NOISE_AMPLITUDE = CLOUD_TUNING.upperHumidityNoiseAmplitude;
 
 // 移流の源を風で流す2位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が
 // 目に付く。背景の雲がどれだけ伸びるかは、1歩のあいだに風が空間で変わる量から決まる。
 const ADVECTION_PERIOD = 20 * 3600;
 // 対流を流す1歩を、湿度の1歩の何倍の長さに取るか。
-const CONVECTION_ADVECTION = 1.3;
+const CONVECTION_ADVECTION = CLOUD_TUNING.convectionAdvection;
 // 上層の湿度の1歩を、地表付近の1歩の何倍の長さに取るか。巻雲の繊維を長く引き伸ばす。
-const UPPER_ADVECTION = 1.6;
+const UPPER_ADVECTION = CLOUD_TUNING.upperAdvection;
 // 対流の1歩が渦のまわりを巻く角の上限 [rad]。強く巻く渦の中だけ歩幅を縮める。
-const CONVECTION_WINDING = 2.5;
+const CONVECTION_WINDING = CLOUD_TUNING.convectionWinding;
 
 // 移流後の場。地表付近と上層の湿度は0..1、対流は0中心の高周波(xが粒、yが網目)。
 interface AdvectedFields {
@@ -124,8 +125,8 @@ export class WeatherTransport {
   // 移流前の湿度(xが地表付近、yが上層)。
   public humiditySourceAt(direction: Vec3Node): Vec2Node {
     return vec2(
-      float(SURFACE_HUMIDITY_BASE).add(this.surfaceHumidityNoise.at(direction).mul(SURFACE_HUMIDITY_NOISE_AMPLITUDE)),
-      float(UPPER_HUMIDITY_BASE).add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)),
+      SURFACE_HUMIDITY_BASE.add(this.surfaceHumidityNoise.at(direction).mul(SURFACE_HUMIDITY_NOISE_AMPLITUDE)),
+      UPPER_HUMIDITY_BASE.add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)),
     );
   }
 
@@ -154,7 +155,7 @@ export class WeatherTransport {
     const stepA = phaseA.mul(-ADVECTION_PERIOD);
     const stepB = phaseB.mul(-ADVECTION_PERIOD);
     // 対流の1歩の倍率。巻きがCONVECTION_WINDINGを超える渦の中だけ縮む。
-    const winding = abs(convectionWind.turn).mul(ADVECTION_PERIOD * CONVECTION_ADVECTION / CONVECTION_WINDING);
+    const winding = abs(convectionWind.turn).mul(ADVECTION_PERIOD).mul(CONVECTION_ADVECTION).div(CONVECTION_WINDING);
     const convectionStep = inverseSqrt(winding.mul(winding).add(1)).mul(CONVECTION_ADVECTION);
     return {
       surfaceHumidity: mix(
