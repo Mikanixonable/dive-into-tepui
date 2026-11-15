@@ -10,7 +10,7 @@ import type { FloatNode, Vec3Node } from '../tsl-types';
 export const FRICTION_RATE = 5.9e-5;
 
 // 空気の密度 [kg/m³]。気圧 [hPa] を力へ直すのに要る(100 は hPa → Pa の換算)。
-const AIR_DENSITY = 1.2;
+export const AIR_DENSITY = 1.2;
 
 // 気圧の勾配 [hPa/rad] を加速度 [m/s²] へ直す係数。半径 surfaceRadius [m] の天体の地表で。
 // 密度と半径からの換算で、調整値ではない。
@@ -25,7 +25,7 @@ function bendToSpinSquared(surfaceRadius: number): number {
 }
 
 // コリオリ因子 f = coriolisRate sin φ [1/s] の係数(= 2Ω)。rotationPeriod は自転周期 [s]。
-function coriolisRate(rotationPeriod: number): number {
+export function coriolisRate(rotationPeriod: number): number {
   return (4 * Math.PI) / rotationPeriod;
 }
 
