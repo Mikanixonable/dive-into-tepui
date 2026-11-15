@@ -245,6 +245,9 @@ const WARM_HUMIDITY = 0.6;
 // 差(亜熱帯の乾域と上昇枝の湿域)を残すには気候の項を同じ程度の振れ幅まで戻す必要がある。
 const SURFACE_MEAN_CLOUDINESS_WEIGHT = 0.15;
 const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.2;
+// 土壌水分を直接持たないため、平年雲量の湿潤側偏差を陸面からの水分供給の代理にする。
+// 二乗で乾燥地の加湿を抑え、landFraction により海岸でも連続に変化させる。
+const LAND_SURFACE_MOISTURE_GAIN = 0.3;
 // 平年の雲量を湿度へ渡す S 字の裾と肩。線形では、砂漠を晴らす重みで雲の多い海が覆われたまま動かなく
 // なる。裾は砂漠(0.14)の下、肩は年中曇りの海(0.89)の側に置く — 狭めると乾いた大陸(0.43〜0.51)や
 // 貿易風帯の海(0.50〜0.65)まで雲を失う。
@@ -391,12 +394,14 @@ export class WeatherModel {
     // 最長波長の担い手のうち中緯度側の分だけを切り、ITCZ は保つ。
     const surfaceBiasWeight = extratropical.oneMinus().mul(0.5).add(0.5);
     const landFraction = this.climate.landFraction(direction);
+    const landWetness = max(cloudinessBias(meanCloudiness), 0);
     const eye = this.cyclones.eyeAt(direction);
     const anvil = this.cyclones.anvilAt(direction);
     const deviation = advected.surfaceHumidity.sub(SURFACE_HUMIDITY_BASE);
     const surfaceHumidity = clamp(
       advected.surfaceHumidity.add(deviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
         .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT).mul(surfaceBiasWeight))
+        .add(landWetness.mul(landWetness).mul(landFraction).mul(LAND_SURFACE_MOISTURE_GAIN))
         .add(max(lift, 0).mul(SURFACE_LIFT_HUMIDITY)).add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
         .add(warmth.mul(WARM_HUMIDITY)).add(cycloneFront.mul(FRONT_HUMIDITY))
         .add(coldSector.mul(POST_SECTOR_HUMIDITY).mul(landFraction.oneMinus()))

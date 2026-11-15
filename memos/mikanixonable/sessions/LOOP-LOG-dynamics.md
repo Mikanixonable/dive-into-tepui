@@ -586,3 +586,55 @@
 - 残課題: 陸域 cloudFrac は temperate 0.426/実写 0.732、highlat 0.553/0.747 と低い。
   温帯海上 tauMid も 0.466/0.361 と残る。陸域の湿度・被覆供給と海上の層積雲の
   量・厚みを別機構として次に調べる。
+
+## step 59 — 残る湿度・層積雲残差を分離(コード変更なし)
+- step 58 後の 8 時刻ぶんの生成気象・ISCCP 物理量を、同じ 256 km タイル標本で
+  実写教師と再集計した。生成側は 14,848 タイル/区分、実写側は約 1,800 タイル/区分。
+- humidLow / stratocumulus / cloudFrac / tauMid の平均(実写→生成):
+
+  | 区分 | humidLow | stratocumulus | cloudFrac | tauMid |
+  | --- | ---: | ---: | ---: | ---: |
+  | temperate-land | 0.483/0.461 | 0.068/0.105 | 0.732/0.426 | 0.226/0.141 |
+  | highlat-land | 0.632/0.480 | 0.131/0.109 | 0.747/0.553 | 0.311/0.170 |
+  | temperate-sea | 0.432/0.504 | 0.232/0.372 | 0.896/0.789 | 0.361/0.466 |
+  | highlat-sea | 0.605/0.507 | 0.367/0.357 | 0.960/0.796 | 0.561/0.454 |
+
+- 解釈: 陸域は humidLow と cloudFrac が不足し、特に highlat-land の湿度差が大きい。
+  temperate-sea は humidLow が実写より高いのに stratocumulus と tauMid が過剰なので、
+  全域の湿度を上げる策は逆効果。highlat-sea は stratocumulus 量は一致する一方で
+  humidLow と tauMid が不足し、同じ層積雲補正を海全体へ当てられない。
+- 次候補: 陸域・高緯度海域の低層水分供給と、温帯海上の層積雲の型/τ配分を独立に
+  調べる。今回は原因候補の分離のみで、コード変更・採否は行わない。
+
+## step 60 — 陸面水分供給を追加(採用、1f3a39fdd)
+- 目的: 陸上の低層湿度・雲量不足を補いつつ、既に湿りすぎている温帯海上へ影響を
+  広げない。土壌水分場は無いため、平年雲量の湿潤側偏差を陸面水分の代理とし、
+  `landFraction × max(cloudinessBias(meanCloudiness), 0)^2 × 0.3` を低層湿度へ加えた。
+  海岸では `landFraction` により連続し、乾燥地はほぼ加湿しない。
+- 係数導出: 現行の climate tile 標本で代理の平均は temperate-land 0.0748、
+  highlat-land 0.1723、arid-land 0.0001、temperate-sea 0.0009、
+  highlat-sea 0.0035。0.3 は temperate-land の humidLow 差 0.022 に対応し、
+  highlat-land には約 0.052 の部分補正となる。
+- humidLow / stratocumulus / cloudFrac / tauMid の平均(実写→step 60 生成):
+
+  | 区分 | humidLow | stratocumulus | cloudFrac | tauMid |
+  | --- | ---: | ---: | ---: | ---: |
+  | temperate-land | 0.483/0.483 | 0.068/0.140 | 0.732/0.493 | 0.226/0.180 |
+  | highlat-land | 0.632/0.532 | 0.131/0.185 | 0.747/0.701 | 0.311/0.256 |
+  | temperate-sea | 0.432/0.504 | 0.232/0.373 | 0.896/0.790 | 0.361/0.467 |
+  | highlat-sea | 0.605/0.508 | 0.367/0.359 | 0.960/0.799 | 0.561/0.457 |
+
+- 全体監査(前回 clean 値→step 60): weather 0.102→0.102、classes
+  0.0657→0.0554 [0.0546–0.0619]、responseBias 0.466→0.441 と改善。
+  responseContrast 0.564→0.595、responseGain 0.428→0.439、explainedGap
+  0.0565→0.0594、variogram 0.309→0.328 は悪化。陸域 cloudFrac は改善したが、
+  stratocumulus は実写より過剰になったため、低層雲型の配分は残課題。
+- 描画: `land-moisture-before-a/b` 各 162 枚は同一で 0 LSB 差。after との比較では
+  17/162 が 6 LSB 封筒外で、いずれも Earth/雲を含む撮影(earth-mars を含む)。
+  他の Earth 以外の撮影は不変。nadir・oblique・polar・terminator を目視し、
+  陸上の雲が増える一方で針状塔や一様な台地は見られなかった。
+- 検証: `npm run test:render` 309/309 PASS。isolated worktree の typecheck は
+  既存の `Vec4Uniform` export 不足で失敗したが、`devin/dev` へ統合後に
+  `npm run typecheck` PASS。ユーザーの未コミット作業には手を加えていない。
+- 次: 湿度をさらに全球で上げず、陸上の cloudFrac と stratocumulus のずれ、
+  温帯海上の tauMid 過剰、高緯度海上の tauMid 不足を層・厚みの配分で分けて調べる。

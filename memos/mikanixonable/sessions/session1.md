@@ -50,13 +50,19 @@
 
 ## 実施中
 
-- **ISCCP 残差を別々の雲発達要因で解く** — 陸域の深い対流雲と中緯度海上の
-  層積雲を同じ定数で合わせない。`MASS_RETURN` を 0.026 から 0.010 へ下げた
-  監査では temperate-land deep が 0.0189→0.0319 (実写 0.0436)、
-  highlat-land が 0.0311→0.0456 (0.0544)、temperate-sea tauMid が
-  0.503→0.466 (0.361) へ近づき、全体 classes は 0.0660→0.0657。
-  ただし陸域の雲量はなお少なく、highlat-sea tauMid は 0.454 (実写 0.561)。
-  次は陸域の湿度・被覆不足と、海上の層積雲の量・光学的厚みを別々に調べる。
+- **陸上の雲量と海域別の光学厚を別機構で詰める** — 陸域と海域では低層湿度・
+  雲型・tauMid の残差が異なるため、共通の湿度補正を使わない。`MASS_RETURN`
+  0.026→0.010 の調整で land deep と temperate-sea tauMid が改善し、step 60 では
+  陸面水分の代理 `landFraction × max(cloudinessBias, 0)^2 × 0.3` を加えた。
+  この代理は乾燥地と海をほぼ変えず、全体 classes は 0.0657→0.0554。
+  temperate-land humidLow は実写と同じ 0.483 になり、cloudFrac は 0.426→0.493
+  (実写 0.732)。highlat-land は humidLow 0.480→0.532 (実写 0.632)、
+  cloudFrac 0.553→0.701 (0.747) へ近づいた。一方、land の stratocumulus は
+  temperate 0.140/実写 0.068、highlat 0.185/0.131 と過剰。
+  海上は実質不変: temperate-sea stratocumulus 0.373/0.232・tauMid
+  0.467/0.361 が過剰、highlat-sea stratocumulus 0.359/0.367 は一致するが
+  tauMid 0.457/0.561 は不足。次は湿度を全球で上げず、陸上の雲型・tau 配分と
+  海域別の層積雲の厚みを切り分ける。
 
 ## 待ち([]内は優先度)
 
@@ -67,18 +73,19 @@
   (index 0.559)。
 - [B] **低気圧から遠い中緯度の雲域と台風の螺旋雨帯** — 雲のリアリティーの
   観点: 中緯度の海は低気圧の前線の合間でも海上層積雲で年中曇りがちだが、
-  低気圧に依存しない海上層積雲がまだ少ない(temperate-sea cloud 0.798 vs
+  低気圧に依存しない海上層積雲がまだ少ない(temperate-sea cloud 0.790 vs
   実写 0.896)。台風も眼と天蓋はあるが螺旋状の雨帯が欠け、実写で目立つ構造が
-  抜けている。band 廃止後はコンマの頭 + 寒気側域で雲量を部分回復した
-  (ISCCP classes 0.0660)。最新の全球場では cycloneFront は低気圧に付随し、
+  抜けている。band 廃止後はコンマの頭 + 寒気側域で雲量を部分回復し、最新の
+  全体 classes は 0.0554。最新の全球場では cycloneFront は低気圧に付随し、
   圧力場から独立した長い帯は再発していない。残るのは雲域不足と雨帯の欠落で、
   それぞれ別機構で扱う。
-- [A] **陸域の低雲量と海上の tauMid 残差** — 雲のリアリティーの観点:
-  戻り沈降を弱めると陸域 deep と temperate-sea tauMid は実写へ近づくが、
-  temperate-land の cloudFrac は 0.427 vs 0.732、highlat-land は 0.553 vs
-  0.747 と低く、temperate-sea tauMid も 0.466 vs 0.361 とまだ過剰。
-  highlat-sea tauMid は 0.454 vs 0.561 と不足する。陸域の湿度・被覆供給と、
-  海域ごとの層積雲の量・厚みを別々の物理要因として評価する。
+- [A] **陸上の雲型・tau配分と海域別 tauMid** — 雲のリアリティーの観点:
+  陸面水分の追加後、temperate-land の humidLow は実写に合ったが cloudFrac は
+  0.493/0.732 と少なく stratocumulus は 0.140/0.068 と多い。highlat-land の
+  cloudFrac は 0.701/0.747 まで近づいたが humidLow は 0.532/0.632、stratocumulus
+  は 0.185/0.131。temperate-sea は stratocumulus・tauMid が過剰、
+  highlat-sea は stratocumulus が一致する一方 tauMid が不足する。次は
+  層・厚みの配分を調べ、湿度を全球一律に増やさない。
 - [B] **巻雲の型振り分け** — 雲のリアリティーの観点: 実写の巻雲は環境で
   型が変わる(ジェットの筋 streak、波状の鱗 scaly、高気圧の面 veil)が、
   生成は気象条件と結びつかず均質な靄になりがち。CIRRUS_MAX_OPTICAL_DEPTH=3
