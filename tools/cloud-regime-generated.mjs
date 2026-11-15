@@ -108,8 +108,11 @@ export function generatedTileConditions(scene, weather) {
 //
 // 点ごとの面積の配り方:
 // - 巻雲が検出できる(cirrusTau ≥ DETECT_TAU)とき: 点の全面が雲。τ = cirrusTau +
-//   coverage·cumulusTauIn(積雲が点の一部しか覆わないので柱の平均で足す)、
-//   雲頂 = max(cirrusTopM, 積雲が見えるなら cumulusTopM)。
+//   coverage·cumulusTauIn(積雲が点の一部しか覆わないので柱の平均で足す)。雲頂は
+//   各層の放射率で重み付けた実効高度 — MODIS は薄い巻雲越しの厚い低層雲で、赤外の
+//   放射が支配的な層の高度を返す(巻雲頂ではなく層間の高度)。巻雲層の放射率 εc は
+//   1 − e^−τ で、透過した 1 − εc が積雲層の放射率 εl(被る割合 × 1 − e^−τ_in)へ
+//   届くので、雲頂 = (εc·cirrusTop + (1 − εc)·εl·cumulusTop) / (εc + (1 − εc)·εl)。
 // - それ以外: 面積の coverage が雲、残りは晴天。雲の部分の τ = cumulusTauIn + cirrusTau、
 //   雲頂 = cumulusTopM。coverage < CLEAR_OPACITY_MAX の点は全面を晴天にする。
 export function isccpPhysical(points) {
@@ -133,8 +136,12 @@ export function isccpPhysical(points) {
   for (const p of points) {
     const cover = isNum(p.coverage) ? p.coverage : 0;
     if (isNum(p.cirrusTau) && p.cirrusTau >= DETECT_TAU) {
-      const top = isNum(p.cumulusTauIn) && p.cumulusTauIn >= DETECT_TAU
-        ? Math.max(p.cirrusTopM, p.cumulusTopM)
+      const cumulusTau = isNum(p.cumulusTauIn) ? p.cumulusTauIn : 0;
+      const emissivityC = 1 - Math.exp(-p.cirrusTau);
+      const emissivityL = cover * (1 - Math.exp(-cumulusTau));
+      const top = emissivityL > 0
+        ? (emissivityC * p.cirrusTopM + (1 - emissivityC) * emissivityL * p.cumulusTopM)
+          / (emissivityC + (1 - emissivityC) * emissivityL)
         : p.cirrusTopM;
       addCloud(
         weight,
