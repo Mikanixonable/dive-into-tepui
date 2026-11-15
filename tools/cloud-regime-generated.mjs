@@ -80,7 +80,7 @@ export function generatedTileConditions(scene, weather) {
         humidUp: s.upperHumidity,
         land: s.landFraction,
         meanCloudiness: s.meanCloudiness,
-        band: s.band,
+        cycloneFront: s.cycloneFront,
         convectiveActivity: s.convectiveActivity,
         anvil: s.anvil,
         lat,
