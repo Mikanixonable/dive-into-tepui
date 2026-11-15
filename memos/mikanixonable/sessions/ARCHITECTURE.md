@@ -1,4 +1,4 @@
-# 雲の生成基盤の構造(2026-11-15 時点、devin/dev 6643bec52)
+# 雲の生成基盤の構造(2026-11-16 時点、devin/dev 7b0668511)
 
 生成は「気圧場 → 風 → 気団と上昇流 → 雲量場 → 凝結・層化 → 細部乗数 → 光学」の流れ。
 以下は各段の担い手をコードの名前で辿る案内。最新はコードが原本。
@@ -12,10 +12,14 @@
 - `cyclones.ts` — `Trough`(低気圧 1 個。`pressureAt`=楕円の谷、`eyeAt`=台風の眼、
   `anvilAt`=天蓋、`wcbAt`=温暖湿気輸送路の領域)、`Cyclones`(熱帯 1 + 温帯
   `LOW_COUNT`=8)。低気圧への帯のスタンプ(旧 `frontAt`)は step 39 で廃止。
-- `cyclone-tracks.ts` — `lowPlacementAt`(亜熱帯で生まれ東進・極側で消える、
-  半球 4 枡・位相ずらし)、`tropicalPlacementAt`(西進→転向→温帯化)。
+- `cyclone-tracks.ts` — `lowPlacementAt`(step 40: 枡の生まれる経度を
+  `rossby-wave.ts` の谷 `waveTroughLongitude` の下流へ錨づけ、4 枡が 5 谷の
+  うち 4 個を使う → 空の谷が世代ごとに巡回して波列が時々崩れる。
+  一生のあいだ波の位相速度で東進。近づきすぎた浅い低気圧は深い側が吸収)。
+  `tropicalPlacementAt`(西進→転向→温帯化)。
 - `anticyclones.ts` / `anticyclone-tracks.ts` — `Highs`/`highPlacementAt`。
-  低気圧と同型の実体を半位相ずらしで配置(6-14 hPa・800-1200 km・遅い東進)。
+  低気圧と同型の実体を尾根(谷+半波長)の下流側へ錨づけ。低・高が
+  偏西風の蛇行線上に交互配置される(step 40)。
 
 ## 風 `weather-model.ts` + `wind-law.ts`
 
@@ -40,8 +44,17 @@
 上層 `UPPER_ADVECTION`=1.6 倍)。`weatherAt` が足し引き: `cloudinessBias`
 (平年雲量)、`lift` の加湿/乾燥、`warmth×WARM_HUMIDITY`、
 `band×BAND_HUMIDITY`、`anvil×ANVIL_HUMIDITY`、`eye` の乾燥、
-`cyclones.wcbAt×WCB_UPPER_HUMIDITY`(巻雲の盾)。結果を `BakedField` 2 枚へ
-焼いて時刻補間。`convective-activity.ts`・`humidity-modulation.ts` が修飾。
+`cyclones.wcbAt×WCB_UPPER_HUMIDITY`(巻雲の盾)、熱帯の対流クラスタの
+3 項(芯の上昇 CLUSTER_LIFT・消費の環の沈降 CLUSTER_SINK と乾き
+CLUSTER_DRYING・流出の盾の上層加湿 CLUSTER_OUTFLOW_HUMIDITY)。
+結果を `BakedField` 2 枚へ焼いて時刻補間。
+`convective-activity.ts`・`humidity-modulation.ts` が修飾。
+
+熱帯の対流クラスタ — `cluster-tracks.ts` の `clusterPlacementAt` が
+湿った発生源に世代ごとの乱数でクラスタを生む(寿命 1〜3 日・
+半径 300〜700 km・貿易風で西進)、`convective-clusters.ts` の `Clusters`
+が芯・消費の環・流出の盾の濃さを答える。別のクラスタの環の中では
+強さを削る抑制で、資源消費による間隔の自己組織化(step 41)。
 
 ## 凝結・層化 `condensation.ts` + `cloud-kind.ts`
 
@@ -85,9 +98,11 @@ lift・warmth・band・対流で伸びる)。**`BAND_DECK`=0.2 が帯へ乱層�
 
 ## ループの現況
 
-- 気象力学(LOOP-LOG-dynamics): weather 0.215→0.0997。step 34 高気圧・
+- 気象力学(LOOP-LOG-dynamics): weather 0.215→0.0986。step 34 高気圧・
   step 35 前線+WCB・step 37 BAND_DECK・step 38 上層湿度再調定・
-  step 39 帯の診断一本化、すべて採用・統合済み。
+  step 39 帯の診断一本化・step 40 ロスビー波への錨づけ+吸収則・
+  step 41 熱帯対流クラスタ、すべて採用・統合済み。
 - 巻雲 detail(LOOP-LOG-cirrus): index 0.348→0.182(5 ステップ、統合済み)。
-  step 38 後の再計測を session1s で実施中。
+  step 6 — UPPER_LIFT_HUMIDITY 増量は不採用(欠損は空間配分、
+  熱帯クラスタの流出加湿が担う)。統合後の再計測が待ち。
 - 光学: 統合済み・albedo 全 PASS。動き: motion-stage2 統合済み(0.546→0.325)。
