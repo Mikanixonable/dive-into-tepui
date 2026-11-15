@@ -10,6 +10,7 @@ import { CirculatingNoise } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
+import { Highs } from './anticyclones';
 import { HumidityModulator } from './humidity-modulation';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
@@ -223,6 +224,9 @@ const UPPER_EYE_DRYNESS = 2;
 // 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の芯では並の湿度からでも雲量が飽和する分を足すが、
 // 円盤の縁まで一様に上限へ張り付かせないよう、天蓋自身の濃さの落ち際と合わせて効かせる。
 const ANVIL_HUMIDITY = 0.2;
+// 温暖湿気の輸送路が上層の湿度へ足す量。低気圧の前方・極側へ巻雲の盾を作る —
+// 中緯度の帯状の巻雲(千〜二千 km)の担い手。
+const WCB_UPPER_HUMIDITY = 0.03;
 // 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入（0.26 rad）で伝達関数幅の約半分が
 // 変位する係数。本項の期待値が正のため、基底湿度 (SURFACE_HUMIDITY_BASE) をオフセットして均衡させる。
 const WARM_HUMIDITY = 0.6;
@@ -246,6 +250,7 @@ export class WeatherModel {
   private readonly upperCirculation: Circulation;
   private readonly rossbyWave = new RossbyWave();
   private readonly cyclones: Cyclones;
+  private readonly highs: Highs;
   private readonly pressureNoise: CirculatingNoise;
   private readonly mesoscaleLift: CirculatingNoise;
   private readonly upperMeander: CirculatingNoise;
@@ -265,6 +270,7 @@ export class WeatherModel {
     this.surfaceCirculation = new Circulation(SURFACE_BANDS, surfaceRadius);
     this.upperCirculation = new Circulation(UPPER_BANDS, surfaceRadius);
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
+    this.highs = new Highs(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(
       this.surfaceCirculation, PRESSURE_NOISE, texel,
       [{ untilFrequency: PRESSURE_NOISE[0]!.frequency, transitionSeconds: 18 * 3600 }]);
@@ -306,6 +312,7 @@ export class WeatherModel {
     this.upperCirculation.syncTime(seconds);
     this.rossbyWave.syncTime(seconds);
     this.cyclones.syncTime(seconds);
+    this.highs.syncTime(seconds);
     this.pressureNoise.syncTime(seconds);
     this.mesoscaleLift.syncTime(seconds);
     this.upperMeander.syncTime(seconds);
@@ -357,7 +364,10 @@ export class WeatherModel {
     const front = temperatureFront.add(moistureFront.mul(0.2)).add(updraft.mul(0.15)).min(1).mul(extratropical);
     const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
       .mul(extratropical.oneMinus());
-    const band = min(front.add(rainband), 1);
+    // 低気圧の実体が持つ前線の帯(寒冷・温暖) — 気団の圧縮からの診断とは別の担い手で、
+    // 低気圧の芯から伸びる一貫した帯を作る。両者の大きい側を取る。
+    const cycloneFront = this.cyclones.frontAt(direction);
+    const band = min(max(front.add(rainband), cycloneFront), 1);
     const bandLift = band.mul(BAND_LIFT);
     const stormTrack = extratropical.mul(
       smoothstep(STORM_TRACK_POLE_START, STORM_TRACK_POLE_END, abs(latitude)).oneMinus(),
@@ -383,6 +393,7 @@ export class WeatherModel {
     const upperHumidity = clamp(
       advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
+        .add(this.cyclones.wcbAt(direction).mul(WCB_UPPER_HUMIDITY))
         .sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
 
     return {
@@ -584,7 +595,7 @@ export class WeatherModel {
     };
   }
 
-  // 気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。
+  // 気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷 + 高気圧の丘。
   private pressureSourceAt(direction: Vec3Node): FloatNode {
     const latitude = latitudeOf(direction);
     const band = bandPressureAt(latitude);
@@ -593,7 +604,8 @@ export class WeatherModel {
     // 温帯らしさで振幅そのものを絞る(帯の浅い赤道の谷と合わせて実写の ±3〜4 hPa の幅へ)。
     const tropicalScale = extratropicalAt(latitude).mul(0.5).add(0.5);
     return band.add(noise.mul(PRESSURE_NOISE_AMPLITUDE).mul(tropicalScale))
-      .add(this.cyclones.pressureAt(direction));
+      .add(this.cyclones.pressureAt(direction))
+      .add(this.highs.pressureAt(direction));
   }
 
   // 移流前の湿度(x が地表付近、y が上層)。平年の雲量は移流の後に weatherAt が足す — 移流を通すと
