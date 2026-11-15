@@ -54,6 +54,22 @@ export class CloudFieldSampler {
     this.cosRadius.value = binding.cap.cosRadius;
   }
 
+  // 結んだ場と cap の枠を空へ戻す。雲を読まない区間に古い場が残らないようにする。
+  public unbind(): void {
+    for (const slot of [0, 1] as const) {
+      this.clouds[slot].value = EMPTY_CLOUD_FIELD;
+      this.motions[slot].value = EMPTY_CLOUD_FIELD;
+      this.environments[slot].value = EMPTY_CLOUD_FIELD;
+    }
+    this.parity.value = 0;
+    this.fraction.value = 0;
+    this.center.value.set(0, 0, 1);
+    this.east.value.set(1, 0, 0);
+    this.north.value.set(0, 1, 0);
+    this.sinRadius.value = 1;
+    this.cosRadius.value = -1;
+  }
+
   // 2 枚の同じ uv の読みを、混ぜ方で合わせる。
   private blend(pair: readonly [THREE.TextureNode, THREE.TextureNode], uv: Vec2Node): Vec4Node {
     return blendBakedTexels(pair[0].sample(uv), pair[1].sample(uv), this.parity, this.fraction);
@@ -67,6 +83,13 @@ export class CloudFieldSampler {
     const cloudTexel = this.blend(this.clouds, uv).mul(inside) as Vec4Node;
     const environmentTexel = this.blend(this.environments, uv).mul(inside) as Vec4Node;
     return cloudSampleFromTexels(cloudTexel, environmentTexel);
+  }
+
+  // 単位方向 direction の場の texel(積雲・巻雲・筋の向き)だけを、2 枚の混ぜ方で読む。環境は読まない。cap の外は 0。
+  public sampleField(direction: Vec3Node): Vec4Node {
+    const inside = step(this.cosRadius, dot(direction, this.center));
+    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    return this.blend(this.clouds, uv).mul(inside) as Vec4Node;
   }
 
   // 単位方向 direction で雲を運ぶ風。cap の外は 0。

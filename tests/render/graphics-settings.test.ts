@@ -25,6 +25,12 @@ export function register(): void {
     assert.equal(saved.cirrus, false);
   });
 
+  test('graphics-settings: 旧積雲オフを移行し、新しいトグルを優先する', () => {
+    assert.equal(parseGraphics('{"cumulusDetail":0}').cumulus, false);
+    assert.equal(parseGraphics('{"cumulusDetail":0,"cumulus":true}').cumulus, true);
+    assert.equal(parseGraphics('{"cumulusDetail":0,"cumulus":false}').cumulus, false);
+  });
+
   test('graphics-settings: 建造の作業灯は全プリセットで既定オン', () => {
     assert.equal(QUALITY_PRESETS.low.constructionWorkLight, true);
     assert.equal(QUALITY_PRESETS.medium.constructionWorkLight, true);

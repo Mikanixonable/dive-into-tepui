@@ -72,8 +72,10 @@ declare global {
         name: string, point: CloudDetailRandomPoint,
       ) => Promise<{ png: string, centerKmPerPx: number, altitudeM: number }>;
       capture: () => Promise<string>;
+      // 値を結ぶ前に組んだシェーダで、同じテクスチャを指す 2 つのテクスチャノードが別々の値を読めるかの GPU 検査。
+      dedupeProbe: () => Promise<Record<string, number[]>>;
       // 観察の向きを変えた次の 1 フレームを、描画をちょうど 1 回だけ回して撮る(ドラッグ中の 1 フレーム)。
-      captureAfterMove: (changes: Partial<LabViewAngles>) => Promise<string>;
+      captureAfterMove: (changes: Partial<LabViewAngles>, displayTime?: number) => Promise<string>;
       show: (name: CaseName) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
       setDisplayTime: (displayTime: number) => void;
@@ -162,7 +164,7 @@ function buildViewAngleSliders(view: LabView): () => void {
   };
 }
 
-// 仮設の雲のつまみ(積雲のディザと、半透明な殻の種類ごとの濃さ・高度・反射率)を組む。つまみは
+// 仮設の雲のつまみ(積雲のディザと、半透明な殻の種類ごとの濃さ・高度)を組む。つまみは
 // 描画の uniform を書き換え、view をその場で描き直す。
 function buildCloudSliders(view: LabView): void {
   const redraw = (knob: FloatUniform, value: number): void => { knob.value = value; view.render(); };
@@ -176,7 +178,7 @@ function buildCloudSliders(view: LabView): void {
     () => `±${dither.halfWidth.value.toFixed(3)}`,
     (v) => redraw(dither.halfWidth, v))(dither.halfWidth.value);
 
-  // 半透明な殻の濃さ・立つ高さ・反射率。不透明な積雲との馴染みを目で追い込み終えるまで残す。
+  // 半透明な殻の濃さ・立つ高さ。不透明な積雲との馴染みを目で追い込み終えるまで残す。
   const kilometers = (value: number) => `${(value / 1000).toFixed(2)} km`;
   // 種類 1 つぶんのつまみを row へ並べ、つまみの位置を殻の現在値へ合わせる。
   const buildShellSliders = (rowId: string, species: CloudSpecies): void => {
@@ -191,8 +193,6 @@ function buildCloudSliders(view: LabView): void {
       (v) => redraw(knob.bottomAltitude, v))(knob.bottomAltitude.value);
     buildSlider(rowId, '上端高度', 0, MAX_SHELL_ALTITUDE, 100, () => kilometers(knob.topAltitude.value),
       (v) => redraw(knob.topAltitude, v))(knob.topAltitude.value);
-    buildSlider(rowId, 'アルベド', 0, 1, 0.01,
-      () => knob.albedo.value.toFixed(2), (v) => redraw(knob.albedo, v))(knob.albedo.value);
   };
   buildShellSliders('cirrus-shell', 'cirrus');
 }
@@ -279,7 +279,10 @@ async function init(): Promise<void> {
       const result = await view.shootCloudDetailRandom(name, point); syncAngles(); return result;
     },
     capture: () => view.capture(),
-    captureAfterMove: async (changes) => { const png = await view.captureAfterMove(changes); syncAngles(); return png; },
+    dedupeProbe: () => view.dedupeProbe(),
+    captureAfterMove: async (changes, displayTime) => {
+      const png = await view.captureAfterMove(changes, displayTime); syncAngles(); return png;
+    },
     show: (name) => { view.show(name); syncAngles(); },
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setDisplayTime: (displayTime) => view.setDisplayTime(displayTime),

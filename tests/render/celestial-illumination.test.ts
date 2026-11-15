@@ -11,7 +11,7 @@ import { CameraView } from '../../src/render/camera/camera-view';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3, type Vec3 } from '../../src/math/vec3';
 import { DEFAULT_GRAPHICS, withGraphicsOption } from '../../src/render/graphics-settings';
-import type { AtmosphereDraw } from '../../src/render/atmosphere';
+import type { AtmosphereBody, AtmosphereDraw } from '../../src/render/atmosphere';
 import type { PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import type { CloudFieldSlot } from '../../src/render/cloud/cloud-field-sample';
@@ -44,6 +44,8 @@ function cameraFrame(): CameraFrame {
 interface RecordedTargets extends IlluminationTargets {
   readonly planetLights: PlanetLightValue[][];
   readonly atmosphereDraws: (readonly AtmosphereDraw[])[];
+  readonly extinctionBodies: (readonly AtmosphereBody[])[];
+  readonly skyBodies: (readonly AtmosphereBody[])[];
   readonly cloudCasters: (ShadowCloud | null)[];
   readonly cloudKinds: CloudShadowKinds[];
   readonly ambientFractions: number[];
@@ -67,6 +69,8 @@ function recordingTargets(): RecordedTargets {
   const sunLight = new RecordingSunLight();
   const planetLights: PlanetLightValue[][] = [];
   const atmosphereDraws: (readonly AtmosphereDraw[])[] = [];
+  const extinctionBodies: (readonly AtmosphereBody[])[] = [];
+  const skyBodies: (readonly AtmosphereBody[])[] = [];
   const cloudCasters: (ShadowCloud | null)[] = [];
   const cloudKinds: CloudShadowKinds[] = [];
   const ambientFractions: number[] = [];
@@ -84,8 +88,12 @@ function recordingTargets(): RecordedTargets {
     planetLight: { set: (lights: readonly PlanetLightValue[]) => { planetLights.push([...lights]); } },
     ambient: { setFraction: (fraction: number) => { ambientFractions.push(fraction); } },
     atmosphere: { setDraws: (draws: readonly AtmosphereDraw[]) => { atmosphereDraws.push([...draws]); } },
+    sunExtinction: { set: (bodies: readonly AtmosphereBody[]) => { extinctionBodies.push([...bodies]); } },
+    skyLight: { set: (bodies: readonly AtmosphereBody[]) => { skyBodies.push([...bodies]); } },
     planetLights,
     atmosphereDraws,
+    extinctionBodies,
+    skyBodies,
     cloudCasters,
     cloudKinds,
     ambientFractions,
@@ -185,11 +193,18 @@ export function register(): void {
       [source(body('earth-like', 6.371e6, v3()), atmosphereView())],
       0, camera, DEFAULT_GRAPHICS, null, v3(1, 0, 0));
     assert.ok(targets.atmosphereDraws[0]!.length > 0, '大気を持つ天体の大気が描かれていない');
+    // 直射光の消衰へも、大気パスと同じ天体の列が渡る。
+    assert.deepEqual(
+      targets.extinctionBodies[0],
+      targets.atmosphereDraws[0]!.map((draw) => draw.body),
+      '消衰の天体が大気パスの列と違う',
+    );
 
     illumination.sync(
       [source(body('airless', 1e6, v3()), plainView())],
       0, camera, DEFAULT_GRAPHICS, null, v3(1, 0, 0));
     assert.equal(targets.atmosphereDraws[1]!.length, 0, '大気を持たない天体の大気が描かれた');
+    assert.equal(targets.extinctionBodies[1]!.length, 0, '大気を持たない天体の消衰が掛かった');
   });
 
   test('celestial-illumination: 同じ入力を再び sync すると、同じ値が書かれる', () => {
