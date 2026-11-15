@@ -14,6 +14,7 @@ import {
   withGraphicsOption, type ChoiceValue, type GraphicsOptionKey,
 } from '../../src/render/graphics-settings';
 import { buildButtonRow } from '../lab-controls';
+import { latestReportText } from './latest-report';
 
 // 撮影名 <場面>-<時刻 h>h-<km/px>km-<種類> から、場面・時刻・段・種類の選択肢を組む。
 const SHOT_NAME = /^(.+)-(\d+)h-([0-9.]+)km-([a-z]+)$/;
@@ -145,6 +146,13 @@ async function init(): Promise<void> {
   const markKind = buildButtonRow('kinds',
     [...kinds].map((k) => [k, KIND_LABELS[k] ?? k] as const),
     (k) => { selection.kind = k; markKind(k); void showSelection(); });
+
+  // 最後に回した細部の比較の評価値。生成側と同じく「最後に測った値」の表示で、
+  // 未実行ならその旨だけ出す。
+  void latestReportText('detail/compare/latest.json').then((text) => {
+    document.getElementById('score')!.textContent =
+      text ?? '評価 — (cloud-lab:detail-compare 未実行)';
+  });
 
   markScene(selection.scene);
   markTime(String(selection.hours));
