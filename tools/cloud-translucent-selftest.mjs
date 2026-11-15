@@ -2,9 +2,13 @@
 // measureTranslucentWindow と classifyPattern を当て、区分判定・異方性・周期性・
 // 勾配・芯との関係が期待どおりに出ることを判定する。ネットワークは使わない。
 // 使い方: node tools/cloud-translucent-selftest.mjs — 1 つでも FAIL なら非 0 で終わる。
-import { fft2 } from './cloud-detail-metrics.mjs';
+import { fft2, normalizedDistance, quantiles } from './cloud-detail-metrics.mjs';
 import { measureTranslucentWindow, classifyPattern } from './cloud-translucent-features.mjs';
 import { mulberry32 } from './cloud-translucent-gibs.mjs';
+import {
+  PHYS_SPAN, advectedCoreMask, classifyGeneratedWindow, combinedOptics, coreHeightM,
+  deepCoreMask, decodePhysPixels, overlapShare, translucentMask, windDegOf,
+} from './cloud-translucent-generated.mjs';
 
 // 合成場の一辺 [px] と 1 画素が張る距離 [km]。実写の 1 km/px の段と同じ設定。
 const N = 512;
@@ -172,6 +176,93 @@ judge(d.assoc !== null && decay, '距離帯の断面: 近傍が遠方より厚�
   bins.map((bin) => bin.maskShare.toFixed(2)).join(' → '));
 judge((d.assoc?.asymmetry ?? 0) > 0, '非対称: 下風側が厚い', `${d.assoc?.asymmetry?.toFixed(3)} > 0`);
 judge((d.assoc?.spreadRatio ?? 0) > 1, '広がり比: 半透明部 > 芯', `${d.assoc?.spreadRatio?.toFixed(2)} > 1`);
+
+console.log('\n=== 生成側の窓の組み立て(cloud-translucent-generated) ===');
+// RGBA8 base64 → 物理量の復号の往復。画素 1 に雲頂 10000 m・τ 2 の巻雲だけを埋める。
+{
+  const n = 8;
+  const rgba = new Uint8Array(n * n * 4);
+  rgba[1 * 4 + 1] = Math.round((2 / PHYS_SPAN.cirrusTau) * 255);
+  rgba[1 * 4 + 3] = Math.round((10000 / PHYS_SPAN.cirrusTop) * 255);
+  const phys = decodePhysPixels(Buffer.from(rgba).toString('base64'), n);
+  const { cot, cth } = combinedOptics(phys, n);
+  judge(Math.abs(phys.cirTau[0]) < 0.05 && Math.abs(cot[1] - 2) < 0.1
+    && Math.abs(cth[1] - 10000) < 100,
+  '復号: 巻雲だけの画素の COT・雲頂',
+  `τ=${phys.cirTau[1].toFixed(2)} cot=${cot[1].toFixed(2)} cth=${cth[1].toFixed(0)} m`);
+  judge(!Number.isFinite(cth[0]), '復号: 雲無しの画素の雲頂は欠測', `cth=${cth[0]}`);
+  const { mask, share } = translucentMask(cot, cth, n);
+  judge(mask[1] === 1 && share === 1 / (n * n), '半透明マスク: 条件を満たす画素だけ', `share=${share.toFixed(3)}`);
+}
+
+// 深い対流の芯。緯度 0 では −48 ℃ 層はおよそ 11.4 km — 雲頂 12 km・τ 4 の積雲の塊は芯、
+// 8 km では芯でない。50 km² 未満の塊は芯から外れる。
+{
+  const n = 64;
+  const kmPerPx = 1;
+  const cumTau = new Float32Array(n * n);
+  const cumTop = new Float32Array(n * n);
+  for (let y = 8; y < 16; y++) for (let x = 8; x < 16; x++) { cumTau[y * n + x] = 4; cumTop[y * n + x] = 12000; }
+  for (let y = 30; y < 40; y++) for (let x = 30; x < 40; x++) { cumTau[y * n + x] = 4; cumTop[y * n + x] = 8000; }
+  cumTau[50 * n + 50] = 4;
+  cumTop[50 * n + 50] = 14000;
+  const core = deepCoreMask(cumTau, cumTop, n, 0, kmPerPx);
+  judge(core.count === 1 && core.mask[10 * n + 10] === 1 && core.mask[35 * n + 35] === 0
+    && core.mask[50 * n + 50] === 0,
+  '深い対流の芯: 高い不透明な積雲の 50 km² 以上の塊だけ',
+  `count=${core.count} height=${coreHeightM(0).toFixed(0)} m`);
+}
+
+// 上層風の向きと移流した芯。東風(風が東へ吹く)で 2 h 遡ると芯は西へずれる。
+{
+  const n = 256;
+  const east = new Float32Array(n * n).fill(20);
+  const north = new Float32Array(n * n).fill(0);
+  judge(Math.abs(windDegOf(east, north, n) - 90) < 0.1, '上層風の向き: 東風 → 90°',
+    `${windDegOf(east, north, n)?.toFixed(1)}°`);
+  const core = new Uint8Array(n * n);
+  for (let y = 120; y < 136; y++) for (let x = 180; x < 196; x++) core[y * n + x] = 1;
+  // 移流で西へ 144 km(2 h × 20 m/s)ずれた芯は、x≈40 付近の雲と重なる。
+  const advected = advectedCoreMask(core, n, 1, 20, 0);
+  const mask = new Uint8Array(n * n);
+  for (let y = 120; y < 136; y++) for (let x = 36; x < 52; x++) mask[y * n + x] = 1;
+  // ずれた芯(膨張込み)は x≈40 付近を覆い、ずれ前の x≈188 は覆わない。
+  judge(overlapShare(advected, mask, n) > 0
+    && advected[128 * n + 44] === 1 && advected[128 * n + 188] === 0,
+  '移流した芯: 風上へずれて窓内の雲と重なる',
+  `overlap=${overlapShare(advected, mask, n).toFixed(4)}`);
+}
+
+// 生成側の窓の型の振り分け(教師と同じ順序)。
+{
+  const anvil = classifyGeneratedWindow({
+    share: 0.3, anvilNear: true, coreInWindow: true, remnantOverlap: 0, measured: b,
+  });
+  judge(anvil.className === 'anvil-active', '振り分け: 芯の 60 km 内 → anvil-active', anvil.className);
+  const remnant = classifyGeneratedWindow({
+    share: 0.3, anvilNear: false, coreInWindow: false, remnantOverlap: 0.2, measured: b,
+  });
+  judge(remnant.className === 'convective-remnant', '振り分け: 移流した芯との重なり → convective-remnant',
+    remnant.className);
+  const clear = classifyGeneratedWindow({
+    share: 0.01, anvilNear: false, coreInWindow: false, remnantOverlap: 0, measured: b,
+  });
+  judge(clear.className === 'clear', '振り分け: 半透明が薄すぎる窓 → clear', clear.className);
+  const scaly = classifyGeneratedWindow({
+    share: 0.5, anvilNear: false, coreInWindow: false, remnantOverlap: 0, measured: b,
+  });
+  judge(scaly.className === 'scaly', '振り分け: 孤立系は判定関数へ(scaly)', `${scaly.className}`);
+}
+
+// 同一の分布で正規化距離が 0 になること。
+{
+  const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+  const q = quantiles(values, [0.1, 0.5, 0.9]);
+  const { distance } = normalizedDistance(q, [...q]);
+  judge(distance === 0, '距離: 同一の分布で 0', `${distance}`);
+  const shifted = normalizedDistance(q, q.map((v) => v + 1)).distance;
+  judge(shifted > 0 && Number.isFinite(shifted), '距離: ずれた分布で 0 より大きい', `${shifted.toFixed(3)}`);
+}
 
 console.log(failures === 0 ? '\n合成場の判定はすべて通った' : `\n${failures} 件の失敗`);
 process.exit(failures === 0 ? 0 : 1);
