@@ -2,11 +2,9 @@
 // なので θ と θ+π が同じ値になること、揃い度 0 が向きではなく 0 ベクトルになることが、
 // 補間の壊れない持ち方の根拠。
 import * as assert from 'node:assert/strict';
-import { uniform } from 'three/tsl';
 import {
   CIRRUS_FLOW_SPEED_FULL, CIRRUS_FLOW_SPEED_ONSET, cirrusFlowFromWind,
 } from '../../src/render/cloud/cirrus-flow';
-import { bindCloudBlend, CloudBlendState } from '../../src/render/cloud/cloud-field-sample';
 import { test } from '../harness';
 
 const CLOSE = 1e-12;
@@ -23,22 +21,6 @@ function assertFlow(angleRad: number, speedMs: number): void {
 
 // 雲場の混合同期と、風から導く巻雲の向きを検査する。
 export function register(): void {
-  test('cloud blend: sampler uniforms follow blend updates until unbound', () => {
-    const blend = new CloudBlendState();
-    const parity = uniform(0);
-    const fraction = uniform(0);
-    const unbind = bindCloudBlend(blend, parity, fraction);
-
-    blend.set(1, 0.75);
-    assert.equal(parity.value, 1);
-    assert.equal(fraction.value, 0.75);
-
-    unbind();
-    blend.set(0, 0.25);
-    assert.equal(parity.value, 1);
-    assert.equal(fraction.value, 0.75);
-  });
-
   test('cirrus flow: 倍角ベクトルは定義 (cos 2θ, sin 2θ) × 揃い度 に一致する', () => {
     for (const deg of [0, 15, 45, 80, 90, 120, 170]) {
       for (const speed of [10, 20, 40]) assertFlow((deg * Math.PI) / 180, speed);

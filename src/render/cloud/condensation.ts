@@ -2,12 +2,10 @@
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
 import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
 import { cirrusFlowFromWindNode } from './cirrus-flow-node';
-import { CUMULUS_BASE_ALTITUDE } from './cloud-kind';
 import {
   cirrusAmountFromOpticalDepthNode, cumulusAmountFromOpacityNode, cumulusAmountFromTopAltitudeNode,
 } from './cloud-kind-node';
 import type { CloudSample } from './cloud-field-sample';
-import type { FloatNode } from '../tsl-types';
 import type { WeatherSample } from './weather-model';
 export type { CloudSample } from './cloud-field-sample';
 
@@ -36,17 +34,17 @@ const CONVECTION_GAIN = 1.2;
 // 上昇流が頭打ちなので活発度も 1 に張り付き、粒の振れ幅(伝達関数の幅の ±1.6 倍)がそのまま乗る
 // — 弱めないと、帯が被覆率の立ち上がり閾値を跨ぐ境界部で、面構造が点描状に破綻する。塔は別の項が
 // 立てるので、ここを上げても帯の上の塔は残る。
-const FRONT_GRAIN_FADE = 0.95;
+const BAND_GRAIN_FADE = 0.8;
 // 層状の雲の高さ [m]。雲底から、上昇流の深さが 1 に漸近する高さまで。上限は前線の乱層雲
 // (4〜8 km)に取る — 塔はここではなく対流の峰が立てる。
 const CLOUD_BASE_HEIGHT = 1000;
 const LAYER_TOP_SPAN = 6000;
 // 層状の深さを 0..1 へ収めるロジスティックの、上昇流 [per m/s] と対流の重み、そして底。
-// 上昇流が頭打ち(0.06 m/s)の谷の芯で約 4.5 km、並の低気圧(0.02 m/s)で約 2.3 km、上昇流の無い所で
+// 上昇流が頭打ち(0.06 m/s)の谷の芯で 5.5 km、並の低気圧(0.02 m/s)で 2.7 km、上昇流の無い所で
 // 1.7 km(低い積雲の多数派)。**対流の重みは、同じ cap の中で雲頂が 1〜7 km に散る幅に取る**
 // — 上昇流だけでは低気圧の上が一様な台地になる。ロジスティックは上端でも下端でも傾きが 0 に
 // ならないので、被覆率が飽和した所でも対流の起伏が雲頂に残る。
-const CLOUD_TOP_LIFT = 40;
+const CLOUD_TOP_LIFT = 50;
 const CLOUD_TOP_RELIEF = 27;
 const CLOUD_TOP_BIAS = 2.05;
 // 暖気の流入が層状の雲を持ち上げる重み [per rad]。前線の暖気側(0.35 rad)で乱層雲の高さ
@@ -54,10 +52,11 @@ const CLOUD_TOP_BIAS = 2.05;
 const WARM_TOP = 3;
 // 気団収束帯（前線・雨帯）が層雲を持ち上げる量。暖気流入による上昇分と同規模であり、
 // 帯内において乱層雲から積乱雲の高度（5〜7 km）に達する。
-const FRONT_TOP = 2;
-// 正の粒の芯を低い塔から圏界面まで連続して渡す。幅は全球場で解像される峰の振幅に合わせる。
-const TOWER_ONSET = 0.004;
-const TOWER_WIDTH = 0.01;
+const BAND_TOP = 3;
+// 塔が立つ粒の峰(粒 × 活発度)の縁。**幅は峰の標準偏差(≈ 0.1)と同じ程度に広く取る** —
+// 縁を峰の頂点へ寄せると、塔は 1 texel の針になって数えるほどしか立たない。
+const TOWER_ONSET = 0.015;
+const TOWER_WIDTH = 0.09;
 // 塔を閉じる沈降の門 [m/s]。高気圧の吹きおろす所では、粒の峰が立っても深い対流にはならない。
 const TOWER_LIFT_GATE = 0.005;
 // 海洋性層積雲へ移る気候の門。平年の雲量が高い海で、沈降と低い対流が重なるほど閉じた細胞の
@@ -74,9 +73,6 @@ const STRATOCUMULUS_ACTIVITY_WIDTH = 0.45;
 // 板へ足す湿度の高さ。門が部分的にしか開かない所でも板が一面へ繋がるよう、被覆率の
 // 伝達関数の幅の 1.5 倍強に取る — 全域が飽和する高さではなく、板の中にも濃淡が残る。
 const STRATOCUMULUS_DECK_ADD = 0.35;
-// 前線の帯が被覆率へ足す層状の湿り — 前線の上昇は深い層を飽和させるので、
-// 帯の上では積雲はまばらな柱ではなく一面に広がる厚い層雲(乱層雲)になる。
-const FRONT_DECK = 0.3;
 // 対流の形が網目から粒へ渡る湿度。雲の少ない所では細胞の壁(網目)、多い所では細胞の芯(粒)が
 // 見える。**形を決める量は粒より低周波でなければならない** — 粒ごとに形が変わると並びが読めない
 // ので、粒を足す前の湿度で決める。渡り始めは覆いの効き始めの少し下、渡り終わりはその 1 単位ぶん上。
@@ -85,42 +81,23 @@ const SHAPE_GRAIN_HUMIDITY = 0.70;
 // 薄層雲の光学的厚み τ は 2 項の和。ヘイズ成分は上層湿度が発生閾値を超過した量に比例して広域に薄い幕を形成する。
 // ストリーク成分は発生閾値の超過量の二乗に比例し、湿度のピーク部にのみ高密度の筋状構造を生成する。
 // 膝は、二乗の τ が筋の利得を傾きにした直線と交わる超過量。上限は τ をそこへ
-// 漸近させる tanh の頭打ち — 上限を靄と筋の利得と同じ率で動かすと τ が定数倍になるだけで
-// 階調の順番は変わらないが、上限だけを動かすと濃い側の端が伸びる。
-// **上限は「下地をほとんど隠す厚い幕」の端に取る**(`DEVELOP/SPEC/RENDERING.md`「不透明度の幅は広く、
-// 下地がほぼ素通しの靄から、下地をほとんど隠す厚い幕まで連続する」) — 実写の巻雲場面(ジェット
-// 繊維・前線盾・かなとこの残存)は不透明度 0.85–0.95(τ ≈ 2–3)へ届き、上限 0.85(不透明度 0.57)
-// ではその白さが出ない。いまの率では上層の湿度 0.5 で τ 0.08、0.6 で τ 0.28、0.7 で τ 0.65、
-// 0.9 で τ 1.6、最も湿った核で下地が 1 割ほど透ける。
+// 漸近させる tanh の頭打ちで、下地が常に e^−τ だけ透けることを保証する — 巻雲は不透明にならない。
+// **2 つの利得と上限は同じ率で動かす** — そうすると τ がそのまま定数倍になり、靄と筋の濃さの比も
+// 階調の順番も変わらないまま、薄い雲だけが一様に薄くなる。率は、±60° の輝度の平均が実写(分離した
+// 薄い雲、0.135)の 9 割に収まる高さに取る — 薄い雲は下地を隠す幕ではなく、地表の色をわずかに
+// 白ませるものとして見える(`DEVELOP/SPEC/RENDERING.md`「薄い雲の大半はごく薄い靄」)。いまの率では
+// 上層の湿度 0.5 で τ 0.08、0.6 で τ 0.27、0.7 で τ 0.56、上端でも下地が半分近く透ける。
 const TRANSLUCENT_HAZE_ONSET = 0.38;
 const TRANSLUCENT_HAZE_GAIN = 0.66;
 const TRANSLUCENT_STREAK_ONSET = 0.48;
 const TRANSLUCENT_STREAK_GAIN = 2.36;
 const TRANSLUCENT_KNEE = 0.25;
-const TRANSLUCENT_LIMIT = 2.4;
+const TRANSLUCENT_LIMIT = 0.85;
 
 // 雲頂の高さが積雲の量へ効き始める被覆率と、効ききる被覆率。これより覆いの薄い柱は、被覆率だけが
 // 量を決める。
 const DEEP_COVERAGE_ONSET = 0.7;
 const DEEP_COVERAGE_FULL = 0.93;
-// 前線帯に内包される対流セルの門。帯が張り・上昇流が強く・乱層雲が面を覆う所では、
-// デッキの中に埋まったセルが層状の雲頂から圏界面へ突き抜ける(乱層雲の内包対流、
-// 実写では温帯海上の深い対流の主な担い手)。粒の峰(高周波で、全球の写しでは解像しない)とは
-// 別の、帯と上昇流と覆いで選ぶ太い通路。閾値は、温帯の海でセルが数 % の面積に立つ置き方。
-const EMBEDDED_FRONT_ONSET = 0.4;
-const EMBEDDED_FRONT_FULL = 0.8;
-const EMBEDDED_LIFT_ONSET = 0.03;
-const EMBEDDED_LIFT_FULL = 0.05;
-const EMBEDDED_DECK_ONSET = 0.6;
-const EMBEDDED_DECK_FULL = 0.9;
-// 内包対流が立つのは細胞の芯だけ — 乱層雲に埋まる積乱雲は帯の数%の散在する
-// セルであって、帯の全面が圏界面へ届くわけではない。
-const EMBEDDED_CELL_ONSET = 0.4;
-const EMBEDDED_CELL_FULL = 0.8;
-
-// 層状のデッキを雲が満たす、柱に対する割合。海洋性層積雲の雲域は混合層の上端の
-// 3〜5 割ほど(層が高いほど雲域も厚い)。対流の塔や内包セルでは柱全体が雲。
-const ELEMENT_DECK_FILL = 0.35;
 
 // weather から凝結する雲のグラフ。積雲の量は、湿度(低周波)へ対流(高周波)を足した伝達関数の
 // 被覆率と、層状の雲から立つ塔と渦の芯が敷く金床の高いほうの雲頂から決まり、巻雲の量は
@@ -128,10 +105,7 @@ const ELEMENT_DECK_FILL = 0.35;
 // 折り目の帯が、塔は粒の峰が、平らな天蓋は渦の芯が決める。
 // **対流活発度は被覆率および雲塔の高さに反映され、沈降域の海洋性層積雲では層状起伏も低減する** — 一面に
 // 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
-export function condense(weather: WeatherSample): CloudSample & {
-  readonly cumulusElementTop: FloatNode;
-  readonly cumulusElementThickness: FloatNode;
-} {
+export function condense(weather: WeatherSample): CloudSample {
   // 網目と粒を湿度で混ぜる。混ぜると振れ幅が落ちるので、二乗和の平方根で戻す — 戻さないと
   // 渡りの中間(半々)に、粒の消えた平坦な帯ができる。
   const shape = smoothstep(SHAPE_NETWORK_HUMIDITY, SHAPE_GRAIN_HUMIDITY, weather.surfaceHumidity);
@@ -139,7 +113,7 @@ export function condense(weather: WeatherSample): CloudSample & {
   const convection = mix(weather.convection.y, weather.convection.x, shape)
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
   const peak = convection.mul(weather.convectiveActivity);
-  const granularity = peak.mul(CONVECTION_GAIN).mul(weather.cycloneFront.mul(FRONT_GRAIN_FADE).oneMinus());
+  const granularity = peak.mul(CONVECTION_GAIN).mul(weather.band.mul(BAND_GRAIN_FADE).oneMinus());
   // 沈降する湿った海洋の低活発度の空では海洋性層積雲へ連続的に移り、前線帯ではその性質を薄める。
   const subsidence = max(weather.lift.negate(), 0);
   const stratocumulus = smoothstep(
@@ -159,11 +133,11 @@ export function condense(weather: WeatherSample): CloudSample & {
       STRATOCUMULUS_ACTIVITY_ONSET + STRATOCUMULUS_ACTIVITY_WIDTH,
       weather.convectiveActivity,
     ).oneMinus())
-    .mul(weather.cycloneFront.oneMinus());
+    .mul(weather.band.oneMinus());
   // 層状の雲: 上昇流と暖気の流入と折り目の帯が持ち上げる高さに、対流の起伏が乗る。
   const convectionRelief = mix(float(1), weather.convectiveActivity, stratocumulus);
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT).add(weather.warmth.mul(WARM_TOP))
-    .add(weather.cycloneFront.mul(FRONT_TOP)).add(convection.mul(CLOUD_TOP_RELIEF).mul(convectionRelief))
+    .add(weather.band.mul(BAND_TOP)).add(convection.mul(CLOUD_TOP_RELIEF).mul(convectionRelief))
     .sub(CLOUD_TOP_BIAS);
   const layered = float(1).add(exp(depth.negate())).reciprocal().mul(LAYER_TOP_SPAN).add(CLOUD_BASE_HEIGHT);
   // 塔: 粒の正の側(細胞の芯)が柱として立ち、いちばん高いものが圏界面へ届く。高さは層状の雲から
@@ -174,37 +148,21 @@ export function condense(weather: WeatherSample): CloudSample & {
   const moist = smoothstep(COVERAGE_ONSET, COVERAGE_ONSET + COVERAGE_WIDTH, weather.surfaceHumidity);
   const rising = smoothstep(-TOWER_LIFT_GATE, TOWER_LIFT_GATE, weather.lift);
   const reach = smoothstep(TOWER_ONSET, TOWER_ONSET + TOWER_WIDTH, grain);
-  const towerFill = reach.mul(reach).mul(moist).mul(rising);
-  const tower = layered.add(weather.tropopause.sub(layered).mul(towerFill));
+  const tower = layered.add(weather.tropopause.sub(layered).mul(reach.mul(reach)).mul(moist).mul(rising));
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が開始閾値を超過した量を遷移幅で正規化した値に基づく晴天率の補数。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
-  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(STRATOCUMULUS_DECK_ADD))
-    .add(weather.cycloneFront.mul(FRONT_DECK));
+  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(STRATOCUMULUS_DECK_ADD));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.pow(COVERAGE_EXCESS_POWER).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
-  // 帯の芯に内包された対流セル。層状の雲頂から圏界面まで届き、被覆率の門を潜らない —
-  // 一面を覆う乱層雲の下で柱は透けず、デッキそのものが深い柱になる。
-  const embedded = smoothstep(EMBEDDED_FRONT_ONSET, EMBEDDED_FRONT_FULL, weather.cycloneFront)
-    .mul(smoothstep(EMBEDDED_LIFT_ONSET, EMBEDDED_LIFT_FULL, weather.lift))
-    .mul(smoothstep(EMBEDDED_DECK_ONSET, EMBEDDED_DECK_FULL, coverage))
-    .mul(smoothstep(EMBEDDED_CELL_ONSET, EMBEDDED_CELL_FULL, reach));
-  const embeddedTower = layered.add(weather.tropopause.sub(layered).mul(embedded));
   // 積雲の量は、まばらな覆いでは被覆率を不透明度として写した量、広く覆う所ではそれと雲頂の量の
   // 高いほう。**覆いの薄い柱は雲頂が何であれ低く透ける雲になる** — 小さな雲が高い柱として立たず、
   // texel の中で雲が占める割合がそのまま不透明度に残る。
-  const cloudTop = max(tower, anvil, embeddedTower);
-  // 雲「要素」の幾何学的厚み [m]。層状のデッキは上端の薄い層(海洋性層積雲の雲域は混合層の
-  // 上端の数百 m)だけが雲で、対流の塔や帯に内包されるセルでは柱全体が雲に満たされる。
-  const columnThickness = max(cloudTop.sub(CUMULUS_BASE_ALTITUDE), 0);
-  const convectiveFill = max(embedded, towerFill);
-  const elementThickness = columnThickness.mul(mix(float(ELEMENT_DECK_FILL), 1, convectiveFill));
+  const cloudTop = max(tower, anvil);
   const sparse = cumulusAmountFromOpacityNode(coverage);
   const deep = max(sparse, cumulusAmountFromTopAltitudeNode(cloudTop));
-  const cumulus = mix(
-    sparse, deep,
-    max(smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage), embedded));
+  const cumulus = mix(sparse, deep, smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage));
   // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
@@ -219,11 +177,5 @@ export function condense(weather: WeatherSample): CloudSample & {
     convection: weather.convectiveActivity,
     climateCloudiness: weather.meanCloudiness,
     anvil: weather.anvil,
-    // 雲「要素」の雲頂高度 [m] と幾何学的厚み [m]。まばらな覆いの texel では量が被覆率へ
-    // 潰れて柱の平均の高さにならないので、焼き込む 4 チャンネルには入らない — ISCCP 分類の
-    // ように画素内の要素そのものの高さ・雲の中の光学的厚みを測る読み手が condense を直接
-    // 呼んで受け取る。
-    cumulusElementTop: cloudTop,
-    cumulusElementThickness: elementThickness,
   };
 }
