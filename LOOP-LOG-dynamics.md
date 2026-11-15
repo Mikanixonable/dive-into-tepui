@@ -137,3 +137,20 @@
   **0.03 を採用**: responseContrast 0.827(基準 0.794 比 +0.033)・weather 0.0992 不変。
 - 残り代償: humidUp→highThinFrac contrast 6.5(基準 6.02)。前線帯の存在は得たい
   構造なので採用 — 物差しが「足りない帯」を罰できない分の代償。
+
+## step 36 — 物差しの修正: cumulusTau を雲の中の τ_in へ(監査の教師加工)
+- 原因: probe の cumulusTau は覆う割合の深さ(amount/0.12、最大 ~8.3)で、ISCCP の
+  deepConvection(τ≥23 + 高い雲頂)に構造的に届かず deepFrac の応答が常に 0 だった。
+- 変更: チャンネルを cumulusTauIn(H^(5/3) の雲中 τ、最大 ~2400)へ改名・意味変更、
+  面積は coverage チャンネルで読む。selftest 37/37 PASS(commit 98dceb646)。
+- 物差しの再測(devin/dev @ 98dceb646、同じ生成コード): weather 0.0997、
+  classes 0.15、responseContrast 0.779(前 0.827)、responseBias 1.4(前 1.59)、
+  responseGain 0.863(前 0.82)、explainedGap 0.0547、variogram 0.431。
+  生成が同じで点数が改善 = 旧物差しが存在しないはずの応答を罰していた。
+- 浮き彫りになった実態(生成側の本当のギャップ):
+  - **topMiddleFrac ≈ 0.0002–0.001(実写 0.04–0.15)** — 中層の雲頂(altostratus・
+    nimbostratus)がほぼ存在しない。低い積雲と高い巻雲だけで中間が抜けている。
+    gain ~0.01–0.03 と応答も無い → 次の構造課題の最有力候補。
+  - **deepFrac 0.008 vs 実写 0.028–0.038**(約 1/4、bias −3.9、corr 0.95–0.99 と
+    相関はあるが gain 0.1–0.23 と弱い) — 深い対流の頻度が足りない。
+  - humidUp→highThinFrac contrast 6.57 は依然最大。
