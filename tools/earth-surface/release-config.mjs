@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 // 本番の地表配信先を、データ配備とは独立して検査する。
-import { readBaseColorJpeg, validateRuntimeManifest } from './contract.mjs';
+import {
+  checkBaseTerrainGzip,
+  checkTerrainTileGzip,
+  readBaseColorJpeg,
+  validateRuntimeManifest,
+} from './contract.mjs';
 
 const DATASET_ID = /^[a-z0-9-]+$/;
 
@@ -108,6 +113,15 @@ async function requireRemoteBaseColor(fetchImpl, url) {
   }
 }
 
+async function requireRemoteTerrain(fetchImpl, url, name, check) {
+  const response = await requireRemoteAsset(fetchImpl, url, name);
+  try {
+    check(Buffer.from(await response.arrayBuffer()));
+  } catch (error) {
+    throw new EarthSurfaceReleaseConfigError(`${name} bytes violate the terrain contract: ${url} (${error.message})`, { cause: error });
+  }
+}
+
 // 公開manifestとLOD開始点の実体を同じrelease設定から検査する。
 export async function checkEarthSurfaceRelease(config, fetchImpl = fetch) {
   const normalized = validateEarthSurfaceReleaseConfig(config);
@@ -134,10 +148,15 @@ export async function checkEarthSurfaceRelease(config, fetchImpl = fetch) {
     );
   }
   await requireRemoteBaseColor(fetchImpl, manifestAssetUrl(normalized.manifestUrl, manifest.baseColor));
-  const paths = [manifest.baseTerrain, manifest.climateMaps[0], 'tiles/5/0/0.jpg', 'tiles/5/0/0.bin.gz'];
+  const paths = [manifest.climateMaps[0], 'tiles/5/0/0.jpg'];
   await Promise.all(paths.map((path, index) => requireRemoteAsset(
     fetchImpl, manifestAssetUrl(normalized.manifestUrl, path), `manifest asset ${index}`,
   )));
+  // 地形は HTTP 200 だけでは足りない。配信中のバイト列を契約どおりに読めることまで確かめる。
+  await requireRemoteTerrain(fetchImpl, manifestAssetUrl(normalized.manifestUrl, manifest.baseTerrain),
+    'baseTerrain', (bytes) => checkBaseTerrainGzip(bytes));
+  await requireRemoteTerrain(fetchImpl, manifestAssetUrl(normalized.manifestUrl, 'tiles/5/0/0.bin.gz'),
+    'terrain tile 5/0/0', (bytes) => checkTerrainTileGzip(bytes, { id: '5/0/0', z: 5, x: 0, y: 0 }));
   return { ...normalized, manifestSchemaVersion: manifest.schemaVersion };
 }
 
