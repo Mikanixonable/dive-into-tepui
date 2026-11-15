@@ -3,7 +3,7 @@
 import { abs, clamp, cos, cross, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
-import { AtmosphericWindField, SURFACE_HEIGHT } from './atmospheric-wind';
+import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
@@ -26,6 +26,7 @@ import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 export interface WeatherSample {
   readonly pressure: FloatNode; // 平年からの偏差 [hPa]
   readonly surfaceWind: Vec2Node; // 地表の風の東向き・北向きの成分 [m/s]
+  readonly upperWind: Vec2Node; // 上層の風の東向き・北向きの成分 [m/s]
   readonly lift: FloatNode; // 上昇流 [m/s](負なら下降)
   readonly surfaceHumidity: FloatNode; // 地表付近の湿度 0..1
   readonly upperHumidity: FloatNode; // 上層の湿度 0..1
@@ -232,25 +233,10 @@ export class WeatherModel {
     const east = eastAt(direction);
     const north = northAt(direction);
 
-    const { pressure, gradient, isobar, bend } = this.pressureFieldAt(direction, east, north);
-
-    // 風: 局所的な気圧風へ、大循環の背景風(地表付近/上層)とロスビー波を重ねる。
-    const rossby = this.rossbyWave.perturbationAt(direction, this.surfaceRadius);
-    const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
-    const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
-    const surfaceLocal = balancedWind(
-      gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
-      this.surfaceRadius, this.rotationPeriod,
-    );
-    const convectionLocal = balancedWind(
-      gradient, isobar, bend, latitude, CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT,
-      this.surfaceRadius, this.rotationPeriod,
-    );
-    const upperLocal = balancedWind(
-      gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
-      this.surfaceRadius, this.rotationPeriod,
-    );
-    const surfaceWind = composeWind(surfaceLocal, surfaceBackground);
+    const pressureField = this.pressureFieldAt(direction, east, north);
+    const { pressure } = pressureField;
+    const { rossby, surfaceLocal, convectionLocal, upperLocal, surfaceWind, upperWind } =
+      this.windFieldAt(direction, latitude, east, north, pressureField);
 
     // 風で流した湿度・対流と、前線を強める湿度の勾配。移流の遡りは、大循環の平均風からの
     // 偏差(局所の釣り合い風とロスビー波の摂動)で取る — 源の模様の平行移動は、写しを焼く
@@ -311,6 +297,7 @@ export class WeatherModel {
     return {
       pressure,
       surfaceWind: windComponents,
+      upperWind,
       lift,
       surfaceHumidity,
       upperHumidity,
@@ -325,6 +312,46 @@ export class WeatherModel {
       landFraction,
       tropopause: tropopauseAt(latitude),
     };
+  }
+
+  // 単位方向 direction で雲を運ぶ、地表付近と上層の風の東・北の成分 [m/s]。weatherAt の風と同じ式で、
+  // 湿度・気団のグラフを通らない。焼いた気圧の写しを読むので、bake のあとに描く。
+  public windsAt(direction: Vec3Node): { readonly surfaceWind: Vec2Node; readonly upperWind: Vec2Node } {
+    const latitude = latitudeOf(direction);
+    const east = eastAt(direction);
+    const north = northAt(direction);
+    const { surfaceWind, upperWind } = this.windFieldAt(
+      direction, latitude, east, north, this.pressureFieldAt(direction, east, north));
+    return { surfaceWind: eastNorthComponents(surfaceWind.velocity, east, north), upperWind };
+  }
+
+  // 風: 局所的な気圧風へ、大循環の背景風(地表付近/上層)とロスビー波を重ねる。上層の風は巻雲の筋が
+  // 従う流れで、東・北の成分で返す。
+  private windFieldAt(
+    direction: Vec3Node, latitude: FloatNode, east: Vec3Node, north: Vec3Node, field: PressureField,
+  ) {
+    // 地表付近・対流・上層の局所の釣り合い風を同じ気圧の場から引き、背景風と重ねる。
+    const { gradient, isobar, bend } = field;
+    const rossby = this.rossbyWave.perturbationAt(direction, this.surfaceRadius);
+    const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
+    const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
+    const surfaceLocal = balancedWind(
+      gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
+      this.surfaceRadius, this.rotationPeriod,
+    );
+    const convectionLocal = balancedWind(
+      gradient, isobar, bend, latitude, CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT,
+      this.surfaceRadius, this.rotationPeriod,
+    );
+    const upperLocal = balancedWind(
+      gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
+      this.surfaceRadius, this.rotationPeriod,
+    );
+    const surfaceWind = composeWind(surfaceLocal, surfaceBackground);
+    const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
+    const upperBackground = east.mul(upperMean.x).add(north.mul(upperMean.y)).add(rossby);
+    const upperWind = eastNorthComponents(composeWind(upperLocal, upperBackground).velocity, east, north);
+    return { rossby, surfaceLocal, convectionLocal, upperLocal, surfaceWind, upperWind };
   }
 
   // 上層の偏差風へ中規模の蛇行を重ねる。風速を保ったまま向きだけを回す — 流れ自身の

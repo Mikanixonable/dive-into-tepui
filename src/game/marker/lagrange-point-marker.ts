@@ -68,7 +68,7 @@ export class LagrangePointMarker implements ObjectPickable {
     celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
     const primaryId = celestialBodies.bodyParentId(this.parentId);
-    const subLabel = primaryId === undefined || primaryId === null
+    const subLabel = primaryId === null
       ? 'ラグランジュ点'
       : `${celestialBodies.nameOf(primaryId)}-${celestialBodies.nameOf(this.parentId)} ラグランジュ点`;
     return [

@@ -67,6 +67,7 @@
 | いつ・どの順で・どんな条件で走るか(per-frame) | `/callstack` |
 | 誰がその関数を呼んでいるか / 消せるか・影響範囲はどこか | `/inv-callstack` |
 | 実行時の動作確認を求められた | `/verify` |
+| 長い作業・複数ステップ・委譲を伴う作業を始める / 「眠って」「節約して」「自走して」と言われた | `/autopilot`(単純作業は SWE-2、使えなければ Haiku へ。5h 枠が尽きる前にタイマーを置いて眠る) |
 
 **「計画を書いて」と明示されない限り、実行まで完遂する。** 段取りのために計画を書くと自分で決めた
 のなら、書き先を決めるのも、判断材料を仕様・コード・実測から集めて計画を監査し直すのも、全手順を
@@ -107,6 +108,11 @@
   ヘッドレス実行検証(`/verify`)はユーザーが実行時の動作確認を明示的に求めたときだけ。
   変更と無関係な検証に時間を使わない。**例外は main へ送るとき** — そのときだけは
   変更箇所によらず全部回す(`/send-pr`)。
+
+- **利用枠は実行主体を指定して作業の区切りごとに確かめる。** Claude Code は
+  `npm run usage -- --runtime=claude`、Devin Luna は `npm run usage -- --runtime=devin-luna` を使う。
+  `SLEEP` は表示された判定対象にだけ適用する。Devin は Claude の `SLEEP` で停止せず、Devin 有料モデル枠を確認する。
+  `UNKNOWN` なら判定対象の残量を確認する。
 
 ## ブランチと main へのマージ
 
@@ -229,6 +235,8 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run test:render` | `src/render/` の回帰テスト | `src/render/` を触ったとき |
 | `npm run test:settings` | `src/settings/` の回帰テスト | `src/settings/` を触ったとき |
 | `npm run test:launcher` | `src/launcher/` の回帰テスト | `src/launcher/` を触ったとき |
+| `npm run usage -- --runtime=claude` / `npm run usage -- --runtime=devin-luna` | 指定した実行主体の利用枠と委譲先を表示。Claude 購読枠(5h・週間)、SWE-2 レート制限、Devin 有料モデル quota を出す。`-- --json` / `-- --brief` / `-- --wait=claude` / `-- --wait=devin-luna` / `-- --wait=swe2`。終了コード 0=続行・1=対象枠の枯渇・2=不明 | 作業の区切り・Devin 起動前・rate limit 時。Claude と Devin Luna は必ず対応する runtime を明示する |
+| `npm run usage:selftest` | Claude と Devin Luna の判定が互いの枠に影響されないことを検査 | 利用枠判定ロジックを変更したとき |
 | `npm run dev` | 開発サーバ(http://localhost:8080) | 実機で動かすとき |
 | `npm run smoke:browser` | ヘッドレスでの起動・操作スモーク | 実行時の確認を求められたとき |
 | `npm run build` | `docs/` への本番ビルド | **main へ送る前**(`/send-pr`)。公開は CI が行う |
@@ -237,10 +245,22 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run render-lab` | 描画の実験環境(http://localhost:8082) | 描画を目で確かめるとき |
 | `npm run render-lab:shot` | 描画の実験環境の撮影(`-- <組の名前>` で `.render-lab-shots/<組の名前>/`、省くと `.render-lab/shots/`) | 描画を画像で確かめるとき |
 | `npm run render-lab:compare` | 描画の実験環境の撮影の前後比較(`.render-lab-shots/compare-<after の名前>/`) | 描画の変更の前後を見比べるとき |
+| `npm run render-lab:measure` | パス別 GPU 時間の計測(大気の段の表と、earth の雲の段の 3 パスの表) | 描画の費用を出すとき |
 | `npm run cloud-lab` | 雲の実験環境(http://localhost:8083) | 雲の生成を目で確かめるとき |
 | `npm run cloud-lab:shot` | 雲の実験環境の撮影(`.cloud-lab/shots/`) | 雲を画像で確かめるとき |
 | `npm run cloud-lab:compare` | 生成と実写の統計比較(`.cloud-lab/compare/`) | 雲の生成を実写(8k_clouds)と見比べるとき |
 | `npm run cloud-lab:separate` | 実写を被覆率・雲頂高度・薄い雲へ推定分離(`.cloud-lab/separated/`) | 実写から描画用の仮テクスチャを作るとき |
+| `npm run cloud-lab:render-capture` | 描画経路で地域 cap×高度と全球を決定的に撮影(`.cloud-lab/render-capture/`。`--regions=`・`--ladders=` で枠を絞れる) | 描画経路の絵を教師比較へ回すとき |
+| `npm run cloud-lab:render-capture-timeseries` | 同じ構図の時刻梯子 [0,1,2,4,8] h の撮影(`.cloud-lab/render-capture-timeseries/`。全枠で 1 時間ほどかかる) | compare の fineMotion 節の入力を作るとき |
+| `npm run cloud-lab:reference-fine` | render-capture と同じ尺度の実写参照を GIBS から取り込み(`.cloud-lab/reference-fine/`) | 細かい尺度の実写目録を増やす・取り直すとき |
+| `npm run cloud-lab:reference-fine-timeseries` | 実写の可視時系列を GIBS から取り込み(`.cloud-lab/reference-fine-timeseries/`) | 時系列の実写目録を増やす・取り直すとき |
+| `npm run cloud-lab:reference-cloudtop` | MODIS Terra の雲頂高度を取り込み(`.cloud-lab/reference-cloudtop/`) | 雲頂の実写参照を取り直すとき |
+| `npm run cloud-lab:reference-timeseries` | ひまわり AHI 赤外の実写時系列を GIBS から取り込み(`.cloud-lab/reference-timeseries/`) | compare の動きの節の実写参照を取り直すとき |
+| `npm run cloud-detail:reference` | 雲の細部比較用の実写を Worldview から取り込む(`.cloud-detail/reference/`) | 実写の目録を増やす・取り直すとき |
+| `npm run cloud-detail:selftest` | 雲の細部の物差しの自己検査(合成場の傾き・周期性と実写の文献検算) | 物差し(`tools/cloud-detail-metrics.mjs`)を触ったとき |
+| `npm run cloud-detail:compare` | 雲の細部の撮影→計測→実写との距離→履歴→前回との差(`.cloud-detail/`) | 雲の細部の変更を定量で追うとき・前後を比べるとき |
+| `npm run cloud-detail:tiers` | 巻雲の精細さ「粗」と「標準」で濃さの平均が変わらない検査(`.cloud-detail/cirrus-tiers/`) | 巻雲の細部を触ったとき |
+| `npm run cloud-detail:stability` | 視点を動かしただけで雲の形が変わらないかと、時間で雲がどう流れ入れ替わるかの計測(`.cloud-detail/stability/`) | ちらつきや細部の動きを定量で追うとき |
 | `npm run export-assets` | `src/assets/` の焼き込みアセット再生成 | モデルかノズル表を変えたときだけ |
 | `npm run export-module-thumbnails` | `src/assets/module-thumbnails/` の再生成 | モジュールの見た目を変えたときだけ |
 | `npm run ship-modules:author` | Blender で船モジュールの原型 `assets-src/ship-modules/*.glb` を再生成(続けて `export-assets`) | 船モジュールの造形か寸法を変えたときだけ |

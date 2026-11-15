@@ -5,7 +5,7 @@
 // a と、b を (dx, dy) だけずらしたもののピアソン相関。b の参照は x を巻き、y は重なる行だけ
 // を使う (dy のぶん端の行は落とす)。平均は両方とも重なり域で取る。dx は「模様が a から b へ
 // 東へ動いた量」として読む (b(x + dx) が a(x) に合う dx が最大になる)。
-export function lagCorrelation(a, b, dx, dy) {
+function lagCorrelation(a, b, dx, dy) {
   const { width, height } = a;
   const y0 = Math.max(0, -dy);
   const y1 = Math.min(height, height - dy);

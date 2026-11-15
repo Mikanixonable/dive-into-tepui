@@ -14,7 +14,7 @@ const STAGE0_LOGISTICS_MAX_DIST = 225;
 // 制限時間を分単位で表す。
 const stage0TimeLimitMinutes = (): number => Math.floor(STAGE0_TIME_LIMIT / 60);
 
-export interface SerializedStage0 extends SerializedStage {
+interface SerializedStage0 extends SerializedStage {
   readonly timeLeft: SerializedScoreAttackTimer;
 }
 

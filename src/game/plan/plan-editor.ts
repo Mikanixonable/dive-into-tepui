@@ -202,7 +202,7 @@ export class PlanEditor {
   public handleCommand(commandId: string): void {
     if (commandId === K.deleteNode.code) this.deleteSelectedNodeOrPlan();
     if (commandId === K.autoWarpToNode.code) {
-      this.simSpeedCommands.toggleAutoWarpToFirstNode(this.plan?.firstNode(), this.simTime);
+      this.simSpeedCommands.toggleAutoWarpToFirstNode(this.plan?.firstNode() ?? null, this.simTime);
     }
   }
 
