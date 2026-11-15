@@ -10,6 +10,7 @@ import type { ControlSelection } from '../control-selection';
 import type { CommandQueue } from '../command-queue';
 import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
 import type { ShipBlueprintShelf } from '../ship/ship-blueprint';
+import type { RelicHunt, SerializedRelicHunt } from './stage-utils/relic-hunt';
 import type { SalvageKind } from '../ship/salvage-blueprints';
 import type { StageRules } from './stage-rules';
 import type { PlayerLossCause } from './stage-outcome';
@@ -39,7 +40,7 @@ export type StageDeps = [
 // 省いたものは新しいランの初期値から始まる。
 export type CommonStageState = [
   scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics, reinforced?: boolean,
-  salvageCargo?: SalvageCargo, revealedBodies?: readonly string[],
+  salvageCargo?: SalvageCargo, revealedBodies?: readonly string[], relicHunt?: RelicHunt,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -89,6 +90,8 @@ export interface SerializedStage {
   readonly pendingSalvageCargo?: readonly SalvageKind[];
   // 解放された天体の id。欠けた記録は太陽・地球・月だけから始める。
   readonly revealedBodies?: readonly string[];
+  // 遺物の反射の検出と発見の状態。欠けた記録は何も見つけていない状態から始める。
+  readonly relics?: SerializedRelicHunt;
 }
 
 // 1周回の成績。撃破・命中・生存の値を結果画面と記録の両方が読む。
@@ -120,6 +123,8 @@ export interface RunOptions {
   readonly forecast: boolean;
   // このランの開始時点で解放されている天体の id。勝敗を判定しないステージには基底の天体だけを渡す。
   readonly revealedBodies: readonly string[];
+  // セーブ枠で発見済みの遺物の id。勝敗を判定しないステージには空を渡す。
+  readonly discoveredRelics: readonly string[];
 }
 
 // 生存時間を T+ の時分秒で書く。
