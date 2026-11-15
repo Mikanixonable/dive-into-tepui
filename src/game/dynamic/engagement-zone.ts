@@ -105,11 +105,3 @@ export class EngagementZoneBuilder<E extends EngagementParticipant> {
     return this.activeZones;
   }
 }
-
-// 単発利用向けの互換入口。Simulator のように毎サブステップ呼ぶ側は EngagementZoneBuilder を保持して
-// build() を繰り返し、作業配列と zone 実体を使い回す。
-export function engagementZones<E extends EngagementParticipant>(
-  entities: readonly E[], canEngage: boolean,
-): readonly EngagementZone<E>[] {
-  return new EngagementZoneBuilder<E>().build(entities, canEngage);
-}
