@@ -501,3 +501,15 @@
 - 残課題: tropical-sea の deep は一致したが、陸域・中高緯度は不足が残る。
   temperate-sea tauMid 0.503 vs 実写 0.361、humidUp × highThinFrac contrast
   4.29 も残る。次は陸海・気候帯を一つの定数でまとめず、残差の物理要因を分ける。
+
+## step 55 — ヒモ状の前線残差を再確認(コード変更なし)
+- 最新の 24-channel h0180 生成場を全球プロットし、pressure・cycloneFront・
+  coverage・lift・雲頂を重ねて確認した。出力は
+  `.cloud-detail/regime/plots/stringy-review/front-map-t180.png`。cycloneFront の細い腕は低気圧の谷へ結びつき、低気圧から
+  離れた場所へ長く続く独立帯は見られない。coverage は低気圧の頭・寒気側を広く
+  埋め、熱帯は細胞状の粒を保っている。
+- 判定: band 廃止で解消した人工的なヒモ状帯を戻す理由はなく、気象場側の形は維持。
+  残る問題は「ヒモ状」ではなく、低気圧のない中緯度海上の雲量不足と台風の螺旋雨帯
+  欠落(step 50・52 の残課題)。前者は temperate-sea cloud 0.798 vs 実写 0.896、
+  後者は rainband 診断の廃止後に独立機構が無い。どちらも別の物理要因として扱う。
+- 採否: 実装変更なし。次は巻雲 τ 天井実験 `audit-cirrus-tau3` の監査へ進む。
