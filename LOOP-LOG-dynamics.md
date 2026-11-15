@@ -166,3 +166,15 @@
   飽和した側面、残課題。
 - temperate-sea の topMiddleFrac: 0.0007 → 0.0716(実写 0.0837)。deepFrac も
   0.008 → 0.069(実写 0.0305、今度は上振れ — 次の調定対象)。
+
+## step 38 — 巻雲ループの供給過剰を regime 監査で再調定
+- 背景: 巻雲ループ(detail compare index 0.348→0.182)は上層湿度の供給を強めたが、
+  統合後の regime 監査で高層雲が全面検出へ飽和し highThinFrac 5–10 倍・
+  deepFrac 5–10 倍・中層が再び潰れた。detail 物差しだけでは見えない副作用。
+  教訓: 両方の物差しで採否を見る必要がある(LOOP-LOG-cirrus.md にも記録)。
+- 調定: UPPER_LIFT_HUMIDITY 2.5→1.0(原値 0.7 より上を維持、組織化の恩恵を残す)、
+  UPPER_MEAN_CLOUDINESS_WEIGHT 0.5→0.2(全域レベルの加湿を戻す)。
+  結果: classes 0.174→0.123、contrast 1.72→0.693、bias 3.03→0.998、
+  variogram 0.659→0.377 — BAND_DECK 採用時(0.122/0.583/0.837)に近い水準へ回復。
+- 残: contrast は依然 0.583 より悪い。巻雲ループの 200 km 段ノイズと型振り分けが
+  別軸で残っている — detail と regime の両方で再計測して仕上げる課題。
