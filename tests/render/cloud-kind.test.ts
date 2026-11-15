@@ -1,12 +1,12 @@
 // 雲の種類ごとの曲線の不変条件を固定する。量が大きいほど高く不透明であること、量 0 が雲なしで
-// あること、覆う割合と雲の中の光学的厚みが別の量として分かれていること、2 種類の高度幅と
-// 上端の大小関係(SPEC「雲の描画」)がここで検査できる。
+// あること、雲の中の光学的厚みの式が雲頂から立つこと、2 種類の高度幅と上端の大小関係
+// (SPEC「雲の描画」)がここで検査できる。
 import * as assert from 'node:assert/strict';
 import {
   CIRRUS_ALTITUDE_SPAN, CIRRUS_MAX_OPTICAL_DEPTH, CIRRUS_TOP_ALTITUDE,
   CUMULUS_ALTITUDE_SPAN, CUMULUS_BASE_ALTITUDE, CUMULUS_TOP_ALTITUDE,
   cirrusAmountFromOpticalDepth, cirrusColumnOpticalDepth, cirrusTopAltitude,
-  cumulusAmountFromOpacity, cumulusAmountFromTopAltitude, cumulusCoveringDepth,
+  cumulusAmountFromOpacity, cumulusAmountFromTopAltitude, cumulusColumnOpticalDepth,
   cumulusInCloudOpticalDepth, cumulusOpacity, cumulusTopAltitude,
 } from '../../src/render/cloud/cloud-kind';
 import { test } from '../harness';
@@ -22,8 +22,8 @@ export function register(): void {
     }
   });
 
-  test('cloud kind: 量 0 は覆いの深さ 0・柱の中の厚み 0(雲なし)', () => {
-    assert.equal(cumulusCoveringDepth(0), 0);
+  test('cloud kind: 量 0 は柱光学深さ 0・柱の中の厚み 0(雲なし)', () => {
+    assert.equal(cumulusColumnOpticalDepth(0), 0);
     assert.equal(cirrusColumnOpticalDepth(0), 0);
     assert.equal(cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE), 0);
     // 雲頂が雲底を下回る入力は厚み 0 へクランプする。
