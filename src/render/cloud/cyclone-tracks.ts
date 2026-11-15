@@ -57,6 +57,12 @@ const WAVE_LOW_DOWNSTREAM = 25;
 const LOW_LONGITUDE_JITTER = 0.1;
 // 錨が波とともに東へ進む速さ [°/s]。低気圧は生まれたあとも蛇行線に沿って運ばれる。
 const WAVE_DRIFT = WAVE_PHASE_SPEED * (180 / Math.PI);
+// 同じ半球の谷へ近づきすぎた谷は吸収される — 深い低気圧が浅い低気圧を呑む。
+// 浅い側の深さを、半径の和に対する距離の近さで削る幅。半径の和へ届く前に浅い側の
+// 深さが 0 になるよう、和の 1.3 倍から削り始めて 0.85 倍で消える形に取る — 近づく
+// 速さで深さの変化が急にならないよう、幅は千 km 級に保つ。
+const ABSORB_FADE_START = 1.3;
+const ABSORB_FADE_FULL = 0.85;
 // 一生を平均した速さの幅 [m/s] と減速の指数の幅。道のりの進みは 1 − (1 − life)^指数 で、消えるときに
 // 止まる。生まれた直後の東への速さは、平均の「指数 × 2 × (2 × 東の割合 − 1/2)」倍(= 1.4 × 指数倍)で、
 // 幅の端で 7 と 20 m/s — 若い低気圧の 10〜20 m/s(`DEVELOP/SPEC/RENDERING.md`)。
@@ -204,10 +210,10 @@ function lowTrackOf(index: number, generation: number, surfaceRadius: number): L
 
 // 中緯度の低気圧 index(0..LOW_COUNT − 1)の、時刻 seconds [s] における配置。surfaceRadius [m] は
 // 天体の半径。生まれる前と消えたあとは null。
-export function lowPlacementAt(
+// 中緯度の低気圧 index の、吸収を考えない生の配置。
+function rawLowPlacementAt(
   index: number, seconds: number, surfaceRadius: number,
 ): CyclonePlacement | null {
-  // 枡ごとに周期の位相をずらし、同じ半球の枡が揃って生まれ直さないようにする。
   const age = seconds / LOW_PERIOD + index / LOW_COUNT;
   const generation = Math.floor(age);
   const track = lowTrackOf(index, generation, surfaceRadius);
@@ -222,6 +228,38 @@ export function lowPlacementAt(
     radius: track.birthRadius * (1 + track.growth * life),
     elongation: LOW_ELONGATION,
   };
+}
+
+export function lowPlacementAt(
+  index: number, seconds: number, surfaceRadius: number,
+): CyclonePlacement | null {
+  const self = rawLowPlacementAt(index, seconds, surfaceRadius);
+  if (self === null) return null;
+  // 吸収 — 同じ半球で、自分より深い谷へ半径の和より近づいた谷は、近さに応じて
+  // 深さを削る。対の評価はどちらの低気圧から見ても同じ浅い側が削れる。
+  let depth = self.depth;
+  for (let j = index % 2; j < LOW_COUNT; j += 2) {
+    if (j === index) continue;
+    const other = rawLowPlacementAt(j, seconds, surfaceRadius);
+    if (other === null || other.depth < self.depth) continue;
+    const distance = greatCircleDistance(self, other, surfaceRadius);
+    const edge = self.radius + other.radius;
+    // other が自分以上に深い側 — 距離が半径の和を割るほど自分の深さを削る。
+    const fade = THREE.MathUtils.smoothstep(
+      distance, edge * ABSORB_FADE_FULL, edge * ABSORB_FADE_START,
+    );
+    depth *= fade;
+  }
+  return { ...self, depth };
+}
+
+// 2 つの配置の中心の大圏距離 [m]。
+function greatCircleDistance(
+  a: CyclonePlacement, b: CyclonePlacement, surfaceRadius: number,
+): number {
+  const cosAngle = Math.sin(a.latitude) * Math.sin(b.latitude)
+    + Math.cos(a.latitude) * Math.cos(b.latitude) * Math.cos(a.longitude - b.longitude);
+  return surfaceRadius * Math.acos(Math.min(Math.max(cosAngle, -1), 1));
 }
 
 // 熱帯低気圧 1 つの一生。寿命 lifetime [s]、進路 course、最深 peakDepth [hPa]、生まれる半径
