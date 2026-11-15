@@ -56,11 +56,6 @@ export class AtmosphereCloudLayers {
     this.clouds.set(clouds);
   }
 
-  // 種類ごとに、その殻を描くかを置く。
-  public setShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    this.clouds.setShellEnabled(species, enabled);
-  }
-
   // 巻雲の筋の細部の段数を、雲の殻の描画へ渡す。0 なら細部を足さない。
   public setCirrusOctaves(count: number): void {
     this.clouds.setCirrusOctaves(count);
@@ -118,7 +113,7 @@ export class AtmosphereCloudLayers {
       const inSegment = and(
         greaterThan(distance, segment.near), lessThan(distance, segment.far),
       );
-      If(and(and(shell.crossings.crosses, inSegment), this.clouds.present(shell.species)), () => {
+      If(and(and(shell.crossings.crosses, inSegment), this.clouds.present()), () => {
         const point = geometry.pointAt(rayOrigin, rayDir, distance);
         const offset = geometry.offsetAt(ray, distance);
         const sunDir = normalize(geometry.sunDirectionAt(point));

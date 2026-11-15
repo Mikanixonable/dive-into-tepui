@@ -5,10 +5,9 @@
 // ここにある式が CPU の基準で、cirrus-flow-node.ts が同じ式をシェーダグラフへ組む。
 
 // 揃い度が立ち上がる風速と、張り付く風速 [m/s]。上層の流れが弱い所では筋の向きは決まらない。
-// 筋の揃いが見えるのはジェットや渦のまわり(20 m/s 以上)なので、下は穏やかな上層の風、
-// 上はジェットの芯へ合わせる。
-export const CIRRUS_FLOW_SPEED_ONSET = 5;
-export const CIRRUS_FLOW_SPEED_FULL = 30;
+// 上層の風の速さは偏西風帯でも 10 m/s 台なので、その中ほどで立ち上がり、ジェットの芯の手前で張り付く。
+export const CIRRUS_FLOW_SPEED_ONSET = 4;
+export const CIRRUS_FLOW_SPEED_FULL = 16;
 
 // 倍角ベクトルの成分。局所の東・北の基底で (cos 2θ, sin 2θ) × 揃い度。
 interface CirrusFlow {
@@ -18,8 +17,8 @@ interface CirrusFlow {
 
 // 上層の風(東・北の成分 [m/s])から、筋の向き θ の倍角ベクトル (cos 2θ, sin 2θ) × 揃い度。
 // θ は風の吹く向き(東が 0、北が正)。倍角の向きは風ベクトルの成分から直に組める —
-// cos 2θ = (e²−n²)/(e²+n²)、sin 2θ = 2en/(e²+n²)。揃い度は風速の smoothstep(5 m/s で 0、
-// 30 m/s で 1)。
+// cos 2θ = (e²−n²)/(e²+n²)、sin 2θ = 2en/(e²+n²)。揃い度は風速の smoothstep(4 m/s で 0、
+// 16 m/s で 1)。
 export function cirrusFlowFromWind(eastMs: number, northMs: number): CirrusFlow {
   const speedSq = eastMs * eastMs + northMs * northMs;
   const speed = Math.sqrt(speedSq);

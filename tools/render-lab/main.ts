@@ -20,7 +20,8 @@ import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/c
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
 import {
-  CLOUD_DETAIL_SHOT_INFOS, CLOUD_DETAIL_STABILITY_SHOT_INFOS, type CloudDetailShotInfo,
+  CLOUD_DETAIL_SHOT_INFOS, CLOUD_DETAIL_STABILITY_SHOT_INFOS, type CloudDetailRandomPoint,
+  type CloudDetailShotInfo,
 } from './cloud-detail-cases';
 import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
 import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
@@ -66,7 +67,13 @@ declare global {
       // 視点の安定性の撮影の組(基準・横ずらし・高度違い)。
       cloudDetailStabilityShots: () => readonly CloudDetailShotInfo[];
       shootCloudDetail: (name: string) => Promise<string>;
+      // ランダム抽出の実写の教師と同じ点で撮る雲。name は PNG の名前。
+      shootCloudDetailRandom: (
+        name: string, point: CloudDetailRandomPoint,
+      ) => Promise<{ png: string, centerKmPerPx: number, altitudeM: number }>;
       capture: () => Promise<string>;
+      // 観察の向きを変えた次の 1 フレームを、描画をちょうど 1 回だけ回して撮る(ドラッグ中の 1 フレーム)。
+      captureAfterMove: (changes: Partial<LabViewAngles>) => Promise<string>;
       show: (name: CaseName) => void;
       setView: (changes: Partial<LabViewAngles>) => void;
       setDisplayTime: (displayTime: number) => void;
@@ -187,7 +194,6 @@ function buildCloudSliders(view: LabView): void {
     buildSlider(rowId, 'アルベド', 0, 1, 0.01,
       () => knob.albedo.value.toFixed(2), (v) => redraw(knob.albedo, v))(knob.albedo.value);
   };
-  buildShellSliders('cumulus-shell', 'cumulus');
   buildShellSliders('cirrus-shell', 'cirrus');
 }
 
@@ -269,7 +275,11 @@ async function init(): Promise<void> {
     shootCloudDetail: async (name) => {
       const png = await view.shootCloudDetail(name); syncAngles(); return png;
     },
+    shootCloudDetailRandom: async (name, point) => {
+      const result = await view.shootCloudDetailRandom(name, point); syncAngles(); return result;
+    },
     capture: () => view.capture(),
+    captureAfterMove: async (changes) => { const png = await view.captureAfterMove(changes); syncAngles(); return png; },
     show: (name) => { view.show(name); syncAngles(); },
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     setDisplayTime: (displayTime) => view.setDisplayTime(displayTime),
