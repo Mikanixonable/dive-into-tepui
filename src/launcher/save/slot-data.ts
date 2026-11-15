@@ -50,6 +50,8 @@ export interface SaveSlotMeta {
   stages: StageHistoryMeta[];
   // このスロットで解放された天体の id(GAME.md「天体の解放」)。欠けたスロットは太陽・地球・月だけから始める。
   revealedBodies?: readonly string[];
+  // このスロットで発見した遺物の id(GAME.md「遺物」)。欠けたスロットは何も発見していない。
+  discoveredRelics?: readonly string[];
 }
 
 // 全スロットのメタを束ねた索引。記録本体は id で指し、索引とは別に置く。

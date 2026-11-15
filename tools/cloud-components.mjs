@@ -105,6 +105,14 @@ export function componentStats(field, threshold, wrapX, rowKmPerPx, kmPerPxY) {
   // (面の外に面する辺は外周に含める)。
   const areas = new Float64Array(foreground.sizes.length);
   const outerPerimeters = new Float64Array(foreground.sizes.length);
+  // 成分ごとの 2 次モーメント(位置は地表 km)。細長さの当てはめは texel ごとの点として
+  // 集める — 行内の点は等間隔なので、行ごとの横間隔の違いは点の位置へそのまま効く。
+  const sumX = new Float64Array(foreground.sizes.length);
+  const sumY = new Float64Array(foreground.sizes.length);
+  const sumXX = new Float64Array(foreground.sizes.length);
+  const sumXY = new Float64Array(foreground.sizes.length);
+  const sumYY = new Float64Array(foreground.sizes.length);
+  const counts = new Float64Array(foreground.sizes.length);
   let perimeterKm = 0;
   for (let y = 0; y < height; y++) {
     const rowKm = rowKmPerPx[y];
@@ -113,6 +121,14 @@ export function componentStats(field, threshold, wrapX, rowKmPerPx, kmPerPxY) {
       if (mask[i] === 0) continue;
       const label = foreground.labels[i];
       areas[label] += rowKm * kmPerPxY;
+      const px = x * rowKm;
+      const py = y * kmPerPxY;
+      sumX[label] += px;
+      sumY[label] += py;
+      sumXX[label] += px * px;
+      sumXY[label] += px * py;
+      sumYY[label] += py * py;
+      counts[label]++;
       if (y === 0 || mask[i - width] === 0) perimeterKm += rowKm;
       if (y === height - 1 || mask[i + width] === 0) perimeterKm += rowKm;
       const west = wrapX ? y * width + ((x - 1 + width) % width) : i - 1;
@@ -149,10 +165,25 @@ export function componentStats(field, threshold, wrapX, rowKmPerPx, kmPerPxY) {
     holeAreaShare: cloudyTexels > 0 ? holeTexels / cloudyTexels : 0,
     perimeterKm,
     perimeterPerArea: totalAreaKm2 > 0 ? perimeterKm / totalAreaKm2 : 0,
-    // 成分ごとの面積 [km²] と外周 [km](穴の周は含めない)。
-    components: Array.from(areas, (areaKm2, index) => ({
-      areaKm2,
-      perimeterKm: outerPerimeters[index],
-    })),
+    // 成分ごとの面積 [km²] と外周 [km](穴の周は含めない)、および 2 次モーメントからの
+    // 等価楕円の長軸・短軸 [km](楕円近似: 長軸 = 4√λ。真っ直ぐな棒の長さより少し大きい)。
+    components: Array.from(areas, (areaKm2, index) => {
+      const n = counts[index];
+      const cx = sumX[index] / n;
+      const cy = sumY[index] / n;
+      const covXX = sumXX[index] / n - cx * cx;
+      const covXY = sumXY[index] / n - cx * cy;
+      const covYY = sumYY[index] / n - cy * cy;
+      const trace = covXX + covYY;
+      const det = Math.sqrt(Math.max(0, (covXX - covYY) * (covXX - covYY) + 4 * covXY * covXY));
+      const lambdaMajor = Math.max(0, (trace + det) / 2);
+      const lambdaMinor = Math.max(0, (trace - det) / 2);
+      return {
+        areaKm2,
+        perimeterKm: outerPerimeters[index],
+        majorKm: 4 * Math.sqrt(lambdaMajor),
+        minorKm: 4 * Math.sqrt(lambdaMinor),
+      };
+    }),
   };
 }

@@ -9,7 +9,7 @@ import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { NoiseOctave } from './circulating-noise';
+import type { EpochSchedule, NoiseOctave } from './circulating-noise';
 import type { Circulation } from './circulation';
 import type { FieldProjection } from '../field-projection';
 import type { FloatNode, Vec3Node } from '../tsl-types';
@@ -25,6 +25,14 @@ const INSTABILITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 6.4, amplitude: 1 }, // 1000 km
   { frequency: 12.8, amplitude: 0.65 }, // 500 km
   { frequency: 25, amplitude: 0.65 }, // 250 km
+];
+// 不安定度の場がその場で入れ替わる速さ。対流可能な環境は日単位で変わるので、千キロ級の
+// 大きな不安定域は 1 日、群れの細かい構成は半日程度で混ぜ替える。混ぜ替えが無いと
+// 対流の塔の並びが移流するだけで、発生位置が固定されたままになる。
+const INSTABILITY_EPOCH: readonly EpochSchedule[] = [
+  { untilFrequency: 6.4, transitionSeconds: 24 * 3600 },
+  { untilFrequency: 12.8, transitionSeconds: 12 * 3600 },
+  { untilFrequency: 25, transitionSeconds: 8 * 3600 },
 ];
 const INSTABILITY_AMPLITUDE = 1.0;
 // 上昇流の対流活発度に対する伝達利得 [per m/s] と、無上昇流時の基準活発度。並の低気圧(0.02 m/s)で
@@ -42,15 +50,22 @@ const LAND_ACTIVITY = 0.3;
 const BAND_ACTIVITY = 0.5;
 
 export class ConvectiveActivity {
+  private readonly noise: CirculatingNoise;
   private readonly instability: BakedField;
 
   // circulation は気団を運ぶ流れ、projection は写しの持ち方。
   public constructor(circulation: Circulation, projection: FieldProjection) {
-    const noise = new CirculatingNoise(circulation, INSTABILITY_NOISE, projection.texelAngle);
+    this.noise = new CirculatingNoise(
+      circulation, INSTABILITY_NOISE, projection.texelAngle, INSTABILITY_EPOCH);
     this.instability = new BakedField(
       'instability', THREE.RedFormat, projection,
-      (direction) => vec4(noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1),
+      (direction) => vec4(this.noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1),
       GPU_PASS.cloudBake);
+  }
+
+  // 時刻 [s] をエポックの混ぜ替えへ反映する。
+  public syncTime(seconds: number): void {
+    this.noise.syncTime(seconds);
   }
 
   // いまの時刻の気団を写しへ焼く。at() のグラフを描く前に呼ぶ。
