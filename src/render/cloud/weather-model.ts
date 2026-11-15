@@ -132,6 +132,8 @@ const LIFT_LIMIT = 0.06;
 // 遷移幅は圧縮の稜線が飽和する狭さに調整し、最も高密度の中心核に帯幅を確保する。
 const FRONT_ONSET = 3.6;
 const FRONT_WIDTH = 0.9;
+
+
 // 前線を強化する湿度水平勾配の開始閾値と遷移幅 [1/rad]。乾湿境界にも雲帯を生成する。
 // 遷移幅は湿度テクスチャの量子化誤差に対して十分なマージンを確保する。
 const MOISTURE_GRADIENT_ONSET = 0.12;
@@ -367,10 +369,10 @@ export class WeatherModel {
     const front = temperatureFront.add(moistureFront.mul(0.2)).add(updraft.mul(0.15)).min(1).mul(extratropical);
     const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
       .mul(extratropical.oneMinus());
-    // 低気圧の実体が持つ前線の帯(寒冷・温暖) — 気団の圧縮からの診断とは別の担い手で、
-    // 低気圧の芯から伸びる一貫した帯を作る。両者の大きい側を取る。
-    const cycloneFront = this.cyclones.frontAt(direction);
-    const band = min(max(front.add(rainband), cycloneFront), 1);
+    // 帯は気団の圧縮(前線)と眼を持つ渦の巻き込み(雨帯)の診断だけで立てる — 実体へ
+    // 固定寸法の帯を足す方式は監査で寄与が見えず、見た目がスタンプになると分かった
+    // (LOOP-LOG-dynamics.md step 39)。
+    const band = min(front.add(rainband), 1);
     const bandLift = band.mul(BAND_LIFT);
     const stormTrack = extratropical.mul(
       smoothstep(STORM_TRACK_POLE_START, STORM_TRACK_POLE_END, abs(latitude)).oneMinus(),
