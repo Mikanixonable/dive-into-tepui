@@ -4,17 +4,15 @@
 // 飛んでも同じ配置になる。
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
-import { WAVE_NUMBER, WAVE_PHASE_SPEED, waveTroughLongitude } from './rossby-wave';
 
 // 谷 1 つの配置。緯度・経度 [rad](緯度は南半球で負。経度は畳まない)、深さ [hPa](0 以上)、
-// 短軸の半径 [m]、長軸/短軸の比、一生の中の時期(生まれて 0、消えるとき 1)。
+// 短軸の半径 [m]、長軸/短軸の比。
 export interface CyclonePlacement {
   readonly latitude: number;
   readonly longitude: number;
   readonly depth: number;
   readonly radius: number;
   readonly elongation: number;
-  readonly life: number;
 }
 
 // 進路の上の点 [°]。経度は連続な数で持ち、180° をまたぐ進路は 180 を超える値で書く。
@@ -49,21 +47,12 @@ const LOW_REBIRTH_GAP = 6 * 3600;
 // (`DEVELOP/SPEC/RENDERING.md`「中緯度の低気圧は生まれ、東へ走り、極側で止まって消える」)。
 const LOW_BIRTH_LATITUDE: Range = [32, 45];
 const LOW_END_LATITUDE: Range = [55, 67];
-// 枡の経度は上層のロスビー波の谷へ錨づく — 地表の低気圧は上層の谷の下流側で発達する。
-// 谷の間隔 [°]、谷からの下流への距離 [°]、生まれる経度の揺れ(間隔に対する比、±)。
-// 半球の枡の数(4)は谷の数(WAVE_NUMBER=5)より少ないので、空の谷が残り、どの谷が
-// 空くかは世代ごとに巡る — 波列が時々欠けて曖昧になる時期をこれで作る。
-const WAVE_TROUGH_WIDTH = 360 / WAVE_NUMBER;
-const WAVE_LOW_DOWNSTREAM = 25;
+// 半球の枡の数と幅 [°]、半球の中の順番から枡へ進む歩幅、生まれる経度の揺れ(枡の幅に対する比、±)。
+// 歩幅は枡の数と互いに素で、隣の枡の低気圧の位相を 1/4 周期ずつずらして隣どうしを離す。
+const LOW_SLOT_COUNT = LOW_COUNT / 2;
+const LOW_SLOT_WIDTH = 360 / LOW_SLOT_COUNT;
+const LOW_SLOT_STRIDE = 3;
 const LOW_LONGITUDE_JITTER = 0.1;
-// 錨が波とともに東へ進む速さ [°/s]。低気圧は生まれたあとも蛇行線に沿って運ばれる。
-const WAVE_DRIFT = WAVE_PHASE_SPEED * (180 / Math.PI);
-// 同じ半球の谷へ近づきすぎた谷は吸収される — 深い低気圧が浅い低気圧を呑む。
-// 浅い側の深さを、半径の和に対する距離の近さで削る幅。半径の和へ届く前に浅い側の
-// 深さが 0 になるよう、和の 1.3 倍から削り始めて 0.85 倍で消える形に取る — 近づく
-// 速さで深さの変化が急にならないよう、幅は千 km 級に保つ。
-const ABSORB_FADE_START = 1.3;
-const ABSORB_FADE_FULL = 0.85;
 // 一生を平均した速さの幅 [m/s] と減速の指数の幅。道のりの進みは 1 − (1 − life)^指数 で、消えるときに
 // 止まる。生まれた直後の東への速さは、平均の「指数 × 2 × (2 × 東の割合 − 1/2)」倍(= 1.4 × 指数倍)で、
 // 幅の端で 7 と 20 m/s — 若い低気圧の 10〜20 m/s(`DEVELOP/SPEC/RENDERING.md`)。
@@ -157,14 +146,12 @@ function courseAt(course: Course, s: number): Waypoint {
   );
 }
 
-// 中緯度の低気圧 1 つの一生。周期の頭から生まれるまでの時間 onset [s]、寿命 lifetime [s]、
-// 生まれる時刻 birthSeconds [s](波の錨がこの時刻の谷の位相へ置かれる)、進路
+// 中緯度の低気圧 1 つの一生。周期の頭から生まれるまでの時間 onset [s]、寿命 lifetime [s]、進路
 // course(緯度は半球の符号を含む)、減速の指数 brake、最深 peakDepth [hPa]、生まれる半径
 // birthRadius [m]、消えるまでに半径が増える割合 growth。
 interface LowTrack {
   readonly onset: number;
   readonly lifetime: number;
-  readonly birthSeconds: number;
   readonly course: Course;
   readonly brake: number;
   readonly peakDepth: number;
@@ -180,13 +167,8 @@ function lowTrackOf(index: number, generation: number, surfaceRadius: number): L
   const onset = LOW_REBIRTH_GAP / 2 + rand() * (LOW_PERIOD - lifetime - LOW_REBIRTH_GAP);
   const birthLatitude = uniformIn(LOW_BIRTH_LATITUDE, rand);
   const endLatitude = uniformIn(LOW_END_LATITUDE, rand);
-  // 枡(半球で対になる index/2)がこの世代で座る波の谷の番号と、生まれる時刻 [s]。
-  // 生まれる時刻 = 世代の周期の頭から onset だけ遅れ、枡の位相ずらし分だけ早い。
-  const troughIndex = (Math.floor(index / 2) + generation) % WAVE_NUMBER;
-  const birthSeconds = (generation - index / LOW_COUNT) * LOW_PERIOD + onset;
-  const birthLongitude = waveTroughLongitude(troughIndex, birthSeconds)
-    + WAVE_LOW_DOWNSTREAM
-    + randSym(LOW_LONGITUDE_JITTER * WAVE_TROUGH_WIDTH, rand);
+  const slot = ((Math.floor(index / 2) * LOW_SLOT_STRIDE) % LOW_SLOT_COUNT) * LOW_SLOT_WIDTH;
+  const birthLongitude = slot + randSym(LOW_LONGITUDE_JITTER * LOW_SLOT_WIDTH, rand);
   const speed = uniformIn(LOW_SPEED, rand);
   const peakDepth = uniformIn(LOW_DEPTH, rand);
   const birthRadius = uniformIn(LOW_BIRTH_RADIUS, rand);
@@ -206,15 +188,15 @@ function lowTrackOf(index: number, generation: number, surfaceRadius: number): L
     ),
     terminus: waypoint(hemisphere * endLatitude, birthLongitude + eastward),
   };
-  return { onset, lifetime, birthSeconds, course, brake, peakDepth, birthRadius, growth };
+  return { onset, lifetime, course, brake, peakDepth, birthRadius, growth };
 }
 
 // 中緯度の低気圧 index(0..LOW_COUNT − 1)の、時刻 seconds [s] における配置。surfaceRadius [m] は
 // 天体の半径。生まれる前と消えたあとは null。
-// 中緯度の低気圧 index の、吸収を考えない生の配置。
-function rawLowPlacementAt(
+export function lowPlacementAt(
   index: number, seconds: number, surfaceRadius: number,
 ): CyclonePlacement | null {
+  // 枡ごとに周期の位相をずらし、同じ半球の枡が揃って生まれ直さないようにする。
   const age = seconds / LOW_PERIOD + index / LOW_COUNT;
   const generation = Math.floor(age);
   const track = lowTrackOf(index, generation, surfaceRadius);
@@ -223,45 +205,11 @@ function rawLowPlacementAt(
   const point = courseAt(track.course, 1 - (1 - life) ** track.brake);
   return {
     latitude: point.latitude * DEGREE,
-    // 錨は波とともに東へ進む — 生まれた時刻からのドリフトを進路へ足す。
-    longitude: (point.longitude + WAVE_DRIFT * (seconds - track.birthSeconds)) * DEGREE,
+    longitude: point.longitude * DEGREE,
     depth: track.peakDepth * Math.sin(Math.PI * life ** LOW_PEAK_SKEW),
     radius: track.birthRadius * (1 + track.growth * life),
     elongation: LOW_ELONGATION,
-    life,
   };
-}
-
-export function lowPlacementAt(
-  index: number, seconds: number, surfaceRadius: number,
-): CyclonePlacement | null {
-  const self = rawLowPlacementAt(index, seconds, surfaceRadius);
-  if (self === null) return null;
-  // 吸収 — 同じ半球で、自分より深い谷へ半径の和より近づいた谷は、近さに応じて
-  // 深さを削る。対の評価はどちらの低気圧から見ても同じ浅い側が削れる。
-  let depth = self.depth;
-  for (let j = index % 2; j < LOW_COUNT; j += 2) {
-    if (j === index) continue;
-    const other = rawLowPlacementAt(j, seconds, surfaceRadius);
-    if (other === null || other.depth < self.depth) continue;
-    const distance = greatCircleDistance(self, other, surfaceRadius);
-    const edge = self.radius + other.radius;
-    // other が自分以上に深い側 — 距離が半径の和を割るほど自分の深さを削る。
-    const fade = THREE.MathUtils.smoothstep(
-      distance, edge * ABSORB_FADE_FULL, edge * ABSORB_FADE_START,
-    );
-    depth *= fade;
-  }
-  return { ...self, depth };
-}
-
-// 2 つの配置の中心の大圏距離 [m]。
-function greatCircleDistance(
-  a: CyclonePlacement, b: CyclonePlacement, surfaceRadius: number,
-): number {
-  const cosAngle = Math.sin(a.latitude) * Math.sin(b.latitude)
-    + Math.cos(a.latitude) * Math.cos(b.latitude) * Math.cos(a.longitude - b.longitude);
-  return surfaceRadius * Math.acos(Math.min(Math.max(cosAngle, -1), 1));
 }
 
 // 熱帯低気圧 1 つの一生。寿命 lifetime [s]、進路 course、最深 peakDepth [hPa]、生まれる半径
@@ -319,6 +267,5 @@ export function tropicalPlacementAt(seconds: number): CyclonePlacement | null {
     depth: track.peakDepth * Math.sin(Math.PI * life ** TROPICAL_PEAK_SKEW),
     radius: track.birthRadius * (1 + track.growth * THREE.MathUtils.smoothstep(life, TROPICAL_GROWTH_ONSET, 1)),
     elongation: 1 + (track.finalElongation - 1) * THREE.MathUtils.smoothstep(life, TROPICAL_ELONGATION_ONSET, 1),
-    life,
   };
 }

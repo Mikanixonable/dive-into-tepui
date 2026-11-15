@@ -8,13 +8,11 @@ import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
 
 // 長波の東西波数。波長は赤道上で地球一周の 1/5、緯度45°で約5600 kmになる。
-// 地表の低気圧・高気圧の配置もこの波の位相へ錨づけるので、波数と位相速度は
-// cyclone-tracks / anticyclone-tracks からも参照する。
-export const WAVE_NUMBER = 5;
+const WAVE_NUMBER = 5;
 // 波の位相速度 [rad/s]。上層偏西風の速度とは別の、波の山・谷そのものの東向き移動速度。
-export const WAVE_PHASE_SPEED = (3 * Math.PI / 180) / 86400;
+const WAVE_PHASE_SPEED = (3 * Math.PI / 180) / 86400;
 // 位相角の進む速さ [rad/s](波数 × 位相速度)。
-export const WAVE_PHASE_RATE = WAVE_NUMBER * WAVE_PHASE_SPEED;
+const WAVE_PHASE_RATE = WAVE_NUMBER * WAVE_PHASE_SPEED;
 // 流線関数から出る南北風の代表速度 [m/s]。中緯度の上層平均風より小さく、蛇行を読める振幅にする。
 // 8 では波数 5 の波が S 帯の k=4..8 に尖りを作り、中緯度の相関時間も実写より長くなるため
 // 半分へ (cloud-lab Phase 3-12: S 帯の尖り 14.65 → 7.90、中緯度の相関時間 12.1/11.3 h →
@@ -98,15 +96,6 @@ export class RossbyWave {
       .mul(-6 / (ENVELOPE_FALL_END - ENVELOPE_FALL_START));
     return risingSlope.mul(falling.oneMinus()).add(rising.mul(fallingSlope)).mul(sign(latitude));
   }
-}
-
-// 時刻 seconds [s] における、波の index 番目の谷の経度 [°](畳まない)。流線関数
-// ψ = sin(kλ − ωt) の極小は kλ − ωt = −π/2 + 2πn → λ_n = (ωt − π/2 + 2πn)/k。
-// 地表の低気圧は谷の下流側で発達し、高気圧は谷と谷の中間(尾根)へ座るので、
-// 両者の配置がこの関数へ錨づく。
-export function waveTroughLongitude(index: number, seconds: number): number {
-  return ((WAVE_PHASE_RATE * seconds - Math.PI / 2 + 2 * Math.PI * index) / WAVE_NUMBER)
-    * (180 / Math.PI);
 }
 
 // 位相角 [rad] を 0..2π へ畳む。
