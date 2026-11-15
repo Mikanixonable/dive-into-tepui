@@ -224,3 +224,9 @@ scaly 2.41→2.06・veil 2.29→2.02。場面間の差が出て「晴れ場面�
   上層加湿で、これは熱帯対流クラスタの流出(CLUSTER_OUTFLOW_HUMIDITY)が担う
   形で実装済み(step 41・feat/tropic-clusters)。増量は不採用として worktree を
   畳む。cirrus 供給の次の採点はクラスタ統合後に両物差しで測り直す。
+
+## step 8 — CLUSTER_OUTFLOW_HUMIDITY 0.3→0.6(採用)
+- 熱帯の巻雲不足(tropical-sea index 0.340 が区分最悪)へ、流出の盾の加湿を倍に。
+  監査: 見出しは誤差内(contrast 0.683 vs 0.676)。tropical-sea topHigh
+  0.192→0.202、tropical-land 0.135→0.142 と熱帯だけが実写方向へ改善、
+  温帯・高緯度に副作用なし。採用。
