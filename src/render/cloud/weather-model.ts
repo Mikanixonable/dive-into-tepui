@@ -143,6 +143,10 @@ const CONVECTION_FRICTION = 3 * FRICTION_RATE;
 // 熱帯では両方が大きな流入角を切り、台風のまわりで粒が放射状の筋に引かれるのを止める。
 const SURFACE_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(30);
 const CONVECTION_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
+// 写しの遡りに使う偏差風へ効かせる気圧の偏差の弱め。谷の裾野が遠方まで積み上がって作る
+// 平野部の偏差風は、実写のブロック追跡で同じ物差しに合わせると約2倍速い見かけの移流を
+// 生む。総観規模の流れだけが模様を運ぶよう、遡りに使う分だけ偏差を絞る。
+const ADVECTION_EDDY_SCALE = 0.3;
 
 // 渦の目が移流後の湿度から引く深さ。眼壁の飽和と金床の天蓋(ANVIL_HUMIDITY)の両方を貫く深さに
 // 取る。上層を深く引いて、薄い雲の穴を厚い雲の目よりひとまわり広く開ける。
@@ -193,7 +197,8 @@ export class WeatherModel {
     this.upperCirculation = new Circulation(UPPER_BANDS, surfaceRadius);
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(
-      this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
+      this.surfaceCirculation, PRESSURE_NOISE, texel,
+      [{ untilFrequency: PRESSURE_NOISE[0]!.frequency, transitionSeconds: 18 * 3600 }]);
     this.upperMeander = new CirculatingNoise(this.upperCirculation, UPPER_MEANDER_NOISE, texel);
     this.pressure = new BakedField(
       'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1),
@@ -227,6 +232,7 @@ export class WeatherModel {
     this.cyclones.syncTime(seconds);
     this.pressureNoise.syncTime(seconds);
     this.upperMeander.syncTime(seconds);
+    this.convectiveActivity.syncTime(seconds);
     this.transport.syncTime(seconds);
   }
 
@@ -238,7 +244,7 @@ export class WeatherModel {
 
     const pressureField = this.pressureFieldAt(direction, east, north);
     const { pressure } = pressureField;
-    const { rossby, surfaceLocal, convectionLocal, upperLocal, surfaceWind, upperWind } =
+    const { rossby, surfaceWind, upperWind, surfaceAdvection, convectionAdvection, upperAdvection } =
       this.windFieldAt(direction, latitude, east, north, pressureField);
 
     // 風で流した湿度・対流と、前線を強める湿度の勾配。移流の遡りは、大循環の平均風からの
@@ -248,9 +254,9 @@ export class WeatherModel {
     // 重ねる — 筋の向きがその尺度で滑らかに変わる。
     const advected = this.transport.advectedAt(
       direction,
-      composeWind(surfaceLocal, rossby),
-      this.meanderUpperWind(composeWind(upperLocal, rossby), direction),
-      composeWind(convectionLocal, rossby),
+      composeWind(surfaceAdvection, rossby),
+      this.meanderUpperWind(composeWind(upperAdvection, rossby), direction),
+      composeWind(convectionAdvection, rossby),
     );
     const moistureGradient = this.moistureGradientAt(direction, east, north);
 
@@ -333,17 +339,13 @@ export class WeatherModel {
   private windFieldAt(
     direction: Vec3Node, latitude: FloatNode, east: Vec3Node, north: Vec3Node, field: PressureField,
   ) {
-    // 地表付近・対流・上層の局所の釣り合い風を同じ気圧の場から引き、背景風と重ねる。
+    // 地表付近と上層の局所の釣り合い風を同じ気圧の場から引き、背景風と重ねる。
     const { gradient, isobar, bend } = field;
     const rossby = this.rossbyWave.perturbationAt(direction, this.surfaceRadius);
     const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
     const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
     const surfaceLocal = balancedWind(
       gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
-      this.surfaceRadius, this.rotationPeriod,
-    );
-    const convectionLocal = balancedWind(
-      gradient, isobar, bend, latitude, CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT,
       this.surfaceRadius, this.rotationPeriod,
     );
     const upperLocal = balancedWind(
@@ -354,7 +356,23 @@ export class WeatherModel {
     const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
     const upperBackground = east.mul(upperMean.x).add(north.mul(upperMean.y)).add(rossby);
     const upperWind = eastNorthComponents(composeWind(upperLocal, upperBackground).velocity, east, north);
-    return { rossby, surfaceLocal, convectionLocal, upperLocal, surfaceWind, upperWind };
+    // 写しの遡りに使う偏差風は、気圧の偏差を弱めて解く。気圧の場のテクスチャ1画素ぶんの
+    // 細かい構造(谷の裾野の累積やノイズの凹凸)までそのまま釣り合い風へ変換すると、雲塊を
+    // まとめて運ぶ総観規模の流れより速い見かけの移流が出る — 実写と同じ物差しで見かけの
+    // 速度が読み戻した風の約2倍になり、遡りを切ると実写の域へ戻った。場所ごとの風
+    // (地表面の風・地形の上昇流)には元の釣り合い風を残す。
+    const advectionGradient = gradient.mul(ADVECTION_EDDY_SCALE);
+    const advectionBend = bend.mul(ADVECTION_EDDY_SCALE);
+    const advectionWind = (friction: number, crossing: number): BalancedWind =>
+      balancedWind(advectionGradient, isobar, advectionBend, latitude, friction, crossing,
+        this.surfaceRadius, this.rotationPeriod);
+    const surfaceAdvection = advectionWind(FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT);
+    const convectionAdvection = advectionWind(CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT);
+    const upperAdvection = advectionWind(FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT);
+    return {
+      rossby, surfaceWind, upperWind,
+      surfaceAdvection, convectionAdvection, upperAdvection,
+    };
   }
 
   // 上層の偏差風へ中規模の蛇行を重ねる。風速を保ったまま向きだけを回す — 流れ自身の
