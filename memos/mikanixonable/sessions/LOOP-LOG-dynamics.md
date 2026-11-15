@@ -629,6 +629,9 @@
   responseContrast 0.564→0.595、responseGain 0.428→0.439、explainedGap
   0.0565→0.0594、variogram 0.309→0.328 は悪化。陸域 cloudFrac は改善したが、
   stratocumulus は実写より過剰になったため、低層雲型の配分は残課題。
+- land deep は temperate 0.0362/実写 0.0436 とまだ不足し、highlat
+  0.0602/0.0544 とわずかに過剰。水分供給をさらに強めるのではなく、雲型と
+  雲頂・τの配分を調整する必要がある。
 - 描画: `land-moisture-before-a/b` 各 162 枚は同一で 0 LSB 差。after との比較では
   17/162 が 6 LSB 封筒外で、いずれも Earth/雲を含む撮影(earth-mars を含む)。
   他の Earth 以外の撮影は不変。nadir・oblique・polar・terminator を目視し、

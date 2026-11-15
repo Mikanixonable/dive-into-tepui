@@ -57,8 +57,9 @@
   この代理は乾燥地と海をほぼ変えず、全体 classes は 0.0657→0.0554。
   temperate-land humidLow は実写と同じ 0.483 になり、cloudFrac は 0.426→0.493
   (実写 0.732)。highlat-land は humidLow 0.480→0.532 (実写 0.632)、
-  cloudFrac 0.553→0.701 (0.747) へ近づいた。一方、land の stratocumulus は
-  temperate 0.140/実写 0.068、highlat 0.185/0.131 と過剰。
+  cloudFrac 0.553→0.701 (0.747) へ近づいた。land deep は temperate
+  0.0362/実写 0.0436 とまだ低く、highlat 0.0602/0.0544 とわずかに過剰。
+  stratocumulus も temperate 0.140/実写 0.068、highlat 0.185/0.131 と過剰。
   海上は実質不変: temperate-sea stratocumulus 0.373/0.232・tauMid
   0.467/0.361 が過剰、highlat-sea stratocumulus 0.359/0.367 は一致するが
   tauMid 0.457/0.561 は不足。次は湿度を全球で上げず、陸上の雲型・tau 配分と
