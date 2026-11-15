@@ -222,6 +222,7 @@ class MotionProbeCanvas {
   public async prepare(hours: number): Promise<void> {
     DeferredTexture.publishOne(this.renderer);
     this.field.prepare(this.renderer, hours * 3600);
+    this.motionWind.syncBlend();
   }
 
   // 画素を base64 で返す(行は北から南へ、列は西から東へ並ぶ)。
