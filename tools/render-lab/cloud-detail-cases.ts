@@ -6,9 +6,8 @@ import * as THREE from 'three/webgpu';
 import { R_EARTH, R_EARTH_EQ, EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { metersPerPixelAtDepth, tanHalfFov } from '../../src/math/projection';
-import { CUMULUS_DETAIL } from '../../src/render/opaque-cloud-surface-renderer';
 import { CIRRUS_DETAIL } from '../../src/render/cloud/cloud-detail';
-import { FOV_DEG, labCamera, VIEW_HEIGHT, type LabCase, type LabShot } from './lab-case';
+import { FOV_DEG, labCamera, sunAnglesOf, VIEW_HEIGHT, type LabCase, type LabShot } from './lab-case';
 import type { EarthAngleKey, LabViewAngles } from './view-angles';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
@@ -55,14 +54,13 @@ const SCENES: readonly CloudDetailScene[] = [
 const TIERS_KM_PER_PX = [0.25, 1, 4] as const;
 const DISPLAY_TIMES_S = [0, 21600, 43200] as const;
 
-type CloudDetailKind = 'both' | 'cumulus' | 'cirrus';
+type CloudDetailKind = 'both' | 'cirrus';
 
 // 種類ごとの描画設定の差分。全撮影でレンズ効果は切る — 実写との輝度比較にブルームが混ざらない
 // ようにするため。
 const KIND_GRAPHICS: Readonly<Record<CloudDetailKind, Partial<GraphicsSettingsData>>> = {
   both: { lens: false },
-  cumulus: { lens: false, cirrus: false },
-  cirrus: { lens: false, cumulusDetail: CUMULUS_DETAIL.off, translucentCumulus: false },
+  cirrus: { lens: false, cumulus: false },
 };
 
 const EARTH_RADII = shapeSpheroidRadii(R_EARTH_EQ, EARTH.shape ?? null);
@@ -104,6 +102,55 @@ const NADIR_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
 // サングリントが、最も広い段でも画面の上端の外(水平なら画角の内に残る)へ出るようにする。
 const NADIR_SUN_DIRECTION = new THREE.Vector3(0, Math.sin(Math.PI / 6), Math.cos(Math.PI / 6));
 
+// ランダム抽出の撮影の入力。実写のランダム教師の点(緯度・経度・区分)と、雲場の進行時刻
+// displayTime [s]、段の km/px。
+export interface CloudDetailRandomPoint {
+  readonly category: string;
+  readonly latitudeDeg: number;
+  readonly longitudeDeg: number;
+  readonly displayTime: number;
+  readonly tierKmPerPx: number;
+}
+
+// 現地の太陽時刻 10:30(MODIS Terra の通過時刻)の恒星の向き。直下点の置き方(NADIR_EARTH)では
+// 局所枠が描画座標の東 +X・北 +Y・上 +Z に重なるので、時角 -22.5°・赤緯 0° の太陽を
+// その枠で組む。赤緯は分点に固定 — 生成の気候画像は平年 1 枚で季節を持たない。
+const LOCAL_SOLAR_1030_HOUR_ANGLE_DEG = -22.5;
+// 指定緯度で、現地太陽時 10:30 に対応する太陽の角度を返す。
+function sunAnglesForLocal1030(latitudeDeg: number): Pick<LabViewAngles, 'sunAzimuthDeg' | 'sunElevationDeg'> {
+  const latitude = THREE.MathUtils.degToRad(latitudeDeg);
+  const hour = THREE.MathUtils.degToRad(LOCAL_SOLAR_1030_HOUR_ANGLE_DEG);
+  return sunAnglesOf(new THREE.Vector3(
+    -Math.sin(hour),
+    -Math.sin(latitude) * Math.cos(hour),
+    Math.cos(latitude) * Math.cos(hour),
+  ));
+}
+
+// ランダム抽出の点 point から撮影を組む。種類は両方 — 実写には積雲・巻雲の区別なく
+// 全部の雲が写っている。撮影名は <区分>-<番号>-<km/px>km を呼び出し側が付ける。
+export function cloudDetailRandomShot(point: CloudDetailRandomPoint): CloudDetailShot {
+  // 緯度ごとの地表半径を使い、中心解像度が段の目標値に合う高度を求める。
+  const altitudeM = altitudeFor(point.tierKmPerPx, point.latitudeDeg);
+  return {
+    scene: point.category,
+    latitudeDeg: point.latitudeDeg,
+    longitudeDeg: point.longitudeDeg,
+    displayTime: point.displayTime,
+    kind: 'both',
+    tierKmPerPx: point.tierKmPerPx,
+    centerKmPerPx: centerKmPerPxOf(altitudeM, point.latitudeDeg),
+    altitudeM,
+    view: {
+      earthAltitudeLog: Math.log10(altitudeM),
+      earthLatitudeDeg: point.latitudeDeg,
+      earthLongitudeDeg: point.longitudeDeg,
+      ...sunAnglesForLocal1030(point.latitudeDeg),
+    },
+    graphics: KIND_GRAPHICS.both,
+  };
+}
+
 // 撮影 1 枚ぶんの差分と、そのメタデータ。
 interface CloudDetailShot extends LabShot {
   // 実写の目録(scenes.json)の場面名。
@@ -122,7 +169,7 @@ interface CloudDetailShot extends LabShot {
 }
 
 // 撮影の表。名前は <場面>-<時刻 h>h-<km/px>km-<種類>(例: npac-jet-6h-1km-cirrus)、
-// 総数は 12 場面 × 3 時刻 × 3 段 × 3 種類 = 324。
+// 総数は 12 場面 × 3 時刻 × 3 段 × 2 種類 = 216。
 export const CLOUD_DETAIL_SHOTS: Readonly<Record<string, CloudDetailShot>> = (() => {
   const shots: Record<string, CloudDetailShot> = {};
   for (const scene of SCENES) {
@@ -205,11 +252,11 @@ export const CLOUD_DETAIL_CHECK_SHOTS: Readonly<Record<string, CloudDetailShot>>
 // 視点を動かしただけで雲の形が変わらないかと、時間とともにどう流れ入れ替わるかを測る撮影の組。同じ場面を、
 // 基準(base)・直下点を北へ STABILITY_SHIFT_PX 画素ぶんずらした構図(shift)・高度を STABILITY_ZOOM 倍にした
 // 構図(zoom)・同じ構図の 10 分後(later10)と 30 分後(later30)で撮る。止まった雲なら、位置と縮尺を合わせた
-// 基準・shift・zoom は一致する。base・later10・later30 は種類ごと(両方・積雲だけ・巻雲だけ)にも撮る —
+// 基準・shift・zoom は一致する。base・later10・later30 は種類ごと(両方・巻雲だけ)にも撮る —
 // 層ごとに風が違うので、時間の計測を層別の位置合わせで読めるようにするため。計測の一覧
 // (CLOUD_DETAIL_SHOT_INFOS)には載せない。
 // 撮影名は <場面>-<時刻 h>h-<km/px>km-stab-<base|shift|zoom|later10|later30>。
-// 積雲だけ・巻雲だけは末尾へ -cumulus / -cirrus を足す(種類の無標は両方)。
+// 巻雲だけは末尾へ -cirrus を足す(種類の無標は両方)。
 const STABILITY_SCENE_IDS = ['natl-front', 'npac-jet', 'pac-temp', 'south-hl', 'wpac-itcz'] as const;
 const STABILITY_DISPLAY_TIME_S = 21600;
 // ずらす画素数。cap の 1 texel(低軌道で約 10 km)より短く、細部の段(0.25 km/px で 1〜128 px)を跨ぐ長さ。
@@ -240,7 +287,7 @@ export const CLOUD_DETAIL_STABILITY_SHOTS: Readonly<Record<string, CloudDetailSh
         const stem = `${scene.id}-${STABILITY_DISPLAY_TIME_S / 3600}h-${tierKmPerPx}km-stab-${variant}`;
         // 視点の安定性を見る構図(shift / zoom)は両方だけ。時間の計測に使う構図は層別にも撮る。
         const kinds: readonly CloudDetailKind[] =
-          variant === 'shift' || variant === 'zoom' ? ['both'] : ['both', 'cumulus', 'cirrus'];
+          variant === 'shift' || variant === 'zoom' ? ['both'] : ['both', 'cirrus'];
         for (const kind of kinds) {
           shots[kind === 'both' ? stem : `${stem}-${kind}`] = {
             scene: scene.scene,

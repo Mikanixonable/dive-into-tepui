@@ -14,7 +14,7 @@ import { airglowEmission } from '../airglow';
 import {
   AtmosphereCloudLayers, type CloudShellEvent, type AtmosphereCloudGeometry,
 } from './atmosphere-cloud-layers';
-import { shellAltitudeOf, type CloudSpecies } from './cloud-atmosphere-renderer';
+import { shellAltitudeOf } from './cloud-atmosphere-renderer';
 import type { AtmosphereBody } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { BodyShadow } from './shadow/body-shadow';
@@ -156,11 +156,6 @@ export class AtmosphereIntegrator {
       airglowScaleHeight: uniform(1),
     };
     this.cloudLayers = new AtmosphereCloudLayers();
-  }
-
-  // 種類ごとに、雲の殻を描くかを置き直す。
-  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    this.cloudLayers.setShellEnabled(species, enabled);
   }
 
   // 巻雲の細部の段数を置く。
