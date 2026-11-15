@@ -2,8 +2,10 @@
 
 編集中の worktree ごとに、雲がどう見えるかを確かめるための手順と、撮影済みの画像をまとめた。
 画像は `shots/<worktree名>/` 以下。`npm run cloud-lab:shot` で撮った PNG(全球の量の図 × 時刻 0h/25h)
-のうち、雲の見た目が分かる代表的なものを抜粋してある。撮影した時点のソースの見た目であり、
-worktree 側の作業が進めば古くなる。
+のうち、雲の見た目が分かる代表的なものを抜粋してある。撮影は 2026-11-15 に行った。
+撮影した時点のソースの見た目であり、worktree 側の作業が進めば古くなる。
+撮り直すときは各 worktree で `npm run cloud-lab:shot`(本番ビルド+ヘッドレス Chrome で数分。
+出力は `.cloud-lab/shots/`。内部で静的サーバ 8768 / DevTools 9445 を固定で使うので同時実行は不可)。
 
 ## このフォルダから一発で見に行くコマンド
 
@@ -56,33 +58,33 @@ cd <worktree> && CLOUD_DETAIL_PORT=8813 CLOUD_DETAIL_DEBUG_PORT=9513 \
 
 基準となる現在の雲。
 
-- ![composite 0h](shots/dev/composite-0h.png)
-- ![composite 25h](shots/dev/composite-25h.png)
-- ![coverage 0h](shots/dev/coverage-0h.png)
-- ![実写 photo 0h](shots/dev/photo-0h.png) — 教師(実写)との見比べ用
+- ![composite 0h](shots/dev/composite-0h.png) — 積雲+巻雲の全球分布(基準)。斑状の積雲クラスタと筋状の巻雲。右寄りに渦巻く低気圧性の螺旋
+- ![composite 25h](shots/dev/composite-25h.png) — 輸送で雲が筋状に引き延ばされた姿(基準)。渦は残る
+- ![coverage 0h](shots/dev/coverage-0h.png) — 積雲の不透明度のみ(基準)。散在するクラスタ状
+- ![実写 photo 0h](shots/dev/photo-0h.png) — 教師(実写)との見比べ用。生成より被覆が厚く、前線帯など大規模な組織構造が連続している
 
 ### gen-dynamics — 気象力学ループ
 
 気圧配置・風・上昇流を実写分布へ近づける途中。雲の配置の多様性に効く。
 
-- ![composite 0h](shots/gen-dynamics/composite-0h.png) / ![composite 25h](shots/gen-dynamics/composite-25h.png)
-- ![coverage 0h](shots/gen-dynamics/coverage-0h.png)
-- ![pressure 0h](shots/gen-dynamics/pressure-0h.png) — 気圧場の多様性が直接見える
+- ![composite 0h](shots/gen-dynamics/composite-0h.png) / ![composite 25h](shots/gen-dynamics/composite-25h.png) — dev と比べ全域が渦・波状に整理された分布。力学場の作り直しが雲配置へ直接効いている。25h では中緯度に大規模な波状のビロー帯(くし状ローラー)が並ぶ
+- ![coverage 0h](shots/gen-dynamics/coverage-0h.png) — 積雲も渦状の筋へ並び直されている
+- ![pressure 0h](shots/gen-dynamics/pressure-0h.png) — 気圧場の多様性が直接見える。滑らかな緯度方向の帯状構造と点状の低気圧
 
 ### motion-stage2 — 雲の動き・輸送
 
 雲の動き・輸送の改善途中。0h と 25h の差に効くはず。
 
-- ![composite 0h](shots/motion-stage2/composite-0h.png) / ![composite 25h](shots/motion-stage2/composite-25h.png)
-- ![coverage 25h](shots/motion-stage2/coverage-25h.png)
+- ![composite 0h](shots/motion-stage2/composite-0h.png) / ![composite 25h](shots/motion-stage2/composite-25h.png) — 0h から質感が dev と異なり、全面が細かい粒状。25h は輸送で引き延ばされた粒状パターンで、dev の 25h と斑のつぶれ方・流れ方が違う
+- ![coverage 25h](shots/motion-stage2/coverage-25h.png) — 積雲の不透明度。疎らに残るクラスタ
 
 ### cloud-cells — 積雲の細胞構造
 
 積雲の細胞・中規模構造の改善途中。`cumulus`/`coverage`/`composite` の粒だちに効くはず。
 
-- ![composite 0h](shots/cloud-cells/composite-0h.png)
-- ![coverage 0h](shots/cloud-cells/coverage-0h.png)
-- ![cumulus 0h](shots/cloud-cells/cumulus-0h.png)
+- ![composite 0h](shots/cloud-cells/composite-0h.png) — dev とほぼ同じに見える。細胞構造の差は全球の縮尺では読み取りにくい
+- ![coverage 0h](shots/cloud-cells/coverage-0h.png) — dev と似た配置。粒の見え方の差を見るなら雲ラボで拡大する方がよい
+- ![cumulus 0h](shots/cloud-cells/cumulus-0h.png) — 積雲ビュー。全体的に暗く疎。細胞・中規模構造の変更が効いているはずのビュー
 
 ### cirrus-types — 巻雲教師の拡張
 
@@ -92,18 +94,18 @@ tools のみの変更で見た目の変化は無いはずなので撮影は省�
 
 雲の光学(明るさ・影)の物理化。雲ラボの量の図には出にくい — ゲーム本体で見るのが本筋。
 
-- ![composite 0h](shots/cloud-optics/composite-0h.png) / ![composite 25h](shots/cloud-optics/composite-25h.png)
+- ![composite 0h](shots/cloud-optics/composite-0h.png) / ![composite 25h](shots/cloud-optics/composite-25h.png) — 量の分布は dev と一致(ファイルサイズも同一)。光学の変更は描画側なのでこの図には出ない。確認は `npm run dev` または `npm run render-lab` で
 
 ### translucent-teacher — 半透明雲教師
 
 半透明雲教師の拡張途中。`translucent`/`cirrus` ビューに効くはず。
 
-- ![composite 0h](shots/translucent-teacher/composite-0h.png)
-- ![cirrus 0h](shots/translucent-teacher/cirrus-0h.png)
-- ![translucent 0h](shots/translucent-teacher/translucent-0h.png)
+- ![composite 0h](shots/translucent-teacher/composite-0h.png) — dev と同一(ファイルサイズも一致)。積雲+通常の巻雲の合成には触れていない
+- ![cirrus 0h](shots/translucent-teacher/cirrus-0h.png) — 巻雲の量。筋の立った構造
+- ![translucent 0h](shots/translucent-teacher/translucent-0h.png) — 半透明雲の厚み。滑らかな渦状のヴェール
 
 ### sunset-refine — 夕景の分光・消衰
 
 夕景の分光・消衰途中。描画側なので雲ラボの図には出にくい — ゲーム本体で夕刻条件にして見るのが本筋。
 
-- ![composite 0h](shots/sunset-refine/composite-0h.png) / ![composite 25h](shots/sunset-refine/composite-25h.png)
+- ![composite 0h](shots/sunset-refine/composite-0h.png) / ![composite 25h](shots/sunset-refine/composite-25h.png) — 量の分布は dev と同じ(0h はファイルサイズまで一致、25h も目視で同じ構造)。夕景の変化は描画側なので、この図ではなく本体で夕刻条件にして見る
