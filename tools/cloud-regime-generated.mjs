@@ -99,17 +99,19 @@ export function generatedTileConditions(scene, weather) {
   return out;
 }
 
-// 標本点の雲の物理量(1 点 = { cumulusTau, cirrusTau, cumulusTopM, cirrusTopM })の並びから、
-// 実写と同じ形の physical(ISCCP 分類の面積の割合)を畳む。分母はタイルの全面積
-// (生成では欠測が無いので validFrac は 1)。生成では τ も雲頂も必ずあるので、
+// 標本点の雲の物理量(1 点 = { cumulusTauIn, coverage, cirrusTau, cumulusTopM, cirrusTopM })
+// の並びから、実写と同じ形の physical(ISCCP 分類の面積の割合)を畳む。分母はタイルの
+// 全面積(生成では欠測が無いので validFrac は 1)。生成では τ も雲頂も必ずあるので、
 // unknownHeightFrac・noTopFrac・*NoTauFrac は 0、相の区別が無いので iceFrac は null。
+// cumulusTauIn は積雲の雲の中の光学的厚み τ_in(cloud-kind の H^(5/3) の式)、
+// coverage は積雲が点を覆う割合(不透明度)。
 //
 // 点ごとの面積の配り方:
-// - 巻雲が検出できる(cirrusTau ≥ DETECT_TAU)とき: 点の全面が雲。τ = cirrusTau + cumulusTau、
+// - 巻雲が検出できる(cirrusTau ≥ DETECT_TAU)とき: 点の全面が雲。τ = cirrusTau +
+//   coverage·cumulusTauIn(積雲が点の一部しか覆わないので柱の平均で足す)、
 //   雲頂 = max(cirrusTopM, 積雲が見えるなら cumulusTopM)。
-// - それ以外: 面積の f = 1 − exp(−cumulusTau)(積雲の不透明度)が雲、残りは晴天。雲の部分の
-//   τ = cumulusTau/f + cirrusTau(柱の平均の光学的厚みを保つ雲の中の値)、雲頂 = cumulusTopM。
-//   f < CLEAR_OPACITY_MAX の点は全面を晴天にする。
+// - それ以外: 面積の coverage が雲、残りは晴天。雲の部分の τ = cumulusTauIn + cirrusTau、
+//   雲頂 = cumulusTopM。coverage < CLEAR_OPACITY_MAX の点は全面を晴天にする。
 export function isccpPhysical(points) {
   const weight = 1 / points.length;
   const counts = Object.fromEntries(ISCCP_NAMES.map((name) => [name, 0]));
@@ -129,18 +131,22 @@ export function isccpPhysical(points) {
     weights.push(area);
   };
   for (const p of points) {
+    const cover = isNum(p.coverage) ? p.coverage : 0;
     if (isNum(p.cirrusTau) && p.cirrusTau >= DETECT_TAU) {
-      const top = isNum(p.cumulusTau) && p.cumulusTau >= DETECT_TAU
+      const top = isNum(p.cumulusTauIn) && p.cumulusTauIn >= DETECT_TAU
         ? Math.max(p.cirrusTopM, p.cumulusTopM)
         : p.cirrusTopM;
-      addCloud(weight, p.cirrusTau + (isNum(p.cumulusTau) ? p.cumulusTau : 0), top / 1000);
+      addCloud(
+        weight,
+        p.cirrusTau + cover * (isNum(p.cumulusTauIn) ? p.cumulusTauIn : 0),
+        top / 1000,
+      );
       continue;
     }
-    const f = 1 - Math.exp(-p.cumulusTau);
-    if (!isNum(f) || f < CLEAR_OPACITY_MAX) continue;
+    if (!isNum(p.cumulusTauIn) || cover < CLEAR_OPACITY_MAX) continue;
     addCloud(
-      f * weight,
-      p.cumulusTau / Math.max(f, 1e-6) + (isNum(p.cirrusTau) ? p.cirrusTau : 0),
+      cover * weight,
+      p.cumulusTauIn + (isNum(p.cirrusTau) ? p.cirrusTau : 0),
       p.cumulusTopM / 1000,
     );
   }
@@ -196,7 +202,8 @@ export function generatedPhysical(weather, lat0, lon0, xKm, yKm) {
       );
       const s = weather.sampleAt(lat, lon);
       points.push({
-        cumulusTau: s.cumulusTau,
+        cumulusTauIn: s.cumulusTauIn,
+        coverage: s.coverage,
         cirrusTau: s.cirrusTau,
         cumulusTopM: s.cumulusTopM,
         cirrusTopM: s.cirrusTopM,
