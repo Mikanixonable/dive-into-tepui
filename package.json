@@ -19,6 +19,7 @@
     "check:boundaries": "node tools/check-boundaries.mjs",
     "smoke:browser": "node tools/browser-smoke.mjs",
     "usage": "node tools/usage-limits.mjs",
+    "usage:selftest": "node tools/usage-limits-selftest.mjs",
     "smoke:layout-suite": "node tools/layout-smoke-retry.mjs --suite",
     "ci": "node tools/run-ci.mjs",
     "typecheck": "tsc --noEmit",

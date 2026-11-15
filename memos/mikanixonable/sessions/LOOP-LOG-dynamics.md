@@ -447,3 +447,81 @@
   頭が低気圧中心を抱え込む円盤、寒気側域が帯の西側に広がる配置を確認。
 - 残課題: temperate tauThick 過剰(0.20 vs 実写 0.096 — 頭のデッキが厚い
   雲へ加算した分で悪化)と deep 不足(0.010 vs 0.031)は継続。
+
+## step 53 — ISCCP 分類へ雲「要素」の高さ・τを渡す(採用、5febbe27b)
+- 発端: temperate の tauThin 0.40/tauThick 0.20(実写 0.127/0.096)と deep 不足
+  (0.010 vs 0.031)の構造を追ったところ、cumulusTauIn・cumulusTopM が焼いた
+  写しの量(被覆率へ潰れた texel 平均)から出ていた — まばらな覆いでは
+  雲頂 ~530m・τ_in ~0.2 の「30m の靄」になり、ISCCP が拾う要素の値と違う。
+- probe の読み戻しバグを修正(probe-common.ts、引き継ぎ作業物): FloatPlaneSet.
+  read() が面をチャンネルごとに確保せず、各 vec4 の A 成分を 4 面へ重複して
+  返していた — coverage 等を別チャンネルの値で読んでいた。最後の正常な
+  probe 焼き出しの直後に入った変更で、それ以前の監査は正しいチャンネル。
+- condense が cumulusElementTop(雲頂)と cumulusElementThickness(幾何学的
+  厚み)を返すよう拡張。要素の厚みは、層状デッキでは柱の 0.35(海洋性層積雲
+  の雲域は混合層上端の数百 m)、対流の塔・内包セルでは柱全体(convectiveFill
+  = max(embedded, towerFill))。焼き込む 4 チャンネルは不変で描画へ影響なし。
+- 要素 τ に合わせて画素有効 τ の希釈を cover^0.2(柱平均 τ の時代の校正値)から
+  線形 cover^1 へ — 厚い要素は反射率が飽和し、画素 τ ≈ 被覆率 × 要素内 τ が
+  標準近似。ISCCP の区分境界は不変(物差しはそのまま)。
+- 試行: デッキ厚を定数 600m では τ~25.6 に集中して tauMid 0.595 へ偏った →
+  柱に対する割合 0.35 へして分布を持たせた(層が高いほど雲域も厚い)。
+- 計測(audit-element-fill、従来基準 0.105 比): classes 0.0678、contrast 0.514、
+  bias 0.846、gain 0.482、gap 0.0503、variogram 0.341 — 全見出し点が改善。
+  temperate-sea τ 分類 (0.395/0.174/0.20) → (0.177/0.507/0.114) で実写
+  (0.127/0.361/0.096) へ近接、deep 0.010→0.0175、topMiddle 0.080≈実写 0.084。
+- 検証: typecheck・308/308・両 selftest PASS。audit-element-fill.txt が新基準。
+- 残課題: deep は雲頂側で依然不足(0.0175 vs 0.031 — 要素雲頂 >6.5km が ~2%
+  しかない)、tauMid 0.507 vs 0.361 過剰、被覆率の不足(0.798 vs 0.896)と
+  陸地の疎さは別タスク。次の大きな残差は humidUp × highThinFrac contrast 4.41。
+
+## step 54 — 解像された対流粒から塔の高さを供給(採用、41af1fd4b)
+- step 53 後の deep 不足を気象場と分類値から切り分けた。活動度は全球の広い
+  範囲で高い一方、`grain = max(convection.x, 0) × convectiveActivity` は
+  h0180 の p95 が 0.0121。旧ゲート `smoothstep(0.015, 0.105, grain)` は
+  p95 でも塔を起こさず、最大でも圏界面到達の約 6% の塗りだった。根因は
+  対流活動量そのものより、解像後の粒の振幅に対してゲート幅が大きすぎること。
+- 試行: onset 0 / width 0.008 は classes 0.0659 まで下がる一方、
+  tropical-sea deep 0.041 (実写 0.0276) へ過剰に振れたため不採用。最終候補は
+  `TOWER_ONSET=0.004`, `TOWER_WIDTH=0.01`。弱い峰には低い塔を残し、強い峰だけを
+  圏界面へ近づける幅である。
+- clean 24-channel audit (`audit-tower-resolved-clean.txt`, `audit-element-fill`
+  比): classes 0.0678→0.0660、responseContrast 0.514→0.498、
+  responseBias 0.846→0.625、responseGain 0.482→0.448、variogram 0.341→0.329。
+  explainedGap は 0.0503→0.0511 とわずかに悪化。deep は tropical-sea
+  0.0106→0.0276 (実写 0.0276)、temperate-sea 0.0175→0.0248 (0.0305)、
+  highlat-sea 0.022→0.0305 (0.0376) と改善。陸域も増えたが temperate-land
+  0.0189 (実写 0.0436)・highlat-land 0.0311 (0.0544) はまだ不足。
+- 見た目: `tower-before-a`, `tower-before-b`, `tower-after` を render-lab で
+  21 shot ずつ撮影・比較。封筒外は雲の現れる `earth-glint`, `earth-nadir`,
+  `earth-oblique` のみで、差分も雲域へ局在。他 shot は封筒内で、針状の孤立塔や
+  一様な高台は見られない。
+- 検証: 一時 probe チャンネルを除去して 24 チャンネルへ戻した後の監査も同じ値。
+  `npm run typecheck`・`npm run test:render` (308/308) 通過。
+- 残課題: tropical-sea の deep は一致したが、陸域・中高緯度は不足が残る。
+  temperate-sea tauMid 0.503 vs 実写 0.361、humidUp × highThinFrac contrast
+  4.29 も残る。次は陸海・気候帯を一つの定数でまとめず、残差の物理要因を分ける。
+
+## step 55 — ヒモ状の前線残差を再確認(コード変更なし)
+- 最新の 24-channel h0180 生成場を全球プロットし、pressure・cycloneFront・
+  coverage・lift・雲頂を重ねて確認した。出力は
+  `.cloud-detail/regime/plots/stringy-review/front-map-t180.png`。cycloneFront の細い腕は低気圧の谷へ結びつき、低気圧から
+  離れた場所へ長く続く独立帯は見られない。coverage は低気圧の頭・寒気側を広く
+  埋め、熱帯は細胞状の粒を保っている。
+- 判定: band 廃止で解消した人工的なヒモ状帯を戻す理由はなく、気象場側の形は維持。
+  残る問題は「ヒモ状」ではなく、低気圧のない中緯度海上の雲量不足と台風の螺旋雨帯
+  欠落(step 50・52 の残課題)。前者は temperate-sea cloud 0.798 vs 実写 0.896、
+  後者は rainband 診断の廃止後に独立機構が無い。どちらも別の物理要因として扱う。
+- 採否: 実装変更なし。次は巻雲 τ 天井実験 `audit-cirrus-tau3` の監査へ進む。
+
+## step 56 — 巻雲 τ 天井実験の採否確認(不採用、コード変更なし)
+- 作業ツリー・関連 worktree の出力に独立した `audit-cirrus-tau3` レポートは無く、
+  現在の `CIRRUS_MAX_OPTICAL_DEPTH=3` を変えた候補の証拠は見つからなかった。
+  現行 24-channel audit は巻雲量最大 0.821・τ最大 2.02 を記録しており、τ=3 の
+  上限に達していない。
+- 関連する実測は step 47 に記録済み。τ上限を 15 へ上げる候補は巻雲の検出域を
+  広げ、topHigh/deep を過剰にして classes 0.111・variogram 0.486 へ悪化。
+  他の2候補も contrast / variogram が悪化、または効果が測れず不採用だった。
+- 判定: 未提出の `audit-cirrus-tau3` を採用候補とは扱わず、現行上限 3 を維持する。
+  上限値だけを動かす根拠は無い。次の巻雲改善は、上層雲量の空間配分と気象型への
+  結合を対象にする。

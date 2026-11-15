@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import {
-  cloudReflectance, composeCloudEvents, shellAirmass,
+  cloudReflectance, composeCloudEvents, fractionalTransmittance, shellAirmass,
   ICE_CLOUD_ASYMMETRY, LIQUID_CLOUD_ASYMMETRY,
   type CloudOpticalEvent,
 } from '../../src/render/cloud/cloud-optics';
@@ -42,6 +42,25 @@ export function register(): void {
     assert.ok(Math.abs(cloudReflectance(1 / 0.1875, 0.75) - 0.5) < 1e-15);
     // 前向き散乱が強いほど同じ厚みで返す光は弱い。
     assert.ok(cloudReflectance(3, ICE_CLOUD_ASYMMETRY) > cloudReflectance(3, LIQUID_CLOUD_ASYMMETRY));
+  });
+
+  test('cloud optics: 積雲の柱を分割しても透過率が保たれ、別の柱は乗算される', () => {
+    const reflected = 0.6;
+    const fullColumn = fractionalTransmittance(reflected, 1);
+    assert.equal(fullColumn, 0.4);
+    assert.equal(fractionalTransmittance(reflected, 0), 1);
+    assert.equal(fractionalTransmittance(0, 1_000), 1);
+
+    for (const segments of [2, 3, 10, 64]) {
+      let splitColumn = 1;
+      for (let i = 0; i < segments; i += 1) {
+        splitColumn *= fractionalTransmittance(reflected, 1 / segments);
+      }
+      assert.ok(Math.abs(splitColumn - fullColumn) < 1e-14, `segments=${segments}`);
+    }
+
+    const twoColumns = fractionalTransmittance(0.5, 1) * fractionalTransmittance(0.5, 1);
+    assert.ok(Math.abs(twoColumns - 0.25) < 1e-15);
   });
 
   test('cloud optics: 柱光学深さとairmassは掛けてから反射率へ通す(掠めるほど R が大きい)', () => {
