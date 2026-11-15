@@ -447,3 +447,30 @@
   頭が低気圧中心を抱え込む円盤、寒気側域が帯の西側に広がる配置を確認。
 - 残課題: temperate tauThick 過剰(0.20 vs 実写 0.096 — 頭のデッキが厚い
   雲へ加算した分で悪化)と deep 不足(0.010 vs 0.031)は継続。
+
+## step 53 — ISCCP 分類へ雲「要素」の高さ・τを渡す(採用、5febbe27b)
+- 発端: temperate の tauThin 0.40/tauThick 0.20(実写 0.127/0.096)と deep 不足
+  (0.010 vs 0.031)の構造を追ったところ、cumulusTauIn・cumulusTopM が焼いた
+  写しの量(被覆率へ潰れた texel 平均)から出ていた — まばらな覆いでは
+  雲頂 ~530m・τ_in ~0.2 の「30m の靄」になり、ISCCP が拾う要素の値と違う。
+- probe の読み戻しバグを修正(probe-common.ts、引き継ぎ作業物): FloatPlaneSet.
+  read() が面をチャンネルごとに確保せず、各 vec4 の A 成分を 4 面へ重複して
+  返していた — coverage 等を別チャンネルの値で読んでいた。最後の正常な
+  probe 焼き出しの直後に入った変更で、それ以前の監査は正しいチャンネル。
+- condense が cumulusElementTop(雲頂)と cumulusElementThickness(幾何学的
+  厚み)を返すよう拡張。要素の厚みは、層状デッキでは柱の 0.35(海洋性層積雲
+  の雲域は混合層上端の数百 m)、対流の塔・内包セルでは柱全体(convectiveFill
+  = max(embedded, towerFill))。焼き込む 4 チャンネルは不変で描画へ影響なし。
+- 要素 τ に合わせて画素有効 τ の希釈を cover^0.2(柱平均 τ の時代の校正値)から
+  線形 cover^1 へ — 厚い要素は反射率が飽和し、画素 τ ≈ 被覆率 × 要素内 τ が
+  標準近似。ISCCP の区分境界は不変(物差しはそのまま)。
+- 試行: デッキ厚を定数 600m では τ~25.6 に集中して tauMid 0.595 へ偏った →
+  柱に対する割合 0.35 へして分布を持たせた(層が高いほど雲域も厚い)。
+- 計測(audit-element-fill、従来基準 0.105 比): classes 0.0678、contrast 0.514、
+  bias 0.846、gain 0.482、gap 0.0503、variogram 0.341 — 全見出し点が改善。
+  temperate-sea τ 分類 (0.395/0.174/0.20) → (0.177/0.507/0.114) で実写
+  (0.127/0.361/0.096) へ近接、deep 0.010→0.0175、topMiddle 0.080≈実写 0.084。
+- 検証: typecheck・308/308・両 selftest PASS。audit-element-fill.txt が新基準。
+- 残課題: deep は雲頂側で依然不足(0.0175 vs 0.031 — 要素雲頂 >6.5km が ~2%
+  しかない)、tauMid 0.507 vs 0.361 過剰、被覆率の不足(0.798 vs 0.896)と
+  陸地の疎さは別タスク。次の大きな残差は humidUp × highThinFrac contrast 4.41。
