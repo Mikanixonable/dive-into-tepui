@@ -641,3 +641,46 @@
   `npm run typecheck` PASS。ユーザーの未コミット作業には手を加えていない。
 - 次: 湿度をさらに全球で上げず、陸上の cloudFrac と stratocumulus のずれ、
   温帯海上の tauMid 過剰、高緯度海上の tauMid 不足を層・厚みの配分で分けて調べる。
+
+## step 61 — 対流活発度による雲頂持ち上げ(不採用、変更なし)
+- 背景: step 60 の後も temperate-land の中・高層雲が少なく、highlat-land の deep は少し過剰。
+  海域の tauMid は温帯で過剰、高緯度で不足しており、湿度を全球で増やす策では分けて直せない。
+- 候補: 雲頂の `depth` へ `smoothstep(0.4, 0.9, convectiveActivity) × 0.8` を加え、
+  中程度以上の対流活発度が層状雲の高さ・要素厚・雲量へ連続的に伝わるようにする。
+  海陸の直接分岐や湿度の追加はしない。陸域の上層不足が埋まり、海域への影響が小さければ採用する。
+- 全体監査(step 60 基準→候補、場面ブートストラップ 50 回):
+
+  | 指標 | step 60 | 候補 |
+  | --- | ---: | ---: |
+  | weather | 0.102 [0.0982–0.113] | 0.102 [0.0982–0.113] |
+  | classes | 0.0554 [0.0546–0.0619] | 0.0578 [0.0574–0.0637] |
+  | responseContrast | 0.595 | 0.728 |
+  | responseBias | 0.441 | 0.631 |
+  | responseGain | 0.439 | 0.533 |
+  | explainedGap | 0.0594 | 0.0597 |
+  | variogram | 0.328 | 0.321 |
+
+- 地域別 ISCCP(主要値、step 60→候補、実写の値は括弧内):
+
+  | 区分 | topMiddle | topHigh | deep | tauMid | tauThick | classes 距離 |
+  | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+  | temperate-land | 0.0838→0.106 (0.168) | 0.112→0.122 (0.230) | 0.0362→0.0483 (0.0436) | 0.180→0.183 (0.226) | 0.112→0.127 (0.112) | 0.0704→0.0691 |
+  | highlat-land | 0.141→0.181 (0.139) | 0.191→0.209 (0.236) | 0.0602→0.0833 (0.0544) | 0.256→0.258 (0.311) | 0.192→0.225 (0.129) | 0.0512→0.0604 |
+  | temperate-sea | 0.101→0.113 (0.0837) | 0.154→0.162 (0.177) | 0.0414→0.0535 (0.0305) | 0.467→0.464 (0.361) | 0.124→0.137 (0.0959) | 0.0533→0.0572 |
+  | highlat-sea | 0.135→0.159 (0.147) | 0.156→0.167 (0.166) | 0.0469→0.0617 (0.0376) | 0.457→0.451 (0.561) | 0.153→0.174 (0.196) | 0.0706→0.0716 |
+
+- 判定: 不採用。temperate-land の topMiddle/topHigh は少し近づいたが、deep と tauThick が増え、
+  highlat-land と temperate-sea の deep/tauThick 過剰が悪化した。highlat-sea tauThick は実写へ
+  近づいた一方で deep が過剰になり、tauMid の不足も残った。responseBias と responseGain も悪化し、
+  全体 classes は 0.00236 悪化した。variogram の 0.007 改善だけでは採算が合わない。
+- 描画: before 2 組は 162/162 枚が 0 LSB 差。候補 after は 5/162 枚が 6 LSB 封筒外
+  (earth-glint、nadir 2 枚、oblique 2 枚)で、差分は Earth の雲に局在。針状塔・台地・海岸線の
+  継ぎ目は見られなかった。コードを除去した復元 after は before と 0/162 枚差。
+- 検証: 候補状態で `npm run test:render` 309/309 PASS、cloud-lab/render-lab の production build PASS。
+  isolated worktree の `npm run typecheck` は既存の `tools/cloud-lab/probe-common.ts` が
+  `src/render/tsl-types.ts` に無い `Vec4Uniform` を import するエラーで停止。候補コードは除去し、
+  基準コードで再 probe した `audit-land-moisture-restored.txt` は classes 0.0554 へ戻った。
+  変更コミットは作らない。
+- 次: 高緯度海と温帯海で `tauThin` が `tauMid`/`tauThick` へ移る環境条件を先に分解する。
+  負の warmth と低湿度の海面平均は高緯度 0.0064、温帯 0.0067 でほぼ同じため、
+  単純な寒気流入加湿は選ばず、両海域の違いを説明する物理因子を探す。
