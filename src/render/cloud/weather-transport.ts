@@ -9,7 +9,7 @@ import type { Circulation } from './circulation';
 import { windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { EpochSchedule, NoiseOctave } from './circulating-noise';
+import type { NoiseOctave } from './circulating-noise';
 import type { FieldProjection } from '../field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
@@ -17,15 +17,13 @@ import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../t
 // 地表付近は湿度と対流の2枚で周波数を分担する。湿度の基準の段(800 km)が雲塊の配置を、
 // 中間の段(400〜100 km)が雲塊を100〜300 kmの塊へ割る境目を、対流(48 kmと24 km)が積雲の
 // 粒の細かさを決める。薄い雲は地表付近の雲塊と同じ規模まで濃淡を下ろし、細かい段は雲塊を
-// 割る厚い雲へ譲る。envelope を立てた段は、包絡の正負に応じて環境ごとに振幅が振れる —
-// 正の係数の段は熱帯で膨らみ温帯以降で痩せる。細かい段の痩せは温帯以降の過剰な散らばりを
-// 削る向き(段の間欠性そのものは κ の鎖が作る)。
+// 割る厚い雲へ譲る。
 const SURFACE_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 2, amplitude: 0.4 }, // 3200 km
-  { frequency: 8, amplitude: 0.8, envelope: 0.8 }, // 800 km
-  { frequency: 16, amplitude: 1.5, envelope: 0.2 }, // 400 km
-  { frequency: 32, amplitude: 1.35, envelope: 0.6 }, // 200 km
-  { frequency: 64, amplitude: 1.0, envelope: 0.6 }, // 100 km
+  { frequency: 8, amplitude: 0.8 }, // 800 km
+  { frequency: 16, amplitude: 1.5 }, // 400 km
+  { frequency: 32, amplitude: 1.35 }, // 200 km
+  { frequency: 64, amplitude: 1.0 }, // 100 km
 ];
 const CONVECTION_NOISE: readonly NoiseOctave[] = [
   { frequency: 133, amplitude: 1 }, // 48 km
@@ -38,35 +36,18 @@ const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 3.75, amplitude: 0.45 }, // 1700 km
   { frequency: 8, amplitude: 0.75 }, // 800 km
   { frequency: 16, amplitude: 0.30 }, // 400 km
-  { frequency: 32, amplitude: 0.45, envelope: 1 }, // 200 km
-  { frequency: 64, amplitude: 0.10, envelope: 1 }, // 100 km
+  { frequency: 32, amplitude: 0.12 }, // 200 km
+  { frequency: 64, amplitude: 0.10 }, // 100 km
   // 上層の湿度の細かい段。低軌道の cap で解像できる尺度まで巻雲の帯と斑を下ろし、描画の細部(32 km 以下)へ
   // 担い手を途切れさせずに渡す。全球の写しでは texel より細かいので消え、全球の統計は変えない。
-  { frequency: 128, amplitude: 0.14, envelope: 1 }, // 50 km
+  { frequency: 128, amplitude: 0.14 }, // 50 km
   { frequency: 256, amplitude: 0.09 }, // 25 km
 ];
 
-// 段ごとのエポックの移行時間 [s]。細い段ほど実際の雲の寿命が短い(百キロ級の斑は数時間、
-// 総観規模の雲塊は数日)ので、細い段ほど早く実現を混ぜ替える。総観規模の段は日単位の
-// 遅い混ぜ替えに抑える — 実写と同じ物差しで、混ぜ替えが速いほど移流と無関係な見かけの
-// 動きと真の入れ替わりが増え、切ってしまうと大きな雲域が静止して千キロ級の減衰時間が
-// 長くなりすぎることが分かった。
-const SURFACE_HUMIDITY_EPOCH: readonly EpochSchedule[] = [
-  { untilFrequency: 8, transitionSeconds: 72 * 3600 },
-  { untilFrequency: 16, transitionSeconds: 10 * 3600 },
-  { untilFrequency: 32, transitionSeconds: 5 * 3600 },
-  { untilFrequency: 64, transitionSeconds: 3 * 3600 },
-];
-const UPPER_HUMIDITY_EPOCH: readonly EpochSchedule[] = [
-  { untilFrequency: 8, transitionSeconds: 96 * 3600 },
-  { untilFrequency: 16, transitionSeconds: 12 * 3600 },
-  { untilFrequency: 64, transitionSeconds: 5 * 3600 },
-  { untilFrequency: 256, transitionSeconds: 3 * 3600 },
-];
-// 対流の細胞(24〜48 km)は数時間で入れ替わる。
-const CONVECTION_EPOCH: readonly EpochSchedule[] = [
-  { untilFrequency: 266, transitionSeconds: 3 * 3600 },
-];
+// エポックの混ぜ替えに参加する段の周波数の上限 [1 rad あたりの山数]。地表付近は 400 km 以上、
+// 上層は 800 km 以上の段だけがその場で入れ替わり、それより細い段は模様の平行移動の足場として残る。
+const SURFACE_HUMIDITY_EPOCH_MAX_FREQUENCY = 16;
+const UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY = 8;
 
 // 場の振れ幅。CirculatingNoiseが段の振幅の総和で割って返すので、全段を解像する写しの振れ幅は段数によらない。
 // 地表付近の基底湿度。平年の雲量の重みを半分に弱めたぶんの平均をここで埋める(cloud-lab Phase 3-10)。
@@ -76,10 +57,7 @@ const SURFACE_HUMIDITY_NOISE_AMPLITUDE = 0.5625;
 const CONVECTION_NOISE_AMPLITUDE = 0.30;
 // 上層は 50・25 km の段を足したぶん振幅の和で割られて弱まるので、足す前の和(1.84)に対する比を掛けて、
 // その段を解像しない全球の写しの振れ幅を足す前と同じに保つ。
-// 場の振れ幅は実写の巻雲場面の乾湿の対比に取る — 上層対流圏では沈降する乾いた気団(薄雲の無い空)と
-// 対流・前線からの湿った流出(氷過飽和、厚い幕)が隣接し、同じ規模の湿度の散らばりは地表付近より
-// 大きい。小さいと全場面が中間の湿度へ潰れて、薄い靄だけの絵になる。
-const UPPER_HUMIDITY_NOISE_AMPLITUDE = 1.18 * (1.84 + 0.14 + 0.09) / 1.84;
+const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.65625 * (1.84 + 0.14 + 0.09) / 1.84;
 
 // 移流の源を風で流す2位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が
 // 目に付く。背景の雲がどれだけ伸びるかは、1歩のあいだに風が空間で変わる量から決まる。
@@ -98,15 +76,6 @@ interface AdvectedFields {
   readonly convection: Vec2Node;
 }
 
-// 湿度の場を環境で変える値。coupling は段間の乗法の鎖の強さ κ(0 で各段は独立に重なる)、
-// envelope は包絡の場の値(0 で変わらない) — 段の振幅へ 1 + envelope × NoiseOctave.envelope を掛ける。
-export interface HumidityModulation {
-  readonly surfaceCoupling: FloatNode;
-  readonly surfaceEnvelope: FloatNode;
-  readonly upperCoupling: FloatNode;
-  readonly upperEnvelope: FloatNode;
-}
-
 export class WeatherTransport {
   private readonly surfaceHumidityNoise: CirculatingNoise;
   private readonly convectionNoise: CirculatingNoise;
@@ -117,19 +86,17 @@ export class WeatherTransport {
   private readonly advectionCycle: FloatUniform = uniform(0);
 
   // 地表付近と上層の循環が流すノイズから、projection の持ち方で源の写しを組む。surfaceRadius は
-  // 湿度と対流を運ぶ天体の半径 [m]。modulationAt を渡すと、源の湿度へ環境ごとの変調が乗る。
+  // 湿度と対流を運ぶ天体の半径 [m]。
   public constructor(
     surfaceCirculation: Circulation, upperCirculation: Circulation, projection: FieldProjection,
     private readonly surfaceRadius: number,
-    private readonly modulationAt?: (direction: Vec3Node) => HumidityModulation,
   ) {
     const texel = projection.texelAngle;
     this.surfaceHumidityNoise = new CirculatingNoise(
-      surfaceCirculation, SURFACE_HUMIDITY_NOISE, texel, SURFACE_HUMIDITY_EPOCH);
-    this.convectionNoise = new CirculatingNoise(
-      surfaceCirculation, CONVECTION_NOISE, texel, CONVECTION_EPOCH);
+      surfaceCirculation, SURFACE_HUMIDITY_NOISE, texel, SURFACE_HUMIDITY_EPOCH_MAX_FREQUENCY);
+    this.convectionNoise = new CirculatingNoise(surfaceCirculation, CONVECTION_NOISE, texel);
     this.upperHumidityNoise = new CirculatingNoise(
-      upperCirculation, UPPER_HUMIDITY_NOISE, texel, UPPER_HUMIDITY_EPOCH);
+      upperCirculation, UPPER_HUMIDITY_NOISE, texel, UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY);
     this.humiditySource = new BakedField(
       'humiditySource', THREE.RGFormat, projection,
       (direction) => vec4(this.humiditySourceAt(direction), 0, 1),
@@ -145,7 +112,6 @@ export class WeatherTransport {
     const cycle = (seconds / ADVECTION_PERIOD) % 1;
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
     this.surfaceHumidityNoise.syncTime(seconds);
-    this.convectionNoise.syncTime(seconds);
     this.upperHumidityNoise.syncTime(seconds);
   }
 
@@ -157,16 +123,9 @@ export class WeatherTransport {
 
   // 移流前の湿度(xが地表付近、yが上層)。
   public humiditySourceAt(direction: Vec3Node): Vec2Node {
-    const modulation = this.modulationAt?.(direction);
     return vec2(
-      float(SURFACE_HUMIDITY_BASE).add(this.surfaceHumidityNoise
-        .at(direction, modulation && {
-          coupling: modulation.surfaceCoupling, envelope: modulation.surfaceEnvelope })
-        .mul(SURFACE_HUMIDITY_NOISE_AMPLITUDE)),
-      float(UPPER_HUMIDITY_BASE).add(this.upperHumidityNoise
-        .at(direction, modulation && {
-          coupling: modulation.upperCoupling, envelope: modulation.upperEnvelope })
-        .mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)),
+      float(SURFACE_HUMIDITY_BASE).add(this.surfaceHumidityNoise.at(direction).mul(SURFACE_HUMIDITY_NOISE_AMPLITUDE)),
+      float(UPPER_HUMIDITY_BASE).add(this.upperHumidityNoise.at(direction).mul(UPPER_HUMIDITY_NOISE_AMPLITUDE)),
     );
   }
 
