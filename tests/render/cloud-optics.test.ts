@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import {
-  cloudReflectance, composeCloudEvents, fractionalTransmittance, shellAirmass,
+  cloudReflectance, columnOpticalDepthFromOpacity, composeCloudEvents,
+  fractionalTransmittance, shellAirmass, transmittanceFromColumnOpticalDepth,
   ICE_CLOUD_ASYMMETRY, LIQUID_CLOUD_ASYMMETRY,
   type CloudOpticalEvent,
 } from '../../src/render/cloud/cloud-optics';
@@ -13,6 +14,21 @@ function event(
 }
 
 export function register(): void {
+  test('cloud optics: 不透明度は柱光学深さへ変換する', () => {
+    assert.equal(columnOpticalDepthFromOpacity(0), 0);
+    assert.equal(columnOpticalDepthFromOpacity(0.5), Math.log(2));
+    assert.ok(Math.abs(columnOpticalDepthFromOpacity(1) + Math.log(0.01)) < 1e-14);
+  });
+
+  test('cloud optics: 柱光学深さとairmassはexp(-tau)を一度だけ適用する', () => {
+    const tau = 2;
+    const airmass = shellAirmass(1, 1_000, 1_000_000);
+    assert.equal(airmass, 1);
+    assert.equal(transmittanceFromColumnOpticalDepth(tau, 1), Math.exp(-tau));
+    assert.equal(transmittanceFromColumnOpticalDepth(tau, 3), Math.exp(-tau * 3));
+    assert.ok(Number.isFinite(shellAirmass(0, 1_000, 1_000_000)));
+  });
+
   test('cloud optics: 反射率は光学的厚みとともに単調に増え 0 ≤ R < 1 に収まる', () => {
     for (const g of [LIQUID_CLOUD_ASYMMETRY, ICE_CLOUD_ASYMMETRY]) {
       const taus = [0, 0.1, 0.5, 1, 3, 10, 60, 300, 1e6];
