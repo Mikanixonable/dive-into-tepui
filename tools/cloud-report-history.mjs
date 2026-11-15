@@ -1,4 +1,4 @@
-// 雲の比較レポートの履歴と差分。比較道具(cloud-lab-compare・cloud-detail-compare)が出す
+// 雲の比較レポートの履歴と差分。比較道具(cloud-lab-compare・cloud-lab-detail-compare)が出す
 // 機械可読のレポートを、1 回の比較につき 1 ファイルで history ディレクトリへ残し、
 // 直近のレポートを読み戻して数値の差分を取るための共有部品。
 import { execFileSync } from 'node:child_process';
