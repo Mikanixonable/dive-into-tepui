@@ -8,8 +8,11 @@ import {
 import { cutoffRadius } from '../../atmosphere';
 import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
-import { cumulusOpacityNode } from '../../cloud/cloud-kind-node';
-import { CLOUD_ALBEDO } from '../../cloud/cumulus-shape';
+import {
+  cumulusInCloudOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+} from '../../cloud/cloud-kind-node';
+import { LIQUID_CLOUD_ASYMMETRY } from '../../cloud/cloud-optics';
+import { cloudReflectanceNode } from '../../cloud/cloud-optics-node';
 import { equirectUvFromDirection } from '../../field-projection';
 import { AtmosphereIntegrator } from '../atmosphere-integrator';
 import type { AtmosphereBody } from '../../atmosphere';
@@ -130,12 +133,15 @@ export class PlanetLightSubject {
     const normal = normalize(hit.sub(this.center));
     const bodyNormal: Vec3Node = this.bodyFromWorld.mul(vec4(normal, 0)).xyz;
     // 不透明な積雲は、地表のアルベドの上へ雲頂の見える割合ぶん重ねる。粒 0 で読んだ割合が、殻の
-    // ディザを均した割合になる。
+    // ディザを均した割合になる。雲の白さは、その柱の雲頂の厚みが返す光の割合 R(τ_in)。
     const albedo = this.groundAlbedo(bodyNormal, origin, texelAngle).toVar();
     If(and(this.cumulusEnabled, this.cloudsPresent), () => {
-      const opaque = this.cloudShape.opaqueFraction(
-        cumulusOpacityNode(this.cloudField.sampleCloud(bodyNormal).cumulus), float(0));
-      albedo.assign(mix(albedo, vec3(CLOUD_ALBEDO), opaque));
+      const cloud = this.cloudField.sampleCloud(bodyNormal);
+      const opaque = this.cloudShape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), float(0));
+      const cloudAlbedo = vec3(cloudReflectanceNode(
+        cumulusInCloudOpticalDepthNode(cumulusTopAltitudeNode(cloud.cumulus)),
+        LIQUID_CLOUD_ASYMMETRY));
+      albedo.assign(mix(albedo, cloudAlbedo, opaque));
     });
     // ランバート面の放射輝度。昼側だけが光る。
     const radiance = albedo.mul(this.sunIrradiance).mul(max(dot(normal, this.starDirection), 0)).div(Math.PI)

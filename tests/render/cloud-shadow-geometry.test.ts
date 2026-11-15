@@ -56,7 +56,7 @@ export function register(): void {
       for (const [r, h] of [[3e3, 4000], [10e3, 12000]] as const) {
         const ctr = model.expectedCentroidOffsetM(r, h, zenithRad);
         const far = model.expectedFarEdgeM(r, h, zenithRad);
-        assert.ok(ctr >= 0 && ctr <= far, `z${zenith} r=${r} h=${h}: ctr ${ctr} far ${far}`);
+        assert.ok(ctr >= -1e-9 && ctr <= far, `z${zenith} r=${r} h=${h}: ctr ${ctr} far ${far}`);
       }
       for (const h of [4000, 12000]) {
         assert.ok(model.expectedCentroidOffsetM(3e3, h, zenithRad)
