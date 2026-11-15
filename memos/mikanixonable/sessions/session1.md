@@ -52,23 +52,23 @@
 - `memos/` のうち、このセッションの管理範囲(`sessions/`・`handoff_2026-11-15.md`・
   自分が開いた LOOP-LOG 等)以外の書き換え。
 
-## 実施中(優先度 A)
+## 実施中
 
-- [A] **雲量・τ の配分の改善** — 監査で cloudFrac が全区分で実写の約半分、
+- **雲量・τ の配分の改善** — 監査で cloudFrac が全区分で実写の約半分、
   temperate tauThick 過剰・tauMid 不足と判明。被覆率と τ_in= k·H^(5/3) の
   写像が本丸。熱帯の巻雲量(intermittency 0.78)も同じ condensation の課題。
   サブエージェントは禁止になったので自分で進める。
 
+## 待ち([]内は優先度)
 
-
-## 待ち(優先度 B・C)
-
+- [A] **cloud-cells の環境依存** — 細胞の規模・寿命を海陸・緯度・湿度・時刻・風速の
+  関数へ(設計 p-cells-env.md)。best は step-1(index 0.559)。
 - [B] **残る deep/tauThick の歪み** — highlat-sea(0.024 vs 実写 0.038)・
   tropical-sea(0.009 vs 0.028)の deep 不足、temperate-sea の tauThick 上振れ
   (0.21 vs 0.096)、front 応答の過敏(2.13)。被覆率と光学厚さの分離が本筋。
 - [B] **巻雲の型振り分け** — streak/scaly/veil を気象環境へ結ぶ(ループ報告の
   次の推奨。variety 0.852 が最大残差)。
-- [A] **cloud-cells の環境依存** — 細胞の規模・寿命を海陸・緯度・湿度・時刻・風速の
-  関数へ(設計 p-cells-env.md)。best は step-1(index 0.559)。
 - [C] **sunset-refine の完遂** — test:render 3 件落ち(sun-transmittance 表の
   範囲外値・夕方の誤差 11%/許容 3%・薄明)。sunset-look ループの再開が必要。
+- [C] **フィードバックループを回す** — ユーザー指定の待ちタスク。光学厚さ実験の
+  採否が確定したあと、生成の再測→監査→評価の一周を継続して回す。
