@@ -108,6 +108,11 @@ export class CloudLabCanvas {
     this.seconds = hours * SECONDS_PER_HOUR;
   }
 
+  // モデルの調整値を変えたあとに呼ぶ。両面を次の render() で焼き直す。
+  public invalidate(): void {
+    for (const pane of this.panes) pane.invalidate();
+  }
+
   // cap の中心の緯度・経度と半径 [°] を置く。描き直すのは render()。
   public aimCap(latitude: number, longitude: number, radius: number): void {
     this.capLatitude = latitude;
