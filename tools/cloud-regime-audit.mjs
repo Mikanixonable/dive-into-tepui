@@ -631,7 +631,7 @@ async function main() {
   // 物理量の読み出し(cumulusTau ほか 4 チャンネル)が入っていない古い気象状態では、
   // 生成の雲が全部晴天へ畳まれて意味の無い比較になる。--reuse のときだけ起こりうるので、
   // 黙って進まず書き出し直しを求める。
-  const PHYSICAL_CHANNELS = ['cumulusTau', 'cirrusTau', 'cumulusTopM', 'cirrusTopM'];
+  const PHYSICAL_CHANNELS = ['cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM'];
   if (!PHYSICAL_CHANNELS.every((c) => weatherManifest.channels.includes(c))) {
     throw new Error(`気象状態に物理量のチャンネル(${PHYSICAL_CHANNELS.join(', ')})が無い`
       + ' — --reuse を外して書き出し直す');
