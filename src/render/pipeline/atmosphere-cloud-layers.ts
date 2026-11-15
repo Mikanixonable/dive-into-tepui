@@ -40,7 +40,7 @@ export interface AtmosphereCloudGeometry {
 
 export interface CloudShellEvent {
   readonly distance: FloatNode;
-  // その雲イベント自身を抜けた透過率。縦柱tau×airmassを一度だけ変換した値。
+  // その雲イベントを抜けて下地へ届く光の割合。τ×airmass が返す R の残り(1 − R)。
   readonly cloudTransmittance: FloatNode;
   // イベント局所の放射輝度。自分のcloudTransmittanceはまだ掛けない。
   readonly localRadiance: Vec3Node;

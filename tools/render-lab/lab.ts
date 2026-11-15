@@ -371,7 +371,9 @@ export class LabView {
     this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    this.pipeline.cloudShadow.set(earth?.shadowCloud ?? null, cloudShadowKinds(graphics));
+    this.pipeline.cloudShadow.set(
+      this.current.shadowCloud ?? earth?.shadowCloud ?? null, cloudShadowKinds(graphics),
+    );
     earth?.bake(this.renderer, displayTime, this.gpu);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     const draws = atmosphereDraws(
