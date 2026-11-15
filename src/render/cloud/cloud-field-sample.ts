@@ -1,6 +1,6 @@
 import type * as THREE from 'three/webgpu';
 import { mix, vec2, vec4 } from 'three/tsl';
-import type { FloatNode, FloatUniform, Vec2Node, Vec4Node } from '../tsl-types';
+import type { FloatNode, Vec2Node, Vec4Node } from '../tsl-types';
 
 // 雲場の生成値と焼いたテクスチャの読み値。雲は種類ごとの量(0..1)で持ち、RGBAの配置を
 // 表現側へ漏らさない。雲頂高度・光学的厚み・不透明度は量から種類別の曲線(cloud-kind.ts)が導く。
@@ -32,41 +32,8 @@ export interface CloudFieldSlot {
 // 焼いた雲場の 2 枚の混ぜ方。parity は古い側の枚の番号(0 か 1)、fraction は古い側から新しい側への混合比(0..1)。
 // 源が毎フレーム書き換えるので、読み手は読んだ時点の値を使う。
 export interface CloudBlend {
-  readonly parity: 0 | 1;
-  readonly fraction: number;
-  subscribe(listener: () => void): () => void;
-}
-
-export class CloudBlendState implements CloudBlend {
-  private readonly listeners = new Set<() => void>();
-  private parityValue: 0 | 1 = 0;
-  private fractionValue = 0;
-
-  public get parity(): 0 | 1 { return this.parityValue; }
-  public get fraction(): number { return this.fractionValue; }
-
-  public set(parity: 0 | 1, fraction: number): void {
-    if (parity === this.parityValue && fraction === this.fractionValue) return;
-    this.parityValue = parity;
-    this.fractionValue = fraction;
-    for (const listener of this.listeners) listener();
-  }
-
-  public subscribe(listener: () => void): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
-}
-
-export function bindCloudBlend(
-  blend: CloudBlend, parity: FloatUniform, fraction: FloatUniform,
-): () => void {
-  const sync = (): void => {
-    parity.value = blend.parity;
-    fraction.value = blend.fraction;
-  };
-  sync();
-  return blend.subscribe(sync);
+  parity: 0 | 1;
+  fraction: number;
 }
 
 // 雲を運ぶ風。低い雲を運ぶ地表付近の風と、巻雲を運ぶ上層の風の、局所の東・北の成分 [m/s]。
