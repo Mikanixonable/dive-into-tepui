@@ -7,11 +7,10 @@ description: Claude のトークンを節約しながら自走する運用の原
 
 ユーザーが毎回書いていた指示の恒久版。**この手順を、指示がなくても守る。**
 
-**対象は Claude Code のエージェントだけ。** `npm run usage` の「Claude の枠」の
-判定(SLEEP/CONTINUE)と、この文書の「眠る」手順は Claude の購読枠を前提にする —
-Devin CLI(SWE-2)など Claude 以外のエージェントがこの SKILL を読んでも、Claude の
-利用枠は自分のものではないので適用しない。Devin が自走するとき参照するのは
-委譲先(SWE-2 か Haiku か)と「有料モデル枠」の欄だけで、眠る判定はしない。
+**対象は Claude Code のエージェントだけ。** `npm run usage` の判定は表示された実行主体に適用する。
+Claude Code は `--runtime=claude`、Devin Luna は `--runtime=devin-luna` を指定し、既定の Claude 判定を
+Devin の停止条件にしてはならない。Devin が自走するとき参照するのは委譲先(SWE-2 か Haiku か)と
+「有料モデル枠」の欄であり、Claude の `SLEEP` では止まらない。
 
 ## 原則
 
@@ -26,13 +25,14 @@ Devin CLI(SWE-2)など Claude 以外のエージェントがこの SKILL を読�
 
 ## 手順
 
-### 1. 着手前と、区切りごとに `npm run usage`
+### 1. 着手前と、区切りごとに実行主体に合った `npm run usage`
 区切り = 計画のステップ完了・commit 直後・委譲の回収とレビューが終わった時点。Devin を起動する前にも見る。
 セッション開始時は SessionStart フックが 1 行(`[利用枠] ...`)を出すので、それを読む。
+- Claude Code は `--runtime=claude`、Devin Luna は `--runtime=devin-luna` を指定する。Devin の利用枠確認で引数を省かない。
 - `CONTINUE`(終了コード 0): 続行。「委譲先」の表示どおりに配る。
-- `SLEEP`(1): 新しい作業を始めない。下の「眠る」へ。
-- `UNKNOWN`(2): Claude の枠が取れていない(OAuth も statusline も不可)。ユーザーが解除時刻を与えているならそれを使い、
-  `npm run usage -- --reset-5h=HH:MM` で再実行する。与えていなければ 1 回だけ聞く(区切りごとには聞かない)。
+- `SLEEP`(1): **表示された判定対象だけ**新しい作業を始めない。Claude の `SLEEP` は Devin に適用しない。
+- `UNKNOWN`(2): 判定対象の枠が取れていない。解除時刻・残量をユーザーが与えているならそれを使い、
+  Claude は `npm run usage -- --runtime=claude --reset-5h=HH:MM` で再実行する。与えていなければ 1 回だけ聞く。
 
 ### 2. SWE-2 がレート制限中のとき
 - Haiku へ委譲して進める。復活のタイマーは `npm run usage -- --wait=swe2` を `run_in_background` で走らせる
@@ -44,12 +44,13 @@ Devin CLI(SWE-2)など Claude 以外のエージェントがこの SKILL を読�
 2. 作業ツリーに未完の変更を残さない。残すなら何を残したか書く。
 3. **起こすタイマーを置く**: `npm run usage -- --wait=claude` を `run_in_background` で走らせる。
    解除時刻まで待ち、実際に Claude の枠が戻ったかを 1 分ごとに確かめて、戻ったら終了する(終了の通知が起床の合図)。
-   時刻が取れない `UNKNOWN` のときは `--reset-5h=HH:MM` を付ける。起きたら最初に `npm run usage` を実行する。
+   時刻が取れない `UNKNOWN` のときは `--reset-5h=HH:MM` を付ける。起きたら最初に
+   `npm run usage -- --runtime=claude` を実行する。
 4. 引き継ぎメモを最終メッセージに書く(完了したこと・残ったこと・次の一手・起動中だった委譲・タイマーの時刻)。
    同じ内容を `project` 種別のメモにも保存する(`memos/` は書き換えない)。
 
 ### 4. 起きたとき
-`npm run usage` → 引き継ぎメモを読む → 次の一手から再開。SWE-2 が使えれば常時 3 本まで走らせる
+`npm run usage -- --runtime=claude` → 引き継ぎメモを読む → 次の一手から再開。SWE-2 が使えれば常時 3 本まで走らせる
 (同時 5 本で全部が止まった実測があるため、3 本を超えない)。
 
 ## 罠
