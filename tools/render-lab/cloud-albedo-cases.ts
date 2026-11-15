@@ -11,6 +11,7 @@ import { CloudPresentation, type CloudFieldSource } from '../../src/render/cloud
 import { CLOUD_CAP_MARGIN, CLOUD_CAP_SIZE } from '../../src/render/cloud/cloud-cap';
 import { OrthographicCap } from '../../src/render/field-projection';
 import { sphereShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import { CLOSE_UP_DIAMETER_PX, labCamera, type LabCase } from './lab-case';
 import { directionFromAngles } from './view-angles';
 import { ALTITUDE_M, VARIANTS } from './cloud-albedo-model';
@@ -92,6 +93,15 @@ function cloudAlbedo(): LabCase {
     get cumulusVisible() { return clouds.cumulusEnabled; },
     get cirrusVisible() { return clouds.cirrusEnabled; },
   };
+  // 雲の影の源。大気へ渡す組と同じ雲場・同じ天体を指すので、白い下地へ落ちる影の濃さは
+  // 見えている雲と同じ光学的厚みから決まる。
+  const shadowCloud: ShadowCloud = {
+    center: body.position,
+    surfaceRadius: R_EARTH,
+    axes,
+    bodyFromWorld,
+    get cloud() { return clouds.renderInput; },
+  };
   const atmosphere: AtmosphereBody = {
     center: body.position,
     surfaceRadius: R_EARTH,
@@ -121,6 +131,7 @@ function cloudAlbedo(): LabCase {
     sunDirection: directionFromAngles(0, 60, new THREE.Vector3()),
     atmospheres: [atmosphere],
     shadowBodies: [sphereShadowBody(BODY_CENTER, R_EARTH)],
+    shadowCloud,
     syncMotion: (displayTime) => applyVariant(displayTime),
     sync: (graphics: GraphicsSettingsData) => {
       clouds.syncGraphics(graphics, CLOSE_UP_DIAMETER_PX);
