@@ -54,9 +54,9 @@
 
 ## 実施中(優先度 A)
 
-- [A] **熱帯の巻雲供給の改善** — OUTFLOW_HUMIDITY 0.6・OUTFLOW_SPAN 4.0 を
-  採用済みで detail index 0.320(0.182 には届かず)。残りは熱帯の間欠性
-  (intermittency 0.78)。
+- [A] **熱帯の巻雲量の改善** — 型の気象割り当て(step 10)を採用し、残る
+  主戦場は「どこに巻雲量があるか」(condensation 側)と特定。SWE-2
+  (1fc2e0c5)が原因調査・候補実証中。
 
 
 
