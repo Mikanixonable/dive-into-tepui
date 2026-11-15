@@ -116,6 +116,7 @@ export interface CloudDetailRandomPoint {
 // 局所枠が描画座標の東 +X・北 +Y・上 +Z に重なるので、時角 -22.5°・赤緯 0° の太陽を
 // その枠で組む。赤緯は分点に固定 — 生成の気候画像は平年 1 枚で季節を持たない。
 const LOCAL_SOLAR_1030_HOUR_ANGLE_DEG = -22.5;
+// 指定緯度で、現地太陽時 10:30 に対応する太陽の角度を返す。
 function sunAnglesForLocal1030(latitudeDeg: number): Pick<LabViewAngles, 'sunAzimuthDeg' | 'sunElevationDeg'> {
   const latitude = THREE.MathUtils.degToRad(latitudeDeg);
   const hour = THREE.MathUtils.degToRad(LOCAL_SOLAR_1030_HOUR_ANGLE_DEG);
@@ -129,6 +130,7 @@ function sunAnglesForLocal1030(latitudeDeg: number): Pick<LabViewAngles, 'sunAzi
 // ランダム抽出の点 point から撮影を組む。種類は両方 — 実写には積雲・巻雲の区別なく
 // 全部の雲が写っている。撮影名は <区分>-<番号>-<km/px>km を呼び出し側が付ける。
 export function cloudDetailRandomShot(point: CloudDetailRandomPoint): CloudDetailShot {
+  // 緯度ごとの地表半径を使い、中心解像度が段の目標値に合う高度を求める。
   const altitudeM = altitudeFor(point.tierKmPerPx, point.latitudeDeg);
   return {
     scene: point.category,

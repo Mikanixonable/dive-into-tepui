@@ -16,6 +16,7 @@ import {
   mulberry32,
   pearson,
   quantileSorted,
+  rankNormalize,
   responseDistance,
   variogramDistance,
 } from './cloud-regime-metrics.mjs';
@@ -60,6 +61,23 @@ const BANDS = [
   { id: 'all', label: '全域', test: () => true },
   { id: 'tropics', label: '熱帯(|緯度| < 25)', test: (lat) => Math.abs(lat) < 25 },
   { id: 'extratropics', label: '中高緯度(|緯度| ≥ 25)', test: (lat) => Math.abs(lat) >= 25 },
+];
+// (A) と順位相関は、海のタイル(land < 0.2)を緯度帯 3 つへ分けて出す。陸は地表の明るさと
+// 地形の効果が混ざるので、気象そのものの分布を見るのは海で行う。
+const SEA_LAND_MAX = 0.2;
+const SEA_BANDS = [
+  { id: 'tropical', label: '熱帯(|緯度| < 25°)', test: (lat) => Math.abs(lat) < 25 },
+  { id: 'temperate', label: '中緯度(25〜55°)', test: (lat) => Math.abs(lat) >= 25 && Math.abs(lat) < 55 },
+  { id: 'highlat', label: '高緯度(55°〜)', test: (lat) => Math.abs(lat) >= 55 },
+];
+// 順位相関を出す条件の対(帯 × 海、実写と生成を並べる)。
+const CORRELATION_PAIRS = [
+  ['lift', 'slp'],
+  ['lift', 'cyclonic'],
+  ['lift', 'advection'],
+  ['lift', 'humidLow'],
+  ['humidLow', 'slp'],
+  ['humidLow', 'cyclonic'],
 ];
 // 実写のタイルの有効率の下限(physical.mjs の MIN_VALID_FRAC と同じ値で絞る)。
 const MIN_VALID_FRAC = 0.5;
@@ -130,6 +148,30 @@ function liftExtra(samples) {
   };
 }
 
+// 海のタイルの緯度帯。SEA_BANDS の添字を返し、海でない(または緯度・陸割合の無い)タイルは −1。
+function seaBandOf(sample) {
+  const land = sample.conditions?.land;
+  if (!isNum(land) || land >= SEA_LAND_MAX) return -1;
+  const lat = sample.conditions?.lat ?? sample.lat;
+  if (!isNum(lat)) return -1;
+  return SEA_BANDS.findIndex((band) => band.test(lat));
+}
+
+// 条件どうしの順位相関。側ごとに標本内の順位 0..1 へ直してからピアソン(Spearman)。
+function spearman(samples, conditionA, conditionB) {
+  const rx = rankNormalize(samples.map((s) => s.conditions?.[conditionA]));
+  const ry = rankNormalize(samples.map((s) => s.conditions?.[conditionB]));
+  const xs = [];
+  const ys = [];
+  for (let i = 0; i < rx.length; i++) {
+    if (isNum(rx[i]) && isNum(ry[i])) {
+      xs.push(rx[i]);
+      ys.push(ry[i]);
+    }
+  }
+  return pearson(xs, ys);
+}
+
 // (B) 1 区分の、9 個の物理量の割合の平均(実写 / 生成)と距離 = 両方ある量の |生成 − 実写| の平均。
 function classRow(realSamples, genSamples, category) {
   const rf = realSamples.filter((s) => s.category === category);
@@ -192,12 +234,14 @@ function prepareSide(samples) {
   const sceneIds = [];
   const sceneIndex = new Map();
   const sampleScene = new Int32Array(samples.length);
+  const seaBand = new Int8Array(samples.length);
   samples.forEach((s, i) => {
     if (!sceneIndex.has(s.scene)) {
       sceneIndex.set(s.scene, sceneIds.length);
       sceneIds.push(s.scene);
     }
     sampleScene[i] = sceneIndex.get(s.scene);
+    seaBand[i] = seaBandOf(s);
   });
   const scenes = sceneIds.map((id) => ({
     id,
@@ -257,15 +301,17 @@ function prepareSide(samples) {
     }
     return stats;
   });
-  return { samples, scenes, sampleScene, values, orders, sceneStats };
+  return { samples, scenes, sampleScene, seaBand, values, orders, sceneStats };
 }
 
 // 抽出の標本のうち、key と feature の両方が有限で場面の重みが正の要素の重みの合計
 // (= 抽出された標本数。feature === null なら key の有限さだけで数える)。
-function drawCount(side, key, feature, weights) {
+// band !== null なら seaBand === band の海のタイルだけを数える。
+function drawCount(side, key, feature, weights, band = null) {
   const featureValues = feature === null ? null : side.values[feature];
   let n = 0;
   for (const i of side.orders[key]) {
+    if (band !== null && side.seaBand[i] !== band) continue;
     const w = weights[side.sampleScene[i]];
     if (w > 0 && (featureValues === null || Number.isFinite(featureValues[i]))) n += w;
   }
@@ -301,9 +347,10 @@ function binsOfDraw(side, key, feature, weights, bins = 5) {
 }
 
 // 抽出の key の値列の分位点(type 7)。添字列を実体化せず、重みの累積で 1 回の走査で取る。
-function quantileOfDraw(side, key, weights, q) {
+// band !== null なら seaBand === band の海のタイルだけから取る。
+function quantileOfDraw(side, key, weights, q, band = null) {
   const keyValues = side.values[key];
-  const n = drawCount(side, key, null, weights);
+  const n = drawCount(side, key, null, weights, band);
   if (n === 0) return null;
   const position = (n - 1) * q;
   const lo = Math.floor(position);
@@ -312,6 +359,7 @@ function quantileOfDraw(side, key, weights, q) {
   let vLo = null;
   let vHi = null;
   for (const i of side.orders[key]) {
+    if (band !== null && side.seaBand[i] !== band) continue;
     const w = weights[side.sampleScene[i]];
     if (w <= 0) continue;
     const next = acc + w;
@@ -406,14 +454,17 @@ function variogramOfDraw(realSide, genSide, feature, wReal, wGen) {
 
 // 抽出 1 回ぶんの見出しの点数 7 つ(headlineScores と同じ項目・同じ式)。
 function scoresOfDraw(realSide, genSide, wReal, wGen) {
-  // (A)
-  const weatherDistances = WEATHER_CONDITIONS.map((condition) => {
-    const rq = QUANTILES.map((q) => quantileOfDraw(realSide, condition, wReal, q));
-    const gq = QUANTILES.map((q) => quantileOfDraw(genSide, condition, wGen, q));
-    const span = isNum(rq[0]) && isNum(rq[4]) ? rq[4] - rq[0] : null;
-    const diffs = rq.map((r, i) => (isNum(r) && isNum(gq[i]) ? Math.abs(gq[i] - r) : null)).filter(isNum);
-    return span > 0 && diffs.length > 0 ? meanOf(diffs) / span : null;
-  }).filter(isNum);
+  // (A) 帯 × 海のタイルごとの周辺分布の距離。
+  const weatherDistances = [];
+  for (let band = 0; band < SEA_BANDS.length; band++) {
+    for (const condition of WEATHER_CONDITIONS) {
+      const rq = QUANTILES.map((q) => quantileOfDraw(realSide, condition, wReal, q, band));
+      const gq = QUANTILES.map((q) => quantileOfDraw(genSide, condition, wGen, q, band));
+      const span = isNum(rq[0]) && isNum(rq[4]) ? rq[4] - rq[0] : null;
+      const diffs = rq.map((r, i) => (isNum(r) && isNum(gq[i]) ? Math.abs(gq[i] - r) : null)).filter(isNum);
+      if (span > 0 && diffs.length > 0) weatherDistances.push(meanOf(diffs) / span);
+    }
+  }
   // (B)
   const classDistances = [];
   for (const category of CATEGORY_ORDER) {
@@ -478,9 +529,15 @@ function scoresOfDraw(realSide, genSide, wReal, wGen) {
 
 // 正確な見出しの点数(metrics の関数をそのまま使う版。速い版の検算の正本でもある)。
 function headlineScores(realSamples, genSamples) {
-  const weatherDistances = WEATHER_CONDITIONS
-    .map((condition) => marginalRow(realSamples, genSamples, condition).distance)
-    .filter(isNum);
+  const weatherDistances = [];
+  for (let band = 0; band < SEA_BANDS.length; band++) {
+    const realSea = realSamples.filter((s) => seaBandOf(s) === band);
+    const genSea = genSamples.filter((s) => seaBandOf(s) === band);
+    for (const condition of WEATHER_CONDITIONS) {
+      const distance = marginalRow(realSea, genSea, condition).distance;
+      if (isNum(distance)) weatherDistances.push(distance);
+    }
+  }
   const classDistances = CATEGORY_ORDER
     .map((category) => classRow(realSamples, genSamples, category).distance)
     .filter(isNum);
@@ -626,10 +683,25 @@ async function main() {
   console.log(`標本: 実写 ${scenes.length} 場面・${real.length} タイル / 生成 ${scenes.length} 場面 × ${hoursList.length} 時刻・${generated.length} タイル`);
 
   // --- 表 ---
-  const marginals = WEATHER_CONDITIONS.map((condition) => ({
-    ...marginalRow(real, generated, condition),
-    extra: condition === 'lift' ? { real: liftExtra(real), generated: liftExtra(generated) } : null,
-  }));
+  // (A) 気象の周辺分布と条件どうしの順位相関は、帯 × 海のタイルで出す。
+  const marginalsByBand = SEA_BANDS.map((band, index) => {
+    const realSea = real.filter((s) => seaBandOf(s) === index);
+    const genSea = generated.filter((s) => seaBandOf(s) === index);
+    return {
+      band: band.id,
+      label: band.label,
+      n: { real: realSea.length, generated: genSea.length },
+      rows: WEATHER_CONDITIONS.map((condition) => ({
+        ...marginalRow(realSea, genSea, condition),
+        extra: condition === 'lift' ? { real: liftExtra(realSea), generated: liftExtra(genSea) } : null,
+      })),
+      correlations: CORRELATION_PAIRS.map(([a, b]) => ({
+        pair: `${a}×${b}`,
+        real: spearman(realSea, a, b),
+        generated: spearman(genSea, a, b),
+      })),
+    };
+  });
   const classes = CATEGORY_ORDER
     .filter((c) => [...categoryOf.values()].includes(c))
     .map((category) => classRow(real, generated, category));
@@ -683,7 +755,7 @@ async function main() {
     },
     scores,
     bootstrap,
-    marginals,
+    marginalsByBand,
     classes,
     response,
     variograms,
@@ -709,10 +781,20 @@ async function main() {
     const ci = b !== null && b !== undefined ? ` [${fmt(b.p05)}–${fmt(b.p95)}]` : '';
     out.push(`${padL(key, 18)} ${padR(fmt(scores[key]), 8)}${ci}${diffText(key)}`);
   }
-  out.push('=== (A) 気象の周辺分布 p5 p25 p50 p75 p95(実写 / 生成)と距離 ===');
-  for (const m of marginals) {
-    out.push(`${padL(m.condition, 12)} 実写 ${m.real.map((v) => padR(fmt(v), 7)).join(' ')}   距離 ${fmt(m.distance)}`);
-    out.push(`${''.padEnd(12)} 生成 ${m.generated.map((v) => padR(fmt(v), 7)).join(' ')}${m.extra === null ? '' : `   平均 実写 ${fmt(m.extra.real.mean)} / 生成 ${fmt(m.extra.generated.mean)}・沈降 実写 ${fmt(m.extra.real.sinkFrac)} / 生成 ${fmt(m.extra.generated.sinkFrac)}`}`);
+  out.push('=== (A) 気象の周辺分布 p5 p25 p50 p75 p95(実写 / 生成)と距離 — 帯 × 海のタイル ===');
+  for (const section of marginalsByBand) {
+    out.push(`--- ${section.label} の海(実写 ${section.n.real} / 生成 ${section.n.generated} タイル)---`);
+    for (const m of section.rows) {
+      out.push(`${padL(m.condition, 12)} 実写 ${m.real.map((v) => padR(fmt(v), 7)).join(' ')}   距離 ${fmt(m.distance)}`);
+      out.push(`${''.padEnd(12)} 生成 ${m.generated.map((v) => padR(fmt(v), 7)).join(' ')}${m.extra === null ? '' : `   平均 実写 ${fmt(m.extra.real.mean)} / 生成 ${fmt(m.extra.generated.mean)}・沈降 実写 ${fmt(m.extra.real.sinkFrac)} / 生成 ${fmt(m.extra.generated.sinkFrac)}`}`);
+    }
+  }
+  out.push('=== 条件どうしの順位相関(帯 × 海、実写 / 生成)===');
+  out.push(`${padL('', 15)} ${CORRELATION_PAIRS.map(([a, b]) => padR(`${a}×${b}`, 14)).join(' ')}`);
+  for (const section of marginalsByBand) {
+    for (const [side, key] of [['実写', 'real'], ['生成', 'generated']]) {
+      out.push(`${padL(`${section.band} ${side}`, 15)} ${section.correlations.map((c) => padR(fmt(c[key]), 14)).join(' ')}`);
+    }
   }
   out.push('=== (B) 区分ごとの平均(実写 / 生成)と距離 ===');
   out.push(`${padL('', 15)} ${CLASS_FEATURES.map((k) => padR(k.replace('Frac', ''), 8)).join(' ')}   距離`);
@@ -736,7 +818,7 @@ async function main() {
 
 // report.json から report.md(日本語)を組む。
 function buildReportMd(report) {
-  const { meta, scores, bootstrap, marginals, classes, response, variograms } = report;
+  const { meta, scores, bootstrap, marginalsByBand, classes, response, variograms } = report;
   const lines = [];
   lines.push('# 気象状態と雲の物理量の監査(実写 / 生成)');
   lines.push('');
@@ -755,14 +837,27 @@ function buildReportMd(report) {
     [['値', ...Object.keys(scores).map(cell)]],
   ));
   lines.push('');
-  lines.push('## (A) 気象の周辺分布(p5・p25・p50・p75・p95、実写 / 生成)');
+  lines.push('## (A) 気象の周辺分布(p5・p25・p50・p75・p95、実写 / 生成)— 帯 × 海のタイル(land < 0.2)');
   lines.push('距離 = 5 分位の差の絶対値の平均 ÷ 実写の (p95 − p5)。lift は平均と沈降しているタイルの割合も。');
+  for (const section of marginalsByBand) {
+    lines.push('');
+    lines.push(`### ${section.label} の海(実写 ${section.n.real} / 生成 ${section.n.generated} タイル)`);
+    lines.push(mdTable(
+      ['条件', '側', ...QUANTILES.map((q) => `p${q * 100}`), '距離', '平均', '沈降の割合'],
+      section.rows.flatMap((m) => [
+        [m.condition, '実写', ...m.real.map((v) => fmt(v)), fmt(m.distance), fmt(m.extra?.real.mean), fmt(m.extra?.real.sinkFrac)],
+        ['', '生成', ...m.generated.map((v) => fmt(v)), '', fmt(m.extra?.generated.mean), fmt(m.extra?.generated.sinkFrac)],
+      ]),
+    ));
+  }
+  lines.push('');
+  lines.push('## 条件どうしの順位相関(帯 × 海、実写 / 生成)');
+  lines.push('側ごとに標本内の順位へ直してからピアソン(Spearman の ρ)。');
   lines.push(mdTable(
-    ['条件', '側', ...QUANTILES.map((q) => `p${q * 100}`), '距離', '平均', '沈降の割合'],
-    marginals.flatMap((m) => [
-      [m.condition, '実写', ...m.real.map((v) => fmt(v)), fmt(m.distance), fmt(m.extra?.real.mean), fmt(m.extra?.real.sinkFrac)],
-      ['', '生成', ...m.generated.map((v) => fmt(v)), '', fmt(m.extra?.generated.mean), fmt(m.extra?.generated.sinkFrac)],
-    ]),
+    ['帯', '対', '実写', '生成'],
+    marginalsByBand.flatMap((section) => section.correlations.map((c) => [
+      section.label, c.pair, fmt(c.real), fmt(c.generated),
+    ])),
   ));
   lines.push('');
   lines.push('## (B) 区分ごとの平均(実写 / 生成)');
