@@ -302,8 +302,8 @@ function sceneGrid(sceneCount, rng, valueOf) {
 }
 
 // 3. 生成のタイルの ISCCP 分類(cloud-regime-generated.mjs の isccpPhysical)。
-// 合成の標本点(1 点 = { cumulusTau, cirrusTau, cumulusTopM, cirrusTopM }、面積の重み 1/36)で、
-// 巻雲の判定・積雲の面積の読み方・晴天への畳み込み・9 分類の和を確かめる。
+// 合成の標本点(1 点 = { cumulusTauIn, coverage, cirrusTau, cumulusTopM, cirrusTopM }、
+// 面積の重み 1/36)で、巻雲の判定・積雲の面積の読み方・晴天への畳み込み・9 分類の和を確かめる。
 {
   const near = (v, target) => Math.abs(v - target) < 1e-9;
   const points = (count, p) => Array.from({ length: count }, () => ({ ...p }));
@@ -315,43 +315,49 @@ function sceneGrid(sceneCount, rng, valueOf) {
   const classSum = (p) => CLASS_NAMES.reduce((s, name) => s + p[name], 0);
 
   // 巻雲だけ(τ=1 < 3.6・雲頂 10 km): 全点が高層・薄いの雲 → cirrus だけ。
-  const cir = isccpPhysical(points(36, { cumulusTau: 0, cirrusTau: 1, cumulusTopM: 2000, cirrusTopM: 10000 }));
+  const cir = isccpPhysical(points(36, { cumulusTauIn: 0, coverage: 0, cirrusTau: 1, cumulusTopM: 2000, cirrusTopM: 10000 }));
   check('巻雲だけの点: 高 × 薄い段の cirrus に畳まれる(cloudFrac=cirrus=topHighFrac=tauThinFrac=1)',
     near(cir.cloudFrac, 1) && near(cir.cirrus, 1) && near(cir.topHighFrac, 1)
       && near(cir.tauThinFrac, 1) && near(cir.highThinFrac, 1),
     `cloudFrac=${cir.cloudFrac} cirrus=${cir.cirrus}`);
 
-  // 積雲だけ(τc = ln 2): 雲の面積 f = 1 − exp(−τc) = 0.5。雲の中の τ = τc/f ≈ 1.39 → 薄い、
-  // 雲頂 2 km → 低い → cumulus。
-  const tau = Math.log(2);
-  const cum = isccpPhysical(points(36, { cumulusTau: tau, cirrusTau: 0, cumulusTopM: 2000, cirrusTopM: 0 }));
+  // 積雲だけ(覆う割合 0.5・雲の中の τ_in = 1.39): 面積 0.5 が雲・τ 薄い・雲頂 2 km
+  // → 低い → cumulus。
+  const cum = isccpPhysical(points(36, { cumulusTauIn: 1.39, coverage: 0.5, cirrusTau: 0, cumulusTopM: 2000, cirrusTopM: 0 }));
   check('積雲だけの点: cloudFrac = 1 − exp(−τ) = 0.5、cumulus・topLowFrac へ同じ割合',
     near(cum.cloudFrac, 0.5) && near(cum.cumulus, 0.5) && near(cum.topLowFrac, 0.5),
     `cloudFrac=${cum.cloudFrac} cumulus=${cum.cumulus} topLow=${cum.topLowFrac}`);
 
-  // 不透明度 f < 0.02(τc = 0.01 → f ≈ 0.00995)の点は全面を晴天にする。
-  const thin = isccpPhysical(points(36, { cumulusTau: 0.01, cirrusTau: 0, cumulusTopM: 2000, cirrusTopM: 0 }));
+  // 覆う割合 < 0.02 の点は全面を晴天にする。
+  const thin = isccpPhysical(points(36, { cumulusTauIn: 1, coverage: 0.01, cirrusTau: 0, cumulusTopM: 2000, cirrusTopM: 0 }));
   check('積雲の不透明度 < 0.02 の点は晴天(cloudFrac = 0)', thin.cloudFrac === 0, `cloudFrac=${thin.cloudFrac}`);
 
   // 検出下限(0.3)を下回る巻雲は雲の判定へ入らないが、積雲の雲の τ には足される
-  // (τ = τc/f + τci ≈ 1.59 — まだ薄い・低い = cumulus)。
-  const sub = isccpPhysical(points(36, { cumulusTau: tau, cirrusTau: 0.2, cumulusTopM: 2000, cirrusTopM: 10000 }));
+  // (τ = τ_in + τci ≈ 1.59 — まだ薄い・低い = cumulus)。
+  const sub = isccpPhysical(points(36, { cumulusTauIn: 1.39, coverage: 0.5, cirrusTau: 0.2, cumulusTopM: 2000, cirrusTopM: 10000 }));
   check('検出下限の巻雲は高層へ畳まれない(積雲の面積・低い雲頂のまま)',
     near(sub.cloudFrac, 0.5) && near(sub.cumulus, 0.5) && sub.topHighFrac === 0,
     `cloudFrac=${sub.cloudFrac} cumulus=${sub.cumulus} topHigh=${sub.topHighFrac}`);
 
-  // 混在: 半分が巻雲(高・薄い)、半分が厚い積雲(低・τ = 30 > 23 → stratus)。9 分類の和 = cloudFrac。
+  // 混在: 半分が巻雲(高・薄い)、半分が厚い積雲(低・τ_in = 30 > 23 → stratus)。9 分類の和 = cloudFrac。
   const mixed = isccpPhysical([
-    ...points(18, { cumulusTau: 0, cirrusTau: 1, cumulusTopM: 2000, cirrusTopM: 10000 }),
-    ...points(18, { cumulusTau: 30, cirrusTau: 0, cumulusTopM: 2000, cirrusTopM: 0 }),
+    ...points(18, { cumulusTauIn: 0, coverage: 0, cirrusTau: 1, cumulusTopM: 2000, cirrusTopM: 10000 }),
+    ...points(18, { cumulusTauIn: 30, coverage: 1, cirrusTau: 0, cumulusTopM: 2000, cirrusTopM: 0 }),
   ]);
   check('混在した点: 9 分類の割合の和が cloudFrac に一致',
     near(classSum(mixed), mixed.cloudFrac) && near(mixed.cloudFrac, 1)
       && near(mixed.cirrus, 0.5) && near(mixed.stratus, 0.5) && near(mixed.tauThickFrac, 0.5),
     `和=${classSum(mixed).toFixed(4)} cloudFrac=${mixed.cloudFrac} cirrus=${mixed.cirrus} stratus=${mixed.stratus}`);
 
+  // 高い・厚い積雲(雲頂 10 km・τ_in = 30 > 23・全面覆う)は深い対流 = deepConvection。
+  // τ_in を使う以前の読み方(覆う割合の深さ)ではこの分類に届かなかった。
+  const deep = isccpPhysical(points(36, { cumulusTauIn: 30, coverage: 1, cirrusTau: 0, cumulusTopM: 10000, cirrusTopM: 0 }));
+  check('高い・厚い積雲の点: deepConvection に畳まれる(高 × 厚い)',
+    near(deep.deepConvection, 1) && near(deep.deepFrac, 1) && near(deep.tauThickFrac, 1),
+    `deepConvection=${deep.deepConvection} deepFrac=${deep.deepFrac}`);
+
   // 全面が晴天の点では median 系は null、雲の割合は 0。
-  const clear = isccpPhysical(points(36, { cumulusTau: 0, cirrusTau: 0, cumulusTopM: 2000, cirrusTopM: 0 }));
+  const clear = isccpPhysical(points(36, { cumulusTauIn: 0, coverage: 0, cirrusTau: 0, cumulusTopM: 2000, cirrusTopM: 0 }));
   check('晴天だけのタイル: cloudFrac = 0・tauMedian・topKmMedian は null',
     clear.cloudFrac === 0 && clear.tauMedian === null && clear.topKmMedian === null && classSum(clear) === 0,
     `cloudFrac=${clear.cloudFrac} tauMedian=${clear.tauMedian}`);
