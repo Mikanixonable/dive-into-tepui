@@ -4,13 +4,10 @@
 // window.cloudMotion が tools/cloud-lab-motion-compare.mjs の駆動口。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { clamp, cos, exp, float, mix, mrt, screenUV, sin, step, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { clamp, exp, float, mix, mrt, sin, step, uniform, vec4 } from 'three/tsl';
 import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
 import { EquirectProjection } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
-import {
-  blendBakedTexels, bindCloudBlend, cloudMotionFromTexel,
-} from '../../src/render/cloud/cloud-field-sample';
 import { AtmosphericWindField, SURFACE_HEIGHT } from '../../src/render/cloud/atmospheric-wind';
 import { Cyclones } from '../../src/render/cloud/cyclones';
 import { CirculatingNoise } from '../../src/render/cloud/circulating-noise';
@@ -21,8 +18,11 @@ import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../src/render/cloud/cloud-kind-node';
 import { latitudeOf } from '../../src/render/cloud/sphere-frame';
+import {
+  CloudMotionWind, awaitClimateMap, boxDirectionNode, renderTargetBase64,
+} from './probe-common';
 import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
-import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
+import type { Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 declare global {
   interface Window {
@@ -30,18 +30,15 @@ declare global {
   }
 }
 
-// 箱の指定。緯度経度 [deg] の四辺(実写の箱と同じ EPSG:4326 の面)と一辺の画素数。
+// 箱の指定。緯度経度 [deg] の四辺(実写の箱と同じ EPSG:4326 の面)。読み出す面は BOX_PX 画素。
 interface BoxSpec {
   readonly north: number;
   readonly south: number;
   readonly west: number;
   readonly east: number;
-  readonly sizePx: number;
 }
 
 interface CloudMotionProbe {
-  readonly ready: () => boolean;
-  readonly waitUntilReady: () => Promise<void>;
   // 表示時刻 hours [h] の場を焼く。以後の sampleBox / sampleWindBox はこの時刻を読む。
   readonly prepare: (hours: number) => Promise<void>;
   // 冷たい雲頂の場を箱の面で読む。戻り値は RGBA8 の生画素の base64
@@ -56,10 +53,6 @@ interface CloudMotionProbe {
 const EQUIRECT_HEIGHT = 1024;
 // 切り出し面の大きさ [px]。
 const BOX_PX = 250;
-// 風の表示値が張る速さ [m/s]。実写側のブロック計測の上限(80)より外へ余裕を取る。
-export const WIND_SPAN_MS = 96;
-// 気候画像が届くのを待つ上限 [フレーム]。
-const CLIMATE_WAIT_FRAMES = 600;
 
 // 差し替え実験。URL のクエリで、雲場を組む前に風・低気圧・エポックの仕掛けだけを切る —
 // 速さ・減衰時間・入れ替わりの指標のどれが動くかで、実写との差の原因を切り分ける。
@@ -151,9 +144,7 @@ class MotionProbeCanvas {
   private readonly coldQuad: QuadMesh;
   private readonly windQuad: QuadMesh;
   private readonly boxBounds = uniform(new THREE.Vector4(0, 0, 0, 0));
-  // 2 枚の写しの混ぜ方。bindCloudBlend が場の blend 状態を写す。
-  private readonly parity: FloatUniform = uniform(0);
-  private readonly fraction: FloatUniform = uniform(0);
+  private readonly motionWind: CloudMotionWind;
   private readonly coldTarget = new THREE.RenderTarget(BOX_PX, BOX_PX, {
     format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false, samples: 0,
   });
@@ -175,11 +166,12 @@ class MotionProbeCanvas {
     await renderer.init();
     const field = earthGeneratedCloudField(new EquirectProjection(EQUIRECT_HEIGHT));
     const probe = new MotionProbeCanvas(renderer, field);
-    await probe.awaitClimate();
+    await awaitClimateMap(renderer, [field.climateMap], 'cloud motion probe');
     return probe;
   }
 
   private constructor(private readonly renderer: WebGPURenderer, private readonly field: GeneratedCloudField) {
+    this.motionWind = new CloudMotionWind(field);
     this.coldMaterial = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
     this.coldMaterial.colorNode = this.coldNode();
     this.windMaterial = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
@@ -188,30 +180,11 @@ class MotionProbeCanvas {
     this.windMaterial.mrtNode = mrt({ wind: this.windNode() });
     this.coldQuad = new QuadMesh(this.coldMaterial);
     this.windQuad = new QuadMesh(this.windMaterial);
-    bindCloudBlend(this.field.blend, this.parity, this.fraction);
   }
 
-  // 気候画像の取得を始め、GPU へ載るまで待つ。投入は本体と同じ待ち行列を通す。
-  private async awaitClimate(): Promise<void> {
-    this.field.climateMap.request();
-    for (let frame = 0; frame < CLIMATE_WAIT_FRAMES; frame += 1) {
-      if (this.field.climateMap.generation > 0) return;
-      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
-      DeferredTexture.publishOne(this.renderer);
-    }
-    throw new Error('cloud motion probe: 気候画像が届かない');
-  }
-
-  // いまの boxBounds が指す箱の画素が張る単位方向。v は北から南へ増える。
+  // いまの boxBounds が指す箱の画素が張る単位方向。
   private directionNode(): Vec3Node {
-    const west = this.boxBounds.x;
-    const south = this.boxBounds.y;
-    const east = this.boxBounds.z;
-    const north = this.boxBounds.w;
-    const longitude = mix(west, east, screenUV.x);
-    const latitude = mix(north, south, screenUV.y);
-    const flat = cos(latitude);
-    return vec3(flat.mul(sin(longitude)), sin(latitude), flat.mul(cos(longitude)));
+    return boxDirectionNode(this.boxBounds);
   }
 
   // 冷たい雲頂の場。雲頂高度から雲頂温度を引き、放射率(1 − e^−τ)で重み付けた 2 層の放射で
@@ -240,24 +213,10 @@ class MotionProbeCanvas {
     return vec4(coldness, sample.cumulus, sample.cirrus, float(1));
   }
 
-  // 雲を運ぶ風の写し。地表付近・上層の東・北成分を ±WIND_SPAN_MS へ写す。
+  // 雲を運ぶ風の写し(±WIND_SPAN_MS へ写した地表付近・上層の東・北成分)。
   private windNode(): Vec4Node {
-    const direction = this.directionNode();
-    const uv = this.field.fieldProjection.uvAt(direction);
-    const texel = blendBakedTexels(
-      texture(this.field.slots[0].motion, uv),
-      texture(this.field.slots[1].motion, uv),
-      this.parity, this.fraction,
-    );
-    const motion = cloudMotionFromTexel(texel);
-    const encode = (v: FloatNode): FloatNode => clamp(v.div(WIND_SPAN_MS).add(0.5), 0, 1);
-    return vec4(
-      encode(motion.surfaceWind.x), encode(motion.surfaceWind.y),
-      encode(motion.upperWind.x), encode(motion.upperWind.y),
-    );
+    return this.motionWind.windNode(this.directionNode());
   }
-
-  public get ready(): boolean { return this.field.climateMap.generation > 0; }
 
   // 表示時刻 hours [h] の場を焼く。時刻が大きく跳ぶので 1 枚だけ焼き直される。
   public async prepare(hours: number): Promise<void> {
@@ -270,17 +229,7 @@ class MotionProbeCanvas {
     this.boxBounds.value.set(
       THREE.MathUtils.degToRad(spec.west), THREE.MathUtils.degToRad(spec.south),
       THREE.MathUtils.degToRad(spec.east), THREE.MathUtils.degToRad(spec.north));
-    this.renderer.setRenderTarget(target);
-    quad.render(this.renderer);
-    this.renderer.setRenderTarget(null);
-    const pixels = await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, BOX_PX, BOX_PX);
-    let binary = '';
-    const bytes = new Uint8Array(pixels.buffer);
-    const CHUNK = 8192;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-    }
-    return btoa(binary);
+    return renderTargetBase64(this.renderer, quad, target, BOX_PX);
   }
 
   public async sampleBox(spec: BoxSpec): Promise<string> {
@@ -295,8 +244,6 @@ class MotionProbeCanvas {
 async function init(): Promise<void> {
   const probe = await MotionProbeCanvas.create(document.getElementById('view') as HTMLCanvasElement);
   window.cloudMotion = {
-    ready: () => probe.ready,
-    waitUntilReady: async () => { /* 気候待ちは create が済ませる */ },
     prepare: (hours) => probe.prepare(hours),
     sampleBox: (spec) => probe.sampleBox(spec),
     sampleWindBox: (spec) => probe.sampleWindBox(spec),

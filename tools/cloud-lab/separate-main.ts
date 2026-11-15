@@ -2,9 +2,8 @@
 // 目視で調整する。撮影(tools/cloud-lab-separate.mjs)の入口も window へ出す。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
-// 実写の雲(ゲーム本体が地表へ貼っているもの)。この画面の分離の入力そのもの。
-import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
 import { buildButtonRow, buildSlider } from '../lab-controls';
+import { loadCloudsPhoto } from './probe-common';
 import {
   SEPARATION_PARAMS, SEPARATION_VIEWS, SeparationPipeline,
   type SeparationParamId, type SeparationView,
@@ -41,9 +40,6 @@ declare global {
   interface Window {
     // 撮影の駆動(tools/cloud-lab-separate.mjs)が CDP から読む入口。
     cloudSeparate?: {
-      views: readonly SeparationView[];
-      show: (view: SeparationView) => void;
-      setParam: (id: SeparationParamId, value: number) => void;
       capture: (view: SeparationView) => Promise<string>;
       metrics: () => Promise<SeparationMetrics>;
     };
@@ -98,14 +94,8 @@ function pearson(a: Float32Array, b: Float32Array): number {
 
 // 実写を読み、レンダラとパイプラインを起こし、操作部品を配線する。
 async function init(): Promise<void> {
-  const photo = await new THREE.TextureLoader().loadAsync(cloudsPhotoUrl);
-  photo.wrapS = THREE.RepeatWrapping;
-  photo.wrapT = THREE.ClampToEdgeWrapping;
-  photo.flipY = false;
-  photo.generateMipmaps = false;
-  photo.minFilter = THREE.LinearFilter;
-  photo.magFilter = THREE.LinearFilter;
-  photo.colorSpace = THREE.NoColorSpace;
+  // この画面の分離の入力そのもの。原寸で読むのでミップは要らない。
+  const photo = await loadCloudsPhoto(false);
   const { width, height } = photo.image as { width: number; height: number };
 
   const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -217,9 +207,6 @@ async function init(): Promise<void> {
   applyParams(params);
 
   window.cloudSeparate = {
-    views: SEPARATION_VIEWS.map(([id]) => id),
-    show: (next) => { view = next; markView(view); showView(view); },
-    setParam: (id, value) => applyParams({ [id]: value }),
     capture: (target) => pipeline.capture(target),
     metrics: () => measure(),
   };
