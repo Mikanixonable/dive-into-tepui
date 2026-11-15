@@ -10,6 +10,7 @@ import { CirculatingNoise } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
+import { Highs } from './anticyclones';
 import { HumidityModulator } from './humidity-modulation';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
@@ -242,6 +243,7 @@ export class WeatherModel {
   private readonly upperCirculation: Circulation;
   private readonly rossbyWave = new RossbyWave();
   private readonly cyclones: Cyclones;
+  private readonly highs: Highs;
   private readonly pressureNoise: CirculatingNoise;
   private readonly mesoscaleLift: CirculatingNoise;
   private readonly upperMeander: CirculatingNoise;
@@ -261,6 +263,7 @@ export class WeatherModel {
     this.surfaceCirculation = new Circulation(SURFACE_BANDS, surfaceRadius);
     this.upperCirculation = new Circulation(UPPER_BANDS, surfaceRadius);
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
+    this.highs = new Highs(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(
       this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
     this.mesoscaleLift = new CirculatingNoise(
@@ -300,6 +303,7 @@ export class WeatherModel {
     this.upperCirculation.syncTime(seconds);
     this.rossbyWave.syncTime(seconds);
     this.cyclones.syncTime(seconds);
+    this.highs.syncTime(seconds);
     this.pressureNoise.syncTime(seconds);
     this.mesoscaleLift.syncTime(seconds);
     this.upperMeander.syncTime(seconds);
@@ -565,7 +569,7 @@ export class WeatherModel {
     };
   }
 
-  // 気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。
+  // 気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷 + 高気圧の丘。
   private pressureSourceAt(direction: Vec3Node): FloatNode {
     const latitude = latitudeOf(direction);
     const band = bandPressureAt(latitude);
@@ -574,7 +578,8 @@ export class WeatherModel {
     // 温帯らしさで振幅そのものを絞る(帯の浅い赤道の谷と合わせて実写の ±3〜4 hPa の幅へ)。
     const tropicalScale = extratropicalAt(latitude).mul(0.5).add(0.5);
     return band.add(noise.mul(PRESSURE_NOISE_AMPLITUDE).mul(tropicalScale))
-      .add(this.cyclones.pressureAt(direction));
+      .add(this.cyclones.pressureAt(direction))
+      .add(this.highs.pressureAt(direction));
   }
 
   // 移流前の湿度(x が地表付近、y が上層)。平年の雲量は移流の後に weatherAt が足す — 移流を通すと
