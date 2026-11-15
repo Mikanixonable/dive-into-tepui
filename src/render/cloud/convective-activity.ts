@@ -45,9 +45,9 @@ const COLD_ACTIVITY = 1.9;
 const ACTIVITY_MIN = 0.3;
 // 陸の上で上がる分。日射で温まる地面の上は不安定で、雲は板ではなく粒になる。
 const LAND_ACTIVITY = 0.3;
-// 前線帯・雨帯が対流活発度へ寄与する伝達利得。帯の中の対流は活発で、粒立った塔が列をなす —
-// 帯が飽和した所で活発度が半分ぶん上がる高さに取る。
-const BAND_ACTIVITY = 0.5;
+// 前線が対流活発度へ寄与する伝達利得。前線の中の対流は活発で、粒立った塔が列をなす —
+// 前線が飽和した所で活発度が半分ぶん上がる高さに取る。
+const FRONT_ACTIVITY = 0.5;
 
 export class ConvectiveActivity {
   private readonly noise: CirculatingNoise;
@@ -74,13 +74,13 @@ export class ConvectiveActivity {
   }
 
   // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)、陸らしさ land
-  // 0..1、気団の折り目の帯の強さ band 0..1 における対流の活発度(ACTIVITY_MIN..1)。
+  // 0..1、低気圧従属の前線の強さ cycloneFront 0..1 における対流の活発度(ACTIVITY_MIN..1)。
   public at(
-    direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode, band: FloatNode,
+    direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode, cycloneFront: FloatNode,
   ): FloatNode {
     return clamp(
       this.instability.at(direction).r.add(lift.mul(LIFT_ACTIVITY)).sub(warmth.mul(COLD_ACTIVITY))
-        .add(land.mul(LAND_ACTIVITY)).add(band.mul(BAND_ACTIVITY)).add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
+        .add(land.mul(LAND_ACTIVITY)).add(cycloneFront.mul(FRONT_ACTIVITY)).add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
   }
 
   // 保持している GPU 資源を解放する。
