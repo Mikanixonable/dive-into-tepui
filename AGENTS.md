@@ -109,8 +109,10 @@
   変更と無関係な検証に時間を使わない。**例外は main へ送るとき** — そのときだけは
   変更箇所によらず全部回す(`/send-pr`)。
 
-- **利用枠は作業の区切りごとに確かめる。** 長い作業では `npm run usage` を区切りで実行し、
-  判定が `SLEEP` なら新しい作業を始めず、引き継ぎメモを書いて止まる。`UNKNOWN` ならユーザーに残量を問う。
+- **利用枠は実行主体を指定して作業の区切りごとに確かめる。** Claude Code は
+  `npm run usage -- --runtime=claude`、Devin Luna は `npm run usage -- --runtime=devin-luna` を使う。
+  `SLEEP` は表示された判定対象にだけ適用する。Devin は Claude の `SLEEP` で停止せず、Devin 有料モデル枠を確認する。
+  `UNKNOWN` なら判定対象の残量を確認する。
 
 ## ブランチと main へのマージ
 
@@ -233,7 +235,8 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run test:render` | `src/render/` の回帰テスト | `src/render/` を触ったとき |
 | `npm run test:settings` | `src/settings/` の回帰テスト | `src/settings/` を触ったとき |
 | `npm run test:launcher` | `src/launcher/` の回帰テスト | `src/launcher/` を触ったとき |
-| `npm run usage` | **自分のセッションで眠るべきか・誰へ委譲できるか**の判定。Claude の購読枠(5h・週間)の使用率と解除時刻、SWE-2 のレート制限、Devin 有料モデル(luna など)の quota を出す。`-- --json` 機械可読 / `-- --brief` 1 行 / `-- --wait=claude|swe2` 戻るまで待つ(run_in_background で起床タイマー)。終了コード 0=続行・1=眠る(Claude 使用率 95% 以上)・2=不明 | 作業の区切り(ステップ・commit・委譲の回収の後)・Devin を起動する前・rate limit のエラーが出たとき(セッション開始時は SessionStart フックが 1 行出す) |
+| `npm run usage -- --runtime=claude` / `npm run usage -- --runtime=devin-luna` | 指定した実行主体の利用枠と委譲先を表示。Claude 購読枠(5h・週間)、SWE-2 レート制限、Devin 有料モデル quota を出す。`-- --json` / `-- --brief` / `-- --wait=claude` / `-- --wait=devin-luna` / `-- --wait=swe2`。終了コード 0=続行・1=対象枠の枯渇・2=不明 | 作業の区切り・Devin 起動前・rate limit 時。Claude と Devin Luna は必ず対応する runtime を明示する |
+| `npm run usage:selftest` | Claude と Devin Luna の判定が互いの枠に影響されないことを検査 | 利用枠判定ロジックを変更したとき |
 | `npm run dev` | 開発サーバ(http://localhost:8080) | 実機で動かすとき |
 | `npm run smoke:browser` | ヘッドレスでの起動・操作スモーク | 実行時の確認を求められたとき |
 | `npm run build` | `docs/` への本番ビルド | **main へ送る前**(`/send-pr`)。公開は CI が行う |
