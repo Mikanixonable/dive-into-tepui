@@ -38,7 +38,7 @@ const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 3.75, amplitude: 0.45 }, // 1700 km
   { frequency: 8, amplitude: 0.75 }, // 800 km
   { frequency: 16, amplitude: 0.30 }, // 400 km
-  { frequency: 32, amplitude: 0.12, envelope: 1 }, // 200 km
+  { frequency: 32, amplitude: 0.45, envelope: 1 }, // 200 km
   { frequency: 64, amplitude: 0.10, envelope: 1 }, // 100 km
   // 上層の湿度の細かい段。低軌道の cap で解像できる尺度まで巻雲の帯と斑を下ろし、描画の細部(32 km 以下)へ
   // 担い手を途切れさせずに渡す。全球の写しでは texel より細かいので消え、全球の統計は変えない。
@@ -76,7 +76,10 @@ const SURFACE_HUMIDITY_NOISE_AMPLITUDE = 0.5625;
 const CONVECTION_NOISE_AMPLITUDE = 0.30;
 // 上層は 50・25 km の段を足したぶん振幅の和で割られて弱まるので、足す前の和(1.84)に対する比を掛けて、
 // その段を解像しない全球の写しの振れ幅を足す前と同じに保つ。
-const UPPER_HUMIDITY_NOISE_AMPLITUDE = 0.65625 * (1.84 + 0.14 + 0.09) / 1.84;
+// 場の振れ幅は実写の巻雲場面の乾湿の対比に取る — 上層対流圏では沈降する乾いた気団(薄雲の無い空)と
+// 対流・前線からの湿った流出(氷過飽和、厚い幕)が隣接し、同じ規模の湿度の散らばりは地表付近より
+// 大きい。小さいと全場面が中間の湿度へ潰れて、薄い靄だけの絵になる。
+const UPPER_HUMIDITY_NOISE_AMPLITUDE = 1.18 * (1.84 + 0.14 + 0.09) / 1.84;
 
 // 移流の源を風で流す2位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が
 // 目に付く。背景の雲がどれだけ伸びるかは、1歩のあいだに風が空間で変わる量から決まる。
