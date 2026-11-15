@@ -63,6 +63,7 @@ export class CloudPresentation {
 
   // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
   public get renderInput(): CloudRenderInput {
+    // 同じ供給源の場・cap 配置・世代・表示時刻を描画入力へそろえる。
     return {
       field: {
         slots: this.source.slots,
@@ -75,6 +76,7 @@ export class CloudPresentation {
     };
   }
   public get visible(): boolean { return this.surface.visible; }
+  // 雲全体と、少なくとも一方の雲種が有効なとき表示可能とする。
   public get cloudsVisible(): boolean {
     return this.cloudVisible && (this.cumulusVisible || this.cirrusVisible);
   }
@@ -140,6 +142,7 @@ export class CloudPresentation {
     this.syncSurfaceVisibility();
   }
 
+  // 積雲が無効なら不透明な雲殻を隠す。
   private syncSurfaceVisibility(): void {
     if (!this.cloudVisible || !this.cumulusVisible) this.surface.hide();
   }
