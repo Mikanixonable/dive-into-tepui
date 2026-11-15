@@ -82,6 +82,7 @@ export function loadLoopConfig() {
     probeWindows: 3,
     dateStart: recentUtcDate(40),
     dateDays: 30,
+    isoArchiveDays: 365,
   };
   if (!existsSync(CONFIG_FILE)) return defaults;
   try {
