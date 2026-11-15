@@ -15,11 +15,11 @@ import {
 import { snapCap } from '../../src/render/cloud/cloud-cap';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
-  cumulusColumnOpticalDepthNode, cumulusTopAltitudeNode,
+  cumulusCoveringDepthNode, cumulusTopAltitudeNode,
 } from '../../src/render/cloud/cloud-kind-node';
 import {
   CIRRUS_MAX_OPTICAL_DEPTH, CIRRUS_TOP_ALTITUDE,
-  CUMULUS_MAX_OPTICAL_DEPTH, CUMULUS_TOP_ALTITUDE,
+  CUMULUS_MAX_COVERING_DEPTH, CUMULUS_TOP_ALTITUDE,
 } from '../../src/render/cloud/cloud-kind';
 import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
@@ -47,7 +47,7 @@ interface CloudTranslucentProbe {
   // 表示時刻 hours [h] の場を焼く。以後の samplePhysBox / sampleWindBox はこの時刻を読む。
   readonly prepare: (hours: number) => Promise<void>;
   // 種類別の物理量を箱の面で読む。RGBA8 の生画素の base64(行は北から南、列は西から東):
-  // R = 積雲の鉛直柱光学深さ / CUMULUS_MAX_OPTICAL_DEPTH、
+  // R = 積雲の覆いの深さ / CUMULUS_MAX_COVERING_DEPTH、
   // G = 巻雲の同 / CIRRUS_MAX_OPTICAL_DEPTH、B = 積雲の雲頂高度 / CUMULUS_TOP_ALTITUDE、
   // A = 巻雲の雲頂高度 / CIRRUS_TOP_ALTITUDE。
   readonly samplePhysBox: (spec: BoxSpec) => Promise<string>;
@@ -137,12 +137,13 @@ class TranslucentProbeCanvas {
     return vec3(flat.mul(sin(longitude)), sin(latitude), flat.mul(cos(longitude)));
   }
 
-  // 積雲・巻雲の量から、種類別の鉛直柱光学深さと雲頂高度を描画器と同じ式で出す。
+  // 積雲・巻雲の量から、種類別の柱の深さ(積雲は覆いの深さ、巻雲は光学的厚み)と雲頂高度を
+  // 描画器と同じ式で出す。
   private physNode(): Vec4Node {
     const direction = this.directionNode();
     const sample = this.field.at(direction);
     return vec4(
-      cumulusColumnOpticalDepthNode(sample.cumulus).div(CUMULUS_MAX_OPTICAL_DEPTH),
+      cumulusCoveringDepthNode(sample.cumulus).div(CUMULUS_MAX_COVERING_DEPTH),
       cirrusColumnOpticalDepthNode(sample.cirrus).div(CIRRUS_MAX_OPTICAL_DEPTH),
       cumulusTopAltitudeNode(sample.cumulus).div(CUMULUS_TOP_ALTITUDE),
       cirrusTopAltitudeNode(sample.cirrus).div(CIRRUS_TOP_ALTITUDE));
