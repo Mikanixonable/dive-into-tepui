@@ -377,3 +377,16 @@
   WARM_ASYMMETRY 2.6→1.8 で見た目を保ちつつ若干改善。
 - 見た目: npac-storm 2000km で帯が一面を覆う層状デッキへ変化、
   粒は帯の中で消える(before/after: .cloud-lab/render-capture)。
+
+## step 49 — 内包対流の散在化(採用、7eb3cf8ec)+ 位置の可視化
+- front×deepFrac の過敏の正体を焼き出しで定量: 帯(band>0.5)の海タイルで
+  deep 近似 28% — 内包対流が強い帯でほぼ全面に圏界面までの塔を立てていた。
+  実際の乱層雲の内包積乱雲は帯の数%の散在セル。
+- 修正: embedded に reach(粒の芯)の門(0.4-0.8)を掛けて散在化。
+  front×deepFrac 5.55→2.43(基準 ~2.1 へ回帰)、contrast 0.840→0.697 改善。
+  bias 0.774・gain 0.925 は悪化、classes 同等。tauThick は悪化
+  (temperate 0.23→0.33)— 塔が deep へ逃がしていた分が厚い中層デッキへ
+  落ちただけで、帯デッキの面積そのものが残る本丸。
+- 可視化: 低気圧・前線の位置を cyclone-tracks から直接抽出して
+  sessions/cyclone-fronts-t180.md + .png へ出力(雲・band 重ね済み)。
+  図の再生成は tools/cloud-regime-plot.py(全球チャンネル)。
