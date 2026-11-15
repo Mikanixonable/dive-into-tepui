@@ -12,7 +12,7 @@ import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-type
 // 東へのずれ(芯の半径の何倍)。消費は流出より広く、群れが雨で食べた湿りの
 // 乾いた囲いを作る。
 const CLUSTER_HALO_SPAN = 3;
-const CLUSTER_OUTFLOW_SPAN = 2.5;
+const CLUSTER_OUTFLOW_SPAN = 4.0;
 const CLUSTER_OUTFLOW_EAST = 1.2;
 // 別のクラスタの消費の環の中では強さを削る幅。環の内側のこの割合までは
 // 強さ 0(資源が無い所に群れは立たない)、縁ではまる強さ。
