@@ -553,3 +553,36 @@
   PASS。`npm run test:render` は 309/309 PASS、render-lab production build も通過。
 - 次: session1 の実施中課題を ISCCP 残差へ戻す。陸域 deep 不足と海上 tauMid 過剰を
   別の雲発達要因として分解する。
+
+## step 58 — 中緯度の戻り沈降を再調整(採用、1592a2aa4)
+- 分解: 陸域は deep と雲量の両方が不足し、生成 lift の沈降側偏りと陸上の低湿度が候補。
+  温帯海上は tauMid が過剰で、stratocumulus 比率も 0.427 対実写 0.232。
+  どちらも生成 lift が実写より沈降側に偏るため、まず雲型や光学厚みでなく
+  weather-model の戻り沈降 `MASS_RETURN` を試した。
+- 候補: 0.026→0.005 は対象指標への効果が強かったが、全体 classes が 0.0667 と
+  clean 基準 0.0660 よりわずかに悪化。0.010 を採用し、対象改善と全体評価の釣り合いを取った。
+- ISCCP (clean 基準→採用候補、実写を括弧内):
+
+  | 指標 | 基準 | step 58 | 実写 |
+  | --- | ---: | ---: | ---: |
+  | temperate-land deep | 0.0189 | 0.0319 | 0.0436 |
+  | highlat-land deep | 0.0311 | 0.0456 | 0.0544 |
+  | temperate-sea tauMid | 0.5028 | 0.4662 | 0.3611 |
+  | highlat-sea tauMid | 0.5129 | 0.4543 | 0.5607 |
+
+- 全体監査: weather 0.1180→0.1020、classes 0.06597→0.06569、
+  responseBias 0.625→0.466、responseGain 0.448→0.428、variogram 0.329→0.309 と改善。
+  responseContrast は 0.498→0.564、explainedGap は 0.0511→0.0565 と悪化。
+  highlat-sea tauMid は実写から遠ざかったが、同区分の総合クラス距離は
+  0.0814→0.0718 へ改善。個別残差と複合スコアを混同せず記録する。
+- 描画: `land-residual-before-a/b` と `land-residual-after-a` を各 21 shot 撮影。
+  before 同士・Earth 反復差は 0 LSB、after は 18/21 shot が 6 LSB 封筒外。
+  差は雲を含む地表・斜視に出て、`earth-cirrus-shadow` は封筒内。nadir/oblique で
+  孤立した針状塔や一様な台地は見られない。
+- 検証: `npm run test:render` 309/309 PASS。isolated worktree の
+  `npm run typecheck` は既存の `Vec4Uniform` export 不足で失敗したが、`devin/dev` へ
+  変更を fast-forward 統合後、同ブランチにある未コミット型追加を保持した状態で
+  `npm run typecheck` PASS。親作業ツリーの変更には手を加えていない。
+- 残課題: 陸域 cloudFrac は temperate 0.426/実写 0.732、highlat 0.553/0.747 と低い。
+  温帯海上 tauMid も 0.466/0.361 と残る。陸域の湿度・被覆供給と海上の層積雲の
+  量・厚みを別機構として次に調べる。
