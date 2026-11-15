@@ -359,3 +359,21 @@
   `audit-only <label>`(対応づけ変更時)、`diff <A> <B>`(2 監査の
   見出し+区分表の並列)。レポートは .cloud-detail/history/audit-<label>.txt。
   基準は audit-base-p02(p=0.2 採用版、classes 0.100)。
+
+## step 48 — ヒモ状の雲: 帯を細い腕から層状の盾へ(採用、522ec0819)
+- ユーザー最優先課題。全球プロットで原因を確認: band は細いガウス腕の
+  集合で、coverage は粒状ノイズに支配 — 帯の線上へ雲が薄く乗るだけで
+  連続した層状の盾が無いのがヒモ状の正体。
+- 採用した組合せ: 温暖前線の非対称幅 WARM_ASYMMETRY=1.8(極側・下流へ
+  広げて 600-900km 前方の盾) + BAND_GRAIN_FADE 0.95(帯内で対流の粒を
+  消す) + BAND_DECK 0.3(帯芯の被覆を連続デッキへ) + BAND_TOP 2
+  (乱層雲の雲頂は中層 3-6km)。
+- 計測(base-p02 比): classes 0.100→0.0994 同等、bias 0.949→0.598 改善、
+  variogram 0.368→0.337 改善、contrast 0.640→0.840・gain +0.04・
+  gap +0.006 悪化 — 主因は既追跡の front×deepFrac 過敏の増幅(帯の厚い
+  デッキが deep 級へ入る構造)。別課題として残す。
+- 試行の記録: DECK=0.45 は classes 0.108・contrast 1.41 で却下。
+  EMBEDDED 門の絞りは無関係(deep は塔ではなくデッキ由来)。
+  WARM_ASYMMETRY 2.6→1.8 で見た目を保ちつつ若干改善。
+- 見た目: npac-storm 2000km で帯が一面を覆う層状デッキへ変化、
+  粒は帯の中で消える(before/after: .cloud-lab/render-capture)。
