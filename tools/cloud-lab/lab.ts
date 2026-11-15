@@ -3,14 +3,14 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, If, screenUV, vec2, vec3 } from 'three/tsl';
-// 実写の雲(ゲーム本体が地表へ貼っているもの)。「実写」ビューが比較のためだけに読む。
-import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
 import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
 import { DeferredTexture } from '../../src/render/deferred-texture';
 import { EquirectProjection, OrthographicCap } from '../../src/render/field-projection';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { CloudLabPane } from './pane';
+import { awaitClimateMap, loadCloudsPhoto } from './probe-common';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
+import { SECONDS_PER_HOUR } from './time-units';
 import type { Vec3Node } from '../../src/render/tsl-types';
 
 // 面の大きさ [px]。全球の面は正距円筒なので 2:1、cap の面は正方形。cap の写しは表示と同じ大きさに
@@ -24,9 +24,6 @@ const VIEW_WIDTH = GLOBE_WIDTH + CAP_SIZE;
 
 // 全球の面と cap の面の境目(キャンバスの幅に対する比)。
 const SPLIT_U = GLOBE_WIDTH / VIEW_WIDTH;
-
-// 気候画像が届くのを待つ上限 [フレーム]。越えたら画像が取れていないので、器を組まずに投げる。
-const CLIMATE_WAIT_FRAMES = 600;
 
 // cap の既定 [°]。時刻 0 の熱帯低気圧の最盛期の位置(19°N・136°E)を中心に、LEO(高度 400 km)の
 // 地平線 19.8° に近い半径で開く。
@@ -60,31 +57,12 @@ export class CloudLabCanvas {
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     await renderer.init();
-    const photo = await new THREE.TextureLoader().loadAsync(cloudsPhotoUrl);
-    // 気候テクスチャと同じ向き(v = 0 が北極)・同じ生の値。表示は 8k を 1024×512 へ潰すので、
-    // ミップを切るとエイリアスがそのまま出る — ここだけはミップ付きで読む。
-    photo.wrapS = THREE.RepeatWrapping;
-    photo.wrapT = THREE.ClampToEdgeWrapping;
-    photo.flipY = false;
-    photo.generateMipmaps = true;
-    photo.minFilter = THREE.LinearMipmapLinearFilter;
-    photo.magFilter = THREE.LinearFilter;
-    photo.colorSpace = THREE.NoColorSpace;
+    // 気候テクスチャと同じ向き(v = 0 が北極)・同じ生の値。表示は 8k を 1024×512 へ潰すので
+    // ミップ付きで読む(切るとエイリアスがそのまま出る)。
+    const photo = await loadCloudsPhoto(true);
     const lab = new CloudLabCanvas(renderer, photo, captureOnly);
-    await lab.awaitClimate();
+    await awaitClimateMap(renderer, lab.panes.map((pane) => pane.climate), 'cloud lab');
     return lab;
-  }
-
-  // 両面の気候画像の取得を始め、GPU へ載るまで待つ。投入は本体と同じ待ち行列を通すので、
-  // 1 フレームに 1 枚ずつ進める。
-  private async awaitClimate(): Promise<void> {
-    for (const pane of this.panes) pane.climate.request();
-    for (let frame = 0; frame < CLIMATE_WAIT_FRAMES; frame += 1) {
-      if (this.panes.every((pane) => pane.climate.generation > 0)) return;
-      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
-      DeferredTexture.publishOne(this.renderer);
-    }
-    throw new Error('cloud lab: 気候画像が届かない');
   }
 
   // 2 面と、起動時に出す量のマテリアルを組む。
@@ -114,32 +92,29 @@ export class CloudLabCanvas {
   }
 
   public get currentView(): CloudLabViewId { return this.view.id; }
-  public get hours(): number { return this.seconds / 3600; }
+  public get hours(): number { return this.seconds / SECONDS_PER_HOUR; }
   public get capCenterLatitude(): number { return this.capLatitude; }
   public get capCenterLongitude(): number { return this.capLongitude; }
   public get capAngularRadius(): number { return this.capRadius; }
 
-  // 表示する量を切り替えて描き直す。
+  // 表示する量を置く。描き直すのは render()。
   public show(id: CloudLabViewId): void {
     this.view = CLOUD_LAB_VIEWS.find((view) => view.id === id)!;
     this.quad.material = this.materialFor(this.view);
-    this.render();
   }
 
-  // 時刻 [h] を変えて描き直す。
+  // 時刻 [h] を置く。描き直すのは render()。
   public setTime(hours: number): void {
-    this.seconds = hours * 3600;
-    this.render();
+    this.seconds = hours * SECONDS_PER_HOUR;
   }
 
-  // cap の中心の緯度・経度と半径 [°] を置き直して描き直す。
+  // cap の中心の緯度・経度と半径 [°] を置く。描き直すのは render()。
   public aimCap(latitude: number, longitude: number, radius: number): void {
     this.capLatitude = latitude;
     this.capLongitude = longitude;
     this.capRadius = radius;
     this.capProjection.aim(
       THREE.MathUtils.degToRad(latitude), THREE.MathUtils.degToRad(longitude), THREE.MathUtils.degToRad(radius));
-    this.render();
   }
 
   // いまの時刻の場を両面で焼き、選んだ量をキャンバスへ出す。

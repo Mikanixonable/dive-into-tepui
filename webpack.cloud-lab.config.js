@@ -2,16 +2,36 @@
 // 別にしてあるのは、出力先を docs/ から分けるため。撮影は本番ビルドを踏むので、クラス名を
 // 残す minimizer だけは本体と同じものを置く(理由は webpack.config.js の同じ設定にある)。
 const path = require('path');
+const net = require('net');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 
-module.exports = {
+// 既定ポート preferred が埋まっていたら空きポートを返す。devServer.port の被りは
+// EADDRINUSE で起動自体が落ちるので、設定側で先に空きを探す。
+function preferredPort(preferred) {
+  return new Promise((resolve) => {
+    const probe = net.createServer();
+    probe.once('error', () => {
+      const any = net.createServer();
+      any.once('listening', () => {
+        const { port } = any.address();
+        any.close(() => resolve(port));
+      });
+      any.listen(0);
+    });
+    probe.once('listening', () => probe.close(() => resolve(preferred)));
+    probe.listen(preferred);
+  });
+}
+
+const config = {
   cache: {
     type: 'filesystem',
     name: 'cloud-lab',
     cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
   },
-  // main が実験環境(index.html)、separate が実写の分離環境(separate.html)、
+  // main が実験環境(index.html — GPU の写しのほか、天気モデルの全球の面を正距円筒で
+  // 眺める「天気図」の写しを持つ)、separate が実写の分離環境(separate.html)、
   // render-capture が描画経路の多スケール撮影(render-capture.html)、
   // motion が生成雲の動きの計測用の読み出し(motion.html)、
   // weather-probe が気象状態の浮動小数の読み出し(weather-probe.html)、translucent が半透明雲の
@@ -46,12 +66,6 @@ module.exports = {
       {
         // 船モジュールの統合 GLB バイナリは main JS へ埋め込まず、起動時に fetch する。
         test: /\.(glb|gltf)$/,
-        type: 'asset/resource',
-        generator: { filename: 'assets/[hash][ext]' },
-      },
-      {
-        test: /(Backbone|Structure|Motion)\.json$/,
-        include: path.resolve(__dirname, 'src/assets/models'),
         type: 'asset/resource',
         generator: { filename: 'assets/[hash][ext]' },
       },
@@ -115,9 +129,21 @@ module.exports = {
   ],
   devServer: {
     static: './.cloud-lab',
-    port: 8083,
     open: true,
     liveReload: true,
     hot: false,
   },
 };
+
+// 8083 を優先し、埋まっていたら別の空きポートで出す(同時起動や前の server の残りを
+// 許すため — 出たポートは webpack-dev-server の起動ログに出る)。
+module.exports = preferredPort(8083).then((port) => {
+  if (port !== 8083) {
+    console.warn(`[cloud-lab] ポート 8083 は使用中。代わりに http://localhost:${port}/ で出します。`);
+  }
+  config.devServer.port = port;
+  // 同じキャッシュ名を分かち合う server どうしは互いのパックを読み違える(片方が古い
+  // モジュールを拾う)ので、ポートごとに分ける。
+  config.cache.name = `cloud-lab-${port}`;
+  return config;
+});

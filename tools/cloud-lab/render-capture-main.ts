@@ -3,7 +3,6 @@
 // URL の ?layer=cirrus では、上層の半透明殻(巻雲層)だけを描く撮影になる — 不透明な積雲殻を
 // グラフィックス設定で落とし、合成画と同じ画角・時刻で層だけを切り分ける。
 import { LabView } from '../render-lab/lab';
-import type { LabViewAngles } from '../render-lab/view-angles';
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
 import { R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
@@ -29,7 +28,6 @@ interface CloudRenderCapture {
   readonly waitUntilReady: () => Promise<void>;
   readonly setCapture: (spec: RenderCaptureSpec) => void;
   readonly captureSettled: () => Promise<string>;
-  readonly viewAngles: () => LabViewAngles;
 }
 
 // 落ち着き判定の上限。capture() を繰り返し、連続 2 回の絵が一致したら決定的とみなす。
@@ -96,7 +94,6 @@ async function init(): Promise<void> {
       }
       throw new Error('render-capture: shot did not settle within 6 captures');
     },
-    viewAngles: () => view.viewAngles,
   };
 }
 
