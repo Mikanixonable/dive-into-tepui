@@ -27,7 +27,9 @@
    整理済み。`p-cirrus-typology.md` で周期粒・流れ筋・間欠性を描画へ。
 7. **deepFrac gain=0 の調査** — 監査で深い雲の応答が飽和/欠落している。
 
-9. **translucent-teacher / sunset-refine の WIP 回収** — wip commit 済み・未検証。
+9. **sunset-refine の完遂** — worktree に devin/dev マージ済みだが test:render が
+   3 件落ち(sun-transmittance 表の範囲外値・夕方の誤差 11%/許容 3%・薄明)。
+   変更途中で統合不可。sunset-look のループを再開して直す必要がある。
 
 ## 完了(2026-11-15)
 
@@ -42,3 +44,5 @@
 - 巻雲教師の拡充 — 型別教師 90 枚(streak/scaly/veil)を取り込み・共有 dir へ同期
 - cloud-optics(光学モデル R(τ,g) 2 流近似) — albedo 106 行全 PASS を確認し
   devin/dev へ統合(47672803d)
+- translucent-teacher(半透明雲の教師道具拡張) — tools のみ・parse 確認済み、
+  devin/dev へ統合(9db1e19dd)
