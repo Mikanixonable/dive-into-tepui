@@ -250,7 +250,8 @@ export class CloudShadowRenderer {
             // 型の領域と乾いた陸の判定は環境を要るので、層を横切るタップでだけ環境つきの標本を読む。
             const cloud = this.fieldAt(up);
             cirrusDetail.assign(this.cirrusDetail.multiplierAt(
-              up, bodyRadius, cirrusWidth, cloud.cirrusFlow, upperWind, cirrusColumnInputOf(cloud)));
+              up, bodyRadius, cirrusWidth, cloud.cirrusFlow, upperWind, surfaceWind,
+              cirrusColumnInputOf(cloud)));
           });
           cirrusDepth.addAssign(cirrusColumnOpticalDepthNode(texel.g)
             .mul(cirrusDetail).mul(cirrusCrossing).mul(min(cirrusStep.div(max(rise, 1)), CIRRUS_MAX_SLANT))
