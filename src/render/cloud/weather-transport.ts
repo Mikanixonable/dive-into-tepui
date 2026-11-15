@@ -9,7 +9,7 @@ import type { Circulation } from './circulation';
 import { windStep } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { NoiseOctave } from './circulating-noise';
+import type { EpochSchedule, NoiseOctave } from './circulating-noise';
 import type { FieldProjection } from '../field-projection';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
@@ -46,10 +46,27 @@ const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 256, amplitude: 0.09 }, // 25 km
 ];
 
-// エポックの混ぜ替えに参加する段の周波数の上限 [1 rad あたりの山数]。地表付近は 400 km 以上、
-// 上層は 800 km 以上の段だけがその場で入れ替わり、それより細い段は模様の平行移動の足場として残る。
-const SURFACE_HUMIDITY_EPOCH_MAX_FREQUENCY = 16;
-const UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY = 8;
+// 段ごとのエポックの移行時間 [s]。細い段ほど実際の雲の寿命が短い(百キロ級の斑は数時間、
+// 総観規模の雲塊は数日)ので、細い段ほど早く実現を混ぜ替える。総観規模の段は日単位の
+// 遅い混ぜ替えに抑える — 実写と同じ物差しで、混ぜ替えが速いほど移流と無関係な見かけの
+// 動きと真の入れ替わりが増え、切ってしまうと大きな雲域が静止して千キロ級の減衰時間が
+// 長くなりすぎることが分かった。
+const SURFACE_HUMIDITY_EPOCH: readonly EpochSchedule[] = [
+  { untilFrequency: 8, transitionSeconds: 72 * 3600 },
+  { untilFrequency: 16, transitionSeconds: 10 * 3600 },
+  { untilFrequency: 32, transitionSeconds: 5 * 3600 },
+  { untilFrequency: 64, transitionSeconds: 3 * 3600 },
+];
+const UPPER_HUMIDITY_EPOCH: readonly EpochSchedule[] = [
+  { untilFrequency: 8, transitionSeconds: 96 * 3600 },
+  { untilFrequency: 16, transitionSeconds: 12 * 3600 },
+  { untilFrequency: 64, transitionSeconds: 5 * 3600 },
+  { untilFrequency: 256, transitionSeconds: 3 * 3600 },
+];
+// 対流の細胞(24〜48 km)は数時間で入れ替わる。
+const CONVECTION_EPOCH: readonly EpochSchedule[] = [
+  { untilFrequency: 266, transitionSeconds: 3 * 3600 },
+];
 
 // 場の振れ幅。CirculatingNoiseが段の振幅の総和で割って返すので、全段を解像する写しの振れ幅は段数によらない。
 // 地表付近の基底湿度。平年の雲量の重みを半分に弱めたぶんの平均をここで埋める(cloud-lab Phase 3-10)。
@@ -105,10 +122,11 @@ export class WeatherTransport {
   ) {
     const texel = projection.texelAngle;
     this.surfaceHumidityNoise = new CirculatingNoise(
-      surfaceCirculation, SURFACE_HUMIDITY_NOISE, texel, SURFACE_HUMIDITY_EPOCH_MAX_FREQUENCY);
-    this.convectionNoise = new CirculatingNoise(surfaceCirculation, CONVECTION_NOISE, texel);
+      surfaceCirculation, SURFACE_HUMIDITY_NOISE, texel, SURFACE_HUMIDITY_EPOCH);
+    this.convectionNoise = new CirculatingNoise(
+      surfaceCirculation, CONVECTION_NOISE, texel, CONVECTION_EPOCH);
     this.upperHumidityNoise = new CirculatingNoise(
-      upperCirculation, UPPER_HUMIDITY_NOISE, texel, UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY);
+      upperCirculation, UPPER_HUMIDITY_NOISE, texel, UPPER_HUMIDITY_EPOCH);
     this.humiditySource = new BakedField(
       'humiditySource', THREE.RGFormat, projection,
       (direction) => vec4(this.humiditySourceAt(direction), 0, 1),
@@ -124,6 +142,7 @@ export class WeatherTransport {
     const cycle = (seconds / ADVECTION_PERIOD) % 1;
     this.advectionCycle.value = cycle < 0 ? cycle + 1 : cycle;
     this.surfaceHumidityNoise.syncTime(seconds);
+    this.convectionNoise.syncTime(seconds);
     this.upperHumidityNoise.syncTime(seconds);
   }
 
