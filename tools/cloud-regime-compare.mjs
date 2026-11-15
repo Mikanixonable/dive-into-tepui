@@ -19,6 +19,9 @@ import { cloudSignalField, tileFeatures, TILE_PX } from './cloud-regime-features
 import {
   explainedVariance,
   explainedVarianceJoint,
+  mulberry32,
+  pearson,
+  quantileSorted,
   regimeTable,
   responseDistance,
   variogramDistance,
@@ -26,12 +29,11 @@ import {
   withConditionRanks,
   REGIMES,
 } from './cloud-regime-metrics.mjs';
-import {
-  NODE_COUNT, conditionsAt, nodeOffsetKm, offsetToLatLon,
-} from './cloud-regime-reanalysis.mjs';
+import { offsetToLatLon } from './cloud-regime-reanalysis.mjs';
+import { generatedTileConditions } from './cloud-regime-generated.mjs';
 import { loadGeneratedWeather } from './cloud-regime-weather.mjs';
 import { gitHead } from './cloud-report-history.mjs';
-import { decodePng, encodeGrayPng, encodeRgbPng } from './png.mjs';
+import { decodePng, encodeRgbPng } from './png.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const regimeDir = path.join(root, '.cloud-detail', 'regime');
@@ -96,7 +98,7 @@ const SUBSETS = [
   { id: 'all', label: '全タイル', test: () => true },
   { id: 'sea', label: '海(land < 0.2)', test: (s) => isNum(s.conditions?.land) && s.conditions.land < 0.2 },
 ];
-const BOOTSTRAP_RESAMPLES = 200;
+const BOOTSTRAP_RESAMPLES_DEFAULT = 200;
 const BOOTSTRAP_SEED = 2024;
 // 巻雲の光学深さの係数。cloud-kind.ts の CIRRUS_MAX_OPTICAL_DEPTH と同じ値 — 全天の被覆は
 // 積雲と巻雲を重ねた 1 − (1 − cumulusOpacity)·exp(−cirrus²·3)(views.ts の空の式)で見る。
@@ -121,22 +123,11 @@ const ORIENTATIONS = [
   { id: 'rot180', label: '180° 回転', map: (r, c) => [GRID - 1 - r, GRID - 1 - c] },
 ];
 const ORIENTATION_MIN_CORR = 0.4;
-// 見比べ用のモンタージュに並べるタイル数と、雲の信号の拡大率。
+// 見比べ用のモンタージュに並べるタイル数と、タイルの絵の拡大率(64 px → 256 px)。
 const MONTAGE_PICKS = 8;
-const MONTAGE_GAIN = 4;
+const MONTAGE_SCALE = 4;
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
-
-// 乱数の種から決定的に一様乱数を出す(mulberry32。metrics のブートストラップと同じ式)。
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 // 文字列から決定的な 32 bit の種(FNV-1a)。
 function seedOf(text) {
@@ -145,34 +136,9 @@ function seedOf(text) {
   return hash >>> 0;
 }
 
-// 昇順の配列の分位点(線形補間、type 7)。
-function quantileSorted(sorted, q) {
-  if (sorted.length === 0) return null;
-  const position = (sorted.length - 1) * q;
-  const lo = Math.floor(position);
-  const hi = Math.ceil(position);
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (position - lo);
-}
-
 function quantiles(values, fractions = MARGINAL_QUANTILES) {
   const sorted = values.filter(isNum).sort((a, b) => a - b);
   return fractions.map((f) => quantileSorted(sorted, f));
-}
-
-// 2 つの系列の相関(幾何の検算用。分散が 0 や 2 点未満のときは null)。
-function pearson(xs, ys) {
-  if (xs.length < 2) return null;
-  const mx = xs.reduce((s, v) => s + v, 0) / xs.length;
-  const my = ys.reduce((s, v) => s + v, 0) / ys.length;
-  let sxy = 0;
-  let sxx = 0;
-  let syy = 0;
-  for (let i = 0; i < xs.length; i++) {
-    sxy += (xs[i] - mx) * (ys[i] - my);
-    sxx += (xs[i] - mx) ** 2;
-    syy += (ys[i] - my) ** 2;
-  }
-  return sxx > 0 && syy > 0 ? sxy / Math.sqrt(sxx * syy) : null;
 }
 
 // render-lab を webpack で組む(cloud-detail:distribution と同じ呼び出し)。
@@ -291,36 +257,9 @@ function illuminationField(lat0, lon0) {
   return out;
 }
 
-// 場面の節点(実写と同じ 7×7)の量を、全球の気象状態から双線形で引く。
-// 生成器に対応の無い量(t850・t700・rh700・rh300)は null の列 — conditionsAt が対応する条件を
-// null へ落とすので、欠測はここへ置くだけでよい。
-function generatedNodes(weather, lat0, lon0) {
-  const nodes = {
-    slp: [], w500: [], u850: [], v850: [], u300: [], v300: [],
-    t850: Array(NODE_COUNT * NODE_COUNT).fill(null),
-    t700: Array(NODE_COUNT * NODE_COUNT).fill(null),
-    rh700: Array(NODE_COUNT * NODE_COUNT).fill(null),
-    rh300: Array(NODE_COUNT * NODE_COUNT).fill(null),
-  };
-  for (let j = 0; j < NODE_COUNT; j++) {
-    for (let i = 0; i < NODE_COUNT; i++) {
-      const { xKm, yKm } = nodeOffsetKm(i, j);
-      const { lat, lon } = offsetToLatLon(lat0, lon0, xKm, yKm);
-      const s = weather.sampleAt(lat, lon);
-      nodes.slp.push(s.pressure);
-      nodes.w500.push(s.lift);
-      nodes.u850.push(s.surfaceWindEast);
-      nodes.v850.push(s.surfaceWindNorth);
-      nodes.u300.push(s.upperWindEast);
-      nodes.v300.push(s.upperWindNorth);
-    }
-  }
-  return nodes;
-}
-
 // 生成の撮影 1 場面ぶんの標本と、幾何の検算に使うタイルの cover。切り出した絵へ
-// 照明の配列を当てて雲の信号へ直し、8×8 のタイルへ特徴を測る。各タイルの条件は、
-// 節点の量から conditionsAt で導き、タイルの中心で直接引く量で上書きする。
+// 照明の配列を当てて雲の信号へ直し、8×8 のタイルへ特徴を測る。各タイルの条件は
+// cloud-regime-generated.mjs の shared 部品(generatedTileConditions)から取る。
 function generatedSamples(scene, weather, centerKmPerPx) {
   const shot = decodePng(readFileSync(shotFile(shotName(scene.scene, scene.hours))));
   const croppedPng = resampleCropPng(shot, centerKmPerPx);
@@ -328,25 +267,10 @@ function generatedSamples(scene, weather, centerKmPerPx) {
     illumination: illuminationField(scene.latitude, scene.longitude),
   });
   const tiles = tileFeatures(field, KM_PER_PX, TILE_PX);
-  const nodes = generatedNodes(weather, scene.latitude, scene.longitude);
-  const samples = tiles.map((tile) => {
-    const { lat, lon } = offsetToLatLon(scene.latitude, scene.longitude, tile.xKm, tile.yKm);
-    const s = weather.sampleAt(lat, lon);
-    const conditions = {
-      ...conditionsAt(nodes, tile.xKm, tile.yKm, { slpReference: 0 }),
-      advection: s.warmth,
-      front: s.compression,
-      humidLow: s.surfaceHumidity,
-      humidUp: s.upperHumidity,
-      land: s.landFraction,
-      meanCloudiness: s.meanCloudiness,
-      band: s.band,
-      convectiveActivity: s.convectiveActivity,
-      anvil: s.anvil,
-      lat,
-      cao: null,
-      pw: null,
-    };
+  const conditionByTile = new Map(
+    generatedTileConditions(scene, weather).map((t) => [`${t.row}|${t.col}`, t]));
+  return tiles.map((tile) => {
+    const c = conditionByTile.get(`${tile.row}|${tile.col}`);
     return {
       side: 'generated',
       scene: scene.scene,
@@ -355,13 +279,12 @@ function generatedSamples(scene, weather, centerKmPerPx) {
       col: tile.col,
       xKm: tile.xKm,
       yKm: tile.yKm,
-      lat,
-      lon,
+      lat: c.lat,
+      lon: c.lon,
       features: tile.features,
-      conditions,
+      conditions: c.conditions,
     };
   });
-  return samples;
 }
 
 // 形の特徴量を、cover が 0.05〜0.95 のタイルだけが持つ形へ直す(ほかは null)。
@@ -420,7 +343,7 @@ function headlineOf(realSamples, genSamples) {
 
 // 場面を単位にした再標本化で、見出しの点数 4 つの中央値と 5〜95% 点を取る。
 // metrics の bootstrapByScene と同じ手順を、4 値まとめて引くためにここで組む。
-function bootstrapScores(realSamples, genSamples, resamples = BOOTSTRAP_RESAMPLES, seed = BOOTSTRAP_SEED) {
+function bootstrapScores(realSamples, genSamples, resamples = BOOTSTRAP_RESAMPLES_DEFAULT, seed = BOOTSTRAP_SEED) {
   const groupByScene = (samples) => {
     const map = new Map();
     for (const s of samples) {
@@ -578,6 +501,10 @@ async function main() {
     : {};
   const fresh = process.argv.includes('--fresh') || loopConfig.fresh === true;
   const maxScenes = loopConfig.maxScenes ?? Infinity;
+  const bootstrapArg = process.argv.find((a) => a.startsWith('--bootstrap='));
+  const bootstrapResamples = bootstrapArg === undefined
+    ? BOOTSTRAP_RESAMPLES_DEFAULT
+    : Number(bootstrapArg.split('=')[1]);
 
   // --- 実写の標本: 教師のタイルの特徴へ、場面単位の条件を (scene, tile) で付ける ---
   const teacherTiles = JSON.parse(readFileSync(teacherTilesFile, 'utf8'));
@@ -766,7 +693,7 @@ async function main() {
       variants[subset.id] = {
         n: { real: realSub.length, generated: genSub.length },
         scores: headlineOf(realSub, genSub),
-        bootstrap: bootstrapScores(realSub, genSub),
+        bootstrap: bootstrapScores(realSub, genSub, bootstrapResamples),
       };
       scoreRows.push({ band: band.id, subset: subset.id, ...variants[subset.id] });
     }
@@ -777,7 +704,10 @@ async function main() {
         generated: withConditionRanks(genBand, rankConditions),
       };
       section.variograms = variogramTable(realBand, genBand);
-      section.regimes = { real: regimeTable(rankedAll.real, FEATURES), generated: regimeTable(rankedAll.generated, FEATURES) };
+      section.regimes = Object.fromEntries(SUBSETS.map((subset) => [subset.id, {
+        real: regimeTable(rankedAll.real.filter(subset.test), FEATURES),
+        generated: regimeTable(rankedAll.generated.filter(subset.test), FEATURES),
+      }]));
       section.marginals = marginalTable(realBand, genBand);
     }
     sections[band.id] = section;
@@ -815,7 +745,7 @@ async function main() {
   // --- 標準出力: 見出しの点数と、応答の違いの上位 ---
   const out = [];
   out.push('');
-  out.push('=== 見出しの点数(小さいほど良い。場面ブートストラップ 200 回、中央値 [5–95%]) ===');
+  out.push(`=== 見出しの点数(小さいほど良い。場面ブートストラップ ${bootstrapResamples} 回、中央値 [5–95%]) ===`);
   for (const row of scoreRows) {
     const band = BANDS.find((b) => b.id === row.band);
     const subset = SUBSETS.find((s) => s.id === row.subset);
@@ -852,13 +782,17 @@ async function main() {
 }
 
 // 気象型ごとのモンタージュを compare/ へ書き、書いたファイル名を返す。
-// ranked は withConditionRanks 済みの標本(全域)。実写のタイルの絵は教師の画像から、
-// 生成のタイルの絵は撮影のキャッシュから同じ式で組み直す。
+// ranked は withConditionRanks 済みの標本(全域)。タイルは海のタイル(land < 0.2)だけから
+// 決定的な乱数で選び、元の絵(RGB)の切り抜きを MONTAGE_SCALE 倍にして並べる
+// (上段 = 実写 8 枚・下段 = 生成 8 枚)。実写の絵は教師の画像から、生成の絵は撮影の
+// キャッシュからタイルの特徴を測ったときと同じ手順(4 km/px への引き直し・中央切り出し)で組み直す。
 function writeRegimeMontages(ranked, scenes, shotInfoMap) {
+  const sea = (s) => isNum(s.conditions?.land) && s.conditions.land < 0.2;
+  const tilePx = TILE_PX * MONTAGE_SCALE;
   const written = [];
   for (const regime of REGIMES) {
     const rows = [ranked.real, ranked.generated].map((samples, side) => {
-      const inRegime = samples.filter((s) => s.conditionsRank && regime.test(s.conditionsRank));
+      const inRegime = samples.filter((s) => s.conditionsRank && regime.test(s.conditionsRank) && sea(s));
       const rng = mulberry32(seedOf(`${regime.id}|${side}`));
       const order = inRegime.map((_, i) => i);
       for (let i = order.length - 1; i > 0; i--) {
@@ -867,7 +801,7 @@ function writeRegimeMontages(ranked, scenes, shotInfoMap) {
       }
       return order.slice(0, MONTAGE_PICKS).map((i) => inRegime[i]);
     });
-    const gray = new Uint8Array(TILE_PX * MONTAGE_PICKS * TILE_PX * 2);
+    const rgb = new Uint8Array(MONTAGE_PICKS * tilePx * 2 * tilePx * 3);
     // 使う場面だけ絵を組み直す(決定的なので同じ場面からは同じ絵が来る)。
     for (const [side, picks] of rows.entries()) {
       const byScene = new Map();
@@ -876,22 +810,22 @@ function writeRegimeMontages(ranked, scenes, shotInfoMap) {
         byScene.get(sample.scene).push({ sample, index });
       });
       for (const [sceneId, list] of byScene) {
-        const field = side === 0
-          ? cloudSignalField(readFileSync(path.join(teacherDir, `${sceneId}-${KM_PER_PX}km.png`)))
-          : montageField(
+        const png = side === 0
+          ? decodePng(readFileSync(path.join(teacherDir, `${sceneId}-${KM_PER_PX}km.png`)))
+          : montageRgb(
             scenes.find((s) => s.scene === sceneId),
             shotInfoMap,
           );
         for (const { sample, index } of list) {
           const col = sample.col ?? colFromTile(sample.tile);
           const row = sample.row ?? rowFromTile(sample.tile);
-          paintTile(gray, field, row, col, index, side);
+          paintTile(rgb, png, row, col, index, side);
         }
       }
     }
     mkdirSync(compareDir, { recursive: true });
     const file = path.join(compareDir, `regime-${regime.id}.png`);
-    writeFileSync(file, encodeGrayPng(MONTAGE_PICKS * TILE_PX, 2 * TILE_PX, gray));
+    writeFileSync(file, encodeRgbPng(MONTAGE_PICKS * tilePx, 2 * tilePx, rgb));
     written.push(`regime-${regime.id}.png`);
   }
   return written;
@@ -901,27 +835,28 @@ function writeRegimeMontages(ranked, scenes, shotInfoMap) {
 const rowFromTile = (tile) => Number(tile.slice(1).split('c')[0]);
 const colFromTile = (tile) => Number(tile.split('c')[1]);
 
-// モンタージュ用に、生成の場面の雲の信号の場を撮影から組み直す。タイルの特徴を測ったときと
-// 同じ手順(4 km/px への引き直し・中央切り出し・照明での割り算)で、絵の向きも同じ。
-function montageField(scene, shotInfoMap) {
+// モンタージュ用に、生成の場面の絵(RGB)を撮影から組み直す。タイルの特徴を測ったときと
+// 同じ手順(4 km/px への引き直し・中央切り出し)で、絵の向きも同じ。
+function montageRgb(scene, shotInfoMap) {
   const info = shotInfoMap.get(shotName(scene.scene, scene.hours));
   const shot = decodePng(readFileSync(shotFile(shotName(scene.scene, scene.hours))));
-  const croppedPng = resampleCropPng(shot, info?.centerKmPerPx ?? KM_PER_PX);
-  return cloudSignalField(croppedPng, {
-    illumination: illuminationField(scene.latitude, scene.longitude),
-  });
+  return decodePng(resampleCropPng(shot, info?.centerKmPerPx ?? KM_PER_PX));
 }
 
-// タイル 1 枚の信号(0..1)を MONTAGE_GAIN 倍してモンタージュのマスへ書く。
+// タイル 1 枚(64 px)の RGB を MONTAGE_SCALE 倍(最近傍)にしてモンタージュのマスへ書く。
 // マスの行は side(0 が実写の上段、1 が生成の下段)、列は選んだ順の index。
-function paintTile(gray, field, tileRow, tileCol, index, side) {
-  const ox = tileCol * TILE_PX;
-  const oy = tileRow * TILE_PX;
-  for (let y = 0; y < TILE_PX; y++) {
-    for (let x = 0; x < TILE_PX; x++) {
-      const v = field.data[(oy + y) * field.width + ox + x] * MONTAGE_GAIN;
-      gray[(side * TILE_PX + y) * (MONTAGE_PICKS * TILE_PX) + index * TILE_PX + x]
-        = Math.min(255, Math.round(v * 255));
+function paintTile(rgb, png, tileRow, tileCol, index, side) {
+  const tilePx = TILE_PX * MONTAGE_SCALE;
+  const width = MONTAGE_PICKS * tilePx;
+  for (let y = 0; y < tilePx; y++) {
+    for (let x = 0; x < tilePx; x++) {
+      const sx = tileCol * TILE_PX + Math.floor(x / MONTAGE_SCALE);
+      const sy = tileRow * TILE_PX + Math.floor(y / MONTAGE_SCALE);
+      const src = (sy * png.width + sx) * png.channels;
+      const dst = ((side * tilePx + y) * width + index * tilePx + x) * 3;
+      rgb[dst] = png.data[src];
+      rgb[dst + 1] = png.data[src + 1];
+      rgb[dst + 2] = png.data[src + 2];
     }
   }
 }
@@ -981,16 +916,20 @@ function buildReportMd(report, montageFiles) {
     all.variograms.map((v) => [v.feature, fmt(v.distance), fmt(v.rangeRatio), fmt(v.realWithin), fmt(v.generatedWithin)]),
   ));
   lines.push('');
-  lines.push('### (d) 気象型ごとの中央値(REGIMES × 特徴量、実写 / 生成)');
+  lines.push('### (d) 気象型ごとの中央値(REGIMES × 特徴量、実写 / 生成、全タイル / 海)');
   for (const [i, regime] of REGIMES.entries()) {
-    const r = all.regimes.real[i];
-    const g = all.regimes.generated[i];
     lines.push('');
-    lines.push(`#### ${regime.label}(実写 n=${r.n} / 生成 n=${g.n})`);
+    lines.push(`#### ${regime.label}`);
     lines.push(mdTable(
-      ['側', ...FEATURES],
-      [['実写', ...FEATURES.map((f) => fmt(r.stats[f].median))],
-        ['生成', ...FEATURES.map((f) => fmt(g.stats[f].median))]],
+      ['集合', '側', ...FEATURES],
+      SUBSETS.flatMap((subset) => {
+        const r = all.regimes[subset.id].real[i];
+        const g = all.regimes[subset.id].generated[i];
+        return [
+          [subset.label, `実写 n=${r.n}`, ...FEATURES.map((f) => fmt(r.stats[f].median))],
+          [subset.label, `生成 n=${g.n}`, ...FEATURES.map((f) => fmt(g.stats[f].median))],
+        ];
+      }),
     ));
   }
   lines.push('');
