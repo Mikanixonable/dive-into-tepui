@@ -19,6 +19,11 @@ export const DETECT_TAU = 0.3;
 // 積雲の不透明度(点の中の雲の面積の割合として読む)がこれ未満の点は全面を晴天にする。
 // 衛星では画素の 2% 未満の雲量は雲と判定されない目安として、面積の端数を晴天へ畳む。
 export const CLEAR_OPACITY_MAX = 0.02;
+// 部分的に覆われた画素の τ の薄まり方(heterogeneity bias の劣線形近似)。
+// 1 は画素平均(線形希釈)、0 は雲の中の値のまま。0.2 は、半分覆われた画素で
+// 雲の中の値の ~87% が返る強さ。監査で p=0.1-0.4 が平坦な最良域、0 へ近づくと
+// 悪化する(希釈なしは 0.128)ことを確認して採用。
+const TAU_COVER_POWER = 0.2;
 
 const ISCCP_NAMES = [
   'cirrus', 'cirrostratus', 'deepConvection',
@@ -145,19 +150,21 @@ export function isccpPhysical(points) {
         : p.cirrusTopM;
       addCloud(
         weight,
-        p.cirrusTau + cover * (isNum(p.cumulusTauIn) ? p.cumulusTauIn : 0),
+        p.cirrusTau + Math.pow(cover, TAU_COVER_POWER)
+          * (isNum(p.cumulusTauIn) ? p.cumulusTauIn : 0),
         top / 1000,
       );
       continue;
     }
     if (!isNum(p.cumulusTauIn) || cover < CLEAR_OPACITY_MAX) continue;
-    // 一部しか覆われない点は、点全体を雲として τ は覆う割合で薄めた画素平均にする。
-    // MODIS の τ 反演は画素を一様な層と仮定するので、被覆率の低い画素では雲の中の値より
-    // 薄い値が返る(heterogeneity bias)— 面積の一部へ雲の中の τ を割り当てるより、
-    // 画素ごとに薄めたこの形が実写の画素の意味づけに近い。
+    // 一部しか覆われない点は、点全体を雲として τ は覆う割合の冪で薄めた値にする。
+    // MODIS の τ 反演は画素を一様な層と仮定するので、部分的に覆われた画素では雲の中の
+    // 値より薄い値が返る(heterogeneity bias)が、反射率が τ に対して飽和するので
+    // 画素平均よりは弱い薄まり方になる — 劣線形の冪で表す。
     addCloud(
       weight,
-      cover * p.cumulusTauIn + (isNum(p.cirrusTau) ? p.cirrusTau : 0),
+      Math.pow(cover, TAU_COVER_POWER) * p.cumulusTauIn
+        + (isNum(p.cirrusTau) ? p.cirrusTau : 0),
       p.cumulusTopM / 1000,
     );
   }
