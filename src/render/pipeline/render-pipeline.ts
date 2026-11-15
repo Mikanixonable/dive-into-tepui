@@ -15,8 +15,12 @@ import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
 import { AmbientSource } from './lighting/ambient-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
+import { SkyLightSource } from './lighting/sky-source';
 import { SphereSpecular } from './lighting/sphere-light';
 import { SunSource } from './lighting/sun-source';
+import { SunExtinction } from './sun-extinction';
+import { SunTransmittanceTables } from './sun-transmittance-tables';
+import { SkyIrradianceTables } from './sky-irradiance-tables';
 import { WorkLightSource } from './lighting/work-light-source';
 import { MaterialPass } from './material-pass';
 import { ShadowPass } from './shadow/shadow-pass';
@@ -59,6 +63,12 @@ export class RenderPipeline {
   private readonly antialiasPass: AntialiasPass;
   private readonly lensPass: LensPass;
   private readonly _sunLight: SunLight;
+  private readonly _sunExtinction: SunExtinction;
+  private readonly _skyLight: SkyLightSource;
+  // 天体の光学から焼く表の持ち主。直射光の透過率は地表・雲・艦と大気の散乱が、
+  // 天空光の放射照度は天空光源が読む。
+  private readonly sunTransmittanceTables = new SunTransmittanceTables();
+  private readonly skyIrradianceTables = new SkyIrradianceTables(this.sunTransmittanceTables);
   private readonly _exposure: Exposure;
   private readonly target: THREE.RenderTarget;
   // composite パスと 3D UI パスの描画先。トーンマッピングと表示用色空間への変換を終えた絵が入る。
@@ -94,6 +104,8 @@ export class RenderPipeline {
   // 以下は、毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・環境光の割合・
   // 大気を持つ天体)の書き込み先。
   public get sunLight(): SunLight { return this._sunLight; }
+  public get sunExtinction(): SunExtinction { return this._sunExtinction; }
+  public get skyLight(): SkyLightSource { return this._skyLight; }
   public get exposure(): Exposure { return this._exposure; }
   public get bodyShadow(): BodyShadow { return this._bodyShadow; }
   public get ringShadow(): RingShadow { return this._ringShadow; }
@@ -109,6 +121,8 @@ export class RenderPipeline {
   ) {
     this.gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
+    this._sunExtinction = new SunExtinction(this._sunLight, this.sunTransmittanceTables);
+    this._skyLight = new SkyLightSource(this._sunLight, this.skyIrradianceTables);
     this._exposure = new Exposure();
     this.shadowMaps = new ShadowMaps(
       renderer, gpu, graphics.meshShadow,
@@ -124,13 +138,14 @@ export class RenderPipeline {
     );
     this.sphereSpecular = new SphereSpecular();
     this.sunSource = new SunSource(
-      this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
+      this._sunLight, this.shadowPass, this.sphereSpecular, this._sunExtinction, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
-      this._sunLight, this._bodyShadow, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel);
+      this._sunLight, this._bodyShadow, this.sphereSpecular, graphics.planetLightCount,
+      graphics.planetLightModel, this.sunTransmittanceTables);
     this._ambient = new AmbientSource(this._sunLight);
     this._workLight = new WorkLightSource(this.sphereSpecular);
     this.lightPrepass = new LightPrepass(renderer, this.gbuffer, [
-      this.sunSource, ...this._planetLight.lightSources, this._ambient, this._workLight,
+      this.sunSource, ...this._planetLight.lightSources, this._skyLight, this._ambient, this._workLight,
     ], gpu);
     this.materialPass = new MaterialPass(renderer, this.lightPrepass, this.gbuffer, gpu);
 
@@ -145,7 +160,8 @@ export class RenderPipeline {
     this.target.depthTexture = new THREE.DepthTexture(1, 1, THREE.FloatType);
 
     this.atmospherePass = new AtmospherePass(
-      renderer, this.gbuffer, this.target, this._sunLight, this._bodyShadow, gpu,
+      renderer, this.gbuffer, this.target, this._sunLight, this._bodyShadow,
+      this._cloudShadow, this.sunTransmittanceTables, gpu,
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
@@ -481,6 +497,8 @@ export class RenderPipeline {
     this.antialiasPass.dispose();
     this.lensPass.dispose();
     this.lensCompositeMaterial.dispose();
+    this.sunTransmittanceTables.dispose();
+    this.skyIrradianceTables.dispose();
     this.target.dispose();
     this.displayTarget.dispose();
     // 同じ1枚を複数の選択肢が共有するので、重複を畳んでから解放する。
