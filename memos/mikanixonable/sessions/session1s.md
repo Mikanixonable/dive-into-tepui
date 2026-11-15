@@ -16,3 +16,6 @@
 
 - 巻雲の型振り分け(agent aebaf0c4) — 候補A(気象ゲート化)を採用。
   LOOP-LOG-cirrus step 10。
+- 熱帯の巻雲量(1fc2e0c5) — レート制限で中断、ユーザー指示で
+  サブエージェント自体を禁止へ変更。作業は親が引き取る。
+  worktree cirrus-tropic-supply は未変更で残置。
