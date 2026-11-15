@@ -38,7 +38,7 @@ const UPPER_HUMIDITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 3.75, amplitude: 0.45 }, // 1700 km
   { frequency: 8, amplitude: 0.75 }, // 800 km
   { frequency: 16, amplitude: 0.30 }, // 400 km
-  { frequency: 32, amplitude: 0.12, envelope: 1 }, // 200 km
+  { frequency: 32, amplitude: 0.45, envelope: 1 }, // 200 km
   { frequency: 64, amplitude: 0.10, envelope: 1 }, // 100 km
   // 上層の湿度の細かい段。低軌道の cap で解像できる尺度まで巻雲の帯と斑を下ろし、描画の細部(32 km 以下)へ
   // 担い手を途切れさせずに渡す。全球の写しでは texel より細かいので消え、全球の統計は変えない。
