@@ -127,3 +127,13 @@
   実写一致(実写 2.26/8.32/14.7 → 生成 2.28/8.51/15.5)。風・lift はほぼ不変。
 - 検証: typecheck・test:render 305/305 通過。
 - 次: step 35 = 低気圧従属の前線(寒冷/温暖の弧 + WCB の巻雲供給)。
+
+## step 35 — 低気圧従属の前線(寒冷/温暖の帯 + WCB の巻雲供給)
+- `Trough` に `frontAt`(寒冷=長軸赤道側へ 2400 km・幅 280 km、温暖=東へ 1600 km・
+  幅 350 km、深さ 20 hPa で全開)と `wcbAt`(中心の東・極側 900/700 km ずれの
+  2400×800 km 領域)を追加。`band` は診断の前線と大きい側、上層湿度へ
+  `wcbAt×WCB_UPPER_HUMIDITY` を足す。
+- 調定: WCB 0.15 → humidUp→highThinFrac contrast 6.0→8.5 と悪化。0.06 → 7.0。
+  **0.03 を採用**: responseContrast 0.827(基準 0.794 比 +0.033)・weather 0.0992 不変。
+- 残り代償: humidUp→highThinFrac contrast 6.5(基準 6.02)。前線帯の存在は得たい
+  構造なので採用 — 物差しが「足りない帯」を罰できない分の代償。
