@@ -73,6 +73,9 @@ const STRATOCUMULUS_ACTIVITY_WIDTH = 0.45;
 // 板へ足す湿度の高さ。門が部分的にしか開かない所でも板が一面へ繋がるよう、被覆率の
 // 伝達関数の幅の 1.5 倍強に取る — 全域が飽和する高さではなく、板の中にも濃淡が残る。
 const STRATOCUMULUS_DECK_ADD = 0.35;
+// 前線の帯が被覆率へ足す層状の湿り — 前線の上昇は深い層を飽和させるので、
+// 帯の上では積雲はまばらな柱ではなく一面に広がる厚い層雲(乱層雲)になる。
+const BAND_DECK = 0.2;
 // 対流の形が網目から粒へ渡る湿度。雲の少ない所では細胞の壁(網目)、多い所では細胞の芯(粒)が
 // 見える。**形を決める量は粒より低周波でなければならない** — 粒ごとに形が変わると並びが読めない
 // ので、粒を足す前の湿度で決める。渡り始めは覆いの効き始めの少し下、渡り終わりはその 1 単位ぶん上。
@@ -152,7 +155,8 @@ export function condense(weather: WeatherSample): CloudSample {
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が開始閾値を超過した量を遷移幅で正規化した値に基づく晴天率の補数。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
-  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(STRATOCUMULUS_DECK_ADD));
+  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(STRATOCUMULUS_DECK_ADD))
+    .add(weather.band.mul(BAND_DECK));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.pow(COVERAGE_EXCESS_POWER).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
