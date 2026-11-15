@@ -162,7 +162,7 @@ const SURFACE_LIFT_HUMIDITY = 1.3;
 const SURFACE_SUBSIDENCE_DRYING = 1.0;
 // 上層は上昇流の断熱冷却で氷飽和へ達するので、地表付近より強く湿る — 前線帯・ITCZ の
 // 収束域・低気圧の前方に組織だった巻雲を作る項。小さいと天候系の場面差がノイズに埋もれる。
-const UPPER_LIFT_HUMIDITY = 2.5;
+const UPPER_LIFT_HUMIDITY = 1.0;
 // 上昇流が、移流した地表付近の湿度の偏差(源の底上げ SURFACE_HUMIDITY_BASE からの揺れ)を増幅する利得。
 // 頭打ち(LIFT_LIMIT)に張り付いた所で偏差は (1 + 利得) 倍 — 1 で 2 倍になる。
 const VORTEX_CONTRAST = 1.0;
@@ -239,7 +239,7 @@ const WARM_HUMIDITY = 0.6;
 // 平年の図へ素直に従うので強めに取る — 上層湿度のノイズを実写の乾湿対比へ上げたあと、場面間の
 // 差(亜熱帯の乾域と上昇枝の湿域)を残すには気候の項を同じ程度の振れ幅まで戻す必要がある。
 const SURFACE_MEAN_CLOUDINESS_WEIGHT = 0.15;
-const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.5;
+const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.2;
 // 平年の雲量を湿度へ渡す S 字の裾と肩。線形では、砂漠を晴らす重みで雲の多い海が覆われたまま動かなく
 // なる。裾は砂漠(0.14)の下、肩は年中曇りの海(0.89)の側に置く — 狭めると乾いた大陸(0.43〜0.51)や
 // 貿易風帯の海(0.50〜0.65)まで雲を失う。
