@@ -18,6 +18,11 @@ interface CloudOpticalComposite {
 // CPUの基準式とGPUのTSL式が共有する入力の上限。不透明度1は無限大のtauになるので、有限の雲を保つ。
 export const MAX_COLUMN_OPACITY = 0.99;
 
+// 非対称因子 g。液水の雲 0.85・氷の雲 0.75 は、保存散乱の Eddington 近似(Meador & Weaver
+// 1980)の 2 流近似へ入れる前向き散乱の強さの代表値。
+export const LIQUID_CLOUD_ASYMMETRY = 0.85;
+export const ICE_CLOUD_ASYMMETRY = 0.75;
+
 // 不透明度を鉛直柱光学深さへ変換する。入力は無次元の不透明度、戻り値は無次元のtau。
 export function columnOpticalDepthFromOpacity(opacity: number): number {
   const bounded = Math.min(Math.max(opacity, 0), MAX_COLUMN_OPACITY);
@@ -37,6 +42,21 @@ export function transmittanceFromColumnOpticalDepth(
   columnOpticalDepth: number, airmass: number,
 ): number {
   return Math.exp(-Math.max(columnOpticalDepth, 0) * Math.max(airmass, 0));
+}
+
+// 保存散乱(吸収なし)の層が、拡散入射に対して半球へ返す光の割合。2 流近似
+// (Eddington、Meador & Weaver 1980)で R = γτ/(1 + γτ)、γ = 0.75·(1 − g)。
+// τ ≥ 0 で 0 ≤ R < 1 に収まり、τ → 0 で R → 0、τ → ∞ で R → 1。返さなかった光は
+// 下へ抜けるので、透過率は T = 1 − R。
+export function cloudReflectance(opticalDepth: number, asymmetry: number): number {
+  const scaled = 0.75 * (1 - asymmetry) * Math.max(opticalDepth, 0);
+  return scaled / (1 + scaled);
+}
+
+// 柱内の経路割合に応じた透過率を返す。経路を分割しても全量の透過率を保つ。
+export function fractionalTransmittance(reflectedFraction: number, pathFraction: number): number {
+  const reflection = Math.min(Math.max(reflectedFraction, 0), 1);
+  return Math.pow(1 - reflection, Math.max(pathFraction, 0));
 }
 
 // eventsはカメラに近い順。backgroundRadianceは雲を含む大気積分の結果なので、雲イベントの
