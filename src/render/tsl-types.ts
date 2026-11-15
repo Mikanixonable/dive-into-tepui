@@ -18,6 +18,7 @@ export type FloatUniform = THREE.UniformNode<'float', number>;
 
 export type Vec2Uniform = THREE.UniformNode<'vec2', THREE.Vector2>;
 export type Vec3Uniform = THREE.UniformNode<'vec3', THREE.Vector3>;
+export type Vec4Uniform = THREE.UniformNode<'vec4', THREE.Vector4>;
 export type BoolUniform = THREE.UniformNode<'bool', boolean>;
 export type ColorUniform = THREE.UniformNode<'color', THREE.Color>;
 export type Mat3Uniform = THREE.UniformNode<'mat3', THREE.Matrix3>;

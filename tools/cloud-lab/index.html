@@ -7,39 +7,93 @@
   :root { --bg: #0b0d10; --panel: #14181d; --edge: #2a3038; --text: #d7dde5; --accent: #ff6a00; }
   * { box-sizing: border-box; }
   body {
-    margin: 0; padding: 16px; background: var(--bg); color: var(--text);
-    font: 13px/1.6 "JetBrains Mono", ui-monospace, monospace;
+    margin: 0; padding: 12px 16px; background: var(--bg); color: var(--text);
+    font: 13px/1.5 "JetBrains Mono", ui-monospace, monospace;
+    height: 100vh; height: 100dvh;
+    display: flex; flex-direction: column; gap: 8px;
   }
-  h1 { font-size: 15px; margin: 0 0 12px; font-weight: 600; letter-spacing: .04em; }
-  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-width: 0; }
+  h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
+  p { margin: 0; }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--edge); }
+  .tabs button {
+    background: transparent; color: var(--text); border: 1px solid transparent;
+    border-bottom: none; border-radius: 4px 4px 0 0; padding: 4px 18px;
+    font: inherit; cursor: pointer; opacity: .65; margin-bottom: -1px;
+  }
+  .tabs button:hover { opacity: 1; }
+  .tabs button.active {
+    background: var(--panel); border-color: var(--edge); color: var(--accent);
+    opacity: 1; font-weight: 600;
+  }
+  #status { opacity: .7; margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #error { color: #ff8a5c; white-space: pre-wrap; }
+  #status:empty, #error:empty { display: none; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .row-title { opacity: .7; margin-right: 4px; }
   .row button {
     background: #1c2229; color: var(--text); border: 1px solid var(--edge);
-    border-radius: 4px; padding: 5px 14px; font: inherit; cursor: pointer;
+    border-radius: 4px; padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer;
   }
   .row button:hover { border-color: #3d4650; }
+  .row button:disabled { opacity: .35; cursor: default; }
   .row button.active { background: var(--accent); border-color: var(--accent); color: #12151a; font-weight: 600; }
+  .row button.play {
+    width: 30px; padding: 3px 0; text-align: center;
+    background: var(--accent); border-color: var(--accent); color: #12151a; font-weight: 600;
+  }
   .row .field { display: flex; align-items: center; gap: 6px; }
   .row .field span { opacity: .7; }
-  .row .field input[type=range] { width: 320px; accent-color: var(--accent); }
-  .row .field output { min-width: 70px; text-align: right; font-variant-numeric: tabular-nums; }
-  figure { margin: 0; background: var(--panel); border: 1px solid var(--edge); padding: 8px; width: fit-content; }
-  figure canvas { display: block; width: 1536px; max-width: 100%; height: auto; background: #000; }
-  #error { color: #ff8a5c; white-space: pre-wrap; }
-  #desc { opacity: .75; margin: 0 0 12px; max-width: 900px; }
+  .row .field input[type=range] {
+    -webkit-appearance: none; appearance: none; width: min(240px, 18vw); height: 14px; margin: 0;
+    background: transparent; cursor: pointer;
+  }
+  .row .field input[type=range]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--edge); }
+  .row .field input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 14px; height: 14px; margin-top: -5px; border-radius: 50%; background: var(--accent);
+  }
+  .row .field input[type=range]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--edge); }
+  .row .field input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border: 0; border-radius: 50%; background: var(--accent); }
+  .row .field input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+  .row .field:has(input[type=checkbox]) { cursor: pointer; }
+  .row .field:has(input[type=checkbox]) span { opacity: 1; }
+  .row .field output { min-width: 4.5em; font-variant-numeric: tabular-nums; }
+  .row .field .scale { position: relative; }
+  .row .field .scale > input[type=range] { display: block; width: 100%; }
+  .row .field .scale .ticks { position: relative; height: 14px; }
+  .row .field .scale .tick {
+    position: absolute; top: 0; font-size: 11px; line-height: 14px; white-space: nowrap; opacity: .55;
+  }
+  .row .field .scale .tick.on { opacity: 1; color: var(--accent); font-weight: 600; }
+  #cap { column-gap: 28px; }
+  #time .field output { min-width: 7.5em; }
+  figure {
+    margin: 0; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px;
+    padding: 8px; background: var(--panel); border: 1px solid var(--edge);
+  }
+  .screen { position: relative; flex: 1 1 auto; min-height: 0; }
+  .screen canvas {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    width: auto; height: auto; max-width: 100%; max-height: 100%; background: #000;
+  }
+  #legend { display: flex; flex: 0 0 auto; gap: 14px; flex-wrap: wrap; align-items: center; opacity: .85; }
+  #legend .chip { display: inline-block; width: 12px; height: 12px; border: 1px solid var(--edge); margin-right: 5px; vertical-align: -2px; }
 </style>
 </head>
 <body>
-  <h1>Cloud Lab</h1>
-  <p id="desc">
-    動的な雲生成を試すためのテスト。流体など有状態シミュレーションは行わず、時刻からの決定的な
-    プロシージャルテクスチャとして生成している。<br>
-    実際に描画に使われる出力は「被覆率」(低層の積雲の濃さ)・「雲頂高度」(積雲の高さ)・
-    「薄い雲」(巻雲の濃さ)の3つ。
-  </p>
+  <header>
+    <h1>Cloud Lab</h1>
+    <div class="tabs" id="mode"></div>
+    <p id="status"></p>
+    <p id="error"></p>
+  </header>
   <div class="row" id="views"></div>
+  <div class="row" id="layers" style="display:none"></div>
   <div class="row" id="time"></div>
-  <div class="row" id="cap"></div>
-  <figure><canvas id="view"></canvas></figure>
-  <p id="error"></p>
+  <div class="row" id="cap"><span class="row-title" id="capTitle">cap</span></div>
+  <figure>
+    <div class="screen"><canvas id="view"></canvas><canvas id="map" style="display:none"></canvas></div>
+    <div id="legend"></div>
+  </figure>
 </body>
 </html>

@@ -5,13 +5,10 @@
 // window.cloudTranslucent が tools/cloud-translucent-compare.mjs の駆動口。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { clamp, cos, mix, mrt, screenUV, sin, texture, uniform, vec3, vec4 } from 'three/tsl';
+import { mrt, uniform, vec4 } from 'three/tsl';
 import { earthGeneratedCloudField, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { OrthographicCap } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
-import {
-  blendBakedTexels, bindCloudBlend, cloudMotionFromTexel,
-} from '../../src/render/cloud/cloud-field-sample';
 import { snapCap } from '../../src/render/cloud/cloud-cap';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
@@ -21,8 +18,11 @@ import {
   CIRRUS_MAX_OPTICAL_DEPTH, CIRRUS_TOP_ALTITUDE,
   CUMULUS_MAX_COVERING_DEPTH, CUMULUS_TOP_ALTITUDE,
 } from '../../src/render/cloud/cloud-kind';
+import {
+  CloudMotionWind, awaitClimateMap, boxDirectionNode, renderTargetBase64,
+} from './probe-common';
 import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
-import type { FloatNode, FloatUniform, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
+import type { Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 declare global {
   interface Window {
@@ -39,8 +39,6 @@ interface BoxSpec {
 }
 
 interface CloudTranslucentProbe {
-  readonly ready: () => boolean;
-  readonly waitUntilReady: () => Promise<void>;
   // 中心 latDeg・lonDeg [deg] から半径 radiusKm [km] の円板を覆うよう cap を置き直す。
   // 置き方は本番と同じく地表の格子へ揃える(snapCap)。
   readonly aim: (latDeg: number, lonDeg: number, radiusKm: number) => void;
@@ -58,18 +56,12 @@ interface CloudTranslucentProbe {
 
 // 切り出し面の一辺 [px]。
 const BOX_PX = 512;
-// 風の表示値が張る速さ [m/s]。motion-main.ts の WIND_SPAN_MS と同じ符号化。
-const WIND_SPAN_MS = 96;
-// 気候画像が届くのを待つ上限 [フレーム]。
-const CLIMATE_WAIT_FRAMES = 600;
 
 class TranslucentProbeCanvas {
   private readonly physQuad: QuadMesh;
   private readonly windQuad: QuadMesh;
   private readonly boxBounds = uniform(new THREE.Vector4(0, 0, 0, 0));
-  // 2 枚の写しの混ぜ方。bindCloudBlend が場の blend 状態を写す。
-  private readonly parity: FloatUniform = uniform(0);
-  private readonly fraction: FloatUniform = uniform(0);
+  private readonly motionWind: CloudMotionWind;
   private readonly physTarget = (() => {
     const target = new THREE.RenderTarget(BOX_PX, BOX_PX, {
       format: THREE.RGBAFormat, type: THREE.UnsignedByteType, depthBuffer: false, samples: 0,
@@ -96,13 +88,14 @@ class TranslucentProbeCanvas {
     await renderer.init();
     const field = earthGeneratedCloudField(cap);
     const probe = new TranslucentProbeCanvas(renderer, field);
-    await probe.awaitClimate();
+    await awaitClimateMap(renderer, [field.climateMap], 'cloud translucent probe');
     return probe;
   }
 
   private constructor(
     private readonly renderer: WebGPURenderer, private readonly field: GeneratedCloudField,
   ) {
+    this.motionWind = new CloudMotionWind(field);
     this.physMaterial = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
     this.windMaterial = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
     // 読み出しの 4 成分目をアルファとして捨てられないよう、MRT 経路で全成分を書く
@@ -111,30 +104,11 @@ class TranslucentProbeCanvas {
     this.windMaterial.mrtNode = mrt({ wind: this.windNode() });
     this.physQuad = new QuadMesh(this.physMaterial);
     this.windQuad = new QuadMesh(this.windMaterial);
-    bindCloudBlend(this.field.blend, this.parity, this.fraction);
   }
 
-  // 気候画像の取得を始め、GPU へ載るまで待つ。投入は本体と同じ待ち行列を通す。
-  private async awaitClimate(): Promise<void> {
-    this.field.climateMap.request();
-    for (let frame = 0; frame < CLIMATE_WAIT_FRAMES; frame += 1) {
-      if (this.field.climateMap.generation > 0) return;
-      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
-      DeferredTexture.publishOne(this.renderer);
-    }
-    throw new Error('cloud translucent probe: 気候画像が届かない');
-  }
-
-  // いまの boxBounds が指す箱の画素が張る単位方向。v は北から南へ増える。
+  // いまの boxBounds が指す箱の画素が張る単位方向。
   private directionNode(): Vec3Node {
-    const west = this.boxBounds.x;
-    const south = this.boxBounds.y;
-    const east = this.boxBounds.z;
-    const north = this.boxBounds.w;
-    const longitude = mix(west, east, screenUV.x);
-    const latitude = mix(north, south, screenUV.y);
-    const flat = cos(latitude);
-    return vec3(flat.mul(sin(longitude)), sin(latitude), flat.mul(cos(longitude)));
+    return boxDirectionNode(this.boxBounds);
   }
 
   // 積雲・巻雲の量から、種類別の柱の深さ(積雲は覆いの深さ、巻雲は光学的厚み)と雲頂高度を
@@ -149,24 +123,10 @@ class TranslucentProbeCanvas {
       cirrusTopAltitudeNode(sample.cirrus).div(CIRRUS_TOP_ALTITUDE));
   }
 
-  // 雲を運ぶ風の写し。地表付近・上層の東・北成分を ±WIND_SPAN_MS へ写す。
+  // 雲を運ぶ風の写し(±WIND_SPAN_MS へ写した地表付近・上層の東・北成分)。
   private windNode(): Vec4Node {
-    const direction = this.directionNode();
-    const uv = this.field.fieldProjection.uvAt(direction);
-    const texel = blendBakedTexels(
-      texture(this.field.slots[0].motion, uv),
-      texture(this.field.slots[1].motion, uv),
-      this.parity, this.fraction,
-    );
-    const motion = cloudMotionFromTexel(texel);
-    const encode = (v: FloatNode): FloatNode => clamp(v.div(WIND_SPAN_MS).add(0.5), 0, 1);
-    return vec4(
-      encode(motion.surfaceWind.x), encode(motion.surfaceWind.y),
-      encode(motion.upperWind.x), encode(motion.upperWind.y),
-    );
+    return this.motionWind.windNode(this.directionNode());
   }
-
-  public get ready(): boolean { return this.field.climateMap.generation > 0; }
 
   // 表示時刻 hours [h] の場を焼く。時刻が大きく跳ぶので 1 枚だけ焼き直される。
   public async prepare(hours: number): Promise<void> {
@@ -179,17 +139,7 @@ class TranslucentProbeCanvas {
     this.boxBounds.value.set(
       THREE.MathUtils.degToRad(spec.west), THREE.MathUtils.degToRad(spec.south),
       THREE.MathUtils.degToRad(spec.east), THREE.MathUtils.degToRad(spec.north));
-    this.renderer.setRenderTarget(target);
-    quad.render(this.renderer);
-    this.renderer.setRenderTarget(null);
-    const pixels = await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, BOX_PX, BOX_PX);
-    let binary = '';
-    const bytes = new Uint8Array(pixels.buffer);
-    const CHUNK = 8192;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-      binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
-    }
-    return btoa(binary);
+    return renderTargetBase64(this.renderer, quad, target, BOX_PX);
   }
 
   public async samplePhysBox(spec: BoxSpec): Promise<string> {
@@ -207,8 +157,6 @@ async function init(): Promise<void> {
   const probe = await TranslucentProbeCanvas.create(
     document.getElementById('view') as HTMLCanvasElement, cap);
   window.cloudTranslucent = {
-    ready: () => probe.ready,
-    waitUntilReady: async () => { /* 気候待ちは create が済ませる */ },
     aim: (latDeg, lonDeg, radiusKm) => {
       const lat = THREE.MathUtils.degToRad(latDeg);
       const lon = THREE.MathUtils.degToRad(lonDeg);
