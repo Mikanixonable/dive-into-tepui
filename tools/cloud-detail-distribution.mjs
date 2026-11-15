@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
 import { measureDetailImage } from './cloud-detail-features.mjs';
-import { fitLine } from './cloud-detail-metrics.mjs';
+import { fitLine, normalizedDistance, quantiles } from './cloud-detail-metrics.mjs';
 import {
   collectNumericDiffs, formatDiffValue, gitHead, readReport, saveReport,
 } from './cloud-report-history.mjs';
@@ -30,8 +30,6 @@ const debugPort = Number(process.env.CLOUD_DETAIL_DEBUG_PORT ?? 9519);
 const TIERS_KM_PER_PX = [1, 4];
 // 分布を並べる分位点。
 const QUANTILE_FRACTIONS = [0.1, 0.25, 0.5, 0.75, 0.9];
-// 距離の正規化の分母の下限。実写の p10〜p90 の幅が 0 のとき、差の平均そのものを返す。
-const MIN_WIDTH = 1e-6;
 // 生成の撮影の雲場の進行時刻を決める乱数の種。撮影名から決定的に時刻を引くので、
 // 再実行・撮り直しでも同じ時刻で撮る。
 const SHOT_SEED = 20240507;
@@ -71,18 +69,8 @@ function displayTimeOf(name) {
   return (hash >>> 0) % 86400;
 }
 
-// 値の列の分位点。ソートした列の floor(n*f) 番目を取る(toneStats と同じ取り方)。
-function quantiles(values, fractions = QUANTILE_FRACTIONS) {
-  const sorted = Float64Array.from(values).sort();
-  return fractions.map((fraction) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))]);
-}
-
-// 実写と生成の分位点の差の絶対値の平均を、実写の p10〜p90 の幅で割った正規化距離。
-function normalizedDistance(realQ, genQ) {
-  const width = realQ[realQ.length - 1] - realQ[0];
-  const meanDiff = realQ.reduce((sum, q, i) => sum + Math.abs(q - genQ[i]), 0) / realQ.length;
-  return { distance: meanDiff / Math.max(width, MIN_WIDTH), realWidth: width };
-}
+// 値の列の分位点(この道具が使う分位点の並び)。
+const quantilesAt = (values) => quantiles(values, QUANTILE_FRACTIONS);
 
 // 足りない撮影を .render-lab のページで撮る。missing の各要素に返った centerKmPerPx・altitudeM を書き込む。
 async function shootMissing(missing) {
@@ -271,8 +259,8 @@ async function main() {
       for (const column of columns.values()) {
         if (column.category !== category || column.kmPerPx !== kmPerPx) continue;
         if (column.real.length === 0 || column.gen.length === 0) continue;
-        const realQ = quantiles(column.real);
-        const genQ = quantiles(column.gen);
+        const realQ = quantilesAt(column.real);
+        const genQ = quantilesAt(column.gen);
         const { distance, realWidth } = normalizedDistance(realQ, genQ);
         featureRows[column.id] = {
           family: column.family, realQ, genQ, realWidth, distance,

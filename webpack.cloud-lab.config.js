@@ -12,11 +12,15 @@ module.exports = {
     cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
   },
   // main が実験環境(index.html)、separate が実写の分離環境(separate.html)、
-  // render-capture が描画経路の多スケール撮影(render-capture.html)。
+  // render-capture が描画経路の多スケール撮影(render-capture.html)、
+  // motion が生成雲の動きの計測用の読み出し(motion.html)、translucent が半透明雲の
+  // 教師比較用の物理量の読み出し(translucent.html)。
   entry: {
     main: './tools/cloud-lab/main.ts',
     separate: './tools/cloud-lab/separate-main.ts',
     'render-capture': './tools/cloud-lab/render-capture-main.ts',
+    motion: './tools/cloud-lab/motion-main.ts',
+    translucent: './tools/cloud-lab/translucent-main.ts',
   },
   resolve: {
     extensions: ['.ts', '.js'],
@@ -64,7 +68,9 @@ module.exports = {
     // Slice B/C が実写・特徴量と突き合わせる根拠になる。reference-fine/ は Slice B の
     // 微細スケール実写参照で、Slice C が特徴量の相手に読む。reference-cloudtop/ は
     // MODIS Terra の雲頂高度の参照で、compare が雲頂の距離の相手に読む。ビルドの掃除で消さない。
-    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-motion|reference-fine|reference-fine-timeseries|reference-cloudtop|reference-cirrus|history|history-polar-masked|render-capture|render-capture-timeseries|render-capture-cirrus)[\\/]/ },
+    // motion-compare/ は cloud-lab:motion-compare が残す生成雲の動きの表で、感度・ablation・
+    // 修正前後の差分を引く根拠になる。ビルドの掃除で消さない。
+    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-motion|reference-fine|reference-fine-timeseries|reference-cloudtop|reference-cirrus|history|history-polar-masked|render-capture|render-capture-timeseries|render-capture-cirrus|motion-compare)[\\/]/ },
   },
   optimization: {
     minimizer: [
@@ -88,6 +94,16 @@ module.exports = {
       template: './tools/cloud-lab/render-capture.html',
       filename: 'render-capture.html',
       chunks: ['render-capture'],
+    }),
+    new HtmlWebpackPlugin({
+      template: './tools/cloud-lab/motion.html',
+      filename: 'motion.html',
+      chunks: ['motion'],
+    }),
+    new HtmlWebpackPlugin({
+      template: './tools/cloud-lab/translucent.html',
+      filename: 'translucent.html',
+      chunks: ['translucent'],
     }),
   ],
   devServer: {

@@ -101,6 +101,20 @@ export function fitLine(pairs) {
   };
 }
 
+// 値の列の分位点。ソートした列の floor(n*f) 番目を取る。
+export function quantiles(values, fractions) {
+  const sorted = Float64Array.from(values).sort();
+  return fractions.map((fraction) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))]);
+}
+
+// 実写と生成の分位点の差の絶対値の平均を、実写の最初と最後の分位点の幅で割った
+// 正規化ワッサースタイン距離。幅が 0 のときは差の平均そのものを返す。
+export function normalizedDistance(realQ, genQ) {
+  const width = realQ[realQ.length - 1] - realQ[0];
+  const meanDiff = realQ.reduce((sum, q, i) => sum + Math.abs(q - genQ[i]), 0) / realQ.length;
+  return { distance: meanDiff / Math.max(width, 1e-6), realWidth: width };
+}
+
 // 平均を引いて周期 Hann 窓を掛けた場を返す。
 function windowed(data, n) {
   let mean = 0;
