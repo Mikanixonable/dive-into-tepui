@@ -98,6 +98,14 @@ export class SaveSlots {
     this.persist();
   }
 
+  // スロットで発見した遺物を置き換える。無い id なら何もしない。
+  public setDiscoveredRelics(slotId: string, discoveredRelics: readonly string[]): void {
+    const slot = this.index.slots.find((s) => s.id === slotId);
+    if (!slot) return;
+    slot.discoveredRelics = [...discoveredRelics];
+    this.persist();
+  }
+
   // スロットの表示名を変える。無い id なら何もしない。
   public renameSlot(id: string, name: string): void {
     const slot = this.index.slots.find((s) => s.id === id);

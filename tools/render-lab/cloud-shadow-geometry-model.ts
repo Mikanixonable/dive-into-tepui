@@ -93,15 +93,25 @@ export function expectedFarEdgeM(radiusM: number, topAltitudeM: number, zenithRa
   return Math.max(0, farEdgeAngle(radiusM, topAltitudeM, zenithRad)) * BODY_RADIUS_M;
 }
 
-// 合成の円板の鉛直柱光学深さ。量→高度の写像は src/render/cloud/cloud-kind.ts の
-// cumulusAmountFromTopAltitude / cumulusColumnOpticalDepth と同じ式(CPU の基準が src の
-// 関数なので、評価側ではここへ写して持つ)。
+// 合成の円板の積雲の量 → texel を覆う割合・柱の中の光学的厚み τ_in。量→高度・覆う割合・
+// τ_in の写像は src/render/cloud/cloud-kind.ts の cumulusAmountFromTopAltitude /
+// cumulusOpacity / cumulusInCloudOpticalDepth、反射率は cloud-optics.ts の
+// cloudReflectance と同じ式(CPU の基準が src の関数なので、評価側ではここへ写して持つ)。
 export function cumulusAmountForTopAltitudeM(topAltitudeM: number) {
   const t = Math.min(Math.max((topAltitudeM - 500) / 16500, 0), 1);
   return Math.sqrt(t);
 }
-const columnOpticalDepthForTopAltitudeM = (topAltitudeM: number) =>
+const coveringDepthForTopAltitudeM = (topAltitudeM: number) =>
   cumulusAmountForTopAltitudeM(topAltitudeM) / 0.12;
+const coverageForTopAltitudeM = (topAltitudeM: number) =>
+  1 - Math.exp(-coveringDepthForTopAltitudeM(topAltitudeM));
+const inCloudOpticalDepthForTopAltitudeM = (topAltitudeM: number) =>
+  6.0e-4 * Math.max(topAltitudeM - 500, 0) ** (5 / 3);
+// 液水の雲 g = 0.85(保存散乱の Eddington 近似、Meador & Weaver 1980)。
+const reflectanceForTopAltitudeM = (topAltitudeM: number) => {
+  const scaled = 0.75 * (1 - 0.85) * inCloudOpticalDepthForTopAltitudeM(topAltitudeM);
+  return scaled / (1 + scaled);
+};
 
 // 受け手 φ の光線が円板の柱の内側で稼ぐ高度 [m]。柱を上まで抜くと H、横から斜めに抜ける
 // と入口と出口の差になる。光線が掃引する地上角位置の範囲は、受け手の角 φ から光線の向きが
@@ -121,13 +131,13 @@ function columnRiseM(phi: number, radiusM: number, topAltitudeM: number, zenithR
   return Math.max(0, Math.min(topAltitudeM, hHi) - Math.min(topAltitudeM, Math.max(0, hLo)));
 }
 
-// 重心のずれの期待値。柱を抜ける高さに応じて 1 − exp(−τ·割合) だけ暗くなるので、
+// 重心のずれの期待値。柱を抜ける高さに応じて 覆う割合 × R(τ_in)·割合 だけ暗くなるので、
 // 暗さの重み付き重心を柱の内外へ積分する(台形ではなく中点)。
 export function expectedCentroidOffsetM(radiusM: number, topAltitudeM: number, zenithRad: number) {
   const far = farEdgeAngle(radiusM, topAltitudeM, zenithRad);
   const d = discAngle(radiusM);
   if (far <= -d) return 0;
-  const tau = columnOpticalDepthForTopAltitudeM(topAltitudeM);
+  const blocked = coverageForTopAltitudeM(topAltitudeM) * reflectanceForTopAltitudeM(topAltitudeM);
   const steps = 4096;
   // 恒星側にも柱の錐の裾ぶんの影が落ちうるので、対称な遠端まで積む(寄与が無い所は 0 で
   // 捨てられる)。
@@ -137,7 +147,7 @@ export function expectedCentroidOffsetM(radiusM: number, topAltitudeM: number, z
     const phi = lo + (i + 0.5) * (hi - lo) / steps;
     const rise = columnRiseM(phi, radiusM, topAltitudeM, zenithRad);
     if (rise <= 0) continue;
-    const w = 1 - Math.exp(-tau * rise / topAltitudeM);
+    const w = blocked * rise / topAltitudeM;
     // 測定側と同じく、8bit 量子化の滲み(2% 未満の暗さ)は重みに載せない。
     if (w < 0.02) continue;
     sumW += w;
@@ -147,9 +157,8 @@ export function expectedCentroidOffsetM(radiusM: number, topAltitudeM: number, z
   return (sumPhiW / sumW) * BODY_RADIUS_M;
 }
 
-// 影の最深部の透過率の期待値。円板の下では柱を上まで抜くので exp(−τ)。実機の不透明度の
-// 飽和(MAX_COLUMN_OPACITY = 0.99 → τ ≈ 4.6)が効く量ではそちらへ頭打ちする。
+// 影の最深部の透過率の期待値。円板の下では柱を上まで抜くので 1 − 覆う割合 × R(τ_in)
+// (覆っていない割合 + 覆った柱が透した割合)。
 export function expectedMinTransmittance(topAltitudeM: number) {
-  const tau = Math.min(columnOpticalDepthForTopAltitudeM(topAltitudeM), -Math.log(1 - 0.99));
-  return Math.exp(-tau);
+  return 1 - coverageForTopAltitudeM(topAltitudeM) * reflectanceForTopAltitudeM(topAltitudeM);
 }

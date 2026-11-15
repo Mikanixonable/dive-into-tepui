@@ -8,7 +8,11 @@ import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from '../../physics/time';
 import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { v3 } from '../../math/vec3';
+import { len, sub, v3 } from '../../math/vec3';
+import { RELICS, relicById, type RelicDefinition } from '../relic/relic-catalog';
+import { OrbitSlot } from '../navigation/orbit-slot';
+import { orbitSlotStateAt } from '../navigation/orbit-slot-state';
+import { RelicHunt } from './stage-utils/relic-hunt';
 import { solarSystem } from '../celestial/solar-system/solar-system';
 import { BODY_REVEAL_BASE, revealedAfterClear } from '../celestial/body-reveal';
 import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
@@ -128,6 +132,8 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   private readonly grantedSalvageNames = new Set<string>();
   // まだ補給艇で届けていない積荷(SPEC GAME.md 2.3)。
   protected readonly salvageCargo: SalvageCargo;
+  // 遺物の反射の検出と発見の状態(SPEC GAME.md 3.2)。勝敗を判定するステージだけが使う。
+  private readonly relicHunt: RelicHunt;
 
   public get phase(): GamePhase { return this._phase; }
   public get isPlaying(): boolean { return this._phase === 'playing'; }
@@ -157,6 +163,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     private _reinforced = false,
     salvageCargo?: SalvageCargo,
     revealedBodies: readonly string[] = BODY_REVEAL_BASE,
+    relicHunt: RelicHunt = RelicHunt.create(),
   ) {
     const [hud, scene, dynamicSystem, celestialSystem, controlSelection, commandQueue, orbitSlots, blueprintShelf] = deps;
     this._hud = hud;
@@ -171,6 +178,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.logistics = logistics ?? new Logistics(scene, dynamicSystem, this.stageRules.automaticResupply);
     this.salvageCargo = salvageCargo ?? new SalvageCargo();
     this._revealedBodies = revealedBodies;
+    this.relicHunt = relicHunt;
     this.statusPanel = new StatusPanel(hud.combatRoot);
   }
 
@@ -194,6 +202,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       reinforced ?? undefined,
       SalvageCargo.deserialize(serialized?.pendingSalvageCargo ?? null),
       serialized?.revealedBodies ?? BODY_REVEAL_BASE,
+      RelicHunt.deserialize(serialized?.relics ?? null),
     ];
   }
 
@@ -326,6 +335,49 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   public applyRunOptions(options: RunOptions): void {
     this._reinforced = options.reinforced;
     this._revealedBodies = options.revealedBodies;
+    if (this.stageClass.judgesOutcome) this.placeDiscoveredRelics(options.discoveredRelics);
+  }
+
+  // 発見済みの遺物を、新しいランの軌道標識として台帳へ置く。このランでは反射の検出を起こさない。
+  private placeDiscoveredRelics(ids: readonly string[]): void {
+    const earthRadius = this.earthRadius();
+    if (earthRadius === null) return;
+    for (const id of ids) {
+      const relic = relicById(id);
+      if (relic === null) continue;
+      this.relicHunt.markDiscovered(id);
+      this._orbitSlots.add(relic.orbit(earthRadius), relic.name);
+    }
+  }
+
+  // 地球の半径 [m]。地球が無い星系では null。
+  private earthRadius(): number | null {
+    return this._celestialSystem.findMotion('earth')?.def.radius ?? null;
+  }
+
+  // 遺物の反射の検出と発見を、操作艦の位置で判定する。遺物を置くのは勝敗を判定するステージだけ。
+  // 進行の後に呼び、艦が動いた後の位置で判定する。
+  public observeRelics(simTime: number): void {
+    if (!this.stageClass.judgesOutcome) return;
+    const earthRadius = this.earthRadius();
+    const shipR = this.controlledShip?.motion.state.r ?? null;
+    if (earthRadius === null || shipR === null) return;
+    const distanceOf = (relic: RelicDefinition): number | null => {
+      const orbit = relic.orbit(earthRadius);
+      const state = orbitSlotStateAt(new OrbitSlot(relic.id, relic.name, orbit), simTime, this._celestialSystem);
+      return state === null ? null : len(sub(shipR, state.r));
+    };
+    for (const signal of this.relicHunt.observe(RELICS, distanceOf)) {
+      if (signal.kind === 'reflection') {
+        this._dynamicSystem.events.record({ kind: 'relicReflection', distanceKm: signal.distance / 1000 });
+        continue;
+      }
+      const { relic } = signal;
+      this._orbitSlots.add(relic.orbit(earthRadius), relic.name);
+      this._dynamicSystem.events.record({
+        kind: 'relicDiscovered', id: relic.id, name: relic.name, origin: relic.origin,
+      });
+    }
   }
 
   // 交戦中の集団が 0 になった波間に、積まれた鹵獲を補給艇で届ける。既定では届けない(SPEC GAME.md 2.3)。
@@ -411,6 +463,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       reinforced: this._reinforced,
       pendingSalvageCargo: this.salvageCargo.serialize(),
       revealedBodies: this._revealedBodies,
+      relics: this.relicHunt.serialize(),
     };
   }
 }
