@@ -29,6 +29,12 @@ export function cloudReflectance(opticalDepth: number, asymmetry: number): numbe
   return scaled / (1 + scaled);
 }
 
+// 柱内の経路割合に応じた透過率を返す。経路を分割しても全量の透過率を保つ。
+export function fractionalTransmittance(reflectedFraction: number, pathFraction: number): number {
+  const reflection = Math.min(Math.max(reflectedFraction, 0), 1);
+  return Math.pow(1 - reflection, Math.max(pathFraction, 0));
+}
+
 // 球殻の厚みを通る視線airmass。cosineは鉛直方向との内積、thickness/radiusは同じ長さ単位。
 // 接線でも有限値を返し、薄い殻を無限大の光路へ発散させない。
 export function shellAirmass(cosine: number, thickness: number, radius: number): number {
