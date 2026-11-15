@@ -2,7 +2,7 @@
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, If, Loop, abs, and, ceil, clamp, dot, exp, float, greaterThan, int, length, max, min,
+  Fn, If, Loop, abs, and, ceil, clamp, dot, float, greaterThan, int, length, max, min,
   normalize, select, sqrt, uniform, vec4,
 } from 'three/tsl';
 import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../../cloud/cloud-detail';
@@ -11,9 +11,11 @@ import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
 import {
-  cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+  cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusInCloudOpticalDepthNode,
+  cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../cloud/cloud-kind-node';
-import { columnOpticalDepthFromOpacityNode } from '../../cloud/cloud-optics-node';
+import { ICE_CLOUD_ASYMMETRY, LIQUID_CLOUD_ASYMMETRY } from '../../cloud/cloud-optics';
+import { cloudReflectanceNode } from '../../cloud/cloud-optics-node';
 import { CLOUD_TOP_SPAN } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
@@ -110,12 +112,12 @@ export class CloudShadowRenderer {
   public casts(): boolean { return this.cumulusActive.value > 0 || this.cirrusActive.value > 0; }
 
   // 受け手から恒星へ向かう光路を、雲の層(地表から殻の上端まで)を抜けるまで殻の空間
-  // (toShellSpace)でたどり、柱の雲頂より下を通る割合ぶんの消散を積む。巻雲はその場の
-  // 雲頂高度の薄い層として、光路が横切る所で柱と同じ減衰の規則で足す。
+  // (toShellSpace)でたどり、通る割合ぶん雲が返す光を積む。届く光は、積雲では覆っていない
+  // 割合 + 覆っている割合 × (1 − R(τ_in))、巻雲では 1 − R(τ)。
   //
-  // 柱の光学的厚みも覆いの形も殻が雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、
-  // 影は殻のシルエットの下へ落ちる。厚みは光路長ではなく稼いだ高度で配分するので、柱を 1 本抜ける
-  // 合計はどれだけ斜めでも τ に一致する。
+  // 覆いの形も柱の中の厚みも殻が雲を立てるのと同じ規則(cloud/cumulus-shape.ts)から引くので、
+  // 影は殻のシルエットの下へ落ちる。返す光の割合は光路長ではなく稼いだ高度で配分するので、
+  // 柱を 1 本抜ける合計はどれだけ斜めでも覆う割合 × R に一致する。
   // 受け手が自分の柱の雲頂の高さにいるときは、その柱で自分を陰らせない(receiverFloorAltitude)。
   // footprint は受け手の位置で画面 1 px が張る実寸 [m] で、細部の段を決める。
   public transmittance(worldPos: Vec3Node, footprint: FloatNode): FloatNode {
@@ -137,7 +139,9 @@ export class CloudShadowRenderer {
         const exit = sqrt(max(shellRadius.mul(shellRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
           .sub(along).mul(bodyRadius);
         const pathLength = clamp(exit, 0, MAX_LIGHT_PATH);
-        const opticalDepth = float(0).toVar();
+        // 積雲が返した光の割合(覆う割合 × 柱の R の積算)と、巻雲の層を抜けた光学的厚み。
+        const cumulusBlocked = float(0).toVar();
+        const cirrusDepth = float(0).toVar();
         // 受け手の床は自分の積雲の柱のためのもの。積雲の影が無い設定で張ると、巻雲の層を跨ぐ
         // 高さの判定がずれる。
         const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius).mul(this.cumulusActive);
@@ -212,13 +216,15 @@ export class CloudShadowRenderer {
             const cloudTop = this.shape.cloudTop(
               cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), detail).mul(this.topAltitude);
             const rise = max(dot(rayDir, up), 0).mul(cumulusStep);
-            // 柱の光学的厚みは、ディザを掛けた不透明度から τ へ戻して引く。
-            const columnDepth = columnOpticalDepthFromOpacityNode(
-              this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), detail));
+            // texel を覆う割合と、その柱の中の光学的厚みが返す光の割合。覆う割合と柱の中の厚みは
+            // 別の量で、厚みは細部を含む雲頂の高さから出す。
+            const coverage = this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), detail);
+            const reflected = coverage.mul(cloudReflectanceNode(
+              cumulusInCloudOpticalDepthNode(cloudTop), LIQUID_CLOUD_ASYMMETRY));
             // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
             // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
             const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
-            opticalDepth.addAssign(columnDepth.mul(rise).mul(inside).div(max(cloudTop, 1))
+            cumulusBlocked.addAssign(reflected.mul(rise).mul(inside).div(max(cloudTop, 1))
               .mul(this.cumulusActive));
           });
         });
@@ -246,11 +252,13 @@ export class CloudShadowRenderer {
             cirrusDetail.assign(this.cirrusDetail.multiplierAt(
               up, bodyRadius, cirrusWidth, cloud.cirrusFlow, upperWind, cirrusColumnInputOf(cloud)));
           });
-          opticalDepth.addAssign(cirrusColumnOpticalDepthNode(texel.g)
+          cirrusDepth.addAssign(cirrusColumnOpticalDepthNode(texel.g)
             .mul(cirrusDetail).mul(cirrusCrossing).mul(min(cirrusStep.div(max(rise, 1)), CIRRUS_MAX_SLANT))
             .mul(this.cirrusActive));
         });
-        transmittance.assign(exp(opticalDepth.negate()));
+        // 届く光は、積雲では覆っていない割合 + 覆った柱が透した割合、巻雲では層が返さなかった割合。
+        transmittance.assign(float(1).sub(min(cumulusBlocked, 1))
+          .mul(float(1).sub(cloudReflectanceNode(cirrusDepth, ICE_CLOUD_ASYMMETRY))));
       });
       return transmittance;
     })();
