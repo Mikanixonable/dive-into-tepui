@@ -18,6 +18,8 @@ const CORRUPTION_TOAST_MS = 60000;
 // 鹵獲の告知を出す時間と、授与の後で出し始めるまでの遅れ [ms]。撃墜の演出と重ならないよう遅らせる(SPEC GAME.md 3.1)。
 const SALVAGE_TOAST_MS = 3000;
 const SALVAGE_TOAST_DELAY_MS = 500;
+// 遺物の発見は由来を読ませるので、授与より長く出す。
+const RELIC_TOAST_MS = 8000;
 
 // 自然損耗の理由ごとの文言。cause を足すと文言の追加漏れが型検査で落ちる。
 const ENEMY_LOSS_TEXT: Record<Exclude<EnemyDeathCause, 'killed'>, string> = {
@@ -350,6 +352,16 @@ export class RunEventPresenter {
 
       case 'salvageTenderArrived':
         this.notifier.hint('補給艇が鹵獲品を積んで現れた — 建造ドックへ接続すると積荷を使える', 6000);
+        return;
+
+      case 'relicReflection':
+        this.notifier.hint(
+          `微弱なレーザー反射を検出 — 距離 ${Math.round(body.distanceKm).toLocaleString('ja-JP')} km`, 5000);
+        return;
+      case 'relicDiscovered':
+        this.uiSounds.push('salvage-award');
+        setTimeout(() => this.notifier.toast(
+          `<b>遺物 ${body.name} を発見</b><br>${body.origin}`, RELIC_TOAST_MS), SALVAGE_TOAST_DELAY_MS);
         return;
 
       case 'blueprintRenamed':
