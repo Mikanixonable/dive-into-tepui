@@ -7,7 +7,7 @@ import { decodePng } from './png.mjs';
 export const MAX_CROP_PX = 512;
 
 // sRGB の 1 チャンネル(0..255)を線形輝度(0..1)へ戻す。
-function srgbToLinear(byte) {
+export function srgbToLinear(byte) {
   const c = byte / 255;
   return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
 }
