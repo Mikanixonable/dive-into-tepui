@@ -408,7 +408,12 @@
         "kmPerPx": 1
       },
       {
-        "kmPerPx": 4
+        "kmPerPx": 4,
+        "size": 512,
+        "center": {
+          "latitude": 40,
+          "longitude": 158
+        }
       }
     ],
     "surface": "sea",
