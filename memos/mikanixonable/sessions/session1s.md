@@ -5,7 +5,7 @@
 
 ## 実施中
 
-- 巻雲の型振り分け(agent 起動中, SWE-2)
+- 巻雲の型振り分け(agent aebaf0c4, SWE-2)
   - 目的: cirrus の streak/scaly/veil 型を気象環境(上層風・湿度・帯・ジェット
     との関係)へ結ぶ方法を調査し、型の採点(standardized-centroid・分離度)で
     実写の型割合へ近づく割り当て候補を実証する。
