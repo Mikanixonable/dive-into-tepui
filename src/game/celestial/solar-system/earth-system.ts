@@ -154,6 +154,16 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   mie: 3.996e-6,
   mieScaleHeight: 1.2e3,
   mieAnisotropy: 0.8,
+  // オゾンの Chappuis 帯(緑〜橙を吸収)の RGB 実効係数と、層の高さ。係数は
+  // Hillaire (2020)「A Scalable and Production Ready Sky and Atmosphere Rendering
+  // Technique」のピーク密度での値で、分光モデル(render/solar-spectrum.ts)の 300 DU の
+  // 柱を RGB 帯域へ畳んだ実効値と同じ桁で一致する。層は高度 25 km を中心とする
+  // 底 15 km のテント(成層圏のオゾン層)。
+  ozone: {
+    absorption: new THREE.Vector3(0.650e-6, 1.881e-6, 0.085e-6),
+    centerAltitude: 25e3,
+    halfThickness: 15e3,
+  },
   // 中間圏・熱圏の酸素発光をまとめた見えの層。オーロラとは異なり、全球の昼夜境界へ広がる。
   airglow: { color: [0.12, 0.78, 0.36], strength: 1.2e-8, altitude: 95e3, scaleHeight: 8e3 },
 };

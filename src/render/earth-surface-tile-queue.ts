@@ -8,7 +8,7 @@ import type { EarthSurfaceTileSource } from './earth-surface-tile-source';
 import type { EarthSurfaceTileDescriptor } from './earth-surface-tile-source';
 import { EarthSurfaceHttpError, EarthSurfaceRequestError } from './earth-surface-errors';
 
-export interface EarthSurfaceTileRequestMetrics {
+interface EarthSurfaceTileRequestMetrics {
   readonly httpReserved: number;
   readonly httpStarted: number;
   readonly httpReleased: number;
@@ -22,7 +22,7 @@ export interface EarthSurfaceTileRequestMetrics {
   readonly events: readonly EarthSurfaceTileRequestMetricEvent[];
 }
 
-export interface EarthSurfaceTileRequestMetricEvent {
+interface EarthSurfaceTileRequestMetricEvent {
   readonly type: 'reserve' | 'start' | 'release' | 'failure' | 'retry';
   readonly resource: 'http' | 'decode' | 'waiting' | 'tile';
   readonly id: string;
@@ -30,7 +30,7 @@ export interface EarthSurfaceTileRequestMetricEvent {
   readonly reason?: string;
 }
 
-export interface EarthSurfaceTileRequestQueueOptions {
+interface EarthSurfaceTileRequestQueueOptions {
   readonly fetchImpl?: typeof fetch;
   readonly decodeImage?: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown>;
   readonly maxRetries?: number;

@@ -137,6 +137,12 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     return stageClass.judgesOutcome && slot !== null ? slot.revealedBodies ?? BODY_REVEAL_BASE : BODY_REVEAL_BASE;
   }
 
+  // 勝敗を判定するステージだけが、遊んでいるセーブ枠で発見済みの遺物を読む。
+  private discoveredRelicsFor(stageClass: StageClass): readonly string[] {
+    const slot = this.slots.activeSlot();
+    return stageClass.judgesOutcome && slot !== null ? slot.discoveredRelics ?? [] : [];
+  }
+
   // 現在の周回を畳んだ上で、再開する記録があればそこから、無ければ新しく Run を組み、起動をスロットへ記録する。
   // reinforced は援護付きの再出撃か。新しく始めるランには、連敗の予告の選択もここで決める。
   private async startRun(
@@ -149,13 +155,14 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       reinforced,
       forecast: this.stageRecords.lossStreak(stageClass.id) >= FORECAST_LOSS_STREAK,
       revealedBodies: this.revealedBodiesFor(stageClass),
+      discoveredRelics: this.discoveredRelicsFor(stageClass),
     };
     showLoading();
     try {
       const progress = new LoadingProgress(setLoadingProgress);
-      this.run = initialSave === undefined
+      this.run = initialSave === null
         ? await Run.create(
-          stageClass, startEpoch, this.devices, this.viewOptions, this.themePalette,
+          stageClass, startEpoch ?? null, this.devices, this.viewOptions, this.themePalette,
           this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
           runOptions,
         )
@@ -179,6 +186,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (this.run === null) return;
     const { activeStage: stage, events } = this.run.game;
     this.recordBlueprintEvents(events.recent);
+    this.recordRelicEvents(events.recent);
     if (!events.recent.some(({ body }) => body.kind === 'stageDecided')) return;
     if (stage.phase === 'won') {
       this.unlockManager.reportClear(stage.id, this.devices.hud);
@@ -204,6 +212,18 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const comparison = this.stageRecords.compare(stage.id, stats);
     this.stageRecords.record(stage.id, stage.phase, stats);
     return comparison;
+  }
+
+  // 直近の進行が発見した遺物を、遊んでいるセーブ枠へ記録する。発見は枠に残り、次のランから軌道標識として置かれる。
+  private recordRelicEvents(events: readonly RunEvent[]): void {
+    const slotId = this.slots.activeSlotId;
+    if (slotId === null) return;
+    for (const { body } of events) {
+      if (body.kind !== 'relicDiscovered') continue;
+      const known = this.slots.activeSlot()?.discoveredRelics ?? [];
+      if (known.includes(body.id)) continue;
+      this.slots.setDiscoveredRelics(slotId, [...known, body.id]);
+    }
   }
 
   // 直近の進行が記録した設計図の記録を棚へ写す。記録できなかった操作があれば警告を出す。
@@ -255,7 +275,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // noteLaunched より前に呼ぶ。復元できなければ undefined。
   private initialSaveFor(
     stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate,
-  ): SerializedGame | undefined {
+  ): SerializedGame | null {
     const activeSlotId = this.slots.activeSlotId;
     const lastRun = this.slots.activeSlot()?.lastRun ?? null;
     const resumesRunInProgress = startEpoch === undefined && activeSlotId !== null
@@ -263,8 +283,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     const initialSnapshotId = snapshotId
       ?? (resumesRunInProgress ? this.slots.autoSaveId(activeSlotId, stageClass.id) : null);
     return initialSnapshotId !== null
-      ? this.snapshotService.load(initialSnapshotId, stageClass.id) ?? undefined
-      : undefined;
+      ? this.snapshotService.load(initialSnapshotId, stageClass.id) ?? null
+      : null;
   }
 
   // 実際に遊び始めたステージをスロットへ記録し、作り直しのために覚えておく。

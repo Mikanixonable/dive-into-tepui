@@ -46,7 +46,7 @@ const NO_CASTERS: readonly ShadowCaster[] = [];
 
 // 受け手が shader 内で動的にスロットを選ぶために引く、スロットごとの値。**スロットの値の
 // 正本はこの 3 本の配列だけで、個別の uniform を別に持たない。**
-export interface ShadowSlotUniformArrays {
+interface ShadowSlotUniformArrays {
   // 描画座標 → ライト空間クリップ。UV は xy だけを使う。
   readonly lightViewProjection: THREE.UniformArrayNode<'mat4'>;
   // 描画座標 → ライト空間 view。深度は射影の規約(反転深度)に依らないこちらから測る。

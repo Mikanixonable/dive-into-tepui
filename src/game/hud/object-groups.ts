@@ -7,7 +7,7 @@ import { BODY_PICKER_GENRES, OBJECT_PICKER_GENRES, type ObjectPickerGenre } from
 import type { ListedObject } from '../pickable/listed-object';
 
 // 登録されている天体の一覧と、各天体の分類・表示名を取得するインターフェース。
-export interface CelestialBodyRoster {
+interface CelestialBodyRoster {
   readonly celestialMotions: readonly CelestialBody[];
   bodyClassOf(id: string): CelestialClass | null;
   nameOf(id: string): string;
