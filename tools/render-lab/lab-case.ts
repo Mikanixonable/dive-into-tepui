@@ -14,6 +14,7 @@ import { anglesFromDirection, type EarthAngleKey, type LabViewAngles } from './v
 import type { Albedo } from '../../src/render/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
 import type { BodyShadow, ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { LineStyle } from '../../src/render/line-style';
@@ -84,6 +85,8 @@ export interface LabCase {
   readonly atmospheres?: readonly AtmosphereBody[];
   // 地球のほかに影パスへ渡す球。中心は描画座標。
   readonly shadowBodies?: readonly ShadowBody[];
+  // 雲の影の源(地球を置かないケースが雲の影を試すとき)。置くと地球の shadowCloud より先に使う。
+  readonly shadowCloud?: ShadowCloud;
   // 影パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: {
     readonly center: THREE.Vector3;

@@ -13,10 +13,10 @@ import type { FloatNode, Vec3Node } from '../tsl-types';
 // 変調の係数表。coupling(κ)は、1 つ粗い段の実現値を細かい段の振幅へ掛ける乗法の鎖の強さ —
 // κ = 熱帯 ×(base + (活発度 − ACTIVITY_MID) ×ACT) − 温帯 ×(折り目 ×BAND + POLAR)。
 // envelope は、低周波の段(NoiseOctave.envelope)の振幅の倍率を 1 + 熱帯の海 ×TROPIC で振る。
-// 押し縮まりが立ち上がる幅は、温帯の前線(1.65 から)と熱帯の雨帯(5 から)のあいだを覆う広さ。
+// 押し縮まりが立ち上がる幅は、温帯の前線(3.6 から)と熱帯の雨帯(5 から)のあいだを覆う広さ。
 // 活発度の中立点は海上の平年程度の値。
-const ORGANIZATION_FOLD_ONSET = 1.8;
-const ORGANIZATION_FOLD_WIDTH = 1.4;
+const ORGANIZATION_FOLD_ONSET = 3.6;
+const ORGANIZATION_FOLD_WIDTH = 2.6;
 const ORGANIZATION_ACTIVITY_MID = 0.55;
 const SURFACE_COUPLING_BASE = 0.7;
 const SURFACE_COUPLING_ACTIVITY = 0.5;
@@ -40,16 +40,17 @@ export class HumidityModulator {
     private readonly climate: ClimateMap,
   ) {}
 
-  // 単位方向 direction における変調。pressureLift は気圧の偏差が生む上昇流 [m/s]。
-  // 帯(前線・雨帯)は移流前の湿度の勾配を含むので源の場では引けず、折り目の代理に気団の
-  // 押し縮まりを使い、活発度も帯の項を除いて引く。上昇流も帯が立てる分を欠いた気圧の項だけを渡す。
-  public at(direction: Vec3Node, pressureLift: FloatNode): HumidityModulation {
+  // 単位方向 direction における変調。dynamicsLift は渦・移流が立てる上昇流 [m/s](weather-model
+  // の dynamicsLiftAt)。帯(前線・雨帯)は移流前の湿度の勾配を含むので源の場では引けず、折り目の
+  // 代理に気団の押し縮まりを使い、活発度も帯の項を除いて引く。上昇流も帯が立てる分を欠いた
+  // 力学の項だけを渡す。
+  public at(direction: Vec3Node, dynamicsLift: FloatNode): HumidityModulation {
     const latitude = latitudeOf(direction);
     const extratropical = extratropicalAt(latitude);
     const airMass = this.airMass.at(direction, latitude);
     const land = this.climate.landFraction(direction);
     const activity = this.convectiveActivity.at(
-      direction, pressureLift, airMass.warmth.mul(extratropical), land, float(0));
+      direction, dynamicsLift, airMass.warmth.mul(extratropical), land, float(0));
     const fold = smoothstep(
       ORGANIZATION_FOLD_ONSET, ORGANIZATION_FOLD_ONSET + ORGANIZATION_FOLD_WIDTH, airMass.compression);
     // κ は熱帯に限る。被覆率の間欠性が不足するのは熱帯だけで、温帯以降はむしろ過剰 — 前線の
