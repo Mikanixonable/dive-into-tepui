@@ -18,6 +18,7 @@ import { cirrusOctavesOf, type CirrusDetail } from '../cloud/cloud-detail';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { BodyShadow } from './shadow/body-shadow';
+import type { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
 import type { SunLight } from './sun-light';
 import { compileInto } from './compile-into';
 
@@ -65,10 +66,11 @@ export class AtmospherePass {
     private readonly sharedTarget: THREE.RenderTarget,
     sunLight: SunLight,
     bodyShadow: BodyShadow,
+    cloudShadow: CloudShadowRenderer,
     sunTables: SunTransmittanceTables,
     private readonly gpu: GpuTimings,
   ) {
-    this.layer = new AtmosphereIntegrator(sunLight, bodyShadow, sunTables);
+    this.layer = new AtmosphereIntegrator(sunLight, bodyShadow, sunTables, cloudShadow);
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
 
