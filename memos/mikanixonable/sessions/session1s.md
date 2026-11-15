@@ -5,8 +5,14 @@
 
 ## 実施中
 
-- 巻雲の型振り分け(agent aebaf0c4, SWE-2)
-  - 目的: cirrus の streak/scaly/veil 型を気象環境(上層風・湿度・帯・ジェット
-    との関係)へ結ぶ方法を調査し、型の採点(standardized-centroid・分離度)で
-    実写の型割合へ近づく割り当て候補を実証する。
-  - 成果物: 型別の実写 vs 生成の内訳と候補の計測。採否は親が決める。
+- 熱帯の巻雲量・間欠性(agent 1fc2e0c5, SWE-2)
+  - 目的: tropical 区分の intermittency 0.78(巻雲量そのものの不足)を
+    改善する。condensation 側で upperHumidity→巻雲量の写像と熱量の写像と熱帯で痩せる
+    原因を特定し、改善候補を両物差し(detail --kind cirrus + regime audit)
+    で実証する。worktree `.claude/worktrees/cirrus-tropic-supply`。
+  - 成果物: 原因分析・候補の計測値・採否の推薦。採否は親が決める。
+
+## 完了
+
+- 巻雲の型振り分け(agent aebaf0c4) — 候補A(気象ゲート化)を採用。
+  LOOP-LOG-cirrus step 10。
