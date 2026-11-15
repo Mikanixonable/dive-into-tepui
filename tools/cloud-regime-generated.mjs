@@ -151,9 +151,13 @@ export function isccpPhysical(points) {
       continue;
     }
     if (!isNum(p.cumulusTauIn) || cover < CLEAR_OPACITY_MAX) continue;
+    // 一部しか覆われない点は、点全体を雲として τ は覆う割合で薄めた画素平均にする。
+    // MODIS の τ 反演は画素を一様な層と仮定するので、被覆率の低い画素では雲の中の値より
+    // 薄い値が返る(heterogeneity bias)— 面積の一部へ雲の中の τ を割り当てるより、
+    // 画素ごとに薄めたこの形が実写の画素の意味づけに近い。
     addCloud(
-      cover * weight,
-      p.cumulusTauIn + (isNum(p.cirrusTau) ? p.cirrusTau : 0),
+      weight,
+      cover * p.cumulusTauIn + (isNum(p.cirrusTau) ? p.cirrusTau : 0),
       p.cumulusTopM / 1000,
     );
   }
