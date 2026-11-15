@@ -40,8 +40,9 @@
 - 視覚的な違和感をそのまま定数へ写すアドホック修正。
 - 採点器を甘くしてスコアを良く見せること、物差しを変えずに「改善」と言うこと。
 - devin-run ワーカーの起動(ユーザーの禁止。レート枠を共有して停止した経緯がある)。
-- autopilot スキルの利用枠 SLEEP 判定に従うこと(Devin のセッションには適用外。
-  `~/.config/devin/AGENTS.md` に永続化済み)。
+- autopilot の利用枠 `SLEEP` は表示された実行主体だけに適用すること。Devin Luna は必ず
+  `npm run usage -- --runtime=devin-luna` で確認し、既定の Claude 判定や Claude の `SLEEP` では停止しない。
+  (`~/.config/devin/AGENTS.md` にも永続化済み)。
 - PR の状態を権威ある情報なしに発言すること。
 - git config の変更・force push・確認なしの破壊的操作。
 - `memos/` のうち、このセッションの管理範囲(`sessions/`・`handoff_2026-11-15.md`・
