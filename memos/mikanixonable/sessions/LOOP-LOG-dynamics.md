@@ -227,3 +227,18 @@
   0.383 — 分布はベースラインの誤差内。tropical-sea topHigh 0.192(実写 0.259
   方向へ、cirrus-supply の計測で分かった熱帯の上層雲不足へ効く向き)。
   撮影で熱帯の塊状クラスタと間の晴れ間を確認。採用。
+
+## step 42 — 多層雲の雲頂を放射率重みの実効高度へ(監査の教師加工、採用)
+
+- 契機: deepFrac 調査(SWE-2 委譲)で temperate-sea の deepFrac/tauThick 上振れの
+  主因が「薄い巻雲 × 下層の厚いデッキが max() 雲頂で high+thick に化ける」
+  物差し側の対応づけの問題と判明。真の deep 経路(cumulusTopM>6.5 km)は
+  0.0024 で、上振れ分 0.0565 のほぼ全部が重なり経路。
+- 変更: tools/cloud-regime-generated.mjs の isccpPhysical — 巻雲検出点の雲頂を
+  max(cirrusTopM, cumulusTopM) から放射率重みの実効高度
+  (εc·topC + (1−εc)·εl·topL)/(εc + (1−εc)·εl) へ。MODIS が薄い巻雲越しの
+  厚い低層雲で層間の高度を返す物理に合わせる物差しの修正。
+- 結果: classes 0.122・contrast 0.674・bias 1.28・gain 0.756・variogram 0.369。
+  temperate-sea deep 0.057→0.027(実写 0.031)・topMiddle 0.026→0.099(実写
+  0.084)を一発で埋めた。deepFrac bias −2.8〜−2.9 は「生成が温帯で真の深い
+  対流をほぼ作っていない」実態の露呈 — 構造課題として残る。
