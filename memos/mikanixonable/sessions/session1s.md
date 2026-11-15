@@ -5,9 +5,9 @@
 
 ## 実施中
 
-- [B] 巻雲の供給中間値の両物差し計測 — エージェント `4731700a`、
-  worktree `.claude/worktrees/cirrus-supply`、base `6290a2f99`。
-  配分: `UPPER_MEAN_CLOUDINESS_WEIGHT` を 0.5→0.2 へ下げて巻雲が痩せた
-  (detail index 0.182→0.493)ので、中間値と `UPPER_LIFT_HUMIDITY` の強化を
-  巻雲の細部採点(cloud-detail-metrics)と物理分布監査(cloud-regime-audit)の
-  両方で測り、採否を親へ返す。現在 `UPPER_LIFT_HUMIDITY` 1.0→2.0 を試行中。
+- [B] deepFrac/tauThick 上振れの調定計測 — エージェント `afa5bb17`、
+  worktree `.claude/worktrees/deep-tuning`(新規作成・base devin/dev)。
+  配分: temperate-sea の deepFrac(生成 0.063 vs 実写 0.031)と
+  tauThick(0.21 vs 0.096)の約 2 倍上振れについて、ISCCP 判定式と生成側の
+  τ_in/雲頂写像を特定し、候補調定 2〜4 個を regime 監査で測って表で返す。
+  採否は親。コミット・push はしない。開始したばかり。
