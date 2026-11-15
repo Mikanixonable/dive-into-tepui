@@ -24,6 +24,7 @@ import { CASING_CASES } from './casing-cases';
 import { ASSEMBLY_CASES } from './assembly-cases';
 import { CLOUD_BLEND_CASES } from './cloud-blend-cases';
 import { CLOUD_SHADOW_GEOMETRY_CASES } from './cloud-shadow-geometry-cases';
+import { CLOUD_ALBEDO_CASES } from './cloud-albedo-cases';
 import { PLUME_CASES } from './plume-cases';
 import {
   circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, shipObject, texturedBody,
@@ -230,6 +231,7 @@ export const CASES = {
   ...ASSEMBLY_CASES,
   ...CLOUD_BLEND_CASES,
   ...CLOUD_SHADOW_GEOMETRY_CASES,
+  ...CLOUD_ALBEDO_CASES,
   ...THUMBNAIL_CASES,
 } as const satisfies Record<string, CaseBuilder>;
 
