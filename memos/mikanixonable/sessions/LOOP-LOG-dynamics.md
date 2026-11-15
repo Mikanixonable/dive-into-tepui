@@ -304,3 +304,18 @@
   (0.21 vs 0.096 — 被覆率と光学厚さの分離が本筋)、front 応答の過敏(2.13)。
 - 留意(報告より): cap 描画では粒の峰経路と embedded が重複して立つ可能性。
   見た目の過剰が出たら reach 側との max 調整を検討。
+
+## step 45 — 画素の意味づけの修正(採用、classes 0.122→0.105)
+- 監査の積雲のみの点を「雲の中の τ_in × 覆う面積」から「点全体を雲・τ は
+  coverage 重みの画素平均」へ変更(tools/cloud-regime-generated.mjs)。
+  MODIS は画素一様を仮定して τ を反演するので、部分的に覆われた画素の
+  τ は雲の中の値より薄く返る(heterogeneity bias)— 同じ意味づけへ。
+- 効果: cloudFrac が全帯で実写へ(tropical-sea 0.39→0.71/0.82、temperate
+  0.53→0.84/0.90)、topLow がほぼ一致(temperate 0.31→0.62/0.63)、
+  classes −0.017・responseBias −0.13・variogram −0.013。
+- 露呈した次の歪み:
+  - tauThin 過剰(0.46-0.56 vs 実写 0.08-0.17)— 薄い画素が全て thin へ移動
+  - tauThick 残存(temperate 0.21 vs 0.096)— coverage≈1 の帯では τ_in 自体が
+    飽和(層状の雲頂 3-7km → k·H^(5/3) ≫ 23)。τ_in の校正が次の本丸
+  - tauMid 不足(highlat 0.14 vs 0.56)— 中程度の層状雲の人口そのもの
+  - humidUp×highThinFrac の応答過敏(contrast 7.2)は継続の最大項
