@@ -9,7 +9,7 @@ import { clamp, cos, mix, mrt, screenUV, sin, texture, uniform, vec3, vec4 } fro
 import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
 import { DeferredTexture } from '../../src/render/deferred-texture';
 import {
-  blendBakedTexels, bindCloudBlend, cloudMotionFromTexel,
+  blendBakedTexels, cloudMotionFromTexel,
 } from '../../src/render/cloud/cloud-field-sample';
 import type { ClimateMap } from '../../src/render/cloud/climate-map';
 import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
@@ -131,7 +131,14 @@ export class CloudMotionWind {
   private readonly fraction: FloatUniform = uniform(0);
 
   public constructor(private readonly field: GeneratedCloudField) {
-    bindCloudBlend(field.blend, this.parity, this.fraction);
+    this.syncBlend();
+  }
+
+  // 場が公開している 2 枚の混ぜ方を、読み手側の uniform へ写す。混ぜ替えを進める
+  // field.prepare のあとで呼ぶ。
+  public syncBlend(): void {
+    this.parity.value = this.field.blend.parity;
+    this.fraction.value = this.field.blend.fraction;
   }
 
   public windNode(direction: Vec3Node): Vec4Node {
