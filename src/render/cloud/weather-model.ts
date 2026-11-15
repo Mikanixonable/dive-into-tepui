@@ -152,6 +152,14 @@ const BAND_LIFT = 0.06;
 // なるが、前線帯の面全体が湿度の上限へ張り付いて一枚の台地にはならない
 // (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
 const BAND_HUMIDITY = 0.1;
+// 低気圧従属の前線(寒冷・温暖・巻きの3本の腕 + 暖域の三角、ノルウェー型)が帯へ載る強さ。
+// 帯へ載れば上昇流・帯の湿度・乱層雲の被覆率(BAND_DECK)へ自然に伝わる。深さで発達へ
+// 連動し、一生の中の時期で形が変わる(cyclones.ts の前線の定数が正本)。
+const FRONT_BAND = 0.9;
+// ドライスロット(寒冷前線の帯と雲頭のあいだへ巻き込む乾燥下降流)が削る湿度。上層の乾きが
+// 本筋(WV では暗帯)なので上層を強く削り、地表付近にも晴れの切れ込みを入れる。
+const DRY_SLOT_DRYING = 0.25;
+const DRY_SLOT_UPPER_DRYING = 0.45;
 // 風が斜面を駆け上がる分の利得。等倍では偏西風や貿易風が山脈へ当たり続けるだけで上昇流が頭打ちに
 // 達し、地形の縞が年中貼り付く — 慢性的な湿潤・乾燥は平年の雲量が持つ。
 const TERRAIN_LIFT_GAIN = 0.35;
@@ -380,10 +388,11 @@ export class WeatherModel {
     const front = temperatureFront.add(moistureFront.mul(0.2)).add(updraft.mul(0.15)).min(1).mul(extratropical);
     const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
       .mul(extratropical.oneMinus());
-    // 帯は気団の圧縮(前線)と眼を持つ渦の巻き込み(雨帯)の診断だけで立てる — 実体へ
-    // 固定寸法の帯を足す方式は監査で寄与が見えず、見た目がスタンプになると分かった
-    // (memos/mikanixonable/sessions/LOOP-LOG-dynamics.md step 39)。
-    const band = min(front.add(rainband), 1);
+    // 帯は気団の圧縮・雨帯の診断に、低気圧従属の前線(寒冷・温暖・巻きの3本 — ノルウェー型
+    // の三角の構造、深さと一生の時期で発達・消衰へ連動する)を載せる。
+    const cycloneFront = this.cyclones.frontAt(direction);
+    const drySlot = this.cyclones.drySlotAt(direction);
+    const band = min(front.add(rainband).add(cycloneFront.mul(FRONT_BAND)), 1);
     const bandLift = band.mul(BAND_LIFT);
     const stormTrack = extratropical.mul(
       smoothstep(STORM_TRACK_POLE_START, STORM_TRACK_POLE_END, abs(latitude)).oneMinus(),
@@ -416,12 +425,12 @@ export class WeatherModel {
         .add(max(lift, 0).mul(SURFACE_LIFT_HUMIDITY)).add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
         .add(warmth.mul(WARM_HUMIDITY)).add(band.mul(BAND_HUMIDITY))
         .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(SURFACE_EYE_DRYNESS))
-        .sub(clusterHalo.mul(CLUSTER_DRYING)), 0, 1);
+        .sub(clusterHalo.mul(CLUSTER_DRYING)).sub(drySlot.mul(DRY_SLOT_DRYING)), 0, 1);
     const upperHumidity = clamp(
       advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
         .add(this.cyclones.wcbAt(direction).mul(WCB_UPPER_HUMIDITY))
-        .sub(eye.mul(UPPER_EYE_DRYNESS))
+        .sub(eye.mul(UPPER_EYE_DRYNESS)).sub(drySlot.mul(DRY_SLOT_UPPER_DRYING))
         .add(clusterOutflow.mul(CLUSTER_OUTFLOW_HUMIDITY)), 0, 1);
 
     return {
