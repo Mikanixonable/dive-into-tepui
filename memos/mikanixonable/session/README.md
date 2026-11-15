@@ -1,4 +1,10 @@
-# cloud-previews — 各 worktree の雲の見た目を自分の目で見る
+# session — セッション管理と各 worktree の雲の見た目
+
+このフォルダはセッション全体の運営場所。今は雲の作業をしているので内容が雲中心。
+
+- `TASKS.md` — セッションで今後取り組む課題の優先度順の一覧(完了したら更新する)
+- `ARCHITECTURE.md` — 現在の雲基盤の案内(ファイル・関数・パラメータ名で構造を示す)
+- この README — 編集中の worktree ごとに雲の見た目を確かめる手順と撮影済み画像
 
 編集中の worktree ごとに、雲がどう見えるかを確かめるための手順と、撮影済みの画像をまとめた。
 画像は `shots/<worktree名>/` 以下。`npm run cloud-lab:shot` で撮った PNG(全球の量の図 × 時刻 0h/25h)
@@ -9,7 +15,7 @@
 
 ## このフォルダから一発で見に行くコマンド
 
-このフォルダ(`memos/mikanixonable/cloud-previews/`)の位置から、次の形でそのまま実行できる。
+このフォルダ(`memos/mikanixonable/session/`)の位置から、次の形でそのまま実行できる。
 ポートは固定(本体 8080・雲ラボ 8083)なので、同じものを同時に 2 つは上げられない — 1 つずつ見る。
 worktree に `node_modules` が無い場合は先に `cd` して `npm ci`。
 
