@@ -71,7 +71,7 @@ const CONDITIONS_MAIN = [
   'windLow', 'shear', 'land', 'meanCloudiness',
 ];
 const CONDITIONS_REAL_ONLY = ['stability'];
-const CONDITIONS_GEN_ONLY = ['band', 'convectiveActivity', 'anvil'];
+const CONDITIONS_GEN_ONLY = ['cycloneFront', 'convectiveActivity', 'anvil'];
 // 統計へ渡す特徴量(向きの円周量 orientDeg は除き、withAlignment が足す alignLow・alignUp を含む)。
 const FEATURES = [
   'cover', 'coverDense', 'toneCloud', 'scaleKm', 'texture', 'aniso',
