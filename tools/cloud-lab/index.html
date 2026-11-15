@@ -14,17 +14,16 @@
   }
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-width: 0; }
   h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
-  nav a { color: var(--text); opacity: .65; text-decoration: none; font-size: 12px; }
-  nav a:hover { opacity: 1; color: var(--accent); }
   p { margin: 0; }
   .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--edge); }
-  .tabs button {
+  .tabs button, .tabs a {
     background: transparent; color: var(--text); border: 1px solid transparent;
     border-bottom: none; border-radius: 4px 4px 0 0; padding: 4px 18px;
     font: inherit; cursor: pointer; opacity: .65; margin-bottom: -1px;
+    text-decoration: none;
   }
-  .tabs button:hover { opacity: 1; }
-  .tabs button.active {
+  .tabs button:hover, .tabs a:hover { opacity: 1; }
+  .tabs button.active, .tabs a.active {
     background: var(--panel); border-color: var(--edge); color: var(--accent);
     opacity: 1; font-weight: 600;
   }
@@ -83,9 +82,12 @@
 </style>
 </head>
 <body>
+  <nav class="tabs" aria-label="側">
+    <a class="active" aria-current="page">生成</a>
+    <a href="detail.html">描画</a>
+  </nav>
   <header>
     <h1>Cloud Lab</h1>
-    <nav><a href="detail.html">雲の細部へ</a></nav>
     <div class="tabs" id="mode"></div>
     <p id="status"></p>
     <p id="error"></p>
