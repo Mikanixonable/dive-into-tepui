@@ -13,6 +13,7 @@ import { Cyclones } from './cyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
+import { CLOUD_TUNING } from './cloud-tuning';
 import { composeWind, FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
@@ -62,74 +63,74 @@ const PRESSURE_NOISE: readonly NoiseOctave[] = [
 const UPPER_MEANDER_NOISE: readonly NoiseOctave[] = [
   { frequency: 8, amplitude: 1 }, // 800 km
 ];
-const UPPER_MEANDER_MAX_ANGLE = 0.25; // [rad]
+const UPPER_MEANDER_MAX_ANGLE = CLOUD_TUNING.upperMeanderMaxAngle; // [rad]
 // 場の振れ幅 [hPa]。オクターブ数によらない。
-const PRESSURE_NOISE_AMPLITUDE = 18;
+const PRESSURE_NOISE_AMPLITUDE = CLOUD_TUNING.pressureNoiseAmplitude;
 
 // 気圧の偏差から出る上昇流。利得 [m/s] が高気圧側の吹きおろしの上限、低気圧側は尺度 [hPa] ごとに
 // e 倍に伸びる(上昇は狭く強く、下降は広く弱い)。尺度は並の低気圧の芯(24 hPa)で 0.03 m/s に
 // なる長さ。利得を上げると低気圧が飽和した円盤になり、流入が巻き込んだ渦を塗り潰す。
-const PRESSURE_LIFT_GAIN = 0.02;
-const PRESSURE_LIFT_SCALE = 27;
+const PRESSURE_LIFT_GAIN = CLOUD_TUNING.pressureLiftGain;
+const PRESSURE_LIFT_SCALE = CLOUD_TUNING.pressureLiftScale;
 // 上昇流の頭打ち [m/s]。急な斜面と深い谷の芯では上昇流が並の何倍にもなり、線形のままだと湿度が
 // 0/1 で切れて硬い縁の白い塊になる。
-const LIFT_LIMIT = 0.06;
+const LIFT_LIMIT = CLOUD_TUNING.liftLimit;
 // 前線帯の強度計算。気団の圧縮度が立ち上がり閾値から遷移幅に達する間に、帯の強度が 0 から 1 へ推移する。開始閾値は 35〜60° 緯度帯の
 // 背景圧縮度（90パーセンタイルで 1.19〜1.28）の 2 割増に設定する。
 // 遷移幅は圧縮の稜線が飽和する狭さに調整し、最も高密度の中心核に帯幅を確保する。
-const FRONT_ONSET = 1.65;
-const FRONT_WIDTH = 0.35;
+const FRONT_ONSET = CLOUD_TUNING.frontOnset;
+const FRONT_WIDTH = CLOUD_TUNING.frontWidth;
 // 前線を強化する湿度水平勾配の開始閾値と遷移幅 [1/rad]。乾湿境界にも雲帯を生成する。
 // 遷移幅は湿度テクスチャの量子化誤差に対して十分なマージンを確保する。
-const MOISTURE_GRADIENT_ONSET = 0.12;
-const MOISTURE_GRADIENT_WIDTH = 0.28;
+const MOISTURE_GRADIENT_ONSET = CLOUD_TUNING.moistureGradientOnset;
+const MOISTURE_GRADIENT_WIDTH = CLOUD_TUNING.moistureGradientWidth;
 // 雨帯。眼を持つ渦が周りの気団を巻き込んで折り畳んだ筋で、圧縮は前線より桁が大きい(腕の稜線で 5〜9)。
 // 稜線の最も押し縮まった区間だけが飽和して腕の先へ連続に薄れる幅に取り、芯のまわりのシアの丘(2〜4)と
 // 熱帯の背景(99.9 パーセンタイルで 3.2)を拾わない。狭めると腕が太い真っ白な帯になる
 // (`DEVELOP/SPEC/RENDERING.md`「雨帯は、渦が周りの気団を巻き込んで折り畳んだ筋に沿う」)。
-const RAINBAND_ONSET = 5;
-const RAINBAND_WIDTH = 4;
+const RAINBAND_ONSET = CLOUD_TUNING.rainbandOnset;
+const RAINBAND_WIDTH = CLOUD_TUNING.rainbandWidth;
 // 帯が飽和した所で立つ上昇流 [m/s]。深い谷の芯と同じだけ持ち上げるよう、頭打ち(LIFT_LIMIT)に揃える。
-const BAND_LIFT = 0.06;
+const BAND_LIFT = CLOUD_TUNING.bandLift;
 // 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 0.45 倍に取る —
 // 帯の芯では上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き途切れない帯に
 // なるが、前線帯の面全体が湿度の上限へ張り付いて一枚の台地にはならない
 // (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
-const BAND_HUMIDITY = 0.1;
+const BAND_HUMIDITY = CLOUD_TUNING.bandHumidity;
 // 温帯と熱帯の境界緯度。温帯では前線、熱帯では雨帯の伝達関数を使い、暖気流入の補正は温帯に
 // 限定して適用する。
 const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
 const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
 // 風が斜面を駆け上がる分の利得。等倍では偏西風や貿易風が山脈へ当たり続けるだけで上昇流が頭打ちに
 // 達し、地形の縞が年中貼り付く — 慢性的な湿潤・乾燥は平年の雲量が持つ。
-const TERRAIN_LIFT_GAIN = 0.35;
+const TERRAIN_LIFT_GAIN = CLOUD_TUNING.terrainLiftGain;
 // 陸へ上乗せする高さ [m]。海と陸の比熱の差を、海岸へ吹き込む風が駆け上がる斜面として代用する。
 const LAND_HEIGHT_BIAS = 800;
 // 上昇流が湿度へ寄与する伝達利得 [per m/s]。地表付近の加湿は、底上げ成分（本項）と偏差増幅成分
 // (VORTEX_CONTRAST) に分離して計算する。
 // 地表付近の沈降の乾きは上昇より弱く取る — 海洋境界層は沈降の下でも層積雲を保ち、同じ利得では
 // 亜熱帯高圧帯の下の海が丸ごと晴れる。
-const SURFACE_LIFT_HUMIDITY = 1.3;
-const SURFACE_SUBSIDENCE_DRYING = 1.0;
-const UPPER_LIFT_HUMIDITY = 0.7;
+const SURFACE_LIFT_HUMIDITY = CLOUD_TUNING.surfaceLiftHumidity;
+const SURFACE_SUBSIDENCE_DRYING = CLOUD_TUNING.surfaceSubsidenceDrying;
+const UPPER_LIFT_HUMIDITY = CLOUD_TUNING.upperLiftHumidity;
 // 上昇流が、移流した地表付近の湿度の偏差(源の底上げ SURFACE_HUMIDITY_BASE からの揺れ)を増幅する利得。
 // 頭打ち(LIFT_LIMIT)に張り付いた所で偏差は (1 + 利得) 倍 — 1 で 2 倍になる。
-const VORTEX_CONTRAST = 1.0;
+const VORTEX_CONTRAST = CLOUD_TUNING.vortexContrast;
 // 沈降が上層を乾かす利得 [per m/s]。上層には境界層のような湿りの溜まりが無いので、地表付近より
 // 強く乾く — 高気圧の吹きおろす所では薄い雲も消える。
-const UPPER_SUBSIDENCE_DRYING = 2;
+const UPPER_SUBSIDENCE_DRYING = CLOUD_TUNING.upperSubsidenceDrying;
 
 // 圏界面の高さ [m] とその緯度依存。熱帯で 16〜17 km、極で 9 km 前後で、亜熱帯のジェットの下で
 // 段をなして下がる(NCAR ACOM「Cloud Tops and Tropopause」)。深い対流はここに当たって横へ広がる
 // ので、対流の天井そのものになる。
-const TROPOPAUSE_EQUATOR = 17000;
-const TROPOPAUSE_POLE = 9000;
+const TROPOPAUSE_EQUATOR = CLOUD_TUNING.tropopauseEquator;
+const TROPOPAUSE_POLE = CLOUD_TUNING.tropopausePole;
 const TROPOPAUSE_STEP_START = THREE.MathUtils.degToRad(15);
 const TROPOPAUSE_STEP_END = THREE.MathUtils.degToRad(60);
 
 // 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。緯度の 6 倍の余弦なので、緯度に
 // ついての微分は sin(6 φ) × 6 × 振幅 [hPa/rad]。
-const PRESSURE_BAND_AMPLITUDE = 8;
+const PRESSURE_BAND_AMPLITUDE = CLOUD_TUNING.pressureBandAmplitude;
 
 // 気圧の勾配を取る中心差分の刻み [rad]。台風の芯の広がり(250 km ≈ 0.039 rad)より細かく、
 // 気圧の写しの 1 texel より粗い。写しは視点中心の cap なので texel の角は視点の高さで変わるが、
@@ -149,26 +150,26 @@ const CONVECTION_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
 
 // 渦の目が移流後の湿度から引く深さ。眼壁の飽和と金床の天蓋(ANVIL_HUMIDITY)の両方を貫く深さに
 // 取る。上層を深く引いて、薄い雲の穴を厚い雲の目よりひとまわり広く開ける。
-const SURFACE_EYE_DRYNESS = 0.8;
-const UPPER_EYE_DRYNESS = 2;
+const SURFACE_EYE_DRYNESS = CLOUD_TUNING.surfaceEyeDryness;
+const UPPER_EYE_DRYNESS = CLOUD_TUNING.upperEyeDryness;
 // 金床の天蓋が地表付近の湿度へ足す高さ。天蓋の芯では並の湿度からでも雲量が飽和する分を足すが、
 // 円盤の縁まで一様に上限へ張り付かせないよう、天蓋自身の濃さの落ち際と合わせて効かせる。
-const ANVIL_HUMIDITY = 0.2;
+const ANVIL_HUMIDITY = CLOUD_TUNING.anvilHumidity;
 // 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入（0.26 rad）で伝達関数幅の約半分が
 // 変位する係数。本項の期待値が正のため、基底湿度 (SURFACE_HUMIDITY_BASE) をオフセットして均衡させる。
-const WARM_HUMIDITY = 0.6;
+const WARM_HUMIDITY = CLOUD_TUNING.warmHumidity;
 // 移流後に足す平年の雲量の重み(地表付近と上層)。雲量の地理的な差が凝結のしきい値をまたぐ幅に
 // 取る — 小さいと砂漠にも海と同じだけ雲が湧き、大きいと雲の多い海が覆われたまま平年の雲量図が
 // 貼り付く。地表付近は、貼り付いた図が中緯度の長波長スペクトルの過剰の支配項だったので半分に
 // 弱め、減った平均ぶんは基底湿度の底上げで埋める(cloud-lab Phase 3-10)。上層は薄い雲の分布が
 // 平年の図へ素直に従うため据え置く。
-const SURFACE_MEAN_CLOUDINESS_WEIGHT = 0.15;
-const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.24;
+const SURFACE_MEAN_CLOUDINESS_WEIGHT = CLOUD_TUNING.surfaceMeanCloudinessWeight;
+const UPPER_MEAN_CLOUDINESS_WEIGHT = CLOUD_TUNING.upperMeanCloudinessWeight;
 // 平年の雲量を湿度へ渡す S 字の裾と肩。線形では、砂漠を晴らす重みで雲の多い海が覆われたまま動かなく
 // なる。裾は砂漠(0.14)の下、肩は年中曇りの海(0.89)の側に置く — 狭めると乾いた大陸(0.43〜0.51)や
 // 貿易風帯の海(0.50〜0.65)まで雲を失う。
-const MEAN_CLOUDINESS_DRY = 0.10;
-const MEAN_CLOUDINESS_WET = 0.85;
+const MEAN_CLOUDINESS_DRY = CLOUD_TUNING.meanCloudinessDry;
+const MEAN_CLOUDINESS_WET = CLOUD_TUNING.meanCloudinessWet;
 
 export class WeatherModel {
   // 大循環の平均風。地表付近と上層の背景風をここから引く。
@@ -261,14 +262,14 @@ export class WeatherModel {
     // 折り目の帯: 温帯では前線(気団の圧縮へ、湿度の境目と気圧の上昇流を少し足す)、熱帯では雨帯の
     // 伝達関数が圧縮の稜線を降雨帯の強度へマッピングする。
     const updraft = smoothstep(0.01, 0.04, max(liftFromPressure(pressure), 0));
-    const temperatureFront = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression);
+    const temperatureFront = smoothstep(FRONT_ONSET, FRONT_ONSET.add(FRONT_WIDTH), airMass.compression);
     const moistureFront = smoothstep(
       MOISTURE_GRADIENT_ONSET,
-      MOISTURE_GRADIENT_ONSET + MOISTURE_GRADIENT_WIDTH,
+      MOISTURE_GRADIENT_ONSET.add(MOISTURE_GRADIENT_WIDTH),
       moistureGradient,
     );
     const front = temperatureFront.add(moistureFront.mul(0.2)).add(updraft.mul(0.15)).min(1).mul(extratropical);
-    const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
+    const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET.add(RAINBAND_WIDTH), airMass.compression)
       .mul(extratropical.oneMinus());
     const band = min(front.add(rainband), 1);
     const bandLift = band.mul(BAND_LIFT);
@@ -410,7 +411,7 @@ export class WeatherModel {
     const latitude = latitudeOf(direction);
     const { gradient, bend } = this.pressureFieldAt(direction, east, north);
     // 気圧帯は緯度だけの関数なので、その勾配は解析的に差し引ける。
-    const eddy = gradient.sub(north.mul(sin(latitude.mul(6)).mul(6 * PRESSURE_BAND_AMPLITUDE)));
+    const eddy = gradient.sub(north.mul(sin(latitude.mul(6)).mul(PRESSURE_BAND_AMPLITUDE.mul(6))));
     const wind = balancedWind(
       eddy, isobarAt(direction, eddy), bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
       this.surfaceRadius, this.rotationPeriod,
@@ -426,7 +427,7 @@ export class WeatherModel {
 
   // 気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。
   private pressureSourceAt(direction: Vec3Node): FloatNode {
-    const band = cos(latitudeOf(direction).mul(6)).mul(-PRESSURE_BAND_AMPLITUDE);
+    const band = cos(latitudeOf(direction).mul(6)).mul(PRESSURE_BAND_AMPLITUDE.mul(-1));
     return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE))
       .add(this.cyclones.pressureAt(direction));
   }
@@ -469,12 +470,12 @@ function cloudinessBias(meanCloudiness: FloatNode): FloatNode {
 // 緯度 [rad] における圏界面の高さ [m]。
 function tropopauseAt(latitude: FloatNode): FloatNode {
   const drop = smoothstep(TROPOPAUSE_STEP_START, TROPOPAUSE_STEP_END, abs(latitude));
-  return drop.mul(TROPOPAUSE_POLE - TROPOPAUSE_EQUATOR).add(TROPOPAUSE_EQUATOR);
+  return drop.mul(TROPOPAUSE_POLE.sub(TROPOPAUSE_EQUATOR)).add(TROPOPAUSE_EQUATOR);
 }
 
 // 気圧の偏差 [hPa] が生む上昇流 [m/s]。低気圧で正、高気圧で負。
 function liftFromPressure(pressure: FloatNode): FloatNode {
-  return exp(pressure.div(-PRESSURE_LIFT_SCALE)).sub(1).mul(PRESSURE_LIFT_GAIN);
+  return exp(pressure.div(PRESSURE_LIFT_SCALE.mul(-1))).sub(1).mul(PRESSURE_LIFT_GAIN);
 }
 
 // 上昇流を LIFT_LIMIT へ漸近させる。LIFT_LIMIT より十分弱い上昇流はほぼ素通しで、強いものだけが丸まる。
