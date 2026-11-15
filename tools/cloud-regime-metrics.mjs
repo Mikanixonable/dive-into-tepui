@@ -18,7 +18,7 @@ function assertLinear(name) {
 }
 
 // 昇順の配列の分位点(線形補間、type 7)。
-function quantileSorted(sorted, q) {
+export function quantileSorted(sorted, q) {
   if (sorted.length === 0) return null;
   const position = (sorted.length - 1) * q;
   const lo = Math.floor(position);
@@ -142,7 +142,7 @@ export function responseDistance(real, generated, condition, feature, bins = 5) 
 }
 
 // 2 つの系列の相関。分散が 0 のときや 2 点未満のときは null。
-function pearson(xs, ys) {
+export function pearson(xs, ys) {
   if (xs.length < 2) return null;
   const mx = meanOf(xs);
   const my = meanOf(ys);
@@ -290,7 +290,7 @@ export function variogramDistance(real, generated, feature, edgesKm = VARIOGRAM_
 }
 
 // 乱数の種から決定的に一様乱数を出す(mulberry32)。
-function mulberry32(seed) {
+export function mulberry32(seed) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) | 0;
