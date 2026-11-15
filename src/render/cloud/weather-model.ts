@@ -132,6 +132,8 @@ const LIFT_LIMIT = 0.06;
 // 遷移幅は圧縮の稜線が飽和する狭さに調整し、最も高密度の中心核に帯幅を確保する。
 const FRONT_ONSET = 3.6;
 const FRONT_WIDTH = 0.9;
+
+
 // 前線を強化する湿度水平勾配の開始閾値と遷移幅 [1/rad]。乾湿境界にも雲帯を生成する。
 // 遷移幅は湿度テクスチャの量子化誤差に対して十分なマージンを確保する。
 const MOISTURE_GRADIENT_ONSET = 0.12;
@@ -162,7 +164,7 @@ const SURFACE_LIFT_HUMIDITY = 1.3;
 const SURFACE_SUBSIDENCE_DRYING = 1.0;
 // 上層は上昇流の断熱冷却で氷飽和へ達するので、地表付近より強く湿る — 前線帯・ITCZ の
 // 収束域・低気圧の前方に組織だった巻雲を作る項。小さいと天候系の場面差がノイズに埋もれる。
-const UPPER_LIFT_HUMIDITY = 2.5;
+const UPPER_LIFT_HUMIDITY = 1.0;
 // 上昇流が、移流した地表付近の湿度の偏差(源の底上げ SURFACE_HUMIDITY_BASE からの揺れ)を増幅する利得。
 // 頭打ち(LIFT_LIMIT)に張り付いた所で偏差は (1 + 利得) 倍 — 1 で 2 倍になる。
 const VORTEX_CONTRAST = 1.0;
@@ -239,7 +241,7 @@ const WARM_HUMIDITY = 0.6;
 // 平年の図へ素直に従うので強めに取る — 上層湿度のノイズを実写の乾湿対比へ上げたあと、場面間の
 // 差(亜熱帯の乾域と上昇枝の湿域)を残すには気候の項を同じ程度の振れ幅まで戻す必要がある。
 const SURFACE_MEAN_CLOUDINESS_WEIGHT = 0.15;
-const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.5;
+const UPPER_MEAN_CLOUDINESS_WEIGHT = 0.2;
 // 平年の雲量を湿度へ渡す S 字の裾と肩。線形では、砂漠を晴らす重みで雲の多い海が覆われたまま動かなく
 // なる。裾は砂漠(0.14)の下、肩は年中曇りの海(0.89)の側に置く — 狭めると乾いた大陸(0.43〜0.51)や
 // 貿易風帯の海(0.50〜0.65)まで雲を失う。
@@ -367,10 +369,10 @@ export class WeatherModel {
     const front = temperatureFront.add(moistureFront.mul(0.2)).add(updraft.mul(0.15)).min(1).mul(extratropical);
     const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
       .mul(extratropical.oneMinus());
-    // 低気圧の実体が持つ前線の帯(寒冷・温暖) — 気団の圧縮からの診断とは別の担い手で、
-    // 低気圧の芯から伸びる一貫した帯を作る。両者の大きい側を取る。
-    const cycloneFront = this.cyclones.frontAt(direction);
-    const band = min(max(front.add(rainband), cycloneFront), 1);
+    // 帯は気団の圧縮(前線)と眼を持つ渦の巻き込み(雨帯)の診断だけで立てる — 実体へ
+    // 固定寸法の帯を足す方式は監査で寄与が見えず、見た目がスタンプになると分かった
+    // (LOOP-LOG-dynamics.md step 39)。
+    const band = min(front.add(rainband), 1);
     const bandLift = band.mul(BAND_LIFT);
     const stormTrack = extratropical.mul(
       smoothstep(STORM_TRACK_POLE_START, STORM_TRACK_POLE_END, abs(latitude)).oneMinus(),
