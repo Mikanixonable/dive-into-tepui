@@ -371,7 +371,7 @@ export class WeatherModel {
       .mul(extratropical.oneMinus());
     // 帯は気団の圧縮(前線)と眼を持つ渦の巻き込み(雨帯)の診断だけで立てる — 実体へ
     // 固定寸法の帯を足す方式は監査で寄与が見えず、見た目がスタンプになると分かった
-    // (LOOP-LOG-dynamics.md step 39)。
+    // (memos/mikanixonable/sessions/LOOP-LOG-dynamics.md step 39)。
     const band = min(front.add(rainband), 1);
     const bandLift = band.mul(BAND_LIFT);
     const stormTrack = extratropical.mul(
