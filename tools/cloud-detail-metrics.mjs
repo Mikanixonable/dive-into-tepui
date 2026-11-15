@@ -346,6 +346,19 @@ function shapeStats(data, n, kmPerPx, threshold) {
     .filter((component) => inRange(component) && Math.sqrt(component.areaKm2) <= 100 && component.perimeterKm > 0)
     .map((component) => [Math.log(Math.sqrt(component.areaKm2)), Math.log(component.perimeterKm)]);
   const perimeterAreaDimension = perimeterPairs.length >= 8 ? fitLine(perimeterPairs).slope : null;
+  // 細長さ: 最も長い成分の長軸 [km] と、細長い成分(長軸/短軸 ≥ 4)が雲の面積へ占める割合。
+  // ジェットに沿う筋状の巻雲は長軸が数百〜千 km・比が大きいので、これで「大きな細長い
+  // 構造」を実写と比べられる(出典: EUMeTrain jet fibres、Durran & Weber 1988)。
+  let maxAxisKm = null;
+  let elongatedAreaKm2 = 0;
+  for (const component of interior) {
+    if (component.majorKm === undefined) continue;
+    if (maxAxisKm === null || component.majorKm > maxAxisKm) maxAxisKm = component.majorKm;
+    if (component.minorKm > 0 && component.majorKm / component.minorKm >= 4) {
+      elongatedAreaKm2 += component.areaKm2;
+    }
+  }
+  const totalInteriorKm2 = interior.reduce((sum, component) => sum + component.areaKm2, 0);
   return {
     threshold,
     cloudyShare: stats.cloudyShare,
@@ -354,6 +367,8 @@ function shapeStats(data, n, kmPerPx, threshold) {
     fitMinKm: minKm,
     sizeExponent,
     perimeterAreaDimension,
+    maxAxisKm,
+    elongatedShare: totalInteriorKm2 > 0 ? elongatedAreaKm2 / totalInteriorKm2 : null,
   };
 }
 

@@ -7,7 +7,7 @@ import {
 import { dilateMask, labelMask, translateMask } from './cloud-translucent-gibs.mjs';
 
 // ページの RGBA8 の符号化の分母。ページ側は描画器と同じ式の上限で正規化して送る
-// (src/render/cloud/cloud-kind.ts の CUMULUS_MAX_OPTICAL_DEPTH = 1/0.12、
+// (src/render/cloud/cloud-kind.ts の CUMULUS_MAX_COVERING_DEPTH = 1/0.12、
 // CIRRUS_MAX_OPTICAL_DEPTH = 3、CUMULUS_TOP_ALTITUDE = 17000、CIRRUS_TOP_ALTITUDE = 13000)。
 export const PHYS_SPAN = {
   cumulusTau: 1 / 0.12,

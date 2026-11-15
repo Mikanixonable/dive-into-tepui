@@ -40,6 +40,7 @@ export class CloudFieldSampler {
   private unsubscribeBlend: (() => void) | null = null;
 
   // 焼いた場と、それを焼いた cap の置き方を写し取る。テクスチャの所有権は移らない。
+  // 同じ供給源の値を焼き直し後も読み続けられるよう、参照と cap の枠を揃える。
   public bind(binding: CloudFieldBinding): void {
     for (const slot of [0, 1] as const) {
       this.clouds[slot].value = binding.slots[slot].cloud;
