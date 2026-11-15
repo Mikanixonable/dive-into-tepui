@@ -112,6 +112,10 @@ const EMBEDDED_LIFT_ONSET = 0.03;
 const EMBEDDED_LIFT_FULL = 0.05;
 const EMBEDDED_DECK_ONSET = 0.6;
 const EMBEDDED_DECK_FULL = 0.9;
+// 内包対流が立つのは細胞の芯だけ — 乱層雲に埋まる積乱雲は帯の数%の散在する
+// セルであって、帯の全面が圏界面へ届くわけではない。
+const EMBEDDED_CELL_ONSET = 0.4;
+const EMBEDDED_CELL_FULL = 0.8;
 
 // weather から凝結する雲のグラフ。積雲の量は、湿度(低周波)へ対流(高周波)を足した伝達関数の
 // 被覆率と、層状の雲から立つ塔と渦の芯が敷く金床の高いほうの雲頂から決まり、巻雲の量は
@@ -175,7 +179,8 @@ export function condense(weather: WeatherSample): CloudSample {
   // 一面を覆う乱層雲の下で柱は透けず、デッキそのものが深い柱になる。
   const embedded = smoothstep(EMBEDDED_BAND_ONSET, EMBEDDED_BAND_FULL, weather.band)
     .mul(smoothstep(EMBEDDED_LIFT_ONSET, EMBEDDED_LIFT_FULL, weather.lift))
-    .mul(smoothstep(EMBEDDED_DECK_ONSET, EMBEDDED_DECK_FULL, coverage));
+    .mul(smoothstep(EMBEDDED_DECK_ONSET, EMBEDDED_DECK_FULL, coverage))
+    .mul(smoothstep(EMBEDDED_CELL_ONSET, EMBEDDED_CELL_FULL, reach));
   const embeddedTower = layered.add(weather.tropopause.sub(layered).mul(embedded));
   // 積雲の量は、まばらな覆いでは被覆率を不透明度として写した量、広く覆う所ではそれと雲頂の量の
   // 高いほう。**覆いの薄い柱は雲頂が何であれ低く透ける雲になる** — 小さな雲が高い柱として立たず、
