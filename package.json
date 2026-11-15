@@ -104,6 +104,10 @@
     "cloud-detail:temporal": "node tools/cloud-temporal-check.mjs",
     "cloud-detail:stability": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-detail-stability.mjs",
     "cloud-detail:drag": "webpack --config webpack.render-lab.config.js --mode production && node tools/cloud-drag-check.mjs",
+    "cloud-regime:selftest": "node tools/cloud-regime-selftest.mjs && node tools/cloud-regime-physical-selftest.mjs && node tools/cloud-regime-reanalysis-selftest.mjs",
+    "cloud-regime:teacher": "node tools/cloud-regime-tiles.mjs && node tools/cloud-regime-teacher.mjs && node tools/cloud-regime-physical.mjs",
+    "cloud-regime:audit": "node tools/cloud-regime-audit.mjs",
+    "cloud-regime:compare": "node tools/cloud-regime-compare.mjs",
     "verify:hud-layout": "node tools/verify-hud-layout.mjs",
     "smoke:layout": "node tools/layout-smoke-retry.mjs"
   },
