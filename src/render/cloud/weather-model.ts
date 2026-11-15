@@ -1,6 +1,6 @@
 // 天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流の天気を TSL の
 // グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
-import { abs, clamp, cos, cross, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
+import { abs, clamp, cos, cross, dot, exp, max, min, normalize, sign, sin, smoothstep, sqrt, tan, tanh, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass, extratropicalAt } from './air-mass';
 import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
@@ -14,7 +14,9 @@ import { HumidityModulator } from './humidity-modulation';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
-import { composeWind, FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
+import {
+  AIR_DENSITY, FRICTION_RATE, balancedWind, composeWind, coriolisRate, isobarAt,
+} from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
@@ -51,11 +53,15 @@ interface PressureField {
   readonly bend: FloatNode;
 }
 
-// ノイズのオクターブ定義表。周波数は 1 rad あたりの山数で、角波長 [km] は 6371 ÷ 周波数。気圧は単一オクターブ
-// のみとする — 上昇流が気圧値の直接の関数であるため、オクターブを重ねると高周波の格子が雲へそのまま現れてしまうため。
+// ノイズのオクターブ定義表。周波数は 1 rad あたりの山数で、角波長 [km] は 6371 ÷ 周波数。
 // この段はエポックの混ぜ替えに参加し、気圧の谷と峰は流れに乗るだけでなくその場でも発達・衰退する。
+// 総観規模(1400〜5300 km)の谷と峰は包絡(温帯らしさ)で膨らむ — 中緯度と高緯度の海では
+// 数百キロの気圧の起伏が熱帯の数倍強く、熱帯は気圧が平らなまま
+// (`DEVELOP/SPEC/RENDERING.md`「気圧の起伏・風・上昇流の強さと頻度は、地球の大気で観測される分布に従う」)。
 const PRESSURE_NOISE: readonly NoiseOctave[] = [
   { frequency: 1.2, amplitude: 1 }, // 5300 km
+  { frequency: 2.4, amplitude: 0.7, envelope: 1.5 }, // 2650 km — 温帯で 2.5 倍
+  { frequency: 4.5, amplitude: 0.45, envelope: 2.4 }, // 1400 km — 温帯で 3.4 倍
 ];
 // 上層の風へ重ねる中規模の蛇行。単一オクターブ (800 km) のノイズで、総観規模のロスビー波と
 // 渦だけだった筋の向きの場に、100〜1000 km の尺度で滑らかに変わる自由度を足す。向きの
@@ -67,19 +73,50 @@ const UPPER_MEANDER_MAX_ANGLE = 0.25; // [rad]
 // 場の振れ幅 [hPa]。オクターブ数によらない。
 const PRESSURE_NOISE_AMPLITUDE = 18;
 
-// 気圧の偏差から出る上昇流。利得 [m/s] が高気圧側の吹きおろしの上限、低気圧側は尺度 [hPa] ごとに
-// e 倍に伸びる(上昇は狭く強く、下降は広く弱い)。尺度は並の低気圧の芯(24 hPa)で 0.03 m/s に
-// なる長さ。利得を上げると低気圧が飽和した円盤になり、流入が巻き込んだ渦を塗り潰す。
-const PRESSURE_LIFT_GAIN = 0.02;
-const PRESSURE_LIFT_SCALE = 27;
+// 気圧のラプラシアンを取る中心差分の刻み [rad](約 320 km)。気圧の谷・峰の曲がりを、数百キロの
+// 総観規模で測る — 勾配の刻み(64 km)で取ると、写しの texel 間の量子化と粒状の起伏が曲がりへ
+// 混ざる。
+const LAPLACIAN_STEP = 0.05;
+// 摩擦層の収束が立てる上昇流(エクマン・ポンピング)。w = ∇²p · D / (2 ρ f̂)。低気圧のまわりの
+// 摩擦層の収束は上昇、高気圧のまわりの発散は沈降になる。実効の深さ D [m] は観測の上昇流の分布
+// (∇²p ≈ 60 hPa/(1000 km)² の芯で 0.02 m/s 級)に取る。f̂ = √(f² + 摩擦²) で、コリオリの
+// 消える赤道へ発散しない下支えを掛ける(wind-law の damped と同じ形)。
+const EKMAN_DEPTH = 1400;
+// 暖気の移流で上昇・寒気の移流で沈降する分 [m/s per rad]。準地衡の ω 方程式の向きに、並の
+// 移流(±0.3 rad)が ±0.01 m/s 級を受け持つ幅に取る。
+const ADVECTION_LIFT = 0.035;
+// 気圧配置に従わない中規模の上昇・沈降。流れに乗って運ばれる 300〜1500 km の場 — これが無いと
+// 上昇流が気圧の一意な関数になり、雲の形が気圧配置から一意に決まってしまう
+// (`DEVELOP/SPEC/RENDERING.md`「同じ気象条件でも、雲の形は一つに決まらない」)。総観規模の
+// 2 段はエポックの混ぜ替えでその場でも発達・衰退する。
+const MESOSCALE_LIFT_NOISE: readonly NoiseOctave[] = [
+  { frequency: 4.2, amplitude: 1, envelope: -0.5 }, // 1500 km — 温帯で 0.5 倍
+  { frequency: 8.5, amplitude: 0.7, envelope: -0.5 }, // 750 km — 温帯で 0.5 倍
+  { frequency: 21, amplitude: 0.4 }, // 300 km
+];
+const MESOSCALE_LIFT_EPOCH_MAX = 8.5;
+const MESOSCALE_LIFT = 0.06;
+// 中規模の場の非対称化: 上昇は狭く強く、沈降は広く弱い(同じ仕様の文)。場の値を n·(1 + κ·n⁺) で
+// 変換し、正の側を二乗で伸ばす — 線形の利得では場が 0 のまわりに固まりすぎて強い上昇の裾が出ない。
+// 変換で偏った平均は重心 κ·E[n²]/2(このオクターブ合成で E[n²] ≈ 0.014)だけ引いて 0 に戻す。
+const MESOSCALE_SKEW = 12;
+const MESOSCALE_LIFT_OFFSET = MESOSCALE_SKEW * 0.007;
+// 上昇と沈降を釣り合わせる、広く弱い吹きおろしの分 [m/s]。前線の帯と地形が持ち上げた分だけを
+// 埋め合わせる — 渦と中規模の場は自身の中で釣り合っている(`DEVELOP/SPEC/RENDERING.md`
+// 「上昇する空と沈降する空は釣り合う」)。埋め合わせる相手の帯は温帯でしか立たないので、戻りも
+// 温帯らしさで重み付けする(熱帯では前線の帯がほぼ立たないので戻りもほぼ要らない — 熱帯の沈降は
+// 中規模の場の負側が既にハードリー循環の下降枝を担っている)。
+const MASS_RETURN = 0.017;
+const MASS_RETURN_TROPIC = 0.15;
 // 上昇流の頭打ち [m/s]。急な斜面と深い谷の芯では上昇流が並の何倍にもなり、線形のままだと湿度が
 // 0/1 で切れて硬い縁の白い塊になる。
 const LIFT_LIMIT = 0.06;
 // 前線帯の強度計算。気団の圧縮度が立ち上がり閾値から遷移幅に達する間に、帯の強度が 0 から 1 へ推移する。開始閾値は 35〜60° 緯度帯の
-// 背景圧縮度（90パーセンタイルで 1.19〜1.28）の 2 割増に設定する。
+// 背景圧縮度の上側の裾(9 割方を少し越える辺り)に設定する — 渦の強い気圧場で押し縮まりの分布
+// 全体がおよそ倍に膨らんだため、帯の占める割合(全球平均で 0.15〜0.2)が保たれる高さへ置き直す。
 // 遷移幅は圧縮の稜線が飽和する狭さに調整し、最も高密度の中心核に帯幅を確保する。
-const FRONT_ONSET = 1.65;
-const FRONT_WIDTH = 0.35;
+const FRONT_ONSET = 3.6;
+const FRONT_WIDTH = 0.9;
 // 前線を強化する湿度水平勾配の開始閾値と遷移幅 [1/rad]。乾湿境界にも雲帯を生成する。
 // 遷移幅は湿度テクスチャの量子化誤差に対して十分なマージンを確保する。
 const MOISTURE_GRADIENT_ONSET = 0.12;
@@ -124,9 +161,14 @@ const TROPOPAUSE_POLE = 9000;
 const TROPOPAUSE_STEP_START = THREE.MathUtils.degToRad(15);
 const TROPOPAUSE_STEP_END = THREE.MathUtils.degToRad(60);
 
-// 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。緯度の 6 倍の余弦なので、緯度に
-// ついての微分は sin(6 φ) × 6 × 振幅 [hPa/rad]。
-const PRESSURE_BAND_AMPLITUDE = 8;
+// 大循環の気圧帯 [hPa]: 赤道と ±60° 過ぎが低く、±30° と極が高い。帯の形は 6 倍の余弦だけでは
+// 作れない — 赤道の谷は浅く(数 hPa)、亜極の谷は深い(−20 hPa 級)ので、余弦のうえへ ±65° を
+// 中心にしたガウス状の亜極トラフを重ねる。帯の振舞いはこの関数の微分までが定義(勾配は風へ、
+// ラプラシアンは上昇流の帯成分の差し引きへ使う)。
+const PRESSURE_BAND_AMPLITUDE = 5;
+const SUBPOLAR_DEPTH = 13;
+const SUBPOLAR_LATITUDE = THREE.MathUtils.degToRad(65);
+const SUBPOLAR_WIDTH = 0.18; // [rad]
 
 // 気圧の勾配を取る中心差分の刻み [rad]。台風の芯の広がり(250 km ≈ 0.039 rad)より細かく、
 // 気圧の写しの 1 texel より粗い。写しは視点中心の cap なので texel の角は視点の高さで変わるが、
@@ -175,6 +217,7 @@ export class WeatherModel {
   private readonly rossbyWave = new RossbyWave();
   private readonly cyclones: Cyclones;
   private readonly pressureNoise: CirculatingNoise;
+  private readonly mesoscaleLift: CirculatingNoise;
   private readonly upperMeander: CirculatingNoise;
   private readonly transport: WeatherTransport;
   private readonly pressure: BakedField;
@@ -194,6 +237,8 @@ export class WeatherModel {
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(
       this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
+    this.mesoscaleLift = new CirculatingNoise(
+      this.surfaceCirculation, MESOSCALE_LIFT_NOISE, texel, MESOSCALE_LIFT_EPOCH_MAX);
     this.upperMeander = new CirculatingNoise(this.upperCirculation, UPPER_MEANDER_NOISE, texel);
     this.pressure = new BakedField(
       'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1),
@@ -204,8 +249,12 @@ export class WeatherModel {
     this.humidityModulator = new HumidityModulator(this.airMass, this.convectiveActivity, this.climate);
     this.transport = new WeatherTransport(
       this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius,
-      (direction) => this.humidityModulator.at(
-        direction, liftFromPressure(this.pressure.at(direction).r)));
+      (direction) => {
+        const latitude = latitudeOf(direction);
+        const warmth = this.airMass.at(direction, latitude).warmth.mul(extratropicalAt(latitude));
+        return this.humidityModulator.at(
+          direction, this.dynamicsLiftAt(direction, latitude, eastAt(direction), northAt(direction), warmth));
+      });
     this.syncTime(0);
   }
 
@@ -226,6 +275,7 @@ export class WeatherModel {
     this.rossbyWave.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     this.pressureNoise.syncTime(seconds);
+    this.mesoscaleLift.syncTime(seconds);
     this.upperMeander.syncTime(seconds);
     this.transport.syncTime(seconds);
   }
@@ -254,16 +304,17 @@ export class WeatherModel {
     );
     const moistureGradient = this.moistureGradientAt(direction, east, north);
 
-    // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
+    // 上昇流: 風が斜面を駆け上がる分と、渦・移流が立てる分と、気団の境目が押し上げる分。
     const windComponents = eastNorthComponents(surfaceWind.velocity, east, north);
     const airMass = this.airMass.at(direction, latitude);
     const extratropical = extratropicalAt(latitude);
     const warmth = airMass.warmth.mul(extratropical);
     const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
       .mul(TERRAIN_LIFT_GAIN);
+    const dynamicsLift = this.dynamicsLiftAt(direction, latitude, east, north, warmth);
     // 折り目の帯: 温帯では前線(気団の圧縮へ、湿度の境目と気圧の上昇流を少し足す)、熱帯では雨帯の
     // 伝達関数が圧縮の稜線を降雨帯の強度へマッピングする。
-    const updraft = smoothstep(0.01, 0.04, max(liftFromPressure(pressure), 0));
+    const updraft = smoothstep(0.01, 0.04, max(dynamicsLift, 0));
     const temperatureFront = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression);
     const moistureFront = smoothstep(
       MOISTURE_GRADIENT_ONSET,
@@ -275,7 +326,8 @@ export class WeatherModel {
       .mul(extratropical.oneMinus());
     const band = min(front.add(rainband), 1);
     const bandLift = band.mul(BAND_LIFT);
-    const lift = limitLift(terrainLift.add(liftFromPressure(pressure)).add(bandLift));
+    const massReturn = extratropical.mul(1 - MASS_RETURN_TROPIC).add(MASS_RETURN_TROPIC).mul(MASS_RETURN);
+    const lift = limitLift(terrainLift.add(dynamicsLift).add(bandLift).sub(massReturn));
 
     // 湿度: 流した写しへ、場所と渦に貼り付く項(平年の雲量・上昇流・帯・金床・目)を足し引きする。
     const meanCloudiness = this.climate.meanCloudiness(direction);
@@ -388,6 +440,43 @@ export class WeatherModel {
     return { pressure, gradient, isobar, bend };
   }
 
+  // 単位方向のまわりの気圧のラプラシアン [hPa/rad²]。低気圧の芯で正、高気圧の芯で負。
+  private pressureLaplacianAt(direction: Vec3Node, east: Vec3Node, north: Vec3Node): FloatNode {
+    const eastStep = east.mul(LAPLACIAN_STEP);
+    const northStep = north.mul(LAPLACIAN_STEP);
+    const sum = this.pressure.at(normalize(direction.add(eastStep))).r
+      .add(this.pressure.at(normalize(direction.sub(eastStep))).r)
+      .add(this.pressure.at(normalize(direction.add(northStep))).r)
+      .add(this.pressure.at(normalize(direction.sub(northStep))).r);
+    return sum.sub(this.pressure.at(direction).r.mul(4)).div(LAPLACIAN_STEP ** 2);
+  }
+
+  // 渦・収束・移流が立てる上昇流 [m/s](気団の折り目の帯と地形の分を欠いたもの)。大循環の帯を
+  // 含む気圧の偏差からは出さない — 帯状平均の気圧帯は上昇流をほとんど作らず、全域を一様に
+  // 上昇させてしまう。warmth は出身地からの緯度の差 [rad](負で寒気の流入)。
+  private dynamicsLiftAt(
+    direction: Vec3Node, latitude: FloatNode, east: Vec3Node, north: Vec3Node, warmth: FloatNode,
+  ): FloatNode {
+    // 帯状平均の気圧帯(緯度だけの関数)は上昇流をほとんど作らないので、そのラプラシアンを解析的に
+    // 差し引いて渦の成分だけを残す。
+    const laplacian = this.pressureLaplacianAt(direction, east, north)
+      .sub(bandPressureLaplacianAt(latitude));
+    const coriolis = sin(latitude).mul(coriolisRate(this.rotationPeriod));
+    const damped = sqrt(coriolis.mul(coriolis).add(FRICTION_RATE ** 2));
+    // エクマンの釣り合い自体が成り立つ度合い。f → 0 では地衡風の渦が無く、摩擦層の収束は気圧の
+    // 曲がりへ応答しない — 下支えで割るだけだと赤道でも等しく応答してしまうので |f|/f̂ で絞る。
+    const geostrophicShare = abs(coriolis).div(damped);
+    // ∇²p [hPa/rad²] を Pa/m² へ直す係数(100 / R²)に、エクマン層の深さの半分を掛けたもの。
+    const pumpingScale = (50 * EKMAN_DEPTH) / (AIR_DENSITY * this.surfaceRadius ** 2);
+    const ekman = laplacian.mul(pumpingScale).div(damped).mul(geostrophicShare);
+    const mesoscale = this.mesoscaleLift.at(direction, { envelope: extratropicalAt(latitude) });
+    const skewed = mesoscale.mul(max(mesoscale, 0).mul(MESOSCALE_SKEW).add(1))
+      .sub(MESOSCALE_LIFT_OFFSET);
+    return ekman
+      .add(warmth.mul(ADVECTION_LIFT))
+      .add(skewed.mul(MESOSCALE_LIFT));
+  }
+
   // 移流前の地表付近の湿度の、水平勾配の大きさ [1/rad]。
   private moistureGradientAt(direction: Vec3Node, east: Vec3Node, north: Vec3Node): FloatNode {
     const eastStep = east.mul(GRADIENT_STEP);
@@ -413,7 +502,7 @@ export class WeatherModel {
     const latitude = latitudeOf(direction);
     const { gradient, bend } = this.pressureFieldAt(direction, east, north);
     // 気圧帯は緯度だけの関数なので、その勾配は解析的に差し引ける。
-    const eddy = gradient.sub(north.mul(sin(latitude.mul(6)).mul(6 * PRESSURE_BAND_AMPLITUDE)));
+    const eddy = gradient.sub(north.mul(bandPressureSlopeAt(latitude)));
     const wind = balancedWind(
       eddy, isobarAt(direction, eddy), bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
       this.surfaceRadius, this.rotationPeriod,
@@ -429,8 +518,10 @@ export class WeatherModel {
 
   // 気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷。
   private pressureSourceAt(direction: Vec3Node): FloatNode {
-    const band = cos(latitudeOf(direction).mul(6)).mul(-PRESSURE_BAND_AMPLITUDE);
-    return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE))
+    const latitude = latitudeOf(direction);
+    const band = bandPressureAt(latitude);
+    const noise = this.pressureNoise.at(direction, { envelope: extratropicalAt(latitude) });
+    return band.add(noise.mul(PRESSURE_NOISE_AMPLITUDE))
       .add(this.cyclones.pressureAt(direction));
   }
 
@@ -475,12 +566,35 @@ function tropopauseAt(latitude: FloatNode): FloatNode {
   return drop.mul(TROPOPAUSE_POLE - TROPOPAUSE_EQUATOR).add(TROPOPAUSE_EQUATOR);
 }
 
-// 気圧の偏差 [hPa] が生む上昇流 [m/s]。低気圧で正、高気圧で負。
-function liftFromPressure(pressure: FloatNode): FloatNode {
-  return exp(pressure.div(-PRESSURE_LIFT_SCALE)).sub(1).mul(PRESSURE_LIFT_GAIN);
-}
-
 // 上昇流を LIFT_LIMIT へ漸近させる。LIFT_LIMIT より十分弱い上昇流はほぼ素通しで、強いものだけが丸まる。
 function limitLift(lift: FloatNode): FloatNode {
   return tanh(lift.div(LIFT_LIMIT)).mul(LIFT_LIMIT);
+}
+
+// 亜極トラフのガウス型の鐘 e^{−x²} と、その中身の x = (|φ| − 60°)/幅。
+function subpolarBell(latitude: FloatNode): { bell: FloatNode; x: FloatNode } {
+  const x = abs(latitude).sub(SUBPOLAR_LATITUDE).div(SUBPOLAR_WIDTH);
+  return { bell: exp(x.mul(x).mul(-1)), x };
+}
+
+// 大循環の気圧帯 [hPa] = −A·cos 6φ − D·e^{−x²}(亜極トラフ)。
+function bandPressureAt(latitude: FloatNode): FloatNode {
+  return cos(latitude.mul(6)).mul(-PRESSURE_BAND_AMPLITUDE)
+    .sub(subpolarBell(latitude).bell.mul(SUBPOLAR_DEPTH));
+}
+
+// 帯の緯度微分 [hPa/rad](北向き正)。風を解く勾配から帯の分を差し引くのに使う。
+function bandPressureSlopeAt(latitude: FloatNode): FloatNode {
+  const { bell, x } = subpolarBell(latitude);
+  return sin(latitude.mul(6)).mul(6 * PRESSURE_BAND_AMPLITUDE)
+    .add(sign(latitude).mul(bell).mul(x).mul((2 * SUBPOLAR_DEPTH) / SUBPOLAR_WIDTH));
+}
+
+// 帯のラプラシアン [hPa/rad²] = p'' − tanφ·p'(p は緯度だけの関数)。上昇流から帯の分を差し引くのに使う。
+function bandPressureLaplacianAt(latitude: FloatNode): FloatNode {
+  const { bell, x } = subpolarBell(latitude);
+  const curvature = bell.mul(x.mul(x).mul(-2).add(1)).mul((2 * SUBPOLAR_DEPTH) / SUBPOLAR_WIDTH ** 2);
+  return cos(latitude.mul(6)).mul(36 * PRESSURE_BAND_AMPLITUDE)
+    .add(curvature)
+    .sub(tan(latitude).mul(bandPressureSlopeAt(latitude)));
 }
