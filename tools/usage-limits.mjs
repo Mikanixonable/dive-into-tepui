@@ -1,13 +1,15 @@
 // AI エージェントが「自分のセッションで眠るべきか」「誰へ委譲できるか」を判断するための、利用枠の残量チェック。
-//   npm run usage                      表と判定
-//   npm run usage -- --json            機械可読(同じ内容)
-//   npm run usage -- --brief           1 行(SessionStart フックが会話の文脈へ入れる)
-//   npm run usage -- --wait=claude     Claude の枠が戻るまで待って終了(run_in_background で起床タイマーにする)
+//   npm run usage -- --runtime=claude  Claude Code の枠で判定
+//   npm run usage -- --runtime=devin-luna Devin Luna の有料モデル枠で判定
+//   npm run usage -- --runtime=claude --json  機械可読(同じ内容)
+//   npm run usage -- --runtime=claude --brief 1 行(SessionStart フックが会話の文脈へ入れる)
+//   npm run usage -- --wait=claude     Claude Code の枠が戻るまで待って終了(run_in_background で起床タイマーにする)
+//   npm run usage -- --wait=devin-luna Devin Luna の枠が戻るまで待って終了
 //   npm run usage -- --wait=swe2       SWE-2 のレート制限が解けるまで待って終了
 //   --threshold=90   Claude の使用率がこの % 以上なら「眠る」(既定 95)
 //   --reset-5h=13:55 Claude の解除時刻が取れないときの起床計算用(ユーザーに聞いた時刻)
 //
-// 判定(終了コード)は Claude の購読枠(5h・週間)だけで決める。眠るのは Claude のセッションだから。従量課金は見ない。
+// 停止判定には runtime の指定が必須。Claude と Devin の枠を誤って混同しない。
 //   0: 続行してよい / 1: 眠る(新しい作業を始めず、区切りで引き継ぎメモを書いて止まる) / 2: 値が不明
 //
 // 取得元:
@@ -22,12 +24,32 @@ import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { decideUsage } from './usage-verdict.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name) => args.find((a) => a.startsWith(`--${name}=`))?.split('=')[1];
 const asJson = args.includes('--json');
 const brief = args.includes('--brief');
 const waitFor = flag('wait');
+const runtimeArg = flag('runtime');
+const RUNTIMES = ['claude', 'devin-luna'];
+if (runtimeArg && !RUNTIMES.includes(runtimeArg)) {
+  console.error(`--runtime は ${RUNTIMES.join(' または ')} を指定してください`);
+  process.exit(2);
+}
+if (waitFor && !['claude', 'devin-luna', 'swe2'].includes(waitFor)) {
+  console.error('--wait は claude / devin-luna / swe2 を指定してください');
+  process.exit(2);
+}
+if (waitFor && waitFor !== 'swe2' && runtimeArg && runtimeArg !== waitFor) {
+  console.error('--wait と --runtime は同じ対象を指定してください');
+  process.exit(2);
+}
+if (!runtimeArg && !waitFor) {
+  console.error('判定対象を --runtime=claude または --runtime=devin-luna で指定してください');
+  process.exit(2);
+}
+const runtime = waitFor && waitFor !== 'swe2' ? waitFor : runtimeArg ?? 'claude';
 const THRESHOLD = Number(flag('threshold') ?? 95);
 const resetArg = flag('reset-5h');
 const STALE_SEC = 900;
@@ -162,28 +184,35 @@ function nextClock(hhmm) {
   return Math.floor(d.getTime() / 1000);
 }
 
-async function snapshot() {
+async function snapshot(targetRuntime = runtime) {
   const [claude, devinQuota] = await Promise.all([readClaude(), readDevinQuota()]);
   const swe2 = readSwe2Limit();
 
-  let verdict = 'UNKNOWN';
-  let claudeResets = [];
-  if (claude.known) {
-    const windows = [claude.fiveHour, claude.sevenDay].filter(Boolean);
-    if (windows.length > 0) {
-      const over = windows.filter((w) => w.usedPct >= THRESHOLD);
-      verdict = over.length > 0 ? 'SLEEP' : 'CONTINUE';
-      claudeResets = over.map((w) => w.resetsAt).filter((v) => v != null);
-    }
-  }
-  const wakeAt = verdict === 'CONTINUE' ? null : claudeResets.length ? Math.max(...claudeResets) : nextClock(resetArg);
-
   // 委譲先: SWE-2 は無料で別枠。レート制限中でなければ SWE-2、制限中なら Haiku
   const delegate = swe2.limitedUntil ? 'haiku' : 'devin-swe2';
+  const quotaWindows = [devinQuota.daily, devinQuota.weekly].filter(Boolean);
   const paidModels = devinQuota.known
-    ? { usable: [devinQuota.daily, devinQuota.weekly].every((w) => w == null || w.remainingPct > 0), ...devinQuota }
+    ? { usable: quotaWindows.length > 0 ? quotaWindows.every((w) => w.remainingPct > 0) : null, ...devinQuota }
     : { usable: null, ...devinQuota };
-  return { verdict, threshold: THRESHOLD, now: nowSec(), wakeAt, wakeInSec: wakeAt == null ? null : wakeAt - nowSec(), delegate, swe2LimitedUntil: swe2.limitedUntil, claude, devinPaidQuota: paidModels };
+  const decision = decideUsage(targetRuntime, {
+    claude,
+    devinPaidQuota: paidModels,
+    threshold: THRESHOLD,
+    claudeResetAt: nextClock(resetArg),
+  });
+  const { verdict, wakeAt } = decision;
+  return {
+    runtime: targetRuntime,
+    verdict,
+    threshold: THRESHOLD,
+    now: nowSec(),
+    wakeAt,
+    wakeInSec: wakeAt == null ? null : wakeAt - nowSec(),
+    delegate,
+    swe2LimitedUntil: swe2.limitedUntil,
+    claude,
+    devinPaidQuota: paidModels,
+  };
 }
 
 const fmtReset = (resetsAt) => {
@@ -195,11 +224,16 @@ const fmtReset = (resetsAt) => {
 const clock = (sec) => new Date(sec * 1000).toLocaleTimeString('ja-JP', { hour12: false, hour: '2-digit', minute: '2-digit' });
 
 function printBrief(s) {
-  const c = s.claude.known
-    ? `Claude 5h ${s.claude.fiveHour?.usedPct ?? '?'}%${s.claude.fiveHour?.resetsAt ? `(${clock(s.claude.fiveHour.resetsAt)}解除)` : ''} 週間 ${s.claude.sevenDay?.usedPct ?? '?'}%${s.claude.sevenDay?.resetsAt ? `(${new Date(s.claude.sevenDay.resetsAt * 1000).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })} ${clock(s.claude.sevenDay.resetsAt)}解除)` : ''}`
-    : 'Claude 枠: 不明';
+  const target = s.runtime === 'claude' ? 'Claude Code' : 'Devin Luna';
+  const quota = s.runtime === 'claude'
+    ? s.claude.known
+      ? `Claude 5h ${s.claude.fiveHour?.usedPct ?? '?'}%${s.claude.fiveHour?.resetsAt ? `(${clock(s.claude.fiveHour.resetsAt)}解除)` : ''} 週間 ${s.claude.sevenDay?.usedPct ?? '?'}%${s.claude.sevenDay?.resetsAt ? `(${new Date(s.claude.sevenDay.resetsAt * 1000).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })} ${clock(s.claude.sevenDay.resetsAt)}解除)` : ''}`
+      : 'Claude 枠: 不明'
+    : s.devinPaidQuota.known
+      ? `Devin Luna 日次 ${s.devinPaidQuota.daily?.remainingPct ?? '?'}% 週次 ${s.devinPaidQuota.weekly?.remainingPct ?? '?'}%`
+      : 'Devin Luna 枠: 不明';
   const d = s.swe2LimitedUntil ? `SWE-2 は ${clock(s.swe2LimitedUntil)} までレート制限中 → Haiku へ` : 'SWE-2 は使える';
-  console.log(`[利用枠] ${c} / ${d} / 判定 ${s.verdict}。詳細: npm run usage、運用: /autopilot`);
+  console.log(`[利用枠] 判定対象 ${target} / ${quota} / ${d} / 判定 ${s.verdict}。詳細: npm run usage -- --runtime=${s.runtime}、運用: /autopilot`);
 }
 
 function printTable(s) {
@@ -219,15 +253,26 @@ function printTable(s) {
       console.log(w ? `  有料モデル枠(luna など。SWE-2 は消費しない) ${label}: 残り ${w.remainingPct}% / ${fmtReset(w.resetsAt)}` : `  有料モデル枠 ${label}: 不明`);
     }
   }
+  const target = s.runtime === 'claude' ? 'Claude Code' : 'Devin Luna';
+  console.log(`判定対象: ${target}`);
   const advice = {
-    CONTINUE: `続行してよい(Claude の使用率が ${s.threshold}% 未満)`,
-    SLEEP: `眠る: 新しい作業を始めず、区切りで引き継ぎメモを書いて止まる(Claude の使用率が ${s.threshold}% 以上)`,
-    UNKNOWN: '判断できない: ユーザーに解除時刻を聞き、--reset-5h=HH:MM を付けて再実行する',
+    CONTINUE: s.runtime === 'claude'
+      ? `続行してよい(Claude の使用率が ${s.threshold}% 未満)`
+      : '続行してよい(Devin Luna の日次・週次有料モデル枠が残っている)',
+    SLEEP: s.runtime === 'claude'
+      ? `眠る: 新しい作業を始めず、区切りで引き継ぎメモを書いて止まる(Claude の使用率が ${s.threshold}% 以上)`
+      : '眠る: Devin Luna の日次または週次有料モデル枠が枯渇している',
+    UNKNOWN: s.runtime === 'claude'
+      ? '判断できない: Claude の解除時刻を確認し、必要なら --reset-5h=HH:MM を付けて再実行する'
+      : '判断できない: Devin Luna の有料モデル枠が取得できない',
   };
   console.log(`判定: ${s.verdict} — ${advice[s.verdict]}`);
   console.log(`委譲先: ${s.delegate === 'devin-swe2' ? 'Devin SWE-2(/delegate-devin)' : 'Haiku 5.5(Agent の model: haiku)'}`);
   if (s.swe2LimitedUntil) console.log('SWE-2 の復活: タイマー → npm run usage -- --wait=swe2 を run_in_background で走らせ、戻ったら SWE-2 へ切り替える');
-  if (s.wakeAt != null) console.log(`起床の目安: ${fmtReset(s.wakeAt)} → npm run usage -- --wait=claude を run_in_background で走らせてから眠る`);
+  if (s.wakeAt != null) {
+    const waitFlag = s.runtime === 'claude' ? 'claude' : 'devin-luna';
+    console.log(`起床の目安: ${fmtReset(s.wakeAt)} → npm run usage -- --wait=${waitFlag} を run_in_background で走らせてから眠る`);
+  }
 }
 
 // ---- 実行 ----
@@ -236,10 +281,14 @@ if (waitFor) {
   // 解除時刻まで眠り、その後 1 分ごとに実際に戻ったかを確かめる。戻ったら 0 で終わる(終了の通知が起床の合図)。
   for (;;) {
     const s = await snapshot();
-    const ready = waitFor === 'swe2' ? s.swe2LimitedUntil == null : s.verdict !== 'SLEEP';
+    const ready = waitFor === 'swe2' ? s.swe2LimitedUntil == null : s.verdict === 'CONTINUE';
     if (ready) {
-      console.log(`${waitFor} が戻った。`);
-      printBrief(s);
+      if (waitFor === 'swe2') {
+        console.log('SWE-2 が戻った。');
+      } else {
+        console.log(`${waitFor} が戻った。`);
+        printBrief(s);
+      }
       process.exit(0);
     }
     const target = waitFor === 'swe2' ? s.swe2LimitedUntil : s.wakeAt;
