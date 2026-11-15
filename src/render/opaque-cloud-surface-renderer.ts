@@ -13,9 +13,13 @@ import type { CloudSample } from './cloud/cloud-field-sample';
 import { CloudFieldSampler } from './cloud/cloud-field-sampler';
 import type { CloudDetailClockInput, CloudRenderInput } from './cloud/cloud-render-input';
 import { unitSphereGeometry } from './celestial/celestial-surface';
-import { CLOUD_ALBEDO, CLOUD_TOP_SPAN } from './cloud/cumulus-shape';
+import { CLOUD_TOP_SPAN } from './cloud/cumulus-shape';
 import { FINEST_DETAIL_WAVELENGTH } from './cloud/cloud-detail';
-import { cumulusOpacityNode, cumulusTopAltitudeNode } from './cloud/cloud-kind-node';
+import { LIQUID_CLOUD_ASYMMETRY } from './cloud/cloud-optics';
+import { cloudReflectanceNode } from './cloud/cloud-optics-node';
+import {
+  cumulusInCloudOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+} from './cloud/cloud-kind-node';
 import { eastAt, northAt } from './cloud/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './celestial/screen-lod';
@@ -166,7 +170,8 @@ export class OpaqueCloudSurfaceRenderer {
     this.blueNoise.dispose();
   }
 
-  // 雲頂の交点を書く不透明な白の標準マテリアル。深度と法線は 1 本のレイマーチを共有する。
+  // 雲頂の交点を書く不透明な標準マテリアル。深度と法線は 1 本のレイマーチを共有し、
+  // アルベドは画素の柱の雲頂の厚みから引く(手で置いた色を持たない)。
   private buildMaterial(): THREE.Material {
     const material = new THREE.MeshStandardNodeMaterial({
       roughness: CUMULUS_ROUGHNESS, metalness: 0,
@@ -174,8 +179,23 @@ export class OpaqueCloudSurfaceRenderer {
     const marched = this.marchedSurface().toVar();
     material.depthNode = marched.w;
     material.normalNode = marched.xyz;
-    material.colorNode = vec3(CLOUD_ALBEDO);
+    material.colorNode = this.reflectanceAt(normalize(positionLocal));
     return material;
+  }
+
+  // 画素の柱の雲頂(細部込み)の厚みから、柱が返す光の割合。薄い雲は灰色がかり、
+  // 雲頂の高い塔ほど白い。捨てられる画素の柱でも評価は走るが、値は使われない。
+  private reflectanceAt(direction: Vec3Node): Vec3Node {
+    return Fn(() => {
+      const width = this.pixelAngleAt(direction).mul(this.bodyRadius).toVar();
+      const wind = this.fieldSampler.sampleMotion(direction).surfaceWind;
+      const cloud = this.fieldAt(direction);
+      const detail = this.detailAt(direction, width, cloud, wind);
+      const topAltitude = this.shape.cloudTop(
+        cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), detail).mul(CLOUD_TOP_SPAN);
+      return vec3(cloudReflectanceNode(
+        cumulusInCloudOpticalDepthNode(topAltitude), LIQUID_CLOUD_ASYMMETRY));
+    })();
   }
 
   // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、交点の view 空間法線(xyz)と深度(w)を返す。
