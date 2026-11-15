@@ -117,3 +117,13 @@
 ## step 33 — 移流 0.068→0.07 + エクマン項も極側で絞る(EKMAN_POLAR_CUT 0.35)
 - 結果: weather **0.103**。全採用条件クリア — 熱帯 lift×advection 0.0337・高緯度 lift×slp −0.315 が帯内へ。lift 沈降 0.64/0.62/0.51・cyclonic p5/p95 全帯・lift×* 相関 9 件すべて基準内。
 - 検証: test:render 305/305・lint 通過・全球絵に継ぎ目/格子/輪なし・GPU 計測済(前値なし)。.loop-shots-*/patch 保存は許可コマンド外のため不可。
+
+## step 35 — 低気圧従属の前線(寒冷/温暖の帯 + WCB の巻雲供給)
+- `Trough` に `frontAt`(寒冷=長軸赤道側へ 2400 km・幅 280 km、温暖=東へ 1600 km・
+  幅 350 km、深さ 20 hPa で全開)と `wcbAt`(中心の東・極側 900/700 km ずれの
+  2400×800 km 領域)を追加。`band` は診断の前線と大きい側、上層湿度へ
+  `wcbAt×WCB_UPPER_HUMIDITY` を足す。
+- 調定: WCB 0.15 → humidUp→highThinFrac contrast 6.0→8.5 と悪化。0.06 → 7.0。
+  **0.03 を採用**: responseContrast 0.827(基準 0.794 比 +0.033)・weather 0.0992 不変。
+- 残り代償: humidUp→highThinFrac contrast 6.5(基準 6.02)。前線帯の存在は得たい
+  構造なので採用 — 物差しが「足りない帯」を罰できない分の代償。
