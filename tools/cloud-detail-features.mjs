@@ -89,7 +89,7 @@ const NEUTRAL_INVERSE_INPUT_MAX = 0.98;
 // 加えて戻す。床の実際の深さは画素の最小チャネルで決まるが、輝度では各画素自身を最小
 // チャネルとみなす近似で戻す — 白に近い雲頂では誤差が小さい。単調なので、分位点で
 // 閾値を取る特徴量(形状・被覆率)にはこの変換を掛けても結果が変わらない。
-function invertNeutralDisplay(value) {
+export function invertNeutralDisplay(value) {
   const s = NEUTRAL_COMPRESSION_START;
   const d = 1 - s;
   const peak = value > s
