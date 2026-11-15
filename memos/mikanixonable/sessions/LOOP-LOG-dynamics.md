@@ -474,3 +474,30 @@
 - 残課題: deep は雲頂側で依然不足(0.0175 vs 0.031 — 要素雲頂 >6.5km が ~2%
   しかない)、tauMid 0.507 vs 0.361 過剰、被覆率の不足(0.798 vs 0.896)と
   陸地の疎さは別タスク。次の大きな残差は humidUp × highThinFrac contrast 4.41。
+
+## step 54 — 解像された対流粒から塔の高さを供給(採用、41af1fd4b)
+- step 53 後の deep 不足を気象場と分類値から切り分けた。活動度は全球の広い
+  範囲で高い一方、`grain = max(convection.x, 0) × convectiveActivity` は
+  h0180 の p95 が 0.0121。旧ゲート `smoothstep(0.015, 0.105, grain)` は
+  p95 でも塔を起こさず、最大でも圏界面到達の約 6% の塗りだった。根因は
+  対流活動量そのものより、解像後の粒の振幅に対してゲート幅が大きすぎること。
+- 試行: onset 0 / width 0.008 は classes 0.0659 まで下がる一方、
+  tropical-sea deep 0.041 (実写 0.0276) へ過剰に振れたため不採用。最終候補は
+  `TOWER_ONSET=0.004`, `TOWER_WIDTH=0.01`。弱い峰には低い塔を残し、強い峰だけを
+  圏界面へ近づける幅である。
+- clean 24-channel audit (`audit-tower-resolved-clean.txt`, `audit-element-fill`
+  比): classes 0.0678→0.0660、responseContrast 0.514→0.498、
+  responseBias 0.846→0.625、responseGain 0.482→0.448、variogram 0.341→0.329。
+  explainedGap は 0.0503→0.0511 とわずかに悪化。deep は tropical-sea
+  0.0106→0.0276 (実写 0.0276)、temperate-sea 0.0175→0.0248 (0.0305)、
+  highlat-sea 0.022→0.0305 (0.0376) と改善。陸域も増えたが temperate-land
+  0.0189 (実写 0.0436)・highlat-land 0.0311 (0.0544) はまだ不足。
+- 見た目: `tower-before-a`, `tower-before-b`, `tower-after` を render-lab で
+  21 shot ずつ撮影・比較。封筒外は雲の現れる `earth-glint`, `earth-nadir`,
+  `earth-oblique` のみで、差分も雲域へ局在。他 shot は封筒内で、針状の孤立塔や
+  一様な高台は見られない。
+- 検証: 一時 probe チャンネルを除去して 24 チャンネルへ戻した後の監査も同じ値。
+  `npm run typecheck`・`npm run test:render` (308/308) 通過。
+- 残課題: tropical-sea の deep は一致したが、陸域・中高緯度は不足が残る。
+  temperate-sea tauMid 0.503 vs 実写 0.361、humidUp × highThinFrac contrast
+  4.29 も残る。次は陸海・気候帯を一つの定数でまとめず、残差の物理要因を分ける。
