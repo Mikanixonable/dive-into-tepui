@@ -38,7 +38,7 @@ export interface WeatherSample {
   readonly convection: Vec2Node; // 対流セルの強弱(0 中心の高周波、x が粒・y が網目)
   readonly convectiveActivity: FloatNode; // 対流の強弱がどれだけ強く現れるか 0..1
   readonly compression: FloatNode; // 気団の境目の押し縮まり(1 で何も起きていない)
-  readonly band: FloatNode; // 気団の折り目に立つ雲の帯(温帯で前線、眼を持つ渦のまわりで雨帯)の強さ 0..1
+  readonly cycloneFront: FloatNode; // 低気圧従属の前線(寒冷・温暖・巻きの3本の腕、ノルウェー型)の強さ 0..1
   readonly warmth: FloatNode; // 暖気の流入 = 出身地からの緯度の差 [rad](負で寒気)
   readonly anvil: FloatNode; // 金床(平らな天蓋)の濃さ 0..1
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
@@ -127,35 +127,17 @@ const STORM_TRACK_POLE_END = THREE.MathUtils.degToRad(70);
 // 上昇流の頭打ち [m/s]。急な斜面と深い谷の芯では上昇流が並の何倍にもなり、線形のままだと湿度が
 // 0/1 で切れて硬い縁の白い塊になる。
 const LIFT_LIMIT = 0.06;
-// 前線帯の強度計算。気団の圧縮度が立ち上がり閾値から遷移幅に達する間に、帯の強度が 0 から 1 へ推移する。開始閾値は 35〜60° 緯度帯の
-// 背景圧縮度の上側の裾(9 割方を少し越える辺り)に設定する — 渦の強い気圧場で押し縮まりの分布
-// 全体がおよそ倍に膨らんだため、帯の占める割合(全球平均で 0.15〜0.2)が保たれる高さへ置き直す。
-// 遷移幅は圧縮の稜線が飽和する狭さに調整し、最も高密度の中心核に帯幅を確保する。
-const FRONT_ONSET = 3.6;
-const FRONT_WIDTH = 0.9;
-
-
-// 前線を強化する湿度水平勾配の開始閾値と遷移幅 [1/rad]。乾湿境界にも雲帯を生成する。
-// 遷移幅は湿度テクスチャの量子化誤差に対して十分なマージンを確保する。
-const MOISTURE_GRADIENT_ONSET = 0.12;
-const MOISTURE_GRADIENT_WIDTH = 0.28;
-// 雨帯。眼を持つ渦が周りの気団を巻き込んで折り畳んだ筋で、圧縮は前線より桁が大きい(腕の稜線で 5〜9)。
-// 稜線の最も押し縮まった区間だけが飽和して腕の先へ連続に薄れる幅に取り、芯のまわりのシアの丘(2〜4)と
-// 熱帯の背景(99.9 パーセンタイルで 3.2)を拾わない。狭めると腕が太い真っ白な帯になる
-// (`DEVELOP/SPEC/RENDERING.md`「雨帯は、渦が周りの気団を巻き込んで折り畳んだ筋に沿う」)。
-const RAINBAND_ONSET = 5;
-const RAINBAND_WIDTH = 4;
-// 帯が飽和した所で立つ上昇流 [m/s]。深い谷の芯と同じだけ持ち上げるよう、頭打ち(LIFT_LIMIT)に揃える。
-const BAND_LIFT = 0.06;
-// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 0.45 倍に取る —
-// 帯の芯では上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き途切れない帯に
-// なるが、前線帯の面全体が湿度の上限へ張り付いて一枚の台地にはならない
+// 前線が飽和した所で立つ上昇流 [m/s]。深い谷の芯と同じだけ持ち上げるよう、頭打ち(LIFT_LIMIT)に揃える。
+const FRONT_LIFT = 0.06;
+// 前線が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 0.45 倍に取る —
+// 前線の芯では上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き途切れない帯に
+// なるが、前線の面全体が湿度の上限へ張り付いて一枚の台地にはならない
 // (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
-const BAND_HUMIDITY = 0.1;
-// 低気圧従属の前線(寒冷・温暖・巻きの3本の腕 + 暖域の三角、ノルウェー型)が帯へ載る強さ。
-// 帯へ載れば上昇流・帯の湿度・乱層雲の被覆率(BAND_DECK)へ自然に伝わる。深さで発達へ
+const FRONT_HUMIDITY = 0.1;
+// 低気圧従属の前線(寒冷・温暖・巻きの3本の腕 + 暖域の三角、ノルウェー型)の強さへの換算。
+// 前線は上昇流・湿度・乱層雲の被覆率(FRONT_DECK)へ自然に伝わる。深さで発達へ
 // 連動し、一生の中の時期で形が変わる(cyclones.ts の前線の定数が正本)。
-const FRONT_BAND = 0.9;
+const CYCLONE_FRONT_GAIN = 0.9;
 // ドライスロット(寒冷前線の帯と雲頭のあいだへ巻き込む乾燥下降流)が削る湿度。上層の乾きが
 // 本筋(WV では暗帯)なので上層を強く削り、地表付近にも晴れの切れ込みを入れる。
 const DRY_SLOT_DRYING = 0.25;
@@ -366,7 +348,7 @@ export class WeatherModel {
       this.meanderUpperWind(composeWind(upperAdvection, rossby), direction),
       composeWind(convectionAdvection, rossby),
     );
-    const moistureGradient = this.moistureGradientAt(direction, east, north);
+
 
     // 上昇流: 風が斜面を駆け上がる分と、渦・移流が立てる分と、気団の境目が押し上げる分。
     const windComponents = eastNorthComponents(surfaceWind.velocity, east, north);
@@ -376,24 +358,11 @@ export class WeatherModel {
     const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
       .mul(TERRAIN_LIFT_GAIN);
     const dynamicsLift = this.dynamicsLiftAt(direction, latitude, east, north, warmth);
-    // 折り目の帯: 温帯では前線(気団の圧縮へ、湿度の境目と気圧の上昇流を少し足す)、熱帯では雨帯の
-    // 伝達関数が圧縮の稜線を降雨帯の強度へマッピングする。
-    const updraft = smoothstep(0.01, 0.04, max(dynamicsLift, 0));
-    const temperatureFront = smoothstep(FRONT_ONSET, FRONT_ONSET + FRONT_WIDTH, airMass.compression);
-    const moistureFront = smoothstep(
-      MOISTURE_GRADIENT_ONSET,
-      MOISTURE_GRADIENT_ONSET + MOISTURE_GRADIENT_WIDTH,
-      moistureGradient,
-    );
-    const front = temperatureFront.add(moistureFront.mul(0.2)).add(updraft.mul(0.15)).min(1).mul(extratropical);
-    const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET + RAINBAND_WIDTH, airMass.compression)
-      .mul(extratropical.oneMinus());
-    // 帯は気団の圧縮・雨帯の診断に、低気圧従属の前線(寒冷・温暖・巻きの3本 — ノルウェー型
-    // の三角の構造、深さと一生の時期で発達・消衰へ連動する)を載せる。
-    const cycloneFront = this.cyclones.frontAt(direction);
+    // 低気圧従属の前線(寒冷・温暖・巻きの3本 — ノルウェー型の三角の構造、深さと一生の
+    // 時期で発達・消衰へ連動する)。
+    const cycloneFront = min(this.cyclones.frontAt(direction).mul(CYCLONE_FRONT_GAIN), 1);
     const drySlot = this.cyclones.drySlotAt(direction);
-    const band = min(front.add(rainband).add(cycloneFront.mul(FRONT_BAND)), 1);
-    const bandLift = band.mul(BAND_LIFT);
+    const frontLift = cycloneFront.mul(FRONT_LIFT);
     const stormTrack = extratropical.mul(
       smoothstep(STORM_TRACK_POLE_START, STORM_TRACK_POLE_END, abs(latitude)).oneMinus(),
     );
@@ -406,7 +375,7 @@ export class WeatherModel {
     const clusterOutflow = this.clusters.outflowAt(direction).mul(tropical);
     const massReturn = stormTrack.mul(1 - MASS_RETURN_TROPIC).add(MASS_RETURN_TROPIC).mul(MASS_RETURN);
     const lift = limitLift(
-      terrainLift.add(dynamicsLift).add(bandLift)
+      terrainLift.add(dynamicsLift).add(frontLift)
         .add(clusterCore.mul(CLUSTER_LIFT)).sub(clusterHalo.mul(CLUSTER_SINK)).sub(massReturn),
     );
 
@@ -423,7 +392,7 @@ export class WeatherModel {
       advected.surfaceHumidity.add(deviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
         .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT).mul(surfaceBiasWeight))
         .add(max(lift, 0).mul(SURFACE_LIFT_HUMIDITY)).add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
-        .add(warmth.mul(WARM_HUMIDITY)).add(band.mul(BAND_HUMIDITY))
+        .add(warmth.mul(WARM_HUMIDITY)).add(cycloneFront.mul(FRONT_HUMIDITY))
         .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(SURFACE_EYE_DRYNESS))
         .sub(clusterHalo.mul(CLUSTER_DRYING)).sub(drySlot.mul(DRY_SLOT_DRYING)), 0, 1);
     const upperHumidity = clamp(
@@ -442,9 +411,9 @@ export class WeatherModel {
       upperHumidity,
       convection: advected.convection,
       convectiveActivity: this.convectiveActivity.at(
-        direction, lift, warmth, this.climate.landFraction(direction), band),
+        direction, lift, warmth, this.climate.landFraction(direction), cycloneFront),
       compression: airMass.compression,
-      band,
+      cycloneFront,
       warmth,
       anvil,
       meanCloudiness,
@@ -593,17 +562,6 @@ export class WeatherModel {
       .add(skewed.mul(MESOSCALE_LIFT));
   }
 
-  // 移流前の地表付近の湿度の、水平勾配の大きさ [1/rad]。
-  private moistureGradientAt(direction: Vec3Node, east: Vec3Node, north: Vec3Node): FloatNode {
-    const eastStep = east.mul(GRADIENT_STEP);
-    const northStep = north.mul(GRADIENT_STEP);
-    const moistureAt = (offset: Vec3Node): FloatNode => this.transport.surfaceHumidityAt(normalize(offset));
-    const eastGradient = moistureAt(direction.add(eastStep)).sub(moistureAt(direction.sub(eastStep)))
-      .div(2 * GRADIENT_STEP);
-    const northGradient = moistureAt(direction.add(northStep)).sub(moistureAt(direction.sub(northStep)))
-      .div(2 * GRADIENT_STEP);
-    return eastGradient.mul(eastGradient).add(northGradient.mul(northGradient)).sqrt();
-  }
 
   // 単位方向 direction における気団を遡らせる風(東向き・北向きの成分 [m/s])。
   public traceWindAt(direction: Vec3Node): Vec2Node {

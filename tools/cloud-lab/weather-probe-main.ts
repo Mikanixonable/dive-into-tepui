@@ -49,7 +49,7 @@ const CLIMATE_WAIT_FRAMES = 600;
 // 光学的厚み τ_in で、覆う割合は coverage チャンネルが持つ)。4 つずつ RGBA の写しへ割り当てるので、
 // 写しの序数 × 4 がここの添字に対応する。
 const CHANNELS = [
-  'pressure', 'lift', 'warmth', 'band',
+  'pressure', 'lift', 'warmth', 'cycloneFront',
   'compression', 'surfaceWindEast', 'surfaceWindNorth', 'upperWindEast',
   'upperWindNorth', 'surfaceHumidity', 'upperHumidity', 'convectiveActivity',
   'anvil', 'meanCloudiness', 'landFraction', 'cumulus',
@@ -88,7 +88,7 @@ class WeatherProbeCanvas {
     const weather = this.field.weatherModel.weatherAt(direction);
     const cloud = this.field.at(direction);
     const groups = [
-      vec4(weather.pressure, weather.lift, weather.warmth, weather.band),
+      vec4(weather.pressure, weather.lift, weather.warmth, weather.cycloneFront),
       vec4(weather.compression, weather.surfaceWind.x, weather.surfaceWind.y, weather.upperWind.x),
       vec4(weather.upperWind.y, weather.surfaceHumidity, weather.upperHumidity, weather.convectiveActivity),
       vec4(weather.anvil, weather.meanCloudiness, weather.landFraction, cloud.cumulus),
