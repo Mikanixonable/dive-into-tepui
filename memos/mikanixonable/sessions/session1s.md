@@ -5,14 +5,12 @@
 
 ## 実施中
 
-- 熱帯の巻雲量・間欠性(agent 1fc2e0c5, SWE-2)
-  - 目的: tropical 区分の intermittency 0.78(巻雲量そのものの不足)を
-    改善する。condensation 側で upperHumidity→巻雲量の写像と熱量の写像と熱帯で痩せる
-    原因を特定し、改善候補を両物差し(detail --kind cirrus + regime audit)
-    で実証する。worktree `.claude/worktrees/cirrus-tropic-supply`。
-  - 成果物: 原因分析・候補の計測値・採否の推薦。採否は親が決める。
+(実施中なし — サブエージェント使用はユーザー指示により禁止)
 
 ## 完了
 
 - 巻雲の型振り分け(agent aebaf0c4) — 候補A(気象ゲート化)を採用。
   LOOP-LOG-cirrus step 10。
+- 熱帯の巻雲量(1fc2e0c5) — レート制限で中断、ユーザー指示で
+  サブエージェント自体を禁止へ変更。作業は親が引き取る。
+  worktree cirrus-tropic-supply は未変更で残置。
