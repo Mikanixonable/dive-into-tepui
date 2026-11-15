@@ -238,7 +238,7 @@ const WCB_UPPER_HUMIDITY = 0.03;
 const CLUSTER_LIFT = 0.04;
 const CLUSTER_SINK = 0.012;
 const CLUSTER_DRYING = 0.2;
-const CLUSTER_OUTFLOW_HUMIDITY = 0.3;
+const CLUSTER_OUTFLOW_HUMIDITY = 0.6;
 // 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入（0.26 rad）で伝達関数幅の約半分が
 // 変位する係数。本項の期待値が正のため、基底湿度 (SURFACE_HUMIDITY_BASE) をオフセットして均衡させる。
 const WARM_HUMIDITY = 0.6;
