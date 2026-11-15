@@ -492,9 +492,12 @@ export function classifyPattern(m) {
   // veil は鱗雲・筋より先に判定する — 占有率の高い薄い幕は、中規模の質感で
   // 構造の揃いが出ても幕として数えるのが区分の定義に近い。「連続した 1 成分」か
   // 「マスクが画素サイズの微小な斑(塊径 <2 km)に割れるだけ」の場を一様な幕とする。
-  // ただし鱗の尺度(2〜64 km)の強い周期峰を持つ場は幕でなく鱗雲側へ回す。
+  // ただし鱗雲の細胞の尺度(2〜20 km、塊の径の定義域)の強い周期峰を持つ場は
+  // 幕でなく鱗雲側へ回す。20 km を超える周期は幕の中のうねりとみなす。
   const ex = m.periodicity.excessRatio;
   const pk = m.periodicity.peakScaleKm;
+  const cellPeak = ex !== null && ex >= CLASSIFY.scalyExcessMin
+    && pk !== null && pk >= CLASSIFY.scalyScaleKm[0] && pk <= 20;
   const scalyPeak = ex !== null && ex >= CLASSIFY.scalyExcessMin
     && pk !== null && pk >= CLASSIFY.scalyScaleKm[0] && pk <= CLASSIFY.scalyScaleKm[1];
   const cotOk = values.cotP50 !== null
@@ -503,7 +506,7 @@ export function classifyPattern(m) {
   const oneSheet = (m.shapes.largestShare ?? 0) >= CLASSIFY.veilLargestShareMin;
   const speckled = m.scaly.clumpDiamP50 > 0 && m.scaly.clumpDiamP50 < CLASSIFY.veilSpeckleDiamKm
     && m.scaly.clumpCount >= CLASSIFY.veilSpeckleCountMin;
-  if (m.shapes.cloudyShare >= CLASSIFY.veilCloudyMin && cotOk && !scalyPeak
+  if (m.shapes.cloudyShare >= CLASSIFY.veilCloudyMin && cotOk && !cellPeak
     && (oneSheet || speckled)) {
     return { className: 'veil', rule: 'veil', values };
   }
