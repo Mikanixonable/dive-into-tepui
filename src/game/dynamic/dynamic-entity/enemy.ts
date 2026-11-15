@@ -110,7 +110,7 @@ export function deserializeEnemyPlacement(serialized: SerializedEnemy): EnemyPla
 }
 
 // 敵クラスの静的側。直列化のタグを敵の種別に絞る。
-export interface EnemyClass extends DynamicEntityClass {
+interface EnemyClass extends DynamicEntityClass {
   readonly kind: SerializedEnemy['kind'];
 }
 

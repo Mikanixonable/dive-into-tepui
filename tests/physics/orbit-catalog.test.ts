@@ -42,15 +42,15 @@ export function register(): void {
   });
 
   for (const systemId of systemIds) {
-    const system: CatalogSystem | undefined = SYSTEMS[systemId];
+    const system = SYSTEMS[systemId];
     if (system === undefined) continue;
     const familyIds = Object.keys(system.families);
 
     test(`orbit-catalog: ${systemId} families are non-empty and ordered along s`, () => {
       assert.ok(familyIds.length > 0, `${systemId}: 族が1つも無い`);
       for (const id of familyIds) {
-        const family: CatalogFamily | undefined = system.families[id];
-        assert.ok(family !== undefined, `${id}: 族が無い`);
+        const family: CatalogFamily | null = system.families[id] ?? null;
+        assert.ok(family !== null, `${id}: 族が無い`);
         // 分ける必要が無かった種類は軌道が1本しか取れなくてもそのまま出す(SPEC/MAP.md
         // 「ガイド線の正確さ」)。その1本は族の始端でも終端でもあるので s は 0 だけになる。
         const members: readonly CatalogMember[] = family.members;

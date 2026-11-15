@@ -3,10 +3,11 @@
 import * as THREE from 'three/webgpu';
 import { OpaqueCloudSurfaceRenderer, type CumulusDetail } from '../opaque-cloud-surface-renderer';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
-import { capRadiusFor } from './cloud-cap';
+import type { CloudBlend, CloudFieldSlot } from './cloud-field-sample';
+import { capRadiusFor, snapCap } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { CloudRenderInput } from './cloud-render-input';
+import type { CloudDetailClockInput, CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from '../field-projection';
 import type { GraphicsSettingsData } from '../graphics-settings';
 
@@ -20,13 +21,15 @@ const tmpInverseSpin = new THREE.Quaternion();
 // 雲データの供給源種別。generated は気候モデルから時々刻々生成する動的場、observed は衛星画像に基づく静止場。
 // キー名は保存済み描画設定と対応するため変更しない。
 export const CLOUD_FIELD_SOURCE_KIND = { observed: 'observed', generated: 'generated' } as const;
-export type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof CLOUD_FIELD_SOURCE_KIND];
+type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof CLOUD_FIELD_SOURCE_KIND];
 
-// 雲データ供給源のインターフェース。texture はキャップへ投影されたテクスチャであり、供給元が寿命を管理する。
+// 雲データ供給源のインターフェース。slots はキャップへ投影された 2 枚の写しであり、供給元が寿命を管理する。
 export interface CloudFieldSource {
-  readonly texture: THREE.Texture;
-  // 描画時の風のテクスチャ。風を焼かない出どころでは null。
-  readonly windTexture: THREE.Texture | null;
+  // 焼いた雲場の 2 枚(同じ cap)。雲は R・G = 積雲・巻雲、B・A = 筋の倍角ベクトル。風は R・G = 地表付近、
+  // B・A = 上層の東・北の成分 [m/s]。環境は R = 陸、G = 対流、B = 気候の雲量、A = 金床。
+  readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
+  // 2 枚の混ぜ方。供給元が毎フレーム書き換えるので、読み手は読んだ時点の値を使う。
+  readonly blend: CloudBlend;
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
@@ -40,11 +43,11 @@ export class CloudPresentation {
   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
   // 現在選択されている雲データ供給源。
   private source: CloudFieldSource;
-  // 最後に焼いた表示時刻 [s]。粒の時計になる。
-  private lastDisplayTime = 0;
   private cloudVisible = false;
+  private cumulusVisible = true;
   private cirrusVisible = true;
-  private translucentCumulusVisible = true;
+  // 細部の時刻。bake で表示時刻へ進める。
+  private clock: CloudDetailClockInput = { displayTime: 0, simSpeed: 0 };
 
   // 各供給源（generated / observed）を管理し、キャップの視点追従と雲メッシュの描画を同期する。
   // bodyRadius は雲層を配置する天体の基準半径 [m]。
@@ -58,17 +61,27 @@ export class CloudPresentation {
     this.aim(INITIAL_CAP_DIRECTION, 1);
   }
 
-  // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度・表示時刻。
+  // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
   public get renderInput(): CloudRenderInput {
+    // 同じ供給源の場・cap 配置・世代・表示時刻を描画入力へそろえる。
     return {
-      field: { texture: this.source.texture, windTexture: this.source.windTexture, cap: this.cap.placement },
+      field: {
+        slots: this.source.slots,
+        blend: this.source.blend,
+        cap: this.cap.placement,
+      },
       generation: this.source.generation,
       topAltitude: this.topAltitude,
-      displayTime: this.lastDisplayTime,
+      clock: this.clock,
     };
   }
   public get visible(): boolean { return this.surface.visible; }
-  public get cloudsVisible(): boolean { return this.cloudVisible; }
+  // 雲全体と、少なくとも一方の雲種が有効なとき表示可能とする。
+  public get cloudsVisible(): boolean {
+    return this.cloudVisible && (this.cumulusVisible || this.cirrusVisible);
+  }
+  public get cumulusEnabled(): boolean { return this.cloudsVisible && this.cumulusVisible; }
+  public get cirrusEnabled(): boolean { return this.cloudsVisible && this.cirrusVisible; }
   public get topAltitude(): number { return this.surface.topAltitude; }
 
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
@@ -77,16 +90,14 @@ export class CloudPresentation {
   public syncGraphics(graphics: GraphicsSettingsData, apparentDiameterPx: number): void {
     // 雲全体を描くかと、描くときの雲場の出どころ・積雲の精細さ・殻の分割段。
     this.setCloudsVisible(graphics.clouds);
+    this.cumulusVisible = graphics.cumulus;
+    this.cirrusVisible = graphics.cirrus;
+    this.syncSurfaceVisibility();
     if (graphics.clouds) {
       this.setSource(graphics.cloudFieldSource);
       this.setDetail(graphics.cumulusDetail);
       this.syncLod(apparentDiameterPx);
     }
-    // 大気の中へ立てる巻雲と半透明の積雲。
-    this.setAtmosphereCloudsVisible(
-      graphics.clouds && graphics.cirrus,
-      graphics.clouds && graphics.translucentCumulus,
-    );
   }
 
   // 雲場の出どころを選ぶ。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
@@ -110,11 +121,16 @@ export class CloudPresentation {
     this.aim(toObserver.divideScalar(rho), rho);
   }
 
-  // cap を、天体固定・半軸で割った殻の空間で見た直下点 subpoint(単位方向)へ置き直す。
+  // cap を、天体固定・半軸で割った殻の空間で見た直下点 subpoint(単位方向)の近くの格子点へ置き直す。
   // rho は同じ空間で測った観測点の中心距離(地表が 1)。置き直した結果は不透明表面のサンプリングへ
   // 即座に反映する — 反映しないと、そのフレームだけ雲がテクスチャと 1 フレームずれる。
+  // **置き方は地表に固定した格子へ揃える**(`snapCap`) — 直下点へ連続に置くと、texel の格子が
+  // 地表に対して滑り、止まった雲がちらつく。
   private aim(subpoint: THREE.Vector3, rho: number): void {
-    this.cap.aimAt(subpoint, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
+    const latitude = Math.asin(Math.max(-1, Math.min(1, subpoint.y)));
+    const longitude = Math.atan2(subpoint.x, subpoint.z);
+    const snapped = snapCap(latitude, longitude, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
+    this.cap.aim(snapped.latitude, snapped.longitude, snapped.radius);
     this.surface.bind(this.renderInput);
   }
 
@@ -123,27 +139,30 @@ export class CloudPresentation {
   // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   public setCloudsVisible(visible: boolean): void {
     this.cloudVisible = visible;
-    if (!visible) this.surface.hide();
+    this.syncSurfaceVisibility();
   }
 
-  // 大気の中へ立てる巻雲と半透明の積雲を、それぞれ描くかを置き直す。
-  private setAtmosphereCloudsVisible(cirrusVisible: boolean, translucentCumulusVisible: boolean): void {
-    this.cirrusVisible = cirrusVisible;
-    this.translucentCumulusVisible = translucentCumulusVisible;
+  // 積雲が無効なら不透明な雲殻を隠す。
+  private syncSurfaceVisibility(): void {
+    if (!this.cloudVisible || !this.cumulusVisible) this.surface.hide();
   }
 
   // 見かけ直径 [px] から不透明表面の分割段を選ぶ。雲を描かないなら隠す。
   private syncLod(apparentDiameterPx: number): void {
-    if (this.cloudVisible) this.surface.syncLod(apparentDiameterPx);
+    if (this.cumulusEnabled) this.surface.syncLod(apparentDiameterPx);
     else this.surface.hide();
   }
 
-  // 雲場が描画に寄与するフレームで、選んでいる出どころの場を表示時刻 displayTime [s] へ焼く。gpu を
-  // 渡すと、焼いた GPU 時間をそこへ計上する。
-  public bake(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
+  // 雲場が描画に寄与するフレームで、選んでいる出どころの場を表示時刻 displayTime [s] へ焼き、細部の
+  // 時刻を進める。simSpeed は実時間 1 秒あたりに進む表示時刻 [s]。gpu を渡すと、焼いた GPU 時間を
+  // そこへ計上する。**実写の雲場では細部の時刻も止める** — 分布が止まっている空で、細部だけが
+  // 流れたり入れ替わったりしない。
+  public bake(renderer: WebGPURenderer, displayTime: number, simSpeed: number, gpu?: GpuTimingSink): void {
     if (!this.fieldContributes) return;
-    this.lastDisplayTime = displayTime;
     this.source.prepare(renderer, displayTime, gpu);
+    const moving = this.source === this.sources.generated;
+    this.clock = { displayTime: moving ? displayTime : 0, simSpeed: moving ? simSpeed : 0 };
+    this.surface.syncClock(this.clock);
   }
 
   // 不透明表面と、選べる雲場の出どころをすべて解放する。
@@ -152,9 +171,9 @@ export class CloudPresentation {
     for (const source of Object.values(this.sources)) source.dispose();
   }
 
-  // 雲場がこのフレームの描画に寄与するか。
+  // 雲場がこのフレームの描画に寄与するか。巻雲は雲を描く限り常に大気へ立つので、
+  // 雲が見える限り場は常に寄与する。
   private get fieldContributes(): boolean {
-    return this.cloudVisible && (
-      this.visible || this.cirrusVisible || this.translucentCumulusVisible);
+    return this.cloudsVisible;
   }
 }

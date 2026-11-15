@@ -14,7 +14,7 @@ const LEGACY_SOLAR_EFFICIENCY = 0.25;
 
 export type SolarSide = 'up' | 'down';
 
-export interface SerializedPowerPanel {
+interface SerializedPowerPanel {
   readonly id: string;
   readonly state: SerializedDeployablePanelState;
 }
@@ -73,8 +73,8 @@ export class PowerSystem {
   }
 
   // assembly の solar_panel module ID へ状態を結び付ける。互換スロット名（up/down）は接続順へ移譲する。
-  public syncAssembly(assembly: ShipAssembly = this.assemblyValue as ShipAssembly): void {
-    if (assembly === null || assembly === undefined) return;
+  public syncAssembly(assembly: ShipAssembly | null = this.assemblyValue): void {
+    if (assembly === null) return;
     this.assemblyValue = assembly;
     const old = new Map(this.panels);
     const solar = assembly.modules.filter(module => module.kind === 'solar_panel');

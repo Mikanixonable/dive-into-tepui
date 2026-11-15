@@ -12,6 +12,15 @@ import type { CloudRenderInput } from './cloud/cloud-render-input';
 export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;
 type AtmosphereQuality = (typeof ATMOSPHERE_QUALITY)[keyof typeof ATMOSPHERE_QUALITY];
 
+// オゾン層の吸収。密度は高度 centerAltitude を中心とする底 halfThickness ・高さ 1 の
+// 三角テントとし、absorption は層のピーク密度での RGB 吸収係数 [1/m]。散乱を足さない
+// 純粋な吸収なので、直射光・視線の消散と内部散乱の暗くなる割合の両方に効く。
+export interface OzoneOptics {
+  readonly absorption: THREE.Vector3;
+  readonly centerAltitude: number; // [m]
+  readonly halfThickness: number; // [m]
+}
+
 // 大気 1 つぶんの光学パラメータ。散乱係数はいずれも基準球面(天体半径)での値 [1/m]。
 export interface AtmosphereOptics {
   // レイリー散乱係数 [1/m]。空の青も夕焼けの赤も、この3成分の比が決める。
@@ -22,6 +31,8 @@ export interface AtmosphereOptics {
   readonly mieScaleHeight: number; // [m]
   // ミー散乱の非対称因子（0..1）。値が大きいほど前方散乱が強まり、光源周囲のグレアが収束する。
   readonly mieAnisotropy: number;
+  // オゾン層の吸収。未指定なら大気は吸収を持たない。
+  readonly ozone?: OzoneOptics;
   // 大気自身の発光層。未指定なら大気は反射・散乱だけを持つ。
   readonly airglow?: AirglowOptics;
 }
@@ -104,6 +115,8 @@ function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPer
 export interface AtmosphereClouds {
   readonly cloud: CloudRenderInput;
   readonly bodyFromWorld: THREE.Matrix4;
+  readonly cumulusVisible: boolean;
+  readonly cirrusVisible: boolean;
 }
 
 // 大気を持つ天体 1 体。中心は描画座標、半径は [m]。**地表も大気の等密度面も、自転軸まわりの
