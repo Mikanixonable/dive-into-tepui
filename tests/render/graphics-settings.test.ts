@@ -7,6 +7,7 @@ import {
   DEFAULT_GRAPHICS, QUALITY_PRESETS, parseGraphics, withGraphicsOption,
 } from '../../src/render/graphics-settings';
 
+// 雲の表示切替と既存の描画設定の保存値互換性を検査する。
 export function register(): void {
   test('graphics-settings: 積雲と巻雲は全プリセットで既定オン', () => {
     for (const preset of Object.values(QUALITY_PRESETS)) {
