@@ -7,13 +7,14 @@ import { mulberry32, randSym } from '../../math/random';
 import { WAVE_NUMBER, WAVE_PHASE_SPEED, waveTroughLongitude } from './rossby-wave';
 
 // 谷 1 つの配置。緯度・経度 [rad](緯度は南半球で負。経度は畳まない)、深さ [hPa](0 以上)、
-// 短軸の半径 [m]、長軸/短軸の比。
+// 短軸の半径 [m]、長軸/短軸の比、一生の中の時期(生まれて 0、消えるとき 1)。
 export interface CyclonePlacement {
   readonly latitude: number;
   readonly longitude: number;
   readonly depth: number;
   readonly radius: number;
   readonly elongation: number;
+  readonly life: number;
 }
 
 // 進路の上の点 [°]。経度は連続な数で持ち、180° をまたぐ進路は 180 を超える値で書く。
@@ -227,6 +228,7 @@ function rawLowPlacementAt(
     depth: track.peakDepth * Math.sin(Math.PI * life ** LOW_PEAK_SKEW),
     radius: track.birthRadius * (1 + track.growth * life),
     elongation: LOW_ELONGATION,
+    life,
   };
 }
 
@@ -317,5 +319,6 @@ export function tropicalPlacementAt(seconds: number): CyclonePlacement | null {
     depth: track.peakDepth * Math.sin(Math.PI * life ** TROPICAL_PEAK_SKEW),
     radius: track.birthRadius * (1 + track.growth * THREE.MathUtils.smoothstep(life, TROPICAL_GROWTH_ONSET, 1)),
     elongation: 1 + (track.finalElongation - 1) * THREE.MathUtils.smoothstep(life, TROPICAL_ELONGATION_ONSET, 1),
+    life,
   };
 }
