@@ -86,6 +86,7 @@
     "cloud-lab:reference-timeseries": "node tools/cloud-lab-reference-timeseries.mjs",
     "cloud-lab:reference-motion": "node tools/cloud-lab-reference-motion.mjs",
     "cloud-lab:motion-report": "node tools/cloud-motion-report.mjs",
+    "cloud-lab:motion-compare": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-motion-compare.mjs",
     "cloud-lab:compare": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-compare.mjs",
     "cloud-lab:separate": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-separate.mjs",
     "cloud-lab:reference": "node tools/cloud-lab-reference.mjs",
