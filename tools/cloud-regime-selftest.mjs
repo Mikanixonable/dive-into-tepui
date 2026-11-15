@@ -321,11 +321,11 @@ function sceneGrid(sceneCount, rng, valueOf) {
       && near(cir.tauThinFrac, 1) && near(cir.highThinFrac, 1),
     `cloudFrac=${cir.cloudFrac} cirrus=${cir.cirrus}`);
 
-  // 積雲だけ(覆う割合 0.5・雲の中の τ_in = 1.39): 面積 0.5 が雲・τ 薄い・雲頂 2 km
-  // → 低い → cumulus。
+  // 積雲だけ(覆う割合 0.5・雲の中の τ_in = 1.39): 点全体を雲、τ は 0.5^0.2·1.39 ≈ 1.21
+  // で薄い・雲頂 2 km → 低い → cumulus。
   const cum = isccpPhysical(points(36, { cumulusTauIn: 1.39, coverage: 0.5, cirrusTau: 0, cumulusTopM: 2000, cirrusTopM: 0 }));
-  check('積雲だけの点: cloudFrac = 1 − exp(−τ) = 0.5、cumulus・topLowFrac へ同じ割合',
-    near(cum.cloudFrac, 0.5) && near(cum.cumulus, 0.5) && near(cum.topLowFrac, 0.5),
+  check('積雲だけの点: 点全体を雲(cloudFrac = 1)、cumulus・topLowFrac へ同じ割合',
+    near(cum.cloudFrac, 1) && near(cum.cumulus, 1) && near(cum.topLowFrac, 1),
     `cloudFrac=${cum.cloudFrac} cumulus=${cum.cumulus} topLow=${cum.topLowFrac}`);
 
   // 覆う割合 < 0.02 の点は全面を晴天にする。
@@ -335,8 +335,8 @@ function sceneGrid(sceneCount, rng, valueOf) {
   // 検出下限(0.3)を下回る巻雲は雲の判定へ入らないが、積雲の雲の τ には足される
   // (τ = τ_in + τci ≈ 1.59 — まだ薄い・低い = cumulus)。
   const sub = isccpPhysical(points(36, { cumulusTauIn: 1.39, coverage: 0.5, cirrusTau: 0.2, cumulusTopM: 2000, cirrusTopM: 10000 }));
-  check('検出下限の巻雲は高層へ畳まれない(積雲の面積・低い雲頂のまま)',
-    near(sub.cloudFrac, 0.5) && near(sub.cumulus, 0.5) && sub.topHighFrac === 0,
+  check('検出下限の巻雲は高層へ畳まれない(積雲の点全体・低い雲頂のまま)',
+    near(sub.cloudFrac, 1) && near(sub.cumulus, 1) && sub.topHighFrac === 0,
     `cloudFrac=${sub.cloudFrac} cumulus=${sub.cumulus} topHigh=${sub.topHighFrac}`);
 
   // 混在: 半分が巻雲(高・薄い)、半分が厚い積雲(低・τ_in = 30 > 23 → stratus)。9 分類の和 = cloudFrac。
