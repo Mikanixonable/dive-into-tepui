@@ -119,5 +119,6 @@ export function highPlacementAt(
     depth: track.peakDepth * Math.sin(Math.PI * life ** HIGH_PEAK_SKEW),
     radius: track.birthRadius * (1 + track.growth * life),
     elongation: HIGH_ELONGATION,
+    life,
   };
 }
