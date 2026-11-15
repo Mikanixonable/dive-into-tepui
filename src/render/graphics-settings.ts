@@ -281,9 +281,12 @@ export function parseGraphics(text: string | null): GraphicsSettingsData {
   try {
     if (text === null) return DEFAULT_GRAPHICS;
     const saved = JSON.parse(text) as Record<string, unknown>;
+    const defaults = saved.cumulus === undefined && saved.cumulusDetail === 0
+      ? { ...DEFAULT_GRAPHICS, cumulus: false }
+      : DEFAULT_GRAPHICS;
     // 表に無いキーは読まず、表にあって保存に無いキーは既定で埋まる。
     const entries = optionKeys().map(
-      (key) => [key, acceptValue(GRAPHICS_OPTIONS[key], saved[key], DEFAULT_GRAPHICS[key])] as const,
+      (key) => [key, acceptValue(GRAPHICS_OPTIONS[key], saved[key], defaults[key])] as const,
     );
     return Object.fromEntries(entries) as GraphicsSettingsData;
   } catch {

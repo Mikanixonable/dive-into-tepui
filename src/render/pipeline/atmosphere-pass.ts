@@ -12,11 +12,13 @@ import { Fn, dFdx, dFdy, length, max, normalize, screenUV, sub, texture, uniform
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffRadius } from '../atmosphere';
 import { AtmosphereIntegrator } from './atmosphere-integrator';
+import type { SunTransmittanceTables } from './sun-transmittance-tables';
 import { viewPositionAt, viewRayAt } from './view-ray';
 import { cirrusOctavesOf, type CirrusDetail } from '../cloud/cloud-detail';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { BodyShadow } from './shadow/body-shadow';
+import type { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
 import type { SunLight } from './sun-light';
 import { compileInto } from './compile-into';
 
@@ -64,9 +66,11 @@ export class AtmospherePass {
     private readonly sharedTarget: THREE.RenderTarget,
     sunLight: SunLight,
     bodyShadow: BodyShadow,
+    cloudShadow: CloudShadowRenderer,
+    sunTables: SunTransmittanceTables,
     private readonly gpu: GpuTimings,
   ) {
-    this.layer = new AtmosphereIntegrator(sunLight, bodyShadow);
+    this.layer = new AtmosphereIntegrator(sunLight, bodyShadow, sunTables, cloudShadow);
     this.projMatrixInverse = uniform(new THREE.Matrix4());
     this.viewToWorld = uniform(new THREE.Matrix4());
 

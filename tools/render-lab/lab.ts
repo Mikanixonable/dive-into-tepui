@@ -1,7 +1,9 @@
 // 描画テスト環境の 1 ビュー。ケースを組み、ゲーム本体と同じ RenderPipeline でキャンバスへ描く。
 // 絵の撮影(PNG)と、CPU / GPU それぞれの所要時間の計測もここが担う。
 import * as THREE from 'three/webgpu';
-import { WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { texture, vec2, vec4 } from 'three/tsl';
+import { distinctTextureNode } from '../../src/render/distinct-texture-node';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
@@ -292,8 +294,10 @@ export class LabView {
   // 観察の向きを変えた次の 1 フレームを、落ち着くのを待たずにそのまま撮る。ドラッグで視点が毎フレーム動く
   // ときの絵に当たる。**captureSettled と setViewAngles は描き直すので、状態が 1 フレーム遅れて追いつく不具合を
   // 隠す** — この撮影は向きを置いたあと描画をちょうど 1 回だけ回す。
-  public async captureAfterMove(changes: Partial<LabViewAngles>): Promise<string> {
+  public async captureAfterMove(changes: Partial<LabViewAngles>, displayTime?: number): Promise<string> {
     this.mergeViewAngles(changes);
+    // 時間が進みながら視点が動くとき(時間加速中のドラッグ)の 1 フレーム。表示時刻は capture() が使う控えへ置く。
+    if (displayTime !== undefined) this.displayTime = displayTime;
     return this.capture();
   }
 
@@ -367,10 +371,12 @@ export class LabView {
     this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    this.pipeline.cloudShadow.set(earth?.shadowCloud ?? null, cloudShadowKinds(graphics));
+    this.pipeline.cloudShadow.set(
+      this.current.shadowCloud ?? earth?.shadowCloud ?? null, cloudShadowKinds(graphics),
+    );
     earth?.bake(this.renderer, displayTime, this.gpu);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
-    this.pipeline.atmosphere.setDraws(atmosphereDraws(
+    const draws = atmosphereDraws(
       [...(earth === null ? [] : [earth.atmosphere]), ...(this.current.atmospheres ?? [])].map((body) => {
         const distance = camera.position.distanceTo(body.center);
         return {
@@ -380,7 +386,12 @@ export class LabView {
         };
       }),
       graphics.atmosphere,
-    ));
+    );
+    this.pipeline.atmosphere.setDraws(draws);
+    // ゲーム本体と同じく、大気パスが描くのと同じ天体の列を直射光の消衰と天空光へ渡す。
+    const bodies = draws.map((draw) => draw.body);
+    this.pipeline.sunExtinction.set(bodies);
+    this.pipeline.skyLight.set(bodies);
     const startedAt = performance.now();
     try {
       if (this.captureOnly) this.renderToCaptureTarget(camera);
@@ -651,6 +662,38 @@ export class LabView {
       png: await this.captureSettled(name),
       centerKmPerPx: shot.centerKmPerPx,
       altitudeM: shot.altitudeM,
+    };
+  }
+
+  // 値を結ぶ前に組んだシェーダで、2 つのテクスチャノードが別々のテクスチャを読めるかを GPU で確かめる。plain は
+  // 既定のノード(同じテクスチャを指すと結びが合わさり、2 つ目が 1 つ目を読む = [255, 0, 0, 255])、distinct は
+  // distinctTextureNode(別々に読む = [255, 255, 0, 255])。
+  public async dedupeProbe(): Promise<Record<string, number[]>> {
+    const pixel = (r: number, g: number, b: number): THREE.DataTexture => {
+      const t = new THREE.DataTexture(new Uint8Array([r, g, b, 255]), 1, 1);
+      t.needsUpdate = true;
+      return t;
+    };
+    const run = async (make: (t: THREE.Texture) => THREE.TextureNode): Promise<number[]> => {
+      const placeholder = pixel(0, 0, 0);
+      const a = make(placeholder);
+      const b = make(placeholder);
+      const material = new THREE.MeshBasicNodeMaterial();
+      material.colorNode = vec4(a.sample(vec2(0.5, 0.5)).x, b.sample(vec2(0.5, 0.5)).y, 0, 1);
+      const quad = new QuadMesh(material);
+      const target = new THREE.RenderTarget(1, 1, { depthBuffer: false });
+      this.renderer.setRenderTarget(target);
+      quad.render(this.renderer);
+      a.value = pixel(255, 0, 0);
+      b.value = pixel(0, 255, 0);
+      quad.render(this.renderer);
+      const data = await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
+      this.renderer.setRenderTarget(null);
+      return Array.from(new Uint8Array(data.buffer, data.byteOffset, 4));
+    };
+    return {
+      plain: await run((t) => texture(t)),
+      distinct: await run((t) => distinctTextureNode(t)),
     };
   }
 
