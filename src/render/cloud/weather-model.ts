@@ -11,6 +11,7 @@ import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
 import { Highs } from './anticyclones';
+import { Clusters } from './convective-clusters';
 import { HumidityModulator } from './humidity-modulation';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
@@ -231,6 +232,13 @@ const ANVIL_HUMIDITY = 0.2;
 // 温暖湿気の輸送路が上層の湿度へ足す量。低気圧の前方・極側へ巻雲の盾を作る —
 // 中緯度の帯状の巻雲(千〜二千 km)の担い手。
 const WCB_UPPER_HUMIDITY = 0.03;
+// 対流クラスタの項。芯の上昇流 [m/s]、消費の環の沈降 [m/s]、環が地表付近の湿度から
+// 引く乾き、流出の盾が上層の湿度へ足す量。環の乾きは被覆率の伝達関数の幅(0.22)と
+// 同じ桁に取り、晴れ間として見える囲いを作る。
+const CLUSTER_LIFT = 0.04;
+const CLUSTER_SINK = 0.012;
+const CLUSTER_DRYING = 0.2;
+const CLUSTER_OUTFLOW_HUMIDITY = 0.3;
 // 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入（0.26 rad）で伝達関数幅の約半分が
 // 変位する係数。本項の期待値が正のため、基底湿度 (SURFACE_HUMIDITY_BASE) をオフセットして均衡させる。
 const WARM_HUMIDITY = 0.6;
@@ -256,6 +264,7 @@ export class WeatherModel {
   private readonly rossbyWave = new RossbyWave();
   private readonly cyclones: Cyclones;
   private readonly highs: Highs;
+  private readonly clusters: Clusters;
   private readonly pressureNoise: CirculatingNoise;
   private readonly mesoscaleLift: CirculatingNoise;
   private readonly upperMeander: CirculatingNoise;
@@ -276,6 +285,7 @@ export class WeatherModel {
     this.upperCirculation = new Circulation(UPPER_BANDS, surfaceRadius);
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
     this.highs = new Highs(surfaceRadius, rotationPeriod);
+    this.clusters = new Clusters(surfaceRadius);
     this.pressureNoise = new CirculatingNoise(
       this.surfaceCirculation, PRESSURE_NOISE, texel,
       [{ untilFrequency: PRESSURE_NOISE[0]!.frequency, transitionSeconds: 18 * 3600 }]);
@@ -318,6 +328,7 @@ export class WeatherModel {
     this.rossbyWave.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     this.highs.syncTime(seconds);
+    this.clusters.syncTime(seconds);
     this.pressureNoise.syncTime(seconds);
     this.mesoscaleLift.syncTime(seconds);
     this.upperMeander.syncTime(seconds);
@@ -377,8 +388,18 @@ export class WeatherModel {
     const stormTrack = extratropical.mul(
       smoothstep(STORM_TRACK_POLE_START, STORM_TRACK_POLE_END, abs(latitude)).oneMinus(),
     );
+    // 熱帯の対流クラスタ — 湿った場所に生まれて周囲の湿りを食べる積乱雲の群れ。
+    // 芯では強い上昇流、消費の環では沈降、上層へ流出の盾を広げる。熱帯に限る
+    // (温帯の組織化は低気圧と帯が担う)。
+    const tropical = extratropical.oneMinus();
+    const clusterCore = this.clusters.coreAt(direction).mul(tropical);
+    const clusterHalo = this.clusters.consumedAt(direction).mul(tropical);
+    const clusterOutflow = this.clusters.outflowAt(direction).mul(tropical);
     const massReturn = stormTrack.mul(1 - MASS_RETURN_TROPIC).add(MASS_RETURN_TROPIC).mul(MASS_RETURN);
-    const lift = limitLift(terrainLift.add(dynamicsLift).add(bandLift).sub(massReturn));
+    const lift = limitLift(
+      terrainLift.add(dynamicsLift).add(bandLift)
+        .add(clusterCore.mul(CLUSTER_LIFT)).sub(clusterHalo.mul(CLUSTER_SINK)).sub(massReturn),
+    );
 
     // 湿度: 流した写しへ、場所と渦に貼り付く項(平年の雲量・上昇流・帯・金床・目)を足し引きする。
     const meanCloudiness = this.climate.meanCloudiness(direction);
@@ -394,12 +415,14 @@ export class WeatherModel {
         .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT).mul(surfaceBiasWeight))
         .add(max(lift, 0).mul(SURFACE_LIFT_HUMIDITY)).add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
         .add(warmth.mul(WARM_HUMIDITY)).add(band.mul(BAND_HUMIDITY))
-        .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(SURFACE_EYE_DRYNESS)), 0, 1);
+        .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(SURFACE_EYE_DRYNESS))
+        .sub(clusterHalo.mul(CLUSTER_DRYING)), 0, 1);
     const upperHumidity = clamp(
       advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
         .add(this.cyclones.wcbAt(direction).mul(WCB_UPPER_HUMIDITY))
-        .sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
+        .sub(eye.mul(UPPER_EYE_DRYNESS))
+        .add(clusterOutflow.mul(CLUSTER_OUTFLOW_HUMIDITY)), 0, 1);
 
     return {
       pressure,
