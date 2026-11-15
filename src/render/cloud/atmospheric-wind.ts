@@ -21,6 +21,11 @@ const JET_SPEED = 34;
 const MIDLAT_LATITUDE = (50 * Math.PI) / 180;
 const MIDLAT_WIDTH = (20 * Math.PI) / 180;
 const MIDLAT_SPEED = 20;
+// 極前線ジェットの極側の裾野。温帯の葉だけでは 60° 以北で上層風が 10 m/s 台へ落ちるが、実測の
+// 300 hPa は極渦のまわりに 20 m/s 級を保つ — 南極圏の偏西風帯。
+const POLAR_LATITUDE = (70 * Math.PI) / 180;
+const POLAR_WIDTH = (16 * Math.PI) / 180;
+const POLAR_SPEED = 13;
 const TROPICAL_EASTERLY = -7;
 const TROPICAL_WIDTH = (18 * Math.PI) / 180;
 
@@ -32,6 +37,7 @@ function upperEastAt(absLatitude: number): number {
   };
   return JET_SPEED * lobe(JET_LATITUDE, JET_WIDTH)
     + MIDLAT_SPEED * lobe(MIDLAT_LATITUDE, MIDLAT_WIDTH)
+    + POLAR_SPEED * lobe(POLAR_LATITUDE, POLAR_WIDTH)
     + TROPICAL_EASTERLY * lobe(0, TROPICAL_WIDTH);
 }
 
@@ -45,7 +51,7 @@ export class AtmosphericWindField {
     const polar = smoothstep(0.98, 1.25, a);
     const layer = smoothstep(SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT, heightM);
     const hemisphere = latitudeRad < 0 ? -1 : 1;
-    const eastSurface = -6 * trade + 7 * westerly - 6 * polar;
+    const eastSurface = -6 * trade + 7 * westerly - 9 * polar;
     const northSurface = -hemisphere * (1.5 * trade - 1.5 * westerly + polar);
     // 上層の南北成分は地表付近と逆向きの弱い流れ(収束循環の戻り)。
     return {
@@ -64,12 +70,13 @@ export class AtmosphericWindField {
     const polar = nodeSmoothstep(float(0.98), float(1.25), absolute);
     const layer = nodeSmoothstep(float(SURFACE_HEIGHT), float(UPPER_CLOUD_HEIGHT), float(heightM));
     const hemisphere = sign(latitudeRad);
-    const eastSurface = trade.mul(-6).add(westerly.mul(7)).sub(polar.mul(6));
+    const eastSurface = trade.mul(-6).add(westerly.mul(7)).sub(polar.mul(9));
     const northSurface = hemisphere.mul(trade.mul(-1.5).add(westerly.mul(1.5)).sub(polar));
     const lobe = (center: number, width: number): FloatNode =>
       exp(absolute.sub(center).div(width).mul(absolute.sub(center).div(width)).negate());
     const eastUpper = float(JET_SPEED).mul(lobe(JET_LATITUDE, JET_WIDTH))
       .add(float(MIDLAT_SPEED).mul(lobe(MIDLAT_LATITUDE, MIDLAT_WIDTH)))
+      .add(float(POLAR_SPEED).mul(lobe(POLAR_LATITUDE, POLAR_WIDTH)))
       .add(float(TROPICAL_EASTERLY).mul(lobe(0, TROPICAL_WIDTH)));
     return vec2(
       eastSurface.add(layer.mul(eastUpper.sub(eastSurface))),
