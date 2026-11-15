@@ -15,7 +15,6 @@ import type { AtmosphereBody, AtmosphereDraw } from '../../src/render/atmosphere
 import type { PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import type { CloudFieldSlot } from '../../src/render/cloud/cloud-field-sample';
-import { CloudBlendState } from '../../src/render/cloud/cloud-field-sample';
 import type { CloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-select';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type {
@@ -269,7 +268,7 @@ const SHADOW_CLOUD: ShadowCloud = {
   cloud: {
     field: {
       slots: [SHADOW_CLOUD_SLOT, SHADOW_CLOUD_SLOT],
-      blend: new CloudBlendState(),
+      blend: { parity: 0, fraction: 0 },
       cap: {
         center: new THREE.Vector3(0, 0, 1),
         east: new THREE.Vector3(1, 0, 0),

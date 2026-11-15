@@ -1,10 +1,10 @@
-// 雲の種類ごとの量から雲頂高度・覆いの密度・雲の中の光学的厚みを導く曲線の TSL ノード版。
+// 雲の種類ごとの量から雲頂高度・鉛直柱光学深さ・不透明度を導く曲線の TSL ノード版。
 // 基準式と定数は cloud-kind.ts が持ち、ここは同じ式をシェーダグラフへ組む。
 import { clamp, exp, log, max, min, sqrt } from 'three/tsl';
 import {
   CIRRUS_ALTITUDE_SPAN, CIRRUS_BOTTOM_ALTITUDE, CIRRUS_MAX_OPTICAL_DEPTH,
-  CUMULUS_ALTITUDE_SPAN, CUMULUS_BASE_ALTITUDE, CUMULUS_COVERING_DEPTH_SCALE,
-  CUMULUS_IN_CLOUD_DEPTH_COEFFICIENT, CUMULUS_MAX_OPACITY,
+  CUMULUS_ALTITUDE_SPAN, CUMULUS_BASE_ALTITUDE, CUMULUS_IN_CLOUD_DEPTH_COEFFICIENT,
+  CUMULUS_MAX_OPACITY, CUMULUS_OPTICAL_DEPTH_SCALE,
 } from './cloud-kind';
 import type { FloatNode } from '../tsl-types';
 
@@ -13,14 +13,14 @@ export function cumulusTopAltitudeNode(amount: FloatNode): FloatNode {
   return amount.mul(amount).mul(CUMULUS_ALTITUDE_SPAN).add(CUMULUS_BASE_ALTITUDE);
 }
 
-// 積雲の量から覆いの深さ。雲の中の光学的厚みとは別の量。
-export function cumulusCoveringDepthNode(amount: FloatNode): FloatNode {
-  return amount.div(CUMULUS_COVERING_DEPTH_SCALE);
+// 積雲の量から鉛直柱光学深さ。
+export function cumulusColumnOpticalDepthNode(amount: FloatNode): FloatNode {
+  return amount.div(CUMULUS_OPTICAL_DEPTH_SCALE);
 }
 
-// 積雲の量から覆う割合(不透明度 = 点描の密度)。
+// 積雲の量から不透明度(1 − e^−τ)。
 export function cumulusOpacityNode(amount: FloatNode): FloatNode {
-  return exp(cumulusCoveringDepthNode(amount).negate()).oneMinus();
+  return exp(cumulusColumnOpticalDepthNode(amount).negate()).oneMinus();
 }
 
 // 積雲の雲頂高度 [m] から、雲の柱の中の光学的厚み τ_in = k·H^(5/3)。
@@ -34,10 +34,10 @@ export function cumulusAmountFromTopAltitudeNode(altitude: FloatNode): FloatNode
   return sqrt(clamp(altitude.sub(CUMULUS_BASE_ALTITUDE).div(CUMULUS_ALTITUDE_SPAN), 0, 1));
 }
 
-// 積雲の覆う割合(不透明度)から量。覆う割合は量 1 の値で頭打ちにする。
+// 積雲の不透明度から量。不透明度は量 1 の値で頭打ちにする。
 export function cumulusAmountFromOpacityNode(opacity: FloatNode): FloatNode {
   return log(min(max(opacity, 0), CUMULUS_MAX_OPACITY).oneMinus()).negate()
-    .mul(CUMULUS_COVERING_DEPTH_SCALE);
+    .mul(CUMULUS_OPTICAL_DEPTH_SCALE);
 }
 
 // 巻雲の量から雲頂高度 [m]。

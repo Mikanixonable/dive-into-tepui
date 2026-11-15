@@ -6,7 +6,7 @@ import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { distinctTextureNode } from '../distinct-texture-node';
 import { orthographicCapUv, type CapPlacement } from '../field-projection';
 import {
-  bindCloudBlend, blendBakedTexels, cloudMotionFromTexel, cloudSampleFromTexels,
+  blendBakedTexels, cloudMotionFromTexel, cloudSampleFromTexels,
   type CloudBlend, type CloudFieldSlot, type CloudMotion, type CloudSample,
 } from './cloud-field-sample';
 import type { FloatUniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
@@ -36,22 +36,17 @@ export class CloudFieldSampler {
   private readonly north: Vec3Uniform = uniform(new THREE.Vector3(0, 1, 0));
   private readonly sinRadius: FloatUniform = uniform(1);
   private readonly cosRadius: FloatUniform = uniform(-1);
-  private boundBlend: CloudBlend | null = null;
-  private unsubscribeBlend: (() => void) | null = null;
 
   // 焼いた場と、それを焼いた cap の置き方を写し取る。テクスチャの所有権は移らない。
-  // 同じ供給源の値を焼き直し後も読み続けられるよう、参照と cap の枠を揃える。
   public bind(binding: CloudFieldBinding): void {
     for (const slot of [0, 1] as const) {
       this.clouds[slot].value = binding.slots[slot].cloud;
       this.motions[slot].value = binding.slots[slot].motion;
       this.environments[slot].value = binding.slots[slot].environment;
     }
-    if (this.boundBlend !== binding.blend) {
-      this.unsubscribeBlend?.();
-      this.boundBlend = binding.blend;
-      this.unsubscribeBlend = bindCloudBlend(binding.blend, this.parity, this.fraction);
-    }
+    // 同じ供給源の値を焼き直し後も読み続けられるよう、参照と cap の枠を揃える。
+    this.parity.value = binding.blend.parity;
+    this.fraction.value = binding.blend.fraction;
     this.center.value.copy(binding.cap.center);
     this.east.value.copy(binding.cap.east);
     this.north.value.copy(binding.cap.north);
@@ -59,10 +54,8 @@ export class CloudFieldSampler {
     this.cosRadius.value = binding.cap.cosRadius;
   }
 
+  // 結んだ場と cap の枠を空へ戻す。雲を読まない区間に古い場が残らないようにする。
   public unbind(): void {
-    this.unsubscribeBlend?.();
-    this.unsubscribeBlend = null;
-    this.boundBlend = null;
     for (const slot of [0, 1] as const) {
       this.clouds[slot].value = EMPTY_CLOUD_FIELD;
       this.motions[slot].value = EMPTY_CLOUD_FIELD;
