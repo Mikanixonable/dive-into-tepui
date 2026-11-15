@@ -5,6 +5,7 @@
 import { mulberry32, randSym } from '../../math/random';
 import type { CyclonePlacement } from './cyclone-tracks';
 import { LOW_COUNT } from './cyclone-tracks';
+import { WAVE_NUMBER, WAVE_PHASE_SPEED, waveTroughLongitude } from './rossby-wave';
 
 // 高気圧。低気圧と同じ枡数を、半位相ずらして持つ(偶数番が北、奇数番が南)。
 export const HIGH_COUNT = LOW_COUNT;
@@ -23,12 +24,14 @@ const HIGH_REBIRTH_GAP = 8 * 3600;
 // あいだに座る移動性高気圧は、暴風帯の南縁から中ほどまでに出る。
 const HIGH_BIRTH_LATITUDE: Range = [30, 48];
 const HIGH_END_LATITUDE: Range = [35, 55];
-// 半球の枡の幅 [°] と、低気圧の枡からのずらし(低気圧の枡の半分)。ずらしは
-// 「低気圧の谷のあいだに丘を置く」ための位相で、厳密な同期は取らない。
-const HIGH_SLOT_COUNT = HIGH_COUNT / 2;
-const HIGH_SLOT_WIDTH = 360 / HIGH_SLOT_COUNT;
-const HIGH_SLOT_OFFSET = HIGH_SLOT_WIDTH / 2;
+// 高気圧は波の谷と谷の中間(尾根)の下流側へ座る — 低気圧と同じ波の錨を
+// 半波長ずらして使うので、低・高が交互に一周並ぶ配置が保たれる。
+const WAVE_TROUGH_WIDTH = 360 / WAVE_NUMBER;
+const WAVE_RIDGE_OFFSET = WAVE_TROUGH_WIDTH / 2; // 尾根 = 谷 + 半波長 [°]
+const HIGH_DOWNSTREAM = 25; // 尾根からの下流への距離 [°](低気圧と同じ下流配置)
 const HIGH_LONGITUDE_JITTER = 0.15;
+// 錨が波とともに東へ進む速さ [°/s]。
+const WAVE_DRIFT = WAVE_PHASE_SPEED * (180 / Math.PI);
 // 東への速さの幅 [m/s] と減速の指数の幅。高気圧は低気圧(10〜20 m/s)より遅く、
 // 時にほとんど停滞する(ブロッキング傾向)。
 const HIGH_SPEED: Range = [1.5, 5];
@@ -55,6 +58,7 @@ const HIGH_SEED_SALT = 1 << 21;
 interface HighTrack {
   readonly onset: number;
   readonly lifetime: number;
+  readonly birthSeconds: number;
   readonly birthLatitude: number;
   readonly endLatitude: number;
   readonly birthLongitude: number;
@@ -71,9 +75,12 @@ function highTrackOf(index: number, generation: number, surfaceRadius: number): 
   const onset = HIGH_REBIRTH_GAP / 2 + rand() * (HIGH_PERIOD - lifetime - HIGH_REBIRTH_GAP);
   const birthLatitude = uniformIn(HIGH_BIRTH_LATITUDE, rand);
   const endLatitude = uniformIn(HIGH_END_LATITUDE, rand);
-  const slot = ((Math.floor(index / 2) * 3) % HIGH_SLOT_COUNT) * HIGH_SLOT_WIDTH
-    + HIGH_SLOT_OFFSET;
-  const birthLongitude = slot + randSym(HIGH_LONGITUDE_JITTER * HIGH_SLOT_WIDTH, rand);
+  // 枡がこの世代で座る尾根の番号(谷と同じ巡回)と、生まれる時刻 [s]。
+  const ridgeIndex = (Math.floor(index / 2) + generation) % WAVE_NUMBER;
+  const birthSeconds = (generation - index / HIGH_COUNT) * HIGH_PERIOD + onset;
+  const birthLongitude = waveTroughLongitude(ridgeIndex, birthSeconds)
+    + WAVE_RIDGE_OFFSET + HIGH_DOWNSTREAM
+    + randSym(HIGH_LONGITUDE_JITTER * WAVE_TROUGH_WIDTH, rand);
   const speed = uniformIn(HIGH_SPEED, rand);
   const brake = uniformIn(HIGH_BRAKE, rand);
   const peakDepth = uniformIn(HIGH_DEPTH, rand);
@@ -83,7 +90,7 @@ function highTrackOf(index: number, generation: number, surfaceRadius: number): 
   const eastward = (speed * lifetime) / (surfaceRadius * Math.cos(midLatitude * DEGREE)) / DEGREE;
   const hemisphere = index % 2 === 0 ? 1 : -1;
   return {
-    onset, lifetime,
+    onset, lifetime, birthSeconds,
     birthLatitude: hemisphere * birthLatitude,
     endLatitude: hemisphere * endLatitude,
     birthLongitude, eastward, brake, peakDepth, birthRadius, growth,
@@ -103,7 +110,9 @@ export function highPlacementAt(
   // 直線に近い緩やかな東進。低気圧のベジエのような折れは要らない。
   const s = 1 - (1 - life) ** track.brake;
   const latitude = track.birthLatitude + (track.endLatitude - track.birthLatitude) * s;
-  const longitude = track.birthLongitude + track.eastward * s;
+  // 錨は波とともに東へ進む — 生まれた時刻からのドリフトを進路へ足す。
+  const longitude = track.birthLongitude + track.eastward * s
+    + WAVE_DRIFT * (seconds - track.birthSeconds);
   return {
     latitude: latitude * DEGREE,
     longitude: longitude * DEGREE,
