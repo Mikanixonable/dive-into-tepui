@@ -18,6 +18,7 @@ import { shellAltitudeOf } from './cloud-atmosphere-renderer';
 import type { AtmosphereBody } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { BodyShadow } from './shadow/body-shadow';
+import type { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
 import type { SunLight } from './sun-light';
 import {
   depthToSpace, polarStretchOf, sunPathGeometry, toSphereSpace,
@@ -121,6 +122,9 @@ export class AtmosphereIntegrator {
     private readonly sunLight: SunLight,
     private readonly bodyShadow: BodyShadow,
     private readonly sunTables: SunTransmittanceTables,
+    // 大気へ影を落とす雲。無ければ雲の影は掛からない(天体照の光源の合成など、
+    // 雲の影が結ばれない経路では省く)。
+    private readonly cloudShadow?: CloudShadowRenderer,
   ) {
     this.slot = {
       steps: uniform(1),
@@ -427,10 +431,17 @@ export class AtmosphereIntegrator {
     return {
       extinction,
       source: scattered.div(max(extinction, vec3(MIN_EXTINCTION, MIN_EXTINCTION, MIN_EXTINCTION)))
-        .mul(this.sunRadianceAt(point))
+        .mul(this.sunRadianceAt(point)).mul(this.cloudShadowAt(point))
         .add(airglow.div(max(extinction, vec3(MIN_EXTINCTION, MIN_EXTINCTION, MIN_EXTINCTION))))
         .mul(shellTransmittance),
     };
+  }
+
+  // 大気の中の点へ届く直射光のうち、雲の柱と層が透す割合。**雲の殻の照明(sunRadianceAt)には
+  // 掛けない** — 殻の点が自分の柱や層を自身の影として読み、雲全体が自分で暗くなるのを防ぐ。
+  // 大気のサンプル点は雲の下にも取れるので、そこでは雲の影が必要になる。
+  private cloudShadowAt(point: Vec3Node): FloatNode {
+    return this.cloudShadow === undefined ? float(1) : this.cloudShadow.ambientTransmittance(point);
   }
 
   // 大気の中の 1 点へ届く太陽光の輝度。太陽光自身が通ってきた大気の透過率と、他の天体による
