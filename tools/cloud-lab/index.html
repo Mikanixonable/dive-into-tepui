@@ -14,6 +14,8 @@
   }
   header { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-width: 0; }
   h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .04em; white-space: nowrap; }
+  nav a { color: var(--text); opacity: .65; text-decoration: none; font-size: 12px; }
+  nav a:hover { opacity: 1; color: var(--accent); }
   p { margin: 0; }
   .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--edge); }
   .tabs button {
@@ -83,6 +85,7 @@
 <body>
   <header>
     <h1>Cloud Lab</h1>
+    <nav><a href="detail.html">雲の細部へ</a></nav>
     <div class="tabs" id="mode"></div>
     <p id="status"></p>
     <p id="error"></p>

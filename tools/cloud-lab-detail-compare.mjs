@@ -1,31 +1,31 @@
-// 雲の細部の比較ループ。render-lab の本番ビルドをヘッドレス Chrome で開き、
-// window.renderLab.cloudDetailShots() の全撮影(12 場面 × 3 時刻 × 3 段の km/px ×
-// 積雲だけ/巻雲だけ/両方 = 324 枚)を shootCloudDetail() で 1 枚ずつ .cloud-detail/shots/ へ
-// 撮る(既にあるものは飛ばす)。各撮影と .cloud-detail/reference/ の実写へ
-// cloud-detail-metrics の物差しを当て、同じ種類(積雲主体/巻雲主体)の実写場面の測定値の
+// 雲の細部の比較ループ。cloud-lab の detail ページ(detail.html)をヘッドレス Chrome で開き、
+// window.cloudLabDetail.cloudDetailShots() の全撮影(12 場面 × 3 時刻 × 3 段の km/px ×
+// 両方/巻雲だけ = 216 枚)を shootCloudDetail() で 1 枚ずつ .cloud-lab/detail/shots/ へ
+// 撮る(既にあるものは飛ばす)。各撮影と .cloud-lab/detail/reference/ の実写へ
+// cloud-lab-detail-metrics の物差しを当て、同じ種類(積雲主体/巻雲主体)の実写場面の測定値の
 // 幅(封筒 = 最小〜最大 + 幅の 10%)からの距離を、特徴量の家族ごとに正規化して出し、
 // 家族の平均を index とする。区分(海域の類型 × 種類 × 段の km/px)の実写が少なすぎる
 // ときは、その区分の封筒を index と家族ごとの距離から外す(距離の表示は残る)。
 // 混合場面の実写はどちらの封筒にも入れず、撮影の比較相手
 // (両方撮影の封筒と並べる画像)として使う。
 // 最新の .cloud-lab/history/ の全球・cap スペクトルと繋いで 0.5〜1024 km の尺度の梯子を
-// 1 表にし、実写と撮影を同じ km/px で左右に並べた画像を .cloud-detail/compare/ へ書き、
-// レポートを .cloud-detail/history/ へ残して前回との差分を出す。--kind/--tier/--time/--scene
+// 1 表にし、実写と撮影を同じ km/px で左右に並べた画像を .cloud-lab/detail/compare/ へ書き、
+// レポートを .cloud-lab/detail/history/ へ残して前回との差分を出す。--kind/--tier/--time/--scene
 // で撮影を絞ったときは対象をその条件へ限り、差分も同じ絞り込みの前回とだけ比べる
 // (改修→計測の反復を短くするため)。--fresh はその撮影を撮り直す(既存の撮影を読まない)。
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
-import { measureDetailImage } from './cloud-detail-features.mjs';
+import { measureDetailImage } from './cloud-lab-detail-features.mjs';
 import {
   collectNumericDiffs, formatDiffValue, gitHead, previousReportName, readReport, saveReport,
 } from './cloud-report-history.mjs';
 import { decodePng, encodeRgbPng } from './png.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const renderLabDir = path.join(root, '.render-lab');
-const detailDir = path.join(root, '.cloud-detail');
-// 撮影の組。既定は .cloud-detail/shots/。--shots <dir> で別の組(改修前の撮影など)を同じ物差しで採点する。
+const cloudLabDir = path.join(root, '.cloud-lab');
+const detailDir = path.join(root, '.cloud-lab', 'detail');
+// 撮影の組。既定は .cloud-lab/detail/shots/。--shots <dir> で別の組(改修前の撮影など)を同じ物差しで採点する。
 const shotsArgIndex = process.argv.indexOf('--shots');
 if (shotsArgIndex >= 0 && process.argv[shotsArgIndex + 1] === undefined) throw new Error('usage: --shots <dir>');
 const shotsArgGiven = shotsArgIndex >= 0;
@@ -79,10 +79,10 @@ function inSubset(info) {
 const compareDir = path.join(detailDir, 'compare');
 const historyDir = path.join(detailDir, 'history');
 const referenceManifestFile = path.join(detailDir, 'reference', 'manifest.json');
-const scenesFile = path.join(import.meta.dirname, 'cloud-detail', 'scenes.json');
+const scenesFile = path.join(import.meta.dirname, 'cloud-lab', 'detail-scenes.json');
 // 配信と CDP のポート。環境変数で上書きでき、別の作業ツリーの計測と並行して走らせられる。
-const port = Number(process.env.CLOUD_DETAIL_PORT ?? 8772);
-const debugPort = Number(process.env.CLOUD_DETAIL_DEBUG_PORT ?? 9449);
+const port = Number(process.env.CLOUD_LAB_DETAIL_PORT ?? 8772);
+const debugPort = Number(process.env.CLOUD_LAB_DETAIL_DEBUG_PORT ?? 9449);
 
 // 封筒の余白。同じ種類の場面の最小〜最大へ、その幅のこの割合を両端へ足す。
 const ENVELOPE_PAD = 0.1;
@@ -361,22 +361,22 @@ async function shootMissing(shotInfos) {
   if (missing.length === 0) return 0;
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
-    serveDir: renderLabDir, port, debugPort, profilePrefix: 'tepui-cloud-detail-', onEvent,
+    serveDir: cloudLabDir, port, debugPort, profilePrefix: 'tepui-cloud-lab-detail-', onEvent,
     requestTimeoutMs: 120_000,
   });
   try {
     const { devTools } = session;
-    await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
+    await devTools.send('Page.navigate', { url: `${session.baseUrl}/detail.html` });
     await waitFor(
       devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab?.shootCloudDetail === 'function')",
-      'the render lab to initialise',
+      "(document.getElementById('error')?.textContent || typeof window.cloudLabDetail?.shootCloudDetail === 'function')",
+      'the cloud lab detail page to initialise',
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
     let taken = 0;
     for (const info of missing) {
-      const dataUrl = await devTools.evaluate(`window.renderLab.shootCloudDetail(${JSON.stringify(info.name)})`);
+      const dataUrl = await devTools.evaluate(`window.cloudLabDetail.shootCloudDetail(${JSON.stringify(info.name)})`);
       writeFileSync(
         path.join(shotsDir, `${info.name}.png`),
         Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'),
@@ -393,7 +393,7 @@ async function shootMissing(shotInfos) {
 
 async function main() {
   if (!existsSync(referenceManifestFile)) {
-    throw new Error(`${referenceManifestFile} が無い — 先に npm run cloud-detail:reference を実行する`);
+    throw new Error(`${referenceManifestFile} が無い — 先に npm run cloud-lab:detail-reference を実行する`);
   }
   const scenes = JSON.parse(readFileSync(scenesFile, 'utf8'));
   const sceneKind = new Map(scenes.map((scene) => [scene.name, scene.kind]));
@@ -405,21 +405,21 @@ async function main() {
   mkdirSync(shotsDir, { recursive: true });
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
-    serveDir: renderLabDir, port, debugPort, profilePrefix: 'tepui-cloud-detail-', onEvent,
+    serveDir: cloudLabDir, port, debugPort, profilePrefix: 'tepui-cloud-lab-detail-', onEvent,
     requestTimeoutMs: 120_000,
   });
   let shotInfos;
   try {
     const { devTools } = session;
-    await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
+    await devTools.send('Page.navigate', { url: `${session.baseUrl}/detail.html` });
     await waitFor(
       devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab?.cloudDetailShots === 'function')",
-      'the render lab to initialise',
+      "(document.getElementById('error')?.textContent || typeof window.cloudLabDetail?.cloudDetailShots === 'function')",
+      'the cloud lab detail page to initialise',
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
-    shotInfos = await devTools.evaluate('window.renderLab.cloudDetailShots()');
+    shotInfos = await devTools.evaluate('window.cloudLabDetail.cloudDetailShots()');
     if (fatalEvents.length > 0) throw new Error(`Page reported errors:\n${fatalEvents.join('\n')}`);
   } finally {
     await session.close();
@@ -458,7 +458,7 @@ async function main() {
     : null;
   const listChanged = recordedNames !== shotInfos.map((shot) => shot.name).join('\n');
   if (taken > 0 || listChanged) writeFileSync(manifestFile, `${JSON.stringify({
-    tool: 'cloud-detail-compare',
+    tool: 'cloud-lab-detail-compare',
     generatedAt: new Date().toISOString(),
     gitHead: gitHead(root),
     shots: shotInfos,
@@ -955,7 +955,7 @@ async function main() {
     );
     compareCount++;
   }
-  console.log(`\n比較画像 ${compareCount} 枚を .cloud-detail/compare/ へ書いた(左=撮影・右=実写、同じ km/px)`);
+  console.log(`\n比較画像 ${compareCount} 枚を .cloud-lab/detail/compare/ へ書いた(左=撮影・右=実写、同じ km/px)`);
 
   // --- レポート ---
   const shotsOrigin = JSON.parse(readFileSync(path.join(shotsDir, 'manifest.json'), 'utf8'));
@@ -975,7 +975,7 @@ async function main() {
   };
   const report = {
     meta: {
-      tool: 'cloud-detail-compare',
+      tool: 'cloud-lab-detail-compare',
       reportVersion: 1,
       generatedAt: new Date().toISOString(),
       gitHead: gitHead(root),
