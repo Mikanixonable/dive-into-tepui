@@ -319,3 +319,43 @@
     飽和(層状の雲頂 3-7km → k·H^(5/3) ≫ 23)。τ_in の校正が次の本丸
   - tauMid 不足(highlat 0.14 vs 0.56)— 中程度の層状雲の人口そのもの
   - humidUp×highThinFrac の応答過敏(contrast 7.2)は継続の最大項
+
+## step 46 — τ の部分被覆希釈を劣線形の冪へ(採用、classes 0.105→0.100)
+- step 45 の画素平均(線形希釈 cover·τ_in)は heterogeneity bias を強く
+  見積もりすぎる。MODIS 反演は反射率ベースで、反射率が τ に対して飽和
+  するので、部分被覆画素でも画素平均ほど τ は下がらない → 劣線形の冪
+  cover^p·τ_in (p<1) で近似。
+- 掃引(同じ generated-weather、対応づけのみ変更):
+  p=1 → 0.105 / p=0.4 → 0.102 / p=0.3 → 0.101 / p=0.2 → 0.100 /
+  p=0.1 → 0.0994 / p=0(希釈なし) → 0.128。
+  0.1-0.4 は平坦な最良域、p→0 で崖(全面雲扱いの厚さ)へ落ちる。
+  平坦域の中央で崖から離れた p=0.2 を採用(f43c1e508)。
+- classes 0.105→0.100・contrast 0.643→0.640・bias 0.996→0.949・
+  gain 0.798→0.790。tauThin は 0.53-0.56→0.41-0.53 へ緩和するも実写
+  (0.08-0.17)を依然大きく超過、tauThick は temperate 0.21→0.23 と
+  むしろ微増 — 希釈だけでは帯の飽和 τ_in には届かない。
+- 残る本丸は τ_in = k·H^(5/3) そのものの校正(帯の層状雲で ~600 と
+  飽和)。ただし τ_in は描画の不透明度にも効くので、次の実験は
+  worktree + 撮影確認が要る。
+
+## step 47 — 巻雲 τ の天井(3 候補すべて不採用)+ ループのスクリプト化
+- 発見: CIRRUS_MAX_OPTICAL_DEPTH=3 < ISCCP thin/mid 境界 3.6 で、巻雲は
+  構造的に全て thin 級 — 高雲頂×中〜厚 τ(層状巻雲・金床)の区分が空。
+  tauThin 過剰(0.4-0.5 vs 0.08-0.17)・tauMid 不足の主犯候補。
+- 候補1(MAX=15, LIMIT=14, HAZE_GAIN×2, STREAK_GAIN×2.5): τ は届くが
+  haze gain で検出被覆が拡大 → topHigh 0.30-0.36(実写 0.17-0.26)・
+  deep 過剰(temperate 0.081 vs 0.031)で classes 0.111・variogram 0.486 — 却下。
+- 候補2(haze 元、STREAK_GAIN=6): 被覆は抑えたが streak でも検出域が
+  広がり topLow を食う(temperate 0.541 vs 0.628)。contrast 0.744・
+  variogram 0.425 — 却下。
+- 候補3(gain 元のまま、anvil 項 +10·anvil で金床域だけ τ 加算): 被覆
+  不変で金床域のみ mid へ。classes 0.100 と同じで contrast 0.646・
+  bias 0.971・variogram 0.379 と微悪化 — 効果が測れず描画リスクのみ
+  残るので却下(worktree 破棄)。
+- 学び: τ の天井を上げても「検出域(τ≥0.3)の広がり」を増やさない
+  変更でないと classes が動かない。強い巻雲域の mid 化だけでは差が
+  出ない = 薄い巻雲の面積そのものが支配的。
+- 半自動化: tools/cloud-loop.sh を追加。`run <label>`(probe+監査)、
+  `audit-only <label>`(対応づけ変更時)、`diff <A> <B>`(2 監査の
+  見出し+区分表の並列)。レポートは .cloud-detail/history/audit-<label>.txt。
+  基準は audit-base-p02(p=0.2 採用版、classes 0.100)。
