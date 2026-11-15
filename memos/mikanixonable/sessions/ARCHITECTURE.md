@@ -1,4 +1,4 @@
-# 雲の生成基盤の構造(2026-11-16 時点、devin/dev 7b0668511)
+# 雲の生成基盤の構造(2026-11-16 時点、devin/dev 前線統合後)
 
 生成は「気圧場 → 風 → 気団と上昇流 → 雲量場 → 凝結・層化 → 細部乗数 → 光学」の流れ。
 以下は各段の担い手をコードの名前で辿る案内。最新はコードが原本。
@@ -10,8 +10,12 @@
 + `highs.pressureAt`。
 
 - `cyclones.ts` — `Trough`(低気圧 1 個。`pressureAt`=楕円の谷、`eyeAt`=台風の眼、
-  `anvilAt`=天蓋、`wcbAt`=温暖湿気輸送路の領域)、`Cyclones`(熱帯 1 + 温帯
-  `LOW_COUNT`=8)。低気圧への帯のスタンプ(旧 `frontAt`)は step 39 で廃止。
+  `anvilAt`=天蓋、`wcbAt`=温暖湿気輸送路の領域、`frontAt`=前線の
+  雲、`drySlotAt`=乾燥の楔)、`Cyclones`(熱帯 1 + 温帯 `LOW_COUNT`=8)。
+  step 43 で、固定寸法スタンプ(step 39 で廃止した旧 `frontAt`)ではなく、
+  ノルウェー型の幾何(寒冷・温暖・巻きの極曲線の腕3本、文献値の長さ・
+  幅・向き・非対称)+ドライスロットを実体として持つ `frontAt` を再導入。
+  強さは深さへ連動、形は一生の時期 `life` で変わる(暖域の狭窄・巻きの出現)。
 - `cyclone-tracks.ts` — `lowPlacementAt`(step 40: 枡の生まれる経度を
   `rossby-wave.ts` の谷 `waveTroughLongitude` の下流へ錨づけ、4 枡が 5 谷の
   うち 4 個を使う → 空の谷が世代ごとに巡回して波列が時々崩れる。
@@ -32,10 +36,12 @@
 ## 気団・上昇流・帯 `air-mass.ts` + `weatherAt`
 
 `AirMass.at` が遡った風から `warmth`(温位)と `compression`(押し縮まり)を出す。
-**帯 `band` は診断だけで立つ**: `front` = compression・湿度勾配
+**帯 `band`** = 診断(`front` = compression・湿度勾配
 (`moistureGradientAt`)・上昇流から `FRONT_ONSET/FRONT_WIDTH` で遷移、温帯限定。
-`rainband` = compression の稜線(`RAINBAND_ONSET/WIDTH`)、熱帯限定。両者の和を
-`min(..., 1)`。`lift` = 地形 + `dynamicsLiftAt` + `band×BAND_LIFT` −
+`rainband` = compression の稜線(`RAINBAND_ONSET/WIDTH`)、熱帯限定) +
+`cyclones.frontAt`×`FRONT_BAND`(step 43 のノルウェー型前線)の和を `min(..., 1)`。
+ドライスロット `drySlotAt` は地表湿度へ −DRY_SLOT_DRYING・上層へ
+−DRY_SLOT_UPPER_DRYING で晴れの切れ込みを入れる。`lift` = 地形 + `dynamicsLiftAt` + `band×BAND_LIFT` −
 `massReturn`(緯度帯の平均沈降)。
 
 ## 雲量場 `weather-transport.ts`
