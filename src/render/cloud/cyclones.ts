@@ -77,6 +77,9 @@ const WARM_BEARING = THREE.MathUtils.degToRad(40); // 下流側・やや極寄�
 const WARM_NARROW = THREE.MathUtils.degToRad(50); // 暖域が狭まる量 — 波動期 ~155°
 // → 成熟期 ~105°(Shapiro–Keyser の T-bone 90° 級)。
 const WARM_TAPER = 0.35;
+// 温暖前線の非対称 — 層状の雲の盾は表面前線の 600〜900 km 前方(極側・下流)まで
+// 届くので、先行側の幅をこの倍だけ広げて帯ではなく広い盾にする。
+const WARM_ASYMMETRY = 1.8;
 // 巻き(オクルージョン/コンマ頭) — 中心の極側〜西を渦向きに巻く弧。Schultz &
 // Vaughan: catch-up ではなく暖気舌の巻き取りで生じ、最盛期前後に形成、消衰期まで
 // 残って更に巻く。EUMeTrain: CF/WF 帯より雲頂が低い(浅い層雲)。
@@ -284,7 +287,7 @@ export class Trough {
     const warm = this.armAt(
       phi, rho, rN,
       warmBearing, 0, WARM_LENGTH,
-      WARM_WIDTH, 2, WARM_TAPER, 1,
+      WARM_WIDTH, 2, WARM_TAPER, WARM_ASYMMETRY,
     );
     // 巻き — 極側〜西を渦向きに巻く弧。半径は方位で膨らませて螺旋にし、最盛期前後に立つ。
     const dWrap = this.wrapAngle(phi.sub(WRAP_BEARING));
