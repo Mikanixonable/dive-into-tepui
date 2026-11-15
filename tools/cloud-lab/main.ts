@@ -8,7 +8,10 @@ import { createSynopticPanel } from './synoptic-panel';
 import { buildFramingRow } from './framing-controls';
 import { buildTimeControls } from './time-controls';
 import type { Framing, SynopticLayers } from './synoptic-map';
-import { buildButtonRow, buildCheckbox } from '../lab-controls';
+import { buildButtonRow, buildCheckbox, buildSlider } from '../lab-controls';
+import { CLOUD_TUNING, CLOUD_TUNING_DEFAULTS, type CloudTuningId } from '../../src/render/cloud/cloud-tuning';
+import { GENERATION_PARAMS, type GenerationParamSpec } from './generation-params';
+import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
@@ -50,6 +53,10 @@ declare global {
         readonly tropical: CyclonePlacement | null;
         readonly lows: readonly (CyclonePlacement | null)[];
       };
+      // モデルの調整値。いまの全値を返すものと、渡した値を適用して焼き直すもの — 戻った時点で
+      // 焼き直し済みなので、続けて capture すれば新しい値の場が撮れる。
+      params: () => Record<string, number>;
+      setParams: (next: Record<string, number>) => void;
     };
   }
 }
@@ -133,6 +140,64 @@ async function init(): Promise<void> {
     (mode) => selectView(mode === 'synoptic' ? 'synoptic' : lastCloudView));
   const markView = buildButtonRow<CloudLabViewId>('views', entries, selectView);
 
+  // モデルの調整値(uniform)をいじる行。スライダー・JSON 欄・uniform を揃えてから焼き直す。
+  // 焼き直しは雲場 1 面ぶんの費用が掛かるので、ドラッグ中は止めず最後の変更から少し待って
+  // 1 回だけ走らせる(uniform 自体は即時に書き変わり、天気の写しは焼き直しを待たずに乗る)。
+  const setSliders = new Map<CloudTuningId, (value: number) => void>();
+  const paramsBox = document.createElement('textarea');
+  let bakeTimer: number | undefined;
+  const rebake = (): void => {
+    canvas.invalidate();
+    if (currentView !== 'synoptic') canvas.render();
+  };
+  // rebakeNow は撮影口(window.cloudLab.setParams)のためのもの — 返った時点で焼き直しが
+  // 済んでいることにして、呼び側がそのまま capture できるようにする。
+  const applyParams = (next: Partial<Record<CloudTuningId, number>>, rebakeNow = false): void => {
+    for (const [id, value] of Object.entries(next) as [CloudTuningId, number][]) {
+      if (!(id in CLOUD_TUNING_DEFAULTS) || typeof value !== 'number' || !Number.isFinite(value)) continue;
+      CLOUD_TUNING[id].value = value;
+      setSliders.get(id)!(value);
+    }
+    paramsBox.value = JSON.stringify(Object.fromEntries(
+      Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])));
+    window.clearTimeout(bakeTimer);
+    if (rebakeNow) rebake();
+    else bakeTimer = window.setTimeout(rebake, 250);
+  };
+  for (const [id, spec] of Object.entries(GENERATION_PARAMS) as [CloudTuningId, GenerationParamSpec][]) {
+    setSliders.set(id, buildSlider(`p-${spec.row}`, spec.label, spec.min, spec.max, spec.step,
+      () => String(CLOUD_TUNING[id].value), (value) => applyParams({ [id]: value })));
+  }
+
+  // 調整の共有用: いまの全パラメータの JSON。編集して「適用」で戻せる。「リセット」は既定値へ。
+  const paramsRow = document.getElementById('p-json')!;
+  paramsRow.appendChild(paramsBox);
+  const copyButton = document.createElement('button');
+  copyButton.textContent = 'コピー';
+  copyButton.addEventListener('click', () => { void navigator.clipboard.writeText(paramsBox.value); });
+  const applyButton = document.createElement('button');
+  applyButton.textContent = '適用';
+  applyButton.addEventListener('click', () => {
+    try {
+      applyParams(JSON.parse(paramsBox.value) as Partial<Record<CloudTuningId, number>>);
+    } catch (e) {
+      document.getElementById('error')!.textContent = `パラメータの JSON が読めない: ${String(e)}`;
+    }
+  });
+  const resetButton = document.createElement('button');
+  resetButton.textContent = 'リセット';
+  resetButton.addEventListener('click', () => applyParams({ ...CLOUD_TUNING_DEFAULTS }));
+  paramsRow.append(copyButton, applyButton, resetButton);
+  applyParams(Object.fromEntries(
+    Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])) as Record<CloudTuningId, number>);
+
+  // 最後に回した比較の評価値。撮影つきの比較(CLI)の結果なので、いま開いているパラメータの
+  // 評価ではない — 未実行ならその旨だけ出す。
+  const score = document.getElementById('score')!;
+  void latestReportText('compare/latest.json').then((text) => {
+    score.textContent = text ?? '評価 — (cloud-lab:compare 未実行)';
+  });
+
   markMode('cloud');
   markView(canvas.currentView);
   showLegend(CLOUD_LAB_VIEWS.find((view) => view.id === canvas.currentView)!.legend);
@@ -159,6 +224,8 @@ async function init(): Promise<void> {
       tropical: tropicalPlacementAt(hours * SECONDS_PER_HOUR),
       lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * SECONDS_PER_HOUR, R_EARTH)),
     }),
+    params: () => Object.fromEntries(Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])),
+    setParams: (next) => applyParams(next, true),
   };
 }
 
