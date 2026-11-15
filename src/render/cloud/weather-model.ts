@@ -160,7 +160,9 @@ const LAND_HEIGHT_BIAS = 800;
 // 亜熱帯高圧帯の下の海が丸ごと晴れる。
 const SURFACE_LIFT_HUMIDITY = 1.3;
 const SURFACE_SUBSIDENCE_DRYING = 1.0;
-const UPPER_LIFT_HUMIDITY = 0.7;
+// 上層は上昇流の断熱冷却で氷飽和へ達するので、地表付近より強く湿る — 前線帯・ITCZ の
+// 収束域・低気圧の前方に組織だった巻雲を作る項。小さいと天候系の場面差がノイズに埋もれる。
+const UPPER_LIFT_HUMIDITY = 2.5;
 // 上昇流が、移流した地表付近の湿度の偏差(源の底上げ SURFACE_HUMIDITY_BASE からの揺れ)を増幅する利得。
 // 頭打ち(LIFT_LIMIT)に張り付いた所で偏差は (1 + 利得) 倍 — 1 で 2 倍になる。
 const VORTEX_CONTRAST = 1.0;
