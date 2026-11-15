@@ -103,9 +103,10 @@ const HEAD_STRENGTH = 0.9; // 腕に対する強さ — 頭も帯と同じく厚
 // 冷たい気団が暖かい海へ吹き出すと広域が粒状の積雲(開いた/閉じた海洋セル)で覆われる
 // — 中緯度の海の被覆率の大きな担い手。帯の雲とは別の場なので別のフィールドにする。
 export const POST_BEARING = THREE.MathUtils.degToRad(-175); // 帯の裏側 — 西・やや赤道寄り。
-export const POST_SPAN = THREE.MathUtils.degToRad(75); // 方位の広がり。
+export const POST_SPAN = THREE.MathUtils.degToRad(90); // 方位の広がり — 帯の裏側から頭の
+// 西側まで、寒気が抱える広い扇形。
 const POST_INNER = 0.4; // 芯に貼り付かない内縁(半径の倍率) — 内側は頭と乾きの楔が担う。
-const POST_OUTER = 2.4; // 外縁 — 寒気の吹き出しは低気圧の半径の2倍ほど先まで届く。
+const POST_OUTER = 3.0; // 外縁 — 寒気の吹き出しは低気圧の半径の2〜3倍先まで届く。
 // ドライスロット — 寒冷前線の帯と雲頭のあいだに南西から巻き込む乾燥下降流の楔
 // (Browning; WV では暗帯、可視では晴れ間)。上層の乾きが主だが地表湿度も削る。
 const DRY_BEARING = THREE.MathUtils.degToRad(-160);

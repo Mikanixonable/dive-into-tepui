@@ -2,10 +2,12 @@
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
 import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
 import { cirrusFlowFromWindNode } from './cirrus-flow-node';
+import { CUMULUS_BASE_ALTITUDE } from './cloud-kind';
 import {
   cirrusAmountFromOpticalDepthNode, cumulusAmountFromOpacityNode, cumulusAmountFromTopAltitudeNode,
 } from './cloud-kind-node';
 import type { CloudSample } from './cloud-field-sample';
+import type { FloatNode } from '../tsl-types';
 import type { WeatherSample } from './weather-model';
 export type { CloudSample } from './cloud-field-sample';
 
@@ -117,13 +119,20 @@ const EMBEDDED_DECK_FULL = 0.9;
 const EMBEDDED_CELL_ONSET = 0.4;
 const EMBEDDED_CELL_FULL = 0.8;
 
+// 層状のデッキを雲が満たす、柱に対する割合。海洋性層積雲の雲域は混合層の上端の
+// 3〜5 割ほど(層が高いほど雲域も厚い)。対流の塔や内包セルでは柱全体が雲。
+const ELEMENT_DECK_FILL = 0.35;
+
 // weather から凝結する雲のグラフ。積雲の量は、湿度(低周波)へ対流(高周波)を足した伝達関数の
 // 被覆率と、層状の雲から立つ塔と渦の芯が敷く金床の高いほうの雲頂から決まり、巻雲の量は
 // 上層の湿度が作る靄と筋の柱 τ で出す — 覆う広さは湿度が、層の高さは上昇流と暖気の流入と気団の
 // 折り目の帯が、塔は粒の峰が、平らな天蓋は渦の芯が決める。
 // **対流活発度は被覆率および雲塔の高さに反映され、沈降域の海洋性層積雲では層状起伏も低減する** — 一面に
 // 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
-export function condense(weather: WeatherSample): CloudSample {
+export function condense(weather: WeatherSample): CloudSample & {
+  readonly cumulusElementTop: FloatNode;
+  readonly cumulusElementThickness: FloatNode;
+} {
   // 網目と粒を湿度で混ぜる。混ぜると振れ幅が落ちるので、二乗和の平方根で戻す — 戻さないと
   // 渡りの中間(半々)に、粒の消えた平坦な帯ができる。
   const shape = smoothstep(SHAPE_NETWORK_HUMIDITY, SHAPE_GRAIN_HUMIDITY, weather.surfaceHumidity);
@@ -166,7 +175,8 @@ export function condense(weather: WeatherSample): CloudSample {
   const moist = smoothstep(COVERAGE_ONSET, COVERAGE_ONSET + COVERAGE_WIDTH, weather.surfaceHumidity);
   const rising = smoothstep(-TOWER_LIFT_GATE, TOWER_LIFT_GATE, weather.lift);
   const reach = smoothstep(TOWER_ONSET, TOWER_ONSET + TOWER_WIDTH, grain);
-  const tower = layered.add(weather.tropopause.sub(layered).mul(reach.mul(reach)).mul(moist).mul(rising));
+  const towerFill = reach.mul(reach).mul(moist).mul(rising);
+  const tower = layered.add(weather.tropopause.sub(layered).mul(towerFill));
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が開始閾値を超過した量を遷移幅で正規化した値に基づく晴天率の補数。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
@@ -186,6 +196,11 @@ export function condense(weather: WeatherSample): CloudSample {
   // 高いほう。**覆いの薄い柱は雲頂が何であれ低く透ける雲になる** — 小さな雲が高い柱として立たず、
   // texel の中で雲が占める割合がそのまま不透明度に残る。
   const cloudTop = max(tower, anvil, embeddedTower);
+  // 雲「要素」の幾何学的厚み [m]。層状のデッキは上端の薄い層(海洋性層積雲の雲域は混合層の
+  // 上端の数百 m)だけが雲で、対流の塔や帯に内包されるセルでは柱全体が雲に満たされる。
+  const columnThickness = max(cloudTop.sub(CUMULUS_BASE_ALTITUDE), 0);
+  const convectiveFill = max(embedded, towerFill);
+  const elementThickness = columnThickness.mul(mix(float(ELEMENT_DECK_FILL), 1, convectiveFill));
   const sparse = cumulusAmountFromOpacityNode(coverage);
   const deep = max(sparse, cumulusAmountFromTopAltitudeNode(cloudTop));
   const cumulus = mix(
@@ -205,5 +220,11 @@ export function condense(weather: WeatherSample): CloudSample {
     convection: weather.convectiveActivity,
     climateCloudiness: weather.meanCloudiness,
     anvil: weather.anvil,
+    // 雲「要素」の雲頂高度 [m] と幾何学的厚み [m]。まばらな覆いの texel では量が被覆率へ
+    // 潰れて柱の平均の高さにならないので、焼き込む 4 チャンネルには入らない — ISCCP 分類の
+    // ように画素内の要素そのものの高さ・雲の中の光学的厚みを測る読み手が condense を直接
+    // 呼んで受け取る。
+    cumulusElementTop: cloudTop,
+    cumulusElementThickness: elementThickness,
   };
 }
