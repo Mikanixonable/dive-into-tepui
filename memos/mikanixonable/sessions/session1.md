@@ -54,9 +54,9 @@
 
 ## 実施中(優先度 A)
 
-- [A] **巻雲の供給の統合後再計測** — 熱帯クラスタの流出加湿(CLUSTER_OUTFLOW_
-  HUMIDITY)が統合された devin/dev で、detail index と regime 監査を両方測る。
-  熱帯の上層雲不足(空間配分問題)へ効くか確認する区切り。
+- [A] **熱帯の巻雲供給の改善** — detail index 0.320(0.182 まで届かず)、
+  tropical-sea が区分最悪(intermittency 0.78)。流出加湿 0.3→0.6 は採用済み
+  (step 8)。次は OUTFLOW_SPAN(盾の広がり)を試し、実写の広い天蓋へ近づける。
 
 ## 待ち(優先度 B・C)
 

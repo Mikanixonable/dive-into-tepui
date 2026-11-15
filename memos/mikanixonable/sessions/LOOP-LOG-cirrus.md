@@ -233,8 +233,15 @@ scaly 2.41→2.06・veil 2.29→2.02。場面間の差が出て「晴れ場面�
   0.46)。流出の盾でも熱帯の巻雲はまだ点状で、実写の広い天蓋に届かない。
   regime 監査では tropical-sea topHigh 0.192 vs 実写 0.259 — 供給をさらに
   上げる余地がある。次は CLUSTER_OUTFLOW_HUMIDITY の増量を試す。
+
 ## step 8 — CLUSTER_OUTFLOW_HUMIDITY 0.3→0.6(採用)
 - 熱帯の巻雲不足(tropical-sea index 0.340 が区分最悪)へ、流出の盾の加湿を倍に。
   監査: 見出しは誤差内(contrast 0.683 vs 0.676)。tropical-sea topHigh
   0.192→0.202、tropical-land 0.135→0.142 と熱帯だけが実写方向へ改善、
   温帯・高緯度に副作用なし。採用。
+
+## step 9 — CLUSTER_OUTFLOW_SPAN 2.5→4.0(採用)
+- 流出の盾を半径の 4 倍まで広げると、熱帯の上層雲がさらに実写へ近づく:
+  tropical-sea topHigh 0.202→0.230(実写 0.259)、tropical-land 0.142→0.165
+  (実写 0.203)。contrast 0.708 vs 0.683 はブートストラップの重複内。
+  他区分の悪化なし。かなとこの盾が数百 km 広がるのは物理的に正しい。採用。

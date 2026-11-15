@@ -1,13 +1,13 @@
-# session1s — session1 の子(サブエージェント)の課題
+# session1s — session1 の子セッション台帳
 
-親: `session1.md`(Devin メインセッション)。このファイルは session1 が
-サブエージェントへ配った作業の台帳。完了したものは書かない。
+親: `session1.md`。サブエージェントへ配った作業を書く。配った時点で即座に
+更新し、止まったら消す(停止済みを残さない)。
 
 ## 実施中
 
-- [B] deepFrac/tauThick 上振れの調定計測 — エージェント `afa5bb17`、
-  worktree `.claude/worktrees/deep-tuning`(新規作成・base devin/dev)。
-  配分: temperate-sea の deepFrac(生成 0.063 vs 実写 0.031)と
-  tauThick(0.21 vs 0.096)の約 2 倍上振れについて、ISCCP 判定式と生成側の
-  τ_in/雲頂写像を特定し、候補調定 2〜4 個を regime 監査で測って表で返す。
-  採否は親。コミット・push はしない。開始したばかり。
+- 中緯度の深い対流の欠損調査(agent 99329b5f, SWE-2)
+  - 目的: 温帯で積雲頂 >6.5 km の真の deep 対流がほぼ生成されない原因の
+    特定と、前線帯の乱層雲が高く届く改善候補の実証(監査 + 撮影)。
+  - 成果物: ベースライン対候補の見出し点数と区分別 deepFrac/topMiddle の
+    報告。採否は親が決める。コミットなし。
+  - 作業区: メイン repo または新規 worktree(指示済み)。
