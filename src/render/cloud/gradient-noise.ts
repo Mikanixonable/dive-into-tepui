@@ -1,6 +1,6 @@
 // 3D 勾配ノイズ(改良 Perlin)の単一オクターブ評価。格子点ごとに 12 方向のどれかを割り当て、格子の中の位置との
 // 内積を五次のフェードで三重線形に混ぜる。値はおおむね −1..1 で、格子点では 0 になる。
-import { Fn, exp, floor, int, mix, or, select, uint } from 'three/tsl';
+import { Fn, floor, int, mix, or, select, uint } from 'three/tsl';
 import type { FloatNode, UintNode, Vec3Node } from '../tsl-types';
 
 // 軸ごとの種の乗数(xxhash32 の PRIME32_4・PRIME32_5 と Murmur3 の c2)。隣の格子点の種は定数を
@@ -14,10 +14,6 @@ const MIX_A = 0x7feb352d;
 const MIX_B = 0x2c1b3c6d;
 // 12 方向の勾配で作った和を ±1 へ収める目盛り。
 const AMPLITUDE = 0.982;
-
-// このノイズの値の標準偏差の実測値(一様な位置で 60 万点標本化)。段を重ねるときの補正や、
-// 加重和を単位分散へ直す目盛りに使う。
-export const NOISE_SIGMA = 0.265;
 
 // 格子点の軸ごとの種から、勾配の番号に使う 32 bit。
 const scramble = Fn(([seed]: readonly [UintNode]) => {
@@ -68,16 +64,3 @@ export const gradientNoise = Fn(([position]: readonly [Vec3Node]) => {
       mix(corner(x0, y1, z1, near.x, far.y, far.z), corner(x1, y1, z1, far.x, far.y, far.z), u), v),
     w).mul(AMPLITUDE);
 }).setLayout({ name: 'cloudGradientNoise', type: 'float', inputs: [{ name: 'position', type: 'vec3' }] });
-
-// 乗法の鎖の 1 因子 exp(値 × κ − κ²σ²/2)。駆動する段の値 value と鎖の強さ coupling(κ)から、
-// それより細かい段の振幅へ掛ける倍率を返す。−κ²σ²/2 は各因子の平均を 1 へ戻す補正で、κ が JS の
-// 数ならコンパイル時に畳み込まれる。exponentScale は因子の効きを絞る指数の倍率(段のフェードなど)。
-export function gateFactor(
-  value: FloatNode, coupling: FloatNode | number, exponentScale?: FloatNode,
-): FloatNode {
-  const shift = typeof coupling === 'number'
-    ? coupling * coupling * NOISE_SIGMA * NOISE_SIGMA / 2
-    : coupling.mul(coupling).mul(NOISE_SIGMA * NOISE_SIGMA / 2);
-  const exponent = value.mul(coupling).sub(shift);
-  return exp(exponentScale === undefined ? exponent : exponent.mul(exponentScale));
-}
