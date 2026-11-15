@@ -34,7 +34,7 @@ const CONVECTION_GAIN = 1.2;
 // 上昇流が頭打ちなので活発度も 1 に張り付き、粒の振れ幅(伝達関数の幅の ±1.6 倍)がそのまま乗る
 // — 弱めないと、帯が被覆率の立ち上がり閾値を跨ぐ境界部で、面構造が点描状に破綻する。塔は別の項が
 // 立てるので、ここを上げても帯の上の塔は残る。
-const BAND_GRAIN_FADE = 0.95;
+const FRONT_GRAIN_FADE = 0.95;
 // 層状の雲の高さ [m]。雲底から、上昇流の深さが 1 に漸近する高さまで。上限は前線の乱層雲
 // (4〜8 km)に取る — 塔はここではなく対流の峰が立てる。
 const CLOUD_BASE_HEIGHT = 1000;
@@ -52,7 +52,7 @@ const CLOUD_TOP_BIAS = 2.05;
 const WARM_TOP = 3;
 // 気団収束帯（前線・雨帯）が層雲を持ち上げる量。暖気流入による上昇分と同規模であり、
 // 帯内において乱層雲から積乱雲の高度（5〜7 km）に達する。
-const BAND_TOP = 2;
+const FRONT_TOP = 2;
 // 塔が立つ粒の峰(粒 × 活発度)の縁。**幅は峰の標準偏差(≈ 0.1)と同じ程度に広く取る** —
 // 縁を峰の頂点へ寄せると、塔は 1 texel の針になって数えるほどしか立たない。
 const TOWER_ONSET = 0.015;
@@ -75,7 +75,7 @@ const STRATOCUMULUS_ACTIVITY_WIDTH = 0.45;
 const STRATOCUMULUS_DECK_ADD = 0.35;
 // 前線の帯が被覆率へ足す層状の湿り — 前線の上昇は深い層を飽和させるので、
 // 帯の上では積雲はまばらな柱ではなく一面に広がる厚い層雲(乱層雲)になる。
-const BAND_DECK = 0.3;
+const FRONT_DECK = 0.3;
 // 対流の形が網目から粒へ渡る湿度。雲の少ない所では細胞の壁(網目)、多い所では細胞の芯(粒)が
 // 見える。**形を決める量は粒より低周波でなければならない** — 粒ごとに形が変わると並びが読めない
 // ので、粒を足す前の湿度で決める。渡り始めは覆いの効き始めの少し下、渡り終わりはその 1 単位ぶん上。
@@ -106,8 +106,8 @@ const DEEP_COVERAGE_FULL = 0.93;
 // デッキの中に埋まったセルが層状の雲頂から圏界面へ突き抜ける(乱層雲の内包対流、
 // 実写では温帯海上の深い対流の主な担い手)。粒の峰(高周波で、全球の写しでは解像しない)とは
 // 別の、帯と上昇流と覆いで選ぶ太い通路。閾値は、温帯の海でセルが数 % の面積に立つ置き方。
-const EMBEDDED_BAND_ONSET = 0.4;
-const EMBEDDED_BAND_FULL = 0.8;
+const EMBEDDED_FRONT_ONSET = 0.4;
+const EMBEDDED_FRONT_FULL = 0.8;
 const EMBEDDED_LIFT_ONSET = 0.03;
 const EMBEDDED_LIFT_FULL = 0.05;
 const EMBEDDED_DECK_ONSET = 0.6;
@@ -131,7 +131,7 @@ export function condense(weather: WeatherSample): CloudSample {
   const convection = mix(weather.convection.y, weather.convection.x, shape)
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
   const peak = convection.mul(weather.convectiveActivity);
-  const granularity = peak.mul(CONVECTION_GAIN).mul(weather.band.mul(BAND_GRAIN_FADE).oneMinus());
+  const granularity = peak.mul(CONVECTION_GAIN).mul(weather.cycloneFront.mul(FRONT_GRAIN_FADE).oneMinus());
   // 沈降する湿った海洋の低活発度の空では海洋性層積雲へ連続的に移り、前線帯ではその性質を薄める。
   const subsidence = max(weather.lift.negate(), 0);
   const stratocumulus = smoothstep(
@@ -151,11 +151,11 @@ export function condense(weather: WeatherSample): CloudSample {
       STRATOCUMULUS_ACTIVITY_ONSET + STRATOCUMULUS_ACTIVITY_WIDTH,
       weather.convectiveActivity,
     ).oneMinus())
-    .mul(weather.band.oneMinus());
+    .mul(weather.cycloneFront.oneMinus());
   // 層状の雲: 上昇流と暖気の流入と折り目の帯が持ち上げる高さに、対流の起伏が乗る。
   const convectionRelief = mix(float(1), weather.convectiveActivity, stratocumulus);
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT).add(weather.warmth.mul(WARM_TOP))
-    .add(weather.band.mul(BAND_TOP)).add(convection.mul(CLOUD_TOP_RELIEF).mul(convectionRelief))
+    .add(weather.cycloneFront.mul(FRONT_TOP)).add(convection.mul(CLOUD_TOP_RELIEF).mul(convectionRelief))
     .sub(CLOUD_TOP_BIAS);
   const layered = float(1).add(exp(depth.negate())).reciprocal().mul(LAYER_TOP_SPAN).add(CLOUD_BASE_HEIGHT);
   // 塔: 粒の正の側(細胞の芯)が柱として立ち、いちばん高いものが圏界面へ届く。高さは層状の雲から
@@ -171,13 +171,13 @@ export function condense(weather: WeatherSample): CloudSample {
   // 被覆率は、湿度が開始閾値を超過した量を遷移幅で正規化した値に基づく晴天率の補数。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
   const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(STRATOCUMULUS_DECK_ADD))
-    .add(weather.band.mul(BAND_DECK));
+    .add(weather.cycloneFront.mul(FRONT_DECK));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.pow(COVERAGE_EXCESS_POWER).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
   // 帯の芯に内包された対流セル。層状の雲頂から圏界面まで届き、被覆率の門を潜らない —
   // 一面を覆う乱層雲の下で柱は透けず、デッキそのものが深い柱になる。
-  const embedded = smoothstep(EMBEDDED_BAND_ONSET, EMBEDDED_BAND_FULL, weather.band)
+  const embedded = smoothstep(EMBEDDED_FRONT_ONSET, EMBEDDED_FRONT_FULL, weather.cycloneFront)
     .mul(smoothstep(EMBEDDED_LIFT_ONSET, EMBEDDED_LIFT_FULL, weather.lift))
     .mul(smoothstep(EMBEDDED_DECK_ONSET, EMBEDDED_DECK_FULL, coverage))
     .mul(smoothstep(EMBEDDED_CELL_ONSET, EMBEDDED_CELL_FULL, reach));
