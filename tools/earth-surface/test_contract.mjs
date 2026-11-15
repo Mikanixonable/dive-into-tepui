@@ -11,6 +11,8 @@ import { packageEarthSurface } from './package.mjs';
 import { checkEarthSurface } from './check.mjs';
 import {
   canonicalSha256,
+  checkBaseTerrainGzip,
+  checkTerrainTileGzip,
   validateManifest,
 } from './contract.mjs';
 import { fixtureClimatePng } from './fixture-climate.mjs';
@@ -109,6 +111,40 @@ async function run() {
     oldFormat.writeUInt16LE(2, 4);
     await writeFile(terrainPath, gzipSync(oldFormat, { mtime: 0 }));
     await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /ESTN header key or format mismatch/);
+
+    // Bへroughness・Aへ255を書いた本文は、法線が単位長へ戻らないので弾かれる。
+    const swapped = Buffer.from(fixture.terrain);
+    for (let texel = 32; texel < swapped.length; texel += 4) {
+      swapped[texel + 2] = 204; swapped[texel + 3] = 255;
+    }
+    await writeFile(terrainPath, gzipSync(swapped, { mtime: 0 }));
+    await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /ESTN normal is not unit length|ESTN roughness channel has no data/);
+
+    const opaqueAlpha = Buffer.from(fixture.terrain);
+    for (let texel = 32; texel < opaqueAlpha.length; texel += 4) opaqueAlpha[texel + 3] = 255;
+    await writeFile(terrainPath, gzipSync(opaqueAlpha, { mtime: 0 }));
+    await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /ESTN roughness channel has no data/);
+    await writeFile(terrainPath, gzipSync(fixture.terrain, { mtime: 0 }));
+
+    // base 地形も同じ旧配置を弾く。本番 R2 の障害はこの経路(base)で起きていた。
+    const basePath = join(fixture.root, fixture.manifest.baseTerrain);
+    const originalBase = await readFile(basePath);
+    const swappedBaseTile = (x) => {
+      const tile = terrainPayload({ x });
+      for (let texel = 32; texel < tile.length; texel += 4) { tile[texel + 2] = 204; tile[texel + 3] = 255; }
+      return tile;
+    };
+    const swappedBase = Buffer.concat([baseTerrainPayload().subarray(0, 32), swappedBaseTile(0), swappedBaseTile(1)]);
+    await writeFile(basePath, gzipSync(swappedBase, { mtime: 0 }));
+    await expectFailure(() => checkEarthSurface({ inputRoot: fixture.root }), /ESTN normal is not unit length|ESTN roughness channel has no data/);
+    await writeFile(basePath, originalBase);
+
+    // 配信側の実体を直接検査する入口(release 検査が使う)も、同じ判定をする。
+    checkBaseTerrainGzip(gzipSync(baseTerrainPayload(), { mtime: 0 }));
+    checkTerrainTileGzip(gzipSync(fixture.terrain, { mtime: 0 }), { id: '5/0/0', z: 5, x: 0, y: 0 });
+    assert.throws(() => checkBaseTerrainGzip(gzipSync(swappedBase, { mtime: 0 })), /ESTN normal is not unit length|ESTN roughness channel has no data/);
+    assert.throws(() => checkTerrainTileGzip(gzipSync(swapped, { mtime: 0 }), { id: '5/0/0', z: 5, x: 0, y: 0 }), /ESTN normal is not unit length|ESTN roughness channel has no data/);
+    assert.throws(() => checkBaseTerrainGzip(Buffer.from('not-gzip')), /baseTerrain gzip is invalid/);
     console.log('earth-surface contract fixtures: ok');
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
