@@ -15,7 +15,7 @@ import {
   cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../cloud/cloud-kind-node';
 import { ICE_CLOUD_ASYMMETRY, LIQUID_CLOUD_ASYMMETRY } from '../../cloud/cloud-optics';
-import { cloudReflectanceNode } from '../../cloud/cloud-optics-node';
+import { cloudReflectanceNode, fractionalTransmittanceNode } from '../../cloud/cloud-optics-node';
 import { CLOUD_TOP_SPAN } from '../../cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
@@ -141,8 +141,8 @@ export class CloudShadowRenderer {
         const exit = sqrt(max(shellRadius.mul(shellRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
           .sub(along).mul(bodyRadius);
         const pathLength = clamp(exit, 0, MAX_LIGHT_PATH);
-        // 積雲が返した光の割合(覆う割合 × 柱の R の積算)と、巻雲の層を抜けた光学的厚み。
-        const cumulusBlocked = float(0).toVar();
+        // 積雲の柱ごとの透過率と、巻雲の層を抜けた光学的厚み。
+        const cumulusTransmittance = float(1).toVar();
         const cirrusDepth = float(0).toVar();
         // 受け手の床は自分の積雲の柱のためのもの。積雲の影が無い設定で張ると、巻雲の層を跨ぐ
         // 高さの判定がずれる。
@@ -226,8 +226,9 @@ export class CloudShadowRenderer {
             // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
             // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
             const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
-            cumulusBlocked.addAssign(reflected.mul(rise).mul(inside).div(max(cloudTop, 1))
-              .mul(this.cumulusActive));
+            const pathFraction = rise.mul(inside).div(max(cloudTop, 1));
+            cumulusTransmittance.mulAssign(fractionalTransmittanceNode(
+              reflected.mul(this.cumulusActive), pathFraction));
           });
         });
 
@@ -259,8 +260,8 @@ export class CloudShadowRenderer {
             .mul(cirrusDetail).mul(cirrusCrossing).mul(min(cirrusStep.div(max(rise, 1)), CIRRUS_MAX_SLANT))
             .mul(this.cirrusActive));
         });
-        // 届く光は、積雲では覆っていない割合 + 覆った柱が透した割合、巻雲では層が返さなかった割合。
-        transmittance.assign(float(1).sub(min(cumulusBlocked, 1))
+        // 届く光は、積雲の柱ごとの透過率と巻雲の層の透過率の積。
+        transmittance.assign(cumulusTransmittance
           .mul(float(1).sub(cloudReflectanceNode(cirrusDepth, ICE_CLOUD_ASYMMETRY))));
       });
       return transmittance;
@@ -288,7 +289,7 @@ export class CloudShadowRenderer {
           const pathLength = min(exit.mul(bodyRadius), MAX_LIGHT_PATH);
           const step = pathLength.div(AMBIENT_TAPS);
           const stepRadius = step.div(bodyRadius);
-          const cumulusBlocked = float(0).toVar();
+          const cumulusTransmittance = float(1).toVar();
           const cirrusDepth = float(0).toVar();
           Loop({ start: 0, end: AMBIENT_TAPS, type: 'int', condition: '<' }, ({ i }) => {
             const sampleOffset = offset.add(rayDir.mul(stepRadius.mul(float(i).add(0.5))));
@@ -303,8 +304,9 @@ export class CloudShadowRenderer {
             const reflected = coverage.mul(cloudReflectanceNode(
               cumulusInCloudOpticalDepthNode(cloudTop), LIQUID_CLOUD_ASYMMETRY));
             const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
-            cumulusBlocked.addAssign(reflected.mul(rise).mul(inside).div(max(cloudTop, 1))
-              .mul(this.cumulusActive));
+            const pathFraction = rise.mul(inside).div(max(cloudTop, 1));
+            cumulusTransmittance.mulAssign(fractionalTransmittanceNode(
+              reflected.mul(this.cumulusActive), pathFraction));
             // 巻雲は、その場所の層の高さを光路が跨ぐタップへ、斜めの光路ぶん伸ばした τ を足す。
             const cirrusCrossing = max(float(1)
               .sub(abs(altitude.sub(cirrusTopAltitudeNode(texel.g))).div(max(rise, 1))), 0);
@@ -312,7 +314,7 @@ export class CloudShadowRenderer {
               .mul(cirrusCrossing).mul(min(step.div(max(rise, 1)), CIRRUS_MAX_SLANT))
               .mul(this.cirrusActive));
           });
-          transmittance.assign(float(1).sub(min(cumulusBlocked, 1))
+          transmittance.assign(cumulusTransmittance
             .mul(float(1).sub(cloudReflectanceNode(cirrusDepth, ICE_CLOUD_ASYMMETRY))));
         });
       });
