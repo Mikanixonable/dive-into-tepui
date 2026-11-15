@@ -545,7 +545,7 @@ function clumpBlockMeans(field, mask, x0, y0, w, h, bx, by, threshold) {
 
 // 帯の区画 x0..x0+w(行は帯の範囲)の偏りの測定一式。mask の立つ texel が対象
 // (海陸の層別で、null は全域)。偏り指数 I_B = Var(ブロックの平均) / p(1−p) は
-// cloud-detail-metrics.mjs の heterogeneity と同じ定義を、連続値と
+// cloud-lab-detail-metrics.mjs の heterogeneity と同じ定義を、連続値と
 // 二値化(p50 + 0.3(p99 − p50) のしきい)の両方で取る。分位・晴れ間・厚いブロックの
 // 割合は連続値のブロックの平均から、傾きは log I_B 対 log B から。
 function clumpMeasure(field, mask, band, x0, w) {

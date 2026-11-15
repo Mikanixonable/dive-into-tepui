@@ -14,7 +14,6 @@ docs/
 __pycache__/
 .cloud-lab/
 .cloud-lab-shots/
-.cloud-detail/
 reference/
 assets-src/climate/
 .earth-surface/raw/

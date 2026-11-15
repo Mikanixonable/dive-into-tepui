@@ -1,9 +1,9 @@
 // 夕景(低仰角の太陽)の見た目の基準採取。自己完結で、webpack の本番ビルド(.render-lab)から始め、
 // headless Chrome で render-lab の 'earth' ケースを駆動して (A) 太陽仰角の掃引の絵、
-// (B) 雲の画素の照明項の分解、(C) モンタージュを .cloud-detail/sunset-look/<tag>/ へ書く。
+// (B) 雲の画素の照明項の分解、(C) モンタージュを .cloud-lab/sunset-look/<tag>/ へ書く。
 //   使い方: node tools/sunset-look.mjs — 引数は無し。動作の切り替えは
 //   作業ツリー直下の .loop-sunset-look-config.json(任意)で行う:
-//     { "tag": "base",   // 出力先 .cloud-detail/sunset-look/<tag>/ の名前
+//     { "tag": "base",   // 出力先 .cloud-lab/sunset-look/<tag>/ の名前
 //       "build": true }  // false なら webpack を飛ばして既存の .render-lab/ を使う
 // 仰角は直下点の水平面での太陽の仰角 [deg](tools/sunset-sweep-check.mjs と同じ取り決め)。
 // 視点は3系統: 海抜20m('surface')・2km('air')・400km 斜視('orbit')。方位は直下点で
@@ -23,7 +23,7 @@ const DEBUG_PORT = 9460;
 const configPath = path.join(root, '.loop-sunset-look-config.json');
 const config = existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf8')) : {};
 const tag = config.tag ?? 'base';
-const outRoot = path.join(root, '.cloud-detail', 'sunset-look', tag);
+const outRoot = path.join(root, '.cloud-lab', 'sunset-look', tag);
 
 const R_EARTH = 6.371e6;
 // 高度 altitude [m] の視点から地平線が視線より margin [rad] 上へ来る地球の置き方

@@ -1,14 +1,14 @@
 // 雲の細部の計測ループの正解として、海の上の場面の真色スナップショットを NASA Worldview から
-// .cloud-detail/reference/ へ取り込み、場面と各段の manifest.json を書く。場面の目録は
-// tools/cloud-detail/scenes.json。各場面を km/px の段(既定 0.25・1・4)ごとに正方形で取る。
+// .cloud-lab/detail/reference/ へ取り込み、場面と各段の manifest.json を書く。場面の目録は
+// tools/cloud-lab/detail-scenes.json。各場面を km/px の段(既定 0.25・1・4)ごとに正方形で取る。
 // 既にある画像は取り直さない。
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
 const root = path.resolve(import.meta.dirname, '..');
-const outDir = path.join(root, '.cloud-detail', 'reference');
-const scenes = JSON.parse(readFileSync(path.join(import.meta.dirname, 'cloud-detail', 'scenes.json'), 'utf8'));
+const outDir = path.join(root, '.cloud-lab', 'detail', 'reference');
+const scenes = JSON.parse(readFileSync(path.join(import.meta.dirname, 'cloud-lab', 'detail-scenes.json'), 'utf8'));
 
 // 緯度経度 1° の長さ [km]。km/px の指定は公称値なので、BBOX の換算も近似値で足りる。
 const KM_PER_DEGREE = 111.32;
@@ -83,7 +83,7 @@ async function main() {
     for (const tier of scene.tiers) {
       const size = tier.size ?? SNAPSHOT_SIZE;
       // file はリポジトリ相対。
-      const file = path.posix.join('.cloud-detail', 'reference', `${scene.name}-${tier.kmPerPx}.png`);
+      const file = path.posix.join('.cloud-lab', 'detail', 'reference', `${scene.name}-${tier.kmPerPx}.png`);
       const target = path.join(root, file);
       let bytes;
       let fetchedAt;
@@ -118,9 +118,9 @@ async function main() {
       tiers,
     });
   }
-  const manifest = { tool: 'cloud-detail-reference', scenes: entries };
+  const manifest = { tool: 'cloud-lab-detail-reference', scenes: entries };
   writeFileSync(path.join(outDir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  console.log(`wrote ${path.posix.join('.cloud-detail', 'reference', 'manifest.json')}`);
+  console.log(`wrote ${path.posix.join('.cloud-lab', 'detail', 'reference', 'manifest.json')}`);
 }
 
 main().catch((e) => {
