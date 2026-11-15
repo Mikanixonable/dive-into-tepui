@@ -100,6 +100,11 @@ export class GeneratedCloudField implements CloudFieldSource {
     return this.olderTime;
   }
 
+  // モデルの調整値(cloud-tuning)を変えたあとに呼ぶ。次の prepare で同じ時刻でも焼き直す。
+  public invalidate(): void {
+    this.olderTime = null;
+  }
+
   // 表示時刻 time の天気を中間場から焼き、枚 slot の雲・風・環境へ描く。
   private bakeSlot(renderer: WebGPURenderer, slot: 0 | 1, time: number, gpu?: GpuTimingSink): void {
     this.model.syncTime(time);
