@@ -11,8 +11,6 @@ import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
   cumulusInCloudOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../src/render/cloud/cloud-kind-node';
-import { condense } from '../../src/render/cloud/condensation';
-import { CUMULUS_BASE_ALTITUDE } from '../../src/render/cloud/cloud-kind';
 import { FloatPlaneSet, awaitClimateMap, bytesToBase64 } from './probe-common';
 import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 
@@ -48,12 +46,12 @@ const OUT_HEIGHT = 360;
 // 光学的厚み τ_in で、覆う割合は coverage チャンネルが持つ)。4 つずつ RGBA の写しへ割り当てるので、
 // 写しの序数 × 4 がここの添字に対応する。
 const CHANNELS = [
-  'pressure', 'lift', 'warmth', 'cycloneFront',
+  'pressure', 'lift', 'warmth', 'band',
   'compression', 'surfaceWindEast', 'surfaceWindNorth', 'upperWindEast',
   'upperWindNorth', 'surfaceHumidity', 'upperHumidity', 'convectiveActivity',
   'anvil', 'meanCloudiness', 'landFraction', 'cumulus',
   'cirrus', 'cloudTop', 'coverage',
-  'cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM', 'coldSector',
+  'cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM', 'tropopause',
 ] as const;
 
 class WeatherProbeCanvas {
@@ -78,17 +76,11 @@ class WeatherProbeCanvas {
     const direction = this.outProjection.directionAt(screenUV);
     const weather = this.field.weatherModel.weatherAt(direction);
     const cloud = this.field.at(direction);
-    // ISCCP 分類へ渡す雲の中の光学的厚み・雲頂は、焼いた写しの量(被覆率へ潰れた texel 平均)ではなく
-    // condense が組む雲要素そのものの雲頂から出す — 実写の分類が拾うのは画素内の要素の高さと τ で、
-    // 覆う割合は coverage チャンネルが別に持つ。
-    const condensed = condense(weather);
-    const elementTop = condensed.cumulusElementTop;
-    // 雲の中の光学的厚みは要素の幾何学的厚みから — 層状のデッキは雲頂まで柱全体を
-    // 満たさないので、雲頂からの式へ厚みを仮の柱として渡す。
-    const elementTau = cumulusInCloudOpticalDepthNode(
-      condensed.cumulusElementThickness.add(CUMULUS_BASE_ALTITUDE));
+    // ISCCP 分類へ渡す雲の中の光学的厚みは、雲の写しの量から立つ雲頂の柱として出す。
+    const elementTop = cumulusTopAltitudeNode(cloud.cumulus);
+    const elementTau = cumulusInCloudOpticalDepthNode(elementTop);
     this.planes = new FloatPlaneSet([
-      vec4(weather.pressure, weather.lift, weather.warmth, weather.cycloneFront),
+      vec4(weather.pressure, weather.lift, weather.warmth, weather.band),
       vec4(weather.compression, weather.surfaceWind.x, weather.surfaceWind.y, weather.upperWind.x),
       vec4(weather.upperWind.y, weather.surfaceHumidity, weather.upperHumidity, weather.convectiveActivity),
       vec4(weather.anvil, weather.meanCloudiness, weather.landFraction, cloud.cumulus),
@@ -100,7 +92,7 @@ class WeatherProbeCanvas {
         cirrusColumnOpticalDepthNode(cloud.cirrus),
         elementTop,
         cirrusTopAltitudeNode(cloud.cirrus),
-        weather.coldSector),
+        weather.tropopause),
     ], OUT_WIDTH, OUT_HEIGHT);
   }
 

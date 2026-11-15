@@ -12,11 +12,11 @@ import { DeferredTexture } from '../../src/render/deferred-texture';
 import { snapCap } from '../../src/render/cloud/cloud-cap';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
-  cumulusCoveringDepthNode, cumulusTopAltitudeNode,
+  cumulusColumnOpticalDepthNode, cumulusTopAltitudeNode,
 } from '../../src/render/cloud/cloud-kind-node';
 import {
   CIRRUS_MAX_OPTICAL_DEPTH, CIRRUS_TOP_ALTITUDE,
-  CUMULUS_MAX_COVERING_DEPTH, CUMULUS_TOP_ALTITUDE,
+  CUMULUS_MAX_OPTICAL_DEPTH, CUMULUS_TOP_ALTITUDE,
 } from '../../src/render/cloud/cloud-kind';
 import {
   CloudMotionWind, awaitClimateMap, boxDirectionNode, renderTargetBase64,
@@ -45,7 +45,7 @@ interface CloudTranslucentProbe {
   // 表示時刻 hours [h] の場を焼く。以後の samplePhysBox / sampleWindBox はこの時刻を読む。
   readonly prepare: (hours: number) => Promise<void>;
   // 種類別の物理量を箱の面で読む。RGBA8 の生画素の base64(行は北から南、列は西から東):
-  // R = 積雲の覆いの深さ / CUMULUS_MAX_COVERING_DEPTH、
+  // R = 積雲の鉛直柱光学深さ / CUMULUS_MAX_OPTICAL_DEPTH、
   // G = 巻雲の同 / CIRRUS_MAX_OPTICAL_DEPTH、B = 積雲の雲頂高度 / CUMULUS_TOP_ALTITUDE、
   // A = 巻雲の雲頂高度 / CIRRUS_TOP_ALTITUDE。
   readonly samplePhysBox: (spec: BoxSpec) => Promise<string>;
@@ -117,7 +117,7 @@ class TranslucentProbeCanvas {
     const direction = this.directionNode();
     const sample = this.field.at(direction);
     return vec4(
-      cumulusCoveringDepthNode(sample.cumulus).div(CUMULUS_MAX_COVERING_DEPTH),
+      cumulusColumnOpticalDepthNode(sample.cumulus).div(CUMULUS_MAX_OPTICAL_DEPTH),
       cirrusColumnOpticalDepthNode(sample.cirrus).div(CIRRUS_MAX_OPTICAL_DEPTH),
       cumulusTopAltitudeNode(sample.cumulus).div(CUMULUS_TOP_ALTITUDE),
       cirrusTopAltitudeNode(sample.cirrus).div(CIRRUS_TOP_ALTITUDE));
@@ -132,6 +132,7 @@ class TranslucentProbeCanvas {
   public async prepare(hours: number): Promise<void> {
     DeferredTexture.publishOne(this.renderer);
     this.field.prepare(this.renderer, hours * 3600);
+    this.motionWind.syncBlend();
   }
 
   // 画素を base64 で返す(行は北から南へ、列は西から東へ並ぶ)。
