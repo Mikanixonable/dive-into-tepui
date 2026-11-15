@@ -3,7 +3,7 @@
 // TSL のグラフで答える。谷は前線の向き(北半球で南西–北東、南半球で北西–南東)へ長い楕円。眼を持つか
 // どうかは谷の芯で風が等圧線を横切る角で決まり、締まって深い熱帯低気圧が持つ。
 import * as THREE from 'three/webgpu';
-import { atan, clamp, dot, exp, float, inverseSqrt, max, mod, select, smoothstep, sqrt, uniform } from 'three/tsl';
+import { atan, clamp, cos, dot, exp, float, inverseSqrt, max, mod, select, smoothstep, sqrt, uniform } from 'three/tsl';
 import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from './cyclone-tracks';
 import { coreCrossingAngle } from './wind-law';
 import type { CyclonePlacement } from './cyclone-tracks';
@@ -52,7 +52,7 @@ const WCB_OFFSET_EAST = 700e3;
 const WCB_LENGTH = 2400e3;
 const WCB_WIDTH = 800e3;
 // 前線が張るほど低気圧が育つ下限 [hPa]。この深さで帯が 0.5 になる。
-const FRONT_DEPTH_HALF = 10;
+export const FRONT_DEPTH_HALF = 10;
 
 // ── 低気圧従属の前線(ノルウェーの温帯低気圧モデルの幾何)──────────────────
 // 局所座標は「東」と「極方向」に張る接平面 — 方位 φ = atan2(極側変位, 東変位) で、
@@ -62,19 +62,19 @@ const FRONT_DEPTH_HALF = 10;
 // 寒冷前線 — 中心から赤道側へ長く伸びる雲帯。JMA SatManu: 雲帯の幅 200〜400 km、
 // 古典的な例で長さ 1000 km 超(典型 1500〜2500 km)、暖域側(渦向き側)の先行縁に
 // 細い対流線(rope cloud)が立ち寒気側へ層状に垂れる非対称の断面、帯は渦状に湾曲。
-const COLD_LENGTH = 2.2; // 長さ(半径の倍率)。R≈1000 km で ~2200 km。
+export const COLD_LENGTH = 2.2; // 長さ(半径の倍率)。R≈1000 km で ~2200 km。
 const COLD_WIDTH = 150e3; // 帯の半幅 [m] — 雲帯 200〜400 km の芯の σ。
-const COLD_BEARING = THREE.MathUtils.degToRad(-115); // 赤道側・やや西寄りの向き。
-const COLD_CURVE = 0.3; // 渦向きへの曲がり [rad/半径] — 先端が循環へ沿って巻く。
+export const COLD_BEARING = THREE.MathUtils.degToRad(-115); // 赤道側・やや西寄りの向き。
+export const COLD_CURVE = 0.3; // 渦向きへの曲がり [rad/半径] — 先端が循環へ沿って巻く。
 const COLD_EDGE = 4; // 断面の超ガウス指数 — 鋭い縁。
 const COLD_TAPER = 0.45; // 先端へ向けて幅が細くなる割合。
 const COLD_ASYMMETRY = 0.55; // 先行(暖域)側の幅比 — 鋭い側。
 // 温暖前線 — 中心から下流(東)へ、幅広く縁がぼんやりした雲域。降水帯 200〜300 km +
 // 巻雲の盾は表面前線の 600〜900 km 前方まで届くので帯は長く広い。
-const WARM_LENGTH = 1.4;
+export const WARM_LENGTH = 1.4;
 const WARM_WIDTH = 340e3;
-const WARM_BEARING = THREE.MathUtils.degToRad(40); // 下流側・やや極寄り。
-const WARM_NARROW = THREE.MathUtils.degToRad(50); // 暖域が狭まる量 — 波動期 ~155°
+export const WARM_BEARING = THREE.MathUtils.degToRad(40); // 下流側・やや極寄り。
+export const WARM_NARROW = THREE.MathUtils.degToRad(50); // 暖域が狭まる量 — 波動期 ~155°
 // → 成熟期 ~105°(Shapiro–Keyser の T-bone 90° 級)。
 const WARM_TAPER = 0.35;
 // 温暖前線の非対称 — 層状の雲の盾は表面前線の 600〜900 km 前方(極側・下流)まで
@@ -83,13 +83,30 @@ const WARM_ASYMMETRY = 1.8;
 // 巻き(オクルージョン/コンマ頭) — 中心の極側〜西を渦向きに巻く弧。Schultz &
 // Vaughan: catch-up ではなく暖気舌の巻き取りで生じ、最盛期前後に形成、消衰期まで
 // 残って更に巻く。EUMeTrain: CF/WF 帯より雲頂が低い(浅い層雲)。
-const WRAP_RADIUS = 0.7; // 弧の半径(半径の倍率)。
+export const WRAP_RADIUS = 0.7; // 弧の半径(半径の倍率)。
 const WRAP_RADIAL = 0.28; // 弧の太さ(半径の倍率)。
-const WRAP_BEARING = THREE.MathUtils.degToRad(140); // 弧の中心(極側-西)。
-const WRAP_SPAN = THREE.MathUtils.degToRad(80); // 弧の角幅。
-const WRAP_SPIRAL = 0.35; // 弧が西端で外側へ膨らむ量 — 螺旋の巻き。
-const WRAP_ONSET = 0.3; // 巻きが立ち始める life(最盛期 0.42 の直前)。
-const WRAP_FULL = 0.6;
+export const WRAP_BEARING = THREE.MathUtils.degToRad(140); // 弧の中心(極側-西)。
+export const WRAP_SPAN = THREE.MathUtils.degToRad(80); // 弧の角幅。
+export const WRAP_SPIRAL = 0.35; // 弧が西端で外側へ膨らむ量 — 螺旋の巻き。
+export const WRAP_ONSET = 0.3; // 巻きが立ち始める life(最盛期 0.42 の直前)。
+export const WRAP_FULL = 0.6;
+// コンマの頭 — 巻きの弧の内側・極側を乱層雲が埋める広い雲域(閉そく部)。弧は線だが、
+// 実写では弧が囲む面いっぱいに厚い雲が詰まり、低気圧の芯を抱え込む。中心から巻きの
+// 向きへずらした円盤として張る。頭は発達期から立ち、消衰期まで残る。
+const HEAD_OFFSET = 0.35; // 円盤の芯が中心からずれる量(半径の倍率、巻きの向き側)。
+const HEAD_RADIUS = 0.8; // 円盤の半径(半径の倍率)。
+const HEAD_EDGE = 4; // 断面の超ガウス指数 — 広く平らで縁は緩やかに落ちる。
+const HEAD_ONSET = 0.1; // 頭が立ち始める life — 発達期の暖気の吹き上がりから雲がある。
+const HEAD_FULL = 0.4;
+const HEAD_STRENGTH = 0.9; // 腕に対する強さ — 頭も帯と同じく厚い層状の雲域。
+// 前線通過後の寒気側 — 寒冷前線の帯の裏側(渦向き手前側)に広がる細胞状の積雲域。
+// 冷たい気団が暖かい海へ吹き出すと広域が粒状の積雲(開いた/閉じた海洋セル)で覆われる
+// — 中緯度の海の被覆率の大きな担い手。帯の雲とは別の場なので別のフィールドにする。
+export const POST_BEARING = THREE.MathUtils.degToRad(-175); // 帯の裏側 — 西・やや赤道寄り。
+export const POST_SPAN = THREE.MathUtils.degToRad(90); // 方位の広がり — 帯の裏側から頭の
+// 西側まで、寒気が抱える広い扇形。
+const POST_INNER = 0.4; // 芯に貼り付かない内縁(半径の倍率) — 内側は頭と乾きの楔が担う。
+const POST_OUTER = 3.0; // 外縁 — 寒気の吹き出しは低気圧の半径の2〜3倍先まで届く。
 // ドライスロット — 寒冷前線の帯と雲頭のあいだに南西から巻き込む乾燥下降流の楔
 // (Browning; WV では暗帯、可視では晴れ間)。上層の乾きが主だが地表湿度も削る。
 const DRY_BEARING = THREE.MathUtils.degToRad(-160);
@@ -297,7 +314,28 @@ export class Trough {
     const wrap = exp(wrapAngular.mul(wrapAngular).negate())
       .mul(exp(wrapRadial.mul(wrapRadial).negate()))
       .mul(smoothstep(WRAP_ONSET, WRAP_FULL, this.life));
-    return max(max(cold, warm), wrap).mul(strength);
+    // コンマの頭 — 巻きの向きへずらした円盤。腕の包絡が消える中心側も埋め、
+    // 低気圧の芯を雲域の中へ抱え込む。頭の芯は半径 HEAD_OFFSET・方位 WRAP_BEARING
+    // の点で、そこからの距離は前線座標 (rN, φ) へ余弦定理で取る。
+    const dHead = cos(this.wrapAngle(phi.sub(WRAP_BEARING)));
+    const headDistance = sqrt(
+      rN.mul(rN).add(HEAD_OFFSET * HEAD_OFFSET).sub(rN.mul(2 * HEAD_OFFSET).mul(dHead)),
+    );
+    const head = exp(headDistance.div(HEAD_RADIUS).abs().pow(HEAD_EDGE).negate())
+      .mul(smoothstep(HEAD_ONSET, HEAD_FULL, this.life)).mul(HEAD_STRENGTH);
+    return max(max(max(cold, warm), wrap), head).mul(strength);
+  }
+
+  // 前線通過後の寒気側の細胞状積雲域の強さ 0..1。寒冷前線の帯の裏側へ広がる
+  // 広い面 — 帯の雲ではなく、冷たい気団の下で対流が千切れて並ぶ場。
+  public coldSectorAt(direction: Vec3Node): FloatNode {
+    const { rN, phi } = this.frontFrame(direction);
+    const strength = clamp(this.depth.div(FRONT_DEPTH_HALF * 2), 0, 1);
+    const angular = this.wrapAngle(phi.sub(POST_BEARING)).div(POST_SPAN);
+    return exp(angular.mul(angular).negate())
+      .mul(smoothstep(POST_INNER, POST_INNER + 0.4, rN))
+      .mul(smoothstep(POST_OUTER * 0.6, POST_OUTER, rN).oneMinus())
+      .mul(strength);
   }
 
   // ドライスロットの強さ 0..1 — 寒冷前線の帯と雲頭のあいだへ南西から巻き込む乾燥の楔。
@@ -364,5 +402,10 @@ export class Cyclones {
   // 単位方向 direction でのドライスロットの強さ 0..1。
   public drySlotAt(direction: Vec3Node): FloatNode {
     return this.lows.reduce<FloatNode>((sum, trough) => max(sum, trough.drySlotAt(direction)), float(0));
+  }
+
+  // 単位方向 direction での寒気側の細胞状積雲域の強さ 0..1。
+  public coldSectorAt(direction: Vec3Node): FloatNode {
+    return this.lows.reduce<FloatNode>((sum, trough) => max(sum, trough.coldSectorAt(direction)), float(0));
   }
 }
