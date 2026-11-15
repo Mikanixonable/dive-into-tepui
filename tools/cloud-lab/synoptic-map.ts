@@ -2,8 +2,11 @@
 // から、気圧の塗り・等圧線・上層の流線・地表の風矢印・偏西風の蛇行の軸を引き、
 // 海岸線と経緯線で座標を示す。見せる範囲は MapView(中心と半径で決まる窓)で、全層が同じ窓を使う。
 import { EARTH_COASTLINE, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import { WAVE_NUMBER, WAVE_PHASE_RATE } from '../../src/render/cloud/rossby-wave';
 import type { SynopticFields } from './synoptic-field';
+
+// 偏西風の蛇行の波数と位相の進む速さ [rad/s]。src/render/cloud/rossby-wave.ts の値と対。
+const WAVE_NUMBER = 5;
+const WAVE_PHASE_RATE = WAVE_NUMBER * ((3 * Math.PI / 180) / 86400);
 
 export const MAP_WIDTH = 1440;
 export const MAP_HEIGHT = 720;
