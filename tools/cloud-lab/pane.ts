@@ -19,6 +19,11 @@ export class CloudLabPane {
     this.field.prepare(renderer, seconds);
   }
 
+  // 調整値を変えたあとに呼ぶ。次の bake で同じ時刻でも焼き直す。
+  public invalidate(): void {
+    this.field.invalidate();
+  }
+
   // この面の uv(0..1)に出す表示値 0..1 の色。投影が値を持たない範囲は黒。
   public colorAt(view: CloudLabView, uv: Vec2Node): Vec3Node {
     const projection = this.field.fieldProjection;

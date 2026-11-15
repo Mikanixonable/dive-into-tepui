@@ -68,6 +68,17 @@
   .row .field .scale .tick.on { opacity: 1; color: var(--accent); font-weight: 600; }
   #cap { column-gap: 28px; }
   #time .field output { min-width: 7.5em; }
+  #score { opacity: .7; white-space: nowrap; }
+  #score:empty { display: none; }
+  #params { border: 1px solid var(--edge); border-radius: 4px; padding: 0 8px; }
+  #params summary { cursor: pointer; opacity: .7; padding: 4px 0; }
+  #params[open] summary { border-bottom: 1px solid var(--edge); margin-bottom: 6px; }
+  #params .row { padding: 2px 0; }
+  #params .row .field input[type=range] { width: min(160px, 14vw); }
+  #params textarea {
+    background: #1c2229; color: var(--text); border: 1px solid var(--edge); border-radius: 4px;
+    font: inherit; width: min(900px, 100%); height: 44px; padding: 4px 8px; resize: vertical;
+  }
   figure {
     margin: 0; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 6px;
     padding: 8px; background: var(--panel); border: 1px solid var(--edge);
@@ -85,17 +96,27 @@
   <nav class="tabs" aria-label="側">
     <a class="active" aria-current="page">生成</a>
     <a href="detail.html">描画</a>
+    <a href="separate.html">分離</a>
   </nav>
   <header>
     <h1>Cloud Lab</h1>
     <div class="tabs" id="mode"></div>
     <p id="status"></p>
+    <p id="score"></p>
     <p id="error"></p>
   </header>
   <div class="row" id="views"></div>
   <div class="row" id="layers" style="display:none"></div>
   <div class="row" id="time"></div>
   <div class="row" id="cap"><span class="row-title" id="capTitle">cap</span></div>
+  <details id="params">
+    <summary>パラメーター</summary>
+    <div class="row" id="p-weather"><span class="row-title">気象</span></div>
+    <div class="row" id="p-transport"><span class="row-title">移流</span></div>
+    <div class="row" id="p-condense"><span class="row-title">凝結</span></div>
+    <div class="row" id="p-activity"><span class="row-title">活発度</span></div>
+    <div class="row" id="p-json"></div>
+  </details>
   <figure>
     <div class="screen"><canvas id="view"></canvas><canvas id="map" style="display:none"></canvas></div>
     <div id="legend"></div>

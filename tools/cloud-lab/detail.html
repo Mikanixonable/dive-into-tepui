@@ -28,8 +28,9 @@
     opacity: 1; font-weight: 600;
   }
   #status { opacity: .7; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #score { opacity: .7; white-space: nowrap; }
   #error { color: #ff8a5c; white-space: pre-wrap; }
-  #status:empty, #error:empty { display: none; }
+  #status:empty, #score:empty, #error:empty { display: none; }
   .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
   .row-title { opacity: .7; margin-right: 4px; }
   .row button {
@@ -56,10 +57,12 @@
   <nav class="tabs" aria-label="側">
     <a href="index.html">生成</a>
     <a class="active" aria-current="page">描画</a>
+    <a href="separate.html">分離</a>
   </nav>
   <header>
     <h1>Cloud Lab — 雲の細部</h1>
     <p id="status"></p>
+    <p id="score"></p>
     <p id="error"></p>
   </header>
   <div class="row" id="scenes"><span class="row-title">場面</span></div>
