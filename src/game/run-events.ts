@@ -219,7 +219,13 @@ export type RunEventBody =
   // 授与された鹵獲の積荷を載せた補給艇が、波間に自機の前方へ現れた。
   | { readonly kind: 'salvageTenderArrived' }
   // 授与された鹵獲のうち、設計図棚へ追加すべきもの。name は棚へ追加する設計図の名前。
-  | { readonly kind: 'salvageBlueprintGranted'; readonly name: string };
+  | { readonly kind: 'salvageBlueprintGranted'; readonly name: string }
+
+  // ------------------------------------------------------------------ 遺物
+  // 遺物の反射を検出した。distanceKm は操作艦から遺物までの距離。
+  | { readonly kind: 'relicReflection'; readonly distanceKm: number }
+  // 遺物を発見した。id は遺物の識別子、name は台帳へ加わる名前、origin は由来。
+  | { readonly kind: 'relicDiscovered'; readonly id: string; readonly name: string; readonly origin: string };
 
 // 記録された出来事1件。
 export interface RunEvent {

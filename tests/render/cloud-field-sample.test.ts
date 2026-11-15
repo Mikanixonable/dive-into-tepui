@@ -21,6 +21,7 @@ function assertFlow(angleRad: number, speedMs: number): void {
   assert.ok(Math.abs(flow.north - Math.sin(2 * angleRad) * alignment) < CLOSE);
 }
 
+// 雲場の混合同期と、風から導く巻雲の向きを検査する。
 export function register(): void {
   test('cloud blend: sampler uniforms follow blend updates until unbound', () => {
     const blend = new CloudBlendState();

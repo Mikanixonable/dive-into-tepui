@@ -51,6 +51,7 @@ function readBakedField(cap: OrthographicCap, values: Float64Array, direction: T
   const y0 = Math.floor(py);
   const fx = px - x0;
   const fy = py - y0;
+  // 円板の外を端へ寄せ、4 texel の双線形重みで値を読む。
   const at = (x: number, y: number): number => values[Math.min(BAKE_SIZE - 1, Math.max(0, y)) * BAKE_SIZE
     + Math.min(BAKE_SIZE - 1, Math.max(0, x))]!;
   return at(x0, y0) * (1 - fx) * (1 - fy) + at(x0 + 1, y0) * fx * (1 - fy)
@@ -62,6 +63,7 @@ function directionOf(latitude: number, longitude: number): THREE.Vector3 {
     Math.cos(latitude) * Math.sin(longitude), Math.sin(latitude), Math.cos(latitude) * Math.cos(longitude));
 }
 
+// cap の逆写像、焼き込みと読み戻し、視点移動後の世界固定性を検査する。
 export function register(): void {
   test('orthographic cap: uv と単位方向は互いの逆写像', () => {
     for (const [latitude, longitude, radius] of ORTHOGRAPHIC_PLACEMENTS) {
