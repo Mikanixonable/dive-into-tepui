@@ -39,6 +39,7 @@ export interface WeatherSample {
   readonly convectiveActivity: FloatNode; // 対流の強弱がどれだけ強く現れるか 0..1
   readonly compression: FloatNode; // 気団の境目の押し縮まり(1 で何も起きていない)
   readonly cycloneFront: FloatNode; // 低気圧従属の前線(寒冷・温暖・巻きの3本の腕、ノルウェー型)の強さ 0..1
+  readonly coldSector: FloatNode; // 前線通過後の寒気側の細胞状積雲域(低気圧従属)の強さ 0..1
   readonly warmth: FloatNode; // 暖気の流入 = 出身地からの緯度の差 [rad](負で寒気)
   readonly anvil: FloatNode; // 金床(平らな天蓋)の濃さ 0..1
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
@@ -134,6 +135,10 @@ const FRONT_LIFT = 0.06;
 // なるが、前線の面全体が湿度の上限へ張り付いて一枚の台地にはならない
 // (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
 const FRONT_HUMIDITY = 0.1;
+// 前線通過後の寒気側域が地表付近の湿度へ足す底上げ(海上のみ)。冷たい気団が暖かい
+// 海面を渡ると下から湿りと熱を受け取り、広域が粒状の積雲(海洋セル)で覆われる。
+// 被覆率の伝達関数の幅(0.22)の半分強 — 一面を覆う帯ではなく、千切れた雲が混じる程度。
+const POST_SECTOR_HUMIDITY = 0.12;
 // 低気圧従属の前線(寒冷・温暖・巻きの3本の腕 + 暖域の三角、ノルウェー型)の強さへの換算。
 // 前線は上昇流・湿度・乱層雲の被覆率(FRONT_DECK)へ自然に伝わる。深さで発達へ
 // 連動し、一生の中の時期で形が変わる(cyclones.ts の前線の定数が正本)。
@@ -362,6 +367,7 @@ export class WeatherModel {
     // 時期で発達・消衰へ連動する)。
     const cycloneFront = min(this.cyclones.frontAt(direction).mul(CYCLONE_FRONT_GAIN), 1);
     const drySlot = this.cyclones.drySlotAt(direction);
+    const coldSector = this.cyclones.coldSectorAt(direction);
     const frontLift = cycloneFront.mul(FRONT_LIFT);
     const stormTrack = extratropical.mul(
       smoothstep(STORM_TRACK_POLE_START, STORM_TRACK_POLE_END, abs(latitude)).oneMinus(),
@@ -393,6 +399,7 @@ export class WeatherModel {
         .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT).mul(surfaceBiasWeight))
         .add(max(lift, 0).mul(SURFACE_LIFT_HUMIDITY)).add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
         .add(warmth.mul(WARM_HUMIDITY)).add(cycloneFront.mul(FRONT_HUMIDITY))
+        .add(coldSector.mul(POST_SECTOR_HUMIDITY).mul(landFraction.oneMinus()))
         .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(SURFACE_EYE_DRYNESS))
         .sub(clusterHalo.mul(CLUSTER_DRYING)).sub(drySlot.mul(DRY_SLOT_DRYING)), 0, 1);
     const upperHumidity = clamp(
@@ -414,6 +421,7 @@ export class WeatherModel {
         direction, lift, warmth, this.climate.landFraction(direction), cycloneFront),
       compression: airMass.compression,
       cycloneFront,
+      coldSector,
       warmth,
       anvil,
       meanCloudiness,
