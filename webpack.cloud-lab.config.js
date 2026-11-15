@@ -14,13 +14,15 @@ module.exports = {
   // main が実験環境(index.html)、separate が実写の分離環境(separate.html)、
   // render-capture が描画経路の多スケール撮影(render-capture.html)、
   // motion が生成雲の動きの計測用の読み出し(motion.html)、
-  // weather-probe が気象状態の浮動小数の読み出し(weather-probe.html)。
+  // weather-probe が気象状態の浮動小数の読み出し(weather-probe.html)、translucent が半透明雲の
+  // 教師比較用の物理量の読み出し(translucent.html)。
   entry: {
     main: './tools/cloud-lab/main.ts',
     separate: './tools/cloud-lab/separate-main.ts',
     'render-capture': './tools/cloud-lab/render-capture-main.ts',
     motion: './tools/cloud-lab/motion-main.ts',
     'weather-probe': './tools/cloud-lab/weather-probe-main.ts',
+    translucent: './tools/cloud-lab/translucent-main.ts',
   },
   resolve: {
     extensions: ['.ts', '.js'],
@@ -104,6 +106,11 @@ module.exports = {
       template: './tools/cloud-lab/weather-probe.html',
       filename: 'weather-probe.html',
       chunks: ['weather-probe'],
+    }),
+    new HtmlWebpackPlugin({
+      template: './tools/cloud-lab/translucent.html',
+      filename: 'translucent.html',
+      chunks: ['translucent'],
     }),
   ],
   devServer: {
