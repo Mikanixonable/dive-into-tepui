@@ -248,11 +248,59 @@ function readEstnHeader(payload, key) {
     || z !== key.z || x !== key.x || y !== key.y) fail(`ESTN header key or format mismatch: ${key.id}`);
 }
 
+// 地形本文の画素を規則的な間引きで検査する。RGBは単位法線へ復元でき、
+// Aのroughnessが全画素最大値という空データでないことを確認する。
+const TERRAIN_TEXEL_STRIDE = 64;
+const TERRAIN_NORMAL_TOLERANCE = 0.02;
+
+function checkTerrainTexels(payload, label) {
+  const body = payload.subarray(EARTH_TERRAIN_HEADER_BYTES);
+  let sampled = 0;
+  let opaque = 0;
+  for (let texel = 0; texel < body.length; texel += TERRAIN_TEXEL_STRIDE * EARTH_TERRAIN_CHANNELS) {
+    const nx = body[texel] / 127.5 - 1;
+    const ny = body[texel + 1] / 127.5 - 1;
+    const nz = body[texel + 2] / 127.5 - 1;
+    if (Math.abs(Math.hypot(nx, ny, nz) - 1) > TERRAIN_NORMAL_TOLERANCE) {
+      fail(`ESTN normal is not unit length: ${label}`);
+    }
+    if (body[texel + 3] === 255) opaque += 1;
+    sampled += 1;
+  }
+  if (opaque === sampled) fail(`ESTN roughness channel has no data: ${label}`);
+}
+
 async function verifyColor(root, key) {
   const url = `tiles/${key.z}/${key.x}/${key.y}.jpg`;
   const actual = await requiredFile(root, url, `color ${key.id}`);
   readBaseColorJpeg(await readFile(actual.absolutePath), { width: 260, height: 260, components: 3 });
   return { url, ...actual };
+}
+
+function checkBaseTerrainPayload(payload) {
+  readEstbHeader(payload);
+  for (let column = 0; column < EARTH_BASE_ROOT_COLUMNS; column += 1) {
+    const start = EARTH_TERRAIN_HEADER_BYTES + column * EARTH_TERRAIN_PAYLOAD_BYTES;
+    const tile = payload.subarray(start, start + EARTH_TERRAIN_PAYLOAD_BYTES);
+    const key = { id: `0/${column}/0`, z: 0, x: column, y: 0 };
+    readEstnHeader(tile, key);
+    checkTerrainTexels(tile, key.id);
+  }
+}
+
+// 配信済みの地形バイト列(gzip)を、ESTN/ESTB の形式と本文の契約で検査する。
+// release 検査が R2 上の実体に対して使う。ローカル bundle の検査と同じ関数を通す。
+export function checkTerrainTileGzip(compressed, key) {
+  let payload;
+  try { payload = gunzipSync(compressed); } catch (error) { throw new EarthSurfaceContractError(`terrain gzip is invalid: ${key.id}`, { cause: error }); }
+  readEstnHeader(payload, key);
+  checkTerrainTexels(payload, key.id);
+}
+
+export function checkBaseTerrainGzip(compressed) {
+  let payload;
+  try { payload = gunzipSync(compressed); } catch (error) { throw new EarthSurfaceContractError('baseTerrain gzip is invalid', { cause: error }); }
+  checkBaseTerrainPayload(payload);
 }
 
 async function verifyTerrain(root, key) {
@@ -262,6 +310,7 @@ async function verifyTerrain(root, key) {
   let payload;
   try { payload = gunzipSync(compressed); } catch (error) { throw new EarthSurfaceContractError(`terrain gzip is invalid: ${url}`, { cause: error }); }
   readEstnHeader(payload, key);
+  checkTerrainTexels(payload, key.id);
   return { url, ...actual, payloadBytes: payload.byteLength };
 }
 
@@ -450,7 +499,7 @@ export async function inspectEarthSurfaceBundle({ inputRoot, manifestName = 'ear
   const baseTerrain = await requiredFile(root, manifest.baseTerrain, 'baseTerrain');
   let baseTerrainPayload;
   try { baseTerrainPayload = gunzipSync(await readFile(baseTerrain.absolutePath)); } catch (error) { throw new EarthSurfaceContractError('baseTerrain gzip is invalid', { cause: error }); }
-  readEstbHeader(baseTerrainPayload);
+  checkBaseTerrainPayload(baseTerrainPayload);
   const climateMaps = await Promise.all(manifest.climateMaps.map((path, index) => verifyClimateMap(root, path, index)));
   const tiles = manifest.coverage.kind === 'complete'
     ? tileKeys(manifest.coverage.maxZoom) : await sparseTileKeys(root);
