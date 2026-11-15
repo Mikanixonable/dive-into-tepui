@@ -271,3 +271,14 @@
   WARM_LENGTH/WIDTH/BEARING/NARROW/TAPER、WRAP_RADIUS/RADIAL/BEARING/SPAN/
   SPIRAL/ONSET/FULL、DRY_BEARING/SPAN/INNER/OUTER、FRONT_BAND、
   DRY_SLOT_DRYING/UPPER_DRYING — ループが 1 つずつ採否できる形。
+
+- 実装: cyclones.ts に frontAt(腕3本)/drySlotAt(楔)を追加、CyclonePlacement へ
+  life を追加、weather-model で FRONT_BAND=0.9 で帯へ載せ、ドライスロットは
+  地表湿度 −0.25・上層湿度 −0.45。帯へ載るので上昇流・帯湿度・乱層雲被覆率へ
+  自然に伝わる。
+- 結果: weather 0.0997・classes 0.123・contrast 0.659・bias 1.24・gain 0.767・
+  variogram 0.372 — 分布はベースライン誤差内で維持(weather・classes・
+  variogram は変わらず、contrast・bias・gap は微改善)。極表示の撮影で
+  中心を巻くコンマ雲(頭+尾の構造)を確認。採用。
+- 残り検証: 全球図法の細部で寒冷/温暖の非対称が読み取れる粒度か、
+  次の撮影で見る。調整余地は定数表の通り。
