@@ -3,7 +3,8 @@
 import { clamp, exp, log, max, min, sqrt } from 'three/tsl';
 import {
   CIRRUS_ALTITUDE_SPAN, CIRRUS_BOTTOM_ALTITUDE, CIRRUS_MAX_OPTICAL_DEPTH,
-  CUMULUS_ALTITUDE_SPAN, CUMULUS_BASE_ALTITUDE, CUMULUS_MAX_OPACITY, CUMULUS_OPTICAL_DEPTH_SCALE,
+  CUMULUS_ALTITUDE_SPAN, CUMULUS_BASE_ALTITUDE, CUMULUS_IN_CLOUD_DEPTH_COEFFICIENT,
+  CUMULUS_MAX_OPACITY, CUMULUS_OPTICAL_DEPTH_SCALE,
 } from './cloud-kind';
 import type { FloatNode } from '../tsl-types';
 
@@ -20,6 +21,12 @@ export function cumulusColumnOpticalDepthNode(amount: FloatNode): FloatNode {
 // 積雲の量から不透明度(1 − e^−τ)。
 export function cumulusOpacityNode(amount: FloatNode): FloatNode {
   return exp(cumulusColumnOpticalDepthNode(amount).negate()).oneMinus();
+}
+
+// 積雲の雲頂高度 [m] から、雲の柱の中の光学的厚み τ_in = k·H^(5/3)。
+export function cumulusInCloudOpticalDepthNode(cloudTopAltitude: FloatNode): FloatNode {
+  const thickness = max(cloudTopAltitude.sub(CUMULUS_BASE_ALTITUDE), 0);
+  return thickness.pow(5 / 3).mul(CUMULUS_IN_CLOUD_DEPTH_COEFFICIENT);
 }
 
 // 積雲の雲頂高度 [m] から量。高度は式の張る範囲へ clamp する。

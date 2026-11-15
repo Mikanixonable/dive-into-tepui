@@ -14,6 +14,10 @@ export const CUMULUS_OPTICAL_DEPTH_SCALE = 0.12;
 export const CUMULUS_MAX_OPTICAL_DEPTH = 1 / CUMULUS_OPTICAL_DEPTH_SCALE;
 // 量 1 のときの不透明度。不透明度から量へ戻すときの入力の上限でもある。
 export const CUMULUS_MAX_OPACITY = 1 - Math.exp(-CUMULUS_MAX_OPTICAL_DEPTH);
+// 積雲の柱の中の光学的厚み τ_in = k·H^(5/3) の係数 [m^(−5/3)]。断熱的な雲では液水量が
+// 雲底からの高さに比例して増えるので、柱の光学的厚みは雲の幾何学的厚み H の 5/3 乗に伸びる。
+// H = 300 m で τ ≈ 8、1 km で τ ≈ 60 となる値から採った推定値。
+export const CUMULUS_IN_CLOUD_DEPTH_COEFFICIENT = 6.0e-4;
 
 // 巻雲の雲頂高度の式が張る範囲 [m]。量に比例して下端 9 km から上端 13 km までを渡す —
 // 積雲より高く、高度幅は狭い。
@@ -37,6 +41,13 @@ export function cumulusColumnOpticalDepth(amount: number): number {
 // 積雲の量から不透明度(1 − e^−τ)。
 export function cumulusOpacity(amount: number): number {
   return 1 - Math.exp(-cumulusColumnOpticalDepth(amount));
+}
+
+// 積雲の雲頂高度 [m] から、雲の柱の中の光学的厚み τ_in。幾何学的厚みは雲頂と雲底
+// (CUMULUS_BASE_ALTITUDE)の差。雲の白さと雲を抜ける光はここから出す。
+export function cumulusInCloudOpticalDepth(cloudTopAltitude: number): number {
+  const thickness = Math.max(cloudTopAltitude - CUMULUS_BASE_ALTITUDE, 0);
+  return CUMULUS_IN_CLOUD_DEPTH_COEFFICIENT * thickness ** (5 / 3);
 }
 
 // 積雲の雲頂高度 [m] から量。高度は式の張る範囲へ clamp する。
