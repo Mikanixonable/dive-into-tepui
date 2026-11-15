@@ -81,7 +81,7 @@ export function fft2(re, im, n, inverse) {
 }
 
 // [[x, y], ...] の対への最小二乗直線。{slope, intercept}。
-function fitLine(pairs) {
+export function fitLine(pairs) {
   let sx = 0;
   let sy = 0;
   let sxx = 0;
@@ -99,6 +99,20 @@ function fitLine(pairs) {
     slope: (n * sxy - sx * sy) / denominator,
     intercept: (sy - ((n * sxy - sx * sy) / denominator) * sx) / n,
   };
+}
+
+// 値の列の分位点。ソートした列の floor(n*f) 番目を取る。
+export function quantiles(values, fractions) {
+  const sorted = Float64Array.from(values).sort();
+  return fractions.map((fraction) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))]);
+}
+
+// 実写と生成の分位点の差の絶対値の平均を、実写の最初と最後の分位点の幅で割った
+// 正規化ワッサースタイン距離。幅が 0 のときは差の平均そのものを返す。
+export function normalizedDistance(realQ, genQ) {
+  const width = realQ[realQ.length - 1] - realQ[0];
+  const meanDiff = realQ.reduce((sum, q, i) => sum + Math.abs(q - genQ[i]), 0) / realQ.length;
+  return { distance: meanDiff / Math.max(width, 1e-6), realWidth: width };
 }
 
 // 平均を引いて周期 Hann 窓を掛けた場を返す。
@@ -332,6 +346,19 @@ function shapeStats(data, n, kmPerPx, threshold) {
     .filter((component) => inRange(component) && Math.sqrt(component.areaKm2) <= 100 && component.perimeterKm > 0)
     .map((component) => [Math.log(Math.sqrt(component.areaKm2)), Math.log(component.perimeterKm)]);
   const perimeterAreaDimension = perimeterPairs.length >= 8 ? fitLine(perimeterPairs).slope : null;
+  // 細長さ: 最も長い成分の長軸 [km] と、細長い成分(長軸/短軸 ≥ 4)が雲の面積へ占める割合。
+  // ジェットに沿う筋状の巻雲は長軸が数百〜千 km・比が大きいので、これで「大きな細長い
+  // 構造」を実写と比べられる(出典: EUMeTrain jet fibres、Durran & Weber 1988)。
+  let maxAxisKm = null;
+  let elongatedAreaKm2 = 0;
+  for (const component of interior) {
+    if (component.majorKm === undefined) continue;
+    if (maxAxisKm === null || component.majorKm > maxAxisKm) maxAxisKm = component.majorKm;
+    if (component.minorKm > 0 && component.majorKm / component.minorKm >= 4) {
+      elongatedAreaKm2 += component.areaKm2;
+    }
+  }
+  const totalInteriorKm2 = interior.reduce((sum, component) => sum + component.areaKm2, 0);
   return {
     threshold,
     cloudyShare: stats.cloudyShare,
@@ -340,6 +367,8 @@ function shapeStats(data, n, kmPerPx, threshold) {
     fitMinKm: minKm,
     sizeExponent,
     perimeterAreaDimension,
+    maxAxisKm,
+    elongatedShare: totalInteriorKm2 > 0 ? elongatedAreaKm2 / totalInteriorKm2 : null,
   };
 }
 

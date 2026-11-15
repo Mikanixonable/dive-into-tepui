@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" && node tools/usage-limits.mjs --brief 2>/dev/null || true",
+            "command": "cd \"${CLAUDE_PROJECT_DIR:-.}\" && node tools/usage-limits.mjs --runtime=claude --brief 2>/dev/null || true",
             "statusMessage": "利用枠(Claude 5h・週間 / SWE-2)の確認",
             "timeout": 20
           }
