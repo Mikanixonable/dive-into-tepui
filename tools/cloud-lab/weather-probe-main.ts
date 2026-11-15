@@ -10,7 +10,7 @@ import { EquirectProjection } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
-  cumulusColumnOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+  cumulusCoveringDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../src/render/cloud/cloud-kind-node';
 import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 
@@ -93,7 +93,7 @@ class WeatherProbeCanvas {
       vec4(weather.anvil, weather.meanCloudiness, weather.landFraction, cloud.cumulus),
       vec4(
         cloud.cirrus, cumulusTopAltitudeNode(cloud.cumulus), cumulusOpacityNode(cloud.cumulus),
-        cumulusColumnOpticalDepthNode(cloud.cumulus)),
+        cumulusCoveringDepthNode(cloud.cumulus)),
       // 端数の面。余った成分は読み出し側が CHANNELS の長さで打ち切る。
       vec4(
         cirrusColumnOpticalDepthNode(cloud.cirrus),

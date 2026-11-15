@@ -2,7 +2,6 @@
 // 光学的厚みの計算式を集約し、各レンダラーのシェーダーグラフへ展開する。
 import { clamp, min, smoothstep } from 'three/tsl';
 import { CloudDetailEvaluator, DETAIL_AMPLITUDE_MAX } from './cloud-detail';
-import { cumulusColumnOpticalDepthNode } from './cloud-kind-node';
 import { CUMULUS_DITHER_KNOB, CLOUD_TOP_SPAN } from './cumulus-shape';
 import type { CloudSample } from './cloud-field-sample';
 import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
@@ -72,11 +71,6 @@ export class CloudShapeEvaluator {
   // 正規化した雲頂高度を、天体中心からの雲頂の半径(地表の半径 1 基準)へ写す。
   public cloudTopRadius(cloudTop: FloatNode, groundRadius: FloatNode): FloatNode {
     return cloudTop.mul(groundRadius.oneMinus()).add(groundRadius);
-  }
-
-  // 積雲の量から鉛直柱光学深さ。
-  public columnOpticalDepth(amount: FloatNode): FloatNode {
-    return cumulusColumnOpticalDepthNode(amount);
   }
 
   public get cloudTopSpan(): number { return CLOUD_TOP_SPAN; }

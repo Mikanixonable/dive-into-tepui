@@ -2,36 +2,37 @@
 // 成分から鉛直柱光学深さを引くか、掠める視線の光路をどこで頭打ちにするかを持ち、殻と交わる
 // 1つの入口/出口イベントが、雲自身の透過率と局所放射輝度を返す。
 //
-// **輝度は多重散乱の極限近似で算出する。** 殻は「その柱の光学深さぶんだけ拡散反射する層」として
-// 振る舞う。到達光は引数で渡されるため、入射光の減衰・影・地平線は
-// 大気と同一の共通関数で評価される。イベント位置までの背景大気透過と、イベント間の雲透過の合成は
-// AtmosphereCloudLayersが所有し、ここでは二重に適用しない。
+// **輝度は保存散乱の 2 流近似で算出する。** 殻は「その柱の光学深さに応じて光を返す層」として
+// 振る舞い、返さなかった光は下へ抜ける(吸収なしで T = 1 − R)。到達光は引数で渡されるため、
+// 入射光の減衰・影・地平線は大気と同一の共通関数で評価される。イベント位置までの背景大気透過と、
+// イベント間の雲透過の合成は AtmosphereCloudLayers が所有し、ここでは二重に適用しない。
 import * as THREE from 'three/webgpu';
 import { If, dot, float, greaterThan, max, min, normalize, sign, uniform, vec4 } from 'three/tsl';
 import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../cloud/cloud-detail';
 import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
-import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../cloud/cloud-optics-node';
+import { ICE_CLOUD_ASYMMETRY } from '../cloud/cloud-optics';
+import { cloudReflectanceNode, shellAirmassNode } from '../cloud/cloud-optics-node';
 import { cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode } from '../cloud/cloud-kind-node';
-import { CIRRUS_BOTTOM_ALTITUDE, CIRRUS_TOP_ALTITUDE, CUMULUS_MAX_OPTICAL_DEPTH } from '../cloud/cloud-kind';
+import { CIRRUS_BOTTOM_ALTITUDE, CIRRUS_MAX_OPTICAL_DEPTH, CIRRUS_TOP_ALTITUDE } from '../cloud/cloud-kind';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { CloudSample } from '../cloud/cloud-field-sample';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
 
 // 鉛直の光学的厚みへ張る上限。ゲインを上げた柱はここで飽和する。殻が取りうる厚みは
 // 切らない値に取る。
-const MAX_SHELL_OPTICAL_DEPTH = CUMULUS_MAX_OPTICAL_DEPTH;
+const MAX_SHELL_OPTICAL_DEPTH = CIRRUS_MAX_OPTICAL_DEPTH * 3;
 
 // 層の厚みへ張る下限 [m]。掠める視線の光路は厚みぶんの弦で頭打ちにするので、厚み 0 では
 // 地平線ぎわの視線が飽和する。
 const MIN_SHELL_THICKNESS = 1;
 
 // 殻 1 枚の見え方。鉛直の光学的厚みは、場から引いた厚みを cutoff で足切りし、gain を掛けたもの。
-// albedo は殻の拡散反射率、bottomAltitude と topAltitude はその殻が代表する層の高度 [m] で、
-// 殻は層の中央に立ち、層の厚みが掠める視線の光路を決める。
+// bottomAltitude と topAltitude はその殻が代表する層の高度 [m] で、殻は層の中央に立ち、
+// 層の厚みが掠める視線の光路を決める。返す光の割合は、層の光学的厚みと種類の非対称因子から
+// cloudReflectance が出す — 手で置いたアルベドは持たない。
 interface CloudShellKnob {
   readonly cutoff: FloatUniform;
   readonly gain: FloatUniform;
-  readonly albedo: FloatUniform;
   readonly bottomAltitude: FloatUniform;
   readonly topAltitude: FloatUniform;
 }
@@ -41,8 +42,10 @@ interface CloudShellKnob {
 const CLOUD_SHELL_DEFINITIONS = [
   {
     species: 'cirrus',
+    // 氷の雲の非対称因子(保存散乱の Eddington 近似、Meador & Weaver 1980)。
+    asymmetry: ICE_CLOUD_ASYMMETRY,
     knob: {
-      cutoff: uniform(0), gain: uniform(1), albedo: uniform(1),
+      cutoff: uniform(0), gain: uniform(1),
       bottomAltitude: uniform(CIRRUS_BOTTOM_ALTITUDE), topAltitude: uniform(CIRRUS_TOP_ALTITUDE),
     },
     columnOpticalDepth: (field: CloudSample): FloatNode => cirrusColumnOpticalDepthNode(field.cirrus),
@@ -79,10 +82,7 @@ export function shellAltitudeOf(species: CloudSpecies): FloatNode {
 
 // 殻と交わる 1 点ぶんの、視線が受ける減衰と、その点が視線へ足す放射輝度。
 export interface CloudShellSample {
-  // 場の量から種類別の曲線で得た鉛直柱光学深さ。
-  readonly columnOpticalDepth: FloatNode;
-  // 鉛直柱を視線へ写す倍率。球殻の厚みで接線側の発散を有限化する。
-  readonly airmass: FloatNode;
+  // このイベントの雲を抜けて下地へ届く光の割合(1 − R)。
   readonly transmittance: FloatNode;
   // イベント局所の放射輝度。背景大気透過と手前イベント透過はここでは掛けない。
   readonly radiance: Vec3Node;
@@ -179,13 +179,11 @@ export class CloudAtmosphereRenderer {
     // 視線が層を斜めに抜けるぶんの倍率。**水平では発散する**ので、層の厚みぶんの弦 √(2RΔh) を
     // 通る視線を上限に取る(地球の 1 km 厚なら光路 226 km、天頂の 113 倍)。
     const airmass = shellAirmassNode(dot(sampleUp, rayDir), thickness, shellRadius);
-    const transmittance = transmittanceFromColumnOpticalDepthNode(columnOpticalDepth, airmass);
-    const covered = transmittance.oneMinus();
+    // 層を抜ける光路の厚みから、層が返す光の割合。吸収は無いので、残りは全部下地へ抜ける。
+    const reflectance = cloudReflectanceNode(columnOpticalDepth.mul(airmass), definition.asymmetry);
     return {
-      columnOpticalDepth,
-      airmass,
-      transmittance,
-      radiance: sunRadiance.mul(covered.mul(max(dot(sampleUp, sunDir), 0)).mul(knob.albedo)),
+      transmittance: reflectance.oneMinus(),
+      radiance: sunRadiance.mul(reflectance.mul(max(dot(sampleUp, sunDir), 0))),
     };
   }
 

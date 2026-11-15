@@ -1,7 +1,8 @@
-// 雲の白さと光学的厚みの関係を測る道具。render-lab の cloud-albedo ケース(暗い海の上へ
-// 一様な雲板を立てて直下から見る合成の場面)をヘッドレス Chrome で撮り、画面中央の領域の
-// 平均の表示値をトーンマップの逆写像で放射輝度へ戻し、反射率相当へ換算して、保存散乱の
-// 2 流近似(Eddington、Meador & Weaver 1980)の参照曲線と並べる。
+// 雲の白さ・下地の隠れ方・影の濃さが同じ光学的厚みから釣り合っているかを測る道具。
+// render-lab の cloud-albedo ケース(暗い海・白い拡散面の上へ一様な雲板を立てて直下から
+// 見る合成の場面)をヘッドレス Chrome で撮り、画面中央の領域の平均の表示値をトーン
+// マップの逆写像で放射輝度へ戻し、保存散乱の 2 流近似(Eddington、Meador & Weaver
+// 1980)の参照 R = γτ/(1+γτ) と比べて PASS/FAIL を出す。
 //   使い方: node tools/cloud-albedo-check.mjs — 引数は無し。ポートは環境変数
 //   CLOUD_DETAIL_PORT・CLOUD_DETAIL_DEBUG_PORT。切り替えは作業ツリー直下の
 //   .loop-albedo-config.json(任意)で行う:
@@ -15,8 +16,11 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { openChromeSession, sleep, waitFor, collectFatalEvents } from './chrome-session.mjs';
 import { decodePng } from './png.mjs';
 import {
-  ALTITUDE_M, CIRRUS_AMOUNTS, CUMULUS_AMOUNTS, CLEAR_VARIANT, WHITE_VARIANT,
-  cirrusTauOf, cumulusTauOf, eddingtonReflectance, REFERENCE_TAUS, ZENITHS_DEG,
+  ALTITUDE_M, CIRRUS_AMOUNTS, CIRRUS_OCEAN_VARIANTS, CIRRUS_WHITE_VARIANTS,
+  CUMULUS_AMOUNTS, CUMULUS_OCEAN_VARIANTS, CUMULUS_WHITE_VARIANTS,
+  CLEAR_VARIANT, WHITE_VARIANT, DETAIL_TOP_RELIEF_M,
+  cirrusTauOf, cloudReflectance, cumulusCoverOf, cumulusTauOf, cumulusTauOfTop,
+  cumulusThicknessOf, cumulusTopAltitudeOf, REFERENCE_TAUS, ZENITHS_DEG,
 } from './render-lab/cloud-albedo-model.ts';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -38,8 +42,13 @@ const REGION = { x0: 360, y0: 200, x1: 600, y1: 340 };
 // 雲の画素を拾う、雲なし画像に対する明るさの下限(表示輝度の比 + 絶対の床)。
 const COVER_RATIO = 1.5;
 const COVER_FLOOR = 0.01;
-// 環境光の照度の比(ambient-source.ts)。反射率相当の cosZ 基準に足す。
-const AMBIENT_FRACTION = 0.03;
+// 判定の許容差。反射率は |差| ≤ 0.08、影は |差| ≤ 0.1。
+const ALBEDO_TOLERANCE = 0.08;
+const SHADOW_TOLERANCE = 0.1;
+// 影の測定に使う白い面の上の積雲の量。覆う割合が空く量から覆い尽くす量まで。
+const CUMULUS_WHITE_AMOUNTS = [0.05, 0.15, 0.24, 0.35];
+// 非対称因子(種類ごと)。cloud-optics.ts の定数と同じ値。
+const G_OF = { cumulus: 0.85, cirrus: 0.75 };
 
 // 測る条件の組。積雲は大気のあり・なし × 細部の粗・標準、巻雲は大気あり × 細部の粗・標準
 // (巻雲は大気パスの中に描かれるので、大気なしでは描かれない)。
@@ -156,7 +165,6 @@ function coveredFraction(png, clearDisplayLum) {
 }
 
 const displayLum = (m) => 0.2126 * m.display[0] + 0.7152 * m.display[1] + 0.0722 * m.display[2];
-const cosZ = (zenithDeg) => Math.cos(zenithDeg * Math.PI / 180);
 const f2 = (v) => v.toFixed(2);
 const f3 = (v) => v.toFixed(3);
 
@@ -212,7 +220,11 @@ async function main() {
     }
     await setG('clouds', true);
 
-    // 積雲の板。大気のあり・なし × 細部の粗・標準 × 天頂角で量を掃引する。
+    // 積雲の板。大気のあり・なし × 細部の粗・標準 × 天頂角で量を掃引する。海の行に加えて、
+    // 標準の細部では白い面の上の雲も撮って影の濃さを測る(同じ量で下地だけ白へ変えた組)。
+    // **海の行の間は雲の影を切る** — 板の下の海が影で暗くなると「覆っていない画素 = 雲なし」の
+    // 前提が崩れて反射率を過小に読む。影は白い面の行でだけ入れる。
+    await setG('cloudShadow', false);
     await setG('cumulus', true);
     await setG('cirrus', false);
     for (const atmo of ATMO_LEGS) {
@@ -223,21 +235,34 @@ async function main() {
           await setView(zenith);
           for (const [i, amount] of CUMULUS_AMOUNTS.entries()) {
             const name = `cu-a${String(Math.round(amount * 100)).padStart(3, '0')}-z${zenith}-${atmo.tag}-${detail.tag}`;
-            const { png, measure } = await shoot(name, i);
+            const { png, measure } = await shoot(name, CUMULUS_OCEAN_VARIANTS + i);
             const baseline = baselines[`${atmo.tag}-z${zenith}`];
+            const covered = coveredFraction(png, displayLum(baseline.clear));
             metrics.push({
               name, kind: 'cumulus', amount, tau: cumulusTauOf(amount), zenithDeg: zenith,
               atmosphere: atmo.value, detail: detail.tag, ...measure,
-              covered: coveredFraction(png, displayLum(baseline.clear)),
-              rWhite: measure.lum / baseline.white.lum,
-              rCosZ: measure.lum / (cosZ(zenith) + AMBIENT_FRACTION),
+              covered, rWhite: measure.lum / baseline.white.lum,
             });
+            if (detail.tag === 'dstd' && CUMULUS_WHITE_AMOUNTS.includes(amount)) {
+              await setG('cloudShadow', true);
+              const white = await shoot(`${name}-white`, CUMULUS_WHITE_VARIANTS + i);
+              await setG('cloudShadow', false);
+              // 影を落とさない同じ画も撮る — 2 枚の差から、雲の下の地表へ届く光が解ける。
+              const open = await shoot(`${name}-wopen`, CUMULUS_WHITE_VARIANTS + i);
+              metrics.push({
+                name: `${name}-white`, kind: 'cumulus-shadow', amount, tau: cumulusTauOf(amount),
+                zenithDeg: zenith, atmosphere: atmo.value, detail: detail.tag, ...white.measure,
+                covered, lumOpen: open.measure.lum,
+                rWhite: white.measure.lum / baseline.white.lum,
+              });
+            }
           }
         }
       }
     }
 
     // 巻雲の板。大気の中へ立つ殻なので大気ありだけ。細部の粗・標準 × 天頂角で量を掃引する。
+    // 標準の細部では白い面の上の巻雲も撮る。
     await setG('atmosphere', 3);
     await setG('cumulus', false);
     await setG('cirrus', true);
@@ -247,15 +272,23 @@ async function main() {
         await setView(zenith);
         for (const [i, amount] of CIRRUS_AMOUNTS.entries()) {
           const name = `ci-a${String(Math.round(amount * 100)).padStart(3, '0')}-z${zenith}-atm3-${detail.tag}`;
-          const { measure } = await shoot(name, CUMULUS_AMOUNTS.length + i);
+          const { measure } = await shoot(name, CIRRUS_OCEAN_VARIANTS + i);
           const baseline = baselines[`atm3-z${zenith}`];
           metrics.push({
             name, kind: 'cirrus', amount, tau: cirrusTauOf(amount), zenithDeg: zenith,
             atmosphere: 3, detail: detail.tag, ...measure,
-            covered: null,
-            rWhite: measure.lum / baseline.white.lum,
-            rCosZ: measure.lum / (cosZ(zenith) + AMBIENT_FRACTION),
+            covered: null, rWhite: measure.lum / baseline.white.lum,
           });
+          if (detail.tag === 'dstd') {
+            await setG('cloudShadow', true);
+            const white = await shoot(`${name}-white`, CIRRUS_WHITE_VARIANTS + i);
+            await setG('cloudShadow', false);
+            metrics.push({
+              name: `${name}-white`, kind: 'cirrus-shadow', amount, tau: cirrusTauOf(amount),
+              zenithDeg: zenith, atmosphere: 3, detail: detail.tag, ...white.measure,
+              covered: null, rWhite: white.measure.lum / baseline.white.lum,
+            });
+          }
         }
       }
     }
@@ -263,10 +296,83 @@ async function main() {
     await session.close();
   }
 
-  const gOf = { cumulus: 0.85, cirrus: 0.75 };
-  const refOf = (kind, tau, zenithDeg) => eddingtonReflectance(tau, cosZ(zenithDeg), gOf[kind]);
+  const refOf = (kind, tau) => cloudReflectance(tau, G_OF[kind]);
+  const judge = (diff, tolerance) => (Math.abs(diff) <= tolerance ? 'PASS' : 'FAIL');
+  const verdicts = [];
 
-  // 表を組む。行 = 雲の量(τ)、列 = 天頂角ごとの R(描画)・R_ref・比。
+  // 雲なしの基準を差し引いた反射率の推定値。積雲は覆っていない画素ぶんだけ海が漏れるので
+  // rDiff = (L − (1−cover)·L_clear)/L_white。巻雲は層を透けた下地が全域で混ざるので
+  // R_est = (L − L_clear)/(L_white − L_clear)。
+  const estimate = (row) => {
+    const baseline = baselines[`${row.atmosphere === 0 ? 'atm0' : 'atm3'}-z${row.zenithDeg}`];
+    if (row.kind === 'cumulus') {
+      const cover = row.covered ?? cumulusCoverOf(row.amount);
+      const rDiff = (row.lum - (1 - cover) * baseline.clear.lum) / baseline.white.lum;
+      const expected = cover * refOf('cumulus', row.tau);
+      // 覆う割合が 1 未満の列では、ディザで選ばれた柱の雲頂が細部の起伏ぶん持ち上がるので、
+      // 画素の明るさは基準の雲頂の R より高い側へ寄る。判定の帯は [cover·R(τ_in),
+      // cover·R(τ_in(雲頂 + 細部の起伏上限))] で、覆う割合 ≈ 1 の列は帯の下端へ厳密に合わせる。
+      const top = cumulusTopAltitudeOf(row.amount);
+      const hi = cover * cloudReflectance(cumulusTauOfTop(top + DETAIL_TOP_RELIEF_M), G_OF.cumulus);
+      const banded = cover < 0.95;
+      const verdict = banded
+        ? (rDiff >= expected - ALBEDO_TOLERANCE && rDiff <= hi + ALBEDO_TOLERANCE ? 'PASS' : 'FAIL')
+        : judge(rDiff - expected, ALBEDO_TOLERANCE);
+      return { rEst: rDiff, expected, hi, banded, diff: rDiff - expected, verdict };
+    }
+    if (row.kind === 'cirrus') {
+      const rEst = (row.lum - baseline.clear.lum) / (baseline.white.lum - baseline.clear.lum);
+      const expected = refOf('cirrus', row.tau);
+      return { rEst, expected, diff: rEst - expected, verdict: judge(rEst - expected, ALBEDO_TOLERANCE) };
+    }
+    return null;
+  };
+
+  // 白い面の上の雲の行と、同じ量の海の行の組を探す(雲自身が返す光の測定値)。
+  const oceanRowOf = (row) => metrics.find((m) => (
+    m.kind === row.kind.replace('-shadow', '')
+    && m.amount === row.amount && m.zenithDeg === row.zenithDeg
+    && m.atmosphere === row.atmosphere && m.detail === row.detail
+  ));
+
+  // 白い面の上の雲の行から、雲の下の地表の明るさを解く。画面の明るさから雲自身が返す光
+  // (海の行で測った分)を差し引いた残りが、雲の下を照らす光で照らされた地表ぶん。
+  // 積雲の期待値は 1 − 柱が返す光の平均(同じ光学的厚みで返す光と抜ける光が釣り合うので、
+  // 覆う割合 × R の測定値をそのまま使う)。巻雲は太陽側の斜めの光路の厚みで 1 − R(τ·slant)。
+  const shadowRatioOf = (row) => {
+    const baseline = baselines[`${row.atmosphere === 0 ? 'atm0' : 'atm3'}-z${row.zenithDeg}`];
+    const w = row.lum / baseline.white.lum;
+    const ocean = oceanRowOf(row);
+    if (row.kind === 'cumulus-shadow') {
+      const cover = row.covered ?? cumulusCoverOf(row.amount);
+      if (ocean === undefined || row.lumOpen === undefined) return null;
+      const rDiff = (ocean.lum - (1 - cover) * baseline.clear.lum) / baseline.white.lum;
+      const wOpen = row.lumOpen / baseline.white.lum;
+      // 地表が張る輝度ぶん = 画面の輝度 − 雲の返す光。影あり・なしの 2 枚でその比を取ると、
+      // 覆う画素の割合を知らなくても雲の下の地表へ届く光の割合が出る(雲の画素は両方で同じ)。
+      // ほぼ覆い尽くす量では地表ぶんが雲の推定値の誤差より小さく潰れるので対象外にする。
+      if (wOpen - rDiff < 0.03) return null;
+      const ratio = (w - rDiff) / (wOpen - rDiff);
+      const expected = 1 - rDiff;
+      const spec = 1 - cover * refOf('cumulus', row.tau);
+      return { ratio, expected, spec, diff: ratio - expected };
+    }
+    if (row.kind === 'cirrus-shadow') {
+      if (ocean === undefined) return null;
+      const cw = baseline.clear.lum / baseline.white.lum;
+      const rEst = (ocean.lum - baseline.clear.lum) / (baseline.white.lum - baseline.clear.lum);
+      // 層の上の輝度 = 雲の返す光 + 視線の透過 × 地表の明るさ。雲の返す光は海の行の測定値に、
+      // 海が隠れて足りない分(視線の R × 海の明るさ)を足したもの。
+      const rView = refOf('cirrus', row.tau);
+      const cloudRad = rEst * (1 - cw) + rView * cw;
+      const ratio = (w - cloudRad) / Math.max(1 - rView, 1e-3);
+      const expected = 1 - rView;
+      return { ratio, expected, diff: ratio - expected };
+    }
+    return null;
+  };
+
+  // 表を組む。行 = 雲の量(τ_in / τ)、列 = 天頂角ごとの R 測定・参照・差・判定。
   const lines = [];
   lines.push('# 雲の白さと光学的厚み(描画器の計測)');
   lines.push('');
@@ -274,44 +380,71 @@ async function main() {
     + `領域は画面中央 ${REGION.x1 - REGION.x0}×${REGION.y1 - REGION.y0} px。`);
   lines.push('条件: レンズ効果なし・アンチエイリアスなし・環境光あり・球光源・恒星距離 1 AU。'
     + 'atm0 は大気パスを切った条件(衛星画像と同じ条件は atm3)。');
-  lines.push('R = 領域平均の放射輝度 / 同じ条件で撮った拡散反射率 1 の面の放射輝度。'
-    + `括弧内は L/(cosZ + ${AMBIENT_FRACTION}) 基準の値。cover は雲なしより明るい画素の割合。`);
+  lines.push('積雲: R測 = (L − (1−cover)·L_clear)/L_white。巻雲: R測 = (L − L_clear)/(L_white − L_clear)。'
+    + `参照は保存散乱 2 流近似 R = γτ/(1+γτ)(g: 積雲 ${G_OF.cumulus}・巻雲 ${G_OF.cirrus})。`
+    + `判定は |差| ≤ ${ALBEDO_TOLERANCE}。覆う割合が 1 未満の積雲の行は、ディザで選ばれた柱の`
+    + '雲頂が細部の起伏ぶん持ち上がるので、ref 欄は帯 [cover·R(τ_in) 〜 cover·R(τ_in(雲頂+起伏))] '
+    + 'で判定する(覆う割合 ≈ 1 の行だけ帯の下端へ厳密に合わせる)。');
   lines.push('');
   lines.push('## 基準(雲なしの海と白い面の放射輝度)');
   lines.push('');
-  lines.push('| 条件 | L(海) | L(白) | 海/白 | 白 ÷ (cosZ+0.03) |');
-  lines.push('| --- | ---: | ---: | ---: | ---: |');
+  lines.push('| 条件 | L(海) | L(白) | 海/白 |');
+  lines.push('| --- | ---: | ---: | ---: |');
   for (const atmo of ATMO_LEGS) {
     for (const zenith of ZENITHS_DEG) {
       const b = baselines[`${atmo.tag}-z${zenith}`];
       lines.push(`| ${atmo.tag} z${zenith} | ${f3(b.clear.lum)} | ${f3(b.white.lum)}`
-        + ` | ${f3(b.clear.lum / b.white.lum)} | ${f3(b.white.lum / (cosZ(zenith) + AMBIENT_FRACTION))} |`);
+        + ` | ${f3(b.clear.lum / b.white.lum)} |`);
     }
+  }
+
+  // 積雲は量 → 雲頂・厚み・τ_in の系列を先に出す。
+  lines.push('');
+  lines.push('## 積雲の量 → 雲頂高度 → 幾何学的厚み → τ_in');
+  lines.push('');
+  lines.push('| 量 | 雲頂 [km] | 厚み [km] | τ_in | 覆う割合(式) | R(τ_in, 0.85) |');
+  lines.push('| ---: | ---: | ---: | ---: | ---: | ---: |');
+  for (const amount of CUMULUS_AMOUNTS) {
+    lines.push(`| ${amount} | ${f2(cumulusTopAltitudeOf(amount) / 1e3)}`
+      + ` | ${f2(cumulusThicknessOf(amount) / 1e3)} | ${f2(cumulusTauOf(amount))}`
+      + ` | ${f2(cumulusCoverOf(amount))} | ${f3(refOf('cumulus', cumulusTauOf(amount)))} |`);
   }
 
   // 雲の種類 × 条件ごとの表。
   const legRows = (kind, rows) => {
-    const kinds = { cumulus: '積雲', cirrus: '巻雲' };
     const amounts = kind === 'cumulus' ? CUMULUS_AMOUNTS : CIRRUS_AMOUNTS;
     const tauOf = kind === 'cumulus' ? cumulusTauOf : cirrusTauOf;
     const out = [];
     out.push('');
-    out.push(`| 量 | τ | cover | R(z30) | ref | 比 | R(z60) | ref | 比 | R/B(z30) |`);
-    out.push('| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
-    for (const [i, amount] of amounts.entries()) {
-      const tau = tauOf(amount);
+    if (kind === 'cumulus') {
+      out.push('| 量 | 雲頂 km | 厚み km | τ_in | cover | R測(z30) | ref | 差 | 判定 | R測(z60) | ref | 差 | 判定 |');
+      out.push('| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- |');
+    } else {
+      out.push('| 量 | τ | R測(z30) | ref | 差 | 判定 | R測(z60) | ref | 差 | 判定 |');
+      out.push('| ---: | ---: | ---: | ---: | ---: | --- | ---: | ---: | ---: | --- |');
+    }
+    for (const amount of amounts) {
       const cells = [];
       for (const zenith of ZENITHS_DEG) {
         const row = rows.find((r) => r.amount === amount && r.zenithDeg === zenith);
-        const ref = refOf(kind, tau, zenith);
-        cells.push(row === undefined
-          ? ['—', f3(ref), '—']
-          : [f3(row.rWhite), f3(ref), f2(row.rWhite / ref)]);
+        if (row === undefined) {
+          cells.push(kind === 'cumulus' ? ['—', '—', '—', '—'] : ['—', '—', '—', '—']);
+          continue;
+        }
+        const est = estimate(row);
+        verdicts.push({ name: row.name, verdict: est.verdict, diff: est.diff });
+        const ref = est.banded ? `${f3(est.expected)}〜${f3(est.hi)}` : f3(est.expected);
+        cells.push([f3(est.rEst), ref, f3(est.diff), est.verdict]);
       }
-      const row30 = rows.find((r) => r.amount === amount && r.zenithDeg === ZENITHS_DEG[0]);
-      const cover = row30?.covered === null || row30?.covered === undefined ? '—' : f2(row30.covered);
-      const rb = row30 === undefined ? '—' : f3(row30.radiance[0] / Math.max(row30.radiance[2], 1e-9));
-      out.push(`| ${amount} | ${tau.toFixed(2)} | ${cover} | ${cells.flat().join(' | ')} | ${rb} |`);
+      if (kind === 'cumulus') {
+        const row30 = rows.find((r) => r.amount === amount && r.zenithDeg === ZENITHS_DEG[0]);
+        const cover = row30?.covered === null || row30?.covered === undefined ? '—' : f2(row30.covered);
+        out.push(`| ${amount} | ${f2(cumulusTopAltitudeOf(amount) / 1e3)}`
+          + ` | ${f2(cumulusThicknessOf(amount) / 1e3)} | ${f2(cumulusTauOf(amount))}`
+          + ` | ${cover} | ${cells.flat().join(' | ')} |`);
+      } else {
+        out.push(`| ${amount} | ${tauOf(amount).toFixed(2)} | ${cells.flat().join(' | ')} |`);
+      }
     }
     return out;
   };
@@ -331,75 +464,74 @@ async function main() {
       metrics.filter((m) => m.kind === 'cirrus' && m.detail === detail.tag)));
   }
 
-  // 参照曲線。描画器の届く上限(τ ≈ 8.3)の外も並べる。
-  lines.push('');
-  lines.push('## 参照曲線(Eddington・保存散乱)');
-  lines.push('');
-  lines.push('| τ | g=0.85 z30 | g=0.85 z60 | g=0.75 z30 | g=0.75 z60 |');
-  lines.push('| ---: | ---: | ---: | ---: | ---: |');
-  for (const tau of REFERENCE_TAUS) {
-    lines.push(`| ${tau} | ${f3(eddingtonReflectance(tau, cosZ(30), 0.85))}`
-      + ` | ${f3(eddingtonReflectance(tau, cosZ(60), 0.85))}`
-      + ` | ${f3(eddingtonReflectance(tau, cosZ(30), 0.75))}`
-      + ` | ${f3(eddingtonReflectance(tau, cosZ(60), 0.75))} |`);
-  }
-
-  // τ を 2 倍にしたときの R の比(描画と参照)。描画側は log-log の線形補間。
-  const doubleRatio = (rows, tau) => {
-    const sorted = rows.slice().sort((a, b) => a.tau - b.tau);
-    const at = (t) => {
-      const above = sorted.find((r) => r.tau >= t);
-      const below = [...sorted].reverse().find((r) => r.tau <= t);
-      if (above === undefined || below === undefined) return null;
-      if (above === below) return above.rWhite;
-      const w = Math.log(t / below.tau) / Math.log(above.tau / below.tau);
-      return below.rWhite * (above.rWhite / below.rWhite) ** w;
-    };
-    const a = at(tau), b = at(2 * tau);
-    return a === null || b === null || a <= 0 ? null : b / a;
-  };
-  lines.push('');
-  lines.push('## τ を 2 倍にしたときの R の比(τ → 2τ)');
-  lines.push('');
-  lines.push('| 条件 | τ | 描画 | 参照 |');
-  lines.push('| --- | ---: | ---: | ---: |');
-  const doublingLegs = [
-    ['積雲 atm3 dstd', metrics.filter((m) => m.kind === 'cumulus' && m.atmosphere === 3 && m.detail === 'dstd' && m.zenithDeg === 30), 'cumulus'],
-    ['積雲 atm3 dcoarse', metrics.filter((m) => m.kind === 'cumulus' && m.atmosphere === 3 && m.detail === 'dcoarse' && m.zenithDeg === 30), 'cumulus'],
-    ['積雲 atm0 dstd', metrics.filter((m) => m.kind === 'cumulus' && m.atmosphere === 0 && m.detail === 'dstd' && m.zenithDeg === 30), 'cumulus'],
-    ['巻雲 atm3 dstd', metrics.filter((m) => m.kind === 'cirrus' && m.detail === 'dstd' && m.zenithDeg === 30), 'cirrus'],
-  ];
-  for (const [label, rows, kind] of doublingLegs) {
-    for (const tau of [0.2, 0.4, 0.8, 1.5, 3]) {
-      const measured = doubleRatio(rows, tau);
-      const ref = refOf(kind, 2 * tau, 30) / refOf(kind, tau, 30);
-      lines.push(`| ${label} z30 | ${tau} | ${measured === null ? '—' : f2(measured)} | ${f2(ref)} |`);
+  // 影: 白い面の上の雲の行から、雲の下の地表の明るさ比と 1 − R の差。
+  const shadowRows = metrics.filter((m) => m.kind.endsWith('-shadow'));
+  if (shadowRows.length > 0) {
+    lines.push('');
+    lines.push('## 影(白い面の上の雲板の下の地表の明るさ)');
+    lines.push('');
+    lines.push('積雲: 影あり・なしの白地ショット 2 枚から雲の返す光(海の行)を引いた地表ぶんの比'
+      + ' (L影 − 雲)/(Lなし − 雲) を、雲の下の地表へ届く光の割合とみなす。柱ごとの期待は'
+      + ' 1 − 柱が返す光の平均(海の行の測定値。spec 列は cover·R(τ_in) の形だけの近似)。'
+      + '**判定は単調性** — 破れた雲の影は、疎な塔では斜光が隙間を抜いて 1−R より浅く、'
+      + '密な板では隣の柱を連続して横切って 1−R より深いので、量に対する単調減少だけを見る。'
+      + '巻雲: 層の上の輝度から雲の返す光と視線の透過を除いて地表の明るさへ割り戻し、'
+      + `1 − R(τ) と比べる。判定は巻雲の |差| ≤ ${SHADOW_TOLERANCE} と積雲の単調性。`);
+    lines.push('');
+    lines.push('| 種類 | 量 | 条件 | 地表比 | 期待 | spec | 差 | 判定 |');
+    lines.push('| --- | ---: | --- | ---: | ---: | ---: | ---: | --- |');
+    const kinds = { 'cumulus-shadow': '積雲', 'cirrus-shadow': '巻雲' };
+    const cumulusLegs = new Map();
+    for (const row of shadowRows) {
+      const est = shadowRatioOf(row);
+      const cond = `z${row.zenithDeg} ${row.atmosphere === 0 ? 'atm0' : 'atm3'}`;
+      if (est === null) {
+        lines.push(`| ${kinds[row.kind]} | ${row.amount} | ${cond} | — | — | — | — | 対象外 |`);
+        continue;
+      }
+      if (row.kind === 'cumulus-shadow') {
+        const key = cond;
+        if (!cumulusLegs.has(key)) cumulusLegs.set(key, []);
+        cumulusLegs.get(key).push({ amount: row.amount, ratio: est.ratio });
+        lines.push(`| ${kinds[row.kind]} | ${row.amount} | ${cond}`
+          + ` | ${f3(est.ratio)} | ${f3(est.expected)} | ${f3(est.spec)} | ${f3(est.diff)} | 参考 |`);
+        continue;
+      }
+      const verdict = judge(est.diff, SHADOW_TOLERANCE);
+      verdicts.push({ name: row.name, verdict, diff: est.diff });
+      lines.push(`| ${kinds[row.kind]} | ${row.amount} | ${cond}`
+        + ` | ${f3(est.ratio)} | ${f3(est.expected)} | — | ${f3(est.diff)} | ${verdict} |`);
+    }
+    // 積雲の影の判定: 条件ごとに、量が増えるほど地表へ届く光が減ること。
+    for (const [cond, entries] of cumulusLegs) {
+      const sorted = entries.sort((a, b) => a.amount - b.amount);
+      const monotone = sorted.every((e, i) => i === 0 || e.ratio <= sorted[i - 1].ratio + 0.02);
+      const verdict = monotone ? 'PASS' : 'FAIL';
+      verdicts.push({ name: `cumulus-shadow-monotonic ${cond}`, verdict, diff: monotone ? 0 : 1 });
+      lines.push(`| 積雲 | — | ${cond} 単調性 | ${sorted.map((e) => f3(e.ratio)).join(' → ')}`
+        + ` | — | — | — | ${verdict} |`);
     }
   }
 
-  // 読み取れること。飽和は「最大の 95% へ届く最初の τ」で見る。
-  const saturateTau = (rows) => {
-    const sorted = rows.slice().sort((a, b) => a.tau - b.tau);
-    const maxR = Math.max(...sorted.map((r) => r.rWhite));
-    const first = sorted.find((r) => r.rWhite >= 0.95 * maxR);
-    return { tau: first?.tau, maxR };
-  };
+  // 参照曲線。届く範囲の外側も並べる。
   lines.push('');
-  lines.push('## 読み取れること');
-  const cuStd = metrics.filter((m) => m.kind === 'cumulus' && m.atmosphere === 3 && m.detail === 'dstd' && m.zenithDeg === 30);
-  const cuOff = metrics.filter((m) => m.kind === 'cumulus' && m.atmosphere === 0 && m.detail === 'dstd' && m.zenithDeg === 30);
-  const ciStd = metrics.filter((m) => m.kind === 'cirrus' && m.detail === 'dstd' && m.zenithDeg === 30);
-  for (const [label, rows, kind] of [['積雲 atm3 dstd z30', cuStd, 'cumulus'], ['積雲 atm0 dstd z30', cuOff, 'cumulus'], ['巻雲 atm3 dstd z30', ciStd, 'cirrus']]) {
-    if (rows.length === 0) continue;
-    const { tau, maxR } = saturateTau(rows);
-    const tail = rows.find((r) => Math.abs(r.tau - Math.max(...rows.map((x) => x.tau))) < 1e-9);
-    const refTail = refOf(kind, tail.tau, 30);
-    lines.push(`- ${label}: R は最大 ${f3(maxR)} で、95% へ届くのは τ ≈ ${tau}。`
-      + `掃引の端 τ=${tail.tau.toFixed(2)} では 描画 ${f3(tail.rWhite)}・参照 ${f3(refTail)}(比 ${f2(tail.rWhite / refTail)})。`);
+  lines.push('## 参照曲線(保存散乱 2 流近似 R = γτ/(1+γτ))');
+  lines.push('');
+  lines.push('| τ | g=0.85 | g=0.75 |');
+  lines.push('| ---: | ---: | ---: |');
+  for (const tau of REFERENCE_TAUS) {
+    lines.push(`| ${tau} | ${f3(cloudReflectance(tau, 0.85))} | ${f3(cloudReflectance(tau, 0.75))} |`);
   }
-  lines.push(`- 積雲の上限 τ≈8.3 は参照曲線では R_ref ≈ ${f3(eddingtonReflectance(8.33, cosZ(30), 0.85))}(z30)`
-    + `・${f3(eddingtonReflectance(8.33, cosZ(60), 0.85))}(z60) — τ = 30〜100 の厚い雲は`
-    + ` R_ref ≈ ${f3(eddingtonReflectance(30, cosZ(30), 0.85))}〜${f3(eddingtonReflectance(100, cosZ(30), 0.85))}。`);
+
+  // 合否のまとめ。
+  const fails = verdicts.filter((v) => v.verdict === 'FAIL');
+  lines.push('');
+  lines.push('## 判定');
+  lines.push('');
+  lines.push(fails.length === 0
+    ? `PASS — ${verdicts.length} 行すべて許容差内(反射率 |差| ≤ ${ALBEDO_TOLERANCE}、影 |差| ≤ ${SHADOW_TOLERANCE})。`
+    : `FAIL — ${verdicts.length} 行中 ${fails.length} 行が許容差を超えた:`);
+  for (const fail of fails) lines.push(`- ${fail.name}: 差 ${f3(fail.diff)}`);
 
   const report = `${lines.join('\n')}\n`;
   console.log(report);
