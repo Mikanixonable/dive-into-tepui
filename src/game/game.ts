@@ -273,6 +273,8 @@ export class Game {
       canEngage, this.activeStage, this.activeStage.stageRules,
     );
 
+    // 遺物の検出は艦が動いた後の位置で判定する。
+    this.activeStage.observeRelics(this.dynamicSystem.simTime);
     recordTargetBoardPasses(controlled, boardTargetId, this.dynamicSystem, this.events);
     this.controlSelection.reclaimDead();
   }
