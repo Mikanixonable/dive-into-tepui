@@ -19,10 +19,6 @@ import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
-import {
-  CLOUD_DETAIL_SHOT_INFOS, CLOUD_DETAIL_STABILITY_SHOT_INFOS, type CloudDetailRandomPoint,
-  type CloudDetailShotInfo,
-} from './cloud-detail-cases';
 import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
 import { LabView, MAX_CAMERA_ELEVATION_DEG, type LabMeasurement } from './lab';
 import { sunDiameterPx, sunDistanceOf } from './lab-sun';
@@ -62,15 +58,6 @@ declare global {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
-      // 雲の細部の撮影。巡回の撮影(cases + shoot)には載せない別口。
-      cloudDetailShots: () => readonly CloudDetailShotInfo[];
-      // 視点の安定性の撮影の組(基準・横ずらし・高度違い)。
-      cloudDetailStabilityShots: () => readonly CloudDetailShotInfo[];
-      shootCloudDetail: (name: string) => Promise<string>;
-      // ランダム抽出の実写の教師と同じ点で撮る雲。name は PNG の名前。
-      shootCloudDetailRandom: (
-        name: string, point: CloudDetailRandomPoint,
-      ) => Promise<{ png: string, centerKmPerPx: number, altitudeM: number }>;
       capture: () => Promise<string>;
       // 値を結ぶ前に組んだシェーダで、同じテクスチャを指す 2 つのテクスチャノードが別々の値を読めるかの GPU 検査。
       dedupeProbe: () => Promise<Record<string, number[]>>;
@@ -270,14 +257,6 @@ async function init(): Promise<void> {
     earthSurfaceCapture,
     cases: CASE_NAMES,
     shoot: async (name, graphics) => { const pngs = await view.shoot(name, graphics); syncAngles(); return pngs; },
-    cloudDetailShots: () => CLOUD_DETAIL_SHOT_INFOS,
-    cloudDetailStabilityShots: () => CLOUD_DETAIL_STABILITY_SHOT_INFOS,
-    shootCloudDetail: async (name) => {
-      const png = await view.shootCloudDetail(name); syncAngles(); return png;
-    },
-    shootCloudDetailRandom: async (name, point) => {
-      const result = await view.shootCloudDetailRandom(name, point); syncAngles(); return result;
-    },
     capture: () => view.capture(),
     dedupeProbe: () => view.dedupeProbe(),
     captureAfterMove: async (changes, displayTime) => {

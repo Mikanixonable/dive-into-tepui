@@ -36,6 +36,8 @@ const config = {
   // motion が生成雲の動きの計測用の読み出し(motion.html)、
   // weather-probe が気象状態の浮動小数の読み出し(weather-probe.html)、translucent が半透明雲の
   // 教師比較用の物理量の読み出し(translucent.html)。
+  // detail が雲の細部の描画側モード(detail.html) — render-lab と同じ描画経路で場面・段・
+  // 時刻・種類を選んで見る画面と、計測道具(tools/cloud-lab-detail-*.mjs)の撮影口を兼ねる。
   entry: {
     main: './tools/cloud-lab/main.ts',
     separate: './tools/cloud-lab/separate-main.ts',
@@ -43,6 +45,7 @@ const config = {
     motion: './tools/cloud-lab/motion-main.ts',
     'weather-probe': './tools/cloud-lab/weather-probe-main.ts',
     translucent: './tools/cloud-lab/translucent-main.ts',
+    detail: './tools/cloud-lab/detail-main.ts',
   },
   resolve: {
     extensions: ['.ts', '.js'],
@@ -85,8 +88,10 @@ const config = {
     // 微細スケール実写参照で、Slice C が特徴量の相手に読む。reference-cloudtop/ は
     // MODIS Terra の雲頂高度の参照で、compare が雲頂の距離の相手に読む。ビルドの掃除で消さない。
     // motion-compare/ は cloud-lab:motion-compare が残す生成雲の動きの表で、感度・ablation・
-    // 修正前後の差分を引く根拠になる。ビルドの掃除で消さない。
-    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-motion|reference-fine|reference-fine-timeseries|reference-cloudtop|reference-cirrus|history|history-polar-masked|render-capture|render-capture-timeseries|render-capture-cirrus|motion-compare)[\\/]/ },
+    // 修正前後の差分を引く根拠になる。detail/ は描画側モードの生成物(実写参照・撮影・
+    // 履歴)で、cloud-lab:detail-* が前回との差分を引く根拠になる。sunset*/ は夕景の検証の
+    // 出力。ビルドの掃除で消さない。
+    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-motion|reference-fine|reference-fine-timeseries|reference-cloudtop|reference-cirrus|history|history-polar-masked|render-capture|render-capture-timeseries|render-capture-cirrus|motion-compare|detail|sunset[^\\/]*)[\\/]/ },
   },
   optimization: {
     minimizer: [
@@ -125,6 +130,11 @@ const config = {
       template: './tools/cloud-lab/translucent.html',
       filename: 'translucent.html',
       chunks: ['translucent'],
+    }),
+    new HtmlWebpackPlugin({
+      template: './tools/cloud-lab/detail.html',
+      filename: 'detail.html',
+      chunks: ['detail'],
     }),
   ],
   devServer: {

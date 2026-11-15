@@ -1,13 +1,13 @@
-// cloud-detail-metrics の自己検査。傾き β が既知の合成場(乱相位の FFT 合成)と
+// cloud-lab-detail-metrics の自己検査。傾き β が既知の合成場(乱相位の FFT 合成)と
 // 帯域の限られたノイズ場へ物差しを当て、傾きを ±0.1 で取り戻すこと、周期性の指標が
 // 1 オクターブの場でだけ閾値を超えることを判定する。二値の合成場へ雲マスクの偏り指数 I_B を当て、
-// 一様な雑音・市松・塊の大きさの違いで値が期待どおりに出ることを判定する。続けて .cloud-detail/reference/ の
+// 一様な雑音・市松・塊の大きさの違いで値が期待どおりに出ることを判定する。続けて .cloud-lab/detail/reference/ の
 // 実写へ塊の寸法分布の冪 b と周長–面積の D を当て、文献値の検算をする(無ければその節は飛ばす)。
-// 使い方: node tools/cloud-detail-selftest.mjs — 判定に 1 つでも失敗すれば非 0 で終わる。
+// 使い方: node tools/cloud-lab-detail-selftest.mjs — 判定に 1 つでも失敗すれば非 0 で終わる。
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fft2, measureCloudDetail } from './cloud-detail-metrics.mjs';
-import { linearLuminanceField } from './cloud-detail-field.mjs';
+import { fft2, measureCloudDetail } from './cloud-lab-detail-metrics.mjs';
+import { linearLuminanceField } from './cloud-lab-detail-field.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 
@@ -184,9 +184,9 @@ judge(smallSlope !== null && largeSlope !== null && largeSlope > smallSlope, '�
 console.log('\n=== 実写の検算(b = 1.66 ± 0.3、D = 1.35 ± 0.1) ===');
 // 実写の節は判定を表に出すだけで終了コードへは入れない — 幅外が出たときに物差しと
 // 場面のどちらを見直すかは計画側の判断で、ここでは事実を並べるに留める。
-const manifestFile = path.join(root, '.cloud-detail', 'reference', 'manifest.json');
+const manifestFile = path.join(root, '.cloud-lab', 'detail', 'reference', 'manifest.json');
 if (!existsSync(manifestFile)) {
-  console.log('.cloud-detail/reference/manifest.json が無いのでこの節は飛ばす');
+  console.log('.cloud-lab/detail/reference/manifest.json が無いのでこの節は飛ばす');
 } else {
   const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
   const images = collectReferenceImages(manifest);
@@ -199,7 +199,7 @@ if (!existsSync(manifestFile)) {
   for (const image of images) {
     // file はリポジトリのルートからの相対。ベース名だけの場合は reference/ の中と見なす。
     const file = image.file.includes('/') ? path.join(root, image.file)
-      : path.join(root, '.cloud-detail', 'reference', image.file);
+      : path.join(root, '.cloud-lab', 'detail', 'reference', image.file);
     const png = readFileSync(file);
     const measured = measureCloudDetail(linearLuminanceField(png), image.kmPerPx);
     const { sizeExponent, perimeterAreaDimension, count, interiorCount } = measured.shapes;

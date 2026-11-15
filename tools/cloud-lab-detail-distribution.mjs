@@ -1,30 +1,30 @@
 // ランダム抽出の実写の教師と生成の撮影を、特徴量の分布どうしで比べる。
-// .cloud-detail/random-teacher/manifest.json の点と同じ緯度経度・同じ段で render-lab が撮った
-// 画像(.cloud-detail/random-shots/)へ、実写と同じ物差しを当て、区分 × 段 × 特徴量の分布
+// .cloud-lab/detail/random-teacher/manifest.json の点と同じ緯度経度・同じ段で cloud-lab の detail ページが撮った
+// 画像(.cloud-lab/detail/random-shots/)へ、実写と同じ物差しを当て、区分 × 段 × 特徴量の分布
 // (分位点)と、正規化したワッサースタイン距離(分位点の差の絶対値の平均を実写の p10〜p90 の幅で
 // 割った値)を出す。家族ごとの平均を区分 × 段の表にし、重要な特徴量は実写と生成の分位点を
 // 並べて表示する — 分布の幅(緩急)が揃っているかを目で読めるようにするため。
-// 結果は .cloud-detail/history/ へ残し、前回の同じ道具のレポートとの差分を出す。
+// 結果は .cloud-lab/detail/history/ へ残し、前回の同じ道具のレポートとの差分を出す。
 // --fresh で撮影を撮り直す。既にある撮影は飛ばす。
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
-import { measureDetailImage } from './cloud-detail-features.mjs';
-import { fitLine, normalizedDistance, quantiles } from './cloud-detail-metrics.mjs';
+import { measureDetailImage } from './cloud-lab-detail-features.mjs';
+import { fitLine, normalizedDistance, quantiles } from './cloud-lab-detail-metrics.mjs';
 import {
   collectNumericDiffs, formatDiffValue, gitHead, readReport, saveReport,
 } from './cloud-report-history.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const renderLabDir = path.join(root, '.render-lab');
-const teacherDir = path.join(root, '.cloud-detail', 'random-teacher');
-const shotsDir = path.join(root, '.cloud-detail', 'random-shots');
-const historyDir = path.join(root, '.cloud-detail', 'history');
+const cloudLabDir = path.join(root, '.cloud-lab');
+const teacherDir = path.join(root, '.cloud-lab', 'detail', 'random-teacher');
+const shotsDir = path.join(root, '.cloud-lab', 'detail', 'random-shots');
+const historyDir = path.join(root, '.cloud-lab', 'detail', 'history');
 const teacherManifestFile = path.join(teacherDir, 'manifest.json');
 
 // 配信と CDP のポート。環境変数で上書きできる(別の作業ツリーの計測と並行して走らせられる)。
-const port = Number(process.env.CLOUD_DETAIL_PORT ?? 8819);
-const debugPort = Number(process.env.CLOUD_DETAIL_DEBUG_PORT ?? 9519);
+const port = Number(process.env.CLOUD_LAB_DETAIL_PORT ?? 8819);
+const debugPort = Number(process.env.CLOUD_LAB_DETAIL_DEBUG_PORT ?? 9519);
 
 // 撮る段 [km/px]。実写の教師の段と揃える。
 const TIERS_KM_PER_PX = [1, 4];
@@ -72,27 +72,27 @@ function displayTimeOf(name) {
 // 値の列の分位点(この道具が使う分位点の並び)。
 const quantilesAt = (values) => quantiles(values, QUANTILE_FRACTIONS);
 
-// 足りない撮影を .render-lab のページで撮る。missing の各要素に返った centerKmPerPx・altitudeM を書き込む。
+// 足りない撮影を .cloud-lab のページで撮る。missing の各要素に返った centerKmPerPx・altitudeM を書き込む。
 async function shootMissing(missing) {
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
-    serveDir: renderLabDir, port, debugPort, profilePrefix: 'tepui-cloud-dist-', onEvent,
+    serveDir: cloudLabDir, port, debugPort, profilePrefix: 'tepui-cloud-dist-', onEvent,
     requestTimeoutMs: 120_000,
   });
   try {
     const { devTools } = session;
-    await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
+    await devTools.send('Page.navigate', { url: `${session.baseUrl}/detail.html` });
     await waitFor(
       devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab?.shootCloudDetailRandom === 'function')",
-      'the render lab to initialise',
+      "(document.getElementById('error')?.textContent || typeof window.cloudLabDetail?.shootCloudDetailRandom === 'function')",
+      'the cloud lab detail page to initialise',
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
     let taken = 0;
     for (const entry of missing) {
       const result = await devTools.evaluate(
-        `window.renderLab.shootCloudDetailRandom(${JSON.stringify(entry.name)}, ${JSON.stringify(entry.point)})`);
+        `window.cloudLabDetail.shootCloudDetailRandom(${JSON.stringify(entry.name)}, ${JSON.stringify(entry.point)})`);
       writeFileSync(
         path.join(shotsDir, `${entry.name}.png`),
         Buffer.from(result.png.slice(result.png.indexOf(',') + 1), 'base64'),
@@ -111,7 +111,7 @@ async function shootMissing(missing) {
 
 async function main() {
   if (!existsSync(teacherManifestFile)) {
-    throw new Error(`${teacherManifestFile} が無い — 先に npm run cloud-detail:random-teacher を実行する`);
+    throw new Error(`${teacherManifestFile} が無い — 先に npm run cloud-lab:detail-random-teacher を実行する`);
   }
   const teacher = JSON.parse(readFileSync(teacherManifestFile, 'utf8'));
   // 反復用の設定(作業ツリー直下の .loop-random-config.json)。slots は区分ごとに撮る
@@ -123,7 +123,7 @@ async function main() {
     : {};
   const slotLimits = loopConfig.slots ?? {};
   const reflectanceNormalize = loopConfig.reflectanceNormalize !== false;
-  // 動作確認は少数の点だけを撮る軽い版。npm script cloud-detail:distribution-smoke
+  // 動作確認は少数の点だけを撮る軽い版。npm script cloud-lab:detail-distribution-smoke
   // (npm_lifecycle_event に 'smoke' が入る)で、この区分の先頭数点へ絞る。
   const smoke = (process.env.npm_lifecycle_event ?? '').includes('smoke');
   const eligible = (teacher.points ?? []).filter((point) => point.status === 'ok'
@@ -183,7 +183,7 @@ async function main() {
   }));
   const listChanged = previousShots.map((shot) => shot.name).join('\n') !== shotInfos.map((shot) => shot.name).join('\n');
   if (taken > 0 || listChanged) writeFileSync(manifestFile, `${JSON.stringify({
-    tool: 'cloud-detail-distribution',
+    tool: 'cloud-lab-detail-distribution',
     generatedAt: new Date().toISOString(),
     gitHead: gitHead(root),
     shots: shotInfos,
@@ -369,7 +369,7 @@ async function main() {
   // --- レポート ---
   const report = {
     meta: {
-      tool: 'cloud-detail-distribution',
+      tool: 'cloud-lab-detail-distribution',
       reportVersion: 1,
       generatedAt: new Date().toISOString(),
       gitHead: gitHead(root),
@@ -388,13 +388,13 @@ async function main() {
     sections: { distributions, samples },
   };
 
-  // 前回の同じ道具のレポートを探す。履歴には別の道具(cloud-detail-compare)のレポートも混ざるので、
+  // 前回の同じ道具のレポートを探す。履歴には別の道具(cloud-lab-detail-compare)のレポートも混ざるので、
   // meta.tool で絞る。
   let previousName;
   if (existsSync(historyDir)) {
     for (const name of readdirSync(historyDir).filter((n) => n.endsWith('.json')).sort().reverse()) {
       const report = readReport(historyDir, name);
-      if (report?.meta?.tool === 'cloud-detail-distribution') { previousName = name; break; }
+      if (report?.meta?.tool === 'cloud-lab-detail-distribution') { previousName = name; break; }
     }
   }
   saveReport(historyDir, report);

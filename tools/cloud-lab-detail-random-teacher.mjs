@@ -2,14 +2,14 @@
 // 緯度帯・季節制限・窓の陸海条件を満たした点へ、NASA Worldview の MODIS Terra 真色スナップショットを
 // 1・4 km/px で 512×512 取る。欠測(黒の画素が 5% 以上)や取得失敗は候補ごと捨てて次へ進み、
 // 採用・棄却を manifest.json へ残す。既にある画像は取り直さない。
-// 動作確認は少数の点だけを取る軽い版 — npm script cloud-detail:random-teacher-smoke
+// 動作確認は少数の点だけを取る軽い版 — npm script cloud-lab:detail-random-teacher-smoke
 // (npm_lifecycle_event に 'smoke' が入る)で、SMOKE_CATEGORIES の区分を SMOKE_COUNT 点だけ取る。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { decodePng } from './png.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const outDir = path.join(root, '.cloud-detail', 'random-teacher');
+const outDir = path.join(root, '.cloud-lab', 'detail', 'random-teacher');
 const manifestFile = path.join(outDir, 'manifest.json');
 
 // 乱数の種。同じ種なら候補の系列が同じになり、同じ範囲の抽出を再現できる。
@@ -261,7 +261,7 @@ function loadManifest() {
 // manifest を組み直して書く。進行のたびに書き、長い取得が止まっても再開できる状態を保つ。
 function saveManifest(points, rejected) {
   const manifest = {
-    tool: 'cloud-detail-random-teacher',
+    tool: 'cloud-lab-detail-random-teacher',
     seed: SEED,
     layer: LAYER,
     size: SIZE,
@@ -279,7 +279,7 @@ const SMOKE_CATEGORIES = ['tropical-sea'];
 const SMOKE_COUNT = 4;
 const smoke = (process.env.npm_lifecycle_event ?? '').includes('smoke');
 // 取る区分を絞る(カンマ区切り)。既存の区分の欠け点を埋め直さずに一部の区分だけ足すときに使う。
-const onlyCategories = process.env.CLOUD_DETAIL_RANDOM_CATEGORIES?.split(',').map((name) => name.trim()).filter(Boolean);
+const onlyCategories = process.env.CLOUD_LAB_DETAIL_RANDOM_CATEGORIES?.split(',').map((name) => name.trim()).filter(Boolean);
 
 async function main() {
   mkdirSync(outDir, { recursive: true });
@@ -342,7 +342,7 @@ async function main() {
           category: category.name, slot, candidateIndex: -1,
           latitude: null, longitude: null, date: null,
           status: 'ok', covered, fetchedAt: null,
-          files: files.map((file) => path.posix.join('.cloud-detail', 'random-teacher', path.basename(file))),
+          files: files.map((file) => path.posix.join('.cloud-lab', 'detail', 'random-teacher', path.basename(file))),
         };
         points.push(point);
         pointByKey.set(key, point);
@@ -387,7 +387,7 @@ async function main() {
           category: category.name, slot, candidateIndex: candidate.index,
           latitude: candidate.latitude, longitude: candidate.longitude, date: candidate.date,
           status: 'ok', covered: coveredMap, fetchedAt: new Date().toISOString(),
-          files: files.map((file) => path.posix.join('.cloud-detail', 'random-teacher', path.basename(file))),
+          files: files.map((file) => path.posix.join('.cloud-lab', 'detail', 'random-teacher', path.basename(file))),
         };
         points.push(point);
         pointByKey.set(key, point);

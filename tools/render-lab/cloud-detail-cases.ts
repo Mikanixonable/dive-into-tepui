@@ -11,7 +11,7 @@ import { FOV_DEG, labCamera, sunAnglesOf, VIEW_HEIGHT, type LabCase, type LabSho
 import type { EarthAngleKey, LabViewAngles } from './view-angles';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
-// 直下点に取る場面。center は tools/cloud-detail/scenes.json(実写の目録)と同じ地点の中心を
+// 直下点に取る場面。center は tools/cloud-lab/detail-scenes.json(実写の目録)と同じ地点の中心を
 // 使うので、撮った画像は同じ場所の実写と同じ物差しで比べられる。
 interface CloudDetailScene {
   // 撮影名に使う短い名。
