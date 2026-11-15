@@ -21,10 +21,12 @@ export const CLASSIFY = {
   scalyCloudyMax: 0.9,
   streakCoherenceMin: 0.45,
   streakRMin: 0.5,
-  veilCloudyMin: 0.55,
+  veilCloudyMin: 0.5,
   veilCotP50: [0.3, 8],
   veilToneP50: [0.02, 0.7],
-  veilShare64Min: 0.6,
+  veilLargestShareMin: 0.6,
+  veilSpeckleDiamKm: 2,
+  veilSpeckleCountMin: 20,
 };
 
 // 構造テンソルを当てる尺度 [km]。測れるのは 4×kmPerPx 以上かつ窓の 1/4 以下。
@@ -239,6 +241,17 @@ export function measureTranslucentWindow(field, aux = {}) {
   }
   const cloudyShare = cloudyCount / (n * n);
 
+  // マスク内の COT の中央値(veil の判定要素)。aux.cot は field で、無い層は未測定のまま。
+  let cotP50 = null;
+  if (aux.cot != null) {
+    const cotField = cropArray(Float32Array.from(aux.cot.data));
+    const cotValues = [];
+    for (let i = 0; i < n * n; i++) {
+      if (mask[i] === 1 && Number.isFinite(cotField[i])) cotValues.push(cotField[i]);
+    }
+    cotP50 = quantileOfSorted(cotValues.sort((a, b) => a - b), 0.5);
+  }
+
   // スペクトル: β と周期性は measureCloudDetail、波長帯の電力割合は動径スペクトルから。
   const detail = measureCloudDetail(crop, kmPerPx);
   const power = radialPower(f, n);
@@ -280,6 +293,8 @@ export function measureTranslucentWindow(field, aux = {}) {
     cx: labels.centroidX[i],
     cy: labels.centroidY[i],
   }));
+  // 塊の等価直径 [km] の分布 — 鱗雲の粒の尺度(2〜20 km)を見る用。
+  const clumpDiams = components.map((c) => 2 * Math.sqrt(c.areaKm2 / Math.PI)).sort((a, b) => a - b);
   const dimension = boxDimension(boxCounts(mask, n, n), kmPerPx, BOX_DIM_RANGE_KM[0], BOX_DIM_RANGE_KM[1]);
   const clusterAniso = {};
   for (const scaleKm of [20, 63]) {
@@ -331,6 +346,7 @@ export function measureTranslucentWindow(field, aux = {}) {
     size: n,
     threshold,
     cloudyShare,
+    cotP50,
     tone: distribution(masked),
     gapIntensity: gapCount > 0 ? gapIntensitySum / gapCount : null,
     edgeSharpness,
@@ -373,6 +389,9 @@ export function measureTranslucentWindow(field, aux = {}) {
     scaly: {
       midPowerRatio,
       boxDim: dimension === null ? null : dimension.dimension,
+      clumpCount: components.length,
+      clumpDiamP50: quantileOfSorted(clumpDiams, 0.5),
+      clumpDiamP90: quantileOfSorted(clumpDiams, 0.9),
       gapShare: 1 - cloudyShare,
       clearBlockShare: detail.heterogeneity.clearShare,
       clusterAniso,
@@ -384,7 +403,7 @@ export function measureTranslucentWindow(field, aux = {}) {
   };
 
   // 芯との関係。芯のマスクがあるときは距離帯の断面・非対称・広がり比を測る。
-  const coreMask = aux.coreMask !== undefined
+  const coreMask = aux.coreMask != null
     ? Uint8Array.from(cropArray(Float32Array.from(aux.coreMask)), (v) => (v > 0.5 ? 1 : 0))
     : null;
   if (coreMask !== null && coreMask.some((v) => v === 1)) {
@@ -466,22 +485,40 @@ export function classifyPattern(m) {
     share64up: m.spectrum.share64up,
     cotP50: m.cotP50 ?? null,
     toneP50: m.tone.p50,
+    clumpCount: m.scaly.clumpCount,
+    clumpDiamP50: m.scaly.clumpDiamP50,
+    gapShare: m.scaly.gapShare,
   };
+  // veil は鱗雲・筋より先に判定する — 占有率の高い薄い幕は、中規模の質感で
+  // 構造の揃いが出ても幕として数えるのが区分の定義に近い。「連続した 1 成分」か
+  // 「マスクが画素サイズの微小な斑(塊径 <2 km)に割れるだけ」の場を一様な幕とする。
+  // ただし鱗雲の細胞の尺度(2〜20 km、塊の径の定義域)の強い周期峰を持つ場は
+  // 幕でなく鱗雲側へ回す。20 km を超える周期は幕の中のうねりとみなす。
   const ex = m.periodicity.excessRatio;
   const pk = m.periodicity.peakScaleKm;
-  if (ex !== null && ex >= CLASSIFY.scalyExcessMin
-    && pk !== null && pk >= CLASSIFY.scalyScaleKm[0] && pk <= CLASSIFY.scalyScaleKm[1]
-    && m.shapes.cloudyShare <= CLASSIFY.scalyCloudyMax) {
-    return { className: 'scaly', rule: 'scaly', values };
-  }
-  // veil は筋の非対称より先に判定する — 滑らかな幕でも少数の大きな構造で
-  // 構造テンソルが揃って見える(非対称の揃いは筋の証拠として弱い)ため。
+  const cellPeak = ex !== null && ex >= CLASSIFY.scalyExcessMin
+    && pk !== null && pk >= CLASSIFY.scalyScaleKm[0] && pk <= 20;
+  const scalyPeak = ex !== null && ex >= CLASSIFY.scalyExcessMin
+    && pk !== null && pk >= CLASSIFY.scalyScaleKm[0] && pk <= CLASSIFY.scalyScaleKm[1];
   const cotOk = values.cotP50 !== null
     ? values.cotP50 >= CLASSIFY.veilCotP50[0] && values.cotP50 <= CLASSIFY.veilCotP50[1]
     : m.tone.p50 >= CLASSIFY.veilToneP50[0] && m.tone.p50 <= CLASSIFY.veilToneP50[1];
-  if (m.shapes.cloudyShare >= CLASSIFY.veilCloudyMin
-    && cotOk && m.spectrum.share64up >= CLASSIFY.veilShare64Min) {
+  const oneSheet = (m.shapes.largestShare ?? 0) >= CLASSIFY.veilLargestShareMin;
+  const speckled = m.scaly.clumpDiamP50 > 0 && m.scaly.clumpDiamP50 < CLASSIFY.veilSpeckleDiamKm
+    && m.scaly.clumpCount >= CLASSIFY.veilSpeckleCountMin;
+  if (m.shapes.cloudyShare >= CLASSIFY.veilCloudyMin && cotOk && !cellPeak
+    && (oneSheet || speckled)) {
     return { className: 'veil', rule: 'veil', values };
+  }
+  if (scalyPeak && m.shapes.cloudyShare <= CLASSIFY.scalyCloudyMax) {
+    return { className: 'scaly', rule: 'scaly', values };
+  }
+  // 周期の峰が弱くても、塊に割れて隙間が多く塊の径が粒の尺度なら鱗雲。
+  // ただし強く揃った塊場は筋側へ回す(coherence は streak 規則と同じ取り方)。
+  const coherenceForClumps = Math.max(m.aniso.coherence20 ?? 0, m.aniso.coherence63 ?? 0);
+  if (m.scaly.clumpCount >= 8 && m.scaly.clumpDiamP50 >= 2 && m.scaly.clumpDiamP50 <= 20
+    && m.scaly.gapShare >= 0.6 && coherenceForClumps < CLASSIFY.streakCoherenceMin) {
+    return { className: 'scaly', rule: 'scaly-clumps', values };
   }
   const coherence = Math.max(m.aniso.coherence20 ?? 0, m.aniso.coherence63 ?? 0);
   if (coherence >= CLASSIFY.streakCoherenceMin || (m.aniso.r63 ?? 0) >= CLASSIFY.streakRMin) {

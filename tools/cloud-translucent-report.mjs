@@ -33,6 +33,8 @@ export const FEATURE_DIMS = [
   ['clearShare', (m) => m.heterogeneity.clearShare],
   ['areaP50', (m) => m.shapes.areaP50],
   ['boxDim', (m) => m.scaly.boxDim],
+  ['clumpDiamP50', (m) => m.scaly.clumpDiamP50],
+  ['midPowerRatio', (m) => m.scaly.midPowerRatio],
   ['gradientStrength', (m) => m.scaly.gradient === null ? null : m.scaly.gradient.strength],
   // 芯が無い窓は -1 — 欠測だと中央値補完で芯のある窓に似せてしまうため。
   ['assocNear', (m) => (m.assoc === null ? -1 : m.assoc.bins[0].maskShare)],
@@ -185,16 +187,24 @@ export async function buildReport() {
   // scaly の判定要素を区分ごとに並べる。
   const scalyTable = {};
   for (const className of new Set(records.map((r) => r.className))) {
-    const list = records.filter((r) => r.className === className).map((r) => r.measured);
+    const recs = records.filter((r) => r.className === className);
+    const list = recs.map((r) => r.measured);
     const pick = (get) => {
       const values = list.map(get).filter((v) => v !== null && Number.isFinite(v));
       return values.length > 0 ? distribution(values) : null;
     };
+    const windowKm = recs.map((r) => r.point.window?.sizeKm ?? 512).filter(Number.isFinite);
     scalyTable[className] = {
       n: list.length,
+      windowKm: windowKm.length > 0 ? distribution(windowKm) : null,
       midPowerRatio: pick((m) => m.scaly.midPowerRatio),
       boxDim: pick((m) => m.scaly.boxDim),
+      clumpCount: pick((m) => m.scaly.clumpCount),
+      clumpDiamP50: pick((m) => m.scaly.clumpDiamP50),
+      clumpDiamP90: pick((m) => m.scaly.clumpDiamP90),
       gapShare: pick((m) => m.scaly.gapShare),
+      gradRSize: pick((m) => m.scaly.gradient?.rSize ?? null),
+      gradRInt: pick((m) => m.scaly.gradient?.rInt ?? null),
       clearBlockShare: pick((m) => m.scaly.clearBlockShare),
       clusterAniso20: pick((m) => m.scaly.clusterAniso.s20 ?? null),
       clusterAniso63: pick((m) => m.scaly.clusterAniso.s63 ?? null),
