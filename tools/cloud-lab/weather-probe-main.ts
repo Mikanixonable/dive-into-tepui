@@ -10,7 +10,7 @@ import { EquirectProjection } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
-  cumulusCoveringDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+  cumulusInCloudOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../src/render/cloud/cloud-kind-node';
 import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 
@@ -44,8 +44,9 @@ const CLIMATE_WAIT_FRAMES = 600;
 // 読み出すチャンネルの並び。物理量は天気のモデルの WeatherSample と同じ名前・単位で、
 // cumulus・cirrus は雲の写しの量、cloudTop は積雲の雲頂高度 [m]、coverage は積雲の
 // 不透明度(views.ts の coverage と同じ、量から不透明度へ写す式を掛けた値)。末尾の 4 つは
-// 種類ごとの柱の光学的厚みと雲頂高度 [m](cloud-kind-node の式そのまま。ISCCP 分類を
-// 実写と同じ物差しで掛けるための物理量)。4 つずつ RGBA の写しへ割り当てるので、
+// 種類ごとの光学的厚みと雲頂高度 [m](cloud-kind-node の式そのまま。ISCCP 分類を
+// 実写と同じ物差しで掛けるための物理量。cumulusTau は覆う割合でなく雲の中の
+// 光学的厚み τ_in で、覆う割合は coverage チャンネルが持つ)。4 つずつ RGBA の写しへ割り当てるので、
 // 写しの序数 × 4 がここの添字に対応する。
 const CHANNELS = [
   'pressure', 'lift', 'warmth', 'band',
@@ -53,7 +54,7 @@ const CHANNELS = [
   'upperWindNorth', 'surfaceHumidity', 'upperHumidity', 'convectiveActivity',
   'anvil', 'meanCloudiness', 'landFraction', 'cumulus',
   'cirrus', 'cloudTop', 'coverage',
-  'cumulusTau', 'cirrusTau', 'cumulusTopM', 'cirrusTopM',
+  'cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM',
 ] as const;
 const TARGET_COUNT = Math.ceil(CHANNELS.length / 4);
 // MRT の出力名。写しの texture.name に合わせる(全写しで同じ — 1 写しに 1 出力)。
@@ -93,7 +94,7 @@ class WeatherProbeCanvas {
       vec4(weather.anvil, weather.meanCloudiness, weather.landFraction, cloud.cumulus),
       vec4(
         cloud.cirrus, cumulusTopAltitudeNode(cloud.cumulus), cumulusOpacityNode(cloud.cumulus),
-        cumulusCoveringDepthNode(cloud.cumulus)),
+        cumulusInCloudOpticalDepthNode(cumulusTopAltitudeNode(cloud.cumulus))),
       // 端数の面。余った成分は読み出し側が CHANNELS の長さで打ち切る。
       vec4(
         cirrusColumnOpticalDepthNode(cloud.cirrus),
