@@ -1,29 +1,45 @@
 // 雲の種類ごとの曲線の不変条件を固定する。量が大きいほど高く不透明であること、量 0 が雲なしで
-// あること、2 種類の高度幅と上端の大小関係(SPEC「雲の描画」)がここで検査できる。
+// あること、覆う割合と雲の中の光学的厚みが別の量として分かれていること、2 種類の高度幅と
+// 上端の大小関係(SPEC「雲の描画」)がここで検査できる。
 import * as assert from 'node:assert/strict';
 import {
   CIRRUS_ALTITUDE_SPAN, CIRRUS_MAX_OPTICAL_DEPTH, CIRRUS_TOP_ALTITUDE,
-  CUMULUS_ALTITUDE_SPAN, CUMULUS_TOP_ALTITUDE,
-  cirrusAmountFromOpticalDepth, cirrusColumnOpticalDepth, cirrusOpacity, cirrusTopAltitude,
-  cumulusAmountFromOpacity, cumulusAmountFromTopAltitude, cumulusColumnOpticalDepth,
-  cumulusOpacity, cumulusTopAltitude,
+  CUMULUS_ALTITUDE_SPAN, CUMULUS_BASE_ALTITUDE, CUMULUS_TOP_ALTITUDE,
+  cirrusAmountFromOpticalDepth, cirrusColumnOpticalDepth, cirrusTopAltitude,
+  cumulusAmountFromOpacity, cumulusAmountFromTopAltitude, cumulusCoveringDepth,
+  cumulusInCloudOpticalDepth, cumulusOpacity, cumulusTopAltitude,
 } from '../../src/render/cloud/cloud-kind';
 import { test } from '../harness';
 
 export function register(): void {
-  test('cloud kind: 量が大きいほど雲頂は高く不透明度も高い', () => {
+  test('cloud kind: 量が大きいほど雲頂は高く覆う割合も大きい', () => {
     const amounts = [0, 0.2, 0.5, 0.8, 1];
     for (let i = 1; i < amounts.length; i += 1) {
       assert.ok(cumulusTopAltitude(amounts[i]!) > cumulusTopAltitude(amounts[i - 1]!));
       assert.ok(cirrusTopAltitude(amounts[i]!) > cirrusTopAltitude(amounts[i - 1]!));
       assert.ok(cumulusOpacity(amounts[i]!) > cumulusOpacity(amounts[i - 1]!));
-      assert.ok(cirrusOpacity(amounts[i]!) > cirrusOpacity(amounts[i - 1]!));
+      assert.ok(cirrusColumnOpticalDepth(amounts[i]!) > cirrusColumnOpticalDepth(amounts[i - 1]!));
     }
   });
 
-  test('cloud kind: 量 0 は光学的厚み 0(雲なし)', () => {
-    assert.equal(cumulusColumnOpticalDepth(0), 0);
+  test('cloud kind: 量 0 は覆いの深さ 0・柱の中の厚み 0(雲なし)', () => {
+    assert.equal(cumulusCoveringDepth(0), 0);
     assert.equal(cirrusColumnOpticalDepth(0), 0);
+    assert.equal(cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE), 0);
+    // 雲頂が雲底を下回る入力は厚み 0 へクランプする。
+    assert.equal(cumulusInCloudOpticalDepth(0), 0);
+  });
+
+  test('cloud kind: 積雲の柱の中の厚みは幾何学的厚みの 5/3 乗で伸びる', () => {
+    // k·H^(5/3)。H = 300 m で τ ≈ 8、1 km で τ ≈ 60(係数の採りどころ)。
+    const tau300 = cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE + 300);
+    const tau1k = cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE + 1_000);
+    assert.ok(Math.abs(tau300 - 8) < 0.2, `H=300 m の τ=${tau300}`);
+    assert.ok(Math.abs(tau1k - 60) < 1, `H=1 km の τ=${tau1k}`);
+    // 厚みの 2 倍は τ を 2^(5/3) ≈ 3.17 倍する。
+    const ratio = cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE + 2_000)
+      / cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE + 1_000);
+    assert.ok(Math.abs(ratio - 2 ** (5 / 3)) < 1e-12);
   });
 
   test('cloud kind: いちばん高い積雲は巻雲の高さを突き抜ける', () => {
