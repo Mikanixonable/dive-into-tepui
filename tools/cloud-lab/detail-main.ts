@@ -39,7 +39,6 @@ function choiceOf(info: CloudDetailShotInfo): ShotChoice | null {
 const KIND_LABELS: Readonly<Record<string, string>> = {
   both: '両方',
   cirrus: '巻雲だけ',
-  cumulus: '積雲だけ',
 };
 
 declare global {
@@ -136,16 +135,16 @@ async function init(): Promise<void> {
   };
 
   const markScene = buildButtonRow('scenes',
-    scenes.map((id) => [id, id] as const), (id) => { selection.scene = id; void showSelection(); });
+    scenes.map((id) => [id, id] as const), (id) => { selection.scene = id; markScene(id); void showSelection(); });
   const markTime = buildButtonRow('times',
     [...hours].sort((a, b) => a - b).map((h) => [String(h), `${h}h`] as const),
-    (h) => { selection.hours = Number(h); void showSelection(); });
+    (h) => { selection.hours = Number(h); markTime(h); void showSelection(); });
   const markTier = buildButtonRow('tiers',
     [...tiers].sort((a, b) => a - b).map((t) => [String(t), `${t} km/px`] as const),
-    (t) => { selection.tierKmPerPx = Number(t); void showSelection(); });
+    (t) => { selection.tierKmPerPx = Number(t); markTier(t); void showSelection(); });
   const markKind = buildButtonRow('kinds',
     [...kinds].map((k) => [k, KIND_LABELS[k] ?? k] as const),
-    (k) => { selection.kind = k; void showSelection(); });
+    (k) => { selection.kind = k; markKind(k); void showSelection(); });
 
   markScene(selection.scene);
   markTime(String(selection.hours));
