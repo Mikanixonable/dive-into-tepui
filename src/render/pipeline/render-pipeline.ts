@@ -161,7 +161,7 @@ export class RenderPipeline {
 
     this.atmospherePass = new AtmospherePass(
       renderer, this.gbuffer, this.target, this._sunLight, this._bodyShadow,
-      this.sunTransmittanceTables, gpu,
+      this._cloudShadow, this.sunTransmittanceTables, gpu,
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this.gbuffer.depthTexture);
 
