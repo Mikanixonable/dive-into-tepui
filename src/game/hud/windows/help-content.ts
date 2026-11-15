@@ -8,7 +8,7 @@ export type HelpCategory = 'flight' | 'camera' | 'combat' | 'map' | 'constructio
 
 // 対応表の1行。category は載せる章、input は操作する入力の表記、label と description は
 // それで起きること。
-export interface HelpRow {
+interface HelpRow {
   readonly category: HelpCategory;
   readonly input: string;
   readonly label: string;
@@ -116,6 +116,7 @@ export function helpRows(): readonly HelpRow[] {
     ...constructionRows(),
     keyRow('system', [K.constructionStart], '建造開始', '艦のステータスパネルの「建造」、ドックのクリック、[B] のいずれでも始められる。'),
     keyRow('system', [K.help], 'このヘルプ', '操作説明を開閉する。'),
+    keyRow('system', [K.wideScreenToggle], '画面を広く', 'レール・上部バー・下部の帯を隠して画面を広く使う。もう一度押すと戻る。'),
     keyRow('system', [K.pauseMenu], 'ESC メニュー', '開いているウィンドウを1つ閉じる。何も開いていなければ ESC メニューを開く。'),
     keyRow(
       'system',
@@ -185,11 +186,6 @@ function constructionRows(): readonly HelpRow[] {
       'construction',
       [K.constructionRedo, K.constructionRedoAlt], 'やり直し',
       '取り消した操作をやり直す。macOS では ⇧⌘Z。',
-    ),
-    keyRow(
-      'construction',
-      [K.constructionCyclePart], '部品送り',
-      '表示中のカテゴリで手に取るモジュールを次へ送る。Shift+Tab で前へ。',
     ),
     keyRow(
       'construction',

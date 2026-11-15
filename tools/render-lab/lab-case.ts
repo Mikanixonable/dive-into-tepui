@@ -14,6 +14,7 @@ import { anglesFromDirection, type EarthAngleKey, type LabViewAngles } from './v
 import type { Albedo } from '../../src/render/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
 import type { BodyShadow, ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { LineStyle } from '../../src/render/line-style';
@@ -71,7 +72,7 @@ export interface LabCase {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
-  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・積雲の影の源になる。省略すると
+  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・雲の影の源になる。省略すると
   // 地球を置かない。
   readonly earth?: Pick<LabViewAngles, EarthAngleKey>;
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
@@ -84,6 +85,8 @@ export interface LabCase {
   readonly atmospheres?: readonly AtmosphereBody[];
   // 地球のほかに影パスへ渡す球。中心は描画座標。
   readonly shadowBodies?: readonly ShadowBody[];
+  // 雲の影の源(地球を置かないケースが雲の影を試すとき)。置くと地球の shadowCloud より先に使う。
+  readonly shadowCloud?: ShadowCloud;
   // 影パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: {
     readonly center: THREE.Vector3;
@@ -146,7 +149,7 @@ const texturedSurfaces = new Map<CelestialTexture, CelestialSurface>();
 export function texturedBody(
   texture: CelestialTexture, def: PlanetDef, center: THREE.Vector3, apparentDiameterPx: number,
 ): { readonly object: THREE.Object3D; readonly axes: THREE.Vector3; readonly ready: () => boolean } {
-  const shape = shapeAxes(def.radius, def.shape);
+  const shape = shapeAxes(def.radius, def.shape ?? null);
   const axes = new THREE.Vector3(shape.x, shape.y, shape.z);
   const group = new THREE.Group();
   group.position.copy(center);

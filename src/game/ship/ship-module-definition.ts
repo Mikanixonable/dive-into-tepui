@@ -2,18 +2,16 @@
 import { v3, type Vec3 } from '../../math/vec3';
 
 // 建造可能な部品の種別。表示・物理・保存はこのタグを共有するが、振る舞いは instance の状態を読む。
-export const SHIP_MODULE_KINDS = [
-  'cockpit', 'tank', 'thruster', 'rcs', 'weapon', 'armor', 'radiator', 'solar_panel',
-  'booster', 'docking_port', 'dock', 'decoupler',
-] as const;
-export type ShipModuleKind = typeof SHIP_MODULE_KINDS[number];
+export type ShipModuleKind =
+  'cockpit' | 'tank' | 'thruster' | 'rcs' | 'weapon' | 'armor' | 'radiator' | 'solar_panel' |
+  'booster' | 'docking_port' | 'dock' | 'decoupler';
 export type FuelKind = 'main' | 'rcs';
 export type ShipModuleCategory = 'command' | 'fuel' | 'propulsion' | 'combat' | 'utility';
 
 // 軸方向の端面の使い道。
 // 'none' は接続しない端、'structural' はこの端で他へ付くことも他がこの端へ付くこともできる端、
 // 'receive' は他がこの端へ付くことだけできる端(建造ドックの結合面)。
-export type AxialFaceUse = 'none' | 'structural' | 'receive';
+type AxialFaceUse = 'none' | 'structural' | 'receive';
 
 // 軸方向の両端面の使い道。front は +Z 端、back は −Z 端。
 export interface AxialFaces {
@@ -31,7 +29,7 @@ export interface LocalCappedCylinder {
 
 // 数値の能力は「健全な instance だけを集計する」静的値である。
 // 燃料の表示量と運動に加える質量は単位が異なるため、換算率を definition に固定する。
-export interface ShipModuleAbilities {
+interface ShipModuleAbilities {
   readonly fuelKind?: FuelKind;
   readonly fuelCapacity?: number;
   readonly fuelMassPerUnit?: number; // kg / fuel unit

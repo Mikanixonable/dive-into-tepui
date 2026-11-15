@@ -4,6 +4,7 @@
 // 真偽は独立した描画物を消すもの、選択肢は品質と負荷を刻む値か見え方を選ぶ値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
+import { CIRRUS_DETAIL } from './cloud/cloud-detail';
 import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
@@ -124,26 +125,37 @@ export const GRAPHICS_OPTIONS = {
       high: CLOUD_FIELD_SOURCE_KIND.generated,
     },
   },
-  // 圏界面付近に薄く張る巻雲の層。
+  // 不透明な雲頂として描く積雲。
+  cumulus: {
+    kind: 'toggle', group: 'element', label: '積雲',
+    presets: { low: true, medium: true, high: true },
+  },
+  // 大気中に層として描く巻雲。
   cirrus: {
     kind: 'toggle', group: 'element', label: '巻雲',
     presets: { low: true, medium: true, high: true },
   },
-  // 積雲のうち、不透明な雲頂のまわりを埋める半透明の広がり。
-  translucentCumulus: {
-    kind: 'toggle', group: 'element', label: '半透明の積雲',
-    presets: { low: true, medium: true, high: true },
-  },
-  // 積雲の球殻を評価するレイマーチングの精細度。オフでは雲殻およびその影を描画しない。「精細」は
-  // 積雲の描画アーティファクトを地表側の乱れから切り分けるための設定レベル。
+  // 積雲の球殻を評価するレイマーチングの精細度と、雲頂の細部の段数(粗 4・標準 6・精細 8 オクターブ)。
+  // 積雲の表示は別のトグルで切り替える。「精細」は積雲の描画アーティファクトを地表側の乱れから
+  // 切り分けるための設定レベル。
   cumulusDetail: {
     kind: 'choice', group: 'element', label: '積雲の精細さ',
     items: [
-      [CUMULUS_DETAIL.off, 'オフ'], [CUMULUS_DETAIL.coarse, '粗'],
-      [CUMULUS_DETAIL.standard, '標準'], [CUMULUS_DETAIL.fine, '精細'],
+      [CUMULUS_DETAIL.coarse, '粗'], [CUMULUS_DETAIL.standard, '標準'], [CUMULUS_DETAIL.fine, '精細'],
     ],
     presets: {
       low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.standard, high: CUMULUS_DETAIL.standard,
+    },
+  },
+  // 巻雲の繊維をどれだけ細かく写すか。粗では巻雲は雲場の濃淡だけで描かれ、段を上げるほど細かい筋が
+  // 写る(粗 0・標準 4・精細 6 オクターブ)。
+  cirrusDetail: {
+    kind: 'choice', group: 'element', label: '巻雲の精細さ',
+    items: [
+      [CIRRUS_DETAIL.coarse, '粗'], [CIRRUS_DETAIL.standard, '標準'], [CIRRUS_DETAIL.fine, '精細'],
+    ],
+    presets: {
+      low: CIRRUS_DETAIL.coarse, medium: CIRRUS_DETAIL.standard, high: CIRRUS_DETAIL.standard,
     },
   },
   // レンズ効果(ブルーム・光条・ゴースト)。
@@ -191,10 +203,9 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
     presets: { low: false, medium: true, high: true },
   },
-  // 積雲が地表・艦艇へ落とす影。積雲を描かない設定(「雲」がオフ、「積雲の精細さ」がオフ)では、
-  // この値によらず影は落ちない。
-  cumulusShadow: {
-    kind: 'toggle', group: 'shadow', label: '積雲の影',
+  // 積雲と巻雲が地表・艦艇・雲へ落とす影。「雲」と各種類の表示がオンのときだけ落ちる。
+  cloudShadow: {
+    kind: 'toggle', group: 'shadow', label: '雲の影',
     presets: { low: false, medium: true, high: true },
   },
   // 細かい影を同時に落とせる箇所の数。減らすほど影パスの描画命令が減り、要求の緩い受け手から
@@ -270,9 +281,12 @@ export function parseGraphics(text: string | null): GraphicsSettingsData {
   try {
     if (text === null) return DEFAULT_GRAPHICS;
     const saved = JSON.parse(text) as Record<string, unknown>;
+    const defaults = saved.cumulus === undefined && saved.cumulusDetail === 0
+      ? { ...DEFAULT_GRAPHICS, cumulus: false }
+      : DEFAULT_GRAPHICS;
     // 表に無いキーは読まず、表にあって保存に無いキーは既定で埋まる。
     const entries = optionKeys().map(
-      (key) => [key, acceptValue(GRAPHICS_OPTIONS[key], saved[key], DEFAULT_GRAPHICS[key])] as const,
+      (key) => [key, acceptValue(GRAPHICS_OPTIONS[key], saved[key], defaults[key])] as const,
     );
     return Object.fromEntries(entries) as GraphicsSettingsData;
   } catch {

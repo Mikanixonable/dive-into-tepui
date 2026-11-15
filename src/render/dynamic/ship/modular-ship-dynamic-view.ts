@@ -28,6 +28,8 @@ export interface ModularShipRenderSource extends DynamicRenderSource {
   readonly dynamicPressure: number;
   // 機体が浸っている外気の密度 [kg/m^3]。大気天体が無いとき 0。
   readonly ambientDensity: number;
+  // 大気に対する速度 [m/s]。大気天体が無いとき null。
+  readonly airspeed: Vec3 | null;
   readonly belt: BeltNodes;
   readonly magsLeft: number;
   // 機関砲の射撃レート [rounds/s]。全砲口の合計で、トリガーを離していれば 0。
@@ -91,7 +93,9 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
       zoomActive,
       viewFrame.displayTime,
     );
-    this.reentryEffects.sync(origin, displayed, source.dynamicPressure, effectVisible, cameraQuat);
+    this.reentryEffects.sync(
+      origin, displayed, source.dynamicPressure, source.airspeed, effectVisible, cameraQuat,
+    );
     this.belt.sync(source.magsLeft, source.belt);
     this.weaponDrives.sync(
       this.modules, source.assembly.modules, source.gunFireRate, viewFrame.displayTime,

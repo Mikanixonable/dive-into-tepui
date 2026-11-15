@@ -16,7 +16,7 @@ export interface CompoundSphereShape {
   readonly primitives: readonly CompoundSpherePrimitive[];
 }
 
-export interface SweptCompoundSphereContact {
+interface SweptCompoundSphereContact {
   readonly toi: number;
   readonly moduleIdA: string;
 }

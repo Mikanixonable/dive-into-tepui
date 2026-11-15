@@ -180,7 +180,7 @@ export class Targeter {
       this.aliveScratch.push(tgt);
       const ds = tgt.motion.stateAt(displayTime);
       if (!ds) continue;
-      const visibility = visibilityPolicy?.entity(tgt.mapKind, tgt === viewer);
+      const visibility = visibilityPolicy?.entity(tgt.mapKind, tgt === viewer) ?? null;
       if (visibility && !visibility.pickable) continue;
       // 戦闘ビューのカメラ直下にいる自機は、マーカーを重ねると視界を遮るため除外する。
       if (!mapView && tgt === viewer) continue;
@@ -199,7 +199,7 @@ export class Targeter {
     // 弾薬・燃料のマーカー。マップでは視点から遠いほど薄れる。
     for (const ammo of ammoPickups) {
       if (!ammo.motion.alive) continue;
-      const visibility = visibilityPolicy?.entity('ammo');
+      const visibility = visibilityPolicy?.entity('ammo') ?? null;
       if (visibility && !visibility.pickable) continue;
       const mapOccluded = mapView && isOccluded(
         camera.position, ammo.motion.state.r, this.celestialBodies, displayTime,
@@ -211,7 +211,7 @@ export class Targeter {
     }
     for (const fuel of fuelPickups) {
       if (!fuel.motion.alive) continue;
-      const visibility = visibilityPolicy?.entity('fuel');
+      const visibility = visibilityPolicy?.entity('fuel') ?? null;
       if (visibility && !visibility.pickable) continue;
       const mapOccluded = mapView && isOccluded(
         camera.position, fuel.motion.state.r, this.celestialBodies, displayTime,
@@ -235,7 +235,7 @@ export class Targeter {
   // マップ上のフェード/遮蔽を反映して積む。マップビュー中と視点が居ない間は距離ラベルを出さない。
   private pushMarkerItem(
     item: GroupedMarkerItem, viewerPos: Vec3 | null, mapView: boolean,
-    visibility: MapVisibility | undefined, opacity: number, occluded: boolean,
+    visibility: MapVisibility | null, opacity: number, occluded: boolean,
   ): void {
     const detail = mapView || !viewerPos ? '' : fmtMarkerDist(len(sub(item.pos, viewerPos)));
     this.markerItemScratch.push(visibility ? {

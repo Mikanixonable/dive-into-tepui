@@ -25,7 +25,7 @@ const ANGLE_COLUMNS = [
 ] as const satisfies readonly [PulldownColumn<CameraReferencePlane>, PulldownColumn<CameraReferenceView>];
 
 // カメラパネルが1フレームに映すカメラの状態。
-export interface CameraFrameViewModel {
+interface CameraFrameViewModel {
   // 注視している対象の天体 id。どこにも固定していなければ null。
   readonly focusId: string | null;
   readonly rotationFollow: CameraRotationFollow | null;

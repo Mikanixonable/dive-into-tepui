@@ -21,7 +21,7 @@ const lunar = {
 function fields(issues: PlacementFieldIssue[]): string[] {
   return issues.map(i => i.field);
 }
-function issueFor(issues: PlacementFieldIssue[], field: string): PlacementFieldIssue | undefined {
+function issueFor(issues: PlacementFieldIssue[], field: string) {
   return issues.find(i => i.field === field);
 }
 

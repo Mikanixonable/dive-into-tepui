@@ -11,7 +11,7 @@ export interface SerializedWeaponState {
   readonly shots?: readonly SerializedWeaponShot[];
 }
 
-export interface SerializedWeaponShot {
+interface SerializedWeaponShot {
   readonly moduleId: string;
   readonly muzzleIndex: number;
   readonly firedAt: number;
@@ -23,9 +23,9 @@ export type WeaponShotRecord = SerializedWeaponShot;
 // 艦の初期積載(予備マガジン数・装填済み残弾数)。
 export interface AmmoLoad { readonly mags: number; readonly rounds: number }
 
-export type AmmoConsumption = 'normal' | 'mag-reload';
+type AmmoConsumption = 'normal' | 'mag-reload';
 
-export interface WeaponFireCommand {
+interface WeaponFireCommand {
   readonly consumption: AmmoConsumption;
   readonly muzzleIndex: number;
 }
@@ -53,19 +53,19 @@ export class WeaponState {
 
   // 初期積載 ammo を積んで新しく作る。整数でないか範囲を外れた数は、既定の積載へフォールバックする。
   public static create(ammo: AmmoLoad): WeaponState {
-    return new WeaponState(nonNegativeInteger(ammo.mags), boundedInteger(ammo.rounds, 0, MAG_ROUNDS));
+    return new WeaponState(nonNegativeInteger(ammo.mags) ?? undefined, boundedInteger(ammo.rounds, 0, MAG_ROUNDS) ?? undefined);
   }
 
   // 直列化した弾薬の状態から復元する。壊れた値は既定値へフォールバックする。
   public static deserialize(serialized: SerializedWeaponState): WeaponState {
     // 壊れた値は undefined として渡し、コンストラクタの既定引数に補わせる
     const weapon = new WeaponState(
-      nonNegativeInteger(serialized.mags),
-      boundedInteger(serialized.rounds, 0, MAG_ROUNDS),
-      nonNegativeNumber(serialized.cooldown),
-      nonNegativeInteger(serialized.muzzleIdx),
-      booleanValue(serialized.wasFiring),
-      booleanValue(serialized.wasEmptyClick),
+      nonNegativeInteger(serialized.mags) ?? undefined,
+      boundedInteger(serialized.rounds, 0, MAG_ROUNDS) ?? undefined,
+      nonNegativeNumber(serialized.cooldown) ?? undefined,
+      nonNegativeInteger(serialized.muzzleIdx) ?? undefined,
+      booleanValue(serialized.wasFiring) ?? undefined,
+      booleanValue(serialized.wasEmptyClick) ?? undefined,
     );
     if (Array.isArray(serialized.shots)) {
       for (const candidate of serialized.shots) {
@@ -214,34 +214,34 @@ function validShotRecord(value: unknown): WeaponShotRecord | null {
   const muzzleIndex = nonNegativeInteger(record.muzzleIndex);
   const firedAt = finiteNumber(record.firedAt);
   const cycleDuration = finiteNumber(record.cycleDuration);
-  if (muzzleIndex === undefined || firedAt === undefined || cycleDuration === undefined || cycleDuration <= 0) return null;
+  if (muzzleIndex === null || firedAt === null || cycleDuration === null || cycleDuration <= 0) return null;
   return { moduleId: record.moduleId, muzzleIndex, firedAt, cycleDuration };
 }
 
-// 真偽値ならその値、そうでなければ既定値へフォールバックするための undefined。
-function booleanValue(value: unknown): boolean | undefined {
-  return typeof value === 'boolean' ? value : undefined;
+// 真偽値ならその値、そうでなければ既定値へフォールバックするための null。
+function booleanValue(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null;
 }
 
-// 有限な数ならその値、そうでなければ既定値へフォールバックするための undefined。
-function finiteNumber(value: unknown): number | undefined {
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+// 有限な数ならその値、そうでなければ既定値へフォールバックするための null。
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-// 有限な非負の数ならその値、そうでなければ undefined。
-function nonNegativeNumber(value: unknown): number | undefined {
+// 有限な非負の数ならその値、そうでなければ null。
+function nonNegativeNumber(value: unknown): number | null {
   const number = finiteNumber(value);
-  return number !== undefined && number >= 0 ? number : undefined;
+  return number !== null && number >= 0 ? number : null;
 }
 
-// 非負の整数ならその値、そうでなければ undefined。
-function nonNegativeInteger(value: unknown): number | undefined {
+// 非負の整数ならその値、そうでなければ null。
+function nonNegativeInteger(value: unknown): number | null {
   const number = nonNegativeNumber(value);
-  return number !== undefined && Number.isInteger(number) ? number : undefined;
+  return number !== null && Number.isInteger(number) ? number : null;
 }
 
-// min..max の整数ならその値、そうでなければ undefined。
-function boundedInteger(value: unknown, min: number, max: number): number | undefined {
+// min..max の整数ならその値、そうでなければ null。
+function boundedInteger(value: unknown, min: number, max: number): number | null {
   const number = nonNegativeInteger(value);
-  return number !== undefined && number >= min && number <= max ? number : undefined;
+  return number !== null && number >= min && number <= max ? number : null;
 }
