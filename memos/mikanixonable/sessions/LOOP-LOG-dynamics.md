@@ -547,8 +547,9 @@
   場所で暗くなった。`csgeom-z60-d0` の指定領域平均は 246.53→239.69、
   `csgeom-z85-d0` は 249.71→238.79 (8-bit RGB)。これは観測結果として残し、
   影の明るさを全体に改善したとは判定しない。
-- 制約: `npm run typecheck` は `tools/cloud-lab/probe-common.ts:16` の `Vec4Uniform`
-  import が `src/render/tsl-types.ts` に無い既存エラーで停止。両ファイルとも今回の
-  変更対象外。`test:render` の型コンパイルと render-lab production build は通過した。
+- 検証: isolated worktree は、引き継ぎ元の未コミット変更に含まれる `Vec4Uniform` 型が
+  無いため `tools/cloud-lab/probe-common.ts:16` で typecheck が止まった。変更は加えず、
+  そのローカル型定義を保った `devin/dev` へ統合後に `npm run typecheck` を再実行して
+  PASS。`npm run test:render` は 309/309 PASS、render-lab production build も通過。
 - 次: session1 の実施中課題を ISCCP 残差へ戻す。陸域 deep 不足と海上 tauMid 過剰を
   別の雲発達要因として分解する。
