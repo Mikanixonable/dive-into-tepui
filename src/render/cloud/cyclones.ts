@@ -3,7 +3,7 @@
 // TSL のグラフで答える。谷は前線の向き(北半球で南西–北東、南半球で北西–南東)へ長い楕円。眼を持つか
 // どうかは谷の芯で風が等圧線を横切る角で決まり、締まって深い熱帯低気圧が持つ。
 import * as THREE from 'three/webgpu';
-import { dot, exp, float, inverseSqrt, uniform } from 'three/tsl';
+import { clamp, dot, exp, float, inverseSqrt, max, uniform } from 'three/tsl';
 import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from './cyclone-tracks';
 import { coreCrossingAngle } from './wind-law';
 import type { CyclonePlacement } from './cyclone-tracks';
@@ -45,11 +45,30 @@ export function eyeStrengthOf(
   return 1 - THREE.MathUtils.smoothstep(crossing, EYE_ANGLE_FULL, EYE_ANGLE_NONE);
 }
 
+// 前線の帯の形。寒冷前線は中心から長軸の赤道側端へ、温暖前線は中心からほぼ東へ伸びる —
+// 教科書の温帯低気圧の形(寒冷前線は南西へ、温暖前線は東へ)。長さは前線の雲帯の観測値
+// (二〜三千キロ、SPEC「前線の帯」)、幅は帯の白い芯の幅(数百キロ)に取る。
+const COLD_FRONT_LENGTH = 2400e3;
+const COLD_FRONT_WIDTH = 280e3;
+const WARM_FRONT_LENGTH = 1600e3;
+const WARM_FRONT_WIDTH = 350e3;
+// 温暖湿気の輸送路(WCB)が低気圧の前方・極側へ供給する上層の湿りの領域 — 巻雲の盾に
+// なる。中心からずれた広い帯で、巻雲の帯の長さは千〜二千 km 級(EUMeTrain)。
+const WCB_OFFSET_ALONG = 900e3;
+const WCB_OFFSET_EAST = 700e3;
+const WCB_LENGTH = 2400e3;
+const WCB_WIDTH = 800e3;
+// 前線が張るほど低気圧が育つ下限 [hPa]。この深さで帯が 0.5 になる。
+const FRONT_DEPTH_HALF = 10;
+
 // 谷 1 つ。配置を uniform に持ち、単位方向での気圧の落ち込み・眼・金床を答える。
-class Trough {
+export class Trough {
   private readonly center: Vec3Uniform = uniform(new THREE.Vector3());
   // 長軸の向きの単位接ベクトル。
   private readonly axis: Vec3Uniform = uniform(new THREE.Vector3());
+  // 寒冷前線の帯が伸びる向き(長軸の赤道側端)と、温暖前線の帯が伸びる向き(ほぼ東)。
+  private readonly coldFrontAxis: Vec3Uniform = uniform(new THREE.Vector3());
+  private readonly warmFrontAxis: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly depth: FloatUniform = uniform(0);
   // 弦の二乗を芯の尺で測る係数 (天体の半径 / 短軸の半径)²。
   private readonly coreScale: FloatUniform = uniform(0);
@@ -82,6 +101,14 @@ class Trough {
       cosLongitude - hemisphere * sinLatitude * sinLongitude,
       hemisphere * cosLatitude,
       -sinLongitude - hemisphere * sinLatitude * cosLongitude,
+    ).normalize();
+    // 寒冷前線は長軸の赤道側端へ、温暖前線は東へ少し赤道側へ傾けて伸びる。
+    // 温暖前線の向き = 東ベクトル (cosLon, 0, −sinLon) − 0.2 × 極側ベクトル(赤道側成分を足す)。
+    this.coldFrontAxis.value.copy(this.axis.value).negate();
+    this.warmFrontAxis.value.set(
+      cosLongitude + hemisphere * 0.2 * sinLatitude * sinLongitude,
+      -hemisphere * 0.2 * cosLatitude,
+      -sinLongitude + hemisphere * 0.2 * sinLatitude * cosLongitude,
     ).normalize();
     // 深さ、芯の尺、長軸の縮み、眼。
     this.depth.value = depth;
@@ -128,6 +155,41 @@ class Trough {
   private normalizedChordSquared(direction: Vec3Node, fraction: number): FloatNode {
     return this.chordSquared(direction).mul(this.coreScale).div(fraction ** 2);
   }
+
+  // centerNode から axisNode の向きへ伸びる帯の濃さ 0..1。帯は中心から長さ length [m] までの
+  // 半直線で、横には幅 width [m] のガウスで減る。距離は弦で測る。
+  private bandAt(
+    direction: Vec3Node, centerNode: Vec3Node, axisNode: Vec3Node,
+    lengthM: number, widthM: number,
+  ): FloatNode {
+    const offset = direction.sub(centerNode);
+    const along = dot(offset, axisNode);
+    // 帯の軸への射影を 0..長さ へ収め、その分だけ戻した残りが横の距離。
+    const clamped = clamp(along, 0, lengthM / this.surfaceRadius);
+    const aside = offset.sub(axisNode.mul(clamped));
+    return exp(dot(aside, aside).mul(-((this.surfaceRadius / widthM) ** 2)));
+  }
+
+  // 前線の帯の濃さ 0..1(寒冷前線と温暖前線の大きい側)。深さが FRONT_DEPTH_HALF の 2 倍
+  // ほどで開き、浅い谷では 0 — 前線は低気圧がある程度発達してから張る。
+  public frontAt(direction: Vec3Node): FloatNode {
+    const strength = clamp(this.depth.div(FRONT_DEPTH_HALF * 2), 0, 1);
+    return max(
+      this.bandAt(direction, this.center, this.coldFrontAxis, COLD_FRONT_LENGTH, COLD_FRONT_WIDTH),
+      this.bandAt(direction, this.center, this.warmFrontAxis, WARM_FRONT_LENGTH, WARM_FRONT_WIDTH),
+    ).mul(strength);
+  }
+
+  // 温暖湿気の輸送路(WCB)が届ける上層の湿り 0..1。低気圧の前方(東)・極側にずれた、
+  // 長軸に沿って伸びた広い領域 — 巻雲の盾になる。
+  public wcbAt(direction: Vec3Node): FloatNode {
+    const centerNode = this.center
+      .add(this.axis.mul(WCB_OFFSET_ALONG / this.surfaceRadius))
+      .add(this.warmFrontAxis.mul(WCB_OFFSET_EAST / this.surfaceRadius))
+      .normalize();
+    const strength = clamp(this.depth.div(FRONT_DEPTH_HALF * 2), 0, 1);
+    return this.bandAt(direction, centerNode, this.axis, WCB_LENGTH, WCB_WIDTH).mul(strength);
+  }
 }
 
 export class Cyclones {
@@ -166,5 +228,16 @@ export class Cyclones {
   // 単位方向 direction での金床の濃さの合計 0..1。
   public anvilAt(direction: Vec3Node): FloatNode {
     return this.troughs.reduce<FloatNode>((sum, trough) => sum.add(trough.anvilAt(direction)), float(0));
+  }
+
+  // 単位方向 direction での前線の帯の濃さ 0..1。中緯度の低気圧だけが持つ — 熱帯低気圧の
+  // 帯は眼・金床・雨帯が担い、温帯化の途中の前線はこの実体ではまだ扱わない。
+  public frontAt(direction: Vec3Node): FloatNode {
+    return this.lows.reduce<FloatNode>((sum, trough) => max(sum, trough.frontAt(direction)), float(0));
+  }
+
+  // 単位方向 direction での温暖湿気輸送路の湿り 0..1(巻雲の盾の元)。
+  public wcbAt(direction: Vec3Node): FloatNode {
+    return this.lows.reduce<FloatNode>((sum, trough) => max(sum, trough.wcbAt(direction)), float(0));
   }
 }
