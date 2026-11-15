@@ -97,12 +97,3 @@ export class AirMass {
     return latitudeOf(origin).sub(latitudeOf(direction));
   }
 }
-
-// 気団の境目が前線として立つ緯度帯(温帯)の両端。熱帯では同じ押し縮まりが前線ではなく雨帯をなす。
-const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
-const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
-
-// 緯度 [rad] における温帯らしさ 0..1。
-export function extratropicalAt(latitude: FloatNode): FloatNode {
-  return smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
-}
