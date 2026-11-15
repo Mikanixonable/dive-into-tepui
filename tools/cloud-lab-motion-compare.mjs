@@ -247,7 +247,7 @@ async function main() {
           await session.devTools.evaluate(`window.cloudMotion.prepare(${displayHours})`);
           for (const box of BOXES) {
             const key = `${box.name} ${period.name}`;
-            const spec = { ...boxFor(box), sizePx: SIZE_PX };
+            const spec = boxFor(box);
             const cold = await session.devTools.evaluate(`window.cloudMotion.sampleBox(${JSON.stringify(spec)})`);
             if (!seriesFrames.has(key)) seriesFrames.set(key, []);
             seriesFrames.get(key).push({ hours, field: channelField(cold, 0) });
