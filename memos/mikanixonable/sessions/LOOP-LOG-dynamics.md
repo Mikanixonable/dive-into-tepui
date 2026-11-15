@@ -390,3 +390,21 @@
 - 可視化: 低気圧・前線の位置を cyclone-tracks から直接抽出して
   sessions/cyclone-fronts-t180.md + .png へ出力(雲・band 重ね済み)。
   図の再生成は tools/cloud-regime-plot.py(全球チャンネル)。
+
+## step 50 — 帯の合成 band の廃止(ユーザー指示、d83d46b92)
+- 指示: 「bandを削除」「cycloneFrontは削除しない」「削除したいのは今日追加
+  されたbandの部分だけ」「下流の効果は全部引き継ぐ」。
+- 実施: band(= 圧縮診断 front + 熱帯の rainband + cycloneFront·FRONT_BAND の
+  合成)を廃止。front・rainband・moistureFront・updraft の診断と
+  moistureGradientAt を削除し、cycloneFront が帯の下流の役割(上昇流・地表
+  湿度・対流活発度・被覆率・層状の雲頂・粒消し・内包対流)を全部引き継ぐ。
+  BAND_* → FRONT_*、FRONT_BAND → CYCLONE_FRONT_GAIN、probe チャンネルと監査の
+  応答条件も band → cycloneFront へ改名(8cbc3edb9 で統合)。
+- 効いたこと: 低気圧の無い所へ圧縮稜線の帯を描く機構が消えた —
+  ヒモ状の主犯。前線は低気圧の腕だけになる(全球プロット t180 で確認)。
+- 退化したこと: 計測は classes 0.100→0.115・bias 0.774→1.36・
+  variogram 0.343→0.402 へ退行(gain 0.925→0.805・explainedGap
+  0.0817→0.0582 は改善)。自生の帯が担っていた中緯度の雲域が消えた分。
+  台風の螺旋雨帯も rainband 診断の消滅で欠落。
+- 検証: typecheck・308/308 通過、probe 23 チャンネルで cycloneFront 確認。
+  audit-merged-no-band.txt が新しい基準。
