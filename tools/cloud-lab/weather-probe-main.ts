@@ -8,7 +8,10 @@ import { mrt, screenUV, vec4 } from 'three/tsl';
 import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
 import { EquirectProjection } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
-import { cumulusOpacityNode, cumulusTopAltitudeNode } from '../../src/render/cloud/cloud-kind-node';
+import {
+  cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
+  cumulusColumnOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+} from '../../src/render/cloud/cloud-kind-node';
 import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
 
 declare global {
@@ -40,14 +43,17 @@ const CLIMATE_WAIT_FRAMES = 600;
 
 // 読み出すチャンネルの並び。物理量は天気のモデルの WeatherSample と同じ名前・単位で、
 // cumulus・cirrus は雲の写しの量、cloudTop は積雲の雲頂高度 [m]、coverage は積雲の
-// 不透明度(views.ts の coverage と同じ、量から不透明度へ写す式を掛けた値)。4 つずつ
-// RGBA の写しへ割り当てるので、写しの序数 × 4 がここの添字に対応する。
+// 不透明度(views.ts の coverage と同じ、量から不透明度へ写す式を掛けた値)。末尾の 4 つは
+// 種類ごとの柱の光学的厚みと雲頂高度 [m](cloud-kind-node の式そのまま。ISCCP 分類を
+// 実写と同じ物差しで掛けるための物理量)。4 つずつ RGBA の写しへ割り当てるので、
+// 写しの序数 × 4 がここの添字に対応する。
 const CHANNELS = [
   'pressure', 'lift', 'warmth', 'band',
   'compression', 'surfaceWindEast', 'surfaceWindNorth', 'upperWindEast',
   'upperWindNorth', 'surfaceHumidity', 'upperHumidity', 'convectiveActivity',
   'anvil', 'meanCloudiness', 'landFraction', 'cumulus',
   'cirrus', 'cloudTop', 'coverage',
+  'cumulusTau', 'cirrusTau', 'cumulusTopM', 'cirrusTopM',
 ] as const;
 const TARGET_COUNT = Math.ceil(CHANNELS.length / 4);
 // MRT の出力名。写しの texture.name に合わせる(全写しで同じ — 1 写しに 1 出力)。
@@ -74,7 +80,7 @@ class WeatherProbeCanvas {
   }
 
   private constructor(private readonly renderer: WebGPURenderer, private readonly field: GeneratedCloudField) {
-    // 全球の面の画素が張る単位方向で、天気と雲の量を CHANNELS の並びのまま 5 面の RGBA へ組む。
+    // 全球の面の画素が張る単位方向で、天気と雲の量を CHANNELS の並びのまま 6 面の RGBA へ組む。
     // 色への写像・クランプ・トーンマップはどこにも通さない。読み出しの 4 成分目をアルファとして
     // 潰されないよう、出力は colorNode ではなく MRT で書く(motion-main.ts の同じ仕掛け)。
     const direction = this.outProjection.directionAt(screenUV);
@@ -85,7 +91,15 @@ class WeatherProbeCanvas {
       vec4(weather.compression, weather.surfaceWind.x, weather.surfaceWind.y, weather.upperWind.x),
       vec4(weather.upperWind.y, weather.surfaceHumidity, weather.upperHumidity, weather.convectiveActivity),
       vec4(weather.anvil, weather.meanCloudiness, weather.landFraction, cloud.cumulus),
-      vec4(cloud.cirrus, cumulusTopAltitudeNode(cloud.cumulus), cumulusOpacityNode(cloud.cumulus), 0),
+      vec4(
+        cloud.cirrus, cumulusTopAltitudeNode(cloud.cumulus), cumulusOpacityNode(cloud.cumulus),
+        cumulusColumnOpticalDepthNode(cloud.cumulus)),
+      // 端数の面。余った成分は読み出し側が CHANNELS の長さで打ち切る。
+      vec4(
+        cirrusColumnOpticalDepthNode(cloud.cirrus),
+        cumulusTopAltitudeNode(cloud.cumulus),
+        cirrusTopAltitudeNode(cloud.cirrus),
+        0),
     ];
     this.targets = groups.map(() => {
       const target = new THREE.RenderTarget(OUT_WIDTH, OUT_HEIGHT, {
@@ -126,7 +140,7 @@ class WeatherProbeCanvas {
     model.bake(this.renderer);
   }
 
-  // 5 面の写しを描き、チャンネルごとの面へ並べ直して base64 で返す。
+  // 6 面の写しを描き、チャンネルごとの面へ並べ直して base64 で返す。
   public async readGlobal(): Promise<string> {
     const plane = OUT_WIDTH * OUT_HEIGHT;
     const planes = new Float32Array(CHANNELS.length * plane);
