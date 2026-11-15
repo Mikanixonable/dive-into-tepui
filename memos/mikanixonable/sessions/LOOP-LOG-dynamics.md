@@ -547,8 +547,61 @@
   場所で暗くなった。`csgeom-z60-d0` の指定領域平均は 246.53→239.69、
   `csgeom-z85-d0` は 249.71→238.79 (8-bit RGB)。これは観測結果として残し、
   影の明るさを全体に改善したとは判定しない。
-- 制約: `npm run typecheck` は `tools/cloud-lab/probe-common.ts:16` の `Vec4Uniform`
-  import が `src/render/tsl-types.ts` に無い既存エラーで停止。両ファイルとも今回の
-  変更対象外。`test:render` の型コンパイルと render-lab production build は通過した。
+- 検証: isolated worktree は、引き継ぎ元の未コミット変更に含まれる `Vec4Uniform` 型が
+  無いため `tools/cloud-lab/probe-common.ts:16` で typecheck が止まった。変更は加えず、
+  そのローカル型定義を保った `devin/dev` へ統合後に `npm run typecheck` を再実行して
+  PASS。`npm run test:render` は 309/309 PASS、render-lab production build も通過。
 - 次: session1 の実施中課題を ISCCP 残差へ戻す。陸域 deep 不足と海上 tauMid 過剰を
   別の雲発達要因として分解する。
+
+## step 58 — 中緯度の戻り沈降を再調整(採用、1592a2aa4)
+- 分解: 陸域は deep と雲量の両方が不足し、生成 lift の沈降側偏りと陸上の低湿度が候補。
+  温帯海上は tauMid が過剰で、stratocumulus 比率も 0.427 対実写 0.232。
+  どちらも生成 lift が実写より沈降側に偏るため、まず雲型や光学厚みでなく
+  weather-model の戻り沈降 `MASS_RETURN` を試した。
+- 候補: 0.026→0.005 は対象指標への効果が強かったが、全体 classes が 0.0667 と
+  clean 基準 0.0660 よりわずかに悪化。0.010 を採用し、対象改善と全体評価の釣り合いを取った。
+- ISCCP (clean 基準→採用候補、実写を括弧内):
+
+  | 指標 | 基準 | step 58 | 実写 |
+  | --- | ---: | ---: | ---: |
+  | temperate-land deep | 0.0189 | 0.0319 | 0.0436 |
+  | highlat-land deep | 0.0311 | 0.0456 | 0.0544 |
+  | temperate-sea tauMid | 0.5028 | 0.4662 | 0.3611 |
+  | highlat-sea tauMid | 0.5129 | 0.4543 | 0.5607 |
+
+- 全体監査: weather 0.1180→0.1020、classes 0.06597→0.06569、
+  responseBias 0.625→0.466、responseGain 0.448→0.428、variogram 0.329→0.309 と改善。
+  responseContrast は 0.498→0.564、explainedGap は 0.0511→0.0565 と悪化。
+  highlat-sea tauMid は実写から遠ざかったが、同区分の総合クラス距離は
+  0.0814→0.0718 へ改善。個別残差と複合スコアを混同せず記録する。
+- 描画: `land-residual-before-a/b` と `land-residual-after-a` を各 21 shot 撮影。
+  before 同士・Earth 反復差は 0 LSB、after は 18/21 shot が 6 LSB 封筒外。
+  差は雲を含む地表・斜視に出て、`earth-cirrus-shadow` は封筒内。nadir/oblique で
+  孤立した針状塔や一様な台地は見られない。
+- 検証: `npm run test:render` 309/309 PASS。isolated worktree の
+  `npm run typecheck` は既存の `Vec4Uniform` export 不足で失敗したが、`devin/dev` へ
+  変更を fast-forward 統合後、同ブランチにある未コミット型追加を保持した状態で
+  `npm run typecheck` PASS。親作業ツリーの変更には手を加えていない。
+- 残課題: 陸域 cloudFrac は temperate 0.426/実写 0.732、highlat 0.553/0.747 と低い。
+  温帯海上 tauMid も 0.466/0.361 と残る。陸域の湿度・被覆供給と海上の層積雲の
+  量・厚みを別機構として次に調べる。
+
+## step 59 — 残る湿度・層積雲残差を分離(コード変更なし)
+- step 58 後の 8 時刻ぶんの生成気象・ISCCP 物理量を、同じ 256 km タイル標本で
+  実写教師と再集計した。生成側は 14,848 タイル/区分、実写側は約 1,800 タイル/区分。
+- humidLow / stratocumulus / cloudFrac / tauMid の平均(実写→生成):
+
+  | 区分 | humidLow | stratocumulus | cloudFrac | tauMid |
+  | --- | ---: | ---: | ---: | ---: |
+  | temperate-land | 0.483/0.461 | 0.068/0.105 | 0.732/0.426 | 0.226/0.141 |
+  | highlat-land | 0.632/0.480 | 0.131/0.109 | 0.747/0.553 | 0.311/0.170 |
+  | temperate-sea | 0.432/0.504 | 0.232/0.372 | 0.896/0.789 | 0.361/0.466 |
+  | highlat-sea | 0.605/0.507 | 0.367/0.357 | 0.960/0.796 | 0.561/0.454 |
+
+- 解釈: 陸域は humidLow と cloudFrac が不足し、特に highlat-land の湿度差が大きい。
+  temperate-sea は humidLow が実写より高いのに stratocumulus と tauMid が過剰なので、
+  全域の湿度を上げる策は逆効果。highlat-sea は stratocumulus 量は一致する一方で
+  humidLow と tauMid が不足し、同じ層積雲補正を海全体へ当てられない。
+- 次候補: 陸域・高緯度海域の低層水分供給と、温帯海上の層積雲の型/τ配分を独立に
+  調べる。今回は原因候補の分離のみで、コード変更・採否は行わない。
