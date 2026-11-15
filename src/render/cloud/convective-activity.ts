@@ -9,7 +9,7 @@ import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
-import type { EpochSchedule, NoiseOctave } from './circulating-noise';
+import type { NoiseOctave } from './circulating-noise';
 import type { Circulation } from './circulation';
 import type { FieldProjection } from '../field-projection';
 import type { FloatNode, Vec3Node } from '../tsl-types';
@@ -26,14 +26,6 @@ const INSTABILITY_NOISE: readonly NoiseOctave[] = [
   { frequency: 12.8, amplitude: 0.65 }, // 500 km
   { frequency: 25, amplitude: 0.65 }, // 250 km
 ];
-// 不安定度の場がその場で入れ替わる速さ。対流可能な環境は日単位で変わるので、千キロ級の
-// 大きな不安定域は 1 日、群れの細かい構成は半日程度で混ぜ替える。混ぜ替えが無いと
-// 対流の塔の並びが移流するだけで、発生位置が固定されたままになる。
-const INSTABILITY_EPOCH: readonly EpochSchedule[] = [
-  { untilFrequency: 6.4, transitionSeconds: 24 * 3600 },
-  { untilFrequency: 12.8, transitionSeconds: 12 * 3600 },
-  { untilFrequency: 25, transitionSeconds: 8 * 3600 },
-];
 const INSTABILITY_AMPLITUDE = 1.0;
 // 上昇流の対流活発度に対する伝達利得 [per m/s] と、無上昇流時の基準活発度。並の低気圧(0.02 m/s)で
 // 気団に依らず 1 へ、高気圧の吹きおろし(−0.02 m/s)で床へ届く。
@@ -45,27 +37,20 @@ const COLD_ACTIVITY = 1.9;
 const ACTIVITY_MIN = 0.3;
 // 陸の上で上がる分。日射で温まる地面の上は不安定で、雲は板ではなく粒になる。
 const LAND_ACTIVITY = 0.3;
-// 前線が対流活発度へ寄与する伝達利得。前線の中の対流は活発で、粒立った塔が列をなす —
-// 前線が飽和した所で活発度が半分ぶん上がる高さに取る。
-const FRONT_ACTIVITY = 0.5;
+// 前線帯・雨帯が対流活発度へ寄与する伝達利得。帯の中の対流は活発で、粒立った塔が列をなす —
+// 帯が飽和した所で活発度が半分ぶん上がる高さに取る。
+const BAND_ACTIVITY = 0.5;
 
 export class ConvectiveActivity {
-  private readonly noise: CirculatingNoise;
   private readonly instability: BakedField;
 
   // circulation は気団を運ぶ流れ、projection は写しの持ち方。
   public constructor(circulation: Circulation, projection: FieldProjection) {
-    this.noise = new CirculatingNoise(
-      circulation, INSTABILITY_NOISE, projection.texelAngle, INSTABILITY_EPOCH);
+    const noise = new CirculatingNoise(circulation, INSTABILITY_NOISE, projection.texelAngle);
     this.instability = new BakedField(
       'instability', THREE.RedFormat, projection,
-      (direction) => vec4(this.noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1),
+      (direction) => vec4(noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1),
       GPU_PASS.cloudBake);
-  }
-
-  // 時刻 [s] をエポックの混ぜ替えへ反映する。
-  public syncTime(seconds: number): void {
-    this.noise.syncTime(seconds);
   }
 
   // いまの時刻の気団を写しへ焼く。at() のグラフを描く前に呼ぶ。
@@ -74,13 +59,13 @@ export class ConvectiveActivity {
   }
 
   // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)、陸らしさ land
-  // 0..1、低気圧従属の前線の強さ cycloneFront 0..1 における対流の活発度(ACTIVITY_MIN..1)。
+  // 0..1、気団の折り目の帯の強さ band 0..1 における対流の活発度(ACTIVITY_MIN..1)。
   public at(
-    direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode, cycloneFront: FloatNode,
+    direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode, band: FloatNode,
   ): FloatNode {
     return clamp(
       this.instability.at(direction).r.add(lift.mul(LIFT_ACTIVITY)).sub(warmth.mul(COLD_ACTIVITY))
-        .add(land.mul(LAND_ACTIVITY)).add(cycloneFront.mul(FRONT_ACTIVITY)).add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
+        .add(land.mul(LAND_ACTIVITY)).add(band.mul(BAND_ACTIVITY)).add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
   }
 
   // 保持している GPU 資源を解放する。
