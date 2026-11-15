@@ -1014,6 +1014,13 @@ async function main() {
 
   const previousName = previousReportNameForSubset(historyDir, subset);
   saveReport(historyDir, report);
+  // 実験環境の画面(描画側)が読む「最後に測った評価」の要約。
+  writeFileSync(path.join(compareDir, 'latest.json'), `${JSON.stringify({
+    generatedAt: report.meta.generatedAt,
+    gitHead: report.meta.gitHead,
+    index: report.distances.index,
+    families: report.distances.families,
+  }, null, 2)}\n`);
   console.log('\n=== 前回レポートとの差分 ===');
   if (previousName === undefined) {
     console.log(subset === null

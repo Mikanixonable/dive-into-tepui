@@ -2157,6 +2157,14 @@ async function main() {
   const historyDir = path.join(buildDir, 'history');
   const previousName = previousReportName(historyDir);
   saveReport(historyDir, report);
+  // 実験環境の画面が読む「最後に測った評価」の要約。history/ の詳細なレポートの写しではなく、
+  // 画面のヘッダへ出す分(index と家族の距離)だけに絞る。
+  writeFileSync(path.join(outDir, 'latest.json'), `${JSON.stringify({
+    generatedAt: report.meta.generatedAt,
+    gitHead: report.meta.gitHead,
+    index: report.distances.index,
+    families: report.distances.families,
+  }, null, 2)}\n`);
   console.log('\n=== 前回レポートとの差分 ===');
   if (previousName === undefined) {
     console.log('前回のレポートが無い(今回が初回)');
