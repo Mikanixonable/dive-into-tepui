@@ -102,6 +102,16 @@ const TRANSLUCENT_LIMIT = 2.4;
 // 量を決める。
 const DEEP_COVERAGE_ONSET = 0.7;
 const DEEP_COVERAGE_FULL = 0.93;
+// 前線帯に内包される対流セルの門。帯が張り・上昇流が強く・乱層雲が面を覆う所では、
+// デッキの中に埋まったセルが層状の雲頂から圏界面へ突き抜ける(乱層雲の内包対流、
+// 実写では温帯海上の深い対流の主な担い手)。粒の峰(高周波で、全球の写しでは解像しない)とは
+// 別の、帯と上昇流と覆いで選ぶ太い通路。閾値は、温帯の海でセルが数 % の面積に立つ置き方。
+const EMBEDDED_BAND_ONSET = 0.4;
+const EMBEDDED_BAND_FULL = 0.8;
+const EMBEDDED_LIFT_ONSET = 0.03;
+const EMBEDDED_LIFT_FULL = 0.05;
+const EMBEDDED_DECK_ONSET = 0.6;
+const EMBEDDED_DECK_FULL = 0.9;
 
 // weather から凝結する雲のグラフ。積雲の量は、湿度(低周波)へ対流(高周波)を足した伝達関数の
 // 被覆率と、層状の雲から立つ塔と渦の芯が敷く金床の高いほうの雲頂から決まり、巻雲の量は
@@ -161,13 +171,21 @@ export function condense(weather: WeatherSample): CloudSample {
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.pow(COVERAGE_EXCESS_POWER).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
+  // 帯の芯に内包された対流セル。層状の雲頂から圏界面まで届き、被覆率の門を潜らない —
+  // 一面を覆う乱層雲の下で柱は透けず、デッキそのものが深い柱になる。
+  const embedded = smoothstep(EMBEDDED_BAND_ONSET, EMBEDDED_BAND_FULL, weather.band)
+    .mul(smoothstep(EMBEDDED_LIFT_ONSET, EMBEDDED_LIFT_FULL, weather.lift))
+    .mul(smoothstep(EMBEDDED_DECK_ONSET, EMBEDDED_DECK_FULL, coverage));
+  const embeddedTower = layered.add(weather.tropopause.sub(layered).mul(embedded));
   // 積雲の量は、まばらな覆いでは被覆率を不透明度として写した量、広く覆う所ではそれと雲頂の量の
   // 高いほう。**覆いの薄い柱は雲頂が何であれ低く透ける雲になる** — 小さな雲が高い柱として立たず、
   // texel の中で雲が占める割合がそのまま不透明度に残る。
-  const cloudTop = max(tower, anvil);
+  const cloudTop = max(tower, anvil, embeddedTower);
   const sparse = cumulusAmountFromOpacityNode(coverage);
   const deep = max(sparse, cumulusAmountFromTopAltitudeNode(cloudTop));
-  const cumulus = mix(sparse, deep, smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage));
+  const cumulus = mix(
+    sparse, deep,
+    max(smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage), embedded));
   // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
