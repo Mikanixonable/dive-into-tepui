@@ -408,3 +408,21 @@
   台風の螺旋雨帯も rainband 診断の消滅で欠落。
 - 検証: typecheck・308/308 通過、probe 23 チャンネルで cycloneFront 確認。
   audit-merged-no-band.txt が新しい基準。
+
+## step 51 — 積雲の影を大気の散乱光へも掛ける(46156ae39 + spec ed2088e1c)
+- ユーザー報告: 「積雲の影が下のテクスチャに関わらず紺色に見える。天体の影と
+  同じ系統にできないか」。調査の結果、地表の直射光への影は既に天体と同じ
+  乗算パス(shadow-pass → sun-source)だった。紺色の正体は、影の中の大気が
+  満照のまま残り青い霞が地表を覆うこと — sunRadianceAt() が掛ける影は
+  bodyShadow(天体)だけで、雲の影が大気へ掛かっていなかった(日食では大気ごと
+  暗くなるのに対して)。
+- 実装: CloudShadowRenderer.ambientTransmittance() を追加 — 大気積分の
+  サンプル点ごとに要るため 4 タップの粗い推定(柱の形は解かず影の濃さの
+  分布だけ)。AtmosphereIntegrator.mediumAt() の散乱源へ掛ける。雲殻の照明
+  (sunRadianceAt) には掛けず雲の自影を防ぐ。影オフ時は actives=0 で費用 0。
+- spec 先行(ed2088e1c): 「大気へ影を落とすのは天体だけ」の記述へ雲を追加。
+- 検証: typecheck・308/308・render-lab before/after。nadir で影領域の霞が
+  (58,92,130)→(41,68,100) と明確に減少。低日差し(8°)では変化小さい —
+  斜め視線では霞の多くが影の柱の外の照らされた空気から来るため物理的に
+  正しい。地表に残る青みは天空光(幾何遮蔽を掛けない設計)由来で意図通り。
+- 撮影: .render-lab-shots/shadow-before/・shadow-after/・compare-shadow-after。
