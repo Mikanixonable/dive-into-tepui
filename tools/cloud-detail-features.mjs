@@ -28,6 +28,8 @@ const FEATURE_DEFS = {
   D: { family: 'shapes', scope: 'tier', domain: 'linear' },
   cloudyShare: { family: 'shapes', scope: 'tier', domain: 'linear' },
   cloudCount: { family: 'shapes', scope: 'tier', domain: 'log' },
+  maxAxis: { family: 'shapes', scope: 'tier', domain: 'log' },
+  elongShare: { family: 'shapes', scope: 'tier', domain: 'linear' },
   toneMean: { family: 'tone', scope: 'tier', domain: 'linear' },
   toneP50: { family: 'tone', scope: 'tier', domain: 'linear' },
   toneP90: { family: 'tone', scope: 'tier', domain: 'linear' },
@@ -130,6 +132,8 @@ export function featureEntries(measured, tone) {
   add('D', null, measured.shapes.perimeterAreaDimension);
   add('cloudyShare', null, measured.shapes.cloudyShare);
   add('cloudCount', null, measured.shapes.count);
+  add('maxAxis', null, measured.shapes.maxAxisKm);
+  add('elongShare', null, measured.shapes.elongatedShare);
   for (const cell of measured.anisotropy) {
     add('anisoCoherence', cell.scaleKm, cell.coherence);
     add('anisoR', cell.scaleKm, cell.r);
