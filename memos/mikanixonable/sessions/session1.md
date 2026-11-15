@@ -50,20 +50,19 @@
 
 ## 実施中
 
-- **陸上の雲量と海域別の光学厚を別機構で詰める** — 陸域と海域では低層湿度・
-  雲型・tauMid の残差が異なるため、共通の湿度補正を使わない。`MASS_RETURN`
-  0.026→0.010 の調整で land deep と temperate-sea tauMid が改善し、step 60 では
-  陸面水分の代理 `landFraction × max(cloudinessBias, 0)^2 × 0.3` を加えた。
-  この代理は乾燥地と海をほぼ変えず、全体 classes は 0.0657→0.0554。
-  temperate-land humidLow は実写と同じ 0.483 になり、cloudFrac は 0.426→0.493
-  (実写 0.732)。highlat-land は humidLow 0.480→0.532 (実写 0.632)、
-  cloudFrac 0.553→0.701 (0.747) へ近づいた。land deep は temperate
-  0.0362/実写 0.0436 とまだ低く、highlat 0.0602/0.0544 とわずかに過剰。
-  stratocumulus も temperate 0.140/実写 0.068、highlat 0.185/0.131 と過剰。
-  海上は実質不変: temperate-sea stratocumulus 0.373/0.232・tauMid
-  0.467/0.361 が過剰、highlat-sea stratocumulus 0.359/0.367 は一致するが
-  tauMid 0.457/0.561 は不足。次は湿度を全球で上げず、陸上の雲型・tau 配分と
-  海域別の層積雲の厚みを切り分ける。
+- **地域別の雲頂・光学厚の残差を気象要因へ結び直す** — 目的は湿度を全球で増やさず、
+  雲量・雲頂・光学厚の地域差を改善すること。step 60 の陸面水分代理で全体 classes は
+  0.0657→0.0554、temperate-land humidLow は実写と同じ 0.483 になったが cloudFrac は
+  0.493/0.732、highlat-land は 0.701/0.747。land deep は temperate 0.0362/0.0436 と不足、
+  highlat 0.0602/0.0544 と過剰。temperate-sea は stratocumulus 0.373/0.232 と tauMid
+  0.467/0.361 が過剰、highlat-sea は stratocumulus 0.359/0.367 が一致する一方で tauMid
+  0.457/0.561 が不足する。
+- step 61 の対流活発度から雲頂への連続持ち上げ(活動度 0.4–0.9、ゲイン 0.8)は不採用。
+  全体 classes が 0.0554→0.0578 へ悪化し、temperate-land の中・高層は少し近づいたが、
+  highlat-land deep は 0.0602→0.0833、tauThick は 0.192→0.225 と過剰になった。
+  変更を除去し、基準監査を再生成。次は高緯度海と温帯海の薄・中・厚 τ 分布を環境別に
+  分解し、両海域を区別する物理因子を選ぶ。負の warmth × 低湿度の海面平均は高緯度 0.0064、
+  温帯 0.0067 とほぼ同じため、単純な寒気流入加湿は候補にしない。
 
 ## 待ち([]内は優先度)
 
@@ -80,13 +79,11 @@
   全体 classes は 0.0554。最新の全球場では cycloneFront は低気圧に付随し、
   圧力場から独立した長い帯は再発していない。残るのは雲域不足と雨帯の欠落で、
   それぞれ別機構で扱う。
-- [A] **陸上の雲型・tau配分と海域別 tauMid** — 雲のリアリティーの観点:
-  陸面水分の追加後、temperate-land の humidLow は実写に合ったが cloudFrac は
-  0.493/0.732 と少なく stratocumulus は 0.140/0.068 と多い。highlat-land の
-  cloudFrac は 0.701/0.747 まで近づいたが humidLow は 0.532/0.632、stratocumulus
-  は 0.185/0.131。temperate-sea は stratocumulus・tauMid が過剰、
-  highlat-sea は stratocumulus が一致する一方 tauMid が不足する。次は
-  層・厚みの配分を調べ、湿度を全球一律に増やさない。
+- [A] **海域別の薄・中・厚 τ 分布を環境別に分解する** — 雲のリアリティーの観点:
+  温帯海は tauMid が過剰、高緯度海は tauMid が不足し、同じ厚み補正では両方を直せない。
+  雲頂持ち上げは deep・tauThick を増やして全体 classes を悪化させた。次は `tauThin` が
+  `tauMid`/`tauThick` へ移る条件を湿度・上昇流・warmth・雲頂で比較し、海域や緯度を
+  直接切替条件にせず、両海域の差を説明する物理因子を一つ選ぶ。
 - [B] **巻雲の型振り分け** — 雲のリアリティーの観点: 実写の巻雲は環境で
   型が変わる(ジェットの筋 streak、波状の鱗 scaly、高気圧の面 veil)が、
   生成は気象条件と結びつかず均質な靄になりがち。CIRRUS_MAX_OPTICAL_DEPTH=3
