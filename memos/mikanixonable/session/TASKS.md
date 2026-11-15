@@ -26,7 +26,7 @@
 6. **巻雲の型別フィードバック** — 教師を型別(streak/scaly/veil/anvil)の封筒へ
    整理済み。`p-cirrus-typology.md` で周期粒・流れ筋・間欠性を描画へ。
 7. **deepFrac gain=0 の調査** — 監査で深い雲の応答が飽和/欠落している。
-8. **cloud-optics の統合** — albedo 全 PASS 済み・devin/dev 未統合。
+
 9. **translucent-teacher / sunset-refine の WIP 回収** — wip commit 済み・未検証。
 
 ## 完了(2026-11-15)
@@ -39,3 +39,6 @@
 - 巻雲ドラッグ遅れの修正 — PR #176 で main へ送出済み
 - 前線帯の効果計測 — 中緯度で 700–1100 km の帯成分を確認。ただし実写封筒を
   上振れする場面あり(LOOP-LOG-cirrus.md)。教師拡充が次の壁
+- 巻雲教師の拡充 — 型別教師 90 枚(streak/scaly/veil)を取り込み・共有 dir へ同期
+- cloud-optics(光学モデル R(τ,g) 2 流近似) — albedo 106 行全 PASS を確認し
+  devin/dev へ統合(47672803d)
