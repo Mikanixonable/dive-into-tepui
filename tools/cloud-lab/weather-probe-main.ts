@@ -54,7 +54,7 @@ const CHANNELS = [
   'upperWindNorth', 'surfaceHumidity', 'upperHumidity', 'convectiveActivity',
   'anvil', 'meanCloudiness', 'landFraction', 'cumulus',
   'cirrus', 'cloudTop', 'coverage',
-  'cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM',
+  'cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM', 'coldSector',
 ] as const;
 const TARGET_COUNT = Math.ceil(CHANNELS.length / 4);
 // MRT の出力名。写しの texture.name に合わせる(全写しで同じ — 1 写しに 1 出力)。
@@ -100,7 +100,7 @@ class WeatherProbeCanvas {
         cirrusColumnOpticalDepthNode(cloud.cirrus),
         cumulusTopAltitudeNode(cloud.cumulus),
         cirrusTopAltitudeNode(cloud.cirrus),
-        0),
+        weather.coldSector),
     ];
     this.targets = groups.map(() => {
       const target = new THREE.RenderTarget(OUT_WIDTH, OUT_HEIGHT, {
