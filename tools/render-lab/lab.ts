@@ -9,20 +9,20 @@ import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { farClip } from '../../src/render/camera/camera-view';
 import { planetRadiance, type PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
-import { ambientFraction } from '../../src/render/pipeline/lighting/ambient-source';
+import { ambientFraction, nightObservationFraction } from '../../src/render/pipeline/lighting/ambient-source';
 import {
   WORK_LIGHT_INTENSITY, workLightPlacement,
 } from '../../src/render/pipeline/lighting/work-light-source';
 import { reversedOpaqueSort, reversedTransparentSort } from '../../src/render/pipeline/reversed-sort';
 import { cloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-select';
 import {
-  atmosphereDraws, withAirglowEnabled, type AtmosphereBody,
+  atmosphereDraws, cutoffRadius, withAirglowEnabled, type AtmosphereBody,
 } from '../../src/render/atmosphere';
 import { RingMaterials } from '../../src/render/celestial/ring';
 import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-render-resources';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { distributionOf, type SampleDistribution } from '../../src/math/sample-distribution';
-import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
+import { EARTH_ATMOSPHERE_OPTICS, R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { CASES, type CaseName } from './cases';
 import {
   cloudDetailCase, cloudDetailRandomShot, CLOUD_DETAIL_CHECK_SHOTS, CLOUD_DETAIL_CIRRUS_COARSE_SHOTS,
@@ -363,6 +363,12 @@ export class LabView {
     this.pipeline.exposure.setReference(ORIGIN, this.sun.position, this.sun.intensity);
     // 天体照の光源は地球だけ、影・大気の源は地球のぶんとケースのぶんを合わせて渡す。
     this.pipeline.planetLight.set(earth === null ? [] : [earthLightValue(earth, this.sun, graphics.airglow)]);
+    // 「夜側の観察」— 届ける球はゲーム本体と同じ、地球の大気の裾までの球。地球を置かない
+    // ケースでは消灯する。
+    this.pipeline.ambient.setNightObservation(
+      earth?.center ?? ORIGIN,
+      earth === null ? 0 : cutoffRadius(EARTH_ATMOSPHERE_OPTICS, R_EARTH_EQ),
+      earth === null ? 0 : nightObservationFraction(graphics));
     // 建造の作業灯。設定が効いている間だけ、ゲーム本体と同じ式でカメラへ追従して置く。
     if (graphics.constructionWorkLight) {
       const focusDist = camera.position.distanceTo(this.pivot);
