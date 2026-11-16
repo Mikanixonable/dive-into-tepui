@@ -1,9 +1,11 @@
-// cloud-lab のスライダーの値を、コードベースの既定値(src/render/earth-weather/cloud/cloud-tuning.ts の
-// CLOUD_TUNING_DEFAULTS)へ書き込む窓口。webpack の開発サーバだけが組み込む(webpack.cloud-lab.config.js)。
-// 書き換えるのは既定値の右辺の数値だけで、コメントと他のコードには触れない。
+// cloud-lab のスライダーの値を書き込む窓口。webpack の開発サーバだけが組み込む(webpack.cloud-lab.config.js)。
+// 書き込み先は 2 つ — ゲームの開発ビルドが読む git 管理外の上書きファイル(試すだけ。target: 'overrides' /
+// 'clear')と、コードベースの既定値(src/render/earth-weather/cloud/cloud-tuning.ts の CLOUD_TUNING_DEFAULTS。
+// target: 'defaults')。既定値で書き換えるのは右辺の数値だけで、コメントと他のコードには触れない。
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
+const { OVERRIDES_PATH, writeOverrides } = require('./cloud-tuning-overrides-file.cjs');
 
 const TUNING_PATH = path.resolve(__dirname, '../src/render/earth-weather/cloud/cloud-tuning.ts');
 const BLOCK_START = 'export const CLOUD_TUNING_DEFAULTS = {';
@@ -64,9 +66,11 @@ function reply(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
-// 開発サーバの POST の受け口を作る。tuningPath の既定値表へ書き込む。application/json だけを受け
-// (別のサイトからの単純な POST では送れない)、Host と Origin がこの開発サーバのものと一致するときだけ書く。
-function createApplyTuningHandler(tuningPath) {
+// 開発サーバの POST の受け口を作る。本体は { target, values }。target が 'defaults' なら tuningPath の既定値表へ、
+// 'overrides' なら overridesPath の上書きファイルへ values を書き、'clear' なら上書きを空にする。
+// application/json だけを受け(別のサイトからの単純な POST では送れない)、Host と Origin が
+// この開発サーバのものと一致するときだけ書く。値のキーは既定値表に実在するものだけ受ける。
+function createApplyTuningHandler(tuningPath, overridesPath) {
   return (request, response) => {
     const host = request.headers.host ?? '';
     const origin = request.headers.origin;
@@ -76,21 +80,25 @@ function createApplyTuningHandler(tuningPath) {
       return;
     }
     readBody(request).then((text) => {
-      const values = JSON.parse(text);
-      const result = rewriteTuningDefaults(fs.readFileSync(tuningPath, 'utf8'), values);
+      const { target, values = {} } = JSON.parse(text);
+      if (target !== 'defaults' && target !== 'overrides' && target !== 'clear') {
+        throw new Error(`知らない書き込み先: ${String(target)}`);
+      }
+      const result = rewriteTuningDefaults(fs.readFileSync(tuningPath, 'utf8'), target === 'clear' ? {} : values);
       if (result.missing.length > 0) {
         reply(response, 409, { error: `既定値の表に無い項目: ${result.missing.join(', ')}` });
         return;
       }
-      fs.writeFileSync(tuningPath, result.source);
-      reply(response, 200, { changed: result.changed });
+      if (target === 'defaults') fs.writeFileSync(tuningPath, result.source);
+      else writeOverrides(target === 'clear' ? {} : values, overridesPath);
+      reply(response, 200, { target, changed: result.changed });
     }).catch((error) => reply(response, 400, { error: String(error.message ?? error) }));
   };
 }
 
 // webpack-dev-server の setupMiddlewares へ渡す関数。
 function setupApplyTuning(middlewares, devServer) {
-  devServer.app.post(ROUTE, createApplyTuningHandler(TUNING_PATH));
+  devServer.app.post(ROUTE, createApplyTuningHandler(TUNING_PATH, OVERRIDES_PATH));
   return middlewares;
 }
 
