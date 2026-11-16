@@ -15,6 +15,11 @@ export const WAVE_NUMBER = 5;
 export const WAVE_PHASE_SPEED = (3 * Math.PI / 180) / 86400;
 // 位相角の進む速さ [rad/s](波数 × 位相速度)。
 export const WAVE_PHASE_RATE = WAVE_NUMBER * WAVE_PHASE_SPEED;
+// 谷(とその中間の尾根)の経度の間隔 [°]。波へ錨づく配置の下流方向の揺れの尺になる。
+export const WAVE_TROUGH_WIDTH = 360 / WAVE_NUMBER;
+// 錨が波とともに東へ進む速さ [°/s]。波の谷・尾根へ錨づく配置は、生まれたあともこの速さで
+// 運ばれる。
+export const WAVE_DRIFT = WAVE_PHASE_SPEED * (180 / Math.PI);
 // 南北の位相差 [rad]。位相 π は谷の間隔(位相 2π/k)の半分に相当し、両半球の谷が同じ経度へ
 // 揃うことがなくなる。包絡が熱帯で消えるので、赤道を跨ぐ位相の跳びは場に現れない。
 export const HEMISPHERE_PHASE_OFFSET = Math.PI / 2;
@@ -140,6 +145,19 @@ export class RossbyWave {
 export function waveTroughLongitude(index: number, seconds: number, hemisphere: number): number {
   return (WAVE_PHASE_RATE * seconds - Math.PI / 2 - hemisphere * HEMISPHERE_PHASE_OFFSET
     + 2 * Math.PI * index) / WAVE_NUMBER;
+}
+
+// 世代 generation で枡 slot が座る波の錨(谷・尾根)の番号と、同じ錨へ並ぶ枡の中での順番。
+// 枡は世代ごとに錨を順繰りに回るので、同じ錨には複数の枡が下流方向へ位相差で並ぶ。
+export function waveAnchoredSlot(
+  slot: number, generation: number,
+): { readonly index: number; readonly rank: number } {
+  const index = (slot + generation) % WAVE_NUMBER;
+  let rank = 0;
+  for (let s = 0; s < slot; s++) {
+    if ((s + generation) % WAVE_NUMBER === index) rank++;
+  }
+  return { index, rank };
 }
 
 // 経度 longitude [rad]・半球 hemisphere (北 +1 / 南 −1) でいちばん強く効いている

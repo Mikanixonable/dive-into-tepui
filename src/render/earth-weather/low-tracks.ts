@@ -5,7 +5,8 @@
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
 import {
-  WAVE_NUMBER, WAVE_PHASE_SPEED, stormTrackAxisAt, waveAmplitudeAt, waveTroughLongitude,
+  WAVE_DRIFT, WAVE_TROUGH_WIDTH, stormTrackAxisAt, waveAmplitudeAt, waveAnchoredSlot,
+  waveTroughLongitude,
 } from './rossby-wave';
 import { courseAt, DAY, DEGREE, uniformIn, waypoint } from './cyclone-tracks';
 import type { Course, CyclonePlacement, Range } from './cyclone-tracks';
@@ -33,10 +34,9 @@ const LOW_HANDOFF_JITTER = 3 * 3600;
 // (`DEVELOP/SPEC/RENDERING.md`「中緯度の低気圧は生まれ、東へ走り、極側で止まって消える」)。
 const LOW_BIRTH_LATITUDE: Range = [32, 45];
 // 枡の経度は上層のロスビー波の谷へ錨づく — 地表の低気圧は上層の谷の下流側で発達する。
-// 谷の間隔 [°]、谷からの下流への距離 [°]、同じ谷へ並ぶ枡どうしの下流方向の間隔 [°]、
-// 生まれる経度の揺れ(谷の間隔に対する比、±)。間隔でずらすので、同じ谷から生まれた低気圧は
-// 重ならずにトラックへ連なる。
-const WAVE_TROUGH_WIDTH = 360 / WAVE_NUMBER;
+// 谷からの下流への距離 [°]、同じ谷へ並ぶ枡どうしの下流方向の間隔 [°]、生まれる経度の
+// 揺れ(谷の間隔 WAVE_TROUGH_WIDTH に対する比、±)。間隔でずらすので、同じ谷から生まれた
+// 低気圧は重ならずにトラックへ連なる。
 const WAVE_LOW_DOWNSTREAM = 25;
 const LOW_RANK_SPACING = 20;
 const LOW_LONGITUDE_JITTER = 0.08;
@@ -51,8 +51,6 @@ const LOW_GATE_JITTER = 0.15;
 // 後続を周期の残りへ立てる — 群発日の増分の約半分を 2 次低気圧が担うという観測へ寄せる。
 const LOW_FAMILY_AMPLITUDE = 0.65;
 const LOW_FAMILY_PROBABILITY = 0.45;
-// 錨が波とともに東へ進む速さ [°/s]。低気圧は生まれたあとも蛇行線に沿って運ばれる。
-const WAVE_DRIFT = WAVE_PHASE_SPEED * (180 / Math.PI);
 // 同じ半球の谷へ近づきすぎた谷は吸収される — 深い低気圧が浅い低気圧を呑む。
 // 浅い側の深さを、半径の和に対する距離の近さで削る幅。半径の和へ届く前に浅い側の深さが
 // ほぼ 0 になるよう、和の 2 倍から削り始めて 0.95 倍で消える形に取る — 近づく速さで深さの
@@ -196,11 +194,7 @@ function lowTrackOf(
   const birthLatitude = uniformIn(LOW_BIRTH_LATITUDE, rand);
   // この世代で枡が座る波の谷の番号と、同じ谷へ並ぶ枡の中での順番。生まれる時刻 [s] =
   // 世代の周期の頭から onset だけ遅れ、枡の位相ずらし分だけ早い。
-  const troughIndex = (slot + generation) % WAVE_NUMBER;
-  let rank = 0;
-  for (let s = 0; s < slot; s++) {
-    if ((s + generation) % WAVE_NUMBER === troughIndex) rank++;
-  }
+  const { index: troughIndex, rank } = waveAnchoredSlot(slot, generation);
   const birthSeconds = (generation - index / LOW_COUNT) * LOW_PERIOD + onset;
   const birthLongitude = waveTroughLongitude(troughIndex, birthSeconds, hemisphere) / DEGREE
     + WAVE_LOW_DOWNSTREAM + rank * LOW_RANK_SPACING
