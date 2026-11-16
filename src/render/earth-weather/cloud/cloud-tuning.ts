@@ -116,9 +116,11 @@ export const CLOUD_TUNING_DEFAULTS = {
   stratocumulusDeckAdd: 0.35,
   shapeNetworkHumidity: 0.45,
   shapeGrainHumidity: 0.70,
-  // condensation.ts — 塔から上層への氷雲の放出。雲頂の圏界面に対する比。
-  detrainOnset: 0.6,
-  detrainFull: 0.95,
+  // condensation.ts — 塔から上層への氷雲の放出。層状の雲から圏界面までの柱を塔が昇った比 —
+  // 湿りと上昇流の門が掛かるぶん実際の塔は柱の半分までしか届かないことが多いので、開始は
+  // 柱の下三分の一から取る。
+  detrainOnset: 0.35,
+  detrainFull: 0.8,
   // condensation.ts — 巻雲(薄い雲)の光学的厚み
   hazeOnset: 0.5,
   hazeGain: 0.66,
