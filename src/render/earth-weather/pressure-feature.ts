@@ -76,6 +76,11 @@ const FRONT_WARM_TIP = CLOUD_TUNING.frontWarmTipAngleDeg.mul(DEGREE);
 const FRONT_WARM_BEND = CLOUD_TUNING.frontWarmBend;
 const FRONT_OCC_SWING = CLOUD_TUNING.frontOccSwingDeg.mul(DEGREE);
 const FRONT_OCC_BEND = CLOUD_TUNING.frontOccBend;
+// 前線系の回転 — 一生 0→1 のあいだに傾圧帯が渦の循環へ巻き上げられる角 [rad] と、
+// 追いつきで寒冷の腕が余分に回る角 [rad](閉塞の進みに比例)。寒冷が温暖へ追いつく
+// 差回転が閉塞点の外への進行を作る。
+const FRONT_SPIN = CLOUD_TUNING.frontSpinDeg.mul(DEGREE);
+const FRONT_CATCH = CLOUD_TUNING.frontCatchDeg.mul(DEGREE);
 const FRONT_TAIL_LAT_START = CLOUD_TUNING.frontTailLatitudeStartDeg.mul(DEGREE);
 const FRONT_TAIL_LAT_FULL = CLOUD_TUNING.frontTailLatitudeFullDeg.mul(DEGREE);
 // 腕の根元・先端を滲ませる幅と帯の先端の逓減(いずれも尺の比)、閉塞の腕の芯側の床。
@@ -115,6 +120,8 @@ export class PressureFeature {
   // 前線の形。0 は持たない、1 は寒冷・温暖の対、2 は赤道側の尾(熱帯の渦 — 閉塞が
   // 立ち上がると対と同じ構造へ移る)。
   private readonly frontKind: FloatUniform = uniform(0);
+  // 一生の進み 0..1。前線系の回転を決める。
+  private readonly life: FloatUniform = uniform(0);
 
   // surfaceRadius は谷を置く天体の半径 [m]、rotationPeriod はその自転周期 [s]。
   public constructor(private readonly surfaceRadius: number, private readonly rotationPeriod: number) {}
@@ -127,6 +134,7 @@ export class PressureFeature {
       this.eyeStrength.value = 0;
       this.occlusion.value = 0;
       this.frontKind.value = 0;
+      this.life.value = 0;
       return;
     }
     const { latitude, longitude, depth, radius, elongation } = placement;
@@ -150,6 +158,7 @@ export class PressureFeature {
     this.eyeStrength.value = eyeStrengthOf(depth, radius, latitude, this.surfaceRadius, this.rotationPeriod);
     this.occlusion.value = placement.occlusion ?? 0;
     this.frontKind.value = placement.fronts === 'pair' ? 1 : placement.fronts === 'tail' ? 2 : 0;
+    this.life.value = placement.life ?? 0;
   }
 
   // 中心からの弦の二乗。距離を弦で測るので、対蹠点に鏡像が出ない。長軸に沿う成分は axisShrink の
@@ -279,26 +288,31 @@ export class PressureFeature {
     const r = length(p);
     const triple = this.occlusion.mul(FRONT_TRIPLE_RADIUS);
     const isTail = this.frontKind.sub(1.5).sign().max(0);
+    // 前線系の回転 — 一生とともに傾圧帯が循環へ巻き上げられる分だけ全部の向きへ足す。
+    const spin = this.life.mul(FRONT_SPIN);
+    const tripleAngle = FRONT_TRIPLE_ANGLE.add(spin);
     // 腕の根元の向き — 三点が出ると寒冷・温暖とも三点の向きへ寄り、3 本が同じ点へ繋がる。
     const rootJoin = smoothstep(0, 0.2, triple);
-    const coldRoot = mix(FRONT_COLD_ANGLE, FRONT_TRIPLE_ANGLE, rootJoin);
-    const warmRoot = mix(FRONT_WARM_ANGLE, FRONT_TRIPLE_ANGLE, rootJoin);
-    // 寒冷(赤道側)の腕 — 熱帯の渦ではこの腕が赤道側の尾。向きは根元から先端へ曲がる。
+    const coldRoot = mix(FRONT_COLD_ANGLE.add(spin), tripleAngle, rootJoin);
+    const warmRoot = mix(FRONT_WARM_ANGLE.add(spin), tripleAngle, rootJoin);
+    // 寒冷(赤道側)の腕 — 熱帯の渦ではこの腕が赤道側の尾。先端は閉塞の進みぶん余分に
+    // 循環側へ回り、温暖の腕へ追いついてゆく。向きは根元から先端へ曲がる。
     const coldLength = mix(FRONT_COLD_LENGTH, FRONT_TAIL_LENGTH, isTail);
     const coldProgress = clamp(
       r.sub(triple).div(max(coldLength.sub(triple), 1e-3)), 0, 1);
-    const coldAngle = mix(coldRoot, FRONT_COLD_TIP, coldProgress.pow(FRONT_COLD_BEND));
+    const coldTip = FRONT_COLD_TIP.add(spin).add(FRONT_CATCH.mul(this.occlusion));
+    const coldAngle = mix(coldRoot, coldTip, coldProgress.pow(FRONT_COLD_BEND));
     const cold = this.armAt(p.x, p.y, r, coldAngle, triple, coldLength);
     // 温暖(極側〜下流)の腕 — 熱帯の渦では温帯化が進むまで立たない。
     const warmGate = mix(
       float(1), smoothstep(TAIL_WARM_ONSET, TAIL_WARM_FULL, this.occlusion), isTail);
     const warmProgress = clamp(
       r.sub(triple).div(max(FRONT_WARM_LENGTH.sub(triple), 1e-3)), 0, 1);
-    const warmAngle = mix(warmRoot, FRONT_WARM_TIP, warmProgress.pow(FRONT_WARM_BEND));
+    const warmAngle = mix(warmRoot, FRONT_WARM_TIP.add(spin), warmProgress.pow(FRONT_WARM_BEND));
     const warm = this.armAt(p.x, p.y, r, warmAngle, triple, FRONT_WARM_LENGTH).mul(warmGate);
-    // 閉塞の腕 — 三点の向きから内側へ循環の向きへ巻き込む。三点が出るまでは 0。
+    // 閉塞の腕 — 中心から三点へ、ほぼ真っ直ぐに近い短い弧。三点が出るまでは 0。
     const occProgress = clamp(triple.sub(r).div(max(triple, 1e-3)), 0, 1);
-    const occAngle = FRONT_TRIPLE_ANGLE.add(FRONT_OCC_SWING.mul(occProgress.pow(FRONT_OCC_BEND)));
+    const occAngle = tripleAngle.add(FRONT_OCC_SWING.mul(occProgress.pow(FRONT_OCC_BEND)));
     const occ = this.armAt(p.x, p.y, r, occAngle, float(FRONT_INNER_RADIUS), triple)
       .mul(smoothstep(0.02, 0.15, triple));
     // 帯は深さに比例して立ち、熱帯の渦の尾は温帯へ近づくにつれ育つ。
