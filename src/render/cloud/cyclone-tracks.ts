@@ -10,13 +10,15 @@ import {
 } from './rossby-wave';
 
 // 谷 1 つの配置。緯度・経度 [rad](緯度は南半球で負。経度は畳まない)、深さ [hPa](0 以上)、
-// 短軸の半径 [m]、長軸/短軸の比。
+// 短軸の半径 [m]、長軸/短軸の比。occlusion は閉塞の進み 0..1 — 深さの山を越えて寒冷前線が
+// 温暖前線へ追いつくと立ち上がる。持たない配置(熱帯低気圧)は閉塞しない。
 export interface CyclonePlacement {
   readonly latitude: number;
   readonly longitude: number;
   readonly depth: number;
   readonly radius: number;
   readonly elongation: number;
+  readonly occlusion?: number;
 }
 
 // 進路の上の点 [°]。経度は連続な数で持ち、180° をまたぐ進路は 180 を超える値で書く。
@@ -127,6 +129,10 @@ const LOW_RADIUS_MAX = 900e3;
 const LOW_GROWTH: Range = [0.5, 1.0];
 // 深さの山の偏り。深さ = 最深 × sin(π × life^偏り) で、最盛期が life 0.42 へ寄る。
 const LOW_PEAK_SKEW = 0.8;
+// 閉塞が始まり、追いつき切るまでの一生の中の位置。深さの山(life 0.42)を越えてから寒冷前線が
+// 温暖前線へ追いつき始め、一生の 3/4 までに暖域の舌が芯から切り離される。
+const LOW_OCCLUSION_ONSET = 0.45;
+const LOW_OCCLUSION_FULL = 0.75;
 // 生まれてから深さの山が立ち始めるまでの時間 [s]。山の式は生まれた直後の傾きが発散するので、
 // 発達はこの時間かけて立ち上げる — 短い一生で深い系がいきなり 1 時間に数 hPa 深くならない。
 const LOW_DEPTH_RAMP = 18 * 3600;
@@ -370,6 +376,7 @@ function rawLowPlacementAt(
           * THREE.MathUtils.smoothstep(life * track.lifetime, 0, LOW_DEPTH_RAMP),
         radius: track.birthRadius * (1 + track.growth * life),
         elongation: LOW_ELONGATION,
+        occlusion: THREE.MathUtils.smoothstep(life, LOW_OCCLUSION_ONSET, LOW_OCCLUSION_FULL),
       },
       peakDepth: track.peakDepth,
       presence: Math.min(1, Math.min(life, 1 - life) * track.lifetime / ABSORB_LIFE_RAMP),

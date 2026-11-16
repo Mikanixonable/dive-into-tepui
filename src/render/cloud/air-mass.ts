@@ -1,8 +1,9 @@
 // 気団の出身地。各点から風上へ一定時間だけ遡り、遡った先の緯度がいまの緯度からどれだけ隔たって
-// いるかと、その点の追跡の風の速さを写しへ焼く。緯度は温度の代理なので、隔たりの勾配の大きさが
-// 「気団の境目がどれだけ押し縮められたか」= 前線に、いまの緯度との差が暖気・寒気どちらの流入かに
-// なる。押し縮まりは追跡の風の速さで信を置く — 風の淀む所では風上が定まらず、両側の追跡が同じ点へ
-// 畳み込まれるので、そこの押し縮まりは溶かして 1 へ戻す。
+// いるかと、その点の追跡の風の速さ、追跡が海の上にあった時間の割合を写しへ焼く。緯度は温度の
+// 代理なので、隔たりの勾配の大きさが「気団の境目がどれだけ押し縮められたか」= 前線に、いまの
+// 緯度との差が暖気・寒気どちらの流入かになる。押し縮まりは追跡の風の速さで信を置く — 風の淀む所
+// では風上が定まらず、両側の追跡が同じ点へ畳み込まれるので、そこの押し縮まりは溶かして 1 へ戻す。
+// 海の上にあった時間の割合は寒気が暖かい海をどれだけ渡ってきたか(fetch)の代理になる。
 import * as THREE from 'three/webgpu';
 import { abs, float, length, normalize, smoothstep, vec2, vec4 } from 'three/tsl';
 import { BakedField } from '../baked-field';
@@ -32,32 +33,39 @@ const GRADIENT_STEP = 0.025;
 // その点は 4 m/s で 0.16 に隠れ、腕は 6 m/s で 0.84 以上残る。
 const CALM_SPEED = 3;
 const WINDY_SPEED = 7;
+// 遡る時間を分ける刻み数。海上にあった時間の割合は追跡の途中経路でしか分からないので、刻みごとに
+// 風を取り直して流れに沿って折り、各刻みの到達点で陸・海を見る。
+const TRACE_STEPS = 6;
 
 // 単位方向における気団。compression は気団の境目の押し縮まり(何も起きていない所と、追跡の風が
 // 淀んで境目を信じられない所で 1)、warmth はいまの緯度と出身の緯度の差 [rad](正で暖気の流入、
-// 負で寒気の流入)。
+// 負で寒気の流入)、ocean は追跡が海の上にあった時間の割合 0..1。
 interface AirMassSample {
   readonly compression: FloatNode;
   readonly warmth: FloatNode;
+  readonly ocean: FloatNode;
 }
 
 export class AirMass {
-  // 気団追跡のベイクドフィールド。R が起源緯度と現在緯度の差分 [rad]、G が追跡風速 [m/s]。
+  // 気団追跡のベイクドフィールド。R が起源緯度と現在緯度の差分 [rad]、G が追跡風速 [m/s]、
+  // B が追跡が海の上にあった時間の割合 0..1。
   // **起源緯度そのものではなく差分を保持する** — 半精度テクスチャで絶対緯度を保持すると、量子化誤差
   // (|緯度| 1 rad で 1e-3)が中心差分の分母(2 × GRADIENT_STEP)に対して大きく、圧縮が数 % 揺らぐ。
   private readonly trace: BakedField;
 
-  // projection は投影方式、windAt は単位方向における追跡の風、surfaceRadius は気団が流れる
-  // 天体の半径 [m]。
+  // projection は投影方式、windAt は単位方向における追跡の風、landFraction は単位方向における
+  // 陸らしさ 0..1、surfaceRadius は気団が流れる天体の半径 [m]。
   public constructor(
-    projection: FieldProjection, windAt: (direction: Vec3Node) => BalancedWind,
+    projection: FieldProjection,
+    private readonly windAt: (direction: Vec3Node) => BalancedWind,
+    private readonly landFraction: (direction: Vec3Node) => FloatNode,
     private readonly surfaceRadius: number,
   ) {
     this.trace = new BakedField(
-      'airMassTrace', THREE.RGFormat, projection,
+      'airMassTrace', THREE.RGBAFormat, projection,
       (direction) => {
-        const wind = windAt(direction);
-        return vec4(this.driftAt(direction, wind), length(wind.velocity), 0, 1);
+        const trace = this.traceAt(direction);
+        return vec4(trace.drift, trace.speed, trace.ocean, 1);
       },
       GPU_PASS.cloudBake);
   }
@@ -82,6 +90,7 @@ export class AirMass {
     return {
       compression: length(vec2(alongEast, alongNorth.add(1))).sub(1).mul(trusted).add(1),
       warmth: abs(latitude).sub(abs(latitude.add(center.r))),
+      ocean: center.b,
     };
   }
 
@@ -90,10 +99,24 @@ export class AirMass {
     this.trace.dispose();
   }
 
-  // 単位方向 direction から風 wind で TRACE_SECONDS だけ風上へ遡った先の緯度と、いまの緯度の差 [rad]。
-  private driftAt(direction: Vec3Node, wind: BalancedWind): FloatNode {
-    const origin = normalize(
-      direction.add(windStep(wind, direction, float(-TRACE_SECONDS)).div(this.surfaceRadius)));
-    return latitudeOf(origin).sub(latitudeOf(direction));
+  // 単位方向 direction から TRACE_SECONDS だけ風上へ遡った追跡。drift は遡った先の緯度といまの
+  // 緯度の差 [rad]、speed はいまの点の追跡の風の速さ [m/s]、ocean は追跡が海の上にあった時間の
+  // 割合 0..1(各刻みの到達点で陸らしさを見て平均する)。
+  private traceAt(direction: Vec3Node): { drift: FloatNode; speed: FloatNode; ocean: FloatNode } {
+    let point = direction;
+    let speed: FloatNode = float(0);
+    let ocean: FloatNode = float(0);
+    for (let step = 0; step < TRACE_STEPS; step++) {
+      const wind = this.windAt(point);
+      if (step === 0) speed = length(wind.velocity);
+      point = normalize(
+        point.add(windStep(wind, point, float(-TRACE_SECONDS / TRACE_STEPS)).div(this.surfaceRadius)));
+      ocean = ocean.add(this.landFraction(point).oneMinus());
+    }
+    return {
+      drift: latitudeOf(point).sub(latitudeOf(direction)),
+      speed,
+      ocean: ocean.div(TRACE_STEPS),
+    };
   }
 }
