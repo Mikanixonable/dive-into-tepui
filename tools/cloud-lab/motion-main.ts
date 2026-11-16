@@ -13,8 +13,8 @@ import { Cyclones } from '../../src/render/earth-weather/cyclones';
 import { Anticyclones } from '../../src/render/earth-weather/anticyclones';
 import { CirculatingNoise } from '../../src/render/earth-weather/circulating-noise';
 import { Circulation } from '../../src/render/earth-weather/circulation';
+import { PressureField } from '../../src/render/earth-weather/pressure-field';
 import { WeatherTransport } from '../../src/render/earth-weather/weather-transport';
-import { WeatherModel } from '../../src/render/earth-weather/weather-model';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../src/render/earth-weather/cloud/cloud-kind-node';
@@ -121,8 +121,8 @@ function applyAblations(): void {
   if (eddyScale !== 1) {
     // 気圧場の偏差(勾配・曲がり)を割る — 釣り合い風がその比で細くなり、移流の遡りが運ぶ
     // 見かけの動きだけが遅くなる。気圧の深さと上昇流は変えない。
-    const pressureFieldAt = WeatherModel.prototype['pressureFieldAt'];
-    WeatherModel.prototype['pressureFieldAt'] = function (direction, east, north) {
+    const pressureFieldAt = PressureField.prototype.at;
+    PressureField.prototype.at = function (direction, east, north) {
       const field = pressureFieldAt.call(this, direction, east, north);
       return {
         ...field,
