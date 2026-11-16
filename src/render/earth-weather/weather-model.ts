@@ -39,6 +39,7 @@ export interface WeatherSample {
   readonly warmth: FloatNode; // 暖気の流入 = 出身地からの緯度の差 [rad](負で寒気)
   readonly oceanFetch: FloatNode; // 追跡した気団が海の上にあった時間の割合 0..1(寒気の fetch)
   readonly anvil: FloatNode; // 金床(平らな天蓋)の濃さ 0..1
+  readonly eye: FloatNode; // 眼を持つ渦の目の濃さ 0..1
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
   readonly landFraction: FloatNode; // 陸らしさ 0..1
   readonly tropopause: FloatNode; // その緯度の対流の天井(圏界面の高さ)[m]
@@ -333,6 +334,7 @@ export class WeatherModel {
       warmth,
       oceanFetch: airMass.ocean,
       anvil,
+      eye,
       meanCloudiness,
       landFraction,
       tropopause: tropopauseAt(latitude),

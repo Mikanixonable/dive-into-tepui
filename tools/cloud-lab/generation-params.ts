@@ -105,6 +105,14 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   streakGain: { label: '筋の利得', row: 'condense', min: 0, max: 6, step: 0.05 },
   translucentKnee: { label: '薄い雲の膝', row: 'condense', min: 0.05, max: 1, step: 0.01 },
   translucentLimit: { label: '薄い雲の上限', row: 'condense', min: 0.2, max: 2, step: 0.01 },
+  // 凝結 — 脱出水(塔から上層へ出る氷雲のベール)
+  detrainOnset: { label: '脱出水の開始(圏界面比)', row: 'condense', min: 0.3, max: 1, step: 0.01 },
+  detrainFull: { label: '脱出水の飽和(圏界面比)', row: 'condense', min: 0.5, max: 1.2, step: 0.01 },
+  detrainSpreadRadius: { label: 'ベールの発散の半径 [m]', row: 'condense', min: 0, max: 600000, step: 10000 },
+  detrainSpreadWeight: { label: 'ベールの発散の重み', row: 'condense', min: 0, max: 1.5, step: 0.02 },
+  detrainAdvectStep: { label: 'ベールの移流の歩幅 [s]', row: 'condense', min: 600, max: 14400, step: 300 },
+  detrainDecaySeconds: { label: 'ベールの減衰 [s]', row: 'condense', min: 3600, max: 43200, step: 600 },
+  detrainGain: { label: 'ベールの利得', row: 'condense', min: 0, max: 4, step: 0.05 },
   // 凝結 — セル径
   cellClosedKm: { label: 'セル径(閉じた細胞) [km]', row: 'condense', min: 30, max: 150, step: 1 },
   cellOpenKm: { label: 'セル径(開いた細胞) [km]', row: 'condense', min: 10, max: 60, step: 1 },

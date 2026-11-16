@@ -1,5 +1,6 @@
 import type * as THREE from 'three/webgpu';
-import { mix, vec2, vec4 } from 'three/tsl';
+import { max, mix, vec2, vec4 } from 'three/tsl';
+import { cirrusAmountFromOpticalDepthNode, cirrusColumnOpticalDepthNode } from './cloud-kind-node';
 import type { FloatNode, Vec2Node, Vec4Node } from '../../tsl-types';
 
 // 雲場の生成値と焼いたテクスチャの読み値。雲は種類ごとの量(0..1)で持ち、RGBAの配置を
@@ -22,16 +23,22 @@ export interface CloudSample {
   readonly convection: FloatNode;
   // 気候の雲量 0..1(平年の雲の多さ。砂漠で小さい)。生成時の値は天気の meanCloudiness。
   readonly climateCloudiness: FloatNode;
-  // 金床の濃さ 0..1。生成時の値は天気の anvil。
+  // 金床の濃さ 0..1。脱出水のベールが乗った所ではベールの強さを採る。
   readonly anvil: FloatNode;
+  // その柱が上層へ放出する氷雲の強さ 0..1。脱出水ベールの写しを焼くときの源になる。
+  readonly detrain: FloatNode;
+  // 渦の目の濃さ 0..1。脱出水ベールは眼の上へ掛けない門になる。
+  readonly eye: FloatNode;
 }
 
 // 焼いた雲場の 1 枚ぶん。雲・風・環境・セル径の写しは同じ時刻と cap で焼かれている。
+// veil は脱出水が発散と移流で広がった氷雲の写し。雲を持たない場は空の写しを結ぶ。
 export interface CloudFieldSlot {
   readonly cloud: THREE.Texture;
   readonly motion: THREE.Texture;
   readonly environment: THREE.Texture;
   readonly cellSize: THREE.Texture;
+  readonly veil: THREE.Texture;
 }
 
 // 焼いた雲場の 2 枚の混ぜ方。parity は古い側の枚の番号(0 か 1)、fraction は古い側から新しい側への混合比(0..1)。
@@ -56,22 +63,35 @@ export function blendBakedTexels(a: Vec4Node, b: Vec4Node, parity: FloatNode, fr
   return mix(older, newer, fraction);
 }
 
+// 雲の texel へ脱出水ベールの写しを合成した値。氷雲は巻雲の一種として表すので、巻雲の
+// 柱の光学深さをベールのぶん足して量へ戻す — 厚いかなとこは下地をほとんど隠す幕まで連続する
+// (DEVELOP/SPEC/RENDERING.md「対流雲は下層から発達する」)。veil の R がベールの強さ。
+export function cloudTexelWithVeil(cloudTexel: Vec4Node, veilTexel: Vec4Node): Vec4Node {
+  const cirrus = cirrusAmountFromOpticalDepthNode(
+    cirrusColumnOpticalDepthNode(cloudTexel.g).add(cirrusColumnOpticalDepthNode(veilTexel.r)));
+  return vec4(cloudTexel.r, cirrus, cloudTexel.b, cloudTexel.a);
+}
+
 // 焼いた雲場のRGBA(R = 積雲、G = 巻雲、B・A = 筋の倍角ベクトル)と環境のRGBA(R = 陸、G = 対流、
-// B = 気候の雲量、A = 金床)とセル径のRGBA(R = 積雲のセル径、G = 巻雲の要素径、いずれも log2(km)
-// の生値)を、雲標本へ戻す。写しは半精度なので、倍角ベクトルは符号付き(−1..1)のまま入っている。
+// B = 気候の雲量、A = 金床)とセル径のRGBA(R・G = セル径・要素径 log2(km)、B = 脱出水の源、
+// A = 渦の眼)と脱出水ベールの写し(R = ベールの強さ)を、雲標本へ戻す。写しは半精度なので、
+// 倍角ベクトルは符号付き(−1..1)のまま入っている。
 export function cloudSampleFromTexels(
-  cloudTexel: Vec4Node, environmentTexel: Vec4Node, cellTexel: Vec4Node,
+  cloudTexel: Vec4Node, environmentTexel: Vec4Node, cellTexel: Vec4Node, veilTexel: Vec4Node,
 ): CloudSample {
+  const merged = cloudTexelWithVeil(cloudTexel, veilTexel);
   return {
-    cumulus: cloudTexel.r,
-    cirrus: cloudTexel.g,
-    cirrusFlow: vec2(cloudTexel.b, cloudTexel.a),
+    cumulus: merged.r,
+    cirrus: merged.g,
+    cirrusFlow: vec2(merged.b, merged.a),
     cumulusCell: cellTexel.r,
     cirrusCell: cellTexel.g,
     land: environmentTexel.r,
     convection: environmentTexel.g,
     climateCloudiness: environmentTexel.b,
-    anvil: environmentTexel.a,
+    anvil: max(environmentTexel.a, veilTexel.r),
+    detrain: cellTexel.b,
+    eye: cellTexel.a,
   };
 }
 
@@ -85,10 +105,10 @@ export function cloudEnvironmentTexel(sample: CloudSample): Vec4Node {
   return vec4(sample.land, sample.convection, sample.climateCloudiness, sample.anvil);
 }
 
-// 雲標本のセル径を焼き込み用のRGBAへ戻す。log2(km) の生値を R・G へ入れ、B・A は予約として 0
-// で焼く。cloudSampleFromTexels の復号と対。
+// 雲標本のセル径と脱出水の源・渦の眼を焼き込み用のRGBAへ戻す。セル径は log2(km) の生値を
+// R・G へ、脱出水の源を B、眼の濃さを A へ入れる。cloudSampleFromTexels の復号と対。
 export function cloudCellTexel(sample: CloudSample): Vec4Node {
-  return vec4(sample.cumulusCell, sample.cirrusCell, 0, 0);
+  return vec4(sample.cumulusCell, sample.cirrusCell, sample.detrain, sample.eye);
 }
 
 // 焼いた風の RGBA(R・G = 地表付近、B・A = 上層)を風へ戻す。
