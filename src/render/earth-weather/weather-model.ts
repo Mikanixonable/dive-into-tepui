@@ -329,8 +329,11 @@ export class WeatherModel {
       surfaceHumidity,
       upperHumidity,
       convection: advected.convection,
-      convectiveActivity: this.convectiveActivity.at(
-        direction, lift, warmth, this.climate.landFraction(direction), band),
+      convectiveActivity: this.convectiveActivity.at(direction, lift, warmth, band, {
+        land: landFraction,
+        elevation: this.climate.elevation(direction),
+        temperatureK: this.climate.temperatureK(direction),
+      }),
       compression: airMass.compression,
       band,
       warmth,
