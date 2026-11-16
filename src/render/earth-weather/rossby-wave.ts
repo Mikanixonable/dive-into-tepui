@@ -1,6 +1,7 @@
 // 中緯度の上層偏西風の中を進む、低次元のロスビー波。表示時刻から位相を直接組み立て、球面の
 // 流線関数を解析的に微分した風摂動を返す。波の位相速度は、波を運ぶ上層の平均風とは別に持つ。
 // 南北の半球は互いに独立の位相を持ち、蛇行の振幅はストームトラックの海域で大きくなる。
+import * as THREE from 'three/webgpu';
 import {
   abs, clamp, cos, exp, float, max, mix, sign, sin, smoothstep, uniform,
 } from 'three/tsl';
@@ -184,8 +185,8 @@ export function stormTrackAxisAt(longitude: number, hemisphere: number): number 
 // 重みと同じ場を CPU 側から引く口 — 低気圧・高気圧の発生判定が同じ振幅地図を共有する。
 export function waveAmplitudeAt(latitude: number, longitude: number): number {
   const absolute = Math.abs(latitude);
-  const envelope = smoothstepJs(ENVELOPE_RISE_START, ENVELOPE_RISE_END, absolute)
-    * (1 - smoothstepJs(ENVELOPE_FALL_START, ENVELOPE_FALL_END, absolute));
+  const envelope = THREE.MathUtils.smoothstep(absolute, ENVELOPE_RISE_START, ENVELOPE_RISE_END)
+    * (1 - THREE.MathUtils.smoothstep(absolute, ENVELOPE_FALL_START, ENVELOPE_FALL_END));
   return envelope * trackWeightAtJs(latitude, longitude);
 }
 
@@ -221,15 +222,9 @@ function trackWeightsAt(latitude: FloatNode, longitude: FloatNode): [FloatNode, 
   ];
 }
 
-// CPU 側の smoothstep。エッジ外では 0/1 へ留まり、端での微分も 0 になる。
-function smoothstepJs(edge0: number, edge1: number, x: number): number {
-  const t = Math.min(Math.max((x - edge0) / (edge1 - edge0), 0), 1);
-  return t * t * (3 - 2 * t);
-}
-
 // CPU 側のストームトラック重み。TSL 版の trackWeightAt と同じ式を素の数で組む。
 function trackWeightAtJs(latitude: number, longitude: number): number {
-  const hemisphereMix = smoothstepJs(-ENVELOPE_RISE_START, ENVELOPE_RISE_START, latitude);
+  const hemisphereMix = THREE.MathUtils.smoothstep(latitude, -ENVELOPE_RISE_START, ENVELOPE_RISE_START);
   const trackSum = (tracks: readonly TrackBump[]): number => {
     let sum = 0;
     for (const [center, height, concentration] of tracks) {
