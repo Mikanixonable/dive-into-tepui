@@ -94,19 +94,15 @@ export class DetailClock {
   // 段 index の、天体固定の単位方向 direction での値。振れ幅は勾配ノイズ 1 回ぶんと同じ。radius は天体の
   // 基準半径 [m]、wind は局所の東・北を張る接ベクトルで表した風 [m/s]。wind は数百キロで均した流れで
   // なければならない — 場所ごとに大きく変わると、周期のあいだに戻す距離の差で模様がねじれる。
-  // scaleBoost は段の実効波長の倍率(対流セルの径が大きい所ほど細部も大きく読む)。風の移流は物理の
-  // ままなので掛けないが、段の寿命 τ∝λ^(2/3) は実効波長へ追従するよう滑らせ量を boost^(2/3) で割る
-  // — 大きいセルほど細部が長生きになる。
   public evolvingNoise(
     index: number, direction: Vec3Node, radius: FloatNode, wind: Vec3Node,
-    scaleBoost: FloatNode = float(1),
   ): FloatNode {
     const wavelength = this.wavelengths[index]!;
     const period = recyclePeriod(wavelength);
-    const scale = radius.div(wavelength).mul(scaleBoost);
+    const scale = radius.div(wavelength);
     // 周期 1 つぶんに風が運ぶ変位(単位方向)と、ノイズを半径方向へ滑らせる量(格子の単位)。
     const drift = wind.mul(float(period).div(radius));
-    const slide = float(period / detailLifetime(wavelength)).div(scaleBoost.pow(LIFETIME_EXPONENT));
+    const slide = period / detailLifetime(wavelength);
     // 周期の中の経過 age(継ぎ目の後なら負)と、その周期に読む位置のずらし seed で読む値。
     const valueAt = (age: FloatNode, seed: Vec3Node): FloatNode => {
       const origin = normalize(direction.sub(drift.mul(age)));
@@ -127,10 +123,9 @@ export class DetailClock {
   // 段 index の、流れの向き axis に沿って平均した値。origin は読み位置の単位方向、axis は origin での単位接ベクトル、
   // stretch は伸ばす倍率(1 以上)。点は段の波長の半分ずつ流れに沿って並べ、中心の両側へ stretch に応じた重みで
   // 加えるので、stretch 1 では evolvingNoise と同じ値になり、伸ばすほど流れに沿って相関が延びる。
-  // wind と radius と scaleBoost は evolvingNoise と同じ — タップの物理間隔も段の実効波長へ追従する。
+  // wind と radius は evolvingNoise と同じ。
   public flowNoise(
     index: number, origin: Vec3Node, radius: FloatNode, wind: Vec3Node, axis: Vec3Node, stretch: FloatNode,
-    scaleBoost: FloatNode = float(1),
   ): FloatNode {
     const spacing = this.wavelengths[index]! / 2;
     const half = stretch.sub(1).div(2);
@@ -139,14 +134,14 @@ export class DetailClock {
       const offset = Math.abs(slot - FLOW_HALF_POINTS);
       return offset === 0 ? float(1) : clamp(half.sub(offset - 1), 0, 1).toVar();
     });
-    const sum = this.evolvingNoise(index, origin, radius, wind, scaleBoost).toVar();
+    const sum = this.evolvingNoise(index, origin, radius, wind).toVar();
     for (let m = 1; m <= FLOW_HALF_POINTS; m++) {
       for (const sign of [1, -1]) {
         const weight = weights[FLOW_HALF_POINTS + sign * m]!;
         const point = normalize(origin.add(
-          axis.mul(float(sign * m * spacing).mul(scaleBoost).div(radius))));
+          axis.mul(float(sign * m * spacing).div(radius))));
         If(greaterThan(weight, 0), () => {
-          sum.addAssign(this.evolvingNoise(index, point, radius, wind, scaleBoost).mul(weight));
+          sum.addAssign(this.evolvingNoise(index, point, radius, wind).mul(weight));
         });
       }
     }
