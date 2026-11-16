@@ -1,4 +1,4 @@
-// 雲の時間方向の連続性の計測。render-lab の雲の細部の撮影を、視点を固定したまま表示時刻を一定の刻み Δ で
+// 雲の時間方向の連続性の計測。cloud-lab の detail ページの雲の細部の撮影を、視点を固定したまま表示時刻を一定の刻み Δ で
 // 進めて N 枚連続で撮り、前後の 2 枚の差から、一定間隔で急に変わるかを見る。
 //   D(k) = 雲の画素の平均絶対差 [1/255]、F(k) = 最大チャンネル差が CHANGE_THRESHOLD を超える雲の画素の割合。
 // 雲の画素は最初の撮影の輝度から決める(下位 10% の輝度 + CLOUD_MASK_MARGIN より明るい画素)。雲の外の
@@ -13,7 +13,7 @@
 // 帯をまとめた合計の速さの CV を見る。雲の外の画素はマスク内の平均で埋めてから帯域を作る。
 // mode 'selftest' では撮影せず、合成の系列(周期の窓でのみ変わる場・定常に変わる場・移流だけの場)へ
 // 同じ解析を当てて、指標が窓の変化と移流を区別できるかを確かめる。
-// 結果は .cloud-detail/temporal/ へ JSON で残す。
+// 結果は .cloud-lab/detail/temporal/ へ JSON で残す。
 // 設定は作業ツリー直下の .loop-temporal-config.json(無ければ既定)。引数は取らない。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -22,8 +22,8 @@ import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session
 import { decodePng } from './png.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const renderLabDir = path.join(root, '.render-lab');
-const outDir = path.join(root, '.cloud-detail', 'temporal');
+const cloudLabDir = path.join(root, '.cloud-lab');
+const outDir = path.join(root, '.cloud-lab', 'detail', 'temporal');
 const configPath = path.join(root, '.loop-temporal-config.json');
 const port = 8777;
 const debugPort = 9456;
@@ -66,14 +66,14 @@ function readConfig() {
   return config;
 }
 
-function buildRenderLab() {
+function buildCloudLab() {
   if (process.env.CLOUD_TEMPORAL_SKIP_BUILD === '1') return;
   const result = spawnSync(
     path.join(root, 'node_modules', '.bin', 'webpack'),
-    ['--config', 'webpack.render-lab.config.js', '--mode', 'production'],
+    ['--config', 'webpack.cloud-lab.config.js', '--mode', 'production'],
     { cwd: root, stdio: 'inherit' },
   );
-  if (result.status !== 0) throw new Error('render-lab の webpack 本番ビルドが失敗した');
+  if (result.status !== 0) throw new Error('cloud-lab の webpack 本番ビルドが失敗した');
 }
 
 function gitInfo() {
@@ -385,11 +385,11 @@ function asciiGraph(values, width = 80, floor = 0) {
 // 1 枚の撮影を、表示時刻 t へ置いて落ち着くまで撮る。落ち着いた PNG のデータ URL を返す。
 async function settledFrame(devTools, t) {
   const expression = `(async () => {
-    window.renderLab.setDisplayTime(${JSON.stringify(t)});
-    let previous = await window.renderLab.capture();
+    window.cloudLabDetail.setDisplayTime(${JSON.stringify(t)});
+    let previous = await window.cloudLabDetail.capture();
     for (let count = 2; count <= ${MAX_SETTLE_CAPTURES}; count++) {
       await new Promise((resolve) => requestAnimationFrame(() => resolve()));
-      const next = await window.renderLab.capture();
+      const next = await window.cloudLabDetail.capture();
       if (next === previous) return next;
       previous = next;
     }
@@ -403,25 +403,25 @@ async function settledFrame(devTools, t) {
 async function measureSeries(config, shotName) {
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
-    serveDir: renderLabDir, port, debugPort, profilePrefix: 'tepui-cloud-temporal-', onEvent,
+    serveDir: cloudLabDir, port, debugPort, profilePrefix: 'tepui-cloud-temporal-', onEvent,
     requestTimeoutMs: 120_000,
   });
   try {
     const { devTools } = session;
-    await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
+    await devTools.send('Page.navigate', { url: `${session.baseUrl}/detail.html` });
     await waitFor(
       devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab?.shootCloudDetail === 'function')",
-      'the render lab to initialise',
+      "(document.getElementById('error')?.textContent || typeof window.cloudLabDetail?.shootCloudDetail === 'function')",
+      'the cloud lab detail page to initialise',
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
 
     // 撮影の組(視点・描画設定)を組むため、基準の撮影を 1 枚撮る。以降は表示時刻だけを動かす。
-    await devTools.evaluate(`window.renderLab.shootCloudDetail(${JSON.stringify(shotName)})`);
+    await devTools.evaluate(`window.cloudLabDetail.shootCloudDetail(${JSON.stringify(shotName)})`);
     for (const [key, value] of Object.entries(config.graphics ?? {})) {
       await devTools.evaluate(
-        `window.renderLab.setGraphicsOption(${JSON.stringify(key)}, ${JSON.stringify(value)})`);
+        `window.cloudLabDetail.setGraphicsOption(${JSON.stringify(key)}, ${JSON.stringify(value)})`);
     }
 
     const times = Array.from({ length: config.frames }, (_, k) => config.startS + k * config.deltaS);
@@ -730,7 +730,7 @@ async function main() {
     return;
   }
   const shotName = `${config.scene}-0h-${config.kmPerPx}km-${config.kind}`;
-  buildRenderLab();
+  buildCloudLab();
   const git = gitInfo();
   const label = config.label ?? (git.dirty ? 'working' : 'head');
   const series = await measureSeries(config, shotName);

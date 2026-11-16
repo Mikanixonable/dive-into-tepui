@@ -256,11 +256,11 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run cloud-lab:reference-fine-timeseries` | 実写の可視時系列を GIBS から取り込み(`.cloud-lab/reference-fine-timeseries/`) | 時系列の実写目録を増やす・取り直すとき |
 | `npm run cloud-lab:reference-cloudtop` | MODIS Terra の雲頂高度を取り込み(`.cloud-lab/reference-cloudtop/`) | 雲頂の実写参照を取り直すとき |
 | `npm run cloud-lab:reference-timeseries` | ひまわり AHI 赤外の実写時系列を GIBS から取り込み(`.cloud-lab/reference-timeseries/`) | compare の動きの節の実写参照を取り直すとき |
-| `npm run cloud-detail:reference` | 雲の細部比較用の実写を Worldview から取り込む(`.cloud-detail/reference/`) | 実写の目録を増やす・取り直すとき |
-| `npm run cloud-detail:selftest` | 雲の細部の物差しの自己検査(合成場の傾き・周期性と実写の文献検算) | 物差し(`tools/cloud-detail-metrics.mjs`)を触ったとき |
-| `npm run cloud-detail:compare` | 雲の細部の撮影→計測→実写との距離→履歴→前回との差(`.cloud-detail/`) | 雲の細部の変更を定量で追うとき・前後を比べるとき |
-| `npm run cloud-detail:tiers` | 巻雲の精細さ「粗」と「標準」で濃さの平均が変わらない検査(`.cloud-detail/cirrus-tiers/`) | 巻雲の細部を触ったとき |
-| `npm run cloud-detail:stability` | 視点を動かしただけで雲の形が変わらないかと、時間で雲がどう流れ入れ替わるかの計測(`.cloud-detail/stability/`) | ちらつきや細部の動きを定量で追うとき |
+| `npm run cloud-lab:detail-reference` | 雲の細部比較用の実写を Worldview から取り込む(`.cloud-lab/detail/reference/`) | 実写の目録を増やす・取り直すとき |
+| `npm run cloud-lab:detail-selftest` | 雲の細部の物差しの自己検査(合成場の傾き・周期性と実写の文献検算) | 物差し(`tools/cloud-lab-detail-metrics.mjs`)を触ったとき |
+| `npm run cloud-lab:detail-compare` | 雲の細部の撮影→計測→実写との距離→履歴→前回との差(`.cloud-lab/detail/`) | 雲の細部の変更を定量で追うとき・前後を比べるとき |
+| `npm run cloud-lab:detail-tiers` | 巻雲の精細さ「粗」と「標準」で濃さの平均が変わらない検査(`.cloud-lab/detail/cirrus-tiers/`) | 巻雲の細部を触ったとき |
+| `npm run cloud-lab:detail-stability` | 視点を動かしただけで雲の形が変わらないかと、時間で雲がどう流れ入れ替わるかの計測(`.cloud-lab/detail/stability/`) | ちらつきや細部の動きを定量で追うとき |
 | `npm run export-assets` | `src/assets/` の焼き込みアセット再生成 | モデルかノズル表を変えたときだけ |
 | `npm run export-module-thumbnails` | `src/assets/module-thumbnails/` の再生成 | モジュールの見た目を変えたときだけ |
 | `npm run ship-modules:author` | Blender で船モジュールの原型 `assets-src/ship-modules/*.glb` を再生成(続けて `export-assets`) | 船モジュールの造形か寸法を変えたときだけ |
