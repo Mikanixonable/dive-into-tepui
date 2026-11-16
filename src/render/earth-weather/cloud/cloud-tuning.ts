@@ -58,7 +58,7 @@ export const CLOUD_TUNING_DEFAULTS = {
   transientGain: 0.3,
   transientActivityOnset: 0.62,
   transientActivityFull: 0.85,
-  landHeatingGain: 0.4,
+  landHeatingGain: 0.3,
   orographicGain: 2,
   plumeDecaySeconds: 6 * 3600,
   // weather-model.ts / weather-transport.ts — 風上の降水が風下へ運ぶ乾き(雨陰)
@@ -105,6 +105,8 @@ export const CLOUD_TUNING_DEFAULTS = {
   towerOnset: 0.015,
   towerWidth: 0.09,
   towerLiftGate: 0.005,
+  towerDeepGain: 0.1,
+  towerDeepMoist: 0.3,
   // condensation.ts — 層積雲
   stratocumulusSubsidenceScale: 150,
   stratocumulusHumidityOnset: 0.35,
@@ -162,20 +164,35 @@ export const CLOUD_TUNING_DEFAULTS = {
   cirrusCellResidualWeight: 0.15,
   cirrusFiberWindOnset: 20,
   cirrusFiberWindFull: 45,
-  // convective-activity.ts — 対流の活発度
+  // convective-activity.ts — 対流の活発度(粒か板かの形態)
   instabilityAmplitude: 1.0,
   liftActivity: 25,
   coldActivity: 1.9,
-  landActivity: 0.3,
-  mountainActivity: 0.3,
-  mountainElevationOnset: 500,
-  mountainElevationFull: 1500,
-  warmSeaActivity: 0.2,
-  warmSeaTemperatureOnset: 296,
-  warmSeaTemperatureFull: 300,
+  surfaceActivity: 0.6,
+  landActivity: 0.15,
   bandActivity: 0.5,
   activityBase: 0.5,
   activityMin: 0.3,
+  // convective-activity.ts — 地表の駆動(日射・湿り・比高・海面水温)。日射のピークからの遅れ [h]、
+  // 山地で早まる時間 [h]、陸の湿りを平年の雲量から読む門、山地と見なす比高の門 [m]。
+  shallowLagHours: 0,
+  deepLagHours: 4,
+  mountainPhaseAdvanceHours: 2,
+  wetnessCloudinessOnset: 0.15,
+  wetnessCloudinessFull: 0.45,
+  reliefOnset: 300,
+  reliefFull: 1000,
+  // 浅い積雲の駆動: 海の基準と日変化の振れ幅(基準比)、湿度へ足す利得。
+  shallowNightFloor: 0.3,
+  shallowDriveMean: 0.59,
+  oceanDiurnal: 0.25,
+  shallowForcingGain: 0.12,
+  // 深い対流の駆動: 陸の平地の強さ(山地を 1 として)、暖かい海の強さと早朝の振れ幅、暖かい海の門 [K]。
+  landDeepScale: 0.65,
+  oceanDeepScale: 0.5,
+  oceanDeepDiurnal: 0.15,
+  warmSeaTemperatureOnset: 299,
+  warmSeaTemperatureFull: 302.5,
 } as const;
 
 export type CloudTuningId = keyof typeof CLOUD_TUNING_DEFAULTS;

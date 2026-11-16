@@ -66,6 +66,11 @@ const TOWER_ONSET = CLOUD_TUNING.towerOnset;
 const TOWER_WIDTH = CLOUD_TUNING.towerWidth;
 // 塔を閉じる沈降の門 [m/s]。高気圧の吹きおろす所では、粒の峰が立っても深い対流にはならない。
 const TOWER_LIFT_GATE = CLOUD_TUNING.towerLiftGate;
+// 深い対流の起こりやすさが、塔の立つ峰(粒 × 活発度)へ足す高さ。日射で温まった陸の午後と暖かい海は、
+// 粒の峰が低くても塔が立つ。
+const TOWER_DEEP_GAIN = CLOUD_TUNING.towerDeepGain;
+// 同じく、塔が立つ湿りの門へ足す湿度。暖かい海の湿った境界層と昼の陸の湿りが、門を開く。
+const TOWER_DEEP_MOIST = CLOUD_TUNING.towerDeepMoist;
 // 海洋性層積雲へ移る気候の門。平年の雲量が高い海で、沈降と低い対流が重なるほど閉じた細胞の
 // 板へ寄せる。海岸と気候の境界は climate map の補間と smoothstep で連続に渡る。
 // 沈降門の膝 [per m/s] は、亜熱帯高圧の広く弱い吹きおろし(数 hPa で 0.003〜0.008 m/s)が
@@ -176,15 +181,18 @@ export function condense(weather: WeatherSample): CloudSample {
   // 圏界面までを二乗で渡すので、低い塔が多く高い塔は少ない。**塔は、その場が覆われるほど湿っていて、
   // かつ沈降していない所にだけ立つ** — 乾いた土地と高気圧の下では、粒の峰が雲を作っても深い対流に
   // ならない。金床は眼を持つ渦の芯だけが敷く平らな天蓋で、圏界面まで届く。
-  const grain = max(weather.convection.x, 0).mul(weather.convectiveActivity);
-  const moist = smoothstep(COVERAGE_ONSET, COVERAGE_ONSET.add(COVERAGE_WIDTH), weather.surfaceHumidity);
+  const grain = max(weather.convection.x, 0).mul(weather.convectiveActivity)
+    .add(weather.deepPotential.mul(TOWER_DEEP_GAIN));
+  const humidity = weather.surfaceHumidity.add(weather.shallowForcing);
+  const moist = smoothstep(COVERAGE_ONSET, COVERAGE_ONSET.add(COVERAGE_WIDTH),
+    humidity.add(weather.deepPotential.mul(TOWER_DEEP_MOIST)));
   const rising = smoothstep(TOWER_LIFT_GATE.mul(-1), TOWER_LIFT_GATE, weather.lift);
   const reach = smoothstep(TOWER_ONSET, TOWER_ONSET.add(TOWER_WIDTH), grain);
   const tower = layered.add(weather.tropopause.sub(layered).mul(reach.mul(reach)).mul(moist).mul(rising));
   const anvil = weather.anvil.mul(weather.tropopause);
   // 被覆率は、湿度が開始閾値を超過した量を遷移幅で正規化した値に基づく晴天率の補数。下端は傾き 0 で
   // 0 から離れ、上端は 1 へ代数の裾で漸近する — 覆われた空にも湿度の差が階調として残る。
-  const moistened = weather.surfaceHumidity.add(granularity).add(stratocumulus.mul(STRATOCUMULUS_DECK_ADD));
+  const moistened = humidity.add(granularity).add(stratocumulus.mul(STRATOCUMULUS_DECK_ADD));
   const excess = max(moistened.sub(COVERAGE_ONSET), 0).div(COVERAGE_WIDTH);
   const clear = excess.pow(COVERAGE_EXCESS_POWER).div(COVERAGE_DISPERSION).add(1).pow(COVERAGE_DISPERSION).reciprocal();
   const coverage = clear.oneMinus();
