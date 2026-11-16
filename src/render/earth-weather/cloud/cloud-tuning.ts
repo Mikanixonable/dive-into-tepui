@@ -117,20 +117,6 @@ export const CLOUD_TUNING_DEFAULTS = {
   stratocumulusDeckAdd: 0.35,
   shapeNetworkHumidity: 0.45,
   shapeGrainHumidity: 0.70,
-  // condensation.ts — 塔から上層への氷雲の放出。層状の雲から圏界面までの柱を塔が昇った比 —
-  // かなとこは圏界面へほぼ達した塔だけが出すので、開始は柱のほぼ上限、飽和は上限へ取る。
-  detrainOnset: 0.95,
-  detrainFull: 1.0,
-  // 活発度から組む発火の門 — texel に粒を解像できない粗い写し(全球)では粒のノイズが 0 に
-  // 衰えるので、脱出水の強さを対流の活発度から直接与える。塔経路とは別の項で、発火の強さは
-  // 活発度・湿り・上昇流・上限の積。粒が解像できる細かい写しでは効かせない — 活発度は広い帯
-  // なので、全域へ敷くと塔の無い場所にも発火する。粒径より texel が大きくなってから効き始める
-  // (数キロの粒は数十キロの texel で衰えきる)。
-  detrainActivityOnset: 0.9,
-  detrainActivityFull: 0.98,
-  detrainActivityEmit: 0.2,
-  detrainActivityTexelOnset: 15e3,
-  detrainActivityTexelFull: 30e3,
   // condensation.ts — 巻雲(薄い雲)の光学的厚み
   hazeOnset: 0.5,
   hazeGain: 0.66,
@@ -143,17 +129,6 @@ export const CLOUD_TUNING_DEFAULTS = {
   streakGain: 2.36,
   translucentKnee: 0.25,
   translucentLimit: 0.85,
-  // detrain-veil.ts — 氷雲の広がり。発散が届く円盤の半径 [m](個々のかなとこは直径数十キロ)と
-  // 円盤タップの重みの基準、上層風へ遡る歩幅 [s] と経過時間の減衰 [s]、蓄積を飽和させる利得。
-  detrainSpreadRadius: 15e3,
-  detrainSpreadWeight: 0.3,
-  detrainAdvectStep: 0.25 * 3600,
-  detrainDecaySeconds: 2400,
-  detrainGain: 1.0,
-  // 群れの盾 — 放出の源をこの半径 [m] で均した平均(ミップ段から読む)へ掛ける利得。
-  // 塔のあいだの晴れ間まで届く広さ。孤立した塔では平均が薄くてほとんど乗らない。
-  detrainShieldRadius: 10e3,
-  detrainShieldGain: 0.5,
   // cell-size.ts — 積雲のセル径 [km] と門
   cellClosedKm: 70,
   cellOpenKm: 25,

@@ -9,7 +9,6 @@ import {
 } from './cloud-kind-node';
 import type { CloudSample } from './cloud-field-sample';
 import type { WeatherSample } from '../weather-model';
-import type { FloatNode } from '../../tsl-types';
 export type { CloudSample } from './cloud-field-sample';
 
 // 被覆率の立ち上がり閾値となる湿度と、そこからの正規化遷移幅（被覆率が 0 から 0.56 へ推移する湿度の
@@ -122,16 +121,6 @@ const TRANSLUCENT_LIMIT = CLOUD_TUNING.translucentLimit;
 // 量を決める。
 const DEEP_COVERAGE_ONSET = CLOUD_TUNING.deepCoverageOnset;
 const DEEP_COVERAGE_FULL = CLOUD_TUNING.deepCoverageFull;
-// 塔が上層へ氷雲を放出し始める柱の上昇比と、放出が飽和する比。湿りと上昇流の門が掛かるぶん
-// 実際の塔は柱の半分程度までしか届かないので、飽和はその上限あたりへ取る。
-const DETRAIN_ONSET = CLOUD_TUNING.detrainOnset;
-const DETRAIN_FULL = CLOUD_TUNING.detrainFull;
-// 活発度から与える発火 — texel に粒を解像できない所では、対流の活発度から脱出水の強さを直接組む。
-const DETRAIN_ACTIVITY_ONSET = CLOUD_TUNING.detrainActivityOnset;
-const DETRAIN_ACTIVITY_FULL = CLOUD_TUNING.detrainActivityFull;
-const DETRAIN_ACTIVITY_EMIT = CLOUD_TUNING.detrainActivityEmit;
-const DETRAIN_ACTIVITY_TEXEL_ONSET = CLOUD_TUNING.detrainActivityTexelOnset;
-const DETRAIN_ACTIVITY_TEXEL_FULL = CLOUD_TUNING.detrainActivityTexelFull;
 
 // weather から凝結する雲のグラフ。積雲の量は、湿度(低周波)へ対流(高周波)を足した伝達関数の
 // 被覆率と、層状の雲から立つ塔と渦の芯が敷く金床の高いほうの雲頂から決まり、巻雲の量は
@@ -139,7 +128,7 @@ const DETRAIN_ACTIVITY_TEXEL_FULL = CLOUD_TUNING.detrainActivityTexelFull;
 // 折り目の帯が、塔は粒の峰が、平らな天蓋は渦の芯が決める。
 // **対流活発度は被覆率および雲塔の高さに反映され、沈降域の海洋性層積雲では層状起伏も低減する** — 一面に
 // 覆われた空も一様な白い面にはならない(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
-export function condense(weather: WeatherSample, texelSize: FloatNode): CloudSample {
+export function condense(weather: WeatherSample): CloudSample {
   // 網目と粒を湿度で混ぜる。混ぜると振れ幅が落ちるので、二乗和の平方根で戻す — 戻さないと
   // 渡りの中間(半々)に、粒の消えた平坦な帯ができる。
   const shape = smoothstep(SHAPE_NETWORK_HUMIDITY, SHAPE_GRAIN_HUMIDITY, weather.surfaceHumidity);
@@ -211,22 +200,6 @@ export function condense(weather: WeatherSample, texelSize: FloatNode): CloudSam
   const deep = max(sparse, cumulusAmountFromTopAltitudeNode(cloudTop));
   const deepCoverage = smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage);
   const cumulus = mix(sparse, deep, deepCoverage);
-  // 圏界面へ近づくほど発達した塔が上層へ放出する氷雲の強さ。層状の雲が載る高さは塔の発達と
-  // 無関係(高緯度の低い圏界面では層状の雲だけで比が立ってしまう)ので、層状の雲から圏界面
-  // までの柱を塔がどれだけ昇ったかで測る。孤立した一本の塔にもかなとこが架かるよう、周囲の
-  // 覆いの深さにも依らない。焼いた場を遡って広げた写しがこの量を集めて巻雲へ合成する。
-  // **粒が死ぬ粗い写し(全球)では活発度が代わりに発火する** — 粒のノイズは texel より細かい所で
-  // 振幅 0 に衰えるので、粗い写しでは塔が丸ごと消えてしまう。1 texel が複数のセルを含む所では、
-  // その中の塔が出す氷雲の強さは対流の活発度から期待できる。粒が解像される細かい写しでは床は
-  // 効かせない — 活発度は広い帯なので、全域へ敷くと塔の無い場所にも発火する。塔経路と別の項に
-  // するので、発火の門を上げても床は残る。
-  const towerRise = reach.mul(reach).mul(moist).mul(rising);
-  const anvilRise = anvil.sub(layered).div(max(weather.tropopause.sub(layered), 1));
-  const floorEmit = smoothstep(DETRAIN_ACTIVITY_ONSET, DETRAIN_ACTIVITY_FULL, weather.convectiveActivity)
-    .mul(smoothstep(DETRAIN_ACTIVITY_TEXEL_ONSET, DETRAIN_ACTIVITY_TEXEL_FULL, texelSize))
-    .mul(moist).mul(rising).mul(DETRAIN_ACTIVITY_EMIT);
-  const detrain = max(
-    smoothstep(DETRAIN_ONSET, DETRAIN_FULL, max(towerRise, anvilRise)), floorEmit);
   // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN)
     .mul(smoothstep(HAZE_CLOUDINESS_ONSET, HAZE_CLOUDINESS_FULL, weather.meanCloudiness))
@@ -237,8 +210,6 @@ export function condense(weather: WeatherSample, texelSize: FloatNode): CloudSam
   return {
     cumulus,
     cirrus: cirrusAmountFromOpticalDepthNode(opticalDepth),
-    // 脱出水のベールは生成値では場に無い — 焼き込みの写しをベールの生成が満たす。
-    veil: float(0),
     cirrusFlow,
     cumulusCell: cells.cumulusCell,
     cirrusCell: cells.cirrusCell,
@@ -246,7 +217,5 @@ export function condense(weather: WeatherSample, texelSize: FloatNode): CloudSam
     convection: weather.convectiveActivity,
     climateCloudiness: weather.meanCloudiness,
     anvil: weather.anvil,
-    detrain,
-    eye: weather.eye,
   };
 }
