@@ -26,13 +26,32 @@ export const CLOUD_TUNING_DEFAULTS = {
   pressureLiftScale: 27,
   liftLimit: 0.06,
   terrainLiftGain: 0.35,
-  // weather-model.ts — 帯(前線・雨帯)
-  frontOnset: 1.65,
-  frontWidth: 0.35,
+  // weather-model.ts — 帯(雨帯は気団の圧縮の稜線を写像する)
   rainbandOnset: 5,
   rainbandWidth: 4,
   bandLift: 0.06,
   bandHumidity: 0.1,
+  // pressure-feature.ts — 前線骨格(谷に端部を持つ寒冷・温暖・閉塞の腕)。腕の半値幅と
+  // 長さ・三点の半径は谷の短軸の半径を尺にした倍率、向きは [°]、曲がりは半径の冪。
+  // 腕の向きは閉塞点から先端へ「根元の向き → 先端の向き」と曲がる。閉塞点(三点)が出ると
+  // 寒冷・温暖の根元の向きは三点の向きへ寄り、3 本が同じ点へ繋がる。
+  frontArmWidth: 0.32,
+  frontBandSkew: 0.45,
+  frontColdLength: 4.2,
+  frontWarmLength: 2.8,
+  frontTailLength: 5.0,
+  frontTripleRadius: 1.5,
+  frontTripleAngleDeg: -45,
+  frontColdAngleDeg: -100,
+  frontColdTipAngleDeg: -115,
+  frontColdBend: 1.5,
+  frontWarmAngleDeg: 15,
+  frontWarmTipAngleDeg: 25,
+  frontWarmBend: 1.5,
+  frontOccSwingDeg: 200,
+  frontOccBend: 1.0,
+  frontTailLatitudeStartDeg: 15,
+  frontTailLatitudeFullDeg: 25,
   // weather-model.ts — 上昇源(平地の過渡源・日射加熱・地形性上昇)とプルームの減衰
   transientGain: 0.3,
   transientActivityOnset: 0.62,

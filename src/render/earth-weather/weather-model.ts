@@ -35,7 +35,8 @@ export interface WeatherSample {
   readonly convection: Vec2Node; // 対流セルの強弱(0 中心の高周波、x が粒・y が網目)
   readonly convectiveActivity: FloatNode; // 対流の強弱がどれだけ強く現れるか 0..1
   readonly compression: FloatNode; // 気団の境目の押し縮まり(1 で何も起きていない)
-  readonly band: FloatNode; // 気団の折り目に立つ雲の帯(温帯で前線、眼を持つ渦のまわりで雨帯)の強さ 0..1
+  readonly band: FloatNode; // 雲の帯(低気圧に繋がる前線、または眼を持つ渦のまわりの雨帯)の強さ 0..1
+  readonly front: FloatNode; // 帯のうち、谷の骨格から立つ前線の分 0..1
   readonly warmth: FloatNode; // 暖気の流入 = 出身地からの緯度の差 [rad](負で寒気)
   readonly oceanFetch: FloatNode; // 追跡した気団が海の上にあった時間の割合 0..1(寒気の fetch)
   readonly anvil: FloatNode; // 金床(平らな天蓋)の濃さ 0..1
@@ -62,11 +63,6 @@ const PRESSURE_LIFT_SCALE = CLOUD_TUNING.pressureLiftScale;
 // 上昇流の頭打ち [m/s]。急な斜面と深い谷の芯では上昇流が並の何倍にもなり、線形のままだと湿度が
 // 0/1 で切れて硬い縁の白い塊になる。
 const LIFT_LIMIT = CLOUD_TUNING.liftLimit;
-// 前線帯の強度計算。気団の圧縮度が立ち上がり閾値から遷移幅に達する間に、帯の強度が 0 から 1 へ推移する。開始閾値は 35〜60° 緯度帯の
-// 背景圧縮度（90パーセンタイルで 1.19〜1.28）の 2 割増に設定する。
-// 遷移幅は圧縮の稜線が飽和する狭さに調整し、最も高密度の中心核に帯幅を確保する。
-const FRONT_ONSET = CLOUD_TUNING.frontOnset;
-const FRONT_WIDTH = CLOUD_TUNING.frontWidth;
 // 雨帯。眼を持つ渦が周りの気団を巻き込んで折り畳んだ筋で、圧縮は前線より桁が大きい(腕の稜線で 5〜9)。
 // 稜線の最も押し縮まった区間だけが飽和して腕の先へ連続に薄れる幅に取り、芯のまわりのシアの丘(2〜4)と
 // 熱帯の背景(99.9 パーセンタイルで 3.2)を拾わない。狭めると腕が太い真っ白な帯になる
@@ -277,11 +273,8 @@ export class WeatherModel {
     const warmth = airMass.warmth.mul(extratropical);
     const terrainLift = dot(surfaceWind, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
       .mul(TERRAIN_LIFT_GAIN);
-    // 折り目の帯: 温帯では前線(気団の圧縮へ、気圧の上昇流を少し足す)、熱帯では雨帯の
-    // 伝達関数が圧縮の稜線を降雨帯の強度へマッピングする。
-    const updraft = smoothstep(0.01, 0.04, max(liftFromPressure(pressure), 0));
-    const temperatureFront = smoothstep(FRONT_ONSET, FRONT_ONSET.add(FRONT_WIDTH), airMass.compression);
-    const front = temperatureFront.add(updraft.mul(0.15)).min(1).mul(extratropical);
+    // 帯: 温帯では谷の骨格から立つ前線、熱帯では気団の圧縮の稜線を写像する雨帯。
+    const front = this.cyclones.frontAt(direction);
     const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET.add(RAINBAND_WIDTH), airMass.compression)
       .mul(extratropical.oneMinus());
     const band = min(front.add(rainband), 1);
@@ -336,6 +329,7 @@ export class WeatherModel {
       }),
       compression: airMass.compression,
       band,
+      front,
       warmth,
       oceanFetch: airMass.ocean,
       anvil,
