@@ -8,7 +8,7 @@ import {
   REFERENCE_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_RADIUS, type SunLight,
   scaledRadiantIntensity,
 } from '../../render/pipeline/sun-light';
-import { ambientFraction } from '../../render/pipeline/lighting/ambient-source';
+import { ambientFraction, nightObservationFraction } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
 import {
   MAX_PLANET_LIGHT_SLOTS, type PlanetLightValue,
@@ -46,7 +46,10 @@ export interface IlluminationTargets {
   readonly ringShadow: { set(center: THREE.Vector3, axis: THREE.Vector3, bands: readonly RingBand[]): void };
   readonly cloudShadow: { set(cloud: ShadowCloud | null, kinds: CloudShadowKinds): void };
   readonly planetLight: { set(lights: readonly PlanetLightValue[]): void };
-  readonly ambient: { setFraction(fraction: number): void };
+  readonly ambient: {
+    setFraction(fraction: number): void;
+    setNightObservation(center: THREE.Vector3, radius: number, fraction: number): void;
+  };
   readonly atmosphere: { setDraws(draws: readonly AtmosphereDraw[]): void };
   // 直射光が抜ける大気。atmosphere へ渡すのと同じ天体の列を受ける。
   readonly sunExtinction: { set(bodies: readonly AtmosphereBody[]): void };
@@ -98,6 +101,7 @@ export class CelestialIllumination {
       sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
       star?.stellarLight.color ?? STARLESS_SUN_COLOR, starIntensity);
     this.targets.ambient.setFraction(ambientFraction(graphics));
+    this.syncNightObservation(sources, fo, displayTime, graphics);
     // 大気を持つ天体は、天体照の写しにも大気パスにも同じ 1 体として渡す。
     const atmospheres = this.atmosphereCandidates(sources, displayTime, camera, graphics);
     this.syncPlanetLights(sources, atmospheres, displayTime, camera, sunPos);
@@ -108,6 +112,27 @@ export class CelestialIllumination {
     const bodies = draws.map((draw) => draw.body);
     this.targets.sunExtinction.set(bodies);
     this.targets.skyLight.set(bodies);
+  }
+
+  // 「夜側の観察」の強めた環境光を、観察球を差し出した天体(いまは地球だけ)へ描画座標で
+  // 書き込む。設定が切れているか、差し出す天体が無ければ消灯する。
+  private syncNightObservation(
+    sources: readonly CelestialIlluminationSource[], fo: FloatingOrigin,
+    displayTime: number, graphics: GraphicsSettingsData,
+  ): void {
+    const fraction = nightObservationFraction(graphics);
+    let observation: { readonly motion: DefinedCelestialBody; readonly radius: number } | null = null;
+    if (fraction !== 0) {
+      for (const source of sources) {
+        const radius = source.view.nightObservationRadius(source.motion);
+        if (radius !== null) { observation = { motion: source.motion, radius }; break; }
+      }
+    }
+    this.targets.ambient.setNightObservation(
+      observation === null ? ZERO_VECTOR : fo.RtoThreeV3(observation.motion.positionAt(displayTime)),
+      observation?.radius ?? 0,
+      observation === null ? 0 : fraction,
+    );
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
