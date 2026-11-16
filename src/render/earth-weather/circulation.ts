@@ -48,6 +48,19 @@ const ORBIT_RADIUS = 30;
 const BREATH_AMPLITUDE = 0.05;
 const BREATH_PERIOD = 7 * 86400;
 
+// 帯ごとの初期位相(自転・公転)。位相は秒に線形なので、原点を揃えると時刻 0 では全帯が同じ回転に
+// なり、帯を混ぜる範囲(半球の大半)で 2 枚の写しが一致して見かけだけ細かい模様が立つ — 時間が
+// 進んで帯ごとの回転差が細い段の波長を超えると、最初の数時間でその分だけ模様が滲む。帯ごとに
+// 違う初期位相を持たせて、時刻 0 を普通の時間と同じ不整合な状態にする。
+const INITIAL_PHASES: readonly (readonly [number, number])[] = [
+  [0.9, 2.2],
+  [3.8, 0.6],
+  [5.7, 4.1],
+  [2.4, 5.3],
+  [4.9, 1.8],
+  [1.5, 3.0],
+];
+
 // 帯 1 本と、そこへ寄せる重み。混ざる 2 本の重みは二乗和が 1 に保たれる対で、境目ではどちらも
 // 1/√2 になる。
 interface WeightedBand {
@@ -77,9 +90,10 @@ export class Circulation {
   public syncTime(seconds: number): void {
     for (const [i, band] of this.bands.entries()) {
       const phase = this.patternTransport.angularPhase(band.east, band.north, band.latitudeRad, seconds);
-      const spin = wrapAngle(phase.east);
+      const initial = INITIAL_PHASES[i % INITIAL_PHASES.length]!;
+      const spin = wrapAngle(phase.east + initial[0]);
       // 公転の位相が増えると模様は南へ動くので、北向きの帯では符号を反転する。
-      const orbit = wrapAngle(-phase.north / ORBIT_RADIUS);
+      const orbit = wrapAngle(-phase.north / ORBIT_RADIUS + initial[1]);
       this.flows[i]!.set(Math.cos(spin), Math.sin(spin), Math.cos(orbit), Math.sin(orbit));
     }
     this.breath.value = BREATH_AMPLITUDE * Math.sin((2 * Math.PI * seconds) / BREATH_PERIOD);
