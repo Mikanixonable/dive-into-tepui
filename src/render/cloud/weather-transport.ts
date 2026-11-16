@@ -1,5 +1,5 @@
-// 湿度・対流の源を写しへ焼き、天気の風で風上へ遡って読む。湿度の地表成分と上層成分、対流を
-// 別々の風で運ぶが、すべて同じ2位相移流の規則と写しの寿命で管理する。
+// 湿度・対流の源を写しへ焼き、天気の風で風上へ遡って読む。湿度の地表成分と上層成分は同じ風を
+// 違う歩幅で、対流は別の風で運ぶが、すべて同じ2位相移流の規則と写しの寿命で管理する。
 import * as THREE from 'three/webgpu';
 import { abs, float, fract, inverseSqrt, mix, normalize, uniform, vec2, vec4 } from 'three/tsl';
 import { BakedField } from '../baked-field';
@@ -116,7 +116,7 @@ export class WeatherTransport {
     this.upperHumidityNoise.syncTime(seconds);
   }
 
-  // 移流前の場をテクスチャへレンダリングする。advectedAt() と surfaceHumidityAt() のグラフを描く前に呼ぶ。
+  // 移流前の場をテクスチャへレンダリングする。advectedAt() のグラフを描く前に呼ぶ。
   public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
     this.humiditySource.render(renderer, gpu);
     this.convectionSource.render(renderer, gpu);
@@ -135,15 +135,10 @@ export class WeatherTransport {
     return this.convectionNoise.pairAt(direction).mul(CONVECTION_NOISE_AMPLITUDE);
   }
 
-  // レンダリング済み湿度テクスチャにおける地表成分のサンプリング値（移流前）。
-  public surfaceHumidityAt(direction: Vec3Node): FloatNode {
-    return this.humiditySource.at(direction).r;
-  }
-
   // 移流前の写しを風で流したもの。周期の半分ずれた2位相を三角波で混ぜるので、流れの変位が
   // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならない。
   public advectedAt(
-    direction: Vec3Node, surfaceWind: BalancedWind, upperWind: BalancedWind, convectionWind: BalancedWind,
+    direction: Vec3Node, humidityWind: BalancedWind, convectionWind: BalancedWind,
   ): AdvectedFields {
     const phaseA = this.advectionCycle;
     const phaseB = fract(phaseA.add(0.5));
@@ -159,11 +154,11 @@ export class WeatherTransport {
     const convectionStep = inverseSqrt(winding.mul(winding).add(1)).mul(CONVECTION_ADVECTION);
     return {
       surfaceHumidity: mix(
-        sourceAt(this.humiditySource, surfaceWind, stepB).x,
-        sourceAt(this.humiditySource, surfaceWind, stepA).x, weightA),
+        sourceAt(this.humiditySource, humidityWind, stepB).x,
+        sourceAt(this.humiditySource, humidityWind, stepA).x, weightA),
       upperHumidity: mix(
-        sourceAt(this.humiditySource, upperWind, stepB.mul(UPPER_ADVECTION)).y,
-        sourceAt(this.humiditySource, upperWind, stepA.mul(UPPER_ADVECTION)).y, weightA),
+        sourceAt(this.humiditySource, humidityWind, stepB.mul(UPPER_ADVECTION)).y,
+        sourceAt(this.humiditySource, humidityWind, stepA.mul(UPPER_ADVECTION)).y, weightA),
       convection: mix(
         sourceAt(this.convectionSource, convectionWind, stepB.mul(convectionStep)).rg,
         sourceAt(this.convectionSource, convectionWind, stepA.mul(convectionStep)).rg, weightA),
