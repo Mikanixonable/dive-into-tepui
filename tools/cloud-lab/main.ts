@@ -8,9 +8,10 @@ import { createSynopticPanel } from './synoptic-panel';
 import { buildFramingRow } from './framing-controls';
 import { buildTimeControls } from './time-controls';
 import type { Framing, SynopticLayers } from './synoptic-map';
-import { buildButtonRow, buildCheckbox, buildSlider } from '../lab-controls';
+import { buildButtonRow, buildCheckbox } from '../lab-controls';
 import { CLOUD_TUNING, CLOUD_TUNING_DEFAULTS, type CloudTuningId } from '../../src/render/earth-weather/cloud/cloud-tuning';
-import { GENERATION_PARAMS, type GenerationParamSpec } from './generation-params';
+import { GENERATION_PARAMS } from './generation-params';
+import { buildParamPanel } from './param-panel';
 import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
@@ -168,9 +169,10 @@ async function init(): Promise<void> {
     if (rebakeNow) rebake();
     else bakeTimer = window.setTimeout(rebake, 250);
   };
-  for (const [id, spec] of Object.entries(GENERATION_PARAMS) as [CloudTuningId, GenerationParamSpec][]) {
-    setSliders.set(id, buildSlider(`p-${spec.row}`, spec.label, spec.min, spec.max, spec.step,
-      () => String(CLOUD_TUNING[id].value), (value) => applyParams({ [id]: value })));
+  for (const [id, setSlider] of buildParamPanel(
+    document.getElementById('p-panel')!, GENERATION_PARAMS, CLOUD_TUNING_DEFAULTS,
+    (id) => String(CLOUD_TUNING[id].value), (id, value) => applyParams({ [id]: value }))) {
+    setSliders.set(id, setSlider);
   }
 
   // 調整の共有用: いまの全パラメータの JSON。編集して「適用」で戻せる。「リセット」は既定値へ。
@@ -191,7 +193,63 @@ async function init(): Promise<void> {
   const resetButton = document.createElement('button');
   resetButton.textContent = 'リセット';
   resetButton.addEventListener('click', () => applyParams({ ...CLOUD_TUNING_DEFAULTS }));
-  paramsRow.append(copyButton, applyButton, resetButton);
+  // いまの値のうち既定値と違う項目を、開発サーバの窓口(tools/cloud-lab-apply-tuning.cjs)へ送る。
+  // 「ゲームで試す」は git 管理外の上書きファイルへ書く(ゲームの開発ビルドが読む。リロードで見える)、
+  // 「上書きを消す」はそれを空にする、「既定値へ確定」は cloud-tuning.ts の既定値を書き換える。
+  const reflectResult = document.createElement('span');
+  const changedIds = (): CloudTuningId[] => (Object.keys(CLOUD_TUNING_DEFAULTS) as CloudTuningId[])
+    .filter((id) => CLOUD_TUNING[id].value !== CLOUD_TUNING_DEFAULTS[id]);
+  const sendToServer = async (
+    target: 'defaults' | 'overrides' | 'clear', ids: readonly CloudTuningId[],
+  ): Promise<void> => {
+    const response = await fetch('/__cloud-lab/apply-tuning', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target, values: Object.fromEntries(ids.map((id) => [id, CLOUD_TUNING[id].value])) }),
+    });
+    if (response.status === 404) throw new Error('開発サーバ(npm run cloud-lab)でだけ使える');
+    const body = await response.json() as { error?: string };
+    if (!response.ok) throw new Error(body.error ?? String(response.status));
+  };
+  const addServerButton = (label: string, title: string, run: () => Promise<string | null>): HTMLButtonElement => {
+    const button = document.createElement('button');
+    button.textContent = label;
+    button.title = title;
+    button.addEventListener('click', () => {
+      document.getElementById('error')!.textContent = '';
+      run().then((message) => {
+        if (message !== null) reflectResult.textContent = message;
+      }).catch((e: unknown) => {
+        document.getElementById('error')!.textContent = `${label}に失敗: ${String(e)}`;
+      });
+    });
+    return button;
+  };
+  const tryInGame = addServerButton(
+    'ゲームで試す',
+    '既定値と違う項目を、git 管理外の上書きファイルへ書く(npm run dev のゲームをリロードすると見える。開発サーバのみ)',
+    async () => {
+      const ids = changedIds();
+      await sendToServer('overrides', ids);
+      return ids.length === 0 ? '上書きを空にした' : `${ids.length} 項目を上書きファイルへ書いた(ゲームをリロード)`;
+    });
+  const clearOverrides = addServerButton(
+    '上書きを消す', 'ゲームの上書きファイルを空にする(開発サーバのみ)',
+    async () => {
+      await sendToServer('clear', []);
+      return '上書きを空にした';
+    });
+  const commitDefaults = addServerButton(
+    '既定値へ確定', '既定値と違う項目を cloud-tuning.ts の既定値へ書き込む。git に差分が出る(開発サーバのみ)',
+    async () => {
+      const ids = changedIds();
+      if (ids.length === 0) return '既定値と違う項目はない';
+      const list = ids.map((id) => `${id}: ${CLOUD_TUNING_DEFAULTS[id]} → ${CLOUD_TUNING[id].value}`).join('\n');
+      if (!window.confirm(`cloud-tuning.ts の既定値へ書き込む(${ids.length} 項目)\n\n${list}`)) return null;
+      await sendToServer('defaults', ids);
+      return `${ids.length} 項目を既定値へ書き込んだ`;
+    });
+  paramsRow.append(copyButton, applyButton, resetButton, tryInGame, clearOverrides, commitDefaults, reflectResult);
   applyParams(Object.fromEntries(
     Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])) as Record<CloudTuningId, number>);
 
