@@ -4,7 +4,7 @@ const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 const { version } = require('./package.json');
-const { ensureOverridesFile } = require('./tools/cloud-tuning-overrides-file.cjs');
+const { setupOverridesRead } = require('./tools/cloud-tuning-overrides-file.cjs');
 const { openDevPageWhenReady } = require('./tools/open-dev-page.cjs');
 
 const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-11-14-a';
@@ -109,11 +109,6 @@ module.exports = (env, argv) => ({
     ],
   },
   plugins: [
-    // 開発ビルドだけ、調整値の上書き(常に空のモジュール)を cloud-lab が書く git 管理外のファイルへ
-    // 差し替える。本番ビルドとテストは空のまま。
-    ...(argv.mode === 'development'
-      ? [new webpack.NormalModuleReplacementPlugin(/[\\/]cloud-tuning-overrides$/, ensureOverridesFile())]
-      : []),
     new HtmlWebpackPlugin({
       title: 'dive-into-tepui',
       template: './public/index.html',
@@ -146,5 +141,8 @@ module.exports = (env, argv) => ({
     onListening: openDevPageWhenReady,
     liveReload: false,
     hot: false,
+    // cloud-lab が書く調整値の上書き(tools/cloud-tuning-overrides-file.cjs)を、実行中の
+    // ゲームが拾うための読み口。ファイルはビルド入力でないので、書き込みはリビルドを起こさない。
+    setupMiddlewares: setupOverridesRead,
   },
 });
