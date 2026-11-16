@@ -4,7 +4,7 @@
 import { EARTH_COASTLINE, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import {
   HEMISPHERE_PHASE_OFFSET, WAVE_NUMBER, WAVE_PHASE_RATE,
-} from '../../src/render/cloud/rossby-wave';
+} from '../../src/render/earth-weather/rossby-wave';
 import type { SynopticFields } from './synoptic-field';
 
 export const MAP_WIDTH = 1440;

@@ -3,7 +3,7 @@
 // 端数分の振幅で重畳する — 解像度が連続的に変化しても、オクターブが急峻に出現・消失しない。
 import * as THREE from 'three/webgpu';
 import { If, abs, clamp, float, greaterThan, log2, mix, uniform, vec2 } from 'three/tsl';
-import { gradientNoise } from './gradient-noise';
+import { gradientNoise } from './cloud/gradient-noise';
 import type { Circulation } from './circulation';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 

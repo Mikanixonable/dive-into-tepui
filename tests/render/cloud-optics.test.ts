@@ -4,7 +4,7 @@ import {
   fractionalTransmittance, shellAirmass, transmittanceFromColumnOpticalDepth,
   ICE_CLOUD_ASYMMETRY, LIQUID_CLOUD_ASYMMETRY,
   type CloudOpticalEvent,
-} from '../../src/render/cloud/cloud-optics';
+} from '../../src/render/earth-weather/cloud/cloud-optics';
 import { test } from '../harness';
 
 function event(

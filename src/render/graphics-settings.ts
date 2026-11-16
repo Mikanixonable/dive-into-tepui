@@ -4,8 +4,8 @@
 // 真偽は独立した描画物を消すもの、選択肢は品質と負荷を刻む値か見え方を選ぶ値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
-import { CIRRUS_DETAIL } from './cloud/cloud-detail';
-import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
+import { CIRRUS_DETAIL } from './earth-weather/cloud/cloud-detail';
+import { CLOUD_FIELD_SOURCE_KIND } from './earth-weather/cloud/cloud-presentation';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 

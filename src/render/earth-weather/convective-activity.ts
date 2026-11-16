@@ -3,7 +3,7 @@
 // 渡るところは不安定で、雲は粒へ千切れる。いちばん穏やかな空でも床(ACTIVITY_MIN)に留まる —
 // 一枚板として覆う空にも細胞の起伏がある。値はすべて見えのための調整値。
 import { clamp } from 'three/tsl';
-import { CLOUD_TUNING } from './cloud-tuning';
+import { CLOUD_TUNING } from './cloud/cloud-tuning';
 import { CirculatingNoise } from './circulating-noise';
 import type { NoiseOctave } from './circulating-noise';
 import type { Circulation } from './circulation';

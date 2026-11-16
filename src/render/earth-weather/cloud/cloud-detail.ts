@@ -9,8 +9,8 @@ import {
 } from 'three/tsl';
 import { DetailClock } from './cloud-detail-clock';
 import { gradientNoise } from './gradient-noise';
-import { eastAt, northAt } from './sphere-frame';
-import type { FloatNode, FloatUniform, UintNode, Vec2Node, Vec3Node } from '../tsl-types';
+import { eastAt, northAt } from '../sphere-frame';
+import type { FloatNode, FloatUniform, UintNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
 // 細部のオクターブが張る波長 [m](粗→細、比 2)。粗い端は cap で場が担う最も細かい段(対流の
 // 24 km、上層の湿度の 25 km)へ重なる 32 km まで — 場と細部のあいだに担い手のいない尺度を残さない。

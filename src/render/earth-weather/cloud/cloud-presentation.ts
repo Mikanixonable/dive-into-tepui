@@ -1,15 +1,15 @@
 // 天体ごとの雲テクスチャと表示状態を統括する境界クラス。雲データ供給源（生成／観測）を選択し、
 // テクスチャの準備および雲面レンダラーの寿命を管理する。
 import * as THREE from 'three/webgpu';
-import { OpaqueCloudSurfaceRenderer, type CumulusDetail } from '../opaque-cloud-surface-renderer';
+import { OpaqueCloudSurfaceRenderer, type CumulusDetail } from '../../opaque-cloud-surface-renderer';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import type { CloudBlend, CloudFieldSlot } from './cloud-field-sample';
 import { capRadiusFor, snapCap } from './cloud-cap';
 import type { WebGPURenderer } from 'three/webgpu';
-import type { GpuTimingSink } from '../gpu-timings';
+import type { GpuTimingSink } from '../../gpu-timings';
 import type { CloudDetailClockInput, CloudRenderInput } from './cloud-render-input';
-import type { OrthographicCap } from '../field-projection';
-import type { GraphicsSettingsData } from '../graphics-settings';
+import type { OrthographicCap } from '../../field-projection';
+import type { GraphicsSettingsData } from '../../graphics-settings';
 
 // aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);

@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import { R_EARTH, R_EARTH_EQ, EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { metersPerPixelAtDepth, tanHalfFov } from '../../src/math/projection';
-import { CIRRUS_DETAIL } from '../../src/render/cloud/cloud-detail';
+import { CIRRUS_DETAIL } from '../../src/render/earth-weather/cloud/cloud-detail';
 import { FOV_DEG, labCamera, sunAnglesOf, VIEW_HEIGHT, type LabCase, type LabShot } from './lab-case';
 import type { EarthAngleKey, LabViewAngles } from './view-angles';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';

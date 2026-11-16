@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import { If, clamp, cos, float, greaterThan, normalize, sin, smoothstep, sqrt, uniform } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
-import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 
 // 1 km の段の寿命 [s]。段の寿命は波長の 2/3 乗に比例する — 乱流の渦の回転時間は、エネルギー散逸率 ε を
 // 一定として ε^(−1/3)・L^(2/3) で、雲の時空の尺度則(Lovejoy & Schertzer)もこの冪を示す。

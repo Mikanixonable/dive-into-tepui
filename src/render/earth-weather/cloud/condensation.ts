@@ -7,7 +7,7 @@ import {
   cirrusAmountFromOpticalDepthNode, cumulusAmountFromOpacityNode, cumulusAmountFromTopAltitudeNode,
 } from './cloud-kind-node';
 import type { CloudSample } from './cloud-field-sample';
-import type { WeatherSample } from './weather-model';
+import type { WeatherSample } from '../weather-model';
 export type { CloudSample } from './cloud-field-sample';
 
 // 被覆率の立ち上がり閾値となる湿度と、そこからの正規化遷移幅（被覆率が 0 から 0.56 へ推移する湿度の

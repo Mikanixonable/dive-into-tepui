@@ -129,10 +129,10 @@ const SCALE_LATITUDE_LIMIT = 80;
 const GLOBE_EXTENT = { north: 90, south: -90, west: -180, east: 180 };
 
 // 雲頂ビューの表示値 1 が張る高さ [m]。tools/cloud-lab/views.ts の積雲・巻雲の雲頂ビューの
-// 目盛り(src/render/cloud/cloud-kind.ts の CUMULUS_TOP_ALTITUDE)と対。
+// 目盛り(src/render/earth-weather/cloud/cloud-kind.ts の CUMULUS_TOP_ALTITUDE)と対。
 const CLOUD_TOP_SPAN = 17000;
 // 巻雲の雲頂高度の両端 [m]。量からの換算と「積雲の雲頂が巻雲より高い」判定に使う。
-// 値は src/render/cloud/cloud-kind.ts の CIRRUS_BOTTOM_ALTITUDE / CIRRUS_TOP_ALTITUDE と
+// 値は src/render/earth-weather/cloud/cloud-kind.ts の CIRRUS_BOTTOM_ALTITUDE / CIRRUS_TOP_ALTITUDE と
 // 一致させること。
 const CIRRUS_BOTTOM_ALTITUDE = 9000;
 const CIRRUS_TOP_ALTITUDE = 13000;

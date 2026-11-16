@@ -8,15 +8,15 @@ import {
   sqrt, step, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
-import { CloudShapeEvaluator } from './cloud/cloud-shape-evaluator';
-import type { CloudSample } from './cloud/cloud-field-sample';
-import { CloudFieldSampler } from './cloud/cloud-field-sampler';
-import type { CloudDetailClockInput, CloudRenderInput } from './cloud/cloud-render-input';
+import { CloudShapeEvaluator } from './earth-weather/cloud/cloud-shape-evaluator';
+import type { CloudSample } from './earth-weather/cloud/cloud-field-sample';
+import { CloudFieldSampler } from './earth-weather/cloud/cloud-field-sampler';
+import type { CloudDetailClockInput, CloudRenderInput } from './earth-weather/cloud/cloud-render-input';
 import { unitSphereGeometry } from './celestial/celestial-surface';
-import { CLOUD_ALBEDO, CLOUD_TOP_SPAN } from './cloud/cumulus-shape';
-import { FINEST_DETAIL_WAVELENGTH } from './cloud/cloud-detail';
-import { cumulusOpacityNode, cumulusTopAltitudeNode } from './cloud/cloud-kind-node';
-import { eastAt, northAt } from './cloud/sphere-frame';
+import { CLOUD_ALBEDO, CLOUD_TOP_SPAN } from './earth-weather/cloud/cumulus-shape';
+import { FINEST_DETAIL_WAVELENGTH } from './earth-weather/cloud/cloud-detail';
+import { cumulusOpacityNode, cumulusTopAltitudeNode } from './earth-weather/cloud/cloud-kind-node';
+import { eastAt, northAt } from './earth-weather/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './celestial/screen-lod';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from './tsl-types';

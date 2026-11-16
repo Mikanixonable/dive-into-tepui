@@ -28,7 +28,7 @@ import { cirrusFlowColor } from './cirrus-flow-color';
 import {
   cirrusAmountFromOpticalDepthNode, cirrusColumnOpticalDepthNode,
   cumulusAmountFromOpacityNode, cumulusOpacityNode,
-} from '../../src/render/cloud/cloud-kind-node';
+} from '../../src/render/earth-weather/cloud/cloud-kind-node';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 // 調整パラメータ。長さはすべて km(図法・解像度に依らない)、輝度は 0..1、起伏は [輝度²/(100km)²]。
