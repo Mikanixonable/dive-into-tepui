@@ -149,7 +149,7 @@ async function init(): Promise<void> {
   // 1 回だけ走らせる(uniform 自体は即時に書き変わり、天気の写しは焼き直しを待たずに乗る)。
   const setSliders = new Map<CloudTuningId, (value: number) => void>();
   const paramsBox = document.createElement('textarea');
-  let bakeTimer: number | undefined;
+  let bakeTimer: number | null = null;
   const rebake = (): void => {
     canvas.invalidate();
     if (currentView !== 'synoptic') canvas.render();
@@ -164,7 +164,7 @@ async function init(): Promise<void> {
     }
     paramsBox.value = JSON.stringify(Object.fromEntries(
       Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])));
-    window.clearTimeout(bakeTimer);
+    if (bakeTimer !== null) window.clearTimeout(bakeTimer);
     if (rebakeNow) rebake();
     else bakeTimer = window.setTimeout(rebake, 250);
   };
