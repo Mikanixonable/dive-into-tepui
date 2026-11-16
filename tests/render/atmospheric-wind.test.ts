@@ -48,8 +48,11 @@ export function register(): void {
 
   test('cloud pattern transport: phase is deterministic and does not alter physical wind', () => {
     const field = new AtmosphericWindField();
-    const transport = new CloudPatternTransport(SURFACE_RADIUS, field);
-    assert.equal(transport.phaseAt(0.4, 1_000, 3600), transport.phaseAt(0.4, 1_000, 3600));
+    const transport = new CloudPatternTransport(SURFACE_RADIUS);
+    const wind = field.sample(0.4, 1_000);
+    assert.deepEqual(
+      transport.angularPhase(wind.east, wind.north, 0.4, 3600),
+      transport.angularPhase(wind.east, wind.north, 0.4, 3600));
     assert.deepEqual(field.sample(0.4, 1_000), field.sample(0.4, 1_000));
   });
 
