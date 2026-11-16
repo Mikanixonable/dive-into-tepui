@@ -15,6 +15,8 @@ export interface PressurePlacement {
   readonly elongation: number;
   readonly occlusion?: number;
   readonly fronts?: 'pair' | 'tail';
+  // 一生の進み 0..1。前線系の回転(傾圧帯が渦の循環へ巻き上げられる速さ)を決める。
+  readonly life?: number;
 }
 
 // 進路の上の点 [°]。経度は連続な数で持ち、180° をまたぐ進路は 180 を超える値で書く。

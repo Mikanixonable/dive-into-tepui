@@ -273,6 +273,7 @@ function rawLowPlacementAt(
         elongation: LOW_ELONGATION,
         occlusion: THREE.MathUtils.smoothstep(life, LOW_OCCLUSION_ONSET, LOW_OCCLUSION_FULL),
         fronts: 'pair',
+        life,
       },
       peakDepth: track.peakDepth,
       presence: Math.min(1, Math.min(life, 1 - life) * track.lifetime / ABSORB_LIFE_RAMP),
