@@ -2,10 +2,10 @@
 // uniform として1箇所へ集約し、実験環境(cloud-lab)がスライダーで値を動かせるようにする。
 // 値はグラフを組んだあとでも uniform の .value へ書けば次の焼き直しに乗る。
 // **ゲームでは既定値のまま動く** — 書き換えるのは実験環境だけで、ここを読むコードは
-// 値が変わりうることを前提にしない。開発ビルドだけは、実験環境が書いた git 管理外の上書き
-// (cloud-tuning-overrides.ts の差し替え)を既定値の上へ重ねて、ゲームで見た目を確かめられる。
+// 値が変わりうることを前提にしない。開発ビルドだけは、実験環境が書いた git 管理外の上書きを
+// applyCloudTuningOverrides で重ねて、ゲームで見た目を確かめられる(tools/ の
+// cloud-tuning-overrides-file.cjs が配る)。
 import { uniform } from 'three/tsl';
-import { CLOUD_TUNING_OVERRIDES } from './cloud-tuning-overrides';
 import type { FloatUniform } from '../../tsl-types';
 
 // 調整値の既定値と並び。実験環境はこの表から初期値・リセット値・スライダーの対象を引く。
@@ -118,14 +118,20 @@ export const CLOUD_TUNING_DEFAULTS = {
   shapeNetworkHumidity: 0.45,
   shapeGrainHumidity: 0.70,
   // condensation.ts — 塔から上層への氷雲の放出。層状の雲から圏界面までの柱を塔が昇った比 —
-  // 湿りと上昇流の門が掛かるぶん実際の塔は柱の半分までしか届かないので、開始は柱の四分の一、
+  // 湿りと上昇流の門が掛かるぶん実際の塔は柱の半分までしか届かないので、開始は柱の半分弱、
   // 飽和は到達しうる上限あたりへ取る(届かない値を飽和にすると最強のセルでも薄いままになる)。
-  detrainOnset: 0.25,
-  detrainFull: 0.55,
-  // 塔の届く高さの床を活発度から組む門 — texel に粒を解像できない粗い写し(全球)では粒の
-  // ノイズが 0 に衰えるので、塔がいるべき領域の強さは対流の活発度から期待する。
-  detrainActivityOnset: 0.55,
-  detrainActivityFull: 0.9,
+  detrainOnset: 0.95,
+  detrainFull: 1.0,
+  // 活発度から組む発火の門 — texel に粒を解像できない粗い写し(全球)では粒のノイズが 0 に
+  // 衰えるので、脱出水の強さを対流の活発度から直接与える。塔経路とは別の項で、発火の強さは
+  // 活発度・湿り・上昇流・上限の積。粒が解像できる細かい写しでは効かせない — 活発度は広い帯
+  // なので、全域へ敷くと塔の無い場所にも発火する。粒径より texel が大きくなってから効き始める
+  // (数キロの粒は数十キロの texel で衰えきる)。
+  detrainActivityOnset: 0.9,
+  detrainActivityFull: 0.98,
+  detrainActivityEmit: 0.2,
+  detrainActivityTexelOnset: 15e3,
+  detrainActivityTexelFull: 30e3,
   // condensation.ts — 巻雲(薄い雲)の光学的厚み
   hazeOnset: 0.5,
   hazeGain: 0.66,
@@ -140,15 +146,15 @@ export const CLOUD_TUNING_DEFAULTS = {
   translucentLimit: 0.85,
   // detrain-veil.ts — 氷雲の広がり。発散が届く円盤の半径 [m](個々のかなとこは直径数十キロ)と
   // 円盤タップの重みの基準、上層風へ遡る歩幅 [s] と経過時間の減衰 [s]、蓄積を飽和させる利得。
-  detrainSpreadRadius: 20e3,
+  detrainSpreadRadius: 15e3,
   detrainSpreadWeight: 0.3,
-  detrainAdvectStep: 1.5 * 3600,
-  detrainDecaySeconds: 4 * 3600,
+  detrainAdvectStep: 0.25 * 3600,
+  detrainDecaySeconds: 2400,
   detrainGain: 1.0,
   // 群れの盾 — 放出の源をこの半径 [m] で均した平均(ミップ段から読む)へ掛ける利得。
   // 塔のあいだの晴れ間まで届く広さ。孤立した塔では平均が薄くてほとんど乗らない。
   detrainShieldRadius: 10e3,
-  detrainShieldGain: 8,
+  detrainShieldGain: 0.5,
   // cell-size.ts — 積雲のセル径 [km] と門
   cellClosedKm: 70,
   cellOpenKm: 25,
@@ -203,7 +209,25 @@ export type CloudTuningId = keyof typeof CLOUD_TUNING_DEFAULTS;
 // 調整値の実体。添字は CLOUD_TUNING_DEFAULTS のキーと同じ。
 export type CloudTuning = Record<CloudTuningId, FloatUniform>;
 
-// 調整値の実体。値を変えるときは uniform の .value へ書く。上書きに無い項目は既定値で始まる。
+// 調整値の実体。値を変えるときは uniform の .value へ書く。
 export const CLOUD_TUNING: CloudTuning = Object.fromEntries(
-  Object.entries(CLOUD_TUNING_DEFAULTS).map(([id, value]) => [id, uniform(CLOUD_TUNING_OVERRIDES[id] ?? value)]),
+  Object.entries(CLOUD_TUNING_DEFAULTS).map(([id, value]) => [id, uniform(value)]),
 ) as CloudTuning;
+
+// 調整値の版。書き手(applyCloudTuningOverrides と実験環境)が値を変えたら版を上げ、焼き手は
+// 版を見て古い焼きを捨てる。実験環境が .value を直接書くときは、実験環境側の焼き直しが版の
+// 代わりをするので版は上げない。
+let tuningRevision = 0;
+export function cloudTuningRevision(): number {
+  return tuningRevision;
+}
+
+// 上書き表(id → 数値)を調整値へ適用し、版を1つ上げる。表に無い項目・数値でない項目は既定値へ
+// 戻す — 上書きは「既定値からの差分」として扱い、消えた項目は上書きの解除になる。
+export function applyCloudTuningOverrides(overrides: Readonly<Record<string, number>>): void {
+  for (const id of Object.keys(CLOUD_TUNING_DEFAULTS) as CloudTuningId[]) {
+    const value = overrides[id];
+    CLOUD_TUNING[id].value = typeof value === 'number' && Number.isFinite(value) ? value : CLOUD_TUNING_DEFAULTS[id];
+  }
+  tuningRevision += 1;
+}
