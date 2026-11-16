@@ -26,6 +26,7 @@ export type CloudLabViewId =
   | 'surfaceHumiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'surfaceHumidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
   | 'cumulus' | 'cirrus' | 'coverage' | 'cumulusCell' | 'cirrusCell' | 'cloudTop' | 'translucent' | 'cirrusFlow'
+  | 'shield' | 'upperInstability' | 'layerDepthKm'
   | 'composite' | 'observedComposite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
@@ -83,6 +84,8 @@ const ELEVATION_SPAN = 8000;
 const CUMULUS_CELL_LOG2_SPAN = 8;
 const CIRRUS_CELL_LOG2_MIN = -1;
 const CIRRUS_CELL_LOG2_SPAN = 7;
+// 鱗の層の深さの目盛り [km]。0..LAYER_DEPTH_VIEW_SPAN_KM を 0..1 へ写す。
+const LAYER_DEPTH_VIEW_SPAN_KM = 4;
 
 // 風 [m/s] の東・北成分を 0.5 中心の RG に、速さを B に。
 function windColor(wind: Vec2Node): Vec3Node {
@@ -182,6 +185,16 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
       swatches: [['#00ffff', '東西'], ['#8000ff', '北東—南西'], ['#ff0000', '南北']],
     },
     color: (d, cloudAt) => cirrusFlowColor(cloudAt(d).cirrusFlow) },
+  // 診断量の写し。0..1 の量はそのまま、層の深さは 0..4 km を 0..1 へ写す。
+  { id: 'shield', label: '前線の盾', reads: 'cloud',
+    legend: { text: '前線・暖気の盾 0..1 — 前線の上で暖気が流入し閉塞の芯でない所' },
+    color: (d, cloudAt) => vec3(cloudAt(d).shield) },
+  { id: 'upperInstability', label: '上層の不安定度', reads: 'cloud',
+    legend: { text: '上層の不安定度 0..1 — 対流・斑・上昇から作る代理量' },
+    color: (d, cloudAt) => vec3(cloudAt(d).upperInstability) },
+  { id: 'layerDepthKm', label: '鱗の層の深さ', reads: 'cloud',
+    legend: { text: '巻雲の鱗の層の深さ [km] — 0..4 km を 0..1 へ' },
+    color: (d, cloudAt) => vec3(cloudAt(d).layerDepthKm.div(LAYER_DEPTH_VIEW_SPAN_KM)) },
   // 積雲と巻雲を 1 枚に重ねた見え。実写と見比べるための面で、描画側の合成の仕様ではない。
   { id: 'composite', label: '合成', reads: 'cloud',
     legend: { text: '積雲+巻雲の合成 — 実写と見比べる面' },

@@ -221,5 +221,8 @@ export function condense(weather: WeatherSample): CloudSample {
     anvil: weather.anvil,
     detrain,
     eye: weather.eye,
+    shield: weather.shield,
+    upperInstability: weather.upperInstability,
+    layerDepthKm: weather.layerDepth,
   };
 }

@@ -11,7 +11,7 @@ import { equirectUvFromDirection, type FieldProjection } from '../../field-proje
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../../gpu-timings';
 import type { CloudFieldSource } from './cloud-presentation';
-import type { CloudBlend, CloudFieldSlot } from './cloud-field-sample';
+import { LAYER_DEPTH_TEXEL_SCALE_KM, type CloudBlend, type CloudFieldSlot } from './cloud-field-sample';
 import type { Vec4Node } from '../../tsl-types';
 
 // 実写の画像の texel を雲場の RGBA(R = 積雲の量、G = 巻雲の量、B・A = 筋の倍角ベクトル)へ
@@ -25,6 +25,8 @@ export function observedCloudTexel(texel: Vec4Node): Vec4Node {
 // 並の大きさ(積雲は中緯度の海のセル、巻雲は無撹乱の板より細かい繊維・鱗のピッチ)を置く。
 const OBSERVED_CUMULUS_CELL_KM = 40;
 const OBSERVED_CIRRUS_CELL_KM = 10;
+// 実写の雲場へ供給する中立の層の深さ [km]。盾と上層の不安定度は実写から取れないので 0 とする。
+const OBSERVED_LAYER_DEPTH_KM = 1;
 
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
@@ -33,6 +35,8 @@ export class ObservedCloudField implements CloudFieldSource {
   private readonly environment: THREE.DataTexture;
   // 実写にはセル径の場もないので、環境と同じく中立の既定値を返す 1 texel の写し。
   private readonly cellSize: THREE.DataTexture;
+  // 実写には診断量の場もないので、中立の既定値を返す 1 texel の写し。
+  private readonly regime: THREE.DataTexture;
   // 2 枚とも同じ写し。混ぜ方は 0 に止めて、古い側の枚だけを読む。
   public readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
   public readonly blend: CloudBlend = { parity: 0, fraction: 0 };
@@ -66,6 +70,16 @@ export class ObservedCloudField implements CloudFieldSource {
     this.cellSize.wrapS = THREE.RepeatWrapping;
     this.cellSize.wrapT = THREE.RepeatWrapping;
     this.cellSize.needsUpdate = true;
+    this.regime = new THREE.DataTexture(
+      Uint16Array.from(
+        [0, 0, OBSERVED_LAYER_DEPTH_KM / LAYER_DEPTH_TEXEL_SCALE_KM, 0],
+        (value) => THREE.DataUtils.toHalfFloat(value)),
+      1, 1, THREE.RGBAFormat, THREE.HalfFloatType);
+    this.regime.minFilter = THREE.LinearFilter;
+    this.regime.magFilter = THREE.LinearFilter;
+    this.regime.wrapS = THREE.RepeatWrapping;
+    this.regime.wrapT = THREE.RepeatWrapping;
+    this.regime.needsUpdate = true;
     const image = texture(this.map.texture);
     // **読む段は焼くときに 1 回だけ決める** — 画面微分に任せると、経度の巻き目(u が 1 から 0 へ
     // 跳ぶ列)で最も粗い段が選ばれ、日付変更線に 1 本の線が出る。画像の 1 texel が張る角は
@@ -84,6 +98,7 @@ export class ObservedCloudField implements CloudFieldSource {
     const slot: CloudFieldSlot = {
       cloud: this.field.texture, motion: EMPTY_CLOUD_FIELD,
       environment: this.environment, cellSize: this.cellSize, veil: EMPTY_CLOUD_FIELD,
+      regime: this.regime,
     };
     this.slots = [slot, slot];
   }
@@ -108,5 +123,6 @@ export class ObservedCloudField implements CloudFieldSource {
     this.field.dispose();
     this.environment.dispose();
     this.cellSize.dispose();
+    this.regime.dispose();
   }
 }

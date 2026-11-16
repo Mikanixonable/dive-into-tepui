@@ -320,21 +320,24 @@ function nearestCellDistance(q: Vec3Node): FloatNode {
   return sqrt(nearest);
 }
 
-// 雲標本の巻雲の量と環境の量と要素径を、巻雲の柱の入力へ写す。
+// 雲標本の巻雲の量と環境の量と要素径と診断量を、巻雲の柱の入力へ写す。
 export function cirrusColumnInputOf(sample: {
   readonly cirrus: FloatNode; readonly land: FloatNode; readonly convection: FloatNode;
   readonly climateCloudiness: FloatNode; readonly anvil: FloatNode;
   readonly cirrusCell: FloatNode;
+  readonly shield: FloatNode; readonly upperInstability: FloatNode; readonly layerDepthKm: FloatNode;
 }): CirrusColumnInput {
   return {
     amount: sample.cirrus, land: sample.land, convection: sample.convection,
     climateCloudiness: sample.climateCloudiness, anvil: sample.anvil,
     cellSize: sample.cirrusCell,
+    shield: sample.shield, upperInstability: sample.upperInstability, layerDepthKm: sample.layerDepthKm,
   };
 }
 
 // 巻雲の柱の入力。amount は巻雲の量、land・convection・climateCloudiness・anvil は環境の量(0..1)、
-// cellSize は巻雲の要素径(繊維・鱗のピッチ) log2(km)。
+// cellSize は巻雲の要素径(繊維・鱗のピッチ) log2(km)、shield・upperInstability は診断量(0..1)、
+// layerDepthKm は鱗の層の深さ [km]。
 export interface CirrusColumnInput {
   readonly amount: FloatNode;
   readonly land: FloatNode;
@@ -342,6 +345,9 @@ export interface CirrusColumnInput {
   readonly climateCloudiness: FloatNode;
   readonly anvil: FloatNode;
   readonly cellSize: FloatNode;
+  readonly shield: FloatNode;
+  readonly upperInstability: FloatNode;
+  readonly layerDepthKm: FloatNode;
 }
 
 export class CirrusDetailEvaluator {

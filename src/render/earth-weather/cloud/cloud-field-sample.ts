@@ -29,9 +29,15 @@ export interface CloudSample {
   readonly detrain: FloatNode;
   // 渦の目の濃さ 0..1。脱出水ベールは眼の上へ掛けない門になる。
   readonly eye: FloatNode;
+  // 前線・暖気の盾 0..1(前線の上で暖気が流入し、閉塞の芯でない所)。
+  readonly shield: FloatNode;
+  // 上層の不安定度の代理量 0..1(対流・斑・上昇から作る)。
+  readonly upperInstability: FloatNode;
+  // 巻雲の鱗の層の深さ [km]。
+  readonly layerDepthKm: FloatNode;
 }
 
-// 焼いた雲場の 1 枚ぶん。雲・風・環境・セル径の写しは同じ時刻と cap で焼かれている。
+// 焼いた雲場の 1 枚ぶん。雲・風・環境・セル径・診断量の写しは同じ時刻と cap で焼かれている。
 // veil は脱出水が発散と移流で広がった氷雲の写し。雲を持たない場は空の写しを結ぶ。
 export interface CloudFieldSlot {
   readonly cloud: THREE.Texture;
@@ -39,7 +45,11 @@ export interface CloudFieldSlot {
   readonly environment: THREE.Texture;
   readonly cellSize: THREE.Texture;
   readonly veil: THREE.Texture;
+  readonly regime: THREE.Texture;
 }
+
+// 層の深さ [km] を焼き込み用の 0..1 へ写す除数。半精度に収まる範囲へ畳むための固定の値。焼く側と読む側が共有する。
+export const LAYER_DEPTH_TEXEL_SCALE_KM = 4;
 
 // 焼いた雲場の 2 枚の混ぜ方。parity は古い側の枚の番号(0 か 1)、fraction は古い側から新しい側への混合比(0..1)。
 // 源が毎フレーム書き換えるので、読み手は読んだ時点の値を使う。
@@ -74,11 +84,14 @@ export function cloudTexelWithVeil(cloudTexel: Vec4Node, veilTexel: Vec4Node): V
 
 // 焼いた雲場のRGBA(R = 積雲、G = 巻雲、B・A = 筋の倍角ベクトル)と環境のRGBA(R = 陸、G = 対流、
 // B = 気候の雲量、A = 金床)とセル径のRGBA(R・G = セル径・要素径 log2(km)、B = 脱出水の源、
-// A = 渦の眼)と脱出水ベールの写し(R = ベールの強さ)を、雲標本へ戻す。写しは半精度なので、
+// A = 渦の眼)と脱出水ベールの写し(R = ベールの強さ)と診断量の写し(R = 盾、G = 上層の不安定度、
+// B = 層の深さ / LAYER_DEPTH_TEXEL_SCALE_KM)を、雲標本へ戻す。写しは半精度なので、
 // 倍角ベクトルは符号付き(−1..1)のまま入っている。
 export function cloudSampleFromTexels(
   cloudTexel: Vec4Node, environmentTexel: Vec4Node, cellTexel: Vec4Node, veilTexel: Vec4Node,
+  regimeTexel: Vec4Node,
 ): CloudSample {
+  // ベールは巻雲の柱へ合成し、金床へは強い方を採る。
   const merged = cloudTexelWithVeil(cloudTexel, veilTexel);
   return {
     cumulus: merged.r,
@@ -92,6 +105,9 @@ export function cloudSampleFromTexels(
     anvil: max(environmentTexel.a, veilTexel.r),
     detrain: cellTexel.b,
     eye: cellTexel.a,
+    shield: regimeTexel.r,
+    upperInstability: regimeTexel.g,
+    layerDepthKm: regimeTexel.b.mul(LAYER_DEPTH_TEXEL_SCALE_KM),
   };
 }
 
@@ -109,6 +125,12 @@ export function cloudEnvironmentTexel(sample: CloudSample): Vec4Node {
 // R・G へ、脱出水の源を B、眼の濃さを A へ入れる。cloudSampleFromTexels の復号と対。
 export function cloudCellTexel(sample: CloudSample): Vec4Node {
   return vec4(sample.cumulusCell, sample.cirrusCell, sample.detrain, sample.eye);
+}
+
+// 雲標本の診断量を焼き込み用のRGBAへ戻す。層の深さは LAYER_DEPTH_TEXEL_SCALE_KM で割って 0..1 へ写し、
+// A は予約で 0。cloudSampleFromTexels の復号と対。
+export function cloudRegimeTexel(sample: CloudSample): Vec4Node {
+  return vec4(sample.shield, sample.upperInstability, sample.layerDepthKm.div(LAYER_DEPTH_TEXEL_SCALE_KM), 0);
 }
 
 // 焼いた風の RGBA(R・G = 地表付近、B・A = 上層)を風へ戻す。

@@ -302,6 +302,7 @@ export function register(): void {
 const SHADOW_CLOUD_SLOT: CloudFieldSlot = {
   cloud: new THREE.Texture(), motion: new THREE.Texture(),
   environment: new THREE.Texture(), cellSize: new THREE.Texture(), veil: new THREE.Texture(),
+  regime: new THREE.Texture(),
 };
 const SHADOW_CLOUD: ShadowCloud = {
   center: new THREE.Vector3(),
