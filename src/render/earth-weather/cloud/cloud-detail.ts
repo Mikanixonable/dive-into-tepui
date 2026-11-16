@@ -240,6 +240,18 @@ const CIRRUS_THIN_STREAK_WEIGHT = 0.3;
 // ジェットの風速の窓 [m/s]。筋状の重みはこの窓で 0 から 1 へ渡る。
 const CIRRUS_JET_ONSET = 5;
 const CIRRUS_JET_FULL = 16;
+// 筋が流れの向きへ伸び始める風速の窓 [m/s]。ジェットの窓より広く取り、揃いはするが遅い流れでは
+// 等方の濃淡へ戻す — 「流れが速く揃うほど強く引き延ばされ、弱まると向きを持たない濃淡へ戻る」
+// (`DEVELOP/SPEC/RENDERING.md`)。
+const CIRRUS_STRETCH_WIND_LO = 6;
+const CIRRUS_STRETCH_WIND_HI = 26;
+// 型の重みへの静的領域ノイズの揺らぎの強さと上下限。どの型の場を読むかは風・対流・陸の診断が担い、
+// 領域ノイズは同じ条件でも場所で湧き方が違う揺らぎだけを残す(型を決めるのは診断)。
+const CIRRUS_TYPE_JITTER = 0.4;
+const CIRRUS_JITTER_MIN = 0.25;
+const CIRRUS_JITTER_MAX = 2;
+// 鱗雲状の重みへ効く対流活発度×陸の診断の利得。対流の活発な陸では筋・幕を上回る強さへ取る。
+const CIRRUS_CELL_DIAG_GAIN = 2;
 // 型の重みが、その型の場の評価を省く下限。
 const CIRRUS_TYPE_MIN_WEIGHT = 0.02;
 // 型の領域の静的な勾配ノイズ。波長 [m] と、勾配ノイズの標準偏差 0.265 を 1 寄りへ戻す倍率。
@@ -362,19 +374,23 @@ export class CirrusDetailEvaluator {
     const sinTheta = select(axis.y.lessThan(0), float(-1), float(1))
       .mul(sqrt(max(axis.x.oneMinus().mul(0.5), 0)));
     const flowDir = normalize(east.mul(cosTheta).add(north.mul(sinTheta)));
-    // 流れの向きへ伸ばす。揃いの弱い場所は等方に読む。
-    const stretch = float(1).add(float(CIRRUS_STRETCH_MAX - 1).mul(coherence));
     const windVector = east.mul(wind.x).add(north.mul(wind.y));
+    const windSpeed = length(windVector);
+    // 流れの向きへ伸ばす。揃いの弱い場所と、揃っても遅い流れは等方の濃淡へ戻る — 速く揃うほど強く引き延ばす。
+    const stretch = float(1).add(float(CIRRUS_STRETCH_MAX - 1).mul(coherence)
+      .mul(smoothstep(CIRRUS_STRETCH_WIND_LO, CIRRUS_STRETCH_WIND_HI, windSpeed)));
 
-    // 型の領域。どの型の場を読むかを、数百 km の静的な勾配ノイズで決める。
+    // 型の領域。どの型の場を読むかは風・対流・陸の診断が決め、領域ノイズは同じ条件でも場所で
+    // 湧き方が違う揺らぎ(重みへの乗算)だけを担う。
     const regimeAt = (offset: Vec3Node): FloatNode => gradientNoise(
       direction.mul(radius.div(CIRRUS_REGIME_WAVELENGTH)).add(offset)).mul(CIRRUS_REGIME_GAIN);
-    const jet = smoothstep(CIRRUS_JET_ONSET, CIRRUS_JET_FULL, length(windVector));
-    const streakRaw = jet.mul(smoothstep(-0.5, 0.3, regimeAt(CIRRUS_REGIME_OFFSETS[0])));
-    // 鱗雲状の重み。塊の間隔は場の巻雲の要素径(cellSize、繊維・鱗のピッチ)が決め、同じ大きさの空が
-    // 画一的にならないよう静的な領域のノイズで揺らすだけに留める — 対流×陸の縮小は場の導出側
-    // (cell-size.ts の鱗の門)が担うので、ここでは二重に効かせない。塊の間隔が画素の実寸より
-    // 細かいときは 0 へ落とす。
+    const jitterAt = (offset: Vec3Node): FloatNode => clamp(
+      float(1).add(regimeAt(offset).mul(CIRRUS_TYPE_JITTER)), CIRRUS_JITTER_MIN, CIRRUS_JITTER_MAX);
+    const jet = smoothstep(CIRRUS_JET_ONSET, CIRRUS_JET_FULL, windSpeed);
+    // 筋状 — 揃って速い流れの下で立つ。揃い度は半分だけ効かせて、揃わない強風にも筋を残す。
+    const streakRaw = jet.mul(coherence.mul(0.5).add(0.5)).mul(jitterAt(CIRRUS_REGIME_OFFSETS[0]));
+    // 鱗雲状 — 対流の活発な陸の下で立つ(cell-size.ts が鱗のピッチへ掛ける門と同じ診断 — ピッチの
+    // 小ささと型の選択が同じ空で揃う)。塊の間隔が画素の実寸より細かいときと、乾いた空では 0 へ落とす。
     // ピッチの log2 [km]。格子へそのまま連続のピッチを掛けると、ピッチの勾配で格子が歪み等値線が
     // 寄り集まる木目になるので、格子は 2 の冪のピッチへ量子化し、隣接する 2 ピッチの場を端数で
     // 混ぜる(下の cellWeight の評価)。格子自身はどちらも歪まない。
@@ -383,8 +399,9 @@ export class CirrusDetailEvaluator {
     const cellFade = smoothstep(2, 4, exp2(pitchLog).mul(1000).div(span));
     // 乾いた陸(気候の雲量の少ない所)では鱗雲状を抑える。筋状と薄く広がるは抑えない。
     const humid = smoothstep(CIRRUS_ARID_LO, CIRRUS_ARID_HI, climateCloudiness);
-    const cellRaw = jet.mul(0.6).oneMinus().mul(smoothstep(-0.3, 0.5, regimeAt(CIRRUS_REGIME_OFFSETS[1])))
-      .mul(streakRaw.oneMinus()).mul(cellFade).mul(humid);
+    const cellRaw = column.convection.mul(column.land).mul(CIRRUS_CELL_DIAG_GAIN)
+      .mul(jitterAt(CIRRUS_REGIME_OFFSETS[1])).mul(cellFade).mul(humid);
+    // 薄く広がる場は残余 — 筋でも鱗でもない静穏な空が幕を張る。
     const veilRaw = max(float(0.15), float(1).sub(streakRaw).sub(cellRaw));
     // 金床の重み。量が多く、金床の濃い所で大きい。他の型は残りを分け合う。金床は 8 km の段から読むので、
     // その段が使われないときは 0。
@@ -396,8 +413,12 @@ export class CirrusDetailEvaluator {
 
     const streakSum = float(0).toVar();
     const streakEnergy = float(0).toVar();
+    // 各型の場の乗法の門 — 粗い段の実現値が細かい段の振幅を掛ける(積雲の細部と同じ間欠性)。
+    // どの形態も一面へ均一には並ばず、筋には疎密、幕と鱗には疎な集まりが入る。
+    const streakGate = float(1).toVar();
     const veilSum = float(0).toVar();
     const veilEnergy = float(0).toVar();
+    const clumpGate = float(1).toVar();
     for (const [index, wavelength] of DETAIL_WAVELENGTHS.entries()) {
       if (index < CIRRUS_FIRST_OCTAVE) continue;
       const live = fadeOf(wavelength, span).mul(step(float(index - CIRRUS_FIRST_OCTAVE + 1), this.octaves))
@@ -408,17 +429,21 @@ export class CirrusDetailEvaluator {
         if (index <= CIRRUS_VEIL_LAST_OCTAVE) {
           const veilOf = live.mul(wavelength ** CIRRUS_VEIL_SPECTRAL_EXPONENT);
           const veil = this.clock.evolvingNoise(index, direction, radius, windVector);
-          veilSum.addAssign(veil.mul(veilOf));
+          veilSum.addAssign(veil.mul(veilOf).mul(clumpGate));
           veilEnergy.addAssign(veilOf.mul(veilOf));
+          clumpGate.mulAssign(exp(veil.mul(OCTAVE_COUPLING).sub(COUPLING_SHIFT).mul(live)));
         }
         If(greaterThan(streakWeight, CIRRUS_TYPE_MIN_WEIGHT), () => {
           // 粗い段は流れの向きへ伸ばして読み、細かい段は等方に読む。
           const along = index <= CIRRUS_STRETCH_LAST_OCTAVE
             ? this.clock.flowNoise(index, direction, radius, windVector, flowDir, stretch)
             : this.clock.evolvingNoise(index, direction, radius, windVector);
-          const streakWeightOf = index <= CIRRUS_STRETCH_LAST_OCTAVE ? weight : weight.mul(CIRRUS_THIN_STREAK_WEIGHT);
-          streakSum.addAssign(along.mul(streakWeightOf));
+          // 細い筋はジェットの芯で立つ — 風が緩い所では筋状の場は粗いうねりへ戻る。
+          const streakWeightOf = index <= CIRRUS_STRETCH_LAST_OCTAVE ? weight
+            : weight.mul(CIRRUS_THIN_STREAK_WEIGHT).mul(jet);
+          streakSum.addAssign(along.mul(streakWeightOf).mul(streakGate));
           streakEnergy.addAssign(streakWeightOf.mul(streakWeightOf));
+          streakGate.mulAssign(exp(along.mul(OCTAVE_COUPLING).sub(COUPLING_SHIFT).mul(live)));
         });
       });
     }
@@ -442,7 +467,9 @@ export class CirrusDetailEvaluator {
       // 内積は 0 なので、正弦の位相を位置と流れから直には組めない。
       const rows = this.clock.flowNoise(
         CIRRUS_ROW_OCTAVE, direction, radius, windVector, normalize(cross(direction, flowDir)), float(CIRRUS_ROW_STRETCH));
-      cellsZ.assign(mix(cells, rows, smoothstep(-0.3, 0.3, regimeAt(CIRRUS_REGIME_OFFSETS[3]))));
+      // 等方の粗い段の結合(clumpGate)を掛けて、塊が疎な集まりをなすようにする — 一面へ均一には並ばない。
+      cellsZ.assign(mix(cells, rows, smoothstep(-0.3, 0.3, regimeAt(CIRRUS_REGIME_OFFSETS[3])))
+        .mul(clumpGate));
     });
 
     // 金床の場。8 km の等方な芯と、風下へ強く伸びる繊維の和。量が少ないほど繊維の振れ幅を上げる。
