@@ -39,7 +39,8 @@ export class CloudField {
     // 2 時刻分の雲・風・環境を同じ投影で読めるテクスチャ群へ焼く。雲と環境とセル径は同じ
     // 天気の評価から出るので、1 パスの 3 出力へ焼いて気象のグラフを二度展開しない。
     const cloudTexelAt = (direction: Vec3Node) => {
-      const sample = condense(model.weatherAt(direction));
+      const sample = condense(
+        model.weatherAt(direction), projection.texelAngle.mul(surfaceRadius));
       return [cloudFieldTexelFromSample(sample), cloudEnvironmentTexel(sample), cloudCellTexel(sample)];
     };
     const motionTexelAt = (direction: Vec3Node) => cloudMotionTexel(smoothedWindsAt(model, direction));

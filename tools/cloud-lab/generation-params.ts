@@ -583,7 +583,7 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   // 氷雲 — 脱出水の放出
   detrainOnset: {
     label: '脱出水の開始(柱の上昇比)', tab: 'ice', section: '脱出水の放出',
-    description: '塔が上層へ氷雲を放出し始める、層状の雲から圏界面までの柱を昇った比。実際の塔は柱の半分までしか届かないので、四分の一に取る。',
+    description: '塔が上層へ氷雲を放出し始める、層状の雲から圏界面までの柱を昇った比。かなとこは圏界面へほぼ達した塔だけが出すので、柱のほぼ上限に取る。',
     min: 0.1, max: 1, step: 0.01,
   },
   detrainFull: {
@@ -594,13 +594,28 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
 
   detrainActivityOnset: {
     label: '脱出水の活発度の裾', tab: 'ice', section: '脱出水の放出',
-    description: '活発度から敷く塔の届く高さの床の裾。粒を解像できない粗い写し(全球)では粒のノイズが 0 に衰えるので、塔の届きうる高さを活発度から与える。',
+    description: '活発度から組む発火の裾。粒を解像できない粗い写し(全球)では粒のノイズが 0 に衰えるので、脱出水の強さを活発度から与える。',
     min: 0, max: 1, step: 0.01,
   },
   detrainActivityFull: {
     label: '脱出水の活発度の肩', tab: 'ice', section: '脱出水の放出',
-    description: '活発度の床が最大になる活発度。裾との間で床が連続に効いてくる。',
+    description: '活発度の発火が最大になる活発度。裾との間で発火が連続に効いてくる。',
     min: 0, max: 1, step: 0.01,
+  },
+  detrainActivityEmit: {
+    label: '脱出水の活発度の発火の強さ', tab: 'ice', section: '脱出水の放出',
+    description: '活発度から組む発火の最大の強さ。塔経路とは別の項なので、小さいほど床経路の発火は弱く、強い発火は解像された塔だけに残る。',
+    min: 0, max: 1, step: 0.01,
+  },
+  detrainActivityTexelOnset: {
+    label: '脱出水の床の texel の裾 [m]', tab: 'ice', section: '脱出水の放出',
+    description: '活発度の床が効き始める texel の大きさ [m]。粒が解像できる細かい写しでは床を効かせない — 活発度は広い帯なので全域へ敷くと塔の無い場所にも発火する。',
+    min: 0, max: 100000, step: 2000,
+  },
+  detrainActivityTexelFull: {
+    label: '脱出水の床の texel の肩 [m]', tab: 'ice', section: '脱出水の放出',
+    description: '活発度の床が全開になる texel の大きさ [m]。粒の波長(十数キロ)より texel が十分大きくなった所で全開になるよう取る。',
+    min: 0, max: 100000, step: 2000,
   },
 
   // 氷雲 — 脱出水のベール
