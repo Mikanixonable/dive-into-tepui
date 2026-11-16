@@ -101,6 +101,12 @@ const TRANSLUCENT_HAZE_GAIN = CLOUD_TUNING.hazeGain;
 // 全球に一様な薄い幕が乗るのを防ぐ。
 const HAZE_CLOUDINESS_ONSET = CLOUD_TUNING.hazeCloudinessOnset;
 const HAZE_CLOUDINESS_FULL = CLOUD_TUNING.hazeCloudinessFull;
+// 靄の斑の門(上層循環に運ばれる斑の場 −1..1 の裾と肩)。湿った広域が全て幕になるのを防ぎ、
+// 百キロ級の透き間を空ける(`DEVELOP/SPEC/RENDERING.md`「薄い雲は一面を均一な靄で覆わず、
+// 湿りのある帯や斑と透き間が百キロ級の尺度で交互に並ぶ」)。湿度の縁ほど斑が効いて、
+// 薄い雲のある所と無い所が入り交じる。筋の項には掛けない — 濃い筋は斑の隙間を跨いで残る。
+const CIRRUS_PATCH_ONSET = CLOUD_TUNING.cirrusPatchOnset;
+const CIRRUS_PATCH_FULL = CLOUD_TUNING.cirrusPatchFull;
 const TRANSLUCENT_STREAK_ONSET = CLOUD_TUNING.streakOnset;
 const TRANSLUCENT_STREAK_GAIN = CLOUD_TUNING.streakGain;
 const TRANSLUCENT_KNEE = CLOUD_TUNING.translucentKnee;
@@ -196,7 +202,8 @@ export function condense(weather: WeatherSample): CloudSample {
   const detrain = smoothstep(DETRAIN_ONSET, DETRAIN_FULL, cloudTop.div(weather.tropopause));
   // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN)
-    .mul(smoothstep(HAZE_CLOUDINESS_ONSET, HAZE_CLOUDINESS_FULL, weather.meanCloudiness));
+    .mul(smoothstep(HAZE_CLOUDINESS_ONSET, HAZE_CLOUDINESS_FULL, weather.meanCloudiness))
+    .mul(smoothstep(CIRRUS_PATCH_ONSET, CIRRUS_PATCH_FULL, weather.cirrusPatch));
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
   const opticalDepth = tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT);
