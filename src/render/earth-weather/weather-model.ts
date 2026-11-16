@@ -72,11 +72,6 @@ const RAINBAND_ONSET = CLOUD_TUNING.rainbandOnset;
 const RAINBAND_WIDTH = CLOUD_TUNING.rainbandWidth;
 // 帯が飽和した所で立つ上昇流 [m/s]。深い谷の芯と同じだけ持ち上げるよう、頭打ち(LIFT_LIMIT)に揃える。
 const BAND_LIFT = CLOUD_TUNING.bandLift;
-// 帯が飽和した所で地表付近の湿度へ足す底上げ。被覆率の伝達関数の幅(0.22)の 0.45 倍に取る —
-// 帯の芯では上昇流による偏差の増幅(VORTEX_CONTRAST)と合わせて被覆率が上端へ届き途切れない帯に
-// なるが、前線帯の面全体が湿度の上限へ張り付いて一枚の台地にはならない
-// (`DEVELOP/SPEC/RENDERING.md`「前線の帯そのものが、その空でいちばん厚い雲になる」)。
-const BAND_HUMIDITY = CLOUD_TUNING.bandHumidity;
 // 温帯と熱帯の境界緯度。温帯では前線、熱帯では雨帯の伝達関数を使い、暖気流入の補正は温帯に
 // 限定して適用する。
 const FRONT_LATITUDE_START = THREE.MathUtils.degToRad(20);
@@ -320,7 +315,7 @@ export class WeatherModel {
       advected.surfaceHumidity.add(deviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
         .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT).mul(surfaceBiasWeight))
         .add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
-        .add(warmth.mul(WARM_HUMIDITY).mul(occludedCore.oneMinus())).add(band.mul(BAND_HUMIDITY))
+        .add(warmth.mul(WARM_HUMIDITY).mul(occludedCore.oneMinus()))
         .add(anvil.mul(ANVIL_HUMIDITY)).add(outbreak).add(commaHead.mul(COMMA_HEAD_HUMIDITY))
         .sub(eye.mul(SURFACE_EYE_DRYNESS)).sub(dryTongue.mul(DRY_TONGUE_DRYING)), 0, 1);
     const upperHumidity = clamp(

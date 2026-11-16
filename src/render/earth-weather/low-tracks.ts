@@ -8,6 +8,8 @@ import {
   WAVE_DRIFT, WAVE_TROUGH_WIDTH, stormTrackAxisAt, waveAmplitudeAt, waveAnchoredSlot,
   waveTroughLongitude,
 } from './rossby-wave';
+import { vortexSpinOf } from './wind-law';
+import { FEATURE_REACH } from './pressure-feature';
 import { courseAt, DAY, DEGREE, uniformIn, waypoint } from './tracks';
 import type { Course, PressurePlacement, Range } from './tracks';
 
@@ -247,10 +249,33 @@ interface RawLow {
   readonly presence: number;
 }
 
+// 深さの山の立ち上がり込みで、一生の中の位置 life の深さ [hPa]。
+function lowDepthAt(track: LowTrack, life: number): number {
+  return track.peakDepth * Math.sin(Math.PI * life ** LOW_PEAK_SKEW)
+    * THREE.MathUtils.smoothstep(life * track.lifetime, 0, LOW_DEPTH_RAMP);
+}
+
+// 積算の巻き上げ角 [rad]。生まれてからの、谷の循環が気団の境目を巻き上げてきた総量 —
+// 深さと半径と緯度の履歴から角速度を台形で積む。両端で深さが 0 へ降りるので刻みは粗くて足りる。
+const WOUND_STEPS = 16;
+function lowWoundOf(track: LowTrack, life: number, rotationPeriod: number): number {
+  let sum = 0;
+  for (let i = 0; i <= WOUND_STEPS; i += 1) {
+    const l = (life * i) / WOUND_STEPS;
+    const spin = vortexSpinOf(
+      lowDepthAt(track, l), track.birthRadius * (1 + track.growth * l),
+      courseAt(track.course, 1 - (1 - l) ** track.brake).latitude * DEGREE,
+      FEATURE_REACH, rotationPeriod,
+    );
+    sum += (i === 0 || i === WOUND_STEPS ? 0.5 : 1) * spin.coreOmega;
+  }
+  return (sum * life * track.lifetime) / WOUND_STEPS;
+}
+
 // 中緯度の低気圧 index(0..LOW_COUNT − 1)の、時刻 seconds [s] における配置(吸収を考えない
 // 生の値)。同じ時刻に生きている候補は高々 1 つなので、一次から順に最初の生きている候補を返す。
 function rawLowPlacementAt(
-  index: number, seconds: number, surfaceRadius: number,
+  index: number, seconds: number, surfaceRadius: number, rotationPeriod: number,
 ): RawLow | null {
   // 枡ごとに周期の位相をずらし、同じ半球の枡が揃って生まれ直さないようにする。
   const age = seconds / LOW_PERIOD + index / LOW_COUNT;
@@ -267,13 +292,12 @@ function rawLowPlacementAt(
         latitude: point.latitude * DEGREE,
         // 錨は波とともに東へ進む — 生まれた時刻からのドリフトを進路へ足す。
         longitude: (point.longitude + WAVE_DRIFT * (seconds - track.birthSeconds)) * DEGREE,
-        depth: track.peakDepth * Math.sin(Math.PI * life ** LOW_PEAK_SKEW)
-          * THREE.MathUtils.smoothstep(life * track.lifetime, 0, LOW_DEPTH_RAMP),
+        depth: lowDepthAt(track, life),
         radius: track.birthRadius * (1 + track.growth * life),
         elongation: LOW_ELONGATION,
         occlusion: THREE.MathUtils.smoothstep(life, LOW_OCCLUSION_ONSET, LOW_OCCLUSION_FULL),
         fronts: 'pair',
-        life,
+        wound: lowWoundOf(track, life, rotationPeriod),
       },
       peakDepth: track.peakDepth,
       presence: Math.min(1, Math.min(life, 1 - life) * track.lifetime / ABSORB_LIFE_RAMP),
@@ -283,27 +307,28 @@ function rawLowPlacementAt(
 }
 
 // 中緯度の低気圧 index(0..LOW_COUNT − 1)の、時刻 seconds [s] における配置。surfaceRadius [m] は
-// 天体の半径。生まれる前と消えたあとは null。
+// 天体の半径、rotationPeriod [s] はその自転周期。生まれる前と消えたあとは null。
 export function lowPlacementAt(
-  index: number, seconds: number, surfaceRadius: number,
+  index: number, seconds: number, surfaceRadius: number, rotationPeriod: number,
 ): PressurePlacement | null {
   return absorbedLowAt(
     index, surfaceRadius,
-    (j, k) => rawLowPlacementAt(j, seconds + k * ABSORB_WINDOW_STEP, surfaceRadius),
+    (j, k) => rawLowPlacementAt(j, seconds + k * ABSORB_WINDOW_STEP, surfaceRadius, rotationPeriod),
   );
 }
 
 // 中緯度の低気圧 LOW_COUNT 個全部の、時刻 seconds [s] における配置。戻り値の index 番目は
-// lowPlacementAt(index, seconds, surfaceRadius) と同じ。吸収の効きは同じ半球の全枡の生の配置を
-// ±窓 で標本化した上で決まるので、全枡・全刻みの生の配置を先に表へ起こして分け合う — 1 枡ずつ
-// 引くと同じ生の配置を相手ごと・刻みごとに組み直すことになる。
+// lowPlacementAt(index, seconds, surfaceRadius, rotationPeriod) と同じ。吸収の効きは同じ半球の全枡の
+// 生の配置を ±窓 で標本化した上で決まるので、全枡・全刻みの生の配置を先に表へ起こして分け合う
+// — 1 枡ずつ引くと同じ生の配置を相手ごと・刻みごとに組み直すことになる。
 export function lowPlacementsAt(
-  seconds: number, surfaceRadius: number,
+  seconds: number, surfaceRadius: number, rotationPeriod: number,
 ): readonly (PressurePlacement | null)[] {
   // 生の配置の表 [枡][窓の標本]。標本は時刻から −窓 側が先頭。
   const raw = Array.from({ length: LOW_COUNT }, (_, j) =>
     Array.from({ length: 2 * ABSORB_WINDOW_STEPS + 1 }, (_, k) =>
-      rawLowPlacementAt(j, seconds + (k - ABSORB_WINDOW_STEPS) * ABSORB_WINDOW_STEP, surfaceRadius)));
+      rawLowPlacementAt(
+        j, seconds + (k - ABSORB_WINDOW_STEPS) * ABSORB_WINDOW_STEP, surfaceRadius, rotationPeriod)));
   return Array.from({ length: LOW_COUNT }, (_, index) =>
     absorbedLowAt(index, surfaceRadius, (j, k) => raw[j]![k + ABSORB_WINDOW_STEPS]!));
 }
