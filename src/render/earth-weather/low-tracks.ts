@@ -1,7 +1,8 @@
-// 気圧へ書き込む中緯度の低気圧の谷の配置を、時刻の閉じた関数で答える。上層のロスビー波の
+// 中緯度の低気圧の谷の生の配置を、時刻の閉じた関数で答える。上層のロスビー波の
 // 谷の下流側、蛇行の振幅の強いストームトラックの海域に生まれ、波とともに東へ運ばれて
 // トラックの終端で埋まる。進路と一生は(枡, 世代)ごとの乱数で決まり、どの時刻へ飛んでも
-// 同じ配置になる。
+// 同じ配置になる。ここが答えるのは吸収を考えない生の配置 — 近づきすぎた中心どうしの吸収は
+// cyclone-tracks が全ての低気圧の生の配置の上で行う。
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
 import {
@@ -10,8 +11,10 @@ import {
 } from './rossby-wave';
 import { vortexSpinOf } from './wind-law';
 import { FEATURE_REACH } from './pressure-feature';
+import { vortexPresence } from './vortex-absorption';
+import type { RawVortex } from './vortex-absorption';
 import { courseAt, DAY, DEGREE, uniformIn, waypoint } from './tracks';
-import type { Course, PressurePlacement, Range } from './tracks';
+import type { Course, Range } from './tracks';
 
 // 中緯度の低気圧。同時に持つ枡の数(偶数番が北、奇数番が南)。枡は上層のロスビー波の谷へ
 // 錨づき、半球あたりの枡の数は谷の数(WAVE_NUMBER)より多い — 世代ごとに同じ谷へ複数の枡が
@@ -53,32 +56,6 @@ const LOW_GATE_JITTER = 0.15;
 // 後続を周期の残りへ立てる — 群発日の増分の約半分を 2 次低気圧が担うという観測へ寄せる。
 const LOW_FAMILY_AMPLITUDE = 0.65;
 const LOW_FAMILY_PROBABILITY = 0.45;
-// 同じ半球の谷へ近づきすぎた谷は吸収される — 深い低気圧が浅い低気圧を呑む。
-// 浅い側の深さを、半径の和に対する距離の近さで削る幅。半径の和へ届く前に浅い側の深さが
-// ほぼ 0 になるよう、和の 2 倍から削り始めて 0.95 倍で消える形に取る — 近づく速さで深さの
-// 変化が急にならないよう、帯の幅は千 km 級に保つ。吸収する側・される側は最深(一生の山)で
-// 決める — 瞬間の深さで決めると、追いついた 2 つの深さが入れ替わる瞬間に浅い側の深さが
-// 不連続に跳ぶ。
-const ABSORB_FADE_START = 2.0;
-const ABSORB_FADE_FULL = 0.95;
-// 吸収の効きを見る時間窓の半幅 [s] と刻み [s]。相手の配置を前後 ±窓 で標本化して最強の効きを
-// 取る — 相手が生まれても埋まっても、近い時刻が窓へ出入りするあいだ効きは ~1 日かけて逓増・
-// 逓減するので、浅い側の深さが相手の消滅と同時に跳んで戻らない。
-const ABSORB_WINDOW = 24 * 3600;
-const ABSORB_WINDOW_STEP = 3 * 3600;
-// 窓の半幅に入る刻みの数。
-const ABSORB_WINDOW_STEPS = Math.round(ABSORB_WINDOW / ABSORB_WINDOW_STEP);
-// 窓の標本の効きをなめらかな最大でたたむ鋭さ。大きいほど本物の最大に近づく — 小さすぎると
-// 弱い標本の寄与が積み上がって遠くの相手でも浅い側を沈めてしまう。標本の入れ替わり(argmax
-// の跳び)がそのまま深さの勾配の跳びになるので、隣り合う標本どうしを混ぜる程度に取る。
-const ABSORB_SOFTMAX = 12;
-// 標本ごとの「居る度」が生まれと消えの両端で 0→1 になるまでの時間 [s]。深さで見ると呑む側が
-// 埋まる速さで効きが抜けるので、一生の両端への時間で見る — 寿命によらず一定の勾配になる。
-const ABSORB_LIFE_RAMP = 12 * 3600;
-// 標本ごとの効きが全強度になる、呑む側の深さ [hPa]。居る度がまだ低い生まれたて・消えかけの
-// 低気圧でも、深さがこれ以上あれば半径の和の内側の浅い側を沈め切れる。深さへの立ち上がりを
-// 緩く取る — 浅い門にすると、発達の速い低気圧が近くへ現れたときに効きがその発達の速さで立つ。
-const ABSORB_FADE_DEPTH = 10;
 // 一生を平均した自力の速さの幅 [m/s]、南半球の倍率、減速の指数の幅。速さも区間比の冪で右裾に
 // 引く — 速いものほど珍しい。波ドリフト(緯度 40° で ~3 m/s)を足して、平均の東進はおおよそ
 // 10〜15 m/s(南半球はやや速く 12〜18)に乗る。道のりの進みは 1 − (1 − life)^指数 で、
@@ -240,15 +217,6 @@ function lowTrackOf(
   return { onset, lifetime, birthSeconds, course, brake, peakDepth, birthRadius, growth };
 }
 
-// 吸収を考えない生の配置と、その一生の最深 [hPa]。吸収する側・される側の判定は最深で行うので、
-// 一生の山を配置と一緒に返す。
-interface RawLow {
-  readonly placement: PressurePlacement;
-  readonly peakDepth: number;
-  // 吸収の効きのための「居る度」0〜1。生まれと消えの両端で ABSORB_LIFE_RAMP かけて立ち上がる。
-  readonly presence: number;
-}
-
 // 深さの山の立ち上がり込みで、一生の中の位置 life の深さ [hPa]。
 function lowDepthAt(track: LowTrack, life: number): number {
   return track.peakDepth * Math.sin(Math.PI * life ** LOW_PEAK_SKEW)
@@ -272,11 +240,11 @@ function lowWoundOf(track: LowTrack, life: number, rotationPeriod: number): numb
   return (sum * life * track.lifetime) / WOUND_STEPS;
 }
 
-// 中緯度の低気圧 index(0..LOW_COUNT − 1)の、時刻 seconds [s] における配置(吸収を考えない
-// 生の値)。同じ時刻に生きている候補は高々 1 つなので、一次から順に最初の生きている候補を返す。
-function rawLowPlacementAt(
+// 中緯度の低気圧 index(0..LOW_COUNT − 1)の、時刻 seconds [s] における生の配置(吸収を考えない
+// 値)。同じ時刻に生きている候補は高々 1 つなので、一次から順に最初の生きている候補を返す。
+export function rawLowPlacementAt(
   index: number, seconds: number, surfaceRadius: number, rotationPeriod: number,
-): RawLow | null {
+): RawVortex | null {
   // 枡ごとに周期の位相をずらし、同じ半球の枡が揃って生まれ直さないようにする。
   const age = seconds / LOW_PERIOD + index / LOW_COUNT;
   const generation = Math.floor(age);
@@ -299,97 +267,8 @@ function rawLowPlacementAt(
         fronts: 'pair',
         wound: lowWoundOf(track, life, rotationPeriod),
       },
-      peakDepth: track.peakDepth,
-      presence: Math.min(1, Math.min(life, 1 - life) * track.lifetime / ABSORB_LIFE_RAMP),
+      presence: vortexPresence(life, track.lifetime),
     };
   }
   return null;
-}
-
-// 中緯度の低気圧 index(0..LOW_COUNT − 1)の、時刻 seconds [s] における配置。surfaceRadius [m] は
-// 天体の半径、rotationPeriod [s] はその自転周期。生まれる前と消えたあとは null。
-export function lowPlacementAt(
-  index: number, seconds: number, surfaceRadius: number, rotationPeriod: number,
-): PressurePlacement | null {
-  return absorbedLowAt(
-    index, surfaceRadius,
-    (j, k) => rawLowPlacementAt(j, seconds + k * ABSORB_WINDOW_STEP, surfaceRadius, rotationPeriod),
-  );
-}
-
-// 中緯度の低気圧 LOW_COUNT 個全部の、時刻 seconds [s] における配置。戻り値の index 番目は
-// lowPlacementAt(index, seconds, surfaceRadius, rotationPeriod) と同じ。吸収の効きは同じ半球の全枡の
-// 生の配置を ±窓 で標本化した上で決まるので、全枡・全刻みの生の配置を先に表へ起こして分け合う
-// — 1 枡ずつ引くと同じ生の配置を相手ごと・刻みごとに組み直すことになる。
-export function lowPlacementsAt(
-  seconds: number, surfaceRadius: number, rotationPeriod: number,
-): readonly (PressurePlacement | null)[] {
-  // 生の配置の表 [枡][窓の標本]。標本は時刻から −窓 側が先頭。
-  const raw = Array.from({ length: LOW_COUNT }, (_, j) =>
-    Array.from({ length: 2 * ABSORB_WINDOW_STEPS + 1 }, (_, k) =>
-      rawLowPlacementAt(
-        j, seconds + (k - ABSORB_WINDOW_STEPS) * ABSORB_WINDOW_STEP, surfaceRadius, rotationPeriod)));
-  return Array.from({ length: LOW_COUNT }, (_, index) =>
-    absorbedLowAt(index, surfaceRadius, (j, k) => raw[j]![k + ABSORB_WINDOW_STEPS]!));
-}
-
-// 中緯度の低気圧 index の、吸収込みの配置。rawAt(j, k) は枡 j の時刻 +k 刻み(0 が現在)の
-// 生の配置を返す — 生の配置をその場で組むか表から引くかは呼び出し側が決める。生まれる前と
-// 消えたあとは null。
-function absorbedLowAt(
-  index: number, surfaceRadius: number,
-  rawAt: (index: number, offset: number) => RawLow | null,
-): PressurePlacement | null {
-  const self = rawAt(index, 0);
-  if (self === null) return null;
-  // 吸収 — 同じ半球で、自分より最深の深い谷へ半径の和の 2 倍より近づいた谷は、近さに応じて
-  // 深さを削る。対の評価はどちらの低気圧から見ても同じ浅い側が削れる。効きは相手の配置を
-  // 前後 ±窓 で標本化して最強の 1 点を取る — 相手の近い時刻が窓へ出入りするあいだ効きは
-  // ~1 日かけて逓増・逓減するので、出会い・別れ・生まれ・消えのどの瞬間にも深さは跳ばない。
-  // 最深で比べる門も標本ごとの居る度が 0 の時刻にしか入れ替わらない。
-  let depth = self.placement.depth;
-  for (let j = index % 2; j < LOW_COUNT; j += 2) {
-    if (j === index) continue;
-    // 窓の標本の効きは、本物の最大をなめらかに近似した総和でたたむ — 最強の標本が隣の刻みへ
-    // 移る瞬間にも効きは連続に移り、勾配が刻みの境で跳ばない。
-    let softmax = 0;
-    for (let k = -ABSORB_WINDOW_STEPS; k <= ABSORB_WINDOW_STEPS; k++) {
-      const other = rawAt(j, k);
-      // その標本の低気圧が自分より最深の浅い側なら、その標本は呑まない。
-      if (other === null || other.peakDepth < self.peakDepth) continue;
-      const distance = greatCircleDistance(self.placement, other.placement, surfaceRadius);
-      const edge = self.placement.radius + other.placement.radius;
-      const fade = THREE.MathUtils.smoothstep(
-        distance, edge * ABSORB_FADE_FULL, edge * ABSORB_FADE_START,
-      );
-      // 効きは近くて居る時刻が窓に入っているあいだ効き、出会いの前後 ~1 日に逓増・逓減がかかる。
-      // 標本ごとの居る度は生まれ・消えで 0 へ逓減するので、相手が生まれた・埋まる瞬間にも効きは
-      // 跳ばない — 呑む側の瞬間の深さを見ると、相手が埋まる速さで効きが抜けて抑えられていた側の
-      // 深さが跳ぶ。帯の縁での効きは二乗で弱めて、総和で届きすぎないよう実効の帯をおおよそ
-      // 1.4 倍までに留める。窓の端では 0 へ逓減。
-      const taper = 0.5 + 0.5 * Math.cos(Math.PI * k / ABSORB_WINDOW_STEPS);
-      const reach = (1 - fade) ** 2;
-      // 居る度と現在の深さの強いほうを効きにする — 生まれたて・消えかけでも、深さがあれば
-      // 半径の和の内側へ来た浅い谷をその時点で沈め切れる。
-      const strength = Math.max(
-        other.presence, Math.min(1, other.placement.depth / ABSORB_FADE_DEPTH),
-      );
-      softmax += Math.expm1(ABSORB_SOFTMAX * taper * strength * reach);
-    }
-    if (softmax <= 0) continue;
-    // 効きは総和の対数から — expm1/log1p の対で、効き 0 の標本は総和へ寄与しない。1 へ収まる
-    // よう丸める — 複数の標本がほぼ最強で並ぶときの持ち上がりぶん。
-    const grip = Math.min(1, Math.log1p(softmax) / ABSORB_SOFTMAX);
-    depth *= 1 - grip;
-  }
-  return { ...self.placement, depth };
-}
-
-// 2 つの配置の中心の大圏距離 [m]。
-function greatCircleDistance(
-  a: PressurePlacement, b: PressurePlacement, surfaceRadius: number,
-): number {
-  const cosAngle = Math.sin(a.latitude) * Math.sin(b.latitude)
-    + Math.cos(a.latitude) * Math.cos(b.latitude) * Math.cos(a.longitude - b.longitude);
-  return surfaceRadius * Math.acos(Math.min(Math.max(cosAngle, -1), 1));
 }
