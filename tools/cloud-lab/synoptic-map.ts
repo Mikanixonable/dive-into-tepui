@@ -2,11 +2,10 @@
 // から、気圧の塗り・等圧線・上層の流線・地表の風矢印・偏西風の蛇行の軸を引き、
 // 海岸線と経緯線で座標を示す。見せる範囲は MapView(中心と半径で決まる窓)で、全層が同じ窓を使う。
 import { EARTH_COASTLINE, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
+import {
+  HEMISPHERE_PHASE_OFFSET, WAVE_NUMBER, WAVE_PHASE_RATE,
+} from '../../src/render/cloud/rossby-wave';
 import type { SynopticFields } from './synoptic-field';
-
-// 偏西風の蛇行の波数と位相の進む速さ [rad/s]。src/render/cloud/rossby-wave.ts の値と対。
-const WAVE_NUMBER = 5;
-const WAVE_PHASE_RATE = WAVE_NUMBER * ((3 * Math.PI / 180) / 86400);
 
 export const MAP_WIDTH = 1440;
 export const MAP_HEIGHT = 720;
@@ -373,7 +372,8 @@ function drawJetMeander(context: CanvasRenderingContext2D, seconds: number, view
   for (const sign of [1, -1]) {
     let started = false;
     for (let lonDeg = view.lonMinDeg; lonDeg <= view.lonMinDeg + view.lonSpanDeg; lonDeg += 0.5) {
-      const phase = (lonDeg * Math.PI / 180) * WAVE_NUMBER - WAVE_PHASE_RATE * seconds;
+      const phase = (lonDeg * Math.PI / 180) * WAVE_NUMBER - WAVE_PHASE_RATE * seconds
+        + sign * HEMISPHERE_PHASE_OFFSET;
       const latitude = sign * (JET_AXIS_LAT + JET_MEANDER_AMPLITUDE * Math.sin(phase));
       const x = view.lonToX(lonDeg);
       const y = view.latToY(latitude);

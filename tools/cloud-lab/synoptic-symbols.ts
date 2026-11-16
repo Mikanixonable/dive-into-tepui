@@ -1,21 +1,26 @@
-// 天気図へ低気圧の記号を置く。中心は L と気圧値、眼を持つ渦は中心に眼の印を置く。
-// 気象モデルが前線や高気圧の軌跡を持たない間は、記号は L と眼だけになる。
+// 天気図へ低気圧と高気圧の記号を置く。中心は L / H と気圧値、眼を持つ渦は中心に眼の印を置く。
+// 気象モデルが前線を持たない間は、記号は中心と眼だけになる。
 import { eyeStrengthOf } from '../../src/render/cloud/cyclones';
 import {
   LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
 } from '../../src/render/cloud/cyclone-tracks';
+import { HIGH_COUNT, highPlacementAt } from '../../src/render/cloud/anticyclone-tracks';
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import { sampleField, strokeWrapped } from './synoptic-map';
 import type { MapView } from './synoptic-map';
 import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
 import type { SynopticFields } from './synoptic-field';
 
-// 中心の記号。L と気圧値、眼を持つなら眼の印。
+// 中心の記号。mark(L / H)と気圧値、眼を持つなら眼の印。配置の経度は畳まずに持つので、
+// 窓の西端を基準に一周(360°)で畳んでから画素へ写す — 時刻を大きく進めると配置の経度は
+// 何周分も回り込み、畳まないままでは窓へ届かない。
 function drawCenterLabel(
   context: CanvasRenderingContext2D, fields: SynopticFields,
-  placement: CyclonePlacement, eyeStrength: number, view: MapView,
+  placement: CyclonePlacement, mark: 'L' | 'H', eyeStrength: number, view: MapView,
 ): void {
-  const x = view.lonToX(placement.longitude * 180 / Math.PI);
+  const longitudeDeg = view.lonMinDeg
+    + (((placement.longitude * 180 / Math.PI - view.lonMinDeg) % 360) + 360) % 360;
+  const x = view.lonToX(longitudeDeg);
   const y = view.latToY(placement.latitude * 180 / Math.PI);
   // 中心の気圧は面から拾う。
   const pressure = Math.round(1013 + sampleField(
@@ -27,9 +32,10 @@ function drawCenterLabel(
     context.font = '700 26px "JetBrains Mono", ui-monospace, monospace';
     context.lineWidth = 4;
     context.strokeStyle = 'rgba(10, 13, 17, 0.85)';
-    context.fillStyle = 'rgba(255, 120, 100, 0.95)';
-    context.strokeText('L', x, y);
-    context.fillText('L', x, y);
+    context.fillStyle = mark === 'L'
+      ? 'rgba(255, 120, 100, 0.95)' : 'rgba(135, 175, 255, 0.95)';
+    context.strokeText(mark, x, y);
+    context.fillText(mark, x, y);
     context.font = '600 13px "JetBrains Mono", ui-monospace, monospace';
     context.strokeText(String(pressure), x, y + 20);
     context.fillText(String(pressure), x, y + 20);
@@ -48,7 +54,7 @@ function drawCenterLabel(
   });
 }
 
-// 低気圧の記号をまとめて置く。seconds は現在時刻 [s]、view は地図の見せる窓。
+// 低気圧と高気圧の記号をまとめて置く。seconds は現在時刻 [s]、view は地図の見せる窓。
 export function drawCycloneSymbols(
   context: CanvasRenderingContext2D, fields: SynopticFields, seconds: number, view: MapView,
 ): void {
@@ -56,7 +62,7 @@ export function drawCycloneSymbols(
   for (let index = 0; index < LOW_COUNT; index += 1) {
     const placement = lowPlacementAt(index, seconds, R_EARTH);
     if (placement === null || placement.depth < 2) continue;
-    drawCenterLabel(context, fields, placement, 0, view);
+    drawCenterLabel(context, fields, placement, 'L', 0, view);
   }
   // 熱帯低気圧 — L と眼。
   for (let index = 0; index < TROPICAL_COUNT; index += 1) {
@@ -64,6 +70,12 @@ export function drawCycloneSymbols(
     if (tropical === null || tropical.depth < 2) continue;
     const eye = eyeStrengthOf(
       tropical.depth, tropical.radius, tropical.latitude, R_EARTH, SIDEREAL_DAY);
-    drawCenterLabel(context, fields, tropical, eye, view);
+    drawCenterLabel(context, fields, tropical, 'L', eye, view);
+  }
+  // 高気圧 — H。
+  for (let index = 0; index < HIGH_COUNT; index += 1) {
+    const high = highPlacementAt(index, seconds, R_EARTH);
+    if (high === null || high.depth < 2) continue;
+    drawCenterLabel(context, fields, high, 'H', 0, view);
   }
 }

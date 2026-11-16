@@ -2019,7 +2019,11 @@ async function main() {
       const to = slotTrack[i].tropical;
       if (from === null || to === null) continue;
       const dLat = ((to.latitudeDeg - from.latitudeDeg) * Math.PI) / 180;
-      const dLon = ((to.longitudeDeg - from.longitudeDeg) * Math.PI) / 180;
+      // 経度差は円周上の差で取る — [−180,180] へ畳んだ値どうしの素の差は、日付変更線を挟むと
+      // 一周ぶんの見かけの脚になる。
+      const dLon = Math.atan2(
+        Math.sin(((to.longitudeDeg - from.longitudeDeg) * Math.PI) / 180),
+        Math.cos(((to.longitudeDeg - from.longitudeDeg) * Math.PI) / 180));
       const a = Math.sin(dLat / 2) ** 2
         + Math.cos((from.latitudeDeg * Math.PI) / 180) * Math.cos((to.latitudeDeg * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
       const distanceKm = 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(a));
