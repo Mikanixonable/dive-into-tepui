@@ -179,5 +179,6 @@ export function tropicalPlacementAt(index: number, seconds: number): PressurePla
       ? THREE.MathUtils.smoothstep(life, TROPICAL_OCCLUSION_ONSET, TROPICAL_OCCLUSION_FULL)
       : undefined,
     fronts: 'tail',
+    life,
   };
 }
