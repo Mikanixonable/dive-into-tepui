@@ -15,9 +15,10 @@
 
 syncTime ごとの描画パス:
 
-- 中間場: `pressure` → `airMassTrace`(気圧を読むので後) → `humiditySource` /
-  `convectionSource` → `instability` (計 5)
+- 中間場: `pressure` → `airMassTrace`(気圧を読むので後) → `transportSource` (計 3)
 - 出力場: `cloud+environment`(1 パス 2 出力 MRT) / `motion`(計 2)
+
+(一級前は中間場 5・出力場 3 の計 8 だった)
 
 ## 実施済み(一級、2026-11-16)
 
@@ -75,11 +76,11 @@ syncTime ごとの描画パス:
   は減らない。運用を畳む判断があれば generation-params.ts(106 行)+uniform 経路を
   除去できるが、単体での削減効果は小さい。
 
-## 新提案(採用推奨): ベイクパスの統合で 7 → 5 パス
+## 実施済み(ベイクパスの統合、2026-11-16)
 
-再検証で見つけた、所有権を崩さずにパスを減らせる 2 件。
+再検証で見つけた、所有権を崩さずにパスを減らせる 2 件。ベイクは 7 → 5 パスになった。
 
-### N1. instability 場のインライン化
+### N1. instability 場のインライン化 — `29c07b55d`
 
 - 現状: `ConvectiveActivity` が CirculatingNoise を `instability` 写し(R 形式)へ
   ベイクし、`at()` が同じ方向で 1 点だけ読む。**ベイクの amortize が成立しない**
@@ -92,19 +93,13 @@ syncTime ごとの描画パス:
 - 消費者: `convectiveActivity` は weatherAt・views.ts・weather-probe 経由でのみ
   読まれ、写しを直に読む箇所はない(確認済み)。
 
-### N2. humiditySource + convectionSource を RGBA 1 写しへ統合
+### N2. humiditySource + convectionSource を RGBA 1 写しへ統合 — `e69ac119c`
 
 - 現状: WeatherTransport が RG 2 枚を別々のパスで焼く。
 - 変更: 1 枚の RGBA 写しへ(xy=湿度、zw=対流)。advectedAt の読みは `.xy`/`.zw`
   へ振り替えるだけ。sourceAt の呼び出し回数・タップ数は不変。パス −1、約 −20 行。
 - lab の公開メソッド humiditySourceAt/convectionSourceAt(ノイズを直接評価)は
   無関係に残る。
-
-### 実施後の構成
-
-- 中間場: `pressure` → `airMassTrace` → `transportSource` (3 パス)
-- 出力場: `cloud+environment` MRT / `motion` (2 パス)
-- 計 5 パス(一級前の 8 から −3)
 
 ### 不採用: pressure + transport 源のさらなる統合
 
@@ -129,5 +124,8 @@ ObservedCloudField(SPEC 要求)。
 
 ## 検証
 
-- 実施済み分: typecheck・test:render 303 件・check:boundaries すべて通過。
-- N1・N2: (1) と同様に見た目不変のはず(読む値は同一)。検証は同 3 コマンド。
+- 一級・N1・N2 とも: typecheck・test:render 303 件・check:boundaries すべて通過。
+- 見た目の変化: N1・N2 は読む値が同一なので不変のはず。一級の upperMeander・
+  moistureFront の除去だけ気象場がわずかに変わる(上層の筋の向きの揺れが消え、
+  前線帯が湿度勾配ぶん細くなる可能性)ので、cloud-lab の天気図・雲画像での
+  目視確認は残課題。
