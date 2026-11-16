@@ -8,21 +8,21 @@ import { clamp, exp, float, mix, mrt, sin, step, uniform, vec4 } from 'three/tsl
 import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
 import { EquirectProjection } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
-import { AtmosphericWindField, SURFACE_HEIGHT } from '../../src/render/cloud/atmospheric-wind';
-import { Cyclones } from '../../src/render/cloud/cyclones';
-import { Highs } from '../../src/render/cloud/anticyclones';
-import { CirculatingNoise } from '../../src/render/cloud/circulating-noise';
-import { Circulation } from '../../src/render/cloud/circulation';
-import { WeatherTransport } from '../../src/render/cloud/weather-transport';
-import { WeatherModel } from '../../src/render/cloud/weather-model';
+import { AtmosphericWindField, SURFACE_HEIGHT } from '../../src/render/earth-weather/atmospheric-wind';
+import { Cyclones } from '../../src/render/earth-weather/cyclones';
+import { Highs } from '../../src/render/earth-weather/anticyclones';
+import { CirculatingNoise } from '../../src/render/earth-weather/circulating-noise';
+import { Circulation } from '../../src/render/earth-weather/circulation';
+import { WeatherTransport } from '../../src/render/earth-weather/weather-transport';
+import { WeatherModel } from '../../src/render/earth-weather/weather-model';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusOpacityNode, cumulusTopAltitudeNode,
-} from '../../src/render/cloud/cloud-kind-node';
-import { latitudeOf } from '../../src/render/cloud/sphere-frame';
+} from '../../src/render/earth-weather/cloud/cloud-kind-node';
+import { latitudeOf } from '../../src/render/earth-weather/sphere-frame';
 import {
   CloudMotionWind, awaitClimateMap, boxDirectionNode, renderTargetBase64,
 } from './probe-common';
-import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
 import type { Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 declare global {

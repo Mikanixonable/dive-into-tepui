@@ -3,16 +3,16 @@
 // 全球正距円筒画像を同一仕様の球面キャップ投影テクスチャへ再投影して供給する。
 import * as THREE from 'three/webgpu';
 import { float, int, log2, max, texture, vec4 } from 'three/tsl';
-import { DeferredTexture } from '../deferred-texture';
+import { DeferredTexture } from '../../deferred-texture';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
-import { BakedField } from '../baked-field';
-import { GPU_PASS } from '../gpu-timings';
-import { equirectUvFromDirection, type FieldProjection } from '../field-projection';
+import { BakedField } from '../../baked-field';
+import { GPU_PASS } from '../../gpu-timings';
+import { equirectUvFromDirection, type FieldProjection } from '../../field-projection';
 import type { WebGPURenderer } from 'three/webgpu';
-import type { GpuTimingSink } from '../gpu-timings';
+import type { GpuTimingSink } from '../../gpu-timings';
 import type { CloudFieldSource } from './cloud-presentation';
 import type { CloudBlend, CloudFieldSlot } from './cloud-field-sample';
-import type { Vec4Node } from '../tsl-types';
+import type { Vec4Node } from '../../tsl-types';
 
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;

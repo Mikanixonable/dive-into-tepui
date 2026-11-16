@@ -5,18 +5,18 @@ import {
   Fn, If, Loop, abs, and, ceil, clamp, dot, float, greaterThan, int, length, max, min,
   normalize, select, sqrt, uniform, vec4,
 } from 'three/tsl';
-import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../../cloud/cloud-detail';
-import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
-import type { CloudRenderInput } from '../../cloud/cloud-render-input';
-import type { CloudSample } from '../../cloud/cloud-field-sample';
-import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
+import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../../earth-weather/cloud/cloud-detail';
+import { CloudFieldSampler } from '../../earth-weather/cloud/cloud-field-sampler';
+import type { CloudRenderInput } from '../../earth-weather/cloud/cloud-render-input';
+import type { CloudSample } from '../../earth-weather/cloud/cloud-field-sample';
+import { CloudShapeEvaluator } from '../../earth-weather/cloud/cloud-shape-evaluator';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusInCloudOpticalDepthNode,
   cumulusOpacityNode, cumulusTopAltitudeNode,
-} from '../../cloud/cloud-kind-node';
-import { ICE_CLOUD_ASYMMETRY, LIQUID_CLOUD_ASYMMETRY } from '../../cloud/cloud-optics';
-import { cloudReflectanceNode, fractionalTransmittanceNode } from '../../cloud/cloud-optics-node';
-import { CLOUD_TOP_SPAN } from '../../cloud/cumulus-shape';
+} from '../../earth-weather/cloud/cloud-kind-node';
+import { ICE_CLOUD_ASYMMETRY, LIQUID_CLOUD_ASYMMETRY } from '../../earth-weather/cloud/cloud-optics';
+import { cloudReflectanceNode, fractionalTransmittanceNode } from '../../earth-weather/cloud/cloud-optics-node';
+import { CLOUD_TOP_SPAN } from '../../earth-weather/cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 import type { CloudShadowKinds } from './shadow-select';

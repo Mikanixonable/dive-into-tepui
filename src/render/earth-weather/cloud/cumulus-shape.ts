@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { CUMULUS_TOP_ALTITUDE } from './cloud-kind';
-import type { FloatUniform } from '../tsl-types';
+import type { FloatUniform } from '../../tsl-types';
 
 // 雲のアルベド。厚い雲の白さは多重散乱の産物で、単散乱アルベド ≈ 1・光学的厚みが十分に大きい
 // 層の反射は拡散反射の極限へ漸近する。

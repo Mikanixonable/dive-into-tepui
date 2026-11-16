@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { abs, float, fract, inverseSqrt, mix, normalize, uniform, vec2, vec4 } from 'three/tsl';
 import { BakedField } from '../baked-field';
-import { CLOUD_TUNING } from './cloud-tuning';
+import { CLOUD_TUNING } from './cloud/cloud-tuning';
 import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
 import type { Circulation } from './circulation';

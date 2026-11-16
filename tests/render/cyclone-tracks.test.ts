@@ -1,4 +1,4 @@
-// 低気圧の谷の配置(render/cloud/cyclone-tracks.ts)の回帰テスト。期待値の正本は
+// 低気圧の谷の配置(render/earth-weather/cyclone-tracks.ts)の回帰テスト。期待値の正本は
 // `DEVELOP/SPEC/RENDERING.md`「雲の描画」の、中緯度の低気圧の一生と熱帯低気圧の進路の記述。
 // 調整値そのものは固定せず、どの時刻でも成り立つべき性質(決定性・連続性・単調性・緯度の幅・
 // 隣どうしの分離)を書く。
@@ -6,9 +6,9 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
   LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
-} from '../../src/render/cloud/cyclone-tracks';
+} from '../../src/render/earth-weather/cyclone-tracks';
 import { EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
-import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
+import type { CyclonePlacement } from '../../src/render/earth-weather/cyclone-tracks';
 import type { Placements } from './cyclone-samples';
 
 const HOUR = 3600; // [s]

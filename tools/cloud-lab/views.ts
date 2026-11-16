@@ -8,15 +8,15 @@
 // 画素から量を復号するために残す — 撮影の入口(cloudLab.views/show/capture)は列のまま使える。
 import { exp, length, texture, vec3 } from 'three/tsl';
 import { equirectUvFromDirection } from '../../src/render/field-projection';
-import { CUMULUS_TOP_ALTITUDE } from '../../src/render/cloud/cloud-kind';
+import { CUMULUS_TOP_ALTITUDE } from '../../src/render/earth-weather/cloud/cloud-kind';
 import { cirrusFlowColor } from './cirrus-flow-color';
 import {
   cirrusColumnOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
-} from '../../src/render/cloud/cloud-kind-node';
+} from '../../src/render/earth-weather/cloud/cloud-kind-node';
 import type * as THREE from 'three/webgpu';
-import type { ClimateMap } from '../../src/render/cloud/climate-map';
-import type { CloudSample } from '../../src/render/cloud/cloud-field-sample';
-import type { WeatherModel } from '../../src/render/cloud/weather-model';
+import type { ClimateMap } from '../../src/render/earth-weather/climate-map';
+import type { CloudSample } from '../../src/render/earth-weather/cloud/cloud-field-sample';
+import type { WeatherModel } from '../../src/render/earth-weather/weather-model';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =

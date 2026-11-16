@@ -5,7 +5,7 @@ import { CloudDetailEvaluator, DETAIL_AMPLITUDE_MAX } from './cloud-detail';
 import { cumulusColumnOpticalDepthNode } from './cloud-kind-node';
 import { CUMULUS_DITHER_KNOB, CLOUD_TOP_SPAN } from './cumulus-shape';
 import type { CloudSample } from './cloud-field-sample';
-import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
+import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
 const DETAIL_OPACITY_DEPTH = 0.25;
 const DETAIL_TOP_RELIEF = 0.15;
