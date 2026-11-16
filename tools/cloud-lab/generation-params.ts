@@ -25,13 +25,10 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   // 気象 — 帯(前線の骨格・雨帯)。長さ・半径は谷の短軸の半径を尺にした倍率。
   frontArmWidth: { label: '前線の帯の半値幅 [半径]', row: 'weather', min: 0.05, max: 1, step: 0.01 },
   frontBandSkew: { label: '前線の帯の偏り', row: 'weather', min: 0, max: 0.9, step: 0.01 },
-  frontColdLength: { label: '寒冷前線の長さ [半径]', row: 'weather', min: 1, max: 8, step: 0.1 },
-  frontWarmLength: { label: '温暖前線の長さ [半径]', row: 'weather', min: 0.5, max: 6, step: 0.1 },
-  frontTailLength: { label: '尾の長さ [半径]', row: 'weather', min: 1, max: 10, step: 0.1 },
+  frontEdgeSpeed: { label: '渦の縁の速さ [m/s]', row: 'weather', min: 0.5, max: 10, step: 0.1 },
+  frontWarmRatio: { label: '温暖前線の長さ比', row: 'weather', min: 0.3, max: 1, step: 0.01 },
   frontTripleRadius: { label: '閉塞点の半径 [半径]', row: 'weather', min: 0, max: 4, step: 0.05 },
   frontTripleAngleDeg: { label: '閉塞点の向き [°]', row: 'weather', min: -90, max: 0, step: 1 },
-  frontSpinDeg: { label: '前線系の回転 [°/一生]', row: 'weather', min: 0, max: 180, step: 1 },
-  frontCatchDeg: { label: '寒冷前線の追いつき [°]', row: 'weather', min: 0, max: 120, step: 1 },
   frontColdAngleDeg: { label: '寒冷前線の根元の向き [°]', row: 'weather', min: -160, max: -40, step: 1 },
   frontColdTipAngleDeg: { label: '寒冷前線の先端の向き [°]', row: 'weather', min: -180, max: 0, step: 1 },
   frontColdBend: { label: '寒冷前線の曲がり [冪]', row: 'weather', min: 0.5, max: 4, step: 0.05 },
@@ -45,7 +42,6 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   rainbandOnset: { label: '雨帯の開始閾値', row: 'weather', min: 1, max: 12, step: 0.1 },
   rainbandWidth: { label: '雨帯の遷移幅', row: 'weather', min: 0.5, max: 10, step: 0.1 },
   bandLift: { label: '帯の上昇流 [m/s]', row: 'weather', min: 0, max: 0.15, step: 0.002 },
-  bandHumidity: { label: '帯の湿度の底上げ', row: 'weather', min: 0, max: 0.4, step: 0.005 },
   // 気象 — 上昇源とプルーム
   transientGain: { label: '過渡源の強さ', row: 'weather', min: 0, max: 1, step: 0.01 },
   transientActivityOnset: { label: '過渡源の門(始)', row: 'weather', min: 0, max: 1, step: 0.01 },

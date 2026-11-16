@@ -5,10 +5,10 @@
 import * as THREE from 'three/webgpu';
 import {
   abs, asin, clamp, cos, cross, dot, exp, float, inverseSqrt, length, max, min, mix, sign, sin,
-  smoothstep, uniform, vec2,
+  smoothstep, sqrt, tanh, uniform, vec2,
 } from 'three/tsl';
 import { POLE } from './sphere-frame';
-import { coreCrossingAngle } from './wind-law';
+import { coreCrossingAngle, vortexEdgeOf, vortexSpinOf } from './wind-law';
 import { CLOUD_TUNING } from './cloud/cloud-tuning';
 import type { PressurePlacement } from './tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
@@ -17,7 +17,7 @@ import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-type
 // 底上げになり、気圧から出る上昇流の基準がまるごと持ち上がる。ここで遠方を閉じる。最大の谷
 // (消えるときの中緯度の低気圧で短軸の半径 1800 km、温帯化した熱帯低気圧で約 1000 km)の裾を
 // 切らない長さ — 芯が 1/√2 に落ちる半径の外側で、ガウスは 1800 km でも e^(−0.52) = 0.59 に留まる。
-const FEATURE_REACH = 2500e3;
+export const FEATURE_REACH = 2500e3;
 
 // 眼。広がりは谷自身の広がりに対する比で、湿度はその内側で落ちる。成熟した台風の眼は直径 600 km の
 // 円盤の中に開く数十 km の穴なので、最盛期の熱帯低気圧(短軸の半径 180〜240 km)で半径 54〜72 km に
@@ -54,18 +54,18 @@ const COMMA_HEAD_SEMI_DOWN = 1.1;
 const OCCLUDED_CORE_RADIUS = 0.9;
 
 const DEGREE = Math.PI / 180;
-// 前線骨格 — 谷に端部を持つ寒冷(赤道側)・温暖(極側〜下流)・閉塞の腕。腕の背骨は、閉塞点
-// (三点)を根元に半径ごとに向きが決まる曲線で、外へ行くほど循環の向きへ緩く曲がる。閉塞点は
-// 閉塞の進み × 半径で芯の外へ出て、寒冷・温暖の腕はその外側、閉塞の腕は内側へ循環の向きへ
-// 巻き込む — 芯から順に追いつくλの字は三点が外へ進む形そのもの。帯は背骨への垂距のガウスで、
-// 強さは深さに比例する。位置・広がりはすべて谷の短軸の半径を尺にした倍率、角度は下流(東)から
-// 循環の向き(両半球で反時計)を正に取る — 極側の軸が半球を吸収するので同じ式で済む。
+// 前線骨格 — 谷に端部を持つ寒冷(赤道側)・温暖(極側〜下流)・閉塞の腕。腕は気団の境目が
+// 渦の循環に乗って巻き上げられた形で、背骨は「半径 r̂ で向きが θ(r̂) の半直線」として表す。
+// θ(r̂) = 腕の根元の向き + 巻き上げ角 × 循環の半径プロファイル — 内側が速く回る差回転が
+// 腕を螺旋へ曲げる。閉塞点(三点)は閉塞の進み × 半径で芯の外へ出て、寒冷・温暖の腕は
+// その外側、閉塞の腕は内側へ循環の向きへ巻き込む — 芯から順に追いつくλの字は三点が外へ
+// 進む形そのもの。腕の届く長さは循環の風が渦の縁の速さを下回る半径まで。帯は背骨への
+// 垂距のガウスで、強さは深さに比例する。位置・広がりはすべて谷の短軸の半径を尺にした
+// 倍率、角度は下流(東)から循環の向き(両半球で反時計)を正に取る — 極側の軸が半球を
+// 吸収するので同じ式で済む。
 const FRONT_ARM_WIDTH = CLOUD_TUNING.frontArmWidth;
 // 帯の幅の偏り。腕は進行側(+θ)へ広く、追い越される側へ窄い。
 const FRONT_BAND_SKEW = CLOUD_TUNING.frontBandSkew;
-const FRONT_COLD_LENGTH = CLOUD_TUNING.frontColdLength;
-const FRONT_WARM_LENGTH = CLOUD_TUNING.frontWarmLength;
-const FRONT_TAIL_LENGTH = CLOUD_TUNING.frontTailLength;
 const FRONT_TRIPLE_RADIUS = CLOUD_TUNING.frontTripleRadius;
 const FRONT_TRIPLE_ANGLE = CLOUD_TUNING.frontTripleAngleDeg.mul(DEGREE);
 const FRONT_COLD_ANGLE = CLOUD_TUNING.frontColdAngleDeg.mul(DEGREE);
@@ -76,17 +76,18 @@ const FRONT_WARM_TIP = CLOUD_TUNING.frontWarmTipAngleDeg.mul(DEGREE);
 const FRONT_WARM_BEND = CLOUD_TUNING.frontWarmBend;
 const FRONT_OCC_SWING = CLOUD_TUNING.frontOccSwingDeg.mul(DEGREE);
 const FRONT_OCC_BEND = CLOUD_TUNING.frontOccBend;
-// 前線系の回転 — 一生 0→1 のあいだに傾圧帯が渦の循環へ巻き上げられる角 [rad] と、
-// 追いつきで寒冷の腕が余分に回る角 [rad](閉塞の進みに比例)。寒冷が温暖へ追いつく
-// 差回転が閉塞点の外への進行を作る。
-const FRONT_SPIN = CLOUD_TUNING.frontSpinDeg.mul(DEGREE);
-const FRONT_CATCH = CLOUD_TUNING.frontCatchDeg.mul(DEGREE);
+// 温暖の腕の長さは寒冷の腕の比で取る — 実際の温暖前線は寒冷前線より短い。
+const FRONT_WARM_RATIO = CLOUD_TUNING.frontWarmRatio;
 const FRONT_TAIL_LAT_START = CLOUD_TUNING.frontTailLatitudeStartDeg.mul(DEGREE);
 const FRONT_TAIL_LAT_FULL = CLOUD_TUNING.frontTailLatitudeFullDeg.mul(DEGREE);
 // 腕の根元・先端を滲ませる幅と帯の先端の逓減(いずれも尺の比)、閉塞の腕の芯側の床。
 const FRONT_ARM_BLEND = 0.12;
 const FRONT_TIP_FADE = 0.25;
 const FRONT_INNER_RADIUS = 0.15;
+// 前線として見える巻き上げの上限 [rad]。積算の巻き上げ角は循環が続く限り積み上がるが、
+// 気団の境目は一周ほど巻き上がると勾配を失って渦の雲域へ取り込まれるので、腕の向きへ
+// 効く回転はこの角へ漸近する(front-skeleton.ts でも同じ式)。
+export const FRONT_WIND_LIMIT = THREE.MathUtils.degToRad(300);
 // 熱帯の渦で温暖の腕が立ち始める閉塞の進み — 温帯化が進むにつれ赤道側の尾が対へ育つ。
 const TAIL_WARM_ONSET = 0.02;
 const TAIL_WARM_FULL = 0.3;
@@ -120,8 +121,14 @@ export class PressureFeature {
   // 前線の形。0 は持たない、1 は寒冷・温暖の対、2 は赤道側の尾(熱帯の渦 — 閉塞が
   // 立ち上がると対と同じ構造へ移る)。
   private readonly frontKind: FloatUniform = uniform(0);
-  // 一生の進み 0..1。前線系の回転を決める。
-  private readonly life: FloatUniform = uniform(0);
+  // 積算の巻き上げ角 [rad]。谷の循環が気団の境目を巻き上げてきた総量 — 腕の向きへ
+  // 半径プロファイルをかけて足す。
+  private readonly wound: FloatUniform = uniform(0);
+  // 循環の半径プロファイルの形を決める無次元数 4·spin 二乗/減衰² と、裾を閉じるガウスの
+  // 係数 (radius/reach)²、腕が届く半径(半径の倍率 — 循環が縁の速さを下回る外縁)。
+  private readonly spinRatio: FloatUniform = uniform(0);
+  private readonly reachSq: FloatUniform = uniform(0);
+  private readonly armReach: FloatUniform = uniform(0);
 
   // surfaceRadius は谷を置く天体の半径 [m]、rotationPeriod はその自転周期 [s]。
   public constructor(private readonly surfaceRadius: number, private readonly rotationPeriod: number) {}
@@ -134,7 +141,7 @@ export class PressureFeature {
       this.eyeStrength.value = 0;
       this.occlusion.value = 0;
       this.frontKind.value = 0;
-      this.life.value = 0;
+      this.wound.value = 0;
       return;
     }
     const { latitude, longitude, depth, radius, elongation } = placement;
@@ -158,7 +165,12 @@ export class PressureFeature {
     this.eyeStrength.value = eyeStrengthOf(depth, radius, latitude, this.surfaceRadius, this.rotationPeriod);
     this.occlusion.value = placement.occlusion ?? 0;
     this.frontKind.value = placement.fronts === 'pair' ? 1 : placement.fronts === 'tail' ? 2 : 0;
-    this.life.value = placement.life ?? 0;
+    // 循環 — 腕を巻き上げる角速度の形と、腕が届く半径(循環が縁の速さを下回る外縁)。
+    const spin = vortexSpinOf(depth, radius, latitude, FEATURE_REACH, this.rotationPeriod);
+    this.wound.value = placement.wound ?? 0;
+    this.spinRatio.value = spin.spinRatio;
+    this.reachSq.value = spin.reachSq;
+    this.armReach.value = vortexEdgeOf(spin, radius, FEATURE_REACH, CLOUD_TUNING.frontEdgeSpeed.value);
   }
 
   // 中心からの弦の二乗。距離を弦で測るので、対蹠点に鏡像が出ない。長軸に沿う成分は axisShrink の
@@ -277,9 +289,23 @@ export class PressureFeature {
     return band.mul(inner).mul(tip);
   }
 
-  // 単位方向 direction での前線の帯の強さ 0..1。寒冷・温暖の腕は閉塞点の外側、閉塞の腕は
-  // 三点の向きから芯のまわりへ巻き込む。熱帯の渦(尾)は赤道側の腕だけが緯度で育ち、
-  // 温帯化で閉塞が立ち上がると対と同じ構造へ移る。前線を持たない配置では 0。
+  // 循環の半径プロファイル — 半径 r̂(芯の半径の倍率)での軌道角速度 ÷ 芯の角速度。
+  // 谷の気圧形の微分から出る解析形(wind-law.ts の vortexProfileAt と同じ式)。
+  private vortexProfileAt(rHat: FloatNode): FloatNode {
+    const rr = rHat.mul(rHat).add(1);
+    const f = exp(this.reachSq.mul(rHat.mul(rHat)).negate())
+      .mul(inverseSqrt(rr.mul(rr).mul(rr)).add(this.reachSq.mul(2).mul(inverseSqrt(rr))))
+      .div(this.reachSq.mul(2).add(1));
+    return f.mul(sqrt(this.spinRatio.add(1)).add(1))
+      .div(sqrt(this.spinRatio.mul(f).add(1)).add(1));
+  }
+
+  // 単位方向 direction での前線の帯の強さ 0..1。腕の向きは、巻き上げなしの骨格の向きへ
+  // その半径で回った角(積算の巻き上げ角 × 循環の半径プロファイル)を足したもの — 内側が
+  // 速く回る差回転が腕を螺旋へ曲げ、帯は渦が雲と気団を運ぶ速さそのもので回る。寒冷・
+  // 温暖の腕は閉塞点の外側、閉塞の腕は三点の向きから芯のまわりへ巻き込む。熱帯の渦(尾)は
+  // 赤道側の腕だけが緯度で育ち、温帯化で閉塞が立ち上がると対と同じ構造へ移る。
+  // 前線を持たない配置では 0。
   public frontAt(direction: Vec3Node): FloatNode {
     const { poleward, downstream } = this.occlusionFrame();
     const offset = direction.sub(this.center);
@@ -288,31 +314,33 @@ export class PressureFeature {
     const r = length(p);
     const triple = this.occlusion.mul(FRONT_TRIPLE_RADIUS);
     const isTail = this.frontKind.sub(1.5).sign().max(0);
-    // 前線系の回転 — 一生とともに傾圧帯が循環へ巻き上げられる分だけ全部の向きへ足す。
-    const spin = this.life.mul(FRONT_SPIN);
-    const tripleAngle = FRONT_TRIPLE_ANGLE.add(spin);
+    // この半径で回った角 — 腕の向きへそのまま足す。見える巻き上げは一周ぶんへ飽和する
+    // (気団の境目はそれ以上巻くと勾配を失って渦の雲域へ取り込まれる)。
+    const woundEff = tanh(this.wound.div(FRONT_WIND_LIMIT)).mul(FRONT_WIND_LIMIT);
+    const wound = woundEff.mul(this.vortexProfileAt(r));
     // 腕の根元の向き — 三点が出ると寒冷・温暖とも三点の向きへ寄り、3 本が同じ点へ繋がる。
     const rootJoin = smoothstep(0, 0.2, triple);
-    const coldRoot = mix(FRONT_COLD_ANGLE.add(spin), tripleAngle, rootJoin);
-    const warmRoot = mix(FRONT_WARM_ANGLE.add(spin), tripleAngle, rootJoin);
-    // 寒冷(赤道側)の腕 — 熱帯の渦ではこの腕が赤道側の尾。先端は閉塞の進みぶん余分に
-    // 循環側へ回り、温暖の腕へ追いついてゆく。向きは根元から先端へ曲がる。
-    const coldLength = mix(FRONT_COLD_LENGTH, FRONT_TAIL_LENGTH, isTail);
+    const coldRoot = mix(FRONT_COLD_ANGLE, FRONT_TRIPLE_ANGLE, rootJoin);
+    const warmRoot = mix(FRONT_WARM_ANGLE, FRONT_TRIPLE_ANGLE, rootJoin);
+    // 寒冷(赤道側)の腕 — 熱帯の渦ではこの腕が赤道側の尾。腕の届く長さは循環が渦の縁の
+    // 速さを下回る半径まで。
+    const coldLength = this.armReach;
     const coldProgress = clamp(
       r.sub(triple).div(max(coldLength.sub(triple), 1e-3)), 0, 1);
-    const coldTip = FRONT_COLD_TIP.add(spin).add(FRONT_CATCH.mul(this.occlusion));
-    const coldAngle = mix(coldRoot, coldTip, coldProgress.pow(FRONT_COLD_BEND));
+    const coldAngle = mix(coldRoot, FRONT_COLD_TIP, coldProgress.pow(FRONT_COLD_BEND)).add(wound);
     const cold = this.armAt(p.x, p.y, r, coldAngle, triple, coldLength);
-    // 温暖(極側〜下流)の腕 — 熱帯の渦では温帯化が進むまで立たない。
+    // 温暖(極側〜下流)の腕 — 寒冷の腕より短く、熱帯の渦では温帯化が進むまで立たない。
+    const warmLength = coldLength.mul(FRONT_WARM_RATIO);
     const warmGate = mix(
       float(1), smoothstep(TAIL_WARM_ONSET, TAIL_WARM_FULL, this.occlusion), isTail);
     const warmProgress = clamp(
-      r.sub(triple).div(max(FRONT_WARM_LENGTH.sub(triple), 1e-3)), 0, 1);
-    const warmAngle = mix(warmRoot, FRONT_WARM_TIP.add(spin), warmProgress.pow(FRONT_WARM_BEND));
-    const warm = this.armAt(p.x, p.y, r, warmAngle, triple, FRONT_WARM_LENGTH).mul(warmGate);
+      r.sub(triple).div(max(warmLength.sub(triple), 1e-3)), 0, 1);
+    const warmAngle = mix(warmRoot, FRONT_WARM_TIP, warmProgress.pow(FRONT_WARM_BEND)).add(wound);
+    const warm = this.armAt(p.x, p.y, r, warmAngle, triple, warmLength).mul(warmGate);
     // 閉塞の腕 — 中心から三点へ、ほぼ真っ直ぐに近い短い弧。三点が出るまでは 0。
     const occProgress = clamp(triple.sub(r).div(max(triple, 1e-3)), 0, 1);
-    const occAngle = tripleAngle.add(FRONT_OCC_SWING.mul(occProgress.pow(FRONT_OCC_BEND)));
+    const occAngle = FRONT_TRIPLE_ANGLE.add(FRONT_OCC_SWING.mul(occProgress.pow(FRONT_OCC_BEND)))
+      .add(wound);
     const occ = this.armAt(p.x, p.y, r, occAngle, float(FRONT_INNER_RADIUS), triple)
       .mul(smoothstep(0.02, 0.15, triple));
     // 帯は深さに比例して立ち、熱帯の渦の尾は温帯へ近づくにつれ育つ。

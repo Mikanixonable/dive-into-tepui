@@ -15,7 +15,9 @@ export class Cyclones {
 
   // 谷を組み、時刻 0 の配置で始める。surfaceRadius は谷を置く天体の半径 [m]、rotationPeriod は
   // その自転周期 [s]。
-  public constructor(private readonly surfaceRadius: number, rotationPeriod: number) {
+  public constructor(
+    private readonly surfaceRadius: number, private readonly rotationPeriod: number,
+  ) {
     this.tropicals = Array.from(
       { length: TROPICAL_COUNT }, () => new PressureFeature(surfaceRadius, rotationPeriod));
     this.lows = Array.from({ length: LOW_COUNT }, () => new PressureFeature(surfaceRadius, rotationPeriod));
@@ -26,9 +28,9 @@ export class Cyclones {
   // 時刻 [s] における配置を uniform へ反映する。
   public syncTime(seconds: number): void {
     for (const [i, tropical] of this.tropicals.entries()) {
-      tropical.place(tropicalPlacementAt(i, seconds));
+      tropical.place(tropicalPlacementAt(i, seconds, this.rotationPeriod));
     }
-    const lows = lowPlacementsAt(seconds, this.surfaceRadius);
+    const lows = lowPlacementsAt(seconds, this.surfaceRadius, this.rotationPeriod);
     for (const [i, low] of this.lows.entries()) {
       low.place(lows[i]!);
     }
