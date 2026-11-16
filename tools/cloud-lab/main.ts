@@ -9,9 +9,8 @@ import { buildFramingRow } from './framing-controls';
 import { buildTimeControls } from './time-controls';
 import type { Framing, SynopticLayers } from './synoptic-map';
 import { buildButtonRow, buildCheckbox } from '../lab-controls';
-import { CLOUD_TUNING, CLOUD_TUNING_DEFAULTS, type CloudTuningId } from '../../src/render/earth-weather/cloud/cloud-tuning';
-import { GENERATION_PARAMS } from './generation-params';
-import { buildParamPanel } from './param-panel';
+import { CLOUD_TUNING } from '../../src/render/earth-weather/cloud/cloud-tuning';
+import { buildTuningControls } from './tuning-controls';
 import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
@@ -144,114 +143,22 @@ async function init(): Promise<void> {
     (mode) => selectView(mode === 'synoptic' ? 'synoptic' : lastCloudView));
   const markView = buildButtonRow<CloudLabViewId>('views', entries, selectView);
 
-  // モデルの調整値(uniform)をいじる行。スライダー・JSON 欄・uniform を揃えてから焼き直す。
-  // 焼き直しは雲場 1 面ぶんの費用が掛かるので、ドラッグ中は止めず最後の変更から少し待って
-  // 1 回だけ走らせる(uniform 自体は即時に書き変わり、天気の写しは焼き直しを待たずに乗る)。
-  const setSliders = new Map<CloudTuningId, (value: number) => void>();
-  const paramsBox = document.createElement('textarea');
-  let bakeTimer: number | null = null;
-  let overridesSyncTimer: number | null = null;
-  const rebake = (): void => {
-    canvas.invalidate();
-    if (currentView !== 'synoptic') canvas.render();
-  };
-  // rebakeNow は撮影口(window.cloudLab.setParams)のためのもの — 返った時点で焼き直しが
-  // 済んでいることにして、呼び側がそのまま capture できるようにする。
-  const applyParams = (next: Partial<Record<CloudTuningId, number>>, rebakeNow = false): void => {
-    for (const [id, value] of Object.entries(next) as [CloudTuningId, number][]) {
-      if (!(id in CLOUD_TUNING_DEFAULTS) || typeof value !== 'number' || !Number.isFinite(value)) continue;
-      CLOUD_TUNING[id].value = value;
-      setSliders.get(id)!(value);
-    }
-    paramsBox.value = JSON.stringify(Object.fromEntries(
-      Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])));
-    if (bakeTimer !== null) window.clearTimeout(bakeTimer);
-    if (rebakeNow) rebake();
-    else bakeTimer = window.setTimeout(rebake, 250);
-    scheduleOverridesSync();
-  };
-  for (const [id, setSlider] of buildParamPanel(
-    document.getElementById('p-panel')!, GENERATION_PARAMS, CLOUD_TUNING_DEFAULTS,
-    (id) => String(CLOUD_TUNING[id].value), (id, value) => applyParams({ [id]: value }))) {
-    setSliders.set(id, setSlider);
-  }
-
-  // 調整の共有用: いまの全パラメータの JSON。編集して「適用」で戻せる。「リセット」は既定値へ。
-  const paramsRow = document.getElementById('p-json')!;
-  paramsRow.appendChild(paramsBox);
-  const copyButton = document.createElement('button');
-  copyButton.textContent = 'コピー';
-  copyButton.addEventListener('click', () => { void navigator.clipboard.writeText(paramsBox.value); });
-  const applyButton = document.createElement('button');
-  applyButton.textContent = '適用';
-  applyButton.addEventListener('click', () => {
-    try {
-      applyParams(JSON.parse(paramsBox.value) as Partial<Record<CloudTuningId, number>>);
-    } catch (e) {
-      document.getElementById('error')!.textContent = `パラメータの JSON が読めない: ${String(e)}`;
-    }
-  });
-  const resetButton = document.createElement('button');
-  resetButton.textContent = 'リセット';
-  resetButton.addEventListener('click', () => applyParams({ ...CLOUD_TUNING_DEFAULTS }));
-  // いまの値のうち既定値と違う項目を、開発サーバの窓口(tools/cloud-lab-apply-tuning.cjs)へ送る。
-  // 'overrides' は git 管理外の上書きファイルへ書き、実行中のゲーム(npm run dev)がそのまま
-  // 拾って反映する。「既定値へ確定」は cloud-tuning.ts の既定値を書き換える。
-  const reflectResult = document.createElement('span');
-  const changedIds = (): CloudTuningId[] => (Object.keys(CLOUD_TUNING_DEFAULTS) as CloudTuningId[])
-    .filter((id) => CLOUD_TUNING[id].value !== CLOUD_TUNING_DEFAULTS[id]);
-  const sendToServer = async (
-    target: 'defaults' | 'overrides', ids: readonly CloudTuningId[],
-  ): Promise<void> => {
-    const response = await fetch('/__cloud-lab/apply-tuning', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ target, values: Object.fromEntries(ids.map((id) => [id, CLOUD_TUNING[id].value])) }),
+  // モデルの調整値(uniform)をいじる束。変更は焼き直し(debounce 済み)へ — 焼き直しは雲場 1 面ぶんの
+  // 費用が掛かるので、ドラッグ中は止めず最後の変更から少し待って1回だけ走らせる。
+  // 束の正本は tuning-controls — 描画側モード(detail.html)の写しも同じ束を使う。
+  const tuning = buildTuningControls(
+    document.getElementById('p-panel')!, document.getElementById('p-json')!,
+    document.getElementById('error')!,
+    () => {
+      canvas.invalidate();
+      if (currentView !== 'synoptic') canvas.render();
     });
-    if (response.status === 404) throw new Error('開発サーバ(npm run cloud-lab)でだけ使える');
-    const body = await response.json() as { error?: string };
-    if (!response.ok) throw new Error(body.error ?? String(response.status));
-  };
-  const addServerButton = (label: string, title: string, run: () => Promise<string | null>): HTMLButtonElement => {
-    const button = document.createElement('button');
-    button.textContent = label;
-    button.title = title;
-    button.addEventListener('click', () => {
-      document.getElementById('error')!.textContent = '';
-      run().then((message) => {
-        if (message !== null) reflectResult.textContent = message;
-      }).catch((e: unknown) => {
-        document.getElementById('error')!.textContent = `${label}に失敗: ${String(e)}`;
-      });
-    });
-    return button;
-  };
-  // スライダー・JSON 欄の変更は、そのままゲームの上書きファイルへ流す — いじった値が
-  // そのまま実行中のゲーム(npm run dev)で見える。書き込みは少し待って最後の1回に畳む。
-  function scheduleOverridesSync(): void {
-    if (overridesSyncTimer !== null) window.clearTimeout(overridesSyncTimer);
-    overridesSyncTimer = window.setTimeout(() => {
-      overridesSyncTimer = null;
-      sendToServer('overrides', changedIds()).then(() => {
-        reflectResult.textContent = 'ゲームへ反映した';
-      }).catch((e: unknown) => {
-        reflectResult.textContent = `ゲームへの反映に失敗: ${String(e)}`;
-      });
-    }, 300);
-  };
-  const commitDefaults = addServerButton(
-    '既定値へ確定', '既定値と違う項目を cloud-tuning.ts の既定値へ書き込む。git に差分が出る(開発サーバのみ)',
-    async () => {
-      const ids = changedIds();
-      if (ids.length === 0) return '既定値と違う項目はない';
-      const list = ids.map((id) => `${id}: ${CLOUD_TUNING_DEFAULTS[id]} → ${CLOUD_TUNING[id].value}`).join('\n');
-      if (!window.confirm(`cloud-tuning.ts の既定値へ書き込む(${ids.length} 項目)\n\n${list}`)) return null;
-      await sendToServer('defaults', ids);
-      return `${ids.length} 項目を既定値へ書き込んだ`;
-    });
-  paramsRow.append(copyButton, applyButton, resetButton, commitDefaults, reflectResult);
+  // immediate(撮影口の setParams 用)は「返った時点で焼き直し済み」にするためのもの —
+  // 呼び側がそのまま capture できるようにする。
+  const applyParams = (next: Parameters<typeof tuning.applyParams>[0], rebakeNow = false): void =>
+    tuning.applyParams(next, rebakeNow);
   applyParams(Object.fromEntries(
-    Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])) as Record<CloudTuningId, number>);
+    Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])));
 
   // 最後に回した比較の評価値。撮影つきの比較(CLI)の結果なので、いま開いているパラメータの
   // 評価ではない — 未実行ならその旨だけ出す。
