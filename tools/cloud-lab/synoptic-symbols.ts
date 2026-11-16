@@ -6,8 +6,7 @@ import { eyeStrengthOf } from '../../src/render/earth-weather/pressure-feature';
 import {
   frontSpinesOf, frontStrengthOf,
 } from '../../src/render/earth-weather/front-skeleton';
-import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
-import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
+import { cyclonePlacementsAt } from '../../src/render/earth-weather/cyclone-tracks';
 import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import { strokeWrapped } from './synoptic-map';
@@ -91,15 +90,11 @@ function strokeFront(
 // 背骨の芯は L の記号と同じく、配置の半径以内で場がいちばん低い所へ置く — 記号と
 // 前線と等圧線の芯がひとつに見える。
 function drawFronts(
-  context: CanvasRenderingContext2D, fields: SynopticFields, seconds: number, view: MapView,
+  context: CanvasRenderingContext2D, fields: SynopticFields,
+  cyclones: readonly (PressurePlacement | null)[], view: MapView,
 ): void {
   const placements: PressurePlacement[] = [];
-  for (let index = 0; index < LOW_COUNT; index += 1) {
-    const placement = lowPlacementAt(index, seconds, R_EARTH, SIDEREAL_DAY);
-    if (placement !== null) placements.push(placement);
-  }
-  for (let index = 0; index < TROPICAL_COUNT; index += 1) {
-    const placement = tropicalPlacementAt(index, seconds, SIDEREAL_DAY);
+  for (const placement of cyclones) {
     if (placement !== null) placements.push(placement);
   }
   for (const placement of placements) {
@@ -213,17 +208,16 @@ function drawCenterLabel(
 export function drawCycloneSymbols(
   context: CanvasRenderingContext2D, fields: SynopticFields, seconds: number, view: MapView,
 ): void {
+  const { tropicals, lows } = cyclonePlacementsAt(seconds, R_EARTH, SIDEREAL_DAY);
   // 前線は中心の記号の下へ引く。
-  drawFronts(context, fields, seconds, view);
+  drawFronts(context, fields, [...lows, ...tropicals], view);
   // 温帯低気圧 — L。
-  for (let index = 0; index < LOW_COUNT; index += 1) {
-    const placement = lowPlacementAt(index, seconds, R_EARTH, SIDEREAL_DAY);
+  for (const placement of lows) {
     if (placement === null || placement.depth < LABEL_DEPTH_MIN) continue;
     drawCenterLabel(context, fields, placement, 'L', 0, view);
   }
   // 熱帯低気圧 — L と眼。
-  for (let index = 0; index < TROPICAL_COUNT; index += 1) {
-    const tropical = tropicalPlacementAt(index, seconds, SIDEREAL_DAY);
+  for (const tropical of tropicals) {
     if (tropical === null || tropical.depth < LABEL_DEPTH_MIN) continue;
     const eye = eyeStrengthOf(
       tropical.depth, tropical.radius, tropical.latitude, R_EARTH, SIDEREAL_DAY);
