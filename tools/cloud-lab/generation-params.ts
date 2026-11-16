@@ -138,6 +138,7 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   hazeCloudinessFull: { label: '靄の雲量の門(終)', row: 'condense', min: 0, max: 0.8, step: 0.01 },
   cirrusPatchOnset: { label: '靄の斑の門(始)', row: 'condense', min: -1, max: 0.5, step: 0.01 },
   cirrusPatchFull: { label: '靄の斑の門(終)', row: 'condense', min: -0.5, max: 1, step: 0.01 },
+  cirrusPatchInstabilityGain: { label: '靄の斑の不安定度の利得', row: 'condense', min: 0, max: 1.5, step: 0.05 },
   streakOnset: { label: '筋の閾値', row: 'condense', min: 0.1, max: 0.8, step: 0.005 },
   streakGain: { label: '筋の利得', row: 'condense', min: 0, max: 6, step: 0.05 },
   translucentKnee: { label: '薄い雲の膝', row: 'condense', min: 0.05, max: 1, step: 0.01 },

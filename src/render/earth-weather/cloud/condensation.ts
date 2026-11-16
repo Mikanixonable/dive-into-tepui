@@ -203,9 +203,11 @@ export function condense(weather: WeatherSample): CloudSample {
   const detrain = smoothstep(DETRAIN_ONSET, DETRAIN_FULL,
     cloudTop.sub(layered).div(max(weather.tropopause.sub(layered), 1)));
   // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
+  // 上層の不安定な所ほど斑の門を上げて、斑を疎に細かくする。
+  const patchShift = weather.upperInstability.sub(0.5).mul(CLOUD_TUNING.cirrusPatchInstabilityGain);
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN)
     .mul(smoothstep(HAZE_CLOUDINESS_ONSET, HAZE_CLOUDINESS_FULL, weather.meanCloudiness))
-    .mul(smoothstep(CIRRUS_PATCH_ONSET, CIRRUS_PATCH_FULL, weather.cirrusPatch));
+    .mul(smoothstep(CIRRUS_PATCH_ONSET.add(patchShift), CIRRUS_PATCH_FULL.add(patchShift), weather.cirrusPatch));
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
   const opticalDepth = tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT);

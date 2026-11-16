@@ -150,6 +150,8 @@ export const CLOUD_TUNING_DEFAULTS = {
   // 靄の斑の門(斑の場 −1..1 の裾と肩) — 薄い雲が一面を覆わないよう百キロ級の透き間を空ける。
   cirrusPatchOnset: -0.15,
   cirrusPatchFull: 0.45,
+  // 不安定な所ほど薄い雲の斑が疎に細かくなる。
+  cirrusPatchInstabilityGain: 0.5,
   streakOnset: 0.48,
   streakGain: 2.36,
   translucentKnee: 0.25,

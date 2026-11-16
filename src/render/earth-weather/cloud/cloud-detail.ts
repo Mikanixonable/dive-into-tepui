@@ -300,6 +300,10 @@ const CIRRUS_ANVIL_STRETCH = 7;
 // 乾燥度の目盛り(気候の雲量 0..1 の範囲)。この間で鱗雲状の重みを 0 から 1 へ渡す。
 const CIRRUS_ARID_LO = 0.1;
 const CIRRUS_ARID_HI = 0.35;
+// 盾は広く滑らかな幕で、細部は弱い。筋を弱め、残余の幕を持ち上げ、盾の中で乗数の揺らぎを縮める。
+const SHIELD_STREAK_SUPPRESS = 0.7;
+const SHIELD_VEIL_BOOST = 1.0;
+const SHIELD_DETAIL_FADE = 0.5;
 // この量を下回る巻雲の柱では細部を評価しない。乗数は 1 のままで、光学深さは 0 に近い。
 export const CIRRUS_PRESENT_AMOUNT = 0.001;
 
@@ -416,7 +420,8 @@ export class CirrusDetailEvaluator {
       float(1).add(regimeAt(offset).mul(CIRRUS_TYPE_JITTER)), CIRRUS_JITTER_MIN, CIRRUS_JITTER_MAX);
     const jet = smoothstep(CIRRUS_JET_ONSET, CIRRUS_JET_FULL, windSpeed);
     // 筋状 — 揃って速い流れの下で立つ。揃い度は半分だけ効かせて、揃わない強風にも筋を残す。
-    const streakRaw = jet.mul(coherence.mul(0.5).add(0.5)).mul(jitterAt(CIRRUS_REGIME_OFFSETS[0]));
+    const streakRaw = jet.mul(coherence.mul(0.5).add(0.5)).mul(jitterAt(CIRRUS_REGIME_OFFSETS[0]))
+      .mul(float(1).sub(column.shield.mul(SHIELD_STREAK_SUPPRESS)));
     // 鱗雲状 — 鱗の間隔は層の深さに、風のシア・上層の不安定度・量で決まる型の縦横比を掛けて決まる。
     // 間隔の log2 [km]。格子へそのまま連続のピッチを掛けると、ピッチの勾配で格子が歪み等値線が
     // 寄り集まる木目になるので、格子は 2 の冪のピッチへ量子化し、隣接する 2 ピッチの場を端数で
@@ -433,7 +438,8 @@ export class CirrusDetailEvaluator {
       .mul(jitterAt(CIRRUS_REGIME_OFFSETS[1])).mul(cellFade).mul(humid)
       .mul(column.shield.oneMinus()).mul(max(streakRaw.oneMinus(), 0));
     // 薄く広がる場は残余 — 筋でも鱗でもない静穏な空が幕を張る。
-    const veilRaw = max(float(0.15), float(1).sub(streakRaw).sub(cellRaw));
+    const veilRaw = max(float(0.15), float(1).sub(streakRaw).sub(cellRaw))
+      .add(column.shield.mul(SHIELD_VEIL_BOOST));
     // 金床の重み。量が多く、金床の濃い所で大きい。他の型は残りを分け合う。金床は 8 km の段から読むので、
     // その段が使われないときは 0。
     const anvilWeight = column.anvil.mul(smoothstep(0.3, 0.7, amount)).mul(step(float(1), this.octaves)).toVar();
@@ -580,16 +586,18 @@ export class CirrusDetailEvaluator {
       .add(veilWeight.mul(veilWeight)).add(anvilWeight.mul(anvilWeight));
     const norm = sqrt(norm2);
     const edge = float(1).add(float(CIRRUS_EDGE_SPREAD).mul(amount.oneMinus()));
+    // 盾の中では細部を弱める。分散も同じ率で縮め、下の平均の補正 shift と揃える。
+    const detailFade = float(1).sub(column.shield.mul(SHIELD_DETAIL_FADE));
     const logMean = streakWeight.mul(CIRRUS_STREAK_SIGMA).mul(zStreak)
       .add(cellWeight.mul(CIRRUS_CELL_SIGMA).mul(cellsZ))
       .add(veilWeight.mul(CIRRUS_VEIL_SIGMA).mul(zVeil))
       .add(anvilWeight.mul(anvilSigma).mul(anvilZ))
-      .div(norm).mul(edge);
+      .div(norm).mul(edge).mul(detailFade);
     const variance = streakWeight.mul(streakWeight).mul(CIRRUS_STREAK_SIGMA * CIRRUS_STREAK_SIGMA)
       .add(cellWeight.mul(cellWeight).mul(CIRRUS_CELL_SIGMA * CIRRUS_CELL_SIGMA))
       .add(veilWeight.mul(veilWeight).mul(CIRRUS_VEIL_SIGMA * CIRRUS_VEIL_SIGMA))
       .add(anvilWeight.mul(anvilWeight).mul(anvilSigma).mul(anvilSigma))
-      .div(norm2).mul(edge).mul(edge);
+      .div(norm2).mul(edge).mul(edge).mul(detailFade).mul(detailFade);
     // 段が 1 つも生きていないときは、平均の補正を掛けずに乗数を 1 に保つ。
     const shift = step(float(1e-8), veilEnergy).mul(variance).mul(0.5);
     return exp(logMean.sub(shift));
