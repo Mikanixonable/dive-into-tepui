@@ -91,16 +91,11 @@ async function openOrReuseTab(url) {
   script.stdin.end(FIND_OR_OPEN_SCRIPT);
 }
 
-// webpack-dev-server の onListening へ渡す関数。最初のコンパイルが終わってからページを開く(再読み込みが
-// 古い状態やエラーのページを拾わないように)。
+// webpack-dev-server の onListening へ渡す関数。v6 では onListening が呼ばれる時点で最初の
+// コンパイル完了と listen 開始が済んでいるので、そのままページを開く。
 function openDevPageWhenReady(devServer) {
   const { port } = devServer.server.address();
-  let opened = false;
-  devServer.compiler.hooks.done.tap('open-dev-page', () => {
-    if (opened) return;
-    opened = true;
-    void openOrReuseTab(`http://localhost:${port}/`);
-  });
+  void openOrReuseTab(`http://localhost:${port}/`);
 }
 
 module.exports = { openOrReuseTab, openDevPageWhenReady };
