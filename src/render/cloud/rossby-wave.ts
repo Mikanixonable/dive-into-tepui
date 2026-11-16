@@ -166,6 +166,25 @@ export function waveTroughLongitude(index: number, seconds: number, hemisphere: 
     + 2 * Math.PI * index) / WAVE_NUMBER;
 }
 
+// 経度 longitude [rad]・半球 hemisphere (北 +1 / 南 −1) でいちばん強く効いている
+// ストームトラックの bump の中心経度 [rad]。帯の束はこのモジュールの bump 表が正本なので、
+// 発生した帯を知りたい利用側(低気圧の進路の組み立てなど)が表を複製せずに済む口。
+// 高い bump ほど広い海域を代表するので、円周上の距離を高さで割って主域を優先する。
+export function stormTrackAxisAt(longitude: number, hemisphere: number): number {
+  const tracks = hemisphere >= 0 ? NORTH_TRACKS : SOUTH_TRACKS;
+  let nearest = tracks[0]![0];
+  let nearestScore = Infinity;
+  for (const [center, height] of tracks) {
+    const distance = Math.abs(Math.atan2(Math.sin(longitude - center), Math.cos(longitude - center)));
+    const score = distance / height;
+    if (score < nearestScore) {
+      nearest = center;
+      nearestScore = score;
+    }
+  }
+  return nearest;
+}
+
 // 緯度・経度 [rad] における蛇行振幅の重み(0〜1)。GPU 上の amplitudeAt と同じ場を CPU 側から
 // 引く口 — 低気圧・高気圧の発生判定が同じ振幅地図を共有する。
 export function waveAmplitudeAt(latitude: number, longitude: number): number {
