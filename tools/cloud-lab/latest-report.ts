@@ -5,9 +5,9 @@
 
 // latest.json の形。書き手(tools/cloud-lab-compare.mjs)が出す要約。
 interface LatestReport {
-  readonly generatedAt?: string;
-  readonly gitHead?: string;
-  readonly index?: number;
+  readonly generatedAt: string | null;
+  readonly gitHead: string | null;
+  readonly index: number | null;
 }
 
 // latest.json を読んで表示文を返す。無い・読めない・形が違うときは undefined(呼び出し側で
