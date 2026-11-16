@@ -19,8 +19,8 @@ const CAPS = [
   { name: 'southernocean', latitude: -55, longitude: -150, radius: 8 },
   { name: 'itcz', latitude: 5, longitude: -165, radius: 8 },
 ];
-const SHOT_HOURS = [0, 14];
-const SHOT_VIEWS = ['composite', 'cirrus', 'cumulus', 'cloudTop'];
+const SHOT_HOURS = [14];
+const SHOT_VIEWS = ['detrain', 'cirrus', 'cloudTop'];
 
 async function main() {
   const { fatalEvents, onEvent } = collectFatalEvents();
