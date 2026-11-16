@@ -6,7 +6,8 @@ import * as THREE from 'three/webgpu';
 import {
   abs, cross, dot, exp, float, inverseSqrt, length, max, min, sign, uniform, vec3,
 } from 'three/tsl';
-import { LOW_COUNT, TROPICAL_COUNT, lowPlacementsAt, tropicalPlacementAt } from './cyclone-tracks';
+import { LOW_COUNT, lowPlacementsAt } from './low-tracks';
+import { TROPICAL_COUNT, tropicalPlacementAt } from './tropical-tracks';
 import { coreCrossingAngle } from './wind-law';
 import type { CyclonePlacement } from './cyclone-tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';

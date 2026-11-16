@@ -11,13 +11,8 @@ import { mulberry32, randSym } from '../../math/random';
 import {
   WAVE_NUMBER, WAVE_PHASE_SPEED, waveAmplitudeAt, waveTroughLongitude,
 } from './rossby-wave';
-import type { CyclonePlacement } from './cyclone-tracks';
-
-const DAY = 86400; // [s]
-const DEGREE = Math.PI / 180; // [rad]
-
-// 一様乱数を引く幅 [min, max]。
-type Range = readonly [min: number, max: number];
+import { DAY, DEGREE, uniformIn } from './cyclone-tracks';
+import type { CyclonePlacement, Range } from './cyclone-tracks';
 
 // 高気圧。同時に持つ枡の数(偶数番が北、奇数番が南)。枡は上層のロスビー波の尾根へ錨づき、
 // 半球あたりの枡の数(6)は尾根の数(WAVE_NUMBER = 5)を 1 つだけ超える — ほとんどの世代で
@@ -72,11 +67,6 @@ const HIGH_ELONGATION = 1.15;
 // 乱数の種に足す塩。低気圧の一次の種(世代 × LOW_COUNT + 番号)・家族の塩(1 << 24)・
 // 熱帯低気圧の塩(1 << 20)のどれとも、数千年ぶんの世代の進みでは交差しない先に取る。
 const HIGH_SEED_SALT = 1 << 21;
-
-// rand([0, 1) の生成器)から range の一様乱数。
-function uniformIn(range: Range, rand: () => number): number {
-  return range[0] + rand() * (range[1] - range[0]);
-}
 
 // 高気圧 1 つの一生。周期の頭から生まれるまでの時間 onset [s]、寿命 lifetime [s]、
 // 生まれる時刻 birthSeconds [s](波の錨がこの時刻の尾根の位相へ置かれる)、生まれる緯度と

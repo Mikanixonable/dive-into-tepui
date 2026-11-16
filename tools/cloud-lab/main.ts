@@ -14,9 +14,8 @@ import { GENERATION_PARAMS, type GenerationParamSpec } from './generation-params
 import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import {
-  LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
-} from '../../src/render/earth-weather/cyclone-tracks';
+import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
+import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
 import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
 import type { CyclonePlacement } from '../../src/render/earth-weather/cyclone-tracks';
 

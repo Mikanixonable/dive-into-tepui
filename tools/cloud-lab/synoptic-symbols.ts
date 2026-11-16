@@ -1,9 +1,8 @@
 // 天気図へ低気圧と高気圧の記号を置く。中心は L / H と気圧値、眼を持つ渦は中心に眼の印を置く。
 // 気象モデルが前線を持たない間は、記号は中心と眼だけになる。
 import { eyeStrengthOf } from '../../src/render/earth-weather/cyclones';
-import {
-  LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
-} from '../../src/render/earth-weather/cyclone-tracks';
+import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
+import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
 import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import { sampleField, strokeWrapped } from './synoptic-map';

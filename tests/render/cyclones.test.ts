@@ -4,9 +4,8 @@
 // 落ちるかを見る。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import {
-  LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
-} from '../../src/render/earth-weather/cyclone-tracks';
+import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
+import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
 import { eyeStrengthOf } from '../../src/render/earth-weather/cyclones';
 import {
   EARTH_ROTATION_PERIOD, EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled,
