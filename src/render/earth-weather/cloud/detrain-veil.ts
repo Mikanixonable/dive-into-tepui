@@ -11,13 +11,12 @@ import type { FieldProjection } from '../../field-projection';
 import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 発散のタップ数と、風上へ遡る歩数。細かいほど輪郭が滑らかになり、移流の尾が長く届く。
-const DETRAIN_SPREAD_TAPS = 6;
+const DETRAIN_SPREAD_TAPS = 20;
 const DETRAIN_ADVECT_TAPS = 4;
-// 発散が届く半径 [m]。圏界面へぶつかった氷雲が全方向へ広がる程度 — 個々のかなとこの広がり
-// (塔の高さの数倍)から取る。
+// 発散が届く半径 [m]。圏界面へぶつかった氷雲が親の塔のまわり全方向へ広がる程度 — 個々の
+// かなとこの直径は数十キロ(DEVELOP/SPEC/RENDERING.md「対流雲は下層から発達する」)。
 const DETRAIN_SPREAD_RADIUS = CLOUD_TUNING.detrainSpreadRadius;
-// 発散のタップ 1 個ぶんの重み。塔どれか1つの放出だけが届く所では薄い裾に、複数の放出が
-// 重なる所では飽和へ向かう。
+// 発散のタップ 1 個ぶんの重みの基準。タップの重みは円盤の縁へ行くほど細くなる。
 const DETRAIN_SPREAD_WEIGHT = CLOUD_TUNING.detrainSpreadWeight;
 // 風上へ遡る 1 歩の経過時間 [s] と、発射からの経過で掛かる減衰の時定数 [s]。尾の届く長さは
 // 上層風 × 減衰で決まる。
@@ -41,15 +40,18 @@ export function detrainVeilTexelAt(
   const upperWindAt = (dir: Vec3Node): Vec2Node => cloudMotionFromTexel(motionField.at(dir)).upperWind;
   // タップが拾った量の和。飽和は最後の 1 − e^(−G·x) が担うので、和は素のまま積む。
   let sum = emitAt(direction);
-  // 圏界面での発散: まわりの円周上から届く放出。塔のあいだの晴れ間も上層で覆う成分。
+  // 圏界面での発散: まわりの円盤内から届く放出。タップは Vogel 螺旋で円盤を満遍なく埋め、
+  // 縁へ行くほど重みを細くしてかなとこの縁が薄く消えるようにする。塔のあいだの
+  // 晴れ間も上層で覆う成分。
   const east = eastAt(direction);
   const north = northAt(direction);
   const spreadAngle = DETRAIN_SPREAD_RADIUS.div(surfaceRadius);
   for (let k = 0; k < DETRAIN_SPREAD_TAPS; k++) {
-    const angle = (k * 2 * Math.PI) / DETRAIN_SPREAD_TAPS;
+    const r = Math.sqrt((k + 0.5) / DETRAIN_SPREAD_TAPS);
+    const angle = k * 2.399963;
     const point = normalize(direction
-      .add(east.mul(Math.cos(angle)).add(north.mul(Math.sin(angle))).mul(spreadAngle)));
-    sum = sum.add(emitAt(point).mul(DETRAIN_SPREAD_WEIGHT));
+      .add(east.mul(Math.cos(angle)).add(north.mul(Math.sin(angle))).mul(spreadAngle.mul(r))));
+    sum = sum.add(emitAt(point).mul(DETRAIN_SPREAD_WEIGHT.mul(1.15 - r)));
   }
   // 上層の風への移流: 風上へ遡った点から届く放出。各点の風で遡る向きが曲がるので逐次遡る。
   let point = direction;

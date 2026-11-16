@@ -126,10 +126,10 @@ export const CLOUD_TUNING_DEFAULTS = {
   streakGain: 2.36,
   translucentKnee: 0.25,
   translucentLimit: 0.85,
-  // detrain-veil.ts — 氷雲の広がり。発散の届く半径 [m] とタップの重み、
-  // 上層風へ遡る歩幅 [s] と経過時間の減衰 [s]、蓄積を飽和させる利得。
-  detrainSpreadRadius: 200e3,
-  detrainSpreadWeight: 0.5,
+  // detrain-veil.ts — 氷雲の広がり。発散が届く円盤の半径 [m](個々のかなとこは直径数十キロ)と
+  // 円盤タップの重みの基準、上層風へ遡る歩幅 [s] と経過時間の減衰 [s]、蓄積を飽和させる利得。
+  detrainSpreadRadius: 20e3,
+  detrainSpreadWeight: 0.3,
   detrainAdvectStep: 1.5 * 3600,
   detrainDecaySeconds: 4 * 3600,
   detrainGain: 1.0,

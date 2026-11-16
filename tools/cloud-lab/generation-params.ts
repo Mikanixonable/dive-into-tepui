@@ -123,7 +123,7 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   // 凝結 — 脱出水(塔から上層へ出る氷雲のベール)
   detrainOnset: { label: '脱出水の開始(圏界面比)', row: 'condense', min: 0.3, max: 1, step: 0.01 },
   detrainFull: { label: '脱出水の飽和(圏界面比)', row: 'condense', min: 0.5, max: 1.2, step: 0.01 },
-  detrainSpreadRadius: { label: 'ベールの発散の半径 [m]', row: 'condense', min: 0, max: 600000, step: 10000 },
+  detrainSpreadRadius: { label: 'ベールの発散の半径 [m]', row: 'condense', min: 0, max: 120000, step: 2000 },
   detrainSpreadWeight: { label: 'ベールの発散の重み', row: 'condense', min: 0, max: 1.5, step: 0.02 },
   detrainAdvectStep: { label: 'ベールの移流の歩幅 [s]', row: 'condense', min: 600, max: 14400, step: 300 },
   detrainDecaySeconds: { label: 'ベールの減衰 [s]', row: 'condense', min: 3600, max: 43200, step: 600 },
