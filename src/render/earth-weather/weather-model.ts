@@ -96,6 +96,9 @@ const VORTEX_CONTRAST = CLOUD_TUNING.vortexContrast;
 // 沈降が上層を乾かす利得 [per m/s]。上層には境界層のような湿りの溜まりが無いので、地表付近より
 // 強く乾く — 高気圧の吹きおろす所では薄い雲も消える。
 const UPPER_SUBSIDENCE_DRYING = CLOUD_TUNING.upperSubsidenceDrying;
+// 前線の帯の芯が上層を湿らせる高さ。前線は境目をまたぐ空気を押し上げ、その上に巻雲の盾が架かる。
+// 帯の強さは二乗で掛ける — 帯の細い裾が筋状の薄い線として上層へ立たず、芯だけが盾になる。
+const UPPER_BAND_HUMIDITY = CLOUD_TUNING.upperBandHumidity;
 
 // 圏界面の高さ [m] とその緯度依存。熱帯で 16〜17 km、極で 9 km 前後で、亜熱帯のジェットの下で
 // 段をなして下がる(NCAR ACOM「Cloud Tops and Tropopause」)。深い対流はここに当たって横へ広がる
@@ -326,6 +329,7 @@ export class WeatherModel {
     const upperHumidity = clamp(
       advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
+        .add(band.mul(band).mul(UPPER_BAND_HUMIDITY))
         .sub(eye.mul(UPPER_EYE_DRYNESS)).sub(dryTongue.mul(DRY_TONGUE_UPPER_DRYING)), 0, 1);
 
     return {

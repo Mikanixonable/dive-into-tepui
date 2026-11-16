@@ -70,6 +70,7 @@ export const CLOUD_TUNING_DEFAULTS = {
   surfaceSubsidenceDrying: 1.0,
   upperLiftHumidity: 0.7,
   upperSubsidenceDrying: 2,
+  upperBandHumidity: 0.20,
   vortexContrast: 1.0,
   warmHumidity: 0.6,
   anvilHumidity: 0.2,

@@ -60,6 +60,7 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   surfaceSubsidenceDrying: { label: '地表の沈降→乾き', row: 'weather', min: 0, max: 4, step: 0.05 },
   upperLiftHumidity: { label: '上層の上昇→湿度', row: 'weather', min: 0, max: 3, step: 0.05 },
   upperSubsidenceDrying: { label: '上層の沈降→乾き', row: 'weather', min: 0, max: 6, step: 0.1 },
+  upperBandHumidity: { label: '前線の帯→上層湿度', row: 'weather', min: 0, max: 0.6, step: 0.01 },
   vortexContrast: { label: '渦の湿度の増幅', row: 'weather', min: 0, max: 4, step: 0.05 },
   warmHumidity: { label: '暖気流入→湿度', row: 'weather', min: 0, max: 2, step: 0.02 },
   anvilHumidity: { label: '金床→湿度', row: 'weather', min: 0, max: 0.8, step: 0.01 },
