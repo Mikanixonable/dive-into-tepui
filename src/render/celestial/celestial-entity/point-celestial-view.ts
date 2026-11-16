@@ -23,7 +23,7 @@ import type { MapOverlayLabel } from './celestial-view';
 import type { ShadowCloud } from '../../pipeline/shadow/cloud-shadow-renderer';
 import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';
-import type { AtmosphereClouds, AtmosphereOptics } from '../../atmosphere';
+import { cutoffRadius, type AtmosphereClouds, type AtmosphereOptics } from '../../atmosphere';
 import type { DefinedCelestialBody, StellarLightSource } from './celestial-view';
 import type { GpuTimingSink } from '../../gpu-timings';
 
@@ -66,6 +66,8 @@ export class PointCelestialView extends SphereCelestialView {
   // surface はマップビューで見せる実体。surfaceMarkings は模式図でだけ見せる天体固有の表面
   // ライン、auroras は極を囲むカーテン(層ごとに1枚)、mapOverlay はマップ専用の同期軌道リング、
   // cumulus は地表の上に浮く不透明な積雲の殻。持たない天体では null / 空。
+  // nightObservation を立てた天体は、描画設定「夜側の観察」で強めた環境光を受ける観察球を
+  // 差し出す(いまは地球だけ)。
   public constructor(
     surface: CelestialSurfaceLike,
     optics: AtmosphereOptics | null = null,
@@ -73,6 +75,7 @@ export class PointCelestialView extends SphereCelestialView {
     private readonly auroras: readonly Aurora[] = [],
     private readonly mapOverlay: GeostationaryOverlay | null = null,
     private readonly cumulus: CloudPresentation | null = null,
+    private readonly nightObservation = false,
   ) { super(surface, optics, surfaceMarkings); }
 
   // 本体に加えて、積雲の殻・オーロラ・輝点ビルボード・同期軌道リングをシーンへ一度だけ登録する。
@@ -152,6 +155,14 @@ export class PointCelestialView extends SphereCelestialView {
       cumulusVisible: this.cumulus.cumulusEnabled,
       cirrusVisible: this.cumulus.cirrusEnabled,
     };
+  }
+
+  // 「夜側の観察」の強めた環境光を届ける球。対象に挙げた天体だけが返す — 半径は大気の裾の
+  // 球で、地表・雲の殻・大気の中の艦をすべて含む。大気を持たない天体では表面の球。
+  public override nightObservationRadius(motion: DefinedCelestialBody): number | null {
+    if (!this.nightObservation) return null;
+    const optics = this.atmosphereOptics;
+    return optics === null ? motion.def.radius : cutoffRadius(optics, motion.def.radius);
   }
 
   // 物理球として厚い雲か薄い雲を描くフレームの場だけを、表示時刻へ焼く。
