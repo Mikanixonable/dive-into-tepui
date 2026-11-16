@@ -41,6 +41,7 @@ export interface WeatherSample {
   readonly oceanFetch: FloatNode; // 追跡した気団が海の上にあった時間の割合 0..1(寒気の fetch)
   readonly anvil: FloatNode; // 金床(平らな天蓋)の濃さ 0..1
   readonly eye: FloatNode; // 眼を持つ渦の目の濃さ 0..1
+  readonly cirrusPatch: FloatNode; // 薄い雲の斑と透き間を決める百キロ級の場 −1..1(上層の流れに運ばれる)
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
   readonly landFraction: FloatNode; // 陸らしさ 0..1
   readonly tropopause: FloatNode; // その緯度の対流の天井(圏界面の高さ)[m]
@@ -153,6 +154,15 @@ const TRANSIENT_NOISE: readonly NoiseOctave[] = [
 ];
 // エポックの混ぜ替えに参加するのは総観規模の段まで — 細い段は形の足場として残す。
 const TRANSIENT_EPOCH_MAX_FREQUENCY = 16;
+// 薄い雲の斑のノイズ。上層の大循環に運ばれる百キロ級の湿りの斑で、靄の透き間を決める
+// (`DEVELOP/SPEC/RENDERING.md`「薄い雲は一面を均一な靄で覆わず、湿りのある帯や斑と透き間が
+// 百キロ級の尺度で交互に並ぶ」)。上層の循環に乗せるので、斑はジェットや渦の流れに沿って運ばれる。
+const CIRRUS_PATCH_NOISE: readonly NoiseOctave[] = [
+  { frequency: 16, amplitude: 1 },   // 400 km
+  { frequency: 32, amplitude: 0.7 }, // 200 km
+  { frequency: 64, amplitude: 0.4 }, // 100 km
+];
+const CIRRUS_PATCH_EPOCH_MAX_FREQUENCY = 32;
 // 過渡源の活動度の門。ノイズ(−1..1 を 0..1 へ写したもの)がこの幅を渡る間に 0 から 1 へ立つ。
 const TRANSIENT_ACTIVITY_ONSET = CLOUD_TUNING.transientActivityOnset;
 const TRANSIENT_ACTIVITY_FULL = CLOUD_TUNING.transientActivityFull;
@@ -179,6 +189,7 @@ export class WeatherModel {
   private readonly cyclones: Cyclones;
   private readonly highs: Anticyclones;
   private readonly pressureNoise: CirculatingNoise;
+  private readonly cirrusPatchNoise: CirculatingNoise;
   private readonly transport: WeatherTransport;
   private readonly pressure: PressureField;
   private readonly winds: WindField;
@@ -209,6 +220,8 @@ export class WeatherModel {
     this.highs = new Anticyclones(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(
       this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
+    this.cirrusPatchNoise = new CirculatingNoise(
+      this.upperCirculation, CIRRUS_PATCH_NOISE, texel, CIRRUS_PATCH_EPOCH_MAX_FREQUENCY);
     this.transientField = new EpochNoise(TRANSIENT_NOISE, texel, TRANSIENT_EPOCH_MAX_FREQUENCY);
     this.pressure = new PressureField(
       projection, (direction) => this.pressureSourceAt(direction));
@@ -245,6 +258,7 @@ export class WeatherModel {
     this.cyclones.syncTime(seconds);
     this.highs.syncTime(seconds);
     this.pressureNoise.syncTime(seconds);
+    this.cirrusPatchNoise.syncTime(seconds);
     this.transientField.syncTime(seconds);
     this.transport.syncTime(seconds);
   }
@@ -334,6 +348,7 @@ export class WeatherModel {
       oceanFetch: airMass.ocean,
       anvil,
       eye,
+      cirrusPatch: this.cirrusPatchNoise.at(direction),
       meanCloudiness,
       landFraction,
       tropopause: tropopauseAt(latitude),
