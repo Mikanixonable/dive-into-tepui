@@ -234,10 +234,10 @@ const CIRRUS_STREAK_SIGMA = 0.3;
 const CIRRUS_CELL_SIGMA = 0.3;
 const CIRRUS_VEIL_SIGMA = 0.25;
 // 薄く広がる場の段の重みの冪(波長の冪)と、その段の添字の上限(8 km と 4 km まで)。
-const CIRRUS_VEIL_SPECTRAL_EXPONENT = 0.8;
+const CIRRUS_VEIL_SPECTRAL_EXPONENT = 1.8;
 // 筋状の段の重みを粗い側へ傾ける冪(8 km を 1 とする波長の冪)。細かい段の粒を抑えて、筋を長く保つ。
 const CIRRUS_STREAK_SPECTRAL_TILT = 0.6;
-const CIRRUS_VEIL_LAST_OCTAVE = 3;
+const CIRRUS_VEIL_LAST_OCTAVE = 2;
 // 筋状の細い段(添字 6・7)の重み。
 const CIRRUS_THIN_STREAK_WEIGHT = 0.3;
 // ジェットの風速の窓 [m/s]。筋状の重みはこの窓で 0 から 1 へ渡る。
