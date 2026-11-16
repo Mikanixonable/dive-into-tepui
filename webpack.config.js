@@ -5,6 +5,7 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 const { version } = require('./package.json');
 const { ensureOverridesFile } = require('./tools/cloud-tuning-overrides-file.cjs');
+const { openDevPageWhenReady } = require('./tools/open-dev-page.cjs');
 
 const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-11-14-a';
 const EARTH_SURFACE_DEV_PUBLIC_PATH = `/earth/${DEFAULT_EARTH_SURFACE_DATASET_ID}/`;
@@ -140,7 +141,9 @@ module.exports = (env, argv) => ({
       },
     ],
     port: 'auto',
-    open: true,
+    // 同じアドレスのタブが既にあれば再利用して開く(tools/open-dev-page.cjs)。
+    open: false,
+    onListening: openDevPageWhenReady,
     liveReload: false,
     hot: false,
   },
