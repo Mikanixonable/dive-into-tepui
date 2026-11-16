@@ -11,7 +11,7 @@ import type { FloatUniform } from '../../tsl-types';
 export const CLOUD_TUNING_DEFAULTS = {
   // weather-transport.ts — 移流前の湿度の基準と振れ幅
   surfaceHumidityBase: 0.435,
-  upperHumidityBase: 0.42,
+  upperHumidityBase: 0.38,
   surfaceHumidityNoiseAmplitude: 0.5625,
   // 足した段を解像しない全球の写しの振れ幅を、足す前と同じに保つ補正込みの値。
   upperHumidityNoiseAmplitude: 0.65625 * (1.84 + 0.14 + 0.09) / 1.84,
