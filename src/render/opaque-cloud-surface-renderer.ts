@@ -307,7 +307,7 @@ export class OpaqueCloudSurfaceRenderer {
   private detailAt(direction: Vec3Node, width: FloatNode, cloud: CloudSample, wind: Vec2Node): FloatNode {
     return this.shape.detailAt(
       direction, width, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus, wind,
-      this.shape.grainOf(cloud));
+      this.shape.grainOf(cloud), cloud.cumulusCell);
   }
 
   // 覆い尽くされている割合と比べるディザの閾値。**天体に貼った値** — 画面の画素に固定すると、雲が

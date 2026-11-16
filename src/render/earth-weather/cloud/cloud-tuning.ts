@@ -57,6 +57,9 @@ export const CLOUD_TUNING_DEFAULTS = {
   coverageExcessPower: 1.5,
   convectionGain: 1.2,
   bandGrainFade: 0.8,
+  // condensation.ts — セル径が被覆率を千切る深さへ効く強さと下限
+  cellGrainDepth: 0.25,
+  cellGrainFloor: 0.3,
   deepCoverageOnset: 0.7,
   deepCoverageFull: 0.93,
   // condensation.ts — 層状の雲と塔
