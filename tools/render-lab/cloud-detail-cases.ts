@@ -80,6 +80,13 @@ function altitudeFor(tierKmPerPx: number, latitudeDeg: number): number {
   return depth + surfaceRadiusAt(latitudeDeg) - R_EARTH;
 }
 
+// 直下点 latitudeDeg を中心とする半径 capRadiusDeg[deg] の円形領域(cap)を、画像の短い辺へ
+// 収める真下見下ろしの高度 [m]。cloud-lab の写しが cap の広さから観察高度を引くときに使う。
+export function capAltitudeFor(latitudeDeg: number, capRadiusDeg: number): number {
+  const capDiameterM = 2 * surfaceRadiusAt(latitudeDeg) * Math.sin(THREE.MathUtils.degToRad(capRadiusDeg));
+  return capDiameterM / (2 * tanHalfFov(FOV_DEG)) + surfaceRadiusAt(latitudeDeg) - R_EARTH;
+}
+
 // 描画原点の高度 altitudeM・直下点の緯度 latitudeDeg の構図で、画像中心の 1 px が張る実寸 [km]。
 // 実際のカメラ(FOV・高さ・位置)から求める。
 function centerKmPerPxOf(altitudeM: number, latitudeDeg: number): number {
