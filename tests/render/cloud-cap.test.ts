@@ -1,7 +1,7 @@
 // 視点中心の cap の角半径の式を固定する。cap の外へ雲が出ない/内へ縮みすぎない境目はここで決まる。
 import * as assert from 'node:assert/strict';
-import { CLOUD_CAP_MARGIN, CLOUD_CAP_SIZE, capRadiusFor, snapCap } from '../../src/render/cloud/cloud-cap';
-import { CLOUD_TOP_SPAN } from '../../src/render/cloud/cumulus-shape';
+import { CLOUD_CAP_MARGIN, CLOUD_CAP_SIZE, capRadiusFor, snapCap } from '../../src/render/earth-weather/cloud/cloud-cap';
+import { CLOUD_TOP_SPAN } from '../../src/render/earth-weather/cloud/cumulus-shape';
 import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { test } from '../harness';
 
