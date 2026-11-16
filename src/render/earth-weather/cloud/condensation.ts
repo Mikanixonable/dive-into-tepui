@@ -1,6 +1,6 @@
 // 天気から凝結する雲。地表付近の湿度と対流が不透明な雲に、上層の湿度が薄く透ける雲になる。
 // 2つは別の湿度の場から出るので、独立に分布する。値はすべて見えのための調整値。
-import { exp, float, inverseSqrt, max, mix, smoothstep, tanh } from 'three/tsl';
+import { exp, float, inverseSqrt, log2, max, mix, smoothstep, tanh } from 'three/tsl';
 import { cellSizesOf } from './cell-size';
 import { cirrusFlowFromWindNode } from './cirrus-flow-node';
 import { CLOUD_TUNING } from './cloud-tuning';
@@ -30,6 +30,11 @@ const COVERAGE_DISPERSION = CLOUD_TUNING.coverageDispersion;
 const COVERAGE_EXCESS_POWER = CLOUD_TUNING.coverageExcessPower;
 // 湿度へ足す対流の重み。伝達関数の幅に対してどれだけ深く千切るかを決める。
 const CONVECTION_GAIN = CLOUD_TUNING.convectionGain;
+// 対流セルの径が被覆率を千切る深さへ効く強さ [per log2(km)] と、その変調の下限。既定の海洋セル
+// (cellMarineKm)で変調は 1、小さいセルほど深く千切り、大きいセル・板の空は滑らかに残す。
+const CELL_GRAIN_DEPTH = CLOUD_TUNING.cellGrainDepth;
+const CELL_GRAIN_FLOOR = CLOUD_TUNING.cellGrainFloor;
+const CELL_MARINE_KM = CLOUD_TUNING.cellMarineKm;
 // 気団の折り目の帯(前線・雨帯)の中で、その重みを弱める割合(1 で帯の芯の粒が消える)。**帯は
 // 隙間なく連なる面で、対流はそこでは穴ではなく雲頂の起伏と塔として出る**(`DEVELOP/SPEC/
 // RENDERING.md`「帯に沿って幅数百キロの雲が隙間なく連なり…粒立った塔が列をなす」)。帯の中は
@@ -115,7 +120,6 @@ export function condense(weather: WeatherSample): CloudSample {
   const convection = mix(weather.convection.y, weather.convection.x, shape)
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
   const peak = convection.mul(weather.convectiveActivity);
-  const granularity = peak.mul(CONVECTION_GAIN).mul(weather.band.mul(BAND_GRAIN_FADE).oneMinus());
   // 沈降する湿った海洋の低活発度の空では海洋性層積雲へ連続的に移り、前線帯ではその性質を薄める。
   const subsidence = max(weather.lift.negate(), 0);
   const stratocumulus = smoothstep(
@@ -136,6 +140,17 @@ export function condense(weather: WeatherSample): CloudSample {
       weather.convectiveActivity,
     ).oneMinus())
     .mul(weather.band.oneMinus());
+  // 巻雲の筋の向きは、その場所の上層の風へ沿う。揃い度は風速から組む。
+  const cirrusFlow = cirrusFlowFromWindNode(weather.upperWind);
+  // セル径は、型ごとの径へ診断の門を掛けた log 域の加重混合(cell-size.ts)。
+  const cells = cellSizesOf(weather, stratocumulus, cirrusFlow);
+  // 被覆率を千切る深さはセル径で変調する — 小さいセルの空ほど深く千切り、大きなセル・板の空は
+  // 滑らかに残す。径の差は log2 の目盛りで効かせ、既定の海洋セルでは変調しない。
+  const cellGrainMod = max(
+    float(1).add(CELL_GRAIN_DEPTH.mul(log2(CELL_MARINE_KM).sub(cells.cumulusCell))),
+    CELL_GRAIN_FLOOR);
+  const granularity = peak.mul(CONVECTION_GAIN).mul(weather.band.mul(BAND_GRAIN_FADE).oneMinus())
+    .mul(cellGrainMod);
   // 層状の雲: 上昇流と暖気の流入と折り目の帯が持ち上げる高さに、対流の起伏が乗る。
   const convectionRelief = mix(float(1), weather.convectiveActivity, stratocumulus);
   const depth = max(weather.lift, 0).mul(CLOUD_TOP_LIFT).add(weather.warmth.mul(WARM_TOP))
@@ -170,10 +185,6 @@ export function condense(weather: WeatherSample): CloudSample {
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
   const opticalDepth = tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT);
-  // 巻雲の筋の向きは、その場所の上層の風へ沿う。揃い度は風速から組む。
-  const cirrusFlow = cirrusFlowFromWindNode(weather.upperWind);
-  // セル径は、型ごとの径へ診断の門を掛けた log 域の加重混合(cell-size.ts)。
-  const cells = cellSizesOf(weather, stratocumulus, cirrusFlow);
   return {
     cumulus,
     cirrus: cirrusAmountFromOpticalDepthNode(opticalDepth),

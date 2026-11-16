@@ -1,7 +1,8 @@
 // 雲テクスチャ値を各表現の形状・光学量へ変換する共有評価器。不透明度・雲頂高度・細部・
 // 光学的厚みの計算式を集約し、各レンダラーのシェーダーグラフへ展開する。
-import { clamp, min, smoothstep } from 'three/tsl';
+import { clamp, float, log2, max, min, smoothstep } from 'three/tsl';
 import { CloudDetailEvaluator, DETAIL_AMPLITUDE_MAX } from './cloud-detail';
+import { CLOUD_TUNING } from './cloud-tuning';
 import { cumulusColumnOpticalDepthNode } from './cloud-kind-node';
 import { CUMULUS_DITHER_KNOB, CLOUD_TOP_SPAN } from './cumulus-shape';
 import type { CloudSample } from './cloud-field-sample';
@@ -16,6 +17,10 @@ const DETAIL_GATE_OPACITY = 0.05;
 // 粒の細かさへ効く陸らしさと対流の活発さの重み。
 const GRAIN_LAND_WEIGHT = 0.7;
 const GRAIN_CONVECTION_WEIGHT = 0.3;
+// 粒の細かさへ対流セルの径を混ぜる強さと、その基準径(既定の海洋セル)。基準より小さいセルほど、
+// 名目振幅を細かい段へ傾ける分を基準との log2 の差で 0..1 に写して足す — 既定の海では混ぜない。
+const CELL_GRAIN_MIX = 0.4;
+const CELL_GRAIN_REFERENCE_LOG2 = log2(CLOUD_TUNING.cellMarineKm);
 
 export class CloudShapeEvaluator {
   public static readonly cloudTopUncertainty =
@@ -39,19 +44,26 @@ export class CloudShapeEvaluator {
   }
 
   // 雲標本の柱での粒の細かさ 0..1。陸で細かく、対流の活発な陸でさらに細かい。海は対流が強くても組織化した
-  // 大きな細胞になるので、対流は陸にだけ効かせ、海は粗いまま。
+  // 大きな細胞になるので、対流は陸にだけ効かせ、海は粗いまま。そのうえで、基準径より小さい対流セルの空は
+  // 粒を細かい側へ足す — 同じ画面密度でもセル径の違う空が違う質感で読める。
   public grainOf(cloud: CloudSample): FloatNode {
-    return clamp(cloud.land.mul(cloud.convection.mul(GRAIN_CONVECTION_WEIGHT).add(GRAIN_LAND_WEIGHT)), 0, 1);
+    const smallCell = max(CELL_GRAIN_REFERENCE_LOG2.sub(cloud.cumulusCell), 0)
+      .div(CELL_GRAIN_REFERENCE_LOG2);
+    return clamp(
+      cloud.land.mul(cloud.convection.mul(GRAIN_CONVECTION_WEIGHT).add(GRAIN_LAND_WEIGHT))
+        .add(float(CELL_GRAIN_MIX).mul(smallCell)),
+      0, 1);
   }
 
   // 単位方向 direction での、場の texel より細かい起伏 −1..1。width はその位置で読み手の
   // 1 画素・1 タップが張る実寸 [m]、amount はその場所の量、amountAt は任意の方向の量を読む。
-  // wind はそこで雲を運ぶ風の東・北の成分 [m/s]、grain は粒の細かさ 0..1。
+  // wind はそこで雲を運ぶ風の東・北の成分 [m/s]、grain は粒の細かさ 0..1、cell はその場所の
+  // 対流セルの径 log2(km)。
   public detailAt(
     direction: Vec3Node, width: FloatNode, amount: FloatNode,
-    amountAt: (direction: Vec3Node) => FloatNode, wind: Vec2Node, grain: FloatNode,
+    amountAt: (direction: Vec3Node) => FloatNode, wind: Vec2Node, grain: FloatNode, cell: FloatNode,
   ): FloatNode {
-    return this.detail.at(direction, width, amount, amountAt, wind, grain);
+    return this.detail.at(direction, width, amount, amountAt, wind, grain, cell);
   }
 
   // 細部を足してからディザの帯へ通す。空の柱に細部だけで雲を生やさない共有規則である。
