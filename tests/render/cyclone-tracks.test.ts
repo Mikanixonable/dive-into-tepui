@@ -4,9 +4,8 @@
 // 隣どうしの分離)を書く。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import {
-  LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
-} from '../../src/render/earth-weather/cyclone-tracks';
+import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
+import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
 import { EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
 import type { CyclonePlacement } from '../../src/render/earth-weather/cyclone-tracks';
 import type { Placements } from './cyclone-samples';
