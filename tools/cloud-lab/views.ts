@@ -12,7 +12,8 @@ import { CUMULUS_TOP_ALTITUDE } from '../../src/render/earth-weather/cloud/cloud
 import { observedCloudTexel } from '../../src/render/earth-weather/cloud/observed-cloud-field';
 import { cirrusFlowColor } from './cirrus-flow-color';
 import {
-  cirrusColumnOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+  cirrusAmountFromOpticalDepthNode, cirrusColumnOpticalDepthNode, cumulusOpacityNode,
+  cumulusTopAltitudeNode,
 } from '../../src/render/earth-weather/cloud/cloud-kind-node';
 import type * as THREE from 'three/webgpu';
 import type { ClimateMap } from '../../src/render/earth-weather/climate-map';
@@ -26,6 +27,7 @@ export type CloudLabViewId =
   | 'surfaceHumiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'surfaceHumidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
   | 'cumulus' | 'cirrus' | 'coverage' | 'cumulusCell' | 'cirrusCell' | 'cloudTop' | 'translucent' | 'cirrusFlow'
+  | 'detrain' | 'veil'
   | 'composite' | 'observedComposite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
@@ -169,6 +171,14 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'cirrusCell', label: '巻雲のセル径', reads: 'cloud',
     legend: { text: '巻雲の要素径 [km] — log2 で −1..6(0.5..64 km)' },
     color: (d, cloudAt) => vec3(cloudAt(d).cirrusCell.sub(CIRRUS_CELL_LOG2_MIN).div(CIRRUS_CELL_LOG2_SPAN)) },
+  // 脱出水の源(ベールへ集める前の生の発火量)。かなとこの発火位置と強さを直接写す診断用。
+  { id: 'detrain', label: '脱出水の源', reads: 'cloud',
+    legend: { text: '脱出水 0..1 — 塔が上層へ放出する氷雲の強さ(ベールの源)' },
+    color: (d, cloudAt) => vec3(cloudAt(d).detrain) },
+  // 発散と移流で広がったベールの写し(かなとこ殻が読む量)。
+  { id: 'veil', label: 'かなとこのベール', reads: 'cloud',
+    legend: { text: 'ベールの量 0..1 — かなとこの殻(14–17 km)が読む量' },
+    color: (d, cloudAt) => vec3(cloudAt(d).veil) },
   { id: 'cloudTop', label: '積雲の雲頂', reads: 'cloud', hidden: true,
     legend: { text: '積雲の雲頂 [m] — 0..17000(量の単調変換)' },
     color: (d, cloudAt) => vec3(cumulusTopAltitudeNode(cloudAt(d).cumulus).div(CUMULUS_TOP_ALTITUDE)) },
@@ -187,7 +197,10 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     legend: { text: '積雲+巻雲の合成 — 実写と見比べる面' },
     color: (d, cloudAt) => {
       const cloud = cloudAt(d);
-      return compositeColor(cloud.cumulus, cloud.cirrus);
+      // かなとこは別の高い殻へ立つが、覆いとしては巻雲と同じ柱へ足す。
+      const cirrus = cirrusAmountFromOpticalDepthNode(
+        cirrusColumnOpticalDepthNode(cloud.cirrus).add(cirrusColumnOpticalDepthNode(cloud.veil)));
+      return compositeColor(cloud.cumulus, cirrus);
     } },
   // 実写系(衛星写真から分離した雲場 cloud-field.png)へ同じ合成を掛けた見え — ゲームで実写を
   // 選んだときに雲場が出す姿。地表の色や照明の手前の、雲自身の覆い方。

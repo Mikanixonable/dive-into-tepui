@@ -221,6 +221,8 @@ export function condense(weather: WeatherSample): CloudSample {
   return {
     cumulus,
     cirrus: cirrusAmountFromOpticalDepthNode(opticalDepth),
+    // 脱出水のベールは生成値では場に無い — 焼き込みの写しをベールの生成が満たす。
+    veil: float(0),
     cirrusFlow,
     cumulusCell: cells.cumulusCell,
     cirrusCell: cells.cirrusCell,

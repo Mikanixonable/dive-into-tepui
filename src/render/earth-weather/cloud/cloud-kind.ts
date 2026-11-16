@@ -28,6 +28,13 @@ export const CIRRUS_TOP_ALTITUDE = CIRRUS_BOTTOM_ALTITUDE + CIRRUS_ALTITUDE_SPAN
 // 連続する。
 export const CIRRUS_MAX_OPTICAL_DEPTH = 3;
 
+// かなとこ(脱出水の氷雲)の雲頂高度の式が張る範囲 [m]。放出された圏界面の近く — 親の塔が
+// 浮力を失う高さ — に立ち、大気中の巻雲の層より高い。膨らみ続ける塔の芯だけが上端の面を
+// 突き抜ける(DEVELOP/SPEC/RENDERING.md「対流雲は下層から発達する」)。
+export const ANVIL_BOTTOM_ALTITUDE = 14000;
+export const ANVIL_ALTITUDE_SPAN = 3000;
+export const ANVIL_TOP_ALTITUDE = ANVIL_BOTTOM_ALTITUDE + ANVIL_ALTITUDE_SPAN;
+
 // 積雲の量から雲頂高度 [m]。
 export function cumulusTopAltitude(amount: number): number {
   return CUMULUS_BASE_ALTITUDE + CUMULUS_ALTITUDE_SPAN * amount * amount;

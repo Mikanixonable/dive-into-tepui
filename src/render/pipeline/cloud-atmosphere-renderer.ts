@@ -11,8 +11,13 @@ import { If, dot, float, greaterThan, max, min, normalize, sign, uniform, vec4 }
 import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../earth-weather/cloud/cloud-detail';
 import { CloudFieldSampler } from '../earth-weather/cloud/cloud-field-sampler';
 import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../earth-weather/cloud/cloud-optics-node';
-import { cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode } from '../earth-weather/cloud/cloud-kind-node';
-import { CIRRUS_BOTTOM_ALTITUDE, CIRRUS_TOP_ALTITUDE, CUMULUS_MAX_OPTICAL_DEPTH } from '../earth-weather/cloud/cloud-kind';
+import {
+  anvilTopAltitudeNode, cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
+} from '../earth-weather/cloud/cloud-kind-node';
+import {
+  ANVIL_BOTTOM_ALTITUDE, ANVIL_TOP_ALTITUDE,
+  CIRRUS_BOTTOM_ALTITUDE, CIRRUS_TOP_ALTITUDE, CUMULUS_MAX_OPTICAL_DEPTH,
+} from '../earth-weather/cloud/cloud-kind';
 import type { AtmosphereClouds } from '../atmosphere';
 import type { CloudSample } from '../earth-weather/cloud/cloud-field-sample';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
@@ -39,6 +44,18 @@ interface CloudShellKnob {
 // 種類ごとの殻。順序・調整値・場のどの意味を光学深さと雲頂高度へ使うかをここへ集約し、入口を増やしたときに
 // 大気とrender-labの片方だけへ種類が増える状態を防ぐ。**仮設**: uniformはrender-labから動かせる。
 const CLOUD_SHELL_DEFINITIONS = [
+  // 脱出水の氷雲(かなとこ・残存巻雲)。大気中の巻雲の層より高い、放出された圏界面の近くの帯に
+  // 立つ — 発火した親の塔をその上から覆い、膨らみ続ける塔の芯だけがこの面を突き抜ける
+  // (DEVELOP/SPEC/RENDERING.md「対流雲は下層から発達する」)。繊維状の筋は持たない滑らかな層。
+  {
+    species: 'anvil',
+    knob: {
+      cutoff: uniform(0), gain: uniform(1), albedo: uniform(1),
+      bottomAltitude: uniform(ANVIL_BOTTOM_ALTITUDE), topAltitude: uniform(ANVIL_TOP_ALTITUDE),
+    },
+    columnOpticalDepth: (field: CloudSample): FloatNode => cirrusColumnOpticalDepthNode(field.veil),
+    localTopAltitude: (field: CloudSample): FloatNode => anvilTopAltitudeNode(field.veil),
+  },
   {
     species: 'cirrus',
     knob: {

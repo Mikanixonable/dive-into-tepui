@@ -2,6 +2,7 @@
 // 基準式と定数は cloud-kind.ts が持ち、ここは同じ式をシェーダグラフへ組む。
 import { clamp, exp, log, max, min, sqrt } from 'three/tsl';
 import {
+  ANVIL_ALTITUDE_SPAN, ANVIL_BOTTOM_ALTITUDE,
   CIRRUS_ALTITUDE_SPAN, CIRRUS_BOTTOM_ALTITUDE, CIRRUS_MAX_OPTICAL_DEPTH,
   CUMULUS_ALTITUDE_SPAN, CUMULUS_BASE_ALTITUDE, CUMULUS_IN_CLOUD_DEPTH_COEFFICIENT,
   CUMULUS_MAX_OPACITY, CUMULUS_OPTICAL_DEPTH_SCALE,
@@ -48,6 +49,12 @@ export function cirrusTopAltitudeNode(amount: FloatNode): FloatNode {
 // 巻雲の量から鉛直柱光学深さ。
 export function cirrusColumnOpticalDepthNode(amount: FloatNode): FloatNode {
   return amount.mul(amount).mul(CIRRUS_MAX_OPTICAL_DEPTH);
+}
+
+// かなとこの量から雲頂高度 [m]。氷雲は巻雲の一種なので光学深さは巻雲の曲線を共有し、
+// 雲頂高度だけ脱出水の高さの帯へ写す。
+export function anvilTopAltitudeNode(amount: FloatNode): FloatNode {
+  return amount.mul(ANVIL_ALTITUDE_SPAN).add(ANVIL_BOTTOM_ALTITUDE);
 }
 
 // 巻雲の鉛直柱光学深さから量。光学深さは上限で頭打ちにする。
