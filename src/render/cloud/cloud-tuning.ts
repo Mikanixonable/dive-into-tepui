@@ -26,12 +26,9 @@ export const CLOUD_TUNING_DEFAULTS = {
   pressureLiftScale: 27,
   liftLimit: 0.06,
   terrainLiftGain: 0.35,
-  upperMeanderMaxAngle: 0.25,
   // weather-model.ts — 帯(前線・雨帯)
   frontOnset: 1.65,
   frontWidth: 0.35,
-  moistureGradientOnset: 0.12,
-  moistureGradientWidth: 0.28,
   rainbandOnset: 5,
   rainbandWidth: 4,
   bandLift: 0.06,

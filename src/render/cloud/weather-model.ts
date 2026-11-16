@@ -1,6 +1,6 @@
 // 天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流の天気を TSL の
 // グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
-import { abs, clamp, cos, cross, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
+import { abs, clamp, cos, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
 import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
@@ -58,13 +58,6 @@ interface PressureField {
 const PRESSURE_NOISE: readonly NoiseOctave[] = [
   { frequency: 1.2, amplitude: 1 }, // 5300 km
 ];
-// 上層の風へ重ねる中規模の蛇行。単一オクターブ (800 km) のノイズで、総観規模のロスビー波と
-// 渦だけだった筋の向きの場に、100〜1000 km の尺度で滑らかに変わる自由度を足す。向きの
-// 振れ幅は ±14° ほどで、向きが画素ごとにばらつくほどではない。
-const UPPER_MEANDER_NOISE: readonly NoiseOctave[] = [
-  { frequency: 8, amplitude: 1 }, // 800 km
-];
-const UPPER_MEANDER_MAX_ANGLE = CLOUD_TUNING.upperMeanderMaxAngle; // [rad]
 // 場の振れ幅 [hPa]。オクターブ数によらない。
 const PRESSURE_NOISE_AMPLITUDE = CLOUD_TUNING.pressureNoiseAmplitude;
 
@@ -81,10 +74,6 @@ const LIFT_LIMIT = CLOUD_TUNING.liftLimit;
 // 遷移幅は圧縮の稜線が飽和する狭さに調整し、最も高密度の中心核に帯幅を確保する。
 const FRONT_ONSET = CLOUD_TUNING.frontOnset;
 const FRONT_WIDTH = CLOUD_TUNING.frontWidth;
-// 前線を強化する湿度水平勾配の開始閾値と遷移幅 [1/rad]。乾湿境界にも雲帯を生成する。
-// 遷移幅は湿度テクスチャの量子化誤差に対して十分なマージンを確保する。
-const MOISTURE_GRADIENT_ONSET = CLOUD_TUNING.moistureGradientOnset;
-const MOISTURE_GRADIENT_WIDTH = CLOUD_TUNING.moistureGradientWidth;
 // 雨帯。眼を持つ渦が周りの気団を巻き込んで折り畳んだ筋で、圧縮は前線より桁が大きい(腕の稜線で 5〜9)。
 // 稜線の最も押し縮まった区間だけが飽和して腕の先へ連続に薄れる幅に取り、芯のまわりのシアの丘(2〜4)と
 // 熱帯の背景(99.9 パーセンタイルで 3.2)を拾わない。狭めると腕が太い真っ白な帯になる
@@ -197,7 +186,6 @@ export class WeatherModel {
   private readonly cyclones: Cyclones;
   private readonly highs: Highs;
   private readonly pressureNoise: CirculatingNoise;
-  private readonly upperMeander: CirculatingNoise;
   private readonly transport: WeatherTransport;
   private readonly pressure: BakedField;
   private readonly convectiveActivity: ConvectiveActivity;
@@ -216,7 +204,6 @@ export class WeatherModel {
     this.highs = new Highs(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(
       this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
-    this.upperMeander = new CirculatingNoise(this.upperCirculation, UPPER_MEANDER_NOISE, texel);
     this.transport = new WeatherTransport(
       this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius);
     this.pressure = new BakedField(
@@ -235,7 +222,6 @@ export class WeatherModel {
     // 気団は気圧の写しを読んで遡るので、気圧の後に焼く。
     this.airMass.bake(renderer, gpu);
     this.transport.bake(renderer, gpu);
-    this.convectiveActivity.bake(renderer, gpu);
   }
 
   // 時刻 [s] を各サブシステムの uniform へ反映する。
@@ -246,7 +232,6 @@ export class WeatherModel {
     this.cyclones.syncTime(seconds);
     this.highs.syncTime(seconds);
     this.pressureNoise.syncTime(seconds);
-    this.upperMeander.syncTime(seconds);
     this.transport.syncTime(seconds);
   }
 
@@ -258,21 +243,24 @@ export class WeatherModel {
 
     const pressureField = this.pressureFieldAt(direction, east, north);
     const { pressure } = pressureField;
-    const { rossby, surfaceLocal, convectionLocal, upperLocal, surfaceWind, upperWind } =
+    const { rossby, local, surfaceWind, upperWind } =
       this.windFieldAt(direction, latitude, east, north, pressureField);
+    // 対流を流す風は、湿度を流す風より摩擦が強く等圧線を深く横切る — 同じ風だと地表付近と
+    // 上層の写しが同じ向きへ伸びて、掛け合わせても筋のままになる。
+    const convectionLocal = balancedWind(
+      pressureField.gradient, pressureField.isobar, pressureField.bend, latitude,
+      CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT, this.surfaceRadius, this.rotationPeriod,
+    );
 
-    // 風で流した湿度・対流と、前線を強める湿度の勾配。移流の遡りは、大循環の平均風からの
-    // 偏差(局所の釣り合い風とロスビー波の摂動)で取る — 源の模様の平行移動は、写しを焼く
-    // 循環が平均風で既に担っている。平均風まで遡りに含めると両者が打ち消し合い、模様は
-    // 周期の中で混ざり合うだけで流れも形の変化も鈍る。上層の偏差風だけに中規模の蛇行を
-    // 重ねる — 筋の向きがその尺度で滑らかに変わる。
+    // 風で流した湿度・対流。移流の遡りは、大循環の平均風からの偏差(局所の釣り合い風と
+    // ロスビー波の摂動)で取る — 源の模様の平行移動は、写しを焼く循環が平均風で既に担っている。
+    // 平均風まで遡りに含めると両者が打ち消し合い、模様は周期の中で混ざり合うだけで流れも
+    // 形の変化も鈍る。湿度の地表成分と上層成分は同じ風を違う歩幅で遡り、対流は別の風で遡る。
     const advected = this.transport.advectedAt(
       direction,
-      composeWind(surfaceLocal, rossby),
-      this.meanderUpperWind(composeWind(upperLocal, rossby), direction),
+      composeWind(local, rossby),
       composeWind(convectionLocal, rossby),
     );
-    const moistureGradient = this.moistureGradientAt(direction, east, north);
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
     const windComponents = eastNorthComponents(surfaceWind.velocity, east, north);
@@ -281,16 +269,11 @@ export class WeatherModel {
     const warmth = airMass.warmth.mul(extratropical);
     const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
       .mul(TERRAIN_LIFT_GAIN);
-    // 折り目の帯: 温帯では前線(気団の圧縮へ、湿度の境目と気圧の上昇流を少し足す)、熱帯では雨帯の
+    // 折り目の帯: 温帯では前線(気団の圧縮へ、気圧の上昇流を少し足す)、熱帯では雨帯の
     // 伝達関数が圧縮の稜線を降雨帯の強度へマッピングする。
     const updraft = smoothstep(0.01, 0.04, max(liftFromPressure(pressure), 0));
     const temperatureFront = smoothstep(FRONT_ONSET, FRONT_ONSET.add(FRONT_WIDTH), airMass.compression);
-    const moistureFront = smoothstep(
-      MOISTURE_GRADIENT_ONSET,
-      MOISTURE_GRADIENT_ONSET.add(MOISTURE_GRADIENT_WIDTH),
-      moistureGradient,
-    );
-    const front = temperatureFront.add(moistureFront.mul(0.2)).add(updraft.mul(0.15)).min(1).mul(extratropical);
+    const front = temperatureFront.add(updraft.mul(0.15)).min(1).mul(extratropical);
     const rainband = smoothstep(RAINBAND_ONSET, RAINBAND_ONSET.add(RAINBAND_WIDTH), airMass.compression)
       .mul(extratropical.oneMinus());
     const band = min(front.add(rainband), 1);
@@ -362,42 +345,26 @@ export class WeatherModel {
   }
 
   // 風: 局所的な気圧風へ、大循環の背景風(地表付近/上層)とロスビー波を重ねる。上層の風は巻雲の筋が
-  // 従う流れで、東・北の成分で返す。
+  // 従う流れで、東・北の成分で返す。地表付近と上層が分かれるのは背景風だけで、気圧から出る局所の
+  // 釣り合い風は共通。
   private windFieldAt(
     direction: Vec3Node, latitude: FloatNode, east: Vec3Node, north: Vec3Node, field: PressureField,
   ) {
-    // 地表付近・対流・上層の局所の釣り合い風を同じ気圧の場から引き、背景風と重ねる。
     const { gradient, isobar, bend } = field;
     const rossby = this.rossbyWave.perturbationAt(direction, this.surfaceRadius);
+    const local = balancedWind(
+      gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
+      this.surfaceRadius, this.rotationPeriod,
+    );
     const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
     const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
-    const surfaceLocal = balancedWind(
-      gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
-      this.surfaceRadius, this.rotationPeriod,
-    );
-    const convectionLocal = balancedWind(
-      gradient, isobar, bend, latitude, CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT,
-      this.surfaceRadius, this.rotationPeriod,
-    );
-    const upperLocal = balancedWind(
-      gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
-      this.surfaceRadius, this.rotationPeriod,
-    );
-    const surfaceWind = composeWind(surfaceLocal, surfaceBackground);
     const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
     const upperBackground = east.mul(upperMean.x).add(north.mul(upperMean.y)).add(rossby);
-    const upperWind = eastNorthComponents(composeWind(upperLocal, upperBackground).velocity, east, north);
-    return { rossby, surfaceLocal, convectionLocal, upperLocal, surfaceWind, upperWind };
-  }
-
-  // 上層の偏差風へ中規模の蛇行を重ねる。風速を保ったまま向きだけを回す — 流れ自身の
-  // 曲がり (turn) は気圧場のものなので触らない。蛇行のノイズは上層の湿度の源と同じ
-  // 循環で運ぶので、向きの変わり目が筋そのものと一緒に流れる。
-  private meanderUpperWind(wind: BalancedWind, direction: Vec3Node): BalancedWind {
-    const angle = this.upperMeander.at(direction).mul(UPPER_MEANDER_MAX_ANGLE);
     return {
-      velocity: wind.velocity.mul(cos(angle)).add(cross(direction, wind.velocity).mul(sin(angle))),
-      turn: wind.turn,
+      rossby,
+      local,
+      surfaceWind: composeWind(local, surfaceBackground),
+      upperWind: eastNorthComponents(composeWind(local, upperBackground).velocity, east, north),
     };
   }
 
@@ -419,18 +386,6 @@ export class WeatherModel {
     const pressureBehind = this.pressure.at(normalize(direction.sub(isobarStep))).r;
     const bend = pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2);
     return { pressure, gradient, isobar, bend };
-  }
-
-  // 移流前の地表付近の湿度の、水平勾配の大きさ [1/rad]。
-  private moistureGradientAt(direction: Vec3Node, east: Vec3Node, north: Vec3Node): FloatNode {
-    const eastStep = east.mul(GRADIENT_STEP);
-    const northStep = north.mul(GRADIENT_STEP);
-    const moistureAt = (offset: Vec3Node): FloatNode => this.transport.surfaceHumidityAt(normalize(offset));
-    const eastGradient = moistureAt(direction.add(eastStep)).sub(moistureAt(direction.sub(eastStep)))
-      .div(2 * GRADIENT_STEP);
-    const northGradient = moistureAt(direction.add(northStep)).sub(moistureAt(direction.sub(northStep)))
-      .div(2 * GRADIENT_STEP);
-    return eastGradient.mul(eastGradient).add(northGradient.mul(northGradient)).sqrt();
   }
 
   // 単位方向 direction における気団を遡らせる風(東向き・北向きの成分 [m/s])。
@@ -487,7 +442,6 @@ export class WeatherModel {
   public dispose(): void {
     this.pressure.dispose();
     this.transport.dispose();
-    this.convectiveActivity.dispose();
     this.airMass.dispose();
   }
 }
