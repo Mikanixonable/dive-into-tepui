@@ -151,6 +151,7 @@ async function init(): Promise<void> {
   const setSliders = new Map<CloudTuningId, (value: number) => void>();
   const paramsBox = document.createElement('textarea');
   let bakeTimer: number | null = null;
+  let overridesSyncTimer: number | null = null;
   const rebake = (): void => {
     canvas.invalidate();
     if (currentView !== 'synoptic') canvas.render();
@@ -168,6 +169,7 @@ async function init(): Promise<void> {
     if (bakeTimer !== null) window.clearTimeout(bakeTimer);
     if (rebakeNow) rebake();
     else bakeTimer = window.setTimeout(rebake, 250);
+    scheduleOverridesSync();
   };
   for (const [id, setSlider] of buildParamPanel(
     document.getElementById('p-panel')!, GENERATION_PARAMS, CLOUD_TUNING_DEFAULTS,
@@ -194,13 +196,13 @@ async function init(): Promise<void> {
   resetButton.textContent = 'リセット';
   resetButton.addEventListener('click', () => applyParams({ ...CLOUD_TUNING_DEFAULTS }));
   // いまの値のうち既定値と違う項目を、開発サーバの窓口(tools/cloud-lab-apply-tuning.cjs)へ送る。
-  // 「ゲームで試す」は git 管理外の上書きファイルへ書く(ゲームの開発ビルドが読む。リロードで見える)、
-  // 「上書きを消す」はそれを空にする、「既定値へ確定」は cloud-tuning.ts の既定値を書き換える。
+  // 'overrides' は git 管理外の上書きファイルへ書き、実行中のゲーム(npm run dev)がそのまま
+  // 拾って反映する。「既定値へ確定」は cloud-tuning.ts の既定値を書き換える。
   const reflectResult = document.createElement('span');
   const changedIds = (): CloudTuningId[] => (Object.keys(CLOUD_TUNING_DEFAULTS) as CloudTuningId[])
     .filter((id) => CLOUD_TUNING[id].value !== CLOUD_TUNING_DEFAULTS[id]);
   const sendToServer = async (
-    target: 'defaults' | 'overrides' | 'clear', ids: readonly CloudTuningId[],
+    target: 'defaults' | 'overrides', ids: readonly CloudTuningId[],
   ): Promise<void> => {
     const response = await fetch('/__cloud-lab/apply-tuning', {
       method: 'POST',
@@ -225,20 +227,19 @@ async function init(): Promise<void> {
     });
     return button;
   };
-  const tryInGame = addServerButton(
-    'ゲームで試す',
-    '既定値と違う項目を、git 管理外の上書きファイルへ書く(npm run dev のゲームをリロードすると見える。開発サーバのみ)',
-    async () => {
-      const ids = changedIds();
-      await sendToServer('overrides', ids);
-      return ids.length === 0 ? '上書きを空にした' : `${ids.length} 項目を上書きファイルへ書いた(ゲームをリロード)`;
-    });
-  const clearOverrides = addServerButton(
-    '上書きを消す', 'ゲームの上書きファイルを空にする(開発サーバのみ)',
-    async () => {
-      await sendToServer('clear', []);
-      return '上書きを空にした';
-    });
+  // スライダー・JSON 欄の変更は、そのままゲームの上書きファイルへ流す — いじった値が
+  // そのまま実行中のゲーム(npm run dev)で見える。書き込みは少し待って最後の1回に畳む。
+  function scheduleOverridesSync(): void {
+    if (overridesSyncTimer !== null) window.clearTimeout(overridesSyncTimer);
+    overridesSyncTimer = window.setTimeout(() => {
+      overridesSyncTimer = null;
+      sendToServer('overrides', changedIds()).then(() => {
+        reflectResult.textContent = 'ゲームへ反映した';
+      }).catch((e: unknown) => {
+        reflectResult.textContent = `ゲームへの反映に失敗: ${String(e)}`;
+      });
+    }, 300);
+  };
   const commitDefaults = addServerButton(
     '既定値へ確定', '既定値と違う項目を cloud-tuning.ts の既定値へ書き込む。git に差分が出る(開発サーバのみ)',
     async () => {
@@ -249,7 +250,7 @@ async function init(): Promise<void> {
       await sendToServer('defaults', ids);
       return `${ids.length} 項目を既定値へ書き込んだ`;
     });
-  paramsRow.append(copyButton, applyButton, resetButton, tryInGame, clearOverrides, commitDefaults, reflectResult);
+  paramsRow.append(copyButton, applyButton, resetButton, commitDefaults, reflectResult);
   applyParams(Object.fromEntries(
     Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])) as Record<CloudTuningId, number>);
 

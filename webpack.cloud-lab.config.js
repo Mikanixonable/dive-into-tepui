@@ -6,6 +6,7 @@ const net = require('net');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 const { setupApplyTuning } = require('./tools/cloud-lab-apply-tuning.cjs');
+const { writeOverrides } = require('./tools/cloud-tuning-overrides-file.cjs');
 const { openDevPageWhenReady } = require('./tools/open-dev-page.cjs');
 
 // 既定ポート preferred が埋まっていたら空きポートを返す。devServer.port の被りは
@@ -155,6 +156,9 @@ const config = {
 // 8083 を優先し、埋まっていたら別の空きポートで出す(同時起動や前の server の残りを
 // 許すため — 出たポートは webpack-dev-server の起動ログに出る)。
 module.exports = (env, argv) => preferredPort(8083).then((port) => {
+  // 上書きファイルは「いま動いている実験環境の値」とするため、開発サーバの起動ごとに空にする。
+  // 空で始めないと、前回のセッションでいじった値がゲームへ残ったままになる。
+  if (argv.mode === 'development') writeOverrides({});
   if (port !== 8083) {
     console.warn(`[cloud-lab] ポート 8083 は使用中。代わりに http://localhost:${port}/ で出します。`);
   }
