@@ -134,6 +134,7 @@ module.exports = (env, argv) => ({
       },
     ],
     port: 'auto',
+    open: true,
     liveReload: false,
     hot: false,
   },
