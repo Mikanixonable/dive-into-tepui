@@ -77,7 +77,7 @@ export const CLOUD_TUNING_DEFAULTS = {
   surfaceEyeDryness: 0.8,
   upperEyeDryness: 2,
   surfaceMeanCloudinessWeight: 0.15,
-  upperMeanCloudinessWeight: 0.24,
+  upperMeanCloudinessWeight: 0.30,
   meanCloudinessDry: 0.10,
   meanCloudinessWet: 0.85,
   // weather-model.ts — 圏界面
