@@ -17,7 +17,7 @@ const port = 8771;
 const debugPort = 9447;
 
 // 仮テクスチャ 1 枚へ詰める量と、その並び。**RGBA の割り当ては生成側の出力規約に合わせる**
-// — cloudFieldTexelFromSample(src/render/cloud/cloud-field-sample.ts)が焼く
+// — cloudFieldTexelFromSample(src/render/earth-weather/cloud/cloud-field-sample.ts)が焼く
 // vec4(積雲の量, 巻雲の量, 筋の倍角ベクトルの x, y) と同じ順。ただし符号付き(−1..1)の
 // 倍角ベクトルは PNG へ入る 0..1 へ畳み直して置く(読み手が ×2−1 で戻す)。
 const FIELD_VIEWS = ['cumulus', 'cirrus', 'cirrusFlowPacked'];

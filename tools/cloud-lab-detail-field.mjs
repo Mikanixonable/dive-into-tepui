@@ -13,7 +13,7 @@ export function srgbToLinear(byte) {
 }
 
 // PNG を線形輝度の場へ。Rec.601 ではなく Rec.709 の輝度係数 — 実写の真色画像の
-// モニタ輝度として読むため(cloud-detail-selftest と同じ定義)。
+// モニタ輝度として読むため(cloud-lab-detail-selftest と同じ定義)。
 export function linearLuminanceField(png) {
   const { width, height, channels, data } = decodePng(png);
   const out = new Float32Array(width * height);

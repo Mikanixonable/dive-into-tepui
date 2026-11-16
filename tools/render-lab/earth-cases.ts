@@ -282,6 +282,17 @@ function earth(): LabCase {
       'earth-polar-terminator': {
         view: { ...EARTH_POLAR_PLACEMENT, ...sunAnglesOf(new THREE.Vector3(1, 0, 0)) },
       },
+      // 夜側。恒星を地球の向こう側へ置いた、夜を向く円盤。地表と雲は環境光と地球照のわずかな
+      // 明るさしか持たず、形はほぼ読めない — 「夜側の観察」との差で、強化が届く範囲と強さを読む。
+      'earth-night': {
+        view: { ...EARTH_POLAR_PLACEMENT, ...sunAnglesOf(new THREE.Vector3(0, 0, -1)) },
+      },
+      // 夜側の観察。同じ夜の構図へ設定をオンにして撮る — 球の内側の地表と雲は形が読める明るさへ
+      // 持ち上がり、球の外にある物(星・大気の輝きそのもの)は変わらないはず。
+      'earth-night-observation': {
+        view: { ...EARTH_POLAR_PLACEMENT, ...sunAnglesOf(new THREE.Vector3(0, 0, -1)) },
+        graphics: { nightObservation: true },
+      },
     },
   };
 }
