@@ -10,7 +10,7 @@ import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tr
 import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
 import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
-import { sampleField, strokeWrapped } from './synoptic-map';
+import { strokeWrapped } from './synoptic-map';
 import type { MapView } from './synoptic-map';
 import type { FrontSpine, SpinePoint } from '../../src/render/earth-weather/front-skeleton';
 import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
@@ -35,7 +35,7 @@ const FRONT_DRAW_MIN = 0.05;
 // 向く向きそのもの。
 function strokeFront(
   context: CanvasRenderingContext2D, points: readonly SpinePoint[],
-  kind: FrontSpine['kind'], view: MapView,
+  kind: FrontSpine['kind'], strength: number, view: MapView,
 ): void {
   // 経度は前の点の近くへ畳み、先頭を窓の西端基準の一周へ畳む — 折れ線が日付変更線を
   // またいでも切れず、何周分も回り込んだ配置でも窓へ届く。
@@ -54,9 +54,11 @@ function strokeFront(
     if (index === 0) line.moveTo(x, y);
     else line.lineTo(x, y);
   }
+  // 帯の濃さは谷の深さに比例する — 浅い谷の前線は天気図でも薄い。
+  const alpha = 0.3 + 0.6 * strength;
   strokeWrapped(context, view, () => {
     context.lineWidth = 2.4;
-    context.strokeStyle = `rgba(${color}, 0.85)`;
+    context.strokeStyle = `rgba(${color}, ${alpha})`;
     context.stroke(line);
   });
   // 記号。法線は背骨が持つ循環側(+θ)の向き — canvas の y が南なので北向き成分を反転する。
@@ -79,15 +81,17 @@ function strokeFront(
         semicircles.arc(x, y, SEMICIRCLE_SIZE, angle, angle + Math.PI);
       }
     }
-    context.fillStyle = `rgba(${color}, 0.9)`;
+    context.fillStyle = `rgba(${color}, ${alpha + 0.05})`;
     context.fill(triangles);
     context.fill(semicircles);
   });
 }
 
 // 前線をまとめて引く。前線を持つ谷それぞれについて骨格の背骨を取り、腕ごとに塗る。
+// 背骨の芯は L の記号と同じく、配置の半径以内で場がいちばん低い所へ置く — 記号と
+// 前線と等圧線の芯がひとつに見える。
 function drawFronts(
-  context: CanvasRenderingContext2D, seconds: number, view: MapView,
+  context: CanvasRenderingContext2D, fields: SynopticFields, seconds: number, view: MapView,
 ): void {
   const placements: PressurePlacement[] = [];
   for (let index = 0; index < LOW_COUNT; index += 1) {
@@ -99,30 +103,84 @@ function drawFronts(
     if (placement !== null) placements.push(placement);
   }
   for (const placement of placements) {
-    if (frontStrengthOf(placement) < FRONT_DRAW_MIN) continue;
-    for (const spine of frontSpinesOf(placement, R_EARTH)) {
-      strokeFront(context, spine.points, spine.kind, view);
+    // 記号が立てないほど浅い谷の前線は引かない — 深さ 5〜9 hPa で滲ませて、
+    // 埋まる・生まれる境で線が跳ばないようにする。
+    const t = Math.min(Math.max((placement.depth - 5) / 4, 0), 1);
+    const strength = frontStrengthOf(placement) * t * t * (3 - 2 * t);
+    if (strength < FRONT_DRAW_MIN) continue;
+    const anchor = fieldExtremeNear(fields, placement, -1);
+    // frontSpinesOf は緯度・経度をラジアンで受ける — 場の極値は度で返るので畳み直す。
+    const anchorRad = {
+      latitude: anchor.latitude * Math.PI / 180,
+      longitude: anchor.longitude * Math.PI / 180,
+    };
+    for (const spine of frontSpinesOf(placement, R_EARTH, anchorRad)) {
+      strokeFront(context, spine.points, spine.kind, strength, view);
     }
   }
 }
 
 // ── 中心の記号 ────────────────────────────────────────────────────────────
 
-// 中心の記号。mark(L / H)と気圧値、眼を持つなら眼の印。配置の経度は畳まずに持つので、
+// 中心の記号を立てる深さ [hPa]。等圧線 2 本分 — これより浅い谷・山は閉じた等圧線を
+// 作れず、記号だけが場と関係ない所へ立つ。
+const LABEL_DEPTH_MIN = 8;
+
+// 配置の芯のまわりで場がいちばん低い(高い)所を返す。谷・山の配置は場へ焼かれているが、
+// 騒音が加わると実際の極値は配置の芯からずれる — 記号が等圧線の芯から離れて立たない
+// よう、配置の半径の内側で極値を探してそこへ置き直す。sign は低気圧で -1、高気圧で +1。
+function fieldExtremeNear(
+  fields: SynopticFields, placement: PressurePlacement, sign: -1 | 1,
+): { latitude: number; longitude: number; pressure: number } {
+  const latDeg = placement.latitude * 180 / Math.PI;
+  const lonDeg = placement.longitude * 180 / Math.PI;
+  // 探す範囲は配置の半径の半分あまり [°] — 谷の寄与が効いている内側に留めて、
+  // 騒音の極値へ跳ばないようにする。経度方向は緯度のコサインで広げる。
+  const latSpan = 0.55 * (placement.radius / R_EARTH) * 180 / Math.PI;
+  const lonSpan = Math.min(60, latSpan / Math.max(0.3, Math.cos(placement.latitude)));
+  const cellLon = 360 / fields.width;
+  const cellLat = 180 / fields.height;
+  const lonCells = Math.ceil(lonSpan / cellLon);
+  const latCells = Math.ceil(latSpan / cellLat);
+  const cx = ((lonDeg + 180) / 360) * fields.width;
+  const cy = ((90 - latDeg) / 180) * fields.height;
+  let best = -Infinity;
+  let bestX = Math.round(cx);
+  let bestY = Math.round(cy);
+  for (let dy = -latCells; dy <= latCells; dy += 1) {
+    const y = Math.round(cy + dy);
+    if (y < 0 || y >= fields.height) continue;
+    for (let dx = -lonCells; dx <= lonCells; dx += 1) {
+      const x = ((Math.round(cx + dx) % fields.width) + fields.width) % fields.width;
+      const value = sign * fields.pressure[y * fields.width + x]!;
+      if (value > best) {
+        best = value;
+        bestX = x;
+        bestY = y;
+      }
+    }
+  }
+  return {
+    latitude: 90 - (bestY + 0.5) * cellLat,
+    longitude: (bestX + 0.5) * cellLon - 180,
+    pressure: sign * best,
+  };
+}
+
+// 中心の記号。mark(L / H)と気圧値、眼を持つなら眼の印。記号は配置の芯ではなく、
+// 芯の半径以内で実際にいちばん低い(高い)場の点へ置く — 配置の経度は畳まずに持つので、
 // 窓の西端を基準に一周(360°)で畳んでから画素へ写す — 時刻を大きく進めると配置の経度は
 // 何周分も回り込み、畳まないままでは窓へ届かない。
 function drawCenterLabel(
   context: CanvasRenderingContext2D, fields: SynopticFields,
   placement: PressurePlacement, mark: 'L' | 'H', eyeStrength: number, view: MapView,
 ): void {
+  const extreme = fieldExtremeNear(fields, placement, mark === 'L' ? -1 : 1);
   const longitudeDeg = view.lonMinDeg
-    + (((placement.longitude * 180 / Math.PI - view.lonMinDeg) % 360) + 360) % 360;
+    + (((extreme.longitude - view.lonMinDeg) % 360) + 360) % 360;
   const x = view.lonToX(longitudeDeg);
-  const y = view.latToY(placement.latitude * 180 / Math.PI);
-  // 中心の気圧は面から拾う。
-  const pressure = Math.round(1013 + sampleField(
-    fields.pressure, fields.width, fields.height,
-    placement.longitude, placement.latitude));
+  const y = view.latToY(extreme.latitude);
+  const pressure = Math.round(1013 + extreme.pressure);
   strokeWrapped(context, view, () => {
     context.textAlign = 'center';
     context.textBaseline = 'middle';
@@ -156,17 +214,17 @@ export function drawCycloneSymbols(
   context: CanvasRenderingContext2D, fields: SynopticFields, seconds: number, view: MapView,
 ): void {
   // 前線は中心の記号の下へ引く。
-  drawFronts(context, seconds, view);
+  drawFronts(context, fields, seconds, view);
   // 温帯低気圧 — L。
   for (let index = 0; index < LOW_COUNT; index += 1) {
     const placement = lowPlacementAt(index, seconds, R_EARTH);
-    if (placement === null || placement.depth < 2) continue;
+    if (placement === null || placement.depth < LABEL_DEPTH_MIN) continue;
     drawCenterLabel(context, fields, placement, 'L', 0, view);
   }
   // 熱帯低気圧 — L と眼。
   for (let index = 0; index < TROPICAL_COUNT; index += 1) {
     const tropical = tropicalPlacementAt(index, seconds);
-    if (tropical === null || tropical.depth < 2) continue;
+    if (tropical === null || tropical.depth < LABEL_DEPTH_MIN) continue;
     const eye = eyeStrengthOf(
       tropical.depth, tropical.radius, tropical.latitude, R_EARTH, SIDEREAL_DAY);
     drawCenterLabel(context, fields, tropical, 'L', eye, view);
@@ -174,7 +232,7 @@ export function drawCycloneSymbols(
   // 高気圧 — H。
   for (let index = 0; index < HIGH_COUNT; index += 1) {
     const high = highPlacementAt(index, seconds, R_EARTH);
-    if (high === null || high.depth < 2) continue;
+    if (high === null || high.depth < LABEL_DEPTH_MIN) continue;
     drawCenterLabel(context, fields, high, 'H', 0, view);
   }
 }

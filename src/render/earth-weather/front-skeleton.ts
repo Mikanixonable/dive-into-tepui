@@ -48,16 +48,20 @@ const smoothstep = (x: number, e0: number, e1: number): number => {
 };
 
 // 配置 placement(表面半径 surfaceRadius)の谷が持つ前線の背骨の束。返るのは帯ではなく
-// 背骨の折れ線 — 帯の幅と滲みは描き側が決める。前線を持たない配置では空。
+// 背骨の折れ線 — 帯の幅と滲みは描き側が決める。前線を持たない配置では空。anchor を
+// 渡すと谷の芯をその緯度・経度へ置く — 天気図のように記号が場の極値へ寄る描きで、
+// 骨格を同じ芯から生やすために使う。
 export function frontSpinesOf(
   placement: PressurePlacement, surfaceRadius: number,
+  anchor?: { readonly latitude: number; readonly longitude: number },
 ): readonly FrontSpine[] {
   if (placement.fronts === undefined) return [];
   const tuning = CLOUD_TUNING;
-  const cosLat = Math.cos(placement.latitude);
-  const cosLon = Math.cos(placement.longitude);
-  const center: Vec3 = [
-    cosLat * Math.sin(placement.longitude), Math.sin(placement.latitude), cosLat * cosLon];
+  const lat = anchor?.latitude ?? placement.latitude;
+  const lon = anchor?.longitude ?? placement.longitude;
+  const cosLat = Math.cos(lat);
+  const cosLon = Math.cos(lon);
+  const center: Vec3 = [cosLat * Math.sin(lon), Math.sin(lat), cosLat * cosLon];
   // 極側と下流(東)の単位接ベクトル — pressure-feature の occlusionFrame と同じ式。
   const hemisphere = Math.sign(center[1]);
   const poleward = norm([
@@ -66,12 +70,19 @@ export function frontSpinesOf(
   const downstream = norm(cross([0, 1, 0], center));
   const coreRad = placement.radius / surfaceRadius;
   const triple = (placement.occlusion ?? 0) * tuning.frontTripleRadius.value;
+  // 前線系の回転 — 一生とともに傾圧帯が循環へ巻き上げられる分だけ全部の向きへ足す。
+  const spin = (placement.life ?? 0) * tuning.frontSpinDeg.value;
+  const tripleAngle = tuning.frontTripleAngleDeg.value + spin;
   // 腕の根元の向き — 三点が出ると寒冷・温暖とも三点の向きへ寄り、3 本が同じ点へ繋がる。
   const rootJoin = smoothstep(triple, 0, 0.2);
-  const coldRoot = tuning.frontColdAngleDeg.value
-    + (tuning.frontTripleAngleDeg.value - tuning.frontColdAngleDeg.value) * rootJoin;
-  const warmRoot = tuning.frontWarmAngleDeg.value
-    + (tuning.frontTripleAngleDeg.value - tuning.frontWarmAngleDeg.value) * rootJoin;
+  const coldRoot = tuning.frontColdAngleDeg.value + spin
+    + (tripleAngle - tuning.frontColdAngleDeg.value - spin) * rootJoin;
+  const warmRoot = tuning.frontWarmAngleDeg.value + spin
+    + (tripleAngle - tuning.frontWarmAngleDeg.value - spin) * rootJoin;
+  // 寒冷の腕の先端は閉塞の進みぶん余分に循環側へ回り、温暖の腕へ追いついてゆく。
+  const coldTip = tuning.frontColdTipAngleDeg.value + spin
+    + (placement.occlusion ?? 0) * tuning.frontCatchDeg.value;
+  const warmTip = tuning.frontWarmTipAngleDeg.value + spin;
 
   const pointAt = (r: number, angleDeg: number): SpinePoint => {
     const a = angleDeg * DEGREE;
@@ -114,7 +125,7 @@ export function frontSpinesOf(
     spines.push(spine(
       'cold',
       r => coldRoot
-        + (tuning.frontColdTipAngleDeg.value - coldRoot) * progress(r, coldLength)
+        + (coldTip - coldRoot) * progress(r, coldLength)
           ** tuning.frontColdBend.value,
       Math.max(triple, FRONT_INNER_RADIUS), coldLength));
   }
@@ -125,15 +136,15 @@ export function frontSpinesOf(
     spines.push(spine(
       'warm',
       r => warmRoot
-        + (tuning.frontWarmTipAngleDeg.value - warmRoot) * progress(r, tuning.frontWarmLength.value)
+        + (warmTip - warmRoot) * progress(r, tuning.frontWarmLength.value)
           ** tuning.frontWarmBend.value,
       Math.max(triple, FRONT_INNER_RADIUS), tuning.frontWarmLength.value));
   }
-  // 閉塞の腕 — 三点の向きから内側へ循環の向きへ巻き込む。三点が出るまで無い。
+  // 閉塞の腕 — 中心から三点へ、ほぼ真っ直ぐに近い短い弧。三点が出るまで無い。
   if (triple > FRONT_INNER_RADIUS) {
     spines.push(spine(
       'occluded',
-      r => tuning.frontTripleAngleDeg.value
+      r => tripleAngle
         + tuning.frontOccSwingDeg.value * clamp01((triple - r) / triple) ** tuning.frontOccBend.value,
       FRONT_INNER_RADIUS, triple));
   }
