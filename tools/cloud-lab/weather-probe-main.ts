@@ -55,7 +55,7 @@ const CHANNELS = [
   'cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM', 'tropopause',
   'oceanFetch', 'cumulusCellKm', 'cirrusCellKm', 'unused',
   'elevation', 'temperatureK', 'detrain', 'shallowForcing',
-  'deepPotential', 'convectionX',
+  'deepPotential', 'convectionX', 'reliefM',
 ] as const;
 
 class WeatherProbeCanvas {
@@ -103,7 +103,7 @@ class WeatherProbeCanvas {
       vec4(
         this.field.climateMap.elevation(direction), this.field.climateMap.temperatureK(direction),
         cloud.detrain, weather.shallowForcing),
-      vec4(weather.deepPotential, weather.convection.x, float(0), float(0)),
+      vec4(weather.deepPotential, weather.convection.x, weather.reliefM, float(0)),
     ], OUT_WIDTH, OUT_HEIGHT);
   }
 

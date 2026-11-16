@@ -21,8 +21,16 @@ const UTC_HOURS = [0, 3, 6, 9, 12, 15, 18, 21];
 const LOCAL_BIN_HOURS = 3;
 // 緯度帯の境 [°]。絶対値で数え、南北を合わせる。
 const LAT_EDGES = [0, 15, 30, 45, 60, 90];
-// 地表の種類。陸らしさと標高 [m] で分ける。
-const SURFACES = ['ocean', 'lowland', 'hills', 'mountain'];
+// 地表の種類。陸らしさと標高 [m] で分ける。さらに陸を、地形の比高 [m] と湿り(平年の雲量)で分ける —
+// 比高の層は、標高では見えない山麓・斜面の対流を見る。
+const SURFACES = [
+  'ocean', 'lowland', 'hills', 'mountain',
+  'flatWet', 'midWet', 'highWet', 'flatDry', 'highDry',
+];
+const RELIEF_MID_M = 300;
+const RELIEF_HIGH_M = 1000;
+const WET_CLOUDINESS = 0.45;
+const DRY_CLOUDINESS = 0.3;
 // 晴天と数える被覆と、深い対流と数える氷雲の放出の強さの段。積雲の量は塔の高さを持たないので、
 // 塔が上層へ氷雲を放出する強さ(detrain)を深い対流の指標にする。
 const CLEAR_COVERAGE = 0.05;
@@ -30,12 +38,24 @@ const DEEP_DETRAINS = [0.05, 0.2, 0.5];
 // 昼夜の差を見る緯度の上限 [°]。
 const DIURNAL_MAX_LAT = 45;
 
-function surfaceOf(land, elevation) {
-  if (land < 0.05) return 'ocean';
-  if (land < 0.95) return null; // 海岸の渡りは層別に入れない。
-  if (elevation >= 1500) return 'mountain';
-  if (elevation >= 500) return 'hills';
-  return 'lowland';
+// 地表の層の名前の一覧。標高の層は海岸の渡りを除き、比高の層は陸の内側だけに付ける。
+function classesOf(land, elevation, reliefM, cloudiness) {
+  if (land < 0.05) return ['ocean'];
+  if (land < 0.95) return [];
+  const classes = [];
+  if (elevation >= 1500) classes.push('mountain');
+  else if (elevation >= 500) classes.push('hills');
+  else classes.push('lowland');
+  const wet = cloudiness >= WET_CLOUDINESS;
+  const dry = cloudiness < DRY_CLOUDINESS;
+  if (reliefM >= RELIEF_HIGH_M) {
+    if (wet) classes.push('highWet');
+    else if (dry) classes.push('highDry');
+  } else if (reliefM >= RELIEF_MID_M) {
+    if (wet) classes.push('midWet');
+  } else if (wet) classes.push('flatWet');
+  else if (dry) classes.push('flatDry');
+  return classes;
 }
 
 class Accumulator {
@@ -127,6 +147,8 @@ async function main() {
       const coverage = channel('coverage');
       const activity = channel('convectiveActivity');
       const cellKm = channel('cumulusCellKm');
+      const reliefM = channel('reliefM');
+      const cloudiness = channel('meanCloudiness');
       const detrain = channel('detrain');
       const deepPotential = channel('deepPotential');
       const shallowForcing = channel('shallowForcing');
@@ -140,19 +162,24 @@ async function main() {
         for (let col = 0; col < width; col += 1) {
           const i = row * width + col;
           const longitude = (-180 + (col + 0.5) * 360 / width) * Math.PI / 180;
-          const surface = surfaceOf(land[i], elevation[i]);
+          const classes = classesOf(land[i], elevation[i], reliefM[i], cloudiness[i]);
           if (utc === 0 && row % 30 === 15 && col % 60 === 30) {
             landMarks.push({ lat: latitude, lon: longitude * 180 / Math.PI, land: land[i], elevation: elevation[i] });
           }
-          if (surface === null) continue;
-          byLat[surface][latBand].add(weight, coverage[i], activity[i], cellKm[i], detrain[i], deepPotential[i], shallowForcing[i]);
+          if (classes.length === 0) continue;
+          let bin = -1;
           if (absLatitude < DIURNAL_MAX_LAT) {
             const fraction = ((longitude - sunLongitude) / (2 * Math.PI) + 0.5) % 1;
             const localHour = (fraction < 0 ? fraction + 1 : fraction) * 24;
-            const bin = Math.min(Math.floor(localHour / LOCAL_BIN_HOURS), 24 / LOCAL_BIN_HOURS - 1);
-            byHour[surface][bin].add(weight, coverage[i], activity[i], cellKm[i], detrain[i], deepPotential[i], shallowForcing[i]);
+            bin = Math.min(Math.floor(localHour / LOCAL_BIN_HOURS), 24 / LOCAL_BIN_HOURS - 1);
           }
-          if (surface === 'ocean' && absLatitude < 30 && utc === 0) seaTemperatures.push(temperature[i]);
+          for (const surface of classes) {
+            byLat[surface][latBand].add(weight, coverage[i], activity[i], cellKm[i], detrain[i], deepPotential[i], shallowForcing[i]);
+            if (bin >= 0) {
+              byHour[surface][bin].add(weight, coverage[i], activity[i], cellKm[i], detrain[i], deepPotential[i], shallowForcing[i]);
+            }
+          }
+          if (classes[0] === 'ocean' && absLatitude < 30 && utc === 0) seaTemperatures.push(temperature[i]);
         }
       }
       if (utc === 12) {

@@ -47,6 +47,7 @@ export interface WeatherSample {
   readonly cirrusPatch: FloatNode; // 薄い雲の斑と透き間を決める百キロ級の場 −1..1(上層の流れに運ばれる)
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
   readonly landFraction: FloatNode; // 陸らしさ 0..1
+  readonly reliefM: FloatNode; // 地形の比高 [m](細かい勾配から見積もる)
   readonly tropopause: FloatNode; // その緯度の対流の天井(圏界面の高さ)[m]
 }
 
@@ -325,9 +326,10 @@ export class WeatherModel {
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
         .sub(eye.mul(UPPER_EYE_DRYNESS)).sub(dryTongue.mul(DRY_TONGUE_UPPER_DRYING)), 0, 1);
 
+    const reliefM = length(this.terrain.slope(direction, this.texel)).mul(RELIEF_LENGTH);
     const convective = this.convectiveActivity.at(direction, lift, warmth, band, {
       land: landFraction,
-      reliefM: length(this.terrain.slope(direction, this.texel)).mul(RELIEF_LENGTH),
+      reliefM,
       temperatureK: this.climate.temperatureK(direction),
       meanCloudiness,
     });
@@ -353,6 +355,7 @@ export class WeatherModel {
       cirrusPatch: this.cirrusPatchNoise.at(direction),
       meanCloudiness,
       landFraction,
+      reliefM,
       tropopause: tropopauseAt(latitude),
     };
   }
