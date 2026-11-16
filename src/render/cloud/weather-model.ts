@@ -201,7 +201,6 @@ export class WeatherModel {
     // 気団は気圧の写しを読んで遡るので、気圧の後に焼く。
     this.airMass.bake(renderer, gpu);
     this.transport.bake(renderer, gpu);
-    this.convectiveActivity.bake(renderer, gpu);
   }
 
   // 時刻 [s] を各サブシステムの uniform へ反映する。
@@ -408,7 +407,6 @@ export class WeatherModel {
   public dispose(): void {
     this.pressure.dispose();
     this.transport.dispose();
-    this.convectiveActivity.dispose();
     this.airMass.dispose();
   }
 }
