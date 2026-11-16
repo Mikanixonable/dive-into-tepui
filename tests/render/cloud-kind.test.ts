@@ -8,7 +8,7 @@ import {
   cirrusAmountFromOpticalDepth, cirrusColumnOpticalDepth, cirrusTopAltitude,
   cumulusAmountFromOpacity, cumulusAmountFromTopAltitude, cumulusColumnOpticalDepth,
   cumulusInCloudOpticalDepth, cumulusOpacity, cumulusTopAltitude,
-} from '../../src/render/cloud/cloud-kind';
+} from '../../src/render/earth-weather/cloud/cloud-kind';
 import { test } from '../harness';
 
 export function register(): void {

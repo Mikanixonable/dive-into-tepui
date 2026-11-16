@@ -9,16 +9,16 @@ import { buildFramingRow } from './framing-controls';
 import { buildTimeControls } from './time-controls';
 import type { Framing, SynopticLayers } from './synoptic-map';
 import { buildButtonRow, buildCheckbox, buildSlider } from '../lab-controls';
-import { CLOUD_TUNING, CLOUD_TUNING_DEFAULTS, type CloudTuningId } from '../../src/render/cloud/cloud-tuning';
+import { CLOUD_TUNING, CLOUD_TUNING_DEFAULTS, type CloudTuningId } from '../../src/render/earth-weather/cloud/cloud-tuning';
 import { GENERATION_PARAMS, type GenerationParamSpec } from './generation-params';
 import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import {
   LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
-} from '../../src/render/cloud/cyclone-tracks';
-import { HIGH_COUNT, highPlacementAt } from '../../src/render/cloud/anticyclone-tracks';
-import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
+} from '../../src/render/earth-weather/cyclone-tracks';
+import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
+import type { CyclonePlacement } from '../../src/render/earth-weather/cyclone-tracks';
 
 // 写す表示。GPU の写し(CLOUD_LAB_VIEWS)に、2D canvas へ焼く天気図モードを足す。
 type ViewChoice = CloudLabViewId | 'synoptic';

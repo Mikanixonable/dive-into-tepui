@@ -10,9 +10,9 @@ import { DeferredTexture } from '../../src/render/deferred-texture';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
   cumulusInCloudOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
-} from '../../src/render/cloud/cloud-kind-node';
+} from '../../src/render/earth-weather/cloud/cloud-kind-node';
 import { FloatPlaneSet, awaitClimateMap, bytesToBase64 } from './probe-common';
-import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
 
 declare global {
   interface Window {

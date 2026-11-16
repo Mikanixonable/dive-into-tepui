@@ -2,7 +2,7 @@
 // シェーダグラフのノードとして構成する。
 import { abs, clamp, exp, log, max, min, sqrt } from 'three/tsl';
 import { MAX_COLUMN_OPACITY } from './cloud-optics';
-import type { FloatNode } from '../tsl-types';
+import type { FloatNode } from '../../tsl-types';
 
 // 不透明度を鉛直柱光学深さへ変換するGPU版。
 export function columnOpticalDepthFromOpacityNode(opacity: FloatNode): FloatNode {

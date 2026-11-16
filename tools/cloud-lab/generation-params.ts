@@ -1,7 +1,7 @@
 // 生成モデルの調整値をいじるスライダーの表。値そのものの正本は
-// src/render/cloud/cloud-tuning.ts の CLOUD_TUNING_DEFAULTS で、ここはつまみの表示名と
+// src/render/earth-weather/cloud/cloud-tuning.ts の CLOUD_TUNING_DEFAULTS で、ここはつまみの表示名と
 // 並び(行)と目盛りだけを持つ。range は値を動かしてよい幅であって、物理的に正しい範囲ではない。
-import type { CloudTuningId } from '../../src/render/cloud/cloud-tuning';
+import type { CloudTuningId } from '../../src/render/earth-weather/cloud/cloud-tuning';
 
 // スライダーを置く行。モデルの段の流れ(気象 → 移流 → 凝結、活発度は横断)と同じ並び。
 export type GenerationParamRow = 'weather' | 'transport' | 'condense' | 'activity';

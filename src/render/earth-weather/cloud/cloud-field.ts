@@ -3,19 +3,19 @@
 // 一括管理し、出入りをどちらも CloudSample で受け渡す。
 import * as THREE from 'three/webgpu';
 import { normalize, uniform } from 'three/tsl';
-import { BakedField } from '../baked-field';
-import { GPU_PASS } from '../gpu-timings';
+import { BakedField } from '../../baked-field';
+import { GPU_PASS } from '../../gpu-timings';
 import { condense } from './condensation';
 import {
   blendBakedTexels, cloudEnvironmentTexel, cloudFieldTexelFromSample, cloudMotionTexel, cloudSampleFromTexels,
   type CloudBlend, type CloudFieldSlot, type CloudMotion, type CloudSample,
 } from './cloud-field-sample';
-import { eastAt, northAt } from './sphere-frame';
+import { eastAt, northAt } from '../sphere-frame';
 import type { WebGPURenderer } from 'three/webgpu';
-import type { GpuTimingSink } from '../gpu-timings';
-import type { FieldProjection } from '../field-projection';
-import type { WeatherModel } from './weather-model';
-import type { FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../tsl-types';
+import type { GpuTimingSink } from '../../gpu-timings';
+import type { FieldProjection } from '../../field-projection';
+import type { WeatherModel } from '../weather-model';
+import type { FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 export class CloudField {
   // 枚ごとの雲・風・環境の写し。どの枚も同じ投影へ、同じ時刻の天気から焼く。雲の写しは

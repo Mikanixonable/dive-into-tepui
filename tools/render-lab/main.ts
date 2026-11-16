@@ -15,7 +15,7 @@ import { injectOnce } from '../../src/hud/inject-style';
 import { applyThemeVariables } from '../../src/hud/style/theme-variables';
 import { AU } from '../../src/physics/astronomical-unit';
 import { parseThemePalette } from '../../src/theme';
-import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
+import { CUMULUS_DITHER_KNOB } from '../../src/render/earth-weather/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';

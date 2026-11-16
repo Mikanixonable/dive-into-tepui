@@ -3,13 +3,13 @@
 import * as THREE from 'three/webgpu';
 import { dot, step, uniform } from 'three/tsl';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
-import { distinctTextureNode } from '../distinct-texture-node';
-import { orthographicCapUv, type CapPlacement } from '../field-projection';
+import { distinctTextureNode } from '../../distinct-texture-node';
+import { orthographicCapUv, type CapPlacement } from '../../field-projection';
 import {
   blendBakedTexels, cloudMotionFromTexel, cloudSampleFromTexels,
   type CloudBlend, type CloudFieldSlot, type CloudMotion, type CloudSample,
 } from './cloud-field-sample';
-import type { FloatUniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
+import type { FloatUniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
 
 // 焼いた雲場の 2 枚と、それを焼いた cap の置き方の組。場を出す側が毎フレーム公開し、読み手が写し取る。
 export interface CloudFieldBinding {

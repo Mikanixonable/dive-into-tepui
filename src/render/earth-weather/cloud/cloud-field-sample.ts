@@ -1,6 +1,6 @@
 import type * as THREE from 'three/webgpu';
 import { mix, vec2, vec4 } from 'three/tsl';
-import type { FloatNode, Vec2Node, Vec4Node } from '../tsl-types';
+import type { FloatNode, Vec2Node, Vec4Node } from '../../tsl-types';
 
 // 雲場の生成値と焼いたテクスチャの読み値。雲は種類ごとの量(0..1)で持ち、RGBAの配置を
 // 表現側へ漏らさない。雲頂高度・光学的厚み・不透明度は量から種類別の曲線(cloud-kind.ts)が導く。
