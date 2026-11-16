@@ -62,7 +62,7 @@ class WeatherProbeCanvas {
   private readonly outProjection = new EquirectProjection(OUT_HEIGHT);
 
   public static async create(canvas: HTMLCanvasElement): Promise<WeatherProbeCanvas> {
-    const renderer = new WebGPURenderer({ canvas });
+    const renderer = new WebGPURenderer({ canvas, requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
     renderer.setSize(OUT_WIDTH, OUT_HEIGHT, false);
     renderer.toneMapping = NoToneMapping;
     await renderer.init();

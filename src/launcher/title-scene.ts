@@ -334,7 +334,7 @@ export class TitleScene {
     seed: number,
     palette: ThemePalette,
   ): Promise<TitleScene> {
-    const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
+    const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     await renderer.init();
     return new TitleScene(renderer, canvas, pointerTarget, pattern, seed, palette);
