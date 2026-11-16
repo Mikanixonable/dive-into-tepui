@@ -10,6 +10,7 @@ import * as THREE from 'three/webgpu';
 import {
   Fn, If, abs, clamp, cos, float, greaterThan, int, round, sign, sin, smoothstep, uniform, uniformArray, vec3,
 } from 'three/tsl';
+import { wrapAngle } from '../../math/angle';
 import { latitudeOf } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 import { CloudPatternTransport, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT, windBandsAt } from './atmospheric-wind';
@@ -139,8 +140,4 @@ export class Circulation {
   }
 }
 
-// 角度 [rad] を 0..2π へ畳む。
-function wrapAngle(angle: number): number {
-  const turns = angle / (2 * Math.PI);
-  return (turns - Math.floor(turns)) * 2 * Math.PI;
-}
+
