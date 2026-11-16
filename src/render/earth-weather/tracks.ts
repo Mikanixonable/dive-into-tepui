@@ -5,7 +5,7 @@
 // 谷・丘 1 つの配置。緯度・経度 [rad](緯度は南半球で負。経度は畳まない)、深さ [hPa](0 以上)、
 // 短軸の半径 [m]、長軸/短軸の比。occlusion は閉塞の進み 0..1 — 深さの山を越えて寒冷前線が
 // 温暖前線へ追いつくと立ち上がる。持たない配置(熱帯低気圧・高気圧)は閉塞しない。
-export interface CyclonePlacement {
+export interface PressurePlacement {
   readonly latitude: number;
   readonly longitude: number;
   readonly depth: number;

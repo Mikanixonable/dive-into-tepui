@@ -4,21 +4,21 @@
 import { float, max } from 'three/tsl';
 import { LOW_COUNT, lowPlacementsAt } from './low-tracks';
 import { TROPICAL_COUNT, tropicalPlacementAt } from './tropical-tracks';
-import { Trough } from './trough';
+import { PressureFeature } from './pressure-feature';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
 export class Cyclones {
-  private readonly tropicals: readonly Trough[];
-  private readonly lows: readonly Trough[];
+  private readonly tropicals: readonly PressureFeature[];
+  private readonly lows: readonly PressureFeature[];
   // 気圧降下および台風の眼の強度は種別を問わず累積する。熱帯低気圧・中緯度低気圧ともに同一の計算規則を適用する。
-  private readonly troughs: readonly Trough[];
+  private readonly troughs: readonly PressureFeature[];
 
   // 谷を組み、時刻 0 の配置で始める。surfaceRadius は谷を置く天体の半径 [m]、rotationPeriod は
   // その自転周期 [s]。
   public constructor(private readonly surfaceRadius: number, rotationPeriod: number) {
     this.tropicals = Array.from(
-      { length: TROPICAL_COUNT }, () => new Trough(surfaceRadius, rotationPeriod));
-    this.lows = Array.from({ length: LOW_COUNT }, () => new Trough(surfaceRadius, rotationPeriod));
+      { length: TROPICAL_COUNT }, () => new PressureFeature(surfaceRadius, rotationPeriod));
+    this.lows = Array.from({ length: LOW_COUNT }, () => new PressureFeature(surfaceRadius, rotationPeriod));
     this.troughs = [...this.tropicals, ...this.lows];
     this.syncTime(0);
   }

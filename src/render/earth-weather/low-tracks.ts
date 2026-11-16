@@ -8,8 +8,8 @@ import {
   WAVE_DRIFT, WAVE_TROUGH_WIDTH, stormTrackAxisAt, waveAmplitudeAt, waveAnchoredSlot,
   waveTroughLongitude,
 } from './rossby-wave';
-import { courseAt, DAY, DEGREE, uniformIn, waypoint } from './cyclone-tracks';
-import type { Course, CyclonePlacement, Range } from './cyclone-tracks';
+import { courseAt, DAY, DEGREE, uniformIn, waypoint } from './tracks';
+import type { Course, PressurePlacement, Range } from './tracks';
 
 // 中緯度の低気圧。同時に持つ枡の数(偶数番が北、奇数番が南)。枡は上層のロスビー波の谷へ
 // 錨づき、半球あたりの枡の数は谷の数(WAVE_NUMBER)より多い — 世代ごとに同じ谷へ複数の枡が
@@ -241,7 +241,7 @@ function lowTrackOf(
 // 吸収を考えない生の配置と、その一生の最深 [hPa]。吸収する側・される側の判定は最深で行うので、
 // 一生の山を配置と一緒に返す。
 interface RawLow {
-  readonly placement: CyclonePlacement;
+  readonly placement: PressurePlacement;
   readonly peakDepth: number;
   // 吸収の効きのための「居る度」0〜1。生まれと消えの両端で ABSORB_LIFE_RAMP かけて立ち上がる。
   readonly presence: number;
@@ -284,7 +284,7 @@ function rawLowPlacementAt(
 // 天体の半径。生まれる前と消えたあとは null。
 export function lowPlacementAt(
   index: number, seconds: number, surfaceRadius: number,
-): CyclonePlacement | null {
+): PressurePlacement | null {
   return absorbedLowAt(
     index, surfaceRadius,
     (j, k) => rawLowPlacementAt(j, seconds + k * ABSORB_WINDOW_STEP, surfaceRadius),
@@ -297,7 +297,7 @@ export function lowPlacementAt(
 // 引くと同じ生の配置を相手ごと・刻みごとに組み直すことになる。
 export function lowPlacementsAt(
   seconds: number, surfaceRadius: number,
-): readonly (CyclonePlacement | null)[] {
+): readonly (PressurePlacement | null)[] {
   // 生の配置の表 [枡][窓の標本]。標本は時刻から −窓 側が先頭。
   const raw = Array.from({ length: LOW_COUNT }, (_, j) =>
     Array.from({ length: 2 * ABSORB_WINDOW_STEPS + 1 }, (_, k) =>
@@ -312,7 +312,7 @@ export function lowPlacementsAt(
 function absorbedLowAt(
   index: number, surfaceRadius: number,
   rawAt: (index: number, offset: number) => RawLow | null,
-): CyclonePlacement | null {
+): PressurePlacement | null {
   const self = rawAt(index, 0);
   if (self === null) return null;
   // 吸収 — 同じ半球で、自分より最深の深い谷へ半径の和の 2 倍より近づいた谷は、近さに応じて
@@ -360,7 +360,7 @@ function absorbedLowAt(
 
 // 2 つの配置の中心の大圏距離 [m]。
 function greatCircleDistance(
-  a: CyclonePlacement, b: CyclonePlacement, surfaceRadius: number,
+  a: PressurePlacement, b: PressurePlacement, surfaceRadius: number,
 ): number {
   const cosAngle = Math.sin(a.latitude) * Math.sin(b.latitude)
     + Math.cos(a.latitude) * Math.cos(b.latitude) * Math.cos(a.longitude - b.longitude);

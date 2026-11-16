@@ -8,14 +8,14 @@ import {
 } from 'three/tsl';
 import { POLE } from './sphere-frame';
 import { coreCrossingAngle } from './wind-law';
-import type { CyclonePlacement } from './cyclone-tracks';
+import type { PressurePlacement } from './tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 // 気圧の谷による影響限界半径 [m]。裾野は距離に反比例するため、単体では微弱でも複数累積すると全球的な
 // 底上げになり、気圧から出る上昇流の基準がまるごと持ち上がる。ここで遠方を閉じる。最大の谷
 // (消えるときの中緯度の低気圧で短軸の半径 1800 km、温帯化した熱帯低気圧で約 1000 km)の裾を
 // 切らない長さ — 芯が 1/√2 に落ちる半径の外側で、ガウスは 1800 km でも e^(−0.52) = 0.59 に留まる。
-const TROUGH_REACH = 2500e3;
+const FEATURE_REACH = 2500e3;
 
 // 眼。広がりは谷自身の広がりに対する比で、湿度はその内側で落ちる。成熟した台風の眼は直径 600 km の
 // 円盤の中に開く数十 km の穴なので、最盛期の熱帯低気圧(短軸の半径 180〜240 km)で半径 54〜72 km に
@@ -59,12 +59,12 @@ export function eyeStrengthOf(
 ): number {
   // 芯(勾配の消える点)での等圧線方向の 2 階微分 [hPa/rad²]。pressureAt の形を短軸の向きに原点で
   // 開いたもの。長軸の向きの曲がりはこれより緩いので、眼の判定は閉じた側で行う。
-  const coreBend = depth * ((surfaceRadius / radius) ** 2 + 2 * (surfaceRadius / TROUGH_REACH) ** 2);
+  const coreBend = depth * ((surfaceRadius / radius) ** 2 + 2 * (surfaceRadius / FEATURE_REACH) ** 2);
   const crossing = coreCrossingAngle(coreBend, latitude, surfaceRadius, rotationPeriod);
   return 1 - THREE.MathUtils.smoothstep(crossing, EYE_ANGLE_FULL, EYE_ANGLE_NONE);
 }
 
-export class Trough {
+export class PressureFeature {
   private readonly center: Vec3Uniform = uniform(new THREE.Vector3());
   // 長軸の向きの単位接ベクトル。
   private readonly axis: Vec3Uniform = uniform(new THREE.Vector3());
@@ -83,7 +83,7 @@ export class Trough {
 
   // 配置 placement を uniform へ設定する。null(存在しない)なら深さ・眼の濃さ・閉塞を 0 にする。
   // 長軸は東と極側の北のあいだ — 北半球で南西–北東、南半球で北西–南東。
-  public place(placement: CyclonePlacement | null): void {
+  public place(placement: PressurePlacement | null): void {
     if (placement === null) {
       this.depth.value = 0;
       this.eyeStrength.value = 0;
@@ -121,14 +121,14 @@ export class Trough {
   }
 
   // 単位方向 direction での気圧の落ち込み [hPa](負)。芯は短軸の向きに中心から半径で 1/√2 へ
-  // 落ち、その先は中心からの距離に反比例して裾を引き、TROUGH_REACH のガウスが遠方を閉じる。
+  // 落ち、その先は中心からの距離に反比例して裾を引き、FEATURE_REACH のガウスが遠方を閉じる。
   //
   // **裾の緩さを決めるのは対数傾き。** 反比例の裾は傾きが一桁ぶんの半径をかけて渡るので、風向も
   // 移流の伸びも半径に沿って滑らかに緩む。芯の巻きは 深さ/広がり² が単独で握り、裾と別に動かせる。
   public pressureAt(direction: Vec3Node): FloatNode {
     const chordSquared = this.chordSquared(direction);
     const core = inverseSqrt(chordSquared.mul(this.coreScale).add(1))
-      .mul(exp(chordSquared.mul(-((this.surfaceRadius / TROUGH_REACH) ** 2))));
+      .mul(exp(chordSquared.mul(-((this.surfaceRadius / FEATURE_REACH) ** 2))));
     return core.mul(this.depth).negate();
   }
 

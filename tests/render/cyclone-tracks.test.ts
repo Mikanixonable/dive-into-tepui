@@ -7,7 +7,7 @@ import { test } from '../harness';
 import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
 import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
 import { EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
-import type { CyclonePlacement } from '../../src/render/earth-weather/cyclone-tracks';
+import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 import type { Placements } from './cyclone-samples';
 
 const HOUR = 3600; // [s]
@@ -35,14 +35,14 @@ const SERIES: readonly { readonly name: string; readonly at: Placements }[] = [
 ];
 
 // 2 つの配置の中心の大圏距離 [m]。
-function greatCircleDistance(a: CyclonePlacement, b: CyclonePlacement): number {
+function greatCircleDistance(a: PressurePlacement, b: PressurePlacement): number {
   const cosAngle = Math.sin(a.latitude) * Math.sin(b.latitude)
     + Math.cos(a.latitude) * Math.cos(b.latitude) * Math.cos(a.longitude - b.longitude);
   return EARTH_SURFACE_RADIUS * Math.acos(Math.min(Math.max(cosAngle, -1), 1));
 }
 
 // 一生の最初の標本と最後の標本。
-function endpoints(life: readonly CyclonePlacement[]): readonly [CyclonePlacement, CyclonePlacement] {
+function endpoints(life: readonly PressurePlacement[]): readonly [PressurePlacement, PressurePlacement] {
   const first = life[0];
   const last = life[life.length - 1];
   assert.ok(first !== undefined && last !== undefined, '空の一生');
