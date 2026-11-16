@@ -1,4 +1,4 @@
-// 気圧へ書き込む低気圧の谷。熱帯低気圧 1 つと中緯度の低気圧 LOW_COUNT 個の配置(緯度・経度・深さ・
+// 気圧へ書き込む低気圧の谷。熱帯低気圧 TROPICAL_COUNT 個と中緯度の低気圧 LOW_COUNT 個の配置(緯度・経度・深さ・
 // 短軸の半径・長軸/短軸の比)を時刻ごとに受けて uniform へ写し、単位方向での気圧の落ち込み・眼・金床を
 // TSL のグラフで答える。谷は前線の向き(北半球で南西–北東、南半球で北西–南東)へ長い楕円。眼を持つか
 // どうかは谷の芯で風が等圧線を横切る角で決まり、締まって深い熱帯低気圧が持つ。
@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import {
   abs, cross, dot, exp, float, inverseSqrt, length, max, min, sign, uniform, vec3,
 } from 'three/tsl';
-import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from './cyclone-tracks';
+import { LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt } from './cyclone-tracks';
 import { coreCrossingAngle } from './wind-law';
 import type { CyclonePlacement } from './cyclone-tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
@@ -218,7 +218,7 @@ export class Trough {
 }
 
 export class Cyclones {
-  private readonly tropical: Trough;
+  private readonly tropicals: readonly Trough[];
   private readonly lows: readonly Trough[];
   // 気圧降下および台風の眼の強度は種別を問わず累積する。熱帯低気圧・中緯度低気圧ともに同一の計算規則を適用する。
   private readonly troughs: readonly Trough[];
@@ -226,15 +226,18 @@ export class Cyclones {
   // 谷を組み、時刻 0 の配置で始める。surfaceRadius は谷を置く天体の半径 [m]、rotationPeriod は
   // その自転周期 [s]。
   public constructor(private readonly surfaceRadius: number, rotationPeriod: number) {
-    this.tropical = new Trough(surfaceRadius, rotationPeriod);
+    this.tropicals = Array.from(
+      { length: TROPICAL_COUNT }, () => new Trough(surfaceRadius, rotationPeriod));
     this.lows = Array.from({ length: LOW_COUNT }, () => new Trough(surfaceRadius, rotationPeriod));
-    this.troughs = [this.tropical, ...this.lows];
+    this.troughs = [...this.tropicals, ...this.lows];
     this.syncTime(0);
   }
 
   // 時刻 [s] における配置を uniform へ反映する。
   public syncTime(seconds: number): void {
-    this.tropical.place(tropicalPlacementAt(seconds));
+    for (const [i, tropical] of this.tropicals.entries()) {
+      tropical.place(tropicalPlacementAt(i, seconds));
+    }
     for (const [i, low] of this.lows.entries()) {
       low.place(lowPlacementAt(i, seconds, this.surfaceRadius));
     }

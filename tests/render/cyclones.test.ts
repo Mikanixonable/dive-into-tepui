@@ -4,7 +4,9 @@
 // 落ちるかを見る。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
+import {
+  LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
+} from '../../src/render/cloud/cyclone-tracks';
 import { eyeStrengthOf } from '../../src/render/cloud/cyclones';
 import {
   EARTH_ROTATION_PERIOD, EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled,
@@ -36,8 +38,11 @@ export function register(): void {
     }
   });
 
-  test('cyclones: 熱帯低気圧は最盛期に眼を持ち、温帯化で失う', () => {
-    const lives = completeLives(sampled(tropicalPlacementAt, 170));
+  test('cyclones: 熱帯低気圧は最盛期に眼を持ち、衰えると失う', () => {
+    const lives: (readonly CyclonePlacement[])[] = [];
+    for (let index = 0; index < TROPICAL_COUNT; index++) {
+      lives.push(...completeLives(sampled((seconds) => tropicalPlacementAt(index, seconds), 170)));
+    }
     assert.ok(lives.length >= 10, `170 日の中に丸ごと入る一生が ${lives.length} しかない`);
     for (const [n, life] of lives.entries()) {
       // 深さが最大の標本で眼が全開。
