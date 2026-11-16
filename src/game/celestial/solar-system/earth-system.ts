@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import climateTextureUrl from '../../../assets/earth-climate.png';
+import terrainTextureUrl from '../../../assets/earth-terrain.png';
 import cloudFieldUrl from '../../../assets/cloud-field.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import coastlineData from '../../../assets/earth-coastline.json';
@@ -19,6 +20,7 @@ import { CloudPresentation } from '../../../render/earth-weather/cloud/cloud-pre
 import { GeneratedCloudField } from '../../../render/earth-weather/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/earth-weather/cloud/observed-cloud-field';
 import { AnnualClimateMap } from '../../../render/earth-weather/climate-map';
+import { TextureTerrainMap } from '../../../render/earth-weather/terrain-map';
 import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
 import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/earth-weather/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
@@ -219,7 +221,8 @@ function earthAuroras(): readonly Aurora[] {
 export function earthGeneratedCloudField(projection: FieldProjection): GeneratedCloudField {
   // 気象シミュレーションに適用する半径は、全球を一様な球体とみなす平均半径。
   return new GeneratedCloudField(
-    AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
+    AnnualClimateMap.fromDeferredUrl(climateTextureUrl),
+    TextureTerrainMap.fromDeferredUrl(terrainTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
   );
 }
 
