@@ -90,12 +90,17 @@ const SHAPE_GRAIN_HUMIDITY = CLOUD_TUNING.shapeGrainHumidity;
 // 膝は、二乗の τ が筋の利得を傾きにした直線と交わる超過量。上限は τ をそこへ
 // 漸近させる tanh の頭打ちで、下地が常に e^−τ だけ透けることを保証する — 巻雲は不透明にならない。
 // **2 つの利得と上限は同じ率で動かす** — そうすると τ がそのまま定数倍になり、靄と筋の濃さの比も
-// 階調の順番も変わらないまま、薄い雲だけが一様に薄くなる。率は、±60° の輝度の平均が実写(分離した
-// 薄い雲、0.135)の 9 割に収まる高さに取る — 薄い雲は下地を隠す幕ではなく、地表の色をわずかに
-// 白ませるものとして見える(`DEVELOP/SPEC/RENDERING.md`「薄い雲の大半はごく薄い靄」)。いまの率では
-// 上層の湿度 0.5 で τ 0.08、0.6 で τ 0.27、0.7 で τ 0.56、上端でも下地が半分近く透ける。
+// 階調の順番も変わらないまま、薄い雲だけが一様に薄くなる。靄の発生閾値は基準の上層湿度(0.42)より
+// 上に取り、さらに平年の雲量の門で乾いた気候の空を抑える — 全球へ一様な薄い幕が乗ると、乾燥帯が
+// 晴れずコントラストが洗い流される。薄い雲は下地を隠す幕ではなく、地表の色をわずかに白ませるもの
+// として見える(`DEVELOP/SPEC/RENDERING.md`「薄い雲の大半はごく薄い靄」)。いまの率では
+// 上層の湿度 0.5 で τ 0.004、0.6 で τ 0.2、0.7 で τ 0.59、上端でも下地が半分近く透ける。
 const TRANSLUCENT_HAZE_ONSET = CLOUD_TUNING.hazeOnset;
 const TRANSLUCENT_HAZE_GAIN = CLOUD_TUNING.hazeGain;
+// 靄が立ち始める平年の雲量と、そのまま信じる雲量。乾いた気候の空では靄を抑えて、
+// 全球に一様な薄い幕が乗るのを防ぐ。
+const HAZE_CLOUDINESS_ONSET = CLOUD_TUNING.hazeCloudinessOnset;
+const HAZE_CLOUDINESS_FULL = CLOUD_TUNING.hazeCloudinessFull;
 const TRANSLUCENT_STREAK_ONSET = CLOUD_TUNING.streakOnset;
 const TRANSLUCENT_STREAK_GAIN = CLOUD_TUNING.streakGain;
 const TRANSLUCENT_KNEE = CLOUD_TUNING.translucentKnee;
@@ -181,7 +186,8 @@ export function condense(weather: WeatherSample): CloudSample {
   const deep = max(sparse, cumulusAmountFromTopAltitudeNode(cloudTop));
   const cumulus = mix(sparse, deep, smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage));
   // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
-  const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN);
+  const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN)
+    .mul(smoothstep(HAZE_CLOUDINESS_ONSET, HAZE_CLOUDINESS_FULL, weather.meanCloudiness));
   const streakExcess = max(weather.upperHumidity.sub(TRANSLUCENT_STREAK_ONSET), 0);
   const streak = streakExcess.mul(streakExcess).mul(TRANSLUCENT_STREAK_GAIN).div(TRANSLUCENT_KNEE);
   const opticalDepth = tanh(haze.add(streak).div(TRANSLUCENT_LIMIT)).mul(TRANSLUCENT_LIMIT);
