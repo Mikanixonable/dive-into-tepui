@@ -36,6 +36,9 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   landHeatingGain: { label: '日射加熱の強さ', row: 'weather', min: 0, max: 1.5, step: 0.01 },
   orographicGain: { label: '地形性上昇→湿度', row: 'weather', min: 0, max: 8, step: 0.05 },
   plumeDecaySeconds: { label: 'プルームの時定数 [s]', row: 'weather', min: 3600, max: 72000, step: 900 },
+  rainoutGain: { label: '降水の乾き', row: 'weather', min: 0, max: 8, step: 0.05 },
+  rainoutDecaySeconds: { label: '雨陰の時定数 [s]', row: 'weather', min: 3600, max: 200000, step: 1800 },
+  reliefLength: { label: '地形の裾野 [m]', row: 'weather', min: 5000, max: 100000, step: 1000 },
   // 気象 — 湿度への寄与
   surfaceSubsidenceDrying: { label: '地表の沈降→乾き', row: 'weather', min: 0, max: 4, step: 0.05 },
   upperLiftHumidity: { label: '上層の上昇→湿度', row: 'weather', min: 0, max: 3, step: 0.05 },

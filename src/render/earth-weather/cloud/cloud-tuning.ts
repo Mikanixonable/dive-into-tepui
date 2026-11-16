@@ -40,6 +40,11 @@ export const CLOUD_TUNING_DEFAULTS = {
   landHeatingGain: 0.4,
   orographicGain: 2,
   plumeDecaySeconds: 6 * 3600,
+  // weather-model.ts / weather-transport.ts — 風上の降水が風下へ運ぶ乾き(雨陰)
+  rainoutGain: 2.5,
+  rainoutDecaySeconds: 24 * 3600,
+  // terrain-flow.ts — 細かい勾配から障壁の高さを見積もる裾野の半幅 [m]
+  reliefLength: 30e3,
   // weather-model.ts — 湿度への寄与
   surfaceSubsidenceDrying: 1.0,
   upperLiftHumidity: 0.7,

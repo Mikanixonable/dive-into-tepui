@@ -66,6 +66,9 @@ const ADVECTION_PERIOD = 20 * 3600;
 // 上昇源から供給された湿りが、風下へ運ばれてからの減衰の時定数 [s]。源の活動時間とは別の
 // 共通の減衰で、プルームがどこまで尾を引くかを決める。
 const PLUME_DECAY_SECONDS = CLOUD_TUNING.plumeDecaySeconds;
+// 降水で失われた湿りの乾きが風下へ残る時定数 [s]。雨陰はプルームより長く持続する — 乾いた
+// 空気が海上で湿りを取り戻すまでの時間。
+const RAINOUT_DECAY_SECONDS = CLOUD_TUNING.rainoutDecaySeconds;
 // 対流を流す1歩を、湿度の1歩の何倍の長さに取るか。
 const CONVECTION_ADVECTION = CLOUD_TUNING.convectionAdvection;
 // 上層の湿度の1歩を、地表付近の1歩の何倍の長さに取るか。巻雲の繊維を長く引き伸ばす。
@@ -85,7 +88,8 @@ export class WeatherTransport {
   private readonly convectionNoise: CirculatingNoise;
   private readonly upperHumidityNoise: CirculatingNoise;
   // 移流前の源の写し。out0 の x・y は湿度(地表付近・上層)、z・w は対流(粒・網目)、
-  // out1 の x・y は位相 A・B それぞれの発射時刻で評価した上昇源。
+  // out1 の x・y は位相 A・B それぞれの発射時刻で評価した上昇源、z・w は同じく位相
+  // A・B の降水枯渇(風上で雨になって失われた湿り)。
   private readonly source: BakedField;
   // 2位相移流の周期の中の位置0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
@@ -93,13 +97,15 @@ export class WeatherTransport {
   private readonly seconds: FloatUniform = uniform(0);
 
   // 地表付近と上層の循環が流すノイズから、projection の持ち方で源の写しを組む。surfaceRadius は
-  // 湿度と対流を運ぶ天体の半径 [m]。upliftSourceAt は地表の単位方向と発射時刻 [s] から、
-  // その場で供給される湿りの量を返す(上昇源 — 地理に貼り付くので、運ぶのはこの場ではなく
-  // 発射された湿り)。
+  // 湿度と対流を運ぶ天体の半径 [m]。moistureSourceAt は地表の単位方向と発射時刻 [s] と
+  // 移流前の地表付近の湿度から、その場で供給・剥奪される湿りの量を x=上昇源・y=降水枯渇で
+  // 返す(どちらも地理に貼り付くので、運ぶのはこの場ではなく発射された湿り・乾き)。
   public constructor(
     surfaceCirculation: Circulation, upperCirculation: Circulation, projection: FieldProjection,
     private readonly surfaceRadius: number,
-    private readonly upliftSourceAt: (direction: Vec3Node, emissionSeconds: FloatNode) => FloatNode,
+    private readonly moistureSourceAt: (
+      direction: Vec3Node, emissionSeconds: FloatNode, ambientHumidity: FloatNode,
+    ) => Vec2Node,
   ) {
     const texel = projection.texelAngle;
     this.surfaceHumidityNoise = new CirculatingNoise(
@@ -107,19 +113,21 @@ export class WeatherTransport {
     this.convectionNoise = new CirculatingNoise(surfaceCirculation, CONVECTION_NOISE, texel);
     this.upperHumidityNoise = new CirculatingNoise(
       upperCirculation, UPPER_HUMIDITY_NOISE, texel, UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY);
-    // 湿度と対流は同じ持ち方で別々に読まないので、1 パスの 1 写しへまとめて焼く。上昇源は
-    // 位相ごとの発射時刻で評価が変わるので、A・B で別チャンネルへ焼き分ける。
+    // 湿度と対流は同じ持ち方で別々に読まないので、1 パスの 1 写しへまとめて焼く。上昇源と
+    // 降水枯渇は位相ごとの発射時刻で評価が変わるので、A・B で別チャンネルへ焼き分ける。
     this.source = new BakedField(
       'transportSource', THREE.RGBAFormat, projection,
       (direction) => {
         const phaseA = this.advectionCycle;
         const phaseB = fract(phaseA.add(0.5));
+        const ambientHumidity = this.humiditySourceAt(direction).x;
+        const moistureA = this.moistureSourceAt(
+          direction, this.seconds.add(phaseA.mul(-ADVECTION_PERIOD)), ambientHumidity);
+        const moistureB = this.moistureSourceAt(
+          direction, this.seconds.add(phaseB.mul(-ADVECTION_PERIOD)), ambientHumidity);
         return [
           vec4(this.humiditySourceAt(direction), this.convectionSourceAt(direction)),
-          vec4(
-            this.upliftSourceAt(direction, this.seconds.add(phaseA.mul(-ADVECTION_PERIOD))),
-            this.upliftSourceAt(direction, this.seconds.add(phaseB.mul(-ADVECTION_PERIOD))),
-            0, 0),
+          vec4(moistureA.x, moistureB.x, moistureA.y, moistureB.y),
         ];
       },
       GPU_PASS.cloudBake);
@@ -174,14 +182,20 @@ export class WeatherTransport {
     // 帯が風下で弱まり、源へ向かって先細る。
     const ageFade = (phase: FloatNode): FloatNode =>
       exp(phase.mul(-ADVECTION_PERIOD).div(PLUME_DECAY_SECONDS));
+    const rainFade = (phase: FloatNode): FloatNode =>
+      exp(phase.mul(-ADVECTION_PERIOD).div(RAINOUT_DECAY_SECONDS));
     const uplift = mix(
       sourceAt(humidityWind, stepB, 1).y.mul(ageFade(phaseB)),
       sourceAt(humidityWind, stepA, 1).x.mul(ageFade(phaseA)), weightA);
+    // 降水で失われた湿り。プルームより長い時定数で、風上の山地から風下へ乾きが届く(雨陰)。
+    const rainout = mix(
+      sourceAt(humidityWind, stepB, 1).w.mul(rainFade(phaseB)),
+      sourceAt(humidityWind, stepA, 1).z.mul(rainFade(phaseA)), weightA);
     return {
       surfaceHumidity: mix(
         sourceAt(humidityWind, stepB).x,
         sourceAt(humidityWind, stepA).x, weightA)
-        .add(uplift),
+        .add(uplift).sub(rainout),
       upperHumidity: mix(
         sourceAt(humidityWind, stepB.mul(UPPER_ADVECTION)).y,
         sourceAt(humidityWind, stepA.mul(UPPER_ADVECTION)).y, weightA),
