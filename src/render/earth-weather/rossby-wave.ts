@@ -4,6 +4,7 @@
 import {
   abs, clamp, cos, exp, float, max, mix, sign, sin, smoothstep, uniform,
 } from 'three/tsl';
+import { wrapAngle } from '../../math/angle';
 import { equirectUvFromDirection } from '../field-projection';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import type { FloatNode, FloatUniform, Vec3Node } from '../tsl-types';
@@ -241,8 +242,4 @@ function trackWeightAtJs(latitude: number, longitude: number): number {
   return Math.min(south + (north - south) * hemisphereMix, 1);
 }
 
-// 位相角 [rad] を 0..2π へ畳む。
-function wrapAngle(angle: number): number {
-  const turns = angle / (2 * Math.PI);
-  return (turns - Math.floor(turns)) * 2 * Math.PI;
-}
+
