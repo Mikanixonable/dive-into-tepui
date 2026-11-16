@@ -216,7 +216,9 @@ export class RenderPipeline {
   private filmLooked(color: Vec3Node): Vec3Node {
     const encoded = workingToColorSpace(color, THREE.SRGBColorSpace) as unknown as Vec3Node;
     const graded = this.filmLut.apply(encoded);
-    return colorSpaceToWorking(graded, THREE.SRGBColorSpace) as unknown as Vec3Node;
+    // ColorSpaceNode は vec4 型を名乗る — vec3 へ切り詰めないと vec4(filmLooked(...), 1) が
+    // 成分数超過でエラーになり、末尾の 1 が黙って捨てられる。
+    return vec3(colorSpaceToWorking(graded, THREE.SRGBColorSpace) as unknown as Vec3Node);
   }
 
   // デバッグ表示の選択肢ごとの合成マテリアルの表。表示ごとに別マテリアルを持ち、quad.material の
