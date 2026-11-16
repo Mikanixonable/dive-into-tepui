@@ -4,7 +4,9 @@
 // 隣どうしの分離)を書く。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
+import {
+  LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
+} from '../../src/render/cloud/cyclone-tracks';
 import { EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
 import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
 import type { Placements } from './cyclone-samples';
@@ -21,13 +23,16 @@ const STEP_DEPTH_LIMIT = 4;
 // 隣の谷と溶けないことを見るときの、谷が居るとみなす深さ [hPa]。
 const PRESENT_DEPTH = 5;
 
-// 低気圧 8 つと熱帯低気圧の系列。名前は失敗の報告に出す。
+// 低気圧と熱帯低気圧の系列。名前は失敗の報告に出す。
 const SERIES: readonly { readonly name: string; readonly at: Placements }[] = [
   ...Array.from({ length: LOW_COUNT }, (_, index) => ({
     name: `低気圧 ${index}`,
     at: (seconds: number) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS),
   })),
-  { name: '熱帯低気圧', at: tropicalPlacementAt },
+  ...Array.from({ length: TROPICAL_COUNT }, (_, index) => ({
+    name: `熱帯低気圧 ${index}`,
+    at: (seconds: number) => tropicalPlacementAt(index, seconds),
+  })),
 ];
 
 // 2 つの配置の中心の大圏距離 [m]。
@@ -101,19 +106,26 @@ export function register(): void {
     assert.ok(counted >= LOW_COUNT, `60 日の中に丸ごと入る一生が ${counted} しかない`);
   });
 
-  test('cyclone-tracks: 熱帯低気圧は熱帯に生まれ、温帯低気圧へ変わって中緯度で消える', () => {
-    const lives = completeLives(sampled(tropicalPlacementAt, 60));
-    assert.ok(lives.length >= 3, `60 日の中に丸ごと入る一生が ${lives.length} しかない`);
-    for (const life of lives) {
-      const [born, dying] = endpoints(life);
-      const bornLatitude = Math.abs(born.latitude) / DEGREE;
-      const dyingLatitude = Math.abs(dying.latitude) / DEGREE;
-      assert.ok(bornLatitude >= 8 && bornLatitude <= 16, `${bornLatitude}° に生まれる`);
-      assert.ok(dyingLatitude >= 20 && dyingLatitude <= 45, `${dyingLatitude}° で消える`);
-      assert.ok(dying.radius >= 2 * born.radius, `半径が ${born.radius} m から ${dying.radius} m にしか広がらない`);
-      assert.equal(born.elongation, 1, '生まれたときに丸くない');
-      assert.ok(dying.elongation > 1, '消えるときに伸びていない');
+  test('cyclone-tracks: 熱帯低気圧は熱帯に生まれ、直進するか転向して温帯化する', () => {
+    let counted = 0;
+    for (let index = 0; index < TROPICAL_COUNT; index++) {
+      for (const life of completeLives(sampled((seconds) => tropicalPlacementAt(index, seconds), 60))) {
+        const [born, dying] = endpoints(life);
+        const bornLatitude = Math.abs(born.latitude) / DEGREE;
+        // 発生点は |緯度| 8〜16° — 道のり半ばの点の混ざりで標本はその幅の端をわずかに越えうる。
+        assert.ok(bornLatitude >= 7 && bornLatitude <= 17, `${bornLatitude}° に生まれる`);
+        assert.equal(born.elongation, 1, '生まれたときに丸くない');
+        if (dying.elongation > 1) {
+          // 転向した渦は温帯化して緩く大きくなり、中緯度で消える。
+          const dyingLatitude = Math.abs(dying.latitude) / DEGREE;
+          assert.ok(dyingLatitude >= 20 && dyingLatitude <= 45, `転向して ${dyingLatitude}° で消える`);
+          assert.ok(dying.radius >= 2 * born.radius,
+            `半径が ${born.radius} m から ${dying.radius} m にしか広がらない`);
+        }
+        counted++;
+      }
     }
+    assert.ok(counted >= 3, `60 日の中に丸ごと入る一生が ${counted} しかない`);
   });
 
   test('cyclone-tracks: 同じ半球の低気圧は互いに溶けない', () => {
@@ -134,9 +146,19 @@ export function register(): void {
     }
   });
 
-  test('cyclone-tracks: 熱帯低気圧は同時に 1 つで、居ない日がある', () => {
-    const samples = sampled(tropicalPlacementAt, 14);
-    assert.ok(samples.some((sample) => sample === null), '14 日のあいだ熱帯低気圧が居続ける');
-    assert.ok(samples.some((sample) => sample !== null), '14 日のあいだ熱帯低気圧が現れない');
+  test('cyclone-tracks: 熱帯低気圧の数は 0 から複数まで増減する', () => {
+    // 1 年ぶん。全球に 1 つも居ない期間と、海域をまたいで複数並ぶ期間の両方がある。
+    let empty = 0;
+    let most = 0;
+    for (let seconds = 0; seconds <= 365 * DAY; seconds += SAMPLE_STEP) {
+      let count = 0;
+      for (let index = 0; index < TROPICAL_COUNT; index++) {
+        if (tropicalPlacementAt(index, seconds) !== null) count++;
+      }
+      if (count === 0) empty++;
+      most = Math.max(most, count);
+    }
+    assert.ok(empty > 0, '1 年のあいだ熱帯低気圧の居ない時刻がない');
+    assert.ok(most >= 2, `1 年のあいだ同時に並ぶのが高々 ${most} つ`);
   });
 }
