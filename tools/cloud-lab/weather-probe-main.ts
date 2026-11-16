@@ -3,7 +3,7 @@
 // 読み戻す。全球を 720×360(0.5°、行は北→南、列は西経 180° → 東経 180°)で返す。
 // window.weatherProbe が tools/cloud-regime-weather.mjs の駆動口。
 import { NoToneMapping, WebGPURenderer } from 'three/webgpu';
-import { screenUV, vec4 } from 'three/tsl';
+import { exp2, float, screenUV, vec4 } from 'three/tsl';
 import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
 import { EquirectProjection } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
@@ -43,7 +43,8 @@ const OUT_HEIGHT = 360;
 // 不透明度(views.ts の coverage と同じ、量から不透明度へ写す式を掛けた値)。末尾の 4 つは
 // 種類ごとの光学的厚みと雲頂高度 [m](cloud-kind-node の式そのまま。ISCCP 分類を
 // 実写と同じ物差しで掛けるための物理量。cumulusTau は覆う割合でなく雲の中の
-// 光学的厚み τ_in で、覆う割合は coverage チャンネルが持つ)。4 つずつ RGBA の写しへ割り当てるので、
+// 光学的厚み τ_in で、覆う割合は coverage チャンネルが持つ)。cumulusCellKm・cirrusCellKm は
+// 雲場へ焼いた対流セルの大きさを log2 から km へ戻した値。4 つずつ RGBA の写しへ割り当てるので、
 // 写しの序数 × 4 がここの添字に対応する。
 const CHANNELS = [
   'pressure', 'lift', 'warmth', 'band',
@@ -52,6 +53,7 @@ const CHANNELS = [
   'anvil', 'meanCloudiness', 'landFraction', 'cumulus',
   'cirrus', 'cloudTop', 'coverage',
   'cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM', 'tropopause',
+  'oceanFetch', 'cumulusCellKm', 'cirrusCellKm',
 ] as const;
 
 class WeatherProbeCanvas {
@@ -93,6 +95,7 @@ class WeatherProbeCanvas {
         elementTop,
         cirrusTopAltitudeNode(cloud.cirrus),
         weather.tropopause),
+      vec4(weather.oceanFetch, exp2(cloud.cumulusCell), exp2(cloud.cirrusCell), float(0)),
     ], OUT_WIDTH, OUT_HEIGHT);
   }
 
