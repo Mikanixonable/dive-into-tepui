@@ -5,6 +5,8 @@ const path = require('path');
 const net = require('net');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
+const { setupApplyTuning } = require('./tools/cloud-lab-apply-tuning.cjs');
+const { writeOverrides } = require('./tools/cloud-tuning-overrides-file.cjs');
 
 // 既定ポート preferred が埋まっていたら空きポートを返す。devServer.port の被りは
 // EADDRINUSE で起動自体が落ちるので、設定側で先に空きを探す。
@@ -36,6 +38,8 @@ const config = {
   // motion が生成雲の動きの計測用の読み出し(motion.html)、
   // weather-probe が気象状態の浮動小数の読み出し(weather-probe.html)、translucent が半透明雲の
   // 教師比較用の物理量の読み出し(translucent.html)。
+  // detail が雲の細部の描画側モード(detail.html) — render-lab と同じ描画経路で場面・段・
+  // 時刻・種類を選んで見る画面と、計測道具(tools/cloud-lab-detail-*.mjs)の撮影口を兼ねる。
   entry: {
     main: './tools/cloud-lab/main.ts',
     separate: './tools/cloud-lab/separate-main.ts',
@@ -43,6 +47,7 @@ const config = {
     motion: './tools/cloud-lab/motion-main.ts',
     'weather-probe': './tools/cloud-lab/weather-probe-main.ts',
     translucent: './tools/cloud-lab/translucent-main.ts',
+    detail: './tools/cloud-lab/detail-main.ts',
   },
   resolve: {
     extensions: ['.ts', '.js'],
@@ -85,8 +90,10 @@ const config = {
     // 微細スケール実写参照で、Slice C が特徴量の相手に読む。reference-cloudtop/ は
     // MODIS Terra の雲頂高度の参照で、compare が雲頂の距離の相手に読む。ビルドの掃除で消さない。
     // motion-compare/ は cloud-lab:motion-compare が残す生成雲の動きの表で、感度・ablation・
-    // 修正前後の差分を引く根拠になる。ビルドの掃除で消さない。
-    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-motion|reference-fine|reference-fine-timeseries|reference-cloudtop|reference-cirrus|history|history-polar-masked|render-capture|render-capture-timeseries|render-capture-cirrus|motion-compare)[\\/]/ },
+    // 修正前後の差分を引く根拠になる。detail/ は描画側モードの生成物(実写参照・撮影・
+    // 履歴)で、cloud-lab:detail-* が前回との差分を引く根拠になる。sunset*/ は夕景の検証の
+    // 出力。ビルドの掃除で消さない。
+    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-motion|reference-fine|reference-fine-timeseries|reference-cloudtop|reference-cirrus|history|history-polar-masked|render-capture|render-capture-timeseries|render-capture-cirrus|motion-compare|detail|sunset[^\\/]*)[\\/]/ },
   },
   optimization: {
     minimizer: [
@@ -126,24 +133,37 @@ const config = {
       filename: 'translucent.html',
       chunks: ['translucent'],
     }),
+    new HtmlWebpackPlugin({
+      template: './tools/cloud-lab/detail.html',
+      filename: 'detail.html',
+      chunks: ['detail'],
+    }),
   ],
   devServer: {
     static: './.cloud-lab',
+    // 調整値をコードへ書き込む窓口(setupApplyTuning)を持つので、手元からだけ繋げる。
+    host: 'localhost',
     open: true,
     liveReload: true,
     hot: false,
+    setupMiddlewares: setupApplyTuning,
   },
 };
 
 // 8083 を優先し、埋まっていたら別の空きポートで出す(同時起動や前の server の残りを
 // 許すため — 出たポートは webpack-dev-server の起動ログに出る)。
-module.exports = preferredPort(8083).then((port) => {
+module.exports = (env, argv) => preferredPort(8083).then((port) => {
+  // 上書きファイルは「いま動いている実験環境の値」とするため、開発サーバの起動ごとに空にする。
+  // 空で始めないと、前回のセッションでいじった値がゲームへ残ったままになる。
+  if (argv.mode === 'development') writeOverrides({});
   if (port !== 8083) {
     console.warn(`[cloud-lab] ポート 8083 は使用中。代わりに http://localhost:${port}/ で出します。`);
   }
   config.devServer.port = port;
   // 同じキャッシュ名を分かち合う server どうしは互いのパックを読み違える(片方が古い
-  // モジュールを拾う)ので、ポートごとに分ける。
-  config.cache.name = `cloud-lab-${port}`;
+  // モジュールを拾う)ので、ポートごとに分ける。production の撮影とも分ける — 片方の
+  // モードが書いたモジュールをもう片方が読むと、innerGraph で畳んだ依存のテンプレートが
+  // 無く No template for dependency で落ちる。
+  config.cache.name = `cloud-lab-${port}-${argv.mode ?? 'development'}`;
   return config;
 });

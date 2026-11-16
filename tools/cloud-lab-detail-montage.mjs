@@ -1,13 +1,13 @@
 // 撮影と実写を 1 枚に並べたモンタージュを書く。撮影名ごとに、A の撮影、(B があれば)B の撮影、
 // 実写の参照を中心から 512×512 で切り出して横に並べ、<out>/<撮影名>.png へ書く。
-// 参照は A の manifest が持つ scene・tierKmPerPx から .cloud-detail/reference/<scene>-<km/px>.png を引く。
+// 参照は A の manifest が持つ scene・tierKmPerPx から .cloud-lab/detail/reference/<scene>-<km/px>.png を引く。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { decodePng, encodeRgbPng } from './png.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const detailDir = path.join(root, '.cloud-detail');
+const detailDir = path.join(root, '.cloud-lab', 'detail');
 const TILE = 512;
 
 // <dir>/manifest.json の shots を、撮影名で引ける map へ。
@@ -60,7 +60,7 @@ function main() {
     else names.push(args[i]);
   }
   if (names.length === 0) {
-    console.error('使い方: node tools/cloud-detail-montage.mjs [--a <dir>] [--b <dir>] [--out <dir>] <撮影名>...');
+    console.error('使い方: node tools/cloud-lab-detail-montage.mjs [--a <dir>] [--b <dir>] [--out <dir>] <撮影名>...');
     process.exit(1);
   }
   const manifestA = loadManifest(options.aDir);

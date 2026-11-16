@@ -99,7 +99,7 @@ async function init(): Promise<void> {
   const { width, height } = photo.image as { width: number; height: number };
 
   const canvas = document.getElementById('view') as HTMLCanvasElement;
-  const renderer = new WebGPURenderer({ canvas });
+  const renderer = new WebGPURenderer({ canvas, requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
   renderer.setSize(width, height, false);
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;

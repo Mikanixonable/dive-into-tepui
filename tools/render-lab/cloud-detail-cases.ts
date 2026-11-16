@@ -6,12 +6,12 @@ import * as THREE from 'three/webgpu';
 import { R_EARTH, R_EARTH_EQ, EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { metersPerPixelAtDepth, tanHalfFov } from '../../src/math/projection';
-import { CIRRUS_DETAIL } from '../../src/render/cloud/cloud-detail';
+import { CIRRUS_DETAIL } from '../../src/render/earth-weather/cloud/cloud-detail';
 import { FOV_DEG, labCamera, sunAnglesOf, VIEW_HEIGHT, type LabCase, type LabShot } from './lab-case';
 import type { EarthAngleKey, LabViewAngles } from './view-angles';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 
-// 直下点に取る場面。center は tools/cloud-detail/scenes.json(実写の目録)と同じ地点の中心を
+// 直下点に取る場面。center は tools/cloud-lab/detail-scenes.json(実写の目録)と同じ地点の中心を
 // 使うので、撮った画像は同じ場所の実写と同じ物差しで比べられる。
 interface CloudDetailScene {
   // 撮影名に使う短い名。
@@ -33,7 +33,7 @@ const SCENES: readonly CloudDetailScene[] = [
   { id: 'natl-front', scene: 'frontal-band-natlantic', latitudeDeg: 50, longitudeDeg: -35 },
   // 北太平洋ジェットの下の巻雲。
   { id: 'npac-jet', scene: 'jet-cirrus-npacific', latitudeDeg: 42, longitudeDeg: -150 },
-  // 西太平洋収束帯のかなとこ雲の流出。
+  // 西太平洋収束帯の巻雲。
   { id: 'wpac-itcz', scene: 'anvil-cirrus-wpacific', latitudeDeg: 10, longitudeDeg: 150 },
   // 南大洋の寒気流の積雲(高緯度の海)。
   { id: 'south-hl', scene: 'highlat-cumulus-southern', latitudeDeg: -57, longitudeDeg: -120 },

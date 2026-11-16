@@ -1,4 +1,4 @@
-// 巻雲の教師候補の実写を NASA Worldview から .cloud-detail/candidates/ へ取り込み、
+// 巻雲の教師候補の実写を NASA Worldview から .cloud-lab/detail/candidates/ へ取り込み、
 // 型ごとのコンタクトシートと番号対応表(index.json / index.md)を書く。候補表は
 // ファイル内の GROUPS。各候補を 1 km/px・512×512(約 512 km 四方)で取り、取れた
 // 画像を型ごとに 4 列 × 3 行で並べた sheet-<型>-<n>.png を書く。各タイルの左上へ
@@ -9,11 +9,11 @@ import path from 'node:path';
 import { decodePng, encodeRgbPng } from './png.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const outDir = path.join(root, '.cloud-detail', 'candidates');
+const outDir = path.join(root, '.cloud-lab', 'detail', 'candidates');
 
 // 緯度経度 1° の長さ [km]。km/px の指定は公称値なので、BBOX の換算も近似値で足りる。
 const KM_PER_DEGREE = 111.32;
-// 真色スナップショットの層と取り方。層は tools/cloud-detail-reference.mjs と同じ
+// 真色スナップショットの層と取り方。層は tools/cloud-lab-detail-reference.mjs と同じ
 // Worldview Snapshots API の可視真色で、MODIS Terra は候補の全日付(2023-2024)を持つ。
 const LAYER = 'MODIS_Terra_CorrectedReflectance_TrueColor';
 const KM_PER_PX = 1;
@@ -296,7 +296,7 @@ async function main() {
         date: e.date,
         covered: coveredFraction(png),
         id: e.id,
-        file: path.posix.join('.cloud-detail', 'candidates', `${e.id}.png`),
+        file: path.posix.join('.cloud-lab', 'detail', 'candidates', `${e.id}.png`),
         sheet: `sheet-${group.type}-${Math.floor(i / (SHEET_COLS * SHEET_ROWS)) + 1}.png`,
       });
     });
@@ -311,7 +311,7 @@ async function main() {
   }
 
   const index = {
-    tool: 'cloud-teacher-candidates',
+    tool: 'cloud-lab-detail-candidates',
     layer: LAYER,
     kmPerPx: KM_PER_PX,
     size: SIZE,
