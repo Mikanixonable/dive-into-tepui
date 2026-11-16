@@ -1,14 +1,14 @@
-// 気象モデルから凝結した雲テクスチャ(2 枚・時刻の違う組)と、雲を運ぶ風・環境の写し。雲と環境は
-// 同じ天気の評価から出るので 1 パスの 2 出力へ焼き、ベイク時とサンプリング時の 4基底割り当てを
-// 一括管理し、出入りをどちらも CloudSample で受け渡す。
+// 気象モデルから凝結した雲テクスチャ(2 枚・時刻の違う組)と、雲を運ぶ風・環境・セル径の写し。雲と
+// 環境とセル径は同じ天気の評価から出るので 1 パスの 3 出力へ焼き、ベイク時とサンプリング時の
+// 4基底割り当てを一括管理し、出入りをどちらも CloudSample で受け渡す。
 import * as THREE from 'three/webgpu';
 import { normalize, uniform } from 'three/tsl';
 import { BakedField } from '../../baked-field';
 import { GPU_PASS } from '../../gpu-timings';
 import { condense } from './condensation';
 import {
-  blendBakedTexels, cloudEnvironmentTexel, cloudFieldTexelFromSample, cloudMotionTexel, cloudSampleFromTexels,
-  type CloudBlend, type CloudFieldSlot, type CloudMotion, type CloudSample,
+  blendBakedTexels, cloudCellTexel, cloudEnvironmentTexel, cloudFieldTexelFromSample, cloudMotionTexel,
+  cloudSampleFromTexels, type CloudBlend, type CloudFieldSlot, type CloudMotion, type CloudSample,
 } from './cloud-field-sample';
 import { eastAt, northAt } from '../sphere-frame';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -19,7 +19,7 @@ import type { FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types
 
 export class CloudField {
   // 枚ごとの雲・風・環境の写し。どの枚も同じ投影へ、同じ時刻の天気から焼く。雲の写しは
-  // 出力 0 が雲、出力 1 が環境の 2 出力。
+  // 出力 0 が雲、出力 1 が環境、出力 2 がセル径の 3 出力。
   private readonly clouds: readonly [BakedField, BakedField];
   private readonly motions: readonly [BakedField, BakedField];
   // 読み手に渡す 2 枚の組。枚の中身は焼くたびに入れ替わる。
@@ -31,11 +31,11 @@ export class CloudField {
 
   // model の現在時刻における雲を、指定された projection に従ってベイクするテクスチャ。サンプリング時も projection の uv を参照する。
   public constructor(model: WeatherModel, projection: FieldProjection) {
-    // 2 時刻分の雲・風・環境を同じ投影で読めるテクスチャ群へ焼く。雲と環境は同じ天気の
-    // 評価から出るので、1 パスの 2 出力へ焼いて気象のグラフを二度展開しない。
+    // 2 時刻分の雲・風・環境を同じ投影で読めるテクスチャ群へ焼く。雲と環境とセル径は同じ
+    // 天気の評価から出るので、1 パスの 3 出力へ焼いて気象のグラフを二度展開しない。
     const cloudTexelAt = (direction: Vec3Node) => {
       const sample = condense(model.weatherAt(direction));
-      return [cloudFieldTexelFromSample(sample), cloudEnvironmentTexel(sample)];
+      return [cloudFieldTexelFromSample(sample), cloudEnvironmentTexel(sample), cloudCellTexel(sample)];
     };
     const motionTexelAt = (direction: Vec3Node) => cloudMotionTexel(smoothedWindsAt(model, direction));
     const bake = (name: string, source: (direction: Vec3Node) => Vec4Node | readonly Vec4Node[]) =>
@@ -43,8 +43,14 @@ export class CloudField {
     this.clouds = [bake('cloudA', cloudTexelAt), bake('cloudB', cloudTexelAt)];
     this.motions = [bake('cloudMotionA', motionTexelAt), bake('cloudMotionB', motionTexelAt)];
     this.slots = [
-      { cloud: this.clouds[0].textureAt(0), motion: this.motions[0].texture, environment: this.clouds[0].textureAt(1) },
-      { cloud: this.clouds[1].textureAt(0), motion: this.motions[1].texture, environment: this.clouds[1].textureAt(1) },
+      {
+        cloud: this.clouds[0].textureAt(0), motion: this.motions[0].texture,
+        environment: this.clouds[0].textureAt(1), cellSize: this.clouds[0].textureAt(2),
+      },
+      {
+        cloud: this.clouds[1].textureAt(0), motion: this.motions[1].texture,
+        environment: this.clouds[1].textureAt(1), cellSize: this.clouds[1].textureAt(2),
+      },
     ];
   }
 
@@ -72,7 +78,9 @@ export class CloudField {
       this.clouds[0].at(direction), this.clouds[1].at(direction), this.parity, this.fraction);
     const environment = blendBakedTexels(
       this.clouds[0].at(direction, 1), this.clouds[1].at(direction, 1), this.parity, this.fraction);
-    return cloudSampleFromTexels(cloud, environment);
+    const cellSize = blendBakedTexels(
+      this.clouds[0].at(direction, 2), this.clouds[1].at(direction, 2), this.parity, this.fraction);
+    return cloudSampleFromTexels(cloud, environment, cellSize);
   }
 
   // 保持している GPU 資源を解放する。
