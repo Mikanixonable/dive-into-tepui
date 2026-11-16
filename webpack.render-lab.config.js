@@ -4,6 +4,7 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
+const { openDevPageWhenReady } = require('./tools/open-dev-page.cjs');
 
 module.exports = (env, argv) => ({
   cache: {
@@ -63,7 +64,9 @@ module.exports = (env, argv) => ({
   devServer: {
     static: './.render-lab',
     port: 8082,
-    open: true,
+    // 同じアドレスのタブが既にあれば再利用して開く(tools/open-dev-page.cjs)。
+    open: false,
+    onListening: openDevPageWhenReady,
     liveReload: true,
     hot: false,
   },
