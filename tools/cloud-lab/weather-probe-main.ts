@@ -53,7 +53,9 @@ const CHANNELS = [
   'anvil', 'meanCloudiness', 'landFraction', 'cumulus',
   'cirrus', 'cloudTop', 'coverage',
   'cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM', 'tropopause',
-  'oceanFetch', 'cumulusCellKm', 'cirrusCellKm',
+  'oceanFetch', 'cumulusCellKm', 'cirrusCellKm', 'unused',
+  'elevation', 'temperatureK', 'detrain', 'shallowForcing',
+  'deepPotential', 'convectionX', 'reliefM',
 ] as const;
 
 class WeatherProbeCanvas {
@@ -96,6 +98,12 @@ class WeatherProbeCanvas {
         cirrusTopAltitudeNode(cloud.cirrus),
         weather.tropopause),
       vec4(weather.oceanFetch, exp2(cloud.cumulusCell), exp2(cloud.cirrusCell), float(0)),
+      // 気候の標高 [m] と平均気温 [K]。地表の種類・山地・海の暖かさで統計を層別するのに使う。
+      // 3 つ目は塔が上層へ放出する氷雲の強さ(深い対流の指標。積雲の量は塔の高さを持たない)。
+      vec4(
+        this.field.climateMap.elevation(direction), this.field.climateMap.temperatureK(direction),
+        cloud.detrain, weather.shallowForcing),
+      vec4(weather.deepPotential, weather.convection.x, weather.reliefM, float(0)),
     ], OUT_WIDTH, OUT_HEIGHT);
   }
 
