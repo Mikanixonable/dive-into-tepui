@@ -5,7 +5,6 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 const { version } = require('./package.json');
 const { setupOverridesRead } = require('./tools/cloud-tuning-overrides-file.cjs');
-const { openDevPageWhenReady } = require('./tools/open-dev-page.cjs');
 
 const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-11-14-a';
 const EARTH_SURFACE_DEV_PUBLIC_PATH = `/earth/${DEFAULT_EARTH_SURFACE_DATASET_ID}/`;
@@ -136,9 +135,7 @@ module.exports = (env, argv) => ({
       },
     ],
     port: 'auto',
-    // 同じアドレスのタブが既にあれば再利用して開く(tools/open-dev-page.cjs)。
-    open: false,
-    onListening: openDevPageWhenReady,
+    open: true,
     liveReload: false,
     hot: false,
     // cloud-lab が書く調整値の上書き(tools/cloud-tuning-overrides-file.cjs)を、実行中の
