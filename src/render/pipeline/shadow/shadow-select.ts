@@ -4,7 +4,7 @@ import { maxShadowedFraction } from '../../../physics/shadow';
 import { len, sub } from '../../../math/vec3';
 import { MAX_SHADOW_BODIES } from './body-shadow';
 import { cumulusOctavesOf } from '../../opaque-cloud-surface-renderer';
-import { cirrusOctavesOf } from '../../cloud/cloud-detail';
+import { cirrusOctavesOf } from '../../earth-weather/cloud/cloud-detail';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
 import type { RingBand } from './ring-shadow';

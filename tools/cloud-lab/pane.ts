@@ -2,8 +2,8 @@
 // 表示にも写しにも場の投影を使うので、面を並べればそのまま図法どうしの比較になる。
 import type * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
-import type { ClimateMap } from '../../src/render/cloud/climate-map';
-import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+import type { ClimateMap } from '../../src/render/earth-weather/climate-map';
+import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 import type { CloudLabView } from './views';
 

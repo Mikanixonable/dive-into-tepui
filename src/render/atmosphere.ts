@@ -6,7 +6,7 @@
 import type * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../math/projection';
 import { airglowCutoffAltitude, type AirglowOptics } from './airglow';
-import type { CloudRenderInput } from './cloud/cloud-render-input';
+import type { CloudRenderInput } from './earth-weather/cloud/cloud-render-input';
 
 // 大気描画品質の階層。品質を上げるほどサンプリング密度が増加する。
 export const ATMOSPHERE_QUALITY = { off: 0, low: 1, medium: 2, high: 3 } as const;

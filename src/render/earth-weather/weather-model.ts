@@ -14,7 +14,7 @@ import { Highs } from './anticyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
-import { CLOUD_TUNING } from './cloud-tuning';
+import { CLOUD_TUNING } from './cloud/cloud-tuning';
 import { composeWind, FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';

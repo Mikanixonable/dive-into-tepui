@@ -14,7 +14,7 @@ import { DEFAULT_GRAPHICS, withGraphicsOption } from '../../src/render/graphics-
 import type { AtmosphereBody, AtmosphereDraw } from '../../src/render/atmosphere';
 import type { PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
-import type { CloudFieldSlot } from '../../src/render/cloud/cloud-field-sample';
+import type { CloudFieldSlot } from '../../src/render/earth-weather/cloud/cloud-field-sample';
 import type { CloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-select';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type {

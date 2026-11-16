@@ -7,7 +7,7 @@ import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/
 import { EquirectProjection } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
 import { FloatPlaneSet, awaitClimateMap } from './probe-common';
-import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
 
 // 全球の写しの高さ [texel]。幅はその 2 倍。
 const EQUIRECT_HEIGHT = 512;

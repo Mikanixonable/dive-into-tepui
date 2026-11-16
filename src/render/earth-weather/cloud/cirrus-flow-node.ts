@@ -2,7 +2,7 @@
 // 持ち、ここは同じ式をシェーダグラフへ組む。
 import { clamp, max, vec2 } from 'three/tsl';
 import { CIRRUS_FLOW_SPEED_FULL, CIRRUS_FLOW_SPEED_ONSET } from './cirrus-flow';
-import type { Vec2Node } from '../tsl-types';
+import type { Vec2Node } from '../../tsl-types';
 
 // 上層の風(東・北の成分 [m/s])から、筋の向き θ の倍角ベクトル (cos 2θ, sin 2θ) × 揃い度。
 // 基準式と同じく、倍角の成分は風ベクトルの成分から直に組むので θ 自身は求めない。

@@ -1,13 +1,13 @@
 // 気候から表示時刻の雲場を焼く所有者。気候・天気の中間場・出力場を同じ寿命で管理する。
 import { CloudField } from './cloud-field';
-import { WeatherModel } from './weather-model';
+import { WeatherModel } from '../weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
-import type { ClimateMap } from './climate-map';
-import type { GpuTimingSink } from '../gpu-timings';
-import type { FieldProjection } from '../field-projection';
+import type { ClimateMap } from '../climate-map';
+import type { GpuTimingSink } from '../../gpu-timings';
+import type { FieldProjection } from '../../field-projection';
 import type { CloudBlend, CloudFieldSlot, CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-presentation';
-import type { Vec3Node } from '../tsl-types';
+import type { Vec3Node } from '../../tsl-types';
 
 // 雲場を焼く表示時刻の刻み [s]。雲場は、この刻みで焼いた 2 枚のあいだを表示時刻で補間して読む。
 const CLOUD_BAKE_DISPLAY_TIME_STEP = 6;

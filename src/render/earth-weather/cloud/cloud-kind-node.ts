@@ -6,7 +6,7 @@ import {
   CUMULUS_ALTITUDE_SPAN, CUMULUS_BASE_ALTITUDE, CUMULUS_IN_CLOUD_DEPTH_COEFFICIENT,
   CUMULUS_MAX_OPACITY, CUMULUS_OPTICAL_DEPTH_SCALE,
 } from './cloud-kind';
-import type { FloatNode } from '../tsl-types';
+import type { FloatNode } from '../../tsl-types';
 
 // 積雲の量から雲頂高度 [m]。
 export function cumulusTopAltitudeNode(amount: FloatNode): FloatNode {

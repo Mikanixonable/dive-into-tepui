@@ -10,9 +10,9 @@ import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
 import { DeferredTexture } from '../../src/render/deferred-texture';
 import {
   blendBakedTexels, cloudMotionFromTexel,
-} from '../../src/render/cloud/cloud-field-sample';
-import type { ClimateMap } from '../../src/render/cloud/climate-map';
-import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+} from '../../src/render/earth-weather/cloud/cloud-field-sample';
+import type { ClimateMap } from '../../src/render/earth-weather/climate-map';
+import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node, Vec4Uniform } from '../../src/render/tsl-types';
 
 // 気候画像が届くのを待つ上限 [フレーム]。越えたら画像が取れていないので、器を組まずに投げる。
