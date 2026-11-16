@@ -1,7 +1,9 @@
 // 天気図へ低気圧の記号を置く。中心は L と気圧値、眼を持つ渦は中心に眼の印を置く。
 // 気象モデルが前線や高気圧の軌跡を持たない間は、記号は L と眼だけになる。
 import { eyeStrengthOf } from '../../src/render/cloud/cyclones';
-import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
+import {
+  LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
+} from '../../src/render/cloud/cyclone-tracks';
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import { sampleField, strokeWrapped } from './synoptic-map';
 import type { MapView } from './synoptic-map';
@@ -57,8 +59,9 @@ export function drawCycloneSymbols(
     drawCenterLabel(context, fields, placement, 0, view);
   }
   // 熱帯低気圧 — L と眼。
-  const tropical = tropicalPlacementAt(seconds);
-  if (tropical !== null && tropical.depth >= 2) {
+  for (let index = 0; index < TROPICAL_COUNT; index += 1) {
+    const tropical = tropicalPlacementAt(index, seconds);
+    if (tropical === null || tropical.depth < 2) continue;
     const eye = eyeStrengthOf(
       tropical.depth, tropical.radius, tropical.latitude, R_EARTH, SIDEREAL_DAY);
     drawCenterLabel(context, fields, tropical, eye, view);
