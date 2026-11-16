@@ -159,6 +159,22 @@ const ANVIL_HUMIDITY = CLOUD_TUNING.anvilHumidity;
 // 暖気流入が地表付近の湿度へ寄与する伝達利得 [per rad]。平均的な暖気流入（0.26 rad）で伝達関数幅の約半分が
 // 変位する係数。本項の期待値が正のため、基底湿度 (SURFACE_HUMIDITY_BASE) をオフセットして均衡させる。
 const WARM_HUMIDITY = CLOUD_TUNING.warmHumidity;
+// 寒気噴出 — 寒気の流入(warmth < 0)が暖かい海を渡ると湿り、細胞状の雲が立つ(MCAO)。底上げは
+// 追跡が海の上にあった時間の割合(fetch)で逓減する: 海岸を出たばかりでは閉じた細胞の高い被覆、
+// 長く海を流れた先では開いた細胞へ崩れて被覆が落ちる(衛星合成で閉じた細胞 ~90%、開いた細胞
+// ~50%)。効きが飽和する寒気の流入の深さ [rad]。
+const OUTBREAK_WARMTH_FULL = 0.15;
+const OUTBREAK_HUMIDITY_SHORT = 0.28;
+const OUTBREAK_HUMIDITY_LONG = 0.09;
+// 寒気が湿り始めるまでの海上滞在の時間比。陸を出たばかりの気団はまだ乾いていて雲を立たせない
+// — 海面からの供給が境界層へ届くまで数時間かかるので、追跡(36 h)のこの割合から湿らせ始める。
+const OUTBREAK_FETCH_RAMP = 0.2;
+// 閉塞した低気圧の構造 — 赤道側から芯へ巻き込む乾いた舌が地表付近と上層を乾かし、極側の
+// コンマの頭の層状域が地表付近を湿らせる。乾いた舌は上層の乾きが主(水蒸気画像の暗帯)なので、
+// 上層を深く引く。
+const DRY_TONGUE_DRYING = 0.3;
+const DRY_TONGUE_UPPER_DRYING = 0.55;
+const COMMA_HEAD_HUMIDITY = 0.15;
 // 移流後に足す平年の雲量の重み(地表付近と上層)。雲量の地理的な差が凝結のしきい値をまたぐ幅に
 // 取る — 小さいと砂漠にも海と同じだけ雲が湧き、大きいと雲の多い海が覆われたまま平年の雲量図が
 // 貼り付く。地表付近は、貼り付いた図が中緯度の長波長スペクトルの過剰の支配項だったので半分に
@@ -207,7 +223,9 @@ export class WeatherModel {
       'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1),
       GPU_PASS.cloudBake);
     this.convectiveActivity = new ConvectiveActivity(this.surfaceCirculation, projection);
-    this.airMass = new AirMass(projection, (direction) => this.traceFlowAt(direction), surfaceRadius);
+    this.airMass = new AirMass(
+      projection, (direction) => this.traceFlowAt(direction),
+      (direction) => this.climate.landFraction(direction), surfaceRadius);
     this.syncTime(0);
   }
 
@@ -287,17 +305,30 @@ export class WeatherModel {
     const landFraction = this.climate.landFraction(direction);
     const eye = this.cyclones.eyeAt(direction);
     const anvil = this.cyclones.anvilAt(direction);
+    // 閉塞した低気圧の構造 — 赤道側から芯へ巻き込む乾いた舌、極側のコンマの頭、暖域の舌が
+    // 切り離される芯(その内側で暖気流入による加湿を止める)。
+    const dryTongue = this.cyclones.dryTongueAt(direction);
+    const commaHead = this.cyclones.commaHeadAt(direction);
+    const occludedCore = this.cyclones.occludedCoreAt(direction);
+    // 寒気噴出 — 寒気の流入かつ海上で地表付近を湿らせる。底上げは海上滞在の時間比(fetch)で
+    // 逓減し、海岸を出たばかりの閉じた細胞から、海を流れ続けた開いた細胞へ被覆を落とす。
+    const outbreak = smoothstep(0, OUTBREAK_WARMTH_FULL, airMass.warmth.negate())
+      .mul(landFraction.oneMinus())
+      .mul(smoothstep(0, OUTBREAK_FETCH_RAMP, airMass.ocean))
+      .mul(airMass.ocean.oneMinus().mul(OUTBREAK_HUMIDITY_SHORT - OUTBREAK_HUMIDITY_LONG)
+        .add(OUTBREAK_HUMIDITY_LONG));
     const deviation = advected.surfaceHumidity.sub(SURFACE_HUMIDITY_BASE);
     const surfaceHumidity = clamp(
       advected.surfaceHumidity.add(deviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
         .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT).mul(surfaceBiasWeight))
         .add(max(lift, 0).mul(SURFACE_LIFT_HUMIDITY)).add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
-        .add(warmth.mul(WARM_HUMIDITY)).add(band.mul(BAND_HUMIDITY))
-        .add(anvil.mul(ANVIL_HUMIDITY)).sub(eye.mul(SURFACE_EYE_DRYNESS)), 0, 1);
+        .add(warmth.mul(WARM_HUMIDITY).mul(occludedCore.oneMinus())).add(band.mul(BAND_HUMIDITY))
+        .add(anvil.mul(ANVIL_HUMIDITY)).add(outbreak).add(commaHead.mul(COMMA_HEAD_HUMIDITY))
+        .sub(eye.mul(SURFACE_EYE_DRYNESS)).sub(dryTongue.mul(DRY_TONGUE_DRYING)), 0, 1);
     const upperHumidity = clamp(
       advected.upperHumidity.add(cloudinessBias(meanCloudiness).mul(UPPER_MEAN_CLOUDINESS_WEIGHT))
         .add(max(lift, 0).mul(UPPER_LIFT_HUMIDITY)).add(min(lift, 0).mul(UPPER_SUBSIDENCE_DRYING))
-        .sub(eye.mul(UPPER_EYE_DRYNESS)), 0, 1);
+        .sub(eye.mul(UPPER_EYE_DRYNESS)).sub(dryTongue.mul(DRY_TONGUE_UPPER_DRYING)), 0, 1);
 
     return {
       pressure,
