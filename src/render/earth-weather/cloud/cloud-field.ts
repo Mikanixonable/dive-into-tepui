@@ -43,9 +43,11 @@ export class CloudField {
       return [cloudFieldTexelFromSample(sample), cloudEnvironmentTexel(sample), cloudCellTexel(sample)];
     };
     const motionTexelAt = (direction: Vec3Node) => cloudMotionTexel(smoothedWindsAt(model, direction));
-    const bake = (name: string, source: (direction: Vec3Node) => Vec4Node | readonly Vec4Node[]) =>
-      new BakedField(name, THREE.RGBAFormat, projection, source, GPU_PASS.cloudBake);
-    this.clouds = [bake('cloudA', cloudTexelAt), bake('cloudB', cloudTexelAt)];
+    const bake = (name: string, source: (direction: Vec3Node) => Vec4Node | readonly Vec4Node[], mipmaps = false) =>
+      new BakedField(name, THREE.RGBAFormat, projection, source, GPU_PASS.cloudBake, mipmaps);
+    // 雲の写しはミップ段を立てる — ベールが塔まわりの広域成分を段から読む(タップでは
+    // 塔のあいだの晴れ間を埋められない)。
+    this.clouds = [bake('cloudA', cloudTexelAt, true), bake('cloudB', cloudTexelAt, true)];
     this.motions = [bake('cloudMotionA', motionTexelAt), bake('cloudMotionB', motionTexelAt)];
     // 脱出水のベールは焼いた雲と風の写しから組む — 同じ枚の写しを読むので、枚ごとに対応付ける。
     this.veils = [

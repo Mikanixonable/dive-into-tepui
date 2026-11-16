@@ -117,10 +117,10 @@ export const CLOUD_TUNING_DEFAULTS = {
   shapeNetworkHumidity: 0.45,
   shapeGrainHumidity: 0.70,
   // condensation.ts — 塔から上層への氷雲の放出。層状の雲から圏界面までの柱を塔が昇った比 —
-  // 湿りと上昇流の門が掛かるぶん実際の塔は柱の半分までしか届かないことが多いので、開始は
-  // 柱の下三分の一から取る。
-  detrainOnset: 0.35,
-  detrainFull: 0.8,
+  // 湿りと上昇流の門が掛かるぶん実際の塔は柱の半分までしか届かないので、開始は柱の四分の一、
+  // 飽和は到達しうる上限あたりへ取る(届かない値を飽和にすると最強のセルでも薄いままになる)。
+  detrainOnset: 0.25,
+  detrainFull: 0.55,
   // condensation.ts — 巻雲(薄い雲)の光学的厚み
   hazeOnset: 0.5,
   hazeGain: 0.66,
@@ -140,6 +140,10 @@ export const CLOUD_TUNING_DEFAULTS = {
   detrainAdvectStep: 1.5 * 3600,
   detrainDecaySeconds: 4 * 3600,
   detrainGain: 1.0,
+  // 群れの盾 — 放出の源をこの半径 [m] で均した平均(ミップ段から読む)へ掛ける利得。
+  // 塔のあいだの晴れ間まで届く広さ。孤立した塔では平均が薄くてほとんど乗らない。
+  detrainShieldRadius: 120e3,
+  detrainShieldGain: 4,
   // cell-size.ts — 積雲のセル径 [km] と門
   cellClosedKm: 70,
   cellOpenKm: 25,
