@@ -9,7 +9,7 @@
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
 import {
-  WAVE_NUMBER, WAVE_PHASE_SPEED, waveAmplitudeAt, waveTroughLongitude,
+  WAVE_DRIFT, WAVE_TROUGH_WIDTH, waveAmplitudeAt, waveAnchoredSlot, waveTroughLongitude,
 } from './rossby-wave';
 import { DAY, DEGREE, uniformIn } from './cyclone-tracks';
 import type { CyclonePlacement, Range } from './cyclone-tracks';
@@ -31,17 +31,14 @@ const HIGH_REBIRTH_GAP = 8 * 3600;
 // 座る移動性高気圧は、暴風帯の南縁から中ほどまでに出る。
 const HIGH_BIRTH_LATITUDE: Range = [30, 48];
 const HIGH_END_LATITUDE: Range = [35, 55];
-// 枡の経度は波の尾根へ錨づく — 尾根は谷から半波長下流。谷の間隔 [°]、尾根からさらに
-// 下流への距離 [°](低気圧の谷からの下流距離と揃え、低と高が半位相ずれて交互に並ぶ
-// 配置にする)、同じ尾根へ並ぶ枡どうしの下流方向の間隔 [°]、生まれる経度の揺れ(谷の
-// 間隔に対する比、±。揺れは両隣の谷へ寄りすぎない範囲に留める)。
-const WAVE_TROUGH_WIDTH = 360 / WAVE_NUMBER;
+// 枡の経度は波の尾根へ錨づく — 尾根は谷から半波長下流。尾根からさらに下流への距離 [°]
+// (低気圧の谷からの下流距離と揃え、低と高が半位相ずれて交互に並ぶ配置にする)、同じ尾根へ
+// 並ぶ枡どうしの下流方向の間隔 [°]、生まれる経度の揺れ(谷の間隔 WAVE_TROUGH_WIDTH に対する
+// 比、±。揺れは両隣の谷へ寄りすぎない範囲に留める)。
 const WAVE_RIDGE_OFFSET = WAVE_TROUGH_WIDTH / 2;
 const WAVE_HIGH_DOWNSTREAM = 25;
 const HIGH_RANK_SPACING = 20;
 const HIGH_LONGITUDE_JITTER = 0.1;
-// 錨が波とともに東へ進む速さ [°/s]。高気圧は生まれたあとも波とともに運ばれる。
-const WAVE_DRIFT = WAVE_PHASE_SPEED * (180 / Math.PI);
 // 一生を平均した自力の速さの幅 [m/s] と減速の指数の幅。高気圧は低気圧(6.5〜11 m/s)より
 // 遅く、時にほとんど停滞する(ブロッキング傾向)。
 const HIGH_SPEED: Range = [1.5, 5];
@@ -101,11 +98,7 @@ function highTrackOf(index: number, generation: number, surfaceRadius: number): 
   const endLatitude = uniformIn(HIGH_END_LATITUDE, rand);
   // この世代で枡が座る尾根の番号と、同じ尾根へ並ぶ枡の中での順番(低気圧の谷と同じ巡り方)。
   // 生まれる時刻 [s] = 世代の周期の頭から onset だけ遅れ、枡の位相ずらし分だけ早い。
-  const ridgeIndex = (slot + generation) % WAVE_NUMBER;
-  let rank = 0;
-  for (let s = 0; s < slot; s++) {
-    if ((s + generation) % WAVE_NUMBER === ridgeIndex) rank++;
-  }
+  const { index: ridgeIndex, rank } = waveAnchoredSlot(slot, generation);
   const birthSeconds = (generation - index / HIGH_COUNT) * HIGH_PERIOD + onset;
   const birthLongitude = waveTroughLongitude(ridgeIndex, birthSeconds, hemisphere) / DEGREE
     + WAVE_RIDGE_OFFSET + WAVE_HIGH_DOWNSTREAM + rank * HIGH_RANK_SPACING
