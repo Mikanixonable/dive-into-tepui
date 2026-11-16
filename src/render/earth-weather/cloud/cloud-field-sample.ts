@@ -12,6 +12,10 @@ export interface CloudSample {
   // 巻雲の筋の向き θ の倍角ベクトル (cos 2θ, sin 2θ) × 揃い度(0..1)。局所の東・北の基底で
   // 符号付き(−1..1)。向きの無い所は 0 ベクトル。組み方の基準式は cirrus-flow.ts。
   readonly cirrusFlow: Vec2Node;
+  // 積雲の対流セルの大きさ log2(km)。0..1 へ畳まない生値で、焼いた写しの線形補間が径の幾何平均になる。
+  readonly cumulusCell: FloatNode;
+  // 巻雲の要素径(繊維・鱗のピッチ) log2(km)。0..1 へ畳まない生値。
+  readonly cirrusCell: FloatNode;
   // 陸らしさ(0 が海、1 が陸)。生成時の値は天気の landFraction。
   readonly land: FloatNode;
   // 対流の活発さ 0..1。生成時の値は天気の convectiveActivity。
@@ -22,11 +26,12 @@ export interface CloudSample {
   readonly anvil: FloatNode;
 }
 
-// 焼いた雲場の 1 枚ぶん。雲・風・環境の写しは同じ時刻と cap で焼かれている。
+// 焼いた雲場の 1 枚ぶん。雲・風・環境・セル径の写しは同じ時刻と cap で焼かれている。
 export interface CloudFieldSlot {
   readonly cloud: THREE.Texture;
   readonly motion: THREE.Texture;
   readonly environment: THREE.Texture;
+  readonly cellSize: THREE.Texture;
 }
 
 // 焼いた雲場の 2 枚の混ぜ方。parity は古い側の枚の番号(0 か 1)、fraction は古い側から新しい側への混合比(0..1)。
@@ -52,12 +57,17 @@ export function blendBakedTexels(a: Vec4Node, b: Vec4Node, parity: FloatNode, fr
 }
 
 // 焼いた雲場のRGBA(R = 積雲、G = 巻雲、B・A = 筋の倍角ベクトル)と環境のRGBA(R = 陸、G = 対流、
-// B = 気候の雲量、A = 金床)を、雲標本へ戻す。写しは半精度なので、倍角ベクトルは符号付き(−1..1)のまま入っている。
-export function cloudSampleFromTexels(cloudTexel: Vec4Node, environmentTexel: Vec4Node): CloudSample {
+// B = 気候の雲量、A = 金床)とセル径のRGBA(R = 積雲のセル径、G = 巻雲の要素径、いずれも log2(km)
+// の生値)を、雲標本へ戻す。写しは半精度なので、倍角ベクトルは符号付き(−1..1)のまま入っている。
+export function cloudSampleFromTexels(
+  cloudTexel: Vec4Node, environmentTexel: Vec4Node, cellTexel: Vec4Node,
+): CloudSample {
   return {
     cumulus: cloudTexel.r,
     cirrus: cloudTexel.g,
     cirrusFlow: vec2(cloudTexel.b, cloudTexel.a),
+    cumulusCell: cellTexel.r,
+    cirrusCell: cellTexel.g,
     land: environmentTexel.r,
     convection: environmentTexel.g,
     climateCloudiness: environmentTexel.b,
@@ -73,6 +83,12 @@ export function cloudFieldTexelFromSample(sample: CloudSample): Vec4Node {
 // 雲標本の環境の量を焼き込み用のRGBAへ戻す。cloudSampleFromTexels の復号と対。
 export function cloudEnvironmentTexel(sample: CloudSample): Vec4Node {
   return vec4(sample.land, sample.convection, sample.climateCloudiness, sample.anvil);
+}
+
+// 雲標本のセル径を焼き込み用のRGBAへ戻す。log2(km) の生値を R・G へ入れ、B・A は予約として 0
+// で焼く。cloudSampleFromTexels の復号と対。
+export function cloudCellTexel(sample: CloudSample): Vec4Node {
+  return vec4(sample.cumulusCell, sample.cirrusCell, 0, 0);
 }
 
 // 焼いた風の RGBA(R・G = 地表付近、B・A = 上層)を風へ戻す。
