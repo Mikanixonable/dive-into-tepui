@@ -8,8 +8,12 @@ import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 import type { CloudLabView } from './views';
 
 export class CloudLabPane {
-  // field はこの面が焼いて見せる雲場。photo は面どうしで共有してよい(読むだけのテクスチャ)。
-  public constructor(private readonly field: GeneratedCloudField, private readonly photo: THREE.Texture) {}
+  // field はこの面が焼いて見せる雲場。photo と observedField は面どうしで共有してよい
+  // (読むだけのテクスチャ)。observedField は実写系が読む雲場画像(cloud-field.png)。
+  public constructor(
+    private readonly field: GeneratedCloudField, private readonly photo: THREE.Texture,
+    private readonly observedField: THREE.Texture,
+  ) {}
 
   // この面が読む気候。画像が届くのを待つのに要る。
   public get climate(): ClimateMap { return this.field.climateMap; }
@@ -30,6 +34,7 @@ export class CloudLabPane {
     const direction = projection.directionAt(uv);
     const color = view.reads === 'cloud' ? view.color(direction, (d) => this.field.at(d))
       : view.reads === 'photo' ? view.color(direction, this.photo)
+      : view.reads === 'observed' ? view.color(direction, this.observedField)
       : view.color(direction, this.field.weatherModel, this.field.climateMap);
     return color.mul(projection.insideAt(uv));
   }
