@@ -196,6 +196,8 @@ export class WeatherModel {
   private solarLongitudeOverride: number | null = null;
   // 現在時刻 [s]。発射時刻の地方太陽時を遡るのに使う。
   private readonly secondsUniform: FloatUniform = uniform(0);
+  // 写しの texel 角 [rad]。細かい地形やノイズを読むフットプリント。
+  private readonly texel: FloatNode;
 
   // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、terrain は細かい地形、
   // projection は写しの持ち方、surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
@@ -204,7 +206,7 @@ export class WeatherModel {
     projection: FieldProjection,
     private readonly surfaceRadius: number, rotationPeriod: number,
   ) {
-    const texel = projection.texelAngle;
+    const texel = this.texel = projection.texelAngle;
     this.surfaceCirculation = new Circulation(SURFACE_BANDS, surfaceRadius);
     this.upperCirculation = new Circulation(UPPER_BANDS, surfaceRadius);
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
@@ -215,7 +217,7 @@ export class WeatherModel {
     this.pressure = new PressureField(
       projection, (direction) => this.pressureSourceAt(direction));
     this.winds = new WindField(
-      this.pressure, new TerrainFlow(terrain, climate), surfaceRadius, rotationPeriod);
+      this.pressure, new TerrainFlow(terrain, climate, texel), surfaceRadius, rotationPeriod);
     // 上昇源は地形へ吹き付ける風を読むので、風場を持ったあとで組む(評価はベイク時)。
     this.transport = new WeatherTransport(
       this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius,
@@ -376,14 +378,14 @@ export class WeatherModel {
     const transient = smoothstep(
       TRANSIENT_ACTIVITY_ONSET, TRANSIENT_ACTIVITY_FULL,
       this.transientField.at(direction, emissionSeconds).mul(0.5).add(0.5)).mul(TRANSIENT_GAIN);
-    const fineLand = this.terrain.landFraction(direction);
+    const fineLand = this.terrain.landFraction(direction, this.texel);
     const hour = this.localSolarHourAt(direction, emissionSeconds);
     const heating = smoothstep(HEATING_HOUR_START, HEATING_HOUR_FULL, hour)
       .mul(smoothstep(HEATING_HOUR_EBB, HEATING_HOUR_END, hour).oneMinus())
       .mul(fineLand).mul(LAND_HEATING_GAIN);
     // 風は発射時刻でなく現在時刻の場で評価する近似 — 歴史的な風の保存は持たない。
     const { surfaceWind, impingingWind } = this.winds.windsAt(direction);
-    const slope = this.terrain.slope(direction);
+    const slope = this.terrain.slope(direction, this.texel);
     // 加湿は地形を越えるぶんの上り(回された後の風)が担う — 堰き止めの強い高い地形では
     // 上りが消えて、風上の雲道ではなく風下の乾きへ回る。
     const orographic = max(dot(surfaceWind, slope), 0).mul(fineLand).mul(OROGRAPHIC_GAIN);
