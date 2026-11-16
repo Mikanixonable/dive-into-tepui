@@ -182,6 +182,7 @@ function buildCloudSliders(view: LabView): void {
       (v) => redraw(knob.topAltitude, v))(knob.topAltitude.value);
   };
   buildShellSliders('cirrus-shell', 'cirrus');
+  buildShellSliders('anvil-shell', 'anvil');
 }
 
 // 画面を組み、最初のケースを描き、CDP の入口を window へ生やす。
