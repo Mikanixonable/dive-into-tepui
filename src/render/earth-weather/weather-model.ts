@@ -1,27 +1,24 @@
 // 天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流の天気を TSL の
 // グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
-import { abs, clamp, cos, dot, exp, max, min, normalize, sin, smoothstep, tanh, vec2, vec4 } from 'three/tsl';
+import { abs, clamp, dot, exp, max, min, smoothstep, tanh } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
-import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
-import { BakedField } from '../baked-field';
-import { GPU_PASS } from '../gpu-timings';
+import { AtmosphericWindField, SURFACE_HEIGHT } from './atmospheric-wind';
 import { CirculatingNoise } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
 import { Anticyclones } from './anticyclones';
-import { eastAt, latitudeOf, northAt } from './sphere-frame';
-import { RossbyWave } from './rossby-wave';
+import { PressureField, pressureBandAt } from './pressure-field';
+import { latitudeOf } from './sphere-frame';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
 import { CLOUD_TUNING } from './cloud/cloud-tuning';
-import { composeWind, FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
+import { WindField } from './wind-field';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
 import type { ClimateMap } from './climate-map';
 import type { FieldProjection } from '../field-projection';
-import type { BalancedWind } from './wind-law';
 import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 単位方向における天気。
@@ -41,15 +38,6 @@ export interface WeatherSample {
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
   readonly landFraction: FloatNode; // 陸らしさ 0..1
   readonly tropopause: FloatNode; // その緯度の対流の天井(圏界面の高さ)[m]
-}
-
-// 気圧フィールドからサンプリングした、風向風速の算出に必要な物理量。gradient は気圧勾配の接ベクトル [hPa/rad]、isobar は
-// 等圧線方向の単位接ベクトル、bend は等圧線方向の 2 階微分 [hPa/rad²]。
-interface PressureField {
-  readonly pressure: FloatNode;
-  readonly gradient: Vec3Node;
-  readonly isobar: Vec3Node;
-  readonly bend: FloatNode;
 }
 
 // ノイズのオクターブ定義表。周波数は 1 rad あたりの山数で、角波長 [km] は 6371 ÷ 周波数。気圧は単一オクターブ
@@ -118,26 +106,6 @@ const TROPOPAUSE_POLE = CLOUD_TUNING.tropopausePole;
 const TROPOPAUSE_STEP_START = THREE.MathUtils.degToRad(15);
 const TROPOPAUSE_STEP_END = THREE.MathUtils.degToRad(60);
 
-// 大循環の気圧帯 [hPa]: 赤道と ±60° が低く、±30° と極が高い。緯度の 6 倍の余弦なので、緯度に
-// ついての微分は sin(6 φ) × 6 × 振幅 [hPa/rad]。
-const PRESSURE_BAND_AMPLITUDE = CLOUD_TUNING.pressureBandAmplitude;
-
-// 気圧の勾配を取る中心差分の刻み [rad]。台風の芯の広がり(250 km ≈ 0.039 rad)より細かく、
-// 気圧の写しの 1 texel より粗い。写しは視点中心の cap なので texel の角は視点の高さで変わるが、
-// いちばん粗い置き方(半径 π/2)でも 2/512 ≈ 3.9e-3 rad で、この刻みを越えない。
-const GRADIENT_STEP = 0.01;
-// 等圧線方向の 2 階微分を取るサンプリング刻み [rad]。半精度テクスチャにおける 2 階差分の量子化ノイズは刻みの二乗で
-// 増幅される。勾配と同じ刻みで取ると、帯とノイズだけの平らな所で曲がりが雑音に埋もれる。
-const BEND_STEP = 0.02;
-// 対流を流す風の摩擦 [1/s]。湿度を流す風より強く取ると、等圧線を深く横切って 20〜30° 違う向きへ
-// 伸びる。同じ風で流すと 2 枚が同じ向きへ伸びて、掛け合わせても筋のままになる。
-const CONVECTION_FRICTION = 3 * FRICTION_RATE;
-// 風が等圧線を横切る角の上限 [rad]。湿度の風は中緯度で摩擦が作る角(45° で 30°)そのものに取る。
-// 対流の風は摩擦が作る 60° を 50° に抑え、湿度の風と向きを 20° 離して 2 枚の移流場を交差させる。
-// 熱帯では両方が大きな流入角を切り、台風のまわりで粒が放射状の筋に引かれるのを止める。
-const SURFACE_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(30);
-const CONVECTION_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
-
 // 渦の目が移流後の湿度から引く深さ。眼壁の飽和と金床の天蓋(ANVIL_HUMIDITY)の両方を貫く深さに
 // 取る。上層を深く引いて、薄い雲の穴を厚い雲の目よりひとまわり広く開ける。
 const SURFACE_EYE_DRYNESS = CLOUD_TUNING.surfaceEyeDryness;
@@ -182,12 +150,12 @@ export class WeatherModel {
   private readonly atmosphericWind = new AtmosphericWindField();
   private readonly surfaceCirculation: Circulation;
   private readonly upperCirculation: Circulation;
-  private readonly rossbyWave = new RossbyWave();
   private readonly cyclones: Cyclones;
   private readonly highs: Anticyclones;
   private readonly pressureNoise: CirculatingNoise;
   private readonly transport: WeatherTransport;
-  private readonly pressure: BakedField;
+  private readonly pressure: PressureField;
+  private readonly winds: WindField;
   private readonly convectiveActivity: ConvectiveActivity;
   private readonly airMass: AirMass;
 
@@ -195,7 +163,7 @@ export class WeatherModel {
   // surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
   public constructor(
     private readonly climate: ClimateMap, projection: FieldProjection,
-    private readonly surfaceRadius: number, private readonly rotationPeriod: number,
+    private readonly surfaceRadius: number, rotationPeriod: number,
   ) {
     const texel = projection.texelAngle;
     this.surfaceCirculation = new Circulation(SURFACE_BANDS, surfaceRadius);
@@ -206,12 +174,12 @@ export class WeatherModel {
       this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
     this.transport = new WeatherTransport(
       this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius);
-    this.pressure = new BakedField(
-      'pressure', THREE.RedFormat, projection, (direction) => vec4(this.pressureSourceAt(direction), 0, 0, 1),
-      GPU_PASS.cloudBake);
+    this.pressure = new PressureField(
+      projection, (direction) => this.pressureSourceAt(direction));
+    this.winds = new WindField(this.pressure, surfaceRadius, rotationPeriod);
     this.convectiveActivity = new ConvectiveActivity(this.surfaceCirculation, projection);
     this.airMass = new AirMass(
-      projection, (direction) => this.traceFlowAt(direction),
+      projection, (direction) => this.winds.traceFlowAt(direction),
       (direction) => this.climate.landFraction(direction), surfaceRadius);
     this.syncTime(0);
   }
@@ -228,7 +196,7 @@ export class WeatherModel {
   public syncTime(seconds: number): void {
     this.surfaceCirculation.syncTime(seconds);
     this.upperCirculation.syncTime(seconds);
-    this.rossbyWave.syncTime(seconds);
+    this.winds.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     this.highs.syncTime(seconds);
     this.pressureNoise.syncTime(seconds);
@@ -238,36 +206,19 @@ export class WeatherModel {
   // 単位方向 direction における天気のグラフ。
   public weatherAt(direction: Vec3Node): WeatherSample {
     const latitude = latitudeOf(direction);
-    const east = eastAt(direction);
-    const north = northAt(direction);
 
-    const pressureField = this.pressureFieldAt(direction, east, north);
-    const { pressure } = pressureField;
-    const { rossby, local, surfaceWind, upperWind } =
-      this.windFieldAt(direction, latitude, east, north, pressureField);
-    // 対流を流す風は、湿度を流す風より摩擦が強く等圧線を深く横切る — 同じ風だと地表付近と
-    // 上層の写しが同じ向きへ伸びて、掛け合わせても筋のままになる。
-    const convectionLocal = balancedWind(
-      pressureField.gradient, pressureField.isobar, pressureField.bend, latitude,
-      CONVECTION_FRICTION, CONVECTION_WIND_CROSSING_LIMIT, this.surfaceRadius, this.rotationPeriod,
-    );
+    const winds = this.winds.at(direction);
+    const { pressure, surfaceWind, upperWind } = winds;
 
-    // 風で流した湿度・対流。移流の遡りは、大循環の平均風からの偏差(局所の釣り合い風と
-    // ロスビー波の摂動)で取る — 源の模様の平行移動は、写しを焼く循環が平均風で既に担っている。
-    // 平均風まで遡りに含めると両者が打ち消し合い、模様は周期の中で混ざり合うだけで流れも
-    // 形の変化も鈍る。湿度の地表成分と上層成分は同じ風を違う歩幅で遡り、対流は別の風で遡る。
+    // 風で流した湿度・対流。湿度の地表成分と上層成分は同じ風を違う歩幅で遡り、対流は別の風で遡る。
     const advected = this.transport.advectedAt(
-      direction,
-      composeWind(local, rossby),
-      composeWind(convectionLocal, rossby),
-    );
+      direction, winds.advection, winds.convectionAdvection);
 
     // 上昇流: 風が斜面を駆け上がる分と、気圧の谷が引き上げる分と、気団の境目が押し上げる分。
-    const windComponents = eastNorthComponents(surfaceWind.velocity, east, north);
     const airMass = this.airMass.at(direction, latitude);
     const extratropical = smoothstep(FRONT_LATITUDE_START, FRONT_LATITUDE_FULL, abs(latitude));
     const warmth = airMass.warmth.mul(extratropical);
-    const terrainLift = dot(windComponents, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
+    const terrainLift = dot(surfaceWind, this.climate.slope(direction, LAND_HEIGHT_BIAS, this.surfaceRadius))
       .mul(TERRAIN_LIFT_GAIN);
     // 折り目の帯: 温帯では前線(気団の圧縮へ、気圧の上昇流を少し足す)、熱帯では雨帯の
     // 伝達関数が圧縮の稜線を降雨帯の強度へマッピングする。
@@ -315,7 +266,7 @@ export class WeatherModel {
 
     return {
       pressure,
-      surfaceWind: windComponents,
+      surfaceWind,
       upperWind,
       lift,
       surfaceHumidity,
@@ -336,89 +287,18 @@ export class WeatherModel {
   // 単位方向 direction で雲を運ぶ、地表付近と上層の風の東・北の成分 [m/s]。weatherAt の風と同じ式で、
   // 湿度・気団のグラフを通らない。焼いた気圧の写しを読むので、bake のあとに描く。
   public windsAt(direction: Vec3Node): { readonly surfaceWind: Vec2Node; readonly upperWind: Vec2Node } {
-    const latitude = latitudeOf(direction);
-    const east = eastAt(direction);
-    const north = northAt(direction);
-    const { surfaceWind, upperWind } = this.windFieldAt(
-      direction, latitude, east, north, this.pressureFieldAt(direction, east, north));
-    return { surfaceWind: eastNorthComponents(surfaceWind.velocity, east, north), upperWind };
-  }
-
-  // 風: 局所的な気圧風へ、大循環の背景風(地表付近/上層)とロスビー波を重ねる。上層の風は巻雲の筋が
-  // 従う流れで、東・北の成分で返す。地表付近と上層が分かれるのは背景風だけで、気圧から出る局所の
-  // 釣り合い風は共通。
-  private windFieldAt(
-    direction: Vec3Node, latitude: FloatNode, east: Vec3Node, north: Vec3Node, field: PressureField,
-  ) {
-    const { gradient, isobar, bend } = field;
-    const rossby = this.rossbyWave.perturbationAt(direction, this.surfaceRadius);
-    const local = balancedWind(
-      gradient, isobar, bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
-      this.surfaceRadius, this.rotationPeriod,
-    );
-    const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
-    const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
-    const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
-    const upperBackground = east.mul(upperMean.x).add(north.mul(upperMean.y)).add(rossby);
-    return {
-      rossby,
-      local,
-      surfaceWind: composeWind(local, surfaceBackground),
-      upperWind: eastNorthComponents(composeWind(local, upperBackground).velocity, east, north),
-    };
-  }
-
-  // 単位方向 direction(接平面の東 east・北 north)における気圧と、その勾配・等圧線方向の曲がり。
-  private pressureFieldAt(direction: Vec3Node, east: Vec3Node, north: Vec3Node): PressureField {
-    const pressure = this.pressure.at(direction).r;
-    const eastStep = east.mul(GRADIENT_STEP);
-    const northStep = north.mul(GRADIENT_STEP);
-    const pressureEast = this.pressure.at(normalize(direction.add(eastStep))).r;
-    const pressureWest = this.pressure.at(normalize(direction.sub(eastStep))).r;
-    const pressureNorth = this.pressure.at(normalize(direction.add(northStep))).r;
-    const pressureSouth = this.pressure.at(normalize(direction.sub(northStep))).r;
-    const gradient = east.mul(pressureEast.sub(pressureWest)).add(north.mul(pressureNorth.sub(pressureSouth)))
-      .div(2 * GRADIENT_STEP);
-    // 曲がりは等圧線に沿って測る — 勾配の向きに測ると、谷の深さそのものを曲率として検出してしまう。
-    const isobar = isobarAt(direction, gradient);
-    const isobarStep = isobar.mul(BEND_STEP);
-    const pressureAhead = this.pressure.at(normalize(direction.add(isobarStep))).r;
-    const pressureBehind = this.pressure.at(normalize(direction.sub(isobarStep))).r;
-    const bend = pressureAhead.add(pressureBehind).sub(pressure.mul(2)).div(BEND_STEP ** 2);
-    return { pressure, gradient, isobar, bend };
+    return this.winds.windsAt(direction);
   }
 
   // 単位方向 direction における気団を遡らせる風(東向き・北向きの成分 [m/s])。
   public traceWindAt(direction: Vec3Node): Vec2Node {
-    return eastNorthComponents(this.traceFlowAt(direction).velocity, eastAt(direction), northAt(direction));
-  }
-
-  // 気団を風上へ遡らせる風。大循環の気圧帯を差し引いた気圧の勾配から解いた釣り合い風へ、大循環の
-  // 平均風とロスビー波を重ねる。気圧帯を残すと、収束する緯度に緯線に沿った圧縮の環が立つ。
-  private traceFlowAt(direction: Vec3Node): BalancedWind {
-    const east = eastAt(direction);
-    const north = northAt(direction);
-    const latitude = latitudeOf(direction);
-    const { gradient, bend } = this.pressureFieldAt(direction, east, north);
-    // 気圧帯は緯度だけの関数なので、その勾配は解析的に差し引ける。
-    const eddy = gradient.sub(north.mul(sin(latitude.mul(6)).mul(PRESSURE_BAND_AMPLITUDE.mul(6))));
-    const wind = balancedWind(
-      eddy, isobarAt(direction, eddy), bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
-      this.surfaceRadius, this.rotationPeriod,
-    );
-    return {
-      velocity: wind.velocity
-        .add(east.mul(this.meanWindAt(direction).x))
-        .add(north.mul(this.meanWindAt(direction).y))
-        .add(this.rossbyWave.perturbationAt(direction, this.surfaceRadius)),
-      turn: wind.turn,
-    };
+    return this.winds.traceWindAt(direction);
   }
 
   // 気圧の偏差 [hPa]: 大循環の帯 + ノイズ + 低気圧の谷 + 高気圧の丘。
   private pressureSourceAt(direction: Vec3Node): FloatNode {
-    const band = cos(latitudeOf(direction).mul(6)).mul(PRESSURE_BAND_AMPLITUDE.mul(-1));
-    return band.add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE))
+    return pressureBandAt(latitudeOf(direction))
+      .add(this.pressureNoise.at(direction).mul(PRESSURE_NOISE_AMPLITUDE))
       .add(this.cyclones.pressureAt(direction)).add(this.highs.pressureAt(direction));
   }
 
@@ -444,11 +324,6 @@ export class WeatherModel {
     this.transport.dispose();
     this.airMass.dispose();
   }
-}
-
-// 接ベクトル v の東向き・北向きの成分。
-function eastNorthComponents(v: Vec3Node, east: Vec3Node, north: Vec3Node): Vec2Node {
-  return vec2(dot(v, east), dot(v, north));
 }
 
 // 平年の雲量 0..1 が湿度へ渡す偏り ±0.5。乾燥帯で −0.5、年中曇りの土地で +0.5 に振り切る。
