@@ -4,11 +4,10 @@
 // その勾配で決まり、読み取り方向は低周波のノイズで歪ませて格子の並びを崩す。各段は風に乗って
 // 流れ、段の寿命で湧いて崩れる(cloud-detail-clock.ts)。
 import {
-  If, clamp, cross, dot, exp, exp2, float, floor, greaterThan, int, length, log2, max, min, mix,
+  If, clamp, cross, dot, exp, exp2, float, floor, greaterThan, int, length, max, min, mix,
   normalize, select, smoothstep, sqrt, step, uniform, uint, vec3,
 } from 'three/tsl';
 import { DetailClock } from './cloud-detail-clock';
-import { CLOUD_TUNING } from './cloud-tuning';
 import { gradientNoise } from './gradient-noise';
 import { eastAt, northAt } from '../sphere-frame';
 import type { FloatNode, FloatUniform, UintNode, Vec2Node, Vec3Node } from '../../tsl-types';
@@ -93,12 +92,13 @@ const CUMULUS_STREAK_FIRST_OCTAVE = 2;
 const CUMULUS_STREAK_LAST_OCTAVE = 3;
 const CUMULUS_STREAK_MIN_OCTAVES = 8;
 
-// 細部の尺度の梯子を対流セルの径で伸縮させるときの基準径と、倍率の上下限。基準は既定の海洋セル
-// (cell-size.ts の既定) — その径では梯子はセル径を掛けないものと一致する。上下限は、極端な径が
-// 細かい側へ梯子を送り込んで評価費とモアレを増やしすぎないための範囲。
-const CELL_REFERENCE_KM = CLOUD_TUNING.cellMarineKm;
-const CELL_SCALE_MIN = 1 / 16;
-const CELL_SCALE_MAX = 8;
+// 段の波長がセルの径に収まるかの門。径の半分までは満額、径の 3 倍近くで 0 — セルより大きい構造は
+// 細部の役目ではなく場(焼いた対流・湿度の段)が担うので畳む。畳み方は段の重みへの乗算だけで、読み取り
+// 位置は動かさない — 読み取り位置へ場で変わる量を掛けると格子が歪み、勾配に沿って等値線が寄り集まる
+// 木目になる。小さいセルの空では粗い段が畳まれて細かい粒だけが残り、大きいセルの空では梯子全体が
+// 残る(基準の海洋セルでは畳まれる段がほぼ無いので、従来の見えと一致する)。
+const CELL_FIT_LOG2 = Math.log2(0.5);
+const CELL_EXCESS_LOG2 = Math.log2(2.8);
 
 export class CloudDetailEvaluator {
   // 使う段数(粗い側から数える)。uniform なので、段数を変えてもシェーダのグラフは組み直さない。
@@ -117,17 +117,17 @@ export class CloudDetailEvaluator {
   // 天体固定の単位方向 direction での細部、おおむね −1..1。width はその位置で読み手の
   // 1 画素・1 タップが張る実寸 [m]、amount はその場所の量、wind はそこで雲を運ぶ風の東・北の成分 [m/s]。
   // grain は粒の細かさ 0..1(0 が穏やかな海、1 が陸・対流の最も活発な所)、cell はその場所の対流
-  // セルの径 log2(km) — 細部の尺度の梯子全体をその径に比例して伸縮させる。勾配は東と北へ
-  // width ぶん離した 2 点を amountAt で読んで取る。
+  // セルの径 log2(km) — 径に収まらない段の重みを畳む(読み取り位置は動かさない、CELL_FIT_LOG2 の説明)。
+  // 勾配は東と北へ width ぶん離した 2 点を amountAt で読んで取る。
   public at(
     direction: Vec3Node, width: FloatNode, amount: FloatNode,
     amountAt: (direction: Vec3Node) => FloatNode, wind: Vec2Node, grain: FloatNode, cell: FloatNode,
   ): FloatNode {
     const radius = typeof this.bodyRadius === 'number' ? float(this.bodyRadius) : this.bodyRadius;
     const span = max(width, 1);
-    // セル径の場から細部の尺度の倍率。既定の海洋セルで 1、大きいセルほど全段が粗くなる。
-    // 段の寿命は実効波長の 2/3 乗へ clock の中で追従する(cloud-detail-clock.ts)。
-    const cellScale = clamp(exp2(cell.sub(log2(CELL_REFERENCE_KM))), CELL_SCALE_MIN, CELL_SCALE_MAX);
+    // 段ごとの、セルの径へ収まる度合い。重みへ乗るだけで読み取り位置は動かさない(上の定数の説明)。
+    const cellFits = DETAIL_WAVELENGTHS.map((wavelength) =>
+      smoothstep(CELL_FIT_LOG2, CELL_EXCESS_LOG2, float(Math.log2(wavelength / 1000)).sub(cell)).oneMinus());
     const east = eastAt(direction);
     const north = northAt(direction);
     // 量のない柱は覆いへ届かない — 覆いは細部を不透明度の利得で掛けるので、その柱の寄与は 0 になる。
@@ -167,7 +167,10 @@ export class CloudDetailEvaluator {
       const tilt = DETAIL_WAVELENGTHS.map((wavelength) =>
         exp(grain.mul(-GRAIN_TILT * Math.log2(wavelength / 2000))));
       const tiltedNorm = tilt.reduce(
-        (energy, weight, index) => energy.add(weight.mul(weight).mul(OCTAVE_WEIGHTS[index]! ** 2)),
+        (energy, weight, index) => {
+          const weighted = weight.mul(OCTAVE_WEIGHTS[index]!).mul(cellFits[index]!);
+          return energy.add(weighted.mul(weighted));
+        },
         float(0));
       const weightScale = float(OCTAVE_WEIGHT_NORM).div(sqrt(tiltedNorm));
 
@@ -175,14 +178,14 @@ export class CloudDetailEvaluator {
       const gate = float(1).toVar();
       for (const [index, wavelength] of DETAIL_WAVELENGTHS.entries()) {
         // 段数の上限の外と、幅で解像できない段は評価しない。消えた段は常に細い側なので、飛ばしても
-        // 乗法の鎖は残る段で完結する。解像可否の判定は実効波長(名目の波長 × セル径の倍率)で取る。
-        const live = fadeOf(float(wavelength).mul(cellScale), span).mul(step(float(index + 1), this.octaves))
-          .mul(this.clock.presence(index)).toVar();
+        // 乗法の鎖は残る段で完結する。セルの径に収まらない段も畳んで評価を省く。
+        const live = fadeOf(wavelength, span).mul(step(float(index + 1), this.octaves))
+          .mul(this.clock.presence(index)).mul(cellFits[index]!).toVar();
         If(greaterThan(live, 0), () => {
           // 粗い段は風向きへ伸ばして読み、細かい段は等方に読む。
           const value = (index >= CUMULUS_STREAK_FIRST_OCTAVE && index <= CUMULUS_STREAK_LAST_OCTAVE
-            ? this.clock.flowNoise(index, warped, radius, windVector, windDir, streakStretch, cellScale)
-            : this.clock.evolvingNoise(index, warped, radius, windVector, cellScale)).toVar();
+            ? this.clock.flowNoise(index, warped, radius, windVector, windDir, streakStretch)
+            : this.clock.evolvingNoise(index, warped, radius, windVector)).toVar();
           sum.addAssign(value.mul(OCTAVE_WEIGHTS[index]!).mul(tilt[index]!).mul(weightScale).mul(live).mul(gate));
           gate.mulAssign(exp(value.mul(OCTAVE_COUPLING).sub(COUPLING_SHIFT).mul(live)));
         });
@@ -193,10 +196,9 @@ export class CloudDetailEvaluator {
   }
 }
 
-// 1 オクターブの幅による振幅。wavelength はその段の実効波長 [m](セル径の倍率を掛けたものを
-// 渡せば、解像可否の判定がセル径へ追従する)。波長が幅の FADE_FULL_RATIO 倍で満額、FADE_ZERO_RATIO 倍で 0。
-function fadeOf(wavelength: FloatNode, span: FloatNode): FloatNode {
-  return smoothstep(FADE_ZERO_RATIO, FADE_FULL_RATIO, wavelength.div(span));
+// 1 オクターブの幅による振幅。波長が幅の FADE_FULL_RATIO 倍で満額、FADE_ZERO_RATIO 倍で 0。
+function fadeOf(wavelength: number, span: FloatNode): FloatNode {
+  return smoothstep(FADE_ZERO_RATIO, FADE_FULL_RATIO, float(wavelength).div(span));
 }
 
 // 巻雲の細部の段。粗は細部を足さず、標準と精細は段数の上限を 4・6 とする(8 km から数えて、標準は 1 km まで、
@@ -373,9 +375,12 @@ export class CirrusDetailEvaluator {
     // 画一的にならないよう静的な領域のノイズで揺らすだけに留める — 対流×陸の縮小は場の導出側
     // (cell-size.ts の鱗の門)が担うので、ここでは二重に効かせない。塊の間隔が画素の実寸より
     // 細かいときは 0 へ落とす。
-    const pitch = exp2(cellSize).mul(1000)
-      .mul(exp(regimeAt(CIRRUS_REGIME_OFFSETS[2]).mul(CIRRUS_PITCH_JITTER))).toVar();
-    const cellFade = smoothstep(2, 4, pitch.div(span));
+    // ピッチの log2 [km]。格子へそのまま連続のピッチを掛けると、ピッチの勾配で格子が歪み等値線が
+    // 寄り集まる木目になるので、格子は 2 の冪のピッチへ量子化し、隣接する 2 ピッチの場を端数で
+    // 混ぜる(下の cellWeight の評価)。格子自身はどちらも歪まない。
+    const pitchLog = cellSize
+      .add(regimeAt(CIRRUS_REGIME_OFFSETS[2]).mul(CIRRUS_PITCH_JITTER)).toVar();
+    const cellFade = smoothstep(2, 4, exp2(pitchLog).mul(1000).div(span));
     // 乾いた陸(気候の雲量の少ない所)では鱗雲状を抑える。筋状と薄く広がるは抑えない。
     const humid = smoothstep(CIRRUS_ARID_LO, CIRRUS_ARID_HI, climateCloudiness);
     const cellRaw = jet.mul(0.6).oneMinus().mul(smoothstep(-0.3, 0.5, regimeAt(CIRRUS_REGIME_OFFSETS[1])))
@@ -395,7 +400,7 @@ export class CirrusDetailEvaluator {
     const veilEnergy = float(0).toVar();
     for (const [index, wavelength] of DETAIL_WAVELENGTHS.entries()) {
       if (index < CIRRUS_FIRST_OCTAVE) continue;
-      const live = fadeOf(float(wavelength), span).mul(step(float(index - CIRRUS_FIRST_OCTAVE + 1), this.octaves))
+      const live = fadeOf(wavelength, span).mul(step(float(index - CIRRUS_FIRST_OCTAVE + 1), this.octaves))
         .mul(this.clock.presence(index)).toVar();
       If(greaterThan(live, 0), () => {
         const weight = live.mul(OCTAVE_WEIGHTS[index]!);
@@ -420,8 +425,18 @@ export class CirrusDetailEvaluator {
     // 鱗雲状の場。丸い塊(格子の Voronoi の核からの距離)と列(流れに直交する波)を、領域で混ぜる。
     const cellsZ = float(0).toVar();
     If(greaterThan(cellWeight, CIRRUS_TYPE_MIN_WEIGHT), () => {
-      const scaled = direction.mul(radius).div(pitch);
-      const core = float(1).sub(smoothstep(0, 0.55, nearestCellDistance(scaled).mul(2)));
+      // ピッチは 2 の冪の梯子へ量子化し、隣接する 2 ピッチの塊を log ピッチの端数で混ぜる —
+      // 格子自身は常に一様なので、ピッチの場の勾配で歪むことはない。
+      const pitchLo = floor(pitchLog);
+      const pitchFrac = pitchLog.sub(pitchLo);
+      const scaledAt = (pitch: FloatNode): Vec3Node =>
+        direction.mul(radius.div(1000)).mul(exp2(pitch.negate()));
+      const coreAt = (pitch: FloatNode): FloatNode =>
+        float(1).sub(smoothstep(0, 0.55, nearestCellDistance(scaledAt(pitch)).mul(2)));
+      const core = coreAt(pitchLo).toVar();
+      If(greaterThan(pitchFrac, 0), () => {
+        core.assign(mix(core, coreAt(pitchLo.add(1)), pitchFrac));
+      });
       const cells = core.sub(CIRRUS_CELL_MEAN).div(CIRRUS_CELL_STD);
       // 列は、流れに直交する接ベクトルへ伸ばした 4 km の段で、流れに直交する波の筋になる。位置と接ベクトルの
       // 内積は 0 なので、正弦の位相を位置と流れから直には組めない。
