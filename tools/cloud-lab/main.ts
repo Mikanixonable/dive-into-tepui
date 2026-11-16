@@ -15,8 +15,7 @@ import { buildParamPanel } from './param-panel';
 import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
-import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
-import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
+import { cyclonePlacementsAt } from '../../src/render/earth-weather/cyclone-tracks';
 import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
 import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 
@@ -284,9 +283,7 @@ async function init(): Promise<void> {
       return mapCanvas.toDataURL('image/png');
     },
     cyclonesAt: (hours) => ({
-      tropicals: Array.from(
-        { length: TROPICAL_COUNT }, (_, index) => tropicalPlacementAt(index, hours * SECONDS_PER_HOUR, SIDEREAL_DAY)),
-      lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * SECONDS_PER_HOUR, R_EARTH, SIDEREAL_DAY)),
+      ...cyclonePlacementsAt(hours * SECONDS_PER_HOUR, R_EARTH, SIDEREAL_DAY),
       highs: Array.from({ length: HIGH_COUNT }, (_, index) => highPlacementAt(index, hours * SECONDS_PER_HOUR, R_EARTH)),
     }),
     params: () => Object.fromEntries(Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])),
