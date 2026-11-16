@@ -108,7 +108,7 @@ function applyAblations(): void {
     Circulation.prototype.syncTime = () => undefined;
   }
   if (params.get('noAdvection') === '1') {
-    // 風上へ遡る2位相移流を外し、移流前の写しをそのまま出す — 遡りが運ぶ見かけの動きが消える。
+    // 風上へ遡る位相移流を外し、移流前の写しをそのまま出す — 遡りが運ぶ見かけの動きが消える。
     WeatherTransport.prototype.advectedAt = function (direction) {
       const humidity = this.humiditySourceAt(direction);
       return {
