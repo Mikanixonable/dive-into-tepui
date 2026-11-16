@@ -1,7 +1,7 @@
 // 湿度・対流の源を写しへ焼き、天気の風で風上へ遡って読む。湿度の地表成分と上層成分は同じ風を
-// 違う歩幅で、対流は別の風で運ぶが、すべて同じ2位相移流の規則と写しの寿命で管理する。
+// 違う歩幅で、対流は別の風で運ぶが、すべて同じ位相移流の規則と写しの寿命で管理する。
 import * as THREE from 'three/webgpu';
-import { abs, exp, float, fract, inverseSqrt, mix, normalize, uniform, vec2, vec4 } from 'three/tsl';
+import { abs, cos, exp, float, fract, inverseSqrt, normalize, uniform, vec2, vec4 } from 'three/tsl';
 import { BakedField } from '../baked-field';
 import { CLOUD_TUNING } from './cloud/cloud-tuning';
 import { GPU_PASS } from '../gpu-timings';
@@ -60,7 +60,7 @@ const CONVECTION_NOISE_AMPLITUDE = CLOUD_TUNING.convectionNoiseAmplitude;
 // その段を解像しない全球の写しの振れ幅を足す前と同じに保つ。
 const UPPER_HUMIDITY_NOISE_AMPLITUDE = CLOUD_TUNING.upperHumidityNoiseAmplitude;
 
-// 移流の源を風で流す2位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が
+// 移流の源を風で流す位相移流の周期 [s]。長いほど流れの歪みが溜まり、短いほど位相の混ぜ目が
 // 目に付く。背景の雲がどれだけ伸びるかは、1歩のあいだに風が空間で変わる量から決まる。
 const ADVECTION_PERIOD = 20 * 3600;
 // 上昇源から供給された湿りが、風下へ運ばれてからの減衰の時定数 [s]。源の活動時間とは別の
@@ -88,10 +88,11 @@ export class WeatherTransport {
   private readonly convectionNoise: CirculatingNoise;
   private readonly upperHumidityNoise: CirculatingNoise;
   // 移流前の源の写し。out0 の x・y は湿度(地表付近・上層)、z・w は対流(粒・網目)、
-  // out1 の x・y は位相 A・B それぞれの発射時刻で評価した上昇源、z・w は同じく位相
-  // A・B の降水枯渇(風上で雨になって失われた湿り)。
+  // out1 の x・y・z は位相 A・B・C それぞれの発射時刻で評価した上昇源、w は降水枯渇
+  // (風上で雨になって失われた湿り — 発射時刻を見ないので全位相で同じ値)。写しを
+  // 3 枚へ増やすと読む側のシェーダが束縛するテクスチャの上限を越えるので、2 枚に収める。
   private readonly source: BakedField;
-  // 2位相移流の周期の中の位置0..1。
+  // 位相移流の周期の中の位置0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
   // 現在時刻 [s]。位相ごとの発射時刻はここから遡る。
   private readonly seconds: FloatUniform = uniform(0);
@@ -113,21 +114,22 @@ export class WeatherTransport {
     this.convectionNoise = new CirculatingNoise(surfaceCirculation, CONVECTION_NOISE, texel);
     this.upperHumidityNoise = new CirculatingNoise(
       upperCirculation, UPPER_HUMIDITY_NOISE, texel, UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY);
-    // 湿度と対流は同じ持ち方で別々に読まないので、1 パスの 1 写しへまとめて焼く。上昇源と
-    // 降水枯渇は位相ごとの発射時刻で評価が変わるので、A・B で別チャンネルへ焼き分ける。
+    // 湿度と対流は同じ持ち方で別々に読まないので、1 パスの 1 写しへまとめて焼く。上昇源は
+    // 位相ごとの発射時刻で評価が変わるので A・B・C で別チャンネルへ焼き分けるが、降水枯渇は
+    // 発射時刻を見ない(現在の風の吹き付けだけで決まる)ので 1 チャンネルで足りる。
     this.source = new BakedField(
       'transportSource', THREE.RGBAFormat, projection,
       (direction) => {
-        const phaseA = this.advectionCycle;
-        const phaseB = fract(phaseA.add(0.5));
         const ambientHumidity = this.humiditySourceAt(direction).x;
-        const moistureA = this.moistureSourceAt(
-          direction, this.seconds.add(phaseA.mul(-ADVECTION_PERIOD)), ambientHumidity);
-        const moistureB = this.moistureSourceAt(
-          direction, this.seconds.add(phaseB.mul(-ADVECTION_PERIOD)), ambientHumidity);
+        const emission = (phase: FloatNode): Vec2Node =>
+          this.moistureSourceAt(
+            direction, this.seconds.add(phase.mul(-ADVECTION_PERIOD)), ambientHumidity);
+        const moistureA = emission(this.advectionCycle);
+        const moistureB = emission(fract(this.advectionCycle.add(1 / 3)));
+        const moistureC = emission(fract(this.advectionCycle.add(2 / 3)));
         return [
           vec4(this.humiditySourceAt(direction), this.convectionSourceAt(direction)),
-          vec4(moistureA.x, moistureB.x, moistureA.y, moistureB.y),
+          vec4(moistureA.x, moistureB.x, moistureC.x, moistureA.y),
         ];
       },
       GPU_PASS.cloudBake);
@@ -160,48 +162,55 @@ export class WeatherTransport {
     return this.convectionNoise.pairAt(direction).mul(CONVECTION_NOISE_AMPLITUDE);
   }
 
-  // 移流前の写しを風で流したもの。周期の半分ずれた2位相を三角波で混ぜるので、流れの変位が
-  // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならない。
+  // 移流前の写しを風で流したもの。周期を 1/3 ずつずらした3位相を重み (1−cos 2πφ)/3 で混ぜる
+  // (各位相が巻き戻る瞬間に重み 0 へ滑らかに落ち、3つの和は常に 1)。1 枚だけが見える瞬間が
+  // ないので、位相の混ぜ具合で細部が周期的に鋭さを増したり滲んだりしない。流れの変位が
+  // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならないのは以前の位相混合と同じ。
   public advectedAt(
     direction: Vec3Node, humidityWind: BalancedWind, convectionWind: BalancedWind,
   ): AdvectedFields {
-    const phaseA = this.advectionCycle;
-    const phaseB = fract(phaseA.add(0.5));
-    const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
+    const phases = [
+      this.advectionCycle,
+      fract(this.advectionCycle.add(1 / 3)),
+      fract(this.advectionCycle.add(2 / 3)),
+    ];
     // seconds秒だけflowに流された点のsource。負に取れば風上へ遡る。output は MRT の写しの番号。
     const sourceAt = (flow: BalancedWind, seconds: FloatNode, output = 0): Vec4Node =>
       this.source.at(
         normalize(direction.add(windStep(flow, direction, seconds).div(this.surfaceRadius))), output);
-    // 遡る秒数[s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
-    const stepA = phaseA.mul(-ADVECTION_PERIOD);
-    const stepB = phaseB.mul(-ADVECTION_PERIOD);
     // 対流の1歩の倍率。巻きがCONVECTION_WINDINGを超える渦の中だけ縮む。
     const winding = abs(convectionWind.turn).mul(ADVECTION_PERIOD).mul(CONVECTION_ADVECTION).div(CONVECTION_WINDING);
     const convectionStep = inverseSqrt(winding.mul(winding).add(1)).mul(CONVECTION_ADVECTION);
-    // 上昇源の湿り。発射からの経過時間で減衰させてから位相を混ぜる — 源が恒常的でも
-    // 帯が風下で弱まり、源へ向かって先細る。
+    // 発射からの経過時間の減衰 — 源が恒常的でも帯が風下で弱まり、源へ向かって先細る。
+    // 降水の乾きはプルームより長い時定数で残る(雨陰)。
     const ageFade = (phase: FloatNode): FloatNode =>
       exp(phase.mul(-ADVECTION_PERIOD).div(PLUME_DECAY_SECONDS));
     const rainFade = (phase: FloatNode): FloatNode =>
       exp(phase.mul(-ADVECTION_PERIOD).div(RAINOUT_DECAY_SECONDS));
-    const uplift = mix(
-      sourceAt(humidityWind, stepB, 1).y.mul(ageFade(phaseB)),
-      sourceAt(humidityWind, stepA, 1).x.mul(ageFade(phaseA)), weightA);
-    // 降水で失われた湿り。プルームより長い時定数で、風上の山地から風下へ乾きが届く(雨陰)。
-    const rainout = mix(
-      sourceAt(humidityWind, stepB, 1).w.mul(rainFade(phaseB)),
-      sourceAt(humidityWind, stepA, 1).z.mul(rainFade(phaseA)), weightA);
+    let surfaceHumidity: FloatNode = float(0);
+    let upperHumidity: FloatNode = float(0);
+    let uplift: FloatNode = float(0);
+    let rainout: FloatNode = float(0);
+    let convection: Vec2Node = vec2(0);
+    for (const [index, phase] of phases.entries()) {
+      const weight = cos(phase.mul(2 * Math.PI)).oneMinus().div(3);
+      // 遡る秒数[s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
+      const step = phase.mul(-ADVECTION_PERIOD);
+      surfaceHumidity = surfaceHumidity.add(sourceAt(humidityWind, step).x.mul(weight));
+      upperHumidity = upperHumidity.add(
+        sourceAt(humidityWind, step.mul(UPPER_ADVECTION)).y.mul(weight));
+      const moisture = sourceAt(humidityWind, step, 1);
+      uplift = uplift.add(
+        [moisture.x, moisture.y, moisture.z][index]!.mul(ageFade(phase)).mul(weight));
+      // 降水の乾きは全位相で同じ値が焼かれているので w を読む。
+      rainout = rainout.add(moisture.w.mul(rainFade(phase)).mul(weight));
+      convection = convection.add(
+        sourceAt(convectionWind, step.mul(convectionStep)).zw.mul(weight));
+    }
     return {
-      surfaceHumidity: mix(
-        sourceAt(humidityWind, stepB).x,
-        sourceAt(humidityWind, stepA).x, weightA)
-        .add(uplift).sub(rainout),
-      upperHumidity: mix(
-        sourceAt(humidityWind, stepB.mul(UPPER_ADVECTION)).y,
-        sourceAt(humidityWind, stepA.mul(UPPER_ADVECTION)).y, weightA),
-      convection: mix(
-        sourceAt(convectionWind, stepB.mul(convectionStep)).zw,
-        sourceAt(convectionWind, stepA.mul(convectionStep)).zw, weightA),
+      surfaceHumidity: surfaceHumidity.add(uplift).sub(rainout),
+      upperHumidity,
+      convection,
     };
   }
 
