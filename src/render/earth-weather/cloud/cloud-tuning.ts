@@ -2,8 +2,10 @@
 // uniform として1箇所へ集約し、実験環境(cloud-lab)がスライダーで値を動かせるようにする。
 // 値はグラフを組んだあとでも uniform の .value へ書けば次の焼き直しに乗る。
 // **ゲームでは既定値のまま動く** — 書き換えるのは実験環境だけで、ここを読むコードは
-// 値が変わりうることを前提にしない。
+// 値が変わりうることを前提にしない。開発ビルドだけは、実験環境が書いた git 管理外の上書き
+// (cloud-tuning-overrides.ts の差し替え)を既定値の上へ重ねて、ゲームで見た目を確かめられる。
 import { uniform } from 'three/tsl';
+import { CLOUD_TUNING_OVERRIDES } from './cloud-tuning-overrides';
 import type { FloatUniform } from '../../tsl-types';
 
 // 調整値の既定値と並び。実験環境はこの表から初期値・リセット値・スライダーの対象を引く。
@@ -200,7 +202,7 @@ export type CloudTuningId = keyof typeof CLOUD_TUNING_DEFAULTS;
 // 調整値の実体。添字は CLOUD_TUNING_DEFAULTS のキーと同じ。
 export type CloudTuning = Record<CloudTuningId, FloatUniform>;
 
-// 調整値の実体。値を変えるときは uniform の .value へ書く。
+// 調整値の実体。値を変えるときは uniform の .value へ書く。上書きに無い項目は既定値で始まる。
 export const CLOUD_TUNING: CloudTuning = Object.fromEntries(
-  Object.entries(CLOUD_TUNING_DEFAULTS).map(([id, value]) => [id, uniform(value)]),
+  Object.entries(CLOUD_TUNING_DEFAULTS).map(([id, value]) => [id, uniform(CLOUD_TUNING_OVERRIDES[id] ?? value)]),
 ) as CloudTuning;
