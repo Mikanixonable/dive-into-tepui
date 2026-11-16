@@ -46,7 +46,8 @@ export function eyeStrengthOf(
 }
 
 // 谷 1 つ。配置を uniform に持ち、単位方向での気圧の落ち込み・眼・金床を答える。
-class Trough {
+// 正の深さを置けば高気圧の丘としても使える(anticyclones.ts)。
+export class Trough {
   private readonly center: Vec3Uniform = uniform(new THREE.Vector3());
   // 長軸の向きの単位接ベクトル。
   private readonly axis: Vec3Uniform = uniform(new THREE.Vector3());
