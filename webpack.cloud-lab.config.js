@@ -147,13 +147,15 @@ const config = {
 
 // 8083 を優先し、埋まっていたら別の空きポートで出す(同時起動や前の server の残りを
 // 許すため — 出たポートは webpack-dev-server の起動ログに出る)。
-module.exports = preferredPort(8083).then((port) => {
+module.exports = (env, argv) => preferredPort(8083).then((port) => {
   if (port !== 8083) {
     console.warn(`[cloud-lab] ポート 8083 は使用中。代わりに http://localhost:${port}/ で出します。`);
   }
   config.devServer.port = port;
   // 同じキャッシュ名を分かち合う server どうしは互いのパックを読み違える(片方が古い
-  // モジュールを拾う)ので、ポートごとに分ける。
-  config.cache.name = `cloud-lab-${port}`;
+  // モジュールを拾う)ので、ポートごとに分ける。production の撮影とも分ける — 片方の
+  // モードが書いたモジュールをもう片方が読むと、innerGraph で畳んだ依存のテンプレートが
+  // 無く No template for dependency で落ちる。
+  config.cache.name = `cloud-lab-${port}-${argv.mode ?? 'development'}`;
   return config;
 });
