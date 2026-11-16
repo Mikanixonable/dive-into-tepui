@@ -1,7 +1,7 @@
 // cloud-lab のスライダーの値を書き込む窓口。webpack の開発サーバだけが組み込む(webpack.cloud-lab.config.js)。
-// 書き込み先は 2 つ — ゲームの開発ビルドが読む git 管理外の上書きファイル(試すだけ。target: 'overrides' /
-// 'clear')と、コードベースの既定値(src/render/earth-weather/cloud/cloud-tuning.ts の CLOUD_TUNING_DEFAULTS。
-// target: 'defaults')。既定値で書き換えるのは右辺の数値だけで、コメントと他のコードには触れない。
+// 書き込み先は 2 つ — ゲームの開発サーバ経由で実行中のゲームが読む git 管理外の上書きファイル
+// (試すだけ。target: 'overrides')と、コードベースの既定値(src/render/earth-weather/cloud/cloud-tuning.ts の
+// CLOUD_TUNING_DEFAULTS。target: 'defaults')。既定値で書き換えるのは右辺の数値だけで、コメントと他のコードには触れない。
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -67,7 +67,7 @@ function reply(response, status, body) {
 }
 
 // 開発サーバの POST の受け口を作る。本体は { target, values }。target が 'defaults' なら tuningPath の既定値表へ、
-// 'overrides' なら overridesPath の上書きファイルへ values を書き、'clear' なら上書きを空にする。
+// 'overrides' なら overridesPath の上書きファイルへ values を書く(空の表は上書きの解除になる)。
 // application/json だけを受け(別のサイトからの単純な POST では送れない)、Host と Origin が
 // この開発サーバのものと一致するときだけ書く。値のキーは既定値表に実在するものだけ受ける。
 function createApplyTuningHandler(tuningPath, overridesPath) {
@@ -81,16 +81,16 @@ function createApplyTuningHandler(tuningPath, overridesPath) {
     }
     readBody(request).then((text) => {
       const { target, values = {} } = JSON.parse(text);
-      if (target !== 'defaults' && target !== 'overrides' && target !== 'clear') {
+      if (target !== 'defaults' && target !== 'overrides') {
         throw new Error(`知らない書き込み先: ${String(target)}`);
       }
-      const result = rewriteTuningDefaults(fs.readFileSync(tuningPath, 'utf8'), target === 'clear' ? {} : values);
+      const result = rewriteTuningDefaults(fs.readFileSync(tuningPath, 'utf8'), values);
       if (result.missing.length > 0) {
         reply(response, 409, { error: `既定値の表に無い項目: ${result.missing.join(', ')}` });
         return;
       }
       if (target === 'defaults') fs.writeFileSync(tuningPath, result.source);
-      else writeOverrides(target === 'clear' ? {} : values, overridesPath);
+      else writeOverrides(values, overridesPath);
       reply(response, 200, { target, changed: result.changed });
     }).catch((error) => reply(response, 400, { error: String(error.message ?? error) }));
   };

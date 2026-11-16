@@ -8,6 +8,7 @@ import type { GpuTimingSink } from '../../gpu-timings';
 import type { FieldProjection } from '../../field-projection';
 import type { CloudBlend, CloudFieldSlot, CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-presentation';
+import { cloudTuningRevision } from './cloud-tuning';
 import type { Vec3Node } from '../../tsl-types';
 
 // 雲場を焼く表示時刻の刻み [s]。雲場は、この刻みで焼いた 2 枚のあいだを表示時刻で補間して読む。
@@ -26,6 +27,8 @@ export class GeneratedCloudField implements CloudFieldSource {
   private lastBakedClimateGeneration: number | null = null;
   // 最後に焼いたときの投影の版。置き方が変われば、同じ表示時刻でも焼き直す。
   private lastBakedProjectionRevision: number | null = null;
+  // 最後に焼いたときの調整値の版。実験環境の上書きが変われば、同じ表示時刻でも焼き直す。
+  private lastBakedTuningRevision: number | null = null;
   private generationValue = 0;
 
   // climate と terrain、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる
@@ -59,11 +62,12 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.terrain.request();
     const climateGeneration = this.climate.generation + this.terrain.generation;
     const projectionRevision = this.projection.revision;
+    const tuningRevision = cloudTuningRevision();
     const jump = this.lastDisplayTime === null ? Infinity : displayTime - this.lastDisplayTime;
     this.lastDisplayTime = displayTime;
     const older = this.olderTime;
-    // 2 枚が表示時刻を挟めないとき(巻き戻し・大きな飛び・気候か投影の変化)は、表示時刻の 1 枚だけを焼き直す。
-    const olderTime = older === null || !this.canReuse(displayTime, older, jump, climateGeneration, projectionRevision)
+    // 2 枚が表示時刻を挟めないとき(巻き戻し・大きな飛び・気候か投影・調整値の変化)は、表示時刻の 1 枚だけを焼き直す。
+    const olderTime = older === null || !this.canReuse(displayTime, older, jump, climateGeneration, projectionRevision, tuningRevision)
       ? this.bakeFresh(renderer, displayTime, gpu)
       : displayTime >= older + CLOUD_BAKE_DISPLAY_TIME_STEP ? this.bakeAhead(renderer, older, gpu)
         : older;
@@ -73,10 +77,12 @@ export class GeneratedCloudField implements CloudFieldSource {
 
   // 古い側の枚を残したまま、表示時刻を補間で読めるか。
   private canReuse(
-    displayTime: number, older: number, jump: number, climateGeneration: number, projectionRevision: number,
+    displayTime: number, older: number, jump: number,
+    climateGeneration: number, projectionRevision: number, tuningRevision: number,
   ): boolean {
     return this.lastBakedClimateGeneration === climateGeneration
       && this.lastBakedProjectionRevision === projectionRevision
+      && this.lastBakedTuningRevision === tuningRevision
       && displayTime >= older && displayTime <= older + 2 * CLOUD_BAKE_DISPLAY_TIME_STEP
       && jump < CLOUD_BAKE_DISPLAY_TIME_STEP;
   }
@@ -87,6 +93,7 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.bakeSlot(renderer, 1, displayTime, gpu);
     this.lastBakedClimateGeneration = this.climate.generation + this.terrain.generation;
     this.lastBakedProjectionRevision = this.projection.revision;
+    this.lastBakedTuningRevision = cloudTuningRevision();
     this.olderSlot = 0;
     this.olderTime = displayTime - CLOUD_BAKE_DISPLAY_TIME_STEP;
     this.generationValue += 1;
