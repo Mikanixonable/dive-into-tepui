@@ -14,6 +14,13 @@ import type { CloudFieldSource } from './cloud-presentation';
 import type { CloudBlend, CloudFieldSlot } from './cloud-field-sample';
 import type { Vec4Node } from '../../tsl-types';
 
+// 実写の画像の texel を雲場の RGBA(R = 積雲の量、G = 巻雲の量、B・A = 筋の倍角ベクトル)へ
+// 戻す。画像の B・A は 0..1 で畳まれているので、生成側と同じ符号付き −1..1 へ戻す。実験環境が
+// 同じ写像で実写の場を組むので、式の正本はここだけにする。
+export function observedCloudTexel(texel: Vec4Node): Vec4Node {
+  return vec4(texel.r, texel.g, texel.b.mul(2).sub(1), texel.a.mul(2).sub(1));
+}
+
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
   private readonly field: BakedField;
@@ -51,9 +58,7 @@ export class ObservedCloudField implements CloudFieldSource {
       'observedCloud', THREE.RGBAFormat, projection,
       (direction) => {
         const texel = image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node;
-        // 画像の B・A に 0..1 で畳まれた筋の倍角ベクトルは、生成側と同じ符号付き −1..1 へ
-        // 戻してから焼く。
-        return vec4(texel.r, texel.g, texel.b.mul(2).sub(1), texel.a.mul(2).sub(1));
+        return observedCloudTexel(texel);
       },
       GPU_PASS.cloudBake,
     );
