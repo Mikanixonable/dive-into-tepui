@@ -8,9 +8,10 @@ import { createSynopticPanel } from './synoptic-panel';
 import { buildFramingRow } from './framing-controls';
 import { buildTimeControls } from './time-controls';
 import type { Framing, SynopticLayers } from './synoptic-map';
-import { buildButtonRow, buildCheckbox, buildSlider } from '../lab-controls';
+import { buildButtonRow, buildCheckbox } from '../lab-controls';
 import { CLOUD_TUNING, CLOUD_TUNING_DEFAULTS, type CloudTuningId } from '../../src/render/earth-weather/cloud/cloud-tuning';
-import { GENERATION_PARAMS, type GenerationParamSpec } from './generation-params';
+import { GENERATION_PARAMS } from './generation-params';
+import { buildParamPanel } from './param-panel';
 import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
@@ -168,9 +169,10 @@ async function init(): Promise<void> {
     if (rebakeNow) rebake();
     else bakeTimer = window.setTimeout(rebake, 250);
   };
-  for (const [id, spec] of Object.entries(GENERATION_PARAMS) as [CloudTuningId, GenerationParamSpec][]) {
-    setSliders.set(id, buildSlider(`p-${spec.row}`, spec.label, spec.min, spec.max, spec.step,
-      () => String(CLOUD_TUNING[id].value), (value) => applyParams({ [id]: value })));
+  for (const [id, setSlider] of buildParamPanel(
+    document.getElementById('p-panel')!, GENERATION_PARAMS, CLOUD_TUNING_DEFAULTS,
+    (id) => String(CLOUD_TUNING[id].value), (id, value) => applyParams({ [id]: value }))) {
+    setSliders.set(id, setSlider);
   }
 
   // 調整の共有用: いまの全パラメータの JSON。編集して「適用」で戻せる。「リセット」は既定値へ。
