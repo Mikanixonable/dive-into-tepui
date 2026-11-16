@@ -143,8 +143,8 @@ export const CLOUD_TUNING_DEFAULTS = {
   detrainGain: 1.0,
   // 群れの盾 — 放出の源をこの半径 [m] で均した平均(ミップ段から読む)へ掛ける利得。
   // 塔のあいだの晴れ間まで届く広さ。孤立した塔では平均が薄くてほとんど乗らない。
-  detrainShieldRadius: 120e3,
-  detrainShieldGain: 4,
+  detrainShieldRadius: 10e3,
+  detrainShieldGain: 8,
   // cell-size.ts — 積雲のセル径 [km] と門
   cellClosedKm: 70,
   cellOpenKm: 25,
