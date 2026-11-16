@@ -4,8 +4,8 @@
 import * as THREE from 'three/webgpu';
 import {
   Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
-  max, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select,
-  sqrt, step, transformNormalToView, uniform, vec3, vec4,
+  max, mix, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select,
+  smoothstep, sqrt, step, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from './blue-noise';
 import { CloudShapeEvaluator } from './earth-weather/cloud/cloud-shape-evaluator';
@@ -15,7 +15,9 @@ import type { CloudDetailClockInput, CloudRenderInput } from './earth-weather/cl
 import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN } from './earth-weather/cloud/cumulus-shape';
 import { FINEST_DETAIL_WAVELENGTH } from './earth-weather/cloud/cloud-detail';
-import { cumulusOpacityNode, cumulusTopAltitudeNode } from './earth-weather/cloud/cloud-kind-node';
+import {
+  cumulusColumnOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+} from './earth-weather/cloud/cloud-kind-node';
 import { eastAt, northAt } from './earth-weather/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './celestial/screen-lod';
@@ -56,6 +58,15 @@ export function cumulusOctavesOf(detail: CumulusDetail): number {
 // 雲頂の勾配を測る差分の幅 [m]。最も細かいオクターブの半波長に取り、その段の起伏の傾きを
 // 法線へ出す。
 const NORMAL_STEP = FINEST_DETAIL_WAVELENGTH / 2;
+
+// 柱の光学厚で白さを変える範囲と、薄い柱の明るさの倍率。覆いが飽和する帯の上端(不透明度 0.46)
+// で τ≈0.6、深い被覆で τ≈2.4 — その間を薄い灰から白へ写す。覆いがどの柱も 100% に張り付いても、
+// 厚みの差が明るさの階調として残る。
+const TAU_SHADE_ONSET = 0.5;
+const TAU_SHADE_FULL = 2.5;
+const THIN_CLOUD_SHADE = 0.75;
+// 細部の起伏が明るさへ効く深さ。覆いを飽和させるほどは動かさず、板の内部の質感にだけ使う。
+const DETAIL_BRIGHTNESS_DEPTH = 0.15;
 
 export class OpaqueCloudSurfaceRenderer {
   private readonly shape: CloudShapeEvaluator;
@@ -173,8 +184,25 @@ export class OpaqueCloudSurfaceRenderer {
     const marched = this.marchedSurface().toVar();
     material.depthNode = marched.w;
     material.normalNode = marched.xyz;
-    material.colorNode = vec3(CLOUD_ALBEDO);
+    material.colorNode = this.surfaceColor();
     return material;
+  }
+
+  // 雲頂の面の色。雲の白さは柱の光学厚で変わる — 覆いがどの柱も 100% に張り付く空でも、厚みの
+  // 差が明るさの差として残る。細部の起伏は薄い明るさへ足して、板の内部の質感にする。
+  private surfaceColor(): Vec3Node {
+    return Fn(() => {
+      const direction = normalize(positionLocal);
+      const width = this.pixelAngleAt(direction).mul(this.bodyRadius);
+      const cloud = this.fieldAt(direction);
+      const wind = this.fieldSampler.sampleMotion(direction).surfaceWind;
+      const detail = this.detailAt(direction, width, cloud, wind);
+      const brightness = mix(
+        THIN_CLOUD_SHADE, 1,
+        smoothstep(TAU_SHADE_ONSET, TAU_SHADE_FULL, cumulusColumnOpticalDepthNode(cloud.cumulus)),
+      ).mul(float(1).add(detail.mul(DETAIL_BRIGHTNESS_DEPTH)));
+      return vec3(CLOUD_ALBEDO).mul(brightness);
+    })();
   }
 
   // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、交点の view 空間法線(xyz)と深度(w)を返す。
