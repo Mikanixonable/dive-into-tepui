@@ -10,13 +10,17 @@ const outDir = path.join(buildDir, 'shots-anvil');
 const port = 8772;
 const debugPort = 9449;
 
-// cap の置き方。アマゾン(午後の陸上対流)と西太平洋の収束帯(熱帯の海上対流)。
+// cap の置き方。アマゾン(午後の陸上対流)と西太平洋の収束帯(熱帯の海上対流)に、
+// 亜南極(オープンセルの対流)と ITCZ を加える。雲頂ビューでどの積雲が高いかを写し、
+// かなとこの発火位置と照合するため。
 const CAPS = [
   { name: 'amazon', latitude: -3, longitude: -60, radius: 6 },
   { name: 'westpacific', latitude: 8, longitude: 145, radius: 6 },
+  { name: 'southernocean', latitude: -55, longitude: -150, radius: 8 },
+  { name: 'itcz', latitude: 5, longitude: -165, radius: 8 },
 ];
 const SHOT_HOURS = [0, 14];
-const SHOT_VIEWS = ['composite', 'cirrus', 'cumulus'];
+const SHOT_VIEWS = ['composite', 'cirrus', 'cumulus', 'cloudTop'];
 
 async function main() {
   const { fatalEvents, onEvent } = collectFatalEvents();
