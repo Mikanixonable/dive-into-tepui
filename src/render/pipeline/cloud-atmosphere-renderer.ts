@@ -8,13 +8,17 @@
 // AtmosphereCloudLayersが所有し、ここでは二重に適用しない。
 import * as THREE from 'three/webgpu';
 import { If, dot, float, greaterThan, max, min, normalize, sign, uniform, vec4 } from 'three/tsl';
-import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../cloud/cloud-detail';
-import { CloudFieldSampler } from '../cloud/cloud-field-sampler';
-import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../cloud/cloud-optics-node';
-import { cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode } from '../cloud/cloud-kind-node';
-import { CIRRUS_BOTTOM_ALTITUDE, CIRRUS_TOP_ALTITUDE, CUMULUS_MAX_OPTICAL_DEPTH } from '../cloud/cloud-kind';
+import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../earth-weather/cloud/cloud-detail';
+import { CloudFieldSampler } from '../earth-weather/cloud/cloud-field-sampler';
+import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../earth-weather/cloud/cloud-optics-node';
+import {
+  cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
+} from '../earth-weather/cloud/cloud-kind-node';
+import {
+  CIRRUS_BOTTOM_ALTITUDE, CIRRUS_TOP_ALTITUDE, CUMULUS_MAX_OPTICAL_DEPTH,
+} from '../earth-weather/cloud/cloud-kind';
 import type { AtmosphereClouds } from '../atmosphere';
-import type { CloudSample } from '../cloud/cloud-field-sample';
+import type { CloudSample } from '../earth-weather/cloud/cloud-field-sample';
 import type { BoolNode, FloatNode, FloatUniform, Mat4Uniform, Vec3Node } from '../tsl-types';
 
 // 鉛直の光学的厚みへ張る上限。ゲインを上げた柱はここで飽和する。殻が取りうる厚みは
