@@ -1,4 +1,4 @@
-// 気圧へ書き込む高気圧の丘。低気圧の谷(Trough)と同じ形の気圧の起伏を正の深さで持ち、
+// 気圧へ書き込む高気圧の丘の束。低気圧の谷(Trough)と同じ形の気圧の起伏を正の深さで持ち、
 // 波の尾根の下流側へ座る(配置は anticyclone-tracks.ts)。丘のまわりでは気圧の勾配が
 // 外向きなので、低気圧側と同じ釣り合いの式から高気圧性の風と沈降する気流がそのまま
 // 出る — 沈降は湿度の式で乾燥として効き、丘の下に大規模な晴れ間を作る。
@@ -6,10 +6,10 @@
 // 届かず、こちらは気圧へしか書き込まない(eyeAt・anvilAt を持たない)。
 import { float } from 'three/tsl';
 import { HIGH_COUNT, highPlacementAt } from './anticyclone-tracks';
-import { Trough } from './cyclones';
+import { Trough } from './trough';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
-export class Highs {
+export class Anticyclones {
   private readonly ridges: readonly Trough[];
 
   // 丘を組み、時刻 0 の配置で始める。surfaceRadius は丘を置く天体の半径 [m]、

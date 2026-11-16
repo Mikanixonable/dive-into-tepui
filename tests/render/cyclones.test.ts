@@ -1,12 +1,12 @@
-// 低気圧の谷(render/earth-weather/cyclones.ts)の回帰テスト。期待値の正本は `DEVELOP/SPEC/RENDERING.md`
+// 低気圧の谷(render/earth-weather/trough.ts)の回帰テスト。期待値の正本は `DEVELOP/SPEC/RENDERING.md`
 // 「雲の描画」— 眼を持つのは熱帯低気圧だけで、中緯度の低気圧は眼を持たず、熱帯低気圧は温帯化で
-// 眼を失う。配置は cyclone-tracks から引き、一生の各時刻の深さ・半径・緯度が眼の門のどちら側に
-// 落ちるかを見る。
+// 眼を失う。配置は low-tracks・tropical-tracks から引き、一生の各時刻の深さ・半径・緯度が眼の門の
+// どちら側に落ちるかを見る。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
 import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
-import { eyeStrengthOf } from '../../src/render/earth-weather/cyclones';
+import { eyeStrengthOf } from '../../src/render/earth-weather/trough';
 import {
   EARTH_ROTATION_PERIOD, EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled,
 } from './cyclone-samples';

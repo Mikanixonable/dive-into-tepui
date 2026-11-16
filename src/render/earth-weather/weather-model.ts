@@ -10,7 +10,7 @@ import { CirculatingNoise } from './circulating-noise';
 import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
-import { Highs } from './anticyclones';
+import { Anticyclones } from './anticyclones';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { RossbyWave } from './rossby-wave';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
@@ -184,7 +184,7 @@ export class WeatherModel {
   private readonly upperCirculation: Circulation;
   private readonly rossbyWave = new RossbyWave();
   private readonly cyclones: Cyclones;
-  private readonly highs: Highs;
+  private readonly highs: Anticyclones;
   private readonly pressureNoise: CirculatingNoise;
   private readonly transport: WeatherTransport;
   private readonly pressure: BakedField;
@@ -201,7 +201,7 @@ export class WeatherModel {
     this.surfaceCirculation = new Circulation(SURFACE_BANDS, surfaceRadius);
     this.upperCirculation = new Circulation(UPPER_BANDS, surfaceRadius);
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
-    this.highs = new Highs(surfaceRadius, rotationPeriod);
+    this.highs = new Anticyclones(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(
       this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
     this.transport = new WeatherTransport(
