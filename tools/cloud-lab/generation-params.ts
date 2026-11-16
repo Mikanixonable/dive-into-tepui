@@ -29,8 +29,14 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   rainbandWidth: { label: '雨帯の遷移幅', row: 'weather', min: 0.5, max: 10, step: 0.1 },
   bandLift: { label: '帯の上昇流 [m/s]', row: 'weather', min: 0, max: 0.15, step: 0.002 },
   bandHumidity: { label: '帯の湿度の底上げ', row: 'weather', min: 0, max: 0.4, step: 0.005 },
+  // 気象 — 上昇源とプルーム
+  transientGain: { label: '過渡源の強さ', row: 'weather', min: 0, max: 1, step: 0.01 },
+  transientActivityOnset: { label: '過渡源の門(始)', row: 'weather', min: 0, max: 1, step: 0.01 },
+  transientActivityFull: { label: '過渡源の門(終)', row: 'weather', min: 0, max: 1, step: 0.01 },
+  landHeatingGain: { label: '日射加熱の強さ', row: 'weather', min: 0, max: 1.5, step: 0.01 },
+  orographicGain: { label: '地形性上昇→湿度', row: 'weather', min: 0, max: 8, step: 0.05 },
+  plumeDecaySeconds: { label: 'プルームの時定数 [s]', row: 'weather', min: 3600, max: 72000, step: 900 },
   // 気象 — 湿度への寄与
-  surfaceLiftHumidity: { label: '地表の上昇→湿度', row: 'weather', min: 0, max: 4, step: 0.05 },
   surfaceSubsidenceDrying: { label: '地表の沈降→乾き', row: 'weather', min: 0, max: 4, step: 0.05 },
   upperLiftHumidity: { label: '上層の上昇→湿度', row: 'weather', min: 0, max: 3, step: 0.05 },
   upperSubsidenceDrying: { label: '上層の沈降→乾き', row: 'weather', min: 0, max: 6, step: 0.1 },

@@ -33,8 +33,14 @@ export const CLOUD_TUNING_DEFAULTS = {
   rainbandWidth: 4,
   bandLift: 0.06,
   bandHumidity: 0.1,
+  // weather-model.ts — 上昇源(平地の過渡源・日射加熱・地形性上昇)とプルームの減衰
+  transientGain: 0.3,
+  transientActivityOnset: 0.62,
+  transientActivityFull: 0.85,
+  landHeatingGain: 0.4,
+  orographicGain: 2,
+  plumeDecaySeconds: 6 * 3600,
   // weather-model.ts — 湿度への寄与
-  surfaceLiftHumidity: 1.3,
   surfaceSubsidenceDrying: 1.0,
   upperLiftHumidity: 0.7,
   upperSubsidenceDrying: 2,
