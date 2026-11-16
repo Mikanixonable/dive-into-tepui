@@ -116,10 +116,13 @@ const TRANSLUCENT_LIMIT = CLOUD_TUNING.translucentLimit;
 // 量を決める。
 const DEEP_COVERAGE_ONSET = CLOUD_TUNING.deepCoverageOnset;
 const DEEP_COVERAGE_FULL = CLOUD_TUNING.deepCoverageFull;
-// 塔が上層へ氷雲を放出し始める雲頂の高さと、放出が飽和する高さ(いずれも圏界面に対する比)。
-// 覆いの薄い柱の塔は場に載らないので、放出の門は雲頂高度と同じ「深い覆い」の門を共有する。
+// 塔が上層へ氷雲を放出し始める柱の上昇比と、放出が飽和する比。湿りと上昇流の門が掛かるぶん
+// 実際の塔は柱の半分程度までしか届かないので、飽和はその上限あたりへ取る。
 const DETRAIN_ONSET = CLOUD_TUNING.detrainOnset;
 const DETRAIN_FULL = CLOUD_TUNING.detrainFull;
+// 塔の届く高さの床 — texel に粒を解像できない所では、対流の活発度から塔の届きうる高さを決める。
+const DETRAIN_ACTIVITY_ONSET = CLOUD_TUNING.detrainActivityOnset;
+const DETRAIN_ACTIVITY_FULL = CLOUD_TUNING.detrainActivityFull;
 
 // weather から凝結する雲のグラフ。積雲の量は、湿度(低周波)へ対流(高周波)を足した伝達関数の
 // 被覆率と、層状の雲から立つ塔と渦の芯が敷く金床の高いほうの雲頂から決まり、巻雲の量は
@@ -200,8 +203,14 @@ export function condense(weather: WeatherSample): CloudSample {
   // 無関係(高緯度の低い圏界面では層状の雲だけで比が立ってしまう)ので、層状の雲から圏界面
   // までの柱を塔がどれだけ昇ったかで測る。孤立した一本の塔にもかなとこが架かるよう、周囲の
   // 覆いの深さにも依らない。焼いた場を遡って広げた写しがこの量を集めて巻雲へ合成する。
-  const detrain = smoothstep(DETRAIN_ONSET, DETRAIN_FULL,
-    cloudTop.sub(layered).div(max(weather.tropopause.sub(layered), 1)));
+  // **塔の届く高さは活発度でも底上げする** — 粒のノイズは texel より細かい所で振幅 0 に衰えるので、
+  // 粗い写し(全球の cap)では塔が丸ごと消えてしまう。1 texel が複数のセルを含む所では、その中の
+  // いちばん高い塔が柱を昇る高さは対流の活発度から期待できる。
+  const detrainReach = max(reach,
+    smoothstep(DETRAIN_ACTIVITY_ONSET, DETRAIN_ACTIVITY_FULL, weather.convectiveActivity));
+  const towerRise = detrainReach.mul(detrainReach).mul(moist).mul(rising);
+  const anvilRise = anvil.sub(layered).div(max(weather.tropopause.sub(layered), 1));
+  const detrain = smoothstep(DETRAIN_ONSET, DETRAIN_FULL, max(towerRise, anvilRise));
   // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN)
     .mul(smoothstep(HAZE_CLOUDINESS_ONSET, HAZE_CLOUDINESS_FULL, weather.meanCloudiness))

@@ -118,6 +118,10 @@ export const CLOUD_TUNING_DEFAULTS = {
   // 飽和は到達しうる上限あたりへ取る(届かない値を飽和にすると最強のセルでも薄いままになる)。
   detrainOnset: 0.25,
   detrainFull: 0.55,
+  // 塔の届く高さの床を活発度から組む門 — texel に粒を解像できない粗い写し(全球)では粒の
+  // ノイズが 0 に衰えるので、塔がいるべき領域の強さは対流の活発度から期待する。
+  detrainActivityOnset: 0.55,
+  detrainActivityFull: 0.9,
   // condensation.ts — 巻雲(薄い雲)の光学的厚み
   hazeOnset: 0.5,
   hazeGain: 0.66,
