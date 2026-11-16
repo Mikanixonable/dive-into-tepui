@@ -249,6 +249,8 @@ export function earthSystem(
         LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE }),
         earthAuroras(),
         GeostationaryOverlay.of(earth.body), cumulus,
+        // 「夜側の観察」で強めた環境光を受ける観察球を差し出す。夜側の地表と雲を読むため。
+        true,
       ),
     ),
     moon: new CelestialEntity(
