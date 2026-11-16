@@ -3,7 +3,10 @@
 // 選ぶと中間ターゲットの中身を画面いっぱいに映す。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
-import { float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4 } from 'three/tsl';
+import {
+  colorSpaceToWorking, float, int, log, max, neutralToneMapping, screenUV, select, texture, uniform, vec3, vec4,
+  workingToColorSpace,
+} from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { ATMOSPHERE_QUALITY } from '../atmosphere';
 import type { GraphicsSettingsData } from '../graphics-settings';
@@ -186,7 +189,7 @@ export class RenderPipeline {
     this.compositeMaterials = this.buildDebugComposites();
     this.lensCompositeMaterial = this.buildCompositeMaterial(
       vec4(
-        this.filmLut.apply(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
+        this.filmLooked(this.toneMapped(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb))),
         1,
       ),
     );
@@ -207,6 +210,17 @@ export class RenderPipeline {
     return neutralToneMapping(color, this._exposure.factor) as Vec3Node;
   }
 
+  // フィルムのルックを、トーンマップ後の線形の色へ掛ける。ルックは表示値(sRGB 符号化済み)を
+  // 受けて表示値を返すので、掛ける前に符号化し、掛けたあとに線形へ戻す。画面への書き出しで
+  // 三がもう一度符号化するため、戻さなければ二重に符号化される。
+  private filmLooked(color: Vec3Node): Vec3Node {
+    const encoded = workingToColorSpace(color, THREE.SRGBColorSpace) as unknown as Vec3Node;
+    const graded = this.filmLut.apply(encoded);
+    // ColorSpaceNode は vec4 型を名乗る — vec3 へ切り詰めないと vec4(filmLooked(...), 1) が
+    // 成分数超過でエラーになり、末尾の 1 が黙って捨てられる。
+    return vec3(colorSpaceToWorking(graded, THREE.SRGBColorSpace) as unknown as Vec3Node);
+  }
+
   // デバッグ表示の選択肢ごとの合成マテリアルの表。表示ごとに別マテリアルを持ち、quad.material の
   // 差し替えで切り替える — 1 枚をユニフォームで分岐させると、通常プレイの毎フレームで G バッファの
   // 全テクスチャを bind/sample することになる。
@@ -217,7 +231,7 @@ export class RenderPipeline {
     );
     return {
       off: this.buildCompositeMaterial(
-        vec4(this.filmLut.apply(this.toneMapped(texture(this.target.texture, screenUV).rgb)), 1),
+        vec4(this.filmLooked(this.toneMapped(texture(this.target.texture, screenUV).rgb)), 1),
       ),
       normal: this.buildCompositeMaterial(
         vec4(octDecodeNormal(texture(this.gbuffer.normalTexture, screenUV).rg).mul(0.5).add(0.5), 1),
