@@ -8,8 +8,11 @@ import type { FloatNode, Vec2Node, Vec4Node } from '../../tsl-types';
 export interface CloudSample {
   // 積雲の量。大きいほど雲頂が高く不透明になる。
   readonly cumulus: FloatNode;
-  // 巻雲の量。大きいほど雲頂が高く不透明になる。
+  // 巻雲の量。大きいほど雲頂が高く不透明になる。大気中の巻雲の層ぶんで、脱出水の氷雲は含まない。
   readonly cirrus: FloatNode;
+  // 脱出水の氷雲(かなとこ・残存巻雲)の量。巻雲の一種で、光学深さは巻雲と同じ曲線へ写るが、
+  // 殻は大気中の巻雲より高い脱出水の高さの帯へ立つ。
+  readonly veil: FloatNode;
   // 巻雲の筋の向き θ の倍角ベクトル (cos 2θ, sin 2θ) × 揃い度(0..1)。局所の東・北の基底で
   // 符号付き(−1..1)。向きの無い所は 0 ベクトル。組み方の基準式は cirrus-flow.ts。
   readonly cirrusFlow: Vec2Node;
@@ -66,6 +69,8 @@ export function blendBakedTexels(a: Vec4Node, b: Vec4Node, parity: FloatNode, fr
 // 雲の texel へ脱出水ベールの写しを合成した値。氷雲は巻雲の一種として表すので、巻雲の
 // 柱の光学深さをベールのぶん足して量へ戻す — 厚いかなとこは下地をほとんど隠す幕まで連続する
 // (DEVELOP/SPEC/RENDERING.md「対流雲は下層から発達する」)。veil の R がベールの強さ。
+// 殻の描画はベールを別の高い層へ立てるのでこの合成を通さず、鉛直の柱しか読まない
+// 雲影の読み筋(sampleField)だけが使う。
 export function cloudTexelWithVeil(cloudTexel: Vec4Node, veilTexel: Vec4Node): Vec4Node {
   const cirrus = cirrusAmountFromOpticalDepthNode(
     cirrusColumnOpticalDepthNode(cloudTexel.g).add(cirrusColumnOpticalDepthNode(veilTexel.r)));
@@ -79,11 +84,11 @@ export function cloudTexelWithVeil(cloudTexel: Vec4Node, veilTexel: Vec4Node): V
 export function cloudSampleFromTexels(
   cloudTexel: Vec4Node, environmentTexel: Vec4Node, cellTexel: Vec4Node, veilTexel: Vec4Node,
 ): CloudSample {
-  const merged = cloudTexelWithVeil(cloudTexel, veilTexel);
   return {
-    cumulus: merged.r,
-    cirrus: merged.g,
-    cirrusFlow: vec2(merged.b, merged.a),
+    cumulus: cloudTexel.r,
+    cirrus: cloudTexel.g,
+    veil: veilTexel.r,
+    cirrusFlow: vec2(cloudTexel.b, cloudTexel.a),
     cumulusCell: cellTexel.r,
     cirrusCell: cellTexel.g,
     land: environmentTexel.r,
