@@ -1,6 +1,6 @@
 // 天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流の天気を TSL の
 // グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
-import { abs, clamp, dot, exp, max, min, smoothstep, tanh } from 'three/tsl';
+import { abs, atan, clamp, dot, exp, fract, max, min, smoothstep, tanh, uniform } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
 import { AtmosphericWindField, SURFACE_HEIGHT } from './atmospheric-wind';
@@ -9,6 +9,7 @@ import { Circulation, SURFACE_BANDS, UPPER_BANDS } from './circulation';
 import { ConvectiveActivity } from './convective-activity';
 import { Cyclones } from './cyclones';
 import { Anticyclones } from './anticyclones';
+import { EpochNoise } from './epoch-noise';
 import { PressureField, pressureBandAt } from './pressure-field';
 import { latitudeOf } from './sphere-frame';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
@@ -18,8 +19,9 @@ import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
 import type { ClimateMap } from './climate-map';
+import type { TerrainMap } from './terrain-map';
 import type { FieldProjection } from '../field-projection';
-import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
+import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 単位方向における天気。
 export interface WeatherSample {
@@ -85,11 +87,8 @@ const FRONT_LATITUDE_FULL = THREE.MathUtils.degToRad(35);
 const TERRAIN_LIFT_GAIN = CLOUD_TUNING.terrainLiftGain;
 // 陸へ上乗せする高さ [m]。海と陸の比熱の差を、海岸へ吹き込む風が駆け上がる斜面として代用する。
 const LAND_HEIGHT_BIAS = 800;
-// 上昇流が湿度へ寄与する伝達利得 [per m/s]。地表付近の加湿は、底上げ成分（本項）と偏差増幅成分
-// (VORTEX_CONTRAST) に分離して計算する。
 // 地表付近の沈降の乾きは上昇より弱く取る — 海洋境界層は沈降の下でも層積雲を保ち、同じ利得では
 // 亜熱帯高圧帯の下の海が丸ごと晴れる。
-const SURFACE_LIFT_HUMIDITY = CLOUD_TUNING.surfaceLiftHumidity;
 const SURFACE_SUBSIDENCE_DRYING = CLOUD_TUNING.surfaceSubsidenceDrying;
 const UPPER_LIFT_HUMIDITY = CLOUD_TUNING.upperLiftHumidity;
 // 上昇流が、移流した地表付近の湿度の偏差(源の底上げ SURFACE_HUMIDITY_BASE からの揺れ)を増幅する利得。
@@ -146,6 +145,31 @@ const UPPER_MEAN_CLOUDINESS_WEIGHT = CLOUD_TUNING.upperMeanCloudinessWeight;
 const MEAN_CLOUDINESS_DRY = CLOUD_TUNING.meanCloudinessDry;
 const MEAN_CLOUDINESS_WET = CLOUD_TUNING.meanCloudinessWet;
 
+// 上昇源 — 地理に貼り付き、供給した湿りが風下へ運ばれてプルームをなす項。
+// 一時的な上昇源のノイズ。周波数は 1 rad あたりの山数(角波長 [km] = 6371 ÷ 周波数)。平地や海上で
+// 数時間〜日のあいだ持続する対流の塊(200〜800 km)を、エポックの混ぜ替えで生滅させる。
+const TRANSIENT_NOISE: readonly NoiseOctave[] = [
+  { frequency: 8, amplitude: 1 },   // 800 km
+  { frequency: 16, amplitude: 0.7 }, // 400 km
+  { frequency: 32, amplitude: 0.5 }, // 200 km
+];
+// エポックの混ぜ替えに参加するのは総観規模の段まで — 細い段は形の足場として残す。
+const TRANSIENT_EPOCH_MAX_FREQUENCY = 16;
+// 過渡源の活動度の門。ノイズ(−1..1 を 0..1 へ写したもの)がこの幅を渡る間に 0 から 1 へ立つ。
+const TRANSIENT_ACTIVITY_ONSET = CLOUD_TUNING.transientActivityOnset;
+const TRANSIENT_ACTIVITY_FULL = CLOUD_TUNING.transientActivityFull;
+const TRANSIENT_GAIN = CLOUD_TUNING.transientGain;
+const LAND_HEATING_GAIN = CLOUD_TUNING.landHeatingGain;
+const OROGRAPHIC_GAIN = CLOUD_TUNING.orographicGain;
+// 島や陸の日射加熱が上昇源になる地方太陽時の窓 [時]。陸が暖まって対流が立つまでの遅れを込めて
+// 昼過ぎを中心に取る(雲道の観測では午後に発生率が立つ)。
+const HEATING_HOUR_START = 9;
+const HEATING_HOUR_FULL = 11;
+const HEATING_HOUR_EBB = 16;
+const HEATING_HOUR_END = 18;
+// 平均太陽日 [s]。発射時刻の地方太陽時は、太陽直下経度がこの周期で西へ一周するとして遡る。
+const MEAN_SOLAR_DAY = 86400;
+
 export class WeatherModel {
   // 大循環の平均風。地表付近と上層の背景風をここから引く。
   private readonly atmosphericWind = new AtmosphericWindField();
@@ -159,11 +183,20 @@ export class WeatherModel {
   private readonly winds: WindField;
   private readonly convectiveActivity: ConvectiveActivity;
   private readonly airMass: AirMass;
+  // 地理に貼り付いた一時的な上昇源の場。循環に運ばれないので、平地や海上で定点に雲を供給し続ける。
+  private readonly transientField: EpochNoise;
+  // 太陽直下経度 [rad]。暦を持つ呼び出し側が setSolarLongitude で上書きしない限り、
+  // 平均太陽日の速さで西へ回る架空の太陽を使う。
+  private readonly solarLongitude: FloatUniform = uniform(0);
+  private solarLongitudeOverride: number | null = null;
+  // 現在時刻 [s]。発射時刻の地方太陽時を遡るのに使う。
+  private readonly secondsUniform: FloatUniform = uniform(0);
 
-  // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、projection は写しの持ち方、
-  // surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
+  // 時刻 0 の天気で始める。climate はこの天体の気候の事前分布、terrain は細かい地形、
+  // projection は写しの持ち方、surfaceRadius は天体の半径 [m]、rotationPeriod は自転周期 [s]。
   public constructor(
-    private readonly climate: ClimateMap, projection: FieldProjection,
+    private readonly climate: ClimateMap, private readonly terrain: TerrainMap,
+    projection: FieldProjection,
     private readonly surfaceRadius: number, rotationPeriod: number,
   ) {
     const texel = projection.texelAngle;
@@ -173,11 +206,14 @@ export class WeatherModel {
     this.highs = new Anticyclones(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(
       this.surfaceCirculation, PRESSURE_NOISE, texel, PRESSURE_NOISE[0]!.frequency);
-    this.transport = new WeatherTransport(
-      this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius);
+    this.transientField = new EpochNoise(TRANSIENT_NOISE, texel, TRANSIENT_EPOCH_MAX_FREQUENCY);
     this.pressure = new PressureField(
       projection, (direction) => this.pressureSourceAt(direction));
     this.winds = new WindField(this.pressure, surfaceRadius, rotationPeriod);
+    // 上昇源は地形へ吹き付ける風を読むので、風場を持ったあとで組む(評価はベイク時)。
+    this.transport = new WeatherTransport(
+      this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius,
+      (direction, emissionSeconds) => this.upliftSourceAt(direction, emissionSeconds));
     this.convectiveActivity = new ConvectiveActivity(this.surfaceCirculation, projection);
     this.airMass = new AirMass(
       projection, (direction) => this.winds.traceFlowAt(direction),
@@ -195,13 +231,24 @@ export class WeatherModel {
 
   // 時刻 [s] を各サブシステムの uniform へ反映する。
   public syncTime(seconds: number): void {
+    this.secondsUniform.value = seconds;
+    this.solarLongitude.value =
+      this.solarLongitudeOverride ?? (seconds * -2 * Math.PI / MEAN_SOLAR_DAY) % (2 * Math.PI);
     this.surfaceCirculation.syncTime(seconds);
     this.upperCirculation.syncTime(seconds);
     this.winds.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     this.highs.syncTime(seconds);
     this.pressureNoise.syncTime(seconds);
+    this.transientField.syncTime(seconds);
     this.transport.syncTime(seconds);
+  }
+
+  // 天体固定で見た太陽直下点の経度 [rad](経度は正距円筒の u の規約: lon0 が +Z、東が +X)。
+  // 暦を持つ呼び出し側が、雲の昼夜を実際の太陽位置へ合わせるためにフレームごとに渡す。
+  // null を渡すと、平均太陽日で西へ回る架空の太陽へ戻る。
+  public setSolarLongitude(rad: number | null): void {
+    this.solarLongitudeOverride = rad;
   }
 
   // 単位方向 direction における天気のグラフ。
@@ -256,7 +303,7 @@ export class WeatherModel {
     const surfaceHumidity = clamp(
       advected.surfaceHumidity.add(deviation.mul(max(lift, 0).div(LIFT_LIMIT)).mul(VORTEX_CONTRAST))
         .add(cloudinessBias(meanCloudiness).mul(SURFACE_MEAN_CLOUDINESS_WEIGHT).mul(surfaceBiasWeight))
-        .add(max(lift, 0).mul(SURFACE_LIFT_HUMIDITY)).add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
+        .add(min(lift, 0).mul(SURFACE_SUBSIDENCE_DRYING))
         .add(warmth.mul(WARM_HUMIDITY).mul(occludedCore.oneMinus())).add(band.mul(BAND_HUMIDITY))
         .add(anvil.mul(ANVIL_HUMIDITY)).add(outbreak).add(commaHead.mul(COMMA_HEAD_HUMIDITY))
         .sub(eye.mul(SURFACE_EYE_DRYNESS)).sub(dryTongue.mul(DRY_TONGUE_DRYING)), 0, 1);
@@ -308,6 +355,36 @@ export class WeatherModel {
   // 気候の分布が雲を筋に引く変位ぶん歪む。
   public humiditySourceAt(direction: Vec3Node): Vec2Node {
     return this.transport.humiditySourceAt(direction);
+  }
+
+  // 上昇源: 地理に貼り付く湿りの供給 0..1。平地や海上の一時的な源、島・陸の日射加熱、
+  // 風が斜面を駆け上がる分を足す。emissionSeconds は発射時刻 [s] — 移流の位相が遡った時刻で
+  // 評価するので、昼に発射された湿りは日没後も風下へ残る。地形性上昇にだけ陸の重みを掛けて、
+  // 海底の起伏が大気を持ち上げないようにする(過渡源は海上にも立つ)。
+  private upliftSourceAt(direction: Vec3Node, emissionSeconds: FloatNode): FloatNode {
+    const transient = smoothstep(
+      TRANSIENT_ACTIVITY_ONSET, TRANSIENT_ACTIVITY_FULL,
+      this.transientField.at(direction, emissionSeconds).mul(0.5).add(0.5)).mul(TRANSIENT_GAIN);
+    const fineLand = this.terrain.landFraction(direction);
+    const hour = this.localSolarHourAt(direction, emissionSeconds);
+    const heating = smoothstep(HEATING_HOUR_START, HEATING_HOUR_FULL, hour)
+      .mul(smoothstep(HEATING_HOUR_EBB, HEATING_HOUR_END, hour).oneMinus())
+      .mul(fineLand).mul(LAND_HEATING_GAIN);
+    // 風は発射時刻でなく現在時刻の場で評価する近似 — 歴史的な風の保存は持たない。
+    const orographic = max(
+      dot(this.winds.windsAt(direction).surfaceWind, this.terrain.slope(direction)), 0)
+      .mul(fineLand).mul(OROGRAPHIC_GAIN);
+    return transient.add(heating).add(orographic);
+  }
+
+  // 発射時刻における地方太陽時 [時] 0..24(直下点で 12)。太陽直下経度は現在時刻の値から、
+  // 発射時刻まで平均太陽日の速さで遡る — 位相が遡る範囲(移流 1 周期ぶん)なら、実際の太陽も
+  // ほぼこの速さで動く。
+  private localSolarHourAt(direction: Vec3Node, emissionSeconds: FloatNode): FloatNode {
+    const longitude = atan(direction.x, direction.z);
+    const emissionSolarLongitude = this.solarLongitude.add(
+      this.secondsUniform.sub(emissionSeconds).mul(2 * Math.PI / MEAN_SOLAR_DAY));
+    return fract(longitude.sub(emissionSolarLongitude).div(2 * Math.PI).add(0.5)).mul(24);
   }
 
   // 単位方向 direction における高度1 kmの大循環の平均風(東向き・北向きの成分 [m/s])。

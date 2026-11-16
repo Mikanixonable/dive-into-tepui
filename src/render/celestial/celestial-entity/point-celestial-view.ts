@@ -112,8 +112,11 @@ export class PointCelestialView extends SphereCelestialView {
     if (graphics.clouds) {
       this.cumulus?.aimFrom(camera.camera.position, this.group.position, this.group.quaternion, this.axes);
     }
+    // 天体固定の太陽方向。オーロラの昼夜の変調と、生成系の雲が立てる日射加熱の地方時に使う。
+    const sunDirection = this.bodyFixedSunDirection(motion, star, displayTime);
+    this.cumulus?.setSolarLongitude(sunDirection === null ? null : Math.atan2(sunDirection.x, sunDirection.z));
     // オーロラと表面のフレーム値。
-    this.syncAuroras(motion, displayTime, star, graphics.aurora);
+    this.syncAuroras(sunDirection, displayTime, graphics.aurora);
     this.surface.syncFrame(createCelestialSurfaceFrame(
       camera.camera,
       this.group.position,
@@ -182,10 +185,9 @@ export class PointCelestialView extends SphereCelestialView {
 
   // オーロラの波打ち・明滅を表示時刻へ進め、昼夜の変調を太陽の向きへ合わせる。
   private syncAuroras(
-    motion: CelestialMotion, displayTime: number, star: StellarLightSource | null, visible: boolean,
+    sunDirection: Vec3 | null, displayTime: number, visible: boolean,
   ): void {
     const phase = displayTime * AURORA_PHASE_RATE;
-    const sunDirection = this.bodyFixedSunDirection(motion, star, displayTime);
     for (const aurora of this.auroras) {
       aurora.mesh.visible = visible;
       if (visible) aurora.sync(phase, sunDirection);

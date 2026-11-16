@@ -3,7 +3,7 @@
 // 書き込み先の texel で標本化できないオクターブは除外するが、除外の境界となる 1 段は
 // 端数分の振幅で重畳する — 解像度が連続的に変化しても、オクターブが急峻に出現・消失しない。
 import * as THREE from 'three/webgpu';
-import { If, abs, clamp, float, floor, greaterThan, int, log2, mix, mod, uniform, uniformArray, vec2 } from 'three/tsl';
+import { Fn, If, abs, clamp, float, floor, greaterThan, int, log2, mix, mod, uniform, uniformArray, vec2 } from 'three/tsl';
 import { gradientNoise } from './cloud/gradient-noise';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
@@ -88,16 +88,20 @@ export class EpochNoise {
   // 位置 position での、滑らかなオクターブ成分(x)と細胞状の網目(y)の対。**2 つは同じ勾配ノイズから
   // 出るので、片方だけを取るのと同じ手数で済む。** seconds は評価時刻 [s]。
   public pairAt(position: Vec3Node, seconds: FloatNode = this.seconds): Vec2Node {
-    if (this.epochMaxFrequency === undefined) return this.fractalAt(position);
-    // エポックの実現の両端と混ぜ率を評価時刻から求める — 添字で表を引くので、
-    // 現在時刻だけでなく移流の発射時刻のような任意の時刻で評価できる。
-    const phase = seconds.div(this.transitionSeconds);
-    const step = floor(phase);
-    const count = float(EPOCH_OFFSETS.length);
-    const epochFrom = this.epochOffsets.element(int(mod(step, count)));
-    const epochTo = this.epochOffsets.element(int(mod(step.add(1), count)));
-    const epochMix = phase.sub(step);
-    return this.fractalAt(position, epochFrom, epochTo, epochMix);
+    // 評価は Fn の内側で行う — If を含む評価部はビルダのスタックを要り、移流の発射時刻での
+    // 評価のように Fn を持たない式の中からでも呼べるようにするため。
+    return Fn(() => {
+      if (this.epochMaxFrequency === undefined) return this.fractalAt(position);
+      // エポックの実現の両端と混ぜ率を評価時刻から求める — 添字で表を引くので、
+      // 現在時刻だけでなく移流の発射時刻のような任意の時刻で評価できる。
+      const phase = seconds.div(this.transitionSeconds);
+      const step = floor(phase);
+      const count = float(EPOCH_OFFSETS.length);
+      const epochFrom = this.epochOffsets.element(int(mod(step, count)));
+      const epochTo = this.epochOffsets.element(int(mod(step.add(1), count)));
+      const epochMix = phase.sub(step);
+      return this.fractalAt(position, epochFrom, epochTo, epochMix);
+    })();
   }
 
   // 定義されたオクターブを合成し、全寄与の和で正規化した対(x が滑らか、y が網目)。振幅が 0 に落ちたオクターブは

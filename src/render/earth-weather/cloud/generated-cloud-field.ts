@@ -3,6 +3,7 @@ import { CloudField } from './cloud-field';
 import { WeatherModel } from '../weather-model';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { ClimateMap } from '../climate-map';
+import type { TerrainMap } from '../terrain-map';
 import type { GpuTimingSink } from '../../gpu-timings';
 import type { FieldProjection } from '../../field-projection';
 import type { CloudBlend, CloudFieldSlot, CloudSample } from './cloud-field-sample';
@@ -27,13 +28,14 @@ export class GeneratedCloudField implements CloudFieldSource {
   private lastBakedProjectionRevision: number | null = null;
   private generationValue = 0;
 
-  // climate と、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる天体の
-  // 半径 [m]、rotationPeriod はその自転周期 [s]。
+  // climate と terrain、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる
+  // 天体の半径 [m]、rotationPeriod はその自転周期 [s]。
   public constructor(
-    private readonly climate: ClimateMap, private readonly projection: FieldProjection,
+    private readonly climate: ClimateMap, private readonly terrain: TerrainMap,
+    private readonly projection: FieldProjection,
     surfaceRadius: number, rotationPeriod: number,
   ) {
-    this.model = new WeatherModel(climate, projection, surfaceRadius, rotationPeriod);
+    this.model = new WeatherModel(climate, terrain, projection, surfaceRadius, rotationPeriod);
     this.field = new CloudField(this.model, projection);
   }
 
@@ -52,9 +54,10 @@ export class GeneratedCloudField implements CloudFieldSource {
 
   // 表示時刻 displayTime の雲場の混ぜ方を置く。表示時刻が新しい側の刻みに届いたら、その先の刻みを焼き足す。
   public prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
-    // 気候画像の取得を始める。
+    // 気候・地形の画像の取得を始める。
     this.climate.request();
-    const climateGeneration = this.climate.generation;
+    this.terrain.request();
+    const climateGeneration = this.climate.generation + this.terrain.generation;
     const projectionRevision = this.projection.revision;
     const jump = this.lastDisplayTime === null ? Infinity : displayTime - this.lastDisplayTime;
     this.lastDisplayTime = displayTime;
@@ -82,7 +85,7 @@ export class GeneratedCloudField implements CloudFieldSource {
   // 古い側の枚は、次の prepare で先の刻みへ焼き直される。大きな時間加速で毎フレーム飛ぶときも、焼くのは 1 回で済む。
   private bakeFresh(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): number {
     this.bakeSlot(renderer, 1, displayTime, gpu);
-    this.lastBakedClimateGeneration = this.climate.generation;
+    this.lastBakedClimateGeneration = this.climate.generation + this.terrain.generation;
     this.lastBakedProjectionRevision = this.projection.revision;
     this.olderSlot = 0;
     this.olderTime = displayTime - CLOUD_BAKE_DISPLAY_TIME_STEP;
@@ -105,6 +108,12 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.olderTime = null;
   }
 
+  // 天体固定で見た太陽直下点の経度 [rad] をモデルへ渡す。暦を持つ呼び出し側がフレームごとに渡し、
+  // null で架空の太陽へ戻る。
+  public setSolarLongitude(rad: number | null): void {
+    this.model.setSolarLongitude(rad);
+  }
+
   // 表示時刻 time の天気を中間場から焼き、枚 slot の雲・風・環境へ描く。
   private bakeSlot(renderer: WebGPURenderer, slot: 0 | 1, time: number, gpu?: GpuTimingSink): void {
     this.model.syncTime(time);
@@ -117,5 +126,6 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.field.dispose();
     this.model.dispose();
     this.climate.dispose();
+    this.terrain.dispose();
   }
 }
