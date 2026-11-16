@@ -14,7 +14,7 @@ import { MAX_ATMOSPHERE_BODIES, type AtmosphereDraw, cutoffRadius } from '../atm
 import { AtmosphereIntegrator } from './atmosphere-integrator';
 import type { SunTransmittanceTables } from './sun-transmittance-tables';
 import { viewPositionAt, viewRayAt } from './view-ray';
-import { cirrusOctavesOf, type CirrusDetail } from '../cloud/cloud-detail';
+import { cirrusOctavesOf, type CirrusDetail } from '../earth-weather/cloud/cloud-detail';
 import type { Mat4Uniform, Vec3Node } from '../tsl-types';
 import type { GBufferPass } from './gbuffer';
 import type { BodyShadow } from './shadow/body-shadow';

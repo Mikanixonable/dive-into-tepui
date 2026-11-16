@@ -6,13 +6,13 @@ import {
   If, and, dot, float, int, length, log2, max, mix, normalize, sqrt, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { cutoffRadius } from '../../atmosphere';
-import { CloudFieldSampler } from '../../cloud/cloud-field-sampler';
-import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
+import { CloudFieldSampler } from '../../earth-weather/cloud/cloud-field-sampler';
+import { CloudShapeEvaluator } from '../../earth-weather/cloud/cloud-shape-evaluator';
 import {
   cumulusInCloudOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
-} from '../../cloud/cloud-kind-node';
-import { LIQUID_CLOUD_ASYMMETRY } from '../../cloud/cloud-optics';
-import { cloudReflectanceNode } from '../../cloud/cloud-optics-node';
+} from '../../earth-weather/cloud/cloud-kind-node';
+import { LIQUID_CLOUD_ASYMMETRY } from '../../earth-weather/cloud/cloud-optics';
+import { cloudReflectanceNode } from '../../earth-weather/cloud/cloud-optics-node';
 import { equirectUvFromDirection } from '../../field-projection';
 import { AtmosphereIntegrator } from '../atmosphere-integrator';
 import type { AtmosphereBody } from '../../atmosphere';

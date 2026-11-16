@@ -4,7 +4,7 @@
 import * as assert from 'node:assert/strict';
 import {
   CIRRUS_FLOW_SPEED_FULL, CIRRUS_FLOW_SPEED_ONSET, cirrusFlowFromWind,
-} from '../../src/render/cloud/cirrus-flow';
+} from '../../src/render/earth-weather/cloud/cirrus-flow';
 import { test } from '../harness';
 
 const CLOSE = 1e-12;

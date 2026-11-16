@@ -4,7 +4,7 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { float, vec2, vec3 } from 'three/tsl';
 import { EquidistantCap, OrthographicCap, orthographicCapUv } from '../../src/render/field-projection';
-import { capRadiusFor, snapCap } from '../../src/render/cloud/cloud-cap';
+import { capRadiusFor, snapCap } from '../../src/render/earth-weather/cloud/cloud-cap';
 import { evaluateShaderNode } from './tsl-node-evaluator';
 import { test } from '../harness';
 
