@@ -72,6 +72,12 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   meanCloudinessWet: { label: '平年雲量の肩', row: 'weather', min: 0.5, max: 1, step: 0.005 },
   tropopauseEquator: { label: '圏界面(赤道) [m]', row: 'weather', min: 12000, max: 20000, step: 100 },
   tropopausePole: { label: '圏界面(極) [m]', row: 'weather', min: 6000, max: 14000, step: 100 },
+  upperInstabilityActivity: { label: '上層の不安定度: 対流の寄与', row: 'weather', min: 0, max: 1, step: 0.01 },
+  upperInstabilityPatch: { label: '上層の不安定度: 斑の寄与', row: 'weather', min: 0, max: 1, step: 0.01 },
+  upperInstabilityLift: { label: '上層の不安定度: 上昇の寄与', row: 'weather', min: 0, max: 1, step: 0.01 },
+  layerDepthMinKm: { label: '鱗の層の深さ(下限) [km]', row: 'weather', min: 0.1, max: 2, step: 0.05 },
+  layerDepthMaxKm: { label: '鱗の層の深さ(上限) [km]', row: 'weather', min: 0.5, max: 4, step: 0.05 },
+  shieldWarmthFull: { label: '盾の暖気の飽和 [rad]', row: 'weather', min: 0.05, max: 1, step: 0.01 },
   // 移流 — 源の湿度と流し方
   surfaceHumidityBase: { label: '基底湿度(地表)', row: 'transport', min: 0, max: 0.7, step: 0.005 },
   upperHumidityBase: { label: '基底湿度(上層)', row: 'transport', min: 0, max: 0.7, step: 0.005 },

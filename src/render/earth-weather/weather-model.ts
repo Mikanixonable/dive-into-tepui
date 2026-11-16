@@ -14,6 +14,7 @@ import { PressureField, pressureBandAt } from './pressure-field';
 import { latitudeOf } from './sphere-frame';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
 import { CLOUD_TUNING } from './cloud/cloud-tuning';
+import { layerDepthKmNode, shieldNode, upperInstabilityNode } from './cloud/cirrus-regime-node';
 import { TerrainFlow } from './terrain-flow';
 import { WindField } from './wind-field';
 import type { WebGPURenderer } from 'three/webgpu';
@@ -42,6 +43,9 @@ export interface WeatherSample {
   readonly anvil: FloatNode; // 金床(平らな天蓋)の濃さ 0..1
   readonly eye: FloatNode; // 眼を持つ渦の目の濃さ 0..1
   readonly cirrusPatch: FloatNode; // 薄い雲の斑と透き間を決める百キロ級の場 −1..1(上層の流れに運ばれる)
+  readonly upperInstability: FloatNode; // 上層の不安定度の代理量 0..1(対流・斑・上昇から作る)
+  readonly layerDepth: FloatNode; // 巻雲の鱗の層の深さ [km]
+  readonly shield: FloatNode; // 前線・暖気の盾 0..1(前線の上で暖気が流入し、閉塞の芯でない所)
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
   readonly landFraction: FloatNode; // 陸らしさ 0..1
   readonly tropopause: FloatNode; // その緯度の対流の天井(圏界面の高さ)[m]
@@ -332,6 +336,15 @@ export class WeatherModel {
         .add(band.mul(band).mul(UPPER_BAND_HUMIDITY))
         .sub(eye.mul(UPPER_EYE_DRYNESS)).sub(dryTongue.mul(DRY_TONGUE_UPPER_DRYING)), 0, 1);
 
+    const convectiveActivity = this.convectiveActivity.at(direction, lift, warmth, band, {
+      land: landFraction,
+      elevation: this.climate.elevation(direction),
+      temperatureK: this.climate.temperatureK(direction),
+    });
+    const cirrusPatch = this.cirrusPatchNoise.at(direction);
+    // 巻雲の鱗の入力。上層の不安定度・鱗の層の深さ・前線の盾は既存の量から組む(式は cirrus-regime-node.ts)。
+    const upperInstability = upperInstabilityNode(convectiveActivity, cirrusPatch, lift);
+
     return {
       pressure,
       surfaceWind,
@@ -340,11 +353,7 @@ export class WeatherModel {
       surfaceHumidity,
       upperHumidity,
       convection: advected.convection,
-      convectiveActivity: this.convectiveActivity.at(direction, lift, warmth, band, {
-        land: landFraction,
-        elevation: this.climate.elevation(direction),
-        temperatureK: this.climate.temperatureK(direction),
-      }),
+      convectiveActivity,
       compression: airMass.compression,
       band,
       front,
@@ -352,7 +361,10 @@ export class WeatherModel {
       oceanFetch: airMass.ocean,
       anvil,
       eye,
-      cirrusPatch: this.cirrusPatchNoise.at(direction),
+      cirrusPatch,
+      upperInstability,
+      layerDepth: layerDepthKmNode(upperHumidity),
+      shield: shieldNode(front, warmth, occludedCore),
       meanCloudiness,
       landFraction,
       tropopause: tropopauseAt(latitude),

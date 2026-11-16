@@ -80,6 +80,13 @@ export const CLOUD_TUNING_DEFAULTS = {
   upperMeanCloudinessWeight: 0.30,
   meanCloudinessDry: 0.10,
   meanCloudinessWet: 0.85,
+  // weather-model.ts — 巻雲の鱗の入力。上層の不安定度は物理量ではなく既存の量から作る代理量。
+  upperInstabilityActivity: 0.5,
+  upperInstabilityPatch: 0.3,
+  upperInstabilityLift: 0.2,
+  layerDepthMinKm: 0.5,
+  layerDepthMaxKm: 2.0,
+  shieldWarmthFull: 0.35,
   // weather-model.ts — 圏界面
   tropopauseEquator: 17000,
   tropopausePole: 9000,
