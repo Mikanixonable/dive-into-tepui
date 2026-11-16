@@ -193,7 +193,39 @@ async function init(): Promise<void> {
   const resetButton = document.createElement('button');
   resetButton.textContent = 'リセット';
   resetButton.addEventListener('click', () => applyParams({ ...CLOUD_TUNING_DEFAULTS }));
-  paramsRow.append(copyButton, applyButton, resetButton);
+  // いまの値のうち既定値と違う項目を、開発サーバの窓口(tools/cloud-lab-apply-tuning.cjs)経由で
+  // cloud-tuning.ts の既定値へ書き込む。書き込むと開発サーバが再読み込みし、新しい既定値で始まる。
+  const reflectResult = document.createElement('span');
+  const reflectToCode = async (): Promise<void> => {
+    const changes = (Object.keys(CLOUD_TUNING_DEFAULTS) as CloudTuningId[])
+      .filter((id) => CLOUD_TUNING[id].value !== CLOUD_TUNING_DEFAULTS[id]);
+    if (changes.length === 0) {
+      reflectResult.textContent = '既定値と違う項目はない';
+      return;
+    }
+    const list = changes.map((id) => `${id}: ${CLOUD_TUNING_DEFAULTS[id]} → ${CLOUD_TUNING[id].value}`).join('\n');
+    if (!window.confirm(`cloud-tuning.ts の既定値へ書き込む(${changes.length} 項目)\n\n${list}`)) return;
+    const response = await fetch('/__cloud-lab/apply-tuning', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.fromEntries(changes.map((id) => [id, CLOUD_TUNING[id].value]))),
+    });
+    if (response.status === 404) {
+      throw new Error('開発サーバ(npm run cloud-lab)でだけ使える');
+    }
+    const body = await response.json() as { error?: string };
+    if (!response.ok) throw new Error(body.error ?? String(response.status));
+    reflectResult.textContent = `${changes.length} 項目を書き込んだ`;
+  };
+  const reflectButton = document.createElement('button');
+  reflectButton.textContent = 'コードへ反映';
+  reflectButton.title = '既定値と違う項目を cloud-tuning.ts の既定値へ書き込む(開発サーバのみ)';
+  reflectButton.addEventListener('click', () => {
+    reflectToCode().catch((e: unknown) => {
+      document.getElementById('error')!.textContent = `コードへの反映に失敗: ${String(e)}`;
+    });
+  });
+  paramsRow.append(copyButton, applyButton, resetButton, reflectButton, reflectResult);
   applyParams(Object.fromEntries(
     Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])) as Record<CloudTuningId, number>);
 
