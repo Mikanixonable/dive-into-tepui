@@ -7,7 +7,6 @@ const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 const { setupApplyTuning } = require('./tools/cloud-lab-apply-tuning.cjs');
 const { writeOverrides } = require('./tools/cloud-tuning-overrides-file.cjs');
-const { openDevPageWhenReady } = require('./tools/open-dev-page.cjs');
 
 // 既定ポート preferred が埋まっていたら空きポートを返す。devServer.port の被りは
 // EADDRINUSE で起動自体が落ちるので、設定側で先に空きを探す。
@@ -144,9 +143,7 @@ const config = {
     static: './.cloud-lab',
     // 調整値をコードへ書き込む窓口(setupApplyTuning)を持つので、手元からだけ繋げる。
     host: 'localhost',
-    // 同じアドレスのタブが既にあれば再利用して開く(tools/open-dev-page.cjs)。
-    open: false,
-    onListening: openDevPageWhenReady,
+    open: true,
     liveReload: true,
     hot: false,
     setupMiddlewares: setupApplyTuning,
