@@ -30,20 +30,17 @@ export const CLOUD_TUNING_DEFAULTS = {
   rainbandOnset: 5,
   rainbandWidth: 4,
   bandLift: 0.06,
-  bandHumidity: 0.1,
-  // pressure-feature.ts — 前線骨格(谷に端部を持つ寒冷・温暖・閉塞の腕)。腕の半値幅と
-  // 長さ・三点の半径は谷の短軸の半径を尺にした倍率、向きは [°]、曲がりは半径の冪。
-  // 腕の向きは閉塞点から先端へ「根元の向き → 先端の向き」と曲がる。閉塞点(三点)が出ると
-  // 寒冷・温暖の根元の向きは三点の向きへ寄り、3 本が同じ点へ繋がる。
+  // pressure-feature.ts — 前線骨格(谷に端部を持つ寒冷・温暖・閉塞の腕)。腕は気団の境目が
+  // 渦の循環に乗って巻き上げられた形で、回る速さは循環そのもの(積算の巻き上げ角 wound ×
+  // 半径プロファイル)。腕が届く長さは循環の風が縁の速さを下回る半径まで。腕の半値幅と
+  // 三点の半径は谷の短軸の半径を尺にした倍率、向きは [°]、曲がりは半径の冪。
+  // 閉塞点(三点)が出ると寒冷・温暖の根元の向きは三点の向きへ寄り、3 本が同じ点へ繋がる。
   frontArmWidth: 0.32,
   frontBandSkew: 0.45,
-  frontColdLength: 4.2,
-  frontWarmLength: 2.8,
-  frontTailLength: 5.0,
+  frontEdgeSpeed: 4,
+  frontWarmRatio: 0.55,
   frontTripleRadius: 0.55,
   frontTripleAngleDeg: -45,
-  frontSpinDeg: 45,
-  frontCatchDeg: 30,
   frontColdAngleDeg: -100,
   frontColdTipAngleDeg: -115,
   frontColdBend: 1.5,

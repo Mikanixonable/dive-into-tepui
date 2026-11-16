@@ -4,6 +4,8 @@
 // 飛んでも同じ配置になる。
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
+import { vortexSpinOf } from './wind-law';
+import { FEATURE_REACH } from './pressure-feature';
 import { courseAt, DAY, DEGREE, uniformIn, waypoint } from './tracks';
 import type { Course, PressurePlacement, Range } from './tracks';
 
@@ -156,9 +158,30 @@ function tropicalTrackOf(index: number, generation: number): TropicalTrack | nul
   return { onset, lifetime, course, peakDepth, birthRadius, growth, finalElongation, recurving };
 }
 
+// 積算の巻き上げ角 [rad]。生まれてからの、谷の循環が気団の境目を巻き上げてきた総量。
+// 転向して温帯化する渦は肥大・浅化で循環が緩むので、積算は一生の深さ・半径・緯度を辿る。
+const WOUND_STEPS = 16;
+function tropicalWoundOf(track: TropicalTrack, life: number, rotationPeriod: number): number {
+  let sum = 0;
+  for (let i = 0; i <= WOUND_STEPS; i += 1) {
+    const l = (life * i) / WOUND_STEPS;
+    const spin = vortexSpinOf(
+      track.peakDepth * Math.sin(Math.PI * l ** TROPICAL_PEAK_SKEW),
+      track.birthRadius
+        * (1 + track.growth * THREE.MathUtils.smoothstep(l, TROPICAL_GROWTH_ONSET, 1)),
+      courseAt(track.course, l).latitude * DEGREE,
+      FEATURE_REACH, rotationPeriod,
+    );
+    sum += (i === 0 || i === WOUND_STEPS ? 0.5 : 1) * spin.coreOmega;
+  }
+  return (sum * life * track.lifetime) / WOUND_STEPS;
+}
+
 // 熱帯低気圧 index(0..TROPICAL_COUNT − 1)の、時刻 seconds [s] における配置。その世代に
-// 発生しない、生まれる前、消えたあとは null。
-export function tropicalPlacementAt(index: number, seconds: number): PressurePlacement | null {
+// 発生しない、生まれる前、消えたあとは null。rotationPeriod [s] は自転周期。
+export function tropicalPlacementAt(
+  index: number, seconds: number, rotationPeriod: number,
+): PressurePlacement | null {
   // 枡ごとに周期の位相をずらし、揃って生まれ直さないようにする。
   const age = seconds / TROPICAL_PERIOD + index / TROPICAL_COUNT;
   const generation = Math.floor(age);
@@ -179,6 +202,6 @@ export function tropicalPlacementAt(index: number, seconds: number): PressurePla
       ? THREE.MathUtils.smoothstep(life, TROPICAL_OCCLUSION_ONSET, TROPICAL_OCCLUSION_FULL)
       : undefined,
     fronts: 'tail',
-    life,
+    wound: tropicalWoundOf(track, life, rotationPeriod),
   };
 }

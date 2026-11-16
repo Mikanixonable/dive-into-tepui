@@ -114,3 +114,62 @@ export function coreCrossingAngle(
     / (damped + Math.sqrt(Math.max(damped * damped + 4 * spinSquared, FRICTION_RATE ** 2)));
   return Math.atan2(FRICTION_RATE, coriolis + spin * Math.tanh(sinLatitude / SPIN_SENSE_WIDTH));
 }
+
+// 谷の気圧の形が作る循環。谷の芯のまわりを空気が回る角速度と、その半径ごとの分布を、
+// balancedWind と同じ釣り合いから出す — depth [hPa]・radius [m]・latitude [rad] の谷で、
+// reach は谷の裾を閉じる半径 [m]。前線の腕はこの循環が気団の境目を巻き上げた形なので、
+// トラック側は角速度を一生に渡って積み、写し側は半径のプロファイルで腕を曲げる。
+export interface VortexSpin {
+  // 芯の軌道角速度 [rad/s]。天頂まわりの向きは半球で反転するが、前線骨格の座標は
+  // 極側の軸で反転を吸収するので、ここでは絶対値で持つ。
+  readonly coreOmega: number;
+  // 4 × 芯の spin 二乗 ÷ 減衰項の二乗 — 半径プロファイルの形を決める無次元数。
+  readonly spinRatio: number;
+  // 裾を閉じるガウスの係数 (radius / reach)²。
+  readonly reachSq: number;
+}
+
+// 深さ depth [hPa]・短軸の半径 radius [m]・緯度 latitude [rad] の谷の循環。
+// rotationPeriod は自転周期 [s]。谷の気圧形は (1+r̂²)^(−1/2) で半径 r̂ = r/radius を尺に
+// 取るので、芯の spin 二乗は 深さ ÷ 半径² × (1 + 2 a) に集約できる — a = reachSq。
+export function vortexSpinOf(
+  depth: number, radius: number, latitude: number, reach: number, rotationPeriod: number,
+): VortexSpin {
+  const reachSq = (radius / reach) ** 2;
+  const sinLatitude = Math.abs(Math.sin(latitude));
+  const coriolis = coriolisRate(rotationPeriod) * sinLatitude;
+  const damped = Math.hypot(coriolis, FRICTION_RATE);
+  // 芯での等圧線方向の 2 階微分 [hPa/rad²] は depth·(1+2a)·(天体半径/radius)²。天体半径は
+  // 角速度の二乗への換算係数と相殺されるので、spin 二乗は depth·(1+2a)·100/(密度·radius²)。
+  const spinSquared = depth * (1 + 2 * reachSq) * 100 / (AIR_DENSITY * radius ** 2);
+  const spinSense = Math.abs(Math.tanh(sinLatitude / SPIN_SENSE_WIDTH));
+  return {
+    coreOmega: 2 * spinSquared * spinSense
+      / (damped + Math.sqrt(damped * damped + 4 * spinSquared)),
+    spinRatio: 4 * spinSquared / (damped * damped),
+    reachSq,
+  };
+}
+
+// 循環の半径プロファイル — 半径 r̂(半径の倍率)での軌道角速度 ÷ 芯の角速度。谷の気圧形の
+// 微分から出る解析形で、内側が外側より速く回る(差回転が気団の境目を螺旋へ巻き上げる)。
+export function vortexProfileAt(rHat: number, spin: VortexSpin): number {
+  const rr = rHat * rHat + 1;
+  const f = Math.exp(-spin.reachSq * rHat * rHat)
+    * (rr ** -1.5 + 2 * spin.reachSq * rr ** -0.5) / (1 + 2 * spin.reachSq);
+  return f * (1 + Math.sqrt(1 + spin.spinRatio)) / (1 + Math.sqrt(1 + spin.spinRatio * f));
+}
+
+// 循環の風が edgeSpeed [m/s] を下回る半径(半径の倍率) — 渦が周りの流れを圧倒しなくなる
+// 外縁で、前線の腕はここまで届く。循環の速さは芯で 0 から立ち上がって半径とともに落ちる
+// ので、外側から閾値を越える最初の半径を取る。谷の裾の影響限界 reach [m] が上界。
+// radius [m] は谷の短軸の半径。
+export function vortexEdgeOf(
+  spin: VortexSpin, radius: number, reach: number, edgeSpeed: number,
+): number {
+  const limit = reach / radius;
+  for (let r = limit; r > 0.3; r -= 0.05) {
+    if (spin.coreOmega * vortexProfileAt(r, spin) * r * radius >= edgeSpeed) return r;
+  }
+  return 0.3;
+}
