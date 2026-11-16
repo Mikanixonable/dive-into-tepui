@@ -52,8 +52,10 @@ export class BakedField {
       map.magFilter = THREE.LinearFilter;
     }
     this.material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
+    // MRT の出力名は対応するテクスチャの名前から取る — three.js が名前で対応づける
+    // (MRTNode.setup の getTextureIndex)ため、ここで命名をずらすと出力が黙って捨てられる。
     this.material.mrtNode = mrt(
-      Object.fromEntries(outputs.map((value, index) => [`${name}_${index}`, value])));
+      Object.fromEntries(outputs.map((value, index) => [this.target.textures[index]!.name, value])));
     this.quad = new QuadMesh(this.material);
   }
 
