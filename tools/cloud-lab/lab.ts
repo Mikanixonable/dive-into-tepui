@@ -52,7 +52,7 @@ export class CloudLabCanvas {
   // 走るので、ここで待たないと最初の何枚かが空のテクスチャで焼かれる。
   // captureOnly は撮影専用(画面へ提示しない)。指定の理由は render() 側に書く。
   public static async create(canvas: HTMLCanvasElement, captureOnly = false): Promise<CloudLabCanvas> {
-    const renderer = new WebGPURenderer({ canvas });
+    const renderer = new WebGPURenderer({ canvas, requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
     renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT, false);
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;

@@ -82,7 +82,7 @@ class TranslucentProbeCanvas {
   public static async create(
     canvas: HTMLCanvasElement, cap: OrthographicCap,
   ): Promise<TranslucentProbeCanvas> {
-    const renderer = new WebGPURenderer({ canvas });
+    const renderer = new WebGPURenderer({ canvas, requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
     renderer.setSize(BOX_PX, BOX_PX, false);
     renderer.toneMapping = THREE.NoToneMapping;
     await renderer.init();

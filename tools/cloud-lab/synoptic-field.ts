@@ -37,7 +37,7 @@ export class SynopticField {
   // 非同期の構築が要るので静的ファクトリからだけ組む。表示へ出さない器なので
   // canvas はページへぶら下げない。
   public static async create(): Promise<SynopticField> {
-    const renderer = new WebGPURenderer({ canvas: document.createElement('canvas') });
+    const renderer = new WebGPURenderer({ canvas: document.createElement('canvas'), requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
     renderer.setSize(FIELD_WIDTH, FIELD_HEIGHT, false);
     renderer.toneMapping = NoToneMapping;
     await renderer.init();

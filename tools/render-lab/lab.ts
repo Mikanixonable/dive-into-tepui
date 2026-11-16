@@ -189,6 +189,7 @@ export class LabView {
     // 描画順の並べ替えが本番と別物になる。
     const renderer = new WebGPURenderer({
       canvas, trackTimestamp: true, reversedDepthBuffer: true,
+      requiredLimits: { maxSampledTexturesPerShaderStage: 32 },
     });
     renderer.setOpaqueSort(reversedOpaqueSort);
     renderer.setTransparentSort(reversedTransparentSort);
