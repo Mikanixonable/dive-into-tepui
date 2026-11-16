@@ -193,6 +193,12 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'light', label: '環境光',
     presets: { low: true, medium: true, high: true },
   },
+  // 地球の球の内側へだけ届く強めの環境光を足すか。夜側の地表と雲の配置を読むための観察補助で、
+  // 地球以外の天体や地球の外にいる物へは届かない。
+  nightObservation: {
+    kind: 'toggle', group: 'light', label: '夜側の観察',
+    presets: { low: false, medium: false, high: false },
+  },
   // 建造中にカメラへ追従して船体を照らす作業灯。建造中でなければ点かない。
   constructionWorkLight: {
     kind: 'toggle', group: 'light', label: '建造の作業灯',
