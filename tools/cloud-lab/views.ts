@@ -75,7 +75,6 @@ const TRANSLUCENT_SPAN = 1;
 const PRESSURE_MIN = -70;
 const PRESSURE_SPAN = 100;
 const LIFT_SPAN = 0.1;
-const FRONT_SPAN = 8;
 const WARMTH_SPAN = 0.4;
 const WIND_SPAN = 45;
 const ELEVATION_SPAN = 8000;
@@ -119,8 +118,8 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     legend: WIND_LEGEND,
     color: (d, model) => windColor(model.traceWindAt(d)) },
   { id: 'front', label: '前線', reads: 'weather',
-    legend: { text: '気団の圧縮の 1 を超えた分 — 0..8(白いほど前線が強い)' },
-    color: (d, model) => vec3(model.weatherAt(d).compression.sub(1).div(FRONT_SPAN)) },
+    legend: { text: '谷の骨格から立つ前線の帯の強さ 0..1(白いほど前線が強い)' },
+    color: (d, model) => vec3(model.weatherAt(d).front) },
   { id: 'airMass', label: '気団', reads: 'weather',
     legend: { text: '暖気の流入 [rad] — ±0.4 を 0.5 中心へ(明るいほど暖気)' },
     color: (d, model) => vec3(model.weatherAt(d).warmth.div(2 * WARMTH_SPAN).add(0.5)) },

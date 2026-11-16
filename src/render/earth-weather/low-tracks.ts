@@ -272,6 +272,7 @@ function rawLowPlacementAt(
         radius: track.birthRadius * (1 + track.growth * life),
         elongation: LOW_ELONGATION,
         occlusion: THREE.MathUtils.smoothstep(life, LOW_OCCLUSION_ONSET, LOW_OCCLUSION_FULL),
+        fronts: 'pair',
       },
       peakDepth: track.peakDepth,
       presence: Math.min(1, Math.min(life, 1 - life) * track.lifetime / ABSORB_LIFE_RAMP),
