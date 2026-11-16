@@ -54,7 +54,8 @@ const CHANNELS = [
   'cirrus', 'cloudTop', 'coverage',
   'cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM', 'tropopause',
   'oceanFetch', 'cumulusCellKm', 'cirrusCellKm', 'unused',
-  'elevation', 'temperatureK', 'detrain',
+  'elevation', 'temperatureK', 'detrain', 'shallowForcing',
+  'deepPotential', 'convectionX',
 ] as const;
 
 class WeatherProbeCanvas {
@@ -101,7 +102,8 @@ class WeatherProbeCanvas {
       // 3 つ目は塔が上層へ放出する氷雲の強さ(深い対流の指標。積雲の量は塔の高さを持たない)。
       vec4(
         this.field.climateMap.elevation(direction), this.field.climateMap.temperatureK(direction),
-        cloud.detrain, float(0)),
+        cloud.detrain, weather.shallowForcing),
+      vec4(weather.deepPotential, weather.convection.x, float(0), float(0)),
     ], OUT_WIDTH, OUT_HEIGHT);
   }
 

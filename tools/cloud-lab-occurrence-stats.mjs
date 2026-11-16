@@ -45,15 +45,19 @@ class Accumulator {
     this.clear = 0;
     this.deep = DEEP_DETRAINS.map(() => 0);
     this.detrain = 0;
+    this.deepPotential = 0;
+    this.shallowForcing = 0;
     this.activity = 0;
     this.cellKm = 0;
   }
 
-  add(weight, coverage, activity, cellKm, detrain) {
+  add(weight, coverage, activity, cellKm, detrain, deepPotential, shallowForcing) {
     this.weight += weight;
     this.coverage += weight * coverage;
     this.clear += weight * (coverage < CLEAR_COVERAGE ? 1 : 0);
     this.detrain += weight * detrain;
+    this.deepPotential += weight * deepPotential;
+    this.shallowForcing += weight * shallowForcing;
     DEEP_DETRAINS.forEach((level, i) => {
       this.deep[i] += weight * (detrain >= level ? 1 : 0);
     });
@@ -69,6 +73,8 @@ class Accumulator {
       coverage: this.coverage / w,
       clearFraction: this.clear / w,
       detrain: this.detrain / w,
+      deepPotential: this.deepPotential / w,
+      shallowForcing: this.shallowForcing / w,
       ...Object.fromEntries(DEEP_DETRAINS.map((level, i) => [`deep${level}`, this.deep[i] / w])),
       activity: this.activity / w,
       cellKm: this.cellKm / w,
@@ -122,6 +128,8 @@ async function main() {
       const activity = channel('convectiveActivity');
       const cellKm = channel('cumulusCellKm');
       const detrain = channel('detrain');
+      const deepPotential = channel('deepPotential');
+      const shallowForcing = channel('shallowForcing');
       // 太陽直下経度 [rad]。weather-model の既定(平均太陽日で西へ一周)と同じ式。
       const sunLongitude = (utc * 3600 * -2 * Math.PI / 86400) % (2 * Math.PI);
       for (let row = 0; row < height; row += 1) {
@@ -137,12 +145,12 @@ async function main() {
             landMarks.push({ lat: latitude, lon: longitude * 180 / Math.PI, land: land[i], elevation: elevation[i] });
           }
           if (surface === null) continue;
-          byLat[surface][latBand].add(weight, coverage[i], activity[i], cellKm[i], detrain[i]);
+          byLat[surface][latBand].add(weight, coverage[i], activity[i], cellKm[i], detrain[i], deepPotential[i], shallowForcing[i]);
           if (absLatitude < DIURNAL_MAX_LAT) {
             const fraction = ((longitude - sunLongitude) / (2 * Math.PI) + 0.5) % 1;
             const localHour = (fraction < 0 ? fraction + 1 : fraction) * 24;
             const bin = Math.min(Math.floor(localHour / LOCAL_BIN_HOURS), 24 / LOCAL_BIN_HOURS - 1);
-            byHour[surface][bin].add(weight, coverage[i], activity[i], cellKm[i], detrain[i]);
+            byHour[surface][bin].add(weight, coverage[i], activity[i], cellKm[i], detrain[i], deepPotential[i], shallowForcing[i]);
           }
           if (surface === 'ocean' && absLatitude < 30 && utc === 0) seaTemperatures.push(temperature[i]);
         }
@@ -183,7 +191,7 @@ function formatCell(s, key) {
 
 function printTables(result) {
   const latHeads = LAT_EDGES.slice(1).map((edge, i) => `${LAT_EDGES[i]}-${edge}°`.padStart(7));
-  for (const key of ['coverage', 'clearFraction', 'detrain', ...DEEP_DETRAINS.map((t) => `deep${t}`), 'activity', 'cellKm']) {
+  for (const key of ['coverage', 'clearFraction', 'deepPotential', 'shallowForcing', 'detrain', ...DEEP_DETRAINS.map((t) => `deep${t}`), 'activity', 'cellKm']) {
     console.log(`\n## ${key} — 地表 × 緯度帯(全時刻)`);
     console.log(`surface   ${latHeads.join(' ')}`);
     for (const s of SURFACES) {
@@ -191,7 +199,7 @@ function printTables(result) {
     }
   }
   const hourHeads = Array.from({ length: 24 / LOCAL_BIN_HOURS }, (_, i) => `${i * LOCAL_BIN_HOURS}h`.padStart(6));
-  for (const key of ['coverage', 'clearFraction', 'detrain', ...DEEP_DETRAINS.map((t) => `deep${t}`), 'activity']) {
+  for (const key of ['coverage', 'clearFraction', 'deepPotential', 'shallowForcing', 'detrain', ...DEEP_DETRAINS.map((t) => `deep${t}`), 'activity']) {
     console.log(`\n## ${key} — 地表 × 地方太陽時(|緯度| < ${DIURNAL_MAX_LAT}°)`);
     console.log(`surface   ${hourHeads.join(' ')}`);
     for (const s of SURFACES) {
