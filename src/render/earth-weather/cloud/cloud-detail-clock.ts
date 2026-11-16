@@ -31,7 +31,7 @@ const MIN_VISIBLE_LIFETIME = 3;
 // 読み直すたびに読む位置を飛ばす量(ノイズの格子の単位)。前の周期と相関しない遠さ。
 const RESEED_SPAN = 97;
 // 流れに沿って中心の両側に並べる点の数の上限。stretch が 2·FLOW_HALF_POINTS + 1 のとき全点が満額になる。
-const FLOW_HALF_POINTS = 3;
+const FLOW_HALF_POINTS = 6;
 // 流れに沿った点どうしの相関。添字は点の間隔の番号(段の波長の半分ずつ)で、勾配ノイズを格子で測った値。
 // 重みの二乗和ではなく、この相関を含めた分散で割って和を単位分散に保つ。
 const FLOW_CORRELATION = [1, 0.4, -0.06, -0.02];

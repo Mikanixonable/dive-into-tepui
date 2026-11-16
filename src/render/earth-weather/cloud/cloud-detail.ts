@@ -222,20 +222,23 @@ export function cirrusOctavesOf(detail: CirrusDetail): number {
 // 均した濃さを変えてしまう。16〜50 km は上層の湿度の細かい段(雲場)が担う。
 const CIRRUS_FIRST_OCTAVE = 2;
 
-// 流れへの伸縮を掛ける最も細かい段(DETAIL_WAVELENGTHS の添字、ここでは 2 km)。より細かい段は等方に読む。
+// 流れへの伸縮を掛ける最も細かい段(DETAIL_WAVELENGTHS の添字、ここでは 1 km)。0.5 km・0.25 km の段は等方に読む。
 // 細かい段まで伸ばすと細帯が針状になるため。
-const CIRRUS_STRETCH_LAST_OCTAVE = 4;
+const CIRRUS_STRETCH_LAST_OCTAVE = 5;
 
 // 揃いの強い筋が流れ方向へ伸びる倍率の上限。揃い度 0 の場所は等方に読む。
-const CIRRUS_STRETCH_MAX = 7;
+// 点数の上限(2 * FLOW_HALF_POINTS + 1 点)の全点が満額になる値。
+const CIRRUS_STRETCH_MAX = 14;
 // 巻雲の場の混ぜ方。筋状・鱗雲状・薄く広がるの各場の振れ幅(対数の標準偏差)。
 const CIRRUS_STREAK_SIGMA = 0.3;
 const CIRRUS_CELL_SIGMA = 0.3;
 const CIRRUS_VEIL_SIGMA = 0.25;
 // 薄く広がる場の段の重みの冪(波長の冪)と、その段の添字の上限(8 km と 4 km まで)。
-const CIRRUS_VEIL_SPECTRAL_EXPONENT = 0.3;
+const CIRRUS_VEIL_SPECTRAL_EXPONENT = 0.8;
+// 筋状の段の重みを粗い側へ傾ける冪(8 km を 1 とする波長の冪)。細かい段の粒を抑えて、筋を長く保つ。
+const CIRRUS_STREAK_SPECTRAL_TILT = 0.6;
 const CIRRUS_VEIL_LAST_OCTAVE = 3;
-// 筋状の細い段(添字 5・6)の重み。
+// 筋状の細い段(添字 6・7)の重み。
 const CIRRUS_THIN_STREAK_WEIGHT = 0.3;
 // ジェットの風速の窓 [m/s]。筋状の重みはこの窓で 0 から 1 へ渡る。
 const CIRRUS_JET_ONSET = 5;
@@ -278,7 +281,8 @@ const CIRRUS_EDGE_SPREAD = 0.4;
 // 金床の場の振れ幅。芯の分(0.15)に、量が少ないほど増える繊維の分を足す。繊維は流れの向きへ強く伸ばす。
 const CIRRUS_ANVIL_SIGMA_CORE = 0.15;
 const CIRRUS_ANVIL_SIGMA_FIBER = 0.6;
-const CIRRUS_ANVIL_STRETCH = CIRRUS_STRETCH_MAX * 2;
+// 金床の繊維の伸び。筋より短く保つ。
+const CIRRUS_ANVIL_STRETCH = 7;
 // 乾燥度の目盛り(気候の雲量 0..1 の範囲)。この間で鱗雲状の重みを 0 から 1 へ渡す。
 const CIRRUS_ARID_LO = 0.1;
 const CIRRUS_ARID_HI = 0.35;
@@ -445,8 +449,9 @@ export class CirrusDetailEvaluator {
             ? this.clock.flowNoise(index, direction, radius, windVector, flowDir, stretch)
             : this.clock.evolvingNoise(index, direction, radius, windVector);
           // 細い筋はジェットの芯で立つ — 風が緩い所では筋状の場は粗いうねりへ戻る。
-          const streakWeightOf = index <= CIRRUS_STRETCH_LAST_OCTAVE ? weight
-            : weight.mul(CIRRUS_THIN_STREAK_WEIGHT).mul(jet);
+          const streakWeightOf = (index <= CIRRUS_STRETCH_LAST_OCTAVE ? weight
+            : weight.mul(CIRRUS_THIN_STREAK_WEIGHT).mul(jet))
+            .mul((wavelength / 8000) ** CIRRUS_STREAK_SPECTRAL_TILT);
           streakSum.addAssign(along.mul(streakWeightOf).mul(streakGate));
           streakEnergy.addAssign(streakWeightOf.mul(streakWeightOf));
           streakGate.mulAssign(exp(along.mul(OCTAVE_COUPLING).sub(COUPLING_SHIFT).mul(live)));
