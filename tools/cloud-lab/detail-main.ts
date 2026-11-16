@@ -46,6 +46,8 @@ declare global {
   interface Window {
     // 計測道具(tools/cloud-lab-detail-*.mjs)が CDP から駆動する入口。
     cloudLabDetail?: {
+      // 計測道具が内部状態を読むための口(一時)。
+      labView: LabView;
       cloudDetailShots: () => readonly CloudDetailShotInfo[];
       // 視点の安定性の撮影の組(基準・横ずらし・高度違い・時間後)。
       cloudDetailStabilityShots: () => readonly CloudDetailShotInfo[];
@@ -55,6 +57,8 @@ declare global {
         name: string, point: CloudDetailRandomPoint,
       ) => Promise<{ png: string; centerKmPerPx: number; altitudeM: number }>;
       capture: () => Promise<string>;
+      // 計測道具が構図と描画設定を自由に重ねて撮るための口(一時)。
+      applyShot: (name: string, graphics?: Record<string, unknown>) => void;
       setDisplayTime: (displayTime: number) => void;
       setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
     };
@@ -161,11 +165,15 @@ async function init(): Promise<void> {
   void showSelection();
 
   window.cloudLabDetail = {
+    // 計測道具が内部状態(雲のフラグ・uniform)を読むための口(一時)。
+    labView: view,
     cloudDetailShots: () => CLOUD_DETAIL_SHOT_INFOS,
     cloudDetailStabilityShots: () => CLOUD_DETAIL_STABILITY_SHOT_INFOS,
     shootCloudDetail: (name) => view.shootCloudDetail(name),
     shootCloudDetailRandom: (name, point) => view.shootCloudDetailRandom(name, point),
     capture: () => view.capture(),
+    applyShot: (name: string, graphics?: Parameters<typeof view.applyShot>[1]) =>
+      view.applyShot(name, graphics),
     setDisplayTime: (displayTime) => view.setDisplayTime(displayTime),
     setGraphicsOption: (key, value) => {
       settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
