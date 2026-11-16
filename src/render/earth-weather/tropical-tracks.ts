@@ -50,6 +50,9 @@ const TROPICAL_FINAL_ELONGATION: Range = [1.4, 1.8];
 const TROPICAL_ELONGATION_ONSET = 0.6;
 // 深さの山の偏り。深さ = 最深 × sin(π × life^偏り) で、最盛期が転向(life 0.5)の直後 0.56 に来る。
 const TROPICAL_PEAK_SKEW = 1.2;
+// 転向した進路の閉塞の進み。温帯化(肥大・伸長)が立ち上がってから、消えるころに追いつき切る。
+const TROPICAL_OCCLUSION_ONSET = 0.62;
+const TROPICAL_OCCLUSION_FULL = 0.95;
 
 // 海域。発生の重みは気候統計の年間発生数(IBTrACS 1981–2010、熱帯暴風以上で全球 ~85 個/年)
 // の相対頻度 — 西太平洋が最多、北インド洋が最少。進路の型は 2 つ: 貿易風に流されて西へ走り
@@ -118,6 +121,7 @@ interface TropicalTrack {
   readonly birthRadius: number;
   readonly growth: number;
   readonly finalElongation: number;
+  readonly recurving: boolean;
 }
 
 // 枡 index に世代 generation で生まれる熱帯低気圧の一生。その世代に発生しないなら null —
@@ -149,7 +153,7 @@ function tropicalTrackOf(index: number, generation: number): TropicalTrack | nul
     turn: waypoint(turnLatitude, turnLongitude),
     terminus: waypoint(endLatitude, endLongitude),
   };
-  return { onset, lifetime, course, peakDepth, birthRadius, growth, finalElongation };
+  return { onset, lifetime, course, peakDepth, birthRadius, growth, finalElongation, recurving };
 }
 
 // 熱帯低気圧 index(0..TROPICAL_COUNT − 1)の、時刻 seconds [s] における配置。その世代に
@@ -170,5 +174,10 @@ export function tropicalPlacementAt(index: number, seconds: number): PressurePla
     depth: track.peakDepth * Math.sin(Math.PI * life ** TROPICAL_PEAK_SKEW),
     radius: track.birthRadius * (1 + track.growth * THREE.MathUtils.smoothstep(life, TROPICAL_GROWTH_ONSET, 1)),
     elongation: 1 + (track.finalElongation - 1) * THREE.MathUtils.smoothstep(life, TROPICAL_ELONGATION_ONSET, 1),
+    // 転向した進路は温帯化とともに閉塞し、赤道側の尾は寒冷・温暖の対へ育つ。
+    occlusion: track.recurving
+      ? THREE.MathUtils.smoothstep(life, TROPICAL_OCCLUSION_ONSET, TROPICAL_OCCLUSION_FULL)
+      : undefined,
+    fronts: 'tail',
   };
 }

@@ -49,19 +49,25 @@ export class Cyclones {
     return this.troughs.reduce<FloatNode>((sum, trough) => sum.add(trough.anvilAt(direction)), float(0));
   }
 
-  // 単位方向 direction での乾いた舌の濃さ 0..1。閉塞は中緯度の低気圧だけが持つ — 重なった所で
+  // 単位方向 direction での乾いた舌の濃さ 0..1。閉塞を持たない谷では 0 — 重なった所で
   // 二重に乾かないよう、合計ではなく最も強いものを取る。
   public dryTongueAt(direction: Vec3Node): FloatNode {
-    return this.lows.reduce<FloatNode>((acc, trough) => max(acc, trough.dryTongueAt(direction)), float(0));
+    return this.troughs.reduce<FloatNode>((acc, trough) => max(acc, trough.dryTongueAt(direction)), float(0));
   }
 
   // 単位方向 direction でのコンマの頭の濃さ 0..1。
   public commaHeadAt(direction: Vec3Node): FloatNode {
-    return this.lows.reduce<FloatNode>((acc, trough) => max(acc, trough.commaHeadAt(direction)), float(0));
+    return this.troughs.reduce<FloatNode>((acc, trough) => max(acc, trough.commaHeadAt(direction)), float(0));
   }
 
   // 単位方向 direction での閉塞した芯の濃さ 0..1。
   public occludedCoreAt(direction: Vec3Node): FloatNode {
-    return this.lows.reduce<FloatNode>((acc, trough) => max(acc, trough.occludedCoreAt(direction)), float(0));
+    return this.troughs.reduce<FloatNode>((acc, trough) => max(acc, trough.occludedCoreAt(direction)), float(0));
+  }
+
+  // 単位方向 direction での前線の帯の強さ 0..1。前線を持たない谷では 0 — 隣り合う低気圧の
+  // 腕どうしが重なる所では飽和しないよう最も強いものを取る。
+  public frontAt(direction: Vec3Node): FloatNode {
+    return this.troughs.reduce<FloatNode>((acc, trough) => max(acc, trough.frontAt(direction)), float(0));
   }
 }

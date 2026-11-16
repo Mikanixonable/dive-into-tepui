@@ -4,7 +4,9 @@
 
 // 谷・丘 1 つの配置。緯度・経度 [rad](緯度は南半球で負。経度は畳まない)、深さ [hPa](0 以上)、
 // 短軸の半径 [m]、長軸/短軸の比。occlusion は閉塞の進み 0..1 — 深さの山を越えて寒冷前線が
-// 温暖前線へ追いつくと立ち上がる。持たない配置(熱帯低気圧・高気圧)は閉塞しない。
+// 温暖前線へ追いつくと立ち上がる。持たない配置(成熟した熱帯低気圧・高気圧)は閉塞しない。
+// fronts は谷へ繋がる前線の形 — 'pair' は寒冷・温暖の対(中緯度の低気圧)、'tail' は赤道側へ
+// 長く伸びる尾で、温帯化して閉塞が立ち上がると対と同じ構造へ移る。
 export interface PressurePlacement {
   readonly latitude: number;
   readonly longitude: number;
@@ -12,6 +14,7 @@ export interface PressurePlacement {
   readonly radius: number;
   readonly elongation: number;
   readonly occlusion?: number;
+  readonly fronts?: 'pair' | 'tail';
 }
 
 // 進路の上の点 [°]。経度は連続な数で持ち、180° をまたぐ進路は 180 を超える値で書く。
