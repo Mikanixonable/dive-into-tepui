@@ -87,6 +87,19 @@ export const CLOUD_TUNING_DEFAULTS = {
   layerDepthMinKm: 0.5,
   layerDepthMaxKm: 2.0,
   shieldWarmthFull: 0.35,
+  // cirrus-scale.ts — 鱗の間隔と出る条件。鱗のレジーム図は境界層の対流とシア不安定の類推で、巻積雲そのものへの適用は未確認(推定)。
+  scaleShearLo: 4,
+  scaleShearHi: 14,
+  scaleOpenByAmount: 0.4,
+  scaleAspectClosed: 4.5,
+  scaleAspectOpen: 15,
+  scaleAspectRoll: 3,
+  scaleAspectWave: 2.7,
+  scaleGateOnset: 0.35,
+  scaleGateFull: 0.7,
+  scaleDepthJitterOct: 0.3,
+  // cloud-detail.ts — 鱗雲状の縁の千切れ(乱流による)の強さ。上層の不安定度に比例する。
+  scaleRaggedGain: 1.2,
   // weather-model.ts — 圏界面
   tropopauseEquator: 17000,
   tropopausePole: 9000,

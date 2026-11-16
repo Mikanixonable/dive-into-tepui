@@ -10,6 +10,7 @@ import * as THREE from 'three/webgpu';
 import { If, dot, float, greaterThan, max, min, normalize, sign, uniform, vec4 } from 'three/tsl';
 import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../earth-weather/cloud/cloud-detail';
 import { CloudFieldSampler } from '../earth-weather/cloud/cloud-field-sampler';
+import { scaleShearNode } from '../earth-weather/cloud/cirrus-scale-node';
 import { shellAirmassNode, transmittanceFromColumnOpticalDepthNode } from '../earth-weather/cloud/cloud-optics-node';
 import { cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode } from '../earth-weather/cloud/cloud-kind-node';
 import { CIRRUS_BOTTOM_ALTITUDE, CIRRUS_TOP_ALTITUDE, CUMULUS_MAX_OPTICAL_DEPTH } from '../earth-weather/cloud/cloud-kind';
@@ -168,8 +169,10 @@ export class CloudAtmosphereRenderer {
     if (species === 'cirrus') {
       const bodyUp = this.bodyFromWorld.mul(vec4(sampleUp, 0)).xyz;
       If(greaterThan(field.cirrus, CIRRUS_PRESENT_AMOUNT), () => {
+        const motion = this.fieldSampler.sampleMotion(bodyUp);
         detail.assign(this.cirrusDetail.multiplierAt(
-          bodyUp, shellRadius, width, field.cirrusFlow, this.fieldSampler.sampleMotion(bodyUp).upperWind, cirrusColumnInputOf(field)));
+          bodyUp, shellRadius, width, field.cirrusFlow, motion.upperWind,
+          cirrusColumnInputOf(field, scaleShearNode(motion.upperWind, motion.surfaceWind))));
       });
     }
     const columnOpticalDepth = opticalDepthOf(species, field, detail).mul(this.active);

@@ -4,11 +4,13 @@
 // その勾配で決まり、読み取り方向は低周波のノイズで歪ませて格子の並びを崩す。各段は風に乗って
 // 流れ、段の寿命で湧いて崩れる(cloud-detail-clock.ts)。
 import {
-  If, clamp, cross, dot, exp, exp2, float, floor, greaterThan, int, length, max, min, mix,
-  normalize, select, smoothstep, sqrt, step, uniform, uint, vec3,
+  If, abs, clamp, cross, dot, exp, exp2, float, floor, greaterThan, int, length, log2, max, min, mix,
+  normalize, select, smoothstep, sqrt, step, uniform, uint, vec2, vec3,
 } from 'three/tsl';
 import { DetailClock } from './cloud-detail-clock';
 import { gradientNoise } from './gradient-noise';
+import { scaleGateNode, scaleRegimeWeightsNode, scaleSpacingKmNode } from './cirrus-scale-node';
+import { CLOUD_TUNING } from './cloud-tuning';
 import { eastAt, northAt } from '../sphere-frame';
 import type { FloatNode, FloatUniform, UintNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
@@ -253,23 +255,35 @@ const CIRRUS_STRETCH_WIND_HI = 26;
 const CIRRUS_TYPE_JITTER = 0.4;
 const CIRRUS_JITTER_MIN = 0.25;
 const CIRRUS_JITTER_MAX = 2;
-// 鱗雲状の重みへ効く対流活発度×陸の診断の利得。対流の活発な陸では筋・幕を上回る強さへ取る。
-const CIRRUS_CELL_DIAG_GAIN = 2;
 // 型の重みが、その型の場の評価を省く下限。
 const CIRRUS_TYPE_MIN_WEIGHT = 0.02;
 // 型の領域の静的な勾配ノイズ。波長 [m] と、勾配ノイズの標準偏差 0.265 を 1 寄りへ戻す倍率。
-// 4 つの領域(筋状・鱗雲状と薄く広がる・鱗雲の粒の間隔の揺らぎ・列か塊か)は別の固定オフセットで読む。
+// 3 つの領域(筋状・鱗雲状の重み・鱗雲の間隔の揺らぎ)は別の固定オフセットで読む。
 const CIRRUS_REGIME_WAVELENGTH = 400000;
 const CIRRUS_REGIME_GAIN = 3;
 const CIRRUS_REGIME_OFFSETS = [
-  vec3(11.3, 4.7, 9.1), vec3(2.9, 17.3, 5.6), vec3(23.1, 1.9, 14.4), vec3(7.7, 21.2, 3.3),
+  vec3(11.3, 4.7, 9.1), vec3(2.9, 17.3, 5.6), vec3(23.1, 1.9, 14.4),
 ] as const;
-// 鱗雲状の列に使う段の添字(DETAIL_WAVELENGTHS の 4 km)と、流れに直交する向きへ伸ばす倍率。
-const CIRRUS_ROW_OCTAVE = 3;
-const CIRRUS_ROW_STRETCH = 5;
-// 塊の値の標準偏差へ直す平均と標準偏差(100 万点の CPU 標本、格子ハッシュと同じ写し)。
-const CIRRUS_CELL_MEAN = 0.0174;
-const CIRRUS_CELL_STD = 0.0872;
+// 鱗雲状の 2 つの形(閉じたセル・開いたセル)を標準偏差 1 へ直す平均と標準偏差(100 万点の CPU 標本、
+// 格子ハッシュと同じ写し)。
+const CIRRUS_CLOSED_MEAN = 0.1443;
+const CIRRUS_CLOSED_STD = 0.2594;
+const CIRRUS_OPEN_MEAN = 0.4371;
+const CIRRUS_OPEN_STD = 0.3904;
+// 鱗雲状の縁の乱流による千切れ。格子座標を読む尺度の倍率と、3 成分の標本位置。
+const CIRRUS_RAGGED_FREQUENCY = 0.8;
+const CIRRUS_RAGGED_OFFSETS = [
+  vec3(31.7, 8.3, 19.9), vec3(13.6, 27.4, 2.8), vec3(4.1, 35.9, 17.2),
+] as const;
+// この上層の不安定度を下回るときは千切れを掛けない。
+const CIRRUS_RAGGED_MIN_INSTABILITY = 0.05;
+// 流れに沿う(ロール)・直交する(波)鱗雲状の筋の伸び。筋が読む段は 8 km から 1 km まで(添字 2..5)。
+const CIRRUS_ROLL_STRETCH = 5;
+const CIRRUS_WAVE_STRETCH = 4;
+const CIRRUS_SHAPE_FIRST_OCTAVE = 2;
+const CIRRUS_SHAPE_LAST_OCTAVE = 5;
+// 4 形を合成した後の標準偏差の上限。
+const CIRRUS_CELL_Z_LIMIT = 3.5;
 // 鱗雲状の格子ハッシュの乗数(cumulus-cells と同じ組)。
 const CELL_AXIS_X = 0x27d4eb2f;
 const CELL_AXIS_Y = 0x165667b1;
@@ -286,9 +300,6 @@ const CIRRUS_ANVIL_STRETCH = 7;
 // 乾燥度の目盛り(気候の雲量 0..1 の範囲)。この間で鱗雲状の重みを 0 から 1 へ渡す。
 const CIRRUS_ARID_LO = 0.1;
 const CIRRUS_ARID_HI = 0.35;
-// 鱗雲の粒の間隔を揺らす領域ノイズの強さ。揺らぎの対数の幅 ±0.4 で、同じ大きさの空が
-// 画一的な間隔で並ばないようにする。
-const CIRRUS_PITCH_JITTER = 0.4;
 // この量を下回る巻雲の柱では細部を評価しない。乗数は 1 のままで、光学深さは 0 に近い。
 export const CIRRUS_PRESENT_AMOUNT = 0.001;
 
@@ -301,10 +312,12 @@ function cellHash(base: Vec3Node): UintNode {
   return mixed.bitXor(mixed.shiftRight(13)).mul(uint(CELL_MIX_B));
 }
 
-// 格子 q(格子単位)から最近の核までの距離 F1(格子単位)。周囲 27 セルの核を調べる。
-function nearestCellDistance(q: Vec3Node): FloatNode {
+// 格子 q(格子単位)から最近の核までの距離 F1 と 2 番目に近い核までの距離 F2(格子単位)を vec2(F1, F2) で返す。
+// 周囲 27 セルの核を調べる。
+function nearestTwoCellDistances(q: Vec3Node): Vec2Node {
   const cell = floor(q);
   const nearest = float(1e9).toVar();
+  const second = float(1e9).toVar();
   // セル境界をまたいでも最寄りの核を見落とさないよう、隣接セルまで候補に含める。
   for (const dx of [-1, 0, 1]) {
     for (const dy of [-1, 0, 1]) {
@@ -317,30 +330,34 @@ function nearestCellDistance(q: Vec3Node): FloatNode {
           float(h.shiftRight(20).bitAnd(uint(1023))),
         ).div(1024);
         const delta = q.sub(base.add(jitter));
-        nearest.assign(min(nearest, dot(delta, delta)));
+        const d = dot(delta, delta);
+        second.assign(select(d.lessThan(nearest), nearest, min(second, d)));
+        nearest.assign(min(nearest, d));
       }
     }
   }
-  return sqrt(nearest);
+  return vec2(sqrt(nearest), sqrt(second));
 }
 
-// 雲標本の巻雲の量と環境の量と要素径と診断量を、巻雲の柱の入力へ写す。
+// 雲標本の巻雲の量と環境の量と要素径と診断量を、巻雲の柱の入力へ写す。風のシアは呼び出し側が
+// 上層と地表の風から作って渡す。
 export function cirrusColumnInputOf(sample: {
   readonly cirrus: FloatNode; readonly land: FloatNode; readonly convection: FloatNode;
   readonly climateCloudiness: FloatNode; readonly anvil: FloatNode;
   readonly cirrusCell: FloatNode;
   readonly shield: FloatNode; readonly upperInstability: FloatNode; readonly layerDepthKm: FloatNode;
-}): CirrusColumnInput {
+}, shear: FloatNode): CirrusColumnInput {
   return {
     amount: sample.cirrus, land: sample.land, convection: sample.convection,
     climateCloudiness: sample.climateCloudiness, anvil: sample.anvil,
     cellSize: sample.cirrusCell,
     shield: sample.shield, upperInstability: sample.upperInstability, layerDepthKm: sample.layerDepthKm,
+    shear,
   };
 }
 
 // 巻雲の柱の入力。amount は巻雲の量、land・convection・climateCloudiness・anvil は環境の量(0..1)、
-// cellSize は巻雲の要素径(繊維・鱗のピッチ) log2(km)、shield・upperInstability は診断量(0..1)、
+// cellSize は巻雲の要素径(繊維・鱗のピッチ) log2(km)、shield・upperInstability・shear は診断量(0..1)、
 // layerDepthKm は鱗の層の深さ [km]。
 export interface CirrusColumnInput {
   readonly amount: FloatNode;
@@ -352,6 +369,7 @@ export interface CirrusColumnInput {
   readonly shield: FloatNode;
   readonly upperInstability: FloatNode;
   readonly layerDepthKm: FloatNode;
+  readonly shear: FloatNode;
 }
 
 export class CirrusDetailEvaluator {
@@ -372,7 +390,7 @@ export class CirrusDetailEvaluator {
     direction: Vec3Node, radius: FloatNode, width: FloatNode, flow: Vec2Node, wind: Vec2Node,
     column: CirrusColumnInput,
   ): FloatNode {
-    const { amount, climateCloudiness, cellSize } = column;
+    const { amount, climateCloudiness } = column;
     const span = max(width, 1);
     const east = eastAt(direction);
     const north = northAt(direction);
@@ -399,18 +417,21 @@ export class CirrusDetailEvaluator {
     const jet = smoothstep(CIRRUS_JET_ONSET, CIRRUS_JET_FULL, windSpeed);
     // 筋状 — 揃って速い流れの下で立つ。揃い度は半分だけ効かせて、揃わない強風にも筋を残す。
     const streakRaw = jet.mul(coherence.mul(0.5).add(0.5)).mul(jitterAt(CIRRUS_REGIME_OFFSETS[0]));
-    // 鱗雲状 — 対流の活発な陸の下で立つ(cell-size.ts が鱗のピッチへ掛ける門と同じ診断 — ピッチの
-    // 小ささと型の選択が同じ空で揃う)。塊の間隔が画素の実寸より細かいときと、乾いた空では 0 へ落とす。
-    // ピッチの log2 [km]。格子へそのまま連続のピッチを掛けると、ピッチの勾配で格子が歪み等値線が
+    // 鱗雲状 — 鱗の間隔は層の深さに、風のシア・上層の不安定度・量で決まる型の縦横比を掛けて決まる。
+    // 間隔の log2 [km]。格子へそのまま連続のピッチを掛けると、ピッチの勾配で格子が歪み等値線が
     // 寄り集まる木目になるので、格子は 2 の冪のピッチへ量子化し、隣接する 2 ピッチの場を端数で
     // 混ぜる(下の cellWeight の評価)。格子自身はどちらも歪まない。
-    const pitchLog = cellSize
-      .add(regimeAt(CIRRUS_REGIME_OFFSETS[2]).mul(CIRRUS_PITCH_JITTER)).toVar();
+    const weights = scaleRegimeWeightsNode(column.shear, column.upperInstability, amount);
+    const pitchLog = log2(scaleSpacingKmNode(column.layerDepthKm, weights))
+      .add(regimeAt(CIRRUS_REGIME_OFFSETS[2]).mul(CLOUD_TUNING.scaleDepthJitterOct)).toVar();
+    // 塊の間隔が画素の実寸より細かいときは 0 へ落とす。
     const cellFade = smoothstep(2, 4, exp2(pitchLog).mul(1000).div(span));
     // 乾いた陸(気候の雲量の少ない所)では鱗雲状を抑える。筋状と薄く広がるは抑えない。
     const humid = smoothstep(CIRRUS_ARID_LO, CIRRUS_ARID_HI, climateCloudiness);
-    const cellRaw = column.convection.mul(column.land).mul(CIRRUS_CELL_DIAG_GAIN)
-      .mul(jitterAt(CIRRUS_REGIME_OFFSETS[1])).mul(cellFade).mul(humid);
+    // 鱗が立つ強さの門。前線の盾の下と、筋が立つ所では鱗雲状を抑える(筋の重みは揺らぎで 1 を超えうるので 0 で切る)。
+    const cellRaw = scaleGateNode(column.shear, column.upperInstability)
+      .mul(jitterAt(CIRRUS_REGIME_OFFSETS[1])).mul(cellFade).mul(humid)
+      .mul(column.shield.oneMinus()).mul(max(streakRaw.oneMinus(), 0));
     // 薄く広がる場は残余 — 筋でも鱗でもない静穏な空が幕を張る。
     const veilRaw = max(float(0.15), float(1).sub(streakRaw).sub(cellRaw));
     // 金床の重み。量が多く、金床の濃い所で大きい。他の型は残りを分け合う。金床は 8 km の段から読むので、
@@ -458,29 +479,87 @@ export class CirrusDetailEvaluator {
         });
       });
     }
-    // 鱗雲状の場。丸い塊(格子の Voronoi の核からの距離)と列(流れに直交する波)を、領域で混ぜる。
+    // 鱗雲状の場。閉じたセル・開いたセル(格子の Voronoi の距離から作る有界の塊)と、流れに平行なロール・
+    // 直交する波を、型の重みで混ぜる。
     const cellsZ = float(0).toVar();
     If(greaterThan(cellWeight, CIRRUS_TYPE_MIN_WEIGHT), () => {
-      // ピッチは 2 の冪の梯子へ量子化し、隣接する 2 ピッチの塊を log ピッチの端数で混ぜる —
+      // ピッチは 2 の冪の梯子へ量子化し、隣接する 2 ピッチの形を log ピッチの端数で混ぜる —
       // 格子自身は常に一様なので、ピッチの場の勾配で歪むことはない。
       const pitchLo = floor(pitchLog);
       const pitchFrac = pitchLog.sub(pitchLo);
       const scaledAt = (pitch: FloatNode): Vec3Node =>
         direction.mul(radius.div(1000)).mul(exp2(pitch.negate()));
-      const coreAt = (pitch: FloatNode): FloatNode =>
-        float(1).sub(smoothstep(0, 0.55, nearestCellDistance(scaledAt(pitch)).mul(2)));
-      const core = coreAt(pitchLo).toVar();
-      If(greaterThan(pitchFrac, 0), () => {
-        core.assign(mix(core, coreAt(pitchLo.add(1)), pitchFrac));
+      // 縁の千切れ。格子座標を上層の不安定度に比例して、低周波のノイズでずらす。
+      const raggedAt = (pitch: FloatNode): Vec3Node => {
+        const q = scaledAt(pitch);
+        const warped = q.toVar();
+        If(greaterThan(column.upperInstability, CIRRUS_RAGGED_MIN_INSTABILITY), () => {
+          // 3 成分を別の標本位置で読んで、ずらしの向きを独立にする。
+          const scaled = q.mul(CIRRUS_RAGGED_FREQUENCY);
+          const offset = vec3(
+            gradientNoise(scaled.add(CIRRUS_RAGGED_OFFSETS[0])),
+            gradientNoise(scaled.add(CIRRUS_RAGGED_OFFSETS[1])),
+            gradientNoise(scaled.add(CIRRUS_RAGGED_OFFSETS[2])),
+          );
+          warped.assign(q.add(offset.mul(CLOUD_TUNING.scaleRaggedGain.mul(column.upperInstability))));
+        });
+        return warped;
+      };
+      // 形の場を 2 ピッチで評価して端数で混ぜ、平均と標準偏差で標準化する。
+      const shapeZ = (profileOf: (q: Vec3Node) => FloatNode, mean: number, std: number): FloatNode => {
+        const value = profileOf(raggedAt(pitchLo)).toVar();
+        If(greaterThan(pitchFrac, 0), () => {
+          value.assign(mix(value, profileOf(raggedAt(pitchLo.add(1))), pitchFrac));
+        });
+        return value.sub(mean).div(std);
+      };
+      // 閉じたセルの形。核の周りに立ち上がる丸い塊。格子座標 q を受け、0..1 を返す。
+      const closedProfile = (q: Vec3Node): FloatNode => {
+        const pair = nearestTwoCellDistances(q);
+        return float(1).sub(smoothstep(0.12, 0.5, pair.x));
+      };
+      // 開いたセルの形。壁に雲が残り、核の中心が穴になる塊。格子座標 q を受け、0..1 を返す。
+      const openProfile = (q: Vec3Node): FloatNode => {
+        const pair = nearestTwoCellDistances(q);
+        return float(1).sub(smoothstep(0, 0.28, pair.y.sub(pair.x)));
+      };
+      const zClosed = float(0).toVar();
+      If(greaterThan(weights.closed, CIRRUS_TYPE_MIN_WEIGHT), () => {
+        zClosed.assign(shapeZ(closedProfile, CIRRUS_CLOSED_MEAN, CIRRUS_CLOSED_STD));
       });
-      const cells = core.sub(CIRRUS_CELL_MEAN).div(CIRRUS_CELL_STD);
-      // 列は、流れに直交する接ベクトルへ伸ばした 4 km の段で、流れに直交する波の筋になる。位置と接ベクトルの
-      // 内積は 0 なので、正弦の位相を位置と流れから直には組めない。
-      const rows = this.clock.flowNoise(
-        CIRRUS_ROW_OCTAVE, direction, radius, windVector, normalize(cross(direction, flowDir)), float(CIRRUS_ROW_STRETCH));
-      // 等方の粗い段の結合(clumpGate)を掛けて、塊が疎な集まりをなすようにする — 一面へ均一には並ばない。
-      cellsZ.assign(mix(cells, rows, smoothstep(-0.3, 0.3, regimeAt(CIRRUS_REGIME_OFFSETS[3])))
-        .mul(clumpGate));
+      const zOpen = float(0).toVar();
+      If(greaterThan(weights.open, CIRRUS_TYPE_MIN_WEIGHT), () => {
+        zOpen.assign(shapeZ(openProfile, CIRRUS_OPEN_MEAN, CIRRUS_OPEN_STD));
+      });
+      // 列と波の段。鱗の間隔 1 km を添字 5 とし、間隔が 1 段粗くなるごとに添字を 1 つ減らす。端数は隣の段と混ぜる。
+      const segment = clamp(float(5).sub(pitchLog), CIRRUS_SHAPE_FIRST_OCTAVE, CIRRUS_SHAPE_LAST_OCTAVE);
+      // 列・波の段を axis の向きへ stretch 倍に伸ばして読み、段の重みで混ぜる。
+      const streakShapeZ = (axis: Vec3Node, stretch: number): FloatNode => {
+        const value = float(0).toVar();
+        for (let index = CIRRUS_SHAPE_FIRST_OCTAVE; index <= CIRRUS_SHAPE_LAST_OCTAVE; index++) {
+          const weight = max(float(1).sub(abs(segment.sub(index))), 0);
+          If(greaterThan(weight, 0), () => {
+            value.addAssign(this.clock.flowNoise(index, direction, radius, windVector, axis, float(stretch)).mul(weight));
+          });
+        }
+        return value;
+      };
+      const zRoll = float(0).toVar();
+      If(greaterThan(weights.roll, CIRRUS_TYPE_MIN_WEIGHT), () => {
+        zRoll.assign(streakShapeZ(flowDir, CIRRUS_ROLL_STRETCH));
+      });
+      // 波は、流れに直交する接ベクトルへ伸ばす。位置と接ベクトルの内積は 0 なので、流れと位置の外積で向きを取る。
+      const zWave = float(0).toVar();
+      If(greaterThan(weights.wave, CIRRUS_TYPE_MIN_WEIGHT), () => {
+        zWave.assign(streakShapeZ(normalize(cross(direction, flowDir)), CIRRUS_WAVE_STRETCH));
+      });
+      // 型の和を重みの二乗和の平方根で割って分散を保ち、頭打ちにしてから、塊が疎な集まりをなすよう
+      // 等方の粗い段の結合(clumpGate)を掛ける。
+      const shapeNorm = sqrt(weights.closed.mul(weights.closed).add(weights.open.mul(weights.open))
+        .add(weights.roll.mul(weights.roll)).add(weights.wave.mul(weights.wave)));
+      const blended = weights.closed.mul(zClosed).add(weights.open.mul(zOpen))
+        .add(weights.roll.mul(zRoll)).add(weights.wave.mul(zWave)).div(shapeNorm);
+      cellsZ.assign(clamp(blended, -CIRRUS_CELL_Z_LIMIT, CIRRUS_CELL_Z_LIMIT).mul(clumpGate));
     });
 
     // 金床の場。8 km の等方な芯と、風下へ強く伸びる繊維の和。量が少ないほど繊維の振れ幅を上げる。

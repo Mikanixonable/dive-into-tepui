@@ -7,6 +7,7 @@ import {
 } from 'three/tsl';
 import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../../earth-weather/cloud/cloud-detail';
 import { CloudFieldSampler } from '../../earth-weather/cloud/cloud-field-sampler';
+import { scaleShearNode } from '../../earth-weather/cloud/cirrus-scale-node';
 import type { CloudRenderInput } from '../../earth-weather/cloud/cloud-render-input';
 import type { CloudSample } from '../../earth-weather/cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../earth-weather/cloud/cloud-shape-evaluator';
@@ -254,7 +255,7 @@ export class CloudShadowRenderer {
             const cloud = this.fieldAt(up);
             cirrusDetail.assign(this.cirrusDetail.multiplierAt(
               up, bodyRadius, cirrusWidth, cloud.cirrusFlow, upperWind,
-              cirrusColumnInputOf(cloud)));
+              cirrusColumnInputOf(cloud, scaleShearNode(upperWind, surfaceWind))));
           });
           cirrusDepth.addAssign(cirrusColumnOpticalDepthNode(texel.g)
             .mul(cirrusDetail).mul(cirrusCrossing).mul(min(cirrusStep.div(max(rise, 1)), CIRRUS_MAX_SLANT))
