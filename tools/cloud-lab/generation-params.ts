@@ -61,6 +61,8 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   coverageExcessPower: { label: '超過量の冪', row: 'condense', min: 0.5, max: 4, step: 0.05 },
   convectionGain: { label: '対流→湿度の重み', row: 'condense', min: 0, max: 3, step: 0.05 },
   bandGrainFade: { label: '帯の粒の弱め', row: 'condense', min: 0, max: 1, step: 0.01 },
+  cellGrainDepth: { label: 'セル径→千切りの深さ', row: 'condense', min: 0, max: 0.6, step: 0.01 },
+  cellGrainFloor: { label: 'セル径の変調の下限', row: 'condense', min: 0.1, max: 1, step: 0.01 },
   deepCoverageOnset: { label: '深い雲の閾値', row: 'condense', min: 0.3, max: 0.9, step: 0.01 },
   deepCoverageFull: { label: '深い雲の飽和', row: 'condense', min: 0.6, max: 1, step: 0.005 },
   // 凝結 — 層状の雲と塔
