@@ -110,6 +110,10 @@ const TRANSLUCENT_LIMIT = CLOUD_TUNING.translucentLimit;
 // 量を決める。
 const DEEP_COVERAGE_ONSET = CLOUD_TUNING.deepCoverageOnset;
 const DEEP_COVERAGE_FULL = CLOUD_TUNING.deepCoverageFull;
+// 塔が上層へ氷雲を放出し始める雲頂の高さと、放出が飽和する高さ(いずれも圏界面に対する比)。
+// 覆いの薄い柱の塔は場に載らないので、放出の門は雲頂高度と同じ「深い覆い」の門を共有する。
+const DETRAIN_ONSET = CLOUD_TUNING.detrainOnset;
+const DETRAIN_FULL = CLOUD_TUNING.detrainFull;
 
 // weather から凝結する雲のグラフ。積雲の量は、湿度(低周波)へ対流(高周波)を足した伝達関数の
 // 被覆率と、層状の雲から立つ塔と渦の芯が敷く金床の高いほうの雲頂から決まり、巻雲の量は
@@ -184,7 +188,12 @@ export function condense(weather: WeatherSample): CloudSample {
   const cloudTop = max(tower, anvil);
   const sparse = cumulusAmountFromOpacityNode(coverage);
   const deep = max(sparse, cumulusAmountFromTopAltitudeNode(cloudTop));
-  const cumulus = mix(sparse, deep, smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage));
+  const deepCoverage = smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage);
+  const cumulus = mix(sparse, deep, deepCoverage);
+  // 圏界面へ近づくほど発達した塔が上層へ放出する氷雲の強さ。焼いた場を風上へ遡って広げた写しが
+  // この量を集めて巻雲へ合成する。
+  const detrain = smoothstep(DETRAIN_ONSET, DETRAIN_FULL, cloudTop.div(weather.tropopause))
+    .mul(deepCoverage);
   // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN)
     .mul(smoothstep(HAZE_CLOUDINESS_ONSET, HAZE_CLOUDINESS_FULL, weather.meanCloudiness));
@@ -201,5 +210,7 @@ export function condense(weather: WeatherSample): CloudSample {
     convection: weather.convectiveActivity,
     climateCloudiness: weather.meanCloudiness,
     anvil: weather.anvil,
+    detrain,
+    eye: weather.eye,
   };
 }
