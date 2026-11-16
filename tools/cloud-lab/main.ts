@@ -17,7 +17,7 @@ import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
 import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
 import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
-import type { CyclonePlacement } from '../../src/render/earth-weather/cyclone-tracks';
+import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 
 // 写す表示。GPU の写し(CLOUD_LAB_VIEWS)に、2D canvas へ焼く天気図モードを足す。
 type ViewChoice = CloudLabViewId | 'synoptic';
@@ -53,9 +53,9 @@ declare global {
       // 時刻 [h] の低気圧の谷と高気圧の丘の配置。撮影の駆動が中心の位置を統計の範囲の
       // 切り分けに使う。
       cyclonesAt: (hours: number) => {
-        readonly tropicals: readonly (CyclonePlacement | null)[];
-        readonly lows: readonly (CyclonePlacement | null)[];
-        readonly highs: readonly (CyclonePlacement | null)[];
+        readonly tropicals: readonly (PressurePlacement | null)[];
+        readonly lows: readonly (PressurePlacement | null)[];
+        readonly highs: readonly (PressurePlacement | null)[];
       };
       // モデルの調整値。いまの全値を返すものと、渡した値を適用して焼き直すもの — 戻った時点で
       // 焼き直し済みなので、続けて capture すれば新しい値の場が撮れる。

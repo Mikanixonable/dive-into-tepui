@@ -11,8 +11,8 @@ import { mulberry32, randSym } from '../../math/random';
 import {
   WAVE_DRIFT, WAVE_TROUGH_WIDTH, waveAmplitudeAt, waveAnchoredSlot, waveTroughLongitude,
 } from './rossby-wave';
-import { DAY, DEGREE, uniformIn } from './cyclone-tracks';
-import type { CyclonePlacement, Range } from './cyclone-tracks';
+import { DAY, DEGREE, uniformIn } from './tracks';
+import type { PressurePlacement, Range } from './tracks';
 
 // 高気圧。同時に持つ枡の数(偶数番が北、奇数番が南)。枡は上層のロスビー波の尾根へ錨づき、
 // 半球あたりの枡の数(6)は尾根の数(WAVE_NUMBER = 5)を 1 つだけ超える — ほとんどの世代で
@@ -128,7 +128,7 @@ function highTrackOf(index: number, generation: number, surfaceRadius: number): 
 // surfaceRadius [m] は天体の半径。生まれる前と消えたあとは null。depth は正の盛り上がり [hPa]。
 export function highPlacementAt(
   index: number, seconds: number, surfaceRadius: number,
-): CyclonePlacement | null {
+): PressurePlacement | null {
   // 枡ごとに周期の位相をずらし、同じ半球の枡が揃って生まれ直さないようにする。
   const age = seconds / HIGH_PERIOD + index / HIGH_COUNT;
   const generation = Math.floor(age);

@@ -4,8 +4,8 @@
 // 飛んでも同じ配置になる。
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
-import { courseAt, DAY, DEGREE, uniformIn, waypoint } from './cyclone-tracks';
-import type { Course, CyclonePlacement, Range } from './cyclone-tracks';
+import { courseAt, DAY, DEGREE, uniformIn, waypoint } from './tracks';
+import type { Course, PressurePlacement, Range } from './tracks';
 
 // 熱帯低気圧。同時に持つ枡の数。枡は上層の波へ錨づかない — 熱帯の渦は亜熱帯高気圧の縁の
 // 操縦流が運ぶもので、位相のずれた枡がそれぞれに生まれ直すだけの別の系である。
@@ -154,7 +154,7 @@ function tropicalTrackOf(index: number, generation: number): TropicalTrack | nul
 
 // 熱帯低気圧 index(0..TROPICAL_COUNT − 1)の、時刻 seconds [s] における配置。その世代に
 // 発生しない、生まれる前、消えたあとは null。
-export function tropicalPlacementAt(index: number, seconds: number): CyclonePlacement | null {
+export function tropicalPlacementAt(index: number, seconds: number): PressurePlacement | null {
   // 枡ごとに周期の位相をずらし、揃って生まれ直さないようにする。
   const age = seconds / TROPICAL_PERIOD + index / TROPICAL_COUNT;
   const generation = Math.floor(age);

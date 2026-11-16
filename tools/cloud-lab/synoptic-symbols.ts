@@ -1,13 +1,13 @@
 // 天気図へ低気圧と高気圧の記号を置く。中心は L / H と気圧値、眼を持つ渦は中心に眼の印を置く。
 // 気象モデルが前線を持たない間は、記号は中心と眼だけになる。
-import { eyeStrengthOf } from '../../src/render/earth-weather/trough';
+import { eyeStrengthOf } from '../../src/render/earth-weather/pressure-feature';
 import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
 import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
 import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import { sampleField, strokeWrapped } from './synoptic-map';
 import type { MapView } from './synoptic-map';
-import type { CyclonePlacement } from '../../src/render/earth-weather/cyclone-tracks';
+import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 import type { SynopticFields } from './synoptic-field';
 
 // 中心の記号。mark(L / H)と気圧値、眼を持つなら眼の印。配置の経度は畳まずに持つので、
@@ -15,7 +15,7 @@ import type { SynopticFields } from './synoptic-field';
 // 何周分も回り込み、畳まないままでは窓へ届かない。
 function drawCenterLabel(
   context: CanvasRenderingContext2D, fields: SynopticFields,
-  placement: CyclonePlacement, mark: 'L' | 'H', eyeStrength: number, view: MapView,
+  placement: PressurePlacement, mark: 'L' | 'H', eyeStrength: number, view: MapView,
 ): void {
   const longitudeDeg = view.lonMinDeg
     + (((placement.longitude * 180 / Math.PI - view.lonMinDeg) % 360) + 360) % 360;

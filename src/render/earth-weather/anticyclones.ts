@@ -1,4 +1,4 @@
-// 気圧へ書き込む高気圧の丘の束。低気圧の谷(Trough)と同じ形の気圧の起伏を正の深さで持ち、
+// 気圧へ書き込む高気圧の丘の束。低気圧の谷と同じ形の気圧の起伏(PressureFeature)を正の深さで持ち、
 // 波の尾根の下流側へ座る(配置は anticyclone-tracks.ts)。丘のまわりでは気圧の勾配が
 // 外向きなので、低気圧側と同じ釣り合いの式から高気圧性の風と沈降する気流がそのまま
 // 出る — 沈降は湿度の式で乾燥として効き、丘の下に大規模な晴れ間を作る。
@@ -6,17 +6,17 @@
 // 届かず、こちらは気圧へしか書き込まない(eyeAt・anvilAt を持たない)。
 import { float } from 'three/tsl';
 import { HIGH_COUNT, highPlacementAt } from './anticyclone-tracks';
-import { Trough } from './trough';
+import { PressureFeature } from './pressure-feature';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
 export class Anticyclones {
-  private readonly ridges: readonly Trough[];
+  private readonly ridges: readonly PressureFeature[];
 
   // 丘を組み、時刻 0 の配置で始める。surfaceRadius は丘を置く天体の半径 [m]、
   // rotationPeriod はその自転周期 [s]。
   public constructor(private readonly surfaceRadius: number, rotationPeriod: number) {
     this.ridges = Array.from(
-      { length: HIGH_COUNT }, () => new Trough(surfaceRadius, rotationPeriod),
+      { length: HIGH_COUNT }, () => new PressureFeature(surfaceRadius, rotationPeriod),
     );
     this.syncTime(0);
   }
@@ -28,7 +28,7 @@ export class Anticyclones {
     }
   }
 
-  // 単位方向 direction での気圧の盛り上がりの合計 [hPa](0 以上)。Trough.pressureAt は
+  // 単位方向 direction での気圧の盛り上がりの合計 [hPa](0 以上)。PressureFeature.pressureAt は
   // 深さを負で返すので、正の深さを置いて符号を戻す。
   public pressureAt(direction: Vec3Node): FloatNode {
     return this.ridges.reduce<FloatNode>(
