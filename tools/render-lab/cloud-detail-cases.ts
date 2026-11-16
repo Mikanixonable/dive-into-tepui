@@ -33,7 +33,7 @@ const SCENES: readonly CloudDetailScene[] = [
   { id: 'natl-front', scene: 'frontal-band-natlantic', latitudeDeg: 50, longitudeDeg: -35 },
   // 北太平洋ジェットの下の巻雲。
   { id: 'npac-jet', scene: 'jet-cirrus-npacific', latitudeDeg: 42, longitudeDeg: -150 },
-  // 西太平洋収束帯のかなとこ雲の流出。
+  // 西太平洋収束帯の巻雲。
   { id: 'wpac-itcz', scene: 'anvil-cirrus-wpacific', latitudeDeg: 10, longitudeDeg: 150 },
   // 南大洋の寒気流の積雲(高緯度の海)。
   { id: 'south-hl', scene: 'highlat-cumulus-southern', latitudeDeg: -57, longitudeDeg: -120 },
