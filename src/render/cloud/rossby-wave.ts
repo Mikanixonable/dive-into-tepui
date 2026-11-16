@@ -14,10 +14,10 @@ export const WAVE_NUMBER = 5;
 // 波の位相速度 [rad/s]。上層偏西風の速度とは別の、波の山・谷そのものの東向き移動速度。
 export const WAVE_PHASE_SPEED = (3 * Math.PI / 180) / 86400;
 // 位相角の進む速さ [rad/s](波数 × 位相速度)。
-const WAVE_PHASE_RATE = WAVE_NUMBER * WAVE_PHASE_SPEED;
+export const WAVE_PHASE_RATE = WAVE_NUMBER * WAVE_PHASE_SPEED;
 // 南北の位相差 [rad]。位相 π は谷の間隔(位相 2π/k)の半分に相当し、両半球の谷が同じ経度へ
 // 揃うことがなくなる。包絡が熱帯で消えるので、赤道を跨ぐ位相の跳びは場に現れない。
-const HEMISPHERE_PHASE_OFFSET = Math.PI / 2;
+export const HEMISPHERE_PHASE_OFFSET = Math.PI / 2;
 // 流線関数から出る南北風の代表速度 [m/s]。中緯度の上層平均風より小さく、蛇行を読める振幅にする。
 // 8 では波数 5 の波が S 帯の k=4..8 に尖りを作り、中緯度の相関時間も実写より長くなるため
 // 半分へ (cloud-lab Phase 3-12: S 帯の尖り 14.65 → 7.90、中緯度の相関時間 12.1/11.3 h →
@@ -82,17 +82,8 @@ export class RossbyWave {
     this.phase.value = wrapAngle(WAVE_PHASE_RATE * seconds);
   }
 
-  // 波の流線関数 ψ = A·E(φ)·W(φ,λ)·sin(kλ − ωt + 半球位相) [m²/s]。surfaceRadius は波が走る
-  // 天体の半径 [m]。
-  public streamfunctionAt(direction: Vec3Node, surfaceRadius: number): FloatNode {
-    const latitude = latitudeOf(direction);
-    const longitude = longitudeOf(direction);
-    return this.envelopeAt(latitude).mul(trackWeightsAt(latitude, longitude)[0])
-      .mul(sin(this.phaseAt(latitude, longitude)))
-      .mul(streamfunctionAmplitude(surfaceRadius));
-  }
-
-  // 流線関数を球面上で微分した風摂動 [m/s]。surfaceRadius は波が走る天体の半径 [m]。
+  // 流線関数 ψ = A·E(φ)·W(φ,λ)·sin(kλ − ωt + 半球位相) を球面上で微分した風摂動 [m/s]。
+  // surfaceRadius は波が走る天体の半径 [m]。
   public perturbationAt(direction: Vec3Node, surfaceRadius: number): Vec3Node {
     const latitude = latitudeOf(direction);
     const longitude = longitudeOf(direction);
@@ -110,21 +101,6 @@ export class RossbyWave {
       .mul(envelope).mul(amplitudeOverRadius)
       .div(max(cos(latitude), MIN_LONGITUDE_RADIUS));
     return eastAt(direction).mul(eastWind).add(northAt(direction).mul(northWind));
-  }
-
-  // 方向 direction における蛇行振幅の重み(0〜1)。緯度包絡とストームトラック重みの積で、
-  // 流線関数へ掛かる係数と同じもの。発生判定などが振幅場を引くための口。
-  public amplitudeAt(direction: Vec3Node): FloatNode {
-    const latitude = latitudeOf(direction);
-    const longitude = longitudeOf(direction);
-    return this.envelopeAt(latitude).mul(trackWeightsAt(latitude, longitude)[0]);
-  }
-
-  // 現在の時刻における、半球 hemisphere (北 +1 / 南 −1) の index 番目の谷の経度 [rad]。
-  // 畳んだ位相から組むので、経度は波の間隔 2π/k の整数倍を除いて定まる。
-  public troughLongitude(index: number, hemisphere: number): number {
-    return (this.phase.value - Math.PI / 2 - hemisphere * HEMISPHERE_PHASE_OFFSET
-      + 2 * Math.PI * index) / WAVE_NUMBER;
   }
 
   // 経度方向の位相 kλ − ωt + 半球位相。equirect の経度の継ぎ目は、周期関数へ入ることで
@@ -185,8 +161,8 @@ export function stormTrackAxisAt(longitude: number, hemisphere: number): number 
   return nearest;
 }
 
-// 緯度・経度 [rad] における蛇行振幅の重み(0〜1)。GPU 上の amplitudeAt と同じ場を CPU 側から
-// 引く口 — 低気圧・高気圧の発生判定が同じ振幅地図を共有する。
+// 緯度・経度 [rad] における蛇行振幅の重み(0〜1)。流線関数へ掛かる緯度包絡 × ストームトラック
+// 重みと同じ場を CPU 側から引く口 — 低気圧・高気圧の発生判定が同じ振幅地図を共有する。
 export function waveAmplitudeAt(latitude: number, longitude: number): number {
   const absolute = Math.abs(latitude);
   const envelope = smoothstepJs(ENVELOPE_RISE_START, ENVELOPE_RISE_END, absolute)
