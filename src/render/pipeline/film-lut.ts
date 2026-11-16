@@ -117,7 +117,8 @@ export class FilmLut {
   // ルックを当てる割合。「なし」の 0 では素通しがそのまま画面へ出る。
   private readonly amount = uniform(0);
 
-  // 色へルックを当てる。マテリアルを組むときに呼ぶ。
+  // 表示値(sRGB 符号化済み)の色へルックを当てる。線形の色を渡すと、ルックの曲線が想定と
+  // 違う域に掛かって暗部が潰れる。マテリアルを組むときに呼ぶ。
   public apply(color: Vec3Node): Vec3Node {
     const graded = this.sampler.sample(clamp(color, 0, 1).mul(this.scale).add(this.offset)).rgb;
     return mix(color, graded, this.amount) as Vec3Node;
