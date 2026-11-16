@@ -8,7 +8,7 @@ import { DeferredTexture } from '../../src/render/deferred-texture';
 import { EquirectProjection, OrthographicCap } from '../../src/render/field-projection';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { CloudLabPane } from './pane';
-import { awaitClimateMap, loadCloudsPhoto } from './probe-common';
+import { awaitClimateMap, loadCloudFieldImage, loadCloudsPhoto } from './probe-common';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
 import { SECONDS_PER_HOUR } from './time-units';
 import type { Vec3Node } from '../../src/render/tsl-types';
@@ -52,7 +52,7 @@ export class CloudLabCanvas {
   // 走るので、ここで待たないと最初の何枚かが空のテクスチャで焼かれる。
   // captureOnly は撮影専用(画面へ提示しない)。指定の理由は render() 側に書く。
   public static async create(canvas: HTMLCanvasElement, captureOnly = false): Promise<CloudLabCanvas> {
-    const renderer = new WebGPURenderer({ canvas });
+    const renderer = new WebGPURenderer({ canvas, requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
     renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT, false);
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
@@ -60,7 +60,8 @@ export class CloudLabCanvas {
     // 気候テクスチャと同じ向き(v = 0 が北極)・同じ生の値。表示は 8k を 1024×512 へ潰すので
     // ミップ付きで読む(切るとエイリアスがそのまま出る)。
     const photo = await loadCloudsPhoto(true);
-    const lab = new CloudLabCanvas(renderer, photo, captureOnly);
+    const observedField = await loadCloudFieldImage();
+    const lab = new CloudLabCanvas(renderer, photo, observedField, captureOnly);
     await awaitClimateMap(renderer, lab.panes.map((pane) => pane.climate), 'cloud lab');
     return lab;
   }
@@ -69,14 +70,15 @@ export class CloudLabCanvas {
   private constructor(
     private readonly renderer: WebGPURenderer,
     photo: THREE.Texture,
+    observedField: THREE.Texture,
     private readonly captureOnly: boolean,
   ) {
     this.capProjection = new OrthographicCap(
       CAP_SIZE, THREE.MathUtils.degToRad(this.capLatitude), THREE.MathUtils.degToRad(this.capLongitude),
       THREE.MathUtils.degToRad(this.capRadius));
     this.panes = [
-      new CloudLabPane(earthGeneratedCloudField(new EquirectProjection(VIEW_HEIGHT)), photo),
-      new CloudLabPane(earthGeneratedCloudField(this.capProjection), photo),
+      new CloudLabPane(earthGeneratedCloudField(new EquirectProjection(VIEW_HEIGHT)), photo, observedField),
+      new CloudLabPane(earthGeneratedCloudField(this.capProjection), photo, observedField),
     ];
     this.quad = new QuadMesh(this.materialFor(this.view));
   }
@@ -106,6 +108,11 @@ export class CloudLabCanvas {
   // 時刻 [h] を置く。描き直すのは render()。
   public setTime(hours: number): void {
     this.seconds = hours * SECONDS_PER_HOUR;
+  }
+
+  // モデルの調整値を変えたあとに呼ぶ。両面を次の render() で焼き直す。
+  public invalidate(): void {
+    for (const pane of this.panes) pane.invalidate();
   }
 
   // cap の中心の緯度・経度と半径 [°] を置く。描き直すのは render()。

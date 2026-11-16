@@ -132,16 +132,26 @@ export function buildChoiceSlider(rowId: string, label: string, width: string, o
 
 // row の中にスライダーを1本足す。動かすと change を呼び、そのあと format() が返す文字を隣へ出す
 // (値の正本は change の書き込み先にあるので、この順)。返り値でつまみを合わせる。
+// extras.code は見出しの下に添えるコード上の名前、extras.tip はホバーで出す説明(data-tip へ持たせ、
+// 出す側は呼び出し元のページが持つ)。
 export function buildSlider(
   rowId: string, label: string, min: number, max: number, step: number,
   format: () => string, change: (value: number) => void,
+  extras: { readonly code?: string; readonly tip?: string } = {},
 ): (value: number) => void {
   const row = document.getElementById(rowId)!;
   // 見出し・つまみ・読み出しを 1 つの label へ横に並べる。
   const field = document.createElement('label');
   field.className = 'field';
+  if (extras.tip !== undefined) field.dataset.tip = extras.tip;
   const name = document.createElement('span');
+  name.className = 'name';
   name.textContent = label;
+  if (extras.code !== undefined) {
+    const code = document.createElement('code');
+    code.textContent = extras.code;
+    name.appendChild(code);
+  }
   const input = document.createElement('input');
   input.type = 'range';
   input.min = String(min);

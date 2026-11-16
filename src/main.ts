@@ -32,6 +32,7 @@ import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
 import { gameCommand } from './game/input/game-commands';
 import { KEY_MAPPING as K } from './input/key-mapping';
+import { applyCloudTuningOverrides } from './render/earth-weather/cloud/cloud-tuning';
 import type { PageDevices } from './run/page-devices';
 import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
 import type { GraphicsSettingsData } from './render/graphics-settings';
@@ -202,6 +203,27 @@ function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
   };
 }
 
+// 開発ビルドだけ: 実験環境(cloud-lab)が開発サーバ経由で配る調整値の上書きを定期で拾い、
+// 雲の生成へ反映する(tools/cloud-tuning-overrides-file.cjs の経路)。上書きが書き変わった
+// ときだけ適用し、焼き直すかは雲場が版の照合で決める。本番ビルドではこの呼び出しごと落ちる。
+function startCloudTuningSync(): void {
+  let lastText: string | null = null;
+  const poll = async (): Promise<void> => {
+    try {
+      const response = await fetch('/__cloud-tuning/overrides');
+      const text = response.ok ? await response.text() : null;
+      if (text !== null && text !== lastText) {
+        lastText = text;
+        applyCloudTuningOverrides(JSON.parse(text) as Record<string, number>);
+      }
+    } catch {
+      // 応答が壊れた・サーバが落ちただけなら見逃し、次の周期で拾う。
+    }
+    window.setTimeout(poll, 700);
+  };
+  void poll();
+}
+
 // 起動時に一度だけ走る、全システムの生成と配線。
 async function main() {
   // 設定を読み、選ばれている配色を :root へ適用してからでなければ、ローディング表示も
@@ -253,6 +275,7 @@ async function main() {
   pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
   // 最初のタイトル画面でも設定面と BGM を引き直すため、周回を起こす前からフレームを回す。
+  if (process.env.NODE_ENV !== 'production') startCloudTuningSync();
   startAnimationLoop(launcher, devices, settings, bgm, debugInfo, pauseMenu, snapshotControls);
   await launcher.start();
 }

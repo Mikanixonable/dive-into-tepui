@@ -1,7 +1,7 @@
 // 雲の細部の画像へ物差しを当てる配管。線形輝度の場から measureCloudDetail と階調統計を取り、
 // 封筒・分布の比較が使う特徴量の一覧(家族つき、log 領域へ写した値)へ畳む。
-import { centerCrop, linearLuminanceField } from './cloud-detail-field.mjs';
-import { measureCloudDetail } from './cloud-detail-metrics.mjs';
+import { centerCrop, linearLuminanceField } from './cloud-lab-detail-field.mjs';
+import { measureCloudDetail } from './cloud-lab-detail-metrics.mjs';
 
 // 局所コントラストを取る窓の一辺 [km]。画素へ直すとき下限 2 px を置く。
 const CONTRAST_WINDOW_KM = 4;
