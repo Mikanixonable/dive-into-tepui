@@ -35,6 +35,9 @@ export interface CloudFieldSource {
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
   prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void;
+  // 天体固定で見た太陽直下点の経度 [rad] を渡す。暦を持つ呼び出し側だけが実装先を持ち、
+  // null で供給源側の既定の太陽へ戻す。
+  setSolarLongitude?(rad: number | null): void;
   // 保持している GPU 資源を解放する。
   dispose(): void;
 }
@@ -138,6 +141,12 @@ export class CloudPresentation {
   private setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
 
   // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
+  // 天体固定で見た太陽直下点の経度 [rad] を生成系へ渡す。暦を持つ呼び出し側がフレームごとに
+  // 渡し、null で生成側の既定の太陽へ戻す。実写の場は時刻を持たないので何もしない。
+  public setSolarLongitude(rad: number | null): void {
+    this.sources.generated.setSolarLongitude?.(rad);
+  }
+
   public setCloudsVisible(visible: boolean): void {
     this.cloudVisible = visible;
     this.syncSurfaceVisibility();
