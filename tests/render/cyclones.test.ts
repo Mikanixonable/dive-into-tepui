@@ -29,7 +29,7 @@ export function register(): void {
     // 3 年ぶん。生まれる緯度も深さも半径も低気圧ごとに違うので、世代を重ねて幅の端まで踏む。
     for (let seconds = 0; seconds <= 3 * 365 * DAY; seconds += SAMPLE_STEP) {
       for (let index = 0; index < LOW_COUNT; index++) {
-        const placement = lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS);
+        const placement = lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD);
         if (placement === null) continue;
         const strength = eyeStrengthAt(placement);
         assert.equal(strength, 0, `${seconds / DAY} 日目に低気圧 ${index} の眼が ${strength}`);
@@ -40,7 +40,7 @@ export function register(): void {
   test('cyclones: 熱帯低気圧は最盛期に眼を持ち、衰えると失う', () => {
     const lives: (readonly PressurePlacement[])[] = [];
     for (let index = 0; index < TROPICAL_COUNT; index++) {
-      lives.push(...completeLives(sampled((seconds) => tropicalPlacementAt(index, seconds), 170)));
+      lives.push(...completeLives(sampled((seconds) => tropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD), 170)));
     }
     assert.ok(lives.length >= 10, `170 日の中に丸ごと入る一生が ${lives.length} しかない`);
     for (const [n, life] of lives.entries()) {

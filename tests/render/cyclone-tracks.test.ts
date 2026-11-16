@@ -6,7 +6,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
 import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
-import { EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
+import { EARTH_ROTATION_PERIOD, EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
 import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 import type { Placements } from './cyclone-samples';
 
@@ -26,11 +26,11 @@ const PRESENT_DEPTH = 5;
 const SERIES: readonly { readonly name: string; readonly at: Placements }[] = [
   ...Array.from({ length: LOW_COUNT }, (_, index) => ({
     name: `低気圧 ${index}`,
-    at: (seconds: number) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS),
+    at: (seconds: number) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD),
   })),
   ...Array.from({ length: TROPICAL_COUNT }, (_, index) => ({
     name: `熱帯低気圧 ${index}`,
-    at: (seconds: number) => tropicalPlacementAt(index, seconds),
+    at: (seconds: number) => tropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD),
   })),
 ];
 
@@ -78,7 +78,7 @@ export function register(): void {
 
   test('cyclone-tracks: 低気圧は一生のあいだ極側へ進み続ける', () => {
     for (let index = 0; index < LOW_COUNT; index++) {
-      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS), 60))) {
+      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD), 60))) {
         for (let i = 1; i < life.length; i++) {
           const previous = life[i - 1];
           const sample = life[i];
@@ -93,7 +93,7 @@ export function register(): void {
   test('cyclone-tracks: 低気圧は亜熱帯の縁に生まれ、暴風帯の極側で消える', () => {
     let counted = 0;
     for (let index = 0; index < LOW_COUNT; index++) {
-      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS), 60))) {
+      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD), 60))) {
         const [born, dying] = endpoints(life);
         const bornLatitude = Math.abs(born.latitude) / DEGREE;
         const dyingLatitude = Math.abs(dying.latitude) / DEGREE;
@@ -110,7 +110,7 @@ export function register(): void {
   test('cyclone-tracks: 熱帯低気圧は熱帯に生まれ、直進するか転向して温帯化する', () => {
     let counted = 0;
     for (let index = 0; index < TROPICAL_COUNT; index++) {
-      for (const life of completeLives(sampled((seconds) => tropicalPlacementAt(index, seconds), 60))) {
+      for (const life of completeLives(sampled((seconds) => tropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD), 60))) {
         const [born, dying] = endpoints(life);
         const bornLatitude = Math.abs(born.latitude) / DEGREE;
         // 発生点は |緯度| 8〜16° — 道のり半ばの点の混ざりで標本はその幅の端をわずかに越えうる。
@@ -133,7 +133,7 @@ export function register(): void {
     // 3 年ぶん。偶数番が北、奇数番が南なので、同じ半球の組は番号の偶奇が揃う。
     for (let seconds = 0; seconds <= 3 * 365 * DAY; seconds += SAMPLE_STEP) {
       const placements = Array.from(
-        { length: LOW_COUNT }, (_, index) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS));
+        { length: LOW_COUNT }, (_, index) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD));
       for (let a = 0; a < LOW_COUNT; a++) {
         for (let b = a + 2; b < LOW_COUNT; b += 2) {
           const p = placements[a] ?? null;
@@ -154,7 +154,7 @@ export function register(): void {
     for (let seconds = 0; seconds <= 365 * DAY; seconds += SAMPLE_STEP) {
       let count = 0;
       for (let index = 0; index < TROPICAL_COUNT; index++) {
-        if (tropicalPlacementAt(index, seconds) !== null) count++;
+        if (tropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD) !== null) count++;
       }
       if (count === 0) empty++;
       most = Math.max(most, count);

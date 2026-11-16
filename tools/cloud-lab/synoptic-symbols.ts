@@ -95,11 +95,11 @@ function drawFronts(
 ): void {
   const placements: PressurePlacement[] = [];
   for (let index = 0; index < LOW_COUNT; index += 1) {
-    const placement = lowPlacementAt(index, seconds, R_EARTH);
+    const placement = lowPlacementAt(index, seconds, R_EARTH, SIDEREAL_DAY);
     if (placement !== null) placements.push(placement);
   }
   for (let index = 0; index < TROPICAL_COUNT; index += 1) {
-    const placement = tropicalPlacementAt(index, seconds);
+    const placement = tropicalPlacementAt(index, seconds, SIDEREAL_DAY);
     if (placement !== null) placements.push(placement);
   }
   for (const placement of placements) {
@@ -114,7 +114,7 @@ function drawFronts(
       latitude: anchor.latitude * Math.PI / 180,
       longitude: anchor.longitude * Math.PI / 180,
     };
-    for (const spine of frontSpinesOf(placement, R_EARTH, anchorRad)) {
+    for (const spine of frontSpinesOf(placement, R_EARTH, SIDEREAL_DAY, anchorRad)) {
       strokeFront(context, spine.points, spine.kind, strength, view);
     }
   }
@@ -217,13 +217,13 @@ export function drawCycloneSymbols(
   drawFronts(context, fields, seconds, view);
   // 温帯低気圧 — L。
   for (let index = 0; index < LOW_COUNT; index += 1) {
-    const placement = lowPlacementAt(index, seconds, R_EARTH);
+    const placement = lowPlacementAt(index, seconds, R_EARTH, SIDEREAL_DAY);
     if (placement === null || placement.depth < LABEL_DEPTH_MIN) continue;
     drawCenterLabel(context, fields, placement, 'L', 0, view);
   }
   // 熱帯低気圧 — L と眼。
   for (let index = 0; index < TROPICAL_COUNT; index += 1) {
-    const tropical = tropicalPlacementAt(index, seconds);
+    const tropical = tropicalPlacementAt(index, seconds, SIDEREAL_DAY);
     if (tropical === null || tropical.depth < LABEL_DEPTH_MIN) continue;
     const eye = eyeStrengthOf(
       tropical.depth, tropical.radius, tropical.latitude, R_EARTH, SIDEREAL_DAY);
