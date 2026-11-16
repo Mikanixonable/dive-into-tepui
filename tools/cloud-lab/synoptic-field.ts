@@ -25,8 +25,6 @@ export interface SynopticFields {
   readonly surfaceWindNorth: Float32Array; // 地表の風の北向き成分 [m/s]
   readonly upperWindEast: Float32Array; // 上層の風の東向き成分 [m/s]
   readonly upperWindNorth: Float32Array; // 上層の風の北向き成分 [m/s]
-  readonly compression: Float32Array; // 気団の境目の押し縮まり(1 で何も起きていない)
-  readonly warmth: Float32Array; // 暖気の流入 = 出身地からの緯度の差 [rad](負で寒気)
 }
 
 export class SynopticField {
@@ -53,7 +51,7 @@ export class SynopticField {
     const weather = this.field.weatherModel.weatherAt(direction);
     this.planes = new FloatPlaneSet([
       vec4(weather.pressure, weather.surfaceWind.x, weather.surfaceWind.y, weather.upperWind.x),
-      vec4(weather.upperWind.y, weather.compression, weather.warmth, 0),
+      vec4(weather.upperWind.y, 0, 0, 0),
     ], FIELD_WIDTH, FIELD_HEIGHT);
   }
 
@@ -64,14 +62,12 @@ export class SynopticField {
     model.syncTime(seconds);
     model.bake(this.renderer);
     const [
-      pressure, surfaceWindEast, surfaceWindNorth, upperWindEast,
-      upperWindNorth, compression, warmth,
+      pressure, surfaceWindEast, surfaceWindNorth, upperWindEast, upperWindNorth,
     ] = await this.planes.read(this.renderer);
     return {
       width: FIELD_WIDTH, height: FIELD_HEIGHT,
       pressure: pressure!, surfaceWindEast: surfaceWindEast!, surfaceWindNorth: surfaceWindNorth!,
       upperWindEast: upperWindEast!, upperWindNorth: upperWindNorth!,
-      compression: compression!, warmth: warmth!,
     };
   }
 }
