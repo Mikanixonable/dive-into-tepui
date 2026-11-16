@@ -130,7 +130,7 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   detrainAdvectStep: { label: 'ベールの移流の歩幅 [s]', row: 'condense', min: 600, max: 14400, step: 300 },
   detrainDecaySeconds: { label: 'ベールの減衰 [s]', row: 'condense', min: 3600, max: 43200, step: 600 },
   detrainGain: { label: 'ベールの利得', row: 'condense', min: 0, max: 4, step: 0.05 },
-  detrainShieldRadius: { label: '盾の均す半径 [m]', row: 'condense', min: 0, max: 400000, step: 5000 },
+  detrainShieldRadius: { label: '盾の均す半径 [m]', row: 'condense', min: 0, max: 120000, step: 2000 },
   detrainShieldGain: { label: '盾の利得', row: 'condense', min: 0, max: 12, step: 0.1 },
   // 凝結 — セル径
   cellClosedKm: { label: 'セル径(閉じた細胞) [km]', row: 'condense', min: 30, max: 150, step: 1 },
