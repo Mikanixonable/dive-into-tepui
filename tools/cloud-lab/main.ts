@@ -17,6 +17,7 @@ import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import {
   LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt,
 } from '../../src/render/cloud/cyclone-tracks';
+import { HIGH_COUNT, highPlacementAt } from '../../src/render/cloud/anticyclone-tracks';
 import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
 
 // 写す表示。GPU の写し(CLOUD_LAB_VIEWS)に、2D canvas へ焼く天気図モードを足す。
@@ -50,10 +51,12 @@ declare global {
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
-      // 時刻 [h] の低気圧の谷の配置。撮影の駆動が中心の位置を統計の範囲の切り分けに使う。
+      // 時刻 [h] の低気圧の谷と高気圧の丘の配置。撮影の駆動が中心の位置を統計の範囲の
+      // 切り分けに使う。
       cyclonesAt: (hours: number) => {
         readonly tropicals: readonly (CyclonePlacement | null)[];
         readonly lows: readonly (CyclonePlacement | null)[];
+        readonly highs: readonly (CyclonePlacement | null)[];
       };
       // モデルの調整値。いまの全値を返すものと、渡した値を適用して焼き直すもの — 戻った時点で
       // 焼き直し済みなので、続けて capture すれば新しい値の場が撮れる。
@@ -226,6 +229,7 @@ async function init(): Promise<void> {
       tropicals: Array.from(
         { length: TROPICAL_COUNT }, (_, index) => tropicalPlacementAt(index, hours * SECONDS_PER_HOUR)),
       lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * SECONDS_PER_HOUR, R_EARTH)),
+      highs: Array.from({ length: HIGH_COUNT }, (_, index) => highPlacementAt(index, hours * SECONDS_PER_HOUR, R_EARTH)),
     }),
     params: () => Object.fromEntries(Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])),
     setParams: (next) => applyParams(next, true),

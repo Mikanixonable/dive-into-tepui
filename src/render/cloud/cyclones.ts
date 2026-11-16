@@ -6,7 +6,7 @@ import * as THREE from 'three/webgpu';
 import {
   abs, cross, dot, exp, float, inverseSqrt, length, max, min, sign, uniform, vec3,
 } from 'three/tsl';
-import { LOW_COUNT, TROPICAL_COUNT, lowPlacementAt, tropicalPlacementAt } from './cyclone-tracks';
+import { LOW_COUNT, TROPICAL_COUNT, lowPlacementsAt, tropicalPlacementAt } from './cyclone-tracks';
 import { coreCrossingAngle } from './wind-law';
 import type { CyclonePlacement } from './cyclone-tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
@@ -205,8 +205,8 @@ export class Trough {
     const headCenter = this.safeNormalize(
       this.center.add(poleward.mul(radius.mul(COMMA_HEAD_POLEWARD))));
     const offset = direction.sub(headCenter);
-    const across = dot(offset, downstream).div(radius.mul(COMMA_HEAD_SEMI_DOWN));
-    const along = dot(offset, poleward).div(radius.mul(COMMA_HEAD_SEMI_POLE));
+    const across = dot(offset, poleward).div(radius.mul(COMMA_HEAD_SEMI_POLE));
+    const along = dot(offset, downstream).div(radius.mul(COMMA_HEAD_SEMI_DOWN));
     return exp(across.mul(across).add(along.mul(along)).negate()).mul(this.occlusionStrength());
   }
 
@@ -238,8 +238,9 @@ export class Cyclones {
     for (const [i, tropical] of this.tropicals.entries()) {
       tropical.place(tropicalPlacementAt(i, seconds));
     }
+    const lows = lowPlacementsAt(seconds, this.surfaceRadius);
     for (const [i, low] of this.lows.entries()) {
-      low.place(lowPlacementAt(i, seconds, this.surfaceRadius));
+      low.place(lows[i]!);
     }
   }
 

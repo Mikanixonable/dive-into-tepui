@@ -10,6 +10,7 @@ import { EquirectProjection } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
 import { AtmosphericWindField, SURFACE_HEIGHT } from '../../src/render/cloud/atmospheric-wind';
 import { Cyclones } from '../../src/render/cloud/cyclones';
+import { Highs } from '../../src/render/cloud/anticyclones';
 import { CirculatingNoise } from '../../src/render/cloud/circulating-noise';
 import { Circulation } from '../../src/render/cloud/circulation';
 import { WeatherTransport } from '../../src/render/cloud/weather-transport';
@@ -84,8 +85,10 @@ function applyAblations(): void {
     };
   }
   if (params.get('noCyclone') === '1') {
-    // 低気圧の谷を気圧から除く — 渦のまわりの釣り合い風が消え、眼と金床の形は残る。
+    // 低気圧の谷と高気圧の丘を気圧から除く — 低・高どちらの渦のまわりの釣り合い風も消え、
+    // 眼と金床の形は残る。
     Cyclones.prototype.pressureAt = () => float(0);
+    Highs.prototype.pressureAt = () => float(0);
   }
   if (params.get('noEpoch') === '1') {
     // 総観規模の段のその場での実現の混ぜ替えを止め、雲塊の発達・消滅を切る。

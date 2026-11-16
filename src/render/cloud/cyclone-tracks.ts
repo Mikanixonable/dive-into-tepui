@@ -97,6 +97,8 @@ const ABSORB_FADE_FULL = 0.95;
 // 逓減するので、浅い側の深さが相手の消滅と同時に跳んで戻らない。
 const ABSORB_WINDOW = 24 * 3600;
 const ABSORB_WINDOW_STEP = 3 * 3600;
+// 窓の半幅に入る刻みの数。
+const ABSORB_WINDOW_STEPS = Math.round(ABSORB_WINDOW / ABSORB_WINDOW_STEP);
 // 窓の標本の効きをなめらかな最大でたたむ鋭さ。大きいほど本物の最大に近づく — 小さすぎると
 // 弱い標本の寄与が積み上がって遠くの相手でも浅い側を沈めてしまう。標本の入れ替わり(argmax
 // の跳び)がそのまま深さの勾配の跳びになるので、隣り合う標本どうしを混ぜる程度に取る。
@@ -139,7 +141,9 @@ const LOW_OCCLUSION_FULL = 0.75;
 const LOW_DEPTH_RAMP = 18 * 3600;
 // 長軸/短軸の比。前線の向きへ伸びた楕円。
 const LOW_ELONGATION = 1.3;
-// 乱数の種に足す塩。一次の種(世代 × LOW_COUNT + 番号)が数千年ぶん進んでも届かない先に取る。
+// 乱数の種に足す塩。一次の種(世代 × LOW_COUNT + 番号)がここへ届くのに ~1.6 万年かかる先に
+// 取る(2²⁴ ÷ LOW_COUNT 世代 × 周期 11 日)。種どうしの交差が先に起きる時点 — 一次の種が熱帯の
+// 帯(2²⁰)へ届く ~987 年 — より十分に遠い。
 const LOW_SECONDARY_SEED_SALT = 1 << 24;
 
 // ストームトラックの軸(海域)ごとの、進路の折れ方と消える緯度の帯。北上はトラックの北東
@@ -445,7 +449,35 @@ function rawLowPlacementAt(
 export function lowPlacementAt(
   index: number, seconds: number, surfaceRadius: number,
 ): CyclonePlacement | null {
-  const self = rawLowPlacementAt(index, seconds, surfaceRadius);
+  return absorbedLowAt(
+    index, surfaceRadius,
+    (j, k) => rawLowPlacementAt(j, seconds + k * ABSORB_WINDOW_STEP, surfaceRadius),
+  );
+}
+
+// 中緯度の低気圧 LOW_COUNT 個全部の、時刻 seconds [s] における配置。戻り値の index 番目は
+// lowPlacementAt(index, seconds, surfaceRadius) と同じ。吸収の効きは同じ半球の全枡の生の配置を
+// ±窓 で標本化した上で決まるので、全枡・全刻みの生の配置を先に表へ起こして分け合う — 1 枡ずつ
+// 引くと同じ生の配置を相手ごと・刻みごとに組み直すことになる。
+export function lowPlacementsAt(
+  seconds: number, surfaceRadius: number,
+): readonly (CyclonePlacement | null)[] {
+  // 生の配置の表 [枡][窓の標本]。標本は時刻から −窓 側が先頭。
+  const raw = Array.from({ length: LOW_COUNT }, (_, j) =>
+    Array.from({ length: 2 * ABSORB_WINDOW_STEPS + 1 }, (_, k) =>
+      rawLowPlacementAt(j, seconds + (k - ABSORB_WINDOW_STEPS) * ABSORB_WINDOW_STEP, surfaceRadius)));
+  return Array.from({ length: LOW_COUNT }, (_, index) =>
+    absorbedLowAt(index, surfaceRadius, (j, k) => raw[j]![k + ABSORB_WINDOW_STEPS]!));
+}
+
+// 中緯度の低気圧 index の、吸収込みの配置。rawAt(j, k) は枡 j の時刻 +k 刻み(0 が現在)の
+// 生の配置を返す — 生の配置をその場で組むか表から引くかは呼び出し側が決める。生まれる前と
+// 消えたあとは null。
+function absorbedLowAt(
+  index: number, surfaceRadius: number,
+  rawAt: (index: number, offset: number) => RawLow | null,
+): CyclonePlacement | null {
+  const self = rawAt(index, 0);
   if (self === null) return null;
   // 吸収 — 同じ半球で、自分より最深の深い谷へ半径の和の 2 倍より近づいた谷は、近さに応じて
   // 深さを削る。対の評価はどちらの低気圧から見ても同じ浅い側が削れる。効きは相手の配置を
@@ -453,14 +485,13 @@ export function lowPlacementAt(
   // ~1 日かけて逓増・逓減するので、出会い・別れ・生まれ・消えのどの瞬間にも深さは跳ばない。
   // 最深で比べる門も標本ごとの居る度が 0 の時刻にしか入れ替わらない。
   let depth = self.placement.depth;
-  const windowSteps = Math.round(ABSORB_WINDOW / ABSORB_WINDOW_STEP);
   for (let j = index % 2; j < LOW_COUNT; j += 2) {
     if (j === index) continue;
     // 窓の標本の効きは、本物の最大をなめらかに近似した総和でたたむ — 最強の標本が隣の刻みへ
     // 移る瞬間にも効きは連続に移り、勾配が刻みの境で跳ばない。
     let softmax = 0;
-    for (let k = -windowSteps; k <= windowSteps; k++) {
-      const other = rawLowPlacementAt(j, seconds + k * ABSORB_WINDOW_STEP, surfaceRadius);
+    for (let k = -ABSORB_WINDOW_STEPS; k <= ABSORB_WINDOW_STEPS; k++) {
+      const other = rawAt(j, k);
       // その標本の低気圧が自分より最深の浅い側なら、その標本は呑まない。
       if (other === null || other.peakDepth < self.peakDepth) continue;
       const distance = greatCircleDistance(self.placement, other.placement, surfaceRadius);
@@ -473,7 +504,7 @@ export function lowPlacementAt(
       // 跳ばない — 呑む側の瞬間の深さを見ると、相手が埋まる速さで効きが抜けて抑えられていた側の
       // 深さが跳ぶ。帯の縁での効きは二乗で弱めて、総和で届きすぎないよう実効の帯をおおよそ
       // 1.4 倍までに留める。窓の端では 0 へ逓減。
-      const taper = 0.5 + 0.5 * Math.cos(Math.PI * k / (windowSteps + 1));
+      const taper = 0.5 + 0.5 * Math.cos(Math.PI * k / ABSORB_WINDOW_STEPS);
       const reach = (1 - fade) ** 2;
       // 居る度と現在の深さの強いほうを効きにする — 生まれたて・消えかけでも、深さがあれば
       // 半径の和の内側へ来た浅い谷をその時点で沈め切れる。
