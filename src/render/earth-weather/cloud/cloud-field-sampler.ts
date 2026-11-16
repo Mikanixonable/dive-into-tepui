@@ -20,13 +20,15 @@ export interface CloudFieldBinding {
 }
 
 export class CloudFieldSampler {
-  // 読む雲場 2 枚ぶんのテクスチャノード(雲・風・環境の枚ごと)。場が結ばれるまでは EMPTY_CLOUD_FIELD を読み、
-  // bind は同じノードの値を差し替える。**6 つとも結びを別々に固定する** — 起動時に場を結ぶ前にシェーダを組むと、
-  // 全部が同じ空の写しを指して 1 つの結びへ合わさり、あとから別々の枚を結んでも、雲・風・環境の 6 つの読みが
-  // 全部、先に使われた 1 枚(雲の 0 枚目)を読む。2 枚の補間も、風・環境も効かなくなる。
+  // 読む雲場 2 枚ぶんのテクスチャノード(雲・風・環境・セル径の枚ごと)。場が結ばれるまでは
+  // EMPTY_CLOUD_FIELD を読み、bind は同じノードの値を差し替える。**8 つとも結びを別々に固定する** —
+  // 起動時に場を結ぶ前にシェーダを組むと、全部が同じ空の写しを指して 1 つの結びへ合わさり、
+  // あとから別々の枚を結んでも、雲・風・環境・セル径の 8 つの読みが全部、先に使われた 1 枚
+  // (雲の 0 枚目)を読む。2 枚の補間も、風・環境も効かなくなる。
   private readonly clouds = [distinctTextureNode(EMPTY_CLOUD_FIELD), distinctTextureNode(EMPTY_CLOUD_FIELD)] as const;
   private readonly motions = [distinctTextureNode(EMPTY_CLOUD_FIELD), distinctTextureNode(EMPTY_CLOUD_FIELD)] as const;
   private readonly environments = [distinctTextureNode(EMPTY_CLOUD_FIELD), distinctTextureNode(EMPTY_CLOUD_FIELD)] as const;
+  private readonly cellSizes = [distinctTextureNode(EMPTY_CLOUD_FIELD), distinctTextureNode(EMPTY_CLOUD_FIELD)] as const;
   // 2 枚の混ぜ方。古い側の枚の番号と混合比。
   private readonly parity: FloatUniform = uniform(0);
   private readonly fraction: FloatUniform = uniform(0);
@@ -43,6 +45,7 @@ export class CloudFieldSampler {
       this.clouds[slot].value = binding.slots[slot].cloud;
       this.motions[slot].value = binding.slots[slot].motion;
       this.environments[slot].value = binding.slots[slot].environment;
+      this.cellSizes[slot].value = binding.slots[slot].cellSize;
     }
     // 同じ供給源の値を焼き直し後も読み続けられるよう、参照と cap の枠を揃える。
     this.parity.value = binding.blend.parity;
@@ -60,6 +63,7 @@ export class CloudFieldSampler {
       this.clouds[slot].value = EMPTY_CLOUD_FIELD;
       this.motions[slot].value = EMPTY_CLOUD_FIELD;
       this.environments[slot].value = EMPTY_CLOUD_FIELD;
+      this.cellSizes[slot].value = EMPTY_CLOUD_FIELD;
     }
     this.parity.value = 0;
     this.fraction.value = 0;
@@ -82,7 +86,8 @@ export class CloudFieldSampler {
     const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
     const cloudTexel = this.blend(this.clouds, uv).mul(inside) as Vec4Node;
     const environmentTexel = this.blend(this.environments, uv).mul(inside) as Vec4Node;
-    return cloudSampleFromTexels(cloudTexel, environmentTexel);
+    const cellTexel = this.blend(this.cellSizes, uv).mul(inside) as Vec4Node;
+    return cloudSampleFromTexels(cloudTexel, environmentTexel, cellTexel);
   }
 
   // 単位方向 direction の場の texel(積雲・巻雲・筋の向き)だけを、2 枚の混ぜ方で読む。環境は読まない。cap の外は 0。

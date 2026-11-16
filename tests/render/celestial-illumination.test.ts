@@ -300,7 +300,8 @@ export function register(): void {
 
 // 雲の影の源が実在することだけを見るので、中身は読まれない置き場でよい。
 const SHADOW_CLOUD_SLOT: CloudFieldSlot = {
-  cloud: new THREE.Texture(), motion: new THREE.Texture(), environment: new THREE.Texture(),
+  cloud: new THREE.Texture(), motion: new THREE.Texture(),
+  environment: new THREE.Texture(), cellSize: new THREE.Texture(),
 };
 const SHADOW_CLOUD: ShadowCloud = {
   center: new THREE.Vector3(),

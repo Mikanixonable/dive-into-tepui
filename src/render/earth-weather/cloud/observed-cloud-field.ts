@@ -21,11 +21,18 @@ export function observedCloudTexel(texel: Vec4Node): Vec4Node {
   return vec4(texel.r, texel.g, texel.b.mul(2).sub(1), texel.a.mul(2).sub(1));
 }
 
+// 実写の雲場へ供給する中立のセル径 [km]。実写からは型の区別が取れないので、生成側の既定と同じ
+// 並の大きさ(積雲は中緯度の海のセル、巻雲は無撹乱の板より細かい繊維・鱗のピッチ)を置く。
+const OBSERVED_CUMULUS_CELL_KM = 40;
+const OBSERVED_CIRRUS_CELL_KM = 10;
+
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
   private readonly field: BakedField;
   // 実写には環境の量の場がないので、どの方向でも同じ値を返す 1 texel の写し。
   private readonly environment: THREE.DataTexture;
+  // 実写にはセル径の場もないので、環境と同じく中立の既定値を返す 1 texel の写し。
+  private readonly cellSize: THREE.DataTexture;
   // 2 枚とも同じ写し。混ぜ方は 0 に止めて、古い側の枚だけを読む。
   public readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
   public readonly blend: CloudBlend = { parity: 0, fraction: 0 };
@@ -48,6 +55,17 @@ export class ObservedCloudField implements CloudFieldSource {
     this.environment.wrapS = THREE.RepeatWrapping;
     this.environment.wrapT = THREE.RepeatWrapping;
     this.environment.needsUpdate = true;
+    // セル径は中立の既定値 log2(km)(積雲 OBSERVED_CUMULUS_CELL_KM、巻雲 OBSERVED_CIRRUS_CELL_KM)。B・A は予約で 0。
+    this.cellSize = new THREE.DataTexture(
+      Uint16Array.from(
+        [Math.log2(OBSERVED_CUMULUS_CELL_KM), Math.log2(OBSERVED_CIRRUS_CELL_KM), 0, 0],
+        (value) => THREE.DataUtils.toHalfFloat(value)),
+      1, 1, THREE.RGBAFormat, THREE.HalfFloatType);
+    this.cellSize.minFilter = THREE.LinearFilter;
+    this.cellSize.magFilter = THREE.LinearFilter;
+    this.cellSize.wrapS = THREE.RepeatWrapping;
+    this.cellSize.wrapT = THREE.RepeatWrapping;
+    this.cellSize.needsUpdate = true;
     const image = texture(this.map.texture);
     // **読む段は焼くときに 1 回だけ決める** — 画面微分に任せると、経度の巻き目(u が 1 から 0 へ
     // 跳ぶ列)で最も粗い段が選ばれ、日付変更線に 1 本の線が出る。画像の 1 texel が張る角は
@@ -64,7 +82,8 @@ export class ObservedCloudField implements CloudFieldSource {
     );
     // 実写の雲場は止まっているので、運ぶ風は 0。
     const slot: CloudFieldSlot = {
-      cloud: this.field.texture, motion: EMPTY_CLOUD_FIELD, environment: this.environment,
+      cloud: this.field.texture, motion: EMPTY_CLOUD_FIELD,
+      environment: this.environment, cellSize: this.cellSize,
     };
     this.slots = [slot, slot];
   }
@@ -88,5 +107,6 @@ export class ObservedCloudField implements CloudFieldSource {
     this.map.dispose();
     this.field.dispose();
     this.environment.dispose();
+    this.cellSize.dispose();
   }
 }
