@@ -39,7 +39,7 @@ export class GeneratedCloudField implements CloudFieldSource {
     surfaceRadius: number, rotationPeriod: number,
   ) {
     this.model = new WeatherModel(climate, terrain, projection, surfaceRadius, rotationPeriod);
-    this.field = new CloudField(this.model, projection, surfaceRadius);
+    this.field = new CloudField(this.model, projection);
   }
 
   // 雲場の 2 枚と混ぜ方。出力場の所有権はこのクラスに残す。

@@ -36,14 +36,13 @@ export interface WeatherSample {
   readonly convection: Vec2Node; // 対流セルの強弱(0 中心の高周波、x が粒・y が網目)
   readonly convectiveActivity: FloatNode; // 対流の強弱がどれだけ強く現れるか 0..1
   readonly shallowForcing: FloatNode; // 浅い積雲の量へ足す湿度(日射と湿りが駆動の基準を上回る昼の陸で正)
-  readonly deepPotential: FloatNode; // 深い対流(塔・かなとこ)の起こりやすさ 0..1
+  readonly deepPotential: FloatNode; // 深い対流(塔・雷雨)の起こりやすさ 0..1
   readonly compression: FloatNode; // 気団の境目の押し縮まり(1 で何も起きていない)
   readonly band: FloatNode; // 雲の帯(低気圧に繋がる前線、または眼を持つ渦のまわりの雨帯)の強さ 0..1
   readonly front: FloatNode; // 帯のうち、谷の骨格から立つ前線の分 0..1
   readonly warmth: FloatNode; // 暖気の流入 = 出身地からの緯度の差 [rad](負で寒気)
   readonly oceanFetch: FloatNode; // 追跡した気団が海の上にあった時間の割合 0..1(寒気の fetch)
   readonly anvil: FloatNode; // 金床(平らな天蓋)の濃さ 0..1
-  readonly eye: FloatNode; // 眼を持つ渦の目の濃さ 0..1
   readonly cirrusPatch: FloatNode; // 薄い雲の斑と透き間を決める百キロ級の場 −1..1(上層の流れに運ばれる)
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
   readonly landFraction: FloatNode; // 陸らしさ 0..1
@@ -346,7 +345,6 @@ export class WeatherModel {
       warmth,
       oceanFetch: airMass.ocean,
       anvil,
-      eye,
       cirrusPatch: this.cirrusPatchNoise.at(direction),
       meanCloudiness,
       landFraction,
