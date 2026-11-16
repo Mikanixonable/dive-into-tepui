@@ -14,7 +14,7 @@ import { SphereCelestialView } from './sphere-celestial-view';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { CameraFrame } from '../../camera/camera-frame';
-import type { CloudPresentation } from '../../cloud/cloud-presentation';
+import type { CloudPresentation } from '../../earth-weather/cloud/cloud-presentation';
 import type { Aurora } from '../aurora';
 import type { GeostationaryOverlay } from './geostationary-overlay';
 import type { GraphicsSettingsData } from '../../graphics-settings';
