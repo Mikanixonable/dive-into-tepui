@@ -5,10 +5,13 @@ const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 
-module.exports = {
+module.exports = (env, argv) => ({
   cache: {
     type: 'filesystem',
-    name: 'render-lab',
+    // production(撮影)と development(server)でキャッシュ名を分ける — 片方のモードが書いた
+    // モジュールをもう片方が読むと、innerGraph で畳んだ依存のテンプレートが無く
+    // No template for dependency で落ちる(webpack.config.js と同じ仕掛け)。
+    name: `render-lab-${argv.mode ?? 'development'}`,
     cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
   },
   entry: './tools/render-lab/main.ts',
@@ -64,4 +67,4 @@ module.exports = {
     liveReload: true,
     hot: false,
   },
-};
+});
