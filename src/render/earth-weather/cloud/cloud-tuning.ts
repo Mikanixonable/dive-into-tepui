@@ -188,7 +188,7 @@ export const CLOUD_TUNING_DEFAULTS = {
   oceanDiurnal: 0.25,
   shallowForcingGain: 0.12,
   // 深い対流の駆動: 陸の平地の強さ(山地を 1 として)、暖かい海の強さと早朝の振れ幅、暖かい海の門 [K]。
-  landDeepScale: 0.65,
+  landDeepScale: 0.72,
   oceanDeepScale: 0.5,
   oceanDeepDiurnal: 0.15,
   warmSeaTemperatureOnset: 299,
