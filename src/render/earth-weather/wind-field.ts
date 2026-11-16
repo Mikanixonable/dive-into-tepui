@@ -9,6 +9,7 @@ import { RossbyWave } from './rossby-wave';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { composeWind, FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
 import type { PressureField } from './pressure-field';
+import type { TerrainFlow } from './terrain-flow';
 import type { BalancedWind } from './wind-law';
 import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
@@ -25,21 +26,26 @@ const CONVECTION_FRICTION = 3 * FRICTION_RATE;
 // 流す風、convectionAdvection は対流を流す風(湿度の風より摩擦が強く等圧線を深く横切る — 同じ
 // 風だと地表付近と上層の写しが同じ向きへ伸びて、掛け合わせても筋のままになる)。
 // surfaceWind・upperWind は地表付近と上層の風の東・北の成分 [m/s](上層は巻雲の筋が従う流れ)。
+// 下層の風は地形で回された後のもので、impingingWind は回される前 — 地形へ実際に吹き付ける
+// 総量で、堰き止めの判定と風上の降水枯渇が読む。
 export interface WindSample {
   readonly pressure: FloatNode;
   readonly advection: BalancedWind;
   readonly convectionAdvection: BalancedWind;
   readonly surfaceWind: Vec2Node;
   readonly upperWind: Vec2Node;
+  readonly impingingWind: Vec2Node;
 }
 
 export class WindField {
   private readonly rossbyWave = new RossbyWave();
   private readonly atmosphericWind = new AtmosphericWindField();
 
-  // pressure は気圧の写し、surfaceRadius [m] は天体の半径、rotationPeriod [s] は自転周期。
+  // pressure は気圧の写し、terrain は下層の風を地形へ回す協力者、surfaceRadius [m] は
+  // 天体の半径、rotationPeriod [s] は自転周期。
   public constructor(
     private readonly pressure: PressureField,
+    private readonly terrain: TerrainFlow,
     private readonly surfaceRadius: number,
     private readonly rotationPeriod: number,
   ) {
@@ -71,23 +77,32 @@ export class WindField {
     const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
     const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
     const upperBackground = east.mul(upperMean.x).add(north.mul(upperMean.y)).add(rossby);
+    const impingingWind = eastNorthComponents(
+      composeWind(local, surfaceBackground).velocity, east, north);
     return {
       pressure: field.pressure,
       // 移流の遡りは、大循環の平均風からの偏差(局所の釣り合い風とロスビー波の摂動)で取る —
       // 源の模様の平行移動は、写しを焼く循環が平均風で既に担っている。平均風まで遡りに含めると
       // 両者が打ち消し合い、模様は周期の中で混ざり合うだけで流れも形の変化も鈍る。
-      advection: composeWind(local, rossby),
-      convectionAdvection: composeWind(convectionLocal, rossby),
-      surfaceWind: eastNorthComponents(
-        composeWind(local, surfaceBackground).velocity, east, north),
+      // 下層の風は地形で回す — 吹き付けの判定には回される前の総量(impingingWind)を渡す。
+      advection: this.deflectFlow(
+        direction, composeWind(local, rossby), impingingWind, east, north),
+      convectionAdvection: this.deflectFlow(
+        direction, composeWind(convectionLocal, rossby), impingingWind, east, north),
+      surfaceWind: this.terrain.deflectAt(direction, impingingWind, impingingWind),
       upperWind: eastNorthComponents(composeWind(local, upperBackground).velocity, east, north),
+      impingingWind,
     };
   }
 
   // 単位方向 direction で雲を運ぶ、地表付近と上層の風の東・北の成分 [m/s]。
-  public windsAt(direction: Vec3Node): { readonly surfaceWind: Vec2Node; readonly upperWind: Vec2Node } {
-    const { surfaceWind, upperWind } = this.at(direction);
-    return { surfaceWind, upperWind };
+  public windsAt(direction: Vec3Node): {
+    readonly surfaceWind: Vec2Node;
+    readonly upperWind: Vec2Node;
+    readonly impingingWind: Vec2Node;
+  } {
+    const { surfaceWind, upperWind, impingingWind } = this.at(direction);
+    return { surfaceWind, upperWind, impingingWind };
   }
 
   // 単位方向 direction における気団を遡らせる風(東向き・北向きの成分 [m/s])。
@@ -109,12 +124,27 @@ export class WindField {
       this.surfaceRadius, this.rotationPeriod,
     );
     const mean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
-    return {
+    const flow = {
       velocity: wind.velocity
         .add(east.mul(mean.x))
         .add(north.mul(mean.y))
         .add(this.rossbyWave.perturbationAt(direction, this.surfaceRadius)),
       turn: wind.turn,
+    };
+    return this.deflectFlow(
+      direction, flow, eastNorthComponents(flow.velocity, east, north), east, north);
+  }
+
+  // 接ベクトルの風へ地形の迂回を加えて返す。regime は堰き止めの判定に使う、地形へ実際に
+  // 吹き付ける風(東向き・北向き成分 [m/s])。
+  private deflectFlow(
+    direction: Vec3Node, flow: BalancedWind, regime: Vec2Node, east: Vec3Node, north: Vec3Node,
+  ): BalancedWind {
+    const deflected = this.terrain.deflectAt(
+      direction, eastNorthComponents(flow.velocity, east, north), regime);
+    return {
+      velocity: east.mul(deflected.x).add(north.mul(deflected.y)),
+      turn: flow.turn,
     };
   }
 }

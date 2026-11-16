@@ -1,6 +1,6 @@
 // 天気のモデル。天体固定の単位方向と時刻から、気圧 → 風 → 上昇流 → 湿度・対流の天気を TSL の
 // グラフで組む。時刻の閉じた関数で、同じ時刻には同じ空が出る。値はすべて見えのための調整値。
-import { abs, atan, clamp, dot, exp, fract, max, min, smoothstep, tanh, uniform } from 'three/tsl';
+import { abs, atan, clamp, dot, exp, fract, max, min, smoothstep, tanh, uniform, vec2 } from 'three/tsl';
 import * as THREE from 'three/webgpu';
 import { AirMass } from './air-mass';
 import { AtmosphericWindField, SURFACE_HEIGHT } from './atmospheric-wind';
@@ -14,6 +14,7 @@ import { PressureField, pressureBandAt } from './pressure-field';
 import { latitudeOf } from './sphere-frame';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
 import { CLOUD_TUNING } from './cloud/cloud-tuning';
+import { TerrainFlow } from './terrain-flow';
 import { WindField } from './wind-field';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
@@ -161,6 +162,9 @@ const TRANSIENT_ACTIVITY_FULL = CLOUD_TUNING.transientActivityFull;
 const TRANSIENT_GAIN = CLOUD_TUNING.transientGain;
 const LAND_HEATING_GAIN = CLOUD_TUNING.landHeatingGain;
 const OROGRAPHIC_GAIN = CLOUD_TUNING.orographicGain;
+// 風上で凝結して降った水が湿度から剥奪する利得。吹き付けの上り成分 [m/s] × 源の湿りを
+// 乾きへ換算する — 上昇源と同じ吹き付けの式で、高い地形ほど堰き止めが強く乾きも強い。
+const RAINOUT_GAIN = CLOUD_TUNING.rainoutGain;
 // 島や陸の日射加熱が上昇源になる地方太陽時の窓 [時]。陸が暖まって対流が立つまでの遅れを込めて
 // 昼過ぎを中心に取る(雲道の観測では午後に発生率が立つ)。
 const HEATING_HOUR_START = 9;
@@ -209,11 +213,13 @@ export class WeatherModel {
     this.transientField = new EpochNoise(TRANSIENT_NOISE, texel, TRANSIENT_EPOCH_MAX_FREQUENCY);
     this.pressure = new PressureField(
       projection, (direction) => this.pressureSourceAt(direction));
-    this.winds = new WindField(this.pressure, surfaceRadius, rotationPeriod);
+    this.winds = new WindField(
+      this.pressure, new TerrainFlow(terrain, climate), surfaceRadius, rotationPeriod);
     // 上昇源は地形へ吹き付ける風を読むので、風場を持ったあとで組む(評価はベイク時)。
     this.transport = new WeatherTransport(
       this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius,
-      (direction, emissionSeconds) => this.upliftSourceAt(direction, emissionSeconds));
+      (direction, emissionSeconds, ambientHumidity) =>
+        this.moistureSourceAt(direction, emissionSeconds, ambientHumidity));
     this.convectiveActivity = new ConvectiveActivity(this.surfaceCirculation, projection);
     this.airMass = new AirMass(
       projection, (direction) => this.winds.traceFlowAt(direction),
@@ -357,11 +363,14 @@ export class WeatherModel {
     return this.transport.humiditySourceAt(direction);
   }
 
-  // 上昇源: 地理に貼り付く湿りの供給 0..1。平地や海上の一時的な源、島・陸の日射加熱、
-  // 風が斜面を駆け上がる分を足す。emissionSeconds は発射時刻 [s] — 移流の位相が遡った時刻で
-  // 評価するので、昼に発射された湿りは日没後も風下へ残る。地形性上昇にだけ陸の重みを掛けて、
-  // 海底の起伏が大気を持ち上げないようにする(過渡源は海上にも立つ)。
-  private upliftSourceAt(direction: Vec3Node, emissionSeconds: FloatNode): FloatNode {
+  // 地表の湿りの源: x=上昇源の加湿、y=降水枯渇の乾き。平地や海上の一時的な源、島・陸の
+  // 日射加熱、風が斜面を駆け上がる分を足す。emissionSeconds は発射時刻 [s] — 移流の位相が
+  // 遡った時刻で評価するので、昼に発射された湿りは日没後も風下へ残る。地形性上昇と降水
+  // 枯渇にだけ陸の重みを掛けて、海底の起伏が大気を動かさないようにする(過渡源は海上にも立つ)。
+  // ambientHumidity は移流前の地表付近の湿度 — 乾いた空気は降らせる水を持たない。
+  private moistureSourceAt(
+    direction: Vec3Node, emissionSeconds: FloatNode, ambientHumidity: FloatNode,
+  ): Vec2Node {
     const transient = smoothstep(
       TRANSIENT_ACTIVITY_ONSET, TRANSIENT_ACTIVITY_FULL,
       this.transientField.at(direction, emissionSeconds).mul(0.5).add(0.5)).mul(TRANSIENT_GAIN);
@@ -371,10 +380,16 @@ export class WeatherModel {
       .mul(smoothstep(HEATING_HOUR_EBB, HEATING_HOUR_END, hour).oneMinus())
       .mul(fineLand).mul(LAND_HEATING_GAIN);
     // 風は発射時刻でなく現在時刻の場で評価する近似 — 歴史的な風の保存は持たない。
-    const orographic = max(
-      dot(this.winds.windsAt(direction).surfaceWind, this.terrain.slope(direction)), 0)
-      .mul(fineLand).mul(OROGRAPHIC_GAIN);
-    return transient.add(heating).add(orographic);
+    const { surfaceWind, impingingWind } = this.winds.windsAt(direction);
+    const slope = this.terrain.slope(direction);
+    // 加湿は地形を越えるぶんの上り(回された後の風)が担う — 堰き止めの強い高い地形では
+    // 上りが消えて、風上の雲道ではなく風下の乾きへ回る。
+    const orographic = max(dot(surfaceWind, slope), 0).mul(fineLand).mul(OROGRAPHIC_GAIN);
+    // 降水枯渇は地形へ吹き付ける総量(回される前の風)で見る — 堰き止められた空気も
+    // 風上で凝結して水を落とすので、高い地形ほど乾きが強い。
+    const rainout = max(dot(impingingWind, slope), 0)
+      .mul(fineLand).mul(ambientHumidity).mul(RAINOUT_GAIN);
+    return vec2(transient.add(heating).add(orographic), rainout);
   }
 
   // 発射時刻における地方太陽時 [時] 0..24(直下点で 12)。太陽直下経度は現在時刻の値から、
