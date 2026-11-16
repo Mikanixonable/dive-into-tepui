@@ -25,7 +25,7 @@ export type CloudLabViewId =
   | 'pressure' | 'surfaceWind' | 'traceWind' | 'front' | 'airMass' | 'lift'
   | 'surfaceHumiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'surfaceHumidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
-  | 'cumulus' | 'cirrus' | 'coverage' | 'cloudTop' | 'translucent' | 'cirrusFlow'
+  | 'cumulus' | 'cirrus' | 'coverage' | 'cumulusCell' | 'cirrusCell' | 'cloudTop' | 'translucent' | 'cirrusFlow'
   | 'composite' | 'observedComposite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
@@ -79,6 +79,11 @@ const FRONT_SPAN = 8;
 const WARMTH_SPAN = 0.4;
 const WIND_SPAN = 45;
 const ELEVATION_SPAN = 8000;
+// セル径の目盛り。場へ焼く値は log2(km) の生値なので、積雲は 1..256 km(log2 で 0..8)、巻雲は
+// 0.5..64 km(log2 で −1..6)を 0..1 へ写す。
+const CUMULUS_CELL_LOG2_SPAN = 8;
+const CIRRUS_CELL_LOG2_MIN = -1;
+const CIRRUS_CELL_LOG2_SPAN = 7;
 
 // 風 [m/s] の東・北成分を 0.5 中心の RG に、速さを B に。
 function windColor(wind: Vec2Node): Vec3Node {
@@ -158,6 +163,13 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'coverage', label: '積雲の不透明度', reads: 'cloud',
     legend: { text: '積雲の不透明度 0..1 = 1−exp(−量/0.12) — 描画が読む量' },
     color: (d, cloudAt) => vec3(cumulusOpacityNode(cloudAt(d).cumulus)) },
+  // 対流セルの大きさ。場の値は log2(km) なので、明るいほど大きいセル。
+  { id: 'cumulusCell', label: '積雲のセル径', reads: 'cloud',
+    legend: { text: '積雲のセル径 [km] — log2 で 0..8(1..256 km)' },
+    color: (d, cloudAt) => vec3(cloudAt(d).cumulusCell.div(CUMULUS_CELL_LOG2_SPAN)) },
+  { id: 'cirrusCell', label: '巻雲のセル径', reads: 'cloud',
+    legend: { text: '巻雲の要素径 [km] — log2 で −1..6(0.5..64 km)' },
+    color: (d, cloudAt) => vec3(cloudAt(d).cirrusCell.sub(CIRRUS_CELL_LOG2_MIN).div(CIRRUS_CELL_LOG2_SPAN)) },
   { id: 'cloudTop', label: '積雲の雲頂', reads: 'cloud', hidden: true,
     legend: { text: '積雲の雲頂 [m] — 0..17000(量の単調変換)' },
     color: (d, cloudAt) => vec3(cumulusTopAltitudeNode(cloudAt(d).cumulus).div(CUMULUS_TOP_ALTITUDE)) },

@@ -34,6 +34,7 @@ export interface WeatherSample {
   readonly compression: FloatNode; // 気団の境目の押し縮まり(1 で何も起きていない)
   readonly band: FloatNode; // 気団の折り目に立つ雲の帯(温帯で前線、眼を持つ渦のまわりで雨帯)の強さ 0..1
   readonly warmth: FloatNode; // 暖気の流入 = 出身地からの緯度の差 [rad](負で寒気)
+  readonly oceanFetch: FloatNode; // 追跡した気団が海の上にあった時間の割合 0..1(寒気の fetch)
   readonly anvil: FloatNode; // 金床(平らな天蓋)の濃さ 0..1
   readonly meanCloudiness: FloatNode; // 平年の雲量 0..1
   readonly landFraction: FloatNode; // 陸らしさ 0..1
@@ -277,6 +278,7 @@ export class WeatherModel {
       compression: airMass.compression,
       band,
       warmth,
+      oceanFetch: airMass.ocean,
       anvil,
       meanCloudiness,
       landFraction,

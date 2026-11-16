@@ -27,6 +27,7 @@ type CloudFieldSourceKind = (typeof CLOUD_FIELD_SOURCE_KIND)[keyof typeof CLOUD_
 export interface CloudFieldSource {
   // 焼いた雲場の 2 枚(同じ cap)。雲は R・G = 積雲・巻雲、B・A = 筋の倍角ベクトル。風は R・G = 地表付近、
   // B・A = 上層の東・北の成分 [m/s]。環境は R = 陸、G = 対流、B = 気候の雲量、A = 金床。
+  // セル径は R = 積雲・G = 巻雲のセル径 log2(km) の生値、B・A = 予約(0)。
   readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
   // 2 枚の混ぜ方。供給元が毎フレーム書き換えるので、読み手は読んだ時点の値を使う。
   readonly blend: CloudBlend;
