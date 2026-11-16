@@ -213,10 +213,11 @@ export class RenderPipeline {
   // フィルムのルックを、トーンマップ後の線形の色へ掛ける。ルックは表示値(sRGB 符号化済み)を
   // 受けて表示値を返すので、掛ける前に符号化し、掛けたあとに線形へ戻す。画面への書き出しで
   // 三がもう一度符号化するため、戻さなければ二重に符号化される。
+  // 色空間の変換ノードは型が常に vec4 なので、vec3 として使う前に .rgb で成分を落とす。
   private filmLooked(color: Vec3Node): Vec3Node {
-    const encoded = workingToColorSpace(color, THREE.SRGBColorSpace) as unknown as Vec3Node;
+    const encoded = (workingToColorSpace(color, THREE.SRGBColorSpace) as unknown as Vec4Node).rgb;
     const graded = this.filmLut.apply(encoded);
-    return colorSpaceToWorking(graded, THREE.SRGBColorSpace) as unknown as Vec3Node;
+    return (colorSpaceToWorking(graded, THREE.SRGBColorSpace) as unknown as Vec4Node).rgb;
   }
 
   // デバッグ表示の選択肢ごとの合成マテリアルの表。表示ごとに別マテリアルを持ち、quad.material の
