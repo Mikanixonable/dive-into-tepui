@@ -90,6 +90,8 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   // 凝結 — 巻雲
   hazeOnset: { label: '靄の閾値', row: 'condense', min: 0.1, max: 0.7, step: 0.005 },
   hazeGain: { label: '靄の利得', row: 'condense', min: 0, max: 2, step: 0.02 },
+  hazeCloudinessOnset: { label: '靄の雲量の門(始)', row: 'condense', min: 0, max: 0.6, step: 0.01 },
+  hazeCloudinessFull: { label: '靄の雲量の門(終)', row: 'condense', min: 0, max: 0.8, step: 0.01 },
   streakOnset: { label: '筋の閾値', row: 'condense', min: 0.1, max: 0.8, step: 0.005 },
   streakGain: { label: '筋の利得', row: 'condense', min: 0, max: 6, step: 0.05 },
   translucentKnee: { label: '薄い雲の膝', row: 'condense', min: 0.05, max: 1, step: 0.01 },
