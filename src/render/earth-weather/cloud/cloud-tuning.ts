@@ -85,8 +85,10 @@ export const CLOUD_TUNING_DEFAULTS = {
   shapeNetworkHumidity: 0.45,
   shapeGrainHumidity: 0.70,
   // condensation.ts — 巻雲(薄い雲)の光学的厚み
-  hazeOnset: 0.38,
+  hazeOnset: 0.5,
   hazeGain: 0.66,
+  hazeCloudinessOnset: 0.15,
+  hazeCloudinessFull: 0.35,
   streakOnset: 0.48,
   streakGain: 2.36,
   translucentKnee: 0.25,
