@@ -190,10 +190,10 @@ export function condense(weather: WeatherSample): CloudSample {
   const deep = max(sparse, cumulusAmountFromTopAltitudeNode(cloudTop));
   const deepCoverage = smoothstep(DEEP_COVERAGE_ONSET, DEEP_COVERAGE_FULL, coverage);
   const cumulus = mix(sparse, deep, deepCoverage);
-  // 圏界面へ近づくほど発達した塔が上層へ放出する氷雲の強さ。焼いた場を風上へ遡って広げた写しが
-  // この量を集めて巻雲へ合成する。
-  const detrain = smoothstep(DETRAIN_ONSET, DETRAIN_FULL, cloudTop.div(weather.tropopause))
-    .mul(deepCoverage);
+  // 圏界面へ近づくほど発達した塔が上層へ放出する氷雲の強さ。孤立した一本の塔にもかなとこが
+  // 架かるよう、周囲の覆いの深さには依らず塔の高さだけで決める。焼いた場を遡って広げた
+  // 写しがこの量を集めて巻雲へ合成する。
+  const detrain = smoothstep(DETRAIN_ONSET, DETRAIN_FULL, cloudTop.div(weather.tropopause));
   // 巻雲: 靄の項と筋の項の和を、上限へ漸近させた柱 τ から量へ換算する。
   const haze = max(weather.upperHumidity.sub(TRANSLUCENT_HAZE_ONSET), 0).mul(TRANSLUCENT_HAZE_GAIN)
     .mul(smoothstep(HAZE_CLOUDINESS_ONSET, HAZE_CLOUDINESS_FULL, weather.meanCloudiness));
