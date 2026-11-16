@@ -7,12 +7,14 @@ import type { WebGPURenderer } from 'three/webgpu';
 import { clamp, cos, mix, mrt, screenUV, sin, texture, uniform, vec3, vec4 } from 'three/tsl';
 // 実写の雲(ゲーム本体が地表へ貼っているもの)。器が比較・分離の入力として読む。
 import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
+// 実写系が読む雲場画像(ゲーム本体と同じもの)。R = 積雲、G = 巻雲、B・A = 筋の倍角ベクトル。
+import cloudFieldUrl from '../../src/assets/cloud-field.png';
 import { DeferredTexture } from '../../src/render/deferred-texture';
 import {
   blendBakedTexels, cloudMotionFromTexel,
-} from '../../src/render/cloud/cloud-field-sample';
-import type { ClimateMap } from '../../src/render/cloud/climate-map';
-import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+} from '../../src/render/earth-weather/cloud/cloud-field-sample';
+import type { ClimateMap } from '../../src/render/earth-weather/climate-map';
+import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
 import type { FloatNode, FloatUniform, Vec3Node, Vec4Node, Vec4Uniform } from '../../src/render/tsl-types';
 
 // 気候画像が届くのを待つ上限 [フレーム]。越えたら画像が取れていないので、器を組まずに投げる。
@@ -39,15 +41,24 @@ export async function awaitClimateMap(
 // 実写の雲テクスチャ。気候テクスチャと同じ向き(v = 0 が北極)・同じ生の値。
 // mipmapped にすると潰した面でもエイリアスが出ない — 小さく焼いて出す面だけ要る。
 export async function loadCloudsPhoto(mipmapped: boolean): Promise<THREE.Texture> {
-  const photo = await new THREE.TextureLoader().loadAsync(cloudsPhotoUrl);
-  photo.wrapS = THREE.RepeatWrapping;
-  photo.wrapT = THREE.ClampToEdgeWrapping;
-  photo.flipY = false;
-  photo.generateMipmaps = mipmapped;
-  photo.minFilter = mipmapped ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
-  photo.magFilter = THREE.LinearFilter;
-  photo.colorSpace = THREE.NoColorSpace;
-  return photo;
+  return loadEquirectImage(cloudsPhotoUrl, mipmapped);
+}
+
+// 実写系の雲場画像(cloud-field.png)。置き方は実写の雲テクスチャと同じ。
+export async function loadCloudFieldImage(): Promise<THREE.Texture> {
+  return loadEquirectImage(cloudFieldUrl, true);
+}
+
+async function loadEquirectImage(url: string, mipmapped: boolean): Promise<THREE.Texture> {
+  const image = await new THREE.TextureLoader().loadAsync(url);
+  image.wrapS = THREE.RepeatWrapping;
+  image.wrapT = THREE.ClampToEdgeWrapping;
+  image.flipY = false;
+  image.generateMipmaps = mipmapped;
+  image.minFilter = mipmapped ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
+  image.magFilter = THREE.LinearFilter;
+  image.colorSpace = THREE.NoColorSpace;
+  return image;
 }
 
 // 生の画素列を base64 へ(チャンクで割って fromCharCode の引数の上限を避ける)。

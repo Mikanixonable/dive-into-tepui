@@ -1,16 +1,16 @@
 // 巻雲の精細さ「粗」と「標準」の撮影の、50 km 四方の箱ごとの平均輝度の比。細部が濃さの平均を
-// 変えないことを確かめる。標準の撮影は cloud-detail:compare が撮った .cloud-detail/shots/ を使い、
-// 粗の撮影(<標準の撮影名>-coarse)は足りないものだけ撮って .cloud-detail/cirrus-tiers/ へ書く。
+// 変えないことを確かめる。標準の撮影は cloud-lab:detail-compare が撮った .cloud-lab/detail/shots/ を使い、
+// 粗の撮影(<標準の撮影名>-coarse)は足りないものだけ撮って .cloud-lab/detail/cirrus-tiers/ へ書く。
 // 比は箱ごとに「粗 / 標準」の線形輝度の平均で、中央 512 px(計測と同じ切り出し)を一辺 50 km の箱で
 // 区切る。箱の全部が 1 ± TOLERANCE に入るかを段ごとに表に出す。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
-import { centerCrop, linearLuminanceField } from './cloud-detail-field.mjs';
+import { centerCrop, linearLuminanceField } from './cloud-lab-detail-field.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const renderLabDir = path.join(root, '.render-lab');
-const detailDir = path.join(root, '.cloud-detail');
+const cloudLabDir = path.join(root, '.cloud-lab');
+const detailDir = path.join(root, '.cloud-lab', 'detail');
 const standardDir = path.join(detailDir, 'shots');
 const coarseDir = path.join(detailDir, 'cirrus-tiers');
 const port = 8773;
@@ -54,28 +54,28 @@ function summarize(ratios) {
   };
 }
 
-// 撮影の一覧のうち、まだ無いものを撮って .cloud-detail/cirrus-tiers/ へ書く。
+// 撮影の一覧のうち、まだ無いものを撮って .cloud-lab/detail/cirrus-tiers/ へ書く。
 async function shootMissing(names) {
   const missing = names.filter((name) => !existsSync(path.join(coarseDir, `${name}.png`)));
   if (missing.length === 0) return 0;
   mkdirSync(coarseDir, { recursive: true });
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
-    serveDir: renderLabDir, port, debugPort, profilePrefix: 'tepui-cloud-tiers-', onEvent,
+    serveDir: cloudLabDir, port, debugPort, profilePrefix: 'tepui-cloud-tiers-', onEvent,
     requestTimeoutMs: 120_000,
   });
   try {
     const { devTools } = session;
-    await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
+    await devTools.send('Page.navigate', { url: `${session.baseUrl}/detail.html` });
     await waitFor(
       devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab?.shootCloudDetail === 'function')",
-      'the render lab to initialise',
+      "(document.getElementById('error')?.textContent || typeof window.cloudLabDetail?.shootCloudDetail === 'function')",
+      'the cloud lab detail page to initialise',
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
     for (const name of missing) {
-      const dataUrl = await devTools.evaluate(`window.renderLab.shootCloudDetail(${JSON.stringify(name)})`);
+      const dataUrl = await devTools.evaluate(`window.cloudLabDetail.shootCloudDetail(${JSON.stringify(name)})`);
       writeFileSync(
         path.join(coarseDir, `${name}.png`),
         Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'),
@@ -91,7 +91,7 @@ async function shootMissing(names) {
 async function main() {
   const manifestFile = path.join(standardDir, 'manifest.json');
   if (!existsSync(manifestFile)) {
-    throw new Error(`${manifestFile} が無い — 先に npm run cloud-detail:compare を実行する`);
+    throw new Error(`${manifestFile} が無い — 先に npm run cloud-lab:detail-compare を実行する`);
   }
   const manifest = JSON.parse(readFileSync(manifestFile, 'utf8'));
   const cirrusShots = manifest.shots.filter((shot) => shot.kind === 'cirrus');
@@ -133,7 +133,7 @@ async function main() {
   }
   mkdirSync(coarseDir, { recursive: true });
   writeFileSync(path.join(coarseDir, 'report.json'), `${JSON.stringify({
-    tool: 'cloud-detail-cirrus-tiers', boxKm: BOX_KM, tolerance: TOLERANCE, tiers: report,
+    tool: 'cloud-lab-detail-cirrus-tiers', boxKm: BOX_KM, tolerance: TOLERANCE, tiers: report,
   }, null, 2)}\n`);
 }
 

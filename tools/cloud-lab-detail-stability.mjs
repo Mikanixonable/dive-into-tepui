@@ -1,6 +1,6 @@
-// 視点を動かしただけで雲の形が変わらないかと、時間とともに雲がどう流れ入れ替わるかの計測。render-lab の
+// 視点を動かしただけで雲の形が変わらないかと、時間とともに雲がどう流れ入れ替わるかの計測。cloud-lab の detail ページの
 // 撮影の組(基準・直下点を数画素ずらした構図・高度を変えた構図・同じ構図の 10 分後と 30 分後。
-// CLOUD_DETAIL_STABILITY_SHOTS)を .cloud-detail/stability/ へ撮り(既にあるものは飛ばす)、基準と各構図を
+// CLOUD_DETAIL_STABILITY_SHOTS)を .cloud-lab/detail/stability/ へ撮り(既にあるものは飛ばす)、基準と各構図を
 // 位置と縮尺で合わせてから、尺度の帯ごとに
 //   比 = √(差のパワー ÷ (基準のパワー + 構図のパワー))
 // を出す。止まった雲なら 0、無相関なら 1。現実の雲は 0 で、描画が視点に引きずられて形を変えるほど上がる。
@@ -12,17 +12,17 @@
 // 小区画ごとの残差を合わせる。合わせたずれが模様の流れた距離(速さ)、帯の比は流れを差し引いたあとの
 // 入れ替わり(寿命)を表し、比から帯ごとの相関が 1/e に落ちる時間 τ も見積もる。
 // 高度違いの構図は、基準の km/px へ双線形で拡大してから同じ手順を通す(拡大前に解像していない細かい帯は判定しない)。
-// 報告を .cloud-detail/stability/report.json と .cloud-detail/stability-history/ へ残す。
+// 報告を .cloud-lab/detail/stability/report.json と .cloud-lab/detail/stability-history/ へ残す。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
-import { fft2 } from './cloud-detail-metrics.mjs';
-import { linearLuminanceField } from './cloud-detail-field.mjs';
+import { fft2 } from './cloud-lab-detail-metrics.mjs';
+import { linearLuminanceField } from './cloud-lab-detail-field.mjs';
 import { gitHead, saveReport } from './cloud-report-history.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const renderLabDir = path.join(root, '.render-lab');
-const detailDir = path.join(root, '.cloud-detail');
+const cloudLabDir = path.join(root, '.cloud-lab');
+const detailDir = path.join(root, '.cloud-lab', 'detail');
 const shotsDir = path.join(detailDir, 'stability');
 const historyDir = path.join(detailDir, 'stability-history');
 const port = 8774;
@@ -52,21 +52,21 @@ async function shootMissing(names) {
   mkdirSync(shotsDir, { recursive: true });
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
-    serveDir: renderLabDir, port, debugPort, profilePrefix: 'tepui-cloud-stability-', onEvent,
+    serveDir: cloudLabDir, port, debugPort, profilePrefix: 'tepui-cloud-stability-', onEvent,
     requestTimeoutMs: 120_000,
   });
   try {
     const { devTools } = session;
-    await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
+    await devTools.send('Page.navigate', { url: `${session.baseUrl}/detail.html` });
     await waitFor(
       devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab?.shootCloudDetail === 'function')",
-      'the render lab to initialise',
+      "(document.getElementById('error')?.textContent || typeof window.cloudLabDetail?.shootCloudDetail === 'function')",
+      'the cloud lab detail page to initialise',
     );
     const failure = await devTools.evaluate("document.getElementById('error')?.textContent ?? ''");
     if (failure) throw new Error(`Render lab failed to initialise: ${failure}`);
     for (const name of missing) {
-      const dataUrl = await devTools.evaluate(`window.renderLab.shootCloudDetail(${JSON.stringify(name)})`);
+      const dataUrl = await devTools.evaluate(`window.cloudLabDetail.shootCloudDetail(${JSON.stringify(name)})`);
       writeFileSync(path.join(shotsDir, `${name}.png`), Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
     }
     if (fatalEvents.length > 0) throw new Error(`Page reported errors during shooting:\n${fatalEvents.join('\n')}`);
@@ -76,21 +76,21 @@ async function shootMissing(names) {
   }
 }
 
-// 撮影の一覧を render-lab から引く(ビルドの中の表が正本)。
+// 撮影の一覧を detail ページから引く(ビルドの中の表が正本)。
 async function stabilityInfos() {
   const { fatalEvents, onEvent } = collectFatalEvents();
   const session = await openChromeSession({
-    serveDir: renderLabDir, port, debugPort, profilePrefix: 'tepui-cloud-stability-', onEvent,
+    serveDir: cloudLabDir, port, debugPort, profilePrefix: 'tepui-cloud-stability-', onEvent,
   });
   try {
     const { devTools } = session;
-    await devTools.send('Page.navigate', { url: `${session.baseUrl}/` });
+    await devTools.send('Page.navigate', { url: `${session.baseUrl}/detail.html` });
     await waitFor(
       devTools,
-      "(document.getElementById('error')?.textContent || typeof window.renderLab?.cloudDetailStabilityShots === 'function')",
-      'the render lab to initialise',
+      "(document.getElementById('error')?.textContent || typeof window.cloudLabDetail?.cloudDetailStabilityShots === 'function')",
+      'the cloud lab detail page to initialise',
     );
-    const infos = await devTools.evaluate('window.renderLab.cloudDetailStabilityShots()');
+    const infos = await devTools.evaluate('window.cloudLabDetail.cloudDetailStabilityShots()');
     if (fatalEvents.length > 0) throw new Error(fatalEvents.join('\n'));
     return infos;
   } finally {
@@ -429,7 +429,7 @@ function main() {
     }
 
     const report = {
-      meta: { tool: 'cloud-detail-stability', generatedAt: new Date().toISOString(), gitHead: gitHead(root), stableRatio: STABLE_RATIO },
+      meta: { tool: 'cloud-lab-detail-stability', generatedAt: new Date().toISOString(), gitHead: gitHead(root), stableRatio: STABLE_RATIO },
       sections: { summary, temporal },
       pairs,
     };
