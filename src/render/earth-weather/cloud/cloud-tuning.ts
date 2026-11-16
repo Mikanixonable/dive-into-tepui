@@ -95,6 +95,9 @@ export const CLOUD_TUNING_DEFAULTS = {
   stratocumulusDeckAdd: 0.35,
   shapeNetworkHumidity: 0.45,
   shapeGrainHumidity: 0.70,
+  // condensation.ts — 塔から上層への氷雲の放出。雲頂の圏界面に対する比。
+  detrainOnset: 0.6,
+  detrainFull: 0.95,
   // condensation.ts — 巻雲(薄い雲)の光学的厚み
   hazeOnset: 0.5,
   hazeGain: 0.66,
@@ -104,6 +107,13 @@ export const CLOUD_TUNING_DEFAULTS = {
   streakGain: 2.36,
   translucentKnee: 0.25,
   translucentLimit: 0.85,
+  // detrain-veil.ts — 氷雲の広がり。発散の届く半径 [m] とタップの重み、
+  // 上層風へ遡る歩幅 [s] と経過時間の減衰 [s]、蓄積を飽和させる利得。
+  detrainSpreadRadius: 200e3,
+  detrainSpreadWeight: 0.5,
+  detrainAdvectStep: 1.5 * 3600,
+  detrainDecaySeconds: 4 * 3600,
+  detrainGain: 1.0,
   // cell-size.ts — 積雲のセル径 [km] と門
   cellClosedKm: 70,
   cellOpenKm: 25,

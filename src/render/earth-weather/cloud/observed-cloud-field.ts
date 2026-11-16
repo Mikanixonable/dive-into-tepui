@@ -80,10 +80,10 @@ export class ObservedCloudField implements CloudFieldSource {
       },
       GPU_PASS.cloudBake,
     );
-    // 実写の雲場は止まっているので、運ぶ風は 0。
+    // 実写の雲場は止まっているので、運ぶ風は 0。脱出水のベールも実写からは取れないので空の写し。
     const slot: CloudFieldSlot = {
       cloud: this.field.texture, motion: EMPTY_CLOUD_FIELD,
-      environment: this.environment, cellSize: this.cellSize,
+      environment: this.environment, cellSize: this.cellSize, veil: EMPTY_CLOUD_FIELD,
     };
     this.slots = [slot, slot];
   }
