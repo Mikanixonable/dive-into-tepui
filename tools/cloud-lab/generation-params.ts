@@ -22,12 +22,9 @@ export const GENERATION_PARAMS: Record<CloudTuningId, GenerationParamSpec> = {
   pressureLiftScale: { label: '上昇流の尺度 [hPa]', row: 'weather', min: 5, max: 80, step: 1 },
   liftLimit: { label: '上昇流の頭打ち [m/s]', row: 'weather', min: 0.01, max: 0.2, step: 0.002 },
   terrainLiftGain: { label: '地形の上昇の利得', row: 'weather', min: 0, max: 1.2, step: 0.02 },
-  upperMeanderMaxAngle: { label: '上層の蛇行の向き [rad]', row: 'weather', min: 0, max: 0.8, step: 0.01 },
   // 気象 — 帯(前線・雨帯)
   frontOnset: { label: '前線の開始閾値', row: 'weather', min: 0.5, max: 4, step: 0.05 },
   frontWidth: { label: '前線の遷移幅', row: 'weather', min: 0.05, max: 1, step: 0.01 },
-  moistureGradientOnset: { label: '湿度勾配の閾値', row: 'weather', min: 0, max: 0.5, step: 0.005 },
-  moistureGradientWidth: { label: '湿度勾配の遷移幅', row: 'weather', min: 0.02, max: 0.8, step: 0.01 },
   rainbandOnset: { label: '雨帯の開始閾値', row: 'weather', min: 1, max: 12, step: 0.1 },
   rainbandWidth: { label: '雨帯の遷移幅', row: 'weather', min: 0.5, max: 10, step: 0.1 },
   bandLift: { label: '帯の上昇流 [m/s]', row: 'weather', min: 0, max: 0.15, step: 0.002 },

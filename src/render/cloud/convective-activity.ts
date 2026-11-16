@@ -2,14 +2,9 @@
 // 寒気の流入と、陸らしさと、気団の折り目の帯(前線・雨帯)から出る — 冷たい空気が暖かい面の上を
 // 渡るところは不安定で、雲は粒へ千切れる。いちばん穏やかな空でも床(ACTIVITY_MIN)に留まる —
 // 一枚板として覆う空にも細胞の起伏がある。値はすべて見えのための調整値。
-import * as THREE from 'three/webgpu';
-import { clamp, vec4 } from 'three/tsl';
-import { BakedField } from '../baked-field';
+import { clamp } from 'three/tsl';
 import { CLOUD_TUNING } from './cloud-tuning';
-import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
-import type { WebGPURenderer } from 'three/webgpu';
-import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
 import type { Circulation } from './circulation';
 import type { FieldProjection } from '../field-projection';
@@ -43,20 +38,13 @@ const LAND_ACTIVITY = CLOUD_TUNING.landActivity;
 const BAND_ACTIVITY = CLOUD_TUNING.bandActivity;
 
 export class ConvectiveActivity {
-  private readonly instability: BakedField;
+  // 気団の対流のしやすさのノイズ。読むのは at() の中の 1 点だけで写しへ焼いても償却できないので、
+  // 評価ごとに組む。
+  private readonly instability: CirculatingNoise;
 
   // circulation は気団を運ぶ流れ、projection は写しの持ち方。
   public constructor(circulation: Circulation, projection: FieldProjection) {
-    const noise = new CirculatingNoise(circulation, INSTABILITY_NOISE, projection.texelAngle);
-    this.instability = new BakedField(
-      'instability', THREE.RedFormat, projection,
-      (direction) => vec4(noise.at(direction).mul(INSTABILITY_AMPLITUDE), 0, 0, 1),
-      GPU_PASS.cloudBake);
-  }
-
-  // いまの時刻の気団を写しへ焼く。at() のグラフを描く前に呼ぶ。
-  public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
-    this.instability.render(renderer, gpu);
+    this.instability = new CirculatingNoise(circulation, INSTABILITY_NOISE, projection.texelAngle);
   }
 
   // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)、陸らしさ land
@@ -65,12 +53,8 @@ export class ConvectiveActivity {
     direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode, band: FloatNode,
   ): FloatNode {
     return clamp(
-      this.instability.at(direction).r.add(lift.mul(LIFT_ACTIVITY)).sub(warmth.mul(COLD_ACTIVITY))
-        .add(land.mul(LAND_ACTIVITY)).add(band.mul(BAND_ACTIVITY)).add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
-  }
-
-  // 保持している GPU 資源を解放する。
-  public dispose(): void {
-    this.instability.dispose();
+      this.instability.at(direction).mul(INSTABILITY_AMPLITUDE).add(lift.mul(LIFT_ACTIVITY))
+        .sub(warmth.mul(COLD_ACTIVITY)).add(land.mul(LAND_ACTIVITY)).add(band.mul(BAND_ACTIVITY))
+        .add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
   }
 }

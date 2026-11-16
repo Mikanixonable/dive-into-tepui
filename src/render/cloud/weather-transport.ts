@@ -1,5 +1,5 @@
-// 湿度・対流の源を写しへ焼き、天気の風で風上へ遡って読む。湿度の地表成分と上層成分、対流を
-// 別々の風で運ぶが、すべて同じ2位相移流の規則と写しの寿命で管理する。
+// 湿度・対流の源を写しへ焼き、天気の風で風上へ遡って読む。湿度の地表成分と上層成分は同じ風を
+// 違う歩幅で、対流は別の風で運ぶが、すべて同じ2位相移流の規則と写しの寿命で管理する。
 import * as THREE from 'three/webgpu';
 import { abs, float, fract, inverseSqrt, mix, normalize, uniform, vec2, vec4 } from 'three/tsl';
 import { BakedField } from '../baked-field';
@@ -81,8 +81,8 @@ export class WeatherTransport {
   private readonly surfaceHumidityNoise: CirculatingNoise;
   private readonly convectionNoise: CirculatingNoise;
   private readonly upperHumidityNoise: CirculatingNoise;
-  private readonly humiditySource: BakedField;
-  private readonly convectionSource: BakedField;
+  // 移流前の源の写し。x・y は湿度(地表付近・上層)、z・w は対流(粒・網目)。
+  private readonly source: BakedField;
   // 2位相移流の周期の中の位置0..1。
   private readonly advectionCycle: FloatUniform = uniform(0);
 
@@ -98,13 +98,10 @@ export class WeatherTransport {
     this.convectionNoise = new CirculatingNoise(surfaceCirculation, CONVECTION_NOISE, texel);
     this.upperHumidityNoise = new CirculatingNoise(
       upperCirculation, UPPER_HUMIDITY_NOISE, texel, UPPER_HUMIDITY_EPOCH_MAX_FREQUENCY);
-    this.humiditySource = new BakedField(
-      'humiditySource', THREE.RGFormat, projection,
-      (direction) => vec4(this.humiditySourceAt(direction), 0, 1),
-      GPU_PASS.cloudBake);
-    this.convectionSource = new BakedField(
-      'convectionSource', THREE.RGFormat, projection,
-      (direction) => vec4(this.convectionSourceAt(direction), 0, 1),
+    // 湿度と対流は同じ持ち方で別々に読まないので、1 パスの 1 写しへまとめて焼く。
+    this.source = new BakedField(
+      'transportSource', THREE.RGBAFormat, projection,
+      (direction) => vec4(this.humiditySourceAt(direction), this.convectionSourceAt(direction)),
       GPU_PASS.cloudBake);
   }
 
@@ -116,10 +113,9 @@ export class WeatherTransport {
     this.upperHumidityNoise.syncTime(seconds);
   }
 
-  // 移流前の場をテクスチャへレンダリングする。advectedAt() と surfaceHumidityAt() のグラフを描く前に呼ぶ。
+  // 移流前の場をテクスチャへレンダリングする。advectedAt() のグラフを描く前に呼ぶ。
   public bake(renderer: WebGPURenderer, gpu?: GpuTimingSink): void {
-    this.humiditySource.render(renderer, gpu);
-    this.convectionSource.render(renderer, gpu);
+    this.source.render(renderer, gpu);
   }
 
   // 移流前の湿度(xが地表付近、yが上層)。
@@ -135,22 +131,17 @@ export class WeatherTransport {
     return this.convectionNoise.pairAt(direction).mul(CONVECTION_NOISE_AMPLITUDE);
   }
 
-  // レンダリング済み湿度テクスチャにおける地表成分のサンプリング値（移流前）。
-  public surfaceHumidityAt(direction: Vec3Node): FloatNode {
-    return this.humiditySource.at(direction).r;
-  }
-
   // 移流前の写しを風で流したもの。周期の半分ずれた2位相を三角波で混ぜるので、流れの変位が
   // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならない。
   public advectedAt(
-    direction: Vec3Node, surfaceWind: BalancedWind, upperWind: BalancedWind, convectionWind: BalancedWind,
+    direction: Vec3Node, humidityWind: BalancedWind, convectionWind: BalancedWind,
   ): AdvectedFields {
     const phaseA = this.advectionCycle;
     const phaseB = fract(phaseA.add(0.5));
     const weightA = float(1).sub(abs(phaseA.mul(2).sub(1)));
     // seconds秒だけflowに流された点のsource。負に取れば風上へ遡る。
-    const sourceAt = (source: BakedField, flow: BalancedWind, seconds: FloatNode): Vec4Node =>
-      source.at(normalize(direction.add(windStep(flow, direction, seconds).div(this.surfaceRadius))));
+    const sourceAt = (flow: BalancedWind, seconds: FloatNode): Vec4Node =>
+      this.source.at(normalize(direction.add(windStep(flow, direction, seconds).div(this.surfaceRadius))));
     // 遡る秒数[s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
     const stepA = phaseA.mul(-ADVECTION_PERIOD);
     const stepB = phaseB.mul(-ADVECTION_PERIOD);
@@ -159,20 +150,19 @@ export class WeatherTransport {
     const convectionStep = inverseSqrt(winding.mul(winding).add(1)).mul(CONVECTION_ADVECTION);
     return {
       surfaceHumidity: mix(
-        sourceAt(this.humiditySource, surfaceWind, stepB).x,
-        sourceAt(this.humiditySource, surfaceWind, stepA).x, weightA),
+        sourceAt(humidityWind, stepB).x,
+        sourceAt(humidityWind, stepA).x, weightA),
       upperHumidity: mix(
-        sourceAt(this.humiditySource, upperWind, stepB.mul(UPPER_ADVECTION)).y,
-        sourceAt(this.humiditySource, upperWind, stepA.mul(UPPER_ADVECTION)).y, weightA),
+        sourceAt(humidityWind, stepB.mul(UPPER_ADVECTION)).y,
+        sourceAt(humidityWind, stepA.mul(UPPER_ADVECTION)).y, weightA),
       convection: mix(
-        sourceAt(this.convectionSource, convectionWind, stepB.mul(convectionStep)).rg,
-        sourceAt(this.convectionSource, convectionWind, stepA.mul(convectionStep)).rg, weightA),
+        sourceAt(convectionWind, stepB.mul(convectionStep)).zw,
+        sourceAt(convectionWind, stepA.mul(convectionStep)).zw, weightA),
     };
   }
 
   // 保持しているGPU資源を解放する。
   public dispose(): void {
-    this.humiditySource.dispose();
-    this.convectionSource.dispose();
+    this.source.dispose();
   }
 }
