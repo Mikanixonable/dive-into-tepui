@@ -1,8 +1,9 @@
 // 対流がどれだけ活発かを表す場。低周波のノイズが持つ気団の対流のしやすさと、その場の上昇流と、
-// 寒気の流入と、陸らしさと、気団の折り目の帯(前線・雨帯)から出る — 冷たい空気が暖かい面の上を
-// 渡るところは不安定で、雲は粒へ千切れる。いちばん穏やかな空でも床(ACTIVITY_MIN)に留まる —
-// 一枚板として覆う空にも細胞の起伏がある。値はすべて見えのための調整値。
-import { clamp } from 'three/tsl';
+// 寒気の流入と、地表の温まりやすさと、気団の折り目の帯(前線・雨帯)から出る — 冷たい空気が暖かい
+// 面の上を渡るところは不安定で、雲は粒へ千切れる。面の温まりやすさは山地・陸の平地・暖かい海・
+// 冷たい海の順に効くので、自発的に立つ上昇セルはその順に偏る。いちばん穏やかな空でも床
+// (ACTIVITY_MIN)に留まる — 一枚板として覆う空にも細胞の起伏がある。値はすべて見えのための調整値。
+import { clamp, smoothstep } from 'three/tsl';
 import { CLOUD_TUNING } from './cloud/cloud-tuning';
 import { CirculatingNoise } from './circulating-noise';
 import type { NoiseOctave } from './circulating-noise';
@@ -33,6 +34,18 @@ const COLD_ACTIVITY = CLOUD_TUNING.coldActivity;
 const ACTIVITY_MIN = CLOUD_TUNING.activityMin;
 // 陸の上で上がる分。日射で温まる地面の上は不安定で、雲は板ではなく粒になる。
 const LAND_ACTIVITY = CLOUD_TUNING.landActivity;
+// 山地でさらに上がる分と、山地と見なす標高の門 [m]。高い地面は日射で強く温まり、斜面が
+// 収束を起こすので、同じ陸でも平地より自発的なセルが立ちやすい。海では標高が 0 なので
+// この項は立たない — 陸らしさを掛けなくても海へは漏れない。
+const MOUNTAIN_ACTIVITY = CLOUD_TUNING.mountainActivity;
+const MOUNTAIN_ONSET = CLOUD_TUNING.mountainElevationOnset;
+const MOUNTAIN_FULL = CLOUD_TUNING.mountainElevationFull;
+// 暖かい海の上で上がる分と、暖かいと見なす表面温度の門 [K]。海は陸より温まりにくいので
+// 陸の項より低く取り、冷たい海の上では自発的なセルは立たず、寒気の流入や低気圧が運ぶ
+// 不安定な空気の項だけが効く。陸へ掛けると温かい陸が山地を上回るので、海側へだけ立たせる。
+const WARM_SEA_ACTIVITY = CLOUD_TUNING.warmSeaActivity;
+const WARM_SEA_ONSET = CLOUD_TUNING.warmSeaTemperatureOnset;
+const WARM_SEA_FULL = CLOUD_TUNING.warmSeaTemperatureFull;
 // 前線帯・雨帯が対流活発度へ寄与する伝達利得。帯の中の対流は活発で、粒立った塔が列をなす —
 // 帯が飽和した所で活発度が半分ぶん上がる高さに取る。
 const BAND_ACTIVITY = CLOUD_TUNING.bandActivity;
@@ -47,14 +60,20 @@ export class ConvectiveActivity {
     this.instability = new CirculatingNoise(circulation, INSTABILITY_NOISE, projection.texelAngle);
   }
 
-  // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)、陸らしさ land
-  // 0..1、気団の折り目の帯の強さ band 0..1 における対流の活発度(ACTIVITY_MIN..1)。
+  // 単位方向 direction、上昇流 lift [m/s]、暖気の流入 warmth [rad](負で寒気)、気団の折り目の
+  // 帯の強さ band 0..1、地表の状態 surface(陸らしさ 0..1・標高 [m]・表面温度 [K])における
+  // 対流の活発度(ACTIVITY_MIN..1)。
   public at(
-    direction: Vec3Node, lift: FloatNode, warmth: FloatNode, land: FloatNode, band: FloatNode,
+    direction: Vec3Node, lift: FloatNode, warmth: FloatNode, band: FloatNode,
+    surface: { land: FloatNode, elevation: FloatNode, temperatureK: FloatNode },
   ): FloatNode {
+    const mountain = smoothstep(MOUNTAIN_ONSET, MOUNTAIN_FULL, surface.elevation);
+    const warmSea = surface.land.oneMinus()
+      .mul(smoothstep(WARM_SEA_ONSET, WARM_SEA_FULL, surface.temperatureK));
     return clamp(
       this.instability.at(direction).mul(INSTABILITY_AMPLITUDE).add(lift.mul(LIFT_ACTIVITY))
-        .sub(warmth.mul(COLD_ACTIVITY)).add(land.mul(LAND_ACTIVITY)).add(band.mul(BAND_ACTIVITY))
-        .add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
+        .sub(warmth.mul(COLD_ACTIVITY)).add(surface.land.mul(LAND_ACTIVITY))
+        .add(mountain.mul(MOUNTAIN_ACTIVITY)).add(warmSea.mul(WARM_SEA_ACTIVITY))
+        .add(band.mul(BAND_ACTIVITY)).add(ACTIVITY_BASE), ACTIVITY_MIN, 1);
   }
 }
