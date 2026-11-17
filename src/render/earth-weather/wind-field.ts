@@ -5,7 +5,7 @@ import * as THREE from 'three/webgpu';
 import { dot, vec2 } from 'three/tsl';
 import { AtmosphericWindField, SURFACE_HEIGHT, UPPER_CLOUD_HEIGHT } from './atmospheric-wind';
 import { pressureBandSlopeAt } from './pressure-field';
-import { RossbyWave } from './rossby-wave';
+import type { RossbyWave } from './rossby-wave';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
 import { composeWind, FRICTION_RATE, balancedWind, isobarAt } from './wind-law';
 import type { PressureField } from './pressure-field';
@@ -21,6 +21,10 @@ const CONVECTION_WIND_CROSSING_LIMIT = THREE.MathUtils.degToRad(50);
 // 対流を流す風の摩擦 [1/s]。湿度を流す風より強く取ると、等圧線を深く横切って 20〜30° 違う向きへ
 // 伸びる。同じ風で流すと 2 枚が同じ向きへ伸びて、掛け合わせても筋のままになる。
 const CONVECTION_FRICTION = 3 * FRICTION_RATE;
+// ロスビー波の摂動が地表付近へ及ぶ割合。蛇行は対流圏上部でいちばん強く、地表の風では
+// 弱まる (`DEVELOP/SPEC/RENDERING.md`「蛇行は上層の流れに強く現れ、地表付近の風では弱まる」)。
+// 循環の帯をずらす地表側の変位も同じ割合に揃えるので、weather-model が共有する。
+export const SURFACE_MEANDER_SHARE = 0.5;
 
 // 単位方向で解いた風の一式。pressure は解くのに使った気圧の偏差 [hPa]、advection は湿度を
 // 流す風、convectionAdvection は対流を流す風(湿度の風より摩擦が強く等圧線を深く横切る — 同じ
@@ -38,24 +42,17 @@ export interface WindSample {
 }
 
 export class WindField {
-  private readonly rossbyWave = new RossbyWave();
   private readonly atmosphericWind = new AtmosphericWindField();
 
-  // pressure は気圧の写し、terrain は下層の風を地形へ回す協力者、surfaceRadius [m] は
-  // 天体の半径、rotationPeriod [s] は自転周期。
+  // pressure は気圧の写し、terrain は下層の風を地形へ回す協力者、rossby は循環の帯とも
+  // 共有する蛇行の波、surfaceRadius [m] は天体の半径、rotationPeriod [s] は自転周期。
   public constructor(
     private readonly pressure: PressureField,
     private readonly terrain: TerrainFlow,
+    private readonly rossbyWave: RossbyWave,
     private readonly surfaceRadius: number,
     private readonly rotationPeriod: number,
-  ) {
-    this.syncTime(0);
-  }
-
-  // 時刻 [s] を波の uniform へ反映する。
-  public syncTime(seconds: number): void {
-    this.rossbyWave.syncTime(seconds);
-  }
+  ) {}
 
   // 単位方向 direction における気圧と、そこから解いた風の一式。焼いた気圧の写しを読むので、
   // 気圧を焼いたあとに描く。
@@ -64,7 +61,11 @@ export class WindField {
     const east = eastAt(direction);
     const north = northAt(direction);
     const field = this.pressure.at(direction, east, north);
-    const rossby = this.rossbyWave.perturbationAt(direction, this.surfaceRadius);
+    const rossby = this.rossbyWave.perturbationAt(direction);
+    // 蛇行は上層主体 — 地表側へは弱まって届く。循環の帯そのものも変位ぶん南北へずれ、
+    // 帯の境目は緯線に沿ってまっすぐ走らない。
+    const meander = this.rossbyWave.displacementAt(direction);
+    const surfaceRossby = rossby.mul(SURFACE_MEANDER_SHARE);
     const local = balancedWind(
       field.gradient, field.isobar, field.bend, latitude, FRICTION_RATE,
       SURFACE_WIND_CROSSING_LIMIT, this.surfaceRadius, this.rotationPeriod,
@@ -73,9 +74,11 @@ export class WindField {
       field.gradient, field.isobar, field.bend, latitude, CONVECTION_FRICTION,
       CONVECTION_WIND_CROSSING_LIMIT, this.surfaceRadius, this.rotationPeriod,
     );
-    const surfaceMean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
-    const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y)).add(rossby);
-    const upperMean = this.atmosphericWind.sampleNode(latitude, UPPER_CLOUD_HEIGHT);
+    const surfaceMean = this.atmosphericWind.sampleNode(
+      latitude.add(meander.mul(SURFACE_MEANDER_SHARE)), SURFACE_HEIGHT);
+    const surfaceBackground = east.mul(surfaceMean.x).add(north.mul(surfaceMean.y))
+      .add(surfaceRossby);
+    const upperMean = this.atmosphericWind.sampleNode(latitude.add(meander), UPPER_CLOUD_HEIGHT);
     const upperBackground = east.mul(upperMean.x).add(north.mul(upperMean.y)).add(rossby);
     const impingingWind = eastNorthComponents(
       composeWind(local, surfaceBackground).velocity, east, north);
@@ -86,7 +89,7 @@ export class WindField {
       // 両者が打ち消し合い、模様は周期の中で混ざり合うだけで流れも形の変化も鈍る。
       // 下層の風は地形で回す — 吹き付けの判定には回される前の総量(impingingWind)を渡す。
       advection: this.deflectFlow(
-        direction, composeWind(local, rossby), impingingWind, east, north),
+        direction, composeWind(local, surfaceRossby), impingingWind, east, north),
       convectionAdvection: this.deflectFlow(
         direction, composeWind(convectionLocal, rossby), impingingWind, east, north),
       surfaceWind: this.terrain.deflectAt(direction, impingingWind, impingingWind),
@@ -123,12 +126,14 @@ export class WindField {
       eddy, isobarAt(direction, eddy), bend, latitude, FRICTION_RATE, SURFACE_WIND_CROSSING_LIMIT,
       this.surfaceRadius, this.rotationPeriod,
     );
-    const mean = this.atmosphericWind.sampleNode(latitude, SURFACE_HEIGHT);
+    const mean = this.atmosphericWind.sampleNode(
+      latitude.add(this.rossbyWave.displacementAt(direction).mul(SURFACE_MEANDER_SHARE)),
+      SURFACE_HEIGHT);
     const flow = {
       velocity: wind.velocity
         .add(east.mul(mean.x))
         .add(north.mul(mean.y))
-        .add(this.rossbyWave.perturbationAt(direction, this.surfaceRadius)),
+        .add(this.rossbyWave.perturbationAt(direction).mul(SURFACE_MEANDER_SHARE)),
       turn: wind.turn,
     };
     return this.deflectFlow(
