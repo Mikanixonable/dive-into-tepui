@@ -5,7 +5,7 @@
 // 吸収は cyclone-tracks が全ての低気圧の生の配置の上で行う。
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
-import { vortexSpinOf } from './wind-law';
+import { woundOf } from './wind-law';
 import { FEATURE_REACH } from './pressure-feature';
 import { vortexPresence } from './vortex-absorption';
 import type { RawVortex } from './vortex-absorption';
@@ -162,22 +162,15 @@ function tropicalTrackOf(index: number, generation: number): TropicalTrack | nul
 }
 
 // 積算の巻き上げ角 [rad]。生まれてからの、谷の循環が気団の境目を巻き上げてきた総量。
-// 転向して温帯化する渦は肥大・浅化で循環が緩むので、積算は一生の深さ・半径・緯度を辿る。
-const WOUND_STEPS = 16;
+// 転向して温帯化する渦は肥大・浅化で循環が緩むので、積算は一生の深さ・半径・緯度を辿る
+// (wind-law.ts の woundOf)。
 function tropicalWoundOf(track: TropicalTrack, life: number, rotationPeriod: number): number {
-  let sum = 0;
-  for (let i = 0; i <= WOUND_STEPS; i += 1) {
-    const l = (life * i) / WOUND_STEPS;
-    const spin = vortexSpinOf(
-      track.peakDepth * Math.sin(Math.PI * l ** TROPICAL_PEAK_SKEW),
-      track.birthRadius
-        * (1 + track.growth * THREE.MathUtils.smoothstep(l, TROPICAL_GROWTH_ONSET, 1)),
-      courseAt(track.course, l).latitude * DEGREE,
-      FEATURE_REACH, rotationPeriod,
-    );
-    sum += (i === 0 || i === WOUND_STEPS ? 0.5 : 1) * spin.coreOmega;
-  }
-  return (sum * life * track.lifetime) / WOUND_STEPS;
+  return woundOf(life, track.lifetime, FEATURE_REACH, rotationPeriod, (l) => ({
+    depth: track.peakDepth * Math.sin(Math.PI * l ** TROPICAL_PEAK_SKEW),
+    radius: track.birthRadius
+      * (1 + track.growth * THREE.MathUtils.smoothstep(l, TROPICAL_GROWTH_ONSET, 1)),
+    latitude: courseAt(track.course, l).latitude * DEGREE,
+  }));
 }
 
 // 熱帯低気圧 index(0..TROPICAL_COUNT − 1)の、時刻 seconds [s] における生の配置(吸収を考えない

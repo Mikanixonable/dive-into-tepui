@@ -3,15 +3,12 @@
 // (両半球で反時計)を正に取る。天気図(tools/cloud-lab)が谷へ繋がる前線を折れ線として
 // 引くのに使う。
 import { CLOUD_TUNING } from './cloud/cloud-tuning';
-import { FEATURE_REACH, FRONT_WIND_LIMIT, OCCLUSION_DEPTH } from './pressure-feature';
+import {
+  FEATURE_REACH, FRONT_BAND_DEPTH, FRONT_INNER_RADIUS, FRONT_WIND_LIMIT, TAIL_WARM_FULL,
+  TAIL_WARM_ONSET,
+} from './pressure-feature';
 import { vortexEdgeOf, vortexProfileAt, vortexSpinOf } from './wind-law';
 import type { PressurePlacement } from './tracks';
-
-// 腕の帯が芯側へ届く半径の床(芯の半径の倍率)。TSL 側と同じ値。
-export const FRONT_INNER_RADIUS = 0.15;
-// 熱帯の渦で温暖の腕が立ち始める閉塞の進み。TSL 側と同じ値。
-export const TAIL_WARM_ONSET = 0.02;
-export const TAIL_WARM_FULL = 0.3;
 
 const DEGREE = Math.PI / 180;
 const RAD = 180 / Math.PI;
@@ -176,7 +173,7 @@ export function frontSpinesOf(
 // 配置 placement の谷の前線の帯の強さ 0..1 — 深さに比例し、熱帯の渦の尾は温帯へ
 // 近づくにつれ育つ。TSL 側の strength × gate と同じ式。描き側が腕を引くかどうかの目安に使う。
 export function frontStrengthOf(placement: PressurePlacement): number {
-  const strength = Math.min((placement.frontDepth ?? placement.depth) / OCCLUSION_DEPTH, 1);
+  const strength = Math.min((placement.frontDepth ?? placement.depth) / FRONT_BAND_DEPTH, 1);
   if (placement.fronts !== 'tail') return placement.fronts === 'pair' ? strength : 0;
   const gate = smoothstep(
     Math.abs(placement.latitude) / DEGREE,
