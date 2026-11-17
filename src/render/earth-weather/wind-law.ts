@@ -173,3 +173,25 @@ export function vortexEdgeOf(
   }
   return 0.3;
 }
+
+// 積算の巻き上げ角 [rad]。一生の位置 life(0..1)・寿命 lifetime [s] の渦について、生まれて
+// から谷の循環が気団の境目を巻き上げてきた総量 — 深さ・半径・緯度の履歴から角速度を台形で
+// 積む。両端で深さが 0 へ降りるので刻みは粗くて足りる。sample は一生の位置での
+// (深さ [hPa]・半径 [m]・緯度 [rad]) を返し、reach [m]・rotationPeriod [s] は
+// vortexSpinOf と同じ。
+const WOUND_STEPS = 16;
+export function woundOf(
+  life: number, lifetime: number, reach: number, rotationPeriod: number,
+  sample: (l: number) => {
+    readonly depth: number; readonly radius: number; readonly latitude: number;
+  },
+): number {
+  let sum = 0;
+  for (let i = 0; i <= WOUND_STEPS; i += 1) {
+    const l = (life * i) / WOUND_STEPS;
+    const { depth, radius, latitude } = sample(l);
+    const spin = vortexSpinOf(depth, radius, latitude, reach, rotationPeriod);
+    sum += (i === 0 || i === WOUND_STEPS ? 0.5 : 1) * spin.coreOmega;
+  }
+  return (sum * life * lifetime) / WOUND_STEPS;
+}
