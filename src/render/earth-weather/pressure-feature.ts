@@ -110,6 +110,9 @@ export class PressureFeature {
   // 長軸の向きの単位接ベクトル。
   private readonly axis: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly depth: FloatUniform = uniform(0);
+  // 前線を駆動する深さ [hPa]。閉塞し切った境目は谷が埋まったあとも停滞前線として残るので、
+  // 腕の循環・届く半径・帯の強さは谷の深さではなくこの深さで決まる。
+  private readonly frontDepth: FloatUniform = uniform(0);
   // 弦の二乗を芯の尺で測る係数 (天体の半径 / 短軸の半径)²。
   private readonly coreScale: FloatUniform = uniform(0);
   // 長軸に沿う成分を縮める係数 1 − 1 / (長軸/短軸の比)²。0 で円。
@@ -138,6 +141,7 @@ export class PressureFeature {
   public place(placement: PressurePlacement | null): void {
     if (placement === null) {
       this.depth.value = 0;
+      this.frontDepth.value = 0;
       this.eyeStrength.value = 0;
       this.occlusion.value = 0;
       this.frontKind.value = 0;
@@ -158,15 +162,17 @@ export class PressureFeature {
       hemisphere * cosLatitude,
       -sinLongitude - hemisphere * sinLatitude * cosLongitude,
     ).normalize();
-    // 深さ、芯の尺、長軸の縮み、眼。
+    // 深さ、芯の尺、長軸の縮み、眼。前線は谷の深さと独立に減る境目の深さで駆動する。
     this.depth.value = depth;
+    this.frontDepth.value = placement.frontDepth ?? depth;
     this.coreScale.value = (this.surfaceRadius / radius) ** 2;
     this.axisShrink.value = 1 - 1 / elongation ** 2;
     this.eyeStrength.value = eyeStrengthOf(depth, radius, latitude, this.surfaceRadius, this.rotationPeriod);
     this.occlusion.value = placement.occlusion ?? 0;
     this.frontKind.value = placement.fronts === 'pair' ? 1 : placement.fronts === 'tail' ? 2 : 0;
     // 循環 — 腕を巻き上げる角速度の形と、腕が届く半径(循環が縁の速さを下回る外縁)。
-    const spin = vortexSpinOf(depth, radius, latitude, FEATURE_REACH, this.rotationPeriod);
+    const spin = vortexSpinOf(
+      this.frontDepth.value, radius, latitude, FEATURE_REACH, this.rotationPeriod);
     this.wound.value = placement.wound ?? 0;
     this.spinRatio.value = spin.spinRatio;
     this.reachSq.value = spin.reachSq;
@@ -343,8 +349,8 @@ export class PressureFeature {
       .add(wound);
     const occ = this.armAt(p.x, p.y, r, occAngle, float(FRONT_INNER_RADIUS), triple)
       .mul(smoothstep(0.02, 0.15, triple));
-    // 帯は深さに比例して立ち、熱帯の渦の尾は温帯へ近づくにつれ育つ。
-    const strength = min(this.depth.div(OCCLUSION_DEPTH), 1);
+    // 帯は境目の深さに比例して立ち、熱帯の渦の尾は温帯へ近づくにつれ育つ。
+    const strength = min(this.frontDepth.div(OCCLUSION_DEPTH), 1);
     const tailGate = smoothstep(FRONT_TAIL_LAT_START, FRONT_TAIL_LAT_FULL, asin(abs(this.center.y)));
     const gate = mix(float(1), tailGate, isTail);
     return max(max(cold, warm), occ).mul(strength).mul(gate).mul(this.frontKind.sign().max(0));

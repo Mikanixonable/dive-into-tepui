@@ -15,6 +15,10 @@ export interface PressurePlacement {
   readonly elongation: number;
   readonly occlusion?: number;
   readonly fronts?: 'pair' | 'tail';
+  // 前線を駆動する深さ [hPa]。省略時は depth へフォールバックする。閉塞し切った境目は
+  // 谷が埋まっても芯へ縮まず停滞前線として残るので、渦の深さとは独立に減る別の寿命を持つ
+  // (`DEVELOP/SPEC/RENDERING.md`「閉塞し切った境目は、渦が埋まるあいだも芯へ縮まずに残り」)。
+  readonly frontDepth?: number;
   // 積算の巻き上げ角 [rad]。生まれてから谷の循環が気団の境目を巻き上げてきた総量 —
   // 前線の腕の回転はこの角で決まる。
   readonly wound?: number;

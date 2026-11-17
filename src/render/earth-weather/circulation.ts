@@ -77,8 +77,13 @@ export class Circulation {
   // 呼吸の位相(赤道での半径の伸び)。
   private readonly breath: FloatUniform = uniform(0);
 
-  // bands はこの層の物理風、surfaceRadius は模様を載せる天体の半径 [m]。
-  public constructor(private readonly bands: readonly CirculationBand[], surfaceRadius: number) {
+  // bands はこの層の物理風、surfaceRadius は模様を載せる天体の半径 [m]。meander を渡すと
+  // 帯を読む緯度がその変位 [rad] だけずれる — ロスビー波の蛇行に乗って循環の帯そのものが
+  // 南北へ揺れ、帯の境目が緯線に沿ってまっすぐ走らなくなる。
+  public constructor(
+    private readonly bands: readonly CirculationBand[], surfaceRadius: number,
+    private readonly meander?: (direction: Vec3Node) => FloatNode,
+  ) {
     this.patternTransport = new CloudPatternTransport(surfaceRadius);
     this.flows = bands.map(() => new THREE.Vector4(1, 0, 1, 0));
     this.flowArray = uniformArray(this.flows, 'vec4');
@@ -123,7 +128,9 @@ export class Circulation {
 
   // 単位方向 direction において寄与する緯度帯 2 本。[0] が最寄りの帯、[1] が隣接帯で、[1] の混合比率はブレンド範囲外で 0。
   private bandsAt(direction: Vec3Node): readonly [WeightedBand, WeightedBand] {
-    const band = clamp(float(FIRST_LATITUDE).sub(latitudeOf(direction)).div(BAND_SPACING), 0, this.bands.length - 1);
+    const latitude = this.meander === undefined
+      ? latitudeOf(direction) : latitudeOf(direction).add(this.meander(direction));
+    const band = clamp(float(FIRST_LATITUDE).sub(latitude).div(BAND_SPACING), 0, this.bands.length - 1);
     const nearest = round(band).toVar();
     const offset = band.sub(nearest).toVar();
     // 近い帯から隣の帯へ渡る 4 分の 1 回転。cos と sin で受けるので、渡るあいだ二乗和が 1 に保たれる。
