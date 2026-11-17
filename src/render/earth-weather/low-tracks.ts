@@ -6,7 +6,7 @@
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
 import {
-  WAVE_DRIFT, WAVE_TROUGH_WIDTH, stormTrackAxisAt, waveAmplitudeAt, waveAnchoredSlot,
+  WAVE_TROUGH_WIDTH, stormTrackAxisAt, waveAmplitudeAt, waveAnchoredSlot, waveDriftDegAt,
   waveTroughLongitude,
 } from './rossby-wave';
 import { vortexSpinOf } from './wind-law';
@@ -91,6 +91,10 @@ const LOW_ELONGATION = 1.3;
 // 取る(2²⁴ ÷ LOW_COUNT 世代 × 周期 11 日)。種どうしの交差が先に起きる時点 — 一次の種が熱帯の
 // 帯(2²⁰)へ届く ~987 年 — より十分に遠い。
 const LOW_SECONDARY_SEED_SALT = 1 << 24;
+// 閉塞し切った境目が渦の死後に停滞前線として残る期間 [s]。低気圧が消えたあとも
+// 数日残ってやがて薄れる (`DEVELOP/SPEC/RENDERING.md`「閉塞し切った境目は、渦が埋まる
+// あいだも芯へ縮まずに残り、低気圧が消えたあとも停滞前線として数日残る」)。
+const LOW_REMNANT: Range = [1.5 * DAY, 4 * DAY];
 
 // ストームトラックの軸(海域)ごとの、進路の折れ方と消える緯度の帯。北上はトラックの北東
 // 傾斜(南半球では南東傾斜)で、傾きは海域ごとに違う — 発生した帯に応じて折れ方を変える。
@@ -145,6 +149,9 @@ interface LowTrack {
   readonly peakDepth: number;
   readonly birthRadius: number;
   readonly growth: number;
+  // 閉塞し切った境目が残る期間 [s]。渦が消えてから停滞前線として残る時間で、
+  // 配置が放出されるのは life < 1 + remnant/lifetime まで。
+  readonly remnant: number;
 }
 
 // 枡 index に世代 generation で生まれる低気圧の候補 candidate(0 は一次、1 は家族の後続)。
@@ -180,7 +187,8 @@ function lowTrackOf(
     + randSym(LOW_LONGITUDE_JITTER * WAVE_TROUGH_WIDTH, rand);
   // 発生は生まれる点での蛇行振幅で門をくぐる。一次は通常の門、後続はより強い門と確率の両方。
   // 緯度は半球の符号を付けて渡す — ストームトラックの帯は半球ごとに別の束を持つ。
-  const amplitude = waveAmplitudeAt(hemisphere * birthLatitude * DEGREE, birthLongitude * DEGREE);
+  const amplitude = waveAmplitudeAt(
+    hemisphere * birthLatitude * DEGREE, birthLongitude * DEGREE, birthSeconds);
   if (candidate === 0) {
     const base = hemisphere > 0 ? LOW_GENESIS_AMPLITUDE_NORTH : LOW_GENESIS_AMPLITUDE_SOUTH;
     const gate = base * (1 + randSym(LOW_GATE_JITTER, rand));
@@ -200,6 +208,7 @@ function lowTrackOf(
   );
   const growth = uniformIn(LOW_GROWTH, rand);
   const brake = uniformIn(LOW_BRAKE, rand);
+  const remnant = uniformIn(LOW_REMNANT, rand);
   // 東への進み [°]: 平均の速さで寿命のあいだ走った道のりを、進路の中ほどの緯度の緯線で測る。
   const poleward = endLatitude - birthLatitude;
   const midLatitude = (birthLatitude + endLatitude) / 2;
@@ -214,13 +223,24 @@ function lowTrackOf(
     ),
     terminus: waypoint(hemisphere * endLatitude, birthLongitude + eastward),
   };
-  return { onset, lifetime, birthSeconds, course, brake, peakDepth, birthRadius, growth };
+  return { onset, lifetime, birthSeconds, course, brake, peakDepth, birthRadius, growth, remnant };
 }
 
 // 深さの山の立ち上がり込みで、一生の中の位置 life の深さ [hPa]。
 function lowDepthAt(track: LowTrack, life: number): number {
   return track.peakDepth * Math.sin(Math.PI * life ** LOW_PEAK_SKEW)
     * THREE.MathUtils.smoothstep(life * track.lifetime, 0, LOW_DEPTH_RAMP);
+}
+
+// 前線を駆動する深さ [hPa]。閉塞が追いつき切る(life = LOW_OCCLUSION_FULL)までは谷の深さと
+// 同じ — 前線は渦とともに育つ。追いつき切った境目は渦が埋まるあいだも芯へ縮まず、谷が
+// 消えてからも停滞前線として数日残る — 渦の深さとは別の、遅れて薄れる寿命を持つ。
+function lowFrontDepthAt(track: LowTrack, life: number): number {
+  if (life <= LOW_OCCLUSION_FULL) return lowDepthAt(track, life);
+  const lifeEnd = 1 + track.remnant / track.lifetime;
+  const fade = Math.cos(
+    (Math.PI / 2) * (life - LOW_OCCLUSION_FULL) / (lifeEnd - LOW_OCCLUSION_FULL));
+  return lowDepthAt(track, LOW_OCCLUSION_FULL) * Math.max(fade, 0);
 }
 
 // 積算の巻き上げ角 [rad]。生まれてからの、谷の循環が気団の境目を巻き上げてきた総量 —
@@ -249,26 +269,65 @@ export function rawLowPlacementAt(
   const age = seconds / LOW_PERIOD + index / LOW_COUNT;
   const generation = Math.floor(age);
   const periodSeconds = (age - generation) * LOW_PERIOD;
-  for (let candidate = 0; candidate <= 1; candidate++) {
+  const trackAt = (candidate: number): { track: LowTrack; life: number } | null => {
     const track = lowTrackOf(index, generation, candidate, surfaceRadius);
-    if (track === null) continue;
-    const life = (periodSeconds - track.onset) / track.lifetime;
-    if (life < 0 || life > 1) continue;
-    const point = courseAt(track.course, 1 - (1 - life) ** track.brake);
-    return {
-      placement: {
-        latitude: point.latitude * DEGREE,
-        // 錨は波とともに東へ進む — 生まれた時刻からのドリフトを進路へ足す。
-        longitude: (point.longitude + WAVE_DRIFT * (seconds - track.birthSeconds)) * DEGREE,
-        depth: lowDepthAt(track, life),
-        radius: track.birthRadius * (1 + track.growth * life),
-        elongation: LOW_ELONGATION,
-        occlusion: THREE.MathUtils.smoothstep(life, LOW_OCCLUSION_ONSET, LOW_OCCLUSION_FULL),
-        fronts: 'pair',
-        wound: lowWoundOf(track, life, rotationPeriod),
-      },
-      presence: vortexPresence(life, track.lifetime),
-    };
+    if (track === null) return null;
+    return { track, life: (periodSeconds - track.onset) / track.lifetime };
+  };
+  // 生きている渦があればそれを出す。無ければ閉塞し切った境目の名残(停滞前線)を探す —
+  // 生きている低気圧のある枡では、新しい渦の姿を優先する。
+  for (let candidate = 0; candidate <= 1; candidate++) {
+    const found = trackAt(candidate);
+    if (found !== null && found.life >= 0 && found.life <= 1) {
+      return lowVortexAt(found.track, found.life, seconds, rotationPeriod);
+    }
+  }
+  for (let candidate = 0; candidate <= 1; candidate++) {
+    const found = trackAt(candidate);
+    if (found === null || found.life <= 1) continue;
+    // 名残が残っているあいだに次の候補が生まれるなら、その誕生の前に名残は下がる —
+    // 境目は新しい渦の前線へ引き継がれる。残したままだと、枡の系列が終端の名残から
+    // 新しい渦の発生位置へ跳んで見えるので、交代のあいだの不在を LOW_HANDOFF_GAP で保つ。
+    let end = 1 + found.track.remnant / found.track.lifetime;
+    for (let next = candidate + 1; next <= 1; next++) {
+      const later = trackAt(next)?.track;
+      if (later !== undefined) {
+        end = Math.min(
+          end, (later.onset - LOW_HANDOFF_GAP - found.track.onset) / found.track.lifetime);
+      }
+    }
+    if (found.life <= end) {
+      return lowVortexAt(found.track, found.life, seconds, rotationPeriod);
+    }
   }
   return null;
+}
+
+// 中緯度の低気圧の一生 track の、一生の中の位置 life における生の配置。life が 1 を
+// 越えると渦は終端で深さ 0 に埋まり、残るのは停滞前線だけ — 波の運びと巻き上げは
+// 止まり、境目の深さだけがゆっくり薄れていく。
+function lowVortexAt(
+  track: LowTrack, life: number, seconds: number, rotationPeriod: number,
+): RawVortex {
+  const vortexLife = Math.min(life, 1);
+  const point = courseAt(track.course, 1 - (1 - vortexLife) ** track.brake);
+  // 錨は波とともに運ばれる — 渦の死後に残る停滞前線は波の運びをやめて停滞する。
+  const driftSeconds = Math.min(seconds, track.birthSeconds + track.lifetime);
+  return {
+    placement: {
+      latitude: point.latitude * DEGREE,
+      // 生まれた時刻からのドリフトの差を進路へ足す — 波が停滞・逆行する局面では
+      // 錨ごと止まる・戻る。
+      longitude: (point.longitude
+        + waveDriftDegAt(driftSeconds) - waveDriftDegAt(track.birthSeconds)) * DEGREE,
+      depth: lowDepthAt(track, vortexLife),
+      radius: track.birthRadius * (1 + track.growth * vortexLife),
+      elongation: LOW_ELONGATION,
+      occlusion: THREE.MathUtils.smoothstep(vortexLife, LOW_OCCLUSION_ONSET, LOW_OCCLUSION_FULL),
+      fronts: 'pair',
+      frontDepth: lowFrontDepthAt(track, life),
+      wound: lowWoundOf(track, vortexLife, rotationPeriod),
+    },
+    presence: vortexPresence(vortexLife, track.lifetime),
+  };
 }
