@@ -6,10 +6,10 @@
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
 import {
-  WAVE_TROUGH_WIDTH, stormTrackAxisAt, waveAmplitudeAt, waveAnchoredSlot, waveDriftDegAt,
-  waveTroughLongitude,
+  WAVE_TROUGH_WIDTH, stormTrackCountAt, stormTrackIndexAt, waveAmplitudeAt, waveAnchoredSlot,
+  waveDriftDegAt, waveTroughLongitude,
 } from './rossby-wave';
-import { vortexSpinOf } from './wind-law';
+import { woundOf } from './wind-law';
 import { FEATURE_REACH } from './pressure-feature';
 import { vortexPresence } from './vortex-absorption';
 import type { RawVortex } from './vortex-absorption';
@@ -99,41 +99,42 @@ const LOW_REMNANT: Range = [1.5 * DAY, 4 * DAY];
 // ストームトラックの軸(海域)ごとの、進路の折れ方と消える緯度の帯。北上はトラックの北東
 // 傾斜(南半球では南東傾斜)で、傾きは海域ごとに違う — 発生した帯に応じて折れ方を変える。
 // 消える緯度はトラックの終端 — 北半球は湾奥や欧州〜高緯度の海、南半球は南極の縁。
+// 表は半球ごとに rossby-wave の bump 表と同じ並びで、発生経度へいちばん強い bump の
+// 番号(stormTrackIndexAt)の行を引く。bump を足したらこちらにも行を足す — 本数が
+// 合わなければ初期化で止める。
 interface TrackAxis {
-  readonly center: number; // 帯の bump の中心経度 [°]
   readonly endLatitude: Range; // 消える緯度の帯 [°](絶対値)
   readonly turnPoleward: number; // 折れ曲がりの時点での極側への進みの割合
   readonly turnEastward: number; // 折れ曲がりの時点での東への進みの割合
 }
-const TRACK_AXES: readonly TrackAxis[] = [
+// 行の本数を bump 表と突き合わせる — ずれがあると発生した帯の折れ方が黙って別海域の
+// ものになるので、読み込みの時点で止める。
+function trackAxes(hemisphere: number, axes: readonly TrackAxis[]): readonly TrackAxis[] {
+  if (axes.length !== stormTrackCountAt(hemisphere)) {
+    throw new Error(`TRACK_AXES の本数が半球 ${hemisphere} の bump 数と合わない`);
+  }
+  return axes;
+}
+const NORTH_TRACK_AXES = trackAxes(1, [
   // 北西太平洋 — 強く北東へ折れ、日付変更線〜アラスカ湾で埋まる。
-  { center: 140, endLatitude: [55, 65], turnPoleward: 0.45, turnEastward: 0.55 },
+  { endLatitude: [55, 65], turnPoleward: 0.45, turnEastward: 0.55 },
   // 北大西洋西岸 — アイスランド〜欧州へ向かう。
-  { center: -60, endLatitude: [56, 67], turnPoleward: 0.4, turnEastward: 0.6 },
+  { endLatitude: [56, 67], turnPoleward: 0.4, turnEastward: 0.6 },
   // 欧州〜地中海の二次的な帯 — より東向きに進み、シベリア・北欧で埋まる。
-  { center: 20, endLatitude: [55, 66], turnPoleward: 0.3, turnEastward: 0.65 },
-  // 南大西洋〜南インド洋の広い帯と南西太平洋 — 南極の縁へらせん状に降りる。
-  { center: 30, endLatitude: [60, 67], turnPoleward: 0.35, turnEastward: 0.6 },
-  { center: 150, endLatitude: [60, 67], turnPoleward: 0.35, turnEastward: 0.6 },
-];
+  { endLatitude: [55, 66], turnPoleward: 0.3, turnEastward: 0.65 },
+]);
+const SOUTH_TRACK_AXES = trackAxes(-1, [
+  // 南大西洋〜南インド洋の広い帯 — 南極の縁へらせん状に降りる。
+  { endLatitude: [60, 67], turnPoleward: 0.35, turnEastward: 0.6 },
+  // 南西太平洋。
+  { endLatitude: [60, 67], turnPoleward: 0.35, turnEastward: 0.6 },
+]);
 
 // 経度 longitudeDeg [°]・半球 hemisphere (北 +1 / 南 −1) で発生した低気圧が乗るトラックの軸。
-// 発生経度へいちばん強い bump の中心を返し、その中心に近い軸の行を引く。
+// 発生経度へいちばん強い bump の番号の行を引く。
 function trackAxisAt(longitudeDeg: number, hemisphere: number): TrackAxis {
-  const center = stormTrackAxisAt(longitudeDeg * DEGREE, hemisphere) / DEGREE;
-  let nearest = TRACK_AXES[0]!;
-  let nearestDistance = Infinity;
-  for (const axis of TRACK_AXES) {
-    // 軸の中心と bump の中心の、円周上の距離。
-    const distance = Math.abs(Math.atan2(
-      Math.sin((axis.center - center) * DEGREE), Math.cos((axis.center - center) * DEGREE),
-    ));
-    if (distance < nearestDistance) {
-      nearest = axis;
-      nearestDistance = distance;
-    }
-  }
-  return nearest;
+  const axes = hemisphere >= 0 ? NORTH_TRACK_AXES : SOUTH_TRACK_AXES;
+  return axes[stormTrackIndexAt(longitudeDeg * DEGREE, hemisphere)]!;
 }
 
 // 中緯度の低気圧 1 つの一生。周期の頭から生まれるまでの時間 onset [s]、寿命 lifetime [s]、
@@ -244,20 +245,13 @@ function lowFrontDepthAt(track: LowTrack, life: number): number {
 }
 
 // 積算の巻き上げ角 [rad]。生まれてからの、谷の循環が気団の境目を巻き上げてきた総量 —
-// 深さと半径と緯度の履歴から角速度を台形で積む。両端で深さが 0 へ降りるので刻みは粗くて足りる。
-const WOUND_STEPS = 16;
+// 深さと半径と緯度の履歴から角速度を台形で積む(wind-law.ts の woundOf)。
 function lowWoundOf(track: LowTrack, life: number, rotationPeriod: number): number {
-  let sum = 0;
-  for (let i = 0; i <= WOUND_STEPS; i += 1) {
-    const l = (life * i) / WOUND_STEPS;
-    const spin = vortexSpinOf(
-      lowDepthAt(track, l), track.birthRadius * (1 + track.growth * l),
-      courseAt(track.course, 1 - (1 - l) ** track.brake).latitude * DEGREE,
-      FEATURE_REACH, rotationPeriod,
-    );
-    sum += (i === 0 || i === WOUND_STEPS ? 0.5 : 1) * spin.coreOmega;
-  }
-  return (sum * life * track.lifetime) / WOUND_STEPS;
+  return woundOf(life, track.lifetime, FEATURE_REACH, rotationPeriod, (l) => ({
+    depth: lowDepthAt(track, l),
+    radius: track.birthRadius * (1 + track.growth * l),
+    latitude: courseAt(track.course, 1 - (1 - l) ** track.brake).latitude * DEGREE,
+  }));
 }
 
 // 中緯度の低気圧 index(0..LOW_COUNT − 1)の、時刻 seconds [s] における生の配置(吸収を考えない
