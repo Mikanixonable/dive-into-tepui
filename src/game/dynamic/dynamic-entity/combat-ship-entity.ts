@@ -9,9 +9,16 @@ import { ShipMarkerRenderer } from '../../marker/ship-marker-renderer';
 // 断面積質量比 C_R·A/m [m^2/kg] で表す。
 export const SHIP_BCINV = 3.3e-3; // Cd≈2.2, A≈12m², m≈8t
 export const SHIP_SRP_COEFF = 1.56e-2; // C_R≈1.3, A≈12m², m=PLAYER_MASS
-const SHIP_BULK_DENSITY = 833; // [kg/m^3]
+// よどみ点の曲率半径を一様密度球で代理するときの密度 [kg/m^3]。bcInv と合わせて
+// Rn = 3·Cd/(4·ρ·bcInv) ≈ 0.19 m を出す — 中空の艦の実バルク密度ではなく、鋭い前縁を
+// 持つ機体の代理として小片と同じアルミ相当を使う。大きな Rn にすると再突入で加熱が
+// 構造限界に追いつかず、空力分解ばかり起きる。
+export const SHIP_BULK_DENSITY = 2700;
 const SHIP_SPECIFIC_HEAT = 100; // [J/(kg·K)]
-export const SHIP_RADIATING_AREA_PER_MASS = 0.07; // [m^2/kg]
+// 船体の放射面積の比 [m^2/kg]。基準質量あたり約 25 m^2(放熱板の分は modular-ship-motion が
+// 別途加算する)。これを大きく取ると再突入の熱を宇宙へ捨てきってしまい、構造限界に先立つ
+// 加熱限界へ到達できなくなる。
+export const SHIP_RADIATING_AREA_PER_MASS = 0.025; // [m^2/kg]
 export const MAX_HULL_TEMP = 1300; // 超過で熱防御飽和 → 機体喪失 [K]
 
 // 宇宙機の物性を既定にした Motion の物性と初期値。overrides の項目で上書きする。
