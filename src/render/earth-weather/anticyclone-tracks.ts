@@ -9,7 +9,7 @@
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
 import {
-  WAVE_DRIFT, WAVE_TROUGH_WIDTH, waveAmplitudeAt, waveAnchoredSlot, waveTroughLongitude,
+  WAVE_TROUGH_WIDTH, waveAmplitudeAt, waveAnchoredSlot, waveDriftDegAt, waveTroughLongitude,
 } from './rossby-wave';
 import { DAY, DEGREE, uniformIn } from './tracks';
 import type { PressurePlacement, Range } from './tracks';
@@ -105,7 +105,8 @@ function highTrackOf(index: number, generation: number, surfaceRadius: number): 
     + randSym(HIGH_LONGITUDE_JITTER * WAVE_TROUGH_WIDTH, rand);
   // 高さは生まれる点での蛇行振幅(緯度包絡 × ストームトラック重み)で抑揚する — 発生の
   // 門ではなく強さの調整なので、弱い蛇行の尾根でも座る。緯度は半球の符号を付けて渡す。
-  const amplitude = waveAmplitudeAt(hemisphere * birthLatitude * DEGREE, birthLongitude * DEGREE);
+  const amplitude = waveAmplitudeAt(
+    hemisphere * birthLatitude * DEGREE, birthLongitude * DEGREE, birthSeconds);
   const peakDepth = HIGH_DEPTH[0] + (HIGH_DEPTH[1] - HIGH_DEPTH[0]) * rand()
     * (HIGH_AMPLITUDE_FLOOR + (1 - HIGH_AMPLITUDE_FLOOR) * amplitude);
   const speed = uniformIn(HIGH_SPEED, rand);
@@ -138,9 +139,10 @@ export function highPlacementAt(
   // 折れのない緩やかな東進。道のりの進みは 1 − (1 − life)^指数 で、消えるときに止まる。
   const s = 1 - (1 - life) ** track.brake;
   const latitude = track.birthLatitude + (track.endLatitude - track.birthLatitude) * s;
-  // 錨は波とともに東へ進む — 生まれた時刻からのドリフトを進路へ足す。
+  // 錨は波とともに運ばれる — 生まれた時刻からのドリフトの差を進路へ足す。波が停滞・
+  // 逆行する局面では錨ごと止まる・戻る(ブロッキングの高気圧)。
   const longitude = track.birthLongitude + track.eastward * s
-    + WAVE_DRIFT * (seconds - track.birthSeconds);
+    + waveDriftDegAt(seconds) - waveDriftDegAt(track.birthSeconds);
   return {
     latitude: latitude * DEGREE,
     longitude: longitude * DEGREE,

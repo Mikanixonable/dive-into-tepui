@@ -82,8 +82,11 @@ export function frontSpinesOf(
   const coreRad = placement.radius / surfaceRadius;
   const triple = (placement.occlusion ?? 0) * tuning.frontTripleRadius.value;
   // 循環 — 腕を巻き上げる角速度の形と、腕が届く半径(循環が縁の速さを下回る外縁)。
+  // 駆動するのは谷の深さではなく前線の深さ — 谷が埋まったあと残る停滞前線は
+  // 残った境目の深さで形を保つ。
+  const frontDepth = placement.frontDepth ?? placement.depth;
   const spin = vortexSpinOf(
-    placement.depth, placement.radius, placement.latitude, FEATURE_REACH, rotationPeriod);
+    frontDepth, placement.radius, placement.latitude, FEATURE_REACH, rotationPeriod);
   const reach = vortexEdgeOf(spin, placement.radius, FEATURE_REACH, tuning.frontEdgeSpeed.value);
   // この半径で回った角 [°] — 積算の巻き上げ角(見える分は一周ぶんへ飽和) × 循環の
   // 半径プロファイル。
@@ -173,7 +176,7 @@ export function frontSpinesOf(
 // 配置 placement の谷の前線の帯の強さ 0..1 — 深さに比例し、熱帯の渦の尾は温帯へ
 // 近づくにつれ育つ。TSL 側の strength × gate と同じ式。描き側が腕を引くかどうかの目安に使う。
 export function frontStrengthOf(placement: PressurePlacement): number {
-  const strength = Math.min(placement.depth / OCCLUSION_DEPTH, 1);
+  const strength = Math.min((placement.frontDepth ?? placement.depth) / OCCLUSION_DEPTH, 1);
   if (placement.fronts !== 'tail') return placement.fronts === 'pair' ? strength : 0;
   const gate = smoothstep(
     Math.abs(placement.latitude) / DEGREE,
