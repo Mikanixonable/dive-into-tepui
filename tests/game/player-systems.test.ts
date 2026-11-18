@@ -133,6 +133,18 @@ export function register(): void {
     assert.deepEqual(radiator.serialize().panels?.map(panel => panel.id), ['radiator']);
   });
 
+  test('player systems: 未装備の側の放熱板は損耗 0・展開 0 を返す', () => {
+    // 標準戦闘艦は放熱板を1枚だけ積む。無い側を「損耗100%」と読むと、VESSEL パネルが
+    // 積んでいない放熱板を赤い損耗表示にしてしまう。
+    const assembly = createDefaultCombatPreset();
+    const radiator = new RadiatorSystem(new DynamicMotion(state), () => {}, undefined, undefined, assembly);
+    radiator.syncAssembly();
+    assert.equal(radiator.deployOf('up'), 0);
+    assert.equal(radiator.wearOf('up'), 0);
+    assert.equal(radiator.deployOf('down'), 0);
+    assert.equal(radiator.wearOf('down'), 0);
+  });
+
   test('modular ship motion: booster module の質量で空力・輻射圧の質量あたり値が下がる', () => {
     const assembly = createDefaultCombatPreset();
     assembly.append(createShipModuleInstance(
