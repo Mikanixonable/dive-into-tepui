@@ -24,18 +24,15 @@ import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ControlSelection } from '../control-selection';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { Stage } from '../stages/stage';
-import type { Viewer } from '../viewer/viewer';
 import type { ObjectPickable } from '../pickable/object-pickable';
+import type {
+  PresentationCameraSystem, PresentationDisplayWindow, PresentationInput,
+  PresentationNavigationCommand, PresentationObjectWindows, PresentationSimSpeed,
+  PresentationStage, PresentationViewer,
+} from '../presentation-ports';
 import type { Targeter } from '../targeter';
-import type { NavigationCommand } from '../navigation/navigation-command';
-import type { ObjectWindows } from '../pickable/object-windows';
-import type { CameraSystem } from '../camera/camera-system';
-import type { DisplayWindow } from '../display-window-manager';
 import type { OrbitReference } from '../orbit-reference';
 import type { ViewMode } from '../view/view-mode';
-import type { Input } from '../../input/input';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ThemePalette } from '../../theme';
 
@@ -53,14 +50,14 @@ export class HudPanelPresenter {
     private readonly celestialSystem: CelestialSystem,
     private readonly dynamicSystem: DynamicSystem,
     private readonly controlSelection: ControlSelection,
-    private readonly simSpeedManager: SimSpeedManager,
-    private readonly stage: Stage,
-    private readonly viewer: Viewer,
-    private readonly input: Input,
+    private readonly simSpeedManager: PresentationSimSpeed,
+    private readonly stage: PresentationStage,
+    private readonly viewer: PresentationViewer,
+    private readonly input: PresentationInput,
     private readonly targeter: Targeter,
-    private readonly objectWindows: ObjectWindows,
-    private readonly cameraSystem: CameraSystem,
-    private readonly navigationCommand: NavigationCommand,
+    private readonly objectWindows: PresentationObjectWindows,
+    private readonly cameraSystem: PresentationCameraSystem,
+    private readonly navigationCommand: PresentationNavigationCommand,
     // 艦のステータスパネルの「建造」の押下先と、建造中かどうかの読み取り。
     private readonly startConstruction: () => void,
     private readonly constructionActive: () => boolean,
@@ -110,7 +107,7 @@ export class HudPanelPresenter {
   // view で表に出ている常設パネルを、表示窓 displayWindow・軌道要素の基準 orbitRef・配色 palette で
   // 組んだ値へ合わせる。camera はこのフレームの表示カメラ、nowMs はフレームの実時刻 [ms]。
   public sync(
-    view: ViewMode, displayWindow: DisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
+    view: ViewMode, displayWindow: PresentationDisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
     camera: CameraFrame, nowMs: number,
   ): void {
     this.hud.syncPanels(view, this.viewModels(view, displayWindow, orbitRef, palette), camera, nowMs);
@@ -118,7 +115,7 @@ export class HudPanelPresenter {
 
   // 常設パネルの値を束ねる。表に出ているビューのパネルのぶんだけを組む。
   private viewModels(
-    view: ViewMode, displayWindow: DisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
+    view: ViewMode, displayWindow: PresentationDisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
   ): HudPanelViewModels {
     const controlled = this.controlSelection.current;
     // 戦闘ビューにしか出ないパネルは、マップでは値を組まない。
