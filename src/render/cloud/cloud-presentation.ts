@@ -8,6 +8,7 @@ import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudRenderInput } from './cloud-render-input';
 import type { OrthographicCap } from '../field-projection';
+import type { SurfaceWind } from './cloud-wind-sample';
 import type { GraphicsSettingsData } from '../graphics-settings';
 
 // aimFrom() で置き直すまでのキャップ初期向き。
@@ -27,6 +28,8 @@ export interface CloudFieldSource {
   readonly texture: THREE.Texture;
   // 描画時の風のテクスチャ。風を焼かない出どころでは null。
   readonly windTexture: THREE.Texture | null;
+  // 最新の焼きで読み戻した cap 中心の地表風 [m/s]。風を焼かない出どころでは (0, 0)。
+  readonly centerWind: SurfaceWind;
   // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
   readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
@@ -65,6 +68,7 @@ export class CloudPresentation {
       generation: this.source.generation,
       topAltitude: this.topAltitude,
       displayTime: this.lastDisplayTime,
+      centerWind: this.source.centerWind,
     };
   }
   public get visible(): boolean { return this.surface.visible; }

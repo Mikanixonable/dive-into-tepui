@@ -9,12 +9,15 @@ import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from '../field-projection';
 import type { CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-presentation';
+import type { SurfaceWind } from './cloud-wind-sample';
 import type { Vec3Node } from '../tsl-types';
 
 export class GeneratedCloudField implements CloudFieldSource {
   private readonly model: WeatherModel;
   private readonly field: CloudField;
   private readonly wind: CloudWindField;
+  // 最新の焼きで読み戻した cap 中心の地表風 [m/s]。読み戻しがまだなら (0, 0) で粒は静止する。
+  private centerWindValue: SurfaceWind = { east: 0, north: 0 };
   // 最後に焼いた表示時刻。表示時刻が同じ間は生成済みの場を使う。
   private lastBakedDisplayTime: number | null = null;
   // 最後に焼いたときの気候の世代。読む画像が変われば、同じ表示時刻でも焼き直す。
@@ -38,6 +41,8 @@ export class GeneratedCloudField implements CloudFieldSource {
   public get texture(): THREE.Texture { return this.field.texture; }
   // 風場のテクスチャ。出力場の所有権はこのクラスに残す。
   public get windTexture(): THREE.Texture { return this.wind.texture; }
+  // 最新の焼きで読み戻した cap 中心の地表風 [m/s]。読み戻しがまだなら (0, 0)。
+  public get centerWind(): SurfaceWind { return this.centerWindValue; }
   public get generation(): number { return this.generationValue; }
 
   // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。
@@ -67,6 +72,13 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.lastBakedDisplayTime = displayTime;
     this.lastBakedClimateGeneration = climateGeneration;
     this.lastBakedProjectionRevision = projectionRevision;
+    // 中心風の読み戻しを蹴る。結果は次のフレームから使う。焼きの世代が進んでいたら古い
+    // 結果は捨て、読み戻しの失敗は描画を止めない(粒が静止のまま)。
+    const bakedGeneration = this.generationValue;
+    void this.wind.readCenterWind(renderer).then((wind) => {
+      if (this.generationValue !== bakedGeneration) return;
+      this.centerWindValue = wind;
+    }).catch(() => { /* 中心風が読めないときは粒を静止のままにする */ });
   }
 
   // 保持している雲場を解放する。

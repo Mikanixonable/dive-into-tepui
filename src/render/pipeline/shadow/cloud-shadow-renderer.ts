@@ -10,7 +10,7 @@ import type { CloudRenderInput } from '../../cloud/cloud-render-input';
 import type { CloudSample } from '../../cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../cloud/cloud-shape-evaluator';
 import { CLOUD_TOP_SPAN, CUMULUS_GRAIN_OCTAVES, CUMULUS_GRAIN_SIZE } from '../../cloud/cumulus-shape';
-import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
+import type { FloatNode, FloatUniform, Mat4Uniform, Vec2Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 
 // 影を落とす積雲の殻 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準
@@ -43,6 +43,8 @@ export class CloudShadowRenderer {
   // 粒の時計になる表示時刻 [s] と、風が結ばれているかの 0/1。set で写し取る。
   private readonly displayTime: FloatUniform;
   private readonly windEnabled: FloatUniform;
+  // cap 中心の地表風 [m/s]。粒の移流のずれに使う。set で写し取る。
+  private readonly centerWind: Vec2Uniform;
   // 雲場の読み取りと形状式は共有入力層へ置く。ここは太陽光路の透過率だけを所有する。
   private readonly fieldSampler = new CloudFieldSampler();
   private readonly shape: CloudShapeEvaluator;
@@ -58,6 +60,7 @@ export class CloudShadowRenderer {
     this.active = uniform(0);
     this.displayTime = uniform(0);
     this.windEnabled = uniform(0);
+    this.centerWind = uniform(new THREE.Vector2());
     this.shape = new CloudShapeEvaluator(this.surfaceRadius.div(CUMULUS_GRAIN_SIZE));
   }
 
@@ -73,6 +76,7 @@ export class CloudShadowRenderer {
     this.fieldSampler.bind(cumulus.cloud.field);
     this.displayTime.value = cumulus.cloud.displayTime;
     this.windEnabled.value = cumulus.cloud.field.windTexture === null ? 0 : 1;
+    this.centerWind.value.set(cumulus.cloud.centerWind.east, cumulus.cloud.centerWind.north);
   }
 
   // このフレームに積雲の殻の影があるか。
@@ -126,7 +130,8 @@ export class CloudShadowRenderer {
             .grainWeatherFactor(cloud.coverage, cloud.cloudTop.div(CLOUD_TOP_SPAN))
             .mul(smoothstep(octave.sizeM, octave.sizeM * 2, sampleWidth).oneMinus()).toVar());
           If(greaterThan(grainAmplitudes[0]!, 0), () => {
-            grain.assign(this.shape.grainAt(up, grainAmplitudes, this.displayTime, this.windEnabled));
+            grain.assign(this.shape.grainAt(
+              up, grainAmplitudes, this.displayTime, this.windEnabled, this.centerWind));
           });
           const cloudTop = this.shape.cloudTop(cloud.cloudTop.div(CLOUD_TOP_SPAN), grain).mul(this.topAltitude);
           const rise = max(dot(rayDir, up), 0).mul(stepLength);

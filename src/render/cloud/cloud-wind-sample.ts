@@ -12,12 +12,24 @@ export interface WindSample {
   readonly land: FloatNode;
 }
 
+// CPU 側の地表風 [m/s]。east が東向き、north が北向き。
+export interface SurfaceWind {
+  readonly east: number;
+  readonly north: number;
+}
+
 // 焼いた風テクスチャの RGBA を、生成側と同じ単位の風標本へ戻す。
 export function windSampleFromTexel(texel: Vec4Node): WindSample {
   return {
     wind: vec2(texel.r, texel.g).sub(0.5).mul(2 * WIND_SPAN),
     land: texel.b,
   };
+}
+
+// 焼いた風テクスチャの 1 texel の R/G を、生成側と同じ単位の地表風へ戻す。
+// windSampleFromTexel と同じ復号を CPU で行う。r/g は半精度から復号した 0..1 の値。
+export function windFromEncodedTexel(r: number, g: number): SurfaceWind {
+  return { east: (r - 0.5) * 2 * WIND_SPAN, north: (g - 0.5) * 2 * WIND_SPAN };
 }
 
 // 風標本を焼き込み用の RGBA へ戻す。読み出し側の復号と同じ契約をここで対にして持つ。

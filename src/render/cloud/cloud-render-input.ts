@@ -2,6 +2,7 @@
 // field のテクスチャ所有権は source 側に残し、generation と topAltitude を同じ
 // スナップショットに束ねて、表現ごとの入力解釈を増やさない。
 import type { CloudFieldBinding } from './cloud-field-sampler';
+import type { SurfaceWind } from './cloud-wind-sample';
 
 export interface CloudRenderInput {
   readonly field: CloudFieldBinding;
@@ -9,4 +10,6 @@ export interface CloudRenderInput {
   readonly topAltitude: number;
   // 表示時刻 [s]。粒の移流と寿命はこの時刻で進む。
   readonly displayTime: number;
+  // cap 中心の地表風 [m/s]。粒の移流のずれに使う。風を焼かない出どころでは (0, 0)。
+  readonly centerWind: SurfaceWind;
 }

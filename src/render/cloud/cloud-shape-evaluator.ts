@@ -1,13 +1,14 @@
 // 雲テクスチャ値を各表現の形状・光学量へ変換する共有評価器。被覆率・雲頂高度・粒子感・
 // 光学的厚みの計算式を集約し、各レンダラーのシェーダーグラフへ展開する。
-import { If, TWO_PI, abs, clamp, cos, float, fract, greaterThan, min, mix } from 'three/tsl';
+import { If, TWO_PI, abs, clamp, cos, float, fract, greaterThan, min, mix, normalize } from 'three/tsl';
 import { gradientNoise } from './gradient-noise';
+import { eastAt, northAt } from './sphere-frame';
 import { columnOpticalDepthFromCoverageNode } from './cloud-optics-node';
 import {
   CUMULUS_DITHER_KNOB, CUMULUS_GRAIN_OCTAVES, CUMULUS_GRAIN_SIZE, CLOUD_TOP_SPAN,
   GRAIN_LIFECYCLE_CELL_M, GRAIN_LIFECYCLE_HOURS,
 } from './cumulus-shape';
-import type { FloatNode, Vec3Node } from '../tsl-types';
+import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
 const GRAIN_COVERAGE_DEPTH = 0.25;
 const GRAIN_TOP_RELIEF = 0.15;
@@ -32,9 +33,15 @@ export class CloudShapeEvaluator {
   //
   // 風が結ばれているとき、粒は場所ごとの位相で成長→成熟→崩壊を繰り返す。
   // windEnabled は風の結び目の 0/1 で、0 なら包絡は 1 になる。
+  //
+  // shiftWind は cap 中心の地表風 [m/s]。粒だけをその風でずらす — ずれは風×表示時刻を
+  // 天体の半径で割った角で、東・北の接方向へ振った向きでノイズを引く。位相・包絡は
+  // 非変位の向きで評価するので、細胞は場所に固定されたまま粒だけが流れる。
+  // 時刻 0 ではずれは 0。ノイズ位置がテクスチャの読み値に依存しないので、風の読み戻しは
+  // CPU の uniform 経由で入り、テクスチャ依存のノイズ位置は生まない。
   public grainAt(
     direction: Vec3Node, amplitudes: readonly FloatNode[],
-    timeSeconds: FloatNode, windEnabled: FloatNode,
+    timeSeconds: FloatNode, windEnabled: FloatNode, shiftWind: Vec2Node,
   ): FloatNode {
     // 場所の細胞の位相。ノイズの 1 波長が位相の 1 周ぶんの実寸に当たるよう方向を伸ばし、
     // [0, 1) へ折る。
@@ -44,11 +51,18 @@ export class CloudShapeEvaluator {
     const cycle = fract(timeSeconds.div(GRAIN_LIFECYCLE_HOURS * 3600).add(phase));
     // 生まれと崩壊で 0、成熟で 2、平均 1 の包絡。
     const envelope = float(1).sub(cos(cycle.mul(TWO_PI)));
+    // 粒のノイズだけをずらした向き。ずれの分母は天体の半径 [m]
+    // (= grainFrequency × CUMULUS_GRAIN_SIZE)。
+    const shifted = normalize(direction.add(
+      eastAt(direction).mul(shiftWind.x).add(northAt(direction).mul(shiftWind.y))
+        .mul(timeSeconds).div(this.grainFrequency).div(CUMULUS_GRAIN_SIZE)
+        .mul(windEnabled),
+    ));
     const grain = float(0).toVar();
     for (const [index, octave] of CUMULUS_GRAIN_OCTAVES.entries()) {
       const amplitude = amplitudes[index]!;
       If(greaterThan(amplitude, 0), () => {
-        grain.addAssign(gradientNoise(direction.mul(this.grainFrequency)
+        grain.addAssign(gradientNoise(shifted.mul(this.grainFrequency)
           .div(octave.sizeM / CUMULUS_GRAIN_SIZE)).mul(octave.weight).mul(amplitude));
       });
     }

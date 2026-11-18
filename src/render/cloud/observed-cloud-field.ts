@@ -10,6 +10,7 @@ import { equirectUvFromDirection, type FieldProjection } from '../field-projecti
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { CloudFieldSource } from './cloud-presentation';
+import type { SurfaceWind } from './cloud-wind-sample';
 import type { Vec4Node } from '../tsl-types';
 
 export class ObservedCloudField implements CloudFieldSource {
@@ -42,6 +43,7 @@ export class ObservedCloudField implements CloudFieldSource {
   public get texture(): THREE.Texture { return this.field.texture; }
   // 観測場は風を焼かないので、粒は静止する。
   public get windTexture(): THREE.Texture | null { return null; }
+  public get centerWind(): SurfaceWind { return { east: 0, north: 0 }; }
   public get generation(): number { return this.generationValue; }
 
   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。

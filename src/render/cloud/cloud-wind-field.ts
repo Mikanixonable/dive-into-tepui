@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
-import { windTexelFromSample } from './cloud-wind-sample';
+import { windFromEncodedTexel, windTexelFromSample, type SurfaceWind } from './cloud-wind-sample';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { FieldProjection } from '../field-projection';
@@ -27,6 +27,16 @@ export class CloudWindField {
 
   // 焼いた風の場。テクスチャの所有権は BakedField に残す。
   public get texture(): THREE.Texture { return this.field.texture; }
+
+  // 焼いた風テクスチャの中心 texel を CPU へ読み戻し、cap 中心の地表風 [m/s] へ復号する。
+  // 中心は投影のちょうど真ん中なので、texel の向きは結果に効かない。
+  public async readCenterWind(renderer: WebGPURenderer): Promise<SurfaceWind> {
+    const texel = await this.field.readCenterTexel(renderer);
+    return windFromEncodedTexel(
+      THREE.DataUtils.fromHalfFloat(texel[0]!),
+      THREE.DataUtils.fromHalfFloat(texel[1]!),
+    );
+  }
 
   // 保持している GPU 資源を解放する。
   public dispose(): void {
