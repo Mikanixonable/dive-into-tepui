@@ -11,21 +11,18 @@ import type {
   PresentationShip, PresentationShipModule, PresentationSimSpeed, PresentationViewSelection,
 } from '../../src/game/presentation-ports';
 
-// 素の部品列から艦の面を組む。module は列からの検索で返す。
+// 素の部品列から艦の面を組む。
 function testShip(modules: readonly PresentationShipModule[], controllable: boolean): PresentationShip {
   return {
     id: 'ship-1',
     capabilities: { controllable },
-    assembly: {
-      modules,
-      module: (id) => modules.find((module) => module.id === id) ?? null,
-    },
+    assembly: { modules },
   };
 }
 
-const DOCK: PresentationShipModule = { id: 'dock-1', definitionId: 'dock', kind: 'dock', hp: 1 };
-const BROKEN_DOCK: PresentationShipModule = { id: 'dock-2', definitionId: 'dock', kind: 'dock', hp: 0 };
-const PORT: PresentationShipModule = { id: 'port-1', definitionId: 'docking_port', kind: 'docking_port', hp: 5 };
+const DOCK: PresentationShipModule = { id: 'dock-1', kind: 'dock', hp: 1 };
+const BROKEN_DOCK: PresentationShipModule = { id: 'dock-2', kind: 'dock', hp: 0 };
+const PORT: PresentationShipModule = { id: 'port-1', kind: 'docking_port', hp: 5 };
 
 // 提示ポートの面へ狭めた建造の入口の規則を登録する。
 export function register(): void {

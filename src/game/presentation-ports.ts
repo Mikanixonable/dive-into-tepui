@@ -75,21 +75,19 @@ export interface PresentationObjectWindows {
   openTarget(clientX: number, clientY: number): void;
 }
 
-// 搭載部品の読み取り面。識別子・定義・種別・残 HP。
+// 搭載部品の読み取り面。識別子・種別・残 HP。
 export interface PresentationShipModule {
   readonly id: string;
-  readonly definitionId: string;
   readonly kind: string;
   readonly hp: number;
 }
 
-// 艦の読み取り面。操縦可否と、搭載部品の一覧・検索。
+// 艦の読み取り面。操縦可否と、搭載部品の一覧。
 export interface PresentationShip {
   readonly id: string;
   readonly capabilities: { readonly controllable: boolean };
   readonly assembly: {
     readonly modules: readonly PresentationShipModule[];
-    module(id: string): PresentationShipModule | null;
   };
 }
 
