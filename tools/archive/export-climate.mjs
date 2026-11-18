@@ -5,13 +5,13 @@
 //   B: 標高 0..8000 m を 0..255 に(ぼかしたもの)
 // 行 0 が北極、列 0 が経度 −180°(西端)。雲に比べてはるかに低周波の量なので解像度は粗くてよい。
 //
-// 実行: node tools/export-climate.mjs
+// 実行: node tools/archive/export-climate.mjs
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decodeGrayPng, encodeRgbPng } from './png.mjs';
+import { decodeGrayPng, encodeRgbPng } from '../png.mjs';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const climateDir = join(repoRoot, 'assets-src', 'climate');
 const elevationPath = join(climateDir, 'gebco_08_rev_elev_21600x10800.png');
 const cloudFractionDir = join(climateDir, 'cloud-fraction');
