@@ -2,8 +2,15 @@
 // 受け手が使うメンバだけを持つ。
 import type { KeyBinding } from '../input/key-mapping';
 import type { Vec3 } from '../math/vec3';
+import type { CelestialBody } from '../physics/celestial-body';
 import type { KinematicState } from '../physics/kinematic-state';
+import type { CelestialBodies } from './celestial/celestial-bodies';
+import type { CombatTarget } from './dynamic/dynamic-entity/combat-target';
+import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
+import type { BurnManagementViewModel } from './hud/panels/burn-management-panel';
+import type { PowerSystem } from './player/power';
+import type { RadiatorSystem } from './player/radiator';
 import type { ViewMode } from './view/view-mode';
 import type { FocusTarget } from './viewer/focus-target';
 import type { OrbitReferenceSelection } from './viewer/orbit-reference-selection';
@@ -89,6 +96,64 @@ export interface PresentationShip {
   readonly assembly: {
     readonly modules: readonly PresentationShipModule[];
   };
+}
+
+// 艦の運動のうち提示が読む部分。動圧と、展開物の展開状態。
+export interface PresentationShipMotion {
+  readonly aero: { readonly qdyn: number };
+  readonly power: PowerSystem;
+  readonly radiator: RadiatorSystem;
+}
+
+// 艦の RCS 燃料と燃焼管理の読み取り面。
+export interface PresentationShipSystems {
+  readonly motion: PresentationShipMotion;
+  readonly totalRcsFuel: number;
+  readonly totalMaxRcsFuel: number;
+  burnManagementViewModel(): BurnManagementViewModel | null;
+}
+
+// mapKind が player/base の個体は ModularShip で、艦の面を持つ。player/base を立てるのは
+// ModularShip の構築と更新だけなので、種別での判定は instanceof と同じ意味になる。
+export function isPresentationShip(
+  entity: { readonly mapKind: DynamicEntityKind | null },
+): entity is DynamicEntity & PresentationShip & PresentationShipSystems {
+  return entity.mapKind === 'player' || entity.mapKind === 'base';
+}
+
+// 敵の読み取り面。所属するウェーブの番号。ウェーブに属さない敵は null。
+export interface PresentationEnemy {
+  readonly waveId: number | null;
+}
+
+// mapKind が enemy の個体は Enemy で、戦闘対象の面と敵の面を持つ。enemy を立てるのは
+// Enemy の宣言だけなので、種別での判定は instanceof と同じ意味になる。
+export function isPresentationEnemy(
+  entity: { readonly mapKind: DynamicEntityKind | null },
+): entity is CombatTarget & PresentationEnemy {
+  return entity.mapKind === 'enemy';
+}
+
+// 天体1体の提示用の面。運動と、地表テクスチャの有無。
+export interface PresentationCelestialEntity {
+  readonly motion: CelestialBody;
+  readonly view: { readonly surfaceTextureUrl: string | null };
+}
+
+// 天体系の提示用の面。表示名・天体の索引・系の物理を、構築の全体から切り離して読む。
+export interface PresentationCelestialSystem extends CelestialBodies {
+  find(id: string): PresentationCelestialEntity | null;
+  entityOf(id: string): PresentationCelestialEntity;
+}
+
+// 動的個体の一覧を読む面。提示が要るのは全個体だけ。
+export interface PresentationDynamicSystem {
+  all(): readonly DynamicEntity[];
+}
+
+// 生存中の標的を読む面。提示が要るのは生存中の対象だけ。
+export interface PresentationTargeter {
+  readonly aliveTarget: CombatTarget | null;
 }
 
 // マップでの物体配置の面。配置窓と複製の開始。

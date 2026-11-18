@@ -10,6 +10,7 @@ import { viewCommands } from '../../src/game/viewer/view-commands';
 import type {
   PresentationShip, PresentationShipModule, PresentationSimSpeed, PresentationViewSelection,
 } from '../../src/game/presentation-ports';
+import { isPresentationEnemy, isPresentationShip } from '../../src/game/presentation-ports';
 
 // 素の部品列から艦の面を組む。
 function testShip(modules: readonly PresentationShipModule[], controllable: boolean): PresentationShip {
@@ -38,6 +39,22 @@ export function register(): void {
     assert.equal(hasUsableConstructionDock(testShip([BROKEN_DOCK], true)), false);
     assert.equal(hasUsableConstructionDock(testShip([PORT], true)), false);
     assert.equal(hasUsableConstructionDock(testShip([], true)), false);
+  });
+
+  test('presentation-ports: mapKind の艦判定は player/base だけ', () => {
+    assert.equal(isPresentationShip({ mapKind: 'player' }), true);
+    assert.equal(isPresentationShip({ mapKind: 'base' }), true);
+    assert.equal(isPresentationShip({ mapKind: 'enemy' }), false);
+    assert.equal(isPresentationShip({ mapKind: 'ammo' }), false);
+    assert.equal(isPresentationShip({ mapKind: 'fuel' }), false);
+    assert.equal(isPresentationShip({ mapKind: null }), false);
+  });
+
+  test('presentation-ports: mapKind の敵判定は enemy だけ', () => {
+    assert.equal(isPresentationEnemy({ mapKind: 'enemy' }), true);
+    assert.equal(isPresentationEnemy({ mapKind: 'player' }), false);
+    assert.equal(isPresentationEnemy({ mapKind: 'base' }), false);
+    assert.equal(isPresentationEnemy({ mapKind: null }), false);
   });
 
   test('presentation-ports: 時間加速の命令は面の管理者へ列で届く', () => {
