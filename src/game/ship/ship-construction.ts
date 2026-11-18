@@ -90,6 +90,7 @@ export interface ShipConstructionPanelPort {
   onRotate: ((delta: 1 | -1) => void) | null;
   onSwapEnds: (() => void) | null;
   onCycleSymmetry: (() => void) | null;
+  onFocus: (() => void) | null;
   onUndo: (() => void) | null;
   onRedo: (() => void) | null;
   onJumpHistory: ((index: number) => void) | null;
