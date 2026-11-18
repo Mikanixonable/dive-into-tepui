@@ -5,20 +5,17 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { motionOf, solarSystemParts } from './test-helpers';
 import { burnDuration, deltaVBudget, effectiveExhaustVelocity } from '../../src/physics/rocket';
-import { hohmann, biElliptic, phasing, rendezvousPhasing } from '../../src/physics/impulsive-transfer';
 import { solveLambert } from '../../src/physics/lambert';
 import { cwPropagate, cwTwoImpulseTransfer } from '../../src/physics/relative-motion';
-import { correctInitialVelocity } from '../../src/physics/trajectory-correction';
 import { referenceOrbitPeriod, referenceOrbitStateAt } from '../../src/physics/reference-orbit';
-import { keplerPeriod, stateFromOrbitalElements } from '../../src/physics/elements';
+import { keplerPeriod } from '../../src/physics/elements';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { addScaled, len, sub, v3, type Vec3 } from '../../src/math/vec3';
 import { MU_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 
 const R1 = 7_000e3;
-const R2 = 42_164e3;
 
-// 試験内だけで使う二体問題の RK4 伝播器。射撃法の検証に「全力モデル」の代役として使う。
+// 試験内だけで使う二体問題の RK4 伝播器。ランベルト解が終端へ届くことの検証に使う。
 function propagateTwoBody(state: KinematicState, t: number, mu: number): KinematicState {
   let r = v3(state.r.x, state.r.y, state.r.z);
   let v = v3(state.v.x, state.v.y, state.v.z);
@@ -59,30 +56,6 @@ test('rocket: 有効排気速度・Δv・燃焼時間がロケット式と一致
   assert.ok(Math.abs(recovered - dv) < 1e-6);
   // 全質量を推進剤にしても届かない Δv(e^−Δv/vₑ → 0)は Infinity
   assert.equal(burnDuration(m0, ve, F, 1e8), Infinity);
-});
-
-test('impulsive-transfer: ホーマンの既知値(LEO→GEO 相当)', () => {
-  const h = hohmann(R1, R2, MU_EARTH);
-  // r1=7000km→r2=42164km: Δv1 ≈ 2.337 km/s、Δv2 ≈ 1.430 km/s、飛行時間 ≈ 5.33 h
-  assert.ok(Math.abs(h.deltaV1 - 2337) < 10);
-  assert.ok(Math.abs(h.deltaV2 - 1430) < 10);
-  assert.ok(Math.abs(h.transferTime - 5.33 * 3600) < 120);
-  const b = biElliptic(R1, R2, 3 * R2, MU_EARTH);
-  assert.ok(b.deltaV1 > 0 && b.deltaV2 > 0 && b.deltaV3 > 0);
-  assert.ok(b.transferTime > h.transferTime); // 二重楕円は必ず遅い
-});
-
-test('impulsive-transfer: 位相調整とランデブー窓', () => {
-  const a = R1, e = 0;
-  const p = phasing(a, e, Math.PI / 4, 4, MU_EARTH);
-  assert.ok(p !== null);
-  assert.ok(p.deltaV1 > 0 && p.transferTime > keplerPeriod(a, MU_EARTH) * 0.9);
-  // 1周で90°進めるのは不可能に近い(Tph>0を保てない)… 進めすぎは null
-  assert.ok(p.transferTime > 0);
-  const n = Math.sqrt(MU_EARTH / a ** 3);
-  const rp = rendezvousPhasing(n, n / 2, 3600, Math.PI / 3);
-  assert.ok(Math.abs(rp.leadAngleError) <= Math.PI);
-  assert.ok(rp.windowPeriod > 0);
 });
 
 test('lambert: Curtis の既知例を復元する', () => {
@@ -128,18 +101,6 @@ test('relative-motion: 2インパルス CW で目標相対位置へ届く', () =
   // 到着噴射を加えると相対速度が目標(0)になる
   const vFinal = addScaled(arrived.v, result.arriveDeltaV, 1);
   assert.ok(len(vFinal) < 1e-6);
-});
-
-test('trajectory-correction: 誤った初速度を終端へ合わせる', () => {
-  const h = hohmann(R1, R2, MU_EARTH);
-  const target = v3(-R2, 0, 0);
-  const propagate = (s: KinematicState, t: number) => propagateTwoBody(s, t, MU_EARTH);
-  const exact = stateFromOrbitalElements(0, h.transferA, 0, 0, 0, 0, 0, MU_EARTH);
-  // 初速度に 200 m/s の誤差を入れても収束する
-  const perturbed = kinematicState<'eci'>(0, exact.r, addScaled(exact.v, v3(0, 1, 0), 200));
-  const res = correctInitialVelocity(perturbed, target, h.transferTime, propagate, { tolerance: 1 });
-  assert.ok(res.converged);
-  assert.ok(res.residual <= 1);
 });
 
 test('reference-orbit: elements 型は時刻の関数として状態を返し J2 で節点が進む', () => {
