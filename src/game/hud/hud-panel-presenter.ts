@@ -2,15 +2,14 @@
 import { len, sub } from '../../math/vec3';
 import { frameRoleOf } from '../../physics/frame';
 import { orbitInfo, relativeInfo } from '../orbit-info';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { isModularShip } from '../ship/modular-ship';
 import { hasUsableConstructionDock } from '../ship/construction-entry';
 import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import { deployableCommands, type DeployableCommands } from '../player/deployable-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from '../viewer/orbit-reference-commands';
 import { viewCommands } from '../viewer/view-commands';
 import { focusTargetId } from '../viewer/focus-target';
+import { isPresentationEnemy, isPresentationShip } from '../presentation-ports';
 import { ViewBadge } from './view-badge';
 import { frameRoleName } from './frame/frame-labels';
 import type { Hud, HudPanelViewModels } from './hud';
@@ -20,17 +19,15 @@ import type { TargetPanelViewModel } from './panels/target-panel';
 import type { EnemyContact } from './panels/enemies-panel';
 import type { ApproachTargetSource } from './orbit/orbit-analysis-data';
 import type { CommandQueue } from '../command-queue';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ControlSelection } from '../control-selection';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type {
-  PresentationCameraSystem, PresentationDisplayWindow, PresentationInput,
-  PresentationNavigationCommand, PresentationObjectWindows, PresentationSimSpeed,
-  PresentationStage, PresentationViewer,
+  PresentationCameraSystem, PresentationCelestialSystem, PresentationDisplayWindow,
+  PresentationDynamicSystem, PresentationInput, PresentationNavigationCommand,
+  PresentationObjectWindows, PresentationSimSpeed, PresentationStage, PresentationTargeter,
+  PresentationViewer,
 } from '../presentation-ports';
-import type { Targeter } from '../targeter';
 import type { OrbitReference } from '../orbit-reference';
 import type { ViewMode } from '../view/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
@@ -47,14 +44,14 @@ export class HudPanelPresenter {
   public constructor(
     private readonly hud: Hud,
     commands: CommandQueue,
-    private readonly celestialSystem: CelestialSystem,
-    private readonly dynamicSystem: DynamicSystem,
+    private readonly celestialSystem: PresentationCelestialSystem,
+    private readonly dynamicSystem: PresentationDynamicSystem,
     private readonly controlSelection: ControlSelection,
     private readonly simSpeedManager: PresentationSimSpeed,
     private readonly stage: PresentationStage,
     private readonly viewer: PresentationViewer,
     private readonly input: PresentationInput,
-    private readonly targeter: Targeter,
+    private readonly targeter: PresentationTargeter,
     private readonly objectWindows: PresentationObjectWindows,
     private readonly cameraSystem: PresentationCameraSystem,
     private readonly navigationCommand: PresentationNavigationCommand,
@@ -143,7 +140,7 @@ export class HudPanelPresenter {
         contacts: this.enemyContacts(combatControlled),
         onSelectRight: (id, x, y) => this.objectWindows.openEnemy(id, x, y),
       },
-      burnManagement: controlled !== null && isModularShip(controlled)
+      burnManagement: controlled !== null && isPresentationShip(controlled)
         ? controlled.burnManagementViewModel() : null,
       mapFocus: this.cameraSystem.mapResolvedFocus,
       analysisSource: {
@@ -159,7 +156,7 @@ export class HudPanelPresenter {
 
   // 操作対象の装備・燃料・姿勢の状態と、建造の入口・代替操作用のコールバック。
   private vesselViewModel(controlled: Controllable, view: ViewMode): VesselPanelViewModel {
-    const ship = isModularShip(controlled) ? controlled : null;
+    const ship = isPresentationShip(controlled) ? controlled : null;
     const motion = ship?.motion ?? null;
     const power = motion?.power ?? null;
     const radiator = motion?.radiator ?? null;
@@ -203,7 +200,7 @@ export class HudPanelPresenter {
       controlled, reference, controlled.motion.state.t, (id: string) => this.celestialSystem.nameOf(id),
     );
     const motion = controlled.motion;
-    const ship = isModularShip(controlled) ? controlled : null;
+    const ship = isPresentationShip(controlled) ? controlled : null;
     const targetName = this.viewer.navTarget.name;
     // 軌道の数値は基準に対して解き、警告と切替の状態は操作対象から直に引く。
     return {
@@ -253,7 +250,7 @@ export class HudPanelPresenter {
     const viewerPos = controlled.motion.state.r;
     const primaryTarget = this.targeter.aliveTarget;
     return this.dynamicSystem.all()
-      .filter(isEnemy)
+      .filter(isPresentationEnemy)
       .filter((enemy) => enemy.motion.alive)
       .map((enemy) => ({
         id: enemy.id,
