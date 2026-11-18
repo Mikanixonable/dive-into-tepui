@@ -407,11 +407,14 @@ function buildChaseReset(root: HTMLElement): void {
   });
 }
 
-// 右上の常設バッジ列(ヘルプ)を組む。右レール収納トグルの左へ並ぶ。
-function buildChromeActions(root: HTMLElement, chrome: HTMLElement, helpPanel: HelpPanel): void {
+// 右上の常設バッジ列を組む。右レール収納トグルの左へ並ぶ。
+function buildChromeActions(
+  root: HTMLElement, chrome: HTMLElement, helpPanel: HelpPanel, onPauseBadge: () => void,
+): void {
   const actions = createHudElement('div', 'hud-chrome-actions', chrome);
   buildTopBarToggle(actions, root);
   buildWideScreenToggle(actions, root);
+  buildPauseBadge(actions, onPauseBadge);
   buildHelpBadge(actions, helpPanel);
 }
 
@@ -455,6 +458,18 @@ function buildWideScreenToggle(root: HTMLElement, host: HTMLElement): void {
   button.setAttribute('title', '画面を広く使う(TAB)');
   button.innerHTML = `<span class="hud-mini-code" aria-hidden="true">${K.wideScreenToggle.label}</span><span aria-hidden="true">⤢</span>`;
   button.addEventListener('click', () => toggleHudWideScreen(host));
+}
+
+// Esc キーの代替操作ボタン(⚙アイコン)。CONTROLS.md が Esc と同じ振る舞い(最前面の
+// オーバーレイを閉じる、無ければ ESC メニューを開く)と定めるので、押下は受け口へそのまま渡す。
+// 表示可否は CSS(body.touch-ui-active)側が持つ — ここでは常に組む。
+function buildPauseBadge(root: HTMLElement, onPause: () => void): void {
+  const badge = createHudElement('button', 'hud-pause-badge', root, 'ui-surface-quiet');
+  badge.setAttribute('type', 'button');
+  badge.setAttribute('aria-label', 'ESC メニューを開く');
+  badge.setAttribute('title', 'ESC メニュー(ESC)');
+  badge.innerHTML = `<span class="hud-mini-code" aria-hidden="true">${K.pauseMenu.label}</span><span aria-hidden="true">⚙</span>`;
+  badge.addEventListener('click', onPause);
 }
 
 // H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
@@ -504,8 +519,9 @@ function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRa
 }
 
 // HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
+// onPauseBadge は⚙バッジの押下の受け口。
 export function buildHudDom(
-  shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle,
+  shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle, onPauseBadge: () => void,
 ): HudDomRefs {
   injectStyle();
   startViewportTracking();
@@ -525,7 +541,7 @@ export function buildHudDom(
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
   buildTopBar(chrome);
   buildChaseReset(chrome);
-  buildChromeActions(root, chrome, helpPanel);
+  buildChromeActions(root, chrome, helpPanel, onPauseBadge);
   trackHudChromeInset(root, chrome);
 
   buildMapScale(mapRoot.element);

@@ -69,6 +69,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud.construction-mode #hud-map-scale,
 #hud.construction-mode #hud-chase-reset,
 #hud.construction-mode #hud-help-badge,
+#hud.construction-mode #hud-pause-badge,
 #hud.construction-mode #hud-topbar-toggle,
 #hud.construction-mode #hud-wide-toggle,
 #hud.construction-mode .rail-toggle { display: none !important; }
@@ -103,6 +104,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-map-scale,
   #hud-chase-reset,
   #hud-help-badge,
+  #hud-pause-badge,
   #hud-toast { background: var(--surface-opaque); }
 }
 #hud .panel-shell-collapse {
@@ -293,6 +295,9 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 #hud-chrome-actions > *:hover { background: var(--surface-2); color: var(--color-primary-hover); }
 #hud-chrome-actions > *:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+/* ⚙バッジの表示可否は、仮想パッドと同じ body.touch-ui-active(TouchControls が持つ正本)へ載せる。 */
+#hud-pause-badge { display: none; }
+body.touch-ui-active #hud-pause-badge { display: flex; }
 #hud .hud-mini-code {
   color: var(--role-meta); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-code);
 }

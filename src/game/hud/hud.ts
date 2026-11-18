@@ -51,6 +51,9 @@ export class Hud implements HudLayers, Notifier {
   public get overlayManager(): OverlayManager { return this.shell.overlayManager; }
   public readonly combatRoot: HTMLElement;
   public readonly mapRoot: HTMLElement;
+  // ⚙バッジ(ESC メニューの代替操作ボタン)が押されたときに呼ばれる受け口。配線側が
+  // 物理 Esc と同じ仮想キーの経路へつなぐ。
+  public onPauseBadge: (() => void) | null = null;
   private readonly helpPanel: HelpPanel;
   private readonly topBar: TopBar;
   public readonly viewBadgeRow: HTMLElement;
@@ -75,7 +78,7 @@ export class Hud implements HudLayers, Notifier {
     private readonly shell: HudShell, public readonly panelCollapse: PanelCollapse, renderStyle: RenderStyle,
   ) {
     const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(
-      shell, panelCollapse, renderStyle,
+      shell, panelCollapse, renderStyle, () => this.onPauseBadge?.(),
     );
     this.combatRoot = combatRoot.element;
     this.mapRoot = mapRoot.element;
