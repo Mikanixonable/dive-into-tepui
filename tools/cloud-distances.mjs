@@ -122,7 +122,7 @@ function motionConsistencyDistance(drift) {
 
 // 実物の動きと生成の動きの距離。箱ごとに、相関曲線の差(時刻 0 を除く各時刻の |Δ相関| の
 // 平均)と、移流ベクトルの差(向きの差と速さ比)を項とする。移流は生成の composite 対 実物
-// 赤外で比べる(被覆率は参考値で、距離には入れない)。片方の速さだけが 0 のとき、向きの差
+// 赤外で比べる(積雲の不透明度は参考値で、距離には入れない)。片方の速さだけが 0 のとき、向きの差
 // と速さ比はどちらも「最も違う」として 1 とする。
 function motionReferenceDistance(referenceMotion) {
   const terms = [];
@@ -411,6 +411,57 @@ function fineStreakWindDistance(fineStructure, fineMotion) {
   return terms.length === 0 ? null : mean(terms);
 }
 
+// 大きな尺度の偏り(ブロック平均の分散の偏り指数 I_B)の距離。帯 × 海陸 × 場の対ごとに、
+// 尺度別の log10 I_B の差を実写の小領域(帯の経度 4 分割)の標準偏差で割った項、
+// ブロック平均の分位の差を実写の 10〜90% 幅で割った項、晴れ間・厚いブロックの割合の差、
+// log I_B 対 log B の傾きの差(小領域の標準偏差で割る)を集める。
+// 実写の小領域のばらつきが取れない対(陸がほぼ無い帯の陸層など)は項を持たない。
+// 項が 1 つも無ければ測れない (null) とし、0 (一致) とは区別する。
+function coverageClumpingDistance(coverageClumping) {
+  const terms = [];
+  for (const band of coverageClumping.bands) {
+    for (const stratum of band.strata) {
+      for (const field of stratum.fields) {
+        const ref = field.reference;
+        const gen = field.generated;
+        const measurable = ref.scales.some((s) => s.indexSpread !== null && s.indexSpread > 0);
+        if (!measurable) continue;
+        for (const rs of ref.scales) {
+          const gs = gen.scales.find((s) => s.blockKm === rs.blockKm);
+          if (gs === undefined) continue;
+          // 小領域の 2 箇所以上で測れない尺度は標本が薄いので、分位・割合の項も含めて捨てる。
+          if (rs.spreadRegions < 2) continue;
+          if (rs.indexSpread > 0 && rs.index > 0 && gs.index > 0) {
+            terms.push(Math.abs(Math.log10(gs.index) - Math.log10(rs.index)) / rs.indexSpread);
+          }
+          if (rs.indexBinSpread > 0 && rs.indexBin > 0 && gs.indexBin > 0) {
+            terms.push(Math.abs(Math.log10(gs.indexBin) - Math.log10(rs.indexBin)) / rs.indexBinSpread);
+          }
+          const width = rs.quantiles.p90 - rs.quantiles.p10;
+          if (width > 1e-9) {
+            for (const key of ['p10', 'p25', 'p50', 'p75', 'p90']) {
+              terms.push(Math.abs(gs.quantiles[key] - rs.quantiles[key]) / width);
+            }
+            terms.push(Math.abs((gs.quantiles.p90 - gs.quantiles.p10) - width) / width);
+          }
+          terms.push(
+            Math.abs(gs.clearShare - rs.clearShare),
+            Math.abs(gs.denseShare - rs.denseShare),
+            Math.abs(gs.denseRelShare - rs.denseRelShare),
+          );
+        }
+        if (ref.slopeSpread > 0 && ref.slope !== null && gen.slope !== null) {
+          terms.push(Math.abs(gen.slope - ref.slope) / ref.slopeSpread);
+        }
+        if (ref.slopeBinSpread > 0 && ref.slopeBin !== null && gen.slopeBin !== null) {
+          terms.push(Math.abs(gen.slopeBin - ref.slopeBin) / ref.slopeBinSpread);
+        }
+      }
+    }
+  }
+  return terms.length === 0 ? null : mean(terms);
+}
+
 export function computeDistances(sections) {
   const families = {};
   if (sections.zonal) families.zonal = zonalDistance(sections.zonal);
@@ -453,6 +504,10 @@ export function computeDistances(sections) {
     if (cirrusSpectrum !== null) families.cirrusSpectrum = cirrusSpectrum;
     const cirrusStreaks = cirrusStreaksDistance(sections.cirrusStructure);
     if (cirrusStreaks !== null) families.cirrusStreaks = cirrusStreaks;
+  }
+  if (sections.coverageClumping?.bands?.length) {
+    const coverageClumping = coverageClumpingDistance(sections.coverageClumping);
+    if (coverageClumping !== null) families.coverageClumping = coverageClumping;
   }
   return { families, index: mean(Object.values(families)) };
 }

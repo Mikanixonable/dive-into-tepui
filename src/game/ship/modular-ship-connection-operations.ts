@@ -29,7 +29,7 @@ interface DockedVesselRecord {
   readonly name: string;
 }
 
-export interface ModularShipConnectionHost {
+interface ModularShipConnectionHost {
   readonly ship: ModularShip;
   readonly id: string;
   readonly name: string;

@@ -257,6 +257,12 @@ function earth(): LabCase {
       'earth-terminator': { view: EARTH_TERMINATOR_SUN },
       'earth-twilight': { view: EARTH_TERMINATOR_SUN },
       'earth-low-sun': { view: EARTH_LOW_SUN },
+      // 巻雲だけの空(積雲オフ)を低い太陽で照らす。巻雲の影は積雲の立体を描かない設定でも
+      // 落ちなければならない — 巻雲の筋の下の地表が暗くなるかを見る。
+      'earth-cirrus-shadow': {
+        view: EARTH_LOW_SUN,
+        graphics: { cumulus: false },
+      },
       // 日食。**大気の明暗は入射角だけでなく影の濃さにも比例する**ので、リムともやの両方へ影の落ちた
       // 斑が出る。斑は本影(半径 60km)を半影(340km)が縁取る。
       'earth-eclipse': { view: EARTH_ECLIPSE_SUN },
@@ -299,7 +305,7 @@ const EARTH_MARS_PLACEMENT = placementBelowHorizon(
 function earthMars(): LabCase {
   const marsCenter = new THREE.Vector3(0, 0, -EARTH_MARS_DISTANCE);
   const mars = texturedBody(MARS_TEXTURE, MARS, marsCenter, CLOSE_UP_DIAMETER_PX);
-  const marsRadii = shapeSpheroidRadii(MARS.radius, MARS.shape);
+  const marsRadii = shapeSpheroidRadii(MARS.radius, MARS.shape ?? null);
   return {
     objects: [mars.object],
     camera: labCamera(),

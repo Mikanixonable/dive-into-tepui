@@ -30,8 +30,8 @@ type OrbitLineBasis =
   | { readonly kind: 'none' };
 
 // fixed / hasMass / attractor / entity の組み合わせを解くのはここだけにする。
-export function orbitLineBasisOf(ref: OrbitReference | undefined, self: DynamicEntity): OrbitLineBasis {
-  if (ref === undefined || !ref.fixed) return { kind: 'ellipse', center: null };
+export function orbitLineBasisOf(ref: OrbitReference | null, self: DynamicEntity): OrbitLineBasis {
+  if (ref === null || !ref.fixed) return { kind: 'ellipse', center: null };
   if (ref.hasMass) return { kind: 'ellipse', center: ref.attractor };
   if (ref.entity !== null && ref.entity !== self) return { kind: 'relative', target: ref.entity };
   return { kind: 'none' };

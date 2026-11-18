@@ -3,9 +3,10 @@
 // どちらか片方だけの改名は構築時点のエラーになる。
 
 // HUD の静的 DOM が data-id で公開する要素の id 一覧。
-export const HUD_ELEMENT_IDS = [
+const HUD_ELEMENT_IDS = [
   'alt',
   'ammo',
+  'ammo-row',
   'ap',
   'ap-label',
   'burn-active-fuel-meter',
@@ -71,6 +72,8 @@ export const HUD_ELEMENT_IDS = [
   'hud-vessel-status',
   'hud-vessel-status-summary',
   'inc',
+  'main-fuel-meter',
+  'main-fuel-value',
   'map-scale',
   'map-scale-ruler',
   'map-scale-value',

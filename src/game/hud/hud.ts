@@ -1,7 +1,8 @@
 // ゲーム画面の HUD のシェル。常設パネル群と描画先(root)を持ち、
 // 毎フレーム渡された値へ同期して、トースト・ヘルプを出す。
 import type { RenderStyle } from '../../render/render-style';
-import { buildHudDom } from './hud-root';
+import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { buildHudDom, toggleHudWideScreen } from './hud-root';
 import type { HudLayers } from './hud-layers';
 import type { PanelCollapse } from './panel-shell';
 import type { ViewMode } from '../view/view-mode';
@@ -143,7 +144,7 @@ export class Hud implements HudLayers, Notifier {
     this.burnManagementPanel.sync(null);
   }
 
-  // view で表に出ている常設パネルと、控えられたトーストを panels の値へ合わせる。
+  // view で表に出ている常設パネルと、控えられたトーストを同期する。
   // camera はこのフレームの表示カメラで、縮尺表示が読む。nowMs はフレームの実時刻 [ms]。
   public syncPanels(
     view: ViewMode, panels: HudPanelViewModels, camera: CameraFrame, nowMs: number,
@@ -217,6 +218,10 @@ export class Hud implements HudLayers, Notifier {
 
   // router から HUD 固有の単発入力を受け取る。
   public handleCommand(commandId: string): void {
+    if (commandId === K.wideScreenToggle.code) {
+      toggleHudWideScreen(this.root);
+      return;
+    }
     this.helpPanel.handleCommand(commandId);
   }
 }

@@ -1,28 +1,35 @@
 // 雲場テクスチャを、天体固定の単位方向から読む。焼いた側と同じ cap の置き方を写し取り、同じ uv
 // で読む。差し込まれたテクスチャは借り物で、解放は差し込んだ側が行う。
 import * as THREE from 'three/webgpu';
-import { dot, step, texture, uniform } from 'three/tsl';
-import { EMPTY_CLOUD_FIELD, EMPTY_WIND_FIELD } from './cumulus-shape';
+import { dot, step, uniform } from 'three/tsl';
+import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
+import { distinctTextureNode } from '../distinct-texture-node';
 import { orthographicCapUv, type CapPlacement } from '../field-projection';
-import { cloudSampleFromTexel, type CloudSample } from './cloud-field-sample';
-import { windSampleFromTexel, type WindSample } from './cloud-wind-sample';
-import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
+import {
+  blendBakedTexels, cloudMotionFromTexel, cloudSampleFromTexels,
+  type CloudBlend, type CloudFieldSlot, type CloudMotion, type CloudSample,
+} from './cloud-field-sample';
+import type { FloatUniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../tsl-types';
 
-// 焼いた雲場と、それを焼いた cap の置き方の組。場を出す側が毎フレーム公開し、読み手が写し取る。
+// 焼いた雲場の 2 枚と、それを焼いた cap の置き方の組。場を出す側が毎フレーム公開し、読み手が写し取る。
 export interface CloudFieldBinding {
-  readonly texture: THREE.Texture;
+  readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
+  // 2 枚の混ぜ方。読んだ時点の値を写す。
+  readonly blend: CloudBlend;
   readonly cap: CapPlacement;
-  // 描画時の風のテクスチャ。風を焼かない出どころでは null。
-  readonly windTexture: THREE.Texture | null;
 }
 
 export class CloudFieldSampler {
-  // 読む雲場のテクスチャノード。場が結ばれるまでは EMPTY_CLOUD_FIELD を読み、bind は同じノードの
-  // 値を差し替える。
-  private readonly field = texture(EMPTY_CLOUD_FIELD);
-  // 読む風場のテクスチャノード。場が結ばれるまでは EMPTY_WIND_FIELD を読み、bind は同じノードの
-  // 値を差し替える。
-  private readonly wind = texture(EMPTY_WIND_FIELD);
+  // 読む雲場 2 枚ぶんのテクスチャノード(雲・風・環境の枚ごと)。場が結ばれるまでは EMPTY_CLOUD_FIELD を読み、
+  // bind は同じノードの値を差し替える。**6 つとも結びを別々に固定する** — 起動時に場を結ぶ前にシェーダを組むと、
+  // 全部が同じ空の写しを指して 1 つの結びへ合わさり、あとから別々の枚を結んでも、雲・風・環境の 6 つの読みが
+  // 全部、先に使われた 1 枚(雲の 0 枚目)を読む。2 枚の補間も、風・環境も効かなくなる。
+  private readonly clouds = [distinctTextureNode(EMPTY_CLOUD_FIELD), distinctTextureNode(EMPTY_CLOUD_FIELD)] as const;
+  private readonly motions = [distinctTextureNode(EMPTY_CLOUD_FIELD), distinctTextureNode(EMPTY_CLOUD_FIELD)] as const;
+  private readonly environments = [distinctTextureNode(EMPTY_CLOUD_FIELD), distinctTextureNode(EMPTY_CLOUD_FIELD)] as const;
+  // 2 枚の混ぜ方。古い側の枚の番号と混合比。
+  private readonly parity: FloatUniform = uniform(0);
+  private readonly fraction: FloatUniform = uniform(0);
   // 焼いた側の cap の置き方。グラフは一度組めば済み、値だけが毎フレーム入れ替わる。
   private readonly center: Vec3Uniform = uniform(new THREE.Vector3(0, 0, 1));
   private readonly east: Vec3Uniform = uniform(new THREE.Vector3(1, 0, 0));
@@ -32,8 +39,14 @@ export class CloudFieldSampler {
 
   // 焼いた場と、それを焼いた cap の置き方を写し取る。テクスチャの所有権は移らない。
   public bind(binding: CloudFieldBinding): void {
-    this.field.value = binding.texture;
-    this.wind.value = binding.windTexture ?? EMPTY_WIND_FIELD;
+    for (const slot of [0, 1] as const) {
+      this.clouds[slot].value = binding.slots[slot].cloud;
+      this.motions[slot].value = binding.slots[slot].motion;
+      this.environments[slot].value = binding.slots[slot].environment;
+    }
+    // 同じ供給源の値を焼き直し後も読み続けられるよう、参照と cap の枠を揃える。
+    this.parity.value = binding.blend.parity;
+    this.fraction.value = binding.blend.fraction;
     this.center.value.copy(binding.cap.center);
     this.east.value.copy(binding.cap.east);
     this.north.value.copy(binding.cap.north);
@@ -41,26 +54,48 @@ export class CloudFieldSampler {
     this.cosRadius.value = binding.cap.cosRadius;
   }
 
-  // 単位方向 direction の、cap へ写した uv と cap の内側かどうかの 0/1。雲と風の読みで共有する。
-  private capUv(direction: Vec3Node): { uv: Vec2Node; inside: FloatNode } {
-    return {
-      uv: orthographicCapUv(direction, this.east, this.north, this.sinRadius),
-      inside: step(this.cosRadius, dot(direction, this.center)),
-    };
+  // 結んだ場と cap の枠を空へ戻す。雲を読まない区間に古い場が残らないようにする。
+  public unbind(): void {
+    for (const slot of [0, 1] as const) {
+      this.clouds[slot].value = EMPTY_CLOUD_FIELD;
+      this.motions[slot].value = EMPTY_CLOUD_FIELD;
+      this.environments[slot].value = EMPTY_CLOUD_FIELD;
+    }
+    this.parity.value = 0;
+    this.fraction.value = 0;
+    this.center.value.set(0, 0, 1);
+    this.east.value.set(1, 0, 0);
+    this.north.value.set(0, 1, 0);
+    this.sinRadius.value = 1;
+    this.cosRadius.value = -1;
+  }
+
+  // 2 枚の同じ uv の読みを、混ぜ方で合わせる。
+  private blend(pair: readonly [THREE.TextureNode, THREE.TextureNode], uv: Vec2Node): Vec4Node {
+    return blendBakedTexels(pair[0].sample(uv), pair[1].sample(uv), this.parity, this.fraction);
   }
 
   // 単位方向 direction の雲標本を、生成時と同じ単位で読む。**cap の外は「雲なし」を返す** —
   // 返さないと縁の値が外へ伸び、裏側の半球では表側の雲を鏡映しに読む。
   public sampleCloud(direction: Vec3Node): CloudSample {
-    const { uv, inside } = this.capUv(direction);
-    return cloudSampleFromTexel(this.field.sample(uv).mul(inside) as Vec4Node);
+    const inside = step(this.cosRadius, dot(direction, this.center));
+    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    const cloudTexel = this.blend(this.clouds, uv).mul(inside) as Vec4Node;
+    const environmentTexel = this.blend(this.environments, uv).mul(inside) as Vec4Node;
+    return cloudSampleFromTexels(cloudTexel, environmentTexel);
   }
 
-  // 単位方向 direction の風標本を、雲と同じ cap の置き方で読む。cap の外は風なしを返す。
-  // 復号がアフィン変換なので、雲と違って texel へ掛けるのではなく復号した風と陸へ掛ける。
-  public sampleWind(direction: Vec3Node): WindSample {
-    const { uv, inside } = this.capUv(direction);
-    const sample = windSampleFromTexel(this.wind.sample(uv) as Vec4Node);
-    return { wind: sample.wind.mul(inside), land: sample.land.mul(inside) };
+  // 単位方向 direction の場の texel(積雲・巻雲・筋の向き)だけを、2 枚の混ぜ方で読む。環境は読まない。cap の外は 0。
+  public sampleField(direction: Vec3Node): Vec4Node {
+    const inside = step(this.cosRadius, dot(direction, this.center));
+    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    return this.blend(this.clouds, uv).mul(inside) as Vec4Node;
+  }
+
+  // 単位方向 direction で雲を運ぶ風。cap の外は 0。
+  public sampleMotion(direction: Vec3Node): CloudMotion {
+    const inside = step(this.cosRadius, dot(direction, this.center));
+    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    return cloudMotionFromTexel(this.blend(this.motions, uv).mul(inside) as Vec4Node);
   }
 }

@@ -263,6 +263,7 @@ export class GamePresentation {
       this.planDisplay, this.planPath, planCommands(commands), this.orbitSlots,
       scene.scene, hud, this.uiSounds, this.navTargetPresenter, targetCommands,
       viewOptionsSettings.mapDisplay,
+      () => game.activeStage.revealedBodies,
     );
     this.viewManager = new ViewManager(
       viewer.view, this.touchControls, { combat: this.combatView, map: this.mapView },
@@ -273,41 +274,52 @@ export class GamePresentation {
       game.orbitSlots, celestialSystem.orbitGuide.orbitCatalog,
       hud.overlayManager, (message) => hud.hint(message), () => game.simTime,
     );
-    // 最寄りの使用可能ドックから建造を始める。Bキーと艦のステータスパネルの「建造」が共有する。
-    const startConstructionNearest = (): void => {
-      const controlled = game.activeControllable;
-      const camera = this.cameraFrame;
-      if (controlled === null || camera === null || !isModularShip(controlled)) return;
-      this.constructionEntry.startNearestDock(controlled, camera.viewpoint.position);
-    };
     this.hudPanels = new HudPanelPresenter(
       hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
       activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
-      this.navigationCommand, startConstructionNearest, () => this.shipConstruction.active,
+      this.navigationCommand, () => this.startConstructionNearest(), () => this.shipConstruction.active,
     );
-    const inputSource: GameInputSource = {
+    this.inputPhase = new GameInputPhase(
+      this.gameInputSource(), hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
+      this.shipConstruction, this.input, () => this.cameraFrame, sections,
+    );
+    this.displayPhase = new DisplayPhase(
+      this.gameDisplaySource(), this.displayWindowManager, this.viewManager, this.frameAnchors, this.cameraSystem,
+      this.flashPresenter, this.targeter, this.planDisplay, this.equatorNodes, sections,
+    );
+  }
+
+  // 最寄りの使用可能ドックから建造を始める。Bキーと艦のステータスパネルの「建造」が共有する。
+  private startConstructionNearest(): void {
+    const controlled = this.game.activeControllable;
+    const camera = this.cameraFrame;
+    if (controlled === null || camera === null || !isModularShip(controlled)) return;
+    this.constructionEntry.startNearestDock(controlled, camera.viewpoint.position);
+  }
+
+  // 入力の解釈が読む、ランの操作の口。
+  private gameInputSource(): GameInputSource {
+    const game = this.game;
+    return {
       commands: game.commands,
       simSpeedManager: game.simSpeedManager,
       view: game.viewer.view,
       get activeControllable() { return game.activeControllable; },
       get stageIsPlaying() { return game.activeStage.isPlaying; },
-      startConstruction: startConstructionNearest,
+      startConstruction: () => this.startConstructionNearest(),
     };
-    const displaySource: DisplayPhaseSource = {
+  }
+
+  // 表示の導出が読む、ランの時刻・操作対象・出来事・ターゲットの口。
+  private gameDisplaySource(): DisplayPhaseSource {
+    const game = this.game;
+    return {
       get simTime() { return game.simTime; },
       get activeControllable() { return game.activeControllable; },
       get recentEvents() { return game.events.recent; },
       celestialSystem: game.celestialSystem,
       get navTargetId() { return game.viewer.navTarget.id; },
     };
-    this.inputPhase = new GameInputPhase(
-      inputSource, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
-      this.shipConstruction, this.input, () => this.cameraFrame, sections,
-    );
-    this.displayPhase = new DisplayPhase(
-      displaySource, this.displayWindowManager, this.viewManager, this.frameAnchors, this.cameraSystem,
-      this.flashPresenter, this.targeter, this.planDisplay, this.equatorNodes, sections,
-    );
   }
 
   // このランが scene・Hud・マーカー装置・window/document/canvas へ足したものを残らず取り除く。
@@ -419,17 +431,17 @@ export class GamePresentation {
         viewer.orbitReference.mode, controlled.motion.state.r, celestialSystem.celestialMotions,
         this.navTargetPresenter, dynamicSystem, celestialSystem, controlled.motion.state.t,
       )
-      : undefined;
+      : null;
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.syncWorld(
-      graphics, style, nowMs, displayTime, view, controlled, orbitRef ?? null, visibilityPolicy, timeLabel, camera,
+      graphics, style, nowMs, displayTime, view, controlled, orbitRef, visibilityPolicy, timeLabel, camera,
     );
     this.syncEffectsAndTargets(
       nowMs, displayTime, view, controlled, visibilityPolicy, timeLabel, palette, camera,
     );
     this.syncPanelsAndMarkers(
-      nowMs, displayWindow, displayTime, view, controlled, orbitRef ?? null, visibilityPolicy, palette, camera,
+      nowMs, displayWindow, displayTime, view, controlled, orbitRef, visibilityPolicy, palette, camera,
     );
   }
 
@@ -462,7 +474,8 @@ export class GamePresentation {
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
-    celestialSystem.bakeClouds(this.devices.scene.renderer, displayTime, this.devices.scene.gpu);
+    celestialSystem.bakeClouds(
+      this.devices.scene.renderer, displayTime, this.game.simSpeedManager.simSpeed, this.devices.scene.gpu);
     // 建造の読み取り面を確定させてから表示導出へ渡す — 適用済み命令の記録・選択の整合が
     // shipConstruction.sync で更新され、shipConstructionView.sync がそれを読んで強調と音を組む。
     this.shipConstruction.sync();
@@ -473,7 +486,7 @@ export class GamePresentation {
       displayTime, controlled, camera, style, graphics,
       construction.shipModuleEmphasis,
       this.devices.scene.pipeline.sunLight, this.devices.scene.pipeline.bodyShadow,
-      orbitRef ?? undefined,
+      orbitRef,
     );
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
     this.playerMarkers.sync(
@@ -542,14 +555,14 @@ export class GamePresentation {
     this.moduleWindows.sync();
     this.planDisplay.sync(camera, view, displayWindow, nowMs);
     this.entityLines.sync(
-      controlled, this.targeter.aliveTarget, view, displayWindow, visibilityPolicy, orbitRef ?? undefined,
+      controlled, this.targeter.aliveTarget, view, displayWindow, visibilityPolicy, orbitRef,
       camera, this.frameAnchors, celestialSystem, palette,
     );
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
     activeStage.sync(camera, view, displayTime);
-    this.hudPanels.sync(view, displayWindow, orbitRef ?? undefined, palette, camera, nowMs);
+    this.hudPanels.sync(view, displayWindow, orbitRef, palette, camera, nowMs);
     this.syncFrameMarkers(nowMs);
     // このフレームのマーカーが出揃った後でなければならないので最後に通す。
     this.devices.markers.resolveOverlaps(view === 'map');

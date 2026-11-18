@@ -107,7 +107,7 @@ function monthBoundaries(fromUnix: number, toUnix: number): number[] {
   return result;
 }
 
-// 年初(UTC 1/1 00:00)を列挙する。この文書の想定年代は5桁に達するため Date.UTC(y, 0, 1) の
+// 年初(UTC 1/1 00:00)を列挙する。このモジュールの想定年代は5桁に達するため Date.UTC(y, 0, 1) の
 // year 引数をそのまま増減させる(Date.parse/toISOString は5桁年を扱えない)。
 function yearBoundaries(fromUnix: number, toUnix: number): number[] {
   // y を1ずつ増やして Date.UTC(y, 0, 1) を求め直す。
@@ -159,7 +159,7 @@ export function calendarBoundaries(
   return unixList.map((unix) => ({ unix, rank: highestRank(unix) }));
 }
 
-// 通過時刻ラベルを書くのに要るものの束。**表示側がこれを1つ持ち回る** — 表記の種類・
+// 通過時刻ラベルを書くのに要るものの束。表示側がこれを1つ持ち回る — 表記の種類・
 // 相対表記の基準時刻・絶対表記の元期は、どれか1つだけ差し替えると表記が食い違う。
 // DisplayWindow から timeLabelSettingOf() で組む。
 export interface TimeLabelSetting {

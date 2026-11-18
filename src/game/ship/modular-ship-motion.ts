@@ -1,7 +1,8 @@
 // モジュール船を一体剛体として進め、船体由来の形状・質量・補助システムを同期する。
 import { cross, add, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import { LOCAL_RIGHT, qInvert, qRotate } from '../../math/quat';
-import type { Attitude } from '../../physics/attitude';
+import { type Attitude, type RotatingFrame, relativeSpin } from '../../physics/attitude';
+import { orbitLocalFrame } from '../../physics/orbit-local-frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import {
@@ -15,8 +16,8 @@ import {
   SHIP_RADIATING_AREA_PER_MASS,
   SHIP_BCINV,
   SHIP_SRP_COEFF,
-  shipMotionOptions,
-} from '../dynamic/dynamic-entity/ship';
+  shipMotionProperties,
+} from '../dynamic/dynamic-entity/combat-ship-entity';
 import type { SerializedPowerSystem } from '../player/power';
 import type { SerializedRadiatorSystem } from '../player/radiator';
 import { AeroLoad } from '../player/aero-load';
@@ -61,7 +62,7 @@ export interface ModularShipMotionReactions {
   autopilotMaxStep?(self: DynamicMotion): number;
 }
 
-export interface ModularShipMotionSystems {
+interface ModularShipMotionSystems {
   readonly temperature?: number;
   readonly beltLinkCount?: number;
   readonly serializedBelt?: SerializedBeltController;
@@ -71,13 +72,23 @@ export interface ModularShipMotionSystems {
 
 class ModularShipBehavior implements DynamicMotionBehavior {
   public readonly contactKind;
+  // 直近に組んだ周回の局所系。自艦が周回していなければ null。制御が相対角速度を読むために残す。
+  public frame: RotatingFrame | null = null;
 
   // playerOwned に対応する接触種別と船体反応口を設定する。
   public constructor(
-    playerOwned: boolean,
+    private readonly playerOwned: boolean,
     private readonly reactions: ModularShipMotionReactions,
   ) {
     this.contactKind = playerOwned ? 'player' as const : 'generic' as const;
+  }
+
+  // 自艦は周回の局所系を姿勢の基準にする。他の艦は慣性系のまま。
+  public attitudeFrame(
+    _self: DynamicMotion, state: KinematicState, attractors: readonly CelestialBody[], pivot: number,
+  ): RotatingFrame | null {
+    this.frame = this.playerOwned ? orbitLocalFrame(state, attractors, pivot) : null;
+    return this.frame;
   }
 
   // 質量に応じて基準の弾道係数を換算する。
@@ -247,6 +258,14 @@ export class ModularShipMotion extends DynamicMotion {
   public readonly radiator: RadiatorSystem;
   public readonly power: PowerSystem;
 
+  // 制御が読む姿勢。周回の局所系があれば、角速度 w はその系に対する相対角速度になる(制動・保持が
+  // 周回の回転と戦わないように)。姿勢 q は att と同じ。
+  public get controlAttitude(): Attitude {
+    const frame: RotatingFrame | null = (this.behavior as ModularShipBehavior).frame;
+    const att = this.att;
+    return frame === null ? att : { ...att, w: relativeSpin(att, frame) };
+  }
+
   // assembly から剛体と補助系を構築し、systems の記録があれば復元する。
   public constructor(
     public readonly assembly: ShipAssembly,
@@ -258,7 +277,7 @@ export class ModularShipMotion extends DynamicMotion {
     // 船体形状から初期質量・慣性・衝突特性を得る。
     const shape = shipPhysicsShape(assembly);
     if (shape === null) throw new Error('modular ship requires a non-empty valid assembly');
-    super(state, shipMotionOptions(withInertia(attitude, shape), shape.mass.boundingRadius, {
+    super(state, shipMotionProperties(withInertia(attitude, shape), shape.mass.boundingRadius, {
       mass: shape.mass.totalMass,
       collides: true,
       engagementAnchor: assembly.playerOwned,
@@ -437,7 +456,4 @@ function modularShipMotionOf(motion: DynamicMotion): ModularShipMotion {
   return motion;
 }
 
-// motion がモジュール船の剛体運動かを判定する。
-export function isModularShipMotion(motion: DynamicMotion): motion is ModularShipMotion {
-  return motion instanceof ModularShipMotion;
-}
+

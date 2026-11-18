@@ -3,7 +3,7 @@
 // 本体(入力欄など)とボタンの意味は使い側が body と actions へ挟み込む。
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 
-export interface ModalOverlayRequest {
+interface ModalOverlayRequest {
   readonly title?: string;
   readonly message?: string;
 }
@@ -92,7 +92,7 @@ export class ModalOverlay<T> implements OverlayHandle {
     this.resolve(this.cancelValue);
   }
 
-  // 結果callback、DOM、OverlayManagerを一度だけ同時に閉じる。
+  // 結果 callback の発火・DOM の畳み込み・OverlayManager の登録解除を1回だけ行う。
   public resolve(value: T): void {
     if (!this.openState) return;
     this.openState = false;

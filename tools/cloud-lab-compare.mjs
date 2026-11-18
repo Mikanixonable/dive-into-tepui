@@ -1,8 +1,8 @@
 // 雲の実験環境の生成と実写(8k_clouds)の統計比較。ヘッドレス Chrome で .cloud-lab/ を開き、
-// 全球と地域別 cap の両面を撮って、帯状平均・階調・圧縮の分位・行方向スペクトル・構造の異方性・
-// 地形との関係・雲頂の分布・台風の径方向プロファイルの表を出す。
+// 全球と地域別 cap の両面を撮って、帯状平均・階調・種類ごとの分布・圧縮の分位・行方向スペクトル・
+// 構造の異方性・地形との関係・雲頂の分布・台風の径方向プロファイルの表を出す。
 // 実写は低い厚い雲と高層の巻雲が 1 枚に重なっているので、`npm run cloud-lab:separate` が
-// 分離した成分(src/assets の仮テクスチャと .cloud-lab/separated/)を読み、撮影の面(全球の
+// 分離した成分(.cloud-lab/separated/ の厚い雲の不透明度と巻雲の輝度)を読み、撮影の面(全球の
 // 正距円筒と cap の正射影)へ再標本化して成分ごとに比べる。**先に separate を実行しておく。**
 // 再標本化した実写厚・実写薄も画像で .cloud-lab/compare/ に残る。
 // 台風は 8k_clouds に写っていないので、`npm run cloud-lab:reference` が取り込んだ Worldview の実写
@@ -10,10 +10,12 @@
 // 表に出した数値はすべて、機械可読なレポートとして .cloud-lab/history/ へも残す(1 回の比較に
 // つき 1 ファイル、消さない)。変更の前後で「どの特徴量がどれだけ動いたか」を後から引くためで、
 // レポートの形は sections の節立てが表の節立てと対になる。
-import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { collectFatalEvents, openChromeSession, waitFor } from './chrome-session.mjs';
+import {
+  collectNumericDiffs, formatDiffValue, gitHead, previousReportName, readReport, saveReport,
+} from './cloud-report-history.mjs';
 import { componentStats } from './cloud-components.mjs';
 import { computeDistances } from './cloud-distances.mjs';
 import { FINE_BANDS, FINE_PRIMARY_LADDER, applyCaptureMapping, captureBoxMapping, largestValidRect, measureFinePair, resampleCaptureToBox } from './cloud-fine-structure.mjs';
@@ -29,8 +31,9 @@ import { decodePng } from './png.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const buildDir = path.join(root, '.cloud-lab');
 const outDir = path.join(buildDir, 'compare');
-const port = 8769;
-const debugPort = 9446;
+// 配信と CDP のポート。環境変数で上書きでき、別の作業ツリーの計測と並行して走らせられる。
+const port = Number(process.env.CLOUD_LAB_PORT ?? 8769);
+const debugPort = Number(process.env.CLOUD_LAB_DEBUG_PORT ?? 9446);
 
 // 撮る面の大きさ。tools/cloud-lab/lab.ts の VIEW_HEIGHT / GLOBE_WIDTH / CAP_SIZE と対。
 const GLOBE_W = 1024;
@@ -59,7 +62,7 @@ const REGIONS = [
   { name: 'typhoon', label: '熱帯低気圧(19N 136E・時刻 0 の最盛期・数値目標外)', latitude: 19, longitude: 136,
     coreRadiusKm: 250, upperReadsOutside: false },
 ];
-const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop', 'surfaceWind', 'front'];
+const VIEWS = ['photo', 'composite', 'coverage', 'translucent', 'cloudTop', 'cumulus', 'cirrus', 'surfaceWind', 'front'];
 
 // 地表の風ビューの B が張る速さ [m/s]。tools/cloud-lab/views.ts の WIND_SPAN と対。
 const WIND_SPAN = 45;
@@ -95,6 +98,10 @@ const CONTRAST_WINDOW = 5;
 // 雲の塊と見なす値のしきい。階調の刻み(TONE_LEVELS)の 1 つで、のっぺり判定の区間の上限でも
 // ある — 中間調より上を「塊」として形を測る。
 const SHAPE_THRESHOLD = 0.25;
+// 「雲がある」と見なす量のしきい。8bit の面で 1 段目を超える texel。
+const AMOUNT_PRESENT_THRESHOLD = 1 / 255;
+// 種類ごとの分布に出す分位。
+const KIND_QUANTILES = [0.1, 0.5, 0.9];
 
 // 動きの計測のサンプル時刻 [h]。decorrelation の桁を見るために対数刻みにする。
 const MOTION_SAMPLE_HOURS = [0, 1, 2, 4, 8, 16, 32, 64];
@@ -107,7 +114,7 @@ const DRIFT_MAX_DY = 6;
 // 熱帯低気圧のトラックを読む時刻 [h] と、描画中心のずれを測る時刻 [h]。
 const TRACK_SAMPLE_HOURS = [0, 12, 24, 36, 48, 60, 72];
 const CENTER_SAMPLE_HOURS = [0, 24, 48];
-// 描画中心のずれは、解析中心からこの半径 [km] の内側の被覆率の重心で測る。cap 全面で取ると
+// 描画中心のずれは、解析中心からこの半径 [km] の内側の積雲の不透明度の重心で測る。cap 全面で取ると
 // 渦の外の雲(前線や別の擾乱)に重心が引かれて「ずれ」でなく環境の非対称を測ってしまう。
 const CENTER_CORE_RADIUS_KM = 500;
 
@@ -121,13 +128,19 @@ const SCALE_LATITUDE_LIMIT = 80;
 // 正距円筒の全球が張る範囲 [°]。
 const GLOBE_EXTENT = { north: 90, south: -90, west: -180, east: 180 };
 
-// 場の G(雲頂高度)が張る高さ [m]。tools/cloud-lab/views.ts の CLOUD_TOP_SPAN と対。
-const CLOUD_TOP_SPAN = 15000;
+// 雲頂ビューの表示値 1 が張る高さ [m]。tools/cloud-lab/views.ts の積雲・巻雲の雲頂ビューの
+// 目盛り(src/render/cloud/cloud-kind.ts の CUMULUS_TOP_ALTITUDE)と対。
+const CLOUD_TOP_SPAN = 17000;
+// 巻雲の雲頂高度の両端 [m]。量からの換算と「積雲の雲頂が巻雲より高い」判定に使う。
+// 値は src/render/cloud/cloud-kind.ts の CIRRUS_BOTTOM_ALTITUDE / CIRRUS_TOP_ALTITUDE と
+// 一致させること。
+const CIRRUS_BOTTOM_ALTITUDE = 9000;
+const CIRRUS_TOP_ALTITUDE = 13000;
 
 // 台風の径方向プロファイル。中心からの距離を PROFILE_BIN_KM 刻みで PROFILE_MAX_KM まで方位平均する。
 const PROFILE_BIN_KM = 50;
 const PROFILE_MAX_KM = 1000;
-// 中間調と見なす被覆率の範囲。台風の中心濃密雲域の外(PROFILE_MAX_KM まで)で、この範囲の texel の
+// 中間調と見なす積雲の不透明度の範囲。台風の中心濃密雲域の外(PROFILE_MAX_KM まで)で、この範囲の texel の
 // 割合を出す。
 const MID_TONE_MIN = 0.06;
 const MID_TONE_MAX = 0.25;
@@ -151,6 +164,29 @@ const BANDS = [
   { label: '35-60°N', north: 60, south: 35 },
   { label: '10°S-10°N', north: 10, south: -10 },
   { label: '35-60°S', north: -35, south: -60 },
+];
+
+// 偏り指数を測るブロックの一辺 [km]。
+const CLUMP_BLOCKS_KM = [50, 100, 200, 400, 800];
+// 帯を経度方向へ等分し、実写の統計の標本のばらつきを取る小領域の数。
+const CLUMP_SUBREGIONS = 4;
+// ブロックを層へ数えるのに要る、層の texel の割合の下限。
+const CLUMP_STRATUM_MIN_SHARE = 0.5;
+// 晴れ間・厚いブロックと見なすブロック平均の境界。厚いには別に、絶対の境界が届かない
+// 場(薄い雲)でも読めるよう、層の texel の 90% 点を使う相対の境界も出す。
+const CLUMP_CLEAR_MAX = 0.05;
+const CLUMP_DENSE_MIN = 0.95;
+// log I_B 対 log B の傾きの当てはめに要る、測れたブロックの大きさの数。
+const CLUMP_SLOPE_MIN_SCALES = 3;
+// ブロックの平均の分位点。
+const CLUMP_QUANTILES = [0.1, 0.25, 0.5, 0.75, 0.9];
+// 晴れ間・厚いブロックの割合を出す基準のブロックの一辺 [km]。測れた中で最も近い大きさ。
+const CLUMP_REFERENCE_KM = 400;
+// 偏りの節で分ける海陸の層。all は帯の全域。
+const CLUMP_STRATA = [
+  { key: 'all', label: '全域' },
+  { key: 'sea', label: '海' },
+  { key: 'land', label: '陸' },
 ];
 
 // 地形との関係を読む箱 [°]。風上・風下の対で並べ、最後に対を持たない乾燥地帯を置く。
@@ -451,6 +487,168 @@ function correlation(a, b) {
   return covariance / Math.sqrt(varianceA * varianceB + 1e-30);
 }
 
+// 帯の中緯度での経度方向 1 texel の地表距離 [km]。正距円筒は緯度の余弦で縮む。
+function bandKmPerTexelX(band) {
+  return GLOBE_KM_PER_PX * Math.cos((((band.north + band.south) / 2) * Math.PI) / 180);
+}
+
+// [[x, y], ...] への最小二乗直線の傾き。
+function slopeOfPairs(pairs) {
+  let sx = 0;
+  let sy = 0;
+  let sxx = 0;
+  let sxy = 0;
+  for (const [x, y] of pairs) {
+    sx += x;
+    sy += y;
+    sxx += x * x;
+    sxy += x * y;
+  }
+  const denominator = pairs.length * sxx - sx * sx;
+  return Math.abs(denominator) < 1e-30 ? 0 : (pairs.length * sxy - sx * sy) / denominator;
+}
+
+// 値の列の標準偏差(母集団)。2 個未満では null。
+function sdOf(values) {
+  if (values.length < 2) return null;
+  let mean = 0;
+  for (const v of values) mean += v;
+  mean /= values.length;
+  let variance = 0;
+  for (const v of values) variance += (v - mean) * (v - mean);
+  return Math.sqrt(variance / values.length);
+}
+
+// 区画(x0, y0, w, h)を bx × by [texel] の重ならないブロックへ分け、ブロックごとの
+// mask の立つ texel の平均を並べる(threshold を渡すと、それを超えた texel の割合)。
+// mask === null は全 texel が対象。対象の texel がブロックの CLUMP_STRATUM_MIN_SHARE
+// 未満のブロックは入れない。
+function clumpBlockMeans(field, mask, x0, y0, w, h, bx, by, threshold) {
+  const means = [];
+  for (let row = 0; row + by <= h; row += by) {
+    for (let col = 0; col + bx <= w; col += bx) {
+      let sum = 0;
+      let count = 0;
+      for (let y = 0; y < by; y++) {
+        const base = (y0 + row + y) * field.width + x0 + col;
+        for (let x = 0; x < bx; x++) {
+          if (mask !== null && mask[base + x] === 0) continue;
+          sum += threshold === null ? field.data[base + x] : (field.data[base + x] > threshold ? 1 : 0);
+          count++;
+        }
+      }
+      if (count >= bx * by * CLUMP_STRATUM_MIN_SHARE) means.push(sum / count);
+    }
+  }
+  return means;
+}
+
+// 帯の区画 x0..x0+w(行は帯の範囲)の偏りの測定一式。mask の立つ texel が対象
+// (海陸の層別で、null は全域)。偏り指数 I_B = Var(ブロックの平均) / p(1−p) は
+// cloud-detail-metrics.mjs の heterogeneity と同じ定義を、連続値と
+// 二値化(p50 + 0.3(p99 − p50) のしきい)の両方で取る。分位・晴れ間・厚いブロックの
+// 割合は連続値のブロックの平均から、傾きは log I_B 対 log B から。
+function clumpMeasure(field, mask, band, x0, w) {
+  const y0 = rowAtLatitude(band.north);
+  const h = rowAtLatitude(band.south) - y0;
+  const values = [];
+  for (let y = y0; y < y0 + h; y++) {
+    const base = y * field.width;
+    for (let x = x0; x < x0 + w; x++) {
+      if (mask === null || mask[base + x] !== 0) values.push(field.data[base + x]);
+    }
+  }
+  const sorted = Float64Array.from(values).sort();
+  const texelP90 = quantile(sorted, 0.9);
+  const threshold = quantile(sorted, 0.5) + 0.3 * (quantile(sorted, 0.99) - quantile(sorted, 0.5));
+  let cover = 0;
+  let covered = 0;
+  for (const v of values) {
+    cover += v;
+    if (v > threshold) covered++;
+  }
+  cover /= Math.max(1, values.length);
+  const coverBin = covered / Math.max(1, values.length);
+  const kmPerTexelX = bandKmPerTexelX(band);
+  const scales = [];
+  for (const blockKm of CLUMP_BLOCKS_KM) {
+    const bx = Math.max(1, Math.round(blockKm / kmPerTexelX));
+    const by = Math.max(1, Math.round(blockKm / GLOBE_KM_PER_PX));
+    const cols = Math.floor(w / bx);
+    const rows = Math.floor(h / by);
+    if (cols < 2 || rows < 2 || cols * rows < 4) continue;
+    const means = clumpBlockMeans(field, mask, x0, y0, w, h, bx, by, null);
+    if (means.length < 4) continue;
+    const meansBin = clumpBlockMeans(field, mask, x0, y0, w, h, bx, by, threshold);
+    const varianceOf = (list) => {
+      let mean = 0;
+      for (const v of list) mean += v;
+      mean /= list.length;
+      let variance = 0;
+      for (const v of list) variance += (v - mean) * (v - mean);
+      return variance / list.length;
+    };
+    const blockSorted = Float64Array.from(means).sort();
+    const share = (test) => means.filter(test).length / means.length;
+    const denominator = cover * (1 - cover);
+    const denominatorBin = coverBin * (1 - coverBin);
+    scales.push({
+      blockKm,
+      blockPx: [bx, by],
+      blocks: means.length,
+      index: denominator > 1e-9 ? varianceOf(means) / denominator : null,
+      // 1 texel のブロックでは二値の被覆が 0/1 なので I_B が定義上 1 になり、場の差を測れない。
+      indexBin: bx * by >= 2 && denominatorBin > 1e-9 ? varianceOf(meansBin) / denominatorBin : null,
+      quantiles: Object.fromEntries(
+        CLUMP_QUANTILES.map((q) => [`p${Math.round(q * 100)}`, quantile(blockSorted, q)])),
+      clearShare: share((v) => v < CLUMP_CLEAR_MAX),
+      denseShare: share((v) => v > CLUMP_DENSE_MIN),
+      denseRelShare: share((v) => v > texelP90),
+    });
+  }
+  const fitSlope = (key) => {
+    const pairs = scales.filter((s) => s[key] !== null && s[key] > 0)
+      .map((s) => [Math.log(s.blockKm), Math.log(s[key])]);
+    return pairs.length >= CLUMP_SLOPE_MIN_SCALES ? slopeOfPairs(pairs) : null;
+  };
+  return {
+    cover,
+    coverBin,
+    threshold,
+    texelP90,
+    texels: values.length,
+    scales,
+    slope: fitSlope('index'),
+    slopeBin: fitSlope('indexBin'),
+  };
+}
+
+// 帯を CLUMP_SUBREGIONS 個の経度区画へ分けて同じ測定を行い、区画ごとの log10 I_B と
+// 傾きの標本のばらつき(標準偏差)を取る。区画で測れない値は母数から外し、
+// 残る区画が 2 つ未満のものは null(ばらつきが取れない)。
+function clumpSpread(field, mask, band) {
+  const w = Math.floor(GLOBE_W / CLUMP_SUBREGIONS);
+  const subs = [];
+  for (let k = 0; k < CLUMP_SUBREGIONS; k++) {
+    subs.push(clumpMeasure(field, mask, band, k * w, w));
+  }
+  const byKm = new Map(CLUMP_BLOCKS_KM.map((blockKm) => {
+    const at = (key) => subs.map((sub) => sub.scales.find((s) => s.blockKm === blockKm))
+      .filter((s) => s !== undefined && s[key] !== null && s[key] > 0)
+      .map((s) => Math.log10(s[key]));
+    const logs = at('index');
+    const logsBin = at('indexBin');
+    return [blockKm, {
+      index: sdOf(logs), indexBin: sdOf(logsBin), regions: logs.length, regionsBin: logsBin.length,
+    }];
+  }));
+  return {
+    byKm,
+    slope: sdOf(subs.map((sub) => sub.slope).filter((s) => s !== null)),
+    slopeBin: sdOf(subs.map((sub) => sub.slopeBin).filter((s) => s !== null)),
+  };
+}
+
 // 場の尺度ごとの構造テンソル(尺度 [km] → テンソル)。rowKmPerPx は行ごとの横 1 px の地表距離 [km]。
 function structuresOf(field, rowKmPerPx, kmPerPxY, wrapX, scales) {
   return new Map(scales.map((scale) => [scale, structureTensor(field, rowKmPerPx, kmPerPxY, wrapX, scale)]));
@@ -470,6 +668,63 @@ function printStructureTable(header, rows) {
     scaleKm: scale,
     fields: STRUCTURE_FIELDS.map((field, index) => ({ field: field.key, ...cells[index] })),
   }));
+}
+
+// 「雲のある」texel(量 > AMOUNT_PRESENT_THRESHOLD)の分布を、帯(行 y0 から h 行)で
+// cos 緯度の面積重み付きに取る。雲のある面積率と、量・雲頂 [km]・不透明度の p10/p50/p90 を
+// 返す。雲頂と不透明度は量の単調関数なので、量での整列 1 回で 3 つの分位を同じ順で取れる。
+function kindDistribution(amount, topMetres, opacity, y0, h) {
+  const samples = [];
+  let totalWeight = 0;
+  let presentWeight = 0;
+  for (let y = y0; y < y0 + h; y++) {
+    const weight = Math.cos(latitudeOfRow(y, amount.height));
+    for (let x = 0; x < amount.width; x++) {
+      const i = y * amount.width + x;
+      totalWeight += weight;
+      const v = amount.data[i];
+      if (v <= AMOUNT_PRESENT_THRESHOLD) continue;
+      presentWeight += weight;
+      samples.push({ amount: v, topKm: topMetres.data[i] / 1000, opacity: opacity.data[i], weight });
+    }
+  }
+  samples.sort((a, b) => a.amount - b.amount);
+  const quantiles = (key) => {
+    const out = {};
+    let acc = 0;
+    let index = 0;
+    for (const fraction of KIND_QUANTILES) {
+      while (index < samples.length && acc < fraction * presentWeight) {
+        acc += samples[index].weight;
+        index++;
+      }
+      out[`p${Math.round(fraction * 100)}`] = index === 0 ? 0 : samples[index - 1][key];
+    }
+    return out;
+  };
+  return {
+    presentShare: presentWeight / Math.max(1e-30, totalWeight),
+    amount: quantiles('amount'),
+    topKm: quantiles('topKm'),
+    opacity: quantiles('opacity'),
+  };
+}
+
+// 「雲のある」texel のうち、雲頂が CIRRUS_TOP_ALTITUDE を超えるものの面積率。
+// kindDistribution と同じ帯と面積重みで数える。
+function overshootShareOf(amount, topMetres, y0, h) {
+  let present = 0;
+  let overshoot = 0;
+  for (let y = y0; y < y0 + h; y++) {
+    const weight = Math.cos(latitudeOfRow(y, amount.height));
+    for (let x = 0; x < amount.width; x++) {
+      const i = y * amount.width + x;
+      if (amount.data[i] <= AMOUNT_PRESENT_THRESHOLD) continue;
+      present += weight;
+      if (topMetres.data[i] > CIRRUS_TOP_ALTITUDE) overshoot += weight;
+    }
+  }
+  return overshoot / Math.max(1e-30, present);
 }
 
 // 実写と生成のオクターブ束スペクトルを波長帯ごとに並べ、比を添えて出す。wavelengthOf は
@@ -598,44 +853,6 @@ function printRadialTable(header, columns) {
   return columns.map((column) => ({ label: column.label, values: Array.from(column.values) }));
 }
 
-// 差分の表示用の数値の整形。スペクトルのような小さな値と雲頂 [m] のような大きな値が混ざるので、
-// 桁の端では指数表記へ倒し、それ以外は有効数字 6 桁で丸める。
-function formatDiffValue(value) {
-  const magnitude = Math.abs(value);
-  if (magnitude !== 0 && (magnitude < 1e-4 || magnitude >= 1e6)) return value.toExponential(3);
-  return String(Number(value.toPrecision(6)));
-}
-
-// 2 つのレポートの sections を辿り、両方にある数値のリーフについて { path, before, after } を集める。
-// 形が変わった(節やキーの増減)ものは数えない — 形の変更は差分でなく版の変更として扱う。
-function collectNumericDiffs(before, after, path, out) {
-  if (typeof before === 'number' && typeof after === 'number') {
-    out.compared++;
-    if (before !== after) out.changed.push({ path, before, after });
-    return;
-  }
-  if (Array.isArray(before) && Array.isArray(after)) {
-    for (let i = 0; i < Math.min(before.length, after.length); i++) {
-      collectNumericDiffs(before[i], after[i], `${path}[${i}]`, out);
-    }
-    return;
-  }
-  if (before !== null && after !== null && typeof before === 'object' && typeof after === 'object') {
-    for (const key of Object.keys(before)) {
-      if (key in after) collectNumericDiffs(before[key], after[key], path === '' ? key : `${path}.${key}`, out);
-    }
-  }
-}
-
-// レポートへ焼く、いまの HEAD の短い SHA。git が読めない環境では unknown として、比較自体は止めない。
-function gitHead() {
-  try {
-    return execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
-  } catch {
-    return 'unknown';
-  }
-}
-
 // 2 つの時刻の場の移流。bestShift のずらし [texel] を [m/s] へ換算し、渡された平均風
 // (null なら風との比較をしない)との向きの差と速さ比を添える。箱の実物の動きと生成の動きを
 // 同じ定義で測るためのもので、全球面の帯の移流は従来どおり main の中で測る。
@@ -691,8 +908,8 @@ function decodeLuminancePng(png) {
 }
 
 async function main() {
-  // 分離済みの成分を先に読む(無いなら撮影の前に気付かせる)。仮テクスチャは R が被覆率。
-  const separatedThick = loadSeparated(path.join('src', 'assets', 'cloud-field.png'));
+  // 分離済みの成分を先に読む(無いなら撮影の前に気付かせる)。厚い雲の不透明度と巻雲の輝度。
+  const separatedThick = loadSeparated(path.join('.cloud-lab', 'separated', 'thick.png'));
   const separatedVeil = loadSeparated(path.join('.cloud-lab', 'separated', 'veil.png'));
   // 気候の事前分布(G が平年の雲量、B が標高)。天気のモデルが読んでいるものと同じ写し。
   const climate = readFileSync(path.join(root, 'src', 'assets', 'earth-climate.png'));
@@ -709,9 +926,9 @@ async function main() {
   const shots = new Map();
   // 時刻 0 の低気圧の谷の配置(緯度・経度 [rad]、深さ [hPa]、半径 [m])。ページの進路モジュールから引く。
   let cyclonesAtZero;
-  // 動きの計測用の追加撮影の受け皿。全球の被覆率の時系列と、熱帯低気圧の解析配置の時系列、
-  // 解析中心へ合わせた cap の被覆率。合成ビューも同じ時刻で撮る — 実物は衛星の見た輝度なので、
-  // 被覆率ではなく描画そのものの輝度と比べる。
+  // 動きの計測用の追加撮影の受け皿。全球の積雲の不透明度の時系列と、熱帯低気圧の解析配置の
+  // 時系列、解析中心へ合わせた cap の積雲の不透明度。合成ビューも同じ時刻で撮る — 実物は
+  // 衛星の見た輝度なので、積雲の不透明度ではなく描画そのものの輝度と比べる。
   let motionCoverage;
   let motionComposite;
   let cycloneTrack;
@@ -744,7 +961,7 @@ async function main() {
       }
     }
 
-    // 動きの計測用の追加撮影。被覆率の全球面をサンプル時刻ごとに撮る。熱帯低気圧の cap は
+    // 動きの計測用の追加撮影。積雲の不透明度の全球面をサンプル時刻ごとに撮る。熱帯低気圧の cap は
     // 解析中心へ照準を合わせ直して撮るので、地域別の撮影が終わってから行う (照準が移る)。
     motionCoverage = new Map();
     await devTools.evaluate("window.cloudLab.show('coverage')");
@@ -766,7 +983,7 @@ async function main() {
     }
     cycloneTrack = JSON.parse(await devTools.evaluate(
       `JSON.stringify([${TRACK_SAMPLE_HOURS.join(',')}].map((hours) => ({ hours, ...window.cloudLab.cyclonesAt(hours) })))`));
-    // 中心のずれは被覆率の重心で測るので、ビューを coverage へ戻す(composite の撮影の後)。
+    // 中心のずれは積雲の不透明度の重心で測るので、ビューを coverage へ戻す(composite の撮影の後)。
     await devTools.evaluate("window.cloudLab.show('coverage')");
     cycloneCenters = new Map();
     const capBoxX = GLOBE_W + (CAP_W - CAP_BOX) / 2;
@@ -798,6 +1015,8 @@ async function main() {
     photo: globeOf('photo'),
     thick: downsampleTo(separatedThick, GLOBE_W, HEIGHT),
     veil: downsampleTo(separatedVeil, GLOBE_W, HEIGHT),
+    cumulus: globeOf('cumulus'),
+    cirrus: globeOf('cirrus'),
     coverage: globeOf('coverage'),
     translucent: brightnessOf(globeOf('translucent')),
     composite: globeOf('composite'),
@@ -843,9 +1062,11 @@ async function main() {
       tool: 'cloud-lab-compare',
       reportVersion: 1,
       generatedAt: new Date().toISOString(),
-      gitHead: gitHead(),
+      gitHead: gitHead(root),
       regions: REGIONS.map((region) => region.name),
       views: VIEWS,
+      // 距離の家族に coverageClumping を足したので、index はこの版より前のレポートと比べられない。
+      indexNote: '家族 coverageClumping の追加で index の家族数が変わった — 前の版の index と比較できない',
     },
     sections: {},
   };
@@ -887,6 +1108,32 @@ async function main() {
     console.log(`${label}: ${(flatness[key] * 100).toFixed(1)}%`);
   }
   report.sections.flatness = flatness;
+
+  console.log('\n=== 種類ごとの分布(全球面・±60°、cos 緯度の面積重み、量 > 1/255 の texel のみ) ===');
+  console.log('種類   雲のある面積   量 p10/p50/p90    雲頂 [km] p10/p50/p90   不透明度 p10/p50/p90');
+  // 高度と不透明度はビューが換算済みの面から取る — 積雲は雲頂と不透明度のビュー、巻雲の
+  // 不透明度は τ の面からの輝度。巻雲の雲頂は量から式の両端(9 km と 13 km)で換算する。
+  const cumulusTop = metresOf(globeOf('cloudTop'));
+  const cirrusTop = {
+    width: globe.cirrus.width,
+    height: globe.cirrus.height,
+    data: Float32Array.from(globe.cirrus.data,
+      (amount) => CIRRUS_BOTTOM_ALTITUDE + (CIRRUS_TOP_ALTITUDE - CIRRUS_BOTTOM_ALTITUDE) * amount),
+  };
+  const kinds = {
+    cumulus: kindDistribution(globe.cumulus, cumulusTop, globe.coverage, y60, bandHeight),
+    cirrus: kindDistribution(globe.cirrus, cirrusTop, globe.translucent, y60, bandHeight),
+  };
+  for (const [label, stats] of [['積雲', kinds.cumulus], ['巻雲', kinds.cirrus]]) {
+    const q = (group, digits) =>
+      `${group.p10.toFixed(digits)}/${group.p50.toFixed(digits)}/${group.p90.toFixed(digits)}`;
+    console.log(`${label.padEnd(6)}  ${(stats.presentShare * 100).toFixed(1).padStart(6)}%`
+      + `   ${q(stats.amount, 2)}   ${q(stats.topKm, 1)}   ${q(stats.opacity, 2)}`);
+  }
+  const overshootShare = overshootShareOf(globe.cumulus, cumulusTop, y60, bandHeight);
+  console.log(`積雲域のうち、雲頂が巻雲の上端(${(CIRRUS_TOP_ALTITUDE / 1000).toFixed(0)} km)を超える割合: `
+    + `${(overshootShare * 100).toFixed(1)}%`);
+  report.sections.kinds = { ...kinds, overshootShare };
 
   console.log('\n=== 風の異常(全球面・熱帯低気圧の中心 10° 以内を除く) ===');
   const wind = windAnomaly(windSpeed, cyclonesAtZero.tropical);
@@ -1033,6 +1280,80 @@ async function main() {
     structureCaps.push({ region: region.name, rows });
   }
   report.sections.structureCaps = structureCaps;
+
+  console.log('\n=== 被覆率の大きな尺度の偏り(全球の場、帯 × 海陸 × 場) ===');
+  console.log('I_B = Var(ブロックの平均)/p(1−p)。各列は 連続値/二値化(p50+0.3(p99−p50) のしきい)。'
+    + ' 分位・晴れ間・厚いブロックは 400 km に最も近い大きさの連続値のブロックから。'
+    + ' 傾きは log I_B 対 log B(連続/二値化)。陸海の別は陸らしさ smoothstep(0, 100 m, 標高) の 0.5。');
+  // 陸らしさは気候の写しの標高から取る — tools/cloud-lab/views.ts の landFraction と同じ作り。
+  const landness = Float32Array.from(elevation.data, (e) => {
+    const t = Math.min(1, Math.max(0, (e * 8000) / 100));
+    return t * t * (3 - 2 * t);
+  });
+  const seaMask = Uint8Array.from({ length: landness.length }, (_, i) => (landness[i] < 0.5 ? 1 : 0));
+  const landMask = Uint8Array.from({ length: landness.length }, (_, i) => (landness[i] >= 0.5 ? 1 : 0));
+  const clumpMaskOf = { all: null, sea: seaMask, land: landMask };
+  const unionField = (a, b) => ({
+    width: a.width,
+    height: a.height,
+    data: Float32Array.from({ length: a.data.length }, (_, i) => 1 - (1 - a.data[i]) * (1 - b.data[i])),
+  });
+  const clumpFields = [
+    { key: 'thick', label: '厚い雲', reference: globe.thick, generated: globe.coverage },
+    { key: 'veil', label: '薄い雲', reference: globe.veil, generated: globe.translucent },
+    // 合計の被覆は 1 − (1 − 厚)(1 − 薄)。合成ビューの 1 − (1 − 不透明度)e^(−τ) と同じ形。
+    { key: 'coverage', label: '被覆率',
+      reference: unionField(globe.thick, globe.veil),
+      generated: unionField(globe.coverage, globe.translucent) },
+  ];
+  const coverageClumping = { blocksKm: CLUMP_BLOCKS_KM, bands: [] };
+  const fmtClump = (v) => (v === null || v === undefined ? '-' : v.toFixed(2));
+  const pctClump = (v) => (v === null || v === undefined ? '-' : `${(v * 100).toFixed(0)}%`);
+  for (const band of BANDS) {
+    console.log(`--- ${band.label} ---`);
+    console.log('層      場        側    平均    I_B 50       I_B 100      I_B 200      I_B 400      I_B 800'
+      + '      傾き          q10–q90      幅      晴れ<.05  厚>.95  厚>p90');
+    const bandEntry = { band: band.label, strata: [] };
+    for (const stratum of CLUMP_STRATA) {
+      const mask = clumpMaskOf[stratum.key];
+      const stratumEntry = { stratum: stratum.key, fields: [] };
+      for (const f of clumpFields) {
+        const reference = clumpMeasure(f.reference, mask, band, 0, GLOBE_W);
+        const spread = clumpSpread(f.reference, mask, band);
+        for (const s of reference.scales) {
+          const sp = spread.byKm.get(s.blockKm);
+          s.indexSpread = sp.index;
+          s.indexBinSpread = sp.indexBin;
+          s.spreadRegions = sp.regions;
+        }
+        reference.slopeSpread = spread.slope;
+        reference.slopeBinSpread = spread.slopeBin;
+        const generated = clumpMeasure(f.generated, mask, band, 0, GLOBE_W);
+        for (const [side, m] of [['実写', reference], ['生成', generated]]) {
+          const cells = CLUMP_BLOCKS_KM.map((blockKm) => {
+            const s = m.scales.find((e) => e.blockKm === blockKm);
+            return (s === undefined ? '-/-' : `${fmtClump(s.index)}/${fmtClump(s.indexBin)}`).padStart(10);
+          });
+          let refScale = null;
+          for (const s of m.scales) {
+            if (refScale === null || Math.abs(s.blockKm - CLUMP_REFERENCE_KM)
+              < Math.abs(refScale.blockKm - CLUMP_REFERENCE_KM)) refScale = s;
+          }
+          const q = refScale?.quantiles;
+          const qRange = q ? `${q.p10.toFixed(2)}–${q.p90.toFixed(2)}` : '-';
+          const qWidth = q ? q.p90 - q.p10 : null;
+          console.log(`${stratum.label.padEnd(6)}  ${f.label.padEnd(6)}  ${side}`
+            + `  ${m.cover.toFixed(2)}   ${cells.join(' ')}  ${fmtClump(m.slope)}/${fmtClump(m.slopeBin)}`
+            + `  ${qRange.padStart(9)}  ${fmtClump(qWidth)}  ${pctClump(refScale?.clearShare).padStart(7)}`
+            + `  ${pctClump(refScale?.denseShare).padStart(6)}  ${pctClump(refScale?.denseRelShare).padStart(6)}`);
+        }
+        stratumEntry.fields.push({ field: f.key, reference, generated });
+      }
+      bandEntry.strata.push(stratumEntry);
+    }
+    coverageClumping.bands.push(bandEntry);
+  }
+  report.sections.coverageClumping = coverageClumping;
 
   console.log(`\n=== 雲の塊の形(しきい ${SHAPE_THRESHOLD}・前景 8 近傍、面積と周囲は地表の km 換算) ===`);
   console.log('面            場      塊の数   曇り割合  面積中央値 [km²]  面積 p90 [km²]  最大の割合   穴の数  穴の割合  周囲/面積 [1/km]');
@@ -1834,20 +2155,13 @@ async function main() {
   // (webpack の保持対象に .cloud-lab/history を加えてある — webpack.cloud-lab.config.js)。
   // 書く前に直近のレポートとの差分を出す — 変更 → 計測 → 何が動いたか、の輪の出口。
   const historyDir = path.join(buildDir, 'history');
-  mkdirSync(historyDir, { recursive: true });
-  const previousName = readdirSync(historyDir).filter((name) => name.endsWith('.json')).sort().at(-1);
-  const stamp = report.meta.generatedAt.replace(/[:.]/g, '-');
-  writeFileSync(path.join(historyDir, `${stamp}-${report.meta.gitHead}.json`), `${JSON.stringify(report, null, 2)}\n`);
+  const previousName = previousReportName(historyDir);
+  saveReport(historyDir, report);
   console.log('\n=== 前回レポートとの差分 ===');
   if (previousName === undefined) {
     console.log('前回のレポートが無い(今回が初回)');
   } else {
-    let previous = null;
-    try {
-      previous = JSON.parse(readFileSync(path.join(historyDir, previousName), 'utf8'));
-    } catch {
-      // 読めなければ null のままにする。
-    }
+    const previous = readReport(historyDir, previousName);
     if (previous === null || previous.sections === undefined) {
       console.log(`${previousName} が読めないため差分を出せない`);
     } else {
@@ -1867,12 +2181,7 @@ async function main() {
   // 距離の定義を変えても履歴と比較できるようにするため。変化が相対 5% 以内なら横ばい
   // とする (計測は決定的だが、実行環境の浮動小数の揺れを悪化と誤判定しないための幅)。
   if (previousName !== undefined) {
-    let prior = null;
-    try {
-      prior = JSON.parse(readFileSync(path.join(historyDir, previousName), 'utf8'));
-    } catch {
-      // 読めなければ null のままにする。
-    }
+    const prior = readReport(historyDir, previousName);
     if (prior?.sections) {
       const before = computeDistances(prior.sections);
       let improved = 0;

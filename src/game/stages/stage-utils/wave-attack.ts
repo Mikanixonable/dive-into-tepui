@@ -380,5 +380,6 @@ export function generateWave(
       i < shipCount ? `wave-${waveNumber}-group-${i % subGroups.length}` : `wave-${waveNumber}-formation`,
     ));
   }
+
   return { enemies };
 }

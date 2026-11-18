@@ -17,9 +17,9 @@ import type { PlanetLightAppearance, PlanetLightSubject } from './planet-light-s
 import type {
   BoolUniform, ColorUniform, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform,
 } from '../../tsl-types';
-import type { CloudSpecies } from '../cloud-atmosphere-renderer';
 import type { BodyShadow } from '../shadow/body-shadow';
 import type { SunLight } from '../sun-light';
+import type { SunTransmittanceTables } from '../sun-transmittance-tables';
 import type { ShadingSample } from './shading-sample';
 
 // 用意するスロットの本数。同時に使う本数は描画設定 planetLightCount(0〜この値)で決まる。
@@ -118,8 +118,9 @@ class PlanetLightSlot implements LightSource {
     private readonly sphereSpecular: SphereSpecular,
     private readonly slot: SlotUniforms,
     private model: number,
+    sunTables: SunTransmittanceTables,
   ) {
-    this.image = new PlanetLightImage(sunLight, bodyShadow);
+    this.image = new PlanetLightImage(sunLight, bodyShadow, sunTables);
   }
 
   public hasContribution(): boolean { return this.slot.radius.value > 0; }
@@ -242,10 +243,10 @@ export class PlanetLightSource {
   // スロットの本数(描画設定 planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
   public constructor(
     sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular, private count: number,
-    model: number,
+    model: number, sunTables: SunTransmittanceTables,
   ) {
     this.slotSources = this.slots.map(
-      (slot) => new PlanetLightSlot(sunLight, bodyShadow, sphereSpecular, slot, model));
+      (slot) => new PlanetLightSlot(sunLight, bodyShadow, sphereSpecular, slot, model, sunTables));
   }
 
   // 同時に使用するスロット本数を変更する。次回の set() 呼び出し時から適用される。
@@ -261,14 +262,9 @@ export class PlanetLightSource {
     for (const source of this.slotSources) source.subject.setAtmosphereEnabled(enabled);
   }
 
-  // 写しへ不透明な積雲を焼き込むか(描画設定「積雲の精細さ」がオフでない)を全スロットへ配る。
+  // 写しへ不透明な積雲を焼き込むか(描画設定「積雲」がオン)を全スロットへ配る。
   public setCumulusEnabled(enabled: boolean): void {
     for (const source of this.slotSources) source.subject.setCumulusEnabled(enabled);
-  }
-
-  // 写しの大気の中に、種類ごとの雲の殻を描くかを全スロットへ配る。
-  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    for (const source of this.slotSources) source.subject.setCloudShellEnabled(species, enabled);
   }
 
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。

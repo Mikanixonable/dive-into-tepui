@@ -1,0 +1,70 @@
+// 雲の種類ごとの曲線の不変条件を固定する。量が大きいほど高く不透明であること、量 0 が雲なしで
+// あること、雲の中の光学的厚みの式が雲頂から立つこと、2 種類の高度幅と上端の大小関係
+// (SPEC「雲の描画」)がここで検査できる。
+import * as assert from 'node:assert/strict';
+import {
+  CIRRUS_ALTITUDE_SPAN, CIRRUS_MAX_OPTICAL_DEPTH, CIRRUS_TOP_ALTITUDE,
+  CUMULUS_ALTITUDE_SPAN, CUMULUS_BASE_ALTITUDE, CUMULUS_TOP_ALTITUDE,
+  cirrusAmountFromOpticalDepth, cirrusColumnOpticalDepth, cirrusTopAltitude,
+  cumulusAmountFromOpacity, cumulusAmountFromTopAltitude, cumulusColumnOpticalDepth,
+  cumulusInCloudOpticalDepth, cumulusOpacity, cumulusTopAltitude,
+} from '../../src/render/cloud/cloud-kind';
+import { test } from '../harness';
+
+export function register(): void {
+  test('cloud kind: 量が大きいほど雲頂は高く覆う割合も大きい', () => {
+    const amounts = [0, 0.2, 0.5, 0.8, 1];
+    for (let i = 1; i < amounts.length; i += 1) {
+      assert.ok(cumulusTopAltitude(amounts[i]!) > cumulusTopAltitude(amounts[i - 1]!));
+      assert.ok(cirrusTopAltitude(amounts[i]!) > cirrusTopAltitude(amounts[i - 1]!));
+      assert.ok(cumulusOpacity(amounts[i]!) > cumulusOpacity(amounts[i - 1]!));
+      assert.ok(cirrusColumnOpticalDepth(amounts[i]!) > cirrusColumnOpticalDepth(amounts[i - 1]!));
+    }
+  });
+
+  test('cloud kind: 量 0 は柱光学深さ 0・柱の中の厚み 0(雲なし)', () => {
+    assert.equal(cumulusColumnOpticalDepth(0), 0);
+    assert.equal(cirrusColumnOpticalDepth(0), 0);
+    assert.equal(cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE), 0);
+    // 雲頂が雲底を下回る入力は厚み 0 へクランプする。
+    assert.equal(cumulusInCloudOpticalDepth(0), 0);
+  });
+
+  test('cloud kind: 積雲の柱の中の厚みは幾何学的厚みの 5/3 乗で伸びる', () => {
+    // k·H^(5/3)。H = 300 m で τ ≈ 8、1 km で τ ≈ 60(係数の採りどころ)。
+    const tau300 = cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE + 300);
+    const tau1k = cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE + 1_000);
+    assert.ok(Math.abs(tau300 - 8) < 0.2, `H=300 m の τ=${tau300}`);
+    assert.ok(Math.abs(tau1k - 60) < 1, `H=1 km の τ=${tau1k}`);
+    // 厚みの 2 倍は τ を 2^(5/3) ≈ 3.17 倍する。
+    const ratio = cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE + 2_000)
+      / cumulusInCloudOpticalDepth(CUMULUS_BASE_ALTITUDE + 1_000);
+    assert.ok(Math.abs(ratio - 2 ** (5 / 3)) < 1e-12);
+  });
+
+  test('cloud kind: いちばん高い積雲は巻雲の高さを突き抜ける', () => {
+    assert.equal(cumulusTopAltitude(1), CUMULUS_TOP_ALTITUDE);
+    assert.equal(cirrusTopAltitude(1), CIRRUS_TOP_ALTITUDE);
+    assert.ok(CUMULUS_TOP_ALTITUDE > CIRRUS_TOP_ALTITUDE);
+  });
+
+  test('cloud kind: 巻雲の高度幅は積雲より狭い', () => {
+    assert.ok(CIRRUS_ALTITUDE_SPAN < CUMULUS_ALTITUDE_SPAN);
+  });
+
+  test('cloud kind: 逆写像は往復で量を戻し、範囲外の入力は端へ clamp する', () => {
+    for (const amount of [0.05, 0.3, 0.7, 1]) {
+      assert.ok(Math.abs(cumulusAmountFromTopAltitude(cumulusTopAltitude(amount)) - amount) < 1e-12);
+      assert.ok(Math.abs(cumulusAmountFromOpacity(cumulusOpacity(amount)) - amount) < 1e-12);
+      assert.ok(Math.abs(cirrusAmountFromOpticalDepth(cirrusColumnOpticalDepth(amount)) - amount) < 1e-12);
+    }
+    assert.equal(cumulusAmountFromTopAltitude(0), 0);
+    assert.equal(cumulusAmountFromTopAltitude(1e6), 1);
+    assert.ok(Math.abs(cumulusAmountFromOpacity(1) - 1) < 1e-12);
+    assert.equal(cirrusAmountFromOpticalDepth(CIRRUS_MAX_OPTICAL_DEPTH * 2), 1);
+  });
+
+  test('cloud kind: 量 0.24 の積雲は下地をほぼ隠す', () => {
+    assert.ok(cumulusOpacity(0.24) >= 0.8);
+  });
+}

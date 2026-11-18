@@ -16,7 +16,7 @@ import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ModularShip } from '../ship/modular-ship';
 
 // デバッグステージの内訳。敵の射撃の可否と、次に出す敵集団の通し番号を持つ。
-export interface SerializedStageDebug extends SerializedStage {
+interface SerializedStageDebug extends SerializedStage {
   readonly enemyFireEnabled: boolean;
   readonly waveCount: number;
 }
@@ -28,6 +28,8 @@ export class StageDebug extends Stage {
   public static readonly selectLabel = 'DEBUG';
   public static readonly selectSub = '【デバッグ】敵集団1つ・撃破しても終了しない・敵の射撃を実行中に切替可能';
   public static readonly hiddenFromSelect = true;
+  // 撃破しても決着しない(GAME.md 2.7)。解放の記録も読まない。
+  public static readonly judgesOutcome = false;
 
   // パネルの操作を積む先。
   private readonly commands: StageDebugCommands;
@@ -98,17 +100,17 @@ export class StageDebug extends Stage {
     this.enemyFireEnabled = on;
   }
 
-  // 敵集団を1つ、自艦のまわりへ出す。自艦がいなければ何も出さない。
+  // 敵集団を1つ、操作艦のまわりへ出す。操作艦がいなければ何も出さない。
   public spawnEnemyWave(): void {
-    const player = this.ship;
-    if (player === null) return;
+    const player = this.controlledShip;
+    if (player === null || !player.motion.alive) return;
     for (const enemy of this.generateWaveAround(player)) this.addEnemy(enemy);
   }
 
-  // 組み立て型の敵を1体、自艦の前方へ出す。自艦がいなければ何も出さない。
+  // 組み立て型の敵を1体、操作艦の前方へ出す。操作艦がいなければ何も出さない。
   public spawnAssemblyEnemy(): void {
-    const player = this.ship;
-    if (player === null) return;
+    const player = this.controlledShip;
+    if (player === null || !player.motion.alive) return;
     // 自機の機首方向 2km 先へ、自機と同じ速度で置く。
     const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
     const position = addScaled(player.motion.state.r, forward, 2000);
@@ -120,17 +122,17 @@ export class StageDebug extends Stage {
     ));
   }
 
-  // 弾薬を1つ、自艦の近くへ出す。自艦がいなければ何も出さない。
+  // 弾薬を1つ、操作艦の近くへ出す。操作艦がいなければ何も出さない。
   public spawnAmmo(): void {
-    const player = this.ship;
-    if (player === null) return;
+    const player = this.controlledShip;
+    if (player === null || !player.motion.alive) return;
     this.logistics.spawnForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
   }
 
-  // RCS燃料を1つ、自艦の近くへ出す。自艦がいなければ何も出さない。
+  // RCS燃料を1つ、操作艦の近くへ出す。操作艦がいなければ何も出さない。
   public spawnRcsFuel(): void {
-    const player = this.ship;
-    if (player === null) return;
+    const player = this.controlledShip;
+    if (player === null || !player.motion.alive) return;
     this.logistics.spawnRcsFuelForPlayer(player, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST);
   }
 

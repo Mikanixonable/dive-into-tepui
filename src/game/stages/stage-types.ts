@@ -10,6 +10,7 @@ import type { ControlSelection } from '../control-selection';
 import type { CommandQueue } from '../command-queue';
 import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
 import type { ShipBlueprintShelf } from '../ship/ship-blueprint';
+import type { RelicHunt, SerializedRelicHunt } from './stage-utils/relic-hunt';
 import type { SalvageKind } from '../ship/salvage-blueprints';
 import type { StageRules } from './stage-rules';
 import type { PlayerLossCause } from './stage-outcome';
@@ -39,7 +40,7 @@ export type StageDeps = [
 // 省いたものは新しいランの初期値から始まる。
 export type CommonStageState = [
   scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics, reinforced?: boolean,
-  salvageCargo?: SalvageCargo,
+  salvageCargo?: SalvageCargo, revealedBodies?: readonly string[], relicHunt?: RelicHunt,
 ];
 
 // ステージクラスの静的側。起動時の設定はここから読む。
@@ -49,11 +50,13 @@ export interface StageClass {
   createCelestialSystem(
     epoch: TdbJulianDate, onProgress?: (ratio: number) => void, renderer?: THREE.WebGPURenderer,
   ): Promise<CelestialSystem>;
-  // simTime=0 に置く絶対時刻。**基底に既定値は無く、全ステージが自分で宣言する** —
+  // simTime=0 に置く絶対時刻。基底に既定値は無く、全ステージが自分で宣言する —
   // 置くと宣言し忘れが型検査に落ちなくなり、元期が共有の定数へ静かに戻る。
   readonly epoch: TdbJulianDate;
   // 開始前にプレイヤーへ開始日時を選ばせるか(GAME.md 9.0)。選ばせないステージは epoch で始まる。
   readonly picksStartEpoch: boolean;
+  // 勝敗を判定するか。判定しないステージは勝利せず、セーブ枠の解放の記録を読まない(GAME.md「天体の解放」)。
+  readonly judgesOutcome: boolean;
   // 選択画面が読む項目。
   readonly selectLabel: string;
   readonly selectSub: string;
@@ -85,6 +88,10 @@ export interface SerializedStage {
   readonly reinforced?: boolean;
   // 補給艇で届けていない積荷。欠けた記録は空の待ち行列から始まる。
   readonly pendingSalvageCargo?: readonly SalvageKind[];
+  // 解放された天体の id。欠けた記録は太陽・地球・月だけから始める。
+  readonly revealedBodies?: readonly string[];
+  // 遺物の反射の検出と発見の状態。欠けた記録は何も見つけていない状態から始める。
+  readonly relics?: SerializedRelicHunt;
 }
 
 // 1周回の成績。撃破・命中・生存の値を結果画面と記録の両方が読む。
@@ -114,6 +121,10 @@ export interface RunOptions {
   readonly reinforced: boolean;
   // 連敗の予告を出すか。予告を持つステージだけが読む。
   readonly forecast: boolean;
+  // このランの開始時点で解放されている天体の id。勝敗を判定しないステージには基底の天体だけを渡す。
+  readonly revealedBodies: readonly string[];
+  // セーブ枠で発見済みの遺物の id。勝敗を判定しないステージには空を渡す。
+  readonly discoveredRelics: readonly string[];
 }
 
 // 生存時間を T+ の時分秒で書く。
