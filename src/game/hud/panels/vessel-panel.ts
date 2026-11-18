@@ -79,6 +79,16 @@ interface VesselMeterDom {
   readonly value: HTMLElement;
 }
 
+// 展開部品の群ごとの表示条件を決める純粋関数。装備していない群だけ畳み、区画はどちらか
+// 一方でも装備していれば残す。両方なければ区画ごと畳む。旧実装はどちらか一方の欠如で
+// 区画ごと隠していたため、片方だけを積んだ船が両方のボタンを失っていた。
+export function deployGroupVisibility(
+  hasSolar: boolean,
+  hasRadiator: boolean,
+): { readonly showSolar: boolean; readonly showRadiator: boolean; readonly showContainer: boolean } {
+  return { showSolar: hasSolar, showRadiator: hasRadiator, showContainer: hasSolar || hasRadiator };
+}
+
 // 展開ボタン1つぶんの表示要素。name は部品名と左右(読み上げ名の前半)で、last* は、変わったときだけ
 // 書き直すための直近の表示値。
 interface DeployButtonDom {
@@ -352,16 +362,27 @@ export class VesselPanel {
     }
   }
 
-  // 太陽電池パドルと放熱板の4枚を同期する。どちらかを積んでいなければ行ごと畳む。
+  // 太陽電池パドルと放熱板の群を、装備の有無ごとに独立して出し入れする。
+  // 片方だけを積んだ船でも、積んでいる側のボタンは残る。
   private syncDeployButtons(view: VesselPanelViewModel): void {
     const { solar, radiator } = view;
-    const container = this.els.get('vessel-deploy-controls');
-    container.classList.toggle('hidden', solar === null || radiator === null);
-    if (!solar || !radiator) return;
+    const { showSolar, showRadiator, showContainer } = deployGroupVisibility(solar !== null, radiator !== null);
+    this.els.get('vessel-deploy-controls').classList.toggle('hidden', !showContainer);
+    this.syncDeployGroup(this.solarButtons, solar, showSolar);
+    this.syncDeployGroup(this.radiatorButtons, radiator, showRadiator);
+  }
 
-    this.syncDeployButton(this.solarButtons.up, solar.up);
-    this.syncDeployButton(this.solarButtons.down, solar.down);
-    this.syncDeployButton(this.radiatorButtons.up, radiator.up);
-    this.syncDeployButton(this.radiatorButtons.down, radiator.down);
+  // 展開ボタン2つぶんの群を同期する。装備していなければボタンごと畳み、状態は書かない。
+  private syncDeployGroup(
+    buttons: Record<'up' | 'down', DeployButtonDom>,
+    state: Record<'up' | 'down', DeployState> | null,
+    show: boolean,
+  ): void {
+    for (const side of ['up', 'down'] as const) {
+      buttons[side].button.element.classList.toggle('hidden', !show);
+    }
+    if (state === null) return;
+    this.syncDeployButton(buttons.up, state.up);
+    this.syncDeployButton(buttons.down, state.down);
   }
 }
