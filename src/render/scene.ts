@@ -5,6 +5,7 @@ import type { GraphicsSettingsData } from './graphics-settings';
 import { reversedOpaqueSort, reversedTransparentSort } from './pipeline/reversed-sort';
 import { RenderPipeline } from './pipeline/render-pipeline';
 import { GpuTimings } from './gpu-timings';
+import { effectivePixelRatio } from './viewport';
 import type { DebugTargetId } from './pipeline/debug-target';
 import type { Viewport } from './viewport';
 
@@ -43,7 +44,7 @@ export async function createGameScene(
   let currentGraphics = graphics;
   // レンダラの解像度を、覚えている寸法と倍率から立て直す。
   const applyResolution = () => {
-    renderer.setPixelRatio(current.pixelRatio * currentGraphics.resolutionScale);
+    renderer.setPixelRatio(effectivePixelRatio(current, currentGraphics.resolutionScale));
     renderer.setSize(current.width, current.height);
   };
 
