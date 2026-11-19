@@ -62,19 +62,24 @@ export class MapPicking {
     );
     // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md「軌道物体一覧パネル」)。
     this.listPanel.onFocus = (id) => {
-      this.focusTarget(id, this.pickables.listPickables.find((i) => i.id === id) ?? null);
+      this.focusTarget(id, this.findListPickable(id));
     };
     this.listPanel.onNavTarget = (id) => {
-      const target = this.pickables.listPickables.find((i) => i.id === id);
+      const target = this.findListPickable(id);
       if (target && this.navTargetPresenter.canTarget(
         id, this.roster, this.celestialBodies, this.displayWindowManager.current.simTime)) {
         this.navTargetCommands.toggle(id, target.name);
       }
     };
     this.listPanel.onSelectRight = (id, clientX, clientY) => {
-      const target = this.pickables.listPickables.find((i) => i.id === id);
+      const target = this.findListPickable(id);
       if (target) this.objectWindows.open(clientX, clientY, target);
     };
+  }
+
+  // 一覧行の id から被選択物を引く。見つからなければ null。
+  private findListPickable(id: string) {
+    return this.pickables.listPickables.find((i) => i.id === id) ?? null;
   }
 
   // 画面上の (x, y) に当たった被選択物を、マーカー段・本体段の順に探す(SPEC/MAP.md
