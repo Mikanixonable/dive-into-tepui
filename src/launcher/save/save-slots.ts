@@ -148,14 +148,8 @@ export class SaveSlots {
     }
 
     // 書き出しと同じ形へ、本体が読めた手動セーブを詰めてから取り込む。
-    const copied: SlotExport = {
-      format: SLOT_EXPORT_FORMAT,
-      formatVersion: SLOT_EXPORT_VERSION,
-      exportedAtReal: Date.now(),
-      slot: { ...source, name: `${source.name} のコピー`, stages: [] },
-      snapshots: {},
-      blueprints: this.store.readBlueprints(id),
-    };
+    const copied = this.slotExport(
+      { ...source, name: `${source.name} のコピー`, stages: [] }, {}, this.store.readBlueprints(id));
     // 複製先の自動セーブにする本体(ステージ履歴ごとに1つ)。分岐ならその時点、全体複製なら複製元の自動セーブ。
     const autoSaveSources = new Map<string, string>();
     for (const history of source.stages) {
@@ -334,13 +328,18 @@ export class SaveSlots {
       exportedSlot.stages.push({ ...history, snapshots: keptMetas, autoSaveId: null });
     }
 
+    return this.slotExport(exportedSlot, snapshots, this.store.readBlueprints(slotId));
+  }
+
+  // 書き出しファイルの封筒を組む。識別子・形式バージョン・書き出し時刻はここでのみ埋める。
+  private slotExport(
+    slot: SaveSlotMeta, snapshots: Record<string, SavedGame>, blueprints: readonly ShipBlueprint[],
+  ): SlotExport {
     return {
       format: SLOT_EXPORT_FORMAT,
       formatVersion: SLOT_EXPORT_VERSION,
       exportedAtReal: Date.now(),
-      slot: exportedSlot,
-      snapshots,
-      blueprints: this.store.readBlueprints(slotId),
+      slot, snapshots, blueprints,
     };
   }
 

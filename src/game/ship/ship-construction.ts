@@ -477,7 +477,7 @@ export class ShipConstruction implements OverlayHandle {
     const apply = (): void => session.edits.remove(moduleId);
     // 失うなら確認を挟み、確定した撤去が成功したら閉じる。
     if (losesCockpit) {
-      this.confirmation.request({
+      this.confirmation.open({
         title: '健全なコックピットを失う撤去',
         message: 'この撤去で船体から健全なコックピットがすべて失われ、操縦不能な物資になります。続けますか？',
         confirmLabel: '撤去して閉じる', destructive: true,
@@ -625,7 +625,7 @@ export class ShipConstruction implements OverlayHandle {
     const blueprint = this.blueprints.blueprints.find(entry => entry.id === id) ?? null;
     if (blueprint === null) return;
     // 確認のうえで削除の記録を積み、手に持っていれば手放す。
-    this.confirmation.request({
+    this.confirmation.open({
       title: '設計図を削除',
       message: `設計図「${blueprint.name}」を削除します。続けますか？`,
       confirmLabel: '削除する', destructive: true,
@@ -669,7 +669,7 @@ export class ShipConstruction implements OverlayHandle {
     const session = this.current;
     if (session === null) return;
     if (session.history.entriesView.length <= 1) return;
-    this.confirmation.request({
+    this.confirmation.open({
       title: '変更をすべて取り消す',
       message: '建造を始めてからの変更をすべて取り消し、開始時の船体へ戻します。続けますか？',
       confirmLabel: 'すべて取り消す', destructive: true,

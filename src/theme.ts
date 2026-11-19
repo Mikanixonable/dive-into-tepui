@@ -165,11 +165,12 @@ const GLYPH_BASE = '22px'; // .mk .sym の基準
 const GLYPH_POI = '5px'; // 天体ラベルの点(.mk-poi)
 const GLYPH_BORESIGHT = '36px'; // .mk-boresight
 
-// 角丸。役割ごとの4段。
+// 角丸。役割ごとの段。
 export const RADIUS_MICRO = '8px';
 export const RADIUS_CONTROL = '11px';
 const RADIUS_PANEL = '16px';
 export const RADIUS_WINDOW = '22px';
+export const RADIUS_HERO = '30px'; // 画面の大半を占める面(ランチャの 3D 窓)の角丸
 const RADIUS_PILL = '999px'; // トラックなど、完全な角丸ピル
 
 // 余白。6段。

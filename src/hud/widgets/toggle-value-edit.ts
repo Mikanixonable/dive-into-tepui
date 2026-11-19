@@ -45,14 +45,4 @@ export class ToggleValueEdit {
     this.editEl.classList.add('hidden');
     this.displayEl.classList.remove('hidden');
   }
-
-  // 開いている数値入力を確定させて閉じる。
-  public commit(): void {
-    this.input.commit();
-  }
-
-  // 開いている数値入力を破棄して閉じる。
-  public cancel(): void {
-    this.input.cancel();
-  }
 }

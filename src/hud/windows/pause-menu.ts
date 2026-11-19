@@ -15,7 +15,7 @@ import {
   Slider, syncCollapseToggle, TabBar, type CollapseToggleLabels,
 } from '../widgets';
 import { wireHeaderDrag } from '../window-drag';
-import { SettingsView } from './settings-view';
+import { SettingsView } from '../panels/settings-view';
 
 type PauseMenuTab = 'pause' | 'settings';
 
