@@ -18,7 +18,7 @@ import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotionThermal } from '../dynamic-motion';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ControlSelection } from '../../control-selection';
-import type { MenuItem } from '../../hud/windows/context-menu';
+import type { MenuItem } from '../../../hud/windows/context-menu';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { MarkerVisibility } from '../../../marker/marker-visibility';
 import type { ObjectAuthoring } from '../../pickable/inspected-object';

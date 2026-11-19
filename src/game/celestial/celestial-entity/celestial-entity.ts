@@ -17,7 +17,7 @@ import type {
 } from '../../../render/celestial/celestial-entity/celestial-view';
 import type { CelestialBodies } from '../celestial-bodies';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { MenuItem } from '../../hud/windows/context-menu';
+import type { MenuItem } from '../../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import { BODY_PICKER_GENRES, type MapListSection, type ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';

@@ -10,7 +10,7 @@ import { ENTITY_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './marker-priority';
 import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-listing';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { MenuItem } from '../hud/windows/context-menu';
+import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { CelestialBodies } from '../celestial/celestial-bodies';

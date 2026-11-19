@@ -9,7 +9,7 @@ import type { ControlSelection } from '../control-selection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import { ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
-import type { MenuItem } from '../hud/windows/context-menu';
+import type { MenuItem } from '../../hud/windows/context-menu';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
