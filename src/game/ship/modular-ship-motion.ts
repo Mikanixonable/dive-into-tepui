@@ -1,7 +1,7 @@
 // モジュール船を一体剛体として進め、船体由来の形状・質量・補助システムを同期する。
 import { cross, add, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import { LOCAL_RIGHT, qInvert, qRotate } from '../../math/quat';
-import { type Attitude, type RotatingFrame, relativeSpin } from '../../physics/attitude';
+import { type Attitude, type RotatingFrame, pointVelocityLocal, relativeSpin } from '../../physics/attitude';
 import { orbitLocalFrame } from '../../physics/orbit-local-frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
@@ -138,9 +138,10 @@ class ModularShipBehavior implements DynamicMotionBehavior {
   // 重心位置からラジエーターと給弾ベルトの接触代理を配置する。
   public placeContactProxies(self: DynamicMotion, simTime: number, dt: number): void {
     const motion = modularShipMotionOf(self);
-    const rootVelocityOffset = qRotate(motion.att.q, cross(motion.att.w, motion.centerOffset));
+    // 組立原点は重心から機体座標で -centerOffset の点。
+    const rootVelocity = pointVelocityLocal(motion.state.v, motion.att, scale(motion.centerOffset, -1));
     motion.radiator.placeContactFolds(
-      motion.assemblyOriginEci(), sub(motion.state.v, rootVelocityOffset), motion.att, simTime,
+      motion.assemblyOriginEci(), rootVelocity, motion.att, simTime,
     );
     motion.belt.placeContactSections(
       motion, this.reactions.magsLeft?.() ?? 0, simTime, dt, motion.state.r, motion.state.v, motion.att,
@@ -401,11 +402,10 @@ export class ModularShipMotion extends DynamicMotion {
       next.centerOffset.z - previous.centerOffset.z,
     );
     const deltaWorld = qRotate(this.att.q, deltaBody);
-    const rotationalVelocityBody = cross(this.att.w, deltaBody);
     const nextState = kinematicState<'eci'>(
       this.state.t,
       add(this.state.r, deltaWorld),
-      add(this.state.v, qRotate(this.att.q, rotationalVelocityBody)),
+      pointVelocityLocal(this.state.v, this.att, deltaBody),
     );
     const nextW = componentwiseAngularMomentumVelocity(
       this.att.w, previous.mass.inertia, next.mass.inertia,

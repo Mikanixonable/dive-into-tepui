@@ -2,7 +2,7 @@
 // 画面座標へ写した候補をポインタ位置へ当てるピックの純関数。
 import { pickRadiusSq } from '../../input/pointer-precision';
 import { qRotate, type Quat } from '../../math/quat';
-import { add, scale, sub, v3, type Vec3 } from '../../math/vec3';
+import { scale, v3, type Vec3 } from '../../math/vec3';
 import {
   applyTransformToDirection, applyTransformToPoint, sideMountRadius, sideSlotDirection,
   type ModuleOrientation,
@@ -16,6 +16,13 @@ import type {
   ConstructionHeld, ConstructionSymmetry, ConstructionTarget,
 } from './ship-construction-types';
 
+// constructionTargetGuide が船体運動に求める面。姿勢と組立座標から ECI への変換だけを使う。
+export interface ConstructionGuideMotion {
+  readonly att: { readonly q: Quat };
+  assemblyOriginEci(): Vec3;
+  assemblyToEci(local: Vec3): Vec3;
+}
+
 // 取り付け先のガイド(接続面の中心・外向き・半径)を ECI へ写したもの。
 export interface ConstructionTargetGuide {
   readonly target: ConstructionTarget;
@@ -26,12 +33,11 @@ export interface ConstructionTargetGuide {
   readonly guideRadius: number; // m
 }
 
-// 取り付け先のガイドを ECI へ写す。position は重心の ECI 位置 [m]、rotation は船体から
-// ECI への回転、centerOffset は船体内重心 [m]。親が無い・根の定義が無いときは null。
+// 取り付け先のガイドを ECI へ写す。親が無い・根の定義が無いときは null。
 export function constructionTargetGuide(
   assembly: ShipAssembly, anchorId: string, held: ConstructionHeld,
   info: ConstructionTargetInfo, orientation: ModuleOrientation, symmetry: ConstructionSymmetry,
-  position: Vec3, rotation: Quat, centerOffset: Vec3,
+  motion: ConstructionGuideMotion,
 ): ConstructionTargetGuide | null {
   const placement = placementFor(assembly, anchorId, held, info.target, orientation, symmetry);
   const rootDefinition = heldRootDefinition(assembly, held);
@@ -65,11 +71,10 @@ export function constructionTargetGuide(
     }
     parentDiameter = parentDefinition.diameter;
   }
-  const root = sub(position, qRotate(rotation, centerOffset));
   return {
     target: info.target, label: info.label, placement,
-    guideEci: add(root, qRotate(rotation, guidePosition)),
-    normalEci: qRotate(rotation, guideNormal),
+    guideEci: motion.assemblyToEci(guidePosition),
+    normalEci: qRotate(motion.att.q, guideNormal),
     guideRadius: Math.min(parentDiameter, rootDefinition.diameter) / 2,
   };
 }
