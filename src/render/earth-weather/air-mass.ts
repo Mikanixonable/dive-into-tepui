@@ -65,7 +65,7 @@ export class AirMass {
       'airMassTrace', THREE.RGBAFormat, projection,
       (direction) => {
         const trace = this.traceAt(direction);
-        return vec4(trace.drift, trace.speed, trace.ocean, 1);
+        return vec4(trace.drift, trace.speed, trace.oceanFetch, 1);
       },
       GPU_PASS.cloudBake);
   }
@@ -100,23 +100,23 @@ export class AirMass {
   }
 
   // 単位方向 direction から TRACE_SECONDS だけ風上へ遡った追跡。drift は遡った先の緯度といまの
-  // 緯度の差 [rad]、speed はいまの点の追跡の風の速さ [m/s]、ocean は追跡が海の上にあった時間の
-  // 割合 0..1(各刻みの到達点で陸らしさを見て平均する)。
-  private traceAt(direction: Vec3Node): { drift: FloatNode; speed: FloatNode; ocean: FloatNode } {
+  // 緯度の差 [rad]、speed はいまの点の追跡の風の速さ [m/s]、oceanFetch は追跡が海の上にあった
+  // 時間の割合 0..1(各刻みの到達点で陸らしさを見て平均する)。
+  private traceAt(direction: Vec3Node): { drift: FloatNode; speed: FloatNode; oceanFetch: FloatNode } {
     let point = direction;
     let speed: FloatNode = float(0);
-    let ocean: FloatNode = float(0);
+    let oceanFetch: FloatNode = float(0);
     for (let step = 0; step < TRACE_STEPS; step++) {
       const wind = this.windAt(point);
       if (step === 0) speed = length(wind.velocity);
       point = normalize(
         point.add(windStep(wind, point, float(-TRACE_SECONDS / TRACE_STEPS)).div(this.surfaceRadius)));
-      ocean = ocean.add(this.landFraction(point).oneMinus());
+      oceanFetch = oceanFetch.add(this.landFraction(point).oneMinus());
     }
     return {
       drift: latitudeOf(point).sub(latitudeOf(direction)),
       speed,
-      ocean: ocean.div(TRACE_STEPS),
+      oceanFetch: oceanFetch.div(TRACE_STEPS),
     };
   }
 }
