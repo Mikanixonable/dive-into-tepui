@@ -1,6 +1,6 @@
 // 常設 ORBIT パネル(#hud-orbit)の同期: 自艦の基準・高度・速度・遠地点/近地点・傾斜角・
 // 周期・動圧・機体温度、および基準切替のセグメントコントロール。戦闘/マップ共通。
-import { fmtDistParts, fmtSpeedParts, fmtTime, type ValueParts } from '../../../hud/utils';
+import { fmtDistParts, fmtSpeedParts, fmtTime, type ValueParts } from '../../../hud/format';
 import { setReadout } from '../../../hud/readout';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';

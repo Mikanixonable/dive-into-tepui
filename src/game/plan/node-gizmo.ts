@@ -1,7 +1,7 @@
 // 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル・Δv アーム・コンテキストメニューを
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import { FONT_FAMILY, FONT_XS, Z_HUD_NODE_GIZMO } from '../../theme';
-import { ContextMenu } from '../hud/windows/context-menu';
+import { ContextMenu } from '../../hud/windows/context-menu';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { OverlayManager } from '../../hud/overlay-manager';
 

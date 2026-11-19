@@ -1,4 +1,4 @@
-// HUD の骨格 CSS: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レールと、
+// HUD の骨格 CSS: #hud ルート・重なり順・スクロールバー・PanelChrome 外枠・左右レールと、
 // 置き場を持たない画面固定バッジ・通知。末尾でブレークポイントごとの上書きと
 // prefers-reduced-motion を適用する。
 import { OVERLAY_LAYER_STYLE } from '../../../hud/overlay-layer';
@@ -8,7 +8,7 @@ import {
 } from '../../../hud/breakpoints';
 
 export const SKELETON_STYLE = `
-/* レイアウト骨格: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レール。 */
+/* レイアウト骨格: #hud ルート・重なり順・スクロールバー・PanelChrome 外枠・左右レール。 */
 #hud, #hud * { box-sizing: border-box; }
 /* コンポーネントの padding まで消す全称リセットは避ける。文書要素だけを低詳細度で正規化する。 */
 #hud :where(h1, h2, h3, h4, p, dl, dd, ol, ul, figure) { margin: 0; padding: 0; }
@@ -42,14 +42,6 @@ ${OVERLAY_LAYER_STYLE}
 #hud ::-webkit-scrollbar-thumb { background: var(--edge); border-radius: var(--radius-m); }
 #hud ::-webkit-scrollbar-thumb:hover { background: var(--color-primary-hover); }
 
-#hud-overlay-shield {
-  display: none; position: absolute; inset: 0; pointer-events: none; background: transparent;
-}
-/* 入力ゲートと背景暗転は別責務。gatesInput=true なら透明でも必ず全面shieldを実体化する。 */
-#hud-layer-gate.hud-overlay-gate #hud-overlay-shield { display: block; }
-body.hud-overlay-dim-background #hud-overlay-shield {
-  display: block; background: var(--shade-1);
-}
 body.hud-overlay-modal-open #touch-ui,
 body.hud-construction-mode #touch-ui { display: none; }
 
@@ -111,14 +103,14 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-pause-badge,
   #hud-toast { background: var(--surface-opaque); }
 }
-#hud .panel-shell-collapse {
+#hud .panel-chrome-collapse {
   flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
   border-radius: 50%; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
-#hud .panel-shell-collapse:hover { color: var(--color-primary-hover); background: var(--surface-2); }
-#hud .panel-shell-collapse:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-#hud .panel-shell-body.collapsed { display: none !important; }
-/* PanelShell の見出し: [記号][題名] ……… [補足][開閉]。畳むと補足が要約(最も重い状態)に替わる。 */
+#hud .panel-chrome-collapse:hover { color: var(--color-primary-hover); background: var(--surface-2); }
+#hud .panel-chrome-collapse:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+#hud .panel-chrome-body.collapsed { display: none !important; }
+/* PanelChrome の見出し: [記号][題名] ……… [補足][開閉]。畳むと補足が要約(最も重い状態)に替わる。 */
 #hud .ui-head {
   display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center;
   column-gap: var(--space-3); min-height: var(--row-min-h-s); margin-bottom: var(--space-2);
@@ -132,11 +124,11 @@ body.hud-construction-mode #touch-ui { display: none; }
   color: var(--role-label); font-size: var(--font-xxs); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 #hud .ui-head-meta:empty, #hud .ui-head-meta.is-summary { display: none; }
-#hud .panel:has(> .panel-shell-body.collapsed) .ui-head { margin-bottom: 0; }
-#hud .panel:has(> .panel-shell-body.collapsed) .ui-head-meta { display: none; }
-#hud .panel:has(> .panel-shell-body.collapsed) .ui-head-meta.is-summary:not(:empty) { display: inline; }
+#hud .panel:has(> .panel-chrome-body.collapsed) .ui-head { margin-bottom: 0; }
+#hud .panel:has(> .panel-chrome-body.collapsed) .ui-head-meta { display: none; }
+#hud .panel:has(> .panel-chrome-body.collapsed) .ui-head-meta.is-summary:not(:empty) { display: inline; }
 /* 本文の幅(レールの幅)で主読み値の並びを切り替えるため、本文を幅の基準にする。 */
-#hud .panel-shell-body { container-type: inline-size; }
+#hud .panel-chrome-body { container-type: inline-size; }
 #hud .row { display: flex; justify-content: space-between; gap: var(--space-5); }
 #hud .row .k { color: var(--text-dim); }
 #hud .row .v { color: var(--text); min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
@@ -325,8 +317,7 @@ body.touch-ui-active #hud-pause-badge { display: flex; }
 #hud-toast .toast-message { min-width: 0; overflow-wrap: anywhere; }
 
 /* 状態色の共有語彙: 読み値や行が持つ意味を、場所ごとの色名ではなく共通ロールで名付ける。
-   ui-caution / ui-warning は注意・警告の値(色に加えて △ ▲ を伴う)、ui-warning-fill は警告の行の面、
-   ui-accent は稼働中のモード。 */
+   ui-caution / ui-warning は注意・警告の値(色に加えて △ ▲ を伴う)、ui-accent は稼働中のモード。 */
 #hud .ui-caution { color: var(--role-caution); }
 #hud .ui-warning { color: var(--role-warning); }
 #hud .ui-caution::before, #hud .ui-warning::before {
@@ -334,7 +325,6 @@ body.touch-ui-active #hud-pause-badge { display: flex; }
 }
 #hud .ui-caution::before { content: '△'; }
 #hud .ui-warning::before { content: '▲'; }
-#hud .ui-warning-fill { background: var(--role-warning-fill); }
 #hud .ui-accent { color: var(--color-primary); }
 
 /* ここから下はブレークポイントごとの上書きと prefers-reduced-motion。

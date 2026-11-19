@@ -52,10 +52,6 @@ export const EDITORIAL_DATA_STYLE = `
   font-size: var(--font-xxs);
   font-variant-numeric: tabular-nums;
 }
-#hud .ui-data-grid {
-  display: grid;
-  gap: var(--space-3);
-}
 
 /* タイトル画面から抽出した共通レイアウト文法。見た目のコピーではなく、情報階層を共通化する。 */
 #hud .editorial-control-sheet,
@@ -114,7 +110,7 @@ export const EDITORIAL_DATA_STYLE = `
   content: attr(data-index); color: var(--text-dim); font-size: var(--font-xxs);
   font-variant-numeric: tabular-nums; letter-spacing: .08em;
 }
-#hud .editorial-index-row.is-active {
+#hud .editorial-index-row.on {
   box-shadow: inset 2px 0 0 var(--color-primary);
 }
 #hud .editorial-index-status {
@@ -123,9 +119,5 @@ export const EDITORIAL_DATA_STYLE = `
 #hud .editorial-control-zone {
   padding-top: var(--space-3);
   box-shadow: inset 0 1px 0 var(--editorial-rule);
-}
-#hud .editorial-workspace-title {
-  color: var(--text-strong); font-size: var(--font-3xl); font-weight: 650;
-  letter-spacing: -.055em; line-height: .84;
 }
 `;

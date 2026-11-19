@@ -13,7 +13,7 @@ export class HoldButton {
   // label はボタンの表示文字列。
   public constructor(label: string) {
     this.element = document.createElement('span');
-    this.element.className = 'w-btn w-hold';
+    this.element.className = 'w-btn';
     this.element.textContent = label;
     stopDragPropagation(this.element);
     expandHitTarget(this.element);

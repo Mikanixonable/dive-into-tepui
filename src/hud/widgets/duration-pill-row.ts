@@ -20,11 +20,11 @@ export class DurationPillRow<K extends string, Kd extends K | 'custom'> {
     private readonly minSec: number,
     private readonly maxSec: number,
   ) {
-    this.element = buildLabeledRow(title, 'predict-row1');
+    this.element = buildLabeledRow(title, 'w-pill-row');
 
     // 固定期間のピルを並べ、末尾に手動レンジの入力欄を置く。
     const pillsEl = document.createElement('span');
-    pillsEl.className = 'predict-pills';
+    pillsEl.className = 'w-pills';
     for (const [key, text] of entries) {
       const btn = new Button(text, () => this.onSelect(key));
       pillsEl.appendChild(btn.element);
@@ -38,7 +38,7 @@ export class DurationPillRow<K extends string, Kd extends K | 'custom'> {
 
   // 選択中のキーと、数値入力欄に示す秒数を反映する。入力欄は編集中(フォーカス中)なら
   // ユーザー入力を壊さないよう書き換えない。
-  public render(key: Kd, currentSec: number): void {
+  public sync(key: Kd, currentSec: number): void {
     for (const [k, btn] of this.buttons) btn.setOn(key === k);
     if (!this.input.focused) this.input.syncSec(currentSec, this.minSec, this.maxSec);
   }

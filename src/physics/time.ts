@@ -1,16 +1,12 @@
-/**
- * Pure astronomical time primitives.
- *
- * Calendar years use astronomical year numbering (year 0 is 1 BCE) and the
- * Gregorian rules are extended in both directions.  This deliberately does
- * not use JavaScript Date: Date has implementation-dependent behaviour for
- * years outside its usual four-digit range and cannot represent TDB.
- *
- * The base CalendarDate/JD mapping is a uniform 86400-second-day mapping. It
- * therefore does not represent a literal UTC 23:59:60 leap second. Code that
- * needs literal leap seconds must supply them through a SPICE/offset adapter;
- * this module does not claim complete UTC leap-second support.
- */
+// 天文時刻の基礎(暦・ユリウス日・時刻系の変換)。
+//
+// 暦年は天文年計数(年0 = 紀元前1年)を使い、グレゴリオの規則を両方向へ拡張する。
+// JavaScript の Date は使わない — 4桁を外れる年で実装依存の挙動を持ち、TDB を
+// 表せないため。
+//
+// CalendarDate とユリウス日の対応は、1日を 86400 秒とする一様な対応である。
+// したがって UTC の 23:59:60 のような閏秒そのものは表さない。閏秒が要るコードは
+// SPICE/オフセットのアダプタから供給する。
 
 type TimeScale = 'UTC' | 'TT' | 'TDB';
 type EphemerisScale = 'TT' | 'TDB';
@@ -36,13 +32,10 @@ type UtcJulianDate = JulianDate<'UTC'>;
 type TtJulianDate = JulianDate<'TT'>;
 export type TdbJulianDate = JulianDate<'TDB'>;
 
-/**
- * The caller supplies the changing UTC definition.  In particular, there is
- * intentionally no built-in leap-second table: a future UTC instant cannot
- * be converted correctly until that information exists.
- */
+// 変化する UTC の定義は呼び出し側が渡す。閏秒表を組み込まないのは意図的 —
+// 未来の UTC の瞬は、その情報が無い限り正しく変換できないため。
 interface UtcOffsetProvider {
-  /** TAI - UTC, in seconds, at the supplied UTC calendar instant. */
+  // 与えた UTC の暦瞬における TAI - UTC [秒]。
   taiMinusUtcSeconds(utc: UtcCalendarDate): number;
 }
 
@@ -113,7 +106,7 @@ export function createJulianDate<S extends TimeScale>(scale: S, value: number): 
   return { value, scale };
 }
 
-/** Parse an ISO-like extended-year calendar timestamp with an explicit scale. */
+// 明示した時刻系の、拡張年を持つ ISO 風の暦タイムスタンプを読む。
 export function parseCalendarDate<S extends TimeScale>(text: string, scale: S): CalendarDate<S> {
   const match = /^(?<year>[+-]?\d{4,})-(?<month>\d{2})-(?<day>\d{2})T(?<hour>\d{2}):(?<minute>\d{2}):(?<second>\d{2}(?:\.\d+)?)(?<z>Z)?$/.exec(text);
   if (!match?.groups) throw new RangeError(`invalid calendar date: ${text}`);
@@ -130,11 +123,8 @@ export function parseCalendarDate<S extends TimeScale>(text: string, scale: S): 
   });
 }
 
-/**
- * Days since 1970-01-01 in the proleptic Gregorian calendar.
- * This is the integer-arithmetic algorithm of Howard Hinnant, extended to
- * astronomical year numbering by allowing signed years.
- */
+// 1970-01-01 からの日数(予測グレゴリオ暦)。Howard Hinnant の整数演算を、
+// 符号付き年を許して天文年計数へ拡張したもの。
 function daysFromCivil(year: number, month: number, day: number): number {
   const adjustedYear = year - (month <= 2 ? 1 : 0);
   const era = Math.floor(adjustedYear / 400);
@@ -242,9 +232,3 @@ export function ttToUtc(input: TtJulianDate, provider: UtcOffsetProvider): UtcJu
   }
   return createJulianDate('UTC', utcValue);
 }
-
-
-
-
-
-
