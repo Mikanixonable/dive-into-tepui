@@ -10,15 +10,15 @@
 //
 // JPEG の復号はヘッドレス Chrome に任せる(Node 側に復号器を持たないため)。
 //
-// 実行: node tools/export-earth-smoothness.mjs
+// 実行: node tools/archive/export-earth-smoothness.mjs
 import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { collectFatalEvents, openChromeSession } from './chrome-session.mjs';
-import { encodeGrayPng } from './png.mjs';
+import { collectFatalEvents, openChromeSession } from '../chrome-session.mjs';
+import { encodeGrayPng } from '../png.mjs';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const sourcePath = join(repoRoot, 'src', 'assets', 'earth.jpg');
 const outPath = join(repoRoot, 'src', 'assets', 'earth-smoothness.png');
 const port = 8770;

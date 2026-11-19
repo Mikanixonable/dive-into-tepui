@@ -6,10 +6,12 @@ import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
-import type { PlanEditor } from '../plan/plan-editor';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { PickCandidate } from './pick-candidate';
+import type {
+  PresentationPlanEditor, PresentationStageAuthoring,
+} from '../presentation-ports';
 
 // 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
 // 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
@@ -31,8 +33,8 @@ export interface InspectedObject extends PickCandidate {
   // ウィンドウ側で処理するため、ここには渡されない。固有操作を持たない対象は null。
   // authoring と planEditor はマップ画面でのみ提供されるため、戦闘ビューでは null。
   readonly runMenu: ((
-    act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
-    planEditor: PlanEditor | null,
+    act: MenuAction, controlSelection: ControlSelection, authoring: PresentationStageAuthoring | null,
+    planEditor: PresentationPlanEditor | null,
   ) => void) | null;
 
   // プロパティウィンドウに出す行。simTime は天体位置を厳密に引く時刻、displayTime は

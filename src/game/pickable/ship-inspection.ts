@@ -4,7 +4,8 @@ import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { ViewMode } from '../view/view-mode';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { PropertyWindowOpener } from './property-window-opener';
-import type { ObjectAuthoring, InspectedObject } from './inspected-object';
+import type { InspectedObject } from './inspected-object';
+import type { PresentationStageAuthoring } from '../presentation-ports';
 import type { MenuItem } from '../../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
@@ -88,7 +89,7 @@ export class ShipInspection implements InspectedObject {
       MenuCommon.cancel(),
     ];
   }
-  public runMenu(act: MenuAction, selection: ControlSelection, authoring: ObjectAuthoring | null): void {
+  public runMenu(act: MenuAction, selection: ControlSelection, authoring: PresentationStageAuthoring | null): void {
     if (act === 'toggleTrajectoryLine') this.ship.trajectoryLineVisible = !this.ship.trajectoryLineVisible;
     else if (act === 'activate') selection.select(this.ship);
     else if (act === 'deactivate') selection.release(this.ship);

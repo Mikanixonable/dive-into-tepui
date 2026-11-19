@@ -34,6 +34,7 @@ export const MenuCommon = {
   warp: (): MenuItem<MenuAction> => ({ label: 'この位置まで時間を加速', act: 'warp', shortcut: 'KeyW' }),
   addNode: (): MenuItem<MenuAction> => ({ label: 'ここにノードを追加', act: 'addNode', shortcut: 'KeyN' }),
   deleteNode: (): MenuItem<MenuAction> => ({ label: 'ノードを削除', act: 'delete', shortcut: 'Delete' }),
+  discardPlan: (): MenuItem<MenuAction> => ({ label: '計画を破棄', act: 'delete' }),
   duplicate: (): MenuItem<MenuAction> => ({ label: '複製', act: 'duplicate' }),
   target: (isTarget: boolean): MenuItem<MenuAction> => ({
     label: isTarget ? 'ターゲット解除' : 'ターゲットに設定',

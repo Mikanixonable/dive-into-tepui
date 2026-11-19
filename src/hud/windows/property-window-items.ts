@@ -2,6 +2,7 @@
 // DOM を組み直し、選択されたら onSelect へ通知する。項目ショートカット文字列とキー入力の一致
 // 判定(dispatchShortcut)も併せて持つ。
 import { shortcutKeyLabel } from '../shortcut-hint';
+import { isCoarsePointer } from '../../input/pointer-precision';
 import { bindActivation, expandHitTarget, stopDragPropagation } from '../widgets/widget-base';
 import type { PropertyWindowItem } from './property-window-content';
 
@@ -47,7 +48,7 @@ export class PropertyWindowItems<A extends string = string> {
       if (it.shortcut) {
         const shortcut = document.createElement('span');
         shortcut.className = 'prop-window-item-shortcut editorial-index-status';
-        shortcut.textContent = shortcutKeyLabel(it.shortcut);
+        shortcut.textContent = shortcutKeyLabel(it.shortcut, isCoarsePointer());
         row.appendChild(shortcut);
       }
       stopDragPropagation(row);
