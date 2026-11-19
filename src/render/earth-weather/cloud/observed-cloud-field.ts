@@ -39,7 +39,6 @@ export class ObservedCloudField implements CloudFieldSource {
   // 焼いたときの画像の世代と cap の版。どちらかが変わったときだけ焼き直す。
   private bakedGeneration = -1;
   private bakedRevision = -1;
-  private generationValue = 0;
 
   // url は地表と同じ正距円筒の雲場画像(R = 積雲の量、G = 巻雲の量、B・A = 巻雲の筋の
   // 倍角ベクトル 0..1)、projection は焼き直す先の持ち方。
@@ -88,8 +87,6 @@ export class ObservedCloudField implements CloudFieldSource {
     this.slots = [slot, slot];
   }
 
-  public get generation(): number { return this.generationValue; }
-
   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。
   public prepare(renderer: WebGPURenderer, _displayTime: number, gpu?: GpuTimingSink): void {
     this.map.request();
@@ -99,7 +96,6 @@ export class ObservedCloudField implements CloudFieldSource {
     this.bakedGeneration = generation;
     this.bakedRevision = revision;
     this.field.render(renderer, gpu);
-    this.generationValue += 1;
   }
 
   // 画像と写しを解放する。
