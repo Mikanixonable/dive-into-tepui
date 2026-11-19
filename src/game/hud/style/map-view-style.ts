@@ -328,14 +328,6 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-predict .predict-elapsed { color: var(--text); }
 #hud .hud-map-root.active #hud-predict .predict-elapsed:hover { color: var(--color-primary-hover); }
 
-/* Frame controls: ウィンドウ見出し > 操作 > 読み取り専用サマリーの順に弱くする。 */
-#hud .hud-map-root.active .hud-frame-controls .frame-summary {
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
-  color: var(--text-dim);
-  font-size: var(--font-xxs);
-  line-height: 1.55;
-}
 #hud .hud-map-root.active .hud-frame-controls .w-btn,
 #hud .hud-map-root.active .hud-frame-controls .w-toggle-track {
   border: 0;
