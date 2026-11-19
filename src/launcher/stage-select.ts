@@ -4,6 +4,7 @@ import { StageDebug } from '../game/stages/stage-debug';
 import { TabBar } from '../hud/widgets';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
+import { TITLE_LOGOTYPE_HTML } from '../hud/title-logotype';
 import { injectStageSelectStyle } from './stage-select-style';
 import { StartEpochForm } from './start-epoch-form';
 import { TITLE_SCENE_PATTERNS, TitleScene } from './title-scene';
@@ -176,6 +177,10 @@ function pickRandom<T>(items: readonly T[]): T {
 }
 
 // 画面の骨組み。左に3D場面とタイトルを重ねた窓、右に背景の rMQR コードだけを置いたステージ選択の窓。
+// 隠し要素「共鳴」の操作: ロゴを RESONANCE_CLICK_GAP_MS 以内の間隔で RESONANCE_CLICK_COUNT 回続けて押す(GAME.md 1.1)。
+const RESONANCE_CLICK_COUNT = 5;
+const RESONANCE_CLICK_GAP_MS = 1200;
+
 // タイトルの添え書きは TITLE_FLAVORS から1組を選んで入れる。
 function createScreenElement(): HTMLElement {
   const root = document.createElement('div');
@@ -189,10 +194,8 @@ function createScreenElement(): HTMLElement {
     '</div>' +
     '<div class="ss-hero">' +
     '<p class="ss-eyebrow">Sortie select · 公暦20115年</p>' +
-    '<h1 id="ss-title" class="ss-logotype" aria-label="Dive into Tepui">' +
-    '<span class="ss-logo-line">Dive<sup class="ss-logo-ornament">∴03</sup></span>' +
-    '<span class="ss-logo-line">into<sub class="ss-logo-ornament">ECI₀</sub></span>' +
-    '<span class="ss-logo-line">Tepui<sup class="ss-logo-ornament">Ω⁺</sup></span>' +
+    '<h1 id="ss-title" class="title-logotype" aria-label="Dive into Tepui">' +
+    TITLE_LOGOTYPE_HTML +
     '</h1>' +
     '<div class="ss-subrow"><div>' +
     '<p class="ss-sub" data-flavor-primary></p>' +
@@ -253,15 +256,26 @@ class StageSelectScreen {
   // 3D 場面は非同期に立ち上がる。選択が先に済んだ場合は、でき次第そのまま破棄する。
   private titleScene: TitleScene | null = null;
   private closed = false;
+  // 隠し要素「共鳴」: ロゴを 1.2 秒以内の間隔で5回続けて押すと、背景の物体が共鳴する(GAME.md 1.1)。
+  private logotypeClicks = 0;
+  private lastLogotypeClickAt = Number.NEGATIVE_INFINITY;
+  private readonly onLogotypeClick = (): void => {
+    const now = performance.now();
+    this.logotypeClicks = now - this.lastLogotypeClickAt <= RESONANCE_CLICK_GAP_MS ? this.logotypeClicks + 1 : 1;
+    this.lastLogotypeClickAt = now;
+    if (this.logotypeClicks < RESONANCE_CLICK_COUNT) return;
+    this.logotypeClicks = 0;
+    this.titleScene?.resonate();
+  };
 
   // onEscape は ESC キーで、onClose は選択が済んで画面を畳むときに、onSettings は設定ボタンで呼ばれる。
   // palette は3D場面の材質と光の色。
   public constructor(
     unlockManager: UnlockManager,
     palette: ThemePalette,
-    private readonly onEscape: (() => void) | undefined,
-    private readonly onClose: (() => void) | undefined,
-    onSettings: (() => void) | undefined,
+    private readonly onEscape: (() => void) | null,
+    private readonly onClose: (() => void) | null,
+    onSettings: (() => void) | null,
     private readonly onSelect: (selection: StageSelection) => void,
   ) {
     injectStageSelectStyle();
@@ -295,6 +309,7 @@ class StageSelectScreen {
     stageWindow.append(this.debugLink, this.settingsButton, this.startEpochForm.element);
 
     // 画面を出し、3D 場面の立ち上げとショートカットキーの監視を始める。
+    this.root.querySelector<HTMLElement>('.title-logotype')!.addEventListener('click', this.onLogotypeClick);
     document.body.appendChild(this.root);
     document.body.classList.add('title-screen-open');
     TitleScene.create(
@@ -391,6 +406,6 @@ export function selectStage(
   onSettings?: () => void,
 ): Promise<StageSelection> {
   return new Promise((resolve) => {
-    new StageSelectScreen(unlockManager, palette, onEscape, onClose, onSettings, resolve);
+    new StageSelectScreen(unlockManager, palette, onEscape ?? null, onClose ?? null, onSettings ?? null, resolve);
   });
 }

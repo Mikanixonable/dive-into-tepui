@@ -1,13 +1,14 @@
 // デカプラー位置で船体を分割し、質量比に応じた分離速度を求める。
-import { LOCAL_FORWARD, qRotate } from '../../math/quat';
+import { LOCAL_FORWARD } from '../../math/quat';
 import { addScaled, type Vec3 } from '../../math/vec3';
 import type { ModuleTransform, ShipAssembly } from './ship-assembly';
+import { applyTransformToDirection } from './ship-assembly-transform';
 import { shipPhysicsShape } from './ship-physics-shape';
 
-export const SHIP_DECOUPLING_SPEED = 8;
+const SHIP_DECOUPLING_SPEED = 8;
 export const SHIP_DECOUPLING_COLLISION_GRACE = 0.5;
 
-export interface ShipDecouplingSplit {
+interface ShipDecouplingSplit {
   readonly retained: ShipAssembly;
   readonly detached: ShipAssembly;
   readonly separationAxis: Vec3;
@@ -36,7 +37,7 @@ export function splitAtDecoupler(assembly: ShipAssembly, decouplerId: string): S
   // 火工品は作動時に消費する。split 後は親側の葉なので安全に除去できる。
   retained.removeModule(decouplerId);
   return {
-    retained, detached, separationAxis: qRotate(transform.rotation, LOCAL_FORWARD),
+    retained, detached, separationAxis: applyTransformToDirection(transform, LOCAL_FORWARD),
     detachedRoot, decouplerTransform: transform,
   };
 }

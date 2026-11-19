@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import { qFromAxisAngle, Q_IDENTITY } from '../../src/math/quat';
 import { v3, dot, len, type Vec3 } from '../../src/math/vec3';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
-import { ShipModuleCatalog } from '../../src/game/ship/ship-module-catalog';
+import { SHIP_MODULE_CATALOG, ShipModuleCatalog } from '../../src/game/ship/ship-module-catalog';
 import { defineShipModule } from '../../src/game/ship/ship-module-definition';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
@@ -16,6 +16,7 @@ const MULTI_TANK = defineShipModule({
   name: 'test multi tank',
   length: 4,
   diameter: 2,
+  axialFaces: { front: 'structural', back: 'structural' },
   dryMass: 10,
   maxHp: 100,
   modelId: 'test-multi-tank',
@@ -23,27 +24,36 @@ const MULTI_TANK = defineShipModule({
     { center: v3(0, 0, -1), axis: v3(0, 0, 1), halfLength: 0.5, radius: 1 },
     { center: v3(0, 0, 1), axis: v3(0, 0, 1), halfLength: 0.5, radius: 1 },
   ],
+  muzzles: [],
+  feedPort: v3(),
+  ejectionPort: v3(),
+  linkExitPort: v3(),
   abilities: { fuelKind: 'main', fuelCapacity: 10, fuelMassPerUnit: 2 },
 });
 
+// MULTI_TANK だけを載せた試験用カタログ。
 function multiCatalog(): ShipModuleCatalog {
   return new ShipModuleCatalog([MULTI_TANK]);
 }
 
+// MULTI_TANK の試験用 instance。fuel は単位 [unit]。
 function multi(id: string, fuel = 0) {
   return createShipModuleInstance(MULTI_TANK, id, { fuel });
 }
 
+// 許容誤差つきの数値一致を確かめる。
 function close(actual: number, expected: number, message: string): void {
   assert.ok(Math.abs(actual - expected) < 1e-9, `${message}: ${actual} !== ${expected}`);
 }
 
+// shape を組み、空の assembly ならその場で失敗にする。
 function physicsShape(assembly: ShipAssembly): NonNullable<ReturnType<typeof shipPhysicsShape>> {
   const result = shipPhysicsShape(assembly);
   assert.ok(result !== null);
   return result;
 }
 
+// 重心から円柱プリミティブの最遠端までの距離を手計算で求める。
 function primitiveExtentFromCom(
   center: Vec3,
   axis: Vec3,
@@ -55,7 +65,37 @@ function primitiveExtentFromCom(
   return Math.hypot(Math.abs(axial) + halfLength, perpendicular + radius);
 }
 
+// 接続木から組む物理形状が、プリミティブ配置・重心原点・質量の追従を守ることを確かめる。
 export function register(): void {
+  test('ship physics shape: cockpit contact columns span 9m and preserve paired side indents', () => {
+    const assembly = new ShipAssembly(SHIP_MODULE_CATALOG);
+    assembly.addRoot(createShipModuleInstance(SHIP_MODULE_CATALOG.require('cockpit-standard'), 'cockpit'));
+    const { shape, centerOffset } = physicsShape(assembly);
+    assert.equal(shape.primitives.length, 36);
+    const minZ = Math.min(...shape.primitives.map(
+      primitive => primitive.center.z + centerOffset.z - primitive.halfLength,
+    ));
+    const maxZ = Math.max(...shape.primitives.map(
+      primitive => primitive.center.z + centerOffset.z + primitive.halfLength,
+    ));
+    close(minZ, -4.5, 'cockpit aft contact extent');
+    close(maxZ, 4.5, 'cockpit forward contact extent');
+    const centerPair = shape.primitives.filter(
+      primitive => Math.abs(Math.abs(primitive.center.z + centerOffset.z) - 0.25) < 1e-9,
+    );
+    assert.equal(centerPair.length, 4);
+    for (const z of [-0.25, 0.25]) {
+      const pair = centerPair.filter(primitive => Math.abs(primitive.center.z + centerOffset.z - z) < 1e-9)
+        .sort((a, b) => a.center.y - b.center.y);
+      const lower = pair[0];
+      const upper = pair[1];
+      assert.ok(lower !== undefined && upper !== undefined);
+      assert.ok(lower.center.y < 0 && upper.center.y > 0);
+      close(lower.center.y, -upper.center.y, 'symmetric contact offset');
+      close(lower.radius, upper.radius, 'symmetric contact radius');
+    }
+  });
+
   test('ship physics shape: base preset は有限の compound・質量・HP・燃料を持つ', () => {
     const assembly = createBasePreset();
     const physics = shipPhysicsShape(assembly);
@@ -70,7 +110,10 @@ export function register(): void {
     assert.equal(assembly.modules.filter(module => module.kind === 'solar_panel').length, 2);
     assert.equal(assembly.modules.filter(module => module.kind === 'radiator').length, 2);
     assert.equal(assembly.modules.filter(module => module.kind === 'dock').length, 2);
-    assert.equal(physics.shape.primitives.length, assembly.size);
+    const expectedPrimitiveCount = assembly.modules.reduce(
+      (count, item) => count + assembly.definition(item.id)!.solidPrimitives.length, 0,
+    );
+    assert.equal(physics.shape.primitives.length, expectedPrimitiveCount);
   });
 
   test('ship physics shape: empty assembly は null で、単一 module を COM 原点へ移す', () => {

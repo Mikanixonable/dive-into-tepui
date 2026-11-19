@@ -1,0 +1,108 @@
+// 衛星写真から積雲と巻雲の量に分離した静的雲場。チャンネル構成は
+// プロシージャル生成雲場と一致する。読み出し側のサンプリング処理を球面キャップ1枚に統一するため、
+// 全球正距円筒画像を同一仕様の球面キャップ投影テクスチャへ再投影して供給する。
+import * as THREE from 'three/webgpu';
+import { float, int, log2, max, texture, vec4 } from 'three/tsl';
+import { DeferredTexture } from '../../deferred-texture';
+import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
+import { BakedField } from '../../baked-field';
+import { GPU_PASS } from '../../gpu-timings';
+import { equirectUvFromDirection, type FieldProjection } from '../../field-projection';
+import type { WebGPURenderer } from 'three/webgpu';
+import type { GpuTimingSink } from '../../gpu-timings';
+import type { CloudFieldSource } from './cloud-field-source';
+import type { CloudBlend, CloudFieldSlot } from './cloud-field-sample';
+import type { Vec4Node } from '../../tsl-types';
+
+// 実写の画像の texel を雲場の RGBA(R = 積雲の量、G = 巻雲の量、B・A = 筋の倍角ベクトル)へ
+// 戻す。画像の B・A は 0..1 で畳まれているので、生成側と同じ符号付き −1..1 へ戻す。実験環境が
+// 同じ写像で実写の場を組むので、式の正本はここだけにする。
+export function observedCloudTexel(texel: Vec4Node): Vec4Node {
+  return vec4(texel.r, texel.g, texel.b.mul(2).sub(1), texel.a.mul(2).sub(1));
+}
+
+// 実写の雲場へ供給する中立のセル径 [km]。実写からは型の区別が取れないので、生成側の既定と同じ
+// 並の大きさ(積雲は中緯度の海のセル、巻雲は無撹乱の板より細かい繊維・鱗のピッチ)を置く。
+const OBSERVED_CUMULUS_CELL_KM = 40;
+const OBSERVED_CIRRUS_CELL_KM = 10;
+
+// どの方向でも同じ RGBA を返す、1 texel の半精度の写しを作る。実写には環境・セル径の場が
+// 無いので、中立値をこれで供給する。
+function constantTexelTexture(r: number, g: number, b: number, a: number): THREE.DataTexture {
+  const tex = new THREE.DataTexture(
+    Uint16Array.from([r, g, b, a], (value) => THREE.DataUtils.toHalfFloat(value)),
+    1, 1, THREE.RGBAFormat, THREE.HalfFloatType);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+export class ObservedCloudField implements CloudFieldSource {
+  private readonly map: DeferredTexture;
+  private readonly field: BakedField;
+  // 実写には環境の量の場がないので、どの方向でも同じ値を返す 1 texel の写し。
+  private readonly environment: THREE.DataTexture;
+  // 実写にはセル径の場もないので、環境と同じく中立の既定値を返す 1 texel の写し。
+  private readonly cellSize: THREE.DataTexture;
+  // 2 枚とも同じ写し。混ぜ方は 0 に止めて、古い側の枚だけを読む。
+  public readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
+  public readonly blend: CloudBlend = { parity: 0, fraction: 0 };
+  // 焼いたときの画像の世代と cap の版。どちらかが変わったときだけ焼き直す。
+  private bakedGeneration = -1;
+  private bakedRevision = -1;
+
+  // url は地表と同じ正距円筒の雲場画像(R = 積雲の量、G = 巻雲の量、B・A = 巻雲の筋の
+  // 倍角ベクトル 0..1)、projection は焼き直す先の持ち方。
+  public constructor(url: string, private readonly projection: FieldProjection) {
+    this.map = new DeferredTexture(url, THREE.NoColorSpace);
+    // 正距円筒の経度は周期的なので、画像は経度方向へ巻く。
+    this.map.texture.wrapS = THREE.RepeatWrapping;
+    // 陸・対流・金床は 0、気候の雲量は中立の 0.5。
+    this.environment = constantTexelTexture(0, 0, 0.5, 0);
+    // セル径は中立の既定値 log2(km)(積雲 OBSERVED_CUMULUS_CELL_KM、巻雲 OBSERVED_CIRRUS_CELL_KM)。B・A は予約で 0。
+    this.cellSize = constantTexelTexture(
+      Math.log2(OBSERVED_CUMULUS_CELL_KM), Math.log2(OBSERVED_CIRRUS_CELL_KM), 0, 0);
+    const image = texture(this.map.texture);
+    // **読む段は焼くときに 1 回だけ決める** — 画面微分に任せると、経度の巻き目(u が 1 から 0 へ
+    // 跳ぶ列)で最も粗い段が選ばれ、日付変更線に 1 本の線が出る。画像の 1 texel が張る角は
+    // pi / 画像の高さ。
+    const imageHeight = float((image.size(int(0)) as THREE.Node<'uvec2'>).y);
+    const lod = max(log2(projection.texelAngle.mul(imageHeight).div(Math.PI)), 0);
+    this.field = new BakedField(
+      'observedCloud', THREE.RGBAFormat, projection,
+      (direction) => {
+        const texel = image.sample(equirectUvFromDirection(direction)).level(lod) as Vec4Node;
+        return observedCloudTexel(texel);
+      },
+      GPU_PASS.cloudBake,
+    );
+    // 実写の雲場は止まっているので、運ぶ風は 0。
+    const slot: CloudFieldSlot = {
+      cloud: this.field.texture, motion: EMPTY_CLOUD_FIELD,
+      environment: this.environment, cellSize: this.cellSize,
+    };
+    this.slots = [slot, slot];
+  }
+
+  // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。
+  public prepare(renderer: WebGPURenderer, _displayTime: number, gpu?: GpuTimingSink): void {
+    this.map.request();
+    const generation = this.map.generation;
+    const revision = this.projection.revision;
+    if (generation === this.bakedGeneration && revision === this.bakedRevision) return;
+    this.bakedGeneration = generation;
+    this.bakedRevision = revision;
+    this.field.render(renderer, gpu);
+  }
+
+  // 画像と写しを解放する。
+  public dispose(): void {
+    this.map.dispose();
+    this.field.dispose();
+    this.environment.dispose();
+    this.cellSize.dispose();
+  }
+}

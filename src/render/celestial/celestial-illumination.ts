@@ -8,21 +8,22 @@ import {
   REFERENCE_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_RADIUS, type SunLight,
   scaledRadiantIntensity,
 } from '../../render/pipeline/sun-light';
-import { ambientFraction } from '../../render/pipeline/lighting/ambient-source';
+import { ambientFraction, nightObservationFraction } from '../../render/pipeline/lighting/ambient-source';
 import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
 import {
   MAX_PLANET_LIGHT_SLOTS, type PlanetLightValue,
 } from '../../render/pipeline/lighting/planet-light-source';
 import { MAX_SHADOW_BODIES, type BodyShadow, type ShadowBody } from '../../render/pipeline/shadow/body-shadow';
 import {
-  castsCumulusShadow, selectRingShadow, selectShadowBodies, type RingShadowCandidate,
+  cloudShadowKinds, selectRingShadow, selectShadowBodies,
+  type CloudShadowKinds, type RingShadowCandidate,
 } from '../../render/pipeline/shadow/shadow-select';
 import { ringShadowBands, type RingBand } from '../../render/pipeline/shadow/ring-shadow';
 import { writeBodyFromWorld } from '../../render/celestial/body-frame';
 import type { Vec3 } from '../../math/vec3';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import type { AtmosphereCandidate, AtmosphereDraw } from '../../render/atmosphere';
-import type { ShadowCumulus } from '../../render/pipeline/shadow/cloud-shadow-renderer';
+import type { AtmosphereBody, AtmosphereCandidate, AtmosphereDraw } from '../../render/atmosphere';
+import type { ShadowCloud } from '../../render/pipeline/shadow/cloud-shadow-renderer';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
 import type {
@@ -43,10 +44,17 @@ export interface IlluminationTargets {
     readonly fixedBrightnessScale: number;
   };
   readonly ringShadow: { set(center: THREE.Vector3, axis: THREE.Vector3, bands: readonly RingBand[]): void };
-  readonly cumulusShadow: { set(cumulus: ShadowCumulus | null): void };
+  readonly cloudShadow: { set(cloud: ShadowCloud | null, kinds: CloudShadowKinds): void };
   readonly planetLight: { set(lights: readonly PlanetLightValue[]): void };
-  readonly ambient: { setFraction(fraction: number): void };
+  readonly ambient: {
+    setFraction(fraction: number): void;
+    setNightObservation(center: THREE.Vector3, radius: number, fraction: number): void;
+  };
   readonly atmosphere: { setDraws(draws: readonly AtmosphereDraw[]): void };
+  // 直射光が抜ける大気。atmosphere へ渡すのと同じ天体の列を受ける。
+  readonly sunExtinction: { set(bodies: readonly AtmosphereBody[]): void };
+  // 天空光を届ける大気。sunExtinction と同じ列を受ける。
+  readonly skyLight: { set(bodies: readonly AtmosphereBody[]): void };
 }
 
 export class CelestialIllumination {
@@ -93,11 +101,38 @@ export class CelestialIllumination {
       sunPos, star?.motion.def.radius ?? STARLESS_SUN_RADIUS,
       star?.stellarLight.color ?? STARLESS_SUN_COLOR, starIntensity);
     this.targets.ambient.setFraction(ambientFraction(graphics));
+    this.syncNightObservation(sources, fo, displayTime, graphics);
     // 大気を持つ天体は、天体照の写しにも大気パスにも同じ 1 体として渡す。
     const atmospheres = this.atmosphereCandidates(sources, displayTime, camera, graphics);
     this.syncPlanetLights(sources, atmospheres, displayTime, camera, sunPos);
     this.syncShadowSources(sources, fo, displayTime, focusPosition, graphics);
-    this.targets.atmosphere.setDraws(atmosphereDraws([...atmospheres.values()], graphics.atmosphere));
+    // 大気パスが描く天体と同じ列を、直射光の消衰へも渡す — 描かない大気は光も減らさない。
+    const draws = atmosphereDraws([...atmospheres.values()], graphics.atmosphere);
+    this.targets.atmosphere.setDraws(draws);
+    const bodies = draws.map((draw) => draw.body);
+    this.targets.sunExtinction.set(bodies);
+    this.targets.skyLight.set(bodies);
+  }
+
+  // 「夜側の観察」の強めた環境光を、観察球を差し出した天体(いまは地球だけ)へ描画座標で
+  // 書き込む。設定が切れているか、差し出す天体が無ければ消灯する。
+  private syncNightObservation(
+    sources: readonly CelestialIlluminationSource[], fo: FloatingOrigin,
+    displayTime: number, graphics: GraphicsSettingsData,
+  ): void {
+    const fraction = nightObservationFraction(graphics);
+    let observation: { readonly motion: DefinedCelestialBody; readonly radius: number } | null = null;
+    if (fraction !== 0) {
+      for (const source of sources) {
+        const radius = source.view.nightObservationRadius(source.motion);
+        if (radius !== null) { observation = { motion: source.motion, radius }; break; }
+      }
+    }
+    this.targets.ambient.setNightObservation(
+      observation === null ? ZERO_VECTOR : fo.RtoThreeV3(observation.motion.positionAt(displayTime)),
+      observation?.radius ?? 0,
+      observation === null ? 0 : fraction,
+    );
   }
 
   // 天体照の光源の候補を組んで選定へ渡し、選ばれたものを描画座標へ移してライティング側の
@@ -138,7 +173,7 @@ export class CelestialIllumination {
     }));
   }
 
-  // 影パスへ、この1フレームの影を落とす天体・環の帯・積雲の殻を渡す。
+  // 影パスへ、この1フレームの影を落とす天体・環の帯・雲の影の源を渡す。
   private syncShadowSources(
     sources: readonly CelestialIlluminationSource[], fo: FloatingOrigin, displayTime: number,
     focusPosition: Vec3 | null, graphics: GraphicsSettingsData,
@@ -154,18 +189,20 @@ export class CelestialIllumination {
           return { center: fo.RtoThreeV3(body.positionAt(displayTime)), ...shape };
         }));
     this.syncRingShadow(sources, fo, displayTime, graphics);
-    this.syncCumulusShadow(sources, fo, displayTime, graphics);
+    this.syncCloudShadow(sources, fo, displayTime, graphics);
   }
 
-  // 積雲の殻を返す最初の1体を影パスへ渡す。該当が無いか、設定が雲の影を切るなら null を渡す。
-  private syncCumulusShadow(
+  // 雲の影の源を返す最初の1体を、種類ごとの有無とともに影パスへ渡す。源が無いか、設定が
+  // どちらの影も切るなら null を渡す。
+  private syncCloudShadow(
     sources: readonly CelestialIlluminationSource[], fo: FloatingOrigin, displayTime: number,
     graphics: GraphicsSettingsData,
   ): void {
-    const casters = castsCumulusShadow(graphics)
-      ? sources.flatMap((source) => source.view.cumulusShadowAt(source.motion, fo, displayTime) ?? [])
+    const kinds = cloudShadowKinds(graphics);
+    const casters = kinds.cumulus || kinds.cirrus
+      ? sources.flatMap((source) => source.view.cloudShadowAt(source.motion, fo, displayTime) ?? [])
       : [];
-    this.targets.cumulusShadow.set(casters[0] ?? null);
+    this.targets.cloudShadow.set(casters[0] ?? null, kinds);
   }
 
   // 環を持つ天体を候補として選定へ回し、選ばれた1体の帯を影パスへ渡す。選ばれなければ

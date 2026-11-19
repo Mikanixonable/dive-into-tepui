@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import climateTextureUrl from '../../../assets/earth-climate.png';
+import terrainTextureUrl from '../../../assets/earth-terrain.png';
 import cloudFieldUrl from '../../../assets/cloud-field.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import coastlineData from '../../../assets/earth-coastline.json';
@@ -15,12 +16,13 @@ import { satelliteOrbit } from '../../../physics/satellite-orbit';
 import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
-import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
-import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
-import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
-import { AnnualClimateMap } from '../../../render/cloud/climate-map';
+import { CloudPresentation } from '../../../render/earth-weather/cloud/cloud-presentation';
+import { GeneratedCloudField } from '../../../render/earth-weather/cloud/generated-cloud-field';
+import { ObservedCloudField } from '../../../render/earth-weather/cloud/observed-cloud-field';
+import { AnnualClimateMap } from '../../../render/earth-weather/climate-map';
+import { TextureTerrainMap } from '../../../render/earth-weather/terrain-map';
 import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
-import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
+import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/earth-weather/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -154,16 +156,26 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   mie: 3.996e-6,
   mieScaleHeight: 1.2e3,
   mieAnisotropy: 0.8,
+  // オゾンの Chappuis 帯(緑〜橙を吸収)の RGB 実効係数と、層の高さ。係数は
+  // Hillaire (2020)「A Scalable and Production Ready Sky and Atmosphere Rendering
+  // Technique」のピーク密度での値で、分光モデル(render/solar-spectrum.ts)の 300 DU の
+  // 柱を RGB 帯域へ畳んだ実効値と同じ桁で一致する。層は高度 25 km を中心とする
+  // 底 15 km のテント(成層圏のオゾン層)。
+  ozone: {
+    absorption: new THREE.Vector3(0.650e-6, 1.881e-6, 0.085e-6),
+    centerAltitude: 25e3,
+    halfThickness: 15e3,
+  },
   // 中間圏・熱圏の酸素発光をまとめた見えの層。オーロラとは異なり、全球の昼夜境界へ広がる。
   airglow: { color: [0.12, 0.78, 0.36], strength: 1.2e-8, altitude: 95e3, scaleHeight: 8e3 },
 };
 
-// 地球へ貼る海岸線。tools/export-coastline.mjs が Natural Earth 110m coastline から焼き込んだ、
+// 地球へ貼る海岸線。tools/archive/export-coastline.mjs が Natural Earth 110m coastline から焼き込んだ、
 // 緯度・経度 [deg] のペアを1本の折れ線として並べた配列の配列。形は焼き込み側が保証するので、
 // 型を持たない JSON にここで形を与える。
 export const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
 
-// 月へ貼る主要な海・クレーターの輪郭。tools/export-moon-features.mjs が assets-src/moon-features.json
+// 月へ貼る主要な海・クレーターの輪郭。tools/archive/export-moon-features.mjs が assets-src/moon-features.json
 // の中心緯度経度・直径から円として焼き込んだ、単位球面上の xyz を1ループとして並べた配列の配列。
 const MOON_SURFACE_MARKINGS = moonFeaturesData as readonly UnitSphereLoop[];
 
@@ -209,7 +221,8 @@ function earthAuroras(): readonly Aurora[] {
 export function earthGeneratedCloudField(projection: FieldProjection): GeneratedCloudField {
   // 気象シミュレーションに適用する半径は、全球を一様な球体とみなす平均半径。
   return new GeneratedCloudField(
-    AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
+    AnnualClimateMap.fromDeferredUrl(climateTextureUrl),
+    TextureTerrainMap.fromDeferredUrl(terrainTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
   );
 }
 
@@ -239,6 +252,8 @@ export function earthSystem(
         LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE }),
         earthAuroras(),
         GeostationaryOverlay.of(earth.body), cumulus,
+        // 「夜側の観察」で強めた環境光を受ける観察球を差し出す。夜側の地表と雲を読むため。
+        true,
       ),
     ),
     moon: new CelestialEntity(

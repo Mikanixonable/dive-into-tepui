@@ -3,10 +3,10 @@ import { fixedMotion, positionOf, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { attractorAccel, localOrbitPeriod, orbitingAttractorOf, strongestAttractor } from '../../src/physics/attractor';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import { keplerPeriod, orbitalElementsOf, stateFromOrbitalElements, tofBetween } from '../../src/physics/elements';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { MU_EARTH, MU_MOON, R_EARTH, R_MOON, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
+import { MU_EARTH, MU_MOON, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
 import { MU_SUN, R_SUN } from '../../src/game/celestial/solar-system/sun';
 import { add, addScaled, len, norm, sub, v3 } from '../../src/math/vec3';
 

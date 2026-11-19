@@ -1,7 +1,7 @@
 // 同期軌道(自転と同じ周期で公転する赤道円軌道)の高度を示す、マップ専用のリングとラベル。
 // 高度の目盛りとして引く1本。
-import * as THREE from 'three/webgpu';
-import { OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
+import type * as THREE from 'three/webgpu';
+import { type OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
 import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
 import type { CameraFrame } from '../../camera/camera-frame';
@@ -38,12 +38,10 @@ function altitudeLabel(altitude: number): string {
 export class GeostationaryOverlay {
   private readonly line = new EllipseLine(ringStyle(0));
   // 同期軌道の長半径 [m] と、その高度を書いたラベル。
-  private readonly semiMajorAxis: number;
   private readonly label: string;
 
   // semiMajorAxis [m] は of() が表面より外にあることを確かめた同期軌道の長半径。
-  private constructor(motion: CelestialBody, semiMajorAxis: number) {
-    this.semiMajorAxis = semiMajorAxis;
+  private constructor(motion: CelestialBody, private readonly semiMajorAxis: number) {
     this.label = altitudeLabel(semiMajorAxis - motion.def.radius);
   }
 

@@ -4,7 +4,8 @@
 // 真偽は独立した描画物を消すもの、選択肢は品質と負荷を刻む値か見え方を選ぶ値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
-import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
+import { CIRRUS_DETAIL } from './earth-weather/cloud/cloud-detail';
+import { CLOUD_FIELD_SOURCE_KIND } from './earth-weather/cloud/cloud-field-source';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
@@ -62,8 +63,17 @@ export const GRAPHICS_OPTIONS = {
   // 露出へ掛ける倍率。1 段が EV 1 段(明るさ 2 倍)。
   exposureCompensation: {
     kind: 'choice', group: 'basic', label: '露出補正',
-    items: [[0.25, '−2'], [0.5, '−1'], [1, '±0'], [2, '+1'], [4, '+2']],
+    items: [
+      [0.25, '−2'], [0.5, '−1'], [0.7071067811865476, '−0.5'], [1, '±0'],
+      [1.4142135623730951, '+0.5'], [2, '+1'], [4, '+2'],
+    ],
     presets: { low: 1, medium: 1, high: 1 },
+  },
+  // 被弾の瞬間に視点を揺らす演出(SPEC CAMERA.md「6. 被弾の揺れ」)。画面の揺れが苦手な人のための
+  // 切り替えで、品質プリセットでは変えない。
+  hitShake: {
+    kind: 'toggle', group: 'basic', label: '被弾で画面を揺らす',
+    presets: { low: true, medium: true, high: true },
   },
   // トーンマッピング後の色へ当てるフィルムのルック。値はルックの名前で、候補は同梱の .cube から
   // 起動時に決まる。
@@ -124,26 +134,37 @@ export const GRAPHICS_OPTIONS = {
       high: CLOUD_FIELD_SOURCE_KIND.generated,
     },
   },
-  // 圏界面付近に薄く張る巻雲の層。
+  // 不透明な雲頂として描く積雲。
+  cumulus: {
+    kind: 'toggle', group: 'element', label: '積雲',
+    presets: { low: true, medium: true, high: true },
+  },
+  // 大気中に層として描く巻雲。
   cirrus: {
     kind: 'toggle', group: 'element', label: '巻雲',
     presets: { low: true, medium: true, high: true },
   },
-  // 積雲のうち、不透明な雲頂のまわりを埋める半透明の広がり。
-  translucentCumulus: {
-    kind: 'toggle', group: 'element', label: '半透明の積雲',
-    presets: { low: true, medium: true, high: true },
-  },
-  // 積雲の球殻を評価するレイマーチングの精細度。オフでは雲殻およびその影を描画しない。「精細」は
-  // 積雲の描画アーティファクトを地表側の乱れから切り分けるための設定レベル。
+  // 積雲の球殻を評価するレイマーチングの精細度と、雲頂の細部の段数(粗 4・標準 6・精細 8 オクターブ)。
+  // 積雲の表示は別のトグルで切り替える。「精細」は積雲の描画アーティファクトを地表側の乱れから
+  // 切り分けるための設定レベル。
   cumulusDetail: {
     kind: 'choice', group: 'element', label: '積雲の精細さ',
     items: [
-      [CUMULUS_DETAIL.off, 'オフ'], [CUMULUS_DETAIL.coarse, '粗'],
-      [CUMULUS_DETAIL.standard, '標準'], [CUMULUS_DETAIL.fine, '精細'],
+      [CUMULUS_DETAIL.coarse, '粗'], [CUMULUS_DETAIL.standard, '標準'], [CUMULUS_DETAIL.fine, '精細'],
     ],
     presets: {
       low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.standard, high: CUMULUS_DETAIL.standard,
+    },
+  },
+  // 巻雲の繊維をどれだけ細かく写すか。粗では巻雲は雲場の濃淡だけで描かれ、段を上げるほど細かい筋が
+  // 写る(粗 0・標準 4・精細 6 オクターブ)。
+  cirrusDetail: {
+    kind: 'choice', group: 'element', label: '巻雲の精細さ',
+    items: [
+      [CIRRUS_DETAIL.coarse, '粗'], [CIRRUS_DETAIL.standard, '標準'], [CIRRUS_DETAIL.fine, '精細'],
+    ],
+    presets: {
+      low: CIRRUS_DETAIL.coarse, medium: CIRRUS_DETAIL.standard, high: CIRRUS_DETAIL.standard,
     },
   },
   // レンズ効果(ブルーム・光条・ゴースト)。
@@ -151,10 +172,11 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'element', label: 'レンズ効果',
     presets: { low: false, medium: true, high: true },
   },
-  // タンパク質型の敵の構造の揺らぎ。
-  proteinVibration: {
-    kind: 'toggle', group: 'element', label: 'タンパク質の敵の揺らぎ',
-    presets: { low: false, medium: true, high: true },
+  // 主推進の排気プルームの描き方。体積は排気を透過する立体として、簡易は発光板として描く。
+  thrustPlume: {
+    kind: 'choice', group: 'element', label: '噴射プルーム',
+    items: [['simple', '簡易'], ['volume', '体積']],
+    presets: { low: 'simple', medium: 'volume', high: 'volume' },
   },
   // 太陽の光源モデル。球光源では明暗の終端が視半径ぶん柔らかくなり、粗さの小さい金属面に
   // 太陽の円盤が映る。
@@ -180,15 +202,25 @@ export const GRAPHICS_OPTIONS = {
     kind: 'toggle', group: 'light', label: '環境光',
     presets: { low: true, medium: true, high: true },
   },
+  // 地球の球の内側へだけ届く強めの環境光を足すか。夜側の地表と雲の配置を読むための観察補助で、
+  // 地球以外の天体や地球の外にいる物へは届かない。
+  nightObservation: {
+    kind: 'toggle', group: 'light', label: '夜側の観察',
+    presets: { low: false, medium: false, high: false },
+  },
+  // 建造中にカメラへ追従して船体を照らす作業灯。建造中でなければ点かない。
+  constructionWorkLight: {
+    kind: 'toggle', group: 'light', label: '建造の作業灯',
+    presets: { low: true, medium: true, high: true },
+  },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
     presets: { low: false, medium: true, high: true },
   },
-  // 積雲が地表・艦艇へ落とす影。積雲を描かない設定(「雲」がオフ、「積雲の精細さ」がオフ)では、
-  // この値によらず影は落ちない。
-  cumulusShadow: {
-    kind: 'toggle', group: 'shadow', label: '積雲の影',
+  // 積雲と巻雲が地表・艦艇・雲へ落とす影。「雲」と各種類の表示がオンのときだけ落ちる。
+  cloudShadow: {
+    kind: 'toggle', group: 'shadow', label: '雲の影',
     presets: { low: false, medium: true, high: true },
   },
   // 細かい影を同時に落とせる箇所の数。減らすほど影パスの描画命令が減り、要求の緩い受け手から
@@ -249,6 +281,12 @@ export const QUALITY_PRESETS: Readonly<Record<QualityPreset, GraphicsSettingsDat
 // 保存が無いときの設定値一式。
 export const DEFAULT_GRAPHICS: GraphicsSettingsData = QUALITY_PRESETS.high;
 
+// 保存が無いときの初回既定を、主ポインタの精度から選ぶ。粗いポインタ(タッチ主体の端末)では
+// 初回から medium で始め、細かいポインタでは DEFAULT_GRAPHICS(high)とする。
+function firstRunGraphics(coarsePointer: boolean): GraphicsSettingsData {
+  return coarsePointer ? QUALITY_PRESETS.medium : DEFAULT_GRAPHICS;
+}
+
 // 表の外から来た値を受け入れるか決める。真偽の項目は型だけ、選択肢の項目は現在の候補に
 // 含まれるかまで見て、外れていれば fallback を返す。
 function acceptValue(
@@ -259,14 +297,18 @@ function acceptValue(
 }
 
 // 保存された文字列を設定値一式へ読み直す。保存値は利用者がいつ書いたか分からないので、
-// 既知の項目だけを既定の上へ重ねる。
-export function parseGraphics(text: string | null): GraphicsSettingsData {
+// 既知の項目だけを既定の上へ重ねる。保存自体が無い(null)ときだけ、coarsePointer で
+// 初回既定を選ぶ — 保存済みの値はポインタ種別によらずそのまま読む。
+export function parseGraphics(text: string | null, coarsePointer = false): GraphicsSettingsData {
   try {
-    if (text === null) return DEFAULT_GRAPHICS;
+    if (text === null) return firstRunGraphics(coarsePointer);
     const saved = JSON.parse(text) as Record<string, unknown>;
+    const defaults = saved.cumulus === undefined && saved.cumulusDetail === 0
+      ? { ...DEFAULT_GRAPHICS, cumulus: false }
+      : DEFAULT_GRAPHICS;
     // 表に無いキーは読まず、表にあって保存に無いキーは既定で埋まる。
     const entries = optionKeys().map(
-      (key) => [key, acceptValue(GRAPHICS_OPTIONS[key], saved[key], DEFAULT_GRAPHICS[key])] as const,
+      (key) => [key, acceptValue(GRAPHICS_OPTIONS[key], saved[key], defaults[key])] as const,
     );
     return Object.fromEntries(entries) as GraphicsSettingsData;
   } catch {

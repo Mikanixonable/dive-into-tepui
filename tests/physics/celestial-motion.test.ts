@@ -4,23 +4,23 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { PlanetMotion } from '../../src/physics/celestial-motion';
-import { PlanetDef, SatelliteDef } from '../../src/physics/celestial-body-def';
+import type { PlanetDef, SatelliteDef } from '../../src/physics/celestial-body-def';
 import { EARTH, MU_EARTH, MU_MOON, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import { MU_SUN as MU_SUN_LOCAL } from '../../src/game/celestial/solar-system/sun';
 import { ECLIPTIC_OBLIQUITY_RAD } from '../../src/physics/ecliptic';
-import { SatelliteOrbit } from '../../src/physics/satellite-orbit';
+import type { SatelliteOrbit } from '../../src/physics/satellite-orbit';
 import { NEGLIGIBLE_BODY_OFFSET } from '../../src/physics/planet-system';
 import {
-  JULIAN_CENTURY, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitNormal, keplerOrbitState,
+  JULIAN_CENTURY, type KeplerOrbit, keplerOrbitForSimZero, keplerOrbitNormal, keplerOrbitState,
 } from '../../src/physics/kepler-orbit';
 import { qInvert, qMul, qRotate } from '../../src/math/quat';
 import { meridianDirection } from '../../src/physics/body-orientation';
-import { Vec3, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
+import { type Vec3, addScaled, cross, dot, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { icrfToGameEci } from '../../src/physics/icrf';
-import { EphemerisPoints } from '../../src/physics/ephemeris/point';
+import type { EphemerisPoints } from '../../src/physics/ephemeris/point';
 import {
   assertOmegaMatchesBasis, lagrangeOf, motionOf, orbitingMotionOf, positionOf, solarSystemParts, stateOf,
-  SolarSystemParts, testEphemerisPoints, TEST_EPOCH, TEST_SIM_ZERO_ET,
+  type SolarSystemParts, testEphemerisPoints, TEST_EPOCH, TEST_SIM_ZERO_ET,
 } from './test-helpers';
 
 // 定義だけを引くための太陽系(id から静的事実を取り出す口としてだけ使う)。
@@ -503,7 +503,6 @@ export function register(): void {
   test('celestial-motion: トリトンは海王星の自転に対して逆行する', () => {
     const t = 1e7;
     const neptune = orbitingMotionOf(parts, 'neptune');
-    const triton = orbitingMotionOf(parts, 'triton');
     const rel = sub(stateOf(parts, 'triton', t).r, stateOf(parts, 'neptune', t).r);
     const relVel = sub(stateOf(parts, 'triton', t).v, stateOf(parts, 'neptune', t).v);
     const h = cross(rel, relVel);

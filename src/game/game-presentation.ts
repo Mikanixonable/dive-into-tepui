@@ -10,6 +10,8 @@ import { PlayerMarkers } from './marker/player-markers';
 import { isModularShip } from './ship/modular-ship';
 import { CelestialMarkers } from './marker/celestial-markers';
 import { EquatorNodeManager } from './marker/equator-node-manager';
+import { OrbitSlotPresenter } from './navigation/orbit-slot-presenter';
+import { NavigationCommand } from './navigation/navigation-command';
 import { Targeter } from './targeter';
 import { PlanDisplay } from './plan/plan-display';
 import { PlanGuide } from './plan/plan-guide';
@@ -19,6 +21,7 @@ import { FlashPresenter } from './flash-presenter';
 import { FlashEffectsView } from '../render/vfx/flash-effects-view';
 import { EntityLineManager } from './lines/entity-line-manager';
 import { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { TouchControls } from './hud/touch-controls';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
@@ -33,23 +36,31 @@ import { resolveOrbitReference } from './orbit-reference';
 import { navTargetCommands } from './viewer/nav-target-commands';
 import { viewCommands } from './viewer/view-commands';
 import { orbitGuideCommands } from './viewer/orbit-guide-commands';
-import { predictPanelCommands } from './viewer/predict-panel-commands';
+import { displayTimelineCommands } from './viewer/display-timeline-commands';
 import { cameraCommands } from './viewer/camera-commands';
 import { entityDisplayCommands } from './viewer/entity-display-commands';
 import { ObjectWindows } from './pickable/object-windows';
 import { ObjectWindowActions } from './pickable/object-window-actions';
+import { ModuleCommands } from './pickable/module-commands';
 import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
+import { ShipConstructionView } from './ship/ship-construction-view';
+import type { ShipBlueprintShelf } from './ship/ship-blueprint';
+import { ConstructionEntry } from './ship/construction-entry';
 import { FrameControls } from './hud/frame/frame-controls';
 import { HudPanelPresenter } from './hud/hud-panel-presenter';
-import { ViewOptionsControl, type ViewOptionsSettings } from './hud/panels/view-options-control';
+import { ViewOptionsControl } from './hud/panels/view-options-control';
+import type { ViewOptionsSettings } from './view/view-options-settings';
 import { controlledLoopSfx } from './controlled-loop-sfx';
 import { UiSoundQueue } from './ui-sound-queue';
 import { GameInputPhase } from './runtime/game-input-phase';
 import type { GameInputSource } from './input/game-input-ports';
 import { DisplayPhase, type DisplayPhaseSource } from './runtime/display-phase';
+import { KillStop } from './kill-stop';
 import type { GameInputPort } from './input/game-input-router';
 import { ConfirmationOverlay } from '../hud/windows/confirmation-overlay';
+import { len, sub } from '../math/vec3';
+import { WORK_LIGHT_INTENSITY, workLightPlacement } from '../render/pipeline/lighting/work-light-source';
 import type { Game } from './game';
 import type { PageDevices } from '../run/page-devices';
 import type { MarkerSink } from '../marker/marker-sink';
@@ -105,6 +116,10 @@ export class GamePresentation {
   private readonly objectWindows: ObjectWindows;
   private readonly moduleWindows: ModuleWindows;
   private readonly shipConstruction: ShipConstruction;
+  // 建造セッションの読み取り面から、接続ノード・ガイド・ゴースト・強調・操作音を組む表示導出。
+  private readonly shipConstructionView: ShipConstructionView;
+  // ドックの直接クリック・Bキー・常設ボタン・プロパティ窓が共有する建造の入口。
+  private readonly constructionEntry: ConstructionEntry;
   private readonly confirmation: ConfirmationOverlay;
   // 表示パネル(天体クラス表示トグル+天球グリッドトグル+軌道ガイドタブ)。
   private readonly viewOptions: ViewOptionsControl;
@@ -117,15 +132,30 @@ export class GamePresentation {
   private readonly flashEffectsView: FlashEffectsView;
   private readonly entityLines: EntityLineManager;
   private readonly equatorNodes: EquatorNodeManager;
+  // 軌道標識の軌道線・位相点マーカー・被選択物をまとめる口。
+  private readonly orbitSlots: OrbitSlotPresenter;
+  // 航行指令の求解と候補一覧。開いているあいだ時刻バリアを進行へ渡す。
+  private readonly navigationCommand: NavigationCommand;
   private readonly frameControls: FrameControls;
   private readonly hudPanels: HudPanelPresenter;
   private readonly inputPhase: GameInputPhase;
   private readonly displayPhase: DisplayPhase;
+  // 撃墜・自機喪失の瞬間に世界の時計を短く遅らせる止め(SPEC COMBAT.md「撃墜の止め」)。
+  private readonly killStop = new KillStop();
 
   // ポーズ中か。時間倍率とは独立に時間を止める。
   public get isPaused(): boolean { return this.devices.hud.overlayManager.isGamePaused(); }
   // このフレームの入力の解釈が組んだ操作量。
   public get pilotControls(): PilotControls { return this.inputPhase.pilotControls; }
+  // 航行指令の求解中に simTime が越えてはいけない上限。求解窓が開いていなければ null。
+  public get simTimeLimit(): number | null { return this.navigationCommand.simTimeLimit; }
+  // 進行へ掛ける演出用の世界時計の倍率(撃墜の止め)。時間加速 ×1・非ポーズ・建造中でない
+  // ときだけ効く。
+  public get worldTimeScale(): number {
+    const s = this.game.simSpeedManager;
+    if (s.simSpeed !== 1 || this.isPaused || this.shipConstruction.active) return 1;
+    return this.killStop.worldTimeScale;
+  }
 
   // 各表示物・入力ハンドラを、互いの依存関係が満たせる順に組んで game へ繋ぐ。viewOptionsSettings は
   // マップ・天球の表示設定と表示パネルのタブの選択、themePalette は選ばれている配色。
@@ -135,6 +165,7 @@ export class GamePresentation {
     private readonly viewOptionsSettings: ViewOptionsSettings,
     private readonly themePalette: SettingValue<ThemePalette>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
   ) {
     const { scene, hud, markers, audioEngine, pauseMenu } = devices;
     const { commands, dynamicSystem, celestialSystem, controlSelection, viewer, activeStage } = game;
@@ -142,39 +173,49 @@ export class GamePresentation {
     this.uiSfx = new UiSfx(audioEngine);
     this.runEventPresenter = new RunEventPresenter(this.uiSounds, hud);
     this.frameMarkers = markers.createGroup();
-    this.playerMarkers = new PlayerMarkers(markers);
+    this.playerMarkers = new PlayerMarkers(markers, celestialSystem);
     this.flashEffectsView = new FlashEffectsView(scene.scene);
     this.equatorNodes = new EquatorNodeManager(dynamicSystem, markers, viewOptionsSettings.mapDisplay);
+    this.orbitSlots = new OrbitSlotPresenter(
+      game.orbitSlots, celestialSystem, celestialSystem.orbitGuide.orbitCatalog,
+      markers, scene.scene, () => game.simTime,
+    );
     this.celestialMarkers = new CelestialMarkers(markers, celestialSystem);
     hud.beginRun(activeStage.id);
     const entityDisplayPort = entityDisplayCommands(commands, viewer.entityDisplay);
-    const proteinDisplayControl = activeStage.proteinDisplayControl;
-    if (proteinDisplayControl !== null) {
-      proteinDisplayControl.onProteinDisplayChange = (display) => entityDisplayPort.setProteinDisplay(display);
-    }
     this.entityLines = new EntityLineManager(dynamicSystem, viewer.entityDisplay);
     const cameraCommandPort = cameraCommands(commands, viewer.camera);
     const targetCommands = navTargetCommands(commands, viewer.navTarget);
-    this.navTargetPresenter = new NavTargetPresenter(viewer.navTarget, markers);
+    this.navTargetPresenter = new NavTargetPresenter(
+      viewer.navTarget, markers, game.orbitSlots, celestialSystem.orbitGuide.orbitCatalog,
+    );
     const anchorEntities = new AnchorEntities(
       dynamicSystem, controlSelection, this.navTargetPresenter, celestialSystem,
     );
     this.cameraSystem = new CameraSystem(
       hud, celestialSystem, viewer.camera, cameraCommandPort, viewer.view, anchorEntities, scene.viewport,
     );
-    const predictCommands = predictPanelCommands(commands, viewer.predictPanel);
+    const timelineCommands = displayTimelineCommands(commands, viewer.displayTimeline);
     this.displayWindowManager = new DisplayWindowManager(
-      hud.mapRoot, hud.panelCollapse, celestialSystem, viewer.predictPanel, predictCommands,
+      hud.mapRoot, hud.panelCollapse, celestialSystem, viewer.displayTimeline, timelineCommands,
     );
-    this.confirmation = new ConfirmationOverlay(hud.layers.system, hud.overlayManager);
+    this.confirmation = new ConfirmationOverlay(hud.overlayManager);
+    this.input = new Input(scene.renderer.domElement);
+    // ⚙バッジの押下は、物理 Esc と同じ仮想キーの経路でポーズのポートへ届ける。
+    hud.onPauseBadge = () => this.input.tapKey(K.pauseMenu);
     this.shipConstruction = new ShipConstruction(
-      scene.scene, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
-      hud, hud.constructionConfirm,
-      (ship) => this.cameraSystem.focusConstruction(ship.id, ship.motion.radius),
+      this.input, commands, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
+      hud, hud.constructionConfirm, blueprints, game.events,
+      (ship, target) => this.cameraSystem.focusConstruction(
+        ship.id, target?.radius ?? ship.motion.radius, target?.position,
+      ),
     );
+    this.shipConstructionView = new ShipConstructionView(scene.scene, markers);
+    this.constructionEntry = new ConstructionEntry(this.shipConstruction, hud);
     const viewSelectionCommands = viewCommands(commands, viewer.view);
     this.moduleWindows = new ModuleWindows(
-      hud, controlSelection, dynamicSystem, this.shipConstruction,
+      hud, controlSelection, dynamicSystem, new ModuleCommands(commands, controlSelection, dynamicSystem),
+      this.constructionEntry,
       this.confirmation,
       () => {
         if (!viewer.view.canSelect('combat')) return false;
@@ -192,10 +233,10 @@ export class GamePresentation {
     // 参照フレームの基準・回転対象が機体・役割トークンを指すときの解決役。
     this.frameAnchors = new FrameAnchors(celestialSystem, anchorEntities);
     this.frameControls = new FrameControls(
-      hud.mapRoot, hud.combatRoot, hud.layers.popup,
+      hud.mapRoot, hud.combatRoot,
       celestialSystem, viewer.camera.map, viewer.camera.combat,
       cameraCommandPort.map, cameraCommandPort.combat, this.cameraSystem,
-      viewer.predictPanel, predictCommands, hud.overlayManager, this.frameAnchors,
+      viewer.displayTimeline, timelineCommands, hud.overlayManager, this.frameAnchors,
     );
     this.targeter = new Targeter(
       markers, viewer.navTarget, targetCommands, dynamicSystem, celestialSystem.celestialMotions,
@@ -203,7 +244,6 @@ export class GamePresentation {
     this.planPath = new PlanPath(scene.scene, celestialSystem, this.displayWindowManager);
     this.planDisplay = new PlanDisplay(this.planPath, markers, celestialSystem, controlSelection);
     this.planGuide = new PlanGuide(markers);
-    this.input = new Input(scene.renderer.domElement);
     this.touchControls = new TouchControls(this.input);
     this.input.onPointerKindChange = (kind) => this.touchControls.setPointerKind(kind);
 
@@ -225,7 +265,7 @@ export class GamePresentation {
     this.combatView = new CombatFrame(
       this.input, this.targeter, this.objectWindows, dynamicSystem,
       this.celestialMarkers, this.touchControls,
-      controlSelection, this.planPath, this.planGuide,
+      controlSelection, this.planPath, this.planGuide, this.constructionEntry,
     );
     this.mapView = new MapFrame(
       this.input, this.cameraSystem, viewer.camera, this.objectWindows,
@@ -234,40 +274,66 @@ export class GamePresentation {
       this.displayWindowManager, this.frameControls,
       this.frameAnchors, controlSelection, controlSelectionCommands(commands, controlSelection),
       game.simSpeedManager, simSpeedCommands(commands, game.simSpeedManager),
-      this.planDisplay, this.planPath, planCommands(commands),
+      this.planDisplay, this.planPath, planCommands(commands), this.orbitSlots,
       scene.scene, hud, this.uiSounds, this.navTargetPresenter, targetCommands,
       viewOptionsSettings.mapDisplay,
+      () => game.activeStage.revealedBodies,
     );
     this.viewManager = new ViewManager(
       viewer.view, this.touchControls, { combat: this.combatView, map: this.mapView },
     );
 
+    this.navigationCommand = new NavigationCommand(
+      commands, celestialSystem, dynamicSystem, controlSelection,
+      game.orbitSlots, celestialSystem.orbitGuide.orbitCatalog,
+      hud.overlayManager, (message) => hud.hint(message), () => game.simTime,
+    );
     this.hudPanels = new HudPanelPresenter(
       hud, commands, celestialSystem, dynamicSystem, controlSelection, game.simSpeedManager,
       activeStage, viewer, this.input, this.targeter, this.objectWindows, this.cameraSystem,
+      this.navigationCommand, () => this.startConstructionNearest(), () => this.shipConstruction.active,
     );
-    const inputSource: GameInputSource = {
+    this.inputPhase = new GameInputPhase(
+      this.gameInputSource(), hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
+      this.shipConstruction, this.input, () => this.cameraFrame, sections,
+    );
+    this.displayPhase = new DisplayPhase(
+      this.gameDisplaySource(), this.displayWindowManager, this.viewManager, this.frameAnchors, this.cameraSystem,
+      this.flashPresenter, this.targeter, this.planDisplay, this.equatorNodes, sections,
+    );
+  }
+
+  // 最寄りの使用可能ドックから建造を始める。Bキーと艦のステータスパネルの「建造」が共有する。
+  private startConstructionNearest(): void {
+    const controlled = this.game.activeControllable;
+    const camera = this.cameraFrame;
+    if (controlled === null || camera === null || !isModularShip(controlled)) return;
+    this.constructionEntry.startNearestDock(controlled, camera.viewpoint.position);
+  }
+
+  // 入力の解釈が読む、ランの操作の口。
+  private gameInputSource(): GameInputSource {
+    const game = this.game;
+    return {
       commands: game.commands,
       simSpeedManager: game.simSpeedManager,
       view: game.viewer.view,
       get activeControllable() { return game.activeControllable; },
       get stageIsPlaying() { return game.activeStage.isPlaying; },
+      startConstruction: () => this.startConstructionNearest(),
     };
-    const displaySource: DisplayPhaseSource = {
+  }
+
+  // 表示の導出が読む、ランの時刻・操作対象・出来事・ターゲットの口。
+  private gameDisplaySource(): DisplayPhaseSource {
+    const game = this.game;
+    return {
       get simTime() { return game.simTime; },
       get activeControllable() { return game.activeControllable; },
       get recentEvents() { return game.events.recent; },
       celestialSystem: game.celestialSystem,
       get navTargetId() { return game.viewer.navTarget.id; },
     };
-    this.inputPhase = new GameInputPhase(
-      inputSource, hud, pauseMenu, this.cameraSystem, this.viewManager, this.targeter,
-      this.shipConstruction, this.input, () => this.cameraFrame, sections,
-    );
-    this.displayPhase = new DisplayPhase(
-      displaySource, this.displayWindowManager, this.viewManager, this.frameAnchors, this.cameraSystem,
-      this.flashPresenter, this.targeter, this.planDisplay, this.equatorNodes, sections,
-    );
   }
 
   // このランが scene・Hud・マーカー装置・window/document/canvas へ足したものを残らず取り除く。
@@ -277,10 +343,12 @@ export class GamePresentation {
     // Hud はこのランより長生きするので、操作対象も操作ハンドラも無い状態を1度宣言してから破棄する。
     this.devices.hud.clearRunPanels();
     this.hudPanels.dispose();
+    this.navigationCommand.dispose();
     this.mapView.dispose();
     this.combatView.dispose();
     this.moduleWindows.close();
     this.shipConstruction.dispose();
+    this.shipConstructionView.dispose();
     this.confirmation.dispose();
     this.objectWindows.dispose();
     this.worldSfx.dispose();
@@ -294,6 +362,7 @@ export class GamePresentation {
     this.viewOptions.dispose();
     this.displayWindowManager.dispose();
     this.equatorNodes.dispose();
+    this.orbitSlots.dispose();
     this.flashEffectsView.dispose();
     this.targeter.dispose();
     this.navTargetPresenter.dispose();
@@ -314,6 +383,8 @@ export class GamePresentation {
   // 生の入力を担当モジュールへ先着順で配り、命令とこのフレームの操作量を組む。dt [s] は進行へ渡す
   // 刻み、nowMs [ms] はフレームの先頭で1度だけ読んだ実時刻。ポーズ中も Esc・ヘルプなどは効かせる。
   public interpretInput(dt: number, nowMs: number, viewport: Viewport): void {
+    // 止めの残りは実時間で減る — 進行の出来事を読む前に、前フレームからの時計を進める。
+    this.killStop.advance(dt);
     this.inputPhase.interpret(dt, nowMs, viewport);
   }
 
@@ -335,7 +406,18 @@ export class GamePresentation {
   }
 
   // 一時エフェクト・的通過マーク・計画表示を、進行が記録した出来事と計画から表示時刻で組み直す(R5)。
-  public presentProgress(): void { this.displayPhase.presentProgress(); }
+  public presentProgress(): void {
+    const events = this.game.events.recent;
+    this.killStop.observe(
+      events, this.game.simSpeedManager.simSpeed,
+      this.isPaused, this.shipConstruction.active,
+    );
+    // 自機の被弾(shipStruck は自機側だけが記録する)で視点の揺れを立てる。
+    for (const event of events) {
+      if (event.body.kind === 'shipStruck') this.cameraSystem.kickHitShake();
+    }
+    this.displayPhase.presentProgress();
+  }
 
   // 予測と履歴をどこまで計算してほしいかの需要(R4)。
   public trajectoryDemand(): TrajectoryDemand { return this.displayPhase.trajectoryDemand(); }
@@ -344,6 +426,8 @@ export class GamePresentation {
   // nowMs [ms] はフレームの実時刻。
   public update(nowMs: number, viewport: Viewport): void {
     this.displayPhase.update(nowMs, viewport);
+    // 求解中の艦や目標が失われたら航行指令ウィンドウを畳む。
+    this.navigationCommand.sync();
   }
 
   // ------------------------------------------------------------ 導出と同期・描画
@@ -356,6 +440,8 @@ export class GamePresentation {
     const controlled = this.game.activeControllable;
     const palette = this.themePalette.current;
     const displayWindow = this.displayWindowManager.current;
+    // 揺れの切り替えはフレームごとに写す — 設定ビューで切った効きが次の被弾から出る。
+    this.cameraSystem.hitShakeEnabled = graphics.hitShake;
     this.devices.hud.setConstructionMode(this.shipConstruction.active);
     this.hudPanels.syncViewBadge(
       this.viewManager.current, this.viewManager.selectableViews(), this.viewManager.activeView.pickables,
@@ -374,17 +460,17 @@ export class GamePresentation {
         viewer.orbitReference.mode, controlled.motion.state.r, celestialSystem.celestialMotions,
         this.navTargetPresenter, dynamicSystem, celestialSystem, controlled.motion.state.t,
       )
-      : undefined;
+      : null;
     // 通過時刻ラベルの設定は、赤道交点と航法ターゲットの両方が同じものを読む。
     const timeLabel = timeLabelSettingOf(displayWindow);
     this.syncWorld(
-      graphics, style, nowMs, displayTime, view, controlled, orbitRef ?? null, visibilityPolicy, timeLabel, camera,
+      graphics, style, nowMs, displayTime, view, controlled, orbitRef, visibilityPolicy, timeLabel, camera,
     );
     this.syncEffectsAndTargets(
       nowMs, displayTime, view, controlled, visibilityPolicy, timeLabel, palette, camera,
     );
     this.syncPanelsAndMarkers(
-      nowMs, displayWindow, displayTime, view, controlled, orbitRef ?? null, visibilityPolicy, palette, camera,
+      nowMs, displayWindow, displayTime, view, controlled, orbitRef, visibilityPolicy, palette, camera,
     );
   }
 
@@ -417,11 +503,20 @@ export class GamePresentation {
     );
     // 本数の警告は、天体系がこのフレームに組んだ軌道ガイド線から出す。
     this.viewOptions.setOrbitGuideLineCount(celestialSystem.orbitGuide.lineCount);
-    celestialSystem.bakeClouds(this.devices.scene.renderer, displayTime, this.devices.scene.gpu);
+    celestialSystem.bakeClouds(
+      this.devices.scene.renderer, displayTime, this.game.simSpeedManager.simSpeed, this.devices.scene.gpu);
+    // 建造の読み取り面を確定させてから表示導出へ渡す — 適用済み命令の記録・選択の整合が
+    // shipConstruction.sync で更新され、shipConstructionView.sync がそれを読んで強調と音を組む。
+    this.shipConstruction.sync();
+    const construction = this.shipConstructionView.sync(this.shipConstruction, camera, nowMs);
+    for (const sound of construction.sounds) this.uiSounds.push(`construction-${sound}`);
+    this.syncWorkLight(graphics, camera);
     dynamicSystem.sync(
-      displayTime, controlled, camera, style, graphics, viewer.entityDisplay.proteinDisplay, orbitRef ?? undefined,
+      displayTime, controlled, camera, style, graphics,
+      construction.shipModuleEmphasis,
+      this.devices.scene.pipeline.sunLight, this.devices.scene.pipeline.bodyShadow,
+      orbitRef,
     );
-    this.shipConstruction.sync(camera);
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
     this.playerMarkers.sync(
       controlled !== null && isModularShip(controlled) ? controlled : null, view, camera.project,
@@ -431,6 +526,26 @@ export class GamePresentation {
       camera.project, camera.position, this.frameAnchors.bodies, this.frameAnchors.bodiesPivot,
       view === 'map', timeLabel, nowMs,
     );
+    // 標識の線は celestialSystem.sync の後・軌道線の右クリック候補(linePickables.refresh)の前に
+    // 揃える — 候補は描かれた線の点列を読む。
+    this.orbitSlots.sync(
+      displayTime, view, camera,
+      this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, visibilityPolicy, nowMs,
+    );
+  }
+
+  // 建造中だけ、カメラの右上後方へ作業灯を置く。灯距は注視距離(建造で視点寄せに使う
+  // 距離と同じ量)に比例し、建造モード以外や設定オフでは強さ 0 で消灯する。
+  private syncWorkLight(graphics: GraphicsSettingsData, camera: CameraFrame): void {
+    const workLight = this.devices.scene.pipeline.workLight;
+    if (!this.shipConstruction.active || !graphics.constructionWorkLight) {
+      workLight.setIntensity(0);
+      return;
+    }
+    // 注視距離は ECI・描画座標で同じ尺(フローティング原点は平行移動のみ)。
+    const focusDist = len(sub(camera.viewpoint.lookTarget, camera.viewpoint.position));
+    const { position, radius } = workLightPlacement(camera.camera, focusDist);
+    workLight.set(position, radius, WORK_LIGHT_INTENSITY);
   }
 
   // このフレームの出来事を通知・音・閃光・対象・航法ターゲットの宣言へ写す。
@@ -463,21 +578,20 @@ export class GamePresentation {
     controlled: Controllable | null, orbitRef: OrbitReference | null,
     visibilityPolicy: MapVisibilityPolicy | null, palette: ThemePalette, camera: CameraFrame,
   ): void {
-    const { celestialSystem, activeStage, viewer } = this.game;
+    const { celestialSystem, activeStage } = this.game;
     // 戦闘中に開いたプロパティウィンドウも最新値を表示し続ける必要があるので、ビューに依らず呼ぶ。
     this.objectWindows.sync();
     this.moduleWindows.sync();
     this.planDisplay.sync(camera, view, displayWindow, nowMs);
     this.entityLines.sync(
-      controlled, this.targeter.aliveTarget, view, displayWindow, visibilityPolicy, orbitRef ?? undefined,
+      controlled, this.targeter.aliveTarget, view, displayWindow, visibilityPolicy, orbitRef,
       camera, this.frameAnchors, celestialSystem, palette,
     );
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
     activeStage.sync(camera, view, displayTime);
-    activeStage.proteinDisplayControl?.syncProteinDisplay(viewer.entityDisplay.proteinDisplay);
-    this.hudPanels.sync(view, displayWindow, orbitRef ?? undefined, palette, camera, nowMs);
+    this.hudPanels.sync(view, displayWindow, orbitRef, palette, camera, nowMs);
     this.syncFrameMarkers(nowMs);
     // このフレームのマーカーが出揃った後でなければならないので最後に通す。
     this.devices.markers.resolveOverlaps(view === 'map');

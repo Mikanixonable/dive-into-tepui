@@ -19,19 +19,19 @@ import type { CelestialTexture } from './celestial-textures';
 import earthSmoothnessUrl from '../assets/earth-smoothness.png';
 import { earthSurfaceColorToRgba8 } from './earth-surface-color';
 
-export interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
+interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
   readonly renderer?: WebGPURenderer | null;
   readonly colorToRgba8?: EarthSurfaceColorToRgba8;
   readonly decodeImage?: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown>;
 }
 
-export interface EarthSurfaceFactoryResult {
+interface EarthSurfaceFactoryResult {
   readonly surface: EarthSurface;
   readonly state: EarthSurfaceStatus;
   readonly bootstrap: EarthSurfaceBootstrapResult;
 }
 
-export interface EarthSurfaceRuntimeHandle {
+interface EarthSurfaceRuntimeHandle {
   readonly surface: EarthSurface;
   readonly ready: Promise<EarthSurfaceFactoryResult>;
 }
@@ -70,7 +70,7 @@ function detailedMaterialFor(
 ): EarthSurfaceMaterialAttachment {
   // 材質バインディングのインターフェースを runtime attachment へ変換する。
   const binding = createEarthSurfaceMaterialBinding(
-    textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl, source.terrainFormat,
+    textures, source.baseColorUrl, source.baseTerrainUrl, fetchImpl,
     source.colorCalibration.diffuseAlbedoScale,
   );
   return {
@@ -106,21 +106,21 @@ function coordinatorFor(
   if (bootstrap.tileSource === null) {
     return { coordinator: null, state: 'fallback', material: null, reason: 'tile source unavailable' };
   }
-  const backend = options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike | null | undefined;
-  if (backend === null || backend === undefined) {
+  const backend = options.renderer.backend as unknown as EarthSurfaceGpuThreeBackendLike | null;
+  if (backend == null) {
     return { coordinator: null, state: 'fallback', material: null, reason: 'WebGPU backend unavailable' };
   }
   const queue = new EarthSurfaceTileRequestQueue(bootstrap.tileSource, {
     fetchImpl: options.fetchImpl,
     decodeImage: options.decodeImage,
-    terrainFormat: bootstrap.source?.terrainFormat,
   });
-  const gpu = new EarthSurfaceGpuAdapter(createEarthSurfaceGpuThree(backend));
-  if (gpu.mode === 'base') {
+  const three = createEarthSurfaceGpuThree(backend);
+  if (three.textures === null) {
     queue.dispose();
-    gpu.dispose();
+    three.dispose();
     return { coordinator: null, state: 'fallback', material: null, reason: 'WebGPU detail features unavailable' };
   }
+  const gpu = new EarthSurfaceGpuAdapter(three);
   const textures = gpu.textures;
   if (textures === null) {
     queue.dispose();
@@ -138,7 +138,7 @@ function coordinatorFor(
   }
   return {
     coordinator: new EarthSurfaceResidentCoordinator({
-      tiles: new EarthSurfaceTiles(),
+      tiles: new EarthSurfaceTiles(bootstrap.source!.maxZoom),
       queue,
       gpu,
       colorToRgba8: options.colorToRgba8 ?? earthSurfaceColorToRgba8,
@@ -180,8 +180,4 @@ export function createEarthSurfaceRuntime(options: EarthSurfaceFactoryOptions = 
   return { surface, ready };
 }
 
-// runtimeのready完了まで待ち、surfaceと最終状態を返す。
-export async function createEarthSurface(options: EarthSurfaceFactoryOptions = {}): Promise<EarthSurfaceFactoryResult> {
-  // 起動時の全球表示を返し、詳細接続の完了を待って最終状態を返す。
-  return createEarthSurfaceRuntime(options).ready;
-}
+

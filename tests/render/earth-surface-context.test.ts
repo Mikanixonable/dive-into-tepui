@@ -8,12 +8,13 @@ import {
 } from '../../src/render/earth-surface-source';
 import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/render/earth-surface-runtime';
 import { earthTileKey } from '../../src/render/earth-surface-tile-key';
-import { EARTH_SURFACE_LEGACY_COLOR_CALIBRATION } from '../../src/render/earth-surface-source';
+import { EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION } from '../../src/render/earth-surface-source';
 
+// 入力検査を通る固定のmanifest fixture。
 function manifest(): EarthSurfaceAssetManifest {
   return {
     schemaVersion: 3, datasetId: 'earth-2026-09-09-a', sourceManifestSha256: '0'.repeat(64),
-    colorCalibration: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
+    colorCalibration: EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION,
     terrainEncoding: {
       formatVersion: 3, layout: 'normal-xyz-rgb8-roughness-a8',
       width: 260, height: 260, channels: 4, scalar: 'UInt8',
@@ -31,26 +32,7 @@ function manifest(): EarthSurfaceAssetManifest {
   };
 }
 
-function legacyManifest(): EarthSurfaceAssetManifest {
-  return {
-    schemaVersion: 1, datasetId: 'earth-2026-09-09-a', sourceManifestSha256: '0'.repeat(64),
-    terrainEncoding: {
-      formatVersion: 2, layout: 'octahedral-rg8-roughness-r8-material-class-a8',
-      width: 260, height: 260, channels: 4, scalar: 'UInt8',
-      materialClasses: { water: 0, land: 1, ice: 2, unknown: 255 },
-    },
-    baseColor: 'earth.jpg', baseTerrain: 'base.bin.gz', tileIndexUrl: 'tile-index.json',
-    climateMaps: Array.from({ length: 12 }, (_, index) => `climate-${String(index + 1).padStart(2, '0')}.png`),
-    climateEncoding: {
-      temperatureK: { min: 180, max: 330 }, cloudFraction: { min: 0, max: 1 },
-      orthometricElevation: { min: -1000, max: 9000 }, landFraction: { min: 0, max: 1 },
-      waterOrthometricElevationM: 0,
-    },
-    coverage: { kind: 'complete', maxZoom: 7, expectedTiles: 43_690 },
-    attribution: ['fixture'],
-  };
-}
-
+// そのmanifestから組んだ入力fixture。
 function source() {
   return earthSurfaceSourceFromManifest('https://example.test/earth/', 'https://example.test/earth/earth-surface.json', manifest());
 }
@@ -61,6 +43,7 @@ export function register(): void {
     assert.equal(value.climateMapUrls.length, 12);
     assert.equal(value.sourceManifestSha256, '0'.repeat(64));
     assert.deepEqual(value.climateEncoding.temperatureK, { min: 180, max: 330 });
+    assert.equal(value.maxZoom, 7);
     assert.ok(value.colorTileTemplate.endsWith('/tiles/{z}/{x}/{y}.jpg'));
     assert.ok(value.terrainTileTemplate.endsWith('/tiles/{z}/{x}/{y}.bin.gz'));
     assert.ok(value.baseColorUrl.endsWith('/earth.jpg'));
@@ -113,21 +96,44 @@ export function register(): void {
     });
     assert.equal(result.state, 'ready');
     assert.equal(result.tileSource?.descriptorFor(earthTileKey(4, 0, 0)), null);
-    assert.deepEqual(result.tileSource?.urlFor(earthTileKey(5, 3, 7)), {
-      color: 'https://example.test/earth/tiles/5/3/7.jpg',
-      terrain: 'https://example.test/earth/tiles/5/3/7.bin.gz',
+    assert.deepEqual(result.tileSource?.descriptorFor(earthTileKey(5, 3, 7)), {
+      key: earthTileKey(5, 3, 7),
+      colorUrl: 'https://example.test/earth/tiles/5/3/7.jpg',
+      terrainUrl: 'https://example.test/earth/tiles/5/3/7.bin.gz',
     });
   });
 
-  test('earth runtime: schema1のmanifestは現行の地形材質へ変換して受け入れる', async () => {
+  test('earth runtime: schema3 z8 manifestはz8 URLを解決し、z7 manifestはz8を要求しない', async () => {
+    const high = {
+      ...manifest(),
+      coverage: { kind: 'complete', minZoom: 5, maxZoom: 8, expectedTiles: 174_080 },
+    } as EarthSurfaceAssetManifest;
+    const highResult = await bootstrapEarthSurface({
+      manifestUrl: 'https://example.test/earth/earth-surface.json',
+      fetchImpl: async () => new Response(JSON.stringify(high)),
+    });
+    assert.equal(highResult.state, 'ready');
+    assert.equal(highResult.source?.maxZoom, 8);
+    assert.equal(highResult.tileSource?.descriptorFor(earthTileKey(8, 511, 255))?.colorUrl,
+      'https://example.test/earth/tiles/8/511/255.jpg');
+
+    const current = await bootstrapEarthSurface({
+      manifestUrl: 'https://example.test/earth/earth-surface.json',
+      fetchImpl: async () => new Response(JSON.stringify(manifest())),
+    });
+    assert.equal(current.state, 'ready');
+    assert.equal(current.source?.maxZoom, 7);
+    assert.equal(current.tileSource?.descriptorFor(earthTileKey(8, 0, 0)), null);
+  });
+
+  test('earth runtime: schema1のmanifestは拒否する', async () => {
+    const legacy = { ...manifest(), schemaVersion: 1 } as unknown as EarthSurfaceAssetManifest;
     const result = await bootstrapEarthSurface({
       manifestUrl: 'https://example.test/earth/earth-surface.json',
-      fetchImpl: async () => new Response(JSON.stringify(legacyManifest())),
+      fetchImpl: async () => new Response(JSON.stringify(legacy)),
     });
-    assert.equal(result.state, 'ready');
-    assert.equal(result.source?.terrainFormat, 'octahedral-rg8-roughness-r8-material-class-a8');
-    assert.equal(result.tileSource?.urlFor(earthTileKey(5, 3, 7))?.terrain,
-      'https://example.test/earth/tiles/5/3/7.bin.gz');
+    assert.equal(result.state, 'error');
+    assert.match(result.error?.message ?? '', /Unsupported Earth surface manifest schema/);
   });
 
   test('earth runtime: schema2のmanifestは拒否する', async () => {

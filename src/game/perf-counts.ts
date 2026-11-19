@@ -1,9 +1,8 @@
 // ランの規模の計測値。
 import type { EntityCountKind } from './dynamic/dynamic-entity/entity-kind';
-import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
 import type { CelestialSurfaceDiagnostics } from '../render/celestial/celestial-surface';
 
-export interface SurfacePerfCount {
+interface SurfacePerfCount {
   readonly id: string;
   readonly name: string;
   readonly diagnostics: CelestialSurfaceDiagnostics;
@@ -27,5 +26,4 @@ export interface PerfCounts {
 // 1フレームぶんの計測値を差し出す口。
 export interface PerfCountSource {
   perfCounts(): PerfCounts;
-  proteinMotionFrameSample(): ProteinMotionFrameSample;
 }

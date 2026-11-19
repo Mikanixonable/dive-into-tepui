@@ -1,7 +1,7 @@
 // 露出係数の正本。**いま見ている場所の明るさへ画面をどれだけ合わせるか**を1つの数で持つ。
 // 順応(場所の明るさへ合わせるぶん)と露出補正の積をトーンマッパへ渡し、固定した明るさで描く
 // ものには順応ぶんだけを打ち消す倍率を答える。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance } from './sun-light';
 import type { FloatNode, FloatUniform } from '../tsl-types';
@@ -20,14 +20,14 @@ export class Exposure {
   // 順応の基準点と恒星の位置(どちらも描画座標)、その恒星の放射強度を1フレーム分書く。
   // **1 天文単位ぶんの放射照度より明るい側へは順応しない** — 較正(表示値 = アルベド)を
   // そのまま残すためで、恒星へ寄っても係数が 1 で止まるので画面が黒く沈むこともない。
-  setReference(reference: THREE.Vector3, sunPosition: THREE.Vector3, sunIntensity: number): void {
+  public setReference(reference: THREE.Vector3, sunPosition: THREE.Vector3, sunIntensity: number): void {
     const irradiance = irradianceAtDistance(sunIntensity, reference.distanceTo(sunPosition));
     this.adaptation = Math.max(1, (SUN_IRRADIANCE_1AU / irradiance) ** ADAPTATION_EXPONENT);
     this.refreshFactor();
   }
 
   // 露出補正の倍率(EV 1 段で 2 倍)を書く。描画設定が変わった時点で1回呼ばれる。
-  setCompensation(compensation: number): void {
+  public setCompensation(compensation: number): void {
     this.compensation = compensation;
     this.refreshFactor();
   }
@@ -37,9 +37,9 @@ export class Exposure {
   }
 
   // トーンマッパへ渡す露出係数。物理量として描くものはこれをそのまま受ける。
-  get factor(): FloatNode { return this.factorUniform; }
+  public get factor(): FloatNode { return this.factorUniform; }
 
   // 固定した明るさで描くものが自分の色へ掛ける倍率。順応ぶんをちょうど打ち消すので、
   // どこから見ても同じ明るさで写る。
-  get fixedBrightnessScale(): number { return 1 / this.adaptation; }
+  public get fixedBrightnessScale(): number { return 1 / this.adaptation; }
 }

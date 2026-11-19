@@ -3,7 +3,9 @@
 // HUD の書体は太さ 400 だけを読み、bold はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
-import { createGameScene, type GameScene } from './render/scene';
+import { createGameScene, RenderBackendUnavailableError, type GameScene } from './render/scene';
+import { renderBackendNoticeOf } from './render/render-backend';
+import { loadShipModuleModels } from './render/dynamic/ship/ship-module-models';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { FrameSections } from './game/frame-sections';
@@ -12,7 +14,7 @@ import { browserSettingStorage } from './settings/stored-setting';
 import { themePresetOf } from './theme';
 import { applyThemeVariables } from './hud/style/theme-variables';
 import { Hud } from './game/hud/hud';
-import { PanelCollapse } from './game/hud/panel-shell';
+import { PanelCollapse } from './game/hud/panel-chrome';
 import { HudShell } from './hud/hud-shell';
 import { MarkerDevice } from './marker/marker-device';
 import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
@@ -31,8 +33,9 @@ import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
 import { gameCommand } from './game/input/game-commands';
 import { KEY_MAPPING as K } from './input/key-mapping';
+import { applyCloudTuningOverrides } from './render/earth-weather/cloud-tuning';
 import type { PageDevices } from './run/page-devices';
-import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
+import type { ViewOptionsSettings } from './game/view/view-options-settings';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する
@@ -41,16 +44,20 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
 
-  const gameScene = await createGameScene(canvas, graphics, browserViewport());
+  const [gameScene] = await Promise.all([
+    createGameScene(canvas, graphics, browserViewport()),
+    loadShipModuleModels(),
+  ]);
   hideLoading();
   return gameScene;
 }
 
 // rAF ループを起動する。フレームで例外が起きたらループを止める。
 function startAnimationLoop(
-  launcher: Launcher, gameScene: GameScene, settings: UserSettings, bgm: Bgm,
+  launcher: Launcher, devices: PageDevices, settings: UserSettings, bgm: Bgm,
   debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, snapshotControls: SnapshotControls,
 ): void {
+  const layoutSmoke = new URLSearchParams(window.location.search).has('layout-smoke');
   let lastTime = performance.now();
   let completedFrames = 0;
   // 1フレーム分: ランのフレームを回し、次フレームを予約する。
@@ -60,7 +67,11 @@ function startAnimationLoop(
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    gameScene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
+    // layout smoke は起動完了後も入力・HUD同期を動かすが、viewport変更に伴う
+    // headless WebGPU の再確保だけ止める。通常実行では常に従来どおり同期・描画する。
+    const hudOnlyFrame = layoutSmoke
+      && document.documentElement.dataset.layoutSmokeFreeze === 'true';
+    if (!hudOnlyFrame) devices.scene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
     // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
     // 決まった周回の進行と、設定面の試聴に合わせる。
     pauseMenu.sync(now);
@@ -97,7 +108,7 @@ function startAnimationLoop(
           commands: [gameCommand(K.toggleDebugInfoWindow.code, K.toggleDebugInfoWindow)],
           handleCommand: command => debugInfo.handleCommand(command.id),
         },
-      ]);
+      ], !hudOnlyFrame);
       if (completed) {
         launcher.followProgress();
         completedFrames++;
@@ -138,7 +149,7 @@ function initHud(settings: UserSettings): {
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine);
   const pauseMenu = new PauseMenu(
-    shell.layers.system, shell.overlayManager,
+    shell.overlayManager,
     settings.graphics.current, settings.audibleBgmVolume, settings.themePalette.current.id,
   );
   return { shell, hud, markers, audioEngine, bgm, pauseMenu };
@@ -193,6 +204,27 @@ function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
   };
 }
 
+// 開発ビルドだけ: 実験環境(cloud-lab)が開発サーバ経由で配る調整値の上書きを定期で拾い、
+// 雲の生成へ反映する(tools/cloud-tuning-overrides-file.cjs の経路)。上書きが書き変わった
+// ときだけ適用し、焼き直すかは雲場が版の照合で決める。本番ビルドではこの呼び出しごと落ちる。
+function startCloudTuningSync(): void {
+  let lastText: string | null = null;
+  const poll = async (): Promise<void> => {
+    try {
+      const response = await fetch('/__cloud-tuning/overrides');
+      const text = response.ok ? await response.text() : null;
+      if (text !== null && text !== lastText) {
+        lastText = text;
+        applyCloudTuningOverrides(JSON.parse(text) as Record<string, number>);
+      }
+    } catch {
+      // 応答が壊れた・サーバが落ちただけなら見逃し、次の周期で拾う。
+    }
+    window.setTimeout(poll, 700);
+  };
+  void poll();
+}
+
 // 起動時に一度だけ走る、全システムの生成と配線。
 async function main() {
   // 設定を読み、選ばれている配色を :root へ適用してからでなければ、ローディング表示も
@@ -207,12 +239,22 @@ async function main() {
   const autoSave = new AutoSave(snapshotService);
   const gameScene = await initScene(settings.graphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
+  // WebGL2 へ落ちて描いている場合は、その旨を一度だけ通知する(SPEC「描画バックエンド」)。
+  // トーストの表示は HUD の同期が担うため、画面へ出るのはランの HUD が動き始めてからになる。
+  if (renderBackendNoticeOf(gameScene.backend) === 'fallback-notice') {
+    hud.hint(
+      'WebGPU を利用できないため、WebGL2 で描画しています。WebGPU 対応ブラウザでは本来の描画になります。画質はポーズメニューの設定で調整できます。',
+      10000, 'warn',
+    );
+  }
   const sections = new FrameSections();
   const debugInfo = new DebugInfoWindow(
-    shell.layers.window, gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
+    gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
     settings.renderStyle.current, debugInfoOpenAtStart(),
   );
-  const devices: PageDevices = { scene: gameScene, hud, markers, audioEngine, pauseMenu, debugInfo };
+  const devices: PageDevices = {
+    scene: gameScene, hud, markers, audioEngine, pauseMenu, debugInfo,
+  };
 
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
@@ -222,7 +264,7 @@ async function main() {
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
 
-  const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
+  const saveBrowser = new SaveBrowser(slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
@@ -242,12 +284,23 @@ async function main() {
   pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
   // 最初のタイトル画面でも設定面と BGM を引き直すため、周回を起こす前からフレームを回す。
-  startAnimationLoop(launcher, gameScene, settings, bgm, debugInfo, pauseMenu, snapshotControls);
+  if (process.env.NODE_ENV !== 'production') startCloudTuningSync();
+  startAnimationLoop(launcher, devices, settings, bgm, debugInfo, pauseMenu, snapshotControls);
   await launcher.start();
 }
 
 main().catch((err) => {
   console.error(err);
+  // 対応する描画基盤が無い失敗は、再読み込みでは直らないので理由を示して案内を分ける
+  // (SPEC「描画バックエンド」)。
+  if (err instanceof RenderBackendUnavailableError) {
+    showFatalError(
+      '描画を開始できませんでした。',
+      'このブラウザは WebGPU と WebGL2 のどちらにも対応していないため、画面を描けません。対応するブラウザで開き直してください。',
+      err,
+    );
+    return;
+  }
   showFatalError(
     'ゲームの初期化に失敗しました。',
     'ブラウザやGPUの状態を確認し、ページを再読み込みしてください。',

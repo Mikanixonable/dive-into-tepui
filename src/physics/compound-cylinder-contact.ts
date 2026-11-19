@@ -35,7 +35,7 @@ export interface CompoundCylinderRayHit {
   readonly moduleId: string;
 }
 
-export interface SweptCompoundCylinderContact extends CompoundCylinderContact {
+interface SweptCompoundCylinderContact extends CompoundCylinderContact {
   readonly toi: number;
 }
 

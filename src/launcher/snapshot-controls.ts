@@ -1,8 +1,8 @@
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { Notifier } from '../hud/notifier';
-import { PauseMenu } from '../hud/windows/pause-menu';
-import { SaveBrowser } from './save-browser/save-browser';
-import { SnapshotService, type SnapshotSource } from './save/snapshot-service';
+import type { PauseMenu } from '../hud/windows/pause-menu';
+import type { SaveBrowser } from './save-browser/save-browser';
+import type { SnapshotService, SnapshotSource } from './save/snapshot-service';
 
 // F5(手動セーブ)/F9(一覧開閉)の単発入力を担う。router へはランの入力の解釈のあとに足す —
 // その回でランが消費しなかった入力エッジだけを見る。
@@ -34,10 +34,14 @@ export class SnapshotControls {
     if (source === null) return;
     // 決着後の状態を残すと、結果画面へ辿り着けない記録になる(SAVE.md「記録」)。
     if (!source.isPlaying) {
-      this.notifier.hint('決着後はセーブできません');
+      this.notifier.hint('決着後はセーブできません', undefined, 'warn');
       return;
     }
     const snap = this.service.addManualSave(source.runSummary(), source.serialize(), null);
-    this.notifier.hint(snap ? `セーブしました: ${snap.name}` : 'セーブに失敗しました');
+    this.notifier.hint(
+      snap ? `セーブしました: ${snap.name}` : 'セーブに失敗しました',
+      undefined,
+      snap ? 'info' : 'warn',
+    );
   }
 }

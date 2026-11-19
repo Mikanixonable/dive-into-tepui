@@ -3,19 +3,19 @@
 // 進むので、周期が食い違うぶんだけ組み合わせが移り変わる — 同じ和音が違う高さで、同じ音型が
 // 違う和音の上で鳴り、複数の arp 層どうしも互いの位置に関知せずずれていく。
 // 音階・和音・音型・間隔は AntipodeParams が持つ。
-import { AntipodeParams } from '../tracks/types';
-import { Composer, ComposerNote } from '../composer';
+import type { AntipodeParams } from '../tracks/types';
+import type { Composer, ComposerNote } from '../composer';
 import { cycleAt, phaseValue, scaleFreq } from './utils';
 
 export class AntipodeComposer implements Composer {
-  constructor(private readonly params: AntipodeParams) {}
+  public constructor(private readonly params: AntipodeParams) {}
 
-  get stepDurSec(): number {
+  public get stepDurSec(): number {
     return this.params.stepDur;
   }
 
   // stab と各 arp 層のうち、このステップが打ち込みの位置になっている層だけを移調して返す。
-  notesAt(step: number): ComposerNote[] {
+  public notesAt(step: number): ComposerNote[] {
     const { transpose } = this.params;
     const shift = phaseValue(transpose, step);
     const notes: ComposerNote[] = [];

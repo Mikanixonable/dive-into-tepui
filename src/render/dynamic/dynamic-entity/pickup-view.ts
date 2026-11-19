@@ -1,24 +1,18 @@
-import * as THREE from 'three/webgpu';
+// 軌道上の補給物(弾薬・RCS燃料)の見た目。種別ごとに焼いたモデルだけが違う。
+import type * as THREE from 'three/webgpu';
 import { memoParseIndependent } from '../baked-model';
 import { DynamicView } from '../dynamic-view';
 import ammoPickupData from '../../../assets/models/ammo.json';
 import rcsFuelPickupData from '../../../assets/models/rcsFuel.json';
 
-const parseAmmoPickup = memoParseIndependent<THREE.Group>(ammoPickupData);
-const parseRcsFuelPickup = memoParseIndependent<THREE.Group>(rcsFuelPickupData);
+const PARSE = {
+  ammo: memoParseIndependent<THREE.Group>(ammoPickupData),
+  'rcs-fuel': memoParseIndependent<THREE.Group>(rcsFuelPickupData),
+} as const;
 
-// 軌道上の弾薬補給物(マガジン数個を束ねてビーコンを付けた漂流物)。
-export class AmmoPickupView extends DynamicView {
-  // 焼いたモデルを複製して scene へ登録する。
-  public constructor(scene: THREE.Scene) {
-    super(parseAmmoPickup(), scene);
-  }
-}
-
-// 軌道上の RCS 燃料補給物。
-export class RcsFuelPickupView extends DynamicView {
-  // 焼いたモデルを複製して scene へ登録する。
-  public constructor(scene: THREE.Scene) {
-    super(parseRcsFuelPickup(), scene);
+export class PickupView extends DynamicView {
+  // kind に対応する焼いたモデルを複製して scene へ登録する。
+  public constructor(scene: THREE.Scene, kind: keyof typeof PARSE) {
+    super(PARSE[kind](), scene);
   }
 }

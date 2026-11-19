@@ -1,7 +1,7 @@
 // 開いているプロパティウィンドウ（選択対象・搭載部品）と空域メニューを管理する台帳。
 // メニューの可否や関連対象の導出は ObjectWindowActions に委ね、ここは窓の寿命と同期を所有する。
 import type { Hud } from '../hud/hud';
-import { ContextMenu } from '../hud/windows/context-menu';
+import { ContextMenu } from '../../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import { PropertyWindow } from '../../hud/windows/property-window';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -36,7 +36,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
     private readonly actions: ObjectWindowActions,
   ) {
-    this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.layers.popup, hud.overlayManager);
+    this.menu = new ContextMenu<InspectedObject, MenuAction>(hud.overlayManager);
     this.menu.onSelect = (act, target) => this.actions.runAct(target, act);
   }
 
@@ -66,7 +66,7 @@ export class ObjectWindows implements PropertyWindowOpener {
       target, this.displayWindowManager.current.simTime, this,
     );
     const w = new PropertyWindow<MenuAction>(
-      this.hud.layers.window, clientX, clientY, content,
+      clientX, clientY, content,
       this.hud.overlayManager, UNCLIPPED_WINDOW_GROUP,
     );
     const entry: WindowEntry = { win: w, target };
@@ -109,7 +109,7 @@ export class ObjectWindows implements PropertyWindowOpener {
     for (const [key, entry] of [...this.windows]) {
       if (entry.target.gone) { this.closeWindow(key); continue; }
       const { title, subtitle, items: menuItems } = this.actions.windowParts(entry.target, simTime);
-      entry.win.syncHeader(title, subtitle);
+      entry.win.syncHeader(title, subtitle ?? null);
       entry.win.syncRelatedItems(
         this.actions.relatedItemsFor(entry.target, simTime, this),
         this.actions.relatedTitleFor(entry.target),

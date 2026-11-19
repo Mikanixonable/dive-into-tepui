@@ -8,12 +8,12 @@ import { RunEventLog } from '../../src/game/run-events';
 import { Viewer, type SerializedViewer } from '../../src/game/viewer/viewer';
 import { solarSystemParts } from '../physics/test-helpers';
 import type { CameraFrameSample } from '../../src/game/viewer/focus-camera-selection';
-import type { SerializedPredictPanelSelection } from '../../src/game/viewer/predict-panel-selection';
+import type { SerializedDisplayTimelineSelection } from '../../src/game/viewer/display-timeline-selection';
 import type { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
 
 // 操作対象がいる進行。戦闘ビューへ入れる。
-const control = { current: { plan: { nodes: [] } } };
+const control = { current: { id: 'ship-1', plan: { nodes: [] } } };
 const emptyRoster: EntityRoster = { all: () => [], collectionRevision: 0, simTime: 0 };
 
 // 新しいゲームの視点を、celestialSystem の天体で組む。
@@ -71,7 +71,7 @@ export function register(): void {
     const { system } = solarSystemParts();
     const viewer = newViewer(system);
     viewer.orbitReference.setMode('moon');
-    const panel = viewer.predictPanel;
+    const panel = viewer.displayTimeline;
     panel.setFrameCenter('moon');
     panel.setFrameRotation({ kind: 'revolution', id: 'moon' });
     panel.selectCustomDuration(3 * 86400);
@@ -85,20 +85,18 @@ export function register(): void {
     viewer.camera.combat.followProgress(sample(null));
     viewer.camera.combat.setFocus({ kind: 'object', id: 'moon' });
     viewer.entityDisplay.toggleTrajectoryLine('entity-3');
-    viewer.entityDisplay.setProteinDisplay({ representation: 'silhouette', colorMode: 'hydrophobicity' });
     viewer.navTarget.toggle('moon', '月');
     const serialized = viewer.serialize();
 
     // 既定へ落ちたことを往復が見逃さないよう、確かめる項目はどれも既定と違う値にしてある。
     const initial = newViewer(system).serialize();
     assert.notEqual(serialized.orbitReference, initial.orbitReference);
-    for (const key of Object.keys(serialized.predictPanel) as (keyof SerializedPredictPanelSelection)[]) {
-      assert.notDeepEqual(serialized.predictPanel[key], initial.predictPanel[key], key);
+    for (const key of Object.keys(serialized.displayTimeline) as (keyof SerializedDisplayTimelineSelection)[]) {
+      assert.notDeepEqual(serialized.displayTimeline[key], initial.displayTimeline[key], key);
     }
     assert.notEqual(serialized.camera.combat.staleFollowFrames, initial.camera.combat.staleFollowFrames);
     assert.notEqual(serialized.camera.combat.focusReplaced, initial.camera.combat.focusReplaced);
     assert.notDeepEqual(serialized.entityDisplay.trajectoryLineIds, initial.entityDisplay.trajectoryLineIds);
-    assert.notDeepEqual(serialized.entityDisplay.proteinDisplay, initial.entityDisplay.proteinDisplay);
 
     assertSameViewer(restoredViewer(serialized, system).serialize(), serialized);
   });

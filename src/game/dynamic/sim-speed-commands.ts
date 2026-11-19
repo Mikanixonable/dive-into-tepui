@@ -1,7 +1,7 @@
 // 時間加速へ外から出せる命令の口と、それを列へ積む実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { SimSpeedManager } from './sim-speed-manager';
+import type { PresentationSimSpeed } from '../presentation-ports';
 
 // 時間加速の段と自動ワープを外から変える命令。受け付けるだけで、適用は次の進行の位相。
 export interface SimSpeedCommands {
@@ -15,11 +15,11 @@ export interface SimSpeedCommands {
   // 進行中の自動ワープを解除する。
   cancelAutoWarp(): void;
   // firstNode の実行時刻までの自動ワープをトグルする。ノードが無ければ、起こせなかったことを記録する。
-  toggleAutoWarpToFirstNode(firstNode: KinematicState | undefined, simTime: number): void;
+  toggleAutoWarpToFirstNode(firstNode: KinematicState | null, simTime: number): void;
 }
 
 // manager への命令を queue へ積む口を組む。
-export function simSpeedCommands(queue: CommandQueue, manager: SimSpeedManager): SimSpeedCommands {
+export function simSpeedCommands(queue: CommandQueue, manager: PresentationSimSpeed): SimSpeedCommands {
   return {
     setSpeed: (speed) => queue.submit(() => manager.setSpeed(speed)),
     shift: (step) => queue.submit(() => manager.shift(step)),

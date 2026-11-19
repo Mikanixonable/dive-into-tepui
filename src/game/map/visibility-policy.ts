@@ -9,12 +9,12 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 
-export type MapVisibility = {
+export interface MapVisibility {
   readonly icon: boolean;
   readonly label: boolean;
   readonly orbit: boolean;
   readonly pickable: boolean;
-};
+}
 
 // マップ上に記号か軌道線のどちらかで現れるか。
 export function appearsOnMap(visibility: MapVisibility): boolean {
@@ -35,8 +35,8 @@ const ENTITY_KEYS: Record<DynamicEntityKind, {
 
 // フォーカス対象が属する惑星系の代表 id(惑星なら自分、衛星なら親惑星)。ラグランジュ点の
 // id は所属天体の id へ戻してから引く。天体でない・恒星をフォーカスしているなら null。
-function focusSystemOf(celestialBodies: CelestialBodies, focusId: string | undefined): string | null {
-  if (focusId === undefined) return null;
+function focusSystemOf(celestialBodies: CelestialBodies, focusId: string | null): string | null {
+  if (focusId === null) return null;
   const motion = celestialBodies.findMotion(lagrangeParentId(focusId));
   if (motion === null) return null;
   if (motion.kind === 'planet') return motion.id;
@@ -47,7 +47,7 @@ function focusSystemOf(celestialBodies: CelestialBodies, focusId: string | undef
 // 状態に関わらず名前が見える id の集合。「距離が近いもの」をズーム距離で判定
 // すると操作の途中で行が明滅するので、カメラ位置から求めた重力系のメンバーで代用する。
 export function alwaysFullyVisibleIds(
-  celestialBodies: CelestialBodies, focusId: string | undefined,
+  celestialBodies: CelestialBodies, focusId: string | null,
   nearbyIds: Iterable<string> = [],
   toggles?: MapDisplayToggles,
 ): ReadonlySet<string> {
@@ -64,7 +64,7 @@ export function alwaysFullyVisibleIds(
     if (celestialBodies.has(id) && classVisible(id)) ids.add(id);
   }
 
-  if (focusId === undefined) return ids;
+  if (focusId === null) return ids;
 
   for (const id of celestialBodies.ancestorsOf(focusId)) {
     if (classVisible(id)) ids.add(id);
@@ -96,25 +96,35 @@ function noVisibility(): MapVisibility {
 export class MapVisibilityPolicy {
   private readonly alwaysVisible: ReadonlySet<string>;
   private readonly nearby: ReadonlySet<string>;
+  // 解放された天体の集合。null なら解放の制限を掛けない。
+  private readonly revealed: ReadonlySet<string> | null;
   // 入力(toggles/focus/nearby)は生成後に変わらないので、判定結果を id/kind ごとに保持する。
   // トグルを変えるときは、新しい policy を作る。
   private readonly bodyResults = new Map<string, MapVisibility>();
   private readonly entityResults = new Map<string, MapVisibility>();
 
-  // focusId は注視中の対象、nearbyIds は近傍として常時表示へ格上げする天体の id。どちらも
-  // 省くと格上げが効かず、トグルだけで決まる。
-  constructor(
+  // revealed は解放された天体の id(GAME.md「天体の解放」)。解放されていない天体は、記号・ラベル・
+  // 軌道線・選択のどれにも現れない。省くと解放の制限を掛けない。focusId は注視中の対象、nearbyIds は
+  // 近傍として常時表示へ格上げする天体の id。どちらも省くと格上げが効かず、トグルだけで決まる。
+  public constructor(
     private readonly celestialBodies: CelestialBodies,
     private readonly toggles: MapDisplayToggles,
-    private readonly focusId?: string,
+    revealed?: ReadonlySet<string>,
+    private readonly focusId?: string | null,
     nearbyIds: Iterable<string> = [],
   ) {
-    this.alwaysVisible = alwaysFullyVisibleIds(celestialBodies, focusId, nearbyIds, toggles);
+    this.revealed = revealed ?? null;
+    this.alwaysVisible = alwaysFullyVisibleIds(celestialBodies, focusId ?? null, nearbyIds, toggles);
     this.nearby = new Set(nearbyIds);
   }
 
+  // 天体 id が解放されているか。一覧や選択の候補から未解放の天体を外すときに読む。
+  public isRevealed(id: string): boolean {
+    return this.revealed === null || this.revealed.has(id);
+  }
+
   // 天体 id あるいはラグランジュ点 id の表示判定。星系に無い id はすべて伏せた判定になる。
-  body(id: string): MapVisibility {
+  public body(id: string): MapVisibility {
     const cached = this.bodyResults.get(id);
     if (cached !== undefined) return cached;
 
@@ -126,11 +136,12 @@ export class MapVisibilityPolicy {
   // body() の判定そのもの。
   private computeBody(id: string): MapVisibility {
     if (isLagrangeId(id)) {
-      const shown = this.toggles.lagrangeName;
+      const shown = this.toggles.lagrangeName && this.systemRevealed(lagrangeParentId(id));
       return { icon: shown, label: shown, orbit: false, pickable: shown };
     }
     const cls = this.celestialBodies.bodyClassOf(id);
     if (cls === null) return noVisibility();
+    if (!this.isRevealed(id)) return noVisibility();
 
     if (!celestialClassVisible(cls, this.toggles)) return noVisibility();
     // 注視・近傍で格上げされた天体は、名前トグルが閉じていても名前とアイコンを出す。
@@ -139,7 +150,7 @@ export class MapVisibilityPolicy {
   }
 
   // ゲーム内 entity の種別ごとの表示判定。isActivePlayer はいま操作している自艦にだけ立てる。
-  entity(kind: DynamicEntityKind, isActivePlayer = false): MapVisibility {
+  public entity(kind: DynamicEntityKind, isActivePlayer = false): MapVisibility {
     const key = `${kind}:${isActivePlayer ? 'active' : 'inactive'}`;
     const cached = this.entityResults.get(key);
     if (cached !== undefined) return cached;
@@ -147,6 +158,13 @@ export class MapVisibilityPolicy {
     const result = this.computeEntity(kind, isActivePlayer);
     this.entityResults.set(key, result);
     return result;
+  }
+
+  // 軌道標識の表示判定。実体ではないので entity() の種別表には載せず、トグルを直に読む。
+  public orbitSlot(): MapVisibility {
+    if (!mapDisplayCategoryVisible(this.toggles, 'orbitSlotVisible')) return noVisibility();
+    const name = this.toggles.orbitSlotName;
+    return { icon: name, label: name, orbit: this.toggles.orbitSlotOrbit, pickable: true };
   }
 
   // entity() の判定そのもの。
@@ -161,6 +179,12 @@ export class MapVisibilityPolicy {
     return { icon, label: nameToggle, orbit: this.toggles[keys.orbit], pickable: icon || nameToggle };
   }
 
+  // ラグランジュ点の系(親天体と、その主天体)の両方が解放されているか。主天体を持たない親は親だけで決まる。
+  private systemRevealed(parentId: string): boolean {
+    const primaryId = this.celestialBodies.findMotion(parentId)?.primary?.id ?? null;
+    return this.isRevealed(parentId) && (primaryId === null || this.isRevealed(primaryId));
+  }
+
   // その天体の軌道線を引くか。惑星・準惑星・小天体は分類のトグルだけで決まり、衛星はさらに
   // 主天体が注視中の系か、近傍のいずれかであることを要する(全惑星の衛星軌道が
   // 一度に出ると読めなくなるため)。
@@ -173,7 +197,7 @@ export class MapVisibilityPolicy {
         const planetId = this.celestialBodies.motionOf(id).primary?.id ?? null;
         if (planetId === null) return false;
         return this.toggles.satelliteOrbit
-          && (focusSystemOf(this.celestialBodies, this.focusId) === planetId || this.nearby.has(id));
+          && (focusSystemOf(this.celestialBodies, this.focusId ?? null) === planetId || this.nearby.has(id));
       }
       default: return false;
     }

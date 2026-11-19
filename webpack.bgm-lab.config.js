@@ -4,7 +4,14 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 
-module.exports = {
+module.exports = (env, argv) => ({
+  cache: {
+    type: 'filesystem',
+    // モード間でキャッシュ名を分ける(webpack.config.js と同じ仕掛け) — production が書いた
+    // モジュールを development が読むと、畳まれた依存のテンプレートが無く落ちることがある。
+    name: `bgm-lab-${argv.mode ?? 'development'}`,
+    cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
+  },
   entry: './tools/bgm-lab/main.ts',
   resolve: {
     extensions: ['.ts', '.js'],
@@ -36,4 +43,4 @@ module.exports = {
     liveReload: true,
     hot: false,
   },
-};
+});

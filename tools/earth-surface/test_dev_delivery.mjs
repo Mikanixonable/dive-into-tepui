@@ -12,11 +12,11 @@ const webpack = require('webpack');
 const WebpackDevServer = require('webpack-dev-server');
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const DATASET_ID = 'earth-2026-09-09-a';
+const DATASET_ID = 'earth-2026-11-14-a';
 const BUNDLE_PUBLIC_PATH = `/earth/${DATASET_ID}/`;
 const MANIFEST_URL = `earth/${DATASET_ID}/earth-surface.json`;
 
-const R2_BASE_URL = 'https://assets.mikanixonable.net/earth/earth-2026-09-09-a/';
+const R2_BASE_URL = 'https://assets.mikanixonable.net/earth/earth-2026-11-14-a/';
 const R2_MANIFEST_URL = `${R2_BASE_URL}earth-surface.json`;
 const V3_BUNDLE_ROOT = join(ROOT, '.earth-surface/bundle-v3');
 const LEGACY_BUNDLE_ROOT = join(ROOT, '.earth-surface/bundle');
@@ -36,7 +36,7 @@ function webpackConfigWithEnvironment({ baseUrl, manifestUrl, localBundle = 'v3'
   nodeFs.existsSync = (filePath) => filePath === localManifest;
   try {
     delete require.cache[require.resolve('../../webpack.config.js')];
-    return require('../../webpack.config.js');
+    return require('../../webpack.config.js')({}, { mode: 'development' });
   } finally {
     nodeFs.existsSync = previousExistsSync;
     if (previousBase === undefined) delete process.env.EARTH_SURFACE_BASE_URL;

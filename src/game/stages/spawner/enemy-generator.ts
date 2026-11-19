@@ -1,4 +1,4 @@
-// 個々の敵機とタンパク質陣形の要求を、座標・色・機種などのパラメータから直接組む。
+// 個々の敵機を、座標・色・機種などのパラメータから直接組む。
 // **軌道は、置く位置で最も強く引く天体を中心とする二体の幾何で置く、ゲームバランスのための簡易な置き方。**
 // 高度はその天体の表面半径の球面から測る(扁平な天体の基準楕円体とのずれ — 地球の極で 21km — は
 // 出現高度の余裕に埋もれる)。
@@ -6,14 +6,14 @@ import { qFromForwardUp, randomQuat } from '../../../math/quat';
 import { addPrimaryRelative, kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { strongestAttractor } from '../../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
-import { stateFromOrbitalElements } from '../../../physics/elements';
-import { addScaled, cross, len, norm, rotateAxis, scale, sub, v3, type Vec3 } from '../../../math/vec3';
+import { semiMajorEccentricityFromApsides, stateFromOrbitalElements } from '../../../physics/elements';
+import { cross, len, norm, rotateAxis, scale, v3 } from '../../../math/vec3';
 import { driftingAttitude, type Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
 import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
-import type { ProteinEnemyRequest } from '../../dynamic/dynamic-entity/protein-enemy';
+import { AssemblyEnemy } from '../../dynamic/dynamic-entity/assembly-enemy';
 
 // 自機軌道(referenceState)を、中心天体 center まわりの軌道面内で弧長 dAlong [m] だけ進めた、center 相対の状態。
 function phasedState(referenceState: KinematicState, center: CelestialBody, dAlong: number): KinematicState<'primaryRel'> {
@@ -37,30 +37,18 @@ export function generateDriftingEnemy(
   );
 }
 
-// タンパク質陣形の 3 役(SPEC COMBAT.md「タンパク質陣形」節)の要求を、centerState を中心に共通の
-// 時刻・速度で組む。name は各役の名前の接頭辞。
-export function proteinFormationRequests(
-  name: string, centerState: KinematicState, playerPosition: Vec3, formationId: string,
-): readonly ProteinEnemyRequest[] {
-  // 盾役はプレイヤー側、エネルギー役は反対側へずらした状態に置く
-  const towardPlayer = norm(sub(playerPosition, centerState.r));
-  const offset = 450;
-  const shieldState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, offset), centerState.v);
-  const energyState = kinematicState<'eci'>(centerState.t, addScaled(centerState.r, towardPlayer, -offset), centerState.v);
-  return [
+// state に、無秩序に漂う組み立て型の敵を生成する。seed が個体の形を決める(SPEC/ASSEMBLY.md)。
+export function generateAssemblyEnemy(
+  name: string, state: KinematicState, seed: number, accent: string | number, orbitLineColor: string | number,
+  scene: THREE.Scene, idAllocators: EntityIdAllocators,
+): Enemy {
+  return AssemblyEnemy.create(
     {
-      name: `${name}-ATTACKER`, state: centerState, assetId: 'pdb-5i4r',
-      formationId, formationRole: 'attacker',
+      name, state, seed, accent, orbitLineColor,
+      formationId: null, formationRole: null,
     },
-    {
-      name: `${name}-SHIELD`, state: shieldState, assetId: 'pdb-8ruc-rubisco',
-      formationId, formationRole: 'shield',
-    },
-    {
-      name: `${name}-ENERGY`, state: energyState, assetId: 'pdb-6n2y-atp-synthase',
-      formationId, formationRole: 'energy',
-    },
-  ];
+    idAllocators, scene,
+  );
 }
 
 // referenceState から dAlong だけ進んだ位置に漂う敵を生成する。
@@ -125,8 +113,7 @@ export function generateMolniyaEnemy(
   const center = strongestAttractor(referenceState.r, attractors, referenceState.t);
   const rp = center.def.radius + 1200e3;
   const ra = center.def.radius + 39400e3;
-  const a = (rp + ra) / 2;
-  const e = (ra - rp) / (ra + rp);
+  const { a, e } = semiMajorEccentricityFromApsides(rp, ra);
   const orbit = stateFromOrbitalElements(referenceState.t, a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu, center.def.mu);
   const rel = kinematicState<'primaryRel'>(referenceState.t, orbit.r, orbit.v);
   return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(referenceState.t), rel), accent, orbitLineColor, scene, idAllocators);

@@ -13,7 +13,7 @@ import type { DynamicEntity } from './dynamic-entity';
 import type { StageRules } from '../../stages/stage-rules';
 
 // 操作量から推力とトルクを決め、推力のラッチ・RCS 減衰・プログレード保持を持つスロットルインターフェース。
-export interface ThrottlePort {
+interface ThrottlePort {
   readonly throttleIdx: number;
   readonly rcsDamp: boolean;
   readonly progradeHold: boolean;
@@ -30,7 +30,8 @@ export interface ThrottlePort {
   clearTransientState(): void;
 }
 
-// スロットルが推力・トルクの上限と燃料を読み、燃料 [kg] を消費させる相手。
+// スロットルが推力・トルクの上限と燃料を読み、燃料を消費させる相手。
+// 燃料の単位は実装依存(旧部品型は kg、モジュール型は fuel unit;1 unit = 1 kg)。
 export interface FuelConsumer {
   readonly totalThrust: number;
   readonly totalTorque: number;
@@ -44,7 +45,7 @@ export interface FuelConsumer {
 }
 
 // フレームごとの操作入力および単発コマンドを受け付けるインターフェース。
-export interface PilotCommandReceiver {
+interface PilotCommandReceiver {
   // controls はこのフレームの操作量で、操作されない個体は null。dt [s] は実時間、simDt [sim s] は
   // シミュレーション時間の刻み。
   updateControls(
@@ -58,7 +59,7 @@ export interface PilotCommandReceiver {
 }
 
 // マニューバ計画と、その実行方法・姿勢操作の微調整の有無。
-export interface NavigationController {
+interface NavigationController {
   readonly plan: Plan;
   readonly planExecution: PlanExecutionMode;
   readonly fineAttitude: boolean;

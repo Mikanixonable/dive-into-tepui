@@ -1,6 +1,6 @@
 // 位置を持つ任意の要素を一様グリッドへ登録し、ある点を含むセルとその26近傍セル(計27セル)に
 // 属する要素と、27近傍の内側にある順不同ペアを列挙する。
-import { Vec3 } from './vec3';
+import type { Vec3 } from './vec3';
 
 // セル添字 (cx, cy, cz) を x → y → z の三段の Map で引く。添字はそのまま鍵なので、
 // 座標の大きさによらず別のセルが同じ鍵を共有することはない。
@@ -18,6 +18,11 @@ const FORWARD_CELL_OFFSETS: readonly (readonly [number, number, number])[] = [
 
 export class SpatialGrid<T> {
   private readonly cells = new Map<number, YLevel<T>>();
+  // reset ごとにセル木を捨てると、接触判定の各 substep で Map と bucket 配列を大量生成する。
+  // 使い終えた器は高水位までプールして、次回の insert で再利用する。
+  private readonly yLevelPool: YLevel<T>[] = [];
+  private readonly zLevelPool: ZLevel<T>[] = [];
+  private readonly bucketPool: T[][] = [];
   private invCellSize: number;
 
   // セルの一辺の長さ cellSize でグリッドを構築する。単位は呼び出し側の座標系に従う。
@@ -27,6 +32,18 @@ export class SpatialGrid<T> {
 
   // 同じ所有者が同期的にグリッドを作り直す場合の再初期化。
   public reset(cellSize: number): void {
+    for (const yLevel of this.cells.values()) {
+      for (const zLevel of yLevel.values()) {
+        for (const bucket of zLevel.values()) {
+          bucket.length = 0;
+          this.bucketPool.push(bucket);
+        }
+        zLevel.clear();
+        this.zLevelPool.push(zLevel);
+      }
+      yLevel.clear();
+      this.yLevelPool.push(yLevel);
+    }
     this.cells.clear();
     this.invCellSize = 1 / cellSize;
   }
@@ -45,25 +62,25 @@ export class SpatialGrid<T> {
     // x → y → z と段を降り、まだ無い段はその場で作りながら進む。
     let yLevel = this.cells.get(cx);
     if (yLevel === undefined) {
-      yLevel = new Map<number, ZLevel<T>>();
+      yLevel = this.yLevelPool.pop() ?? new Map<number, ZLevel<T>>();
       this.cells.set(cx, yLevel);
     }
     let zLevel = yLevel.get(cy);
     if (zLevel === undefined) {
-      zLevel = new Map<number, T[]>();
+      zLevel = this.zLevelPool.pop() ?? new Map<number, T[]>();
       yLevel.set(cy, zLevel);
     }
     let bucket = zLevel.get(cz);
     if (bucket === undefined) {
-      bucket = [];
+      bucket = this.bucketPool.pop() ?? [];
       zLevel.set(cz, bucket);
     }
     bucket.push(item);
   }
 
-  // セル添字 (cx, cy, cz) に登録済みの要素。そのセルが空なら undefined。
-  private bucketAt(cx: number, cy: number, cz: number): T[] | undefined {
-    return this.cells.get(cx)?.get(cy)?.get(cz);
+  // セル添字 (cx, cy, cz) に登録済みの要素。そのセルが空なら null。
+  private bucketAt(cx: number, cy: number, cz: number): T[] | null {
+    return this.cells.get(cx)?.get(cy)?.get(cz) ?? null;
   }
 
   // 点 pos を含むセルと、その26近傍セルに登録済みの要素を out へ列挙する。
@@ -103,7 +120,7 @@ export class SpatialGrid<T> {
           // 隣接セルは、辞書順で正の側の13方向を引く。
           for (const offset of FORWARD_CELL_OFFSETS) {
             const neighbor = this.bucketAt(cx + offset[0], cy + offset[1], cz + offset[2]);
-            if (neighbor === undefined) continue;
+            if (neighbor === null) continue;
             for (const a of bucket) {
               for (const b of neighbor) out.push(a, b);
             }

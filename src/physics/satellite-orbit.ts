@@ -3,30 +3,30 @@
 // 周期項は二体ケプラー解に黄経・黄緯・動径の補正として重畳する。
 // 中心差や黄緯主傾斜など二体解に含まれる項は除外している。
 // 到達精度: 月において二体解との黄経差最大約2.3°、地心距離は実測範囲（近地点 35.6〜37.0万km、遠地点 40.4〜40.7万km）に概ね収まる。
-import { Quat } from '../math/quat';
+import type { Quat } from '../math/quat';
 import { eclToEci, eciToEcl } from './ecliptic';
-import { ECLIPTIC_BASIS, KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState, PlanetAngles } from './kepler-orbit';
-import { KinematicState, kinematicState } from './kinematic-state';
+import { ECLIPTIC_BASIS, type KeplerOrbit, keplerOrbitForSimZero, keplerOrbitState, type PlanetAngles } from './kepler-orbit';
+import { type KinematicState, kinematicState } from './kinematic-state';
 import { dot, len } from '../math/vec3';
 
 const DEG = Math.PI / 180;
 
 // 周期項の引数(基本角の線形結合)。d = 太陽からの平均離角、m = 太陽(惑星)の平均近点角、
 // mp = 衛星の平均近点角、f = 衛星の昇交点からの緯度引数。
-export type PerturbationTerm = {
+export interface PerturbationTerm {
   readonly d: number;
   readonly m: number;
   readonly mp: number;
   readonly f: number;
   readonly amp: number; // 黄経・黄緯補正は [rad]、動径補正は [m]
-};
+}
 
-export type SatelliteOrbit = {
+export interface SatelliteOrbit {
   readonly kepler: KeplerOrbit; // 二体部分。永年歳差は raanRate/lonPeriRate が担う
   readonly lonTerms: readonly PerturbationTerm[]; // 黄経補正 Σ amp・sin(arg)
   readonly latTerms: readonly PerturbationTerm[]; // 黄緯補正 Σ amp・sin(arg)
   readonly distTerms: readonly PerturbationTerm[]; // 動径補正 Σ amp・cos(arg)
-};
+}
 
 // 歳差周期 [s] を符号付きの歳差速度 [rad/s] へ変換する。0 は「歳差しない」ことを表す(JPL の
 // 公開表の規約)ため rate = 0 とする — 2π/0 の無限大速度、および 0 に負号が付いて -0 になる

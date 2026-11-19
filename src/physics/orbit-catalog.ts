@@ -1,4 +1,4 @@
-// CR3BP の周期軌道カタログ。焼き込んだ軌道族(tools/export-lagrange-orbits.mjs が生成)を読み、
+// CR3BP の周期軌道カタログ。焼き込んだ軌道族(tools/archive/export-lagrange-orbits.mjs が生成)を読み、
 // 無次元の回転座標系での点列として取り出す。実スケールおよび実際の天体位置への座標変換は orbit-guide.ts が担う。
 //
 // 座標系の規約: 重心原点、主天体を (−μ,0,0)、副天体を (1−μ,0,0) に置き、長さの単位を
