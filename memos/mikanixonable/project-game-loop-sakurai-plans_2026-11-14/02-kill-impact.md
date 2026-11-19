@@ -1,5 +1,13 @@
 # 計画 02 — 手応え: 撃墜と喪失の一瞬の止め、逆光の散布界を見せる
 
+状態: 実施済み(2026-11-21 — 全 4 手順完了。**実機での目視検証は未実施** — 達成目標 1〜6 の
+開発サーバでの確認を残す)
+- 手順 1: `816fc7226` `docs(spec):` COMBAT/CAMERA/MARKERS へ節を追加
+- 手順 2: `4f4ff4b9a` `feat(game):` KillStop・shipExploded の owner・worldTimeScale 配線
+- 手順 4: `d3c3f81db` `feat(game):` ボアサイトへ GLARE/SUN 倍率表示(手順 4 を先に実施)
+- 手順 3: `cad226216` `feat(game):` HitShake・視点への表示のみの揺れ・「被弾で画面を揺らす」設定
+- 検証: typecheck・check:boundaries・test:game 501/501 通過(kill-stop 5 件・hit-shake 3 件を追加)
+
 コードのスナップショット: `bbe81c893`
 
 ## 目的
