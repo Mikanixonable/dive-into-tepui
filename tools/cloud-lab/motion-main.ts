@@ -8,20 +8,21 @@ import { clamp, exp, float, mix, mrt, sin, step, uniform, vec4 } from 'three/tsl
 import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
 import { EquirectProjection } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
-import { AtmosphericWindField, SURFACE_HEIGHT } from '../../src/render/cloud/atmospheric-wind';
-import { Cyclones } from '../../src/render/cloud/cyclones';
-import { CirculatingNoise } from '../../src/render/cloud/circulating-noise';
-import { Circulation } from '../../src/render/cloud/circulation';
-import { WeatherTransport } from '../../src/render/cloud/weather-transport';
-import { WeatherModel } from '../../src/render/cloud/weather-model';
+import { AtmosphericWindField, SURFACE_HEIGHT } from '../../src/render/earth-weather/atmospheric-wind';
+import { Cyclones } from '../../src/render/earth-weather/cyclones';
+import { Anticyclones } from '../../src/render/earth-weather/anticyclones';
+import { CirculatingNoise } from '../../src/render/earth-weather/circulating-noise';
+import { Circulation } from '../../src/render/earth-weather/circulation';
+import { PressureField } from '../../src/render/earth-weather/pressure-field';
+import { WeatherTransport } from '../../src/render/earth-weather/weather-transport';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusOpacityNode, cumulusTopAltitudeNode,
-} from '../../src/render/cloud/cloud-kind-node';
-import { latitudeOf } from '../../src/render/cloud/sphere-frame';
+} from '../../src/render/earth-weather/cloud/cloud-kind-node';
+import { latitudeOf } from '../../src/render/earth-weather/sphere-frame';
 import {
   CloudMotionWind, awaitClimateMap, boxDirectionNode, renderTargetBase64,
 } from './probe-common';
-import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
 import type { Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 declare global {
@@ -84,8 +85,10 @@ function applyAblations(): void {
     };
   }
   if (params.get('noCyclone') === '1') {
-    // 低気圧の谷を気圧から除く — 渦のまわりの釣り合い風が消え、眼と金床の形は残る。
+    // 低気圧の谷と高気圧の丘を気圧から除く — 低・高どちらの渦のまわりの釣り合い風も消え、
+    // 眼と金床の形は残る。
     Cyclones.prototype.pressureAt = () => float(0);
+    Anticyclones.prototype.pressureAt = () => float(0);
   }
   if (params.get('noEpoch') === '1') {
     // 総観規模の段のその場での実現の混ぜ替えを止め、雲塊の発達・消滅を切る。
@@ -105,7 +108,7 @@ function applyAblations(): void {
     Circulation.prototype.syncTime = () => undefined;
   }
   if (params.get('noAdvection') === '1') {
-    // 風上へ遡る2位相移流を外し、移流前の写しをそのまま出す — 遡りが運ぶ見かけの動きが消える。
+    // 風上へ遡る位相移流を外し、移流前の写しをそのまま出す — 遡りが運ぶ見かけの動きが消える。
     WeatherTransport.prototype.advectedAt = function (direction) {
       const humidity = this.humiditySourceAt(direction);
       return {
@@ -118,8 +121,8 @@ function applyAblations(): void {
   if (eddyScale !== 1) {
     // 気圧場の偏差(勾配・曲がり)を割る — 釣り合い風がその比で細くなり、移流の遡りが運ぶ
     // 見かけの動きだけが遅くなる。気圧の深さと上昇流は変えない。
-    const pressureFieldAt = WeatherModel.prototype['pressureFieldAt'];
-    WeatherModel.prototype['pressureFieldAt'] = function (direction, east, north) {
+    const pressureFieldAt = PressureField.prototype.at;
+    PressureField.prototype.at = function (direction, east, north) {
       const field = pressureFieldAt.call(this, direction, east, north);
       return {
         ...field,
@@ -160,7 +163,7 @@ class MotionProbeCanvas {
 
   public static async create(canvas: HTMLCanvasElement): Promise<MotionProbeCanvas> {
     applyAblations();
-    const renderer = new WebGPURenderer({ canvas });
+    const renderer = new WebGPURenderer({ canvas, requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
     renderer.setSize(BOX_PX, BOX_PX, false);
     renderer.toneMapping = THREE.NoToneMapping;
     await renderer.init();

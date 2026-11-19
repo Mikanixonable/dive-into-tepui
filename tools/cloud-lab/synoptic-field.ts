@@ -7,7 +7,7 @@ import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/
 import { EquirectProjection } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
 import { FloatPlaneSet, awaitClimateMap } from './probe-common';
-import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
 
 // 全球の写しの高さ [texel]。幅はその 2 倍。
 const EQUIRECT_HEIGHT = 512;
@@ -35,7 +35,7 @@ export class SynopticField {
   // 非同期の構築が要るので静的ファクトリからだけ組む。表示へ出さない器なので
   // canvas はページへぶら下げない。
   public static async create(): Promise<SynopticField> {
-    const renderer = new WebGPURenderer({ canvas: document.createElement('canvas') });
+    const renderer = new WebGPURenderer({ canvas: document.createElement('canvas'), requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
     renderer.setSize(FIELD_WIDTH, FIELD_HEIGHT, false);
     renderer.toneMapping = NoToneMapping;
     await renderer.init();
@@ -61,8 +61,9 @@ export class SynopticField {
     const model = this.field.weatherModel;
     model.syncTime(seconds);
     model.bake(this.renderer);
-    const [pressure, surfaceWindEast, surfaceWindNorth, upperWindEast, upperWindNorth] =
-      await this.planes.read(this.renderer);
+    const [
+      pressure, surfaceWindEast, surfaceWindNorth, upperWindEast, upperWindNorth,
+    ] = await this.planes.read(this.renderer);
     return {
       width: FIELD_WIDTH, height: FIELD_HEIGHT,
       pressure: pressure!, surfaceWindEast: surfaceWindEast!, surfaceWindNorth: surfaceWindNorth!,

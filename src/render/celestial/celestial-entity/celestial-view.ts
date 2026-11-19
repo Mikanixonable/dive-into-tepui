@@ -69,6 +69,8 @@ export interface CelestialIlluminationView {
     motion: DefinedCelestialBody, floatingOrigin: FloatingOrigin, displayTime: number,
     cameraPos: Vec3, radialScale: (center: Vec3) => number, graphics: GraphicsSettingsData,
   ): AtmosphereCandidate | null;
+  // 「夜側の観察」で強めた環境光を届ける球の、天体中心からの半径 [m]。届けない天体では null。
+  nightObservationRadius(motion: DefinedCelestialBody): number | null;
 }
 
 // 天体1体が、この1フレームの照明・影・大気へ差し出す源。
@@ -143,6 +145,9 @@ export abstract class CelestialView {
   public cloudShadowAt(
     _motion: DefinedCelestialBody, _floatingOrigin: FloatingOrigin, _displayTime: number,
   ): ShadowCloud | null { return null; }
+
+  // 「夜側の観察」で強めた環境光を届ける球の、天体中心からの半径 [m]。届けない天体では null。
+  public nightObservationRadius(_motion: DefinedCelestialBody): number | null { return null; }
 
   // マップ専用の重ね書きを、このフレームの表示状態へ同期し、添える文字ラベルを返す。
   public syncMapOverlay(

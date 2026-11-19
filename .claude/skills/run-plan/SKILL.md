@@ -37,7 +37,7 @@ description: /write-plan で書いた計画ファイルのステップを実施�
 
 各ステップの終わりに、順に:
 
-1. **コードレビュー** — `/code-review`、または自分で `DEVELOP/CODING-RULE.md`(置き場と繋ぎ方に
+1. **コードレビュー** — 自分で `DEVELOP/CODING-RULE.md`(置き場と繋ぎ方に
    触れたなら `DEVELOP/ARCHITECTURE.md` も)を当てる。
 2. **検証** — **計画のそのステップの「達成条件と検証」に書かれたものを走らせる。** 書かれていなければ
    既定は `npm run typecheck`(触った層の回帰テスト(`npm run test:physics` / `test:math` / `test:game` / `test:render`)も)。

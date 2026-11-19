@@ -129,10 +129,10 @@ const SCALE_LATITUDE_LIMIT = 80;
 const GLOBE_EXTENT = { north: 90, south: -90, west: -180, east: 180 };
 
 // 雲頂ビューの表示値 1 が張る高さ [m]。tools/cloud-lab/views.ts の積雲・巻雲の雲頂ビューの
-// 目盛り(src/render/cloud/cloud-kind.ts の CUMULUS_TOP_ALTITUDE)と対。
+// 目盛り(src/render/earth-weather/cloud/cloud-kind.ts の CUMULUS_TOP_ALTITUDE)と対。
 const CLOUD_TOP_SPAN = 17000;
 // 巻雲の雲頂高度の両端 [m]。量からの換算と「積雲の雲頂が巻雲より高い」判定に使う。
-// 値は src/render/cloud/cloud-kind.ts の CIRRUS_BOTTOM_ALTITUDE / CIRRUS_TOP_ALTITUDE と
+// 値は src/render/earth-weather/cloud/cloud-kind.ts の CIRRUS_BOTTOM_ALTITUDE / CIRRUS_TOP_ALTITUDE と
 // 一致させること。
 const CIRRUS_BOTTOM_ALTITUDE = 9000;
 const CIRRUS_TOP_ALTITUDE = 13000;
@@ -385,16 +385,20 @@ function centralAngle(latitude, longitude, otherLatitude, otherLongitude) {
   return Math.acos(Math.min(1, Math.max(-1, cosAngle)));
 }
 
-// 全球面の風の速さ [m/s] の最大と 99 パーセンタイル。熱帯低気圧 tropical(緯度・経度 [rad]。居なければ
-// null)の中心から TROPICAL_EXCLUDE_DEG 以内は数えない。speed は地表の風ビューの B(速さ / WIND_SPAN)。
-function windAnomaly(speed, tropical) {
+// 全球面の風の速さ [m/s] の最大と 99 パーセンタイル。熱帯低気圧 tropicals(緯度・経度 [rad] の
+// 列。居ない枡は null)の中心から TROPICAL_EXCLUDE_DEG 以内は数えない。speed は地表の風ビューの
+// B(速さ / WIND_SPAN)。
+function windAnomaly(speed, tropicals) {
   const exclude = (TROPICAL_EXCLUDE_DEG * Math.PI) / 180;
   const speeds = [];
   for (let y = 0; y < speed.height; y++) {
     const latitude = latitudeOfRow(y, speed.height);
     for (let x = 0; x < speed.width; x++) {
       const longitude = longitudeOfColumn(x, speed.width);
-      if (tropical !== null && centralAngle(latitude, longitude, tropical.latitude, tropical.longitude) < exclude) continue;
+      if (tropicals.some(
+        (tropical) => tropical !== null
+          && centralAngle(latitude, longitude, tropical.latitude, tropical.longitude) < exclude,
+      )) continue;
       speeds.push(speed.data[y * speed.width + x] * WIND_SPAN);
     }
   }
@@ -545,7 +549,7 @@ function clumpBlockMeans(field, mask, x0, y0, w, h, bx, by, threshold) {
 
 // 帯の区画 x0..x0+w(行は帯の範囲)の偏りの測定一式。mask の立つ texel が対象
 // (海陸の層別で、null は全域)。偏り指数 I_B = Var(ブロックの平均) / p(1−p) は
-// cloud-detail-metrics.mjs の heterogeneity と同じ定義を、連続値と
+// cloud-lab-detail-metrics.mjs の heterogeneity と同じ定義を、連続値と
 // 二値化(p50 + 0.3(p99 − p50) のしきい)の両方で取る。分位・晴れ間・厚いブロックの
 // 割合は連続値のブロックの平均から、傾きは log I_B 対 log B から。
 function clumpMeasure(field, mask, band, x0, w) {
@@ -989,7 +993,11 @@ async function main() {
     const capBoxX = GLOBE_W + (CAP_W - CAP_BOX) / 2;
     const capBoxY = (HEIGHT - CAP_BOX) / 2;
     for (const hours of CENTER_SAMPLE_HOURS) {
-      const tropical = cycloneTrack.find((entry) => entry.hours === hours)?.tropical;
+      // 照準はいちばん深い熱帯低気圧へ合わせる。
+      const tropicals = cycloneTrack.find((entry) => entry.hours === hours)?.tropicals ?? [];
+      const tropical = tropicals.reduce(
+        (deepest, entry) => (entry !== null && (deepest === null || entry.depth > deepest.depth) ? entry : deepest),
+        null);
       if (!tropical) continue;
       await devTools.evaluate(`window.cloudLab.setTime(${hours})`);
       await devTools.evaluate(
@@ -1136,7 +1144,7 @@ async function main() {
   report.sections.kinds = { ...kinds, overshootShare };
 
   console.log('\n=== 風の異常(全球面・熱帯低気圧の中心 10° 以内を除く) ===');
-  const wind = windAnomaly(windSpeed, cyclonesAtZero.tropical);
+  const wind = windAnomaly(windSpeed, cyclonesAtZero.tropicals);
   console.log(`最大 ${wind.max.toFixed(1)} m/s   99 パーセンタイル ${wind.p99.toFixed(1)} m/s`);
   report.sections.wind = { maxMs: wind.max, p99Ms: wind.p99 };
 
@@ -1989,32 +1997,41 @@ async function main() {
   const longitudeDegOf = (rad) => ((((rad * 180) / Math.PI + 180) % 360) + 360) % 360 - 180;
   const track = cycloneTrack.map((entry) => ({
     hours: entry.hours,
-    tropical: entry.tropical === null ? null : {
-      latitudeDeg: (entry.tropical.latitude * 180) / Math.PI,
-      longitudeDeg: longitudeDegOf(entry.tropical.longitude),
-      depthHpa: entry.tropical.depth,
-    },
+    tropicals: entry.tropicals.map((tropical) => (tropical === null ? null : {
+      latitudeDeg: (tropical.latitude * 180) / Math.PI,
+      longitudeDeg: longitudeDegOf(tropical.longitude),
+      depthHpa: tropical.depth,
+    })),
   }));
-  for (const point of track) {
-    console.log(point.tropical === null
-      ? `${String(point.hours).padStart(3)} h  (熱帯低気圧なし)`
-      : `${String(point.hours).padStart(3)} h  ${point.tropical.latitudeDeg.toFixed(1).padStart(5)}° `
-        + `${point.tropical.longitudeDeg.toFixed(1).padStart(6)}°  深さ ${point.tropical.depthHpa.toFixed(1)} hPa`);
-  }
+  // 熱帯低気圧は複数の枡がそれぞれに生まれ直す — トラックは枡ごとに見る。
+  const slotCount = cycloneTrack[0]?.tropicals.length ?? 0;
   const translationKmh = [];
-  for (let i = 1; i < track.length; i++) {
-    const from = track[i - 1].tropical;
-    const to = track[i].tropical;
-    if (from === null || to === null) continue;
-    const dLat = ((to.latitudeDeg - from.latitudeDeg) * Math.PI) / 180;
-    const dLon = ((to.longitudeDeg - from.longitudeDeg) * Math.PI) / 180;
-    const a = Math.sin(dLat / 2) ** 2
-      + Math.cos((from.latitudeDeg * Math.PI) / 180) * Math.cos((to.latitudeDeg * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-    const distanceKm = 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(a));
-    translationKmh.push({ fromHours: track[i - 1].hours, toHours: track[i].hours, kmh: distanceKm / (track[i].hours - track[i - 1].hours) });
+  for (let slot = 0; slot < slotCount; slot++) {
+    const slotTrack = track.map((point) => ({ hours: point.hours, tropical: point.tropicals[slot] }));
+    for (const point of slotTrack) {
+      console.log(point.tropical === null
+        ? `枡 ${slot} ${String(point.hours).padStart(3)} h  (熱帯低気圧なし)`
+        : `枡 ${slot} ${String(point.hours).padStart(3)} h  ${point.tropical.latitudeDeg.toFixed(1).padStart(5)}° `
+          + `${point.tropical.longitudeDeg.toFixed(1).padStart(6)}°  深さ ${point.tropical.depthHpa.toFixed(1)} hPa`);
+    }
+    for (let i = 1; i < slotTrack.length; i++) {
+      const from = slotTrack[i - 1].tropical;
+      const to = slotTrack[i].tropical;
+      if (from === null || to === null) continue;
+      const dLat = ((to.latitudeDeg - from.latitudeDeg) * Math.PI) / 180;
+      // 経度差は円周上の差で取る — [−180,180] へ畳んだ値どうしの素の差は、日付変更線を挟むと
+      // 一周ぶんの見かけの脚になる。
+      const dLon = Math.atan2(
+        Math.sin(((to.longitudeDeg - from.longitudeDeg) * Math.PI) / 180),
+        Math.cos(((to.longitudeDeg - from.longitudeDeg) * Math.PI) / 180));
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos((from.latitudeDeg * Math.PI) / 180) * Math.cos((to.latitudeDeg * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+      const distanceKm = 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(a));
+      translationKmh.push({ slot, fromHours: slotTrack[i - 1].hours, toHours: slotTrack[i].hours, kmh: distanceKm / (slotTrack[i].hours - slotTrack[i - 1].hours) });
+    }
   }
   for (const leg of translationKmh) {
-    console.log(`${leg.fromHours}-${leg.toHours} h の移動速度: ${leg.kmh.toFixed(1)} km/h`);
+    console.log(`枡 ${leg.slot} ${leg.fromHours}-${leg.toHours} h の移動速度: ${leg.kmh.toFixed(1)} km/h`);
   }
   const centerOffsets = [];
   const centerCoreRadiusPx = CENTER_CORE_RADIUS_KM / CAP_KM_PER_PX;
@@ -2157,6 +2174,14 @@ async function main() {
   const historyDir = path.join(buildDir, 'history');
   const previousName = previousReportName(historyDir);
   saveReport(historyDir, report);
+  // 実験環境の画面が読む「最後に測った評価」の要約。history/ の詳細なレポートの写しではなく、
+  // 画面のヘッダへ出す分(index と家族の距離)だけに絞る。
+  writeFileSync(path.join(outDir, 'latest.json'), `${JSON.stringify({
+    generatedAt: report.meta.generatedAt,
+    gitHead: report.meta.gitHead,
+    index: report.distances.index,
+    families: report.distances.families,
+  }, null, 2)}\n`);
   console.log('\n=== 前回レポートとの差分 ===');
   if (previousName === undefined) {
     console.log('前回のレポートが無い(今回が初回)');
