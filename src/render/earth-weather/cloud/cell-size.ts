@@ -4,7 +4,7 @@
 // log2(径 [km]) のまま雲場へ焼き、描画側が細部の基本スケールとして読む。値はすべて見えの
 // ための調整値(cloud-tuning.ts)。
 import { float, length, log2, smoothstep } from 'three/tsl';
-import { CLOUD_TUNING } from './cloud-tuning';
+import { CLOUD_TUNING } from '../cloud-tuning';
 import type { WeatherSample } from '../weather-model';
 import type { FloatNode, Vec2Node } from '../../tsl-types';
 

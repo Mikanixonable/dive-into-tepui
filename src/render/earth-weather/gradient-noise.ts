@@ -1,7 +1,7 @@
 // 3D 勾配ノイズ(改良 Perlin)の単一オクターブ評価。格子点ごとに 12 方向のどれかを割り当て、格子の中の位置との
 // 内積を五次のフェードで三重線形に混ぜる。値はおおむね −1..1 で、格子点では 0 になる。
 import { Fn, floor, int, mix, or, select, uint } from 'three/tsl';
-import type { FloatNode, UintNode, Vec3Node } from '../../tsl-types';
+import type { FloatNode, UintNode, Vec3Node } from '../tsl-types';
 
 // 軸ごとの種の乗数(xxhash32 の PRIME32_4・PRIME32_5 と Murmur3 の c2)。隣の格子点の種は定数を
 // 足すだけで出るので、8 隅に要る乗算は軸あたり 1 回で済む。どれも 2^31 未満の奇数に取る。

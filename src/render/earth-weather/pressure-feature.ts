@@ -9,8 +9,8 @@ import {
 } from 'three/tsl';
 import { POLE } from './sphere-frame';
 import { coreCrossingAngle, vortexEdgeOf, vortexSpinOf } from './wind-law';
-import { CLOUD_TUNING } from './cloud/cloud-tuning';
-import type { PressurePlacement } from './tracks';
+import { CLOUD_TUNING } from './cloud-tuning';
+import { DEGREE, type PressurePlacement } from './tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 // 気圧の谷による影響限界半径 [m]。裾野は距離に反比例するため、単体では微弱でも複数累積すると全球的な
@@ -39,7 +39,7 @@ const ANVIL_FRACTION = 1.36;
 // 閉塞の構造 — 芯から赤道側・やや下流へ乾いた舌が入り込み、極側へ広い層状の雲域(コンマの頭)が
 // 張る。位置と広がりはすべて谷の短軸の半径を尺にした倍率で書き、強さは閉塞の進み × 現在の深さに
 // 比例する。全強度になる深さ [hPa] は、並の低気圧(最深 12〜40 hPa)の中ほどに取る。
-export const OCCLUSION_DEPTH = 24;
+const OCCLUSION_DEPTH = 24;
 // 乾いた舌 — 寒冷前線の帯とコンマの頭のあいだへ、赤道側・やや下流から芯へ入り込む下降流の楔。
 // 芯は赤道側へ 0.7、下流へ 0.3(半径の倍率)ずれた所に置き、下流の向きへ長い楕円で張る。
 const DRY_TONGUE_POLEWARD = 0.7;
@@ -53,7 +53,6 @@ const COMMA_HEAD_SEMI_DOWN = 1.1;
 // 閉塞した芯の半径(半径の倍率)。この内側では暖域の舌が切り離され、暖気流入の湿りが止まる。
 const OCCLUDED_CORE_RADIUS = 0.9;
 
-const DEGREE = Math.PI / 180;
 // 前線骨格 — 谷に端部を持つ寒冷(赤道側)・温暖(極側〜下流)・閉塞の腕。腕は気団の境目が
 // 渦の循環に乗って巻き上げられた形で、背骨は「半径 r̂ で向きが θ(r̂) の半直線」として表す。
 // θ(r̂) = 腕の根元の向き + 巻き上げ角 × 循環の半径プロファイル — 内側が速く回る差回転が
@@ -83,14 +82,19 @@ const FRONT_TAIL_LAT_FULL = CLOUD_TUNING.frontTailLatitudeFullDeg.mul(DEGREE);
 // 腕の根元・先端を滲ませる幅と帯の先端の逓減(いずれも尺の比)、閉塞の腕の芯側の床。
 const FRONT_ARM_BLEND = 0.12;
 const FRONT_TIP_FADE = 0.25;
-const FRONT_INNER_RADIUS = 0.15;
+// 腕の帯が芯側へ届く半径の床(芯の半径の倍率)。front-skeleton.ts の JS 版もここから引く。
+export const FRONT_INNER_RADIUS = 0.15;
 // 前線として見える巻き上げの上限 [rad]。積算の巻き上げ角は循環が続く限り積み上がるが、
 // 気団の境目は一周ほど巻き上がると勾配を失って渦の雲域へ取り込まれるので、腕の向きへ
 // 効く回転はこの角へ漸近する(front-skeleton.ts でも同じ式)。
 export const FRONT_WIND_LIMIT = THREE.MathUtils.degToRad(300);
 // 熱帯の渦で温暖の腕が立ち始める閉塞の進み — 温帯化が進むにつれ赤道側の尾が対へ育つ。
-const TAIL_WARM_ONSET = 0.02;
-const TAIL_WARM_FULL = 0.3;
+// front-skeleton.ts の JS 版もここから引く。
+export const TAIL_WARM_ONSET = 0.02;
+export const TAIL_WARM_FULL = 0.3;
+// 前線の帯が全強度になる境目の深さ [hPa]。閉塞の構造の目盛り(OCCLUSION_DEPTH)とは別の
+// 量 — 同じ値なのは調整の一致であって結び付きではない。
+export const FRONT_BAND_DEPTH = 24;
 
 // 眼の濃さ 0..1。深さ depth [hPa]・短軸の半径 radius [m] の谷を緯度 latitude [rad] に置いたとき、
 // 芯で風が等圧線を横切る角が EYE_ANGLE_FULL より閉じていれば 1、EYE_ANGLE_NONE より開いていれば 0。
@@ -110,6 +114,9 @@ export class PressureFeature {
   // 長軸の向きの単位接ベクトル。
   private readonly axis: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly depth: FloatUniform = uniform(0);
+  // 前線を駆動する深さ [hPa]。閉塞し切った境目は谷が埋まったあとも停滞前線として残るので、
+  // 腕の循環・届く半径・帯の強さは谷の深さではなくこの深さで決まる。
+  private readonly frontDepth: FloatUniform = uniform(0);
   // 弦の二乗を芯の尺で測る係数 (天体の半径 / 短軸の半径)²。
   private readonly coreScale: FloatUniform = uniform(0);
   // 長軸に沿う成分を縮める係数 1 − 1 / (長軸/短軸の比)²。0 で円。
@@ -138,6 +145,7 @@ export class PressureFeature {
   public place(placement: PressurePlacement | null): void {
     if (placement === null) {
       this.depth.value = 0;
+      this.frontDepth.value = 0;
       this.eyeStrength.value = 0;
       this.occlusion.value = 0;
       this.frontKind.value = 0;
@@ -158,15 +166,17 @@ export class PressureFeature {
       hemisphere * cosLatitude,
       -sinLongitude - hemisphere * sinLatitude * cosLongitude,
     ).normalize();
-    // 深さ、芯の尺、長軸の縮み、眼。
+    // 深さ、芯の尺、長軸の縮み、眼。前線は谷の深さと独立に減る境目の深さで駆動する。
     this.depth.value = depth;
+    this.frontDepth.value = placement.frontDepth ?? depth;
     this.coreScale.value = (this.surfaceRadius / radius) ** 2;
     this.axisShrink.value = 1 - 1 / elongation ** 2;
     this.eyeStrength.value = eyeStrengthOf(depth, radius, latitude, this.surfaceRadius, this.rotationPeriod);
     this.occlusion.value = placement.occlusion ?? 0;
     this.frontKind.value = placement.fronts === 'pair' ? 1 : placement.fronts === 'tail' ? 2 : 0;
     // 循環 — 腕を巻き上げる角速度の形と、腕が届く半径(循環が縁の速さを下回る外縁)。
-    const spin = vortexSpinOf(depth, radius, latitude, FEATURE_REACH, this.rotationPeriod);
+    const spin = vortexSpinOf(
+      this.frontDepth.value, radius, latitude, FEATURE_REACH, this.rotationPeriod);
     this.wound.value = placement.wound ?? 0;
     this.spinRatio.value = spin.spinRatio;
     this.reachSq.value = spin.reachSq;
@@ -343,8 +353,8 @@ export class PressureFeature {
       .add(wound);
     const occ = this.armAt(p.x, p.y, r, occAngle, float(FRONT_INNER_RADIUS), triple)
       .mul(smoothstep(0.02, 0.15, triple));
-    // 帯は深さに比例して立ち、熱帯の渦の尾は温帯へ近づくにつれ育つ。
-    const strength = min(this.depth.div(OCCLUSION_DEPTH), 1);
+    // 帯は境目の深さに比例して立ち、熱帯の渦の尾は温帯へ近づくにつれ育つ。
+    const strength = min(this.frontDepth.div(FRONT_BAND_DEPTH), 1);
     const tailGate = smoothstep(FRONT_TAIL_LAT_START, FRONT_TAIL_LAT_FULL, asin(abs(this.center.y)));
     const gate = mix(float(1), tailGate, isTail);
     return max(max(cold, warm), occ).mul(strength).mul(gate).mul(this.frontKind.sign().max(0));

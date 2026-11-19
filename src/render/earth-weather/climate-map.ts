@@ -60,12 +60,6 @@ function configureClimateTexture(map: THREE.Texture): THREE.Texture {
 
 // 平年(通年で1枚)の気候テクスチャを読む気候入力。
 export class AnnualClimateMap implements ClimateMap {
-  // url の PNG を読み終えてから器を返す。
-  public static async load(url: string): Promise<AnnualClimateMap> {
-    const map = await new THREE.TextureLoader().loadAsync(url);
-    return new AnnualClimateMap(configureClimateTexture(map), null);
-  }
-
   // url の画像の取得を request() まで遅らせる器を返す。
   public static fromDeferredUrl(url: string): AnnualClimateMap {
     const deferred = new DeferredTexture(url, THREE.NoColorSpace);

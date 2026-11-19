@@ -1,11 +1,14 @@
-// 低気圧の谷の配置(render/earth-weather/low-tracks.ts・tropical-tracks.ts)の回帰テスト。期待値の正本は
-// `DEVELOP/SPEC/RENDERING.md`「雲の描画」の、中緯度の低気圧の一生と熱帯低気圧の進路の記述。
-// 調整値そのものは固定せず、どの時刻でも成り立つべき性質(決定性・連続性・単調性・緯度の幅・
-// 隣どうしの分離)を書く。
+// 低気圧の谷の配置(render/earth-weather/cyclone-tracks.ts・low-tracks.ts・tropical-tracks.ts)の
+// 回帰テスト。期待値の正本は `DEVELOP/SPEC/RENDERING.md`「雲の描画」の、中緯度の低気圧の一生と
+// 熱帯低気圧の進路・渦の中心の併合の記述。調整値そのものは固定せず、どの時刻でも成り立つべき
+// 性質(決定性・連続性・単調性・緯度の幅・隣どうしの分離)を書く。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
-import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
+import { LOW_COUNT, rawLowPlacementAt } from '../../src/render/earth-weather/low-tracks';
+import { TROPICAL_COUNT, rawTropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
+import {
+  cyclonePlacementsAt, lowPlacementAt, tropicalPlacementAt,
+} from '../../src/render/earth-weather/cyclone-tracks';
 import { EARTH_ROTATION_PERIOD, EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
 import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 import type { Placements } from './cyclone-samples';
@@ -22,7 +25,14 @@ const STEP_DEPTH_LIMIT = 4;
 // 隣の谷と溶けないことを見るときの、谷が居るとみなす深さ [hPa]。
 const PRESENT_DEPTH = 5;
 
-// 低気圧と熱帯低気圧の系列。名前は失敗の報告に出す。
+// 吸収を考えない生の配置の系列 — 進路・緯度・形の検査は吸収の効かない配置の性質で見る。
+const rawLow = (index: number): Placements =>
+  (seconds) => rawLowPlacementAt(
+    index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD)?.placement ?? null;
+const rawTropical = (index: number): Placements =>
+  (seconds) => rawTropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD)?.placement ?? null;
+
+// 低気圧と熱帯低気圧の、吸収込みの配置の系列。名前は失敗の報告に出す。
 const SERIES: readonly { readonly name: string; readonly at: Placements }[] = [
   ...Array.from({ length: LOW_COUNT }, (_, index) => ({
     name: `低気圧 ${index}`,
@@ -30,7 +40,8 @@ const SERIES: readonly { readonly name: string; readonly at: Placements }[] = [
   })),
   ...Array.from({ length: TROPICAL_COUNT }, (_, index) => ({
     name: `熱帯低気圧 ${index}`,
-    at: (seconds: number) => tropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD),
+    at: (seconds: number) => tropicalPlacementAt(
+      index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD),
   })),
 ];
 
@@ -78,7 +89,7 @@ export function register(): void {
 
   test('cyclone-tracks: 低気圧は一生のあいだ極側へ進み続ける', () => {
     for (let index = 0; index < LOW_COUNT; index++) {
-      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD), 60))) {
+      for (const life of completeLives(sampled(rawLow(index), 60))) {
         for (let i = 1; i < life.length; i++) {
           const previous = life[i - 1];
           const sample = life[i];
@@ -93,7 +104,7 @@ export function register(): void {
   test('cyclone-tracks: 低気圧は亜熱帯の縁に生まれ、暴風帯の極側で消える', () => {
     let counted = 0;
     for (let index = 0; index < LOW_COUNT; index++) {
-      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD), 60))) {
+      for (const life of completeLives(sampled(rawLow(index), 60))) {
         const [born, dying] = endpoints(life);
         const bornLatitude = Math.abs(born.latitude) / DEGREE;
         const dyingLatitude = Math.abs(dying.latitude) / DEGREE;
@@ -110,7 +121,7 @@ export function register(): void {
   test('cyclone-tracks: 熱帯低気圧は熱帯に生まれ、直進するか転向して温帯化する', () => {
     let counted = 0;
     for (let index = 0; index < TROPICAL_COUNT; index++) {
-      for (const life of completeLives(sampled((seconds) => tropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD), 60))) {
+      for (const life of completeLives(sampled(rawTropical(index), 60))) {
         const [born, dying] = endpoints(life);
         const bornLatitude = Math.abs(born.latitude) / DEGREE;
         // 発生点は |緯度| 8〜16° — 道のり半ばの点の混ざりで標本はその幅の端をわずかに越えうる。
@@ -129,19 +140,21 @@ export function register(): void {
     assert.ok(counted >= 3, `60 日の中に丸ごと入る一生が ${counted} しかない`);
   });
 
-  test('cyclone-tracks: 同じ半球の低気圧は互いに溶けない', () => {
-    // 3 年ぶん。偶数番が北、奇数番が南なので、同じ半球の組は番号の偶奇が揃う。
+  test('cyclone-tracks: 同じ半球の渦の中心は互いに溶けない', () => {
+    // 3 年ぶん。中緯度・熱帯・種別を跨ぐ組まで全部見る — 半球は配置の緯度の符号で分ける
+    // (中緯度は枡の偶奇、熱帯は海域で決まる)。
     for (let seconds = 0; seconds <= 3 * 365 * DAY; seconds += SAMPLE_STEP) {
-      const placements = Array.from(
-        { length: LOW_COUNT }, (_, index) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD));
-      for (let a = 0; a < LOW_COUNT; a++) {
-        for (let b = a + 2; b < LOW_COUNT; b += 2) {
-          const p = placements[a] ?? null;
-          const q = placements[b] ?? null;
+      const { tropicals, lows } = cyclonePlacementsAt(seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD);
+      const vortices = [...lows, ...tropicals];
+      for (let a = 0; a < vortices.length; a++) {
+        for (let b = a + 1; b < vortices.length; b++) {
+          const p = vortices[a] ?? null;
+          const q = vortices[b] ?? null;
           if (p === null || q === null || p.depth < PRESENT_DEPTH || q.depth < PRESENT_DEPTH) continue;
+          if (Math.sign(p.latitude) !== Math.sign(q.latitude)) continue;
           const distance = greatCircleDistance(p, q);
           assert.ok(distance >= p.radius + q.radius,
-            `${seconds / DAY} 日目に低気圧 ${a} と ${b} が ${distance / 1e3} km(半径の和 ${(p.radius + q.radius) / 1e3} km)`);
+            `${seconds / DAY} 日目に渦 ${a} と ${b} が ${distance / 1e3} km(半径の和 ${(p.radius + q.radius) / 1e3} km)`);
         }
       }
     }
@@ -154,7 +167,7 @@ export function register(): void {
     for (let seconds = 0; seconds <= 365 * DAY; seconds += SAMPLE_STEP) {
       let count = 0;
       for (let index = 0; index < TROPICAL_COUNT; index++) {
-        if (tropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD) !== null) count++;
+        if (tropicalPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD) !== null) count++;
       }
       if (count === 0) empty++;
       most = Math.max(most, count);
