@@ -6,7 +6,7 @@ import { qFromForwardUp, randomQuat } from '../../../math/quat';
 import { addPrimaryRelative, kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import { strongestAttractor } from '../../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
-import { stateFromOrbitalElements } from '../../../physics/elements';
+import { semiMajorEccentricityFromApsides, stateFromOrbitalElements } from '../../../physics/elements';
 import { cross, len, norm, rotateAxis, scale, v3 } from '../../../math/vec3';
 import { driftingAttitude, type Enemy } from '../../dynamic/dynamic-entity/enemy';
 import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
@@ -113,8 +113,7 @@ export function generateMolniyaEnemy(
   const center = strongestAttractor(referenceState.r, attractors, referenceState.t);
   const rp = center.def.radius + 1200e3;
   const ra = center.def.radius + 39400e3;
-  const a = (rp + ra) / 2;
-  const e = (ra - rp) / (ra + rp);
+  const { a, e } = semiMajorEccentricityFromApsides(rp, ra);
   const orbit = stateFromOrbitalElements(referenceState.t, a, e, (63.4 * Math.PI) / 180, raan, -Math.PI / 2, nu, center.def.mu);
   const rel = kinematicState<'primaryRel'>(referenceState.t, orbit.r, orbit.v);
   return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(referenceState.t), rel), accent, orbitLineColor, scene, idAllocators);
