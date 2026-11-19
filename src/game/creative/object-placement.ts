@@ -2,7 +2,8 @@
 // 置くと決まった物体の指定を受け手へ渡す。配置プレビューをどの値で出すかもここが決める。
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import {
-  meanMotionFromSemiMajor, orbitalElementsFromClassical, orbitalElementsOf, semiMajorFromPeriod,
+  meanMotionFromSemiMajor, orbitalElementsFromClassical, orbitalElementsOf,
+  semiMajorEccentricityFromApsides, semiMajorFromPeriod,
   stateFromOrbitalElements, timeSincePeriapsis, type OrbitalElements,
 } from '../../physics/elements';
 import { haloState, lissajousState } from '../../physics/halo';
@@ -328,7 +329,7 @@ export class ObjectPlacement {
     if (form.sizeMode === 'apsides') {
       const rp = center.def.radius + form.peAltKm * 1e3;
       const ra = center.def.radius + form.apAltKm * 1e3;
-      return { a: (rp + ra) / 2, e: (ra - rp) / (ra + rp) };
+      return semiMajorEccentricityFromApsides(rp, ra);
     }
     if (form.sizeMode === 'semiMajorEcc') return { a: form.semiMajorKm * 1e3, e: form.eccentricity };
     return { a: semiMajorFromPeriod(form.periodHours * 3600, center.def.mu), e: form.eccentricity };
