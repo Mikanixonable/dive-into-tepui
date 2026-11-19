@@ -83,7 +83,7 @@ export class CloudPresentation {
   // **選び直したら結び直す** — 結び直さないと、不透明表面が前の出どころの写しを読み続ける。
   private setSource(kind: CloudFieldSourceKind): void {
     this.source = this.sources[kind];
-    this.surface.bind(this.renderInput);
+    this.surface.bind(this.renderInput.field);
   }
 
   // cap を、描画座標の観測点 observer から見た直下点へ置き直す。center・spin・axes は殻を持つ天体の
@@ -110,7 +110,7 @@ export class CloudPresentation {
     const longitude = Math.atan2(subpoint.x, subpoint.z);
     const snapped = snapCap(latitude, longitude, capRadiusFor(rho, CLOUD_TOP_SPAN / this.bodyRadius));
     this.cap.aim(snapped.latitude, snapped.longitude, snapped.radius);
-    this.surface.bind(this.renderInput);
+    this.surface.bind(this.renderInput.field);
   }
 
   private setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
@@ -129,7 +129,7 @@ export class CloudPresentation {
 
   // 積雲が無効なら不透明な雲殻を隠す。
   private syncSurfaceVisibility(): void {
-    if (!this.cloudVisible || !this.cumulusVisible) this.surface.hide();
+    if (!this.cumulusEnabled) this.surface.hide();
   }
 
   // 見かけ直径 [px] から不透明表面の分割段を選ぶ。雲を描かないなら隠す。
@@ -143,7 +143,8 @@ export class CloudPresentation {
   // そこへ計上する。**実写の雲場では細部の時刻も止める** — 分布が止まっている空で、細部だけが
   // 流れたり入れ替わったりしない。
   public bake(renderer: WebGPURenderer, displayTime: number, simSpeed: number, gpu?: GpuTimingSink): void {
-    if (!this.fieldContributes) return;
+    // 巻雲は雲を描く限り常に大気へ立つので、雲が見える限り場は常に寄与する。
+    if (!this.cloudsVisible) return;
     this.source.prepare(renderer, displayTime, gpu);
     const moving = this.source === this.sources.generated;
     this.clock = { displayTime: moving ? displayTime : 0, simSpeed: moving ? simSpeed : 0 };
@@ -154,11 +155,5 @@ export class CloudPresentation {
   public dispose(): void {
     this.surface.dispose();
     for (const source of Object.values(this.sources)) source.dispose();
-  }
-
-  // 雲場がこのフレームの描画に寄与するか。巻雲は雲を描く限り常に大気へ立つので、
-  // 雲が見える限り場は常に寄与する。
-  private get fieldContributes(): boolean {
-    return this.cloudsVisible;
   }
 }
