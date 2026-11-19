@@ -175,7 +175,10 @@ export class Run implements SnapshotSource, PerfCountSource {
   private advanceFrame(dt: number, nowMs: number, viewport: Viewport): void {
     const { game, presentation } = this;
     presentation.interpretInput(dt, nowMs, viewport);
-    game.advance(dt, presentation.pilotControls, presentation.isPaused, presentation.simTimeLimit);
+    game.advance(
+      dt, presentation.pilotControls, presentation.isPaused, presentation.simTimeLimit,
+      presentation.worldTimeScale,
+    );
     this.deriveAfterProgress(nowMs, viewport);
   }
 

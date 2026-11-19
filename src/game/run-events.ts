@@ -85,10 +85,12 @@ export type RunEventBody =
   // 薬莢が船体か他の薬莢へ接触した。
   | { readonly kind: 'casingContacted' }
   // 艦が爆散した(自機・敵機とも)。modelScale は機体模型の倍率で、爆散の大きさを決める。
+  // owner は爆散した側の区別で、自機の喪失と敵機の撃破を演出が見分けるのに使う。
   | {
     readonly kind: 'shipExploded';
     readonly state: KinematicState;
     readonly modelScale: number;
+    readonly owner: 'player' | 'enemy';
   }
   // 組み立て型の敵が発射部から1発撃った。muzzleState は発射位置と機体の速度。
   | { readonly kind: 'assemblyEmitterFired'; readonly muzzleState: KinematicState }
