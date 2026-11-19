@@ -56,6 +56,7 @@ import { UiSoundQueue } from './ui-sound-queue';
 import { GameInputPhase } from './runtime/game-input-phase';
 import type { GameInputSource } from './input/game-input-ports';
 import { DisplayPhase, type DisplayPhaseSource } from './runtime/display-phase';
+import { KillStop } from './kill-stop';
 import type { GameInputPort } from './input/game-input-router';
 import { ConfirmationOverlay } from '../hud/windows/confirmation-overlay';
 import { len, sub } from '../math/vec3';
@@ -139,6 +140,8 @@ export class GamePresentation {
   private readonly hudPanels: HudPanelPresenter;
   private readonly inputPhase: GameInputPhase;
   private readonly displayPhase: DisplayPhase;
+  // 撃墜・自機喪失の瞬間に世界の時計を短く遅らせる止め(SPEC COMBAT.md「撃墜の止め」)。
+  private readonly killStop = new KillStop();
 
   // ポーズ中か。時間倍率とは独立に時間を止める。
   public get isPaused(): boolean { return this.devices.hud.overlayManager.isGamePaused(); }
@@ -146,6 +149,13 @@ export class GamePresentation {
   public get pilotControls(): PilotControls { return this.inputPhase.pilotControls; }
   // 航行指令の求解中に simTime が越えてはいけない上限。求解窓が開いていなければ null。
   public get simTimeLimit(): number | null { return this.navigationCommand.simTimeLimit; }
+  // 進行へ掛ける演出用の世界時計の倍率(撃墜の止め)。時間加速 ×1・非ポーズ・建造中でない
+  // ときだけ効く。
+  public get worldTimeScale(): number {
+    const s = this.game.simSpeedManager;
+    if (s.simSpeed !== 1 || this.isPaused || this.shipConstruction.active) return 1;
+    return this.killStop.worldTimeScale;
+  }
 
   // 各表示物・入力ハンドラを、互いの依存関係が満たせる順に組んで game へ繋ぐ。viewOptionsSettings は
   // マップ・天球の表示設定と表示パネルのタブの選択、themePalette は選ばれている配色。
@@ -373,6 +383,8 @@ export class GamePresentation {
   // 生の入力を担当モジュールへ先着順で配り、命令とこのフレームの操作量を組む。dt [s] は進行へ渡す
   // 刻み、nowMs [ms] はフレームの先頭で1度だけ読んだ実時刻。ポーズ中も Esc・ヘルプなどは効かせる。
   public interpretInput(dt: number, nowMs: number, viewport: Viewport): void {
+    // 止めの残りは実時間で減る — 進行の出来事を読む前に、前フレームからの時計を進める。
+    this.killStop.advance(dt);
     this.inputPhase.interpret(dt, nowMs, viewport);
   }
 
@@ -394,7 +406,13 @@ export class GamePresentation {
   }
 
   // 一時エフェクト・的通過マーク・計画表示を、進行が記録した出来事と計画から表示時刻で組み直す(R5)。
-  public presentProgress(): void { this.displayPhase.presentProgress(); }
+  public presentProgress(): void {
+    this.killStop.observe(
+      this.game.events.recent, this.game.simSpeedManager.simSpeed,
+      this.isPaused, this.shipConstruction.active,
+    );
+    this.displayPhase.presentProgress();
+  }
 
   // 予測と履歴をどこまで計算してほしいかの需要(R4)。
   public trajectoryDemand(): TrajectoryDemand { return this.displayPhase.trajectoryDemand(); }
