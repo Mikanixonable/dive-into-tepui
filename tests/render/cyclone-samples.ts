@@ -12,9 +12,9 @@ export const EARTH_ROTATION_PERIOD = 86164.0905;
 // 時刻 [s] → 配置の 1 系列。
 export type Placements = (seconds: number) => PressurePlacement | null;
 
-// 系列を 0 から days 日ぶん SAMPLE_STEP 刻みで辿った標本。
-export function sampled(at: Placements, days: number): readonly (PressurePlacement | null)[] {
-  return Array.from({ length: Math.floor((days * 86400) / SAMPLE_STEP) + 1 }, (_, i) => at(i * SAMPLE_STEP));
+// 系列を 0 から days 日ぶん step 刻みで辿った標本。step を省くと SAMPLE_STEP。
+export function sampled(at: Placements, days: number, step: number = SAMPLE_STEP): readonly (PressurePlacement | null)[] {
+  return Array.from({ length: Math.floor((days * 86400) / step) + 1 }, (_, i) => at(i * step));
 }
 
 // 標本の中で生まれてから消えるまでを丸ごと含む一生(null に挟まれた non-null の連なり)。

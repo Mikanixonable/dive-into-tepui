@@ -39,11 +39,33 @@ export interface SolarSystemParts {
 export const TEST_EPOCH: TdbJulianDate =
   createJulianDate('TDB', J2000_JULIAN_DATE + TEST_SIM_ZERO_ET / SECONDS_PER_DAY);
 
-// 現実の太陽系を地球原点で組む。epoch は simTime=0 が指す絶対時刻。ephemerisPoints を渡すと、
-// そこに載っている天体だけがその有効期間で数値暦経路を通る。
+// 現実の太陽系を地球原点で組む。1回の構築に秒単位の費用が掛かるため、既定の元期・暦なしの
+// 呼び出しでは同じ parts を使い回す — 検査は値を読むだけなので分けなくてよい。別系を組み直して
+// 値が同じことを見る検査は、キャッシュを通さない freshSolarSystemParts で組む。
+let cachedDefaultParts: SolarSystemParts | null = null;
+
 export function solarSystemParts(
   epoch: TdbJulianDate = TEST_EPOCH,
   ephemerisPoints: EphemerisPoints | null = null,
+): SolarSystemParts {
+  if (epoch === TEST_EPOCH && ephemerisPoints === null) {
+    return (cachedDefaultParts ??= buildSolarSystemParts(epoch, ephemerisPoints));
+  }
+  return buildSolarSystemParts(epoch, ephemerisPoints);
+}
+
+// キャッシュを通さず必ず新しい太陽系を組む。「同じ元期で組み直せば同じ値になる」ように、
+// 独立した構築そのものを検査するテストのための口。
+export function freshSolarSystemParts(
+  epoch: TdbJulianDate = TEST_EPOCH,
+  ephemerisPoints: EphemerisPoints | null = null,
+): SolarSystemParts {
+  return buildSolarSystemParts(epoch, ephemerisPoints);
+}
+
+function buildSolarSystemParts(
+  epoch: TdbJulianDate,
+  ephemerisPoints: EphemerisPoints | null,
 ): SolarSystemParts {
   const system = solarSystem('earth', ephemerisPoints, epoch);
   return { bodies: system.celestialMotions, system, referenceFrames: system.frames };
