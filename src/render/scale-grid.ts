@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import { ECLIPTIC_BASIS, EQUATOR_BASIS, planeBasisFromPole, type PlaneBasis } from './plane-basis';
 import { CameraScale } from './camera-scale';
 import { markOverlay } from './pipeline/lit-layer';
+import { placeScreenLabel, SCENE_LABEL_STYLE } from './scene-label';
 import type { Viewport } from './viewport';
 
 // 4面ぶんの表示可否。
@@ -106,10 +107,9 @@ class ScaleGridPlane {
     // 縮尺ラベルは DOM 側に持ち、sync で画面座標へ載せる。
     this.label = document.createElement('div');
     this.label.className = 'scale-grid-label';
-    Object.assign(this.label.style, {
-      position: 'fixed', pointerEvents: 'none', zIndex: '8', display: 'none',
+    Object.assign(this.label.style, SCENE_LABEL_STYLE, {
+      display: 'none',
       color: `#${color.toString(16).padStart(6, '0')}`, opacity: '0.8',
-      font: '10px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap',
     });
     this.label.textContent = name;
     document.body.appendChild(this.label);
@@ -157,19 +157,13 @@ class ScaleGridPlane {
     if (!visible || bestLevel === null) return;
     // ラベルは格子の斜め方向へ数マス離して置く。
     const labelOffset = bestLevel.spacing * 5;
-    const projected = new THREE.Vector3(
+    const labelPoint = new THREE.Vector3(
       origin.x + (this.basis.e1.x + this.basis.e2.x) * labelOffset,
       origin.y + (this.basis.e1.y + this.basis.e2.y) * labelOffset,
       origin.z + (this.basis.e1.z + this.basis.e2.z) * labelOffset,
-    ).project(camera);
-    if (projected.z < -1 || projected.z > 1) return;
-    const margin = 12;
-    const x = Math.max(margin, Math.min(viewport.width - margin, (projected.x * 0.5 + 0.5) * viewport.width));
-    const y = Math.max(margin, Math.min(viewport.height - margin, (-projected.y * 0.5 + 0.5) * viewport.height));
-    this.label.style.left = `${x}px`;
-    this.label.style.top = `${y}px`;
+    );
+    if (!placeScreenLabel(this.label, labelPoint, camera, viewport, 12)) return;
     this.label.textContent = `${bestLevel.spacing >= REFERENCE_SPACING ? '⊞' : '＋'} ${spacingLabel(bestLevel.spacing)}`;
-    this.label.style.display = '';
   }
 
   // 全ズーム段の線を親から外して解放し、スケールラベルを document.body から外す。

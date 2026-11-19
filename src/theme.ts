@@ -151,6 +151,8 @@ export const AXIS_NORMAL = '#10b981';
 export const AXIS_RADIAL = '#ef4444';
 
 // 文字サイズ。8段。マーカーのグリフサイズ(GLYPH_*)はこれとは別スケール。
+// 3D 空間へ重ねる DOM ラベル(縮尺・天球の方角)の小さな注記書体も別スケール。
+export const FONT_SCENE_LABEL = '10px monospace';
 export const FONT_XXS = '11px';
 export const FONT_XS = '12px';
 const FONT_S = '13px';
@@ -189,6 +191,7 @@ const HIT_TARGET_MIN = '44px'; // タップ最小寸法
 
 // ページ直下(body の子)の要素間の重なり順。#hud の内部は別のスタッキング文脈なので、
 // #hud 内部の z-index とは比べない。
+export const Z_SCENE_LABEL = 8; // 3D 空間へ重ねる DOM ラベル。タッチ UI と HUD の下
 export const Z_TOUCH_UI = 9;
 const Z_HUD = 10;
 export const Z_HUD_NODE_GIZMO = 5; // #hud 内部で、HUD の層の外に置く要素
