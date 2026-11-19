@@ -27,8 +27,8 @@ import {
   type SunSyncSettings,
 } from '../../viewer/orbit-guide-settings';
 import { GUIDE_GROUPS, GUIDE_SYSTEMS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-groups';
-import { ORBIT_GUIDE_GROUP_TABS } from '../hud-selection';
-import type { OrbitGuideGroupTab } from '../hud-selection';
+import { ORBIT_GUIDE_GROUP_TABS } from '../../view/hud-selection';
+import type { OrbitGuideGroupTab } from '../../view/hud-selection';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
 // 線数がこれを超えたら警告を出す(指定は曲げない)。
