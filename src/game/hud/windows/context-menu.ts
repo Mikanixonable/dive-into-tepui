@@ -4,6 +4,7 @@
 // 勝てるよう全セレクタを `#hud` で始める。
 import { placeOverlayAt } from '../../../hud/layout';
 import { shortcutKeyLabel } from '../../../hud/windows/shortcut-hint';
+import { isCoarsePointer } from '../../../input/pointer-precision';
 import { onViewportChange } from '../../../hud/viewport';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 import { injectOnce } from '../../../hud/inject-style';
@@ -169,7 +170,7 @@ export class ContextMenu<T, A extends string = string> implements OverlayHandle 
       if (it.shortcut) {
         const shortcut = document.createElement('span');
         shortcut.className = 'ctx-menu-item-shortcut';
-        shortcut.textContent = shortcutKeyLabel(it.shortcut);
+        shortcut.textContent = shortcutKeyLabel(it.shortcut, isCoarsePointer());
         item.appendChild(shortcut);
       }
       stopDragPropagation(item);

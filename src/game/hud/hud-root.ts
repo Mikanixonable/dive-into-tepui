@@ -17,6 +17,7 @@ import { ORBIT_GUIDE_STYLE } from './style/orbit-guide-style';
 import { STAGE_CONTROLS_STYLE } from './style/stage-controls-style';
 import { OBJECT_PLACER_STYLE } from './style/object-placer-style';
 import { STAGE_STATUS_STYLE } from './style/stage-status-style';
+import { ARMAMENT_BAND_STYLE } from './style/armament-band-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { SHIP_CONSTRUCTION_STYLE } from './style/ship-construction-style';
@@ -35,7 +36,7 @@ const STYLE =
   + COMBAT_PANEL_ROWS_STYLE
   + PLAN_PANEL_STYLE + VIEW_OPTIONS_PANEL_STYLE + PREDICT_PANEL_STYLE
   + FRAME_CONTROLS_STYLE + ORBIT_GUIDE_STYLE + STAGE_CONTROLS_STYLE
-  + OBJECT_PLACER_STYLE + STAGE_STATUS_STYLE
+  + OBJECT_PLACER_STYLE + STAGE_STATUS_STYLE + ARMAMENT_BAND_STYLE
   + COMBAT_VIEW_STYLE + MAP_VIEW_STYLE + SHIP_CONSTRUCTION_STYLE;
 
 
@@ -135,7 +136,7 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
   const status = new PanelShell(rightRail, collapse, 'hud-vessel-status', 'VSL', '艦のステータス');
   configureCombatPanel(status);
   const pip = (id: string): string => `<output class="ui-pip" data-id="${id}">—</output>`;
-  // 計器の行(燃料・RCS・出力・動圧・各モード・弾薬)と、展開・スロットル・主要操作の置き場。
+  // 計器の行(燃料・RCS・出力・動圧・各モード)と、展開・スロットル・主要操作の置き場。弾薬は武装の帯に置く(UI-DESIGN.md §8)。
   status.body.innerHTML = `
     <div class="ui-rows has-keys">
       ${instrumentRowHtml({ label: '主燃料', gaugeId: 'main-fuel-meter', valueId: 'main-fuel-value' })}
@@ -148,8 +149,6 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
       ${instrumentRowHtml({ label: '動圧', rowId: 'qdyn-row', gaugeId: 'qdyn-gauge', valueId: 'qdyn-value' })}
       ${instrumentRowHtml({ label: '微調整', keys: K.fineAttitudeToggle.label, valueHtml: pip('fine') })}
       ${instrumentRowHtml({ label: '進行方向ホールド', keys: K.progradeHoldToggle.label, valueHtml: pip('prohold') })}
-      ${instrumentRowHtml({ label: '視点RCS追従', keys: K.followAttitudeToggle.label, valueHtml: pip('camfollow') })}
-      ${instrumentRowHtml({ label: '弾薬', rowId: 'ammo-row', valueId: 'ammo' })}
     </div>
     <div class="vessel-deploy-controls" data-id="vessel-deploy-controls" role="group" aria-label="太陽電池パドル・放熱板の収納展開"></div>
     <div class="status-throttle-touch" data-id="status-throttle-touch"></div>
@@ -407,11 +406,14 @@ function buildChaseReset(root: HTMLElement): void {
   });
 }
 
-// 右上の常設バッジ列(ヘルプ)を組む。右レール収納トグルの左へ並ぶ。
-function buildChromeActions(root: HTMLElement, chrome: HTMLElement, helpPanel: HelpPanel): void {
+// 右上の常設バッジ列を組む。右レール収納トグルの左へ並ぶ。
+function buildChromeActions(
+  root: HTMLElement, chrome: HTMLElement, helpPanel: HelpPanel, onPauseBadge: () => void,
+): void {
   const actions = createHudElement('div', 'hud-chrome-actions', chrome);
   buildTopBarToggle(actions, root);
   buildWideScreenToggle(actions, root);
+  buildPauseBadge(actions, onPauseBadge);
   buildHelpBadge(actions, helpPanel);
 }
 
@@ -455,6 +457,18 @@ function buildWideScreenToggle(root: HTMLElement, host: HTMLElement): void {
   button.setAttribute('title', '画面を広く使う(TAB)');
   button.innerHTML = `<span class="hud-mini-code" aria-hidden="true">${K.wideScreenToggle.label}</span><span aria-hidden="true">⤢</span>`;
   button.addEventListener('click', () => toggleHudWideScreen(host));
+}
+
+// Esc キーの代替操作ボタン(⚙アイコン)。CONTROLS.md が Esc と同じ振る舞い(最前面の
+// オーバーレイを閉じる、無ければ ESC メニューを開く)と定めるので、押下は受け口へそのまま渡す。
+// 表示可否は CSS(body.touch-ui-active)側が持つ — ここでは常に組む。
+function buildPauseBadge(root: HTMLElement, onPause: () => void): void {
+  const badge = createHudElement('button', 'hud-pause-badge', root, 'ui-surface-quiet');
+  badge.setAttribute('type', 'button');
+  badge.setAttribute('aria-label', 'ESC メニューを開く');
+  badge.setAttribute('title', 'ESC メニュー(ESC)');
+  badge.innerHTML = `<span class="hud-mini-code" aria-hidden="true">${K.pauseMenu.label}</span><span aria-hidden="true">⚙</span>`;
+  badge.addEventListener('click', onPause);
 }
 
 // H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
@@ -504,8 +518,9 @@ function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRa
 }
 
 // HUD のスタイル・レイヤ・各パネルを構築し、DOM 参照をまとめて返す。
+// onPauseBadge は⚙バッジの押下の受け口。
 export function buildHudDom(
-  shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle,
+  shell: HudShell, collapse: PanelCollapse, renderStyle: RenderStyle, onPauseBadge: () => void,
 ): HudDomRefs {
   injectStyle();
   startViewportTracking();
@@ -525,7 +540,7 @@ export function buildHudDom(
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
   buildTopBar(chrome);
   buildChaseReset(chrome);
-  buildChromeActions(root, chrome, helpPanel);
+  buildChromeActions(root, chrome, helpPanel, onPauseBadge);
   trackHudChromeInset(root, chrome);
 
   buildMapScale(mapRoot.element);

@@ -1,23 +1,23 @@
 // 建造の入口: 操作対象の船体が持つ使用可能な建造ドックの列挙と、指定・最寄りのドックから
 // 建造セッションを開く処理。始められない理由はヒントで通知する。
 import { lenSq, sub, type Vec3 } from '../../math/vec3';
-import type { ShipModuleInstance } from './ship-module-instance';
 import type { ModularShip } from './modular-ship';
 import type { Notifier } from '../../hud/notifier';
 import type { ShipConstruction } from './ship-construction';
+import type { PresentationShip, PresentationShipModule } from '../presentation-ports';
 
 // 使用可能な建造ドックか。健全な(hp > 0 の)建造ドックだけが使え、接続中かどうかは問わない。
-export function isUsableConstructionDock(module: ShipModuleInstance): boolean {
+export function isUsableConstructionDock(module: PresentationShipModule): boolean {
   return module.kind === 'dock' && module.hp > 0;
 }
 
 // ship が持つ使用可能な建造ドックの一覧。
-function usableConstructionDocks(ship: ModularShip): readonly ShipModuleInstance[] {
+function usableConstructionDocks(ship: PresentationShip): readonly PresentationShipModule[] {
   return ship.assembly.modules.filter(isUsableConstructionDock);
 }
 
 // ship が建造を始められる状態か。健全なコックピットで操縦でき、使用可能な建造ドックを持つこと。
-export function hasUsableConstructionDock(ship: ModularShip): boolean {
+export function hasUsableConstructionDock(ship: PresentationShip): boolean {
   return ship.capabilities.controllable && usableConstructionDocks(ship).length > 0;
 }
 
@@ -52,7 +52,7 @@ export class ConstructionEntry {
       return;
     }
     // 使用可能なドックのうち、カメラに最も近いものを選んで始める。
-    let nearest: ShipModuleInstance | null = null;
+    let nearest: PresentationShipModule | null = null;
     let nearestDistance = Infinity;
     for (const dock of docks) {
       const position = moduleEci(ship, dock.id);
