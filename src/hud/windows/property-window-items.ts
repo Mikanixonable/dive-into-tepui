@@ -37,7 +37,6 @@ export class PropertyWindowItems<A extends string = string> {
       row.setAttribute('role', 'button');
       row.tabIndex = 0;
       row.classList.toggle('on', it.selected === true);
-      row.classList.toggle('is-active', it.selected === true);
       row.classList.toggle('disabled', it.disabled === true);
       row.setAttribute('aria-disabled', String(it.disabled === true));
       const label = document.createElement('span');

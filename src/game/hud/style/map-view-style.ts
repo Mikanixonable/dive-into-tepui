@@ -379,7 +379,7 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row { grid-template-columns: minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .target-class-group { grid-template-columns: minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { overflow: hidden; text-overflow: ellipsis; }
-  #hud .hud-map-root.active #hud-predict .predict-row1 { align-items: flex-start; }
+  #hud .hud-map-root.active #hud-predict .w-pill-row { align-items: flex-start; }
 }
 
 /* マウス等の精密ポインタでは44pxタップ最小の制約がないため、表示パネルの行間・余白を詰める

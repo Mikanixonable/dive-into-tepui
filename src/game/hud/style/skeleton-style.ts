@@ -42,14 +42,6 @@ ${OVERLAY_LAYER_STYLE}
 #hud ::-webkit-scrollbar-thumb { background: var(--edge); border-radius: var(--radius-m); }
 #hud ::-webkit-scrollbar-thumb:hover { background: var(--color-primary-hover); }
 
-#hud-overlay-shield {
-  display: none; position: absolute; inset: 0; pointer-events: none; background: transparent;
-}
-/* 入力ゲートと背景暗転は別責務。gatesInput=true なら透明でも必ず全面shieldを実体化する。 */
-#hud-layer-gate.hud-overlay-gate #hud-overlay-shield { display: block; }
-body.hud-overlay-dim-background #hud-overlay-shield {
-  display: block; background: var(--shade-1);
-}
 body.hud-overlay-modal-open #touch-ui,
 body.hud-construction-mode #touch-ui { display: none; }
 
@@ -316,8 +308,8 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud-toast .toast-message { min-width: 0; overflow-wrap: anywhere; }
 
 /* 状態色の共有語彙: 読み値や行が持つ意味を、場所ごとの色名ではなく共通ロールで名付ける。
-   ui-caution / ui-warning は注意・警告の値(色に加えて △ ▲ を伴う)、ui-warning-fill は警告の行の面、
-   ui-accent は稼働中のモード。 */
+   ui-caution / ui-warning は注意・警告の値(色に加えて △ ▲ を伴う)、ui-warning-fill は
+   警告の行の面(hud/style の計器スタイル側が持つ)、ui-accent は稼働中のモード。 */
 #hud .ui-caution { color: var(--role-caution); }
 #hud .ui-warning { color: var(--role-warning); }
 #hud .ui-caution::before, #hud .ui-warning::before {
@@ -325,7 +317,6 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 #hud .ui-caution::before { content: '△'; }
 #hud .ui-warning::before { content: '▲'; }
-#hud .ui-warning-fill { background: var(--role-warning-fill); }
 #hud .ui-accent { color: var(--color-primary); }
 
 /* ここから下はブレークポイントごとの上書きと prefers-reduced-motion。

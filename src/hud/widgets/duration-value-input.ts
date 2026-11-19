@@ -39,7 +39,7 @@ export class DurationValueInput {
   ) {
     this.unitValue = defaultUnit;
     this.element = document.createElement('span');
-    this.element.className = 'w-group predict-value-input';
+    this.element.className = 'w-group w-duration-input';
     // 単位ボタンを押しても数値欄からフォーカスを移さない — 移すと blur が確定として走り、
     // 選び直した単位が反映される前に古い単位の値で閉じてしまう。フォーカス移動の既定動作を
     // 持つのは mousedown なので、それを捕捉段階で止める。

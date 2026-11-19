@@ -20,7 +20,7 @@ import { STAGE_STATUS_STYLE } from './style/stage-status-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { SHIP_CONSTRUCTION_STYLE } from './style/ship-construction-style';
-import { EDITORIAL_DATA_STYLE } from './style/editorial-data-style';
+import { EDITORIAL_DATA_STYLE } from '../../hud/style/editorial-data-style';
 import { isCompactViewport } from '../../hud/breakpoints';
 import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
