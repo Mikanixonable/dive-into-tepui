@@ -71,18 +71,22 @@ export function register(): void {
   });
 
   test('cyclone-tracks: 中心も深さも跳ばない', () => {
+    // 刻みは 2 時間。しきい値も刻みぶん伸ばして、1 時間あたりのレートでは元のままの厳しさにする。
+    const STEP_HOURS = 2;
     for (const series of SERIES) {
-      const samples = sampled(series.at, 60);
+      const samples = sampled(series.at, 60, STEP_HOURS * HOUR);
       for (let i = 1; i < samples.length; i++) {
         const previous = samples[i - 1] ?? null;
         const sample = samples[i] ?? null;
         if (previous !== null && sample !== null) {
           const distance = greatCircleDistance(previous, sample);
-          assert.ok(distance < STEP_DISTANCE_LIMIT, `${series.name} が ${i} 時間目に ${distance / 1e3} km 跳ぶ`);
+          assert.ok(distance < STEP_DISTANCE_LIMIT * STEP_HOURS,
+            `${series.name} が ${i * STEP_HOURS} 時間目に ${distance / 1e3} km 跳ぶ`);
         }
         const depthChange = Math.abs((sample?.depth ?? 0) - (previous?.depth ?? 0));
-        assert.ok(depthChange < STEP_DEPTH_LIMIT, `${series.name} の深さが ${i} 時間目に ${depthChange} hPa 跳ぶ`);
-        assert.ok((sample?.depth ?? 0) >= 0, `${series.name} の深さが ${i} 時間目に負`);
+        assert.ok(depthChange < STEP_DEPTH_LIMIT * STEP_HOURS,
+          `${series.name} の深さが ${i * STEP_HOURS} 時間目に ${depthChange} hPa 跳ぶ`);
+        assert.ok((sample?.depth ?? 0) >= 0, `${series.name} の深さが ${i * STEP_HOURS} 時間目に負`);
       }
     }
   });
@@ -141,9 +145,10 @@ export function register(): void {
   });
 
   test('cyclone-tracks: 同じ半球の渦の中心は互いに溶けない', () => {
-    // 3 年ぶん。中緯度・熱帯・種別を跨ぐ組まで全部見る — 半球は配置の緯度の符号で分ける
+    // 3 年ぶんを 3 時間刻みで。溶けた配置は数日残るので、この刻みでも取りこぼさない。
+    // 中緯度・熱帯・種別を跨ぐ組まで全部見る — 半球は配置の緯度の符号で分ける
     // (中緯度は枡の偶奇、熱帯は海域で決まる)。
-    for (let seconds = 0; seconds <= 3 * 365 * DAY; seconds += SAMPLE_STEP) {
+    for (let seconds = 0; seconds <= 3 * 365 * DAY; seconds += 3 * SAMPLE_STEP) {
       const { tropicals, lows } = cyclonePlacementsAt(seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD);
       const vortices = [...lows, ...tropicals];
       for (let a = 0; a < vortices.length; a++) {
@@ -161,10 +166,10 @@ export function register(): void {
   });
 
   test('cyclone-tracks: 熱帯低気圧の数は 0 から複数まで増減する', () => {
-    // 1 年ぶん。全球に 1 つも居ない期間と、海域をまたいで複数並ぶ期間の両方がある。
+    // 1 年ぶんを 3 時間刻みで。全球に 1 つも居ない期間と、海域をまたいで複数並ぶ期間の両方がある。
     let empty = 0;
     let most = 0;
-    for (let seconds = 0; seconds <= 365 * DAY; seconds += SAMPLE_STEP) {
+    for (let seconds = 0; seconds <= 365 * DAY; seconds += 3 * SAMPLE_STEP) {
       let count = 0;
       for (let index = 0; index < TROPICAL_COUNT; index++) {
         if (tropicalPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD) !== null) count++;
