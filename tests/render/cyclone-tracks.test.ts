@@ -1,12 +1,13 @@
-// 低気圧の谷の配置(render/cloud/cyclone-tracks.ts)の回帰テスト。期待値の正本は
+// 低気圧の谷の配置(render/earth-weather/low-tracks.ts・tropical-tracks.ts)の回帰テスト。期待値の正本は
 // `DEVELOP/SPEC/RENDERING.md`「雲の描画」の、中緯度の低気圧の一生と熱帯低気圧の進路の記述。
 // 調整値そのものは固定せず、どの時刻でも成り立つべき性質(決定性・連続性・単調性・緯度の幅・
 // 隣どうしの分離)を書く。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
-import { EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
-import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
+import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
+import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
+import { EARTH_ROTATION_PERIOD, EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
+import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 import type { Placements } from './cyclone-samples';
 
 const HOUR = 3600; // [s]
@@ -21,24 +22,27 @@ const STEP_DEPTH_LIMIT = 4;
 // 隣の谷と溶けないことを見るときの、谷が居るとみなす深さ [hPa]。
 const PRESENT_DEPTH = 5;
 
-// 低気圧 8 つと熱帯低気圧の系列。名前は失敗の報告に出す。
+// 低気圧と熱帯低気圧の系列。名前は失敗の報告に出す。
 const SERIES: readonly { readonly name: string; readonly at: Placements }[] = [
   ...Array.from({ length: LOW_COUNT }, (_, index) => ({
     name: `低気圧 ${index}`,
-    at: (seconds: number) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS),
+    at: (seconds: number) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD),
   })),
-  { name: '熱帯低気圧', at: tropicalPlacementAt },
+  ...Array.from({ length: TROPICAL_COUNT }, (_, index) => ({
+    name: `熱帯低気圧 ${index}`,
+    at: (seconds: number) => tropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD),
+  })),
 ];
 
 // 2 つの配置の中心の大圏距離 [m]。
-function greatCircleDistance(a: CyclonePlacement, b: CyclonePlacement): number {
+function greatCircleDistance(a: PressurePlacement, b: PressurePlacement): number {
   const cosAngle = Math.sin(a.latitude) * Math.sin(b.latitude)
     + Math.cos(a.latitude) * Math.cos(b.latitude) * Math.cos(a.longitude - b.longitude);
   return EARTH_SURFACE_RADIUS * Math.acos(Math.min(Math.max(cosAngle, -1), 1));
 }
 
 // 一生の最初の標本と最後の標本。
-function endpoints(life: readonly CyclonePlacement[]): readonly [CyclonePlacement, CyclonePlacement] {
+function endpoints(life: readonly PressurePlacement[]): readonly [PressurePlacement, PressurePlacement] {
   const first = life[0];
   const last = life[life.length - 1];
   assert.ok(first !== undefined && last !== undefined, '空の一生');
@@ -74,7 +78,7 @@ export function register(): void {
 
   test('cyclone-tracks: 低気圧は一生のあいだ極側へ進み続ける', () => {
     for (let index = 0; index < LOW_COUNT; index++) {
-      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS), 60))) {
+      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD), 60))) {
         for (let i = 1; i < life.length; i++) {
           const previous = life[i - 1];
           const sample = life[i];
@@ -89,38 +93,47 @@ export function register(): void {
   test('cyclone-tracks: 低気圧は亜熱帯の縁に生まれ、暴風帯の極側で消える', () => {
     let counted = 0;
     for (let index = 0; index < LOW_COUNT; index++) {
-      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS), 60))) {
+      for (const life of completeLives(sampled((seconds) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD), 60))) {
         const [born, dying] = endpoints(life);
         const bornLatitude = Math.abs(born.latitude) / DEGREE;
         const dyingLatitude = Math.abs(dying.latitude) / DEGREE;
-        assert.ok(bornLatitude >= 30 && bornLatitude <= 45, `低気圧 ${index} が ${bornLatitude}° に生まれる`);
-        assert.ok(dyingLatitude >= 55 && dyingLatitude <= 67, `低気圧 ${index} が ${dyingLatitude}° で消える`);
+        // 道のり半ばの点の混ざり(ベジエの曲がり)で標本は幅の端をわずかに越えうる — 越える側の
+        // 端へ 1° の余裕を取る。
+        assert.ok(bornLatitude >= 30 && bornLatitude <= 46, `低気圧 ${index} が ${bornLatitude}° に生まれる`);
+        assert.ok(dyingLatitude >= 54 && dyingLatitude <= 68, `低気圧 ${index} が ${dyingLatitude}° で消える`);
         counted++;
       }
     }
     assert.ok(counted >= LOW_COUNT, `60 日の中に丸ごと入る一生が ${counted} しかない`);
   });
 
-  test('cyclone-tracks: 熱帯低気圧は熱帯に生まれ、温帯低気圧へ変わって中緯度で消える', () => {
-    const lives = completeLives(sampled(tropicalPlacementAt, 60));
-    assert.ok(lives.length >= 3, `60 日の中に丸ごと入る一生が ${lives.length} しかない`);
-    for (const life of lives) {
-      const [born, dying] = endpoints(life);
-      const bornLatitude = Math.abs(born.latitude) / DEGREE;
-      const dyingLatitude = Math.abs(dying.latitude) / DEGREE;
-      assert.ok(bornLatitude >= 8 && bornLatitude <= 16, `${bornLatitude}° に生まれる`);
-      assert.ok(dyingLatitude >= 20 && dyingLatitude <= 45, `${dyingLatitude}° で消える`);
-      assert.ok(dying.radius >= 2 * born.radius, `半径が ${born.radius} m から ${dying.radius} m にしか広がらない`);
-      assert.equal(born.elongation, 1, '生まれたときに丸くない');
-      assert.ok(dying.elongation > 1, '消えるときに伸びていない');
+  test('cyclone-tracks: 熱帯低気圧は熱帯に生まれ、直進するか転向して温帯化する', () => {
+    let counted = 0;
+    for (let index = 0; index < TROPICAL_COUNT; index++) {
+      for (const life of completeLives(sampled((seconds) => tropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD), 60))) {
+        const [born, dying] = endpoints(life);
+        const bornLatitude = Math.abs(born.latitude) / DEGREE;
+        // 発生点は |緯度| 8〜16° — 道のり半ばの点の混ざりで標本はその幅の端をわずかに越えうる。
+        assert.ok(bornLatitude >= 7 && bornLatitude <= 17, `${bornLatitude}° に生まれる`);
+        assert.equal(born.elongation, 1, '生まれたときに丸くない');
+        if (dying.elongation > 1) {
+          // 転向した渦は温帯化して緩く大きくなり、中緯度で消える。
+          const dyingLatitude = Math.abs(dying.latitude) / DEGREE;
+          assert.ok(dyingLatitude >= 20 && dyingLatitude <= 45, `転向して ${dyingLatitude}° で消える`);
+          assert.ok(dying.radius >= 2 * born.radius,
+            `半径が ${born.radius} m から ${dying.radius} m にしか広がらない`);
+        }
+        counted++;
+      }
     }
+    assert.ok(counted >= 3, `60 日の中に丸ごと入る一生が ${counted} しかない`);
   });
 
   test('cyclone-tracks: 同じ半球の低気圧は互いに溶けない', () => {
     // 3 年ぶん。偶数番が北、奇数番が南なので、同じ半球の組は番号の偶奇が揃う。
     for (let seconds = 0; seconds <= 3 * 365 * DAY; seconds += SAMPLE_STEP) {
       const placements = Array.from(
-        { length: LOW_COUNT }, (_, index) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS));
+        { length: LOW_COUNT }, (_, index) => lowPlacementAt(index, seconds, EARTH_SURFACE_RADIUS, EARTH_ROTATION_PERIOD));
       for (let a = 0; a < LOW_COUNT; a++) {
         for (let b = a + 2; b < LOW_COUNT; b += 2) {
           const p = placements[a] ?? null;
@@ -134,9 +147,19 @@ export function register(): void {
     }
   });
 
-  test('cyclone-tracks: 熱帯低気圧は同時に 1 つで、居ない日がある', () => {
-    const samples = sampled(tropicalPlacementAt, 14);
-    assert.ok(samples.some((sample) => sample === null), '14 日のあいだ熱帯低気圧が居続ける');
-    assert.ok(samples.some((sample) => sample !== null), '14 日のあいだ熱帯低気圧が現れない');
+  test('cyclone-tracks: 熱帯低気圧の数は 0 から複数まで増減する', () => {
+    // 1 年ぶん。全球に 1 つも居ない期間と、海域をまたいで複数並ぶ期間の両方がある。
+    let empty = 0;
+    let most = 0;
+    for (let seconds = 0; seconds <= 365 * DAY; seconds += SAMPLE_STEP) {
+      let count = 0;
+      for (let index = 0; index < TROPICAL_COUNT; index++) {
+        if (tropicalPlacementAt(index, seconds, EARTH_ROTATION_PERIOD) !== null) count++;
+      }
+      if (count === 0) empty++;
+      most = Math.max(most, count);
+    }
+    assert.ok(empty > 0, '1 年のあいだ熱帯低気圧の居ない時刻がない');
+    assert.ok(most >= 2, `1 年のあいだ同時に並ぶのが高々 ${most} つ`);
   });
 }

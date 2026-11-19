@@ -15,14 +15,14 @@ interface SpeedScale {
   readonly windowHours: number; // 経過つまみが見る時間の長さ [h]
   readonly tickHours: number; // 目盛りの刻み [h]
 }
-// 速度ごとの窓と目盛り。×1 は実時間 1 秒 = モデル 1 時間。
+// 速度ごとの窓と目盛り。×1 は実時間 1 秒 = モデル 1 時間。1 段で 4 倍刻み。
 const SPEED_SCALES: readonly SpeedScale[] = [
-  { speed: 0.25, windowHours: HOURS_PER_DAY, tickHours: 3 },
-  { speed: 0.5, windowHours: 2 * HOURS_PER_DAY, tickHours: 6 },
+  { speed: 1 / 16, windowHours: 6, tickHours: 1 },
+  { speed: 1 / 4, windowHours: HOURS_PER_DAY, tickHours: 3 },
   { speed: 1, windowHours: 7 * HOURS_PER_DAY, tickHours: HOURS_PER_DAY },
-  { speed: 2, windowHours: 30 * HOURS_PER_DAY, tickHours: 5 * HOURS_PER_DAY },
-  { speed: 4, windowHours: 90 * HOURS_PER_DAY, tickHours: 30 * HOURS_PER_DAY },
-  { speed: 8, windowHours: YEAR_HOURS, tickHours: 60 * HOURS_PER_DAY },
+  { speed: 4, windowHours: 30 * HOURS_PER_DAY, tickHours: 5 * HOURS_PER_DAY },
+  { speed: 16, windowHours: 120 * HOURS_PER_DAY, tickHours: 20 * HOURS_PER_DAY },
+  { speed: 64, windowHours: YEAR_HOURS, tickHours: 60 * HOURS_PER_DAY },
 ];
 
 interface TimeControls {
@@ -87,7 +87,8 @@ export function buildTimeControls(
   playButton.addEventListener('click', () => setPlaying(!playing));
   row.appendChild(playButton);
 
-  const speed = buildChoiceSlider(rowId, '速度', '320px', SPEED_SCALES.map((item) => `×${item.speed}`),
+  const speed = buildChoiceSlider(rowId, '速度', '320px',
+    SPEED_SCALES.map((item) => (item.speed >= 1 ? `×${item.speed}` : `×1/${1 / item.speed}`)),
     (index) => {
       speedIndex = index;
       openWindow();

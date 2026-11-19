@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import climateTextureUrl from '../../../assets/earth-climate.png';
+import terrainTextureUrl from '../../../assets/earth-terrain.png';
 import cloudFieldUrl from '../../../assets/cloud-field.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
 import coastlineData from '../../../assets/earth-coastline.json';
@@ -15,12 +16,13 @@ import { satelliteOrbit } from '../../../physics/satellite-orbit';
 import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
-import { CloudPresentation } from '../../../render/cloud/cloud-presentation';
-import { GeneratedCloudField } from '../../../render/cloud/generated-cloud-field';
-import { ObservedCloudField } from '../../../render/cloud/observed-cloud-field';
-import { AnnualClimateMap } from '../../../render/cloud/climate-map';
+import { CloudPresentation } from '../../../render/earth-weather/cloud/cloud-presentation';
+import { GeneratedCloudField } from '../../../render/earth-weather/cloud/generated-cloud-field';
+import { ObservedCloudField } from '../../../render/earth-weather/cloud/observed-cloud-field';
+import { AnnualClimateMap } from '../../../render/earth-weather/climate-map';
+import { TextureTerrainMap } from '../../../render/earth-weather/terrain-map';
 import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
-import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/cloud/cloud-cap';
+import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/earth-weather/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
 import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
 import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
@@ -219,7 +221,8 @@ function earthAuroras(): readonly Aurora[] {
 export function earthGeneratedCloudField(projection: FieldProjection): GeneratedCloudField {
   // 気象シミュレーションに適用する半径は、全球を一様な球体とみなす平均半径。
   return new GeneratedCloudField(
-    AnnualClimateMap.fromDeferredUrl(climateTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
+    AnnualClimateMap.fromDeferredUrl(climateTextureUrl),
+    TextureTerrainMap.fromDeferredUrl(terrainTextureUrl), projection, R_EARTH, SIDEREAL_DAY,
   );
 }
 
@@ -249,6 +252,8 @@ export function earthSystem(
         LineOverlay.of({ kind: 'latLonPolylines', polylines: EARTH_COASTLINE }),
         earthAuroras(),
         GeostationaryOverlay.of(earth.body), cumulus,
+        // 「夜側の観察」で強めた環境光を受ける観察球を差し出す。夜側の地表と雲を読むため。
+        true,
       ),
     ),
     moon: new CelestialEntity(

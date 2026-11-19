@@ -24,7 +24,7 @@ const FRAMINGS = [
 const QUALITIES = [['オフ', 0], ['低', 1], ['中', 2], ['高', 3]];
 
 // 雲の段の組。積雲の精細さは src/render/opaque-cloud-surface-renderer.ts の CUMULUS_DETAIL、
-// 巻雲の精細さは src/render/cloud/cloud-detail.ts の CIRRUS_DETAIL。大気は「高」、雲と雲の影と
+// 巻雲の精細さは src/render/earth-weather/cloud/cloud-detail.ts の CIRRUS_DETAIL。大気は「高」、雲と雲の影と
 // 巻雲はオンに固定して、3 パスが全部描く状態で測る。
 const CLOUD_DETAIL_TIERS = [['粗', 1], ['標準', 2], ['精細', 3]];
 const CIRRUS_TIERS = [['巻雲粗', 0], ['巻雲標準', 1], ['巻雲精細', 2]];

@@ -3,9 +3,9 @@
 // 雲の画素の線形輝度の統計(平均・99% 点・最大・R/B 比)と地表の輝度を出す。
 //   使い方: node tools/sunset-sweep-check.mjs — 引数は無し。動作の切り替えは
 //   作業ツリー直下の .loop-sunset-config.json(任意)で行う:
-//     { "tag": "base",   // 出力先 .cloud-detail/sunset/<tag>/ の名前
+//     { "tag": "base",   // 出力先 .cloud-lab/sunset/<tag>/ の名前
 //       "build": true }  // false なら webpack を飛ばして既存の .render-lab/ を使う
-// 出力は標準出力の表と .cloud-detail/sunset/<tag>/ 以下の撮影 PNG・metrics.json。
+// 出力は標準出力の表と .cloud-lab/sunset/<tag>/ 以下の撮影 PNG・metrics.json。
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -21,7 +21,7 @@ const DEBUG_PORT = 9458;
 const configPath = path.join(root, '.loop-sunset-config.json');
 const config = existsSync(configPath) ? JSON.parse(readFileSync(configPath, 'utf8')) : {};
 const tag = config.tag ?? 'base';
-const outRoot = path.join(root, '.cloud-detail', 'sunset', tag);
+const outRoot = path.join(root, '.cloud-lab', 'sunset', tag);
 
 const R_EARTH = 6.371e6;
 // 高度 altitude [m] の視点から地平線が視線より margin [rad] 上へ来る地球の置き方
