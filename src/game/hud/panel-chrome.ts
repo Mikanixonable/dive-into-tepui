@@ -81,7 +81,7 @@ export class PanelCollapse {
   }
 }
 
-export class PanelShell {
+export class PanelChrome {
   public readonly el: HTMLElement;
   public readonly titleEl: HTMLHeadingElement;
   public readonly body: HTMLElement;
@@ -96,7 +96,7 @@ export class PanelShell {
     this.el = document.createElement('div');
     this.el.id = id;
     this.el.dataset['id'] = id;
-    this.el.className = 'panel panel-shell';
+    this.el.className = 'panel panel-chrome';
 
     // 見出し行(記号・題名・補足・畳んだときの要約)と本文を組む。開閉ボタンは配線時に末尾へ足される。
     const head = document.createElement('div');
@@ -117,14 +117,14 @@ export class PanelShell {
     this.el.appendChild(head);
 
     this.body = document.createElement('div');
-    this.body.className = 'panel-shell-body';
+    this.body.className = 'panel-chrome-body';
     this.el.appendChild(this.body);
 
     // 見出しクリックとトグルの両方から畳めるようにする。
     collapse.wire({
       toggleRoot: head,
       toggleId: `${id}-collapse`,
-      toggleClassName: 'panel-shell-collapse',
+      toggleClassName: 'panel-chrome-collapse',
       target: this.body,
       labels: {
         expandedGlyph: COLLAPSE_EXPANDED_GLYPH,

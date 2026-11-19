@@ -38,7 +38,7 @@ export class DurationPillRow<K extends string, Kd extends K | 'custom'> {
 
   // 選択中のキーと、数値入力欄に示す秒数を反映する。入力欄は編集中(フォーカス中)なら
   // ユーザー入力を壊さないよう書き換えない。
-  public render(key: Kd, currentSec: number): void {
+  public sync(key: Kd, currentSec: number): void {
     for (const [k, btn] of this.buttons) btn.setOn(key === k);
     if (!this.input.focused) this.input.syncSec(currentSec, this.minSec, this.maxSec);
   }

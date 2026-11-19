@@ -6,7 +6,7 @@ import { strongestAttractor } from '../../physics/attractor';
 import type { FrameAnchorSource } from '../../physics/frame';
 import { isOccluded } from '../../physics/occlusion';
 import type { Projected } from '../../math/projection';
-import { fmtMarkerDist } from '../../hud/utils';
+import { fmtMarkerDist } from '../../hud/format';
 import { type TickRank, type TimeLabelSetting, calendarBoundaries, tickLabel } from '../hud/orbit/calendar-ticks';
 import { ApsisMarker } from '../marker/apsis-marker';
 import type { DisplayedPath } from '../marker/equator-node-marker-pair';

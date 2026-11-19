@@ -1,5 +1,5 @@
 // 軌道上の補給物(接近した自艦が取り込む漂流物)と、その種別ごとの具象。
-import { fmtDist } from '../../../hud/utils';
+import { fmtDist } from '../../../hud/format';
 import { len, sub, v3, type SerializedVec3, type Vec3 } from '../../../math/vec3';
 import { AmmoPickupView, RcsFuelPickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';

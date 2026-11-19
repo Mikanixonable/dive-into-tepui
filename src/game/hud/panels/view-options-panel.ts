@@ -1,7 +1,7 @@
 // 表示パネル(マップモード左レール): マップの表示項目設定を担当する —
 // 対象・ガイド・軌道ガイドの3タブに分かれ、タブの内装は TargetTab / GuideTab /
 // OrbitGuideTab が担い、このパネルは器とタブ間の配線を持つ。
-import { hudRail } from '../hud-root';
+import { hudRail } from '../hud-dom';
 import {
   Button,
   COLLAPSE_COLLAPSED_GLYPH,
@@ -21,7 +21,7 @@ import { OrbitGuideTab } from './orbit-guide-tab';
 import { zeroVelocityJacobiAt } from './zero-velocity-section';
 import { TargetTab } from './target-tab';
 import { GuideTab } from './guide-tab';
-import type { PanelCollapse } from '../panel-shell';
+import type { PanelCollapse } from '../panel-chrome';
 import type { OrbitGuideGroupTab, ViewOptionsTab } from '../../view/hud-selection';
 import type { RenderStyle } from '../../../render/render-style';
 

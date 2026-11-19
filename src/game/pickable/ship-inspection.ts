@@ -11,7 +11,7 @@ import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { ModularShip } from '../ship/modular-ship';
 import { strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
-import { fmtDist, fmtEnergy } from '../../hud/utils';
+import { fmtDist, fmtEnergy } from '../../hud/format';
 import { fmtAmmoStatus } from '../hud/ammo-status';
 import { MenuCommon } from '../hud/windows/menu-actions';
 import { orbitRows } from './orbit-rows';

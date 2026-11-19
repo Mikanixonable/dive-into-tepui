@@ -6,7 +6,7 @@ import { SegmentedControl, TabBar } from '../../../hud/widgets';
 import { injectOnce } from '../../../hud/inject-style';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../../render/pipeline/debug-target';
 import type { RenderStyle } from '../../../render/render-style';
-import { fmtDuration } from '../../../hud/utils';
+import { fmtDuration } from '../../../hud/format';
 import { type FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../../frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, type GpuTimings, type GpuPassId } from '../../../render/gpu-timings';
 import type { OverlayManager } from '../../../hud/overlay-manager';

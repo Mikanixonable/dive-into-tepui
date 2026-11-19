@@ -1,5 +1,5 @@
 // 常設 CONTACTS パネル(#hud-enemies)の同期: コンタクト中の敵を距離順で示す。戦闘ビュー専用。
-import { fmtDist } from '../../../hud/utils';
+import { fmtDist } from '../../../hud/format';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls } from '../hud-els';
 

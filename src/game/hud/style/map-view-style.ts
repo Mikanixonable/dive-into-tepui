@@ -17,7 +17,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-main { color: var(--space-label-text); }
 #hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-sub { color: var(--space-label-subtext); }
 
-/* Orbit は表示設定の上に置く。初期状態は PanelShell のビュー別既定値で収納される。 */
+/* Orbit は表示設定の上に置く。初期状態は PanelChrome のビュー別既定値で収納される。 */
 #hud .hud-map-root.active .hud-rail-left > #hud-orbit,
 #hud .hud-map-root.active .hud-rail-left > #burn-management-panel {
   width: 100%;

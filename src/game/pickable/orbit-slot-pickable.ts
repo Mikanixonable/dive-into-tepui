@@ -3,7 +3,7 @@
 import { len, sub, type Vec3 } from '../../math/vec3';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/attractor';
-import { fmtDist, fmtTime } from '../../hud/utils';
+import { fmtDist, fmtTime } from '../../hud/format';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';

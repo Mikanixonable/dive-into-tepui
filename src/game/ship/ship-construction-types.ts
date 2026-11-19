@@ -150,7 +150,7 @@ interface ConstructionConfirmationRequest {
 }
 
 export interface ConstructionConfirmationPort {
-  request(request: ConstructionConfirmationRequest, onResult: (confirmed: boolean) => void): void;
+  open(request: ConstructionConfirmationRequest, onResult: (confirmed: boolean) => void): void;
   close(): void;
 }
 
