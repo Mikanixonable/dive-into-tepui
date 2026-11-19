@@ -2,7 +2,7 @@
 // 関連物体一覧・改名 UI という4つの副概念を束ね、本文でのそれぞれの並び順と、本文の高さが
 // 変わったときのはみ出し補正(reclamp)をいつ行うかを決める。表示専用で、プロパティの値を
 // 対応するコンポーネントが導出する。複数存続できる想定のため ContextMenu と異なり呼び出し
-// ごとに個別のインスタンスを持つ。#hud の子として window レイヤへ置くため、
+// ごとに個別のインスタンスを持つ。#hud の子として window レイヤへ置き、
 // HUD 内の他ウィンドウとスコープを分けるため、主要セレクタを `#hud` から始める。
 import { injectOnce } from '../inject-style';
 import { MQ_COMPACT } from '../breakpoints';
@@ -135,13 +135,6 @@ const STYLE = `
   font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud .prop-window-items:not(:empty)::after { content: ''; }
-#hud .prop-window-item {
-  grid-template-columns: 2.4em minmax(0, 1fr) auto;
-  border-radius: 0; background: transparent;
-}
-#hud .prop-window-item:hover { background: var(--glass-control-hover); }
-#hud .prop-window-item.on { background: transparent; color: var(--color-primary); }
-#hud .prop-window-item.disabled { opacity: var(--toggle-off-opacity); cursor: not-allowed; }
 #hud .prop-window-related {
   padding: 0 var(--space-3) var(--space-2); background: transparent;
 }
@@ -213,28 +206,25 @@ export class PropertyWindow<A extends string = string> {
   // 閉じられた(dispose 済み)ことを知らせる。ESC・外側クリック・✕ ボタンのどの経路で
   // 閉じても等しく発火する。
   public onClose: (() => void) | null = null;
-  // クリップボタンで状態が反転したことを通知する。
-  public onClipChange: ((clipped: boolean) => void) | null = null;
 
-  // clientX/clientY を左上角として root の子として開き、content の内容で組み立てる。
+  // clientX/clientY を左上角として開き、content の内容で組み立てる。
   // unclippedWindowGroup を渡すと、クリップされていない間だけ OverlayManager 上の排他グループに
   // 参加する一時ウィンドウになる(ESC・外側クリックで自動的に閉じ、同グループの他方も追い出す)。
   // 省略すると ESC・外側クリックのどちらでも閉じない常設ウィンドウになる。
   public constructor(
-    root: HTMLElement, clientX: number, clientY: number, content: PropertyWindowContent<A>,
+    clientX: number, clientY: number, content: PropertyWindowContent<A>,
     overlayManager: OverlayManager, unclippedWindowGroup?: string,
   ) {
     injectOnce('property-window', STYLE);
-    this.win = new DraggableWindow(root, clientX, clientY, {
+    this.win = new DraggableWindow(clientX, clientY, {
       title: content.title, subtitle: content.subtitle, icon: content.icon, unclippedWindowGroup,
     }, overlayManager);
     this.win.onClose = () => this.onClose?.();
     this.win.onClipChange = (clipped) => {
       if (content.monitorWhenClipped === true) {
         this.win.element.classList.toggle('property-window-monitor', clipped);
-        this.reclamp();
+        this.win.reclamp();
       }
-      this.onClipChange?.(clipped);
     };
 
     // 4つの副概念を組み立てる。項目のショートカット配送だけは DraggableWindow からの
@@ -287,7 +277,7 @@ export class PropertyWindow<A extends string = string> {
   }
 
   // タイトル・サブタイトルを DraggableWindow へ差分更新で渡す。
-  public syncHeader(title: string, subtitle: string | undefined): void {
+  public syncHeader(title: string, subtitle: string | null): void {
     this.rename.updateTitle(title);
     this.win.setHeader(title, subtitle);
   }
@@ -299,13 +289,13 @@ export class PropertyWindow<A extends string = string> {
   // プロパティ行の値だけを毎フレーム差分更新する。行構成が変わった場合のみ DOM を組み直す。
   public syncRows(rows: readonly PropertyRow[]): void {
     this.rows.sync(rows);
-    this.reclamp();
+    this.win.reclamp();
   }
 
   // 操作項目の集合・ラベル・ショートカットが変わったときだけ DOM を組み直す。
   public syncItems(items: readonly PropertyWindowItem<A>[]): void {
     this.items.sync(items);
-    this.reclamp();
+    this.win.reclamp();
   }
 
   // 対象に関連する物体の集合が変わったときだけ DOM を組み直す。欄は常にプロパティ行より上に置く。
@@ -314,14 +304,14 @@ export class PropertyWindow<A extends string = string> {
     if (this.relatedItems.element.childElementCount > 0 && !this.relatedItems.element.parentElement) {
       this.win.body.insertBefore(this.relatedItems.element, this.rows.element);
     }
-    this.reclamp();
+    this.win.reclamp();
   }
 
   public get clipped(): boolean {
     return this.win.clipped;
   }
 
-  // 操作ウィジェットを本文の先頭に起き、プロパティ行が伸びても先頭から操作できる位置に置く。
+  // 操作ウィジェットを本文の先頭に置き、プロパティ行が伸びても先頭から操作できる位置に置く。
   // 所有権は導入元に残り、null で取り外す。
   public setControls(controls: HTMLElement | null): void {
     this.controlsEl.replaceChildren();
@@ -331,17 +321,12 @@ export class PropertyWindow<A extends string = string> {
       this.controlsEl.appendChild(controls);
       if (!this.controlsEl.parentElement) this.win.body.insertBefore(this.controlsEl, this.win.body.firstChild);
     }
-    this.reclamp();
+    this.win.reclamp();
   }
 
   // window レイヤ内で最前面にする。
   public bringToFront(): void {
     this.win.bringToFront();
-  }
-
-  // 本文の変化でウィンドウの高さが伸びたときに、画面外へのはみ出しだけ戻す。
-  private reclamp(): void {
-    this.moveTo(this.win.element.offsetLeft, this.win.element.offsetTop);
   }
 
   // 要求座標をビューポート内へクランプして配置する。

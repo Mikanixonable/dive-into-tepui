@@ -1,13 +1,13 @@
-// 破片1つの寿命と接触の振る舞い。弾が当たったことを出来事として記録する。薬莢は円筒の当たり
-// 判定を持ち、自機や他の薬莢へ触れたことも記録する。
+// 破片・薬莢の寿命と接触に関する規則を実行する。
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
-import type { Vec3 } from '../../../math/vec3';
+import { add, addScaled, scale, sub, type Vec3 } from '../../../math/vec3';
+import { qRotate } from '../../../math/quat';
 import type { ContactGeometry } from '../../../physics/collision-response';
 import type { SphereHit } from '../../../math/triangle-mesh';
 import type { DynamicMotion, DynamicMotionBehavior } from '../dynamic-motion';
 import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic-simulation-participant';
 import type { Contact } from './contact';
-import type { DebrisKind } from './debris-kind';
+import type { DebrisKind, DebrisSlide } from './debris-kind';
 import { bulletReactionOf } from './bullet-reaction';
 import {
   casingEntityCollision, casingSphereCollision, casingSweptEntityCollision,
@@ -27,12 +27,16 @@ export class DebrisReaction implements DynamicMotionBehavior {
   public readonly testEntityCollision?: DynamicMotionBehavior['testEntityCollision'];
   public readonly testSweptEntityCollision?: DynamicMotionBehavior['testSweptEntityCollision'];
 
-  // bornSim が null の破片は寿命で消えない。薬莢は円筒の形に沿った当たり判定を備える — 判定の
-  // 有無が個体差なので、メソッドでなくフィールドで持つ。
+  // 排出経路のある破片は、終端へ達するまで機体座標系の滑りに沿って進む。
+  private slide: DebrisSlide | null;
+
+  // 寿命の起点と排出経路を持ち、kind に応じた接触判定を提供する。
   public constructor(
     private readonly kind: DebrisKind['kind'],
     private readonly bornSim: number | null,
+    slide: DebrisSlide | null = null,
   ) {
+    this.slide = slide;
     if (kind !== 'casing') return;
     // 球との接触(静止・掃引)
     this.testSphereCollision = (
@@ -60,6 +64,31 @@ export class DebrisReaction implements DynamicMotionBehavior {
     ) => casingSweptEntityCollision(
       self, other, previousSelfState, selfState, previousOtherState, otherState,
     );
+  }
+
+  // 排出中の破片を機体相対の経路に沿わせ、終端で自由飛行へ移す。
+  public updateCommands(self: DynamicMotion, _simDt: number): void {
+    const slide = this.slide;
+    if (slide === null) return;
+    const elapsed = self.state.t - slide.bornSim;
+    // 終端へ達した破片は座標拘束を解いて自由飛行へ戻す。
+    if (elapsed >= slide.duration) {
+      this.slide = null;
+      return;
+    }
+    const frac = Math.max(0, elapsed / slide.duration);
+    const body = addScaled(slide.from, sub(slide.to, slide.from), frac);
+    // 出生時の等速機体座標系から位置と滑り速度を組み直す。
+    self.reset(kinematicState(
+      self.state.t,
+      add(add(slide.r0, scale(slide.v0, elapsed)), qRotate(slide.q0, body)),
+      add(slide.v0, qRotate(slide.q0, scale(sub(slide.to, slide.from), 1 / slide.duration))),
+    ));
+  }
+
+  // 排出経路に沿っているあいだは機体の壁を抜けて出るので、どの相手とも接触させない。
+  public contactsWith(_self: DynamicMotion, _other: EntityContactParticipant, _simTime: number): boolean {
+    return this.slide === null;
   }
 
   // 弾が当たったこと、薬莢が自機か他の薬莢へ当たったことを出来事として記録する。

@@ -4,8 +4,9 @@ const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 const { version } = require('./package.json');
+const { setupOverridesRead } = require('./tools/cloud-tuning-overrides-file.cjs');
 
-const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-09-09-a';
+const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-11-14-a';
 const EARTH_SURFACE_DEV_PUBLIC_PATH = `/earth/${DEFAULT_EARTH_SURFACE_DATASET_ID}/`;
 const EARTH_SURFACE_BUNDLE_ROOT_CANDIDATES = [
   // schema 3の生成物を優先し、R2へ未配備でも同じbundleを開発配信する。
@@ -28,7 +29,15 @@ const earthSurfaceManifestUrl = configuredEarthSurfaceManifestUrl
       ? localEarthSurfaceManifestUrl
       : DEFAULT_EARTH_SURFACE_R2_MANIFEST_URL);
 
-module.exports = {
+module.exports = (env, argv) => ({
+  cache: {
+    type: 'filesystem',
+    // production と development でキャッシュ名を分ける。同じ名前を共有すると、片方の
+    // モードが書いたモジュールをもう片方が読み、ソースが undefined として復元されて
+    // stats 生成が RawSource.size の ERR_INVALID_ARG_TYPE で落ちる。
+    name: `tepui-${argv.mode ?? 'development'}`,
+    cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
+  },
   entry: {
     main: './src/main.ts',
     'earth-surface-terrain-worker': './src/render/earth-surface-terrain-worker.ts',
@@ -61,11 +70,8 @@ module.exports = {
         type: 'asset/source',
       },
       {
-        // タンパク質の主鎖・構造・モーション JSON はバンドルへインライン化せず、
-        // 別ファイルとして書き出して import 元へは URL 文字列を渡す(起動時ダウンロード量を
-        // 抑えるため)。semantic など他の JSON は既定どおりバンドルへ含める。
-        test: /(Backbone|Structure|Motion)\.json$/,
-        include: path.resolve(__dirname, 'src/assets/models'),
+        // 船モジュールの統合 GLB バイナリは main JS へ埋め込まず、起動時に fetch する。
+        test: /\.(glb|gltf)$/,
         type: 'asset/resource',
         generator: { filename: 'assets/[hash][ext]' },
       },
@@ -129,7 +135,11 @@ module.exports = {
       },
     ],
     port: 'auto',
+    open: true,
     liveReload: false,
     hot: false,
+    // cloud-lab が書く調整値の上書き(tools/cloud-tuning-overrides-file.cjs)を、実行中の
+    // ゲームが拾うための読み口。ファイルはビルド入力でないので、書き込みはリビルドを起こさない。
+    setupMiddlewares: setupOverridesRead,
   },
-};
+});

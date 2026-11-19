@@ -17,9 +17,9 @@ import type { PlanetLightAppearance, PlanetLightSubject } from './planet-light-s
 import type {
   BoolUniform, ColorUniform, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform,
 } from '../../tsl-types';
-import type { CloudSpecies } from '../cloud-atmosphere-renderer';
 import type { BodyShadow } from '../shadow/body-shadow';
 import type { SunLight } from '../sun-light';
+import type { SunTransmittanceTables } from '../sun-transmittance-tables';
 import type { ShadingSample } from './shading-sample';
 
 // 用意するスロットの本数。同時に使う本数は描画設定 planetLightCount(0〜この値)で決まる。
@@ -98,8 +98,9 @@ const clampedToCone = Fn((
 });
 
 // スロット 1 本ぶんの光源。拡散反射も鏡面反射も、視半径を持つ球光源モデルとして評価する
-// (sphere-light.ts)。大きさはその閉じた解が持ち、写しは色の倍率としてしか効かない。
-// TODO: 影を受けない — 受け手と天体の間に別の天体や艦の構造があっても届く。
+// (sphere-light.ts)。大きさはその閉じた解が持ち、写しは色の倍率としてしか効かない。届く光は、
+// 受け手と光源天体の間を遮る天体が覆う光源円盤の面積ぶんだけ弱まる。
+// TODO: 艦・構造物による遮蔽は受けない — 構造物による遮蔽はスクリーンスペース AO の計画が担う。
 class PlanetLightSlot implements LightSource {
   // モードごとに 1 枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの再コンパイルが
   // フレームを止める。
@@ -110,16 +111,17 @@ class PlanetLightSlot implements LightSource {
   // 写しへ焼く見た目があるか。無いスロットはテクスチャのモードでも一様球で描く。
   private readonly imaged: BoolUniform = uniform(false);
 
-  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は写しの大気が読む天体の影。
-  // model は描画設定 planetLightModel の値。
+  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は、写しの大気が読む天体の影と、
+  // 受け手と光源天体の間を遮る天体の透過率を引く先。model は描画設定 planetLightModel の値。
   public constructor(
     private readonly sunLight: SunLight,
-    bodyShadow: BodyShadow,
+    private readonly bodyShadow: BodyShadow,
     private readonly sphereSpecular: SphereSpecular,
     private readonly slot: SlotUniforms,
     private model: number,
+    sunTables: SunTransmittanceTables,
   ) {
-    this.image = new PlanetLightImage(sunLight, bodyShadow);
+    this.image = new PlanetLightImage(sunLight, bodyShadow, sunTables);
   }
 
   public hasContribution(): boolean { return this.slot.radius.value > 0; }
@@ -180,13 +182,17 @@ class PlanetLightSlot implements LightSource {
         sample, reflected, this.specularFilterAngle(sample, sinSigmaSqr), lightDir, sinSigmaSqr,
         sphereRadiance)
       : sphereRadiance;
+    // 受け手と光源天体の間を別の天体が遮るぶんだけ届く光を弱める係数。光源天体自身は
+    // 遮蔽へ数えない。写しのモードでも同じ係数 — 写しが色の倍率、遮蔽はエネルギー側の話。
+    const shadowing = this.bodyShadow.transmittanceFrom(
+      sample.worldPosition, this.slot.center, this.slot.radius);
     // 一様球の放射照度 E = π·L̄·sin²σ × クリップ係数(全可視では saturate(cosβ) に一致)。
     // **大きさを作るのはこの 2 つの係数だけ**で、写しは色の倍率としてしか効かない — 写しの値で
     // エネルギーを作ると、高周波の地表で総光量が破れる。
     const diffuse: Vec3Node = diffuseRadiance.mul(PI).mul(sinSigmaSqr)
-      .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr));
+      .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr)).mul(shadowing);
     const specular: Vec3Node = specularRadiance
-      .mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
+      .mul(this.sphereSpecular.factor(sample, center, this.slot.radius)).mul(shadowing);
     return { diffuse, specular };
   }
 
@@ -242,10 +248,10 @@ export class PlanetLightSource {
   // スロットの本数(描画設定 planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
   public constructor(
     sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular, private count: number,
-    model: number,
+    model: number, sunTables: SunTransmittanceTables,
   ) {
     this.slotSources = this.slots.map(
-      (slot) => new PlanetLightSlot(sunLight, bodyShadow, sphereSpecular, slot, model));
+      (slot) => new PlanetLightSlot(sunLight, bodyShadow, sphereSpecular, slot, model, sunTables));
   }
 
   // 同時に使用するスロット本数を変更する。次回の set() 呼び出し時から適用される。
@@ -261,14 +267,9 @@ export class PlanetLightSource {
     for (const source of this.slotSources) source.subject.setAtmosphereEnabled(enabled);
   }
 
-  // 写しへ不透明な積雲を焼き込むか(描画設定「積雲の精細さ」がオフでない)を全スロットへ配る。
+  // 写しへ不透明な積雲を焼き込むか(描画設定「積雲」がオン)を全スロットへ配る。
   public setCumulusEnabled(enabled: boolean): void {
     for (const source of this.slotSources) source.subject.setCumulusEnabled(enabled);
-  }
-
-  // 写しの大気の中に、種類ごとの雲の殻を描くかを全スロットへ配る。
-  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    for (const source of this.slotSources) source.subject.setCloudShellEnabled(species, enabled);
   }
 
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。

@@ -81,7 +81,7 @@ export class RingShadow {
   private readonly bandArray: THREE.UniformArrayNode<'vec4'>;
 
   // 上限ぶんの uniform を確保する。件数は固定なので、帯が増減してもグラフの形は変わらない。
-  constructor(private readonly sunLight: SunLight) {
+  public constructor(private readonly sunLight: SunLight) {
     this.center = uniform(new THREE.Vector3());
     this.axis = uniform(new THREE.Vector3(0, 1, 0));
     this.bands = Array.from({ length: MAX_RING_BANDS }, () => new THREE.Vector4());
@@ -89,7 +89,7 @@ export class RingShadow {
   }
 
   // 影を落とす天体 1 体ぶんの帯。center/axis は描画座標、bands が空なら影は落ちない。
-  set(center: THREE.Vector3, axis: THREE.Vector3, bands: readonly RingBand[]): void {
+  public set(center: THREE.Vector3, axis: THREE.Vector3, bands: readonly RingBand[]): void {
     this.center.value.copy(center);
     this.axis.value.copy(axis).normalize();
     // 帯ごとのスロットへ写し、余ったスロットは active で消す。
@@ -104,13 +104,13 @@ export class RingShadow {
   }
 
   // このフレームに有効な帯が 1 本でもあるか。**スロットは先頭から詰めるので先頭だけ見れば足りる。**
-  casts(): boolean { return this.bands[0]!.w > 0; }
+  public casts(): boolean { return this.bands[0]!.w > 0; }
 
   // 描画座標の点 worldPos へ、環の帯を通ってきた恒星の直射光が届く割合 0..1。
   //
   // **環そのものを描くフラグメントは源から外すこと** — 自分が乗っている帯の平面上に居るため、
   // 含めると自分自身の影で刃こぼれする。
-  transmittance(worldPos: Vec3Node): FloatNode {
+  public transmittance(worldPos: Vec3Node): FloatNode {
     const sunDir = this.sunLight.directionFrom(worldPos);
     const sunAngRadius = this.sunLight.angularRadiusFrom(worldPos);
     // 空きスロットも畳み込む。active が 0 のスロットは被覆率 0 = 素通しの 1 を返す。

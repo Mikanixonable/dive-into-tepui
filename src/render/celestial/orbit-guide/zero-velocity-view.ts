@@ -1,6 +1,6 @@
 // ゼロ速度曲線の描画資源。1フレームぶんの宣言の列を、断面から抽出した曲線1本ずつへ反映する。
-import * as THREE from 'three/webgpu';
-import { GuideCurve, GuideCurveDisplay } from './guide-curve';
+import type * as THREE from 'three/webgpu';
+import { GuideCurve, type GuideCurveDisplay } from './guide-curve';
 import type { CameraFrame } from '../../camera/camera-frame';
 
 // このフレームに描くゼロ速度曲線1本。曲線の形が変わらないフレームでは同じオブジェクトを渡すこと。

@@ -25,7 +25,9 @@ import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import type { PilotControls } from './dynamic-entity/pilot-controls';
 import type { EntityVisualSettings } from '../../render/entity-visual-settings';
 import type { RenderStyle } from '../../render/render-style';
-import type { ProteinDisplaySettings } from '../../render/protein/protein-display';
+import type { ShipModuleEmphasisMap } from '../../render/dynamic/ship/ship-render-contract';
+import type { SunLight } from '../../render/pipeline/sun-light';
+import type { BodyShadow } from '../../render/pipeline/shadow/body-shadow';
 import type { StageRules } from '../stages/stage-rules';
 import type { PerfCounts } from '../perf-counts';
 import type { RunEventSink } from '../run-events';
@@ -44,8 +46,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // エンティティの collection・pending spawn・上限・回収の正本。
   private readonly lifecycle: EntityLifecycle;
 
-  // 操作されうる個体。呼ぶたびに登録一覧から走査し直すため、フレーム内で複数回参照する場合は取得した配列を
-  // 持ち回る。
+  // 操作されうる個体。同じ collectionRevision の間は lifecycle が同じ読み取り専用 snapshot を返す。
   public get controllables(): readonly Controllable[] { return this.lifecycle.controllables; }
 
   // プールで描く種別の描画資源。
@@ -133,7 +134,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   // 保持する全エンティティを追加順に返す（読み取り専用）。
   public all(): readonly DynamicEntity[] { return this.lifecycle.all(); }
 
-  // 全エンティティの Motion を追加順に並べた新しい配列。
+  // 全エンティティの Motion を追加順に並べた読み取り専用一覧。同じ collectionRevision の間は
+  // lifecycle が同じ snapshot を返す。
   public allMotions(): readonly DynamicMotion[] { return this.lifecycle.allMotions(); }
 
   // 全エンティティの寿命判定と上限判定を行い、死亡したものを破棄・除去する。
@@ -177,7 +179,7 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
       for (const command of controls.commands) active.handleCommand(command, this);
     }
     this.updateControllables(active, controls, operable, dt, simDt, activeStage, stageRules);
-    this.behaveAll(active, operable && enemiesMayFire);
+    this.behaveAll(active, operable && enemiesMayFire, activeStage.enemyAttackLimit);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled(
       'update(指令決定)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
@@ -217,14 +219,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
   }
 
   // 生存中の敵全てに AI 行動を1フレーム分実行させる。追跡先の艦が1隻も無ければ何もしない。
-  // mayFire が偽の間は撃たない。
-  private behaveAll(active: Controllable | null, mayFire: boolean): void {
+  // mayFire が偽の間は撃たない。attackLimit は攻撃グループで同時に発砲してよい数。
+  private behaveAll(active: Controllable | null, mayFire: boolean, attackLimit: number): void {
     const player = this.trackedShip(active);
     if (player === null) return;
     const enemies = this.all().filter(isEnemy);
     for (const e of enemies) {
       if (e.motion.alive) {
-        e.updateBehavior(this.simTime, player, this, enemies, mayFire, this.celestialBodies);
+        e.updateBehavior(this.simTime, player, this, enemies, mayFire, this.celestialBodies, attackLimit);
       }
     }
   }
@@ -235,14 +237,19 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     return this.all().filter(isModularShip).find((p) => p.motion.alive) ?? null;
   }
 
-  // 当該フレームの表示オブジェクトを、エンティティ一覧を走査して同期する。proteinDisplay はタンパク質の敵に
-  // 共通の表示形態と着色。
+  // 当該フレームの表示オブジェクトを、エンティティ一覧を走査して同期する。shipModuleEmphasis は
+  // モジュール船のモジュールごとの強調とずらしの宣言。
   public sync(
     displayTime: number, active: Controllable | null, camera: CameraFrame, style: RenderStyle,
-    visual: EntityVisualSettings, proteinDisplay: ProteinDisplaySettings, orbitRef: OrbitReference | undefined,
+    visual: EntityVisualSettings,
+    shipModuleEmphasis: ShipModuleEmphasisMap | null,
+    sunLight: SunLight, bodyShadow: BodyShadow, orbitRef: OrbitReference | null,
   ): void {
     // 全個体が同じ1つのフレーム入力を読むよう、走査の前に組んでおく。
-    const viewFrame = { displayTime, camera, style, visual, proteinDisplay, pools: this.instancedPools };
+    const viewFrame = {
+      displayTime, camera, style, visual, shipModuleEmphasis, sunLight, bodyShadow,
+      pools: this.instancedPools,
+    };
     // instance pool の受付期間で全 Entity を挟む。
     this.instancedPools.beginFrame();
     for (const e of this.all()) e.sync(viewFrame, e === active, orbitRef);

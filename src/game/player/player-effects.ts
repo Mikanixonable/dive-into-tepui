@@ -29,7 +29,7 @@ export class PlayerEffects {
 
   // 機体喪失の出来事と破片。
   public destroy(state: KinematicState): void {
-    this.registry.events.record({ kind: 'shipExploded', state, modelScale: 1 });
+    this.registry.events.record({ kind: 'shipExploded', state, modelScale: 1, owner: 'player' });
     for (const piece of playerDestroyFragments(
       state, this.registry.idAllocators,
     )) this.registry.add(piece);

@@ -1,21 +1,22 @@
 // 接舷部の world pose と、距離・向き・相対速度に基づく接舷可否を求める。
 import { LOCAL_FORWARD, qMul, qRotate, type Quat } from '../../math/quat';
-import { add, cross, dot, len, norm, scale, sub, type Vec3 } from '../../math/vec3';
+import { add, dot, len, norm, scale, sub, type Vec3 } from '../../math/vec3';
+import { pointVelocityAt } from '../../physics/attitude';
 import type { ModularShip } from './modular-ship';
 import { isDockingModule } from './ship-assembly';
 
-export const DOCKING_MAX_DISTANCE = 1;
-export const DOCKING_MAX_ANGLE = 10 * Math.PI / 180;
-export const DOCKING_MAX_RELATIVE_SPEED = 1;
+const DOCKING_MAX_DISTANCE = 3;
+const DOCKING_MAX_ANGLE = 10 * Math.PI / 180;
+const DOCKING_MAX_RELATIVE_SPEED = 1;
 
-export interface DockingPortPose {
+interface DockingPortPose {
   readonly point: Vec3;
   readonly axis: Vec3;
   readonly velocity: Vec3;
   readonly rotation: Quat;
 }
 
-export interface DockingEligibility {
+interface DockingEligibility {
   readonly eligible: boolean;
   readonly distance: number;
   readonly angle: number;
@@ -24,18 +25,17 @@ export interface DockingEligibility {
 }
 
 /** module の外向き +Z 端面を world space の接舷点へ展開する。 */
-export function dockingPortPose(ship: ModularShip, moduleId: string): DockingPortPose | null {
+function dockingPortPose(ship: ModularShip, moduleId: string): DockingPortPose | null {
   const module = ship.assembly.module(moduleId);
   const definition = ship.assembly.definition(moduleId);
   const transform = ship.assembly.worldTransformOf(moduleId);
   if (module === null || definition === null || transform === null || !isDockingModule(module)) return null;
-  const root = sub(ship.motion.state.r, qRotate(ship.motion.att.q, ship.motion.centerOffset));
   const rotation = qMul(ship.motion.att.q, transform.rotation);
   const axis = norm(qRotate(rotation, LOCAL_FORWARD));
-  const center = add(root, qRotate(ship.motion.att.q, transform.position));
+  const center = ship.motion.assemblyToEci(transform.position);
   const point = add(center, scale(axis, definition.length / 2));
   const angularVelocity = qRotate(ship.motion.att.q, ship.motion.att.w);
-  const velocity = add(ship.motion.state.v, cross(angularVelocity, sub(point, ship.motion.state.r)));
+  const velocity = pointVelocityAt(ship.motion.state.v, angularVelocity, sub(point, ship.motion.state.r));
   return { point, axis, velocity, rotation };
 }
 

@@ -1,9 +1,9 @@
 // 選択中ノードの Δv アーム(PRO/RET・NRM/ANM・OUT/IN の6方向)の画面配置と、アームのドラッグ・
 // ラッチ・キー/ボタンの長押しそれぞれから Δv の加算量を決めるレート。加算量は onApplyDv へ渡す。
-import { KinematicState, orbitAxes } from '../../physics/kinematic-state';
-import { Projected } from '../../math/projection';
-import { Vec3, add, scale } from '../../math/vec3';
-import { AxisHandleSpec } from './node-gizmo';
+import { type KinematicState, orbitAxes } from '../../physics/kinematic-state';
+import type { Projected } from '../../math/projection';
+import { type Vec3, add, scale } from '../../math/vec3';
+import type { AxisHandleSpec } from './node-gizmo';
 
 const NODE_GIZMO_HANDLE_PX = 42; // ノードからアームハンドルを離す距離 [px]
 const AXIS_PROBE_PER_MAP_DIST = 0.05; // 画面方向を求めるために軸方向へ進める距離の、マップカメラ距離に対する比

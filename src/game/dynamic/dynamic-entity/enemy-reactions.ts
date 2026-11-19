@@ -1,24 +1,27 @@
 // 敵1体が被弾・接触・焼失・離脱したときのゲーム上の帰結。得点・ダメージ・撃破記録・破片と、
 // 起きたことの記録をまとめる。
 import { kinematicState } from '../../../physics/kinematic-state';
-import { enemyDestroyFragments } from './debris-piece';
 import type { DynamicMotion } from '../dynamic-motion';
 import type { EntityContactParticipant } from '../dynamic-simulation-participant';
 import type { EntityRegistry } from '../entity-registry';
 import type { StageOutcome, EnemyDeathCause } from '../../stages/stage-outcome';
 import { bulletReactionOf, type BulletType } from './bullet-reaction';
-import { closingSpeed, type Contact } from './contact';
+import type { Contact } from './contact';
 import { contactDamageSpeed } from './contact-damage';
 import type { Vec3 } from '../../../math/vec3';
-import type { RunEventSink } from '../../run-events';
 
 // 帰結を受け取る敵1体のインターフェース。ダメージの適用方法と撃破の記録は個体ごとに実装する。
-export interface EnemyReactionPort {
+interface EnemyReactionPort {
   readonly motion: DynamicMotion;
-  // 破片と爆散の大きさを決める機体模型の倍率。
+  // 爆散の大きさを決める機体模型の倍率。
   readonly modelScale: number;
-  // 弾によるダメージを適用する。部位を持つ個体は impactPoint から被弾部位を判定する。
-  applyBulletDamage(damage: number, impactPoint: Vec3, events: RunEventSink): void;
+  // 弾によるダメージを適用する。部位を持つ個体は impactPoint から被弾部位を判定し、失われた部位の破片を
+  // registry へ足す。
+  applyBulletDamage(damage: number, impactPoint: Vec3, registry: EntityRegistry): void;
+  // 本体が失われるとき、残る破片を registry へ足す。
+  scatterDebris(registry: EntityRegistry): void;
+  // 弾が命中した時刻を伝える。命中の瞬間の表示(マーカーの閃き)に使う。
+  noteStruck(simTime: number): void;
   // 接触の相対速度によるダメージを入れる。ダメージが実際に入ったら true。
   applyImpactDamage(damageSpeed: number): boolean;
   // まだ生き残る体力が残っているか。
@@ -43,12 +46,15 @@ export class EnemyReactions {
     this.damagedByContact(contactDamageSpeed(other, contact), contact.selfState.t, 'killed', activeStage, registry);
   }
 
-  // 天体の固体表面へ触れたときの帰結。接近速度で損傷させ、落とせたら衝突として記録する。
+  // 天体の固体表面へ触れたときの帰結。到達は接近速度によらず喪失で、衝突として記録する
+  // (ORBIT.md「接触判定」)。
   public receiveSurfaceContact(
     contact: Contact, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     if (!this.port.motion.alive) return;
-    this.damagedByContact(closingSpeed(contact), contact.selfState.t, 'collision', activeStage, registry);
+    this.port.motion.kill();
+    this.port.recordDeath(activeStage, contact.selfState.t, 'collision');
+    this.recordDestroy(registry);
   }
 
   // 大気で焼失したときの帰結。撃破ではなく焼失として戦果へ残す。
@@ -71,7 +77,9 @@ export class EnemyReactions {
     simTime: number, activeStage: StageOutcome, registry: EntityRegistry,
   ): void {
     activeStage.recordHit();
-    this.port.applyBulletDamage(damage, impactPoint, registry.events);
+    this.port.applyBulletDamage(damage, impactPoint, registry);
+    // 命中の時刻は、撃破の有無に関わらず表示の閃きへ渡す。
+    this.port.noteStruck(simTime);
     if (this.port.hasHealth()) {
       this.recordImpact(bulletType, impactPoint, registry);
       return;
@@ -106,13 +114,12 @@ export class EnemyReactions {
     this.recordDestroy(registry);
   }
 
-  // 爆散を記録し、機体模型の倍率に見合った破片を registry へ足す。
+  // 爆散を記録し、残る破片を registry へ足す。
   private recordDestroy(registry: EntityRegistry): void {
     registry.events.record({
       kind: 'shipExploded', state: this.port.motion.state, modelScale: this.port.modelScale,
+      owner: 'enemy',
     });
-    for (const piece of enemyDestroyFragments(
-      this.port.motion.state, this.port.modelScale, registry.idAllocators,
-    )) registry.add(piece);
+    this.port.scatterDebris(registry);
   }
 }

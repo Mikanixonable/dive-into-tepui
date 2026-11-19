@@ -4,14 +4,15 @@ import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { ViewMode } from '../view/view-mode';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { PropertyWindowOpener } from './property-window-opener';
-import type { ObjectAuthoring, InspectedObject } from './inspected-object';
-import type { MenuItem } from '../hud/windows/context-menu';
+import type { InspectedObject } from './inspected-object';
+import type { PresentationStageAuthoring } from '../presentation-ports';
+import type { MenuItem } from '../../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { ModularShip } from '../ship/modular-ship';
 import { strongestAttractor } from '../../physics/attractor';
 import { apsisAltitudes } from '../../physics/elements';
-import { fmtDist, fmtEnergy } from '../../hud/utils';
+import { fmtDist, fmtEnergy } from '../../hud/format';
 import { fmtAmmoStatus } from '../hud/ammo-status';
 import { MenuCommon } from '../hud/windows/menu-actions';
 import { orbitRows } from './orbit-rows';
@@ -42,16 +43,8 @@ export class ShipInspection implements InspectedObject {
   public get onlyInFocusedSystem(): boolean { return this.ship.capabilities.role !== 'base'; }
   public get modules(): readonly ShipModuleInstance[] { return this.ship.assembly.modules; }
   public hasModule(moduleId: string): boolean { return this.ship.assembly.module(moduleId) !== null; }
-  public setModuleDeployment(moduleId: string, deployed: boolean): void {
-    const module = this.ship.assembly.module(moduleId);
-    if (module === null || (module.kind !== 'radiator' && module.kind !== 'solar_panel')) return;
-    const sameKind = this.modules.filter(candidate => candidate.kind === module.kind);
-    const side = sameKind.findIndex(candidate => candidate.id === moduleId) === 0 ? 'up' : 'down';
-    if (module.kind === 'radiator') this.ship.motion.radiator.setDeployed(side, deployed);
-    else this.ship.motion.power.setDeployed(side, deployed);
-    this.ship.assembly.setDeployment(moduleId, deployed ? 1 : 0);
-  }
   public readonly rename = (name: string): void => { this.ship.rename(name); };
+  // マップでこの船が選ばれたとき、その位置にプロパティ窓を開く。
   public readonly onMapSelect = (windows: PropertyWindowOpener, x: number, y: number): void => {
     windows.openProperties(this, x, y);
   };
@@ -73,6 +66,7 @@ export class ShipInspection implements InspectedObject {
   }
   public listCounted(): boolean { return false; }
   public listPriority(viewer: OrbitingObject | null): number { return this.ship === viewer ? -100 : 0; }
+  // 一覧の詳細行。役割・HP・近点高度(PE)を並べる。
   public listDetail(celestialBodies: CelestialBodies): string {
     const center = strongestAttractor(this.ship.motion.state.r, celestialBodies.celestialMotions, this.ship.motion.state.t);
     const elements = this.ship.motion.orbitalElementsAround(center, this.ship.motion.state.t);
@@ -80,8 +74,10 @@ export class ShipInspection implements InspectedObject {
     return `${ROLE_LABEL[this.ship.capabilities.role]} · HP ${Math.round(this.ship.hp)}/${Math.round(this.ship.maxHp)} · PE ${pe}`;
   }
   public listSearchText(celestialBodies: CelestialBodies): string { return this.listDetail(celestialBodies); }
+  // メニュー項目。操作対象かどうかで、操作対象の切替・軌跡線・削除の出し方が変わる。
   public menuItems(_bodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null): readonly MenuItem<MenuAction>[] {
     const active = this.ship === viewer;
+    // 操作対象では軌跡線トグルと削除を出さず、操作対象の解除を出す。
     return [
       MenuCommon.target(navTargetId === this.ship.id),
       { label: `軌道計画の実行: ${planExecutionLabel(this.ship.planExecution)}`, act: 'planExecCycle', keepOpen: true },
@@ -93,7 +89,7 @@ export class ShipInspection implements InspectedObject {
       MenuCommon.cancel(),
     ];
   }
-  public runMenu(act: MenuAction, selection: ControlSelection, authoring: ObjectAuthoring | null): void {
+  public runMenu(act: MenuAction, selection: ControlSelection, authoring: PresentationStageAuthoring | null): void {
     if (act === 'toggleTrajectoryLine') this.ship.trajectoryLineVisible = !this.ship.trajectoryLineVisible;
     else if (act === 'activate') selection.select(this.ship);
     else if (act === 'deactivate') selection.release(this.ship);
@@ -104,15 +100,17 @@ export class ShipInspection implements InspectedObject {
     } else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.ship.mapKind, this.ship.motion.state);
     else if (act === 'delete') selection.remove(this.ship);
   }
+  // プロパティ窓の行。接舷部の状態を先に集め、艦の状態・弾薬・軌道の行を並べる。
   public propertyRows(
     bodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
+    // 接舷部ごとの接続状態の行。
     const dockRows: PropertyRow[] = this.ship.assembly.modules
       .filter(module => module.kind === 'dock' || module.kind === 'docking_port')
       .map(module => ({
         key: `dock-${module.id}`,
         label: `接舷部 ${module.id}`,
-        value: module.hp <= 0 ? '全損' : this.ship.docks.status(this.ship.assembly, module.id),
+        value: module.hp <= 0 ? '全損' : this.ship.assembly.isPortConnected(module.id) ? '接続中' : '空き',
         collapsible: true,
       }));
     return [

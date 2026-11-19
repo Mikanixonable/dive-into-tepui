@@ -1,6 +1,6 @@
 import type { SerializedGame } from '../../game/game';
 import type { RunSummary } from '../../game/run-summary';
-import { fmtDist, fmtTime } from '../../hud/utils';
+import { fmtDist, fmtTime } from '../../hud/format';
 import { SAVED_GAME_VERSION, type SavedGame, type SaveStore } from './save-store';
 import type { SaveSlots } from './save-slots';
 import { isEphemerisContextRestorable } from '../../physics/ephemeris/ephemeris-context';

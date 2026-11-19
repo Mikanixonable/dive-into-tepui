@@ -45,13 +45,13 @@ const circleOverlapArea = Fn(([r1, r2, d]: readonly [FloatNode, FloatNode, Float
   );
 });
 
-// 点 p から見た恒星円盤のうち、楕円体 (center, axes, bodyFromWorld) に遮られずに残る面積比 0..1。
+// 点 p から見た光源円盤のうち、楕円体 (center, axes, bodyFromWorld) に遮られずに残る面積比 0..1。
 // physics/shadow.ts の shadowedFraction と同じ式で、本影・金環・半影・完全日照が場合分け無しに
 // 1つの閉じた形から出る。
 //
 // **角度は「天体固定の向きへ回して半軸で割った空間」で測る。** その空間では楕円体が半径 1 の球へ
 // 戻るので、縁への接線条件が扁平な天体でも厳密に解ける — 日没は測地地平線(面の法線と恒星方向が
-// 直交する瞬間)にちょうど重なり、緯度によって早まることも遅れることもない。恒星の視半径だけは
+// 直交する瞬間)にちょうど重なり、緯度によって早まることも遅れることもない。光源の視半径だけは
 // 描画座標のまま渡してよい: この写像が角度を伸縮させる幅は扁平率ぶん(地球 0.3%・土星 10%)で、
 // 半影幅の決定にのみ限定的に寄与する。
 //
@@ -59,22 +59,22 @@ const circleOverlapArea = Fn(([r1, r2, d]: readonly [FloatNode, FloatNode, Float
 // 深度から復元した位置も誤差を持つので、地表の画素は普通に楕円体の内側へ入る — そこを本影と
 // 判じると、昼側の地表に真っ黒な斑が出る。
 const ellipsoidTransmittance = Fn((
-  [p, sunDir, sunDist, sunAngRadius, center, axes, bodyFromWorld]: readonly [Vec3Node, Vec3Node, FloatNode, FloatNode, Vec3Node, Vec3Node, Mat4Node],
+  [p, sourceDir, sourceDist, sourceAngRadius, center, axes, bodyFromWorld]: readonly [Vec3Node, Vec3Node, FloatNode, FloatNode, Vec3Node, Vec3Node, Mat4Node],
 ) => {
   const toCenter = center.sub(p);
   // 空きスロットの半軸 0 による除算を防ぐ下限ガード。実在天体の半軸スケール（km オーダー）では本ガードは作用しない。
   const safeAxes = max(axes, vec3(1));
   const local = bodyFromWorld.mul(vec4(toCenter.negate(), 0)).xyz.div(safeAxes);
-  const sunLocal = normalize(bodyFromWorld.mul(vec4(sunDir, 0)).xyz.div(safeAxes));
+  const sourceLocal = normalize(bodyFromWorld.mul(vec4(sourceDir, 0)).xyz.div(safeAxes));
   // 半径 1 の球から見た受け手の動径。1 で頭を打たせると、内側の受け手が表面の答えを受け取る。
   const radial = max(length(local), 1e-6);
   const bodyAngRadius = asin(clamp(float(1).div(max(radial, 1)), 0, 1));
-  const separation = acos(clamp(dot(local.div(radial).negate(), sunLocal), -1, 1));
-  const overlap = circleOverlapArea(sunAngRadius, bodyAngRadius, separation);
-  const lit = clamp(float(1).sub(overlap.div(PI.mul(sunAngRadius).mul(sunAngRadius))), 0, 1);
-  // 半軸 0 の空きスロットと、恒星より遠い側にある天体。
+  const separation = acos(clamp(dot(local.div(radial).negate(), sourceLocal), -1, 1));
+  const overlap = circleOverlapArea(sourceAngRadius, bodyAngRadius, separation);
+  const lit = clamp(float(1).sub(overlap.div(PI.mul(sourceAngRadius).mul(sourceAngRadius))), 0, 1);
+  // 半軸 0 の空きスロットと、光源より遠い側にある天体。
   const outOfPlay = lessThan(max(max(axes.x, axes.y), axes.z), 1)
-    .or(greaterThan(dot(toCenter, sunDir), sunDist));
+    .or(greaterThan(dot(toCenter, sourceDir), sourceDist));
   return select(outOfPlay, float(1), lit);
 });
 
@@ -88,7 +88,7 @@ export class BodyShadow {
   private readonly bodyFromWorldArray: THREE.UniformArrayNode<'mat4'>;
 
   // 上限ぶんの uniform を確保する。件数は固定なので、天体が増減してもグラフの形は変わらない。
-  constructor(private readonly sunLight: SunLight) {
+  public constructor(private readonly sunLight: SunLight) {
     this.centers = Array.from({ length: MAX_SHADOW_BODIES }, () => new THREE.Vector3());
     this.axes = Array.from({ length: MAX_SHADOW_BODIES }, () => new THREE.Vector3());
     this.bodyFromWorld = Array.from({ length: MAX_SHADOW_BODIES }, () => new THREE.Matrix4());
@@ -98,7 +98,7 @@ export class BodyShadow {
   }
 
   // このフレームで影を落とす天体の列(描画座標)。MAX_SHADOW_BODIES を超えた分は捨てる。
-  set(bodies: readonly ShadowBody[]): void {
+  public set(bodies: readonly ShadowBody[]): void {
     for (const [i, axes] of this.axes.entries()) {
       const body = bodies[i];
       // 空きスロットは半軸 0 で消す — 実効半径が 0 になり、透過率がそのまま素通しへ倒れる。
@@ -110,22 +110,49 @@ export class BodyShadow {
   }
 
   // このフレームに影を落とす天体が 1 体でもあるか。**スロットは先頭から詰めるので先頭だけ見れば足りる。**
-  casts(): boolean { return this.axes[0]!.lengthSq() > 0; }
+  public casts(): boolean { return this.axes[0]!.lengthSq() > 0; }
 
   // 描画座標の点 worldPos へ、天体を通ってきた恒星の直射光が届く割合 0..1。
-  transmittance(worldPos: Vec3Node): FloatNode {
+  public transmittance(worldPos: Vec3Node): FloatNode {
     const sunDist = this.sunLight.distanceFrom(worldPos);
     const sunDir = this.sunLight.directionFrom(worldPos);
     const sunAngRadius = this.sunLight.angularRadiusFrom(worldPos);
+    return this.diskTransmittance(
+      worldPos, sunDir, sunDist, sunAngRadius, this.sunLight.position);
+  }
+
+  // 描画座標の点 worldPos へ、中心 sourceCenter・半径 sourceRadius [m] の面光源から届く光の
+  // 割合 0..1(光源円盤のうち天体に遮られず残る面積比)。光源天体自身は遮蔽へ数えないので、
+  // 天体照のように恒星以外の光源へも掛けられる。
+  public transmittanceFrom(
+    worldPos: Vec3Node, sourceCenter: Vec3Node, sourceRadius: FloatNode,
+  ): FloatNode {
+    const toSource = sourceCenter.sub(worldPos);
+    const sourceDist = max(length(toSource), 1);
+    const sourceDir = toSource.div(sourceDist);
+    const sourceAngRadius = asin(clamp(sourceRadius.div(sourceDist), 1e-9, 1));
+    return this.diskTransmittance(worldPos, sourceDir, sourceDist, sourceAngRadius, sourceCenter);
+  }
+
+  // worldPos から見た光源円盤の透過率を、影を落とす天体の列で畳み込んだ値。sourceCenter と
+  // 同じ位置の天体は光源天体そのものとして畳み込まない — 光源天体の内側に居る受け手では、
+  // その天体が光源円盤を覆い尽くして透過率が 0 へ落ちてしまう。
+  private diskTransmittance(
+    worldPos: Vec3Node, sourceDir: Vec3Node, sourceDist: FloatNode, sourceAngRadius: FloatNode,
+    sourceCenter: Vec3Node,
+  ): FloatNode {
     // 空きスロットも畳み込む。半軸 0 のスロットは素通しの 1 を返すので、有効な数で回す必要が無い。
     return Fn(() => {
       const transmittance = float(1).toVar();
       Loop({ start: 0, end: MAX_SHADOW_BODIES, type: 'int', condition: '<' }, ({ i }) => {
-        transmittance.mulAssign(ellipsoidTransmittance(
-          worldPos, sunDir, sunDist, sunAngRadius,
-          this.centerArray.element(i), this.axesArray.element(i),
-          this.bodyFromWorldArray.element(i),
-        ));
+        const center = this.centerArray.element(i);
+        // 遮蔽器と光源へは同じ天体の同じ位置が置かれるので、光源天体の判定は中心が
+        // 1 m 未満しか離れていないことで判じる。
+        const isSource = lessThan(length(center.sub(sourceCenter)), float(1));
+        transmittance.mulAssign(select(isSource, float(1), ellipsoidTransmittance(
+          worldPos, sourceDir, sourceDist, sourceAngRadius,
+          center, this.axesArray.element(i), this.bodyFromWorldArray.element(i),
+        )));
       });
       return transmittance;
     })();

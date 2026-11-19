@@ -1,22 +1,22 @@
 // リングバッファによる両端キュー
 export class Deque<T> {
-    private buffer: (T | undefined)[];
+    private buffer: (T | null)[];
     private start = 0;
     private count = 0;
 
     // 初期容量(2の冪に切り上げ)でバッファを確保する。
-    constructor(capacity = 8) {
+    public constructor(capacity = 8) {
         capacity = Math.max(2, 1 << Math.ceil(Math.log2(capacity)));
         this.buffer = new Array(capacity);
     }
 
     // 現在の要素数
-    get size() {
+    public get size(): number {
         return this.count;
     }
 
     // 現在1つ以上の要素があるか
-    get empty() {
+    public get empty(): boolean {
         return this.count === 0;
     }
 
@@ -42,17 +42,17 @@ export class Deque<T> {
         if (this.count < this.capacity)
             return;
 
-        const next = new Array<T | undefined>(this.capacity * 2);
+        const next = new Array<T | null>(this.capacity * 2);
 
         for (let i = 0; i < this.count; i++)
-            next[i] = this.buffer[this.index(this.start + i)];
+            next[i] = this.buffer[this.index(this.start + i)]!;
 
         this.buffer = next;
         this.start = 0;
     }
 
     // 左端を0とする論理インデックス i の要素を返す。範囲外なら例外。
-    at(i: number): T {
+    public at(i: number): T {
         if (i < 0 || i >= this.count)
             throw new RangeError();
 
@@ -60,17 +60,17 @@ export class Deque<T> {
     }
 
     // 左端の要素を返す。空なら例外。
-    peekLeft(): T {
+    public peekLeft(): T {
         return this.at(0);
     }
 
     // 右端の要素を返す。空なら例外。
-    peekRight(): T {
+    public peekRight(): T {
         return this.at(this.count - 1);
     }
 
     // 左端に要素を追加する。
-    pushLeft(value: T) {
+    public pushLeft(value: T): void {
         this.ensureCapacity();
 
         this.start--;
@@ -79,7 +79,7 @@ export class Deque<T> {
     }
 
     // 右端に要素を追加する。
-    pushRight(value: T) {
+    public pushRight(value: T): void {
         this.ensureCapacity();
 
         this.buffer[this.index(this.end)] = value;
@@ -87,14 +87,14 @@ export class Deque<T> {
     }
 
     // 左端の要素を取り除いて返す。空なら例外。
-    popLeft(): T {
+    public popLeft(): T {
         if (this.empty)
             throw new RangeError();
 
         const idx = this.index(this.start);
         const value = this.buffer[idx]!;
 
-        this.buffer[idx] = undefined;
+        this.buffer[idx] = null;
 
         this.start++;
         this.count--;
@@ -103,14 +103,14 @@ export class Deque<T> {
     }
 
     // 右端の要素を取り除いて返す。空なら例外。
-    popRight(): T {
+    public popRight(): T {
         if (this.empty)
             throw new RangeError();
 
         const idx = this.index(this.end - 1);
         const value = this.buffer[idx]!;
 
-        this.buffer[idx] = undefined;
+        this.buffer[idx] = null;
 
         this.count--;
 
@@ -118,35 +118,35 @@ export class Deque<T> {
     }
 
     // 左からn要素まとめて削除 clear=falseのときO(1) clear=trueのときO(n)
-    deleteLeftN(n: number, clear = false) {
+    public deleteLeftN(n: number, clear = false): void {
         if (n < 0 || n > this.count)
             throw new RangeError();
 
         if (clear)
             for (let i = 0; i < n; i++)
-                this.buffer[this.index(this.start + i)] = undefined;
+                this.buffer[this.index(this.start + i)] = null;
 
         this.start += n;
         this.count -= n;
     }
 
     // 右からn要素まとめて削除 clear=falseのときO(1) clear=trueのときO(n)
-    deleteRightN(n: number, clear = false) {
+    public deleteRightN(n: number, clear = false): void {
         if (n < 0 || n > this.count)
             throw new RangeError();
 
         if (clear)
             for (let i = 0; i < n; i++)
-                this.buffer[this.index(this.end - 1 - i)] = undefined;
+                this.buffer[this.index(this.end - 1 - i)] = null;
 
         this.count -= n;
     }
 
     // 要素を空にする。clearMemory=trueのときO(n)でメモリを解放する。clearMemory=falseのときO(1)
-    clear(clearMemory = false) {
+    public clear(clearMemory = false): void {
         if (clearMemory)
             for (let i = 0; i < this.count; i++)
-                this.buffer[this.index(this.start + i)] = undefined;
+                this.buffer[this.index(this.start + i)] = null;
 
         this.start = 0;
         this.count = 0;

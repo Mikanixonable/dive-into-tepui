@@ -3,7 +3,7 @@ import { hitsSphere, type Ray } from '../../math/ray';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
 import { sameVec, type Vec3, v3 } from '../../math/vec3';
-import { type Attitude, stepAttitude } from '../../physics/attitude';
+import { type Attitude, type RotatingFrame, stepAttitude, stepAttitudeInFrame } from '../../physics/attitude';
 import { localOrbitPeriod } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
@@ -63,7 +63,7 @@ export type ContactKind =
 
 // 断面積質量比 × 放射率で見積もる、球とみなした個体の日射を吸収する質量あたりの面積 [m^2/kg]。
 // bcInv は弾道係数の逆数 [m^2/kg]。
-export function sphereSolarAbsorbAreaPerMass(emissivity: number, bcInv: number): number {
+function sphereSolarAbsorbAreaPerMass(emissivity: number, bcInv: number): number {
   return (emissivity * bcInv) / DRAG_COEFFICIENT;
 }
 
@@ -75,6 +75,17 @@ export interface DynamicMotionBehavior {
   updateCommands?(self: DynamicMotion, simDt: number): void;
   // 直近の updateCommands が決めた推力加速度(ECI)。噴いていなければ null。
   commandedThrust?(self: DynamicMotion): Vec3 | null;
+  // 各積分ステップの直前に呼ぶ自律の指令(自動操縦の推力・トルクなど)。この歩の長さ dt [s] と、
+  // その歩に使う重力源・評価時刻を受ける。
+  stepCommands?(
+    self: DynamicMotion, dt: number, attractors: readonly CelestialBody[], pivot: number,
+  ): void;
+  // この個体が要求する積分刻みの上限 [s](燃焼中の細かい刻みなど)。制約しないなら null。
+  maxSubstepDuration?(self: DynamicMotion): number | null;
+  // 姿勢の基準にする回転座標系(周回の局所系など)。慣性系で進めるなら null。
+  attitudeFrame?(
+    self: DynamicMotion, state: KinematicState, attractors: readonly CelestialBody[], pivot: number,
+  ): RotatingFrame | null;
   contactsWith?(self: DynamicMotion, other: EntityContactParticipant, simTime: number): boolean;
   testSphereCollision?(
     self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number,
@@ -125,7 +136,7 @@ export interface DynamicMotionBehavior {
 // DynamicMotion の物性と初期値。省いた項目は既定値になる。
 export interface DynamicMotionProperties {
   readonly alive?: boolean;
-  readonly attitude?: Attitude;
+  readonly attitude?: Attitude | null;
   readonly hasAttitude?: boolean;
   readonly mass?: number;
   readonly radius?: number;
@@ -427,13 +438,20 @@ export class DynamicMotion {
     return orbitalElementsOf(this.state, center, centerPivot);
   }
 
-  // dt を大気突入の刻み幅の上限に収めるための分割数。preciseReentry でない個体は 1。
+  // dt を大気突入の刻み幅の上限と個体が要求する刻みの上限に収めるための分割数。
   public substepDivisions(
     dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number,
   ): number {
-    if (!this.preciseReentry) return 1;
-    const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies, pivot);
-    return innerDt >= dt ? 1 : Math.ceil(dt / innerDt);
+    let divisions = 1;
+    if (this.preciseReentry) {
+      const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies, pivot);
+      if (innerDt < dt) divisions = Math.ceil(dt / innerDt);
+    }
+    const cap = this.behavior.maxSubstepDuration?.(this);
+    if (cap !== undefined && cap !== null && cap > 0 && cap < dt) {
+      divisions = Math.max(divisions, Math.ceil(dt / cap));
+    }
+    return divisions;
   }
 
   // dt のあいだに抗力が対気速度を奪い切るか。preciseReentry の個体は常に false。
@@ -450,6 +468,9 @@ export class DynamicMotion {
     atmosphereBody: CelestialBody | null, star: CelestialBody | null, pivot: number,
     services: DynamicReactionServices,
   ): boolean {
+    // この歩の自律の指令を先に決める。推力があれば以降の判定で弧なぞりは選ばれない。
+    this.behavior.stepCommands?.(this, dt, celestialBodies, pivot);
+    const frameBefore = this.attitudeFrameOf(celestialBodies, pivot);
     // 推力がなく予測弧が届く歩は、弧をなぞって積分を省く。
     const interval = this.historySampleInterval(celestialBodies, pivot);
     const integrated = !this.followPredicted(this.state.t + dt, interval);
@@ -465,7 +486,12 @@ export class DynamicMotion {
         this.state.t, this.state.r, this.state.v, star, occluders, atmosphereBody, pivot)];
     }
     this._prevAtt = this._att;
-    if (this.hasAttitude) this._att = stepAttitude(this._att, this._torque, dt);
+    if (this.hasAttitude) {
+      const frameAfter = this.attitudeFrameOf(celestialBodies, pivot);
+      this._att = frameBefore !== null && frameAfter !== null
+        ? stepAttitudeInFrame(this._att, this._torque, dt, frameBefore, frameAfter)
+        : stepAttitude(this._att, this._torque, dt);
+    }
 
     // 歩のあいだの環境の平均で、種別ごとの環境反応と熱を進める。
     const radiantIntensity = star !== null && isStar(star) ? star.def.radiantIntensity : 0;
@@ -474,6 +500,11 @@ export class DynamicMotion {
       this, dt, atmosphereBody, this.state.t, environment.sunlight, environment.sunDir);
     this.stepThermal(dt, environmentSamples, radiantIntensity, services);
     return integrated;
+  }
+
+  // いまの状態で姿勢の基準にする回転座標系。振る舞いが決めず、慣性系で進めるなら null。
+  private attitudeFrameOf(bodies: readonly CelestialBody[], pivot: number): RotatingFrame | null {
+    return this.behavior.attitudeFrame?.(this, this.state, bodies, pivot) ?? null;
   }
 
   // 次の熱の歩で温度へ足す熱量 specificJoules [J/kg] を積む。

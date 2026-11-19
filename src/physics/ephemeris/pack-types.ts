@@ -1,10 +1,10 @@
 // An ArrayLike view keeps the evaluator independent of how coefficients arrived:
 // plain arrays, typed arrays, and other indexed coefficient stores are all valid.
 // The evaluator never writes through this interface.
-export type ReadonlyNumberArray = {
+export interface ReadonlyNumberArray {
   readonly length: number;
   readonly [index: number]: number;
-};
+}
 
 type ChebyshevVectorCoefficients = readonly [
   ReadonlyNumberArray,

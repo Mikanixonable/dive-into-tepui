@@ -2,13 +2,22 @@
 import { v3, type Vec3 } from '../../math/vec3';
 
 // 建造可能な部品の種別。表示・物理・保存はこのタグを共有するが、振る舞いは instance の状態を読む。
-export const SHIP_MODULE_KINDS = [
-  'cockpit', 'tank', 'thruster', 'rcs', 'weapon', 'armor', 'radiator', 'solar_panel',
-  'booster', 'docking_port', 'dock', 'decoupler',
-] as const;
-export type ShipModuleKind = typeof SHIP_MODULE_KINDS[number];
+export type ShipModuleKind =
+  'cockpit' | 'tank' | 'thruster' | 'rcs' | 'weapon' | 'armor' | 'radiator' | 'solar_panel' |
+  'booster' | 'docking_port' | 'dock' | 'decoupler';
 export type FuelKind = 'main' | 'rcs';
 export type ShipModuleCategory = 'command' | 'fuel' | 'propulsion' | 'combat' | 'utility';
+
+// 軸方向の端面の使い道。
+// 'none' は接続しない端、'structural' はこの端で他へ付くことも他がこの端へ付くこともできる端、
+// 'receive' は他がこの端へ付くことだけできる端(建造ドックの結合面)。
+type AxialFaceUse = 'none' | 'structural' | 'receive';
+
+// 軸方向の両端面の使い道。front は +Z 端、back は −Z 端。
+export interface AxialFaces {
+  readonly front: AxialFaceUse;
+  readonly back: AxialFaceUse;
+}
 
 // 円柱は機体座標系で定義する。axis は単位ベクトル、半長 halfLength と半径 radius は m。
 export interface LocalCappedCylinder {
@@ -20,7 +29,7 @@ export interface LocalCappedCylinder {
 
 // 数値の能力は「健全な instance だけを集計する」静的値である。
 // 燃料の表示量と運動に加える質量は単位が異なるため、換算率を definition に固定する。
-export interface ShipModuleAbilities {
+interface ShipModuleAbilities {
   readonly fuelKind?: FuelKind;
   readonly fuelCapacity?: number;
   readonly fuelMassPerUnit?: number; // kg / fuel unit
@@ -42,22 +51,34 @@ export interface ShipModuleDefinition {
   readonly category?: ShipModuleCategory;
   readonly length: number; // m, +Z 軸方向
   readonly diameter: number; // m
+  readonly axialFaces: AxialFaces;
   readonly dryMass: number; // kg
   readonly maxHp: number;
   readonly modelId: string;
   readonly solidPrimitives: readonly LocalCappedCylinder[];
+  // 砲身先端の位置。モジュール局所 [m] で、発射はこの順に交互に巡る。
+  readonly muzzles: readonly Vec3[];
+  // 給弾ベルトの取り込み口。モジュール局所 [m] で、ベルトはここから +X 方向へ伸びる。
+  readonly feedPort: Vec3;
+  // 空薬莢の排出口。モジュール局所 [m] で、薬莢はここから -X 方向へ出る。
+  readonly ejectionPort: Vec3;
+  // 空になったベルトリンクとマガジン外枠の排出口。モジュール局所 [m] で、外枠はここから -X 方向へ出る。
+  readonly linkExitPort: Vec3;
   readonly abilities: ShipModuleAbilities;
 }
 
+// value を新しいオブジェクトへ写して凍結する。
 function frozenVector(value: Vec3): Vec3 {
   return Object.freeze(v3(value.x, value.y, value.z));
 }
 
+// 正の有限数でなければ失敗にする。
 function finitePositive(value: number, label: string): number {
   if (!Number.isFinite(value) || value <= 0) throw new Error(`ship module ${label} must be positive`);
   return value;
 }
 
+// 定義と入れ子の配列・値をすべて凍結して返す。プリミティブの軸は単位化する。
 function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinition {
   const primitives = definition.solidPrimitives.map((primitive) => Object.freeze({
     center: frozenVector(primitive.center),
@@ -69,9 +90,15 @@ function freezeDefinition(definition: ShipModuleDefinition): ShipModuleDefinitio
     halfLength: primitive.halfLength,
     radius: primitive.radius,
   }));
+  // 浅い複製を凍結し、入れ子だけ個別に写してから凍結したもので上書きする。
   return Object.freeze({
     ...definition,
+    axialFaces: Object.freeze({ ...definition.axialFaces }),
     solidPrimitives: Object.freeze(primitives),
+    muzzles: Object.freeze(definition.muzzles.map(frozenVector)),
+    feedPort: frozenVector(definition.feedPort),
+    ejectionPort: frozenVector(definition.ejectionPort),
+    linkExitPort: frozenVector(definition.linkExitPort),
     abilities: Object.freeze({ ...definition.abilities }),
   });
 }
@@ -82,6 +109,7 @@ export function defineShipModule(
     readonly solidPrimitives: readonly LocalCappedCylinder[];
   },
 ): ShipModuleDefinition {
+  // 寸法・識別子・端面の使い道の検査。
   finitePositive(definition.length, 'length');
   finitePositive(definition.diameter, 'diameter');
   finitePositive(definition.dryMass, 'dryMass');
@@ -89,6 +117,12 @@ export function defineShipModule(
   if (definition.id.length === 0 || definition.modelId.length === 0) {
     throw new Error('ship module id and modelId must not be empty');
   }
+  for (const use of [definition.axialFaces.front, definition.axialFaces.back]) {
+    if (use !== 'none' && use !== 'structural' && use !== 'receive') {
+      throw new Error(`invalid axial face use: ${definition.id}`);
+    }
+  }
+  // 接触プリミティブと砲口・排出口の位置の検査。
   if (definition.solidPrimitives.length === 0) throw new Error('ship module needs a solid primitive');
   for (const primitive of definition.solidPrimitives) {
     finitePositive(primitive.halfLength, 'primitive halfLength');
@@ -97,6 +131,20 @@ export function defineShipModule(
       || !Number.isFinite(primitive.center.z)) throw new Error('primitive center must be finite');
     const axisLength = Math.hypot(primitive.axis.x, primitive.axis.y, primitive.axis.z);
     if (!(axisLength > 1e-12) || !Number.isFinite(axisLength)) throw new Error('primitive axis must be nonzero');
+  }
+  for (const muzzle of definition.muzzles) {
+    if (!Number.isFinite(muzzle.x) || !Number.isFinite(muzzle.y) || !Number.isFinite(muzzle.z)) {
+      throw new Error('muzzle position must be finite');
+    }
+  }
+  for (const [label, port] of [
+    ['feed port', definition.feedPort],
+    ['ejection port', definition.ejectionPort],
+    ['link exit port', definition.linkExitPort],
+  ] as const) {
+    if (!Number.isFinite(port.x) || !Number.isFinite(port.y) || !Number.isFinite(port.z)) {
+      throw new Error(`${label} must be finite`);
+    }
   }
   for (const value of Object.values(definition.abilities)) {
     if (typeof value === 'number' && (!Number.isFinite(value) || value < 0)) {

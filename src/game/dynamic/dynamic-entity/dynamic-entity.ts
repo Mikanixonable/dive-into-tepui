@@ -19,7 +19,8 @@ export interface SerializedDynamicEntityFields extends SerializedKinematicState 
   readonly id: string;
   // 具象クラスのタグ。
   readonly kind:
-    | 'ship' | 'player' | 'metal-enemy' | 'protein-enemy' | 'ammo' | 'rcs-fuel' | 'booster' | 'base' | 'bullet' | 'debris';
+    | 'ship' | 'player' | 'metal-enemy' | 'assembly-enemy'
+    | 'ammo' | 'rcs-fuel' | 'booster' | 'base' | 'bullet' | 'debris';
   readonly q: Quat;
   readonly w: SerializedVec3;
   readonly alive?: boolean;
@@ -27,7 +28,6 @@ export interface SerializedDynamicEntityFields extends SerializedKinematicState 
 
 // 1体ぶんの Motion と View を結び、両者に共通するゲーム上の識別と判断を持つ。
 export abstract class DynamicEntity {
-  public readonly id: string;
   public readonly motion: DynamicMotion;
   public readonly view: DynamicView;
   // 上限の枠とマップ上の種別(持たなければ null)と、派生 Entity が上書きする能力の旗。
@@ -45,8 +45,7 @@ export abstract class DynamicEntity {
 
   // 識別、Motion、View を1体の寿命へ束ねる。id は採番器が配った識別子で、motionFactory には id を
   // 確定させた自身を渡す。
-  public constructor(motionFactory: DynamicMotionFactory, view: DynamicView, id: string) {
-    this.id = id;
+  public constructor(motionFactory: DynamicMotionFactory, view: DynamicView, public readonly id: string) {
     this.nameValue = this.id;
     this.motion = motionFactory(this);
     this.view = view;
@@ -93,7 +92,7 @@ export abstract class DynamicEntity {
   // active はこの個体が操作対象か、orbitReference は軌道の基準として選ばれている天体。
   protected renderSource(
     _viewFrame: DynamicViewFrame, _active: boolean,
-    _orbitReference: OrbitReference | undefined,
+    _orbitReference: OrbitReference | null,
   ): DynamicRenderSource {
     const motion = this.motion;
     return {
@@ -115,7 +114,7 @@ export abstract class DynamicEntity {
 
   // このフレームの表示入力を組み立てて View へ渡す。
   public sync(
-    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | undefined,
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | null,
   ): void {
     this.view.sync(this.renderSource(viewFrame, active, orbitReference), viewFrame);
   }

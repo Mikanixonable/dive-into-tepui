@@ -1,15 +1,15 @@
 import type * as THREE from 'three/webgpu';
-import { randomQuat } from '../../../math/quat';
+import { qRotate, randomQuat } from '../../../math/quat';
 import { randSym } from '../../../math/random';
-import { add, randVec, type SerializedVec3, type Vec3, v3 } from '../../../math/vec3';
+import { add, cross, randVec, type SerializedVec3, type Vec3, v3 } from '../../../math/vec3';
 import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import { deserializeKinematicState, kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { CapKind } from './entity-kind';
+import { AssemblyPartDebrisView } from '../../../render/dynamic/dynamic-entity/assembly-part-debris-view';
 import { CasingView } from '../../../render/dynamic/dynamic-entity/casing-view';
 import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debris-fragment-view';
-import {
-  BarrelView, MagazineFrameView,
-} from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
+import { MagazineFrameView } from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
+import { detachedPartOf, detachPart, type AssemblyPartDef } from '../../../render/assembly/assembly-shape';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';
@@ -26,22 +26,20 @@ export const DESTROY_FRAG_SIZE_MAX = 6.0;
 export const PLAYER_DESTROY_FRAG_COLOR = '#9fd8e8';
 const ENEMY_DESTROY_FRAG_COLOR = '#ff6a4a';
 
-// 論理種別から、その破片を描く View を組み立てる。
+// 論理種別から、その破片を描く View を組み立てる。組み立て型の部品は形を記録せず、seed と部品番号から
+// 組み直すので、復元したときも敵にいた形と同じ view になる。
 function debrisPieceView(debrisKind: DebrisKind, scene?: THREE.Scene): DynamicView {
   switch (debrisKind.kind) {
     case 'fragment': return new DebrisFragmentView(debrisKind.accent, debrisKind.size, scene);
-    case 'barrel': return new BarrelView(scene);
+    case 'barrel': return new DebrisFragmentView('#9aa6ad', 0.8, scene);
     case 'magazineFrame': return new MagazineFrameView(scene);
     case 'casing': return new CasingView(scene);
     case 'decouplerPanel': return new DebrisFragmentView('#a9c8d6', 0.8, scene);
+    case 'assemblyPart': return new AssemblyPartDebrisView(
+      detachedPartOf(debrisKind.seed, debrisKind.partIndex).part,
+      debrisKind.seed, debrisKind.accent, scene,
+    );
   }
-}
-
-// 新しく出した破片の熱の状態。砲身の破片は外れた時点の温度と温度差を引き継ぎ、ほかは環境温度から
-// 始める。
-function initialThermal(debrisKind: DebrisKind): Partial<DynamicMotionThermal> {
-  if (debrisKind.kind !== 'barrel') return {};
-  return { temperature: debrisKind.bornTemperature, thermalDeviation: debrisKind.bornThermalDeviation };
 }
 
 // 破片1個の直列化した形。慣性と接触半径は出す場所ごとに違い、種別からは決まらないので記録に持つ。
@@ -59,8 +57,7 @@ export class DebrisPiece extends DynamicEntity {
 
   public override readonly capKind: CapKind;
 
-  // 破片1個を、種別 debrisKind に応じた View と Motion で組み立てる。id は採番器が配った識別子。radius は
-  // 接触半径 [m] で、省くと 0。thermal は熱の状態、alive は生死で、省けばいま出した破片として組む。
+  // 復元済みの状態・姿勢と種別から、破片の運動と表示を組み立てる。
   private constructor(
     state: KinematicState,
     private readonly debrisKind: DebrisKind,
@@ -68,7 +65,7 @@ export class DebrisPiece extends DynamicEntity {
     id: string,
     radius?: number,
     scene?: THREE.Scene,
-    thermal = initialThermal(debrisKind),
+    thermal: Partial<DynamicMotionThermal> = {},
     alive?: boolean,
   ) {
     super(
@@ -78,6 +75,7 @@ export class DebrisPiece extends DynamicEntity {
         behavior: new DebrisReaction(
           debrisKind.kind,
           'bornSim' in debrisKind ? debrisKind.bornSim : null,
+          'slide' in debrisKind ? debrisKind.slide ?? null : null,
         ),
         radius,
         thermal,
@@ -89,8 +87,7 @@ export class DebrisPiece extends DynamicEntity {
     this.capKind = debrisKind.kind === 'casing' ? 'casing' : 'debris';
   }
 
-  // 種別 debrisKind の破片1個を、state・attitude でいま出したものとして新しく組む。radius は接触半径
-  // [m] で、省くと 0。
+  // 破片を指定した位置・姿勢で生成する。radius を省くと接触半径 0 m で始める。
   public static create(
     state: KinematicState, debrisKind: DebrisKind, attitude: Attitude, idAllocators: EntityIdAllocators,
     radius?: number, scene?: THREE.Scene,
@@ -129,8 +126,7 @@ export class DebrisPiece extends DynamicEntity {
   }
 }
 
-// origin のまわりへ count 個の破片を散らす。速度は baseVel に最大 spread [m/s] のばらつきを足し、
-// 大きさは [sizeMin, sizeMax] から一様に選ぶ。
+// origin のまわりへ count 個を作り、速度・大きさ・姿勢に指定範囲のばらつきを与える。
 export function buildDestroyFragments(
   t: number,
   origin: Vec3,
@@ -179,6 +175,33 @@ export function enemyDestroyFragments(
   return buildDestroyFragments(
     state.t, state.r, state.v, 11, ENEMY_DESTROY_FRAG_COLOR,
     (DESTROY_FRAG_SIZE_MIN * meshScale) / 3, (DESTROY_FRAG_SIZE_MAX * meshScale) / 3, 20.0,
+    idAllocators,
+  );
+}
+
+// 組み立て型の部品が飛び出すときの、重心の速度と角速度のばらつき。部品ごとにわずかに散らす。
+const PART_SEPARATION_SPEED = 2.0; // [m/s]
+const PART_SPIN_KICK = 0.3; // [rad/s]
+
+// 組み立て型の敵から部品1個が飛び出す破片。state と attitude は部品を失った瞬間の敵の運動で、
+// 部品はその剛体の一部として、重心の位置と速度を引き継いで飛ぶ。part は敵の個体ローカル座標の部品。
+export function assemblyPartDebris(
+  state: KinematicState, attitude: Attitude, seed: number, part: AssemblyPartDef,
+  accent: string | number, idAllocators: EntityIdAllocators,
+): DebrisPiece {
+  const detached = detachPart(part);
+  // 重心の敵に対する位置と、敵の回転が重心へ与える速度
+  const lever = qRotate(attitude.q, detached.center);
+  const spin = qRotate(attitude.q, attitude.w);
+  const partState = kinematicState<'eci'>(
+    state.t,
+    add(state.r, lever),
+    add(add(state.v, cross(spin, lever)), randVec(PART_SEPARATION_SPEED)),
+  );
+  return DebrisPiece.create(
+    partState,
+    { kind: 'assemblyPart', seed, partIndex: part.index, accent },
+    { q: { ...attitude.q }, w: add(attitude.w, randVec(PART_SPIN_KICK)), inertia: detached.inertia },
     idAllocators,
   );
 }
