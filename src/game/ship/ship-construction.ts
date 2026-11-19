@@ -930,7 +930,7 @@ export class ShipConstruction implements OverlayHandle {
     return constructionTargetGuide(
       session.ship.assembly, session.anchorId, held, info,
       this.effectiveOrientation(session, held), this.placementSymmetry(held),
-      session.ship.motion.state.r, session.ship.motion.att.q, session.ship.motion.centerOffset,
+      session.ship.motion,
     );
   }
 
