@@ -16,7 +16,7 @@ import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN } from './earth-weather/cloud/cumulus-shape';
 import { FINEST_DETAIL_WAVELENGTH } from './earth-weather/cloud/cloud-detail';
 import {
-  cumulusColumnOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+  cumulusColumnOpticalDepthNode, cumulusFieldTopNode, cumulusOpacityNode,
 } from './earth-weather/cloud/cloud-kind-node';
 import { eastAt, northAt } from './earth-weather/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
@@ -285,7 +285,7 @@ export class OpaqueCloudSurfaceRenderer {
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに細部が湧く。
     const clearance = radius.sub(this.shape.cloudTopRadius(
-      this.shape.cloudTop(cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), detail), this.groundRadius));
+      this.shape.cloudTop(cumulusFieldTopNode(cloud.cumulus), detail), this.groundRadius));
     return select(present.greaterThan(0.5), clearance, float(1));
   }
 
@@ -300,7 +300,7 @@ export class OpaqueCloudSurfaceRenderer {
       const cloud = this.fieldAt(direction);
       return this.shape.cloudTopRadius(
         this.shape.cloudTop(
-          cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN),
+          cumulusFieldTopNode(cloud.cumulus),
           this.detailAt(direction, width, cloud, wind),
         ),
         this.groundRadius,
