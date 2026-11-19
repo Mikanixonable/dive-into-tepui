@@ -7,7 +7,7 @@ import type { TerrainMap } from '../terrain-map';
 import type { GpuTimingSink } from '../../gpu-timings';
 import type { FieldProjection } from '../../field-projection';
 import type { CloudBlend, CloudFieldSlot, CloudSample } from './cloud-field-sample';
-import type { CloudFieldSource } from './cloud-presentation';
+import type { CloudFieldSource } from './cloud-field-source';
 import { cloudTuningRevision } from './cloud-tuning';
 import type { Vec3Node } from '../../tsl-types';
 
