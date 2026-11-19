@@ -14,17 +14,17 @@ interface ValueInputOptions {
 
 export class ValueInput {
   public readonly element: HTMLInputElement;
-  private readonly onCommit: (value: string) => void;
-  private readonly onCancel?: () => void;
   private committedValue = '';
   private suppressBlurCommit = false;
 
-  // onCommit は Enter・blur・commit() 実行時に確定値を引数として発火する。
+  // onCommit は Enter・blur 実行時に確定値を引数として発火する。
   // onCancel は破棄時(Escape・無効値の入力)に発火する — 確定と破棄で別々の事後処理
   // （インライン編集欄の開閉制御など）を行うための任意コールバック。
-  public constructor(options: ValueInputOptions, onCommit: (value: string) => void, onCancel?: () => void) {
-    this.onCommit = onCommit;
-    this.onCancel = onCancel;
+  public constructor(
+    options: ValueInputOptions,
+    private readonly onCommit: (value: string) => void,
+    private readonly onCancel?: () => void,
+  ) {
     this.element = document.createElement('input');
     this.element.type = options.type;
     this.element.className = 'w-input';
