@@ -71,7 +71,7 @@ export function register(): void {
   });
 
   test('flash-presenter: 重ねる種別は 2 枚、単発の種別は 1 枚を生む', () => {
-    const overlaid = presentOne({ kind: 'shipExploded', state: source(0), modelScale: 1 }, 0);
+    const overlaid = presentOne({ kind: 'shipExploded', state: source(0), modelScale: 1, owner: 'enemy' }, 0);
     assert.equal(overlaid.live.length, 2, '撃破フラッシュが芯と外殻の 2 枚になっていない');
     assert.notEqual(
       overlaid.live[0]?.color, overlaid.live[1]?.color, '2 枚が同じ見え方になっている');
@@ -81,8 +81,8 @@ export function register(): void {
   });
 
   test('flash-presenter: 撃破フラッシュは模型の大きさで見た目の倍率が変わる', () => {
-    const small = presentOne({ kind: 'shipExploded', state: source(0), modelScale: 1 }, 0);
-    const large = presentOne({ kind: 'shipExploded', state: source(0), modelScale: 4 }, 0);
+    const small = presentOne({ kind: 'shipExploded', state: source(0), modelScale: 1, owner: 'enemy' }, 0);
+    const large = presentOne({ kind: 'shipExploded', state: source(0), modelScale: 4, owner: 'enemy' }, 0);
     assert.equal(large.live.length, small.live.length, '同じ種別で件数が違う');
     // 倍率そのものの値は調整値なので固定しない。大きい模型ほど大きく出ることだけを見る。
     for (const [i, big] of large.live.entries()) {
@@ -136,5 +136,23 @@ export function register(): void {
     presenter.present([], duration * 0.5, false);
     assert.equal(presenter.live.length, 1);
     assert.equal(presenter.live[0]?.age, frozen);
+  });
+
+  test('flash-presenter: 撃破の黒煙は閃光より遅れて始まり、閃光が消えたあとも残る', () => {
+    const presenter = presentOne({ kind: 'shipExploded', state: source(0), modelScale: 1, owner: 'enemy' }, 0);
+    // 撃破の瞬間には黒煙はまだ出ていない。
+    assert.ok(presenter.live.every((e) => e.blend !== 'smoke'), '撃破と同時に黒煙が出ている');
+
+    presenter.present([], 1.0, false);
+    const smokeAt1 = presenter.live.filter((e) => e.blend === 'smoke');
+    assert.equal(smokeAt1.length, 1, '撃破から遅れて黒煙が出ていない');
+    assert.ok(smokeAt1[0]!.age > 0 && smokeAt1[0]!.age < smokeAt1[0]!.duration, '黒煙の経過が範囲外');
+
+    // 閃光の寿命(爆炎の寿命)を過ぎても、黒煙だけが残る。
+    presenter.present([], 2.0, false);
+    assert.ok(presenter.live.length >= 1 && presenter.live.every((e) => e.blend === 'smoke'),
+      '閃光が消えたあとに黒煙以外が残っている');
+    presenter.present([], 3.5, false);
+    assert.equal(presenter.live.length, 0, '黒煙の寿命を過ぎても残っている');
   });
 }
