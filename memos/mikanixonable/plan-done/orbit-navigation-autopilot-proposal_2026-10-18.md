@@ -2,7 +2,10 @@
 
 作成日: 2026-10-18
 コードのスナップショット: `35feb0544`(本文中のファイル・行番号はこの時点のもの)
-状態: **提案。ユーザーの承認前。** 承認後、手順 P0 の SPEC 更新(`/modify-feature`)から着手する。
+状態: **実施済み。** 軌道標識(`src/game/navigation/orbit-slot*.ts`)・航行指令
+(`navigation-command*.ts`)・有限燃焼の自動操縦(`src/game/ship/ship-autopilot.ts`)・
+終端誘導つき会合遷移(`terminal-rendezvous.ts`)として入った(例: `a5def5e65`・
+`2faeca1fc`・`44c38f50f`・`85c1c850f`)。低エネルギー遷移は計画どおり後の段階へ送った。
 
 ---
 
