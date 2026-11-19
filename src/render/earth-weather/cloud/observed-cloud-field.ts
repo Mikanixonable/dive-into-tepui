@@ -10,7 +10,7 @@ import { GPU_PASS } from '../../gpu-timings';
 import { equirectUvFromDirection, type FieldProjection } from '../../field-projection';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../../gpu-timings';
-import type { CloudFieldSource } from './cloud-presentation';
+import type { CloudFieldSource } from './cloud-field-source';
 import type { CloudBlend, CloudFieldSlot } from './cloud-field-sample';
 import type { Vec4Node } from '../../tsl-types';
 
