@@ -218,7 +218,7 @@ export class DisplayTimelinePanel {
     readonly showElementTimesSwitch: ToggleSwitch;
   } {
     const modeRow = document.createElement('div');
-    modeRow.className = 'predict-row1';
+    modeRow.className = 'w-pill-row';
     const tickLabelModeSwitch = new ToggleSwitch(
       '目盛りを相対表記',
       (on) => this.onTickLabelModeChange?.(on ? 'relative' : 'absolute'),
@@ -279,7 +279,7 @@ export class DisplayTimelinePanel {
     row2.appendChild(elapsedLabel);
 
     const jumpEditEl = document.createElement('span');
-    jumpEditEl.className = 'predict-value-input hidden';
+    jumpEditEl.className = 'w-duration-input hidden';
     const jumpToggle = new ToggleValueEdit(elapsedLabel, jumpEditEl, 'hour', (sec) => this.onJumpToTime?.(sec));
     jumpEditEl.appendChild(jumpToggle.inputEl);
     row2.appendChild(jumpEditEl);

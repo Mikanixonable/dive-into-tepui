@@ -20,11 +20,11 @@ export class DurationPillRow<K extends string, Kd extends K | 'custom'> {
     private readonly minSec: number,
     private readonly maxSec: number,
   ) {
-    this.element = buildLabeledRow(title, 'predict-row1');
+    this.element = buildLabeledRow(title, 'w-pill-row');
 
     // 固定期間のピルを並べ、末尾に手動レンジの入力欄を置く。
     const pillsEl = document.createElement('span');
-    pillsEl.className = 'predict-pills';
+    pillsEl.className = 'w-pills';
     for (const [key, text] of entries) {
       const btn = new Button(text, () => this.onSelect(key));
       pillsEl.appendChild(btn.element);

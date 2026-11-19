@@ -110,7 +110,7 @@ export const EDITORIAL_DATA_STYLE = `
   content: attr(data-index); color: var(--text-dim); font-size: var(--font-xxs);
   font-variant-numeric: tabular-nums; letter-spacing: .08em;
 }
-#hud .editorial-index-row.is-active {
+#hud .editorial-index-row.on {
   box-shadow: inset 2px 0 0 var(--color-primary);
 }
 #hud .editorial-index-status {
