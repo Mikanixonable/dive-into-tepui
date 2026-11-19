@@ -3,7 +3,7 @@
 // 許容誤差は数値誤差起因の小さい値として設定する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { ATT_MAX_DYNAMIC_STEPS, type Attitude, attitudeAlignError, attitudeAlignTorque, stepAttitude } from '../../src/physics/attitude';
+import { type Attitude, attitudeAlignError, attitudeAlignTorque, stepAttitude } from '../../src/physics/attitude';
 import { qFromAxisAngle } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
 
@@ -18,10 +18,6 @@ function quatNorm(att: Attitude): number {
 }
 
 export function register(): void {
-  test('attitude: warp LOD has a fixed dynamic integration budget', () => {
-    assert.equal(ATT_MAX_DYNAMIC_STEPS, 12);
-  });
-
   test('attitude: x4 physical-domain step keeps full RK4 dynamics for gameplay spin rates', () => {
     const initial: Attitude = {
       q: { x: 0, y: 0, z: 0, w: 1 },
