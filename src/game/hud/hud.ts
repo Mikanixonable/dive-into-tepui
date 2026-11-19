@@ -12,7 +12,8 @@ import { ArmamentBand, type ArmamentBandViewModel } from './panels/armament-band
 import { OrbitPanel, type OrbitPanelViewModel } from './orbit/orbit-panel';
 import { TargetPanel, type TargetPanelViewModel } from './panels/target-panel';
 import { EnemiesPanel, type EnemiesPanelViewModel } from './panels/enemies-panel';
-import { BurnManagementPanel, type BurnManagementViewModel } from './panels/burn-management-panel';
+import { BurnManagementPanel } from './panels/burn-management-panel';
+import type { PresentationBurnManagement } from '../presentation-ports';
 import { ShipConstructionPanel } from './panels/ship-construction-panel';
 import { TopBar, type TopBarViewModel } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
@@ -40,7 +41,7 @@ export interface HudPanelViewModels {
   readonly orbit: OrbitPanelViewModel | null;
   readonly target: TargetPanelViewModel | null;
   readonly enemies: EnemiesPanelViewModel | null;
-  readonly burnManagement: BurnManagementViewModel | null;
+  readonly burnManagement: PresentationBurnManagement | null;
   // マップカメラの注視点の ECI 位置。
   readonly mapFocus: Vec3;
   readonly analysisSource: AnalysisChartSource;
