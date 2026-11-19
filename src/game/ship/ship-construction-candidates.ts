@@ -4,7 +4,8 @@ import { pickRadiusSq } from '../../input/pointer-precision';
 import { qRotate, type Quat } from '../../math/quat';
 import { add, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import {
-  sideMountRadius, sideSlotDirection, type ModuleOrientation,
+  applyTransformToDirection, applyTransformToPoint, sideMountRadius, sideSlotDirection,
+  type ModuleOrientation,
 } from './ship-assembly-transform';
 import {
   heldRootDefinition, jointEndsOf, placementFor,
@@ -46,8 +47,8 @@ export function constructionTargetGuide(
     const nearDefinition = assembly.definition(ends.nearId);
     if (nearWorld === null || nearDefinition === null) return null;
     const s = ends.nearFace === 'front' ? 1 : -1;
-    guidePosition = add(nearWorld.position, qRotate(nearWorld.rotation, v3(0, 0, s * nearDefinition.length / 2)));
-    guideNormal = qRotate(nearWorld.rotation, v3(0, 0, s));
+    guidePosition = applyTransformToPoint(nearWorld, v3(0, 0, s * nearDefinition.length / 2));
+    guideNormal = applyTransformToDirection(nearWorld, v3(0, 0, s));
     parentDiameter = nearDefinition.diameter;
   } else {
     const parentWorld = assembly.worldTransformOf(info.target.parentId);
@@ -55,12 +56,12 @@ export function constructionTargetGuide(
     if (parentWorld === null || parentDefinition === null) return null;
     if (info.target.kind === 'axial-face') {
       const s = info.target.face === 'front' ? 1 : -1;
-      guidePosition = add(parentWorld.position, qRotate(parentWorld.rotation, v3(0, 0, s * parentDefinition.length / 2)));
-      guideNormal = qRotate(parentWorld.rotation, v3(0, 0, s));
+      guidePosition = applyTransformToPoint(parentWorld, v3(0, 0, s * parentDefinition.length / 2));
+      guideNormal = applyTransformToDirection(parentWorld, v3(0, 0, s));
     } else {
       const direction = sideSlotDirection(info.target.slot);
-      guidePosition = add(parentWorld.position, qRotate(parentWorld.rotation, scale(direction, sideMountRadius(parentDefinition))));
-      guideNormal = qRotate(parentWorld.rotation, direction);
+      guidePosition = applyTransformToPoint(parentWorld, scale(direction, sideMountRadius(parentDefinition)));
+      guideNormal = applyTransformToDirection(parentWorld, direction);
     }
     parentDiameter = parentDefinition.diameter;
   }

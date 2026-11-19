@@ -25,6 +25,7 @@ import { BeltController, type SerializedBeltController } from '../player/belt';
 import { PowerSystem } from '../player/power';
 import { RadiatorSystem } from '../player/radiator';
 import type { ShipAssembly } from './ship-assembly';
+import { applyTransformToDirection, applyTransformToPoint } from './ship-assembly-transform';
 import { shipPhysicsShape, type ShipPhysicsShape } from './ship-physics-shape';
 
 // 空力・輻射圧係数を質量あたりへ換算する基準質量 [kg]。
@@ -433,17 +434,14 @@ export class ModularShipMotion extends DynamicMotion {
     const transform = this.assembly.worldTransformOf(weapon.id);
     if (definition === null || transform === null) return;
     const moduleAnchor = definition.feedPort;
-    const anchor = add(
-      transform.position,
-      qRotate(transform.rotation, moduleAnchor),
-    );
+    const anchor = applyTransformToPoint(transform, moduleAnchor);
     this.belt.setMount(
       v3(
         anchor.x - shape.centerOffset.x,
         anchor.y - shape.centerOffset.y,
         anchor.z - shape.centerOffset.z,
       ),
-      qRotate(transform.rotation, LOCAL_RIGHT),
+      applyTransformToDirection(transform, LOCAL_RIGHT),
     );
   }
 }
