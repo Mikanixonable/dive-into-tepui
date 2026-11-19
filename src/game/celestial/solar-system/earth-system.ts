@@ -170,12 +170,12 @@ export const EARTH_ATMOSPHERE_OPTICS: AtmosphereOptics = {
   airglow: { color: [0.12, 0.78, 0.36], strength: 1.2e-8, altitude: 95e3, scaleHeight: 8e3 },
 };
 
-// 地球へ貼る海岸線。tools/export-coastline.mjs が Natural Earth 110m coastline から焼き込んだ、
+// 地球へ貼る海岸線。tools/archive/export-coastline.mjs が Natural Earth 110m coastline から焼き込んだ、
 // 緯度・経度 [deg] のペアを1本の折れ線として並べた配列の配列。形は焼き込み側が保証するので、
 // 型を持たない JSON にここで形を与える。
 export const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
 
-// 月へ貼る主要な海・クレーターの輪郭。tools/export-moon-features.mjs が assets-src/moon-features.json
+// 月へ貼る主要な海・クレーターの輪郭。tools/archive/export-moon-features.mjs が assets-src/moon-features.json
 // の中心緯度経度・直径から円として焼き込んだ、単位球面上の xyz を1ループとして並べた配列の配列。
 const MOON_SURFACE_MARKINGS = moonFeaturesData as readonly UnitSphereLoop[];
 

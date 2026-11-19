@@ -6,7 +6,7 @@ import { PointerPanZoom } from '../../../hud/pointer-pan-zoom';
 import { projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { buildTabControls, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitProjectionChart } from './orbit-projection-chart';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import type { PresentationCelestialSystem } from '../../presentation-ports';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
@@ -14,7 +14,7 @@ import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
 import type { ProjectionSeriesSpec } from './orbit-projection-chart';
 
 // id の天体が持つ円筒図法テクスチャの URL。実写テクスチャが無い天体(単色球扱い)は null。
-function projectionTextureUrl(celestialSystem: CelestialSystem, id: string): string | null {
+function projectionTextureUrl(celestialSystem: PresentationCelestialSystem, id: string): string | null {
   return celestialSystem.find(id)?.view.surfaceTextureUrl ?? null;
 }
 

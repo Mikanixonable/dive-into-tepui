@@ -229,9 +229,11 @@ export class RadiatorSystem {
     return key === null ? 0 : this.panels.get(key)?.value ?? 0;
   }
 
+  // 装備していない側の損耗は 0。deployOf と同じく「無いものは無い」とし、積んでいない
+  // 放熱板を「損耗100%」の赤表示にしない。
   public wearOf(sideOrId: RadiatorSide | string): number {
     const key = this.key(sideOrId);
-    return key === null ? 1 : this.wear.get(key) ?? 0;
+    return key === null ? 0 : this.wear.get(key) ?? 0;
   }
 
   public serialize(): SerializedRadiatorSystem {
