@@ -2,7 +2,7 @@
 // コード上の名前を添え、ホバーで説明と既定値を出す。表の中身は generation-params.ts が持つ。
 import { buildSlider } from '../lab-controls';
 import { GENERATION_PARAM_TABS } from './generation-params';
-import type { CloudTuningId } from '../../src/render/earth-weather/cloud/cloud-tuning';
+import type { CloudTuningId } from '../../src/render/earth-weather/cloud-tuning';
 import type { GenerationParamSpec, GenerationParamTab } from './generation-params';
 
 // ホバー説明の、カーソルからの距離 [px]。

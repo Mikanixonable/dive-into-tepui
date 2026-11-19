@@ -9,7 +9,7 @@ import {
 } from 'three/tsl';
 import { POLE } from './sphere-frame';
 import { coreCrossingAngle, vortexEdgeOf, vortexSpinOf } from './wind-law';
-import { CLOUD_TUNING } from './cloud/cloud-tuning';
+import { CLOUD_TUNING } from './cloud-tuning';
 import type { PressurePlacement } from './tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 

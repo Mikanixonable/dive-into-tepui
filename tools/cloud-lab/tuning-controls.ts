@@ -1,7 +1,7 @@
 // モデルの調整値(CLOUD_TUNING の uniform)をいじる操作群。生成(index)と描画の写し(detail)で
 // 同じ束を使う — スライダー・全値の JSON 欄・ボタン列を組み、変更を少し待ってから onChanged へ
 // 流す。変更はそのまま実行中のゲーム(npm run dev)の上書きファイルへも流れる。
-import { CLOUD_TUNING, CLOUD_TUNING_DEFAULTS, type CloudTuningId } from '../../src/render/earth-weather/cloud/cloud-tuning';
+import { CLOUD_TUNING, CLOUD_TUNING_DEFAULTS, type CloudTuningId } from '../../src/render/earth-weather/cloud-tuning';
 import { GENERATION_PARAMS } from './generation-params';
 import { buildParamPanel } from './param-panel';
 

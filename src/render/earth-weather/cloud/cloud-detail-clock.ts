@@ -4,7 +4,7 @@
 // 戻す距離が溜まりすぎないよう段ごとの周期で読み直し、周期の継ぎ目の前後だけ次の周期と重ねて渡す。
 import * as THREE from 'three/webgpu';
 import { If, clamp, cos, float, greaterThan, normalize, sin, smoothstep, sqrt, uniform } from 'three/tsl';
-import { gradientNoise } from './gradient-noise';
+import { gradientNoise } from '../gradient-noise';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 
 // 1 km の段の寿命 [s]。段の寿命は波長の 2/3 乗に比例する — 乱流の渦の回転時間は、エネルギー散逸率 ε を

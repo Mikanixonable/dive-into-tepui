@@ -1,13 +1,13 @@
 // cloud-lab のスライダーの値を書き込む窓口。webpack の開発サーバだけが組み込む(webpack.cloud-lab.config.js)。
 // 書き込み先は 2 つ — ゲームの開発サーバ経由で実行中のゲームが読む git 管理外の上書きファイル
-// (試すだけ。target: 'overrides')と、コードベースの既定値(src/render/earth-weather/cloud/cloud-tuning.ts の
+// (試すだけ。target: 'overrides')と、コードベースの既定値(src/render/earth-weather/cloud-tuning.ts の
 // CLOUD_TUNING_DEFAULTS。target: 'defaults')。既定値で書き換えるのは右辺の数値だけで、コメントと他のコードには触れない。
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
 const { OVERRIDES_PATH, writeOverrides } = require('./cloud-tuning-overrides-file.cjs');
 
-const TUNING_PATH = path.resolve(__dirname, '../src/render/earth-weather/cloud/cloud-tuning.ts');
+const TUNING_PATH = path.resolve(__dirname, '../src/render/earth-weather/cloud-tuning.ts');
 const BLOCK_START = 'export const CLOUD_TUNING_DEFAULTS = {';
 const BLOCK_END = '} as const;';
 const KEY_PATTERN = /^[A-Za-z][A-Za-z0-9]*$/;
