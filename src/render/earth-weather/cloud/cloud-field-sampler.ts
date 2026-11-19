@@ -9,7 +9,7 @@ import {
   blendBakedTexels, cloudMotionFromTexel, cloudSampleFromTexels,
   type CloudBlend, type CloudFieldSlot, type CloudMotion, type CloudSample,
 } from './cloud-field-sample';
-import type { FloatUniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
+import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
 
 // 焼いた雲場の 2 枚と、それを焼いた cap の置き方の組。場を出す側が毎フレーム公開し、読み手が写し取る。
 export interface CloudFieldBinding {
@@ -79,11 +79,18 @@ export class CloudFieldSampler {
     return blendBakedTexels(pair[0].sample(uv), pair[1].sample(uv), this.parity, this.fraction);
   }
 
+  // 単位方向から、cap の内側か(0/1)と cap の uv を出す。
+  private capUvAt(direction: Vec3Node): { inside: FloatNode; uv: Vec2Node } {
+    return {
+      inside: step(this.cosRadius, dot(direction, this.center)),
+      uv: orthographicCapUv(direction, this.east, this.north, this.sinRadius),
+    };
+  }
+
   // 単位方向 direction の雲標本を、生成時と同じ単位で読む。**cap の外は「雲なし」を返す** —
   // 返さないと縁の値が外へ伸び、裏側の半球では表側の雲を鏡映しに読む。
   public sampleCloud(direction: Vec3Node): CloudSample {
-    const inside = step(this.cosRadius, dot(direction, this.center));
-    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    const { inside, uv } = this.capUvAt(direction);
     const cloudTexel = this.blend(this.clouds, uv).mul(inside) as Vec4Node;
     const environmentTexel = this.blend(this.environments, uv).mul(inside) as Vec4Node;
     const cellTexel = this.blend(this.cellSizes, uv).mul(inside) as Vec4Node;
@@ -92,15 +99,13 @@ export class CloudFieldSampler {
 
   // 単位方向 direction の場の texel(積雲・巻雲・筋の向き)だけを、2 枚の混ぜ方で読む。環境は読まない。cap の外は 0。
   public sampleField(direction: Vec3Node): Vec4Node {
-    const inside = step(this.cosRadius, dot(direction, this.center));
-    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    const { inside, uv } = this.capUvAt(direction);
     return this.blend(this.clouds, uv).mul(inside) as Vec4Node;
   }
 
   // 単位方向 direction で雲を運ぶ風。cap の外は 0。
   public sampleMotion(direction: Vec3Node): CloudMotion {
-    const inside = step(this.cosRadius, dot(direction, this.center));
-    const uv = orthographicCapUv(direction, this.east, this.north, this.sinRadius);
+    const { inside, uv } = this.capUvAt(direction);
     return cloudMotionFromTexel(this.blend(this.motions, uv).mul(inside) as Vec4Node);
   }
 }

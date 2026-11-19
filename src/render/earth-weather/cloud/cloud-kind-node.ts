@@ -4,13 +4,19 @@ import { clamp, exp, log, max, min, sqrt } from 'three/tsl';
 import {
   CIRRUS_ALTITUDE_SPAN, CIRRUS_BOTTOM_ALTITUDE, CIRRUS_MAX_OPTICAL_DEPTH,
   CUMULUS_ALTITUDE_SPAN, CUMULUS_BASE_ALTITUDE, CUMULUS_IN_CLOUD_DEPTH_COEFFICIENT,
-  CUMULUS_MAX_OPACITY, CUMULUS_OPTICAL_DEPTH_SCALE,
+  CUMULUS_MAX_OPACITY, CUMULUS_OPTICAL_DEPTH_SCALE, CUMULUS_TOP_ALTITUDE,
 } from './cloud-kind';
 import type { FloatNode } from '../../tsl-types';
 
 // 積雲の量から雲頂高度 [m]。
 export function cumulusTopAltitudeNode(amount: FloatNode): FloatNode {
   return amount.mul(amount).mul(CUMULUS_ALTITUDE_SPAN).add(CUMULUS_BASE_ALTITUDE);
+}
+
+// 積雲の量から、場の持つ雲頂(雲頂幅を 1 とする 0..1)。読み手は自分の雲頂高度や
+// 物体空間の半径へ掛け戻して使う。
+export function cumulusFieldTopNode(amount: FloatNode): FloatNode {
+  return cumulusTopAltitudeNode(amount).div(CUMULUS_TOP_ALTITUDE);
 }
 
 // 積雲の量から鉛直柱光学深さ。

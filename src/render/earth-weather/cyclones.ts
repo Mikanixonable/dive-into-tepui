@@ -2,8 +2,9 @@
 // 配置(緯度・経度・深さ・短軸の半径・長軸/短軸の比)を時刻ごとに受けて谷へ写し、単位方向での
 // 気圧の落ち込み・眼・金床・閉塞の構造を合算して答える。
 import { float, max } from 'three/tsl';
-import { LOW_COUNT, lowPlacementsAt } from './low-tracks';
-import { TROPICAL_COUNT, tropicalPlacementAt } from './tropical-tracks';
+import { LOW_COUNT } from './low-tracks';
+import { TROPICAL_COUNT } from './tropical-tracks';
+import { cyclonePlacementsAt } from './cyclone-tracks';
 import { PressureFeature } from './pressure-feature';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 
@@ -27,10 +28,10 @@ export class Cyclones {
 
   // 時刻 [s] における配置を uniform へ反映する。
   public syncTime(seconds: number): void {
+    const { tropicals, lows } = cyclonePlacementsAt(seconds, this.surfaceRadius, this.rotationPeriod);
     for (const [i, tropical] of this.tropicals.entries()) {
-      tropical.place(tropicalPlacementAt(i, seconds, this.rotationPeriod));
+      tropical.place(tropicals[i]!);
     }
-    const lows = lowPlacementsAt(seconds, this.surfaceRadius, this.rotationPeriod);
     for (const [i, low] of this.lows.entries()) {
       low.place(lows[i]!);
     }

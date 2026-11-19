@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { abs, cos, exp, float, fract, inverseSqrt, normalize, uniform, vec2, vec4 } from 'three/tsl';
 import { BakedField } from '../baked-field';
-import { CLOUD_TUNING } from './cloud/cloud-tuning';
+import { CLOUD_TUNING } from './cloud-tuning';
 import { GPU_PASS } from '../gpu-timings';
 import { CirculatingNoise } from './circulating-noise';
 import type { Circulation } from './circulation';
@@ -80,7 +80,7 @@ const CONVECTION_WINDING = CLOUD_TUNING.convectionWinding;
 interface AdvectedFields {
   readonly surfaceHumidity: FloatNode;
   readonly upperHumidity: FloatNode;
-  readonly convection: Vec2Node;
+  readonly convectionNoise: Vec2Node;
 }
 
 export class WeatherTransport {
@@ -142,6 +142,7 @@ export class WeatherTransport {
     this.seconds.value = seconds;
     this.surfaceHumidityNoise.syncTime(seconds);
     this.upperHumidityNoise.syncTime(seconds);
+    this.convectionNoise.syncTime(seconds);
   }
 
   // 移流前の場をテクスチャへレンダリングする。advectedAt() のグラフを描く前に呼ぶ。
@@ -164,8 +165,8 @@ export class WeatherTransport {
 
   // 移流前の写しを風で流したもの。周期を 1/3 ずつずらした3位相を重み (1−cos 2πφ)/3 で混ぜる
   // (各位相が巻き戻る瞬間に重み 0 へ滑らかに落ち、3つの和は常に 1)。1 枚だけが見える瞬間が
-  // ないので、位相の混ぜ具合で細部が周期的に鋭さを増したり滲んだりしない。流れの変位が
-  // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならないのは以前の位相混合と同じ。
+  // ないので、位相の混ぜ具合で細部が周期的に鋭さを増したり滲んだりしない。流れの変位は
+  // 周期ぶんで頭打ちになるので、渦に巻き込まれた模様が位相を重ねるほど細くなり続けることもない。
   public advectedAt(
     direction: Vec3Node, humidityWind: BalancedWind, convectionWind: BalancedWind,
   ): AdvectedFields {
@@ -191,7 +192,7 @@ export class WeatherTransport {
     let upperHumidity: FloatNode = float(0);
     let uplift: FloatNode = float(0);
     let rainout: FloatNode = float(0);
-    let convection: Vec2Node = vec2(0);
+    let convectionNoise: Vec2Node = vec2(0);
     for (const [index, phase] of phases.entries()) {
       const weight = cos(phase.mul(2 * Math.PI)).oneMinus().div(3);
       // 遡る秒数[s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
@@ -204,13 +205,13 @@ export class WeatherTransport {
         [moisture.x, moisture.y, moisture.z][index]!.mul(ageFade(phase)).mul(weight));
       // 降水の乾きは全位相で同じ値が焼かれているので w を読む。
       rainout = rainout.add(moisture.w.mul(rainFade(phase)).mul(weight));
-      convection = convection.add(
+      convectionNoise = convectionNoise.add(
         sourceAt(convectionWind, step.mul(convectionStep)).zw.mul(weight));
     }
     return {
       surfaceHumidity: surfaceHumidity.add(uplift).sub(rainout),
       upperHumidity,
-      convection,
+      convectionNoise,
     };
   }
 

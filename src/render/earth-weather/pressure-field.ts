@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { cos, normalize, sin, vec4 } from 'three/tsl';
 import { BakedField } from '../baked-field';
 import { GPU_PASS } from '../gpu-timings';
-import { CLOUD_TUNING } from './cloud/cloud-tuning';
+import { CLOUD_TUNING } from './cloud-tuning';
 import { isobarAt } from './wind-law';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';

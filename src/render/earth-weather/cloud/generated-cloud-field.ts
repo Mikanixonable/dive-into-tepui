@@ -7,8 +7,8 @@ import type { TerrainMap } from '../terrain-map';
 import type { GpuTimingSink } from '../../gpu-timings';
 import type { FieldProjection } from '../../field-projection';
 import type { CloudBlend, CloudFieldSlot, CloudSample } from './cloud-field-sample';
-import type { CloudFieldSource } from './cloud-presentation';
-import { cloudTuningRevision } from './cloud-tuning';
+import type { CloudFieldSource } from './cloud-field-source';
+import { cloudTuningRevision } from '../cloud-tuning';
 import type { Vec3Node } from '../../tsl-types';
 
 // 雲場を焼く表示時刻の刻み [s]。雲場は、この刻みで焼いた 2 枚のあいだを表示時刻で補間して読む。
@@ -29,7 +29,6 @@ export class GeneratedCloudField implements CloudFieldSource {
   private lastBakedProjectionRevision: number | null = null;
   // 最後に焼いたときの調整値の版。実験環境の上書きが変われば、同じ表示時刻でも焼き直す。
   private lastBakedTuningRevision: number | null = null;
-  private generationValue = 0;
 
   // climate と terrain、その中間場・出力場が共有する投影法を受け取る。surfaceRadius は雲を載せる
   // 天体の半径 [m]、rotationPeriod はその自転周期 [s]。
@@ -45,7 +44,6 @@ export class GeneratedCloudField implements CloudFieldSource {
   // 雲場の 2 枚と混ぜ方。出力場の所有権はこのクラスに残す。
   public get slots(): readonly [CloudFieldSlot, CloudFieldSlot] { return this.field.slots; }
   public get blend(): CloudBlend { return this.field.blend; }
-  public get generation(): number { return this.generationValue; }
 
   // 単位方向 direction での雲を、投影自身の uv で直に読む(cap の窓ぎめを通さない読み方)。
   public at(direction: Vec3Node): CloudSample { return this.field.at(direction); }
@@ -96,7 +94,6 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.lastBakedTuningRevision = cloudTuningRevision();
     this.olderSlot = 0;
     this.olderTime = displayTime - CLOUD_BAKE_DISPLAY_TIME_STEP;
-    this.generationValue += 1;
     return this.olderTime;
   }
 
@@ -106,7 +103,6 @@ export class GeneratedCloudField implements CloudFieldSource {
     this.bakeSlot(renderer, this.olderSlot, aheadTime, gpu);
     this.olderSlot = this.olderSlot === 0 ? 1 : 0;
     this.olderTime = older + CLOUD_BAKE_DISPLAY_TIME_STEP;
-    this.generationValue += 1;
     return this.olderTime;
   }
 

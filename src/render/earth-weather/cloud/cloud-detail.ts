@@ -8,7 +8,7 @@ import {
   normalize, select, smoothstep, sqrt, step, uniform, uint, vec3,
 } from 'three/tsl';
 import { DetailClock } from './cloud-detail-clock';
-import { gradientNoise } from './gradient-noise';
+import { gradientNoise } from '../gradient-noise';
 import { eastAt, northAt } from '../sphere-frame';
 import type { FloatNode, FloatUniform, UintNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
@@ -322,23 +322,23 @@ function nearestCellDistance(q: Vec3Node): FloatNode {
 
 // 雲標本の巻雲の量と環境の量と要素径を、巻雲の柱の入力へ写す。
 export function cirrusColumnInputOf(sample: {
-  readonly cirrus: FloatNode; readonly land: FloatNode; readonly convection: FloatNode;
+  readonly cirrus: FloatNode; readonly land: FloatNode; readonly convectiveActivity: FloatNode;
   readonly climateCloudiness: FloatNode; readonly anvil: FloatNode;
   readonly cirrusCell: FloatNode;
 }): CirrusColumnInput {
   return {
-    amount: sample.cirrus, land: sample.land, convection: sample.convection,
+    amount: sample.cirrus, land: sample.land, convectiveActivity: sample.convectiveActivity,
     climateCloudiness: sample.climateCloudiness, anvil: sample.anvil,
     cellSize: sample.cirrusCell,
   };
 }
 
-// 巻雲の柱の入力。amount は巻雲の量、land・convection・climateCloudiness・anvil は環境の量(0..1)、
+// 巻雲の柱の入力。amount は巻雲の量、land・convectiveActivity・climateCloudiness・anvil は環境の量(0..1)、
 // cellSize は巻雲の要素径(繊維・鱗のピッチ) log2(km)。
 export interface CirrusColumnInput {
   readonly amount: FloatNode;
   readonly land: FloatNode;
-  readonly convection: FloatNode;
+  readonly convectiveActivity: FloatNode;
   readonly climateCloudiness: FloatNode;
   readonly anvil: FloatNode;
   readonly cellSize: FloatNode;
@@ -399,7 +399,7 @@ export class CirrusDetailEvaluator {
     const cellFade = smoothstep(2, 4, exp2(pitchLog).mul(1000).div(span));
     // 乾いた陸(気候の雲量の少ない所)では鱗雲状を抑える。筋状と薄く広がるは抑えない。
     const humid = smoothstep(CIRRUS_ARID_LO, CIRRUS_ARID_HI, climateCloudiness);
-    const cellRaw = column.convection.mul(column.land).mul(CIRRUS_CELL_DIAG_GAIN)
+    const cellRaw = column.convectiveActivity.mul(column.land).mul(CIRRUS_CELL_DIAG_GAIN)
       .mul(jitterAt(CIRRUS_REGIME_OFFSETS[1])).mul(cellFade).mul(humid);
     // 薄く広がる場は残余 — 筋でも鱗でもない静穏な空が幕を張る。
     const veilRaw = max(float(0.15), float(1).sub(streakRaw).sub(cellRaw));

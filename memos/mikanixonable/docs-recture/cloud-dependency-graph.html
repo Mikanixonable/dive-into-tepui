@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>雲の生成・描画 — 値の依存グラフ | dive-into-tepui</title>
+<style>
+  :root {
+    --bg: #10141a; --panel: #181e27; --panel2: #1f2632; --line: #2c3646;
+    --text: #d8dee7; --dim: #8b96a5; --accent: #5bb8d4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: "Hiragino Kaku Gothic ProN", "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  #app { display: grid; grid-template-columns: 1fr 340px; grid-template-rows: auto 1fr; height: 100vh; }
+  header { grid-column: 1 / -1; padding: 10px 16px; border-bottom: 1px solid var(--line);
+    display: flex; gap: 16px; align-items: center; flex-wrap: wrap; background: var(--panel); }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--dim); font-size: 12px; }
+  #search { background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+    padding: 5px 10px; border-radius: 6px; width: 220px; font-size: 13px; }
+  #legend { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 12px;
+    background: var(--panel2); border: 1px solid var(--line); font-size: 11px; cursor: pointer;
+    user-select: none; color: var(--dim); }
+  .chip.on { color: var(--text); }
+  .chip .dot { width: 9px; height: 9px; border-radius: 50%; }
+  #stage { position: relative; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+  #side { border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; padding: 14px; }
+  #side h2 { font-size: 14px; margin: 0 0 4px; }
+  #side .grp { font-size: 11px; color: var(--dim); margin-bottom: 8px; }
+  #side .ref { font-size: 11px; color: var(--accent); font-family: ui-monospace, Menlo, monospace;
+    margin-bottom: 10px; word-break: break-all; }
+  #side .desc { font-size: 12.5px; line-height: 1.6; color: var(--text); margin-bottom: 14px; }
+  #side h3 { font-size: 12px; color: var(--dim); margin: 14px 0 6px; text-transform: none;
+    border-bottom: 1px solid var(--line); padding-bottom: 4px; }
+  .link { display: block; font-size: 12px; padding: 3px 6px; margin: 2px 0; border-radius: 4px;
+    cursor: pointer; color: var(--text); }
+  .link:hover { background: var(--panel2); }
+  .link .arr { color: var(--dim); margin-right: 5px; }
+  .hint { color: var(--dim); font-size: 11.5px; line-height: 1.7; }
+  details { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 10px; }
+  summary { cursor: pointer; font-size: 12px; color: var(--dim); }
+  .tune { font-size: 11px; line-height: 1.7; }
+  .tune b { color: var(--text); }
+  .tune table { border-collapse: collapse; width: 100%; margin-top: 4px; }
+  .tune td { border: 1px solid var(--line); padding: 2px 6px; font-size: 10.5px; }
+  .tune td:first-child { font-family: ui-monospace, Menlo, monospace; color: var(--accent); }
+  #overview { grid-column: 1 / -1; background: var(--panel); border-bottom: 1px solid var(--line);
+    padding: 8px 16px; font-size: 11.5px; color: var(--dim); line-height: 1.7; }
+  #overview b { color: var(--text); }
+  .flow { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin-top: 4px; }
+  .flow .st { background: var(--panel2); border: 1px solid var(--line); padding: 2px 8px;
+    border-radius: 4px; font-size: 10.5px; color: var(--text); }
+  .flow .ar { color: var(--dim); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>雲の生成・描画 — 値の依存グラフ</h1>
+    <input id="search" placeholder="ノードを検索 (例: 湿度, lift, cirrus)">
+    <div id="legend"></div>
+    <span class="sub">ドラッグ: 移動 / ホイール: ズーム / クリック: 詳細</span>
+  </header>
+  <div id="overview">
+    <b>パイプライン:</b> すべての値は <b>天体固定の単位方向 direction</b> と <b>表示時刻 seconds</b> の閉じた関数(同じ時刻には同じ空が出る)。
+    direction・seconds はほぼ全ノードへ入るため、グラフでは主要な依存先のみ辺を引いている。
+    矢印 <b>A → B</b> は「B は A から計算される(B が A に依存)」。
+    <div class="flow">
+      <span class="st">① 気候・地形入力</span><span class="ar">→</span>
+      <span class="st">② 気圧場を焼く</span><span class="ar">→</span>
+      <span class="st">③ 風場(釣り合い+大循環+地形)</span><span class="ar">→</span>
+      <span class="st">④ 気団追跡・湿度輸送を焼く</span><span class="ar">→</span>
+      <span class="st">⑤ WeatherSample 診断合成</span><span class="ar">→</span>
+      <span class="st">⑥ 凝結 condense → CloudSample</span><span class="ar">→</span>
+      <span class="st">⑦ 雲場テクスチャ(2枚 blend)</span><span class="ar">→</span>
+      <span class="st">⑧ cap サンプリング</span><span class="ar">→</span>
+      <span class="st">⑨ 形状・細部評価</span><span class="ar">→</span>
+      <span class="st">⑩ 不透明殻 / 大気殻 / 影へ合成</span>
+    </div>
+  </div>
+  <div id="stage"><canvas id="cv"></canvas></div>
+  <div id="side"><div class="hint">ノードをクリックすると、その値が何に依存しているか(入力)と、
+    どこへ使われているか(出力)をここに表示します。<br><br>
+    上部のチップでサブシステムごとに絞り込めます。</div>
+  <details><summary>主なチューニング値 (CLOUD_TUNING 抜粋)</summary><div class="tune" id="tune"></div></details>
+  <details><summary>ファイル定数(抜粋)</summary><div class="tune" id="consts"></div></details>
+  </div>
+</div>
+<script>
+"use strict";
+// ============ データ ============
+const GROUPS = {
+  input:{name:"外部入力",   color:"#7f9bb3", ax:-1.00, ay: 0.10},
+  geo:  {name:"地理・気候", color:"#8fce8f", ax:-0.82, ay:-0.28},
+  time: {name:"時刻・太陽", color:"#e8c468", ax:-0.82, ay: 0.55},
+  press:{name:"気圧",       color:"#e07a5f", ax:-0.58, ay:-0.05},
+  wind: {name:"風",         color:"#5bb8a6", ax:-0.34, ay: 0.22},
+  trans:{name:"気団・輸送", color:"#6f95c9", ax:-0.14, ay: 0.55},
+  diag: {name:"診断合成",   color:"#c96fb0", ax: 0.08, ay: 0.05},
+  cond: {name:"凝結",       color:"#d4a05a", ax: 0.30, ay: 0.30},
+  tex:  {name:"雲場tex",    color:"#9b8fd4", ax: 0.50, ay: 0.45},
+  cap:  {name:"cap・標本",  color:"#7fb3d5", ax: 0.68, ay:-0.10},
+  shape:{name:"形状・細部", color:"#b8b85c", ax: 0.82, ay: 0.25},
+  out:  {name:"光学・出力", color:"#e26d6d", ax: 1.00, ay: 0.05},
+  set:  {name:"設定",       color:"#9aa3ad", ax: 0.05, ay:-0.85},
+};
+// id, 表示名, group, コード参照, 説明
+const NODES = [
+// --- 外部入力 ---
+["direction","単位方向 direction","input","各関数の引数","天体固定の単位方向。すべての場の評価点(緯度・ノイズ・風・湿度すべてこれで読む)。"],
+["seconds","表示時刻 seconds","input","generated-cloud-field.ts:59","表示時刻[s]。天気は時刻の閉じた関数で、同じ時刻には同じ空が出る。"],
+["solarLon","太陽直下経度","input","weather-model.ts:261","暦を持つ呼び出し側が実際の太陽位置へ合わせる経度[rad]。null で平均太陽日の架空の太陽へ戻る。"],
+["camera","観測点(カメラ)","input","cloud-presentation.ts:117","cap を置き直す直下点の計算と、画素角 pixelAngle の元。"],
+["sun","太陽光 sunLight","input","sun-light.ts:53","太陽の位置・色・強さ。巻雲殻の輝度・雲影の光路・大気散乱が読む。"],
+["climateMap","ClimateMap 気候","input","climate-map.ts","気候テクスチャ(R=気温, G=平年雲量, B=標高)。"],
+["terrainMap","TerrainMap 地形","input","terrain-map.ts","細かい地形テクスチャ(R/G=勾配, B=陸)。"],
+["projection","FieldProjection","input","field-projection.ts:35","写しの持ち方。texel 角 = 読み取りのフットプリント。"],
+["body","天体定数","input","weather-model.ts:205","surfaceRadius[m] と rotationPeriod[s]。コリオリ・循環速度・殻半径を決める。"],
+// --- 地理・気候の導出 ---
+["latitude","緯度 latitude","geo","sphere-frame.ts:9","direction.y から。気圧帯・平均風・コリオリ・温帯マスク・圏界面の軸。"],
+["texel","texel 角","geo","field-projection.ts:35","写し 1 texel の角幅[rad]。地形・細かいノイズを読むフットプリント。"],
+["meanCloudiness","平年雲量","geo","climate-map.ts:92","気候 G。湿度バイアス・層積雲・浅い/深い対流・巻雲の雲量門。"],
+["temperatureK","気温 temperatureK","geo","climate-map.ts:87","気候 R(−40..40℃)。暖かい海での深い対流の門。"],
+["landFraction","陸らしさ(気候)","geo","climate-map.ts:102","標高から。日射加熱・MCAO・セル径・対流活動の陸/海の切替。"],
+["climateSlope","気候斜面","geo","climate-map.ts:108","気候標高の勾配(陸へ +800m バイアス)。地形上昇流が読む。"],
+["terrainSlope","地形勾配","geo","terrain-map.ts:64","細かい地形の勾配(texel 幅 5 点平均)。地形迂回・上昇源・雨陰・比高。"],
+["fineLand","陸らしさ(地形)","geo","terrain-map.ts:70","細かい地形の陸判定。日射加熱・地形性上昇・降水枯渇の重み。"],
+// --- 時刻 ---
+["solarClock","SolarClock","time","solar-clock.ts:22","時刻と太陽直下経度の uniform 化。地方太陽時と日射を出す。"],
+["localHour","地方太陽時","time","solar-clock.ts:37","その地点・発射時刻の太陽時[時]。日射加熱窓(9-18時)と対流の日変化。"],
+["daylight","日射量 daylight","time","solar-clock.ts:51","緯度・太陽時・赤緯からの日射 0..1。浅い/深い対流の駆動。"],
+// --- 気圧 ---
+["circS","地表循環 Circulation","press","circulation.ts","緯度帯(75°/45°/15°)ごとの回る流れ+呼吸。気圧・湿度ノイズを運ぶ。"],
+["circU","上層循環 Circulation","press","circulation.ts","上層の帯の流れ。巻雲の斑・上層湿度ノイズを運ぶ。"],
+["rossby","ロスビー波","press","rossby-wave.ts:88","波数5・3°/日で西進する惑星波。谷の経度が低気圧の生誕地、摂動風も出す。"],
+["tracks","渦トラック生成","press","low-tracks.ts:245 / tropical-tracks.ts:185 / anticyclone-tracks.ts:129","(枡,世代)の決定論乱数で低気圧32+熱帯5+高気圧12の一生(深さ・半径・経路)を発生。ロスビー波の谷/尾根に沿う。"],
+["absorb","渦の吸収","press","vortex-absorption.ts:57","±24h 窓で近い渦同士を合体(藤原効果の簡易)。最終配置を出す。"],
+["placement","渦配置 Placement","press","pressure-feature.ts:138","位置・深さ・半径・伸長・閉塞・前線・巻き上げ角を uniform へ。気圧谷・眼・金床・前線すべての元。"],
+["pNoise","気圧ノイズ","press","weather-model.ts:215","単一オクターブ(5300km)。地表循環に乗り、エポックで混ざる。多重オクターブ禁止(格子が雲へ出る)。"],
+["pBand","気圧帯","press","pressure-field.ts:29","緯度で決まる平年の気圧偏差(副極地低圧帯・亜熱帯高圧帯)。tuning.pressureBandAmplitude=8hPa。"],
+["pSource","気圧偏差(源)","press","weather-model.ts:368","気圧帯 + ノイズ×18hPa + 低気圧の谷 + 高気圧の丘。"],
+["pBaked","気圧写し(焼き)","press","pressure-field.ts:60","pressureSource を projection 全面へ焼いた場。風と気団追跡が読む。"],
+["pSample","PressureSample","press","pressure-field.ts:65","写しの 5+3 点差分から pressure・gradient・isobar・bend。"],
+// --- 風 ---
+["meanWind","大循環平均風","wind","atmospheric-wind.ts:34","緯度で決まる貿易風・偏西風・極風(地表 1km / 上層 10km)。"],
+["localWind","釣り合い風 local","wind","wind-law.ts:60","gradient/isobar/bend + コリオリ + 摩擦の気圧勾配風。等圧線横断は ±30°。"],
+["convWind","対流用釣り合い風","wind","wind-field.ts:72","摩擦 3 倍・横断 ±50° の別パラメータ版。対流を巻き込む風。"],
+["rossbyWind","ロスビー摂動風","wind","rossby-wave.ts:94","波の流線関数からの摂動風。ジェットの蛇行を作る。"],
+["impinging","吹き付け全量","wind","wind-field.ts:80","local + 平均風 + ロスビー。地形への衝突判定と雨陰の見積もりに使う。"],
+["terrainFlow","地形迂回","wind","terrain-flow.ts:38","斜面と比高で風を回す(堰き止め)。高い山では上りが消え風下へ回る。"],
+["surfaceWind","地表風","wind","wind-field.ts:92","地形迂回後の全量風。地形リフト・MCAO・細部の筋・風写しが読む。"],
+["upperWind","上層風","wind","wind-field.ts:93","local + 上層平均 + ロスビー。巻雲の筋・風写しが読む。"],
+["advWind","移流風(偏差)","wind","wind-field.ts:88","local+ロスビーの偏差風(平均風を含まない — 平均は循環が担う)。湿度移流。"],
+["convAdv","対流移流風","wind","wind-field.ts:90","convWind 版の偏差風。対流セルを別速度・別巻きで運ぶ。"],
+["traceWind","遡り風 traceFlowAt","wind","wind-field.ts:115","気圧勾配−帯勾配の渦成分 + 平均 + ロスビー、地形迂回済。気団追跡専用。"],
+// --- 気団・輸送 ---
+["airmass","気団追跡 AirMass","trans","air-mass.ts:105","焼いた気圧由来の風で 36h・6 刻み風上へ遡る(焼き物)。"],
+["warmth","暖気流入 warmth","trans","air-mass.ts:92","起源との緯度差[rad]。正で暖気、負で寒気(温帯のみ有効)。"],
+["compression","気団圧縮","trans","air-mass.ts:79","遡り先のドリフト勾配。気団の境目の押し縮まり → 雨帯。"],
+["fetch","海上滞在率 fetch","trans","air-mass.ts:93","追跡経路が海の上にあった時間割合。MCAO の湿り度合い。"],
+["humSrc","湿度源(焼き)","trans","weather-transport.ts:153","循環に乗る湿度ノイズ+基底(地表 0.435 / 上層 0.42)。移流前の場。"],
+["convSrc","対流源(焼き)","trans","weather-transport.ts:161","循環に乗る対流パターン(粒 x・網目 y の高周波)。"],
+["moistSrc","上昇源/雨陰(焼き)","trans","weather-model.ts:385","x=加湿(過渡源+日射加熱+地形性上昇)、y=降水枯渇。発射時刻で評価。"],
+["transient","過渡源ノイズ","trans","weather-model.ts:148","200-800km の対流塊。地理に貼り付きエポックで生滅(循環には乗らない)。"],
+["advHum","移流後湿度","trans","weather-transport.ts:169","湿度源を移流風で風上へ遡り 3 位相加重。上昇源は時定数 6h で減衰。"],
+["advConv","移流後対流","trans","weather-transport.ts:169","対流源を対流風で遡る。粒・網目の配置が決まる。"],
+// --- 診断合成 ---
+["terrainLift","地形上昇流","diag","weather-model.ts:280","surfaceWind · 気候斜面 × 利得 0.35。"],
+["front","前線 front","diag","cyclones.ts:73","閉塞した低気圧の骨格から立つ前線の強さ(温帯)。"],
+["rainband","雨帯 rainband","diag","weather-model.ts:284","気団圧縮の稜線(門 5/幅 4)の写像(熱帯)。"],
+["band","雲の帯 band","diag","weather-model.ts:286","front+rainband。上昇流・粒消し・活動度・セル径へ。"],
+["lift","上昇流 lift","diag","weather-model.ts:288","地形上昇 + f(気圧) + 帯リフトを tanh で ±0.06m/s に頭打ち。"],
+["vortex","渦構造(眼/金床/乾舌/コンマ頭/閉塞芯)","diag","cyclones.ts:46-70","placement から眼・anvil・dryTongue・commaHead・occludedCore の強さ。"],
+["outbreak","寒気噴出加湿 MCAO","diag","weather-model.ts:305","寒気(warmth<0)×海上×fetch。閉じた細胞→開いた細胞へ被覆を落とす。"],
+["sHum","地表湿度 surfaceHumidity","diag","weather-model.ts:311","移流湿度 + lift 増幅 + 雲量バイアス + 暖気 + anvil + MCAO + コンマ頭 − 眼 − 乾舌。"],
+["uHum","上層湿度 upperHumidity","diag","weather-model.ts:318","移流湿度 + 雲量バイアス + lift − 眼 − 乾舌(眼・舌は上層を深く乾かす)。"],
+["shallow","浅い積雲強制 shallowForcing","diag","convective-activity.ts:116","昼の日射×湿り(陸)・早朝の海の日変化。積雲量への湿度加算。"],
+["deep","深い対流潜在 deepPotential","diag","convective-activity.ts:125","日射×湿り×比高(陸)/暖かい海(海)。塔・雷雨の起こりやすさ。"],
+["activity","対流活動度 activity","diag","convective-activity.ts:132","不安定ノイズ+lift+寒気+deepPotential+陸+帯。粒立ち・セル径・凝結を駆動。"],
+["instab","不安定ノイズ","diag","convective-activity.ts:22","地表循環に乗る 6.4-25/rad の場。活動度の空間分布。"],
+["cirrusPatch","巻雲の斑 cirrusPatch","diag","weather-model.ts:348","100-400km の斑。上層循環に運ばれ、靄の透き間を作る。"],
+["tropopause","圏界面高さ","diag","weather-model.ts:352","緯度の関数(赤道 17km→極 9km、亜熱帯で段)。対流の天井。"],
+["relief","地形比高 reliefM","diag","weather-model.ts:323","地形勾配の長さ×30km。山での対流加速・深い対流の強め。"],
+["weatherSample","WeatherSample(23値)","diag","weather-model.ts:266","気圧・風・上昇流・湿度・対流・帯・前線・暖気・fetch・金床・斑・雲量・陸・比高・圏界面。"],
+// --- 凝結 ---
+["strat","層積雲度","cond","condensation.ts:140","湿度門×沈降×雲量門×海×低活動×帯外。閉じた細胞とデッキ加算。"],
+["shape","対流形(粒/網目)","cond","condensation.ts:134","湿度で粒↔網目を mix した移流後対流。"],
+["gran","粒立ち granularity","cond","condensation.ts:165","対流ピーク×利得×(1−帯消し)×セル径補正。被覆率へ足す凹凸。"],
+["layered","層状雲頂","cond","condensation.ts:171","lift+暖気+帯+対流起伏 → ロジスティックで 1-7km の層状高さ。"],
+["tower","塔状雲頂","cond","condensation.ts:180","対流粒×活動+深対流 → reach。層状から圏界面まで持ち上げる塔。"],
+["anvilTop","金床高さ","cond","condensation.ts:188","anvil × 圏界面。天蓋の平らな高さ。"],
+["coverage","被覆率 coverage","cond","condensation.ts:190","加湿(湿度+浅強制+粒+デッキ)の超過量 → 晴天率の分散式。"],
+["cumulus","積雲量 cumulus","cond","condensation.ts:198","coverage(不透明度量)と雲頂高(塔/金床の高度量)の max、深い被覆で mix。"],
+["cirrus","巻雲量 cirrus","cond","condensation.ts:204","上層湿度−門 → 靄 + 筋 → tanh 上限の光学深さ → 量。"],
+["cirrusFlow","巻雲の筋 cirrusFlow","cond","condensation.ts:160","上層風の向き・速さ → 筋の揃い度(倍角ベクトル)。"],
+["cCell","積雲セル径","cond","cell-size.ts:56","閉じた細胞(層積雲)・開いた細胞(MCAO)・陸・団・帯・海上の log2(km)。"],
+["ciCell","巻雲セル径","cond","cell-size.ts:73","繊維(筋風速)・鱗・金床・シートの要素径。"],
+["cloudSample","CloudSample(生成)","cond","condensation.ts:213","cumulus/cirrus/cirrusFlow/cells/land/convection/climateCloudiness/anvil。"],
+// --- 雲場テクスチャ ---
+["texCloud","雲写し RGBA","tex","cloud-field.ts:44","R=積雲 G=巻雲 B/A=筋倍角ベクトル。"],
+["texEnv","環境写し RGBA","tex","cloud-field.ts:39","R=陸 G=対流 B=気候雲量 A=金床。細部の環境入力。"],
+["texCell","セル径写し","tex","cloud-field.ts:39","R=積雲 G=巻雲の log2(km)。細部の畳み方を決める。"],
+["texMotion","風写し RGBA","tex","cloud-field.ts:99","地表風・上層風(東・北, m/s)を 200km で均したもの。"],
+["texBlend","2枚 blend","tex","generated-cloud-field.ts:74","6s 刻みの 2 枚を parity/fraction で補間。時間はここで滑らかになる。"],
+// --- cap・標本 ---
+["capPlace","cap 配置","cap","cloud-presentation.ts:117 / cloud-cap.ts","観測点直下へ正射影キャップ(512px)を置く。格子へ snap して texel が滑らない。"],
+["sampler","CloudFieldSampler","cap","cloud-field-sampler.ts:84","cap 内を uv で読み 2 枚を blend。全読み手共通の唯一の読み方。"],
+["rSample","CloudSample(読み)","cap","cloud-field-sample.ts:63","texel → cumulus/cirrus/cirrusFlow/cells/land/convection/climateCloudiness/anvil。"],
+["rMotion","CloudMotion(風)","cap","cloud-field-sample.ts:96","風写し → surfaceWind/upperWind。細部の伸ばしに使う。"],
+["rInput","CloudRenderInput","cap","cloud-render-input.ts","場+cap+世代+雲頂+時刻の束。不透明殻・大気・影の共通入力。"],
+// --- 形状・細部 ---
+["kindCurves","量→光学量曲線","shape","cloud-kind-node.ts","積雲量→不透明度/雲頂/柱τ、巻雲量→τ/高さ。4 読み手が共有する換算。"],
+["grain","粒の細かさ grain","shape","cloud-shape-evaluator.ts:49","陸・対流・セル径から細部の粒度(重み 0.7/0.3/0.4)。"],
+["opFrac","覆い率 opaqueFraction","shape","cloud-shape-evaluator.ts:70","不透明度+細部を 0.34±0.12 の帯で二値化(ブルーノイズディザ)。"],
+["cloudTopR","雲頂半径","shape","cloud-shape-evaluator.ts:80","場の雲頂+細部起伏 → 殻空間の半径。レイマーチの命中判定と法線。"],
+["dClock","DetailClock","shape","cloud-detail-clock.ts:77","displayTime/simSpeed → 段ごとの ages/seeds/presences。細部の生死と再読み込み。"],
+["cDetail","積雲細部 detail","shape","cloud-detail.ts:122","32km→250m の 8 段勾配ノイズ。場の勾配で振幅、風で筋引き、セル径で畳み、時間で生滅。"],
+["ciDetail","巻雲細部(乗数)","shape","cloud-detail.ts:371","筋(ジェット)・鱗(Voronoi)・幕・金床の 4 型を体制ノイズで混ぜ、対数正規で光学深さ乗数へ。"],
+// --- 光学・出力 ---
+["optics","雲光学","out","cloud-optics-node.ts","Beer-Lambert 透過率、2 流近似の反射率 R=γτ/(1+γτ)、airmass。"],
+["opaque","不透明雲殻マーチ","out","opaque-cloud-surface-renderer.ts:217","殻内をマーチし覆い率で命中 → 深度/雲頂法線/厚み色を G バッファへ。"],
+["gbuf","Gバッファ→照明","out","gbuffer.ts:115","雲頂は roughness=1 の材質として LightPrepass で照らされ、深度で大気を截る。"],
+["ciShell","巻雲殻(大気イベント)","out","cloud-atmosphere-renderer.ts:162","大気積分区間内のゼロ厚球殻。柱τ×細部→透過率、太陽輝度×(1−T)→輝度。"],
+["aMedium","大気媒質(散乱)","out","atmosphere-integrator.ts:405","レイリー/ミー/オゾンの消光+太陽光。雲影 ambientTransmittance と殻透過率が掛かる。"],
+["aCompose","大気合成","out","atmosphere-cloud-layers.ts:74","大気レイマーチ結果と雲殻イベントを front-to-back で合成 → 透過率・散乱輝度。"],
+["shadow","雲影マーチ","out","cloud-shadow-renderer.ts:132","光路を積雲(粗+細)・巻雲でタップ → 影テクスチャと大気への環境透過率。"],
+["pLight","天体照(写し)","out","planet-light-subject.ts:137","地表 albedo に雲の覆い率×反射率を混ぜた天体照の写し。"],
+// --- 設定 ---
+["graphics","描画設定 graphics","set","graphics-settings.ts","clouds/cumulus/cirrus/cloudShadow/atmosphere/各精細さ。"],
+["cDetSet","積雲精細さ cumulusDetail","set","opaque-cloud-surface-renderer.ts:47","march/refine/細部段数(影にも伝わる)。"],
+["ciDetSet","巻雲精細さ cirrusDetail","set","cloud-detail.ts:206","巻雲細部の段数(影にも伝わる)。"],
+["tuning","CLOUD_TUNING","set","cloud-tuning.ts","~170 の FloatUniform。生成側の利得・門・幅のほぼすべて。cloud-lab で上書き可。"],
+];
+
+// 依存エッジ: [from, to] = to は from から計算される
+const EDGES = [
+["direction","latitude"],["projection","texel"],
+["climateMap","meanCloudiness"],["climateMap","temperatureK"],["climateMap","landFraction"],["climateMap","climateSlope"],
+["landFraction","climateSlope"],["terrainMap","terrainSlope"],["terrainMap","fineLand"],
+["seconds","solarClock"],["solarLon","solarClock"],["solarClock","localHour"],["solarClock","daylight"],
+["seconds","circS"],["seconds","circU"],["seconds","rossby"],["seconds","tracks"],["seconds","transient"],["seconds","dClock"],["seconds","texBlend"],
+["latitude","pBand"],["latitude","meanWind"],["latitude","localWind"],["latitude","rainband"],["latitude","tropopause"],
+["circS","pNoise"],["seconds","pNoise"],["tracks","absorb"],["rossby","tracks"],["body","tracks"],["absorb","placement"],
+["placement","pSource"],["pBand","pSource"],["pNoise","pSource"],["pSource","pBaked"],["projection","pBaked"],["pBaked","pSample"],
+["pSample","localWind"],["pSample","convWind"],["pSample","traceWind"],["pSample","lift"],["body","localWind"],
+["localWind","impinging"],["meanWind","impinging"],["rossbyWind","impinging"],["rossby","rossbyWind"],
+["impinging","terrainFlow"],["terrainSlope","terrainFlow"],["landFraction","terrainFlow"],["fineLand","terrainFlow"],
+["terrainFlow","surfaceWind"],["terrainFlow","advWind"],["terrainFlow","convAdv"],["terrainFlow","traceWind"],
+["localWind","upperWind"],["meanWind","upperWind"],["rossbyWind","upperWind"],
+["localWind","advWind"],["rossbyWind","advWind"],["convWind","convAdv"],["rossbyWind","convAdv"],
+["pBand","traceWind"],["meanWind","traceWind"],["rossbyWind","traceWind"],
+["traceWind","airmass"],["landFraction","airmass"],
+["airmass","warmth"],["airmass","compression"],["airmass","fetch"],
+["circS","humSrc"],["circU","humSrc"],["circS","convSrc"],
+["transient","moistSrc"],["localHour","moistSrc"],["fineLand","moistSrc"],["surfaceWind","moistSrc"],["impinging","moistSrc"],["terrainSlope","moistSrc"],
+["humSrc","advHum"],["moistSrc","advHum"],["advWind","advHum"],["convSrc","advConv"],["convAdv","advConv"],
+["surfaceWind","terrainLift"],["climateSlope","terrainLift"],
+["placement","front"],["placement","vortex"],["compression","rainband"],
+["front","band"],["rainband","band"],["terrainLift","lift"],["band","lift"],
+["warmth","outbreak"],["fetch","outbreak"],["landFraction","outbreak"],
+["advHum","sHum"],["advHum","uHum"],["lift","sHum"],["lift","uHum"],["meanCloudiness","sHum"],["meanCloudiness","uHum"],
+["warmth","sHum"],["vortex","sHum"],["vortex","uHum"],["outbreak","sHum"],
+["terrainSlope","relief"],
+["daylight","shallow"],["daylight","deep"],["localHour","shallow"],["localHour","deep"],
+["meanCloudiness","shallow"],["meanCloudiness","deep"],["relief","shallow"],["relief","deep"],
+["landFraction","shallow"],["landFraction","deep"],["temperatureK","deep"],
+["instab","activity"],["lift","activity"],["warmth","activity"],["deep","activity"],["landFraction","activity"],["band","activity"],
+["circU","cirrusPatch"],
+["pSample","weatherSample"],["surfaceWind","weatherSample"],["upperWind","weatherSample"],["lift","weatherSample"],
+["sHum","weatherSample"],["uHum","weatherSample"],["advConv","weatherSample"],["activity","weatherSample"],
+["shallow","weatherSample"],["deep","weatherSample"],["compression","weatherSample"],["band","weatherSample"],
+["front","weatherSample"],["warmth","weatherSample"],["fetch","weatherSample"],["vortex","weatherSample"],
+["cirrusPatch","weatherSample"],["meanCloudiness","weatherSample"],["landFraction","weatherSample"],["relief","weatherSample"],["tropopause","weatherSample"],
+["sHum","shape"],["sHum","strat"],["sHum","coverage"],["sHum","tower"],["advConv","shape"],
+["shape","gran"],["activity","gran"],["band","gran"],["cCell","gran"],
+["lift","strat"],["meanCloudiness","strat"],["landFraction","strat"],["activity","strat"],["band","strat"],
+["lift","layered"],["warmth","layered"],["band","layered"],["shape","layered"],["activity","layered"],["strat","layered"],
+["shape","tower"],["activity","tower"],["deep","tower"],["shallow","tower"],["lift","tower"],["tropopause","tower"],["layered","tower"],
+["vortex","anvilTop"],["tropopause","anvilTop"],
+["shallow","coverage"],["gran","coverage"],["strat","coverage"],
+["coverage","cumulus"],["tower","cumulus"],["anvilTop","cumulus"],
+["uHum","cirrus"],["meanCloudiness","cirrus"],["cirrusPatch","cirrus"],
+["upperWind","cirrusFlow"],
+["strat","cCell"],["fetch","cCell"],["warmth","cCell"],["landFraction","cCell"],["activity","cCell"],["meanCloudiness","cCell"],["band","cCell"],
+["cirrusFlow","ciCell"],["activity","ciCell"],["landFraction","ciCell"],["vortex","ciCell"],
+["cumulus","cloudSample"],["cirrus","cloudSample"],["cirrusFlow","cloudSample"],["landFraction","cloudSample"],
+["activity","cloudSample"],["meanCloudiness","cloudSample"],["vortex","cloudSample"],["cCell","cloudSample"],["ciCell","cloudSample"],
+["cloudSample","texCloud"],["cloudSample","texEnv"],["cloudSample","texCell"],
+["surfaceWind","texMotion"],["upperWind","texMotion"],
+["texCloud","texBlend"],["texEnv","texBlend"],["texCell","texBlend"],["texMotion","texBlend"],
+["camera","capPlace"],["body","capPlace"],["capPlace","sampler"],["texBlend","sampler"],
+["sampler","rSample"],["sampler","rMotion"],["sampler","rInput"],["dClock","rInput"],
+["rSample","kindCurves"],["rSample","grain"],["kindCurves","opFrac"],["cDetail","opFrac"],
+["rSample","cDetail"],["rMotion","cDetail"],["grain","cDetail"],["dClock","cDetail"],["cDetSet","cDetail"],
+["kindCurves","cloudTopR"],["cDetail","cloudTopR"],
+["rSample","ciDetail"],["rMotion","ciDetail"],["dClock","ciDetail"],["ciDetSet","ciDetail"],
+["sampler","opaque"],["cDetail","opaque"],["opFrac","opaque"],["cloudTopR","opaque"],["camera","opaque"],["cDetSet","opaque"],
+["opaque","gbuf"],["gbuf","aMedium"],["shadow","gbuf"],
+["rSample","ciShell"],["ciDetail","ciShell"],["optics","ciShell"],["sun","ciShell"],["kindCurves","ciShell"],
+["ciShell","aCompose"],["aMedium","aCompose"],
+["shadow","aMedium"],["sun","aMedium"],["graphics","aMedium"],
+["sampler","shadow"],["cDetail","shadow"],["ciDetail","shadow"],["kindCurves","shadow"],["optics","shadow"],
+["sun","shadow"],["cDetSet","shadow"],["ciDetSet","shadow"],["graphics","shadow"],
+["sampler","pLight"],["kindCurves","pLight"],["optics","pLight"],
+["graphics","cDetSet"],["graphics","ciDetSet"],["graphics","opaque"],["graphics","ciShell"],
+["tuning","pSource"],["tuning","humSrc"],["tuning","moistSrc"],["tuning","lift"],["tuning","sHum"],["tuning","uHum"],
+["tuning","activity"],["tuning","shallow"],["tuning","deep"],["tuning","strat"],["tuning","coverage"],
+["tuning","gran"],["tuning","layered"],["tuning","tower"],["tuning","cirrus"],["tuning","cCell"],["tuning","ciCell"],
+];
+
+// ============ 状態 ============
+const nodeById = {};
+const nodes = NODES.map(([id,label,group,ref,desc]) => {
+  const g = GROUPS[group];
+  const n = {id,label,group,ref,desc,
+    x: g.ax + (Math.random()-.5)*.25, y: g.ay + (Math.random()-.5)*.25, vx:0, vy:0, r: 6};
+  nodeById[id] = n; return n;
+});
+const edges = EDGES.map(([a,b]) => ({a: nodeById[a], b: nodeById[b]})).filter(e => e.a && e.b);
+const inMap = {}, outMap = {};
+edges.forEach(e => { (outMap[e.a.id] ??= []).push(e.b); (inMap[e.b.id] ??= []).push(e.a); });
+
+// ============ シミュレーション ============
+const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+let W = 0, H = 0, dpr = 1, SCALE = 1;
+function resize() {
+  const r = cv.parentElement.getBoundingClientRect();
+  dpr = devicePixelRatio || 1; W = r.width; H = r.height;
+  cv.width = W * dpr; cv.height = H * dpr;
+  SCALE = Math.min(W, H) * 0.55;
+}
+addEventListener("resize", resize); resize();
+
+let view = {x:0, y:0, k:1};
+function toWorld(px, py){ return {x:(px - W/2)/(view.k*SCALE) - view.x, y:(py - H/2)/(view.k*SCALE) - view.y}; }
+
+let alpha = 1;
+function tick() {
+  if (alpha < 0.02 && !dragNode) return;
+  alpha *= 0.997;
+  const k = 0.02 * alpha;
+  // 反発
+  for (let i = 0; i < nodes.length; i++) {
+    const a = nodes[i];
+    for (let j = i+1; j < nodes.length; j++) {
+      const b = nodes[j];
+      let dx = a.x-b.x, dy = a.y-b.y, d2 = dx*dx+dy*dy;
+      if (d2 > 0.09) continue;
+      d2 = Math.max(d2, 1e-4);
+      const f = 0.00008/d2;
+      dx *= f/Math.sqrt(d2); dy *= f/Math.sqrt(d2);
+      a.vx += dx; a.vy += dy; b.vx -= dx; b.vy -= dy;
+    }
+  }
+  // エッジのばね
+  for (const e of edges) {
+    const dx = e.b.x-e.a.x, dy = e.b.y-e.a.y, d = Math.hypot(dx,dy)||1e-4;
+    const f = (d - 0.16) * k;
+    e.a.vx += dx/d*f; e.a.vy += dy/d*f; e.b.vx -= dx/d*f; e.b.vy -= dy/d*f;
+  }
+  // グループ重心へ
+  for (const n of nodes) {
+    const g = GROUPS[n.group];
+    n.vx += (g.ax - n.x) * k * 0.9; n.vy += (g.ay - n.y) * k * 0.9;
+  }
+  for (const n of nodes) {
+    if (n === dragNode || n.pinned) { n.vx = n.vy = 0; continue; }
+    n.x += Math.max(-0.03, Math.min(0.03, n.vx *= 0.82));
+    n.y += Math.max(-0.03, Math.min(0.03, n.vy *= 0.82));
+  }
+}
+
+// ============ 描画 ============
+let hover = null, selected = null, dragNode = null, panning = null;
+const activeGroups = new Set(Object.keys(GROUPS));
+let searchHit = new Set();
+
+function draw() {
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,H);
+  ctx.translate(W/2, H/2); ctx.scale(view.k, view.k); ctx.translate(view.x*SCALE, view.y*SCALE);
+  const focus = selected || hover;
+  const nb = focus ? new Set([focus.id, ...(inMap[focus.id]||[]).map(n=>n.id), ...(outMap[focus.id]||[]).map(n=>n.id)]) : null;
+  const dim = n => {
+    if (!activeGroups.has(n.group)) return 0.03;
+    if (nb && !nb.has(n.id)) return 0.12;
+    if (searchHit.size && !searchHit.has(n.id)) return 0.12;
+    return 1;
+  };
+  // エッジ
+  for (const e of edges) {
+    const a = e.a, b = e.b;
+    const hot = focus && (a.id===focus.id || b.id===focus.id);
+    const al = Math.min(dim(a), dim(b));
+    if (al < 0.1) { ctx.globalAlpha = al*0.5; }
+    else ctx.globalAlpha = hot ? 0.9 : 0.22;
+    ctx.strokeStyle = hot ? "#e8c468" : "#7d8ea3";
+    ctx.lineWidth = (hot ? 1.4 : 0.7)/view.k;
+    const mx = (a.x+b.x)/2*SCALE, my=(a.y+b.y)/2*SCALE;
+    ctx.beginPath(); ctx.moveTo(a.x*SCALE, a.y*SCALE); ctx.lineTo(b.x*SCALE, b.y*SCALE); ctx.stroke();
+    // 矢印
+    const dx=b.x-a.x, dy=b.y-a.y, d=Math.hypot(dx,dy)||1;
+    const tx=b.x*SCALE - dx/d*b.r, ty=b.y*SCALE - dy/d*b.r;
+    const s=5/view.k;
+    ctx.beginPath(); ctx.moveTo(tx,ty);
+    ctx.lineTo(tx - dx/d*s*1.6 - dy/d*s, ty - dy/d*s*1.6 + dx/d*s);
+    ctx.lineTo(tx - dx/d*s*1.6 + dy/d*s, ty - dy/d*s*1.6 - dx/d*s);
+    ctx.closePath(); ctx.fillStyle = ctx.strokeStyle; ctx.fill();
+  }
+  // ノード
+  for (const n of nodes) {
+    const g = GROUPS[n.group]; const al = dim(n);
+    ctx.globalAlpha = al;
+    ctx.beginPath(); ctx.arc(n.x*SCALE, n.y*SCALE, n.r/view.k*1.6, 0, 7);
+    ctx.fillStyle = g.color; ctx.fill();
+    if (n === selected) { ctx.lineWidth = 2/view.k; ctx.strokeStyle = "#fff"; ctx.stroke(); }
+    if (al > 0.5 || n === focus) {
+      ctx.globalAlpha = Math.max(al, .9);
+      ctx.font = `${11/view.k}px sans-serif`;
+      ctx.textAlign = "center"; ctx.fillStyle = "#dfe6ee";
+      ctx.fillText(n.label, n.x*SCALE, n.y*SCALE + n.r/view.k*1.6 + 12/view.k);
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// ============ 詳細パネル ============
+const side = document.getElementById("side");
+const sideHead = side.innerHTML.split('<details')[0];
+function showDetail(n) {
+  const g = GROUPS[n.group];
+  const li = arr => (arr||[]).map(m =>
+    `<span class="link" data-id="${m.id}"><span class="arr">${m===n?'':'·'}</span>${m.label}</span>`).join("");
+  side.innerHTML = `
+    <h2 style="color:${g.color}">${n.label}</h2>
+    <div class="grp">${g.name}</div>
+    <div class="ref">${n.ref}</div>
+    <div class="desc">${n.desc}</div>
+    <h3>← 依存する値 (入力 ${(inMap[n.id]||[]).length})</h3>${li(inMap[n.id]) || '<div class="hint">なし(起点)</div>'}
+    <h3>→ 使われる先 (出力 ${(outMap[n.id]||[]).length})</h3>${li(outMap[n.id]) || '<div class="hint">なし(終点)</div>'}
+  ` + side.innerHTML.slice(side.innerHTML.indexOf('<details'));
+}
+side.addEventListener("click", e => {
+  const t = e.target.closest(".link"); if (!t) return;
+  const n = nodeById[t.dataset.id]; if (n) { selected = n; showDetail(n); centerOn(n); }
+});
+function centerOn(n){ n.pinned = false; }
+
+// ============ 操作 ============
+let last = null;
+cv.addEventListener("pointerdown", e => {
+  const w = toWorld(e.offsetX, e.offsetY); last = {x:e.offsetX, y:e.offsetY};
+  let hit = null;
+  for (const n of nodes) if (Math.hypot(n.x-w.x, n.y-w.y)*SCALE*view.k < 14) { hit = n; break; }
+  if (hit) { dragNode = hit; alpha = Math.max(alpha,.3); }
+  else panning = {vx: view.x, vy: view.y};
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener("pointermove", e => {
+  const w = toWorld(e.offsetX, e.offsetY);
+  if (dragNode) { dragNode.x = w.x; dragNode.y = w.y; }
+  else if (panning) { view.x = panning.vx + (e.offsetX-last.x)/view.k/SCALE; view.y = panning.vy + (e.offsetY-last.y)/view.k/SCALE; }
+  else {
+    let hit = null;
+    for (const n of nodes) if (Math.hypot(n.x-w.x, n.y-w.y)*SCALE*view.k < 14) { hit = n; break; }
+    hover = hit; cv.style.cursor = hit ? "pointer" : "grab";
+  }
+});
+cv.addEventListener("pointerup", e => {
+  if (dragNode) { selected = dragNode; showDetail(dragNode); dragNode = null; }
+  else if (panning && Math.hypot(e.offsetX-last.x, e.offsetY-last.y) < 4) { selected = null; }
+  panning = null;
+});
+cv.addEventListener("wheel", e => {
+  e.preventDefault();
+  const w0 = toWorld(e.offsetX, e.offsetY);
+  view.k *= e.deltaY < 0 ? 1.12 : 0.89;
+  view.k = Math.max(0.3, Math.min(4, view.k));
+  const w1 = toWorld(e.offsetX, e.offsetY);
+  view.x += w1.x - w0.x; view.y += w1.y - w0.y;
+}, {passive:false});
+
+// ============ 凡例・検索 ============
+const legend = document.getElementById("legend");
+for (const [key, g] of Object.entries(GROUPS)) {
+  const c = document.createElement("span");
+  c.className = "chip on"; c.innerHTML = `<span class="dot" style="background:${g.color}"></span>${g.name}`;
+  c.onclick = () => {
+    if (activeGroups.has(key)) { activeGroups.delete(key); c.classList.remove("on"); }
+    else { activeGroups.add(key); c.classList.add("on"); }
+  };
+  legend.appendChild(c);
+}
+document.getElementById("search").addEventListener("input", e => {
+  const q = e.target.value.trim().toLowerCase();
+  searchHit = q ? new Set(nodes.filter(n =>
+    n.label.toLowerCase().includes(q) || n.id.toLowerCase().includes(q) || n.desc.toLowerCase().includes(q)).map(n=>n.id)) : new Set();
+});
+
+// ============ 定数表 ============
+document.getElementById("tune").innerHTML = `
+<b>気圧・上昇流</b> pressureNoiseAmplitude 18hPa / pressureBandAmplitude 8 / pressureLiftGain 0.02 / liftLimit 0.06 / terrainLiftGain 0.35<br>
+<b>帯・湿度</b> rainbandOnset 5 / bandLift 0.06 / surfaceHumidityBase 0.435 / upperHumidityBase 0.42 / upperAdvection 1.6 / warmHumidity 0.6 / anvilHumidity 0.2 / surfaceEyeDryness 0.8 / upperEyeDryness 2 / meanCloudinessDry 0.10 / Wet 0.85<br>
+<b>上昇源・対流</b> transientGain 0.3 / landHeatingGain 0.3 / orographicGain 2 / rainoutGain 2.5 / plumeDecaySeconds 21600 / instabilityAmplitude 1.0 / liftActivity 25 / bandActivity 0.5<br>
+<b>凝結</b> coverageOnset 0.50 / coverageWidth 0.22 / convectionGain 1.2 / cloudBaseHeight 1000m / layerTopSpan 6000 / towerOnset 0.015 / towerDeepGain 0.1 / hazeOnset 0.5 / streakGain 2.36 / translucentLimit 0.85<br>
+<b>セル径</b> cellClosed 70km / Open 25 / Land 4 / Cluster 120 / Band 35 / Marine 50 / cirrusCellFiber 2.5 / Mackerel 4 / Anvil 80 / Sheet 20<br>
+<b>圏界面</b> tropopauseEquator 17000m / Pole 9000m<br>
+<b>地表駆動</b> shallowForcingGain 0.12 / landDeepScale 0.72 / oceanDeepScale 0.5 / warmSea 門 / mountainPhaseAdvance 2h`;
+document.getElementById("consts").innerHTML = `
+<b>細部</b> DETAIL_WAVELENGTHS 32km→250m×8段 / DETAIL_GAIN 2.2 / OCTAVE_COUPLING 1.8 / WARP_DISPLACEMENT 4500m<br>
+<b>時間</b> LIFETIME_AT_1KM 2400s / RECYCLE 4本×7200s / CLOUD_BAKE_DISPLAY_TIME_STEP 6s / ADVECTION_PERIOD 20h / TRACE_SECONDS 36h<br>
+<b>気圧渦</b> FEATURE_REACH 2500km / 低気圧32個・熱帯5・高気圧12 / ロスビー波数5・3°/日<br>
+<b>雲種</b> CUMULUS 0.5-17km・τ=量/0.12 / CIRRUS 9-13km・τ=3×量² / 反射 g=0.85(液)/0.75(氷)<br>
+<b>殻・影</b> cap 512px / COARSE_STEP 3000m / FINE_STEP 1500m / SHADOW_TAPS 6 / DITHER_LEVELS 256 / NORMAL_STEP 125m`;
+
+// ============ ループ ============
+(function loop(){ tick(); draw(); requestAnimationFrame(loop); })();
+</script>
+</body>
+</html>

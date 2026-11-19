@@ -10,13 +10,13 @@ import {
 import { BlueNoise } from './blue-noise';
 import { CloudShapeEvaluator } from './earth-weather/cloud/cloud-shape-evaluator';
 import type { CloudSample } from './earth-weather/cloud/cloud-field-sample';
-import { CloudFieldSampler } from './earth-weather/cloud/cloud-field-sampler';
-import type { CloudDetailClockInput, CloudRenderInput } from './earth-weather/cloud/cloud-render-input';
+import { CloudFieldSampler, type CloudFieldBinding } from './earth-weather/cloud/cloud-field-sampler';
+import type { CloudDetailClockInput } from './earth-weather/cloud/cloud-render-input';
 import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN } from './earth-weather/cloud/cumulus-shape';
 import { FINEST_DETAIL_WAVELENGTH } from './earth-weather/cloud/cloud-detail';
 import {
-  cumulusColumnOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
+  cumulusColumnOpticalDepthNode, cumulusFieldTopNode, cumulusOpacityNode,
 } from './earth-weather/cloud/cloud-kind-node';
 import { eastAt, northAt } from './earth-weather/sphere-frame';
 import { markLitCloudShell } from './pipeline/lit-layer';
@@ -128,8 +128,8 @@ export class OpaqueCloudSurfaceRenderer {
   }
 
   // 読む雲場と cap の置き方を写し取る。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
-  public bind(input: CloudRenderInput): void {
-    this.fieldSampler.bind(input.field);
+  public bind(field: CloudFieldBinding): void {
+    this.fieldSampler.bind(field);
   }
 
   // 細部が流れ、生まれ直す時刻を置く。
@@ -285,7 +285,7 @@ export class OpaqueCloudSurfaceRenderer {
     // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
     // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに細部が湧く。
     const clearance = radius.sub(this.shape.cloudTopRadius(
-      this.shape.cloudTop(cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), detail), this.groundRadius));
+      this.shape.cloudTop(cumulusFieldTopNode(cloud.cumulus), detail), this.groundRadius));
     return select(present.greaterThan(0.5), clearance, float(1));
   }
 
@@ -300,7 +300,7 @@ export class OpaqueCloudSurfaceRenderer {
       const cloud = this.fieldAt(direction);
       return this.shape.cloudTopRadius(
         this.shape.cloudTop(
-          cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN),
+          cumulusFieldTopNode(cloud.cumulus),
           this.detailAt(direction, width, cloud, wind),
         ),
         this.groundRadius,

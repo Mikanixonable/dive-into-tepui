@@ -320,7 +320,6 @@ const SHADOW_CLOUD: ShadowCloud = {
         cosRadius: -1,
       },
     },
-    generation: 0,
     topAltitude: 1e4,
     clock: { displayTime: 0, simSpeed: 0 },
   },

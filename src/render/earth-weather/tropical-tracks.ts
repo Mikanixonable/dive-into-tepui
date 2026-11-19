@@ -1,13 +1,16 @@
-// 気圧へ書き込む熱帯低気圧の配置を、時刻の閉じた関数で答える。暖かい海に海域の発生頻度の
+// 熱帯低気圧の生の配置を、時刻の閉じた関数で答える。暖かい海に海域の発生頻度の
 // 重みで生まれ、貿易風に流されて西へ走って衰えるか、転向して温帯低気圧へ変わって消える —
 // 同時に存在する数は 0 から複数までばらつく。一生は(枡, 世代)ごとの乱数で決まり、どの時刻へ
-// 飛んでも同じ配置になる。
+// 飛んでも同じ配置になる。ここが答えるのは吸収を考えない生の配置 — 近づきすぎた中心どうしの
+// 吸収は cyclone-tracks が全ての低気圧の生の配置の上で行う。
 import * as THREE from 'three/webgpu';
 import { mulberry32, randSym } from '../../math/random';
-import { vortexSpinOf } from './wind-law';
+import { woundOf } from './wind-law';
 import { FEATURE_REACH } from './pressure-feature';
+import { vortexPresence } from './vortex-absorption';
+import type { RawVortex } from './vortex-absorption';
 import { courseAt, DAY, DEGREE, uniformIn, waypoint } from './tracks';
-import type { Course, PressurePlacement, Range } from './tracks';
+import type { Course, Range } from './tracks';
 
 // 熱帯低気圧。同時に持つ枡の数。枡は上層の波へ錨づかない — 熱帯の渦は亜熱帯高気圧の縁の
 // 操縦流が運ぶもので、位相のずれた枡がそれぞれに生まれ直すだけの別の系である。
@@ -159,29 +162,22 @@ function tropicalTrackOf(index: number, generation: number): TropicalTrack | nul
 }
 
 // 積算の巻き上げ角 [rad]。生まれてからの、谷の循環が気団の境目を巻き上げてきた総量。
-// 転向して温帯化する渦は肥大・浅化で循環が緩むので、積算は一生の深さ・半径・緯度を辿る。
-const WOUND_STEPS = 16;
+// 転向して温帯化する渦は肥大・浅化で循環が緩むので、積算は一生の深さ・半径・緯度を辿る
+// (wind-law.ts の woundOf)。
 function tropicalWoundOf(track: TropicalTrack, life: number, rotationPeriod: number): number {
-  let sum = 0;
-  for (let i = 0; i <= WOUND_STEPS; i += 1) {
-    const l = (life * i) / WOUND_STEPS;
-    const spin = vortexSpinOf(
-      track.peakDepth * Math.sin(Math.PI * l ** TROPICAL_PEAK_SKEW),
-      track.birthRadius
-        * (1 + track.growth * THREE.MathUtils.smoothstep(l, TROPICAL_GROWTH_ONSET, 1)),
-      courseAt(track.course, l).latitude * DEGREE,
-      FEATURE_REACH, rotationPeriod,
-    );
-    sum += (i === 0 || i === WOUND_STEPS ? 0.5 : 1) * spin.coreOmega;
-  }
-  return (sum * life * track.lifetime) / WOUND_STEPS;
+  return woundOf(life, track.lifetime, FEATURE_REACH, rotationPeriod, (l) => ({
+    depth: track.peakDepth * Math.sin(Math.PI * l ** TROPICAL_PEAK_SKEW),
+    radius: track.birthRadius
+      * (1 + track.growth * THREE.MathUtils.smoothstep(l, TROPICAL_GROWTH_ONSET, 1)),
+    latitude: courseAt(track.course, l).latitude * DEGREE,
+  }));
 }
 
-// 熱帯低気圧 index(0..TROPICAL_COUNT − 1)の、時刻 seconds [s] における配置。その世代に
-// 発生しない、生まれる前、消えたあとは null。rotationPeriod [s] は自転周期。
-export function tropicalPlacementAt(
+// 熱帯低気圧 index(0..TROPICAL_COUNT − 1)の、時刻 seconds [s] における生の配置(吸収を考えない
+// 値)。その世代に発生しない、生まれる前、消えたあとは null。rotationPeriod [s] は自転周期。
+export function rawTropicalPlacementAt(
   index: number, seconds: number, rotationPeriod: number,
-): PressurePlacement | null {
+): RawVortex | null {
   // 枡ごとに周期の位相をずらし、揃って生まれ直さないようにする。
   const age = seconds / TROPICAL_PERIOD + index / TROPICAL_COUNT;
   const generation = Math.floor(age);
@@ -192,16 +188,19 @@ export function tropicalPlacementAt(
   // 進路を等速で辿り、転向した進路はそのあと緩く大きくなりながら浅くなり、前線の向きへ伸びる。
   const point = courseAt(track.course, life);
   return {
-    latitude: point.latitude * DEGREE,
-    longitude: point.longitude * DEGREE,
-    depth: track.peakDepth * Math.sin(Math.PI * life ** TROPICAL_PEAK_SKEW),
-    radius: track.birthRadius * (1 + track.growth * THREE.MathUtils.smoothstep(life, TROPICAL_GROWTH_ONSET, 1)),
-    elongation: 1 + (track.finalElongation - 1) * THREE.MathUtils.smoothstep(life, TROPICAL_ELONGATION_ONSET, 1),
-    // 転向した進路は温帯化とともに閉塞し、赤道側の尾は寒冷・温暖の対へ育つ。
-    occlusion: track.recurving
-      ? THREE.MathUtils.smoothstep(life, TROPICAL_OCCLUSION_ONSET, TROPICAL_OCCLUSION_FULL)
-      : undefined,
-    fronts: 'tail',
-    wound: tropicalWoundOf(track, life, rotationPeriod),
+    placement: {
+      latitude: point.latitude * DEGREE,
+      longitude: point.longitude * DEGREE,
+      depth: track.peakDepth * Math.sin(Math.PI * life ** TROPICAL_PEAK_SKEW),
+      radius: track.birthRadius * (1 + track.growth * THREE.MathUtils.smoothstep(life, TROPICAL_GROWTH_ONSET, 1)),
+      elongation: 1 + (track.finalElongation - 1) * THREE.MathUtils.smoothstep(life, TROPICAL_ELONGATION_ONSET, 1),
+      // 転向した進路は温帯化とともに閉塞し、赤道側の尾は寒冷・温暖の対へ育つ。
+      occlusion: track.recurving
+        ? THREE.MathUtils.smoothstep(life, TROPICAL_OCCLUSION_ONSET, TROPICAL_OCCLUSION_FULL)
+        : undefined,
+      fronts: 'tail',
+      wound: tropicalWoundOf(track, life, rotationPeriod),
+    },
+    presence: vortexPresence(life, track.lifetime),
   };
 }

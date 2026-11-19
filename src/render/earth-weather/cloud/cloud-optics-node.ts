@@ -1,13 +1,7 @@
 // 雲の光学計算を TSL ノードへ接続するアダプタ。基準式は cloud-optics.ts で定義し、ここでは同じ式を
 // シェーダグラフのノードとして構成する。
-import { abs, clamp, exp, log, max, min, sqrt } from 'three/tsl';
-import { MAX_COLUMN_OPACITY } from './cloud-optics';
+import { abs, clamp, exp, max, sqrt } from 'three/tsl';
 import type { FloatNode } from '../../tsl-types';
-
-// 不透明度を鉛直柱光学深さへ変換するGPU版。
-export function columnOpticalDepthFromOpacityNode(opacity: FloatNode): FloatNode {
-  return log(min(opacity, MAX_COLUMN_OPACITY).oneMinus()).negate();
-}
 
 // 鉛直柱光学深さと視線airmassから、イベント1回ぶんの透過率を得るGPU版。
 export function transmittanceFromColumnOpticalDepthNode(
