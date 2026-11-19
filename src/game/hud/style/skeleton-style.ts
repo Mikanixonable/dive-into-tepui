@@ -308,8 +308,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud-toast .toast-message { min-width: 0; overflow-wrap: anywhere; }
 
 /* 状態色の共有語彙: 読み値や行が持つ意味を、場所ごとの色名ではなく共通ロールで名付ける。
-   ui-caution / ui-warning は注意・警告の値(色に加えて △ ▲ を伴う)、ui-warning-fill は
-   警告の行の面(hud/style の計器スタイル側が持つ)、ui-accent は稼働中のモード。 */
+   ui-caution / ui-warning は注意・警告の値(色に加えて △ ▲ を伴う)、ui-accent は稼働中のモード。 */
 #hud .ui-caution { color: var(--role-caution); }
 #hud .ui-warning { color: var(--role-warning); }
 #hud .ui-caution::before, #hud .ui-warning::before {
