@@ -13,16 +13,16 @@ import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-
 import { anglesFromDirection, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import type { Albedo } from '../../src/render/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
-import type { ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { BodyShadow, ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
+import type { SunLight } from '../../src/render/pipeline/sun-light';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { LineStyle } from '../../src/render/line-style';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
-import type { ProteinLabCaseMetadata } from './protein-cases';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { CelestialTexture } from '../../src/render/celestial-textures';
-import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -53,6 +53,8 @@ const NEAR = 2;
 
 // 撮影 1 枚ぶんの差分。
 export interface LabShot {
+  // 可動部を止めて撮る表示時刻 [s]。省略時は 0。
+  readonly displayTime?: number;
   // ケース既定の観察の向きへ重ねる差分。
   readonly view: Partial<LabViewAngles>;
   // 起動時の描画品質設定へ重ねる差分。省略すると起動時の設定のまま撮る。
@@ -60,6 +62,8 @@ export interface LabShot {
 }
 
 export interface LabCase {
+  // 可動部を表示時刻 [s] の姿へ同期する。
+  readonly syncMotion?: (displayTime: number) => void;
   // シーンへ載せる物体。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を立てた
   // 物体のものがケースを外すときに解放される。
   readonly objects: readonly THREE.Object3D[];
@@ -68,7 +72,7 @@ export interface LabCase {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
-  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・積雲の影の源になる。省略すると
+  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・雲の影の源になる。省略すると
   // 地球を置かない。
   readonly earth?: Pick<LabViewAngles, EarthAngleKey>;
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
@@ -81,6 +85,8 @@ export interface LabCase {
   readonly atmospheres?: readonly AtmosphereBody[];
   // 地球のほかに影パスへ渡す球。中心は描画座標。
   readonly shadowBodies?: readonly ShadowBody[];
+  // 雲の影の源(地球を置かないケースが雲の影を試すとき)。置くと地球の shadowCloud より先に使う。
+  readonly shadowCloud?: ShadowCloud;
   // 影パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: {
     readonly center: THREE.Vector3;
@@ -94,16 +100,19 @@ export interface LabCase {
   // earthCenter は地球の中心(描画座標)で、地球を置かないケースでは null。毎フレーム、カメラと地球を
   // 置いたあとに呼ばれるので、同値なら何もしないこと。
   readonly sync?: (graphics: GraphicsSettingsData, earthCenter: THREE.Vector3 | null) => void;
-  // 計測結果へ添える、タンパク質ケースの識別。
-  readonly proteinMotion?: ProteinLabCaseMetadata;
-  // 表示時刻 displayTime [s] まで残基 motion を進め、そのフレームの計測値を返す。
-  readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
-  // 残基 motion が握る資源を解放する。
-  readonly disposeProteinMotion?: () => void;
+  // ケースが THREE のシーン資源所有走査で扱えない補助資源を解放する。
+  readonly dispose?: () => void;
 }
 
 // ケースを組む関数。style の表示スタイルで組んだ姿を返し、環の帯は ringMaterials で描く。
-export type CaseBuilder = (style: RenderStyle, ringMaterials: RingMaterials) => LabCase;
+// sunLight と bodyShadow は、フレームの恒星と天体影をパイプラインと共有する口で、それらを読む
+// 部品(体積プルームなど)を組むケースへ渡す。
+export type CaseBuilder = (
+  style: RenderStyle,
+  ringMaterials: RingMaterials,
+  sunLight: SunLight,
+  bodyShadow: BodyShadow,
+) => LabCase;
 
 // 原点から -Z を見るケース共通のカメラ。
 export function labCamera(): THREE.PerspectiveCamera {
@@ -140,7 +149,7 @@ const texturedSurfaces = new Map<CelestialTexture, CelestialSurface>();
 export function texturedBody(
   texture: CelestialTexture, def: PlanetDef, center: THREE.Vector3, apparentDiameterPx: number,
 ): { readonly object: THREE.Object3D; readonly axes: THREE.Vector3; readonly ready: () => boolean } {
-  const shape = shapeAxes(def.radius, def.shape);
+  const shape = shapeAxes(def.radius, def.shape ?? null);
   const axes = new THREE.Vector3(shape.x, shape.y, shape.z);
   const group = new THREE.Group();
   group.position.copy(center);

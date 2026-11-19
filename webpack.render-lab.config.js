@@ -5,7 +5,15 @@ const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 
-module.exports = {
+module.exports = (env, argv) => ({
+  cache: {
+    type: 'filesystem',
+    // production(撮影)と development(server)でキャッシュ名を分ける — 片方のモードが書いた
+    // モジュールをもう片方が読むと、innerGraph で畳んだ依存のテンプレートが無く
+    // No template for dependency で落ちる(webpack.config.js と同じ仕掛け)。
+    name: `render-lab-${argv.mode ?? 'development'}`,
+    cacheDirectory: path.resolve(__dirname, 'node_modules/.cache/webpack'),
+  },
   entry: './tools/render-lab/main.ts',
   resolve: {
     extensions: ['.ts', '.js'],
@@ -27,11 +35,8 @@ module.exports = {
         type: 'asset/source',
       },
       {
-        // タンパク質の主鎖・構造・モーション JSON(数十MB)は本体と同じく別ファイルへ書き出し、
-        // import 元へは URL 文字列を渡す。ここを落とすと fetch 先が生成されず、
-        // タンパク質のケースだけが「asset が無い」で落ちる。
-        test: /(Backbone|Structure|Motion)\.json$/,
-        include: path.resolve(__dirname, 'src/assets/models'),
+        // 船モジュールの統合 GLB バイナリは main JS へ埋め込まず、起動時に fetch する。
+        test: /\.(glb|gltf)$/,
         type: 'asset/resource',
         generator: { filename: 'assets/[hash][ext]' },
       },
@@ -62,4 +67,4 @@ module.exports = {
     liveReload: true,
     hot: false,
   },
-};
+});

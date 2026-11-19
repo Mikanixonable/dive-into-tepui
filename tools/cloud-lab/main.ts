@@ -1,145 +1,200 @@
 // 雲の実験環境の画面。表示する量を選び、時刻を動かして、天気のモデルの写しを正距円筒で見る。
+// 「天気図」は同じ天気のモデルの面を 2D canvas へ焼いて出す(器は synoptic-panel が持つ)。
 import { CloudLabCanvas } from './lab';
+import { SECONDS_PER_HOUR } from './time-units';
 import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
-import { buildButtonRow, buildSlider, buildToggleField } from '../lab-controls';
+import { createViewLegend } from './view-legend';
+import { createSynopticPanel } from './synoptic-panel';
+import { buildFramingRow } from './framing-controls';
+import { buildTimeControls } from './time-controls';
+import type { Framing, SynopticLayers } from './synoptic-map';
+import { buildButtonRow, buildCheckbox } from '../lab-controls';
+import { CLOUD_TUNING } from '../../src/render/earth-weather/cloud-tuning';
+import { buildTuningControls } from './tuning-controls';
+import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
-import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
-import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
+import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
+import { cyclonePlacementsAt } from '../../src/render/earth-weather/cyclone-tracks';
+import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
+import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 
-const HOURS_PER_DAY = 24;
-// 再生中に実時間 1 秒あたり進める時刻 [h]。
-const PLAY_HOURS_PER_SECOND = 1;
+// 写す表示。GPU の写し(CLOUD_LAB_VIEWS)に、2D canvas へ焼く天気図モードを足す。
+type ViewChoice = CloudLabViewId | 'synoptic';
+
+// 画面のモード。「写し」は GPU の写しを量ごとに選ぶ画面、「天気図」は全球の面を出す画面 —
+// 写しのひとつではなくモードなので、写しのボタン列とは別のタブで切り替える。
+type Mode = 'cloud' | 'synoptic';
+const MODE_LABELS: readonly (readonly [Mode, string])[] = [
+  ['cloud', '写し'],
+  ['synoptic', '天気図'],
+];
+
+// 天気図に重ねる層の並び(チェックボックスの順)。
+const LAYER_LABELS: readonly (readonly [keyof SynopticLayers, string])[] = [
+  ['fill', '気圧'],
+  ['coast', '海岸線'],
+  ['isobars', '等圧線'],
+  ['streamlines', '上層流線'],
+  ['surfaceWind', '地表風'],
+  ['wave', '偏西風の蛇行'],
+  ['symbols', '前線・中心'],
+];
 
 declare global {
   interface Window {
     // 撮影の駆動(tools/cloud-lab-shot.mjs・tools/cloud-lab-compare.mjs)が CDP から読む入口。
     cloudLab?: {
-      views: readonly CloudLabViewId[];
-      show: (id: CloudLabViewId) => void;
+      views: readonly ViewChoice[];
+      show: (id: ViewChoice) => void;
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
-      // 時刻 [h] の低気圧の谷の配置。撮影の駆動が中心の位置を統計の範囲の切り分けに使う。
+      // 時刻 [h] の低気圧の谷と高気圧の丘の配置。撮影の駆動が中心の位置を統計の範囲の
+      // 切り分けに使う。
       cyclonesAt: (hours: number) => {
-        readonly tropical: CyclonePlacement | null;
-        readonly lows: readonly (CyclonePlacement | null)[];
+        readonly tropicals: readonly (PressurePlacement | null)[];
+        readonly lows: readonly (PressurePlacement | null)[];
+        readonly highs: readonly (PressurePlacement | null)[];
       };
+      // モデルの調整値。いまの全値を返すものと、渡した値を適用して焼き直すもの — 戻った時点で
+      // 焼き直し済みなので、続けて capture すれば新しい値の場が撮れる。
+      params: () => Record<string, number>;
+      setParams: (next: Record<string, number>) => void;
     };
   }
 }
 
-// 時刻を決めるつまみ 1 本。0 から maxHours [h] までの区間を指す。
-interface TimeSlider {
-  readonly maxHours: number;
-  readonly hours: number;
-  // 指す時刻 [h] を置き直し、つまみと読み出しを合わせる。
-  set: (hours: number) => void;
-}
-
-// 時刻のつまみを 1 本組む。format は指している時刻 [h] を読み出しの文字にし、人がつまみを
-// 動かしたときに change が呼ばれる。
-function buildTimeSlider(
-  label: string, maxHours: number, stepHours: number,
-  format: (hours: number) => string, change: () => void,
-): TimeSlider {
-  let hours = 0;
-  const setKnob = buildSlider('time', label, 0, maxHours, stepHours,
-    () => format(hours), (value) => { hours = value; change(); });
-  return {
-    maxHours,
-    get hours(): number { return hours; },
-    set: (value) => { hours = value; setKnob(value); },
-  };
-}
-
 // 器を起こし、操作部品を配線し、撮影の入口を window へ出す。
 async function init(): Promise<void> {
-  const canvas = await CloudLabCanvas.create(document.getElementById('view') as HTMLCanvasElement);
+  // 撮影の駆動(tools/cloud-lab-*.mjs)は ?capture-only を付けて開く — 画面へ提示しない撮影専用
+  // (理由は lab.ts の render())。人が開くときは付けないので、画面はこれまでどおり出る。
+  const captureOnly = new URLSearchParams(location.search).has('capture-only');
+  const viewCanvas = document.getElementById('view') as HTMLCanvasElement;
+  const canvas = await CloudLabCanvas.create(viewCanvas, captureOnly);
+  const mapCanvas = document.getElementById('map') as HTMLCanvasElement;
+  const panel = createSynopticPanel(mapCanvas, document.getElementById('status')!);
 
-  const entries = CLOUD_LAB_VIEWS.map((view) => [view.id, view.label] as const);
-  const markView = buildButtonRow<CloudLabViewId>('views', entries, (id) => {
-    markView(id);
-    canvas.show(id);
-  });
+  let currentView: ViewChoice = canvas.currentView;
+  // 写しモードに戻ったときに出す写し。タブの往復でモードだけが切り替わり、写しの選択は保つ。
+  let lastCloudView: CloudLabViewId = canvas.currentView;
 
-  // 時刻は 3 本のつまみの和。細い側が短い周期の動きを刻み、粗い側がその窓を先へ送る。
-  const applyTime = (): void => {
-    canvas.setTime(timeSliders.reduce((sum, slider) => sum + slider.hours, 0));
-  };
-  const shortTermSlider = buildTimeSlider('72 時間', 72, 0.1,
-    (hours) => `${hours.toFixed(1)} h`, applyTime);
-  const timeSliders: readonly TimeSlider[] = [
-    shortTermSlider,
-    buildTimeSlider('30 日', 30 * HOURS_PER_DAY, HOURS_PER_DAY / 10,
-      (hours) => `${(hours / HOURS_PER_DAY).toFixed(1)} d`, applyTime),
-    buildTimeSlider('1 年', 365 * HOURS_PER_DAY, HOURS_PER_DAY,
-      (hours) => `${(hours / HOURS_PER_DAY).toFixed(0)} d`, applyTime),
-  ];
-  // 時刻 [h] を 3 本へ割り振って入れ直す。細い側から順にその幅で割った余りを取り、いちばん
-  // 粗い 1 本が残りを受けるので、和は元の時刻に戻る。
-  const setTime = (hours: number): void => {
-    let rest = hours;
-    for (const [index, slider] of timeSliders.entries()) {
-      const part = index === timeSliders.length - 1 ? rest : rest % slider.maxHours;
-      slider.set(part);
-      rest -= part;
+  // 時刻の変化を GPU の写しか天気図へ流す。天気図のあいだは GPU を焼き直さず、戻るときに追いつかせる。
+  const applyTime = (hours: number): void => {
+    if (currentView === 'synoptic') panel.refresh(hours);
+    else {
+      canvas.setTime(hours);
+      canvas.render();
     }
-    applyTime();
+  };
+  const time = buildTimeControls('time', canvas.hours, applyTime);
+
+  // 見る範囲。写しの cap は canvas が持ち、天気図の窓は panel が持つ。操作行はいまのモードのものを映す。
+  const cloudFraming = (): Framing => ({
+    latitude: canvas.capCenterLatitude, longitude: canvas.capCenterLongitude, radius: canvas.capAngularRadius,
+  });
+  const framingRow = buildFramingRow('cap', 'capTitle', (framing) => {
+    if (currentView === 'synoptic') panel.setFraming(framing);
+    else {
+      canvas.aimCap(framing.latitude, framing.longitude, framing.radius);
+      canvas.render();
+    }
+  });
+  const syncFraming = (): void => {
+    const synoptic = currentView === 'synoptic';
+    framingRow.show(synoptic ? panel.framing : cloudFraming(), synoptic ? '地図の窓' : 'cap', synoptic);
   };
 
-  let playing = false;
-  let lastFrameMs = 0;
-  // 再生中の 1 フレーム。いちばん細いつまみを実時間に比例して進め、上限で頭から繰り返す。
-  const advance = (nowMs: number): void => {
-    if (!playing) return;
-    const elapsedHours = ((nowMs - lastFrameMs) / 1000) * PLAY_HOURS_PER_SECOND;
-    lastFrameMs = nowMs;
-    shortTermSlider.set((shortTermSlider.hours + elapsedHours) % shortTermSlider.maxHours);
-    applyTime();
-    requestAnimationFrame(advance);
+  const layersRow = document.getElementById('layers')!;
+  for (const [key, label] of LAYER_LABELS) {
+    buildCheckbox('layers', label, panel.layers[key], (on) => panel.setLayer(key, on));
+  }
+
+  const showLegend = createViewLegend(document.getElementById('legend')!);
+
+  // ボタン列は雲種ごと 1 項目に畳んだ列(撮影口は列全体を .views へ出す)。
+  const entries: readonly (readonly [CloudLabViewId, string])[] =
+    CLOUD_LAB_VIEWS.filter((view) => !view.hidden).map((view) => [view.id, view.label] as const);
+  const viewsRow = document.getElementById('views')!;
+  const selectView = (id: ViewChoice): void => {
+    currentView = id;
+    const synoptic = id === 'synoptic';
+    markMode(synoptic ? 'synoptic' : 'cloud');
+    viewCanvas.style.display = synoptic ? 'none' : '';
+    mapCanvas.style.display = synoptic ? '' : 'none';
+    // モードごとの操作行だけを出す — 写しの列は写しモード、層のチェックは天気図モード。
+    // 見る範囲のつまみは両モードで見せる(天気図では地図の窓になる)。
+    viewsRow.style.display = synoptic ? 'none' : '';
+    layersRow.style.display = synoptic ? '' : 'none';
+    syncFraming();
+    if (synoptic) {
+      showLegend(null);
+      panel.refresh(time.hours);
+    } else {
+      lastCloudView = id;
+      markView(id);
+      showLegend(CLOUD_LAB_VIEWS.find((view) => view.id === id)!.legend);
+      // 天気図を出しているあいだ GPU 側の時刻は動かしていないので、ここで追いつかせる。
+      canvas.setTime(time.hours);
+      canvas.show(id);
+      canvas.render();
+    }
   };
-  const markPlaying = buildToggleField('time', '再生', (on) => {
-    playing = on;
-    markPlaying(on);
-    if (!on) return;
-    lastFrameMs = performance.now();
-    requestAnimationFrame(advance);
+  const markMode = buildButtonRow<Mode>('mode', MODE_LABELS,
+    (mode) => selectView(mode === 'synoptic' ? 'synoptic' : lastCloudView));
+  const markView = buildButtonRow<CloudLabViewId>('views', entries, selectView);
+
+  // モデルの調整値(uniform)をいじる束。変更は焼き直し(debounce 済み)へ — 焼き直しは雲場 1 面ぶんの
+  // 費用が掛かるので、ドラッグ中は止めず最後の変更から少し待って1回だけ走らせる。
+  // 束の正本は tuning-controls — 描画側モード(detail.html)の写しも同じ束を使う。
+  const tuning = buildTuningControls(
+    document.getElementById('p-panel')!, document.getElementById('p-json')!,
+    document.getElementById('error')!,
+    () => {
+      canvas.invalidate();
+      if (currentView !== 'synoptic') canvas.render();
+    });
+  // immediate(撮影口の setParams 用)は「返った時点で焼き直し済み」にするためのもの —
+  // 呼び側がそのまま capture できるようにする。
+  const applyParams = (next: Parameters<typeof tuning.applyParams>[0], rebakeNow = false): void =>
+    tuning.applyParams(next, rebakeNow);
+  applyParams(Object.fromEntries(
+    Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])));
+
+  // 最後に回した比較の評価値。撮影つきの比較(CLI)の結果なので、いま開いているパラメータの
+  // 評価ではない — 未実行ならその旨だけ出す。
+  const score = document.getElementById('score')!;
+  void latestReportText('compare/latest.json').then((text) => {
+    score.textContent = text ?? '評価 — (cloud-lab:compare 未実行)';
   });
 
-  // cap の面の写す範囲。3 本のスライダーは、動かした 1 本といまの残り 2 つで置き直す。
-  const setCapLatitude = buildSlider('cap', 'cap 中心緯度', -90, 90, 1,
-    () => `${canvas.capCenterLatitude.toFixed(0)}°`,
-    (latitude) => canvas.aimCap(latitude, canvas.capCenterLongitude, canvas.capAngularRadius));
-  const setCapLongitude = buildSlider('cap', '中心経度', -180, 180, 1,
-    () => `${canvas.capCenterLongitude.toFixed(0)}°`,
-    (longitude) => canvas.aimCap(canvas.capCenterLatitude, longitude, canvas.capAngularRadius));
-  const setCapRadius = buildSlider('cap', '半径', 1, 90, 1,
-    () => `${canvas.capAngularRadius.toFixed(0)}°`,
-    (radius) => canvas.aimCap(canvas.capCenterLatitude, canvas.capCenterLongitude, radius));
-
+  markMode('cloud');
   markView(canvas.currentView);
-  setTime(canvas.hours);
-  setCapLatitude(canvas.capCenterLatitude);
-  setCapLongitude(canvas.capCenterLongitude);
-  setCapRadius(canvas.capAngularRadius);
+  showLegend(CLOUD_LAB_VIEWS.find((view) => view.id === canvas.currentView)!.legend);
+  syncFraming();
   canvas.render();
 
   window.cloudLab = {
-    views: CLOUD_LAB_VIEWS.map((view) => view.id),
-    show: (id) => { markView(id); canvas.show(id); },
-    setTime,
+    // 撮影で読める写しは全列(畳んだ写像も含む)。ボタン列に出るのは畳んだあとの列だけ。
+    views: [...CLOUD_LAB_VIEWS.map((view) => view.id), 'synoptic'],
+    show: selectView,
+    setTime: time.setHours,
     aimCap: (latitude, longitude, radius) => {
       canvas.aimCap(latitude, longitude, radius);
-      setCapLatitude(latitude);
-      setCapLongitude(longitude);
-      setCapRadius(radius);
+      if (currentView !== 'synoptic') canvas.render();
+      syncFraming();
     },
-    capture: () => canvas.capture(),
+    capture: async () => {
+      if (currentView !== 'synoptic') return canvas.capture();
+      // 天気図は焼きが残っているかもしれない — 終わるまで待って 2D canvas を拾う。
+      await panel.settled();
+      return mapCanvas.toDataURL('image/png');
+    },
     cyclonesAt: (hours) => ({
-      tropical: tropicalPlacementAt(hours * 3600),
-      lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * 3600, R_EARTH)),
+      ...cyclonePlacementsAt(hours * SECONDS_PER_HOUR, R_EARTH, SIDEREAL_DAY),
+      highs: Array.from({ length: HIGH_COUNT }, (_, index) => highPlacementAt(index, hours * SECONDS_PER_HOUR, R_EARTH)),
     }),
+    params: () => Object.fromEntries(Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])),
+    setParams: (next) => applyParams(next, true),
   };
 }
 
