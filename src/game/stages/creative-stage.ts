@@ -19,7 +19,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { ObjectAuthoring } from '../pickable/inspected-object';
+import type { PresentationStageAuthoring } from '../presentation-ports';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { ViewMode } from '../view/view-mode';
 import type { PlayerLossCause } from './stage-outcome';
@@ -51,7 +51,7 @@ export class CreativeStage extends Stage {
   public static readonly selectSub = '軌道上に艦艇を自由に配置して眺める';
   public static readonly selectGroup = 'クリエイティブモード';
   public readonly executesPlans = true;
-  public readonly authoring: ObjectAuthoring;
+  public readonly authoring: PresentationStageAuthoring;
 
   private readonly objectPlacement: ObjectPlacement;
   private readonly manualSpawn: ManualSpawn;
