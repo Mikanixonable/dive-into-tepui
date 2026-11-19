@@ -1,6 +1,5 @@
 // 物体窓が扱う共通操作の規則。対象固有の表示台帳から切り離し、メニューの可否・命令の振り分け・
 // 関連対象の導出をここへ集める。
-import type { PauseMenu } from '../../hud/windows/pause-menu';
 import type { HintKind } from '../../hud/notifier';
 import type {
   PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem,
@@ -11,23 +10,20 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { NavTargetPresenter } from '../nav-target-presenter';
-import type { NavTargetSource } from '../viewer/nav-target-selection';
-import type { NavTargetCommands } from '../viewer/nav-target-commands';
-import type { EntityDisplaySource } from '../viewer/entity-display-selection';
-import type { EntityDisplayCommands } from '../viewer/entity-display-commands';
-import type { MapCameraSource } from '../viewer/camera-selection';
-import type { FocusCameraCommands } from '../viewer/camera-commands';
-import type { ViewSelectionSource } from '../viewer/view-selection';
 import { focusTargetId } from '../viewer/focus-target';
-import type { PlanEditor } from '../plan/plan-editor';
+import type {
+  PresentationEntityDisplay, PresentationEntityDisplayCommands, PresentationFocusCameraCommands,
+  PresentationMapCamera, PresentationModuleWindows, PresentationNavTarget,
+  PresentationNavTargetCommands, PresentationPauseMenu, PresentationPlanEditor,
+  PresentationStage, PresentationStageAuthoring, PresentationView,
+} from '../presentation-ports';
 import type { ControlSelection } from '../control-selection';
-import type { Stage } from '../stages/stage';
 import { isModularShip } from '../ship/modular-ship';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import type { Targeter } from '../targeter';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
-import type { InspectedObject, ObjectAuthoring } from './inspected-object';
+import type { InspectedObject } from './inspected-object';
 import { ShipInspection } from './ship-inspection';
 import { EnemyInspection } from './enemy-inspection';
 import { Pickup } from '../dynamic/dynamic-entity/pickup';
@@ -37,7 +33,6 @@ import { OrbitSlotPickable } from './orbit-slot-pickable';
 import type { ObjectMenuCommands } from './object-menu-commands';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
-import type { ModuleWindowOpener } from './module-windows';
 
 interface ObjectWindowParts {
   readonly title: string;
@@ -49,21 +44,21 @@ export class ObjectWindowActions {
   public constructor(
     private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
-    private readonly navTarget: NavTargetSource,
+    private readonly navTarget: PresentationNavTarget,
     private readonly navTargetPresenter: NavTargetPresenter,
-    private readonly navTargetCommands: NavTargetCommands,
-    private readonly entityDisplay: EntityDisplaySource,
-    private readonly entityDisplayCommands: Pick<EntityDisplayCommands, 'toggleTrajectoryLine'>,
-    private readonly camera: MapCameraSource,
-    private readonly view: Pick<ViewSelectionSource, 'current'>,
+    private readonly navTargetCommands: PresentationNavTargetCommands,
+    private readonly entityDisplay: PresentationEntityDisplay,
+    private readonly entityDisplayCommands: PresentationEntityDisplayCommands,
+    private readonly camera: PresentationMapCamera,
+    private readonly view: PresentationView,
     private readonly activeView: () => ViewFrame,
-    private readonly pauseMenu: PauseMenu,
+    private readonly pauseMenu: PresentationPauseMenu,
     private readonly controlSelection: ControlSelection,
-    private readonly mapFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
-    private readonly combatFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
-    private readonly activeStage: Stage,
+    private readonly mapFocusCommands: PresentationFocusCameraCommands,
+    private readonly combatFocusCommands: PresentationFocusCameraCommands,
+    private readonly activeStage: PresentationStage,
     private readonly targeter: Targeter,
-    private readonly moduleWindows: ModuleWindowOpener,
+    private readonly moduleWindows: PresentationModuleWindows,
     private readonly commands: ObjectMenuCommands,
     private readonly hint: (message: string, durationMs?: number, kind?: HintKind) => void,
   ) {}
@@ -234,12 +229,12 @@ export class ObjectWindowActions {
   }
 
   // マップ表示中の編集面。それ以外のビューでは null。
-  private get authoring(): ObjectAuthoring | null {
+  private get authoring(): PresentationStageAuthoring | null {
     return this.view.current === 'map' ? this.activeStage.authoring : null;
   }
 
   // 表示中のビューが持つ計画エディタ。ビューが持たなければ null。
-  private get planEditor(): PlanEditor | null {
+  private get planEditor(): PresentationPlanEditor | null {
     return this.activeView().planEditor;
   }
 }

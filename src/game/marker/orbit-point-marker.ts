@@ -11,8 +11,7 @@ import type { ProjectFn } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
 import { pointPlacement } from './marker-placement';
 import type { ControlSelection } from '../control-selection';
-import type { ObjectAuthoring } from '../pickable/inspected-object';
-import type { PlanEditor } from '../plan/plan-editor';
+import type { PresentationPlanEditor, PresentationStageAuthoring } from '../presentation-ports';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
@@ -115,8 +114,8 @@ export abstract class OrbitPointMarker implements ObjectPickable {
 
   // 加速とノード追加は、通過時刻が求まっていて、計画を編集できるビューにいるフレームで効く。
   public runMenu(
-    act: MenuAction, _controlSelection: ControlSelection, _authoring: ObjectAuthoring | null,
-    planEditor: PlanEditor | null,
+    act: MenuAction, _controlSelection: ControlSelection, _authoring: PresentationStageAuthoring | null,
+    planEditor: PresentationPlanEditor | null,
   ): void {
     const t = this.time;
     if (t === null || planEditor === null) return;

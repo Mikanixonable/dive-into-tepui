@@ -9,6 +9,7 @@ export function register(): void {
   test('vessel fuel view model: 主推進燃料と RCS 燃料を別々に渡す', () => {
     const ship = Object.create(ModularShip.prototype) as ModularShip;
     Object.assign(ship, {
+      mapKind: 'player',
       capabilities: {
         fuel: (kind: string) => kind === 'main' ? 75 : 12,
         maxFuel: (kind: string) => kind === 'main' ? 180 : 30,
