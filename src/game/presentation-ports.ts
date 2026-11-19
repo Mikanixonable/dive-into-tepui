@@ -8,7 +8,6 @@ import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
-import type { BurnManagementViewModel } from './hud/panels/burn-management-panel';
 import type { PowerSystem } from './player/power';
 import type { RadiatorSystem } from './player/radiator';
 import type { ViewMode } from './view/view-mode';
@@ -105,12 +104,36 @@ export interface PresentationShipMotion {
   readonly radiator: RadiatorSystem;
 }
 
+// 燃焼管理パネルの各行が持つ段の状態の識別子。表示名への写像はパネル側が持つ。
+export type BurnModuleState = 'connected' | 'destroyed' | 'fuel-empty' | 'burning' | 'stopped';
+
+// 燃焼管理パネルへ渡す、ゲーム状態から分離された表示モデル。
+export interface PresentationBurnManagement {
+  // 現在接続されているブースター段数。
+  readonly stageCount: number;
+  // 接続中の段を含めた総質量 [kg]。
+  readonly totalMass: number;
+  // booster module 全体の現在燃料 [kg]。
+  readonly activeFuel: number;
+  // booster module 全体の最大燃料 [kg]。
+  readonly activeFuelMax: number;
+  // 燃焼状態の識別子(表示名への写像はパネル側が持つ)。
+  readonly burnState: string;
+  // 状態の aria-label に使う短い説明。
+  readonly burnStateDescription?: string;
+  readonly modules: readonly {
+    readonly id: string;
+    readonly kind: 'booster' | 'decoupler';
+    readonly state: BurnModuleState;
+  }[];
+}
+
 // 艦の RCS 燃料と燃焼管理の読み取り面。
 export interface PresentationShipSystems {
   readonly motion: PresentationShipMotion;
   readonly totalRcsFuel: number;
   readonly totalMaxRcsFuel: number;
-  burnManagementViewModel(): BurnManagementViewModel | null;
+  burnManagementViewModel(): PresentationBurnManagement | null;
 }
 
 // mapKind が player/base の個体は ModularShip で、艦の面を持つ。player/base を立てるのは
