@@ -1,5 +1,6 @@
 // 遺物の定義(SPEC GAME.md 3.2)。値は実行中に変わらないので、発見の状態は持たない。
 // 発見の記録は stage-utils/relic-hunt.ts が持ち、セーブ枠へは launcher が書く。
+import { semiMajorEccentricityFromApsides } from '../../physics/elements';
 import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
 
 const KM = 1000;
@@ -34,7 +35,7 @@ const LAGEOS_1: RelicDefinition = {
     const ra = earthRadius + 5960 * KM;
     return {
       kind: 'elements', bodyId: 'earth', epoch: 0,
-      a: (rp + ra) / 2, e: (ra - rp) / (ra + rp), i: 109.8 * DEG,
+      ...semiMajorEccentricityFromApsides(rp, ra), i: 109.8 * DEG,
       raan: 0, argPeriapsis: 0, meanAnomaly0: 0,
     };
   },

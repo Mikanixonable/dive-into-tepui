@@ -1,9 +1,9 @@
 // 船体モジュールの木構造、接続変換、可変状態と分割・統合操作を所有する。
 import { mulberry32 } from '../../math/random';
 import {
-  LOCAL_UP, Q_IDENTITY, qFromAxisAngle, qMul, qRotate,
+  LOCAL_UP, Q_IDENTITY, qFromAxisAngle, qMul,
 } from '../../math/quat';
-import { add, v3 } from '../../math/vec3';
+import { v3 } from '../../math/vec3';
 import {
   SHIP_MODULE_CATALOG, type ShipModuleCatalog,
 } from './ship-module-catalog';
@@ -21,10 +21,10 @@ import {
 import type { ShipAssemblyNode as AssemblyNode } from './ship-assembly-types';
 import { shipAssemblyTotals } from './ship-assembly-totals';
 import { validateShipAssembly } from './ship-assembly-validation';
-import { pieceOfModule, rerootedAssembly } from './ship-assembly-graft';
+import { graftEdgesInOrder, pieceOfModule, rerootedAssembly } from './ship-assembly-graft';
 import {
-  copyTransform, finiteQuaternion, finiteVector, isIdentityRotation, normalizedTransform,
-  sideMountTransform, sideSlotFromTransform,
+  applyTransformToPoint, copyTransform, finiteQuaternion, finiteVector, isIdentityRotation,
+  normalizedTransform, sideMountTransform, sideSlotFromTransform,
 } from './ship-assembly-transform';
 
 export { isDockingModule, SIDE_SLOTS } from './ship-assembly-types';
@@ -228,11 +228,9 @@ export class ShipAssembly {
       rotation: dockRotation,
     }, 'docking', dockingConnectionId);
     const grafted = new Set([otherPortId]);
-    const pending = [...rerooted.connections];
-    while (pending.length > 0) {
-      const index = pending.findIndex(edge => grafted.has(edge.parentId));
-      if (index < 0) throw new Error('docked assembly graph is disconnected');
-      const edge = pending.splice(index, 1)[0]!;
+    for (const edge of graftEdgesInOrder(
+      rerooted.connections, id => grafted.has(id), 'docked assembly graph is disconnected',
+    )) {
       const sourceInstance = other.module(edge.childId);
       const mappedId = moduleIds.get(edge.childId);
       const mappedParentId = moduleIds.get(edge.parentId);
@@ -547,11 +545,9 @@ export class ShipAssembly {
     if (pieceRoot === undefined) throw new Error('assembly piece is missing its root');
     this.addModule(pieceRoot.instance, parentId, transform, kind, connectionId, sideSlot, sideReversed);
     // piece は木なので、親が先に入った接続から順に取り込む。
-    const pending = [...piece.connections];
-    while (pending.length > 0) {
-      const index = pending.findIndex(edge => this.nodes.has(edge.parentId));
-      if (index < 0) throw new Error('assembly piece is disconnected');
-      const edge = pending.splice(index, 1)[0]!;
+    for (const edge of graftEdgesInOrder(
+      piece.connections, id => this.nodes.has(id), 'assembly piece is disconnected',
+    )) {
       const child = piece.nodes.get(edge.childId);
       if (child === undefined) throw new Error(`assembly piece is missing module: ${edge.childId}`);
       this.addModule(
@@ -663,7 +659,7 @@ export class ShipAssembly {
     if (parent === null) return null;
     const local = node.transform;
     return {
-      position: add(parent.position, qRotate(parent.rotation, local.position)),
+      position: applyTransformToPoint(parent, local.position),
       rotation: qMul(parent.rotation, local.rotation),
     };
   }
