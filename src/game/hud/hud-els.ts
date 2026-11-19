@@ -16,7 +16,6 @@ const HUD_ELEMENT_IDS = [
   'burn-stage-count',
   'burn-state',
   'burn-total-mass',
-  'camfollow',
   'chase-reset',
   'construction-acceleration',
   'construction-acceleration-preview',

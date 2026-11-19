@@ -148,7 +148,6 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
       ${instrumentRowHtml({ label: '動圧', rowId: 'qdyn-row', gaugeId: 'qdyn-gauge', valueId: 'qdyn-value' })}
       ${instrumentRowHtml({ label: '微調整', keys: K.fineAttitudeToggle.label, valueHtml: pip('fine') })}
       ${instrumentRowHtml({ label: '進行方向ホールド', keys: K.progradeHoldToggle.label, valueHtml: pip('prohold') })}
-      ${instrumentRowHtml({ label: '視点RCS追従', keys: K.followAttitudeToggle.label, valueHtml: pip('camfollow') })}
       ${instrumentRowHtml({ label: '弾薬', rowId: 'ammo-row', valueId: 'ammo' })}
     </div>
     <div class="vessel-deploy-controls" data-id="vessel-deploy-controls" role="group" aria-label="太陽電池パドル・放熱板の収納展開"></div>

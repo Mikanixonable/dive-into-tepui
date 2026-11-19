@@ -72,7 +72,10 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud.construction-mode #hud-pause-badge,
 #hud.construction-mode #hud-topbar-toggle,
 #hud.construction-mode #hud-wide-toggle,
-#hud.construction-mode .rail-toggle { display: none !important; }
+#hud.construction-mode .rail-toggle,
+/* 建造中はカメラパネルに「クォータニオン操作」だけを表示する(UI-DESIGN.md §8) —
+   艦パネルにあった視点追従ボタンも、移設先のここで同じく隠す。 */
+#hud.construction-mode #hud-combat-camera-controls .camera-attitude-follow { display: none !important; }
 #hud .hud-view-root { position: absolute; inset: 0; display: none; pointer-events: none; }
 #hud .hud-view-root.active { display: block; }
 

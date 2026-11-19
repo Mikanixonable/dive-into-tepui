@@ -167,7 +167,6 @@ export class HudPanelPresenter {
       throttleIdx: controlled.throttle.throttleIdx,
       dynamicPressurePa: motion?.aero.qdyn ?? null,
       fineAttitude: controlled.fineAttitude,
-      cameraFollowsAttitude: this.viewer.camera.combat.rotationFollow?.kind === 'attitude',
       progradeHold: controlled.throttle.progradeHold,
       mainFuel: controlled.totalFuel,
       maxMainFuel: controlled.totalMaxFuel,

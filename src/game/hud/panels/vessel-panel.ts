@@ -1,8 +1,8 @@
 // 常設 VESSEL パネル(#hud-vessel-status)の同期: 主燃料・RCS燃料・出力・動圧・太陽電池パドル・放熱板・
-// RCS制動・微調整・進行方向ホールド・視点のRCS追従・弾薬。操作対象が無ければ隠す。
-// 装填/姿勢リセット/視点追従切替/ターゲット選択の4操作と、タッチ時のみのスロットル段は、
+// RCS制動・微調整・進行方向ホールド・弾薬。操作対象が無ければ隠す。
+// 装填/姿勢リセット/ターゲット選択の3操作と、タッチ時のみのスロットル段は、
 // キー押下と同じ経路で発火するボタンとしてここに持つ — タッチでも到達できるようにするための、
-// キー入力の代替 UI。
+// キー入力の代替 UI。視点追従はカメラの問いなので戦闘カメラパネルに置く(UI-DESIGN.md §8)。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { Button, Meter, SegmentedControl } from '../../../hud/widgets';
 import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud/alarm-level';
@@ -37,7 +37,6 @@ export interface VesselPanelViewModel {
   // 大気を受けない操作対象では null。
   readonly dynamicPressurePa: number | null;
   readonly fineAttitude: boolean;
-  readonly cameraFollowsAttitude: boolean;
   readonly progradeHold: boolean;
   // 主推進燃料の残量と容量。RCS/主の区別を持たない操作対象では全推進剤。
   readonly mainFuel: number;
@@ -106,7 +105,6 @@ export class VesselPanel {
   // 直近の sync で受け取った状態。ボタン押下はフレーム外で発生するため、現在のコールバックをここから取得する。
   private view: VesselPanelViewModel | null = null;
   private readonly constructionRow: HTMLElement;
-  private followButton: Button | null = null;
   private readonly throttleControl: SegmentedControl<number>;
   private readonly throttleMeter: VesselMeterDom;
   private readonly qdynMeter: VesselMeterDom;
@@ -144,7 +142,7 @@ export class VesselPanel {
     return { meter: this.mountMeter(gaugeId, label), value: this.els.get(valueId) };
   }
 
-  // 建造の入口(主操作のボタンと説明1行)と、R/F/G/T の代替操作ボタンを組み立てて
+  // 建造の入口(主操作のボタンと説明1行)と、R/F/T の代替操作ボタンを組み立てて
   // status-actions プレースホルダへ足す。建造の行は区画の先頭に置く。
   private buildActionButtons(): void {
     const container = this.els.get('status-actions');
@@ -171,7 +169,6 @@ export class VesselPanel {
       return button;
     };
     addAction('進行方向', 'プログレード姿勢リセット（機首を進行方向へ即座に向ける）', K.progradeReset);
-    this.followButton = addAction('視点追従', '視点のRCS追従を切り替える', K.followAttitudeToggle);
     addAction('ターゲット', '照準に近い敵を第一ターゲットにする', K.targetSelect, true);
     addAction('装填', 'マニュアル装填', K.reload);
   }
@@ -243,7 +240,7 @@ export class VesselPanel {
     this.constructionRow.classList.toggle('hidden', view.startConstruction === null);
     this.syncDeployButtons(view);
 
-    // 制動・微調整・進行方向ホールドは自分が掛けているモード(自分の色)、視点追従は中立。
+    // 制動・微調整・進行方向ホールドは自分が掛けているモード(自分の色)。
     setStatePip(this.els.get('rcs'), view.rcsDamp, true);
     const throttleIdx = view.throttleIdx;
     this.syncMeter(
@@ -269,10 +266,8 @@ export class VesselPanel {
       this.syncMeter(this.qdynMeter, qdyn, MAX_DYN_PRESSURE, parts, qdynLevel);
     }
 
-    // 微調整・視点追従・進行方向ホールドの状態。
+    // 微調整・進行方向ホールドの状態。
     setStatePip(this.els.get('fine'), view.fineAttitude, true);
-    setStatePip(this.els.get('camfollow'), view.cameraFollowsAttitude);
-    this.followButton?.setOn(view.cameraFollowsAttitude);
     setStatePip(this.els.get('prohold'), view.progradeHold, true);
 
     // 主燃料は警報の閾値を持たないので、中立のまま残量だけを示す。
