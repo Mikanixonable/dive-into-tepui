@@ -10,7 +10,7 @@ import {
 import { POLE } from './sphere-frame';
 import { coreCrossingAngle, vortexEdgeOf, vortexSpinOf } from './wind-law';
 import { CLOUD_TUNING } from './cloud-tuning';
-import type { PressurePlacement } from './tracks';
+import { DEGREE, type PressurePlacement } from './tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 // 気圧の谷による影響限界半径 [m]。裾野は距離に反比例するため、単体では微弱でも複数累積すると全球的な
@@ -53,7 +53,6 @@ const COMMA_HEAD_SEMI_DOWN = 1.1;
 // 閉塞した芯の半径(半径の倍率)。この内側では暖域の舌が切り離され、暖気流入の湿りが止まる。
 const OCCLUDED_CORE_RADIUS = 0.9;
 
-const DEGREE = Math.PI / 180;
 // 前線骨格 — 谷に端部を持つ寒冷(赤道側)・温暖(極側〜下流)・閉塞の腕。腕は気団の境目が
 // 渦の循環に乗って巻き上げられた形で、背骨は「半径 r̂ で向きが θ(r̂) の半直線」として表す。
 // θ(r̂) = 腕の根元の向き + 巻き上げ角 × 循環の半径プロファイル — 内側が速く回る差回転が

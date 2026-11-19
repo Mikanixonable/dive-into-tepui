@@ -10,6 +10,7 @@ import {
 import { wrapAngle } from '../../math/angle';
 import { equirectUvFromDirection } from '../field-projection';
 import { eastAt, latitudeOf, northAt } from './sphere-frame';
+import { DEGREE } from './tracks';
 import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-types';
 
 // 錨づくキャリアの東西波数。波長は赤道上で地球一周の 1/5、緯度45°で約5600 kmになる。
@@ -22,7 +23,6 @@ export const WAVE_TROUGH_WIDTH = 360 / WAVE_NUMBER;
 // 場に現れない。各成分はこの単位の違う倍率を持ち、半球どうしの形は完全には鏡写しにならない。
 const HEMISPHERE_PHASE_OFFSET = Math.PI / 2;
 
-const DEGREE = Math.PI / 180; // [rad]
 const DAY = 86400; // [s]
 
 // キャリアのドリフト [°/日]。平均してゆっくり東へ進むが、2 つの長周期の変調が重なると
