@@ -15,7 +15,7 @@ import { RossbyWave } from './rossby-wave';
 import { SolarClock } from './solar-clock';
 import { latitudeOf } from './sphere-frame';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
-import { CLOUD_TUNING } from './cloud/cloud-tuning';
+import { CLOUD_TUNING } from './cloud-tuning';
 import { TerrainFlow } from './terrain-flow';
 import { SURFACE_MEANDER_SHARE, WindField } from './wind-field';
 import type { WebGPURenderer } from 'three/webgpu';

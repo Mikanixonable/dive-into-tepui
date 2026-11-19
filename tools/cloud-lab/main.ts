@@ -9,7 +9,7 @@ import { buildFramingRow } from './framing-controls';
 import { buildTimeControls } from './time-controls';
 import type { Framing, SynopticLayers } from './synoptic-map';
 import { buildButtonRow, buildCheckbox } from '../lab-controls';
-import { CLOUD_TUNING } from '../../src/render/earth-weather/cloud/cloud-tuning';
+import { CLOUD_TUNING } from '../../src/render/earth-weather/cloud-tuning';
 import { buildTuningControls } from './tuning-controls';
 import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。

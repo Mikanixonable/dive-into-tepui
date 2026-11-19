@@ -32,7 +32,7 @@ import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
 import { gameCommand } from './game/input/game-commands';
 import { KEY_MAPPING as K } from './input/key-mapping';
-import { applyCloudTuningOverrides } from './render/earth-weather/cloud/cloud-tuning';
+import { applyCloudTuningOverrides } from './render/earth-weather/cloud-tuning';
 import type { PageDevices } from './run/page-devices';
 import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
 import type { GraphicsSettingsData } from './render/graphics-settings';
