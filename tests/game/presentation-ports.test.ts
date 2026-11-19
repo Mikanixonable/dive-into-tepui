@@ -16,7 +16,7 @@ import { isPresentationEnemy, isPresentationShip } from '../../src/game/presenta
 function testShip(modules: readonly PresentationShipModule[], controllable: boolean): PresentationShip {
   return {
     id: 'ship-1',
-    capabilities: { controllable },
+    capabilities: { controllable, averageMuzzleVelocity: 900 },
     assembly: { modules },
   };
 }
