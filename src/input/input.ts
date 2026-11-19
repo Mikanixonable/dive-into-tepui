@@ -5,14 +5,14 @@
 // takePresses で掴んだ押下は掴みドラッグになり、その指の移動は mouse() と
 // 2本指ジェスチャへ載らず、離してもクリックを合成しない。
 import { type KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
+import { PinchTracker } from './pinch-tracker';
+import { LongPressDetector } from './long-press-detector';
+import { DoubleTapSynthesizer } from './double-tap-synthesizer';
+import { type PointerPoint, type PointerPointRecord } from './pointer-point';
 
 // これ未満の累積移動量ならドラッグではなくクリック扱い [px]
 export const CLICK_MOVE_THRESHOLD = 6;
 const RIGHT_CLICK_MOVE_THRESHOLD = 50; // [px]
-const TOUCH_LONG_PRESS_MS = 500; // タッチの長押しを右クリックとみなすまでの静止時間 [ms]
-const TOUCH_LONG_PRESS_FEEDBACK_MS = 300; // 長押し成立前に視覚フィードバックを出すまでの時間 [ms]
-const TOUCH_DOUBLE_TAP_MS = 400; // タッチの連続タップをダブルタップとみなす時間差の上限 [ms]
-const TOUCH_DOUBLE_TAP_PX = 24; // 同上、タップ間の許容移動距離 [px]
 
 // 直近に検知した入力の種別。タッチパッドの表示可否(touch.ts)が読む。
 export type PointerKind = 'touch' | 'mouse';
@@ -24,19 +24,6 @@ export interface MouseDelta {
   panDy: number;
   wheel: number;
   roll: number;
-}
-
-// ポインタイベント1件の位置(クリック・押下など)。
-export interface PointerPoint {
-  readonly x: number;
-  readonly y: number;
-}
-
-// PointerPoint に、それを起こしたポインタを併記したもの。掴まれた押下から合成された
-// クリック・タップを取り消すために使う。ブラウザの dblclick イベント由来はポインタを
-// 持たないので null。
-interface PointerPointRecord extends PointerPoint {
-  readonly pointerId: number | null;
 }
 
 // 左ボタン・単指の押下。takePresses の handler が受け取る。
@@ -136,33 +123,22 @@ export class Input {
   private panDragMoved = 0;
   private dragMoved = 0;
   private rightDragMoved = 0;
-  // タッチ用: アクティブポインタの座標(ピンチズーム・二本指パン判定に使う)
-  private pointers = new Map<number, { x: number; y: number }>();
-  private pinchDist = 0;
-  private pinchCentroid: PointerPoint | null = null;
-  private pinchAngle = 0;
+  // タッチのジェスチャ追跡。複数指ジェスチャ(ピンチ・重心パン・ロール)、
+  // 長押しによる右クリックの合成、タップ列のダブルタップ合成。
+  private readonly pinch = new PinchTracker();
+  private readonly longPress = new LongPressDetector((point, pointerId) => {
+    this.pendingRightClicks.push({ ...point, pointerId });
+  });
+  private readonly doubleTap = new DoubleTapSynthesizer();
   // 直近に検知した入力種別が変わるたびに通知する(タッチ⇄マウス/キーボードの切替を含む)。
   public onPointerKindChange: ((kind: PointerKind) => void) | null = null;
   private lastPointerKind: PointerKind | null = null;
-  // タッチの長押し(右クリック合成)。1本指のジェスチャにしか存在しないので
-  // pointers のような Map ではなく単一の状態で持つ。
-  private longPressTimer: ReturnType<typeof setTimeout> | null = null;
-  private longPressFeedbackTimer: ReturnType<typeof setTimeout> | null = null;
-  private longPressPointerId: number | null = null;
-  private longPressFired = false;
-  private _longPressPoint: PointerPoint | null = null;
 
-  // 長押しの判定中であることを示す画面上の位置。押し始めから TOUCH_LONG_PRESS_FEEDBACK_MS が
-  // 経つまでと、右クリックを合成した後は null。
-  public get longPressPoint(): PointerPoint | null { return this._longPressPoint; }
+  // 長押しの判定中であることを示す画面上の位置。判定中でないときは null。
+  public get longPressPoint(): PointerPoint | null { return this.longPress.point; }
   // キャンバス上の最後のポインタ位置(キャンバス座標 [px])。押していなくても追従し、
   // キャンバス外へ出ると null。
   public get pointerPoint(): PointerPoint | null { return this._pointerPoint; }
-  // 直近に成立したタップ(ダブルタップ合成用)。タッチ由来でなければ null のまま。
-  private lastTap: { x: number; y: number; time: number; pointerId: number } | null = null;
-  // 直近に成立したクリックがタッチ由来だったか。真なら、二重計上を避けるため
-  // ブラウザ標準の dblclick イベントによる合成をこちらで抑止する。
-  private lastPointerUpWasTouch = false;
   // 直近に離した指が掴まれたドラッグだったか。真なら、掴んだ押下がブラウザの
   // dblclick イベントをクリック相当へ結実させないよう抑止する。
   private lastPointerUpWasGrabbed = false;
@@ -218,7 +194,7 @@ export class Input {
     this.panDragging = false;
     // 掴んだ指は離されたものとして受け手へ届ける。
     for (const grab of this.grabs.values()) grab.released = { ...grab.point };
-    this.cancelLongPress();
+    this.longPress.cancel();
   }
 
   // target のポインタイベントを購読する。
@@ -231,7 +207,7 @@ export class Input {
     this.target.addEventListener('pointercancel', this.handlePointerCancel);
     this.target.addEventListener('pointerleave', this.handlePointerLeave);
     // マウスのダブルクリック連打判定(タイミング・移動量とも)はブラウザの標準実装に委ねる。
-    // タッチ由来のクリックは自前で合成する(registerTap)ため、二重に積まないよう除外する。
+    // タッチ由来のクリックは自前で合成するため、二重に積まないよう除外する。
     this.target.addEventListener('dblclick', this.handleDblClick);
   }
 
@@ -239,7 +215,7 @@ export class Input {
 
   // 左ボタンかつタッチ由来・掴まれた指由来のどちらでもなければ、ダブルクリックとして積む。
   private readonly handleDblClick = (e: MouseEvent): void => {
-    if (e.button === 0 && !this.lastPointerUpWasTouch && !this.lastPointerUpWasGrabbed) {
+    if (e.button === 0 && !this.doubleTap.lastPointerUpWasTouch && !this.lastPointerUpWasGrabbed) {
       this.pendingDoubleClicks.push({ x: e.clientX, y: e.clientY, pointerId: null });
     }
   };
@@ -257,20 +233,17 @@ export class Input {
         id: this.nextPressId++, pointerId: e.pointerId,
         point: this.canvasPoint(e.clientX, e.clientY),
       });
-      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (this.pointers.size >= 2) {
-        // 2本目以降の指が増えるたびピンチ基準(距離・重心)を今の配置で取り直す —
-        // 3本目以降を古い基準のまま扱うと、置いた瞬間に重心が跳んでパンが暴れる。
+      this.pinch.add(e);
+      if (this.pinch.size >= 2) {
+        // 指が2本以上あればピンチとして扱い、基準を今の配置で取り直す。
         this.dragging = false;
-        this.pinchDist = this.currentPinchDist();
-        this.pinchCentroid = this.currentCentroid();
-        this.pinchAngle = this.currentPinchAngle();
-        this.cancelLongPress();
-      } else if (this.pointers.size === 1) {
+        this.pinch.rebase();
+        this.longPress.cancel();
+      } else if (this.pinch.size === 1) {
         this.dragging = true;
         this.dragMoved = 0;
         this.target.setPointerCapture(e.pointerId);
-        if (e.pointerType === 'touch') this.startLongPress(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (e.pointerType === 'touch') this.longPress.start(e.pointerId, { x: e.clientX, y: e.clientY });
       }
     } else if (isRight) {
       this.rightActive = true;
@@ -295,36 +268,15 @@ export class Input {
       grab.point = this.canvasPoint(e.clientX, e.clientY);
       grab.moved += Math.abs(e.movementX) + Math.abs(e.movementY);
       // 静止条件が崩れたら長押しは成立させない。
-      if (this.longPressPointerId === e.pointerId && grab.moved >= CLICK_MOVE_THRESHOLD) {
-        this.cancelLongPress();
-      }
+      if (grab.moved >= CLICK_MOVE_THRESHOLD) this.longPress.cancel(e.pointerId);
       return;
     }
-    const p = this.pointers.get(e.pointerId);
-    if (p) {
-      p.x = e.clientX;
-      p.y = e.clientY;
-    }
-    if (this.pointers.size >= 2) {
-      // 二本指ジェスチャ: 指の間隔の変化をホイール量へ(開く = ズームイン)、
-      // 重心の移動をパン量へ、2点を結ぶ角度の変化をロール量へ、同時に折り込む
-      // (実指は回しながら開くため排他にしない)。
-      const d = this.currentPinchDist();
-      this.wheel += (this.pinchDist - d) * 3;
-      this.pinchDist = d;
-      const centroid = this.currentCentroid();
-      if (this.pinchCentroid) {
-        this.panDx += centroid.x - this.pinchCentroid.x;
-        this.panDy += centroid.y - this.pinchCentroid.y;
-      }
-      this.pinchCentroid = centroid;
-      const angle = this.currentPinchAngle();
-      // -π..π の範囲でしか値を持たない角度どうしの差分は、跨いだぶんを ±2π で
-      // 正規化しないと回転方向が反転してしまう。
-      let dAngle = angle - this.pinchAngle;
-      dAngle = ((dAngle + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
-      this.roll += dAngle;
-      this.pinchAngle = angle;
+    const pinch = this.pinch.move(e);
+    if (pinch !== null) {
+      this.wheel += pinch.wheel;
+      this.panDx += pinch.panDx;
+      this.panDy += pinch.panDy;
+      this.roll += pinch.roll;
       return;
     }
     if (this.panDragging) {
@@ -347,9 +299,7 @@ export class Input {
       this.periodDragDeltas.set(e.pointerId, delta);
       this.dragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
       // 静止条件が崩れたら長押しは成立させない。
-      if (this.longPressPointerId === e.pointerId && this.dragMoved >= CLICK_MOVE_THRESHOLD) {
-        this.cancelLongPress();
-      }
+      if (this.dragMoved >= CLICK_MOVE_THRESHOLD) this.longPress.cancel(e.pointerId);
     }
   }
 
@@ -366,29 +316,22 @@ export class Input {
       const grab = this.grabs.get(e.pointerId);
       if (grab !== undefined) this.releaseGrab(grab, e);
       this.lastPointerUpWasGrabbed = grab !== undefined;
-      this.pointers.delete(e.pointerId);
+      this.pinch.delete(e.pointerId);
       if (grab === undefined) {
         // 長押しがすでに右クリックへ結実したポインタは、離した指を左クリックへも
         // 二重に変換しない。掴んだ指は同じくクリックを合成しない(上の分岐)。
-        const longPressConsumed = this.longPressPointerId === e.pointerId && this.longPressFired;
+        const longPressConsumed = this.longPress.hasFired(e.pointerId);
         if (this.dragging && !longPressConsumed) {
-          if (this.pushIfClick(this.pendingClicks, this.dragMoved, e)) this.registerTap(e);
+          if (this.pushIfClick(this.pendingClicks, this.dragMoved, e)) {
+            const doubleClick = this.doubleTap.registerTap(e);
+            if (doubleClick !== null) this.pendingDoubleClicks.push(doubleClick);
+          }
         }
         this.dragging = false;
-        if (this.pointers.size >= 2) {
-          // 3本以上の一部だけが離れてもピンチが続くなら、基準を今の配置で取り直す
-          // (onPointerDown が指を増やすたびに行うのと同じ理由)。
-          this.pinchDist = this.currentPinchDist();
-          this.pinchCentroid = this.currentCentroid();
-          this.pinchAngle = this.currentPinchAngle();
-        } else {
-          this.pinchDist = 0;
-          this.pinchCentroid = null;
-          this.pinchAngle = 0;
-        }
+        this.pinch.rebase();
       }
     }
-    if (this.longPressPointerId === e.pointerId) this.cancelLongPress();
+    this.longPress.cancel(e.pointerId);
     if (e.button === 1) {
       if (this.panDragging) this.pushIfClick(this.pendingMiddleClicks, this.panDragMoved, e);
       this.panDragging = false;
@@ -409,17 +352,15 @@ export class Input {
     this.periodReleasedPoints.set(e.pointerId, this.canvasPoint(e.clientX, e.clientY));
     const grab = this.grabs.get(e.pointerId);
     if (grab !== undefined) this.releaseGrab(grab, e);
-    this.pointers.delete(e.pointerId);
+    this.pinch.delete(e.pointerId);
     // 掴んでいた指でなければ、押下中・ドラッグ中のジェスチャ状態ごと畳む。
     if (grab === undefined) {
       this.dragging = false;
       this.panDragging = false;
       this.rightActive = false;
-      this.pinchDist = 0;
-      this.pinchCentroid = null;
-      this.pinchAngle = 0;
+      this.pinch.clearBaseline();
     }
-    if (this.longPressPointerId === e.pointerId) this.cancelLongPress();
+    this.longPress.cancel(e.pointerId);
     this._pointerPoint = null;
   };
 
@@ -442,66 +383,6 @@ export class Input {
     return true;
   }
 
-  // pointerId の長押しタイマーを開始する。TOUCH_LONG_PRESS_FEEDBACK_MS 後に
-  // longPressPoint を立て、TOUCH_LONG_PRESS_MS 後に右クリックを合成する。
-  private startLongPress(pointerId: number, point: PointerPoint): void {
-    this.cancelLongPress();
-    this.longPressPointerId = pointerId;
-    this.longPressFired = false;
-    this.longPressFeedbackTimer = setTimeout(() => { this._longPressPoint = point; }, TOUCH_LONG_PRESS_FEEDBACK_MS);
-    this.longPressTimer = setTimeout(() => {
-      this.longPressFired = true;
-      this._longPressPoint = null;
-      this.pendingRightClicks.push({ ...point, pointerId });
-    }, TOUCH_LONG_PRESS_MS);
-  }
-
-  // 進行中の長押し判定を打ち切る。
-  private cancelLongPress(): void {
-    if (this.longPressTimer !== null) clearTimeout(this.longPressTimer);
-    if (this.longPressFeedbackTimer !== null) clearTimeout(this.longPressFeedbackTimer);
-    this.longPressTimer = null;
-    this.longPressFeedbackTimer = null;
-    this._longPressPoint = null;
-    this.longPressPointerId = null;
-  }
-
-  // 成立したクリックがタッチ由来なら、直近のタップとの時間差・距離を見てダブルタップを
-  // pendingDoubleClicks へ合成する。マウス由来は dblclick イベントに任せるため何もしない。
-  private registerTap(e: PointerEvent): void {
-    this.lastPointerUpWasTouch = e.pointerType === 'touch';
-    if (!this.lastPointerUpWasTouch) {
-      this.lastTap = null;
-      return;
-    }
-    const x = e.clientX;
-    const y = e.clientY;
-    const now = performance.now();
-    // 2連続で成立すればダブルタップとして消費し、3連続目が単独の新しいタップ列の
-    // 起点にならないよう lastTap を毎回リセットする。
-    if (
-      this.lastTap &&
-      now - this.lastTap.time <= TOUCH_DOUBLE_TAP_MS &&
-      Math.hypot(x - this.lastTap.x, y - this.lastTap.y) <= TOUCH_DOUBLE_TAP_PX
-    ) {
-      this.pendingDoubleClicks.push({ x, y, pointerId: e.pointerId });
-      this.lastTap = null;
-    } else {
-      this.lastTap = { x, y, time: now, pointerId: e.pointerId };
-    }
-  }
-
-  // アクティブなポインタの重心を返す(呼び出し側で size >= 2 を確認していること)。
-  private currentCentroid(): PointerPoint {
-    let x = 0;
-    let y = 0;
-    for (const p of this.pointers.values()) {
-      x += p.x;
-      y += p.y;
-    }
-    return { x: x / this.pointers.size, y: y / this.pointers.size };
-  }
-
   // target のホイールイベントを購読する。
   private attachWheelListener(): void {
     this.target.addEventListener('wheel', this.handleWheel, { passive: false });
@@ -512,20 +393,6 @@ export class Input {
     e.preventDefault();
     this.wheel += e.deltaY;
   };
-
-  // アクティブな2点間の距離を返す。
-  private currentPinchDist(): number {
-    const [a, b] = [...this.pointers.values()];
-    if (!a || !b) return 0;
-    return Math.hypot(a.x - b.x, a.y - b.y);
-  }
-
-  // アクティブな2点を結ぶ線分の画面上の角度 [rad] を返す。
-  private currentPinchAngle(): number {
-    const [a, b] = [...this.pointers.values()];
-    if (!a || !b) return 0;
-    return Math.atan2(b.y - a.y, b.x - a.x);
-  }
 
   // タッチ UI や HUD の代替操作ボタンからの仮想キー入力。物理キーボードと同じ扱いで
   // 押下中セットとエッジトリガキューへ反映する。ポインタ種別の通知はしない —
@@ -679,7 +546,7 @@ export class Input {
   private grabPress(press: PointerPressRecord): void {
     if (this.grabs.has(press.pointerId)) return;
     // 押した指が同じフレームで既に離されていたなら、掴んだ時点で離した記録にする。
-    const released = this.pointers.has(press.pointerId)
+    const released = this.pinch.has(press.pointerId)
       ? null
       : this.frameReleasedPoints.get(press.pointerId) ?? { ...press.point };
     this.grabs.set(press.pointerId, {
@@ -690,7 +557,7 @@ export class Input {
     // 同じフレームで既に合成済みのクリック・タップは、掴んだ押下のものとして取り消す。
     removePointerPoints(this.frameClicks, press.pointerId);
     removePointerPoints(this.frameDoubleClicks, press.pointerId);
-    if (this.lastTap?.pointerId === press.pointerId) this.lastTap = null;
+    this.doubleTap.forgetTap(press.pointerId);
     const delta = this.frameDragDeltas.get(press.pointerId);
     if (delta !== undefined) {
       this.frameMouse = {
@@ -699,10 +566,10 @@ export class Input {
         dy: this.frameMouse.dy - delta.dy,
       };
     }
-    const wasTracked = this.pointers.delete(press.pointerId);
+    const wasTracked = this.pinch.delete(press.pointerId);
     if (wasTracked) {
       // 残った指が1本だけなら、その指が1本指ドラッグを引き継ぐ。
-      this.dragging = this.pointers.size === 1;
+      this.dragging = this.pinch.size === 1;
       if (this.dragging) this.dragMoved = 0;
     }
   }
