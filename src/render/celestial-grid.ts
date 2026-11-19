@@ -6,6 +6,9 @@ import { STAR_SHELL_RADIUS } from './stars';
 import { markOverlay } from './pipeline/lit-layer';
 import { SCHEMATIC_LINE } from './schematic-style';
 import { RenderStyleGate, type RenderStyle } from './render-style';
+import { placeScreenLabel, SCENE_LABEL_STYLE } from './scene-label';
+import { ndcToScreen } from '../math/projection';
+import { Z_SCENE_LABEL } from '../theme';
 import type { Viewport } from './viewport';
 
 // 天球の目安表示(星・黄道/赤道・縮尺グリッド)ごとの表示可否。ecliptic・equator はその行の
@@ -168,7 +171,7 @@ class GridPlane {
     this.realisticColor = `#${color.toString(16).padStart(6, '0')}`;
     this.labelLayer = document.createElement('div');
     this.labelLayer.className = 'celestial-grid-labels';
-    Object.assign(this.labelLayer.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: '8' });
+    Object.assign(this.labelLayer.style, { position: 'fixed', inset: '0', pointerEvents: 'none', zIndex: String(Z_SCENE_LABEL) });
     document.body.appendChild(this.labelLayer);
     // 基準円: 緯度 0 の全周。
     this.planeLine = makeLine(color, 0.35);
@@ -210,7 +213,7 @@ class GridPlane {
     const addLabel = (text: string, cls = '') => {
       const el = document.createElement('div');
       el.textContent = text; el.className = `celestial-grid-label ${cls}`;
-      Object.assign(el.style, { position: 'fixed', color: this.realisticColor, opacity: '0.72', font: '10px monospace', textShadow: '0 0 4px #000', whiteSpace: 'nowrap' });
+      Object.assign(el.style, SCENE_LABEL_STYLE, { color: this.realisticColor, opacity: '0.72' });
       this.labelLayer.appendChild(el); this.labels.push(el); return el;
     };
     addLabel(`${name} PLANE`, 'plane');
@@ -244,7 +247,7 @@ class GridPlane {
     }
     for (const el of this.labels) {
       el.style.color = color;
-      el.style.textShadow = style === 'schematic' ? 'none' : '0 0 4px #000';
+      el.style.textShadow = style === 'schematic' ? 'none' : SCENE_LABEL_STYLE.textShadow;
     }
   }
 
@@ -264,13 +267,10 @@ class GridPlane {
     this.labels.forEach((el) => { el.style.display = 'none'; });
     // 殻座標の点 p へラベルを置く。視錐台の外なら出さない。
     const show = (el: HTMLDivElement, p: THREE.Vector3, below = false) => {
-      const w = viewport.width, h = viewport.height;
-      const v = new THREE.Vector3(p.x * scale, p.y * scale, p.z * scale).project(camera);
-      if (v.z < -1 || v.z > 1) return;
-      const margin = 18;
-      const x = Math.max(margin, Math.min(w - margin, (v.x * .5 + .5) * w));
-      const y = Math.max(margin, Math.min(h - margin, (-v.y * .5 + .5) * h + (below ? 12 : 0)));
-      el.style.left = `${x}px`; el.style.top = `${y}px`; el.style.display = '';
+      placeScreenLabel(
+        el, new THREE.Vector3(p.x * scale, p.y * scale, p.z * scale),
+        camera, viewport, 18, below ? 12 : 0,
+      );
     };
     const [plane, pn, ps] = this.labels;
     if (planeVisible) show(plane!, planePoint(this.basis, STAR_SHELL_RADIUS, 0, 0), true);
@@ -291,7 +291,8 @@ class GridPlane {
         const dl = planePoint(this.basis, STAR_SHELL_RADIUS, latRad, lonRad + d / STAR_SHELL_RADIUS);
         const dt = planePoint(this.basis, STAR_SHELL_RADIUS, latRad + d / STAR_SHELL_RADIUS, lonRad);
         const a = project(dl), b = project(dt);
-        const sx = (base.x * .5 + .5) * w, sy = (-base.y * .5 + .5) * h;
+        const sp = ndcToScreen({ x: base.x, y: base.y, front: true }, w, h);
+        const sx = sp.x, sy = sp.y;
         const dxLon = (a.x - base.x) * w * .5, dyLon = -(a.y - base.y) * h * .5;
         const dxLat = (b.x - base.x) * w * .5, dyLat = -(b.y - base.y) * h * .5;
         const hx = Math.abs(dxLon) >= Math.abs(dyLon) ? dxLon : dxLat;
