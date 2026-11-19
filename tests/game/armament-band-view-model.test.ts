@@ -9,6 +9,7 @@ export function register(): void {
   test('armament band view model: 弾薬と弾速を渡す', () => {
     const ship = Object.create(ModularShip.prototype) as ModularShip;
     Object.assign(ship, {
+      mapKind: 'player',
       capabilities: { averageMuzzleVelocity: 1000 },
       fire: { rounds: 18, mags: 2, cooldown: 0 },
     });
