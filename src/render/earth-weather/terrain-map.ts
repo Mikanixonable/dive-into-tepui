@@ -37,12 +37,6 @@ function configureTerrainTexture(map: THREE.Texture): THREE.Texture {
 
 // 地形テクスチャを読む地形入力。
 export class TextureTerrainMap implements TerrainMap {
-  // url の PNG を読み終えてから器を返す。
-  public static async load(url: string): Promise<TextureTerrainMap> {
-    const map = await new THREE.TextureLoader().loadAsync(url);
-    return new TextureTerrainMap(configureTerrainTexture(map), null);
-  }
-
   // url の画像の取得を request() まで遅らせる器を返す。
   public static fromDeferredUrl(url: string): TextureTerrainMap {
     const deferred = new DeferredTexture(url, THREE.NoColorSpace);

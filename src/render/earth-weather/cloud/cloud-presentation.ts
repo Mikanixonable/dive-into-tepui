@@ -31,8 +31,6 @@ export interface CloudFieldSource {
   readonly slots: readonly [CloudFieldSlot, CloudFieldSlot];
   // 2 枚の混ぜ方。供給元が毎フレーム書き換えるので、読み手は読んだ時点の値を使う。
   readonly blend: CloudBlend;
-  // prepare() で更新されたテクスチャの世代番号。未準備時は 0。
-  readonly generation: number;
   // 表示時刻 displayTime [s] のテクスチャを準備する。GPU 生成時間は gpu 計測へ計上する。
   prepare(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void;
   // 天体固定で見た太陽直下点の経度 [rad] を渡す。暦を持つ呼び出し側だけが実装先を持ち、
@@ -65,16 +63,15 @@ export class CloudPresentation {
     this.aim(INITIAL_CAP_DIRECTION, 1);
   }
 
-  // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・世代・雲頂高度。
+  // 雲場の読み手へ渡す、いまの出どころの写しと cap の置き方・雲頂高度。
   public get renderInput(): CloudRenderInput {
-    // 同じ供給源の場・cap 配置・世代・表示時刻を描画入力へそろえる。
+    // 同じ供給源の場・cap 配置・表示時刻を描画入力へそろえる。
     return {
       field: {
         slots: this.source.slots,
         blend: this.source.blend,
         cap: this.cap.placement,
       },
-      generation: this.source.generation,
       topAltitude: this.topAltitude,
       clock: this.clock,
     };
