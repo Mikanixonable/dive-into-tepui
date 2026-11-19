@@ -4,7 +4,7 @@
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
-import { fmtTime } from '../../hud/utils';
+import { fmtTime } from '../../hud/format';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
@@ -13,7 +13,7 @@ import { pointPlacement } from './marker-placement';
 import type { ControlSelection } from '../control-selection';
 import type { PresentationPlanEditor, PresentationStageAuthoring } from '../presentation-ports';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { MenuItem } from '../hud/windows/context-menu';
+import type { MenuItem } from '../../hud/windows/context-menu';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
 import type { MarkerVisibility } from '../../marker/marker-visibility';

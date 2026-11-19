@@ -127,16 +127,11 @@ export class VesselPanel {
     this.radiatorButtons = this.buildRadiatorButtons(deployContainer);
   }
 
-  // Meter ウィジェットを容器要素へ差し込む。
-  private mountMeter(containerId: HudElId, label: string): Meter {
-    const meter = new Meter(label);
-    this.els.get(containerId).appendChild(meter.element);
-    return meter;
-  }
-
   // 行の中のメーターを gaugeId の要素へ差し込み、値を書く要素 valueId と組にして返す。
   private buildMeter(gaugeId: HudElId, valueId: HudElId, label: string): VesselMeterDom {
-    return { meter: this.mountMeter(gaugeId, label), value: this.els.get(valueId) };
+    const meter = new Meter(label);
+    this.els.get(gaugeId).appendChild(meter.element);
+    return { meter, value: this.els.get(valueId) };
   }
 
   // 建造の入口(主操作のボタンと説明1行)と、F/T の代替操作ボタンを組み立てて

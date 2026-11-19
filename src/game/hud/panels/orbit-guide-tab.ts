@@ -18,17 +18,14 @@ import {
   defaultCombinedKindSettings,
   defaultKindSettings,
   type CombinedKindSettings,
-  type CriticalInclinationSettings,
-  type DawnDuskSettings,
   type GuideKindSettings,
   type GuideKindSharedSettings,
   type LissajousSettings,
   type OrbitGuideSettings,
-  type SunSyncSettings,
 } from '../../viewer/orbit-guide-settings';
 import { GUIDE_GROUPS, GUIDE_SYSTEMS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-groups';
-import { ORBIT_GUIDE_GROUP_TABS } from '../hud-selection';
-import type { OrbitGuideGroupTab } from '../hud-selection';
+import { ORBIT_GUIDE_GROUP_TABS } from '../../view/hud-selection';
+import type { OrbitGuideGroupTab } from '../../view/hud-selection';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
 // 線数がこれを超えたら警告を出す(指定は曲げない)。
@@ -95,6 +92,7 @@ export class OrbitGuideTab {
   private current: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
   private readonly kindDefs: ReadonlyMap<GuideGroupId, readonly KindDef[]>;
   private readonly combinedDefs: ReadonlyMap<GuideGroupId, readonly CombinedKindDef[]>;
+  private readonly combinedDefByKey: ReadonlyMap<string, CombinedKindDef>;
   private readonly kindRows = new Map<string, KindRow>();
   private readonly combinedRows = new Map<string, CombinedKindRow>();
   private readonly systemSwitches = new Map<CatalogSystemId, ToggleSwitch>();
@@ -128,6 +126,7 @@ export class OrbitGuideTab {
     const defs = buildKindDefs(availableFamilies);
     this.kindDefs = defs.kinds;
     this.combinedDefs = defs.combined;
+    this.combinedDefByKey = new Map([...defs.combined.values()].flat().map((def) => [def.key, def]));
 
     this.element = document.createElement('div');
     this.element.className = 'orbit-guide-tab';
@@ -154,13 +153,13 @@ export class OrbitGuideTab {
     });
     basicRow.appendChild(this.geostationaryButton.element);
     basicBody.appendChild(basicRow);
-    this.sunSyncRow = new SunSyncRow(basicBody, () => this.commitSunSync({ on: !this.current.sunSync.on }), (patch) => this.commitSunSync(patch));
-    this.dawnDuskRow = new DawnDuskRow(basicBody, () => this.commitDawnDusk({ on: !this.current.dawnDusk.on }), (patch) => this.commitDawnDusk(patch));
+    this.sunSyncRow = new SunSyncRow(basicBody, () => this.commitSlice('sunSync', { on: !this.current.sunSync.on }), (patch) => this.commitSlice('sunSync', patch));
+    this.dawnDuskRow = new DawnDuskRow(basicBody, () => this.commitSlice('dawnDusk', { on: !this.current.dawnDusk.on }), (patch) => this.commitSlice('dawnDusk', patch));
     this.molniyaRow = new CriticalInclinationRow(
-      basicBody, 'モルニヤ軌道(Molniya)', () => this.commitMolniya({ on: !this.current.molniya.on }), (patch) => this.commitMolniya(patch),
+      basicBody, 'モルニヤ軌道(Molniya)', () => this.commitSlice('molniya', { on: !this.current.molniya.on }), (patch) => this.commitSlice('molniya', patch),
     );
     this.tundraRow = new CriticalInclinationRow(
-      basicBody, 'ツンドラ軌道(Tundra)', () => this.commitTundra({ on: !this.current.tundra.on }), (patch) => this.commitTundra(patch),
+      basicBody, 'ツンドラ軌道(Tundra)', () => this.commitSlice('tundra', { on: !this.current.tundra.on }), (patch) => this.commitSlice('tundra', patch),
     );
     groupTabBodies.set('basic', basicBody);
 
@@ -393,11 +392,7 @@ export class OrbitGuideTab {
 
   // key(`${group}-${base}`)から小題定義を探す。見つからなければ null。
   private findCombinedDef(key: string): CombinedKindDef | null {
-    for (const defs of this.combinedDefs.values()) {
-      const def = defs.find((d) => d.key === key);
-      if (def !== undefined) return def;
-    }
-    return null;
+    return this.combinedDefByKey.get(key) ?? null;
   }
 
   // 小題 key の軸値1つぶんの ON/OFF を正本へ反映する。
@@ -426,32 +421,32 @@ export class OrbitGuideTab {
     const pointRow = buildLabeledRow('点', 'w-group orbit-guide-toggle-row');
     const pointButtons = new Map<'l1' | 'l2' | 'l3', Button>();
     for (const [key, label] of [['l1', 'L1'], ['l2', 'L2'], ['l3', 'L3']] as const) {
-      const btn = new Button(label, () => this.commitLissajous({ [key]: !this.current.lissajous[key] } as Partial<LissajousSettings>));
+      const btn = new Button(label, () => this.commitSlice('lissajous', { [key]: !this.current.lissajous[key] } as Partial<LissajousSettings>));
       pointRow.appendChild(btn.element);
       pointButtons.set(key, btn);
     }
     configPanel.appendChild(pointRow);
 
     // 振幅・位相・周回数。
-    const inPlaneField = buildValueField('面内振幅', AMPLITUDE_MAPPING, (v) => this.commitLissajous({ inPlane: v }));
+    const inPlaneField = buildValueField('面内振幅', AMPLITUDE_MAPPING, (v) => this.commitSlice('lissajous', { inPlane: v }));
     configPanel.appendChild(inPlaneField.row);
-    const outOfPlaneField = buildValueField('面外振幅', AMPLITUDE_MAPPING, (v) => this.commitLissajous({ outOfPlane: v }));
+    const outOfPlaneField = buildValueField('面外振幅', AMPLITUDE_MAPPING, (v) => this.commitSlice('lissajous', { outOfPlane: v }));
     configPanel.appendChild(outOfPlaneField.row);
-    const inPlanePhaseField = buildValueField('面内位相', PHASE_MAPPING, (v) => this.commitLissajous({ inPlanePhase: v }));
+    const inPlanePhaseField = buildValueField('面内位相', PHASE_MAPPING, (v) => this.commitSlice('lissajous', { inPlanePhase: v }));
     configPanel.appendChild(inPlanePhaseField.row);
-    const outOfPlanePhaseField = buildValueField('面外位相', PHASE_MAPPING, (v) => this.commitLissajous({ outOfPlanePhase: v }));
+    const outOfPlanePhaseField = buildValueField('面外位相', PHASE_MAPPING, (v) => this.commitSlice('lissajous', { outOfPlanePhase: v }));
     configPanel.appendChild(outOfPlanePhaseField.row);
-    const cyclesField = buildValueField('周回数', CYCLES_MAPPING, (v) => this.commitLissajous({ cycles: Math.round(v) }));
+    const cyclesField = buildValueField('周回数', CYCLES_MAPPING, (v) => this.commitSlice('lissajous', { cycles: Math.round(v) }));
     configPanel.appendChild(cyclesField.row);
 
     // 色・透明度・進行方向マーカー。族を持たないので色は単色(colorStart のみ)。
-    const colorField = buildColorField('色', 0, (v) => this.commitLissajous({ colorStart: v }));
+    const colorField = buildColorField('色', 0, (v) => this.commitSlice('lissajous', { colorStart: v }));
     configPanel.appendChild(colorField.row);
-    const opacityField = buildValueField('透明度', OPACITY_MAPPING, (v) => this.commitLissajous({ opacity: v }));
+    const opacityField = buildValueField('透明度', OPACITY_MAPPING, (v) => this.commitSlice('lissajous', { opacity: v }));
     configPanel.appendChild(opacityField.row);
-    const direction = new SegmentedControl<DirectionMarkerMode>('進行方向', DIRECTION_ITEMS, (mode) => this.commitLissajous({ direction: mode }));
+    const direction = new SegmentedControl<DirectionMarkerMode>('進行方向', DIRECTION_ITEMS, (mode) => this.commitSlice('lissajous', { direction: mode }));
     configPanel.appendChild(direction.element);
-    const animateSwitch = new ToggleSwitch('進行方向のアニメーション', (on) => this.commitLissajous({ animate: on }));
+    const animateSwitch = new ToggleSwitch('進行方向のアニメーション', (on) => this.commitSlice('lissajous', { animate: on }));
     configPanel.appendChild(animateSwitch.element);
 
     return {
@@ -460,29 +455,12 @@ export class OrbitGuideTab {
     };
   }
 
-  // リサジュー軌道の設定へ patch を重ねて正本を更新する。
-  private commitLissajous(patch: Partial<LissajousSettings>): void {
-    this.commit({ ...this.current, lissajous: { ...this.current.lissajous, ...patch } });
-  }
-
-  // 太陽同期準回帰軌道の設定へ patch を重ねて正本を更新する。
-  private commitSunSync(patch: Partial<SunSyncSettings>): void {
-    this.commit({ ...this.current, sunSync: { ...this.current.sunSync, ...patch } });
-  }
-
-  // ドーンダスク軌道の設定へ patch を重ねて正本を更新する。
-  private commitDawnDusk(patch: Partial<DawnDuskSettings>): void {
-    this.commit({ ...this.current, dawnDusk: { ...this.current.dawnDusk, ...patch } });
-  }
-
-  // モルニヤ軌道の設定へ patch を重ねて正本を更新する。
-  private commitMolniya(patch: Partial<CriticalInclinationSettings>): void {
-    this.commit({ ...this.current, molniya: { ...this.current.molniya, ...patch } });
-  }
-
-  // ツンドラ軌道の設定へ patch を重ねて正本を更新する。
-  private commitTundra(patch: Partial<CriticalInclinationSettings>): void {
-    this.commit({ ...this.current, tundra: { ...this.current.tundra, ...patch } });
+  // key の設定区画へ patch を重ねて正本を更新する。
+  private commitSlice<K extends 'lissajous' | 'sunSync' | 'dawnDusk' | 'molniya' | 'tundra'>(
+    key: K,
+    patch: Partial<OrbitGuideSettings[K]>,
+  ): void {
+    this.commit({ ...this.current, [key]: { ...this.current[key], ...patch } });
   }
 
   // 正本を差し替え、見た目を鏡映しへ合わせて呼び出し側へ通知する。

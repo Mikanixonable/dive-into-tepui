@@ -2,14 +2,14 @@
 // 項目ショートカットで onSelect(act, target) を発火して閉じる。
 // #hud の子として popup レイヤへ置くため、`#hud, #hud *` の margin/padding リセットに
 // 勝てるよう全セレクタを `#hud` で始める。
-import { placeOverlayAt } from '../../../hud/layout';
-import { shortcutKeyLabel } from '../../../hud/windows/shortcut-hint';
-import { isCoarsePointer } from '../../../input/pointer-precision';
-import { onViewportChange } from '../../../hud/viewport';
-import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
-import { injectOnce } from '../../../hud/inject-style';
-import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
-import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
+import { placeOverlayAt } from '../layout';
+import { shortcutKeyLabel } from '../shortcut-hint';
+import { isCoarsePointer } from '../../input/pointer-precision';
+import { onViewportChange } from '../viewport';
+import type { OverlayHandle, OverlayManager } from '../overlay-manager';
+import { injectOnce } from '../inject-style';
+import { injectCommonUiStyle } from '../style/common-ui-style';
+import { bindActivation, expandHitTarget, stopDragPropagation } from '../widgets/widget-base';
 
 const STYLE = `
 #hud .ctx-menu {

@@ -30,7 +30,7 @@ export const COMBAT_VIEW_STYLE = `
   letter-spacing: 0;
   line-height: 1.35;
 }
-#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse {
+#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-chrome-collapse {
   border: 0;
   border-radius: 50%;
   background: transparent;
@@ -38,7 +38,7 @@ export const COMBAT_VIEW_STYLE = `
   line-height: 1;
   transition: color var(--transition-fast), background var(--transition-fast);
 }
-#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:hover {
+#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-chrome-collapse:hover {
   background: var(--fill-1);
   color: var(--color-primary-hover);
 }
@@ -119,7 +119,7 @@ export const COMBAT_VIEW_STYLE = `
 }
 #hud:not(.base-mode) #hud-simulation-status .k { color: var(--text-dim); }
 #hud:not(.base-mode) #hud-simulation-status .gs-sep { color: var(--fill-4); }
-#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse:focus-visible,
+#hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-chrome-collapse:focus-visible,
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status .w-btn:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
@@ -135,7 +135,7 @@ export const COMBAT_VIEW_STYLE = `
   }
 }
 @media ${MQ_COARSE} {
-  #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-shell-collapse {
+  #hud:not(.base-mode) .hud-combat-root.active .combat-panel .panel-chrome-collapse {
     min-width: var(--hit-target-min);
     min-height: var(--hit-target-min);
   }

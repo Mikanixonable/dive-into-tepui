@@ -135,13 +135,6 @@ const STYLE = `
   font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
 #hud .prop-window-items:not(:empty)::after { content: ''; }
-#hud .prop-window-item {
-  grid-template-columns: 2.4em minmax(0, 1fr) auto;
-  border-radius: 0; background: transparent;
-}
-#hud .prop-window-item:hover { background: var(--glass-control-hover); }
-#hud .prop-window-item.on { background: transparent; color: var(--color-primary); }
-#hud .prop-window-item.disabled { opacity: var(--toggle-off-opacity); cursor: not-allowed; }
 #hud .prop-window-related {
   padding: 0 var(--space-3) var(--space-2); background: transparent;
 }
@@ -213,8 +206,6 @@ export class PropertyWindow<A extends string = string> {
   // 閉じられた(dispose 済み)ことを知らせる。ESC・外側クリック・✕ ボタンのどの経路で
   // 閉じても等しく発火する。
   public onClose: (() => void) | null = null;
-  // クリップボタンで状態が反転したことを通知する。
-  public onClipChange: ((clipped: boolean) => void) | null = null;
 
   // clientX/clientY を左上角として開き、content の内容で組み立てる。
   // unclippedWindowGroup を渡すと、クリップされていない間だけ OverlayManager 上の排他グループに
@@ -234,7 +225,6 @@ export class PropertyWindow<A extends string = string> {
         this.win.element.classList.toggle('property-window-monitor', clipped);
         this.win.reclamp();
       }
-      this.onClipChange?.(clipped);
     };
 
     // 4つの副概念を組み立てる。項目のショートカット配送だけは DraggableWindow からの

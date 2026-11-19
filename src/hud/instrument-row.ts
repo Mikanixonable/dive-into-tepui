@@ -27,7 +27,7 @@ export function instrumentRowHtml(spec: InstrumentRowSpec): string {
   const gauge = spec.gaugeId === undefined ? '' : `<span class="ui-gauge" data-id="${spec.gaugeId}"></span>`;
   const value = spec.valueHtml !== undefined
     ? `<span class="ui-v">${spec.valueHtml}</span>`
-    : `<output class="ui-v" data-id="${spec.valueId ?? ''}">—</output>`;
+    : `<output class="ui-v" data-id="${spec.valueId}">—</output>`;
   const key = spec.keys === undefined ? '' : keyCapHtml(spec.keys);
   return `<div class="ui-row"${rowAttr}><span class="ui-k"><span class="ui-k-text"${labelAttr}>${spec.label}</span></span>${gauge}${value}${key}</div>`;
 }

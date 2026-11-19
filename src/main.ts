@@ -14,7 +14,7 @@ import { browserSettingStorage } from './settings/stored-setting';
 import { themePresetOf } from './theme';
 import { applyThemeVariables } from './hud/style/theme-variables';
 import { Hud } from './game/hud/hud';
-import { PanelCollapse } from './game/hud/panel-shell';
+import { PanelCollapse } from './game/hud/panel-chrome';
 import { HudShell } from './hud/hud-shell';
 import { MarkerDevice } from './marker/marker-device';
 import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
@@ -35,7 +35,7 @@ import { gameCommand } from './game/input/game-commands';
 import { KEY_MAPPING as K } from './input/key-mapping';
 import { applyCloudTuningOverrides } from './render/earth-weather/cloud-tuning';
 import type { PageDevices } from './run/page-devices';
-import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
+import type { ViewOptionsSettings } from './game/view/view-options-settings';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 
 // ローディング表示下で canvas を作り WebGPU シーンを初期化する

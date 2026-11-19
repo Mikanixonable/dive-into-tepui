@@ -5,8 +5,8 @@ import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import type { Vec3 } from '../../math/vec3';
 import { AXIS_NORMAL, AXIS_PROGRADE, AXIS_RADIAL, FONT_XXS, SPACE_1, SPACE_2, SPACE_3, SPACE_4 } from '../../theme';
 import { HoldButton, ValueInput } from '../../hud/widgets';
-import { fmtDist, fmtTime } from '../../hud/utils';
-import { hudRail } from '../hud/hud-root';
+import { fmtDist, fmtTime } from '../../hud/format';
+import { hudRail } from '../hud/hud-dom';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
 
 interface DvButtons {
