@@ -4,7 +4,7 @@ import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { ViewMode } from '../view/view-mode';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { ObjectAuthoring, InspectedObject } from './inspected-object';
-import type { MenuItem } from '../hud/windows/context-menu';
+import type { MenuItem } from '../../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';

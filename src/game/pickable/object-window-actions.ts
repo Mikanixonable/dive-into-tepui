@@ -5,7 +5,7 @@ import type { HintKind } from '../../hud/notifier';
 import type {
   PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem,
 } from '../../hud/windows/property-window-content';
-import type { MenuItem } from '../hud/windows/context-menu';
+import type { MenuItem } from '../../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';

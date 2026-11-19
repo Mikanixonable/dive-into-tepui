@@ -4,7 +4,7 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
 import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
-import type { MenuItem } from '../hud/windows/context-menu';
+import type { MenuItem } from '../../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { PlanEditor } from '../plan/plan-editor';
 import type { PropertyRow } from '../../hud/windows/property-window-content';

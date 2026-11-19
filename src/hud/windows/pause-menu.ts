@@ -14,7 +14,7 @@ import {
   Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider, TabBar,
 } from '../widgets';
 import { wireHeaderDrag } from '../window-drag';
-import { SettingsView } from './settings-view';
+import { SettingsView } from '../panels/settings-view';
 
 type PauseMenuTab = 'pause' | 'settings';
 
