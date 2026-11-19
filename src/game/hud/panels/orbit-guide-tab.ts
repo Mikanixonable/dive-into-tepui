@@ -95,6 +95,7 @@ export class OrbitGuideTab {
   private current: OrbitGuideSettings = DEFAULT_ORBIT_GUIDE_SETTINGS;
   private readonly kindDefs: ReadonlyMap<GuideGroupId, readonly KindDef[]>;
   private readonly combinedDefs: ReadonlyMap<GuideGroupId, readonly CombinedKindDef[]>;
+  private readonly combinedDefByKey: ReadonlyMap<string, CombinedKindDef>;
   private readonly kindRows = new Map<string, KindRow>();
   private readonly combinedRows = new Map<string, CombinedKindRow>();
   private readonly systemSwitches = new Map<CatalogSystemId, ToggleSwitch>();
@@ -128,6 +129,7 @@ export class OrbitGuideTab {
     const defs = buildKindDefs(availableFamilies);
     this.kindDefs = defs.kinds;
     this.combinedDefs = defs.combined;
+    this.combinedDefByKey = new Map([...defs.combined.values()].flat().map((def) => [def.key, def]));
 
     this.element = document.createElement('div');
     this.element.className = 'orbit-guide-tab';
@@ -393,11 +395,7 @@ export class OrbitGuideTab {
 
   // key(`${group}-${base}`)から小題定義を探す。見つからなければ null。
   private findCombinedDef(key: string): CombinedKindDef | null {
-    for (const defs of this.combinedDefs.values()) {
-      const def = defs.find((d) => d.key === key);
-      if (def !== undefined) return def;
-    }
-    return null;
+    return this.combinedDefByKey.get(key) ?? null;
   }
 
   // 小題 key の軸値1つぶんの ON/OFF を正本へ反映する。
