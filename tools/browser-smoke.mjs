@@ -4,19 +4,40 @@ import { openChromeSession, sleep } from './chrome-session.mjs';
 const root = path.resolve(import.meta.dirname, '..');
 const port = 8765;
 const debugPort = 9222;
-const query = process.env.SMOKE_QUERY ?? '?stage=00';
-if (!query.startsWith('?') || query.includes('#')) {
-  throw new Error('SMOKE_QUERY must be a query string beginning with "?" and must not contain a fragment.');
+let query = '?stage=00';
+let expectCreative = false;
+let creativePreset = 'combat';
+let smokeConstruction = false;
+
+function configureScenario(nextQuery, nextCreativePreset = 'combat', nextSmokeConstruction = false) {
+  if (!nextQuery.startsWith('?') || nextQuery.includes('#')) {
+    throw new Error('SMOKE_QUERY must be a query string beginning with "?" and must not contain a fragment.');
+  }
+  if (nextCreativePreset !== 'combat' && nextCreativePreset !== 'base') {
+    throw new Error('SMOKE_CREATIVE_PRESET must be either "combat" or "base".');
+  }
+  const nextExpectCreative = new URLSearchParams(nextQuery.slice(1)).get('stage') === 'creative';
+  if (nextSmokeConstruction && (!nextExpectCreative || nextCreativePreset !== 'base')) {
+    throw new Error('SMOKE_CONSTRUCTION=1 requires creative stage and base preset.');
+  }
+  query = nextQuery;
+  expectCreative = nextExpectCreative;
+  creativePreset = nextCreativePreset;
+  smokeConstruction = nextSmokeConstruction;
 }
-const expectCreative = new URLSearchParams(query.slice(1)).get('stage') === 'creative';
-const creativePreset = process.env.SMOKE_CREATIVE_PRESET ?? 'combat';
-if (creativePreset !== 'combat' && creativePreset !== 'base') {
-  throw new Error('SMOKE_CREATIVE_PRESET must be either "combat" or "base".');
-}
-const smokeConstruction = process.env.SMOKE_CONSTRUCTION === '1';
-if (smokeConstruction && (!expectCreative || creativePreset !== 'base')) {
-  throw new Error('SMOKE_CONSTRUCTION=1 requires creative stage and base preset.');
-}
+
+configureScenario(
+  process.env.SMOKE_QUERY ?? '?stage=00',
+  process.env.SMOKE_CREATIVE_PRESET ?? 'combat',
+  process.env.SMOKE_CONSTRUCTION === '1',
+);
+
+const layoutSuite = process.env.SMOKE_LAYOUT_SUITE === '1';
+const layoutScenarios = [
+  { query: '?stage=00', creativePreset: 'combat', smokeConstruction: false },
+  { query: '?stage=creative', creativePreset: 'combat', smokeConstruction: false },
+  { query: '?stage=creative', creativePreset: 'base', smokeConstruction: true },
+];
 const emulateTouch = process.env.SMOKE_TOUCH === '1';
 const layoutOnly = process.env.SMOKE_LAYOUT_ONLY === '1';
 let session;
@@ -45,6 +66,13 @@ const LAYOUT_HELPERS = `
     .filter((el) => el.tagName === 'INPUT' || el.tagName === 'SELECT' || (el.textContent?.trim().length ?? 0) > 0)
     .map((el) => ({ tag: el.tagName, id: el.id, text: el.textContent?.trim().slice(0, 32) ?? '', size: parseFloat(getComputedStyle(el).fontSize) }))
     .filter((item) => Number.isFinite(item.size) && item.size < 10);
+  const undersizedTouchTargets = (scope = document) => {
+    if (!matchMedia('(pointer: coarse)').matches) return [];
+    return [...scope.querySelectorAll('.w-hit, #touch-ui.shown .tbtn, button, input, select, [role="button"], [role="switch"]')]
+      .filter(visible)
+      .map((el) => ({ tag: el.tagName, id: el.id, text: el.textContent?.trim().slice(0, 32) ?? '', ...rect(el) }))
+      .filter((item) => item.width < 44 || item.height < 44);
+  };
 `;
 
 async function pressKey(key, code, keyCode) {
@@ -79,6 +107,15 @@ async function rightClickAt(x, y) {
   await devTools.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0 });
   await devTools.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'right', buttons: 2, clickCount: 1 });
   await devTools.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'right', buttons: 0, clickCount: 1 });
+}
+
+// 建造の接続ノードは pointer-events:none の DOM マーカーなので、ノードの画面位置へ
+// キャンバスの左クリックを送る。配置済みモジュールの面に載ったノードへクリックすると、
+// そのモジュールが当たり判定で選ばれる。
+async function leftClickAt(x, y) {
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0 });
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+  await devTools.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
 }
 
 // 全てのキーが真であることを求め、偽が混ざっていればその内訳ごと投げる。
@@ -128,18 +165,36 @@ const VIEWPORTS = [
   { name: 'short-landscape', width: 667, height: 375 },
 ];
 
+async function throwIfVisibleFatalOverlay(label) {
+  if (!layoutOnly) return;
+  const fatal = await devTools.evaluate(`(() => {
+    const el = document.getElementById('fatal-error-overlay');
+    if (!el || getComputedStyle(el).display === 'none') return '';
+    return el.textContent ?? 'fatal error overlay';
+  })()`);
+  if (fatal) throw new Error(`${label}: ${fatal}`);
+}
+
 async function applyViewport({ width, height }) {
+  if (layoutOnly) {
+    await devTools.evaluate(`document.documentElement.dataset.layoutSmokeFreeze = 'true'`);
+    // rAF側がfreezeを観測してからrendererをリサイズし得るviewport変更を行う。
+    await sleep(50);
+  }
   await devTools.send('Emulation.setDeviceMetricsOverride', {
     width, height, deviceScaleFactor: 1, mobile: width <= 480,
   });
   // CSS media query と ResizeObserver(--hud-*-occupied) の双方が反映されるまで待つ。
   await sleep(100);
+  await throwIfVisibleFatalOverlay('Headless GPU fatal during layout viewport check');
 }
 
 async function clearViewport() {
-  await clearViewport();
-  // innerWidth と fixed/absolute HUD の再レイアウトを同じフレームへ揃える。
+  await devTools.send('Emulation.clearDeviceMetricsOverride');
+  // layout-onlyでは一度幾何検査を始めたらGPUを凍結したままにする。
+  // DOM/入力/HUD同期は継続するため、以後のUI検査には影響しない。
   await sleep(100);
+  await throwIfVisibleFatalOverlay('Headless GPU fatal while restoring layout viewport');
 }
 
 async function checkOverlayGeometry(selector, label) {
@@ -148,10 +203,15 @@ async function checkOverlayGeometry(selector, label) {
     const state = await devTools.evaluate(`(() => {
       ${LAYOUT_HELPERS}
       const el = document.querySelector(${JSON.stringify(selector)});
-      if (!visible(el)) return { visible: false, inside: false, tiny: [] };
-      return { visible: true, inside: insideViewport(rect(el)), tiny: tinyInteractiveText(el) };
+      if (!visible(el)) return { visible: false, inside: false, tiny: [], undersized: [] };
+      return {
+        visible: true,
+        inside: insideViewport(rect(el)),
+        tiny: tinyInteractiveText(el),
+        undersized: undersizedTouchTargets(el),
+      };
     })()`);
-    if (!state.visible || !state.inside || state.tiny.length) {
+    if (!state.visible || !state.inside || state.tiny.length || state.undersized.length) {
       throw new Error(`${label} geometry failed at ${viewport.name} ${viewport.width}x${viewport.height}: ${JSON.stringify(state)}`);
     }
   }
@@ -276,7 +336,9 @@ async function checkCombatLayout() {
       }
       const tiny = tinyInteractiveText(document.getElementById('hud'));
       if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
-      return { errors, shelf, rails, shelfPanels, floating, chromeRect, tiny };
+      const undersized = undersizedTouchTargets();
+      if (undersized.length) errors.push('touch target below 44px: ' + JSON.stringify(undersized));
+      return { errors, shelf, rails, shelfPanels, floating, chromeRect, tiny, undersized };
     })()`);
     if (layout.errors.length) {
       throw new Error(`Combat layout failed at ${viewport.name} ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
@@ -357,7 +419,9 @@ async function checkMapLayout() {
       }
       const tiny = tinyInteractiveText(document.getElementById('hud'));
       if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
-      return { errors, rails, panels, predictRect, chromeRect, occupied, actual, tiny };
+      const undersized = undersizedTouchTargets();
+      if (undersized.length) errors.push('touch target below 44px: ' + JSON.stringify(undersized));
+      return { errors, rails, panels, predictRect, chromeRect, occupied, actual, tiny, undersized };
     })()`);
     if (layout.errors.length) {
       throw new Error(`Map layout failed at ${viewport.name} ${width}x${height}: ${layout.errors.join('; ')}; ${JSON.stringify(layout)}`);
@@ -405,9 +469,10 @@ async function checkHelpModal() {
     await pressKey('h', 'KeyH', 72);
   }
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-help')).display !== 'none'`,
+    `document.getElementById('hud-help') !== null && getComputedStyle(document.getElementById('hud-help')).display !== 'none'`,
     layoutOnly ? 'the HLP badge to open the help panel' : '[H] to open the help panel',
   );
+  await throwIfVisibleFatalOverlay('Headless GPU fatal while checking Help modal');
   const state = await devTools.evaluate(`(() => {
     const shield = document.getElementById('hud-overlay-shield');
     const canvas = document.querySelector('canvas');
@@ -438,7 +503,7 @@ async function checkHelpModal() {
     await pressKey('Escape', 'Escape', 27);
   }
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-help')).display === 'none'
+    `(document.getElementById('hud-help') === null || getComputedStyle(document.getElementById('hud-help')).display === 'none')
       && !document.body.classList.contains('hud-overlay-modal-open')`,
     layoutOnly ? 'the Help close button to close the panel' : 'Escape to close the help panel',
   );
@@ -448,7 +513,7 @@ async function checkHelpModal() {
 // ゲーム世界も暗転させない(UI-DESIGN.md「一時停止タブ」)。どちらも退行しやすいので明示的に見る。
 async function checkPauseMenu() {
   await pressKey('Escape', 'Escape', 27);
-  await waitFor(`getComputedStyle(document.getElementById('hud-pause-menu')).display !== 'none'`, 'Escape to open the pause menu');
+  await waitFor(`document.getElementById('hud-pause-menu') !== null && getComputedStyle(document.getElementById('hud-pause-menu')).display !== 'none'`, 'Escape to open the pause menu');
   // ここでは合成 pointerdown を投げない — 背景はゲーム本体のリスナで、合成イベントの
   // pointerId には setPointerCapture が通らず、この検証自身が例外を生んでしまう。
   // 遮っていないことは当たり判定(最前面がシールドでなく背景である)で言い切れる。
@@ -468,9 +533,27 @@ async function checkPauseMenu() {
   })()`);
   expectAll('Pause menu shielding failed', state);
   await checkOverlayGeometry('#hud-pause-menu', 'Pause menu');
+  await applyViewport({ width: 320, height: 568 });
+  const settingsScroll = await devTools.evaluate(`(() => {
+    const settingsTab = [...document.querySelectorAll('#hud-pause-menu .pm-tabs .w-btn')]
+      .find((button) => button.textContent?.trim() === 'SETTINGS');
+    settingsTab?.click();
+    const content = document.querySelector('#hud-pause-menu .pm-tab-content');
+    if (!content) return { exists: false, scrollable: false, reachedEnd: false };
+    const scrollable = ['auto', 'scroll'].includes(getComputedStyle(content).overflowY)
+      && content.scrollHeight > content.clientHeight;
+    content.scrollTop = content.scrollHeight;
+    return {
+      exists: true,
+      scrollable,
+      reachedEnd: scrollable && content.scrollTop + content.clientHeight >= content.scrollHeight - 1,
+    };
+  })()`);
+  expectAll('Pause menu settings content must scroll to its end on a compact viewport', settingsScroll);
+  await clearViewport();
   await pressKey('Escape', 'Escape', 27);
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-pause-menu')).display === 'none'`,
+    `(document.getElementById('hud-pause-menu') === null || getComputedStyle(document.getElementById('hud-pause-menu')).display === 'none')`,
     'Escape to close the pause menu',
   );
 }
@@ -515,7 +598,7 @@ async function placeShipThroughMenu() {
   })()`);
   if (openedPlacer) throw new Error(`Creative placement menu failed: ${openedPlacer}`);
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-object-placer')).display !== 'none'`,
+    `document.getElementById('hud-object-placer') !== null && getComputedStyle(document.getElementById('hud-object-placer')).display !== 'none'`,
     'the placement panel to open',
   );
   if (creativePreset === 'base') {
@@ -533,6 +616,18 @@ async function placeShipThroughMenu() {
       'the base preset to become selected',
     );
   }
+  const placedName = creativePreset === 'base' ? 'SMOKE BASE' : 'SMOKE SHIP';
+  const formState = await devTools.evaluate(`(() => {
+    const panel = document.getElementById('hud-object-placer');
+    const input = panel.querySelector('input[placeholder="空欄で自動命名"]');
+    if (!(input instanceof HTMLInputElement)) return { error: 'name input missing', issue: '' };
+    input.value = ${JSON.stringify(placedName)};
+    const issue = panel.querySelector('.issue-list:not(.hidden)')?.textContent?.trim() ?? '';
+    return { error: '', issue };
+  })()`);
+  if (formState.error) throw new Error(`Creative placement form failed: ${formState.error}`);
+  if (formState.issue) throw new Error(`Creative placement form is invalid before confirm: ${formState.issue}`);
+
   const confirmed = await devTools.evaluate(`(() => {
     const panel = document.getElementById('hud-object-placer');
     const button = [...panel.querySelectorAll('.w-btn')].find((b) => b.textContent?.startsWith('配置'));
@@ -542,42 +637,111 @@ async function placeShipThroughMenu() {
   })()`);
   if (confirmed) throw new Error(`Creative placement panel failed: ${confirmed}`);
   await waitFor(
-    `getComputedStyle(document.getElementById('hud-object-placer')).display === 'none'`,
+    `(document.getElementById('hud-object-placer') === null || getComputedStyle(document.getElementById('hud-object-placer')).display === 'none')`,
     'the placement panel to close after confirming',
   );
+  return placedName;
 }
 
-async function selectConstructionModuleAndPlace(label, expectedCount) {
-  const selected = await devTools.evaluate(`(() => {
-    const panel = document.getElementById('ship-construction-panel');
-    const select = panel?.querySelector('select[aria-label="追加するモジュール"]');
-    if (!select) return 'module selector is missing';
-    const index = [...select.options].findIndex((option) => option.textContent === ${JSON.stringify(label)});
-    if (index < 0) return 'module option is missing: ' + ${JSON.stringify(label)};
-    select.selectedIndex = index;
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+// パネル内の .w-btn を表示文字の前方一致で探して押す。無効(.disabled)や不在は失敗。
+async function clickPanelButton(scopeSelector, textPrefix, label) {
+  const error = await devTools.evaluate(`(() => {
+    const button = [...document.querySelectorAll(${JSON.stringify(scopeSelector + ' .w-btn')})]
+      .find((item) => item.textContent?.trim().startsWith(${JSON.stringify(textPrefix)}));
+    if (!button) return 'button is missing: ' + ${JSON.stringify(textPrefix)};
+    if (button.classList.contains('disabled')) return 'button is disabled: ' + ${JSON.stringify(textPrefix)};
+    button.click();
     return '';
   })()`);
-  if (selected) throw new Error(`Construction module selection failed: ${selected}`);
+  if (error) throw new Error(`${label}: ${error}`);
+}
+
+// カタログのタブを選び、名前の一致するカードを押して手に取る。タブはキーキャップを
+// 伴うのでラベルの前方一致で探し、手持ちは手元バーの「置く: <名前>」欄で確かめる。
+// カードを押しても手に取れない既知の回退に備え、[Tab] の送りで同名の定義を持つまで巡回する
+// 保険経路を持つ — カード押下が直ったら保険は発動しなくなる。
+async function holdCatalogCard(tabLabel, cardName) {
+  const error = await devTools.evaluate(`(() => {
+    const panel = document.getElementById('ship-construction-panel');
+    const tab = [...panel.querySelectorAll('.construction-category-tabs .w-btn')]
+      .find((b) => b.textContent?.trim().startsWith(${JSON.stringify(tabLabel)}));
+    if (!tab) return 'tab is missing: ' + ${JSON.stringify(tabLabel)};
+    tab.click();
+    return '';
+  })()`);
+  if (error) throw new Error(`Construction catalog tab failed: ${error}`);
   await waitFor(
-    `(() => {
-      const panel = document.getElementById('ship-construction-panel');
-      const button = [...panel.querySelectorAll('.construction-actions .w-btn')]
-        .find((item) => item.textContent?.trim() === '配置');
-      return button && !button.disabled;
-    })()`,
-    `${label} to become placeable`,
+    `[...document.querySelectorAll('#ship-construction-panel .construction-module-card .construction-module-name')]
+      .some((el) => el.textContent === ${JSON.stringify(cardName)})`,
+    `the ${cardName} card to appear in the ${tabLabel} tab`,
   );
   await devTools.evaluate(`(() => {
-    const panel = document.getElementById('ship-construction-panel');
-    [...panel.querySelectorAll('.construction-actions .w-btn')]
-      .find((item) => item.textContent?.trim() === '配置')?.click();
+    const card = [...document.querySelectorAll('#ship-construction-panel .construction-module-card')]
+      .find((el) => el.querySelector('.construction-module-name')?.textContent === ${JSON.stringify(cardName)});
+    card?.querySelector('.w-btn')?.click();
   })()`);
-  await waitFor(
-    `document.querySelector('[data-id="construction-count"]')?.textContent === '${expectedCount}'`,
-    `${label} placement to update the construction assembly`,
-  );
+  const heldExpr = `document.querySelector('#ship-construction-panel [data-id="construction-hand-name"]')?.textContent === ${JSON.stringify(cardName)}`;
+  await waitFor(heldExpr, `${cardName} to be held after pressing its card`, 2_000);
 }
+
+// 取り付け候補の一覧から有効な項目を押し、手元バーの「置く」で置く。候補を押すとそれが
+// 「指している取り付け先」になり、対応する接続ノードへ mk-construction-node-pointed が付く。
+// 次の条件を満たす候補だけを使う:
+// - 一覧項目の文言に「継ぎ目」を含まない(割り込みは既存の部分をモジュールへ付け直す)
+// - 「ドック」を含まない(接合面へのクリックが親を選んだとき、起点ドックは選べないため)
+// - 指した候補の接続ノードが画面に見えている(位置を記録して後のクリックに使うため)
+// - 「置く」が押せる(指した候補への試し置きが妥当)
+// 戻り値は置いた接合面の画面位置で、置いたモジュールをクリックで選ぶ検証に使う。
+async function placeHeldAtFreeEnd(expectedCount) {
+  // 取り付け候補の一覧は右ペインの「候補」タブの中にある。読む前に開く。
+  await clickPanelButton(
+    '#ship-construction-panel [data-id="construction-state-tabs"]', '候補', 'open the targets tab',
+  );
+  const slotCount = await devTools.evaluate(
+    `document.querySelectorAll('#ship-construction-panel .construction-slot-button[data-valid="true"]').length`,
+  );
+  const tried = [];
+  for (let index = 0; index < slotCount; index++) {
+    const label = await devTools.evaluate(`(() => {
+      const slots = [...document.querySelectorAll('#ship-construction-panel .construction-slot-button[data-valid="true"]')];
+      const slot = slots[${index}];
+      if (!slot) return '';
+      slot.click();
+      return slot.querySelector('.construction-slot-label')?.textContent ?? slot.textContent ?? '';
+    })()`);
+    if (label === '' || label.includes('継ぎ目') || label.includes('ドック')) {
+      tried.push(`${index}: ${label || 'gone'}`);
+      continue;
+    }
+    let attachPoint;
+    try {
+      await waitFor(`(() => {
+        const node = document.querySelector('.mk-construction-node-pointed');
+        if (!node || getComputedStyle(node).display === 'none') return false;
+        const button = [...document.querySelectorAll('#ship-construction-panel [data-id="construction-hand-actions"] .w-btn')]
+          .find((item) => item.textContent?.trim().startsWith('置く'));
+        return button !== undefined && !button.classList.contains('disabled');
+      })()`, `the place button to enable with a visible node for ${label}`, 1_500);
+      attachPoint = await devTools.evaluate(`(() => {
+        const node = document.querySelector('.mk-construction-node-pointed');
+        const rect = node.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+      })()`);
+    } catch {
+      tried.push(`${label}: not placeable with a visible node`);
+      continue;
+    }
+    await clickPanelButton('#ship-construction-panel [data-id="construction-hand-actions"]', '置く', `placement at ${label}`);
+    await waitFor(
+      `document.querySelector('#ship-construction-panel [data-id="construction-count"]')?.textContent === '${expectedCount}'`,
+      `placement at ${label} to update the module count`,
+    );
+    return attachPoint;
+  }
+  throw new Error(`No placeable construction target among ${slotCount} valid slots: ${tried.join('; ')}`);
+}
+
+
 
 async function checkConstructionLayout() {
   for (const viewport of VIEWPORTS) {
@@ -590,7 +754,7 @@ async function checkConstructionLayout() {
       else if (!insideViewport(rect(workspace))) errors.push('construction workspace outside viewport');
       const parts = [
         ...workspace.querySelectorAll('.construction-pane'),
-        workspace.querySelector('.construction-center'),
+        workspace.querySelector('.construction-hand'),
         workspace.querySelector('.construction-mobile-tabs'),
       ].filter(visible);
       const rects = parts.map(rect);
@@ -602,7 +766,9 @@ async function checkConstructionLayout() {
       }
       const tiny = tinyInteractiveText(workspace);
       if (tiny.length) errors.push('interactive text below 10px: ' + JSON.stringify(tiny));
-      return { errors, rects, tiny };
+      const undersized = undersizedTouchTargets(workspace);
+      if (undersized.length) errors.push('touch target below 44px: ' + JSON.stringify(undersized));
+      return { errors, rects, tiny, undersized };
     })()`);
     if (state.errors.length) {
       throw new Error(`Construction layout failed at ${viewport.name} ${viewport.width}x${viewport.height}: ${state.errors.join('; ')}; ${JSON.stringify(state)}`);
@@ -612,65 +778,137 @@ async function checkConstructionLayout() {
 }
 
 async function constructMaterialFromBaseDock() {
-  await devTools.evaluate(`(() => {
-    const title = [...document.querySelectorAll('.property-window .prop-window-related-title')]
-      .find((item) => item.textContent?.includes('搭載モジュール'));
-    title?.click();
-  })()`);
+  // 配置した基地は配置時点で操作対象になる。マップから戦闘ビューへ入り、艦の
+  // ステータスパネルの「建造」(B キーと同じ入口)から建造を始める。
+  await pressKey('m', 'KeyM', 77);
   await waitFor(
-    `[...document.querySelectorAll('.property-window .prop-window-related-item')]
-      .some((item) => getComputedStyle(item).display !== 'none' && item.textContent?.includes('dock-standard'))`,
-    'the base dock module to appear in the property window',
+    `Boolean(document.querySelector('.hud-combat-root.active'))`,
+    '[M] to enter the combat view with the placed base',
   );
-  await devTools.evaluate(`(() => {
-    const row = [...document.querySelectorAll('.property-window .prop-window-related-item')]
-      .find((item) => item.textContent?.includes('dock-standard'));
-    const r = row.getBoundingClientRect();
-    row.dispatchEvent(new MouseEvent('contextmenu', {
-      bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
-    }));
-  })()`);
   await waitFor(
-    `[...document.querySelectorAll('.property-window .prop-window-item')]
-      .some((item) => item.textContent?.includes('船体を建造'))`,
-    'the dock construction action to appear',
+    `(() => {
+      const button = document.querySelector('#hud-vessel-status [data-id="vessel-construction"]');
+      return Boolean(button) && !button.closest('.vessel-construction')?.classList.contains('hidden');
+    })()`,
+    'the construction entry to appear in the vessel status panel',
   );
-  await devTools.evaluate(`(() => {
-    [...document.querySelectorAll('.property-window .prop-window-item')]
-      .find((item) => item.textContent?.includes('船体を建造'))?.click();
-  })()`);
+  await devTools.evaluate(
+    `document.querySelector('#hud-vessel-status [data-id="vessel-construction"]')?.click()`,
+  );
   await waitFor(
     `Boolean(document.querySelector('.hud-combat-root.active'))
       && !document.getElementById('ship-construction-panel')?.classList.contains('hidden')`,
-    'construction mode to enter the combat view',
+    'construction to start in the combat view',
   );
   await checkConstructionLayout();
 
-  await devTools.evaluate(`(() => {
-    window.__smokeConfirmMessages = [];
-    window.confirm = (message) => { window.__smokeConfirmMessages.push(String(message)); return true; };
-  })()`);
-  await selectConstructionModuleAndPlace('主燃料タンク 3m', 1);
-  const materialWarning = await devTools.evaluate(`({
-    material: document.querySelector('[data-id="construction-role"]')?.textContent === '物資',
-    warned: document.querySelector('[data-id="construction-warning"]')?.textContent?.includes('操縦不能') === true,
-  })`);
-  expectAll('Cockpit-less construction did not show its material warning', materialWarning);
-  await selectConstructionModuleAndPlace('主推進器', 2);
-  await selectConstructionModuleAndPlace('ドッキングポート', 3);
-  await devTools.evaluate(`(() => {
-    const panel = document.getElementById('ship-construction-panel');
-    [...panel.querySelectorAll('.construction-actions .w-btn')]
-      .find((item) => item.textContent?.trim() === '建造終了')?.click();
-  })()`);
+  // 指標のモジュール数は船体全体の個数(起点ドック側の既存部分を含む)。
+  const baseCount = Number(await devTools.evaluate(
+    `document.querySelector('#ship-construction-panel [data-id="construction-count"]')?.textContent`,
+  ));
+  if (!Number.isInteger(baseCount) || baseCount <= 0) {
+    throw new Error(`Could not read the construction module count: ${baseCount}`);
+  }
+
+  // カードを押して手に取り、取り付け候補の一覧の有効な項目を押して「配置」で置く、を2種類行う。
+  // 配置の反映はモジュール数と操作履歴(最新が先頭)で確かめる。
+  await holdCatalogCard('燃料', '主燃料タンク 3m');
+  await placeHeldAtFreeEnd(baseCount + 1);
   await waitFor(
-    `document.getElementById('ship-construction-panel')?.classList.contains('hidden') === true`,
-    'the material vessel to launch',
+    `document.querySelector('#ship-construction-panel .construction-history-item')?.textContent?.includes('を配置') === true`,
+    'the first placement to appear in the history',
   );
-  const confirmed = await devTools.evaluate(
-    `window.__smokeConfirmMessages.some((message) => message.includes('操縦不能な物資'))`,
+  await holdCatalogCard('推進', '主推進器');
+  // 配置した接合面の画面位置を記録しておき、手放したあとその位置をクリックすると
+  // 置いたモジュール(の面)が当たり判定で選ばれる。
+  const attachPoint = await placeHeldAtFreeEnd(baseCount + 2);
+  await waitFor(
+    `document.querySelector('#ship-construction-panel .construction-history-item')?.textContent?.includes('を配置') === true`,
+    'the second placement to appear in the history',
   );
-  if (!confirmed) throw new Error('The cockpit-less launch confirmation was not shown.');
+
+  // 置くと手は空になるので、接合面のあった位置をそのままクリックすると、その面の
+  // モジュールが選ばれる。手元バーは選ぶと「選択: <名前>」へ切り替わり、操作は
+  // モジュールの脇へ追従する選択メニューに出る。
+  await leftClickAt(attachPoint.x, attachPoint.y);
+  await waitFor(
+    `document.querySelector('#ship-construction-panel [data-id="construction-hand-state"]')?.textContent === '選択:'`,
+    'the placed module to be selected by clicking its attach face',
+  );
+  await waitFor(
+    `(() => {
+      const menu = document.querySelector('[data-id="construction-selection-menu"]');
+      return menu !== null && !menu.classList.contains('hidden');
+    })()`,
+    'the selection menu to appear beside the selected module',
+  );
+  const selectedName = await devTools.evaluate(
+    `document.querySelector('#ship-construction-panel [data-id="construction-hand-name"]')?.textContent`,
+  );
+
+  // 選んだモジュールを先端部ごと撤去する。撤去は選択メニューのボタンで行う。
+  // 撤去したモジュールより先に置いたモジュールは先端部として一緒に外れるため、
+  // 個数は減ることだけを見て、戻りは撤去前との一致で見る。
+  await clickPanelButton(
+    '[data-id="construction-selection-menu"]', '撤去', `remove ${selectedName}`,
+  );
+  await waitFor(
+    `(() => {
+      const count = Number(document.querySelector('#ship-construction-panel [data-id="construction-count"]')?.textContent);
+      return Number.isInteger(count) && count < ${baseCount + 2};
+    })()`,
+    'the removal to drop the selected tip part',
+  );
+  await waitFor(
+    `document.querySelector('#ship-construction-panel [data-id="construction-hand-state"]')?.textContent?.startsWith('カードを押して') === true`
+      + ` && document.querySelector('#ship-construction-panel .construction-history-item')?.textContent?.includes('を撤去') === true`,
+    'the removal to clear the selection and appear in the history',
+  );
+
+  // 「取り消し」で撤去前の船体へ戻る。操作は「履歴」タブの中にある。
+  await clickPanelButton(
+    '#ship-construction-panel [data-id="construction-state-tabs"]', '履歴', 'open the history tab',
+  );
+  await clickPanelButton(
+    '#ship-construction-panel [data-id="construction-history-actions"]', '取り消し', 'undo the removal',
+  );
+  await waitFor(
+    `document.querySelector('#ship-construction-panel [data-id="construction-count"]')?.textContent === '${baseCount + 2}'`,
+    'undo to restore the removed tip part',
+  );
+
+  // 破壊的操作は確認オーバーレイを挟む。「変更をすべて取り消す」で確定すると
+  // 開始時の船体へ戻り、モジュール数が配置前へ戻ることで確かめる。
+  await clickPanelButton(
+    '#ship-construction-panel .construction-close-actions', '変更をすべて取り消す', 'discard all changes',
+  );
+  await waitFor(
+    `(() => {
+      const overlay = document.querySelector('.confirmation-overlay');
+      return overlay !== null && !overlay.hidden
+        && overlay.querySelector('.confirmation-overlay-message')?.textContent?.includes('取り消し') === true;
+    })()`,
+    'the discard-all confirmation to appear',
+  );
+  await clickPanelButton('.confirmation-overlay-actions', 'すべて取り消す', 'confirm discarding all changes');
+  await waitFor(
+    `(() => {
+      const overlay = document.querySelector('.confirmation-overlay');
+      return (overlay === null || overlay.hidden === true)
+        && !document.getElementById('ship-construction-panel')?.classList.contains('hidden')
+        && document.querySelector('#ship-construction-panel [data-id="construction-count"]')?.textContent === '${baseCount}';
+    })()`,
+    'the confirmed discard to restore the starting hull while staying in construction',
+  );
+
+  // 建造終了は編集を閉じるだけで、行った変更はそのまま残る。パネルが畳まれ、
+  // 戦闘ビューが残ることで確かめる。
+  await clickPanelButton('#ship-construction-panel .construction-close-actions', '建造終了', 'finish construction');
+  await waitFor(
+    `document.getElementById('ship-construction-panel')?.classList.contains('hidden') === true
+      && Boolean(document.querySelector('.hud-combat-root.active'))`,
+    'the construction workspace to fold back into the combat view',
+  );
 }
 
 async function bootAndCheckReady() {
@@ -689,30 +927,15 @@ async function bootAndCheckReady() {
   throwIfFatal('Browser reported page exception(s) or console error(s) during boot');
 }
 
-try {
-  session = await openChromeSession({
-    serveDir: path.join(root, 'docs'),
-    port,
-    debugPort,
-    profilePrefix: 'tepui-smoke-',
-    extraLaunchArgs: layoutOnly ? [
-      '--use-webgpu-adapter=swiftshader',
-      '--enable-features=Vulkan',
-      '--use-gpu-in-tests',
-      '--enable-accelerated-2d-canvas',
-      '--disable-dawn-features=disallow_unsafe_apis',
-      '--enable-webgpu-developer-features',
-    ] : [],
-    onEvent: (event) => {
-      if (isIgnorableLayoutGpuEvent(event)) return;
-      if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
-      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
-      if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
-    },
-  });
-  devTools = session.devTools;
-  if (emulateTouch) await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
-  await devTools.send('Page.navigate', { url: `${session.baseUrl}/${query}` });
+async function runConfiguredScenario() {
+  if (emulateTouch) {
+    await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+    await waitFor(`matchMedia('(pointer: coarse)').matches`, 'coarse pointer emulation');
+  }
+  const pageQuery = layoutOnly
+    ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=1`
+    : query;
+  await devTools.send('Page.navigate', { url: `${session.baseUrl}/${pageQuery}` });
   await bootAndCheckReady();
   if (emulateTouch) await revealTouchPad();
 
@@ -760,42 +983,68 @@ try {
       };
     })()`);
     expectAll('Creative mode did not remain in its zero-ship map state', chromeState);
-    await checkMapLayout();
-    await placeShipThroughMenu();
-
-    // 戦闘ビューへ入れるのは操作できる艦がある時だけなので、[M] が通ること自体が配置の成立を示す。
-    // レールの折りたたみはビューの持ち物ではないため、往復しても保たれる。
-    await devTools.evaluate(`document.querySelector('.hud-map-root.active .rail-toggle').click()`);
-    const collapsedLeft = await devTools.evaluate(`document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed')`);
-    if (!collapsedLeft) throw new Error('Could not collapse the left rail before the map round trip.');
-    await pressKey('m', 'KeyM', 77);
-    await waitFor(
-      `Boolean(document.querySelector('.hud-combat-root.active'))`,
-      '[M] to leave the map (a placed ship must be operable for combat view to be enterable)',
-    );
-    const combat = await devTools.evaluate(`(() => {
-      ${LAYOUT_HELPERS}
-      return {
-      railTogglesHidden: [...document.querySelectorAll('.hud-map-root .rail-toggle')].every((el) => !visible(el)),
-      };
-    })()`);
-    expectAll('Combat view still shows the map rail toggles', combat);
-    await pressKey('m', 'KeyM', 77);
-    await waitFor(`Boolean(document.querySelector('.hud-map-root.active'))`, '[M] to return to the map');
-    const backToMap = await devTools.evaluate(`({
-      mapView: Boolean(document.querySelector('.hud-map-root.active')),
-      collapseKept: document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed'),
-      toggleGlyphs: JSON.stringify([...document.querySelectorAll('.hud-map-root.active .rail-toggle')].map((el) => el.textContent)) === '["▶","▶"]',
-    })`);
-    expectAll('Rail collapse state did not survive the map round trip', backToMap);
-    await devTools.evaluate(`(() => {
-      for (const side of ['left', 'right']) {
-        const rail = document.querySelector('.hud-map-root.active .hud-rail-' + side);
-        if (!rail?.classList.contains('collapsed')) {
-          document.querySelector('.hud-map-root.active .rail-toggle-' + side)?.click();
-        }
+    if (layoutOnly) {
+      if (smokeConstruction) {
+        // Layout CIはconstruction workspaceそのものの幾何だけを検査する。
+        // 基地配置→物体一覧→プロパティ→ドックというゲームプレイsmokeは通常経路に残す。
+        await devTools.evaluate(`(() => {
+          const hud = document.getElementById('hud');
+          const mapRoot = document.querySelector('.hud-map-root');
+          const combatRoot = document.querySelector('.hud-combat-root');
+          const workspace = document.getElementById('ship-construction-panel');
+          if (!hud || !mapRoot || !combatRoot || !workspace) throw new Error('construction layout fixture is incomplete');
+          hud.classList.add('construction-mode');
+          hud.dataset.workspace = 'construction';
+          document.body.classList.add('hud-construction-mode');
+          mapRoot.classList.remove('active');
+          combatRoot.classList.add('active');
+          workspace.classList.remove('hidden');
+        })()`);
+        await checkConstructionLayout();
+      } else {
+        await checkMapLayout();
       }
-    })()`);
+    } else {
+      await checkMapLayout();
+      const placedName = await placeShipThroughMenu();
+
+    // 基地プリセットは操作可能艦ではないため、Construction専用jobではcombat往復を行わない。
+    // 通常のcreative smokeでは従来どおり、M往復とレール状態保持を検査する。
+    if (!(layoutOnly && smokeConstruction)) {
+      // 戦闘ビューへ入れるのは操作できる艦がある時だけなので、[M] が通ること自体が配置の成立を示す。
+      // レールの折りたたみはビューの持ち物ではないため、往復しても保たれる。
+      await devTools.evaluate(`document.querySelector('.hud-map-root.active .rail-toggle').click()`);
+      const collapsedLeft = await devTools.evaluate(`document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed')`);
+      if (!collapsedLeft) throw new Error('Could not collapse the left rail before the map round trip.');
+      await pressKey('m', 'KeyM', 77);
+      await waitFor(
+        `Boolean(document.querySelector('.hud-combat-root.active'))`,
+        '[M] to leave the map (a placed ship must be operable for combat view to be enterable)',
+      );
+      const combat = await devTools.evaluate(`(() => {
+        ${LAYOUT_HELPERS}
+        return {
+        railTogglesHidden: [...document.querySelectorAll('.hud-map-root .rail-toggle')].every((el) => !visible(el)),
+        };
+      })()`);
+      expectAll('Combat view still shows the map rail toggles', combat);
+      await pressKey('m', 'KeyM', 77);
+      await waitFor(`Boolean(document.querySelector('.hud-map-root.active'))`, '[M] to return to the map');
+      const backToMap = await devTools.evaluate(`({
+        mapView: Boolean(document.querySelector('.hud-map-root.active')),
+        collapseKept: document.querySelector('.hud-map-root.active .hud-rail-left').classList.contains('collapsed'),
+        toggleGlyphs: JSON.stringify([...document.querySelectorAll('.hud-map-root.active .rail-toggle')].map((el) => el.textContent)) === '["▶","▶"]',
+      })`);
+      expectAll('Rail collapse state did not survive the map round trip', backToMap);
+      await devTools.evaluate(`(() => {
+        for (const side of ['left', 'right']) {
+          const rail = document.querySelector('.hud-map-root.active .hud-rail-' + side);
+          if (!rail?.classList.contains('collapsed')) {
+            document.querySelector('.hud-map-root.active .rail-toggle-' + side)?.click();
+          }
+        }
+      })()`);
+    }
 
     // 配置した自艦の一覧行を右クリックするとプロパティウィンドウが開き、画面を狭めても
     // 視界内に留まる。カメラ姿勢次第で天体マーカーがレールの下へ入ることには依存しない。
@@ -805,28 +1054,42 @@ try {
         document.querySelector('.hud-map-root.active .rail-toggle-right')?.click();
       }
     })()`);
-    await waitFor(
-      `Boolean(document.querySelector(
+    let placedRowReady = false;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      placedRowReady = await devTools.evaluate(`[...document.querySelectorAll(
         '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
-      ))`,
-      'the placed ship or base to populate the physical object list',
-    );
+      )].some((row) => row.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)})`);
+      if (placedRowReady) break;
+      await sleep(100);
+    }
+    if (!placedRowReady) {
+      const diagnostic = await devTools.evaluate(`(() => ({
+        hint: document.getElementById('hud-hint')?.textContent ?? '',
+        tracked: document.querySelector('.physical-object-list-tracked')?.textContent ?? '',
+        playerRows: [...document.querySelectorAll('#hud-physical-object-list-section-player .physical-object-list-name')]
+          .map((el) => el.textContent),
+        baseRows: [...document.querySelectorAll('#hud-physical-object-list-section-base .physical-object-list-name')]
+          .map((el) => el.textContent),
+      }))()`);
+      throw new Error(`Placed object ${placedName} did not populate the physical object list: ${JSON.stringify(diagnostic)}`);
+    }
     const shipRowState = await devTools.evaluate(`(() => {
-      const row = document.querySelector(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow',
-      );
+      const row = [...document.querySelectorAll(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
+      )].find((candidate) => candidate.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)});
       if (!row || getComputedStyle(row).display === 'none') return { row: null };
       const r = row.getBoundingClientRect();
       return { row: { x: r.left + r.width / 2, y: r.top + r.height / 2, label: row.getAttribute('aria-label') } };
     })()`);
     const shipRow = shipRowState.row;
     if (!shipRow) {
-      throw new Error('The placed ship or base row was hidden in the physical object list.');
+      throw new Error(`The placed object ${placedName} row was hidden in the physical object list.`);
     }
     await devTools.evaluate(`(() => {
-      const row = document.querySelector(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow',
-      );
+      const row = [...document.querySelectorAll(
+        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
+      )].find((candidate) => candidate.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)});
+      if (!row) throw new Error('placed object row disappeared before context menu');
       const r = row.getBoundingClientRect();
       row.dispatchEvent(new MouseEvent('contextmenu', {
         bubbles: true, cancelable: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2,
@@ -836,17 +1099,19 @@ try {
       `[...document.querySelectorAll('.property-window')].some((el) => getComputedStyle(el).display !== 'none')`,
       `right-clicking ship row ${shipRow.label} to open a property window`,
     );
-    await devTools.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 568, deviceScaleFactor: 1, mobile: true });
-    await sleep(150);
-    const clamped = await devTools.evaluate(`(() => {
-      ${LAYOUT_HELPERS}
-      const win = [...document.querySelectorAll('.property-window')].find(visible);
-      if (!win) return { open: false };
-      return { open: true, inside: insideViewport(rect(win)) };
-    })()`);
-    expectAll('Property window did not remain clamped after resize', clamped);
-    await clearViewport();
-    if (smokeConstruction) await constructMaterialFromBaseDock();
+    if (!(layoutOnly && smokeConstruction)) {
+      await applyViewport({ width: 320, height: 568 });
+      const clamped = await devTools.evaluate(`(() => {
+        ${LAYOUT_HELPERS}
+        const win = [...document.querySelectorAll('.property-window')].find(visible);
+        if (!win) return { open: false };
+        return { open: true, inside: insideViewport(rect(win)) };
+      })()`);
+      expectAll('Property window did not remain clamped after resize', clamped);
+      await clearViewport();
+    }
+      if (smokeConstruction) await constructMaterialFromBaseDock();
+    }
   }
 
   if (expectCreative && process.env.SMOKE_CREATIVE_PLACE === '2') {
@@ -860,6 +1125,40 @@ try {
   throwIfFatal('Browser reported page exception(s) or console error(s) during interaction');
   const mode = expectCreative ? `creative ${creativePreset} placement` : query;
   console.log(`Browser smoke passed (${mode}): production build ran and its HUD held together without page/console fatal errors.`);
+}
+
+try {
+  session = await openChromeSession({
+    serveDir: path.join(root, 'docs'),
+    port,
+    debugPort,
+    profilePrefix: 'tepui-smoke-',
+    extraLaunchArgs: layoutOnly ? [
+      '--use-webgpu-adapter=swiftshader',
+      '--enable-features=Vulkan',
+      '--use-gpu-in-tests',
+      '--enable-accelerated-2d-canvas',
+      '--disable-dawn-features=disallow_unsafe_apis',
+      '--enable-webgpu-developer-features',
+    ] : [],
+    onEvent: (event) => {
+      if (isIgnorableLayoutGpuEvent(event)) return;
+      if (event.method === 'Runtime.exceptionThrown') fatalEvents.push(event);
+      if (event.method === 'Runtime.consoleAPICalled' && event.params?.type === 'error') fatalEvents.push(event);
+      if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
+    },
+  });
+  devTools = session.devTools;
+  if (layoutSuite) {
+    for (const scenario of layoutScenarios) {
+      configureScenario(scenario.query, scenario.creativePreset, scenario.smokeConstruction);
+      fatalEvents.length = 0;
+      await runConfiguredScenario();
+    }
+  } else {
+    fatalEvents.length = 0;
+    await runConfiguredScenario();
+  }
 } finally {
   await session?.close();
 }

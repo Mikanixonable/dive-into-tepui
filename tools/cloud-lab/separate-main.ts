@@ -2,9 +2,8 @@
 // 目視で調整する。撮影(tools/cloud-lab-separate.mjs)の入口も window へ出す。
 import * as THREE from 'three/webgpu';
 import { WebGPURenderer } from 'three/webgpu';
-// 実写の雲(ゲーム本体が地表へ貼っているもの)。この画面の分離の入力そのもの。
-import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
 import { buildButtonRow, buildSlider } from '../lab-controls';
+import { loadCloudsPhoto } from './probe-common';
 import {
   SEPARATION_PARAMS, SEPARATION_VIEWS, SeparationPipeline,
   type SeparationParamId, type SeparationView,
@@ -41,9 +40,6 @@ declare global {
   interface Window {
     // 撮影の駆動(tools/cloud-lab-separate.mjs)が CDP から読む入口。
     cloudSeparate?: {
-      views: readonly SeparationView[];
-      show: (view: SeparationView) => void;
-      setParam: (id: SeparationParamId, value: number) => void;
       capture: (view: SeparationView) => Promise<string>;
       metrics: () => Promise<SeparationMetrics>;
     };
@@ -98,24 +94,25 @@ function pearson(a: Float32Array, b: Float32Array): number {
 
 // 実写を読み、レンダラとパイプラインを起こし、操作部品を配線する。
 async function init(): Promise<void> {
-  const photo = await new THREE.TextureLoader().loadAsync(cloudsPhotoUrl);
-  photo.wrapS = THREE.RepeatWrapping;
-  photo.wrapT = THREE.ClampToEdgeWrapping;
-  photo.flipY = false;
-  photo.generateMipmaps = false;
-  photo.minFilter = THREE.LinearFilter;
-  photo.magFilter = THREE.LinearFilter;
-  photo.colorSpace = THREE.NoColorSpace;
+  // この画面の分離の入力そのもの。原寸で読むのでミップは要らない。
+  const photo = await loadCloudsPhoto(false);
   const { width, height } = photo.image as { width: number; height: number };
 
   const canvas = document.getElementById('view') as HTMLCanvasElement;
-  const renderer = new WebGPURenderer({ canvas });
+  const renderer = new WebGPURenderer({ canvas, requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
   renderer.setSize(width, height, false);
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
   await renderer.init();
 
   const pipeline = new SeparationPipeline(renderer, photo, width, height);
+  // 撮影の駆動(tools/cloud-lab-separate.mjs)は ?capture-only を付けて開く。このとき画面へは出さない
+  // — GPU の無い環境ではキャンバスへの提示が device を落とし、撮影の読み出しまで道連れにする
+  // (cloud-lab/lab.ts の render() と同じ理由)。分離のパイプライン自体は写しへ焼くので撮影は通る。
+  const captureOnly = new URLSearchParams(location.search).has('capture-only');
+  const showView = (target: SeparationView): void => {
+    if (!captureOnly) pipeline.show(target);
+  };
   let view: SeparationView = 'veil';
   const params = Object.fromEntries(
     Object.entries(SEPARATION_PARAMS).map(([id, spec]) => [id, spec.initial]),
@@ -124,7 +121,7 @@ async function init(): Promise<void> {
   const markView = buildButtonRow<SeparationView>('views', SEPARATION_VIEWS, (next) => {
     view = next;
     markView(view);
-    pipeline.show(view);
+    showView(view);
   });
 
   // 分離の質の指標を測って表示する。読み出しが非同期なので、走っている間の要求は 1 つに畳む。
@@ -180,7 +177,7 @@ async function init(): Promise<void> {
     }
     paramsBox.value = JSON.stringify(params);
     pipeline.run();
-    pipeline.show(view);
+    showView(view);
     refreshMetrics();
   };
 
@@ -210,9 +207,6 @@ async function init(): Promise<void> {
   applyParams(params);
 
   window.cloudSeparate = {
-    views: SEPARATION_VIEWS.map(([id]) => id),
-    show: (next) => { view = next; markView(view); pipeline.show(view); },
-    setParam: (id, value) => applyParams({ [id]: value }),
     capture: (target) => pipeline.capture(target),
     metrics: () => measure(),
   };

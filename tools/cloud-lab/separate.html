@@ -11,6 +11,18 @@
     font: 13px/1.6 "JetBrains Mono", ui-monospace, monospace;
   }
   h1 { font-size: 15px; margin: 0 0 12px; font-weight: 600; letter-spacing: .04em; }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--edge); margin-bottom: 12px; }
+  .tabs a {
+    background: transparent; color: var(--text); border: 1px solid transparent;
+    border-bottom: none; border-radius: 4px 4px 0 0; padding: 4px 18px;
+    font: inherit; cursor: pointer; opacity: .65; margin-bottom: -1px;
+    text-decoration: none;
+  }
+  .tabs a:hover { opacity: 1; }
+  .tabs a.active {
+    background: var(--panel); border-color: var(--edge); color: var(--accent);
+    opacity: 1; font-weight: 600;
+  }
   .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
   .row button {
     background: #1c2229; color: var(--text); border: 1px solid var(--edge);
@@ -32,7 +44,12 @@
 </style>
 </head>
 <body>
-  <h1>Cloud Separate — 実写を被覆率・雲頂高度・薄い雲へ分離する</h1>
+  <nav class="tabs" aria-label="側">
+    <a href="index.html">生成</a>
+    <a href="detail.html">描画</a>
+    <a class="active" aria-current="page">分離</a>
+  </nav>
+  <h1>Cloud Separate — 実写を積雲の量・巻雲の量へ分離する</h1>
   <div class="row" id="views"></div>
   <div class="row" id="feature"></div>
   <div class="row" id="veil"></div>
