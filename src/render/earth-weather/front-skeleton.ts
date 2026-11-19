@@ -8,9 +8,8 @@ import {
   TAIL_WARM_ONSET,
 } from './pressure-feature';
 import { vortexEdgeOf, vortexProfileAt, vortexSpinOf } from './wind-law';
-import type { PressurePlacement } from './tracks';
+import { DEGREE, type PressurePlacement } from './tracks';
 
-const DEGREE = Math.PI / 180;
 const RAD = 180 / Math.PI;
 // 腕の背骨を折れ線へ切る刻み数。
 const SAMPLES = 48;
