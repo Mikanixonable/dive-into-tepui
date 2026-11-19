@@ -20,6 +20,7 @@ interface ShipConstructionHandCallbacks {
   readonly onRotate: (delta: 1 | -1) => void;
   readonly onSwapEnds: () => void;
   readonly onCycleSymmetry: () => void;
+  readonly onFocus: () => void;
 }
 
 export class ShipConstructionHand {
@@ -34,6 +35,7 @@ export class ShipConstructionHand {
   private readonly symmetry: SegmentedControl<ConstructionSymmetry>;
   private readonly confirm: Button;
   private readonly release: Button;
+  private readonly focus: Button;
   private currentSymmetry: ConstructionSymmetry = 1;
 
   // 静的な手元バーの枠へ、状態に応じて出し入れする操作部品を差し込む。
@@ -44,7 +46,7 @@ export class ShipConstructionHand {
     this.reason = els.get('construction-hand-reason');
     this.note = els.get('construction-hand-note');
 
-    // 回転・反転・対称数・確定・手放しの操作部品を組む。
+    // 回転・反転・対称数・確定・手放し・視点の操作部品を組む。
     this.rollLeft = new Button('左へ回す', () => callbacks.onRotate(-1), '⟲', 'secondary', K.constructionRollLeft.label);
     this.rollRight = new Button('右へ回す', () => callbacks.onRotate(1), '⟳', 'secondary', K.constructionRollRight.label);
     this.swapEnds = new Button(
@@ -57,10 +59,13 @@ export class ShipConstructionHand {
     this.symmetry.element.querySelector('.w-group-title')?.after(createKeyCap(K.constructionSymmetry.label));
     this.confirm = new Button('置く', () => callbacks.onPlace(), undefined, 'primary', K.constructionPlace.label);
     this.release = new Button('手放す', () => callbacks.onRelease(), undefined, 'secondary');
+    this.focus = new Button(
+      '視点を寄せる', () => callbacks.onFocus(), undefined, 'secondary', K.constructionFocus.label,
+    );
 
     els.get('construction-hand-actions').append(
       this.rollLeft.element, this.rollRight.element, this.swapEnds.element, this.symmetry.element,
-      this.confirm.element, this.release.element,
+      this.confirm.element, this.release.element, this.focus.element,
     );
   }
 
@@ -81,7 +86,8 @@ export class ShipConstructionHand {
     this.orientation.textContent = orientation === null ? '' : formatConstructionOrientation(orientation);
     show(this.orientation, orientation !== null);
 
-    // 操作ボタンを持つのは手持ちの状態だけ。選択中の操作はモジュール脇のメニューが持つ。
+    // 編集の操作ボタンを持つのは手持ちの状態だけ。選択中の編集はモジュール脇のメニューが持つ。
+    // 視点を寄せるボタンはカメラ操作なので、状態によらず常に出す。
     show(this.rollLeft.element, held !== null);
     show(this.rollRight.element, held !== null);
     show(this.swapEnds.element, held !== null);

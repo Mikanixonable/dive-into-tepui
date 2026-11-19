@@ -11,13 +11,13 @@
 // 行 0 が北極、列 0 が経度 −180°(西端)。気候は雲に比べて低周波の量なので粗く、地形は島の
 // 上昇源を解像するため細かく取る。
 //
-// 実行: node tools/export-climate.mjs
+// 実行: node tools/archive/export-climate.mjs
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decodeGrayPng, encodeRgbPng } from './png.mjs';
+import { decodeGrayPng, encodeRgbPng } from '../png.mjs';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const climateDir = join(repoRoot, 'assets-src', 'climate');
 // 標高の入力。本来は NASA が配る GEBCO の画像(fetch-climate-source.mjs)だが、同じ 0..6400 m の
 // 符号化へ畳んだ ETOPO1 由来の画像(グレー 8bit、21600×10800)も読める。どちらか一方があればよい。

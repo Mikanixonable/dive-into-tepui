@@ -7,6 +7,7 @@ import { TabBar } from '../../../hud/widgets/tab-bar';
 import { stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { HELP_PANEL_STYLE } from '../style/help-panel-style';
 import { helpRows, type HelpCategory } from './help-content';
+import { isCoarsePointer } from '../../../input/pointer-precision';
 import { SYSTEM_MODAL_GROUP } from '../../../hud/overlay-manager';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 
@@ -72,8 +73,8 @@ export class HelpPanel implements OverlayHandle {
       this.sections.set(category, section);
     }
 
-    // 対応表の行を章のリストへ配る。
-    for (const row of helpRows()) {
+    // 対応表の行を章のリストへ配る。粗いポインタの環境ではキー名ではなく操作部品の名前で案内する。
+    for (const row of helpRows(isCoarsePointer())) {
       const list = this.sections.get(row.category)?.querySelector<HTMLElement>('.help-reference-list');
       if (list === null || list === undefined) continue;
       const item = document.createElement('div');

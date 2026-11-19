@@ -1,10 +1,10 @@
 // CR3BP 周期軌道族の焼き込みツール。assets-src/orbits/<系>.json(JPL から取得した族あたり120件の
-// 初期条件、tools/fetch-orbit-catalog.mjs が生成)を読み、各メンバーをその系の JPL μ で1周期積分し、
+// 初期条件、tools/archive/fetch-orbit-catalog.mjs が生成)を読み、各メンバーをその系の JPL μ で1周期積分し、
 // 閉合しないメンバーと主星・副星に衝突するメンバーを落としたうえで、残ったものから族あたり
 // MEMBERS_PER_FAMILY 件を選び直して src/physics/orbit-catalog.ts の OrbitCatalog 形式へ落とす。
 // API へは接続しない。
 //
-// 実行: node tools/export-lagrange-orbits.mjs
+// 実行: node tools/archive/export-lagrange-orbits.mjs
 //
 // JPL の μ は本リポジトリのレジストリと僅かに(地球-月で相対 4.2e-4)異なるが、初期条件は
 // 「種」として扱い、その μ のまま積分した無次元形状をそのまま焼き込む(微分修正はかけ直さない)。
@@ -19,10 +19,10 @@
 import { mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadSourceModules } from './compile-source.mjs';
-import { keepLongEnough, segmentFamilyKey, splitSegmentKey, thinByChordLength } from './orbit-family.mjs';
+import { loadSourceModules } from '../compile-source.mjs';
+import { keepLongEnough, segmentFamilyKey, splitSegmentKey, thinByChordLength } from '../orbit-family.mjs';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const cacheDir = join(repoRoot, 'assets-src', 'orbits');
 const assetsDir = join(repoRoot, 'src', 'assets', 'orbits');
 
