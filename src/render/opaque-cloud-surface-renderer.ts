@@ -10,8 +10,8 @@ import {
 import { BlueNoise } from './blue-noise';
 import { CloudShapeEvaluator } from './earth-weather/cloud/cloud-shape-evaluator';
 import type { CloudSample } from './earth-weather/cloud/cloud-field-sample';
-import { CloudFieldSampler } from './earth-weather/cloud/cloud-field-sampler';
-import type { CloudDetailClockInput, CloudRenderInput } from './earth-weather/cloud/cloud-render-input';
+import { CloudFieldSampler, type CloudFieldBinding } from './earth-weather/cloud/cloud-field-sampler';
+import type { CloudDetailClockInput } from './earth-weather/cloud/cloud-render-input';
 import { unitSphereGeometry } from './celestial/celestial-surface';
 import { CLOUD_ALBEDO, CLOUD_TOP_SPAN } from './earth-weather/cloud/cumulus-shape';
 import { FINEST_DETAIL_WAVELENGTH } from './earth-weather/cloud/cloud-detail';
@@ -128,8 +128,8 @@ export class OpaqueCloudSurfaceRenderer {
   }
 
   // 読む雲場と cap の置き方を写し取る。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
-  public bind(input: CloudRenderInput): void {
-    this.fieldSampler.bind(input.field);
+  public bind(field: CloudFieldBinding): void {
+    this.fieldSampler.bind(field);
   }
 
   // 細部が流れ、生まれ直す時刻を置く。

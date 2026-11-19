@@ -142,6 +142,7 @@ export class WeatherTransport {
     this.seconds.value = seconds;
     this.surfaceHumidityNoise.syncTime(seconds);
     this.upperHumidityNoise.syncTime(seconds);
+    this.convectionNoise.syncTime(seconds);
   }
 
   // 移流前の場をテクスチャへレンダリングする。advectedAt() のグラフを描く前に呼ぶ。
@@ -164,8 +165,8 @@ export class WeatherTransport {
 
   // 移流前の写しを風で流したもの。周期を 1/3 ずつずらした3位相を重み (1−cos 2πφ)/3 で混ぜる
   // (各位相が巻き戻る瞬間に重み 0 へ滑らかに落ち、3つの和は常に 1)。1 枚だけが見える瞬間が
-  // ないので、位相の混ぜ具合で細部が周期的に鋭さを増したり滲んだりしない。流れの変位が
-  // 周期ぶんで頭打ちになり、渦に巻き込まれた模様が無限に細くならないのは以前の位相混合と同じ。
+  // ないので、位相の混ぜ具合で細部が周期的に鋭さを増したり滲んだりしない。流れの変位は
+  // 周期ぶんで頭打ちになるので、渦に巻き込まれた模様が位相を重ねるほど細くなり続けることもない。
   public advectedAt(
     direction: Vec3Node, humidityWind: BalancedWind, convectionWind: BalancedWind,
   ): AdvectedFields {
