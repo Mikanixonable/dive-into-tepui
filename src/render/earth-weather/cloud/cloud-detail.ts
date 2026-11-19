@@ -8,7 +8,7 @@ import {
   normalize, select, smoothstep, sqrt, step, uniform, uint, vec3,
 } from 'three/tsl';
 import { DetailClock } from './cloud-detail-clock';
-import { gradientNoise } from './gradient-noise';
+import { gradientNoise } from '../gradient-noise';
 import { eastAt, northAt } from '../sphere-frame';
 import type { FloatNode, FloatUniform, UintNode, Vec2Node, Vec3Node } from '../../tsl-types';
 

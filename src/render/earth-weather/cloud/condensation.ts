@@ -3,7 +3,7 @@
 import { exp, float, inverseSqrt, log2, max, mix, smoothstep, tanh } from 'three/tsl';
 import { cellSizesOf } from './cell-size';
 import { cirrusFlowFromWindNode } from './cirrus-flow-node';
-import { CLOUD_TUNING } from './cloud-tuning';
+import { CLOUD_TUNING } from '../cloud-tuning';
 import {
   cirrusAmountFromOpticalDepthNode, cumulusAmountFromOpacityNode, cumulusAmountFromTopAltitudeNode,
 } from './cloud-kind-node';

@@ -2,7 +2,7 @@
 // 根元に「半径 r で向きが θ(r) の半直線」として表し、向きは下流(東)から循環の向き
 // (両半球で反時計)を正に取る。天気図(tools/cloud-lab)が谷へ繋がる前線を折れ線として
 // 引くのに使う。
-import { CLOUD_TUNING } from './cloud/cloud-tuning';
+import { CLOUD_TUNING } from './cloud-tuning';
 import {
   FEATURE_REACH, FRONT_BAND_DEPTH, FRONT_INNER_RADIUS, FRONT_WIND_LIMIT, TAIL_WARM_FULL,
   TAIL_WARM_ONSET,
