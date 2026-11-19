@@ -3,7 +3,7 @@
 import {
   buildGroupTitle, buildLabeledRow, Button, CloseButton, SegmentedControl, ValueInput,
 } from '../../hud/widgets';
-import { ObjectPicker } from '../hud/windows/object-picker';
+import { ObjectPicker } from '../../hud/windows/object-picker';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import { placeOverlayAt } from '../../hud/layout';
@@ -207,7 +207,7 @@ export class ObjectPlacerPanel implements OverlayHandle {
     this.panel.className = 'panel hidden editorial-control-sheet';
     this.panel.addEventListener('pointerdown', (e) => e.stopPropagation());
     const header = document.createElement('div');
-    header.className = 'panel-shell-head editorial-panel-head';
+    header.className = 'panel-chrome-head editorial-panel-head';
     const code = document.createElement('span');
     code.className = 'ui-section-code';
     code.setAttribute('aria-hidden', 'true');

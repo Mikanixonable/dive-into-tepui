@@ -23,7 +23,7 @@ export const PREDICT_PANEL_STYLE = `
 #hud-predict .predict-controls {
   display: grid; gap: var(--space-2); padding-top: var(--space-3);
 }
-#hud-predict .predict-controls .predict-row1 { margin-bottom: 0; }
+#hud-predict .predict-controls .w-pill-row { margin-bottom: 0; }
 #hud-predict .predict-controls .predict-row2 {
   margin-top: var(--space-1); padding-top: var(--space-2);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 14%, transparent);
@@ -53,9 +53,9 @@ export const PREDICT_PANEL_STYLE = `
   background: var(--surface); color: var(--color-primary);
 }
 #hud .hud-map-root.active #hud-predict-toggle { display: block; }
-#hud-predict .predict-row1, #hud-predict .predict-row2 { display: flex; align-items: center; gap: var(--space-3); }
-#hud-predict .predict-row1 { flex-wrap: wrap; margin-bottom: var(--space-2); }
-#hud-predict .predict-pills { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
+#hud-predict .w-pill-row, #hud-predict .predict-row2 { display: flex; align-items: center; gap: var(--space-3); }
+#hud-predict .w-pill-row { flex-wrap: wrap; margin-bottom: var(--space-2); }
+#hud-predict .w-pills { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
 /* span. まで指定して .w-btn 側の display/padding より確実に勝たせる
    (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
 #hud-predict span.predict-reset {
@@ -75,8 +75,8 @@ export const PREDICT_PANEL_STYLE = `
   flex: 0 0 auto; font-size: var(--font-s); color: var(--text-dim);
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
-#hud-predict .predict-value-input { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; }
-#hud-predict .predict-value-input input[type="number"] { width: 112px; }
+#hud-predict .w-duration-input { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; }
+#hud-predict .w-duration-input input[type="number"] { width: 112px; }
 #hud-predict .slider-ticks { position: relative; height: 11px; margin-top: var(--space-1); }
 #hud-predict .slider-ticks span {
   position: absolute;

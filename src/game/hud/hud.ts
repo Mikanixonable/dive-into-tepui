@@ -2,9 +2,9 @@
 // 毎フレーム渡された値へ同期して、トースト・ヘルプを出す。
 import type { RenderStyle } from '../../render/render-style';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { buildHudDom, toggleHudWideScreen } from './hud-root';
+import { buildHudDom, toggleHudWideScreen } from './hud-dom';
 import type { HudLayers } from './hud-layers';
-import type { PanelCollapse } from './panel-shell';
+import type { PanelCollapse } from './panel-chrome';
 import type { ViewMode } from '../view/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { VesselPanel, type VesselPanelViewModel } from './panels/vessel-panel';

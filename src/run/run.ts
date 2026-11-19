@@ -9,7 +9,7 @@ import type { LoadingProgress } from '../game/loading-progress';
 import type { RunSummary } from '../game/run-summary';
 import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
 import type { GameInputPort } from '../game/input/game-input-router';
-import type { ViewOptionsSettings } from '../game/hud/panels/view-options-control';
+import type { ViewOptionsSettings } from '../game/view/view-options-settings';
 import type { SnapshotSource } from '../launcher/save/snapshot-service';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';

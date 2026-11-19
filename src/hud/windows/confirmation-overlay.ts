@@ -59,11 +59,6 @@ export class ConfirmationOverlay implements OverlayHandle {
     this.confirm.element.focus();
   }
 
-  // open() と同じ要求形状の別名。要求/結果の契約を持つ呼び出し側はこちらを使う。
-  public request(request: ConfirmationOverlayRequest, onResult: (confirmed: boolean) => void): void {
-    this.open(request, onResult);
-  }
-
   public contains(target: Node): boolean { return this.shell.contains(target); }
 
   // DOM と登録を取り除く。以後このインスタンスは使えない。

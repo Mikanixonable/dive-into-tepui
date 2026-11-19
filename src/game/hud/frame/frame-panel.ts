@@ -1,5 +1,5 @@
 // 座標系パネルの外枠を組む。見出しを持つパネルを左レールへ足し、中身を入れる要素を返す。
-import { hudRail } from '../hud-root';
+import { hudRail } from '../hud-dom';
 
 // id と見出しを持つパネルを左レールへ立てて返す。パネル上のポインタ操作は下へ抜けない。
 export function buildPanel(root: HTMLElement, id: string, titleText: string, code: string): HTMLElement {

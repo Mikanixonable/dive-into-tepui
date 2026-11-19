@@ -4,7 +4,7 @@ import { DraggableWindow } from '../../hud/windows/draggable-window';
 import { UNCLIPPED_WINDOW_GROUP } from '../../hud/overlay-manager';
 import { Button, ValueInput } from '../../hud/widgets';
 import { injectOnce } from '../../hud/inject-style';
-import { fmtSpeed, fmtTime } from '../../hud/utils';
+import { fmtSpeed, fmtTime } from '../../hud/format';
 import type { OverlayManager } from '../../hud/overlay-manager';
 import type { TransferCandidate } from '../../physics/transfer-planner';
 
