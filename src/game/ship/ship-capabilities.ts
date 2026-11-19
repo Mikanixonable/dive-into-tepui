@@ -1,6 +1,7 @@
 // 船体構成から役割・操作可否・装備能力・資源量を導出する。
-import { qRotate, type Quat } from '../../math/quat';
-import { add, type Vec3 } from '../../math/vec3';
+import { type Quat } from '../../math/quat';
+import { type Vec3 } from '../../math/vec3';
+import { applyTransformToPoint } from './ship-assembly-transform';
 import type { ShipAssembly, ShipAssemblyTotals, ShipRole } from './ship-assembly';
 import type { FuelKind, ShipModuleKind } from './ship-module-definition';
 import type { CockpitInstance, ShipModuleInstance } from './ship-module-instance';
@@ -83,12 +84,11 @@ export class ShipCapabilities {
       const transform = this.assembly.worldTransformOf(weapon.id);
       if (definition === null || transform === null) continue;
       // 砲口と排出口は assembly 座標へ移し、排出方向に使う姿勢も同じ単位で残す。
-      const at = (point: Vec3): Vec3 => add(transform.position, qRotate(transform.rotation, point));
       result.push({
         moduleId: weapon.id,
-        muzzles: definition.muzzles.map(at),
-        ejectionPort: at(definition.ejectionPort),
-        linkExitPort: at(definition.linkExitPort),
+        muzzles: definition.muzzles.map(point => applyTransformToPoint(transform, point)),
+        ejectionPort: applyTransformToPoint(transform, definition.ejectionPort),
+        linkExitPort: applyTransformToPoint(transform, definition.linkExitPort),
         rotation: transform.rotation,
       });
     }

@@ -122,3 +122,19 @@ export function rerootedAssembly(
   });
   return { nodes: rerootedNodes, connections: rerootedConnections };
 }
+
+// 接ぎ木の保留接続を、親モジュールが既に接ぎ木済み(isGrafted)のものから順に返す遅延反復。
+// 各接続を返したあと、呼び側がその子を接ぎ木してから次を評価する。
+// どの接続の親も接ぎ木済みでなければ木が切れているので disconnectedMessage で失敗する。
+export function* graftEdgesInOrder(
+  connections: readonly ShipConnection[],
+  isGrafted: (moduleId: string) => boolean,
+  disconnectedMessage: string,
+): IterableIterator<ShipConnection> {
+  const pending = [...connections];
+  while (pending.length > 0) {
+    const index = pending.findIndex(edge => isGrafted(edge.parentId));
+    if (index < 0) throw new Error(disconnectedMessage);
+    yield pending.splice(index, 1)[0]!;
+  }
+}

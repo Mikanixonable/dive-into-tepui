@@ -1,7 +1,7 @@
 import {
   LOCAL_FORWARD, Q_IDENTITY, qFromAxisAngle, qInvert, qMul, qNormalize, qRotate, type Quat,
 } from '../../math/quat';
-import { v3, type Vec3 } from '../../math/vec3';
+import { add, v3, type Vec3 } from '../../math/vec3';
 import type { ShipModuleDefinition } from './ship-module-definition';
 import type { ModuleTransform, SideSlot } from './ship-assembly-types';
 import type { ShipModuleInstance } from './ship-module-instance';
@@ -51,6 +51,16 @@ export function axialMountTransform(
 export function orientationRotation(orientation: ModuleOrientation): Quat {
   const flip = orientation.face === 'front' ? Y_FLIP : Q_IDENTITY;
   return qMul(flip, rollRotation(orientation.roll));
+}
+
+// 剛体変換を点へ適用する。点は回転してから平行移動する。
+export function applyTransformToPoint(transform: ModuleTransform, point: Vec3): Vec3 {
+  return add(transform.position, qRotate(transform.rotation, point));
+}
+
+// 剛体変換を方向(変位・単位ベクトル)へ適用する。方向は回転だけで、原点の平行移動は受けない。
+export function applyTransformToDirection(transform: ModuleTransform, direction: Vec3): Vec3 {
+  return qRotate(transform.rotation, direction);
 }
 
 // 剛体変換の逆変換。

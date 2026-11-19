@@ -112,6 +112,14 @@ export function bindEccentricitySlider(field: SliderRow): void {
   field.setTicks([0, 0.25, 0.5, 0.75, 0.99].map((v) => v.toFixed(2)));
 }
 
+// SliderRow へ値を書き込む。input イベントの発火と基準値の取り直しまで含む —
+// rebase を欠くとつまみの位置が新しい値と食い違う。
+export function setSliderValue(row: SliderRow, value: number): void {
+  row.input.value = String(value);
+  row.input.dispatchEvent(new Event('input'));
+  row.rebase?.();
+}
+
 // 基準値相対スライダーの倍率: 中央(t=0)を基準値の100%とし、左は等倍で0%まで、
 // 右は2倍指数で400%まで伸びる。上限のない量を有限のスライダー幅で操作するための仕様。
 function relativeMultiplier(tOffset: number): number {
