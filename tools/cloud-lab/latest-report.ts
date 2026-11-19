@@ -10,18 +10,18 @@ interface LatestReport {
   readonly index?: number;
 }
 
-// latest.json を読んで表示文を返す。無い・読めない・形が違うときは undefined(呼び出し側で
+// latest.json を読んで表示文を返す。無い・読めない・形が違うときは null(呼び出し側で
 // 「未実行」の表示に分ける)。
-export async function latestReportText(url: string): Promise<string | undefined> {
+export async function latestReportText(url: string): Promise<string | null> {
   try {
     const response = await fetch(url);
-    if (!response.ok) return undefined;
+    if (!response.ok) return null;
     const report = await response.json() as LatestReport;
-    if (typeof report.index !== 'number') return undefined;
+    if (typeof report.index !== 'number') return null;
     const date = typeof report.generatedAt === 'string' ? report.generatedAt.slice(0, 10) : '?';
     const head = typeof report.gitHead === 'string' ? report.gitHead : '?';
     return `評価 ${report.index.toFixed(3)} (${date} ${head})`;
   } catch {
-    return undefined;
+    return null;
   }
 }
