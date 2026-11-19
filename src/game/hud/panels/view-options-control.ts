@@ -7,26 +7,8 @@ import { applyMapDisplayMode } from '../../map/display-toggles';
 import { ViewOptionsPanel } from './view-options-panel';
 import type { OrbitGuideCommands } from '../../viewer/orbit-guide-commands';
 import type { OrbitGuideSource } from '../../viewer/orbit-guide-selection';
-import type { OrbitGuideGroupTab, ViewOptionsTab } from '../hud-selection';
-import type { MapDisplayToggles } from '../../map/display-toggles';
+import type { ViewOptionsSettings } from '../../view/view-options-settings';
 import type { PanelCollapse } from '../panel-shell';
-import type { CelestialGridVisibility } from '../../../render/celestial-grid';
-import type { SettingValue } from '../../../settings/setting-value';
-import type { RenderStyle } from '../../../render/render-style';
-
-// 表示パネルが読み書きする、セーブを跨いで共通の設定。現在値を読み、書き換えは onXxxChange へ返す。
-export interface ViewOptionsSettings {
-  readonly mapDisplay: SettingValue<MapDisplayToggles>;
-  readonly grid: SettingValue<CelestialGridVisibility>;
-  readonly tab: SettingValue<ViewOptionsTab>;
-  readonly orbitGuideGroupTab: SettingValue<OrbitGuideGroupTab>;
-  readonly renderStyle: SettingValue<RenderStyle>;
-  onMapDisplayChange(value: MapDisplayToggles): void;
-  onGridChange(value: CelestialGridVisibility): void;
-  onTabChange(value: ViewOptionsTab): void;
-  onOrbitGuideGroupTabChange(value: OrbitGuideGroupTab): void;
-  onRenderStyleChange(value: RenderStyle): void;
-}
 
 export class ViewOptionsControl {
   private readonly panel: ViewOptionsPanel;

@@ -6,14 +6,14 @@ import {
 import {
   formatOrbitGuideGroupTab, formatPanelCollapsed, formatViewOptionsTab,
   parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
-} from '../game/hud/hud-selection';
+} from '../game/view/hud-selection';
 import { formatMapDisplayToggles, parseMapDisplayToggles } from '../game/map/display-toggles';
 import { formatGridVisibility, parseGridVisibility } from '../render/celestial-grid';
 import { formatGraphics, parseGraphics } from '../render/graphics-settings';
 import { formatRenderStyle, parseRenderStyle } from '../render/render-style';
 import { formatThemePalette, parseThemePalette } from '../theme';
 import { StoredSetting } from './stored-setting';
-import type { OrbitGuideGroupTab, PanelCollapsedState, ViewOptionsTab } from '../game/hud/hud-selection';
+import type { OrbitGuideGroupTab, PanelCollapsedState, ViewOptionsTab } from '../game/view/hud-selection';
 import type { MapDisplayToggles } from '../game/map/display-toggles';
 import type { CelestialGridVisibility } from '../render/celestial-grid';
 import type { GraphicsSettingsData } from '../render/graphics-settings';

@@ -6,7 +6,7 @@ import {
   syncCollapseToggle,
   type CollapseToggleLabels,
 } from '../../hud/widgets';
-import type { PanelCollapsedState } from './hud-selection';
+import type { PanelCollapsedState } from '../view/hud-selection';
 import type { SettingValue } from '../../settings/setting-value';
 import type { ViewMode } from '../view/view-mode';
 
