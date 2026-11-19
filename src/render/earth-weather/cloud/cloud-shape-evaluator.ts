@@ -49,7 +49,7 @@ export class CloudShapeEvaluator {
     const smallCell = max(CELL_GRAIN_REFERENCE_LOG2.sub(cloud.cumulusCell), 0)
       .div(CELL_GRAIN_REFERENCE_LOG2);
     return clamp(
-      cloud.land.mul(cloud.convection.mul(GRAIN_CONVECTION_WEIGHT).add(GRAIN_LAND_WEIGHT))
+      cloud.land.mul(cloud.convectiveActivity.mul(GRAIN_CONVECTION_WEIGHT).add(GRAIN_LAND_WEIGHT))
         .add(float(CELL_GRAIN_MIX).mul(smallCell)),
       0, 1);
   }
