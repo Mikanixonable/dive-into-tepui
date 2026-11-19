@@ -161,14 +161,6 @@ export class FireControl {
 
   // ---------------------------------------------------------------- entity管理
 
-  // assembly 座標 [m] の点を ECI 座標へ写す。
-  private worldPoint(assemblyPoint: Vec3): Vec3 {
-    return add(
-      this.player.motion.state.r,
-      qRotate(this.player.motion.att.q, sub(assemblyPoint, this.player.motion.centerOffset)),
-    );
-  }
-
   // モジュール姿勢 moduleRot の局所方向 dir を ECI 方向へ写す。
   private worldDir(moduleRot: WeaponPorts['rotation'], dir: Vec3): Vec3 {
     return qRotate(this.player.motion.att.q, qRotate(moduleRot, dir));
@@ -183,7 +175,7 @@ export class FireControl {
   ): void {
     // 弾は砲を載せたモジュールの前方へ出す。
     const fwd = this.worldDir(muzzle.weapon.rotation, LOCAL_FORWARD);
-    const muzzleWorld = this.worldPoint(muzzle.position);
+    const muzzleWorld = this.player.motion.assemblyToEci(muzzle.position);
 
     const bullet = this.spawnBullet(muzzleWorld, fwd, celestialBodies);
     // 発射した弾の運動量と逆向きの力積を、同じ散布方向で砲口へ加える。
@@ -236,7 +228,7 @@ export class FireControl {
     this.registry.add(DebrisPiece.create(
       kinematicState<'eci'>(
         ship.motion.state.t,
-        this.worldPoint(weapon.ejectionPort),
+        this.player.motion.assemblyToEci(weapon.ejectionPort),
         add(
           ship.motion.state.v,
           add(scale(eject, 0.5 + Math.random() * 0.3), add(scale(up, randSym(0.2)), randVec(0.1))),
@@ -268,7 +260,7 @@ export class FireControl {
     this.registry.add(DebrisPiece.create(
       kinematicState<'eci'>(
         t,
-        this.worldPoint(inner),
+        this.player.motion.assemblyToEci(inner),
         add(ship.motion.state.v, scale(eject, slideSpeed)),
       ),
       {

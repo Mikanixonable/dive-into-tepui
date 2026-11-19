@@ -1,7 +1,7 @@
 // 展開式ラジエーターの状態・放熱面・接触代理を、搭載 module の変換から求める。
-import type { Attitude } from '../../physics/attitude';
+import { pointVelocityLocal, type Attitude } from '../../physics/attitude';
 import { qRotate } from '../../math/quat';
-import { add, cross, dot, v3, type Vec3 } from '../../math/vec3';
+import { add, dot, v3, type Vec3 } from '../../math/vec3';
 import { deployablePanelPoses } from '../../physics/ship-panel-layout';
 import { RADIATOR_FOLD_COUNT, RADIATOR_PANEL_WIDTH, RADIATOR_SEGMENT_LENGTH } from '../../physics/player-shape';
 import { kinematicState } from '../../physics/kinematic-state';
@@ -194,7 +194,7 @@ export class RadiatorSystem {
         const assemblyOffset = transform === null || transform === undefined
           ? layout.center : applyTransformToPoint(transform, layout.center);
         const worldPos = add(shipR, qRotate(att.q, assemblyOffset));
-        const worldVel = add(shipV, qRotate(att.q, cross(att.w, assemblyOffset)));
+        const worldVel = pointVelocityLocal(shipV, att, assemblyOffset);
         const known = proxies[i];
         const world = kinematicState<'eci'>(t, worldPos, worldVel);
         const fold = known ?? new ContactProxy(
