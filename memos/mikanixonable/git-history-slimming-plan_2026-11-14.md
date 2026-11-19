@@ -1,53 +1,72 @@
 # git 履歴のスリム化 — 実行計画
 
-計測時点: commit `a1e15167a`(devin/dev, 2026-11-14)。`.git` 564MB → `git gc --aggressive` 済みで 423MB。
-blob の pack 占有合計は約 418MB。そのうち現ツリーに残らない死に重みが約 180MB。
+計測時点: commit `0dc1a148d`(workspace3, 2026-11-19)。`.git` の size-pack は **973.86MB**。
+11/14 時点の 423MB から 5日で +550MB 増えており、再膨張は続いている。
+現ツリー(HEAD)の blob 合計は非圧縮 169MB・1780 個 — **履歴が持つ重みは約 800MB**。
 
 ## 目的
 
 現ツリーにも将来使う見込みにも無い大きな blob を全ブランチの履歴から `git filter-repo` で除去し、
-`.git` を 423MB → 約 250MB 前後まで縮める。
+`.git` を 974MB から 500MB 前後以下へ縮める。
 
 ## 決めたこと
 
 - **protein 系アセットは対象外。** `src/assets/models/` 配下の `*Structure*.json` / `*Motion*.json`
-  (atpSynthase6n2y・pdb5i4r・rubisco8ruc、pack で約 49MB)は将来復活する可能性があるため履歴に残す。
+  (atpSynthase6n2y・pdb5i4r・rubisco8ruc)は将来復活する可能性があるため履歴に残す。
+- **`assets-src/` は対象外。** Blender 元データ(.glb 25個・現ツリーに生存)で、履歴も残す。
+- **`ship-modules.glb`**(非圧縮合計 1.2GB・70版、現役アセット)は**通常の対象外**。
+  現版だけ残して全履歴を捨てるかは、実施時にユーザーへ問う(手順 5)。
+- **`CLAUDE.md` の全履歴除去**は現行ファイル(19.6KB)を別途再追加する方式で行う(手順 4)。
+  620版・非圧縮 219MB の履歴を持ち、旧版は巨大だった。履歴の blame 価値は低いが、
+  失うことを承知のうえで実施するか、実施時にユーザーへ問う。
 - **実行タイミングは統合節目。** 全 worktree の作業が commit 済みで、活動中ブランチが main へ
   統合された直後にやる。未 commit の作業があるまま実行すると、その差分は残るが属していた
   ブランチ先端が別の SHA へ書き換わり、rebase の手間が増える。
-- `ship-modules.glb`(pack で約 41MB / 69 版、差分圧縮済み・現役アセット)は**通常の対象外**。
-  ファイルの履歴を失ってでも削るかは、実施時にユーザーへ問う(手順 4 の分岐)。
+- **不要ブランチを先に消す(手順 0 済)。** 死に重みを指す ref が残ると、filter-repo を通しても
+  そのブランチの履歴ごと重みが保持される。filter-repo は全 ref を書き換えるので、
+  消してよいブランチは実行前に整理しておく。
+- **手順 0 実施済み(2026-11-19):** ローカル 29 本(main 完全マージ済み)・リモート 18 本を削除、
+  stash 11 件を削除。残りはローカル 36・リモート追跡 28・stash 1 件。
+  未マージの大きな固有履歴ブランチ(screenspace-temporal 等 6 本)はユーザーの判断で保持。
 
-## 除去対象(計測時点の packed 占有)
+## 除去対象(計測時点、非圧縮 blob 合計)
 
-| 対象 | packed | 根拠 |
+「非圧縮」は `git rev-list --objects --all` + `cat-file --batch-check` の合計で、
+pack 実占有より大きく出る(テキストは delta 圧縮が効く)。実施前に verify-pack で packed を再計測する。
+
+| 対象 | 非圧縮 | 根拠 |
 | --- | --- | --- |
-| `docs/` | 約 72MB | ビルド出力の過去 commit 分。現在 `.gitignore` 対象でツリーに無い |
-| `.cloud-lab-shots/` | 約 51MB | 実験撮影 PNG。追跡は commit `b7576dbf0` で解除済み |
-| `src/assets/orbits/lagrange-orbits*.json` | 約 36MB | 現ツリーに無い。ツリーに残すのは `origin/worktree-refactor-camera-frame` のみ |
-| `src/assets/models/shipModules.json` | 約 8MB | `ship-modules.glb` とは別の旧形式ファイル。削除済み |
-| `scratch/` | 約 6MB | 追跡は commit `d84c74db8` で解除済み |
+| `src/assets/models/shipModules.json` | 約 245MB | 旧形式ファイル・全ブランチで削除済み(18版) |
+| `CLAUDE.md` | 約 219MB | 620版・現行は 19.6KB。旧巨大版の履歴だけが重い(手順 6 で扱う) |
+| `docs/` | 約 72MB(packed 旧計測) | ビルド出力の過去 commit 分。現在 `.gitignore` 対象でツリーに無い(397パス) |
+| `memos/hedalu244/better_graphics/screenspace-diffuse.md` | 約 70MB | 176版・全ブランチで削除済み |
+| `.cloud-lab-shots/` | 約 51MB(packed 旧計測) | 実験撮影 PNG。追跡解除済み(91パス) |
+| `src/assets/orbits/lagrange-orbits*.json` | 約 80MB | 現ツリーに無い(8ファイル群) |
+| `memos/mikanixonable/sessions/shots/` | 数 MB | セッション撮影 PNG・削除済み(24パス) |
+| `scratch/` | 約 6MB(packed 旧計測) | 追跡解除済み(43パス) |
 
-合計 約 173MB。**protein 系は上表に含めない。**
+合計 非圧縮で約 740MB(packed 換算ではこれより小さい。実測が手順 1 で確定する)。
+**protein 系・`assets-src/`・現ツリーに残るアセットは上表に含めない。**
 
 ## 達成目標
 
-- `git count-objects -vH` の size-pack が 300MB を切る。
+- `git count-objects -vH` の size-pack が **500MB を切る**(除去量の実測で更に下がれば追記する)。
 - 除去対象パスが `git log --all -- <path>` でヒットしない。
 - リモートへも同じ死に重みが残らない(次回 fetch で復活しない)。
 - `npm run build` と `npm run typecheck` が通る。
 
 ## 手順
 
-### 手順 1. 前提の確認
+### 手順 1. 前提の確認と再計測
 
 目的: 書き換えは全 ref を巻き込むので、進行中の作業を安全な状態にしてから始める。
+また除去量は packed 実測で確定させる(非圧縮計測は上限でしかない)。
 
 - 全 worktree が `git status` でクリーンであること(未 commit は commit か stash)。
-  2026-11-14 時点では `.claude/worktrees/cloud-cells` に未 commit 2 件があった。
 - `git worktree list` と `git branch` を出し、書き換え対象の ref 一覧を記録する。
 - 他のエージェントへ「履歴を書き換えるので、未 push の作業は push/統合するか差分を保存しておく」と連絡する。
-- 達成条件: 未 commit 0 件、連絡済み。
+- `git verify-pack -v` で除去対象パスの packed 占有を再計測し、除去対象表を確定・更新する。
+- 達成条件: 未 commit 0 件、連絡済み、packed 実測値の記録。
 
 ### 手順 2. バックアップ
 
@@ -64,7 +83,7 @@ blob の pack 占有合計は約 418MB。そのうち現ツリーに残らない
 - `git filter-repo` は `/opt/homebrew/bin/git-filter-repo` にインストール済み。
 - worktree 付きリポジトリではそのまま実行できない場合がある。そのときは
   `.claude/worktrees/*` を一時的に外すか、`--force` を付けて実行する(実施時に挙動を確認)。
-- 実行コマンド:
+- 実行コマンド(手順 1 の再計測で対象が増減したら `--path` を合わせて調整):
 
 ```sh
 git filter-repo \
@@ -72,22 +91,32 @@ git filter-repo \
   --path .cloud-lab-shots/ \
   --path-glob 'src/assets/orbits/lagrange-orbits*.json' \
   --path src/assets/models/shipModules.json \
+  --path memos/hedalu244/better_graphics/screenspace-diffuse.md \
+  --path memos/mikanixonable/sessions/shots/ \
   --path scratch/ \
   --invert-paths
 ```
 
 - 達成条件: `git log --all -- docs/` が 0 件。`npm run typecheck` が通る。
 
-### 手順 4. ship-modules.glb の履歴削減(任意・実施時に要確認)
+### 手順 4. CLAUDE.md の履歴除去と再追加(推奨・実施時に要確認)
 
-目的: 69 版の履歴 blob が pack で約 41MB を占める。現版だけ残すなら約 25〜30MB 削れる。
+目的: 620版・非圧縮 219MB の履歴を捨て、現行の小さなファイルだけを残す。
+
+- 方法: 現行 CLAUDE.md をリポジトリ外へ退避 → 手順 3 の filter-repo に
+  `--path CLAUDE.md` を足して同時実行 → 書き換え後の先端へファイルを戻して commit。
+- 失うもの: CLAUDE.md の全履歴・blame。得るもの: packed 実測次第(非圧縮 219MB が上限)。
+
+### 手順 5. ship-modules.glb の履歴削減(任意・実施時に要確認)
+
+目的: 70版の履歴 blob(非圧縮 1.2GB、packed は delta 圧縮で大幅に小さい可能性)を減らす。
 
 - 方法: 現行ファイルをリポジトリ外へ退避 → filter-repo で `--path src/assets/models/ship-modules.glb
   --invert-paths` → 書き換え後の先端へファイルを戻して commit。
-- 失うもの: このファイルの全履歴・blame。得るもの: 約 25〜30MB。
-- 実施するなら手順 3 と同じ filter-repo 実行へ `--path` を足して 1 回にまとめる。
+- 失うもの: このファイルの全履歴・blame。得るもの: packed 実測次第(手順 1 で数値を見て判断する)。
+- 実施するなら手順 3/4 と同じ filter-repo 実行へ `--path` を足して 1 回にまとめる。
 
-### 手順 5. リモート側の処理
+### 手順 6. リモート側の処理
 
 目的: リモートに古い履歴が残ると、次回 `git fetch` で死に重みが全て復活して意味が無い。
 
@@ -99,7 +128,7 @@ git filter-repo \
   - **B. 死に重みを抱えるリモートブランチを削除**し、残りだけ force-push。
 - 達成条件: `git fetch` しても `.git` が膨らまない(`count-objects` の size-pack が維持される)。
 
-### 手順 6. 後処理と検証
+### 手順 7. 後処理と検証
 
 - `git reflog expire --expire=now --all && git gc --aggressive --prune=now` で孤児オブジェクトを落とす。
 - worktree は旧 SHA を指したままなので、全て `git worktree remove` して必要なものを張り直す。
@@ -108,16 +137,21 @@ git filter-repo \
 
 ## 見積り
 
-- `.git`: 423MB → 約 250MB(手順 4 もやれば約 220MB)。
-- 作業自体は filter-repo 1 回で数分。周囲の連絡・統合待ちが支配的なコスト。
+- 除去量: packed 実測待ちだが、非圧縮で約 740MB が上限。テキスト系(shipModules.json・CLAUDE.md)
+  は delta 圧縮が効くため packed 換算はこれより小さい。**size-pack 974MB → 約 450〜600MB**
+  を見通しとする(手順 4/5 込みなら更に下がる)。手順 1 の verify-pack で確定させる。
+- 作業自体は filter-repo 1 回で数分。周囲の連絡・統合待ち・ブランチ棚卸しが支配的なコスト。
 
 ## リスクと落とし穴
 
-- **他エージェントが旧ブランチを push すると死に重みが復活する。** 実行前後で必ず周知する。
-  `origin/*` を残したまま書き換えだけしても fetch で元に戻る — リモート処理(手順 5)は省略不可。
-- **commit SHA が全て変わる。** 過去のメモや会話に書かれた SHA 参照はリンク切れになる
-  (バックアップから `git show` で拾うことは可能)。
-- **worktree の未 commit 差分はファイルとしては残るが、属していたブランチ先端は消える。**
-  実行前に全 worktree をクリーンにする(手順 1)。
-- `filter-repo` は remote を消す副作用がある — 実行後に `git remote add origin <URL>` で戻すのを忘れない。
-- 計測値は 2026-11-14 時点のもの。実施時に `git verify-pack -v` で再計測してから対象を確定する。
+| リスク | 影響 | 露見する場所 |
+| --- | --- | --- |
+| 他エージェントが旧ブランチを push する | 死に重みが復活し作業が無駄になる | 手順 1(連絡)・手順 6 |
+| `origin/*` を残したまま書き換える | fetch で旧履歴が戻る | 手順 6 |
+| commit SHA が全て変わる | メモ・会話中の SHA 参照がリンク切れ | 手順 2(バックアップから `git show` で拾える) |
+| worktree の未 commit 差分 | 差分は残るが属していたブランチ先端が消える | 手順 1 |
+| 不要ブランチの残置 | その ref 経由で重みが保持され、除去が効かない | 手順 0・手順 1 の再計測 |
+| 現行ファイルを誤って `--path` 指定 | 現ツリーからも消える | 手順 3(対象表の現ツリー残留チェック) |
+| filter-repo が remote を消す | push 先を失う | 手順 3 後に `git remote add origin` で戻す |
+| 実行中に別セッションが commit/push | その commit は書き換え範囲外になり旧履歴が残る | 手順 1(全 worktree クリーン・停止確認) |
+| 再膨張 | 撮影物・生成物の再 commit で同じ問題が再発 | 手順 7 後(再発防止は別途検討: gitignore 監査・大容量 commit の検知) |
