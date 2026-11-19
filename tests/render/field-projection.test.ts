@@ -23,21 +23,28 @@ const BAKE_SIZE = 96;
 function worldField(direction: THREE.Vector3): number {
   return Math.sin(4 * direction.x) + Math.cos(3 * direction.y) + 0.5 * direction.z;
 }
-// cap の置き方を cap の焼く側の写像(uv → 単位方向)で texel ごとに世界の関数へ焼く。
-function bakeWorldField(cap: OrthographicCap): Float64Array {
-  const values = new Float64Array(BAKE_SIZE * BAKE_SIZE);
-  for (let y = 0; y < BAKE_SIZE; y++) {
-    for (let x = 0; x < BAKE_SIZE; x++) {
-      const direction = evaluateShaderNode(
-        cap.directionAt(vec2((x + 0.5) / BAKE_SIZE, (y + 0.5) / BAKE_SIZE))) as number[];
-      values[y * BAKE_SIZE + x] = worldField(new THREE.Vector3(direction[0], direction[1], direction[2]));
-    }
-  }
-  return values;
+// cap の置き方を cap の焼く側の写像(uv → 単位方向)で焼いた場を返す。texel ごとの TSL 評価が
+// 費用のほぼ全部なので、全点は焼かず読み出しが触れた texel だけを評価して覚える遅延の場にする。
+function bakeWorldField(cap: OrthographicCap): (x: number, y: number) => number {
+  const evaluated = new Map<number, number>();
+  return (x: number, y: number): number => {
+    const cx = Math.min(BAKE_SIZE - 1, Math.max(0, x));
+    const cy = Math.min(BAKE_SIZE - 1, Math.max(0, y));
+    const key = cy * BAKE_SIZE + cx;
+    const value = evaluated.get(key);
+    if (value !== undefined) return value;
+    const direction = evaluateShaderNode(
+      cap.directionAt(vec2((cx + 0.5) / BAKE_SIZE, (cy + 0.5) / BAKE_SIZE))) as number[];
+    const baked = worldField(new THREE.Vector3(direction[0], direction[1], direction[2]));
+    evaluated.set(key, baked);
+    return baked;
+  };
 }
 // 焼いた場を、読む側の写像(orthographicCapUv)と、焼き直しのあとの cap の置き方の写し(placement)で
 // 単位方向 direction から双線形に読む。CloudFieldSampler が uniform へ写し取るのと同じ値で読む。
-function readBakedField(cap: OrthographicCap, values: Float64Array, direction: THREE.Vector3): number {
+function readBakedField(
+  cap: OrthographicCap, field: (x: number, y: number) => number, direction: THREE.Vector3,
+): number {
   const placement = cap.placement;
   const uv = evaluateShaderNode(orthographicCapUv(
     vec3(direction.x, direction.y, direction.z),
@@ -52,10 +59,8 @@ function readBakedField(cap: OrthographicCap, values: Float64Array, direction: T
   const fx = px - x0;
   const fy = py - y0;
   // 円板の外を端へ寄せ、4 texel の双線形重みで値を読む。
-  const at = (x: number, y: number): number => values[Math.min(BAKE_SIZE - 1, Math.max(0, y)) * BAKE_SIZE
-    + Math.min(BAKE_SIZE - 1, Math.max(0, x))]!;
-  return at(x0, y0) * (1 - fx) * (1 - fy) + at(x0 + 1, y0) * fx * (1 - fy)
-    + at(x0, y0 + 1) * (1 - fx) * fy + at(x0 + 1, y0 + 1) * fx * fy;
+  return field(x0, y0) * (1 - fx) * (1 - fy) + field(x0 + 1, y0) * fx * (1 - fy)
+    + field(x0, y0 + 1) * (1 - fx) * fy + field(x0 + 1, y0 + 1) * fx * fy;
 }
 // 緯度経度 [rad] の単位方向(CloudPresentation.aim の経度・緯度の取り方と同じ向き)。
 function directionOf(latitude: number, longitude: number): THREE.Vector3 {
