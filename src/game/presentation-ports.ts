@@ -92,7 +92,7 @@ export interface PresentationShipModule {
 // 艦の読み取り面。操縦可否と、搭載部品の一覧。
 export interface PresentationShip {
   readonly id: string;
-  readonly capabilities: { readonly controllable: boolean };
+  readonly capabilities: { readonly controllable: boolean; readonly averageMuzzleVelocity: number };
   readonly assembly: {
     readonly modules: readonly PresentationShipModule[];
   };

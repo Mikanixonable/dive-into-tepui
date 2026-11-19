@@ -204,7 +204,7 @@ export class HudPanelPresenter {
   private ammoViewModel(controlled: Controllable): AmmoViewModel | null {
     const fire = controlled.fire;
     if (fire === null) return null;
-    const ship = isModularShip(controlled) ? controlled : null;
+    const ship = isPresentationShip(controlled) ? controlled : null;
     return {
       rounds: fire.rounds,
       mags: fire.mags,
