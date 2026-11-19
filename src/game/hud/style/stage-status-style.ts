@@ -6,7 +6,7 @@ export const STAGE_STATUS_STYLE = `
    map rail や、ステージ状態を持たない場面の高さは削らない。 */
 #hud:has(#hud-stagestatus:not(.hidden)) { --hud-stage-bottom-occupied: 104px; }
 #hud .hud-combat-root.active .hud-rail {
-  bottom: max(var(--hud-rail-bottom), var(--hud-stage-bottom-occupied, 0px));
+  bottom: max(var(--hud-rail-bottom), var(--hud-stage-bottom-occupied, 0px), var(--hud-armament-bottom-occupied, 0px));
 }
 #hud-stagestatus {
   bottom: calc(12px + var(--safe-b)); left: 50%; transform: translateX(-50%);

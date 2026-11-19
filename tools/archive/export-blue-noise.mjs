@@ -139,10 +139,10 @@ const bytes = Buffer.alloc(N);
 for (let i = 0; i < N; i++) bytes[i] = Math.min(255, Math.floor(((rank[i] + 0.5) / N) * 256));
 
 const outPath = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)), '../src/render/blue-noise-tile.generated.ts',
+  path.dirname(fileURLToPath(import.meta.url)), '../../src/render/blue-noise-tile.generated.ts',
 );
 
-writeFileSync(outPath, `// 生成物。tools/export-blue-noise.mjs が void-and-cluster で焼いた blue noise タイル
+writeFileSync(outPath, `// 生成物。tools/archive/export-blue-noise.mjs が void-and-cluster で焼いた blue noise タイル
 // (${SIZE}×${SIZE}、1画素 8bit)。手で編集しない。
 //
 // 上下左右が繋がる環状のタイルなので、画面へ敷き詰めても継ぎ目が出ない。

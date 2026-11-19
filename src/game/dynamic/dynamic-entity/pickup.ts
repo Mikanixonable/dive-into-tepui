@@ -21,7 +21,7 @@ import type { ControlSelection } from '../../control-selection';
 import type { MenuItem } from '../../../hud/windows/context-menu';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { MarkerVisibility } from '../../../marker/marker-visibility';
-import type { ObjectAuthoring } from '../../pickable/inspected-object';
+import type { PresentationStageAuthoring } from '../../presentation-ports';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { DynamicEntityKind } from './entity-kind';
@@ -197,7 +197,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
 
   // menuItems が出した操作 act を実行する。
   public runMenu(
-    act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
+    act: MenuAction, _controlSelection: ControlSelection, authoring: PresentationStageAuthoring | null,
   ): void {
     if (act === 'delete') this.motion.kill();
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);

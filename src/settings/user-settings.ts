@@ -8,6 +8,7 @@ import {
   parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
 } from '../game/view/hud-selection';
 import { formatMapDisplayToggles, parseMapDisplayToggles } from '../game/map/display-toggles';
+import { isCoarsePointer } from '../input/pointer-precision';
 import { formatGridVisibility, parseGridVisibility } from '../render/celestial-grid';
 import { formatGraphics, parseGraphics } from '../render/graphics-settings';
 import { formatRenderStyle, parseRenderStyle } from '../render/render-style';
@@ -50,7 +51,10 @@ export class UserSettings {
   // 保存済みの設定が読めなくなる。
   public constructor(storage: SettingStorage) {
     // 画面全体に適用される全域設定。
-    this.graphics = new StoredSetting(storage, 'tepui.settings.graphics', parseGraphics, formatGraphics);
+    this.graphics = new StoredSetting(
+      storage, 'tepui.settings.graphics',
+      (text) => parseGraphics(text, isCoarsePointer()), formatGraphics,
+    );
     this.renderStyle = new StoredSetting(storage, 'tepui.settings.renderStyle', parseRenderStyle, formatRenderStyle);
     this.bgmVolume = new StoredSetting(storage, 'tepui.settings.bgm_vol', parseBgmVolume, formatBgmVolume);
     this.bgmMuted = new StoredSetting(storage, 'tepui.settings.bgm_muted', parseBgmMuted, formatBgmMuted);

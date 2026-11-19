@@ -83,6 +83,21 @@ export class BakedField {
     return texture(this.target.textures[output]!, this.projection.uvAt(direction)).level(level);
   }
 
+  // 写しの中心 texel 1 個を CPU へ読み戻す。半精度 RGBA の 4 成分を、半精度の
+  // ビット列のまま返す。中心は投影のちょうど真ん中なので、uv の向きは結果に効かない。
+  public async readCenterTexel(renderer: WebGPURenderer): Promise<Uint16Array> {
+    const x = Math.floor(this.projection.width / 2);
+    const y = Math.floor(this.projection.height / 2);
+    const pixels = await renderer.readRenderTargetPixelsAsync(this.target, x, y, 1, 1);
+    const half = pixels instanceof Uint16Array
+      ? pixels
+      : new Uint16Array(pixels.buffer, pixels.byteOffset, pixels.byteLength / 2);
+    if (half.length < 4) {
+      throw new Error(`readCenterTexel: expected 4 half-float components, got ${half.length}`);
+    }
+    return half;
+  }
+
   // 保持している GPU 資源を解放する。
   public dispose(): void {
     this.target.dispose();

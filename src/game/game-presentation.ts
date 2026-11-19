@@ -21,6 +21,7 @@ import { FlashPresenter } from './flash-presenter';
 import { FlashEffectsView } from '../render/vfx/flash-effects-view';
 import { EntityLineManager } from './lines/entity-line-manager';
 import { Input } from '../input/input';
+import { KEY_MAPPING as K } from '../input/key-mapping';
 import { TouchControls } from './hud/touch-controls';
 import { WorldSfx } from '../audio/sfx/world-sfx';
 import { UiSfx } from '../audio/sfx/ui-sfx';
@@ -190,6 +191,8 @@ export class GamePresentation {
     );
     this.confirmation = new ConfirmationOverlay(hud.overlayManager);
     this.input = new Input(scene.renderer.domElement);
+    // ⚙バッジの押下は、物理 Esc と同じ仮想キーの経路でポーズのポートへ届ける。
+    hud.onPauseBadge = () => this.input.tapKey(K.pauseMenu);
     this.shipConstruction = new ShipConstruction(
       this.input, commands, hud.shipConstructionPanel, hud.overlayManager, this.displayWindowManager,
       hud, hud.constructionConfirm, blueprints, game.events,

@@ -5,12 +5,12 @@
 // fetch-coastline-source.mjs と同じく実行のたびに接続する取り込みツールで、生成
 // (export-climate.mjs)とは分離する。
 //
-// 実行: node tools/fetch-climate-source.mjs
+// 実行: node tools/archive/fetch-climate-source.mjs
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const outDir = join(repoRoot, 'assets-src', 'climate');
 const cloudFractionDir = join(outDir, 'cloud-fraction');
 

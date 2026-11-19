@@ -7,7 +7,6 @@ import { latLonOf } from '../../../physics/body-orientation';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { type Vec3, dot, len, sub } from '../../../math/vec3';
 import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
-import type { CelestialEntity } from '../../celestial/celestial-entity/celestial-entity';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitReference } from '../../orbit-reference';
 import { relativeInclinationDeg } from '../../orbit-info';
@@ -28,6 +27,11 @@ interface ApproachSeries {
   readonly samples: readonly (ApproachSample | null)[];
   readonly relIncDeg: number;
   readonly truncated: boolean;
+}
+
+// 投影の中心天体。運動だけを使う。
+export interface ProjectionCenter {
+  readonly motion: CelestialBody;
 }
 
 // 接近タブのターゲット側の伝播経路は種別ごとに違う(艦・基地は predicted、天体は
@@ -209,7 +213,7 @@ interface ProjectionSeries {
 // state(中心天体相対ではなく ECI)を中心天体の時刻 t での自転を通じて緯度経度へ変換する。
 // 中心天体が自転モデルを持たなければ null。
 function projectionSampleAt(
-  state: KinematicState, centerState: KinematicState, center: CelestialEntity, t: number,
+  state: KinematicState, centerState: KinematicState, center: ProjectionCenter, t: number,
 ): ProjectionSample | null {
   const orientation = center.motion.orientationAt(t);
   if (orientation === null) return null;
@@ -221,7 +225,7 @@ function projectionSampleAt(
 // 中心天体が自転モデルを持たない場合は null。
 export function projectionSeries(
   stateAt: (t: number) => KinematicState | null,
-  center: CelestialEntity,
+  center: ProjectionCenter,
   now: number,
   spanSec: number,
   sampleCount: number,
