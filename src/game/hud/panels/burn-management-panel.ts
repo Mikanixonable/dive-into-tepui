@@ -2,27 +2,7 @@
 import { Meter } from '../../../hud/widgets';
 import { FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO, fuelAlarmLevel } from '../../alarm/alarm-level';
 import type { HudEls } from '../hud-els';
-
-// 燃焼管理パネルへ渡す、ゲーム状態から分離された表示モデル。
-export interface BurnManagementViewModel {
-  // 現在接続されているブースター段数。
-  readonly stageCount: number;
-  // 接続中の段を含めた総質量(kg)。
-  readonly totalMass: number;
-  // booster module 全体の現在燃料(kg)。
-  readonly activeFuel: number;
-  // booster module 全体の最大燃料(kg)。
-  readonly activeFuelMax: number;
-  // 燃焼状態。UIへそのまま表示できる日本語ラベルでもよい。
-  readonly burnState: string;
-  // 状態の aria-label に使う短い説明。
-  readonly burnStateDescription?: string;
-  readonly modules: readonly {
-    readonly id: string;
-    readonly kind: 'booster' | 'decoupler';
-    readonly state: string;
-  }[];
-}
+import type { PresentationBurnManagement } from '../../presentation-ports';
 
 interface BurnManagementDom {
   readonly stageCount: HTMLElement;
@@ -62,6 +42,8 @@ function stateLabel(state: string): string {
     'fuel-empty': '燃料切れ',
     separated: '分離済み',
     complete: '燃焼完了',
+    connected: '接続中',
+    destroyed: '全損',
   };
   return labels[state] ?? state;
 }
@@ -87,7 +69,7 @@ export class BurnManagementPanel {
   }
 
   // 表示モデルを同期する。null はブースターのない機体としてパネルを隠す。
-  public sync(view: BurnManagementViewModel | null): void {
+  public sync(view: PresentationBurnManagement | null): void {
     const panel = this.els.get('burn-management-panel');
     panel.classList.toggle('hidden', view === null);
     if (!view) {
@@ -119,7 +101,7 @@ export class BurnManagementPanel {
       label.textContent = module.kind === 'booster' ? 'ブースター' : 'デカプラー';
       const value = document.createElement('span');
       value.className = 'v';
-      value.textContent = `${module.id}: ${module.state}`;
+      value.textContent = `${module.id}: ${stateLabel(module.state)}`;
       row.append(label, value);
       return row;
     });

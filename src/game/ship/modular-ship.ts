@@ -34,7 +34,7 @@ import type { Controllable } from '../dynamic/dynamic-entity/controllable';
 import type { PilotCommand, PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
 import { ModularShipMotion, type ModularShipMotionReactions } from './modular-ship-motion';
 import type { DynamicMotionThermal } from '../dynamic/dynamic-motion';
-import type { BurnManagementViewModel } from '../hud/panels/burn-management-panel';
+import type { PresentationBurnManagement } from '../presentation-ports';
 import { ShipInspection } from '../pickable/ship-inspection';
 import { PlayerEffects } from '../player/player-effects';
 import { ModularShipReactions } from './modular-ship-reactions';
@@ -488,7 +488,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   }
 
   // ブースターとデカプラーがある艦の燃焼管理表示を組み立てる。
-  public burnManagementViewModel(): BurnManagementViewModel | null {
+  public burnManagementViewModel(): PresentationBurnManagement | null {
     // booster・decoupler がどちらも無ければ表示するものは無い。
     const boosters = this.capabilities.modules('booster');
     const decouplers = this.capabilities.modules('decoupler');
@@ -507,11 +507,15 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       burnState: boosters.length === 0 ? 'idle'
         : activeFuel <= 0 ? 'empty' : anyIgnited ? 'burning' : 'ready',
       modules: [
-        ...decouplers.map(module => ({ id: module.id, kind: 'decoupler' as const, state: module.hp > 0 ? '接続中' : '全損' })),
+        ...decouplers.map(module => ({
+          id: module.id,
+          kind: 'decoupler' as const,
+          state: module.hp > 0 ? 'connected' as const : 'destroyed' as const,
+        })),
         ...boosters.map(module => ({
           id: module.id,
           kind: 'booster' as const,
-          state: module.fuel <= 0 ? '燃料切れ' : module.ignited ? '燃焼中' : '停止',
+          state: module.fuel <= 0 ? 'fuel-empty' as const : module.ignited ? 'burning' as const : 'stopped' as const,
         })),
       ],
     };
