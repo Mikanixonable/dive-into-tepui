@@ -80,7 +80,7 @@ const CONVECTION_WINDING = CLOUD_TUNING.convectionWinding;
 interface AdvectedFields {
   readonly surfaceHumidity: FloatNode;
   readonly upperHumidity: FloatNode;
-  readonly convection: Vec2Node;
+  readonly convectionNoise: Vec2Node;
 }
 
 export class WeatherTransport {
@@ -210,7 +210,7 @@ export class WeatherTransport {
     return {
       surfaceHumidity: surfaceHumidity.add(uplift).sub(rainout),
       upperHumidity,
-      convection,
+      convectionNoise: convection,
     };
   }
 

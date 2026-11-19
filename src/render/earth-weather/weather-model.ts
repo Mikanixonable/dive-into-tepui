@@ -34,7 +34,7 @@ export interface WeatherSample {
   readonly lift: FloatNode; // 上昇流 [m/s](負なら下降)
   readonly surfaceHumidity: FloatNode; // 地表付近の湿度 0..1
   readonly upperHumidity: FloatNode; // 上層の湿度 0..1
-  readonly convection: Vec2Node; // 対流セルの強弱(0 中心の高周波、x が粒・y が網目)
+  readonly convectionNoise: Vec2Node; // 対流セルの強弱(0 中心の高周波、x が粒・y が網目)
   readonly convectiveActivity: FloatNode; // 対流の強弱がどれだけ強く現れるか 0..1
   readonly shallowForcing: FloatNode; // 浅い積雲の量へ足す湿度(日射と湿りが駆動の基準を上回る昼の陸で正)
   readonly deepPotential: FloatNode; // 深い対流(塔・雷雨)の起こりやすさ 0..1
@@ -314,8 +314,8 @@ export class WeatherModel {
     // 逓減し、海岸を出たばかりの閉じた細胞から、海を流れ続けた開いた細胞へ被覆を落とす。
     const outbreak = smoothstep(0, OUTBREAK_WARMTH_FULL, airMass.warmth.negate())
       .mul(landFraction.oneMinus())
-      .mul(smoothstep(0, OUTBREAK_FETCH_RAMP, airMass.ocean))
-      .mul(airMass.ocean.oneMinus().mul(OUTBREAK_HUMIDITY_SHORT - OUTBREAK_HUMIDITY_LONG)
+      .mul(smoothstep(0, OUTBREAK_FETCH_RAMP, airMass.oceanFetch))
+      .mul(airMass.oceanFetch.oneMinus().mul(OUTBREAK_HUMIDITY_SHORT - OUTBREAK_HUMIDITY_LONG)
         .add(OUTBREAK_HUMIDITY_LONG));
     const deviation = advected.surfaceHumidity.sub(SURFACE_HUMIDITY_BASE);
     const surfaceHumidity = clamp(
@@ -345,7 +345,7 @@ export class WeatherModel {
       lift,
       surfaceHumidity,
       upperHumidity,
-      convection: advected.convection,
+      convectionNoise: advected.convectionNoise,
       convectiveActivity: convective.activity,
       shallowForcing: convective.shallowForcing,
       deepPotential: convective.deepPotential,
@@ -353,7 +353,7 @@ export class WeatherModel {
       band,
       front,
       warmth,
-      oceanFetch: airMass.ocean,
+      oceanFetch: airMass.oceanFetch,
       anvil,
       cirrusPatch: this.cirrusPatchNoise.at(direction),
       meanCloudiness,

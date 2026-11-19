@@ -39,11 +39,11 @@ const TRACE_STEPS = 6;
 
 // 単位方向における気団。compression は気団の境目の押し縮まり(何も起きていない所と、追跡の風が
 // 淀んで境目を信じられない所で 1)、warmth はいまの緯度と出身の緯度の差 [rad](正で暖気の流入、
-// 負で寒気の流入)、ocean は追跡が海の上にあった時間の割合 0..1。
+// 負で寒気の流入)、oceanFetch は追跡が海の上にあった時間の割合 0..1。
 interface AirMassSample {
   readonly compression: FloatNode;
   readonly warmth: FloatNode;
-  readonly ocean: FloatNode;
+  readonly oceanFetch: FloatNode;
 }
 
 export class AirMass {
@@ -90,7 +90,7 @@ export class AirMass {
     return {
       compression: length(vec2(alongEast, alongNorth.add(1))).sub(1).mul(trusted).add(1),
       warmth: abs(latitude).sub(abs(latitude.add(center.r))),
-      ocean: center.b,
+      oceanFetch: center.b,
     };
   }
 

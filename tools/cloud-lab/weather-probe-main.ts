@@ -102,7 +102,7 @@ class WeatherProbeCanvas {
       vec4(
         this.field.climateMap.elevation(direction), this.field.climateMap.temperatureK(direction),
         float(0), weather.shallowForcing),
-      vec4(weather.deepPotential, weather.convection.x, weather.reliefM, float(0)),
+      vec4(weather.deepPotential, weather.convectionNoise.x, weather.reliefM, float(0)),
     ], OUT_WIDTH, OUT_HEIGHT);
   }
 
