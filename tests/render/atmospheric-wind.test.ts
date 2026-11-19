@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { AtmosphericWindField, CloudPatternTransport } from '../../src/render/cloud/atmospheric-wind';
+import { AtmosphericWindField, CloudPatternTransport } from '../../src/render/earth-weather/atmospheric-wind';
 
 // 模様を載せる天体の半径 [m]。角位相は半径で割って出るので、値そのものは判定に効かない。
 const SURFACE_RADIUS = 6.371e6;
@@ -48,8 +48,11 @@ export function register(): void {
 
   test('cloud pattern transport: phase is deterministic and does not alter physical wind', () => {
     const field = new AtmosphericWindField();
-    const transport = new CloudPatternTransport(SURFACE_RADIUS, field);
-    assert.equal(transport.phaseAt(0.4, 1_000, 3600), transport.phaseAt(0.4, 1_000, 3600));
+    const transport = new CloudPatternTransport(SURFACE_RADIUS);
+    const wind = field.sample(0.4, 1_000);
+    assert.deepEqual(
+      transport.angularPhase(wind.east, wind.north, 0.4, 3600),
+      transport.angularPhase(wind.east, wind.north, 0.4, 3600));
     assert.deepEqual(field.sample(0.4, 1_000), field.sample(0.4, 1_000));
   });
 

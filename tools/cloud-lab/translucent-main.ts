@@ -9,19 +9,19 @@ import { mrt, uniform, vec4 } from 'three/tsl';
 import { earthGeneratedCloudField, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { OrthographicCap } from '../../src/render/field-projection';
 import { DeferredTexture } from '../../src/render/deferred-texture';
-import { snapCap } from '../../src/render/cloud/cloud-cap';
+import { snapCap } from '../../src/render/earth-weather/cloud/cloud-cap';
 import {
   cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode,
   cumulusColumnOpticalDepthNode, cumulusTopAltitudeNode,
-} from '../../src/render/cloud/cloud-kind-node';
+} from '../../src/render/earth-weather/cloud/cloud-kind-node';
 import {
   CIRRUS_MAX_OPTICAL_DEPTH, CIRRUS_TOP_ALTITUDE,
   CUMULUS_MAX_OPTICAL_DEPTH, CUMULUS_TOP_ALTITUDE,
-} from '../../src/render/cloud/cloud-kind';
+} from '../../src/render/earth-weather/cloud/cloud-kind';
 import {
   CloudMotionWind, awaitClimateMap, boxDirectionNode, renderTargetBase64,
 } from './probe-common';
-import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
 import type { Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 declare global {
@@ -82,7 +82,7 @@ class TranslucentProbeCanvas {
   public static async create(
     canvas: HTMLCanvasElement, cap: OrthographicCap,
   ): Promise<TranslucentProbeCanvas> {
-    const renderer = new WebGPURenderer({ canvas });
+    const renderer = new WebGPURenderer({ canvas, requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
     renderer.setSize(BOX_PX, BOX_PX, false);
     renderer.toneMapping = THREE.NoToneMapping;
     await renderer.init();

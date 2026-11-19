@@ -145,9 +145,9 @@ const FORBIDDEN = [
     targets: ['src/render/', 'src/marker/', 'src/hud/', 'src/game/hud/'],
     // 自分の処理にかかった時間を測るための壁時計は、表示する時刻ではないので例外にする。
     exempt: [
-      'src/render/cloud/cloud-local-field-baker.ts',
+      'src/render/earth-weather/cloud/cloud-local-field-baker.ts',
       // 分割ジョブの step 予算・試行の壁時計を測るため — baker と同じ計測用途。
-      'src/render/cloud/meteorological-cloud-field.ts',
+      'src/render/earth-weather/cloud/meteorological-cloud-field.ts',
     ],
   },
   {

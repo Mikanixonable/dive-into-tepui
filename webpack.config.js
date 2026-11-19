@@ -4,6 +4,7 @@ const webpack = require('webpack');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { EsbuildPlugin } = require('esbuild-loader');
 const { version } = require('./package.json');
+const { setupOverridesRead } = require('./tools/cloud-tuning-overrides-file.cjs');
 
 const DEFAULT_EARTH_SURFACE_DATASET_ID = 'earth-2026-11-14-a';
 const EARTH_SURFACE_DEV_PUBLIC_PATH = `/earth/${DEFAULT_EARTH_SURFACE_DATASET_ID}/`;
@@ -134,7 +135,11 @@ module.exports = (env, argv) => ({
       },
     ],
     port: 'auto',
+    open: true,
     liveReload: false,
     hot: false,
+    // cloud-lab が書く調整値の上書き(tools/cloud-tuning-overrides-file.cjs)を、実行中の
+    // ゲームが拾うための読み口。ファイルはビルド入力でないので、書き込みはリビルドを起こさない。
+    setupMiddlewares: setupOverridesRead,
   },
 });
