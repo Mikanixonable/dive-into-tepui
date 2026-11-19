@@ -2,7 +2,8 @@
 // 候補が無ければ何もしない。無効な候補の上でドラッグを離すと理由を出して手放す。
 // 偽の入力・ホスト・カメラで ShipConstructionPointer を駆動する。
 import * as assert from 'node:assert/strict';
-import type { GrabbedDrag, Input, PointerPoint, PointerPress } from '../../src/input/input';
+import type { GrabbedDrag, Input, PointerPress } from '../../src/input/input';
+import type { PointerPoint } from '../../src/input/pointer-point';
 import type { Viewport } from '../../src/render/viewport';
 import type { CameraSystem } from '../../src/game/camera/camera-system';
 import type { Ray } from '../../src/math/ray';
