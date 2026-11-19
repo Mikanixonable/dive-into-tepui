@@ -4,7 +4,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { len, sub } from '../../src/math/vec3';
-import { positionOf, solarSystemParts, type SolarSystemParts } from './test-helpers';
+import { freshSolarSystemParts, positionOf, solarSystemParts, type SolarSystemParts } from './test-helpers';
 
 export function register(): void {
   const system = solarSystemParts().system;
@@ -54,7 +54,7 @@ export function register(): void {
 
   test('celestialMotions: 同じ元期で組み直せば、同じ時刻の位置も地球の自転位相も一致する', () => {
     const a = solarSystemParts();
-    const b = solarSystemParts();
+    const b = freshSolarSystemParts();
     const moonB = b.system.celestialMotions.find((x) => x.id === 'moon')!.stateAt(5000).r;
     assert.deepEqual(a.system.celestialMotions.find((x) => x.id === 'moon')!.stateAt(5000).r, moonB);
     const earthSpin = (parts: SolarSystemParts) =>
