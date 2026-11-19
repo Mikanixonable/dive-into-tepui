@@ -98,8 +98,9 @@ const clampedToCone = Fn((
 });
 
 // スロット 1 本ぶんの光源。拡散反射も鏡面反射も、視半径を持つ球光源モデルとして評価する
-// (sphere-light.ts)。大きさはその閉じた解が持ち、写しは色の倍率としてしか効かない。
-// TODO: 影を受けない — 受け手と天体の間に別の天体や艦の構造があっても届く。
+// (sphere-light.ts)。大きさはその閉じた解が持ち、写しは色の倍率としてしか効かない。届く光は、
+// 受け手と光源天体の間を遮る天体が覆う光源円盤の面積ぶんだけ弱まる。
+// TODO: 艦・構造物による遮蔽は受けない — 構造物による遮蔽はスクリーンスペース AO の計画が担う。
 class PlanetLightSlot implements LightSource {
   // モードごとに 1 枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの再コンパイルが
   // フレームを止める。
@@ -110,11 +111,11 @@ class PlanetLightSlot implements LightSource {
   // 写しへ焼く見た目があるか。無いスロットはテクスチャのモードでも一様球で描く。
   private readonly imaged: BoolUniform = uniform(false);
 
-  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は写しの大気が読む天体の影。
-  // model は描画設定 planetLightModel の値。
+  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は、写しの大気が読む天体の影と、
+  // 受け手と光源天体の間を遮る天体の透過率を引く先。model は描画設定 planetLightModel の値。
   public constructor(
     private readonly sunLight: SunLight,
-    bodyShadow: BodyShadow,
+    private readonly bodyShadow: BodyShadow,
     private readonly sphereSpecular: SphereSpecular,
     private readonly slot: SlotUniforms,
     private model: number,
@@ -181,13 +182,17 @@ class PlanetLightSlot implements LightSource {
         sample, reflected, this.specularFilterAngle(sample, sinSigmaSqr), lightDir, sinSigmaSqr,
         sphereRadiance)
       : sphereRadiance;
+    // 受け手と光源天体の間を別の天体が遮るぶんだけ届く光を弱める係数。光源天体自身は
+    // 遮蔽へ数えない。写しのモードでも同じ係数 — 写しが色の倍率、遮蔽はエネルギー側の話。
+    const shadowing = this.bodyShadow.transmittanceFrom(
+      sample.worldPosition, this.slot.center, this.slot.radius);
     // 一様球の放射照度 E = π·L̄·sin²σ × クリップ係数(全可視では saturate(cosβ) に一致)。
     // **大きさを作るのはこの 2 つの係数だけ**で、写しは色の倍率としてしか効かない — 写しの値で
     // エネルギーを作ると、高周波の地表で総光量が破れる。
     const diffuse: Vec3Node = diffuseRadiance.mul(PI).mul(sinSigmaSqr)
-      .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr));
+      .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr)).mul(shadowing);
     const specular: Vec3Node = specularRadiance
-      .mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
+      .mul(this.sphereSpecular.factor(sample, center, this.slot.radius)).mul(shadowing);
     return { diffuse, specular };
   }
 

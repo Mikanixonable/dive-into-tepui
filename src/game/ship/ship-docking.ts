@@ -1,6 +1,7 @@
 // 接舷部の world pose と、距離・向き・相対速度に基づく接舷可否を求める。
 import { LOCAL_FORWARD, qMul, qRotate, type Quat } from '../../math/quat';
-import { add, cross, dot, len, norm, scale, sub, type Vec3 } from '../../math/vec3';
+import { add, dot, len, norm, scale, sub, type Vec3 } from '../../math/vec3';
+import { pointVelocityAt } from '../../physics/attitude';
 import type { ModularShip } from './modular-ship';
 import { isDockingModule } from './ship-assembly';
 
@@ -34,7 +35,7 @@ function dockingPortPose(ship: ModularShip, moduleId: string): DockingPortPose |
   const center = ship.motion.assemblyToEci(transform.position);
   const point = add(center, scale(axis, definition.length / 2));
   const angularVelocity = qRotate(ship.motion.att.q, ship.motion.att.w);
-  const velocity = add(ship.motion.state.v, cross(angularVelocity, sub(point, ship.motion.state.r)));
+  const velocity = pointVelocityAt(ship.motion.state.v, angularVelocity, sub(point, ship.motion.state.r));
   return { point, axis, velocity, rotation };
 }
 

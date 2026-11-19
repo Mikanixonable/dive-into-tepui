@@ -6,6 +6,7 @@ import { SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { deployablePanelPoses } from '../../physics/ship-panel-layout';
 import { SOLAR_MODULE_GENERATION, SOLAR_PANEL_COUNT } from '../../physics/player-shape';
 import type { ShipAssembly } from '../ship/ship-assembly';
+import { applyTransformToDirection } from '../ship/ship-assembly-transform';
 import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
 export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
@@ -128,7 +129,7 @@ export class PowerSystem {
         state.update(dt, 3);
         const generation = definition.abilities.powerGeneration ?? SOLAR_MODULE_GENERATION;
         for (const panel of deployablePanelPoses('solar_panel', definition.length / 2, state.value)) {
-          const normal = qRotate(att.q, qRotate(transform.rotation, panel.normal));
+          const normal = qRotate(att.q, applyTransformToDirection(transform, panel.normal));
           const incidence = Math.max(0, dot(normal, sunDir));
           power += (generation / SOLAR_PANEL_COUNT) * (sunlight / SOLAR_CONSTANT) * incidence * state.value;
         }

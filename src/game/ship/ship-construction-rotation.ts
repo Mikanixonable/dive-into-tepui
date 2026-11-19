@@ -5,6 +5,7 @@ import { LOCAL_FORWARD, qFromBasis, qRotate, type Quat } from '../../math/quat';
 import type { Ray } from '../../math/ray';
 import { addScaled, cross, dot, len, norm, scale, sub, v3, type Vec3 } from '../../math/vec3';
 import type { ShipAssembly } from './ship-assembly';
+import { applyTransformToDirection } from './ship-assembly-transform';
 
 // 回転リングの幾何(ECI)。axisEci まわりに右手則で角度を取る。uEci/vEci は面内の
 // 角度基準で、視線からの角度計算とリング上の矢印・弧の配置を同じ基準に揃える。
@@ -65,7 +66,7 @@ export function constructionRotationRing(
   const definition = assembly.definition(moduleId);
   if (transform === null || definition === null) return null;
   const q = ship.motion.att.q;
-  const axis = norm(qRotate(q, qRotate(transform.rotation, LOCAL_FORWARD)));
+  const axis = norm(qRotate(q, applyTransformToDirection(transform, LOCAL_FORWARD)));
   // 面内の角度基準は環境の上方向から取る。軸がほぼ上向きなら基準を横へ換えて
   // 基底が縮退しないようにする。
   const up = Math.abs(dot(axis, WORLD_UP)) < 0.9 ? WORLD_UP : WORLD_RIGHT;

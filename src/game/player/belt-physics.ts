@@ -1,5 +1,5 @@
 // マガジンベルトの鎖のたわみ・ねじれを機体座標系で解き、接触判定の代理を置く。
-import type { Attitude } from '../../physics/attitude';
+import { pointVelocityAt, type Attitude } from '../../physics/attitude';
 import { LOCAL_RIGHT, qFromUnitVectors, qInvert, qMul, qRotate, type Quat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { type Vec3, add, addScaled, cross, len, norm, scale, sub, v3, type SerializedVec3 } from '../../math/vec3';
@@ -327,7 +327,7 @@ export class BeltPhysics {
       const bpPrev = this.prevPositions[i]!;
       // 節点は機体座標系の中で Verlet 変位ぶん動き、機体そのものの回転で接線方向にも動く。
       const verletVel = v3((bp.x - bpPrev.x) * invDt, (bp.y - bpPrev.y) * invDt, (bp.z - bpPrev.z) * invDt);
-      const bodyVel = add(verletVel, cross(att.w, bp));
+      const bodyVel = pointVelocityAt(verletVel, att.w, bp);
 
       const world = kinematicState<'eci'>(
         t,
