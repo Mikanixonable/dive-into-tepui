@@ -5,14 +5,11 @@ import { injectCommonUiStyle } from '../hud/style/common-ui-style';
 import {
   injectTitleLogotypeStyle, TITLE_FONT_MONO, TITLE_FONT_SANS,
 } from '../hud/title-logotype';
-import { Z_STAGE_SELECT } from '../theme';
+import { RADIUS_HERO, Z_STAGE_SELECT } from '../theme';
 
 // 声(voice)ごとの書体。Web font が使えない環境でも role ごとのフォールバックを保つ。
 const FONT_SERIF = '"Cormorant Garamond","Zen Old Mincho","Hiragino Mincho ProN","Yu Mincho",serif';
 const FONT_SCRIPT = '"Noto Serif HK","Noto Sans Cuneiform","Source Han Serif HC","Songti TC","Segoe UI Historic",serif';
-
-// TODO: 角丸の段(RADIUS_WINDOW = 22px)に無い値。段へ揃えるか、段として足すかを決める。
-const STAGE_SELECT_WINDOW_RADIUS = '30px';
 
 const STAGE_SELECT_STYLE = `
 #stage-select {
@@ -35,7 +32,7 @@ const STAGE_SELECT_STYLE = `
 #stage-select .ss-3d-window {
   position: relative; width: 100%; height: 100%; min-height: 0;
   overflow: hidden; isolation: isolate; border: 0;
-  border-radius: ${STAGE_SELECT_WINDOW_RADIUS}; background: var(--surface-0);
+  border-radius: ${RADIUS_HERO}; background: var(--surface-0);
   box-shadow: var(--glass-shadow);
 }
 #stage-select .ss-scene {
@@ -107,7 +104,7 @@ const STAGE_SELECT_STYLE = `
   min-height: 0; height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 14px;
   padding: 18px;
-  border-radius: ${STAGE_SELECT_WINDOW_RADIUS};
+  border-radius: ${RADIUS_HERO};
   overflow: hidden;
 }
 #stage-select .ss-stage-qr {

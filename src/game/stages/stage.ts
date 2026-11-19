@@ -28,7 +28,7 @@ import type { HudLayers } from '../hud/hud-layers';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { ObjectAuthoring } from '../pickable/inspected-object';
+import type { PresentationStageAuthoring } from '../presentation-ports';
 import type { EnemyDeathCause, PlayerLossCause, StageOutcome } from './stage-outcome';
 import { ENEMY_MAX_ATTACKERS_PER_GROUP } from '../dynamic/dynamic-entity/enemy-fire-controller';
 import type { StageSimulationEvents } from './stage-simulation-events';
@@ -111,7 +111,7 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   // 艦の軌道計画を自動実行させるか。既定では実行しない。
   public readonly executesPlans: boolean = false;
   // オブジェクトの配置・複製に対応するステージは自身の編集口を返す。既定では非対応。
-  public readonly authoring: ObjectAuthoring | null = null;
+  public readonly authoring: PresentationStageAuthoring | null = null;
 
   protected readonly logistics: Logistics;
   private readonly statusPanel: StatusPanel;
@@ -293,7 +293,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     this.scoreCounter.recordSpawnEnemy();
   }
 
-  // 戦場に現れた敵の数。実体化を待つ敵は、実体化した時点から数える。
   // 戦場に現れた敵の数。実体化を待つ敵は、実体化した時点から数える。
   public get enemiesAppeared(): number {
     return this.scoreCounter.totalEnemiesSpawned - this._dynamicSystem.pendingEnemyCount;

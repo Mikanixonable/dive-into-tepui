@@ -177,7 +177,7 @@ const FORBIDDEN = [
     name: 'モジュール直下の可変値の禁止',
     ref: 'ARCHITECTURE R1・R5',
     pattern: /^let |^export let /gm,
-    targets: ['src/theme.ts', 'src/game/hud/panel-shell.ts'],
+    targets: ['src/theme.ts', 'src/game/hud/panel-chrome.ts'],
     exempt: [],
   },
   {
