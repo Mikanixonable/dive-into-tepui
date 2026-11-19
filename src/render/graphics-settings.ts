@@ -69,6 +69,12 @@ export const GRAPHICS_OPTIONS = {
     ],
     presets: { low: 1, medium: 1, high: 1 },
   },
+  // 被弾の瞬間に視点を揺らす演出(SPEC CAMERA.md「6. 被弾の揺れ」)。画面の揺れが苦手な人のための
+  // 切り替えで、品質プリセットでは変えない。
+  hitShake: {
+    kind: 'toggle', group: 'basic', label: '被弾で画面を揺らす',
+    presets: { low: true, medium: true, high: true },
+  },
   // トーンマッピング後の色へ当てるフィルムのルック。値はルックの名前で、候補は同梱の .cube から
   // 起動時に決まる。
   filmLut: {
