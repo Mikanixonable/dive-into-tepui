@@ -8,24 +8,26 @@
 // 画素から量を復号するために残す — 撮影の入口(cloudLab.views/show/capture)は列のまま使える。
 import { exp, length, texture, vec3 } from 'three/tsl';
 import { equirectUvFromDirection } from '../../src/render/field-projection';
-import { CUMULUS_TOP_ALTITUDE } from '../../src/render/cloud/cloud-kind';
+import { CUMULUS_TOP_ALTITUDE } from '../../src/render/earth-weather/cloud/cloud-kind';
+import { observedCloudTexel } from '../../src/render/earth-weather/cloud/observed-cloud-field';
 import { cirrusFlowColor } from './cirrus-flow-color';
 import {
-  cirrusColumnOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
-} from '../../src/render/cloud/cloud-kind-node';
+  cirrusColumnOpticalDepthNode, cumulusOpacityNode,
+  cumulusTopAltitudeNode,
+} from '../../src/render/earth-weather/cloud/cloud-kind-node';
 import type * as THREE from 'three/webgpu';
-import type { ClimateMap } from '../../src/render/cloud/climate-map';
-import type { CloudSample } from '../../src/render/cloud/cloud-field-sample';
-import type { WeatherModel } from '../../src/render/cloud/weather-model';
-import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
+import type { ClimateMap } from '../../src/render/earth-weather/climate-map';
+import type { CloudSample } from '../../src/render/earth-weather/cloud/cloud-field-sample';
+import type { WeatherModel } from '../../src/render/earth-weather/weather-model';
+import type { FloatNode, Vec2Node, Vec3Node, Vec4Node } from '../../src/render/tsl-types';
 
 export type CloudLabViewId =
   | 'elevation' | 'landFraction' | 'meanCloudiness' | 'meanWind'
   | 'pressure' | 'surfaceWind' | 'traceWind' | 'front' | 'airMass' | 'lift'
   | 'surfaceHumiditySource' | 'upperHumiditySource' | 'convectionSource'
   | 'surfaceHumidity' | 'upperHumidity' | 'convection' | 'convectiveActivity' | 'convectiveDepth'
-  | 'cumulus' | 'cirrus' | 'coverage' | 'cloudTop' | 'translucent' | 'cirrusFlow'
-  | 'composite' | 'photo';
+  | 'cumulus' | 'cirrus' | 'coverage' | 'cumulusCell' | 'cirrusCell' | 'cloudTop' | 'translucent' | 'cirrusFlow'
+  | 'composite' | 'observedComposite' | 'photo';
 
 // reads が 'weather' のビューは天気のモデルと気候の事前分布から直に、'cloud' のビューは焼いた雲の
 // 写しを描画と同じ読み取りで読んで色を組む。'photo' のビューは実写の雲テクスチャを読むだけで、生成の系には
@@ -49,7 +51,16 @@ export type CloudLabView = {
   | { readonly reads: 'weather'; readonly color: (d: Vec3Node, model: WeatherModel, climate: ClimateMap) => Vec3Node }
   | { readonly reads: 'cloud'; readonly color: (d: Vec3Node, cloudAt: CloudAt) => Vec3Node }
   | { readonly reads: 'photo'; readonly color: (d: Vec3Node, photo: THREE.Texture) => Vec3Node }
+  | { readonly reads: 'observed'; readonly color: (d: Vec3Node, field: THREE.Texture) => Vec3Node }
 );
+
+// 積雲と巻雲を 1 枚に重ねた見え — 晴れた空が透ける割合 (1 − 不透明度)·e^(−τ) の補。
+// 加算と違って飽和しない。生成の場にも実写系の場にも同じ式を掛ける。
+function compositeColor(cumulus: FloatNode, cirrus: FloatNode): Vec3Node {
+  const clear = cumulusOpacityNode(cumulus).oneMinus()
+    .mul(exp(cirrusColumnOpticalDepthNode(cirrus).negate()));
+  return vec3(clear.oneMinus());
+}
 
 // 表示値 0..1 へ写すときの目盛り。雲頂高度は積雲の上端高度まで、巻雲の光学的厚みは 0..1、気圧は
 // −70..+30 hPa、上昇流は ±0.1 m/s を、対流は ±0.5 をそれぞれ 0.5 中心に、対流の峰(対流 × 活発度、
@@ -65,10 +76,14 @@ const TRANSLUCENT_SPAN = 1;
 const PRESSURE_MIN = -70;
 const PRESSURE_SPAN = 100;
 const LIFT_SPAN = 0.1;
-const FRONT_SPAN = 8;
 const WARMTH_SPAN = 0.4;
 const WIND_SPAN = 45;
 const ELEVATION_SPAN = 8000;
+// セル径の目盛り。場へ焼く値は log2(km) の生値なので、積雲は 1..256 km(log2 で 0..8)、巻雲は
+// 0.5..64 km(log2 で −1..6)を 0..1 へ写す。
+const CUMULUS_CELL_LOG2_SPAN = 8;
+const CIRRUS_CELL_LOG2_MIN = -1;
+const CIRRUS_CELL_LOG2_SPAN = 7;
 
 // 風 [m/s] の東・北成分を 0.5 中心の RG に、速さを B に。
 function windColor(wind: Vec2Node): Vec3Node {
@@ -104,8 +119,8 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     legend: WIND_LEGEND,
     color: (d, model) => windColor(model.traceWindAt(d)) },
   { id: 'front', label: '前線', reads: 'weather',
-    legend: { text: '気団の圧縮の 1 を超えた分 — 0..8(白いほど前線が強い)' },
-    color: (d, model) => vec3(model.weatherAt(d).compression.sub(1).div(FRONT_SPAN)) },
+    legend: { text: '谷の骨格から立つ前線の帯の強さ 0..1(白いほど前線が強い)' },
+    color: (d, model) => vec3(model.weatherAt(d).front) },
   { id: 'airMass', label: '気団', reads: 'weather',
     legend: { text: '暖気の流入 [rad] — ±0.4 を 0.5 中心へ(明るいほど暖気)' },
     color: (d, model) => vec3(model.weatherAt(d).warmth.div(2 * WARMTH_SPAN).add(0.5)) },
@@ -148,6 +163,13 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
   { id: 'coverage', label: '積雲の不透明度', reads: 'cloud',
     legend: { text: '積雲の不透明度 0..1 = 1−exp(−量/0.12) — 描画が読む量' },
     color: (d, cloudAt) => vec3(cumulusOpacityNode(cloudAt(d).cumulus)) },
+  // 対流セルの大きさ。場の値は log2(km) なので、明るいほど大きいセル。
+  { id: 'cumulusCell', label: '積雲のセル径', reads: 'cloud',
+    legend: { text: '積雲のセル径 [km] — log2 で 0..8(1..256 km)' },
+    color: (d, cloudAt) => vec3(cloudAt(d).cumulusCell.div(CUMULUS_CELL_LOG2_SPAN)) },
+  { id: 'cirrusCell', label: '巻雲のセル径', reads: 'cloud',
+    legend: { text: '巻雲の要素径 [km] — log2 で −1..6(0.5..64 km)' },
+    color: (d, cloudAt) => vec3(cloudAt(d).cirrusCell.sub(CIRRUS_CELL_LOG2_MIN).div(CIRRUS_CELL_LOG2_SPAN)) },
   { id: 'cloudTop', label: '積雲の雲頂', reads: 'cloud', hidden: true,
     legend: { text: '積雲の雲頂 [m] — 0..17000(量の単調変換)' },
     color: (d, cloudAt) => vec3(cumulusTopAltitudeNode(cloudAt(d).cumulus).div(CUMULUS_TOP_ALTITUDE)) },
@@ -161,15 +183,20 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
       swatches: [['#00ffff', '東西'], ['#8000ff', '北東—南西'], ['#ff0000', '南北']],
     },
     color: (d, cloudAt) => cirrusFlowColor(cloudAt(d).cirrusFlow) },
-  // 積雲と巻雲を 1 枚に重ねた見え。晴れた空が透ける割合 (1 − 不透明度)·e^(−τ) の補で、
-  // 加算と違って飽和しない。実写と見比べるための面で、描画側の合成の仕様ではない。
+  // 積雲と巻雲を 1 枚に重ねた見え。実写と見比べるための面で、描画側の合成の仕様ではない。
   { id: 'composite', label: '合成', reads: 'cloud',
     legend: { text: '積雲+巻雲の合成 — 実写と見比べる面' },
     color: (d, cloudAt) => {
       const cloud = cloudAt(d);
-      const clear = cumulusOpacityNode(cloud.cumulus).oneMinus()
-        .mul(exp(cirrusColumnOpticalDepthNode(cloud.cirrus).negate()));
-      return vec3(clear.oneMinus());
+      return compositeColor(cloud.cumulus, cloud.cirrus);
+    } },
+  // 実写系(衛星写真から分離した雲場 cloud-field.png)へ同じ合成を掛けた見え — ゲームで実写を
+  // 選んだときに雲場が出す姿。地表の色や照明の手前の、雲自身の覆い方。
+  { id: 'observedComposite', label: '実写系の合成', reads: 'observed',
+    legend: { text: '実写系の雲場(cloud-field.png)を生成と同じ合成で — ゲームの実写モードの見え' },
+    color: (d, field) => {
+      const texel = observedCloudTexel(texture(field, equirectUvFromDirection(d)) as Vec4Node);
+      return compositeColor(texel.r, texel.g);
     } },
   { id: 'photo', label: '実写', reads: 'photo',
     legend: { text: '実写(8k_clouds.jpg)— 生成と同じ図法・同じ置き方' },

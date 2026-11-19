@@ -14,7 +14,7 @@ import { DEFAULT_GRAPHICS, withGraphicsOption } from '../../src/render/graphics-
 import type { AtmosphereBody, AtmosphereDraw } from '../../src/render/atmosphere';
 import type { PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
-import type { CloudFieldSlot } from '../../src/render/cloud/cloud-field-sample';
+import type { CloudFieldSlot } from '../../src/render/earth-weather/cloud/cloud-field-sample';
 import type { CloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-select';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type {
@@ -49,6 +49,7 @@ interface RecordedTargets extends IlluminationTargets {
   readonly cloudCasters: (ShadowCloud | null)[];
   readonly cloudKinds: CloudShadowKinds[];
   readonly ambientFractions: number[];
+  readonly nightObservations: { center: THREE.Vector3; radius: number; fraction: number }[];
   readonly sunPositions: THREE.Vector3[];
 }
 
@@ -74,6 +75,7 @@ function recordingTargets(): RecordedTargets {
   const cloudCasters: (ShadowCloud | null)[] = [];
   const cloudKinds: CloudShadowKinds[] = [];
   const ambientFractions: number[] = [];
+  const nightObservations: { center: THREE.Vector3; radius: number; fraction: number }[] = [];
   return {
     sunLight,
     bodyShadow: new BodyShadow(sunLight),
@@ -86,7 +88,12 @@ function recordingTargets(): RecordedTargets {
       },
     },
     planetLight: { set: (lights: readonly PlanetLightValue[]) => { planetLights.push([...lights]); } },
-    ambient: { setFraction: (fraction: number) => { ambientFractions.push(fraction); } },
+    ambient: {
+      setFraction: (fraction: number) => { ambientFractions.push(fraction); },
+      setNightObservation: (center: THREE.Vector3, radius: number, fraction: number) => {
+        nightObservations.push({ center: center.clone(), radius, fraction });
+      },
+    },
     atmosphere: { setDraws: (draws: readonly AtmosphereDraw[]) => { atmosphereDraws.push([...draws]); } },
     sunExtinction: { set: (bodies: readonly AtmosphereBody[]) => { extinctionBodies.push([...bodies]); } },
     skyLight: { set: (bodies: readonly AtmosphereBody[]) => { skyBodies.push([...bodies]); } },
@@ -97,6 +104,7 @@ function recordingTargets(): RecordedTargets {
     cloudCasters,
     cloudKinds,
     ambientFractions,
+    nightObservations,
     sunPositions: sunLight.positions,
   };
 }
@@ -148,6 +156,7 @@ function atmosphereView(): CelestialIlluminationView {
       distance: 2e7,
       metersPerPixel: 1e4,
     }),
+    nightObservationRadius: () => null,
   };
 }
 
@@ -159,6 +168,7 @@ function plainView(): CelestialIlluminationView {
     rings: () => null,
     cloudShadowAt: () => null,
     atmosphereCandidateAt: () => null,
+    nightObservationRadius: () => null,
   };
 }
 
@@ -254,11 +264,44 @@ export function register(): void {
       withGraphicsOption(DEFAULT_GRAPHICS, 'cloudShadow', false), null, v3(1, 0, 0));
     assert.equal(targets.cloudCasters[1], null, '雲の影オフで影の源が置かれた');
   });
+
+  test('celestial-illumination: 「夜側の観察」は、観察球を差し出す天体へだけ強化を書き込む', () => {
+    const targets = recordingTargets();
+    const illumination = new CelestialIllumination(null, targets);
+    const camera = cameraFrame();
+    const observationView: CelestialIlluminationView = {
+      ...plainView(),
+      nightObservationRadius: (motion) => motion.def.radius * 1.1,
+    };
+    const position = v3(4e7, 0, 0);
+    const sources = [
+      source(body('observed', 6e6, position), observationView),
+      source(body('other', 1e6, v3()), plainView()),
+    ];
+    const on = withGraphicsOption(DEFAULT_GRAPHICS, 'nightObservation', true);
+
+    illumination.sync(sources, 0, camera, on, null, v3(1, 0, 0));
+
+    const feed = targets.nightObservations[0]!;
+    assert.ok(feed.fraction > 0, '観察をオンにしても強化が届いていない');
+    assert.ok(Math.abs(feed.radius - 6e6 * 1.1) < 1, '観察球の半径が表示の返した値と違う');
+    assert.deepEqual(
+      feed.center.toArray(), camera.floatingOrigin.RtoThreeV3(position).toArray(),
+      '観察球の中心が天体の位置と違う');
+
+    // 設定を切れば強化は消え、差し出す天体が無ければ球は置かれない。
+    illumination.sync(sources, 0, camera, DEFAULT_GRAPHICS, null, v3(1, 0, 0));
+    assert.equal(targets.nightObservations[1]!.fraction, 0, '設定オフでも強化が残った');
+    illumination.sync(
+      [source(body('other', 1e6, v3()), plainView())], 0, camera, on, null, v3(1, 0, 0));
+    assert.equal(targets.nightObservations[2]!.fraction, 0, '差し出す天体が無いのに強化が書かれた');
+  });
 }
 
 // 雲の影の源が実在することだけを見るので、中身は読まれない置き場でよい。
 const SHADOW_CLOUD_SLOT: CloudFieldSlot = {
-  cloud: new THREE.Texture(), motion: new THREE.Texture(), environment: new THREE.Texture(),
+  cloud: new THREE.Texture(), motion: new THREE.Texture(),
+  environment: new THREE.Texture(), cellSize: new THREE.Texture(),
 };
 const SHADOW_CLOUD: ShadowCloud = {
   center: new THREE.Vector3(),

@@ -4,8 +4,8 @@
 // 真偽は独立した描画物を消すもの、選択肢は品質と負荷を刻む値か見え方を選ぶ値。
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
-import { CIRRUS_DETAIL } from './cloud/cloud-detail';
-import { CLOUD_FIELD_SOURCE_KIND } from './cloud/cloud-presentation';
+import { CIRRUS_DETAIL } from './earth-weather/cloud/cloud-detail';
+import { CLOUD_FIELD_SOURCE_KIND } from './earth-weather/cloud/cloud-presentation';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
@@ -192,6 +192,12 @@ export const GRAPHICS_OPTIONS = {
   ambient: {
     kind: 'toggle', group: 'light', label: '環境光',
     presets: { low: true, medium: true, high: true },
+  },
+  // 地球の球の内側へだけ届く強めの環境光を足すか。夜側の地表と雲の配置を読むための観察補助で、
+  // 地球以外の天体や地球の外にいる物へは届かない。
+  nightObservation: {
+    kind: 'toggle', group: 'light', label: '夜側の観察',
+    presets: { low: false, medium: false, high: false },
   },
   // 建造中にカメラへ追従して船体を照らす作業灯。建造中でなければ点かない。
   constructionWorkLight: {

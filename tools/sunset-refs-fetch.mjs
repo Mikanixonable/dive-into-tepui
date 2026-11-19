@@ -1,14 +1,14 @@
 // 夕景・昼夜境界の実写参照をパブリックドメインの供給元から取り込む道具。
 // NASA 画像 API(images-api.nasa.gov)で検索し、項目の collection.json(images-assets.nasa.gov)
-// から適度な大きさの JPG を .cloud-detail/sunset-ref/ へ保存する。出典とライセンスは
+// から適度な大きさの JPG を .cloud-lab/sunset-ref/ へ保存する。出典とライセンスは
 // SOURCES.md へ書く。NASA の画像は特記の無い限りパブリックドメイン。
 //   使い方: node tools/sunset-refs-fetch.mjs — 引数は無し。
-// 取り込み先は git 管理外(.cloud-detail/ は .gitignore 済み)。
+// 取り込み先は git 管理外(.cloud-lab/ は .gitignore 済み)。
 import path from 'node:path';
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const outDir = path.join(root, '.cloud-detail', 'sunset-ref');
+const outDir = path.join(root, '.cloud-lab', 'sunset-ref');
 
 // 許可された供給元のドメイン(指定のものだけ)。
 const ALLOWED_HOSTS = new Set([

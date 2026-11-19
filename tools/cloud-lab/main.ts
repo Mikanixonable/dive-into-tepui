@@ -9,10 +9,16 @@ import { buildFramingRow } from './framing-controls';
 import { buildTimeControls } from './time-controls';
 import type { Framing, SynopticLayers } from './synoptic-map';
 import { buildButtonRow, buildCheckbox } from '../lab-controls';
+import { CLOUD_TUNING, CLOUD_TUNING_DEFAULTS, type CloudTuningId } from '../../src/render/earth-weather/cloud/cloud-tuning';
+import { GENERATION_PARAMS } from './generation-params';
+import { buildParamPanel } from './param-panel';
+import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
-import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import { LOW_COUNT, lowPlacementAt, tropicalPlacementAt } from '../../src/render/cloud/cyclone-tracks';
-import type { CyclonePlacement } from '../../src/render/cloud/cyclone-tracks';
+import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
+import { LOW_COUNT, lowPlacementAt } from '../../src/render/earth-weather/low-tracks';
+import { TROPICAL_COUNT, tropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
+import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
+import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 
 // 写す表示。GPU の写し(CLOUD_LAB_VIEWS)に、2D canvas へ焼く天気図モードを足す。
 type ViewChoice = CloudLabViewId | 'synoptic';
@@ -45,11 +51,17 @@ declare global {
       setTime: (hours: number) => void;
       aimCap: (latitude: number, longitude: number, radius: number) => void;
       capture: () => Promise<string>;
-      // 時刻 [h] の低気圧の谷の配置。撮影の駆動が中心の位置を統計の範囲の切り分けに使う。
+      // 時刻 [h] の低気圧の谷と高気圧の丘の配置。撮影の駆動が中心の位置を統計の範囲の
+      // 切り分けに使う。
       cyclonesAt: (hours: number) => {
-        readonly tropical: CyclonePlacement | null;
-        readonly lows: readonly (CyclonePlacement | null)[];
+        readonly tropicals: readonly (PressurePlacement | null)[];
+        readonly lows: readonly (PressurePlacement | null)[];
+        readonly highs: readonly (PressurePlacement | null)[];
       };
+      // モデルの調整値。いまの全値を返すものと、渡した値を適用して焼き直すもの — 戻った時点で
+      // 焼き直し済みなので、続けて capture すれば新しい値の場が撮れる。
+      params: () => Record<string, number>;
+      setParams: (next: Record<string, number>) => void;
     };
   }
 }
@@ -133,6 +145,122 @@ async function init(): Promise<void> {
     (mode) => selectView(mode === 'synoptic' ? 'synoptic' : lastCloudView));
   const markView = buildButtonRow<CloudLabViewId>('views', entries, selectView);
 
+  // モデルの調整値(uniform)をいじる行。スライダー・JSON 欄・uniform を揃えてから焼き直す。
+  // 焼き直しは雲場 1 面ぶんの費用が掛かるので、ドラッグ中は止めず最後の変更から少し待って
+  // 1 回だけ走らせる(uniform 自体は即時に書き変わり、天気の写しは焼き直しを待たずに乗る)。
+  const setSliders = new Map<CloudTuningId, (value: number) => void>();
+  const paramsBox = document.createElement('textarea');
+  let bakeTimer: number | null = null;
+  let overridesSyncTimer: number | null = null;
+  const rebake = (): void => {
+    canvas.invalidate();
+    if (currentView !== 'synoptic') canvas.render();
+  };
+  // rebakeNow は撮影口(window.cloudLab.setParams)のためのもの — 返った時点で焼き直しが
+  // 済んでいることにして、呼び側がそのまま capture できるようにする。
+  const applyParams = (next: Partial<Record<CloudTuningId, number>>, rebakeNow = false): void => {
+    for (const [id, value] of Object.entries(next) as [CloudTuningId, number][]) {
+      if (!(id in CLOUD_TUNING_DEFAULTS) || typeof value !== 'number' || !Number.isFinite(value)) continue;
+      CLOUD_TUNING[id].value = value;
+      setSliders.get(id)!(value);
+    }
+    paramsBox.value = JSON.stringify(Object.fromEntries(
+      Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])));
+    if (bakeTimer !== null) window.clearTimeout(bakeTimer);
+    if (rebakeNow) rebake();
+    else bakeTimer = window.setTimeout(rebake, 250);
+    scheduleOverridesSync();
+  };
+  for (const [id, setSlider] of buildParamPanel(
+    document.getElementById('p-panel')!, GENERATION_PARAMS, CLOUD_TUNING_DEFAULTS,
+    (id) => String(CLOUD_TUNING[id].value), (id, value) => applyParams({ [id]: value }))) {
+    setSliders.set(id, setSlider);
+  }
+
+  // 調整の共有用: いまの全パラメータの JSON。編集して「適用」で戻せる。「リセット」は既定値へ。
+  const paramsRow = document.getElementById('p-json')!;
+  paramsRow.appendChild(paramsBox);
+  const copyButton = document.createElement('button');
+  copyButton.textContent = 'コピー';
+  copyButton.addEventListener('click', () => { void navigator.clipboard.writeText(paramsBox.value); });
+  const applyButton = document.createElement('button');
+  applyButton.textContent = '適用';
+  applyButton.addEventListener('click', () => {
+    try {
+      applyParams(JSON.parse(paramsBox.value) as Partial<Record<CloudTuningId, number>>);
+    } catch (e) {
+      document.getElementById('error')!.textContent = `パラメータの JSON が読めない: ${String(e)}`;
+    }
+  });
+  const resetButton = document.createElement('button');
+  resetButton.textContent = 'リセット';
+  resetButton.addEventListener('click', () => applyParams({ ...CLOUD_TUNING_DEFAULTS }));
+  // いまの値のうち既定値と違う項目を、開発サーバの窓口(tools/cloud-lab-apply-tuning.cjs)へ送る。
+  // 'overrides' は git 管理外の上書きファイルへ書き、実行中のゲーム(npm run dev)がそのまま
+  // 拾って反映する。「既定値へ確定」は cloud-tuning.ts の既定値を書き換える。
+  const reflectResult = document.createElement('span');
+  const changedIds = (): CloudTuningId[] => (Object.keys(CLOUD_TUNING_DEFAULTS) as CloudTuningId[])
+    .filter((id) => CLOUD_TUNING[id].value !== CLOUD_TUNING_DEFAULTS[id]);
+  const sendToServer = async (
+    target: 'defaults' | 'overrides', ids: readonly CloudTuningId[],
+  ): Promise<void> => {
+    const response = await fetch('/__cloud-lab/apply-tuning', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target, values: Object.fromEntries(ids.map((id) => [id, CLOUD_TUNING[id].value])) }),
+    });
+    if (response.status === 404) throw new Error('開発サーバ(npm run cloud-lab)でだけ使える');
+    const body = await response.json() as { error?: string };
+    if (!response.ok) throw new Error(body.error ?? String(response.status));
+  };
+  const addServerButton = (label: string, title: string, run: () => Promise<string | null>): HTMLButtonElement => {
+    const button = document.createElement('button');
+    button.textContent = label;
+    button.title = title;
+    button.addEventListener('click', () => {
+      document.getElementById('error')!.textContent = '';
+      run().then((message) => {
+        if (message !== null) reflectResult.textContent = message;
+      }).catch((e: unknown) => {
+        document.getElementById('error')!.textContent = `${label}に失敗: ${String(e)}`;
+      });
+    });
+    return button;
+  };
+  // スライダー・JSON 欄の変更は、そのままゲームの上書きファイルへ流す — いじった値が
+  // そのまま実行中のゲーム(npm run dev)で見える。書き込みは少し待って最後の1回に畳む。
+  function scheduleOverridesSync(): void {
+    if (overridesSyncTimer !== null) window.clearTimeout(overridesSyncTimer);
+    overridesSyncTimer = window.setTimeout(() => {
+      overridesSyncTimer = null;
+      sendToServer('overrides', changedIds()).then(() => {
+        reflectResult.textContent = 'ゲームへ反映した';
+      }).catch((e: unknown) => {
+        reflectResult.textContent = `ゲームへの反映に失敗: ${String(e)}`;
+      });
+    }, 300);
+  };
+  const commitDefaults = addServerButton(
+    '既定値へ確定', '既定値と違う項目を cloud-tuning.ts の既定値へ書き込む。git に差分が出る(開発サーバのみ)',
+    async () => {
+      const ids = changedIds();
+      if (ids.length === 0) return '既定値と違う項目はない';
+      const list = ids.map((id) => `${id}: ${CLOUD_TUNING_DEFAULTS[id]} → ${CLOUD_TUNING[id].value}`).join('\n');
+      if (!window.confirm(`cloud-tuning.ts の既定値へ書き込む(${ids.length} 項目)\n\n${list}`)) return null;
+      await sendToServer('defaults', ids);
+      return `${ids.length} 項目を既定値へ書き込んだ`;
+    });
+  paramsRow.append(copyButton, applyButton, resetButton, commitDefaults, reflectResult);
+  applyParams(Object.fromEntries(
+    Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])) as Record<CloudTuningId, number>);
+
+  // 最後に回した比較の評価値。撮影つきの比較(CLI)の結果なので、いま開いているパラメータの
+  // 評価ではない — 未実行ならその旨だけ出す。
+  const score = document.getElementById('score')!;
+  void latestReportText('compare/latest.json').then((text) => {
+    score.textContent = text ?? '評価 — (cloud-lab:compare 未実行)';
+  });
+
   markMode('cloud');
   markView(canvas.currentView);
   showLegend(CLOUD_LAB_VIEWS.find((view) => view.id === canvas.currentView)!.legend);
@@ -156,9 +284,13 @@ async function init(): Promise<void> {
       return mapCanvas.toDataURL('image/png');
     },
     cyclonesAt: (hours) => ({
-      tropical: tropicalPlacementAt(hours * SECONDS_PER_HOUR),
-      lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * SECONDS_PER_HOUR, R_EARTH)),
+      tropicals: Array.from(
+        { length: TROPICAL_COUNT }, (_, index) => tropicalPlacementAt(index, hours * SECONDS_PER_HOUR, SIDEREAL_DAY)),
+      lows: Array.from({ length: LOW_COUNT }, (_, index) => lowPlacementAt(index, hours * SECONDS_PER_HOUR, R_EARTH, SIDEREAL_DAY)),
+      highs: Array.from({ length: HIGH_COUNT }, (_, index) => highPlacementAt(index, hours * SECONDS_PER_HOUR, R_EARTH)),
     }),
+    params: () => Object.fromEntries(Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])),
+    setParams: (next) => applyParams(next, true),
   };
 }
 
