@@ -5,7 +5,7 @@
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CIRRUS_DETAIL } from './earth-weather/cloud/cloud-detail';
-import { CLOUD_FIELD_SOURCE_KIND } from './earth-weather/cloud/cloud-presentation';
+import { CLOUD_FIELD_SOURCE_KIND } from './earth-weather/cloud/cloud-field-source';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
