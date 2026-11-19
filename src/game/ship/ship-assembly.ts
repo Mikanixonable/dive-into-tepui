@@ -1,9 +1,9 @@
 // 船体モジュールの木構造、接続変換、可変状態と分割・統合操作を所有する。
 import { mulberry32 } from '../../math/random';
 import {
-  LOCAL_UP, Q_IDENTITY, qFromAxisAngle, qMul, qRotate,
+  LOCAL_UP, Q_IDENTITY, qFromAxisAngle, qMul,
 } from '../../math/quat';
-import { add, v3 } from '../../math/vec3';
+import { v3 } from '../../math/vec3';
 import {
   SHIP_MODULE_CATALOG, type ShipModuleCatalog,
 } from './ship-module-catalog';
@@ -23,8 +23,8 @@ import { shipAssemblyTotals } from './ship-assembly-totals';
 import { validateShipAssembly } from './ship-assembly-validation';
 import { pieceOfModule, rerootedAssembly } from './ship-assembly-graft';
 import {
-  copyTransform, finiteQuaternion, finiteVector, isIdentityRotation, normalizedTransform,
-  sideMountTransform, sideSlotFromTransform,
+  applyTransformToPoint, copyTransform, finiteQuaternion, finiteVector, isIdentityRotation,
+  normalizedTransform, sideMountTransform, sideSlotFromTransform,
 } from './ship-assembly-transform';
 
 export { isDockingModule, SIDE_SLOTS } from './ship-assembly-types';
@@ -663,7 +663,7 @@ export class ShipAssembly {
     if (parent === null) return null;
     const local = node.transform;
     return {
-      position: add(parent.position, qRotate(parent.rotation, local.position)),
+      position: applyTransformToPoint(parent, local.position),
       rotation: qMul(parent.rotation, local.rotation),
     };
   }
