@@ -57,6 +57,14 @@ for (const relative of files) {
    }
  }
  
+// compact の下部PREDICTは内容高が可変なので、固定dvh予約へ戻さない。
+for (const relative of files) {
+  const text = fs.readFileSync(path.join(root, relative), 'utf8');
+  if (text.includes('--hud-map-rail-bottom')) {
+    violations.push(`${relative}: use measured --hud-predict-bottom-occupied instead of fixed --hud-map-rail-bottom`);
+  }
+}
+
 // rail自身が唯一の通常スクロール所有者であることをソースでも保証する。
 // 大量リスト等の内部スクロールは panel root ではなく、その本文要素が所有する。
 if (!/#hud \.hud-rail\s*\{[\s\S]*?overflow-y:\s*auto/.test(skeleton)) {

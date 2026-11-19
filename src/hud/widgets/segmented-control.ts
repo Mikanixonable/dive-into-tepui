@@ -8,17 +8,15 @@ export class SegmentedControl<T> {
   public readonly element: HTMLElement;
   private readonly buttons = new Map<T, Button>();
   private items: readonly (readonly [T, string, string?])[] = [];
-  private readonly onSelect: (value: T) => void;
 
   // items は [値, 表示ラベル, 任意のアイコンマークアップ] の並びで、その順にボタンを並べる。
-  public constructor(title: string, items: readonly (readonly [T, string, string?])[], onSelect: (value: T) => void) {
-    this.onSelect = onSelect;
+  public constructor(title: string, items: readonly (readonly [T, string, string?])[], private readonly onSelect: (value: T) => void) {
     this.element = buildLabeledRow(title);
     // 初期のボタン列を組む。
     this.setItems(items);
   }
 
-  // 選択中の値を点灯させる。候補外の値(ラベルメニューから選んだフォーカスなど)と null では全消灯になる。
+  // 選択中の値を点灯させる。候補外の値(プルダウンから選んだフォーカスなど)と null では全消灯になる。
   public setSelected(value: T | null): void {
     for (const [v, btn] of this.buttons) btn.setOn(v === value);
   }
@@ -31,7 +29,7 @@ export class SegmentedControl<T> {
   // ボタン列を items へ一括で差し替える(見出しは保持)。無効化ではなく
   // 状況に応じて選択肢の候補群自体を動的に絞り込む用途に用いる。
   public setItems(items: readonly (readonly [T, string, string?])[]): void {
-    // 同じ内容なら作り直さない — 差し替えると押しかけのボタンが消えてクリックが届かなくなる。
+    // 同じ内容なら作り直さない — 差し替えると押下中のボタンが消えてクリックが届かなくなる。
     const same = (triple: readonly [T, string, string?], i: number): boolean => {
       const cur = this.items[i];
       return cur !== undefined && triple[0] === cur[0] && triple[1] === cur[1] && triple[2] === cur[2];

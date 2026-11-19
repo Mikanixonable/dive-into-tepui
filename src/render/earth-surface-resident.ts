@@ -1,5 +1,5 @@
 // 地表タイルの要求、同一層への色・地形投入、ページ表公開を1フレーム境界へ束ねる。
-import {
+import type {
   EarthSurfaceTiles,
 } from './earth-surface-tiles';
 import { EARTH_BASE_LAYER, EARTH_TILE_LAYERS, earthTileId } from './earth-surface-tile-key';
@@ -7,14 +7,14 @@ import type { EarthTileKey } from './earth-surface-tile-key';
 import type { EarthTileResident } from './earth-surface-tiles';
 import type { EarthTileProjection } from './earth-surface-tile-projection';
 import { closeEarthSurfaceImage } from './earth-surface-tile-decode';
-import { EarthSurfaceGpuAdapter } from './earth-surface-gpu';
+import type { EarthSurfaceGpuAdapter } from './earth-surface-gpu';
 import type { EarthLayerReservation, EarthSurfaceGpuTextures } from './earth-surface-gpu';
-import { EarthSurfaceTileRequestQueue } from './earth-surface-tile-queue';
+import type { EarthSurfaceTileRequestQueue } from './earth-surface-tile-queue';
 
 export type EarthSurfaceColorToRgba8 =
   (color: unknown, key: EarthTileKey) => Uint8Array | Promise<Uint8Array>;
 
-export interface EarthSurfaceResidentCoordinatorDependencies {
+interface EarthSurfaceResidentCoordinatorDependencies {
   readonly tiles: EarthSurfaceTiles;
   readonly queue: EarthSurfaceTileRequestQueue;
   readonly gpu: EarthSurfaceGpuAdapter;
@@ -30,7 +30,7 @@ export interface EarthSurfaceResidentFrame {
   readonly frame?: number;
 }
 
-export interface EarthSurfaceResidentFrameResult {
+interface EarthSurfaceResidentFrameResult {
   readonly frontier: readonly EarthTileResident[];
   readonly requested: readonly EarthTileKey[];
   readonly published: boolean;
@@ -138,18 +138,12 @@ export class EarthSurfaceResidentCoordinator {
 
     const visible = this.dependencies.tiles.requestCandidates(input.projection);
     const prefetch = this.dependencies.tiles.prefetchCandidates(input.projection, visible);
-    const residents = this.dependencies.gpu.mode === 'tiles' ? this.dependencies.gpu.uploadedTiles() : [];
+    const residents = this.dependencies.gpu.uploadedTiles();
     this.dependencies.tiles.sync(input.projection, residents, input.timeMs, visible);
     this.lastProjection = input.projection;
     this.lastGeneration = input.generation;
     this.lastTimeMs = input.timeMs;
     this.lastResidentRevision = this.residentRevision;
-    if (this.dependencies.gpu.mode === 'base') {
-      this.lastResult = {
-        frontier: this.dependencies.tiles.frontier.slice(), requested: [], published: false,
-      };
-      return this.lastResult;
-    }
     const page = this.dependencies.tiles.pageTable();
     this.touchPinned(page);
     this.dependencies.gpu.stagePageTable(page);
@@ -372,4 +366,3 @@ export class EarthSurfaceResidentCoordinator {
   }
 }
 
-export { EarthSurfaceResidentCoordinator as EarthSurfaceResident };

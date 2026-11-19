@@ -48,12 +48,12 @@ export class OrbitAnalysisWindow {
 
   // (clientX, clientY) にウィンドウを開き、高度タブを選んだ状態にする。
   public constructor(
-    root: HTMLElement, clientX: number, clientY: number, overlayManager: OverlayManager,
+    clientX: number, clientY: number, overlayManager: OverlayManager,
   ) {
     // ウィンドウの器。
     injectOnce('orbit-analysis-window', STYLE);
     this.win = new DraggableWindow(
-      root, clientX, clientY,
+      clientX, clientY,
       { title: '軌道分析', initiallyClipped: true, unclippedWindowGroup: UNCLIPPED_WINDOW_GROUP }, overlayManager,
     );
     this.win.element.classList.add('orbit-analysis');

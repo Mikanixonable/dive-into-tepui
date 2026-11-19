@@ -1,24 +1,25 @@
 // 展開式ラジエーターの状態・放熱面・接触代理を、搭載 module の変換から求める。
-import type { Attitude } from '../../physics/attitude';
+import { pointVelocityLocal, type Attitude } from '../../physics/attitude';
 import { qRotate } from '../../math/quat';
-import { add, cross, dot, v3, type Vec3 } from '../../math/vec3';
-import { radiatorPanelLayout } from '../../physics/ship-panel-layout';
+import { add, dot, v3, type Vec3 } from '../../math/vec3';
+import { deployablePanelPoses } from '../../physics/ship-panel-layout';
 import { RADIATOR_FOLD_COUNT, RADIATOR_PANEL_WIDTH, RADIATOR_SEGMENT_LENGTH } from '../../physics/player-shape';
 import { kinematicState } from '../../physics/kinematic-state';
 import type { Contact } from '../dynamic/dynamic-entity/contact';
 import { ContactProxy } from '../dynamic/contact-proxy';
 import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 import type { ShipAssembly } from '../ship/ship-assembly';
+import { applyTransformToDirection, applyTransformToPoint } from '../ship/ship-assembly-transform';
 import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
-export const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
+const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
 const RADIATOR_CONTACT_DEPLOY = 0.15; // これ以上展開していると被弾対象になる展開度
 const RADIATOR_FOLD_MASS = 5; // 接触で押し合うときの、蛇腹1折りの質量 [kg]
 
 export type RadiatorSide = 'up' | 'down';
 
-export interface SerializedRadiatorPanel {
+interface SerializedRadiatorPanel {
   readonly id: string;
   readonly state: SerializedDeployablePanelState;
 }
@@ -81,8 +82,8 @@ export class RadiatorSystem {
   }
 
   // assembly の radiator module ID へ状態を結び付ける。互換スロット名（up/down）は接続順へ移譲する。
-  public syncAssembly(assembly: ShipAssembly = this.assemblyValue as ShipAssembly): void {
-    if (assembly === null || assembly === undefined) return;
+  public syncAssembly(assembly: ShipAssembly | null = this.assemblyValue): void {
+    if (assembly === null) return;
     this.assemblyValue = assembly;
     const old = new Map(this.panels);
     const radiators = assembly.modules.filter(module => module.kind === 'radiator');
@@ -154,8 +155,8 @@ export class RadiatorSystem {
       return { center: layout.center, normal: qRotate(att.q, layout.normal) };
     }
     return {
-      center: add(transform.position, qRotate(transform.rotation, layout.center)),
-      normal: qRotate(att.q, qRotate(transform.rotation, layout.normal)),
+      center: applyTransformToPoint(transform, layout.center),
+      normal: qRotate(att.q, applyTransformToDirection(transform, layout.normal)),
     };
   }
 
@@ -163,7 +164,7 @@ export class RadiatorSystem {
     let area = 0;
     for (const [key, state] of this.panels) {
       const panelArea = this.panelArea(key, totalCoolingRate) / RADIATOR_FOLD_COUNT;
-      for (const layout of radiatorPanelLayout(this.moduleLength(key), state.value)) {
+      for (const layout of deployablePanelPoses('radiator', this.moduleLength(key) / 2, state.value)) {
         const world = this.worldPanel(key, layout, att);
         area += RADIATOR_SOLAR_ABSORB * panelArea * Math.abs(dot(world.normal, sunDir));
       }
@@ -185,15 +186,15 @@ export class RadiatorSystem {
       if (state.value < RADIATOR_CONTACT_DEPLOY || (this.wear.get(key) ?? 0) >= 1) continue;
       const proxies = this.foldProxies.get(key) ?? [];
       this.foldProxies.set(key, proxies);
-      const layouts = radiatorPanelLayout(this.moduleLength(key), state.value);
+      const layouts = deployablePanelPoses('radiator', this.moduleLength(key) / 2, state.value);
       const transform = this.assemblyValue?.worldTransformOf(key);
       for (let i = 0; i < layouts.length; i++) {
         const layout = layouts[i];
         if (layout === undefined) continue;
         const assemblyOffset = transform === null || transform === undefined
-          ? layout.center : add(transform.position, qRotate(transform.rotation, layout.center));
+          ? layout.center : applyTransformToPoint(transform, layout.center);
         const worldPos = add(shipR, qRotate(att.q, assemblyOffset));
-        const worldVel = add(shipV, qRotate(att.q, cross(att.w, assemblyOffset)));
+        const worldVel = pointVelocityLocal(shipV, att, assemblyOffset);
         const known = proxies[i];
         const world = kinematicState<'eci'>(t, worldPos, worldVel);
         const fold = known ?? new ContactProxy(
@@ -215,12 +216,12 @@ export class RadiatorSystem {
   public tipWorldPosition(sideOrId: RadiatorSide | string, shipR: Vec3, att: Attitude): Vec3 {
     const key = this.key(sideOrId);
     if (key === null) return v3(shipR.x, shipR.y, shipR.z);
-    const layouts = radiatorPanelLayout(this.moduleLength(key), this.panels.get(key)?.value ?? 0);
+    const layouts = deployablePanelPoses('radiator', this.moduleLength(key) / 2, this.panels.get(key)?.value ?? 0);
     const layout = layouts[layouts.length - 1];
     if (layout === undefined) return v3(shipR.x, shipR.y, shipR.z);
     const transform = this.assemblyValue?.worldTransformOf(key);
     const offset = transform === null || transform === undefined
-      ? layout.center : add(transform.position, qRotate(transform.rotation, layout.center));
+      ? layout.center : applyTransformToPoint(transform, layout.center);
     return add(shipR, qRotate(att.q, offset));
   }
 
@@ -229,9 +230,11 @@ export class RadiatorSystem {
     return key === null ? 0 : this.panels.get(key)?.value ?? 0;
   }
 
+  // 装備していない側の損耗は 0。deployOf と同じく「無いものは無い」とし、積んでいない
+  // 放熱板を「損耗100%」の赤表示にしない。
   public wearOf(sideOrId: RadiatorSide | string): number {
     const key = this.key(sideOrId);
-    return key === null ? 1 : this.wear.get(key) ?? 0;
+    return key === null ? 0 : this.wear.get(key) ?? 0;
   }
 
   public serialize(): SerializedRadiatorSystem {

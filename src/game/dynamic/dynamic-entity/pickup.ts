@@ -1,7 +1,7 @@
 // 軌道上の補給物(接近した自艦が取り込む漂流物)と、その種別ごとの具象。
-import { fmtDist } from '../../../hud/utils';
+import { fmtDist } from '../../../hud/format';
 import { len, sub, v3, type SerializedVec3, type Vec3 } from '../../../math/vec3';
-import { AmmoPickupView, RcsFuelPickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
+import { PickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { COLOR_MARKER_FUEL, DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
@@ -18,10 +18,10 @@ import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotionThermal } from '../dynamic-motion';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ControlSelection } from '../../control-selection';
-import type { MenuItem } from '../../hud/windows/context-menu';
+import type { MenuItem } from '../../../hud/windows/context-menu';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
 import type { MarkerVisibility } from '../../../marker/marker-visibility';
-import type { ObjectAuthoring } from '../../pickable/inspected-object';
+import type { PresentationStageAuthoring } from '../../presentation-ports';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { DynamicEntityKind } from './entity-kind';
@@ -31,8 +31,10 @@ import type { OrbitingObject } from './orbiting-object';
 export const AMMO_PICKUP_RADIUS = 100;
 // RCS 燃料補給を取り込む、ゲームプレイ上の吸収判定の距離 [m]。
 export const RCS_FUEL_PICKUP_RADIUS = 100;
-// 1 個の取り込みで増える RCS 燃料 [kg]。
+// 1 個の取り込みで増える RCS 燃料 [unit](燃料の質量換算は 1 unit = 1 kg)。
 export const RCS_FUEL_PICKUP_AMOUNT = 1000;
+// 1 個の取り込みで増える弾薬マガジン数。撃破ドロップ以外の補給はこの数を持つ。
+export const AMMO_PICKUP_MAGS = 6;
 
 // 補給物に共通する直列化の項目。慣性は作る場所ごとに違い、種別からは決まらないので記録に持つ。
 interface SerializedPickupFields extends SerializedDynamicEntityFields {
@@ -43,6 +45,8 @@ interface SerializedPickupFields extends SerializedDynamicEntityFields {
 
 export interface SerializedAmmoPickup extends SerializedPickupFields {
   readonly kind: 'ammo';
+  // 取り込みで増えるマガジン数。欠けた記録は AMMO_PICKUP_MAGS で読む。
+  readonly mags?: number;
 }
 
 export interface SerializedRcsFuelPickup extends SerializedPickupFields {
@@ -99,7 +103,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     private readonly pickupKind: PickupKind,
     alive?: boolean,
   ) {
-    super(() => new PickupMotion(placement.state, placement.att, pickupKind, placement.thermal, alive), view, id);
+    super(() => new PickupMotion(placement.state, placement.att ?? null, pickupKind, placement.thermal, alive), view, id);
     this.setName(placement.name ?? defaultName);
   }
 
@@ -193,7 +197,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
 
   // menuItems が出した操作 act を実行する。
   public runMenu(
-    act: MenuAction, _controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
+    act: MenuAction, _controlSelection: ControlSelection, authoring: PresentationStageAuthoring | null,
   ): void {
     if (act === 'delete') this.motion.kill();
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.mapKind, this.motion.state);
@@ -204,6 +208,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
     celestialBodies: CelestialBodies, viewer: OrbitingObject | null, simTime: number,
   ): readonly PropertyRow[] {
     const rows: PropertyRow[] = [];
+    // 距離と回収圏の行。自艦が居るときだけ出す。
     if (viewer) {
       const distance = len(sub(this.motion.state.r, viewer.motion.state.r));
       rows.push({
@@ -216,6 +221,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
         presentation: 'major',
       });
     }
+    // 補給の中身の行(kind ごとの具象が組む)と、軌道の行。
     rows.push(...this.supplyRows().map((row) => ({
       ...row, presentation: row.presentation ?? 'major' as const,
     })));
@@ -244,22 +250,36 @@ export class AmmoPickup extends Pickup {
   protected override readonly bearingColor = 'var(--color-primary-hover)';
   protected override readonly pickupRadius = AMMO_PICKUP_RADIUS;
 
-  // 弾薬補給の見た目・既定名で組む。id は採番器が配った識別子、alive は生死。
-  private constructor(placement: PickupPlacement, scene: THREE.Scene, id: string, alive?: boolean) {
-    super(placement, new AmmoPickupView(scene), id, '弾薬', AmmoPickup.kind, alive);
+  // 取り込むと増えるマガジン数。
+  public readonly mags: number;
+
+  // 弾薬補給の見た目・既定名で組む。id は採番器が配った識別子、mags は取り込みで増えるマガジン数、alive は生死。
+  private constructor(placement: PickupPlacement, scene: THREE.Scene, id: string, mags: number, alive?: boolean) {
+    super(placement, new PickupView(scene, AmmoPickup.kind), id, '弾薬', AmmoPickup.kind, alive);
+    this.mags = mags;
   }
 
-  // placement に新しく置く。
-  public static create(placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators): AmmoPickup {
-    return new AmmoPickup(placement, scene, idAllocators.ammoPickup.next(placement.id));
+  // placement に新しく置く。mags を省くと AMMO_PICKUP_MAGS を持つ。
+  public static create(
+    placement: PickupPlacement, scene: THREE.Scene, idAllocators: EntityIdAllocators, mags = AMMO_PICKUP_MAGS,
+  ): AmmoPickup {
+    return new AmmoPickup(placement, scene, idAllocators.ammoPickup.next(placement.id), mags);
   }
 
-  // 直列化した弾薬補給を復元する。
+  // 直列化した弾薬補給を復元する。マガジン数の項目が無ければ AMMO_PICKUP_MAGS で読む。
   public static deserialize(
     serialized: SerializedAmmoPickup, registry: EntityRegistry, scene: THREE.Scene,
   ): AmmoPickup {
     const placement = deserializePickupPlacement(serialized);
-    return new AmmoPickup(placement, scene, registry.idAllocators.ammoPickup.next(placement.id), serialized.alive);
+    return new AmmoPickup(
+      placement, scene, registry.idAllocators.ammoPickup.next(placement.id),
+      serialized.mags ?? AMMO_PICKUP_MAGS, serialized.alive,
+    );
+  }
+
+  // 直列化した形へ、マガジン数を足す。
+  public override serialize(): SerializedAmmoPickup {
+    return { ...super.serialize(), kind: AmmoPickup.kind, mags: this.mags };
   }
 }
 
@@ -276,7 +296,7 @@ export class RcsFuelPickup extends Pickup {
 
   // RCS 燃料補給の見た目・既定名で組む。id は採番器が配った識別子、alive は生死。
   private constructor(placement: PickupPlacement, scene: THREE.Scene, id: string, alive?: boolean) {
-    super(placement, new RcsFuelPickupView(scene), id, 'RCS燃料', RcsFuelPickup.kind, alive);
+    super(placement, new PickupView(scene, RcsFuelPickup.kind), id, 'RCS燃料', RcsFuelPickup.kind, alive);
   }
 
   // placement に新しく置く。

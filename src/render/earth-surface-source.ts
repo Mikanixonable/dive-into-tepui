@@ -1,15 +1,13 @@
 // 地球の地表配信データを描画および気候共有用の共通フォーマットへ正規化する。
 // URLの組み立てとdatasetIdの固定だけを持ち、タイル要求やGPU資源は別のrender層が所有する。
-import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from './earth-surface-tile-key';
+import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z, earthSurfaceTileCount } from './earth-surface-tile-key';
 import {
   EARTH_SURFACE_MANIFEST_SCHEMA_VERSION,
   EARTH_SURFACE_TERRAIN_FORMAT_VERSION,
   EARTH_TERRAIN_CHANNELS,
   EARTH_TERRAIN_HEIGHT,
   EARTH_TERRAIN_LAYOUT,
-  EARTH_TERRAIN_OCTAHEDRAL_LAYOUT,
   EARTH_TERRAIN_WIDTH,
-  type EarthSurfaceTerrainFormat,
 } from './earth-surface-format';
 
 export interface EarthSurfaceSource {
@@ -17,11 +15,11 @@ export interface EarthSurfaceSource {
   readonly sourceManifestSha256: string;
   readonly colorCalibration: EarthSurfaceColorCalibration;
   readonly climateEncoding: EarthSurfaceClimateEncoding;
+  readonly maxZoom: number;
   readonly baseUrl: string;
   readonly manifestUrl: string;
   readonly colorTileTemplate: string;
   readonly terrainTileTemplate: string;
-  readonly terrainFormat: EarthSurfaceTerrainFormat;
   readonly baseColorUrl: string;
   readonly baseTerrainUrl: string;
   readonly climateMapUrls: readonly string[];
@@ -30,7 +28,7 @@ export interface EarthSurfaceSource {
 // 地表色の入力転送、面積平均後の表現、表示用RGBから拡散アルベドへ合わせる校正値。
 // bondAlbedoは地表画像の平均輝度ではなく、地球を光源として扱うときの全地球測光値なので、
 // diffuseAlbedoScaleとは別の値として持つ。
-export interface EarthSurfaceColorCalibration {
+interface EarthSurfaceColorCalibration {
   readonly inputEncoding: 'sRGB8';
   readonly aggregation: 'linear_rgb_area_mean';
   readonly outputEncoding: 'sRGB8';
@@ -41,8 +39,8 @@ export interface EarthSurfaceColorCalibration {
   readonly averageHue: readonly [number, number, number];
 }
 
-// schema 1と旧静的fallbackの校正。新しいBMNG配信物はmanifestの値を使い、これを再利用しない。
-export const EARTH_SURFACE_LEGACY_COLOR_CALIBRATION: EarthSurfaceColorCalibration = {
+// 配信物が未設定の開発環境で使う静的fallbackの校正。BMNG配信物はmanifestの値を使う。
+export const EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION: EarthSurfaceColorCalibration = {
   inputEncoding: 'sRGB8',
   aggregation: 'linear_rgb_area_mean',
   outputEncoding: 'sRGB8',
@@ -53,12 +51,12 @@ export const EARTH_SURFACE_LEGACY_COLOR_CALIBRATION: EarthSurfaceColorCalibratio
   averageHue: [0.9703, 0.9940, 1.1471],
 };
 
-export interface EarthSurfaceClimateRange {
+interface EarthSurfaceClimateRange {
   readonly min: number;
   readonly max: number;
 }
 
-export interface EarthSurfaceClimateEncoding {
+interface EarthSurfaceClimateEncoding {
   readonly temperatureK: EarthSurfaceClimateRange;
   readonly cloudFraction: EarthSurfaceClimateRange;
   readonly orthometricElevation: EarthSurfaceClimateRange;
@@ -76,14 +74,7 @@ interface EarthSurfaceAssetManifestBase {
   readonly attribution: readonly string[];
 }
 
-export interface EarthSurfaceAssetManifestV1 extends EarthSurfaceAssetManifestBase {
-  readonly schemaVersion: 1;
-  readonly terrainEncoding: EarthSurfaceLegacyTerrainEncoding;
-  readonly tileIndexUrl: string;
-  readonly coverage: EarthSurfaceLegacyCoverage;
-}
-
-export interface EarthSurfaceAssetManifestV3 extends EarthSurfaceAssetManifestBase {
+export interface EarthSurfaceAssetManifest extends EarthSurfaceAssetManifestBase {
   readonly schemaVersion: typeof EARTH_SURFACE_MANIFEST_SCHEMA_VERSION;
   readonly terrainEncoding: EarthSurfaceTerrainEncoding;
   readonly colorCalibration: EarthSurfaceColorCalibration;
@@ -91,49 +82,26 @@ export interface EarthSurfaceAssetManifestV3 extends EarthSurfaceAssetManifestBa
   readonly coverage: EarthSurfaceCoverage;
 }
 
-export type EarthSurfaceAssetManifest = EarthSurfaceAssetManifestV1 | EarthSurfaceAssetManifestV3;
-
-export interface EarthSurfaceCoverage {
+interface EarthSurfaceCoverage {
   readonly kind: 'complete';
   readonly minZoom: 5;
-  readonly maxZoom: 7;
-  readonly expectedTiles: 43_008;
+  readonly maxZoom: number;
+  readonly expectedTiles: number;
 }
 
-export interface EarthSurfaceLegacyCoverage {
-  readonly kind: 'complete';
-  readonly maxZoom: 7;
-  readonly expectedTiles: 43_690;
-}
-
-export interface EarthSurfaceTileTemplates {
+interface EarthSurfaceTileTemplates {
   readonly color: 'tiles/{z}/{x}/{y}.jpg';
   readonly terrain: 'tiles/{z}/{x}/{y}.bin.gz';
 }
 
 // manifestが宣言するESTN/ESTBのチャンネル配置と固定値。
-export interface EarthSurfaceTerrainEncoding {
+interface EarthSurfaceTerrainEncoding {
   readonly formatVersion: typeof EARTH_SURFACE_TERRAIN_FORMAT_VERSION;
   readonly layout: typeof EARTH_TERRAIN_LAYOUT;
   readonly width: typeof EARTH_TERRAIN_WIDTH;
   readonly height: typeof EARTH_TERRAIN_HEIGHT;
   readonly channels: typeof EARTH_TERRAIN_CHANNELS;
   readonly scalar: 'UInt8';
-}
-
-export interface EarthSurfaceLegacyTerrainEncoding {
-  readonly formatVersion: 2;
-  readonly layout: typeof EARTH_TERRAIN_OCTAHEDRAL_LAYOUT;
-  readonly width: typeof EARTH_TERRAIN_WIDTH;
-  readonly height: typeof EARTH_TERRAIN_HEIGHT;
-  readonly channels: typeof EARTH_TERRAIN_CHANNELS;
-  readonly scalar: 'UInt8';
-  readonly materialClasses: {
-    readonly water: 0;
-    readonly land: 1;
-    readonly ice: 2;
-    readonly unknown: 255;
-  };
 }
 
 // 配信base配下の安全な相対アセットURLを作る。
@@ -158,14 +126,17 @@ function requireDatasetId(datasetId: string): void {
 
 // 気候入力の固定wire範囲を検査する。
 function validateClimateEncoding(encoding: EarthSurfaceClimateEncoding): void {
+  // 各範囲が有限で min<max か。
   for (const range of [encoding.temperatureK, encoding.cloudFraction, encoding.orthometricElevation, encoding.landFraction]) {
     if (!Number.isFinite(range.min) || !Number.isFinite(range.max) || range.min >= range.max) {
       throw new Error('Invalid Earth surface climate encoding');
     }
   }
+  // 海面の高度基準は 0 固定。
   if (encoding.waterOrthometricElevationM !== 0) {
     throw new Error('Earth surface water orthometric elevation must be 0');
   }
+  // wire 契約の固定範囲と一致するか。
   if (encoding.temperatureK.min !== 180 || encoding.temperatureK.max !== 330
     || encoding.cloudFraction.min !== 0 || encoding.cloudFraction.max !== 1
     || encoding.orthometricElevation.min !== -1000 || encoding.orthometricElevation.max !== 9000
@@ -181,6 +152,7 @@ function validateColorCalibration(calibration: EarthSurfaceColorCalibration): vo
     || calibration.outputEncoding !== 'sRGB8') {
     throw new Error('Unsupported Earth surface color calibration encoding');
   }
+  // 校正の数値が有限で、正の範囲内か。
   const values = [...calibration.meanLinearRgb, ...calibration.averageHue,
     calibration.diffuseAlbedoScale, calibration.meanRec709Albedo, calibration.bondAlbedo];
   if (values.some((value) => !Number.isFinite(value))) throw new Error('Invalid Earth surface color calibration');
@@ -214,42 +186,20 @@ function validateTerrainGeometry(terrain: { readonly width: number; readonly hei
 export function earthSurfaceSourceFromManifest(
   baseUrl: string, manifestUrl: string, manifest: EarthSurfaceAssetManifest,
 ): EarthSurfaceSource {
-  if (manifest.schemaVersion !== 1 && manifest.schemaVersion !== EARTH_SURFACE_MANIFEST_SCHEMA_VERSION) {
+  // 宣言がこの形式の完全な全球データセットを指すか検査する。
+  if (manifest.schemaVersion !== EARTH_SURFACE_MANIFEST_SCHEMA_VERSION) {
     throw new Error('Unsupported Earth surface manifest schema');
   }
   requireDatasetId(manifest.datasetId);
   validateManifestBase(baseUrl, manifest);
   validateTerrainGeometry(manifest.terrainEncoding);
-  if (manifest.schemaVersion === 1) {
-    const terrain = manifest.terrainEncoding;
-    if (manifest.coverage.kind !== 'complete' || manifest.coverage.maxZoom !== EARTH_TILE_MAX_Z
-      || manifest.coverage.expectedTiles !== 43_690 || terrain.formatVersion !== 2
-      || terrain.layout !== EARTH_TERRAIN_OCTAHEDRAL_LAYOUT || terrain.materialClasses.water !== 0
-      || terrain.materialClasses.land !== 1 || terrain.materialClasses.ice !== 2
-      || terrain.materialClasses.unknown !== 255) {
-      throw new Error('Unsupported Earth surface schema 1 manifest');
-    }
-    relativeAsset(baseUrl, manifest.tileIndexUrl);
-    return {
-      datasetId: manifest.datasetId,
-      sourceManifestSha256: manifest.sourceManifestSha256,
-      colorCalibration: EARTH_SURFACE_LEGACY_COLOR_CALIBRATION,
-      climateEncoding: manifest.climateEncoding,
-      baseUrl,
-      manifestUrl,
-      colorTileTemplate: relativeTileTemplate(baseUrl, 'tiles/{z}/{x}/{y}.jpg'),
-      terrainTileTemplate: relativeTileTemplate(baseUrl, 'tiles/{z}/{x}/{y}.bin.gz'),
-      terrainFormat: EARTH_TERRAIN_OCTAHEDRAL_LAYOUT,
-      baseColorUrl: relativeAsset(baseUrl, manifest.baseColor),
-      baseTerrainUrl: relativeAsset(baseUrl, manifest.baseTerrain),
-      climateMapUrls: manifest.climateMaps.map((path) => relativeAsset(baseUrl, path)),
-    };
-  }
   const terrain = manifest.terrainEncoding;
   const coverage = manifest.coverage;
   if (coverage.kind !== 'complete' || coverage.minZoom !== EARTH_TILE_MIN_Z
-    || coverage.maxZoom !== EARTH_TILE_MAX_Z || coverage.expectedTiles !== 43_008) {
-    throw new Error('Earth surface coverage must be complete z5..z7');
+    || !Number.isInteger(coverage.maxZoom) || coverage.maxZoom < EARTH_TILE_MIN_Z
+    || coverage.maxZoom > EARTH_TILE_MAX_Z
+    || coverage.expectedTiles !== earthSurfaceTileCount(coverage.maxZoom)) {
+    throw new Error(`Earth surface coverage must be complete z${EARTH_TILE_MIN_Z}..z${coverage.maxZoom}`);
   }
   if (manifest.tileTemplates.color !== 'tiles/{z}/{x}/{y}.jpg'
     || manifest.tileTemplates.terrain !== 'tiles/{z}/{x}/{y}.bin.gz'
@@ -257,16 +207,17 @@ export function earthSurfaceSourceFromManifest(
     throw new Error('Unsupported Earth surface current manifest');
   }
   validateColorCalibration(manifest.colorCalibration);
+  // 検査を通った宣言から、タイルURLテンプレートとアセットURLを解決して入力を組む。
   return {
     datasetId: manifest.datasetId,
     sourceManifestSha256: manifest.sourceManifestSha256,
     colorCalibration: manifest.colorCalibration,
     climateEncoding: manifest.climateEncoding,
+    maxZoom: coverage.maxZoom,
     baseUrl,
     manifestUrl,
     colorTileTemplate: relativeTileTemplate(baseUrl, manifest.tileTemplates.color),
     terrainTileTemplate: relativeTileTemplate(baseUrl, manifest.tileTemplates.terrain),
-    terrainFormat: EARTH_TERRAIN_LAYOUT,
     baseColorUrl: relativeAsset(baseUrl, manifest.baseColor),
     baseTerrainUrl: relativeAsset(baseUrl, manifest.baseTerrain),
     climateMapUrls: manifest.climateMaps.map((path) => relativeAsset(baseUrl, path)),

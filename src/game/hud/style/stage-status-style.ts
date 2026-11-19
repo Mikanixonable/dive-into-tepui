@@ -6,7 +6,7 @@ export const STAGE_STATUS_STYLE = `
    map rail や、ステージ状態を持たない場面の高さは削らない。 */
 #hud:has(#hud-stagestatus:not(.hidden)) { --hud-stage-bottom-occupied: 104px; }
 #hud .hud-combat-root.active .hud-rail {
-  bottom: max(var(--hud-rail-bottom), var(--hud-stage-bottom-occupied, 0px));
+  bottom: max(var(--hud-rail-bottom), var(--hud-stage-bottom-occupied, 0px), var(--hud-armament-bottom-occupied, 0px));
 }
 #hud-stagestatus {
   bottom: calc(12px + var(--safe-b)); left: 50%; transform: translateX(-50%);
@@ -17,7 +17,6 @@ export const STAGE_STATUS_STYLE = `
   font-size: var(--font-s); letter-spacing: 2px; color: var(--text); font-variant-numeric: tabular-nums;
   display: grid; grid-template-columns: auto 1fr; gap: var(--space-2) var(--space-4); align-items: center;
 }
-#hud-stagestatus .t.warn { color: var(--color-warning); }
 #hud-stagestatus .t .w-meter { width: 240px; }
 #hud-stagestatus .k { font-size: var(--font-s); color: var(--text-dim); line-height: 1.8; white-space: nowrap; }
 #hud-stagestatus .k-widgets:not(:empty) { margin-top: var(--space-3); }
@@ -27,11 +26,7 @@ export const STAGE_STATUS_STYLE = `
   #hud-stagestatus .t { font-size: var(--font-s); }
   #hud-stagestatus .k { font-size: var(--font-xxs); line-height: 1.35; white-space: normal; }
 }
-@media ${MQ_COARSE_SHORT} {
-  #hud:has(#hud-stagestatus:not(.hidden)) { --hud-stage-bottom-occupied: 54px; }
-  #hud-stagestatus { max-height: 46px; }
-}
-@media ${MQ_SHORT} {
+@media ${MQ_COARSE_SHORT}, ${MQ_SHORT} {
   #hud:has(#hud-stagestatus:not(.hidden)) { --hud-stage-bottom-occupied: 54px; }
   #hud-stagestatus { max-height: 46px; }
 }`;

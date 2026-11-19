@@ -1,13 +1,13 @@
 // マップビュー右部に常設の軌道物体一覧ウィンドウ。種別ごとの区画に見出しで開閉し、
 // ダブルクリックでフォーカスを移動する。天体区画は衛星・ラグランジュ点を親の下のトグル子
 // メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
-import { hudRail } from '../hud-root';
+import { hudRail } from '../hud-dom';
 import {
   Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
 } from '../../../hud/widgets';
 import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { injectOnce } from '../../../hud/inject-style';
-import type { PanelCollapse } from '../panel-shell';
+import type { PanelCollapse } from '../panel-chrome';
 import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListRowTree } from './physical-object-list-row-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
@@ -25,6 +25,7 @@ const SECTIONS: readonly { section: MapListSection; label: string }[] = [
   { section: 'ammo', label: '弾薬' },
   { section: 'fuel', label: 'RCS燃料' },
   { section: 'base', label: '基地' },
+  { section: 'orbitSlot', label: '軌道標識' },
 ];
 
 interface Section {
@@ -56,7 +57,7 @@ const COLLAPSE_LABELS: CollapseToggleLabels = {
 };
 
 const STYLE = `
-#hud-physical-object-list { max-height: 544px; max-height: min(544px, 60dvh); display: flex; flex-direction: column; overflow: hidden; }
+#hud-physical-object-list { display: flex; flex-direction: column; overflow: hidden; }
 /* 上半分(検索・フィルタ)は要素数ぶんの高さに縮め、下半分(項目一覧)が残りを占有する。互いに重ならないよう独立してスクロールさせる */
 #hud-physical-object-list .physical-object-list-head { flex: 0 0 auto; max-height: none; overflow: visible; }
 #hud-physical-object-list .physical-object-list-body { flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; }
@@ -96,6 +97,10 @@ const STYLE = `
 #hud-physical-object-list .physical-object-list-children { padding-left: var(--space-5); }
 #hud-physical-object-list .physical-object-list-children.collapsed { display: none !important; }
 #hud-physical-object-list .physical-object-list-empty { padding: var(--space-6); text-align: center; color: var(--text-dim); }
+#hud-physical-object-list .physical-object-list-help {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.45;
+}
 #hud-physical-object-list .physical-object-list-title {
   align-items: baseline; padding: var(--space-2) var(--space-3) var(--space-3);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 24%, transparent);
@@ -141,7 +146,7 @@ export class PhysicalObjectListPanel {
   private readonly sections = new Map<MapListSection, Section>();
   private readonly order: PhysicalObjectListOrder;
   private readonly rowTree: PhysicalObjectListRowTree;
-  private lastFocusId: string | undefined = undefined;
+  private lastFocusId: string | null = null;
   // sync() は毎フレーム呼ばれるが、これらは同期中だけ使う scratch であり、呼び出し元へ
   // 参照を渡さない。Map/Set/配列の器だけを保持して GC を抑える。
   private readonly namesScratch = new Map<string, string>();
@@ -299,6 +304,12 @@ export class PhysicalObjectListPanel {
     this.emptyState.textContent = '該当する物体がありません';
     body.appendChild(this.emptyState);
 
+    // 行の操作はホバーの説明文だけに置かず、常時表示の案内として一覧の末尾へ出す。
+    const help = document.createElement('div');
+    help.className = 'physical-object-list-help';
+    help.textContent = '行: ダブルクリック・F でフォーカス · T でナビ対象 · 右クリックでメニュー';
+    body.appendChild(help);
+
     hudRail(root, 'right').appendChild(this.panel);
     this.setVisible(false);
   }
@@ -318,7 +329,7 @@ export class PhysicalObjectListPanel {
   // (天体の親子関係だけが載る)。focusId が undefined なら、どの行も強調しない。
   public sync(
     items: readonly ListedObject[],
-    focusId: string | undefined,
+    focusId: string | null,
     parentOf: ReadonlyMap<string, string>,
     viewer: OrbitingObject | null,
     displayTime: number,
@@ -336,7 +347,7 @@ export class PhysicalObjectListPanel {
     const names = this.namesScratch;
     const crumbs = this.crumbsScratch;
     crumbs.length = 0;
-    for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) crumbs.push(names.get(cur) ?? cur);
+    for (let cur = focusId; cur != null; cur = parentOf.get(cur) ?? null) crumbs.push(names.get(cur) ?? cur);
     this.breadcrumb.textContent = crumbs.length ? crumbs.reverse().join(' › ') : 'フォーカス: なし';
     const focusChanged = focusId !== this.lastFocusId;
     this.lastFocusId = focusId;
@@ -347,7 +358,7 @@ export class PhysicalObjectListPanel {
     // (毎フレーム渡すとユーザーが畳んだ直後に開き直ってしまう)。
     const focusAncestors = this.focusAncestorsScratch;
     focusAncestors.clear();
-    if (focusChanged) for (let cur = focusId; cur !== undefined; cur = parentOf.get(cur)) focusAncestors.add(cur);
+    if (focusChanged) for (let cur = focusId; cur != null; cur = parentOf.get(cur) ?? null) focusAncestors.add(cur);
 
     // 検索語・クラスフィルタが変わった瞬間だけ、その回に一致した行の祖先を自動展開する
     // 対象として渡す(focusAncestors と同じ「変化した回だけ」の考え方)。絞り込みが解除された
@@ -364,7 +375,7 @@ export class PhysicalObjectListPanel {
     if (filteringActive && filterChanged) {
       for (const item of items) {
         if (!this.order.matches(item)) continue;
-        for (let cur: string | undefined = item.id; cur !== undefined; cur = parentOf.get(cur)) matchAncestors.add(cur);
+        for (let cur: string | null = item.id; cur !== null; cur = parentOf.get(cur) ?? null) matchAncestors.add(cur);
       }
     }
     if (filteringJustDeactivated) {
@@ -408,7 +419,7 @@ export class PhysicalObjectListPanel {
 
     // 対象行の展開が全区画へ反映された後でないと、祖先が畳まれたままの位置へスクロール
     // してしまう。
-    if (focusChanged && focusId !== undefined) this.findRowElement(focusId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (focusChanged && focusId !== null) this.findRowElement(focusId)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   // id に対応する行要素を全区画から再帰的に探す。見当たらなければ null。

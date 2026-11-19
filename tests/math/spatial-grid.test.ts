@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { SpatialGrid } from '../../src/math/spatial-grid';
-import { v3, Vec3, sub, len } from '../../src/math/vec3';
+import { v3, type Vec3, sub, len } from '../../src/math/vec3';
 
 function mulberry32(seed: number): () => number {
   let a = seed;
@@ -109,6 +109,18 @@ export function register(): void {
     assert.deepEqual(grid.neighborsInto(v3(0, 0, 0), []), ['new']);
     // 挿入し直しても、前回のセルが復活しないこと。
     assert.deepEqual(grid.neighborsInto(v3(100, -100, 100), []), []);
+  });
+
+  test('spatial-grid: 多数回 reset しても前回セルの要素を再利用 bucket から漏らさない', () => {
+    const grid = new SpatialGrid<number>(10);
+    for (let generation = 0; generation < 64; generation++) {
+      grid.reset(10 + (generation % 3));
+      const base = generation * 1e4;
+      grid.insert(generation, v3(base, -base, base));
+      grid.insert(generation + 1000, v3(base + 1, -base, base));
+      const near = grid.neighborsInto(v3(base, -base, base), []);
+      assert.deepEqual([...near].sort((a, b) => a - b), [generation, generation + 1000]);
+    }
   });
 
   test('spatial-grid: 27近傍列挙は同じ要素を二重に返さない', () => {

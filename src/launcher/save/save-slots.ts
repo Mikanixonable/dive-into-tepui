@@ -9,6 +9,7 @@ import {
   newSaveId,
 } from './slot-data';
 import { type SaveStore, SAVE_INDEX_VERSION, type SavedGame } from './save-store';
+import type { ShipBlueprint } from '../../game/ship/ship-blueprint';
 
 // 履歴ごとに持てる手動セーブの件数の上限。
 export const MANUAL_SAVE_LIMIT = 30;
@@ -89,6 +90,22 @@ export class SaveSlots {
     this.persist();
   }
 
+  // スロットで解放された天体を置き換える。無い id なら何もしない。
+  public setRevealedBodies(slotId: string, revealedBodies: readonly string[]): void {
+    const slot = this.index.slots.find((s) => s.id === slotId);
+    if (!slot) return;
+    slot.revealedBodies = [...revealedBodies];
+    this.persist();
+  }
+
+  // スロットで発見した遺物を置き換える。無い id なら何もしない。
+  public setDiscoveredRelics(slotId: string, discoveredRelics: readonly string[]): void {
+    const slot = this.index.slots.find((s) => s.id === slotId);
+    if (!slot) return;
+    slot.discoveredRelics = [...discoveredRelics];
+    this.persist();
+  }
+
   // スロットの表示名を変える。無い id なら何もしない。
   public renameSlot(id: string, name: string): void {
     const slot = this.index.slots.find((s) => s.id === id);
@@ -102,10 +119,12 @@ export class SaveSlots {
   public deleteSlot(id: string): void {
     const slot = this.index.slots.find((s) => s.id === id);
     if (!slot) return;
+    // スロットが参照する本体(手動セーブ・自動セーブ・設計図)を先に消す。
     for (const history of slot.stages) {
       for (const meta of history.snapshots) this.store.deleteSnapshot(meta.id);
       if (history.autoSaveId) this.store.deleteSnapshot(history.autoSaveId);
     }
+    this.store.deleteBlueprints(id);
     this.index.slots = this.index.slots.filter((s) => s.id !== id);
     if (this.index.activeSlotId === id) this.index.activeSlotId = this.index.slots[0]?.id ?? null;
     this.persist();
@@ -129,13 +148,8 @@ export class SaveSlots {
     }
 
     // 書き出しと同じ形へ、本体が読めた手動セーブを詰めてから取り込む。
-    const copied: SlotExport = {
-      format: SLOT_EXPORT_FORMAT,
-      formatVersion: SLOT_EXPORT_VERSION,
-      exportedAtReal: Date.now(),
-      slot: { ...source, name: `${source.name} のコピー`, stages: [] },
-      snapshots: {},
-    };
+    const copied = this.slotExport(
+      { ...source, name: `${source.name} のコピー`, stages: [] }, {}, this.store.readBlueprints(id));
     // 複製先の自動セーブにする本体(ステージ履歴ごとに1つ)。分岐ならその時点、全体複製なら複製元の自動セーブ。
     const autoSaveSources = new Map<string, string>();
     for (const history of source.stages) {
@@ -277,6 +291,23 @@ export class SaveSlots {
     this.persist();
   }
 
+  // slotId の設計図一覧。無ければ空。
+  public blueprints(slotId: string): readonly ShipBlueprint[] {
+    return this.store.readBlueprints(slotId);
+  }
+
+  // slotId の設計図一覧を置き換える。スロットが無い、または書き込みに失敗したとき false。
+  public writeBlueprints(slotId: string, blueprints: readonly ShipBlueprint[]): boolean {
+    if (!this.index.slots.some((s) => s.id === slotId)) return false;
+    try {
+      this.store.writeBlueprints(slotId, blueprints);
+    } catch (e) {
+      console.error('SaveSlots.writeBlueprints: 設計図を書き込めませんでした', e);
+      return false;
+    }
+    return true;
+  }
+
   // スロットを書き出しの形にする。含めるのは手動セーブで、本体が読めなかった件は
   // メタからも落とす。無い slotId では null。
   public exportSlot(slotId: string): SlotExport | null {
@@ -297,12 +328,18 @@ export class SaveSlots {
       exportedSlot.stages.push({ ...history, snapshots: keptMetas, autoSaveId: null });
     }
 
+    return this.slotExport(exportedSlot, snapshots, this.store.readBlueprints(slotId));
+  }
+
+  // 書き出しファイルの封筒を組む。識別子・形式バージョン・書き出し時刻はここでのみ埋める。
+  private slotExport(
+    slot: SaveSlotMeta, snapshots: Record<string, SavedGame>, blueprints: readonly ShipBlueprint[],
+  ): SlotExport {
     return {
       format: SLOT_EXPORT_FORMAT,
       formatVersion: SLOT_EXPORT_VERSION,
       exportedAtReal: Date.now(),
-      slot: exportedSlot,
-      snapshots,
+      slot, snapshots, blueprints,
     };
   }
 
@@ -337,6 +374,18 @@ export class SaveSlots {
         newHistory.snapshots.push(newMeta);
       }
       newSlot.stages.push(newHistory);
+    }
+
+    // 設計図は新しいスロット id ぶんの本体として書く。書き込みに失敗したら書いた分を消して null。
+    if (exp.blueprints !== undefined && exp.blueprints.length > 0) {
+      try {
+        this.store.writeBlueprints(newSlot.id, exp.blueprints);
+      } catch (e) {
+        console.error('SaveSlots.importSlot: 書き込みに失敗しました', e);
+        for (const id of written) this.store.deleteSnapshot(id);
+        this.store.deleteBlueprints(newSlot.id);
+        return null;
+      }
     }
 
     // 本体をすべて書けてから索引へ載せる。

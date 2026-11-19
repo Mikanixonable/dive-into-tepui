@@ -33,14 +33,14 @@ export const SECTION_COUNT = SECTION_LABELS.length;
 
 export class FrameSections {
   // 計測の可否。偽の間は enter/exit が時計を読まない。
-  enabled = false;
+  public enabled = false;
   private readonly elapsedMs = new Float64Array(SECTION_COUNT);
   private readonly enteredAt = new Float64Array(SECTION_COUNT);
   private frameStart = 0;
   private frameMs = 0;
 
   // フレーム頭で呼び、前フレームの累積を捨てる。
-  beginFrame(): void {
+  public beginFrame(): void {
     if (!this.enabled) return;
     this.elapsedMs.fill(0);
     this.frameStart = performance.now();
@@ -48,19 +48,19 @@ export class FrameSections {
   }
 
   // 区間へ入る。同じ区間の enter/exit は入れ子にしないこと。
-  enter(id: SectionId): void {
+  public enter(id: SectionId): void {
     if (!this.enabled) return;
     this.enteredAt[id] = performance.now();
   }
 
   // 区間から出る。同じ区間へ何度出入りしても所要時間は積み上がる。
-  exit(id: SectionId): void {
+  public exit(id: SectionId): void {
     if (!this.enabled) return;
     this.elapsedMs[id] = this.elapsedMs[id]! + (performance.now() - this.enteredAt[id]!);
   }
 
   // 区間 from を抜けて、その同じ瞬間から区間 to へ入る。
-  switchTo(from: SectionId, to: SectionId): void {
+  public switchTo(from: SectionId, to: SectionId): void {
     if (!this.enabled) return;
     const now = performance.now();
     this.elapsedMs[from] = this.elapsedMs[from]! + (now - this.enteredAt[from]!);
@@ -68,16 +68,16 @@ export class FrameSections {
   }
 
   // フレーム末で呼び、update 全体の所要時間 [ms] を確定させる。
-  endFrame(): void {
+  public endFrame(): void {
     if (!this.enabled) return;
     this.frameMs = performance.now() - this.frameStart;
   }
 
   // 区間 id の所要時間 [ms]。
-  msOf(id: SectionId): number { return this.elapsedMs[id]!; }
+  public msOf(id: SectionId): number { return this.elapsedMs[id]!; }
 
   // どの区間にも属さなかった時間 [ms]。積分の内訳は積分の中で計るので、二重に引かない。
-  otherMs(): number {
+  public otherMs(): number {
     let sum = 0;
     for (let i = 0; i < SECTION_COUNT; i++) {
       if (i === SECTION.orbit || i === SECTION.celestialContact

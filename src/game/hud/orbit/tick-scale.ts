@@ -1,5 +1,5 @@
 // 表示時間軸の目盛り間隔を、期間の長さに応じて決める。
-import { fmtDuration } from '../../../hud/utils';
+import { fmtDuration } from '../../../hud/format';
 
 // 目盛り間隔の候補ラダー [秒]、小さい順。
 const TICK_INTERVALS_SEC = [
@@ -18,7 +18,7 @@ const TICK_INTERVALS_SEC = [
   365 * 86400,
 ] as const;
 
-export type DisplayTick = { readonly t: number; readonly label: string };
+export interface DisplayTick { readonly t: number; readonly label: string }
 
 // span の目盛り本数(0番目を含む)が maxTicks を超えない最小の間隔を candidates(小さい順)
 // から選ぶ。どの候補でも超えるなら最大の候補を返す。

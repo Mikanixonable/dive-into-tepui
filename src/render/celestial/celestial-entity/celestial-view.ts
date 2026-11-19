@@ -17,7 +17,7 @@ import type { Albedo } from '../../celestial-albedo';
 import type { CelestialSurfaceDiagnostics, LightSourceMap } from '../celestial-surface';
 import { withAirglowEnabled } from '../../atmosphere';
 import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '../../atmosphere';
-import type { ShadowCumulus } from '../../pipeline/shadow/cloud-shadow-renderer';
+import type { ShadowCloud } from '../../pipeline/shadow/cloud-shadow-renderer';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
@@ -62,13 +62,15 @@ export interface CelestialIlluminationView {
   // 届いていない天体では null。
   readonly lightSourceMap: LightSourceMap | null;
   rings(motion: DefinedCelestialBody): RingSystemDef | null;
-  cumulusShadowAt(
+  cloudShadowAt(
     motion: DefinedCelestialBody, floatingOrigin: FloatingOrigin, displayTime: number,
-  ): ShadowCumulus | null;
+  ): ShadowCloud | null;
   atmosphereCandidateAt(
     motion: DefinedCelestialBody, floatingOrigin: FloatingOrigin, displayTime: number,
     cameraPos: Vec3, radialScale: (center: Vec3) => number, graphics: GraphicsSettingsData,
   ): AtmosphereCandidate | null;
+  // 「夜側の観察」で強めた環境光を届ける球の、天体中心からの半径 [m]。届けない天体では null。
+  nightObservationRadius(motion: DefinedCelestialBody): number | null;
 }
 
 // 天体1体が、この1フレームの照明・影・大気へ差し出す源。
@@ -110,7 +112,7 @@ export abstract class CelestialView {
     if (optics === null) return null;
     const center = motion.stateAt(displayTime).r;
     const def = motion.def;
-    const radii = shapeSpheroidRadii(def.radius, 'shape' in def ? def.shape : undefined);
+    const radii = shapeSpheroidRadii(def.radius, 'shape' in def ? def.shape ?? null : null);
     const axis = motion.orientationAt(displayTime)?.axis ?? null;
     // 形状・雲・画面密度を同じ表示時刻とカメラ基準でまとめる。
     return {
@@ -134,13 +136,18 @@ export abstract class CelestialView {
     _motion: DefinedCelestialBody, _displayTime: number,
   ): AtmosphereClouds | null { return null; }
 
-  // この天体が持つ動的な雲場を表示時刻へ焼く。
-  public bakeClouds(_renderer: WebGPURenderer, _displayTime: number, _gpu?: GpuTimingSink): void {}
+  // この天体が持つ動的な雲場を表示時刻へ焼く。simSpeed は実時間 1 秒あたりに進む表示時刻 [s]。
+  public bakeClouds(
+    _renderer: WebGPURenderer, _displayTime: number, _simSpeed: number, _gpu?: GpuTimingSink,
+  ): void {}
 
-  // 影パスへ渡す積雲の殻。積雲を持たない天体では null。
-  public cumulusShadowAt(
+  // 影パスへ渡す雲の影の源。雲を持たない天体では null。
+  public cloudShadowAt(
     _motion: DefinedCelestialBody, _floatingOrigin: FloatingOrigin, _displayTime: number,
-  ): ShadowCumulus | null { return null; }
+  ): ShadowCloud | null { return null; }
+
+  // 「夜側の観察」で強めた環境光を届ける球の、天体中心からの半径 [m]。届けない天体では null。
+  public nightObservationRadius(_motion: DefinedCelestialBody): number | null { return null; }
 
   // マップ専用の重ね書きを、このフレームの表示状態へ同期し、添える文字ラベルを返す。
   public syncMapOverlay(

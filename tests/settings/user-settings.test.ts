@@ -5,7 +5,9 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
-import { DEFAULT_GRAPHICS, withGraphicsOption } from '../../src/render/graphics-settings';
+import {
+  QUALITY_PRESETS, DEFAULT_GRAPHICS, formatGraphics, withGraphicsOption,
+} from '../../src/render/graphics-settings';
 import { DEFAULT_RENDER_STYLE } from '../../src/render/render-style';
 import { DEFAULT_BGM_VOLUME } from '../../src/audio/bgm/bgm';
 import { DEFAULT_MAP_DISPLAY_TOGGLES } from '../../src/game/map/display-toggles';
@@ -47,6 +49,19 @@ export function register(): void {
     const grid = settings.gridVisibility.current;
     assert.equal(grid.stars, false);
     assert.equal(grid.eclipticPlane, true);
+  });
+
+  // テスト環境には matchMedia が無いため、ポインタは細かい側と判定され初回既定は high になる。
+  test('user-settings: 保存が無い環境では描画設定は既定(high)で始まる', () => {
+    const settings = new UserSettings(new MemorySettingStorage());
+    assert.deepEqual(settings.graphics.current, DEFAULT_GRAPHICS);
+  });
+
+  test('user-settings: 保存済みの描画設定はそのまま読み戻る', () => {
+    const settings = new UserSettings(storageWith({
+      [GRAPHICS_KEY]: formatGraphics(QUALITY_PRESETS.low),
+    }));
+    assert.deepEqual(settings.graphics.current, QUALITY_PRESETS.low);
   });
 
   test('user-settings: 読めない保存値は既定へ落ちる', () => {

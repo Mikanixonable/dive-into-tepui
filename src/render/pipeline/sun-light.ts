@@ -41,7 +41,7 @@ export class SunLight {
   private readonly intensityUniform: FloatUniform;
 
   // set() が書くまでは放射強度 0(無光)。
-  constructor() {
+  public constructor() {
     this.positionUniform = uniform(new THREE.Vector3(0, 1, 0));
     this.radiusUniform = uniform(1);
     this.colorUniform = uniform(new THREE.Color(1, 1, 1));
@@ -50,36 +50,36 @@ export class SunLight {
 
   // 恒星の描画座標での位置・半径・色・放射強度(距離の二乗で割ると放射照度になる量)を
   // 1フレーム分まとめて書く。
-  set(position: THREE.Vector3, radius: number, color: THREE.Color, intensity: number): void {
+  public set(position: THREE.Vector3, radius: number, color: THREE.Color, intensity: number): void {
     this.positionUniform.value.copy(position);
     this.radiusUniform.value = radius;
     this.colorUniform.value.copy(color);
     this.intensityUniform.value = intensity;
   }
 
-  get position(): Vec3Uniform { return this.positionUniform; }
+  public get position(): Vec3Uniform { return this.positionUniform; }
 
   // 恒星の半径 [m]。
-  get radius(): FloatNode { return this.radiusUniform; }
+  public get radius(): FloatNode { return this.radiusUniform; }
 
   // 描画座標の点 worldPos から恒星の中心までの距離 [m]。恒星の只中で 0 除算にならない床を張る。
-  distanceFrom(worldPos: Vec3Node): FloatNode {
+  public distanceFrom(worldPos: Vec3Node): FloatNode {
     return max(length(this.positionUniform.sub(worldPos)), 1);
   }
 
   // worldPos から見た恒星の方向。
-  directionFrom(worldPos: Vec3Node): Vec3Node {
+  public directionFrom(worldPos: Vec3Node): Vec3Node {
     return normalize(this.positionUniform.sub(worldPos));
   }
 
   // worldPos から見た恒星の視半径 [rad]。影の半影の幅は、これに影を落とすものまでの距離を
   // 掛けたものになる。
-  angularRadiusFrom(worldPos: Vec3Node): FloatNode {
+  public angularRadiusFrom(worldPos: Vec3Node): FloatNode {
     return asin(clamp(this.radiusUniform.div(this.distanceFrom(worldPos)), 1e-9, 1));
   }
 
-  get color(): ColorUniform { return this.colorUniform; }
+  public get color(): ColorUniform { return this.colorUniform; }
 
   // 放射強度。シェーディング点から恒星までの距離の二乗で割ると、その点の放射照度になる。
-  get intensity(): FloatNode { return this.intensityUniform; }
+  public get intensity(): FloatNode { return this.intensityUniform; }
 }

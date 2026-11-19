@@ -44,7 +44,7 @@ function sameTrajectoryStyle(style: LineStyle): TrajectoryStyles {
 
 // 軌道基準の種別を、View がそのまま同期できる宣言へ変換する。
 function orbitDisplay(
-  entity: DynamicEntity, style: LineStyle | null, orbitRef: OrbitReference | undefined,
+  entity: DynamicEntity, style: LineStyle | null, orbitRef: OrbitReference | null,
 ): DynamicLineDisplay['orbit'] {
   if (style === null) return null;
   const basis = orbitLineBasisOf(orbitRef, entity);
@@ -66,12 +66,12 @@ export class EntityLineManager {
   public sync(
     active: Controllable | null, primaryTarget: CombatTarget | null,
     view: ViewMode, displayWindow: DisplayWindow, visibilityPolicy: MapVisibilityPolicy | null,
-    orbitRef: OrbitReference | undefined, camera: CameraFrame,
+    orbitRef: OrbitReference | null, camera: CameraFrame,
     frameAnchors: FrameAnchorSource, celestialBodies: CelestialBodies, palette: ThemePalette,
   ): void {
     const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
     // マップビューでは軌道基準を常に自動選択(最も強く引く天体)にする。
-    const lineOrbitRef = view === 'map' ? undefined : orbitRef;
+    const lineOrbitRef = view === 'map' ? null : orbitRef;
     const primaryStyle: LineStyle = {
       color: palette.signal, opacity: TARGET_LINE_OPACITY, renderOrder: LINE_RENDER_ORDER.target,
     };

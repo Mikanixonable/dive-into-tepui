@@ -8,7 +8,7 @@ import { injectOnce } from '../../../hud/inject-style';
 import { frameRoleName } from './frame-labels';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { groupPickables } from '../object-groups';
-import { ObjectPicker, ObjectPickerGroup } from '../windows/object-picker';
+import { ObjectPicker, type ObjectPickerGroup } from '../../../hud/windows/object-picker';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import type { ListedObject } from '../../pickable/listed-object';
 
@@ -31,10 +31,10 @@ export class AnchorZone {
   private readonly picker: ObjectPicker<string | null>;
   private readonly quick: SegmentedControl<string | null>;
 
-  // popupRoot は ObjectPicker のポップアップの親、title はプルダウンの見出し。releaseLabel が
-  // null なら「解除」の選択肢そのものを出さない(プルダウン先頭・クイックボタン先頭の両方)。
+  // title はプルダウンの見出し。releaseLabel が null なら「解除」の選択肢そのものを出さない
+  // (プルダウン先頭・クイックボタン先頭の両方)。
   public constructor(
-    popupRoot: HTMLElement, title: string, private readonly celestialBodies: CelestialBodies,
+    title: string, private readonly celestialBodies: CelestialBodies,
     private readonly releaseLabel: string | null,
     overlayManager: OverlayManager,
   ) {
@@ -43,7 +43,7 @@ export class AnchorZone {
     this.element = document.createElement('div');
     this.element.className = 'hud-anchor-zone';
 
-    this.picker = new ObjectPicker<string | null>(popupRoot, title, (id) => this.onSelect?.(id), overlayManager);
+    this.picker = new ObjectPicker<string | null>(title, (id) => this.onSelect?.(id), overlayManager);
     this.element.appendChild(this.picker.element);
 
     this.quick = new SegmentedControl<string | null>('', [], (id) => this.onSelect?.(id));
@@ -61,7 +61,7 @@ export class AnchorZone {
   }
 
   // クイックボタンを、渡された系の天体列(+その衛星・ラグランジュ点)へ合わせる。
-  // 候補に無い id は出さない(押せてから拒否することになるため)。
+  // 候補に無い id は出さない(選べてから拒否されることになるため)。
   public setNearby(members: readonly string[], pickables: readonly ListedObject[]): void {
     const byId = new Map(pickables.map((p) => [p.id, p] as const));
 

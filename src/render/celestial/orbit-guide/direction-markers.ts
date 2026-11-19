@@ -2,10 +2,10 @@
 // まとめて描く。animate のときは曲線のパラメータ(周期に対する経過時刻の割合)に沿って等速で
 // 進める — 軌道上では近点で速く・遠点で遅く動く(SPEC/MAP.md)。
 import * as THREE from 'three/webgpu';
-import { GuideCurve } from './guide-curve';
+import type { GuideCurve } from './guide-curve';
 import { metersPerPixelFromTanHalfFov, MIN_DEPTH } from '../../../math/projection';
 import { InstancedPool } from '../../instanced-pool';
-import { FloatingOrigin } from '../../camera/floating-origin';
+import type { FloatingOrigin } from '../../camera/floating-origin';
 import type { CameraFrame } from '../../camera/camera-frame';
 
 // 進行方向マーカーの出し方。

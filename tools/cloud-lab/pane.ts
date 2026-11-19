@@ -2,14 +2,18 @@
 // 表示にも写しにも場の投影を使うので、面を並べればそのまま図法どうしの比較になる。
 import type * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
-import type { ClimateMap } from '../../src/render/cloud/climate-map';
-import type { GeneratedCloudField } from '../../src/render/cloud/generated-cloud-field';
+import type { ClimateMap } from '../../src/render/earth-weather/climate-map';
+import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
 import type { Vec2Node, Vec3Node } from '../../src/render/tsl-types';
 import type { CloudLabView } from './views';
 
 export class CloudLabPane {
-  // field はこの面が焼いて見せる雲場。photo は面どうしで共有してよい(読むだけのテクスチャ)。
-  public constructor(private readonly field: GeneratedCloudField, private readonly photo: THREE.Texture) {}
+  // field はこの面が焼いて見せる雲場。photo と observedField は面どうしで共有してよい
+  // (読むだけのテクスチャ)。observedField は実写系が読む雲場画像(cloud-field.png)。
+  public constructor(
+    private readonly field: GeneratedCloudField, private readonly photo: THREE.Texture,
+    private readonly observedField: THREE.Texture,
+  ) {}
 
   // この面が読む気候。画像が届くのを待つのに要る。
   public get climate(): ClimateMap { return this.field.climateMap; }
@@ -19,12 +23,18 @@ export class CloudLabPane {
     this.field.prepare(renderer, seconds);
   }
 
+  // 調整値を変えたあとに呼ぶ。次の bake で同じ時刻でも焼き直す。
+  public invalidate(): void {
+    this.field.invalidate();
+  }
+
   // この面の uv(0..1)に出す表示値 0..1 の色。投影が値を持たない範囲は黒。
   public colorAt(view: CloudLabView, uv: Vec2Node): Vec3Node {
     const projection = this.field.fieldProjection;
     const direction = projection.directionAt(uv);
     const color = view.reads === 'cloud' ? view.color(direction, (d) => this.field.at(d))
       : view.reads === 'photo' ? view.color(direction, this.photo)
+      : view.reads === 'observed' ? view.color(direction, this.observedField)
       : view.color(direction, this.field.weatherModel, this.field.climateMap);
     return color.mul(projection.insideAt(uv));
   }

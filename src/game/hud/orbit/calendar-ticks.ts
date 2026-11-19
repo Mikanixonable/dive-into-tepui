@@ -1,6 +1,6 @@
 // 計画軌道のルーラー目盛りを、暦(時・日・月・年)の区切りに合わせて生成する。
-import { fmtDateTime, fmtDuration } from '../../../hud/utils';
-import type { TickLabelMode } from '../../viewer/predict-panel-selection';
+import { fmtDateTime, fmtDuration } from '../../../hud/format';
+import type { TickLabelMode } from '../../viewer/display-timeline-selection';
 
 // 目盛階数。数が大きいほど粗い単位 — 0:1時間 1:3時間 2:6時間 3:12時間 4:1日 5:1月 6:1年。
 export type TickRank = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -107,7 +107,7 @@ function monthBoundaries(fromUnix: number, toUnix: number): number[] {
   return result;
 }
 
-// 年初(UTC 1/1 00:00)を列挙する。この文書の想定年代は5桁に達するため Date.UTC(y, 0, 1) の
+// 年初(UTC 1/1 00:00)を列挙する。このモジュールの想定年代は5桁に達するため Date.UTC(y, 0, 1) の
 // year 引数をそのまま増減させる(Date.parse/toISOString は5桁年を扱えない)。
 function yearBoundaries(fromUnix: number, toUnix: number): number[] {
   // y を1ずつ増やして Date.UTC(y, 0, 1) を求め直す。
@@ -159,15 +159,15 @@ export function calendarBoundaries(
   return unixList.map((unix) => ({ unix, rank: highestRank(unix) }));
 }
 
-// 通過時刻ラベルを書くのに要るものの束。**表示側がこれを1つ持ち回る** — 表記の種類・
+// 通過時刻ラベルを書くのに要るものの束。表示側がこれを1つ持ち回る — 表記の種類・
 // 相対表記の基準時刻・絶対表記の元期は、どれか1つだけ差し替えると表記が食い違う。
 // DisplayWindow から timeLabelSettingOf() で組む。
-export type TimeLabelSetting = {
+export interface TimeLabelSetting {
   readonly mode: TickLabelMode;
   readonly show: boolean;
   readonly nowSimTime: number;
   readonly epochUnixSec: number;
-};
+}
 
 // 目盛りの表示ラベルを返す。'absolute' は rank に応じた暦の書式(時間系は HH:00、日は M/D、
 // 月は M月、年は年)、'relative' は referenceUnix からの経過時間を符号付きで返す
@@ -188,7 +188,7 @@ export function tickLabel(
 }
 
 // 軌道要素マーカー(近地点/遠地点・昇交点/降交点・再接近点など)へ添える通過時刻の表記。
-// 'relative' は目盛りと同じ T+/- 形式、'absolute' は PREDICT パネルの絶対時刻表示と同じ
+// 'relative' は目盛りと同じ T+/- 形式、'absolute' はタイムラインパネルの絶対時刻表示と同じ
 // ISO 風の書式(ランの元期基準)を使う——暦の区切りに揃っていない任意の瞬間を表すため、
 // tickLabel の rank 依存の粗い書式(HH:00 など)よりこちらが適する。
 function elementTimeLabel(simTimeT: number, label: TimeLabelSetting): string {
@@ -200,7 +200,7 @@ function elementTimeLabel(simTimeT: number, label: TimeLabelSetting): string {
   return fmtDateTime(label.epochUnixSec + simTimeT);
 }
 
-// 軌道上の点マーカーへ出す表記。PREDICT パネルが求めるときだけ通過時刻を併記する。
+// 軌道上の点マーカーへ出す表記。タイムラインパネルが求めるときだけ通過時刻を併記する。
 export function orbitPointLabel(base: string, simTimeT: number | null, label: TimeLabelSetting): string {
   return label.show && simTimeT !== null ? `${base} ${elementTimeLabel(simTimeT, label)}` : base;
 }

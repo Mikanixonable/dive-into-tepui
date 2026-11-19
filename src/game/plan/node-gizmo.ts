@@ -1,7 +1,7 @@
 // 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル・Δv アーム・コンテキストメニューを
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import { FONT_FAMILY, FONT_XS, Z_HUD_NODE_GIZMO } from '../../theme';
-import { ContextMenu } from '../hud/windows/context-menu';
+import { ContextMenu } from '../../hud/windows/context-menu';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { OverlayManager } from '../../hud/overlay-manager';
 
@@ -61,7 +61,7 @@ export interface AxisHandleSpec {
 }
 
 // ドラッグ中の Δv アーム。excessPx はラッチ前は null、ラッチ後は基点からの超過量 [px]。
-export interface AxisHandleDrag {
+interface AxisHandleDrag {
   readonly axis: 0 | 1 | 2;
   readonly sign: 1 | -1;
   readonly excessPx: number | null;
@@ -95,9 +95,8 @@ export class NodeGizmo {
   // ドラッグ中の Δv アーム。ドラッグしていなければ null。
   public get axisHandleDrag(): AxisHandleDrag | null { return this._axisHandleDrag; }
 
-  // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ、
-  // popupLayer はノードのコンテキストメニューを置くレイヤ。
-  public constructor(root: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager) {
+  // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ。
+  public constructor(root: HTMLElement, overlayManager: OverlayManager) {
     if (!styleInjected) {
       styleInjected = true;
       const style = document.createElement('style');
@@ -114,7 +113,7 @@ export class NodeGizmo {
     this.axisLayer = document.createElement('div');
     this.root.appendChild(this.axisLayer);
 
-    this.menu = new ContextMenu<number, MenuAction>(popupLayer, overlayManager);
+    this.menu = new ContextMenu<number, MenuAction>(overlayManager);
     // メニュー選択を対応するノード操作コールバックへ橋渡しする。
     this.menu.onSelect = (act, idx) => {
       if (act === 'warp') this.onMenuWarpTo?.(idx);

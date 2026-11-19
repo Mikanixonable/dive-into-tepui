@@ -7,7 +7,7 @@ import {
 } from './earth-surface-tile-key';
 import type { EarthTileProjection } from './earth-surface-tile-projection';
 import type { EarthTileMetric } from './earth-surface-tile-projection';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-page-table';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-layout';
 
 const FADE_MS = 250; // 壁時計の描画時間 [ms]。
 const SPLIT_ERROR_PX = 2;
@@ -22,15 +22,15 @@ interface DisplayedTile extends EarthTileResident {
   readonly fadeStartMs: number | null;
 }
 
-// 暗黙の全球基底と同じz4区画から可視性を絞り、z5全数の評価を避ける。
-// 詳細選択の起点となるz4相当の全球区画を列挙する。
-function selectionRoots(): readonly EarthTileKey[] {
+// 詳細選択の起点となるz4相当の全球区画。暗黙の全球基底と同じ区画から可視性を絞り、
+// z5全数の評価を避ける。固定なので1回だけ構築する。
+const SELECTION_ROOTS: readonly EarthTileKey[] = (() => {
   const z = EARTH_TILE_MIN_Z - 1;
   const rows = 2 ** z;
   return Array.from({ length: rows }, (_, y) => Array.from(
     { length: 2 * rows }, (_, x) => earthTileKey(z, x, y),
   )).flat();
-}
+})();
 
 // 投影優先度、LOD、IDの順に候補を安定ソートする。
 function ordered(
@@ -46,6 +46,13 @@ export class EarthSurfaceTiles {
   private displayed: readonly DisplayedTile[] = [];
   private fadeStarts = new Map<string, number>();
   private drawingTimeMs = 0;
+
+  // 表示するタイルの最大段を受ける。配信範囲の外は投げる。
+  public constructor(private readonly maxZoom: number = EARTH_TILE_MAX_Z) {
+    if (!Number.isInteger(maxZoom) || maxZoom < EARTH_TILE_MIN_Z || maxZoom > EARTH_TILE_MAX_Z) {
+      throw new RangeError('Invalid Earth surface display max zoom');
+    }
+  }
 
   public get frontier(): readonly EarthTileResident[] { return this.displayed; }
 
@@ -127,9 +134,9 @@ export class EarthSurfaceTiles {
     this.fadeStarts = nextStarts;
   }
 
-  // 現在の表示をz7セルへ展開する。細かいタイルほど後から同じ領域を上書きする。
+  // 現在の表示を最高LODセルへ展開する。細かいタイルほど後から同じ領域を上書きする。
   public pageTable(): Uint8Array {
-    // z7セルへ展開し、細かい候補が親の値を上書きする。
+    // 最高LODセルへ展開し、細かい候補が親の値を上書きする。
     const table = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(EARTH_BASE_LAYER);
     for (const tile of this.displayed) {
       const size = 2 ** (EARTH_TILE_MAX_Z - tile.key.z);
@@ -172,10 +179,10 @@ export class EarthSurfaceTiles {
         for (const child of earthTileChildren(key)) visit(child);
         return;
       }
-      if (metric.errorPx <= SPLIT_ERROR_PX || key.z === EARTH_TILE_MAX_Z) return;
+      if (metric.errorPx <= SPLIT_ERROR_PX || key.z === this.maxZoom) return;
       for (const child of earthTileChildren(key)) visit(child);
     };
-    for (const root of selectionRoots()) visit(root);
+    for (const root of SELECTION_ROOTS) visit(root);
     return { keys: candidates, metrics };
   }
 

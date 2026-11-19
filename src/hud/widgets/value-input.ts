@@ -1,38 +1,30 @@
-// 数値/文字/検索入力の唯一の実装。Enter=確定・blur=確定・Escape=破棄の規約に従い、
+// 数値/文字/色入力の唯一の実装。Enter=確定・blur=確定・Escape=破棄の規約に従い、
 // 確定した時点の値だけを通知する。
 import { expandHitTarget, stopDragPropagation } from './widget-base';
 
-export type ValueInputType = 'text' | 'number' | 'search' | 'color';
+type ValueInputType = 'text' | 'number' | 'color';
 
-// Escape で編集を破棄する際の挙動。既定は 'revert'(確定済みの値へ復帰)。'clear'(空にする)の
-// 指定は検索フィールドに限定する — 安易なクリア挙動の拡散を防ぐため、
-// 明示的な型指定を必須とする。
-export type EscapeBehavior = 'revert' | 'clear';
-
-export interface ValueInputOptions {
+interface ValueInputOptions {
   readonly type: ValueInputType;
   readonly min?: number;
   readonly max?: number;
   readonly step?: number;
   readonly placeholder?: string;
-  readonly escapeBehavior?: EscapeBehavior;
 }
 
 export class ValueInput {
   public readonly element: HTMLInputElement;
-  private readonly escapeBehavior: EscapeBehavior;
-  private readonly onCommit: (value: string) => void;
-  private readonly onCancel: (() => void) | undefined;
   private committedValue = '';
   private suppressBlurCommit = false;
 
-  // onCommit は Enter・blur・commit() 実行時に確定値を引数として発火する。
+  // onCommit は Enter・blur 実行時に確定値を引数として発火する。
   // onCancel は破棄時(Escape・無効値の入力)に発火する — 確定と破棄で別々の事後処理
   // （インライン編集欄の開閉制御など）を行うための任意コールバック。
-  public constructor(options: ValueInputOptions, onCommit: (value: string) => void, onCancel?: () => void) {
-    this.escapeBehavior = options.escapeBehavior ?? 'revert';
-    this.onCommit = onCommit;
-    this.onCancel = onCancel;
+  public constructor(
+    options: ValueInputOptions,
+    private readonly onCommit: (value: string) => void,
+    private readonly onCancel?: () => void,
+  ) {
     this.element = document.createElement('input');
     this.element.type = options.type;
     this.element.className = 'w-input';
@@ -43,7 +35,7 @@ export class ValueInput {
     stopDragPropagation(this.element);
     expandHitTarget(this.element);
     this.element.addEventListener('keydown', (e) => {
-      // 打鍵をゲーム操作と誤認されないよう伝播を止める。
+      // 打鍵がゲーム操作と誤認されないよう伝播を止める。
       e.stopPropagation();
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -76,7 +68,7 @@ export class ValueInput {
   // 入力中の値を確定として通知する。前回確定した値と変わっていなければ何もしない —
   // 編集なしのフォーカス喪失だけで後続ノード等の外部状態が変化しないよう保護する。
   // 数値欄で非数値・空欄なら破棄扱いにする。
-  public commit(): void {
+  private commit(): void {
     const text = this.element.value;
     if (this.element.type === 'number' && (text.trim() === '' || !isFinite(Number(text)))) {
       this.cancel();
@@ -87,15 +79,10 @@ export class ValueInput {
     this.onCommit(text);
   }
 
-  // 編集を破棄する。revert は確定済みの値へ戻し、clear(検索欄限定)は空にする。
-  public cancel(): void {
+  // 編集を破棄して確定済みの値へ戻す。
+  private cancel(): void {
     this.suppressBlurCommit = true;
-    if (this.escapeBehavior === 'clear') {
-      this.committedValue = '';
-      this.element.value = '';
-    } else {
-      this.element.value = this.committedValue;
-    }
+    this.element.value = this.committedValue;
     this.element.blur();
     this.onCancel?.();
   }

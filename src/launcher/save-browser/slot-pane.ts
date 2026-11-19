@@ -2,7 +2,7 @@
 // 一覧行と行ごとの操作ボタン、新規作成/取り込みの導線を組み立てる。
 // 表示対象の選択・実際の改名/複製/削除などの実処理は、コールバックを通じて呼び出し側へ委ねる。
 import type { SaveSlotMeta } from '../save/slot-data';
-import { fmtDateTime } from '../../hud/utils';
+import { fmtDateTime } from '../../hud/format';
 import { Button } from '../../hud/widgets';
 import { injectOnce } from '../../hud/inject-style';
 import { MQ_COMPACT } from '../../hud/breakpoints';

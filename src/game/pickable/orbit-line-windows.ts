@@ -11,6 +11,7 @@ import type { ObjectPickables } from './object-pickables';
 
 const KIND_LABEL: Record<LinePickable['kind'], string> = {
   'orbit-body': '公転軌道', 'orbit-ship': '船の軌道', 'orbit-guide': '軌道ガイド',
+  'orbit-slot': '軌道標識',
 };
 const CALC_METHOD_LABEL: Record<LinePickable['method'], string> = {
   analytic: '解析軌道', numeric: '予測軌道', guide: '軌道ガイド',
@@ -39,7 +40,7 @@ export class OrbitLineWindows {
     }
     // 新しく開き、閉じたら表から外す。
     const win = new PropertyWindow<MenuAction>(
-      this.hud.layers.window, clientX, clientY, this.content(orbit), this.hud.overlayManager,
+      clientX, clientY, this.content(orbit), this.hud.overlayManager,
     );
     this.windows.set(orbit.key, win);
     win.onClose = () => { this.windows.delete(orbit.key); };
