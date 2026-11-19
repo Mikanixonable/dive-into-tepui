@@ -44,3 +44,4 @@ service-account.json
 scratch/
 artifacts/
 .local/
+.venv-protein-builder/

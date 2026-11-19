@@ -19,7 +19,7 @@ export interface CloudSample {
   // 陸らしさ(0 が海、1 が陸)。生成時の値は天気の landFraction。
   readonly land: FloatNode;
   // 対流の活発さ 0..1。生成時の値は天気の convectiveActivity。
-  readonly convection: FloatNode;
+  readonly convectiveActivity: FloatNode;
   // 気候の雲量 0..1(平年の雲の多さ。砂漠で小さい)。生成時の値は天気の meanCloudiness。
   readonly climateCloudiness: FloatNode;
   // 金床の濃さ 0..1。生成時の値は天気の anvil(渦の芯の金床)。
@@ -70,7 +70,7 @@ export function cloudSampleFromTexels(
     cumulusCell: cellTexel.r,
     cirrusCell: cellTexel.g,
     land: environmentTexel.r,
-    convection: environmentTexel.g,
+    convectiveActivity: environmentTexel.g,
     climateCloudiness: environmentTexel.b,
     anvil: environmentTexel.a,
   };
@@ -83,7 +83,7 @@ export function cloudFieldTexelFromSample(sample: CloudSample): Vec4Node {
 
 // 雲標本の環境の量を焼き込み用のRGBAへ戻す。cloudSampleFromTexels の復号と対。
 export function cloudEnvironmentTexel(sample: CloudSample): Vec4Node {
-  return vec4(sample.land, sample.convection, sample.climateCloudiness, sample.anvil);
+  return vec4(sample.land, sample.convectiveActivity, sample.climateCloudiness, sample.anvil);
 }
 
 // 雲標本のセル径を焼き込み用のRGBAへ戻す。セル径は log2(km) の生値を R・G へ入れる。

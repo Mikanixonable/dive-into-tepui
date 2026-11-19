@@ -5,7 +5,7 @@
 
 import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CIRRUS_DETAIL } from './earth-weather/cloud/cloud-detail';
-import { CLOUD_FIELD_SOURCE_KIND } from './earth-weather/cloud/cloud-presentation';
+import { CLOUD_FIELD_SOURCE_KIND } from './earth-weather/cloud/cloud-field-source';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
@@ -63,7 +63,10 @@ export const GRAPHICS_OPTIONS = {
   // 露出へ掛ける倍率。1 段が EV 1 段(明るさ 2 倍)。
   exposureCompensation: {
     kind: 'choice', group: 'basic', label: '露出補正',
-    items: [[0.25, '−2'], [0.5, '−1'], [1, '±0'], [2, '+1'], [4, '+2']],
+    items: [
+      [0.25, '−2'], [0.5, '−1'], [0.7071067811865476, '−0.5'], [1, '±0'],
+      [1.4142135623730951, '+0.5'], [2, '+1'], [4, '+2'],
+    ],
     presets: { low: 1, medium: 1, high: 1 },
   },
   // トーンマッピング後の色へ当てるフィルムのルック。値はルックの名前で、候補は同梱の .cube から

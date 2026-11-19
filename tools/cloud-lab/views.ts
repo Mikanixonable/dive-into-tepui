@@ -144,7 +144,7 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     color: (d, model) => vec3(model.weatherAt(d).upperHumidity) },
   { id: 'convection', label: '対流', reads: 'weather',
     legend: { text: '対流 ±0.5 を 0.5 中心へ(明るいほど上昇セル)' },
-    color: (d, model) => vec3(model.weatherAt(d).convection.y.div(2 * CONVECTION_SPAN).add(0.5)) },
+    color: (d, model) => vec3(model.weatherAt(d).convectionNoise.y.div(2 * CONVECTION_SPAN).add(0.5)) },
   { id: 'convectiveActivity', label: '対流の活発度', reads: 'weather',
     legend: { text: '活発度 0..1' },
     color: (d, model) => vec3(model.weatherAt(d).convectiveActivity) },
@@ -152,7 +152,7 @@ export const CLOUD_LAB_VIEWS: readonly CloudLabView[] = [
     legend: { text: '対流 × 活発度 0..0.3 — 塔が立つかどうかを決める量' },
     color: (d, model) => {
       const weather = model.weatherAt(d);
-      return vec3(weather.convection.y.mul(weather.convectiveActivity).div(CONVECTIVE_DEPTH_SPAN));
+      return vec3(weather.convectionNoise.y.mul(weather.convectiveActivity).div(CONVECTIVE_DEPTH_SPAN));
     } },
   { id: 'cumulus', label: '積雲の量', reads: 'cloud', hidden: true,
     legend: { text: '積雲の量 0..1(不透明度・雲頂の正本 — 撮影で読む量)' },

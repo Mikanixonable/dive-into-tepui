@@ -4,7 +4,7 @@
 // 端数分の振幅で重畳する — 解像度が連続的に変化しても、オクターブが急峻に出現・消失しない。
 import * as THREE from 'three/webgpu';
 import { Fn, If, abs, clamp, float, floor, greaterThan, int, log2, mix, mod, uniform, uniformArray, vec2 } from 'three/tsl';
-import { gradientNoise } from './cloud/gradient-noise';
+import { gradientNoise } from './gradient-noise';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node } from '../tsl-types';
 
 // 段が振幅 1 に達する、1 波長あたりの texel 数の逆数(0.25 = 4 texel)。ここから周波数 2 倍
@@ -33,7 +33,7 @@ const CELL_TO_NOISE_SCALE = 1.728;
 // オフセット無しで、時刻 0 の場は混ぜ替えの無い場と一致する。移行時間 18 h は実測で選んだ:
 // 12 h では 8 h 遅れの移流ピークが中緯度で崩れ (速さ比 1.07、ピーク相関 0.42)、18 h では
 // 保たれる (速さ比 0.81、相関 0.58) うえ、脱相関時間はむしろ短くなった。
-export const EPOCH_TRANSITION_SECONDS = 18 * 3600;
+const EPOCH_TRANSITION_SECONDS = 18 * 3600;
 const EPOCH_OFFSETS: readonly (readonly [number, number, number])[] = [
   [0, 0, 0],
   [3.1, -1.7, 2.3],

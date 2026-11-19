@@ -2,9 +2,7 @@
 // から、気圧の塗り・等圧線・上層の流線・地表の風矢印・偏西風の蛇行の軸を引き、
 // 海岸線と経緯線で座標を示す。見せる範囲は MapView(中心と半径で決まる窓)で、全層が同じ窓を使う。
 import { EARTH_COASTLINE, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import {
-  HEMISPHERE_PHASE_OFFSET, WAVE_NUMBER, WAVE_PHASE_RATE,
-} from '../../src/render/earth-weather/rossby-wave';
+import { waveDisplacementDegAt } from '../../src/render/earth-weather/rossby-wave';
 import type { SynopticFields } from './synoptic-field';
 
 export const MAP_WIDTH = 1440;
@@ -360,21 +358,19 @@ function drawSurfaceWind(context: CanvasRenderingContext2D, fields: SynopticFiel
 // ── 偏西風の蛇行 ────────────────────────────────────────────────────────
 
 // ジェットの軸の緯度 [°] と、蛇行の見せる幅 [°]。幅はモデルの波から積分した値ではなく、
-// 蛇行の様子を読みやすくする表示上の広げ方。
+// ジェットの軸を引く緯度。変位は波の変位場から引く。
 const JET_AXIS_LAT = 46;
-const JET_MEANDER_AMPLITUDE = 8;
 
-// ロスビー波に乗る上層ジェットの軸。流れが波の流線関数 ψ ∝ sin(kλ − ωt) に沿って進むと、
-// 軸の緯度は谷(ψ の極小)で赤道側へ、尾根で極側へ振れる — 蛇行の形を波の位相から引く。
-// 地表の低気圧・高気圧の配置もこの波の位相へ錨づくので、L / H と軸の凹凸は位置が揃う。
+// ロスビー波に乗る上層ジェットの軸。流れは波の流線に沿って進み、軸の緯度は流線の南北変位
+// だけ揺れる — 蛇行の形を波の変位場から引く。地表の低気圧・高気圧の配置もこの波へ
+// 錨づくので、L / H と軸の凹凸は位置が揃う。
 function drawJetMeander(context: CanvasRenderingContext2D, seconds: number, view: MapView): void {
   const path = new Path2D();
   for (const sign of [1, -1]) {
     let started = false;
     for (let lonDeg = view.lonMinDeg; lonDeg <= view.lonMinDeg + view.lonSpanDeg; lonDeg += 0.5) {
-      const phase = (lonDeg * Math.PI / 180) * WAVE_NUMBER - WAVE_PHASE_RATE * seconds
-        + sign * HEMISPHERE_PHASE_OFFSET;
-      const latitude = sign * (JET_AXIS_LAT + JET_MEANDER_AMPLITUDE * Math.sin(phase));
+      const latitude = sign * JET_AXIS_LAT
+        + waveDisplacementDegAt(sign * JET_AXIS_LAT * Math.PI / 180, lonDeg * Math.PI / 180, seconds);
       const x = view.lonToX(lonDeg);
       const y = view.latToY(latitude);
       if (started) path.lineTo(x, y);

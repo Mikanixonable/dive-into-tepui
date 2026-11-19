@@ -3,7 +3,7 @@
 import { exp, float, inverseSqrt, log2, max, mix, smoothstep, tanh } from 'three/tsl';
 import { cellSizesOf } from './cell-size';
 import { cirrusFlowFromWindNode } from './cirrus-flow-node';
-import { CLOUD_TUNING } from './cloud-tuning';
+import { CLOUD_TUNING } from '../cloud-tuning';
 import {
   cirrusAmountFromOpticalDepthNode, cumulusAmountFromOpacityNode, cumulusAmountFromTopAltitudeNode,
 } from './cloud-kind-node';
@@ -133,7 +133,7 @@ export function condense(weather: WeatherSample): CloudSample {
   // 渡りの中間(半々)に、粒の消えた平坦な帯ができる。
   const shape = smoothstep(SHAPE_NETWORK_HUMIDITY, SHAPE_GRAIN_HUMIDITY, weather.surfaceHumidity);
   const network = float(1).sub(shape);
-  const convection = mix(weather.convection.y, weather.convection.x, shape)
+  const convection = mix(weather.convectionNoise.y, weather.convectionNoise.x, shape)
     .mul(inverseSqrt(network.mul(network).add(shape.mul(shape))));
   const peak = convection.mul(weather.convectiveActivity);
   // 沈降する湿った海洋の低活発度の空では海洋性層積雲へ連続的に移り、前線帯ではその性質を薄める。
@@ -177,7 +177,7 @@ export function condense(weather: WeatherSample): CloudSample {
   // 圏界面までを二乗で渡すので、低い塔が多く高い塔は少ない。**塔は、その場が覆われるほど湿っていて、
   // かつ沈降していない所にだけ立つ** — 乾いた土地と高気圧の下では、粒の峰が雲を作っても深い対流に
   // ならない。金床は眼を持つ渦の芯だけが敷く平らな天蓋で、圏界面まで届く。
-  const grain = max(weather.convection.x, 0).mul(weather.convectiveActivity)
+  const grain = max(weather.convectionNoise.x, 0).mul(weather.convectiveActivity)
     .add(weather.deepPotential.mul(TOWER_DEEP_GAIN));
   const humidity = weather.surfaceHumidity.add(weather.shallowForcing);
   const moist = smoothstep(COVERAGE_ONSET, COVERAGE_ONSET.add(COVERAGE_WIDTH),
@@ -214,7 +214,7 @@ export function condense(weather: WeatherSample): CloudSample {
     cumulusCell: cells.cumulusCell,
     cirrusCell: cells.cirrusCell,
     land: weather.landFraction,
-    convection: weather.convectiveActivity,
+    convectiveActivity: weather.convectiveActivity,
     climateCloudiness: weather.meanCloudiness,
     anvil: weather.anvil,
   };

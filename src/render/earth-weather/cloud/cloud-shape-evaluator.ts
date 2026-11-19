@@ -2,9 +2,8 @@
 // 光学的厚みの計算式を集約し、各レンダラーのシェーダーグラフへ展開する。
 import { clamp, float, log2, max, min, smoothstep } from 'three/tsl';
 import { CloudDetailEvaluator, DETAIL_AMPLITUDE_MAX } from './cloud-detail';
-import { CLOUD_TUNING } from './cloud-tuning';
-import { cumulusColumnOpticalDepthNode } from './cloud-kind-node';
-import { CUMULUS_DITHER_KNOB, CLOUD_TOP_SPAN } from './cumulus-shape';
+import { CLOUD_TUNING } from '../cloud-tuning';
+import { CUMULUS_DITHER_KNOB } from './cumulus-shape';
 import type { CloudSample } from './cloud-field-sample';
 import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
@@ -50,7 +49,7 @@ export class CloudShapeEvaluator {
     const smallCell = max(CELL_GRAIN_REFERENCE_LOG2.sub(cloud.cumulusCell), 0)
       .div(CELL_GRAIN_REFERENCE_LOG2);
     return clamp(
-      cloud.land.mul(cloud.convection.mul(GRAIN_CONVECTION_WEIGHT).add(GRAIN_LAND_WEIGHT))
+      cloud.land.mul(cloud.convectiveActivity.mul(GRAIN_CONVECTION_WEIGHT).add(GRAIN_LAND_WEIGHT))
         .add(float(CELL_GRAIN_MIX).mul(smallCell)),
       0, 1);
   }
@@ -85,11 +84,4 @@ export class CloudShapeEvaluator {
   public cloudTopRadius(cloudTop: FloatNode, groundRadius: FloatNode): FloatNode {
     return cloudTop.mul(groundRadius.oneMinus()).add(groundRadius);
   }
-
-  // 積雲の量から鉛直柱光学深さ。
-  public columnOpticalDepth(amount: FloatNode): FloatNode {
-    return cumulusColumnOpticalDepthNode(amount);
-  }
-
-  public get cloudTopSpan(): number { return CLOUD_TOP_SPAN; }
 }

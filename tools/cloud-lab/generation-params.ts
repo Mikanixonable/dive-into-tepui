@@ -1,7 +1,7 @@
 // 生成モデルの調整値をいじるスライダーの表。値そのものの正本は
-// src/render/earth-weather/cloud/cloud-tuning.ts の CLOUD_TUNING_DEFAULTS で、ここはつまみの表示名と
+// src/render/earth-weather/cloud-tuning.ts の CLOUD_TUNING_DEFAULTS で、ここはつまみの表示名と
 // 属するサブタブと章、ホバー説明、目盛りだけを持つ。
-import type { CloudTuningId } from '../../src/render/earth-weather/cloud/cloud-tuning';
+import type { CloudTuningId } from '../../src/render/earth-weather/cloud-tuning';
 
 // スライダーを置くサブタブ(分野)。並びはモデルの段の流れ(気象 → 移流 → 凝結、対流は横断)。
 export const GENERATION_PARAM_TABS = [

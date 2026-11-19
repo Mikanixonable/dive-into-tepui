@@ -10,7 +10,7 @@ import { GPU_PASS } from '../../gpu-timings';
 import { equirectUvFromDirection, type FieldProjection } from '../../field-projection';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../../gpu-timings';
-import type { CloudFieldSource } from './cloud-presentation';
+import type { CloudFieldSource } from './cloud-field-source';
 import type { CloudBlend, CloudFieldSlot } from './cloud-field-sample';
 import type { Vec4Node } from '../../tsl-types';
 
@@ -26,6 +26,20 @@ export function observedCloudTexel(texel: Vec4Node): Vec4Node {
 const OBSERVED_CUMULUS_CELL_KM = 40;
 const OBSERVED_CIRRUS_CELL_KM = 10;
 
+// どの方向でも同じ RGBA を返す、1 texel の半精度の写しを作る。実写には環境・セル径の場が
+// 無いので、中立値をこれで供給する。
+function constantTexelTexture(r: number, g: number, b: number, a: number): THREE.DataTexture {
+  const tex = new THREE.DataTexture(
+    Uint16Array.from([r, g, b, a], (value) => THREE.DataUtils.toHalfFloat(value)),
+    1, 1, THREE.RGBAFormat, THREE.HalfFloatType);
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 export class ObservedCloudField implements CloudFieldSource {
   private readonly map: DeferredTexture;
   private readonly field: BakedField;
@@ -39,7 +53,6 @@ export class ObservedCloudField implements CloudFieldSource {
   // 焼いたときの画像の世代と cap の版。どちらかが変わったときだけ焼き直す。
   private bakedGeneration = -1;
   private bakedRevision = -1;
-  private generationValue = 0;
 
   // url は地表と同じ正距円筒の雲場画像(R = 積雲の量、G = 巻雲の量、B・A = 巻雲の筋の
   // 倍角ベクトル 0..1)、projection は焼き直す先の持ち方。
@@ -47,25 +60,11 @@ export class ObservedCloudField implements CloudFieldSource {
     this.map = new DeferredTexture(url, THREE.NoColorSpace);
     // 正距円筒の経度は周期的なので、画像は経度方向へ巻く。
     this.map.texture.wrapS = THREE.RepeatWrapping;
-    // 陸・対流・金床は 0、気候の雲量は中立の 0.5(半精度の 0x3800)。
-    this.environment = new THREE.DataTexture(
-      new Uint16Array([0, 0, 0x3800, 0]), 1, 1, THREE.RGBAFormat, THREE.HalfFloatType);
-    this.environment.minFilter = THREE.LinearFilter;
-    this.environment.magFilter = THREE.LinearFilter;
-    this.environment.wrapS = THREE.RepeatWrapping;
-    this.environment.wrapT = THREE.RepeatWrapping;
-    this.environment.needsUpdate = true;
+    // 陸・対流・金床は 0、気候の雲量は中立の 0.5。
+    this.environment = constantTexelTexture(0, 0, 0.5, 0);
     // セル径は中立の既定値 log2(km)(積雲 OBSERVED_CUMULUS_CELL_KM、巻雲 OBSERVED_CIRRUS_CELL_KM)。B・A は予約で 0。
-    this.cellSize = new THREE.DataTexture(
-      Uint16Array.from(
-        [Math.log2(OBSERVED_CUMULUS_CELL_KM), Math.log2(OBSERVED_CIRRUS_CELL_KM), 0, 0],
-        (value) => THREE.DataUtils.toHalfFloat(value)),
-      1, 1, THREE.RGBAFormat, THREE.HalfFloatType);
-    this.cellSize.minFilter = THREE.LinearFilter;
-    this.cellSize.magFilter = THREE.LinearFilter;
-    this.cellSize.wrapS = THREE.RepeatWrapping;
-    this.cellSize.wrapT = THREE.RepeatWrapping;
-    this.cellSize.needsUpdate = true;
+    this.cellSize = constantTexelTexture(
+      Math.log2(OBSERVED_CUMULUS_CELL_KM), Math.log2(OBSERVED_CIRRUS_CELL_KM), 0, 0);
     const image = texture(this.map.texture);
     // **読む段は焼くときに 1 回だけ決める** — 画面微分に任せると、経度の巻き目(u が 1 から 0 へ
     // 跳ぶ列)で最も粗い段が選ばれ、日付変更線に 1 本の線が出る。画像の 1 texel が張る角は
@@ -88,8 +87,6 @@ export class ObservedCloudField implements CloudFieldSource {
     this.slots = [slot, slot];
   }
 
-  public get generation(): number { return this.generationValue; }
-
   // 画像の取得を始め、届いた画像か cap の置き方が変わっていれば写しを焼き直す。
   public prepare(renderer: WebGPURenderer, _displayTime: number, gpu?: GpuTimingSink): void {
     this.map.request();
@@ -99,7 +96,6 @@ export class ObservedCloudField implements CloudFieldSource {
     this.bakedGeneration = generation;
     this.bakedRevision = revision;
     this.field.render(renderer, gpu);
-    this.generationValue += 1;
   }
 
   // 画像と写しを解放する。

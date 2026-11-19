@@ -11,12 +11,13 @@ import { Cyclones } from './cyclones';
 import { Anticyclones } from './anticyclones';
 import { EpochNoise } from './epoch-noise';
 import { PressureField, pressureBandAt } from './pressure-field';
+import { RossbyWave } from './rossby-wave';
 import { SolarClock } from './solar-clock';
 import { latitudeOf } from './sphere-frame';
 import { SURFACE_HUMIDITY_BASE, WeatherTransport } from './weather-transport';
-import { CLOUD_TUNING } from './cloud/cloud-tuning';
+import { CLOUD_TUNING } from './cloud-tuning';
 import { TerrainFlow } from './terrain-flow';
-import { WindField } from './wind-field';
+import { SURFACE_MEANDER_SHARE, WindField } from './wind-field';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../gpu-timings';
 import type { NoiseOctave } from './circulating-noise';
@@ -33,7 +34,7 @@ export interface WeatherSample {
   readonly lift: FloatNode; // 上昇流 [m/s](負なら下降)
   readonly surfaceHumidity: FloatNode; // 地表付近の湿度 0..1
   readonly upperHumidity: FloatNode; // 上層の湿度 0..1
-  readonly convection: Vec2Node; // 対流セルの強弱(0 中心の高周波、x が粒・y が網目)
+  readonly convectionNoise: Vec2Node; // 対流セルの強弱(0 中心の高周波、x が粒・y が網目)
   readonly convectiveActivity: FloatNode; // 対流の強弱がどれだけ強く現れるか 0..1
   readonly shallowForcing: FloatNode; // 浅い積雲の量へ足す湿度(日射と湿りが駆動の基準を上回る昼の陸で正)
   readonly deepPotential: FloatNode; // 深い対流(塔・雷雨)の起こりやすさ 0..1
@@ -190,6 +191,8 @@ export class WeatherModel {
   private readonly cirrusPatchNoise: CirculatingNoise;
   private readonly transport: WeatherTransport;
   private readonly pressure: PressureField;
+  // 上層偏西風の蛇行。風場と循環の帯の読み位置が同じ波を共有する。
+  private readonly rossbyWave: RossbyWave;
   private readonly winds: WindField;
   private readonly convectiveActivity: ConvectiveActivity;
   private readonly airMass: AirMass;
@@ -208,8 +211,14 @@ export class WeatherModel {
     private readonly surfaceRadius: number, rotationPeriod: number,
   ) {
     const texel = this.texel = projection.texelAngle;
-    this.surfaceCirculation = new Circulation(SURFACE_BANDS, surfaceRadius);
-    this.upperCirculation = new Circulation(UPPER_BANDS, surfaceRadius);
+    // 上層偏西風の蛇行。風場と循環の帯が同じ波を共有する — 帯の読み位置は変位ぶん南北へ
+    // ずれ、地表側は弱まって届く。
+    this.rossbyWave = new RossbyWave();
+    this.surfaceCirculation = new Circulation(
+      SURFACE_BANDS, surfaceRadius,
+      (direction) => this.rossbyWave.displacementAt(direction).mul(SURFACE_MEANDER_SHARE));
+    this.upperCirculation = new Circulation(
+      UPPER_BANDS, surfaceRadius, (direction) => this.rossbyWave.displacementAt(direction));
     this.cyclones = new Cyclones(surfaceRadius, rotationPeriod);
     this.highs = new Anticyclones(surfaceRadius, rotationPeriod);
     this.pressureNoise = new CirculatingNoise(
@@ -220,7 +229,8 @@ export class WeatherModel {
     this.pressure = new PressureField(
       projection, (direction) => this.pressureSourceAt(direction));
     this.winds = new WindField(
-      this.pressure, new TerrainFlow(terrain, climate, texel), surfaceRadius, rotationPeriod);
+      this.pressure, new TerrainFlow(terrain, climate, texel), this.rossbyWave,
+      surfaceRadius, rotationPeriod);
     // 上昇源は地形へ吹き付ける風を読むので、風場を持ったあとで組む(評価はベイク時)。
     this.transport = new WeatherTransport(
       this.surfaceCirculation, this.upperCirculation, projection, surfaceRadius,
@@ -244,9 +254,9 @@ export class WeatherModel {
   // 時刻 [s] を各サブシステムの uniform へ反映する。
   public syncTime(seconds: number): void {
     this.clock.syncTime(seconds);
+    this.rossbyWave.syncTime(seconds);
     this.surfaceCirculation.syncTime(seconds);
     this.upperCirculation.syncTime(seconds);
-    this.winds.syncTime(seconds);
     this.cyclones.syncTime(seconds);
     this.highs.syncTime(seconds);
     this.pressureNoise.syncTime(seconds);
@@ -304,8 +314,8 @@ export class WeatherModel {
     // 逓減し、海岸を出たばかりの閉じた細胞から、海を流れ続けた開いた細胞へ被覆を落とす。
     const outbreak = smoothstep(0, OUTBREAK_WARMTH_FULL, airMass.warmth.negate())
       .mul(landFraction.oneMinus())
-      .mul(smoothstep(0, OUTBREAK_FETCH_RAMP, airMass.ocean))
-      .mul(airMass.ocean.oneMinus().mul(OUTBREAK_HUMIDITY_SHORT - OUTBREAK_HUMIDITY_LONG)
+      .mul(smoothstep(0, OUTBREAK_FETCH_RAMP, airMass.oceanFetch))
+      .mul(airMass.oceanFetch.oneMinus().mul(OUTBREAK_HUMIDITY_SHORT - OUTBREAK_HUMIDITY_LONG)
         .add(OUTBREAK_HUMIDITY_LONG));
     const deviation = advected.surfaceHumidity.sub(SURFACE_HUMIDITY_BASE);
     const surfaceHumidity = clamp(
@@ -335,7 +345,7 @@ export class WeatherModel {
       lift,
       surfaceHumidity,
       upperHumidity,
-      convection: advected.convection,
+      convectionNoise: advected.convectionNoise,
       convectiveActivity: convective.activity,
       shallowForcing: convective.shallowForcing,
       deepPotential: convective.deepPotential,
@@ -343,7 +353,7 @@ export class WeatherModel {
       band,
       front,
       warmth,
-      oceanFetch: airMass.ocean,
+      oceanFetch: airMass.oceanFetch,
       anvil,
       cirrusPatch: this.cirrusPatchNoise.at(direction),
       meanCloudiness,

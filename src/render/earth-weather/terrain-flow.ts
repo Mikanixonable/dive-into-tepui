@@ -3,7 +3,7 @@
 // 連続に分かれる — Sheppard の分割流線モデルでは、Fr < 1 の層は下から H(1−Fr) までが
 // 山を迂回する。ここではその割合だけ上り成分を消して、残りを等高線へ沿わせる。
 import { clamp, dot, float, length, max, smoothstep } from 'three/tsl';
-import { CLOUD_TUNING } from './cloud/cloud-tuning';
+import { CLOUD_TUNING } from './cloud-tuning';
 import type { ClimateMap } from './climate-map';
 import type { TerrainMap } from './terrain-map';
 import type { FloatNode, Vec2Node, Vec3Node } from '../tsl-types';

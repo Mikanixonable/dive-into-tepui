@@ -262,6 +262,15 @@ export class LabView {
     this.render();
   }
 
+  // 雲の細部の撮影と同じケース(地球だけを置き、真下見下ろしの太陽で照らす)を組んで表示する。
+  // 巡回の表には載せない専用ケースで、観察の向きは既定へ戻る — あとは setViewAngles で動かす。
+  // cloud-lab の「写し」が、cap 領域の雲をゲームと同じ描画経路で眺めるために使う。
+  public showCloudDetail(): void {
+    if (this.currentBuilder === cloudDetailCase) return;
+    this.buildCase(cloudDetailCase, null);
+    this.resetView();
+  }
+
   // いま観察している向き。ケースを選び直すとそのケースの既定値へ戻る。
   public get viewAngles(): LabViewAngles { return this.angles; }
 
@@ -283,8 +292,10 @@ export class LabView {
     this.render();
   }
 
-  // 観察の向きだけを差し替える。描き直しは呼び出し側が決める。
-  private mergeViewAngles(changes: Partial<LabViewAngles>): void {
+  // 観察の向きだけを差し替える。描き直しは呼び出し側が決める — 表示時刻を控えているときは
+  // setViewAngles(その場で時刻 0 の 1 フレームを描く)ではなくこちらを使い、表示時刻つきの描き直し
+  // (setDisplayTime や render)をあとから呼ぶ。
+  public mergeViewAngles(changes: Partial<LabViewAngles>): void {
     const merged = { ...this.angles, ...changes };
     this.angles = {
       ...merged,
