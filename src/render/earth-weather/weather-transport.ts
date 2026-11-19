@@ -192,7 +192,7 @@ export class WeatherTransport {
     let upperHumidity: FloatNode = float(0);
     let uplift: FloatNode = float(0);
     let rainout: FloatNode = float(0);
-    let convection: Vec2Node = vec2(0);
+    let convectionNoise: Vec2Node = vec2(0);
     for (const [index, phase] of phases.entries()) {
       const weight = cos(phase.mul(2 * Math.PI)).oneMinus().div(3);
       // 遡る秒数[s](負)。位相が周期の終わりへ近づくほど遠くまで遡る。
@@ -205,13 +205,13 @@ export class WeatherTransport {
         [moisture.x, moisture.y, moisture.z][index]!.mul(ageFade(phase)).mul(weight));
       // 降水の乾きは全位相で同じ値が焼かれているので w を読む。
       rainout = rainout.add(moisture.w.mul(rainFade(phase)).mul(weight));
-      convection = convection.add(
+      convectionNoise = convectionNoise.add(
         sourceAt(convectionWind, step.mul(convectionStep)).zw.mul(weight));
     }
     return {
       surfaceHumidity: surfaceHumidity.add(uplift).sub(rainout),
       upperHumidity,
-      convectionNoise: convection,
+      convectionNoise,
     };
   }
 
