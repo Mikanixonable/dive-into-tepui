@@ -1,7 +1,7 @@
 // タッチの長押しを検出する追跡器。指を置いてからフィードバック時間が経つと判定中の
 // 位置を point へ立て、長押し時間まで判定が続いたら右クリックとして通知する。
 // 1本指のジェスチャにだけ存在するので、追跡状態は単一で持つ。
-import { type PointerPoint } from './pointer-point';
+import type { PointerPoint } from './pointer-point';
 
 const TOUCH_LONG_PRESS_MS = 500; // タッチの長押しを右クリックとみなすまでの静止時間 [ms]
 const TOUCH_LONG_PRESS_FEEDBACK_MS = 300; // 長押し成立前に視覚フィードバックを出すまでの時間 [ms]

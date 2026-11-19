@@ -8,7 +8,7 @@ import { type KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
 import { PinchTracker } from './pinch-tracker';
 import { LongPressDetector } from './long-press-detector';
 import { DoubleTapSynthesizer } from './double-tap-synthesizer';
-import { type PointerPoint, type PointerPointRecord } from './pointer-point';
+import type { PointerPoint, PointerPointRecord } from './pointer-point';
 
 // これ未満の累積移動量ならドラッグではなくクリック扱い [px]
 export const CLICK_MOVE_THRESHOLD = 6;
