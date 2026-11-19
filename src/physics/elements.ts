@@ -101,6 +101,11 @@ export function apsisAltitudes(el: OrbitalElements): { pe: number; ap: number } 
   };
 }
 
+// 近点・遠点の中心からの半径から、軌道長半径と離心率を求める(apsisAltitudes の逆)。
+export function semiMajorEccentricityFromApsides(rpRadius: number, raRadius: number): { a: number; e: number } {
+  return { a: (rpRadius + raRadius) / 2, e: (raRadius - rpRadius) / (raRadius + rpRadius) };
+}
+
 // 高離心率では M≈0 付近で E=M の初期値が遠回りになるため、±π の初期値へ切り替える境界。
 // この値は e=0.8 を境に初期値の収束経路を変えるだけで、解の精度の境界ではない。e=0.98 までの
 // 周回全域を回帰テストで覆う。
