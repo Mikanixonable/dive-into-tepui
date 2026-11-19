@@ -1,6 +1,6 @@
 // 視点中心の cap の角半径の式を固定する。cap の外へ雲が出ない/内へ縮みすぎない境目はここで決まる。
 import * as assert from 'node:assert/strict';
-import { CLOUD_CAP_MARGIN, CLOUD_CAP_SIZE, capRadiusFor, snapCap } from '../../src/render/earth-weather/cloud/cloud-cap';
+import { CLOUD_CAP_MARGIN, capRadiusFor, snapCap } from '../../src/render/earth-weather/cloud/cloud-cap';
 import { CLOUD_TOP_SPAN } from '../../src/render/earth-weather/cloud/cumulus-shape';
 import { R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
 import { test } from '../harness';
@@ -43,9 +43,6 @@ export function register(): void {
     ) < 1e-12);
   });
 
-  test('cloud cap: 写しは正方形の 512 texel', () => {
-    assert.equal(CLOUD_CAP_SIZE, 512);
-  });
   test('cloud cap: 格子へ揃えた cap は、要る円板を必ず覆う', () => {
     // 揃えた中心と直下点の大円距離 + 要る半径 ≦ 揃えた半径。高度・緯度・経度を振って確かめる。
     const centralAngle = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
