@@ -2,20 +2,20 @@
 // 入力の解釈 → 進行 → 導出と同期 → 描画の順に呼ぶ(R8)。
 import { Game, type SerializedGame } from '../game/game';
 import { GamePresentation } from '../game/game-presentation';
-import { proteinMotionFrameSample, type ProteinMotionFrameSample } from '../game/protein/protein-motion-metrics';
 import type { PageDevices } from './page-devices';
-import type { StageClass } from '../game/stages/stage';
+import type { RunOptions, StageClass } from '../game/stages/stage';
 import type { FrameSections } from '../game/frame-sections';
 import type { LoadingProgress } from '../game/loading-progress';
 import type { RunSummary } from '../game/run-summary';
 import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
 import type { GameInputPort } from '../game/input/game-input-router';
-import type { ViewOptionsSettings } from '../game/hud/panels/view-options-control';
+import type { ViewOptionsSettings } from '../game/view/view-options-settings';
 import type { SnapshotSource } from '../launcher/save/snapshot-service';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { Viewport } from '../render/viewport';
 import type { SettingValue } from '../settings/setting-value';
+import type { ShipBlueprintShelf } from '../game/ship/ship-blueprint';
 import type { ThemePalette } from '../theme';
 import type { TdbJulianDate } from '../physics/time';
 
@@ -23,7 +23,7 @@ import type { TdbJulianDate } from '../physics/time';
 const MAX_FRAME_DT = 0.1;
 
 // 進行と導出の間で、モデル層だけが確定した瞬間のランを毎フレーム読む者。
-export interface ProgressReader {
+interface ProgressReader {
   update(source: SnapshotSource): void;
 }
 
@@ -35,22 +35,26 @@ export class Run implements SnapshotSource, PerfCountSource {
   // 表示パネルのタブの選択、themePalette は選ばれている配色。
   public static async create(
     stageClass: StageClass,
-    startEpoch: TdbJulianDate | undefined,
+    startEpoch: TdbJulianDate | null,
     devices: PageDevices,
     viewOptions: ViewOptionsSettings,
     themePalette: SettingValue<ThemePalette>,
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
+    runOptions: RunOptions,
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
-    const game = await Game.create(stageClass, startEpoch, devices.scene, devices.hud, sections, progress);
+    const game = await Game.create(
+      stageClass, startEpoch, devices.scene, devices.hud, sections, blueprints, progress, runOptions,
+    );
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
-      progressReader, progress,
+      blueprints, progressReader, progress,
     );
   }
 
@@ -64,15 +68,18 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
-    const game = await Game.deserialize(serialized, stageClass, devices.scene, devices.hud, sections, progress);
+    const game = await Game.deserialize(
+      serialized, stageClass, devices.scene, devices.hud, sections, blueprints, progress,
+    );
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
-      progressReader, progress,
+      blueprints, progressReader, progress,
     );
   }
 
@@ -88,10 +95,11 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
-    const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections);
+    const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections, blueprints);
     const run = new Run(game, presentation, devices, graphics, renderStyle, sections, progressReader);
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
     // ここで視点に反映してプレゼンテーション層へ反映しておく。新規開始のブリーフィングもこの場で表示する。
@@ -136,7 +144,10 @@ export class Run implements SnapshotSource, PerfCountSource {
   // 1フレームを回す。dtRaw [s] は実時間の経過、nowMs [ms] はフレームの先頭で1度だけ読んだ実時刻。
   // ports はランが消費しなかった入力エッジを処理するラン外部のハンドラ。入力の途中でランが破棄されたら
   // (再出撃キーなど)導出と同期の前に打ち切り、false を返す。
-  public frame(dtRaw: number, nowMs: number, viewport: Viewport, ports: readonly GameInputPort[]): boolean {
+  public frame(
+    dtRaw: number, nowMs: number, viewport: Viewport, ports: readonly GameInputPort[],
+    renderFrame = true,
+  ): boolean {
     const debugInfo = this.devices.debugInfo;
     const t0 = debugInfo.on ? performance.now() : 0;
     this.sections.beginFrame();
@@ -149,11 +160,13 @@ export class Run implements SnapshotSource, PerfCountSource {
     const t1 = debugInfo.on ? performance.now() : 0;
     this.presentation.sync(this.graphics.current, this.renderStyle.current, viewport, nowMs);
     const t2 = debugInfo.on ? performance.now() : 0;
-    this.presentation.render(this.renderStyle.current);
-    const t3 = debugInfo.on ? performance.now() : 0;
-    // 時刻印クエリを溜めないため、窓の開閉によらず毎フレーム解決させる。計測自身の費用が
-    // render 区間へ混ざらないよう、区間の外で呼ぶ。
-    this.devices.scene.gpu.resolve();
+    let t3 = t2;
+    if (renderFrame) {
+      this.presentation.render(this.renderStyle.current);
+      t3 = debugInfo.on ? performance.now() : t2;
+      // 時刻印クエリを溜めないため、描画したフレームだけ解決させる。
+      this.devices.scene.gpu.resolve();
+    }
     if (debugInfo.on) debugInfo.record(this, t1 - t0, t2 - t1, t3 - t2, t3);
     return true;
   }
@@ -162,7 +175,10 @@ export class Run implements SnapshotSource, PerfCountSource {
   private advanceFrame(dt: number, nowMs: number, viewport: Viewport): void {
     const { game, presentation } = this;
     presentation.interpretInput(dt, nowMs, viewport);
-    game.advance(dt, presentation.pilotControls, presentation.isPaused);
+    game.advance(
+      dt, presentation.pilotControls, presentation.isPaused, presentation.simTimeLimit,
+      presentation.worldTimeScale,
+    );
     this.deriveAfterProgress(nowMs, viewport);
   }
 
@@ -211,10 +227,5 @@ export class Run implements SnapshotSource, PerfCountSource {
       ...shown,
       warp: game.simSpeedManager.simSpeed,
     };
-  }
-
-  // タンパク質敵モーションの集計値。
-  public proteinMotionFrameSample(): ProteinMotionFrameSample {
-    return proteinMotionFrameSample(this.game.dynamicSystem.all());
   }
 }
