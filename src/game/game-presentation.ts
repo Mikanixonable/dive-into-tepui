@@ -407,10 +407,15 @@ export class GamePresentation {
 
   // 一時エフェクト・的通過マーク・計画表示を、進行が記録した出来事と計画から表示時刻で組み直す(R5)。
   public presentProgress(): void {
+    const events = this.game.events.recent;
     this.killStop.observe(
-      this.game.events.recent, this.game.simSpeedManager.simSpeed,
+      events, this.game.simSpeedManager.simSpeed,
       this.isPaused, this.shipConstruction.active,
     );
+    // 自機の被弾(shipStruck は自機側だけが記録する)で視点の揺れを立てる。
+    for (const event of events) {
+      if (event.body.kind === 'shipStruck') this.cameraSystem.kickHitShake();
+    }
     this.displayPhase.presentProgress();
   }
 
@@ -435,6 +440,8 @@ export class GamePresentation {
     const controlled = this.game.activeControllable;
     const palette = this.themePalette.current;
     const displayWindow = this.displayWindowManager.current;
+    // 揺れの切り替えはフレームごとに写す — 設定ビューで切った効きが次の被弾から出る。
+    this.cameraSystem.hitShakeEnabled = graphics.hitShake;
     this.devices.hud.setConstructionMode(this.shipConstruction.active);
     this.hudPanels.syncViewBadge(
       this.viewManager.current, this.viewManager.selectableViews(), this.viewManager.activeView.pickables,
