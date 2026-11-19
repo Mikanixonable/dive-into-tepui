@@ -53,6 +53,9 @@ const MARKER_IDENTITY_STYLE = `
   top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3);
   white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2;
 }
+/* 散布界の状態 — 逆光で開く(GLARE)は警告色、順光で締まる(SUN)は良い状態の色。 */
+.mk-boresight--glare { color: var(--color-warning); }
+.mk-boresight--sun { color: var(--color-success); }
 
 .mk-target { color: var(--color-signal); }
 .mk-enemy { color: var(--text-strong); }

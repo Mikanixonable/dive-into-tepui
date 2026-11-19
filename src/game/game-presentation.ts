@@ -173,7 +173,7 @@ export class GamePresentation {
     this.uiSfx = new UiSfx(audioEngine);
     this.runEventPresenter = new RunEventPresenter(this.uiSounds, hud);
     this.frameMarkers = markers.createGroup();
-    this.playerMarkers = new PlayerMarkers(markers);
+    this.playerMarkers = new PlayerMarkers(markers, celestialSystem);
     this.flashEffectsView = new FlashEffectsView(scene.scene);
     this.equatorNodes = new EquatorNodeManager(dynamicSystem, markers, viewOptionsSettings.mapDisplay);
     this.orbitSlots = new OrbitSlotPresenter(
