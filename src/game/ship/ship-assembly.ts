@@ -21,7 +21,7 @@ import {
 import type { ShipAssemblyNode as AssemblyNode } from './ship-assembly-types';
 import { shipAssemblyTotals } from './ship-assembly-totals';
 import { validateShipAssembly } from './ship-assembly-validation';
-import { pieceOfModule, rerootedAssembly } from './ship-assembly-graft';
+import { graftEdgesInOrder, pieceOfModule, rerootedAssembly } from './ship-assembly-graft';
 import {
   applyTransformToPoint, copyTransform, finiteQuaternion, finiteVector, isIdentityRotation,
   normalizedTransform, sideMountTransform, sideSlotFromTransform,
@@ -228,11 +228,9 @@ export class ShipAssembly {
       rotation: dockRotation,
     }, 'docking', dockingConnectionId);
     const grafted = new Set([otherPortId]);
-    const pending = [...rerooted.connections];
-    while (pending.length > 0) {
-      const index = pending.findIndex(edge => grafted.has(edge.parentId));
-      if (index < 0) throw new Error('docked assembly graph is disconnected');
-      const edge = pending.splice(index, 1)[0]!;
+    for (const edge of graftEdgesInOrder(
+      rerooted.connections, id => grafted.has(id), 'docked assembly graph is disconnected',
+    )) {
       const sourceInstance = other.module(edge.childId);
       const mappedId = moduleIds.get(edge.childId);
       const mappedParentId = moduleIds.get(edge.parentId);
@@ -547,11 +545,9 @@ export class ShipAssembly {
     if (pieceRoot === undefined) throw new Error('assembly piece is missing its root');
     this.addModule(pieceRoot.instance, parentId, transform, kind, connectionId, sideSlot, sideReversed);
     // piece は木なので、親が先に入った接続から順に取り込む。
-    const pending = [...piece.connections];
-    while (pending.length > 0) {
-      const index = pending.findIndex(edge => this.nodes.has(edge.parentId));
-      if (index < 0) throw new Error('assembly piece is disconnected');
-      const edge = pending.splice(index, 1)[0]!;
+    for (const edge of graftEdgesInOrder(
+      piece.connections, id => this.nodes.has(id), 'assembly piece is disconnected',
+    )) {
       const child = piece.nodes.get(edge.childId);
       if (child === undefined) throw new Error(`assembly piece is missing module: ${edge.childId}`);
       this.addModule(
