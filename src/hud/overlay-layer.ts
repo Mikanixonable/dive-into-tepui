@@ -15,7 +15,15 @@ const LAYER_ORDER: readonly OverlayLayerName[] =
 export const OVERLAY_LAYER_STYLE = LAYER_ORDER
   .map((name, i) => `#hud-layer-${name} { position: absolute; inset: 0; pointer-events: none; z-index: ${10 + i}; }`
     + `#hud-layer-${name}.hud-overlay-gate { pointer-events: auto; }`)
-  .join('\n');
+  .join('\n') + `
+#hud-overlay-shield {
+  display: none; position: absolute; inset: 0; pointer-events: none; background: transparent;
+}
+/* 入力ゲートと背景暗転は別責務。gatesInput=true なら透明でも必ず全面shieldを実体化する。 */
+#hud-layer-gate.hud-overlay-gate #hud-overlay-shield { display: block; }
+body.hud-overlay-dim-background #hud-overlay-shield {
+  display: block; background: var(--shade-1);
+}`;
 
 // root の直下にレイヤ div を奥から手前の順に生成し、名前で引けるレイヤ集合を返す。
 export function buildOverlayLayers(root: HTMLElement): OverlayLayers {

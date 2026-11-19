@@ -26,11 +26,7 @@ export const STAGE_STATUS_STYLE = `
   #hud-stagestatus .t { font-size: var(--font-s); }
   #hud-stagestatus .k { font-size: var(--font-xxs); line-height: 1.35; white-space: normal; }
 }
-@media ${MQ_COARSE_SHORT} {
-  #hud:has(#hud-stagestatus:not(.hidden)) { --hud-stage-bottom-occupied: 54px; }
-  #hud-stagestatus { max-height: 46px; }
-}
-@media ${MQ_SHORT} {
+@media ${MQ_COARSE_SHORT}, ${MQ_SHORT} {
   #hud:has(#hud-stagestatus:not(.hidden)) { --hud-stage-bottom-occupied: 54px; }
   #hud-stagestatus { max-height: 46px; }
 }`;
