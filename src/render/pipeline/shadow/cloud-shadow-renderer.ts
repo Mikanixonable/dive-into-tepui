@@ -11,12 +11,11 @@ import type { CloudRenderInput } from '../../earth-weather/cloud/cloud-render-in
 import type { CloudSample } from '../../earth-weather/cloud/cloud-field-sample';
 import { CloudShapeEvaluator } from '../../earth-weather/cloud/cloud-shape-evaluator';
 import {
-  cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusInCloudOpticalDepthNode,
-  cumulusOpacityNode, cumulusTopAltitudeNode,
+  cirrusColumnOpticalDepthNode, cirrusTopAltitudeNode, cumulusFieldTopNode,
+  cumulusInCloudOpticalDepthNode, cumulusOpacityNode,
 } from '../../earth-weather/cloud/cloud-kind-node';
 import { ICE_CLOUD_ASYMMETRY, LIQUID_CLOUD_ASYMMETRY } from '../../earth-weather/cloud/cloud-optics';
 import { cloudReflectanceNode, fractionalTransmittanceNode } from '../../earth-weather/cloud/cloud-optics-node';
-import { CLOUD_TOP_SPAN } from '../../earth-weather/cloud/cumulus-shape';
 import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
 import type { CloudShadowKinds } from './shadow-select';
@@ -172,8 +171,8 @@ export class CloudShadowRenderer {
             const up = sampleOffset.div(max(length(sampleOffset), 1e-6));
             const amount = this.fieldSampler.sampleField(up).r;
             If(greaterThan(amount, CUMULUS_PRESENT_AMOUNT), () => {
-              cumulusTop.assign(max(cumulusTop, cumulusTopAltitudeNode(amount)
-                .div(CLOUD_TOP_SPAN).mul(this.topAltitude)));
+              cumulusTop.assign(max(cumulusTop,
+                cumulusFieldTopNode(amount).mul(this.topAltitude)));
               const tm = coarseStep.mul(t);
               cumulusFirst.assign(min(cumulusFirst, tm));
               cumulusLast.assign(max(cumulusLast, tm));
@@ -216,7 +215,7 @@ export class CloudShadowRenderer {
               up, cumulusWidth, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus,
               surfaceWind, this.shape.grainOf(cloud), cloud.cumulusCell);
             const cloudTop = this.shape.cloudTop(
-              cumulusTopAltitudeNode(cloud.cumulus).div(CLOUD_TOP_SPAN), detail).mul(this.topAltitude);
+              cumulusFieldTopNode(cloud.cumulus), detail).mul(this.topAltitude);
             const rise = max(dot(rayDir, up), 0).mul(cumulusStep);
             // texel を覆う割合と、その柱の中の光学的厚みが返す光の割合。覆う割合と柱の中の厚みは
             // 別の量で、厚みは細部を含む雲頂の高さから出す。
@@ -299,7 +298,7 @@ export class CloudShadowRenderer {
             const texel = this.fieldSampler.sampleField(up);
             const rise = max(dot(rayDir, up), 0).mul(step);
             // 積雲は、その方向の柱の雲頂がタップの高度より上なら、柱の中を通る割合で配分する。
-            const cloudTop = cumulusTopAltitudeNode(texel.r).div(CLOUD_TOP_SPAN).mul(this.topAltitude);
+            const cloudTop = cumulusFieldTopNode(texel.r).mul(this.topAltitude);
             const coverage = this.shape.opaqueFraction(cumulusOpacityNode(texel.r), float(1));
             const reflected = coverage.mul(cloudReflectanceNode(
               cumulusInCloudOpticalDepthNode(cloudTop), LIQUID_CLOUD_ASYMMETRY));
@@ -342,8 +341,8 @@ export class CloudShadowRenderer {
   private receiverFloorAltitude(offset: Vec3Node, bodyRadius: FloatNode): FloatNode {
     const radius = max(length(offset), 1e-6);
     const altitude = max(radius.sub(1), 0).mul(bodyRadius);
-    const top = cumulusTopAltitudeNode(this.fieldAt(offset.div(radius)).cumulus)
-      .div(CLOUD_TOP_SPAN).mul(this.topAltitude);
+    const top = cumulusFieldTopNode(this.fieldAt(offset.div(radius)).cumulus)
+      .mul(this.topAltitude);
     const uncertainty = this.topAltitude.mul(CloudShapeEvaluator.cloudTopUncertainty);
     return select(greaterThan(altitude, top.sub(uncertainty)), top, float(0));
   }
