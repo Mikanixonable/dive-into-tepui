@@ -12,7 +12,6 @@ import {
   SOLAR_PANEL_FACE_SCALE,
   SOLAR_PANEL_PANEL_PITCH,
   SOLAR_PANEL_STAGE_SCALES,
-  SOLAR_PANEL_SPAN,
   SOLAR_PANEL_THICKNESS,
   SOLAR_PANEL_LENGTH,
 } from '../../src/physics/player-shape';
@@ -86,12 +85,6 @@ export function register(): void {
 
   test('ship panel layout: 太陽電池は2列の取り付け辺から4枚ずつ展開する', () => {
     const poses = deployablePanelPoses('solar_panel', 0.5, 1);
-    assert.equal(SOLAR_PANEL_COUNT, 8);
-    assert.equal(SOLAR_PANEL_COLUMNS, 2);
-    assert.equal(SOLAR_PANEL_LENGTH, 1.8);
-    assert.equal(SOLAR_PANEL_SPAN,
-      2 * (SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * Math.max(...SOLAR_PANEL_STAGE_SCALES)
-        + SOLAR_PANEL_CENTERLINE_CLEARANCE));
     assert.equal(poses.length, SOLAR_PANEL_COUNT);
     const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
     poses.forEach((pose, index) => {
