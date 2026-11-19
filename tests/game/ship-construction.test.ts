@@ -72,7 +72,7 @@ function createConstruction(ship: ConstructionTestShip, queue: CommandQueue, blu
     { openMode: () => {}, close: () => {}, isInputGated: () => false } as unknown as OverlayManager,
     { current: { forceCurrent: false }, setForceCurrent: () => {} } as unknown as DisplayWindowManager,
     { hint: () => {} } as unknown as Notifier,
-    { request: () => {}, close: () => {} },
+    { open: () => {}, close: () => {} },
     blueprints,
     { record: () => {} } as unknown as RunEventSink,
   );
@@ -379,7 +379,7 @@ export function register(): void {
       { openMode: () => {}, close: () => {}, isInputGated: () => false } as unknown as OverlayManager,
       { current: { forceCurrent: false }, setForceCurrent: () => {} } as unknown as DisplayWindowManager,
       { hint: () => {} } as unknown as Notifier,
-      { request: () => {}, close: () => {} },
+      { open: () => {}, close: () => {} },
       { blueprints: [] },
       { record: () => {} } as unknown as RunEventSink,
       (s, target) => { focuses.push({ ship: s, target }); },

@@ -4,7 +4,7 @@ import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import { bodySearchText } from '../pickable/body-search-text';
-import { fmtDist } from '../../hud/utils';
+import { fmtDist } from '../../hud/format';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './marker-priority';

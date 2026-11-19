@@ -13,7 +13,7 @@ import { browserSettingStorage } from './settings/stored-setting';
 import { themePresetOf } from './theme';
 import { applyThemeVariables } from './hud/style/theme-variables';
 import { Hud } from './game/hud/hud';
-import { PanelCollapse } from './game/hud/panel-shell';
+import { PanelCollapse } from './game/hud/panel-chrome';
 import { HudShell } from './hud/hud-shell';
 import { MarkerDevice } from './marker/marker-device';
 import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';

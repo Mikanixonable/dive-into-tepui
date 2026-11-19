@@ -4,7 +4,7 @@ import type { HudShell } from '../../hud/hud-shell';
 import { createHudElement } from '../../hud/hud-element';
 import { instrumentRowHtml } from '../../hud/instrument-row';
 import { HelpPanel } from './windows/help-panel';
-import { PanelShell } from './panel-shell';
+import { PanelChrome } from './panel-chrome';
 import { HudEls } from './hud-els';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
@@ -27,7 +27,7 @@ import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../view/view-mode';
 import type { CollapseToggleLabels } from '../../hud/widgets';
-import type { PanelCollapse } from './panel-shell';
+import type { PanelCollapse } from './panel-chrome';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
 const STYLE =
@@ -102,8 +102,8 @@ function buildViewRoot(parent: HTMLElement, collapse: PanelCollapse, id: string,
   return { element, leftRail, rightRail };
 }
 
-// PanelShell が組んだ見出し・本文・開閉ボタンを、アクセシブルな一領域として関連付ける。
-function configureCombatPanel(panel: PanelShell): void {
+// PanelChrome が組んだ見出し・本文・開閉ボタンを、アクセシブルな一領域として関連付ける。
+function configureCombatPanel(panel: PanelChrome): void {
   const titleId = `${panel.el.id}-title`;
   const bodyId = `${panel.el.id}-body`;
   panel.el.classList.add('combat-panel');
@@ -113,7 +113,7 @@ function configureCombatPanel(panel: PanelShell): void {
   panel.body.id = bodyId;
 
   // 開閉ボタンへ aria 属性を与え、開閉状態が変わるたびに読み上げ名を更新する。
-  const toggle = panel.el.querySelector<HTMLElement>('.panel-shell-collapse');
+  const toggle = panel.el.querySelector<HTMLElement>('.panel-chrome-collapse');
   if (!toggle) return;
   toggle.setAttribute('type', 'button');
   toggle.setAttribute('aria-controls', bodyId);
@@ -132,7 +132,7 @@ function injectStyle(): void {
 
 // 常設 VESSEL パネルを右レールへ組む。
 function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
-  const status = new PanelShell(rightRail, collapse, 'hud-vessel-status', 'VSL', '艦のステータス');
+  const status = new PanelChrome(rightRail, collapse, 'hud-vessel-status', 'VSL', '艦のステータス');
   configureCombatPanel(status);
   const pip = (id: string): string => `<output class="ui-pip" data-id="${id}">—</output>`;
   // 計器の行(燃料・RCS・出力・動圧・各モード・弾薬)と、展開・スロットル・主要操作の置き場。
@@ -160,7 +160,7 @@ function buildVesselStatusPanel(rightRail: HTMLElement, collapse: PanelCollapse)
 
 // 常設 ORBIT パネルを左レールへ組む。軌道は map の主情報なので、compact 以外では開いて始める。
 function buildOrbitInfoPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
-  const orbit = new PanelShell(
+  const orbit = new PanelChrome(
     leftRail, collapse, 'hud-orbit', 'ORB', '軌道', () => isCompactViewport(),
   );
   configureCombatPanel(orbit);
@@ -195,7 +195,7 @@ function buildOrbitInfoPanel(leftRail: HTMLElement, collapse: PanelCollapse): vo
 
 // ブースター燃焼管理パネルを左レールへ組む。
 function buildBurnManagementPanel(leftRail: HTMLElement, collapse: PanelCollapse): void {
-  const burnManagement = new PanelShell(
+  const burnManagement = new PanelChrome(
     leftRail, collapse, 'burn-management-panel', 'BRN', '燃焼管理',
   );
   configureCombatPanel(burnManagement);
@@ -296,7 +296,7 @@ function buildShipConstructionWorkspace(parent: HTMLElement): void {
 
 // 常設 TARGET パネルを右レールへ組む。ロック対象が無い間は隠す。
 function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
-  const target = new PanelShell(rightRail, collapse, 'hud-target', 'TGT', 'ターゲット');
+  const target = new PanelChrome(rightRail, collapse, 'hud-target', 'TGT', 'ターゲット');
   configureCombatPanel(target);
   target.setHidden(true);
   // 識別行・距離と接近速度(答え)・相対速度と装甲の行・案内。
@@ -326,7 +326,7 @@ function buildTargetPanel(rightRail: HTMLElement, collapse: PanelCollapse): void
 
 // 常設 ENEMIES パネルを右レールへ組む。残数は見出しの補足に出す。
 function buildEnemiesPanel(rightRail: HTMLElement, collapse: PanelCollapse): void {
-  const enemies = new PanelShell(rightRail, collapse, 'hud-enemies', 'CNT', '敵一覧', isCompactViewport());
+  const enemies = new PanelChrome(rightRail, collapse, 'hud-enemies', 'CNT', '敵一覧', isCompactViewport());
   configureCombatPanel(enemies);
   enemies.body.innerHTML = `<ol class="ui-list" data-id="elist" aria-label="距離順の戦闘対象"></ol>`;
 }

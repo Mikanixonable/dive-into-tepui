@@ -9,7 +9,7 @@ import {
   StageControlsPanel, type EnemySpawnShape,
 } from '../creative/stage-controls-panel';
 import { isEnemy } from '../dynamic/dynamic-entity/enemy';
-import { hudRail } from '../hud/hud-root';
+import { hudRail } from '../hud/hud-dom';
 import { isModularShip } from '../ship/modular-ship';
 import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
 import { creativeStageCommands, type CreativeStageCommands } from './creative-stage-commands';

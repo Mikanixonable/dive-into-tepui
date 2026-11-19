@@ -15,7 +15,7 @@ import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { len, sub } from '../../math/vec3';
-import { fmtDist, fmtSpeed } from '../../hud/utils';
+import { fmtDist, fmtSpeed } from '../../hud/format';
 import { relativeInfo } from '../orbit-info';
 import { orbitRows } from './orbit-rows';
 import { ENTITY_GLYPH } from '../marker/marker-identity';

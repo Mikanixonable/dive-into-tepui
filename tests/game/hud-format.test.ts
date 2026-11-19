@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { fmtDist, fmtDistParts, fmtSpeed, fmtSpeedParts } from '../../src/hud/utils';
+import { fmtDist, fmtDistParts, fmtSpeed, fmtSpeedParts } from '../../src/hud/format';
 import { worstAlarmLevel } from '../../src/hud/alarm-level';
 import { test } from '../harness';
 

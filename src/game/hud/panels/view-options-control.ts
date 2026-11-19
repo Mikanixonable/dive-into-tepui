@@ -8,7 +8,7 @@ import { ViewOptionsPanel } from './view-options-panel';
 import type { OrbitGuideCommands } from '../../viewer/orbit-guide-commands';
 import type { OrbitGuideSource } from '../../viewer/orbit-guide-selection';
 import type { ViewOptionsSettings } from '../../view/view-options-settings';
-import type { PanelCollapse } from '../panel-shell';
+import type { PanelCollapse } from '../panel-chrome';
 
 export class ViewOptionsControl {
   private readonly panel: ViewOptionsPanel;

@@ -5,7 +5,7 @@ import { len, sub } from '../../../math/vec3';
 import { bodyEntityGlyph } from '../../marker/marker-identity';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { bodySearchText } from '../../pickable/body-search-text';
-import { fmtDist, fmtTime } from '../../../hud/utils';
+import { fmtDist, fmtTime } from '../../../hud/format';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { hitsSphere, type Ray } from '../../../math/ray';
