@@ -8,7 +8,7 @@ import type { GpuTimingSink } from '../../gpu-timings';
 import type { FieldProjection } from '../../field-projection';
 import type { CloudBlend, CloudFieldSlot, CloudSample } from './cloud-field-sample';
 import type { CloudFieldSource } from './cloud-field-source';
-import { cloudTuningRevision } from './cloud-tuning';
+import { cloudTuningRevision } from '../cloud-tuning';
 import type { Vec3Node } from '../../tsl-types';
 
 // 雲場を焼く表示時刻の刻み [s]。雲場は、この刻みで焼いた 2 枚のあいだを表示時刻で補間して読む。

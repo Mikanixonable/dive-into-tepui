@@ -6,7 +6,7 @@
 // applyCloudTuningOverrides で重ねて、ゲームで見た目を確かめられる(tools/ の
 // cloud-tuning-overrides-file.cjs が配る)。
 import { uniform } from 'three/tsl';
-import type { FloatUniform } from '../../tsl-types';
+import type { FloatUniform } from '../tsl-types';
 
 // 調整値の既定値と並び。実験環境はこの表から初期値・リセット値・スライダーの対象を引く。
 // 各値がモデルのどこへ効くかは、参照しているモジュールのコメントが持つ。

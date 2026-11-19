@@ -4,7 +4,7 @@
 // 早く立ち、海は日変化が小さく暖かい海だけで深い対流が立つ(`DEVELOP/SPEC/RENDERING.md`「雲の描画」)。
 // 値はすべて見えのための調整値。
 import { clamp, cos, float, mix, pow, smoothstep } from 'three/tsl';
-import { CLOUD_TUNING } from './cloud/cloud-tuning';
+import { CLOUD_TUNING } from './cloud-tuning';
 import { CirculatingNoise } from './circulating-noise';
 import type { NoiseOctave } from './circulating-noise';
 import type { Circulation } from './circulation';

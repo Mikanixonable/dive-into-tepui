@@ -2,7 +2,7 @@
 // 光学的厚みの計算式を集約し、各レンダラーのシェーダーグラフへ展開する。
 import { clamp, float, log2, max, min, smoothstep } from 'three/tsl';
 import { CloudDetailEvaluator, DETAIL_AMPLITUDE_MAX } from './cloud-detail';
-import { CLOUD_TUNING } from './cloud-tuning';
+import { CLOUD_TUNING } from '../cloud-tuning';
 import { CUMULUS_DITHER_KNOB } from './cumulus-shape';
 import type { CloudSample } from './cloud-field-sample';
 import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';

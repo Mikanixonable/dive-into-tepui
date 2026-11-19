@@ -16,7 +16,7 @@ import { UserSettings } from '../../src/settings/user-settings';
 import {
   withGraphicsOption, type ChoiceValue, type GraphicsOptionKey,
 } from '../../src/render/graphics-settings';
-import { applyCloudTuningOverrides } from '../../src/render/earth-weather/cloud/cloud-tuning';
+import { applyCloudTuningOverrides } from '../../src/render/earth-weather/cloud-tuning';
 import { CLOUD_FIELD_SOURCE_KIND } from '../../src/render/earth-weather/cloud/cloud-field-source';
 import { buildButtonRow, buildCheckbox } from '../lab-controls';
 import { buildFramingRow } from './framing-controls';
