@@ -9,6 +9,7 @@ import type { Contact } from '../dynamic/dynamic-entity/contact';
 import { ContactProxy } from '../dynamic/contact-proxy';
 import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 import type { ShipAssembly } from '../ship/ship-assembly';
+import { applyTransformToDirection, applyTransformToPoint } from '../ship/ship-assembly-transform';
 import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
 const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
@@ -154,8 +155,8 @@ export class RadiatorSystem {
       return { center: layout.center, normal: qRotate(att.q, layout.normal) };
     }
     return {
-      center: add(transform.position, qRotate(transform.rotation, layout.center)),
-      normal: qRotate(att.q, qRotate(transform.rotation, layout.normal)),
+      center: applyTransformToPoint(transform, layout.center),
+      normal: qRotate(att.q, applyTransformToDirection(transform, layout.normal)),
     };
   }
 
@@ -191,7 +192,7 @@ export class RadiatorSystem {
         const layout = layouts[i];
         if (layout === undefined) continue;
         const assemblyOffset = transform === null || transform === undefined
-          ? layout.center : add(transform.position, qRotate(transform.rotation, layout.center));
+          ? layout.center : applyTransformToPoint(transform, layout.center);
         const worldPos = add(shipR, qRotate(att.q, assemblyOffset));
         const worldVel = add(shipV, qRotate(att.q, cross(att.w, assemblyOffset)));
         const known = proxies[i];
@@ -220,7 +221,7 @@ export class RadiatorSystem {
     if (layout === undefined) return v3(shipR.x, shipR.y, shipR.z);
     const transform = this.assemblyValue?.worldTransformOf(key);
     const offset = transform === null || transform === undefined
-      ? layout.center : add(transform.position, qRotate(transform.rotation, layout.center));
+      ? layout.center : applyTransformToPoint(transform, layout.center);
     return add(shipR, qRotate(att.q, offset));
   }
 

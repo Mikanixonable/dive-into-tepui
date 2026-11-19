@@ -18,6 +18,7 @@ import {
 import { dockingEligibility } from './ship-docking';
 import { repairDockedAssembly } from './ship-repair';
 import type { ShipCapabilities } from './ship-capabilities';
+import { applyTransformToPoint } from './ship-assembly-transform';
 import {
   deserializeDockedVessels,
   type SerializedCollisionGrace,
@@ -132,7 +133,9 @@ export class ModularShipConnectionOperations {
     const retainedPosition = this.host.motion.assemblyToEci(retainedShape.centerOffset);
     const detachedQ = qMul(q, detachedRoot.rotation);
     const detachedRootPosition = this.host.motion.assemblyToEci(detachedRoot.position);
-    const detachedPosition = add(detachedRootPosition, qRotate(detachedQ, detachedShape.centerOffset));
+    const detachedPosition = applyTransformToPoint(
+      { position: detachedRootPosition, rotation: detachedQ }, detachedShape.centerOffset,
+    );
     const omegaWorld = qRotate(q, w);
     const retainedVelocity = add(this.host.motion.state.v, cross(omegaWorld, sub(retainedPosition, this.host.motion.state.r)));
     const detachedBaseVelocity = add(this.host.motion.state.v, cross(omegaWorld, sub(detachedPosition, this.host.motion.state.r)));
@@ -203,7 +206,9 @@ export class ModularShipConnectionOperations {
     const detachedQ = qMul(q, split.detachedRoot.rotation);
     const detachedRootPosition = this.host.motion.assemblyToEci(split.detachedRoot.position);
     const decouplerPosition = this.host.motion.assemblyToEci(split.decouplerTransform.position);
-    const detachedPosition = add(detachedRootPosition, qRotate(detachedQ, detachedShape.centerOffset));
+    const detachedPosition = applyTransformToPoint(
+      { position: detachedRootPosition, rotation: detachedQ }, detachedShape.centerOffset,
+    );
     const angularVelocityWorld = qRotate(q, w);
     const retainedBaseVelocity = add(
       this.host.motion.state.v, cross(angularVelocityWorld, sub(retainedPosition, this.host.motion.state.r)),
