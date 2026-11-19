@@ -61,9 +61,14 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud.construction-mode #hud-map-scale,
 #hud.construction-mode #hud-chase-reset,
 #hud.construction-mode #hud-help-badge,
+#hud.construction-mode #hud-pause-badge,
 #hud.construction-mode #hud-topbar-toggle,
 #hud.construction-mode #hud-wide-toggle,
-#hud.construction-mode .rail-toggle { display: none !important; }
+#hud.construction-mode #hud-armament-band,
+#hud.construction-mode .rail-toggle,
+/* 建造中はカメラパネルに「クォータニオン操作」だけを表示する(UI-DESIGN.md §8) —
+   艦パネルにあった視点追従ボタンも、移設先のここで同じく隠す。 */
+#hud.construction-mode #hud-combat-camera-controls .camera-attitude-follow { display: none !important; }
 #hud .hud-view-root { position: absolute; inset: 0; display: none; pointer-events: none; }
 #hud .hud-view-root.active { display: block; }
 
@@ -95,6 +100,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-map-scale,
   #hud-chase-reset,
   #hud-help-badge,
+  #hud-pause-badge,
   #hud-toast { background: var(--surface-opaque); }
 }
 #hud .panel-chrome-collapse {
@@ -269,7 +275,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 /* 画面を広く使うモード(Tab)は、レールとその収納トグル・上部バー・下部の帯を隠す。上部バーの収納は
    上部バーだけを隠す。どちらも右上のボタン群は残し、そこから戻せるようにする。 */
 #hud.hud-wide .hud-rail, #hud.hud-wide .rail-toggle,
-#hud.hud-wide #hud-topbar, #hud.hud-wide #hud-stagestatus,
+#hud.hud-wide #hud-topbar, #hud.hud-wide #hud-stagestatus, #hud.hud-wide #hud-armament-band,
 #hud.topbar-collapsed #hud-topbar { display: none !important; }
 #hud-chrome-actions {
   position: absolute; top: var(--space-4);
@@ -285,6 +291,9 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 #hud-chrome-actions > *:hover { background: var(--surface-2); color: var(--color-primary-hover); }
 #hud-chrome-actions > *:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+/* ⚙バッジの表示可否は、仮想パッドと同じ body.touch-ui-active(TouchControls が持つ正本)へ載せる。 */
+#hud-pause-badge { display: none; }
+body.touch-ui-active #hud-pause-badge { display: flex; }
 #hud .hud-mini-code {
   color: var(--role-meta); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-code);
 }

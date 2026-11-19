@@ -5,7 +5,7 @@
 // (SPEC/PLAN.md「遷移方式」)。大気減速の抗力見積は指数大気での近点通過を一瞬の減速と
 // みなす近似で、通過中の速さの変化・基準楕円体の扁平・大気の共回転は省く — 候補を
 // 並べる目安であり、実行される軌道は全力学モデルが決める。船の出発前の運動は二体問題
-// として要素から伝播し、全力学モデルへの寄りは trajectory-correction.ts が担う。
+// として要素から伝播する。実行時の残差は自動操縦の燃焼後修正が吸収する。
 // THREE/DOM 非依存。
 import { add, cross, dot, len, norm, scale, sub, type Vec3 } from '../math/vec3';
 import type { CelestialBody } from './celestial-body';

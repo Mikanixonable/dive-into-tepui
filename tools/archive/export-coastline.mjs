@@ -3,12 +3,12 @@
 // GeoJSON の座標は [経度, 緯度] だが、出力は [緯度, 経度] へ入れ替える
 // (body-graticule.ts の latLonPoint(latDeg, lonDeg, ...) の引数順に合わせるため)。
 //
-// 実行: node tools/export-coastline.mjs
+// 実行: node tools/archive/export-coastline.mjs
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const sourcePath = join(repoRoot, 'assets-src', 'coastline', 'ne_110m_coastline.geojson');
 const outDir = join(repoRoot, 'src', 'assets');
 const outPath = join(outDir, 'earth-coastline.json');

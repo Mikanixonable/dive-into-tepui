@@ -90,6 +90,7 @@ export interface ShipConstructionPanelPort {
   onRotate: ((delta: 1 | -1) => void) | null;
   onSwapEnds: (() => void) | null;
   onCycleSymmetry: (() => void) | null;
+  onFocus: (() => void) | null;
   onUndo: (() => void) | null;
   onRedo: (() => void) | null;
   onJumpHistory: ((index: number) => void) | null;
@@ -181,6 +182,7 @@ export class ShipConstruction implements OverlayHandle {
     panel.onRotate = (delta) => this.rotate(delta);
     panel.onSwapEnds = () => this.swapEnds();
     panel.onCycleSymmetry = () => this.cycleSymmetry();
+    panel.onFocus = () => this.focus();
     panel.onUndo = () => this.undo();
     panel.onRedo = () => this.redo();
     panel.onJumpHistory = (index) => this.jumpToHistory(index);
@@ -786,6 +788,7 @@ export class ShipConstruction implements OverlayHandle {
     this.panel.onRotate = null;
     this.panel.onSwapEnds = null;
     this.panel.onCycleSymmetry = null;
+    this.panel.onFocus = null;
     this.panel.onUndo = null;
     this.panel.onRedo = null;
     this.panel.onJumpHistory = null;

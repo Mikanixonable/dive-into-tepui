@@ -1,4 +1,4 @@
-// 生成物。tools/export-blue-noise.mjs が void-and-cluster で焼いた blue noise タイル
+// 生成物。tools/archive/export-blue-noise.mjs が void-and-cluster で焼いた blue noise タイル
 // (64×64、1画素 8bit)。手で編集しない。
 //
 // 上下左右が繋がる環状のタイルなので、画面へ敷き詰めても継ぎ目が出ない。

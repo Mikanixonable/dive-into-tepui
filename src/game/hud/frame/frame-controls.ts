@@ -10,7 +10,7 @@ import { focusTargetId, starInertialFocusPoint, type FocusTarget } from '../../v
 import type { DisplayTimelineCommands } from '../../viewer/display-timeline-commands';
 import type { DisplayTimelineSource } from '../../viewer/display-timeline-selection';
 import { CameraFramePanel, type CameraFrameCommands } from './camera-frame-panel';
-import { CombatCameraPanel } from './combat-camera-panel';
+import { CombatCameraPanel, type CombatCameraCommands } from './combat-camera-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
 
 interface CameraFramePresentation {
@@ -38,9 +38,9 @@ export class FrameControls {
       | 'fov'
       | 'referencePlane'
     >,
-    private readonly combatCamera: Pick<FocusCameraSource, 'cameraRotationMode'>,
+    private readonly combatCamera: Pick<FocusCameraSource, 'cameraRotationMode' | 'rotationFollow'>,
     private readonly mapCameraCommands: FocusCameraCommands,
-    combatCameraCommands: Pick<FocusCameraCommands, 'setCameraRotationMode'>,
+    combatCameraCommands: Pick<FocusCameraCommands, 'setCameraRotationMode' | 'toggleAttitudeFollow'>,
     private readonly cameraPresentation: CameraFramePresentation,
     displayTimeline: Pick<DisplayTimelineSource, 'frame' | 'followCamera'>,
     private readonly displayTimelineCommands: Pick<
@@ -66,8 +66,17 @@ export class FrameControls {
     this.cameraPanel = new CameraFramePanel(
       mapPanelRoot, celestialBodies, mapCommands, overlayManager, mapCamera.cameraRotationMode,
     );
+    // 姿勢追従の切替は戦闘カメラのサンプルで toggleAttitudeFollow へ返す —
+    // マップ側の setRotationFollow が sample('map') を渡すのと同じ経路。
+    const combatCommands: CombatCameraCommands = {
+      setCameraRotationMode: (mode) => combatCameraCommands.setCameraRotationMode(mode),
+      toggleAttitudeFollow: () => combatCameraCommands.toggleAttitudeFollow(
+        cameraPresentation.sample('combat'),
+      ),
+    };
     this.combatCameraPanel = new CombatCameraPanel(
-      combatPanelRoot, combatCameraCommands, combatCamera.cameraRotationMode,
+      combatPanelRoot, combatCommands, combatCamera.cameraRotationMode,
+      combatCamera.rotationFollow?.kind === 'attitude',
     );
     this.trajectoryPanel = new TrajectoryFramePanel(
       mapPanelRoot, celestialBodies, displayTimeline, displayTimelineCommands, frameAnchors, overlayManager,
@@ -110,7 +119,10 @@ export class FrameControls {
       fovDeg: this.mapCamera.fov,
       referencePlane: this.mapCamera.referencePlane,
     });
-    this.combatCameraPanel.sync(this.combatCamera.cameraRotationMode);
+    this.combatCameraPanel.sync(
+      this.combatCamera.cameraRotationMode,
+      this.combatCamera.rotationFollow?.kind === 'attitude',
+    );
     this.trajectoryPanel.sync(pickables, members, displayTime);
   }
 

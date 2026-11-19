@@ -3,7 +3,8 @@
 // HUD の書体は太さ 400 だけを読み、bold はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
-import { createGameScene, type GameScene } from './render/scene';
+import { createGameScene, RenderBackendUnavailableError, type GameScene } from './render/scene';
+import { renderBackendNoticeOf } from './render/render-backend';
 import { loadShipModuleModels } from './render/dynamic/ship/ship-module-models';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
@@ -238,6 +239,14 @@ async function main() {
   const autoSave = new AutoSave(snapshotService);
   const gameScene = await initScene(settings.graphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
+  // WebGL2 へ落ちて描いている場合は、その旨を一度だけ通知する(SPEC「描画バックエンド」)。
+  // トーストの表示は HUD の同期が担うため、画面へ出るのはランの HUD が動き始めてからになる。
+  if (renderBackendNoticeOf(gameScene.backend) === 'fallback-notice') {
+    hud.hint(
+      'WebGPU を利用できないため、WebGL2 で描画しています。WebGPU 対応ブラウザでは本来の描画になります。画質はポーズメニューの設定で調整できます。',
+      10000, 'warn',
+    );
+  }
   const sections = new FrameSections();
   const debugInfo = new DebugInfoWindow(
     gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
@@ -282,6 +291,16 @@ async function main() {
 
 main().catch((err) => {
   console.error(err);
+  // 対応する描画基盤が無い失敗は、再読み込みでは直らないので理由を示して案内を分ける
+  // (SPEC「描画バックエンド」)。
+  if (err instanceof RenderBackendUnavailableError) {
+    showFatalError(
+      '描画を開始できませんでした。',
+      'このブラウザは WebGPU と WebGL2 のどちらにも対応していないため、画面を描けません。対応するブラウザで開き直してください。',
+      err,
+    );
+    return;
+  }
   showFatalError(
     'ゲームの初期化に失敗しました。',
     'ブラウザやGPUの状態を確認し、ページを再読み込みしてください。',

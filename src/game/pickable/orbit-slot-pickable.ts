@@ -17,8 +17,9 @@ import type { OrbitSlot } from '../navigation/orbit-slot';
 import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
 import type { OrbitSlotCatalogAccess } from '../navigation/orbit-slot-family';
 import { orbitSlotPeriod, orbitSlotStateAt } from '../navigation/orbit-slot-state';
-import type { PlanEditor } from '../plan/plan-editor';
-import type { ObjectAuthoring } from './inspected-object';
+import type {
+  PresentationPlanEditor, PresentationStageAuthoring,
+} from '../presentation-ports';
 import type { ObjectPickable } from './object-pickable';
 import type { PropertyWindowOpener } from './property-window-opener';
 
@@ -78,8 +79,8 @@ export class OrbitSlotPickable implements ObjectPickable {
 
   // 標識固有の操作。「削除」は台帳から外す。
   public runMenu(
-    act: MenuAction, _selection: ControlSelection, _authoring: ObjectAuthoring | null,
-    _planEditor: PlanEditor | null,
+    act: MenuAction, _selection: ControlSelection, _authoring: PresentationStageAuthoring | null,
+    _planEditor: PresentationPlanEditor | null,
   ): void {
     if (act === 'delete') this.registry.remove(this.slot.id);
   }

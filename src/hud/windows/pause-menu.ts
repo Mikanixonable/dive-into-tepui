@@ -11,7 +11,8 @@ import { SETTINGS_VIEW_STYLE } from '../style/settings-view-style';
 import { SYSTEM_MODAL_GROUP } from '../overlay-manager';
 import type { OverlayHandle, OverlayManager, SurfaceSpec } from '../overlay-manager';
 import {
-  Button, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, Slider, TabBar,
+  Button, buildCollapseToggle, CloseButton, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH,
+  Slider, syncCollapseToggle, TabBar, type CollapseToggleLabels,
 } from '../widgets';
 import { wireHeaderDrag } from '../window-drag';
 import { SettingsView } from '../panels/settings-view';
@@ -20,6 +21,14 @@ type PauseMenuTab = 'pause' | 'settings';
 
 // OverlayManager の台帳上の id。開いているかどうかは登録の有無が正本。
 const OVERLAY_ID = 'pause-menu';
+
+// ヘッダーの最小化トグルの表示。共有の開閉トグル(buildCollapseToggle)の文言。
+const PAUSE_MENU_MINIMIZE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
+  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
+  expandedTitle: '最小化する',
+  collapsedTitle: '展開する',
+};
 
 // ESCメニュー(#hud-pause-menu)。一時停止操作と詳細設定を外側タブで切り替え、ヘッダーのドラッグ移動と
 // 最小化を持つ。
@@ -32,8 +41,7 @@ export class PauseMenu implements OverlayHandle {
   // 設定タブに配置された設定ビュー。設定変更の操作を受け持つ。
   private readonly _settingsView: SettingsView;
   public get settingsView(): SettingsView { return this._settingsView; }
-  private readonly minimizeToggle: HTMLButtonElement;
-  private minimized = false;
+  private readonly minimizeToggle: HTMLElement;
   private hasCustomPosition = false;
   private activeTab: PauseMenuTab = 'pause';
 
@@ -67,21 +75,25 @@ export class PauseMenu implements OverlayHandle {
     this.panel.id = 'hud-pause-menu';
     this.panel.className = 'panel ui-surface-focus editorial-workspace';
 
+    // 本文はヘッダーの最小化トグル(共有の開閉トグル)の畳み対象でもあるため、ヘッダーより先に作る。
+    this.body = document.createElement('div');
+    this.body.className = 'pm-body';
+
     // ヘッダー: ロゴ・見出し・最小化トグル・✕ ボタンと、ドラッグ移動の配線。
     const header = document.createElement('div');
     header.className = 'pm-header';
     const headerTop = document.createElement('div');
     headerTop.className = 'pm-header-top';
     headerTop.appendChild(this.buildBrand());
-    this.minimizeToggle = document.createElement('button');
-    this.minimizeToggle.type = 'button';
-    this.minimizeToggle.className = 'pm-minimize';
-    this.minimizeToggle.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.minimizeToggle.addEventListener('click', () => this.setMinimized(!this.minimized));
-    const closeBtn = new CloseButton(() => this.toggle(false));
     const headerActions = document.createElement('div');
     headerActions.className = 'pm-header-actions';
-    headerActions.appendChild(this.minimizeToggle);
+    // 最小化トグルは共有の開閉トグル。畳み状態は本文の collapsed クラスが正本で、
+    // 見た目(▾/▸・aria-expanded・title)の同期も共有側が行う。
+    this.minimizeToggle = buildCollapseToggle(
+      headerActions, 'hud-pause-minimize', 'pm-minimize', this.body,
+      PAUSE_MENU_MINIMIZE_LABELS, [], (collapsed) => this.setMinimized(collapsed),
+    );
+    const closeBtn = new CloseButton(() => this.toggle(false));
     headerActions.appendChild(closeBtn.element);
     headerTop.appendChild(headerActions);
     header.appendChild(headerTop);
@@ -99,8 +111,6 @@ export class PauseMenu implements OverlayHandle {
     });
     this.panel.appendChild(header);
 
-    this.body = document.createElement('div');
-    this.body.className = 'pm-body';
     this.panel.appendChild(this.body);
 
     this.tabBar = new TabBar<PauseMenuTab>(
@@ -122,7 +132,6 @@ export class PauseMenu implements OverlayHandle {
     this._settingsView.element.setAttribute('role', 'tabpanel');
     this._settingsView.element.setAttribute('aria-label', '設定');
     this.tabContent.appendChild(this._settingsView.element);
-    this.syncMinimizeToggle();
 
     // 一時停止タブ: BGM 音量行と操作ボタンのグリッド。
     this.bgmSlider = new Slider({ min: 0, max: 1, step: 0.05 }, (vol) => {
@@ -192,21 +201,23 @@ export class PauseMenu implements OverlayHandle {
     const actionGrid = document.createElement('div');
     actionGrid.className = 'pm-actions';
     // 幅いっぱいのボタン1つだけを持つ行を足す。
-    const addButtonRow = (label: string, onClick: () => void): void => {
+    // SPEC UI-DESIGN §8: 項目に番号は振らず、キー割り当てのあるものはキーキャップで添える。
+    // keyLabel は Button がラベルの隣へキーキャップとして付ける。
+    const addButtonRow = (label: string, onClick: () => void, keyLabel?: string): void => {
       const row = document.createElement('div');
       row.className = 'pm-row';
-      const btn = new Button(label, onClick);
+      const btn = new Button(label, onClick, undefined, undefined, keyLabel);
       btn.element.classList.add('pm-menu-btn');
       btn.element.style.flex = '1';
       row.appendChild(btn.element);
       actionGrid.appendChild(row);
     };
-    addButtonRow('01  ゲームに戻る', () => this.toggle(false));
-    addButtonRow('02  セーブ', () => this.onSave?.());
-    addButtonRow('03  セーブデータの管理', () => this.onOpenSaveBrowser?.());
-    addButtonRow(`04  デバッグ [${K.toggleDebugInfoWindow.label}]`, () => this.onOpenDebugInfoWindow?.());
+    addButtonRow('ゲームに戻る', () => this.toggle(false));
+    addButtonRow('セーブ', () => this.onSave?.());
+    addButtonRow('セーブデータの管理', () => this.onOpenSaveBrowser?.());
+    addButtonRow('デバッグ', () => this.onOpenDebugInfoWindow?.(), K.toggleDebugInfoWindow.label);
 
-    const quitBtn = new Button('05  タイトル画面に戻る', () => this.onQuitToTitle?.());
+    const quitBtn = new Button('タイトル画面に戻る', () => this.onQuitToTitle?.());
     quitBtn.element.classList.add('pm-menu-btn', 'pm-quit');
     actionGrid.appendChild(quitBtn.element);
     return actionGrid;
@@ -223,11 +234,12 @@ export class PauseMenu implements OverlayHandle {
   }
 
   // 最小化状態を切り替える。パネルを閉じて再び開くと展開状態から始まる。
+  // 畳み状態は本文の collapsed クラスが正本で、トグルの見た目は共有の同期へ委ねる。
   private setMinimized(minimized: boolean): void {
-    this.minimized = minimized;
     this.panel.classList.toggle('minimized', minimized);
     this.body.classList.toggle('hidden', minimized);
-    this.syncMinimizeToggle();
+    this.body.classList.toggle('collapsed', minimized);
+    syncCollapseToggle(this.minimizeToggle, this.body, PAUSE_MENU_MINIMIZE_LABELS);
     this.reclamp();
   }
 
@@ -249,13 +261,6 @@ export class PauseMenu implements OverlayHandle {
       gatesInput: this.activeTab === 'settings', dimsBackground: false,
       pausesGame: true, exclusiveGroup: SYSTEM_MODAL_GROUP,
     };
-  }
-
-  // 最小化トグルボタンの絵文字・aria-expanded・title を現在の折りたたみ状態に合わせる。
-  private syncMinimizeToggle(): void {
-    this.minimizeToggle.textContent = this.minimized ? COLLAPSE_COLLAPSED_GLYPH : COLLAPSE_EXPANDED_GLYPH;
-    this.minimizeToggle.setAttribute('aria-expanded', String(!this.minimized));
-    this.minimizeToggle.title = this.minimized ? '展開する' : '最小化する';
   }
 
   // target がパネル要素の内部かどうかを返す。

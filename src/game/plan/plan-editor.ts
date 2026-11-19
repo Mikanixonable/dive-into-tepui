@@ -119,6 +119,7 @@ export class PlanEditor {
     // メニューとギズモのコールバック
     this.orbitMenu.onSelect = (act, state) => {
       if (act === 'warp') this.warpTo(state.t);
+      else if (act === 'delete') this.deleteSelectedNodeOrPlan();
     };
     this.wireNodeGizmo();
   }
@@ -324,6 +325,7 @@ export class PlanEditor {
       this.selectedNodeIdx = null;
       this.orbitMenu.open(mx, my, picked.state, [
         MenuCommon.warp(),
+        MenuCommon.discardPlan(),
         MenuCommon.cancel(),
       ]);
       return true;

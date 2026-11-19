@@ -2,13 +2,13 @@
 // クレーター一覧)を、円ループの配列(単位球面上の
 // xyz 頂点列)へ落とす。海・クレーターとも円で近似する(元データが直径1つしか持たないため)。
 //
-// 実行: node tools/export-moon-features.mjs
+// 実行: node tools/archive/export-moon-features.mjs
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadSourceModules } from './compile-source.mjs';
+import { loadSourceModules } from '../compile-source.mjs';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const sourcePath = join(repoRoot, 'assets-src', 'moon-features.json');
 const outPath = join(repoRoot, 'src', 'assets', 'moon-features.json');
 
