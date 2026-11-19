@@ -20,7 +20,8 @@ export function addTimeCacheStats(a: TimeCacheStats, b: TimeCacheStats): TimeCac
 
 export class TimeRing<T> {
   private readonly keys: number[] = new Array(TIME_CACHE_SLOTS).fill(NaN);
-  private readonly values: (T | undefined)[] = new Array(TIME_CACHE_SLOTS).fill(undefined);
+  private readonly values: (T | null)[] = new Array(TIME_CACHE_SLOTS).fill(null);
+  
   private next = 0;
   private hits = 0;
   private misses = 0;
@@ -28,29 +29,29 @@ export class TimeRing<T> {
   private lastHit = 0;
 
   // get の照合の累計。返る値には影響しない。
-  get stats(): TimeCacheStats {
+  public get stats(): TimeCacheStats {
     return { hits: this.hits, misses: this.misses };
   }
 
-  // t に一致する保持値。無ければ undefined。
-  get(t: number): T | undefined {
+  // t に一致する保持値。無ければ null。
+  public get(t: number): T | null {
     if (this.keys[this.lastHit] === t) {
       this.hits++;
-      return this.values[this.lastHit];
+      return this.values[this.lastHit]!;
     }
     for (let i = 0; i < TIME_CACHE_SLOTS; i++) {
       if (this.keys[i] === t) {
         this.hits++;
         this.lastHit = i;
-        return this.values[i];
+        return this.values[i]!;
       }
     }
     this.misses++;
-    return undefined;
+    return null;
   }
 
   // t をキーに value を最古のスロットへ書き、その value をそのまま返す。
-  put(t: number, value: T): T {
+  public put(t: number, value: T): T {
     this.keys[this.next] = t;
     this.values[this.next] = value;
     this.next = (this.next + 1) % TIME_CACHE_SLOTS;

@@ -13,6 +13,7 @@ import type { GpuTimingSink } from '../../gpu-timings';
 import type { FloatNode, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
 import type { BodyShadow } from '../shadow/body-shadow';
 import type { SunLight } from '../sun-light';
+import type { SunTransmittanceTables } from '../sun-transmittance-tables';
 
 // 写しの 1 辺 [texel]。円板の直径をこれで割るので、1 texel が張る角は 2σ / この値になる。
 const PLANET_LIGHT_IMAGE_SIZE = 256;
@@ -44,8 +45,10 @@ export class PlanetLightImage {
 
   // 写しの資源を確保する。焼く中身は毎フレーム set() で置く。sunLight と bodyShadow は写す天体の
   // 大気の中の点へ届く太陽光を引くのに使う。
-  public constructor(sunLight: SunLight, bodyShadow: BodyShadow) {
-    this._subject = new PlanetLightSubject(sunLight, bodyShadow);
+  public constructor(
+    sunLight: SunLight, bodyShadow: BodyShadow, sunTables: SunTransmittanceTables,
+  ) {
+    this._subject = new PlanetLightSubject(sunLight, bodyShadow, sunTables);
     this.field = new BakedField(
       'planetLight', THREE.RGBAFormat, this.projection,
       (direction) => this.bakedRadiance(direction),

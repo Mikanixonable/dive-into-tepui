@@ -1,15 +1,15 @@
 // 回帰テスト間で共有する検証ヘルパ。
 import * as assert from 'node:assert/strict';
 import { icrfToGameEci } from '../../src/physics/icrf';
-import { EphemerisPointKind, EphemerisPoints, PointEphemeris } from '../../src/physics/ephemeris/point';
+import type { EphemerisPointKind, EphemerisPoints, PointEphemeris } from '../../src/physics/ephemeris/point';
 import { kinematicState } from '../../src/physics/kinematic-state';
-import { KinematicState } from '../../src/physics/kinematic-state';
+import type { KinematicState } from '../../src/physics/kinematic-state';
 import {
-  LagrangePoints, SecondaryFrame, lagrangePointsOf, secondaryFrameOf,
+  type LagrangePoints, type SecondaryFrame, lagrangePointsOf, secondaryFrameOf,
 } from '../../src/physics/lagrange';
 import { CelestialMotion, OrbitingMotion } from '../../src/physics/celestial-motion';
-import { CelestialBodyDef, StarDef } from '../../src/physics/celestial-body-def';
-import { BodyOrientation, CelestialKind, FrameRotation, type Degree2Gravity } from '../../src/physics/celestial-body';
+import type { CelestialBodyDef, StarDef } from '../../src/physics/celestial-body-def';
+import type { BodyOrientation, CelestialKind, FrameRotation, Degree2Gravity } from '../../src/physics/celestial-body';
 import { EciTransform } from '../../src/physics/eci-transform';
 import type { Atmosphere } from '../../src/physics/atmosphere';
 import type { ReferenceFrames } from '../../src/game/celestial/reference-frames';
@@ -22,28 +22,50 @@ import type { ReferenceFrames } from '../../src/game/celestial/reference-frames'
 export const TEST_SIM_ZERO_ET = 6972197.1872752225;
 import type { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import { solarSystem } from '../../src/game/celestial/solar-system/solar-system';
-import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../../src/physics/time';
-import { Vec3, addScaled, cross, len, scale, sub, v3 } from '../../src/math/vec3';
+import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY, type TdbJulianDate } from '../../src/physics/time';
+import { type Vec3, addScaled, cross, len, scale, sub, v3 } from '../../src/math/vec3';
 import { qRotate } from '../../src/math/quat';
 
 // 地球原点で組んだ現実の太陽系。天体は宣言順(重力源配列・一覧の順序もこの並び)に並び、
 // 1体ずつは id で引く。同一時刻の集合を答える系と、座標系も一緒に持つ。
-export type SolarSystemParts = {
+export interface SolarSystemParts {
   readonly bodies: readonly CelestialMotion[];
   readonly system: CelestialSystem;
   readonly referenceFrames: ReferenceFrames;
-};
+}
 
 // 回帰テストが既定で使う元期。TEST_SIM_ZERO_ET は「simTime=0 を、地球の日心黄経が π になる
 // 瞬間へ合わせる」ための J2000 からの秒数で、その瞬間を絶対時刻として表したものがこれ。
 export const TEST_EPOCH: TdbJulianDate =
   createJulianDate('TDB', J2000_JULIAN_DATE + TEST_SIM_ZERO_ET / SECONDS_PER_DAY);
 
-// 現実の太陽系を地球原点で組む。epoch は simTime=0 が指す絶対時刻。ephemerisPoints を渡すと、
-// そこに載っている天体だけがその有効期間で数値暦経路を通る。
+// 現実の太陽系を地球原点で組む。1回の構築に秒単位の費用が掛かるため、既定の元期・暦なしの
+// 呼び出しでは同じ parts を使い回す — 検査は値を読むだけなので分けなくてよい。別系を組み直して
+// 値が同じことを見る検査は、キャッシュを通さない freshSolarSystemParts で組む。
+let cachedDefaultParts: SolarSystemParts | null = null;
+
 export function solarSystemParts(
   epoch: TdbJulianDate = TEST_EPOCH,
   ephemerisPoints: EphemerisPoints | null = null,
+): SolarSystemParts {
+  if (epoch === TEST_EPOCH && ephemerisPoints === null) {
+    return (cachedDefaultParts ??= buildSolarSystemParts(epoch, ephemerisPoints));
+  }
+  return buildSolarSystemParts(epoch, ephemerisPoints);
+}
+
+// キャッシュを通さず必ず新しい太陽系を組む。「同じ元期で組み直せば同じ値になる」ように、
+// 独立した構築そのものを検査するテストのための口。
+export function freshSolarSystemParts(
+  epoch: TdbJulianDate = TEST_EPOCH,
+  ephemerisPoints: EphemerisPoints | null = null,
+): SolarSystemParts {
+  return buildSolarSystemParts(epoch, ephemerisPoints);
+}
+
+function buildSolarSystemParts(
+  epoch: TdbJulianDate,
+  ephemerisPoints: EphemerisPoints | null,
 ): SolarSystemParts {
   const system = solarSystem('earth', ephemerisPoints, epoch);
   return { bodies: system.celestialMotions, system, referenceFrames: system.frames };
@@ -130,10 +152,10 @@ export function testEphemerisPoints(
 // 置くので、宣言した値がそのまま ECI 値になる。**回帰テストが天体1体を組むための道具**で、
 // 位置は anchor から等加速度で伸ばした二次曲線に乗る。
 class FixedMotion extends CelestialMotion {
-  readonly def: CelestialBodyDef;
-  readonly kind: CelestialKind;
+  public readonly def: CelestialBodyDef;
+  public readonly kind: CelestialKind;
 
-  constructor(
+  public constructor(
     def: StarDef,
     private readonly anchor: KinematicState,
     private readonly accel: Vec3,
@@ -146,9 +168,9 @@ class FixedMotion extends CelestialMotion {
     this.kind = kind;
   }
 
-  get primary(): CelestialMotion | null { return null; }
+  public get primary(): CelestialMotion | null { return null; }
 
-  analyticStateAt(t: number): KinematicState<'analytic'> {
+  public analyticStateAt(t: number): KinematicState<'analytic'> {
     const s = t - this.anchor.t;
     return kinematicState<'analytic'>(
       t,
@@ -158,14 +180,14 @@ class FixedMotion extends CelestialMotion {
   }
 
   // 主星を置かない道具なので、主星相対と太陽系重心相対は同じ値。
-  analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
+  public analyticStarRelStateAt(t: number): KinematicState<'starRel'> {
     const state = this.analyticStateAt(t);
     return kinematicState<'starRel'>(t, state.r, state.v);
   }
 
-  analyticAccelAt(): Vec3 { return this.accel; }
+  public analyticAccelAt(): Vec3 { return this.accel; }
 
-  orientationAt(): BodyOrientation | null { return null; }
+  public orientationAt(): BodyOrientation | null { return null; }
 
   protected computeDegree2At(): Degree2Gravity | null { return this.degree2; }
 

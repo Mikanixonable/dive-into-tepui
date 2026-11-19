@@ -1,19 +1,14 @@
-// hud/widgets/ の共通スタイル。状態遷移の基準(hover=Near、pressed=中立面、on=Accent、
-// disabled=単一 opacity+cursor:not-allowed)をここ1箇所で定義する。ビュー固有スタイルは、
-// 同期や完了など別の意味ロールがある場合だけ Secondary 等へ上書きする。
-// #hud の外(タイトル画面・起動時のオーバーレイ)でもウィジェットを組めるよう、
-// セレクタは #hud に閉じない(hud-root.ts の STYLE へ連結して注入する)。
+// HUD ウィジェットの状態遷移(hover・pressed・on・disabled)と部品の密度・形状を定める。
+// 操作状態を共有し、同期や完了などの意味はそれぞれのロールで表す。
 import { MQ_COARSE } from '../breakpoints';
 
 export const WIDGET_STYLE = `
-/* #hud 自体が pointer-events:none のため、対話要素はここで明示的に有効化する
-   (#hud の外では既定で auto だが、明示しても害はない)。 */
+/* HUD の全面オーバーレイ内でも操作要素をクリック可能にする。 */
 .w-btn, .w-toggle-track, .w-close, .w-input, .w-select { pointer-events: auto; cursor: pointer; }
 .w-btn, .w-toggle, .w-close, .w-tabs, .w-group { user-select: none; }
 .w-input { cursor: text; }
 
-/* 幅・高さと border/padding を併せ持つ要素は、置き場所の box-sizing リセットに
-   依存せず自前で border-box を持つ。 */
+/* 閉じるボタンとトグルの寸法は、枠線を含む大きさとして扱う。 */
 .w-close, .w-toggle-track { box-sizing: border-box; }
 
 .w-btn, .w-close {
@@ -94,14 +89,23 @@ export const WIDGET_STYLE = `
 /* w-slider: つまみ型の連続値スライダー。トラックの寸法はパネル側の CSS が決める。 */
 .w-slider { pointer-events: auto; accent-color: var(--color-primary); }
 
-/* w-meter: HP/温度/電力バー。常に左から右へ満ちる。 */
-.w-meter { display: flex; align-items: center; }
-.w-meter-track { position: relative; flex: 1 1 auto; height: 12px; overflow: hidden; border-radius: var(--radius-micro); background: var(--bar-bg); }
-.w-meter-fill { width: 0; height: 100%; background: var(--color-primary); transition: width var(--transition-fast); }
-.w-meter-fill.danger { background: var(--color-error); }
+/* w-meter: HP/温度/電力の細い線。常に左から右へ満ちる。量は中立の線で示し、色が付くのは
+   呼び出し側が注意・警告の段を渡したときだけ。閾値は目盛り(--at: 位置)で示す。 */
+.w-meter { display: flex; align-items: center; gap: var(--space-3); }
+.w-meter-track {
+  position: relative; flex: 1 1 auto; height: var(--space-2); overflow: hidden;
+  border-radius: var(--radius-pill); background: var(--role-hairline);
+}
+.w-meter-fill {
+  width: 0; height: 100%; border-radius: inherit; background: var(--role-label);
+  transition: width var(--transition-slow);
+}
+.w-meter-fill.caution { background: var(--role-caution); }
+.w-meter-fill.warning { background: var(--role-warning); }
+.w-meter-mark { position: absolute; top: 0; bottom: 0; left: var(--at); width: 1px; background: var(--fill-4); }
 .w-meter-value {
-  position: absolute; inset: 0; right: var(--space-2); display: flex; align-items: center; justify-content: flex-end;
-  font-size: var(--font-xs); color: var(--text-strong); text-shadow: 0 0 2px var(--bg), 0 0 2px var(--bg);
+  flex: 0 0 auto; font-size: var(--font-xs); color: var(--role-data);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 
 /* タップ最小寸法は pointer:coarse でだけ効かせる — マウス操作では詰めて並べたウィジェットの

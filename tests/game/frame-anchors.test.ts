@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { FrameAnchors } from '../../src/game/frame-anchors';
 import { solarSystemParts } from '../physics/test-helpers';
-import { KinematicState, kinematicState } from '../../src/physics/kinematic-state';
+import { type KinematicState, kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 
 export function register(): void {

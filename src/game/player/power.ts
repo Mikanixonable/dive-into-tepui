@@ -3,9 +3,10 @@ import type { Attitude } from '../../physics/attitude';
 import { LOCAL_UP, qRotate } from '../../math/quat';
 import { type Vec3, dot } from '../../math/vec3';
 import { SOLAR_CONSTANT } from '../../physics/astronomical-unit';
-import { solarPanelLayout } from '../../physics/ship-panel-layout';
+import { deployablePanelPoses } from '../../physics/ship-panel-layout';
 import { SOLAR_MODULE_GENERATION, SOLAR_PANEL_COUNT } from '../../physics/player-shape';
 import type { ShipAssembly } from '../ship/ship-assembly';
+import { applyTransformToDirection } from '../ship/ship-assembly-transform';
 import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
 
 export const POWER_CAPACITY = 1.5e6; // 蓄電容量 [J]
@@ -14,7 +15,7 @@ const LEGACY_SOLAR_EFFICIENCY = 0.25;
 
 export type SolarSide = 'up' | 'down';
 
-export interface SerializedPowerPanel {
+interface SerializedPowerPanel {
   readonly id: string;
   readonly state: SerializedDeployablePanelState;
 }
@@ -73,8 +74,8 @@ export class PowerSystem {
   }
 
   // assembly の solar_panel module ID へ状態を結び付ける。互換スロット名（up/down）は接続順へ移譲する。
-  public syncAssembly(assembly: ShipAssembly = this.assemblyValue as ShipAssembly): void {
-    if (assembly === null || assembly === undefined) return;
+  public syncAssembly(assembly: ShipAssembly | null = this.assemblyValue): void {
+    if (assembly === null) return;
     this.assemblyValue = assembly;
     const old = new Map(this.panels);
     const solar = assembly.modules.filter(module => module.kind === 'solar_panel');
@@ -127,8 +128,8 @@ export class PowerSystem {
         if (state === undefined || transform === null || definition === null) continue;
         state.update(dt, 3);
         const generation = definition.abilities.powerGeneration ?? SOLAR_MODULE_GENERATION;
-        for (const panel of solarPanelLayout(definition.length, state.value)) {
-          const normal = qRotate(att.q, qRotate(transform.rotation, panel.normal));
+        for (const panel of deployablePanelPoses('solar_panel', definition.length / 2, state.value)) {
+          const normal = qRotate(att.q, applyTransformToDirection(transform, panel.normal));
           const incidence = Math.max(0, dot(normal, sunDir));
           power += (generation / SOLAR_PANEL_COUNT) * (sunlight / SOLAR_CONSTANT) * incidence * state.value;
         }

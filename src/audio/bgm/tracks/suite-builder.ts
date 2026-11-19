@@ -1,7 +1,7 @@
 // kind: 'suite' の曲を組み立てる補助。パルス声部の倍音比・音長比・発音オフセットは
 // phasing 系の全トラックで共通の値なので、ここへ集めて section() の呼び出し側は
 // 緩急・音域・音色を作る値だけを書けばよいようにする。
-import { DroneLayer, PadLayer, PhasingParams, SparkleLayer, SuiteSection } from './types';
+import type { DroneLayer, PadLayer, PhasingParams, SparkleLayer, SuiteSection } from './types';
 
 const VOICE_A_LENGTH_RATIO = 1.3;
 const VOICE_A_HARMONIC_RATIO = 2.003;

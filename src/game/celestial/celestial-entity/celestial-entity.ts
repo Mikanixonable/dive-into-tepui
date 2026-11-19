@@ -5,7 +5,7 @@ import { len, sub } from '../../../math/vec3';
 import { bodyEntityGlyph } from '../../marker/marker-identity';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { bodySearchText } from '../../pickable/body-search-text';
-import { fmtDist, fmtTime } from '../../../hud/utils';
+import { fmtDist, fmtTime } from '../../../hud/format';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { hitsSphere, type Ray } from '../../../math/ray';
@@ -17,7 +17,7 @@ import type {
 } from '../../../render/celestial/celestial-entity/celestial-view';
 import type { CelestialBodies } from '../celestial-bodies';
 import type { ObjectPickable } from '../../pickable/object-pickable';
-import type { MenuItem } from '../../hud/windows/context-menu';
+import type { MenuItem } from '../../../hud/windows/context-menu';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
 import { BODY_PICKER_GENRES, type MapListSection, type ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
@@ -108,6 +108,7 @@ export class CelestialEntity implements ObjectPickable {
       { type: 'header', label: this.name, subLabel },
       MenuCommon.focus(),
       MenuCommon.target(navTargetId === this.id),
+      { label: '周回する物体を配置', act: 'openObjectPlacer' },
       MenuCommon.cancel(),
     ];
   }

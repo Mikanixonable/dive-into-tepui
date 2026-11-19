@@ -1,7 +1,7 @@
 // 円制限三体問題（CR3BP）におけるゼロ速度曲線の計算。回転系・重心原点（主天体: (−μ,0,0)、副天体: (1−μ,0,0)）における
 // 擬ポテンシャル Ω(x,y,z) およびヤコビ定数 C = 2Ω − v² を評価する。
 // 到達可能領域（2Ω − C ≥ 0）の境界である等高線 f(u,v) = 2Ω − C = 0 をマーチングスクエア法で抽出する。
-import { LagrangeLabel, collinearGamma } from './lagrange';
+import { type LagrangeLabel, collinearGamma } from './lagrange';
 
 export type SectionPlane = 'xy' | 'xz';
 

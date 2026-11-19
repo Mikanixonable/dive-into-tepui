@@ -1,9 +1,8 @@
 // 地球タイルのGPU機能検査、非公開層への色・地形の書込みとフレーム境界での公開を担う。
 import {
-  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
-  earthTileId, earthTileParent,
+  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS,
 } from './earth-surface-tile-key';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-page-table';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-layout';
 import type { EarthTileKey } from './earth-surface-tile-key';
 import type { EarthTileResident } from './earth-surface-tiles';
 import type { DataArrayTexture, DataTexture } from 'three/webgpu';
@@ -50,7 +49,6 @@ export function supportsEarthSurfaceTiles(capabilities: EarthSurfaceGpuCapabilit
 
 export class EarthSurfaceGpuAdapter {
   private readonly slots = new Map<number, LayerSlot>();
-  private readonly supported: boolean;
   private nextGeneration = 1;
   private published = new Set<number>();
   private staged: Uint8Array | null = null;
@@ -60,12 +58,12 @@ export class EarthSurfaceGpuAdapter {
   private pendingUploads = 0;
   private resetEpoch = 0;
 
-  // backendが報告する必須機能が不足した場合は、生成時から全球ベースへ固定する。
+  // backendが報告する必須機能が不足した場合はadapterを組まず、呼び側は全球ベースへ戻す。
   public constructor(private readonly backend: EarthSurfaceGpuBackend) {
-    this.supported = supportsEarthSurfaceTiles(backend.capabilities);
+    if (!supportsEarthSurfaceTiles(backend.capabilities)) {
+      throw new RangeError('Earth surface detail features unavailable');
+    }
   }
-
-  public get mode(): 'tiles' | 'base' { return this.supported && !this.disposed ? 'tiles' : 'base'; }
 
   // material側が実テクスチャを読むための接点。fake backendではnullになる。
   public get textures(): EarthSurfaceGpuTextures | null { return this.backend.textures ?? null; }
@@ -126,45 +124,26 @@ export class EarthSurfaceGpuAdapter {
     return [...this.slots.values()].filter((slot) => slot.state === 'uploaded').map((slot) => slot.reservation);
   }
 
-  // 全参照層とタイル段を検査し、次のフレーム境界で公開するページ表を予約する。
+  // ページ表が参照する層を記録し、次のフレーム境界で公開する表を予約する。
   public stagePageTable(table: Uint8Array): void {
     this.requireActive();
     if (table.length !== EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4) throw new RangeError('Invalid Earth page table');
     const layers = new Set<number>();
-    // 層が同じ版の地理領域を表すことを、現在側と遷移元の両方で検査する。
+    // 交換前に表が参照する層を集め、公開済みとみなして解放対象から外す。
     for (let offset = 0; offset < table.length; offset += 4) {
       const layer = table[offset]!;
       const parentLayer = table[offset + 1]!;
-      const z = table[offset + 2]!;
-      if (layer === EARTH_BASE_LAYER) {
-        if (z !== EARTH_BASE_LAYER || parentLayer !== EARTH_BASE_LAYER) throw new Error('Invalid Earth base page');
-        continue;
-      }
-      const tile = this.requireUploaded(layer);
-      if (z < EARTH_TILE_MIN_Z || tile.key.z !== z) throw new Error('Earth page has the wrong tile level');
-      const cell = offset / 4;
-      const size = 2 ** (EARTH_TILE_MAX_Z - z);
-      const cellX = cell % EARTH_PAGE_WIDTH;
-      const cellY = Math.floor(cell / EARTH_PAGE_WIDTH);
-      if (Math.floor(cellX / size) !== tile.key.x || Math.floor(cellY / size) !== tile.key.y) {
-        throw new Error('Earth page references another geographic region');
-      }
-      layers.add(layer);
-      if (parentLayer === EARTH_BASE_LAYER) continue;
-      const parent = this.requireUploaded(parentLayer);
-      const expectedParent = earthTileParent(tile.key);
-      if (expectedParent === null || earthTileId(expectedParent) !== earthTileId(parent.key)) {
-        throw new Error('Earth page references another parent');
-      }
-      layers.add(parentLayer);
+      if (layer !== EARTH_BASE_LAYER) layers.add(layer);
+      if (parentLayer !== EARTH_BASE_LAYER) layers.add(parentLayer);
     }
+    for (const layer of layers) this.requireUploaded(layer);
     this.staged = table.slice();
     this.stagedLayers = layers;
   }
 
   // 単調増加する描画フレーム番号ごとに最大1回交換する。交換した場合はtrue。
   public publishFrame(frame: number): boolean {
-    if (this.mode === 'base') return false;
+    if (this.disposed) return false;
     if (!Number.isInteger(frame) || frame < 0) throw new RangeError('Invalid Earth frame');
     if (frame <= this.lastFrame) return false;
     this.lastFrame = frame;
@@ -198,11 +177,9 @@ export class EarthSurfaceGpuAdapter {
     for (const [layer, slot] of this.slots) {
       if (slot.state !== 'uploading') this.slots.delete(layer);
     }
-    if (this.supported) {
-      this.backend.swapPageTable(
-        new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(EARTH_BASE_LAYER),
-      );
-    }
+    this.backend.swapPageTable(
+      new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(EARTH_BASE_LAYER),
+    );
   }
 
   // 世代を無効にし、進行中のGPU書込みが完了した時点でbackendの資源を解放する。
@@ -216,9 +193,9 @@ export class EarthSurfaceGpuAdapter {
     if (this.pendingUploads === 0) this.backend.dispose();
   }
 
-  // 詳細タイルを操作できる寿命と機能を検査する。
+  // 詳細タイルを操作できる寿命を検査する。
   private requireActive(): void {
-    if (this.mode === 'base') throw new Error('Earth surface uses the global base');
+    if (this.disposed) throw new Error('Earth GPU backend is disposed');
   }
 
   // 予約実体の一致で、解放済み・別世代・別adapterの予約を拒否する。

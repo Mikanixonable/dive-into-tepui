@@ -6,7 +6,10 @@ export const PAUSE_MENU_STYLE = `
 #hud-pause-menu {
   position: fixed; display: none;
   --pm-expanded-width: 920px;
-  grid-template-columns: minmax(250px, .78fr) minmax(0, 1.22fr);
+  grid-template-columns: minmax(150px, .4fr) minmax(0, 1.6fr);
+  /* 行をコンテナ高へキャップしないと本文が内容高に張られ、max-height を超えた分が
+     overflow:hidden で切れて .pm-tab-content のスクロールが発動しない。 */
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--space-6);
   width: min(var(--pm-expanded-width), calc(100vw - var(--space-6) - var(--space-6)));
   max-height: var(--overlay-max-h-l);
@@ -28,19 +31,16 @@ export const PAUSE_MENU_STYLE = `
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start;
 }
 #hud-pause-menu .pm-brand {
-  position: relative; display: grid; grid-column: 1; gap: var(--space-4);
-  min-height: 220px; align-content: end;
+  display: grid; grid-column: 1; gap: var(--space-3);
+  min-height: 120px; align-content: end;
 }
-#hud-pause-menu .pm-brand-logotype {
-  display: grid; width: fit-content; color: var(--text-strong);
-  font-size: clamp(2.6rem, 6vw, 4.7rem); font-weight: 650; letter-spacing: -.075em; line-height: .78;
+#hud-pause-menu .pm-brand .title-logotype { font-size: clamp(1.3rem, 3vw, 2.35rem); }
+#hud-pause-menu .pm-brand .title-logotype sup,
+#hud-pause-menu .pm-brand .title-logotype sub {
+  left: calc(100% + var(--space-2));
+  font-size: clamp(0.5rem, 1vw, 0.75rem);
 }
-#hud-pause-menu .pm-brand-logotype span:nth-child(2) { margin-left: .36em; }
-#hud-pause-menu .pm-brand-logotype span:nth-child(3) { margin-left: .72em; color: var(--color-primary-hover); }
 #hud-pause-menu .pm-brand-meta { display: flex; align-items: baseline; gap: var(--space-3); }
-#hud-pause-menu .pm-brand-logo {
-  position: absolute; top: 0; left: 0; width: 2rem; height: 2rem; border-radius: var(--radius-control); opacity: .72;
-}
 #hud-pause-menu .pm-brand-version {
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
@@ -118,7 +118,8 @@ export const PAUSE_MENU_STYLE = `
   }
 }
 @media ${MQ_COMPACT} {
-  #hud-pause-menu { grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
+  /* 1列化でヘッダーと本文が2行に分かれるので、本文行を残り高さへキャップする。 */
+  #hud-pause-menu { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: var(--space-3); }
   #hud #hud-pause-menu { padding: var(--space-4); }
   #hud-pause-menu .pm-header {
     padding-right: 0; padding-bottom: var(--space-3);
@@ -126,7 +127,7 @@ export const PAUSE_MENU_STYLE = `
   }
   #hud-pause-menu .pm-header-top { grid-template-columns: minmax(0, 1fr) auto; }
   #hud-pause-menu .pm-brand { grid-column: 1; min-height: 112px; justify-self: start; }
-  #hud-pause-menu .pm-brand-logotype { font-size: clamp(2rem, 12vw, 3.3rem); }
+  #hud-pause-menu .pm-brand .title-logotype { font-size: clamp(2rem, 12vw, 3.3rem); }
   #hud-pause-menu .pm-brand-meta { display: none; }
   #hud-pause-menu .pm-header-actions { grid-column: 2; }
   #hud-pause-menu .pm-actions { grid-template-columns: 1fr; }

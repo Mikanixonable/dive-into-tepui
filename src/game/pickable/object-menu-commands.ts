@@ -3,11 +3,13 @@ import type { CommandQueue } from '../command-queue';
 import type { ControlSelection } from '../control-selection';
 import type { Part } from '../dynamic/dynamic-entity/parts';
 import type { MenuAction } from '../hud/windows/menu-actions';
-import type { PlanEditor } from '../plan/plan-editor';
-import type { InspectedObject, ObjectAuthoring } from './inspected-object';
+import type { InspectedObject } from './inspected-object';
+import type {
+  PresentationPlanEditor, PresentationStageAuthoring,
+} from '../presentation-ports';
 
 // 搭載部品の展開目標を受け付けるインターフェース。
-export interface PartDeployer {
+interface PartDeployer {
   setPartDeployment(part: Part, deployed: boolean): void;
 }
 
@@ -16,8 +18,8 @@ export interface ObjectMenuCommands {
   // target 固有のメニュー操作 act を実行させる。authoring と planEditor は、その操作を
   // 選んだ時点で渡されていた編集インターフェース。
   runMenu(
-    target: InspectedObject, act: MenuAction, authoring: ObjectAuthoring | null,
-    planEditor: PlanEditor | null,
+    target: InspectedObject, act: MenuAction, authoring: PresentationStageAuthoring | null,
+    planEditor: PresentationPlanEditor | null,
   ): void;
   // ship の部品 part の展開目標を deployed へ設定する。
   setPartDeployment(ship: PartDeployer, part: Part, deployed: boolean): void;

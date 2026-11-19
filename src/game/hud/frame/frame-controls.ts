@@ -1,16 +1,16 @@
 // マップと戦闘のカメラパネル、およびマップの軌道フレームパネルを所有する。
-import { FRAME_ROLES, type FrameAnchorSource, type FrameRole } from '../../../physics/frame';
+import type { FrameAnchorSource } from '../../../physics/frame';
 import type { Vec3 } from '../../../math/vec3';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ListedObject } from '../../pickable/listed-object';
 import type { FocusCameraCommands } from '../../viewer/camera-commands';
 import type { CameraFrameSample, FocusCameraSource } from '../../viewer/focus-camera-selection';
-import { focusPoint, focusTargetId, type FocusTarget } from '../../viewer/focus-target';
-import type { PredictPanelCommands } from '../../viewer/predict-panel-commands';
-import type { PredictPanelSource } from '../../viewer/predict-panel-selection';
+import { focusTargetId, starInertialFocusPoint, type FocusTarget } from '../../viewer/focus-target';
+import type { DisplayTimelineCommands } from '../../viewer/display-timeline-commands';
+import type { DisplayTimelineSource } from '../../viewer/display-timeline-selection';
 import { CameraFramePanel, type CameraFrameCommands } from './camera-frame-panel';
-import { CombatCameraPanel } from './combat-camera-panel';
+import { CombatCameraPanel, type CombatCameraCommands } from './combat-camera-panel';
 import { TrajectoryFramePanel } from './trajectory-frame-panel';
 
 interface CameraFramePresentation {
@@ -27,7 +27,6 @@ export class FrameControls {
   public constructor(
     mapPanelRoot: HTMLElement,
     combatPanelRoot: HTMLElement,
-    popupRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
     private readonly mapCamera: Pick<
       FocusCameraSource,
@@ -39,17 +38,17 @@ export class FrameControls {
       | 'fov'
       | 'referencePlane'
     >,
-    private readonly combatCamera: Pick<FocusCameraSource, 'cameraRotationMode'>,
+    private readonly combatCamera: Pick<FocusCameraSource, 'cameraRotationMode' | 'rotationFollow'>,
     private readonly mapCameraCommands: FocusCameraCommands,
-    combatCameraCommands: Pick<FocusCameraCommands, 'setCameraRotationMode'>,
+    combatCameraCommands: Pick<FocusCameraCommands, 'setCameraRotationMode' | 'toggleAttitudeFollow'>,
     private readonly cameraPresentation: CameraFramePresentation,
-    predictPanel: Pick<PredictPanelSource, 'frame' | 'followCamera'>,
-    private readonly predictPanelCommands: Pick<
-      PredictPanelCommands,
+    displayTimeline: Pick<DisplayTimelineSource, 'frame' | 'followCamera'>,
+    private readonly displayTimelineCommands: Pick<
+      DisplayTimelineCommands,
       'setFrameCenter' | 'setFrameRotation' | 'setFollowCamera' | 'followCameraFocus'
     >,
     overlayManager: OverlayManager,
-    private readonly frameAnchors: FrameAnchorSource,
+    frameAnchors: Pick<FrameAnchorSource, 'attractorOf'>,
   ) {
     const mapCommands: CameraFrameCommands = {
       setRotationFollow: (follow) => mapCameraCommands.setRotationFollow(
@@ -65,20 +64,24 @@ export class FrameControls {
       ),
     };
     this.cameraPanel = new CameraFramePanel(
-      mapPanelRoot, popupRoot, celestialBodies, mapCommands, overlayManager, mapCamera.cameraRotationMode,
+      mapPanelRoot, celestialBodies, mapCommands, overlayManager, mapCamera.cameraRotationMode,
     );
+    // 姿勢追従の切替は戦闘カメラのサンプルで toggleAttitudeFollow へ返す —
+    // マップ側の setRotationFollow が sample('map') を渡すのと同じ経路。
+    const combatCommands: CombatCameraCommands = {
+      setCameraRotationMode: (mode) => combatCameraCommands.setCameraRotationMode(mode),
+      toggleAttitudeFollow: () => combatCameraCommands.toggleAttitudeFollow(
+        cameraPresentation.sample('combat'),
+      ),
+    };
     this.combatCameraPanel = new CombatCameraPanel(
-      combatPanelRoot, combatCameraCommands, combatCamera.cameraRotationMode,
+      combatPanelRoot, combatCommands, combatCamera.cameraRotationMode,
+      combatCamera.rotationFollow?.kind === 'attitude',
     );
     this.trajectoryPanel = new TrajectoryFramePanel(
-      mapPanelRoot, popupRoot, celestialBodies, predictPanel, predictPanelCommands, overlayManager,
+      mapPanelRoot, celestialBodies, displayTimeline, displayTimelineCommands, frameAnchors, overlayManager,
     );
     this.cameraPanel.onSelectCenter = (id) => this.selectCameraCenter(id);
-  }
-
-  // 時刻 t に周回軌道を描いている役割を、回転基準の選択肢として返す。
-  private validRevolutionRoles(t: number): readonly FrameRole[] {
-    return FRAME_ROLES.filter((role) => this.frameAnchors.attractorOf(`@${role}`, t) !== null);
   }
 
   // カメラの基準を選ぶ。null は現在の注視位置を恒星中心慣性系へ固定する。
@@ -88,22 +91,19 @@ export class FrameControls {
       return;
     }
     const sample = this.cameraPresentation.sample('map');
-    const frames = this.celestialBodies.frames;
-    const starId = this.celestialBodies.starId;
-    const frame = starId !== null ? frames.frameOf(starId, null) : frames.inertialFrame;
-    this.setFocus(focusPoint(
-      frames,
-      frame,
+    this.setFocus(starInertialFocusPoint(
+      this.celestialBodies.frames,
+      this.celestialBodies.starId,
       this.cameraPresentation.mapResolvedFocus,
       sample.displayTime,
       sample.frameAnchors,
     ));
   }
 
-  // マップカメラの注視と、追随中の予測パネル基準を同じ命令列へ積む。
+  // マップカメラの注視と、追随中のタイムラインパネル基準を同じ命令列へ積む。
   public setFocus(target: FocusTarget): void {
     this.mapCameraCommands.setFocus(target);
-    this.predictPanelCommands.followCameraFocus(focusTargetId(target));
+    this.displayTimelineCommands.followCameraFocus(focusTargetId(target));
   }
 
   // パネルの選択肢と選択表示を、現在の視点と天体系へ合わせる。
@@ -119,8 +119,11 @@ export class FrameControls {
       fovDeg: this.mapCamera.fov,
       referencePlane: this.mapCamera.referencePlane,
     });
-    this.combatCameraPanel.sync(this.combatCamera.cameraRotationMode);
-    this.trajectoryPanel.sync(pickables, members, displayTime, this.validRevolutionRoles(displayTime));
+    this.combatCameraPanel.sync(
+      this.combatCamera.cameraRotationMode,
+      this.combatCamera.rotationFollow?.kind === 'attitude',
+    );
+    this.trajectoryPanel.sync(pickables, members, displayTime);
   }
 
   // 持っている3枚のパネルを畳む。

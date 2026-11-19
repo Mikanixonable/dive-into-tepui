@@ -2,7 +2,6 @@
 // 戻ることを1つの表で検査する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import rawProteinAsset from '../../src/assets/models/pdb5i4rProtein.json';
 import { v3 } from '../../src/math/vec3';
 import { kinematicState, type SerializedKinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
@@ -18,18 +17,12 @@ import {
 import { POWER_CAPACITY, PowerSystem, type SerializedPowerSystem } from '../../src/game/player/power';
 import { RadiatorSystem, type SerializedRadiatorSystem } from '../../src/game/player/radiator';
 import { THROTTLE_LEVELS, Throttle, type SerializedThrottle } from '../../src/game/player/throttle';
-import { MAGS_PER_BARREL, WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
-import {
-  ProteinCombatState, type SerializedProteinCombatState,
-} from '../../src/game/protein/protein-combat-state';
+import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
 import { RunEventLog } from '../../src/game/run-events';
 import {
   ScoreAttackTimer, type SerializedScoreAttackTimer,
 } from '../../src/game/stages/stage-utils/score-attack-timer';
 import { ScoreCounter, type SerializedScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
-import type { ProteinAssetDefinition } from '../../src/game/protein/protein-schema';
-
-const proteinAsset = rawProteinAsset as unknown as ProteinAssetDefinition;
 
 // 所有者1つぶんの往復。serialized はどの項目も新しく作ったときと違う値を持つ記録、reserialized は
 // それを所有者の復元に通してから直列化し直したもの。
@@ -47,19 +40,6 @@ function roundTrip<T>(owner: string, serialized: T, restore: (serialized: T) => 
 // 時刻 t [s] の、地球を回る位置・速度の記録。
 function serializedState(t: number): SerializedKinematicState {
   return { t, r: { x: 7e6 + t, y: 0, z: 0 }, v: { x: 0, y: 7.5e3, z: t } };
-}
-
-// 先頭の部位が半分まで削れ、構造全体も削れ、修飾がどれも既定と違う状態になり、撃つ部位の巡回が
-// 1つ進んだ戦闘状態の記録。
-function damagedProtein(): SerializedProteinCombatState {
-  return {
-    integrityHp: proteinAsset.integrity.maxHp * 0.8,
-    sites: proteinAsset.sites.map((site, i) => ({ id: site.id, hp: i === 0 ? site.maxHp / 2 : site.maxHp })),
-    modifications: Object.fromEntries(proteinAsset.modificationSlots.map((slot) => [
-      slot.id, slot.states.find((state) => state !== slot.defaultState) ?? slot.defaultState,
-    ])),
-    attackSiteCursor: 1,
-  };
 }
 
 // 往復を確かめる所有者の表。
@@ -110,21 +90,12 @@ function roundTrips(): readonly RoundTrip[] {
       {
         mags: 5,
         rounds: MAG_ROUNDS - 3,
-        barrel: MAGS_PER_BARREL - 1,
-        barrelTemperature: 310,
-        barrelDeviation: 12,
-        pendingBarrelJoules: 2.5e6,
         cooldown: 0.2,
         muzzleIdx: 1,
         wasFiring: true,
         wasEmptyClick: true,
       },
       (serialized) => WeaponState.deserialize(serialized),
-    ),
-    roundTrip<SerializedProteinCombatState>(
-      'ProteinCombatState',
-      damagedProtein(),
-      (serialized) => ProteinCombatState.deserialize(serialized, proteinAsset),
     ),
     roundTrip<SerializedPlan>(
       'Plan',
@@ -160,6 +131,8 @@ function roundTrips(): readonly RoundTrip[] {
           prevPositions: [{ x: 1, y: 0.05, z: 0 }, { x: 2, y: 0.2, z: -0.05 }],
           twists: [0.05, -0.1],
           prevShipW: { x: 0.01, y: 0.02, z: -0.03 },
+          mountAnchor: { x: -1.19, y: 0, z: 0 },
+          mountDirection: { x: 1, y: 0, z: 0 },
         },
       },
       (serialized) => BeltController.deserialize(serialized),
@@ -179,4 +152,23 @@ export function register(): void {
       assert.deepEqual(reserialized(), serialized);
     });
   }
+
+  test('progress-serialization: 旧ベルト記録の最初の取付同期は節点位置を保つ', () => {
+    const belt = BeltController.deserialize({
+      feed: 0.4,
+      physics: {
+        positions: [{ x: 1, y: 0.1, z: 0 }, { x: 2, y: 0.3, z: -0.1 }],
+        prevPositions: [{ x: 1, y: 0.05, z: 0 }, { x: 2, y: 0.2, z: -0.05 }],
+        twists: [0.05, -0.1],
+        prevShipW: { x: 0.01, y: 0.02, z: -0.03 },
+      },
+    });
+    const savedPositions = belt.positions.map((position) => ({ ...position }));
+
+    belt.setMount(v3(0.4, 2, -1), v3(0, 1, 0));
+
+    assert.deepEqual(belt.positions, savedPositions);
+    assert.deepEqual(belt.serialize().physics.mountAnchor, { x: 0.4, y: 2, z: -1 });
+    assert.deepEqual(belt.serialize().physics.mountDirection, { x: 0, y: 1, z: 0 });
+  });
 }

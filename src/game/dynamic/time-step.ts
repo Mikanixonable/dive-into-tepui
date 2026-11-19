@@ -1,11 +1,11 @@
 // シミュレーション刻みの純粋な決定規則。既知イベントを越えず、大気抵抗を積める幅に収める。
 
 import {
-  Atmosphere, airspeed, atmosphericDensity, atmosphericScaleHeight, ellipsoidAltitude,
+  type Atmosphere, airspeed, atmosphericDensity, atmosphericScaleHeight, ellipsoidAltitude,
 } from '../../physics/atmosphere';
 import { nearestAtmosphereBody } from '../../physics/attractor';
-import { KinematicState } from '../../physics/kinematic-state';
-import { Vec3, dot, len, sub } from '../../math/vec3';
+import type { KinematicState } from '../../physics/kinematic-state';
+import { type Vec3, dot, len, sub } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 
 // 1サブステップの最大秒数 [s]。

@@ -1,0 +1,110 @@
+// 展開部品のパネル鎖が剛体の蛇腹として閉じていること — 隣のパネルとヒンジを共有し、
+// 展開しきると一枚の帯に、畳みきると厚みずつずれた積層になる。
+import * as assert from 'node:assert/strict';
+import { qRotate } from '../../src/math/quat';
+import { add, len, scale, sub, v3, type Vec3 } from '../../src/math/vec3';
+import {
+  RADIATOR_PANEL_THICKNESS,
+  RADIATOR_SEGMENT_LENGTH,
+  SOLAR_PANEL_COUNT,
+  SOLAR_PANEL_COLUMNS,
+  SOLAR_PANEL_CENTERLINE_CLEARANCE,
+  SOLAR_PANEL_FACE_SCALE,
+  SOLAR_PANEL_PANEL_PITCH,
+  SOLAR_PANEL_STAGE_SCALES,
+  SOLAR_PANEL_THICKNESS,
+  SOLAR_PANEL_LENGTH,
+} from '../../src/physics/player-shape';
+import {
+  deployablePanelPoses, type DeployablePanelKind, type PanelPose,
+} from '../../src/physics/ship-panel-layout';
+import { test } from '../harness';
+
+const SHAPES: Readonly<Record<DeployablePanelKind, { length: number; thickness: number; normal: Vec3 }>> = {
+  solar_panel: { length: SOLAR_PANEL_LENGTH, thickness: SOLAR_PANEL_THICKNESS, normal: v3(0, 1, 0) },
+  radiator: { length: RADIATOR_SEGMENT_LENGTH, thickness: RADIATOR_PANEL_THICKNESS, normal: v3(1, 0, 0) },
+};
+
+// パネル局所の点 local をモジュール局所へ写す。
+function toModule(pose: PanelPose, local: Vec3): Vec3 {
+  return add(pose.origin, qRotate(pose.rotation, local));
+}
+
+// パネル i の根元側・先端側のヒンジ線(厚みの side 面上)。
+function hinges(kind: DeployablePanelKind, pose: PanelPose, index: number): { root: Vec3; tip: Vec3 } {
+  const { length, thickness, normal } = SHAPES[kind];
+  const side = index % 2 === 0 ? 1 : -1;
+  return {
+    root: toModule(pose, scale(normal, -side * thickness / 2)),
+    tip: add(toModule(pose, scale(normal, side * thickness / 2)), qRotate(pose.rotation, v3(0, 0, length))),
+  };
+}
+
+export function register(): void {
+  for (const kind of ['solar_panel', 'radiator'] as const) {
+    test(`ship panel layout: ${kind} の中心支持鎖は全展開度でヒンジを共有する`, () => {
+      for (const deployed of [0, 0.1, 0.37, 0.5, 0.8, 1]) {
+        const poses = deployablePanelPoses(kind, 0.5, deployed);
+        const columns = kind === 'solar_panel' ? SOLAR_PANEL_COLUMNS : 1;
+        const rows = poses.length / columns;
+        const centerlinePoses = kind === 'solar_panel'
+          ? poses.slice(0, rows).map((pose, row) => {
+            const panelWidth = SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * SOLAR_PANEL_STAGE_SCALES[row]!;
+            const offset = -(panelWidth / 2 + SOLAR_PANEL_CENTERLINE_CLEARANCE);
+            return { ...pose, origin: sub(pose.origin, qRotate(pose.rotation, v3(offset, 0, 0))) };
+          })
+          : poses;
+        assert.ok(len(sub(hinges(kind, centerlinePoses[0]!, 0).root, v3(0, 0, 0.5))) < 1e-9);
+        for (let row = 1; row < rows; row++) {
+          const gap = len(sub(hinges(kind, centerlinePoses[row - 1]!, row - 1).tip,
+            hinges(kind, centerlinePoses[row]!, row).root));
+          assert.ok(gap < 1e-9, `${kind} deployed=${deployed} centerline hinge ${row} gap ${gap}`);
+        }
+      }
+    });
+
+    test(`ship panel layout: ${kind} の中心と法線は姿勢と一致する`, () => {
+      const { length, normal } = SHAPES[kind];
+      for (const pose of deployablePanelPoses(kind, 0.5, 0.6)) {
+        assert.ok(len(sub(pose.center, toModule(pose, v3(0, 0, length / 2)))) < 1e-9);
+        assert.ok(len(sub(pose.normal, qRotate(pose.rotation, normal))) < 1e-9);
+      }
+    });
+
+    test(`ship panel layout: ${kind} は畳みきると取付面の上へ厚みずつ積み重なる`, () => {
+      const { thickness } = SHAPES[kind];
+      const poses = deployablePanelPoses(kind, 0.5, 0);
+      const rows = kind === 'solar_panel' ? SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS : poses.length;
+      poses.forEach((pose, index) => {
+        const row = kind === 'solar_panel' ? index % rows : index;
+        assert.ok(Math.abs(pose.center.z - (0.5 + (row + 0.5) * thickness)) < 1e-9, `${kind} layer ${index}`);
+        assert.ok(Math.abs(Math.abs(pose.normal.z) - 1) < 1e-9);
+      });
+    });
+  }
+
+  test('ship panel layout: 太陽電池は2列の取り付け辺から4枚ずつ展開する', () => {
+    const poses = deployablePanelPoses('solar_panel', 0.5, 1);
+    assert.equal(poses.length, SOLAR_PANEL_COUNT);
+    const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+    poses.forEach((pose, index) => {
+      assert.ok(len(sub(pose.normal, v3(0, 1, 0))) < 1e-9);
+      const column = Math.floor(index / rows);
+      const row = index % rows;
+      const panelWidth = SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * SOLAR_PANEL_STAGE_SCALES[row]!;
+      const side = column === 0 ? -1 : 1;
+      const x = side * (panelWidth / 2 + SOLAR_PANEL_CENTERLINE_CLEARANCE);
+      assert.ok(Math.abs(pose.center.x - x) < 1e-9);
+      const innerEdgeDistance = Math.abs(pose.center.x) - panelWidth / 2;
+      assert.ok(Math.abs(innerEdgeDistance - SOLAR_PANEL_CENTERLINE_CLEARANCE) < 1e-9,
+        `panel ${index} centerline clearance ${innerEdgeDistance}`);
+      assert.ok(Math.abs(pose.center.z - (0.5 + (row + 0.5) * SOLAR_PANEL_LENGTH)) < 1e-9);
+    });
+    for (let row = 0; row < rows; row++) {
+      assert.ok(Math.abs(poses[row]!.center.x + poses[rows + row]!.center.x) < 1e-9,
+        `stage ${row + 1} panels are not symmetric about the centerline`);
+      assert.ok(Math.abs(poses[row]!.center.z - poses[rows + row]!.center.z) < 1e-9,
+        `stage ${row + 1} paired panels do not share a center station`);
+    }
+  });
+}

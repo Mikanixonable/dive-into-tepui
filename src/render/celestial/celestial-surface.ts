@@ -1,7 +1,9 @@
 // 天体表面のメッシュ。LODレベルに応じた球メッシュを単一マテリアルで管理し、視直径に応じて
 // 適切な詳細度を選択して描画する。ライトプリパスの受け手として描かれる。テクスチャ画像は最初の syncLod で取りに行く。
 import * as THREE from 'three/webgpu';
-import { texture as textureNode, uv } from 'three/tsl';
+import {
+  normalize, normalView, positionLocal, select, texture as textureNode, transformNormalToView, uv,
+} from 'three/tsl';
 import { DeferredTexture } from '../deferred-texture';
 import { markLitOpaque } from '../pipeline/lit-layer';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from '../celestial-albedo';
@@ -78,10 +80,7 @@ export function setCelestialSurfaceViewport(width: number, height: number): void
   surfaceViewport = { width, height };
 }
 
-// 最後に設定した描画先の大きさ [px]。未設定なら 1×1。
-export function celestialSurfaceViewport(): { readonly width: number; readonly height: number } {
-  return surfaceViewport;
-}
+
 
 const UNIT_SCALE = new THREE.Vector3(1, 1, 1);
 
@@ -133,13 +132,12 @@ export class CelestialSurface implements CelestialSurfaceLike {
   // 段ごとの半径 1 の球。表示側が親の位置・スケール・自転姿勢を毎フレーム与える。
   private readonly meshes: ReadonlyMap<SphereLodLevel, THREE.Mesh>;
   private activeLevel: SphereLodLevel | null = null;
-  private readonly fallbackAttachment: CelestialSurfaceMaterialAttachment;
   private activeAttachment: CelestialSurfaceMaterialAttachment;
 
   // material と deferred のテクスチャは解放までこの表面が持つ。photometry / textureUrl は静的事実。
   // lightSource は光源として焼くときに読むベース色で、単色の面では null。
   private constructor(
-    fallbackAttachment: CelestialSurfaceMaterialAttachment,
+    private readonly fallbackAttachment: CelestialSurfaceMaterialAttachment,
     public readonly photometry: SurfacePhotometry | null,
     public readonly textureUrl: string | null,
     private readonly lightSource: {
@@ -147,7 +145,6 @@ export class CelestialSurface implements CelestialSurfaceLike {
       readonly map: LightSourceMap;
     } | null = null,
   ) {
-    this.fallbackAttachment = fallbackAttachment;
     this.activeAttachment = fallbackAttachment;
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     // 段ごとにメッシュを持つ — WebGPU では mesh.geometry の差し替えが効かない。
@@ -174,7 +171,14 @@ export class CelestialSurface implements CelestialSurfaceLike {
     // **粗さではなく滑らかさで持つ** — 画像が届くまでテクスチャは 0 を返すので、0 が拡散側へ
     // 来る向きでなければ、届くまでの数フレームだけ地表が鏡面になる。
     if (smoothnessMap !== null) {
-      material.roughnessNode = textureNode(smoothnessMap.texture, uv()).r.oneMinus();
+      const smoothness = textureNode(smoothnessMap.texture, uv()).r;
+      material.roughnessNode = smoothness.oneMinus();
+      // 液状の水面(滑らかさがほぼ最大の画素)では頂点法線を使わず、画素ごとの放射方向から
+      // 求めた法線へ切り替える — メッシュ分割の格子上で鏡面反射が折れて見えないようにする。
+      // 閾値は水域の滑らかさ 0.56 の直前、ほぼ全面が水の画素だけを拾う。
+      const water = smoothness.greaterThan(0.54);
+      material.normalNode = select(
+        water, transformNormalToView(normalize(positionLocal)), normalView);
     }
     return new CelestialSurface(
       {

@@ -1,7 +1,6 @@
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import type { StageResult } from '../game/stages/stage';
 import type { HudShell } from '../hud/hud-shell';
-import { createHudElement } from '../hud/hud-element';
 import type { OverlayHandle } from '../hud/overlay-manager';
 import { injectOnce } from '../hud/inject-style';
 import { injectCommonUiStyle } from '../hud/style/common-ui-style';
@@ -10,7 +9,8 @@ import { RESULT_SCREEN_STYLE } from './result-screen-style';
 
 // 決着した周回の次(再出撃かタイトルへ戻るか)を決める契約。
 export interface RunTransitions {
-  restart(): void;
+  // reinforced なら援護付きで作り直す。
+  restart(reinforced?: boolean): void;
   returnToTitle(): void;
 }
 
@@ -20,13 +20,15 @@ export interface RunTransitions {
 export class ResultScreen implements OverlayHandle {
   private readonly element: HTMLElement;
 
+  // 結果画面の要素と振る舞いを組む。画面への表示は show() が行う。
   public constructor(
     private readonly shell: HudShell,
     private readonly transitions: RunTransitions,
   ) {
     injectCommonUiStyle();
     injectOnce('result-screen-style', RESULT_SCREEN_STYLE);
-    this.element = createHudElement('div', 'hud-result', shell.layers.system);
+    this.element = document.createElement('div');
+    this.element.id = 'hud-result';
   }
 
   // OverlayHandle 実装。target が結果画面の内部かどうかを返す。
@@ -58,11 +60,17 @@ export class ResultScreen implements OverlayHandle {
     actions.appendChild(new Button(
       `[${K.restart.label}] キーまたはタップで再出撃`, () => this.transitions.restart(), undefined, 'primary',
     ).element);
+    // 敗北のときだけ、同時発砲の上限が 1 つ減った援護付きの再出撃を添える。
+    if (!result.win) {
+      actions.appendChild(new Button(
+        '援護ありで再出撃', () => this.transitions.restart(true), undefined, 'secondary',
+      ).element);
+    }
     actions.appendChild(new Button(
       'タイトル画面に戻る', () => this.transitions.returnToTitle(), undefined, 'secondary',
     ).element);
     // 背景入力を遮断する入力ゲートとして登録する。
-    this.shell.overlayManager.open('result', this, {
+    this.shell.overlayManager.open('result', this.element, this, {
       kind: 'modal', closeOnEscape: false, closeOnOutsideClick: false, gatesInput: true,
     });
   }

@@ -1,4 +1,4 @@
-// HUD の骨格 CSS: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レールと、
+// HUD の骨格 CSS: #hud ルート・重なり順・スクロールバー・PanelChrome 外枠・左右レールと、
 // 置き場を持たない画面固定バッジ・通知。末尾でブレークポイントごとの上書きと
 // prefers-reduced-motion を適用する。
 import { OVERLAY_LAYER_STYLE } from '../../../hud/overlay-layer';
@@ -8,7 +8,7 @@ import {
 } from '../../../hud/breakpoints';
 
 export const SKELETON_STYLE = `
-/* レイアウト骨格: #hud ルート・重なり順・スクロールバー・PanelShell 外枠・左右レール。 */
+/* レイアウト骨格: #hud ルート・重なり順・スクロールバー・PanelChrome 外枠・左右レール。 */
 #hud, #hud * { box-sizing: border-box; }
 /* コンポーネントの padding まで消す全称リセットは避ける。文書要素だけを低詳細度で正規化する。 */
 #hud :where(h1, h2, h3, h4, p, dl, dd, ol, ul, figure) { margin: 0; padding: 0; }
@@ -42,8 +42,6 @@ ${OVERLAY_LAYER_STYLE}
 #hud ::-webkit-scrollbar-thumb { background: var(--edge); border-radius: var(--radius-m); }
 #hud ::-webkit-scrollbar-thumb:hover { background: var(--color-primary-hover); }
 
-#hud-overlay-shield { display: none; position: absolute; inset: 0; pointer-events: none; background: var(--shade-1); }
-body.hud-overlay-dim-background #hud-overlay-shield { display: block; }
 body.hud-overlay-modal-open #touch-ui,
 body.hud-construction-mode #touch-ui { display: none; }
 
@@ -63,7 +61,14 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud.construction-mode #hud-map-scale,
 #hud.construction-mode #hud-chase-reset,
 #hud.construction-mode #hud-help-badge,
-#hud.construction-mode .rail-toggle { display: none !important; }
+#hud.construction-mode #hud-pause-badge,
+#hud.construction-mode #hud-topbar-toggle,
+#hud.construction-mode #hud-wide-toggle,
+#hud.construction-mode #hud-armament-band,
+#hud.construction-mode .rail-toggle,
+/* 建造中はカメラパネルに「クォータニオン操作」だけを表示する(UI-DESIGN.md §8) —
+   艦パネルにあった視点追従ボタンも、移設先のここで同じく隠す。 */
+#hud.construction-mode #hud-combat-camera-controls .camera-attitude-follow { display: none !important; }
 #hud .hud-view-root { position: absolute; inset: 0; display: none; pointer-events: none; }
 #hud .hud-view-root.active { display: block; }
 
@@ -95,22 +100,42 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-map-scale,
   #hud-chase-reset,
   #hud-help-badge,
+  #hud-pause-badge,
   #hud-toast { background: var(--surface-opaque); }
 }
-/* PanelShell 共通ヘッド */
-#hud .panel-shell-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
-#hud .panel-shell-head h3 { flex: 1 1 auto; min-width: 0; cursor: pointer; }
-#hud .panel-shell-collapse {
+#hud .panel-chrome-collapse {
   flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
   border-radius: 50%; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;
 }
-#hud .panel-shell-collapse:hover { color: var(--color-primary-hover); background: var(--surface-2); }
-#hud .panel-shell-collapse:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-#hud .panel-shell-body.collapsed { display: none !important; }
+#hud .panel-chrome-collapse:hover { color: var(--color-primary-hover); background: var(--surface-2); }
+#hud .panel-chrome-collapse:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+#hud .panel-chrome-body.collapsed { display: none !important; }
+/* PanelChrome の見出し: [記号][題名] ……… [補足][開閉]。畳むと補足が要約(最も重い状態)に替わる。 */
+#hud .ui-head {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center;
+  column-gap: var(--space-3); min-height: var(--row-min-h-s); margin-bottom: var(--space-2);
+}
+#hud .panel .ui-head > h3 {
+  margin: 0; min-width: 0; overflow: hidden; cursor: pointer; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text); font-size: var(--font-s); font-weight: 600; letter-spacing: 0; line-height: 1.35;
+}
+#hud .ui-head > .ui-section-code { margin-right: 0; }
+#hud .ui-head-meta {
+  color: var(--role-label); font-size: var(--font-xxs); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+#hud .ui-head-meta:empty, #hud .ui-head-meta.is-summary { display: none; }
+#hud .panel:has(> .panel-chrome-body.collapsed) .ui-head { margin-bottom: 0; }
+#hud .panel:has(> .panel-chrome-body.collapsed) .ui-head-meta { display: none; }
+#hud .panel:has(> .panel-chrome-body.collapsed) .ui-head-meta.is-summary:not(:empty) { display: inline; }
+/* 本文の幅(レールの幅)で主読み値の並びを切り替えるため、本文を幅の基準にする。 */
+#hud .panel-chrome-body { container-type: inline-size; }
 #hud .row { display: flex; justify-content: space-between; gap: var(--space-5); }
 #hud .row .k { color: var(--text-dim); }
 #hud .row .v { color: var(--text); min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
 #hud .panel input[type="number"], #hud .panel input[type="text"] { max-width: 100%; }
+/* パネル本体に積むウィジェットの行間。 */
+#hud .w-group { margin-bottom: var(--space-3); }
+#hud .w-toggle { margin-bottom: var(--space-3); }
 
 /* 左右レール */
 #hud .hud-rail {
@@ -187,7 +212,6 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 #hud-topbar .gs-speed-select:hover,
 #hud-topbar .gs-speed-select:focus { background: var(--glass-control-hover); }
-#hud-topbar .gs-speed-select.sim-speed-hot { color: var(--color-primary); }
 #hud-topbar .gs-sep { color: var(--edge); }
 
 #hud-viewbadge {
@@ -247,22 +271,34 @@ body.hud-construction-mode #touch-ui { display: none; }
   #hud-chase-reset { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
 
-#hud-help-badge {
+/* 右上の常設バッジ列。右レール収納トグルの左へ並べる。 */
+/* 画面を広く使うモード(Tab)は、レールとその収納トグル・上部バー・下部の帯を隠す。上部バーの収納は
+   上部バーだけを隠す。どちらも右上のボタン群は残し、そこから戻せるようにする。 */
+#hud.hud-wide .hud-rail, #hud.hud-wide .rail-toggle,
+#hud.hud-wide #hud-topbar, #hud.hud-wide #hud-stagestatus, #hud.hud-wide #hud-armament-band,
+#hud.topbar-collapsed #hud-topbar { display: none !important; }
+#hud-chrome-actions {
   position: absolute; top: var(--space-4);
   right: calc(var(--space-4) + var(--hud-rail-toggle-size) + var(--space-2));
+  display: flex; align-items: center; gap: var(--space-2);
+}
+#hud-chrome-actions > * {
   pointer-events: auto; cursor: pointer;
   min-width: 0; width: auto; height: 30px; border-radius: var(--radius-micro);
   display: flex; justify-content: center; align-items: center; gap: var(--space-2);
   padding: 0 var(--space-3); color: var(--text-dim);
   font: inherit; font-size: var(--font-s); font-weight: 700;
 }
-#hud-help-badge:hover { background: var(--surface-2); color: var(--color-primary-hover); }
+#hud-chrome-actions > *:hover { background: var(--surface-2); color: var(--color-primary-hover); }
+#hud-chrome-actions > *:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+/* ⚙バッジの表示可否は、仮想パッドと同じ body.touch-ui-active(TouchControls が持つ正本)へ載せる。 */
+#hud-pause-badge { display: none; }
+body.touch-ui-active #hud-pause-badge { display: flex; }
 #hud .hud-mini-code {
-  color: var(--color-primary); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-code);
+  color: var(--role-meta); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-code);
 }
-#hud-help-badge:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 @media ${MQ_COARSE} {
-  #hud-help-badge { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
+  #hud-chrome-actions > * { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
 
 #hud-toast {
@@ -280,9 +316,16 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud-toast.warn .toast-code { color: var(--color-warning); }
 #hud-toast .toast-message { min-width: 0; overflow-wrap: anywhere; }
 
-#hud .sim-speed-hot { color: var(--color-primary); }
-#hud .mode-tgt { color: var(--color-primary); }
-#hud .warn-hot { color: var(--color-error); }
+/* 状態色の共有語彙: 読み値や行が持つ意味を、場所ごとの色名ではなく共通ロールで名付ける。
+   ui-caution / ui-warning は注意・警告の値(色に加えて △ ▲ を伴う)、ui-accent は稼働中のモード。 */
+#hud .ui-caution { color: var(--role-caution); }
+#hud .ui-warning { color: var(--role-warning); }
+#hud .ui-caution::before, #hud .ui-warning::before {
+  display: inline-block; margin-right: var(--space-2); font-size: var(--font-xxs); vertical-align: 1px;
+}
+#hud .ui-caution::before { content: '△'; }
+#hud .ui-warning::before { content: '▲'; }
+#hud .ui-accent { color: var(--color-primary); }
 
 /* ここから下はブレークポイントごとの上書きと prefers-reduced-motion。
    モバイル / 狭幅画面: パネルを縮小してタッチパッドと共存させる。 */
@@ -307,7 +350,6 @@ body.hud-construction-mode #touch-ui { display: none; }
 }
 @media ${MQ_COMPACT} {
   #hud .hud-rail { font-size: var(--font-xxs); }
-  #hud .hud-map-root.active .hud-rail { bottom: var(--hud-map-rail-bottom); }
   #hud-topbar {
     width: 100%;
     padding-inline: var(--space-3);
