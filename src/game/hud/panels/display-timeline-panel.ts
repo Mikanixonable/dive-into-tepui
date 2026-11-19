@@ -5,8 +5,8 @@ import {
   Slider, ToggleSwitch, ToggleValueEdit,
   type CollapseToggleLabels,
 } from '../../../hud/widgets';
-import type { PanelCollapse } from '../panel-shell';
-import { fmtDateTime, fmtDuration } from '../../../hud/utils';
+import type { PanelCollapse } from '../panel-chrome';
+import { fmtDateTime, fmtDuration } from '../../../hud/format';
 import type { DisplayTick } from '../orbit/tick-scale';
 import {
   APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,
@@ -294,8 +294,8 @@ export class DisplayTimelinePanel {
     if (!state.visible) return;
     // 期間はジャンプ入力の上限にもなるので控えておく。
     this.currentDuration = state.duration;
-    this.durationRow.render(state.durationKey, state.duration);
-    this.pastDurationRow.render(state.pastDurationKey, state.pastDuration);
+    this.durationRow.sync(state.durationKey, state.duration);
+    this.pastDurationRow.sync(state.pastDurationKey, state.pastDuration);
     this.tickLabelModeSwitch.setOn(state.tickLabelMode === 'relative');
     this.showTicksSwitch.setOn(state.showTicks);
     this.showElementTimesSwitch.setOn(state.showElementTimes);

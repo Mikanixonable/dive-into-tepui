@@ -5,9 +5,9 @@
 // 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えばメッシュと
 // マーカーが別の瞬間を指す。
 import { DisplayTimelinePanel } from './hud/panels/display-timeline-panel';
-import type { PanelCollapse } from './hud/panel-shell';
+import type { PanelCollapse } from './hud/panel-chrome';
 import { buildTicks } from './hud/orbit/tick-scale';
-import { epochUnixSeconds } from '../hud/utils';
+import { epochUnixSeconds } from '../hud/format';
 import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
 import { frameRoleOf } from '../physics/frame';
