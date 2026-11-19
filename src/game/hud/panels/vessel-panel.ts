@@ -1,8 +1,8 @@
 // 常設 VESSEL パネル(#hud-vessel-status)の同期: 主燃料・RCS燃料・出力・動圧・太陽電池パドル・放熱板・
-// RCS制動・微調整・進行方向ホールド・弾薬。操作対象が無ければ隠す。
-// 装填/姿勢リセット/ターゲット選択の3操作と、タッチ時のみのスロットル段は、
+// RCS制動・微調整・進行方向ホールド。操作対象が無ければ隠す。
+// 姿勢リセット/ターゲット選択の2操作と、タッチ時のみのスロットル段は、
 // キー押下と同じ経路で発火するボタンとしてここに持つ — タッチでも到達できるようにするための、
-// キー入力の代替 UI。視点追従はカメラの問いなので戦闘カメラパネルに置く(UI-DESIGN.md §8)。
+// キー入力の代替 UI。視点追従はカメラの問いなので戦闘カメラパネルに、弾薬は武装の帯に置く(UI-DESIGN.md §8)。
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { Button, Meter, SegmentedControl } from '../../../hud/widgets';
 import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud/alarm-level';
@@ -11,9 +11,8 @@ import { setReadout } from '../../../hud/readout';
 import { setStatePip } from '../../../hud/state-pip';
 import {
   DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO, FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO,
-  ammoAlarmLevel, dynamicPressureAlarmLevel, fuelAlarmLevel,
+  dynamicPressureAlarmLevel, fuelAlarmLevel,
 } from '../../alarm/alarm-level';
-import { fmtAmmoStatus } from '../ammo-status';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';
 import type { KeyBinding } from '../../../input/key-mapping';
@@ -44,8 +43,6 @@ export interface VesselPanelViewModel {
   // RCS 燃料の残量と容量。区別を持たない操作対象では mainFuel と同じ値。
   readonly rcsFuel: number;
   readonly maxRcsFuel: number;
-  // 機関砲を積んでいない操作対象では null。
-  readonly ammo: { readonly rounds: number; readonly mags: number; readonly cooldown: number } | null;
   // 太陽電池パドル・放熱板を積んでいない操作対象では null。
   readonly solar: Record<SolarSide, DeployState> | null;
   readonly radiator: Record<RadiatorSide, DeployState> | null;
@@ -142,7 +139,7 @@ export class VesselPanel {
     return { meter: this.mountMeter(gaugeId, label), value: this.els.get(valueId) };
   }
 
-  // 建造の入口(主操作のボタンと説明1行)と、R/F/T の代替操作ボタンを組み立てて
+  // 建造の入口(主操作のボタンと説明1行)と、F/T の代替操作ボタンを組み立てて
   // status-actions プレースホルダへ足す。建造の行は区画の先頭に置く。
   private buildActionButtons(): void {
     const container = this.els.get('status-actions');
@@ -170,7 +167,6 @@ export class VesselPanel {
     };
     addAction('進行方向', 'プログレード姿勢リセット（機首を進行方向へ即座に向ける）', K.progradeReset);
     addAction('ターゲット', '照準に近い敵を第一ターゲットにする', K.targetSelect, true);
-    addAction('装填', 'マニュアル装填', K.reload);
   }
 
   // スロットル 1-4 の SegmentedControl を組み立てて status-throttle-touch プレースホルダへ足す。
@@ -288,19 +284,6 @@ export class VesselPanel {
       { value: `${Math.round(clampedRcsFuel)}`, unit: `/ ${Math.round(maxRcsFuel)}` }, rcsFuelLevel,
     );
 
-    // 機関砲を持たない操作対象では、弾薬の行を畳む。
-    const ammoEl = this.els.get('ammo');
-    const ammo = view.ammo;
-    this.els.get('ammo-row').classList.toggle('hidden', ammo === null);
-    let ammoLevel: AlarmLevel = 'normal';
-    let ammoSummary = '';
-    if (ammo) {
-      ammoLevel = ammoAlarmLevel(ammo.rounds, ammo.mags);
-      ammoSummary = ammo.rounds <= 0 && ammo.mags <= 0 ? '弾切れ' : `予備 ${ammo.mags}連`;
-      this.els.setText('ammo', fmtAmmoStatus(ammo.rounds, ammo.mags, ammo.cooldown));
-    }
-    applyAlarmLevel(ammoEl, ammoLevel);
-
     // 畳んだ見出しには、最も重い状態を残す。平常なら主燃料の残量。
     const candidates = [
       {
@@ -309,9 +292,8 @@ export class VesselPanel {
       },
       { level: rcsFuelLevel, text: `RCS燃料 ${maxRcsFuel > 0 ? Math.round((clampedRcsFuel / maxRcsFuel) * 100) : 0}%` },
       { level: qdynLevel, text: qdynText },
-      { level: ammoLevel, text: ammoSummary },
     ];
-    const worstLevel = worstAlarmLevel(rcsFuelLevel, qdynLevel, ammoLevel);
+    const worstLevel = worstAlarmLevel(rcsFuelLevel, qdynLevel);
     const summary = candidates.find((entry) => entry.level === worstLevel)!;
     this.els.setText('hud-vessel-status-summary', summary.text);
     applyAlarmLevel(this.els.get('hud-vessel-status-summary'), summary.level);

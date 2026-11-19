@@ -14,6 +14,8 @@ import { ViewBadge } from './view-badge';
 import { frameRoleName } from './frame/frame-labels';
 import type { Hud, HudPanelViewModels } from './hud';
 import type { VesselPanelViewModel } from './panels/vessel-panel';
+import type { ArmamentBandViewModel } from './panels/armament-band';
+import type { AmmoViewModel } from './ammo-status';
 import type { OrbitPanelViewModel } from './orbit/orbit-panel';
 import type { TargetPanelViewModel } from './panels/target-panel';
 import type { EnemyContact } from './panels/enemies-panel';
@@ -130,6 +132,7 @@ export class HudPanelPresenter {
         setSimSpeed: (speed) => this.simSpeedCommands.setSpeed(speed),
       },
       vessel: combatControlled === null ? null : this.vesselViewModel(combatControlled, view),
+      armament: combatControlled === null ? null : this.armamentViewModel(combatControlled),
       orbit: controlled === null || orbitRef === null
         ? null
         : this.orbitViewModel(controlled, orbitRef),
@@ -160,7 +163,6 @@ export class HudPanelPresenter {
     const motion = ship?.motion ?? null;
     const power = motion?.power ?? null;
     const radiator = motion?.radiator ?? null;
-    const fire = controlled.fire ?? null;
     // 搭載していない装備は null を返す。
     return {
       rcsDamp: controlled.throttle.rcsDamp,
@@ -172,7 +174,6 @@ export class HudPanelPresenter {
       maxMainFuel: controlled.totalMaxFuel,
       rcsFuel: ship?.totalRcsFuel ?? controlled.totalFuel,
       maxRcsFuel: ship?.totalMaxRcsFuel ?? controlled.totalMaxFuel,
-      ammo: fire === null ? null : { rounds: fire.rounds, mags: fire.mags, cooldown: fire.cooldown },
       solar: power === null ? null : {
         up: { deploy: power.deployOf('up'), wear: 0 },
         down: { deploy: power.deployOf('down'), wear: 0 },
@@ -189,6 +190,26 @@ export class HudPanelPresenter {
       tapKey: (key) => this.input.tapKey(key),
       toggleSolar: (side) => { if (power !== null) this.deployableCommands.toggleSolar(power, side); },
       toggleRadiator: (side) => { if (radiator !== null) this.deployableCommands.toggleRadiator(radiator, side); },
+    };
+  }
+
+  // 武装の帯の値と装填操作。機関砲を積んでいない操作対象では null。
+  private armamentViewModel(controlled: Controllable): ArmamentBandViewModel | null {
+    const ammo = this.ammoViewModel(controlled);
+    if (ammo === null) return null;
+    return { ammo, tapKey: (key) => this.input.tapKey(key) };
+  }
+
+  // 操作対象の機関砲の弾薬状態と弾速。機関砲を積んでいなければ null。
+  private ammoViewModel(controlled: Controllable): AmmoViewModel | null {
+    const fire = controlled.fire;
+    if (fire === null) return null;
+    const ship = isModularShip(controlled) ? controlled : null;
+    return {
+      rounds: fire.rounds,
+      mags: fire.mags,
+      cooldown: fire.cooldown,
+      muzzleVelocityMps: ship === null ? null : ship.capabilities.averageMuzzleVelocity,
     };
   }
 

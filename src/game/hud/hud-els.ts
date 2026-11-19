@@ -5,8 +5,6 @@
 // HUD の静的 DOM が data-id で公開する要素の id 一覧。
 const HUD_ELEMENT_IDS = [
   'alt',
-  'ammo',
-  'ammo-row',
   'ap',
   'ap-label',
   'burn-active-fuel-meter',

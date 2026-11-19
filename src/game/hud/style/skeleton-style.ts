@@ -72,6 +72,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud.construction-mode #hud-pause-badge,
 #hud.construction-mode #hud-topbar-toggle,
 #hud.construction-mode #hud-wide-toggle,
+#hud.construction-mode #hud-armament-band,
 #hud.construction-mode .rail-toggle,
 /* 建造中はカメラパネルに「クォータニオン操作」だけを表示する(UI-DESIGN.md §8) —
    艦パネルにあった視点追従ボタンも、移設先のここで同じく隠す。 */
@@ -282,7 +283,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 /* 画面を広く使うモード(Tab)は、レールとその収納トグル・上部バー・下部の帯を隠す。上部バーの収納は
    上部バーだけを隠す。どちらも右上のボタン群は残し、そこから戻せるようにする。 */
 #hud.hud-wide .hud-rail, #hud.hud-wide .rail-toggle,
-#hud.hud-wide #hud-topbar, #hud.hud-wide #hud-stagestatus,
+#hud.hud-wide #hud-topbar, #hud.hud-wide #hud-stagestatus, #hud.hud-wide #hud-armament-band,
 #hud.topbar-collapsed #hud-topbar { display: none !important; }
 #hud-chrome-actions {
   position: absolute; top: var(--space-4);
