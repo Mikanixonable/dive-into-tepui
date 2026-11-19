@@ -1,6 +1,6 @@
 // 軌道上の実体に共通する軌道要素の行(基準天体・高度・速度・AP/PE/INC/PRD)。
 // 「軌道」グループにまとめ、プロパティウィンドウ先頭の折り畳みセクションへ描かれる。
-import { fmtDist, fmtSpeed, fmtTime } from '../../hud/utils';
+import { fmtDist, fmtSpeed, fmtTime } from '../../hud/format';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { orbitInfo } from '../orbit-info';
 import { autoOrbitReference } from '../orbit-reference';

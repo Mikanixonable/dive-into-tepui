@@ -1,8 +1,8 @@
 import type { BgmAudition } from '../../audio/bgm/bgm';
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import { BgmSettingsPanel } from '../panels/bgm-settings-panel';
-import { GraphicsPanel } from '../panels/graphics-panel';
-import { ThemePanel } from '../panels/theme-panel';
+import { BgmSettingsPanel } from './bgm-settings-panel';
+import { GraphicsPanel } from './graphics-panel';
+import { ThemePanel } from './theme-panel';
 import { TabBar } from '../widgets';
 
 type SettingsTab = 'theme' | 'graphics' | 'bgm';

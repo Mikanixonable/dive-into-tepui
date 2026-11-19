@@ -2,7 +2,7 @@
 // 候補の並べ替えと空グループの除去を担当する。ジャンル判定は候補自身(pickerGenre)が行う。
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
-import type { ObjectPickerGroup } from './windows/object-picker';
+import type { ObjectPickerGroup } from '../../hud/windows/object-picker';
 import { BODY_PICKER_GENRES, OBJECT_PICKER_GENRES, type ObjectPickerGenre } from '../pickable/pickable-listing';
 import type { ListedObject } from '../pickable/listed-object';
 

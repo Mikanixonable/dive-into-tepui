@@ -20,7 +20,7 @@ import type { MarkerDevice } from '../marker/marker-device';
 import type { MarkerSink } from '../marker/marker-sink';
 import { DIRECTION_GLYPH } from './marker/marker-identity';
 import { pickNearest } from './pickable/object-pickable';
-import { fmtMarkerDist } from '../hud/utils';
+import { fmtMarkerDist } from '../hud/format';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';

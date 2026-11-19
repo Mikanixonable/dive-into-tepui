@@ -12,7 +12,7 @@ import { add, v3 } from '../../math/vec3';
 import { pickNearest } from '../pickable/object-pickable';
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
-import { ContextMenu } from '../hud/windows/context-menu';
+import { ContextMenu } from '../../hud/windows/context-menu';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { UiSoundQueue } from '../ui-sound-queue';
 import type { Input } from '../../input/input';

@@ -1,13 +1,13 @@
 // マップビュー右部に常設の軌道物体一覧ウィンドウ。種別ごとの区画に見出しで開閉し、
 // ダブルクリックでフォーカスを移動する。天体区画は衛星・ラグランジュ点を親の下のトグル子
 // メニューへ格納する(衛星自身のラグランジュ点はさらにその衛星の子メニューへ)。
-import { hudRail } from '../hud-root';
+import { hudRail } from '../hud-dom';
 import {
   Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, SegmentedControl, type CollapseToggleLabels,
 } from '../../../hud/widgets';
 import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 import { injectOnce } from '../../../hud/inject-style';
-import type { PanelCollapse } from '../panel-shell';
+import type { PanelCollapse } from '../panel-chrome';
 import { MQ_COARSE } from '../../../hud/breakpoints';
 import { PhysicalObjectListRowTree } from './physical-object-list-row-tree';
 import { FILTERS, PhysicalObjectListOrder, SORTS } from './physical-object-list-order';
