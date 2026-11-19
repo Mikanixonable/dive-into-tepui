@@ -23,6 +23,7 @@ import { cameraOperation } from './camera-operator';
 import { CameraRig } from './camera-rig';
 import type { FocusCandidate } from './focus-derivation';
 import { GunsightCamera } from './gunsight-camera';
+import { HitShake, shakenViewpoint } from './hit-shake';
 
 const ZOOM_LERP_RATE = 9; // ガンサイトとの画角遷移の追従速度 [1/s]
 
@@ -35,6 +36,11 @@ export class CameraSystem {
   private zoomRequested = false;
   private useGunsight = false;
   private combatViewpoint: Viewpoint;
+  // 被弾の瞬間に視点へ掛ける揺れ(SPEC CAMERA.md「6. 被弾の揺れ」)。
+  private readonly hitShake = new HitShake();
+  private lastShakeMs = 0;
+  // 「被弾で画面を揺らす」設定。表示導出の側がフレームごとに写す。
+  public hitShakeEnabled = true;
   private transitionStartFov = COMBAT_CAMERA_FOV;
   private transitionTargetFov = COMBAT_CAMERA_FOV;
   private transitionStartMs = 0;
@@ -182,7 +188,19 @@ export class CameraSystem {
     if (this.useGunsight && controlled !== null) this.gunsightCamera.update(controlled, viewport);
     const target = this.useGunsight ? this.gunsightCamera.viewpoint : this.combatRig.viewpoint;
     this.combatViewpoint = { ...target, fovDeg: this.transitionFov(target.fovDeg, nowMs) };
+    // 被弾の揺れは表示の視点にだけ掛ける — 照準・機首の向きは艦の姿勢から読むので動かない。
+    // ズーム中は画角の比で振幅を小さくする(SPEC CAMERA.md「6. 被弾の揺れ」)。
+    const shakeDt = this.lastShakeMs === 0 ? 0 : Math.min(0.1, (nowMs - this.lastShakeMs) / 1000);
+    this.lastShakeMs = nowMs;
+    const shake = this.hitShakeEnabled ? this.hitShake.offset(shakeDt) : null;
+    if (shake !== null) {
+      const amp = this.useGunsight ? target.fovDeg / COMBAT_CAMERA_FOV : 1;
+      this.combatViewpoint = shakenViewpoint(this.combatViewpoint, shake, amp);
+    }
   }
+
+  // 被弾の瞬間に視点の揺れを立てる。表示側が出来事から呼ぶ。
+  public kickHitShake(): void { this.hitShake.kick(); }
 
   // 視点リセットボタンへ登録したハンドラを解除する。
   public dispose(): void {
