@@ -14,13 +14,13 @@ import type { FloatNode, FloatUniform, Vec3Node, Vec3Uniform } from '../tsl-type
 
 // 錨づくキャリアの東西波数。波長は赤道上で地球一周の 1/5、緯度45°で約5600 kmになる。
 // 地表の低気圧・高気圧の配置はこの波数で等間隔に立つ谷・尾根へ錨づく。
-export const WAVE_NUMBER = 5;
+const WAVE_NUMBER = 5;
 // 谷(とその中間の尾根)の経度の間隔 [°]。波へ錨づく配置の下流方向の揺れの尺になる。
 export const WAVE_TROUGH_WIDTH = 360 / WAVE_NUMBER;
 // キャリアの南北の位相差の単位 [rad]。位相 π は谷の間隔(位相 2π/k)の半分に相当し、
 // 両半球の谷が同じ経度へ揃うことがなくなる。包絡が熱帯で消えるので、赤道を跨ぐ位相の跳びは
 // 場に現れない。各成分はこの単位の違う倍率を持ち、半球どうしの形は完全には鏡写しにならない。
-export const HEMISPHERE_PHASE_OFFSET = Math.PI / 2;
+const HEMISPHERE_PHASE_OFFSET = Math.PI / 2;
 
 const DEGREE = Math.PI / 180; // [rad]
 const DAY = 86400; // [s]
@@ -149,13 +149,6 @@ export function stormTrackIndexAt(longitude: number, hemisphere: number): number
     }
   }
   return nearest;
-}
-
-// 経度 longitude [rad]・半球 hemisphere (北 +1 / 南 −1) でいちばん強く効いている
-// ストームトラックの bump の中心経度 [rad]。帯の束はこのモジュールの bump 表が正本なので、
-// 発生した帯を知りたい利用側(低気圧の進路の組み立てなど)が表を複製せずに済む口。
-export function stormTrackAxisAt(longitude: number, hemisphere: number): number {
-  return trackBumpsOf(hemisphere)[stormTrackIndexAt(longitude, hemisphere)]![0];
 }
 
 // 時刻 seconds [s] における、半球 hemisphere (北 +1 / 南 −1) の index 番目の谷の経度
