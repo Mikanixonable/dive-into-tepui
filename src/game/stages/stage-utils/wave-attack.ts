@@ -27,8 +27,8 @@ export interface WaveAttackStage extends StageOutcome {
 // 難関になる波の周期(番号が周期の倍数の波が難関、その次の波が息抜き)。
 const WAVE_BOSS_PERIOD = 3;
 
-// 波 1 回の形。ships は機数で、boss は難関(波の番号が周期の倍数)か、rest は息抜きか。
-interface WaveShape {
+// 波 1 回の形。ships は難関の追加分を除いた機数で、boss は難関(出現中心に 3 機を追加)か、rest は息抜きか。
+export interface WaveShape {
   readonly ships: number;
   readonly boss: boolean;
   readonly rest: boolean;
@@ -69,6 +69,7 @@ const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
 const STAGE00_WAVE_BASE_SHIPS = 5; // 第1波の機数
 const STAGE00_WAVE_SHIPS_PER_WAVE = 2; // 波が進むごとに増える機数
 const STAGE00_WAVE_MAX_SHIPS = 30; // 1ウェーブの最大機数上限
+const STAGE00_BOSS_EXTRA_SHIPS = 3; // 難関で出現中心へまとめて加える機数
 const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距離下限 [m]
 const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
 const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]
@@ -347,8 +348,8 @@ function waveShipPosition(
   return toInertialPoint(frame, framePoint(placed.x, placed.y, placed.z));
 }
 
-// 1 波ぶんの生成結果(接近する敵艦の列)。
-interface WaveSpawn {
+// 1 波ぶんの生成結果。
+export interface WaveSpawn {
   readonly enemies: Enemy[];
 }
 
@@ -366,15 +367,17 @@ export function generateWave(
   const typeIndex = Math.floor(Math.random() * 3);
   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
 
-  // 隻数分、位置と識別カラーを割り当てて敵艦を生成する
+  // 隻数分、位置と識別カラーを割り当てて敵艦を生成する。難関は通常の機数に加えて 3 機を足し、
+  // 追加分は 1 つの攻撃グループとしてまとめる。
+  const totalShips = shipCount + (shape.boss ? STAGE00_BOSS_EXTRA_SHIPS : 0);
   const enemies: Enemy[] = [];
-  for (let i = 0; i < shipCount; i++) {
+  for (let i = 0; i < totalShips; i++) {
     const accent = subGroups[i % subGroups.length]!;
-    const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir, attractors, player.t);
+    const position = waveShipPosition(pattern, i, totalShips, centerR, approachDir, attractors, player.t);
     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
     enemies.push(generateApproachingEnemy(
       `W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, scene, idAllocators,
-      `wave-${waveNumber}-group-${i % subGroups.length}`,
+      i < shipCount ? `wave-${waveNumber}-group-${i % subGroups.length}` : `wave-${waveNumber}-formation`,
     ));
   }
 

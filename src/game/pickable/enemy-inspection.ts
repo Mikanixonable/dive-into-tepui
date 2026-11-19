@@ -3,7 +3,8 @@ import type { ControlSelection } from '../control-selection';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { ViewMode } from '../view/view-mode';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
-import type { ObjectAuthoring, InspectedObject } from './inspected-object';
+import type { InspectedObject } from './inspected-object';
+import type { PresentationStageAuthoring } from '../presentation-ports';
 import type { MenuItem } from '../hud/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { PropertyRow } from '../../hud/windows/property-window-content';
@@ -103,7 +104,7 @@ export class EnemyInspection implements InspectedObject {
   }
 
   // 削除または複製を行う。
-  public runMenu(act: MenuAction, _selection: ControlSelection, authoring: ObjectAuthoring | null): void {
+  public runMenu(act: MenuAction, _selection: ControlSelection, authoring: PresentationStageAuthoring | null): void {
     if (act === 'delete') this.source.motion.kill();
     else if (act === 'duplicate') authoring?.openObjectPlacerForDuplicate(this.source.mapKind, this.source.motion.state);
   }

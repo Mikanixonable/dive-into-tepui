@@ -1,4 +1,4 @@
-// 生成物。tools/export-ltc-table.mjs が three/addons の RectAreaLightTexturesLib から
+// 生成物。tools/archive/export-ltc-table.mjs が three/addons の RectAreaLightTexturesLib から
 // 焼き出した LTC 係数表(64×64 RGBA 半精度×2枚)。手で編集しない。
 // 表 1 は逆変換行列の係数、表 2 は正規化係数(x)とフレネル項(y)。
 import * as THREE from 'three/webgpu';

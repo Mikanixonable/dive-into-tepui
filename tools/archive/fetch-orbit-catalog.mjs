@@ -11,10 +11,10 @@
 // には segmentFamilyKey で `#1` `#2` … を付ける。
 //
 // 区間ごとの保存件数(MEMBERS_PER_FAMILY)は、実際に表示へ使う件数より多く持たせてある。
-// 焼き込み(tools/export-lagrange-orbits.mjs)が主星・副星へ衝突するメンバーをこの中から
+// 焼き込み(tools/archive/export-lagrange-orbits.mjs)が主星・副星へ衝突するメンバーをこの中から
 // 落としたうえで表示件数へ選び直すため、選び直す余地を残す必要がある。
 //
-// 実行: node tools/fetch-orbit-catalog.mjs
+// 実行: node tools/archive/fetch-orbit-catalog.mjs
 //
 // ここで保存する初期条件が、リポジトリにコミットされる唯一の生データになる(数十MBの全件は
 // 保存しない)。焼き込みはこのキャッシュだけを読み、API へは接続しない。
@@ -23,9 +23,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { segmentFamilyKey, splitAtBreaks, squaredStateDistance, thinByChordLength } from './orbit-family.mjs';
+import { segmentFamilyKey, splitAtBreaks, squaredStateDistance, thinByChordLength } from '../orbit-family.mjs';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..');
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../..');
 const outDir = join(repoRoot, 'assets-src', 'orbits');
 
 const API_BASE = 'https://ssd-api.jpl.nasa.gov/periodic_orbits.api';

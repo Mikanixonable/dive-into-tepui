@@ -59,6 +59,7 @@ export class ShipConstructionPanel {
   public onRotate: ((delta: 1 | -1) => void) | null = null;
   public onSwapEnds: (() => void) | null = null;
   public onCycleSymmetry: (() => void) | null = null;
+  public onFocus: (() => void) | null = null;
   public onUndo: (() => void) | null = null;
   public onRedo: (() => void) | null = null;
   public onJumpHistory: ((index: number) => void) | null = null;
@@ -144,13 +145,14 @@ export class ShipConstructionPanel {
     mobileTabs.append(this.catalogPaneButton.element, this.statusPaneButton.element);
     this.setMobilePane('catalog');
 
-    // 3D の下の手元バー。状態の言い切りと、手持ちの間に効く操作だけを持つ。
+    // 3D の下の手元バー。状態の言い切りと、手持ちの間に効く操作と視点操作を持つ。
     this.hand = new ShipConstructionHand(els, {
       onPlace: () => this.onPlace?.(),
       onRelease: () => this.onRelease?.(),
       onRotate: (delta) => this.onRotate?.(delta),
       onSwapEnds: () => this.onSwapEnds?.(),
       onCycleSymmetry: () => this.onCycleSymmetry?.(),
+      onFocus: () => this.onFocus?.(),
     });
 
     // 選んだモジュールの脇へ追従する操作メニュー。marker レイヤの子として組む。
