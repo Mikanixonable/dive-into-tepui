@@ -2,40 +2,36 @@
 import { len, sub } from '../../math/vec3';
 import { frameRoleOf } from '../../physics/frame';
 import { orbitInfo, relativeInfo } from '../orbit-info';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
 import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { isModularShip } from '../ship/modular-ship';
 import { hasUsableConstructionDock } from '../ship/construction-entry';
 import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import { deployableCommands, type DeployableCommands } from '../player/deployable-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from '../viewer/orbit-reference-commands';
 import { viewCommands } from '../viewer/view-commands';
 import { focusTargetId } from '../viewer/focus-target';
+import { isPresentationEnemy, isPresentationShip } from '../presentation-ports';
 import { ViewBadge } from './view-badge';
 import { frameRoleName } from './frame/frame-labels';
 import type { Hud, HudPanelViewModels } from './hud';
 import type { VesselPanelViewModel } from './panels/vessel-panel';
+import type { ArmamentBandViewModel } from './panels/armament-band';
+import type { AmmoViewModel } from './ammo-status';
 import type { OrbitPanelViewModel } from './orbit/orbit-panel';
 import type { TargetPanelViewModel } from './panels/target-panel';
 import type { EnemyContact } from './panels/enemies-panel';
 import type { ApproachTargetSource } from './orbit/orbit-analysis-data';
 import type { CommandQueue } from '../command-queue';
-import type { CelestialSystem } from '../celestial/celestial-system';
-import type { DynamicSystem } from '../dynamic/dynamic-system';
 import type { ControlSelection } from '../control-selection';
 import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
-import type { Stage } from '../stages/stage';
-import type { Viewer } from '../viewer/viewer';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { Targeter } from '../targeter';
-import type { NavigationCommand } from '../navigation/navigation-command';
-import type { ObjectWindows } from '../pickable/object-windows';
-import type { CameraSystem } from '../camera/camera-system';
-import type { DisplayWindow } from '../display-window-manager';
+import type {
+  PresentationCameraSystem, PresentationCelestialSystem, PresentationDisplayWindow,
+  PresentationDynamicSystem, PresentationInput, PresentationNavigationCommand,
+  PresentationObjectWindows, PresentationSimSpeed, PresentationStage, PresentationTargeter,
+  PresentationViewer,
+} from '../presentation-ports';
 import type { OrbitReference } from '../orbit-reference';
 import type { ViewMode } from '../view/view-mode';
-import type { Input } from '../../input/input';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ThemePalette } from '../../theme';
 
@@ -50,17 +46,17 @@ export class HudPanelPresenter {
   public constructor(
     private readonly hud: Hud,
     commands: CommandQueue,
-    private readonly celestialSystem: CelestialSystem,
-    private readonly dynamicSystem: DynamicSystem,
+    private readonly celestialSystem: PresentationCelestialSystem,
+    private readonly dynamicSystem: PresentationDynamicSystem,
     private readonly controlSelection: ControlSelection,
-    private readonly simSpeedManager: SimSpeedManager,
-    private readonly stage: Stage,
-    private readonly viewer: Viewer,
-    private readonly input: Input,
-    private readonly targeter: Targeter,
-    private readonly objectWindows: ObjectWindows,
-    private readonly cameraSystem: CameraSystem,
-    private readonly navigationCommand: NavigationCommand,
+    private readonly simSpeedManager: PresentationSimSpeed,
+    private readonly stage: PresentationStage,
+    private readonly viewer: PresentationViewer,
+    private readonly input: PresentationInput,
+    private readonly targeter: PresentationTargeter,
+    private readonly objectWindows: PresentationObjectWindows,
+    private readonly cameraSystem: PresentationCameraSystem,
+    private readonly navigationCommand: PresentationNavigationCommand,
     // 艦のステータスパネルの「建造」の押下先と、建造中かどうかの読み取り。
     private readonly startConstruction: () => void,
     private readonly constructionActive: () => boolean,
@@ -110,7 +106,7 @@ export class HudPanelPresenter {
   // view で表に出ている常設パネルを、表示窓 displayWindow・軌道要素の基準 orbitRef・配色 palette で
   // 組んだ値へ合わせる。camera はこのフレームの表示カメラ、nowMs はフレームの実時刻 [ms]。
   public sync(
-    view: ViewMode, displayWindow: DisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
+    view: ViewMode, displayWindow: PresentationDisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
     camera: CameraFrame, nowMs: number,
   ): void {
     this.hud.syncPanels(view, this.viewModels(view, displayWindow, orbitRef, palette), camera, nowMs);
@@ -118,7 +114,7 @@ export class HudPanelPresenter {
 
   // 常設パネルの値を束ねる。表に出ているビューのパネルのぶんだけを組む。
   private viewModels(
-    view: ViewMode, displayWindow: DisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
+    view: ViewMode, displayWindow: PresentationDisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
   ): HudPanelViewModels {
     const controlled = this.controlSelection.current;
     // 戦闘ビューにしか出ないパネルは、マップでは値を組まない。
@@ -136,6 +132,7 @@ export class HudPanelPresenter {
         setSimSpeed: (speed) => this.simSpeedCommands.setSpeed(speed),
       },
       vessel: combatControlled === null ? null : this.vesselViewModel(combatControlled, view),
+      armament: combatControlled === null ? null : this.armamentViewModel(combatControlled),
       orbit: controlled === null || orbitRef === null
         ? null
         : this.orbitViewModel(controlled, orbitRef),
@@ -146,7 +143,7 @@ export class HudPanelPresenter {
         contacts: this.enemyContacts(combatControlled),
         onSelectRight: (id, x, y) => this.objectWindows.openEnemy(id, x, y),
       },
-      burnManagement: controlled !== null && isModularShip(controlled)
+      burnManagement: controlled !== null && isPresentationShip(controlled)
         ? controlled.burnManagementViewModel() : null,
       mapFocus: this.cameraSystem.mapResolvedFocus,
       analysisSource: {
@@ -162,24 +159,21 @@ export class HudPanelPresenter {
 
   // 操作対象の装備・燃料・姿勢の状態と、建造の入口・代替操作用のコールバック。
   private vesselViewModel(controlled: Controllable, view: ViewMode): VesselPanelViewModel {
-    const ship = isModularShip(controlled) ? controlled : null;
+    const ship = isPresentationShip(controlled) ? controlled : null;
     const motion = ship?.motion ?? null;
     const power = motion?.power ?? null;
     const radiator = motion?.radiator ?? null;
-    const fire = controlled.fire ?? null;
     // 搭載していない装備は null を返す。
     return {
       rcsDamp: controlled.throttle.rcsDamp,
       throttleIdx: controlled.throttle.throttleIdx,
       dynamicPressurePa: motion?.aero.qdyn ?? null,
       fineAttitude: controlled.fineAttitude,
-      cameraFollowsAttitude: this.viewer.camera.combat.rotationFollow?.kind === 'attitude',
       progradeHold: controlled.throttle.progradeHold,
       mainFuel: controlled.totalFuel,
       maxMainFuel: controlled.totalMaxFuel,
       rcsFuel: ship?.totalRcsFuel ?? controlled.totalFuel,
       maxRcsFuel: ship?.totalMaxRcsFuel ?? controlled.totalMaxFuel,
-      ammo: fire === null ? null : { rounds: fire.rounds, mags: fire.mags, cooldown: fire.cooldown },
       solar: power === null ? null : {
         up: { deploy: power.deployOf('up'), wear: 0 },
         down: { deploy: power.deployOf('down'), wear: 0 },
@@ -199,6 +193,26 @@ export class HudPanelPresenter {
     };
   }
 
+  // 武装の帯の値と装填操作。機関砲を積んでいない操作対象では null。
+  private armamentViewModel(controlled: Controllable): ArmamentBandViewModel | null {
+    const ammo = this.ammoViewModel(controlled);
+    if (ammo === null) return null;
+    return { ammo, tapKey: (key) => this.input.tapKey(key) };
+  }
+
+  // 操作対象の機関砲の弾薬状態と弾速。機関砲を積んでいなければ null。
+  private ammoViewModel(controlled: Controllable): AmmoViewModel | null {
+    const fire = controlled.fire;
+    if (fire === null) return null;
+    const ship = isPresentationShip(controlled) ? controlled : null;
+    return {
+      rounds: fire.rounds,
+      mags: fire.mags,
+      cooldown: fire.cooldown,
+      muzzleVelocityMps: ship === null ? null : ship.capabilities.averageMuzzleVelocity,
+    };
+  }
+
   // 操作対象の軌道要素と、基準切替用のインターフェース。航法ターゲット基準で対象が重力天体でない(艦・基地・
   // ラグランジュ点)場合は、天体名の生 ID フォールバックより航法ターゲットの表示名を優先する。
   private orbitViewModel(controlled: Controllable, reference: OrbitReference): OrbitPanelViewModel {
@@ -206,7 +220,7 @@ export class HudPanelPresenter {
       controlled, reference, controlled.motion.state.t, (id: string) => this.celestialSystem.nameOf(id),
     );
     const motion = controlled.motion;
-    const ship = isModularShip(controlled) ? controlled : null;
+    const ship = isPresentationShip(controlled) ? controlled : null;
     const targetName = this.viewer.navTarget.name;
     // 軌道の数値は基準に対して解き、警告と切替の状態は操作対象から直に引く。
     return {
@@ -256,7 +270,7 @@ export class HudPanelPresenter {
     const viewerPos = controlled.motion.state.r;
     const primaryTarget = this.targeter.aliveTarget;
     return this.dynamicSystem.all()
-      .filter(isEnemy)
+      .filter(isPresentationEnemy)
       .filter((enemy) => enemy.motion.alive)
       .map((enemy) => ({
         id: enemy.id,
