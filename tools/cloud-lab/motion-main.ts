@@ -113,7 +113,7 @@ function applyAblations(): void {
       const humidity = this.humiditySourceAt(direction);
       return {
         surfaceHumidity: humidity.x, upperHumidity: humidity.y,
-        convection: this.convectionSourceAt(direction),
+        convectionNoise: this.convectionSourceAt(direction),
       };
     };
   }
