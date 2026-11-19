@@ -1,7 +1,7 @@
 // タッチ由来のタップ(クリック)を記録し、時間差・距離が閾値内の2連続を
 // ダブルタップとして合成する。マウスのダブルクリックの判定はブラウザの
 // dblclick イベントに任せるので、ここではタッチ由来だけを扱う。
-import { type PointerPointRecord } from './pointer-point';
+import type { PointerPointRecord } from './pointer-point';
 
 const TOUCH_DOUBLE_TAP_MS = 400; // タッチの連続タップをダブルタップとみなす時間差の上限 [ms]
 const TOUCH_DOUBLE_TAP_PX = 24; // 同上、タップ間の許容移動距離 [px]

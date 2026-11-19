@@ -1,6 +1,6 @@
 // 船体構成から役割・操作可否・装備能力・資源量を導出する。
-import { type Quat } from '../../math/quat';
-import { type Vec3 } from '../../math/vec3';
+import type { Quat } from '../../math/quat';
+import type { Vec3 } from '../../math/vec3';
 import { applyTransformToPoint } from './ship-assembly-transform';
 import type { ShipAssembly, ShipAssemblyTotals, ShipRole } from './ship-assembly';
 import type { FuelKind, ShipModuleKind } from './ship-module-definition';

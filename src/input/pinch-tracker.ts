@@ -1,7 +1,7 @@
 // タッチの複数指ジェスチャの追跡。押下中の左ポインタの座標と、差分を取るピンチ基準
 // (指の間隔・重心・2点を結ぶ角度)を持ち、移動イベントをホイール・パン・ロール量へ
 // 換算する。指の追跡から外れたポインタはジェスチャの本数へ数えない。
-import { type PointerPoint } from './pointer-point';
+import type { PointerPoint } from './pointer-point';
 
 // move が返す1イベントぶんのジェスチャ量。
 export interface PinchDelta {
