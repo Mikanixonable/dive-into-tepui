@@ -3,8 +3,7 @@
 import { clamp, float, log2, max, min, smoothstep } from 'three/tsl';
 import { CloudDetailEvaluator, DETAIL_AMPLITUDE_MAX } from './cloud-detail';
 import { CLOUD_TUNING } from './cloud-tuning';
-import { cumulusColumnOpticalDepthNode } from './cloud-kind-node';
-import { CUMULUS_DITHER_KNOB, CLOUD_TOP_SPAN } from './cumulus-shape';
+import { CUMULUS_DITHER_KNOB } from './cumulus-shape';
 import type { CloudSample } from './cloud-field-sample';
 import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';
 
@@ -85,11 +84,4 @@ export class CloudShapeEvaluator {
   public cloudTopRadius(cloudTop: FloatNode, groundRadius: FloatNode): FloatNode {
     return cloudTop.mul(groundRadius.oneMinus()).add(groundRadius);
   }
-
-  // 積雲の量から鉛直柱光学深さ。
-  public columnOpticalDepth(amount: FloatNode): FloatNode {
-    return cumulusColumnOpticalDepthNode(amount);
-  }
-
-  public get cloudTopSpan(): number { return CLOUD_TOP_SPAN; }
 }

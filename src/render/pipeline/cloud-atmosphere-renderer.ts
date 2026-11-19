@@ -83,10 +83,6 @@ export function shellAltitudeOf(species: CloudSpecies): FloatNode {
 
 // 殻と交わる 1 点ぶんの、視線が受ける減衰と、その点が視線へ足す放射輝度。
 export interface CloudShellSample {
-  // 場の量から種類別の曲線で得た鉛直柱光学深さ。
-  readonly columnOpticalDepth: FloatNode;
-  // 鉛直柱を視線へ写す倍率。球殻の厚みで接線側の発散を有限化する。
-  readonly airmass: FloatNode;
   readonly transmittance: FloatNode;
   // イベント局所の放射輝度。背景大気透過と手前イベント透過はここでは掛けない。
   readonly radiance: Vec3Node;
@@ -183,8 +179,6 @@ export class CloudAtmosphereRenderer {
     const transmittance = transmittanceFromColumnOpticalDepthNode(columnOpticalDepth, airmass);
     const covered = transmittance.oneMinus();
     return {
-      columnOpticalDepth,
-      airmass,
       transmittance,
       radiance: sunRadiance.mul(covered.mul(max(dot(sampleUp, sunDir), 0)).mul(knob.albedo)),
     };
