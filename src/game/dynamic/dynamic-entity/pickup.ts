@@ -1,7 +1,7 @@
 // 軌道上の補給物(接近した自艦が取り込む漂流物)と、その種別ごとの具象。
 import { fmtDist } from '../../../hud/format';
 import { len, sub, v3, type SerializedVec3, type Vec3 } from '../../../math/vec3';
-import { AmmoPickupView, RcsFuelPickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
+import { PickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { COLOR_MARKER_FUEL, DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
@@ -255,7 +255,7 @@ export class AmmoPickup extends Pickup {
 
   // 弾薬補給の見た目・既定名で組む。id は採番器が配った識別子、mags は取り込みで増えるマガジン数、alive は生死。
   private constructor(placement: PickupPlacement, scene: THREE.Scene, id: string, mags: number, alive?: boolean) {
-    super(placement, new AmmoPickupView(scene), id, '弾薬', AmmoPickup.kind, alive);
+    super(placement, new PickupView(scene, AmmoPickup.kind), id, '弾薬', AmmoPickup.kind, alive);
     this.mags = mags;
   }
 
@@ -296,7 +296,7 @@ export class RcsFuelPickup extends Pickup {
 
   // RCS 燃料補給の見た目・既定名で組む。id は採番器が配った識別子、alive は生死。
   private constructor(placement: PickupPlacement, scene: THREE.Scene, id: string, alive?: boolean) {
-    super(placement, new RcsFuelPickupView(scene), id, 'RCS燃料', RcsFuelPickup.kind, alive);
+    super(placement, new PickupView(scene, RcsFuelPickup.kind), id, 'RCS燃料', RcsFuelPickup.kind, alive);
   }
 
   // placement に新しく置く。
