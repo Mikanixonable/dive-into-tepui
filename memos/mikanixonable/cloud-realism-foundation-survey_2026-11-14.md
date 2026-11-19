@@ -10,6 +10,10 @@
 `cloud-lab:reference-cloudtop`、`cloud-detail:tiers`、compare の fineMotion 節 — は devin/dev に
 全て存在する。4節の穴そのもの(8〜100 km の担い手・対流セルの寿命)の解消具合は別途評価が要る。
 
+**追記(2026-11-19):** `287b2e408` の再構築で `src/render/cloud/` は
+`src/render/earth-weather/`(気象シム)+ 入れ子の `cloud/`(雲フィールド・見た目)へ
+再編されている。本文の `src/render/cloud/` というパス表記・行番号は調査時点のもの。
+
 ## 1. 要求された5機能の実装状況
 
 雲の描画経路は `src/render/cloud/` にある TSL(three.js shading language)製の閉形式 GPU 気象モデル
