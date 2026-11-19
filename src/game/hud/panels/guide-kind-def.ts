@@ -8,7 +8,7 @@
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import { GUIDE_GROUPS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-groups';
 import {
-  parseGuideKindId, type CombinedKindAxes, type ParsedGuideKindId,
+  parseGuideKindId, type ParsedGuideKindId,
 } from '../../celestial/orbit-guide/orbit-guide-kind-ids';
 
 
@@ -69,7 +69,6 @@ export interface KindDef {
   readonly id: string; // 焼き込みカタログの族 id。settings.kinds のキーと一致する。
   readonly group: GuideGroupId;
   readonly label: string;
-  readonly sortKey: number;
   readonly index: number;
 }
 
@@ -85,8 +84,6 @@ export interface CombinedKindDef {
   readonly key: string; // `${group}-${base}`。settings.combinedKinds のキーと一致する。
   readonly group: GuideGroupId;
   readonly label: string;
-  readonly axes: CombinedKindAxes;
-  readonly members: readonly CombinedKindMember[]; // 実在するメンバーのみ、軸の順で整列済み
   readonly pointValues: readonly string[];
   readonly branchValues: readonly ('N' | 'S')[];
   readonly ewValues: readonly ('E' | 'W')[];
@@ -143,13 +140,12 @@ export function buildKindDefs(availableFamilies: ReadonlyMap<CatalogSystemId, re
   const ids = new Set<string>();
   for (const list of availableFamilies.values()) for (const id of list) ids.add(id);
 
-  const kindsByGroup = new Map<GuideGroupId, Omit<KindDef, 'index'>[]>();
+  const kindsByGroup = new Map<GuideGroupId, { readonly def: Omit<KindDef, 'index'>; readonly sortKey: number }[]>();
   for (const group of GUIDE_GROUPS) kindsByGroup.set(group, []);
 
   interface CombinedAccum {
     readonly group: GuideGroupId;
     readonly base: string;
-    readonly axes: CombinedKindAxes;
     readonly members: CombinedKindMember[];
   }
   const combinedByKey = new Map<string, CombinedAccum>();
@@ -159,15 +155,13 @@ export function buildKindDefs(availableFamilies: ReadonlyMap<CatalogSystemId, re
     if (parsed === null) continue;
     if (parsed.combinedKey === null) {
       kindsByGroup.get(parsed.group)!.push({
-        id, group: parsed.group, label: standaloneLabel(parsed), sortKey: standaloneSortKey(parsed),
+        def: { id, group: parsed.group, label: standaloneLabel(parsed) }, sortKey: standaloneSortKey(parsed),
       });
       continue;
     }
-    // combinedKey が非nullな行は必ず axes も非null(型では保証されない)。
-    if (parsed.axes === null) continue;
     let accum = combinedByKey.get(parsed.combinedKey);
     if (accum === undefined) {
-      accum = { group: parsed.group, base: parsed.base, axes: parsed.axes, members: [] };
+      accum = { group: parsed.group, base: parsed.base, members: [] };
       combinedByKey.set(parsed.combinedKey, accum);
     }
     accum.members.push({ id, point: parsed.point, branch: parsed.branch, ew: parsed.ew, segment: parsed.segment });
@@ -176,7 +170,7 @@ export function buildKindDefs(availableFamilies: ReadonlyMap<CatalogSystemId, re
   const kinds = new Map<GuideGroupId, readonly KindDef[]>();
   for (const [group, list] of kindsByGroup) {
     list.sort((a, b) => a.sortKey - b.sortKey);
-    kinds.set(group, list.map((def, i) => ({ ...def, index: i })));
+    kinds.set(group, list.map((entry, i) => ({ ...entry.def, index: i })));
   }
 
   const combinedByGroup = new Map<GuideGroupId, Omit<CombinedKindDef, 'index'>[]>();
@@ -184,7 +178,7 @@ export function buildKindDefs(availableFamilies: ReadonlyMap<CatalogSystemId, re
   for (const [key, accum] of combinedByKey) {
     accum.members.sort((a, b) => memberSortKey(a) - memberSortKey(b));
     combinedByGroup.get(accum.group)!.push({
-      key, group: accum.group, label: BASE_LABELS[accum.base] ?? accum.base, axes: accum.axes, members: accum.members,
+      key, group: accum.group, label: BASE_LABELS[accum.base] ?? accum.base,
       pointValues: uniqueSorted(accum.members.map((m) => m.point).filter((v): v is string => v !== undefined), POINT_ORDER),
       branchValues: uniqueSorted(accum.members.map((m) => m.branch).filter((v): v is 'N' | 'S' => v !== undefined), BRANCH_ORDER),
       ewValues: uniqueSorted(accum.members.map((m) => m.ew).filter((v): v is 'E' | 'W' => v !== undefined), EW_ORDER),
