@@ -2,7 +2,7 @@
 // カードを組む。操作はコールバックで呼び出し側へ返す。
 import { MANUAL_SAVE_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
-import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/utils';
+import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/format';
 import { Button, Meter, TabBar } from '../../hud/widgets';
 import { injectOnce } from '../../hud/inject-style';
 import { smallBtn, stageLabel } from './shared';

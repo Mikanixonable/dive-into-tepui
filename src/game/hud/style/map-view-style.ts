@@ -17,7 +17,7 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-main { color: var(--space-label-text); }
 #hud .hud-map-root.active .mk-poi:not(.mk-lagrange) .lbl .lbl-sub { color: var(--space-label-subtext); }
 
-/* Orbit は表示設定の上に置く。初期状態は PanelShell のビュー別既定値で収納される。 */
+/* Orbit は表示設定の上に置く。初期状態は PanelChrome のビュー別既定値で収納される。 */
 #hud .hud-map-root.active .hud-rail-left > #hud-orbit,
 #hud .hud-map-root.active .hud-rail-left > #burn-management-panel {
   width: 100%;
@@ -328,14 +328,6 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-predict .predict-elapsed { color: var(--text); }
 #hud .hud-map-root.active #hud-predict .predict-elapsed:hover { color: var(--color-primary-hover); }
 
-/* Frame controls: ウィンドウ見出し > 操作 > 読み取り専用サマリーの順に弱くする。 */
-#hud .hud-map-root.active .hud-frame-controls .frame-summary {
-  margin-top: var(--space-4);
-  padding-top: var(--space-3);
-  color: var(--text-dim);
-  font-size: var(--font-xxs);
-  line-height: 1.55;
-}
 #hud .hud-map-root.active .hud-frame-controls .w-btn,
 #hud .hud-map-root.active .hud-frame-controls .w-toggle-track {
   border: 0;
@@ -387,7 +379,7 @@ export const MAP_VIEW_STYLE = `
   #hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row { grid-template-columns: minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .target-class-group { grid-template-columns: minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { overflow: hidden; text-overflow: ellipsis; }
-  #hud .hud-map-root.active #hud-predict .predict-row1 { align-items: flex-start; }
+  #hud .hud-map-root.active #hud-predict .w-pill-row { align-items: flex-start; }
 }
 
 /* マウス等の精密ポインタでは44pxタップ最小の制約がないため、表示パネルの行間・余白を詰める

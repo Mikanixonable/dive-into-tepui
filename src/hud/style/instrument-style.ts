@@ -47,10 +47,12 @@ export const INSTRUMENT_STYLE = `
 /* 単位は値より一段小さく淡い。 */
 .ui-u { margin-left: var(--space-1); font-size: var(--font-xxs); color: var(--role-label); }
 .ui-gauge { min-width: 0; width: 100%; max-width: var(--gauge-max-w); justify-self: end; }
-/* 警告の行は面を敷く。面は行の左右へ少し張り出す。 */
+/* 警告の行は面を敷く。面は行の左右へ少し張り出す。背景は #hud 修飾を残して、
+   パネル側のホバー背景より確実に詳細度を上げておく。 */
 .ui-row.ui-warning-fill {
   margin-inline: calc(-1 * var(--space-3)); padding-inline: var(--space-3); border-radius: var(--radius-micro);
 }
+#hud .ui-warning-fill { background: var(--role-warning-fill); }
 
 /* キー列つきの束: キーは束で共有する右端の列に揃え、キーを持たない行があっても値の列は揃う。 */
 .ui-rows.has-keys { container-type: inline-size; }

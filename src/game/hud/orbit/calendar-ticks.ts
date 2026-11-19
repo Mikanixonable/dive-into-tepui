@@ -1,5 +1,5 @@
 // 計画軌道のルーラー目盛りを、暦(時・日・月・年)の区切りに合わせて生成する。
-import { fmtDateTime, fmtDuration } from '../../../hud/utils';
+import { fmtDateTime, fmtDuration } from '../../../hud/format';
 import type { TickLabelMode } from '../../viewer/display-timeline-selection';
 
 // 目盛階数。数が大きいほど粗い単位 — 0:1時間 1:3時間 2:6時間 3:12時間 4:1日 5:1月 6:1年。
