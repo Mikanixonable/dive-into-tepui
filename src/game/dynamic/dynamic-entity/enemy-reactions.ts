@@ -118,6 +118,7 @@ export class EnemyReactions {
   private recordDestroy(registry: EntityRegistry): void {
     registry.events.record({
       kind: 'shipExploded', state: this.port.motion.state, modelScale: this.port.modelScale,
+      owner: 'enemy',
     });
     this.port.scatterDebris(registry);
   }

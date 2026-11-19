@@ -202,9 +202,11 @@ export class Game {
 
   // 出来事の記録を空にし、受け付けた命令を適用し、一時停止でなければ操作量 controls と dt [s] で
   // 1フレーム進め、視点を進行に合わせる。simTimeLimit はそのフレームに simTime が越えてはいけない
-  // 上限(求解中の遷移候補が守る出発の猶予)で、null なら制限なし。
+  // 上限(求解中の遷移候補が守る出発の猶予)で、null なら制限なし。worldTimeScale は演出用に世界の
+  // 時計へ掛ける倍率(撃墜の止め)で、ステージのタイマーなど実時間で進むものには掛からない。
   public advance(
     dt: number, controls: PilotControls, paused: boolean, simTimeLimit: number | null,
+    worldTimeScale = 1,
   ): void {
     // 一時停止中も命令は適用する(R8)。命令の適用そのものが出来事を積むので、記録を空にするのは
     // その前。
@@ -214,7 +216,7 @@ export class Game {
     const boardTargetId = this.viewer.navTarget.id;
     // ポーズには「止まった瞬間」の知らせが無いので、止まっている間は毎フレーム連続指令を畳む。
     if (paused) this.dynamicSystem.pause();
-    else this.advanceSimulation(dt, controls, boardTargetId, simTimeLimit);
+    else this.advanceSimulation(dt, controls, boardTargetId, simTimeLimit, worldTimeScale);
     this.followProgress();
   }
 
@@ -248,11 +250,13 @@ export class Game {
   // 的面の通過を記録する対象の id。
   private advanceSimulation(
     dt: number, controls: PilotControls, boardTargetId: string | null, simTimeLimit: number | null,
+    worldTimeScale: number,
   ): void {
     // このフレームで使う倍率を最初に一度だけ確定する。燃料消費・操作ゲート・積分が
     // 自動ワープの段階変更を跨いで別の倍率を読むと、同じ区間を表さなくなる。
     this.simSpeedManager.update(this.dynamicSystem.simTime);
-    let simDt = dt * this.simSpeedManager.simSpeed;
+    // 撃墜の止めなど演出の倍率は、時間加速とは別の掛け算として世界の時計にだけ乗せる。
+    let simDt = dt * this.simSpeedManager.simSpeed * worldTimeScale;
     // 求解中の遷移候補が示す時刻上限。上限へ達したら simTime はそれ以上進まない
     // (倍率によって求解の結果が変わらないための保証 — PLAN.md「遷移方式」)。
     if (simTimeLimit !== null) {
