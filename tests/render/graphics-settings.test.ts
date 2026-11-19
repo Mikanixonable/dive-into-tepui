@@ -4,7 +4,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import {
-  DEFAULT_GRAPHICS, QUALITY_PRESETS, parseGraphics, withGraphicsOption,
+  DEFAULT_GRAPHICS, QUALITY_PRESETS, formatGraphics, parseGraphics, withGraphicsOption,
 } from '../../src/render/graphics-settings';
 
 // 雲の表示切替と既存の描画設定の保存値互換性を検査する。
@@ -57,6 +57,22 @@ export function register(): void {
   test('graphics-settings: 作業灯の壊れた保存値は既定オンへ落ちる', () => {
     const graphics = parseGraphics('{"constructionWorkLight":"yes"}');
     assert.equal(graphics.constructionWorkLight, true);
+  });
+
+  test('graphics-settings: 保存が無いときの初回既定は、粗いポインタで medium、細かいポインタで high', () => {
+    assert.deepEqual(parseGraphics(null, true), QUALITY_PRESETS.medium);
+    assert.deepEqual(parseGraphics(null, false), QUALITY_PRESETS.high);
+    assert.deepEqual(parseGraphics(null), DEFAULT_GRAPHICS);
+  });
+
+  test('graphics-settings: 保存済みの値はポインタ種別によらずそのまま読める', () => {
+    const complete = formatGraphics(QUALITY_PRESETS.low);
+    assert.deepEqual(parseGraphics(complete, true), QUALITY_PRESETS.low);
+    assert.deepEqual(parseGraphics(complete, false), QUALITY_PRESETS.low);
+    const partial = '{"lodBias":0.5,"clouds":false}';
+    assert.deepEqual(parseGraphics(partial, true), parseGraphics(partial, false));
+    assert.equal(parseGraphics(partial, true).lodBias, 0.5);
+    assert.equal(parseGraphics(partial, true).clouds, false);
   });
 
   test('graphics-settings: 作業灯の書き換えが値一式へ反映される', () => {
