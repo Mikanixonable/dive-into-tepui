@@ -1,5 +1,9 @@
 # earth-weather 構成変更計画(2026-11-16)
 
+状態: 実施済み。`src/render/earth-weather/`(気象シム + 入れ子の `cloud/`)は
+`287b2e408` で再構築され、PR #178(`e933ae34e`)で main へ入った。
+`src/render/cloud/` は消えている。
+
 `src/render/cloud/`(34ファイル)を `src/render/earth-weather/` へ移し、気象シミュレーションと
 雲フィールド・雲描画を分ける構成変更。方針はユーザーが決定済み: **earth-weather の中に
 cloud/ を入れる入れ子構成**。
