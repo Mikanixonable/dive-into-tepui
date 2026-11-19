@@ -12,7 +12,7 @@ import type { SerializedGame } from '../game/game';
 import type { RunEvent } from '../game/run-events';
 import type { PageDevices } from '../run/page-devices';
 import type { FrameSections } from '../game/frame-sections';
-import type { ViewOptionsSettings } from '../game/hud/panels/view-options-control';
+import type { ViewOptionsSettings } from '../game/view/view-options-settings';
 import type { ThemePalette } from '../theme';
 import type { CurrentGameSource } from './save-browser/save-browser';
 import type { HudShell } from '../hud/hud-shell';
