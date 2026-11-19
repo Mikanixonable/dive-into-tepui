@@ -84,19 +84,22 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     this.blueprintShelf = new BlueprintShelf(slots);
   }
 
-  // 起動時の遷移。始めるステージを決めて Run を起こし、失敗したら画面に出す。
-  public async start(): Promise<void> {
-    // 遷移は1つずつ。遷移中に重なった呼び出しは捨てる。
-    if (this.transitioning) return;
+  // 遷移は1つずつ。遷移中に重なった呼び出しは捨て、遷移の失敗は画面に出して旗を戻す。
+  private withTransition(work: () => Promise<unknown>): Promise<void> {
+    if (this.transitioning) return Promise.resolve();
     this.transitioning = true;
-    try {
+    return work()
+      .then(() => undefined)
+      .catch((err) => this.fail(err))
+      .finally(() => { this.transitioning = false; });
+  }
+
+  // 起動時の遷移。始めるステージを決めて Run を起こし、失敗したら画面に出す。
+  public start(): Promise<void> {
+    return this.withTransition(async () => {
       const { stageClass, startEpoch } = await this.resolveStage();
       await this.startRun(stageClass, undefined, startEpoch);
-    } catch (err) {
-      this.fail(err);
-    } finally {
-      this.transitioning = false;
-    }
+    });
   }
 
   // 始めるステージを決める。?title=1 なら選択画面、?stage= があればそのステージ、どちらも無ければ
@@ -302,53 +305,40 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 現在の起動ステージへ作り直す。reinforced なら援護付きで作る。まだ何も起動していなければ何もしない。
   public restart(reinforced = false): void {
     if (this.launchedStage === null) return;
-    if (this.transitioning) return;
-    this.transitioning = true;
-    this.startRun(this.launchedStage, undefined, undefined, reinforced)
-      .catch((err) => this.fail(err))
-      .finally(() => { this.transitioning = false; });
+    this.withTransition(() => this.startRun(this.launchedStage!, undefined, undefined, reinforced));
   }
 
   // 選択画面を出し直し、選ばれたステージで作り直す。直近の周回を締めるので、この後に
   // 再読み込みしても選択画面から始まる。
   public returnToTitle(): void {
-    if (this.transitioning) return;
-    this.transitioning = true;
-    this.endRun();
-    const activeSlotId = this.slots.activeSlotId;
-    if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
-    this.selectStageScreen()
-      .then(({ stageClass, startEpoch }) => this.startRun(stageClass, undefined, startEpoch))
-      .catch((err) => this.fail(err))
-      .finally(() => { this.transitioning = false; });
+    this.withTransition(async () => {
+      this.endRun();
+      const activeSlotId = this.slots.activeSlotId;
+      if (activeSlotId !== null) this.slots.noteRunEnded(activeSlotId);
+      const { stageClass, startEpoch } = await this.selectStageScreen();
+      return this.startRun(stageClass, undefined, startEpoch);
+    });
   }
 
   // 現在の起動ステージを、指定したスナップショットの状態から作り直す。
   // まだ何も起動していなければ何もしない。
   public loadSnapshot(snapshotId: string): void {
     if (this.launchedStage === null) return;
-    if (this.transitioning) return;
-    this.transitioning = true;
-    this.startRun(this.launchedStage, snapshotId)
-      .catch((err) => this.fail(err))
-      .finally(() => { this.transitioning = false; });
+    this.withTransition(() => this.startRun(this.launchedStage!, snapshotId));
   }
 
   // アクティブスロットが切り替わった後に呼ぶ。再開できる起動先があればそれで、
   // 無ければ選択画面で決めたステージで作り直す。
   public switchSlot(): void {
-    if (this.transitioning) return;
-    this.transitioning = true;
-    // 前のスロットの周回を畳んでから、次の起動先を決める。
-    this.endRun();
-    this.blueprintShelf.reload();
-    const resumed = resumableStageClass(this.unlockManager, this.slots);
-    const resolved: Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> =
-      resumed !== null ? Promise.resolve({ stageClass: resumed }) : this.selectStageScreen();
-    resolved
-      .then(({ stageClass, startEpoch }) => this.startRun(stageClass, undefined, startEpoch))
-      .catch((err) => this.fail(err))
-      .finally(() => { this.transitioning = false; });
+    this.withTransition(async () => {
+      // 前のスロットの周回を畳んでから、次の起動先を決める。
+      this.endRun();
+      this.blueprintShelf.reload();
+      const resumed = resumableStageClass(this.unlockManager, this.slots);
+      const { stageClass, startEpoch } =
+        resumed !== null ? { stageClass: resumed } : await this.selectStageScreen();
+      return this.startRun(stageClass, undefined, startEpoch);
+    });
   }
 
   // 周回の遷移の失敗を画面に出す。遷移が失敗すると current が null のまま進まなくなる。

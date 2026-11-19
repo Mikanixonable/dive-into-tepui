@@ -96,7 +96,7 @@ export class VesselPanel {
   // 直近の sync で受け取った状態。ボタン押下はフレーム外で発生するため、現在のコールバックをここから取得する。
   private view: VesselPanelViewModel | null = null;
   private readonly constructionRow: HTMLElement;
-  private followButton: Button | null = null;
+  private followButton!: Button;
   private readonly throttleControl: SegmentedControl<number>;
   private readonly throttleMeter: VesselMeterDom;
   private readonly qdynMeter: VesselMeterDom;
@@ -122,16 +122,11 @@ export class VesselPanel {
     this.radiatorButtons = this.buildRadiatorButtons(deployContainer);
   }
 
-  // Meter ウィジェットを容器要素へ差し込む。
-  private mountMeter(containerId: HudElId, label: string): Meter {
-    const meter = new Meter(label);
-    this.els.get(containerId).appendChild(meter.element);
-    return meter;
-  }
-
   // 行の中のメーターを gaugeId の要素へ差し込み、値を書く要素 valueId と組にして返す。
   private buildMeter(gaugeId: HudElId, valueId: HudElId, label: string): VesselMeterDom {
-    return { meter: this.mountMeter(gaugeId, label), value: this.els.get(valueId) };
+    const meter = new Meter(label);
+    this.els.get(gaugeId).appendChild(meter.element);
+    return { meter, value: this.els.get(valueId) };
   }
 
   // 建造の入口(主操作のボタンと説明1行)と、R/F/G/T の代替操作ボタンを組み立てて
@@ -262,7 +257,7 @@ export class VesselPanel {
     // 微調整・視点追従・進行方向ホールドの状態。
     setStatePip(this.els.get('fine'), view.fineAttitude, true);
     setStatePip(this.els.get('camfollow'), view.cameraFollowsAttitude);
-    this.followButton?.setOn(view.cameraFollowsAttitude);
+    this.followButton.setOn(view.cameraFollowsAttitude);
     setStatePip(this.els.get('prohold'), view.progradeHold, true);
 
     // 主燃料は警報の閾値を持たないので、中立のまま残量だけを示す。
