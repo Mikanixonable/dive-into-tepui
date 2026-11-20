@@ -84,12 +84,12 @@ async function init(): Promise<void> {
   const mapCanvas = document.getElementById('map') as HTMLCanvasElement;
   const panel = createSynopticPanel(mapCanvas, document.getElementById('status')!);
   // 操作部品が立つ前に入れられる値はここで入れる — 部品の初期値が復元した値を拾うように。
-  if (initial.hours !== undefined) canvas.setTime(initial.hours);
-  if (initial.cap !== undefined) {
+  if (initial.hours !== null) canvas.setTime(initial.hours);
+  if (initial.cap !== null) {
     canvas.aimCap(initial.cap.latitude, initial.cap.longitude, initial.cap.radius);
   }
-  if (initial.map !== undefined) panel.setFraming(initial.map);
-  if (initial.layers !== undefined) {
+  if (initial.map !== null) panel.setFraming(initial.map);
+  if (initial.layers !== null) {
     for (const [key] of LAYER_LABELS) panel.setLayer(key, initial.layers.includes(key));
   }
 
@@ -130,7 +130,7 @@ async function init(): Promise<void> {
   // (capture-only など)は labStateQuery が保持する。
   const currentState = (): LabState => ({
     mode: currentView === 'synoptic' ? 'synoptic' : 'cloud',
-    view: currentView === 'synoptic' ? undefined : currentView,
+    view: currentView === 'synoptic' ? null : currentView,
     hours: time.hours,
     cap: cloudFraming(),
     map: panel.framing,
@@ -255,7 +255,7 @@ async function init(): Promise<void> {
 
   // 初回の描画。URL にモード・写しがあれば selectView へ流して復元し、なければ既定の写し。
   if (initial.mode === 'synoptic' || initial.view === 'synoptic') selectView('synoptic');
-  else if (initial.view !== undefined
+  else if (initial.view !== null
     && CLOUD_LAB_VIEWS.some((view) => view.id === initial.view)) {
     selectView(initial.view as CloudLabViewId);
   } else {
