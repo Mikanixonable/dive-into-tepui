@@ -3,27 +3,39 @@ import { deployGroupVisibility } from '../../src/game/hud/panels/vessel-panel';
 import { test } from '../harness';
 
 export function register(): void {
-  test('vessel deploy visibility: 両方装備していれば区画も両群も出す', () => {
-    assert.deepEqual(deployGroupVisibility(true, true), {
-      showSolar: true, showRadiator: true, showContainer: true,
+  test('vessel deploy visibility: 両群とも両側装備していれば区画も全ボタンも出す', () => {
+    assert.deepEqual(deployGroupVisibility(true, true, true, true), {
+      showSolarUp: true, showSolarDown: true, showRadiatorUp: true, showRadiatorDown: true,
+      showContainer: true,
     });
   });
 
-  test('vessel deploy visibility: パドルだけの船はパドル群だけ残し、放熱板群を畳む', () => {
-    assert.deepEqual(deployGroupVisibility(true, false), {
-      showSolar: true, showRadiator: false, showContainer: true,
+  test('vessel deploy visibility: 標準戦闘艦は放熱板の無い側だけ畳む', () => {
+    // パドル両側と放熱板の片側だけを積む船。区画は残り、放熱板の無い側のボタンだけ畳む。
+    assert.deepEqual(deployGroupVisibility(true, true, true, false), {
+      showSolarUp: true, showSolarDown: true, showRadiatorUp: true, showRadiatorDown: false,
+      showContainer: true,
     });
   });
 
-  test('vessel deploy visibility: 放熱板だけの船は放熱板群だけ残し、パドル群を畳む', () => {
-    assert.deepEqual(deployGroupVisibility(false, true), {
-      showSolar: false, showRadiator: true, showContainer: true,
+  test('vessel deploy visibility: パドル片側だけの船はそのボタンだけ残す', () => {
+    assert.deepEqual(deployGroupVisibility(true, false, false, false), {
+      showSolarUp: true, showSolarDown: false, showRadiatorUp: false, showRadiatorDown: false,
+      showContainer: true,
+    });
+  });
+
+  test('vessel deploy visibility: 放熱板片側だけの船はそのボタンだけ残す', () => {
+    assert.deepEqual(deployGroupVisibility(false, false, false, true), {
+      showSolarUp: false, showSolarDown: false, showRadiatorUp: false, showRadiatorDown: true,
+      showContainer: true,
     });
   });
 
   test('vessel deploy visibility: どちらも無ければ区画ごと畳む', () => {
-    assert.deepEqual(deployGroupVisibility(false, false), {
-      showSolar: false, showRadiator: false, showContainer: false,
+    assert.deepEqual(deployGroupVisibility(false, false, false, false), {
+      showSolarUp: false, showSolarDown: false, showRadiatorUp: false, showRadiatorDown: false,
+      showContainer: false,
     });
   });
 }

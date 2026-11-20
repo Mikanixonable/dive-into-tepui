@@ -43,9 +43,10 @@ export interface VesselPanelViewModel {
   // RCS 燃料の残量と容量。区別を持たない操作対象では mainFuel と同じ値。
   readonly rcsFuel: number;
   readonly maxRcsFuel: number;
-  // 太陽電池パドル・放熱板を積んでいない操作対象では null。
-  readonly solar: Record<SolarSide, DeployState> | null;
-  readonly radiator: Record<RadiatorSide, DeployState> | null;
+  // 太陽電池パドル・放熱板を積んでいない操作対象では null。片側だけを積む船では、
+  // 積んでいない側が null になる。
+  readonly solar: Record<SolarSide, DeployState | null> | null;
+  readonly radiator: Record<RadiatorSide, DeployState | null> | null;
   // 操作対象の船体に使える建造ドックがある間だけ非 null。押すと建造を始める。
   readonly startConstruction: (() => void) | null;
   // キー入力と同じ経路で発火する代替操作。
@@ -75,14 +76,28 @@ interface VesselMeterDom {
   readonly value: HTMLElement;
 }
 
-// 展開部品の群ごとの表示条件を決める純粋関数。装備していない群だけ畳み、区画はどちらか
-// 一方でも装備していれば残す。両方なければ区画ごと畳む。旧実装はどちらか一方の欠如で
-// 区画ごと隠していたため、片方だけを積んだ船が両方のボタンを失っていた。
+// 展開部品のボタンごとの表示条件を決める純粋関数。装備していない側のボタンだけ畳み、区画は
+// どちらか一方でも装備していれば残す。両方なければ区画ごと畳む。群単位の有無だけでは片側だけの
+// 船を表せないため、側ごとの有無を引数に取る。
 export function deployGroupVisibility(
-  hasSolar: boolean,
-  hasRadiator: boolean,
-): { readonly showSolar: boolean; readonly showRadiator: boolean; readonly showContainer: boolean } {
-  return { showSolar: hasSolar, showRadiator: hasRadiator, showContainer: hasSolar || hasRadiator };
+  hasSolarUp: boolean,
+  hasSolarDown: boolean,
+  hasRadiatorUp: boolean,
+  hasRadiatorDown: boolean,
+): {
+  readonly showSolarUp: boolean;
+  readonly showSolarDown: boolean;
+  readonly showRadiatorUp: boolean;
+  readonly showRadiatorDown: boolean;
+  readonly showContainer: boolean;
+} {
+  return {
+    showSolarUp: hasSolarUp,
+    showSolarDown: hasSolarDown,
+    showRadiatorUp: hasRadiatorUp,
+    showRadiatorDown: hasRadiatorDown,
+    showContainer: hasSolarUp || hasSolarDown || hasRadiatorUp || hasRadiatorDown,
+  };
 }
 
 // 展開ボタン1つぶんの表示要素。name は部品名と左右(読み上げ名の前半)で、last* は、変わったときだけ
@@ -334,27 +349,32 @@ export class VesselPanel {
     }
   }
 
-  // 太陽電池パドルと放熱板の群を、装備の有無ごとに独立して出し入れする。
-  // 片方だけを積んだ船でも、積んでいる側のボタンは残る。
+  // 太陽電池パドルと放熱板の群を、装備の有無ごとに側単位で出し入れする。
+  // 片側だけを積んだ船でも、積んでいる側のボタンは残る。
   private syncDeployButtons(view: VesselPanelViewModel): void {
     const { solar, radiator } = view;
-    const { showSolar, showRadiator, showContainer } = deployGroupVisibility(solar !== null, radiator !== null);
-    this.els.get('vessel-deploy-controls').classList.toggle('hidden', !showContainer);
-    this.syncDeployGroup(this.solarButtons, solar, showSolar);
-    this.syncDeployGroup(this.radiatorButtons, radiator, showRadiator);
+    const visibility = deployGroupVisibility(
+      solar !== null && solar.up !== null,
+      solar !== null && solar.down !== null,
+      radiator !== null && radiator.up !== null,
+      radiator !== null && radiator.down !== null,
+    );
+    this.els.get('vessel-deploy-controls').classList.toggle('hidden', !visibility.showContainer);
+    this.syncDeployGroup(this.solarButtons, solar, visibility.showSolarUp, visibility.showSolarDown);
+    this.syncDeployGroup(this.radiatorButtons, radiator, visibility.showRadiatorUp, visibility.showRadiatorDown);
   }
 
-  // 展開ボタン2つぶんの群を同期する。装備していなければボタンごと畳み、状態は書かない。
+  // 展開ボタン2つぶんの群を同期する。装備していない側のボタンは畳み、状態は書かない。
   private syncDeployGroup(
     buttons: Record<'up' | 'down', DeployButtonDom>,
-    state: Record<'up' | 'down', DeployState> | null,
-    show: boolean,
+    state: Record<'up' | 'down', DeployState | null> | null,
+    showUp: boolean,
+    showDown: boolean,
   ): void {
-    for (const side of ['up', 'down'] as const) {
-      buttons[side].button.element.classList.toggle('hidden', !show);
-    }
+    buttons.up.button.element.classList.toggle('hidden', !showUp);
+    buttons.down.button.element.classList.toggle('hidden', !showDown);
     if (state === null) return;
-    this.syncDeployButton(buttons.up, state.up);
-    this.syncDeployButton(buttons.down, state.down);
+    if (state.up !== null) this.syncDeployButton(buttons.up, state.up);
+    if (state.down !== null) this.syncDeployButton(buttons.down, state.down);
   }
 }
