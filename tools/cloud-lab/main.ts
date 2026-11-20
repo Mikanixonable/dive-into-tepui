@@ -1,6 +1,7 @@
 // 雲の実験環境の画面。表示する量を選び、時刻を動かして、天気のモデルの写しを正距円筒で見る。
 // 「天気図」は同じ天気のモデルの面を 2D canvas へ焼いて出す(器は synoptic-panel が持つ)。
 import { CloudLabCanvas } from './lab';
+import type { LabProbe } from './lab';
 import { SECONDS_PER_HOUR } from './time-units';
 import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
 import { createViewLegend } from './view-legend';
@@ -60,6 +61,9 @@ declare global {
       // 焼き直し済みなので、続けて capture すれば新しい値の場が撮れる。
       params: () => Record<string, number>;
       setParams: (next: Record<string, number>) => void;
+      // 画面の画素 (xPx, yPx、器の内部解像度)の緯度・経度と、そこに出ている量を読む。
+      // ヘッドレスの計測がプローブと同じ経路を使う口。値を持たない点では null。
+      probeAt: (xPx: number, yPx: number) => Promise<LabProbe | null>;
     };
   }
 }
@@ -108,6 +112,45 @@ async function init(): Promise<void> {
   for (const [key, label] of LAYER_LABELS) {
     buildCheckbox('layers', label, panel.layers[key], (on) => panel.setLayer(key, on));
   }
+
+  // ホバー位置の読み。チェックは両モードで見える範囲の行へ置き、出すのはカーソル追従の #tip。
+  // 写し側は画素の読み戻しが要るので同時に 1 回だけ走らせ、天気図側は読み戻した面を拾うだけ。
+  const tip = document.getElementById('tip')!;
+  let probeOn = false;
+  let probeQueued = false;
+  let probeEvent: { canvas: HTMLCanvasElement; x: number; y: number; cx: number; cy: number } | null = null;
+  const runProbe = async (): Promise<void> => {
+    probeQueued = false;
+    const event = probeEvent;
+    if (event === null || !probeOn) return;
+    const rect = event.canvas.getBoundingClientRect();
+    const xPx = Math.floor(event.x * event.canvas.width / rect.width);
+    const yPx = Math.floor(event.y * event.canvas.height / rect.height);
+    const probe = currentView === 'synoptic'
+      ? panel.probeAt(xPx, yPx) : await canvas.probeAt(xPx, yPx);
+    if (probe === null) { tip.hidden = true; return; }
+    const lat = `${Math.abs(probe.latitude).toFixed(1)}°${probe.latitude >= 0 ? 'N' : 'S'}`;
+    const lon = `${Math.abs(probe.longitude).toFixed(1)}°${probe.longitude >= 0 ? 'E' : 'W'}`;
+    tip.textContent = `${lat} ${lon}\n${probe.text}`;
+    tip.style.left = `${event.cx + 12}px`;
+    tip.style.top = `${event.cy + 12}px`;
+    tip.hidden = false;
+  };
+  for (const el of [viewCanvas, mapCanvas]) {
+    el.addEventListener('mousemove', (e) => {
+      if (!probeOn) return;
+      probeEvent = { canvas: el, x: e.offsetX, y: e.offsetY, cx: e.clientX, cy: e.clientY };
+      if (!probeQueued) {
+        probeQueued = true;
+        void runProbe();
+      }
+    });
+    el.addEventListener('mouseleave', () => { tip.hidden = true; });
+  }
+  buildCheckbox('cap', 'プローブ', false, (on) => {
+    probeOn = on;
+    tip.hidden = true;
+  });
 
   const showLegend = createViewLegend(document.getElementById('legend')!);
 
@@ -195,6 +238,8 @@ async function init(): Promise<void> {
     }),
     params: () => Object.fromEntries(Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])),
     setParams: (next) => applyParams(next, true),
+    probeAt: (xPx, yPx) => currentView === 'synoptic'
+      ? Promise.resolve(panel.probeAt(xPx, yPx)) : canvas.probeAt(xPx, yPx),
   };
 }
 

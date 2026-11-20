@@ -164,7 +164,8 @@ function drawFill(context: CanvasRenderingContext2D, fields: SynopticFields, vie
 
 const ISOBAR_STEP_HPA = 4;
 const ISOBAR_BOLD_HPA = 20;
-const MSLP_HPA = 1013;
+// 海上気圧 [hPa] = 平年値 + 偏差。偏差の面を気圧へ戻すときの基準で、プローブも同じ値を使う。
+export const MSLP_HPA = 1013;
 
 // セルの角の並び(TL, TR, BR, BL)に対する等値線の切り方。各辺の端の番号は
 // 上=0・右=1・下=2・左=3 — 中身は「どの辺とどの辺を結ぶか」の対。

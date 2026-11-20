@@ -31,6 +31,16 @@ const DEFAULT_CAP_LATITUDE = 19;
 const DEFAULT_CAP_LONGITUDE = 136;
 const DEFAULT_CAP_RADIUS = 20;
 
+// プローブが返す 1 点の読み。緯度・経度 [°] と、写しの画素から戻した量の文。
+export interface LabProbe {
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly text: string;
+  // 読んだ画素の生の rgb(表示値 0..1)。復号に使った色そのもの。
+  readonly rgb?: readonly [number, number, number];
+  readonly view?: CloudLabViewId;
+}
+
 export class CloudLabCanvas {
   // 左が本体と同じ全球の写し、右が正射影の cap。並びが画面の左右と一致する。
   private readonly panes: readonly [CloudLabPane, CloudLabPane];
@@ -146,6 +156,52 @@ export class CloudLabCanvas {
     }
     const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
+  }
+
+  // キャンバスの画素 (xPx, yPx) の指す緯度・経度 [°] と、そこに出ている色から戻した量を返す。
+  // 場を焼き直さず、いまの写しの quad を撮影先へ描き直して画素を読むだけ — 場 1 面ぶんの
+  // 費用が掛かる bake はホバーごとに走らせられないので、焼き済みのテクスチャを読む quad の
+  // 再描画で済ませる。cap の円板の外や画面外では null。
+  public async probeAt(xPx: number, yPx: number): Promise<LabProbe | null> {
+    if (xPx < 0 || xPx >= VIEW_WIDTH || yPx < 0 || yPx >= VIEW_HEIGHT) return null;
+    this.renderer.setOutputRenderTarget(this.captureTarget);
+    try {
+      this.quad.render(this.renderer);
+    } finally {
+      this.renderer.setOutputRenderTarget(null);
+    }
+    const data = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, xPx, yPx, 1, 1);
+    const rgb = [data[0]! / 255, data[1]! / 255, data[2]! / 255] as const;
+
+    // 面の uv(0..1、v=0 が北極)。全球面は正距円筒、cap 面は正射影の円板へ逆写像する。
+    const onGlobe = xPx < GLOBE_WIDTH;
+    const u = onGlobe ? xPx / GLOBE_WIDTH : (xPx - GLOBE_WIDTH) / CAP_SIZE;
+    const v = yPx / VIEW_HEIGHT;
+    let latitude: number;
+    let longitude: number;
+    if (onGlobe) {
+      latitude = (0.5 - v) * 180;
+      longitude = (u - 0.5) * 360;
+    } else {
+      const offsetX = 2 * u - 1;
+      const offsetY = 1 - 2 * v;
+      if (offsetX * offsetX + offsetY * offsetY > 1) return null; // 円板の外
+      const placement = this.capProjection.placement;
+      const planeX = offsetX * placement.sinRadius;
+      const planeY = offsetY * placement.sinRadius;
+      const alongCenter = Math.sqrt(Math.max(0, 1 - planeX * planeX - planeY * planeY));
+      const direction = new THREE.Vector3()
+        .addScaledVector(placement.east, planeX)
+        .addScaledVector(placement.north, planeY)
+        .addScaledVector(placement.center, alongCenter);
+      latitude = THREE.MathUtils.radToDeg(Math.asin(direction.y));
+      longitude = THREE.MathUtils.radToDeg(Math.atan2(direction.x, direction.z));
+    }
+    return {
+      latitude, longitude, rgb,
+      view: this.view.id,
+      text: this.view.probe?.(rgb) ?? this.view.legend.text,
+    };
   }
 
   // 画面の左右で面を切り替える色。**分岐は select ではなく If で書く** — select は両辺を評価する
