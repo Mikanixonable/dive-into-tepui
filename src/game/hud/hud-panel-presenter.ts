@@ -174,13 +174,13 @@ export class HudPanelPresenter {
       maxMainFuel: controlled.totalMaxFuel,
       rcsFuel: ship?.totalRcsFuel ?? controlled.totalFuel,
       maxRcsFuel: ship?.totalMaxRcsFuel ?? controlled.totalMaxFuel,
-      solar: power === null ? null : {
-        up: { deploy: power.deployOf('up'), wear: 0 },
-        down: { deploy: power.deployOf('down'), wear: 0 },
+      solar: power === null || !power.hasPanels() ? null : {
+        up: power.hasPanel('up') ? { deploy: power.deployOf('up'), wear: 0 } : null,
+        down: power.hasPanel('down') ? { deploy: power.deployOf('down'), wear: 0 } : null,
       },
-      radiator: radiator === null ? null : {
-        up: { deploy: radiator.deployOf('up'), wear: radiator.wearOf('up') },
-        down: { deploy: radiator.deployOf('down'), wear: radiator.wearOf('down') },
+      radiator: radiator === null || !radiator.hasPanels() ? null : {
+        up: radiator.hasPanel('up') ? { deploy: radiator.deployOf('up'), wear: radiator.wearOf('up') } : null,
+        down: radiator.hasPanel('down') ? { deploy: radiator.deployOf('down'), wear: radiator.wearOf('down') } : null,
       },
       // 建造の入口は、戦闘ビューで船体に使えるドックがあり、建造中でない間だけ。
       startConstruction:

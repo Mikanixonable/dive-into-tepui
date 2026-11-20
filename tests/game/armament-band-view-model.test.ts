@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { HudPanelPresenter } from '../../src/game/hud/hud-panel-presenter';
-import type { AmmoViewModel } from '../../src/game/hud/ammo-status';
+import { reloadDisabledReason, type AmmoViewModel } from '../../src/game/hud/ammo-status';
+import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { ModularShip } from '../../src/game/ship/modular-ship';
 import type { Controllable } from '../../src/game/dynamic/dynamic-entity/controllable';
 import { test } from '../harness';
@@ -33,5 +34,35 @@ export function register(): void {
     }).ammoViewModel(ship);
 
     assert.equal(ammo, null);
+  });
+
+  test('reload disabled reason: 弾切れは装填できない', () => {
+    const ammo: AmmoViewModel = { rounds: 0, mags: 0, cooldown: 0, muzzleVelocityMps: 1000 };
+    assert.equal(reloadDisabledReason(ammo), '弾切れのため装填できません');
+  });
+
+  test('reload disabled reason: 弾切れはクールダウン中も同じ理由', () => {
+    const ammo: AmmoViewModel = { rounds: 0, mags: 0, cooldown: 1, muzzleVelocityMps: 1000 };
+    assert.equal(reloadDisabledReason(ammo), '弾切れのため装填できません');
+  });
+
+  test('reload disabled reason: 弾倉が満杯のとき装填できない', () => {
+    const ammo: AmmoViewModel = { rounds: MAG_ROUNDS, mags: 2, cooldown: 0, muzzleVelocityMps: 1000 };
+    assert.equal(reloadDisabledReason(ammo), '弾倉は満杯です');
+  });
+
+  test('reload disabled reason: 弾帯が空でも予備があれば装填できる', () => {
+    const ammo: AmmoViewModel = { rounds: 0, mags: 1, cooldown: 0, muzzleVelocityMps: 1000 };
+    assert.equal(reloadDisabledReason(ammo), null);
+  });
+
+  test('reload disabled reason: クールダウンだけでは無効にしない', () => {
+    const ammo: AmmoViewModel = { rounds: 18, mags: 2, cooldown: 0.5, muzzleVelocityMps: 1000 };
+    assert.equal(reloadDisabledReason(ammo), null);
+  });
+
+  test('reload disabled reason: 残弾があるとき装填できる', () => {
+    const ammo: AmmoViewModel = { rounds: 18, mags: 2, cooldown: 0, muzzleVelocityMps: 1000 };
+    assert.equal(reloadDisabledReason(ammo), null);
   });
 }

@@ -30,7 +30,7 @@ import * as THREE from 'three/webgpu';
 export const LTC_TABLE_SIZE = 64;
 
 // 係数表 2 枚。
-export type LtcTables = { readonly ltc1: THREE.DataTexture; readonly ltc2: THREE.DataTexture };
+export interface LtcTables { readonly ltc1: THREE.DataTexture; readonly ltc2: THREE.DataTexture }
 
 const LTC_1_BASE64 = '${toBase64(half1)}';
 

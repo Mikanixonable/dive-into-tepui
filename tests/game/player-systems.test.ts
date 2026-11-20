@@ -24,7 +24,7 @@ import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
 import type { ModularShip } from '../../src/game/ship/modular-ship';
 import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
-import { createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
+import { createDefaultCombatPreset, createSalvageTenderPreset } from '../../src/game/ship/ship-presets';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import type { SerializedDynamicEntity } from '../../src/game/dynamic/dynamic-entity/entity-dictionary';
@@ -143,6 +143,52 @@ export function register(): void {
     assert.equal(radiator.wearOf('up'), 0);
     assert.equal(radiator.deployOf('down'), 0);
     assert.equal(radiator.wearOf('down'), 0);
+  });
+
+  test('player systems: 展開部品の有無を hasPanels で問える', () => {
+    // 標準戦闘艦は太陽電池2枚・放熱板1枚を積む。補給艇はどちらも積まない。
+    const combat = createDefaultCombatPreset();
+    const combatPower = new PowerSystem(undefined, undefined, undefined, combat);
+    combatPower.syncAssembly();
+    assert.equal(combatPower.hasPanels(), true);
+    assert.equal(combatPower.hasPanel('up'), true);
+    assert.equal(combatPower.hasPanel('down'), true);
+    const combatRadiator = new RadiatorSystem(new DynamicMotion(state), () => {}, undefined, undefined, combat);
+    combatRadiator.syncAssembly();
+    assert.equal(combatRadiator.hasPanels(), true);
+    assert.equal(combatRadiator.hasPanel('up'), true);
+    assert.equal(combatRadiator.hasPanel('down'), false);
+
+    const tender = createSalvageTenderPreset([]);
+    const tenderPower = new PowerSystem(undefined, undefined, undefined, tender);
+    tenderPower.syncAssembly();
+    assert.equal(tenderPower.hasPanels(), false);
+    assert.equal(tenderPower.hasPanel('up'), false);
+    assert.equal(tenderPower.hasPanel('down'), false);
+    const tenderRadiator = new RadiatorSystem(new DynamicMotion(state), () => {}, undefined, undefined, tender);
+    tenderRadiator.syncAssembly();
+    assert.equal(tenderRadiator.hasPanels(), false);
+    assert.equal(tenderRadiator.hasPanel('up'), false);
+    assert.equal(tenderRadiator.hasPanel('down'), false);
+
+    // assembly を持たない旧式の経路は、既定の2枚を持つ。
+    assert.equal(new PowerSystem().hasPanels(), true);
+    assert.equal(new PowerSystem().hasPanel('up'), true);
+    assert.equal(new PowerSystem().hasPanel('down'), true);
+    assert.equal(new RadiatorSystem(new DynamicMotion(state), () => {}).hasPanels(), true);
+    assert.equal(new RadiatorSystem(new DynamicMotion(state), () => {}).hasPanel('up'), true);
+    assert.equal(new RadiatorSystem(new DynamicMotion(state), () => {}).hasPanel('down'), true);
+  });
+
+  test('player systems: 積んでいない側の展開切替は無操作', () => {
+    // 標準戦闘艦は放熱板を1枚だけ積む。無い側の切替は、ある側の展開度を変えない。
+    const combatRadiator = new RadiatorSystem(
+      new DynamicMotion(state), () => {}, undefined, undefined, createDefaultCombatPreset(),
+    );
+    combatRadiator.syncAssembly();
+    combatRadiator.toggle('down');
+    assert.equal(combatRadiator.deployOf('down'), 0);
+    assert.equal(combatRadiator.deployOf('up'), 0);
   });
 
   test('modular ship motion: booster module の質量で空力・輻射圧の質量あたり値が下がる', () => {

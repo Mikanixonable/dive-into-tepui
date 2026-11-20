@@ -84,6 +84,31 @@ for (const relative of files) {
   }
 }
 
+// HUD の CSS 変数は定義したらどこかで参照する。参照ゼロのまま残った変数は除去する。
+// --combat-panel-max-h/--rail-panel-max-h が参照ゼロのまま 5 か所に定義され、
+// 後に別作業で除去された前例がある。定義は `--name:`、参照は var(--name) と
+// JS からの setProperty/getPropertyValue。疑似クラスのコロン(.w-btn--primary:hover)は定義ではない。
+const definedTokens = new Map();
+for (const relative of files) {
+  const text = fs.readFileSync(path.join(root, relative), 'utf8');
+  for (const match of text.matchAll(/(--[\w-]+)\s*:/g)) {
+    const before = match.index > 0 ? text[match.index - 1] : '';
+    if (/[\w-]/.test(before)) continue;
+    if (!definedTokens.has(match[1])) definedTokens.set(match[1], relative);
+  }
+}
+const usedTokens = new Set();
+for (const relative of [...filesUnder('src'), ...filesUnder('tests')]) {
+  const text = fs.readFileSync(path.join(root, relative), 'utf8');
+  for (const match of text.matchAll(/var\(\s*(--[\w-]+)/g)) usedTokens.add(match[1]);
+  for (const match of text.matchAll(/['"](--[\w-]+)['"]/g)) usedTokens.add(match[1]);
+}
+for (const [token, relative] of [...definedTokens.entries()].sort()) {
+  if (!usedTokens.has(token)) {
+    violations.push(`${relative}: unused CSS variable ${token} is defined but never referenced`);
+  }
+}
+
 if (violations.length > 0) {
   console.error(violations.join('\n'));
   process.exit(1);

@@ -108,6 +108,16 @@ export class PowerSystem {
     if (key !== null) this.panels.get(key)?.setTarget(deployed);
   }
 
+  // 太陽電池パドルを1枚でも積んでいるか。deployOf と同じ結び付けで判定する。
+  public hasPanels(): boolean {
+    return this.key('up') !== null || this.key('down') !== null;
+  }
+
+  // side に太陽電池パドルを積んでいるか。deployOf と同じ結び付けで判定する。
+  public hasPanel(side: SolarSide): boolean {
+    return this.key(side) !== null;
+  }
+
   public deployOf(sideOrId: SolarSide | string): number {
     const key = this.key(sideOrId);
     return key === null ? 0 : this.panels.get(key)?.value ?? 0;
