@@ -1,0 +1,67 @@
+{
+  "comment": "天気図(総観規模)の量の実測目標値。tools/cloud-lab-synoptic-stats.mjs が生成モデルの計測値と突き合わせる。値は文献上確立した気候値の範囲で持ち、単一値へ合わせるのではなく範囲内への収まりを見る。各項の source が出典 — 出典の無い値を足さない。",
+  "metrics": {
+    "mslpGlobalMeanHpa": {
+      "range": [1011.0, 1015.0],
+      "unit": "hPa",
+      "source": "全球の年平均海面気圧 ≈1013 hPa(標準大気・再解析の気候値)"
+    },
+    "mslpEquatorialDeviationHpa": {
+      "range": [-3.0, 3.0],
+      "unit": "hPa(全球平均からの偏差、|緯度| < 10°)",
+      "source": "赤道帯の帯状平均海面気圧は全球平均とほぼ同じ(再解析の帯状平均)"
+    },
+    "mslpSubtropicalDeviationHpa": {
+      "range": [3.0, 10.0],
+      "unit": "hPa(全球平均からの偏差、25〜40°)",
+      "latDeg": [25, 40],
+      "source": "亜熱帯高圧帯は全球平均より +4〜+10 hPa(再解析の帯状平均)"
+    },
+    "mslpSubpolarDeviationHpa": {
+      "range": [-25.0, -8.0],
+      "unit": "hPa(全球平均からの偏差、55〜68°)",
+      "latDeg": [55, 68],
+      "source": "亜極低圧帯は全球平均より −8〜−25 hPa(南半球側が深い。再解析の帯状平均)"
+    },
+    "jetAxisLatitudeDeg": {
+      "range": [35.0, 55.0],
+      "unit": "°(帯状平均の上層風速が半球ごとに最大となる緯度)",
+      "source": "渦動ジェットの芯は中緯度 40〜50° 付近(再解析・教科書的気候値)"
+    },
+    "jetZonalMeanSpeedMs": {
+      "range": [15.0, 45.0],
+      "unit": "m/s",
+      "source": "上層ジェットの帯状平均風速は 15〜45 m/s(年・半球により変動)"
+    },
+    "dominantWavenumber": {
+      "range": [4.0, 8.0],
+      "unit": "(子午面風の卓越東西波数)",
+      "source": "中緯度の卓越惑星波は波数 5〜7 付近(観測される長波)"
+    },
+    "lowTranslationDegPerDay": {
+      "range": [2.0, 12.0],
+      "unit": "°/日(低気圧の中心の東向き移行速度、絶対値の中央値)",
+      "source": "温帯低気圧の移行速度は 5〜15 m/s(緯度 45° で約 4〜11°/日)"
+    },
+    "simultaneousLowsPerHemisphere": {
+      "range": [4.0, 12.0],
+      "unit": "個(半球あたり・日次の同時数の中央値)",
+      "source": "天気図に見える閉じた低気圧は半球あたり数個〜10 個程度"
+    },
+    "simultaneousHighs": {
+      "range": [4.0, 14.0],
+      "unit": "個(全球・日次の同時数の中央値)",
+      "source": "天気図に見える閉じた高気圧は全球で数個〜10 個強程度"
+    },
+    "tropicalCyclonesPerYear": {
+      "range": [70.0, 100.0],
+      "unit": "個/年(熱帯暴風以上)",
+      "source": "IBTrACS 1981–2010、全球 ~85 個/年(src/render/earth-weather/tropical-tracks.ts:62 と同じ出典)"
+    },
+    "tropicalGenesisMaxShare": {
+      "range": [0.2, 0.45],
+      "unit": "(年間発生数に占める最大海域の割合)",
+      "source": "最大の発生海域は北西太平洋で全球の約 1/3(IBTrACS)"
+    }
+  }
+}

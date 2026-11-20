@@ -32,9 +32,10 @@ const RELIEF_HIGH_M = 1000;
 const WET_CLOUDINESS = 0.45;
 const DRY_CLOUDINESS = 0.3;
 // 晴天と数える被覆と、深い対流と数える氷雲の放出の強さの段。積雲の量は塔の高さを持たないので、
-// 塔が上層へ氷雲を放出する強さ(detrain)を深い対流の指標にする。
+// 対流の峰(convectionNoise.y × 活発度、塔が立つかどうかを決める量)を深い対流の指標にする。
+// もとは上層への氷雲放出 detrain を読んでいたが、その機能は撤去済みなので残った実対流の量へ替えた。
 const CLEAR_COVERAGE = 0.05;
-const DEEP_DETRAINS = [0.05, 0.2, 0.5];
+const DEEP_DEPTHS = [0.05, 0.15, 0.25];
 // 昼夜の差を見る緯度の上限 [°]。
 const DIURNAL_MAX_LAT = 45;
 
@@ -63,23 +64,23 @@ class Accumulator {
     this.weight = 0;
     this.coverage = 0;
     this.clear = 0;
-    this.deep = DEEP_DETRAINS.map(() => 0);
-    this.detrain = 0;
+    this.deep = DEEP_DEPTHS.map(() => 0);
+    this.depth = 0;
     this.deepPotential = 0;
     this.shallowForcing = 0;
     this.activity = 0;
     this.cellKm = 0;
   }
 
-  add(weight, coverage, activity, cellKm, detrain, deepPotential, shallowForcing) {
+  add(weight, coverage, activity, cellKm, depth, deepPotential, shallowForcing) {
     this.weight += weight;
     this.coverage += weight * coverage;
     this.clear += weight * (coverage < CLEAR_COVERAGE ? 1 : 0);
-    this.detrain += weight * detrain;
+    this.depth += weight * depth;
     this.deepPotential += weight * deepPotential;
     this.shallowForcing += weight * shallowForcing;
-    DEEP_DETRAINS.forEach((level, i) => {
-      this.deep[i] += weight * (detrain >= level ? 1 : 0);
+    DEEP_DEPTHS.forEach((level, i) => {
+      this.deep[i] += weight * (depth >= level ? 1 : 0);
     });
     this.activity += weight * activity;
     this.cellKm += weight * cellKm;
@@ -92,10 +93,10 @@ class Accumulator {
       area: w,
       coverage: this.coverage / w,
       clearFraction: this.clear / w,
-      detrain: this.detrain / w,
+      depth: this.depth / w,
       deepPotential: this.deepPotential / w,
       shallowForcing: this.shallowForcing / w,
-      ...Object.fromEntries(DEEP_DETRAINS.map((level, i) => [`deep${level}`, this.deep[i] / w])),
+      ...Object.fromEntries(DEEP_DEPTHS.map((level, i) => [`deep${level}`, this.deep[i] / w])),
       activity: this.activity / w,
       cellKm: this.cellKm / w,
     };
@@ -149,7 +150,7 @@ async function main() {
       const cellKm = channel('cumulusCellKm');
       const reliefM = channel('reliefM');
       const cloudiness = channel('meanCloudiness');
-      const detrain = channel('detrain');
+      const convectionY = channel('convectionY');
       const deepPotential = channel('deepPotential');
       const shallowForcing = channel('shallowForcing');
       // 太陽直下経度 [rad]。weather-model の既定(平均太陽日で西へ一周)と同じ式。
@@ -174,9 +175,9 @@ async function main() {
             bin = Math.min(Math.floor(localHour / LOCAL_BIN_HOURS), 24 / LOCAL_BIN_HOURS - 1);
           }
           for (const surface of classes) {
-            byLat[surface][latBand].add(weight, coverage[i], activity[i], cellKm[i], detrain[i], deepPotential[i], shallowForcing[i]);
+            byLat[surface][latBand].add(weight, coverage[i], activity[i], cellKm[i], convectionY[i] * activity[i], deepPotential[i], shallowForcing[i]);
             if (bin >= 0) {
-              byHour[surface][bin].add(weight, coverage[i], activity[i], cellKm[i], detrain[i], deepPotential[i], shallowForcing[i]);
+              byHour[surface][bin].add(weight, coverage[i], activity[i], cellKm[i], convectionY[i] * activity[i], deepPotential[i], shallowForcing[i]);
             }
           }
           if (classes[0] === 'ocean' && absLatitude < 30 && utc === 0) seaTemperatures.push(temperature[i]);
@@ -218,7 +219,7 @@ function formatCell(s, key) {
 
 function printTables(result) {
   const latHeads = LAT_EDGES.slice(1).map((edge, i) => `${LAT_EDGES[i]}-${edge}°`.padStart(7));
-  for (const key of ['coverage', 'clearFraction', 'deepPotential', 'shallowForcing', 'detrain', ...DEEP_DETRAINS.map((t) => `deep${t}`), 'activity', 'cellKm']) {
+  for (const key of ['coverage', 'clearFraction', 'deepPotential', 'shallowForcing', 'depth', ...DEEP_DEPTHS.map((t) => `deep${t}`), 'activity', 'cellKm']) {
     console.log(`\n## ${key} — 地表 × 緯度帯(全時刻)`);
     console.log(`surface   ${latHeads.join(' ')}`);
     for (const s of SURFACES) {
@@ -226,7 +227,7 @@ function printTables(result) {
     }
   }
   const hourHeads = Array.from({ length: 24 / LOCAL_BIN_HOURS }, (_, i) => `${i * LOCAL_BIN_HOURS}h`.padStart(6));
-  for (const key of ['coverage', 'clearFraction', 'deepPotential', 'shallowForcing', 'detrain', ...DEEP_DETRAINS.map((t) => `deep${t}`), 'activity']) {
+  for (const key of ['coverage', 'clearFraction', 'deepPotential', 'shallowForcing', 'depth', ...DEEP_DEPTHS.map((t) => `deep${t}`), 'activity']) {
     console.log(`\n## ${key} — 地表 × 地方太陽時(|緯度| < ${DIURNAL_MAX_LAT}°)`);
     console.log(`surface   ${hourHeads.join(' ')}`);
     for (const s of SURFACES) {
