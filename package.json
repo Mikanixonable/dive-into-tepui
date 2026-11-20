@@ -101,6 +101,7 @@
     "cloud-lab:detail-temporal": "node tools/cloud-lab-detail-temporal.mjs",
     "cloud-lab:occurrence-stats": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-occurrence-stats.mjs",
     "cloud-lab:synoptic-stats": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-synoptic-stats.mjs",
+    "cloud-lab:diff": "node tools/cloud-lab-diff.mjs",
     "cloud-lab:detail-stability": "webpack --config webpack.cloud-lab.config.js --mode production && node tools/cloud-lab-detail-stability.mjs",
     "verify:hud-layout": "node tools/verify-hud-layout.mjs",
     "smoke:layout": "node tools/layout-smoke-retry.mjs"
