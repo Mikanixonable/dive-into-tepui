@@ -225,6 +225,16 @@ export class RadiatorSystem {
     return add(shipR, qRotate(att.q, offset));
   }
 
+  // 放熱板を1枚でも積んでいるか。deployOf と同じ結び付けで判定する。
+  public hasPanels(): boolean {
+    return this.key('up') !== null || this.key('down') !== null;
+  }
+
+  // side に放熱板を積んでいるか。deployOf と同じ結び付けで判定する。
+  public hasPanel(side: RadiatorSide): boolean {
+    return this.key(side) !== null;
+  }
+
   public deployOf(sideOrId: RadiatorSide | string): number {
     const key = this.key(sideOrId);
     return key === null ? 0 : this.panels.get(key)?.value ?? 0;

@@ -4,7 +4,7 @@ import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import { Button } from '../../../hud/widgets';
 import { applyAlarmLevel } from '../../../hud/alarm-level';
 import { ammoAlarmLevel } from '../../alarm/alarm-level';
-import { fmtAmmoStatus, type AmmoViewModel } from '../ammo-status';
+import { fmtAmmoStatus, reloadDisabledReason, type AmmoViewModel } from '../ammo-status';
 import type { KeyBinding } from '../../../input/key-mapping';
 
 // 武装の帯が1フレームに表示する値と、装填操作のコールバック。
@@ -62,6 +62,17 @@ export class ArmamentBand {
     this.velocityEl.classList.toggle('hidden', ammo.muzzleVelocityMps === null);
     // 予備が尽きかけたとき注意、弾が尽きたとき警告(UI-DESIGN.md §8)。
     applyAlarmLevel(this.statusEl, ammoAlarmLevel(ammo.rounds, ammo.mags));
+    // 装填できない操作は項目を残して無効状態と理由を示す(UI-DESIGN.md §3)。
+    // 理由はボタンの title と aria-label へ載せ、弾切れは隣の状態表示にも出る。
+    const reason = reloadDisabledReason(ammo);
+    this.reloadButton.setEnabled(reason === null);
+    this.reloadButton.element.title = reason ?? 'マニュアル装填';
+    this.reloadButton.element.setAttribute(
+      'aria-label',
+      reason === null
+        ? `装填、キー ${K.reload.label}`
+        : `装填できません、${reason}、キー ${K.reload.label}`,
+    );
     this.panel.setAttribute('aria-label', `武装 ${statusText}${velocityText ? `、弾速 ${velocityText}` : ''}`);
   }
 }
