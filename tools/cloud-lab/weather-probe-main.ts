@@ -12,7 +12,11 @@ import {
   cumulusInCloudOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../src/render/earth-weather/cloud/cloud-kind-node';
 import { FloatPlaneSet, awaitClimateMap, bytesToBase64 } from './probe-common';
+import { cyclonePlacementsAt } from '../../src/render/earth-weather/cyclone-tracks';
+import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
+import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';
+import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 
 declare global {
   interface Window {
@@ -30,6 +34,13 @@ interface WeatherProbe {
   // 全球の気象状態。チャンネルごとの面(width × height の Float32)を channels の順に並べた
   // 生の Float32(リトルエンディアン)の base64。
   readonly readGlobal: () => Promise<string>;
+  // 時刻 hours [h] の気圧配置。場を焼かず CPU で求まるので、日次の長期系列を安く読める。
+  // main.ts の cyclonesAt と同じ形。null はその世代に発生していない低気圧。
+  readonly placementsAt: (hours: number) => {
+    readonly tropicals: readonly (PressurePlacement | null)[];
+    readonly lows: readonly (PressurePlacement | null)[];
+    readonly highs: readonly (PressurePlacement | null)[];
+  };
 }
 
 // 全球の写しの高さ [texel]。場を焼く投影の置き方は motion-main.ts と同じ。
@@ -54,7 +65,7 @@ const CHANNELS = [
   'cirrus', 'cloudTop', 'coverage',
   'cumulusTauIn', 'cirrusTau', 'cumulusTopM', 'cirrusTopM', 'tropopause',
   'oceanFetch', 'cumulusCellKm', 'cirrusCellKm', 'unused',
-  'elevation', 'temperatureK', 'unused', 'shallowForcing',
+  'elevation', 'temperatureK', 'convectionY', 'shallowForcing',
   'deepPotential', 'convectionX', 'reliefM',
 ] as const;
 
@@ -101,7 +112,7 @@ class WeatherProbeCanvas {
       // 気候の標高 [m] と平均気温 [K]。地表の種類・山地・海の暖かさで統計を層別するのに使う。
       vec4(
         this.field.climateMap.elevation(direction), this.field.climateMap.temperatureK(direction),
-        float(0), weather.shallowForcing),
+        weather.convectionNoise.y, weather.shallowForcing),
       vec4(weather.deepPotential, weather.convectionNoise.x, weather.reliefM, float(0)),
     ], OUT_WIDTH, OUT_HEIGHT);
   }
@@ -135,6 +146,10 @@ async function init(): Promise<void> {
     channels: CHANNELS,
     prepare: (hours) => probe.prepare(hours),
     readGlobal: () => probe.readGlobal(),
+    placementsAt: (hours) => ({
+      ...cyclonePlacementsAt(hours * 3600, R_EARTH, SIDEREAL_DAY),
+      highs: Array.from({ length: HIGH_COUNT }, (_, index) => highPlacementAt(index, hours * 3600, R_EARTH)),
+    }),
   };
 }
 
