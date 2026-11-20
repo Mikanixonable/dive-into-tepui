@@ -91,9 +91,10 @@ const config = {
     // MODIS Terra の雲頂高度の参照で、compare が雲頂の距離の相手に読む。ビルドの掃除で消さない。
     // motion-compare/ は cloud-lab:motion-compare が残す生成雲の動きの表で、感度・ablation・
     // 修正前後の差分を引く根拠になる。detail/ は描画側モードの生成物(実写参照・撮影・
-    // 履歴)で、cloud-lab:detail-* が前回との差分を引く根拠になる。sunset*/ は夕景の検証の
-    // 出力。ビルドの掃除で消さない。
-    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-motion|reference-fine|reference-fine-timeseries|reference-cloudtop|reference-cirrus|history|history-polar-masked|render-capture|render-capture-timeseries|render-capture-cirrus|motion-compare|detail|sunset[^\\/]*)[\\/]/ },
+    // 履歴)で、cloud-lab:detail-* が前回との差分を引く根拠になる。occurrence-stats/ と
+    // synoptic-stats/ は統計スクリプトが残す計測の履歴で、モデル変更の前後を比べる根拠に
+    // なる。sunset*/ は夕景の検証の出力。ビルドの掃除で消さない。
+    clean: { keep: /^(separated|compare|shots|reference|reference-timeseries|reference-motion|reference-fine|reference-fine-timeseries|reference-cloudtop|reference-cirrus|history|history-polar-masked|render-capture|render-capture-timeseries|render-capture-cirrus|motion-compare|detail|occurrence-stats|synoptic-stats|sunset[^\\/]*)[\\/]/ },
   },
   optimization: {
     minimizer: [

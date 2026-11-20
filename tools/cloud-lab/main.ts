@@ -1,6 +1,7 @@
 // 雲の実験環境の画面。表示する量を選び、時刻を動かして、天気のモデルの写しを正距円筒で見る。
 // 「天気図」は同じ天気のモデルの面を 2D canvas へ焼いて出す(器は synoptic-panel が持つ)。
 import { CloudLabCanvas } from './lab';
+import type { LabProbe } from './lab';
 import { SECONDS_PER_HOUR } from './time-units';
 import { CLOUD_LAB_VIEWS, type CloudLabViewId } from './views';
 import { createViewLegend } from './view-legend';
@@ -9,6 +10,8 @@ import { buildFramingRow } from './framing-controls';
 import { buildTimeControls } from './time-controls';
 import type { Framing, SynopticLayers } from './synoptic-map';
 import { buildButtonRow, buildCheckbox } from '../lab-controls';
+import { labStateQuery, parseLabState } from './url-state';
+import type { LabState } from './url-state';
 import { CLOUD_TUNING } from '../../src/render/earth-weather/cloud-tuning';
 import { buildTuningControls } from './tuning-controls';
 import { latestReportText } from './latest-report';
@@ -60,6 +63,11 @@ declare global {
       // 焼き直し済みなので、続けて capture すれば新しい値の場が撮れる。
       params: () => Record<string, number>;
       setParams: (next: Record<string, number>) => void;
+      // 画面の画素 (xPx, yPx、器の内部解像度)の緯度・経度と、そこに出ている量を読む。
+      // ヘッドレスの計測がプローブと同じ経路を使う口。値を持たない点では null。
+      probeAt: (xPx: number, yPx: number) => Promise<LabProbe | null>;
+      // URL に載せているのと同じ形の状態を返す。ヘッドレスの計測が再現の確認に使う口。
+      state: () => LabState;
     };
   }
 }
@@ -69,10 +77,21 @@ async function init(): Promise<void> {
   // 撮影の駆動(tools/cloud-lab-*.mjs)は ?capture-only を付けて開く — 画面へ提示しない撮影専用
   // (理由は lab.ts の render())。人が開くときは付けないので、画面はこれまでどおり出る。
   const captureOnly = new URLSearchParams(location.search).has('capture-only');
+  // URL に載った状態は起こす前に読む。読んだ値は器が立つ場所へ順に流す。
+  const initial = parseLabState(location.search);
   const viewCanvas = document.getElementById('view') as HTMLCanvasElement;
   const canvas = await CloudLabCanvas.create(viewCanvas, captureOnly);
   const mapCanvas = document.getElementById('map') as HTMLCanvasElement;
   const panel = createSynopticPanel(mapCanvas, document.getElementById('status')!);
+  // 操作部品が立つ前に入れられる値はここで入れる — 部品の初期値が復元した値を拾うように。
+  if (initial.hours !== null) canvas.setTime(initial.hours);
+  if (initial.cap !== null) {
+    canvas.aimCap(initial.cap.latitude, initial.cap.longitude, initial.cap.radius);
+  }
+  if (initial.map !== null) panel.setFraming(initial.map);
+  if (initial.layers !== null) {
+    for (const [key] of LAYER_LABELS) panel.setLayer(key, initial.layers.includes(key));
+  }
 
   let currentView: ViewChoice = canvas.currentView;
   // 写しモードに戻ったときに出す写し。タブの往復でモードだけが切り替わり、写しの選択は保つ。
@@ -85,6 +104,7 @@ async function init(): Promise<void> {
       canvas.setTime(hours);
       canvas.render();
     }
+    writeStateSoon();
   };
   const time = buildTimeControls('time', canvas.hours, applyTime);
 
@@ -98,16 +118,81 @@ async function init(): Promise<void> {
       canvas.aimCap(framing.latitude, framing.longitude, framing.radius);
       canvas.render();
     }
+    writeStateSoon();
   });
   const syncFraming = (): void => {
     const synoptic = currentView === 'synoptic';
     framingRow.show(synoptic ? panel.framing : cloudFraming(), synoptic ? '地図の窓' : 'cap', synoptic);
   };
 
+  // いまの画面の状態 → URL。変化のたびに少し待って 1 回だけ書く — 時刻のつまみや窓の
+  // 入力は連打されるので、その度に history へ書くと更新が飽和する。知らないキー
+  // (capture-only など)は labStateQuery が保持する。
+  const currentState = (): LabState => ({
+    mode: currentView === 'synoptic' ? 'synoptic' : 'cloud',
+    view: currentView === 'synoptic' ? null : currentView,
+    hours: time.hours,
+    cap: cloudFraming(),
+    map: panel.framing,
+    layers: LAYER_LABELS.filter(([key]) => panel.layers[key]).map(([key]) => key),
+  });
+  let stateTimer = 0;
+  const writeState = (): void => {
+    const query = labStateQuery(currentState(), location.search);
+    const url = `${location.pathname}${query === '' ? '' : `?${query}`}${location.hash}`;
+    history.replaceState(null, '', url);
+  };
+  const writeStateSoon = (): void => {
+    window.clearTimeout(stateTimer);
+    stateTimer = window.setTimeout(writeState, 300);
+  };
+
   const layersRow = document.getElementById('layers')!;
   for (const [key, label] of LAYER_LABELS) {
-    buildCheckbox('layers', label, panel.layers[key], (on) => panel.setLayer(key, on));
+    buildCheckbox('layers', label, panel.layers[key], (on) => {
+      panel.setLayer(key, on);
+      writeStateSoon();
+    });
   }
+
+  // ホバー位置の読み。チェックは両モードで見える範囲の行へ置き、出すのはカーソル追従の #tip。
+  // 写し側は画素の読み戻しが要るので同時に 1 回だけ走らせ、天気図側は読み戻した面を拾うだけ。
+  const tip = document.getElementById('tip')!;
+  let probeOn = false;
+  let probeQueued = false;
+  let probeEvent: { canvas: HTMLCanvasElement; x: number; y: number; cx: number; cy: number } | null = null;
+  const runProbe = async (): Promise<void> => {
+    probeQueued = false;
+    const event = probeEvent;
+    if (event === null || !probeOn) return;
+    const rect = event.canvas.getBoundingClientRect();
+    const xPx = Math.floor(event.x * event.canvas.width / rect.width);
+    const yPx = Math.floor(event.y * event.canvas.height / rect.height);
+    const probe = currentView === 'synoptic'
+      ? panel.probeAt(xPx, yPx) : await canvas.probeAt(xPx, yPx);
+    if (probe === null) { tip.hidden = true; return; }
+    const lat = `${Math.abs(probe.latitude).toFixed(1)}°${probe.latitude >= 0 ? 'N' : 'S'}`;
+    const lon = `${Math.abs(probe.longitude).toFixed(1)}°${probe.longitude >= 0 ? 'E' : 'W'}`;
+    tip.textContent = `${lat} ${lon}\n${probe.text}`;
+    tip.style.left = `${event.cx + 12}px`;
+    tip.style.top = `${event.cy + 12}px`;
+    tip.hidden = false;
+  };
+  for (const el of [viewCanvas, mapCanvas]) {
+    el.addEventListener('mousemove', (e) => {
+      if (!probeOn) return;
+      probeEvent = { canvas: el, x: e.offsetX, y: e.offsetY, cx: e.clientX, cy: e.clientY };
+      if (!probeQueued) {
+        probeQueued = true;
+        void runProbe();
+      }
+    });
+    el.addEventListener('mouseleave', () => { tip.hidden = true; });
+  }
+  buildCheckbox('cap', 'プローブ', false, (on) => {
+    probeOn = on;
+    tip.hidden = true;
+  });
 
   const showLegend = createViewLegend(document.getElementById('legend')!);
 
@@ -138,6 +223,7 @@ async function init(): Promise<void> {
       canvas.show(id);
       canvas.render();
     }
+    writeStateSoon();
   };
   const markMode = buildButtonRow<Mode>('mode', MODE_LABELS,
     (mode) => selectView(mode === 'synoptic' ? 'synoptic' : lastCloudView));
@@ -167,11 +253,18 @@ async function init(): Promise<void> {
     score.textContent = text ?? '評価 — (cloud-lab:compare 未実行)';
   });
 
-  markMode('cloud');
-  markView(canvas.currentView);
-  showLegend(CLOUD_LAB_VIEWS.find((view) => view.id === canvas.currentView)!.legend);
-  syncFraming();
-  canvas.render();
+  // 初回の描画。URL にモード・写しがあれば selectView へ流して復元し、なければ既定の写し。
+  if (initial.mode === 'synoptic' || initial.view === 'synoptic') selectView('synoptic');
+  else if (initial.view !== null
+    && CLOUD_LAB_VIEWS.some((view) => view.id === initial.view)) {
+    selectView(initial.view as CloudLabViewId);
+  } else {
+    markMode('cloud');
+    markView(canvas.currentView);
+    showLegend(CLOUD_LAB_VIEWS.find((view) => view.id === canvas.currentView)!.legend);
+    syncFraming();
+    canvas.render();
+  }
 
   window.cloudLab = {
     // 撮影で読める写しは全列(畳んだ写像も含む)。ボタン列に出るのは畳んだあとの列だけ。
@@ -182,6 +275,7 @@ async function init(): Promise<void> {
       canvas.aimCap(latitude, longitude, radius);
       if (currentView !== 'synoptic') canvas.render();
       syncFraming();
+      writeStateSoon();
     },
     capture: async () => {
       if (currentView !== 'synoptic') return canvas.capture();
@@ -195,6 +289,9 @@ async function init(): Promise<void> {
     }),
     params: () => Object.fromEntries(Object.entries(CLOUD_TUNING).map(([id, u]) => [id, u.value])),
     setParams: (next) => applyParams(next, true),
+    probeAt: (xPx, yPx) => currentView === 'synoptic'
+      ? Promise.resolve(panel.probeAt(xPx, yPx)) : canvas.probeAt(xPx, yPx),
+    state: () => currentState(),
   };
 }
 
