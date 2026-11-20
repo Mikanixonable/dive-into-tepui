@@ -2,11 +2,14 @@
 // 焼きは 1 本ずつ走らせ、焼いている間に頼まれた時刻は最新の 1 つへ畳む。
 import { SynopticField } from './synoptic-field';
 import { drawLegend } from './synoptic-legend';
-import { DEFAULT_LAYERS, GLOBE, MAP_HEIGHT, MAP_WIDTH, drawSynoptic, mapViewAt } from './synoptic-map';
+import {
+  DEFAULT_LAYERS, GLOBE, MAP_HEIGHT, MAP_WIDTH, MSLP_HPA, drawSynoptic, mapViewAt, sampleField,
+} from './synoptic-map';
 import { drawCycloneSymbols } from './synoptic-symbols';
 import type { SynopticFields } from './synoptic-field';
 import { SECONDS_PER_HOUR } from './time-units';
 import type { Framing, SynopticLayers } from './synoptic-map';
+import type { LabProbe } from './lab';
 
 interface SynopticPanel {
   readonly layers: SynopticLayers;
@@ -17,6 +20,9 @@ interface SynopticPanel {
   refresh(hours: number): void;
   // 焼きが終わるまで待つ。
   settled(): Promise<void>;
+  // canvas の画素 (xPx, yPx) の緯度・経度と、その点の場の実値(MSLP・地表風・上層風)を返す。
+  // 読み戻した面がまだ無い(初回の焼きが終わっていない)ときは null。
+  probeAt(xPx: number, yPx: number): LabProbe | null;
 }
 
 // canvas へ天気図を描く器を組む。status には焼きの進みと失敗を出す。
@@ -81,6 +87,30 @@ export function createSynopticPanel(canvas: HTMLCanvasElement, status: HTMLEleme
     },
     settled: async () => {
       while (running !== null) await running;
+    },
+    probeAt: (xPx, yPx) => {
+      const current = fields;
+      if (current === null || xPx < 0 || xPx >= MAP_WIDTH || yPx < 0 || yPx >= MAP_HEIGHT) return null;
+      // mapViewAt と同じ窓で画素→緯度経度へ戻す。緯度は窓の外(極の外)へ出た点は無効。
+      const view = mapViewAt(framing.longitude, framing.latitude, framing.radius);
+      const latitude = view.latMaxDeg - yPx * view.latSpanDeg / MAP_HEIGHT;
+      const longitude = view.lonMinDeg + xPx * view.lonSpanDeg / MAP_WIDTH;
+      if (latitude < -90 || latitude > 90) return null;
+      const lonRad = longitude * Math.PI / 180;
+      const latRad = latitude * Math.PI / 180;
+      const pick = (channel: Float32Array): number =>
+        sampleField(channel, current.width, current.height, lonRad, latRad);
+      const deviation = pick(current.pressure);
+      const surfaceEast = pick(current.surfaceWindEast);
+      const surfaceNorth = pick(current.surfaceWindNorth);
+      const upperEast = pick(current.upperWindEast);
+      const upperNorth = pick(current.upperWindNorth);
+      const signed = (v: number): string => `${v >= 0 ? '+' : ''}${v.toFixed(1)}`;
+      const wrapped = ((longitude + 180) % 360 + 360) % 360 - 180;
+      const text = `MSLP ${(MSLP_HPA + deviation).toFixed(1)} hPa(偏差 ${signed(deviation)})\n`
+        + `地表風 東 ${signed(surfaceEast)} 北 ${signed(surfaceNorth)} m/s\n`
+        + `上層風 東 ${signed(upperEast)} 北 ${signed(upperNorth)} m/s`;
+      return { latitude, longitude: wrapped, text };
     },
   };
 }
