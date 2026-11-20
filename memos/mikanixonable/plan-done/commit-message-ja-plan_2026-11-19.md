@@ -147,3 +147,54 @@ AGENTS.md に「既存commitのmessage修正は避ける(force pushのリスク)
 | 対象B の「本文だけ」差し替えで件名を巻き込む | 日本語件名が二重処理で変質 | 手順 4(差し替え分岐の確認)・手順 6(diff) |
 | filter-repo が remote を消す | push 先を失う | 手順 4 後に `git remote add origin` で戻す |
 | 実行中に別セッションが commit/push | その commit は書き換え範囲外 | 手順 0(全 worktree クリーン・停止確認) |
+
+## 実施記録(2026-11-19 完了)
+
+### 実測値
+
+- 対象A(全文英語・人の手・非merge): **1,946 commits・150,963字・ユニーク 1,277 メッセージ**
+- 対象B(件名JP・本文EN): **35 commits・6,704字** — 予想の 500〜600 件より大幅に少なかった
+- 除外(merge/bot): 768 commits。日英混在スキップ: 7,531 commits
+- 翻訳: ユニーク 1,302 メッセージを6バッチへ分割し、SWE-2 サブエージェントへ委譲
+
+### 手順ごとの結果
+
+- 手順 0: 計画 commit 後に全 ref 走査。`pre-ja-rewrite-backup` タグ(2026-08-20 調査の
+  残り)を発見 — やはり以前準備されていたが、計画書本体は残っていなかった
+- 手順 1: `tools/commit-message-ja/classify.mjs` で3分類。実行中に別セッションが
+  workspace3 を進めたため、書き換え直前に再集計した値を権威とした
+- 手順 2: `~/lab/dive-into-tepui-msg-backup-20261119.git` へ mirror バックアップ
+  (10,280 commits・元と一致)。全 ref の先端+tree を `/tmp/ja-rewrite-refs-before.txt` へ記録
+- 手順 3: 機械検査エラー実質1件(trailer 改変 m1113)を修正、prefix 指摘10件は
+  `add:` `update:` 等の非規約擬似prefixで全体翻訳が正しい挙動。目視検査良好
+- 手順 4: `git filter-repo --commit-callback` で `commit.old_id`→msgmap 引き。
+  **58 ref 検査・tree 不一致 0・map 欠損 0**
+- 手順 5: **2度の race が発生**(下記)。最終的にリモート 33/33 ブランチが書き換え済み
+  SHA で定着。`release` は CI 競合で lease 拒否→新 deploy commit を graft して再 push
+- 手順 6: worktree 4箇所すべてクリーン・新SHA上。`npm run typecheck` 合格
+
+### 残存英語(意図的に未翻訳)
+
+分類器が A=26・B=25 を残したが、全件検査の結果すべて**構造的に翻訳不能**:
+`# Conflicts:` ブロック、ブランチ名・ファイルパス列挙、識別子のみの件名(`UI` 等)、
+生成 trailer。自然言語の残存英語は 0。
+
+### 発生した race(記録)
+
+1. **書き換え中の進行**: 別セッションが main=PR#193・release=CI deploy・dependabot・
+   feat/slimming-ui-fixes に新コミットを積んだ。第2パスの部分書き換えでは祖先の
+   SHA がずれることが判明したため、**第1パスを権威として新規5コミットを
+   `git commit-tree` で graft** して統一した
+2. **旧履歴の再 push**: 初回 push 直後、別セッションが stale な clone から bulk push
+   し、リモート 29/33 ブランチが旧 SHA へ巻き戻った。lease 付きで再 push して定着。
+   **教訓: この種の作業は他の全セッション・clone を止めてからやるべき。** 手順 0 の
+   「連絡」だけでは不十分で、stale clone からの `--all` push が全てを台無しにする
+3. **release の CI 競合**: push 中に GitHub Actions が deploy commit を追加。
+   lease が正しく検出したので、新 commit を書き換え済みチェーンへ graft して再 push
+
+### 残したもの
+
+- バックアップ: `/Users/pandeaconica/lab/dive-into-tepui-msg-backup-20261119.git`
+- ツール+監査表: `tools/commit-message-ja/`(スクリプト4本と msgmap.json=原文→訳文の
+  全対応表。in/out/ 等の中間生成物は削除)
+- SHA対応: `.git/filter-repo/commit-map`(ローカルのみ)
