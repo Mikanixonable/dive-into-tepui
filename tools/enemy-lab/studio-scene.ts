@@ -23,6 +23,23 @@ const FOCUS_DISTANCE_FACTOR = 3.4;
 
 export type StudioMode = 'look' | 'shoot';
 
+// 選んだ個体の部品1個の状況。
+export interface PartReadout {
+  readonly index: number;
+  readonly role: 'structure' | 'emitter' | 'core';
+  readonly hp: number;
+  readonly maxHp: number;
+}
+
+// 画面へ重ねる個体のラベル位置(描画域の左上を原点とする px)。
+export interface IndividualLabel {
+  readonly index: number;
+  readonly seed: number;
+  readonly x: number;
+  readonly y: number;
+  readonly visible: boolean;
+}
+
 // 選んだ個体の被弾状況。
 export interface IndividualReadout {
   readonly seed: number;
@@ -34,6 +51,7 @@ export interface IndividualReadout {
   readonly destroyed: boolean;
   readonly lost: number;
   readonly inertia: { readonly x: number; readonly y: number; readonly z: number };
+  readonly partList: readonly PartReadout[];
 }
 
 interface Individual {
@@ -70,6 +88,8 @@ export class StudioScene {
   private pointerDown: { x: number; y: number } | null = null;
   public onReadout: (readout: IndividualReadout | null) => void = () => {};
   public onSelect: (index: number) => void = () => {};
+  // 毎フレーム、個体のラベル位置を渡す。
+  public onLabels: (labels: readonly IndividualLabel[]) => void = () => {};
 
   public constructor(private readonly canvas: HTMLCanvasElement, tuning: AssemblyTuning) {
     this.tuning = tuning;
@@ -120,6 +140,17 @@ export class StudioScene {
   public repair(): void { this.rebuild(); }
 
   public selectedIndex(): number { return this.selected; }
+
+  // 選択を delta 個ずらす(端で回り込む)。
+  public selectRelative(delta: number): void {
+    if (this.individuals.length === 0) return;
+    this.select((this.selected + delta + this.individuals.length) % this.individuals.length);
+  }
+
+  // 選択中の個体の seed。個体が無ければ null。
+  public selectedSeed(): number | null {
+    return this.individuals[this.selected]?.seed ?? null;
+  }
 
   // 格子全体が収まる位置へカメラを引く。
   public focusAll(): void {
@@ -210,6 +241,22 @@ export class StudioScene {
     });
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
+    this.publishLabels();
+  }
+
+  // 個体の中心を画面の位置へ写して渡す。
+  private publishLabels(): void {
+    const width = this.canvas.clientWidth;
+    const height = this.canvas.clientHeight;
+    const point = new THREE.Vector3();
+    this.onLabels(this.individuals.map((individual, index) => {
+      point.copy(individual.group.position).project(this.camera);
+      return {
+        index, seed: individual.seed,
+        x: ((point.x + 1) / 2) * width, y: ((1 - point.y) / 2) * height,
+        visible: point.z > -1 && point.z < 1,
+      };
+    }));
   }
 
   private lastTime: number | null = null;
@@ -291,6 +338,9 @@ export class StudioScene {
       destroyed: combat.destroyed,
       lost: shape.parts.filter((part) => !combat.partAlive(part.index)).length,
       inertia: shape.inertia,
+      partList: shape.parts.map((part) => ({
+        index: part.index, role: part.role, hp: combat.partHpOf(part.index), maxHp: PART_HP,
+      })),
     });
   }
 }
