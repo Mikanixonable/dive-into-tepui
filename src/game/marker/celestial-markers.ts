@@ -4,7 +4,7 @@ import { type Vec3, v3, sub, len } from '../../math/vec3';
 import { OrbitingMotion } from '../../physics/celestial-motion';
 import { lagrangePointsOf, secondaryFrameOf } from '../../physics/lagrange';
 import { occlusionOpacity } from '../../physics/occlusion';
-import { LAGRANGE_MIN_CLEARANCE_RATIO } from '../celestial/lagrange-id';
+import { lagrangePointNumbersOf } from '../celestial/lagrange-id';
 import { LagrangePointMarker } from './lagrange-point-marker';
 import { CelestialSubLabels, type CelestialLabelState } from './celestial-sub-labels';
 import { CrowdingGrid, DEPTH_GUARD_EXIT_RATIO, DEPTH_GUARD_RATIO, type ProjectedLabel } from '../../marker/crowding';
@@ -115,10 +115,7 @@ export class CelestialMarkers {
       const motion = body.motion;
       // 全公転天体で出すと点の数が天体数の数倍になり、ラベルが画面を埋める。
       if (!(motion instanceof OrbitingMotion) || motion.def.lagrangeLabels !== true) return [];
-      const points = [
-        ...(motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO) ? [1, 2, 3] as const : []),
-        ...(motion.hasStableTriangularPoints() ? [4, 5] as const : []),
-      ];
+      const points = lagrangePointNumbersOf(motion);
       const markers = points.map((n) => new LagrangePointMarker(body.id, body.name, n));
       return markers.length === 0 ? [] : [{ motion, markers }];
     });
