@@ -238,7 +238,14 @@ test:game(549) / test:physics(510) / test:render が全て通過。
   基底へ統合(§3 equator×relative)、三尖星 SVG を `marker-shapes.ts` の `leadMarkerSvg` へ、
   `DRAG_COEFFICIENT` 二重定義を dynamic-motion-thermal の export へ一元化、
   `metal-f0.ts` を tools/model-builder へ移動(§5)
-- §4: `ship-construction.ts` と `modular-ship.ts` の分割を進行中(SWE-2 委譲)
+- §4: `ship-construction.ts` を分割 — 命令列・取り消し履歴を
+  `ship-construction-commands.ts`(ShipConstructionCommands)、設計図操作を
+  `ship-construction-blueprints.ts`(ShipConstructionBlueprints)へ。pointer と同じく
+  本体が狭い host 面を実装する生成時コラボレータ。1029→907行
+- §4: `modular-ship.ts` を分割 — マーカー組立を `modular-ship-markers.ts`、
+  renderSource 合成を `modular-ship-render-source.ts`、ブースター燃焼と燃焼管理
+  表示モデルを `modular-ship-boosters.ts` へ。731→621行
+- §4: `game-presentation.ts`・`input.ts` の分割可否を調査中(SWE-2 委譲)
 - PR #206 として workspace3 の蓄積変更を main へ送出済み
 
 ### 未実施の判断待ち(§1 残件)
