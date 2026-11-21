@@ -954,7 +954,7 @@ async function bootAndCheckReady() {
         frameMs,
         adapter,
         combatView: Boolean(document.querySelector('.hud-combat-root.active')),
-        loading: [...document.querySelectorAll('body > div')].some((d) => d.textContent?.includes('初期化中')),
+        loading: [...document.querySelectorAll('body > div')].find((d) => d.textContent?.includes('Dive into Tepui'))?.textContent?.slice(0, 120) ?? 'none',
         stageSelect: Boolean(document.querySelector('.ss-window')),
         frames: document.documentElement.dataset.smokeFrames ?? 'unset',
         canvases: document.querySelectorAll('canvas').length,
