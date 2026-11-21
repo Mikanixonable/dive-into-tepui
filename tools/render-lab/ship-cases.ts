@@ -21,12 +21,12 @@ import type {
   ShipModuleEmphasis, ShipModuleRenderInput,
 } from '../../src/render/dynamic/ship/ship-render-contract';
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
-import magazineData from '../../src/assets/models/magazine.json';
 import casingData from '../../src/assets/models/casing.json';
-import { memoParseIndependent } from '../../src/render/dynamic/baked-model';
+import { cloneIndependent, memoParseIndependent } from '../../src/render/dynamic/baked-model';
+import { getMagazineTemplate } from '../../src/render/dynamic/ammo-models';
 import { labCamera, shipObject, type CaseBuilder, type LabCase } from './lab-case';
 
-const parseMagazine = memoParseIndependent<THREE.Group>(magazineData);
+const parseMagazine = (): THREE.Group => cloneIndependent(getMagazineTemplate());
 const parseCasing = memoParseIndependent<THREE.Mesh>(casingData);
 
 // カタログの定義 definitionId から、識別子 id のモジュールを1つ作る。

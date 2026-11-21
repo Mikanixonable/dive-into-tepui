@@ -189,7 +189,6 @@ export class LabView {
     // 描画順の並べ替えが本番と別物になる。
     const renderer = new WebGPURenderer({
       canvas, trackTimestamp: true, reversedDepthBuffer: true,
-      requiredLimits: { maxSampledTexturesPerShaderStage: 32 },
     });
     renderer.setOpaqueSort(reversedOpaqueSort);
     renderer.setTransparentSort(reversedTransparentSort);
@@ -391,9 +390,8 @@ export class LabView {
     this.pipeline.bodyShadow.set([...(this.current.shadowBodies ?? []), ...(earth === null ? [] : [earth.shadowBody])]);
     const rings = this.current.rings;
     this.pipeline.ringShadow.set(rings?.center ?? ORIGIN, rings?.axis ?? UP, rings?.bands ?? []);
-    this.pipeline.cloudShadow.set(
-      this.current.shadowCloud ?? earth?.shadowCloud ?? null, cloudShadowKinds(graphics),
-    );
+    const cloudCaster = this.current.shadowCloud ?? earth?.shadowCloud ?? null;
+    this.pipeline.cloudShadow.set(cloudCaster, cloudShadowKinds(graphics, cloudCaster?.cloud ?? null));
     earth?.bake(this.renderer, displayTime, this.gpu);
     // 大気へのサンプル点の配りは、いま置いたカメラの位置からゲーム本体と同じ関数で引き直す。
     const draws = atmosphereDraws(

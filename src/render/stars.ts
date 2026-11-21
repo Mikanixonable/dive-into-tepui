@@ -1,6 +1,8 @@
 // 星野の背景。視点中心に固定した球殻へ星空を貼り、露出に順応しない明るさで同期する。
 import * as THREE from 'three/webgpu';
 import starsTextureUrl from '../assets/8k_stars.jpg';
+import starsTexture4096Url from '../assets/8k_stars-4096.jpg';
+import starsTexture2048Url from '../assets/8k_stars-2048.jpg';
 import { DeferredTexture } from './deferred-texture';
 import { POINT_IMAGE_ANGULAR_SIZE } from './billboard';
 import { WORLD_BACKGROUND_LAYER } from './pipeline/lit-layer';
@@ -33,7 +35,10 @@ export interface Stars {
 // 星空の球殻メッシュを構築する。brightness はこの殻へ掛ける明るさ係数の供給元。
 export function createStars(brightness: FixedBrightness): Stars {
   const geo = new THREE.SphereGeometry(STAR_SHELL_RADIUS, 64, 64);
-  const texture = new DeferredTexture(starsTextureUrl, THREE.SRGBColorSpace);
+  const texture = new DeferredTexture(
+    { low: starsTexture2048Url, medium: starsTexture4096Url, high: starsTextureUrl },
+    THREE.SRGBColorSpace,
+  );
   texture.request();
 
   const mat = new THREE.MeshBasicMaterial({

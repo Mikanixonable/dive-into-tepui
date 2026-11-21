@@ -7,7 +7,7 @@ import { TabBar } from '../widgets';
 
 type SettingsTab = 'theme' | 'graphics' | 'bgm';
 
-// 描画・BGM・配色の詳細設定ビュー。内部タブで3つのパネルを切り替え、各設定の変更をコールバックで外部へ通知する。
+// 描画・BGM・配色の詳細設定ビュー。左の縦の内側タブで3つのパネルを切り替え、各設定の変更をコールバックで外部へ通知する。
 export class SettingsView {
   public readonly element: HTMLElement;
   private readonly bgmPanel: BgmSettingsPanel;
@@ -25,15 +25,8 @@ export class SettingsView {
   public constructor(graphics: GraphicsSettingsData, bgmVolume: number, themeId: string) {
     this.element = document.createElement('section');
     this.element.className = 'pm-settings-view';
-    this.element.setAttribute('aria-labelledby', 'hud-settings-title');
-    this.element.appendChild(this.buildHeader());
 
-    const description = document.createElement('p');
-    description.className = 'sv-description';
-    description.textContent = '描画・BGM・配色の設定を切り替えられます。';
-    this.element.appendChild(description);
-
-    // タブバー: 描画・BGM・配色の3パネルを切り替える。
+    // タブバー: 描画・BGM・配色の3パネルを切り替える。左に縦に並べ、右の本文を切り替える。
     const tabPanels = new Map<SettingsTab, HTMLElement>();
     const tabs = new TabBar<SettingsTab>(
       [['graphics', '描画'], ['bgm', 'BGM'], ['theme', '配色']],
@@ -42,25 +35,23 @@ export class SettingsView {
         for (const [tab, panel] of tabPanels) panel.hidden = tab !== selectedTab;
       },
     );
-    tabs.element.classList.add('sv-tabs', 'ui-surface-inset');
+    tabs.element.classList.add('sv-tabs');
+    tabs.element.setAttribute('aria-orientation', 'vertical');
     this.element.appendChild(tabs.element);
+    const panes = document.createElement('div');
+    panes.className = 'sv-panes';
+    this.element.appendChild(panes);
 
-    // 見出し付きのタブパネル要素を生成し、タブ切り替え用に tabPanels へ登録する。
+    // タブパネル要素を生成し、タブ切り替え用に tabPanels へ登録する。見出しはタブが兼ねるので持たない。
     const addTabPanel = (tab: SettingsTab, title: string): HTMLElement => {
       const section = document.createElement('section');
-      section.className = 'sv-section sv-tab-panel ui-surface-inset';
+      section.className = 'sv-tab-panel';
       section.setAttribute('role', 'tabpanel');
       section.setAttribute('aria-label', title);
       // タブで選ばれるまで隠しておく。
       section.hidden = true;
-      const sectionTitle = document.createElement('h3');
-      sectionTitle.textContent = title;
-      section.appendChild(sectionTitle);
-      const sectionBody = document.createElement('div');
-      sectionBody.className = 'sv-section-body';
-      section.appendChild(sectionBody);
       tabPanels.set(tab, section);
-      return sectionBody;
+      return section;
     };
 
     // 各パネルのイベントハンドラを、自身の通知コールバックへ中継する。
@@ -79,30 +70,11 @@ export class SettingsView {
     themePanel.onSelect = (id) => this.onThemeIdChange?.(id);
     themeSectionBody.appendChild(themePanel.element);
 
-    for (const section of tabPanels.values()) this.element.appendChild(section);
+    for (const section of tabPanels.values()) panes.appendChild(section);
 
     tabs.setSelected('graphics');
     const initialPanel = tabPanels.get('graphics');
     if (initialPanel !== undefined) initialPanel.hidden = false;
-  }
-
-  // 設定ビューのヘッダー見出しと説明用テキストを構築する。
-  private buildHeader(): HTMLElement {
-    const header = document.createElement('div');
-    header.className = 'sv-header';
-    const headingGroup = document.createElement('div');
-    headingGroup.className = 'sv-heading-group';
-    const heading = document.createElement('h2');
-    heading.id = 'hud-settings-title';
-    heading.textContent = '設定';
-    headingGroup.appendChild(heading);
-    // 見出しに添える英字の小見出し。
-    const eyebrow = document.createElement('span');
-    eyebrow.className = 'sv-eyebrow';
-    eyebrow.textContent = 'SYSTEM / SETTINGS';
-    headingGroup.appendChild(eyebrow);
-    header.appendChild(headingGroup);
-    return header;
   }
 
   // BGM試聴状態。設定ビューを開いている間を試聴期間とし、非表示時は null、停止時は 'silent'。

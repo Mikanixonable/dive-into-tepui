@@ -4,6 +4,7 @@ import type { Vec3 } from '../../../math/vec3';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import type { BeltNodes } from '../player/belt-view';
 import { BeltView } from '../player/belt-view';
+import { CoolingSpray } from '../player/cooling-spray';
 import { RcsEffects } from '../player/rcs-effects';
 import { ReentryEffects } from '../player/reentry-effects';
 import { ThrustEffects } from '../player/thrust-effects';
@@ -31,6 +32,8 @@ export interface ModularShipRenderSource extends DynamicRenderSource {
   // 大気に対する速度 [m/s]。大気天体が無いとき null。
   readonly airspeed: Vec3 | null;
   readonly belt: BeltNodes;
+  // 冷却ダンプが流し中かどうか。流し中はベント口から噴霧を出す。
+  readonly coolingDumpRunning: boolean;
   readonly magsLeft: number;
   // 機関砲の射撃レート [rounds/s]。全砲口の合計で、トリガーを離していれば 0。
   readonly gunFireRate: number;
@@ -43,6 +46,7 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   private readonly modules: ModularShipView;
   private readonly thrustEffects: ThrustEffects[] = [];
   private readonly rcsEffects: RcsEffects;
+  private readonly coolingSpray: CoolingSpray;
   private readonly reentryEffects: ReentryEffects;
   private readonly belt: BeltView;
   private readonly weaponDrives = new WeaponDrives();
@@ -60,6 +64,7 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
     super(root, effectScene);
     this.modules = modules;
     this.rcsEffects = new RcsEffects(effectScene, ownerId);
+    this.coolingSpray = new CoolingSpray(effectScene, ownerId, root);
     this.reentryEffects = new ReentryEffects(effectScene);
     this.belt = new BeltView(this.object, beltLinkCount);
   }
@@ -92,6 +97,9 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
       cameraQuat,
       zoomActive,
       viewFrame.displayTime,
+    );
+    this.coolingSpray.sync(
+      source.coolingDumpRunning, effectVisible, cameraQuat, zoomActive, viewFrame.displayTime,
     );
     this.reentryEffects.sync(
       origin, displayed, source.dynamicPressure, source.airspeed, effectVisible, cameraQuat,
@@ -148,6 +156,7 @@ export class ModularShipDynamicView extends DynamicView<ModularShipRenderSource>
   public override dispose(): void {
     for (const effects of this.thrustEffects) effects.dispose(this.effectScene);
     this.rcsEffects.dispose(this.effectScene);
+    this.coolingSpray.dispose(this.effectScene);
     this.reentryEffects.dispose(this.effectScene);
     this.modules.dispose();
     super.dispose();

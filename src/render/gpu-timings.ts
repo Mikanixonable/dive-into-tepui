@@ -47,6 +47,12 @@ export const CLOUD_GPU_MEASUREMENTS = {
   surface: { pass: GPU_PASS.cloudSurface, scope: 'exact' },
 } as const;
 
+// enabled が偽でも帰属・積算を続けるパスの集合。雲の品質適応がデバッグ窓を開かなくても
+// 判定材料を読むため、雲 4 パスだけは常時計測する。他パスの宣言は enabled が偽の間捨てる。
+export const CLOUD_GPU_PASSES: ReadonlySet<GpuPassId> = new Set(
+  Object.values(CLOUD_GPU_MEASUREMENTS).map((m) => m.pass),
+);
+
 interface GpuTimingSnapshot {
   readonly supported: boolean;
   readonly elapsedMs: readonly number[];
@@ -110,7 +116,7 @@ class PassInspector extends InspectorBase {
 }
 
 export class GpuTimings {
-  // 集計の可否。偽の間は届いた値を捨てる。
+  // 集計の可否。偽の間は届いた値のうち雲パス(CLOUD_GPU_PASSES)以外を捨てる。
   public enabled = false;
   private readonly elapsedMs = new Float64Array(GPU_PASS_COUNT);
   // 解決は非同期なので、前回の解決が返る前に次を積まない。
@@ -146,9 +152,9 @@ export class GpuTimings {
   public get supported(): boolean { return this.available; }
 
   // このあと最初に来る renderer.render() 呼び出しが id の描画パスであることを宣言する。パスを
-  // 発行する直前に毎回呼ぶ。enabled が偽の間は宣言を捨てる。
+  // 発行する直前に毎回呼ぶ。enabled が偽の間は雲パス以外の宣言を捨てる。
   public beginPass(id: GpuPassId): void {
-    if (!this.enabled) return;
+    if (!this.enabled && !CLOUD_GPU_PASSES.has(id)) return;
     this.pendingPass = id;
   }
 
@@ -191,7 +197,9 @@ export class GpuTimings {
     if (this.renderDepth === 0) this.outerPass = this.pendingPass;
     this.renderDepth++;
     this.pendingPass = null;
-    if (this.enabled && this.outerPass !== null) this.passByUid.set(uid, this.outerPass);
+    if (this.outerPass !== null && (this.enabled || CLOUD_GPU_PASSES.has(this.outerPass))) {
+      this.passByUid.set(uid, this.outerPass);
+    }
     if (this.enabled && this.activeFrameId !== null) {
       this.renderFrameByUid.set(uid, this.activeFrameId);
       const frame = this.observedFrames.get(this.activeFrameId);
@@ -305,8 +313,10 @@ export class GpuTimings {
           this.passByUid.delete(uid);
         }
       }
-      if (this.enabled && matches.length > 0) {
-        this.elapsedMs.fill(0);
+      if (matches.length > 0) {
+        // enabled なら全パスを、偽なら雲パスの欄だけを今フレームの値へ更新する。
+        if (this.enabled) this.elapsedMs.fill(0);
+        else for (const pass of CLOUD_GPU_PASSES) this.elapsedMs[pass] = 0;
         for (const [pass, duration] of matches) this.elapsedMs[pass]! += duration;
       }
     } else {

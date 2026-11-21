@@ -36,8 +36,8 @@ class SyntheticProjection implements EarthTileProjection {
   }
 }
 
-// stage00初期高度・combat視点から実画素の地表投影を作る。
-function stage00EarthProjection(): EarthSurfaceView {
+// stage1初期高度・combat視点から実画素の地表投影を作る。
+function stage1EarthProjection(): EarthSurfaceView {
   const earthRadius = 6_378_137;
   const polarRadius = 6_356_751.9;
   const altitude = 420_000;
@@ -89,9 +89,9 @@ export function register(): void {
     assert.ok(earthTileRoots().every((key) => key.z === EARTH_TILE_MIN_Z));
   });
 
-  test('earth tiles: stage00投影はz5から高LODまで個別候補を返す', () => {
+  test('earth tiles: stage1投影はz5から高LODまで個別候補を返す', () => {
     const tiles = new EarthSurfaceTiles();
-    const candidates = tiles.requestCandidates(stage00EarthProjection());
+    const candidates = tiles.requestCandidates(stage1EarthProjection());
     const levels = new Set(candidates.map((key) => key.z));
     assert.ok(levels.has(EARTH_TILE_MIN_Z));
     assert.ok(levels.has(EARTH_TILE_MIN_Z + 1));

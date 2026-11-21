@@ -22,6 +22,7 @@ import type { SerializedPowerSystem } from '../player/power';
 import type { SerializedRadiatorSystem } from '../player/radiator';
 import { AeroLoad } from '../player/aero-load';
 import { BeltController, type SerializedBeltController } from '../player/belt';
+import { CoolingDump } from '../player/cooling-dump';
 import { PowerSystem } from '../player/power';
 import { RadiatorSystem } from '../player/radiator';
 import type { ShipAssembly } from './ship-assembly';
@@ -30,6 +31,8 @@ import { shipPhysicsShape, type ShipPhysicsShape } from './ship-physics-shape';
 
 // 空力・輻射圧係数を質量あたりへ換算する基準質量 [kg]。
 const REFERENCE_SHIP_MASS = 1_000;
+// 噴射冷却で主燃料 1 単位が外殻から持ち去る熱量 [J/unit]。
+const FUEL_COOLING_JOULES_PER_UNIT = 5e4;
 
 export interface ModularShipMotionReactions {
   roundsInMagazine?(): number;
@@ -69,6 +72,7 @@ interface ModularShipMotionSystems {
   readonly serializedBelt?: SerializedBeltController;
   readonly serializedRadiator?: SerializedRadiatorSystem;
   readonly serializedPower?: SerializedPowerSystem;
+  readonly serializedCoolingDump?: boolean;
 }
 
 class ModularShipBehavior implements DynamicMotionBehavior {
@@ -124,6 +128,8 @@ class ModularShipBehavior implements DynamicMotionBehavior {
       dt,
       this.reactions.radiatorWear?.() ?? {},
     );
+    // 冷却ダンプは推力を伴わず燃料を流す。消費した分だけ噴射冷却が効く。
+    motion.coolingDump.update(dt, units => motion.consumeMainFuel(units));
     // 大気抵抗と高度警報へ現在の環境を渡す。
     motion.aero.update(motion.state.r, motion.state.v, atmosphereBody, atmospherePivot);
     this.reactions.updateAltitudeAlarm?.(
@@ -259,6 +265,7 @@ export class ModularShipMotion extends DynamicMotion {
   public readonly aero = new AeroLoad();
   public readonly radiator: RadiatorSystem;
   public readonly power: PowerSystem;
+  public readonly coolingDump: CoolingDump;
 
   // 制御が読む姿勢。周回の局所系があれば、角速度 w はその系に対する相対角速度になる(制動・保持が
   // 周回の回転と戦わないように)。姿勢 q は att と同じ。
@@ -315,6 +322,22 @@ export class ModularShipMotion extends DynamicMotion {
       : new PowerSystem(undefined, undefined, undefined, assembly);
     this.radiator.syncAssembly(assembly);
     this.power.syncAssembly(assembly);
+    this.coolingDump = CoolingDump.deserialize(systems.serializedCoolingDump ?? false);
+  }
+
+  // 主燃料を units だけ消費し、実際に消費した量を返す。流した推進剤が外殻の熱を
+  // 吸収して持ち去る噴射冷却を、主燃料 1 単位あたり FUEL_COOLING_JOULES_PER_UNIT で
+  // 熱収支へ足す。温度が 0K を下回らない範囲で除く。
+  public consumeMainFuel(units: number): number {
+    const consumed = this.assembly.consumeFuel('main', units);
+    if (consumed <= 0) return consumed;
+    this.synchronizeAssembly();
+    const removed = Math.min(
+      consumed * FUEL_COOLING_JOULES_PER_UNIT / this.mass,
+      this.temperature * this.specificHeat,
+    );
+    if (removed > 0) this.absorbHeat(-removed);
+    return consumed;
   }
 
   public get physicsShape(): ShipPhysicsShape { return this.physicsShapeValue; }

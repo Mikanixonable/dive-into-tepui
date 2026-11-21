@@ -1,12 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qFromUnitVectors, qMul, qRotate, type Quat } from '../../../math/quat';
 import { len, scale, sub, type Vec3 } from '../../../math/vec3';
-import { memoParseIndependent } from '../baked-model';
-import magazineData from '../../../assets/models/magazine.json';
+import { cloneIndependent } from '../baked-model';
+import { getMagazineTemplate } from '../ammo-models';
 import { BeltHardwareView } from './belt-hardware-view';
 
 // マガジンリンク1個分のモデル。
-const parseMagazine = memoParseIndependent<THREE.Group>(magazineData);
+const parseMagazine = (): THREE.Group => cloneIndependent(getMagazineTemplate());
 
 // 給弾ベルトの節点配置(いずれも機体座標系)。
 export interface BeltNodes {

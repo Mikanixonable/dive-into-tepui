@@ -140,6 +140,20 @@ export class GBufferPass {
     }
   }
 
+  // 雲殻の層だけを G バッファの添付形式でコンパイルする。雲の精細さの段のマテリアルを
+  // 事前に組むのに使う — 呼ぶ側でその段のマテリアルをメッシュへ張り替えておく。
+  public async compileCloudShellLayer(scene: THREE.Scene, camera: THREE.Camera): Promise<void> {
+    const savedMask = camera.layers.mask;
+    this.renderer.setMRT(this.mrtNode);
+    try {
+      camera.layers.set(LIT_CLOUD_SHELL_LAYER);
+      await compileInto(this.renderer, this.target, scene, camera);
+    } finally {
+      this.renderer.setMRT(null);
+      camera.layers.mask = savedMask;
+    }
+  }
+
   // 保持している GPU 資源を解放する。
   public dispose(): void {
     this.target.dispose();

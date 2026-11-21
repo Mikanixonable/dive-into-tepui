@@ -7,11 +7,15 @@ import { injectOnce } from '../../../hud/inject-style';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../../render/pipeline/debug-target';
 import type { RenderStyle } from '../../../render/render-style';
 import { fmtDuration } from '../../../hud/format';
-import { type FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../../frame-sections';
+import {
+  type FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId,
+  SYNC_SECTION_COUNT, SYNC_SECTION_LABELS, type SyncSectionId,
+} from '../../frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, type GpuTimings, type GpuPassId } from '../../../render/gpu-timings';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import type { PerfCounts, PerfCountSource } from '../../perf-counts';
+import type { CloudQualityReading } from '../../../render/earth-weather/cloud/cloud-quality-governor';
 import type { EntityCountKind } from '../../dynamic/dynamic-entity/entity-kind';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
 
@@ -88,6 +92,20 @@ function percentile(sorted: readonly number[], ratio: number): number {
   return sorted[i] ?? 0;
 }
 
+// 段番号(0..2)の表示名と、実効段を決めた上限の表示名。
+const TIER_LABELS = ['粗', '標準', '精細'] as const;
+const LIMITER_LABELS: Record<CloudQualityReading['limiter'], string> = {
+  setting: '設定', footprint: 'footprint', budget: '予算',
+};
+
+// 実効段の行の値。「標準」なら設定値のまま、「標準→粗(予算)」なら予算上限で下がっている。
+function cloudQualityText(reading: CloudQualityReading): string {
+  const effective = TIER_LABELS[reading.effective] ?? `${reading.effective}`;
+  if (reading.limiter === 'setting') return effective;
+  const setting = TIER_LABELS[reading.setting] ?? `${reading.setting}`;
+  return `${setting}→${effective}(${LIMITER_LABELS[reading.limiter]})`;
+}
+
 export class DebugInfoWindow {
   private win: PropertyWindow | null = null;
   private readonly updateStats = newPhaseStats();
@@ -97,6 +115,8 @@ export class DebugInfoWindow {
   private readonly triangleStats = newPhaseStats();
   // update の区間ごとの統計。末尾は区間外へ落ちた時間(その他)。
   private readonly sectionStats = Array.from({ length: SECTION_COUNT + 1 }, newPhaseStats);
+  // sync の区間ごとの統計。末尾は区間外へ落ちた時間(その他)。
+  private readonly syncSectionStats = Array.from({ length: SYNC_SECTION_COUNT + 1 }, newPhaseStats);
   // 描画パスごとの GPU 時間の統計。
   private readonly gpuStats = Array.from({ length: GPU_PASS_COUNT }, newPhaseStats);
   // 個数系の統計。RATE_COUNTS と添字で対応する。
@@ -127,6 +147,7 @@ export class DebugInfoWindow {
   public constructor(
     private readonly renderer: WebGPURenderer,
     private readonly sections: FrameSections,
+    private readonly syncSections: FrameSections<SyncSectionId>,
     private readonly gpu: GpuTimings,
     private readonly overlayManager: OverlayManager,
     renderStyle: RenderStyle,
@@ -168,9 +189,11 @@ export class DebugInfoWindow {
     this.resetStats(this.drawCallStats);
     this.resetStats(this.triangleStats);
     for (const s of this.sectionStats) this.resetStats(s);
+    for (const s of this.syncSectionStats) this.resetStats(s);
     for (const s of this.gpuStats) this.resetStats(s);
     for (const s of this.rateStats) this.resetStats(s);
     this.sections.enabled = true;
+    this.syncSections.enabled = true;
     this.gpu.enabled = true;
     this.frames = 0;
     this.lastFlush = null;
@@ -184,6 +207,7 @@ export class DebugInfoWindow {
     this.win.onClose = () => {
       this.win = null;
       this.sections.enabled = false;
+      this.syncSections.enabled = false;
       this.gpu.enabled = false;
     };
     this.win.setControls(this.controls);
@@ -195,6 +219,7 @@ export class DebugInfoWindow {
     this.win?.dispose();
     this.win = null;
     this.sections.enabled = false;
+    this.syncSections.enabled = false;
     this.gpu.enabled = false;
   }
 
@@ -229,6 +254,12 @@ export class DebugInfoWindow {
     this.addSample(this.triangleStats, this.renderer.info.render.triangles);
     for (const [i, stats] of this.sectionStats.entries()) {
       this.addSample(stats, i < SECTION_COUNT ? this.sections.msOf(i as SectionId) : this.sections.otherMs());
+    }
+    for (const [i, stats] of this.syncSectionStats.entries()) {
+      this.addSample(
+        stats,
+        i < SYNC_SECTION_COUNT ? this.syncSections.msOf(i as SyncSectionId) : this.syncSections.otherMs(),
+      );
     }
     for (const [i, stats] of this.gpuStats.entries()) this.addSample(stats, this.gpu.msOf(i as GpuPassId));
     const c = counts.perfCounts();
@@ -282,6 +313,7 @@ export class DebugInfoWindow {
     this.resetStats(this.drawCallStats);
     this.resetStats(this.triangleStats);
     for (const s of this.sectionStats) this.resetStats(s);
+    for (const s of this.syncSectionStats) this.resetStats(s);
     for (const s of this.gpuStats) this.resetStats(s);
     for (const s of this.rateStats) this.resetStats(s);
     this.frames = 0;
@@ -293,6 +325,15 @@ export class DebugInfoWindow {
     const label = SECTION_LABELS[index] ?? 'その他';
     return {
       key: `usec-${index}`, label, group: 'update内訳',
+      value: `${barText(stats.sum / frames)} max ${stats.max.toFixed(1)}`,
+    };
+  }
+
+  // sync の区間1つ分の平均・最大の行。形式は update 内訳と同じ。
+  private syncSectionRow(index: number, stats: PhaseStats, frames: number): PropertyRow {
+    const label = SYNC_SECTION_LABELS[index] ?? 'その他';
+    return {
+      key: `ssec-${index}`, label, group: 'sync内訳',
       value: `${barText(stats.sum / frames)} max ${stats.max.toFixed(1)}`,
     };
   }
@@ -339,9 +380,21 @@ export class DebugInfoWindow {
 
       ...this.sectionStats.map((s, i) => this.sectionRow(i, s, frames)),
 
+      ...this.syncSectionStats.map((s, i) => this.syncSectionRow(i, s, frames)),
+
       ...this.gpuStats.map((s, i) => this.gpuPassRow(i, s, frames)),
       this.countRow('draw-calls', 'draw calls', '描画', this.drawCallStats, frames),
       this.countRow('draw-tris', 'triangles', '描画', this.triangleStats, frames),
+
+      // 雲の実効の精細さ。設定から下がっているときは「設定→実効(決め手)」の形で出す。
+      {
+        key: 'cloud-cumulus-detail', label: '積雲 実効段', group: '雲',
+        value: c.cloudQuality === null ? '—' : cloudQualityText(c.cloudQuality.cumulus),
+      },
+      {
+        key: 'cloud-cirrus-detail', label: '巻雲 実効段', group: '雲',
+        value: c.cloudQuality === null ? '—' : cloudQualityText(c.cloudQuality.cirrus),
+      },
 
       ...RATE_COUNTS.map((r, i) => this.countRow(r.key, r.label, r.group, this.rateStats[i]!, frames)),
       { key: 'arc-lead', label: '先端余裕', group: '予測', value: c.arcLead === null ? '—' : `${c.arcLead.toFixed(0)}s` },

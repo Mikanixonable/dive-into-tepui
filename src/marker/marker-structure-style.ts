@@ -5,7 +5,7 @@ const STYLE_ID = 'marker-structure-style';
 
 const MARKER_STRUCTURE_STYLE = `
 .mk {
-  position: absolute; transform: translate(-50%, -50%);
+  position: absolute; left: 0; top: 0; transform: translate(-50%, -50%);
   text-align: center; white-space: nowrap; text-shadow: 0 0 4px var(--bg), 0 0 2px var(--bg);
   width: 24px; height: 24px; transition: opacity var(--transition-slow) ease;
   user-select: none;

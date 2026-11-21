@@ -1,7 +1,7 @@
 // 起動時のステージ選択画面。タイトルの3D場面と並べてステージ一覧を出し、選ばれたステージを返す。
 import { STAGE_CLASSES } from '../game/stages/stage-dictionary';
 import { StageDebug } from '../game/stages/stage-debug';
-import { TabBar } from '../hud/widgets';
+import { Button, TabBar } from '../hud/widgets';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import { TITLE_LOGOTYPE_HTML } from '../hud/title-logotype';
@@ -249,7 +249,7 @@ class StageSelectScreen {
   private readonly stageList = document.createElement('div');
   private readonly tabBar: TabBar<string>;
   private readonly debugLink = document.createElement('div');
-  private readonly settingsButton = document.createElement('button');
+  private readonly settingsButton: Button;
   private readonly startEpochForm: StartEpochForm;
   // 解放済みのステージ。画面を開いた時点の解放状況で決まる。
   private readonly unlockedStages: ReadonlySet<StageClass>;
@@ -298,15 +298,13 @@ class StageSelectScreen {
     this.debugLink.className = 'ss-debug';
     this.debugLink.textContent = 'debug stage';
     this.debugLink.addEventListener('click', () => this.select(StageDebug));
-    this.settingsButton.type = 'button';
-    this.settingsButton.className = 'ss-settings';
-    this.settingsButton.textContent = '⚙ 設定';
-    this.settingsButton.addEventListener('click', () => onSettings?.());
+    this.settingsButton = new Button('⚙ 設定', () => onSettings?.());
+    this.settingsButton.element.classList.add('ss-settings');
     this.startEpochForm = new StartEpochForm(
       (stageClass, startEpoch) => this.select(stageClass, startEpoch),
       () => this.setStageListVisible(true),
     );
-    stageWindow.append(this.debugLink, this.settingsButton, this.startEpochForm.element);
+    stageWindow.append(this.debugLink, this.settingsButton.element, this.startEpochForm.element);
 
     // 画面を出し、3D 場面の立ち上げとショートカットキーの監視を始める。
     this.root.querySelector<HTMLElement>('.title-logotype')!.addEventListener('click', this.onLogotypeClick);
@@ -365,7 +363,7 @@ class StageSelectScreen {
   // 一覧・タブ・デバッグリンク・設定ボタンの表示を切り替える。ss-window は overflow:hidden の固定高さ
   // なので、開始日時の入力欄を出す間はこれらを隠さないと、入力欄が窓の下端からはみ出して見えなくなる。
   private setStageListVisible(visible: boolean): void {
-    for (const element of [this.stageList, this.tabBar.element, this.debugLink, this.settingsButton]) {
+    for (const element of [this.stageList, this.tabBar.element, this.debugLink, this.settingsButton.element]) {
       element.classList.toggle('hidden', !visible);
     }
   }

@@ -47,12 +47,15 @@ export interface VesselPanelViewModel {
   // 積んでいない側が null になる。
   readonly solar: Record<SolarSide, DeployState | null> | null;
   readonly radiator: Record<RadiatorSide, DeployState | null> | null;
+  // 冷却ダンプが流し中かどうか。冷却回路を持たない操作対象では null。
+  readonly coolingDumpRunning: boolean | null;
   // 操作対象の船体に使える建造ドックがある間だけ非 null。押すと建造を始める。
   readonly startConstruction: (() => void) | null;
   // キー入力と同じ経路で発火する代替操作。
   tapKey(key: KeyBinding): void;
   toggleSolar(side: SolarSide): void;
   toggleRadiator(side: RadiatorSide): void;
+  toggleCoolingDump(): void;
 }
 
 const THROTTLE_KEYS: readonly KeyBinding[] = [K.throttleLow, K.throttleMid, K.throttleHigh, K.throttleMax];
@@ -124,6 +127,7 @@ export class VesselPanel {
   private readonly rcsFuelMeter: VesselMeterDom;
   private readonly solarButtons: Record<SolarSide, DeployButtonDom>;
   private readonly radiatorButtons: Record<RadiatorSide, DeployButtonDom>;
+  private readonly coolingDumpButton: Button;
 
   // els が指す DOM の中へ、計器のバー・代替操作ボタン・展開ボタンを組み込む。
   public constructor(private readonly els: HudEls) {
@@ -135,7 +139,7 @@ export class VesselPanel {
     // 警報の閾値を持つ量(動圧・RCS燃料)だけ、危険境界を示す目盛りを持たせる。
     this.rcsFuelMeter.meter.setMarks(FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO);
     this.constructionRow = this.els.get('vessel-construction-row');
-    this.buildActionButtons();
+    this.coolingDumpButton = this.buildActionButtons();
     this.throttleControl = this.buildThrottleControl();
     const deployContainer = this.els.get('vessel-deploy-controls');
     this.solarButtons = this.buildSolarButtons(deployContainer);
@@ -151,7 +155,8 @@ export class VesselPanel {
 
   // 建造の入口(主操作のボタンと説明1行)と、F/T の代替操作ボタンを組み立てて
   // status-actions プレースホルダへ足す。建造の行は区画の先頭に置く。
-  private buildActionButtons(): void {
+  // 戻り値は冷却ダンプのトグルボタン。
+  private buildActionButtons(): Button {
     const container = this.els.get('status-actions');
     const constructionButton = new Button(
       '建造', () => this.view?.startConstruction?.(),
@@ -177,6 +182,12 @@ export class VesselPanel {
     };
     addAction('進行方向', 'プログレード姿勢リセット（機首を進行方向へ即座に向ける）', K.progradeReset);
     addAction('ターゲット', '照準に近い敵を第一ターゲットにする', K.targetSelect, true);
+    // 冷却ダンプは状態を持つトグル操作。キー割り当ては持たず、押して流し/停止を反転する。
+    const dumpButton = new Button('冷却ダンプ', () => this.view?.toggleCoolingDump(), undefined, 'dense');
+    dumpButton.element.title = '主燃料を冷却回路へ流して外殻を冷やす（推力は出ない）';
+    dumpButton.element.setAttribute('aria-label', '冷却ダンプ');
+    container.appendChild(dumpButton.element);
+    return dumpButton;
   }
 
   // スロットル 1-4 の SegmentedControl を組み立てて status-throttle-touch プレースホルダへ足す。
@@ -244,6 +255,8 @@ export class VesselPanel {
 
     // 建造の入口は、使えるドックがある間だけ出す。
     this.constructionRow.classList.toggle('hidden', view.startConstruction === null);
+    this.coolingDumpButton.element.classList.toggle('hidden', view.coolingDumpRunning === null);
+    if (view.coolingDumpRunning !== null) this.coolingDumpButton.setOn(view.coolingDumpRunning);
     this.syncDeployButtons(view);
 
     // 制動・微調整・進行方向ホールドは自分が掛けているモード(自分の色)。

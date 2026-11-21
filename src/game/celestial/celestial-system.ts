@@ -34,6 +34,7 @@ import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from '../../render/celestial/point-field-view';
 import type { GpuTimingSink } from '../../render/gpu-timings';
+import type { CloudPresentation } from '../../render/earth-weather/cloud/cloud-presentation';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
 import type { FocusCameraSource } from '../viewer/focus-camera-selection';
@@ -357,6 +358,16 @@ export class CelestialSystem implements CelestialBodies {
   // このフレームに積雲殻を描く天体の雲場を焼く。simSpeed は実時間 1 秒あたりに進む表示時刻 [s]。
   public bakeClouds(renderer: WebGPURenderer, displayTime: number, simSpeed: number, gpu?: GpuTimingSink): void {
     for (const body of this.entities) body.view.bakeClouds(renderer, displayTime, simSpeed, gpu);
+  }
+
+  // 雲を持つ天体の雲の統括の列。雲の精細さの段の事前コンパイルが列挙する。
+  public cloudPresentations(): CloudPresentation[] {
+    const presentations: CloudPresentation[] = [];
+    for (const body of this.entities) {
+      const presentation = body.view.cloudPresentation;
+      if (presentation !== null) presentations.push(presentation);
+    }
+    return presentations;
   }
 
   // 参照軌道線を出すかを表示ポリシーから決め、毎フレームの enabled 値として個体へ渡す。

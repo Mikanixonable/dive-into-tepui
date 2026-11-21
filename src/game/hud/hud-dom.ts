@@ -27,7 +27,10 @@ import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../view/view-mode';
-import type { CollapseToggleLabels } from '../../hud/widgets';
+import {
+  Button, buildCollapseToggle, EDGE_GRIP_HORIZONTAL_CLASS, EDGE_GRIP_VERTICAL_CLASS, type CollapseToggleLabels,
+} from '../../hud/widgets';
+import { createKeyCap } from '../../hud/key-cap';
 import type { PanelCollapse } from './panel-chrome';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
@@ -60,6 +63,14 @@ export function hudRail(root: HTMLElement, side: 'left' | 'right'): HTMLElement 
   return root.querySelector<HTMLElement>(`.hud-rail-${side}`) ?? root;
 }
 
+// 上部バーの収納グリップの字形と読み上げ名。字形は押したときにバーが動く向き。
+const TOP_BAR_TOGGLE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: '▲',
+  collapsedGlyph: '▼',
+  expandedTitle: '上部バーを収納',
+  collapsedTitle: '上部バーを開く',
+};
+
 // レール収納トグルの字形と読み上げ名を、開く向き(左右)から組む。
 function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
   const label = side === 'left' ? '左' : '右';
@@ -79,7 +90,7 @@ function buildRailToggle(
   collapse.wire({
     toggleRoot: root,
     toggleId: `hud-${view}-rail-toggle-${side}`,
-    toggleClassName: `rail-toggle rail-toggle-${side}`,
+    toggleClassName: `rail-toggle rail-toggle-${side} ${EDGE_GRIP_VERTICAL_CLASS}`,
     target: rail,
     labels: railToggleLabels(side),
     storageId: `hud-rail-${side}`,
@@ -354,8 +365,8 @@ function buildMapScale(root: HTMLElement): void {
     </div>`;
 }
 
-// 画面全体のトップバーを組む。
-function buildTopBar(root: HTMLElement): void {
+// 画面全体のトップバーを組み、その要素を返す。
+function buildTopBar(root: HTMLElement): HTMLElement {
   const bar = createHudElement('section', 'hud-topbar', root, 'ui-surface-quiet');
   bar.setAttribute('aria-label', 'Mission status');
   // タイトル画面の status block と同じ語彙で、workspace → context → mission time の順に読む。
@@ -364,13 +375,14 @@ function buildTopBar(root: HTMLElement): void {
     <div class="gs-status-head">
       <span class="ui-section-code" aria-hidden="true">MIS</span>
       <span class="ui-data-context">MISSION STATUS</span>
+      <output class="gs-alarm-lamp hidden" data-id="alarm-lamp" aria-label="警報"></output>
       <span class="gs-workspace ui-data-context" aria-label="現在のHUDワークスペース"></span>
     </div>
     <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
     <div class="gs-metrics">
       <div class="gs-metric gs-metric-time">
         <span class="ui-data-label">MISSION TIME</span>
-        <output class="v" data-id="met">—</output>
+        <output class="v" data-id="met" role="button" tabindex="0" title="クリックして時刻の表記を切り替え">—</output>
       </div>
       <div class="gs-metric">
         <span class="ui-data-label">SIM RATE</span>
@@ -381,47 +393,55 @@ function buildTopBar(root: HTMLElement): void {
         <output class="v" data-id="node-warp-remain">—</output>
       </div>
     </div>`;
+  return bar;
 }
 
 // 視点リセットボタンを組む。id の chase は「動く実体を追っている視点」の意味。
+// 押下の実処理は camera-system がこの要素の click で購読する。
 function buildChaseReset(root: HTMLElement): void {
-  const chaseReset = createHudElement('button', 'hud-chase-reset', root, 'ui-surface-quiet');
-  chaseReset.setAttribute('type', 'button');
-  chaseReset.setAttribute('aria-label', '視点をリセット');
-  chaseReset.setAttribute('title', '視点をリセット');
-  chaseReset.dataset.id = 'chase-reset';
-  // リセットを示す矢印アイコンを描く。
-  chaseReset.innerHTML = `
-    <span class="hud-mini-code" aria-hidden="true">CAM</span>
-    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2"
-      fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-      <path d="M3 3v5h5"></path>
-    </svg>`;
-  // キーボード操作でもポインタ操作と同じ経路で処理されるよう、Enter/Space を pointerdown へ変換する。
-  chaseReset.addEventListener('keydown', (event) => {
-    if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
-    event.preventDefault();
-    chaseReset.dispatchEvent(new Event('pointerdown', { bubbles: true }));
-  });
+  const button = new Button('⟲', () => {}, undefined, 'icon');
+  button.element.id = 'hud-chase-reset';
+  button.element.dataset.id = 'chase-reset';
+  button.element.setAttribute('aria-label', '視点をリセット');
+  button.element.title = '視点をリセット';
+  root.appendChild(button.element);
 }
 
-// 右上の常設バッジ列を組む。右レール収納トグルの左へ並ぶ。
+// 右上の常設バッジ列を組む。
 function buildChromeActions(
   root: HTMLElement, chrome: HTMLElement, helpPanel: HelpPanel, onPauseBadge: () => void,
 ): void {
   const actions = createHudElement('div', 'hud-chrome-actions', chrome);
-  buildTopBarToggle(actions, root);
   buildWideScreenToggle(actions, root);
   buildPauseBadge(actions, onPauseBadge);
   buildHelpBadge(actions, helpPanel);
 }
 
-// 根の class を反転し、対応するボタンの aria-pressed を合わせる。状態の正本は根の class。
+// アイコンだけの円形ボタンを1つ組み、ショートカットがあるものはキーキャップを隣へ添える。
+// 押下・フォーカス・タッチ時のヒット拡張といった対話部品の共通下地は Button ウィジェットが持つ。
+function buildChromeAction(
+  host: HTMLElement, id: string, glyph: string, keyLabel: string | null,
+  label: string, onPress: () => void,
+): { action: HTMLElement; button: Button } {
+  const action = document.createElement('span');
+  action.className = 'hud-action';
+  const button = new Button(glyph, onPress, undefined, 'icon');
+  button.element.id = id;
+  button.element.setAttribute('aria-label', label);
+  button.element.title = label;
+  action.appendChild(button.element);
+  if (keyLabel !== null) action.appendChild(createKeyCap(keyLabel));
+  host.appendChild(action);
+  return { action, button };
+}
+
+// 根の class を反転し、対応するボタンの点灯と aria-pressed を合わせる。状態の正本は根の class。
 function flipRootClass(root: HTMLElement, className: string, buttonId: string): boolean {
   const on = !root.classList.contains(className);
   root.classList.toggle(className, on);
-  root.querySelector<HTMLElement>(`#${buttonId}`)?.setAttribute('aria-pressed', String(on));
+  const button = root.querySelector<HTMLElement>(`#${buttonId}`);
+  button?.classList.toggle('on', on);
+  button?.setAttribute('aria-pressed', String(on));
   return on;
 }
 
@@ -430,55 +450,50 @@ export function toggleHudWideScreen(root: HTMLElement): void {
   flipRootClass(root, 'hud-wide', 'hud-wide-toggle');
 }
 
-// 上部の全体ステータスバーを収納・展開する。収納中も右上のボタンで戻せる。
-function buildTopBarToggle(root: HTMLElement, host: HTMLElement): void {
-  const button = createHudElement('button', 'hud-topbar-toggle', root, 'ui-surface-quiet');
-  button.setAttribute('type', 'button');
-  button.setAttribute('aria-pressed', 'false');
-  button.innerHTML = '<span aria-hidden="true">▲</span>';
-  const label = (collapsed: boolean): string => (collapsed ? '上部バーを開く' : '上部バーを収納');
-  button.setAttribute('aria-label', label(false));
-  button.title = label(false);
-  // 状態は根の class が持ち、字形と読み上げ名は切り替えのたびにその状態から組み直す。
-  button.addEventListener('click', () => {
-    const collapsed = flipRootClass(host, 'topbar-collapsed', 'hud-topbar-toggle');
-    button.querySelector('span')!.textContent = collapsed ? '▼' : '▲';
-    button.setAttribute('aria-label', label(collapsed));
-    button.title = label(collapsed);
-  });
+// 上部の全体ステータスバーの収納グリップを、バーの直後(同じ列の次の行)へ組む。収納の選択は保存しない。
+function buildTopBarToggle(chrome: HTMLElement, topBar: HTMLElement): void {
+  buildCollapseToggle(chrome, 'hud-topbar-toggle', EDGE_GRIP_HORIZONTAL_CLASS, topBar, TOP_BAR_TOGGLE_LABELS, [], () => {});
 }
 
 // 画面を広く使うモードの切り替えバッジ。タッチだけの利用者の入口になる。
-function buildWideScreenToggle(root: HTMLElement, host: HTMLElement): void {
-  const button = createHudElement('button', 'hud-wide-toggle', root, 'ui-surface-quiet');
-  button.setAttribute('type', 'button');
-  button.setAttribute('aria-pressed', 'false');
-  button.setAttribute('aria-label', '画面を広く使う');
-  button.setAttribute('title', '画面を広く使う(TAB)');
-  button.innerHTML = `<span class="hud-mini-code" aria-hidden="true">${K.wideScreenToggle.label}</span><span aria-hidden="true">⤢</span>`;
-  button.addEventListener('click', () => toggleHudWideScreen(host));
+function buildWideScreenToggle(actions: HTMLElement, hudRoot: HTMLElement): void {
+  const { button } = buildChromeAction(
+    actions, 'hud-wide-toggle', '⤢', K.wideScreenToggle.label, '画面を広く使う(TAB)',
+    () => toggleHudWideScreen(hudRoot),
+  );
+  button.element.setAttribute('aria-pressed', 'false');
 }
 
 // Esc キーの代替操作ボタン(⚙アイコン)。CONTROLS.md が Esc と同じ振る舞い(最前面の
 // オーバーレイを閉じる、無ければ ESC メニューを開く)と定めるので、押下は受け口へそのまま渡す。
 // 表示可否は CSS(body.touch-ui-active)側が持つ — ここでは常に組む。
-function buildPauseBadge(root: HTMLElement, onPause: () => void): void {
-  const badge = createHudElement('button', 'hud-pause-badge', root, 'ui-surface-quiet');
-  badge.setAttribute('type', 'button');
-  badge.setAttribute('aria-label', 'ESC メニューを開く');
-  badge.setAttribute('title', 'ESC メニュー(ESC)');
-  badge.innerHTML = `<span class="hud-mini-code" aria-hidden="true">${K.pauseMenu.label}</span><span aria-hidden="true">⚙</span>`;
-  badge.addEventListener('click', onPause);
+function buildPauseBadge(host: HTMLElement, onPause: () => void): void {
+  const { action } = buildChromeAction(
+    host, 'hud-pause-badge', '⚙', K.pauseMenu.label, 'ESC メニュー(ESC)', onPause,
+  );
+  action.classList.add('hud-action--touch');
 }
 
 // H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
-function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
-  const badge = createHudElement('button', 'hud-help-badge', root, 'ui-surface-quiet');
-  badge.setAttribute('type', 'button');
-  badge.setAttribute('aria-label', '操作ガイドを開く');
-  badge.setAttribute('title', '操作ガイドを開く');
-  badge.innerHTML = '<span class="hud-mini-code" aria-hidden="true">HLP</span><span>?</span>';
-  badge.addEventListener('click', () => helpPanel.open());
+function buildHelpBadge(host: HTMLElement, helpPanel: HelpPanel): void {
+  buildChromeAction(
+    host, 'hud-help-badge', '?', K.help.label, '操作ガイドを開く', () => helpPanel.open(),
+  );
+}
+
+// RO の通知へ渡す、フレームをまたいだ同期呼び出しを組む。配置値の書き込みが起こすリサイズを
+// RO のパス内へ持ち込まないため(ResizeObserver loop の警告回避)、コールバックでは次フレームへの
+// 予約だけを行う。
+function deferredSync(sync: () => void): () => void {
+  let scheduled = false;
+  return () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      sync();
+    });
+  };
 }
 
 // 上部の固定 UI が占める高さを HUD の配置へ反映する。
@@ -491,7 +506,7 @@ function trackHudChromeInset(root: HTMLElement, chrome: HTMLElement): void {
   sync();
   requestAnimationFrame(sync);
   if (typeof ResizeObserver !== 'undefined') {
-    const observer = new ResizeObserver(sync);
+    const observer = new ResizeObserver(deferredSync(sync));
     observer.observe(chrome);
   }
 }
@@ -510,7 +525,7 @@ function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRa
   sync();
   requestAnimationFrame(sync);
   if (typeof ResizeObserver !== 'undefined') {
-    const observer = new ResizeObserver(sync);
+    const observer = new ResizeObserver(deferredSync(sync));
     observer.observe(root);
     observer.observe(leftRail);
     observer.observe(rightRail);
@@ -538,7 +553,10 @@ export function buildHudDom(
   // top 値を持たないため、トップバーが折り返しても互いに重ならない。
   const helpPanel = new HelpPanel(shell.overlayManager);
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
-  buildTopBar(chrome);
+  buildTopBarToggle(chrome, buildTopBar(chrome));
+  const alarmBand = createHudElement('div', 'hud-alarm-band', chrome);
+  alarmBand.dataset.id = 'alarm-band';
+  alarmBand.classList.add('hidden');
   buildChaseReset(chrome);
   buildChromeActions(root, chrome, helpPanel, onPauseBadge);
   trackHudChromeInset(root, chrome);

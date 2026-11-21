@@ -4,7 +4,9 @@ import type { WebGPURenderer } from 'three/webgpu';
 import climateTextureUrl from '../../../assets/earth-climate.png';
 import terrainTextureUrl from '../../../assets/earth-terrain.png';
 import cloudFieldUrl from '../../../assets/cloud-field.png';
+import cloudField2048Url from '../../../assets/cloud-field-2048.png';
 import moonTextureUrl from '../../../assets/8k_moon.jpg';
+import moonTexture2048Url from '../../../assets/8k_moon-2048.jpg';
 import coastlineData from '../../../assets/earth-coastline.json';
 import moonFeaturesData from '../../../assets/moon-features.json';
 import type { AtmosphereDef } from '../../../physics/atmosphere';
@@ -226,12 +228,15 @@ export function earthGeneratedCloudField(projection: FieldProjection): Generated
   );
 }
 
+// 実写の雲の分布画像。4096px は原寸と同じ幅なので、縮小版を持つのは低の段だけ。
+const CLOUD_FIELD_URLS = { low: cloudField2048Url, medium: cloudFieldUrl, high: cloudFieldUrl };
+
 // 地球の雲場ぜんぶを組む。生成と実写を同じ 1 つの cap へ焼き、CloudPresentation がその cap を
 // 視点へ置き直す。
 export function earthCloudPresentation(): CloudPresentation {
   const cap = new OrthographicCap(CLOUD_CAP_SIZE, 0, 0, CLOUD_CAP_MARGIN);
   return new CloudPresentation(
-    earthGeneratedCloudField(cap), new ObservedCloudField(cloudFieldUrl, cap), cap, R_EARTH_EQ,
+    earthGeneratedCloudField(cap), new ObservedCloudField(CLOUD_FIELD_URLS, cap), cap, R_EARTH_EQ,
   );
 }
 
@@ -261,8 +266,10 @@ export function earthSystem(
       EARTH_SYSTEM_NAMES.moon, 'satellite',
       new SphereCelestialView(
         // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。
+        // 4096px は原寸と同じ幅なので、縮小版を持つのは低の段だけ。
         CelestialSurface.textured({
-          url: moonTextureUrl, albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
+          url: { low: moonTexture2048Url, medium: moonTextureUrl, high: moonTextureUrl },
+          albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
         }),
         null, LineOverlay.of({ kind: 'unitSphereLoops', loops: MOON_SURFACE_MARKINGS }),
       ),

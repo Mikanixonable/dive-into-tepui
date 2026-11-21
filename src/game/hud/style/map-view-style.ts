@@ -3,6 +3,7 @@
 import {
   MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN,
 } from '../../../hud/breakpoints';
+import { opaqueGlassFallbackStyle } from '../../../hud/style/common-ui-style';
 
 export const MAP_VIEW_STYLE = `
 /* マップでは戦闘固有の棚とターゲット計器を外し、計画用のレールへ視線を集中させる。 */
@@ -52,23 +53,6 @@ export const MAP_VIEW_STYLE = `
   font-weight: 600;
   letter-spacing: 0;
 }
-
-#hud .hud-map-root.active .rail-toggle {
-  border: 0;
-  border-radius: 50%;
-  background: var(--glass-control);
-  color: var(--muted);
-}
-#hud .hud-map-root.active #hud-predict-toggle {
-  border: 0;
-  border-radius: 50%;
-  background: var(--glass-control);
-  color: var(--muted);
-}
-#hud .hud-map-root.active .rail-toggle:hover,
-#hud .hud-map-root.active #hud-predict-toggle:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
-#hud .hud-map-root.active .rail-toggle:focus-visible,
-#hud .hud-map-root.active #hud-predict-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
 /* Object list: 現在の選択だけを Accent、カメラの関連軌道を Near accent で分ける。 */
 #hud .hud-map-root.active #hud-physical-object-list { max-height: min(576px, 64dvh); }
@@ -350,9 +334,7 @@ export const MAP_VIEW_STYLE = `
   font-size: var(--font-xxs);
 }
 
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #hud-map-scale { background: var(--surface-opaque); }
-}
+${opaqueGlassFallbackStyle('#hud-map-scale')}
 
 @media ${MQ_MEDIUM_DOWN} {
   #hud .hud-map-root.active #hud-physical-object-list,

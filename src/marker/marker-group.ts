@@ -121,8 +121,9 @@ export class MarkerGroup implements MarkerSink {
   private draw(m: MarkerRecord, item: MarkerDeclaration): void {
     const opacity = item.opacity ?? 1;
     const label = item.label ?? '';
-    m.root.style.left = `${item.x.toFixed(1)}px`;
-    m.root.style.top = `${item.y.toFixed(1)}px`;
+    // 位置は transform で置く — left/top は毎フレーム書くとレイアウトをやり直させる。中心合わせの
+    // translate(-50%, -50%) は CSS の既定と同じものを、上書きされないよう同じ式に含める。
+    m.root.style.transform = `translate(${item.x.toFixed(1)}px, ${item.y.toFixed(1)}px) translate(-50%, -50%)`;
     m.root.style.opacity = opacity >= 1 ? '' : opacity.toFixed(2);
     if (item.markup === true) {
       if (m.sym.innerHTML !== item.sym) m.sym.innerHTML = item.sym;

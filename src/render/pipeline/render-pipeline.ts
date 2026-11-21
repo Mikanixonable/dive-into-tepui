@@ -223,6 +223,8 @@ export class RenderPipeline {
 
   // 描画品質設定を各パスへ配る。影マップなどの GPU 資源は、値が変わったものだけを組み直す。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
+    // 天体と星野の画像の段。読み手のテクスチャ実体はそのままで、画像だけが段に応じて差し替わる。
+    DeferredTexture.setResolution(graphics.textureResolution);
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
     this.shadowMaps.setQuality(
@@ -288,6 +290,12 @@ export class RenderPipeline {
       await compile();
     }
     onPass('完了', passes.length, passes.length);
+  }
+
+  // 雲殻の層だけを G バッファの添付形式でコンパイルする。雲の精細さの段のマテリアルを
+  // 事前に組むのに使う — 呼ぶ側でその段のマテリアルをメッシュへ張り替えておく。
+  public async compileCloudShell(scene: THREE.Scene, camera: THREE.Camera): Promise<void> {
+    await this.gbuffer.compileCloudShellLayer(scene, camera);
   }
 
   // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → ライティング → マテリアル → 大気 →

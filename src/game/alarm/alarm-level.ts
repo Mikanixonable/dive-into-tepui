@@ -1,5 +1,7 @@
 // 注意・警告の判定(FLIGHT.md「警報の条件」)。行・メーター・警報灯・警報帯のどこで読んでも
 // 同じ結果になるよう、閾値と判定をここ1か所に置く。判定は物理量と上限だけから決まる。
+// 状態として鳴る警報(警報帯・警報灯・警報音)だけが、境界で明滅しないよう前の段を読む
+// held 版を使う(UI-DESIGN.md「警報と通知」)。
 import type { AlarmLevel } from '../../hud/alarm-level';
 
 // 船体温度が上限のこの割合に達すると注意・警告。
@@ -38,9 +40,39 @@ function lowRatioLevel(value: number, max: number, cautionRatio: number, warning
   return 'normal';
 }
 
+// 戻る閾値が入る閾値より緩い分(上限に対する割合)。境界の往復で警報が明滅しない。
+const RELEASE_HYSTERESIS = 0.02;
+
+// 値が大きいほど悪い量の段を、前フレームの段 prev を境目で保持した形で返す。段が入る判定は
+// highRatioLevel と同じで、段が下がる境界だけ RELEASE_HYSTERESIS ぶん緩い。
+function highRatioLevelHeld(
+  prev: AlarmLevel, value: number, max: number, cautionRatio: number, warningRatio: number,
+): AlarmLevel {
+  if (!(max > 0)) return 'normal';
+  const ratio = value / max;
+  if (ratio >= warningRatio
+    || (prev === 'warning' && ratio >= warningRatio - RELEASE_HYSTERESIS)) {
+    return 'warning';
+  }
+  if (ratio >= cautionRatio
+    || (prev !== 'normal' && ratio >= cautionRatio - RELEASE_HYSTERESIS)) {
+    return 'caution';
+  }
+  return 'normal';
+}
+
 // 船体温度 [K] の段。
 export function temperatureAlarmLevel(temperatureK: number, maxTemperatureK: number): AlarmLevel {
   return highRatioLevel(temperatureK, maxTemperatureK, TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO);
+}
+
+// 船体温度 [K] の段を、前フレームの段 prev を境目で保持した形で返す。状態として鳴る警報が読む。
+export function temperatureAlarmLevelHeld(
+  prev: AlarmLevel, temperatureK: number, maxTemperatureK: number,
+): AlarmLevel {
+  return highRatioLevelHeld(
+    prev, temperatureK, maxTemperatureK, TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,
+  );
 }
 
 // 動圧 [Pa] の段。

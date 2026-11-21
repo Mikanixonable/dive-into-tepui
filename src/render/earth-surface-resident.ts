@@ -2,7 +2,7 @@
 import type {
   EarthSurfaceTiles,
 } from './earth-surface-tiles';
-import { EARTH_BASE_LAYER, EARTH_TILE_LAYERS, earthTileId } from './earth-surface-tile-key';
+import { EARTH_BASE_LAYER, earthTileId } from './earth-surface-tile-key';
 import type { EarthTileKey } from './earth-surface-tile-key';
 import type { EarthTileResident } from './earth-surface-tiles';
 import type { EarthTileProjection } from './earth-surface-tile-projection';
@@ -319,7 +319,7 @@ export class EarthSurfaceResidentCoordinator {
   // 未予約のGPU層数を返す。
   private freeLayerCount(): number {
     let count = 0;
-    for (let layer = 0; layer < EARTH_TILE_LAYERS; layer++) {
+    for (let layer = 0; layer < this.dependencies.gpu.tileLayers; layer++) {
       if (this.dependencies.gpu.reservation(layer) === null) count++;
     }
     return count;
@@ -327,7 +327,7 @@ export class EarthSurfaceResidentCoordinator {
 
   // 最初に利用できるGPU層を返す。
   private findFreeLayer(): number | null {
-    for (let layer = 0; layer < EARTH_TILE_LAYERS; layer++) {
+    for (let layer = 0; layer < this.dependencies.gpu.tileLayers; layer++) {
       if (this.dependencies.gpu.reservation(layer) === null) return layer;
     }
     return null;
