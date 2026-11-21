@@ -364,7 +364,6 @@ export function generateWave(
   const { approachDir, centerV: rawCenterV } = makeFlybyVelocity(player, centerR, waveNumber);
   const centerV = limitFlybyDv(player.v, centerR, rawCenterV, player.t, attractors);
   const subGroups = makeSubGroupHexes(pickWaveBaseHex());
-  const typeIndex = Math.floor(Math.random() * 3);
   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
 
   // 隻数分、位置と識別カラーを割り当てて敵艦を生成する。難関は通常の機数に加えて 3 機を足し、
@@ -376,7 +375,7 @@ export function generateWave(
     const position = waveShipPosition(pattern, i, totalShips, centerR, approachDir, attractors, player.t);
     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
     enemies.push(generateApproachingEnemy(
-      `W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, scene, idAllocators,
+      `W${waveNumber}-${i + 1}`, state, accent, accent, waveNumber, scene, idAllocators,
       i < shipCount ? `wave-${waveNumber}-group-${i % subGroups.length}` : `wave-${waveNumber}-formation`,
     ));
   }

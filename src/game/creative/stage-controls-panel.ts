@@ -1,7 +1,6 @@
 // クリエイティブモードの「ステージ操作」パネル: 補給・波状攻撃のトグルと、手動スポーンの入力
 // (距離・敵の形状/色)の DOM と UI 状態を持ち、確定した値を onXxx のコールバックで知らせる。
-import { Button, Pulldown, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud-kit/widgets';
-import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './manual-spawn';
+import { Button, Pulldown, ToggleSwitch, ValueInput } from '../../hud-kit/widgets';
 
 const STAGE_CONTROL_ENEMY_COLORS = [
   [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],
@@ -19,7 +18,7 @@ export class StageControlsPanel {
   public onRefillFuel: (() => void) | null = null;
   public onRefillBaseFuel: (() => void) | null = null;
   public onSpawnDistanceChange: ((distanceM: number) => void) | null = null;
-  public onSpawnEnemy: ((shape: EnemySpawnShape, colorValue: string) => void) | null = null;
+  public onSpawnEnemy: ((colorValue: string) => void) | null = null;
 
   // 入力欄が無効値を弾いたときに直前の有効値へ戻すための保持値。
   private spawnDistance: number;
@@ -51,17 +50,9 @@ export class StageControlsPanel {
     const generalControls = this.buildGeneralControls(
       body, resupplyEnabled, rcsFuelResupplyEnabled, waveAttackEnabled,
     );
-    const conventional = this.buildConventionalEnemySection();
-    const assembly = this.buildAssemblyEnemySection();
-    this.appendEnemyTabs(
-      body,
-      [['conventional', '従来型の敵', conventional.element],
-        ['assembly', '組み立て型の敵', assembly.element]],
-    );
-    this.shipRequiredButtons = [
-      ...generalControls.shipRequiredButtons,
-      conventional.spawnButton, assembly.spawnButton,
-    ];
+    const enemy = this.buildEnemySection();
+    body.appendChild(enemy.element);
+    this.shipRequiredButtons = [...generalControls.shipRequiredButtons, enemy.spawnButton];
 
     this.element = panel;
   }
@@ -113,92 +104,22 @@ export class StageControlsPanel {
     return { shipRequiredButtons };
   }
 
-  // 従来型の敵(漂流/接近3種)の形状・色選択とスポーンボタンをまとめたセクションを組み立てる。
-  private buildConventionalEnemySection(): { element: HTMLElement; spawnButton: Button } {
-    const shapes = STAGE_CONTROL_ENEMY_SHAPES.filter(({ family }) => family === 'conventional');
-    let selectedShape: EnemySpawnShape = shapes[0]!.id;
-    const section = document.createElement('div');
-    section.className = 'stage-control-section';
-    section.id = 'stage-control-panel-conventional';
-    section.setAttribute('role', 'tabpanel');
-    section.setAttribute('aria-label', '従来型の敵');
-    const title = document.createElement('div');
-    title.className = 'stage-control-section-title';
-    title.textContent = '従来型の敵';
-    section.appendChild(title);
-    // 形状・色の選択。
-    const shapeControl = new SegmentedControl<EnemySpawnShape>(
-      '敵の形状', shapes.map(({ id }) => [id, id] as const),
-      (shape) => {
-        selectedShape = shape;
-        shapeControl.setSelected(shape);
-      },
-    );
-    shapeControl.element.classList.add('stage-control-shapes');
-    shapeControl.setSelected(selectedShape);
-    section.appendChild(shapeControl.element);
-    const colorSelect = buildColorSelect('敵の色', STAGE_CONTROL_ENEMY_COLORS);
-    section.appendChild(colorSelect.wrapper);
-    const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.(selectedShape, colorSelect.getValue()));
-    section.appendChild(spawnButton.element);
-    return { element: section, spawnButton };
-  }
-
-  // 組み立て型の敵の色選択とスポーンボタンをまとめたセクションを組み立てる。
+  // 敵の色選択とスポーンボタンをまとめたセクションを組み立てる。敵はすべて組み立て型で、
   // 形状は seed の手続き生成で選ぶものがないので、色だけを選ばせる。
-  private buildAssemblyEnemySection(): { element: HTMLElement; spawnButton: Button } {
+  private buildEnemySection(): { element: HTMLElement; spawnButton: Button } {
     const section = document.createElement('div');
     section.className = 'stage-control-section';
-    section.id = 'stage-control-panel-assembly';
-    section.setAttribute('role', 'tabpanel');
-    section.setAttribute('aria-label', '組み立て型の敵');
+    section.setAttribute('aria-label', '敵のスポーン');
     const title = document.createElement('div');
     title.className = 'stage-control-section-title';
-    title.textContent = '組み立て型の敵';
+    title.textContent = '敵';
     section.appendChild(title);
     // 組み立て型の外観は色で選ぶ。
     const colorSelect = buildColorSelect('敵の色', STAGE_CONTROL_ENEMY_COLORS);
     section.appendChild(colorSelect.wrapper);
-    const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.('assembly', colorSelect.getValue()));
+    const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.(colorSelect.getValue()));
     section.appendChild(spawnButton.element);
     return { element: section, spawnButton };
-  }
-
-  // 敵の種類ごとのタブ切り替えを body へ追加し、選ばれた側のセクションだけを表示する。
-  private appendEnemyTabs(
-    body: HTMLElement,
-    entries: readonly (readonly [family: string, label: string, element: HTMLElement])[],
-  ): void {
-    let selectedFamily = entries[0]![0];
-    const tabs = new TabBar<string>(
-      entries.map(([family, label]) => [family, label] as const),
-      (family) => {
-        selectedFamily = family;
-        tabs.setSelected(family);
-        for (const [tab, , section] of entries) {
-          const visible = tab === selectedFamily;
-          section.classList.toggle('hidden', !visible);
-          section.setAttribute('aria-hidden', String(!visible));
-        }
-      },
-    );
-    tabs.element.classList.add('stage-control-enemy-tabs');
-    tabs.element.setAttribute('aria-label', '敵の種類');
-    // タブ要素と対応するセクションを aria 属性で結びつける。
-    tabs.element.querySelectorAll<HTMLElement>('[role="tab"]').forEach((tab, index) => {
-      const family = entries[index]![0];
-      tab.id = `stage-control-tab-${family}`;
-      tab.setAttribute('aria-controls', `stage-control-panel-${family}`);
-    });
-    body.appendChild(tabs.element);
-    for (const [, , section] of entries) body.appendChild(section);
-    // 初期表示は先頭のタブを選んだ状態にする。
-    tabs.setSelected(selectedFamily);
-    for (const [family, , section] of entries) {
-      const visible = family === selectedFamily;
-      section.classList.toggle('hidden', !visible);
-      section.setAttribute('aria-hidden', String(!visible));
-    }
   }
 }
 

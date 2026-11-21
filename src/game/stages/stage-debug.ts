@@ -5,7 +5,7 @@ import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { addScaled } from '../../math/vec3';
 import { kinematicState } from '../../physics/kinematic-state';
 import { generateWave } from './stage-utils/wave-attack';
-import { generateAssemblyEnemy } from './enemy-generator';
+import { generateDriftingEnemy } from './enemy-generator';
 import { Button, ToggleSwitch } from '../../hud-kit/widgets';
 import type { Enemy } from '../dynamic/entity/enemy';
 import { MAG_ROUNDS } from '../player/ammo-spec';
@@ -115,9 +115,8 @@ export class StageDebug extends Stage {
     const forward = qRotate(player.motion.att.q, LOCAL_FORWARD);
     const position = addScaled(player.motion.state.r, forward, 2000);
     const state = kinematicState<'eci'>(player.motion.state.t, position, player.motion.state.v);
-    const seed = Math.floor(Math.random() * 2 ** 31);
-    this.addEnemy(generateAssemblyEnemy(
-      `ASSEMBLY-${this.assemblyCount++}`, state, seed, 0xff4a3d, 0xff4a3d,
+    this.addEnemy(generateDriftingEnemy(
+      `ASSEMBLY-${this.assemblyCount++}`, state, 0xff4a3d, 0xff4a3d,
       this._scene, this._dynamicSystem.idAllocators,
     ));
   }

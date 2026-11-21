@@ -31,7 +31,7 @@ export interface AssemblyShape {
   readonly inertia: Vec3;
 }
 
-// 個体の外接半径の範囲 [m]。金属の敵機(約 67〜94 m)と同程度より一回り小さい。
+// 個体の外接半径の範囲 [m]。
 const OUTER_RADIUS_MIN = 40;
 const OUTER_RADIUS_MAX = 70;
 // 管半径の、外接半径に対する比率の範囲。

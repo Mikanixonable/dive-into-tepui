@@ -111,7 +111,7 @@ export function register(): void {
       name: 'assembly-test',
       state: { t: 0, r: { x: 7e6, y: 0, z: 0 }, v: { x: 0, y: 7.5e3, z: 0 } },
       seed: 1, accent: 0xffffff, orbitLineColor: 0xffffff,
-      formationId: null, formationRole: null,
+      waveId: null, formationId: null, formationRole: null,
     }, idAllocators, new THREE.Scene());
     assert.ok(enemy.hp > 0, '無傷の個体が初めから撃破扱いになっている');
 

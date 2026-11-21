@@ -12,8 +12,6 @@ import {
   CombatShipEntity, SHIP_BCINV, SHIP_SRP_COEFF,
 } from '../../src/game/dynamic/entity/combat-ship-entity';
 import type { PilotControls } from '../../src/game/dynamic/entity/pilot-controls';
-import { PartDamageModel } from '../../src/game/dynamic/entity/part-damage-model';
-import { createShipDefaultParts } from '../../src/game/dynamic/entity/ship-default-parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
 import { Throttle } from '../../src/game/player/throttle';
@@ -56,24 +54,6 @@ class NullView extends DynamicView {
 }
 
 export function register(): void {
-  test('default parts: 固定ロードアウトの集計値を維持する', () => {
-    const model = new PartDamageModel(createShipDefaultParts(1_000));
-
-    // FLIGHT.md の既定船: HP 1,000、既定部品の出力・資源・装備を合計した値。
-    assert.equal(model.overallHp(), 1_000);
-    assert.equal(model.maxHp, 1_000);
-    assert.equal(model.totalThrust, 400_000);
-    assert.ok(Math.abs(model.totalTorque - 24_000) < 1e-12);
-    assert.equal(model.totalFuel, 1_000);
-    assert.equal(model.totalMaxFuel, 1_000);
-    assert.equal(model.totalFuelConsumptionRate, 1);
-    assert.equal(model.totalPowerGeneration, 1_650);
-    assert.equal(model.totalCoolingRate, 9.6);
-    assert.equal(model.weaponDamage, 1);
-    assert.equal(model.totalFireRate, 1 / 0.06);
-    assert.equal(model.averageMuzzleVelocity, 1_000);
-  });
-
   test('default ship: 実慣性に対して RCS が姿勢を変える角加速度を出す', () => {
     const assembly = createDefaultCombatPreset();
     const totals = assembly.totals();

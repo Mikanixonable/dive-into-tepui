@@ -20,7 +20,6 @@ import { reorder } from '@gltf-transform/functions';
 import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { buildDebrisChunk, buildDebrisPanel, buildDebrisRod } from './debris-fragments.mjs';
 import { buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
-import { buildEnemyShip, buildEnemyVariantA, buildEnemyVariantB, buildEnemyVariantC } from './metal-enemies.mjs';
 import { buildAmmoPickup, buildRcsFuelPickup } from './pickups.mjs';
 import { buildBulletMesh, buildPlasmaBullet } from './projectiles.mjs';
 import { buildShipModules } from './ship-modules.mjs';
@@ -130,10 +129,6 @@ async function exportGlb(object, outPath) {
 
 // ------------------------------------------------------------- 書き出し
 const models = {
-  enemy:        buildEnemyShip(),
-  enemyVariantA: buildEnemyVariantA(),
-  enemyVariantB: buildEnemyVariantB(),
-  enemyVariantC: buildEnemyVariantC(),
   bullet:       buildBulletMesh(),
   plasma:       buildPlasmaBullet(),
 
