@@ -944,9 +944,11 @@ async function bootAndCheckReady() {
         raf,
         adapter,
         loading: [...document.querySelectorAll('body > div')].some((d) => d.textContent?.includes('初期化中')),
+        stageSelect: Boolean(document.querySelector('.ss-window')),
         canvases: document.querySelectorAll('canvas').length,
       };
     })()`);
+    console.error(`boot diagnostics: ${JSON.stringify(diag)}\nfatalEvents:\n  ${describeFatalEvents() || '(none)'}`);
     throw new Error(`Game did not complete 60 animation frames within 30 seconds. diagnostics: ${JSON.stringify(diag)}`);
   }
   throwIfFatal('Browser reported page exception(s) or console error(s) during boot');
