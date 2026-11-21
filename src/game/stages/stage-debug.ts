@@ -5,7 +5,7 @@ import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { addScaled } from '../../math/vec3';
 import { kinematicState } from '../../physics/kinematic-state';
 import { generateWave } from './stage-utils/wave-attack';
-import { generateAssemblyEnemy } from './spawner/enemy-generator';
+import { generateAssemblyEnemy } from './enemy-generator';
 import { Button, ToggleSwitch } from '../../hud-kit/widgets';
 import type { Enemy } from '../dynamic/entity/enemy';
 import { MAG_ROUNDS } from '../player/ammo-spec';

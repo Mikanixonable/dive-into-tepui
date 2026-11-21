@@ -8,7 +8,7 @@ import { POWER_CAPACITY } from '../../player/power';
 import {
   ARMOR_WARNING_RATIO, TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,
   armorAlarmLevel, temperatureAlarmLevel,
-} from '../../alarm/alarm-level';
+} from '../../alarm-level';
 
 export class StatusPanel {
   private readonly panel: HTMLElement;

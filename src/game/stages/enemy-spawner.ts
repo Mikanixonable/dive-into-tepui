@@ -1,16 +1,16 @@
 // 訓練クラスタ(stage2)の敵集団の配置・分散を計算し、直接 Enemy を生成する。
 // (DynamicSystem への登録は呼び出し側の Stage2 が Stage.addEnemy 経由で行う)。
 import type * as THREE from 'three/webgpu';
-import { type KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
-import { strongestAttractor } from '../../../physics/attractor';
-import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
-import { randSym } from '../../../math/random';
-import { add, len, norm, scale } from '../../../math/vec3';
-import type { Enemy } from '../../dynamic/entity/enemy';
+import { type KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
+import { strongestAttractor } from '../../physics/attractor';
+import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
+import { randSym } from '../../math/random';
+import { add, len, norm, scale } from '../../math/vec3';
+import type { Enemy } from '../dynamic/entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
-import type { EntityIdAllocators } from '../../dynamic/entity/entity-id';
-import { COLOR_ENEMY_ORBIT_LINE } from '../../lines/entity-line-manager';
-import type { CelestialBody } from '../../../physics/celestial-body';
+import type { EntityIdAllocators } from '../dynamic/entity/entity-id';
+import { COLOR_ENEMY_ORBIT_LINE } from '../entity-line-manager';
+import type { CelestialBody } from '../../physics/celestial-body';
 
 export const STAGE2_PER_GROUP = 10; // グループあたりの機数
 export const STAGE2_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]

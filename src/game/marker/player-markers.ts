@@ -11,7 +11,7 @@ import { directionPlacement } from './marker-placement';
 import { DIRECTION_GLYPH } from './marker-identity';
 import type { ModularShip } from '../ship/modular-ship';
 import type { ProjectFn } from '../../math/projection';
-import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
+import { sunGlareSpreadScale } from '../sun-glare-spread';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 // 中央に切り欠きを残した、細い線の三尖星(120度間隔)。

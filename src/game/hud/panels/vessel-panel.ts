@@ -12,7 +12,7 @@ import { setStatePip } from '../../../hud-kit/state-pip';
 import {
   DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO, FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO,
   dynamicPressureAlarmLevel, fuelAlarmLevel,
-} from '../../alarm/alarm-level';
+} from '../../alarm-level';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';
 import type { KeyBinding } from '../../../input-devices/key-mapping';

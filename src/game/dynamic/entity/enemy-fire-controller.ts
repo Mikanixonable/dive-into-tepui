@@ -1,5 +1,5 @@
 // 敵1体の射撃制御。照準・発射機会・バーストの進行とプラズマ弾の生成、その途中経過の直列化。
-import { sunGlareSpreadScale } from '../../combat/sun-glare-spread';
+import { sunGlareSpreadScale } from '../../sun-glare-spread';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ModularShip } from '../../ship/modular-ship';
 import { Bullet } from './bullet';

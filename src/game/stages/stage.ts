@@ -9,7 +9,7 @@ import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from '../../physics/time';
 import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { add, dot, len, scale, sub, v3 } from '../../math/vec3';
-import { RELICS, relicById, type RelicDefinition } from '../relic/relic-catalog';
+import { RELICS, relicById, type RelicDefinition } from '../relic-catalog';
 import { OrbitSlot } from '../navigation/orbit-slot';
 import { orbitSlotStateAt } from '../navigation/orbit-slot-state';
 import { RelicHunt } from './stage-utils/relic-hunt';

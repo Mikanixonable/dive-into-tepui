@@ -1,7 +1,7 @@
 // Stage 2: 近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック。タイムアップで終了。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH, summaryHtml } from './stage';
 import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
-import { generateCluster, STAGE2_PER_GROUP, STAGE2_MAX_RANGE, COLOR_STAGE2_GROUP_ACCENTS } from './spawner/enemy-spawner';
+import { generateCluster, STAGE2_PER_GROUP, STAGE2_MAX_RANGE, COLOR_STAGE2_GROUP_ACCENTS } from './enemy-spawner';
 import { ScoreAttackTimer, type SerializedScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 

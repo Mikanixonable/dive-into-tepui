@@ -1,5 +1,5 @@
 import * as assert from 'node:assert/strict';
-import { ShipAlarms } from '../../src/game/alarm/ship-alarms';
+import { ShipAlarms } from '../../src/game/ship-alarms';
 import { MAX_HULL_TEMP } from '../../src/game/dynamic/entity/combat-ship-entity';
 import { test } from '../harness';
 

@@ -1,20 +1,20 @@
 // 進行後の表示時刻・座標系・カメラ材料を確定し、予測後の表示候補を更新する phase。表示の導出だけを
 // 行い、同期先の DOM・GPU 資源やゲーム進行の正本は所有しない。
-import type { EquatorNodeManager } from '../marker/equator-node-manager';
-import type { CameraSystem } from '../camera/camera-system';
-import { type DisplayWindowManager, trajectoryDemandOf } from '../display-window-manager';
-import type { FlashPresenter } from '../flash-presenter';
-import type { FrameAnchors } from '../frame-anchors';
-import type { PlanDisplay } from '../plan/plan-display';
-import type { Targeter } from '../targeter';
-import type { ViewManager } from '../view/view-manager';
-import { SECTION, type FrameSections } from '../frame-sections';
-import type { CameraFrameSamples } from '../viewer/camera-selection';
-import type { TrajectoryDemand } from '../dynamic/trajectory-demand';
-import type { Viewport } from '../../render/viewport';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { Controllable } from '../dynamic/entity/controllable';
-import type { RunEvent } from '../run-events';
+import type { EquatorNodeManager } from '../game/marker/equator-node-manager';
+import type { CameraSystem } from '../game/camera/camera-system';
+import { type DisplayWindowManager, trajectoryDemandOf } from '../game/display-window-manager';
+import type { FlashPresenter } from '../game/flash-presenter';
+import type { FrameAnchors } from '../game/frame-anchors';
+import type { PlanDisplay } from '../game/plan/plan-display';
+import type { Targeter } from '../game/targeter';
+import type { ViewManager } from '../game/view/view-manager';
+import { SECTION, type FrameSections } from '../game/frame-sections';
+import type { CameraFrameSamples } from '../game/viewer/camera-selection';
+import type { TrajectoryDemand } from '../game/dynamic/trajectory-demand';
+import type { Viewport } from '../render/viewport';
+import type { CelestialBodies } from '../game/celestial/celestial-bodies';
+import type { Controllable } from '../game/dynamic/entity/controllable';
+import type { RunEvent } from '../game/run-events';
 
 export interface DisplayPhaseSource {
   readonly simTime: number;

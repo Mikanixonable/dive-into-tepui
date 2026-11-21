@@ -11,7 +11,7 @@ import {
   DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO,
   TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,
   dynamicPressureAlarmLevel, temperatureAlarmLevel,
-} from '../../alarm/alarm-level';
+} from '../../alarm-level';
 
 import { getApsisLabelSpec } from './orbit-labels';
 import { MAX_HULL_TEMP } from '../../dynamic/entity/combat-ship-entity';

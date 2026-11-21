@@ -1,21 +1,21 @@
 // 生の入力をゲームの命令・操作量・ポインタ操作へ解釈する phase。入力資源そのものは表示の根が
 // 所有し、この phase は既存のビュー・カメラ・建造操作へ配分する順序だけを所有する。
-import { SECTION, type FrameSections } from '../frame-sections';
-import type { CameraSystem } from '../camera/camera-system';
-import type { Targeter } from '../targeter';
-import type { ViewManager } from '../view/view-manager';
-import type { ShipConstruction } from '../ship/ship-construction';
-import type { Input } from '../../input-devices/input';
-import { GameInputRouter, gameInputMode, type GameInputPort } from '../input/game-input-router';
-import { gameInputPorts, pilotInputPorts } from '../input/game-input-ports';
-import { rawGameInputAdapter } from '../input/raw-game-input-adapter';
-import { PilotInput } from '../input/pilot-input';
-import type { GameInputSource } from '../input/game-input-ports';
-import type { PauseMenu } from '../../hud-kit/windows/pause-menu';
-import type { PilotControls } from '../dynamic/entity/pilot-controls';
-import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { Viewport } from '../../render/viewport';
-import type { Hud } from '../hud/hud';
+import { SECTION, type FrameSections } from '../game/frame-sections';
+import type { CameraSystem } from '../game/camera/camera-system';
+import type { Targeter } from '../game/targeter';
+import type { ViewManager } from '../game/view/view-manager';
+import type { ShipConstruction } from '../game/ship/ship-construction';
+import type { Input } from '../input-devices/input';
+import { GameInputRouter, gameInputMode, type GameInputPort } from '../game/input/game-input-router';
+import { gameInputPorts, pilotInputPorts } from '../game/input/game-input-ports';
+import { rawGameInputAdapter } from '../game/input/raw-game-input-adapter';
+import { PilotInput } from '../game/input/pilot-input';
+import type { GameInputSource } from '../game/input/game-input-ports';
+import type { PauseMenu } from '../hud-kit/windows/pause-menu';
+import type { PilotControls } from '../game/dynamic/entity/pilot-controls';
+import type { CameraFrame } from '../render/camera/camera-frame';
+import type { Viewport } from '../render/viewport';
+import type { Hud } from '../game/hud/hud';
 
 export class GameInputPhase {
   private readonly inputRouter: GameInputRouter;

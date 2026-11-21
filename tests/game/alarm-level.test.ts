@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import {
   ammoAlarmLevel, armorAlarmLevel, dynamicPressureAlarmLevel, fuelAlarmLevel, temperatureAlarmLevel,
   temperatureAlarmLevelHeld,
-} from '../../src/game/alarm/alarm-level';
+} from '../../src/game/alarm-level';
 import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { MAX_DYN_PRESSURE } from '../../src/game/player/aero-load';
 import { test } from '../harness';

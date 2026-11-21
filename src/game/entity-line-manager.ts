@@ -1,22 +1,22 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決め、View へ渡す。
-import type { ViewMode } from '../view/view-mode';
-import type { FrameAnchorSource } from '../../physics/frame';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
-import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
-import type { DynamicLineDisplay } from '../../render/dynamic/dynamic-view';
-import { isEnemy } from '../dynamic/entity/enemy';
-import { isModularShip } from '../ship/modular-ship';
-import type { Controllable } from '../dynamic/entity/controllable';
-import type { ThemePalette } from '../../theme';
-import type { CombatTarget } from '../dynamic/entity/combat-target';
-import type { EntityRoster } from '../dynamic/entity-roster';
-import type { DisplayWindow } from '../display-window-manager';
-import type { MapVisibilityPolicy } from '../map/visibility-policy';
-import { orbitLineBasisOf, type OrbitReference } from '../orbit-reference';
-import { COLOR_BASE } from '../marker/marker-identity';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { EntityDisplaySource } from '../viewer/entity-display-selection';
+import type { ViewMode } from './view/view-mode';
+import type { FrameAnchorSource } from '../physics/frame';
+import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
+import type { CameraFrame } from '../render/camera/camera-frame';
+import type { DynamicEntity } from './dynamic/entity/dynamic-entity';
+import type { DynamicLineDisplay } from '../render/dynamic/dynamic-view';
+import { isEnemy } from './dynamic/entity/enemy';
+import { isModularShip } from './ship/modular-ship';
+import type { Controllable } from './dynamic/entity/controllable';
+import type { ThemePalette } from '../theme';
+import type { CombatTarget } from './dynamic/entity/combat-target';
+import type { EntityRoster } from './dynamic/entity-roster';
+import type { DisplayWindow } from './display-window-manager';
+import type { MapVisibilityPolicy } from './map/visibility-policy';
+import { orbitLineBasisOf, type OrbitReference } from './orbit-reference';
+import { COLOR_BASE } from './marker/marker-identity';
+import type { CelestialBodies } from './celestial/celestial-bodies';
+import type { EntityDisplaySource } from './viewer/entity-display-selection';
 
 export const COLOR_ENEMY_ORBIT_LINE = '#565b63';
 const COLOR_PLAYER_ORBIT_LINE_INACTIVE = '#ffffff'; // マップビューで操作対象でない自艦の軌道線

@@ -17,7 +17,7 @@ import { AmmoPickup, RcsFuelPickup } from '../dynamic/entity/pickup';
 import { isModularShip, type ModularShipInit } from '../ship/modular-ship';
 import { createBasePreset } from '../ship/ship-presets';
 import { generateRandomName } from '../random-name';
-import { generateDriftingEnemy } from '../stages/spawner/enemy-generator';
+import { generateDriftingEnemy } from '../stages/enemy-generator';
 import { elementsFormFromState } from './duplicate-form';
 import {
   ObjectPlacerPanel, type ElementsForm, type LagrangeForm, type ObjectPlacementSelection,

@@ -5,7 +5,7 @@ import { fmtDateTime, fmtElapsedUnits, fmtTime } from '../../../hud-kit/format';
 import { type AlarmLevel, applyAlarmLevel } from '../../../hud-kit/alarm-level';
 import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud-kit/widgets/widget-base';
 import type { HudEls } from '../hud-els';
-import type { ShipAlarms } from '../../alarm/ship-alarms';
+import type { ShipAlarms } from '../../ship-alarms';
 import { SIM_SPEED_LEVELS } from '../../dynamic/sim-speed-manager';
 import { Pulldown } from '../../../hud-kit/widgets';
 import type { SettingValue } from '../../../settings/setting-value';

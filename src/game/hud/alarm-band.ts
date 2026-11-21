@@ -3,7 +3,7 @@
 import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import { Button } from '../../hud-kit/widgets';
 import type { HudEls } from './hud-els';
-import type { ShipAlarm, ShipAlarms } from '../alarm/ship-alarms';
+import type { ShipAlarm, ShipAlarms } from '../ship-alarms';
 
 // 警報帯が同時に出す件数。あふれた分は件数にまとめる(UI-DESIGN.md「警報と通知」)。
 const MAX_VISIBLE = 2;

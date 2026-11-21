@@ -5,7 +5,7 @@ import { kinematicState, type KinematicState } from '../../physics/kinematic-sta
 import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/entity/entity-id';
 import {
   generateApproachingEnemy, generateAssemblyEnemy, generateDriftingEnemy,
-} from '../stages/spawner/enemy-generator';
+} from '../stages/enemy-generator';
 import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './stage-controls-panel';
 import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../physics/celestial-body';

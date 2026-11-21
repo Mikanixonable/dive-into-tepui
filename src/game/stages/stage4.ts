@@ -5,8 +5,8 @@ import {
   generateCoellipticEnemy,
   generateMolniyaEnemy,
   generatePhasedEnemy,
-} from './spawner/enemy-generator';
-import { COLOR_ENEMY_ORBIT_LINE } from '../lines/entity-line-manager';
+} from './enemy-generator';
+import { COLOR_ENEMY_ORBIT_LINE } from '../entity-line-manager';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 
 export class Stage4 extends Stage {

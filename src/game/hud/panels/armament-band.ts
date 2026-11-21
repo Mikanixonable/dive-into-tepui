@@ -3,7 +3,7 @@
 import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import { Button } from '../../../hud-kit/widgets';
 import { applyAlarmLevel } from '../../../hud-kit/alarm-level';
-import { ammoAlarmLevel } from '../../alarm/alarm-level';
+import { ammoAlarmLevel } from '../../alarm-level';
 import { fmtAmmoStatus, reloadDisabledReason, type AmmoViewModel } from '../ammo-status';
 import type { KeyBinding } from '../../../input-devices/key-mapping';
 

@@ -1,6 +1,6 @@
-import { dot, type Vec3 } from '../../math/vec3';
-import { sunlitFactor } from '../../physics/shadow';
-import type { CelestialBodies } from '../celestial/celestial-bodies';
+import { dot, type Vec3 } from '../math/vec3';
+import { sunlitFactor } from '../physics/shadow';
+import type { CelestialBodies } from './celestial/celestial-bodies';
 
 // pos で撃つときの、太陽グレアによる散布界の倍率。逆光(照準方向に太陽がある)ほど狙いが
 // 甘くなり、順光では締まる。難易度調整のための経験則であって物理計算ではない。

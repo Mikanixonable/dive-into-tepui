@@ -1,7 +1,7 @@
 // 遺物の定義(SPEC GAME.md 3.2)。値は実行中に変わらないので、発見の状態は持たない。
 // 発見の記録は stage-utils/relic-hunt.ts が持ち、セーブ枠へは launcher が書く。
-import { semiMajorEccentricityFromApsides } from '../../physics/elements';
-import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
+import { semiMajorEccentricityFromApsides } from '../physics/elements';
+import type { OrbitSlotOrbit } from './navigation/orbit-slot';
 
 const KM = 1000;
 const DEG = Math.PI / 180;

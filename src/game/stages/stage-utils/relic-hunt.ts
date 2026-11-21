@@ -1,6 +1,6 @@
 // 遺物の反射の検出と発見の状態(SPEC GAME.md 3.2)。どの遺物を見つけたか、どの距離の段まで
 // 知らせたかを持つ。距離の判定だけをここで行い、告知・台帳への追加は呼び手(ステージ)が行う。
-import type { RelicDefinition } from '../../relic/relic-catalog';
+import type { RelicDefinition } from '../../relic-catalog';
 
 // 検出距離のこの倍より離れたら、知らせた段を戻す。次に入ったときは最初から知らせる。
 const RESET_FACTOR = 1.2;

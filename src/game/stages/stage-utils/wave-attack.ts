@@ -8,7 +8,7 @@ import { ellipsoidAltitude } from '../../../physics/atmosphere';
 import { frameOfCelestialBody, framePoint, toFramePoint, toFrameState, toInertialPoint } from '../../../physics/frame';
 import { strongestAttractor } from '../../../physics/attractor';
 import { add, addScaled, len, norm, randPerp, randVec, scale, sub, v3, type Vec3 } from '../../../math/vec3';
-import { generateApproachingEnemy } from '../spawner/enemy-generator';
+import { generateApproachingEnemy } from '../enemy-generator';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Enemy } from '../../dynamic/entity/enemy';
 import type { EntityIdAllocators } from '../../dynamic/entity/entity-id';

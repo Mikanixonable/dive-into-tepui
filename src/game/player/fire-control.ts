@@ -15,7 +15,7 @@ import type { ModularShip } from '../ship/modular-ship';
 import type { WeaponMuzzle, WeaponPorts } from '../ship/ship-capabilities';
 import { DebrisPiece } from '../dynamic/entity/debris-piece';
 import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/entity/casing-collision';
-import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
+import { sunGlareSpreadScale } from '../sun-glare-spread';
 import {
   WeaponState, type SerializedWeaponState, type WeaponShotRecord,
 } from './weapon-state';

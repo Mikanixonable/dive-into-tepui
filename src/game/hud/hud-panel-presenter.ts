@@ -34,7 +34,7 @@ import type { OrbitReference } from '../orbit-reference';
 import type { ViewMode } from '../view/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ThemePalette } from '../../theme';
-import type { ShipAlarms } from '../alarm/ship-alarms';
+import type { ShipAlarms } from '../ship-alarms';
 
 export class HudPanelPresenter {
   private readonly viewBadge: ViewBadge;

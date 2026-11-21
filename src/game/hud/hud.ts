@@ -30,7 +30,7 @@ import type { HintKind, Notifier } from '../../hud-kit/notifier';
 import { ConfirmationOverlay } from '../../hud-kit/windows/confirmation-overlay';
 import { HudToast } from './hud-toast';
 import { AlarmBand } from './alarm-band';
-import type { ShipAlarms } from '../alarm/ship-alarms';
+import type { ShipAlarms } from '../ship-alarms';
 import { hudAttention, hudWorkspace } from './hud-workspace';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
