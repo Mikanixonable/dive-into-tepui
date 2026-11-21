@@ -17,11 +17,11 @@ const ROUTE = '/__cloud-lab/apply-tuning';
 
 // source の既定値表のうち values のキーの右辺を数値へ置き換える。表に無いキーがあれば missing へ挙げ、
 // 何も書き換えない。changed は { key, from, to } の一覧で、右辺が式(6 * 3600 など)でも数値に畳まれる。
-function rewriteTuningDefaults(source, values) {
-  const start = source.indexOf(BLOCK_START);
+function rewriteTuningDefaults(source, values, blockStart = BLOCK_START) {
+  const start = source.indexOf(blockStart);
   const end = start < 0 ? -1 : source.indexOf(BLOCK_END, start);
-  if (end < 0) throw new Error('CLOUD_TUNING_DEFAULTS の範囲が見つからない');
-  const bodyStart = start + BLOCK_START.length;
+  if (end < 0) throw new Error(`${blockStart} の範囲が見つからない`);
+  const bodyStart = start + blockStart.length;
   let body = source.slice(bodyStart, end);
   const changed = [];
   const missing = [];
@@ -66,11 +66,11 @@ function reply(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
-// 開発サーバの POST の受け口を作る。本体は { target, values }。target が 'defaults' なら tuningPath の既定値表へ、
+// 開発サーバの POST の受け口を作る。blockStart は既定値表の書き出しの行(既定は雲の表)。敵の実験環境も同じ窓口を使う。本体は { target, values }。target が 'defaults' なら tuningPath の既定値表へ、
 // 'overrides' なら overridesPath の上書きファイルへ values を書く(空の表は上書きの解除になる)。
 // application/json だけを受け(別のサイトからの単純な POST では送れない)、Host と Origin が
 // この開発サーバのものと一致するときだけ書く。値のキーは既定値表に実在するものだけ受ける。
-function createApplyTuningHandler(tuningPath, overridesPath) {
+function createApplyTuningHandler(tuningPath, overridesPath, blockStart = BLOCK_START) {
   return (request, response) => {
     const host = request.headers.host ?? '';
     const origin = request.headers.origin;
@@ -84,7 +84,7 @@ function createApplyTuningHandler(tuningPath, overridesPath) {
       if (target !== 'defaults' && target !== 'overrides') {
         throw new Error(`知らない書き込み先: ${String(target)}`);
       }
-      const result = rewriteTuningDefaults(fs.readFileSync(tuningPath, 'utf8'), values);
+      const result = rewriteTuningDefaults(fs.readFileSync(tuningPath, 'utf8'), values, blockStart);
       if (result.missing.length > 0) {
         reply(response, 409, { error: `既定値の表に無い項目: ${result.missing.join(', ')}` });
         return;

@@ -37,6 +37,7 @@ import { showFatalError } from './launcher/fatal-error';
 import { gameCommand } from './game/input/game-input-types';
 import { KEY_MAPPING as K } from './input-devices/key-mapping';
 import { applyCloudTuningOverrides } from './render/earth-weather/cloud-tuning';
+import { applyAssemblyTuningOverrides } from './physics/assembly-tuning';
 import type { PageDevices } from './run/page-devices';
 import type { ViewOptionsSettings } from './game/view/view-options-settings';
 import type { GraphicsSettingsData } from './render/graphics-settings';
@@ -237,6 +238,27 @@ function startCloudTuningSync(): void {
   void poll();
 }
 
+// 開発ビルドだけ: 敵の実験環境(enemy-lab)が開発サーバ経由で配る形状パラメータの上書きを定期で拾い、
+// 以降に出る組み立て型の敵へ反映する(tools/enemy-lab-apply-tuning.cjs の経路)。本番ビルドでは
+// この呼び出しごと落ちる。
+function startAssemblyTuningSync(): void {
+  let lastText: string | null = null;
+  const poll = async (): Promise<void> => {
+    try {
+      const response = await fetch('/__assembly-tuning/overrides');
+      const text = response.ok ? await response.text() : null;
+      if (text !== null && text !== lastText) {
+        lastText = text;
+        applyAssemblyTuningOverrides(JSON.parse(text) as Record<string, number>);
+      }
+    } catch {
+      // 応答が壊れた・サーバが落ちただけなら見逃し、次の周期で拾う。
+    }
+    window.setTimeout(poll, 700);
+  };
+  void poll();
+}
+
 // 起動時に一度だけ走る、全システムの生成と配線。
 async function main() {
   // 設定を読み、選ばれている配色を :root へ適用してからでなければ、ローディング表示も
@@ -298,7 +320,10 @@ async function main() {
   pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
   // 最初のタイトル画面でも設定面と BGM を引き直すため、周回を起こす前からフレームを回す。
-  if (process.env.NODE_ENV !== 'production') startCloudTuningSync();
+  if (process.env.NODE_ENV !== 'production') {
+    startCloudTuningSync();
+    startAssemblyTuningSync();
+  }
   startAnimationLoop(launcher, devices, settings, bgm, debugInfo, pauseMenu, snapshotControls);
   await launcher.start();
 }
