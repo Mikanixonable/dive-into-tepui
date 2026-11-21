@@ -60,6 +60,7 @@ import { GameInputPhase } from './runtime/game-input-phase';
 import type { GameInputSource } from './input/game-input-ports';
 import { DisplayPhase, type DisplayPhaseSource } from './runtime/display-phase';
 import { KillStop } from './kill-stop';
+import { ShipAlarms } from './alarm/ship-alarms';
 import type { GameInputPort } from './input/game-input-router';
 import { ConfirmationOverlay } from '../hud/windows/confirmation-overlay';
 import { len, sub } from '../math/vec3';
@@ -95,6 +96,8 @@ export class GamePresentation {
   private readonly uiSfx: UiSfx;
   // 操作と出来事から出す UI の効果音を、同期まで溜める先。
   private readonly uiSounds = new UiSoundQueue();
+  // 操作艦の警報(状態)の評価と「確認済み」の記憶。警報帯・警報灯・警報音・確認キーが読む。
+  private readonly alarms = new ShipAlarms();
   // 雲の実効の精細さを決める予算上限の状態機械。フレーム時間と雲の GPU 時間から
   // 段を締める。各天体の雲へは sync ごとに同じ実体を結ぶ。
   private readonly cloudGovernor = new CloudQualityGovernor();
@@ -330,6 +333,7 @@ export class GamePresentation {
       get activeControllable() { return game.activeControllable; },
       get stageIsPlaying() { return game.activeStage.isPlaying; },
       startConstruction: () => this.startConstructionNearest(),
+      acknowledgeAlarms: () => this.alarms.acknowledge(),
     };
   }
 
@@ -593,8 +597,13 @@ export class GamePresentation {
   ): void {
     const events = this.game.events.recent;
     this.runEventPresenter.present(events);
+    // 警報はこのフレームの操作艦の物理量で組み直してから、警報帯・警報音へ渡す。
+    // 警報音は噴射音と同じく、周回が動いている間だけ鳴る。
+    this.alarms.update(controlled?.motion.temperature ?? null);
+    const runInProgress = !this.isPaused && this.game.activeStage.isPlaying;
     this.worldSfx.sync({
-      loops: controlledLoopSfx(controlled, displayTime, !this.isPaused && this.game.activeStage.isPlaying),
+      loops: controlledLoopSfx(controlled, displayTime, runInProgress),
+      alarm: runInProgress && this.alarms.unacknowledgedWarning,
       cues: worldSoundCues(events),
     });
     this.uiSfx.sync(this.uiSounds.cues);
@@ -628,7 +637,7 @@ export class GamePresentation {
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
     activeStage.sync(camera, view, displayTime);
-    this.hudPanels.sync(view, displayWindow, orbitRef, palette, camera, nowMs);
+    this.hudPanels.sync(view, displayWindow, orbitRef, palette, camera, this.alarms, nowMs);
     this.syncFrameMarkers(nowMs);
     // このフレームのマーカーが出揃った後でなければならないので最後に通す。
     this.devices.markers.resolveOverlaps(view === 'map');

@@ -364,6 +364,7 @@ function buildTopBar(root: HTMLElement): void {
     <div class="gs-status-head">
       <span class="ui-section-code" aria-hidden="true">MIS</span>
       <span class="ui-data-context">MISSION STATUS</span>
+      <output class="gs-alarm-lamp hidden" data-id="alarm-lamp" aria-label="警報"></output>
       <span class="gs-workspace ui-data-context" aria-label="現在のHUDワークスペース"></span>
     </div>
     <div class="gs-row" id="hud-viewbadge" data-id="gs-viewrow"></div>
@@ -539,6 +540,9 @@ export function buildHudDom(
   const helpPanel = new HelpPanel(shell.overlayManager);
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
   buildTopBar(chrome);
+  const alarmBand = createHudElement('div', 'hud-alarm-band', chrome);
+  alarmBand.dataset.id = 'alarm-band';
+  alarmBand.classList.add('hidden');
   buildChaseReset(chrome);
   buildChromeActions(root, chrome, helpPanel, onPauseBadge);
   trackHudChromeInset(root, chrome);

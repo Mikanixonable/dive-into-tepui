@@ -34,6 +34,7 @@ import type { OrbitReference } from '../orbit-reference';
 import type { ViewMode } from '../view/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ThemePalette } from '../../theme';
+import type { ShipAlarms } from '../alarm/ship-alarms';
 
 export class HudPanelPresenter {
   private readonly viewBadge: ViewBadge;
@@ -103,13 +104,14 @@ export class HudPanelPresenter {
     return this.celestialSystem.nameOf(id);
   }
 
-  // view で表に出ている常設パネルを、表示窓 displayWindow・軌道要素の基準 orbitRef・配色 palette で
-  // 組んだ値へ合わせる。camera はこのフレームの表示カメラ、nowMs はフレームの実時刻 [ms]。
+  // view で表に出ている常設パネルと警報帯を、表示窓 displayWindow・軌道要素の基準 orbitRef・配色
+  // palette で組んだ値へ合わせる。camera はこのフレームの表示カメラ、alarms は鳴っている警報、
+  // nowMs はフレームの実時刻 [ms]。
   public sync(
     view: ViewMode, displayWindow: PresentationDisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
-    camera: CameraFrame, nowMs: number,
+    camera: CameraFrame, alarms: ShipAlarms, nowMs: number,
   ): void {
-    this.hud.syncPanels(view, this.viewModels(view, displayWindow, orbitRef, palette), camera, nowMs);
+    this.hud.syncPanels(view, this.viewModels(view, displayWindow, orbitRef, palette), alarms, camera, nowMs);
   }
 
   // 常設パネルの値を束ねる。表に出ているビューのパネルのぶんだけを組む。

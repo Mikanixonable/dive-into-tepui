@@ -295,6 +295,29 @@ body.touch-ui-active #hud-pause-badge { display: flex; }
   #hud-chrome-actions > * { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
 
+/* 警報帯: 鳴っている警報をトップバーの下へ「何が起きていて、何をすればよいか」の形で出す。
+   未確認の警告は点滅し、確認ボタンを添える(UI-DESIGN.md「警報と通知」)。 */
+#hud-alarm-band {
+  /* 未確認の警告の点滅周期。この帯だけで使う値なので、ここにだけ置く。 */
+  --alarm-blink-period: 0.9s;
+  position: relative; grid-column: 2; justify-self: center;
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+  margin-top: var(--space-2); max-width: min(560px, 100%);
+}
+.alarm-band-list {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-1);
+}
+.alarm-band-item {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) var(--space-4); border-radius: var(--radius-micro);
+  font-size: var(--font-s); letter-spacing: var(--tracking-label); color: var(--text);
+}
+.alarm-band-item.more { color: var(--text-dim); }
+.alarm-band-item.unack { animation: hud-alarm-blink var(--alarm-blink-period) ease-in-out infinite; }
+.alarm-band-ack { pointer-events: auto; }
+@keyframes hud-alarm-blink { 50% { opacity: 0.4; } }
+
 #hud-toast {
   position: absolute; top: calc(var(--hud-chrome-h) + var(--space-2)); left: 50%; transform: translateX(-50%);
   display: flex; align-items: baseline; gap: var(--space-3);

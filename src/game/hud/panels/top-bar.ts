@@ -1,8 +1,10 @@
-// 画面全体のトップバー(#hud-topbar)の同期: MET・時間加速・NODE WARP。
+// 画面全体のトップバー(#hud-topbar)の同期: MET・時間加速・NODE WARP・警報灯。
 // 自機の有無に関係なく常に出す画面全体の状態。
 import { SyncThrottle } from '../sync-throttle';
 import { fmtDateTime, fmtElapsedUnits, fmtTime } from '../../../hud/format';
+import { type AlarmLevel, applyAlarmLevel } from '../../../hud/alarm-level';
 import type { HudEls } from '../hud-els';
+import type { ShipAlarms } from '../../alarm/ship-alarms';
 import { SIM_SPEED_LEVELS } from '../../dynamic/sim-speed-manager';
 import { Pulldown } from '../../../hud/widgets';
 
@@ -46,10 +48,16 @@ export class TopBar {
     this.simSpeedEl.classList.add('gs-speed-select');
   }
 
+  // 警報灯が最後に出した件数と段。変わらなければ DOM を書き換えない。
+  private lampCount = 0;
+  private lampLevel: AlarmLevel = 'normal';
+
   // MET を毎フレーム、時間加速と NODE WARP の残りを間引いて反映する。
   // view が null(ランが無い)なら、掴んでいる口を落として何も書かない。
-  public sync(view: TopBarViewModel | null, nowMs: number): void {
+  // alarms は鳴っている警報で、警報灯が件数と最も重い段を出す。
+  public sync(view: TopBarViewModel | null, alarms: ShipAlarms | null, nowMs: number): void {
     this.view = view;
+    this.syncAlarmLamp(alarms);
     const nodeWarpEl = this.els.get('node-warp-remain');
     if (!view) {
       nodeWarpEl.closest('#hud-topbar')?.classList.remove('node-warp-active');
@@ -76,5 +84,20 @@ export class TopBar {
     nodeWarpEl.classList.toggle('ui-accent', remain !== null);
     nodeWarpEl.closest('.gs-metric')?.classList.toggle('hidden', remain === null);
     nodeWarpEl.closest('#hud-topbar')?.classList.toggle('node-warp-active', remain !== null);
+  }
+
+  // 警報灯: 鳴っている警報の件数を、最も重い段の色と記号で出す。警報が無ければ畳む。
+  private syncAlarmLamp(alarms: ShipAlarms | null): void {
+    const lamp = this.els.get('alarm-lamp');
+    const count = alarms?.count ?? 0;
+    const worst = alarms?.worst ?? 'normal';
+    if (count === this.lampCount && worst === this.lampLevel) return;
+    this.lampCount = count;
+    this.lampLevel = worst;
+    lamp.classList.toggle('hidden', count === 0);
+    if (count > 0) {
+      lamp.textContent = String(count);
+      applyAlarmLevel(lamp, worst);
+    }
   }
 }
