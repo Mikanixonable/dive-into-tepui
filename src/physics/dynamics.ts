@@ -4,7 +4,7 @@
 import { attractorAccel } from './attractor';
 import { type KinematicState, kinematicState } from './kinematic-state';
 import { dragAccel } from './atmosphere';
-import { sunlitFactor } from './shadow';
+import type { ShadowCasters } from './shadow';
 import { srpAccel } from './srp';
 import { isStar } from './celestial-body-def';
 import { type Vec3, add, cross, dot, sub, v3 } from '../math/vec3';
@@ -119,14 +119,15 @@ export function stepRK4(s: KinematicState, dt: number, accel: AccelFn): Kinemati
 // 評価する — 距離の3乗に比例する重力計算では、ステップ幅ぶんの天体移動が精度を左右するため。
 // 日照率・輻射圧・大気も重力と同じく各評価ステージの時刻で評価する。これらを pivot に据え置くと、
 // ステップが長い時間加速時に SRP/食と大気相対速度が同じ時刻を見なくなる。
+// occluders は、この区間に影を落としうる天体の候補。
 export function environmentSampleAt(
   t: number, r: Vec3, v: Vec3, star: CelestialBody | null,
-  occluders: readonly CelestialBody[], atmosphereBody: CelestialBody | null, pivot: number,
+  occluders: ShadowCasters, atmosphereBody: CelestialBody | null, pivot: number,
 ): DynamicsEnvironmentSample {
   const toSun = star === null ? v3() : sub(star.positionAt(pivot, t), r);
   const sunDist = Math.hypot(toSun.x, toSun.y, toSun.z);
   const sunDir = sunDist > 0 ? v3(toSun.x / sunDist, toSun.y / sunDist, toSun.z / sunDist) : v3();
-  const sunlit = star === null ? 0 : sunlitFactor(r, star, occluders, pivot, t);
+  const sunlit = star === null ? 0 : occluders.sunlitAt(r, t);
   const atmosphere = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(t);
   const atmosphereState = atmosphereBody === null || atmosphere === null
     ? null : atmosphereBody.stateAt(pivot, t);
@@ -180,7 +181,7 @@ export function stepDynamics(
   state: KinematicState,
   dt: number,
   attractors: readonly CelestialBody[],
-  occluders: readonly CelestialBody[],
+  occluders: ShadowCasters,
   atmosphereBody: CelestialBody | null,
   pivot: number,
   bcInv: number,
@@ -192,14 +193,14 @@ export function stepDynamics(
 }
 
 // RK4 の 1 ステップを実行し、各中間ステージで評価された環境サンプルの配列と新しい状態を返す。
-// 引数 attractors はこのステップで考慮する重力源の一覧、occluders は日照率計算に用いる遮蔽体一覧
+// 引数 attractors はこのステップで考慮する重力源の一覧、occluders は日照率計算に用いる遮蔽体の候補
 // (重力の絞り込みとは独立に指定可能)。atmosphereBody は抗力を及ぼす対象の大気天体
 // (null なら抗力は恒等的にゼロ)。pivot は天体位置を厳密に取得した基準時刻。
 export function stepDynamicsWithSamples(
   state: KinematicState,
   dt: number,
   attractors: readonly CelestialBody[],
-  occluders: readonly CelestialBody[],
+  occluders: ShadowCasters,
   atmosphereBody: CelestialBody | null,
   pivot: number,
   bcInv: number,

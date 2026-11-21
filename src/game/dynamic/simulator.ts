@@ -191,7 +191,7 @@ export class Simulator {
         // 残さない弾・薬莢が表示時刻の状態を答えられなくなる。
         const integrated = e.stepSimulation(
           i === divisions - 1 ? endTime - e.state.t : step,
-          near, this.bodies.surface, atmosphereBody, this.bodies.star,
+          near, this.bodies.occluders, atmosphereBody, this.bodies.star,
           this.bodies.pivot, services);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
