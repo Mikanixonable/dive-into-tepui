@@ -921,16 +921,14 @@ async function bootAndCheckReady() {
       fatal: Boolean(document.getElementById('fatal-error-overlay')),
       fatalText: document.getElementById('fatal-error-overlay')?.textContent ?? '',
       loading: [...document.querySelectorAll('body > div')].find((d) => d.textContent?.includes('Dive into Tepui'))?.textContent?.slice(0, 120) ?? '',
-      frames: document.documentElement.dataset.smokeFrames ?? 'unset',
     })`);
     if (state.fatal) {
-      const bufferLog = await devTools.evaluate('JSON.stringify(window.__bufferLog ?? [])');
-      throw new Error(`Fatal error overlay appeared during browser smoke test: ${state.fatalText}\nbufferLog: ${bufferLog}`);
+      throw new Error(`Fatal error overlay appeared during browser smoke test: ${state.fatalText}`);
     }
     if (state.ready) break;
     if (Date.now() - lastLog > 10_000) {
       lastLog = Date.now();
-      console.error(`waiting for boot: loading="${state.loading}" frames=${state.frames}`);
+      console.error(`waiting for boot: loading="${state.loading}"`);
     }
     await sleep(500);
   }
@@ -967,12 +965,12 @@ async function bootAndCheckReady() {
         combatView: Boolean(document.querySelector('.hud-combat-root.active')),
         loading: [...document.querySelectorAll('body > div')].find((d) => d.textContent?.includes('Dive into Tepui'))?.textContent?.slice(0, 120) ?? 'none',
         stageSelect: Boolean(document.querySelector('.ss-window')),
-        frames: document.documentElement.dataset.smokeFrames ?? 'unset',
+        uploads: window.__smokeUploads ?? 'unset',
         canvases: document.querySelectorAll('canvas').length,
       };
     })()`);
     console.error(`boot diagnostics: ${JSON.stringify(diag)}\nfatalEvents:\n  ${describeFatalEvents() || '(none)'}`);
-    throw new Error(`Game did not complete 60 animation frames within 30 seconds. diagnostics: ${JSON.stringify(diag)}`);
+    throw new Error(`Game did not complete 60 animation frames within the boot deadline. diagnostics: ${JSON.stringify(diag)}`);
   }
   throwIfFatal('Browser reported page exception(s) or console error(s) during boot');
 }
@@ -985,31 +983,34 @@ async function runConfiguredScenario() {
   const pageQuery = layoutOnly
     ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=1`
     : query;
-  // createBuffer が投げたときの descriptor と呼び出し元を残し、CI の GPU エラーを切り分ける。
+  // mappedAtCreation バッファはレンダラ↔GPU プロセス間の共有メモリ上に確保され、実装ごとの
+  // 総量上限を超えると createBuffer が "too large for the implementation" で失敗する。
+  // SwiftShader(Vulkan)ではホストメモリの直接インポートがなく必ずその経路を通るうえ、
+  // このゲームは起動時に千を超えるバッファを mappedAtCreation で作るため上限へ達する。
+  // 検証したいのはレイアウトであってアップロード経路ではないので、JS 側に用意した
+  // ArrayBuffer へ書かせて unmap で queue.writeBuffer へ振り替え、共有メモリを使わない形にする。
   await devTools.send('Page.addScriptToEvaluateOnNewDocument', {
     source: `(() => {
       if (typeof GPUDevice === 'undefined') return;
-      window.__bufferLog = { total: 0, mapped: 0, entries: [] };
+      window.__smokeUploads = 0;
       const orig = GPUDevice.prototype.createBuffer;
       GPUDevice.prototype.createBuffer = function (desc) {
-        const log = window.__bufferLog;
-        log.total++;
-        let rec = null;
-        if (desc.mappedAtCreation) {
-          rec = { t: Math.round(performance.now()), size: desc.size, usage: desc.usage };
-          log.mapped++;
-          log.entries.push(rec);
-          if (log.entries.length > 80) log.entries.shift();
-        }
-        try {
-          return orig.call(this, desc);
-        } catch (e) {
-          log.entries.push({
-            failed: true, size: desc.size, usage: desc.usage, label: desc.label ?? '',
-            error: String(e), stack: new Error('createBuffer-failed').stack,
-          });
-          throw e;
-        }
+        if (!desc.mappedAtCreation) return orig.call(this, desc);
+        window.__smokeUploads++;
+        const buffer = orig.call(this, { ...desc, mappedAtCreation: false });
+        const queue = this.queue;
+        let staging = new ArrayBuffer(desc.size);
+        buffer.getMappedRange = (offset = 0, size) => {
+          if (offset === 0 && size === undefined) return staging;
+          // 部分レンジは呼ばれない想定。来たら書き込みが本体へ載らないので警告する。
+          console.warn('smoke upload shim: partial getMappedRange', offset, size);
+          return staging.slice(offset, size === undefined ? undefined : offset + size);
+        };
+        buffer.unmap = () => {
+          if (staging !== null) queue.writeBuffer(buffer, 0, staging);
+          staging = null;
+        };
+        return buffer;
       };
     })()`,
   });
@@ -1203,8 +1204,8 @@ async function runConfiguredScenario() {
   console.log(`Browser smoke passed (${mode}): production build ran and its HUD held together without page/console fatal errors.`);
 }
 
-try {
-  session = await openChromeSession({
+function launchSession() {
+  return openChromeSession({
     serveDir: path.join(root, 'docs'),
     port,
     debugPort,
@@ -1224,14 +1225,23 @@ try {
       if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
     },
   });
-  devTools = session.devTools;
+}
+
+try {
   if (layoutSuite) {
     for (const scenario of layoutScenarios) {
+      // 1シナリオぶんの描画で GPU プロセスが落ちると、以後のナビゲートでアダプタを
+      // 取れなくなる。シナリオごとにセッションを立て直してクラッシュを持ち越さない。
+      await session?.close();
+      session = await launchSession();
+      devTools = session.devTools;
       configureScenario(scenario.query, scenario.creativePreset, scenario.smokeConstruction);
       fatalEvents.length = 0;
       await runConfiguredScenario();
     }
   } else {
+    session = await launchSession();
+    devTools = session.devTools;
     fatalEvents.length = 0;
     await runConfiguredScenario();
   }
