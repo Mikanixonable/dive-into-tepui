@@ -4,6 +4,7 @@ import { MANUAL_SAVE_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/format';
 import { Button, Meter, TabBar } from '../../hud/widgets';
+import { bindKeyboardActivation } from '../../hud/widgets/widget-base';
 import { injectOnce } from '../../hud/inject-style';
 import { smallBtn, stageLabel } from './shared';
 
@@ -152,12 +153,7 @@ function buildSnapshotCard(
   if (refusal === null) {
     card.setAttribute('role', 'button');
     card.tabIndex = 0;
-    card.addEventListener('keydown', (e) => {
-      if (e.repeat || (e.key !== 'Enter' && e.key !== ' ')) return;
-      e.preventDefault();
-      e.stopPropagation();
-      callbacks.onLoadSnapshot(s.id, null);
-    });
+    bindKeyboardActivation(card, () => callbacks.onLoadSnapshot(s.id, null));
   }
 
   const name = document.createElement('div');

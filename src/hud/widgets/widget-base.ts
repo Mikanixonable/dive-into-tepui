@@ -45,14 +45,21 @@ export function bindActivation(el: HTMLElement, handler: () => void): void {
     handler();
   });
   // Enter/Space を click として合成する(role="button" だけでは発火しないため)。
-  // 押しっぱなしのキーリピートでは発火しない — 合成 click は isTrusted が false で
-  // blur ガードが効かず、連射になってしまうため。
+  bindKeyboardActivation(el, () => el.click());
+}
+
+// Enter/Space の打鍵だけを活性化として配線する。dblclick や contextmenu が意味を持つ行など、
+// click 自体を活性化へ割り当てられない要素へ、キーボードからの活性化だけを足すために使う。
+// role だけでは click を発火しないため明示的に呼び、伝播も止める。
+// 押しっぱなしのキーリピートでは発火しない — 合成される活性化は isTrusted が false で
+// blur ガードが効かず、連射になってしまうため。
+export function bindKeyboardActivation(el: HTMLElement, handler: () => void): void {
   el.addEventListener('keydown', (e) => {
-    if (e.repeat) return;
+    if (e.target !== el || e.repeat) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       e.stopPropagation();
-      el.click();
+      handler();
     }
   });
 }

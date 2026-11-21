@@ -4,6 +4,7 @@
 // 複数列のグリッドへ並べる(百件規模を縦一列に積むと画面高をはみ出すため)。
 import { clampOverlayPosition } from '../layout';
 import { Button, buildLabeledRow } from '../widgets';
+import { bindActivation } from '../widgets/widget-base';
 import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';
 import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
@@ -294,17 +295,13 @@ export class ObjectPicker<T> implements OverlayHandle {
         row.tabIndex = -1;
         row.textContent = label;
         row.classList.toggle('on', value === this.selected);
-        row.addEventListener('click', (e) => {
-          e.stopPropagation();
+        bindActivation(row, () => {
           this.close();
           this.onSelect(value);
         });
         row.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            row.click();
-            return;
-          }
+          // Enter/Space は bindActivation が click へ合成するので、ここでは移動キーだけを扱う。
+          if (e.key === 'Enter' || e.key === ' ') return;
           this.handleOptionKeydown(e, row);
         });
         row.addEventListener('focus', () => this.setRovingOption(row));
