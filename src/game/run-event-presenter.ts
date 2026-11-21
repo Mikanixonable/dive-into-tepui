@@ -52,10 +52,23 @@ function corruptionMessage(phase: string, dt: number, simDt: number, detail: str
   return `シミュレーション状態が壊れました(NaN/Infinity)。phase=${phase} dt=${dt} simDt=${simDt} — ${detail}`;
 }
 
-// 出来事 body が伴うゲーム世界の効果音。音を伴わない出来事なら null。
-function worldSoundOf(body: RunEventBody): WorldSound | null {
+// 音を宣言するフレームの時計。実時刻 nowMs [ms] に表示時刻 displayTime [sim s] を、倍率 simSpeed で描いている。
+export interface SoundFrameClock {
+  readonly nowMs: number;
+  readonly displayTime: number;
+  readonly simSpeed: number;
+}
+
+// シミュレーション時刻 t の出来事が画面に現れる実時刻 [s]。
+function realTimeOf(clock: SoundFrameClock, t: number): number {
+  return clock.nowMs / 1000 + (t - clock.displayTime) / Math.max(clock.simSpeed, 1e-9);
+}
+
+// 出来事 body が伴うゲーム世界の効果音。音を伴わない出来事なら null。発砲音は、発射が画面に現れる
+// 実時刻に鳴らす。
+function worldSoundOf(body: RunEventBody, clock: SoundFrameClock): WorldSound | null {
   switch (body.kind) {
-    case 'gunFired': return { kind: 'fire' };
+    case 'gunFired': return { kind: 'fire', at: realTimeOf(clock, body.muzzleState.t) };
     case 'gunSpunUp': return { kind: 'spinUp' };
     case 'gunDryFired': return { kind: 'emptyClick' };
     case 'gunMagazineFed': return { kind: 'magFeed' };
@@ -79,11 +92,11 @@ function worldSoundOf(body: RunEventBody): WorldSound | null {
   }
 }
 
-// 出来事 events が伴うゲーム世界の効果音の宣言。id は出来事の通し番号。
-export function worldSoundCues(events: readonly RunEvent[]): SoundCue<WorldSound>[] {
+// 出来事 events が伴うゲーム世界の効果音の宣言。id は出来事の通し番号、clock は宣言するフレームの時計。
+export function worldSoundCues(events: readonly RunEvent[], clock: SoundFrameClock): SoundCue<WorldSound>[] {
   const cues: SoundCue<WorldSound>[] = [];
   for (const { seq, body } of events) {
-    const sound = worldSoundOf(body);
+    const sound = worldSoundOf(body, clock);
     if (sound !== null) cues.push({ id: seq, sound });
   }
   return cues;

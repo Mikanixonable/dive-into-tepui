@@ -76,8 +76,10 @@ export class AudioEngine {
     osc.stop(t + duration);
   }
 
-  // 共有ノイズバッファをフィルタ・減衰させ、短いバースト音として鳴らす。
-  public noiseBurst(duration: number, filterType: BiquadFilterType, freq: number, volume: number): void {
+  // 共有ノイズバッファをフィルタ・減衰させ、短いバースト音として鳴らす。delay [s] で発音を遅らせられる。
+  public noiseBurst(
+    duration: number, filterType: BiquadFilterType, freq: number, volume: number, delay = 0,
+  ): void {
     const ctx = this._ctx;
     if (!ctx || !this._noiseBuf) return;
     const src = ctx.createBufferSource();
@@ -87,7 +89,7 @@ export class AudioEngine {
     filter.type = filterType;
     filter.frequency.value = freq;
     const gain = ctx.createGain();
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + delay;
     gain.gain.setValueAtTime(volume, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
     src.connect(filter).connect(gain).connect(ctx.destination);

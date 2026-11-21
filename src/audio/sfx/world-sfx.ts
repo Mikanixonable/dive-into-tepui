@@ -16,12 +16,14 @@ export interface LoopSfx {
   readonly rcs: boolean;
 }
 
-// 一回きりの効果音の種類。hit の impactDistance は被弾点と自機中心の距離 [m]。
+// 一回きりの効果音の種類。hit の impactDistance は被弾点と自機中心の距離 [m]。fire の at は、その発射が
+// 画面に現れる実時刻 [s](フレームの実時刻と同じ時計)。
 export type WorldSound =
   | {
-    readonly kind: 'fire' | 'reload' | 'spinUp' | 'clank' | 'magFeed' | 'pickup' | 'emptyClick'
+    readonly kind: 'reload' | 'spinUp' | 'clank' | 'magFeed' | 'pickup' | 'emptyClick'
       | 'magneticInterference' | 'enemyHit' | 'explosion' | 'decouple' | 'altAlarm';
   }
+  | { readonly kind: 'fire'; readonly at: number }
   | { readonly kind: 'hit'; readonly impactDistance: number };
 
 // そのフレームに鳴らすべき音の全体。alarm は未確認の警告が鳴っているかで、真の間だけ警報ループが鳴る。
@@ -35,9 +37,9 @@ interface WorldSfxDeclaration {
 const LOW_PRIORITY_VOICE_LIMIT = 4;
 
 // 順位4の音が鳴っている長さの見積もり [s]。同時数を数えるためだけに使う。この表に載らない音は
-// 順位1〜3で、上限によらず必ず鳴る。
+// 上限によらず必ず鳴る — 順位1〜3の音と、他の順位4の音と上限を分け合わない発砲音
+// (SPEC/AUDIO.md「同時に鳴る効果音の優先順位」)。
 const LOW_PRIORITY_SPAN: Partial<Record<WorldSound['kind'], number>> = {
-  fire: 0.11,
   reload: 1.2,
   spinUp: 0.34,
   clank: 0.45,
@@ -45,6 +47,10 @@ const LOW_PRIORITY_SPAN: Partial<Record<WorldSound['kind'], number>> = {
   pickup: 0.12,
   emptyClick: 0.03,
 };
+
+// 時刻を指定された音を鳴らすまでの遅れ [s]。フレームの間に来た発射を、フレームを待たずに時刻どおり
+// 並べられるよう、1フレームより長く取る。
+const SCHEDULE_LATENCY = 0.05;
 
 export class WorldSfx {
   // 連続音のチャンネル。組めるまでと、畳んだ後は null。
@@ -59,6 +65,9 @@ export class WorldSfx {
   private lastCueId = -1;
   // 順位4の音が鳴り終わる見込みの時刻 [s](ctx の時刻)。上限の判定に使う。
   private lowPriorityEnds: number[] = [];
+  // 実時刻 [s] から ctx の時刻を引くときに足すずれ。フレームごとの揺れで拍が乱れないよう、
+  // 外れたときだけ張り直す。張っていなければ null。
+  private clockOffset: number | null = null;
 
   public constructor(private readonly engine: AudioEngine) { }
 
@@ -89,7 +98,7 @@ export class WorldSfx {
   // 一回きりの音を1つ鳴らす。
   private play(sound: WorldSound): void {
     switch (sound.kind) {
-      case 'fire': this.fire(); return;
+      case 'fire': this.fire(sound.at); return;
       case 'reload': this.reload(); return;
       case 'spinUp': this.spinUp(); return;
       case 'clank': this.clank(); return;
@@ -140,12 +149,28 @@ export class WorldSfx {
     this.loops = null;
   }
 
-  // 艦砲 CIWS 風の砲声1発ぶん: 低く重い胴鳴り + 鋭いクラック。連射は断続的に聞こえる(SPEC/AUDIO.md「機関砲」)。
-  private fire(): void {
-    this.engine.noiseBurst(0.11, 'lowpass', 480, 0.4);
-    this.engine.noiseBurst(0.025, 'highpass', 2600, 0.09);
-    this.engine.tone(48, 0.1, 0.2, 'square');
-    this.engine.tone(96, 0.05, 0.07, 'sawtooth');
+  // 艦砲 CIWS 風の砲声1発ぶんを実時刻 at [s] に鳴らす: 低く重い胴鳴り + 鋭いクラック。連射は発射と同じ
+  // 拍で断続的に聞こえる(SPEC/AUDIO.md「機関砲」)。
+  private fire(at: number): void {
+    const delay = this.delayUntil(at);
+    if (delay === null) return;
+    this.engine.noiseBurst(0.11, 'lowpass', 480, 0.4, delay);
+    this.engine.noiseBurst(0.025, 'highpass', 2600, 0.09, delay);
+    this.engine.tone(48, 0.1, 0.2, 'square', delay);
+    this.engine.tone(96, 0.05, 0.07, 'sawtooth', delay);
+  }
+
+  // 実時刻 at [s] に鳴らすには、いまから何秒遅らせればよいか。ctx が開いていなければ null。実時刻と ctx の
+  // 時刻のずれは一度張ったら保ち、鳴らす時刻が過ぎていたり遠すぎたりしたときだけ SCHEDULE_LATENCY 先へ
+  // 張り直す — 張り直さなければ、隣り合う音の間隔は実時刻の間隔のまま保たれる。
+  private delayUntil(at: number): number | null {
+    const ctx = this.engine.ctx;
+    if (!ctx) return null;
+    const now = ctx.currentTime;
+    const delay = this.clockOffset === null ? Number.NaN : at + this.clockOffset - now;
+    if (delay >= 0 && delay <= SCHEDULE_LATENCY * 3) return delay;
+    this.clockOffset = now + SCHEDULE_LATENCY - at;
+    return SCHEDULE_LATENCY;
   }
 
   // リロード音「ガチャッ、シャコォォン」。

@@ -607,10 +607,11 @@ export class GamePresentation {
     // 警報音は噴射音と同じく、周回が動いている間だけ鳴る。
     this.alarms.update(controlled?.motion.temperature ?? null);
     const runInProgress = !this.isPaused && this.game.activeStage.isPlaying;
+    const simSpeed = this.game.simSpeedManager.simSpeed;
     this.worldSfx.sync({
       loops: controlledLoopSfx(controlled, displayTime, runInProgress),
       alarm: runInProgress && this.alarms.unacknowledgedWarning,
-      cues: worldSoundCues(events),
+      cues: worldSoundCues(events, { nowMs, displayTime, simSpeed }),
     });
     this.uiSfx.sync(this.uiSounds.cues);
     this.uiSounds.clear();

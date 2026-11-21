@@ -3,7 +3,10 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { RunEventLog } from '../../src/game/run-events';
-import { RunEventPresenter } from '../../src/game/run-event-presenter';
+import { RunEventPresenter, worldSoundCues } from '../../src/game/run-event-presenter';
+import { kinematicState } from '../../src/physics/kinematic-state';
+import { v3 } from '../../src/math/vec3';
+import type { RunEvent } from '../../src/game/run-events';
 import { UiSoundQueue } from '../../src/game/ui-sound-queue';
 import type { Notifier } from '../../src/hud-kit/notifier';
 
@@ -28,6 +31,18 @@ export function register(): void {
     const later = log.recent.map((event) => event.seq);
     assert.equal(later.length, 1);
     assert.ok(earlier.every((seq) => seq < later[0]));
+  });
+
+  test('run-event-presenter: 発砲音は発射が画面に現れる実時刻に鳴り、間隔は倍率で縮む', () => {
+    const shot = (seq: number, t: number): RunEvent => ({
+      seq, body: { kind: 'gunFired', muzzleState: kinematicState<'eci'>(t, v3(), v3()) },
+    });
+    const events = [shot(1, 10.03), shot(2, 10.09)];
+    const atOf = (simSpeed: number): number[] => worldSoundCues(events, { nowMs: 5000, displayTime: 10, simSpeed })
+      .map((cue) => (cue.sound.kind === 'fire' ? cue.sound.at : Number.NaN));
+    const x1 = atOf(1), x4 = atOf(4);
+    assert.ok(Math.abs(x1[0]! - 5.03) < 1e-9 && Math.abs(x1[1]! - x1[0]! - 0.06) < 1e-9, `x1 ${x1}`);
+    assert.ok(Math.abs(x4[1]! - x4[0]! - 0.015) < 1e-9, `x4 ${x4}`);
   });
 
   test('run-event-presenter: 同じ通し番号の出来事は、何度渡されても1度だけ写す', () => {
