@@ -95,7 +95,7 @@ export class CameraSystem {
     this.gunsightCamera = new GunsightCamera(viewport);
     // HUD の視点リセットボタンを、表に出ているビューのリセットへ繋ぐ。
     this.viewResetButton = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
-    this.viewResetButton?.addEventListener('pointerdown', this.handleViewReset);
+    this.viewResetButton?.addEventListener('click', this.handleViewReset);
   }
 
   // 現在の進行値から、命令と導出が共有する2台分のフレーム材料を作る。
@@ -204,7 +204,7 @@ export class CameraSystem {
 
   // 視点リセットボタンへ登録したハンドラを解除する。
   public dispose(): void {
-    this.viewResetButton?.removeEventListener('pointerdown', this.handleViewReset);
+    this.viewResetButton?.removeEventListener('click', this.handleViewReset);
   }
 
   // 実時刻から指数遷移を評価し、フレーム刻みに依存しない画角を返す。
@@ -225,7 +225,7 @@ export class CameraSystem {
   }
 
   // 視点リセットボタンの押下を、表に出ているビューのリセットの命令として積む。
-  private readonly handleViewReset = (event: PointerEvent): void => {
+  private readonly handleViewReset = (event: MouseEvent): void => {
     event.stopPropagation();
     this.commands.camera(this.view).reset(this.sample(this.view));
   };

@@ -193,16 +193,18 @@ export class CelestialIllumination {
   }
 
   // 雲の影の源を返す最初の1体を、種類ごとの有無とともに影パスへ渡す。源が無いか、設定が
-  // どちらの影も切るなら null を渡す。
+  // どちらの影も切るなら null を渡す。影の細部の段数は、影を落とす天体の雲がこの
+  // フレームに立てた実効段数と揃える。
   private syncCloudShadow(
     sources: readonly CelestialIlluminationSource[], fo: FloatingOrigin, displayTime: number,
     graphics: GraphicsSettingsData,
   ): void {
-    const kinds = cloudShadowKinds(graphics);
-    const casters = kinds.cumulus || kinds.cirrus
+    const gate = cloudShadowKinds(graphics);
+    const casters = gate.cumulus || gate.cirrus
       ? sources.flatMap((source) => source.view.cloudShadowAt(source.motion, fo, displayTime) ?? [])
       : [];
-    this.targets.cloudShadow.set(casters[0] ?? null, kinds);
+    const cloud = casters[0] ?? null;
+    this.targets.cloudShadow.set(cloud, cloudShadowKinds(graphics, cloud?.cloud ?? null));
   }
 
   // 環を持つ天体を候補として選定へ回し、選ばれた1体の帯を影パスへ渡す。選ばれなければ

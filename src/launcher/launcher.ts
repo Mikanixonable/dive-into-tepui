@@ -11,7 +11,7 @@ import { SALVAGE_BLUEPRINTS } from '../game/ship/salvage-blueprints';
 import type { SerializedGame } from '../game/game';
 import type { RunEvent } from '../game/run-events';
 import type { PageDevices } from '../run/page-devices';
-import type { FrameSections } from '../game/frame-sections';
+import type { FrameSections, SyncSectionId } from '../game/frame-sections';
 import type { ViewOptionsSettings } from '../game/view/view-options-settings';
 import type { ThemePalette } from '../theme';
 import type { CurrentGameSource } from './save-browser/save-browser';
@@ -73,6 +73,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly viewOptions: ViewOptionsSettings,
     private readonly themePalette: SettingValue<ThemePalette>,
     private readonly sections: FrameSections,
+    private readonly syncSections: FrameSections<SyncSectionId>,
     private readonly unlockManager: UnlockManager,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
@@ -147,15 +148,14 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   }
 
   // 現在の周回を畳んだ上で、再開する記録があればそこから、無ければ新しく Run を組み、起動をスロットへ記録する。
-  // reinforced は援護付きの再出撃か。新しく始めるランには、連敗の予告の選択もここで決める。
+  // 新しく始めるランには、連敗の予告の選択もここで決める。
   private async startRun(
-    stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate, reinforced = false,
+    stageClass: StageClass, snapshotId?: string, startEpoch?: TdbJulianDate,
   ): Promise<void> {
     this.endRun();
     this.blueprintShelf.reload();
     const initialSave = this.initialSaveFor(stageClass, snapshotId, startEpoch);
     const runOptions: RunOptions = {
-      reinforced,
       forecast: this.stageRecords.lossStreak(stageClass.id) >= FORECAST_LOSS_STREAK,
       revealedBodies: this.revealedBodiesFor(stageClass),
       discoveredRelics: this.discoveredRelicsFor(stageClass),
@@ -166,12 +166,13 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.run = initialSave === null
         ? await Run.create(
           stageClass, startEpoch ?? null, this.devices, this.viewOptions, this.themePalette,
-          this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
-          runOptions,
+          this.graphics, this.renderStyle, this.sections, this.syncSections,
+          this.blueprintShelf, this.autoSave, progress, runOptions,
         )
         : await Run.resume(
           initialSave, stageClass, this.devices, this.viewOptions, this.themePalette,
-          this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
+          this.graphics, this.renderStyle, this.sections, this.syncSections,
+          this.blueprintShelf, this.autoSave, progress,
         );
     } finally {
       hideLoading();
@@ -302,10 +303,10 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     if (commandId === K.restart.code && this.run !== null && !this.run.game.activeStage.isPlaying) this.restart();
   }
 
-  // 現在の起動ステージへ作り直す。reinforced なら援護付きで作る。まだ何も起動していなければ何もしない。
-  public restart(reinforced = false): void {
+  // 現在の起動ステージへ作り直す。まだ何も起動していなければ何もしない。
+  public restart(): void {
     if (this.launchedStage === null) return;
-    this.withTransition(() => this.startRun(this.launchedStage!, undefined, undefined, reinforced));
+    this.withTransition(() => this.startRun(this.launchedStage!));
   }
 
   // 選択画面を出し直し、選ばれたステージで作り直す。直近の周回を締めるので、この後に

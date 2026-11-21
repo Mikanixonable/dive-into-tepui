@@ -23,10 +23,14 @@ import type { Vec3 } from '../../math/vec3';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import type { OverlayManager } from '../../hud/overlay-manager';
+import type { SettingValue } from '../../settings/setting-value';
+import type { MissionTimeFormat } from '../view/hud-selection';
 import type { HelpPanel } from './windows/help-panel';
 import type { HintKind, Notifier } from '../../hud/notifier';
 import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
 import { HudToast } from './hud-toast';
+import { AlarmBand } from './alarm-band';
+import type { ShipAlarms } from '../alarm/ship-alarms';
 import { hudAttention, hudWorkspace } from './hud-workspace';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
@@ -59,6 +63,7 @@ export class Hud implements HudLayers, Notifier {
   public onPauseBadge: (() => void) | null = null;
   private readonly helpPanel: HelpPanel;
   private readonly topBar: TopBar;
+  private readonly alarmBand: AlarmBand;
   public readonly viewBadgeRow: HTMLElement;
   private readonly mapScaleBadge: MapScaleBadge;
   private readonly vesselPanel: VesselPanel;
@@ -80,6 +85,8 @@ export class Hud implements HudLayers, Notifier {
   // panelCollapse は各パネルの折りたたみトグルの配線役。
   public constructor(
     private readonly shell: HudShell, public readonly panelCollapse: PanelCollapse, renderStyle: RenderStyle,
+    missionTimeFormat: SettingValue<MissionTimeFormat>,
+    onMissionTimeFormatChange: (format: MissionTimeFormat) => void,
   ) {
     const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(
       shell, panelCollapse, renderStyle, () => this.onPauseBadge?.(),
@@ -89,7 +96,8 @@ export class Hud implements HudLayers, Notifier {
     this.helpPanel = helpPanel;
 
     // 常設パネルを、data-id で引ける要素の一覧から組む。
-    this.topBar = new TopBar(els);
+    this.topBar = new TopBar(els, missionTimeFormat, onMissionTimeFormatChange);
+    this.alarmBand = new AlarmBand(els);
     this.viewBadgeRow = els.get('gs-viewrow');
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);
@@ -144,7 +152,8 @@ export class Hud implements HudLayers, Notifier {
     this.constructionMode = false;
     this.applyHudProfile(this.chromeView ?? 'combat', false);
     // パネルが掴んでいるランの値と操作の口を、null の状態へ同期する。
-    this.topBar.sync(null, 0);
+    this.topBar.sync(null, null, 0);
+    this.alarmBand.sync(null);
     this.vesselPanel.sync(null, 0);
     this.armamentBand.sync(null);
     this.orbitPanel.sync(null, 0);
@@ -153,10 +162,11 @@ export class Hud implements HudLayers, Notifier {
     this.burnManagementPanel.sync(null);
   }
 
-  // view で表に出ている常設パネルと、控えられたトーストを同期する。
-  // camera はこのフレームの表示カメラで、縮尺表示が読む。nowMs はフレームの実時刻 [ms]。
+  // view で表に出ている常設パネルと、警報帯・控えられたトーストを同期する。
+  // camera はこのフレームの表示カメラで、縮尺表示が読む。alarms は鳴っている警報。
+  // nowMs はフレームの実時刻 [ms]。
   public syncPanels(
-    view: ViewMode, panels: HudPanelViewModels, camera: CameraFrame, nowMs: number,
+    view: ViewMode, panels: HudPanelViewModels, alarms: ShipAlarms, camera: CameraFrame, nowMs: number,
   ): void {
     const map = view === 'map';
     this.panelCollapse.sync(view);
@@ -164,7 +174,8 @@ export class Hud implements HudLayers, Notifier {
     this.applyHudProfile(view, panels.target !== null);
     // 両ビュー共通のパネル。
     this.burnManagementPanel.sync(panels.burnManagement);
-    this.topBar.sync(panels.topBar, nowMs);
+    this.topBar.sync(panels.topBar, alarms, nowMs);
+    this.alarmBand.sync(alarms);
     this.orbitPanel.sync(panels.orbit, nowMs);
     // ビュー固有のパネル。
     if (map) {

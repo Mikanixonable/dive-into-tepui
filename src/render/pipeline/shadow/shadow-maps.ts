@@ -87,6 +87,8 @@ export class ShadowMaps {
   private readonly slotTexels: FloatUniform;
   private readonly depthMaterial: THREE.MeshBasicNodeMaterial;
   private readonly lightCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+  // スロットを空へ戻すときだけ描く、中身の無いシーン。clearSlot を参照。
+  private readonly emptyScene = new THREE.Scene();
   // スロットの値の正本。uniform 配列がこの 3 本をそのまま包むので、書けば受け手へ届く。
   private readonly lightViewProjections: THREE.Matrix4[];
   private readonly lightViews: THREE.Matrix4[];
@@ -173,18 +175,21 @@ export class ShadowMaps {
   public casts(): boolean { return this.slotParameters.some((parameters) => parameters.w > 0); }
 
   // 影の品質を設定から受け取る。層付き深度マップは全層で同じ寸法を持つため、枠の数は
-  // active の層数だけを変える。張り直しはテクスチャの実体を差し替えないので、受け手が既に
+  // active の層数だけを変える。切られている間はスロットを描かないので、深度マップは 1 texel へ
+  // 縮めて GPU メモリを返す。張り直しはテクスチャの実体を差し替えないので、受け手が既に
   // 組んだグラフはそのまま生きる。
   public setQuality(enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number): void {
     this.enabled = enabled;
     this.texelsPerPixel = texelsPerPixel;
     const count = Math.min(slotCount, MAX_SHADOW_SLOTS);
-    if (count === this.slotCount && slotSize === this.slotSize) return;
+    const size = enabled ? slotSize : 1;
+    if (count === this.slotCount && slotSize === this.slotSize && size === this.target.width) return;
     this.slotCount = count;
     this.slotSize = slotSize;
     this.slotTexels.value = slotSize;
-    this.target.setSize(slotSize, slotSize, MAX_SHADOW_SLOTS);
-    this.farTarget.setSize(SHADOW_FAR_SLOT_SIZE, SHADOW_FAR_SLOT_SIZE, MAX_SHADOW_SLOTS);
+    this.target.setSize(size, size, MAX_SHADOW_SLOTS);
+    const farSize = Math.min(size, SHADOW_FAR_SLOT_SIZE);
+    this.farTarget.setSize(farSize, farSize, MAX_SHADOW_SLOTS);
     // 張り直した深度マップの中身は不定なので、全枠を空にし、次のフレームの空戻しを上限まで
     // 走らせる — 縮めた枠にも前フレームの絵が残ったままだと、デバッグ表示が読み手を欺く。
     this.clearSlots();
@@ -227,10 +232,7 @@ export class ShadowMaps {
       }
       // 前フレームに使っていて今フレームは使わないスロットを空へ戻す。
       for (let index = this.clusters.length; index < this.drawnSlots; index++) {
-        for (const target of [this.target, this.farTarget]) {
-          this.renderer.setRenderTarget(target, index);
-          this.renderer.clear(true, true, false);
-        }
+        for (const target of [this.target, this.farTarget]) this.clearSlot(target, index);
       }
       this.drawnSlots = this.clusters.length;
     } finally {
@@ -274,8 +276,7 @@ export class ShadowMaps {
   private drawSlot(
     scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3, extentCap: number,
   ): void {
-    this.renderer.setRenderTarget(this.farTarget, index);
-    this.renderer.clear(true, true, false);
+    this.clearSlot(this.farTarget, index);
     if (!this.configureSlot(index, box, extentCap, sun)) return;
     const parameters = this.slotParameters[index]!;
     // 深度マテリアルはスロット共有なので、深度の原点をこのスロットの near へ差し替える。
@@ -285,10 +286,18 @@ export class ShadowMaps {
       this.renderer.render(scene, this.lightCamera);
     }
     this.setLightDepthRange(Math.max(parameters.x, this.bandSplit), this.nearBandFar);
-    this.renderer.setRenderTarget(this.target, index);
-    this.renderer.clear(true, true, false);
+    this.clearSlot(this.target, index);
     this.renderer.render(scene, this.lightCamera);
     parameters.w = 1;
+  }
+
+  // スロット index の深度と色を空の値で埋める。renderer.clear() は camera を持たないレンダー文脈で
+  // 動くため、深度配列へ向けると three の WebGL2 フォールバックが camera の null を読んで落ちる。
+  // 中身の無いシーンを、ライトカメラで render して同じ初期化を行う(render は camera を立ててから消す)。
+  // 呼び出し元は render() の中だけで、そこで autoClear が立っている。
+  private clearSlot(target: THREE.RenderTarget, index: number): void {
+    this.renderer.setRenderTarget(target, index);
+    this.renderer.render(this.emptyScene, this.lightCamera);
   }
 
   // ライトカメラが撮る深度の範囲を差し替える。**枠(left/right/top/bottom)は動かさない** —

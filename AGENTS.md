@@ -239,6 +239,7 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run usage:selftest` | Claude と Devin Luna の判定が互いの枠に影響されないことを検査 | 利用枠判定ロジックを変更したとき |
 | `npm run dev` | 開発サーバ(http://localhost:8080) | 実機で動かすとき |
 | `npm run smoke:browser` | ヘッドレスでの起動・操作スモーク | 実行時の確認を求められたとき |
+| `npm run mobile-probe` | 本番ビルド(`docs/`)をモバイル相当の条件(390×844・DPR 3・CPU 4 倍減速・iPhone UA)で開き、起動の転送量と所要時間・戦闘ビューのフレーム時間・画像テクスチャの GPU 常駐推算を表にする(先に `npm run build`) | 起動・描画・予測の負荷を変えたとき |
 | `npm run build` | `docs/` への本番ビルド | **main へ送る前**(`/send-pr`)。公開は CI が行う |
 | `npm run ci` | 上記の検証一式 + 生成物(地表)とテーマ・リリース物の点検 | 任意。main へ送る検証は `/send-pr` |
 | `npm run bgm-lab` | BGM の試聴環境(http://localhost:8081) | 曲を調整するとき |

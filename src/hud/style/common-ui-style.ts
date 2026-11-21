@@ -5,6 +5,30 @@ import { WIDGET_STYLE } from '../widgets/widget-style';
 import { HUD_LAYOUT_TOKENS_STYLE } from './layout-tokens';
 import { INSTRUMENT_STYLE } from './instrument-style';
 
+// 描画品質設定で UI の背景ぼかしを切ったときにルート要素へ付けるクラス。付いている間は、ガラス面を
+// 背景ぼかし非対応のブラウザと同じ不透明な面で描く。
+export const UI_BLUR_OFF_CLASS = 'ui-blur-off';
+
+// 背景ぼかしを持つ面のうち、ぼかしが無いときに不透明な面へ替えるものを選ぶセレクタ group から、
+// 非対応のブラウザとぼかしを切ったときの両方で効く規則を組む。
+export function opaqueGlassFallbackStyle(group: string): string {
+  return `
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  ${group} { background: var(--surface-opaque); }
+}
+:root.${UI_BLUR_OFF_CLASS} :is(${group}) {
+  background: var(--surface-opaque);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+`;
+}
+
+// UI の背景ぼかしを描くかを切り替える。切ると全画面のガラス面が不透明な面になる。
+export function setUiBackdropBlur(enabled: boolean): void {
+  document.documentElement.classList.toggle(UI_BLUR_OFF_CLASS, !enabled);
+}
+
 const SURFACE_STYLE = `
 .ui-surface-quiet, #hud .panel {
   background: var(--glass-quiet);
@@ -64,11 +88,7 @@ const SURFACE_STYLE = `
   color: var(--color-error);
   background: var(--color-error-fill);
 }
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .ui-surface-quiet, #hud .panel, #hud .ui-surface-focus, .ui-surface-focus { background: var(--surface-opaque); }
-}
-`;
+${opaqueGlassFallbackStyle('.ui-surface-quiet, #hud .panel, #hud .ui-surface-focus, .ui-surface-focus')}`;
 
 // 共通 UI の CSS を一度だけ document.head へ注入する。
 export function injectCommonUiStyle(): void {

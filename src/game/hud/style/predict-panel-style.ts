@@ -32,11 +32,11 @@ export const PREDICT_PANEL_STYLE = `
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも
    トグルだけがその場(バーがあった位置の上端)に残るようにする。マップビューでは
    #hud-stagestatus は常に非表示なので、他の下端揃えパネル(.hud-rail 等)と同じ bottom まで詰める。
-   左右レール(.hud-rail-left/.hud-rail-right)の内側に収まる幅だけを使い、レールのパネルに重ねない。 */
+   左右レール(.hud-rail-left/.hud-rail-right)とその収納グリップの内側に収まる幅だけを使い、どちらにも重ねない。 */
 #hud-predict-wrap {
-  position: absolute; bottom: 12px;
-  left: calc(var(--hud-left-rail-occupied) + 8px);
-  right: calc(var(--hud-right-rail-occupied) + 8px);
+  position: absolute; bottom: var(--space-5);
+  left: calc(var(--hud-left-rail-occupied) + var(--hud-rail-grip-reach));
+  right: calc(var(--hud-right-rail-occupied) + var(--hud-rail-grip-reach));
   display: flex; flex-direction: column; gap: var(--space-2); pointer-events: none;
 }
 /* #hud を重ねた ID セレクタで、.panel 共通規則(position:absolute)より詳細度を上げて打ち消す。
@@ -47,12 +47,8 @@ export const PREDICT_PANEL_STYLE = `
   max-height: 40vh; max-height: 40dvh; overflow-y: auto; pointer-events: auto;
 }
 #hud-predict.collapsed { display: none !important; }
-#hud-predict-toggle {
-  display: none; order: 1; align-self: center; pointer-events: auto; cursor: pointer;
-  border: 0; border-radius: 50%;
-  background: var(--surface); color: var(--color-primary);
-}
-#hud .hud-map-root.active #hud-predict-toggle { display: block; }
+#hud-predict-toggle { display: none; order: 1; align-self: center; }
+#hud .hud-map-root.active #hud-predict-toggle { display: inline-flex; }
 #hud-predict .w-pill-row, #hud-predict .predict-row2 { display: flex; align-items: center; gap: var(--space-3); }
 #hud-predict .w-pill-row { flex-wrap: wrap; margin-bottom: var(--space-2); }
 #hud-predict .w-pills { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
@@ -83,7 +79,7 @@ export const PREDICT_PANEL_STYLE = `
   font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
 }
 @media ${MQ_MEDIUM_DOWN} {
-  #hud-predict-wrap { bottom: 8px; }
+  #hud-predict-wrap { bottom: var(--space-4); }
 }
 @media ${MQ_COMPACT} {
   /* compactは左右railの合計幅が中央領域をほぼ使い切るため、PREDICTは横の隙間ではなく
@@ -97,7 +93,7 @@ export const PREDICT_PANEL_STYLE = `
   #hud-predict .slider-ticks { display: none; }
   /* 幅が足りないので、行2はスクラバーと T+ 読み値だけ残す。 */
   #hud-predict .predict-absolute { display: none; }
-  #hud-predict-wrap { left: 8px; right: 8px; bottom: 8px; }
+  #hud-predict-wrap { left: var(--space-4); right: var(--space-4); bottom: var(--space-4); }
   #hud-predict { max-height: 28vh; max-height: 28dvh; }
 }
 @media ${MQ_COARSE} {

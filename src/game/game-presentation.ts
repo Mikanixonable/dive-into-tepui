@@ -1,6 +1,9 @@
 // 1ランの表示の導出の根: 入力の解釈、表示窓・座標系の錨・カメラの導出、表示物と HUD への同期、
 // 描画を所有する。モデル層の根 Game を読み、命令の列へ積み、進行の末尾へ渡す材料を組む。
-import type { FrameSections } from './frame-sections';
+import { SYNC_SECTION, type FrameSections, type SyncSectionId } from './frame-sections';
+import { CUMULUS_DETAIL } from '../render/opaque-cloud-surface-renderer';
+import { CloudQualityGovernor } from '../render/earth-weather/cloud/cloud-quality-governor';
+import { GPU_PASS } from '../render/gpu-timings';
 import { CameraSystem } from './camera/camera-system';
 import { controlSelectionCommands } from './control-selection-commands';
 import { simSpeedCommands } from './dynamic/sim-speed-commands';
@@ -57,6 +60,7 @@ import { GameInputPhase } from './runtime/game-input-phase';
 import type { GameInputSource } from './input/game-input-ports';
 import { DisplayPhase, type DisplayPhaseSource } from './runtime/display-phase';
 import { KillStop } from './kill-stop';
+import { ShipAlarms } from './alarm/ship-alarms';
 import type { GameInputPort } from './input/game-input-router';
 import { ConfirmationOverlay } from '../hud/windows/confirmation-overlay';
 import { len, sub } from '../math/vec3';
@@ -92,6 +96,13 @@ export class GamePresentation {
   private readonly uiSfx: UiSfx;
   // 操作と出来事から出す UI の効果音を、同期まで溜める先。
   private readonly uiSounds = new UiSoundQueue();
+  // 操作艦の警報(状態)の評価と「確認済み」の記憶。警報帯・警報灯・警報音・確認キーが読む。
+  private readonly alarms = new ShipAlarms();
+  // 雲の実効の精細さを決める予算上限の状態機械。フレーム時間と雲の GPU 時間から
+  // 段を締める。各天体の雲へは sync ごとに同じ実体を結ぶ。
+  private readonly cloudGovernor = new CloudQualityGovernor();
+  // ガバナがフレーム時間を測るための、前フレームの同期時刻 [ms]。
+  private lastSyncNowMs: number | null = null;
   // 進行が記録した出来事を UI の効果音・通知へ写す読み手。
   private readonly runEventPresenter: RunEventPresenter;
   // 天体系・ステージ・長押しの宣言を1つにまとめて置くマーカー。
@@ -165,6 +176,7 @@ export class GamePresentation {
     private readonly viewOptionsSettings: ViewOptionsSettings,
     private readonly themePalette: SettingValue<ThemePalette>,
     sections: FrameSections,
+    private readonly syncSections: FrameSections<SyncSectionId>,
     blueprints: ShipBlueprintShelf,
   ) {
     const { scene, hud, markers, audioEngine, pauseMenu } = devices;
@@ -321,6 +333,7 @@ export class GamePresentation {
       get activeControllable() { return game.activeControllable; },
       get stageIsPlaying() { return game.activeStage.isPlaying; },
       startConstruction: () => this.startConstructionNearest(),
+      acknowledgeAlarms: () => this.alarms.acknowledge(),
     };
   }
 
@@ -451,7 +464,9 @@ export class GamePresentation {
     const { displayTime } = displayWindow;
     const view = this.viewManager.current;
     // 最初にカメラを確定し、後続の同期とマーカー投影が読む行列を揃える。
+    this.syncSections.enter(SYNC_SECTION.camera);
     const camera = this.syncCamera(displayWindow, view, viewport, nowMs);
+    this.syncSections.exit(SYNC_SECTION.camera);
     // 描く対象と選べる対象を同じ判定から出すため、ビューが確定させた可否を読む。
     const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
     // 3D 軌道線を軌道パネルと同一の基準系で算出する。
@@ -466,12 +481,15 @@ export class GamePresentation {
     this.syncWorld(
       graphics, style, nowMs, displayTime, view, controlled, orbitRef, visibilityPolicy, timeLabel, camera,
     );
+    this.syncSections.enter(SYNC_SECTION.effects);
     this.syncEffectsAndTargets(
       nowMs, displayTime, view, controlled, visibilityPolicy, timeLabel, palette, camera,
     );
+    this.syncSections.switchTo(SYNC_SECTION.effects, SYNC_SECTION.panels);
     this.syncPanelsAndMarkers(
       nowMs, displayWindow, displayTime, view, controlled, orbitRef, visibilityPolicy, palette, camera,
     );
+    this.syncSections.exit(SYNC_SECTION.panels);
   }
 
   // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
@@ -496,6 +514,25 @@ export class GamePresentation {
     timeLabel: ReturnType<typeof timeLabelSettingOf>, camera: CameraFrame,
   ): void {
     const { celestialSystem, dynamicSystem, viewer } = this.game;
+    this.syncSections.enter(SYNC_SECTION.celestial);
+    // 雲の品質適応をこのフレームの計測へ更新する。時刻印が取れない環境では予算上限を
+    // 働かせない(フットプリント上限だけが効く)。ポーズ・マップ・加速中は窓を進めない —
+    // その間のフレーム時間は雲の費用と関係なく歪む。
+    const gpu = this.devices.scene.gpu;
+    const frameMs = this.lastSyncNowMs === null ? 0 : nowMs - this.lastSyncNowMs;
+    this.lastSyncNowMs = nowMs;
+    this.cloudGovernor.update(
+      frameMs,
+      gpu.supported
+        ? gpu.msOf(GPU_PASS.cloudSurface) + gpu.msOf(GPU_PASS.cloudAtmosphere)
+          + gpu.msOf(GPU_PASS.cloudShadow)
+        : null,
+      !this.isPaused && view !== 'map' && this.game.simSpeedManager.simSpeed === 1,
+      graphics.frameRateCap,
+    );
+    for (const presentation of celestialSystem.cloudPresentations()) {
+      presentation.setQualityGovernor(this.cloudGovernor);
+    }
     celestialSystem.sync(
       displayTime, nowMs, camera, view, viewer.camera.map, this.cameraSystem.mapResolvedFocus,
       graphics, style,
@@ -507,10 +544,12 @@ export class GamePresentation {
       this.devices.scene.renderer, displayTime, this.game.simSpeedManager.simSpeed, this.devices.scene.gpu);
     // 建造の読み取り面を確定させてから表示導出へ渡す — 適用済み命令の記録・選択の整合が
     // shipConstruction.sync で更新され、shipConstructionView.sync がそれを読んで強調と音を組む。
+    this.syncSections.switchTo(SYNC_SECTION.celestial, SYNC_SECTION.construction);
     this.shipConstruction.sync();
     const construction = this.shipConstructionView.sync(this.shipConstruction, camera, nowMs);
     for (const sound of construction.sounds) this.uiSounds.push(`construction-${sound}`);
     this.syncWorkLight(graphics, camera);
+    this.syncSections.switchTo(SYNC_SECTION.construction, SYNC_SECTION.dynamic);
     dynamicSystem.sync(
       displayTime, controlled, camera, style, graphics,
       construction.shipModuleEmphasis,
@@ -518,6 +557,7 @@ export class GamePresentation {
       orbitRef,
     );
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
+    this.syncSections.switchTo(SYNC_SECTION.dynamic, SYNC_SECTION.markers);
     this.playerMarkers.sync(
       controlled !== null && isModularShip(controlled) ? controlled : null, view, camera.project,
       orbitRef?.state ?? null, nowMs,
@@ -532,6 +572,7 @@ export class GamePresentation {
       displayTime, view, camera,
       this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, visibilityPolicy, nowMs,
     );
+    this.syncSections.exit(SYNC_SECTION.markers);
   }
 
   // 建造中だけ、カメラの右上後方へ作業灯を置く。灯距は注視距離(建造で視点寄せに使う
@@ -556,8 +597,13 @@ export class GamePresentation {
   ): void {
     const events = this.game.events.recent;
     this.runEventPresenter.present(events);
+    // 警報はこのフレームの操作艦の物理量で組み直してから、警報帯・警報音へ渡す。
+    // 警報音は噴射音と同じく、周回が動いている間だけ鳴る。
+    this.alarms.update(controlled?.motion.temperature ?? null);
+    const runInProgress = !this.isPaused && this.game.activeStage.isPlaying;
     this.worldSfx.sync({
-      loops: controlledLoopSfx(controlled, displayTime, !this.isPaused && this.game.activeStage.isPlaying),
+      loops: controlledLoopSfx(controlled, displayTime, runInProgress),
+      alarm: runInProgress && this.alarms.unacknowledgedWarning,
       cues: worldSoundCues(events),
     });
     this.uiSfx.sync(this.uiSounds.cues);
@@ -591,7 +637,7 @@ export class GamePresentation {
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);
     activeStage.sync(camera, view, displayTime);
-    this.hudPanels.sync(view, displayWindow, orbitRef, palette, camera, nowMs);
+    this.hudPanels.sync(view, displayWindow, orbitRef, palette, camera, this.alarms, nowMs);
     this.syncFrameMarkers(nowMs);
     // このフレームのマーカーが出揃った後でなければならないので最後に通す。
     this.devices.markers.resolveOverlaps(view === 'map');
@@ -617,6 +663,16 @@ export class GamePresentation {
       style,
       (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
     );
+    // 積雲の段替えでシェーダのコンパイルが走らないよう、残りの段のマテリアルも雲殻層の
+    // 条件で組んでおく。いま張っている段は G バッファの compile で既に組まれている。
+    const clouds = this.game.celestialSystem.cloudPresentations();
+    const current = clouds.map((p) => p.cumulusDetail);
+    for (const detail of Object.values(CUMULUS_DETAIL)) {
+      if (current.every((d) => d === detail)) continue;
+      for (const presentation of clouds) presentation.setCumulusDetail(detail);
+      await scene.pipeline.compileCloudShell(scene.scene, this.cameraFrame.camera);
+    }
+    clouds.forEach((presentation, i) => presentation.setCumulusDetail(current[i]!));
   }
 
   // このフレームの sync が確定させたカメラで描く。まだ1度も sync していなければ何も描かない。
@@ -626,11 +682,17 @@ export class GamePresentation {
   }
 
   // 表示生成処理から得られる計測値。
-  public perfCounts(): Pick<PerfCounts, 'planArcs' | 'mapMode' | 'mapItems' | 'mapLabels' | 'displayDurationSec'> {
+  public perfCounts(): Pick<PerfCounts,
+    'planArcs' | 'mapMode' | 'mapItems' | 'mapLabels' | 'displayDurationSec' | 'cloudQuality'
+  > {
+    // 雲の実効の精細さは、雲が見えている天体のものを優先して出す。
+    const clouds = this.game.celestialSystem.cloudPresentations();
+    const cloudPresentation = clouds.find((p) => p.cloudsVisible) ?? clouds[0] ?? null;
     return {
       ...this.planDisplay.perfCounts(),
       ...this.viewManager.activeView.perfCounts(),
       displayDurationSec: this.displayWindowManager.current.duration,
+      cloudQuality: cloudPresentation?.cloudQuality ?? null,
     };
   }
 }

@@ -73,7 +73,7 @@ function page(layer = 255, key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0)): Uint8Arr
 export function register(): void {
   test('earth GPU: Three実装は対応時だけ配列層を作り、層更新を実テクスチャへ反映する', async () => {
     assert.equal(SUPPORTED.maxTextureArrayLayers, 96);
-    const backend = new EarthSurfaceGpuThree(SUPPORTED);
+    const backend = new EarthSurfaceGpuThree(SUPPORTED, EARTH_TILE_LAYERS);
     const textures = backend.textures;
     assert.ok(textures !== null);
     assert.equal(textures.color.image.depth, EARTH_TILE_LAYERS);
@@ -93,7 +93,7 @@ export function register(): void {
   });
 
   test('earth GPU: Three実装はWebGPU機能不足時にbase-onlyへ固定する', () => {
-    const backend = new EarthSurfaceGpuThree({ ...SUPPORTED, texture2dArray: false });
+    const backend = new EarthSurfaceGpuThree({ ...SUPPORTED, texture2dArray: false }, EARTH_TILE_LAYERS);
     assert.equal(backend.textures, null);
     assert.throws(() => backend.writeColor(0, new Uint8Array(COMPONENTS)), /global base/);
     assert.deepEqual(earthSurfaceGpuCapabilitiesOf({ isWebGPUBackend: false }), {
@@ -107,14 +107,33 @@ export function register(): void {
       { ...SUPPORTED, colorSrgbLinear: false }, { ...SUPPORTED, terrainRgba8Linear: false },
     ]) {
       const backend = new FakeBackend(capabilities);
-      assert.throws(() => new EarthSurfaceGpuAdapter(backend), /detail features unavailable/);
+      assert.throws(() => new EarthSurfaceGpuAdapter(backend, EARTH_TILE_LAYERS), /detail features unavailable/);
       assert.equal(backend.writes.length, 0);
     }
   });
 
+  test('earth GPU: adapterと配列は指定した物理層数を上限にする', () => {
+    // 上限64層の装置では96層のadapterを組めないが、32層では組める。
+    const sparse = { ...SUPPORTED, maxTextureArrayLayers: 64 };
+    assert.throws(
+      () => new EarthSurfaceGpuAdapter(new FakeBackend(sparse), EARTH_TILE_LAYERS),
+      /detail features unavailable/,
+    );
+    const adapter = new EarthSurfaceGpuAdapter(new FakeBackend(sparse), 32);
+    assert.equal(adapter.tileLayers, 32);
+    adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 0, 0), 31);
+    assert.throws(
+      () => adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 1, 0), 32), /Invalid Earth layer/,
+    );
+    const textures = new EarthSurfaceGpuThree(sparse, 32).textures;
+    assert.equal(textures?.color.image.depth, 32);
+    assert.equal(textures?.terrain.image.depth, 32);
+    adapter.dispose();
+  });
+
   test('earth GPU: 色と地形がそろった層をフレーム境界で同時に公開する', async () => {
     const backend = new FakeBackend();
-    const adapter = new EarthSurfaceGpuAdapter(backend);
+    const adapter = new EarthSurfaceGpuAdapter(backend, EARTH_TILE_LAYERS);
     adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 0, 0), 0);
     const reservation = adapter.reservation(0)!;
     const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), reservation);
@@ -149,7 +168,7 @@ export function register(): void {
 
   test('earth GPU: 親と子の層を参照するページ表を公開できる', async () => {
     const backend = new FakeBackend();
-    const adapter = new EarthSurfaceGpuAdapter(backend);
+    const adapter = new EarthSurfaceGpuAdapter(backend, EARTH_TILE_LAYERS);
     const parent = earthTileKey(EARTH_TILE_MIN_Z, 1, 0);
     const child = earthTileKey(EARTH_TILE_MIN_Z + 1, 2, 1);
     adapter.reserveLayer(parent, 0);
@@ -176,7 +195,7 @@ export function register(): void {
 
   test('earth GPU: 一方が失敗しても残る書込みが終わるまで再利用できない', async () => {
     const backend = new FakeBackend();
-    const adapter = new EarthSurfaceGpuAdapter(backend);
+    const adapter = new EarthSurfaceGpuAdapter(backend, EARTH_TILE_LAYERS);
     adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 0, 0), 0);
     const reservation = adapter.reservation(0)!;
     const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), reservation);
@@ -192,7 +211,7 @@ export function register(): void {
 
   test('earth GPU: dispose後に完了しても層やページ表を公開しない', async () => {
     const backend = new FakeBackend();
-    const adapter = new EarthSurfaceGpuAdapter(backend);
+    const adapter = new EarthSurfaceGpuAdapter(backend, EARTH_TILE_LAYERS);
     adapter.reserveLayer(earthTileKey(EARTH_TILE_MIN_Z, 0, 0), 0);
     const upload = adapter.uploadLayer(new Uint8Array(COMPONENTS), new Uint8Array(COMPONENTS), adapter.reservation(0)!);
     adapter.dispose();

@@ -58,6 +58,9 @@ const STEP_BLUR = 2;
 // 巻雲の層を斜めに抜ける光路の伸びへ張る上限。恒星が地平線へ寄ると 1/cos は発散するので、
 // 層の厚みぶんの弦を通る程度で頭打ちにする。
 const CIRRUS_MAX_SLANT = 20;
+// 細部を評価せずに透過率 1 と決める上界の判定へ持たせる余裕(雲頂をまたぐ比率の目盛り)。上界と実際の
+// 値は別の式で丸まるので、境目のタップを棄てないよう内側を残す。
+const CEILING_MARGIN = 1e-3;
 
 export class CloudShadowRenderer {
   private readonly center: Vec3Uniform;
@@ -206,28 +209,37 @@ export class CloudShadowRenderer {
           Loop({ start: 0, end: int(cumulusTapsFloat), type: 'int', condition: '<' }, ({ i }) => {
             const sampleOffset = offset.add(rayDir.mul(
               cumulusFromRadius.add(cumulusStepRadius.mul(float(i).add(0.5)))));
-            const sampleRadius = max(length(sampleOffset), 1e-6);
-            const up = sampleOffset.div(sampleRadius);
-            const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
+            const sampleRadius = max(length(sampleOffset), 1e-6).toVar();
+            const up = sampleOffset.div(sampleRadius).toVar();
+            const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude).toVar();
             const cloud = this.fieldAt(up);
-            // 細部はタップごとに、幅の上で解像できる段だけを重ねる。
-            const detail = this.shape.detailAt(
-              up, cumulusWidth, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus,
-              surfaceWind, this.shape.grainOf(cloud), cloud.cumulusCell);
-            const cloudTop = this.shape.cloudTop(
-              cumulusFieldTopNode(cloud.cumulus), detail).mul(this.topAltitude);
-            const rise = max(dot(rayDir, up), 0).mul(cumulusStep);
-            // texel を覆う割合と、その柱の中の光学的厚みが返す光の割合。覆う割合と柱の中の厚みは
-            // 別の量で、厚みは細部を含む雲頂の高さから出す。
-            const coverage = this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), detail);
-            const reflected = coverage.mul(cloudReflectanceNode(
-              cumulusInCloudOpticalDepthNode(cloudTop), LIQUID_CLOUD_ASYMMETRY));
+            const opacity = cumulusOpacityNode(cloud.cumulus).toVar();
+            const fieldTop = cumulusFieldTopNode(cloud.cumulus).toVar();
+            const rise = max(dot(rayDir, up), 0).mul(cumulusStep).toVar();
             // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
             // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
-            const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
-            const pathFraction = rise.mul(inside).div(max(cloudTop, 1));
-            cumulusTransmittance.mulAssign(fractionalTransmittanceNode(
-              reflected.mul(this.cumulusActive), pathFraction));
+            const insideOf = (top: FloatNode): FloatNode => top.sub(altitude).div(max(rise, 1)).add(0.5);
+            // **細部を最大に置いても雲頂がタップへ届かない点と、覆いが 0 のままの柱では細部を評価しない** —
+            // どちらもこのタップの透過率は 1 に決まる。
+            const reachable = and(
+              greaterThan(insideOf(this.shape.cloudTopCeiling(fieldTop).mul(this.topAltitude)), -CEILING_MARGIN),
+              greaterThan(this.shape.opaqueFractionCeiling(opacity), 0));
+            If(reachable, () => {
+              // 細部はタップごとに、幅の上で解像できる段だけを重ねる。
+              const detail = this.shape.detailAt(
+                up, cumulusWidth, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus,
+                surfaceWind, this.shape.grainOf(cloud), cloud.cumulusCell);
+              const cloudTop = this.shape.cloudTop(fieldTop, detail).mul(this.topAltitude);
+              // texel を覆う割合と、その柱の中の光学的厚みが返す光の割合。覆う割合と柱の中の厚みは
+              // 別の量で、厚みは細部を含む雲頂の高さから出す。
+              const coverage = this.shape.opaqueFraction(opacity, detail);
+              const reflected = coverage.mul(cloudReflectanceNode(
+                cumulusInCloudOpticalDepthNode(cloudTop), LIQUID_CLOUD_ASYMMETRY));
+              const inside = clamp(insideOf(cloudTop), 0, 1);
+              const pathFraction = rise.mul(inside).div(max(cloudTop, 1));
+              cumulusTransmittance.mulAssign(fractionalTransmittanceNode(
+                reflected.mul(this.cumulusActive), pathFraction));
+            });
           });
         });
 

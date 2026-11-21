@@ -7,7 +7,7 @@ import { makeThermallyEmissive } from '../thermal-emissive';
 const loader = new THREE.ObjectLoader();
 
 // template を複製し、マテリアルを個体ごとに持たせたうえで熱発光と照明・影のレイヤを印す。
-function cloneIndependent<T extends THREE.Object3D>(template: T): T {
+export function cloneIndependent<T extends THREE.Object3D>(template: T): T {
   const clone = template.clone(true) as T;
   // clone(true) はマテリアルを参照共有するので、複製し直さないと個体の塗り替えが全個体へ波及する。
   clone.traverse((child) => {

@@ -78,6 +78,8 @@ export class PointCelestialView extends SphereCelestialView {
     private readonly nightObservation = false,
   ) { super(surface, optics, surfaceMarkings); }
 
+  public override get cloudPresentation(): CloudPresentation | null { return this.cumulus; }
+
   // 本体に加えて、積雲の殻・オーロラ・輝点ビルボード・同期軌道リングをシーンへ一度だけ登録する。
   public override build(motion: CelestialMotion, scene: THREE.Scene, ringMaterials: RingMaterials): void {
     // 輝点は単色(SPEC/RENDERING.md「画面上の大きさに基づく詳細度」節)。
@@ -125,6 +127,7 @@ export class PointCelestialView extends SphereCelestialView {
       this.surfaceFrame++,
       nowMs,
       style,
+      graphics.textureResolution,
     ));
     this.billboard.hide();
   }

@@ -1,6 +1,7 @@
 import * as assert from 'node:assert/strict';
 import {
   ammoAlarmLevel, armorAlarmLevel, dynamicPressureAlarmLevel, fuelAlarmLevel, temperatureAlarmLevel,
+  temperatureAlarmLevelHeld,
 } from '../../src/game/alarm/alarm-level';
 import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { MAX_DYN_PRESSURE } from '../../src/game/player/aero-load';
@@ -34,6 +35,24 @@ export function register(): void {
     assert.equal(fuelAlarmLevel(51, max), 'caution');
     assert.equal(fuelAlarmLevel(50, max), 'warning');
     assert.equal(fuelAlarmLevel(0, max), 'warning');
+  });
+
+  test('alarm level: held temperature keeps the step past the boundary to avoid flickering', () => {
+    const max = 1000;
+    // 段が入る閾値は温度だけから決まる版と同じ。
+    assert.equal(temperatureAlarmLevelHeld('normal', 899, max), 'caution');
+    assert.equal(temperatureAlarmLevelHeld('normal', 900, max), 'warning');
+    // 段が下がる閾値は入る閾値より 2% 緩い。境目の往復では前の段を保つ。
+    assert.equal(temperatureAlarmLevelHeld('warning', 899, max), 'warning');
+    assert.equal(temperatureAlarmLevelHeld('warning', 880, max), 'warning');
+    assert.equal(temperatureAlarmLevelHeld('warning', 879, max), 'caution');
+    assert.equal(temperatureAlarmLevelHeld('caution', 699, max), 'caution');
+    assert.equal(temperatureAlarmLevelHeld('caution', 680, max), 'caution');
+    assert.equal(temperatureAlarmLevelHeld('caution', 679, max), 'normal');
+    // 警告から注意の領域へ下りたあとも、保持は注意まで。
+    assert.equal(temperatureAlarmLevelHeld('warning', 750, max), 'caution');
+    // 上限が無いときは判定しない。
+    assert.equal(temperatureAlarmLevelHeld('warning', 500, 0), 'normal');
   });
 
   test('alarm level: a vessel without fuel or limits is never alarmed', () => {

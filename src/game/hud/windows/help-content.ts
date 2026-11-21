@@ -160,6 +160,10 @@ export function helpRows(coarse: boolean): readonly HelpRow[] {
       '⚙ バッジで開く ESC メニューから、デバッグ表示・手動セーブ・セーブデータ画面を開く。',
     ),
     dualRow(coarse, 'system', [K.restart], '決着画面のボタン', '決着後の再出撃', '決着画面で同じステージへ再出撃する。'),
+    dualRow(
+      coarse, 'system', [K.alarmAcknowledge], '警報帯の「確認」ボタン', '警報の確認',
+      '警告の点滅と警報音を止める。警報は条件が戻るまで残る。',
+    ),
   ];
   return rows.filter((row): row is HelpRow => row !== null);
 }

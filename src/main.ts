@@ -5,20 +5,23 @@ import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
 import { createGameScene, RenderBackendUnavailableError, type GameScene } from './render/scene';
 import { renderBackendNoticeOf } from './render/render-backend';
-import { loadShipModuleModels } from './render/dynamic/ship/ship-module-models';
+import { loadBakedModels } from './render/dynamic/baked-models';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
-import { FrameSections } from './game/frame-sections';
+import { newSyncSections, newUpdateSections } from './game/frame-sections';
 import { UserSettings } from './settings/user-settings';
 import { browserSettingStorage } from './settings/stored-setting';
 import { themePresetOf } from './theme';
 import { applyThemeVariables } from './hud/style/theme-variables';
+import { setUiBackdropBlur } from './hud/style/common-ui-style';
+import { skipsFrame } from './run/frame-rate-cap';
 import { Hud } from './game/hud/hud';
 import { PanelCollapse } from './game/hud/panel-chrome';
 import { HudShell } from './hud/hud-shell';
 import { MarkerDevice } from './marker/marker-device';
 import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
 import { PauseMenu } from './hud/windows/pause-menu';
+import { fmtElapsedUnits } from './hud/format';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { debugInfoOpenAtStart, Launcher } from './launcher/launcher';
@@ -38,16 +41,16 @@ import type { PageDevices } from './run/page-devices';
 import type { ViewOptionsSettings } from './game/view/view-options-settings';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 
-// ローディング表示下で canvas を作り WebGPU シーンを初期化する
+// ローディング表示下で canvas を作り WebGPU シーンを初期化する。焼き込みモデルの読込は
+// 始めるだけで待たない — 完了はランを組むときに待つので、タイトルを先に出せる。
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   showLoading();
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
 
-  const [gameScene] = await Promise.all([
-    createGameScene(canvas, graphics, browserViewport()),
-    loadShipModuleModels(),
-  ]);
+  // 失敗はランを組むときの待ちが受け取るので、ここでは未処理の rejection にしない。
+  loadBakedModels().catch(() => {});
+  const gameScene = await createGameScene(canvas, graphics, browserViewport());
   hideLoading();
   return gameScene;
 }
@@ -62,6 +65,11 @@ function startAnimationLoop(
   let completedFrames = 0;
   // 1フレーム分: ランのフレームを回し、次フレームを予約する。
   function animate(now: number) {
+    // 上限で見送ったフレームは lastTime を進めず、実時間を次に描くフレームの dt へ繰り越す。
+    if (skipsFrame(now, lastTime, settings.graphics.current.frameRateCap)) {
+      requestAnimationFrame(animate);
+      return;
+    }
     const dt = (now - lastTime) / 1000;
     lastTime = now;
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
@@ -76,6 +84,7 @@ function startAnimationLoop(
     // 決まった周回の進行と、設定面の試聴に合わせる。
     pauseMenu.sync(now);
     const run = launcher.current;
+    pauseMenu.syncSession(run === null ? null : { stageLabel: run.stageLabel, elapsed: fmtElapsedUnits(run.game.simTime) });
     bgm.sync({
       volume: settings.audibleBgmVolume,
       inRun: run?.isPlaying ?? false,
@@ -141,7 +150,10 @@ function initHud(settings: UserSettings): {
   const panelCollapse = new PanelCollapse(
     settings.panelCollapsed, (state) => settings.panelCollapsed.set(state),
   );
-  const hud = new Hud(shell, panelCollapse, settings.renderStyle.current);
+  const hud = new Hud(
+    shell, panelCollapse, settings.renderStyle.current,
+    settings.missionTimeFormat, (format) => settings.missionTimeFormat.set(format),
+  );
   // マーカーの骨格は装置が、種別ごとの見た目は表示の導出が注入する。骨格を先に置き、
   // 同じ詳細度であれば種別ごとのスタイル指定が優先される順序にする。
   const markers = new MarkerDevice(shell.layers.marker);
@@ -231,6 +243,7 @@ async function main() {
   // ステージ選択画面も色を引けない。
   const settings = new UserSettings(browserSettingStorage);
   settings.themePalette.subscribe((palette) => applyThemeVariables(palette));
+  settings.graphics.subscribe((graphics) => setUiBackdropBlur(graphics.uiBlur));
   // セーブを読み、シーンと HUD を組む。
   const unlockManager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
@@ -247,9 +260,10 @@ async function main() {
       10000, 'warn',
     );
   }
-  const sections = new FrameSections();
+  const sections = newUpdateSections();
+  const syncSections = newSyncSections();
   const debugInfo = new DebugInfoWindow(
-    gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
+    gameScene.renderer, sections, syncSections, gameScene.gpu, shell.overlayManager,
     settings.renderStyle.current, debugInfoOpenAtStart(),
   );
   const devices: PageDevices = {
@@ -258,7 +272,7 @@ async function main() {
 
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
-    shell, devices, viewOptionsSettings(settings), settings.themePalette, sections, unlockManager,
+    shell, devices, viewOptionsSettings(settings), settings.themePalette, sections, syncSections, unlockManager,
     slots, snapshotService, autoSave, settings.graphics, settings.renderStyle,
   );
 

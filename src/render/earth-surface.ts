@@ -2,6 +2,8 @@
 // 天体表面の球へ、詳細な材質とタイルの常駐を接続する。
 import * as THREE from 'three/webgpu';
 import { scaledToBondAlbedo } from './celestial-albedo';
+import { TEXTURE_RESOLUTION, type TextureResolution } from './deferred-texture';
+import { earthTileLayersFor } from './earth-surface-layout';
 import type { EarthSurfaceSource } from './earth-surface-source';
 import type {
   EarthSurfaceResidentFrame,
@@ -47,6 +49,20 @@ export interface EarthSurfaceMaterialAttachment extends CelestialSurfaceMaterial
   readonly failureReason?: () => string | null;
   readonly ready?: () => boolean;
   readonly prepare?: () => void;
+}
+
+// 指定した物理層数で組んだ詳細地表の接続。coordinator が null のものは全球ベースへ留まる接続。
+export interface EarthSurfaceDetailConnection {
+  readonly coordinator: EarthSurfaceResidentCoordinatorLike | null;
+  readonly status: EarthSurfaceStatus;
+  readonly material: EarthSurfaceMaterialAttachment | null;
+  readonly reason: string | null;
+}
+
+// 詳細地表を、指定した物理層数で組み直す口。manifest がまだ届いていないなど組めない段階では
+// null を返し、呼び手は現在の接続を保つ(要求した層数は渡した側に記録される)。
+export interface EarthSurfaceDetailConnector {
+  connect(tileLayers: number): EarthSurfaceDetailConnection | null;
 }
 
 // 材質差し替えを受けられる天体表面かを判定する。
@@ -137,16 +153,19 @@ export class EarthSurface implements CelestialSurfaceLike {
   private reasonValue: string | null;
   private parentValue: THREE.Object3D | null = null;
   private apparentDiameterPxValue: number | null = null;
+  private textureResolutionValue: TextureResolution = TEXTURE_RESOLUTION.high;
   private disposed = false;
 
   // context と fallback の所有を引き継ぎ、dispose で一緒に解放する。status は省くと
-  // coordinator の有無から決まる。
+  // coordinator の有無から決まる。detailConnector はテクスチャ解像度の段が変わったとき
+  // 詳細接続をその段の層数で組み直す協力者で、無い地表は組み直さない。
   public constructor(
     private readonly context: EarthSurfaceContext,
     private fallback: CelestialSurfaceLike,
     coordinator: EarthSurfaceResidentCoordinatorLike | null = null,
     status: EarthSurfaceStatus = coordinator === null ? 'fallback' : 'ready',
     reason: string | null = null,
+    private readonly detailConnector: EarthSurfaceDetailConnector | null = null,
   ) {
     this.coordinatorValue = coordinator;
     this.statusValue = status;
@@ -195,6 +214,7 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.fallback.syncFrame(frame);
     if (this.pendingMaterialValue?.ready?.() !== false) this.activatePendingMaterial();
     this.materialSyncValue?.(frame);
+    this.rebuildDetailFor(frame.textureResolution);
     if (this.coordinatorValue === null) return;
 
     // 中断された要求は借り直す。
@@ -301,6 +321,19 @@ export class EarthSurface implements CelestialSurfaceLike {
     this.coordinatorValue?.dispose();
     this.context.dispose();
     this.fallback.dispose();
+  }
+
+  // テクスチャ解像度の段が変わったとき、詳細地表をその段の常駐層数で組み直す。
+  // 張り直しのあいだも球面は消えず、新しい詳細タイルが届くまでは全球ベースの層で描かれる。
+  private rebuildDetailFor(resolution: TextureResolution): void {
+    if (this.detailConnector === null || resolution === this.textureResolutionValue) return;
+    this.textureResolutionValue = resolution;
+    const connection = this.detailConnector.connect(earthTileLayersFor(resolution));
+    if (connection === null) return;
+    this.attach(
+      this.context.source, connection.coordinator, connection.status,
+      connection.material, connection.reason,
+    );
   }
 
   // sourceや表示寿命の境界で、次のframeに最新の投影を必ず作らせる。

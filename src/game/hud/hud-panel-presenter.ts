@@ -5,7 +5,7 @@ import { orbitInfo, relativeInfo } from '../orbit-info';
 import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { hasUsableConstructionDock } from '../ship/construction-entry';
 import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-commands';
-import { deployableCommands, type DeployableCommands } from '../player/deployable-commands';
+import { shipSystemCommands, type ShipSystemCommands } from '../player/ship-system-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from '../viewer/orbit-reference-commands';
 import { viewCommands } from '../viewer/view-commands';
 import { focusTargetId } from '../viewer/focus-target';
@@ -34,12 +34,13 @@ import type { OrbitReference } from '../orbit-reference';
 import type { ViewMode } from '../view/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ThemePalette } from '../../theme';
+import type { ShipAlarms } from '../alarm/ship-alarms';
 
 export class HudPanelPresenter {
   private readonly viewBadge: ViewBadge;
   // パネル操作コマンドをキューへ積むインターフェース。
   private readonly simSpeedCommands: SimSpeedCommands;
-  private readonly deployableCommands: DeployableCommands;
+  private readonly shipSystemCommands: ShipSystemCommands;
   private readonly orbitReferenceCommands: OrbitReferenceCommands;
 
   // ビューバッジを組む。パネルの操作は commands へ積み、値は残りの持ち主から毎フレーム読む。
@@ -65,7 +66,7 @@ export class HudPanelPresenter {
       hud.viewBadgeRow, hud.overlayManager, viewCommands(commands, viewer.view),
     );
     this.simSpeedCommands = simSpeedCommands(commands, simSpeedManager);
-    this.deployableCommands = deployableCommands(commands);
+    this.shipSystemCommands = shipSystemCommands(commands);
     this.orbitReferenceCommands = orbitReferenceCommands(commands, viewer.orbitReference);
   }
 
@@ -103,13 +104,14 @@ export class HudPanelPresenter {
     return this.celestialSystem.nameOf(id);
   }
 
-  // view で表に出ている常設パネルを、表示窓 displayWindow・軌道要素の基準 orbitRef・配色 palette で
-  // 組んだ値へ合わせる。camera はこのフレームの表示カメラ、nowMs はフレームの実時刻 [ms]。
+  // view で表に出ている常設パネルと警報帯を、表示窓 displayWindow・軌道要素の基準 orbitRef・配色
+  // palette で組んだ値へ合わせる。camera はこのフレームの表示カメラ、alarms は鳴っている警報、
+  // nowMs はフレームの実時刻 [ms]。
   public sync(
     view: ViewMode, displayWindow: PresentationDisplayWindow, orbitRef: OrbitReference | null, palette: ThemePalette,
-    camera: CameraFrame, nowMs: number,
+    camera: CameraFrame, alarms: ShipAlarms, nowMs: number,
   ): void {
-    this.hud.syncPanels(view, this.viewModels(view, displayWindow, orbitRef, palette), camera, nowMs);
+    this.hud.syncPanels(view, this.viewModels(view, displayWindow, orbitRef, palette), alarms, camera, nowMs);
   }
 
   // 常設パネルの値を束ねる。表に出ているビューのパネルのぶんだけを組む。
@@ -163,6 +165,7 @@ export class HudPanelPresenter {
     const motion = ship?.motion ?? null;
     const power = motion?.power ?? null;
     const radiator = motion?.radiator ?? null;
+    const coolingDump = motion?.coolingDump ?? null;
     // 搭載していない装備は null を返す。
     return {
       rcsDamp: controlled.throttle.rcsDamp,
@@ -188,8 +191,12 @@ export class HudPanelPresenter {
           ? () => this.startConstruction()
           : null,
       tapKey: (key) => this.input.tapKey(key),
-      toggleSolar: (side) => { if (power !== null) this.deployableCommands.toggleSolar(power, side); },
-      toggleRadiator: (side) => { if (radiator !== null) this.deployableCommands.toggleRadiator(radiator, side); },
+      toggleSolar: (side) => { if (power !== null) this.shipSystemCommands.toggleSolar(power, side); },
+      toggleRadiator: (side) => { if (radiator !== null) this.shipSystemCommands.toggleRadiator(radiator, side); },
+      coolingDumpRunning: coolingDump === null ? null : coolingDump.running,
+      toggleCoolingDump: () => {
+        if (coolingDump !== null) this.shipSystemCommands.toggleCoolingDump(coolingDump);
+      },
     };
   }
 

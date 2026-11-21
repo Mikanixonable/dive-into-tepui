@@ -18,6 +18,7 @@ import type { CelestialSurfaceDiagnostics, LightSourceMap } from '../celestial-s
 import { withAirglowEnabled } from '../../atmosphere';
 import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '../../atmosphere';
 import type { ShadowCloud } from '../../pipeline/shadow/cloud-shadow-renderer';
+import type { CloudPresentation } from '../../earth-weather/cloud/cloud-presentation';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import { EllipseLine } from '../../lines/ellipse-line';
 import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
@@ -89,6 +90,9 @@ export abstract class CelestialView {
   public get surfaceTextureUrl(): string | null { return null; }
   public get surfaceDiagnostics(): CelestialSurfaceDiagnostics | null { return null; }
   public rings(_motion: DefinedCelestialBody): RingSystemDef | null { return null; }
+
+  // この天体が持つ雲の統括。雲を持たない天体では null。
+  public get cloudPresentation(): CloudPresentation | null { return null; }
 
   // 表示資源を組み、シーンへ一度だけ登録する。
   public abstract build(

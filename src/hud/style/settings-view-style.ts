@@ -1,44 +1,58 @@
 // ESCメニュー内の設定詳細面(.pm-settings-view)の CSS。
-import { MQ_MEDIUM_DOWN } from '../breakpoints';
+import { MQ_COMPACT } from '../breakpoints';
 
 export const SETTINGS_VIEW_STYLE = `
+/* 左に内側タブの縦並び、右に選んだ面の本文。 */
 #hud-pause-menu .pm-settings-view {
-  --sv-content-inset: var(--space-4);
-  counter-reset: settings-section;
-  display: block; min-width: 0; pointer-events: auto; padding: var(--space-1) 0 var(--space-2);
+  --sv-tabs-width: 9.5em;
+  /* 描画の各項目のラベル領域の幅。同じ面の操作領域をこの右へ揃える。 */
+  --sv-label-width: 11em;
+  display: grid; grid-template-columns: var(--sv-tabs-width) minmax(0, 1fr);
+  align-items: start; gap: var(--space-6); min-width: 0; pointer-events: auto;
 }
-#hud-pause-menu .pm-settings-view .sv-header,
-#hud-pause-menu .pm-settings-view .sv-description,
-#hud-pause-menu .pm-settings-view .sv-section { width: 100%; margin-inline: auto; }
-#hud-pause-menu .pm-settings-view .sv-header {
-  display: flex; align-items: flex-start; padding: 0 var(--sv-content-inset) var(--space-2);
+#hud-pause-menu .pm-settings-view .sv-tabs {
+  position: sticky; top: 0; display: flex; flex-direction: column; gap: var(--space-1);
 }
-#hud-pause-menu .pm-settings-view .sv-heading-group { display: flex; flex-direction: column; gap: var(--space-2); }
-#hud-pause-menu .pm-settings-view .sv-header h2 {
-  color: var(--title); font-size: var(--font-xl); letter-spacing: var(--tracking-title);
+#hud-pause-menu .pm-settings-view .sv-tabs .w-btn {
+  display: flex; justify-content: flex-start; min-height: var(--hit-target-min);
+  padding: var(--space-3) var(--space-4); border: 0; border-radius: var(--radius-control); text-align: left;
+  font-size: var(--font-m); font-weight: 600;
+  background: transparent; color: var(--text-dim); box-shadow: none;
 }
-#hud-pause-menu .pm-settings-view .sv-eyebrow { color: var(--color-primary); font-size: var(--font-xxs); letter-spacing: var(--tracking-label); }
-#hud-pause-menu .pm-settings-view .sv-description {
-  margin-top: var(--space-3); padding-inline: var(--sv-content-inset);
-  color: var(--text-dim); font-size: var(--font-s); line-height: 1.6;
-}
-#hud-pause-menu .pm-settings-view .sv-section {
-  counter-increment: settings-section;
-  margin-top: var(--space-4); padding: var(--sv-content-inset);
-  border: 0; border-radius: 0;
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
-}
-#hud-pause-menu .pm-settings-view .sv-section-body { min-width: 0; margin-top: var(--space-4); }
+#hud-pause-menu .pm-settings-view .sv-tabs .w-btn:hover { background: var(--glass-control); color: var(--color-primary-hover); transform: none; }
+#hud-pause-menu .pm-settings-view .sv-tabs .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
+#hud-pause-menu .pm-settings-view .sv-panes { min-width: 0; }
 #hud-pause-menu .pm-settings-view .sv-tab-panel[hidden] { display: none; }
-#hud-pause-menu .pm-settings-view .sv-section h3 {
-  display: flex; align-items: center; gap: var(--space-3); margin: 0;
-  color: var(--title); font-size: var(--font-m); letter-spacing: var(--tracking-label);
+
+/* 描画: プリセットの行と、群ごとの見出し+項目の行の束。各行はラベル領域と操作領域に分ける。 */
+#hud-pause-menu .pm-settings-view .gp-body {
+  display: flex; flex-direction: column; gap: var(--space-5);
 }
-#hud-pause-menu .pm-settings-view .sv-section h3::before {
-  width: auto; height: auto; border-radius: 0; background: transparent;
-  color: var(--color-primary); content: counter(settings-section, decimal-leading-zero);
-  font-size: var(--font-xxs); font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-label);
+#hud-pause-menu .pm-settings-view .gp-group { display: flex; flex-direction: column; gap: 0; }
+#hud-pause-menu .pm-settings-view .gp-group-title {
+  padding: 0 var(--space-2) var(--space-3);
+  color: var(--text); font-size: var(--font-s); font-weight: 600; letter-spacing: 0;
 }
+#hud-pause-menu .pm-settings-view .gp-body > .w-group,
+#hud-pause-menu .pm-settings-view .gp-group > .w-group,
+#hud-pause-menu .pm-settings-view .gp-group > .w-toggle {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: var(--space-3);
+  min-height: var(--hit-target-min); padding: var(--space-3) var(--space-5);
+  background: var(--glass-inset);
+}
+#hud-pause-menu .pm-settings-view .gp-body > .w-group { border-radius: var(--radius-panel); }
+#hud-pause-menu .pm-settings-view .gp-group > .gp-group-title + * { border-radius: var(--radius-panel) var(--radius-panel) 0 0; }
+#hud-pause-menu .pm-settings-view .gp-group > :last-child { border-bottom-left-radius: var(--radius-panel); border-bottom-right-radius: var(--radius-panel); }
+#hud-pause-menu .pm-settings-view .gp-group > * + :not(.gp-group-title):not(.gp-group-title + *) {
+  box-shadow: inset 0 1px 0 var(--fill-1);
+}
+#hud-pause-menu .pm-settings-view .w-group-title,
+#hud-pause-menu .pm-settings-view .w-toggle-title {
+  flex: 0 0 var(--sv-label-width); min-width: 0;
+  color: var(--text-muted); font-size: var(--font-s); letter-spacing: 0;
+}
+#hud-pause-menu .pm-settings-view .gp-group > .w-group .w-select { min-width: 0; max-width: 100%; }
+
 #hud-pause-menu .pm-settings-view .sv-theme-options {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr)); gap: var(--space-3);
 }
@@ -113,12 +127,12 @@ export const SETTINGS_VIEW_STYLE = `
 #hud-pause-menu .pm-settings-view .sv-track-number { color: var(--text-dim); font-size: var(--font-xxs); font-variant-numeric: tabular-nums; }
 #hud-pause-menu .pm-settings-view .sv-preview-button { flex: 0 0 auto; min-width: 76px; text-align: center; }
 #hud-pause-menu .pm-settings-view .sv-track-actions { margin-top: var(--space-2); text-align: right; }
-@media ${MQ_MEDIUM_DOWN} {
-  #hud-pause-menu .pm-settings-view { padding-inline: 0; }
+@media ${MQ_COMPACT} {
+  /* 内側タブを本文の上に横に並べ、ラベルは1行目を独占して操作部品を下の行へ回す。 */
+  #hud-pause-menu .pm-settings-view { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+  #hud-pause-menu .pm-settings-view .sv-tabs { position: static; flex-direction: row; }
+  #hud-pause-menu .pm-settings-view .sv-tabs .w-btn { flex: 1 1 0; justify-content: center; min-width: 0; }
+  #hud-pause-menu .pm-settings-view .w-group-title,
+  #hud-pause-menu .pm-settings-view .gp-group > .w-group .w-group-title { flex: 0 0 100%; }
 }
-/* 描画タブの内容は、狭い右列でのカテゴリ2列×項目2列の二重分割を避けて常に1列にする。
-   畳み方は compact のときの .gp-* と同じ — ラベルが1行目を独占し、操作部品は下の行へ回る。 */
-#hud-pause-menu .pm-settings-view .gp-body,
-#hud-pause-menu .pm-settings-view .gp-group { grid-template-columns: 1fr; }
-#hud-pause-menu .pm-settings-view .gp-group > .w-group .w-group-title { flex: 0 0 100%; }
 `;

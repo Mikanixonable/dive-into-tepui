@@ -4,6 +4,8 @@
 
 // HUD の静的 DOM が data-id で公開する要素の id 一覧。
 const HUD_ELEMENT_IDS = [
+  'alarm-band',
+  'alarm-lamp',
   'alt',
   'ap',
   'ap-label',

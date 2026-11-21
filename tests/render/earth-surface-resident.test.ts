@@ -95,14 +95,14 @@ function coordinator(keys: readonly EarthTileKey[], fetchImpl: typeof fetch = as
 }, backend = new ImmediateBackend(), colorToRgba8: EarthSurfaceColorToRgba8 = (color) => {
   if (!(color instanceof Uint8Array)) throw new Error('fixture color is not RGBA8');
   return color;
-}, tiles = new EarthSurfaceTiles(), decodeImage: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown> = async () => COLOR.slice()) {
+}, tiles = new EarthSurfaceTiles(), decodeImage: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown> = async () => COLOR.slice(), layers = EARTH_TILE_LAYERS) {
   // 各差し替え点をfixtureで満たした一式を組む。
   const source = new EarthSurfaceTileSource('{z}/{x}/{y}.jpg', '{z}/{x}/{y}.bin.gz');
   const queue = new EarthSurfaceTileRequestQueue(source, {
     fetchImpl,
     decodeImage,
   });
-  const gpu = new EarthSurfaceGpuAdapter(backend);
+  const gpu = new EarthSurfaceGpuAdapter(backend, layers);
   const resident = new EarthSurfaceResidentCoordinator({
     tiles, queue, gpu, colorToRgba8,
   });
@@ -290,6 +290,25 @@ export function register(): void {
       await fixture.resident.settle();
     }
     assert.equal(fixture.gpu.uploadedTiles().length, EARTH_TILE_LAYERS);
+    fixture.resident.dispose();
+  });
+
+  test('earth resident: 絞った物理層数のadapterではその層数だけresidentを収める', async () => {
+    const layers = 32;
+    const keys = candidateKeys(layers + 8);
+    const tiles = new CandidateTiles(keys.slice(0, layers));
+    const fixture = coordinator(keys, undefined, new ImmediateBackend(), undefined, tiles, undefined, layers);
+    for (let group = 0; group < layers / 8; group++) {
+      const result = fixture.resident.sync({ projection: new Projection(), timeMs: group, generation: 1 });
+      assert.equal(result.requested.length, 8);
+      await fixture.resident.settle();
+    }
+    assert.equal(fixture.gpu.uploadedTiles().length, layers);
+    // 層を使い切ったあとは、候補に含まれるresidentを先行退避しないので追加要求は出ない。
+    tiles.setCandidates(keys);
+    const result = fixture.resident.sync({ projection: new Projection(), timeMs: layers / 8, generation: 1 });
+    assert.equal(result.requested.length, 0);
+    assert.equal(fixture.gpu.uploadedTiles().length, layers);
     fixture.resident.dispose();
   });
 
@@ -496,7 +515,7 @@ export function register(): void {
 
   test('earth resident: GPU機能不足ではadapterを組まず全球baseへ戻る', () => {
     const unsupported = new ImmediateBackend({ ...CAPABILITIES, texture2dArray: false });
-    assert.throws(() => new EarthSurfaceGpuAdapter(unsupported), /detail features unavailable/);
+    assert.throws(() => new EarthSurfaceGpuAdapter(unsupported, EARTH_TILE_LAYERS), /detail features unavailable/);
     assert.equal(unsupported.pages.length, 0);
   });
 }

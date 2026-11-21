@@ -8,7 +8,7 @@ import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from '../../physics/time';
 import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { len, sub, v3 } from '../../math/vec3';
+import { add, dot, len, scale, sub, v3 } from '../../math/vec3';
 import { RELICS, relicById, type RelicDefinition } from '../relic/relic-catalog';
 import { OrbitSlot } from '../navigation/orbit-slot';
 import { orbitSlotStateAt } from '../navigation/orbit-slot-state';
@@ -160,7 +160,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     public readonly scoreCounter = new ScoreCounter(),
     private _phase: GamePhase = 'playing',
     logistics?: Logistics,
-    private _reinforced = false,
     salvageCargo?: SalvageCargo,
     revealedBodies: readonly string[] = BODY_REVEAL_BASE,
     relicHunt: RelicHunt = RelicHunt.create(),
@@ -191,7 +190,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     const scoreCounter = serialized?.scoreCounter;
     const phase = serialized?.phase;
     const logistics = serialized?.logistics;
-    const reinforced = serialized?.reinforced;
     // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
     return [
       scoreCounter == null ? undefined : ScoreCounter.deserialize(scoreCounter),
@@ -199,7 +197,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       logistics == null
         ? undefined
         : Logistics.deserialize(logistics, scene, dynamicSystem, rules.automaticResupply),
-      reinforced ?? undefined,
       SalvageCargo.deserialize(serialized?.pendingSalvageCargo ?? null),
       serialized?.revealedBodies ?? BODY_REVEAL_BASE,
       RelicHunt.deserialize(serialized?.relics ?? null),
@@ -264,17 +261,30 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   }
 
   // 状態を指定しない自機の、いまの simTime における既定の状態: ECI 原点の天体を回る、
-  // 高度 PLAYER_INITIAL_ALT・傾斜角 PLAYER_INITIAL_INC_DEG の円軌道上。
+  // 高度 PLAYER_INITIAL_ALT・傾斜角 PLAYER_INITIAL_INC_DEG の円軌道上。位相は、開始時点で
+  // 自機が中心天体の昼側に来るよう、軌道上で太陽方向に最も近い位置を選ぶ(SPEC GAME.md 2)。
   private defaultPlayerState(): KinematicState {
     const t = this._dynamicSystem.simTime;
     const center = this._celestialSystem.origin.motion;
     const radius = center.def.radius + PLAYER_INITIAL_ALT;
     const speed = Math.sqrt(center.def.mu / radius);
     const inc = (PLAYER_INITIAL_INC_DEG * Math.PI) / 180;
+    // 位相0の位置方向 r̂ と進行方向 t̂。位相 θ では
+    // pos = 半径*(r̂ cosθ + t̂ sinθ), vel = 速さ*(t̂ cosθ − r̂ sinθ)。
+    const rHat = v3(1, 0, 0);
+    const tHat = v3(0, Math.sin(inc), -Math.cos(inc));
+    const centerState = center.stateAt(t);
+    // 太陽方向へ最も近い位相。dot が最大になる θ は atan2(t̂・ŝ, r̂・ŝ)。
+    const sun = this._celestialSystem.sunDirFrom(centerState.r, t);
+    const phase = Math.atan2(dot(tHat, sun), dot(rHat, sun));
+    const cos = Math.cos(phase);
+    const sin = Math.sin(phase);
     const rel = kinematicState<'primaryRel'>(
-      t, v3(radius, 0, 0), v3(0, speed * Math.sin(inc), -speed * Math.cos(inc)),
+      t,
+      add(scale(rHat, radius * cos), scale(tHat, radius * sin)),
+      add(scale(tHat, speed * cos), scale(rHat, -speed * sin)),
     );
-    return addPrimaryRelative(center.stateAt(t), rel);
+    return addPrimaryRelative(centerState, rel);
   }
 
   // 自機の発砲を1発数える。
@@ -325,14 +335,13 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     };
   }
 
-  // 同じ攻撃グループで同時に発砲してよい敵の数。援護付きの周回では 1 つ減る(1 を下回らない)。
+  // 同じ攻撃グループで同時に発砲してよい敵の数。
   public get enemyAttackLimit(): number {
-    return Math.max(1, ENEMY_MAX_ATTACKERS_PER_GROUP - (this._reinforced ? 1 : 0));
+    return ENEMY_MAX_ATTACKERS_PER_GROUP;
   }
 
   // 再出撃のときの選択を、周回を始める前に当てる。省いた選択は既定のまま。
   public applyRunOptions(options: RunOptions): void {
-    this._reinforced = options.reinforced;
     this._revealedBodies = options.revealedBodies;
     if (this.stageClass.judgesOutcome) this.placeDiscoveredRelics(options.discoveredRelics);
   }
@@ -459,7 +468,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       scoreCounter: this.scoreCounter.serialize(),
       phase: this._phase,
       logistics: this.logistics.serialize(),
-      reinforced: this._reinforced,
       pendingSalvageCargo: this.salvageCargo.serialize(),
       revealedBodies: this._revealedBodies,
       relics: this.relicHunt.serialize(),

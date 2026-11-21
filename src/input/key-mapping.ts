@@ -98,6 +98,7 @@ export const KEY_MAPPING = {
 
   // 画面
   help: { code: 'KeyH', label: 'H' },
+  alarmAcknowledge: { code: 'KeyY', label: 'Y' },
   wideScreenToggle: { code: 'Tab', label: 'TAB' },
   pauseMenu: { code: 'Escape', label: 'ESC' },
   restart: { code: 'KeyR', label: 'R' },

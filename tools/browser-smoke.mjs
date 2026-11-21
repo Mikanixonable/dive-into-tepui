@@ -536,7 +536,7 @@ async function checkPauseMenu() {
   await applyViewport({ width: 320, height: 568 });
   const settingsScroll = await devTools.evaluate(`(() => {
     const settingsTab = [...document.querySelectorAll('#hud-pause-menu .pm-tabs .w-btn')]
-      .find((button) => button.textContent?.trim() === 'SETTINGS');
+      .find((button) => button.textContent?.trim() === '設定');
     settingsTab?.click();
     const content = document.querySelector('#hud-pause-menu .pm-tab-content');
     if (!content) return { exists: false, scrollable: false, reachedEnd: false };

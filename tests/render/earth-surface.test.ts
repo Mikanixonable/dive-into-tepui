@@ -3,10 +3,12 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { EarthSurface, EarthSurfaceContext } from '../../src/render/earth-surface';
+import type { EarthSurfaceDetailConnector } from '../../src/render/earth-surface';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { EarthSurfaceGpuThree } from '../../src/render/earth-surface-gpu-three';
 import { createEarthSurfaceMaterialBinding } from '../../src/render/earth-surface-material-binding';
 import type { EarthSurfaceGpuTextures } from '../../src/render/earth-surface-gpu';
+import { TEXTURE_RESOLUTION, type TextureResolution } from '../../src/render/deferred-texture';
 import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tile-key';
 import { EarthSurfaceView } from '../../src/render/earth-surface-tile-projection';
 import type { EarthSurfaceResidentFrame } from '../../src/render/earth-surface-resident';
@@ -54,8 +56,11 @@ class FallbackSpy implements CelestialSurfaceLike {
   public dispose(): void { this.calls.push('dispose'); }
 }
 
-// 既定の天体表面フレーム値。camera は差し替えられる。
-function frame(camera: THREE.Camera = new THREE.Camera()): CelestialSurfaceFrame {
+// 既定の天体表面フレーム値。camera と解像度の段は差し替えられる。
+function frame(
+  camera: THREE.Camera = new THREE.Camera(),
+  textureResolution: TextureResolution = TEXTURE_RESOLUTION.high,
+): CelestialSurfaceFrame {
   return {
     camera,
     bodyToView: new THREE.Matrix4(),
@@ -64,6 +69,7 @@ function frame(camera: THREE.Camera = new THREE.Camera()): CelestialSurfaceFrame
     frame: 7,
     timeMs: 1200,
     style: 'realistic',
+    textureResolution,
   };
 }
 
@@ -207,7 +213,7 @@ export function register(): void {
     const gpu = new EarthSurfaceGpuThree({
       texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS,
       colorSrgbLinear: true, terrainRgba8Linear: true,
-    });
+    }, EARTH_TILE_LAYERS);
     const coordinator = new CoordinatorSpy(gpu.textures);
     const fallback = CelestialSurface.solid([0.1, 0.1, 0.1]);
     const surface = new EarthSurface(new EarthSurfaceContext(SOURCE), fallback);
@@ -237,7 +243,7 @@ export function register(): void {
     const gpu = new EarthSurfaceGpuThree({
       texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS,
       colorSrgbLinear: true, terrainRgba8Linear: true,
-    });
+    }, EARTH_TILE_LAYERS);
     const binding = createEarthSurfaceMaterialBinding(
       gpu.textures!, SOURCE.baseColorUrl, SOURCE.baseTerrainUrl,
       async () => { throw new Error('base terrain fixture is intentionally unavailable'); },
@@ -257,7 +263,7 @@ export function register(): void {
     const gpu = new EarthSurfaceGpuThree({
       texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS,
       colorSrgbLinear: true, terrainRgba8Linear: true,
-    });
+    }, EARTH_TILE_LAYERS);
     const coordinator = new CoordinatorSpy(gpu.textures);
     const fallback = CelestialSurface.solid([0.1, 0.1, 0.1]);
     const surface = new EarthSurface(new EarthSurfaceContext(SOURCE), fallback);
@@ -298,6 +304,71 @@ export function register(): void {
 
     assert.equal(coordinator.disposed, true);
     assert.equal(disposed, 1);
+    surface.dispose();
+  });
+
+  test('earth surface: 段が変わると詳細接続をその段の層数で組み直す', () => {
+    const context = new EarthSurfaceContext(SOURCE);
+    const fallback = new FallbackSpy();
+    const first = new CoordinatorSpy();
+    const connects: number[] = [];
+    const built: CoordinatorSpy[] = [];
+    const connector: EarthSurfaceDetailConnector = {
+      connect: (tileLayers) => {
+        connects.push(tileLayers);
+        const coordinator = new CoordinatorSpy();
+        built.push(coordinator);
+        return { coordinator, status: 'ready', material: null, reason: null };
+      },
+    };
+    const surface = new EarthSurface(context, fallback, first, 'ready', null, connector);
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+
+    // 既定の高から低へ。32層で組み直され、旧coordinatorは同じ境界で解放される。
+    surface.syncFrame(frame(camera, TEXTURE_RESOLUTION.low));
+    assert.deepEqual(connects, [32]);
+    assert.equal(first.disposed, true);
+    assert.equal(built[0]?.frames.length, 1);
+
+    // 同じ段のままでは組み直さず、組み直したcoordinatorへ同じフレームの同期が続く。
+    surface.syncFrame({ ...frame(camera, TEXTURE_RESOLUTION.low), frame: 8 });
+    assert.deepEqual(connects, [32]);
+    assert.equal(built[0]?.frames.length, 2);
+
+    // 中は64層、高は従来どおりの96層で組み直される。
+    surface.syncFrame({ ...frame(camera, TEXTURE_RESOLUTION.medium), frame: 9 });
+    surface.syncFrame({ ...frame(camera, TEXTURE_RESOLUTION.high), frame: 10 });
+    assert.deepEqual(connects, [32, 64, EARTH_TILE_LAYERS]);
+    assert.equal(built[1]?.disposed, true);
+    assert.equal(built[2]?.disposed, false);
+    assert.equal(built[2]?.frames.length, 1);
+    surface.dispose();
+    assert.equal(built[2]?.disposed, true);
+  });
+
+  test('earth surface: 接続器がまだ組めない段では現在の接続を保つ', () => {
+    const context = new EarthSurfaceContext(SOURCE);
+    const fallback = new FallbackSpy();
+    const coordinator = new CoordinatorSpy();
+    const connects: number[] = [];
+    const connector: EarthSurfaceDetailConnector = {
+      connect: (tileLayers) => {
+        connects.push(tileLayers);
+        return null;
+      },
+    };
+    const surface = new EarthSurface(context, fallback, coordinator, 'ready', null, connector);
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld();
+
+    surface.syncFrame(frame(camera, TEXTURE_RESOLUTION.low));
+    assert.deepEqual(connects, [32]);
+    assert.equal(coordinator.disposed, false);
+    assert.equal(coordinator.frames.length, 1);
+    assert.equal(surface.diagnostics.status, 'ready');
     surface.dispose();
   });
 }

@@ -6,7 +6,7 @@ import type { BoolNode, FloatNode, Mat3Node, Vec2Node, Vec3Node, Vec4Node } from
 import { earthSurfaceNormalFromRadialNode, earthSurfaceUvFromRadialNode } from './earth-surface-coordinate';
 import { configureEarthSurfaceTexture } from './earth-surface-texture';
 import {
-  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_LAYERS, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
+  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
   EARTH_TILE_TEXELS,
 } from './earth-surface-tile-key';
 
@@ -16,8 +16,8 @@ interface EarthSurfaceMaterialCapabilities {
 
 interface EarthSurfaceMaterialNodeTextures {
   readonly pageTable: THREE.Texture;
-  readonly color: THREE.Texture;
-  readonly terrain: THREE.Texture;
+  readonly color: THREE.DataArrayTexture;
+  readonly terrain: THREE.DataArrayTexture;
   readonly baseColor: THREE.Texture;
   readonly baseTerrain: THREE.Texture;
 }
@@ -58,11 +58,13 @@ export function earthSurfaceDetailLodNode(z: FloatNode): FloatNode {
   return min(max(z, EARTH_TILE_MIN_Z), EARTH_TILE_MAX_Z);
 }
 
-// 詳細配列の指定層をクランプして標本する。
-function sampleArray(textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, layer: FloatNode): Vec4Node {
+// 詳細配列の指定層をクランプして標本する。maxLayer は配列の物理層数−1。
+function sampleArray(
+  textureValue: THREE.Texture, uv: Vec2Node, z: FloatNode, layer: FloatNode, maxLayer: number,
+): Vec4Node {
   // DataArrayTextureの層はdepthへ渡す。base層(255)は後段でbase画像へ切り替えるため、
   // 配列の範囲内へクランプした値だけを実際のサンプラへ渡す。
-  const safeLayer = min(layer, EARTH_TILE_LAYERS - 1);
+  const safeLayer = min(layer, maxLayer);
   const safeZ = earthSurfaceDetailLodNode(z);
   return texture(textureValue, earthSurfaceTileUvNode(uv, safeZ)).depth(int(safeLayer)).level(float(0));
 }
@@ -76,7 +78,7 @@ function sampleBase(textureValue: THREE.Texture, uv: Vec2Node): Vec4Node {
 // 現在層を読み、baseまたは親から遷移している画素に限って追加の標本を読む。
 function sampleLodTexture(
   detailTexture: THREE.Texture, baseTexture: THREE.Texture, uv: Vec2Node, z: FloatNode,
-  layer: FloatNode, parentLayer: FloatNode, fade: FloatNode,
+  layer: FloatNode, parentLayer: FloatNode, fade: FloatNode, maxLayer: number,
 ): Vec4Node {
   // ページ表の層を読み、必要なときだけ親層とのフェードを適用する。
   const currentBase = greaterThanEqual(layer, EARTH_BASE_LAYER);
@@ -86,13 +88,13 @@ function sampleLodTexture(
     If(currentBase, () => {
       value.assign(sampleBase(baseTexture, uv));
     }).Else(() => {
-      value.assign(sampleArray(detailTexture, uv, z, layer));
+      value.assign(sampleArray(detailTexture, uv, z, layer, maxLayer));
       If(fade.lessThan(1), () => {
         const previous = vec4(0).toVar();
         If(parentBase, () => {
           previous.assign(sampleBase(baseTexture, uv));
         }).Else(() => {
-          previous.assign(sampleArray(detailTexture, uv, max(z.sub(1), EARTH_TILE_MIN_Z), parentLayer));
+          previous.assign(sampleArray(detailTexture, uv, max(z.sub(1), EARTH_TILE_MIN_Z), parentLayer, maxLayer));
         });
         value.assign(mix(previous, value, fade));
       });
@@ -134,11 +136,13 @@ function earthSurfaceMaterialNodes(
   const parentLayer = floor(page.g.mul(255).add(0.5));
   const z = floor(page.b.mul(255).add(0.5));
   const fade = page.a;
+  // シェーダ内の層クランプは、実際に確保した配列の層数に合わせる。
+  const maxDetailLayer = textures.color.image.depth - 1;
   const colorNode = sampleLodTexture(
-    textures.color, textures.baseColor, uv, z, layer, parentLayer, fade,
+    textures.color, textures.baseColor, uv, z, layer, parentLayer, fade, maxDetailLayer,
   ).rgb.mul(inputs.albedoScale) as Vec3Node;
   const terrain = sampleLodTexture(
-    textures.terrain, textures.baseTerrain, uv, z, layer, parentLayer, fade,
+    textures.terrain, textures.baseTerrain, uv, z, layer, parentLayer, fade, maxDetailLayer,
   );
   const normalBody = decodeEarthSurfaceNormalNode(terrain.rgb);
   const terrainNormalView = normalize(inputs.bodyToView.mul(normalBody));

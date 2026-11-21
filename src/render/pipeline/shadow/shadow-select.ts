@@ -5,6 +5,7 @@ import { len, sub } from '../../../math/vec3';
 import { MAX_SHADOW_BODIES } from './body-shadow';
 import { cumulusOctavesOf } from '../../opaque-cloud-surface-renderer';
 import { cirrusOctavesOf } from '../../earth-weather/cloud/cloud-detail';
+import type { CloudRenderInput } from '../../earth-weather/cloud/cloud-render-input';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
 import type { RingBand } from './ring-shadow';
@@ -73,14 +74,18 @@ export interface CloudShadowKinds {
   readonly cirrusOctaves: number;
 }
 
-// 描画品質設定から、雲の種類ごとに影を落とすかと、影の細部の段数を読む。
-export function cloudShadowKinds(graphics: GraphicsSettingsData): CloudShadowKinds {
+// 描画品質設定と、影を落とす天体の雲の入力から、雲の種類ごとに影を落とすかと、影の
+// 細部の段数を読む。段数は雲の入力が持つ実効値を使い、表面の雲が立てる段数と揃える —
+// 源が無いフレーム(cloud === null)は設定値を据える(影は落ちないので値は読まれない)。
+export function cloudShadowKinds(
+  graphics: GraphicsSettingsData, cloud: CloudRenderInput | null = null,
+): CloudShadowKinds {
   const clouds = graphics.clouds && graphics.cloudShadow;
   return {
     cumulus: clouds && graphics.cumulus,
     cirrus: clouds && graphics.cirrus,
-    cumulusOctaves: cumulusOctavesOf(graphics.cumulusDetail),
-    cirrusOctaves: cirrusOctavesOf(graphics.cirrusDetail),
+    cumulusOctaves: cloud?.cumulusOctaves ?? cumulusOctavesOf(graphics.cumulusDetail),
+    cirrusOctaves: cloud?.cirrusOctaves ?? cirrusOctavesOf(graphics.cirrusDetail),
   };
 }
 

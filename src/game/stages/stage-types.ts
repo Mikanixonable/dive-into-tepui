@@ -21,7 +21,7 @@ import type { SerializedLogistics } from './stage-utils/logistics';
 import type { SalvageCargo } from './stage-utils/salvage-cargo';
 import type { Stage } from './stage';
 
-export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
+export type StageId = '1' | '2' | '3' | '4' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
 // 全ステージ共通の協力者。create・deserialize が受け、基底のコンストラクタへそのまま渡す。
 export type StageDeps = [
@@ -39,7 +39,7 @@ export type StageDeps = [
 // 全ステージ共通の状態(スコア・決着状態・補給)。基底のコンストラクタが deps の後ろに受け、
 // 省いたものは新しいランの初期値から始まる。
 export type CommonStageState = [
-  scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics, reinforced?: boolean,
+  scoreCounter?: ScoreCounter, phase?: GamePhase, logistics?: Logistics,
   salvageCargo?: SalvageCargo, revealedBodies?: readonly string[], relicHunt?: RelicHunt,
 ];
 
@@ -84,8 +84,6 @@ export interface SerializedStage {
   readonly scoreCounter: SerializedScoreCounter;
   readonly phase: GamePhase;
   readonly logistics: SerializedLogistics;
-  // 援護付きの再出撃か。古い記録には無いので欠けは援護なしとして読む。
-  readonly reinforced?: boolean;
   // 補給艇で届けていない積荷。欠けた記録は空の待ち行列から始まる。
   readonly pendingSalvageCargo?: readonly SalvageKind[];
   // 解放された天体の id。欠けた記録は太陽・地球・月だけから始める。
@@ -117,8 +115,6 @@ export interface StageResult {
 
 // 周回の始め方で決まる選択。再出撃のたびに launcher が決めて、周回を組むときに渡す。
 export interface RunOptions {
-  // 援護付きの再出撃か(→ applyRunOptions)。
-  readonly reinforced: boolean;
   // 連敗の予告を出すか。予告を持つステージだけが読む。
   readonly forecast: boolean;
   // このランの開始時点で解放されている天体の id。勝敗を判定しないステージには基底の天体だけを渡す。

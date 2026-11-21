@@ -25,6 +25,8 @@ export interface GameInputSource {
   readonly stageIsPlaying: boolean;
   // 建造開始キーの受け口。「使用可能なドックのうち最寄りのものから始める」は呼び出し側が組む。
   readonly startConstruction: () => void;
+  // 警報の確認キーの受け口。鳴っている警告をすべて確認済みにする。
+  readonly acknowledgeAlarms: () => void;
 }
 
 // 画面・カメラ・ターゲット・時間加速・ビューの単発キーを受ける口。
@@ -53,6 +55,11 @@ export function gameInputPorts(
       feature: 'hud',
       commands: [gameCommand(K.help.code, K.help), gameCommand(K.wideScreenToggle.code, K.wideScreenToggle)],
       handleCommand: command => hud.handleCommand(command.id),
+    },
+    {
+      feature: 'alarm',
+      commands: [gameCommand(K.alarmAcknowledge.code, K.alarmAcknowledge)],
+      handleCommand: () => source.acknowledgeAlarms(),
     },
     {
       feature: 'camera-command',

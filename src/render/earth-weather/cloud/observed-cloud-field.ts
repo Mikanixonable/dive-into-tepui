@@ -3,7 +3,7 @@
 // 全球正距円筒画像を同一仕様の球面キャップ投影テクスチャへ再投影して供給する。
 import * as THREE from 'three/webgpu';
 import { float, int, log2, max, texture, vec4 } from 'three/tsl';
-import { DeferredTexture } from '../../deferred-texture';
+import { DeferredTexture, type TextureUrlSource } from '../../deferred-texture';
 import { EMPTY_CLOUD_FIELD } from './cumulus-shape';
 import { BakedField } from '../../baked-field';
 import { GPU_PASS } from '../../gpu-timings';
@@ -56,7 +56,7 @@ export class ObservedCloudField implements CloudFieldSource {
 
   // url は地表と同じ正距円筒の雲場画像(R = 積雲の量、G = 巻雲の量、B・A = 巻雲の筋の
   // 倍角ベクトル 0..1)、projection は焼き直す先の持ち方。
-  public constructor(url: string, private readonly projection: FieldProjection) {
+  public constructor(url: TextureUrlSource, private readonly projection: FieldProjection) {
     this.map = new DeferredTexture(url, THREE.NoColorSpace);
     // 正距円筒の経度は周期的なので、画像は経度方向へ巻く。
     this.map.texture.wrapS = THREE.RepeatWrapping;

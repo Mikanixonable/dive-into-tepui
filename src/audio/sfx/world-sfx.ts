@@ -8,6 +8,7 @@ const HIT_SOUND_DISTANCE_MAX = 10;
 
 const THRUST_LOOP_GAIN = 0.1;
 const RCS_LOOP_GAIN = 0.015; // メインエンジンより高く軽いシュー音なので、控えめに混ぜる
+const ALARM_LOOP_GAIN = 0.06;
 
 // そのフレームに鳴らすべき連続音の全体。
 export interface LoopSfx {
@@ -23,9 +24,10 @@ export type WorldSound =
   }
   | { readonly kind: 'hit'; readonly impactDistance: number };
 
-// そのフレームに鳴らすべき音の全体。
+// そのフレームに鳴らすべき音の全体。alarm は未確認の警告が鳴っているかで、真の間だけ警報ループが鳴る。
 interface WorldSfxDeclaration {
   readonly loops: LoopSfx;
+  readonly alarm: boolean;
   readonly cues: readonly SoundCue<WorldSound>[];
 }
 
@@ -46,7 +48,9 @@ const LOW_PRIORITY_SPAN: Partial<Record<WorldSound['kind'], number>> = {
 
 export class WorldSfx {
   // 連続音のチャンネル。組めるまでと、畳んだ後は null。
-  private loops: { thrust: GainNode; rcs: GainNode } | null = null;
+  private loops: { thrust: GainNode; rcs: GainNode; alarm: GainNode } | null = null;
+  // 警報ループの波形。一度組んだら使い回す。
+  private klaxonBuf: AudioBuffer | null = null;
   // 畳んだ後か。立っていれば連続音の組み直しを禁じる。
   private disposed = false;
   // 組んだループ音の音源。
@@ -67,7 +71,7 @@ export class WorldSfx {
       if (!this.admit(cue.sound)) continue;
       this.play(cue.sound);
     }
-    this.syncLoops(declaration.loops);
+    this.syncLoops(declaration.loops, declaration.alarm);
   }
 
   // この音を鳴らしてよいかを決める。順位4の音は、鳴っている数が上限に達していれば鳴らさない。
@@ -129,6 +133,7 @@ export class WorldSfx {
     this.loopSources.length = 0;
     this.loops?.thrust.disconnect();
     this.loops?.rcs.disconnect();
+    this.loops?.alarm.disconnect();
     this.loops = null;
   }
 
@@ -367,17 +372,18 @@ export class WorldSfx {
     this.engine.tone(415.3, 0.16, 0.07, 'square'); // わずかに不協和にして警報らしいうなりを出す
   }
 
-  // 連続音の宣言 loops へ、各チャンネルの音量をなめらかに追わせる。
-  private syncLoops(loops: LoopSfx): void {
+  // 連続音の宣言へ、各チャンネルの音量をなめらかに追わせる。
+  private syncLoops(loops: LoopSfx, alarm: boolean): void {
     const ctx = this.engine.ctx;
     const channels = this.ensureLoops();
     if (!ctx || channels === null) return;
     channels.thrust.gain.setTargetAtTime(loops.thrust ? THRUST_LOOP_GAIN : 0, ctx.currentTime, 0.04);
     channels.rcs.gain.setTargetAtTime(loops.rcs ? RCS_LOOP_GAIN : 0, ctx.currentTime, 0.03);
+    channels.alarm.gain.setTargetAtTime(alarm ? ALARM_LOOP_GAIN : 0, ctx.currentTime, 0.08);
   }
 
   // 連続音のチャンネルを、無ければ組んで返す。ctx が開く前と、畳んだ後は null。
-  private ensureLoops(): { thrust: GainNode; rcs: GainNode } | null {
+  private ensureLoops(): { thrust: GainNode; rcs: GainNode; alarm: GainNode } | null {
     if (this.loops !== null || this.disposed) return this.loops;
     const ctx = this.engine.ctx;
     const noise = this.engine.noiseBuf;
@@ -385,7 +391,43 @@ export class WorldSfx {
     this.loops = {
       thrust: this.loopChannel(ctx, noise, 320, 0.8),
       rcs: this.loopChannel(ctx, noise, 1600, 1.1),
+      alarm: this.alarmLoopChannel(ctx),
     };
     return this.loops;
+  }
+
+  // 警報ループを鳴らし始め、その音量ノードを返す。音量は 0 で始まり、音源は dispose まで鳴り続ける。
+  private alarmLoopChannel(ctx: AudioContext): GainNode {
+    const src = ctx.createBufferSource();
+    src.buffer = this.klaxonBuffer(ctx);
+    src.loop = true;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    src.connect(gain).connect(ctx.destination);
+    src.start();
+    this.loopSources.push(src);
+    return gain;
+  }
+
+  // 警報音の波形: 高い音と低い音の2ビープを 1 秒周期で繰り返すクラクション。
+  private klaxonBuffer(ctx: AudioContext): AudioBuffer {
+    if (this.klaxonBuf !== null) return this.klaxonBuf;
+    const seconds = 1;
+    const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    // ビープの両端をわずかにフェードして、パルスのクリックを防ぐ。
+    const beep = (from: number, to: number, frequency: number): void => {
+      const i0 = Math.floor(from * ctx.sampleRate);
+      const i1 = Math.floor(to * ctx.sampleRate);
+      const fade = Math.floor(ctx.sampleRate * 0.004);
+      for (let i = i0; i < i1; i++) {
+        const square = (i * frequency * 2 / ctx.sampleRate) % 2 < 1 ? 1 : -1;
+        data[i] = square * Math.min(1, (i - i0) / fade, (i1 - i) / fade);
+      }
+    };
+    beep(0, 0.18, 880);
+    beep(0.3, 0.48, 587);
+    this.klaxonBuf = buf;
+    return buf;
   }
 }
