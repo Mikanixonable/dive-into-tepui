@@ -179,36 +179,29 @@ export class OpaqueCloudSurfaceRenderer {
     this.blueNoise.dispose();
   }
 
-  // 雲頂の交点を書く不透明な白の標準マテリアル。深度と法線は 1 本のレイマーチを共有する。
+  // 雲頂の交点を書く不透明な白の標準マテリアル。深度・法線・明るさは 1 本のレイマーチを共有する。
   private buildMaterial(): THREE.Material {
     const material = new THREE.MeshStandardNodeMaterial({
       roughness: CUMULUS_ROUGHNESS, metalness: 0,
     });
     const marched = this.marchedSurface().toVar();
     material.depthNode = marched.w;
-    material.normalNode = marched.xyz;
-    material.colorNode = this.surfaceColor();
+    material.normalNode = normalize(marched.xyz);
+    material.colorNode = vec3(CLOUD_ALBEDO).mul(length(marched.xyz));
     return material;
   }
 
-  // 雲頂の面の色。雲の白さは柱の光学厚で変わる — 覆いがどの柱も 100% に張り付く空でも、厚みの
-  // 差が明るさの差として残る。細部の起伏は薄い明るさへ足して、板の内部の質感にする。
-  private surfaceColor(): Vec3Node {
-    return Fn(() => {
-      const direction = normalize(positionLocal);
-      const width = this.pixelAngleAt(direction).mul(this.bodyRadius);
-      const cloud = this.fieldAt(direction);
-      const wind = this.fieldSampler.sampleMotion(direction).surfaceWind;
-      const detail = this.detailAt(direction, width, cloud, wind);
-      const brightness = mix(
-        THIN_CLOUD_SHADE, 1,
-        smoothstep(TAU_SHADE_ONSET, TAU_SHADE_FULL, cumulusColumnOpticalDepthNode(cloud.cumulus)),
-      ).mul(float(1).add(detail.mul(DETAIL_BRIGHTNESS_DEPTH)));
-      return vec3(CLOUD_ALBEDO).mul(brightness);
-    })();
+  // 交点の柱の雲の明るさ。雲の白さは柱の光学厚で変わる — 覆いがどの柱も 100% に張り付く空でも、厚みの
+  // 差が明るさの差として残る。細部の起伏は薄い明るさへ足して、板の内部の質感にする。値は常に正。
+  private brightnessOf(cloud: CloudSample, detail: FloatNode): FloatNode {
+    return mix(
+      THIN_CLOUD_SHADE, 1,
+      smoothstep(TAU_SHADE_ONSET, TAU_SHADE_FULL, cumulusColumnOpticalDepthNode(cloud.cumulus)),
+    ).mul(float(1).add(detail.mul(DETAIL_BRIGHTNESS_DEPTH)));
   }
 
-  // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、交点の view 空間法線(xyz)と深度(w)を返す。
+  // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、交点の view 空間法線に雲の明るさを掛けたもの(xyz)と
+  // 深度(w)を返す。明るさは常に正なので、法線の向きと明るさは xyz の向きと長さで分けて読める。
   //
   // **画面微分は分岐の外で取り、捨てるのは最後にする** — 粒の振幅が使う dFdx/dFdy は隣接画素との
   // 差なので、条件分岐や discard のあとでは決まらない。
@@ -265,8 +258,9 @@ export class OpaqueCloudSurfaceRenderer {
         }
         const hitPoint = entry.add(direction.mul(below)).toVar();
         const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
+        const top = this.cloudTopAt(hitPoint, width, wind).toVar();
         surface.assign(vec4(
-          normalize(transformNormalToView(this.cloudTopNormalAt(hitPoint, width, wind))),
+          normalize(transformNormalToView(top.xyz)).mul(top.w),
           clip.z.div(clip.w)));
       });
       Discard(hit.lessThan(0.5));
@@ -304,33 +298,33 @@ export class OpaqueCloudSurfaceRenderer {
     return clearance;
   }
 
-  // 交点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに断ち切られた
-  // 崖ではなく、雲頂そのものの起伏を法線に出す。
-  private cloudTopNormalAt(hitPoint: Vec3Node, width: FloatNode, wind: Vec2Node): Vec3Node {
+  // 交点における雲頂面の法線(物体空間、xyz)と、交点の柱の雲の明るさ(w)。**覆いの有無は勾配へ
+  // 入れない** — 柱ごとに断ち切られた崖ではなく、雲頂そのものの起伏を法線に出す。
+  private cloudTopAt(hitPoint: Vec3Node, width: FloatNode, wind: Vec2Node): Vec4Node {
     const up = hitPoint.div(max(length(hitPoint), 1e-6));
     const east = eastAt(up);
     const north = northAt(up);
+    // 柱の雲標本と細部から、その柱の雲頂(物体空間の半径)。
+    const topOf = (cloud: CloudSample, detail: FloatNode): FloatNode => this.shape.cloudTopRadius(
+      this.shape.cloudTop(cumulusFieldTopNode(cloud.cumulus), detail), this.groundRadius);
     // その向きの雲頂(物体空間の半径)。
     const topAt = (direction: Vec3Node): FloatNode => {
       const cloud = this.fieldAt(direction);
-      return this.shape.cloudTopRadius(
-        this.shape.cloudTop(
-          cumulusFieldTopNode(cloud.cumulus),
-          this.detailAt(direction, width, cloud, wind),
-        ),
-        this.groundRadius,
-      );
+      return topOf(cloud, this.detailAt(direction, width, cloud, wind));
     };
     // **中心の高さは交点の中心距離ではなく雲頂を引き直して測る** — 締めた交点は雲頂より内側へ
     // 食い込んでいて、中心距離を高さに使うと食い込みが両方向の傾きへ一様なオフセットとして加算される。掠める
     // 視線ほど刻みが長く食い込みも深いので、リム際で法線が倒れて夜側の雲が光る。
-    const here = topAt(up);
+    const cloud = this.fieldAt(up);
+    const detail = this.detailAt(up, width, cloud, wind).toVar();
+    const here = topOf(cloud, detail);
     // 東と北へ粒の半波長ぶん振った雲頂との差が、そのまま接平面での傾き。
     const slopeEast = topAt(normalize(up.add(east.mul(this.gradientAngle))))
       .sub(here).div(this.gradientAngle);
     const slopeNorth = topAt(normalize(up.add(north.mul(this.gradientAngle))))
       .sub(here).div(this.gradientAngle);
-    return normalize(up.sub(east.mul(slopeEast)).sub(north.mul(slopeNorth)));
+    return vec4(
+      normalize(up.sub(east.mul(slopeEast)).sub(north.mul(slopeNorth))), this.brightnessOf(cloud, detail));
   }
 
   // 天体固定の単位方向における場の値。
