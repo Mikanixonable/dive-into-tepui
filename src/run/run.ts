@@ -4,7 +4,7 @@ import { Game, type SerializedGame } from '../game/game';
 import { GamePresentation } from '../game/game-presentation';
 import type { PageDevices } from './page-devices';
 import type { RunOptions, StageClass } from '../game/stages/stage';
-import type { FrameSections } from '../game/frame-sections';
+import type { FrameSections, SyncSectionId } from '../game/frame-sections';
 import type { LoadingProgress } from '../game/loading-progress';
 import type { RunSummary } from '../game/run-summary';
 import type { PerfCounts, PerfCountSource } from '../game/perf-counts';
@@ -42,6 +42,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    syncSections: FrameSections<SyncSectionId>,
     blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
@@ -53,8 +54,8 @@ export class Run implements SnapshotSource, PerfCountSource {
       stageClass, startEpoch, devices.scene, devices.hud, sections, blueprints, progress, runOptions,
     );
     return Run.launch(
-      game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
-      blueprints, progressReader, progress,
+      game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle,
+      sections, syncSections, blueprints, progressReader, progress,
     );
   }
 
@@ -68,6 +69,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    syncSections: FrameSections<SyncSectionId>,
     blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
@@ -78,8 +80,8 @@ export class Run implements SnapshotSource, PerfCountSource {
       serialized, stageClass, devices.scene, devices.hud, sections, blueprints, progress,
     );
     return Run.launch(
-      game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle, sections,
-      blueprints, progressReader, progress,
+      game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle,
+      sections, syncSections, blueprints, progressReader, progress,
     );
   }
 
@@ -95,12 +97,15 @@ export class Run implements SnapshotSource, PerfCountSource {
     graphics: SettingValue<GraphicsSettingsData>,
     renderStyle: SettingValue<RenderStyle>,
     sections: FrameSections,
+    syncSections: FrameSections<SyncSectionId>,
     blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
   ): Promise<Run> {
-    const presentation = new GamePresentation(game, devices, viewOptions, themePalette, sections, blueprints);
-    const run = new Run(game, presentation, devices, graphics, renderStyle, sections, progressReader);
+    const presentation = new GamePresentation(
+      game, devices, viewOptions, themePalette, sections, syncSections, blueprints,
+    );
+    const run = new Run(game, presentation, devices, graphics, renderStyle, sections, syncSections, progressReader);
     // 組み立ての間に積まれた出来事は、最初のフレームの進行が記録を空にすると消えるので、
     // ここで視点に反映してプレゼンテーション層へ反映しておく。新規開始のブリーフィングもこの場で表示する。
     game.followProgress();
@@ -118,6 +123,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     private readonly graphics: SettingValue<GraphicsSettingsData>,
     private readonly renderStyle: SettingValue<RenderStyle>,
     private readonly sections: FrameSections,
+    private readonly syncSections: FrameSections<SyncSectionId>,
     private readonly progressReader: ProgressReader,
   ) {}
 
@@ -158,7 +164,9 @@ export class Run implements SnapshotSource, PerfCountSource {
     // ランを読む者へは、進行と導出の間のモデル層だけが確定した瞬間を渡す(R8)。
     this.progressReader.update(this.snapshot);
     const t1 = debugInfo.on ? performance.now() : 0;
+    this.syncSections.beginFrame();
     this.presentation.sync(this.graphics.current, this.renderStyle.current, viewport, nowMs);
+    this.syncSections.endFrame();
     const t2 = debugInfo.on ? performance.now() : 0;
     let t3 = t2;
     if (renderFrame) {

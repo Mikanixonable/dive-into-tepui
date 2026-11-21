@@ -7,7 +7,10 @@ import { injectOnce } from '../../../hud/inject-style';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../../render/pipeline/debug-target';
 import type { RenderStyle } from '../../../render/render-style';
 import { fmtDuration } from '../../../hud/format';
-import { type FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId } from '../../frame-sections';
+import {
+  type FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId,
+  SYNC_SECTION_COUNT, SYNC_SECTION_LABELS, type SyncSectionId,
+} from '../../frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, type GpuTimings, type GpuPassId } from '../../../render/gpu-timings';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
@@ -97,6 +100,8 @@ export class DebugInfoWindow {
   private readonly triangleStats = newPhaseStats();
   // update の区間ごとの統計。末尾は区間外へ落ちた時間(その他)。
   private readonly sectionStats = Array.from({ length: SECTION_COUNT + 1 }, newPhaseStats);
+  // sync の区間ごとの統計。末尾は区間外へ落ちた時間(その他)。
+  private readonly syncSectionStats = Array.from({ length: SYNC_SECTION_COUNT + 1 }, newPhaseStats);
   // 描画パスごとの GPU 時間の統計。
   private readonly gpuStats = Array.from({ length: GPU_PASS_COUNT }, newPhaseStats);
   // 個数系の統計。RATE_COUNTS と添字で対応する。
@@ -127,6 +132,7 @@ export class DebugInfoWindow {
   public constructor(
     private readonly renderer: WebGPURenderer,
     private readonly sections: FrameSections,
+    private readonly syncSections: FrameSections<SyncSectionId>,
     private readonly gpu: GpuTimings,
     private readonly overlayManager: OverlayManager,
     renderStyle: RenderStyle,
@@ -168,9 +174,11 @@ export class DebugInfoWindow {
     this.resetStats(this.drawCallStats);
     this.resetStats(this.triangleStats);
     for (const s of this.sectionStats) this.resetStats(s);
+    for (const s of this.syncSectionStats) this.resetStats(s);
     for (const s of this.gpuStats) this.resetStats(s);
     for (const s of this.rateStats) this.resetStats(s);
     this.sections.enabled = true;
+    this.syncSections.enabled = true;
     this.gpu.enabled = true;
     this.frames = 0;
     this.lastFlush = null;
@@ -184,6 +192,7 @@ export class DebugInfoWindow {
     this.win.onClose = () => {
       this.win = null;
       this.sections.enabled = false;
+      this.syncSections.enabled = false;
       this.gpu.enabled = false;
     };
     this.win.setControls(this.controls);
@@ -195,6 +204,7 @@ export class DebugInfoWindow {
     this.win?.dispose();
     this.win = null;
     this.sections.enabled = false;
+    this.syncSections.enabled = false;
     this.gpu.enabled = false;
   }
 
@@ -229,6 +239,12 @@ export class DebugInfoWindow {
     this.addSample(this.triangleStats, this.renderer.info.render.triangles);
     for (const [i, stats] of this.sectionStats.entries()) {
       this.addSample(stats, i < SECTION_COUNT ? this.sections.msOf(i as SectionId) : this.sections.otherMs());
+    }
+    for (const [i, stats] of this.syncSectionStats.entries()) {
+      this.addSample(
+        stats,
+        i < SYNC_SECTION_COUNT ? this.syncSections.msOf(i as SyncSectionId) : this.syncSections.otherMs(),
+      );
     }
     for (const [i, stats] of this.gpuStats.entries()) this.addSample(stats, this.gpu.msOf(i as GpuPassId));
     const c = counts.perfCounts();
@@ -282,6 +298,7 @@ export class DebugInfoWindow {
     this.resetStats(this.drawCallStats);
     this.resetStats(this.triangleStats);
     for (const s of this.sectionStats) this.resetStats(s);
+    for (const s of this.syncSectionStats) this.resetStats(s);
     for (const s of this.gpuStats) this.resetStats(s);
     for (const s of this.rateStats) this.resetStats(s);
     this.frames = 0;
@@ -293,6 +310,15 @@ export class DebugInfoWindow {
     const label = SECTION_LABELS[index] ?? 'その他';
     return {
       key: `usec-${index}`, label, group: 'update内訳',
+      value: `${barText(stats.sum / frames)} max ${stats.max.toFixed(1)}`,
+    };
+  }
+
+  // sync の区間1つ分の平均・最大の行。形式は update 内訳と同じ。
+  private syncSectionRow(index: number, stats: PhaseStats, frames: number): PropertyRow {
+    const label = SYNC_SECTION_LABELS[index] ?? 'その他';
+    return {
+      key: `ssec-${index}`, label, group: 'sync内訳',
       value: `${barText(stats.sum / frames)} max ${stats.max.toFixed(1)}`,
     };
   }
@@ -338,6 +364,8 @@ export class DebugInfoWindow {
       this.phaseRow('render', 'render', this.renderStats, frames),
 
       ...this.sectionStats.map((s, i) => this.sectionRow(i, s, frames)),
+
+      ...this.syncSectionStats.map((s, i) => this.syncSectionRow(i, s, frames)),
 
       ...this.gpuStats.map((s, i) => this.gpuPassRow(i, s, frames)),
       this.countRow('draw-calls', 'draw calls', '描画', this.drawCallStats, frames),

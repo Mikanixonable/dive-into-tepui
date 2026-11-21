@@ -8,7 +8,7 @@ import { renderBackendNoticeOf } from './render/render-backend';
 import { loadShipModuleModels } from './render/dynamic/ship/ship-module-models';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
-import { FrameSections } from './game/frame-sections';
+import { newSyncSections, newUpdateSections } from './game/frame-sections';
 import { UserSettings } from './settings/user-settings';
 import { browserSettingStorage } from './settings/stored-setting';
 import { themePresetOf } from './theme';
@@ -247,9 +247,10 @@ async function main() {
       10000, 'warn',
     );
   }
-  const sections = new FrameSections();
+  const sections = newUpdateSections();
+  const syncSections = newSyncSections();
   const debugInfo = new DebugInfoWindow(
-    gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
+    gameScene.renderer, sections, syncSections, gameScene.gpu, shell.overlayManager,
     settings.renderStyle.current, debugInfoOpenAtStart(),
   );
   const devices: PageDevices = {
@@ -258,7 +259,7 @@ async function main() {
 
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
-    shell, devices, viewOptionsSettings(settings), settings.themePalette, sections, unlockManager,
+    shell, devices, viewOptionsSettings(settings), settings.themePalette, sections, syncSections, unlockManager,
     slots, snapshotService, autoSave, settings.graphics, settings.renderStyle,
   );
 

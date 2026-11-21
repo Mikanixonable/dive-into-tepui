@@ -11,7 +11,7 @@ import { SALVAGE_BLUEPRINTS } from '../game/ship/salvage-blueprints';
 import type { SerializedGame } from '../game/game';
 import type { RunEvent } from '../game/run-events';
 import type { PageDevices } from '../run/page-devices';
-import type { FrameSections } from '../game/frame-sections';
+import type { FrameSections, SyncSectionId } from '../game/frame-sections';
 import type { ViewOptionsSettings } from '../game/view/view-options-settings';
 import type { ThemePalette } from '../theme';
 import type { CurrentGameSource } from './save-browser/save-browser';
@@ -73,6 +73,7 @@ export class Launcher implements RunTransitions, CurrentGameSource {
     private readonly viewOptions: ViewOptionsSettings,
     private readonly themePalette: SettingValue<ThemePalette>,
     private readonly sections: FrameSections,
+    private readonly syncSections: FrameSections<SyncSectionId>,
     private readonly unlockManager: UnlockManager,
     private readonly slots: SaveSlots,
     private readonly snapshotService: SnapshotService,
@@ -166,12 +167,13 @@ export class Launcher implements RunTransitions, CurrentGameSource {
       this.run = initialSave === null
         ? await Run.create(
           stageClass, startEpoch ?? null, this.devices, this.viewOptions, this.themePalette,
-          this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
-          runOptions,
+          this.graphics, this.renderStyle, this.sections, this.syncSections,
+          this.blueprintShelf, this.autoSave, progress, runOptions,
         )
         : await Run.resume(
           initialSave, stageClass, this.devices, this.viewOptions, this.themePalette,
-          this.graphics, this.renderStyle, this.sections, this.blueprintShelf, this.autoSave, progress,
+          this.graphics, this.renderStyle, this.sections, this.syncSections,
+          this.blueprintShelf, this.autoSave, progress,
         );
     } finally {
       hideLoading();

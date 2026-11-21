@@ -1,6 +1,6 @@
 // 1ランの表示の導出の根: 入力の解釈、表示窓・座標系の錨・カメラの導出、表示物と HUD への同期、
 // 描画を所有する。モデル層の根 Game を読み、命令の列へ積み、進行の末尾へ渡す材料を組む。
-import type { FrameSections } from './frame-sections';
+import { SYNC_SECTION, type FrameSections, type SyncSectionId } from './frame-sections';
 import { CameraSystem } from './camera/camera-system';
 import { controlSelectionCommands } from './control-selection-commands';
 import { simSpeedCommands } from './dynamic/sim-speed-commands';
@@ -165,6 +165,7 @@ export class GamePresentation {
     private readonly viewOptionsSettings: ViewOptionsSettings,
     private readonly themePalette: SettingValue<ThemePalette>,
     sections: FrameSections,
+    private readonly syncSections: FrameSections<SyncSectionId>,
     blueprints: ShipBlueprintShelf,
   ) {
     const { scene, hud, markers, audioEngine, pauseMenu } = devices;
@@ -451,7 +452,9 @@ export class GamePresentation {
     const { displayTime } = displayWindow;
     const view = this.viewManager.current;
     // 最初にカメラを確定し、後続の同期とマーカー投影が読む行列を揃える。
+    this.syncSections.enter(SYNC_SECTION.camera);
     const camera = this.syncCamera(displayWindow, view, viewport, nowMs);
+    this.syncSections.exit(SYNC_SECTION.camera);
     // 描く対象と選べる対象を同じ判定から出すため、ビューが確定させた可否を読む。
     const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
     // 3D 軌道線を軌道パネルと同一の基準系で算出する。
@@ -466,12 +469,15 @@ export class GamePresentation {
     this.syncWorld(
       graphics, style, nowMs, displayTime, view, controlled, orbitRef, visibilityPolicy, timeLabel, camera,
     );
+    this.syncSections.enter(SYNC_SECTION.effects);
     this.syncEffectsAndTargets(
       nowMs, displayTime, view, controlled, visibilityPolicy, timeLabel, palette, camera,
     );
+    this.syncSections.switchTo(SYNC_SECTION.effects, SYNC_SECTION.panels);
     this.syncPanelsAndMarkers(
       nowMs, displayWindow, displayTime, view, controlled, orbitRef, visibilityPolicy, palette, camera,
     );
+    this.syncSections.exit(SYNC_SECTION.panels);
   }
 
   // 最初に行う: 後続の sync とマーカー投影がこのフレームのカメラ行列と描画原点を読む。
@@ -496,6 +502,7 @@ export class GamePresentation {
     timeLabel: ReturnType<typeof timeLabelSettingOf>, camera: CameraFrame,
   ): void {
     const { celestialSystem, dynamicSystem, viewer } = this.game;
+    this.syncSections.enter(SYNC_SECTION.celestial);
     celestialSystem.sync(
       displayTime, nowMs, camera, view, viewer.camera.map, this.cameraSystem.mapResolvedFocus,
       graphics, style,
@@ -507,10 +514,12 @@ export class GamePresentation {
       this.devices.scene.renderer, displayTime, this.game.simSpeedManager.simSpeed, this.devices.scene.gpu);
     // 建造の読み取り面を確定させてから表示導出へ渡す — 適用済み命令の記録・選択の整合が
     // shipConstruction.sync で更新され、shipConstructionView.sync がそれを読んで強調と音を組む。
+    this.syncSections.switchTo(SYNC_SECTION.celestial, SYNC_SECTION.construction);
     this.shipConstruction.sync();
     const construction = this.shipConstructionView.sync(this.shipConstruction, camera, nowMs);
     for (const sound of construction.sounds) this.uiSounds.push(`construction-${sound}`);
     this.syncWorkLight(graphics, camera);
+    this.syncSections.switchTo(SYNC_SECTION.construction, SYNC_SECTION.dynamic);
     dynamicSystem.sync(
       displayTime, controlled, camera, style, graphics,
       construction.shipModuleEmphasis,
@@ -518,6 +527,7 @@ export class GamePresentation {
       orbitRef,
     );
     // 操作中の艦の軌道軸・ボアサイトは、機体の同期と同じフレームの状態から置く。
+    this.syncSections.switchTo(SYNC_SECTION.dynamic, SYNC_SECTION.markers);
     this.playerMarkers.sync(
       controlled !== null && isModularShip(controlled) ? controlled : null, view, camera.project,
       orbitRef?.state ?? null, nowMs,
@@ -532,6 +542,7 @@ export class GamePresentation {
       displayTime, view, camera,
       this.frameAnchors.bodies, this.frameAnchors.bodiesPivot, visibilityPolicy, nowMs,
     );
+    this.syncSections.exit(SYNC_SECTION.markers);
   }
 
   // 建造中だけ、カメラの右上後方へ作業灯を置く。灯距は注視距離(建造で視点寄せに使う
