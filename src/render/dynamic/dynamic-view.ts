@@ -214,7 +214,7 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
   public syncLines(
     display: DynamicLineDisplay,
     motion: DynamicLineSource, frame: ReferenceFrame, simTime: number, displayTime: number,
-    pastDuration: number, predictedTo: number | null, celestialBodies: CelestialFrameSource,
+    historyDuration: number, predictedTo: number | null, celestialBodies: CelestialFrameSource,
     camera: CameraFrame, anchors: FrameAnchorSource,
   ): void {
     // 過去線は表示窓の過去側、予測線は現在から予測終端までを同じ参照系で同期する。
@@ -223,7 +223,7 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
       frame, displayTime, celestialBodies, camera, anchors,
     );
     this.actualLineValue = this.syncTrajectoryLine(
-      this.actualLineValue, display.actual, motion.actual, simTime - pastDuration, simTime,
+      this.actualLineValue, display.actual, motion.actual, simTime - historyDuration, simTime,
       frame, displayTime, celestialBodies, camera, anchors,
     );
     this.syncOrbitLine(

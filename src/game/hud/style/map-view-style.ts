@@ -289,7 +289,7 @@ export const MAP_VIEW_STYLE = `
   background: transparent;
 }
 
-/* Predict: 未来は Accent、隣接する過去範囲は Near accent。 */
+/* Predict: 時間軸の操作は Accent。 */
 #hud .hud-map-root.active #hud-predict .w-btn,
 #hud .hud-map-root.active #hud-predict .w-input {
   border: 0;
@@ -300,10 +300,6 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-predict .w-btn:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
 #hud .hud-map-root.active #hud-predict .w-btn.on {
   color: var(--color-primary); background: var(--color-primary-fill);
-}
-#hud .hud-map-root.active #hud-predict .predict-past .w-btn.on {
-  color: var(--color-primary-hover);
-  background: var(--color-primary-fill-weak);
 }
 #hud .hud-map-root.active #hud-predict .w-group-title,
 #hud .hud-map-root.active #hud-predict .w-toggle-title,

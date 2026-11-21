@@ -1,4 +1,4 @@
-// タイムラインパネルで選ぶ座標系・表示期間・表示時刻・時刻表記を持つ。選択から各方向の
+// タイムラインパネルで選ぶ座標系・表示期間・表示時刻・時刻表記を持つ。選択から両側に共通の
 // 表示期間を求め、カメラの基準と現在のビューに合わせる規則を担う。
 import { isDestroyedTarget } from './nav-target-selection';
 import type { FrameRotationSource, ReferenceFrame } from '../../physics/frame';
@@ -28,9 +28,6 @@ export const APERIODIC_ARC_DURATION = 86400;
 // 表示期間の選択。'orbit' は起点の軌道周期、'custom' は手動レンジ。
 export type DisplayDurationKey = 'orbit' | 'day' | 'tenDay' | 'month' | 'threeMonth' | 'custom';
 
-// 過去方向の表示期間の選択。'none' は過去を描かない。
-export type DisplayPastDurationKey = 'none' | DisplayDurationKey;
-
 // 目盛りラベルの表記。'absolute' は UTC カレンダー、'relative' は現在からの経過時間。
 export type TickLabelMode = 'absolute' | 'relative';
 
@@ -45,11 +42,9 @@ const FIXED_DURATION_SEC: Record<'day' | 'tenDay' | 'month' | 'threeMonth', numb
 export interface DisplayTimelineSource {
   // 未来の軌道・マーカーを描く座標系。
   readonly frame: ReferenceFrame;
-  // 未来側の表示期間の選択。
+  // 表示期間の選択。
   readonly durationKey: DisplayDurationKey;
-  // 過去側の表示期間の選択。
-  readonly pastDurationKey: DisplayPastDurationKey;
-  // 表示期間のうち、現在から表示時刻までの比率。
+  // 表示時刻の、時間軸 [T−D, T+D] 全域に対する位置(0.5 が現在)。
   readonly sliderT: number;
   // 目盛りと通過時刻の表記。
   readonly tickLabelMode: TickLabelMode;
@@ -59,18 +54,14 @@ export interface DisplayTimelineSource {
   readonly followCamera: boolean;
   // スライダーの目盛りを表示するか。
   readonly showTicks: boolean;
-  // referencePeriod に対する未来側の表示期間 [s]。
+  // referencePeriod に対する表示期間 [s]。時間軸の過去側・未来側はどちらもこの値を使う。
   durationSec(referencePeriod: number): number;
-  // referencePeriod に対する過去側の表示期間 [s]。
-  pastDurationSec(referencePeriod: number): number;
 }
 
 export interface SerializedDisplayTimelineSelection {
   readonly frame: ReferenceFrame;
   readonly durationKey: DisplayDurationKey;
   readonly customDurationSec: number;
-  readonly pastDurationKey: DisplayPastDurationKey;
-  readonly customPastDurationSec: number;
   readonly sliderT: number;
   readonly tickLabelMode: TickLabelMode;
   readonly showElementTimes: boolean;
@@ -87,9 +78,7 @@ export class DisplayTimelineSelection implements DisplayTimelineSource {
     private _frame: ReferenceFrame = frames.inertialFrame,
     private _durationKey: DisplayDurationKey = 'orbit',
     private _customDurationSec = DISPLAY_DUR_DAY,
-    private _pastDurationKey: DisplayPastDurationKey = 'none',
-    private _customPastDurationSec = DISPLAY_DUR_DAY,
-    private _sliderT = 0,
+    private _sliderT = 0.5,
     private _tickLabelMode: TickLabelMode = 'absolute',
     private _showElementTimes = false,
     private _followCamera = true,
@@ -118,6 +107,10 @@ export class DisplayTimelineSelection implements DisplayTimelineSource {
     roster: EntityRoster,
   ): DisplayTimelineSelection {
     const { frame } = serialized;
+    // 過去期間の選択を持つ旧形式では sliderT が未来側の 0..1 だったので、T−D〜T+D の
+    // 軸全域(0.5 が現在)へ写し直す。新形式はそのまま使う。
+    const legacy = 'pastDurationKey' in serialized;
+    const sliderT = legacy ? 0.5 + serialized.sliderT / 2 : serialized.sliderT;
     // 座標系は frames から引き直し、同じ対に同じ参照を保つ。
     return new DisplayTimelineSelection(
       frames,
@@ -125,9 +118,7 @@ export class DisplayTimelineSelection implements DisplayTimelineSource {
       isDestroyedTarget(frame.center, roster) ? undefined : frames.frameOf(frame.center, frame.rotatingWith),
       serialized.durationKey,
       serialized.customDurationSec,
-      serialized.pastDurationKey,
-      serialized.customPastDurationSec,
-      serialized.sliderT,
+      Math.max(0, Math.min(1, sliderT)),
       serialized.tickLabelMode,
       serialized.showElementTimes,
       serialized.followCamera,
@@ -142,8 +133,6 @@ export class DisplayTimelineSelection implements DisplayTimelineSource {
       frame: this._frame,
       durationKey: this._durationKey,
       customDurationSec: this._customDurationSec,
-      pastDurationKey: this._pastDurationKey,
-      customPastDurationSec: this._customPastDurationSec,
       sliderT: this._sliderT,
       tickLabelMode: this._tickLabelMode,
       showElementTimes: this._showElementTimes,
@@ -154,45 +143,34 @@ export class DisplayTimelineSelection implements DisplayTimelineSource {
 
   public get frame(): ReferenceFrame { return this._frame; }
   public get durationKey(): DisplayDurationKey { return this._durationKey; }
-  public get pastDurationKey(): DisplayPastDurationKey { return this._pastDurationKey; }
   public get sliderT(): number { return this._sliderT; }
   public get tickLabelMode(): TickLabelMode { return this._tickLabelMode; }
   public get showElementTimes(): boolean { return this._showElementTimes; }
   public get followCamera(): boolean { return this._followCamera; }
   public get showTicks(): boolean { return this._showTicks; }
 
-  // 未来側の表示期間を key へ切り替え、スクラブ位置を現在へ戻す。
+  // 表示期間を key へ切り替え、スクラブ位置を現在へ戻す。
   public selectDuration(key: Exclude<DisplayDurationKey, 'custom'>): void {
     this._durationKey = key;
-    this._sliderT = 0;
+    this._sliderT = 0.5;
   }
 
-  // 未来側の任意期間を sec にして選び、スクラブ位置を現在へ戻す。
+  // 任意の表示期間を sec にして選び、スクラブ位置を現在へ戻す。
   public selectCustomDuration(sec: number): void {
     this._customDurationSec = sec;
     this._durationKey = 'custom';
-    this._sliderT = 0;
+    this._sliderT = 0.5;
   }
 
-  // 過去側の表示期間を key へ切り替える。
-  public selectPastDuration(key: Exclude<DisplayPastDurationKey, 'custom'>): void {
-    this._pastDurationKey = key;
-  }
-
-  // 過去側の任意期間を sec にして選ぶ。
-  public selectCustomPastDuration(sec: number): void {
-    this._customPastDurationSec = sec;
-    this._pastDurationKey = 'custom';
-  }
-
-  // スクラブ位置を表示期間に対する比率 t へ移す。
+  // スクラブ位置を時間軸全域に対する位置 t(0.5 が現在)へ移す。
   public setSliderT(t: number): void {
     this._sliderT = t;
   }
 
-  // 表示期間 durationSec の先頭から sec の位置へスクラブ位置を移す。
+  // 現在からの相対時刻 sec(負なら過去側)へスクラブ位置を移す。時間軸 [−durationSec, +durationSec]
+  // の範囲へ収める。
   public jumpToTime(sec: number, durationSec: number): void {
-    this._sliderT = Math.max(0, Math.min(1, sec / durationSec));
+    this._sliderT = Math.max(0, Math.min(1, 0.5 + sec / (2 * durationSec)));
   }
 
   // 時刻ラベルの表記を mode へ切り替える。
@@ -236,20 +214,14 @@ export class DisplayTimelineSelection implements DisplayTimelineSource {
     this._frame = this.frames.frameOf(this._frame.center, null);
   }
 
-  // referencePeriod に対する未来側の表示期間 [s]。
+  // referencePeriod に対する表示期間 [s]。
   public durationSec(referencePeriod: number): number {
     return this.durationFor(this._durationKey, this._customDurationSec, referencePeriod);
   }
 
-  // referencePeriod に対する過去側の表示期間 [s]。
-  public pastDurationSec(referencePeriod: number): number {
-    if (this._pastDurationKey === 'none') return 0;
-    return this.durationFor(this._pastDurationKey, this._customPastDurationSec, referencePeriod);
-  }
-
   // 現在のビューが未来表示を許さない間、スクラブ位置を現在に保つ。
   public followProgress(forceCurrent: boolean): void {
-    if (forceCurrent) this._sliderT = 0;
+    if (forceCurrent) this._sliderT = 0.5;
   }
 
   // 選択 key と参照周期から表示期間 [s] を求める。

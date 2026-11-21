@@ -75,7 +75,6 @@ export function register(): void {
     panel.setFrameCenter('moon');
     panel.setFrameRotation({ kind: 'revolution', id: 'moon' });
     panel.selectCustomDuration(3 * 86400);
-    panel.selectCustomPastDuration(2 * 86400);
     panel.setSliderT(0.4);
     panel.setTickLabelMode('relative');
     panel.setShowElementTimes(true);

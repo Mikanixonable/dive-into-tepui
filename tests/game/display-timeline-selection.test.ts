@@ -25,11 +25,11 @@ export function register(): void {
 
     commands.setSliderT(0.75);
     commands.selectDuration('day');
-    assert.equal(selection.sliderT, 0);
+    assert.equal(selection.sliderT, 0.5);
     assert.equal(selection.durationKey, 'orbit');
 
     queue.applyAll();
-    assert.equal(selection.sliderT, 0);
+    assert.equal(selection.sliderT, 0.5);
     assert.equal(selection.durationKey, 'day');
     assert.equal(selection.durationSec(123), 86400);
   });
@@ -51,12 +51,12 @@ export function register(): void {
   test('display-timeline-selection: 戦闘ビューの規則はスクラブ位置を現在へ戻す', () => {
     const selection = DisplayTimelineSelection.create(frames, celestialBodies, null);
     const queue = new CommandQueue();
-    displayTimelineCommands(queue, selection).setSliderT(0.5);
+    displayTimelineCommands(queue, selection).setSliderT(0.8);
     queue.applyAll();
     selection.followProgress(false);
-    assert.equal(selection.sliderT, 0.5);
+    assert.equal(selection.sliderT, 0.8);
 
     selection.followProgress(true);
-    assert.equal(selection.sliderT, 0);
+    assert.equal(selection.sliderT, 0.5);
   });
 }

@@ -209,7 +209,8 @@ export class GamePresentation {
     );
     const timelineCommands = displayTimelineCommands(commands, viewer.displayTimeline);
     this.displayWindowManager = new DisplayWindowManager(
-      hud.mapRoot, hud.panelCollapse, celestialSystem, viewer.displayTimeline, timelineCommands,
+      hud.mapRoot, hud.panelCollapse, hud.overlayManager,
+      celestialSystem, viewer.displayTimeline, timelineCommands,
     );
     this.confirmation = new ConfirmationOverlay(hud.overlayManager);
     this.input = new Input(scene.renderer.domElement);

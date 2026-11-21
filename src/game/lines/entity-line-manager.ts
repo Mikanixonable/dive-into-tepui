@@ -69,7 +69,7 @@ export class EntityLineManager {
     orbitRef: OrbitReference | null, camera: CameraFrame,
     frameAnchors: FrameAnchorSource, celestialBodies: CelestialBodies, palette: ThemePalette,
   ): void {
-    const { frame, simTime, displayTime, duration, pastDuration } = displayWindow;
+    const { frame, simTime, displayTime, duration } = displayWindow;
     // マップビューでは軌道基準を常に自動選択(最も強く引く天体)にする。
     const lineOrbitRef = view === 'map' ? null : orbitRef;
     const primaryStyle: LineStyle = {
@@ -112,9 +112,9 @@ export class EntityLineManager {
         {
           orbit: orbitDisplay(entity, orbitStyle, lineOrbitRef),
           predicted: showTrajectories && !ownEllipse ? styles.predicted : null,
-          actual: showTrajectories && pastDuration > 0 ? styles.actual : null,
+          actual: showTrajectories ? styles.actual : null,
         },
-        entity.motion, frame, simTime, displayTime, pastDuration, predictedTo,
+        entity.motion, frame, simTime, displayTime, duration, predictedTo,
         celestialBodies, camera, frameAnchors,
       );
     };

@@ -6,6 +6,7 @@
 // マーカーが別の瞬間を指す。
 import { DisplayTimelinePanel } from './hud/panels/display-timeline-panel';
 import type { PanelCollapse } from './hud/panel-chrome';
+import type { OverlayManager } from '../hud/overlay-manager';
 import { buildTicks } from './hud/orbit/tick-scale';
 import { epochUnixSeconds } from '../hud/format';
 import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
@@ -27,10 +28,8 @@ export interface DisplayWindow {
   readonly frame: ReferenceFrame;
   readonly simTime: number;
   readonly referencePeriod: number;
+  // 表示期間 [s]。過去側・未来側は同じ値を使い、描画区間は [simTime - duration, simTime + duration]。
   readonly duration: number;
-  // 過去方向の表示期間 [s]。0 なら過去は描かない。duration と対称で、描画区間は
-  // [simTime - pastDuration, simTime + duration]。
-  readonly pastDuration: number;
   readonly displayTime: number;
   // 未来表示を禁止しているか。禁止中は displayTime が simTime に固定される。
   readonly forceCurrent: boolean;
@@ -60,7 +59,7 @@ export function trajectoryDemandOf(
 ): TrajectoryDemand {
   return {
     horizon: window.duration,
-    historyDuration: Math.max(0, Math.min(DISPLAY_DURATION_MAX, window.pastDuration)),
+    historyDuration: Math.max(0, Math.min(DISPLAY_DURATION_MAX, window.duration)),
     planArcs,
   };
 }
@@ -85,6 +84,7 @@ export class DisplayWindowManager {
   public constructor(
     hudRoot: HTMLElement,
     collapse: PanelCollapse,
+    overlayManager: OverlayManager,
     private readonly celestialBodies: CelestialBodies,
     private readonly selection: DisplayTimelineSource,
     private readonly commands: DisplayTimelineCommands,
@@ -92,20 +92,18 @@ export class DisplayWindowManager {
     this.epochUnixSec = epochUnixSeconds(celestialBodies.epoch);
     this._current = {
       frame: selection.frame, simTime: 0, referencePeriod: NaN,
-      duration: APERIODIC_ARC_DURATION, pastDuration: 0, displayTime: 0, forceCurrent: true,
+      duration: APERIODIC_ARC_DURATION, displayTime: 0, forceCurrent: true,
       tickLabelMode: selection.tickLabelMode, showElementTimes: selection.showElementTimes,
       epochUnixSec: this.epochUnixSec,
     };
-    this.panel = new DisplayTimelinePanel(hudRoot, collapse);
+    this.panel = new DisplayTimelinePanel(hudRoot, collapse, overlayManager);
     this.panel.onDurationSelect = (key) => this.commands.selectDuration(key);
     this.panel.onCustomDurationConfirm = (sec) => this.commands.selectCustomDuration(sec);
-    this.panel.onPastDurationSelect = (key) => this.commands.selectPastDuration(key);
-    this.panel.onPastCustomDurationConfirm = (sec) => this.commands.selectCustomPastDuration(sec);
     this.panel.onTickLabelModeChange = (mode) => this.commands.setTickLabelMode(mode);
     this.panel.onShowElementTimesChange = (show) => this.commands.setShowElementTimes(show);
     this.panel.onShowTicksChange = (show) => this.commands.setShowTicks(show);
     this.panel.onSliderChange = (t) => this.commands.setSliderT(t);
-    this.panel.onResetToNow = () => this.commands.setSliderT(0);
+    this.panel.onResetToNow = () => this.commands.setSliderT(0.5);
     this.panel.onJumpToTime = (sec) => this.commands.jumpToTime(sec, this._current.duration);
   }
 
@@ -136,8 +134,8 @@ export class DisplayWindowManager {
     return this.selection.durationSec(referencePeriod);
   }
 
-  // このフレームの表示窓を確定させて返す。表示時刻はスライダーが立っている間だけ未来を指し、
-  // forceCurrent または原点では simTime そのもの。
+  // このフレームの表示窓を確定させて返す。表示時刻はスライダーが立っている間は
+  // 時間軸上の過去または未来を指し、forceCurrent では simTime そのもの。
   public resolve(simTime: number, controlled: DynamicEntity | null, forceCurrent: boolean): DisplayWindow {
     const referencePeriod = this.currentOrbitPeriod(controlled, simTime);
     const duration = this.durationSec(referencePeriod);
@@ -147,8 +145,7 @@ export class DisplayWindowManager {
       simTime,
       referencePeriod,
       duration,
-      pastDuration: this.selection.pastDurationSec(referencePeriod),
-      displayTime: forceCurrent || sliderT <= 0 ? simTime : simTime + sliderT * duration,
+      displayTime: forceCurrent ? simTime : simTime + (sliderT * 2 - 1) * duration,
       forceCurrent,
       tickLabelMode: this.selection.tickLabelMode,
       showElementTimes: this.selection.showElementTimes,
@@ -162,8 +159,6 @@ export class DisplayWindowManager {
     this.panel.render({
       visible: !this._current.forceCurrent,
       durationKey: this.selection.durationKey,
-      pastDurationKey: this.selection.pastDurationKey,
-      pastDuration: this._current.pastDuration,
       tickLabelMode: this.selection.tickLabelMode,
       showElementTimes: this.selection.showElementTimes,
       showTicks: this.selection.showTicks,
@@ -173,7 +168,7 @@ export class DisplayWindowManager {
       sliderSteps: this.sliderSteps(),
       sliderT: this.selection.sliderT,
       predictionRatio: this.predictionCoverageRatio(controlled),
-      ticks: buildTicks(this._current.duration, TICK_MAX_COUNT),
+      ticks: buildTicks(2 * this._current.duration, TICK_MAX_COUNT),
     });
   }
 
@@ -185,16 +180,18 @@ export class DisplayWindowManager {
     return controlled.motion.orbitalElementsAround(center, simTime)?.period ?? NaN;
   }
 
-  // 操作対象の予測軌道が表示期間のどこまで届いているかの割合(0..1)。
+  // 操作対象の予測軌道が、時間軸全域のうち未来側のどこまで届いているかの位置(0.5..1)。
+  // 時間軸 [T−D, T+D] の 0.5 が現在時刻なので、予測が届く先は軸上の 0.5 + ratio/2。
   private predictionCoverageRatio(controlled: DynamicEntity | null): number {
     const end = controlled?.motion.predicted?.state.t;
     if (end === undefined || this._current.duration <= 0) return 1;
-    return Math.max(0, Math.min(1, (end - this._current.simTime) / this._current.duration));
+    const ratio = Math.max(0, Math.min(1, (end - this._current.simTime) / this._current.duration));
+    return 0.5 + ratio / 2;
   }
 
-  // 表示期間を SLIDER_TARGET_STEP_SEC 相当の粒度で刻んだ段階数(上下限あり)。
+  // 時間軸全域(2×表示期間)を SLIDER_TARGET_STEP_SEC 相当の粒度で刻んだ段階数(上下限あり)。
   private sliderSteps(): number {
-    const raw = Math.round(this._current.duration / SLIDER_TARGET_STEP_SEC);
+    const raw = Math.round(2 * this._current.duration / SLIDER_TARGET_STEP_SEC);
     return Math.max(SLIDER_MIN_STEPS, Math.min(SLIDER_MAX_STEPS, raw));
   }
 
