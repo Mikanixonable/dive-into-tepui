@@ -1,7 +1,7 @@
-// マガジン列の背面ケーブルと、隣り合う箱を結ぶ首振り継手を同期する。
+// マガジン列の背面ケーブルの模型と、隣り合う箱を結ぶ首振り継手の同期を持つ。
 import * as THREE from 'three/webgpu';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { markLitOpaque, markShadowCaster } from '../../pipeline/lit-layer';
+import { prepareStaticModel } from '../../static-model';
 import { markSharedResources } from '../model-template';
 import { MAG_PLANAR_SCALE } from '../../../physics/player-shape';
 import type { BeltNodes } from './belt-view';
@@ -69,8 +69,8 @@ const LEADING_TANG_GEOMETRY = mountPlateGeometry([
   [0.60, 0.17], [0.52, 0.35], [0.35, 0.32], [0.08, 0.20],
 ]);
 
-// ベルトの各リンクへ載せる、外装クランプ付きの伝送ケーブルを作る。
-function cableRun(): THREE.Group {
+// ベルトの各リンクへ載せる、外装クランプ付きの伝送ケーブルを作る。リンクと同じ座標系に置く。
+export function linkCable(): THREE.Group {
   const group = new THREE.Group();
   group.scale.set(MAG_PLANAR_SCALE, 1, MAG_PLANAR_SCALE);
   group.add(new THREE.Mesh(CABLE_GEOMETRY, CABLE_MATERIAL));
@@ -80,7 +80,6 @@ function cableRun(): THREE.Group {
     clamp.position.set(x, 1.12, -0.46);
     group.add(clamp);
   }
-  markBeltHardware(group);
   return group;
 }
 
@@ -139,49 +138,40 @@ function swivelJoint(): THREE.Group {
   const gimbal = new THREE.Mesh(GIMBAL_BLOCK_GEOMETRY, RIDGE_MATERIAL);
   gimbal.position.set(0, 0.36, 0.73);
   group.add(gimbal);
-  markBeltHardware(group);
   return group;
 }
 
-// 標準材質を照明・影の経路へ載せ、全個体で共有する GPU 資源として印す。
-function markBeltHardware(root: THREE.Object3D): void {
-  markLitOpaque(root);
-  markShadowCaster(root);
-  markSharedResources(root);
+// 下ごしらえを済ませた継手のテンプレート。継手はこの複製で、資源を全個体で共有する。
+let jointTemplate: THREE.Group | null = null;
+
+// 継手 1 個を、全個体で共有する資源の複製として作る。
+function sharedSwivelJoint(): THREE.Group {
+  if (jointTemplate === null) {
+    jointTemplate = swivelJoint();
+    prepareStaticModel(jointTemplate);
+  }
+  const joint = jointTemplate.clone(true);
+  markSharedResources(joint);
+  return joint;
 }
 
-// リンクごとのケーブルと節点ごとの首振り継手を、既存のマガジン姿勢に合わせる。
+// 節点ごとの首振り継手を、隣り合うマガジンの姿勢に合わせる。
 export class BeltHardwareView {
-  private readonly cableRuns: THREE.Group[] = [];
   private readonly joints: THREE.Group[] = [];
 
-  // root の子としてリンク数ぶんのケーブルと、隣接リンク数ぶんの継手を組む。
+  // root の子として、隣接リンク数ぶんの継手を組む。
   public constructor(root: THREE.Object3D, linkCount: number) {
-    for (let i = 0; i < linkCount; i++) {
-      const run = cableRun();
-      root.add(run);
-      this.cableRuns.push(run);
-    }
-    // 継手は隣接リンクの間に1つずつ。
     for (let i = 0; i < Math.max(0, linkCount - 1); i++) {
-      const joint = swivelJoint();
+      const joint = sharedSwivelJoint();
       root.add(joint);
       this.joints.push(joint);
     }
   }
 
-  // 表示中の箱だけへケーブルと継手を合わせ、消費済みリンクの金具を隠す。
+  // 表示中の箱の間にだけ継手を置き、前後リンクの節点と中間の姿勢へ合わせる。
   public sync(magsLeft: number, nodes: BeltNodes, links: readonly THREE.Group[]): void {
     const visibleCount = Math.min(magsLeft, links.length);
-    // ケーブルはリンクの姿勢へそのまま合わせる。
-    for (let i = 0; i < this.cableRuns.length; i++) {
-      const cable = this.cableRuns[i]!;
-      const link = links[i]!;
-      cable.visible = link.visible;
-      cable.position.copy(link.position);
-      cable.quaternion.copy(link.quaternion);
-    }
-    // 継手は前後リンクの節点へ置き、姿勢は両者の中間へ。
+    // 継手 i はリンク i と i+1 の間の節点に立つ。
     for (let i = 0; i < this.joints.length; i++) {
       const joint = this.joints[i]!;
       const before = links[i]!;
