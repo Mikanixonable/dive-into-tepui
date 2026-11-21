@@ -17,7 +17,7 @@ export const SKELETON_STYLE = `
 #hud {
   position: fixed; inset: 0; pointer-events: none; overflow: hidden;
   font-family: var(--font-family);
-  color: var(--text); color-scheme: var(--theme-tone); user-select: text; z-index: var(--z-hud);
+  color: var(--text); color-scheme: var(--theme-tone); z-index: var(--z-hud);
   font-size: var(--font-l);
 }
 /* タイトル選択画面は #hud より前面にあるので、その上でシステム窓を開いている間だけ #hud を上げる。 */
@@ -33,6 +33,12 @@ body.title-screen-open.hud-overlay-modal-open #hud { z-index: var(--z-hud-title-
 #hud .ctx-menu-item,
 #hud .rail-toggle,
 #hud-viewbadge .vb-view-btn { user-select: none; }
+@media ${MQ_COARSE} {
+  /* タッチの長押しが OS の文字選択・コールアウトを起こさないよう HUD 内の選択を止める。
+     入力欄の文字は編集に必要なので選べるままにする。 */
+  #hud { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+  #hud input, #hud textarea { user-select: text; -webkit-user-select: text; }
+}
 
 ${OVERLAY_LAYER_STYLE}
 
