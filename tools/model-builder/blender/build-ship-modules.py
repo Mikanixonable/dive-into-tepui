@@ -620,14 +620,24 @@ def cockpit_surface_radius(profile, indent_fraction, z, theta):
     circle_radius = radius - offset
     return offset * abs(math.sin(theta)) + math.sqrt(max(0.0, circle_radius ** 2 - offset ** 2 * math.cos(theta) ** 2))
 
+# アイボリー塗装の後部が終わる z [m]。船殻の輪はここにも置き、塗り分けの境を輪に揃える。
+COCKPIT_IVORY_AFT_END_Z = -3.10
+# 輪郭の節の前後に足す輪の間隔 [m]。滑らかな陰影の法線は輪ごとに平均されるので、節にだけ輪を
+# 置くと傾きの変わり目の陰影が節の間の全幅へ広がる。節の近くにも輪を置いて変わり目を狭く保つ。
+COCKPIT_KNOT_SHOULDER = 0.04
+
 def cockpit_hull_mesh(profile, indent_fraction):
     """断面の長手溝を保ち、アイボリー後部と濃色の前部を持つ閉じた船殻を作る。"""
     bm = bmesh.new()
-    axial_steps = int(round((profile[-1]["z"] - profile[0]["z"]) / 0.04))
+    # 断面の半径は輪郭の基準半径に比例し、基準半径は節の間で z について線形なので、
+    # 輪は輪郭の節・その前後・塗り分けの境にだけ置けば形は変わらない。
+    z_min, z_max = profile[0]["z"], profile[-1]["z"]
+    knot_zs = {point["z"] for point in profile}
+    shoulder_zs = {z + side * COCKPIT_KNOT_SHOULDER for z in knot_zs for side in (-1.0, 1.0)}
+    ring_zs = sorted(knot_zs | {z for z in shoulder_zs if z_min < z < z_max} | {COCKPIT_IVORY_AFT_END_Z})
     angular_steps = 288
     rings = []
-    for axial_index in range(axial_steps + 1):
-        z = profile[0]["z"] + (profile[-1]["z"] - profile[0]["z"]) * axial_index / axial_steps
+    for z in ring_zs:
         ring = []
         for angular_index in range(angular_steps):
             theta = 2.0 * math.pi * angular_index / angular_steps
@@ -635,13 +645,12 @@ def cockpit_hull_mesh(profile, indent_fraction):
             ring.append(bm.verts.new((radius * math.cos(theta), radius * math.sin(theta), z)))
         rings.append(ring)
 
-    for axial_index in range(axial_steps):
+    for axial_index in range(len(ring_zs) - 1):
         for angular_index in range(angular_steps):
             next_angle = (angular_index + 1) % angular_steps
             face = bm.faces.new((rings[axial_index][angular_index], rings[axial_index][next_angle],
                                  rings[axial_index + 1][next_angle], rings[axial_index + 1][angular_index]))
-            center = face.calc_center_median()
-            if center.z < -3.08:
+            if ring_zs[axial_index + 1] <= COCKPIT_IVORY_AFT_END_Z:
                 face.material_index = 1
 
     for end_index, z in ((0, profile[0]["z"]), (-1, profile[-1]["z"])):
@@ -791,6 +800,10 @@ def add_cockpit_louver_panel(name, profile, indent_fraction, z_center, height, t
         add_cockpit_surface_patch(f"{name}_louver_{index}", profile, indent_fraction, z, louver_height,
                                   theta_center, width - 0.085, 0.056, mats.louver, 2, 16)
 
+# 格子1枚の周方向の分割数。1枚は幅 1 m 弱・曲率半径 1.5〜3 m なので、8 分割で弦のたわみは
+# 0.5 mm 未満に収まり、溝の深さ(2〜20 mm)に比べて見えない。
+GRILLE_ANGULAR_SEGMENTS = 8
+
 def add_cockpit_circumferential_grille_field(name, profile, indent_fraction, panel_specs, mats):
     """船首側を規則的に覆う、周方向へ伸びる窪みをまとめて作る。"""
     bm = bmesh.new()
@@ -837,14 +850,14 @@ def add_cockpit_circumferential_grille_field(name, profile, indent_fraction, pan
         for axial_offset, radial_offset, _ in axial_profile:
             z = z_center + axial_offset
             row = []
-            for angular_index in range(17):
+            for angular_index in range(GRILLE_ANGULAR_SEGMENTS + 1):
                 theta = theta_center - half_width / max(surface_radius, 0.1) \
-                    + width * angular_index / (16 * max(surface_radius, 0.1))
+                    + width * angular_index / (GRILLE_ANGULAR_SEGMENTS * max(surface_radius, 0.1))
                 radius = cockpit_surface_radius(profile, indent_fraction, z, theta) + radial_offset
                 row.append(bm.verts.new((radius * math.cos(theta), radius * math.sin(theta), z)))
             grid.append(row)
         for profile_index in range(len(axial_profile) - 1):
-            for angular_index in range(16):
+            for angular_index in range(GRILLE_ANGULAR_SEGMENTS):
                 face = bm.faces.new((grid[profile_index][angular_index], grid[profile_index][angular_index + 1],
                                      grid[profile_index + 1][angular_index + 1], grid[profile_index + 1][angular_index]))
                 face.material_index = axial_profile[profile_index + 1][2]
@@ -854,7 +867,7 @@ def add_cockpit_circumferential_grille_field(name, profile, indent_fraction, pan
             add_panel_patch(z_center, height, theta_center + direction * rail_theta_offset,
                             0.036, 0.018, 0, 12, 2)
         for z in (z_center - height * 0.5, z_center + height * 0.5):
-            add_panel_patch(z, 0.036, theta_center, width, 0.018, 0, 2, 16)
+            add_panel_patch(z, 0.036, theta_center, width, 0.018, 0, 2, GRILLE_ANGULAR_SEGMENTS)
 
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     add_mesh_obj(name, bm, material_slots)
