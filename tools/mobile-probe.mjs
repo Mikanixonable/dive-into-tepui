@@ -49,47 +49,47 @@ const FRAME_SAMPLE_MS = 10_000;
 
 // ---- src/render/graphics-settings.ts の GRAPHICS_OPTIONS.presets(→ QUALITY_PRESETS)の写し ----
 // Node から src の TS は import できないので値を複製する(perf-probe.mjs と同じ手)。
-// 行は [設定キー, low, medium, high]。保存値は全項目を JSON.stringify したものを
+// 行は [設定キー, low, medium, high, max]。保存値は全項目を JSON.stringify したものを
 // localStorage 'tepui.settings.graphics'(src/settings/user-settings.ts)へ書くだけで、
 // formatGraphics と同じ形になる。ズレたときは graphics-settings.ts の各 presets と照合する。
 const PRESET_ROWS = [
-  ['resolutionScale', 0.5, 0.75, 1],
-  ['lodBias', 0.5, 1, 2],
-  ['exposureCompensation', 1, 1, 1],
-  ['hitShake', true, true, true],
-  ['filmLut', 'none', 'none', 'none'],
-  ['antialias', 0, 1, 2],
-  ['frameRateCap', 30, 60, 0],
-  ['uiBlur', false, true, true],
-  ['textureResolution', 0, 1, 2],
-  ['pointField', false, true, true],
-  ['rings', false, true, true],
-  ['aurora', false, false, true],
-  ['atmosphere', 1, 2, 3],
-  ['airglow', true, true, true],
-  ['clouds', false, true, true],
-  ['cloudFieldSource', 'observed', 'generated', 'generated'],
-  ['cumulus', true, true, true],
-  ['cirrus', true, true, true],
-  ['cumulusDetail', 1, 2, 2],
-  ['cirrusDetail', 0, 1, 1],
-  ['lens', false, true, true],
-  ['thrustPlume', 'simple', 'volume', 'volume'],
-  ['sunLightModel', 0, 1, 1],
-  ['planetLightModel', 0, 0, 1],
-  ['planetLightCount', 0, 2, 2],
-  ['ambient', true, true, true],
-  ['nightObservation', false, false, false],
-  ['constructionWorkLight', true, true, true],
-  ['meshShadow', false, true, true],
-  ['cloudShadow', false, true, true],
-  ['shadowSlotCount', 2, 4, 4],
-  ['shadowSlotSize', 512, 1024, 1024],
-  ['shadowTexelsPerPixel', 0.5, 1, 1],
+  ['resolutionScale', 0.5, 0.5, 0.75, 1],
+  ['lodBias', 0.5, 0.5, 1, 2],
+  ['exposureCompensation', 1, 1, 1, 1],
+  ['hitShake', true, true, true, true],
+  ['filmLut', 'none', 'none', 'none', 'none'],
+  ['antialias', 0, 1, 1, 2],
+  ['frameRateCap', 30, 60, 60, 0],
+  ['uiBlur', false, true, true, true],
+  ['textureResolution', 0, 1, 1, 2],
+  ['pointField', false, true, true, true],
+  ['rings', false, true, true, true],
+  ['aurora', false, false, false, true],
+  ['atmosphere', 1, 1, 2, 3],
+  ['airglow', true, true, true, true],
+  ['clouds', false, true, true, true],
+  ['cloudFieldSource', 'observed', 'generated', 'generated', 'generated'],
+  ['cumulus', true, true, true, true],
+  ['cirrus', true, true, true, true],
+  ['cumulusDetail', 1, 1, 2, 2],
+  ['cirrusDetail', 0, 0, 1, 1],
+  ['lens', false, true, true, true],
+  ['thrustPlume', 'simple', 'volume', 'volume', 'volume'],
+  ['sunLightModel', 0, 1, 1, 1],
+  ['planetLightModel', 0, 0, 0, 1],
+  ['planetLightCount', 0, 2, 2, 2],
+  ['ambient', true, true, true, true],
+  ['nightObservation', false, false, false, false],
+  ['constructionWorkLight', true, true, true, true],
+  ['meshShadow', false, true, true, true],
+  ['cloudShadow', false, true, true, true],
+  ['shadowSlotCount', 2, 4, 4, 4],
+  ['shadowSlotSize', 512, 1024, 1024, 1024],
+  ['shadowTexelsPerPixel', 0.5, 0.5, 1, 1],
 ];
 const GRAPHICS_STORAGE_KEY = 'tepui.settings.graphics';
 const PRESETS = Object.fromEntries(
-  [['low', 0], ['medium', 1], ['high', 2]].map(([name, index]) => [
+  [['low', 0], ['medium', 1], ['high', 2], ['max', 3]].map(([name, index]) => [
     name,
     Object.fromEntries(PRESET_ROWS.map(([key, ...values]) => [key, values[index]])),
   ]),
@@ -100,6 +100,7 @@ const CONDITIONS = [
   { label: 'プリセット 低', preset: 'low' },
   { label: 'プリセット 中', preset: 'medium' },
   { label: 'プリセット 高', preset: 'high' },
+  { label: 'プリセット 最高', preset: 'max' },
 ];
 
 function percentile(values, p) {

@@ -52,7 +52,7 @@ export function register(): void {
   });
 
   // テスト環境には matchMedia が無いため、ポインタは細かい側と判定され初回既定は high になる。
-  test('user-settings: 保存が無い環境では描画設定は既定(high)で始まる', () => {
+  test('user-settings: 保存が無い環境では描画設定は既定(medium)で始まる', () => {
     const settings = new UserSettings(new MemorySettingStorage());
     assert.deepEqual(settings.graphics.current, DEFAULT_GRAPHICS);
   });

@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { cloudShadowKinds, type CloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-select';
-import { DEFAULT_GRAPHICS, withGraphicsOption } from '../../src/render/graphics-settings';
+import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
 
 // 雲・雲の影・各種類の表示設定から、種類ごとの影の有無を確認する。
 const CASES: readonly {
@@ -30,7 +30,7 @@ export function register(): void {
       const graphics = withGraphicsOption(
         withGraphicsOption(
           withGraphicsOption(
-            withGraphicsOption(DEFAULT_GRAPHICS, 'clouds', c.clouds),
+            withGraphicsOption(QUALITY_PRESETS.high, 'clouds', c.clouds),
             'cloudShadow', c.cloudShadow),
           'cumulus', c.cumulus),
         'cirrus', c.cirrus);
