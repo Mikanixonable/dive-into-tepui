@@ -923,7 +923,10 @@ async function bootAndCheckReady() {
       loading: [...document.querySelectorAll('body > div')].find((d) => d.textContent?.includes('Dive into Tepui'))?.textContent?.slice(0, 120) ?? '',
       frames: document.documentElement.dataset.smokeFrames ?? 'unset',
     })`);
-    if (state.fatal) throw new Error(`Fatal error overlay appeared during browser smoke test: ${state.fatalText}`);
+    if (state.fatal) {
+      const bufferLog = await devTools.evaluate('JSON.stringify(window.__bufferLog ?? [])');
+      throw new Error(`Fatal error overlay appeared during browser smoke test: ${state.fatalText}\nbufferLog: ${bufferLog}`);
+    }
     if (state.ready) break;
     if (Date.now() - lastLog > 10_000) {
       lastLog = Date.now();
@@ -982,6 +985,25 @@ async function runConfiguredScenario() {
   const pageQuery = layoutOnly
     ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=1`
     : query;
+  // createBuffer が投げたときの descriptor と呼び出し元を残し、CI の GPU エラーを切り分ける。
+  await devTools.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `(() => {
+      if (typeof GPUDevice === 'undefined') return;
+      window.__bufferLog = [];
+      const orig = GPUDevice.prototype.createBuffer;
+      GPUDevice.prototype.createBuffer = function (desc) {
+        try {
+          return orig.call(this, desc);
+        } catch (e) {
+          window.__bufferLog.push({
+            size: desc.size, usage: desc.usage, label: desc.label ?? '',
+            error: String(e), stack: new Error('createBuffer-failed').stack,
+          });
+          throw e;
+        }
+      };
+    })()`,
+  });
   await devTools.send('Page.navigate', { url: `${session.baseUrl}/${pageQuery}` });
   await bootAndCheckReady();
   if (emulateTouch) await revealTouchPad();
