@@ -2,8 +2,8 @@
 // 透過率の TSL グラフとして返す。影を落とす天体は毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
 import {
-  Fn, Loop, PI, abs, acos, asin, clamp, dot, float, greaterThan, length, lessThan, max, min,
-  normalize, select, sqrt, uniformArray, vec3, vec4,
+  Fn, If, Loop, PI, abs, acos, asin, clamp, dot, float, greaterThan, length, lessThan, lessThanEqual, max, min,
+  normalize, select, sqrt, uniform, uniformArray, vec3, vec4,
 } from 'three/tsl';
 import type { FloatNode, Mat4Node, Vec3Node } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
@@ -70,8 +70,12 @@ const ellipsoidTransmittance = Fn((
   const radial = max(length(local), 1e-6);
   const bodyAngRadius = asin(clamp(float(1).div(max(radial, 1)), 0, 1));
   const separation = acos(clamp(dot(local.div(radial).negate(), sourceLocal), -1, 1));
-  const overlap = circleOverlapArea(sourceAngRadius, bodyAngRadius, separation);
-  const lit = clamp(float(1).sub(overlap.div(PI.mul(sourceAngRadius).mul(sourceAngRadius))), 0, 1);
+  // 2 つの円板が離れていれば重なりは 0 なので、重なりの面積は円板が触れるときだけ解く。
+  const lit = float(1).toVar();
+  If(lessThanEqual(separation, sourceAngRadius.add(bodyAngRadius)), () => {
+    const overlap = circleOverlapArea(sourceAngRadius, bodyAngRadius, separation);
+    lit.assign(clamp(float(1).sub(overlap.div(PI.mul(sourceAngRadius).mul(sourceAngRadius))), 0, 1));
+  });
   // 半軸 0 の空きスロットと、光源より遠い側にある天体。
   const outOfPlay = lessThan(max(max(axes.x, axes.y), axes.z), 1)
     .or(greaterThan(dot(toCenter, sourceDir), sourceDist));
@@ -86,6 +90,8 @@ export class BodyShadow {
   private readonly centerArray: THREE.UniformArrayNode<'vec3'>;
   private readonly axesArray: THREE.UniformArrayNode<'vec3'>;
   private readonly bodyFromWorldArray: THREE.UniformArrayNode<'mat4'>;
+  // 埋まっているスロットの数。スロットは先頭から詰める。
+  private readonly count = uniform(0, 'int');
 
   // 上限ぶんの uniform を確保する。件数は固定なので、天体が増減してもグラフの形は変わらない。
   public constructor(private readonly sunLight: SunLight) {
@@ -99,6 +105,7 @@ export class BodyShadow {
 
   // このフレームで影を落とす天体の列(描画座標)。MAX_SHADOW_BODIES を超えた分は捨てる。
   public set(bodies: readonly ShadowBody[]): void {
+    this.count.value = Math.min(bodies.length, MAX_SHADOW_BODIES);
     for (const [i, axes] of this.axes.entries()) {
       const body = bodies[i];
       // 空きスロットは半軸 0 で消す — 実効半径が 0 になり、透過率がそのまま素通しへ倒れる。
@@ -141,10 +148,9 @@ export class BodyShadow {
     worldPos: Vec3Node, sourceDir: Vec3Node, sourceDist: FloatNode, sourceAngRadius: FloatNode,
     sourceCenter: Vec3Node,
   ): FloatNode {
-    // 空きスロットも畳み込む。半軸 0 のスロットは素通しの 1 を返すので、有効な数で回す必要が無い。
     return Fn(() => {
       const transmittance = float(1).toVar();
-      Loop({ start: 0, end: MAX_SHADOW_BODIES, type: 'int', condition: '<' }, ({ i }) => {
+      Loop({ start: 0, end: this.count, type: 'int', condition: '<' }, ({ i }) => {
         const center = this.centerArray.element(i);
         // 遮蔽器と光源へは同じ天体の同じ位置が置かれるので、光源天体の判定は中心が
         // 1 m 未満しか離れていないことで判じる。
