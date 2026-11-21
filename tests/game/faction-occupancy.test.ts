@@ -1,5 +1,4 @@
-// 勢力の占有域の導出(game/map/faction-occupancy.ts)の回帰テスト。域に数える対象(閉軌道の
-// 構成員だけ・遷移中は除く)と、帯・パッドの形が崩れないことを固定する。
+// 勢力ごとの占有帯とラグランジュ点領域を、軌道状態からの導出で検査する。
 import { solarSystemParts } from '../physics/test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
@@ -14,8 +13,7 @@ import {
 
 const ATTRACTORS = solarSystemParts().bodies;
 
-// 運動状態が state で固定された生存個体のスタブ。勢力の割り当ては include 側で与えるので、
-// 実体型(Enemy/ModularShip)は要らない。tag は include が個体を見分けるための目印。
+// 運動状態を固定した個体を返す。tag でテスト上の勢力を区別する。
 function stubAt(state: KinematicState, alive = true, tag = ''): DynamicEntity {
   return { motion: { alive, stateAt: () => state }, tag } as unknown as DynamicEntity;
 }
@@ -30,6 +28,7 @@ function leoState(altitude: number, t: number): KinematicState {
 // 全個体を敵として数える include。
 const asEnemy = (): Faction | null => 'enemy';
 
+// 占有域の集約とラグランジュ点の所属条件を検査する。
 export function register(): void {
 test('faction-occupancy: 閉軌道の敵は中心天体の域へ入る', () => {
   const zones = factionOrbitZones([stubAt(leoState(420e3, 0))], ATTRACTORS, 0, asEnemy);

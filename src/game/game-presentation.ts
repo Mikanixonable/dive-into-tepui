@@ -326,9 +326,10 @@ export class GamePresentation {
     this.constructionEntry.startNearestDock(controlled, camera.viewpoint.position);
   }
 
-  // 入力の解釈が読む、ランの操作の口。
+  // ランの操作に必要な状態と命令を返す。
   private gameInputSource(): GameInputSource {
     const game = this.game;
+    // 操作に必要な読み取り値と命令をまとめて提供する。
     return {
       commands: game.commands,
       simSpeedManager: game.simSpeedManager,
