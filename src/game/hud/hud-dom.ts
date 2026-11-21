@@ -493,6 +493,21 @@ function buildHelpBadge(host: HTMLElement, helpPanel: HelpPanel): void {
   );
 }
 
+// RO の通知へ渡す、フレームをまたいだ同期呼び出しを組む。配置値の書き込みが起こすリサイズを
+// RO のパス内へ持ち込まないため(ResizeObserver loop の警告回避)、コールバックでは次フレームへの
+// 予約だけを行う。
+function deferredSync(sync: () => void): () => void {
+  let scheduled = false;
+  return () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      sync();
+    });
+  };
+}
+
 // 上部の固定 UI が占める高さを HUD の配置へ反映する。
 function trackHudChromeInset(root: HTMLElement, chrome: HTMLElement): void {
   // 表示中のクローム高を配置値へ反映する。
@@ -503,7 +518,7 @@ function trackHudChromeInset(root: HTMLElement, chrome: HTMLElement): void {
   sync();
   requestAnimationFrame(sync);
   if (typeof ResizeObserver !== 'undefined') {
-    const observer = new ResizeObserver(sync);
+    const observer = new ResizeObserver(deferredSync(sync));
     observer.observe(chrome);
   }
 }
@@ -522,7 +537,7 @@ function trackHudRailOccupancy(root: HTMLElement, leftRail: HTMLElement, rightRa
   sync();
   requestAnimationFrame(sync);
   if (typeof ResizeObserver !== 'undefined') {
-    const observer = new ResizeObserver(sync);
+    const observer = new ResizeObserver(deferredSync(sync));
     observer.observe(root);
     observer.observe(leftRail);
     observer.observe(rightRail);

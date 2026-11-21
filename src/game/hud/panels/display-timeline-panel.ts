@@ -177,7 +177,17 @@ export class DisplayTimelinePanel {
     syncOccupancy();
     requestAnimationFrame(syncOccupancy);
     if (typeof ResizeObserver !== 'undefined') {
-      this.occupancyObserver = new ResizeObserver(syncOccupancy);
+      // 占有量の書き込みは compact でレールの bottom を動かし観測中の要素を再リサイズさせる
+      // ため、RO のパス内では書かず次フレームへ逃がす(ResizeObserver loop の警告回避)。
+      let scheduled = false;
+      this.occupancyObserver = new ResizeObserver(() => {
+        if (scheduled) return;
+        scheduled = true;
+        requestAnimationFrame(() => {
+          scheduled = false;
+          syncOccupancy();
+        });
+      });
       this.occupancyObserver.observe(root);
       this.occupancyObserver.observe(this.wrap);
     } else {
