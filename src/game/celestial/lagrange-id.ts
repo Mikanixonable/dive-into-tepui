@@ -10,6 +10,17 @@ export const LAGRANGE_MIN_CLEARANCE_RATIO = 10;
 // L1〜L5 の点番号。
 export type LagrangePointNumber = 1 | 2 | 3 | 4 | 5;
 
+// 成立条件を満たすラグランジュ点の番号を返す。
+export function lagrangePointNumbersOf(motion: {
+  hasUsableCollinearPoints(clearanceRatio: number): boolean;
+  hasStableTriangularPoints(): boolean;
+}): readonly LagrangePointNumber[] {
+  return [
+    ...(motion.hasUsableCollinearPoints(LAGRANGE_MIN_CLEARANCE_RATIO) ? [1, 2, 3] as const : []),
+    ...(motion.hasStableTriangularPoints() ? [4, 5] as const : []),
+  ];
+}
+
 // 親 id を `.+` で受けるので、親を持たない `-l1` のような文字列は形として通らない。
 const LAGRANGE_ID = /^(.+)-l([1-5])$/;
 
