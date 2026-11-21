@@ -322,5 +322,7 @@ const SHADOW_CLOUD: ShadowCloud = {
     },
     topAltitude: 1e4,
     clock: { displayTime: 0, simSpeed: 0 },
+    cumulusOctaves: 6,
+    cirrusOctaves: 4,
   },
 };
