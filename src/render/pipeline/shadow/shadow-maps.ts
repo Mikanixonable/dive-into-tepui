@@ -371,18 +371,10 @@ export class ShadowMaps {
     }
     if (this.scratchBox.isEmpty()) return;
     // どの受け手も箱に密着した枠のどれかに収まっているなら、被覆枠は同じ絵を粗く描き直すだけになる。
-    const covered = this.casters.every(
-      (receiver) => !Number.isFinite(receiver.requiredTexel) || this.inUncappedFrame(receiver.box),
-    );
+    const covered = this.casters.every((receiver) => !Number.isFinite(receiver.requiredTexel)
+      || this.clusters.some((cluster, index) => this.clusterCaps[index] === Infinity && cluster.containsBox(receiver.box)));
     if (covered) return;
     this.pushFrame(this.scratchBox, this.frameSize(this.scratchBox), Infinity);
-  }
-
-  // box をまるごと包む、箱に密着した枠があるか。
-  private inUncappedFrame(box: THREE.Box3): boolean {
-    return this.clusters.some(
-      (cluster, index) => this.clusterCaps[index] === Infinity && cluster.containsBox(box),
-    );
   }
 
   // box の 8 頂点をいま構えているライトカメラの空間へ写し、その範囲を lightSpaceBox へ書く。
