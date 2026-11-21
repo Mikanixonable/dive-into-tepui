@@ -48,8 +48,12 @@ export function sliderField(root: HTMLElement, label: string, defaultValue: numb
   const sliderCol = document.createElement('div');
   sliderCol.className = 'slider-col';
 
-  const slider = new Slider({ min: 0, max: 1000, step: 1 }, () => {}).element;
-  sliderCol.appendChild(slider);
+  const slider = new Slider({ min: 0, max: 1000, step: 1 }, (v) => {
+    // 入力欄の刻みへ丸めてから書き戻す。高度スライダーは書き戻した値を次のドラッグの基準に
+    // 取り直すので、丸めないと端数がドラッグのたびに積み上がる。
+    input.value = String(Math.round(fromT(v / 1000) / step) * step);
+  });
+  sliderCol.appendChild(slider.element);
 
   const ticksEl = document.createElement('div');
   ticksEl.className = 'slider-ticks';
@@ -64,21 +68,16 @@ export function sliderField(root: HTMLElement, label: string, defaultValue: numb
   let fromT = (t: number): number => t;
   const syncSliderFromInput = (): void => {
     const t = Math.max(0, Math.min(1, toT(Number(input.value))));
-    slider.value = String(Math.round(t * 1000));
+    slider.setValue(Math.round(t * 1000));
   };
   input.addEventListener('input', syncSliderFromInput);
-  slider.addEventListener('input', () => {
-    // 入力欄の刻みへ丸めてから書き戻す。高度スライダーは書き戻した値を次のドラッグの基準に
-    // 取り直すので、丸めないと端数がドラッグのたびに積み上がる。
-    input.value = String(Math.round(fromT(Number(slider.value) / 1000) / step) * step);
-  });
 
   const titleEl = row.querySelector('.w-group-title');
 
   return {
     element: wrap,
     input,
-    slider,
+    slider: slider.element,
     setLabel(text) {
       if (titleEl) titleEl.textContent = text;
     },

@@ -2,6 +2,7 @@
 // group を意味単位の折りたたみ Section、collapsible/detail を末尾の詳細欄として組む。
 // presentation 未指定の既存 PropertyRow は metric として扱い、旧データとの互換性を保つ。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
+import { bindActivation } from '../widgets/widget-base';
 import type { ReclampingWindow } from './draggable-window';
 import type { PropertyRow, PropertyRowPresentation } from './property-window-content';
 
@@ -101,16 +102,8 @@ export class PropertyWindowRows {
       toggle.className = 'prop-window-row-toggle';
       toggle.setAttribute('role', 'button');
       toggle.tabIndex = 0;
-      const activate = (e: Event): void => {
-        e.stopPropagation();
-        this.setCollapsibleExpanded(!this.collapsibleExpanded);
-      };
-      toggle.addEventListener('click', activate);
-      toggle.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        activate(e);
-      });
+      toggle.setAttribute('aria-expanded', String(this.collapsibleExpanded));
+      bindActivation(toggle, () => this.setCollapsibleExpanded(!this.collapsibleExpanded));
       this.element.appendChild(toggle);
       this.toggleEl = toggle;
 
@@ -120,7 +113,7 @@ export class PropertyWindowRows {
       this.element.appendChild(container);
       this.collapsibleContainerEl = container;
       this.syncToggleLabel(collapsibleRows.length);
-      container.style.display = this.collapsibleExpanded ? '' : 'none';
+      container.classList.toggle('hidden', !this.collapsibleExpanded);
     }
   }
 
@@ -146,30 +139,23 @@ export class PropertyWindowRows {
     toggle.className = 'prop-window-row-group-toggle';
     toggle.setAttribute('role', 'button');
     toggle.tabIndex = 0;
+    toggle.setAttribute('aria-expanded', String(expanded));
     toggle.textContent = groupToggleLabel(name, rows.length, expanded);
 
     const container = document.createElement('div');
     container.className = 'prop-window-section';
-    container.style.display = expanded ? '' : 'none';
+    container.classList.toggle('hidden', !expanded);
     for (const row of rows) this.appendRowEl(container, row);
 
     const setExpanded = (): void => {
       const next = !(this.groupExpanded.get(name) ?? false);
       this.groupExpanded.set(name, next);
       toggle.textContent = groupToggleLabel(name, rows.length, next);
-      container.style.display = next ? '' : 'none';
+      toggle.setAttribute('aria-expanded', String(next));
+      container.classList.toggle('hidden', !next);
       this.reclamp();
     };
-    toggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setExpanded();
-    });
-    toggle.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
-      e.preventDefault();
-      e.stopPropagation();
-      setExpanded();
-    });
+    bindActivation(toggle, setExpanded);
 
     this.element.append(toggle, container);
   }
@@ -183,7 +169,8 @@ export class PropertyWindowRows {
 
   private setCollapsibleExpanded(expanded: boolean): void {
     this.collapsibleExpanded = expanded;
-    if (this.collapsibleContainerEl) this.collapsibleContainerEl.style.display = expanded ? '' : 'none';
+    this.collapsibleContainerEl?.classList.toggle('hidden', !expanded);
+    this.toggleEl?.setAttribute('aria-expanded', String(expanded));
     this.syncToggleLabel(this.collapsibleContainerEl?.childElementCount ?? 0);
     this.reclamp();
   }

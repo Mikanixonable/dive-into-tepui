@@ -435,19 +435,16 @@ function buildChromeAction(
   return { action, button };
 }
 
-// 根の class を反転し、対応するボタンの点灯と aria-pressed を合わせる。状態の正本は根の class。
-function flipRootClass(root: HTMLElement, className: string, buttonId: string): boolean {
-  const on = !root.classList.contains(className);
-  root.classList.toggle(className, on);
-  const button = root.querySelector<HTMLElement>(`#${buttonId}`);
-  button?.classList.toggle('on', on);
-  button?.setAttribute('aria-pressed', String(on));
-  return on;
-}
+// 画面を広く使うモードの点灯。根の class が見た目を切り替える機構で、
+// 状態の正本は DOM からは読まずこのモジュールが持つ。
+let wideScreenOn = false;
+let wideScreenButton: Button | null = null;
 
 // 画面を広く使うモード(Tab キーと右上ボタン)を切り替える。
 export function toggleHudWideScreen(root: HTMLElement): void {
-  flipRootClass(root, 'hud-wide', 'hud-wide-toggle');
+  wideScreenOn = !wideScreenOn;
+  root.classList.toggle('hud-wide', wideScreenOn);
+  wideScreenButton?.setOn(wideScreenOn);
 }
 
 // 上部の全体ステータスバーの収納グリップを、バーの直後(同じ列の次の行)へ組む。収納の選択は保存しない。
@@ -461,7 +458,8 @@ function buildWideScreenToggle(actions: HTMLElement, hudRoot: HTMLElement): void
     actions, 'hud-wide-toggle', '⤢', K.wideScreenToggle.label, '画面を広く使う(TAB)',
     () => toggleHudWideScreen(hudRoot),
   );
-  button.element.setAttribute('aria-pressed', 'false');
+  wideScreenButton = button;
+  wideScreenButton.setOn(wideScreenOn);
 }
 
 // Esc キーの代替操作ボタン(⚙アイコン)。CONTROLS.md が Esc と同じ振る舞い(最前面の
