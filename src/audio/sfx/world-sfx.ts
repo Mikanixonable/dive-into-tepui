@@ -320,36 +320,74 @@ export class WorldSfx {
     this.engine.noiseBurst(0.02, 'highpass', 4000, 0.03);
   }
 
-  // 弾が至近を通過したときの「ヴン」という磁気干渉音
+  // 弾が至近を通過したときの磁気干渉音。低い唸りをパルス状に断続させ、
+  // そのまわりにプラズマの筋を思わせる小さな唸りを不規則に散らす。
   private magneticInterference(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
 
-    // 音高: 低い唸りが持ち上がってから沈む。
+    // 主発: 低い唸りが持ち上がってから沈む。矩形波のゲートで断続させる。
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(60 * (1 + (Math.random() * 2 - 1) * 0.04), t);
+    osc.frequency.exponentialRampToValueAtTime(80 * (1 + (Math.random() * 2 - 1) * 0.04), t + 0.14);
+    osc.frequency.exponentialRampToValueAtTime(42 * (1 + (Math.random() * 2 - 1) * 0.04), t + 0.4);
 
-    osc.frequency.setValueAtTime(60, t);
-    osc.frequency.exponentialRampToValueAtTime(80, t + 0.3);
-    osc.frequency.exponentialRampToValueAtTime(40, t + 0.4);
-
-    // 音色: 立ち上がりだけ明るくする。
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(100, t);
     filter.frequency.exponentialRampToValueAtTime(400, t + 0.1);
     filter.frequency.exponentialRampToValueAtTime(100, t + 0.3);
 
-    // 音量: 膨らんでから消える。
+    const gate = ctx.createGain();
+    gate.gain.value = 0;
+    const lfo = ctx.createOscillator();
+    lfo.type = 'square';
+    lfo.frequency.value = 22 * (1 + (Math.random() * 2 - 1) * 0.25);
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 0.08;
+    const gateBias = ctx.createConstantSource();
+    gateBias.offset.value = 0.07;
+    lfo.connect(lfoDepth).connect(gate.gain);
+    gateBias.connect(gate.gain);
+
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.01, t);
-    gain.gain.linearRampToValueAtTime(0.15, t + 0.2);
+    gain.gain.linearRampToValueAtTime(1, t + 0.2);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
 
-    osc.connect(filter).connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.45);
+    osc.connect(filter).connect(gate).connect(gain).connect(ctx.destination);
+    for (const node of [osc, lfo, gateBias]) {
+      node.start(t);
+      node.stop(t + 0.45);
+    }
+
+    // フィラメント: 本体の周囲を不規則に通り過ぎる小さな唸り。
+    let ft = t + 0.05;
+    const filamentCount = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < filamentCount; i++) {
+      ft += 0.04 + Math.random() * 0.06;
+      const fLow = 55 + Math.random() * 40;
+      const fOsc = ctx.createOscillator();
+      fOsc.type = Math.random() < 0.5 ? 'triangle' : 'sawtooth';
+      fOsc.frequency.setValueAtTime(fLow, ft);
+      fOsc.frequency.exponentialRampToValueAtTime(fLow * (1.2 + Math.random() * 0.3), ft + 0.1);
+      fOsc.frequency.exponentialRampToValueAtTime(fLow * 0.7, ft + 0.2);
+      const fFilter = ctx.createBiquadFilter();
+      fFilter.type = 'lowpass';
+      fFilter.frequency.value = 350;
+      const fGain = ctx.createGain();
+      const fDur = 0.18 + Math.random() * 0.1;
+      fGain.gain.setValueAtTime(0.001, ft);
+      fGain.gain.linearRampToValueAtTime(0.05 + Math.random() * 0.04, ft + fDur * 0.4);
+      fGain.gain.exponentialRampToValueAtTime(0.001, ft + fDur);
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = (Math.random() * 2 - 1) * 0.7;
+      fOsc.connect(fFilter).connect(fGain).connect(pan).connect(ctx.destination);
+      fOsc.start(ft);
+      fOsc.stop(ft + fDur + 0.05);
+    }
   }
 
   // 自機被弾音。被弾点が自機中心から遠いほど、音量と音高を下げる。
