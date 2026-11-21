@@ -5,7 +5,7 @@ import { orbitInfo, relativeInfo } from '../orbit-info';
 import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
 import { hasUsableConstructionDock } from '../ship/construction-entry';
 import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-commands';
-import { deployableCommands, type DeployableCommands } from '../player/deployable-commands';
+import { shipSystemCommands, type ShipSystemCommands } from '../player/ship-system-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from '../viewer/orbit-reference-commands';
 import { viewCommands } from '../viewer/view-commands';
 import { focusTargetId } from '../viewer/focus-target';
@@ -40,7 +40,7 @@ export class HudPanelPresenter {
   private readonly viewBadge: ViewBadge;
   // パネル操作コマンドをキューへ積むインターフェース。
   private readonly simSpeedCommands: SimSpeedCommands;
-  private readonly deployableCommands: DeployableCommands;
+  private readonly shipSystemCommands: ShipSystemCommands;
   private readonly orbitReferenceCommands: OrbitReferenceCommands;
 
   // ビューバッジを組む。パネルの操作は commands へ積み、値は残りの持ち主から毎フレーム読む。
@@ -66,7 +66,7 @@ export class HudPanelPresenter {
       hud.viewBadgeRow, hud.overlayManager, viewCommands(commands, viewer.view),
     );
     this.simSpeedCommands = simSpeedCommands(commands, simSpeedManager);
-    this.deployableCommands = deployableCommands(commands);
+    this.shipSystemCommands = shipSystemCommands(commands);
     this.orbitReferenceCommands = orbitReferenceCommands(commands, viewer.orbitReference);
   }
 
@@ -165,6 +165,7 @@ export class HudPanelPresenter {
     const motion = ship?.motion ?? null;
     const power = motion?.power ?? null;
     const radiator = motion?.radiator ?? null;
+    const coolingDump = motion?.coolingDump ?? null;
     // 搭載していない装備は null を返す。
     return {
       rcsDamp: controlled.throttle.rcsDamp,
@@ -190,8 +191,12 @@ export class HudPanelPresenter {
           ? () => this.startConstruction()
           : null,
       tapKey: (key) => this.input.tapKey(key),
-      toggleSolar: (side) => { if (power !== null) this.deployableCommands.toggleSolar(power, side); },
-      toggleRadiator: (side) => { if (radiator !== null) this.deployableCommands.toggleRadiator(radiator, side); },
+      toggleSolar: (side) => { if (power !== null) this.shipSystemCommands.toggleSolar(power, side); },
+      toggleRadiator: (side) => { if (radiator !== null) this.shipSystemCommands.toggleRadiator(radiator, side); },
+      coolingDumpRunning: coolingDump === null ? null : coolingDump.running,
+      toggleCoolingDump: () => {
+        if (coolingDump !== null) this.shipSystemCommands.toggleCoolingDump(coolingDump);
+      },
     };
   }
 
