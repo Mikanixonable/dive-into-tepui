@@ -989,14 +989,23 @@ async function runConfiguredScenario() {
   await devTools.send('Page.addScriptToEvaluateOnNewDocument', {
     source: `(() => {
       if (typeof GPUDevice === 'undefined') return;
-      window.__bufferLog = [];
+      window.__bufferLog = { total: 0, mapped: 0, entries: [] };
       const orig = GPUDevice.prototype.createBuffer;
       GPUDevice.prototype.createBuffer = function (desc) {
+        const log = window.__bufferLog;
+        log.total++;
+        let rec = null;
+        if (desc.mappedAtCreation) {
+          rec = { t: Math.round(performance.now()), size: desc.size, usage: desc.usage };
+          log.mapped++;
+          log.entries.push(rec);
+          if (log.entries.length > 80) log.entries.shift();
+        }
         try {
           return orig.call(this, desc);
         } catch (e) {
-          window.__bufferLog.push({
-            size: desc.size, usage: desc.usage, label: desc.label ?? '',
+          log.entries.push({
+            failed: true, size: desc.size, usage: desc.usage, label: desc.label ?? '',
             error: String(e), stack: new Error('createBuffer-failed').stack,
           });
           throw e;
