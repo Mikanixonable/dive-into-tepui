@@ -1,7 +1,6 @@
 // 自機弾・敵プラズマ弾の表示と、全弾が共有する描画資源とプール。
 import * as THREE from 'three/webgpu';
 import { InstancedPool } from '../../instanced-pool';
-import { orientProjectile } from '../../projectile-orientation';
 import { memoParseShared } from '../model-template';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 import bulletData from '../../../assets/models/bullet.json';
@@ -176,4 +175,16 @@ export class PlasmaBulletView extends ProjectileView {
   protected override pushToPool(pools: BulletPools): void {
     pools.pushPlasma(this.object);
   }
+}
+
+// 弾頭メッシュの長軸方向は +Z で統一されている。
+const PROJECTILE_FORWARD = new THREE.Vector3(0, 0, 1);
+const normalizedVelocity = new THREE.Vector3();
+
+// 弾頭の前方軸 (+Z) を表示速度ベクトルの向きへ整列させる。
+export function orientProjectile(quaternion: THREE.Quaternion, velocity: THREE.Vector3): boolean {
+  if (velocity.lengthSq() <= 1e-12) return false;
+  normalizedVelocity.copy(velocity).normalize();
+  quaternion.setFromUnitVectors(PROJECTILE_FORWARD, normalizedVelocity);
+  return true;
 }

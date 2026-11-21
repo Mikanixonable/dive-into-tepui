@@ -2,7 +2,7 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
 import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { ViewMode } from '../view/view-mode';
-import type { MarkerVisibility } from '../../marker-kit/marker-visibility';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { InspectedObject } from './inspected-object';
 import type { PresentationStageAuthoring } from '../presentation-ports';
 import type { MenuItem } from '../../hud-kit/windows/context-menu';

@@ -245,3 +245,6 @@ function boundedInteger(value: unknown, min: number, max: number): number | null
   const number = nonNegativeInteger(value);
   return number !== null && number >= min && number <= max ? number : null;
 }
+
+// 主砲の弾薬の諸元。装弾数は残弾表示・給弾率・補給の初期値が同じ値を見る必要があるので、
+// 射撃制御ではなくここが持つ。

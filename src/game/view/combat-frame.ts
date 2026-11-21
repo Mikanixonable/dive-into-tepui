@@ -5,7 +5,7 @@ import { isUsableConstructionDock, type ConstructionEntry } from '../ship/ship-c
 import type { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input-devices/input';
 import type { TouchControls } from '../hud/touch-controls';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { Targeter } from '../targeter';
 import type { ControlSelection } from '../control-selection';

@@ -30,9 +30,9 @@ import {
 import type { ShipBlueprintShelf } from './ship-blueprint';
 import {
   constructionModuleFocus, type ConstructionFocus,
-} from './ship-construction-focus';
+} from './ship-construction-candidates';
 import type { RunEventSink } from '../run-events';
-import { CommandCompletion } from '../command-completion';
+import { CommandCompletion } from '../command-queue';
 import type { Projected } from '../../math/projection';
 import type { OverlayHandle, OverlayManager } from '../../hud-kit/overlay-manager';
 import type { Input } from '../../input-devices/input';

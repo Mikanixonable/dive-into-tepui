@@ -4,7 +4,6 @@ import { InstancedPool } from '../../instanced-pool';
 import { attachThermalEmissive } from '../../thermal-emissive';
 import { markSharedResources, memoParseIndependent } from '../model-template';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
-import { CASING_DISPLAY_METALNESS, CASING_DISPLAY_ROUGHNESS } from '../casing-style';
 import casingData from '../../../assets/models/casing.json';
 import type { InstancedPoolSet } from '../instanced-pools';
 import type { KinematicState } from '../../../physics/kinematic-state';
@@ -59,3 +58,8 @@ export class CasingView extends DynamicView {
     viewFrame.pools.get(CasingPool).push(this.object);
   }
 }
+
+// 排出される薬莢と、マガジン内の実包に共通する表示材質。
+export const CASING_DISPLAY_COLOR = 0xff9f5e;
+export const CASING_DISPLAY_METALNESS = 0.8;
+export const CASING_DISPLAY_ROUGHNESS = 0.3;

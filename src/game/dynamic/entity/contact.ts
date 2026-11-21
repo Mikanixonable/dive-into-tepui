@@ -21,3 +21,26 @@ export interface Contact {
 export function closingSpeed(contact: Contact): number {
   return Math.max(0, dot(sub(contact.selfState.v, contact.otherState.v), contact.normal));
 }
+
+// ── 接触ダメージの根拠 ──
+
+
+// 接触の瞬間の接近速度(法線方向の相対速度)のしきい値 [m/s]。これ未満なら無傷、これ以上で
+// パーツの最大 HP 分、間は線形。
+const COLLISION_DAMAGE_MIN_CLOSING_SPEED = 50;
+const COLLISION_DAMAGE_FULL_CLOSING_SPEED = 500;
+
+interface ContactDamageSource {
+  readonly contactDamageWeight: number;
+}
+
+// 受け手がこの接触で受けるダメージの根拠 [m/s]。0 を返す相手は無傷で済む。
+export function contactDamageSpeed(other: ContactDamageSource, contact: Contact): number {
+  return closingSpeed(contact) * other.contactDamageWeight;
+}
+
+// 接触速度に応じたダメージ割合 [0..1]。下限速度未満は 0、上限速度以上で 1、間は線形補間。
+export function collisionDamageFraction(speed: number): number {
+  const span = COLLISION_DAMAGE_FULL_CLOSING_SPEED - COLLISION_DAMAGE_MIN_CLOSING_SPEED;
+  return Math.min(1, Math.max(0, (speed - COLLISION_DAMAGE_MIN_CLOSING_SPEED) / span));
+}

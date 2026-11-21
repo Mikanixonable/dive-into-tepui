@@ -12,7 +12,6 @@ import { solveLeadTime } from '../../../physics/intercept';
 import { kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { DynamicMotion } from '../dynamic-motion';
 import { MUZZLE_SPEED } from './combat-ship-entity';
-import { countAttackingEnemiesInGroup } from './enemy-attack-group';
 
 const PLASMA_BULLET_SPEED = MUZZLE_SPEED * 2 / 3; // プラズマ弾の初速 [m/s]
 const PLASMA_LIFETIME = 300; // プラズマ弾の寿命 [sim s]
@@ -135,4 +134,22 @@ export class EnemyFireController {
     this.port.fired(kinematicState<'eci'>(simTime, r, v), registry.events);
     registry.add(bullet);
   }
+}
+
+// 敵の攻撃グループ判定に必要な、Enemy本体から独立した読み取りインターフェース。
+interface EnemyAttackGroupMember {
+  readonly motion: { readonly alive: boolean };
+  readonly attackGroupId: string;
+  readonly isBursting: boolean;
+}
+
+// 同じ攻撃グループに属する、現在バースト中の敵機数を数える。
+export function countAttackingEnemiesInGroup(
+  enemies: readonly EnemyAttackGroupMember[], groupId: string,
+): number {
+  let count = 0;
+  for (const enemy of enemies) {
+    if (enemy.motion.alive && enemy.attackGroupId === groupId && enemy.isBursting) count++;
+  }
+  return count;
 }

@@ -3,7 +3,7 @@ import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { Part, AnyPart } from './parts';
 import { PartDamageModel } from './part-damage-model';
 import { Enemy, type EnemyPlacement } from './enemy';
-import type { PartDamageTarget } from './damage-capabilities';
+import type { PartDamageTarget } from './part-damage-model';
 
 // 部品式の被弾モデルを持つ敵に共通するもの。
 export abstract class PartBasedEnemy extends Enemy implements PartDamageTarget {

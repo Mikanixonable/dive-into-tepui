@@ -13,7 +13,7 @@ import type { Controllable } from '../dynamic/entity/controllable';
 import { isModularShip } from '../ship/modular-ship';
 import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
 import type { DisplayWindow } from '../display-window-manager';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { MapVisibilityPolicy } from './visibility-policy';
 import type { ViewMode } from '../view/view-mode';
 import {

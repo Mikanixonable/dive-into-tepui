@@ -9,7 +9,7 @@ import { CameraSelection, type CameraFrameSamples, type SerializedCameraSelectio
 import { EntityDisplaySelection, type SerializedEntityDisplaySelection } from './entity-display-selection';
 import { focusTargetId } from './focus-target';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { RunEvent, RunEventSink } from '../run-events';
 import type { ViewMode } from '../view/view-mode';
 import type { OrbitGuideSettings } from './orbit-guide-settings';

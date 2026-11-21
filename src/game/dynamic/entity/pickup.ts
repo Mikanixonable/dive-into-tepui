@@ -20,7 +20,7 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ControlSelection } from '../../control-selection';
 import type { MenuItem } from '../../../hud-kit/windows/context-menu';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
-import type { MarkerVisibility } from '../../../marker-kit/marker-visibility';
+import type { MarkerVisibility } from '../../../marker-kit/marker-sink';
 import type { PresentationStageAuthoring } from '../../presentation-ports';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';

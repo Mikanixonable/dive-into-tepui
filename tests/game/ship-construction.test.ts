@@ -8,7 +8,7 @@ import {
 } from '../../src/game/ship/ship-construction-rules';
 import { deserializeDockedVessels, serializeShipAssembly } from '../../src/game/ship/ship-assembly-serialization';
 import { CommandQueue } from '../../src/game/command-queue';
-import { CommandCompletion } from '../../src/game/command-completion';
+import { CommandCompletion } from '../../src/game/command-queue';
 import {
   ShipConstruction, type ConstructionFocus, type ShipConstructionPanelPort,
 } from '../../src/game/ship/ship-construction';

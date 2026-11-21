@@ -5,7 +5,7 @@ import { LabelLayout } from './label-layout';
 import { MarkerGroup, type MarkerRecord } from './marker-group';
 import type { MarkerSink } from './marker-sink';
 import { injectMarkerStructureStyle } from './marker-structure-style';
-import type { MarkerVisibility } from './marker-visibility';
+import type { MarkerVisibility } from './marker-sink';
 
 // ラベルの引き出し線を描く SVG を root に重ねて返す。
 function buildSvgOverlay(root: HTMLElement): SVGSVGElement {

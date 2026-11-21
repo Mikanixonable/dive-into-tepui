@@ -6,9 +6,9 @@
 import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import { Button, Meter, SegmentedControl } from '../../../hud-kit/widgets';
 import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud-kit/alarm-level-ui';
-import { createKeyCap } from '../../../hud-kit/key-cap';
-import { setReadout } from '../../../hud-kit/readout';
-import { setStatePip } from '../../../hud-kit/state-pip';
+import { createKeyCap } from '../../../hud-kit/dom-elements';
+import { setReadout } from '../../../hud-kit/dom-elements';
+import { setStatePip } from '../../../hud-kit/dom-elements';
 import {
   DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO, FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO,
   dynamicPressureAlarmLevel, fuelAlarmLevel,

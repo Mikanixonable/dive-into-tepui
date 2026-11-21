@@ -2,7 +2,7 @@
 import { hudRail } from '../hud-dom';
 import { Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, type CollapseToggleLabels } from '../../../hud-kit/widgets';
 import { injectOnce } from '../../../hud-kit/inject-style';
-import { createKeyCap } from '../../../hud-kit/key-cap';
+import { createKeyCap } from '../../../hud-kit/dom-elements';
 import { buildOrbitalObjectChart, CHART_KINDS, isApproachingEnemy } from './orbital-object-chart';
 import { glyphMarkup, OrbitalObjectSearch, type OrbitalObjectActions } from './orbital-object-search';
 import { applyRoleClass, OrbitalObjectCard, setText } from './orbital-object-card';

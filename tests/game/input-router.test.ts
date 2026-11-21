@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
-import type { GameInputBinding } from '../../src/game/input/game-actions';
-import { gameCommand } from '../../src/game/input/game-commands';
+import type { GameInputBinding } from '../../src/game/input/game-input-types';
+import { gameCommand } from '../../src/game/input/game-input-types';
 import { GameInputRouter, type RawGameInputAdapter } from '../../src/game/input/game-input-router';
 import { test } from '../harness';
 

@@ -12,7 +12,7 @@ import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-lis
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type { MenuItem } from '../../hud-kit/windows/context-menu';
 import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
-import type { MarkerVisibility } from '../../marker-kit/marker-visibility';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 

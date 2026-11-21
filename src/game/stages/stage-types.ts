@@ -4,7 +4,7 @@ import type * as THREE from 'three/webgpu';
 import type { TdbJulianDate } from '../../physics/time';
 import type { HudLayers } from '../hud/hud-layers';
 import type { EntityRegistry } from '../dynamic/entity-registry';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ControlSelection } from '../control-selection';
 import type { CommandQueue } from '../command-queue';

@@ -1,7 +1,7 @@
 // 地表・気候入力のdatasetId共有と、要求の世代・dispose境界を検査する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { EarthSurfaceContext } from '../../src/render/earth-surface';
+import { EarthSurfaceContext } from '../../src/render/earth-surface/earth-surface';
 import {
   assertEarthSurfaceDataset, earthSurfaceSourceFromManifest,
   type EarthSurfaceAssetManifest,

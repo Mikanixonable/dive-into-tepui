@@ -15,7 +15,7 @@ import type { EarthSurfaceTileRequest } from '../../src/render/earth-surface/til
 import { EarthSurfaceDecodeError } from '../../src/render/earth-surface/errors';
 import {
   EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES, EARTH_TERRAIN_HEIGHT, EARTH_TERRAIN_WIDTH,
-} from '../../src/render/earth-surface/format';
+} from '../../src/render/earth-surface/terrain-codec';
 import { earthTileKey } from '../../src/render/earth-surface/tile-key';
 import { decodeEarthTerrainOffThread } from '../../src/render/earth-surface/terrain-worker-client';
 

@@ -7,7 +7,7 @@ import type { EntityRegistry } from '../entity-registry';
 import type { StageOutcome, EnemyDeathCause } from '../../stages/stage-outcome';
 import { bulletReactionOf, type BulletType } from './bullet-reaction';
 import type { Contact } from './contact';
-import { contactDamageSpeed } from './contact-damage';
+import { contactDamageSpeed } from './contact';
 import type { Vec3 } from '../../../math/vec3';
 
 // 帰結を受け取る敵1体のインターフェース。ダメージの適用方法と撃破の記録は個体ごとに実装する。

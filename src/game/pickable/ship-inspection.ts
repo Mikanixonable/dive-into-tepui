@@ -2,7 +2,7 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
 import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { ViewMode } from '../view/view-mode';
-import type { MarkerVisibility } from '../../marker-kit/marker-visibility';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { PropertyWindowOpener } from './property-window-opener';
 import type { InspectedObject } from './inspected-object';
 import type { PresentationStageAuthoring } from '../presentation-ports';
@@ -19,8 +19,8 @@ import { orbitRows } from './orbit-rows';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
-import { PLAN_EXECUTION_MODES, planExecutionLabel } from '../player/player-plan-settings';
 import type { ShipModuleInstance } from '../ship/ship-module-instance';
+import type { PlanExecutionMode } from '../plan/plan';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
 import type { MapVisibility } from '../map/visibility-policy';
@@ -138,4 +138,13 @@ export class ShipInspection implements InspectedObject {
       ...orbitRows(this.ship, bodies, simTime),
     ];
   }
+}
+
+export const PLAN_EXECUTION_MODES: readonly PlanExecutionMode[] = ['none', 'autopilot', 'instant'];
+const PLAN_EXECUTION_LABELS: Record<PlanExecutionMode, string> = {
+  none: 'なし', autopilot: '自動操縦', instant: '理想実行',
+};
+
+export function planExecutionLabel(mode: PlanExecutionMode): string {
+  return PLAN_EXECUTION_LABELS[mode];
 }

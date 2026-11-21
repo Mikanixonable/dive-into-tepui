@@ -8,7 +8,7 @@ import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
 import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import { ORBIT_POINT_GLYPH } from '../marker/marker-identity';
-import type { MarkerVisibility } from '../../marker-kit/marker-visibility';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { MenuItem } from '../../hud-kit/windows/context-menu';
 import { MenuCommon, type MenuAction } from '../menu-actions';
 import type { PropertyRow } from '../../hud-kit/windows/property-window-content';

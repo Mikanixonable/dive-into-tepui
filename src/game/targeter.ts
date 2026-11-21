@@ -4,7 +4,7 @@ import type { Vec3 } from '../math/vec3';
 import { add, len, norm, scale, sub } from '../math/vec3';
 import { Enemy } from './dynamic/entity/enemy';
 import { isAmmoPickup, isRcsFuelPickup } from './dynamic/entity/pickup';
-import type { EntityRoster } from './dynamic/entity-roster';
+import type { EntityRoster } from './dynamic/entity-registry';
 import { ModularShip } from './ship/modular-ship';
 import { aliveCombatTarget, isCombatTarget, type CombatTarget } from './dynamic/entity/combat-target';
 import type { CameraFrame } from '../render/camera/camera-frame';

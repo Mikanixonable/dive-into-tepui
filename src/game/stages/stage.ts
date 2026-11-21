@@ -35,7 +35,7 @@ import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
 import type { CommandQueue } from '../command-queue';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
 import type { ViewMode } from '../view/view-mode';

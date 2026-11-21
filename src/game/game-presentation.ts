@@ -77,7 +77,7 @@ import type { Viewport } from '../render/viewport';
 import type { SettingValue } from '../settings/setting-value';
 import type { ThemePalette } from '../theme';
 import type { PilotControls } from './dynamic/entity/pilot-controls';
-import type { TrajectoryDemand } from './dynamic/trajectory-demand';
+import type { TrajectoryDemand } from './dynamic/predictor';
 import type { Controllable } from './dynamic/entity/controllable';
 import type { CameraFrameSamples } from './viewer/camera-selection';
 import type { DisplayWindow } from './display-window-manager';

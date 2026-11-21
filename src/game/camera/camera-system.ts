@@ -1,7 +1,7 @@
 // 2台のカメラ視点を入力命令と表示用 Viewpoint へ結び、ガンサイトと画角遷移を重ねる。
 import type { Input } from '../../input-devices/input';
 import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
-import type { Viewpoint } from '../../math/projection';
+import { rayThroughScreen, type Viewpoint } from '../../math/projection';
 import type { Vec3 } from '../../math/vec3';
 import { v3 } from '../../math/vec3';
 import { bodyAnchorSource } from '../../physics/attractor';
@@ -10,7 +10,6 @@ import type { Viewport } from '../../render/viewport';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { AnchorEntities } from '../frame-anchors';
 import type { Controllable } from '../dynamic/entity/controllable';
-import { screenRay } from './screen-ray';
 import type { Ray } from '../../math/ray';
 import type { HudLayers } from '../hud/hud-layers';
 import type { ViewMode } from '../view/view-mode';
@@ -229,4 +228,9 @@ export class CameraSystem {
     event.stopPropagation();
     this.commands.camera(this.view).reset(this.sample(this.view));
   };
+}
+
+// camera update 後の Viewpoint と同じ CSS pixel viewport から world ray を組む。
+export function screenRay(viewpoint: Viewpoint, viewport: Viewport, clientX: number, clientY: number): Ray {
+  return rayThroughScreen(viewpoint, clientX, clientY, viewport.width, viewport.height);
 }

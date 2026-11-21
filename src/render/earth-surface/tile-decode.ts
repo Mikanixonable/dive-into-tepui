@@ -3,7 +3,7 @@ import type { EarthTileKey } from './tile-key';
 import { EarthSurfaceDecodeError } from './errors';
 import { ensureEarthSurfaceNotAborted, readEarthSurfaceResponse } from './decode-response';
 import { decodeEarthTerrainBytes } from './terrain-codec';
-import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from './format';
+import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from './terrain-codec';
 
 export interface EarthSurfaceTileRequest {
   readonly key: EarthTileKey;

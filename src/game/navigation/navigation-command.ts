@@ -9,7 +9,7 @@ import { deltaVBudget, effectiveExhaustVelocity } from '../../physics/rocket';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CommandQueue } from '../command-queue';
 import type { ControlSelection } from '../control-selection';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OverlayManager } from '../../hud-kit/overlay-manager';
 import { isModularShip, type ModularShip } from '../ship/modular-ship';

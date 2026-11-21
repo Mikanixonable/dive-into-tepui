@@ -11,7 +11,7 @@ import { SOLAR_PANEL_COLUMNS, SOLAR_PANEL_COUNT, SOLAR_PANEL_LENGTH } from '../.
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { createBasePreset, createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
-import { splitAtDecoupler } from '../../src/game/ship/ship-decoupling';
+import { splitAtDecoupler } from '../../src/game/ship/ship-connection-rules';
 import { DockSnapGuideView } from '../../src/render/dynamic/ship/dock-snap-guide-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
 import { ShipModuleView } from '../../src/render/dynamic/ship/ship-module-view';

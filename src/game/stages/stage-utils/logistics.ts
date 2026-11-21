@@ -10,7 +10,7 @@ import { kinematicState, orbitAxes, type KinematicState } from '../../../physics
 import type * as THREE from 'three/webgpu';
 import type { Attitude } from '../../../physics/attitude';
 import type { ModularShip } from '../../ship/modular-ship';
-import type { EntityRoster } from '../../dynamic/entity-roster';
+import type { EntityRoster } from '../../dynamic/entity-registry';
 import type { EntityRegistry } from '../../dynamic/entity-registry';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
 import type { FormationRole } from '../../dynamic/entity/entity-kind';

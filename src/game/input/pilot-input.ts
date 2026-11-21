@@ -2,9 +2,9 @@
 // 並進キーの連打をラッチを反転する命令にする。
 import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import type { KeyBinding } from '../../input-devices/key-mapping';
-import { gameCommand } from './game-commands';
-import type { GameCommand } from './game-commands';
-import type { ContinuousGameAction } from './game-actions';
+import { gameCommand } from './game-input-types';
+import type { GameCommand } from './game-input-types';
+import type { ContinuousGameAction } from './game-input-types';
 import type { GameInputPort } from './game-input-router';
 import {
   PILOT_COMMAND_KINDS, ROTATION_DIRECTIONS, THRUST_DIRECTIONS, thrustKillSwitchActive,

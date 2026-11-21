@@ -4,7 +4,7 @@ import { v3 } from '../../src/math/vec3';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
-import { repairDockedAssembly } from '../../src/game/ship/ship-repair';
+import { repairDockedAssembly } from '../../src/game/ship/ship-connection-rules';
 
 function module(definitionId: string, id: string) {
   return createShipModuleInstance(SHIP_MODULE_CATALOG.require(definitionId), id);

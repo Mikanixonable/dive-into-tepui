@@ -1,7 +1,7 @@
 // 戦闘ビューでの右クリックが、生存中の実体(自艦・敵艦・基地)のどれに当たったかを判定する。
 // 画面座標から実体の形へ視線を通し、最も手前のものを選ぶ。
 import { isCombatTarget, type CombatTarget } from '../dynamic/entity/combat-target';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import { rayThroughScreen, type Viewpoint } from '../../math/projection';
 import { len, sub } from '../../math/vec3';
 import type { ProjectFn } from '../../math/projection';

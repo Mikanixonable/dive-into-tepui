@@ -1,11 +1,11 @@
 // 地球表面のfallback、配信bootstrap、GPU常駐、詳細材質を組み合わせる描画側composition root。
 import type { WebGPURenderer } from 'three/webgpu';
 import { CelestialSurface } from '../celestial/celestial-surface';
-import { EarthSurface, EarthSurfaceContext } from '../earth-surface';
+import { EarthSurface, EarthSurfaceContext } from './earth-surface';
 import type {
   EarthSurfaceDetailConnection, EarthSurfaceDetailConnector,
   EarthSurfaceMaterialAttachment, EarthSurfaceStatus,
-} from '../earth-surface';
+} from './earth-surface';
 import { EARTH_TILE_LAYERS } from './tile-key';
 import { EarthSurfaceResidentCoordinator } from './resident';
 import type { EarthSurfaceColorToRgba8 } from './resident';

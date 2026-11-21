@@ -15,9 +15,9 @@ import type { ShipAssembly, ShipConnection } from './ship-assembly';
 import { shipPhysicsShape } from './ship-physics-shape';
 import {
   SHIP_DECOUPLING_COLLISION_GRACE, decoupledMasses, separationImpulseVelocities, splitAtDecoupler,
-} from './ship-decoupling';
-import { dockingEligibility } from './ship-docking';
-import { repairDockedAssembly } from './ship-repair';
+} from './ship-connection-rules';
+import { dockingEligibility } from './ship-connection-rules';
+import { repairDockedAssembly } from './ship-connection-rules';
 import type { ShipCapabilities } from './ship-capabilities';
 import { applyTransformToPoint } from './ship-assembly-transform';
 import {

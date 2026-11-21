@@ -1,4 +1,5 @@
-import { collisionDamageFraction } from './contact-damage';
+import type { DynamicMotion } from '../dynamic-motion';
+import { collisionDamageFraction } from './contact';
 import type {
   ArmorPart, CockpitPart, Part, PartType, RadiatorPart, AnyPart, SolarPanelPart, WeaponPart,
 } from './parts';
@@ -152,4 +153,15 @@ export class PartDamageModel {
   }
 
   private static readonly SELF_REPAIR_EXCLUDED: readonly PartType[] = ['radiator', 'solar_panel'];
+}
+
+// 戦闘対象の共通ライフサイクルと、実装ごとのダメージモデルを分離するインターフェース定義。
+interface CombatEntity {
+  readonly motion: DynamicMotion;
+  readonly hp: number;
+  readonly maxHp: number;
+}
+
+export interface PartDamageTarget extends CombatEntity {
+  readonly parts: readonly Part[];
 }

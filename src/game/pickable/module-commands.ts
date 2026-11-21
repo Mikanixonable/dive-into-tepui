@@ -1,7 +1,7 @@
 // 搭載モジュールの操作を受け付け、対象の有効性を確かめて進行の位相で適用する。
-import { dockingEligibility } from '../ship/ship-docking';
+import { dockingEligibility } from '../ship/ship-connection-rules';
 import type { CommandQueue } from '../command-queue';
-import type { CommandCompletion } from '../command-completion';
+import type { CommandCompletion } from '../command-queue';
 import type { ControlSelection } from '../control-selection';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { ShipAssembly } from '../ship/ship-assembly';

@@ -3,7 +3,7 @@
 import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import { simSpeedCommands } from '../dynamic/sim-speed-commands';
 import { viewCommands } from '../viewer/view-commands';
-import { gameCommand } from './game-commands';
+import { gameCommand } from './game-input-types';
 import type { GameInputPort } from './game-input-router';
 import type { PilotInput } from './pilot-input';
 import type { Hud } from '../hud/hud';

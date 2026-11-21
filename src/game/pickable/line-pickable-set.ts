@@ -1,6 +1,6 @@
 // 右クリックの当たり判定にかける線の候補集合を、いま表示されている線から1フレーム分組み立てる。
 import { guideSecondary } from '../../physics/orbit-guide';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import type { VisibleGuideLine } from '../../render/celestial/orbit-guide/orbit-guide-view';

@@ -9,7 +9,7 @@ import type { Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import { orbitalElementsOf } from '../../physics/elements';
 import { disposeOwnedRenderResources } from '../dispose-owned-render-resources';
-import type { EntityVisualSettings } from '../entity-visual-settings';
+import type { ThrustPlumeMode } from './player/thrust-effects';
 import type { LineStyle } from '../lines/line-style';
 import type { RenderStyle } from '../render-style';
 import type { CameraFrame } from '../camera/camera-frame';
@@ -257,4 +257,12 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
     this.scene?.remove(this.object);
     disposeOwnedRenderResources(this.object);
   }
+}
+
+// 個体ごとの毎フレーム同期処理が参照する描画設定インターフェース。品質設定のうち、メッシュと付随表示を
+// displayTime の状態へ合わせるときに効く項目だけを持つ。
+
+export interface EntityVisualSettings {
+  // 主推進プルームの描き方。
+  readonly thrustPlume: ThrustPlumeMode;
 }

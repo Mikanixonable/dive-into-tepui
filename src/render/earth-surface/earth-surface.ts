@@ -1,14 +1,14 @@
 // 地球表面。EarthSurfaceContext は配信版と、地表要求の世代・キャンセル信号を管理・発行する。EarthSurface は
 // 天体表面の球へ、詳細な材質とタイルの常駐を接続する。
 import * as THREE from 'three/webgpu';
-import { scaledToBondAlbedo } from './celestial/celestial-albedo';
-import { TEXTURE_RESOLUTION, type TextureResolution } from './deferred-texture';
-import { earthTileLayersFor } from './earth-surface/layout';
-import type { EarthSurfaceSource } from './earth-surface/source';
+import { scaledToBondAlbedo } from '../celestial/celestial-albedo';
+import { TEXTURE_RESOLUTION, type TextureResolution } from '../deferred-texture';
+import { earthTileLayersFor } from './layout';
+import type { EarthSurfaceSource } from './source';
 import type {
   EarthSurfaceResidentFrame,
-} from './earth-surface/resident';
-import { EarthSurfaceProjectionCache } from './earth-surface/projection';
+} from './resident';
+import { EarthSurfaceProjectionCache } from './projection';
 import type {
   CelestialSurfaceFrame,
   CelestialSurfaceDiagnostics,
@@ -16,12 +16,12 @@ import type {
   CelestialSurfaceStatus,
   LightSourceMap,
   SurfacePhotometry,
-} from './celestial/celestial-surface';
+} from '../celestial/celestial-surface';
 import {
   disposeCelestialSurfaceMaterialAttachment,
   type CelestialSurfaceMaterialAttachment,
   type CelestialSurfaceMaterialHost,
-} from './celestial/celestial-surface-material';
+} from '../celestial/celestial-surface-material';
 
 // 地表要求1件ぶんの世代とキャンセル信号。使い終えたら release する(信号は中断される)。
 interface EarthSurfaceRequestLease {

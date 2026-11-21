@@ -23,7 +23,7 @@ import { isShipBlueprint, type ShipBlueprintShelf } from '../../src/game/ship/sh
 import { loadAmmoModels } from '../../src/render/dynamic/ammo-models';
 import type { DynamicEntity } from '../../src/game/dynamic/entity/dynamic-entity';
 import type { EntityRegistry, SpawnRecord } from '../../src/game/dynamic/entity-registry';
-import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
+import type { EntityRoster } from '../../src/game/dynamic/entity-registry';
 import type { Enemy } from '../../src/game/dynamic/entity/enemy';
 import type { RunEventBody } from '../../src/game/run-events';
 

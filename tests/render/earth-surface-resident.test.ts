@@ -8,7 +8,7 @@ import type { EarthSurfaceColorToRgba8 } from '../../src/render/earth-surface/re
 import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface/gpu';
 import { EarthSurfaceTileRequestQueue } from '../../src/render/earth-surface/tile-queue';
 import { EarthSurfaceTileSource } from '../../src/render/earth-surface/tile-source';
-import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface/format';
+import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface/terrain-codec';
 import {
   EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MIN_Z,
   earthTileChildren, earthTileId, earthTileKey, earthTileParent,

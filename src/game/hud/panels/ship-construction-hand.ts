@@ -3,7 +3,7 @@
 // 選択中は選んだモジュールの名前と、操作はそのモジュールの脇に出るメニューにある
 // という案内を示す。「置く」は押せないとき無効化し、理由をバーの中へ示す。
 import { Button, SegmentedControl } from '../../../hud-kit/widgets';
-import { createKeyCap } from '../../../hud-kit/key-cap';
+import { createKeyCap } from '../../../hud-kit/dom-elements';
 import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import { formatConstructionOrientation } from './ship-construction-format';
 import type { ConstructionSymmetry, ShipConstructionPanelModel } from '../../ship/ship-construction-types';

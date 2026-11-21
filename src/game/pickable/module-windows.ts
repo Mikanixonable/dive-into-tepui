@@ -1,14 +1,14 @@
 // 搭載モジュールごとのプロパティウィンドウの寿命と、確認・接舷候補の操作を管理する。
 import { PropertyWindow } from '../../hud-kit/windows/property-window';
 import { ModularShip } from '../ship/modular-ship';
-import { dockingEligibility } from '../ship/ship-docking';
+import { dockingEligibility } from '../ship/ship-connection-rules';
 import { moduleContent, moduleItems, type ModuleInspectionAction } from './module-inspection';
-import { CommandCompletion } from '../command-completion';
+import { CommandCompletion } from '../command-queue';
 import { DockingEligibilityError, type ModuleCommands, type ModuleCommandAction } from './module-commands';
 import type { PropertyWindowItem } from '../../hud-kit/windows/property-window-content';
 import type { ControlSelection } from '../control-selection';
 import type { HudLayers } from '../hud/hud-layers';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { Notifier } from '../../hud-kit/notifier';
 import type { ConstructionEntry } from '../ship/ship-construction-entry';
 import type { ConfirmationOverlay } from '../../hud-kit/windows/confirmation-overlay';

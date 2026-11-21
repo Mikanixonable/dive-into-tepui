@@ -8,7 +8,7 @@ import {
   EARTH_TERRAIN_HEIGHT,
   EARTH_TERRAIN_LAYOUT,
   EARTH_TERRAIN_WIDTH,
-} from './format';
+} from './terrain-codec';
 
 export interface EarthSurfaceSource {
   readonly datasetId: string;

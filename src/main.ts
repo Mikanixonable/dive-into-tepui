@@ -34,7 +34,7 @@ import { SnapshotService } from './launcher/save/snapshot-service';
 import { AutoSave } from './launcher/save/autosave';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
-import { gameCommand } from './game/input/game-commands';
+import { gameCommand } from './game/input/game-input-types';
 import { KEY_MAPPING as K } from './input-devices/key-mapping';
 import { applyCloudTuningOverrides } from './render/earth-weather/cloud-tuning';
 import type { PageDevices } from './run/page-devices';

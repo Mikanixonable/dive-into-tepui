@@ -4,7 +4,7 @@ import { isBullet } from './entity/bullet';
 import { bulletReactionOf } from './entity/bullet-reaction';
 import { aliveCombatTarget } from './entity/combat-target';
 import type { OrbitingObject } from './entity/orbiting-object';
-import type { EntityRoster } from './entity-roster';
+import type { EntityRoster } from './entity-registry';
 import type { RunEventSink } from '../run-events';
 
 const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)

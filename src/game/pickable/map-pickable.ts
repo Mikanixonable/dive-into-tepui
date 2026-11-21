@@ -5,7 +5,7 @@ import type { Vec3 } from '../../math/vec3';
 import type { ControlSelectionCommands } from '../control-selection-commands';
 import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
-import type { MarkerVisibility } from '../../marker-kit/marker-visibility';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { PropertyWindowOpener } from './property-window-opener';
 import type { PickCandidate } from './pick-candidate';
 

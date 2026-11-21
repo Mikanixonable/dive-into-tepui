@@ -39,7 +39,7 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
 import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { RunEventSink } from '../run-events';
 import type { HudLayers } from '../hud/hud-layers';
 import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';

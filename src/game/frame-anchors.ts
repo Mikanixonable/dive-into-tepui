@@ -9,7 +9,7 @@ import type { Quat } from '../math/quat';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { CelestialBody } from '../physics/celestial-body';
 import type { Controllable } from './dynamic/entity/controllable';
-import type { EntityRoster } from './dynamic/entity-roster';
+import type { EntityRoster } from './dynamic/entity-registry';
 import type { NavTargetPresenter } from './nav-target-presenter';
 
 // 座標解決に必要な問い合わせをまとめたインターフェース。いずれも ECI 状態を返す。

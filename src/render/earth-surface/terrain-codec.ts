@@ -1,12 +1,19 @@
 // ESTN/ESTBのバイナリ本文を検証し、GPU向けRGBA8へ変換する。
 import { earthTileKey, EARTH_TILE_GUTTER, type EarthTileKey } from './tile-key';
-import {
-  EARTH_TERRAIN_BYTES, EARTH_TERRAIN_CHANNELS, EARTH_SURFACE_TERRAIN_FORMAT_VERSION,
-  EARTH_TERRAIN_HEADER_BYTES, EARTH_TERRAIN_HEIGHT, EARTH_TERRAIN_WIDTH,
-  EARTH_TERRAIN_SCALAR_UINT8,
-} from './format';
 import { EarthSurfaceDecodeError } from './errors';
 import { earthSurfaceSha256, readEarthSurfaceResponse } from './decode-response';
+
+// 地表配信データのランタイムワイヤフォーマット仕様。manifest と ESTN/ESTB の検証・デコードで共有する。
+
+export const EARTH_SURFACE_MANIFEST_SCHEMA_VERSION = 3;
+export const EARTH_SURFACE_TERRAIN_FORMAT_VERSION = 3;
+export const EARTH_TERRAIN_HEADER_BYTES = 32;
+export const EARTH_TERRAIN_WIDTH = 260;
+export const EARTH_TERRAIN_HEIGHT = 260;
+export const EARTH_TERRAIN_CHANNELS = 4;
+export const EARTH_TERRAIN_SCALAR_UINT8 = 2;
+export const EARTH_TERRAIN_BYTES = EARTH_TERRAIN_WIDTH * EARTH_TERRAIN_HEIGHT * EARTH_TERRAIN_CHANNELS;
+export const EARTH_TERRAIN_LAYOUT = 'normal-xyz-rgb8-roughness-a8';
 
 export const EARTH_BASE_TERRAIN_WIDTH = EARTH_TERRAIN_WIDTH * 2 - 4 * EARTH_TILE_GUTTER;
 export const EARTH_BASE_TERRAIN_HEIGHT = EARTH_TERRAIN_HEIGHT - 2 * EARTH_TILE_GUTTER;
@@ -124,3 +131,4 @@ export async function loadEarthBaseTerrain(url: string, fetchImpl: typeof fetch 
   const payload = await inflateTerrain(compressed, EARTH_BASE_TERRAIN_PAYLOAD_BYTES, signal);
   return decodeEarthBaseTerrainPayload(payload);
 }
+

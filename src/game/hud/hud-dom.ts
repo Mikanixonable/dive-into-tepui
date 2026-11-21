@@ -2,7 +2,7 @@
 import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import type { HudShell } from '../../hud-kit/hud-shell';
 import { createHudElement } from '../../hud-kit/hud-element';
-import { instrumentRowHtml } from '../../hud-kit/instrument-row';
+import { instrumentRowHtml } from '../../hud-kit/dom-elements';
 import { HelpPanel } from './windows/help-panel';
 import { PanelChrome } from './panel-chrome';
 import { HudEls } from './hud-els';
@@ -30,7 +30,7 @@ import type { ViewMode } from '../view/view-mode';
 import {
   Button, buildCollapseToggle, EDGE_GRIP_HORIZONTAL_CLASS, EDGE_GRIP_VERTICAL_CLASS, type CollapseToggleLabels,
 } from '../../hud-kit/widgets';
-import { createKeyCap } from '../../hud-kit/key-cap';
+import { createKeyCap } from '../../hud-kit/dom-elements';
 import type { PanelCollapse } from './panel-chrome';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。

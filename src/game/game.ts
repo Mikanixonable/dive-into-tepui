@@ -20,7 +20,7 @@ import type { HudLayers } from './hud/hud-layers';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { LoadingProgress } from './loading-progress';
 import type { PilotControls } from './dynamic/entity/pilot-controls';
-import type { TrajectoryDemand } from './dynamic/trajectory-demand';
+import type { TrajectoryDemand } from './dynamic/predictor';
 import type { CameraFrameSamples } from './viewer/camera-selection';
 import type { ShipBlueprintShelf } from './ship/ship-blueprint';
 

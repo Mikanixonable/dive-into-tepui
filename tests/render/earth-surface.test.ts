@@ -2,8 +2,8 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
-import { EarthSurface, EarthSurfaceContext } from '../../src/render/earth-surface';
-import type { EarthSurfaceDetailConnector } from '../../src/render/earth-surface';
+import { EarthSurface, EarthSurfaceContext } from '../../src/render/earth-surface/earth-surface';
+import type { EarthSurfaceDetailConnector } from '../../src/render/earth-surface/earth-surface';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { EarthSurfaceGpuThree } from '../../src/render/earth-surface/gpu-three';
 import { createEarthSurfaceMaterialBinding } from '../../src/render/earth-surface/material-binding';

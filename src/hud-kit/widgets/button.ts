@@ -1,6 +1,6 @@
 // 単発クリックのボタン。押下時に onClick を発火する。on(点灯)/disabled 表示は
 // setOn/setEnabled を介して制御する。点灯型トグル表示にも対応する。
-import { createKeyCap } from '../key-cap';
+import { createKeyCap } from '../dom-elements';
 import { bindActivation, expandHitTarget, stopDragPropagation } from './widget-base';
 
 // ボタンの意味(Primary/Secondary)と密度・形状(Dense/Icon)を、画面側の個別 CSS ではなく

@@ -3,7 +3,7 @@
 // #hud の子として popup レイヤへ置くため、`#hud, #hud *` の margin/padding リセットに
 // 勝てるよう全セレクタを `#hud` で始める。
 import { placeOverlayAt } from '../layout';
-import { shortcutKeyLabel } from '../shortcut-hint';
+import { shortcutKeyLabel } from '../dom-elements';
 import { isCoarsePointer } from '../../input-devices/pointer-precision';
 import { onViewportChange } from '../visual-viewport';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';

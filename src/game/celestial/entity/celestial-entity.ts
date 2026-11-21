@@ -9,7 +9,7 @@ import { fmtDist, fmtTime } from '../../../hud-kit/format';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../../hud/orbit/orbit-labels';
 import { MenuCommon, type MenuAction } from '../../menu-actions';
 import { hitsSphere, type Ray } from '../../../math/ray';
-import type { MarkerVisibility } from '../../../marker-kit/marker-visibility';
+import type { MarkerVisibility } from '../../../marker-kit/marker-sink';
 import type { CelestialClass } from './celestial-class';
 import type { Vec3 } from '../../../math/vec3';
 import type {

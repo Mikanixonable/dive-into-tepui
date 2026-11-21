@@ -13,7 +13,7 @@ import { AmmoPickup, isAmmoPickup, type SerializedAmmoPickup } from '../../src/g
 import { loadAmmoModels } from '../../src/render/dynamic/ammo-models';
 import type { DynamicEntity } from '../../src/game/dynamic/entity/dynamic-entity';
 import type { EntityRegistry, SpawnRecord } from '../../src/game/dynamic/entity-registry';
-import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
+import type { EntityRoster } from '../../src/game/dynamic/entity-registry';
 import type { Enemy } from '../../src/game/dynamic/entity/enemy';
 import type { FormationRole } from '../../src/game/dynamic/entity/entity-kind';
 import type { ModularShip } from '../../src/game/ship/modular-ship';

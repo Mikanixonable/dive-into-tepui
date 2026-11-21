@@ -10,7 +10,7 @@ import { isModularShip } from './ship/modular-ship';
 import type { Controllable } from './dynamic/entity/controllable';
 import type { ThemePalette } from '../theme';
 import type { CombatTarget } from './dynamic/entity/combat-target';
-import type { EntityRoster } from './dynamic/entity-roster';
+import type { EntityRoster } from './dynamic/entity-registry';
 import type { DisplayWindow } from './display-window-manager';
 import type { MapVisibilityPolicy } from './map/visibility-policy';
 import { orbitLineBasisOf, type OrbitReference } from './orbit-reference';

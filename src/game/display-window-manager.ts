@@ -10,7 +10,7 @@ import { frameRoleOf } from '../physics/frame';
 import type { FrameAnchorSource, ReferenceFrame } from '../physics/frame';
 import type { DynamicEntity } from './dynamic/entity/dynamic-entity';
 import type { PredictedArc } from './dynamic/predicted-arc';
-import type { TrajectoryDemand } from './dynamic/trajectory-demand';
+import type { TrajectoryDemand } from './dynamic/predictor';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import {
   APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,

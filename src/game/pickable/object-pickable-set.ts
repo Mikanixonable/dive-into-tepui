@@ -3,7 +3,7 @@
 // 「クリックとピック」)に対応して2本あり、記号を出していない対象は本体段だけに残る。
 import { objectPickableOf, type ObjectPickable } from './object-pickable';
 import { focusTargetId } from '../viewer/focus-target';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { NavTargetPresenter } from '../nav-target-presenter';
 import type { FrameAnchorSource } from '../../physics/frame';

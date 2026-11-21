@@ -8,7 +8,7 @@ import type { MenuItem } from '../../hud-kit/windows/context-menu';
 import type { MenuAction } from '../menu-actions';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { CelestialEntity } from '../celestial/entity/celestial-entity';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { NavTargetPresenter } from '../nav-target-presenter';
 import { focusTargetId } from '../viewer/focus-target';
 import type {

@@ -4,7 +4,7 @@ import { qInvert, qRotate } from '../../../math/quat';
 import {
   deserializeKinematicState, kinematicState, type KinematicState, type SerializedKinematicState,
 } from '../../../physics/kinematic-state';
-import { collisionDamageFraction } from './contact-damage';
+import { collisionDamageFraction } from './contact';
 import { generateAssemblyShape, type AssemblyShape } from '../../../physics/assembly-shape';
 import { AssemblyCollision } from '../../enemy-assembly/assembly-collision';
 import {

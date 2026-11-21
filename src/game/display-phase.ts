@@ -10,7 +10,7 @@ import type { Targeter } from './targeter';
 import type { ViewManager } from './view/view-manager';
 import { SECTION, type FrameSections } from './frame-sections';
 import type { CameraFrameSamples } from './viewer/camera-selection';
-import type { TrajectoryDemand } from './dynamic/trajectory-demand';
+import type { TrajectoryDemand } from './dynamic/predictor';
 import type { Viewport } from '../render/viewport';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { Controllable } from './dynamic/entity/controllable';
