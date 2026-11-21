@@ -127,6 +127,7 @@ export class PointCelestialView extends SphereCelestialView {
       this.surfaceFrame++,
       nowMs,
       style,
+      graphics.textureResolution,
     ));
     this.billboard.hide();
   }

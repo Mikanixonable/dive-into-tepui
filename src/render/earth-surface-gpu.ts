@@ -1,6 +1,6 @@
 // 地球タイルのGPU機能検査、非公開層への色・地形の書込みとフレーム境界での公開を担う。
 import {
-  EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS,
+  EARTH_BASE_LAYER, EARTH_TILE_EXTENT,
 } from './earth-surface-tile-key';
 import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-layout';
 import type { EarthTileKey } from './earth-surface-tile-key';
@@ -41,9 +41,11 @@ interface LayerSlot {
   state: 'reserved' | 'uploading' | 'uploaded';
 }
 
-// 必須の線形標本化と配列層数がそろう場合に詳細タイルを利用できる。
-export function supportsEarthSurfaceTiles(capabilities: EarthSurfaceGpuCapabilities): boolean {
-  return capabilities.texture2dArray && capabilities.maxTextureArrayLayers >= EARTH_TILE_LAYERS
+// 必須の線形標本化と、指定した配列層数がそろう場合に詳細タイルを利用できる。
+export function supportsEarthSurfaceTiles(
+  capabilities: EarthSurfaceGpuCapabilities, tileLayers: number,
+): boolean {
+  return capabilities.texture2dArray && capabilities.maxTextureArrayLayers >= tileLayers
     && capabilities.colorSrgbLinear && capabilities.terrainRgba8Linear;
 }
 
@@ -59,8 +61,15 @@ export class EarthSurfaceGpuAdapter {
   private resetEpoch = 0;
 
   // backendが報告する必須機能が不足した場合はadapterを組まず、呼び側は全球ベースへ戻す。
-  public constructor(private readonly backend: EarthSurfaceGpuBackend) {
-    if (!supportsEarthSurfaceTiles(backend.capabilities)) {
+  // tileLayers は配列へ張った物理層数で、層番号と常駐走査の上限になる。
+  public constructor(
+    private readonly backend: EarthSurfaceGpuBackend,
+    public readonly tileLayers: number,
+  ) {
+    if (!Number.isInteger(tileLayers) || tileLayers < 1) {
+      throw new RangeError('Invalid Earth tile layers');
+    }
+    if (!supportsEarthSurfaceTiles(backend.capabilities, tileLayers)) {
       throw new RangeError('Earth surface detail features unavailable');
     }
   }
@@ -71,7 +80,7 @@ export class EarthSurfaceGpuAdapter {
   // 空いた層を予約する。予約の識別はreservation()から取得する。
   public reserveLayer(key: EarthTileKey, layer: number): void {
     this.requireActive();
-    if (!Number.isInteger(layer) || layer < 0 || layer >= EARTH_TILE_LAYERS) throw new RangeError('Invalid Earth layer');
+    if (!Number.isInteger(layer) || layer < 0 || layer >= this.tileLayers) throw new RangeError('Invalid Earth layer');
     if (this.slots.has(layer)) throw new Error('Earth layer is already reserved');
     this.slots.set(layer, { reservation: { key, layer, generation: this.nextGeneration++ }, state: 'reserved' });
   }

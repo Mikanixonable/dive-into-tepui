@@ -3,7 +3,7 @@
 // 生成と非公開層へのバッファ書込みだけを担当する。WebGPU非対応時は配列層を作らずbaseへ固定する。
 import * as THREE from 'three/webgpu';
 import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './earth-surface-layout';
-import { EARTH_TILE_EXTENT, EARTH_TILE_LAYERS } from './earth-surface-tile-key';
+import { EARTH_TILE_EXTENT } from './earth-surface-tile-key';
 import {
   supportsEarthSurfaceTiles,
   type EarthSurfaceGpuBackend,
@@ -37,14 +37,6 @@ export function earthSurfaceGpuCapabilitiesOf(
   };
 }
 
-// 配列テクスチャの物理層番号を有効範囲へ制限する。
-function requireLayer(layer: number): void {
-  // 配列テクスチャの物理層番号を受け付ける範囲へ制限する。
-  if (!Number.isInteger(layer) || layer < 0 || layer >= EARTH_TILE_LAYERS) {
-    throw new RangeError('Invalid Earth texture layer');
-  }
-}
-
 // GPUへ渡すRGBA8バッファのバイト数を検証する。
 function requirePixels(pixels: Uint8Array, expected: number, label: string): void {
   // GPUへ渡すRGBA8バッファの寸法を検証する。
@@ -55,23 +47,29 @@ export class EarthSurfaceGpuThree implements EarthSurfaceGpuBackend {
   public readonly textures: EarthSurfaceGpuTextures | null;
   private disposed = false;
 
-  // GPU能力に応じて、地表タイル用の配列テクスチャを組む。
-  public constructor(public readonly capabilities: EarthSurfaceGpuCapabilities) {
-    if (!supportsEarthSurfaceTiles(capabilities)) {
+  // GPU能力と要求した物理層数に応じて、地表タイル用の配列テクスチャを組む。
+  public constructor(
+    public readonly capabilities: EarthSurfaceGpuCapabilities,
+    private readonly tileLayers: number,
+  ) {
+    if (!Number.isInteger(tileLayers) || tileLayers < 1) {
+      throw new RangeError('Invalid Earth tile layers');
+    }
+    if (!supportsEarthSurfaceTiles(capabilities, tileLayers)) {
       this.textures = null;
       return;
     }
     // 色・地形の配列と共有ページ表を同じ層数で確保する。
     const color = configureEarthSurfaceTexture(
       new THREE.DataArrayTexture(
-        new Uint8Array(EARTH_TILE_COMPONENTS * EARTH_TILE_LAYERS),
-        EARTH_TILE_EXTENT, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS,
+        new Uint8Array(EARTH_TILE_COMPONENTS * tileLayers),
+        EARTH_TILE_EXTENT, EARTH_TILE_EXTENT, tileLayers,
       ), 'color',
     );
     const terrain = configureEarthSurfaceTexture(
       new THREE.DataArrayTexture(
-        new Uint8Array(EARTH_TILE_COMPONENTS * EARTH_TILE_LAYERS),
-        EARTH_TILE_EXTENT, EARTH_TILE_EXTENT, EARTH_TILE_LAYERS,
+        new Uint8Array(EARTH_TILE_COMPONENTS * tileLayers),
+        EARTH_TILE_EXTENT, EARTH_TILE_EXTENT, tileLayers,
       ), 'terrain',
     );
     const pageTable = configureEarthSurfaceTexture(new THREE.DataTexture(
@@ -84,7 +82,7 @@ export class EarthSurfaceGpuThree implements EarthSurfaceGpuBackend {
   // 指定層へ色タイルを書き、次のGPU更新で公開できるよう印を付ける。
   public writeColor(layer: number, pixels: Uint8Array): Promise<void> {
     const textures = this.requireTextures();
-    requireLayer(layer);
+    this.requireLayer(layer);
     requirePixels(pixels, EARTH_TILE_COMPONENTS, 'color tile');
     const data = textures.color.image.data;
     if (!(data instanceof Uint8Array)) throw new Error('Earth color texture has an unexpected format');
@@ -97,7 +95,7 @@ export class EarthSurfaceGpuThree implements EarthSurfaceGpuBackend {
   // 指定層へ地形タイルを書き、次のGPU更新で公開できるよう印を付ける。
   public writeTerrain(layer: number, pixels: Uint8Array): Promise<void> {
     const textures = this.requireTextures();
-    requireLayer(layer);
+    this.requireLayer(layer);
     requirePixels(pixels, EARTH_TILE_COMPONENTS, 'terrain tile');
     const data = textures.terrain.image.data;
     if (!(data instanceof Uint8Array)) throw new Error('Earth terrain texture has an unexpected format');
@@ -127,6 +125,13 @@ export class EarthSurfaceGpuThree implements EarthSurfaceGpuBackend {
     this.textures?.pageTable.dispose();
   }
 
+  // 配列テクスチャの物理層番号を、確保した層数の範囲へ制限する。
+  private requireLayer(layer: number): void {
+    if (!Number.isInteger(layer) || layer < 0 || layer >= this.tileLayers) {
+      throw new RangeError('Invalid Earth texture layer');
+    }
+  }
+
   // 廃棄済みでなく、詳細テクスチャが使える状態を返す。
   private requireTextures(): EarthSurfaceGpuTextures {
     if (this.disposed) throw new Error('Earth GPU backend is disposed');
@@ -137,7 +142,7 @@ export class EarthSurfaceGpuThree implements EarthSurfaceGpuBackend {
 
 // 実Rendererへ接続するときの薄い生成入口。WebGPU以外ではbase-onlyの器を返す。
 export function createEarthSurfaceGpuThree(
-  backend: EarthSurfaceGpuThreeBackendLike,
+  backend: EarthSurfaceGpuThreeBackendLike, tileLayers: number,
 ): EarthSurfaceGpuThree {
-  return new EarthSurfaceGpuThree(earthSurfaceGpuCapabilitiesOf(backend));
+  return new EarthSurfaceGpuThree(earthSurfaceGpuCapabilitiesOf(backend), tileLayers);
 }

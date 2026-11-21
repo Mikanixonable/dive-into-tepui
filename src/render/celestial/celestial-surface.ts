@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import {
   normalize, normalView, positionLocal, select, texture as textureNode, transformNormalToView, uv,
 } from 'three/tsl';
-import { DeferredTexture, type TextureUrlSource } from '../deferred-texture';
+import { DeferredTexture, type TextureResolution, type TextureUrlSource } from '../deferred-texture';
 import { markLitOpaque } from '../pipeline/lit-layer';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from '../celestial-albedo';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './screen-lod';
@@ -66,6 +66,8 @@ export interface CelestialSurfaceFrame {
   readonly frame: number;
   readonly timeMs: number;
   readonly style: RenderStyle;
+  // 描画品質設定のテクスチャ解像度の段。面が持つ詳細量の上限はこの値から決める。
+  readonly textureResolution: TextureResolution;
 }
 
 // 表面の同期が使う描画先の大きさ [px]。
@@ -89,6 +91,7 @@ const UNIT_SCALE = new THREE.Vector3(1, 1, 1);
 export function createCelestialSurfaceFrame(
   camera: THREE.Camera, position: THREE.Vector3, quaternion: THREE.Quaternion,
   axes: THREE.Vector3, frame: number, timeMs: number, style: RenderStyle,
+  textureResolution: TextureResolution,
   viewport = surfaceViewport,
 ): CelestialSurfaceFrame {
   // 渡された行列・ベクトルは複製し、このフレームの値として固定する。
@@ -101,6 +104,7 @@ export function createCelestialSurfaceFrame(
     frame,
     timeMs,
     style,
+    textureResolution,
   };
 }
 

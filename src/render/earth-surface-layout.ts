@@ -1,11 +1,14 @@
 // 地球詳細地表の実行時レイアウト。描画・ページ表・LOD選択はこの契約を共有する。
+import { TEXTURE_RESOLUTION, type TextureResolution } from './deferred-texture';
+
 export const EARTH_BASE_COLOR_Z = 4;
 export const EARTH_TILE_MIN_Z = 5;
 export const EARTH_TILE_MAX_Z = 8;
 export const EARTH_TILE_TEXELS = 256;
 export const EARTH_TILE_GUTTER = 2;
 export const EARTH_TILE_EXTENT = EARTH_TILE_TEXELS + 2 * EARTH_TILE_GUTTER;
-// 親子fadeを含むGPU配列の物理層数。z8化してもタイル寸法と常駐層数は増やさない。
+// 親子fadeを含むGPU配列の物理層数の上限。段ごとの実際の層数は earthTileLayersFor が返す。
+// z8化してもタイル寸法と常駐層数は増やさない。
 export const EARTH_TILE_LAYERS = 96;
 export const EARTH_BASE_LAYER = 255;
 
@@ -24,3 +27,13 @@ export function earthSurfaceTileCount(maxZoom: number): number {
 }
 
 export const EARTH_GLOBAL_TILE_COUNT = earthSurfaceTileCount(EARTH_TILE_MAX_Z);
+
+// テクスチャ解像度の段ごとのGPU配列の物理層数。同時に手元へ置ける詳細タイルの量であり、
+// 段を下げるほど、視点を大きく動かした直後に粗い地表が見えている時間が長くなる。
+export function earthTileLayersFor(resolution: TextureResolution): number {
+  switch (resolution) {
+    case TEXTURE_RESOLUTION.low: return 32;
+    case TEXTURE_RESOLUTION.medium: return 64;
+    default: return EARTH_TILE_LAYERS;
+  }
+}
