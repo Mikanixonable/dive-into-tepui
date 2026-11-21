@@ -13,6 +13,7 @@ import { UserSettings } from './settings/user-settings';
 import { browserSettingStorage } from './settings/stored-setting';
 import { themePresetOf } from './theme';
 import { applyThemeVariables } from './hud/style/theme-variables';
+import { setUiBackdropBlur } from './hud/style/common-ui-style';
 import { skipsFrame } from './run/frame-rate-cap';
 import { Hud } from './game/hud/hud';
 import { PanelCollapse } from './game/hud/panel-chrome';
@@ -237,6 +238,7 @@ async function main() {
   // ステージ選択画面も色を引けない。
   const settings = new UserSettings(browserSettingStorage);
   settings.themePalette.subscribe((palette) => applyThemeVariables(palette));
+  settings.graphics.subscribe((graphics) => setUiBackdropBlur(graphics.uiBlur));
   // セーブを読み、シーンと HUD を組む。
   const unlockManager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();

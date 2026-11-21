@@ -2,6 +2,7 @@
 // 置き場を持たない画面固定バッジ・通知。末尾でブレークポイントごとの上書きと
 // prefers-reduced-motion を適用する。
 import { OVERLAY_LAYER_STYLE } from '../../../hud/overlay-layer';
+import { opaqueGlassFallbackStyle } from '../../../hud/style/common-ui-style';
 import { LIGHT_PALETTE } from '../../../theme';
 import {
   MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN,
@@ -95,14 +96,7 @@ body.hud-construction-mode #touch-ui { display: none; }
   border: 0; margin-bottom: var(--space-4); padding: 0;
   font-weight: 600; text-transform: none;
 }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #hud-topbar,
-  #hud-map-scale,
-  #hud-chase-reset,
-  #hud-help-badge,
-  #hud-pause-badge,
-  #hud-toast { background: var(--surface-opaque); }
-}
+${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-help-badge, #hud-pause-badge, #hud-toast')}
 #hud .panel-chrome-collapse {
   flex: 0 0 auto; width: 24px; height: 24px; background: transparent; border: 0;
   border-radius: 50%; color: var(--text-dim); font: inherit; cursor: pointer; pointer-events: auto;

@@ -3,6 +3,7 @@
 import {
   MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN,
 } from '../../../hud/breakpoints';
+import { opaqueGlassFallbackStyle } from '../../../hud/style/common-ui-style';
 
 export const MAP_VIEW_STYLE = `
 /* マップでは戦闘固有の棚とターゲット計器を外し、計画用のレールへ視線を集中させる。 */
@@ -350,9 +351,7 @@ export const MAP_VIEW_STYLE = `
   font-size: var(--font-xxs);
 }
 
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  #hud-map-scale { background: var(--surface-opaque); }
-}
+${opaqueGlassFallbackStyle('#hud-map-scale')}
 
 @media ${MQ_MEDIUM_DOWN} {
   #hud .hud-map-root.active #hud-physical-object-list,

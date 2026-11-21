@@ -60,6 +60,7 @@ const PRESET_ROWS = [
   ['filmLut', 'none', 'none', 'none'],
   ['antialias', 0, 1, 2],
   ['frameRateCap', 30, 60, 0],
+  ['uiBlur', false, true, true],
   ['textureResolution', 0, 1, 2],
   ['pointField', false, true, true],
   ['rings', false, true, true],

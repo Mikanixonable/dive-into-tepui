@@ -96,6 +96,11 @@ export const GRAPHICS_OPTIONS = {
     items: [[0, '上限なし'], [30, '30'], [60, '60']],
     presets: { low: 30, medium: 60, high: 0 },
   },
+  // ガラス面のパネルとウィンドウが背後をぼかすか。オフでは不透明な面で描く。
+  uiBlur: {
+    kind: 'toggle', group: 'basic', label: 'UI の背景ぼかし',
+    presets: { low: false, medium: true, high: true },
+  },
   // 天体の地表や星野へ貼る大きい画像の幅の上限。段を下げるほど細部は粗くなる代わりに、
   // 画像が占める GPU の記憶領域が減る(高=原寸・中=4096px・低=2048px)。
   textureResolution: {
