@@ -158,9 +158,10 @@ export class NormalBulletView extends ProjectileView {
     super(buildBulletMesh());
   }
 
-  // 本体とハローを、それぞれのプールへ積む。
+  // 本体とハローを、それぞれのプールへ積む。子の matrixWorld はプールが積むときに組むので、ここでは
+  // 親(シーンに属さない根)だけを更新する。
   protected override pushToPool(pools: BulletPools): void {
-    this.object.updateMatrixWorld();
+    this.object.updateWorldMatrix(false, false);
     pools.pushNormal(this.object.children[0]!, this.object.children[1]!);
   }
 }
