@@ -56,7 +56,7 @@ export function reflectionRayOf(sample: ShadingSample, blueNoise: BlueNoise): Gg
 }
 
 // 判定の結果。当たらなかった画素ではどれも 0。
-export interface ReflectionHit {
+interface ReflectionHit {
   // 当たった深度の画素の中心の uv(0..1、上端が原点)。
   readonly hitUV: Vec2Node;
   // 反射する面から当たった点までの view 空間の距離 [m]。

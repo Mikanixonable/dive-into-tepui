@@ -31,7 +31,7 @@ export interface SideRays {
 
 // 画面上で隣り合う 2 標本の切片の境目 — 手前の標本の切片の上端 nearUpper と、奥の標本の切片の下端 farLower
 // (スライスの座標)。
-export interface SegmentSplit {
+interface SegmentSplit {
   readonly nearUpper: Vec2Node;
   readonly farLower: Vec2Node;
   // 頭打ちにした境目と頭打ちにしない境目の間の角は、1 画素の面が見積もれる広さを超えた継ぎ目への延長なので、
@@ -118,7 +118,7 @@ function limitFootprint(rays: SideRays, ray: Ray, point: SlicePoint, hit: Vec2No
 }
 
 // スライスの中の点 point の奥行きで、走査の 1 画素が占める長さ [m]。
-export function pixelFootprint(rays: SideRays, point: Vec2Node): FloatNode {
+function pixelFootprint(rays: SideRays, point: Vec2Node): FloatNode {
   const depth = dot(point.sub(rays.origin), rays.direction);
   return length(rays.originStep.add(rays.directionStep.mul(depth)));
 }

@@ -18,7 +18,7 @@ import type { SunLight } from './sun-light';
 
 // 毎フレーム描く前に宣言する、変化量の推定の基準(そのフレームの全体を宣言する)。cameraKey はカメラの同一性の鍵で、同じ値の間は
 // 同じカメラ、替わった番号で d = ∞。reference* は光の向きとカメラの動きを測る基準の受け手の姿勢(描画座標)。
-export interface SceneChangeDeclaration {
+interface SceneChangeDeclaration {
   readonly cameraKey: string;
   readonly referencePosition: THREE.Vector3;
   readonly referenceOrientation: THREE.Quaternion;

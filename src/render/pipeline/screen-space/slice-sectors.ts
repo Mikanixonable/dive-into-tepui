@@ -35,7 +35,7 @@ export interface Slice {
 }
 
 // スライスの中の向きの区間を、扇形の座標(sectorPosition)で表したもの。lower ≤ upper。
-export interface SectorRange {
+interface SectorRange {
   readonly lower: FloatNode;
   readonly upper: FloatNode;
 }

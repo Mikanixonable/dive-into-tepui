@@ -12,7 +12,7 @@ import type { Texel } from './texel-surface';
 import type { BoolNode, FloatNode, UintNode, UVec4Node, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 1 帯が持つ照り返しの rgb チャンネル数。描画先の枚数とバイト数はここから数える。
-export const BAND_CHANNELS = 3;
+const BAND_CHANNELS = 3;
 // 帯の描画先の詰め方。
 export type BandFormat =
   | 'packed-half' // 帯の rgb(段 1 以降は実効画素数も)を RGBA 半精度へ通しで詰める。
@@ -24,7 +24,7 @@ export type BandLayout = readonly BandFormat[];
 // WebGPU の maxColorAttachments 既定。これを超える描画先はどの端末でも使えない。
 const MAX_COLOR_ATTACHMENTS = 8;
 
-export type TextureFormat = { readonly type: THREE.TextureDataType; readonly format: THREE.PixelFormat };
+interface TextureFormat { readonly type: THREE.TextureDataType; readonly format: THREE.PixelFormat }
 
 // 帯の数 count の段 level を format で詰める描画先の MRT 順の型・形式。
 export function levelTextureFormats(count: number, level: number, format: BandFormat): readonly TextureFormat[] {

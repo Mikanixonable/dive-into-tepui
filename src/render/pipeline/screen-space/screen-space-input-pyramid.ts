@@ -22,7 +22,7 @@ export function levelExtent(scanExtent: number, level: number): number {
 }
 
 // 代表の候補になる子 1 つ — 面があるか hasSurface、視点からの深さ distance(view 空間の −z [m])、面 surface。
-export interface RepresentativeCandidate {
+interface RepresentativeCandidate {
   readonly hasSurface: BoolNode;
   readonly distance: FloatNode;
   readonly surface: TexelSurface;

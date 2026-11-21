@@ -33,7 +33,7 @@ const SAME_SURFACE_LOBE_WIDTH_DIFFERENCE = { full: 0.2, none: 0.3 } as const;
 const ReflectionLevelTexel = struct(
   { weighted: 'vec4', covered: 'vec2', surface: 'vec4' }, 'ReflectionLevelTexel',
 );
-export interface LevelTexel {
+interface LevelTexel {
   readonly weighted: Vec4Node;
   readonly covered: Vec2Node;
   readonly surface: Vec4Node;

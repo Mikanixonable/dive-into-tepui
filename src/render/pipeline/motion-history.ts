@@ -240,11 +240,6 @@ export class PoolMotionHistory {
   }
 }
 
-// 物体の記録の番号 objectFrame と現在の通し番号 renderSerial から、記録した前 model を選ぶか。棄却の印の番号では常に選ぶ。
-export function useRecordedPreviousModel(objectFrame: number, renderSerial: number): boolean {
-  return objectFrame === renderSerial || objectFrame === MOTION_REJECTED_FRAME;
-}
-
 // 動きベクトルの節。rg は今の uv − 前の uv(前の clip の w ≤ 0 なら両成分 MOTION_NO_HISTORY)、b は前の深度 − 今の深度、
 // a は 0。
 class MotionNode extends THREE.Node {

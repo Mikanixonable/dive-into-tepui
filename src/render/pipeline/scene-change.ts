@@ -6,7 +6,7 @@ import type { Vec3 } from '../../math/vec3';
 import { add, cross, dot, len, sub, v3 } from '../../math/vec3';
 
 // 基準の受け手から見たカメラの置き方。offset は基準の位置からの変位(軸は ECI)、orientation は局所の座標から ECI の軸への回転。
-export interface SamplePose { readonly offset: Vec3; readonly orientation: Quat }
+interface SamplePose { readonly offset: Vec3; readonly orientation: Quat }
 
 // カメラの射影。aspect は幅 / 高さ。
 export type SampleProjection =
@@ -40,7 +40,6 @@ export interface SceneChangeTerms {
 export type SceneChangeWeights = { readonly [K in keyof SceneChangeTerms]: number };
 
 // 本番の重み。
-// TODO: 参考値。render-lab の再生と実機で詰める。
 export const SCENE_CHANGE_WEIGHTS: SceneChangeWeights = {
   lightDirection: 10,
   sunlit: 1,

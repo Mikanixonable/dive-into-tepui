@@ -9,7 +9,7 @@ import type { ColorUniform, FloatUniform, Vec3Uniform } from '../../tsl-types';
 import type { ShadingSample } from './shading-sample';
 
 // 置ける球光源の数。
-export const SPHERE_LIGHT_CAPACITY = 16;
+const SPHERE_LIGHT_CAPACITY = 16;
 
 // 置く球光源 1 つ。中心は描画座標 [m]、半径 [m]、放射輝度は線形 RGB(恒星の放射照度の目盛りで、自己発光の
 // emissive × emissiveIntensity と同じ値を渡すと同じ明るさの球になる)。

@@ -13,9 +13,9 @@ import {
 
 // 分野 1 つの選び方。プリセットの名前(消せる分野ではオフも)か、詳細の値一式を持つカスタム。F が分野の union
 // なら、分野ごとの選び方の union。
-export type FieldSelection<F extends GraphicsFieldKey> =
+type FieldSelection<F extends GraphicsFieldKey> =
   F extends unknown ? FieldPreset<F> | { readonly custom: FieldKnobValues<F> } : never;
-export type FieldSelections = { readonly [F in GraphicsFieldKey]: FieldSelection<F> };
+type FieldSelections = { readonly [F in GraphicsFieldKey]: FieldSelection<F> };
 
 // 全体がカスタムのときの選び方。分野ごとの選択と、表示する要素の値。
 export interface CustomGraphics {

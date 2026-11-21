@@ -3,7 +3,6 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import {
   markMotionHistoryKey, markMotionRejected, MOTION_NO_HISTORY, MotionHistory, PoolMotionHistory,
-  useRecordedPreviousModel,
 } from '../../src/render/pipeline/motion-history';
 import { test } from '../harness';
 
@@ -119,7 +118,6 @@ export function register(): void {
     assert.ok(frame7?.previous.equals(frame4));
 
     // 番号が 8 へ進んでも物の uniform が更新されなければ、シェーダは記録済み前 model を選ばない。
-    assert.strictEqual(useRecordedPreviousModel(history.modelFrameFor(object, camera), 8), false);
     assert.ok(frame7?.current.equals(object.matrixWorld));
   });
 
@@ -166,7 +164,6 @@ export function register(): void {
     history.setFrame(0, camera);
     assert.strictEqual(history.modelFrameFor(updatedObject, camera), currentSerial);
     assert.notStrictEqual(recordedStaticSerial, currentSerial);
-    assert.strictEqual(useRecordedPreviousModel(recordedStaticSerial, currentSerial), false);
   });
 
   test('motion history: 分割段は親を鍵にして履歴を共有する', () => {
@@ -233,7 +230,6 @@ export function register(): void {
     history.setFrame(5, camera);
     const rejectedFrame = history.modelFrameFor(object, camera);
     assert.strictEqual(rejectedFrame, 0xffff_ffff);
-    assert.strictEqual(useRecordedPreviousModel(rejectedFrame, 5), true);
     assert.ok(history.previousModelFor(object, camera).equals(zeroMatrix()));
   });
 

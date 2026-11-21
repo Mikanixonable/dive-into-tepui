@@ -256,7 +256,7 @@ export class TemporalAccumulation {
 }
 
 // 前回から同じ番号を描き直すか、次の番号へ進むか、履歴を切るか。
-export type FrameStep = 'repeat' | 'advance' | 'cut';
+type FrameStep = 'repeat' | 'advance' | 'cut';
 
 // 変化量 change が NaN か負なら投げる。
 function assertChange(change: number): void {

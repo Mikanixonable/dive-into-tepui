@@ -10,7 +10,7 @@ import type { FloatNode, Mat4Uniform, Vec2Node, Vec3Node, Vec4Node } from '../..
 export const VOID_EXPONENT = 1e4;
 
 // 重みを測る面の深度と符号化法線のテクスチャ。
-export interface SurfaceTextures {
+interface SurfaceTextures {
   readonly depthTexture: THREE.Texture;
   readonly normalTexture: THREE.Texture;
 }

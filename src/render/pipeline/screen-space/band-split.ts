@@ -34,7 +34,7 @@ export function facingCosine(normal: Vec3Node, direction: Vec3Node): FloatNode {
 // 上でこの標本の寄与は L で 0 になるので、L の像を越えてぼかす帯へ出すと漏れになる。直線は射影で直線へ写るので、L と視点を含む
 // 平面を clip 空間へ写した直線として厳密に求まる(透視でも平行投影でも)。平行に近い平面では像は受け手の面の消失線へ寄るだけで、
 // 発散も 0 への潰れもしない。同じ平面の標本(その寄与は 0)は UNLIMITED_DISTANCE。
-export function intersectionImageDistance(
+function intersectionImageDistance(
   senderPosition: Vec3Node, senderNormal: Vec3Node, receiverPosition: Vec3Node, receiverNormal: Vec3Node,
   projection: Mat4Uniform, projectionInverse: Mat4Uniform, scanSize: Vec2Node,
 ): FloatNode {
@@ -108,13 +108,7 @@ export function coarsestBandWeights(bands: BandSplit, ceiling: FloatNode): Float
 export function sampleBandWeights(
   bands: BandSplit, rho: FloatNode, receiverView: FloatNode, ceiling: FloatNode,
 ): FloatNode[] {
-  // 試して保留した因子(8-15。再開は計画書の Backlog)。
-  // a = cos θ(送り手の法線 · 送り手→受け手)を掛ける。送り手の地平による空間波長の異方性で、源の地平に沿うハードエッジの芯を
-  //   残すが、標本ごとの因子なので、まれに踏まれる値の大きい標本を帯 0 へ落とし、輝点と cornell-box の色ムラを作る。
-  //   const senderFacing = (1 - s) + s * pow(max(cosTheta, COORDINATE_FLOOR), p);  // p = 1 のオフセット形は (cosθ + o)/(1 + o)、o = (1 - s)/s
-  // b = cos φ(受け手の法線 · 受け手→送り手)で割る。a で狭まった波長を受け手の側で広げる。a を採るときだけ要る。
-  //   const receiverFacing = pow(max(cosPhi, COORDINATE_FLOOR), s);
-  // 色ムラをどこまで均せるかを手順12(時間方向の蓄積)以降に決めてから、a を採るかを決める。
+  // 試して保留した帯座標の因子 a(送り手の向き)・b(受け手の向き)は、計画書 screenspace-diffuse_backlog.md の Backlog にある。
   const coordinate = bandCoordinate(bands.scale, rho, receiverViewMultiplier(receiverView));
   return bandWeights(bands.count, coordinate, ceiling);
 }
