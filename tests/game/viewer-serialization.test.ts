@@ -52,6 +52,7 @@ function assertSameViewer(actual: SerializedViewer, expected: SerializedViewer):
     map: { ...camera.map, offset: null, up: null },
   });
   assert.deepEqual(withoutOrientation(actual), withoutOrientation(expected));
+  // カメラ方向は基底ベクトルの両軸で照合する。
   for (const view of ['combat', 'map'] as const) {
     assertCloseVec(actual.camera[view].offset, expected.camera[view].offset);
     assertCloseVec(actual.camera[view].up, expected.camera[view].up);
@@ -65,7 +66,9 @@ function assertSameRotation(actual: Quat, expected: Quat): void {
   }
 }
 
+// Viewer の保存・復元で選択状態が保たれることを検査する。
 export function register(): void {
+  // 視点設定の保存往復と欠落値の復元を検査する。
   test('viewer-serialization: 選び直した視点は、復元しても同じ選択として畳まれる', () => {
     // SAVE.md「保存される内容」・INVARIANTS.md §6「そのゲームの空間と時間に依拠する選択は、そのゲームのセーブに残る」
     const { system } = solarSystemParts();

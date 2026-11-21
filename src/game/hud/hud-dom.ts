@@ -396,8 +396,7 @@ function buildTopBar(root: HTMLElement): HTMLElement {
   return bar;
 }
 
-// 視点リセットボタンを組む。id の chase は「動く実体を追っている視点」の意味。
-// 押下の実処理は camera-system がこの要素の click で購読する。
+// 視点リセット操作の受け口となるボタンを組む。
 function buildChaseReset(root: HTMLElement): void {
   const button = new Button('⟲', () => {}, undefined, 'icon');
   button.element.id = 'hud-chase-reset';
@@ -417,8 +416,7 @@ function buildChromeActions(
   buildHelpBadge(actions, helpPanel);
 }
 
-// アイコンだけの円形ボタンを1つ組み、ショートカットがあるものはキーキャップを隣へ添える。
-// 押下・フォーカス・タッチ時のヒット拡張といった対話部品の共通下地は Button ウィジェットが持つ。
+// 共通の HUD アクションボタンと、任意のショートカット表示を組む。
 function buildChromeAction(
   host: HTMLElement, id: string, glyph: string, keyLabel: string | null,
   label: string, onPress: () => void,
@@ -435,8 +433,7 @@ function buildChromeAction(
   return { action, button };
 }
 
-// 画面を広く使うモードの点灯。根の class が見た目を切り替える機構で、
-// 状態の正本は DOM からは読まずこのモジュールが持つ。
+// 画面を広く使うモードの状態を保持する。
 let wideScreenOn = false;
 let wideScreenButton: Button | null = null;
 
@@ -462,9 +459,7 @@ function buildWideScreenToggle(actions: HTMLElement, hudRoot: HTMLElement): void
   wideScreenButton.setOn(wideScreenOn);
 }
 
-// Esc キーの代替操作ボタン(⚙アイコン)。CONTROLS.md が Esc と同じ振る舞い(最前面の
-// オーバーレイを閉じる、無ければ ESC メニューを開く)と定めるので、押下は受け口へそのまま渡す。
-// 表示可否は CSS(body.touch-ui-active)側が持つ — ここでは常に組む。
+// Esc キーと同じ開閉操作を呼び出すボタンを組む。
 function buildPauseBadge(host: HTMLElement, onPause: () => void): void {
   const { action } = buildChromeAction(
     host, 'hud-pause-badge', '⚙', K.pauseMenu.label, 'ESC メニュー(ESC)', onPause,
@@ -479,9 +474,7 @@ function buildHelpBadge(host: HTMLElement, helpPanel: HelpPanel): void {
   );
 }
 
-// RO の通知へ渡す、フレームをまたいだ同期呼び出しを組む。配置値の書き込みが起こすリサイズを
-// RO のパス内へ持ち込まないため(ResizeObserver loop の警告回避)、コールバックでは次フレームへの
-// 予約だけを行う。
+  // ResizeObserver 中のレイアウト変更を避け、同期処理を次フレームへ送る。
 function deferredSync(sync: () => void): () => void {
   let scheduled = false;
   return () => {
@@ -547,8 +540,7 @@ export function buildHudDom(
   buildInfoPanels(combatRoot.leftRail, combatRoot.rightRail, collapse);
   buildShipConstructionWorkspace(layers.panel);
 
-  // 画面上端の状態・カメラ操作・ヘルプを一つのクロームへまとめる。各要素が独立した
-  // top 値を持たないため、トップバーが折り返しても互いに重ならない。
+  // 画面上端の状態・カメラ操作・ヘルプをまとめて配置する。
   const helpPanel = new HelpPanel(shell.overlayManager);
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
   buildTopBarToggle(chrome, buildTopBar(chrome));

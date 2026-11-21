@@ -1,5 +1,4 @@
-// 座標系パネルの角度コンパス。黄道面・赤道面・月軌道面の3リングを持つ円盤図式と、
-// 基準面チップ・真上/真横ボタンをまとめ、1クリックで視点を整列させる。
+// 基準面の選択と、基準面に対する真上・真横への視点整列をまとめる。
 import type { CameraReferencePlane, CameraReferenceView } from '../../viewer/focus-camera-selection';
 import { expandHitTarget } from '../../../hud/widgets/widget-base';
 import { referencePlaneLabel } from './frame-labels';
@@ -7,6 +6,7 @@ import { angleCompassSvg } from './frame-glyphs';
 
 const REFERENCE_PLANES: readonly CameraReferencePlane[] = ['ecliptic', 'equator', 'moonOrbit'];
 
+// SVG のデータ属性を、選択可能な基準面へ絞り込む。
 function isReferencePlane(value: string): value is CameraReferencePlane {
   return value === 'ecliptic' || value === 'equator' || value === 'moonOrbit';
 }
@@ -26,6 +26,7 @@ export class AngleCompass {
   private activeView: CameraReferenceView | null = null;
   private lastMarkup = '';
 
+  // 基準面と視点プリセットの操作を組み立て、選択を commands へ返す。
   public constructor(private readonly commands: AngleCompassCommands) {
     this.element = document.createElement('div');
     this.element.className = 'fc-compass-stage';
@@ -36,6 +37,7 @@ export class AngleCompass {
     this.svg.setAttribute('viewBox', '0 0 108 92');
     this.svg.setAttribute('class', 'fc-compass-svg');
     this.svg.addEventListener('click', (e) => {
+      // SVG 内のリングだけを基準面として受け取り、装飾部分のクリックは無視する。
       const target = (e.target as Element | null)?.closest<SVGElement>('[data-compass-plane]');
       const raw = target?.dataset['compassPlane'] ?? null;
       if (raw !== null && isReferencePlane(raw)) this.selectPlane(raw);
@@ -64,10 +66,12 @@ export class AngleCompass {
     this.element.append(dial, planeCol);
   }
 
+  // 現在の図式要約に使う、最後に指定された視点プリセットを返す。
   public get lastRequestedView(): CameraReferenceView | null {
     return this.activeView;
   }
 
+  // 基準面からの視点プリセットを選ぶボタンを作る。
   private buildSpot(
     text: string, title: string, extraClass: string, view: CameraReferenceView,
   ): HTMLButtonElement {
@@ -87,12 +91,15 @@ export class AngleCompass {
     return btn;
   }
 
+  // 基準面を切り替え、選択中なら視点プリセットも同じ面へ適用する。
   private selectPlane(plane: CameraReferencePlane): void {
     this.currentPlane = plane;
     this.commands.setReferencePlane(plane);
+    // 面を切り替えても、選択中の真上・真横の向きは保つ。
     if (this.activeView !== null) this.commands.setReferenceView(this.activeView);
   }
 
+  // 選択中の基準面と視点を SVG と操作ボタンへ反映する。
   public sync(plane: CameraReferencePlane): void {
     this.currentPlane = plane;
     const markup = angleCompassSvg(plane, this.activeView);

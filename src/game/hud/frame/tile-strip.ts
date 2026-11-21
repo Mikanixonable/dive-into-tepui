@@ -1,5 +1,4 @@
-// 図案タイル列。毎フレーム sync されても選択肢の中身が同じなら DOM を再構築せず、
-// 選択中クラス(.on)と aria-pressed だけを更新する(ホバー・キーボードフォーカスを壊さないため)。
+// 選択肢が変わらない同期では DOM を保ち、選択状態だけを更新するタイル列。
 import { expandHitTarget } from '../../../hud/widgets/widget-base';
 
 export interface TileItem<V> {
@@ -16,6 +15,7 @@ export class TileStrip<V> {
   private readonly buttons = new Map<string, HTMLButtonElement>();
   private selectedKey: string | null = null;
 
+  // 選択肢を並べ、選択値を onSelect へ返すタイル列を作る。
   public constructor(
     className: string,
     ariaLabel: string,
@@ -30,6 +30,7 @@ export class TileStrip<V> {
   // 選択肢を更新する。キー・ラベル・図案が前回と同一なら DOM を触らない。
   public setItems(next: readonly TileItem<V>[]): void {
     if (this.sameItems(next)) return;
+    // 内容が変わったときだけ、対応するボタン群を組み直す。
     this.items = next;
     this.buttons.clear();
     this.element.replaceChildren();
@@ -67,7 +68,9 @@ export class TileStrip<V> {
     this.applySelected();
   }
 
+  // 選択中キーをボタンの見た目と aria 状態へ反映する。
   private applySelected(): void {
+    // 選択中のタイルだけ、見た目とアクセシビリティ状態を揃える。
     for (const [key, btn] of this.buttons) {
       const on = key === this.selectedKey;
       btn.classList.toggle('on', on);
@@ -75,7 +78,9 @@ export class TileStrip<V> {
     }
   }
 
+  // キー・ラベル・図案が一致する候補列は同じものとして扱う。
   private sameItems(next: readonly TileItem<V>[]): boolean {
+    // 同じ候補なら DOM を作り直さず、フォーカスやホバー状態を保つ。
     if (next.length !== this.items.length) return false;
     return next.every((item, i) => {
       const prev = this.items[i]!;

@@ -1,9 +1,4 @@
-// マップビューの選択から「未来表示」がどこを・いつを指すかを導出し、操作パネルへ同期する。
-//
-// ここでいう window は「どの座標系で(frame)・いつを(displayTime)見るか」を1フレーム分に
-// 束ねたもので、時間の窓だけを指す語ではない。画面全体で1つに揃っていなければならない —
-// 座標系が消費者ごとに違えば同じ画面に並べた線が比較できず、表示時刻が違えばメッシュと
-// マーカーが別の瞬間を指す。
+// マップ表示の座標系・表示時刻・期間をフレームごとの表示窓として確定する。
 import { DisplayTimelinePanel } from './hud/panels/display-timeline-panel';
 import type { PanelCollapse } from './hud/panel-chrome';
 import type { OverlayManager } from '../hud/overlay-manager';
@@ -90,6 +85,7 @@ export class DisplayWindowManager {
     private readonly commands: DisplayTimelineCommands,
   ) {
     this.epochUnixSec = epochUnixSeconds(celestialBodies.epoch);
+    // 起動時の窓は現在時刻に合わせる。
     this._current = {
       frame: selection.frame, simTime: 0, referencePeriod: NaN,
       duration: APERIODIC_ARC_DURATION, displayTime: 0, forceCurrent: true,
@@ -97,6 +93,7 @@ export class DisplayWindowManager {
       epochUnixSec: this.epochUnixSec,
     };
     this.panel = new DisplayTimelinePanel(hudRoot, collapse, overlayManager);
+    // パネル操作を次の進行へ適用する命令へ結ぶ。
     this.panel.onDurationSelect = (key) => this.commands.selectDuration(key);
     this.panel.onCustomDurationConfirm = (sec) => this.commands.selectCustomDuration(sec);
     this.panel.onTickLabelModeChange = (mode) => this.commands.setTickLabelMode(mode);
@@ -137,6 +134,7 @@ export class DisplayWindowManager {
   // このフレームの表示窓を確定させて返す。表示時刻はスライダーが立っている間は
   // 時間軸上の過去または未来を指し、forceCurrent では simTime そのもの。
   public resolve(simTime: number, controlled: DynamicEntity | null, forceCurrent: boolean): DisplayWindow {
+    // 対象の軌道に基づく期間とスクラブ位置から、このフレームの窓を確定する。
     const referencePeriod = this.currentOrbitPeriod(controlled, simTime);
     const duration = this.durationSec(referencePeriod);
     const sliderT = this.selection.sliderT;
@@ -156,6 +154,7 @@ export class DisplayWindowManager {
 
   // 毎フレーム呼ぶ。操作パネル(期間・スクラバー・目盛り)の表示/非表示と内容を押し出す。
   public sync(controlled: DynamicEntity | null): void {
+    // 選択状態と予測の到達範囲を操作パネルへ渡す。
     this.panel.render({
       visible: !this._current.forceCurrent,
       durationKey: this.selection.durationKey,

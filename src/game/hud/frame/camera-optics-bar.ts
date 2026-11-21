@@ -34,6 +34,7 @@ export class CameraOpticsBar {
   private lastProjGlyphOrtho: boolean | null = null;
   private detailOpen = false;
 
+  // 初期の回転操作軸を含むカメラ光学コントロールを組む。
   public constructor(
     private readonly commands: CameraOpticsCommands,
     initialRotationMode: CameraRotationMode,
@@ -119,6 +120,7 @@ export class CameraOpticsBar {
     this.element.appendChild(this.detailDrawer);
   }
 
+  // 投影方式・画角・操作軸の状態を各コントロールへ反映する。
   public sync(projection: ProjectionMode, fovDeg: number, rotationMode: CameraRotationMode): void {
     this.lastOrtho = projection === 'orthographic';
     this.lastQuat = rotationMode === 'quaternion';
@@ -136,6 +138,7 @@ export class CameraOpticsBar {
     this.rotModeChip.setAttribute('aria-pressed', String(this.lastQuat));
 
     this.rotModeControl.sync(rotationMode);
+    // 平行投影では画角入力を利用できない。
     this.fovSlider.element.disabled = this.lastOrtho;
     this.fovInput.element.disabled = this.lastOrtho;
     this.fovResetButton.setEnabled(!this.lastOrtho);

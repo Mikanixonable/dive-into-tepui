@@ -1,5 +1,4 @@
-// 座標系パネルの図案アイコン・リアルタイム座標系ミニ図式・角度コンパスの SVG 生成。
-// 色はすべて CSS 変数(var(--...))で指定し、どのテーマでも配色へ自動追従させる。
+// 座標系パネルで使う図案アイコン・ミニ図式・角度コンパスの SVG を生成する。
 import type { CelestialClass } from '../../celestial/celestial-entity/celestial-entity-def';
 import type { CameraReferencePlane, CameraReferenceView, CameraRotationFollow } from '../../viewer/focus-camera-selection';
 
@@ -7,7 +6,9 @@ import type { CameraReferencePlane, CameraReferenceView, CameraRotationFollow } 
 export type CenterGlyphKind = 'ship' | 'target' | 'star' | 'planet' | 'moon' | 'lagrange' | 'free';
 
 // 中心タイル用のミニ SVG(20x20)。
+// 天体クラスを中心タイル用の図案種別へ対応させる。
 export function centerGlyphSvg(kind: CenterGlyphKind): string {
+  // 操作対象や物体の種類を、同じ大きさのタイル上で見分ける図案へ対応させる。
   switch (kind) {
     case 'ship':
       return '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><polygon points="10,3 15,16 10,13 5,16"/></svg>';
@@ -34,7 +35,9 @@ export function bodyClassGlyph(bodyClass: CelestialClass | null): CenterGlyphKin
 }
 
 // 回転タイル用のミニ SVG(20x20)。
+// 回転追従の種別に応じた記号を返す。
 export function rotationGlyphSvg(follow: CameraRotationFollow | null): string {
+  // 慣性・姿勢・自転・公転を区別し、回転タイルの選択内容を示す。
   if (follow === null) {
     return '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M10 3v14M3 10h14" stroke-opacity="0.55"/><circle cx="10" cy="10" r="2.2" fill="currentColor"/></svg>';
   }
@@ -73,6 +76,7 @@ export interface FrameDiagramState {
 }
 
 // パネル最上段のリアルタイム座標系ミニ図式(94x74)。
+// 表示状態に応じた SVG の中身を返す。
 export function frameDiagramSvg(s: FrameDiagramState): string {
   const ry = s.sideView ? 4.5 : 17;
   const fx = s.frameDetached ? 55 : 47;
@@ -83,6 +87,7 @@ export function frameDiagramSvg(s: FrameDiagramState): string {
     `<ellipse cx="${fx}" cy="${fy}" rx="29" ry="${ry}" fill="none" stroke="var(--color-signal)" stroke-width="1.5"${s.frameRotating ? ' stroke-dasharray="4 2"' : ''} opacity="0.88"/>`,
   ];
   if (s.frameDetached) {
+    // カメラと異なる描画基準の中心をずらして示す。
     parts.push(`<circle cx="${fx}" cy="${fy}" r="3" fill="var(--color-signal)" opacity="0.9"/>`);
   }
   if (s.cameraRotating) {
@@ -113,9 +118,9 @@ export function frameDiagramSvg(s: FrameDiagramState): string {
   return parts.join('');
 }
 
-// 角度コンパス(108x92)の基準面リングと中心を描画する SVG。
-// 「上」「横」の操作ボタンはキーボード操作・タッチのヒット領域を満たすため HTML button として重ねる。
+// 選択した基準面を強調し、基準面に対する視点方向を示す。
 export function angleCompassSvg(plane: CameraReferencePlane, activeView: CameraReferenceView | null): string {
+  // 基準面リングの見た目を、選択状態へ合わせる。
   const ring = (
     id: CameraReferencePlane, rx: number, ry: number, rot: number, colorVar: string, dashed: boolean,
   ): string => {

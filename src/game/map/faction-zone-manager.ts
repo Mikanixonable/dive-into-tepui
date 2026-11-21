@@ -1,5 +1,4 @@
-// 勢力の占有域を、ロスター・表示トグル・表示時刻から導出し、FactionZoneView へ同期させる。
-// 域の定義と勢力の分け方は faction-occupancy.ts、描画物は render/zones/faction-zone-view.ts。
+// 勢力の占有域を表示条件と表示時刻から導出し、描画へ同期する。
 import * as THREE from 'three/webgpu';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { OrbitingMotion } from '../../physics/celestial-motion';
@@ -25,6 +24,7 @@ import {
 export class FactionZoneManager {
   private readonly zoneView = new FactionZoneView();
 
+  // 天体系・個体群を参照し、占有域の表示を組み立てる。
   public constructor(
     scene: THREE.Scene,
     private readonly roster: EntityRoster,
@@ -33,8 +33,7 @@ export class FactionZoneManager {
     this.zoneView.attach(scene);
   }
 
-  // 個体が域の構成員になるときの勢力を返す。構成員にしない(種別外・表示 OFF)ときは null。
-  // 数える対象は「そのクラスの軌道線表示が ON の個体」— 軌道線トグルと連動させる規定。
+  // 軌道表示の可否を反映した個体の勢力を返す。
   private factionIncluded(
     entity: DynamicEntity, active: Controllable | null,
     visibilityPolicy: MapVisibilityPolicy | null,
@@ -50,11 +49,12 @@ export class FactionZoneManager {
     return null;
   }
 
+  // ビューと表示時刻に合う占有域を描画へ反映する。
   public sync(
     view: ViewMode, active: Controllable | null, displayWindow: DisplayWindow,
     visibilityPolicy: MapVisibilityPolicy | null, camera: CameraFrame, palette: ThemePalette,
   ): void {
-    // 占有域はマップビューの表示物(MAP.md「勢力の占有域」)。
+    // 現在のビューと表示時刻に合う領域を決める。
     if (view !== 'map') {
       this.zoneView.sync([], [], camera.camera.quaternion);
       return;
@@ -62,6 +62,7 @@ export class FactionZoneManager {
     const t = displayWindow.displayTime;
     const include = (entity: DynamicEntity): Faction | null =>
       this.factionIncluded(entity, active, visibilityPolicy);
+    // 軌道帯と点パッドを個体の現在位置から組み立てる。
     const orbitZones = factionOrbitZones(
       this.roster.all(), this.celestialSystem.gravityMotions, t, include);
     const padZones = this.lagrangeZones(t, include);
@@ -77,14 +78,13 @@ export class FactionZoneManager {
     );
   }
 
-  // ラグランジュ点の占有。点から一定距離(主星・副星間距離の比率)以内に構成員がいる勢力ぶん
-  // だけ域を立てる — 域に入るための周回条件は無い(ラグランジュ点まわりの滞在は二体問題の
-  // 閉軌道では現れない)。
+  // 表示時刻の個体位置から、ラグランジュ点の占有域を導出する。
   private lagrangeZones(
     t: number, include: (entity: DynamicEntity) => Faction | null,
   ): FactionLagrangeZone[] {
     const motions = this.celestialSystem.celestialMotions;
     const members: { faction: Faction; position: Vec3 }[] = [];
+    // 占有判定に使う個体位置を表示時刻へ揃える。
     for (const entity of this.roster.all()) {
       if (!entity.motion.alive) continue;
       const faction = include(entity);
@@ -94,6 +94,7 @@ export class FactionZoneManager {
       members.push({ faction, position: state.r });
     }
     const zones: FactionLagrangeZone[] = [];
+    // ラグランジュ点を持つ公転系を判定対象にする。
     for (const body of this.celestialSystem.entities) {
       const motion = body.motion;
       if (!(motion instanceof OrbitingMotion) || motion.def.lagrangeLabels !== true) continue;
@@ -101,6 +102,7 @@ export class FactionZoneManager {
       if (points.length === 0) continue;
       const frame = secondaryFrameOf(motions, t, motion, t);
       if (frame === null) continue;
+      // 点の配置と判定半径を、この公転系の幾何へ対応させる。
       const solved = lagrangePointsOf(frame);
       const separation = len(sub(frame.secondaryState.r, frame.primaryState.r));
       const radius = separation * LAGRANGE_ZONE_RADIUS_RATIO;
@@ -112,11 +114,12 @@ export class FactionZoneManager {
     return zones;
   }
 
-  // 帯1枚を描画宣言へ変換する。位置は描画座標、姿勢は中心天体の赤道面。
+  // 天体の表示位置・赤道面・カメラ縮尺に合わせた軌道帯の宣言を返す。
   private orbitZoneVisual(
     zone: { bodyId: string; faction: Faction; innerRadius: number; outerRadius: number },
     t: number, camera: CameraFrame, palette: ThemePalette,
   ): OrbitZoneVisual {
+    // 帯の位置と姿勢は表示時刻の天体状態へ合わせる。
     const body = this.celestialSystem.celestialMotions.find((motion) => motion.id === zone.bodyId)!;
     const position = body.positionAt(t);
     const axis = body.orientationAt(t)?.axis ?? null;
@@ -125,6 +128,7 @@ export class FactionZoneManager {
       ? new THREE.Quaternion()
       : new THREE.Quaternion(orientation.x, orientation.y, orientation.z, orientation.w);
     const mpp = camera.radialScale(position);
+    // 画面上の帯幅をカメラの縮尺へ合わせる。
     return {
       key: `${zone.bodyId}:${zone.faction}`,
       color: zone.faction === 'enemy' ? palette.error : palette.info,
@@ -137,6 +141,7 @@ export class FactionZoneManager {
     };
   }
 
+  // 占有域が保持する描画資源を解放する。
   public dispose(): void {
     this.zoneView.dispose();
   }

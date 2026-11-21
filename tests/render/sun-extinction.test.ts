@@ -45,9 +45,11 @@ function transmittanceAt(body: AtmosphereBody, point: THREE.Vector3, mu: number)
   return transmittanceAlong(body, point, sunPos);
 }
 
+// 任意の恒星位置から点へ向かう光線の透過率を返す。大気へ届かない経路は RGB 1 を返す。
 function transmittanceAlong(
   body: AtmosphereBody, point: THREE.Vector3, sunPos: THREE.Vector3,
 ): number[] {
+  // 描画側と同じ光路幾何・透過率表を、TSL評価器から引く。
   const { data, altitudeMax } = bakeSunTransmittance(body.optics, body.surfaceRadius);
   const atmosphere: SunPathAtmosphere = {
     center: vec3(body.center.x, body.center.y, body.center.z),
@@ -68,6 +70,7 @@ function transmittanceAlong(
 
 const surfacePoint = new THREE.Vector3(0, SURFACE_RADIUS, 0);
 
+// 太陽の光路が大気を通る高度・方向で透過率を検査するテストを登録する。
 export function register(): void {
   test('sun-transmittance: 焼いた表の全要素が 0..1 に収まる', () => {
     const { data } = bakeSunTransmittance(OPTICS, SURFACE_RADIUS);

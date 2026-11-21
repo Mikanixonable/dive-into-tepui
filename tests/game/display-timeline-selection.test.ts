@@ -18,6 +18,7 @@ const celestialBodies = { has: (id: string) => id === 'earth' || id === 'moon' }
 
 // タイムラインパネルの選択と命令口の回帰テストを登録する。
 export function register(): void {
+  // 命令適用順とビューごとの時間位置規則を検証する。
   test('display-timeline-selection: DOM 由来の命令は列の適用まで選択を変えない', () => {
     const selection = DisplayTimelineSelection.create(frames, celestialBodies, null);
     const queue = new CommandQueue();

@@ -25,20 +25,20 @@ export interface PadZoneVisual {
 }
 
 const RING_SEGMENTS = 128;
-// 帯の見かけ幅がこの px を超えると実寸アニュラスへ完全に切り替わる。未満では省略リングと
-// 連続的にブレンドする(幅 0 で省略リングのみ)。
+// 見かけ幅に応じて実寸表示へ切り替える境目 [px]。
 const ANNULUS_FADE_PX = 8;
 const ANNULUS_OPACITY = 0.18;
 const RING_OPACITY = 0.55;
 const PAD_BRIGHTNESS = 0.4;
-// 省略リングの半径。天体半径に対する比率 — 「天体を囲う記号」なので実寸の域とは無関係。
+// 記号リングを天体の周囲に置く半径比。
 const SYMBOLIC_RING_RADIUS_RATIO = 1.25;
 
 let sharedUnitCircle: THREE.BufferGeometry | null = null;
 
-// 半径1・XY平面上の円周ジオメトリを遅延生成して使い回す(省略リング用)。
+// 省略リングに使う単位円の輪郭を返す。
 function unitCircleGeometry(): THREE.BufferGeometry {
   if (sharedUnitCircle !== null) return sharedUnitCircle;
+  // 呼び出し側の表示倍率に合わせて拡大する輪郭を共用する。
   const positions = new Float32Array(RING_SEGMENTS * 3);
   for (let i = 0; i < RING_SEGMENTS; i++) {
     const a = (i / RING_SEGMENTS) * Math.PI * 2;
@@ -52,7 +52,7 @@ function unitCircleGeometry(): THREE.BufferGeometry {
   return geo;
 }
 
-// 1枚の占有域が持つ2表現。半径が変わったときだけアニュラスのジオメトリを組み直す。
+// 実寸アニュラスと記号リングを組み合わせた軌道域の表示物。
 interface OrbitZoneObjects {
   readonly annulus: THREE.Mesh;
   readonly ring: THREE.LineLoop;
@@ -64,6 +64,7 @@ export class FactionZoneView {
   private readonly orbitZones = new Map<string, OrbitZoneObjects>();
   private readonly pads = new Map<string, Billboard>();
 
+  // 軌道帯と点パッドの表示状態を宣言へ揃える。
   public sync(
     orbitZones: readonly OrbitZoneVisual[],
     pads: readonly PadZoneVisual[],
@@ -73,6 +74,7 @@ export class FactionZoneView {
     this.syncPads(pads, cameraQuat);
   }
 
+  // 宣言された軌道域を描画へ反映する。
   private syncOrbitZones(zones: readonly OrbitZoneVisual[]): void {
     for (const key of this.orbitZones.keys()) {
       if (zones.every((zone) => zone.key !== key)) this.dropOrbitZone(key);
@@ -83,7 +85,6 @@ export class FactionZoneView {
         objects = this.createOrbitZone(zone);
         this.orbitZones.set(zone.key, objects);
       }
-      // 域の半径は構成員の軌道が変わったときだけ動く — 変化があればジオメトリを組み直す。
       if (objects.inner !== zone.innerRadius || objects.outer !== zone.outerRadius) {
         objects.annulus.geometry.dispose();
         // 円軌道だけの帯は幅 0 で届く — 退化した面にならないよう最小の厚みを与える。
@@ -94,9 +95,7 @@ export class FactionZoneView {
       }
       objects.annulus.position.copy(zone.position);
       objects.annulus.quaternion.copy(zone.quaternion);
-      // ring は annulus の子なので位置・姿勢は親に従う。スケールだけ毎フレーム合わせる。
       objects.ring.scale.setScalar(zone.bodyRadius * SYMBOLIC_RING_RADIUS_RATIO);
-      // 見かけ幅で実寸アニュラスと省略リングを連続的に切り替える。
       const fade = Math.min(zone.widthPx / ANNULUS_FADE_PX, 1);
       (objects.annulus.material as THREE.MeshBasicMaterial).opacity = ANNULUS_OPACITY * fade;
       objects.annulus.visible = fade > 0;
@@ -105,6 +104,7 @@ export class FactionZoneView {
     }
   }
 
+  // 実寸の帯と、天体を囲む記号リングを組んだ表示物を返す。
   private createOrbitZone(zone: OrbitZoneVisual): OrbitZoneObjects {
     const annulus = new THREE.Mesh(
       new THREE.RingGeometry(
@@ -116,6 +116,7 @@ export class FactionZoneView {
     );
     markOverlay(annulus);
     annulus.renderOrder = -1;
+    // 画面上で細くなる帯の占有先を記号リングで示す。
     const ring = new THREE.LineLoop(
       unitCircleGeometry(),
       new THREE.LineBasicMaterial({ color: zone.color, transparent: true, opacity: 0 }),
@@ -126,6 +127,7 @@ export class FactionZoneView {
     return { annulus, ring, inner: zone.innerRadius, outer: zone.outerRadius };
   }
 
+  // 軌道帯の専有ジオメトリとマテリアルを解放する。
   private dropOrbitZone(key: string): void {
     const objects = this.orbitZones.get(key);
     if (objects === undefined) return;
@@ -136,10 +138,13 @@ export class FactionZoneView {
     this.orbitZones.delete(key);
   }
 
+  // 宣言された点パッドを描画状態へ反映する。
   private syncPads(pads: readonly PadZoneVisual[], cameraQuat: THREE.Quaternion): void {
+    // 表示時刻で消えた占有パッドを片付ける。
     for (const key of this.pads.keys()) {
       if (pads.every((pad) => pad.key !== key)) this.dropPad(key);
     }
+    // 現在の占有位置とカメラへ合わせてパッドを表示する。
     for (const pad of pads) {
       let billboard = this.pads.get(pad.key);
       if (billboard === undefined) {
@@ -151,6 +156,7 @@ export class FactionZoneView {
     }
   }
 
+  // 点パッドの表示資源を解放する。
   private dropPad(key: string): void {
     const billboard = this.pads.get(key);
     if (billboard === undefined) return;
@@ -165,13 +171,11 @@ export class FactionZoneView {
     for (const key of this.pads.keys()) this.dropPad(key);
   }
 
-  // 生成済みの描画物をシーンへ登録する。view はシーンを保持しないので、組んだオブジェクトは
-  // ここで拾ってもらう。
+  // 描画物を指定されたシーンへ登録する。
   public attach(scene: THREE.Scene): void {
     this.scene = scene;
     for (const objects of this.orbitZones.values()) {
       scene.add(objects.annulus);
-      scene.add(objects.ring);
     }
     for (const billboard of this.pads.values()) scene.add(billboard.mesh);
   }

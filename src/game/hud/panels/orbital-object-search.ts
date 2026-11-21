@@ -1,5 +1,4 @@
-// 軌道物体パネルの検索面。図や表示の重なりで見えない対象も、名前で探して操作できるようにする
-// (SPEC/MAP.md「軌道物体パネル」)。
+// 図で見つけにくい軌道物体を、名前で探して操作する検索面。
 import { Button } from '../../../hud/widgets';
 import { expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
@@ -31,8 +30,7 @@ export class OrbitalObjectSearch {
     this.element.className = 'oo-search hidden';
     const bar = document.createElement('div');
     bar.className = 'oo-search-bar';
-    // 打鍵ごとに一致行を組み直す絞り込み入力は、確定でしか通知しない値入力の契約に合わない
-    // 唯一の例外(UI-DESIGN §3)。
+    // 入力のたびに検索結果を更新するため、確定通知型の数値入力を使わない。
     this.input = document.createElement('input');
     this.input.type = 'search';
     this.input.className = 'w-input';

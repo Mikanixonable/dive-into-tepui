@@ -260,6 +260,7 @@ class StageSelectScreen {
   // 隠し要素「共鳴」: ロゴを 1.2 秒以内の間隔で5回続けて押すと、背景の物体が共鳴する(GAME.md 1.1)。
   private logotypeClicks = 0;
   private lastLogotypeClickAt = Number.NEGATIVE_INFINITY;
+  // 規定時間内の連打だけを数え、条件成立時にタイトル背景へ共鳴を伝える。
   private readonly onLogotypeClick = (): void => {
     const now = performance.now();
     this.logotypeClicks = now - this.lastLogotypeClickAt <= RESONANCE_CLICK_GAP_MS ? this.logotypeClicks + 1 : 1;

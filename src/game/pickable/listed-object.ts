@@ -1,20 +1,19 @@
-// 軌道物体パネルと選択ウィジェットに並ぶオブジェクト。所属する区画・ジャンル、表示テキスト、
-// 検索照合文字列の情報を提供する。
+// マップ一覧に載せる対象の表示区分と検索情報を定める。
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { PickCandidate } from './pick-candidate';
 import type { MapListSection, ObjectPickerGenre } from './pickable-listing';
 
 export interface ListedObject extends PickCandidate {
-  // 軌道物体パネルでどの種類として扱うか。パネルに出さない対象は null。
+  // マップ一覧で扱う対象の区分。表示しない対象は null。
   readonly listSection: MapListSection | null;
   // 選択ウィジェット(ObjectPicker)のどのジャンルへ出すか。出さない対象は null。
   readonly pickerGenre: ObjectPickerGenre | null;
 
-  // 軌道物体パネルの札と検索の行へ添える補助表示。
+  // 対象名へ添える詳細表示。
   listDetail(celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number): string;
-  // 軌道物体パネルの検索が照合する文字列。行に出さない情報を含めてよい。
+  // 検索に使う文字列。対象名に出さない語も含められる。
   listSearchText(celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number): string;
-  // 状況の内訳に数えるか(敵は接近中、弾薬・RCS燃料は回収圏内)。
+  // 状況の内訳に加える対象かを返す。
   listCounted(viewer: OrbitingObject | null, displayTime: number): boolean;
 }

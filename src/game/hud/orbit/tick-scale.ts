@@ -46,8 +46,6 @@ export function buildTicks(spanSec: number, maxTicks: number): readonly DisplayT
   const interval = chooseTickInterval(spanSec, maxTicks);
   const ticks: DisplayTick[] = [];
   const half = spanSec / 2;
-  // 軸の両端が間隔の倍数でないとき、その端には目盛りを置かない — 刻むのは軸の内側にある
-  // 間隔の倍数だけ。
   const first = Math.ceil(-half / interval);
   const last = Math.floor(half / interval);
   for (let i = first; i <= last; i++) {

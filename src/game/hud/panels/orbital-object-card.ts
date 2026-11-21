@@ -1,5 +1,4 @@
-// 軌道物体パネルの札。フォーカス対象の名前・系の経路・状態と、その対象にできる操作を出し、
-// 束を開いている間はその中身を並べて選ばせる(SPEC/MAP.md「軌道物体パネル」)。
+// フォーカス対象の情報と操作を示し、開いた束の中身を選ばせる札。
 import { Button } from '../../../hud/widgets';
 import { buildSpan } from '../../../hud/widgets/widget-base';
 import { injectOnce } from '../../../hud/inject-style';
@@ -59,8 +58,6 @@ export interface CardHandlers {
   closeBundle(): void;
 }
 
-// 軌道図の下の札。フォーカス対象の名前・経路・状態と、その対象にできる操作を出す。束を開いている
-// 間は、その中身を並べて選ばせる。
 export class OrbitalObjectCard {
   public readonly element: HTMLElement;
   private readonly path: HTMLElement;

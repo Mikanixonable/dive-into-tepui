@@ -52,6 +52,7 @@ function radiusOf(chart: OrbitalObjectChart, id: string): number {
   return Math.hypot(mark.x - 0.5, mark.y - 0.5);
 }
 
+// 軌道図の系選択・駅情報・配置・束ね方を、代表的な太陽系候補で固定する。
 export function register(): void {
   test('orbital-object-chart: フォーカス対象を周回するものがあれば、その対象の系を出す', () => {
     const chart = chartOf(items(listed('ship', 'player', NEAR_EARTH)), 'earth');

@@ -1,5 +1,4 @@
-// 勢力の占有域の導出。個体を勢力と主天体へ割り当て、域の幾何(帯の内外半径・パッドの位置)
-// だけを返す。描画・表示トグルは持たない — 数える対象の選別は呼び出し側の include で行う。
+// 勢力と中心天体ごとに、個体の軌道帯とラグランジュ点の占有域を導出する。
 import { orbitingAttractorOf } from '../../physics/attractor';
 import { orbitalElementsOf } from '../../physics/elements';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -26,9 +25,7 @@ export interface FactionOrbitZone {
   readonly outerRadius: number;
 }
 
-// 生存個体を勢力×中心天体へ畳み込み、占有域の帯を返す。閉じた軌道(離心率 1 未満)を持つ
-// 構成員だけを数える — どの天体にも捕まっていない遷移・離脱中の個体は orbitingAttractorOf が
-// null を返すので、どの域にも属さない。
+// 閉軌道にある生存個体の近点距離と遠点距離から、勢力×中心天体の占有帯を返す。
 export function factionOrbitZones(
   entities: readonly DynamicEntity[],
   attractors: readonly CelestialBody[],
@@ -86,6 +83,7 @@ export function factionLagrangeZones(
   points: readonly { id: string; position: Vec3; radius: number }[],
 ): FactionLagrangeZone[] {
   const zones: FactionLagrangeZone[] = [];
+  // 各点の占有を勢力ごとにまとめる。
   for (const point of points) {
     const occupied = new Set<Faction>();
     for (const member of members) {

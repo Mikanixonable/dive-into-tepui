@@ -51,6 +51,7 @@ export class OrbitSlotPickable implements ObjectPickable {
   }
 
   public readonly rename = (name: string): void => { this.registry.rename(this.slot.id, name); };
+  // マップ上の選択位置にプロパティ窓を開く。
   public readonly onMapSelect = (windows: PropertyWindowOpener, x: number, y: number): void => {
     windows.openProperties(this, x, y);
   };
@@ -91,6 +92,7 @@ export class OrbitSlotPickable implements ObjectPickable {
   ): readonly PropertyRow[] {
     const orbit = this.slot.orbit;
     const period = orbitSlotPeriod(this.slot, this.celestialBodies, this.catalog);
+    // 軌道形式に応じて、基準天体または系を表示する。
     const rows: PropertyRow[] = [
       {
         key: 'kind', label: '種別',
@@ -103,6 +105,7 @@ export class OrbitSlotPickable implements ObjectPickable {
           value: `${bodies.nameOf(orbit.primaryId)} - ${bodies.nameOf(orbit.secondaryId)}`,
         },
     ];
+    // 得られた周期と、比較に使える相手がいる場合の距離を添える。
     if (period !== null) rows.push({ key: 'period', label: '周期', value: fmtTime(period) });
     const pos = this.posAt(simTime);
     if (pos !== null && viewer !== null) {
@@ -118,6 +121,7 @@ export class OrbitSlotPickable implements ObjectPickable {
       ? null : strongestAttractor(pos, bodies.celestialMotions, displayTime).id;
     return center === null ? '' : bodies.nameOf(center);
   }
+  // 標識名と表示時刻における中心天体名を検索語へ含める。
   public listSearchText(bodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number): string {
     return `${this.slot.name} ${this.listDetail(bodies, viewer, displayTime)}`;
   }

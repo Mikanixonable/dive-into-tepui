@@ -169,6 +169,7 @@ export class StageControlsPanel {
     title.className = 'stage-control-section-title';
     title.textContent = '組み立て型の敵';
     section.appendChild(title);
+    // 組み立て型の外観は色で選ぶ。
     const colorSelect = buildColorSelect('敵の色', STAGE_CONTROL_ENEMY_COLORS);
     section.appendChild(colorSelect.wrapper);
     const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.('assembly', colorSelect.getValue()));

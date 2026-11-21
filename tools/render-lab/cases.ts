@@ -230,16 +230,19 @@ function moon(): LabCase {
     ready: body.ready,
     shots: {
       // 恒星に照らされた月。
-      'moon': { view: {} },
-      // 真下に月軌道相当の距離の地球を置き、恒星をカメラの背後へ回す — 手前側が夜面になり、
-      // 残る光は地球からの天体照だけになる。
+      'moon': { view: { sunAzimuthDeg: 0, sunElevationDeg: 0 } },
+      // 地球を月のカメラ側へ置き、恒星を月の反対側へ回す — 月の手前側は夜面になり、地球の昼面から
+      // 天体照が届く。
       'moon-earthlight': {
-        view: { sunAzimuthDeg: 180, sunElevationDeg: 0, earthElevationDeg: -90 },
+        view: {
+          sunAzimuthDeg: 180, sunElevationDeg: 0,
+          earthAzimuthDeg: 0, earthElevationDeg: 0,
+        },
       },
     },
     earth: {
-      earthAltitudeLog: Math.log10(3.8e8 - R_EARTH), earthElevationDeg: -30,
-      earthAzimuthDeg: 0, earthLatitudeDeg: 0, earthLongitudeDeg: 0,
+      earthAltitudeLog: Math.log10(3.8e8 - R_EARTH), earthElevationDeg: 0,
+      earthAzimuthDeg: 90, earthLatitudeDeg: 0, earthLongitudeDeg: 0,
     },
   };
 }

@@ -58,6 +58,7 @@ export class SunExtinction {
       const uv = sunTransmittanceUv(
         path.sunMu, path.radius.sub(path.surfaceRadius), altitudeMax,
       );
+      // 表の端へクランプされた透過率は遠方の点には適用しない。
       const crossesAtmosphere = rayReachesAtmosphere(path, path.surfaceRadius, altitudeMax);
       const attenuation = select(
         crossesAtmosphere, this.tables[i]!.sample(uv).rgb, vec3(1, 1, 1),

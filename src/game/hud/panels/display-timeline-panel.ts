@@ -1,5 +1,4 @@
-// 未来表示の操作パネル。1本の時間軸(目盛り+スクラバー)を主役にした1行の帯で、
-// 期間の選択と表示オプションは、帯を一時的に広げる行として開く。
+// 未来表示の時間軸と、その期間・表示オプションを操作するパネル。
 import {
   Button, DurationPillRow, EDGE_GRIP_HORIZONTAL_CLASS,
   Slider, ToggleSwitch, ToggleValueEdit,
@@ -92,7 +91,6 @@ export class DisplayTimelinePanel {
   private readonly jumpToggle: ToggleValueEdit;
   private readonly ticks: HTMLElement;
   private readonly wrap: HTMLElement;
-  private readonly overlayManager: OverlayManager;
   private readonly unsubscribeCollapsedView: () => void;
   private readonly occupancyObserver: ResizeObserver | null;
 
@@ -103,8 +101,9 @@ export class DisplayTimelinePanel {
 
   // タイムラインパネルの DOM を組み立て、root へ追加する。collapse は折りたたみトグルの配線役、
   // overlayManager は帯を広げる行の ESC・外側クリックでの自動クローズを引き受ける役。
-  public constructor(root: HTMLElement, collapse: PanelCollapse, overlayManager: OverlayManager) {
-    this.overlayManager = overlayManager;
+  public constructor(
+    root: HTMLElement, collapse: PanelCollapse, private readonly overlayManager: OverlayManager,
+  ) {
     this.panel = document.createElement('div');
     this.panel.id = 'hud-predict';
     this.panel.className = 'panel editorial-instrument';
@@ -255,11 +254,11 @@ export class DisplayTimelinePanel {
     }
   }
 
-  // 帯を広げる行の開閉を切り替える。開いている間は ESC・外側クリックで閉じるよう
-  // 論理登録(mode)へ載せ、パネル内のクリックでは閉じない(収納グリップ・トグル操作を含む)。
+  // 展開行の開閉と、ESC・外側クリックで閉じる登録を同期する。
   private setExpand(section: ExpandSection | null): void {
     const next = this.expand === section ? null : section;
     this.expand = next;
+    // 表示行と選択状態をそろえたあと、閉じる操作の登録を更新する。
     this.rangeRow.classList.toggle('hidden', next !== 'range');
     this.optionsRow.classList.toggle('hidden', next !== 'options');
     this.durationButton.setOn(next === 'range');
@@ -329,8 +328,6 @@ export class DisplayTimelinePanel {
     if (this.slider.getValue() !== value) this.slider.setValue(value);
     if (predictionRatio !== this.lastTrackRatio) {
       this.lastTrackRatio = predictionRatio;
-      // <input type=range> はトラック上の区間ごとに色を分けられないので、
-      // 背景グラデーションで未予測区間の減光を表す。
       this.slider.setGradient(predictionRatio);
     }
   }

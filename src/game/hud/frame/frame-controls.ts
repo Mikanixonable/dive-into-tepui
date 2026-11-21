@@ -3,7 +3,6 @@ import type { FrameAnchorSource, FrameRotationSource } from '../../../physics/fr
 import type { Vec3 } from '../../../math/vec3';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
-import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { ListedObject } from '../../pickable/listed-object';
 import type { FocusCameraCommands } from '../../viewer/camera-commands';
 import type { CameraFrameSample, CameraRotationFollow, FocusCameraSource } from '../../viewer/focus-camera-selection';
@@ -18,8 +17,7 @@ interface CameraFramePresentation {
   sample(view: 'combat' | 'map'): CameraFrameSample;
 }
 
-// カメラの回転追従のうち、軌道フレーム側へ写せる成分(公転・自転・慣性)だけを抜き出す。
-// 姿勢追従(attitude)は軌道描画の座標系には無いため慣性系(null)へ落とす。
+// 軌道フレームで表せるカメラ回転追従を返す。
 function frameRotationFromCamera(follow: CameraRotationFollow | null): FrameRotationSource | null {
   return follow === null || follow.kind === 'attitude' ? null : follow;
 }
@@ -89,8 +87,6 @@ export class FrameControls {
       overlayManager, mapCamera.cameraRotationMode,
     );
 
-    // 姿勢追従の切替は戦闘カメラのサンプルで toggleAttitudeFollow へ返す —
-    // マップ側の setRotationFollow が sample('map') を渡すのと同じ経路。
     const combatCommands: CombatCameraCommands = {
       setCameraRotationMode: (mode) => combatCameraCommands.setCameraRotationMode(mode),
       toggleAttitudeFollow: () => combatCameraCommands.toggleAttitudeFollow(
@@ -105,6 +101,7 @@ export class FrameControls {
 
   // カメラの基準を選ぶ。null は現在の注視位置を恒星中心慣性系へ固定する。
   private selectCameraCenter(id: string | null): void {
+    // 選択された物体か慣性空間の固定点へ、視点と追従中の軌道基準を揃える。
     if (id !== null) {
       this.setFocus({ kind: 'object', id });
       return;
@@ -126,10 +123,8 @@ export class FrameControls {
   }
 
   // パネルの選択肢と選択表示を、現在の視点と天体系へ合わせる。
-  public sync(
-    pickables: readonly ListedObject[], cameraPos: Vec3, displayTime: number,
-    visibilityPolicy: MapVisibilityPolicy | null,
-  ): void {
+  public sync(pickables: readonly ListedObject[], cameraPos: Vec3, displayTime: number): void {
+    // 表示時刻と視点から、中心候補と軌道フレーム候補を導く。
     const members = this.celestialBodies.systemMembersAt(cameraPos, displayTime);
     const sample = this.cameraPresentation.sample('map');
     this.mapPanel.sync(pickables, members, displayTime, {
@@ -140,7 +135,8 @@ export class FrameControls {
       projection: this.mapCamera.projection,
       fovDeg: this.mapCamera.fov,
       referencePlane: this.mapCamera.referencePlane,
-    }, visibilityPolicy);
+    });
+    // 戦闘側の回転モードを同期する。
     this.combatCameraPanel.sync(
       this.combatCamera.cameraRotationMode,
       this.combatCamera.rotationFollow?.kind === 'attitude',

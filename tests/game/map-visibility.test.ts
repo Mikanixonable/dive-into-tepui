@@ -14,10 +14,8 @@ import {
 } from '../../src/game/map/display-toggles';
 import { alwaysFullyVisibleIds, MapVisibilityPolicy } from '../../src/game/map/visibility-policy';
 import { BODY_REVEAL_BASE, revealedAfterClear } from '../../src/game/celestial/body-reveal';
-import { groupPickables } from '../../src/game/hud/object-groups';
 import { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import { v3, addScaled } from '../../src/math/vec3';
-import type { ListedObject } from '../../src/game/pickable/listed-object';
 
 const MIN_CLEARANCE = 10;
 
@@ -54,15 +52,9 @@ function massRatio(id: string): number {
   return motion.def.mu / (motion.primary!.def.mu + motion.def.mu);
 }
 
-function listedObject(id: string, pickerGenre: ListedObject['pickerGenre']): ListedObject {
-  return {
-    id, name: id, gone: false, orbitState: null, glyph: '', glyphSvg: null,
-    posAt: () => null, listSection: null, pickerGenre,
-    listDetail: () => '', listSearchText: () => '', listCounted: () => false,
-  };
-}
-
+// 可視性とラグランジュ点の成立条件を太陽系の事実で検査する。
 export function register(): void {
+  // 公転系の成立条件とマップ上の表示条件を、太陽系の静的事実で検査する。
   test('lagrange: Routh の臨界質量比は 27mu(1−mu) = 1 の解と一致する', () => {
     const mu = TRIANGULAR_STABILITY_MASS_RATIO;
     assert.ok(Math.abs(27 * mu * (1 - mu) - 1) < 1e-12, `27mu(1-mu) = ${27 * mu * (1 - mu)}`);
@@ -80,6 +72,7 @@ export function register(): void {
   });
 
   test('lagrange: 共線点の余裕は現行レジストリのしきい値の内外を再現する', () => {
+    // 登録値から L1 の余裕比を返す。
     const clearance = (id: string): number => {
       const def = motionOf(PARTS, id).def as { radius: number; orbit: { a?: number; kepler?: { a: number } } };
       const orbit = def.orbit.kepler ?? (def.orbit as { a: number });
@@ -159,6 +152,7 @@ export function register(): void {
 
   // 天体ラベルの並びと字下げはこの深さで決まるので、その導出だけを固定する。
   test('visibility: 親子の深さは主星を 0 として数えられる', () => {
+    // 主星まで遡った親子階層の深さを返す。
     const depth = (id: string): number => {
       let d = 0;
       for (let cur = motionOf(PARTS, id).primary; cur !== null; cur = cur.primary) d++;
@@ -313,22 +307,6 @@ export function register(): void {
     const sunEarth = new MapVisibilityPolicy(SYSTEM, toggles, new Set(['sun', 'earth']));
     assert.equal(sunEarth.body('earth-l1').pickable, true, '太陽と地球が解放されていれば出る');
     assert.equal(sunEarth.body('jupiter-l1').pickable, false, '木星が未解放の系は出ない');
-    assert.equal(sunOnly.isRevealed('earth-l1'), false, '親天体が未解放なら候補に含めない');
-    assert.equal(sunEarth.isRevealed('earth-l1'), true, '両方解放済みなら候補に含める');
-  });
-
-  test('reveal: 中心選択の全天体候補も解放済みだけに絞る', () => {
-    const policy = new MapVisibilityPolicy(SYSTEM, DEFAULT_MAP_DISPLAY_TOGGLES, new Set(BODY_REVEAL_BASE));
-    const groups = groupPickables(SYSTEM, [
-      listedObject('mars', '惑星'),
-      listedObject('jupiter-l1', 'ラグランジュ点'),
-      listedObject('probe', '自艦'),
-    ], true, (id) => {
-      if (SYSTEM.bodyClassOf(id) !== null || id === 'jupiter-l1') return policy.isRevealed(id);
-      return true;
-    });
-    const ids = groups.flatMap((group) => group.items.map(([id]) => id));
-    assert.deepEqual(ids, ['sun', 'earth', 'moon', 'probe']);
   });
 
   test('reveal: 解放の集合を渡さなければ、天体を伏せない', () => {

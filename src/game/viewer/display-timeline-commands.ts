@@ -39,6 +39,7 @@ export interface DisplayTimelineCommands {
 export function displayTimelineCommands(
   queue: CommandQueue, selection: DisplayTimelineSelection,
 ): DisplayTimelineCommands {
+  // UI から受け取った選択変更を、進行で適用する命令として積む。
   return {
     selectDuration: (key) => queue.submit(() => selection.selectDuration(key)),
     selectCustomDuration: (sec) => queue.submit(() => selection.selectCustomDuration(sec)),

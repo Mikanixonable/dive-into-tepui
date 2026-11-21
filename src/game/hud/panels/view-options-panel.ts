@@ -1,6 +1,4 @@
-// 表示パネル(マップモード左レール): マップの表示項目設定を担当する —
-// 対象・ガイド・軌道ガイドの3タブに分かれ、タブの内装は TargetTab / GuideTab /
-// OrbitGuideTab が担い、このパネルは器とタブ間の配線を持つ。
+// マップに表示する対象・ガイド・軌道ガイドを切り替えるパネル。
 import { hudRail } from '../hud-dom';
 import {
   Button,
@@ -193,6 +191,7 @@ export class ViewOptionsPanel {
     this.orbitGuideTab.setGroupTab(tab);
   }
 
+  // 表示スタイルの選択表示を現在値へ合わせる。
   public setRenderStyle(style: RenderStyle): void {
     for (const [candidate, button] of this.renderStyleButtons) button.setOn(candidate === style);
   }

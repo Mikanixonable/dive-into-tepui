@@ -1,6 +1,4 @@
-// マップビューの統合「視点と基準フレーム」パネル。
-// 上段にリアルタイム図式と2行要約、既定の軌道連動中は1組の図案タイル(基準・回転)＋
-// 角度コンパス＋下段光学バーを置き、軌道分離時のみ軌道描画フレームの独立欄を展開する。
+// マップの視点設定と軌道描画フレーム設定をまとめるパネル。
 import {
   FRAME_ROLES, type FrameAnchorSource, type FrameRotationSource,
   frameRoleAnchorId, frameRoleOf, rotationSourceKey,
@@ -14,7 +12,6 @@ import type { CameraRotationMode } from '../../viewer/camera-orientation';
 import type { ProjectionMode } from '../../../math/projection';
 import type { ListedObject } from '../../pickable/listed-object';
 import type { DisplayTimelineSource } from '../../viewer/display-timeline-selection';
-import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { isLagrangeId } from '../../celestial/lagrange-id';
 import { expandHitTarget } from '../../../hud/widgets/widget-base';
@@ -61,6 +58,7 @@ export interface MapFrameCommands extends AngleCompassCommands, CameraOpticsComm
   setFollowCamera(on: boolean): void;
 }
 
+// タイトルに補助操作や説明を添えられるセクション見出しを作る。
 function buildSectionHead(title: string): HTMLElement {
   const head = document.createElement('div');
   head.className = 'fc-sec-head';
@@ -95,6 +93,7 @@ export class MapFramePanel {
   private lastDiagramMarkup = '';
   private lastLinked: boolean | null = null;
 
+  // 視点設定と軌道描画フレームの操作・状態表示を組み立てる。
   public constructor(
     panelRoot: HTMLElement,
     private readonly celestialBodies: CelestialBodies,
@@ -162,6 +161,7 @@ export class MapFramePanel {
     this.panel.append(compassHead, this.compass.element, this.opticsBar.element);
   }
 
+  // カメラと軌道描画の連動を切り替えるピルを作る。
   private buildLinkButton(): { button: HTMLButtonElement; icon: HTMLElement; text: HTMLElement } {
     const button = document.createElement('button');
     button.type = 'button';
@@ -179,6 +179,7 @@ export class MapFramePanel {
     return { button, icon, text };
   }
 
+  // 座標系の要約図と読み値を収める区画を作る。
   private buildDiagramBox(): {
     box: HTMLElement; svg: SVGSVGElement; cam: HTMLElement; frm: HTMLElement; meta: HTMLElement;
   } {
@@ -205,6 +206,7 @@ export class MapFramePanel {
     };
   }
 
+  // カメラから独立した軌道描画基準の操作欄を作る。
   private buildDetachedBox(overlayManager: OverlayManager): {
     box: HTMLElement;
     picker: ObjectPicker<string>;
@@ -228,13 +230,17 @@ export class MapFramePanel {
     return { box, picker, centers, rotations };
   }
 
+  // 内部 ID を役割名・天体名へ変換し、null は固定点と表示する。
   private idLabel(id: string | null): string {
+    // 内部の役割 ID を表示名へ変換し、null は固定点として扱う。
     if (id === null) return '自由点';
     const role = frameRoleOf(id);
     return role !== null ? frameRoleName(role) : this.celestialBodies.nameOf(id);
   }
 
+  // 中心 ID の意味に応じたタイル図案を返す。
   private glyphKindOf(id: string | null): CenterGlyphKind {
+    // 役割 ID・ラグランジュ点・天体クラスから中心タイルの図案を決める。
     if (id === null) return 'free';
     const role = frameRoleOf(id);
     if (role === 'controlled') return 'ship';
@@ -244,9 +250,11 @@ export class MapFramePanel {
     return bodyClass !== null ? bodyClassGlyph(bodyClass) : 'ship';
   }
 
+  // 視点または独立フレームの中心候補を、表示中の物体から組み立てる。
   private buildCenterTiles(
     members: readonly string[], pickables: readonly ListedObject[], includeRelease: boolean,
   ): TileItem<string | null>[] {
+    // 自機を先頭に置き、表示中の天体を上限まで加えてから固定解除を末尾に置く。
     const byId = new Map(pickables.map((p) => [p.id, p] as const));
     const controlledId = frameRoleAnchorId('controlled');
     const items: TileItem<string | null>[] = [{
@@ -273,9 +281,11 @@ export class MapFramePanel {
     return items;
   }
 
+  // フォーカス親天体に属するラグランジュ点を選択候補にする。
   private buildLagrangeTiles(
     members: readonly string[], pickables: readonly ListedObject[], focusId: string | null,
   ): TileItem<string | null>[] {
+    // 表示中の親天体ごとにまとめ、フォーカス中の親があればその点だけを出す。
     const memberSet = new Set(members);
     const byParent = new Map<string, LagrangePointMarker[]>();
     for (const p of pickables) {
@@ -291,9 +301,11 @@ export class MapFramePanel {
     }));
   }
 
+  // 指定時刻に使える公転・自転フレームを選択候補にする。
   private buildFrameRotationTiles(
     members: readonly string[], displayTime: number,
   ): TileItem<FrameRotationSource | null>[] {
+    // 時刻に回転状態が定義されているものだけ、慣性・公転・自転の順で候補にする。
     const items: TileItem<FrameRotationSource | null>[] = [{
       key: '', value: null, label: '慣性', title: '慣性系(回転しない)',
       glyphSvg: rotationGlyphSvg(null),
@@ -337,7 +349,9 @@ export class MapFramePanel {
     return items;
   }
 
+  // カメラと軌道描画の状態を要約し、独立した基準があれば図でも区別する。
   private syncSummary(cam: MapFrameCameraViewModel, linked: boolean): void {
+    // 現在の視点と連動状態を要約し、独立した軌道基準があるかを図式へ反映する。
     const frame = this.displayTimeline.frame;
     const camRotKey = rotationFollowKey(cam.rotationFollow);
     const frmRotKey = rotationSourceKey(frame.rotatingWith);
@@ -365,10 +379,12 @@ export class MapFramePanel {
     }
   }
 
+  // 現在値と候補を各コントロールへ反映する。
   public sync(
     pickables: readonly ListedObject[], members: readonly string[], displayTime: number,
-    cam: MapFrameCameraViewModel, visibilityPolicy: MapVisibilityPolicy | null,
+    cam: MapFrameCameraViewModel,
   ): void {
+    // 連動状態が変わったときだけ独立設定欄とリンク表示を切り替える。
     const linked = this.displayTimeline.followCamera;
     if (this.lastLinked !== linked) {
       this.lastLinked = linked;
@@ -380,23 +396,18 @@ export class MapFramePanel {
     }
 
     this.syncSummary(cam, linked);
-    const includeId = (id: string): boolean => {
-      const isCelestial = this.celestialBodies.bodyClassOf(id) !== null || isLagrangeId(id);
-      return !isCelestial || visibilityPolicy === null || visibilityPolicy.isRevealed(id);
-    };
-    const selectablePickables = pickables.filter((item) => includeId(item.id));
 
     // 視点側の中心ピッカー・タイル・L 点行。
     this.camPicker.setGroups([
       { label: '', items: [[null, '固定を解除']] },
       ROLE_GROUP,
-      ...groupPickables(this.celestialBodies, selectablePickables, true, includeId),
+      ...groupPickables(this.celestialBodies, pickables, true),
     ]);
     this.camPicker.setSelected(cam.focusId);
-    this.camCenterTiles.setItems(this.buildCenterTiles(members, selectablePickables, true));
+    this.camCenterTiles.setItems(this.buildCenterTiles(members, pickables, true));
     this.camCenterTiles.setSelectedKey(cam.focusId ?? '__free__');
 
-    const lagrangeTiles = this.buildLagrangeTiles(members, selectablePickables, cam.focusId);
+    const lagrangeTiles = this.buildLagrangeTiles(members, pickables, cam.focusId);
     this.camLagrangeRow.element.classList.toggle('hidden', lagrangeTiles.length === 0);
     if (lagrangeTiles.length > 0) {
       this.camLagrangeRow.setItems(lagrangeTiles);
@@ -422,19 +433,21 @@ export class MapFramePanel {
       const frame = this.displayTimeline.frame;
       this.frmPicker.setGroups([
         ROLE_GROUP as ObjectPickerGroup<string>,
-        ...groupPickables(this.celestialBodies, selectablePickables, false, includeId),
+        ...groupPickables(this.celestialBodies, pickables, false),
       ]);
       this.frmPicker.setSelected(frame.center);
-      this.frmCenterTiles.setItems(this.buildCenterTiles(members, selectablePickables, false) as TileItem<string>[]);
+      this.frmCenterTiles.setItems(this.buildCenterTiles(members, pickables, false) as TileItem<string>[]);
       this.frmCenterTiles.setSelectedKey(frame.center);
       this.frmRotTiles.setItems(this.buildFrameRotationTiles(members, displayTime));
       this.frmRotTiles.setSelectedKey(rotationSourceKey(frame.rotatingWith));
     }
 
+    // コンパスと光学バーへカメラ設定を反映する。
     this.compass.sync(cam.referencePlane);
     this.opticsBar.sync(cam.projection, cam.fovDeg, cam.cameraRotationMode);
   }
 
+  // ピッカーの登録を解除してパネルを取り除く。
   public dispose(): void {
     this.camPicker.dispose();
     this.frmPicker.dispose();

@@ -1,7 +1,4 @@
-// 建造セッションの表示と操作可能状態を同期し、建造操作を通知するパネル。
-// 「いま何を手に持ち、どこへ置けて、船体全体がどう変わるか」に答える区画で組む。
-// 手持ちの操作は手元バー(ship-construction-hand)、選択中モジュールの操作は脇へ
-// 追従するメニュー(ship-construction-selection-menu)、右ペインは性能・候補・履歴のタブ。
+// 建造セッションの状態を表示し、建造操作を通知するパネル。
 import { Button, buildSpan, Meter, TabBar } from '../../../hud/widgets';
 import { ARMOR_WARNING_RATIO, armorAlarmLevel } from '../../alarm/alarm-level';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';

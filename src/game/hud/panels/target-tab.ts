@@ -1,7 +1,4 @@
-// 表示パネル(マップモード左レール)の対象タブ。マップに出す対象クラスごとに1つのチップを置き、
-// 名前の部分でラベル、右端の軌道の図で軌道線を独立に切り替える。天体群と機体・設備群を
-// 見出しで区切り、チップは内容の幅で折り返す。押したまま同じ種類の押し所をなぞると、通った
-// チップの状態が最初に押したものと揃う。
+// 対象クラスごとの表示・軌道線チップを並べ、ドラッグ選択を扱うタブ。
 import { Button } from '../../../hud/widgets';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../../marker/marker-identity';
 import type { MapDisplayToggles } from '../../map/display-toggles';

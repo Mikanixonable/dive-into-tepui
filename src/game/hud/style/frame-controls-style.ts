@@ -24,16 +24,14 @@ export const FRAME_CONTROLS_STYLE = `
   display: inline-flex; align-items: center; gap: var(--space-1);
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
-  border: 1px solid var(--edge);
   background: var(--glass-control);
   color: var(--text-dim);
   font-size: var(--font-xxs); font-weight: 600; white-space: nowrap;
-  cursor: pointer; transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  cursor: pointer; transition: background var(--transition-fast), color var(--transition-fast);
 }
 #hud #hud-map-frame .fc-link-pill:hover { background: var(--glass-control-hover); color: var(--text); }
 #hud #hud-map-frame .fc-link-pill.on {
   background: var(--role-target-fill);
-  border-color: var(--role-target-edge);
   color: var(--color-signal);
 }
 #hud #hud-map-frame .fc-link-icon { display: inline-flex; width: 12px; height: 12px; }
@@ -46,7 +44,6 @@ export const FRAME_CONTROLS_STYLE = `
   padding: var(--space-3);
   margin-bottom: var(--space-4);
   border-radius: var(--radius-control);
-  border: 1px solid var(--fill-2);
   background: var(--glass-inset);
 }
 #hud #hud-map-frame .fc-diagram-svg { width: 94px; height: 74px; display: block; }
@@ -99,22 +96,19 @@ export const FRAME_CONTROLS_STYLE = `
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: var(--space-1); padding: var(--space-2) var(--space-1);
   border-radius: var(--radius-control);
-  border: 1px solid transparent;
   background: var(--glass-control);
   color: var(--text-dim);
   font-size: var(--font-xxs); line-height: 1.2;
   cursor: pointer; min-width: 0;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 #hud #hud-map-frame .fc-tile:hover { background: var(--glass-control-hover); color: var(--text); }
 #hud #hud-map-frame .fc-tile.on {
   background: var(--color-primary-fill);
-  border-color: var(--color-primary);
   color: var(--color-primary-hover);
 }
 #hud #hud-map-frame .fc-signal-tiles .fc-tile.on {
   background: var(--role-target-fill);
-  border-color: var(--role-target-edge);
   color: var(--color-signal);
 }
 #hud #hud-map-frame .fc-tile-icon { display: inline-flex; width: 17px; height: 17px; }
@@ -136,7 +130,6 @@ export const FRAME_CONTROLS_STYLE = `
 #hud #hud-map-frame .fc-detached-box {
   margin-top: var(--space-3); padding: var(--space-3);
   border-radius: var(--radius-control);
-  border: 1px solid var(--role-target-edge);
   background: var(--role-target-fill);
 }
 #hud #hud-map-frame .fc-detached-box .fc-sec-head { margin-top: 0; }
@@ -149,7 +142,6 @@ export const FRAME_CONTROLS_STYLE = `
   gap: var(--space-3); align-items: center;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-control);
-  border: 1px solid var(--fill-2);
   background: var(--glass-inset);
 }
 #hud #hud-map-frame .fc-compass-dial { position: relative; width: 108px; height: 92px; }
@@ -160,17 +152,15 @@ export const FRAME_CONTROLS_STYLE = `
   position: absolute; display: flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; padding: 0;
   border-radius: 50%;
-  border: 1px solid var(--edge);
   background: var(--surface-1);
   color: var(--text-muted);
   font-size: var(--font-xxs); font-weight: 600;
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 #hud #hud-map-frame .fc-compass-spot:hover { background: var(--glass-control-hover); color: var(--text); }
 #hud #hud-map-frame .fc-compass-spot.on {
   background: var(--color-primary-fill-strong);
-  border-color: var(--color-primary);
   color: var(--color-primary-hover);
 }
 #hud #hud-map-frame .fc-spot-top { top: 2px; left: 50%; transform: translateX(-50%); }
@@ -181,16 +171,14 @@ export const FRAME_CONTROLS_STYLE = `
   display: flex; align-items: center; gap: var(--space-2);
   width: 100%; padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-control);
-  border: 1px solid transparent;
   background: var(--glass-control);
   color: var(--text-dim); font-size: var(--font-xs); text-align: left;
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 #hud #hud-map-frame .fc-plane-chip:hover { background: var(--glass-control-hover); color: var(--text); }
 #hud #hud-map-frame .fc-plane-chip.on {
   background: var(--color-primary-fill);
-  border-color: var(--color-primary);
   color: var(--color-primary-hover);
 }
 #hud #hud-map-frame .fc-plane-dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
@@ -202,23 +190,21 @@ export const FRAME_CONTROLS_STYLE = `
 #hud #hud-map-frame .fc-footer-bar {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
   margin-top: var(--space-3); padding-top: var(--space-3);
-  border-top: 1px solid var(--fill-2);
+  box-shadow: inset 0 1px 0 var(--fill-2);
 }
 #hud #hud-map-frame .fc-footer-chips { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
 #hud #hud-map-frame .fc-chip {
   display: inline-flex; align-items: center; gap: var(--space-1);
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-control);
-  border: 1px solid transparent;
   background: var(--glass-control);
   color: var(--text-muted); font-size: var(--font-xxs); white-space: nowrap;
   cursor: pointer;
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 #hud #hud-map-frame .fc-chip:hover { background: var(--glass-control-hover); color: var(--text); }
 #hud #hud-map-frame .fc-chip.on {
   background: var(--color-primary-fill);
-  border-color: var(--color-primary);
   color: var(--color-primary-hover);
 }
 #hud #hud-map-frame .fc-chip-mono { font-variant-numeric: tabular-nums; letter-spacing: var(--tracking-label); }
@@ -228,7 +214,6 @@ export const FRAME_CONTROLS_STYLE = `
 #hud #hud-map-frame .fc-detail-drawer {
   margin-top: var(--space-3); padding: var(--space-3);
   border-radius: var(--radius-control);
-  border: 1px solid var(--fill-2);
   background: var(--glass-inset);
   display: flex; flex-direction: column; gap: var(--space-3);
 }

@@ -1,8 +1,4 @@
-// タッチデバイス用の仮想操作パッド。DOM ボタンを画面下部に重ね、
-// Input.setVirtualKey へ物理キーボードと同じキーコードを流し込む。
-// 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を同じ仕組みで扱える。
-// 常設で構築し、表示そのものは setPointerKind が渡す直近の入力種別に従う。長押しの手応えの
-// マーカーの宣言も組む。
+// タッチ操作を仮想キーへ変換するパッドと、その操作に応じたマーカーを管理する。
 import type { Input, PointerKind } from '../../input/input';
 import type { ViewMode } from '../view/view-mode';
 import { KEY_MAPPING as K, type KeyBinding } from '../../input/key-mapping';

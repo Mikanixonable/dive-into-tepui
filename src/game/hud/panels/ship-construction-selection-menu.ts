@@ -1,8 +1,4 @@
-// 建造中に選んだモジュールの脇へ追従する操作メニュー。回転(−90°/+90°)・向きを反転・
-// 付け替え・撤去・複製を持ち、毎フレーム渡される画面座標へ
-// 置き直す。画面の端からはみ出さないよう画面内へ寄せて置き、モジュールが画面の外へ
-// 出ても画面の縁へ寄せて残す。編集できない選択(接舷中の接続の先)では、効かない
-// 回転・向きを反転・付け替え・撤去を出さない。
+// 選択中モジュールの近くに操作メニューを表示し、選択位置に追従させる。
 import { Button } from '../../../hud/widgets';
 import { clampOverlayPosition } from '../../../hud/layout';
 import { injectOnce } from '../../../hud/inject-style';
@@ -108,8 +104,7 @@ export class ShipConstructionSelectionMenu {
     show(this.reattach.element, spec.canEdit);
     show(this.remove.element, spec.canEdit);
 
-    // 画面からはみ出す向きへ出る分は画面内へ寄せる。カメラ背後(front=false)や
-    // 画面外の投影もこの寄せで画面の縁に残る。
+    // 投影位置が画面外でもメニューは見える範囲へ寄せる。
     const height = this.root.offsetHeight;
     const pos = clampOverlayPosition(
       { x: spec.x + MENU_GAP_PX, y: spec.y - height / 2 },

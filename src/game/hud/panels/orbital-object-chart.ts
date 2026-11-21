@@ -1,5 +1,4 @@
-// 軌道物体パネルの図(路線図と軌道図)に何をどこへ置くかを、DOM に触れずに決める。
-// 系の選び方・円の大きさ・角度・重なりの束ね方は SPEC/MAP.md「軌道物体パネル」。
+// 軌道物体パネルの路線図と軌道図に置くデータを組み立てる。
 import { strongestAttractor } from '../../../physics/attractor';
 import { eciToEcl } from '../../../physics/ecliptic';
 import { len, sub } from '../../../math/vec3';
@@ -62,6 +61,7 @@ const LABEL_H = 0.05; // ラベル1行ぶんの高さの見積り(一辺比)
 
 // item の図に出す種類。天体の区画にいて天体として登録されていないものはラグランジュ点。
 export function chartKindOf(item: ListedObject, bodies: CelestialBodies): ChartKind {
+  // 天体区画に属する未登録 ID はラグランジュ点として分類する。
   switch (item.listSection) {
     case 'body': return bodies.has(item.id) ? 'body' : 'lagrange';
     case 'player':
@@ -291,4 +291,3 @@ function labelText(
   const pos = lead.posAt(displayTime);
   return pos === null ? `△ ${lead.name}` : `△ ${fmtMarkerDist(len(sub(pos, viewer.motion.state.r)))}`;
 }
-

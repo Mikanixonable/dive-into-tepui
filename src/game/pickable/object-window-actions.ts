@@ -213,6 +213,7 @@ export class ObjectWindowActions {
     }));
   }
 
+  // 操作対象の自艦には MODULES、それ以外には ORBITING を返す。
   public relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
     return controlled !== null && isModularShip(controlled) && target.id === controlled.id
