@@ -1,6 +1,6 @@
 // クリエイティブモード: 物体配置と軌道計画を自由に試すための、勝利条件の無いステージ。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
-import { ManualSpawn, type EnemySpawnShape, type SerializedManualSpawn } from '../creative/manual-spawn';
+import { ManualSpawn, type SerializedManualSpawn } from '../creative/manual-spawn';
 import {
   ObjectPlacement, reachesPlacedShipLimit, type SerializedObjectPlacement,
 } from '../creative/object-placement';
@@ -82,7 +82,7 @@ export class CreativeStage extends Stage {
 
     // 手動スポーン・配置・波状攻撃。配置の確定は命令として積む。
     this.manualSpawn = manualSpawn ?? ManualSpawn.create(
-      this._scene, this._celestialSystem.celestialMotions, this._dynamicSystem.idAllocators,
+      this._scene, this._dynamicSystem.idAllocators,
     );
 
     this.objectPlacement = new ObjectPlacement(
@@ -107,7 +107,7 @@ export class CreativeStage extends Stage {
     this.stageControlsPanel.onRefillFuel = () => this.commands.refillShipRcsFuel();
     this.stageControlsPanel.onRefillBaseFuel = () => this.commands.refillBaseFuel();
     this.stageControlsPanel.onSpawnDistanceChange = (distance) => this.commands.setSpawnDistance(distance);
-    this.stageControlsPanel.onSpawnEnemy = (shape, colorValue) => this.commands.spawnManualEnemy(shape, colorValue);
+    this.stageControlsPanel.onSpawnEnemy = colorValue => this.commands.spawnManualEnemy(colorValue);
     hudRail(this._hud.mapRoot, 'right').appendChild(this.stageControlsPanel.element);
   }
 
@@ -131,7 +131,7 @@ export class CreativeStage extends Stage {
       ),
       serialized?.waveAttackEnabled ?? undefined,
       manualSpawn == null ? undefined : ManualSpawn.deserialize(
-        manualSpawn, scene, celestialSystem.celestialMotions, dynamicSystem.idAllocators,
+        manualSpawn, scene, dynamicSystem.idAllocators,
       ),
       serialized?.objectPlacement?.playerIdAllocator ?? undefined,
       ...Stage.deserializeCommonState(serialized, deps, CreativeStage.stageRules),
@@ -192,16 +192,14 @@ export class CreativeStage extends Stage {
     this._dynamicSystem.events.record({ kind: 'baseFuelRefilled', ships });
   }
 
-  // shape で選んだ形の敵を1体、自機の前方へ出す。操作艦がいなければ、操作艦が要ることを記録する。
-  public spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void {
+  // 組み立て型の敵を1体、自機の前方へ出す。操作艦がいなければ、操作艦が要ることを記録する。
+  public spawnManualEnemy(colorValue: string): void {
     const player = this.controlledShip;
     if (player === null || !player.motion.alive) {
       this._dynamicSystem.events.record({ kind: 'shipRequiredForAction', action: 'spawnEnemy' });
       return;
     }
-    const enemy = this.manualSpawn.enemy(player, shape, colorValue);
-    if (enemy === null) return;
-    this.addEnemy(enemy);
+    this.addEnemy(this.manualSpawn.enemy(player, colorValue));
   }
 
   // 検証を通過した配置指定からオブジェクトを生成し、システムへ追加して配置を記録する。

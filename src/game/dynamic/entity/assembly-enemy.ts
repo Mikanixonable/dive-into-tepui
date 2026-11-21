@@ -25,13 +25,16 @@ import type { DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../../orbit-reference';
 
 // 新しく置く組み立て型の敵の要求。seed が個体の形状を決める。陣形に属さない個体は
-// formationId と役割が null。
-interface AssemblyEnemyRequest {
+// formationId と役割が null、ウェーブに属さない個体は waveId が null。姿勢を省くと、
+// 不規則な姿勢と回転で置く。攻撃グループを省くと陣形か id が攻撃グループになる。
+export interface AssemblyEnemyRequest {
   readonly name: string;
   readonly state: SerializedKinematicState;
   readonly seed: number;
   readonly accent: string | number;
   readonly orbitLineColor: string | number;
+  readonly attackGroupId?: string;
+  readonly waveId: number | null;
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
 }
@@ -100,7 +103,7 @@ export class AssemblyEnemy extends Enemy {
     }
   }
 
-  // request の敵を、無秩序に漂う姿勢で新しく置く。
+  // request の敵を、不規則な姿勢と回転で新しく置く。
   public static create(
     request: AssemblyEnemyRequest, idAllocators: EntityIdAllocators, scene?: THREE.Scene,
   ): AssemblyEnemy {
@@ -112,8 +115,8 @@ export class AssemblyEnemy extends Enemy {
         ...driftingAttitude(),
         accent: request.accent,
         orbitLineColor: request.orbitLineColor,
-        attackGroupId: formationId ?? undefined,
-        waveId: null,
+        attackGroupId: request.attackGroupId ?? formationId ?? undefined,
+        waveId: request.waveId,
         formationId,
         formationRole: request.formationRole,
       },

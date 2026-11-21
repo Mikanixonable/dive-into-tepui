@@ -17,7 +17,7 @@ import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { DynamicEntityKind, FormationRole } from './entity-kind';
 import type { EntityRegistry } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';
-import type { DynamicEntityClass, SerializedDynamicEntity } from './entity-dictionary';
+import type { DynamicEntityClass } from './entity-dictionary';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotionThermal } from '../dynamic-motion';
 import type { EntityContactParticipant } from '../dynamic-simulation-participant';
@@ -25,10 +25,8 @@ import { EnemyMotion, type EnemyCollisionShape } from './enemy-motion';
 import { EnemyInspection } from '../../pickable/enemy-inspection';
 import { EnemyFireController, type SerializedEnemyFireController } from './enemy-fire-controller';
 import { EnemyReactions } from './enemy-reactions';
-import { enemyDestroyFragments } from './debris-piece';
 
-// 敵機アセットの座標を物理寸法へ直す倍率。機体モデル・撃破時の破片・爆発の大きさは、
-// 全ての敵がこの1つの倍率を共有する。
+// 敵が爆散するときの爆発(閃光・爆炎・黒煙)の大きさを決める倍率。全ての敵がこの1つの倍率を共有する。
 export const ENEMY_MODEL_SCALE = 20;
 
 export const ENEMY_MAX_HP = 6; // 敵機の総 HP
@@ -40,7 +38,7 @@ const MARKER_HIT_FLASH_DURATION = 0.25;
 
 // 敵に共通する直列化の項目。具象の直列化した形がこれを継ぐ。
 export interface SerializedEnemy extends SerializedDynamicEntityFields {
-  readonly kind: 'metal-enemy' | 'assembly-enemy';
+  readonly kind: 'assembly-enemy';
   readonly name: string;
   readonly thermal: DynamicMotionThermal;
   // マーカーに使う個体色と、軌道線の色。
@@ -54,16 +52,6 @@ export interface SerializedEnemy extends SerializedDynamicEntityFields {
   readonly formationId: string | null;
   readonly formationRole: FormationRole | null;
   readonly fireController: SerializedEnemyFireController;
-}
-
-// 敵の直列化した形が取る種別タグ。
-const SERIALIZED_ENEMY_KINDS: Record<SerializedEnemy['kind'], true> = {
-  'metal-enemy': true, 'assembly-enemy': true,
-};
-
-// 直列化した実体が敵のものか。
-export function isSerializedEnemy(serialized: SerializedDynamicEntity): boolean {
-  return Object.hasOwn(SERIALIZED_ENEMY_KINDS, serialized.kind);
 }
 
 // 敵を置く識別・色・陣形所属と運動状態。具象はこれに固有の項目を足して使う。id を省くと採番器が
@@ -226,12 +214,8 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
   protected abstract applyBulletDamage(
     damage: number, impactPoint: Vec3, registry: EntityRegistry,
   ): void;
-  // 本体が失われるとき残る破片を registry へ足す。既定は金属の敵機と同じ撃破の破片。
-  protected scatterDebris(registry: EntityRegistry): void {
-    for (const piece of enemyDestroyFragments(
-      this.motion.state, ENEMY_MODEL_SCALE, registry.idAllocators,
-    )) registry.add(piece);
-  }
+  // 本体が失われるとき残る破片を registry へ足す。
+  protected abstract scatterDebris(registry: EntityRegistry): void;
   // 衝突ダメージを適用し、ダメージが発生したかを返す。しきい値未満なら false。
   protected abstract applyImpactDamage(damageSpeed: number): boolean;
   // 1発撃ったことを受ける。muzzleState は砲口の位置と機体の速度。

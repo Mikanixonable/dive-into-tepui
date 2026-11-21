@@ -2,14 +2,12 @@
 // **軌道は、置く位置で最も強く引く天体を中心とする二体の幾何で置く、ゲームバランスのための簡易な置き方。**
 // 高度はその天体の表面半径の球面から測る(扁平な天体の基準楕円体とのずれ — 地球の極で 21km — は
 // 出現高度の余裕に埋もれる)。
-import { qFromForwardUp, randomQuat } from '../../math/quat';
 import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { strongestAttractor } from '../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../physics/frame';
 import { semiMajorEccentricityFromApsides, stateFromOrbitalElements } from '../../physics/elements';
-import { cross, len, norm, rotateAxis, scale, v3 } from '../../math/vec3';
-import { driftingAttitude, type Enemy } from '../dynamic/entity/enemy';
-import { MetalEnemy } from '../dynamic/entity/metal-enemy';
+import { cross, len, norm, rotateAxis, scale } from '../../math/vec3';
+import type { Enemy } from '../dynamic/entity/enemy';
 import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { EntityIdAllocators } from '../dynamic/entity/entity-id';
@@ -23,29 +21,21 @@ function phasedState(referenceState: KinematicState, center: CelestialBody, dAlo
   return kinematicState<'primaryRel'>(referenceState.t, rotateAxis(rel.r, hHat, ang), rotateAxis(rel.v, hHat, ang));
 }
 
-// state に、無秩序に漂う金属の敵を生成する。
-export function generateDriftingEnemy(
-  name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number,
-  scene: THREE.Scene, idAllocators: EntityIdAllocators, attackGroupId?: string,
-): Enemy {
-  return MetalEnemy.create(
-    {
-      name, state, ...driftingAttitude(), accent, orbitLineColor, attackGroupId,
-      waveId: null, formationId: null, formationRole: null, typeIndex: null,
-    },
-    idAllocators, scene,
-  );
+// 個体の形を決める乱数の種を引く。種は出た個体の形を決めるだけなので、呼ぶたびに新しい乱数でよい。
+function randomShapeSeed(): number {
+  return Math.floor(Math.random() * 2 ** 31);
 }
 
-// state に、無秩序に漂う組み立て型の敵を生成する。seed が個体の形を決める(SPEC/ASSEMBLY.md)。
-export function generateAssemblyEnemy(
-  name: string, state: KinematicState, seed: number, accent: string | number, orbitLineColor: string | number,
-  scene: THREE.Scene, idAllocators: EntityIdAllocators,
+// state に、不規則な姿勢と回転で漂う組み立て型の敵(SPEC/ASSEMBLY.md)を生成する。形は個体ごとに
+// 新しく生成する。waveId はウェーブに属する敵の番号で、属さなければ null。
+export function generateDriftingEnemy(
+  name: string, state: KinematicState, accent: string | number, orbitLineColor: string | number,
+  scene: THREE.Scene, idAllocators: EntityIdAllocators, attackGroupId?: string, waveId: number | null = null,
 ): Enemy {
   return AssemblyEnemy.create(
     {
-      name, state, seed, accent, orbitLineColor,
-      formationId: null, formationRole: null,
+      name, state, seed: randomShapeSeed(), accent, orbitLineColor, attackGroupId,
+      waveId, formationId: null, formationRole: null,
     },
     idAllocators, scene,
   );
@@ -119,32 +109,11 @@ export function generateMolniyaEnemy(
   return generateDriftingEnemy(name, addPrimaryRelative(center.stateAt(referenceState.t), rel), accent, orbitLineColor, scene, idAllocators);
 }
 
-// 機首を中心天体(state の位置で最も強く引く天体)に対するプログレードへ向け、回転していない
-// 金属の敵を state に生成する。
+// 接近してくる波の敵を state に生成する。ウェーブに属さなければ waveId は null。
 export function generateApproachingEnemy(
-  name: string, state: KinematicState, attractors: readonly CelestialBody[], accent: number, orbitLineColor: number,
-  typeIndex: number, waveId: number | null,
+  name: string, state: KinematicState, accent: number, orbitLineColor: number, waveId: number | null,
   scene: THREE.Scene, idAllocators: EntityIdAllocators,
   attackGroupId?: string,
 ): Enemy {
-  const center = strongestAttractor(state.r, attractors, state.t);
-  const rel = toFrameState(frameOfCelestialBody(center, state.t), state);
-  return MetalEnemy.create(
-    {
-      name,
-      state,
-      // 機首を中心天体に対するプログレードへ、上を中心天体の反対側へ向ける
-      q: qFromForwardUp(rel.v, rel.r) ?? randomQuat(),
-      w: v3(0, 0, 0),
-      accent,
-      orbitLineColor,
-      attackGroupId,
-      waveId,
-      formationId: null,
-      formationRole: null,
-      typeIndex,
-    },
-    idAllocators,
-    scene,
-  );
+  return generateDriftingEnemy(name, state, accent, orbitLineColor, scene, idAllocators, attackGroupId, waveId);
 }

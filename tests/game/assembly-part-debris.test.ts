@@ -88,6 +88,7 @@ function newEnemy(seed: number): AssemblyEnemy {
     seed,
     accent: ACCENT,
     orbitLineColor: ACCENT,
+    waveId: null,
     formationId: null,
     formationRole: null,
   }, new EntityIdAllocators());

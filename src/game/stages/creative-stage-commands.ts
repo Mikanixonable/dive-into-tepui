@@ -1,6 +1,5 @@
 // クリエイティブステージへ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
-import type { EnemySpawnShape } from '../creative/manual-spawn';
 import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
@@ -23,7 +22,7 @@ export interface CreativeStageCommands {
   // 手動スポーンが使う距離 [m] を差し替える。
   setSpawnDistance(distanceM: number): void;
   // shape で選んだ形・色の敵を1体、自機の前方へ出す。
-  spawnManualEnemy(shape: EnemySpawnShape, colorValue: string): void;
+  spawnManualEnemy(colorValue: string): void;
   // 検証を通った配置の指定から物体を作り、シミュレーション対象へ追加する。
   placeObject(name: string, selection: ObjectPlacementSelection, state: KinematicState): void;
   // 検証を通った配置の指定から軌道標識を作り、台帳へ追加する。
@@ -40,7 +39,7 @@ export function creativeStageCommands(queue: CommandQueue, stage: CreativeStage)
     refillShipRcsFuel: () => queue.submit(() => stage.refillShipRcsFuel()),
     refillBaseFuel: () => queue.submit(() => stage.refillBaseFuel()),
     setSpawnDistance: (distanceM) => queue.submit(() => stage.setSpawnDistance(distanceM)),
-    spawnManualEnemy: (shape, colorValue) => queue.submit(() => stage.spawnManualEnemy(shape, colorValue)),
+    spawnManualEnemy: colorValue => queue.submit(() => stage.spawnManualEnemy(colorValue)),
     placeObject: (name, selection, state) => queue.submit(() => stage.placeObject(name, selection, state)),
     placeOrbitSlot: (name, orbit) => queue.submit(() => stage.placeOrbitSlot(name, orbit)),
   };
