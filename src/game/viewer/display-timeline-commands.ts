@@ -2,22 +2,18 @@
 import type { FrameRotationSource } from '../../physics/frame';
 import type { CommandQueue } from '../command-queue';
 import type {
-  DisplayDurationKey, DisplayPastDurationKey, DisplayTimelineSelection, TickLabelMode,
+  DisplayDurationKey, DisplayTimelineSelection, TickLabelMode,
 } from './display-timeline-selection';
 
 // タイムラインパネルの選択を外から変える命令。受け付けるだけで、適用は次の進行の位相。
 export interface DisplayTimelineCommands {
-  // 未来側の表示期間を key へ切り替える。
+  // 表示期間を key へ切り替える。
   selectDuration(key: Exclude<DisplayDurationKey, 'custom'>): void;
-  // 未来側の任意期間を sec にして選ぶ。
+  // 任意の表示期間を sec にして選ぶ。
   selectCustomDuration(sec: number): void;
-  // 過去側の表示期間を key へ切り替える。
-  selectPastDuration(key: Exclude<DisplayPastDurationKey, 'custom'>): void;
-  // 過去側の任意期間を sec にして選ぶ。
-  selectCustomPastDuration(sec: number): void;
-  // スクラブ位置を表示期間に対する比率 t へ移す。
+  // スクラブ位置を時間軸全域に対する位置 t(0.5 が現在)へ移す。
   setSliderT(t: number): void;
-  // 表示期間 durationSec の先頭から sec の位置へ移す。
+  // 現在からの相対時刻 sec(負なら過去側)へスクラブ位置を移す。
   jumpToTime(sec: number, durationSec: number): void;
   // 時刻ラベルの表記を mode へ切り替える。
   setTickLabelMode(mode: TickLabelMode): void;
@@ -33,6 +29,8 @@ export interface DisplayTimelineCommands {
   setFollowCamera(on: boolean): void;
   // カメラの基準が id へ移ったことを伝える。
   followCameraFocus(id: string | null): void;
+  // カメラの回転追従が rotatingWith へ変わったことを伝える。
+  followCameraRotation(rotatingWith: FrameRotationSource | null): void;
   // 描画座標系の回転を外す。
   dropRotation(): void;
 }
@@ -41,11 +39,10 @@ export interface DisplayTimelineCommands {
 export function displayTimelineCommands(
   queue: CommandQueue, selection: DisplayTimelineSelection,
 ): DisplayTimelineCommands {
+  // UI から受け取った選択変更を、進行で適用する命令として積む。
   return {
     selectDuration: (key) => queue.submit(() => selection.selectDuration(key)),
     selectCustomDuration: (sec) => queue.submit(() => selection.selectCustomDuration(sec)),
-    selectPastDuration: (key) => queue.submit(() => selection.selectPastDuration(key)),
-    selectCustomPastDuration: (sec) => queue.submit(() => selection.selectCustomPastDuration(sec)),
     setSliderT: (t) => queue.submit(() => selection.setSliderT(t)),
     jumpToTime: (sec, durationSec) => queue.submit(() => selection.jumpToTime(sec, durationSec)),
     setTickLabelMode: (mode) => queue.submit(() => selection.setTickLabelMode(mode)),
@@ -55,6 +52,7 @@ export function displayTimelineCommands(
     setFrameRotation: (rotatingWith) => queue.submit(() => selection.setFrameRotation(rotatingWith)),
     setFollowCamera: (on) => queue.submit(() => selection.setFollowCamera(on)),
     followCameraFocus: (id) => queue.submit(() => selection.followCameraFocus(id)),
+    followCameraRotation: (rotatingWith) => queue.submit(() => selection.followCameraRotation(rotatingWith)),
     dropRotation: () => queue.submit(() => selection.dropRotation()),
   };
 }

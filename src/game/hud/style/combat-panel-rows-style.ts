@@ -6,7 +6,7 @@ export const COMBAT_PANEL_ROWS_STYLE = `
 #burn-management-panel .burn-management-metrics { gap: 1px; }
 #burn-management-panel .burn-fuel-readout {
   display: inline-grid; grid-template-columns: minmax(64px, 1fr) auto;
-  align-items: center; gap: 6px; width: 128px;
+  align-items: center; gap: var(--space-3); width: 128px;
 }
 #burn-management-panel .burn-fuel-value {
   min-width: 48px; color: var(--text); font-size: var(--font-xxs);

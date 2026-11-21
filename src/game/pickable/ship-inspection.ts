@@ -50,23 +50,25 @@ export class ShipInspection implements InspectedObject {
   };
   public readonly onMapFocus = (selection: ControlSelection): void => selection.select(this.ship);
 
+  // 現在の位置・速度から船の群マーカー用データを返す。
   public markerItem(viewerPos: Parameters<ModularShip['markerItem']>[0], pos: Parameters<ModularShip['markerItem']>[1],
     vel: Parameters<ModularShip['markerItem']>[2], view: ViewMode, isActive: boolean): GroupedMarkerItem {
     return this.ship.markerItem(viewerPos, pos, vel, view, isActive);
   }
   public posAt(displayTime: number): Vec3 | null { return this.ship.motion.stateAt(displayTime)?.r ?? null; }
   public shownOnMap(markers: MarkerVisibility): boolean { return markers.shows(this.ship.markerKey); }
+  // 指定位置の船体が ray と交差するか判定する。
   public hitBodyByRay(ray: Parameters<ModularShip['hitBodyByRay']>[0], pos: Parameters<ModularShip['hitBodyByRay']>[1]): boolean {
     return this.ship.hitBodyByRay(ray, pos);
   }
+  // 種別と操作対象に応じた船のマップ表示条件を返す。
   public mapVisibility(
     policy: Parameters<ModularShip['mapVisibility']>[0], viewer: OrbitingObject | null,
   ): MapVisibility {
     return this.ship.mapVisibility(policy, viewer);
   }
   public listCounted(): boolean { return false; }
-  public listPriority(viewer: OrbitingObject | null): number { return this.ship === viewer ? -100 : 0; }
-  // 一覧の詳細行。役割・HP・近点高度(PE)を並べる。
+  // 札と検索の行へ添える補助表示。役割・HP・近点高度(PE)を並べる。
   public listDetail(celestialBodies: CelestialBodies): string {
     const center = strongestAttractor(this.ship.motion.state.r, celestialBodies.celestialMotions, this.ship.motion.state.t);
     const elements = this.ship.motion.orbitalElementsAround(center, this.ship.motion.state.t);
@@ -89,6 +91,7 @@ export class ShipInspection implements InspectedObject {
       MenuCommon.cancel(),
     ];
   }
+  // 選択・計画・配置に関する船のメニュー操作を適用する。
   public runMenu(act: MenuAction, selection: ControlSelection, authoring: PresentationStageAuthoring | null): void {
     if (act === 'toggleTrajectoryLine') this.ship.trajectoryLineVisible = !this.ship.trajectoryLineVisible;
     else if (act === 'activate') selection.select(this.ship);

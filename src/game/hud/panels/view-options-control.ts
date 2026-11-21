@@ -3,7 +3,6 @@
 // (視点)として扱う。
 import { catalogFamilyIndex } from '../../celestial/orbit-guide/orbit-guide-catalog';
 import { normalizeOrbitGuideSettings } from '../../viewer/orbit-guide-settings';
-import { applyMapDisplayMode } from '../../map/display-toggles';
 import { ViewOptionsPanel } from './view-options-panel';
 import type { OrbitGuideCommands } from '../../viewer/orbit-guide-commands';
 import type { OrbitGuideSource } from '../../viewer/orbit-guide-selection';
@@ -22,13 +21,13 @@ export class ViewOptionsControl {
   ) {
     this.panel = new ViewOptionsPanel(root, collapse, catalogFamilyIndex());
 
-    // 天体クラスの表示。1ボタンが循環する表示状態を、保存される boolean の組へ畳む。
-    this.panel.onBodyClassModeChange = (key, mode) => {
-      const next = applyMapDisplayMode(settings.mapDisplay.current, key, mode);
+    // 対象クラスのラベル・軌道線。互いに独立したトグルとして書き戻す。
+    this.panel.onMapDisplayToggle = (key, on) => {
+      const next = { ...settings.mapDisplay.current, [key]: on };
       settings.onMapDisplayChange(next);
-      this.panel.setBodyClassToggles(next);
+      this.panel.setMapDisplayToggles(next);
     };
-    this.panel.setBodyClassToggles(settings.mapDisplay.current);
+    this.panel.setMapDisplayToggles(settings.mapDisplay.current);
 
     this.panel.onRenderStyleChange = (style) => {
       settings.onRenderStyleChange(style);

@@ -37,14 +37,14 @@ export const SHIP_CONSTRUCTION_STYLE = `
   display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 3px; margin-bottom: var(--space-3);
 }
 #ship-construction-panel .construction-category-tabs .w-btn {
-  min-width: 0; padding: var(--space-2) 2px; font-size: var(--font-xxs);
+  min-width: 0; padding: var(--space-2) var(--space-1); font-size: var(--font-xxs);
 }
 /* カードはサムネイルを持つタイルとして複数列に並べる。タイル幅の下限はタップ最小寸法の
    2倍で、これより狭い列は作らず列数を減らす。 */
 #ship-construction-panel .construction-module-cards {
   display: grid; flex: 1 1 auto; min-height: 0; align-content: start; gap: var(--space-2);
   grid-template-columns: repeat(auto-fill, minmax(calc(var(--hit-target-min) * 2), 1fr));
-  overflow-y: auto; padding-right: 2px; scrollbar-width: thin;
+  overflow-y: auto; padding-right: var(--space-1); scrollbar-width: thin;
 }
 #ship-construction-panel .construction-module-card {
   display: flex; min-width: 0; flex-direction: column;
@@ -129,7 +129,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
   grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2);
 }
 #ship-construction-panel .construction-metric {
-  display: grid; align-content: start; gap: 2px; min-width: 0;
+  display: grid; align-content: start; gap: var(--space-1); min-width: 0;
   padding: var(--space-3); border-radius: var(--radius-micro); background: var(--glass-inset);
 }
 #ship-construction-panel .construction-metric output {
@@ -145,7 +145,7 @@ export const SHIP_CONSTRUCTION_STYLE = `
   max-height: 154px; overflow-y: auto; scrollbar-width: thin;
 }
 #ship-construction-panel .construction-slot-button {
-  min-height: 44px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-height: var(--hit-target-min); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 #ship-construction-panel .construction-slot-button[data-valid="false"] { color: var(--color-warning); }
 #ship-construction-panel .construction-slot-reason {

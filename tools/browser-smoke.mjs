@@ -383,10 +383,10 @@ async function checkMapLayout() {
         const el = document.getElementById(id);
         if (visible(el) && !insideViewport(rect(el))) errors.push('outside viewport: ' + id);
       }
-      const objectList = document.getElementById('hud-physical-object-list');
+      const objectPanel = document.getElementById('hud-orbital-objects');
       const plan = document.getElementById('hud-plan');
-      if (visible(objectList) && visible(plan) && overlaps(rect(objectList), rect(plan))) {
-        errors.push('object list overlaps maneuver plan');
+      if (visible(objectPanel) && visible(plan) && overlaps(rect(objectPanel), rect(plan))) {
+        errors.push('orbital object panel overlaps maneuver plan');
       }
       const predict = document.getElementById('hud-predict-wrap');
       const predictRect = visible(predict) ? rect(predict) : null;
@@ -976,7 +976,7 @@ async function runConfiguredScenario() {
         mapView: Boolean(document.querySelector('.hud-map-root.active')),
         viewOptionsShown: visible(document.getElementById('hud-view-options')),
         frameControlsShown: [...document.querySelectorAll('.hud-map-root.active .hud-frame-controls')].some(visible),
-        objectListShown: visible(document.getElementById('hud-physical-object-list')),
+        objectPanelShown: visible(document.getElementById('hud-orbital-objects')),
         predictShown: visible(document.getElementById('hud-predict')),
         statusHidden: !visible(document.getElementById('hud-status')),
         placerClosed: !visible(document.getElementById('hud-object-placer')),
@@ -1046,49 +1046,47 @@ async function runConfiguredScenario() {
       })()`);
     }
 
-    // 配置した自艦の一覧行を右クリックするとプロパティウィンドウが開き、画面を狭めても
-    // 視界内に留まる。カメラ姿勢次第で天体マーカーがレールの下へ入ることには依存しない。
+    // 配置した自艦の検索結果からプロパティ窓を開き、狭い画面でも表示内に収まることを確認する。
     await devTools.evaluate(`(() => {
       const rail = document.querySelector('.hud-map-root.active .hud-rail-right');
       if (rail?.classList.contains('collapsed')) {
         document.querySelector('.hud-map-root.active .rail-toggle-right')?.click();
       }
+      const panel = document.getElementById('hud-orbital-objects');
+      panel?.querySelector('[aria-label="名前で探す"]')?.click();
+      const input = panel?.querySelector('.oo-search input');
+      if (input) {
+        input.value = ${JSON.stringify(placedName)};
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     })()`);
+    const findPlacedRow = `[...document.querySelectorAll('#hud-orbital-objects .oo-search-row')]
+      .find((row) => row.querySelector(':scope > span:not(.w-btn-icon)')?.textContent === ${JSON.stringify(placedName)})`;
     let placedRowReady = false;
     for (let attempt = 0; attempt < 80; attempt++) {
-      placedRowReady = await devTools.evaluate(`[...document.querySelectorAll(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
-      )].some((row) => row.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)})`);
+      placedRowReady = await devTools.evaluate(`Boolean(${findPlacedRow})`);
       if (placedRowReady) break;
       await sleep(100);
     }
     if (!placedRowReady) {
       const diagnostic = await devTools.evaluate(`(() => ({
         hint: document.getElementById('hud-hint')?.textContent ?? '',
-        tracked: document.querySelector('.physical-object-list-tracked')?.textContent ?? '',
-        playerRows: [...document.querySelectorAll('#hud-physical-object-list-section-player .physical-object-list-name')]
-          .map((el) => el.textContent),
-        baseRows: [...document.querySelectorAll('#hud-physical-object-list-section-base .physical-object-list-name')]
-          .map((el) => el.textContent),
+        rows: [...document.querySelectorAll('#hud-orbital-objects .oo-search-row')].map((el) => el.textContent),
       }))()`);
-      throw new Error(`Placed object ${placedName} did not populate the physical object list: ${JSON.stringify(diagnostic)}`);
+      throw new Error(`Placed object ${placedName} did not appear in the orbital object search: ${JSON.stringify(diagnostic)}`);
     }
     const shipRowState = await devTools.evaluate(`(() => {
-      const row = [...document.querySelectorAll(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
-      )].find((candidate) => candidate.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)});
+      const row = ${findPlacedRow};
       if (!row || getComputedStyle(row).display === 'none') return { row: null };
       const r = row.getBoundingClientRect();
-      return { row: { x: r.left + r.width / 2, y: r.top + r.height / 2, label: row.getAttribute('aria-label') } };
+      return { row: { x: r.left + r.width / 2, y: r.top + r.height / 2, label: row.textContent } };
     })()`);
     const shipRow = shipRowState.row;
     if (!shipRow) {
-      throw new Error(`The placed object ${placedName} row was hidden in the physical object list.`);
+      throw new Error(`The placed object ${placedName} row was hidden in the orbital object search.`);
     }
     await devTools.evaluate(`(() => {
-      const row = [...document.querySelectorAll(
-        '#hud-physical-object-list-section-player .erow, #hud-physical-object-list-section-base .erow'
-      )].find((candidate) => candidate.querySelector('.physical-object-list-name')?.textContent === ${JSON.stringify(placedName)});
+      const row = ${findPlacedRow};
       if (!row) throw new Error('placed object row disappeared before context menu');
       const r = row.getBoundingClientRect();
       row.dispatchEvent(new MouseEvent('contextmenu', {

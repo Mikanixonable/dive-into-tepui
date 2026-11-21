@@ -9,8 +9,8 @@ import {
 } from '../../src/physics/lagrange';
 import { OrbitingMotion } from '../../src/physics/celestial-motion';
 import {
-  applyMapDisplayMode, mapDisplayModeOf, celestialClassVisible, celestialNameVisible,
-  type MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, nextMapDisplayMode,
+  celestialClassVisible, celestialNameVisible,
+  type MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES,
 } from '../../src/game/map/display-toggles';
 import { alwaysFullyVisibleIds, MapVisibilityPolicy } from '../../src/game/map/visibility-policy';
 import { BODY_REVEAL_BASE, revealedAfterClear } from '../../src/game/celestial/body-reveal';
@@ -52,7 +52,9 @@ function massRatio(id: string): number {
   return motion.def.mu / (motion.primary!.def.mu + motion.def.mu);
 }
 
+// 可視性とラグランジュ点の成立条件を太陽系の事実で検査する。
 export function register(): void {
+  // 公転系の成立条件とマップ上の表示条件を、太陽系の静的事実で検査する。
   test('lagrange: Routh の臨界質量比は 27mu(1−mu) = 1 の解と一致する', () => {
     const mu = TRIANGULAR_STABILITY_MASS_RATIO;
     assert.ok(Math.abs(27 * mu * (1 - mu) - 1) < 1e-12, `27mu(1-mu) = ${27 * mu * (1 - mu)}`);
@@ -70,6 +72,7 @@ export function register(): void {
   });
 
   test('lagrange: 共線点の余裕は現行レジストリのしきい値の内外を再現する', () => {
+    // 登録値から L1 の余裕比を返す。
     const clearance = (id: string): number => {
       const def = motionOf(PARTS, id).def as { radius: number; orbit: { a?: number; kepler?: { a: number } } };
       const orbit = def.orbit.kepler ?? (def.orbit as { a: number });
@@ -108,26 +111,17 @@ export function register(): void {
     }
   });
 
-  test('visibility controls: 対象クラスは非表示→ラベル→軌道+ラベルを循環する', () => {
-    const orbit = mapDisplayModeOf(DEFAULT_MAP_DISPLAY_TOGGLES, 'planetVisible');
-    assert.equal(orbit, 'orbit');
-    assert.equal(nextMapDisplayMode(orbit, true), 'hidden');
-    assert.equal(nextMapDisplayMode('hidden', true), 'label');
-    assert.equal(nextMapDisplayMode('label', true), 'orbit');
+  test('visibility controls: ラベルと軌道線は独立で、両方を切ったときだけクラスが消える', () => {
+    const orbitOnly: MapDisplayToggles = { ...DEFAULT_MAP_DISPLAY_TOGGLES, planetName: false };
+    assert.equal(celestialClassVisible('planet', orbitOnly), true);
+    assert.equal(celestialNameVisible('planet', orbitOnly), false);
 
-    const label = applyMapDisplayMode(DEFAULT_MAP_DISPLAY_TOGGLES, 'planetVisible', 'label');
-    assert.equal(celestialClassVisible('planet', label), true);
-    assert.equal(label.planetName, true);
-    assert.equal(label.planetOrbit, false);
+    const labelOnly: MapDisplayToggles = { ...DEFAULT_MAP_DISPLAY_TOGGLES, planetOrbit: false };
+    assert.equal(celestialClassVisible('planet', labelOnly), true);
+    assert.equal(celestialNameVisible('planet', labelOnly), true);
 
-    const hidden = applyMapDisplayMode(label, 'planetVisible', 'hidden');
-    assert.equal(mapDisplayModeOf(hidden, 'planetVisible'), 'hidden');
-    assert.equal(celestialClassVisible('planet', hidden), false);
-    assert.equal(hidden.planetName, false);
-    assert.equal(hidden.planetOrbit, false);
-
-    assert.equal(nextMapDisplayMode('hidden', false), 'label');
-    assert.equal(nextMapDisplayMode('label', false), 'hidden');
+    const off: MapDisplayToggles = { ...orbitOnly, planetOrbit: false };
+    assert.equal(celestialClassVisible('planet', off), false);
   });
 
   test('visibility: フォーカス中の天体の子はトグル無しで見える', () => {
@@ -158,6 +152,7 @@ export function register(): void {
 
   // 天体ラベルの並びと字下げはこの深さで決まるので、その導出だけを固定する。
   test('visibility: 親子の深さは主星を 0 として数えられる', () => {
+    // 主星まで遡った親子階層の深さを返す。
     const depth = (id: string): number => {
       let d = 0;
       for (let cur = motionOf(PARTS, id).primary; cur !== null; cur = cur.primary) d++;

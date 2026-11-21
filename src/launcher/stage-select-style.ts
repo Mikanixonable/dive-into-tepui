@@ -22,12 +22,12 @@ const STAGE_SELECT_STYLE = `
 }
 #stage-select .ss-shell {
   width: min(calc(100% - 24px), 1160px); height: 100%; min-height: 0; box-sizing: border-box;
-  margin-inline: auto; display: grid; place-items: center; padding-block: 18px;
+  margin-inline: auto; display: grid; place-items: center; padding-block: var(--space-6);
 }
 #stage-select .ss-layout {
   width: 100%; height: min(680px, calc(100dvh - 36px)); min-height: 0;
   display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
-  gap: 12px; align-items: stretch;
+  gap: var(--space-5); align-items: stretch;
 }
 #stage-select .ss-3d-window {
   position: relative; width: 100%; height: 100%; min-height: 0;
@@ -66,10 +66,10 @@ const STAGE_SELECT_STYLE = `
   font-size: clamp(21px, 3vw, 36px); font-weight: 300; line-height: 0.92;
 }
 #stage-select .ss-subrow {
-  display: flex; align-items: end; justify-content: space-between; gap: 18px; margin-top: 20px;
+  display: flex; align-items: end; justify-content: space-between; gap: var(--space-6); margin-top: 20px;
 }
 #stage-select .ss-languages {
-  display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 16px; margin: 12px 0 0 0.2em;
+  display: flex; align-items: flex-end; flex-wrap: wrap; gap: 10px 16px; margin: var(--space-5) 0 0 0.2em;
 }
 #stage-select .ss-script-block { min-width: 0; max-width: 100%; }
 #stage-select .ss-script-block[hidden] { display: none; }
@@ -103,7 +103,7 @@ const STAGE_SELECT_STYLE = `
   position: relative;
   min-height: 0; height: 100%; box-sizing: border-box;
   display: flex; flex-direction: column; gap: 14px;
-  padding: 18px;
+  padding: var(--space-6);
   border-radius: ${RADIUS_HERO};
   overflow: hidden;
 }
@@ -117,7 +117,7 @@ const STAGE_SELECT_STYLE = `
 #stage-select .ss-window > .ss-debug,
 #stage-select .ss-window > .ss-settings { position: relative; z-index: 1; }
 #stage-select .ss-window-title {
-  margin: 0 0 2px 8px; color: var(--text-dim);
+  margin: 0 0 var(--space-1) var(--space-4); color: var(--text-dim);
   font-size: 15px; font-weight: 600; letter-spacing: 0.04em;
 }
 #stage-select .w-tabs {
@@ -125,7 +125,7 @@ const STAGE_SELECT_STYLE = `
   border-radius: var(--radius-panel);
 }
 #stage-select .w-tabs .w-btn {
-  position: relative; flex: 1; min-height: 44px; padding: var(--space-3) var(--space-4);
+  position: relative; flex: 1; min-height: var(--hit-target-min); padding: var(--space-3) var(--space-4);
   display: inline-flex; align-items: center; justify-content: center; text-align: center;
   border: 0; border-radius: var(--radius-control);
   background: transparent; color: var(--text-dim);
@@ -140,10 +140,10 @@ const STAGE_SELECT_STYLE = `
 }
 #stage-select .ss-list {
   min-height: 0; flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 10px;
-  padding: 2px 0;
+  padding: var(--space-1) 0;
 }
 #stage-select .ss-stage {
-  box-sizing: border-box; min-height: 44px; padding: 14px 20px;
+  box-sizing: border-box; min-height: var(--hit-target-min); padding: 14px 20px;
   border-radius: var(--radius-control);
   background: var(--glass-control); border: 0; cursor: pointer; text-align: left;
   transition: background var(--transition-fast);
@@ -160,23 +160,26 @@ const STAGE_SELECT_STYLE = `
 #stage-select .ss-stage-key { font-family: ${TITLE_FONT_MONO}; font-size: 11px; font-weight: 500; color: var(--text-dim); }
 #stage-select .ss-stage-sub { margin-top: 3px; color: var(--text-dim); font-size: 12px; line-height: 1.55; }
 #stage-select .ss-debug {
-  flex: 0 0 auto; padding-top: 12px; color: var(--text-faint);
-  font-family: ${TITLE_FONT_MONO}; font-size: 11px; cursor: pointer;
+  flex: 0 0 auto; padding: var(--space-5) 0 0; border: 0; background: none;
+  color: var(--text-faint); font-family: ${TITLE_FONT_MONO}; font-size: 11px;
+  cursor: pointer; text-align: left;
 }
-#stage-select .ss-settings { align-self: flex-end; flex: 0 0 auto; margin-top: 2px; }
+#stage-select .ss-debug:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+#stage-select .ss-stage:focus-visible, #stage-select .ss-settings:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+#stage-select .ss-settings { align-self: flex-end; flex: 0 0 auto; margin-top: var(--space-1); }
 #stage-select .hidden { display: none !important; }
 #stage-select .ss-datetime { display: flex; flex-direction: column; gap: 14px; }
-#stage-select .ss-datetime-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+#stage-select .ss-datetime-fields { display: flex; flex-wrap: wrap; gap: var(--space-5); }
 #stage-select .ss-datetime-field {
-  display: flex; flex-direction: column; gap: 4px;
+  display: flex; flex-direction: column; gap: var(--space-2);
   color: var(--text-dim); font-family: ${TITLE_FONT_SANS}; font-size: 11px; letter-spacing: 0.04em;
 }
 #stage-select .ss-datetime-field .w-input { width: 88px; }
 #stage-select .ss-datetime-error { margin: 0; color: var(--color-signal); font-size: 12px; }
 #stage-select .ss-datetime-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: auto; }
 @media ${MQ_COMPACT} {
-  #stage-select .ss-shell { place-items: center; padding-block: 12px; }
-  #stage-select .ss-layout { height: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  #stage-select .ss-shell { place-items: center; padding-block: var(--space-5); }
+  #stage-select .ss-layout { height: 100%; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-5); }
   #stage-select .ss-3d-window,
   #stage-select .ss-window { height: auto; min-height: 0; border-radius: 24px; }
   #stage-select .ss-hero { inset: auto 20px 22px; }
@@ -189,8 +192,8 @@ const STAGE_SELECT_STYLE = `
   #stage-select .ss-script { max-width: 100%; }
 }
 @media ${MQ_SHORT} {
-  #stage-select .ss-shell { padding-block: 8px; }
-  #stage-select .ss-layout { gap: 8px; }
+  #stage-select .ss-shell { padding-block: var(--space-4); }
+  #stage-select .ss-layout { gap: var(--space-4); }
   #stage-select .ss-hero { inset: auto 16px 16px; transform: scale(0.78); transform-origin: bottom left; width: 128%; }
 }
 `;

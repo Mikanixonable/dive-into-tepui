@@ -2,6 +2,7 @@
 import { STAGE_CLASSES } from '../game/stages/stage-dictionary';
 import { StageDebug } from '../game/stages/stage-debug';
 import { Button, TabBar } from '../hud/widgets';
+import { bindActivation } from '../hud/widgets/widget-base';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import { TITLE_LOGOTYPE_HTML } from '../hud/title-logotype';
@@ -248,7 +249,7 @@ class StageSelectScreen {
   private readonly root = createScreenElement();
   private readonly stageList = document.createElement('div');
   private readonly tabBar: TabBar<string>;
-  private readonly debugLink = document.createElement('div');
+  private readonly debugLink = document.createElement('button');
   private readonly settingsButton: Button;
   private readonly startEpochForm: StartEpochForm;
   // 解放済みのステージ。画面を開いた時点の解放状況で決まる。
@@ -259,6 +260,7 @@ class StageSelectScreen {
   // 隠し要素「共鳴」: ロゴを 1.2 秒以内の間隔で5回続けて押すと、背景の物体が共鳴する(GAME.md 1.1)。
   private logotypeClicks = 0;
   private lastLogotypeClickAt = Number.NEGATIVE_INFINITY;
+  // 規定時間内の連打だけを数え、条件成立時にタイトル背景へ共鳴を伝える。
   private readonly onLogotypeClick = (): void => {
     const now = performance.now();
     this.logotypeClicks = now - this.lastLogotypeClickAt <= RESONANCE_CLICK_GAP_MS ? this.logotypeClicks + 1 : 1;
@@ -295,6 +297,7 @@ class StageSelectScreen {
     if (groups[0]) this.showGroup(groups[0]);
 
     // 隅の控えめなリンクからデバッグステージへ移動できる。
+    this.debugLink.type = 'button';
     this.debugLink.className = 'ss-debug';
     this.debugLink.textContent = 'debug stage';
     this.debugLink.addEventListener('click', () => this.select(StageDebug));
@@ -346,7 +349,9 @@ class StageSelectScreen {
       `<div class="ss-stage-sub">${sub}</div>`;
     // 押したときの選択。
     if (unlocked) {
-      row.addEventListener('click', () => {
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
+      bindActivation(row, () => {
         if (stageClass.picksStartEpoch) this.openStartEpochForm(stageClass);
         else this.select(stageClass);
       });

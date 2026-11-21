@@ -1,17 +1,20 @@
-// プロパティウィンドウの値表示。hero/major を上段の Summary、通常値を Metric Grid、
-// group を意味単位の折りたたみ Section、collapsible/detail を末尾の詳細欄として組む。
-// presentation 未指定の既存 PropertyRow は metric として扱い、旧データとの互換性を保つ。
+// プロパティ行を要約・通常値・グループ・詳細欄に分けて表示する。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
+import { bindActivation } from '../widgets/widget-base';
 import type { ReclampingWindow } from './draggable-window';
 import type { PropertyRow, PropertyRowPresentation } from './property-window-content';
 
+// 展開中は名前だけ、閉じているときは行数も含めたラベルを返す。
 function groupToggleLabel(name: string, rowCount: number, expanded: boolean): string {
+  // 閉じているときだけ、グループ内の行数を見出しに添える。
   return expanded
     ? `${COLLAPSE_EXPANDED_GLYPH} ${name}`
     : `${COLLAPSE_COLLAPSED_GLYPH} ${name} (${rowCount})`;
 }
 
+// 表示形式を省略した行には通常値の形式を適用する。
 function presentationOf(row: PropertyRow): PropertyRowPresentation {
+  // 表示形式が省略された行は通常値として扱う。
   return row.presentation ?? 'metric';
 }
 
@@ -24,16 +27,19 @@ export class PropertyWindowRows {
   private collapsibleExpanded = false;
   private readonly groupExpanded = new Map<string, boolean>();
 
+  // 内容の開閉後にウィンドウの表示範囲を整えるため、所有ウィンドウを受け取る。
   public constructor(private readonly win: ReclampingWindow) {
     this.element = document.createElement('div');
     this.element.className = 'prop-window-rows';
   }
 
+  // 行の形が同じなら値だけ更新し、形が変わったときは表示区画を組み直す。
   public sync(rows: readonly PropertyRow[]): void {
     const shapeKey = JSON.stringify(rows.map((r) => [
       r.key, r.label, r.group ?? null, r.collapsible === true, presentationOf(r),
     ]));
     if (shapeKey === this.lastRowShapeKey) {
+      // 構造が同じなら値だけを差し替え、折りたたみ状態と行 DOM を維持する。
       for (const r of rows) {
         if (this.lastRowValues.get(r.key) === r.value) continue;
         this.lastRowValues.set(r.key, r.value);
@@ -57,6 +63,7 @@ export class PropertyWindowRows {
     const groupNames: string[] = [];
     const groupRows = new Map<string, PropertyRow[]>();
 
+    // 表示形式ごとに分けてから、要約・通常値・グループ・詳細の順で並べる。
     for (const row of rows) {
       const presentation = presentationOf(row);
       if (row.group !== undefined) {
@@ -101,16 +108,8 @@ export class PropertyWindowRows {
       toggle.className = 'prop-window-row-toggle';
       toggle.setAttribute('role', 'button');
       toggle.tabIndex = 0;
-      const activate = (e: Event): void => {
-        e.stopPropagation();
-        this.setCollapsibleExpanded(!this.collapsibleExpanded);
-      };
-      toggle.addEventListener('click', activate);
-      toggle.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        activate(e);
-      });
+      toggle.setAttribute('aria-expanded', String(this.collapsibleExpanded));
+      bindActivation(toggle, () => this.setCollapsibleExpanded(!this.collapsibleExpanded));
       this.element.appendChild(toggle);
       this.toggleEl = toggle;
 
@@ -120,11 +119,13 @@ export class PropertyWindowRows {
       this.element.appendChild(container);
       this.collapsibleContainerEl = container;
       this.syncToggleLabel(collapsibleRows.length);
-      container.style.display = this.collapsibleExpanded ? '' : 'none';
+      container.classList.toggle('hidden', !this.collapsibleExpanded);
     }
   }
 
+  // 表示形式に応じたクラスを持つ値行を追加し、次回の差分同期用に値を記録する。
   private appendRowEl(container: HTMLElement, row: PropertyRow): void {
+    // 表示形式をクラスへ反映し、次回の値だけの同期に使う値を記録する。
     const presentation = presentationOf(row);
     const rowEl = document.createElement('div');
     rowEl.className = `prop-window-row prop-window-row-${presentation}`;
@@ -140,36 +141,31 @@ export class PropertyWindowRows {
     this.lastRowValues.set(row.key, row.value);
   }
 
+  // 展開状態をグループ名ごとに保持する折りたたみ区画を追加する。
   private appendGroupEl(name: string, rows: readonly PropertyRow[]): void {
+    // 展開状態はグループ名ごとに保持し、行の再同期後も同じグループへ戻す。
     const expanded = this.groupExpanded.get(name) ?? false;
     const toggle = document.createElement('div');
     toggle.className = 'prop-window-row-group-toggle';
     toggle.setAttribute('role', 'button');
     toggle.tabIndex = 0;
+    toggle.setAttribute('aria-expanded', String(expanded));
     toggle.textContent = groupToggleLabel(name, rows.length, expanded);
 
     const container = document.createElement('div');
     container.className = 'prop-window-section';
-    container.style.display = expanded ? '' : 'none';
+    container.classList.toggle('hidden', !expanded);
     for (const row of rows) this.appendRowEl(container, row);
 
     const setExpanded = (): void => {
       const next = !(this.groupExpanded.get(name) ?? false);
       this.groupExpanded.set(name, next);
       toggle.textContent = groupToggleLabel(name, rows.length, next);
-      container.style.display = next ? '' : 'none';
+      toggle.setAttribute('aria-expanded', String(next));
+      container.classList.toggle('hidden', !next);
       this.reclamp();
     };
-    toggle.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setExpanded();
-    });
-    toggle.addEventListener('keydown', (e) => {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
-      e.preventDefault();
-      e.stopPropagation();
-      setExpanded();
-    });
+    bindActivation(toggle, setExpanded);
 
     this.element.append(toggle, container);
   }
@@ -181,9 +177,12 @@ export class PropertyWindowRows {
       : `${COLLAPSE_COLLAPSED_GLYPH} DETAILS / ${count}`;
   }
 
+  // 詳細欄の表示状態を更新し、変化後の内容に合わせてウィンドウを補正する。
   private setCollapsibleExpanded(expanded: boolean): void {
+    // 詳細欄の開閉表示と、ウィンドウの内容に応じた高さ補正を同期する。
     this.collapsibleExpanded = expanded;
-    if (this.collapsibleContainerEl) this.collapsibleContainerEl.style.display = expanded ? '' : 'none';
+    this.collapsibleContainerEl?.classList.toggle('hidden', !expanded);
+    this.toggleEl?.setAttribute('aria-expanded', String(expanded));
     this.syncToggleLabel(this.collapsibleContainerEl?.childElementCount ?? 0);
     this.reclamp();
   }

@@ -90,7 +90,9 @@ export abstract class OrbitPointMarker implements ObjectPickable {
     const base = {
       id: this.id, cls: this.markerClass, sym: this.glyph, priority: this.markerPriority,
     };
+    // 位置が未確定の点は画面上の候補へ含めない。
     if (this.pos === null) return { ...base, x: 0, y: 0, front: false };
+    // 遮蔽された点は投影座標を伏せて返す。
     if (occludeByBodies && isOccluded(cameraPos, this.pos, occluders, occludersPivot)) {
       return { ...base, x: 0, y: 0, front: false, occluded: true };
     }
@@ -146,5 +148,4 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   public listDetail(): string { return ''; }
   public listSearchText(): string { return ''; }
   public listCounted(): boolean { return false; }
-  public listPriority(): number { return 0; }
 }

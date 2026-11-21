@@ -209,7 +209,8 @@ export class GamePresentation {
     );
     const timelineCommands = displayTimelineCommands(commands, viewer.displayTimeline);
     this.displayWindowManager = new DisplayWindowManager(
-      hud.mapRoot, hud.panelCollapse, celestialSystem, viewer.displayTimeline, timelineCommands,
+      hud.mapRoot, hud.panelCollapse, hud.overlayManager,
+      celestialSystem, viewer.displayTimeline, timelineCommands,
     );
     this.confirmation = new ConfirmationOverlay(hud.overlayManager);
     this.input = new Input(scene.renderer.domElement);
@@ -326,6 +327,7 @@ export class GamePresentation {
   // 入力の解釈が読む、ランの操作の口。
   private gameInputSource(): GameInputSource {
     const game = this.game;
+    // 入力中に変わる状態は getter で最新値を渡す。
     return {
       commands: game.commands,
       simSpeedManager: game.simSpeedManager,

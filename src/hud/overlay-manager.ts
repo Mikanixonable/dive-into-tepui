@@ -102,6 +102,11 @@ export class OverlayManager {
     return this.stack.some((e) => e.spec.kind === 'modal' && e.spec.gatesInput);
   }
 
+  // 表面を持つオーバーレイ(モード登録でないもの)が1つでも開いているか。
+  public hasOpenSurface(): boolean {
+    return this.stack.some((e) => e.spec.kind !== 'mode');
+  }
+
   // ゲームの時間を止めるオーバーレイ(pausesGame:true)が1つでも開いているか。
   public isGamePaused(): boolean {
     return this.stack.some((e) => e.spec.pausesGame === true);
@@ -184,6 +189,9 @@ export class OverlayManager {
     for (let i = this.stack.length - 1; i >= 0; i--) {
       const entry = this.stack[i]!;
       if (entry.handle.handleShortcut?.(code)) return true;
+      // モーダルより下の層へは届けない — 見えないオーバーレイがキーで状態を変えないよう、
+      // モーダルを確認した時点で走査を打ち切る。
+      if (entry.spec.kind === 'modal') return false;
     }
     return false;
   }

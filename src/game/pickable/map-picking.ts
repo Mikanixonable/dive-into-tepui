@@ -1,4 +1,4 @@
-// マップ上のクリックを候補列へヒットテストし、対象の被選択物ウィンドウや注視対象へディスパッチする。軌道物体一覧
+// マップ上のクリックを候補列へヒットテストし、対象の被選択物ウィンドウや注視対象へディスパッチする。軌道物体
 // パネルと軌道線のプロパティウィンドウも持つ。
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud/notifier';
@@ -10,12 +10,11 @@ import type { ObjectPickables } from './object-pickables';
 import type { ObjectWindows } from './object-windows';
 import { OrbitLineWindows } from './orbit-line-windows';
 import { focusTargetId } from '../viewer/focus-target';
-import { PhysicalObjectListPanel } from '../hud/panels/physical-object-list-panel';
+import { OrbitalObjectPanel } from '../hud/panels/orbital-object-panel';
 import type { Input } from '../../input/input';
 import { pickRadiusSq } from '../../input/pointer-precision';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { CelestialMarkers } from '../marker/celestial-markers';
 import type { MarkerVisibility } from '../../marker/marker-visibility';
 import type { NavTargetPresenter } from '../nav-target-presenter';
 import type { NavTargetCommands } from '../viewer/nav-target-commands';
@@ -35,16 +34,15 @@ const OBJECT_PICK_PX_SQ_COARSE = 1936;
 const ORBIT_LINE_PICK_PX_SQ_COARSE = 1936;
 
 export class MapPicking {
-  private readonly listPanel: PhysicalObjectListPanel;
+  private readonly objectPanel: OrbitalObjectPanel;
   private readonly orbitLineWindows: OrbitLineWindows;
 
-  // 一覧パネルと軌道線ウィンドウを組み、一覧の行操作を注視・ターゲット・ウィンドウへ繋ぐ。
+  // 軌道物体パネルと軌道線ウィンドウを組み、パネルの操作を注視・ターゲット・ウィンドウへ繋ぐ。
   public constructor(
     private readonly hud: HudLayers & Notifier,
     private readonly camera: MapCameraSource,
     private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
-    private readonly celestialMarkers: CelestialMarkers,
     private readonly markers: MarkerVisibility,
     private readonly navTargetPresenter: NavTargetPresenter,
     private readonly navTargetCommands: NavTargetCommands,
@@ -55,29 +53,33 @@ export class MapPicking {
     private readonly controlCommands: ControlSelectionCommands,
     private readonly displayWindowManager: Pick<DisplayWindowManager, 'current'>,
   ) {
-    this.listPanel = new PhysicalObjectListPanel(hud.mapRoot, hud.panelCollapse, celestialBodies);
+    this.objectPanel = new OrbitalObjectPanel(hud.mapRoot, hud.panelCollapse, celestialBodies);
     this.orbitLineWindows = new OrbitLineWindows(
       hud, linePickables, pickables, (id, name) => this.focusOwner(id, name),
       (clientX, clientY, target) => this.objectWindows.open(clientX, clientY, target),
     );
-    // 一覧の行は、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md「軌道物体一覧パネル」)。
-    this.listPanel.onFocus = (id) => {
+    // パネルからは、マップ上で隠れている対象でも id で操作できる(SPEC/MAP.md「軌道物体パネル」)。
+    // 押しただけでは操作対象を切り替えず、切り替えは onControl だけが行う。
+    this.objectPanel.onFocus = (id) => {
+      this.focusOnly(id, this.findListPickable(id));
+    };
+    this.objectPanel.onControl = (id) => {
       this.focusTarget(id, this.findListPickable(id));
     };
-    this.listPanel.onNavTarget = (id) => {
+    this.objectPanel.onNavTarget = (id) => {
       const target = this.findListPickable(id);
       if (target && this.navTargetPresenter.canTarget(
         id, this.roster, this.celestialBodies, this.displayWindowManager.current.simTime)) {
         this.navTargetCommands.toggle(id, target.name);
       }
     };
-    this.listPanel.onSelectRight = (id, clientX, clientY) => {
+    this.objectPanel.onSelectRight = (id, clientX, clientY) => {
       const target = this.findListPickable(id);
       if (target) this.objectWindows.open(clientX, clientY, target);
     };
   }
 
-  // 一覧行の id から被選択物を引く。見つからなければ null。
+  // パネルが指す id から被選択物を引く。見つからなければ null。
   private findListPickable(id: string) {
     return this.pickables.listPickables.find((i) => i.id === id) ?? null;
   }
@@ -170,37 +172,36 @@ export class MapPicking {
     this.hud.hint(`${name} にフォーカス`, undefined, 'nav');
   }
 
-  // マップ視点のフォーカスを id の対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md「軌道物体一覧パネル」)。
+  // マップ視点のフォーカスを id の対象へ移す。対象が自艦なら操作対象にもなる(SPEC/MAP.md「クリックとピック」)。
   // target は候補列で見つかっていれば渡し、表示名と操作対象の切り替えに使う。
   private focusTarget(id: string, target: MapPickable | null): void {
-    this.mapFocusCommands.setFocus({ kind: 'object', id });
-    this.hud.hint(`${target?.name ?? id} にフォーカス`, undefined, 'nav');
+    this.focusOnly(id, target);
     target?.onMapFocus?.(this.controlCommands);
   }
 
-  // 軌道物体一覧を、このフレームの候補列で組み直す。
+  // マップ視点のフォーカスを id の対象へ移す。操作対象は変えない。
+  private focusOnly(id: string, target: MapPickable | null): void {
+    this.mapFocusCommands.setFocus({ kind: 'object', id });
+    this.hud.hint(`${target?.name ?? id} にフォーカス`, undefined, 'nav');
+  }
+
+  // 軌道物体パネルを、このフレームの候補列で組み直す。
   public sync(displayTime: number, viewer: OrbitingObject | null): void {
-    // 親が無ければ(恒星、もしくは主天体が未登録)載せず、根として扱う。
-    const parentOf = new Map<string, string>();
-    for (const item of this.celestialMarkers.allItems) {
-      const parent = this.celestialBodies.bodyParentId(item.id);
-      if (parent !== null) parentOf.set(item.id, parent);
-    }
-    this.listPanel.setVisible(true);
-    this.listPanel.sync(
+    this.objectPanel.setVisible(true);
+    this.objectPanel.sync(
       this.pickables.listPickables, focusTargetId(this.camera.map.focus),
-      parentOf, viewer, displayTime);
+      this.navTargetPresenter.targetId, viewer, displayTime);
     this.orbitLineWindows.sync();
   }
 
-  // 一覧と軌道線のウィンドウを畳む。マップビューを離れるときに呼ぶ。
+  // 軌道物体パネルと軌道線のウィンドウを畳む。マップビューを離れるときに呼ぶ。
   public close(): void {
-    this.listPanel.setVisible(false);
+    this.objectPanel.setVisible(false);
     this.orbitLineWindows.close();
   }
 
-  // 一覧パネルを取り除く。
+  // 軌道物体パネルを取り除く。
   public dispose(): void {
-    this.listPanel.dispose();
+    this.objectPanel.dispose();
   }
 }

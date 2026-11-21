@@ -1,6 +1,6 @@
 // クリエイティブモードの「ステージ操作」パネル: 補給・波状攻撃のトグルと、手動スポーンの入力
 // (距離・敵の形状/色)の DOM と UI 状態を持ち、確定した値を onXxx のコールバックで知らせる。
-import { Button, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud/widgets';
+import { Button, Pulldown, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud/widgets';
 
 type EnemyShapeDefinition =
   | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
@@ -152,7 +152,7 @@ export class StageControlsPanel {
     section.appendChild(shapeControl.element);
     const colorSelect = buildColorSelect('敵の色', STAGE_CONTROL_ENEMY_COLORS);
     section.appendChild(colorSelect.wrapper);
-    const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.(selectedShape, colorSelect.select.value));
+    const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.(selectedShape, colorSelect.getValue()));
     section.appendChild(spawnButton.element);
     return { element: section, spawnButton };
   }
@@ -169,9 +169,10 @@ export class StageControlsPanel {
     title.className = 'stage-control-section-title';
     title.textContent = '組み立て型の敵';
     section.appendChild(title);
+    // 組み立て型の外観は色で選ぶ。
     const colorSelect = buildColorSelect('敵の色', STAGE_CONTROL_ENEMY_COLORS);
     section.appendChild(colorSelect.wrapper);
-    const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.('assembly', colorSelect.select.value));
+    const spawnButton = new Button('敵をスポーン', () => this.onSpawnEnemy?.('assembly', colorSelect.getValue()));
     section.appendChild(spawnButton.element);
     return { element: section, spawnButton };
   }
@@ -214,26 +215,15 @@ export class StageControlsPanel {
   }
 }
 
-// ラベル付き <select> を組み立てて返す。
+// ラベル付きのドロップダウン選択を組み立てて返す。値は選び直した時点ではなくスポーンの
+// 押下時に読むため、Pulldown の即時通知で直近の選択を保持しておく。
 function buildColorSelect<T extends number>(
   label: string, items: readonly (readonly [T, string])[],
-): { readonly wrapper: HTMLElement; readonly select: HTMLSelectElement } {
-  const wrapper = document.createElement('label');
-  wrapper.className = 'stage-control-select';
-  const title = document.createElement('span');
-  title.textContent = label;
-  wrapper.appendChild(title);
-  const select = document.createElement('select');
-  select.className = 'w-select';
-  select.setAttribute('aria-label', label);
-  select.addEventListener('keydown', (event) => event.stopPropagation());
-  // items の順に <option> を並べる。
-  for (const [value, text] of items) {
-    const option = document.createElement('option');
-    option.value = String(value);
-    option.textContent = text;
-    select.appendChild(option);
-  }
-  wrapper.appendChild(select);
-  return { wrapper, select };
+): { readonly wrapper: HTMLElement; getValue: () => string } {
+  let current: T = items[0]![0];
+  const pulldown = new Pulldown(label, [{ items, description: label }], null, ([value]) => {
+    if (value !== undefined) current = value;
+  });
+  pulldown.element.classList.add('stage-control-select');
+  return { wrapper: pulldown.element, getValue: () => String(current) };
 }

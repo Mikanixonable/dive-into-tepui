@@ -4,6 +4,7 @@ import { MANUAL_SAVE_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
 import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/format';
 import { Button, Meter, TabBar } from '../../hud/widgets';
+import { bindKeyboardActivation } from '../../hud/widgets/widget-base';
 import { injectOnce } from '../../hud/inject-style';
 import { smallBtn, stageLabel } from './shared';
 
@@ -22,6 +23,7 @@ const STYLE = `
   position: absolute; left: var(--space-3); top: var(--space-3);
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
 }
+#save-browser .sb-snap-card:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #save-browser .sb-snap-loadable { cursor: pointer; }
 #save-browser .sb-snap-loadable:hover { background: var(--fill-1); }
 #save-browser .sb-snap-name { font-size: var(--font-s); }
@@ -146,6 +148,13 @@ function buildSnapshotCard(
     if ((e.target as HTMLElement).closest('.w-btn')) return;
     callbacks.onLoadSnapshot(s.id, refusal);
   });
+  // キーボードからも復元できるよう、ロード可能なカードはボタンとして活性化する
+  // (カード内にボタンを持つため div+role=button に留める)。
+  if (refusal === null) {
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+    bindKeyboardActivation(card, () => callbacks.onLoadSnapshot(s.id, null));
+  }
 
   const name = document.createElement('div');
   name.className = 'sb-snap-name';
