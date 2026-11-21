@@ -189,6 +189,11 @@ export const TRANSITION_SLOW = '0.24s';
 
 const HIT_TARGET_MIN = '44px'; // タップ最小寸法
 
+// 収納グリップ(画面の縁の面を畳む開閉トグル)。棒の長さ・太った操作面の太さ・平常時の棒の太さ。
+const EDGE_GRIP_LENGTH = '64px';
+const EDGE_GRIP_THICK = '18px';
+const EDGE_GRIP_BAR = '6px';
+
 // ページ直下(body の子)の要素間の重なり順。#hud の内部は別のスタッキング文脈なので、
 // #hud 内部の z-index とは比べない。
 export const Z_SCENE_LABEL = 8; // 3D 空間へ重ねる DOM ラベル。タッチ UI と HUD の下
@@ -264,6 +269,9 @@ const FIXED_CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--transition-fast': TRANSITION_FAST,
   '--transition-slow': TRANSITION_SLOW,
   '--hit-target-min': HIT_TARGET_MIN,
+  '--edge-grip-length': EDGE_GRIP_LENGTH,
+  '--edge-grip-thick': EDGE_GRIP_THICK,
+  '--edge-grip-bar': EDGE_GRIP_BAR,
   '--z-hud': String(Z_HUD),
   '--z-hud-title-menu': String(Z_HUD_TITLE_MENU),
   '--z-hud-rail-toggle': String(Z_HUD_RAIL_TOGGLE),

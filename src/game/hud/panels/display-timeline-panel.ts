@@ -1,7 +1,7 @@
 // 未来表示の操作パネル。未来/過去の期間ピル、目盛り表記の切り替え、表示時刻のスクラバーと
 // 目盛り列を持つ。
 import {
-  Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, DurationPillRow,
+  Button, DurationPillRow, EDGE_GRIP_HORIZONTAL_CLASS,
   Slider, ToggleSwitch, ToggleValueEdit,
   type CollapseToggleLabels,
 } from '../../../hud/widgets';
@@ -36,10 +36,10 @@ const FIXED_PAST_DURATIONS: readonly (readonly [FixedPastDurationKey, string])[]
   ...FIXED_DURATIONS,
 ];
 
-// マップビュー下部のタイムラインバー用トグルの見た目。
+// マップビュー下部のタイムラインバーの収納グリップの字形と読み上げ名。字形は押したときにバーが動く向き。
 const TIMELINE_TOGGLE_LABELS: CollapseToggleLabels = {
-  expandedGlyph: COLLAPSE_EXPANDED_GLYPH,
-  collapsedGlyph: COLLAPSE_COLLAPSED_GLYPH,
+  expandedGlyph: '▼',
+  collapsedGlyph: '▲',
   expandedTitle: '下部パネルを閉じる',
   collapsedTitle: '下部パネルを開く',
 };
@@ -157,7 +157,7 @@ export class DisplayTimelinePanel {
     this.unsubscribeCollapsedView = collapse.wire({
       toggleRoot: this.wrap,
       toggleId: 'hud-predict-toggle',
-      toggleClassName: '',
+      toggleClassName: EDGE_GRIP_HORIZONTAL_CLASS,
       target: this.panel,
       labels: TIMELINE_TOGGLE_LABELS,
       storageId: 'hud-predict',

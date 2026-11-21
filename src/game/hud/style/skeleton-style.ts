@@ -261,8 +261,8 @@ ${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-
 }
 
 /* 右上の常設バッジ列。 */
-/* 画面を広く使うモード(Tab)は、レールとその収納トグル・上部バー・下部の帯を隠す。上部バーの収納は
-   上部バーだけを隠す。どちらも右上のボタン群は残し、そこから戻せるようにする。 */
+/* 画面を広く使うモード(Tab)は、レールと上部バー(どちらも収納グリップごと)・下部の帯を隠し、右上の
+   ボタン群から戻せるようにする。上部バーの収納は上部バーだけを隠し、グリップを残してそこから戻す。 */
 #hud.hud-wide .hud-rail, #hud.hud-wide .rail-toggle,
 #hud.hud-wide #hud-topbar, #hud.hud-wide #hud-topbar-toggle,
 #hud.hud-wide #hud-stagestatus, #hud.hud-wide #hud-armament-band,
