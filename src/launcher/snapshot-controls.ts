@@ -14,8 +14,9 @@ export class SnapshotControls {
     private readonly service: SnapshotService,
   ) {}
 
-  // router から手動セーブのキーと一覧の開閉キーを受け取る。source は記録を残すときに読む今の周回。
-  public handleCommand(commandId: string, source: SnapshotSource): void {
+  // router から手動セーブのキーと一覧の開閉キーを受け取る。source は記録を残すときに読む今の周回で、
+  // 同じフレームの入力で周回が畳まれていれば null。
+  public handleCommand(commandId: string, source: SnapshotSource | null): void {
     if (commandId === K.manualSave.code) this.saveManually(source);
 
     if (commandId === K.openSaveBrowser.code) {
