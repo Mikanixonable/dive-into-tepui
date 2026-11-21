@@ -3,7 +3,7 @@ import { DynamicEntity, type DynamicMotionFactory } from './dynamic-entity';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotionProperties } from '../dynamic-motion';
 import { DEFAULT_HISTORY_DURATION } from '../predicted-arc';
-import { ShipMarkerRenderer } from '../../marker/ship-marker-renderer';
+import { ShipMarkerRenderer } from '../../marker/ship-marker-svg';
 
 // 艦の材質・空力。大気抵抗は弾道係数の逆数 Cd·A/m [m^2/kg]、太陽輻射圧は輻射圧係数 ×
 // 断面積質量比 C_R·A/m [m^2/kg] で表す。

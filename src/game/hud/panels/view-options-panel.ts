@@ -16,7 +16,7 @@ import { zeroVelocityJacobiAt } from './zero-velocity-section';
 import { TargetTab } from './target-tab';
 import { GuideTab } from './guide-tab';
 import type { PanelCollapse } from '../panel-chrome';
-import type { OrbitGuideGroupTab, ViewOptionsTab } from '../../view/hud-selection';
+import type { OrbitGuideGroupTab, ViewOptionsTab } from '../../view/view-preferences';
 import type { RenderStyle } from '../../../render/render-style';
 
 const TAB_ITEMS: readonly (readonly [ViewOptionsTab, string])[] = [

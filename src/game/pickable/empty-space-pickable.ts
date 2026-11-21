@@ -1,6 +1,6 @@
 // 何にも当たらなかったクリックが指す「宇宙空間」の被選択物。実体を持たず、原点を位置とする。
 import { v3, type Vec3 } from '../../math/vec3';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { MenuCommon, type MenuAction } from '../menu-actions';
 import type { InspectedObject } from './inspected-object';
 import type { MenuItem } from '../../hud-kit/windows/context-menu';
 import type { PropertyRow } from '../../hud-kit/windows/property-window-content';

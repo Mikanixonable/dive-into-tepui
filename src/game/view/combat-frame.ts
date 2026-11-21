@@ -1,7 +1,7 @@
 // 戦闘ビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。
 import { pickCombatEntityAtPoint, pickShipModuleAtPoint } from '../pickable/combat-pick';
 import { isModularShip } from '../ship/modular-ship';
-import { isUsableConstructionDock, type ConstructionEntry } from '../ship/construction-entry';
+import { isUsableConstructionDock, type ConstructionEntry } from '../ship/ship-construction-entry';
 import type { PlanGuide } from '../plan/plan-guide';
 import type { Input } from '../../input-devices/input';
 import type { TouchControls } from '../hud/touch-controls';

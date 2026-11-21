@@ -5,7 +5,7 @@ import { len, sub, type Vec3 } from '../../math/vec3';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import { bodySearchText } from '../pickable/body-search-text';
 import { fmtDist } from '../../hud-kit/format';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { MenuCommon, type MenuAction } from '../menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './marker-priority';
 import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-listing';

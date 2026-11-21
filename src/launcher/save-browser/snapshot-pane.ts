@@ -6,7 +6,7 @@ import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud-kit/format';
 import { Button, Meter, TabBar } from '../../hud-kit/widgets';
 import { bindKeyboardActivation } from '../../hud-kit/widgets/widget-base';
 import { injectOnce } from '../../hud-kit/inject-style';
-import { smallBtn, stageLabel } from './shared';
+import { smallBtn, stageLabel } from './save-browser-ui';
 
 const STYLE = `
 #save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }

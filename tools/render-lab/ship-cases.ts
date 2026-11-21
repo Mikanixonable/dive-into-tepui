@@ -22,7 +22,7 @@ import type {
 } from '../../src/render/dynamic/ship/ship-render-contract';
 import { ShipGhostView } from '../../src/render/dynamic/ship/ship-ghost-view';
 import casingData from '../../src/assets/models/casing.json';
-import { cloneIndependent, memoParseIndependent } from '../../src/render/dynamic/baked-model';
+import { cloneIndependent, memoParseIndependent } from '../../src/render/dynamic/model-template';
 import { getMagazineTemplate } from '../../src/render/dynamic/ammo-models';
 import { labCamera, shipObject, type CaseBuilder, type LabCase } from './lab-case';
 

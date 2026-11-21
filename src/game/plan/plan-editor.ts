@@ -13,7 +13,7 @@ import { pickNearest } from '../pickable/object-pickable';
 import type { HudLayers } from '../hud/hud-layers';
 import type { Notifier } from '../../hud-kit/notifier';
 import { ContextMenu } from '../../hud-kit/windows/context-menu';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { MenuCommon, type MenuAction } from '../menu-actions';
 import type { UiSoundQueue } from '../ui-sound-queue';
 import type { Input } from '../../input-devices/input';
 import { KEY_MAPPING as K } from '../../input-devices/key-mapping';

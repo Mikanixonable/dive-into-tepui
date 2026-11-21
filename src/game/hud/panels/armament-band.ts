@@ -2,9 +2,9 @@
 // 装填の操作を示す。機関砲を積んでいない操作対象では出さない(UI-DESIGN.md §8)。
 import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import { Button } from '../../../hud-kit/widgets';
-import { applyAlarmLevel } from '../../../hud-kit/alarm-level';
+import { applyAlarmLevel } from '../../../hud-kit/alarm-level-ui';
 import { ammoAlarmLevel } from '../../alarm-level';
-import { fmtAmmoStatus, reloadDisabledReason, type AmmoViewModel } from '../ammo-status';
+import { fmtAmmoStatus, reloadDisabledReason, type AmmoViewModel } from '../ammo-view-model';
 import type { KeyBinding } from '../../../input-devices/key-mapping';
 
 // 武装の帯が1フレームに表示する値と、装填操作のコールバック。

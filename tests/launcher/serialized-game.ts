@@ -2,7 +2,7 @@
 import { SAVED_GAME_VERSION, type SavedGame } from '../../src/launcher/save/save-store';
 import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
 import { SimSpeedManager } from '../../src/game/dynamic/sim-speed-manager';
-import { PlanNodeRules } from '../../src/game/plan/plan-node-rules';
+import { PlanNodeRules } from '../../src/game/plan/plan-node-execution';
 import { OrbitSlotRegistry } from '../../src/game/navigation/orbit-slot-registry';
 import { RunEventLog } from '../../src/game/run-events';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';

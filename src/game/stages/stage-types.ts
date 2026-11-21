@@ -11,7 +11,7 @@ import type { CommandQueue } from '../command-queue';
 import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
 import type { ShipBlueprintShelf } from '../ship/ship-blueprint';
 import type { RelicHunt, SerializedRelicHunt } from './stage-utils/relic-hunt';
-import type { SalvageKind } from '../ship/salvage-blueprints';
+import type { SalvageKind } from '../ship/ship-salvage-blueprints';
 import type { StageRules } from './stage-rules';
 import type { PlayerLossCause } from './stage-outcome';
 import type { ScoreCounter } from './stage-utils/score-counter';

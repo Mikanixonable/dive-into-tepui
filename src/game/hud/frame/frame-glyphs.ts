@@ -1,5 +1,5 @@
 // 座標系パネルで使う図案アイコン・ミニ図式・角度コンパスの SVG を生成する。
-import type { CelestialClass } from '../../celestial/entity/celestial-entity-def';
+import type { CelestialClass } from '../../celestial/entity/celestial-class';
 import type { CameraReferencePlane, CameraReferenceView, CameraRotationFollow } from '../../viewer/focus-camera-selection';
 
 // 中心タイルのアイコン種別。

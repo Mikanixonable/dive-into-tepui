@@ -2,7 +2,7 @@
 import { fmtDist } from '../../../hud-kit/format';
 import { len, sub, v3, type SerializedVec3, type Vec3 } from '../../../math/vec3';
 import { PickupView } from '../../../render/dynamic/entity/pickup-view';
-import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
+import { MenuCommon, type MenuAction } from '../../menu-actions';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { COLOR_MARKER_FUEL, DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';
 import { orbitRows } from '../../pickable/orbit-rows';

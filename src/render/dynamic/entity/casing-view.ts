@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { InstancedPool } from '../../instanced-pool';
 import { attachThermalEmissive } from '../../thermal-emissive';
-import { markSharedResources, memoParseIndependent } from '../baked-model';
+import { markSharedResources, memoParseIndependent } from '../model-template';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 import { CASING_DISPLAY_METALNESS, CASING_DISPLAY_ROUGHNESS } from '../casing-style';
 import casingData from '../../../assets/models/casing.json';

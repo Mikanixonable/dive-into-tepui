@@ -2,7 +2,7 @@
 // 生成元が解いた位置と通過時刻を place 系メソッドで受け取り、マップのマーカーと右クリック
 // メニューとして公開する。呼称・字形・示す値は具象が与える。
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { MenuCommon, type MenuAction } from '../menu-actions';
 import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { fmtTime } from '../../hud-kit/format';
 import type { Vec3 } from '../../math/vec3';

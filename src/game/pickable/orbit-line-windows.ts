@@ -3,11 +3,11 @@
 import { PropertyWindow } from '../../hud-kit/windows/property-window';
 import type { InspectedObject } from './inspected-object';
 import type { PropertyWindowContent, PropertyWindowRelatedItem } from '../../hud-kit/windows/property-window-content';
-import type { MenuAction } from '../hud/windows/menu-actions';
+import type { MenuAction } from '../menu-actions';
 import type { HudLayers } from '../hud/hud-layers';
 import type { LinePickable } from './line-pickable';
-import type { LinePickables } from './line-pickables';
-import type { ObjectPickables } from './object-pickables';
+import type { LinePickables } from './line-pickable-set';
+import type { ObjectPickables } from './object-pickable-set';
 
 const KIND_LABEL: Record<LinePickable['kind'], string> = {
   'orbit-body': '公転軌道', 'orbit-ship': '船の軌道', 'orbit-guide': '軌道ガイド',

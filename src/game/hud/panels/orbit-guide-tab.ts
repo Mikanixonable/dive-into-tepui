@@ -11,7 +11,7 @@ import {
   buildColorField, buildKindRowHeading, buildValueField, hexColorString, syncValueField,
   type ValueField,
 } from './guide-value-field';
-import { buildKindDefs, defaultColorsFor, type CombinedKindDef, type KindDef } from './guide-kind-def';
+import { buildKindDefs, defaultColorsFor, type CombinedKindDef, type KindDef } from './orbit-guide-kind-defs';
 import { CriticalInclinationRow, DawnDuskRow, SunSyncRow } from './reference-orbit-rows';
 import {
   DEFAULT_ORBIT_GUIDE_SETTINGS,
@@ -24,8 +24,8 @@ import {
   type OrbitGuideSettings,
 } from '../../viewer/orbit-guide-settings';
 import { GUIDE_GROUPS, GUIDE_SYSTEMS, type GuideGroupId } from '../../celestial/orbit-guide/orbit-guide-groups';
-import { ORBIT_GUIDE_GROUP_TABS } from '../../view/hud-selection';
-import type { OrbitGuideGroupTab } from '../../view/hud-selection';
+import { ORBIT_GUIDE_GROUP_TABS } from '../../view/view-preferences';
+import type { OrbitGuideGroupTab } from '../../view/view-preferences';
 import type { DirectionMarkerMode } from '../../../render/celestial/orbit-guide/direction-markers';
 
 // 線数がこれを超えたら警告を出す(指定は曲げない)。

@@ -6,7 +6,7 @@ import { SyncThrottle } from '../sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';
 import type { OrbitReferenceMode } from '../../viewer/orbit-reference-selection';
 import { Button, Meter, SegmentedControl } from '../../../hud-kit/widgets';
-import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud-kit/alarm-level';
+import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud-kit/alarm-level-ui';
 import {
   DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO,
   TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,

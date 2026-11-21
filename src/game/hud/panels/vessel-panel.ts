@@ -5,7 +5,7 @@
 // キー入力の代替 UI。視点追従はカメラの問いなので戦闘カメラパネルに、弾薬は武装の帯に置く(UI-DESIGN.md §8)。
 import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import { Button, Meter, SegmentedControl } from '../../../hud-kit/widgets';
-import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud-kit/alarm-level';
+import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud-kit/alarm-level-ui';
 import { createKeyCap } from '../../../hud-kit/key-cap';
 import { setReadout } from '../../../hud-kit/readout';
 import { setStatePip } from '../../../hud-kit/state-pip';

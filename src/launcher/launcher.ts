@@ -7,7 +7,7 @@ import { selectStage } from './stage-select';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
 import { BlueprintShelf } from './save/blueprint-shelf';
-import { SALVAGE_BLUEPRINTS } from '../game/ship/salvage-blueprints';
+import { SALVAGE_BLUEPRINTS } from '../game/ship/ship-salvage-blueprints';
 import type { SerializedGame } from '../game/game';
 import type { RunEvent } from '../game/run-events';
 import type { PageDevices } from '../run/page-devices';

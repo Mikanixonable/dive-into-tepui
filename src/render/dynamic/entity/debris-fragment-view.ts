@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import { mulberry32 } from '../../../math/random';
 import { InstancedPool } from '../../instanced-pool';
 import { attachThermalEmissive } from '../../thermal-emissive';
-import { memoTemplate } from '../baked-model';
+import { memoTemplate } from '../model-template';
 import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '../dynamic-view';
 import debrisChunkData from '../../../assets/models/debrisChunk.json';
 import debrisPanelData from '../../../assets/models/debrisPanel.json';

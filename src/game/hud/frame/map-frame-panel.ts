@@ -17,7 +17,7 @@ import { isLagrangeId } from '../../celestial/lagrange-id';
 import { expandHitTarget } from '../../../hud-kit/widgets/widget-base';
 import { ObjectPicker, type ObjectPickerGroup } from '../../../hud-kit/windows/object-picker';
 import type { OverlayManager } from '../../../hud-kit/overlay-manager';
-import { groupPickables } from '../object-groups';
+import { groupPickables } from '../object-picker-groups';
 import { AngleCompass, type AngleCompassCommands } from './angle-compass';
 import { CameraOpticsBar, type CameraOpticsCommands } from './camera-optics-bar';
 import {
@@ -29,7 +29,7 @@ import {
   frameDiagramSvg, linkGlyphSvg, rotationGlyphSvg,
 } from './frame-glyphs';
 import { TileStrip, type TileItem } from './tile-strip';
-import { buildPanel } from './frame-panel';
+import { buildPanel } from './panel-shell';
 
 const MAX_BODY_TILES = 3; // 中心タイル帯へ直接並べる近傍天体の最大数(自機・解除と合わせて5列へ収める)
 

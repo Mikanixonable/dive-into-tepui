@@ -10,7 +10,7 @@ import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import { ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import type { MarkerVisibility } from '../../marker-kit/marker-visibility';
 import type { MenuItem } from '../../hud-kit/windows/context-menu';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { MenuCommon, type MenuAction } from '../menu-actions';
 import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { OrbitSlot } from '../navigation/orbit-slot';

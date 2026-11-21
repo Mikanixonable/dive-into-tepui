@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { HudPanelPresenter } from '../../src/game/hud/hud-panel-presenter';
-import { reloadDisabledReason, type AmmoViewModel } from '../../src/game/hud/ammo-status';
+import { reloadDisabledReason, type AmmoViewModel } from '../../src/game/hud/ammo-view-model';
 import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { ModularShip } from '../../src/game/ship/modular-ship';
 import type { Controllable } from '../../src/game/dynamic/entity/controllable';

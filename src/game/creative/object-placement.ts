@@ -27,7 +27,7 @@ import {
   validateEllipticPlacementFields, validateLagrangePlacementFields,
   type PlacementFieldIssue,
 } from './placement-validation';
-import { orbitSlotFromHalo, orbitSlotFromLissajous } from '../navigation/orbit-slot-source';
+import { orbitSlotFromHalo, orbitSlotFromLissajous } from '../navigation/orbit-slot-builders';
 import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';

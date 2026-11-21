@@ -1,7 +1,7 @@
 // ListedObject の列を、選択ウィジェット(ObjectPicker)向けのジャンル別グループへ組む純関数。
 // 候補の並べ替えと空グループの除去を担当する。ジャンル判定は候補自身(pickerGenre)が行う。
 import type { CelestialBody } from '../../physics/celestial-body';
-import type { CelestialClass } from '../celestial/entity/celestial-entity-def';
+import type { CelestialClass } from '../celestial/entity/celestial-class';
 import type { ObjectPickerGroup } from '../../hud-kit/windows/object-picker';
 import { BODY_PICKER_GENRES, OBJECT_PICKER_GENRES, type ObjectPickerGenre } from '../pickable/pickable-listing';
 import type { ListedObject } from '../pickable/listed-object';

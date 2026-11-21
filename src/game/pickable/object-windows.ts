@@ -2,7 +2,7 @@
 // メニューの可否や関連対象の導出は ObjectWindowActions に委ね、ここは窓の寿命と同期を所有する。
 import type { Hud } from '../hud/hud';
 import { ContextMenu } from '../../hud-kit/windows/context-menu';
-import type { MenuAction } from '../hud/windows/menu-actions';
+import type { MenuAction } from '../menu-actions';
 import { PropertyWindow } from '../../hud-kit/windows/property-window';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';

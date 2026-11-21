@@ -19,7 +19,7 @@ import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
 import {
   crossedSalvageMilestones, nextSalvageMilestoneRemaining, nextSalvageRemaining, SALVAGE_REPEAT_EVERY,
   salvageGranted,
-} from '../ship/salvage-blueprints';
+} from '../ship/ship-salvage-blueprints';
 import { SalvageCargo } from './stage-utils/salvage-cargo';
 import type { ShipBlueprintShelf } from '../ship/ship-blueprint';
 import type * as THREE from 'three/webgpu';

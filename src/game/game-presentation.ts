@@ -50,7 +50,7 @@ import { ModuleWindows } from './pickable/module-windows';
 import { ShipConstruction } from './ship/ship-construction';
 import { ShipConstructionView } from './ship/ship-construction-view';
 import type { ShipBlueprintShelf } from './ship/ship-blueprint';
-import { ConstructionEntry } from './ship/construction-entry';
+import { ConstructionEntry } from './ship/ship-construction-entry';
 import { FrameControls } from './hud/frame/frame-controls';
 import { HudPanelPresenter } from './hud/hud-panel-presenter';
 import { ViewOptionsControl } from './hud/panels/view-options-control';

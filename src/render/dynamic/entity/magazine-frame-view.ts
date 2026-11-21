@@ -1,7 +1,7 @@
 // 空になって排出されたマガジンの外枠の表示。geometry/material は全個体の共有物で、個体の片付けは
 // 表示ツリーから外すだけでよい。
 import type * as THREE from 'three/webgpu';
-import { cloneIndependent, markSharedResources } from '../baked-model';
+import { cloneIndependent, markSharedResources } from '../model-template';
 import { DynamicView } from '../dynamic-view';
 import { getMagazineTemplate } from '../ammo-models';
 

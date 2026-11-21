@@ -1,4 +1,4 @@
-import { applyAlarmLevel, type AlarmLevel } from '../alarm-level';
+import { applyAlarmLevel, type AlarmLevel } from '../alarm-level-ui';
 
 // HP/温度/電力などの細い線のバー。常に左から右へ満ちる。量は中立の線で示し、注意域・警告域の
 // 閾値を目盛りで示す。塗りが注意色・警告色になるのは、呼び出し側が段を渡したときだけ。

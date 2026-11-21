@@ -3,7 +3,7 @@
 import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import { Button } from '../../../hud-kit/widgets';
 import { CameraRotationModeControl, type CameraRotationModeCommands } from './camera-rotation-mode-control';
-import { buildPanel } from './frame-panel';
+import { buildPanel } from './panel-shell';
 import type { CameraRotationMode } from '../../viewer/camera-orientation';
 
 // 戦闘カメラパネルの操作を受け付けるインターフェース。姿勢追従の切替は、

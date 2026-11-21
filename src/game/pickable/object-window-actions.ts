@@ -5,7 +5,7 @@ import type {
   PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem,
 } from '../../hud-kit/windows/property-window-content';
 import type { MenuItem } from '../../hud-kit/windows/context-menu';
-import type { MenuAction } from '../hud/windows/menu-actions';
+import type { MenuAction } from '../menu-actions';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { CelestialEntity } from '../celestial/entity/celestial-entity';
 import type { EntityRoster } from '../dynamic/entity-roster';

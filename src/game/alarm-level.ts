@@ -2,7 +2,7 @@
 // 同じ結果になるよう、閾値と判定をここ1か所に置く。判定は物理量と上限だけから決まる。
 // 状態として鳴る警報(警報帯・警報灯・警報音)だけが、境界で明滅しないよう前の段を読む
 // held 版を使う(UI-DESIGN.md「警報と通知」)。
-import type { AlarmLevel } from '../hud-kit/alarm-level';
+import type { AlarmLevel } from '../hud-kit/alarm-level-ui';
 
 // 船体温度が上限のこの割合に達すると注意・警告。
 export const TEMPERATURE_CAUTION_RATIO = 0.7;

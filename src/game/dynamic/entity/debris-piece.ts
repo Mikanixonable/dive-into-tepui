@@ -8,7 +8,7 @@ import type { CapKind } from './entity-kind';
 import { AssemblyPartDebrisView } from '../../../render/dynamic/entity/assembly-part-debris-view';
 import { CasingView } from '../../../render/dynamic/entity/casing-view';
 import { DebrisFragmentView } from '../../../render/dynamic/entity/debris-fragment-view';
-import { MagazineFrameView } from '../../../render/dynamic/entity/ejected-gun-part-view';
+import { MagazineFrameView } from '../../../render/dynamic/entity/magazine-frame-view';
 import { detachedPartOf, detachPart, type AssemblyPartDef } from '../../../render/assembly/assembly-shape';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';

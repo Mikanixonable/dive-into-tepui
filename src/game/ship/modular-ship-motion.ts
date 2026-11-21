@@ -21,7 +21,7 @@ import {
 import type { SerializedPowerSystem } from '../player/power';
 import type { SerializedRadiatorSystem } from '../player/radiator';
 import { AeroLoad } from '../player/aero-load';
-import { BeltController, type SerializedBeltController } from '../player/belt';
+import { BeltController, type SerializedBeltController } from '../player/belt-controller';
 import { CoolingDump } from '../player/cooling-dump';
 import { PowerSystem } from '../player/power';
 import { RadiatorSystem } from '../player/radiator';

@@ -4,7 +4,7 @@ import { strongestAttractor } from '../../physics/attractor';
 import { type FrameAnchorSource, type ReferenceFrame, unbakeToDisplayPoint } from '../../physics/frame';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
-import { solveEquatorCrossings } from '../../physics/orbit-solvers';
+import { solveEquatorCrossings } from '../../physics/equator-crossings';
 import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
 import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';

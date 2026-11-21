@@ -5,7 +5,7 @@ import { setReadout } from '../../../hud-kit/readout';
 import { SyncThrottle } from '../sync-throttle';
 import type { HudEls } from '../hud-els';
 import { Meter } from '../../../hud-kit/widgets';
-import { applyAlarmLevel } from '../../../hud-kit/alarm-level';
+import { applyAlarmLevel } from '../../../hud-kit/alarm-level-ui';
 
 const SYNC_INTERVAL_MS = 100;
 

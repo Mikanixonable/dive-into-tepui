@@ -3,7 +3,7 @@
 import { FONT_FAMILY, FONT_XS, Z_HUD_NODE_GIZMO } from '../../theme';
 import { ContextMenu } from '../../hud-kit/windows/context-menu';
 import { injectOnce } from '../../hud-kit/inject-style';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { MenuCommon, type MenuAction } from '../menu-actions';
 import type { OverlayManager } from '../../hud-kit/overlay-manager';
 
 const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]

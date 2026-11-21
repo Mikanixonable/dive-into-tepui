@@ -14,7 +14,7 @@ import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { addPrimaryRelative, kinematicState } from '../../physics/kinematic-state';
 import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
 import { CelestialSurface } from '../../render/celestial/celestial-surface';
-import { celestialClassOfKind } from '../celestial/entity/celestial-entity-def';
+import { celestialClassOfKind } from '../celestial/entity/celestial-class';
 import { CelestialEntity } from '../celestial/entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
 import { SphereCelestialView } from '../../render/celestial/entity/sphere-celestial-view';

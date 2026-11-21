@@ -1,6 +1,6 @@
 // 操作艦の警報(状態)の評価と「確認済み」の記憶。鳴る条件と段の閾値は alarm-level.ts、
 // 見せ方(警報灯・警報帯・警報音・確認)は UI-DESIGN.md「警報と通知」が正本。
-import { type AlarmLevel, worstAlarmLevel } from '../hud-kit/alarm-level';
+import { type AlarmLevel, worstAlarmLevel } from '../hud-kit/alarm-level-ui';
 import { MAX_HULL_TEMP } from './dynamic/entity/combat-ship-entity';
 import { temperatureAlarmLevelHeld } from './alarm-level';
 

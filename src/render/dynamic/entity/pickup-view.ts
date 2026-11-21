@@ -1,6 +1,6 @@
 // 軌道上の補給物(弾薬・RCS燃料)の見た目。種別ごとに焼いたモデルだけが違う。
 import type * as THREE from 'three/webgpu';
-import { cloneIndependent, memoParseIndependent } from '../baked-model';
+import { cloneIndependent, memoParseIndependent } from '../model-template';
 import { DynamicView } from '../dynamic-view';
 import { getAmmoPickupTemplate } from '../ammo-models';
 import rcsFuelPickupData from '../../../assets/models/rcsFuel.json';

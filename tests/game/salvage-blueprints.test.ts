@@ -15,7 +15,7 @@ import { BODY_REVEAL_BASE } from '../../src/game/celestial/body-reveal';
 import {
   SALVAGE_BLUEPRINTS, SALVAGE_REPEAT_EVERY, appendSalvageCargo, crossedSalvageMilestones,
   nextSalvageMilestoneRemaining, nextSalvageRemaining,
-} from '../../src/game/ship/salvage-blueprints';
+} from '../../src/game/ship/ship-salvage-blueprints';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';

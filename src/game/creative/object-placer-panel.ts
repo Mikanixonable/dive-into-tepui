@@ -6,7 +6,7 @@ import {
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
 import { placeOverlayAt } from '../../hud-kit/layout';
-import { onViewportChange } from '../../hud-kit/viewport';
+import { onViewportChange } from '../../hud-kit/visual-viewport';
 import { isCompactViewport } from '../../hud-kit/breakpoints';
 import { wireHeaderDrag } from '../../hud-kit/window-drag';
 import type { OverlayHandle, OverlayManager } from '../../hud-kit/overlay-manager';

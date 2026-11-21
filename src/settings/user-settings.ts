@@ -6,7 +6,7 @@ import {
 import {
   formatMissionTimeFormat, formatOrbitGuideGroupTab, formatPanelCollapsed, formatViewOptionsTab,
   parseMissionTimeFormat, parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
-} from '../game/view/hud-selection';
+} from '../game/view/view-preferences';
 import { formatMapDisplayToggles, parseMapDisplayToggles } from '../game/map/display-toggles';
 import { isCoarsePointer } from '../input-devices/pointer-precision';
 import { formatGridVisibility, parseGridVisibility } from '../render/celestial-grid';
@@ -16,7 +16,7 @@ import { formatThemePalette, parseThemePalette } from '../theme';
 import { StoredSetting } from './stored-setting';
 import type {
   MissionTimeFormat, OrbitGuideGroupTab, PanelCollapsedState, ViewOptionsTab,
-} from '../game/view/hud-selection';
+} from '../game/view/view-preferences';
 import type { MapDisplayToggles } from '../game/map/display-toggles';
 import type { CelestialGridVisibility } from '../render/celestial-grid';
 import type { GraphicsSettingsData } from '../render/graphics-settings';

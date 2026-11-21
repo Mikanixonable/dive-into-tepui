@@ -5,7 +5,7 @@
 import { placeOverlayAt } from '../layout';
 import { shortcutKeyLabel } from '../shortcut-hint';
 import { isCoarsePointer } from '../../input-devices/pointer-precision';
-import { onViewportChange } from '../viewport';
+import { onViewportChange } from '../visual-viewport';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';

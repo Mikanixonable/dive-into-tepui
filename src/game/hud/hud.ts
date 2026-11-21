@@ -24,7 +24,7 @@ import type { OverlayLayers } from '../../hud-kit/overlay-layer';
 import type { HudShell } from '../../hud-kit/hud-shell';
 import type { OverlayManager } from '../../hud-kit/overlay-manager';
 import type { SettingValue } from '../../settings/setting-value';
-import type { MissionTimeFormat } from '../view/hud-selection';
+import type { MissionTimeFormat } from '../view/view-preferences';
 import type { HelpPanel } from './windows/help-panel';
 import type { HintKind, Notifier } from '../../hud-kit/notifier';
 import { ConfirmationOverlay } from '../../hud-kit/windows/confirmation-overlay';

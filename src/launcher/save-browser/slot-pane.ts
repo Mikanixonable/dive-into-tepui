@@ -5,7 +5,7 @@ import { Button } from '../../hud-kit/widgets';
 import { bindActivation } from '../../hud-kit/widgets/widget-base';
 import { injectOnce } from '../../hud-kit/inject-style';
 import { MQ_COMPACT } from '../../hud-kit/breakpoints';
-import { mainBtn, smallBtn, stageLabel } from './shared';
+import { mainBtn, smallBtn, stageLabel } from './save-browser-ui';
 
 const STYLE = `
 #save-browser .sb-pane-slots { flex: 0 0 34%; }

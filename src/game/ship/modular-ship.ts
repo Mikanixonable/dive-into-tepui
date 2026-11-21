@@ -21,7 +21,7 @@ import type { DynamicViewFrame } from '../../render/dynamic/dynamic-view';
 import type { OrbitReference } from '../orbit-reference';
 import type { SerializedRadiatorSystem } from '../player/radiator';
 import type { SerializedPowerSystem } from '../player/power';
-import type { SerializedBeltController } from '../player/belt';
+import type { SerializedBeltController } from '../player/belt-controller';
 
 import { Plan, type PlanExecutionMode } from '../plan/plan';
 import type { SerializedPlan } from '../plan/plan';

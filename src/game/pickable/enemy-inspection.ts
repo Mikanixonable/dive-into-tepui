@@ -6,7 +6,7 @@ import type { MarkerVisibility } from '../../marker-kit/marker-visibility';
 import type { InspectedObject } from './inspected-object';
 import type { PresentationStageAuthoring } from '../presentation-ports';
 import type { MenuItem } from '../../hud-kit/windows/context-menu';
-import type { MenuAction } from '../hud/windows/menu-actions';
+import type { MenuAction } from '../menu-actions';
 import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
 import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
@@ -21,7 +21,7 @@ import { relativeInfo } from '../orbit-info';
 import { orbitRows } from './orbit-rows';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
-import { MenuCommon } from '../hud/windows/menu-actions';
+import { MenuCommon } from '../menu-actions';
 
 // 一覧で「接近」として数える、viewer からの距離 [m]。
 const ENEMY_APPROACH_DIST = 2e5;

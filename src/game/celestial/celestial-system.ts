@@ -38,7 +38,7 @@ import type { CloudPresentation } from '../../render/earth-weather/cloud/cloud-p
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
 import type { FocusCameraSource } from '../viewer/focus-camera-selection';
-import type { CelestialClass } from './entity/celestial-entity-def';
+import type { CelestialClass } from './entity/celestial-class';
 import type { PerfCounts } from '../perf-counts';
 import type { ViewMode } from '../view/view-mode';
 import {

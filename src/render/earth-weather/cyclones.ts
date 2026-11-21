@@ -4,7 +4,7 @@
 import { float, max } from 'three/tsl';
 import { LOW_COUNT } from './low-tracks';
 import { TROPICAL_COUNT } from './tropical-tracks';
-import { cyclonePlacementsAt } from './cyclone-tracks';
+import { cyclonePlacementsAt } from './cyclone-placements';
 import { PressureFeature } from './pressure-feature';
 import type { FloatNode, Vec3Node } from '../tsl-types';
 

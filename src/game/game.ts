@@ -2,7 +2,7 @@
 import { SECTION, type FrameSections } from './frame-sections';
 import { CommandQueue } from './command-queue';
 import { ControlSelection, type SerializedControlSelection } from './control-selection';
-import { PlanNodeRules, type SerializedPlanNodeRules } from './plan/plan-node-rules';
+import { PlanNodeRules, type SerializedPlanNodeRules } from './plan/plan-node-execution';
 import { SimSpeedManager, type SerializedSimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem, type SerializedDynamicSystem } from './dynamic/dynamic-system';
 import { RunEventLog } from './run-events';

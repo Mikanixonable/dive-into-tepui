@@ -1,5 +1,5 @@
 import type * as THREE from 'three/webgpu';
-import { memoParseIndependent } from '../baked-model';
+import { memoParseIndependent } from '../model-template';
 import { DynamicView } from '../dynamic-view';
 import enemyData from '../../../assets/models/enemy.json';
 import enemyVariantDataA from '../../../assets/models/enemyVariantA.json';

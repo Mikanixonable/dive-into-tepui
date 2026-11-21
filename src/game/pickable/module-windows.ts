@@ -10,7 +10,7 @@ import type { ControlSelection } from '../control-selection';
 import type { HudLayers } from '../hud/hud-layers';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { Notifier } from '../../hud-kit/notifier';
-import type { ConstructionEntry } from '../ship/construction-entry';
+import type { ConstructionEntry } from '../ship/ship-construction-entry';
 import type { ConfirmationOverlay } from '../../hud-kit/windows/confirmation-overlay';
 
 type ModuleAction = ModuleInspectionAction | 'cancelDockCandidates' | `dockCandidate:${number}`;

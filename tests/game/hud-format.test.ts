@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { fmtDist, fmtDistParts, fmtSpeed, fmtSpeedParts } from '../../src/hud-kit/format';
-import { worstAlarmLevel } from '../../src/hud-kit/alarm-level';
+import { worstAlarmLevel } from '../../src/hud-kit/alarm-level-ui';
 import { test } from '../harness';
 
 // HUD の値と単位の分け方(距離は m/km/Mm、速度は m/s・km/s の境界)と、段の重さの順を確かめる。

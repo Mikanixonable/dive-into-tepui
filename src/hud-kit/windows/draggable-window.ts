@@ -3,7 +3,7 @@
 // 本文要素はコンストラクタの引数として注入する。
 // #hud 配下の window レイヤに配置するため、リセットスタイルを上書きできるようセレクタは `#hud` で始める。
 import { placeOverlayAt } from '../layout';
-import { onViewportChange } from '../viewport';
+import { onViewportChange } from '../visual-viewport';
 import { isCompactViewport, MQ_COMPACT } from '../breakpoints';
 import { Button, CloseButton } from '../widgets';
 import { injectOnce } from '../inject-style';

@@ -7,7 +7,7 @@ import { j2000EphemerisSeconds, type TdbJulianDate } from '../../../physics/time
 import { CelestialEntity } from '../entity/celestial-entity';
 import { StarCelestialView } from '../../../render/celestial/entity/star-celestial-view';
 import { PointFieldView } from '../../../render/celestial/point-field-view';
-import { generatePointField } from './point-field';
+import { generatePointField } from './small-body-fields';
 import { type DwarfPlanetId, DWARF_PLANET_NAMES, dwarfPlanets } from './dwarf-planets';
 import { type EarthSystemBodyId, EARTH_SYSTEM_NAMES, earthSystem } from './earth-system';
 import { type InnerPlanetId, INNER_PLANET_NAMES, innerPlanets } from './inner-planets';
