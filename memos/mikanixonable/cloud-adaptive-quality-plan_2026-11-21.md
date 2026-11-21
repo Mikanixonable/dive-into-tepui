@@ -92,22 +92,6 @@ SPEC `DEVELOP/SPEC/RENDERING.md` から確定した保存対象:
 
 ## 手順
 
-### 手順 3. 積雲マテリアルの段別事前構築
-
-**目的** — 段替えをコンパイルヒッチなしでできるようにする。**この時点で挙動は変えない**
-(実効段はまだ設定値のまま、マテリアルを3本持つだけ)。
-
-**変更が必要な箇所**
-
-| ファイル | すること |
-| --- | --- |
-| `src/render/opaque-cloud-surface-renderer.ts` | `material` 1本保持を `materials: Map<CumulusDetail, Material>` へ。`setDetail` は sampling と octaves を置き、`mesh.material = materials.get(detail)` に交換するだけにする。`rebuildMaterial` は撤去。`dispose` は3本ぶん。構築時に3段ぶん組む |
-| `src/game/game-presentation.ts` または `src/render/scene.ts` | warmUp/compile で3段ぶんのコンパイルを済ませる(既存の compile 経路に載せる) |
-
-**達成条件と検証** — `npm run typecheck`、`npm run test:render`。
-`npm run render-lab:shot` で earth のショットを撮り、設定パネルで積雲の精細さを切り替えても
-従来どおり段が変わること、同じ段ではショットが変わらないことを見る。
-
 ### 手順 4. 品質ガバナ — 実効段の決定と3経路への配線
 
 **目的** — 実効の積雲・巻雲の精細さを min(設定, フットプリント上限, 予算上限) で毎フレーム
@@ -164,12 +148,9 @@ SPEC `DEVELOP/SPEC/RENDERING.md` から確定した保存対象:
 
 | 手順 | 見積り | 根拠 |
 | --- | --- | --- |
-| 1. sync 内訳 | 1.5h | 区間表1本 + enter/exit 約8箇所 + 窓1グループ |
-| 2. GPU 常時集計 | 0.5h | gpu-timings の条件分岐と器1つ |
-| 3. マテリアル事前構築 | 1h | 保持の持ち方と dispose/warmUp 配線 |
 | 4. ガバナ | 2.5h | 新規1本 + 配線6箇所 + ヒステリシス調整 |
 | 5. 実効段の表示 | 0.5h | PerfCounts 2項目 + 行1つ |
-| 計 | 約 6.5h | |
+| 計 | 約 3h | |
 
 ## リスクと落とし穴
 
@@ -184,6 +165,14 @@ SPEC `DEVELOP/SPEC/RENDERING.md` から確定した保存対象:
 | sync 区間の境界ずれ | 区間和と sync 行が乖離し、計測自体が嘘になる | 手順1 — 達成条件の ±10% チェック |
 | 常時集計の帰属が他パスへ漏れる | 雲以外のパス時間が雲へ計上され判定を歪める | 手順2 — 雲パスだけが集合に入ること、render-lab:measure の表が基線と一致すること |
 | 別の perf(cloud) 作業が並行して基線を動かす | 手順4の ±10% 検証が基線ずれで落ちる | 手順4 — 検証直前に render-lab:measure を再測して基線を取り直す |
+
+## 実施中に見つかった既存の問題
+
+- `tools/render-lab/belt-cases.ts` の撮影ケース(`belt-c2`)は `BeltView` を直接組むが、
+  `BeltView` は `getMagazineTemplate()`(= `loadAmmoModels()` 済みであること)を要求する。
+  ラボは `loadAmmoModels` を呼ばないので、このケースは `render-lab:shot` で必ず落ちる
+  (本計画の変更とは無関係。`a86d40ce2` でケース追加、`f630b2527` 系のモデル読み込み化で
+  露見)。雲以外のショットは全て撮れている。
 
 ## 対象外
 
