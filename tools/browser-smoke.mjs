@@ -8,8 +8,11 @@ let query = '?stage=00';
 let expectCreative = false;
 let creativePreset = 'combat';
 let smokeConstruction = false;
+let layoutRender = true;
 
-function configureScenario(nextQuery, nextCreativePreset = 'combat', nextSmokeConstruction = false) {
+function configureScenario(
+  nextQuery, nextCreativePreset = 'combat', nextSmokeConstruction = false, nextLayoutRender = true,
+) {
   if (!nextQuery.startsWith('?') || nextQuery.includes('#')) {
     throw new Error('SMOKE_QUERY must be a query string beginning with "?" and must not contain a fragment.');
   }
@@ -24,6 +27,7 @@ function configureScenario(nextQuery, nextCreativePreset = 'combat', nextSmokeCo
   expectCreative = nextExpectCreative;
   creativePreset = nextCreativePreset;
   smokeConstruction = nextSmokeConstruction;
+  layoutRender = nextLayoutRender;
 }
 
 configureScenario(
@@ -33,10 +37,12 @@ configureScenario(
 );
 
 const layoutSuite = process.env.SMOKE_LAYOUT_SUITE === '1';
+// 描画を組むのは先頭の1本だけ。起動の大半は本番ビルドのシェーダ事前コンパイル(SwiftShader で数分)で、
+// 描画経路の起動を1回確かめれば足りる。残りは描画を止めて DOM の幾何と入力だけを検査する。
 const layoutScenarios = [
-  { query: '?stage=00', creativePreset: 'combat', smokeConstruction: false },
-  { query: '?stage=creative', creativePreset: 'combat', smokeConstruction: false },
-  { query: '?stage=creative', creativePreset: 'base', smokeConstruction: true },
+  { query: '?stage=00', creativePreset: 'combat', smokeConstruction: false, render: true },
+  { query: '?stage=creative', creativePreset: 'combat', smokeConstruction: false, render: false },
+  { query: '?stage=creative', creativePreset: 'base', smokeConstruction: true, render: false },
 ];
 const emulateTouch = process.env.SMOKE_TOUCH === '1';
 const layoutOnly = process.env.SMOKE_LAYOUT_ONLY === '1';
@@ -981,7 +987,7 @@ async function runConfiguredScenario() {
     await waitFor(`matchMedia('(pointer: coarse)').matches`, 'coarse pointer emulation');
   }
   const pageQuery = layoutOnly
-    ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=1`
+    ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=${layoutRender ? '1' : 'hud'}`
     : query;
   // mappedAtCreation バッファはレンダラ↔GPU プロセス間の共有メモリ上に確保され、実装ごとの
   // 総量上限を超えると createBuffer が "too large for the implementation" で失敗する。
@@ -1235,7 +1241,7 @@ try {
       await session?.close();
       session = await launchSession();
       devTools = session.devTools;
-      configureScenario(scenario.query, scenario.creativePreset, scenario.smokeConstruction);
+      configureScenario(scenario.query, scenario.creativePreset, scenario.smokeConstruction, scenario.render);
       fatalEvents.length = 0;
       await runConfiguredScenario();
     }

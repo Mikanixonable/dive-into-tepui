@@ -23,3 +23,9 @@ export function opensDebugInfoAtStart(): boolean {
 export function drivenByLayoutSmoke(): boolean {
   return query().has('layout-smoke');
 }
+
+// レイアウト検査(tools/browser-smoke)が ?layout-smoke=hud で開いたか。開いたときは描画資源を組まず、
+// 描画も行わない。DOM の寸法と入力だけを見る検査で、シェーダの事前コンパイルを省くための経路。
+export function layoutSmokeHudOnly(): boolean {
+  return query().get('layout-smoke') === 'hud';
+}
