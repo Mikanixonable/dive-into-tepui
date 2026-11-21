@@ -121,7 +121,7 @@ function startAnimationLoop(
       if (completed) {
         launcher.followProgress();
         completedFrames++;
-        // CI 切り分けのため一時的に出す(このコミットは巻き戻す)。
+        // 起動スモーク(tools/browser-smoke.mjs)がフレーム完走の診断に使う。
         document.documentElement.dataset.smokeFrames = String(completedFrames);
         // 例外なく60フレーム完走したことを、外から読めるようにする印。
         if (completedFrames === 60) document.documentElement.dataset.gameReady = 'true';

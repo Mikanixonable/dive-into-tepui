@@ -157,11 +157,4 @@ export class ShipCapabilities {
   public refuel(kind: FuelKind, amount: number): number {
     return this.assembly.refuel(kind, amount);
   }
-
-  public toggleDeployable(kind: 'radiator' | 'solar_panel', index: number): boolean {
-    const module = this.modules(kind, true)[index];
-    if (module === undefined) return false;
-    this.assembly.setDeployment(module.id, module.deployed >= 0.5 ? 0 : 1);
-    return true;
-  }
 }

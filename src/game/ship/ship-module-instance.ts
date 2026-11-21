@@ -102,11 +102,5 @@ export function createShipModuleInstance(
 
 // split/clone 用に、可変 state が独立した instance を返す。
 export function cloneShipModuleInstance(instance: ShipModuleInstance): ShipModuleInstance {
-  switch (instance.kind) {
-    case 'tank': return { ...instance };
-    case 'radiator': return { ...instance };
-    case 'solar_panel': return { ...instance };
-    case 'booster': return { ...instance };
-    default: return { ...instance } as ShipModuleInstance;
-  }
+  return { ...instance };
 }
