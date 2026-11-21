@@ -173,7 +173,6 @@ export class MapFrame implements ViewFrame {
     this.picking.sync(displayWindow.displayTime, this.controlSelection.current);
     this.frameControls.sync(
       this.objectPickables.pickables, camera.position, displayWindow.displayTime,
-      this.objectPickables.visibilityPolicy,
     );
     // 天体ラベルのサブ行と、軌道線の右クリック候補
     this.celestialMarkers.syncSubLabels(
