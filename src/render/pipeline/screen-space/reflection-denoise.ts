@@ -12,6 +12,7 @@ import { ReflectionReduction } from './reflection-reduction';
 import { ReflectionMerge } from './reflection-merge';
 import { reflectionDenoiseLevelOf } from './reflection-denoise-level';
 import { encodedDenoisedReflection, type ScreenSpaceReflection } from './screen-space-reflection';
+import { stageMaterial } from './screen-space-stage';
 import type { GBufferPass } from '../gbuffer';
 import type { FloatNode, Vec3Node } from '../../tsl-types';
 
@@ -63,9 +64,7 @@ export class ReflectionDenoise {
     );
     // 均した値を、均した側の描画先の出力へ符号化して書く。
     const denoised = this.denoised();
-    this.material = new THREE.MeshBasicNodeMaterial({
-      depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
-    });
+    this.material = stageMaterial();
     this.material.mrtNode = encodedDenoisedReflection(
       denoised.get('weightedImage') as Vec3Node, denoised.get('weight') as FloatNode,
       denoised.get('weightedDistance') as FloatNode, denoised.get('level') as FloatNode,

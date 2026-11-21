@@ -17,19 +17,13 @@ import { compileInto } from './compile-into';
 import { reflectionRayOf, thicknessFarZ, traceReflection, viewZOf } from './screen-space/reflection-trace';
 import { ReflectionDenoise } from './screen-space/reflection-denoise';
 import { encodedRawReflection, type ScreenSpaceReflection } from './screen-space/screen-space-reflection';
+import { stageMaterial } from './screen-space/screen-space-stage';
 import type { GBufferPass } from './gbuffer';
 import type { FloatNode, IntNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../tsl-types';
 
 // 画素 1 つぶんの追跡と像の結果。image は当たった点の像 I、distance は当たるまでの距離 [m]、weight は置換の重み w。
 // 当たらなかった画素ではどれも 0。
 const TracedReflection = struct({ image: 'vec3', distance: 'float', weight: 'float' }, 'TracedReflection');
-
-// 全画面で書くマテリアル。出力は呼び出し側が mrtNode へ置く。
-function stageMaterial(): THREE.MeshBasicNodeMaterial {
-  return new THREE.MeshBasicNodeMaterial({
-    depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
-  });
-}
 
 export class ReflectionPass {
   // 追跡の解像度の素の深度(逆 Z、虚空は 0)。32bit 浮動小数はフィルタできない形式なので、textureLoad で読む。

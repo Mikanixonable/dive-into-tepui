@@ -15,6 +15,7 @@ import { phaseTentWeight } from './band-pyramid';
 import { type ReflectionReduction, representativeSurfaceOf, sameSurfaceWeight } from './reflection-reduction';
 import { reflectionDenoiseLevelOf } from './reflection-denoise-level';
 import { NO_REFLECTION_ROUGHNESS } from './reflection-trace';
+import { stageMaterial } from './screen-space-stage';
 import type { FloatNode, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 合流後の重み付き色と重みを格納する添付名。
@@ -75,9 +76,7 @@ export class ReflectionMerge {
     // 各段の結果を、段番号で決まる合流シェーダに結び付ける。
     this.materials = Array.from({ length: levelCount - 1 }, (_, index) => {
       const merged = this.mergedAt(index + 1);
-      const material = new THREE.MeshBasicNodeMaterial({
-        depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
-      });
+      const material = stageMaterial();
       material.mrtNode = mrt({
         [MERGED_WEIGHTED]: merged.get('weighted') as Vec4Node,
         [MERGED_DISTANCE]: vec4(merged.get('distance') as FloatNode, merged.get('hitDistance') as FloatNode, 0, 1),

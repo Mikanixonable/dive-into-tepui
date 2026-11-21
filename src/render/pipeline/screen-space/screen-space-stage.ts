@@ -1,4 +1,4 @@
-// 近傍拡散補正のパスの描画命令 1 本の形と、その材質の組み方。描画命令は、全画面に 1 枚のマテリアルを描いて描画先へ書く。
+// スクリーンスペースのパスの描画命令 1 本の形と、その材質の組み方。描画命令は、全画面に 1 枚のマテリアルを描いて描画先へ書く。
 import * as THREE from 'three/webgpu';
 import { Fn, mrt, property, vec4 } from 'three/tsl';
 import type { GpuPassId } from '../../gpu-timings';

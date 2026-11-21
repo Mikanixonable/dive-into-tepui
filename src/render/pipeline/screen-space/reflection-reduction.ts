@@ -13,6 +13,7 @@ import { viewRayAt } from '../view-ray';
 import { compileInto } from '../compile-into';
 import { rayThicknessAt } from './reflection-trace';
 import type { ScreenSpaceReflection } from './screen-space-reflection';
+import { stageMaterial } from './screen-space-stage';
 import type { BoolNode, FloatNode, Mat4Uniform, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../../tsl-types';
 
 // 同じ面とみなす重みの区間。重みは full の側で 1、none の側で 0 で、あいだをなめらかにつなぐ — 二値の判定は、境をまたぐ
@@ -73,9 +74,7 @@ function atlasTarget(): THREE.RenderTarget {
 
 // 段の画素を全画面で書くマテリアル。出力は mrtNode へ置く。
 function levelMaterial(mrtNode: ReturnType<typeof mrt>): THREE.MeshBasicNodeMaterial {
-  const material = new THREE.MeshBasicNodeMaterial({
-    depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
-  });
+  const material = stageMaterial();
   material.mrtNode = mrtNode;
   return material;
 }
