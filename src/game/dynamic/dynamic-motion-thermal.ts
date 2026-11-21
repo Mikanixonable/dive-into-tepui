@@ -42,7 +42,7 @@ interface DynamicMotionThermalStepResult {
 }
 
 // 弾道係数の逆数から断面積質量比を戻すときの抗力係数 Cd。
-const DRAG_COEFFICIENT = 2.2;
+export const DRAG_COEFFICIENT = 2.2;
 // 空力加熱を受ける風上面の面積が、断面積に占める割合。淀み点の加熱は前縁だけでなく
 // 風上面全体へ広がるため 1.0 を取る — 小さく絞ると再突入で加熱が構造限界に追いつかず、
 // 空力分解ばかり起きる。

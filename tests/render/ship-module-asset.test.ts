@@ -607,7 +607,7 @@ export function register(): void {
     }
   });
 
-  test('ship module asset: instance は geometry を共有し material と状態だけを分離する', async () => {
+  test('ship module asset: instance は geometry と material を共有し状態だけを分離する', async () => {
     await loadShipModuleModels();
     const first = buildShipModuleModel('cockpit-standard');
     const second = buildShipModuleModel('cockpit-standard');
@@ -615,9 +615,10 @@ export function register(): void {
     const secondMesh = second.getObjectByProperty('isMesh', true) as THREE.Mesh;
     assert.ok(firstMesh !== undefined && secondMesh !== undefined);
     assert.equal(firstMesh.geometry, secondMesh.geometry);
-    assert.notEqual(firstMesh.material, secondMesh.material);
+    assert.equal(firstMesh.material, secondMesh.material);
+    assert.notEqual(firstMesh.userData, secondMesh.userData);
     assert.equal(firstMesh.userData.ownsGeometry, false);
-    assert.equal(firstMesh.userData.ownsMaterial, true);
+    assert.equal(firstMesh.userData.ownsMaterial, false);
     disposeOwnedRenderResources(first);
     disposeOwnedRenderResources(second);
   });

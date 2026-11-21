@@ -15,6 +15,12 @@ export function shipMarkerSvg(filled: boolean): string {
     `</svg>`;
 }
 
+// 見越し点の三尖星アイコン。主照準とは反対向き(逆三角形方向)で、中央に小さな
+// 切り欠きを残して敵マーカーや照準と識別しやすくする。線だけで描く。
+export function leadMarkerSvg(): string {
+  return '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="LEAD"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 14.3V22"/><path d="M12 14.3V22" transform="rotate(120 12 12)"/><path d="M12 14.3V22" transform="rotate(240 12 12)"/></g></svg>';
+}
+
 // 線色に currentColor を使う基地アイコンの SVG を返す。
 export function baseMarkerSvg(): string {
   return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="Base">` +

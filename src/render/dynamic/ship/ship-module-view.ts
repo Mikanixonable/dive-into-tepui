@@ -7,6 +7,7 @@ import { add, sub, v3, type Vec3 } from '../../../math/vec3';
 import { deployablePanelPoses, type DeployablePanelKind } from '../../../physics/ship-panel-layout';
 import { disposeOwnedRenderResources } from '../../dispose-owned-render-resources';
 import { markLitOpaque, markOverlay, markShadowCaster } from '../../pipeline/lit-layer';
+import { semanticAnchorName } from './ship-module-models';
 import type {
   ShipModuleEmphasis, ShipModuleEmphasisTone,
   ShipModuleRenderInput, ShipModuleRenderKind, ShipModuleRenderTransform,
@@ -44,15 +45,6 @@ const OUTLINE_COLOR = 0xffffff;
 const OUTLINE_OPACITY = 0.9;
 // 選択の輪郭がモジュールの外側へ出る幅 [m]。シルエットを越えて一定の太さで見える。
 const OUTLINE_OFFSET = 0.12;
-
-// object の semantic anchor 名を返す。userData.semanticAnchor を優先し、'anchor:'
-// 接頭辞の object.name も同名として扱う。anchor でなければ null。
-function semanticName(object: THREE.Object3D): string | null {
-  const value = object.userData.semanticAnchor;
-  if (typeof value === 'string') return value;
-  if (object.name.startsWith('anchor:')) return object.name.slice('anchor:'.length);
-  return null;
-}
 
 // 1 module の model、transform、semantic anchor、状態を所有する。
 export class ShipModuleView {
@@ -240,7 +232,7 @@ export class ShipModuleView {
   private indexAnchors(): void {
     this.anchors.clear();
     this.model.traverse((object) => {
-      const name = semanticName(object);
+      const name = semanticAnchorName(object);
       if (name !== null && !this.anchors.has(name)) this.anchors.set(name, object);
     });
   }
