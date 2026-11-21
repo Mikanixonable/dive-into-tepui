@@ -152,25 +152,25 @@ export class WorldSfx {
   // 艦砲 CIWS 風の砲声1発ぶんを実時刻 at [s] に鳴らす: 低く重い胴鳴り + 鋭いクラック。連射は発射と同じ
   // 拍で断続的に聞こえる(SPEC/AUDIO.md「機関砲」)。
   private fire(at: number): void {
-    const delay = this.delayUntil(at);
-    if (delay === null) return;
-    this.engine.noiseBurst(0.11, 'lowpass', 480, 0.4, delay);
-    this.engine.noiseBurst(0.025, 'highpass', 2600, 0.09, delay);
-    this.engine.tone(48, 0.1, 0.2, 'square', delay);
-    this.engine.tone(96, 0.05, 0.07, 'sawtooth', delay);
+    const startAt = this.ctxTimeOf(at);
+    if (startAt === null) return;
+    this.engine.noiseBurstAt(0.11, 'lowpass', 480, 0.4, startAt);
+    this.engine.noiseBurstAt(0.025, 'highpass', 2600, 0.09, startAt);
+    this.engine.toneAt(48, 0.1, 0.2, 'square', startAt);
+    this.engine.toneAt(96, 0.05, 0.07, 'sawtooth', startAt);
   }
 
-  // 実時刻 at [s] に鳴らすには、いまから何秒遅らせればよいか。ctx が開いていなければ null。実時刻と ctx の
-  // 時刻のずれは一度張ったら保ち、鳴らす時刻が過ぎていたり遠すぎたりしたときだけ SCHEDULE_LATENCY 先へ
-  // 張り直す — 張り直さなければ、隣り合う音の間隔は実時刻の間隔のまま保たれる。
-  private delayUntil(at: number): number | null {
+  // 実時刻 at [s] に当たる ctx の時刻。ctx が開いていなければ null。実時刻と ctx の時刻のずれは一度
+  // 張ったら保ち、当たる時刻が過ぎていたり遠すぎたりしたときだけ SCHEDULE_LATENCY 先へ張り直す —
+  // 張り直さなければ、隣り合う音の間隔は実時刻の間隔のまま保たれる。
+  private ctxTimeOf(at: number): number | null {
     const ctx = this.engine.ctx;
     if (!ctx) return null;
     const now = ctx.currentTime;
-    const delay = this.clockOffset === null ? Number.NaN : at + this.clockOffset - now;
-    if (delay >= 0 && delay <= SCHEDULE_LATENCY * 3) return delay;
+    const startAt = this.clockOffset === null ? Number.NaN : at + this.clockOffset;
+    if (startAt >= now && startAt <= now + SCHEDULE_LATENCY * 3) return startAt;
     this.clockOffset = now + SCHEDULE_LATENCY - at;
-    return SCHEDULE_LATENCY;
+    return now + SCHEDULE_LATENCY;
   }
 
   // リロード音「ガチャッ、シャコォォン」。
