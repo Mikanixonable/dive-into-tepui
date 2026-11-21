@@ -96,3 +96,45 @@ AGENTS.md「既存commitのmessage修正は避ける」への例外は前回同�
 | patch-id が「同じ差分・別の意図」で衝突 | 意味の違うコミットが消える | patch-id は差分全体のハッシュのため稀。代表例を目視で確認 |
 | 実行中の新規コミット | 書き換え範囲外 | graft で継ぐ(前回実績あり) |
 | 9k コミット規模の skip 収縮 | 構造の破綻 | tree 一致検証 + バックアップ |
+
+## 実施記録(2026-11-19 完了)
+
+### 実測値
+
+- 全 ref 到達コミット: 10,299 → **7,525**(収縮除去 2,774 件)
+- main 祖先: 9,095 → **6,528**(−28%)
+- 残存重複: 非マージ 0 組。**マージ同士の patch-id 重複 103 組のみ**
+  (同じ取り込みが複数線で行われた記録 — 除去はマージのトポロジー手術が要るので残した)
+- ツリー保存: 全 44 ref で先端 tree が書き換え前と一致(不一致 0)
+- リモート: 39 ブランチが新履歴で定着、local-remote 差分 0
+
+### 計画からの変更(重要)
+
+**`commit.skip()` 方式は途中で破棄した。** filter-repo の skip は「記録された
+tree」を保存せず、差分を新しい親へ**再適用**するため、未マージの古いブランチから
+重複分の内容が実際に消えた(17 ref で先端 tree が変化、worktree 先端の内容を
+巻き戻す副作用あり)。代わりに `commit-tree` による独自再構築を実装した:
+
+- 保持コミットは元の tree・author・committer・message をそのまま使い、
+  drop コミットは子の親を最近の保持祖先へ張り替える(収縮)
+- 親リストの冗長辺(一方が他方の祖先)は除去 → 側線が全収縮したマージは
+  自動的に片親化
+- 実装: `tools/commit-dedup/rebuild.py`(cat-file --batch + commit-tree)
+
+### 実行中の事故と対処
+
+- 初回 rebuild で `refs/backup/`・`refs/stash` の先端が drop 集合に混入
+  (drop 集合の「ref 先端」保護が heads/tags しか見ていなかった)。全 ref の
+  先端を保護へ広げて再実行 → 失敗 0
+- マージの patch-id 集計で `git show` の `--cc` 出力から patch-id が 2 行
+  出る罠に遭遇(2 行目は全マージ共通の定数で偽の重複群)。先頭 1 行のみ採用に修正
+- リモート main/release は書き換え中に進行(PR#195 マージ + CI deploy)。
+  旧 DAG の像への付け替え + commit-tree graft で対応
+- タグ `pre-ja-rewrite-backup` も新履歴上へ移動済み
+
+### 残したもの
+
+- バックアップ: `/Users/pandeaconica/lab/dive-into-tepui-dedup-backup-20261119.git`
+  (書き換え直前の mirror)
+- ツール: `tools/commit-dedup/`(build-drop-set.mjs・rebuild.py・dedup-callback.py)
+- SHA 対応: `/tmp/dedup-image-map.json`(旧→新、ローカルのみ)
