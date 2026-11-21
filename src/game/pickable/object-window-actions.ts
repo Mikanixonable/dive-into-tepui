@@ -107,7 +107,8 @@ export class ObjectWindowActions {
     // 進行方向リセット/ターゲット選択が既に使っており、同じキーを両方へは配れない。
     const showShortcuts = this.view.current === 'map';
     const items = all
-      .filter((it) => it.type !== 'header' && it.act !== undefined)
+      // 「キャンセル」はコンテキストメニューの閉じる手段で、窓には ✕/ESC が既にあるので除く。
+      .filter((it) => it.type !== 'header' && it.act !== undefined && it.act !== 'cancel')
       .map((it) => ({
         label: it.label, act: it.act as MenuAction,
         shortcut: showShortcuts ? it.shortcut : undefined,

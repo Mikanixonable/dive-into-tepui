@@ -56,7 +56,7 @@ export class ConfirmationOverlay implements OverlayHandle {
     this.cancel.setLabel(request.cancelLabel ?? 'キャンセル');
     this.shell.panel.dataset['destructive'] = String(request.destructive === true);
     this.shell.open(request, false, onResult);
-    this.confirm.element.focus();
+    this.cancel.element.focus();
   }
 
   public contains(target: Node): boolean { return this.shell.contains(target); }
