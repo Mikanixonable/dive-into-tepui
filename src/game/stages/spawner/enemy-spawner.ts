@@ -1,5 +1,5 @@
-// 訓練クラスタ(stage0)の敵集団の配置・分散を計算し、直接 Enemy を生成する。
-// (DynamicSystem への登録は呼び出し側の Stage0 が Stage.addEnemy 経由で行う)。
+// 訓練クラスタ(stage2)の敵集団の配置・分散を計算し、直接 Enemy を生成する。
+// (DynamicSystem への登録は呼び出し側の Stage2 が Stage.addEnemy 経由で行う)。
 import type * as THREE from 'three/webgpu';
 import { type KinematicState, kinematicState, orbitAxes } from '../../../physics/kinematic-state';
 import { strongestAttractor } from '../../../physics/attractor';
@@ -12,22 +12,22 @@ import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id'
 import { COLOR_ENEMY_ORBIT_LINE } from '../../lines/entity-line-manager';
 import type { CelestialBody } from '../../../physics/celestial-body';
 
-export const STAGE0_PER_GROUP = 10; // グループあたりの機数
-export const STAGE0_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
-export const COLOR_STAGE0_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
+export const STAGE2_PER_GROUP = 10; // グループあたりの機数
+export const STAGE2_MAX_RANGE = 5000; // 自機からの配置半径の上限 [m]
+export const COLOR_STAGE2_GROUP_ACCENTS = ['#ff4a3d', '#3dc6ff', '#3dff8f', '#ffe23d', '#bf3dff'];
 
-const STAGE0_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
+const STAGE2_GROUP_LABELS = ['RED', 'BLUE', 'GREEN', 'AMBER', 'VIOLET'];
 
-// 5グループの配置: 各グループ中心を安全半径(STAGE0_MAX_RANGE * SAFE_RANGE_FACTOR)
+// 5グループの配置: 各グループ中心を安全半径(STAGE2_MAX_RANGE * SAFE_RANGE_FACTOR)
 // の CENTER_DIST_MIN〜+RANGE の位置に置き、各機はそこから ALONG/NORMAL/RADIAL
 // 方向にランダムに散らす
-const STAGE0_SAFE_RANGE_FACTOR = 0.94; // マージンを残して確実に配置半径内に収める
-const STAGE0_GROUP_CENTER_DIST_MIN = 0.52; // 安全半径に対する比率
-const STAGE0_GROUP_CENTER_DIST_RANGE = 0.14;
-const STAGE0_GROUP_RADIAL_FACTOR = 0.1; // 動径方向のグループ中心ばらつき(安全半径比)
-const STAGE0_JITTER_ALONG = 500; // 各機の進行方向ばらつき [m]
-const STAGE0_JITTER_NORMAL = 500; // 各機の軌道面法線方向ばらつき [m]
-const STAGE0_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m]
+const STAGE2_SAFE_RANGE_FACTOR = 0.94; // マージンを残して確実に配置半径内に収める
+const STAGE2_GROUP_CENTER_DIST_MIN = 0.52; // 安全半径に対する比率
+const STAGE2_GROUP_CENTER_DIST_RANGE = 0.14;
+const STAGE2_GROUP_RADIAL_FACTOR = 0.1; // 動径方向のグループ中心ばらつき(安全半径比)
+const STAGE2_JITTER_ALONG = 500; // 各機の進行方向ばらつき [m]
+const STAGE2_JITTER_NORMAL = 500; // 各機の軌道面法線方向ばらつき [m]
+const STAGE2_JITTER_RADIAL = 350; // 各機の動径方向ばらつき [m]
 
 // 色分けされたグループ(既定 5 グループ×各10機)を referenceState 周囲5km以内に配置して直接生成する(訓練クラスタ)。
 // 散らす向きは、referenceState の位置で最も強く引く天体に対する軌道基底と鉛直で取る。
@@ -37,32 +37,32 @@ export function generateCluster(
   attractors: readonly CelestialBody[],
   scene: THREE.Scene,
   idAllocators: EntityIdAllocators,
-  groupCount: number = COLOR_STAGE0_GROUP_ACCENTS.length,
-  perGroup: number = STAGE0_PER_GROUP,
+  groupCount: number = COLOR_STAGE2_GROUP_ACCENTS.length,
+  perGroup: number = STAGE2_PER_GROUP,
 ): readonly Enemy[] {
   const center = strongestAttractor(referenceState.r, attractors, referenceState.t);
   const rel = toFrameState(frameOfCelestialBody(center, referenceState.t), referenceState);
   const { pro, nrm } = orbitAxes(kinematicState<'primaryRel'>(referenceState.t, rel.r, rel.v));
   const rHat = norm(rel.r);
-  const safeRange = STAGE0_MAX_RANGE * STAGE0_SAFE_RANGE_FACTOR; // マージンを残して確実に5km以内に収める
+  const safeRange = STAGE2_MAX_RANGE * STAGE2_SAFE_RANGE_FACTOR; // マージンを残して確実に5km以内に収める
   const enemies: Enemy[] = [];
 
   // グループごとの中心位置を、進行方向-法線平面の円周上に配置する。
   for (let gi = 0; gi < groupCount; gi++) {
     const theta = (gi / groupCount) * Math.PI * 2;
-    const centerDist = safeRange * (STAGE0_GROUP_CENTER_DIST_MIN + Math.random() * STAGE0_GROUP_CENTER_DIST_RANGE);
+    const centerDist = safeRange * (STAGE2_GROUP_CENTER_DIST_MIN + Math.random() * STAGE2_GROUP_CENTER_DIST_RANGE);
     const cAlong = Math.cos(theta) * centerDist;
     const cNormal = Math.sin(theta) * centerDist;
-    const cRadial = randSym(safeRange * STAGE0_GROUP_RADIAL_FACTOR);
+    const cRadial = randSym(safeRange * STAGE2_GROUP_RADIAL_FACTOR);
 
     // グループ中心へ個体ごとのジッターを加え、safeRange を超えたらクランプする。
     // groupCount が色・ラベルの定義数を超えても引けるよう、配列長で剰余を取る。
-    const accent = COLOR_STAGE0_GROUP_ACCENTS[gi % COLOR_STAGE0_GROUP_ACCENTS.length]!;
-    const label = STAGE0_GROUP_LABELS[gi % STAGE0_GROUP_LABELS.length]!;
+    const accent = COLOR_STAGE2_GROUP_ACCENTS[gi % COLOR_STAGE2_GROUP_ACCENTS.length]!;
+    const label = STAGE2_GROUP_LABELS[gi % STAGE2_GROUP_LABELS.length]!;
     for (let i = 0; i < perGroup; i++) {
-      const jAlong = cAlong + randSym(STAGE0_JITTER_ALONG);
-      const jNormal = cNormal + randSym(STAGE0_JITTER_NORMAL);
-      const jRadial = cRadial + randSym(STAGE0_JITTER_RADIAL);
+      const jAlong = cAlong + randSym(STAGE2_JITTER_ALONG);
+      const jNormal = cNormal + randSym(STAGE2_JITTER_NORMAL);
+      const jRadial = cRadial + randSym(STAGE2_JITTER_RADIAL);
       let off = add(scale(pro, jAlong), scale(nrm, jNormal));
       off = add(off, scale(rHat, jRadial));
       const offLen = len(off);

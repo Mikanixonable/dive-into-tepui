@@ -10,6 +10,7 @@ import {
 } from './slot-data';
 import { type SaveStore, SAVE_INDEX_VERSION, type SavedGame } from './save-store';
 import type { ShipBlueprint } from '../../game/ship/ship-blueprint';
+import { normalizeStageId } from '../../game/stages/stage-dictionary';
 
 // 履歴ごとに持てる手動セーブの件数の上限。
 export const MANUAL_SAVE_LIMIT = 30;
@@ -20,8 +21,15 @@ export class SaveSlots {
   private readonly index: SaveIndex;
 
   // store の索引を読む。索引が無ければ空の索引から始める。
+  // 索引内のステージ id は、番号の付け替え以前に保存された旧番号も新番号へ読み替える。
   private constructor(private readonly store: SaveStore) {
     this.index = store.readIndex() ?? { version: SAVE_INDEX_VERSION, slots: [], activeSlotId: null };
+    for (const slot of this.index.slots) {
+      if (slot.lastRun !== null) {
+        slot.lastRun = { ...slot.lastRun, stageId: normalizeStageId(slot.lastRun.stageId) };
+      }
+      for (const history of slot.stages) history.stageId = normalizeStageId(history.stageId);
+    }
   }
 
   // store から索引を開く。参照されない本体を掃除し、遊ぶ先のスロットが必ず1つある状態で返す。
@@ -351,14 +359,17 @@ export class SaveSlots {
       ...exp.slot,
       id: newSaveId(),
       name: this.uniqueName(exp.slot.name),
-      lastRun: exp.slot.lastRun === null ? null : { stageId: exp.slot.lastRun.stageId, ended: true },
+      lastRun: exp.slot.lastRun === null ? null
+        : { stageId: normalizeStageId(exp.slot.lastRun.stageId), ended: true },
       stages: [],
     };
 
     // 手動セーブも id を振り直して本体を書く。
     const written: string[] = [];
     for (const history of exp.slot.stages) {
-      const newHistory: StageHistoryMeta = { ...history, snapshots: [], autoSaveId: null };
+      const newHistory: StageHistoryMeta = {
+        ...history, stageId: normalizeStageId(history.stageId), snapshots: [], autoSaveId: null,
+      };
       for (const meta of history.snapshots) {
         const data = exp.snapshots[meta.id];
         if (!data) continue;
