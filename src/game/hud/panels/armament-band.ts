@@ -54,7 +54,7 @@ export class ArmamentBand {
     if (view === null) return;
     const { ammo } = view;
     // 弾帯の残りと予備の弾倉数は、装填中の表示を優先する fmtAmmoStatus に一任する。
-    const statusText = fmtAmmoStatus(ammo.rounds, ammo.mags, ammo.cooldown);
+    const statusText = fmtAmmoStatus(ammo, ammo.reloadRemaining);
     if (this.statusEl.textContent !== statusText) this.statusEl.textContent = statusText;
     // 弾速は初速の平均。持たない操作対象では欄を出さない。
     const velocityText = ammo.muzzleVelocityMps === null ? '' : `${Math.round(ammo.muzzleVelocityMps)} m/s`;

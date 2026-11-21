@@ -1,5 +1,6 @@
 // モジュール定義から HP・温度・資源を持つ可変 instance を生成・複製する。
 import type { ShipModuleDefinition, ShipModuleKind, FuelKind } from './ship-module-definition';
+import { MAG_ROUNDS, START_SPARE_MAGS } from '../player/ammo-spec';
 
 interface InstanceBase {
   readonly id: string;
@@ -17,7 +18,13 @@ export interface TankInstance extends InstanceBase {
 }
 interface ThrusterInstance extends InstanceBase { readonly kind: 'thruster'; }
 interface RcsInstance extends InstanceBase { readonly kind: 'rcs'; }
-interface WeaponInstance extends InstanceBase { readonly kind: 'weapon'; }
+// 機関砲1門。弾薬は砲ごとに持つ(SPEC COMBAT.md「機関砲の数と弾薬の持ち主」)。rounds は装填中の
+// マガジンの残弾、mags は予備マガジンの本数。
+export interface WeaponInstance extends InstanceBase {
+  readonly kind: 'weapon';
+  rounds: number;
+  mags: number;
+}
 interface ArmorInstance extends InstanceBase { readonly kind: 'armor'; }
 interface RadiatorInstance extends InstanceBase {
   readonly kind: 'radiator';
@@ -42,7 +49,7 @@ export type ShipModuleInstance =
   | DecouplerInstance;
 
 export type ShipModuleState = Partial<Pick<ShipModuleInstance, 'hp'>>
-  & Partial<Record<'temperature' | 'fuel' | 'deployed', number | null>>
+  & Partial<Record<'temperature' | 'fuel' | 'deployed' | 'rounds' | 'mags', number | null>>
   & Partial<Record<'fuelKind', FuelKind | null>>
   & Partial<Record<'ignited', boolean | null>>;
 
@@ -58,6 +65,11 @@ function normalizedHp(value: number | null, maxHp: number): number {
 
 function normalizedFraction(value: number | null): number {
   return value !== null && Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0;
+}
+
+// 0 以上 max 以下の整数。読めない値は fallback。
+function normalizedCount(value: number | null, max: number, fallback: number): number {
+  return value !== null && Number.isFinite(value) ? Math.max(0, Math.min(max, Math.floor(value))) : fallback;
 }
 
 function normalizedFuel(value: number | null, capacity: number): number {
@@ -92,7 +104,12 @@ export function createShipModuleInstance(
     case 'cockpit': return { ...base, kind: 'cockpit' };
     case 'thruster': return { ...base, kind: 'thruster' };
     case 'rcs': return { ...base, kind: 'rcs' };
-    case 'weapon': return { ...base, kind: 'weapon' };
+    // 弾薬の記録が無ければ開始時の積載で載る。
+    case 'weapon': return {
+      ...base, kind: 'weapon',
+      rounds: normalizedCount(state.rounds ?? null, MAG_ROUNDS, MAG_ROUNDS),
+      mags: normalizedCount(state.mags ?? null, Number.MAX_SAFE_INTEGER, START_SPARE_MAGS),
+    };
     case 'armor': return { ...base, kind: 'armor' };
     case 'docking_port': return { ...base, kind: 'docking_port' };
     case 'dock': return { ...base, kind: 'dock' };

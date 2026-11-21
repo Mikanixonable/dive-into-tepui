@@ -1,26 +1,23 @@
-import { MAG_ROUNDS } from '../player/ammo-spec';
+import type { AmmoTotals } from '../player/gun-magazine';
 
-// 機関砲の弾薬状態。muzzleVelocityMps は初速の平均 [m/s] で、
-// 弾速を持たない操作対象では null。
-export interface AmmoViewModel {
-  readonly rounds: number;
-  readonly mags: number;
-  readonly cooldown: number;
+// 機関砲の弾薬状態。健全な砲の合計に、リロードの残り reloadRemaining [s] と初速の平均
+// muzzleVelocityMps [m/s](弾速を持たない操作対象では null)を添える。
+export interface AmmoViewModel extends AmmoTotals {
+  readonly reloadRemaining: number;
   readonly muzzleVelocityMps: number | null;
 }
 
-// 弾薬状態の表記(例: "RELOADING..." / "弾切れ" / "18/32 +2連")。バレル交換中は
-// 装弾数によらずリロード表示を優先する。
-export function fmtAmmoStatus(roundsInMag: number, magsLeft: number, reloadTimer: number): string {
-  if (reloadTimer > 0) return 'RELOADING...';
-  if (roundsInMag <= 0 && magsLeft <= 0) return '弾切れ';
-  return `${roundsInMag}/${MAG_ROUNDS} +${magsLeft}連`;
+// 弾薬状態の表記(例: "RELOADING..." / "弾切れ" / "18/40 +2連")。マガジン交換中は装弾数によらず
+// リロード表示を優先する。ammo は健全な砲の合計、reloadRemaining はリロードの残り [s]。
+export function fmtAmmoStatus(ammo: AmmoTotals, reloadRemaining: number): string {
+  if (reloadRemaining > 0) return 'RELOADING...';
+  if (ammo.rounds <= 0 && ammo.mags <= 0) return '弾切れ';
+  return `${ammo.rounds}/${ammo.capacity} +${ammo.mags}連`;
 }
 
-// 手動装填が始められない理由。装填できる場合は null。クールダウンは発射間隔と
-// 兼ねているため、装填の可否を示す安定した状態ではなく、ここでは見ない。
-export function reloadDisabledReason(ammo: AmmoViewModel): string | null {
+// 手動装填が始められない理由。装填できる場合は null。
+export function reloadDisabledReason(ammo: AmmoTotals): string | null {
   if (ammo.rounds <= 0 && ammo.mags <= 0) return '弾切れのため装填できません';
-  if (ammo.rounds >= MAG_ROUNDS) return '弾倉は満杯です';
+  if (ammo.rounds >= ammo.capacity) return '弾倉は満杯です';
   return null;
 }

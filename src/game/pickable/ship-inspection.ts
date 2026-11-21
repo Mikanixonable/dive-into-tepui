@@ -131,7 +131,7 @@ export class ShipInspection implements InspectedObject {
       },
       { key: 'power', label: '電力', value: fmtEnergy(this.ship.motion.power.chargeJ), presentation: 'major' },
       {
-        key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.ship.roundsInMag, this.ship.magsLeft, this.ship.reloadTimer),
+        key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.ship.ammo, this.ship.reloadTimer),
         presentation: 'major',
       },
       ...dockRows,

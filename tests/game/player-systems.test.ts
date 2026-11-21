@@ -3,7 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { Q_IDENTITY } from '../../src/math/quat';
-import { v3 } from '../../src/math/vec3';
+import { add, addScaled, len, sub, v3, type Vec3 } from '../../src/math/vec3';
 import { stepAttitude } from '../../src/physics/attitude';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
@@ -15,7 +15,14 @@ import type { PilotControls } from '../../src/game/dynamic/entity/pilot-controls
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
 import { Throttle } from '../../src/game/player/throttle';
-import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
+import { ammoTotals, consumeRound, supplyMagazines, swapMagazine } from '../../src/game/player/gun-magazine';
+import { Bullet } from '../../src/game/dynamic/entity/bullet';
+import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
+import type { EntityRegistry } from '../../src/game/dynamic/entity-registry';
+import type { RunEventBody } from '../../src/game/run-events';
+import type { StageOutcome } from '../../src/game/stages/stage-outcome';
+import type { CelestialBodies } from '../../src/game/celestial/celestial-bodies';
+import type { WeaponPorts } from '../../src/game/ship/ship-capabilities';
 import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
@@ -215,56 +222,119 @@ export function register(): void {
     assert.equal(power.serialize().up.deploy, 1);
   });
 
-  test('fire control: 非正数の補給と不正な保存値を安全な状態へ正規化する', () => {
-    const weapon = WeaponState.deserialize({
-      mags: -2, rounds: 999, cooldown: Number.NaN, muzzleIdx: -1,
-      wasFiring: false, wasEmptyClick: false,
-    } satisfies SerializedWeaponState);
-    const fire = new FireControl(
-      { motion: { mass: 1_000 } } as ModularShip,
-      {} as never,
-      {} as never,
-      weapon,
-    );
-    assert.equal(fire.mags, 2);
-    assert.equal(fire.rounds, MAG_ROUNDS);
-    const before = fire.mags;
-    fire.onPickup(0);
-    fire.onPickup(-1);
-    assert.equal(fire.mags, before);
+  test('gun magazine: 撃ち尽くしたマガジンは予備から継ぎ目なく装填し、予備が無ければ空になる', () => {
+    const gun = { rounds: 1, mags: 1 };
+    assert.equal(consumeRound(gun), 'mag-reload');
+    assert.deepEqual(gun, { rounds: MAG_ROUNDS, mags: 0 });
+    gun.rounds = 1;
+    assert.equal(consumeRound(gun), 'normal');
+    assert.deepEqual(gun, { rounds: 0, mags: 0 });
+    assert.equal(consumeRound(gun), null);
   });
 
-  test('weapon state: 弾薬遷移と砲口交互状態は副作用なしに再現できる', () => {
-    const weapon = WeaponState.create({ mags: 1, rounds: 1 });
-    assert.deepEqual(weapon.nextShot(2), { consumption: 'mag-reload', muzzleIndex: 0 });
-    weapon.fire(2);
-    assert.deepEqual(weapon.nextShot(2), { consumption: 'normal', muzzleIndex: 1 });
-    weapon.fire(2);
-    assert.equal(weapon.muzzleIdx, 0);
+  test('gun magazine: 補給は予備の少ない砲から1本ずつ、残弾 0 の砲へはそのまま装填する', () => {
+    const a = { rounds: 10, mags: 2 }, b = { rounds: 0, mags: 0 }, c = { rounds: 5, mags: 0 };
+    supplyMagazines([a, b, c], 4);
+    // b(予備0・残弾0)へ装填 → b と c が予備0で並び b が先 → c → b。
+    assert.deepEqual([a, b, c], [{ rounds: 10, mags: 2 }, { rounds: MAG_ROUNDS, mags: 2 }, { rounds: 5, mags: 1 }]);
+    supplyMagazines([a], -1);
+    supplyMagazines([a], Number.NaN);
+    assert.deepEqual(a, { rounds: 10, mags: 2 });
   });
 
-  test('weapon state: 連射間隔はフレーム長へ切り上がらず、超過分を次の間隔から引く', () => {
-    const weapon = new WeaponState();
-    const interval = 0.06, dt = 1 / 60;
-    let shots = 0;
-    weapon.setShotInterval(interval);
-    for (let frame = 0; frame < 600; frame++) {
-      weapon.tickCooldown(dt);
-      if (weapon.cooldown > 0) continue;
-      shots++;
-      weapon.setShotInterval(interval);
+  test('gun magazine: マガジン交換は予備があり補充の余地があるときだけ', () => {
+    const full = { rounds: MAG_ROUNDS, mags: 2 }, empty = { rounds: 3, mags: 0 }, partial = { rounds: 3, mags: 1 };
+    assert.equal(swapMagazine(full), false);
+    assert.equal(swapMagazine(empty), false);
+    assert.equal(swapMagazine(partial), true);
+    assert.deepEqual(partial, { rounds: MAG_ROUNDS, mags: 0 });
+    assert.deepEqual(ammoTotals([full, empty]), { rounds: MAG_ROUNDS + 3, mags: 2, capacity: 2 * MAG_ROUNDS });
+  });
+
+  test('fire control: 発射はフレームに縛られず、2門は連射間隔を等分した拍で撃つ', () => {
+    const fired = fireForFrames(['g1', 'g2'], 1 / 30, 60);
+    const interval = 0.06;
+    // 起動遅延 0.15 s のあと 0.03 s ごと。30 fps でも1フレーム1発へ落ちない(毎秒 33.3 発)。
+    assert.equal(fired.length, Math.floor((2 - 0.15) / (interval / 2) + 1e-9) + 1);
+    fired.forEach((shot, i) => {
+      assert.ok(Math.abs(shot.t - (0.15 + i * interval / 2)) < 1e-9, `shot ${i} at ${shot.t}`);
+      assert.equal(shot.gun, i % 2 === 0 ? 'g1' : 'g2');
+    });
+  });
+
+  test('fire control: 弾は撃った時刻に砲口の前に現れ、その前は砲身の中を直線に飛ぶ', () => {
+    const fired = fireForFrames(['g1'], 1 / 60, 30);
+    assert.ok(fired.length > 5);
+    for (const shot of fired) {
+      const { state } = shot.bullet.motion;
+      assert.ok(state.t <= shot.t && shot.t - state.t < 1 / 60 + 1e-12);
+      const at = addScaled(state.r, state.v, shot.t - state.t);
+      // 撃った時刻の砲口(艦の速度で進めた位置)から前方 1.5 m に、散布界のぶんだけ外れて現れる。
+      const muzzleAt = addScaled(v3(7e6, 0, 2.5), v3(0, 7600, 0), shot.t);
+      assert.ok(len(sub(at, add(muzzleAt, v3(0, 0, 1.5)))) < 0.05, `offset ${len(sub(at, muzzleAt))}`);
+      assert.equal(shot.bullet.motion.reaction.bornSim, shot.t);
     }
-    // 10 秒で約 166 発。切り上げ(4 フレーム間隔)なら 150 発になる。
-    assert.ok(shots >= 164, `shots=${shots}`);
   });
+}
 
-  test('weapon state: 起動遅延はリロード中の残りクールダウンを短くしない', () => {
-    const weapon = new WeaponState();
-    weapon.setCooldown(1.0);
-    weapon.extendCooldown(0.15);
-    assert.equal(weapon.cooldown, 1.0);
-    weapon.setCooldown(0);
-    weapon.extendCooldown(0.15);
-    assert.equal(weapon.cooldown, 0.15);
-  });
+// 砲 ids を積んだ艦の模型で、frameDt [s] のフレームを frames 回トリガーを引き続け、撃った時刻と砲と弾を
+// 時刻の順に返す。
+function fireForFrames(
+  ids: readonly string[], frameDt: number, frames: number,
+): { t: number; gun: string; bullet: Bullet }[] {
+  const definition = SHIP_MODULE_CATALOG.require('weapon-gatling');
+  const guns = ids.map((id) => createShipModuleInstance(definition, id));
+  // 砲 k の砲口は x へ 10k m ずらし、発射の出来事の砲口の位置から撃った砲を引く。
+  const ports: WeaponPorts[] = guns.map((gun, k) => ({
+    moduleId: gun.id, muzzles: [v3(10 * k, 0, 2.5)], ejectionPort: v3(-2, 0, 0), linkExitPort: v3(-1, -2, 0),
+    rotation: Q_IDENTITY,
+  }));
+  let t = 0;
+  const shipVelocity = v3(0, 7600, 0);
+  const origin = (): Vec3 => addScaled(v3(7e6, 0, 0), shipVelocity, t);
+  const motion = {
+    get state() { return kinematicState<'eci'>(t, origin(), shipVelocity); },
+    att: { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) },
+    mass: 20_000,
+    centerOffset: v3(),
+    assemblyToEci: (p: Vec3) => add(origin(), p),
+    applyImpulseAtPoint: () => {},
+    absorbHeat: () => {},
+  };
+  const ship = {
+    motion,
+    capabilities: {
+      modules: () => guns.map((gun) => ({ ...gun })),
+      weaponPorts: () => ports,
+      assembly: {
+        definition: () => definition,
+        module: (id: string) => ({ ...guns.find((gun) => gun.id === id)! }),
+        setAmmo: (id: string, ammo: { rounds: number; mags: number }) => {
+          Object.assign(guns.find((gun) => gun.id === id)!, { rounds: ammo.rounds, mags: ammo.mags });
+        },
+      },
+    },
+  } as unknown as ModularShip;
+  const fired: { t: number; gun: string; bullet: Bullet }[] = [];
+  const bullets: Bullet[] = [];
+  const registry = {
+    idAllocators: new EntityIdAllocators(),
+    add: (entity: unknown) => { if (entity instanceof Bullet) bullets.push(entity); },
+    events: {
+      record: (body: RunEventBody) => {
+        if (body.kind !== 'gunFired') return;
+        const k = Math.round((body.muzzleState.r.x - 7e6) / 10);
+        fired.push({ t: body.muzzleState.t, gun: ids[k]!, bullet: bullets[bullets.length - 1]! });
+      },
+    },
+  } as unknown as EntityRegistry;
+  const fire = FireControl.create(ship, registry, new THREE.Scene());
+  const controls = { firing: true } as PilotControls;
+  const stage = { recordShot: () => {} } as unknown as StageOutcome;
+  const bodies = { starId: null } as unknown as CelestialBodies;
+  for (let i = 0; i < frames; i++) {
+    fire.updateFireState(frameDt, controls, stage, bodies);
+    t += frameDt;
+  }
+  return fired;
 }

@@ -193,7 +193,7 @@ export class Logistics {
     if (!canResupplyAmmo && !canResupplyFuel) return;
     if (simTime < this.resupplyCheckAt) return;
     this.resupplyCheckAt = simTime + LOGISTICS_CHECK_INTERVAL;
-    if (canResupplyAmmo && player.magsLeft < LOGISTICS_LOW_MAGS && this.liveAmmoPickupCount() < MAX_ACTIVE_AMMO_PICKUPS) {
+    if (canResupplyAmmo && player.ammo.mags < LOGISTICS_LOW_MAGS && this.liveAmmoPickupCount() < MAX_ACTIVE_AMMO_PICKUPS) {
       this.spawnForPlayer(player);
     }
     if (canResupplyFuel && this.shouldResupplyFuel(player) && this.liveRcsFuelPickupCount() < MAX_ACTIVE_RCS_FUEL_PICKUPS) {

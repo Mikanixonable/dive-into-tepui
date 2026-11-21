@@ -213,9 +213,8 @@ export class HudPanelPresenter {
     if (fire === null) return null;
     const ship = isPresentationShip(controlled) ? controlled : null;
     return {
-      rounds: fire.rounds,
-      mags: fire.mags,
-      cooldown: fire.cooldown,
+      ...fire.ammo,
+      reloadRemaining: fire.reloadRemaining,
       muzzleVelocityMps: ship === null ? null : ship.capabilities.averageMuzzleVelocity,
     };
   }

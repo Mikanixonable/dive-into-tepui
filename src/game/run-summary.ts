@@ -48,7 +48,7 @@ export function summarizeRun(
       ? Math.max(0, controlled.hp) / controlled.maxHp
       : 0,
     maxHp: controlled?.maxHp ?? 0,
-    magazines: controlled?.fire?.mags ?? 0,
+    magazines: controlled?.fire?.ammo.mags ?? 0,
     playerCount: entities.filter(isModularShip).length,
     enemyAliveCount: entities.filter(isEnemy).filter((e) => e.motion.alive).length,
   };
