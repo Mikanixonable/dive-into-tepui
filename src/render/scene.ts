@@ -50,7 +50,7 @@ export async function createGameScene(
     canvas, trackTimestamp: true, reversedDepthBuffer: true,
     // 気象の写し(移流・気圧・地形・気団…)を読む雲のシェーダは、既定の上限 16 を
     // 超えるサンプルドテクスチャを束縛するので、余裕を持った上限を要求する。
-    requiredLimits: { maxSampledTexturesPerShaderStage: 32 },
+    // CI 切り分けのため一時的に外す(このコミットは巻き戻す)。
   });
   renderer.setOpaqueSort(reversedOpaqueSort);
   renderer.setTransparentSort(reversedTransparentSort);
