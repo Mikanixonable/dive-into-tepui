@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>敵弾(プラズマ)至近通過音 聴き比べ 10 (宇宙の広がりと残酷さ)</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:900px;margin:2em auto;padding:0 1em;background:#111;color:#ddd}
+  h1{font-size:1.3em}
+  .card{border:1px solid #333;border-radius:8px;padding:1em;margin:1em 0;background:#181818}
+  .card h2{margin:0 0 .3em;font-size:1.05em}
+  .card p{margin:.3em 0 .8em;color:#aaa;font-size:.85em;line-height:1.5}
+  button{background:#2a5;color:#fff;border:0;border-radius:6px;padding:.55em 1.2em;margin-right:.6em;font-size:.95em;cursor:pointer}
+  button.burst{background:#36c}
+  button:active{filter:brightness(1.3)}
+  label{font-size:.85em;color:#bbb;display:block;margin:1.5em 0 .3em}
+  input[type=range]{width:320px;vertical-align:middle}
+  #volVal{margin-left:.6em}
+  .note{background:#141822;border:1px solid #2a3550;border-radius:8px;padding:.8em 1em;font-size:.82em;color:#9ab;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>敵弾(プラズマ)至近通過音 聴き比べ 10 — 宇宙の広がりと残酷さ</h1>
+<div class="note">
+<b>設計の理屈。</b>真空では空気伝搬しないため、プラズマ弾の至近通過は<b>艦体を通る磁場の誘導・構造伝搬</b>として聞こえるはず。
+つまり「空気の音」ではなく「艦が鳴く音」：低くくぐもり、冷たく無機質で、余韻が長い。
+残酷さは<b>無情さ</b>——音の立ち上がりが感情的でなく、ゆっくり近づいて容赦なく去る。
+広がりは<b>巨大なスケールと奥行き</b>——遅い変化・広いステレオ・長い残響で表す。
+全案でコアの「ヴン」(saw 60→80→42Hz, 0.4s)は同一に保ち、周辺構造だけを変えています。
+</div>
+
+<label>マスター音量 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"><span id="volVal">0.80</span></label>
+
+<div id="cards"></div>
+
+<h2 style="font-size:1em">採点(1=不採用〜4=採用候補)</h2>
+<button id="export" style="background:#555">採点をコピー</button>
+<button id="resetScores" style="background:#733">採点リセット</button>
+<pre id="scoreOut" style="background:#0a0a0a;border:1px solid #333;padding:.8em;margin-top:1em;font-size:.8em;display:none;white-space:pre-wrap"></pre>
+
+<script>
+const ctx = new AudioContext();
+const master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+document.getElementById('vol').oninput = e => {
+  master.gain.value = +e.target.value;
+  document.getElementById('volVal').textContent = (+e.target.value).toFixed(2);
+};
+const noiseBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+{ const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+const jit = (v, pct) => v * (1 + (Math.random() * 2 - 1) * pct);
+const panOf = () => (Math.random() < 0.5 ? -1 : 1) * jit(0.5, 0.5);
+
+// 遅い畳み込み風リバーブ: 短い impulse 応答を自作(減衰ノイズ)
+const irLen = Math.floor(ctx.sampleRate * 1.8);
+const ir = ctx.createBuffer(2, irLen, ctx.sampleRate);
+for (let ch = 0; ch < 2; ch++) {
+  const d = ir.getChannelData(ch);
+  for (let i = 0; i < irLen; i++) {
+    d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / irLen, 2.8);
+  }
+}
+const reverb = ctx.createConvolver(); reverb.buffer = ir;
+const revGain = ctx.createGain(); revGain.gain.value = 0.5;
+reverb.connect(revGain).connect(master);
+
+// コア: 全案共通の「ヴン」
+function core(t, { vol = 0.15, pan = 0, lpHigh = 400, dur = 0.4 } = {}) {
+  const o = ctx.createOscillator(); o.type = 'sawtooth';
+  o.frequency.setValueAtTime(jit(60, 0.04), t);
+  o.frequency.exponentialRampToValueAtTime(jit(80, 0.04), t + dur * 0.35);
+  o.frequency.exponentialRampToValueAtTime(jit(42, 0.04), t + dur);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(100, t);
+  f.frequency.exponentialRampToValueAtTime(lpHigh, t + dur * 0.3);
+  f.frequency.exponentialRampToValueAtTime(100, t + dur * 0.8);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.01, t);
+  g.gain.linearRampToValueAtTime(vol, t + dur * 0.5);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  o.connect(f).connect(g).connect(p).connect(master);
+  g.connect(reverb); // 常に少し残響へ(宇宙の広がり)
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function partial(t, freq, dur, vol, pan = 0) {
+  const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(freq, t);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.linearRampToValueAtTime(vol, t + dur * 0.4);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  o.connect(g).connect(p).connect(master);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+// 構造伝搬の艦体鳴り: 低い共振帯域が長く鳴る
+function hullRing(t, freq, dur, vol, pan = 0) {
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 18;
+  f.frequency.value = freq;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.linearRampToValueAtTime(vol, t + 0.02);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  s.connect(f).connect(g).connect(p).connect(master);
+  s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
+}
+// 遠い残響テール: コアの減衰した写し
+function ghost(t, delay, vol, pan) {
+  const o = ctx.createOscillator(); o.type = 'sawtooth';
+  o.frequency.setValueAtTime(jit(55, 0.03), t + delay);
+  o.frequency.exponentialRampToValueAtTime(jit(38, 0.03), t + delay + 0.5);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 180;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, t + delay);
+  g.gain.linearRampToValueAtTime(vol, t + delay + 0.15);
+  g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.55);
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  o.connect(f).connect(g).connect(p).connect(reverb);
+  o.start(t + delay); o.stop(t + delay + 0.6);
+}
+// 静かな風(広い帯域の遅いノイズ揺らぎ)
+function spaceWind(t, dur, vol, pan = 0) {
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 0.8;
+  f.frequency.setValueAtTime(jit(500, 0.2), t);
+  f.frequency.exponentialRampToValueAtTime(jit(220, 0.2), t + dur);
+  const lfo = ctx.createOscillator(); lfo.frequency.value = jit(0.3, 0.4);
+  const lg = ctx.createGain(); lg.gain.value = 300;
+  lfo.connect(lg).connect(f.frequency);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.linearRampToValueAtTime(vol, t + dur * 0.4);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  s.connect(f).connect(g).connect(p).connect(master);
+  [s, lfo].forEach(x => { x.start(t); x.stop(t + dur + 0.05); });
+}
+
+// ============ 案 ============
+// 共通: core は同一。残響バスにも常に送り「宇宙の広がり」を全案に残す。
+
+// N1: 基準 — コア+長い残響のみ(宇宙空間の最小構成)
+function n1(t) {
+  const pan = panOf();
+  core(t, { pan });
+}
+// N2: 艦体伝搬 — コア + 艦の低い共振(280Hz帯)が長く鳴る
+function n2(t) {
+  const pan = panOf();
+  core(t, { pan });
+  hullRing(t + 0.02, jit(280, 0.1), 0.9, 0.1, pan);
+  hullRing(t + 0.05, jit(190, 0.1), 1.1, 0.07, -pan);
+}
+// N3: 遠い残響 — コアの後に 0.35s 遅れの弱い写しが左右へ散る
+function n3(t) {
+  const pan = panOf();
+  core(t, { pan });
+  ghost(t, 0.35, 0.05, -pan);
+  ghost(t, 0.62, 0.03, pan);
+}
+// N4: 無情な接近 — コアが0.6sかけてゆっくり最大へ、去り際は急(容赦なく去る)
+function n4(t) {
+  const pan = panOf();
+  const o = ctx.createOscillator(); o.type = 'sawtooth';
+  o.frequency.setValueAtTime(jit(58, 0.04), t);
+  o.frequency.exponentialRampToValueAtTime(jit(85, 0.04), t + 0.5);
+  o.frequency.exponentialRampToValueAtTime(jit(38, 0.04), t + 0.65);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(90, t);
+  f.frequency.exponentialRampToValueAtTime(420, t + 0.45);
+  f.frequency.exponentialRampToValueAtTime(80, t + 0.6);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.linearRampToValueAtTime(0.16, t + 0.5);   // ゆっくり最大
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.68); // 去り際は急
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  o.connect(f).connect(g).connect(p).connect(master);
+  g.connect(reverb);
+  o.start(t); o.stop(t + 0.75);
+}
+// N5: 巨大な深さ — コア + 1.8s残響を強めに + 超低いサブの支え
+function n5(t) {
+  const pan = panOf();
+  core(t, { pan });
+  partial(t, jit(30, 0.1), 1.0, 0.12);
+  partial(t, jit(45, 0.08), 0.9, 0.05, -pan * 0.5);
+}
+// N6: 静かな風 — コアの周りに広い帯域の遅い揺らぎ(宇宙のノイズフロア)
+function n6(t) {
+  const pan = panOf();
+  core(t, { pan });
+  spaceWind(t, 1.4, 0.04, pan);
+  spaceWind(t + 0.1, 1.2, 0.03, -pan);
+}
+// N7: 冷たい多声 — コア + 長5度和音(triangle) + 艦体鳴り + 残響
+function n7(t) {
+  const pan = panOf();
+  core(t, { pan });
+  const o = ctx.createOscillator(); o.type = 'triangle';
+  o.frequency.setValueAtTime(jit(91, 0.04), t);
+  o.frequency.exponentialRampToValueAtTime(jit(122, 0.04), t + 0.14);
+  o.frequency.exponentialRampToValueAtTime(jit(64, 0.04), t + 0.4);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.01, t);
+  g.gain.linearRampToValueAtTime(0.07, t + 0.2);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+  const p = ctx.createStereoPanner(); p.pan.value = -pan * 0.6;
+  o.connect(f).connect(g).connect(p).connect(master);
+  g.connect(reverb);
+  o.start(t); o.stop(t + 0.45);
+  hullRing(t + 0.03, jit(240, 0.1), 1.0, 0.08, pan);
+}
+// N8: 広がり最大 — コア中央 + 左右に遅れる残響 + 風 + 艦体
+function n8(t) {
+  const pan = panOf();
+  core(t, { pan: 0 });
+  hullRing(t + 0.04, jit(260, 0.1), 0.9, 0.09, pan);
+  spaceWind(t + 0.05, 1.5, 0.035, -pan);
+  ghost(t, 0.4, 0.04, -pan);
+  partial(t, jit(33, 0.1), 0.9, 0.1);
+}
+// N9: 残酷な静寂 — コアが小さく遠くから始まり一瞬だけ大きく、あとは残響だけ
+function n9(t) {
+  const pan = panOf();
+  core(t, { vol: 0.11, pan });
+  ghost(t, 0.5, 0.06, -pan);
+  ghost(t, 0.9, 0.035, pan);
+  partial(t, jit(29, 0.1), 1.2, 0.1);
+}
+// N10: 全入り — コア + 和音 + 艦体 + 風 + 遠い残響 + サブ(広がりと残酷さの融合)
+function n10(t) {
+  const pan = panOf();
+  core(t, { pan });
+  hullRing(t + 0.03, jit(270, 0.1), 0.9, 0.08, pan);
+  spaceWind(t + 0.05, 1.3, 0.03, -pan);
+  ghost(t, 0.38, 0.045, -pan);
+  partial(t, jit(31, 0.1), 1.0, 0.1);
+  partial(t + 0.05, jit(46, 0.08), 0.8, 0.05, pan * 0.5);
+}
+
+const variants = [
+  { id: 'N1', name: '基準(コア+残響)', fn: n1, desc: '宇宙の広がりの最小構成。' },
+  { id: 'N2', name: '艦体伝搬', fn: n2, desc: '艦が低く鳴く構造伝搬。' },
+  { id: 'N3', name: '遠い残響', fn: n3, desc: '0.35s/0.62s 遅れの弱い写しが左右へ。' },
+  { id: 'N4', name: '無情な接近', fn: n4, desc: 'ゆっくり最大へ、去り際は急。' },
+  { id: 'N5', name: '巨大な深さ', fn: n5, desc: '30Hz サブの支え+長残響。' },
+  { id: 'N6', name: '静かな風', fn: n6, desc: '遅い帯域揺らぎのノイズフロア。' },
+  { id: 'N7', name: '冷たい多声', fn: n7, desc: '5度和音+艦体鳴り+残響。' },
+  { id: 'N8', name: '広がり最大', fn: n8, desc: '左右に散る残響+風+艦体。' },
+  { id: 'N9', name: '残酷な静寂', fn: n9, desc: '一瞬だけ大きく、あとは残響だけ。' },
+  { id: 'N10', name: '全入り', fn: n10, desc: '広がりと残酷さの融合。' },
+];
+
+const cards = document.getElementById('cards');
+const timers = new Map();
+for (const v of variants) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<h2>${v.id}. ${v.name}</h2><p>${v.desc}</p>`;
+  const b1 = document.createElement('button'); b1.textContent = '1回';
+  b1.onclick = () => { ctx.resume(); v.fn(ctx.currentTime + 0.05); };
+  const b2 = document.createElement('button'); b2.textContent = '連続(押し続け)';
+  b2.className = 'burst';
+  const start = () => {
+    ctx.resume();
+    v.fn(ctx.currentTime + 0.05);
+    timers.set(v.id, setInterval(() => { v.fn(ctx.currentTime + 0.01); }, 1000));
+  };
+  const stop = () => { clearInterval(timers.get(v.id)); timers.delete(v.id); };
+  b2.onpointerdown = start; b2.onpointerup = b2.onpointerleave = stop;
+  card.append(b1, b2);
+  const row = document.createElement('div');
+  row.style.marginTop = '.6em';
+  row.append('採点: ');
+  const btns = [];
+  const paint = () => {
+    const r = JSON.parse(localStorage.getItem('plasma-ratings10') || '{}');
+    btns.forEach((b, i) => { b.style.background = r[v.id] === i + 1 ? '#c93' : '#333'; });
+  };
+  for (let n = 1; n <= 4; n++) {
+    const b = document.createElement('button');
+    b.textContent = n; b.style.padding = '.3em .8em'; b.style.marginRight = '.4em';
+    b.onclick = () => {
+      const r = JSON.parse(localStorage.getItem('plasma-ratings10') || '{}');
+      if (r[v.id] === n) delete r[v.id]; else r[v.id] = n;
+      localStorage.setItem('plasma-ratings10', JSON.stringify(r));
+      paint();
+    };
+    btns.push(b); row.append(b);
+  }
+  paint();
+  card.append(row);
+  cards.append(card);
+}
+document.getElementById('export').onclick = async () => {
+  const ratings = JSON.parse(localStorage.getItem('plasma-ratings10') || '{}');
+  const lines = variants
+    .map(v => `${v.id} ${v.name}: ${ratings[v.id] ?? '未採点'}`)
+    .sort((a, b) => (parseInt(b.match(/: (\d)/)?.[1] || '0')) - (parseInt(a.match(/: (\d)/)?.[1] || '0')));
+  const text = '敵弾10(宇宙の広がりと残酷さ) 採点(4段階)\n' + lines.join('\n');
+  const out = document.getElementById('scoreOut');
+  out.textContent = text; out.style.display = 'block';
+  try { await navigator.clipboard.writeText(text); out.textContent += '\n\n(クリップボードへコピー済み)'; } catch {}
+};
+document.getElementById('resetScores').onclick = () => {
+  localStorage.removeItem('plasma-ratings10');
+  location.reload();
+};
+</script>
+</body>
+</html>

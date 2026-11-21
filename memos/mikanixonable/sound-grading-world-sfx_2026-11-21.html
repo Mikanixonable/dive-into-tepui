@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>世界の効果音 — 聴き比べ採点</title>
+<style>
+
+body{font-family:"Inter",system-ui,sans-serif;min-height:100vh;margin:0;padding:0 1.5em 4em;
+  background:radial-gradient(1200px 600px at 80% -10%,#1b2a4a 0%,#0b0e14 55%),#0b0e14;color:#e6ecf5}
+header{max-width:1080px;margin:0 auto;padding:3em 0 1em}
+h1{font-size:clamp(1.6em,4vw,2.4em);font-weight:800;letter-spacing:-.02em;
+  background:linear-gradient(90deg,#7db8ff,#c58bff);-webkit-background-clip:text;background-clip:text;color:transparent;margin:0 0 .2em}
+.sub{color:#8b98ad;font-size:.9em}
+.toolbar{max-width:1080px;margin:1.5em auto;display:flex;gap:1em;align-items:center;flex-wrap:wrap;
+  background:rgba(255,255,255,.04);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;padding:.9em 1.2em}
+.snd{max-width:1080px;margin:0 auto 2.2em}
+.snd h2{font-size:1.15em;font-weight:700;margin:0 0 .2em;color:#cfd9e8}
+.snd-desc{color:#7c8a9e;font-size:.8em;margin:0 0 .8em}
+.vars{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.9em}
+.card{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);border-radius:16px;
+  padding:1em 1.1em;transition:transform .18s,border-color .18s,box-shadow .18s}
+.card:hover{transform:translateY(-2px);border-color:rgba(125,184,255,.45);box-shadow:0 12px 32px -12px rgba(80,140,255,.3)}
+.vname{font-size:.72em;font-weight:700;letter-spacing:.08em;color:#8fb4ff;margin-bottom:.3em}
+.card p{margin:0 0 .9em;color:#93a1b6;font-size:.75em;line-height:1.5;min-height:2.4em}
+.row{display:flex;gap:.6em;margin-bottom:.8em}
+button.play{flex:1;background:linear-gradient(135deg,#4f8dff,#7b5cff);color:#fff;border:0;border-radius:10px;
+  padding:.6em 0;font-size:.85em;font-weight:600;cursor:pointer;transition:filter .15s,transform .1s}
+button.play:hover{filter:brightness(1.15)}button.play:active{transform:scale(.97)}
+button.play.playing{background:linear-gradient(135deg,#ff7a5c,#ff5c8a)}
+.score{display:flex;gap:.45em}
+.score button{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#8b98ad;
+  border-radius:9px;padding:.4em 0;font-weight:700;font-size:.8em;cursor:pointer;transition:all .15s}
+.score button.on{background:linear-gradient(135deg,#ffb347,#ff5c8a);color:#fff;border-color:transparent;
+  box-shadow:0 6px 18px -6px rgba(255,120,140,.5)}
+.action{background:rgba(255,255,255,.07);color:#cfd9e8;border:1px solid rgba(255,255,255,.1);
+  border-radius:10px;padding:.55em 1em;font-size:.85em;cursor:pointer}
+input[type=range]{accent-color:#7b5cff;width:180px}
+.adopt{display:flex;align-items:center;gap:.4em;margin-top:.7em;font-size:.72em;color:#8fb4ff;cursor:pointer}
+.adopt input{accent-color:#7b5cff}
+label{font-size:.82em;color:#b9c4d4}
+#volVal{margin-left:.5em;min-width:2.5em;display:inline-block}
+#scoreOut{max-width:1080px;margin:1.5em auto;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.1);
+  border-radius:12px;padding:1em;font-size:.8em;display:none;white-space:pre-wrap;color:#a9ffd0}
+</style>
+</head>
+<body>
+<header>
+<h1>世界の効果音 — 聴き比べ採点</h1>
+<div class="sub">被弾・爆発・警報などの一回きりの音。各音につき現行+代替3案を聴き比べる。<br>各案を1(不採用)〜4(採用候補)で採点。採点はブラウザに保存され、「採点をコピー」で結果を渡せます。</div>
+</header>
+<div class="toolbar">
+  <label>音量 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"><span id="volVal">0.80</span></label>
+  <button class="action" id="export">採点をコピー</button>
+  <button class="action" id="resetScores">採点リセット</button>
+</div>
+<div id="cards"></div>
+<pre id="scoreOut"></pre>
+<script>
+
+const ctx = new AudioContext();
+const master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+const noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+{ const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+function tone(freq, dur, vol, type, when = 0) {
+  const t = ctx.currentTime + when;
+  const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+// 音高が a→b へ滑る音
+function sweep(a, b, dur, vol, type, when = 0) {
+  const t = ctx.currentTime + when;
+  const o = ctx.createOscillator(); o.type = type;
+  o.frequency.setValueAtTime(a, t); o.frequency.exponentialRampToValueAtTime(b, t + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+function noiseBurst(dur, type, freq, vol, when = 0, q = 1) {
+  const t = ctx.currentTime + when;
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  s.connect(f).connect(g).connect(master); s.start(t, Math.random() * 0.5, dur + 0.02); s.stop(t + dur + 0.05);
+}
+// 自機被弾(proximity 0..1)
+function hitSound(p, wave, fMul, gMul) {
+  const t = ctx.currentTime;
+  const freq = (80 + 90 * p) * fMul, peak = (0.2 + 0.7 * p) * gMul, tail = (0.02 + 0.08 * p) * gMul;
+  const o = ctx.createOscillator(); o.type = wave; o.frequency.setValueAtTime(freq, t);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(70, t); f.frequency.exponentialRampToValueAtTime(190, t + 0.1);
+  f.frequency.exponentialRampToValueAtTime(55, t + 0.32);
+  const g = ctx.createGain(); g.gain.setValueAtTime(peak, t);
+  g.gain.exponentialRampToValueAtTime(tail, t + 0.35);
+  o.connect(f).connect(g).connect(master); o.start(t); o.stop(t + 0.38);
+}
+function chord(freqs, dur, vol, wave, slideTo = 0.72) {
+  const t = ctx.currentTime;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(180, t); f.frequency.exponentialRampToValueAtTime(520, t + 0.08);
+  f.frequency.exponentialRampToValueAtTime(130, t + dur * 0.9);
+  const g = ctx.createGain(); g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  freqs.forEach(fr => {
+    const o = ctx.createOscillator(); o.type = wave;
+    o.frequency.setValueAtTime(fr, t); o.frequency.exponentialRampToValueAtTime(fr * slideTo, t + dur * 0.8);
+    o.connect(f); o.start(t); o.stop(t + dur);
+  });
+  f.connect(g).connect(master);
+}
+function boom(noiseLo, kickA, kickB, kickDur, tail) {
+  noiseBurst(tail, 'lowpass', noiseLo, 0.8);
+  noiseBurst(tail * 0.5, 'lowpass', noiseLo * 2.6, 0.5);
+  sweep(kickA, kickB, kickDur, 0.8, 'sine');
+}
+function klaxonBuf() {
+  const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  const beep = (a, b, fr) => {
+    const i0 = Math.floor(a * ctx.sampleRate), i1 = Math.floor(b * ctx.sampleRate);
+    const fade = Math.floor(ctx.sampleRate * 0.004);
+    for (let i = i0; i < i1; i++) {
+      const sq = (i * fr * 2 / ctx.sampleRate) % 2 < 1 ? 1 : -1;
+      d[i] = sq * Math.min(1, (i - i0) / fade, (i1 - i) / fade);
+    }
+  };
+  beep(0, 0.18, 880); beep(0.3, 0.48, 587);
+  return buf;
+}
+function loopChannel(freq, q, buffer, lfoHz, lfoDepth) {
+  const s = ctx.createBufferSource(); s.buffer = buffer || noiseBuf; s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+  const g = ctx.createGain(); g.gain.value = 0;
+  if (buffer) s.connect(g); else s.connect(f).connect(g);
+  if (lfoHz) {
+    const lfo = ctx.createOscillator(); lfo.frequency.value = lfoHz;
+    const lg = ctx.createGain(); lg.gain.value = lfoDepth;
+    lfo.connect(lg).connect(g.gain); lfo.start();
+  }
+  g.connect(master); s.start();
+  return g;
+}
+function klaxonBuf2() {
+  const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  const beep = (a, b, fr) => {
+    const i0 = Math.floor(a * ctx.sampleRate), i1 = Math.floor(b * ctx.sampleRate);
+    const fade = Math.floor(ctx.sampleRate * 0.004);
+    for (let i = i0; i < i1; i++) {
+      const sq = (i * fr * 2 / ctx.sampleRate) % 2 < 1 ? 1 : -1;
+      d[i] = sq * Math.min(1, (i - i0) / fade, (i1 - i) / fade);
+    }
+  };
+  beep(0, 0.14, 880); beep(0.22, 0.36, 880); beep(0.44, 0.58, 660);
+  return buf;
+}
+// 2層のバンドパスノイズを1つの音量ノードへ混ぜる。
+function dualLoop(f1, q1, f2, q2) {
+  const g = ctx.createGain(); g.gain.value = 0;
+  [[f1, q1], [f2, q2]].forEach(([fr, q]) => {
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = fr; f.Q.value = q;
+    src.connect(f).connect(g); src.start();
+  });
+  g.connect(master);
+  return g;
+}
+function klaxonLoop(lp) {
+  const s = ctx.createBufferSource(); s.buffer = klaxonBuf(); s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+  const g = ctx.createGain(); g.gain.value = 0;
+  s.connect(f).connect(g).connect(master); s.start();
+  return g;
+}
+function klaxonLoopR(lp, rate) {
+  const s = ctx.createBufferSource(); s.buffer = klaxonBuf(); s.loop = true;
+  s.playbackRate.value = rate;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+  const g = ctx.createGain(); g.gain.value = 0;
+  s.connect(f).connect(g).connect(master); s.start();
+  return g;
+}
+function klaxon2Loop(lp) {
+  const s = ctx.createBufferSource(); s.buffer = klaxonBuf2(); s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+  const g = ctx.createGain(); g.gain.value = 0;
+  s.connect(f).connect(g).connect(master); s.start();
+  return g;
+}
+const LOOPS = {
+  'thrust-a': { make: () => loopChannel(320, 0.8), gain: 0.1 },
+  'thrust-b': { make: () => loopChannel(190, 0.6), gain: 0.14 },
+  'thrust-c': { make: () => loopChannel(520, 1.6), gain: 0.07 },
+  'thrust-d': { make: () => loopChannel(300, 0.9, null, 9, 0.05), gain: 0.06 },
+  'rcs-a': { make: () => loopChannel(1600, 1.1), gain: 0.015 },
+  'rcs-b': { make: () => loopChannel(2400, 0.8), gain: 0.012 },
+  'rcs-c': { make: () => loopChannel(900, 1.4), gain: 0.025 },
+  'rcs-d': { make: () => loopChannel(1600, 1.1, null, 6, 0.012), gain: 0.006 },
+  'alarm-a': { make: () => loopChannel(0, 0, klaxonBuf()), gain: 0.06 },
+  'alarm-b': { make: () => { const s = ctx.createBufferSource(); s.buffer = klaxonBuf(); s.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(f).connect(g).connect(master); s.start(); return g; }, gain: 0.09 },
+  'alarm-c': { make: () => loopChannel(0, 0, klaxonBuf()), gain: 0.04 },
+  'alarm-d': { make: () => loopChannel(700, 2.5), gain: 0.05 },
+  // 採用案ベースの別案
+  'thrust-n1': { make: () => loopChannel(150, 0.7), gain: 0.17 },
+  'thrust-n2': { make: () => loopChannel(190, 0.7, null, 4, 0.045), gain: 0.1 },
+  'thrust-n3': { make: () => dualLoop(190, 0.7, 380, 1.2), gain: 0.08 },
+  'rcs-n1': { make: () => loopChannel(1050, 0.9), gain: 0.02 },
+  'rcs-n2': { make: () => loopChannel(900, 1.4, null, 5, 0.012), gain: 0.012 },
+  'rcs-n3': { make: () => dualLoop(900, 1.4, 1800, 1.2), gain: 0.014 },
+  'alarm-n1': { make: () => klaxonLoop(600), gain: 0.11 },
+  'alarm-n2': { make: () => klaxon2Loop(900), gain: 0.09 },
+  'alarm-n3': { make: () => dualLoop(700, 2.5, 350, 1.5), gain: 0.05 },
+  // 第2ラウンド
+  'thrust-x1': { make: () => loopChannel(250, 1.0), gain: 0.11 },
+  'thrust-x2': { make: () => loopChannel(120, 0.5), gain: 0.19 },
+  'thrust-x3': { make: () => dualLoop(300, 0.9, 600, 1.4), gain: 0.07 },
+  'thrust-x4': { make: () => loopChannel(190, 0.6, null, 2, 0.06), gain: 0.1 },
+  'rcs-x1': { make: () => loopChannel(1200, 1.2), gain: 0.018 },
+  'rcs-x2': { make: () => loopChannel(700, 1.0), gain: 0.03 },
+  'rcs-x3': { make: () => loopChannel(2000, 0.7), gain: 0.011 },
+  'rcs-x4': { make: () => loopChannel(900, 1.4, null, 8, 0.01), gain: 0.014 },
+  'alarm-x1': { make: () => { const s = ctx.createBufferSource(); s.buffer = klaxonBuf(); s.loop = true;
+    s.playbackRate.value = 1.3;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1200;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(f).connect(g).connect(master); s.start(); return g; }, gain: 0.08 },
+  'alarm-x2': { make: () => klaxonLoop(500), gain: 0.12 },
+  'alarm-x3': { make: () => klaxon2Loop(700), gain: 0.1 },
+  'alarm-x4': { make: () => dualLoop(500, 2.0, 1000, 2.0), gain: 0.045 },
+  // 第3ラウンド
+  'thrust-y1': { make: () => dualLoop(150, 0.7, 60, 1.0), gain: 0.13 },
+  'thrust-y2': { make: () => dualLoop(120, 0.5, 300, 1.0), gain: 0.11 },
+  'thrust-y3': { make: () => loopChannel(250, 1.0, null, 6, 0.05), gain: 0.09 },
+  'thrust-y4': { make: () => dualLoop(110, 0.5, 220, 0.9), gain: 0.13 },
+  'rcs-y1': { make: () => loopChannel(650, 1.0), gain: 0.035 },
+  'rcs-y2': { make: () => dualLoop(700, 1.0, 1400, 1.2), gain: 0.02 },
+  'rcs-y3': { make: () => dualLoop(700, 1.0, 250, 1.2), gain: 0.03 },
+  'rcs-y4': { make: () => loopChannel(800, 0.8), gain: 0.028 },
+  'alarm-y1': { make: () => klaxonLoopR(700, 1.3), gain: 0.1 },
+  'alarm-y2': { make: () => klaxon2Loop(500), gain: 0.12 },
+  'alarm-y3': { make: () => klaxonLoopR(900, 1.2), gain: 0.09 },
+  'alarm-y4': { make: () => klaxon2Loop(600), gain: 0.11 },
+  // 第4ラウンド
+  'thrust-z1': { make: () => dualLoop(140, 0.6, 50, 1.0), gain: 0.14 },
+  'thrust-z2': { make: () => dualLoop(110, 0.5, 55, 1.2), gain: 0.15 },
+  'thrust-z3': { make: () => { const g = dualLoop(150, 0.7, 60, 1.0);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 3;
+    const lg = ctx.createGain(); lg.gain.value = 0.04;
+    lfo.connect(lg).connect(g.gain); lfo.start(); return g; }, gain: 0.1 },
+  'thrust-z4': { make: () => dualLoop(190, 0.7, 95, 1.0), gain: 0.12 },
+  'rcs-z1': { make: () => dualLoop(700, 1.0, 300, 1.0), gain: 0.03 },
+  'rcs-z2': { make: () => loopChannel(750, 0.7), gain: 0.03 },
+  'rcs-z3': { make: () => dualLoop(650, 1.0, 200, 1.5), gain: 0.035 },
+  'rcs-z4': { make: () => dualLoop(800, 0.8, 400, 1.0), gain: 0.028 },
+  'alarm-z1': { make: () => klaxonLoopR(600, 1.3), gain: 0.1 },
+  'alarm-z2': { make: () => { const s = ctx.createBufferSource(); s.buffer = klaxonBuf2(); s.loop = true;
+    s.playbackRate.value = 1.2;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(f).connect(g).connect(master); s.start(); return g; }, gain: 0.11 },
+  'alarm-z3': { make: () => klaxonLoopR(700, 1.4), gain: 0.1 },
+  'alarm-z4': { make: () => { const s = ctx.createBufferSource(); s.buffer = klaxonBuf2(); s.loop = true;
+    s.playbackRate.value = 1.2;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(f).connect(g).connect(master); s.start(); return g; }, gain: 0.12 },
+};
+const live = {};
+function toggleLoop(name, btn) {
+  if (live[name]) {
+    live[name].gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+    live[name] = null; if (btn) btn.classList.remove('playing');
+  } else {
+    const ch = LOOPS[name].make();
+    ch.gain.setTargetAtTime(LOOPS[name].gain, ctx.currentTime, 0.05);
+    live[name] = ch; if (btn) btn.classList.add('playing');
+  }
+}
+
+const PLAY_LABEL = "再生";
+const ITEMS = [
+  { id: "hit-near", name: "自機被弾(至近)", desc: "着弾点が艦中心に近い場合。", variants: [
+    { label: "現行", desc: "sawtooth + lowpass の短い打撃", play: () => hitSound(1, 'sawtooth', 1, 1) },
+    { label: "案B", desc: "胴打ち系: 低音キック + 破裂ノイズ", play: () => { sweep(140, 40, 0.18, 0.6, 'sine'); noiseBurst(0.12, 'lowpass', 300, 0.4); } },
+    { label: "案C", desc: "金属的: 高い square の打撃 + 高域ノイズ", play: () => { tone(700, 0.08, 0.5, 'square'); noiseBurst(0.05, 'highpass', 3000, 0.2); noiseBurst(0.15, 'lowpass', 250, 0.3); } },
+    { label: "案D", desc: "鈍い内部衝撃: triangle + 長い低域の尾", play: () => hitSound(1, 'triangle', 0.6, 1.4) },
+  ] },
+  { id: "hit-far", name: "自機被弾(遠い)", desc: "着弾点が艦中心から遠い場合。", variants: [
+    { label: "現行", desc: "音量・音高が下限に落ちる", play: () => hitSound(0.1, 'sawtooth', 1, 1) },
+    { label: "案B", desc: "さらにこもった遠雷感", play: () => hitSound(0.1, 'triangle', 0.7, 0.9) },
+    { label: "案C", desc: "かすかな金属残響つき", play: () => { hitSound(0.1, 'sawtooth', 1, 0.9); tone(1400, 0.15, 0.05, 'triangle'); } },
+    { label: "案D", desc: "ほぼ無音の軽い感触", play: () => { noiseBurst(0.06, 'lowpass', 200, 0.08); tone(90, 0.08, 0.06, 'sine'); } },
+  ] },
+  { id: "enemyHit", name: "敵機被弾", desc: "敵の装甲へ弾が当たったとき。", variants: [
+    { label: "現行", desc: "3音 sawtooth 和音(110/138/165Hz) + lowpass", play: () => chord([110, 138, 165], 0.35, 0.08, 'sawtooth') },
+    { label: "案B", desc: "不協和強め: 半音を含む和音", play: () => chord([105, 140, 190], 0.3, 0.09, 'sawtooth') },
+    { label: "案C", desc: "単発の甲高い剥離音", play: () => { noiseBurst(0.06, 'highpass', 2500, 0.12); tone(320, 0.12, 0.1, 'square'); } },
+    { label: "案D", desc: "重い鈍撃: 低い2音 + ノイズ", play: () => { chord([80, 118], 0.4, 0.1, 'sawtooth'); noiseBurst(0.1, 'lowpass', 350, 0.1); } },
+  ] },
+  { id: "explosion", name: "撃破爆発", desc: "艦が撃破されたときの爆発音。", variants: [
+    { label: "現行", desc: "破裂ノイズ2層 + 120→30Hz キック", play: () => boom(150, 120, 30, 0.15, 0.2) },
+    { label: "案B", desc: "深い轟き: 低音を長く残す", play: () => boom(120, 90, 25, 0.3, 0.35) },
+    { label: "案C", desc: "乾いた短い破裂: 高いクラック主体", play: () => { noiseBurst(0.05, 'highpass', 2000, 0.3); noiseBurst(0.08, 'lowpass', 500, 0.5); sweep(200, 60, 0.08, 0.5, 'sine'); } },
+    { label: "案D", desc: "内破+外破の2段", play: () => { boom(150, 120, 30, 0.12, 0.15); boom(100, 80, 25, 0.2, 0.25); } },
+  ] },
+  { id: "decouple", name: "デカプラー分離", desc: "ブースターの爆砕ボルトによる分離音。", variants: [
+    { label: "現行", desc: "短い破裂 + 760Hz の金属解放音", play: () => { noiseBurst(0.055, 'highpass', 1800, 0.16); noiseBurst(0.09, 'lowpass', 320, 0.22); tone(760, 0.06, 0.07, 'square'); tone(430, 0.11, 0.05, 'triangle'); } },
+    { label: "案B", desc: "ボルト2連発", play: () => { noiseBurst(0.05, 'highpass', 1800, 0.16); noiseBurst(0.05, 'highpass', 1600, 0.14, 0.1); noiseBurst(0.1, 'lowpass', 300, 0.2); tone(700, 0.08, 0.06, 'square', 0.12); } },
+    { label: "案C", desc: "ばね解放の残響", play: () => { noiseBurst(0.05, 'highpass', 1800, 0.14); sweep(1400, 700, 0.25, 0.05, 'triangle'); sweep(2100, 1000, 0.2, 0.03, 'sine'); } },
+    { label: "案D", desc: "鈍い圧力解放: 低い破裂 + エア抜け", play: () => { noiseBurst(0.08, 'lowpass', 400, 0.25); noiseBurst(0.3, 'bandpass', 1200, 0.06, 0, 1.5); } },
+  ] },
+  { id: "altAlarm", name: "高度低下警報", desc: "高度が危険水準に近づいた警告。", variants: [
+    { label: "現行", desc: "392Hz + 415.3Hz の不協和2音", play: () => { tone(392, 0.16, 0.09, 'square'); tone(415.3, 0.16, 0.07, 'square'); } },
+    { label: "案B", desc: "3連の急迫ビープ", play: () => { tone(700, 0.09, 0.08, 'square'); tone(700, 0.09, 0.08, 'square', 0.12); tone(700, 0.09, 0.08, 'square', 0.24); } },
+    { label: "案C", desc: "上昇サイレン", play: () => sweep(400, 800, 0.3, 0.07, 'square') },
+    { label: "案D", desc: "低いホーン2回", play: () => { tone(220, 0.2, 0.12, 'sawtooth'); tone(220, 0.2, 0.12, 'sawtooth', 0.28); } },
+  ] },
+  { id: "pickup", name: "補給取り込み", desc: "弾薬・燃料・基地補充の肯定音。", variants: [
+    { label: "現行", desc: "660/990Hz sine + 低いノイズ", play: () => { tone(660, 0.09, 0.09, 'sine'); tone(990, 0.12, 0.07, 'sine'); noiseBurst(0.08, 'lowpass', 600, 0.06); } },
+    { label: "案B", desc: "上昇3音の確実感", play: () => { tone(523, 0.07, 0.07, 'sine'); tone(659, 0.07, 0.07, 'sine', 0.07); tone(784, 0.12, 0.07, 'sine', 0.14); } },
+    { label: "案C", desc: "低く太い受領音", play: () => { tone(330, 0.1, 0.12, 'triangle'); tone(495, 0.14, 0.08, 'triangle', 0.08); } },
+    { label: "案D", desc: "チャイム風", play: () => { tone(1046, 0.15, 0.05, 'sine'); tone(1568, 0.2, 0.03, 'sine'); noiseBurst(0.03, 'highpass', 4000, 0.02); } },
+  ] },
+];
+
+const KEY = location.pathname + '#scores';
+let scores = {};
+try { scores = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch {}
+const cardsEl = document.getElementById('cards');
+for (const it of ITEMS) {
+  const sec = document.createElement('section'); sec.className = 'snd';
+  sec.innerHTML = '<h2>' + it.name + '</h2><p class="snd-desc">' + it.desc + '</p><div class="vars"></div>';
+  const vars = sec.querySelector('.vars');
+  it.variants.forEach((v, i) => {
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = '<div class="vname">' + v.label + '</div><p>' + v.desc + '</p>' +
+      '<div class="row"><button class="play">' + PLAY_LABEL + '</button></div>' +
+      '<div class="score"></div>';
+    const sid = it.id + '.' + i;
+    card.querySelector('.play').onclick = (e) => v.play(e.currentTarget);
+    const ad = document.createElement('label'); ad.className = 'adopt';
+    const r = document.createElement('input'); r.type = 'radio'; r.name = 'adopt-' + it.id;
+    if (scores[it.id + '.adopt'] === i) r.checked = true;
+    ad.appendChild(r); ad.appendChild(document.createTextNode('採用'));
+    r.onchange = () => { scores[it.id + '.adopt'] = i; localStorage.setItem(KEY, JSON.stringify(scores)); };
+    card.appendChild(ad);
+    const sc = card.querySelector('.score');
+    for (let n = 1; n <= 4; n++) {
+      const b = document.createElement('button'); b.textContent = n; b.dataset.v = n;
+      if (scores[sid] === n) b.classList.add('on');
+      b.onclick = () => {
+        scores[sid] = n;
+        sc.querySelectorAll('button').forEach(x => x.classList.toggle('on', +x.dataset.v === n));
+        localStorage.setItem(KEY, JSON.stringify(scores));
+      };
+      sc.appendChild(b);
+    }
+    vars.appendChild(card);
+  });
+  cardsEl.appendChild(sec);
+}
+document.getElementById('vol').oninput = e => {
+  master.gain.value = +e.target.value;
+  document.getElementById('volVal').textContent = (+e.target.value).toFixed(2);
+};
+document.getElementById('export').onclick = () => {
+  const lines = [];
+  for (const it of ITEMS) it.variants.forEach((v, i) => {
+    lines.push(it.id + ' ' + v.label + ': ' + (scores[it.id + '.' + i] ?? '-') + (scores[it.id + '.adopt'] === i ? ' [採用]' : ''));
+  });
+  const out = document.getElementById('scoreOut');
+  out.textContent = lines.join('\n'); out.style.display = 'block';
+  navigator.clipboard?.writeText(lines.join('\n'));
+};
+document.getElementById('resetScores').onclick = () => {
+  scores = {}; localStorage.removeItem(KEY);
+  document.querySelectorAll('.score button').forEach(b => b.classList.remove('on'));
+};
+
+</script>
+</body>
+</html>

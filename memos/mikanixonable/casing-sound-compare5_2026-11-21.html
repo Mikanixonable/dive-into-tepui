@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>薬莢音 聴き比べ 5 (V4×V6 融合)</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:900px;margin:2em auto;padding:0 1em;background:#111;color:#ddd}
+  h1{font-size:1.3em}
+  .card{border:1px solid #333;border-radius:8px;padding:1em;margin:1em 0;background:#181818}
+  .card h2{margin:0 0 .3em;font-size:1.05em}
+  .card p{margin:.3em 0 .8em;color:#aaa;font-size:.85em;line-height:1.5}
+  button{background:#2a5;color:#fff;border:0;border-radius:6px;padding:.55em 1.2em;margin-right:.6em;font-size:.95em;cursor:pointer}
+  button.burst{background:#36c}
+  button:active{filter:brightness(1.3)}
+  label{font-size:.85em;color:#bbb;display:block;margin:1.5em 0 .3em}
+  input[type=range]{width:320px;vertical-align:middle}
+  #volVal{margin-left:.6em}
+  .muffle{border:1px solid #4a7;border-radius:8px;padding:.8em 1em;margin:1em 0;background:#14201a}
+  .muffle label{display:inline;margin:0 .8em 0 0}
+</style>
+</head>
+<body>
+<h1>薬莢音 聴き比べ 5 — 重い筒 × 乱暴倍音 × 艦体共振</h1>
+<p style="color:#999;font-size:.85em">4点だった V4(乱暴さ最大化+艦体共振)と V6(f0 320Hz の重い筒+乱暴倍音)の融合。
+二度打ちは1点だったので外し、<b>重い単発</b>を軸にしています。くぐもりスイッチは前回同様に使えます。</p>
+
+<div class="muffle">
+  <b>くぐもり(構造伝搬)シミュレーション</b>
+  <label><input type="checkbox" id="m1"> ローパス 1.2kHz</label>
+  <label><input type="checkbox" id="m2"> さらに強い断熱 500Hz</label>
+  <label><input type="checkbox" id="m3"> 薄い隔壁経由 HP300 + LP4k</label>
+</div>
+
+<label>マスター音量 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"><span id="volVal">0.80</span></label>
+
+<div id="cards"></div>
+
+<h2 style="font-size:1em">採点(1=不採用〜4=採用候補)</h2>
+<button id="export" style="background:#555">採点をコピー</button>
+<button id="resetScores" style="background:#733">採点リセット</button>
+<pre id="scoreOut" style="background:#0a0a0a;border:1px solid #333;padding:.8em;margin-top:1em;font-size:.8em;display:none;white-space:pre-wrap"></pre>
+
+<script>
+const ctx = new AudioContext();
+const master = ctx.createGain(); master.gain.value = 0.8;
+const m1 = ctx.createBiquadFilter(); m1.type = 'lowpass'; m1.frequency.value = 1200; m1.Q.value = 0.9;
+const m2 = ctx.createBiquadFilter(); m2.type = 'lowpass'; m2.frequency.value = 500; m2.Q.value = 0.9;
+const m3hp = ctx.createBiquadFilter(); m3hp.type = 'highpass'; m3hp.frequency.value = 300;
+const m3lp = ctx.createBiquadFilter(); m3lp.type = 'lowpass'; m3lp.frequency.value = 4000;
+function rewire() {
+  master.disconnect(); m1.disconnect(); m2.disconnect(); m3hp.disconnect(); m3lp.disconnect();
+  let node = master;
+  if (document.getElementById('m1').checked) { node.connect(m1); node = m1; }
+  if (document.getElementById('m2').checked) { node.connect(m2); node = m2; }
+  if (document.getElementById('m3').checked) { node.connect(m3hp); m3hp.connect(m3lp); node = m3lp; }
+  node.connect(ctx.destination);
+}
+['m1','m2','m3'].forEach(id => document.getElementById(id).onchange = rewire);
+rewire();
+document.getElementById('vol').oninput = e => {
+  master.gain.value = +e.target.value;
+  document.getElementById('volVal').textContent = (+e.target.value).toFixed(2);
+};
+const noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+{ const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+const jit = (v, pct) => v * (1 + (Math.random() * 2 - 1) * pct);
+const panOf = () => (Math.random() < 0.5 ? -1 : 1) * jit(0.5, 0.7);
+
+function noise(t, dur, type, freq, q, vol, dest = master, pan = 0) {
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  let tail = f;
+  if (pan !== 0) { const p = ctx.createStereoPanner(); p.pan.value = pan; f.connect(p); tail = p; }
+  s.connect(f); tail.connect(g).connect(dest);
+  s.start(t, Math.random() * 0.5, dur + 0.02); s.stop(t + dur + 0.05);
+}
+function partial(t, freq, dur, vol, pan) {
+  const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(freq, t);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  let tail = g;
+  if (pan !== 0) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); tail = p; }
+  o.connect(g); tail.connect(master);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function dryThud(t, pan, amp = 1) {
+  noise(t, 0.014, 'lowpass', 500, 1, 0.26 * amp, master, pan);
+  noise(t, 0.004, 'highpass', 5200, 0.8, 0.12 * amp, master, pan);
+}
+function fmClang(t, fc, ratio, index, dur, amp, pan) {
+  const c = ctx.createOscillator(); c.frequency.setValueAtTime(fc, t);
+  const m = ctx.createOscillator(); m.frequency.setValueAtTime(fc * ratio, t);
+  const mi = ctx.createGain();
+  mi.gain.setValueAtTime(fc * index, t);
+  mi.gain.exponentialRampToValueAtTime(1, t + dur * 0.8);
+  m.connect(mi).connect(c.frequency);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(amp, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  c.connect(g).connect(p).connect(master);
+  m.start(t); c.start(t); m.stop(t + dur + 0.02); c.stop(t + dur + 0.02);
+}
+function fm3(t, f0, amp, pan) {
+  fmClang(t, f0, 1.02, 2, 0.25, 0.1 * amp, pan);
+  fmClang(t, f0 * 2.76, 1.37, 3, 0.14, 0.06 * amp, pan);
+  fmClang(t, f0 * 5.4, 1.99, 1.8, 0.07, 0.03 * amp, pan);
+}
+function shimmer(t, f0, amp, pan, dur = 0.12) {
+  const modes = [2.4, 3.6, 4.4, 5.7].sort(() => Math.random() - 0.5);
+  partial(t, jit(f0 * modes[0], 0.04), dur * 1.4, 0.055 * amp, pan);
+  modes.slice(1, 4).forEach((m) =>
+    partial(t, jit(f0 * m, 0.06), dur * 0.5, 0.028 * amp, pan));
+}
+const VIOLENT_MODES = [6.7, 8.9, 11.3, 13.7];
+function violentOvertones(t, f0, amp, pan) {
+  VIOLENT_MODES.forEach((m, k) => {
+    partial(t, jit(f0 * m, 0.08), 0.05 + Math.random() * 0.05, 0.045 * amp / (1 + k * 0.5), pan);
+  });
+  noise(t, 0.04, 'bandpass', jit(5200, 0.25), 4, 0.09 * amp, master, pan);
+}
+function violentGrains(t, amp, pan) {
+  const n = 4 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < n; i++) {
+    noise(t + Math.random() * 0.015, 0.005, 'bandpass', jit(4500, 0.5), 5, 0.08 * amp, master, pan);
+  }
+}
+function hullResonance(t, amp, pan) {
+  noise(t, 0.4, 'bandpass', jit(280, 0.15), 3, 0.09 * amp, master, pan);
+  partial(t, jit(190, 0.1), 0.3, 0.05 * amp, pan);
+}
+// 重い筒の下地(V6): f0 320 + FM3層 + 乾き衝撃
+function baseHeavy(t0, f0 = jit(320, 0.15), amp = 1) {
+  const pan = panOf();
+  dryThud(t0, pan, amp);
+  fm3(t0, f0, 0.9 * amp, pan);
+  return { f0, pan };
+}
+
+// ============ 案 ============
+
+// W1: V4×V6 融合 — 重い筒 + 乱暴倍音 + 高域グレイン + 艦体共振
+function w1(t0) {
+  const { f0, pan } = baseHeavy(t0);
+  violentOvertones(t0, f0, 1.1, pan);
+  violentGrains(t0 + 0.002, 1, pan);
+  hullResonance(t0 + 0.01, 1.2, pan);
+}
+// W2: W1 + 艦体共振を強く長く(構造が鳴り続ける)
+function w2(t0) {
+  const { f0, pan } = baseHeavy(t0);
+  violentOvertones(t0, f0, 1.1, pan);
+  violentGrains(t0 + 0.002, 1, pan);
+  noise(t0 + 0.01, 0.6, 'bandpass', jit(260, 0.15), 3, 0.14, master, pan);
+  partial(t0 + 0.01, jit(170, 0.1), 0.45, 0.08, pan);
+}
+// W3: さらに重い筒(f0 260) + 乱暴倍音を低域へずらす
+function w3(t0) {
+  const f0 = jit(260, 0.12), pan = panOf();
+  dryThud(t0, pan, 1.1);
+  fm3(t0, f0, 1, pan);
+  violentOvertones(t0, f0 * 1.2, 1, pan);      // 倍音の絶対周波数は W1 並に保つ
+  violentGrains(t0 + 0.002, 0.9, pan);
+  hullResonance(t0 + 0.01, 1.4, pan);
+}
+// W4: W1 + 短いスキッド(動作要素を少量)
+function w4(t0) {
+  const { f0, pan } = baseHeavy(t0);
+  violentOvertones(t0, f0, 1.1, pan);
+  violentGrains(t0 + 0.002, 1, pan);
+  hullResonance(t0 + 0.01, 1.2, pan);
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.5;
+  const dur = 0.12 + Math.random() * 0.1;
+  f.frequency.setValueAtTime(jit(1500, 0.3), t0 + 0.05);
+  f.frequency.exponentialRampToValueAtTime(600, t0 + 0.05 + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.08, t0 + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.05 + dur);
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  s.connect(f).connect(g).connect(p).connect(master);
+  s.start(t0 + 0.05, Math.random() * 0.5, dur + 0.02); s.stop(t0 + 0.05 + dur + 0.05);
+}
+// W5: W1 + 乱暴グレインを密に(高域の嵐)
+function w5(t0) {
+  const { f0, pan } = baseHeavy(t0);
+  violentOvertones(t0, f0, 1.2, pan);
+  // グレインを 8〜12 粒へ
+  const n = 8 + Math.floor(Math.random() * 5);
+  for (let i = 0; i < n; i++) {
+    noise(t0 + Math.random() * 0.02, 0.005, 'bandpass', jit(4800, 0.5), 5, 0.07, master, pan);
+  }
+  hullResonance(t0 + 0.01, 1.2, pan);
+}
+// W6: W1 + 細い尾も残す(U5 の尾を重い筒に戻す)
+function w6(t0) {
+  const { f0, pan } = baseHeavy(t0);
+  violentOvertones(t0, f0, 1.1, pan);
+  violentGrains(t0 + 0.002, 1, pan);
+  hullResonance(t0 + 0.01, 1.2, pan);
+  shimmer(t0, f0, 0.7, pan, 0.1);
+}
+// W7: W1 を 1〜2 バウンドへ(重いので 1〜2 回)
+function w7(t0) {
+  const f0 = jit(320, 0.15), pan = panOf();
+  const n = 1 + Math.floor(Math.random() * 2);
+  let t = t0;
+  for (let i = 0; i < n; i++) {
+    const a = 1 / (1 + i * 1.5);
+    dryThud(t, pan, a);
+    fm3(t, jit(f0, 0.04), 0.9 * a, pan);
+    violentOvertones(t, f0, a, pan);
+    if (i === 0) {
+      violentGrains(t + 0.002, 1, pan);
+      hullResonance(t + 0.01, 1.2, pan);
+    }
+    t += (0.12 + Math.random() * 0.09) * (1 + i);
+  }
+}
+// W8: 中間 f0 360 + 全要素バランス(W1 と W3 の中間口径)
+function w8(t0) {
+  const { f0, pan } = baseHeavy(t0, jit(360, 0.15));
+  violentOvertones(t0, f0, 1, pan);
+  violentGrains(t0 + 0.002, 1, pan);
+  hullResonance(t0 + 0.01, 1.1, pan);
+  shimmer(t0, f0, 0.5, pan, 0.09);
+}
+
+const variants = [
+  { id: 'W1', name: 'V4×V6 融合', fn: w1, desc: 'f0 320 の重い筒 + 乱暴倍音 + 高域グレイン + 艦体共振。基準案。' },
+  { id: 'W2', name: 'W1+共振強め', fn: w2, desc: '艦体共振を 0.6s・強めに。構造が鳴り続ける。' },
+  { id: 'W3', name: 'さらに重い筒', fn: w3, desc: 'f0 260。倍音の絶対周波数は保ちつつ胴だけ重く。' },
+  { id: 'W4', name: 'W1+短い滑り', fn: w4, desc: '着地後のスキッドを少量追加。' },
+  { id: 'W5', name: 'グレイン密', fn: w5, desc: '高域グレインを 8〜12 粒へ増やした高域の嵐。' },
+  { id: 'W6', name: 'W1+細い尾', fn: w6, desc: 'U5 の細い尾を重い筒に戻した案。' },
+  { id: 'W7', name: 'W1をバウンドへ', fn: w7, desc: '1〜2 バウンド。重いので跳ねは少なめ。' },
+  { id: 'W8', name: '中間口径+尾', fn: w8, desc: 'f0 360 の中間 + 全要素バランス。' },
+];
+
+const cards = document.getElementById('cards');
+const timers = new Map();
+for (const v of variants) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<h2>${v.id}. ${v.name}</h2><p>${v.desc}</p>`;
+  const b1 = document.createElement('button'); b1.textContent = '1個';
+  b1.onclick = () => { ctx.resume(); v.fn(ctx.currentTime + 0.05); };
+  const b2 = document.createElement('button'); b2.textContent = '連続(押し続け)';
+  b2.className = 'burst';
+  const start = () => {
+    ctx.resume();
+    v.fn(ctx.currentTime + 0.05);
+    timers.set(v.id, setInterval(() => { v.fn(ctx.currentTime + 0.01); }, 450));
+  };
+  const stop = () => { clearInterval(timers.get(v.id)); timers.delete(v.id); };
+  b2.onpointerdown = start; b2.onpointerup = b2.onpointerleave = stop;
+  card.append(b1, b2);
+  const row = document.createElement('div');
+  row.style.marginTop = '.6em';
+  row.append('採点: ');
+  const btns = [];
+  const paint = () => {
+    const r = JSON.parse(localStorage.getItem('casing-ratings5') || '{}');
+    btns.forEach((b, i) => { b.style.background = r[v.id] === i + 1 ? '#c93' : '#333'; });
+  };
+  for (let n = 1; n <= 4; n++) {
+    const b = document.createElement('button');
+    b.textContent = n; b.style.padding = '.3em .8em'; b.style.marginRight = '.4em';
+    b.onclick = () => {
+      const r = JSON.parse(localStorage.getItem('casing-ratings5') || '{}');
+      if (r[v.id] === n) delete r[v.id]; else r[v.id] = n;
+      localStorage.setItem('casing-ratings5', JSON.stringify(r));
+      paint();
+    };
+    btns.push(b); row.append(b);
+  }
+  paint();
+  card.append(row);
+  cards.append(card);
+}
+document.getElementById('export').onclick = async () => {
+  const ratings = JSON.parse(localStorage.getItem('casing-ratings5') || '{}');
+  const lines = variants
+    .map(v => `${v.id} ${v.name}: ${ratings[v.id] ?? '未採点'}`)
+    .sort((a, b) => (parseInt(b.match(/: (\d)/)?.[1] || '0')) - (parseInt(a.match(/: (\d)/)?.[1] || '0')));
+  const text = '薬莢音5(V4×V6融合) 採点(4段階)\n' + lines.join('\n');
+  const out = document.getElementById('scoreOut');
+  out.textContent = text; out.style.display = 'block';
+  try { await navigator.clipboard.writeText(text); out.textContent += '\n\n(クリップボードへコピー済み)'; } catch {}
+};
+document.getElementById('resetScores').onclick = () => {
+  localStorage.removeItem('casing-ratings5');
+  location.reload();
+};
+</script>
+</body>
+</html>

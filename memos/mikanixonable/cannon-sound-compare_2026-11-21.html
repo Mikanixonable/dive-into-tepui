@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>機関砲 発射音 聴き比べ</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:900px;margin:2em auto;padding:0 1em;background:#111;color:#ddd}
+  h1{font-size:1.3em}
+  .card{border:1px solid #333;border-radius:8px;padding:1em;margin:1em 0;background:#181818}
+  .card h2{margin:0 0 .3em;font-size:1.05em}
+  .card p{margin:.3em 0 .8em;color:#aaa;font-size:.85em;line-height:1.5}
+  button{background:#2a5;color:#fff;border:0;border-radius:6px;padding:.55em 1.2em;margin-right:.6em;font-size:.95em;cursor:pointer}
+  button.burst{background:#36c}
+  button:active{filter:brightness(1.3)}
+  .cur{border-color:#666}
+  .cur h2::after{content:"（現行）";color:#888;font-size:.8em}
+  .new{border-color:#a83}
+  .new h2::after{content:"（今回追加）";color:#a83;font-size:.8em}
+  label{font-size:.85em;color:#bbb;display:block;margin:1.5em 0 .3em}
+  input[type=range]{width:320px;vertical-align:middle}
+  #rateVal,#volVal{margin-left:.6em}
+  ul{font-size:.8em;color:#888}
+  .phones{color:#c96;font-size:.8em}
+</style>
+</head>
+<body>
+<h1>機関砲 発射音 聴き比べ</h1>
+<p style="color:#999;font-size:.85em">A が現行実装（<code>world-sfx.ts</code> の <code>fire()</code>）。D2 は前回採用した基準。
+D5〜D7 は「砲の機構が動く音」（装填ボルトの動作・ガトリング回転ベッド）を足したバリエーション。
+バーストボタンは押しているあいだ連射します。ゲーム内射速は 16.7 rps。</p>
+<p class="phones">※ 30〜50Hz のサブ成分を含むので、ヘッドホンまたは低音の出るスピーカー推奨。</p>
+
+<label>連射速度 <input id="rate" type="range" min="5" max="40" step="0.5" value="16.7"><span id="rateVal">16.7 rps</span></label>
+<label>マスター音量 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"><span id="volVal">0.80</span></label>
+
+<div id="cards"></div>
+
+<h2 style="font-size:1em">発射音のまわりの音（重厚感・奥行きの材料）</h2>
+<ul>
+  <li><b>砲の反動・復座</b>：発射の 50〜150ms あとに油圧ダンパーの「フシュッ」と機構の戻る「ドン」。連射では発射と重なってメカメカしさになる。</li>
+  <li><b>排莢</b>：薬莢が排出されて甲板に落ちる 0.15〜0.5s 遅れの金属カラカラ。単発で最も効く「物がある」感。</li>
+  <li><b>デッキ・構造物の共鳴</b>：砲の振動が構造へ伝わる 30〜50Hz の長い減衰。画面内の艦が鳴っている感じ。</li>
+  <li><b>空間反響</b>：近い面へのスラップバック(0.1〜0.3s 遅れの低い残り) + 広いリバーブ。宇宙なのは承知のうえで、聴覚的な「場の大きさ」を演出する。</li>
+  <li><b>ガス噴出の残り</b>：ブラスト直後に高めのシューッという減圧音が細く続く。</li>
+  <li><b>左右への広がり</b>：テールだけステレオに振ると、直接音が芯に残ったまま空間が広がる。</li>
+</ul>
+
+<script>
+const ctx = new AudioContext();
+const master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+document.getElementById('vol').oninput = e => {
+  master.gain.value = +e.target.value;
+  document.getElementById('volVal').textContent = (+e.target.value).toFixed(2);
+};
+document.getElementById('rate').oninput = e =>
+  document.getElementById('rateVal').textContent = (+e.target.value).toFixed(1) + ' rps';
+
+const noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+{ const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+
+// リバーブ: 0.8s の指数減衰IR
+const ir = ctx.createBuffer(2, ctx.sampleRate * 0.8, ctx.sampleRate);
+for (let ch = 0; ch < 2; ch++) {
+  const d = ir.getChannelData(ch);
+  for (let i = 0; i < d.length; i++)
+    d[i] = (Math.random() * 2 - 1) * Math.exp(-5 * i / d.length);
+}
+const reverb = ctx.createConvolver(); reverb.buffer = ir;
+const reverbGain = ctx.createGain(); reverbGain.gain.value = 0.4;
+reverb.connect(reverbGain).connect(master);
+
+// スラップバック: 近い面からの 1 次反射(0.24s 遅れのローパス)
+const slap = ctx.createDelay(0.5); slap.delayTime.value = 0.24;
+const slapLp = ctx.createBiquadFilter(); slapLp.type = 'lowpass'; slapLp.frequency.value = 500;
+const slapGain = ctx.createGain(); slapGain.gain.value = 0.28;
+slap.connect(slapLp).connect(slapGain).connect(master);
+
+const jit = (v, pct) => v * (1 + (Math.random() * 2 - 1) * pct);
+const delay = (t, d) => t + d * jit(1, 0.15); // ジッタつき遅延
+
+// --- ボイス helper ---
+// pan を渡すとテールを左右へ散らせる
+function noise(t, dur, type, freq, q, vol, dest = master, freqEnd, pan = 0) {
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+  s.playbackRate.value = jit(1, 0.1);
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
+  if (freqEnd) f.frequency.exponentialRampToValueAtTime(freqEnd, t + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  let tail = f;
+  if (pan !== 0) { const p = ctx.createStereoPanner(); p.pan.value = pan; f.connect(p); tail = p; }
+  s.connect(f);
+  tail.connect(g).connect(dest);
+  s.start(t, Math.random() * 0.4, dur + 0.02); s.stop(t + dur + 0.05);
+}
+function osc(t, type, f0, f1, dur, vol, dest = master) {
+  const o = ctx.createOscillator(); o.type = type;
+  o.frequency.setValueAtTime(jit(f0, 0.03), t);
+  if (f1) o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  o.connect(g).connect(dest);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+// 薬莢1個ぶんの「カラン」。真鍮の中空筒が固い面に落ちる音なので、
+// 打撃の瞬発ノイズ + 棒の非整数倍音(モード) + 短い共鳴 + バウンドの鈍い接地を重ねる。
+// 各パーシャル比は打たれた金属管のモード比の近似(1 : 2.76 : 5.40 : 8.93)。
+const CASING_MODES = [1, 2.76, 5.40, 8.93];
+const CASING_MODE_GAINS = [1, 0.55, 0.28, 0.14];
+function casing(t0) {
+  const f0 = jit(1150, 0.3);          // 真鍮薬莢の基本共鳴付近。個体差を大きめに
+  const pan = (Math.random() < 0.5 ? -1 : 1) * jit(0.55, 0.8); // 落ちる方向は左右どちらにも
+  const bounces = 2 + Math.floor(Math.random() * 3); // 2〜4 バウンド
+  let t = t0;
+  for (let i = 0; i < bounces; i++) {
+    const amp = 1 / (1 + i * 1.3);    // バウンドごとに減衰
+    // 接触の瞬発: 5ms のブロードバンドクリック
+    noise(t, 0.005, 'highpass', 6000, 0.8, 0.12 * amp, master, 0, pan);
+    // 金属モード: 各パーシャルは減衰が速いほど高域(実物どおり高次モードほど短命)
+    CASING_MODES.forEach((m, k) => {
+      const o = ctx.createOscillator(); o.type = 'sine';
+      o.frequency.setValueAtTime(jit(f0 * m, 0.02), t);
+      o.frequency.exponentialRampToValueAtTime(f0 * m * 0.985, t + 0.06); // わずかな下がりで「鳴き」
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.05 * amp * CASING_MODE_GAINS[k], t);
+      g.gain.exponentialRampToValueAtTime(0.0008, t + (0.09 - k * 0.017) * (1 + i * 0.3));
+      const p = ctx.createStereoPanner(); p.pan.value = pan;
+      o.connect(g).connect(p).connect(master);
+      o.start(t); o.stop(t + 0.12);
+    });
+    // 接地の鈍い「コツ」: 低めの帯域ノイズ(初回バウンドだけ強め)
+    noise(t, 0.012, 'bandpass', jit(900, 0.2), 2, 0.09 * amp, master, 0, pan);
+    // バウンド間隔は転がりながら短く→長く不規則に
+    t += (0.07 + Math.random() * 0.13) * (1 + i * 0.7);
+  }
+}
+
+// ============ 発射 ============
+
+// A: 現行
+function fireCurrent(t) {
+  noise(t, 0.11, 'lowpass', 480, 1, 0.4);
+  noise(t, 0.025, 'highpass', 2600, 1, 0.09);
+  osc(t, 'square', 48, null, 0.1, 0.2);
+  osc(t, 'sawtooth', 96, null, 0.05, 0.07);
+}
+
+// D: 前回の重砲(基準・そのまま)
+function fireHeavy(t) {
+  noise(t, 0.009, 'highpass', jit(2400, 0.15), 0.8, 0.35);
+  noise(t, 0.2, 'lowpass', jit(500, 0.1), 1.2, 0.55, master, 120);
+  osc(t, 'sine', jit(58, 0.05), 30, 0.22, 0.8);
+  osc(t, 'triangle', jit(116, 0.05), 80, 0.1, 0.18);
+  noise(t + 0.09, 0.5, 'lowpass', 180, 1, 0.14);
+  noise(t, 0.18, 'lowpass', 400, 1, 0.5, reverb);
+}
+
+// 共通: 重砲の芯(D を少し整理し、テールを slap/reverb 両方へ流す)
+function heavyCore(t) {
+  noise(t, 0.009, 'highpass', jit(2400, 0.15), 0.8, 0.35);              // クラック
+  noise(t, 0.2, 'lowpass', jit(500, 0.1), 1.2, 0.55, master, 120);       // ブラスト胴体
+  osc(t, 'sine', jit(58, 0.05), 30, 0.22, 0.8);                          // サブ thump
+  osc(t, 'triangle', jit(116, 0.05), 80, 0.1, 0.18);                     // 倍音の艶
+  noise(t, 0.15, 'lowpass', 450, 1, 0.3, slap);                          // 近い面への反射
+  noise(t, 0.15, 'bandpass', 600, 1, 0.45, reverb);                      // 広い残響
+}
+// 反動・復座: 油圧のシュー + 機構の戻るドン(発射後 80〜140ms)
+function recoil(t) {
+  noise(delay(t, 0.08), 0.28, 'bandpass', jit(320, 0.15), 1.5, 0.07, master, 90);
+  osc(delay(t, 0.14), 'sine', jit(42, 0.1), 34, 0.18, 0.3);              // 復座ドン
+  noise(delay(t, 0.14), 0.04, 'lowpass', 250, 1, 0.15);
+}
+// デッキ共鳴: 構造に伝わる長い低鳴り
+function deckRumble(t) {
+  osc(delay(t, 0.03), 'sine', jit(38, 0.08), 32, 0.5, 0.16);
+  noise(delay(t, 0.05), 0.55, 'lowpass', 90, 2, 0.08);
+}
+// ガス噴出の残り: ブラスト後の細いシューッ
+function gasVent(t) {
+  noise(delay(t, 0.04), 0.35, 'bandpass', jit(1400, 0.2), 2, 0.035, master, 700, jit(0.6, 0.5));
+}
+
+// ---- 機構が動く音 ----
+// ボルト・装填1サイクル: 発射直後の 20〜80ms にかけて金属機構が順に動く。
+// 「カチ(給弾) → ガッ(閉鎖) → チャッ(排莢)」の3音で、連射ではリズムに乗る。
+function boltCycle(t) {
+  noise(t + 0.015, 0.02, 'bandpass', jit(1100, 0.2), 4, 0.1);            // 給弾爪
+  noise(t + 0.045, 0.03, 'lowpass', jit(600, 0.15), 1.5, 0.16);          // ボルト閉鎖の鈍い衝撃
+  osc(t + 0.045, 'sine', jit(95, 0.1), 70, 0.05, 0.14);
+  noise(t + 0.075, 0.012, 'bandpass', jit(2300, 0.2), 5, 0.06);          // 排莢レバーのチン
+}
+// 重い装填機構(単発自動砲風): 発射ごとに「シャッ、ドン」の大きな往復動作
+function heavyBolt(t) {
+  noise(t + 0.05, 0.09, 'bandpass', jit(420, 0.15), 2.5, 0.12, master, 240); // 摺動のシュー
+  osc(t + 0.11, 'sine', jit(52, 0.1), 40, 0.1, 0.32);                        // 閉鎖のドン
+  noise(t + 0.11, 0.035, 'lowpass', 350, 1, 0.2);
+  noise(t + 0.13, 0.02, 'bandpass', jit(1400, 0.2), 4, 0.07);                // ラッチのカチ
+}
+// ガトリング回転ベッド: 連射中だけ鳴る、回転体＋デリンカーの連続音。
+// start でノード群を組んで鳴らし、stop で消す。単発でも 0.5s だけ鳴らす。
+function makeSpinBed() {
+  const g = ctx.createGain(); g.gain.value = 0; g.connect(master);
+  // 回転モーターの唸り(基音120Hz + 3倍音)
+  const m1 = ctx.createOscillator(); m1.type = 'sawtooth'; m1.frequency.value = 120;
+  const m1f = ctx.createBiquadFilter(); m1f.type = 'lowpass'; m1f.frequency.value = 500;
+  const m1g = ctx.createGain(); m1g.gain.value = 0.05;
+  m1.connect(m1f).connect(m1g).connect(g);
+  const m3 = ctx.createOscillator(); m3.type = 'triangle'; m3.frequency.value = 360;
+  const m3g = ctx.createGain(); m3g.gain.value = 0.02;
+  m3.connect(m3g).connect(g);
+  // 回転する機械のザラつき: バンドパスノイズを射速(≒16.7Hz)で AM する「ブルル」
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
+  const bf = ctx.createBiquadFilter(); bf.type = 'bandpass'; bf.frequency.value = 260; bf.Q.value = 1.5;
+  const am = ctx.createGain(); am.gain.value = 0;
+  const lfo = ctx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 16.7;
+  const lfoG = ctx.createGain(); lfoG.gain.value = 0.05;
+  const dc = ctx.createConstantSource(); dc.offset.value = 0.055;
+  lfo.connect(lfoG).connect(am.gain); dc.connect(am.gain);
+  s.connect(bf).connect(am).connect(g);
+  // 給弾チェーンのカラカラ: 高めのバンドパスノイズを同じく AM
+  const s2 = ctx.createBufferSource(); s2.buffer = noiseBuf; s2.loop = true;
+  const bf2 = ctx.createBiquadFilter(); bf2.type = 'bandpass'; bf2.frequency.value = 2800; bf2.Q.value = 3;
+  const am2 = ctx.createGain(); am2.gain.value = 0;
+  const lfo2 = ctx.createOscillator(); lfo2.type = 'square'; lfo2.frequency.value = 16.7;
+  const lfo2G = ctx.createGain(); lfo2G.gain.value = 0.018;
+  lfo2.connect(lfo2G).connect(am2.gain);
+  s2.connect(bf2).connect(am2).connect(g);
+  const nodes = [m1, m3, s, s2, lfo, lfo2, dc];
+  nodes.forEach(n => n.start());
+  return {
+    start(t) { g.gain.setTargetAtTime(1, t, 0.05); },
+    stop(t) { g.gain.setTargetAtTime(0, t, 0.12); setTimeout(() => nodes.forEach(n => { try { n.stop() } catch {} }), (t - ctx.currentTime + 0.6) * 1000); },
+  };
+}
+
+// D1: 重砲 + 排莢・反動 — 「機械が撃って、薬莢が落ちる」物質感
+function fireD1(t) {
+  heavyCore(t);
+  recoil(t);
+  casing(delay(t, 0.22));          // 薬莢がデッキへ落ちるカラカラ
+  noise(delay(t, 0.3), 0.4, 'lowpass', 200, 1, 0.08, master, 0, jit(0.5, 0.6)); // 排莢ガイドの擦れ
+}
+
+// D2: 重砲 + デッキ共鳴・ガス — 「艦ごと鳴る」スケール感
+function fireD2(t) {
+  heavyCore(t);
+  deckRumble(t);
+  gasVent(t);
+  // 艦体構造の響き: ブラストの一部が低く歪んで残る(軽い非線形っぽい2音)
+  osc(delay(t, 0.05), 'triangle', jit(75, 0.1), 55, 0.35, 0.12);
+  osc(delay(t, 0.09), 'sine', jit(150, 0.1), 110, 0.25, 0.05);
+}
+
+// D3: 重砲 + 奥行き強調 — スラップバック強め・左右に散るテール・遠い反響
+function fireD3(t) {
+  noise(t, 0.008, 'highpass', jit(2500, 0.15), 0.8, 0.32);
+  noise(t, 0.18, 'lowpass', jit(480, 0.1), 1.2, 0.55, master, 130);
+  osc(t, 'sine', jit(58, 0.05), 30, 0.2, 0.75);
+  // 直接音のあと、左右へ散る 2 つの反射
+  noise(t, 0.15, 'bandpass', 550, 1, 0.5, slap);
+  noise(delay(t, 0.1), 0.4, 'lowpass', 240, 1, 0.13, master, 0, -0.6);
+  noise(delay(t, 0.16), 0.5, 'lowpass', 190, 1, 0.11, master, 0, 0.65);
+  noise(t, 0.2, 'bandpass', 700, 1, 0.5, reverb);
+  casing(delay(t, 0.3));
+}
+
+// D4: 全部入り — 排莢・反動・共鳴・ガス・奥行き。連射でどう埋まるかの確認用
+function fireD4(t) {
+  heavyCore(t);
+  recoil(t);
+  deckRumble(t);
+  gasVent(t);
+  if (Math.random() < 0.7) casing(delay(t, 0.24)); // 連射では全発落ちない方が自然
+  noise(delay(t, 0.12), 0.45, 'lowpass', 210, 1, 0.1, master, 0, jit(0.7, 0.6));
+}
+
+// D5: D2 + ボルトサイクル — 発射ごとに「カチ→ガッ→チャッ」の装填動作が乗る
+function fireD5(t) {
+  heavyCore(t);
+  deckRumble(t);
+  gasVent(t);
+  boltCycle(t);
+}
+
+// D6: D2 + 重い装填機構 — 40mm 自動砲風、ショットごとの大きな往復動作
+function fireD6(t) {
+  heavyCore(t);
+  deckRumble(t);
+  gasVent(t);
+  heavyBolt(t);
+  casing(delay(t, 0.3));
+}
+
+// D7: D2 + ガトリング回転ベッド + ボルトサイクル — CIWS らしく回転体が鳴り続ける(採用案)
+function fireD7(t) {
+  heavyCore(t);
+  deckRumble(t);
+  gasVent(t);
+  boltCycle(t);
+  if (Math.random() < 0.4) casing(delay(t, 0.3)); // 連射では全発分が聞こえないので間引く
+}
+
+const variants = [
+  { id: 'A', name: '現行 fire()', cls: 'cur', fn: fireCurrent,
+    desc: 'ローパスノイズ + ハイパスクラック + 48Hz square + 96Hz saw。' },
+  { id: 'D2', name: '重砲 + デッキ共鳴・ガス(前回採用)', cls: 'cur', fn: fireD2,
+    desc: '38Hz の構造共鳴 + 減圧ガスのシュー。発射音の「まわり」は鳴るが機構の動作は無い基準。' },
+  { id: 'D5', name: 'D2 + ボルトサイクル', cls: 'new', fn: fireD5,
+    desc: '発射ごとに 給弾カチ(15ms)→閉鎖ガッ(45ms)→排莢チャッ(75ms) の3拍子が乗る。連射でメカニカルなリズムになるはず。' },
+  { id: 'D6', name: 'D2 + 重い装填機構', cls: 'new', fn: fireD6,
+    desc: '40mm ボフォース風。発射後 50〜130ms に摺動シュー→閉鎖ドン→ラッチカチの大きな動作＋遅れて排莢。' },
+  { id: 'D7', name: 'D2 + 回転ベッド + ボルト(採用)', cls: 'new', fn: fireD7, bed: true,
+    desc: 'ガトリング方式。バースト中だけモーター唸り(120Hz)＋射速 AM の回転ザラつき＋給弾チェーンのカラカラが鳴り続け、その上にボルトサイクルと間引き排莢が乗る。' },
+  { id: '薬', name: '薬莢のみ(調整用)', fn: (t) => casing(t),
+    desc: '金属モード比 1:2.76:5.40:8.93 の4パーシャル + 接触クリック + 接地コツ + 2〜4バウンド・左右ランダムパン。バーストで連続落下の質感を確認。' },
+];
+
+const cards = document.getElementById('cards');
+const timers = new Map();
+for (const v of variants) {
+  const card = document.createElement('div');
+  card.className = 'card ' + (v.cls || '');
+  card.innerHTML = `<h2>${v.id}. ${v.name}</h2><p>${v.desc}</p>`;
+  const b1 = document.createElement('button'); b1.textContent = '単発';
+  b1.onclick = () => {
+    ctx.resume();
+    const t = ctx.currentTime + 0.01;
+    let bed = null;
+    if (v.bed) { bed = makeSpinBed(); bed.start(t); }
+    v.fn(t);
+    if (bed) setTimeout(() => bed.stop(ctx.currentTime), 700);
+  };
+  const b2 = document.createElement('button'); b2.textContent = 'バースト(押し続け)';
+  b2.className = 'burst';
+  let bed = null;
+  const start = () => {
+    ctx.resume();
+    if (v.bed) { bed = makeSpinBed(); bed.start(ctx.currentTime); }
+    v.fn(ctx.currentTime + 0.01);
+    timers.set(v.id, setInterval(() => {
+      v.fn(ctx.currentTime + 0.005);
+    }, 1000 / +document.getElementById('rate').value));
+  };
+  const stop = () => {
+    clearInterval(timers.get(v.id)); timers.delete(v.id);
+    if (bed) { bed.stop(ctx.currentTime); bed = null; }
+  };
+  b2.onpointerdown = start; b2.onpointerup = b2.onpointerleave = stop;
+  card.append(b1, b2);
+  cards.append(card);
+}
+</script>
+</body>
+</html>

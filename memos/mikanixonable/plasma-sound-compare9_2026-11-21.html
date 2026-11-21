@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>敵弾(プラズマ)至近通過音 聴き比べ 9 (パルス×丸い音色×フィラメント)</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:900px;margin:2em auto;padding:0 1em;background:#111;color:#ddd}
+  h1{font-size:1.3em}
+  .card{border:1px solid #333;border-radius:8px;padding:1em;margin:1em 0;background:#181818}
+  .card h2{margin:0 0 .3em;font-size:1.05em}
+  .card p{margin:.3em 0 .8em;color:#aaa;font-size:.85em;line-height:1.5}
+  button{background:#2a5;color:#fff;border:0;border-radius:6px;padding:.55em 1.2em;margin-right:.6em;font-size:.95em;cursor:pointer}
+  button.burst{background:#36c}
+  button:active{filter:brightness(1.3)}
+  label{font-size:.85em;color:#bbb;display:block;margin:1.5em 0 .3em}
+  input[type=range]{width:320px;vertical-align:middle}
+  #volVal{margin-left:.6em}
+</style>
+</head>
+<body>
+<h1>敵弾(プラズマ)至近通過音 聴き比べ 9 — パルス × 丸い音色 × フィラメント</h1>
+<p style="color:#999;font-size:.85em">第8回の4点3案「K4 フィラメント束」「K6 パルス化」「K7 全声 sine/triangle」を掛け合わせた最終候補群。
+3点の「square 主音」「宇宙スケール」「可変声数」も組み込み候補にしています。</p>
+
+<label>マスター音量 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"><span id="volVal">0.80</span></label>
+
+<div id="cards"></div>
+
+<h2 style="font-size:1em">採点(1=不採用〜4=採用候補)</h2>
+<button id="export" style="background:#555">採点をコピー</button>
+<button id="resetScores" style="background:#733">採点リセット</button>
+<pre id="scoreOut" style="background:#0a0a0a;border:1px solid #333;padding:.8em;margin-top:1em;font-size:.8em;display:none;white-space:pre-wrap"></pre>
+
+<script>
+const ctx = new AudioContext();
+const master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+document.getElementById('vol').oninput = e => {
+  master.gain.value = +e.target.value;
+  document.getElementById('volVal').textContent = (+e.target.value).toFixed(2);
+};
+const jit = (v, pct) => v * (1 + (Math.random() * 2 - 1) * pct);
+const panOf = () => (Math.random() < 0.5 ? -1 : 1) * jit(0.45, 0.6);
+
+function drone(t, {
+  type = 'sawtooth', fLow = 60, fPeak = 80, dur = 0.4, rise = 0.35,
+  lpLow = 100, lpHigh = 400, lpQ = 1, vol = 0.15, pan = 0, detune = 0,
+} = {}) {
+  const o = ctx.createOscillator(); o.type = type;
+  o.frequency.setValueAtTime(jit(fLow, 0.04) + detune, t);
+  o.frequency.exponentialRampToValueAtTime(jit(fPeak, 0.04) + detune, t + dur * rise);
+  o.frequency.exponentialRampToValueAtTime(jit(fLow * 0.7, 0.04) + detune, t + dur);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = lpQ;
+  f.frequency.setValueAtTime(lpLow, t);
+  f.frequency.exponentialRampToValueAtTime(lpHigh, t + dur * 0.3);
+  f.frequency.exponentialRampToValueAtTime(lpLow, t + dur * 0.8);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.01, t);
+  g.gain.linearRampToValueAtTime(vol, t + dur * 0.5);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  let tail = g;
+  if (pan !== 0) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); tail = p; }
+  o.connect(f).connect(g); tail.connect(master);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+function partial(t, freq, dur, vol, pan = 0) {
+  const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(freq, t);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.linearRampToValueAtTime(vol, t + dur * 0.4);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  let tail = g;
+  if (pan !== 0) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); tail = p; }
+  o.connect(g); tail.connect(master);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+// ゲート付きドローン(波形・ゲート周波数・ゲート深さを設定可)
+// depth 0 = 連続音と同じ、1 = 完全な断続
+function droneGated(t, {
+  type = 'sawtooth', fLow = 60, fPeak = 80, dur = 0.4, rate = 22, depth = 0.55,
+  lpHigh = 400, vol = 0.15, pan = 0, detune = 0, lfoType = 'square',
+} = {}) {
+  const o = ctx.createOscillator(); o.type = type;
+  o.frequency.setValueAtTime(jit(fLow, 0.04) + detune, t);
+  o.frequency.exponentialRampToValueAtTime(jit(fPeak, 0.04) + detune, t + dur * 0.35);
+  o.frequency.exponentialRampToValueAtTime(jit(fLow * 0.7, 0.04) + detune, t + dur);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(100, t);
+  f.frequency.exponentialRampToValueAtTime(lpHigh, t + dur * 0.3);
+  f.frequency.exponentialRampToValueAtTime(100, t + dur * 0.8);
+  const gate = ctx.createGain(); gate.gain.value = 0;
+  const lfo = ctx.createOscillator(); lfo.type = lfoType; lfo.frequency.value = jit(rate, 0.25);
+  const lg = ctx.createGain(); lg.gain.value = vol * depth;
+  const dc = ctx.createConstantSource(); dc.offset.value = vol * (1 - depth);
+  lfo.connect(lg).connect(gate.gain); dc.connect(gate.gain);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.01, t);
+  g.gain.linearRampToValueAtTime(1, t + dur * 0.5);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  o.connect(f).connect(gate).connect(g).connect(p).connect(master);
+  [o, lfo, dc].forEach(x => { x.start(t); x.stop(t + dur + 0.05); });
+}
+
+// ============ 案 ============
+
+// L1: パルス化 × 丸い音色 — 主音は sine ベースで断続(K6の構造をK7の音色で)
+function l1(t) {
+  const pan = panOf();
+  droneGated(t, { type: 'triangle', rate: 22, depth: 0.55, vol: 0.18, pan });
+  drone(t, { type: 'sine', fLow: 91, fPeak: 122, lpHigh: 600, vol: 0.08, pan });
+  drone(t + 0.12, { type: 'triangle', fLow: 55, fPeak: 70, vol: 0.09, dur: 0.32, pan: -pan });
+  partial(t, jit(32, 0.1), 0.45, 0.1);
+}
+// L2: フィラメント束 × 丸い音色 — 小ヴン5発を全部 sine/triangle で
+function l2(t) {
+  const pan = panOf();
+  drone(t, { type: 'triangle', vol: 0.16, pan });
+  let tt = t + 0.05;
+  for (let i = 0; i < 5; i++) {
+    tt += 0.04 + Math.random() * 0.06;
+    drone(tt, {
+      type: Math.random() < 0.5 ? 'triangle' : 'sine',
+      fLow: 55 + Math.random() * 40, fPeak: 70 + Math.random() * 50,
+      vol: 0.05 + Math.random() * 0.04, dur: 0.18 + Math.random() * 0.1,
+      pan: (Math.random() * 2 - 1) * 0.7,
+    });
+  }
+  partial(t, jit(32, 0.1), 0.45, 0.1);
+}
+// L3: パルス主音 + フィラメント衛星 — 2つの構造を重ねる
+function l3(t) {
+  const pan = panOf();
+  droneGated(t, { type: 'triangle', rate: 22, vol: 0.16, pan });
+  let tt = t + 0.06;
+  for (let i = 0; i < 3; i++) {
+    tt += 0.05 + Math.random() * 0.05;
+    drone(tt, {
+      type: 'sine', fLow: 70 + Math.random() * 40, fPeak: 90 + Math.random() * 50,
+      vol: 0.05, dur: 0.16 + Math.random() * 0.08, pan: -pan * (i % 2 ? 1 : -0.5),
+    });
+  }
+  drone(t + 0.14, { type: 'triangle', fLow: 55, fPeak: 70, vol: 0.08, dur: 0.3, pan: -pan });
+}
+// L4: ゲート周波数のスイープ — パルスが 8→40Hz へ加速する(多様なタイミング)
+function l4(t) {
+  const pan = panOf();
+  const o = ctx.createOscillator(); o.type = 'triangle';
+  o.frequency.setValueAtTime(jit(60, 0.04), t);
+  o.frequency.exponentialRampToValueAtTime(jit(80, 0.04), t + 0.16);
+  o.frequency.exponentialRampToValueAtTime(jit(42, 0.04), t + 0.45);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(100, t);
+  f.frequency.exponentialRampToValueAtTime(400, t + 0.13);
+  f.frequency.exponentialRampToValueAtTime(100, t + 0.36);
+  const gate = ctx.createGain(); gate.gain.value = 0;
+  const lfo = ctx.createOscillator(); lfo.type = 'square';
+  lfo.frequency.setValueAtTime(jit(8, 0.2), t);
+  lfo.frequency.exponentialRampToValueAtTime(jit(40, 0.2), t + 0.4);
+  const lg = ctx.createGain(); lg.gain.value = 0.1;
+  const dc = ctx.createConstantSource(); dc.offset.value = 0.08;
+  lfo.connect(lg).connect(gate.gain); dc.connect(gate.gain);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.01, t);
+  g.gain.linearRampToValueAtTime(1, t + 0.22);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  o.connect(f).connect(gate).connect(g).connect(p).connect(master);
+  [o, lfo, dc].forEach(x => { x.start(t); x.stop(t + 0.5); });
+  drone(t + 0.12, { type: 'triangle', fLow: 55, fPeak: 70, vol: 0.08, dur: 0.32, pan: -pan });
+}
+// L5: パルス主音 + square のアクセント(3点要素を少量)
+function l5(t) {
+  const pan = panOf();
+  droneGated(t, { type: 'triangle', rate: 22, vol: 0.16, pan });
+  drone(t, { type: 'square', fLow: 60, fPeak: 80, lpHigh: 280, vol: 0.05, pan });
+  drone(t, { type: 'sine', fLow: 91, fPeak: 122, lpHigh: 600, vol: 0.07, pan });
+  drone(t + 0.12, { type: 'triangle', fLow: 55, fPeak: 70, vol: 0.09, dur: 0.32, pan: -pan });
+}
+// L6: フィラメント各発を別レートでゲート(マルチレート干渉)
+function l6(t) {
+  const pan = panOf();
+  drone(t, { type: 'triangle', vol: 0.15, pan });
+  let tt = t + 0.04;
+  for (let i = 0; i < 4; i++) {
+    tt += 0.05 + Math.random() * 0.05;
+    droneGated(tt, {
+      type: 'triangle', fLow: 60 + Math.random() * 35, fPeak: 75 + Math.random() * 45,
+      rate: 15 + Math.random() * 20, depth: 0.7,
+      vol: 0.06, dur: 0.15 + Math.random() * 0.1, pan: (Math.random() * 2 - 1) * 0.7,
+    });
+  }
+}
+// L7: 宇宙スケール × パルス × 丸い音色(0.8s、遅いゲート)
+function l7(t) {
+  const pan = panOf();
+  droneGated(t, { type: 'triangle', rate: 9, depth: 0.5, dur: 0.8, vol: 0.17, pan });
+  drone(t, { type: 'sine', fLow: 91, fPeak: 122, lpHigh: 600, vol: 0.08, dur: 0.8, pan });
+  drone(t + 0.2, { type: 'triangle', fLow: 55, fPeak: 70, vol: 0.09, dur: 0.55, pan: -pan });
+  partial(t, jit(32, 0.1), 0.8, 0.11);
+}
+// L8: 毎回構造が変わる(フィラメント数・ゲート有無・声数ランダム)
+function l8(t) {
+  const pan = panOf();
+  const gated = Math.random() < 0.6;
+  const nFil = 2 + Math.floor(Math.random() * 4);
+  if (gated) {
+    droneGated(t, { type: 'triangle', rate: 15 + Math.random() * 15, vol: 0.16, pan });
+  } else {
+    drone(t, { type: 'triangle', vol: 0.16, pan });
+  }
+  let tt = t + 0.04;
+  for (let i = 0; i < nFil; i++) {
+    tt += 0.04 + Math.random() * 0.07;
+    drone(tt, {
+      type: 'sine', fLow: 55 + Math.random() * 45, fPeak: 70 + Math.random() * 55,
+      vol: 0.04 + Math.random() * 0.04, dur: 0.15 + Math.random() * 0.12,
+      pan: (Math.random() * 2 - 1) * 0.7,
+    });
+  }
+  partial(t, jit(32, 0.15), 0.45, 0.1);
+}
+// L9: 全声パルス(和音も別レートでゲート、位相がずれる)
+function l9(t) {
+  const pan = panOf();
+  droneGated(t, { type: 'triangle', rate: 22, vol: 0.16, pan });
+  droneGated(t, { type: 'sine', fLow: 91, fPeak: 122, lpHigh: 600, rate: 17, vol: 0.08, pan });
+  droneGated(t + 0.12, { type: 'triangle', fLow: 55, fPeak: 70, rate: 26, vol: 0.08, dur: 0.32, pan: -pan });
+  partial(t, jit(32, 0.1), 0.45, 0.1);
+}
+// L10: 全入り — パルス主音 + フィラメント + 丸い和音 + 追い波 + サブ
+function l10(t) {
+  const pan = panOf();
+  droneGated(t, { type: 'triangle', rate: 20, vol: 0.16, pan });
+  drone(t, { type: 'sine', fLow: 91, fPeak: 122, lpHigh: 600, vol: 0.08, pan });
+  let tt = t + 0.05;
+  for (let i = 0; i < 3; i++) {
+    tt += 0.05 + Math.random() * 0.05;
+    drone(tt, {
+      type: 'sine', fLow: 65 + Math.random() * 35, fPeak: 85 + Math.random() * 45,
+      vol: 0.045, dur: 0.15 + Math.random() * 0.08, pan: -pan * (i % 2 ? 1 : -0.5),
+    });
+  }
+  drone(t + 0.13, { type: 'triangle', fLow: 55, fPeak: 70, vol: 0.09, dur: 0.32, pan: -pan });
+  partial(t, jit(32, 0.1), 0.45, 0.11);
+}
+
+const variants = [
+  { id: 'L1', name: 'パルス×丸い音色', fn: l1, desc: 'K6の構造をK7の音色で。基準融合。' },
+  { id: 'L2', name: 'フィラメント×丸い音色', fn: l2, desc: '小ヴン5発を全部 sine/triangle で。' },
+  { id: 'L3', name: 'パルス+フィラメント衛星', fn: l3, desc: '主音パルス+小ヴン3発の衛星。' },
+  { id: 'L4', name: 'ゲート加速', fn: l4, desc: 'パルスが8→40Hzへ加速。' },
+  { id: 'L5', name: 'パルス+ square アクセント', fn: l5, desc: '3点の square を少量だけ。' },
+  { id: 'L6', name: 'マルチレート干渉', fn: l6, desc: 'フィラメント各発を別レートでゲート。' },
+  { id: 'L7', name: '宇宙スケール版', fn: l7, desc: '0.8s・遅いゲート・丸い音色。' },
+  { id: 'L8', name: '毎回構造が変わる', fn: l8, desc: 'フィラメント数・ゲート有無がランダム。' },
+  { id: 'L9', name: '全声パルス', fn: l9, desc: '和音も追い波も別レートで断続。' },
+  { id: 'L10', name: '全入り', fn: l10, desc: 'パルス+フィラメント+和音+追い波+サブ。' },
+];
+
+const cards = document.getElementById('cards');
+const timers = new Map();
+for (const v of variants) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<h2>${v.id}. ${v.name}</h2><p>${v.desc}</p>`;
+  const b1 = document.createElement('button'); b1.textContent = '1回';
+  b1.onclick = () => { ctx.resume(); v.fn(ctx.currentTime + 0.05); };
+  const b2 = document.createElement('button'); b2.textContent = '連続(押し続け)';
+  b2.className = 'burst';
+  const start = () => {
+    ctx.resume();
+    v.fn(ctx.currentTime + 0.05);
+    timers.set(v.id, setInterval(() => { v.fn(ctx.currentTime + 0.01); }, 900));
+  };
+  const stop = () => { clearInterval(timers.get(v.id)); timers.delete(v.id); };
+  b2.onpointerdown = start; b2.onpointerup = b2.onpointerleave = stop;
+  card.append(b1, b2);
+  const row = document.createElement('div');
+  row.style.marginTop = '.6em';
+  row.append('採点: ');
+  const btns = [];
+  const paint = () => {
+    const r = JSON.parse(localStorage.getItem('plasma-ratings9') || '{}');
+    btns.forEach((b, i) => { b.style.background = r[v.id] === i + 1 ? '#c93' : '#333'; });
+  };
+  for (let n = 1; n <= 4; n++) {
+    const b = document.createElement('button');
+    b.textContent = n; b.style.padding = '.3em .8em'; b.style.marginRight = '.4em';
+    b.onclick = () => {
+      const r = JSON.parse(localStorage.getItem('plasma-ratings9') || '{}');
+      if (r[v.id] === n) delete r[v.id]; else r[v.id] = n;
+      localStorage.setItem('plasma-ratings9', JSON.stringify(r));
+      paint();
+    };
+    btns.push(b); row.append(b);
+  }
+  paint();
+  card.append(row);
+  cards.append(card);
+}
+document.getElementById('export').onclick = async () => {
+  const ratings = JSON.parse(localStorage.getItem('plasma-ratings9') || '{}');
+  const lines = variants
+    .map(v => `${v.id} ${v.name}: ${ratings[v.id] ?? '未採点'}`)
+    .sort((a, b) => (parseInt(b.match(/: (\d)/)?.[1] || '0')) - (parseInt(a.match(/: (\d)/)?.[1] || '0')));
+  const text = '敵弾9(パルス×丸い音色×フィラメント) 採点(4段階)\n' + lines.join('\n');
+  const out = document.getElementById('scoreOut');
+  out.textContent = text; out.style.display = 'block';
+  try { await navigator.clipboard.writeText(text); out.textContent += '\n\n(クリップボードへコピー済み)'; } catch {}
+};
+document.getElementById('resetScores').onclick = () => {
+  localStorage.removeItem('plasma-ratings9');
+  location.reload();
+};
+</script>
+</body>
+</html>

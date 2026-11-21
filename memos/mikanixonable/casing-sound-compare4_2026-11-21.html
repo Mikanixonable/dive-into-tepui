@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>薬莢音 聴き比べ 4 (乱暴な倍音 × 宇宙のくぐもり)</title>
+<style>
+  body{font-family:system-ui,sans-serif;max-width:900px;margin:2em auto;padding:0 1em;background:#111;color:#ddd}
+  h1{font-size:1.3em}
+  .card{border:1px solid #333;border-radius:8px;padding:1em;margin:1em 0;background:#181818}
+  .card h2{margin:0 0 .3em;font-size:1.05em}
+  .card p{margin:.3em 0 .8em;color:#aaa;font-size:.85em;line-height:1.5}
+  button{background:#2a5;color:#fff;border:0;border-radius:6px;padding:.55em 1.2em;margin-right:.6em;font-size:.95em;cursor:pointer}
+  button.burst{background:#36c}
+  button:active{filter:brightness(1.3)}
+  label{font-size:.85em;color:#bbb;display:block;margin:1.5em 0 .3em}
+  input[type=range]{width:320px;vertical-align:middle}
+  #volVal{margin-left:.6em}
+  .muffle{border:1px solid #4a7;border-radius:8px;padding:.8em 1em;margin:1em 0;background:#14201a}
+  .muffle label{display:inline;margin:0 .8em 0 0}
+  ul{font-size:.8em;color:#888}
+</style>
+</head>
+<body>
+<h1>薬莢音 聴き比べ 4 — 乱暴な倍音 × 宇宙のくぐもり</h1>
+<p style="color:#999;font-size:.85em">U5(乾き衝撃 + FM3層 + 細い尾)を基盤に、大きな金属がぶつかったときの<b>甲高く乱暴な高倍音</b>を追加。
+宇宙では空気がないので、音は艦体構造を伝わってくぐもって聞こえるはず — 下のスイッチで全案に構造伝搬マフラーをかけられます。</p>
+
+<div class="muffle">
+  <b>くぐもり(構造伝搬)シミュレーション</b>
+  <label><input type="checkbox" id="m1"> ローパス 1.2kHz(空気伝搬を絶縁、艦体の肉だけが鳴る)</label>
+  <label><input type="checkbox" id="m2"> さらに強い断熱 500Hz</label>
+  <label><input type="checkbox" id="m3"> 薄い隔壁経由 ハイパス300Hz + ローパス4kHz</label>
+</div>
+
+<label>マスター音量 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"><span id="volVal">0.80</span></label>
+
+<div id="cards"></div>
+
+<h2 style="font-size:1em">採点(1=不採用〜4=採用候補)</h2>
+<button id="export" style="background:#555">採点をコピー</button>
+<button id="resetScores" style="background:#733">採点リセット</button>
+<pre id="scoreOut" style="background:#0a0a0a;border:1px solid #333;padding:.8em;margin-top:1em;font-size:.8em;display:none;white-space:pre-wrap"></pre>
+
+<script>
+const ctx = new AudioContext();
+const master = ctx.createGain(); master.gain.value = 0.8;
+
+// ---- くぐもりチェーン ----
+// master → (muffler chain) → destination。チェック状態で再配線する。
+const m1 = ctx.createBiquadFilter(); m1.type = 'lowpass'; m1.frequency.value = 1200; m1.Q.value = 0.9;
+const m2 = ctx.createBiquadFilter(); m2.type = 'lowpass'; m2.frequency.value = 500; m2.Q.value = 0.9;
+const m3hp = ctx.createBiquadFilter(); m3hp.type = 'highpass'; m3hp.frequency.value = 300;
+const m3lp = ctx.createBiquadFilter(); m3lp.type = 'lowpass'; m3lp.frequency.value = 4000;
+function rewire() {
+  master.disconnect(); m1.disconnect(); m2.disconnect(); m3hp.disconnect(); m3lp.disconnect();
+  let node = master;
+  if (document.getElementById('m1').checked) { node.connect(m1); node = m1; }
+  if (document.getElementById('m2').checked) { node.connect(m2); node = m2; }
+  if (document.getElementById('m3').checked) { node.connect(m3hp); m3hp.connect(m3lp); node = m3lp; }
+  node.connect(ctx.destination);
+}
+['m1','m2','m3'].forEach(id => document.getElementById(id).onchange = rewire);
+rewire();
+
+document.getElementById('vol').oninput = e => {
+  master.gain.value = +e.target.value;
+  document.getElementById('volVal').textContent = (+e.target.value).toFixed(2);
+};
+const noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+{ const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+const jit = (v, pct) => v * (1 + (Math.random() * 2 - 1) * pct);
+const panOf = () => (Math.random() < 0.5 ? -1 : 1) * jit(0.5, 0.7);
+
+function noise(t, dur, type, freq, q, vol, dest = master, pan = 0) {
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  let tail = f;
+  if (pan !== 0) { const p = ctx.createStereoPanner(); p.pan.value = pan; f.connect(p); tail = p; }
+  s.connect(f); tail.connect(g).connect(dest);
+  s.start(t, Math.random() * 0.5, dur + 0.02); s.stop(t + dur + 0.05);
+}
+function partial(t, freq, dur, vol, pan) {
+  const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.setValueAtTime(freq, t);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  let tail = g;
+  if (pan !== 0) { const p = ctx.createStereoPanner(); p.pan.value = pan; g.connect(p); tail = p; }
+  o.connect(g); tail.connect(master);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function dryThud(t, pan, amp = 1) {
+  noise(t, 0.014, 'lowpass', 500, 1, 0.26 * amp, master, pan);
+  noise(t, 0.004, 'highpass', 5200, 0.8, 0.12 * amp, master, pan);
+}
+function fmClang(t, fc, ratio, index, dur, amp, pan) {
+  const c = ctx.createOscillator(); c.frequency.setValueAtTime(fc, t);
+  const m = ctx.createOscillator(); m.frequency.setValueAtTime(fc * ratio, t);
+  const mi = ctx.createGain();
+  mi.gain.setValueAtTime(fc * index, t);
+  mi.gain.exponentialRampToValueAtTime(1, t + dur * 0.8);
+  m.connect(mi).connect(c.frequency);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(amp, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  const p = ctx.createStereoPanner(); p.pan.value = pan;
+  c.connect(g).connect(p).connect(master);
+  m.start(t); c.start(t); m.stop(t + dur + 0.02); c.stop(t + dur + 0.02);
+}
+// U5 基盤: 乾き衝撃 + FM3層 + 細い尾
+function fm3(t, f0, amp, pan) {
+  fmClang(t, f0, 1.02, 2, 0.25, 0.1 * amp, pan);
+  fmClang(t, f0 * 2.76, 1.37, 3, 0.14, 0.06 * amp, pan);
+  fmClang(t, f0 * 5.4, 1.99, 1.8, 0.07, 0.03 * amp, pan);
+}
+function shimmer(t, f0, amp, pan, dur = 0.12) {
+  const modes = [2.4, 3.6, 4.4, 5.7].sort(() => Math.random() - 0.5);
+  partial(t, jit(f0 * modes[0], 0.04), dur * 1.4, 0.055 * amp, pan);
+  modes.slice(1, 4).forEach((m) =>
+    partial(t, jit(f0 * m, 0.06), dur * 0.5, 0.028 * amp, pan));
+}
+function baseU5(t0, amp = 1) {
+  const f0 = jit(430, 0.18), pan = panOf();
+  dryThud(t0, pan, amp);
+  fm3(t0, f0, 0.8 * amp, pan);
+  shimmer(t0, f0, 0.8 * amp, pan, 0.1);
+  return { f0, pan };
+}
+
+// ---- 乱暴な倍音(新要素) ----
+// 大きな金属が当たると、低い整ったモードだけでなく高い「ギャン」が出る。
+// 非整数の高倍音クラスタ(6〜14倍帯)を短く強く鳴らす。
+const VIOLENT_MODES = [6.7, 8.9, 11.3, 13.7];
+function violentOvertones(t, f0, amp, pan) {
+  VIOLENT_MODES.forEach((m, k) => {
+    partial(t, jit(f0 * m, 0.08), 0.05 + Math.random() * 0.05, 0.045 * amp / (1 + k * 0.5), pan);
+  });
+  // 擦れ合う金属のキンキン: 4〜7kHz のザラつく帯域
+  noise(t, 0.04, 'bandpass', jit(5200, 0.25), 4, 0.09 * amp, master, pan);
+}
+// 高倍音が擦れる「ビリビリ」: 高域グレイン束
+function violentGrains(t, amp, pan) {
+  const n = 4 + Math.floor(Math.random() * 4);
+  for (let i = 0; i < n; i++) {
+    noise(t + Math.random() * 0.015, 0.005, 'bandpass', jit(4500, 0.5), 5, 0.08 * amp, master, pan);
+  }
+}
+// 艦体を伝わる共振: 構造伝搬時に艦の「胴」が低く鳴る(200〜400Hz の帯域が尾を引く)
+function hullResonance(t, amp, pan) {
+  noise(t, 0.4, 'bandpass', jit(280, 0.15), 3, 0.09 * amp, master, pan);
+  partial(t, jit(190, 0.1), 0.3, 0.05 * amp, pan);
+}
+
+
+// ============ 案 ============
+
+// V1: U5 + 乱暴な倍音(マフラーなし基準)
+function v1(t0) {
+  const { f0, pan } = baseU5(t0);
+  violentOvertones(t0, f0, 1, pan);
+}
+// V2: V1 + 艦体共振(くぐもり側で聴く想定: 構造を伝わる低い残り)
+function v2(t0) {
+  const { f0, pan } = baseU5(t0);
+  violentOvertones(t0, f0, 1, pan);
+  hullResonance(t0 + 0.01, 1, pan);
+}
+// V3: 乱暴さ最大化 — 高倍音 + 高域グレイン + FM の index を上げたスクリーチ
+function v3(t0) {
+  const { f0, pan } = baseU5(t0);
+  violentOvertones(t0, f0, 1.2, pan);
+  violentGrains(t0 + 0.002, 1, pan);
+  fmClang(t0, jit(f0 * 7.1, 0.06), 2.9, 4.5, 0.06, 0.05, pan); // 超高側帯のギャン
+}
+// V4: V3 + 艦体共振(乱暴 + くぐもりの両方)
+function v4(t0) {
+  const { f0, pan } = baseU5(t0);
+  violentOvertones(t0, f0, 1.1, pan);
+  violentGrains(t0 + 0.002, 1, pan);
+  hullResonance(t0 + 0.01, 1.2, pan);
+}
+
+// V6: 低めの筒に乱暴な倍音(口径を上げて音を重くした対照)
+function v6(t0) {
+  const f0 = jit(320, 0.15), pan = panOf();
+  dryThud(t0, pan);
+  fm3(t0, f0, 0.9, pan);
+  violentOvertones(t0, f0, 1.1, pan);
+  shimmer(t0, f0, 0.6, pan, 0.1);
+}
+
+// V8: U5そのまま(対照)
+function v8(t0) { baseU5(t0); }
+
+
+const variants = [
+  { id: 'V1', name: 'U5+乱暴な倍音', fn: v1, desc: '非整数の高倍音 6.7〜13.7倍 + 5kHz帯のキンキン擦れ。マフラーOFF 基準。' },
+  { id: 'V2', name: 'V1+艦体共振', fn: v2, desc: '構造を伝わる 200〜400Hz の低い残りを追加。マフラーON での聴感用。' },
+  { id: 'V3', name: '乱暴さ最大化', fn: v3, desc: '高倍音+高域グレイン+超高FM(7.1倍)。「ギャン」の上限。' },
+  { id: 'V4', name: 'V3+艦体共振', fn: v4, desc: '乱暴とくぐもりの両立案。' },
+  { id: 'V6', name: '低め筒+乱暴倍音', fn: v6, desc: 'f0 320Hz に下げて重くした対照。甲高倍音との落差が出る。' },
+  { id: 'V8', name: 'U5そのまま(対照)', fn: v8, desc: '乱暴倍音なしの基準音。' },
+];
+
+const cards = document.getElementById('cards');
+const timers = new Map();
+for (const v of variants) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<h2>${v.id}. ${v.name}</h2><p>${v.desc}</p>`;
+  const b1 = document.createElement('button'); b1.textContent = '1個';
+  b1.onclick = () => { ctx.resume(); v.fn(ctx.currentTime + 0.05); };
+  const b2 = document.createElement('button'); b2.textContent = '連続(押し続け)';
+  b2.className = 'burst';
+  const start = () => {
+    ctx.resume();
+    v.fn(ctx.currentTime + 0.05);
+    timers.set(v.id, setInterval(() => { v.fn(ctx.currentTime + 0.01); }, 450));
+  };
+  const stop = () => { clearInterval(timers.get(v.id)); timers.delete(v.id); };
+  b2.onpointerdown = start; b2.onpointerup = b2.onpointerleave = stop;
+  card.append(b1, b2);
+  const row = document.createElement('div');
+  row.style.marginTop = '.6em';
+  row.append('採点: ');
+  const btns = [];
+  const paint = () => {
+    const r = JSON.parse(localStorage.getItem('casing-ratings4') || '{}');
+    btns.forEach((b, i) => { b.style.background = r[v.id] === i + 1 ? '#c93' : '#333'; });
+  };
+  for (let n = 1; n <= 4; n++) {
+    const b = document.createElement('button');
+    b.textContent = n; b.style.padding = '.3em .8em'; b.style.marginRight = '.4em';
+    b.onclick = () => {
+      const r = JSON.parse(localStorage.getItem('casing-ratings4') || '{}');
+      if (r[v.id] === n) delete r[v.id]; else r[v.id] = n;
+      localStorage.setItem('casing-ratings4', JSON.stringify(r));
+      paint();
+    };
+    btns.push(b); row.append(b);
+  }
+  paint();
+  card.append(row);
+  cards.append(card);
+}
+document.getElementById('export').onclick = async () => {
+  const ratings = JSON.parse(localStorage.getItem('casing-ratings4') || '{}');
+  const lines = variants
+    .map(v => `${v.id} ${v.name}: ${ratings[v.id] ?? '未採点'}`)
+    .sort((a, b) => (parseInt(b.match(/: (\d)/)?.[1] || '0')) - (parseInt(a.match(/: (\d)/)?.[1] || '0')));
+  const text = '薬莢音4(乱暴倍音×くぐもり) 採点(4段階)\n' + lines.join('\n');
+  const out = document.getElementById('scoreOut');
+  out.textContent = text; out.style.display = 'block';
+  try { await navigator.clipboard.writeText(text); out.textContent += '\n\n(クリップボードへコピー済み)'; } catch {}
+};
+document.getElementById('resetScores').onclick = () => {
+  localStorage.removeItem('casing-ratings4');
+  location.reload();
+};
+</script>
+</body>
+</html>

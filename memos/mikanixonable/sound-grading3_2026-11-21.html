@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>効果音 第3ラウンド — 聴き比べ採点</title>
+<style>
+
+body{font-family:"Inter",system-ui,sans-serif;min-height:100vh;margin:0;padding:0 1.5em 4em;
+  background:radial-gradient(1200px 600px at 80% -10%,#1b2a4a 0%,#0b0e14 55%),#0b0e14;color:#e6ecf5}
+header{max-width:1080px;margin:0 auto;padding:3em 0 1em}
+h1{font-size:clamp(1.6em,4vw,2.4em);font-weight:800;letter-spacing:-.02em;
+  background:linear-gradient(90deg,#7db8ff,#c58bff);-webkit-background-clip:text;background-clip:text;color:transparent;margin:0 0 .2em}
+.sub{color:#8b98ad;font-size:.9em}
+.toolbar{max-width:1080px;margin:1.5em auto;display:flex;gap:1em;align-items:center;flex-wrap:wrap;
+  background:rgba(255,255,255,.04);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);
+  border-radius:16px;padding:.9em 1.2em}
+.snd{max-width:1080px;margin:0 auto 2.2em}
+.snd h2{font-size:1.15em;font-weight:700;margin:0 0 .2em;color:#cfd9e8}
+.snd-desc{color:#7c8a9e;font-size:.8em;margin:0 0 .8em}
+.vars{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:.9em}
+.card{background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);border-radius:16px;
+  padding:1em 1.1em;transition:transform .18s,border-color .18s,box-shadow .18s}
+.card:hover{transform:translateY(-2px);border-color:rgba(125,184,255,.45);box-shadow:0 12px 32px -12px rgba(80,140,255,.3)}
+.vname{font-size:.72em;font-weight:700;letter-spacing:.08em;color:#8fb4ff;margin-bottom:.3em}
+.card p{margin:0 0 .9em;color:#93a1b6;font-size:.75em;line-height:1.5;min-height:2.4em}
+.row{display:flex;gap:.6em;margin-bottom:.8em}
+button.play{flex:1;background:linear-gradient(135deg,#4f8dff,#7b5cff);color:#fff;border:0;border-radius:10px;
+  padding:.6em 0;font-size:.85em;font-weight:600;cursor:pointer;transition:filter .15s,transform .1s}
+button.play:hover{filter:brightness(1.15)}button.play:active{transform:scale(.97)}
+button.play.playing{background:linear-gradient(135deg,#ff7a5c,#ff5c8a)}
+.score{display:flex;gap:.45em}
+.score button{flex:1;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:#8b98ad;
+  border-radius:9px;padding:.4em 0;font-weight:700;font-size:.8em;cursor:pointer;transition:all .15s}
+.score button.on{background:linear-gradient(135deg,#ffb347,#ff5c8a);color:#fff;border-color:transparent;
+  box-shadow:0 6px 18px -6px rgba(255,120,140,.5)}
+.action{background:rgba(255,255,255,.07);color:#cfd9e8;border:1px solid rgba(255,255,255,.1);
+  border-radius:10px;padding:.55em 1em;font-size:.85em;cursor:pointer}
+input[type=range]{accent-color:#7b5cff;width:180px}
+.adopt{display:flex;align-items:center;gap:.4em;margin-top:.7em;font-size:.72em;color:#8fb4ff;cursor:pointer}
+.adopt input{accent-color:#7b5cff}
+label{font-size:.82em;color:#b9c4d4}
+#volVal{margin-left:.5em;min-width:2.5em;display:inline-block}
+#scoreOut{max-width:1080px;margin:1.5em auto;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.1);
+  border-radius:12px;padding:1em;font-size:.8em;display:none;white-space:pre-wrap;color:#a9ffd0}
+.cathead{max-width:1080px;margin:2.5em auto 1em;padding-top:1.5em;border-top:1px solid rgba(255,255,255,.1);
+  font-size:1.35em;font-weight:700;color:#7db8ff}
+.cathead small{display:block;font-size:.55em;font-weight:400;color:#8b98ad;margin-top:.3em}
+</style>
+</head>
+<body>
+<header>
+<h1>効果音 第3ラウンド — 聴き比べ採点</h1>
+<div class="sub">各音につき現行と4案を聴き比べ。<br>各案を1(不採用)〜4(採用候補)で採点。採点はブラウザに保存され、「採点をコピー」で結果を渡せます。</div>
+</header>
+<div class="toolbar">
+  <label>音量 <input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"><span id="volVal">0.80</span></label>
+  <button class="action" id="export">採点をコピー</button>
+  <button class="action" id="resetScores">採点リセット</button>
+</div>
+<div id="cards"></div>
+<pre id="scoreOut"></pre>
+<script>
+
+const ctx = new AudioContext();
+const master = ctx.createGain(); master.gain.value = 0.8; master.connect(ctx.destination);
+const noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+{ const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+function tone(freq, dur, vol, type, when = 0) {
+  const t = ctx.currentTime + when;
+  const o = ctx.createOscillator(); o.type = type; o.frequency.setValueAtTime(freq, t);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+// 音高が a→b へ滑る音
+function sweep(a, b, dur, vol, type, when = 0) {
+  const t = ctx.currentTime + when;
+  const o = ctx.createOscillator(); o.type = type;
+  o.frequency.setValueAtTime(a, t); o.frequency.exponentialRampToValueAtTime(b, t + dur);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  o.connect(g).connect(master); o.start(t); o.stop(t + dur + 0.02);
+}
+function noiseBurst(dur, type, freq, vol, when = 0, q = 1) {
+  const t = ctx.currentTime + when;
+  const s = ctx.createBufferSource(); s.buffer = noiseBuf;
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.setValueAtTime(freq, t); f.Q.value = q;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  s.connect(f).connect(g).connect(master); s.start(t, Math.random() * 0.5, dur + 0.02); s.stop(t + dur + 0.05);
+}
+// 自機被弾(proximity 0..1)
+function hitSound(p, wave, fMul, gMul) {
+  const t = ctx.currentTime;
+  const freq = (80 + 90 * p) * fMul, peak = (0.2 + 0.7 * p) * gMul, tail = (0.02 + 0.08 * p) * gMul;
+  const o = ctx.createOscillator(); o.type = wave; o.frequency.setValueAtTime(freq, t);
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(70, t); f.frequency.exponentialRampToValueAtTime(190, t + 0.1);
+  f.frequency.exponentialRampToValueAtTime(55, t + 0.32);
+  const g = ctx.createGain(); g.gain.setValueAtTime(peak, t);
+  g.gain.exponentialRampToValueAtTime(tail, t + 0.35);
+  o.connect(f).connect(g).connect(master); o.start(t); o.stop(t + 0.38);
+}
+function chord(freqs, dur, vol, wave, slideTo = 0.72) {
+  const t = ctx.currentTime;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(180, t); f.frequency.exponentialRampToValueAtTime(520, t + 0.08);
+  f.frequency.exponentialRampToValueAtTime(130, t + dur * 0.9);
+  const g = ctx.createGain(); g.gain.setValueAtTime(vol, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  freqs.forEach(fr => {
+    const o = ctx.createOscillator(); o.type = wave;
+    o.frequency.setValueAtTime(fr, t); o.frequency.exponentialRampToValueAtTime(fr * slideTo, t + dur * 0.8);
+    o.connect(f); o.start(t); o.stop(t + dur);
+  });
+  f.connect(g).connect(master);
+}
+function boom(noiseLo, kickA, kickB, kickDur, tail) {
+  noiseBurst(tail, 'lowpass', noiseLo, 0.8);
+  noiseBurst(tail * 0.5, 'lowpass', noiseLo * 2.6, 0.5);
+  sweep(kickA, kickB, kickDur, 0.8, 'sine');
+}
+function klaxonBuf() {
+  const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  const beep = (a, b, fr) => {
+    const i0 = Math.floor(a * ctx.sampleRate), i1 = Math.floor(b * ctx.sampleRate);
+    const fade = Math.floor(ctx.sampleRate * 0.004);
+    for (let i = i0; i < i1; i++) {
+      const sq = (i * fr * 2 / ctx.sampleRate) % 2 < 1 ? 1 : -1;
+      d[i] = sq * Math.min(1, (i - i0) / fade, (i1 - i) / fade);
+    }
+  };
+  beep(0, 0.18, 880); beep(0.3, 0.48, 587);
+  return buf;
+}
+function loopChannel(freq, q, buffer, lfoHz, lfoDepth) {
+  const s = ctx.createBufferSource(); s.buffer = buffer || noiseBuf; s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+  const g = ctx.createGain(); g.gain.value = 0;
+  if (buffer) s.connect(g); else s.connect(f).connect(g);
+  if (lfoHz) {
+    const lfo = ctx.createOscillator(); lfo.frequency.value = lfoHz;
+    const lg = ctx.createGain(); lg.gain.value = lfoDepth;
+    lfo.connect(lg).connect(g.gain); lfo.start();
+  }
+  g.connect(master); s.start();
+  return g;
+}
+function klaxonBuf2() {
+  const buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  const beep = (a, b, fr) => {
+    const i0 = Math.floor(a * ctx.sampleRate), i1 = Math.floor(b * ctx.sampleRate);
+    const fade = Math.floor(ctx.sampleRate * 0.004);
+    for (let i = i0; i < i1; i++) {
+      const sq = (i * fr * 2 / ctx.sampleRate) % 2 < 1 ? 1 : -1;
+      d[i] = sq * Math.min(1, (i - i0) / fade, (i1 - i) / fade);
+    }
+  };
+  beep(0, 0.14, 880); beep(0.22, 0.36, 880); beep(0.44, 0.58, 660);
+  return buf;
+}
+// 2層のバンドパスノイズを1つの音量ノードへ混ぜる。
+function dualLoop(f1, q1, f2, q2) {
+  const g = ctx.createGain(); g.gain.value = 0;
+  [[f1, q1], [f2, q2]].forEach(([fr, q]) => {
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = fr; f.Q.value = q;
+    src.connect(f).connect(g); src.start();
+  });
+  g.connect(master);
+  return g;
+}
+function klaxonLoop(lp) {
+  const s = ctx.createBufferSource(); s.buffer = klaxonBuf(); s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+  const g = ctx.createGain(); g.gain.value = 0;
+  s.connect(f).connect(g).connect(master); s.start();
+  return g;
+}
+function klaxonLoopR(lp, rate) {
+  const s = ctx.createBufferSource(); s.buffer = klaxonBuf(); s.loop = true;
+  s.playbackRate.value = rate;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+  const g = ctx.createGain(); g.gain.value = 0;
+  s.connect(f).connect(g).connect(master); s.start();
+  return g;
+}
+function klaxon2Loop(lp) {
+  const s = ctx.createBufferSource(); s.buffer = klaxonBuf2(); s.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp;
+  const g = ctx.createGain(); g.gain.value = 0;
+  s.connect(f).connect(g).connect(master); s.start();
+  return g;
+}
+const LOOPS = {
+  'thrust-a': { make: () => loopChannel(320, 0.8), gain: 0.1 },
+  'thrust-b': { make: () => loopChannel(190, 0.6), gain: 0.14 },
+  'thrust-c': { make: () => loopChannel(520, 1.6), gain: 0.07 },
+  'thrust-d': { make: () => loopChannel(300, 0.9, null, 9, 0.05), gain: 0.06 },
+  'rcs-a': { make: () => loopChannel(1600, 1.1), gain: 0.015 },
+  'rcs-b': { make: () => loopChannel(2400, 0.8), gain: 0.012 },
+  'rcs-c': { make: () => loopChannel(900, 1.4), gain: 0.025 },
+  'rcs-d': { make: () => loopChannel(1600, 1.1, null, 6, 0.012), gain: 0.006 },
+  'alarm-a': { make: () => loopChannel(0, 0, klaxonBuf()), gain: 0.06 },
+  'alarm-b': { make: () => { const s = ctx.createBufferSource(); s.buffer = klaxonBuf(); s.loop = true;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(f).connect(g).connect(master); s.start(); return g; }, gain: 0.09 },
+  'alarm-c': { make: () => loopChannel(0, 0, klaxonBuf()), gain: 0.04 },
+  'alarm-d': { make: () => loopChannel(700, 2.5), gain: 0.05 },
+  // 採用案ベースの別案
+  'thrust-n1': { make: () => loopChannel(150, 0.7), gain: 0.17 },
+  'thrust-n2': { make: () => loopChannel(190, 0.7, null, 4, 0.045), gain: 0.1 },
+  'thrust-n3': { make: () => dualLoop(190, 0.7, 380, 1.2), gain: 0.08 },
+  'rcs-n1': { make: () => loopChannel(1050, 0.9), gain: 0.02 },
+  'rcs-n2': { make: () => loopChannel(900, 1.4, null, 5, 0.012), gain: 0.012 },
+  'rcs-n3': { make: () => dualLoop(900, 1.4, 1800, 1.2), gain: 0.014 },
+  'alarm-n1': { make: () => klaxonLoop(600), gain: 0.11 },
+  'alarm-n2': { make: () => klaxon2Loop(900), gain: 0.09 },
+  'alarm-n3': { make: () => dualLoop(700, 2.5, 350, 1.5), gain: 0.05 },
+  // 第2ラウンド
+  'thrust-x1': { make: () => loopChannel(250, 1.0), gain: 0.11 },
+  'thrust-x2': { make: () => loopChannel(120, 0.5), gain: 0.19 },
+  'thrust-x3': { make: () => dualLoop(300, 0.9, 600, 1.4), gain: 0.07 },
+  'thrust-x4': { make: () => loopChannel(190, 0.6, null, 2, 0.06), gain: 0.1 },
+  'rcs-x1': { make: () => loopChannel(1200, 1.2), gain: 0.018 },
+  'rcs-x2': { make: () => loopChannel(700, 1.0), gain: 0.03 },
+  'rcs-x3': { make: () => loopChannel(2000, 0.7), gain: 0.011 },
+  'rcs-x4': { make: () => loopChannel(900, 1.4, null, 8, 0.01), gain: 0.014 },
+  'alarm-x1': { make: () => { const s = ctx.createBufferSource(); s.buffer = klaxonBuf(); s.loop = true;
+    s.playbackRate.value = 1.3;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1200;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(f).connect(g).connect(master); s.start(); return g; }, gain: 0.08 },
+  'alarm-x2': { make: () => klaxonLoop(500), gain: 0.12 },
+  'alarm-x3': { make: () => klaxon2Loop(700), gain: 0.1 },
+  'alarm-x4': { make: () => dualLoop(500, 2.0, 1000, 2.0), gain: 0.045 },
+  // 第3ラウンド
+  'thrust-y1': { make: () => dualLoop(150, 0.7, 60, 1.0), gain: 0.13 },
+  'thrust-y2': { make: () => dualLoop(120, 0.5, 300, 1.0), gain: 0.11 },
+  'thrust-y3': { make: () => loopChannel(250, 1.0, null, 6, 0.05), gain: 0.09 },
+  'thrust-y4': { make: () => dualLoop(110, 0.5, 220, 0.9), gain: 0.13 },
+  'rcs-y1': { make: () => loopChannel(650, 1.0), gain: 0.035 },
+  'rcs-y2': { make: () => dualLoop(700, 1.0, 1400, 1.2), gain: 0.02 },
+  'rcs-y3': { make: () => dualLoop(700, 1.0, 250, 1.2), gain: 0.03 },
+  'rcs-y4': { make: () => loopChannel(800, 0.8), gain: 0.028 },
+  'alarm-y1': { make: () => klaxonLoopR(700, 1.3), gain: 0.1 },
+  'alarm-y2': { make: () => klaxon2Loop(500), gain: 0.12 },
+  'alarm-y3': { make: () => klaxonLoopR(900, 1.2), gain: 0.09 },
+  'alarm-y4': { make: () => klaxon2Loop(600), gain: 0.11 },
+  // 第4ラウンド
+  'thrust-z1': { make: () => dualLoop(140, 0.6, 50, 1.0), gain: 0.14 },
+  'thrust-z2': { make: () => dualLoop(110, 0.5, 55, 1.2), gain: 0.15 },
+  'thrust-z3': { make: () => { const g = dualLoop(150, 0.7, 60, 1.0);
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 3;
+    const lg = ctx.createGain(); lg.gain.value = 0.04;
+    lfo.connect(lg).connect(g.gain); lfo.start(); return g; }, gain: 0.1 },
+  'thrust-z4': { make: () => dualLoop(190, 0.7, 95, 1.0), gain: 0.12 },
+  'rcs-z1': { make: () => dualLoop(700, 1.0, 300, 1.0), gain: 0.03 },
+  'rcs-z2': { make: () => loopChannel(750, 0.7), gain: 0.03 },
+  'rcs-z3': { make: () => dualLoop(650, 1.0, 200, 1.5), gain: 0.035 },
+  'rcs-z4': { make: () => dualLoop(800, 0.8, 400, 1.0), gain: 0.028 },
+  'alarm-z1': { make: () => klaxonLoopR(600, 1.3), gain: 0.1 },
+  'alarm-z2': { make: () => { const s = ctx.createBufferSource(); s.buffer = klaxonBuf2(); s.loop = true;
+    s.playbackRate.value = 1.2;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 600;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(f).connect(g).connect(master); s.start(); return g; }, gain: 0.11 },
+  'alarm-z3': { make: () => klaxonLoopR(700, 1.4), gain: 0.1 },
+  'alarm-z4': { make: () => { const s = ctx.createBufferSource(); s.buffer = klaxonBuf2(); s.loop = true;
+    s.playbackRate.value = 1.2;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 500;
+    const g = ctx.createGain(); g.gain.value = 0;
+    s.connect(f).connect(g).connect(master); s.start(); return g; }, gain: 0.12 },
+};
+const live = {};
+function toggleLoop(name, btn) {
+  if (live[name]) {
+    live[name].gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+    live[name] = null; if (btn) btn.classList.remove('playing');
+  } else {
+    const ch = LOOPS[name].make();
+    ch.gain.setTargetAtTime(LOOPS[name].gain, ctx.currentTime, 0.05);
+    live[name] = ch; if (btn) btn.classList.add('playing');
+  }
+}
+
+const PLAY_LABEL = '再生';
+const CATS_META = [{"title":"世界の効果音 第3ラウンド","sub":"物理音は迫力重視。現行+案A〜案D。","loop":false},{"title":"ループ音 第3ラウンド","sub":"物理音は迫力重視。現行+案A〜案D。ボタンで ON/OFF。","loop":true},{"title":"UI の効果音 第3ラウンド","sub":"電子音はくぐもり/リッチに。現行+案A〜案D。","loop":false}];
+const ITEMS = [
+  { id: "hit-near", name: "自機被弾(至近)", desc: "着弾点が艦中心に近い場合。", variants: [
+    { label: "現行", desc: "sawtooth + lowpass の短い打撃", play: () => hitSound(1, 'sawtooth', 1, 1) },
+    { label: "案A", desc: "現行+サブキックのドン", play: () => { hitSound(1, 'sawtooth', 1, 1); sweep(140, 40, 0.18, 0.6, 'sine'); } },
+    { label: "案B", desc: "現行+金属クラッシュの迫力", play: () => { hitSound(1, 'sawtooth', 1, 1); noiseBurst(0.15, 'highpass', 2500, 0.1); noiseBurst(0.1, 'lowpass', 300, 0.3); } },
+    { label: "案C", desc: "大→小の2段衝撃", play: () => { hitSound(1, 'sawtooth', 1, 1.2); hitSound(0.5, 'sawtooth', 1, 0.7); } },
+    { label: "案D", desc: "胴鳴り長め+高い掠り", play: () => { sweep(160, 50, 0.3, 0.55, 'sine'); hitSound(0.9, 'sawtooth', 1, 0.8); tone(2200, 0.12, 0.04, 'triangle'); } },
+  ] },
+  { id: "hit-far", name: "自機被弾(遠い)", desc: "着弾点が艦中心から遠い場合。", variants: [
+    { label: "現行", desc: "音量・音高が下限に落ちる", play: () => hitSound(0.1, 'sawtooth', 1, 1) },
+    { label: "案A", desc: "こもった2連+遠い残響", play: () => { hitSound(0.1, 'triangle', 0.8, 0.8); hitSound(0.08, 'triangle', 0.8, 0.6); sweep(90, 40, 0.3, 0.08, 'sine'); } },
+    { label: "案B", desc: "重い単発の遠雷", play: () => { sweep(90, 35, 0.4, 0.15, 'sine'); noiseBurst(0.15, 'lowpass', 200, 0.08); } },
+    { label: "案C", desc: "3連の連打遠打", play: () => { hitSound(0.12, 'triangle', 0.8, 0.8); hitSound(0.1, 'triangle', 0.8, 0.7); hitSound(0.08, 'triangle', 0.8, 0.6); } },
+    { label: "案D", desc: "低いノイズの群れ", play: () => { noiseBurst(0.2, 'lowpass', 160, 0.12); noiseBurst(0.15, 'lowpass', 140, 0.08, 0.1); } },
+  ] },
+  { id: "enemyHit", name: "敵機被弾", desc: "敵の装甲へ弾が当たったとき。", variants: [
+    { label: "現行", desc: "3音 sawtooth 和音 + lowpass", play: () => chord([110, 138, 165], 0.35, 0.08, 'sawtooth') },
+    { label: "案A", desc: "重い金属衝突(低和音+ノイズ)", play: () => { chord([80, 110], 0.4, 0.1, 'sawtooth'); noiseBurst(0.15, 'lowpass', 400, 0.15); } },
+    { label: "案B", desc: "破砕クラッシュ(複数ノイズ)", play: () => { noiseBurst(0.08, 'highpass', 2200, 0.12); noiseBurst(0.12, 'lowpass', 350, 0.15); noiseBurst(0.2, 'bandpass', 800, 0.06, 0.05, 2); } },
+    { label: "案C", desc: "甲高い金属+低いドン", play: () => { tone(1600, 0.08, 0.06, 'triangle'); sweep(120, 45, 0.2, 0.4, 'sine'); } },
+    { label: "案D", desc: "共鳴するへこみ(非整数倍音)", play: () => { [211, 337, 531, 720].forEach(f => tone(f, 0.2, 0.045, 'sine')); noiseBurst(0.08, 'highpass', 1800, 0.06); } },
+  ] },
+  { id: "explosion", name: "撃破爆発", desc: "艦が撃破されたときの爆発音。", variants: [
+    { label: "現行", desc: "破裂ノイズ2層 + 120→30Hz キック", play: () => boom(150, 120, 30, 0.15, 0.2) },
+    { label: "案A", desc: "本破裂+小破裂+長い低域", play: () => { boom(150, 120, 30, 0.15, 0.2); noiseBurst(0.08, 'lowpass', 500, 0.2, 0.2); sweep(80, 25, 0.5, 0.4, 'sine', 0.1); } },
+    { label: "案B", desc: "超低音ドン主体の轟き", play: () => { sweep(90, 22, 0.5, 0.8, 'sine'); noiseBurst(0.15, 'lowpass', 200, 0.4); } },
+    { label: "案C", desc: "破裂→ノイズの長い尾", play: () => { boom(150, 120, 30, 0.12, 0.15); noiseBurst(0.6, 'lowpass', 300, 0.15, 0.1); } },
+    { label: "案D", desc: "3連爆発(大→中→小)", play: () => { boom(150, 120, 30, 0.15, 0.2); boom(200, 100, 40, 0.12, 0.12); boom(250, 90, 45, 0.1, 0.1); } },
+  ] },
+  { id: "decouple", name: "デカプラー分離", desc: "ブースターの爆砕ボルトによる分離音。", variants: [
+    { label: "現行", desc: "短い破裂 + 金属解放音", play: () => { noiseBurst(0.055, 'highpass', 1800, 0.16); noiseBurst(0.09, 'lowpass', 320, 0.22); tone(760, 0.06, 0.07, 'square'); tone(430, 0.11, 0.05, 'triangle'); } },
+    { label: "案A", desc: "ボルト破裂+長いエア抜け", play: () => { noiseBurst(0.05, 'highpass', 1800, 0.16); noiseBurst(0.4, 'bandpass', 1400, 0.08, 0.03, 1.5); } },
+    { label: "案B", desc: "重い解放+金属の長い残響", play: () => { noiseBurst(0.1, 'lowpass', 350, 0.25); tone(1100, 0.3, 0.05, 'triangle'); tone(1650, 0.25, 0.03, 'sine'); } },
+    { label: "案C", desc: "2連破裂+低い唸り", play: () => { noiseBurst(0.05, 'highpass', 1800, 0.16); noiseBurst(0.05, 'highpass', 1600, 0.14, 0.09); sweep(80, 40, 0.3, 0.3, 'sine', 0.05); } },
+    { label: "案D", desc: "エア抜け+低いドンの解放", play: () => { noiseBurst(0.3, 'bandpass', 1500, 0.08, 0, 1.8); sweep(100, 40, 0.2, 0.4, 'sine', 0.08); } },
+  ] },
+  { id: "altAlarm", name: "高度低下警報", desc: "高度が危険水準に近づいた警告。", variants: [
+    { label: "現行", desc: "392Hz + 415.3Hz の不協和2音", play: () => { tone(392, 0.16, 0.09, 'square'); tone(415.3, 0.16, 0.07, 'square'); } },
+    { label: "案A", desc: "くぐもった交互サイレン(低い2音)", play: () => { tone(300, 0.12, 0.09, 'square'); tone(380, 0.12, 0.09, 'square', 0.15); } },
+    { label: "案B", desc: "リッチな3往復サイレン", play: () => { tone(600, 0.09, 0.07, 'square'); tone(450, 0.09, 0.07, 'square', 0.11); tone(600, 0.09, 0.07, 'square', 0.22); tone(450, 0.09, 0.07, 'square', 0.33); tone(600, 0.09, 0.07, 'square', 0.44); tone(450, 0.09, 0.07, 'square', 0.55); } },
+    { label: "案C", desc: "強い単発+和音のリッチ", play: () => { tone(600, 0.2, 0.09, 'square'); tone(900, 0.15, 0.05, 'sine'); tone(300, 0.2, 0.06, 'triangle'); } },
+    { label: "案D", desc: "和音2連の太い警告", play: () => { tone(392, 0.12, 0.07, 'square'); tone(587, 0.12, 0.05, 'square'); tone(392, 0.12, 0.07, 'square', 0.16); tone(587, 0.12, 0.05, 'square', 0.16); } },
+  ] },
+  { id: "pickup", name: "補給取り込み", desc: "弾薬・燃料・基地補充の肯定音。", variants: [
+    { label: "現行", desc: "660/990Hz sine + 低いノイズ", play: () => { tone(660, 0.09, 0.09, 'sine'); tone(990, 0.12, 0.07, 'sine'); noiseBurst(0.08, 'lowpass', 600, 0.06); } },
+    { label: "案A", desc: "低音+和音のリッチな受領", play: () => { tone(220, 0.1, 0.1, 'triangle'); tone(440, 0.12, 0.06, 'sine', 0.05); tone(880, 0.14, 0.05, 'sine', 0.05); } },
+    { label: "案B", desc: "くぐもった肯定の2音(220/330Hz)", play: () => { tone(220, 0.12, 0.1, 'triangle'); tone(330, 0.15, 0.08, 'triangle', 0.1); } },
+    { label: "案C", desc: "低音+チャイムの残響", play: () => { tone(220, 0.1, 0.1, 'triangle'); tone(1320, 0.25, 0.03, 'sine', 0.08); } },
+    { label: "案D", desc: "太い低音2連+高い残り", play: () => { tone(220, 0.09, 0.11, 'triangle'); tone(220, 0.09, 0.09, 'triangle', 0.1); tone(1100, 0.15, 0.03, 'sine', 0.18); } },
+  ] },
+  { id: "thrust", name: "エンジン連続音", desc: "主推進中だけ鳴る。", variants: [
+    { label: "現行", desc: "バンドパスノイズ 320Hz(Q0.8)", play: (b) => toggleLoop('thrust-a', b) },
+    { label: "案A", desc: "150Hz + 60Hz のサブドローン重ね", play: (b) => toggleLoop('thrust-y1', b) },
+    { label: "案B", desc: "120Hz + 300Hz の2層の轟き", play: (b) => toggleLoop('thrust-y2', b) },
+    { label: "案C", desc: "250Hz に燃焼の6Hz 脈動", play: (b) => toggleLoop('thrust-y3', b) },
+    { label: "案D", desc: "110+220Hz の最も重い組み合わせ", play: (b) => toggleLoop('thrust-y4', b) },
+  ] },
+  { id: "rcs", name: "RCS 連続音", desc: "姿勢制御の噴射中だけ鳴る。", variants: [
+    { label: "現行", desc: "バンドパスノイズ 1600Hz(Q1.1)", play: (b) => toggleLoop('rcs-a', b) },
+    { label: "案A", desc: "さらに太い 650Hz のパフ", play: (b) => toggleLoop('rcs-y1', b) },
+    { label: "案B", desc: "700Hz + 高いヒスの2層", play: (b) => toggleLoop('rcs-y2', b) },
+    { label: "案C", desc: "700Hz + 低い唸りの2層", play: (b) => toggleLoop('rcs-y3', b) },
+    { label: "案D", desc: "幅広の 800Hz(Q0.8)", play: (b) => toggleLoop('rcs-y4', b) },
+  ] },
+  { id: "alarm", name: "警報クラクション", desc: "未確認の警告中だけ鳴る。", variants: [
+    { label: "現行", desc: "880/587Hz 2ビープ・1秒周期", play: (b) => toggleLoop('alarm-a', b) },
+    { label: "案A", desc: "1.3倍速+こもらせた(lp700) 急迫", play: (b) => toggleLoop('alarm-y1', b) },
+    { label: "案B", desc: "深くこもった3ビープ(lp500)", play: (b) => toggleLoop('alarm-y2', b) },
+    { label: "案C", desc: "1.2倍速の標準的なこもり", play: (b) => toggleLoop('alarm-y3', b) },
+    { label: "案D", desc: "くぐもった3ビープ(lp600)", play: (b) => toggleLoop('alarm-y4', b) },
+  ] },
+  { id: "warp", name: "汎用操作音", desc: "時間加速切替・ノード操作・通知。", variants: [
+    { label: "現行", desc: "660Hz sine の短いブリップ", play: () => tone(660, 0.06, 0.08, 'sine') },
+    { label: "案A", desc: "くぐもったブリップ(440Hz+倍音)", play: () => { tone(440, 0.07, 0.08, 'sine'); tone(1320, 0.1, 0.02, 'sine'); } },
+    { label: "案B", desc: "リッチな4和音ブリップ", play: () => { [660, 990, 1320, 1980].forEach((f, i) => tone(f, 0.07, 0.05 - i * 0.01, 'sine')); } },
+    { label: "案C", desc: "倍音+短いエコーの残り", play: () => { tone(660, 0.06, 0.07, 'sine'); tone(1980, 0.1, 0.02, 'sine'); tone(1980, 0.1, 0.01, 'sine', 0.1); } },
+    { label: "案D", desc: "太い和音(330+660+990Hz)", play: () => { tone(330, 0.07, 0.07, 'sine'); tone(660, 0.07, 0.06, 'sine'); tone(990, 0.08, 0.04, 'sine'); } },
+  ] },
+  { id: "snap", name: "建造: 吸着", desc: "候補へ吸着したとき。", variants: [
+    { label: "現行", desc: "2100/3100Hz の高い短いクリック", play: () => { tone(2100, 0.035, 0.06, 'triangle'); tone(3100, 0.02, 0.03, 'triangle'); noiseBurst(0.02, 'highpass', 5500, 0.03); } },
+    { label: "案A", desc: "くぐもったクリック(1400/2200Hz)", play: () => { tone(1400, 0.04, 0.07, 'triangle'); tone(2200, 0.025, 0.04, 'triangle'); noiseBurst(0.025, 'bandpass', 3500, 0.03, 0, 2); } },
+    { label: "案B", desc: "クリック+リッチなメタル残響", play: () => { tone(2100, 0.035, 0.06, 'triangle'); tone(4200, 0.12, 0.02, 'sine'); tone(6300, 0.15, 0.015, 'sine'); } },
+    { label: "案C", desc: "低い吸着+高い残りの2層", play: () => { tone(1000, 0.045, 0.07, 'triangle'); tone(3000, 0.08, 0.02, 'sine', 0.03); } },
+    { label: "案D", desc: "深いクリック(1200Hz)+柔らかい残り", play: () => { tone(1200, 0.045, 0.08, 'triangle'); tone(1800, 0.06, 0.03, 'sine'); } },
+  ] },
+  { id: "place", name: "建造: 配置", desc: "モジュールを置いたとき。", variants: [
+    { label: "現行", desc: "低い打撃 + 高周波の残り", play: () => { noiseBurst(0.09, 'lowpass', 450, 0.18); tone(170, 0.08, 0.1, 'square'); tone(1350, 0.05, 0.035, 'triangle'); noiseBurst(0.04, 'highpass', 3200, 0.04); } },
+    { label: "案A", desc: "2段ガシャン+低い締めのドン", play: () => { noiseBurst(0.08, 'lowpass', 400, 0.2); tone(950, 0.08, 0.04, 'triangle'); noiseBurst(0.06, 'lowpass', 500, 0.12, 0.1); tone(1200, 0.06, 0.03, 'triangle', 0.1); sweep(130, 50, 0.15, 0.4, 'sine', 0.12); } },
+    { label: "案B", desc: "重い3段の据え付け", play: () => { noiseBurst(0.08, 'lowpass', 400, 0.2); tone(950, 0.08, 0.04, 'triangle'); noiseBurst(0.06, 'lowpass', 450, 0.15, 0.1); sweep(120, 45, 0.14, 0.5, 'sine', 0.16); } },
+    { label: "案C", desc: "ガシャン+ドン+長い残響", play: () => { noiseBurst(0.08, 'lowpass', 400, 0.2); tone(950, 0.15, 0.04, 'triangle'); tone(1420, 0.12, 0.03, 'triangle'); sweep(130, 50, 0.18, 0.5, 'sine'); } },
+    { label: "案D", desc: "太い金属の重なり(多層)", play: () => { noiseBurst(0.1, 'lowpass', 350, 0.22); tone(700, 0.1, 0.05, 'triangle'); tone(1050, 0.08, 0.04, 'triangle'); tone(1600, 0.06, 0.03, 'triangle'); } },
+  ] },
+  { id: "remove", name: "建造: 撤去", desc: "モジュールを外したとき。", variants: [
+    { label: "現行", desc: "880→280Hz 降下 + 引き抜きノイズ", play: () => { sweep(880, 280, 0.15, 0.07, 'triangle'); noiseBurst(0.06, 'lowpass', 900, 0.05); } },
+    { label: "案A", desc: "バキッ+重い抜けのドン", play: () => { noiseBurst(0.04, 'highpass', 2000, 0.12); noiseBurst(0.08, 'lowpass', 400, 0.1, 0.03); sweep(120, 45, 0.15, 0.4, 'sine', 0.08); } },
+    { label: "案B", desc: "折れ+低いゴッの重量撤去", play: () => { noiseBurst(0.05, 'highpass', 1800, 0.12); noiseBurst(0.12, 'lowpass', 300, 0.15, 0.04); } },
+    { label: "案C", desc: "大きめの破断+残響", play: () => { noiseBurst(0.06, 'highpass', 2000, 0.15); noiseBurst(0.1, 'bandpass', 900, 0.1, 0.05, 2); tone(500, 0.12, 0.05, 'triangle', 0.1); } },
+    { label: "案D", desc: "破断→重い落下の余韻", play: () => { noiseBurst(0.05, 'highpass', 2000, 0.12); sweep(250, 80, 0.2, 0.2, 'triangle', 0.06); noiseBurst(0.08, 'lowpass', 350, 0.08, 0.15); } },
+  ] },
+  { id: "deny", name: "建造: 不可", desc: "置けない操作をしたとき。", variants: [
+    { label: "現行", desc: "160Hz square の2連ブザー", play: () => { const t = ctx.currentTime; const o = ctx.createOscillator(); o.type = 'square'; o.frequency.value = 160;
+            const g = ctx.createGain();
+            g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.05, t + 0.01); g.gain.setValueAtTime(0.05, t + 0.06);
+            g.gain.linearRampToValueAtTime(0.0001, t + 0.075); g.gain.setValueAtTime(0.0001, t + 0.11);
+            g.gain.linearRampToValueAtTime(0.05, t + 0.12); g.gain.setValueAtTime(0.05, t + 0.17); g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+            o.connect(g).connect(master); o.start(t); o.stop(t + 0.22); } },
+    { label: "案A", desc: "くぐもった木琴ポンポン(低め)", play: () => { tone(390, 0.1, 0.08, 'sine'); tone(330, 0.12, 0.08, 'sine', 0.12); } },
+    { label: "案B", desc: "リッチな木琴3音", play: () => { tone(520, 0.08, 0.07, 'sine'); tone(440, 0.08, 0.07, 'sine', 0.09); tone(330, 0.12, 0.07, 'sine', 0.18); } },
+    { label: "案C", desc: "木琴+和音のリッチ", play: () => { tone(520, 0.09, 0.07, 'sine'); tone(660, 0.09, 0.05, 'sine'); tone(440, 0.12, 0.06, 'sine', 0.11); } },
+    { label: "案D", desc: "深い木琴2連(330/260Hz)", play: () => { tone(330, 0.1, 0.09, 'sine'); tone(260, 0.13, 0.09, 'sine', 0.11); } },
+  ] },
+  { id: "finish", name: "建造: 終了", desc: "建造を終えたとき。", variants: [
+    { label: "現行", desc: "C5→E5→G5 の上昇3音(triangle)", play: () => { sweep(523.25, 523.25, 0.09, 0.08, 'triangle'); sweep(659.25, 659.25, 0.09, 0.08, 'triangle', 0.09); sweep(783.99, 783.99, 0.17, 0.08, 'triangle', 0.18); } },
+    { label: "案A", desc: "ブリップ+和音+ベル残響のフル", play: () => { tone(880, 0.05, 0.06, 'sine'); [1046, 1318].forEach(f => tone(f, 0.12, 0.04, 'sine', 0.07)); tone(2093, 0.3, 0.02, 'sine', 0.12); } },
+    { label: "案B", desc: "リッチな和音3音の締め", play: () => { [523, 659, 784].forEach(f => tone(f, 0.2, 0.05, 'sine')); tone(1046, 0.25, 0.04, 'sine', 0.1); } },
+    { label: "案C", desc: "ベル+和音の重なった完了", play: () => { tone(1046, 0.25, 0.05, 'sine'); [784, 1046].forEach(f => tone(f, 0.3, 0.03, 'sine', 0.08)); tone(1568, 0.4, 0.02, 'sine', 0.1); } },
+    { label: "案D", desc: "くぐもった和音の完了(低め)", play: () => { [392, 523, 659].forEach(f => tone(f, 0.25, 0.05, 'triangle')); } },
+  ] },
+  { id: "salvage", name: "鹵獲授与", desc: "鹵獲を授与した通知。", variants: [
+    { label: "現行", desc: "G4→C5→E5 sine(0.55s)", play: () => { const t = ctx.currentTime; const o = ctx.createOscillator(); o.type = 'sine';
+            o.frequency.setValueAtTime(392, t); o.frequency.setValueAtTime(523.25, t + 0.12); o.frequency.setValueAtTime(659.25, t + 0.24);
+            const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(0.1, t + 0.02);
+            g.gain.setValueAtTime(0.1, t + 0.3); g.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+            o.connect(g).connect(master); o.start(t); o.stop(t + 0.56); } },
+    { label: "案A", desc: "4音ファンファーレ+和音の締め", play: () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, i === 3 ? 0.15 : 0.07, 0.05, 'sine', i * 0.07)); [523, 659, 784].forEach(f => tone(f, 0.25, 0.02, 'sine', 0.3)); } },
+    { label: "案B", desc: "下降授与+リッチな残響", play: () => { tone(1046, 0.1, 0.05, 'sine'); tone(784, 0.12, 0.05, 'sine', 0.1); tone(1568, 0.3, 0.025, 'sine', 0.18); } },
+    { label: "案C", desc: "厚い和音の授与(4音)", play: () => { [392, 523, 659, 784].forEach(f => tone(f, 0.3, 0.04, 'sine')); } },
+    { label: "案D", desc: "くぐもった落ち着いた授与", play: () => { [392, 523].forEach(f => tone(f, 0.25, 0.06, 'triangle')); tone(784, 0.3, 0.04, 'triangle', 0.15); } },
+  ] },
+];
+
+const KEY = location.pathname + '#scores';
+let scores = {};
+try { scores = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch {}
+const cardsEl = document.getElementById('cards');
+for (const it of ITEMS) {
+  const sec = document.createElement('section'); sec.className = 'snd';
+  sec.innerHTML = '<h2>' + it.name + '</h2><p class="snd-desc">' + it.desc + '</p><div class="vars"></div>';
+  const vars = sec.querySelector('.vars');
+  it.variants.forEach((v, i) => {
+    const card = document.createElement('div'); card.className = 'card';
+    card.innerHTML = '<div class="vname">' + v.label + '</div><p>' + v.desc + '</p>' +
+      '<div class="row"><button class="play">' + PLAY_LABEL + '</button></div>' +
+      '<div class="score"></div>';
+    const sid = it.id + '.' + i;
+    card.querySelector('.play').onclick = (e) => v.play(e.currentTarget);
+    const ad = document.createElement('label'); ad.className = 'adopt';
+    const r = document.createElement('input'); r.type = 'radio'; r.name = 'adopt-' + it.id;
+    if (scores[it.id + '.adopt'] === i) r.checked = true;
+    ad.appendChild(r); ad.appendChild(document.createTextNode('採用'));
+    r.onchange = () => { scores[it.id + '.adopt'] = i; localStorage.setItem(KEY, JSON.stringify(scores)); };
+    card.appendChild(ad);
+    const sc = card.querySelector('.score');
+    for (let n = 1; n <= 4; n++) {
+      const b = document.createElement('button'); b.textContent = n; b.dataset.v = n;
+      if (scores[sid] === n) b.classList.add('on');
+      b.onclick = () => {
+        scores[sid] = n;
+        sc.querySelectorAll('button').forEach(x => x.classList.toggle('on', +x.dataset.v === n));
+        localStorage.setItem(KEY, JSON.stringify(scores));
+      };
+      sc.appendChild(b);
+    }
+    vars.appendChild(card);
+  });
+  cardsEl.appendChild(sec);
+}
+document.getElementById('vol').oninput = e => {
+  master.gain.value = +e.target.value;
+  document.getElementById('volVal').textContent = (+e.target.value).toFixed(2);
+};
+document.getElementById('export').onclick = () => {
+  const lines = [];
+  for (const it of ITEMS) it.variants.forEach((v, i) => {
+    lines.push(it.id + ' ' + v.label + ': ' + (scores[it.id + '.' + i] ?? '-') + (scores[it.id + '.adopt'] === i ? ' [採用]' : ''));
+  });
+  const out = document.getElementById('scoreOut');
+  out.textContent = lines.join('\n'); out.style.display = 'block';
+  navigator.clipboard?.writeText(lines.join('\n'));
+};
+document.getElementById('resetScores').onclick = () => {
+  scores = {}; localStorage.removeItem(KEY);
+  document.querySelectorAll('.score button').forEach(b => b.classList.remove('on'));
+};
+
+// カテゴリ見出しを各セクションの前へ挿入する(ITEMS は宣言順)。
+(() => {
+  const counts = [7,3,7];
+  const heads = [...document.querySelectorAll('#cards .snd')];
+  let cursor = 0;
+  counts.forEach((count, ci) => {
+    const h = document.createElement('div'); h.className = 'cathead';
+    h.innerHTML = CATS_META[ci].title + '<small>' + CATS_META[ci].sub + '</small>';
+    cardsEl.insertBefore(h, heads[cursor]);
+    cursor += count;
+  });
+})();
+</script>
+</body>
+</html>
