@@ -42,7 +42,8 @@ export interface CelestialBody {
   readonly def: { readonly id: string; readonly mu: number; readonly radius: number };
   // 主天体。惑星なら恒星、衛星ならその惑星、恒星自身は null。
   readonly primary: CelestialBody | null;
-  // pivot で厳密に引いた値から時刻 t へ外挿した ECI 位置・速度。t を省くと pivot 自身の厳密な値。
+  // pivot で厳密に引いた位置・速度・加速度から時刻 t へ2次で外挿した ECI 位置・速度。t を省くと pivot
+  // 自身の厳密な値。外挿が2次であることを、遮蔽体の分類(shadow.ts)が移動量の上限に使う。
   stateAt(pivot: number, t?: number): KinematicState;
   // 同等の外挿で位置のみを算出する。
   positionAt(pivot: number, t?: number): Vec3;
