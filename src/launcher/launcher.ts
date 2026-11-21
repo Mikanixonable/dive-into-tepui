@@ -6,6 +6,7 @@ import { findStageClass } from '../game/stages/stage-dictionary';
 import { selectStage } from './stage-select';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
+import { forcesTitle, requestedStageId } from './launch-query';
 import { BlueprintShelf } from './save/blueprint-shelf';
 import { SALVAGE_BLUEPRINTS } from '../game/ship/ship-salvage-blueprints';
 import type { SerializedGame } from '../game/game';
@@ -27,11 +28,6 @@ import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { SettingValue } from '../settings/setting-value';
 import type { TdbJulianDate } from '../physics/time';
-
-// 起動時からデバッグ表示を開くか。URL に ?perf=1 が付いていれば開く。
-export function debugInfoOpenAtStart(): boolean {
-  return new URLSearchParams(location.search).get('perf') === '1';
-}
 
 // アクティブスロットの直近の周回がまだ終わっておらず、そのステージが今も選択可能(ロック解除済み・
 // 選択画面から隠されていない)なら、そのステージクラスを返す。再開できなければ null。
@@ -106,9 +102,8 @@ export class Launcher implements RunTransitions, CurrentGameSource {
   // 始めるステージを決める。?title=1 なら選択画面、?stage= があればそのステージ、どちらも無ければ
   // アクティブスロットの終わっていない周回を再開し、それも無ければ選択画面で選ばせる。
   private async resolveStage(): Promise<{ stageClass: StageClass; startEpoch?: TdbJulianDate }> {
-    const params = new URLSearchParams(location.search);
-    if (params.get('title') !== '1') {
-      const fromParam = findStageClass(params.get('stage'));
+    if (!forcesTitle()) {
+      const fromParam = findStageClass(requestedStageId());
       if (fromParam !== null) return { stageClass: fromParam };
       const resumed = resumableStageClass(this.unlockManager, this.slots);
       if (resumed !== null) return { stageClass: resumed };

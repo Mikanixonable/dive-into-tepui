@@ -305,6 +305,20 @@ export class RenderPipeline {
   // 空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
   // フレームでも撮る。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
+    // シーンのワールド行列はフレームの頭で 1 度だけ確定させ、全パスで共有する。パスの途中で
+    // シーンの物体を動かすと、その変化は次のフレームまで描かれない。
+    scene.updateMatrixWorld();
+    const autoUpdate = scene.matrixWorldAutoUpdate;
+    scene.matrixWorldAutoUpdate = false;
+    try {
+      this.renderPasses(scene, camera, style);
+    } finally {
+      scene.matrixWorldAutoUpdate = autoUpdate;
+    }
+  }
+
+  // render の本体。パスを順に発行する。
+  private renderPasses(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
 
