@@ -9,7 +9,7 @@ import { type LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physic
 import { LOCAL_FORWARD, qRotate } from '../math/quat';
 import { goldenSectionMin } from '../math/optimize';
 import { aliveCombatTarget } from './dynamic/entity/combat-target';
-import { RelativeNodeMarker } from './marker/relative-node-marker';
+import { RelativeNodeMarker } from './marker/node-marker';
 import { lagrangePointOf } from './celestial/lagrange-id';
 import type { CelestialBody } from '../physics/celestial-body';
 import type { Controllable } from './dynamic/entity/controllable';
