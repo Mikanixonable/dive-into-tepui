@@ -49,6 +49,27 @@ function qualityReadingOf(
   };
 }
 
+// 雲殻層だけをコンパイルする面。積雲の段ごとの事前コンパイルに要る口だけを持つ。
+interface CloudShellCompiler {
+  compileCloudShell(scene: THREE.Scene, camera: THREE.Camera): Promise<void>;
+}
+
+// 積雲の段替えでシェーダのコンパイルが走らないよう、残りの段のマテリアルも雲殻層の
+// 条件で組んでおく。いま張っている段は G バッファの compile で既に組まれている前提。
+// 終わる前に各天体が張っていた段へ戻す。
+export async function precompileCumulusDetails(
+  clouds: readonly CloudPresentation[], compiler: CloudShellCompiler,
+  scene: THREE.Scene, camera: THREE.Camera,
+): Promise<void> {
+  const current = clouds.map((p) => p.cumulusDetail);
+  for (const detail of Object.values(CUMULUS_DETAIL)) {
+    if (current.every((d) => d === detail)) continue;
+    for (const presentation of clouds) presentation.setCumulusDetail(detail);
+    await compiler.compileCloudShell(scene, camera);
+  }
+  clouds.forEach((presentation, i) => presentation.setCumulusDetail(current[i]!));
+}
+
 export class CloudPresentation {
   private readonly surface: OpaqueCloudSurfaceRenderer;
   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
