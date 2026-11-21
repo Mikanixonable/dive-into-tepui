@@ -59,8 +59,8 @@ export function register(): void {
     assert.equal(graphics.constructionWorkLight, true);
   });
 
-  test('graphics-settings: 保存が無いときの初回既定は、粗いポインタで medium、細かいポインタで high', () => {
-    assert.deepEqual(parseGraphics(null, true), QUALITY_PRESETS.medium);
+  test('graphics-settings: 保存が無いときの初回既定は、粗いポインタで low、細かいポインタで high', () => {
+    assert.deepEqual(parseGraphics(null, true), QUALITY_PRESETS.low);
     assert.deepEqual(parseGraphics(null, false), QUALITY_PRESETS.high);
     assert.deepEqual(parseGraphics(null), DEFAULT_GRAPHICS);
   });

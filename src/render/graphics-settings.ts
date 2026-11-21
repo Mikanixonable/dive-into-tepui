@@ -306,9 +306,9 @@ export const QUALITY_PRESETS: Readonly<Record<QualityPreset, GraphicsSettingsDat
 export const DEFAULT_GRAPHICS: GraphicsSettingsData = QUALITY_PRESETS.high;
 
 // 保存が無いときの初回既定を、主ポインタの精度から選ぶ。粗いポインタ(タッチ主体の端末)では
-// 初回から medium で始め、細かいポインタでは DEFAULT_GRAPHICS(high)とする。
+// 初回から low で始め、細かいポインタでは DEFAULT_GRAPHICS(high)とする。
 function firstRunGraphics(coarsePointer: boolean): GraphicsSettingsData {
-  return coarsePointer ? QUALITY_PRESETS.medium : DEFAULT_GRAPHICS;
+  return coarsePointer ? QUALITY_PRESETS.low : DEFAULT_GRAPHICS;
 }
 
 // 表の外から来た値を受け入れるか決める。真偽の項目は型だけ、選択肢の項目は現在の候補に
