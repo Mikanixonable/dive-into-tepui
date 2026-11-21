@@ -4,10 +4,12 @@
 // (SPEC/PLAN.md「航行指令」)。
 // 主遷移は到着点を局所系へずらした目標へのランベルト(transfer-planner.ts)で求め、
 // 待機点から接近点までの末段は CW 2インパルス(relative-motion.ts)を末尾ノードへ連結する。
-import { add, addScaled, cross, len, lenSq, scale, sub, v3, type Vec3 } from '../../math/vec3';
+import { add, len, sub, v3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { cwTwoImpulseTransfer } from '../../physics/relative-motion';
+import {
+  cwTwoImpulseTransfer, frameDirectionToEci, holdStateAt, localFrameOf,
+} from '../../physics/relative-motion';
 import {
   planTransfers, type TransferCandidate, type TransferPlannerConstraints,
   type TransferPlannerTarget,
@@ -25,50 +27,6 @@ const ENTRY_DISTANCE = 10_000;
 const TERMINAL_HOLD_SECONDS = 600;
 // CW 区間の飛行時間は目標の軌道周期のこの比 — nt=π/2 で Φ_rv の特異点(nt=π の整数倍)を避ける。
 const CW_TOF_FRACTION = 0.25;
-
-// 目標の回転局所系(LVLH)。x = 動径外向き、z = 軌道面法線、y = z×x(面内の進行方向)。
-// CW 方程式と同じ軸の取り方(relative-motion.ts)。omega は系の瞬間角速度 h/r² [rad/s]、
-// n はその大きさ(円軌道では平均運動に一致する)。
-interface LocalFrame {
-  readonly x: Vec3;
-  readonly y: Vec3;
-  readonly z: Vec3;
-  readonly omega: Vec3;
-  readonly n: number;
-}
-
-// 中心天体相対の目標状態から局所系を組む。動径と角運動量が縮退していると null。
-function localFrameOf(relR: Vec3, relV: Vec3): LocalFrame | null {
-  const rSq = lenSq(relR);
-  const h = cross(relR, relV);
-  const hLen = len(h);
-  if (!(rSq > 0) || !(hLen > 0)) return null;
-  const x = scale(relR, 1 / Math.sqrt(rSq));
-  const z = scale(h, 1 / hLen);
-  return { x, y: cross(z, x), z, omega: scale(h, 1 / rSq), n: hLen / rSq };
-}
-
-// 局所系の成分(動径・面内進行・法線)で表した方向を ECI 方向へ写す。
-function frameDirectionToEci(frame: LocalFrame, hill: Vec3): Vec3 {
-  return addScaled(addScaled(scale(frame.x, hill.x), frame.y, hill.y), frame.z, hill.z);
-}
-
-// 局所系の固定点(offset は Hill 成分 [m])の ECI 状態。速度は v_target + ω×r_off で
-// 系内では静止 — この状態へ到着した艦はその場で目標に対して保持になる。
-// 目標の局所系が組めないとき null。
-function holdStateAt(
-  targetState: KinematicState, centerState: KinematicState, offset: Vec3,
-): KinematicState | null {
-  const frame = localFrameOf(
-    sub(targetState.r, centerState.r), sub(targetState.v, centerState.v));
-  if (frame === null) return null;
-  const rOff = frameDirectionToEci(frame, offset);
-  return kinematicState<'eci'>(
-    targetState.t,
-    add(targetState.r, rOff),
-    add(targetState.v, cross(frame.omega, rOff)),
-  );
-}
 
 // 局所系の後方(面内進行方向の負)へ distance [m] ずらした保持点を指す目標。
 function holdPointTarget(

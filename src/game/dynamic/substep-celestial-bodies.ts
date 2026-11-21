@@ -8,7 +8,7 @@
 import { nearestAtmosphereBody } from '../../physics/attractor';
 import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
 import type { Vec3 } from '../../math/vec3';
-import { type ClassifiedAttractors, attractorsNearInto, classifyAttractors } from './attractors';
+import { type ClassifiedAttractors, attractorsNearInto, classifyAttractors } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 
 export class SubstepCelestialBodies {

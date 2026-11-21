@@ -3,7 +3,7 @@
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { len, sub } from '../../math/vec3';
-import { gravityReachOf } from './attractors';
+import { gravityReachOf } from '../../physics/attractor';
 import { ARC_MIN_STEP_DT } from './time-step';
 import type { CelestialBodyDef } from '../../physics/celestial-body-def';
 

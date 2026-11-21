@@ -52,7 +52,6 @@ interface SnapshotPaneCallbacks {
   readonly onDeleteSnapshot: (snapshotId: string) => void;
   readonly onBranch: (slotId: string, snapshotId: string) => void;
   // 天体 id → 表示名。
-  readonly nameOf: (id: string) => string;
   // 手動セーブの本体が、いまの形式の版で読めるか。
   readonly isReadable: (snapshotId: string) => boolean;
 }
@@ -168,7 +167,7 @@ function buildSnapshotCard(
 
   const row2 = document.createElement('div');
   row2.className = 'sb-snap-row';
-  row2.textContent = `${callbacks.nameOf(s.centerBodyId)} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
+  row2.textContent = `${s.centerBodyName ?? s.centerBodyId} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
   card.appendChild(row2);
 
   // HP の残りを細いメーターで示す。

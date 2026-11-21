@@ -1,12 +1,12 @@
 // クリエイティブモード: 物体配置と軌道計画を自由に試すための、勝利条件の無いステージ。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
-import { ManualSpawn, type SerializedManualSpawn } from '../creative/manual-spawn';
+import { ManualSpawn, type EnemySpawnShape, type SerializedManualSpawn } from '../creative/manual-spawn';
 import {
   ObjectPlacement, reachesPlacedShipLimit, type SerializedObjectPlacement,
 } from '../creative/object-placement';
 import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
 import {
-  StageControlsPanel, type EnemySpawnShape,
+  StageControlsPanel,
 } from '../creative/stage-controls-panel';
 import { isEnemy } from '../dynamic/entity/enemy';
 import { hudRail } from '../hud/hud-dom';

@@ -1,6 +1,5 @@
 // セーブデータブラウザ: 複数のセーブデータ(スロット)とその手動セーブの履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
-import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
 import type { SaveSlots } from '../save/save-slots';
 import type { SnapshotService, SnapshotSource } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
@@ -223,8 +222,6 @@ export class SaveBrowser implements OverlayHandle {
         onRenameSnapshot: (id) => this.handleRenameSnapshot(id),
         onDeleteSnapshot: (id) => this.handleDeleteSnapshot(id),
         onBranch: (slotId, snapId) => this.handleBranch(slotId, snapId),
-        // 周回が1つも動いていない状態でも一覧の中心天体名を出せるよう、静的な表へ落とす。
-        nameOf: (id) => game?.nameOfBody(id) ?? solarSystemBodyName(id),
         isReadable: (id) => this.service.isReadable(id),
       },
     ));

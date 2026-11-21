@@ -40,6 +40,7 @@ export class SnapshotService {
       createdAtReal: Date.now(),
       simTime: summary.simTime,
       centerBodyId: summary.centerBodyId,
+      centerBodyName: summary.centerBodyName,
       altitude: summary.altitude,
       speed: summary.speed,
       hpRatio: summary.hpRatio,
