@@ -21,6 +21,17 @@ function frames(
 }
 
 export function register(): void {
+  test('cloud-quality: フレームレート上限で待つ時間は超過と見なさない', () => {
+    // 上限 30 fps の 33.4ms 間隔で雲が 8.7ms(占有 26%)— 上限なしなら枠超過で下がるが、
+    // 上限の間隔の内なら下げない。
+    const capped = new CloudQualityGovernor();
+    for (let i = 0; i < 100; i++) capped.update(33.4, 8.7, true, 30);
+    assert.equal(capped.levelCap, DETAIL_TIERS - 1);
+    const uncapped = new CloudQualityGovernor();
+    for (let i = 0; i < 100; i++) uncapped.update(33.4, 8.7, true, 0);
+    assert.ok(uncapped.levelCap < DETAIL_TIERS - 1);
+  });
+
   test('cloud-quality: フットプリント上限 — 積雲', () => {
     // spanMin=0(直下)では全段が解像できて精細、2km では 2km 以下の段が消えて粗、
     // 300m では 500/250m の段が消えて標準、200m では 250m だけが消えて精細。

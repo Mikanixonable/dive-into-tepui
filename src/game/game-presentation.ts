@@ -524,6 +524,7 @@ export class GamePresentation {
           + gpu.msOf(GPU_PASS.cloudShadow)
         : null,
       !this.isPaused && view !== 'map' && this.game.simSpeedManager.simSpeed === 1,
+      graphics.frameRateCap,
     );
     for (const presentation of celestialSystem.cloudPresentations()) {
       presentation.setQualityGovernor(this.cloudGovernor);

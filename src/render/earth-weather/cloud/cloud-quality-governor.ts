@@ -6,8 +6,10 @@
 // 粗→精細の順で対応するので、上限はこの番号で持ち、段名への写しは呼び出し側で行う。
 export const DETAIL_TIERS = 3;
 
-// フレームの時間枠 [ms](60fps の満幅)。
+// フレームの時間枠 [ms](60fps の満幅)。フレームレート上限がこれより遅いときは上限の間隔が枠になる。
 const FRAME_BUDGET_MS = 16.7;
+// フレームレート上限の間隔に掛けて、上限があるときの時間枠にする倍率。
+const CAPPED_BUDGET_SLACK = 1.25;
 // 雲3パス(表面雲・大気(雲あり)・雲影)の合計がフレームへ占める割合の下限。これを下回る
 // 枠超過は雲以外が原因なので、雲の段を下げても解消しない。
 const CLOUD_SHARE_MIN = 0.25;
@@ -15,8 +17,8 @@ const CLOUD_SHARE_MIN = 0.25;
 const OVER_BUDGET_MS = 500;
 // 枠内の余裕がこの時間だけ続いたら1段戻す [ms]。
 const HEADROOM_MS = 5000;
-// 余裕があると見なすフレーム時間の上限 [ms]。降格の枠より余裕を持たせて段の往復を防ぐ。
-const RECOVER_FRAME_MS = FRAME_BUDGET_MS * 0.85;
+// 余裕があると見なすフレーム時間の、時間枠に対する割合。降格の枠より余裕を持たせて段の往復を防ぐ。
+const RECOVER_FRAME_RATIO = 0.85;
 // 段を変えたあと、次の変更を許すまでの冷却 [ms]。
 const CHANGE_COOLDOWN_MS = 2000;
 
@@ -55,10 +57,16 @@ export class CloudQualityGovernor {
   // cloudGpuMs は雲3パスの合計 GPU 時間 [ms]。**時刻印が取れない環境では null を渡す** —
   // 予算上限は働かせず、設定とフットプリント上限だけが効く。active が偽の間は判定窓を
   // 進めない(ポーズ・マップ・時間加速中はフレーム時間が雲の費用と関係なく歪むため)。
-  public update(frameMs: number, cloudGpuMs: number | null, active: boolean): void {
+  // frameRateCap は描画品質設定のフレームレート上限(0 は上限なし)— 上限で待つ時間は余裕なので、
+  // 上限の間隔より短い枠で超過と見なさない。
+  public update(frameMs: number, cloudGpuMs: number | null, active: boolean, frameRateCap = 0): void {
     this.cooldownMs = Math.max(0, this.cooldownMs - frameMs);
     if (!active || cloudGpuMs === null || !(frameMs > 0)) return;
-    if (frameMs > FRAME_BUDGET_MS && cloudGpuMs >= frameMs * CLOUD_SHARE_MIN) {
+    // 上限の間隔は画面の更新の倍数へ丸められて揺れるので 1/4 の余裕を見る(60Hz で上限 30 を
+    // 1 回取りこぼすと 50ms になり、ここを超える)。
+    const budgetMs = frameRateCap > 0
+      ? Math.max(FRAME_BUDGET_MS, (1000 / frameRateCap) * CAPPED_BUDGET_SLACK) : FRAME_BUDGET_MS;
+    if (frameMs > budgetMs && cloudGpuMs >= frameMs * CLOUD_SHARE_MIN) {
       this.overMs += frameMs;
       this.underMs = 0;
       if (this.overMs >= OVER_BUDGET_MS && this.cooldownMs <= 0 && this.level > 0) {
@@ -70,7 +78,7 @@ export class CloudQualityGovernor {
     }
     // 枠内のフレームは超過の積算を速く割り引く — 散発・交互の遅れは連続超過に数えない。
     this.overMs = Math.max(0, this.overMs - frameMs * 2);
-    if (frameMs <= RECOVER_FRAME_MS && this.level < DETAIL_TIERS - 1) {
+    if (frameMs <= budgetMs * RECOVER_FRAME_RATIO && this.level < DETAIL_TIERS - 1) {
       this.underMs += frameMs;
       if (this.underMs >= HEADROOM_MS && this.cooldownMs <= 0) {
         this.level += 1;
