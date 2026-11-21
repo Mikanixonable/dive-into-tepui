@@ -59,10 +59,29 @@ export function register(): void {
     assert.equal(graphics.constructionWorkLight, true);
   });
 
-  test('graphics-settings: 保存が無いときの初回既定は、粗いポインタで low、細かいポインタで high', () => {
+  test('graphics-settings: 保存が無いときの初回既定は、粗いポインタで low、細かいポインタで medium', () => {
     assert.deepEqual(parseGraphics(null, true), QUALITY_PRESETS.low);
-    assert.deepEqual(parseGraphics(null, false), QUALITY_PRESETS.high);
+    assert.deepEqual(parseGraphics(null, false), QUALITY_PRESETS.medium);
     assert.deepEqual(parseGraphics(null), DEFAULT_GRAPHICS);
+  });
+
+  test('graphics-settings: 中は高より解像度・描画詳細度・精細さ・大気を一段落とす', () => {
+    const medium = QUALITY_PRESETS.medium;
+    const high = QUALITY_PRESETS.high;
+    assert.equal(medium.resolutionScale, 0.5);
+    assert.equal(medium.lodBias, 0.5);
+    assert.equal(medium.atmosphere, high.atmosphere - 1);
+    assert.equal(medium.cumulusDetail, high.cumulusDetail - 1);
+    assert.equal(medium.cirrusDetail, high.cirrusDetail - 1);
+    assert.equal(medium.shadowTexelsPerPixel, 0.5);
+    // 一段落とす対象以外は高と同じ値を持つ。
+    for (const key of Object.keys(medium) as (keyof typeof medium)[]) {
+      if ([
+        'resolutionScale', 'lodBias', 'atmosphere', 'cumulusDetail', 'cirrusDetail',
+        'shadowTexelsPerPixel',
+      ].includes(key)) continue;
+      assert.deepEqual(medium[key], high[key], `${key} が高と違う`);
+    }
   });
 
   test('graphics-settings: 保存済みの値はポインタ種別によらずそのまま読める', () => {
