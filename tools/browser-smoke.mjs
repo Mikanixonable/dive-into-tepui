@@ -913,15 +913,23 @@ async function constructMaterialFromBaseDock() {
 
 async function bootAndCheckReady() {
   let state;
-  for (let attempt = 0; attempt < 300; attempt++) {
+  const deadline = Date.now() + 240_000;
+  let lastLog = 0;
+  while (Date.now() < deadline) {
     state = await devTools.evaluate(`({
       ready: document.documentElement.dataset.gameReady === 'true',
       fatal: Boolean(document.getElementById('fatal-error-overlay')),
       fatalText: document.getElementById('fatal-error-overlay')?.textContent ?? '',
+      loading: [...document.querySelectorAll('body > div')].find((d) => d.textContent?.includes('Dive into Tepui'))?.textContent?.slice(0, 120) ?? '',
+      frames: document.documentElement.dataset.smokeFrames ?? 'unset',
     })`);
     if (state.fatal) throw new Error(`Fatal error overlay appeared during browser smoke test: ${state.fatalText}`);
     if (state.ready) break;
-    await sleep(100);
+    if (Date.now() - lastLog > 10_000) {
+      lastLog = Date.now();
+      console.error(`waiting for boot: loading="${state.loading}" frames=${state.frames}`);
+    }
+    await sleep(500);
   }
   if (!state?.ready) {
     // 起動がどこで止まっているかを残す。rAF とアダプタ要求は応答待ちを短く区切り、
