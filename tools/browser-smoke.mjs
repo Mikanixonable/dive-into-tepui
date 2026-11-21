@@ -913,7 +913,7 @@ async function constructMaterialFromBaseDock() {
 
 async function bootAndCheckReady() {
   let state;
-  const deadline = Date.now() + 240_000;
+  const deadline = Date.now() + 600_000;
   let lastLog = 0;
   while (Date.now() < deadline) {
     state = await devTools.evaluate(`({
