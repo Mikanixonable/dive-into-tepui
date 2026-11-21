@@ -41,18 +41,15 @@ import type { PageDevices } from './run/page-devices';
 import type { ViewOptionsSettings } from './game/view/view-options-settings';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 
-// ローディング表示下で canvas を作り WebGPU シーンを初期化する。焼き込みモデルの読込は
-// 始めるだけで待たない — 完了はランを組むときに待つので、タイトルを先に出せる。
-async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
+// ローディング表示を出して canvas を差し、シーンの初期化を始める。焼き込みモデルの読込も始める
+// だけで待たない — 完了はランを組むときに待つので、タイトルを先に出せる。
+function beginScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   showLoading();
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
-
   // 失敗はランを組むときの待ちが受け取るので、ここでは未処理の rejection にしない。
   loadBakedModels().catch(() => {});
-  const gameScene = await createGameScene(canvas, graphics, browserViewport());
-  hideLoading();
-  return gameScene;
+  return createGameScene(canvas, graphics, browserViewport());
 }
 
 // タイトル(ステージ選択)画面の時点から使えるべき画面と音声を、ランより先に組む。
@@ -165,8 +162,11 @@ async function main() {
   const slots = SaveSlots.load(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const autoSave = new AutoSave(snapshotService);
-  const gameScene = await initScene(settings.graphics.current);
+  // GPU の初期化を待つ間に画面と音声を組む。canvas は先に差してあるので、HUD はその上に重なる。
+  const sceneReady = beginScene(settings.graphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
+  const gameScene = await sceneReady;
+  hideLoading();
   // WebGL2 へ落ちて描いている場合は、その旨を一度だけ通知する(SPEC「描画バックエンド」)。
   // トーストの表示は HUD の同期が担うため、画面へ出るのはランの HUD が動き始めてからになる。
   if (renderBackendNoticeOf(gameScene.backend) === 'fallback-notice') {
