@@ -134,27 +134,14 @@
 - GLB の meshopt 圧縮(手順 2)。船モジュール 36.2MB → 12.0MB。量子化は使わず FILTER 方式に限った
   (量子化はメッシュのノードの原点を動かし、`weapon-drives.ts` が回す部品の支点がずれるため)。
   船体・ベルト・プルームの 58 撮影は、封筒外 7 件もブロック差 8.1 以下で見分けがつかない。
-  達成目標 3(10MB 以下)は手順 3 の分割数削減で満たす。
+- コックピットの分割数削減(手順 3)。船殻は輪郭の節・その前後 4cm・塗り分けの境にだけ輪を置き(形は不変)、
+  格子は周方向 8 分割。コックピット 31.9 万 → 17.0 万頂点、全体 116.4 万 → 101.5 万頂点、GLB 10.8MB。
+  船体 47 撮影は封筒外 1 件(格子の縁)。誤差上限つきの自動簡略化(meshopt simplify)は、誤差 0.1% でも
+  86 万頂点止まりで効かなかった(頂点の大半が平面シェーディングの法線の分かれ目による複製のため)。
+  タンク船殻の密な分割は表面の微細なゆらぎ(±1.2mm)を出す意図のものなので触っていない。
+  **達成目標 3(GLB 10MB 以下)は未達**(10.8MB)。手順 11 で残りの部品を見る。
 
 ## 手順
-
-### 手順 3. 船モジュール原型の分割数を下げる
-
-**目的** — 116 万頂点を減らし、頂点処理と影マップ描画の費用を下げる。絵は意図して変えるが、
-SPEC「モジュール船体の描画」の記述が読み取れる範囲に留める。
-
-**変更が必要な箇所**
-
-| ファイル | すること |
-| --- | --- |
-| `tools/model-builder/blender/build-ship-modules.py:57-74` | `make_tank_hull` の `angular_segments=192` と軸方向 `16/m` を下げる。輪郭の丸さは法線で補えるので、まず周方向を 96、軸方向を `4/m` まで下げる。軸方向に曲率の無い円筒部は、端の環以外を分割しない |
-| `tools/model-builder/blender/build-ship-modules.py`(他の部品の生成関数) | 頂点数の上位メッシュ(上位9本で全体の 39% = 約 45 万頂点)を、メッシュ名とモジュール ID で特定してから、同じ方針で分割数を下げる。`npm run ship-modules:author` の出力へ、モジュールごとの頂点数を表示させる |
-| `src/assets/models/ship-modules.glb`・`src/assets/module-thumbnails/` | `npm run ship-modules:author` → `npm run export-assets` → `npm run export-module-thumbnails` で再生成する |
-
-**達成条件と検証** — `npm run typecheck`、`npm run test:render`、`npm run test:physics`(接触形状と
-描かれる固体の一致)。総頂点数が 50 万以下になる(作者ツールの表示で読む)。`render-lab:compare`
-で、コックピット・主推進器(配管・フランジ・リブ)・タンクの近景を前後で並べ、SPEC の各記述が
-読み取れることを目で当てる。サムネイルの差分を目で見る。
 
 ### 手順 4. 起動順: 船モジュールをタイトルの裏で読む、影マップを解放する
 
@@ -286,6 +273,22 @@ render-lab で、高の earth 構図が前と同じ(`render-lab:compare`)。設�
 設定でぼかしをオフにすると、パネルがぼかし非対応時と同じ不透明面になる(同じ画面を
 `--disable-features` 等でぼかし非対応にして撮った画像と並べる)。標識が前後で同じ位置に出る
 (マップビューで地球・月・ラグランジュ点のラベル)。
+
+### 手順 11. 残りの部品の分割数を下げる(達成目標 3 の残り)
+
+**目的** — GLB を 10MB 以下にする。頂点の多い部品(機銃 13.5 万、RCS タンク 12 万、太陽電池 11.4 万、
+推進器 10 万頂点)から、形を変えずに削れる分割(輪郭が直線の区間の輪、曲率に対して細かすぎる周方向の
+分割)を探す。意図して密にしている分割(タンク船殻の表面のゆらぎ)は残す。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `tools/model-builder/blender/build-ship-modules.py` | 部品ごとの頂点数をメッシュ名で出し(`assets-src/ship-modules/*.glb` の node 名)、上位から分割数を見直す |
+| `assets-src/ship-modules/*.glb`・`src/assets/models/ship-modules.glb` | `npm run ship-modules:author` → `npm run export-assets`。頂点数が変わらない原型は書き出しの揺らぎなので戻す |
+
+**達成条件と検証** — `npm run test:render`・`npm run test:physics`。`ls -la src/assets/models/ship-modules.glb` が
+10MB 以下。`render-lab:shot -- <名前> modular-ship` を直前の撮影と `render-lab:compare` で比べ、封筒外を目で見る。
 
 ## 見積り
 
