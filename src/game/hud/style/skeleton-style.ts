@@ -190,8 +190,9 @@ ${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-
 #hud-topbar .gs-metric { display: grid; gap: 2px; min-width: 0; }
 #hud-topbar .gs-metric-time .v {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  color: var(--text); font-size: var(--font-s);
+  color: var(--text); font-size: var(--font-s); cursor: pointer;
 }
+#hud-topbar .gs-metric-time .v:hover { color: var(--color-primary); }
 #hud-topbar .v { color: var(--text); }
 #hud-topbar .gs-speed-select {
   min-width: 76px; padding: var(--space-1) var(--space-5) var(--space-1) var(--space-2);

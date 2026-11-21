@@ -2,65 +2,51 @@
 import { MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../breakpoints';
 
 export const PAUSE_MENU_STYLE = `
-/* ポーズメニュー(#hud-pause-menu)。 */
+/* ポーズメニュー(#hud-pause-menu)。上から ヘッダー(ロゴ・外側タブ)/状態の帯/本文 の縦積み。
+   最小化トグルと閉じるボタンはパネル右上端へ浮かせる。 */
 #hud-pause-menu {
-  position: fixed; display: none;
-  --pm-expanded-width: 920px;
-  grid-template-columns: minmax(150px, .4fr) minmax(0, 1.6fr);
-  /* 行をコンテナ高へキャップしないと本文が内容高に張られ、max-height を超えた分が
-     overflow:hidden で切れて .pm-tab-content のスクロールが発動しない。 */
-  grid-template-rows: minmax(0, 1fr);
-  gap: var(--space-6);
+  position: fixed; display: none; flex-direction: column; gap: var(--space-5);
+  --pm-expanded-width: 880px;
+  /* 右上端へ浮かせたボタン(20px×2+gap+右offset)のぶん、ヘッダーの右端を空ける幅。 */
+  --pm-actions-reserve: 56px;
   width: min(var(--pm-expanded-width), calc(100vw - var(--space-6) - var(--space-6)));
   max-height: var(--overlay-max-h-l);
   overflow: hidden; pointer-events: auto;
 }
 #hud #hud-pause-menu { padding: var(--space-6); }
-#hud-pause-menu.open { display: grid; }
-/* 収納時はボタン行だけを残す小さな帯。中身をすべて畳み、パネルはボタンと余白の
-   寸法へ縮む(.open の grid より後置して display をこちらへ替える)。 */
+#hud-pause-menu.open { display: flex; }
+/* 収納時はボタン行だけを残す小さな帯。中身をすべて畳み、パネルはボタンと余白の寸法へ縮む。 */
 #hud-pause-menu.open.minimized {
-  display: flex; justify-content: flex-end;
+  flex-direction: row; justify-content: flex-end;
   width: auto; min-width: 0; max-height: none;
 }
 #hud #hud-pause-menu.minimized { padding: var(--space-3); }
-#hud-pause-menu.minimized .pm-brand,
-#hud-pause-menu.minimized .pm-system-heading,
-#hud-pause-menu.minimized .pm-system-sub { display: none; }
-#hud-pause-menu.minimized .pm-header { padding-right: 0; box-shadow: none; }
+#hud-pause-menu.minimized .pm-header,
+#hud-pause-menu.minimized .pm-status { display: none; }
 #hud-pause-menu.minimized .pm-header-actions { position: static; }
+
+/* ヘッダー: ロゴ | 外側タブ | (ボタンの予約) の3列。外側タブはパネルの中央に来る。 */
 #hud-pause-menu .pm-header {
-  display: flex; min-width: 0; flex-direction: column; gap: var(--space-3);
-  padding-right: var(--space-5);
-  box-shadow: inset -1px 0 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
-  cursor: move;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(var(--pm-actions-reserve), 1fr);
+  align-items: end; gap: var(--space-6); min-width: 0; cursor: move;
 }
-#hud-pause-menu .pm-header-top {
-  display: grid; grid-template-columns: minmax(0, 1fr); align-items: start;
-}
-#hud-pause-menu .pm-brand {
-  display: grid; grid-column: 1; gap: var(--space-3);
-  min-height: 120px; align-content: end;
-}
-#hud-pause-menu .pm-brand .title-logotype { font-size: clamp(1.3rem, 3vw, 2.35rem); }
+#hud-pause-menu .pm-brand { display: flex; align-items: flex-end; gap: var(--space-4); min-width: 0; }
+#hud-pause-menu .pm-brand .title-logotype { font-size: clamp(1.3rem, 2.6vw, 1.9rem); }
 #hud-pause-menu .pm-brand .title-logotype sup,
 #hud-pause-menu .pm-brand .title-logotype sub {
   left: calc(100% + var(--space-2));
-  font-size: clamp(0.5rem, 1vw, 0.75rem);
+  font-size: clamp(0.5rem, 0.9vw, 0.65rem);
 }
-#hud-pause-menu .pm-brand-meta { display: flex; align-items: baseline; gap: var(--space-3); }
 #hud-pause-menu .pm-brand-version {
+  /* ロゴ右側の装飾記号と重ならないよう、最も長い行(Tepui)の右肩より外へ出す。 */
+  margin-left: var(--space-6);
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
-#hud-pause-menu .pm-header h3 { min-width: 0; margin: auto 0 0; }
-#hud-pause-menu .pm-system-heading { display: flex; align-items: baseline; gap: var(--space-2); color: var(--text); }
-#hud-pause-menu .pm-system-sub { padding-bottom: var(--space-3); }
-/* 最小化トグルと閉じるボタンは本文側の列を含む、パネル全体の右上端へ浮かせる。 */
 #hud-pause-menu .pm-header-actions {
   position: absolute; top: var(--space-4); right: var(--space-4);
   display: flex; align-items: center; gap: var(--space-2); flex: 0 0 auto;
 }
-#hud-pause-menu .pm-header .w-close, #hud-pause-menu .pm-minimize {
+#hud-pause-menu .pm-header-actions .w-close, #hud-pause-menu .pm-minimize {
   flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
 }
 #hud-pause-menu .pm-minimize {
@@ -69,82 +55,98 @@ export const PAUSE_MENU_STYLE = `
   background: var(--glass-control); color: var(--body); cursor: pointer;
 }
 #hud-pause-menu .pm-minimize:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
-#hud-pause-menu .pm-body.hidden { display: none; }
-#hud-pause-menu .pm-body { display: flex; min-width: 0; flex-direction: column; min-height: 0; }
-#hud-pause-menu .pm-tabs,
-#hud-pause-menu .pm-settings-view .sv-tabs {
-  display: flex; flex: 0 0 auto; gap: var(--space-1); margin-top: var(--space-2);
-  padding: var(--space-1); border: 0; border-radius: var(--radius-panel);
+
+/* 外側タブ: ヘッダー中央のセグメント。内側タブ(設定面の左の縦並び)とは形で区別する。 */
+#hud-pause-menu .pm-tabs {
+  display: inline-flex; gap: var(--space-1); padding: var(--space-1);
+  border: 0; border-radius: var(--radius-control);
 }
-/* 右上端へ浮かせたボタン(20px×2+gap+右offset≈52px)と外側タブの帯が重ならないよう、
-   タブの帯の右端をボタンぶん手前で止める。 */
-#hud-pause-menu .pm-tabs { margin-right: 56px; }
-#hud-pause-menu .pm-settings-view .sv-tabs {
-  width: 100%; margin-top: var(--space-4);
-}
-#hud-pause-menu .pm-tabs .w-btn,
-#hud-pause-menu .pm-settings-view .sv-tabs .w-btn {
-  display: flex; flex: 1 1 0; min-width: 0; min-height: var(--hit-target-min);
-  align-items: center; justify-content: center; padding: var(--space-2) var(--space-3);
-  border: 0; border-radius: var(--radius-control); text-align: center;
-  font-size: var(--font-m); font-weight: 600; letter-spacing: 0.06em;
+#hud-pause-menu .pm-tabs .w-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: var(--space-3) var(--space-6); border: 0; border-radius: var(--radius-micro);
+  font-size: var(--font-m); font-weight: 600; letter-spacing: 0.04em;
   background: transparent; color: var(--text-dim); box-shadow: none;
 }
-#hud-pause-menu .pm-tabs .w-btn:hover,
-#hud-pause-menu .pm-settings-view .sv-tabs .w-btn:hover {
-  background: var(--glass-control); color: var(--color-primary-hover); transform: none;
+#hud-pause-menu .pm-tabs .w-btn:hover { background: var(--glass-control); color: var(--color-primary-hover); transform: none; }
+#hud-pause-menu .pm-tabs .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
+
+/* 状態の帯: 止まっていることの印と、止めたステージ・経過時間。 */
+#hud-pause-menu .pm-status {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-6);
+  padding: var(--space-3) var(--space-5); border-radius: var(--radius-panel);
+  font-size: var(--font-s); font-variant-numeric: tabular-nums;
 }
-#hud-pause-menu .pm-tabs .w-btn.on,
-#hud-pause-menu .pm-settings-view .sv-tabs .w-btn.on {
-  background: var(--color-primary-fill); color: var(--color-primary);
+#hud-pause-menu .pm-status[hidden] { display: none; }
+#hud-pause-menu .pm-status-paused {
+  display: inline-flex; align-items: center; gap: var(--space-3);
+  color: var(--color-primary); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-label);
 }
+#hud-pause-menu .pm-status-pip {
+  width: var(--space-3); height: var(--space-3); border-radius: 50%;
+  background: var(--color-primary); box-shadow: 0 0 0 var(--space-1) var(--color-primary-fill);
+}
+#hud-pause-menu .pm-status .k { margin-right: var(--space-2); color: var(--text-dim); font-size: var(--font-xs); }
+#hud-pause-menu .pm-status .v { color: var(--text); }
+
+#hud-pause-menu .pm-body.hidden { display: none; }
+#hud-pause-menu .pm-body { display: flex; min-width: 0; flex-direction: column; min-height: 0; flex: 1 1 auto; }
 #hud-pause-menu .pm-tab-content {
-  flex: 1 1 auto; min-width: 0; min-height: 0; margin-top: var(--space-2);
+  flex: 1 1 auto; min-width: 0; min-height: 0;
   overflow-y: auto; overscroll-behavior: contain;
 }
 #hud-pause-menu .pm-tab-panel[hidden],
 #hud-pause-menu .pm-settings-view[hidden] { display: none; }
-#hud-pause-menu .pm-tab-panel { display: flex; flex-direction: column; }
-#hud-pause-menu .pm-row {
-  display: flex; justify-content: space-between; align-items: center; gap: var(--space-6); padding: var(--space-2) 0;
+#hud-pause-menu .pm-tab-panel { display: flex; flex-direction: column; gap: var(--space-4); }
+
+/* 一時停止の操作タイル: 名前・キーキャップ・何が起きるかの1行。主操作だけが自分の色を持つ。
+   span. まで指定して .w-btn 側の display/padding/font-size より確実に勝たせる。 */
+#hud-pause-menu .pm-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+#hud-pause-menu span.pm-tile {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-1) var(--space-4);
+  min-width: 0; min-height: calc(var(--hit-target-min) + var(--space-5));
+  padding: var(--space-5); border-radius: var(--radius-panel); text-align: left;
+  background: var(--glass-control); color: var(--text); box-shadow: none;
+  font-size: var(--font-m); font-weight: 600; letter-spacing: 0.02em;
 }
-#hud-pause-menu .pm-actions {
-  display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px;
-  margin-top: var(--space-4);
+#hud-pause-menu span.pm-tile:hover { background: var(--glass-control-hover); color: var(--color-primary-hover); }
+#hud-pause-menu span.pm-tile.w-btn--primary { background: var(--color-primary-fill); color: var(--color-primary); }
+#hud-pause-menu span.pm-tile.w-btn--primary:hover { color: var(--color-primary-hover); }
+#hud-pause-menu span.pm-tile > .ui-key { grid-column: 2; grid-row: 1 / span 2; }
+#hud-pause-menu span.pm-tile > .pm-tile-note {
+  grid-column: 1; grid-row: 2;
+  color: var(--text-dim); font-size: var(--font-xs); font-weight: 400; letter-spacing: 0;
 }
-#hud-pause-menu .pm-actions .pm-row { padding: 0; }
-#hud-pause-menu .pm-actions span.pm-quit { margin-top: 0; }
-#hud-pause-menu .pm-actions .pm-menu-btn { min-width: 0; }
-/* span. まで指定して .w-btn 側の padding/font-size より確実に勝たせる
-   (.w-btn は #hud 修飾を持たないため詳細度では確実に負けるが、意図を明示しておく)。 */
-#hud-pause-menu span.pm-menu-btn {
-  width: 100%; box-sizing: border-box; text-align: left;
-  padding: var(--space-4) var(--space-3); border-radius: 0;
-  background: transparent; box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 14%, transparent);
-  font-size: var(--font-m); letter-spacing: .03em;
+
+/* 下段: BGM 音量の行と、主操作から最も遠い右端の「タイトル画面に戻る」。 */
+#hud-pause-menu .pm-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); }
+#hud-pause-menu .pm-volume {
+  display: flex; align-items: center; gap: var(--space-5); min-width: 0;
+  padding: var(--space-3) var(--space-5); border-radius: var(--radius-panel);
 }
-#hud-pause-menu span.pm-menu-btn:hover { box-shadow: inset 2px 0 0 var(--color-primary), inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 14%, transparent); }
-#hud-pause-menu span.pm-quit { color: var(--color-warning); }
+#hud-pause-menu .pm-volume .k { flex: 0 0 auto; color: var(--text-dim); font-size: var(--font-s); }
+#hud-pause-menu .pm-volume .w-slider { flex: 1 1 auto; min-width: 0; }
+#hud-pause-menu span.pm-quit {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: var(--space-3) var(--space-5); border-radius: var(--radius-panel);
+  background: var(--fill-1); color: var(--text-muted); box-shadow: none; font-size: var(--font-s);
+}
+#hud-pause-menu span.pm-quit:hover { background: var(--fill-2); color: var(--text); }
+
 @media ${MQ_MEDIUM_DOWN} {
-  #hud-pause-menu {
-    min-width: 0; width: calc(100vw - var(--space-6) - var(--space-6));
-  }
+  #hud-pause-menu { min-width: 0; width: calc(100vw - var(--space-6) - var(--space-6)); }
 }
 @media ${MQ_COMPACT} {
-  /* 1列化でヘッダーと本文が2行に分かれるので、本文行を残り高さへキャップする。 */
-  #hud-pause-menu { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: var(--space-3); }
+  #hud-pause-menu { gap: var(--space-4); }
   #hud #hud-pause-menu { padding: var(--space-4); }
-  #hud-pause-menu .pm-header {
-    padding-right: 0; padding-bottom: var(--space-3);
-    box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
-  }
-  #hud-pause-menu .pm-brand { min-height: 112px; justify-self: start; }
-  #hud-pause-menu .pm-brand .title-logotype { font-size: clamp(2rem, 12vw, 3.3rem); }
-  #hud-pause-menu .pm-brand-meta { display: none; }
-  #hud-pause-menu .pm-actions { grid-template-columns: 1fr; }
+  /* ロゴの行と外側タブの行に分ける。ロゴの行の右端はボタンのぶん空ける。 */
+  #hud-pause-menu .pm-header { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+  #hud-pause-menu .pm-brand { padding-right: var(--pm-actions-reserve); }
+  #hud-pause-menu .pm-tabs { display: flex; }
+  #hud-pause-menu .pm-tabs .w-btn { flex: 1 1 0; min-width: 0; }
+  #hud-pause-menu .pm-actions,
+  #hud-pause-menu .pm-footer { grid-template-columns: minmax(0, 1fr); }
 }
 @media ${MQ_SHORT} {
-  #hud-pause-menu .pm-header { gap: var(--space-1); }
-  #hud-pause-menu .pm-tabs,
-  #hud-pause-menu .pm-tab-content { margin-top: var(--space-1); }
+  #hud-pause-menu { gap: var(--space-3); }
+  #hud-pause-menu span.pm-tile { min-height: var(--hit-target-min); padding: var(--space-3) var(--space-5); }
 }`;
