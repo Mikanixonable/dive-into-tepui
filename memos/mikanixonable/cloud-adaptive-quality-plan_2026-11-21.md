@@ -37,10 +37,17 @@
    - **フットプリント上限** — 画面の最小画素実寸(span_min、直下点)から、その段の追加
      オクターブが全部 `fadeOf` で 0 になる段を算出する。既に画素で解像できない段は
      無料で削れる(絵は同一)。細かい段が要るのは直下付近だけなので、span の最小値で決める。
+     実装確定値(`cloud-quality-governor.ts`): span_min = 2R(rho−1)/(rho·diamPx)
+     (シェーダ側の width = 方向微分×R と同じ式)、live = 波長 > 2·span_min の段数を
+     収める最小の段。積雲は span_min ≥1km で粗・≥250m で標準、巻雲は ≥4km で粗・
+     ≥250m で標準(巻雲は 32・16km の段を持たない)。render-lab は diamPx=6e4 で
+     呼ぶので span_min ≈ 10m — 上限は効かず、実効段 = 設定段として測れる。
    - **予算上限** — フレーム時間の実績が枠を超え、かつ雲 3 パスの GPU 合計がフレームの
      4 分の 1 以上を占めるときだけ 1 段下げる(雲以外が原因のフレーム超過で雲を削らない
      ため)。余裕が続けば段を戻す。GPU 時刻印が取れない環境では予算上限は働かせない
-     (フットプリント上限だけが効く)。
+     (フットプリント上限だけが効く)。ガバナの更新場所は計画の scene.ts ではなく
+     `GamePresentation.syncWorld` — 停止条件(ポーズ・マップ・simSpeed≠1)が
+     ゲーム層にあり、scene 側には届かないため。
 3. **段の切替はマテリアルの参照交換にする。** march/refine はシェーダへ展開される定数で、
    `setSampling` → `rebuildMaterial` はコンパイルヒッチを伴う。3 段ぶんのマテリアルを
    起動時(warmUp)に組んで保持し、切替は `mesh.material` の差し替えにする。
@@ -49,6 +56,9 @@
    できる形へ将来書き直せば事前構築は要らなくなる。
 4. **往復を防ぐ。** 下げは直近 0.5s の連続超過、戻しは 5s の連続余裕、各変更後は 2s の
    冷却。ポーズ・マップビュー・時間加速中は判定を止める(フレーム時間が歪むため)。
+   実装確定値: 超過の積算は枠内フレームで 2 倍速で割り引く(交互の遅れは連続超過に
+   数えない)、戻しの余裕は frame ≤ 16.7×0.85ms、判定する雲3パスは
+   表面雲+大気(雲あり)+雲影(雲の生成は含めない)。
 5. **sync の内訳を計測へ足す**(ユーザー指示で計画へ含めた)。update と同じ仕組みで
    sync を区間へ分け、デバッグ窓へ「sync 内訳」グループを出す。雲焼成の投入が sync の
    どの区間に載るかを観測できるようにする。
@@ -85,35 +95,13 @@ SPEC `DEVELOP/SPEC/RENDERING.md` から確定した保存対象:
    時間が集計されている(実効段の判定材料として読める)。
 3. render-lab で同じ実効段を強制したショットが、適応導入の前後で見た目変わらない。
 4. render-lab:measure の 3 パス計が、実効段ごとに基線値 ±10% を再現する
-   (粗 ≈ 4.6ms / 標準 ≈ 5.5ms / 精細 ≈ 6.8ms)。
+   (粗 ≈ 4.6ms / 標準 ≈ 5.5ms / 精細 ≈ 6.8ms)。手順4で再測済み: 実効段=設定段で
+   4.614 / 5.438 / 6.732ms(基線比 −1% 〜 +0.6%)。
 5. 予算を意図的に狭めた検証条件で実効段が下がり、戻したら段が復帰する。往復は冷却期間
    分より速く起きない。
 6. `npm run typecheck` と `npm run test:render` `npm run test:game` が通る。
 
 ## 手順
-
-### 手順 4. 品質ガバナ — 実効段の決定と3経路への配線
-
-**目的** — 実効の積雲・巻雲の精細さを min(設定, フットプリント上限, 予算上限) で毎フレーム
-決め、表面雲・大気・雲影の3経路へ同じ値を届ける(3経路が同じ段を読まないと SPEC の
-一貫性を崩す)。
-
-**変更が必要な箇所**
-
-| ファイル | すること |
-| --- | --- |
-| `src/render/earth-weather/cloud/cloud-quality-governor.ts` (新規) | 予算上限の状態(EMA/連続超過窓/冷却)を持つガバナと、見かけ直径からフットプリント上限段を返す純関数。判定は「フレーム p95 が 16.7ms 枠を超え、かつ雲3パスの GPU 合計がフレームの 25% 以上」で1段下げ、余裕が 5s 続けば戻す、変更後 2s 冷却。ポーズ・マップ・加速中は窓を回さない |
-| `src/render/earth-weather/cloud/cloud-presentation.ts` | `syncGraphics` で実効段を決めて `setDetail(effective)`。`renderInput` へ実効の octaves を載せる(CloudRenderInput 拡張) |
-| `src/render/earth-weather/cloud/cloud-render-input.ts` | 実効 octaves のフィールドを足す |
-| `src/render/celestial/celestial-illumination.ts` | `syncCloudShadow` が caster(雲の源の天体)の実効 octaves を kinds へ使う。`cloudShadowKinds` の形を実効値を受ける形へ変える |
-| `src/render/pipeline/shadow/shadow-select.ts` | `cloudShadowKinds` を実効 octaves を引数に取る形へ |
-| `src/render/pipeline/cloud-atmosphere-renderer.ts` / `atmosphere-pass.ts` | 巻雲の実効 octaves を per-body の雲入力(clouds.cloud)から読む形へ。rebuild 時の `setCirrusDetail` は上限として残す |
-| `src/render/scene.ts` | `syncFrame` など毎フレームの入口でガバナを更新(gpu snapshot + フレーム時間) |
-
-**達成条件と検証** — `npm run typecheck`、`npm run test:render`。
-`npm run render-lab:measure` を再測して実効段ごとの3パス計が基線 ±10% に収まること。
-`render-lab:shot` の earth で、同じ実効段なら導入前のショットと絵が変わらないこと。
-目視するのは render-lab の earth 構図(雲頂の起伏と縁、雲影、大気越しの雲)の3画面。
 
 ### 手順 5. デバッグ窓へ実効段の表示
 
