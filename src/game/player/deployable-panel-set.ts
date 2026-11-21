@@ -115,7 +115,7 @@ export class DeployablePanelSet implements Iterable<[string, DeployablePanelStat
     return key === null ? 0 : this.panels.get(key)?.value ?? 0;
   }
 
-  public get(key: string): DeployablePanelState | undefined { return this.panels.get(key); }
+  public get(key: string): DeployablePanelState | null { return this.panels.get(key) ?? null; }
   public values(): IterableIterator<DeployablePanelState> { return this.panels.values(); }
   public [Symbol.iterator](): IterableIterator<[string, DeployablePanelState]> { return this.panels.entries(); }
 

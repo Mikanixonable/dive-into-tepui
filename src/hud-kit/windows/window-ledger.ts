@@ -19,7 +19,7 @@ export class WindowLedger<A extends string, E extends { readonly win: PropertyWi
     entry.win.onClose = () => { this.entries.delete(key); };
   }
 
-  public get(key: string): E | undefined { return this.entries.get(key); }
+  public get(key: string): E | null { return this.entries.get(key) ?? null; }
   public values(): IterableIterator<E> { return this.entries.values(); }
   public entryList(): IterableIterator<[string, E]> { return this.entries.entries(); }
 

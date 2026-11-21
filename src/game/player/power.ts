@@ -94,7 +94,7 @@ export class PowerSystem {
         const state = this.panels.get(module.id);
         const transform = assembly.worldTransformOf(module.id);
         const definition = assembly.definition(module.id);
-        if (state === undefined || transform === null || definition === null) continue;
+        if (state === null || transform === null || definition === null) continue;
         state.update(dt, 3);
         const generation = definition.abilities.powerGeneration ?? SOLAR_MODULE_GENERATION;
         for (const panel of deployablePanelPoses('solar_panel', definition.length / 2, state.value)) {

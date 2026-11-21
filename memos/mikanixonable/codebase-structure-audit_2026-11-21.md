@@ -193,3 +193,49 @@ src/ 全領域(約870ファイル)をサブエージェント9分割で読破し
 
 1. 層違反の移動(§1) 2. 重複共通化(§3上) 3. 改名一括(§2) 4. デッドコード(§5)
 5. 大分割(§4)は別計画として切り出し推奨
+
+## 実施結果(2026-11-21)
+
+調査の指摘を以下のコミットで実施した。検証は typecheck / check:boundaries /
+test:game(549) / test:physics(510) / test:render が全て通過。
+
+| コミット | 対応節 |
+|---|---|
+| `944939deb` 層を越える置き場違反 | §1: assembly-shape→game、`enemy-assembly` 新設、attractors→physics、body-reveal→stages、planet-distance→map、plan-panel/navigation-command-window/status-panel→game/hud、menu-actions→game/、sync-throttle/tile-strip/orbit-chart→hud-kit、time-ring→math、title-scene→render、phase 2ファイル→game/(runtime→run の巻き戻し)、save-browser の game 依存除去(SnapshotMeta に表示名)、EnemySpawnShape 逆流解消(形状表→manual-spawn)、LVLH/CW→physics/relative-motion |
+| `ee3095f2c` tests 追随 | attractors 移動に伴うテスト参照 |
+| 改名コミット | §2 表の改名を全量実施 |
+| `a216e0a5e` 薄いファイル畳み込み | §3: contact/contact-damage、damage-capabilities、enemy-attack-group、game-input-types、marker-visibility、ammo-spec(後述で復元)、ship-docking/-decoupling/-repair→ship-connection-rules、entity-roster/trajectory-demand/command-completion/screen-ray、render薄い群、earth-surface codec群、hud-kit小物DOM群→dom-elements、earth-surface 19ファイル→earth-surface/、render直下浮きファイル→対応サブディレクトリ |
+| `aa25534c4` `1412281a6` 重複共通化 | §3上: preview×edits→ship-construction-apply、power×radiator→deployable-panel-set、stage-records×unlock-manager→stage-keyed-storage、窓台帳×3→window-ledger、injectOnce 共有化、回転座標系 μ 計算→lagrange helper、reachableModuleIds→graft |
+| `ab1558c65` デッドコード | §5: impulsive-transfer 削除、toggleDeployable 削除、cloneShipModuleInstance 単純化、smokeFrames コメント実態化、残骸コメント削除 |
+| `f84c0d924` DynamicMotion 型分離 | §4 の1件: ContactKind/Behavior/Properties→dynamic-motion-behavior(-collision/-thermal の既存パターンに追随) |
+
+### 意図的に変更しなかったもの(再調査で却下)
+
+- `physics/ammo-spec.ts` 畳み込み — 一度畳み込んだが、import を持たない定数語彙として
+  render 側装置が game 層を引かないよう定義層の役割を持つことが判明し復元
+- `SegmentedControl`×`TabBar` — ARIA 役割と引数が違い、見た目ほど同型ではない
+- `buildValueField` の hud-kit 化 — CSS クラス名が orbit-guide 専用で、汎用部品にすると
+  game の見た目名が hud-kit へ漏れる
+- editorial 系パネル外枠(buildPanel/PanelChrome) — 意図的に別マークアップを持つ
+- `physics/occlusion.ts` — CelestialBody を引く純幾何で physics 置き場として妥当
+- `physics/player-shape.ts` / `ship-panel-layout.ts` — 「物理判定・配置・描画で共有」の
+  定義語彙として physics 置き場が機能している
+- `metal-f0.ts` — tools/model-builder の焼き込み入力。tools パス直結のため移動は別検討
+- `markerItem` 4引数実装 — TS の実装側省略は合法(interface 不変)
+- `.gp-*` — 一時停止メニューと HUD で別スコープの意図的な再定義
+
+### §4 残件(別計画へ)
+
+大分割はレビューが重いため1件のみ実施し、残りは切り目を確定した状態で別計画へ。
+優先度案: `ship-construction.ts`(1029行・-blueprints/-commands) >
+`modular-ship.ts`(マーカー組立/renderSource/ブースター) >
+`game-presentation.ts`(sync 3ブロック) > `input.ts`(装置3分割) >
+`world-sfx.ts`(ワンショットレシピ — 音声作業中のため最後)。
+
+### 未実施の判断待ち(§1 残件)
+
+- `modular-ship.ts` / `ship-construction-view.ts` が View を直接 new — モデル層が装置を
+  所有する構造そのものの見直し(presentation-ports 経由の注入)が要り、機械的移動ではない
+- `game/creative/` の DOM UI 3ファイル — creative 専用 UI として閉じるか hud 寄りか
+- `game/dynamic/entity/ship-default-parts.ts` — entity 配下のままか ship 側か
+- `hud-kit/style/layout-tokens.ts` × `game/hud/style/layout-tokens.ts` 同名2件
