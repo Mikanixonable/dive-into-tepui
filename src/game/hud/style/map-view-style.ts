@@ -159,45 +159,11 @@ export const MAP_VIEW_STYLE = `
 }
 /* 見出しを閉じた行を薄くする。天球グリッドの行で薄くするのは見出しと、行見出しのゲートの下にある
    面・極・網のセル(最後の縮尺列より前)。縮尺列はゲートの外の独立トグル(MAP.md「ガイドタブ」)。 */
-#hud .hud-map-root.active #hud-view-options .target-class-row.category-off,
 #hud .hud-map-root.active #hud-view-options .grid-class-row.category-off > .body-class-title,
 #hud .hud-map-root.active #hud-view-options .grid-class-row.category-off .body-class-btns > :not(:last-child) {
   opacity: var(--toggle-off-opacity);
 }
 #hud .hud-map-root.active #hud-view-options .grid-class-row.category-off .body-class-btns > :not(:last-child).on::after { display: none; }
-
-/* 対象は1行1ボタン。状態はボタンタイトル左のアイコンで表し、ラベル/軌道列を分けずに
-   現在の表示状態を読み取れるようにする。 */
-#hud .hud-map-root.active #hud-view-options .target-class-group {
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1) var(--space-2);
-}
-#hud .hud-map-root.active #hud-view-options .target-class-group .target-class-row { margin-bottom: 0; }
-#hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row {
-  grid-template-columns: minmax(0, 1fr);
-}
-#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button {
-  display: flex; align-items: center; justify-content: flex-start; gap: var(--space-2);
-  width: 100%; padding-right: var(--space-3);
-  background: var(--glass-control); color: var(--muted);
-}
-#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button .w-btn-icon {
-  flex: 0 0 auto; width: 1.1em; height: 1.1em; margin-right: 0; color: var(--text-dim);
-}
-#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] {
-  color: var(--title); background: var(--color-primary-fill-weak);
-}
-#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="orbit"] .w-btn-icon {
-  color: var(--color-primary);
-}
-#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] {
-  color: var(--title); background: var(--glass-control);
-}
-#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="label"] .w-btn-icon {
-  color: var(--color-primary-hover);
-}
-#hud .hud-map-root.active #hud-view-options .target-class-row .body-class-mode-button[data-display-mode="hidden"] {
-  background: transparent;
-}
 
 /* Predict: 時間軸の操作は Accent。 */
 #hud .hud-map-root.active #hud-predict .w-btn,
@@ -248,7 +214,6 @@ ${opaqueGlassFallbackStyle('#hud-map-scale')}
   #hud .hud-map-root.active .hud-frame-controls { border-radius: var(--radius-panel); }
   #hud .hud-map-root.active #hud-view-options .view-options-section-heading,
   #hud .hud-map-root.active #hud-view-options .body-class-row { grid-template-columns: 82px minmax(0, 1fr); }
-  #hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row { grid-template-columns: minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { font-size: 8px; }
 }
 
@@ -262,8 +227,6 @@ ${opaqueGlassFallbackStyle('#hud-map-scale')}
   }
   #hud .hud-map-root.active #hud-view-options .view-options-section-heading,
   #hud .hud-map-root.active #hud-view-options .body-class-row { grid-template-columns: 68px minmax(0, 1fr); }
-  #hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row { grid-template-columns: minmax(0, 1fr); }
-  #hud .hud-map-root.active #hud-view-options .target-class-group { grid-template-columns: minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .view-options-column { overflow: hidden; text-overflow: ellipsis; }
   #hud .hud-map-root.active #hud-predict .w-pill-row { align-items: flex-start; }
 }

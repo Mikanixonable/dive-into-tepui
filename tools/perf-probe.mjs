@@ -278,9 +278,8 @@ function median(nums) {
 // 条件マトリクスモード: 起動 → ワープ/ビュー/ノードを整えて設定(settle)→ N サンプル取得 → 中央値化。
 // これを1条件につき PERF_REPEATS 回(既定3)繰り返し、ラウンド間の中央値を採る。
 // ============================================================================================
-// 表示パネルの1ボタンを循環させ、指定した天体クラス行の表示状態を合わせる。
-// 軌道線を切る計測条件ではラベルを残すため、desiredOn=true は「ラベル＋軌道」、
-// false は「ラベル」に合わせる。
+// 表示パネルの対象タブで、指定したクラスのチップの軌道線を desiredOn に合わせる。
+// 軌道線を切る計測条件でもラベルは残すので、名前の押し所が消えていれば点け直す。
 async function setOrbitLineFor(devTools, rowLabel, desiredOn) {
   // 表示パネルは既定で畳まれているので、本文が隠れていれば先に開く。
   await devTools.evaluate(`(() => {
@@ -292,28 +291,29 @@ async function setOrbitLineFor(devTools, rowLabel, desiredOn) {
   await sleep(200);
   const probe = await devTools.evaluate(`(() => {
     const panel = document.querySelector('#hud-view-options');
-    const row = [...document.querySelectorAll('#hud-view-options .target-class-row')]
-      .find((candidate) => candidate.querySelector('.body-class-mode-button')?.textContent === ${JSON.stringify(rowLabel)});
-    if (!row) return { err: 'no target row', panelHidden: panel ? panel.className : 'no panel' };
-    const button = row.querySelector('.body-class-mode-button');
-    if (!button) return { err: 'no mode button' };
-    const r = button.getBoundingClientRect();
-    if (r.width === 0) return { err: 'mode button has zero width', panelClass: panel ? panel.className : '?' };
-    return { x: r.left + r.width / 2, y: r.top + r.height / 2, mode: button.dataset.displayMode };
+    const chip = document.querySelector(${JSON.stringify(`#hud-view-options .target-chip-name[aria-label="${rowLabel}のラベル"]`)})
+      ?.closest('.target-chip');
+    if (!chip) return { err: 'no target chip', panelHidden: panel ? panel.className : 'no panel' };
+    const name = chip.querySelector('.target-chip-name');
+    const orbit = chip.querySelector('.target-chip-orbit');
+    if (!orbit) return { err: 'no orbit toggle' };
+    const point = (el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width }; };
+    return {
+      name: point(name), orbit: point(orbit),
+      nameOn: name.classList.contains('on'), orbitOn: orbit.classList.contains('on'),
+    };
   })()`);
   if (!probe || probe.err) return { ok: false, ...(probe ?? { err: 'evaluate returned null' }) };
-  const desiredMode = desiredOn ? 'orbit' : 'label';
-  if (probe.mode === desiredMode) return { ok: true, mode: probe.mode, clicked: false };
-  for (let i = 0; i < 3 && probe.mode !== desiredMode; i++) {
-    await leftClickAt(devTools, probe.x, probe.y);
-    await sleep(250);
-    probe.mode = await devTools.evaluate(`(() => {
-      const row = [...document.querySelectorAll('#hud-view-options .target-class-row')]
-        .find((candidate) => candidate.querySelector('.body-class-mode-button')?.textContent === ${JSON.stringify(rowLabel)});
-      return row?.querySelector('.body-class-mode-button')?.dataset.displayMode ?? null;
-    })()`);
-  }
-  return { ok: probe.mode === desiredMode, mode: probe.mode, clicked: true };
+  if (probe.orbit.w === 0) return { ok: false, err: 'orbit toggle has zero width' };
+  let clicked = false;
+  if (!probe.nameOn) { await leftClickAt(devTools, probe.name.x, probe.name.y); clicked = true; await sleep(250); }
+  if (probe.orbitOn !== desiredOn) { await leftClickAt(devTools, probe.orbit.x, probe.orbit.y); clicked = true; await sleep(250); }
+  const orbitOn = await devTools.evaluate(`(() => {
+    const chip = document.querySelector(${JSON.stringify(`#hud-view-options .target-chip-name[aria-label="${rowLabel}のラベル"]`)})
+      ?.closest('.target-chip');
+    return chip?.querySelector('.target-chip-orbit')?.classList.contains('on') ?? null;
+  })()`);
+  return { ok: orbitOn === desiredOn, mode: orbitOn ? 'orbit' : 'label', clicked };
 }
 
 async function runConditionOnce(devTools, baseUrl, cond, fatalEvents) {

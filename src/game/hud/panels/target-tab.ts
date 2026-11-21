@@ -1,57 +1,56 @@
-// 表示パネル(マップモード左レール)の対象タブ。マップに出す対象クラスごとに、
-// ラベル+軌道 / ラベル / 非表示を1ボタンで循環させる。天体群と機体・設備群を
-// 見出しで区切って並べる。
+// 表示パネル(マップモード左レール)の対象タブ。マップに出す対象クラスごとに1つのチップを置き、
+// 名前の部分でラベル、右端の軌道の図で軌道線を独立に切り替える。天体群と機体・設備群を
+// 見出しで区切り、チップは内容の幅で折り返す。押したまま同じ種類の押し所をなぞると、通った
+// チップの状態が最初に押したものと揃う。
 import { Button } from '../../../hud/widgets';
-import {
-  mapDisplayModeOf,
-  nextMapDisplayMode,
-  type MapDisplayCategory,
-  type MapDisplayMode,
-  type MapDisplayToggles,
-} from '../../map/display-toggles';
+import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../../marker/marker-identity';
+import type { MapDisplayToggles } from '../../map/display-toggles';
 
-// クラス別トグルの1行分。orbitKey が null のクラス(ラグランジュ点)は軌道を持たず、ラベルと
-// 非表示だけを循環する。
-interface BodyClassRow {
+// 対象クラス1つぶんのチップ。orbitKey が null のクラス(ラグランジュ点)は軌道線を持たず、
+// 名前の部分だけを持つ。glyph はマップ上の記号と同じ字形。
+interface TargetClassChip {
   readonly label: string;
-  readonly categoryKey: MapDisplayCategory;
+  readonly glyph: string;
+  readonly nameKey: keyof MapDisplayToggles;
   readonly orbitKey: keyof MapDisplayToggles | null;
 }
 
-// 天体のクラス別トグル。
-const BODY_CLASS_ROWS: readonly BodyClassRow[] = [
-  { label: '惑星', categoryKey: 'planetVisible', orbitKey: 'planetOrbit' },
-  { label: '衛星', categoryKey: 'satelliteVisible', orbitKey: 'satelliteOrbit' },
-  { label: '準惑星', categoryKey: 'dwarfVisible', orbitKey: 'dwarfOrbit' },
-  { label: '小天体', categoryKey: 'smallBodyVisible', orbitKey: 'smallBodyOrbit' },
-  { label: 'ラグランジュ点', categoryKey: 'lagrangeVisible', orbitKey: null },
+const BODY_CLASS_CHIPS: readonly TargetClassChip[] = [
+  { label: '惑星', glyph: ENTITY_GLYPH.body, nameKey: 'planetName', orbitKey: 'planetOrbit' },
+  { label: '衛星', glyph: ENTITY_GLYPH.satellite, nameKey: 'satelliteName', orbitKey: 'satelliteOrbit' },
+  { label: '準惑星', glyph: ENTITY_GLYPH.body, nameKey: 'dwarfName', orbitKey: 'dwarfOrbit' },
+  { label: '小天体', glyph: ENTITY_GLYPH.body, nameKey: 'smallBodyName', orbitKey: 'smallBodyOrbit' },
+  { label: 'ラグランジュ点', glyph: ENTITY_GLYPH.lagrange, nameKey: 'lagrangeName', orbitKey: null },
 ];
 
-// 機体と設備のクラス別トグル。
-const ENTITY_ROWS: readonly BodyClassRow[] = [
-  { label: '自艦', categoryKey: 'playerVisible', orbitKey: 'playerOrbit' },
-  { label: '敵', categoryKey: 'enemyVisible', orbitKey: 'enemyOrbit' },
-  { label: '弾薬', categoryKey: 'ammoVisible', orbitKey: 'ammoOrbit' },
-  { label: 'RCS燃料', categoryKey: 'fuelVisible', orbitKey: 'fuelOrbit' },
-  { label: '基地', categoryKey: 'baseVisible', orbitKey: 'baseOrbit' },
-  { label: '軌道標識', categoryKey: 'orbitSlotVisible', orbitKey: 'orbitSlotOrbit' },
+const ENTITY_CHIPS: readonly TargetClassChip[] = [
+  { label: '自艦', glyph: ENTITY_GLYPH.ship, nameKey: 'playerName', orbitKey: 'playerOrbit' },
+  { label: '敵', glyph: ENTITY_GLYPH.enemyShip, nameKey: 'enemyName', orbitKey: 'enemyOrbit' },
+  { label: '弾薬', glyph: ENTITY_GLYPH.ammo, nameKey: 'ammoName', orbitKey: 'ammoOrbit' },
+  { label: 'RCS燃料', glyph: ENTITY_GLYPH.fuel, nameKey: 'fuelName', orbitKey: 'fuelOrbit' },
+  { label: '基地', glyph: ENTITY_GLYPH.base, nameKey: 'baseName', orbitKey: 'baseOrbit' },
+  { label: '軌道標識', glyph: ORBIT_POINT_GLYPH.orbitSlot, nameKey: 'orbitSlotName', orbitKey: 'orbitSlotOrbit' },
 ];
 
-// 対象クラスの表示状態を文字ではなく、ラベル・軌道・非表示を連想できる SVG で示す。
-// Button の共通アイコン枠へ入れるため、ここは信頼できる固定マークアップだけを返す。
-const BODY_CLASS_DISPLAY_ICONS: Readonly<Record<MapDisplayMode, string>> = {
-  hidden: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M5.1 5.1C3.4 6.5 2.4 8.4 2 12c.7 3.1 2.7 5.4 5.2 6.8"/><path d="M9.7 19.2c.7.2 1.5.3 2.3.3 5.4 0 9.2-4.4 10-7.5-.3-1.3-1-2.6-2.2-3.8"/></svg>',
-  label: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h10.5L20 12l-5.5 7H4z"/><circle cx="8" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>',
-  orbit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(-28 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4.5" transform="rotate(28 12 12)"/><circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/></svg>',
-};
+// 軌道線の押し所に描く、楕円と軌道上の点の図。Button のアイコン枠へ入れる固定マークアップ。
+const ORBIT_ICON = '<svg viewBox="0 0 18 12" fill="none" stroke="currentColor" stroke-width="1.4"><ellipse cx="9" cy="6" rx="7.4" ry="4"/><circle cx="16.4" cy="6" r="1.9" fill="currentColor" stroke="none"/></svg>';
 
-// 表示モード mode を示すアイコンの SVG マークアップ。
-function bodyClassDisplayIcon(mode: MapDisplayMode): string {
-  return BODY_CLASS_DISPLAY_ICONS[mode];
+// 押し所1つ。kind が同じ押し所どうしでだけ、なぞって状態を揃える。
+interface ChipPart {
+  readonly kind: 'name' | 'orbit';
+  readonly key: keyof MapDisplayToggles;
+  readonly button: Button;
 }
 
-// 列見出しの凡例を持たない、グループ間の細い区切り(天体/機体と設備のようなサブグループを
-// ラベルだけで区切る)。
+// 押したまま押し所をなぞっている間の状態。value は揃える先の状態、moved は起点の外へ
+// なぞり出たか(起点の click を、なぞりの終わりとして読み捨てるため)。
+interface Stroke {
+  readonly origin: ChipPart;
+  readonly value: boolean;
+  moved: boolean;
+}
+
+// 群の見出し(天体/機体と設備)。
 function appendSectionDivider(parent: HTMLElement, title: string): void {
   const divider = document.createElement('div');
   divider.className = 'view-options-section-divider editorial-divider';
@@ -60,80 +59,121 @@ function appendSectionDivider(parent: HTMLElement, title: string): void {
 }
 
 export class TargetTab {
-  // 対象クラスの表示モードが切り替わるたびに、そのクラスと次のモードで呼ばれる。
-  public onModeChange: ((key: MapDisplayCategory, mode: MapDisplayMode) => void) | null = null;
+  // ラベルか軌道線のトグルが切り替わるたびに、そのキーと新しい状態で呼ばれる。
+  public onToggle: ((key: keyof MapDisplayToggles, on: boolean) => void) | null = null;
 
-  private readonly modeButtons: readonly (readonly [BodyClassRow, Button, HTMLElement])[];
-  // 各ボタンの現在の表示モードの鏡映し。クリック時に次の状態を決めるのに使う。
-  private readonly modes = new Map<MapDisplayCategory, MapDisplayMode>();
+  private readonly parts: ChipPart[] = [];
+  // 各トグルの現在値の鏡映し。押したときの次の状態と、なぞりで揃える要否を決めるのに使う。
+  private readonly state = new Map<keyof MapDisplayToggles, boolean>();
+  private stroke: Stroke | null = null;
+  // なぞりを終えた直後に起点へ届く click を1回だけ読み捨てる。
+  private swallowClick: ChipPart | null = null;
 
   // parent(対象タブの本体)の末尾へタブの内容を組み込む。
   public constructor(parent: HTMLElement) {
-    // 循環の順序は常時表示しておく — ボタンのホバー説明だけに置くとタッチでは読めない。
-    const modeLegend = document.createElement('p');
-    modeLegend.className = 'view-options-mode-legend';
-    modeLegend.textContent = '表示はクリックで ORBIT → LABEL → OFF の順に切り替わる';
-    parent.appendChild(modeLegend);
-    const modeButtons: (readonly [BodyClassRow, Button, HTMLElement])[] = [];
-    let itemIndex = 1;
-
-    // 天体/機体と設備の2群を見出しで区切り、各行に循環ボタンを1つ置く。
-    const rowGroups: readonly { readonly title: string; readonly rows: readonly BodyClassRow[] }[] = [
-      { title: '天体', rows: BODY_CLASS_ROWS },
-      { title: '機体と設備', rows: ENTITY_ROWS },
+    const groups: readonly { readonly title: string; readonly chips: readonly TargetClassChip[] }[] = [
+      { title: '天体', chips: BODY_CLASS_CHIPS },
+      { title: '機体と設備', chips: ENTITY_CHIPS },
     ];
-    for (const group of rowGroups) {
+    // 群ごとに見出しを置き、その下へチップを折り返して並べる。
+    for (const group of groups) {
       appendSectionDivider(parent, group.title);
       const groupEl = document.createElement('div');
-      groupEl.className = 'target-class-group';
-      for (const row of group.rows) {
-        const rowEl = document.createElement('div');
-        rowEl.className = 'body-class-row target-class-row editorial-index-row';
-        rowEl.dataset['index'] = String(itemIndex++).padStart(2, '0');
-        const modeButton = new Button(row.label, () => {
-          const current = this.modes.get(row.categoryKey) ?? 'hidden';
-          const next = nextMapDisplayMode(current, row.orbitKey !== null);
-          this.modes.set(row.categoryKey, next);
-          this.setModeButton(modeButton, row.label, next, row.orbitKey !== null);
-          this.onModeChange?.(row.categoryKey, next);
-        }, bodyClassDisplayIcon('hidden'));
-        modeButton.element.classList.add('body-class-title', 'body-class-mode-button');
-        rowEl.appendChild(modeButton.element);
-        groupEl.appendChild(rowEl);
-        modeButtons.push([row, modeButton, rowEl]);
-      }
+      groupEl.className = 'target-chip-group';
+      groupEl.setAttribute('role', 'group');
+      groupEl.setAttribute('aria-label', group.title);
+      for (const chip of group.chips) groupEl.appendChild(this.buildChip(chip));
       parent.appendChild(groupEl);
     }
-    this.modeButtons = modeButtons;
   }
 
-  // クラス別の表示状態を現在値へ合わせる。
+  // ラベル・軌道線の表示状態を現在値へ合わせる。
   public sync(toggles: MapDisplayToggles): void {
-    for (const [config, button, row] of this.modeButtons) {
-      const mode = mapDisplayModeOf(toggles, config.categoryKey);
-      this.modes.set(config.categoryKey, mode);
-      this.setModeButton(button, config.label, mode, config.orbitKey !== null);
-      row.classList.toggle('category-off', mode === 'hidden');
+    for (const part of this.parts) {
+      const on = toggles[part.key];
+      this.state.set(part.key, on);
+      part.button.setOn(on);
     }
   }
 
-  // ボタンの点灯・アイコン・説明文を、現在のモードへ合わせる。説明文には次にクリックしたときの
-  // 遷移先も含める。
-  private setModeButton(
-    button: Button, label: string, mode: MapDisplayMode, hasOrbit: boolean,
-  ): void {
-    // 現在値と、次にクリックしたときの遷移先から説明文を組む。
-    const modeLabel = mode === 'orbit' ? 'ラベル＋軌道' : mode === 'label' ? 'ラベル' : '非表示';
-    const next = nextMapDisplayMode(mode, hasOrbit);
-    const nextLabel = next === 'orbit' ? 'ラベル＋軌道' : next === 'label' ? 'ラベル' : '非表示';
-    const description = `${label}: ${modeLabel}。クリックで${nextLabel}`;
-    // 点灯・アイコン・aria 属性へ反映する。
-    button.setOn(mode !== 'hidden');
-    button.element.dataset.displayMode = mode;
-    button.element.dataset['displayLabel'] = mode === 'orbit' ? 'ORBIT' : mode === 'label' ? 'LABEL' : 'OFF';
-    const icon = button.element.querySelector<HTMLElement>('.w-btn-icon');
-    if (icon !== null) icon.innerHTML = bodyClassDisplayIcon(mode);
-    button.element.title = description;
-    button.element.setAttribute('aria-label', description);
+  // チップ1つ(名前の押し所と、軌道線を持つクラスなら軌道の押し所)を組む。
+  private buildChip(chip: TargetClassChip): HTMLElement {
+    const el = document.createElement('span');
+    el.className = 'target-chip';
+    // 名前の押し所。字形はマップ上の記号と同じものを添える。
+    const name = new Button(chip.label, () => this.press(namePart), chip.glyph);
+    name.element.classList.add('target-chip-name');
+    name.element.setAttribute('aria-label', `${chip.label}のラベル`);
+    const namePart: ChipPart = { kind: 'name', key: chip.nameKey, button: name };
+    this.addPart(namePart);
+    el.appendChild(name.element);
+    // 軌道線を持つクラスだけ、右端に軌道の押し所を足す。
+    if (chip.orbitKey !== null) {
+      const orbit = new Button('', () => this.press(orbitPart), ORBIT_ICON);
+      orbit.element.classList.add('target-chip-orbit');
+      orbit.element.setAttribute('aria-label', `${chip.label}の軌道線`);
+      orbit.element.title = `${chip.label}の軌道線`;
+      const orbitPart: ChipPart = { kind: 'orbit', key: chip.orbitKey, button: orbit };
+      this.addPart(orbitPart);
+      el.appendChild(orbit.element);
+    }
+    return el;
+  }
+
+  // 押し所を登録し、なぞりの起点・通過・終点を受ける。押下の確定は Button の click が持つ。
+  private addPart(part: ChipPart): void {
+    this.parts.push(part);
+    const el = part.button.element;
+    el.dataset['toggleKey'] = part.key;
+    el.addEventListener('pointerdown', (e) => {
+      // 指でもなぞれるよう捕捉し、なぞった先は座標から引く。
+      el.setPointerCapture(e.pointerId);
+      this.swallowClick = null;
+      this.stroke = { origin: part, value: !this.isOn(part.key), moved: false };
+    });
+    el.addEventListener('pointermove', (e) => this.extendStroke(e.clientX, e.clientY));
+    el.addEventListener('pointerup', () => {
+      if (this.stroke?.moved) this.swallowClick = this.stroke.origin;
+      this.stroke = null;
+    });
+    el.addEventListener('pointercancel', () => { this.stroke = null; });
+  }
+
+  // なぞりの途中で指の下にある同じ種類の押し所を、起点と同じ状態へ揃える。起点の外へ初めて
+  // 出たときに起点自身も揃える(押しただけのときは click が切り替える)。
+  private extendStroke(x: number, y: number): void {
+    const stroke = this.stroke;
+    if (stroke === null) return;
+    // 捕捉中は自分にしかイベントが来ないので、指の下の押し所は座標から引く。
+    const hit = document.elementFromPoint(x, y)?.closest<HTMLElement>('[data-toggle-key]');
+    const part = this.parts.find((p) => p.button.element === hit);
+    if (part === undefined || part === stroke.origin || part.kind !== stroke.origin.kind) return;
+    if (!stroke.moved) {
+      stroke.moved = true;
+      this.set(stroke.origin.key, stroke.value);
+    }
+    this.set(part.key, stroke.value);
+  }
+
+  // 押し所が押された(クリックかキーボード)。なぞりの終わりに届いた click は読み捨てる。
+  private press(part: ChipPart): void {
+    if (this.swallowClick === part) {
+      this.swallowClick = null;
+      return;
+    }
+    this.set(part.key, !this.isOn(part.key));
+  }
+
+  // トグル key を on にし、変わったときだけ通知する。
+  private set(key: keyof MapDisplayToggles, on: boolean): void {
+    if (this.isOn(key) === on) return;
+    this.state.set(key, on);
+    this.parts.find((p) => p.key === key)?.button.setOn(on);
+    this.onToggle?.(key, on);
+  }
+
+  // トグル key のいまの状態。
+  private isOn(key: keyof MapDisplayToggles): boolean {
+    return this.state.get(key) ?? false;
   }
 }

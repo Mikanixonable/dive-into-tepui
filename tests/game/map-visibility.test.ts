@@ -9,8 +9,8 @@ import {
 } from '../../src/physics/lagrange';
 import { OrbitingMotion } from '../../src/physics/celestial-motion';
 import {
-  applyMapDisplayMode, mapDisplayModeOf, celestialClassVisible, celestialNameVisible,
-  type MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, nextMapDisplayMode,
+  celestialClassVisible, celestialNameVisible,
+  type MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES,
 } from '../../src/game/map/display-toggles';
 import { alwaysFullyVisibleIds, MapVisibilityPolicy } from '../../src/game/map/visibility-policy';
 import { BODY_REVEAL_BASE, revealedAfterClear } from '../../src/game/celestial/body-reveal';
@@ -108,26 +108,17 @@ export function register(): void {
     }
   });
 
-  test('visibility controls: 対象クラスは非表示→ラベル→軌道+ラベルを循環する', () => {
-    const orbit = mapDisplayModeOf(DEFAULT_MAP_DISPLAY_TOGGLES, 'planetVisible');
-    assert.equal(orbit, 'orbit');
-    assert.equal(nextMapDisplayMode(orbit, true), 'hidden');
-    assert.equal(nextMapDisplayMode('hidden', true), 'label');
-    assert.equal(nextMapDisplayMode('label', true), 'orbit');
+  test('visibility controls: ラベルと軌道線は独立で、両方を切ったときだけクラスが消える', () => {
+    const orbitOnly: MapDisplayToggles = { ...DEFAULT_MAP_DISPLAY_TOGGLES, planetName: false };
+    assert.equal(celestialClassVisible('planet', orbitOnly), true);
+    assert.equal(celestialNameVisible('planet', orbitOnly), false);
 
-    const label = applyMapDisplayMode(DEFAULT_MAP_DISPLAY_TOGGLES, 'planetVisible', 'label');
-    assert.equal(celestialClassVisible('planet', label), true);
-    assert.equal(label.planetName, true);
-    assert.equal(label.planetOrbit, false);
+    const labelOnly: MapDisplayToggles = { ...DEFAULT_MAP_DISPLAY_TOGGLES, planetOrbit: false };
+    assert.equal(celestialClassVisible('planet', labelOnly), true);
+    assert.equal(celestialNameVisible('planet', labelOnly), true);
 
-    const hidden = applyMapDisplayMode(label, 'planetVisible', 'hidden');
-    assert.equal(mapDisplayModeOf(hidden, 'planetVisible'), 'hidden');
-    assert.equal(celestialClassVisible('planet', hidden), false);
-    assert.equal(hidden.planetName, false);
-    assert.equal(hidden.planetOrbit, false);
-
-    assert.equal(nextMapDisplayMode('hidden', false), 'label');
-    assert.equal(nextMapDisplayMode('label', false), 'hidden');
+    const off: MapDisplayToggles = { ...orbitOnly, planetOrbit: false };
+    assert.equal(celestialClassVisible('planet', off), false);
   });
 
   test('visibility: フォーカス中の天体の子はトグル無しで見える', () => {

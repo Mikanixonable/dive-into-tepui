@@ -87,31 +87,38 @@ export const VIEW_OPTIONS_PANEL_STYLE = `
 #hud-view-options .view-options-section-divider {
   margin-top: var(--space-4); margin-bottom: var(--space-1);
 }
-#hud-view-options .view-options-mode-legend {
-  margin: 0; padding: var(--space-2) var(--space-3) var(--space-3);
-  color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.45;
+/* 対象タブ: 1クラス1チップ。名前の部分がラベル、右端の軌道の図が軌道線のトグル。チップは内容の
+   幅で折り返す。ラベルが点灯しているチップは地ごと自分の色を帯びる。 */
+#hud-view-options .target-chip-group { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+#hud-view-options .target-chip {
+  display: inline-flex; align-items: stretch; overflow: hidden;
+  border-radius: var(--radius-pill); background: var(--glass-control);
+  transition: background var(--transition-fast);
 }
-#hud-view-options .target-class-group { display: grid; gap: 1px; }
-#hud-view-options .target-class-row {
-  display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto;
-  align-items: center; gap: var(--space-2);
-  margin: 0; min-height: var(--hit-target-min);
+#hud-view-options .target-chip:has(> .target-chip-name.on) { background: var(--color-primary-fill-weak); }
+#hud-view-options .target-chip > .w-btn {
+  display: inline-flex; align-items: center; border: 0; border-radius: 0;
+  background: transparent; touch-action: none;
 }
-#hud-view-options .target-class-row .body-class-title {
-  display: flex; grid-column: 2 / 4; align-items: center; gap: var(--space-2);
-  width: 100%; min-width: 0; min-height: var(--hit-target-min); padding: var(--space-2) 0;
-  border: 0; border-radius: 0; background: transparent; box-shadow: none;
+#hud-view-options .target-chip-name {
+  gap: var(--space-2); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  color: var(--text-dim); font-size: var(--font-xs); white-space: nowrap;
 }
-#hud-view-options .target-class-row .body-class-title .w-btn-icon { display: none; }
-#hud-view-options .target-class-row .body-class-title::after {
-  content: attr(data-display-label); margin-left: auto;
-  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
+#hud-view-options .target-chip-name .w-btn-icon { margin-right: 0; color: var(--text-faint); }
+#hud-view-options .target-chip-name.on { color: var(--title); }
+#hud-view-options .target-chip-name.on .w-btn-icon { color: var(--color-primary-hover); }
+#hud-view-options .target-chip-orbit {
+  justify-content: center; padding: var(--space-2) var(--space-3);
+  box-shadow: inset 1px 0 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
+  color: var(--text-faint);
 }
-#hud-view-options .target-class-row .body-class-title.on {
-  color: var(--text); background: transparent;
+#hud-view-options .target-chip-orbit .w-btn-icon { width: 1.3em; height: 1em; margin: 0; }
+#hud-view-options .target-chip-orbit.on { color: var(--color-primary); }
+#hud-view-options .target-chip > .w-btn:hover { background: var(--glass-control-hover); }
+@media ${MQ_COARSE} {
+  #hud-view-options .target-chip > .w-btn { min-height: var(--hit-target-min); }
+  #hud-view-options .target-chip-orbit { min-width: var(--hit-target-min); }
 }
-#hud-view-options .target-class-row .body-class-title.on::after { color: var(--color-primary); }
-#hud-view-options .target-class-row:hover { background: var(--glass-control-hover); }
 #hud-view-options .view-options-section-heading {
   color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: var(--tracking-label);
 }
