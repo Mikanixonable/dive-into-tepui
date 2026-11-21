@@ -171,7 +171,6 @@ export class FactionZoneView {
     this.scene = scene;
     for (const objects of this.orbitZones.values()) {
       scene.add(objects.annulus);
-      scene.add(objects.ring);
     }
     for (const billboard of this.pads.values()) scene.add(billboard.mesh);
   }
