@@ -6,9 +6,9 @@ import type { SoundCue } from './sound-cue';
 // 被弾点がこの距離まで自機中心から離れると、遠い被弾として音量・音高を下限にする [m]。
 const HIT_SOUND_DISTANCE_MAX = 10;
 
-const THRUST_LOOP_GAIN = 0.1;
-const RCS_LOOP_GAIN = 0.015; // メインエンジンより高く軽いシュー音なので、控えめに混ぜる
-const ALARM_LOOP_GAIN = 0.06;
+const THRUST_LOOP_GAIN = 0.14;
+const RCS_LOOP_GAIN = 0.035;
+const ALARM_LOOP_GAIN = 0.09;
 
 // そのフレームに鳴らすべき連続音の全体。
 export interface LoopSfx {
@@ -105,21 +105,24 @@ export class WorldSfx {
     }
   }
 
-  // noise を中心 freq・鋭さ q の帯域で絞ったループ音を鳴らし始め、その音量ノードを返す。音量は 0 で始まる。
-  private loopChannel(ctx: AudioContext, noise: AudioBuffer, freq: number, q: number): GainNode {
-    const src = ctx.createBufferSource();
-    src.buffer = noise;
-    src.loop = true;
-    // 音色は帯域で、鳴らすかどうかは音量で決める。音源は dispose まで鳴り続ける。
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = freq;
-    filter.Q.value = q;
+  // noise を2つの帯域へ絞ったループ音を鳴らし始め、共通の音量ノードを返す。音量は 0 で始まる。
+  private dualLoopChannel(ctx: AudioContext, noise: AudioBuffer,
+    freq1: number, q1: number, freq2: number, q2: number): GainNode {
     const gain = ctx.createGain();
     gain.gain.value = 0;
-    src.connect(filter).connect(gain).connect(ctx.destination);
-    src.start();
-    this.loopSources.push(src);
+    for (const [freq, q] of [[freq1, q1], [freq2, q2]] as const) {
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = freq;
+      filter.Q.value = q;
+      src.connect(filter).connect(gain);
+      src.start();
+      this.loopSources.push(src);
+    }
+    gain.connect(ctx.destination);
     return gain;
   }
 
@@ -307,11 +310,11 @@ export class WorldSfx {
     this.engine.noiseBurst(0.05, 'highpass', 3000, 0.04);
   }
 
-  // 補給マガジンの取り込み(肯定的なブリップ)
+  // 補給マガジンの取り込み(くぐもった肯定の2音と、遠くで鳴るチャイム)
   private pickup(): void {
-    this.engine.tone(660, 0.09, 0.09, 'sine');
-    this.engine.tone(990, 0.12, 0.07, 'sine');
-    this.engine.noiseBurst(0.08, 'lowpass', 600, 0.06);
+    this.engine.tone(220, 0.12, 0.1, 'triangle');
+    this.engine.tone(330, 0.14, 0.08, 'triangle', 0.1);
+    this.engine.tone(1320, 0.25, 0.03, 'sine', 0.18);
   }
 
   // 弾切れの空撃ちクリック
@@ -500,8 +503,8 @@ export class WorldSfx {
     const noise = this.engine.noiseBuf;
     if (!ctx || !noise) return null;
     this.loops = {
-      thrust: this.loopChannel(ctx, noise, 320, 0.8),
-      rcs: this.loopChannel(ctx, noise, 1600, 1.1),
+      thrust: this.dualLoopChannel(ctx, noise, 140, 0.6, 50, 1.0),
+      rcs: this.dualLoopChannel(ctx, noise, 650, 1.0, 200, 1.5),
       alarm: this.alarmLoopChannel(ctx),
     };
     return this.loops;
@@ -512,9 +515,13 @@ export class WorldSfx {
     const src = ctx.createBufferSource();
     src.buffer = this.klaxonBuffer(ctx);
     src.loop = true;
+    src.playbackRate.value = 1.2;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 900;
     const gain = ctx.createGain();
     gain.gain.value = 0;
-    src.connect(gain).connect(ctx.destination);
+    src.connect(filter).connect(gain).connect(ctx.destination);
     src.start();
     this.loopSources.push(src);
     return gain;
