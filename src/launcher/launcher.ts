@@ -33,6 +33,12 @@ export function debugInfoOpenAtStart(): boolean {
   return new URLSearchParams(location.search).get('perf') === '1';
 }
 
+// レイアウト検査(tools/browser-smoke)が ?layout-smoke=hud で開いたか。開いたときは描画資源を組まず、
+// 描画も行わない。DOM の寸法と入力だけを見る検査で、シェーダの事前コンパイルを省くための経路。
+export function layoutSmokeHudOnly(): boolean {
+  return new URLSearchParams(location.search).get('layout-smoke') === 'hud';
+}
+
 // アクティブスロットの直近の周回がまだ終わっておらず、そのステージが今も選択可能(ロック解除済み・
 // 選択画面から隠されていない)なら、そのステージクラスを返す。再開できなければ null。
 function resumableStageClass(unlockManager: UnlockManager, slots: SaveSlots): StageClass | null {
@@ -167,12 +173,12 @@ export class Launcher implements RunTransitions, CurrentGameSource {
         ? await Run.create(
           stageClass, startEpoch ?? null, this.devices, this.viewOptions, this.themePalette,
           this.graphics, this.renderStyle, this.sections, this.syncSections,
-          this.blueprintShelf, this.autoSave, progress, runOptions,
+          this.blueprintShelf, this.autoSave, progress, runOptions, layoutSmokeHudOnly(),
         )
         : await Run.resume(
           initialSave, stageClass, this.devices, this.viewOptions, this.themePalette,
           this.graphics, this.renderStyle, this.sections, this.syncSections,
-          this.blueprintShelf, this.autoSave, progress,
+          this.blueprintShelf, this.autoSave, progress, layoutSmokeHudOnly(),
         );
     } finally {
       hideLoading();
