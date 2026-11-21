@@ -1,4 +1,4 @@
-// レール幅・上部クローム高・レール占有量・下端余白・トグル寸法の CSS 変数を定義する。値は
+// レール幅・上部クローム高・レール占有量・下端余白・収納グリップの配置寸法の CSS 変数を定義する。値は
 // ブレークポイントごとにここで再代入し、判定式そのものをこの1箇所へ集約する。
 import {
   MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
@@ -15,8 +15,9 @@ export const LAYOUT_TOKENS_STYLE = `
   --hud-right-rail-occupied: calc(12px + var(--rail-w-right));
   --hud-rail-bottom: 12px;
   --hud-map-scale-bottom: 12px;
-  /* 画面右上の収納トグルと固定バッジを隣接させるための配置寸法。 */
-  --hud-rail-toggle-size: 30px;
+  /* レールの内側の縁と収納グリップの間隔と、グリップが縁から占める幅。下部シートはこの幅を避ける。 */
+  --hud-rail-grip-gap: var(--space-2);
+  --hud-rail-grip-reach: calc(var(--hud-rail-grip-gap) + var(--edge-grip-thick) + var(--space-2));
 }
 @media ${MQ_MEDIUM_DOWN} {
   :root {
@@ -37,6 +38,7 @@ export const LAYOUT_TOKENS_STYLE = `
 }
 @media ${MQ_COARSE} {
   :root {
+    --hud-rail-grip-reach: calc(var(--hud-rail-grip-gap) + var(--hit-target-min) + var(--space-2));
     --hud-rail-bottom: 62px;
     --hud-map-scale-bottom: 62px;
   }

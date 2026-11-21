@@ -27,7 +27,9 @@ import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../view/view-mode';
-import { Button, type CollapseToggleLabels } from '../../hud/widgets';
+import {
+  Button, buildCollapseToggle, EDGE_GRIP_HORIZONTAL_CLASS, EDGE_GRIP_VERTICAL_CLASS, type CollapseToggleLabels,
+} from '../../hud/widgets';
 import { createKeyCap } from '../../hud/key-cap';
 import type { PanelCollapse } from './panel-chrome';
 
@@ -61,6 +63,14 @@ export function hudRail(root: HTMLElement, side: 'left' | 'right'): HTMLElement 
   return root.querySelector<HTMLElement>(`.hud-rail-${side}`) ?? root;
 }
 
+// 上部バーの収納グリップの字形と読み上げ名。字形は押したときにバーが動く向き。
+const TOP_BAR_TOGGLE_LABELS: CollapseToggleLabels = {
+  expandedGlyph: '▲',
+  collapsedGlyph: '▼',
+  expandedTitle: '上部バーを収納',
+  collapsedTitle: '上部バーを開く',
+};
+
 // レール収納トグルの字形と読み上げ名を、開く向き(左右)から組む。
 function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
   const label = side === 'left' ? '左' : '右';
@@ -80,7 +90,7 @@ function buildRailToggle(
   collapse.wire({
     toggleRoot: root,
     toggleId: `hud-${view}-rail-toggle-${side}`,
-    toggleClassName: `rail-toggle rail-toggle-${side}`,
+    toggleClassName: `rail-toggle rail-toggle-${side} ${EDGE_GRIP_VERTICAL_CLASS}`,
     target: rail,
     labels: railToggleLabels(side),
     storageId: `hud-rail-${side}`,
@@ -355,8 +365,8 @@ function buildMapScale(root: HTMLElement): void {
     </div>`;
 }
 
-// 画面全体のトップバーを組む。
-function buildTopBar(root: HTMLElement): void {
+// 画面全体のトップバーを組み、その要素を返す。
+function buildTopBar(root: HTMLElement): HTMLElement {
   const bar = createHudElement('section', 'hud-topbar', root, 'ui-surface-quiet');
   bar.setAttribute('aria-label', 'Mission status');
   // タイトル画面の status block と同じ語彙で、workspace → context → mission time の順に読む。
@@ -383,6 +393,7 @@ function buildTopBar(root: HTMLElement): void {
         <output class="v" data-id="node-warp-remain">—</output>
       </div>
     </div>`;
+  return bar;
 }
 
 // 視点リセットボタンを組む。id の chase は「動く実体を追っている視点」の意味。
@@ -408,12 +419,11 @@ function buildChaseReset(root: HTMLElement): void {
   });
 }
 
-// 右上の常設バッジ列を組む。右レール収納トグルの左へ並ぶ。
+// 右上の常設バッジ列を組む。
 function buildChromeActions(
   root: HTMLElement, chrome: HTMLElement, helpPanel: HelpPanel, onPauseBadge: () => void,
 ): void {
   const actions = createHudElement('div', 'hud-chrome-actions', chrome);
-  buildTopBarToggle(actions, root);
   buildWideScreenToggle(actions, root);
   buildPauseBadge(actions, onPauseBadge);
   buildHelpBadge(actions, helpPanel);
@@ -452,19 +462,9 @@ export function toggleHudWideScreen(root: HTMLElement): void {
   flipRootClass(root, 'hud-wide', 'hud-wide-toggle');
 }
 
-// 上部の全体ステータスバーを収納・展開する。収納中も右上のボタンで戻せる。
-// 状態は根の class が持ち、字形と読み上げ名は切り替えのたびにその状態から組み直す。
-function buildTopBarToggle(actions: HTMLElement, hudRoot: HTMLElement): void {
-  const label = (collapsed: boolean): string => (collapsed ? '上部バーを開く' : '上部バーを収納');
-  const { button } = buildChromeAction(
-    actions, 'hud-topbar-toggle', '▲', null, label(false), () => {
-      const collapsed = flipRootClass(hudRoot, 'topbar-collapsed', 'hud-topbar-toggle');
-      button.setLabel(collapsed ? '▼' : '▲');
-      button.element.setAttribute('aria-label', label(collapsed));
-      button.element.title = label(collapsed);
-    },
-  );
-  button.element.setAttribute('aria-pressed', 'false');
+// 上部の全体ステータスバーの収納グリップを、バーの直後(同じ列の次の行)へ組む。収納の選択は保存しない。
+function buildTopBarToggle(chrome: HTMLElement, topBar: HTMLElement): void {
+  buildCollapseToggle(chrome, 'hud-topbar-toggle', EDGE_GRIP_HORIZONTAL_CLASS, topBar, TOP_BAR_TOGGLE_LABELS, [], () => {});
 }
 
 // 画面を広く使うモードの切り替えバッジ。タッチだけの利用者の入口になる。
@@ -550,7 +550,7 @@ export function buildHudDom(
   // top 値を持たないため、トップバーが折り返しても互いに重ならない。
   const helpPanel = new HelpPanel(shell.overlayManager);
   const chrome = createHudElement('div', 'hud-chrome', layers.panel, 'hud-chrome');
-  buildTopBar(chrome);
+  buildTopBarToggle(chrome, buildTopBar(chrome));
   const alarmBand = createHudElement('div', 'hud-alarm-band', chrome);
   alarmBand.dataset.id = 'alarm-band';
   alarmBand.classList.add('hidden');
