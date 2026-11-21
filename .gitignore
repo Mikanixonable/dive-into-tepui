@@ -13,6 +13,7 @@ docs/
 .render-lab-shots/
 __pycache__/
 .cloud-lab/
+.enemy-lab/
 .cloud-lab-shots/
 .cloud-detail/
 reference/

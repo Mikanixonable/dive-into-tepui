@@ -24,7 +24,6 @@ export const DESTROY_FRAG_SIZE_MIN = 1.5;
 export const DESTROY_FRAG_SIZE_MAX = 6.0;
 // 撃破で飛び散る破片の色。
 export const PLAYER_DESTROY_FRAG_COLOR = '#9fd8e8';
-const ENEMY_DESTROY_FRAG_COLOR = '#ff6a4a';
 
 // 論理種別から、その破片を描く View を組み立てる。組み立て型の部品は形を記録せず、seed と部品番号から
 // 組み直すので、復元したときも敵にいた形と同じ view になる。
@@ -165,17 +164,6 @@ export function playerDestroyFragments(
   return buildDestroyFragments(
     state.t, state.r, state.v, 11, PLAYER_DESTROY_FRAG_COLOR,
     DESTROY_FRAG_SIZE_MIN / 3, DESTROY_FRAG_SIZE_MAX / 3, 20.0, idAllocators,
-  );
-}
-
-// 敵機の撃破で飛び散る破片。機体メッシュのスケール meshScale へ見合った大きさにする。
-export function enemyDestroyFragments(
-  state: KinematicState, meshScale: number, idAllocators: EntityIdAllocators,
-): DebrisPiece[] {
-  return buildDestroyFragments(
-    state.t, state.r, state.v, 11, ENEMY_DESTROY_FRAG_COLOR,
-    (DESTROY_FRAG_SIZE_MIN * meshScale) / 3, (DESTROY_FRAG_SIZE_MAX * meshScale) / 3, 20.0,
-    idAllocators,
   );
 }
 

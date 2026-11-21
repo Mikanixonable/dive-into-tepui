@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Enemy Lab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b0d10; --panel: #12161b; --panel-2: #181d23; --edge: #262c34; --edge-2: #3a424c;
+    --text: #d7dde5; --dim: #8a939e; --faint: #5d6671; --accent: #ff6a00; --accent-fill: rgba(255,106,0,.14);
+    --ok: #5fd08a; --warn: #e8b84a; --bad: #ff6b5c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.5 "JetBrains Mono", ui-monospace, monospace;
+    height: 100dvh; display: grid; grid-template-rows: auto 1fr; overflow: hidden;
+    font-variant-numeric: tabular-nums;
+  }
+  button, input { font: inherit; color: inherit; }
+  button {
+    background: var(--panel-2); border: 1px solid var(--edge); border-radius: 6px; padding: 4px 10px;
+    cursor: pointer; transition: border-color .12s, background .12s;
+  }
+  button:hover:not(:disabled) { border-color: var(--edge-2); background: #1f252c; }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button:disabled { opacity: .35; cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0b0d10; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #ff8533; border-color: #ff8533; }
+  button.danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad); }
+  kbd {
+    font: inherit; font-size: 10px; padding: 0 4px; border: 1px solid var(--edge-2); border-radius: 3px;
+    color: var(--dim); margin-left: 4px;
+  }
+  input[type=number] {
+    width: 5.5em; background: var(--panel-2); border: 1px solid var(--edge); border-radius: 6px; padding: 3px 6px;
+  }
+
+  /* ---- 上部のバー ---- */
+  #bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 12px;
+    background: var(--panel); border-bottom: 1px solid var(--edge);
+  }
+  h1 { font-size: 14px; margin: 0; letter-spacing: .12em; font-weight: 700; }
+  h1 em { color: var(--accent); font-style: normal; }
+  .group { display: flex; align-items: center; gap: 6px; }
+  .group > label { color: var(--dim); display: flex; align-items: center; gap: 6px; }
+  .seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; padding: 4px 12px; }
+  .seg button + button { border-left: 1px solid var(--edge); }
+  .seg button.active { background: var(--accent-fill); color: var(--accent); font-weight: 600; }
+  .spacer { flex: 1 1 auto; }
+  #hint { color: var(--faint); font-size: 11px; }
+
+  /* ---- 本体 ---- */
+  #main { display: grid; grid-template-columns: minmax(0, 1fr) 400px; min-height: 0; }
+  #main.collapsed { grid-template-columns: minmax(0, 1fr) 0; }
+  #main.collapsed #side { display: none; }
+  #view { position: relative; min-height: 0; min-width: 0; background: #07090c; }
+  canvas { width: 100%; height: 100%; display: block; }
+  #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  .label {
+    position: absolute; transform: translate(-50%, 0); padding: 0 6px; border-radius: 10px; white-space: nowrap;
+    background: rgba(11,13,16,.7); border: 1px solid var(--edge); color: var(--dim); font-size: 11px;
+  }
+  .label.selected { color: var(--accent); border-color: var(--accent); background: var(--accent-fill); }
+
+  /* 選んだ個体の状況 */
+  #inspector {
+    position: absolute; left: 10px; top: 10px; width: 270px; padding: 10px 12px; border-radius: 10px;
+    background: rgba(18,22,27,.92); border: 1px solid var(--edge); backdrop-filter: blur(6px);
+  }
+  #inspector h2 { margin: 0 0 4px; font-size: 12px; letter-spacing: .08em; display: flex; justify-content: space-between; }
+  .badge { font-size: 10px; padding: 0 6px; border-radius: 9px; border: 1px solid currentColor; align-self: center; }
+  .badge.ok { color: var(--ok); } .badge.warn { color: var(--warn); } .badge.bad { color: var(--bad); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 0 10px; color: var(--dim); font-size: 12px; }
+  .kv b { color: var(--text); font-weight: 400; text-align: right; }
+  .meter { height: 5px; background: var(--edge); border-radius: 3px; overflow: hidden; margin: 6px 0 8px; }
+  .meter > i { display: block; height: 100%; background: var(--ok); transition: width .15s; }
+  .parts { display: grid; gap: 3px; margin-top: 4px; max-height: 190px; overflow-y: auto; }
+  .part { display: grid; grid-template-columns: 4.2em 1fr 2em; align-items: center; gap: 6px; font-size: 11px; color: var(--dim); }
+  .part .role { white-space: nowrap; }
+  .part .role.emitter { color: var(--bad); } .part .role.core { color: var(--warn); }
+  .part .meter { margin: 0; }
+  .part.lost { opacity: .4; text-decoration: line-through; }
+
+  /* ---- 側柱 ---- */
+  #side {
+    display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-left: 1px solid var(--edge);
+  }
+  #scroll { flex: 1 1 auto; overflow-y: auto; padding: 8px; display: grid; gap: 6px; align-content: start; }
+  details { background: var(--panel-2); border: 1px solid var(--edge); border-radius: 10px; }
+  summary {
+    list-style: none; cursor: pointer; padding: 7px 10px; display: flex; align-items: center; gap: 8px;
+    font-size: 11px; letter-spacing: .1em; font-weight: 600; color: var(--dim); user-select: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: '▸'; color: var(--faint); transition: transform .12s; }
+  details[open] > summary::before { transform: rotate(90deg); }
+  summary .count { margin-left: auto; color: var(--accent); font-weight: 400; letter-spacing: 0; }
+  summary .reset-group { padding: 0 6px; font-size: 11px; border-radius: 9px; }
+  details.changed > summary { color: var(--accent); }
+  .body { padding: 2px 10px 10px; display: grid; gap: 6px; }
+  .note { color: var(--faint); font-size: 11px; margin: 0 0 2px; line-height: 1.45; }
+  .item { display: grid; grid-template-columns: 8.5em minmax(0, 1fr) 5.2em 1.6em; align-items: center; gap: 6px; }
+  .item > span { color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .item output { text-align: right; }
+  .item.changed > span, .item.changed output { color: var(--accent); }
+  .item.range { grid-template-columns: 7em minmax(0, 1fr) 7.6em 1.6em; }
+  .item output { white-space: nowrap; }
+  .item .reset { visibility: hidden; padding: 0; width: 1.6em; height: 1.6em; line-height: 1; border-radius: 50%; }
+  .item.changed .reset { visibility: visible; }
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 0; }
+  /* 二つまみの範囲 */
+  .range-wrap { position: relative; height: 20px; }
+  .range-wrap::before { content: ''; position: absolute; left: 0; right: 0; top: 8px; height: 4px; border-radius: 2px; background: var(--edge-2); }
+  .range-fill { position: absolute; top: 8px; height: 4px; border-radius: 2px; background: var(--accent); }
+  .range-wrap input[type=range] {
+    position: absolute; left: 0; top: 0; height: 20px; background: transparent;
+    -webkit-appearance: none; appearance: none; pointer-events: none;
+  }
+  .range-wrap input[type=range]::-webkit-slider-runnable-track { background: transparent; height: 20px; }
+  .range-wrap input[type=range]::-moz-range-track { background: transparent; }
+  .range-wrap input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin-top: 3px;
+    border-radius: 50%; background: var(--text); border: 2px solid var(--accent); pointer-events: auto; cursor: pointer;
+  }
+  .range-wrap input[type=range]::-moz-range-thumb {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--text); border: 2px solid var(--accent);
+    pointer-events: auto; cursor: pointer;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  td { padding: 1px 0; color: var(--dim); } td:last-child { text-align: right; color: var(--text); }
+  .bar { display: inline-block; height: 7px; background: var(--accent); border-radius: 2px; vertical-align: middle; margin-right: 6px; opacity: .85; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+  /* 下部に固定するゲームへの反映 */
+  #apply { flex: 0 0 auto; border-top: 1px solid var(--edge); background: var(--panel); padding: 8px 10px; display: grid; gap: 6px; }
+  #apply .summary { display: flex; justify-content: space-between; color: var(--dim); font-size: 12px; }
+  #apply .summary b { color: var(--accent); font-weight: 600; }
+  #message { min-height: 1.4em; font-size: 11px; color: var(--dim); white-space: pre-wrap; max-height: 5.6em; overflow-y: auto; }
+  #message.error { color: var(--bad); } #message.ok { color: var(--ok); }
+  @media (max-width: 900px) { #main { grid-template-columns: minmax(0, 1fr) 320px; } }
+</style>
+</head>
+<body>
+<header id="bar">
+  <h1>ENEMY <em>LAB</em></h1>
+  <div class="group"><div class="seg" id="mode-buttons"></div></div>
+  <div class="group"><label>弾ダメージ <input id="damage" type="number" value="1" min="0.1" max="12" step="0.1"></label></div>
+  <div class="group">
+    <button id="prev" title="前の個体">◀</button><button id="next" title="次の個体">▶</button>
+    <button id="focus-all">全体<kbd>F</kbd></button>
+    <button id="repair">無傷へ<kbd>R</kbd></button>
+  </div>
+  <span class="spacer"></span>
+  <span id="hint">クリック: 選択/試射 ・ ドラッグ: 視点 ・ ホイール: ズーム</span>
+  <button id="toggle-side" title="側柱の開閉">⇥</button>
+</header>
+<div id="main">
+  <div id="view">
+    <canvas id="canvas"></canvas>
+    <div id="labels"></div>
+    <div id="inspector" hidden></div>
+  </div>
+  <aside id="side">
+    <div id="scroll">
+      <details open>
+        <summary>個体</summary>
+        <div class="body">
+          <p class="note">seed の始点から並べて個体を作る。同じ調整値と seed は同じ形になる。</p>
+          <div class="actions">
+            <label>seed <input id="seed" type="number" value="0" min="0" step="1"></label>
+            <label>個体数 <input id="count" type="number" value="12" min="1" max="24" step="1"></label>
+            <button id="reroll">振り直し</button>
+          </div>
+        </div>
+      </details>
+      <details open>
+        <summary>ばらつきの統計</summary>
+        <div class="body">
+          <p class="note">いまの調整値で 400 個体を生成して数える。</p>
+          <div id="stats"></div>
+        </div>
+      </details>
+      <div id="tuning" style="display:grid;gap:6px"></div>
+    </div>
+    <div id="apply">
+      <div class="summary"><span>既定値と違う項目</span><b id="changed-count">0</b></div>
+      <div class="actions">
+        <button id="try" class="primary" title="git 管理外の上書き。npm run dev 中のゲームが拾う">ゲームで試す</button>
+        <button id="clear" title="ゲームの上書きを解除する">解除</button>
+        <button id="commit" title="assembly-tuning.ts の既定値を書き換える(git に差分)">既定値へ確定</button>
+        <button id="reset" class="danger" title="全項目を既定値へ戻す">全リセット</button>
+      </div>
+      <div id="message"></div>
+    </div>
+  </aside>
+</div>
+</body>
+</html>

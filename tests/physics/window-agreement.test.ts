@@ -1,7 +1,7 @@
 // 実シミュレーションと積分弧は、同じ問い(この物体にどの天体が効くか)へ別々の絞り込みで答える。
 // 探し方が違うのは同時性から来る正当な差だが、答えが食い違ってよい理由はない。この2つの窓が
 // 同じ位置・同じ時刻で一致することを、重力と表面判定の両方について固定する。
-import { lagrangeOf, orbitingMotionOf, solarSystemParts, stateOf } from './test-helpers';
+import { lagrangeOf, occludersOf, orbitingMotionOf, solarSystemParts, stateOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { attractorAccel } from '../../src/physics/attractor';
@@ -110,7 +110,7 @@ function substepInterval(from: KinematicState, dt: number): SurfaceParticipant {
   const mid = WINDOWS.gravityMotions;
   return {
     prevState: from,
-    state: stepDynamics(from, dt, mid, [], null, 0, 0, 0, null),
+    state: stepDynamics(from, dt, mid, occludersOf(mid, []), null, 0, 0, 0, null),
     radius: SITE_RADIUS,
   };
 }

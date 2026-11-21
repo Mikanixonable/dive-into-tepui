@@ -6,6 +6,7 @@ import { extrapolatedRelativeState } from './kepler-extrapolation';
 import { type Vec3, add } from '../math/vec3';
 import { stepDynamicsWithSamples, type DynamicsEnvironmentSample } from './dynamics';
 import type { CelestialBody } from './celestial-body';
+import type { ShadowCasters } from './shadow';
 
 // 先端を二体ケプラー軌道とみなすときの中心天体と、それを厳密に引いた時刻。
 export interface ExtrapolationCenter {
@@ -42,13 +43,13 @@ export class DynamicTrajectory {
 
   // 全天体重力 + 2次重力場 + 大気抵抗 + 太陽輻射圧 + 推力で dt 秒ぶん積分して先端を進め、
   // そのステップ内の環境サンプルを返す。attractors はそのステップぶん確定させた重力源一覧、
-  // occluders は日照率の遮蔽体一覧、atmosphereBody は抗力を及ぼすただ1体の大気天体(null なら抗力なし)。
+  // occluders は日照率の遮蔽体の候補、atmosphereBody は抗力を及ぼすただ1体の大気天体(null なら抗力なし)。
   // sampleInterval・keepDuration は先端を積むときの保持方針(advanceTip)。
   // extrapolationCenter は extrapolatedAt が使う中心天体(省略時 null)。
   public step(
     dt: number,
     attractors: readonly CelestialBody[],
-    occluders: readonly CelestialBody[],
+    occluders: ShadowCasters,
     atmosphereBody: CelestialBody | null,
     pivot: number,
     bcInv: number,

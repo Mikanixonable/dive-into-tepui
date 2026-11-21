@@ -10,6 +10,7 @@ import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
 import type { Vec3 } from '../../math/vec3';
 import { type ClassifiedAttractors, attractorsNearInto, classifyAttractors } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
+import { ShadowCasters } from '../../physics/shadow';
 
 export class SubstepCelestialBodies {
   private classified: ClassifiedAttractors = classifyAttractors([], 0, 0, 0);
@@ -17,6 +18,8 @@ export class SubstepCelestialBodies {
   private _surface: readonly CelestialBody[] = [];
   private _atmosphere: readonly CelestialBody[] = [];
   private _star: CelestialBody | null = null;
+  // このサブステップに影を落としうる天体の候補。サブステップごとに分類し直す。
+  private _occluders = ShadowCasters.classify(null, [], 0, 0, 0);
   private readonly nearScratch: CelestialBody[] = [];
   // 天体の位置を厳密に引く時刻。区間の中点に取るので、区間の両端までの外挿幅が dt/2 に収まる。
   private _pivot = 0;
@@ -36,8 +39,10 @@ export class SubstepCelestialBodies {
   }
 
   // 区間 [simTime, simTime + dt] のサブステップへ進み、天体の位置を厳密に引く時刻をその中点に取る。
+  // 影を落としうる天体の候補も、このサブステップの区間で分類し直す。
   public beginSubstep(simTime: number, dt: number): void {
     this._pivot = simTime + dt / 2;
+    this._occluders = ShadowCasters.classify(this._star, this._surface, this._pivot, simTime, simTime + dt);
   }
 
   // 天体の位置を厳密に引いた時刻。
@@ -46,11 +51,14 @@ export class SubstepCelestialBodies {
   // 天体セットを構築したフレームの中点時刻。表面候補の粗い絞り込みもこの時刻で構築する。
   public get framePivot(): number { return this._framePivot; }
 
-  // 表面を持ち、かつ太陽を隠しうる相手。半径と位置の幾何だけで決まるので、登録天体の全数。
+  // 表面を持つ相手。半径と位置の幾何だけで決まるので、登録天体の全数。
   public get surface(): readonly CelestialBody[] { return this._surface; }
 
   // 大気を持つ天体の全数。抗力を及ぼす1体は個体ごとに選ぶ。
   public get atmosphere(): readonly CelestialBody[] { return this._atmosphere; }
+
+  // このサブステップに影を落としうる天体の候補。
+  public get occluders(): ShadowCasters { return this._occluders; }
 
   // 日照と受熱の光源になる恒星。無ければ null。
   public get star(): CelestialBody | null { return this._star; }

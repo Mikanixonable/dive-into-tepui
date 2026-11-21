@@ -4,6 +4,7 @@ import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { KinematicState } from '../../physics/kinematic-state';
+import type { ShadowCasters } from '../../physics/shadow';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
 import type { CompoundCylinderShape } from '../../physics/compound-cylinder-contact';
@@ -109,7 +110,7 @@ export interface DynamicSimulationParticipant extends EntityContactParticipant, 
   outpacedByDrag(dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number): boolean;
   substepDivisions(dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number): number;
   stepSimulation(
-    dt: number, celestialBodies: readonly CelestialBody[], occluders: readonly CelestialBody[],
+    dt: number, celestialBodies: readonly CelestialBody[], occluders: ShadowCasters,
     atmosphereBody: CelestialBody | null, star: CelestialBody | null, pivot: number,
     services: DynamicReactionServices,
   ): boolean;

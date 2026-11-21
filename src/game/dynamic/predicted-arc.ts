@@ -6,6 +6,8 @@ import { nearestAtmosphereBody, strongestAttractor } from '../../physics/attract
 import { firstSurfaceContact } from '../../physics/surface-contact';
 import { keplerPeriod } from '../../physics/elements';
 import { ApsisTrack } from '../../physics/trajectory-features';
+import { ShadowCasters } from '../../physics/shadow';
+import { isStar } from '../../physics/celestial-body-def';
 import { dot, len, sub } from '../../math/vec3';
 import { ArcCelestialBodies, type ArcCelestialBodyWindow } from './arc-celestial-bodies';
 import { atmosphericMaxStep, SUBSTEP_MAX_DT, ARC_MIN_STEP_DT } from './time-step';
@@ -149,9 +151,13 @@ export class PredictedArc {
 
     // 重力源は歩の中点時刻で解決する(実シミュレーションのサブステップと揃える)。
     const mid = this.bodies.resolve(tip.t + dt / 2, tip, dt);
-    // 遮蔽体には、重力の有無によらず幾何の相手として追っている mid.collision を渡す。
+    // 遮蔽体には、重力の有無によらず幾何の相手として追っている mid.collision を渡す。日照の光源は
+    // 積分が輻射圧に使う恒星(重力源の中の恒星)と同じもの。
+    const occluders = ShadowCasters.classify(
+      mid.gravity.find(isStar) ?? null, mid.collision, mid.pivot, tip.t, tip.t + dt,
+    ).near(tip, dt);
     this._trajectory.step(
-      dt, mid.gravity, mid.collision, nearestAtmosphereBody(tip.r, mid.collision, mid.pivot), mid.pivot,
+      dt, mid.gravity, occluders, nearestAtmosphereBody(tip.r, mid.collision, mid.pivot), mid.pivot,
       this.bcInv, this.srpCoeff, null,
       sampleInterval, span, this.keplerTail ? center : null,
     );

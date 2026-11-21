@@ -28,11 +28,18 @@ function readOverrides(overridesPath = OVERRIDES_PATH) {
 // ゲームの開発サーバの GET の受け口を作る。毎回ファイルを読み直すので、書き込みは
 // webpack のリビルドを起こさずに届く。ブラウザのキャッシュを当てにしないよう no-store で返す。
 function setupOverridesRead(middlewares, devServer) {
-  devServer.app.get(OVERRIDES_ROUTE, (_request, response) => {
+  return setupOverridesReadAt(middlewares, devServer, OVERRIDES_ROUTE, OVERRIDES_PATH);
+}
+
+// 任意の route と上書きファイルの対で、同じ GET の受け口を足す。敵の実験環境の上書きもこれで配る。
+function setupOverridesReadAt(middlewares, devServer, route, overridesPath) {
+  devServer.app.get(route, (_request, response) => {
     response.setHeader('Cache-Control', 'no-store');
-    response.json(readOverrides());
+    response.json(readOverrides(overridesPath));
   });
   return middlewares;
 }
 
-module.exports = { OVERRIDES_PATH, OVERRIDES_ROUTE, writeOverrides, readOverrides, setupOverridesRead };
+module.exports = {
+  OVERRIDES_PATH, OVERRIDES_ROUTE, writeOverrides, readOverrides, setupOverridesRead, setupOverridesReadAt,
+};

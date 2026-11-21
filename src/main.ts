@@ -37,6 +37,7 @@ import { AutoSave } from './launcher/save/autosave';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
 import { applyCloudTuningOverrides } from './render/earth-weather/cloud-tuning';
+import { applyAssemblyTuningOverrides } from './physics/assembly-tuning';
 import type { PageDevices } from './run/page-devices';
 import type { ViewOptionsSettings } from './game/view/view-options-settings';
 import type { GraphicsSettingsData } from './render/graphics-settings';
@@ -128,18 +129,18 @@ function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
   };
 }
 
-// 開発ビルドだけ: 実験環境(cloud-lab)が開発サーバ経由で配る調整値の上書きを定期で拾い、
-// 雲の生成へ反映する(tools/cloud-tuning-overrides-file.cjs の経路)。上書きが書き変わった
-// ときだけ適用し、焼き直すかは雲場が版の照合で決める。本番ビルドではこの呼び出しごと落ちる。
-function startCloudTuningSync(): void {
+// 開発ビルドだけ: 実験環境が開発サーバ経由で配る調整値の上書きを定期で拾い、適用する。上書きが
+// 書き変わったときだけ apply を呼ぶ。経路は cloud-lab が tools/cloud-tuning-overrides-file.cjs、
+// enemy-lab が tools/enemy-lab-apply-tuning.cjs。呼び出しは NODE_ENV の分岐で本番ビルドから落ちる。
+function startOverridesSync<T>(route: string, apply: (overrides: T) => void): void {
   let lastText: string | null = null;
   const poll = async (): Promise<void> => {
     try {
-      const response = await fetch('/__cloud-tuning/overrides');
+      const response = await fetch(route);
       const text = response.ok ? await response.text() : null;
       if (text !== null && text !== lastText) {
         lastText = text;
-        applyCloudTuningOverrides(JSON.parse(text) as Record<string, number>);
+        apply(JSON.parse(text) as T);
       }
     } catch {
       // 応答が壊れた・サーバが落ちただけなら見逃し、次の周期で拾う。
@@ -213,7 +214,11 @@ async function main() {
   pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
   // 最初のタイトル画面でも設定面と BGM を引き直すため、周回を起こす前からフレームを回す。
-  if (process.env.NODE_ENV !== 'production') startCloudTuningSync();
+  if (process.env.NODE_ENV !== 'production') {
+    // 雲の生成は、焼き直すかを雲場が版の照合で決める。敵は以降に出る組み立て型の敵へ反映される。
+    startOverridesSync('/__cloud-tuning/overrides', applyCloudTuningOverrides);
+    startOverridesSync('/__assembly-tuning/overrides', applyAssemblyTuningOverrides);
+  }
   new PageLoop(
     launcher, devices, settings, bgm, snapshotControls,
     drivenByLayoutSmoke(), layoutSmokeHudOnly(),

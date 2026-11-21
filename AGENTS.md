@@ -247,6 +247,7 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run render-lab:shot` | 描画の実験環境の撮影(`-- <組の名前>` で `.render-lab-shots/<組の名前>/`、省くと `.render-lab/shots/`) | 描画を画像で確かめるとき |
 | `npm run render-lab:compare` | 描画の実験環境の撮影の前後比較(`.render-lab-shots/compare-<after の名前>/`) | 描画の変更の前後を見比べるとき |
 | `npm run render-lab:measure` | パス別 GPU 時間の計測(大気の段の表と、earth の雲の段の 3 パスの表) | 描画の費用を出すとき |
+| `npm run enemy-lab` | 敵の設計スタジオ(http://localhost:8084)。組み立て型の敵の形状パラメータとばらつきを調整し、個体の一覧・ばらつきの統計・試射での部品破壊を確かめ、「ゲームで試す」(git 管理外の上書き)と「既定値へ確定」(`src/physics/assembly-tuning.ts` の書き換え)でゲームへ反映する | 敵の形・ばらつきを調整するとき |
 | `npm run cloud-lab` | 雲の実験環境(http://localhost:8083) | 雲の生成を目で確かめるとき |
 | `npm run cloud-lab:shot` | 雲の実験環境の撮影(`.cloud-lab/shots/`) | 雲を画像で確かめるとき |
 | `npm run cloud-lab:compare` | 生成と実写の統計比較(`.cloud-lab/compare/`) | 雲の生成を実写(8k_clouds)と見比べるとき |

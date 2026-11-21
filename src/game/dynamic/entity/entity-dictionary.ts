@@ -4,7 +4,7 @@ import type * as THREE from 'three/webgpu';
 import { ModularShip, type SerializedModularShip } from '../../ship/modular-ship';
 import { Bullet, type SerializedBullet } from './bullet';
 import { DebrisPiece, type SerializedDebrisPiece } from './debris-piece';
-import { MetalEnemy, type SerializedMetalEnemy } from './metal-enemy';
+import { LegacyMetalEnemy, type SerializedLegacyMetalEnemy } from './legacy-metal-enemy';
 import { AssemblyEnemy, type SerializedAssemblyEnemy } from './assembly-enemy';
 import { AmmoPickup, RcsFuelPickup, type SerializedAmmoPickup, type SerializedRcsFuelPickup } from './pickup';
 import type { DynamicEntity } from './dynamic-entity';
@@ -13,7 +13,7 @@ import type { EntityRegistry, SpawnGate } from '../entity-registry';
 // エンティティ1体分のシリアライズ形式。kind で具象を判別する。
 export type SerializedDynamicEntity =
   | SerializedModularShip
-  | SerializedMetalEnemy
+  | SerializedLegacyMetalEnemy
   | SerializedAssemblyEnemy
   | SerializedAmmoPickup
   | SerializedRcsFuelPickup
@@ -32,10 +32,16 @@ export interface DynamicEntityClass {
 }
 
 const ENTITY_CLASSES: readonly DynamicEntityClass[] = [
-  ModularShip, MetalEnemy, AssemblyEnemy, AmmoPickup, RcsFuelPickup, Bullet, DebrisPiece,
+  ModularShip, LegacyMetalEnemy, AssemblyEnemy, AmmoPickup, RcsFuelPickup, Bullet, DebrisPiece,
 ];
 
 // 直列化された種別タグは未検証の文字列なので、知らない種別なら null を返す。
 export function findEntityClass(kind: string): DynamicEntityClass | null {
   return ENTITY_CLASSES.find((c) => c.kind === kind) ?? null;
+}
+
+// 直列化した実体が敵のものか。組み立て型へ統一する前のセーブにある金属の敵機も、読み込み時に
+// 敵へ変換されるので敵として数える。
+export function isSerializedEnemy(serialized: SerializedDynamicEntity): boolean {
+  return serialized.kind === AssemblyEnemy.kind || serialized.kind === LegacyMetalEnemy.kind;
 }

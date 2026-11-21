@@ -8,6 +8,7 @@ import { kinematicState } from '../../src/physics/kinematic-state';
 import type { CompoundCylinderShape } from '../../src/physics/compound-cylinder-contact';
 import type { CompoundSphereShape } from '../../src/physics/compound-sphere-contact';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
+import { occludersOf } from '../physics/test-helpers';
 
 function shape(): CompoundCylinderShape {
   return {
@@ -146,7 +147,7 @@ export function register(): void {
     const self = new DynamicMotion(kinematicState<'eci'>(0, v3(), v3()), {
       attitude: { q: before, w: v3(0, 0.5, 0), inertia: v3(1, 1, 1) },
     });
-    self.stepSimulation(0.5, [], [], null, null, 0, {} as never);
+    self.stepSimulation(0.5, [], occludersOf([], []), null, null, 0, {} as never);
     assert.deepEqual(self.prevAtt.q, before);
     assert.notDeepEqual(self.att.q, before);
   });

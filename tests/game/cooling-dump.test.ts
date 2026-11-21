@@ -5,7 +5,7 @@ import { v3 } from '../../src/math/vec3';
 import type { Attitude } from '../../src/physics/attitude';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import type { CelestialBody } from '../../src/physics/celestial-body';
-import { fixedMotion } from '../physics/test-helpers';
+import { fixedMotion, occludersOf } from '../physics/test-helpers';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import type { DynamicReactionServices } from '../../src/game/dynamic/dynamic-simulation-participant';
 import { ShipAssembly } from '../../src/game/ship/ship-assembly';
@@ -119,7 +119,7 @@ export function register(): void {
     const bodies = earthOnlyBodies();
     const m = orbitingMotion(ship(), 600);
     m.coolingDump.toggle();
-    m.stepSimulation(1, bodies, bodies, null, null, 0, {} as DynamicReactionServices);
+    m.stepSimulation(1, bodies, occludersOf(bodies, bodies), null, null, 0, {} as DynamicReactionServices);
     // 1 秒ぶんの流量が主燃料から引かれ、温度は流す前より下がる。
     assert.ok(Math.abs(m.assembly.consumeFuel('main', 1e9) - (80 - DUMP_FLOW_RATE)) < 1e-6);
     assert.ok(m.temperature < 600);

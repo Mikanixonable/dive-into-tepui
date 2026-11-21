@@ -3,28 +3,10 @@ import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { addScaled } from '../../math/vec3';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/entity/entity-id';
-import {
-  generateApproachingEnemy, generateAssemblyEnemy, generateDriftingEnemy,
-} from '../stages/enemy-generator';
+import { generateDriftingEnemy } from '../stages/enemy-generator';
 import type * as THREE from 'three/webgpu';
-import type { CelestialBody } from '../../physics/celestial-body';
 import type { Enemy } from '../dynamic/entity/enemy';
 import type { ModularShip } from '../ship/modular-ship';
-
-// 敵を出す距離 [m] と、敵の名前の次に発番する連番。
-export type EnemyShapeDefinition =
-  | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
-  | { readonly id: 'variant-a' | 'variant-b' | 'variant-c'; readonly family: 'conventional'; readonly kind: 'variant'; readonly typeIndex: number }
-  | { readonly id: 'assembly'; readonly family: 'assembly'; readonly kind: 'assembly' };
-
-export const STAGE_CONTROL_ENEMY_SHAPES: readonly EnemyShapeDefinition[] = [
-  { id: 'drifting', family: 'conventional', kind: 'drifting' },
-  { id: 'variant-a', family: 'conventional', kind: 'variant', typeIndex: 0 },
-  { id: 'variant-b', family: 'conventional', kind: 'variant', typeIndex: 1 },
-  { id: 'variant-c', family: 'conventional', kind: 'variant', typeIndex: 2 },
-  { id: 'assembly', family: 'assembly', kind: 'assembly' },
-];
-export type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
 
 export interface SerializedManualSpawn {
   readonly spawnDistance: number;
@@ -41,7 +23,6 @@ export class ManualSpawn {
   // 連番で、省けば連番の初めから発番する。
   private constructor(
     private readonly scene: THREE.Scene,
-    private readonly attractors: readonly CelestialBody[],
     private readonly idAllocators: EntityIdAllocators,
     private _spawnDistance = DEFAULT_SPAWN_DISTANCE,
     enemyNameCounter = 0,
@@ -51,18 +32,18 @@ export class ManualSpawn {
 
   // 新しいランの手動スポーンを、既定の距離と連番の初めから組む。
   public static create(
-    scene: THREE.Scene, attractors: readonly CelestialBody[], idAllocators: EntityIdAllocators,
+    scene: THREE.Scene, idAllocators: EntityIdAllocators,
   ): ManualSpawn {
-    return new ManualSpawn(scene, attractors, idAllocators);
+    return new ManualSpawn(scene, idAllocators);
   }
 
   // 直列化した距離と連番から復元する。
   public static deserialize(
     serialized: SerializedManualSpawn,
-    scene: THREE.Scene, attractors: readonly CelestialBody[], idAllocators: EntityIdAllocators,
+    scene: THREE.Scene, idAllocators: EntityIdAllocators,
   ): ManualSpawn {
     const { spawnDistance, enemyNameAllocator } = serialized;
-    return new ManualSpawn(scene, attractors, idAllocators, spawnDistance, enemyNameAllocator);
+    return new ManualSpawn(scene, idAllocators, spawnDistance, enemyNameAllocator);
   }
 
   // 敵を出す距離と連番を直列化した形へ畳む。
@@ -80,25 +61,12 @@ export class ManualSpawn {
     this._spawnDistance = distanceM;
   }
 
-  // shape で選んだ形の敵を1体、自機の前方へ出す。知らない形なら null。
-  public enemy(player: ModularShip, shape: EnemySpawnShape, colorValue: string): Enemy | null {
+  // 組み立て型の敵を1体、自機の前方へ出す。
+  public enemy(player: ModularShip, colorValue: string): Enemy {
     const color = Number(colorValue);
-    const state = this.frontOf(player);
-    const name = this.enemyNameAllocator.next();
-    // 形ごとに生成器が違う。
-    const shapeDefinition = STAGE_CONTROL_ENEMY_SHAPES.find(({ id }) => id === shape);
-    if (shapeDefinition === undefined) return null;
-    if (shapeDefinition.kind === 'assembly') {
-      // seed は出た個体の形を決めるだけなので、呼ぶたびに新しい乱数でよい。
-      const seed = Math.floor(Math.random() * 2 ** 31);
-      return generateAssemblyEnemy(name, state, seed, color, color, this.scene, this.idAllocators);
-    }
-    return shapeDefinition.kind === 'drifting'
-      ? generateDriftingEnemy(name, state, color, color, this.scene, this.idAllocators)
-      : generateApproachingEnemy(
-        name, state, this.attractors, color, color, shapeDefinition.typeIndex, null,
-        this.scene, this.idAllocators,
-      );
+    return generateDriftingEnemy(
+      this.enemyNameAllocator.next(), this.frontOf(player), color, color, this.scene, this.idAllocators,
+    );
   }
 
   // 自機の前方 spawnDistance [m]、自機と同じ速度の状態。

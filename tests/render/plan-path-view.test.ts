@@ -4,7 +4,7 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
-import { solarSystemParts } from '../physics/test-helpers';
+import { occludersOf, solarSystemParts } from '../physics/test-helpers';
 import { CameraView } from '../../src/render/camera/camera-view';
 import { PlanPathView } from '../../src/render/plan/plan-path-view';
 import { LINE_RENDER_ORDER } from '../../src/render/lines/line-style';
@@ -50,7 +50,7 @@ function orbitTrajectory(): DynamicTrajectory {
   const radius = 7.0e6;
   const speed = Math.sqrt(EARTH.def.mu / radius);
   const trajectory = new DynamicTrajectory(kinematicState<'eci'>(0, v3(radius, 0, 0), v3(0, 0, -speed)));
-  for (let i = 0; i < 60; i++) trajectory.step(10, [EARTH], [], null, 0, 0, 0, null, 10, 1200);
+  for (let i = 0; i < 60; i++) trajectory.step(10, [EARTH], occludersOf([EARTH], []), null, 0, 0, 0, null, 10, 1200);
   return trajectory;
 }
 

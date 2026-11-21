@@ -1,13 +1,13 @@
 // shadow.ts の回帰テスト。
-import { fixedMotion } from './test-helpers';
+import { fixedMotion, solarSystemParts } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { maxShadowedFraction, sunlitFactor } from '../../src/physics/shadow';
+import { maxShadowedFraction, ShadowCasters, sunlitFactor } from '../../src/physics/shadow';
 import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, MU_MOON, R_EARTH, R_MOON } from '../../src/game/celestial/solar-system/earth-system';
 import { MU_SUN, R_SUN } from '../../src/game/celestial/solar-system/sun';
-import { len, sub, v3 } from '../../src/math/vec3';
+import { add, addScaled, cross, len, norm, scale, sub, v3, type Vec3 } from '../../src/math/vec3';
 
 const AU = 1.495978707e11;
 
@@ -218,5 +218,58 @@ export function register(): void {
       const lit = sunlitFactor(r, sun, [earth, moon], 0);
       assert.ok(lit >= 0 && lit <= 1, `範囲外: ${lit}`);
     }
+  });
+
+  test('shadow: ShadowCasters の日照率は、全天体を走査した sunlitFactor と === で一致する', () => {
+    const bodies = solarSystemParts().system.celestialMotions;
+    const sun = bodies.find((b) => b.kind === 'star')!;
+    const earth = bodies.find((b) => b.id === 'earth')!;
+    const moon = bodies.find((b) => b.id === 'moon')!;
+    const seen = { shadow: 0, partial: 0, lit: 0 };
+    // 等速の刻み(×1 の 1 フレーム)と、時間加速の長い刻みの両方。
+    for (const half of [1 / 120, 300]) {
+      const pivot = 1000;
+      const tStart = pivot - half, tEnd = pivot + half;
+      const casters = ShadowCasters.classify(sun, bodies, pivot, tStart, tEnd);
+      const e = earth.positionAt(pivot), m = moon.positionAt(pivot), s0 = sun.positionAt(pivot);
+      const toSun = norm(sub(s0, e));
+      const side = norm(cross(toSun, v3(0, 1, 0)));
+      const points: { r: Vec3; v: Vec3 }[] = [];
+      // 太陽方向を含む面の低軌道一周。本影・半影・昼側を跨ぐ。
+      for (let i = 0; i < 720; i++) {
+        const th = (i / 720) * 2 * Math.PI;
+        const radial = add(scale(toSun, Math.cos(th)), scale(side, Math.sin(th)));
+        const tangent = add(scale(toSun, -Math.sin(th)), scale(side, Math.cos(th)));
+        points.push({ r: addScaled(e, radial, R_EARTH + 4e5), v: scale(tangent, 7670) });
+      }
+      // 月の影の軸の近傍(日食)。軸から半影の外まで振る。
+      const moonAxis = norm(sub(m, s0));
+      const moonSide = norm(cross(moonAxis, v3(0, 1, 0)));
+      for (let i = 0; i <= 200; i++) {
+        const offset = (i / 200) * 8e6;
+        points.push({ r: add(addScaled(m, moonAxis, 3.7e8), scale(moonSide, offset)), v: scale(moonSide, 1000) });
+      }
+      for (const { r, v } of points) {
+        const dt = 2 * half;
+        const near = casters.near(kinematicState<'eci'>(tStart, r, v), dt);
+        // 歩の内側(RK4 の各段に相当する位置)と、絞り込んだ範囲の外の位置。
+        for (const [tau, extra] of [[0, 0], [half, 0], [dt, 0], [half, 5e6]] as const) {
+          const t = tStart + tau;
+          const q = add(addScaled(r, v, tau), scale(moonSide, extra));
+          const expected = sunlitFactor(q, sun, bodies, pivot, t);
+          assert.equal(near.sunlitAt(q, t), expected, `half=${half} r=${JSON.stringify(q)} t=${t}`);
+          assert.equal(casters.sunlitAt(q, t), expected);
+          if (expected === 0) seen.shadow++;
+          else if (expected === 1) seen.lit++;
+          else seen.partial++;
+        }
+      }
+    }
+    assert.ok(seen.shadow > 0 && seen.partial > 0 && seen.lit > 0, `本影・半影・日照を跨いでいない: ${JSON.stringify(seen)}`);
+  });
+
+  test('shadow: ShadowCasters は恒星が無ければ日照率 0', () => {
+    const casters = ShadowCasters.classify(null, [body('earth', MU_EARTH, R_EARTH, 0)], 0, 0, 1);
+    assert.equal(casters.sunlitAt(v3(1e7, 0, 0), 0.5), 0);
   });
 }
