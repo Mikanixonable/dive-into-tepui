@@ -24,7 +24,7 @@ const bodyWithoutTrailers = (msg) =>
   msg.split('\n').slice(1).filter((l) => !TRAILER_KEY.test(l)).join('\n').trim();
 
 const A = [], B = [];
-let excluded = 0, skipped = 0, dupSkipped = 0;
+let excluded = 0, skipped = 0;
 const seenMsg = new Set();
 
 for (const rec of log.split('').filter((r) => r.trim())) {
