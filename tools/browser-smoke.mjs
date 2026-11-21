@@ -923,7 +923,32 @@ async function bootAndCheckReady() {
     if (state.ready) break;
     await sleep(100);
   }
-  if (!state?.ready) throw new Error('Game did not complete 60 animation frames within 30 seconds.');
+  if (!state?.ready) {
+    // 起動がどこで止まっているかを残す。rAF とアダプタ要求は応答待ちを短く区切り、
+    // ハングそのものを掴めるようにする(CI の WebGPU 初期化ハング切り分け用)。
+    const diag = await devTools.evaluate(`(async () => {
+      const raf = await Promise.race([
+        new Promise((resolve) => requestAnimationFrame(() => resolve('alive'))),
+        new Promise((resolve) => setTimeout(() => resolve('no-raf'), 2000)),
+      ]);
+      let adapter = 'none';
+      if (navigator.gpu) {
+        adapter = await Promise.race([
+          navigator.gpu.requestAdapter({ featureLevel: 'compatibility' })
+            .then((a) => a === null ? 'null' : 'ok maxSampledTextures=' + a.limits.maxSampledTexturesPerShaderStage)
+            .catch((e) => 'error:' + e.message),
+          new Promise((resolve) => setTimeout(() => resolve('requestAdapter-hang'), 5000)),
+        ]);
+      }
+      return {
+        raf,
+        adapter,
+        loading: [...document.querySelectorAll('body > div')].some((d) => d.textContent?.includes('初期化中')),
+        canvases: document.querySelectorAll('canvas').length,
+      };
+    })()`);
+    throw new Error(`Game did not complete 60 animation frames within 30 seconds. diagnostics: ${JSON.stringify(diag)}`);
+  }
   throwIfFatal('Browser reported page exception(s) or console error(s) during boot');
 }
 
