@@ -3,7 +3,7 @@
 // 場の texel より細かい起伏は天体固定の細部で足す。
 import * as THREE from 'three/webgpu';
 import {
-  Discard, Fn, If, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
+  Discard, Fn, If, and, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
   max, mix, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select,
   smoothstep, sqrt, step, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
@@ -65,6 +65,9 @@ const NORMAL_STEP = FINEST_DETAIL_WAVELENGTH / 2;
 const TAU_SHADE_ONSET = 0.5;
 const TAU_SHADE_FULL = 2.5;
 const THIN_CLOUD_SHADE = 0.75;
+// 細部を評価せずに雲の外と決める上界の判定へ持たせる余裕(殻の空間の半径と、覆いの割合の目盛り)。
+// 上界と実際の値は別の式で丸まるので、境目の点を雲の外へ倒さないよう数 ulp ぶん内側を残す。
+const CEILING_MARGIN = 1e-6;
 // 細部の起伏が明るさへ効く深さ。覆いを飽和させるほどは動かさず、板の内部の質感にだけ使う。
 const DETAIL_BRIGHTNESS_DEPTH = 0.15;
 
@@ -274,19 +277,31 @@ export class OpaqueCloudSurfaceRenderer {
   // 物体空間の点が、その柱の雲頂からどれだけ外に居るか。負なら雲の中。pixelAngle は画素が張る角 [rad]、
   // width はその実寸 [m]、wind は細部を運ぶ風の東・北の成分 [m/s]。
   private clearanceAt(point: Vec3Node, pixelAngle: FloatNode, width: FloatNode, wind: Vec2Node): FloatNode {
-    const radius = max(length(point), 1e-6);
-    const direction = point.div(radius);
+    const radius = max(length(point), 1e-6).toVar();
+    const direction = point.div(radius).toVar();
     const cloud = this.fieldAt(direction);
-    const detail = this.detailAt(direction, width, cloud, wind);
+    const opacity = cumulusOpacityNode(cloud.cumulus).toVar();
+    const fieldTop = cumulusFieldTopNode(cloud.cumulus).toVar();
     // 細部は覆いの縁を texel より細かく千切る。**ディザはその柱の方向に貼る** — 視線の入口に貼ると、
     // 雲頂と入口の高さの差ぶんの視差で、視点が動くたびにディザが雲の上を滑る。
-    const threshold = this.ditherThreshold(direction, pixelAngle);
-    const present = step(threshold, this.shape.opaqueFraction(cumulusOpacityNode(cloud.cumulus), detail));
-    // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
-    // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに細部が湧く。
-    const clearance = radius.sub(this.shape.cloudTopRadius(
-      this.shape.cloudTop(cumulusFieldTopNode(cloud.cumulus), detail), this.groundRadius));
-    return select(present.greaterThan(0.5), clearance, float(1));
+    const threshold = this.ditherThreshold(direction, pixelAngle).toVar();
+    // **細部を最大に置いても雲頂へ届かない点と、覆いがディザの閾値へ届かない柱では細部を評価しない** —
+    // どちらも雲の外と決まり、細部の値は答えへ効かない。判定は境界の点を雲の外へ倒さない側へ余裕を持たせる。
+    const reachable = and(
+      radius.lessThan(this.shape.cloudTopRadius(this.shape.cloudTopCeiling(fieldTop), this.groundRadius)
+        .add(CEILING_MARGIN)),
+      threshold.lessThan(this.shape.opaqueFractionCeiling(opacity).add(CEILING_MARGIN)));
+    const clearance = float(1).toVar();
+    If(reachable, () => {
+      const detail = this.detailAt(direction, width, cloud, wind);
+      const present = step(threshold, this.shape.opaqueFraction(opacity, detail));
+      // **覆いの無い柱は雲頂を地表へ落とさず、視線を素通しにする** — 落とすと、地表へ達した
+      // 刻みが丸めの符号次第で雲頂の内側と判定され、地表いちめんに細部が湧く。
+      const surfaceClearance = radius.sub(this.shape.cloudTopRadius(
+        this.shape.cloudTop(fieldTop, detail), this.groundRadius));
+      clearance.assign(select(present.greaterThan(0.5), surfaceClearance, float(1)));
+    });
+    return clearance;
   }
 
   // 交点における雲頂面の法線(物体空間)。**覆いの有無は勾配へ入れない** — 柱ごとに断ち切られた
