@@ -29,6 +29,8 @@ export interface DisplayTimelineCommands {
   setFollowCamera(on: boolean): void;
   // カメラの基準が id へ移ったことを伝える。
   followCameraFocus(id: string | null): void;
+  // カメラの回転追従が rotatingWith へ変わったことを伝える。
+  followCameraRotation(rotatingWith: FrameRotationSource | null): void;
   // 描画座標系の回転を外す。
   dropRotation(): void;
 }
@@ -49,6 +51,7 @@ export function displayTimelineCommands(
     setFrameRotation: (rotatingWith) => queue.submit(() => selection.setFrameRotation(rotatingWith)),
     setFollowCamera: (on) => queue.submit(() => selection.setFollowCamera(on)),
     followCameraFocus: (id) => queue.submit(() => selection.followCameraFocus(id)),
+    followCameraRotation: (rotatingWith) => queue.submit(() => selection.followCameraRotation(rotatingWith)),
     dropRotation: () => queue.submit(() => selection.dropRotation()),
   };
 }

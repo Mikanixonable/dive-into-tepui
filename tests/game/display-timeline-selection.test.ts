@@ -59,4 +59,25 @@ export function register(): void {
     selection.followProgress(true);
     assert.equal(selection.sliderT, 0.5);
   });
+
+  test('display-timeline-selection: 軌道連動中はカメラの中心と回転の変更が描画基準へ追随する', () => {
+    const selection = DisplayTimelineSelection.create(frames, celestialBodies, 'earth');
+    const queue = new CommandQueue();
+    const commands = displayTimelineCommands(queue, selection);
+    const moonRev: FrameRotationSource = { kind: 'revolution', id: 'moon' };
+
+    commands.followCameraFocus('moon');
+    commands.followCameraRotation(moonRev);
+    queue.applyAll();
+    assert.equal(selection.frame.center, 'moon');
+    assert.deepEqual(selection.frame.rotatingWith, moonRev);
+
+    // 連動を切ると、以降のカメラ変更は描画基準を動かさない。
+    commands.setFollowCamera(false);
+    commands.followCameraFocus('earth');
+    commands.followCameraRotation(null);
+    queue.applyAll();
+    assert.equal(selection.frame.center, 'moon');
+    assert.deepEqual(selection.frame.rotatingWith, moonRev);
+  });
 }

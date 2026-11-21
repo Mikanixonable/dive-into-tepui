@@ -49,7 +49,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 /* 表示/非表示ユーティリティ */
 #hud .hidden { display: none !important; }
 #hud.construction-mode #hud-view-options,
-#hud.construction-mode #hud-trajectory-frame,
+#hud.construction-mode #hud-map-frame,
 #hud.construction-mode #hud-stage-controls,
 #hud.construction-mode #hud-orbital-objects,
 #hud.construction-mode #hud-topbar,

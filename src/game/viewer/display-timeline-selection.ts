@@ -209,6 +209,12 @@ export class DisplayTimelineSelection implements DisplayTimelineSource {
     this._frame = frameCenteredOnFocus(this.frames, this.celestialBodies, id, this._frame.rotatingWith) ?? this._frame;
   }
 
+  // カメラの回転追従が rotatingWith へ変わったとき、連動中なら描画基準の回転も合わせる。
+  public followCameraRotation(rotatingWith: FrameRotationSource | null): void {
+    if (!this._followCamera) return;
+    this._frame = this.frames.frameOf(this._frame.center, rotatingWith);
+  }
+
   // 現在の回転を外し、中心を保った慣性系へ移す。
   public dropRotation(): void {
     this._frame = this.frames.frameOf(this._frame.center, null);
