@@ -54,7 +54,12 @@ export function gameInputPorts(
     {
       feature: 'hud',
       commands: [gameCommand(K.help.code, K.help), gameCommand(K.wideScreenToggle.code, K.wideScreenToggle)],
-      handleCommand: command => hud.handleCommand(command.id),
+      handleCommand: command => {
+        // いずれかの UI 層(窓・ポップアップ・モーダル)が開いている間は切替を止める。
+        // モード登録(建造モード等)は UI 層ではないので数えない。
+        if (command.id === K.wideScreenToggle.code && overlays.hasOpenSurface()) return;
+        hud.handleCommand(command.id);
+      },
     },
     {
       feature: 'alarm',
