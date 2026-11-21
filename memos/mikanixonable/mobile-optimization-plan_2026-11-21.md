@@ -109,67 +109,34 @@
    前後比較で差分を確認して受け入れる。`npm run render-lab:compare` で読む。
 8. `npm run typecheck`・`npm run test`・`npm run check:boundaries`・`npm run build` が通る。
 
+## 基線と実施済みの結果
+
+`npm run mobile-probe`(390×844・DPR 3・CPU 4 倍減速・iPhone UA、GPU は計測機の Apple GPU のまま)。
+変更前(b5782f94b):
+
+| 条件 | タイトルまで [MB] | 計測終了まで [MB] | フレーム平均 [ms] | p95 [ms] | テクスチャ推算 [MB] |
+| --- | --- | --- | --- | --- | --- |
+| 保存なし(初回既定=中) | 48.2 | 78.1 | 317.0 | 416.6 | 504.2 |
+| 低 | 48.2 | 72.5 | 96.7 | 183.4 | 458.8 |
+| 中 | 48.2 | 78.1 | 312.2 | 399.9 | 504.2 |
+| 高 | 48.2 | 78.1 | 1021.6 | 9632.9 | 504.2 |
+
+- CPU 減速は GPU を遅くしないので、フレーム時間は前後の差だけに使う。プリセットの判断(手順 7)は実機で行う。
+- モバイル実機では起動に1分以上かかる(起動はする。2026-11-21 のユーザー報告)。実機の行は未記入。
+- 計測ツールはプリセット値を `tools/mobile-probe.mjs` の `PRESET_ROWS` へ写している。描画品質設定に項目を
+  足す手順(5・6・10)では、ここにも行を足す(足さないと高の値で埋まる)。
+
+実施済み(ブランチ `perf/mobile-optimization`、worktree `../dive-into-tepui-mobile`):
+
+- 計測ツール(手順 0)。
+- 弾薬・マガジンを GLB へ(手順 1)。main bundle 10.4MB → 4.17MB。flatShading は材質の extras に印を残して
+  読込側で戻す(法線を焼くと索引が外れて頂点が 3.7 倍になるため)。render-lab の撮影は前後で画素差 0。
+- GLB の meshopt 圧縮(手順 2)。船モジュール 36.2MB → 12.0MB。量子化は使わず FILTER 方式に限った
+  (量子化はメッシュのノードの原点を動かし、`weapon-drives.ts` が回す部品の支点がずれるため)。
+  船体・ベルト・プルームの 58 撮影は、封筒外 7 件もブロック差 8.1 以下で見分けがつかない。
+  達成目標 3(10MB 以下)は手順 3 の分割数削減で満たす。
+
 ## 手順
-
-### 手順 0. モバイル相当の計測口と基線
-
-**目的** — 以降の手順の効果と退行を、毎回同じ条件で数値として読めるようにする。今はモバイル条件を
-再現する手段が無い。実機の数値も表に残し、手順 7 のプリセット決定の根拠にする。
-**この手順でゲームの挙動は変えない**(tools/ だけを触る)。
-
-**変更が必要な箇所**
-
-| ファイル | すること |
-| --- | --- |
-| `tools/chrome-session.mjs` | `attachSession` の引数に、端末の倍率・mobile フラグ・UA・CPU 減速率・タッチを足す。`Emulation.setDeviceMetricsOverride` は `deviceScaleFactor: 1, mobile: false` 固定(171-181, 239-258 付近)で、`--force-device-scale-factor=1` も外す必要がある。`Emulation.setCPUThrottlingRate` と `Emulation.setUserAgentOverride` を足す |
-| `tools/mobile-probe.mjs`(新規) | 本番ビルドを開き、(a) タイトルまで・ステージ開始までの転送量(`Network.loadingFinished` の encodedDataLength の合計)と所要時間、(b) LEO 戦闘ビューで 10 秒間のフレーム時間の中央値と p95、(c) 読み込まれたテクスチャの寸法の合計から推算した GPU 常駐量を出力する。プリセットごと(低/中/高)に回す |
-| `package.json` | `"mobile-probe": "node tools/mobile-probe.mjs"` を足す |
-| `AGENTS.md` のコマンド表 | `npm run mobile-probe` の行を足す(用途: モバイル相当条件の計測。いつ: 起動・描画・予測の負荷を変えたとき) |
-| `memos/mikanixonable/mobile-optimization-plan_2026-11-21.md`(この文書) | 「基線」節を足し、エミュレーションの結果と実機の結果(iPhone の Safari 1台、Android の Chrome 1台、`?perf=1` で手で読む)を記入する。実機では WebGPU / WebGL2 のどちらで起動したか、雲が描けているか(下のリスク表の束縛数上限)も記入する |
-
-**達成条件と検証** — `npm run typecheck`。`npm run mobile-probe` が3プリセット分の表を出す。
-同じ条件で2回回し、フレーム時間の中央値の差が ±10% に収まる(収まらなければ計測時間を延ばす)。
-実機の行が表に埋まっている。
-
-### 手順 1. 弾薬・マガジンのモデルを main bundle から出す
-
-**目的** — main bundle を 6.2MB 縮める。原因は浮動小数のテキスト表現なので、船モジュールと同じ
-GLB(バイナリ)に揃え、起動時の fetch で取る。**この時点で挙動は変えない**(同じ頂点・同じ材質)。
-
-**変更が必要な箇所**
-
-| ファイル | すること |
-| --- | --- |
-| `tools/model-builder/export-models.mjs` | `ammo`・`magazine` を JSON ではなく GLB で書き出す。位置と法線は float のまま(量子化は手順 2 で一緒にやる) |
-| `tools/model-builder/pickups.mjs`・`gun-parts.mjs` | 書き出し先の拡張子と形式の指定を合わせる |
-| `src/assets/models/ammo.json`・`magazine.json` | 削除。`ammo.glb`・`magazine.glb` を生成して置く |
-| `src/render/dynamic/dynamic-entity/pickup-view.ts:5` | 静的 import をやめ、事前読込したテンプレートから組む |
-| `src/render/dynamic/player/belt-view.ts:5`・`src/render/dynamic/dynamic-entity/ejected-gun-part-view.ts:6` | 同上(magazine) |
-| `src/render/dynamic/ship/ship-module-models.ts` | fetch と GLB 解析と1回だけの読込を、モデル名を受け取る形へ一般化する。または同じ形の兄弟ファイルを新設する。どちらにするかは `DEVELOP/ARCHITECTURE.md` の置き場の規則で決める |
-| `src/main.ts:42-53`(`initScene`) | 新しい読込を `Promise.all` に加える(手順 4 で起動順を変えるまでの暫定) |
-
-**達成条件と検証** — `npm run typecheck`、`npm run test:render`、`npm run build` 後に
-`ls -la docs/main.*.js` が 4.5MB 以下。`grep -rn "models/ammo.json\|models/magazine.json" src`
-が 0 件。`npm run render-lab:shot` で、弾薬ピックアップとマガジンが写る構図の前後が同じ。
-`npm run export-assets` は全アセットの識別子を振り直すので、差分が識別子だけのファイルは戻す。
-
-### 手順 2. 船モジュール GLB の量子化と圧縮
-
-**目的** — 配信サイズを 36MB から 10MB 以下へ、GPU の頂点メモリを約半分へ減らす。形は変えずに
-表現だけを詰める。**この時点で挙動は変えない**(量子化誤差は 0.1mm 未満に収める)。
-
-**変更が必要な箇所**
-
-| ファイル | すること |
-| --- | --- |
-| `tools/model-builder/export-models.mjs`(または `author-ship-modules.mjs` の後段) | 書き出した GLB を量子化する(`KHR_mesh_quantization`: 位置 int16・法線 int8)。続けて `EXT_meshopt_compression` で圧縮する。道具は `@gltf-transform/*` か `gltfpack`。どちらを使うかは devDependencies への追加の可否で決める(`package.json`)。手順 1 の弾薬 GLB にも同じ後段を通す |
-| `src/render/dynamic/ship/ship-module-models.ts:27-49` | `GLTFLoader` に `MeshoptDecoder`(`three/addons/libs/meshopt_decoder.module.js`)を設定する。Node テスト経路(`fetchGlbArrayBuffer` の fs 分岐)でも同じデコーダが動くことを確かめる |
-| `src/physics/ship-mass-properties.ts` ほか、頂点を読んで寸法や質量を出している箇所 | `/inv-callstack` で `getShipModuleTemplates` の呼び元を洗い、量子化された属性(正規化 int)を float だと仮定している読み手がないかを確かめる |
-
-**達成条件と検証** — `npm run typecheck`、`npm run test:render`、`npm run test:physics`、
-`npm run test:game`。`ls -la docs/assets/*.glb` が 10MB 以下。`npm run export-module-thumbnails`
-の再生成画像が前後で同じ(`git diff --stat src/assets/module-thumbnails` で画素差を見る)。
-`render-lab:compare` の船体構図で差が見えない。
 
 ### 手順 3. 船モジュール原型の分割数を下げる
 
