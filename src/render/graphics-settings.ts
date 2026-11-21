@@ -89,6 +89,13 @@ export const GRAPHICS_OPTIONS = {
     items: [[0, 'なし'], [1, 'FXAA'], [2, 'SMAA']],
     presets: { low: 0, medium: 1, high: 2 },
   },
+  // 1 秒に描くフレーム数の上限。0 は上限なし(画面の更新に合わせて描く)。上限はシミュレーション
+  // 時間の進みに影響しない。
+  frameRateCap: {
+    kind: 'choice', group: 'basic', label: 'フレームレート上限',
+    items: [[0, '上限なし'], [30, '30'], [60, '60']],
+    presets: { low: 30, medium: 60, high: 0 },
+  },
   // 天体の地表や星野へ貼る大きい画像の幅の上限。段を下げるほど細部は粗くなる代わりに、
   // 画像が占める GPU の記憶領域が減る(高=原寸・中=4096px・低=2048px)。
   textureResolution: {

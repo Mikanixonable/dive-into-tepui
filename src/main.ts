@@ -13,6 +13,7 @@ import { UserSettings } from './settings/user-settings';
 import { browserSettingStorage } from './settings/stored-setting';
 import { themePresetOf } from './theme';
 import { applyThemeVariables } from './hud/style/theme-variables';
+import { skipsFrame } from './run/frame-rate-cap';
 import { Hud } from './game/hud/hud';
 import { PanelCollapse } from './game/hud/panel-chrome';
 import { HudShell } from './hud/hud-shell';
@@ -62,6 +63,11 @@ function startAnimationLoop(
   let completedFrames = 0;
   // 1フレーム分: ランのフレームを回し、次フレームを予約する。
   function animate(now: number) {
+    // 上限で見送ったフレームは lastTime を進めず、実時間を次に描くフレームの dt へ繰り越す。
+    if (skipsFrame(now, lastTime, settings.graphics.current.frameRateCap)) {
+      requestAnimationFrame(animate);
+      return;
+    }
     const dt = (now - lastTime) / 1000;
     lastTime = now;
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
