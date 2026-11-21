@@ -1,0 +1,381 @@
+# モバイル向けの総合的な最適化・軽量化
+
+## 目的
+
+スマートフォン・タブレットのブラウザで、**起動できる・落ちない・遊べる fps で動く・発熱で
+すぐ絞られない** 状態にする。現状は次の4つの壁がある(2026-11-21、`workspace3` 時点の実測と
+コード調査)。
+
+1. **起動前の転送量が大きい。** タイトル画面が出る前に、main bundle 10.4MB と
+   `ship-modules.glb` 36MB を取りきって解析する。モバイル回線で 46MB を待たせている。
+   モバイル実機では、起動に1分以上かかる(起動自体はする。2026-11-21 のユーザー報告)。
+   - main bundle のうち 6.2MB は、静的 import された弾薬・マガジンのモデル JSON
+     (`ammo.json` 5.0MB / 34,448 頂点、`magazine.json` 1.2MB / 8,612 頂点)。
+     浮動小数を10進テキストで持っているので、頂点数のわりに大きい。
+   - `ship-modules.glb` は 422 メッシュ・116 万頂点で、位置・法線が float32 のまま、量子化も
+     圧縮もしていない。頂点の大半は Blender 原型の分割数から来ている(タンク船殻は周方向
+     192 分割 × 軸方向 16 分割/m)。
+2. **GPU メモリが大きい。** iOS Safari は1タブあたりのメモリが厳しく、超えるとタブごと落ちる。
+   - 8192×4096 の画像が2枚ある(`earth.jpg`・`8k_stars.jpg`)。1枚が RGBA8 + mip で約 179MB。
+   - 地表詳細タイルの常駐配列は 96 層 × 2 本で約 49.5MB。CPU 側にも同じ大きさの写しを持つ。
+   - 影マップは「メッシュの影」をオフにしても確保したままになる(1024 段で約 32MB)。
+   - タイトル画面は、ゲーム本体とは別に2つ目の `WebGPURenderer` を作って描いている。
+3. **1フレームが重く、上限がない。**
+   - 雲3パスは標準段で 8.7ms を使う(apple / metal-3、earth 構図)。
+   - 軌道予測は「1フレーム 600 歩」の歩数予算で回る。デスクトップ実測は 1 歩 0.025〜0.055ms
+     なので、1フレームで 15〜33ms になる。CPU が遅い端末では、この時間がそのまま伸びる。
+   - フレームレートに上限がない。高リフレッシュの端末では 120Hz で回り続けて発熱する。
+   - HUD の全パネルが `backdrop-filter: blur(16px)` で、背後の 3D が毎フレーム変わるので、
+     ぼかしも毎フレーム計算し直される。
+4. **モバイル条件で測る手段がない。** 計測ツールは DPR 1・デスクトップ UA・CPU 等速で固定されて
+   いて、モバイル相当の条件を再現できない。
+
+到達点: 粗いポインタの端末を初めて起動したとき、**タイトルまでの転送量が 10MB 未満**になり、
+**中級機で 30fps を下回らない**既定設定で始まる。利用者が設定を上げれば、従来どおりの絵まで
+上げられる。
+
+## 決めたこと
+
+ユーザーが覆せる。覆したときに変わる手順を各項に書いた。
+
+1. **対象端末は「WebGPU か WebGL2 が使える iOS Safari と Android Chrome」とする。**
+   判定は、既存の「主ポインタが粗い」(`pointer: coarse`)だけを使う。UA 判定や
+   `navigator.deviceMemory` は使わない。理由は、Safari が deviceMemory を持たないことと、
+   UA 判定はタブレットの誤判定が多いこと。
+   → 覆すなら手順 7(初回の既定)の判定式が変わる。
+2. **目標フレームレートは、粗いポインタの初回既定で 30fps とする**(fps 上限の設定値も 30)。
+   60fps を目標にすると、雲と大気をほぼ全部切ることになるから。
+   → 60fps にするなら手順 7 のプリセット値を作り直す。手順 6 は変わらない。
+3. **プリセット(低/中/高)は増やさない。** 足す設定項目(fps 上限・テクスチャ解像度・
+   UI のぼかし)は既存の3段のプリセット値を持たせる。粗いポインタの初回既定は、手順 0 の
+   実測を見てから手順 7 で決める(現状は中)。
+   → 4つ目の「モバイル」プリセットを足すなら、手順 7 が SPEC のプリセット定義の変更になる。
+4. **見た目を変える軽量化(ポリゴン削減・テクスチャ縮小)は、設定で元に戻せるものと、戻せない
+   ものを分ける。**
+   - 船モジュールのポリゴン削減(手順 3)は戻せない。SPEC「モジュール船体の描画」に書かれた形が
+     読み取れる範囲に留め、前後の撮影比較で確かめる。
+   - テクスチャ縮小(手順 5)は戻せる。設定項目にして、高では従来の解像度を残す。
+5. **雲の精細さの自動適応(フレーム時間に応じて雲の段を下げる仕組み)は、この計画の対象外とする。**
+   別の計画で扱う。この計画の手順 6(fps 上限)と手順 8(予測の時間予算)は、その仕組みと
+   独立に入る。ただし手順 6 の fps 上限と自動適応が同時に効くと、「上限で待っている時間」を
+   余裕と誤認しうる(リスク表を参照)。
+6. **GPU 時刻印の解決(`gpu.resolve()` を毎フレーム呼ぶこと)は削らない。** 呼ばない期間が
+   あるとレンダラ側のクエリが溜まって上限に当たる、という意図がコードに書かれている。
+   モバイルの WebGPU で `timestamp-query` が無ければ、そもそも費用は出ない。
+7. **計算をワーカーへ移すこと(予測・暦の展開・GLB の解析)は、この計画の対象外とする。**
+   状態の持ち主と同期の設計を伴う再設計になるから。手順 8 の時間予算で上限だけを先に
+   保証する。残る問題: 予算を超える計算は、遅い端末では予測線の伸びが遅くなる形で表れる。
+
+## 変えない挙動
+
+手順 1〜4・9 は**挙動を変えない**ことを謳う。SPEC から確定した保存対象は次のとおり。
+
+- `DEVELOP/SPEC/RENDERING.md`「描画バックエンド」— WebGPU を第一とし、無ければ WebGL2 で描く。
+  経路の違いは精細さと負荷だけに出る。
+- 同「タイトル画面の背景」— タブが非表示扱いでも背景の描画を止めない。手順 9 で描画の持ち方を
+  変えても、この規定は保つ。
+- 同「デバッグ情報ウィンドウ」— 閉じている間はゲームの負荷に一切影響しない。手順 0 で計測を
+  足しても、閉じている間に時計を読まない。
+- 同「描画品質設定」— どの項目も切り替えたその場の画面へ反映され、設定はブラウザに保存されて
+  次回へ引き継がれる。
+- 同「モジュール船体の描画」— 描かれる固体の軸・長さ・位置が接触形状と一致する。同節に書かれた
+  造形(コックピットの傾斜と凹部、ハッチ、主推進器の配管・フランジ・リブなど)が読み取れる。
+  手順 3 だけは見た目を意図して変えるが、この節の記述が読み取れる範囲に留める。
+- `DEVELOP/SPEC/UI-DESIGN.md` — ガラス面の3段階と、背景ぼかし非対応時の不透明面フォールバック。
+  手順 10 はこのフォールバックを利用者の選択でも出せるようにするだけで、ガラスの段階は変えない。
+
+直してよい挙動(意図して変える。SPEC へ書いてから実装する):
+
+- 粗いポインタの初回既定のプリセット(手順 7)。いまはコードだけにあり、SPEC には無い。
+- 描画品質設定の項目が増える: fps 上限(手順 6)、テクスチャ解像度(手順 5)、UI の背景ぼかし
+  (手順 10)。
+- 「メッシュの影」オフで影マップのメモリを解放する(手順 4)。絵は変わらない。
+
+## 達成目標
+
+全手順の実施後、以下を1つずつ当てる。
+
+1. `npm run build` 後の `docs/main.*.js` が 4.5MB 以下になる(10.4MB − 6.2MB に余裕を足した値)。
+2. タイトル画面が出るまでの転送量が 10MB 未満になる。手順 0 の計測ツールの「タイトルまでの
+   転送量」の行で読む。船モジュールの取得はタイトル表示の後へ移り、ステージ開始までに終わる。
+3. `ship-modules.glb` の配信サイズが 10MB 以下になる(`ls -la docs/assets/*.glb`)。
+4. 粗いポインタの初回既定で、テクスチャの GPU 常駐が、基線から 250MB 以上減る。手順 0 の
+   計測ツールで、テクスチャ寸法の合計から推算した値を読む。
+5. 手順 0 のモバイル相当条件(DPR 3 → 上限 2、CPU 4 倍減速、390×844)で、初回既定の LEO 戦闘
+   ビューのフレーム時間の中央値が 33.3ms 以下になる。
+6. 予測の1フレームあたりの CPU 時間が、CPU 4 倍減速の下でも時間予算(手順 8)+10% を超えない。
+   `?perf=1` の update 内訳「予測」行で読む。
+7. 高プリセットを選んだとき、デスクトップの絵が従来と変わらない。手順 3 の船モジュールだけは
+   前後比較で差分を確認して受け入れる。`npm run render-lab:compare` で読む。
+8. `npm run typecheck`・`npm run test`・`npm run check:boundaries`・`npm run build` が通る。
+
+## 手順
+
+### 手順 0. モバイル相当の計測口と基線
+
+**目的** — 以降の手順の効果と退行を、毎回同じ条件で数値として読めるようにする。今はモバイル条件を
+再現する手段が無い。実機の数値も表に残し、手順 7 のプリセット決定の根拠にする。
+**この手順でゲームの挙動は変えない**(tools/ だけを触る)。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `tools/chrome-session.mjs` | `attachSession` の引数に、端末の倍率・mobile フラグ・UA・CPU 減速率・タッチを足す。`Emulation.setDeviceMetricsOverride` は `deviceScaleFactor: 1, mobile: false` 固定(171-181, 239-258 付近)で、`--force-device-scale-factor=1` も外す必要がある。`Emulation.setCPUThrottlingRate` と `Emulation.setUserAgentOverride` を足す |
+| `tools/mobile-probe.mjs`(新規) | 本番ビルドを開き、(a) タイトルまで・ステージ開始までの転送量(`Network.loadingFinished` の encodedDataLength の合計)と所要時間、(b) LEO 戦闘ビューで 10 秒間のフレーム時間の中央値と p95、(c) 読み込まれたテクスチャの寸法の合計から推算した GPU 常駐量を出力する。プリセットごと(低/中/高)に回す |
+| `package.json` | `"mobile-probe": "node tools/mobile-probe.mjs"` を足す |
+| `AGENTS.md` のコマンド表 | `npm run mobile-probe` の行を足す(用途: モバイル相当条件の計測。いつ: 起動・描画・予測の負荷を変えたとき) |
+| `memos/mikanixonable/mobile-optimization-plan_2026-11-21.md`(この文書) | 「基線」節を足し、エミュレーションの結果と実機の結果(iPhone の Safari 1台、Android の Chrome 1台、`?perf=1` で手で読む)を記入する。実機では WebGPU / WebGL2 のどちらで起動したか、雲が描けているか(下のリスク表の束縛数上限)も記入する |
+
+**達成条件と検証** — `npm run typecheck`。`npm run mobile-probe` が3プリセット分の表を出す。
+同じ条件で2回回し、フレーム時間の中央値の差が ±10% に収まる(収まらなければ計測時間を延ばす)。
+実機の行が表に埋まっている。
+
+### 手順 1. 弾薬・マガジンのモデルを main bundle から出す
+
+**目的** — main bundle を 6.2MB 縮める。原因は浮動小数のテキスト表現なので、船モジュールと同じ
+GLB(バイナリ)に揃え、起動時の fetch で取る。**この時点で挙動は変えない**(同じ頂点・同じ材質)。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `tools/model-builder/export-models.mjs` | `ammo`・`magazine` を JSON ではなく GLB で書き出す。位置と法線は float のまま(量子化は手順 2 で一緒にやる) |
+| `tools/model-builder/pickups.mjs`・`gun-parts.mjs` | 書き出し先の拡張子と形式の指定を合わせる |
+| `src/assets/models/ammo.json`・`magazine.json` | 削除。`ammo.glb`・`magazine.glb` を生成して置く |
+| `src/render/dynamic/dynamic-entity/pickup-view.ts:5` | 静的 import をやめ、事前読込したテンプレートから組む |
+| `src/render/dynamic/player/belt-view.ts:5`・`src/render/dynamic/dynamic-entity/ejected-gun-part-view.ts:6` | 同上(magazine) |
+| `src/render/dynamic/ship/ship-module-models.ts` | fetch と GLB 解析と1回だけの読込を、モデル名を受け取る形へ一般化する。または同じ形の兄弟ファイルを新設する。どちらにするかは `DEVELOP/ARCHITECTURE.md` の置き場の規則で決める |
+| `src/main.ts:42-53`(`initScene`) | 新しい読込を `Promise.all` に加える(手順 4 で起動順を変えるまでの暫定) |
+
+**達成条件と検証** — `npm run typecheck`、`npm run test:render`、`npm run build` 後に
+`ls -la docs/main.*.js` が 4.5MB 以下。`grep -rn "models/ammo.json\|models/magazine.json" src`
+が 0 件。`npm run render-lab:shot` で、弾薬ピックアップとマガジンが写る構図の前後が同じ。
+`npm run export-assets` は全アセットの識別子を振り直すので、差分が識別子だけのファイルは戻す。
+
+### 手順 2. 船モジュール GLB の量子化と圧縮
+
+**目的** — 配信サイズを 36MB から 10MB 以下へ、GPU の頂点メモリを約半分へ減らす。形は変えずに
+表現だけを詰める。**この時点で挙動は変えない**(量子化誤差は 0.1mm 未満に収める)。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `tools/model-builder/export-models.mjs`(または `author-ship-modules.mjs` の後段) | 書き出した GLB を量子化する(`KHR_mesh_quantization`: 位置 int16・法線 int8)。続けて `EXT_meshopt_compression` で圧縮する。道具は `@gltf-transform/*` か `gltfpack`。どちらを使うかは devDependencies への追加の可否で決める(`package.json`)。手順 1 の弾薬 GLB にも同じ後段を通す |
+| `src/render/dynamic/ship/ship-module-models.ts:27-49` | `GLTFLoader` に `MeshoptDecoder`(`three/addons/libs/meshopt_decoder.module.js`)を設定する。Node テスト経路(`fetchGlbArrayBuffer` の fs 分岐)でも同じデコーダが動くことを確かめる |
+| `src/physics/ship-mass-properties.ts` ほか、頂点を読んで寸法や質量を出している箇所 | `/inv-callstack` で `getShipModuleTemplates` の呼び元を洗い、量子化された属性(正規化 int)を float だと仮定している読み手がないかを確かめる |
+
+**達成条件と検証** — `npm run typecheck`、`npm run test:render`、`npm run test:physics`、
+`npm run test:game`。`ls -la docs/assets/*.glb` が 10MB 以下。`npm run export-module-thumbnails`
+の再生成画像が前後で同じ(`git diff --stat src/assets/module-thumbnails` で画素差を見る)。
+`render-lab:compare` の船体構図で差が見えない。
+
+### 手順 3. 船モジュール原型の分割数を下げる
+
+**目的** — 116 万頂点を減らし、頂点処理と影マップ描画の費用を下げる。絵は意図して変えるが、
+SPEC「モジュール船体の描画」の記述が読み取れる範囲に留める。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `tools/model-builder/blender/build-ship-modules.py:57-74` | `make_tank_hull` の `angular_segments=192` と軸方向 `16/m` を下げる。輪郭の丸さは法線で補えるので、まず周方向を 96、軸方向を `4/m` まで下げる。軸方向に曲率の無い円筒部は、端の環以外を分割しない |
+| `tools/model-builder/blender/build-ship-modules.py`(他の部品の生成関数) | 頂点数の上位メッシュ(上位9本で全体の 39% = 約 45 万頂点)を、メッシュ名とモジュール ID で特定してから、同じ方針で分割数を下げる。`npm run ship-modules:author` の出力へ、モジュールごとの頂点数を表示させる |
+| `src/assets/models/ship-modules.glb`・`src/assets/module-thumbnails/` | `npm run ship-modules:author` → `npm run export-assets` → `npm run export-module-thumbnails` で再生成する |
+
+**達成条件と検証** — `npm run typecheck`、`npm run test:render`、`npm run test:physics`(接触形状と
+描かれる固体の一致)。総頂点数が 50 万以下になる(作者ツールの表示で読む)。`render-lab:compare`
+で、コックピット・主推進器(配管・フランジ・リブ)・タンクの近景を前後で並べ、SPEC の各記述が
+読み取れることを目で当てる。サムネイルの差分を目で見る。
+
+### 手順 4. 起動順: 船モジュールをタイトルの裏で読む、影マップを解放する
+
+**目的** — タイトルが出るまでの待ちから、船モジュールの取得と解析を外す。「メッシュの影」オフで
+影マップの GPU メモリを解放する。**この時点で挙動は変えない**(ステージ開始時にはモデルが揃っている。
+影オンの絵は同じ)。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `src/main.ts:42-53` | `initScene` の `Promise.all` から `loadShipModuleModels()` を外す。シーンの初期化直後に読込を始めるだけにする(await しない) |
+| `src/main.ts`(ステージ開始の経路)/ `src/run/run.ts`(`Run.create`) | ステージを組む前に、上の読込の完了を await する。待ちが残っていればローディング表示を出す |
+| `src/launcher/stage-select.ts` ほか、タイトルで船モジュールを使う箇所(建造のプレビュー、サムネイル以外の 3D 表示) | `/inv-callstack` で `getShipModuleTemplates`・`buildShipModuleModel` の呼び元を洗う。タイトル中に呼ぶ箇所があれば、そこも完了を待つ形にする |
+| `src/render/pipeline/shadow/shadow-maps.ts:63-74,188-212` | `meshShadow` がオフの間は、近層の深度配列(slotSize² × 4 層)を 1×1 へ縮めて解放する。オンへ戻したら確保し直す |
+
+**達成条件と検証** — `npm run typecheck`、`npm run test:render`、`npm run test:game`。
+`npm run mobile-probe` の「タイトルまでの転送量」から船モジュール GLB が消える。
+「ステージ開始まで」には含まれる。`npm run smoke:browser` が通る(タイトル → ステージ開始 → 建造)。
+render-lab で「メッシュの影」をオフ → オンにしたとき、影が戻る。
+
+### 手順 5. テクスチャ解像度の設定(SPEC → 実装)
+
+**目的** — モバイルの GPU メモリ上限で落ちないように、大きい画像の解像度を設定で選べるようにする。
+高は従来どおりの解像度にする。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `DEVELOP/SPEC/RENDERING.md`「描画品質設定」 | `/modify-feature` を通して項目「テクスチャ解像度」(低/中/高)を書く。低は天体・星野の画像を 1/4 の画素数、中は 1/2(8192 幅の画像だけ)、高は原寸。切り替えたその場で反映する。地表詳細タイルの常駐数もこの項目で減る。`docs(spec):` の単独 commit |
+| `tools/`(新規の縮小スクリプト。名前は既存の生成系に合わせる)と `package.json` | `earth.jpg`・`8k_stars.jpg` の 4096 幅版、`8k_moon.jpg`・`earth-terrain.png`・`earth-smoothness.png`・`cloud-field.png` の 2048 幅版を生成する。`cloud-field.png`(4096×2048 RGBA、17MB)は低プリセットが選ぶ「実写」の雲場なので、低で最初に効く |
+| `src/render/deferred-texture.ts` | URL を解像度段ごとの組で受け取り、段の変更で取り直して差し替えられるようにする。待ち行列の1枚ずつの投入は保つ |
+| `src/render/stars.ts:3`・`src/render/earth-surface-defaults.ts:2`・`src/render/earth-surface-factory.ts:19`・`src/game/celestial/solar-system/earth-system.ts:4-7`・`src/render/earth-weather/cloud/observed-cloud-field.ts:59` | 解像度段ごとの URL の組を渡す |
+| `src/render/earth-surface-layout.ts:2-14`・`src/render/earth-surface-gpu-three.ts:64-80` | 常駐層数 `EARTH_TILE_LAYERS=96` を、段ごとの値(低 32・中 64・高 96)へ変える |
+| `src/render/graphics-settings.ts` | `GRAPHICS_OPTIONS` へ `textureResolution` を足す(group `basic`、プリセット 低→低・中→中・高→高) |
+
+**達成条件と検証** — `npm run typecheck`、`npm run test:render`、`npm run test:settings`。
+`npm run mobile-probe` の GPU 常駐の推算で、低が高より 250MB 以上少ない。
+render-lab で、高の earth 構図が前と同じ(`render-lab:compare`)。設定パネルで段を切り替えると、
+その場で地球と星野の解像度が変わる。
+
+### 手順 6. フレームレート上限の設定(SPEC → 実装)
+
+**目的** — 高リフレッシュの端末で回りすぎることによる発熱と電池消費を止める。目標 30fps を
+既定で守れるようにする。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `DEVELOP/SPEC/RENDERING.md`「描画品質設定」 | `/modify-feature` を通して項目「フレームレート上限」(30 / 60 / 上限なし)を書く。上限はシミュレーションの進みに影響しない(実時間で進む)。`docs(spec):` の単独 commit |
+| `src/main.ts:64-87`(rAF ループ) | 直前に描いた時刻から `1000/上限 − 許容幅` 未満のコールバックは、何もせずに次の rAF を待つ。経過時間は実時間のまま `Run` へ渡す(`MAX_FRAME_DT=0.1`、`src/run/run.ts:23` はそのまま) |
+| `src/render/graphics-settings.ts` | `frameRateCap` を足す(group `basic`、プリセットは 低 30・中 60・高 上限なし) |
+| `src/game/hud/windows/debug-info-window.ts` | 計測タブの fps 行に、上限で待った割合を出す(手順外の自動適応が余裕と誤認しないための観測口) |
+
+**達成条件と検証** — `npm run typecheck`、`npm run test:settings`、`npm run test:game`。
+`?perf=1` で上限 30 を選ぶと fps 行が 30±2 になり、上限なしへ戻すと元へ戻る。上限 30 で 60 秒
+放置したとき、ゲーム内時刻の進みが上限なしと同じ(時間加速 1 倍で 60 秒進む)。
+
+### 手順 7. 粗いポインタの初回既定を実測で決める(SPEC → 実装)
+
+**目的** — 初めて起動したモバイル端末が、目標 30fps を守る設定で始まるようにする。いまの規則
+(粗いポインタなら中)はコードだけにあり、SPEC に無い。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `DEVELOP/SPEC/RENDERING.md`「描画品質設定」 | `/modify-feature` を通して、「保存が無い初回は、主ポインタが粗い端末では〈手順 0 の基線で決めたプリセット〉、それ以外では高で始める」を書く。`docs(spec):` の単独 commit |
+| `src/render/graphics-settings.ts:280-288`(`firstRunGraphics`) | 手順 0 の基線と、手順 1〜6 の後の再計測から決めた値にする。中で 33.3ms を超えるなら低にする。低でも超えるなら、中を基にした個別値(解像度 50%・fps 上限 30・テクスチャ低)にして、どのプリセットとも一致しない状態で始める |
+| `src/render/graphics-settings.ts` の各項目の `presets.low` | 手順 0 の項目別の寄与(1項目ずつ切って測る)を見て、低の値を見直す |
+
+**達成条件と検証** — `npm run typecheck`、`npm run test:settings`(初回既定の検査を更新する)。
+`npm run mobile-probe` の初回既定の行で、LEO 戦闘ビューの中央値が 33.3ms 以下。
+
+### 手順 8. 予測の歩数予算を時間予算にする
+
+**目的** — CPU の遅い端末で、軌道予測がフレームを食い潰さないようにする。いまの予算は「600 歩」
+なので、1 歩が遅い端末ではそのぶん長くなる。時間で打ち切れば、上限が端末によらない。
+デスクトップでは、時間予算が 600 歩以上を許す値にして、従来の伸び方を保つ。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `src/game/dynamic/predictor.ts:15-26` | `ARC_STEP_BUDGET = 600` を上限に残したまま、`ARC_TIME_BUDGET_MS` を足す。歩をまとめて回す単位(例: 16 歩)ごとに `performance.now()` を読み、超えたら打ち切る。`ARC_INTERACTIVE_RATIO`・`ARC_MIN_ITEM_STEPS` の配分は時間に対しても同じ比で効かせる |
+| `src/game/dynamic/predictor.ts:54` | `allMotions().filter(...)` を毎フレーム新しい配列にしない(使い回す) |
+| `src/physics/dynamics.ts:67-110`(`stepRK4`) | 1 歩あたり約7個の一時オブジェクトを作っている。手順 0 の計測で、予測の時間に GC が目立つときだけ、作業用の器を使い回す形へ直す。目立たなければこの行は実施しない |
+| `tests/game/`(予測の回帰テスト) | 時間予算で打ち切ったときも、弧が消費されないまま捨てられ続けないこと(`ARC_MIN_ITEM_STEPS` の意図)を検査する |
+
+**達成条件と検証** — `npm run typecheck`、`npm run test:game`、`npm run test:physics`。
+`npm run mobile-probe` の CPU 4 倍減速で、update 内訳の「予測」が時間予算 +10% 以下。
+デスクトップの等速では、計画軌道を編集してから弧が伸びきるまでの時間が前後で変わらない
+(`?perf=1` の予測ステップ数の行で読む)。
+
+### 手順 9. タイトル画面を1つのレンダラで描く
+
+**目的** — タイトル中に GPU デバイスが2つ並ぶのをやめ、メモリと初期化時間を減らす。
+**この時点で挙動は変えない**(背景の図案と、非表示でも止めない規定を保つ)。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `src/launcher/title-scene.ts:300-380` | 自前の `WebGPURenderer` をやめ、ゲーム側のレンダラを受け取って描く。`setAnimationLoop` を外し、main の rAF ループの中で描く。pixelRatio の上限 1.5 と `antialias` は、描画先の寸法と最終段の AA へ置き換える。置き換えて絵が変わるなら、この手順は見送る(下のリスク表) |
+| `src/main.ts:64-87, 288-289` | タイトル中は rAF ループがタイトル場面を描くようにする。`launcher.start()` との受け渡しを整理する |
+| `src/launcher/launcher.ts` | タイトル場面の生成にレンダラを渡す |
+
+**達成条件と検証** — `npm run typecheck`、`npm run test:launcher`。`grep -rn "new THREE.WebGPURenderer\|new WebGPURenderer" src`
+が `src/render/scene.ts` の1件だけになる。`npm run smoke:browser` でタイトル → ステージ開始が通る。
+タイトル背景の撮影の前後が同じ。
+
+### 手順 10. HUD の背景ぼかしを切れるようにし、標識の配置を transform にする(SPEC → 実装)
+
+**目的** — モバイル GPU で毎フレーム再計算される背景ぼかしを、利用者が止められるようにする。
+毎フレーム書き換える標識の位置を、レイアウトを起こさない書き方にする。
+
+**変更が必要な箇所**
+
+| ファイル | すること |
+| --- | --- |
+| `DEVELOP/SPEC/UI-DESIGN.md`(ガラス面の節、72-84 付近) | `/modify-feature` と `/ui-design` を通して、「描画品質設定で UI の背景ぼかしを切れる。切ると、ぼかし非対応のブラウザと同じ不透明面のフォールバックで描く」を書く。`DEVELOP/SPEC/RENDERING.md`「描画品質設定」へ項目を足す。`docs(spec):` の単独 commit |
+| `src/hud/style/common-ui-style.ts:8-22, 68`・`src/theme.ts:138-140, 227-228` | `@supports not (backdrop-filter)` のフォールバック規則を、ルート要素のクラス(例: `.no-glass-blur`)でも効く形にする。同様のフォールバックが `src/game/hud/style/skeleton-style.ts:98`・`src/game/hud/style/map-view-style.ts:353` にもある |
+| `src/render/graphics-settings.ts` と設定の反映箇所 | `uiBlur` を足す(group `basic`、プリセットは 低 オフ・中 オン・高 オン)。反映はルート要素のクラスの付け外しにする |
+| `src/marker/marker-group.ts:114-140` | `style.left/top` を `style.transform = translate(...)` に変える。`textShadow` と色は、値が変わったときだけ書く |
+
+**達成条件と検証** — `npm run typecheck`、`npm run test:game`、`npm run smoke:layout-suite`。
+設定でぼかしをオフにすると、パネルがぼかし非対応時と同じ不透明面になる(同じ画面を
+`--disable-features` 等でぼかし非対応にして撮った画像と並べる)。標識が前後で同じ位置に出る
+(マップビューで地球・月・ラグランジュ点のラベル)。
+
+## 見積り
+
+効果の見積り(導出式つき。手順 0 の実測で置き換える):
+
+| 手順 | 効果 | 導出 |
+| --- | --- | --- |
+| 1 | main bundle −6.2MB | 削る JSON の実寸 5.0 + 1.2MB。GLB にすると 43,060 頂点 × (位置 12B + 法線 12B) ≈ 1.0MB が別ファイルで残る |
+| 2 | glb 36MB → 約 8MB(推定) | 現状: 位置・法線 2,328,916 本 × 12B = 27.9MB + 索引 3,515,580 × 2B + 194,688 × 4B = 7.8MB。量子化後: 頂点 1,164,458 × (位置 8B + 法線 4B) = 14.0MB + 索引 7.8MB = 21.8MB。meshopt はさらに 1/2〜1/3 にする(一般的な値。実測で置き換える) |
+| 3 | 頂点 116 万 → 50 万以下 | タンク船殻は周 192 → 96 で 1/2、軸 16/m → 4/m で 1/4。上位9本(約 45 万頂点)の多くが船殻系なら、そこで約 34 万頂点が減る(推定) |
+| 4 | タイトルまでの転送 −36MB(手順 2 の後なら −8MB) | 取得を後ろへ移すだけ。影マップ: 1024² × 4 層 × (R32F 4B + 深度 4B) = 32MB を解放 |
+| 5 | GPU テクスチャ −268MB(低) | 8192×4096 × 4B × 4/3(mip) = 179MB の画像2枚 → 4096 幅で各 45MB。(179 − 45) × 2 = 268MB。地表タイル: 260² × 4B × 2 本 × (96 − 32) 層 = 34.6MB をさらに削減 |
+| 6 | 120Hz 端末の GPU・CPU 仕事が 1/4(上限 30 のとき) | 1秒あたりのフレーム数が 120 → 30 |
+| 8 | 予測の CPU 時間を予算値以下に固定 | 現状 600 歩 × 0.025〜0.055ms = 15〜33ms(デスクトップ)。CPU 4 倍減速なら 60〜132ms。時間予算 4ms なら、4 倍減速時の歩数は 4 / (0.1〜0.22) ≈ 18〜40 歩/フレーム |
+| 10 | 不明 | モバイル GPU でのぼかしの費用は、手順 0 の実機計測でオン・オフの差として測る |
+
+作業量:
+
+| 手順 | 見積り | 根拠 |
+| --- | --- | --- |
+| 0 | 3h | chrome-session の引数4つ + 新規計測スクリプト1本 + 実機2台の手作業 |
+| 1 | 2h | 書き出し2本 + 読み手3ファイル + 読込の一般化 |
+| 2 | 2h | 後段の圧縮1つ + デコーダの設定 + 呼び元の洗い出し |
+| 3 | 3h | Blender の生成関数の調整と撮影比較の往復(3周を見込む) |
+| 4 | 2h | 起動順の付け替え + 影マップの解放と再確保 |
+| 5 | 4h | SPEC + 縮小の生成 + DeferredTexture の差し替え + 地表層数 |
+| 6 | 1.5h | SPEC + ループの間引き + 設定1項目 |
+| 7 | 1.5h | SPEC + 計測を見て値を決める |
+| 8 | 2.5h | 時間予算 + 配分の検査 + 条件つきの RK4 の器 |
+| 9 | 3h | タイトル場面のレンダラ受け渡しとループ統合 |
+| 10 | 2.5h | SPEC 2本 + CSS のフォールバック付け替え + 標識の transform |
+| 計 | 約 27h | |
+
+## リスクと落とし穴
+
+| リスク | 影響 | 露見する場所 |
+| --- | --- | --- |
+| `requiredLimits.maxSampledTexturesPerShaderStage: 32`(`src/render/scene.ts:59`)を満たさない端末がある(モバイルの WebGPU / WebGL2 では上限 16 が多い。推測) | 雲のシェーダが束縛不足で落ちる、または WebGL2 へ落ちて重くなる(実機では起動することは確認済み) | 手順 0 — 実機の行に、WebGPU / WebGL2 のどちらで起動したかと、雲が描けているかを書く |
+| CPU 減速のエミュレーションは GPU を遅くしない | エミュレーションで出たフレーム時間を、実機の値だと取り違える | 手順 0・7 — 手順 7 の判断は実機の行で行い、エミュレーションは前後の差だけに使う |
+| 量子化した属性を float と仮定する読み手がある | 質量・寸法・接触形状が狂う(絵は正しく見える) | 手順 2 — `getShipModuleTemplates` の呼び元の洗い出しと `npm run test:physics` |
+| 分割数を下げてシルエットが角張る | SPEC「球として描く…丸く見える」は天体の規定だが、船体の円筒も近景で多角形が見える | 手順 3 — 近景の `render-lab:compare` |
+| 船モジュールの読込前に、タイトルや建造プレビューがテンプレートを要求する | `ship module models are not loaded` の例外で落ちる | 手順 4 — `/inv-callstack` の洗い出しと `npm run smoke:browser` |
+| 影マップの解放と再確保が、スロットの寸法変更の経路と競合する | 影を戻した直後の1フレームだけ、影が黒か欠けになる | 手順 4 — オフ → オンを繰り返して目で見る |
+| テクスチャを差し替えると、アルベド倍率の前提が崩れる(`celestial-textures.ts` の倍率は画像の平均輝度から測った値) | 縮小で平均輝度は変わらないはずだが、JPEG の再圧縮で色がずれると天体の明るさがずれる | 手順 5 — 縮小版の緯度重み平均輝度を測り、原寸との差が 1% 以内かを確かめる |
+| `ObservedCloudField` の読み段の計算(画像の高さから lod を出す)が縮小版で変わる | 実写の雲の細部が粗くなる。日付変更線の線が出る | 手順 5 — 低の earth 構図で日付変更線付近を見る |
+| fps 上限の待ちが、フレーム時間の判定(雲の自動適応など)に「余裕」として入る | 上限で待っているのに、余裕ありと見て段を上げ、往復する | 手順 6 — 待った割合の行を出し、適応側が「描画にかかった時間」だけを読むことを、その計画の実施時に確かめる |
+| 時間予算で歩を打ち切ると、遅い端末で背景の個体の予測が伸びきらない | 敵機の予測線が短いまま。SPEC に伸びる速さの規定は無いが、遊びに影響する | 手順 8 — CPU 4 倍減速で予測線の長さを目で見る。`ARC_MIN_ITEM_STEPS` の下限が守られることを回帰テストで見る |
+| タイトルの AA と pixelRatio の上限 1.5 を、ゲームのパイプラインでは再現できない | タイトル背景の見た目が変わる | 手順 9 — 前後の撮影比較。変わるなら手順 9 を見送り、タイトル中だけゲーム側レンダラの初期化を遅らせる別案にする |
+| ぼかしを切る経路を `@supports` と別に作ってしまう | ぼかし非対応のブラウザとオフ設定で見た目が分かれ、SPEC のフォールバック規定から外れる | 手順 10 — 同じ CSS 規則を両方の条件で効かせる。撮影を並べる |
+| 標識を transform へ変えると、ラベル配置(`src/marker/label-layout.ts:70, 223, 243` が transform を書いている)と衝突する | ラベルが二重に動く・重なり回避が効かない | 手順 10 — マップビューのラベルを目で見る。transform を書く箇所が1つの要素に2つ無いことを読む |
+
+## 対象外
+
+- 雲の精細さの自動適応(フレーム時間に応じた段の降格)。別の計画で扱う。
+- 予測・暦の展開・GLB 解析のワーカー化。
+- 動的解像度(フレーム時間に応じて解像度倍率を自動で上下する)。雲の自動適応が入ったあとに、
+  同じ判定の仕組みへ載せる候補。
+- 物理の衝突判定の広域分割。現状の個体数で問題が出るかを手順 0 で見てから決める。
+- フォント(HackGen 1.6MB)のサブセット化。`font-display: swap` で描画を止めないので、
+  転送量の問題としてだけ残る。手順 0 の転送量の表で順位を見てから決める。
