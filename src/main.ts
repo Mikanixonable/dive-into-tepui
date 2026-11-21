@@ -5,8 +5,7 @@ import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
 import { createGameScene, RenderBackendUnavailableError, type GameScene } from './render/scene';
 import { renderBackendNoticeOf } from './render/render-backend';
-import { loadShipModuleModels } from './render/dynamic/ship/ship-module-models';
-import { loadAmmoModels } from './render/dynamic/ammo-models';
+import { loadBakedModels } from './render/dynamic/baked-models';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { newSyncSections, newUpdateSections } from './game/frame-sections';
@@ -39,17 +38,16 @@ import type { PageDevices } from './run/page-devices';
 import type { ViewOptionsSettings } from './game/view/view-options-settings';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 
-// ローディング表示下で canvas を作り WebGPU シーンを初期化する
+// ローディング表示下で canvas を作り WebGPU シーンを初期化する。焼き込みモデルの読込は
+// 始めるだけで待たない — 完了はランを組むときに待つので、タイトルを先に出せる。
 async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   showLoading();
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
 
-  const [gameScene] = await Promise.all([
-    createGameScene(canvas, graphics, browserViewport()),
-    loadShipModuleModels(),
-    loadAmmoModels(),
-  ]);
+  // 失敗はランを組むときの待ちが受け取るので、ここでは未処理の rejection にしない。
+  loadBakedModels().catch(() => {});
+  const gameScene = await createGameScene(canvas, graphics, browserViewport());
   hideLoading();
   return gameScene;
 }

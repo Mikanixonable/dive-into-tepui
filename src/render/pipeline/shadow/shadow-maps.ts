@@ -175,18 +175,21 @@ export class ShadowMaps {
   public casts(): boolean { return this.slotParameters.some((parameters) => parameters.w > 0); }
 
   // 影の品質を設定から受け取る。層付き深度マップは全層で同じ寸法を持つため、枠の数は
-  // active の層数だけを変える。張り直しはテクスチャの実体を差し替えないので、受け手が既に
+  // active の層数だけを変える。切られている間はスロットを描かないので、深度マップは 1 texel へ
+  // 縮めて GPU メモリを返す。張り直しはテクスチャの実体を差し替えないので、受け手が既に
   // 組んだグラフはそのまま生きる。
   public setQuality(enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number): void {
     this.enabled = enabled;
     this.texelsPerPixel = texelsPerPixel;
     const count = Math.min(slotCount, MAX_SHADOW_SLOTS);
-    if (count === this.slotCount && slotSize === this.slotSize) return;
+    const size = enabled ? slotSize : 1;
+    if (count === this.slotCount && slotSize === this.slotSize && size === this.target.width) return;
     this.slotCount = count;
     this.slotSize = slotSize;
     this.slotTexels.value = slotSize;
-    this.target.setSize(slotSize, slotSize, MAX_SHADOW_SLOTS);
-    this.farTarget.setSize(SHADOW_FAR_SLOT_SIZE, SHADOW_FAR_SLOT_SIZE, MAX_SHADOW_SLOTS);
+    this.target.setSize(size, size, MAX_SHADOW_SLOTS);
+    const farSize = Math.min(size, SHADOW_FAR_SLOT_SIZE);
+    this.farTarget.setSize(farSize, farSize, MAX_SHADOW_SLOTS);
     // 張り直した深度マップの中身は不定なので、全枠を空にし、次のフレームの空戻しを上限まで
     // 走らせる — 縮めた枠にも前フレームの絵が残ったままだと、デバッグ表示が読み手を欺く。
     this.clearSlots();

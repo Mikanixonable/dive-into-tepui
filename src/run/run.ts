@@ -14,6 +14,7 @@ import type { SnapshotSource } from '../launcher/save/snapshot-service';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { Viewport } from '../render/viewport';
+import { loadBakedModels } from '../render/dynamic/baked-models';
 import type { SettingValue } from '../settings/setting-value';
 import type { ShipBlueprintShelf } from '../game/ship/ship-blueprint';
 import type { ThemePalette } from '../theme';
@@ -50,6 +51,8 @@ export class Run implements SnapshotSource, PerfCountSource {
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
+    // 艦艇の表示物は焼き込みモデルの複製から組むので、モデル層を組む前に読込を待つ。
+    await loadBakedModels();
     const game = await Game.create(
       stageClass, startEpoch, devices.scene, devices.hud, sections, blueprints, progress, runOptions,
     );
@@ -76,6 +79,7 @@ export class Run implements SnapshotSource, PerfCountSource {
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
+    await loadBakedModels();
     const game = await Game.deserialize(
       serialized, stageClass, devices.scene, devices.hud, sections, blueprints, progress,
     );

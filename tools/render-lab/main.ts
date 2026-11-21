@@ -1,8 +1,7 @@
 // 描画テスト環境の画面。ケース(とその撮影)と、表示スタイルと、画面へ出す中間バッファを選ぶと、その絵を
 // ゲーム本体と同じ描画経路で描く。描画品質設定の操作はゲーム本体の設定パネル(GraphicsPanel)を
 // そのまま組む。
-import { loadShipModuleModels } from '../../src/render/dynamic/ship/ship-module-models';
-import { loadAmmoModels } from '../../src/render/dynamic/ammo-models';
+import { loadBakedModels } from '../../src/render/dynamic/baked-models';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import {
@@ -210,7 +209,7 @@ async function init(): Promise<void> {
   injectOnce('widget-style', WIDGET_STYLE);
 
   // fetch で来る大型アセットは、同期 factory を使うケースを組む前にまとめて待つ。
-  await Promise.all([loadShipModuleModels(), loadAmmoModels()]);
+  await loadBakedModels();
   // **この実行の中だけで生きる設定**。残すと、撮影が「人間が最後に押した状態」に依存して黙って変わる。
   const settings = new UserSettings(new MemorySettingStorage());
   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement, settings.graphics);
