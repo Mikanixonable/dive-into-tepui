@@ -8,6 +8,7 @@
 //   node tools/mobile-probe.mjs               # 全条件を測る
 //   PROBE_CPU=1 node tools/mobile-probe.mjs   # CPU 減速率を変える(既定 4)
 //   PROBE_DPR=1 node tools/mobile-probe.mjs   # DPR を変える(既定 3)
+//   PROBE_NET_MBPS=100 node tools/mobile-probe.mjs  # 回線の下り [Mbps] を変える(既定 20)
 //
 // 計測条件ごとに新しい Chrome プロファイルで回し、プリセット条件はページのスクリプトより
 // 先に localStorage へ描画設定を書いて選ぶ。
@@ -28,6 +29,9 @@ const debugPort = 9460;
 // モバイル相当の条件。iPhone 14/15 系の論理解像度と Safari の UA。
 const VIEWPORT = { width: 390, height: 844 };
 const CPU_THROTTLE_RATE = Number(process.env.PROBE_CPU ?? '4');
+// 回線の下り [Mbps]。ローカル配信は速すぎて、裏で読む資源がタイトル表示より先に届いてしまい、
+// 何がタイトルを待たせているかが転送量に出ない。モバイル回線相当に絞る。
+const NETWORK_MBPS = Number(process.env.PROBE_NET_MBPS ?? '20');
 const DEVICE_SCALE_FACTOR = Number(process.env.PROBE_DPR ?? '3');
 const MOBILE_UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15'
@@ -191,6 +195,10 @@ async function runCondition(cond) {
     const { devTools } = session;
     await devTools.send('Network.enable');
     await devTools.send('Network.setCacheDisabled', { cacheDisabled: true });
+    await devTools.send('Network.emulateNetworkConditions', {
+      offline: false, latency: 40,
+      downloadThroughput: NETWORK_MBPS * 1e6 / 8, uploadThroughput: NETWORK_MBPS * 1e6 / 8,
+    });
     if (cond.preset !== null) {
       // ページのスクリプト(UserSettings の読み込み)より先に描画設定を置く。
       // どのナビゲーションでも効くよう、新しい文書ごとに走る式として登録する。
@@ -322,7 +330,7 @@ async function main() {
 
   console.log(
     `条件: ${VIEWPORT.width}×${VIEWPORT.height} DPR ${DEVICE_SCALE_FACTOR} mobile touch`
-    + ` CPU減速×${CPU_THROTTLE_RATE} UA=iPhone Safari(HTTP キャッシュ無効、各条件は新規プロファイル)`,
+    + ` CPU減速×${CPU_THROTTLE_RATE} 回線 ${NETWORK_MBPS}Mbps UA=iPhone Safari(HTTP キャッシュ無効、各条件は新規プロファイル)`,
   );
   console.log('');
   console.log('| 条件 | タイトルまで [MB] | [s] | ステージ開始まで [MB] | [s] | 計測終了まで [MB] | フレーム平均 [ms] | p95 [ms] | テクスチャ [MB] | 描画経路 | 備考 |');
