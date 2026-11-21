@@ -80,6 +80,17 @@ export class CloudShapeEvaluator {
     return clamp(fieldTop.add(detail.mul(DETAIL_TOP_RELIEF)), 0, 1);
   }
 
+  // 細部がどう出ても雲頂高度(0..1)が越えない上界。覆いの割合と雲頂は細部について単調なので、
+  // 細部を上限に置いた値が上界になる。上界の外の点は、細部を評価せずに雲の外と決められる。
+  public cloudTopCeiling(fieldTop: FloatNode): FloatNode {
+    return this.cloudTop(fieldTop, float(DETAIL_AMPLITUDE_MAX));
+  }
+
+  // 細部がどう出ても覆いの割合(opaqueFraction)が越えない上界。
+  public opaqueFractionCeiling(opacity: FloatNode): FloatNode {
+    return this.opaqueFraction(opacity, float(DETAIL_AMPLITUDE_MAX));
+  }
+
   // 正規化した雲頂高度を、天体中心からの雲頂の半径(地表の半径 1 基準)へ写す。
   public cloudTopRadius(cloudTop: FloatNode, groundRadius: FloatNode): FloatNode {
     return cloudTop.mul(groundRadius.oneMinus()).add(groundRadius);
