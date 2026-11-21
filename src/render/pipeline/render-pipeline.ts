@@ -290,6 +290,12 @@ export class RenderPipeline {
     onPass('完了', passes.length, passes.length);
   }
 
+  // 雲殻の層だけを G バッファの添付形式でコンパイルする。雲の精細さの段のマテリアルを
+  // 事前に組むのに使う — 呼ぶ側でその段のマテリアルをメッシュへ張り替えておく。
+  public async compileCloudShell(scene: THREE.Scene, camera: THREE.Camera): Promise<void> {
+    await this.gbuffer.compileCloudShellLayer(scene, camera);
+  }
+
   // 1 フレームぶんの描画を、影マップ → G バッファ → 影 → ライティング → マテリアル → 大気 →
   // world → レンズ → 合成 → 3D UI → アンチエイリアスの順に発行する。模式図スタイルでは
   // マテリアル・大気・world・レンズの4つのパスをスキップする。デバッグ表示を選んでいてもパスは省略しない —

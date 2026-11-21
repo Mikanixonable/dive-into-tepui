@@ -115,6 +115,13 @@ export class CloudPresentation {
 
   private setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
 
+  // 積雲の精細さの段を置き直す。マテリアルは段ごとに組んであるので、シェーダの組み直しは
+  // 起きない。品質適応(実効段)と、段ごとのマテリアルの事前コンパイルがここを通る。
+  public setCumulusDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
+
+  // いま不透明表面へ張っている精細さの段。
+  public get cumulusDetail(): CumulusDetail { return this.surface.detail; }
+
   // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   // 天体固定で見た太陽直下点の経度 [rad] を生成系へ渡す。暦を持つ呼び出し側がフレームごとに
   // 渡し、null で生成側の既定の太陽へ戻す。実写の場は時刻を持たないので何もしない。
