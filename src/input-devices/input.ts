@@ -4,10 +4,11 @@
 // take* の handler が true を返したイベントはキューから取り除かれる。
 // takePresses で掴んだ押下は掴みドラッグになり、その指の移動は mouse() と
 // 2本指ジェスチャへ載らず、離してもクリックを合成しない。
-import { type KeyBinding, SCROLL_GUARD_KEYS } from './key-mapping';
+import { KeyboardTracker } from './keyboard-tracker';
 import { PinchTracker } from './pinch-tracker';
 import { LongPressDetector } from './long-press-detector';
 import { DoubleTapSynthesizer } from './double-tap-synthesizer';
+import type { KeyBinding } from './key-mapping';
 import type { PointerPoint, PointerPointRecord } from './pointer-point';
 
 // これ未満の累積移動量ならドラッグではなくクリック扱い [px]
@@ -63,15 +64,6 @@ interface GrabbedDragRecord {
   releaseAnnounced: boolean;
 }
 
-// どの操作にも割り当てていないが、押されるとフォーカスが移動してゲームが操作不能に
-// なるため既定動作だけ止めるキー。
-const FOCUS_GUARD_CODE = 'Tab';
-
-// code がこのキー割り当てに一致するか(altCodes も含めて)判定する。
-function matchesCode(key: KeyBinding, code: string): boolean {
-  return key.code === code || (key.altCodes?.includes(code) ?? false);
-}
-
 const ZERO_MOUSE_DELTA: MouseDelta = { dx: 0, dy: 0, panDx: 0, panDy: 0, wheel: 0, roll: 0 };
 
 // macOS では Command キーを押している間、他のキーの keyup がページに配送されない。
@@ -80,10 +72,8 @@ const ZERO_MOUSE_DELTA: MouseDelta = { dx: 0, dy: 0, panDx: 0, panDy: 0, wheel: 
 const META_CODES = ['MetaLeft', 'MetaRight'];
 
 export class Input {
-  private keys = new Set<string>();
-  // takeHeld で確保済みの code。down()/takeKey()/takeKeys() からは見えなくなる。
-  private claimedCodes = new Set<string>();
-  private pendingPresses: string[] = [];
+  // キーボード入力の追跡(押下中セット・押下エッジ・仮想キー)。
+  private readonly keyboard = new KeyboardTracker();
   private pendingClicks: PointerPointRecord[] = [];
   private pendingDoubleClicks: PointerPointRecord[] = [];
   private pendingMiddleClicks: PointerPointRecord[] = [];
@@ -95,7 +85,6 @@ export class Input {
   private panDy = 0;
   private wheel = 0;
   private roll = 0;
-  private framePresses: string[] = [];
   private frameClicks: PointerPointRecord[] = [];
   private frameDoubleClicks: PointerPointRecord[] = [];
   private frameMiddleClicks: PointerPointRecord[] = [];
@@ -159,22 +148,16 @@ export class Input {
     document.addEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
-  // keydown を受け、押下エッジ(pendingPresses)と押下中セット(keys)へ反映する。
+  // keydown を受け、キー追跡へ反映し、入力活動を通知する。
   private readonly handleKeyDown = (e: KeyboardEvent): void => {
-    // Space スクロール・矢印キーのページスクロールと、割り当ての無い Tab による
-    // フォーカス移動(ゲームが操作不能になる)を抑止する
-    if (e.code === FOCUS_GUARD_CODE || SCROLL_GUARD_KEYS.some((k) => matchesCode(k, e.code))) {
-      e.preventDefault();
-    }
-    if (!e.repeat) this.pendingPresses.push(e.code);
-    this.keys.add(e.code);
+    this.keyboard.keyDown(e);
     this.notePointerKind('mouse');
   };
 
   // keyup を受け、Command キーなら押下中状態を一括解除し、それ以外は押下中セットから除外する。
   private readonly handleKeyUp = (e: KeyboardEvent): void => {
     if (META_CODES.includes(e.code)) this.releaseAll();
-    else this.keys.delete(e.code);
+    else this.keyboard.keyUp(e);
   };
 
   private readonly handleBlur = (): void => this.releaseAll();
@@ -188,8 +171,7 @@ export class Input {
   // 押下中・ドラッグ中の状態をすべて解除する。keyup / pointerup が届かないまま
   // 操作が中断された場合の復帰点。
   private releaseAll(): void {
-    this.keys.clear();
-    this.claimedCodes.clear();
+    this.keyboard.release();
     this.dragging = false;
     this.panDragging = false;
     // 掴んだ指は離されたものとして受け手へ届ける。
@@ -398,19 +380,13 @@ export class Input {
   // 押下中セットとエッジトリガキューへ反映する。ポインタ種別の通知はしない —
   // 呼び出し元がタッチ由来とは限らない(HUD 上の代替ボタンはマウスでも押せる)ため。
   public setVirtualKey(key: KeyBinding, down: boolean): void {
-    if (down) {
-      if (!this.keys.has(key.code)) this.pendingPresses.push(key.code);
-      this.keys.add(key.code);
-    } else {
-      this.keys.delete(key.code);
-    }
+    this.keyboard.setVirtualKey(key, down);
   }
 
   // key を1フレームぶんだけ押されたことにする。HUD 上の代替操作ボタンが物理キーと
   // 同じ押下エッジを合成する唯一の経路。
   public tapKey(key: KeyBinding): void {
-    this.setVirtualKey(key, true);
-    this.setVirtualKey(key, false);
+    this.keyboard.tapKey(key);
   }
 
   // kind が直前の値から変わっていれば記録して onPointerKindChange へ通知する。
@@ -435,31 +411,22 @@ export class Input {
       ? point : null;
   }
 
-  // code が押下中かつ未確保か返す。
-  private isDown(code: string): boolean {
-    return this.keys.has(code) && !this.claimedCodes.has(code);
-  }
-
   // key が現在押下中か返す。takeHeld で確保済みの code は押下と見なさない。
   public down(key: KeyBinding): boolean {
-    return this.isDown(key.code) || (key.altCodes?.some((c) => this.isDown(c)) ?? false);
+    return this.keyboard.down(key);
   }
 
   // 今フレーム key がホールドされていれば、その code (と altCodes) を先着で確保して true を返す。
   // 確保した code は以後 down() / takeKey() / takeKeys() から見えなくなる。
   public takeHeld(key: KeyBinding): boolean {
-    if (!this.down(key)) return false;
-    this.claimedCodes.add(key.code);
-    for (const c of key.altCodes ?? []) this.claimedCodes.add(c);
-    return true;
+    return this.keyboard.takeHeld(key);
   }
 
   // フレームの先頭で1度だけ呼ぶ。イベントハンドラが溜めた未確定分を今フレームの
   // スナップショットとして確定し、次フレーム分の蓄積をリセットする。
   public update(): void {
-    this.claimedCodes.clear();
+    this.keyboard.update();
     // 蓄積分を今フレームのスナップショットとして確定
-    this.framePresses = this.pendingPresses;
     this.frameClicks = this.pendingClicks;
     this.frameDoubleClicks = this.pendingDoubleClicks;
     this.frameMiddleClicks = this.pendingMiddleClicks;
@@ -480,7 +447,6 @@ export class Input {
       else grab.releaseAnnounced = true;
     }
     // 次フレーム分の蓄積をリセット
-    this.pendingPresses = [];
     this.pendingClicks = [];
     this.pendingDoubleClicks = [];
     this.pendingMiddleClicks = [];
@@ -497,21 +463,13 @@ export class Input {
   // 今フレームの押下エッジに key があれば消費して true を返す。takeHeld で確保済みの
   // code は渡さない。
   public takeKey(key: KeyBinding): boolean {
-    const i = this.framePresses.findIndex((code) => matchesCode(key, code) && !this.claimedCodes.has(code));
-    if (i === -1) return false;
-    this.framePresses.splice(i, 1);
-    return true;
+    return this.keyboard.takeKey(key);
   }
 
   // 今フレームの未消費の押下エッジを順に渡し、handler が true を返したものを消費する。
   // takeHeld で確保済みの code は渡さない。
   public takeKeys(handler: (code: string) => boolean): void {
-    for (const code of [...this.framePresses]) {
-      if (this.claimedCodes.has(code)) continue;
-      if (!handler(code)) continue;
-      const i = this.framePresses.indexOf(code);
-      if (i !== -1) this.framePresses.splice(i, 1);
-    }
+    this.keyboard.takeKeys(handler);
   }
 
   // 今フレームの未消費の左ボタン・単指の押下を順に渡し、handler が true を返した押下を
