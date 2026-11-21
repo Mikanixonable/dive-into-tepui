@@ -232,6 +232,15 @@ test:game(549) / test:physics(510) / test:render が全て通過。
 `game-presentation.ts`(sync 3ブロック) > `input.ts`(装置3分割) >
 `world-sfx.ts`(ワンショットレシピ — 音声作業中のため最後)。
 
+### 追加実施(2026-11-21 続)
+
+- `7cd5db06a` — 残件一括: 赤道・相対ノードマーカーを `node-marker.ts` の NodeMarker
+  基底へ統合(§3 equator×relative)、三尖星 SVG を `marker-shapes.ts` の `leadMarkerSvg` へ、
+  `DRAG_COEFFICIENT` 二重定義を dynamic-motion-thermal の export へ一元化、
+  `metal-f0.ts` を tools/model-builder へ移動(§5)
+- §4: `ship-construction.ts` と `modular-ship.ts` の分割を進行中(SWE-2 委譲)
+- PR #206 として workspace3 の蓄積変更を main へ送出済み
+
 ### 未実施の判断待ち(§1 残件)
 
 - `modular-ship.ts` / `ship-construction-view.ts` が View を直接 new — モデル層が装置を
