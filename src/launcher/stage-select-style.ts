@@ -163,13 +163,7 @@ const STAGE_SELECT_STYLE = `
   flex: 0 0 auto; padding-top: 12px; color: var(--text-faint);
   font-family: ${TITLE_FONT_MONO}; font-size: 11px; cursor: pointer;
 }
-#stage-select .ss-settings {
-  align-self: flex-end; flex: 0 0 auto; margin-top: 2px;
-  padding: var(--space-3) var(--space-4); border: 0;
-  border-radius: var(--radius-control); color: var(--text-dim); background: var(--glass-control);
-  font: 12px ${TITLE_FONT_SANS}; cursor: pointer;
-}
-#stage-select .ss-settings:hover { color: var(--text); background: var(--glass-control-hover); }
+#stage-select .ss-settings { align-self: flex-end; flex: 0 0 auto; margin-top: 2px; }
 #stage-select .hidden { display: none !important; }
 #stage-select .ss-datetime { display: flex; flex-direction: column; gap: 14px; }
 #stage-select .ss-datetime-fields { display: flex; flex-wrap: wrap; gap: 12px; }

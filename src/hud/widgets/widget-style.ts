@@ -108,6 +108,42 @@ export const WIDGET_STYLE = `
   font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 
+/* 収納グリップ。平常時は ::before の細い棒だけを見せ、ホバー/フォーカスで棒が操作面の太さまで
+   太り、字形(押したときに面が動く向き)が現れる。button 要素で修飾し、.ui-icon-control の円形と
+   .ui-selectable のホバー面より優先させる。 */
+button.ui-edge-grip {
+  position: relative; isolation: isolate; padding: 0; border: 0; border-radius: var(--radius-pill);
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: transparent; cursor: pointer; pointer-events: auto;
+  font-size: var(--font-xxs); line-height: 1; user-select: none;
+  transition: color var(--transition-fast);
+}
+button.ui-edge-grip::before {
+  content: ''; position: absolute; z-index: -1; border-radius: var(--radius-pill);
+  background: var(--text-faint);
+  transition: inset var(--transition-fast), background var(--transition-fast);
+}
+button.ui-edge-grip--vertical { width: var(--edge-grip-thick); height: var(--edge-grip-length); }
+button.ui-edge-grip--vertical::before { inset: 0 calc(50% - var(--edge-grip-bar) / 2); }
+button.ui-edge-grip--horizontal { width: var(--edge-grip-length); height: var(--edge-grip-thick); }
+button.ui-edge-grip--horizontal::before { inset: calc(50% - var(--edge-grip-bar) / 2) 0; }
+button.ui-edge-grip:hover, button.ui-edge-grip:focus-visible {
+  background: transparent; color: var(--color-primary-hover);
+}
+button.ui-edge-grip:hover::before, button.ui-edge-grip:focus-visible::before { background: var(--glass-control-hover); }
+button.ui-edge-grip--vertical:hover::before,
+button.ui-edge-grip--vertical:focus-visible::before { inset: 0 calc(50% - var(--edge-grip-thick) / 2); }
+button.ui-edge-grip--horizontal:hover::before,
+button.ui-edge-grip--horizontal:focus-visible::before { inset: calc(50% - var(--edge-grip-thick) / 2) 0; }
+button.ui-edge-grip:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+/* ホバーの無い粗いポインタでは、太った姿と字形を常に見せる。 */
+@media ${MQ_COARSE} {
+  button.ui-edge-grip { color: var(--color-primary); }
+  button.ui-edge-grip::before { background: var(--glass-control); }
+  button.ui-edge-grip--vertical::before { inset: 0 calc(50% - var(--edge-grip-thick) / 2); }
+  button.ui-edge-grip--horizontal::before { inset: calc(50% - var(--edge-grip-thick) / 2) 0; }
+}
+
 /* タップ最小寸法は pointer:coarse でだけ効かせる — マウス操作では詰めて並べたウィジェットの
    間隔を保つ。要素自身の寸法(min-width/min-height)で確保する: 重ね合わせの疑似要素で広げると、
    視覚サイズを変えないぶん間隔の詰まった隣接要素のヒット領域まで侵してしまうため。 */

@@ -208,6 +208,8 @@ export class Run implements SnapshotSource, PerfCountSource {
   // ------------------------------------------------------------ ランの外への読み口
 
   public get stageId(): string { return this.game.activeStage.id; }
+  // ステージ選択画面と同じ、遊んでいるステージの表示名。
+  public get stageLabel(): string { return this.game.activeStage.stageClass.selectLabel; }
   public get isPaused(): boolean { return this.presentation.isPaused; }
   public get isPlaying(): boolean { return this.game.activeStage.isPlaying; }
   // 記録を1件残すときの読み口。

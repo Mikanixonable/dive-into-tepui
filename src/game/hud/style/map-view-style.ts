@@ -54,23 +54,6 @@ export const MAP_VIEW_STYLE = `
   letter-spacing: 0;
 }
 
-#hud .hud-map-root.active .rail-toggle {
-  border: 0;
-  border-radius: 50%;
-  background: var(--glass-control);
-  color: var(--muted);
-}
-#hud .hud-map-root.active #hud-predict-toggle {
-  border: 0;
-  border-radius: 50%;
-  background: var(--glass-control);
-  color: var(--muted);
-}
-#hud .hud-map-root.active .rail-toggle:hover,
-#hud .hud-map-root.active #hud-predict-toggle:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
-#hud .hud-map-root.active .rail-toggle:focus-visible,
-#hud .hud-map-root.active #hud-predict-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-
 /* Object list: 現在の選択だけを Accent、カメラの関連軌道を Near accent で分ける。 */
 #hud .hud-map-root.active #hud-physical-object-list { max-height: min(576px, 64dvh); }
 #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head {

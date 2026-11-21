@@ -21,6 +21,7 @@ import { HudShell } from './hud/hud-shell';
 import { MarkerDevice } from './marker/marker-device';
 import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
 import { PauseMenu } from './hud/windows/pause-menu';
+import { fmtElapsedUnits } from './hud/format';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { debugInfoOpenAtStart, Launcher } from './launcher/launcher';
@@ -83,6 +84,7 @@ function startAnimationLoop(
     // 決まった周回の進行と、設定面の試聴に合わせる。
     pauseMenu.sync(now);
     const run = launcher.current;
+    pauseMenu.syncSession(run === null ? null : { stageLabel: run.stageLabel, elapsed: fmtElapsedUnits(run.game.simTime) });
     bgm.sync({
       volume: settings.audibleBgmVolume,
       inRun: run?.isPlaying ?? false,
@@ -148,7 +150,10 @@ function initHud(settings: UserSettings): {
   const panelCollapse = new PanelCollapse(
     settings.panelCollapsed, (state) => settings.panelCollapsed.set(state),
   );
-  const hud = new Hud(shell, panelCollapse, settings.renderStyle.current);
+  const hud = new Hud(
+    shell, panelCollapse, settings.renderStyle.current,
+    settings.missionTimeFormat, (format) => settings.missionTimeFormat.set(format),
+  );
   // マーカーの骨格は装置が、種別ごとの見た目は表示の導出が注入する。骨格を先に置き、
   // 同じ詳細度であれば種別ごとのスタイル指定が優先される順序にする。
   const markers = new MarkerDevice(shell.layers.marker);

@@ -19,6 +19,7 @@ const RENDER_STYLE_KEY = 'tepui.settings.renderStyle';
 const BGM_VOLUME_KEY = 'tepui.settings.bgm_vol';
 const MAP_DISPLAY_TOGGLES_KEY = 'tepui.mapDisplayToggles';
 const GRID_VISIBILITY_KEY = 'tepui.gridVisibility';
+const MISSION_TIME_FORMAT_KEY = 'tepui.missionTimeFormat';
 
 // 保存済みの値を仕込んだ保存先を作る。
 function storageWith(entries: Readonly<Record<string, string>>): MemorySettingStorage {
@@ -98,6 +99,15 @@ export function register(): void {
     assert.equal(graphics.lodBias, 0.5, '候補にある保存値が残らない');
     assert.equal(graphics.clouds, DEFAULT_GRAPHICS.clouds, '候補外の値が既定へ落ちない');
     assert.equal(graphics.antialias, DEFAULT_GRAPHICS.antialias, '保存に無い鍵が既定で埋まらない');
+  });
+
+  test('user-settings: 時刻の表記は保存値が読み戻り、知らない値は T+ 表記へ落ちる', () => {
+    const settings = new UserSettings(storageWith({ [MISSION_TIME_FORMAT_KEY]: 'absolute' }));
+    assert.equal(settings.missionTimeFormat.current, 'absolute');
+    const fallback = new UserSettings(storageWith({ [MISSION_TIME_FORMAT_KEY]: 'unix' }));
+    assert.equal(fallback.missionTimeFormat.current, 'elapsed');
+    const unset = new UserSettings(new MemorySettingStorage());
+    assert.equal(unset.missionTimeFormat.current, 'elapsed');
   });
 
   test('user-settings: 書き換えが購読者全員へ届き、解除すると止まる', () => {
