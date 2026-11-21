@@ -3,12 +3,11 @@
 import { cappedCylinderCylinderContact } from '../../physics/capped-cylinder-contact';
 import { v3, type Vec3 } from '../../math/vec3';
 import type { ShipAssembly } from './ship-assembly';
-import { pieceOfModule } from './ship-assembly-graft';
 import type { ModuleOrientation } from './ship-assembly-transform';
 import type { ModuleTransform, ShipAssemblyTotals } from './ship-assembly-types';
-import { createShipModuleInstance } from './ship-module-instance';
 import { shipPhysicsShape } from './ship-physics-shape';
-import { pieceRootId, placementFor } from './ship-construction-rules';
+import { placementFor } from './ship-construction-rules';
+import { applyConstructionPlacement, pairKey } from './ship-construction-apply';
 import type { ConstructionHeld, ConstructionSymmetry, ConstructionTarget } from './ship-construction-types';
 
 // 試し置きで置いた(動かした)モジュールと、その船体座標でのワールド変換。
@@ -28,11 +27,6 @@ export interface ConstructionTrial {
 
 // 接合面どうしの接触を重なりとみなさないための許容深度 [m]。
 const OVERLAP_DEPTH = 0.01;
-
-// 2つのモジュール id の、向きに依らない組の鍵。直接接続する組の照合に使う。
-function pairKey(a: string, b: string): string {
-  return a < b ? `${a}\n${b}` : `${b}\n${a}`;
-}
 
 // 船体座標での primitive の軸は取り付け規則上つねに座標軸と一致するが、回転の合成で
 // 1e-16 台のずれが乗ると接触の数値経路が変わり、実際のめり込みを見逃すことがある。
@@ -94,61 +88,23 @@ export function tryConstructionPlacement(
   assembly: ShipAssembly, anchorId: string, held: ConstructionHeld,
   target: ConstructionTarget, orientation: ModuleOrientation, symmetry: ConstructionSymmetry,
 ): ConstructionTrial {
+  const invalid = (reason: string | null): ConstructionTrial => ({
+    valid: false, reason, placed: [], totals: null,
+    healthyCockpitRemains: hasHealthyCockpit(assembly), overlapModuleIds: [],
+  });
   const placement = placementFor(assembly, anchorId, held, target, orientation, symmetry);
-  if (!placement.valid) {
-    return {
-      valid: false, reason: placement.reason, placed: [], totals: null,
-      healthyCockpitRemains: hasHealthyCockpit(assembly), overlapModuleIds: [],
-    };
-  }
+  if (!placement.valid) return invalid(placement.reason);
+
   const work = assembly.clone();
-  const placedIds: string[] = [];
-  const connected = new Set<string>();
-  let placedRootId: string | null = null;
-
-  // 付け替えは先端部を先に切り離す。付け替えは対称を持たないので接ぎ木は1本。
-  let detached: ShipAssembly | null = null;
-  let detachedConnectionId: string | null = null;
-  if (held.kind === 'piece') {
-    const piece = pieceOfModule(work.graph, anchorId, held.moduleId);
-    detachedConnectionId = piece?.rootConnection.id ?? null;
-    detached = work.detachPiece(held.moduleId, anchorId);
-  }
-
-  for (const [index, plan] of placement.attachments.entries()) {
-    if (held.kind === 'catalog') {
-      const definition = work.catalog.require(held.definitionId);
-      const id = freshModuleId(work, `placed-${index + 1}`);
-      work.addModule(
-        createShipModuleInstance(definition, id), plan.parentId, plan.transform,
-        plan.connectionKind, undefined, plan.sideSlot ?? undefined,
-      );
-      placedRootId ??= id;
-      placedIds.push(id);
-      connected.add(pairKey(plan.parentId, id));
-    } else {
-      const piece = held.kind === 'piece' ? detached! : held.piece.copiedAsNew(`copy-${index + 1}`);
-      const rootId = pieceRootId(piece);
-      if (rootId === null) return { valid: false, reason: '手に持った部品が見つかりません', placed: [], totals: null, healthyCockpitRemains: hasHealthyCockpit(assembly), overlapModuleIds: [] };
-      const ids = piece.moduleIds;
-      work.attachPiece(
-        piece, plan.parentId, plan.transform, plan.connectionKind,
-        plan.sideSlot ?? undefined, undefined, detachedConnectionId ?? undefined,
-      );
-      placedRootId ??= rootId;
-      placedIds.push(...ids);
-      connected.add(pairKey(plan.parentId, rootId));
-    }
-  }
-
-  // 継ぎ目の先の部分を、割り込ませたモジュールの反対側の端へ付き直す。
-  if (placement.reattachment !== null && placedRootId !== null) {
-    const far = work.detachPiece(placement.reattachment.farModuleId, anchorId);
-    work.attachPiece(
-      far, placedRootId, placement.reattachment.transform, 'axial',
-      undefined, undefined, placement.reattachment.connectionId,
-    );
-    connected.add(pairKey(placedRootId, placement.reattachment.farModuleId));
+  let placedIds: readonly string[];
+  let connected: ReadonlySet<string>;
+  try {
+    ({ placedIds, connected } = applyConstructionPlacement(
+      work, anchorId, held, placement,
+      index => held.kind === 'catalog' ? freshModuleId(work, `placed-${index + 1}`) : `copy-${index + 1}`,
+    ));
+  } catch (error) {
+    return invalid(error instanceof Error ? error.message : '配置できません');
   }
 
   const placed = placedIds.map((id): ConstructionTrialModule => {

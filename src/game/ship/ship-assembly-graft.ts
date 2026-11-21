@@ -40,6 +40,27 @@ function firstEdgeInto(
   return entering.get(to) ?? null;
 }
 
+// excludedEdgeId を渡らずに start から無向に辿れるモジュール id の集合。
+// 接続を切った先端部・連結成分のどちらにも使える共用の走査。
+export function reachableModuleIds(
+  connections: readonly ShipConnection[], start: string, excludedEdgeId: string | null = null,
+): Set<string> {
+  const moduleIds = new Set([start]);
+  const pending = [start];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    for (const edge of connections) {
+      if (edge.id === excludedEdgeId) continue;
+      const neighbor = neighborOf(edge, current);
+      if (neighbor !== null && !moduleIds.has(neighbor)) {
+        moduleIds.add(neighbor);
+        pending.push(neighbor);
+      }
+    }
+  }
+  return moduleIds;
+}
+
 // anchorId から見て moduleId より先にある部分を返す。moduleId 自身と、moduleId から
 // anchorId 側以外へ伸びるモジュールが先端部になる。moduleId === anchorId、または
 // moduleId へ anchorId から辿れないときは null。
@@ -49,21 +70,7 @@ export function pieceOfModule(
   if (anchorId === moduleId) return null;
   const rootConnection = firstEdgeInto(connections, anchorId, moduleId);
   if (rootConnection === null) return null;
-  // 根元の接続を渡らずに moduleId から辿れる集合。
-  const moduleIds = new Set([moduleId]);
-  const pending = [moduleId];
-  while (pending.length > 0) {
-    const current = pending.pop()!;
-    for (const edge of connections) {
-      if (edge.id === rootConnection.id) continue;
-      const neighbor = neighborOf(edge, current);
-      if (neighbor !== null && !moduleIds.has(neighbor)) {
-        moduleIds.add(neighbor);
-        pending.push(neighbor);
-      }
-    }
-  }
-  return { moduleIds, rootConnection };
+  return { moduleIds: reachableModuleIds(connections, moduleId, rootConnection.id), rootConnection };
 }
 
 // 接続木を rootId を根として組み直す。モジュールどうしの変換を保ち、根から遠い側を子とする。

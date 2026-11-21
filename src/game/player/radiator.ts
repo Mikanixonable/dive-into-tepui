@@ -10,7 +10,12 @@ import { ContactProxy } from '../dynamic/contact-proxy';
 import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 import type { ShipAssembly } from '../ship/ship-assembly';
 import { applyTransformToDirection, applyTransformToPoint } from '../ship/ship-assembly-transform';
-import { DeployablePanelState, type SerializedDeployablePanelState } from './deployable-panel-state';
+import { DeployablePanelState } from './deployable-panel-state';
+import {
+  DeployablePanelSet,
+  type RestoredDeployablePanel,
+  type SerializedDeployablePanelSet,
+} from './deployable-panel-set';
 
 const RADIATOR_DEPLOY_TIME = 3.0; // 収納⇔全開にかかる時間 [s]
 const RADIATOR_SOLAR_ABSORB = 0.15; // 日照面の太陽光吸収率
@@ -19,21 +24,7 @@ const RADIATOR_FOLD_MASS = 5; // 接触で押し合うときの、蛇腹1折り�
 
 export type RadiatorSide = 'up' | 'down';
 
-interface SerializedRadiatorPanel {
-  readonly id: string;
-  readonly state: SerializedDeployablePanelState;
-}
-
-export interface SerializedRadiatorSystem {
-  readonly up: SerializedDeployablePanelState;
-  readonly down: SerializedDeployablePanelState;
-  readonly panels: readonly SerializedRadiatorPanel[] | null;
-}
-
-interface RestoredRadiatorPanel {
-  readonly id: string;
-  readonly state: DeployablePanelState;
-}
+export type SerializedRadiatorSystem = SerializedDeployablePanelSet;
 
 type RadiatorContactReaction = (
   moduleId: string,
@@ -43,11 +34,10 @@ type RadiatorContactReaction = (
 ) => void;
 
 export class RadiatorSystem {
-  private readonly panels = new Map<string, DeployablePanelState>();
+  private readonly panels: DeployablePanelSet;
   private readonly wear = new Map<string, number>();
   private readonly foldProxies = new Map<string, ContactProxy[]>();
   private activeFolds: readonly ContactProxy[] = [];
-  private assemblyValue: ShipAssembly | null;
 
   public constructor(
     private readonly owner: EntityContactParticipant,
@@ -55,14 +45,9 @@ export class RadiatorSystem {
     up = new DeployablePanelState(0, 0),
     down = new DeployablePanelState(0, 0),
     assembly: ShipAssembly | null = null,
-    restoredPanels: readonly RestoredRadiatorPanel[] = [],
+    restoredPanels: readonly RestoredDeployablePanel[] = [],
   ) {
-    this.panels.set('up', up);
-    this.panels.set('down', down);
-    for (const panel of restoredPanels) {
-      if (panel.id.length > 0) this.panels.set(panel.id, panel.state);
-    }
-    this.assemblyValue = assembly;
+    this.panels = new DeployablePanelSet('radiator', 0, up, down, assembly, restoredPanels);
   }
 
   public static deserialize(
@@ -71,53 +56,26 @@ export class RadiatorSystem {
     onContact: RadiatorContactReaction,
     assembly: ShipAssembly | null = null,
   ): RadiatorSystem {
-    const up = DeployablePanelState.deserialize(serialized.up) ?? new DeployablePanelState(0, 0);
-    const down = DeployablePanelState.deserialize(serialized.down) ?? new DeployablePanelState(0, 0);
-    const restoredPanels: RestoredRadiatorPanel[] = [];
-    for (const panel of serialized.panels ?? []) {
-      const state = DeployablePanelState.deserialize(panel.state);
-      if (state !== null && panel.id.length > 0) restoredPanels.push({ id: panel.id, state });
-    }
+    const { up, down, restoredPanels } = DeployablePanelSet.restore(serialized, 0);
     return new RadiatorSystem(owner, onContact, up, down, assembly, restoredPanels);
   }
 
   // assembly の radiator module ID へ状態を結び付ける。互換スロット名（up/down）は接続順へ移譲する。
-  public syncAssembly(assembly: ShipAssembly | null = this.assemblyValue): void {
-    if (assembly === null) return;
-    this.assemblyValue = assembly;
-    const old = new Map(this.panels);
-    const radiators = assembly.modules.filter(module => module.kind === 'radiator');
-    const next = new Map<string, DeployablePanelState>();
-    for (const [index, module] of radiators.entries()) {
-      const legacy = index === 0 ? old.get('up') : index === 1 ? old.get('down') : undefined;
-      const state = old.get(module.id) ?? legacy
-        ?? new DeployablePanelState(module.deployed >= 0.5 ? 1 : 0, module.deployed);
-      next.set(module.id, state);
-    }
-    this.panels.clear();
-    for (const [id, state] of next) this.panels.set(id, state);
-  }
-
-  private key(sideOrId: RadiatorSide | string): string | null {
-    if (this.panels.has(sideOrId)) return sideOrId;
-    if (this.assemblyValue === null) return null;
-    const radiators = this.assemblyValue.modules.filter(module => module.kind === 'radiator');
-    const index = sideOrId === 'up' ? 0 : sideOrId === 'down' ? 1 : -1;
-    return index >= 0 ? radiators[index]?.id ?? null : null;
+  public syncAssembly(assembly: ShipAssembly | null = null): void {
+    if (assembly === null) this.panels.syncAssembly();
+    else this.panels.syncAssembly(assembly);
   }
 
   public toggle(sideOrId: RadiatorSide | string): void {
-    const key = this.key(sideOrId);
-    if (key !== null) this.panels.get(key)?.toggle();
+    this.panels.toggle(sideOrId);
   }
 
   public setDeployed(sideOrId: RadiatorSide | string, deployed: boolean): void {
-    const key = this.key(sideOrId);
-    if (key !== null) this.panels.get(key)?.setTarget(deployed);
+    this.panels.setDeployed(sideOrId, deployed);
   }
 
   public update(dt: number, wear: Readonly<Record<string, number>>): void {
-    if (this.assemblyValue !== null) this.syncAssembly();
+    if (this.panels.assembly !== null) this.panels.syncAssembly();
     for (const [key, state] of this.panels) {
       state.update(dt, RADIATOR_DEPLOY_TIME);
       this.wear.set(key, Math.max(0, Math.min(1, wear[key] ?? 0)));
@@ -126,7 +84,7 @@ export class RadiatorSystem {
 
   // side の展開方向を残した互換 API。実際の配置は module local layout が所有する。
   public foldThetas(sideOrId: RadiatorSide | string): { even: number; odd: number } {
-    const key = this.key(sideOrId);
+    const key = this.panels.key(sideOrId);
     const deploy = key === null ? 0 : this.panels.get(key)?.value ?? 0;
     const tilt = Math.PI / 2 + (15 * Math.PI / 180 - Math.PI / 2) * deploy;
     return { even: tilt, odd: -tilt };
@@ -134,9 +92,10 @@ export class RadiatorSystem {
 
   private panelArea(key: string, totalCoolingRate: number): number {
     if ((this.wear.get(key) ?? 0) >= 1) return 0;
-    if (this.assemblyValue !== null) {
-      const module = this.assemblyValue.module(key);
-      const definition = module === null ? null : this.assemblyValue.definition(key);
+    const assembly = this.panels.assembly;
+    if (assembly !== null) {
+      const module = assembly.module(key);
+      const definition = module === null ? null : assembly.definition(key);
       return definition?.abilities.radiationArea ?? 0;
     }
     return totalCoolingRate / 2;
@@ -150,7 +109,7 @@ export class RadiatorSystem {
     readonly center: Vec3;
     readonly normal: Vec3;
   } {
-    const transform = this.assemblyValue?.worldTransformOf(key);
+    const transform = this.panels.assembly?.worldTransformOf(key);
     if (transform === null || transform === undefined) {
       return { center: layout.center, normal: qRotate(att.q, layout.normal) };
     }
@@ -173,8 +132,9 @@ export class RadiatorSystem {
   }
 
   private moduleLength(key: string): number {
-    const module = this.assemblyValue?.module(key);
-    return module === null || module === undefined ? 1 : this.assemblyValue?.definition(key)?.length ?? 1;
+    const assembly = this.panels.assembly;
+    const module = assembly?.module(key);
+    return module === null || module === undefined ? 1 : assembly?.definition(key)?.length ?? 1;
   }
 
   public get contactFolds(): readonly ContactProxy[] { return this.activeFolds; }
@@ -187,7 +147,7 @@ export class RadiatorSystem {
       const proxies = this.foldProxies.get(key) ?? [];
       this.foldProxies.set(key, proxies);
       const layouts = deployablePanelPoses('radiator', this.moduleLength(key) / 2, state.value);
-      const transform = this.assemblyValue?.worldTransformOf(key);
+      const transform = this.panels.assembly?.worldTransformOf(key);
       for (let i = 0; i < layouts.length; i++) {
         const layout = layouts[i];
         if (layout === undefined) continue;
@@ -214,12 +174,12 @@ export class RadiatorSystem {
   }
 
   public tipWorldPosition(sideOrId: RadiatorSide | string, shipR: Vec3, att: Attitude): Vec3 {
-    const key = this.key(sideOrId);
+    const key = this.panels.key(sideOrId);
     if (key === null) return v3(shipR.x, shipR.y, shipR.z);
     const layouts = deployablePanelPoses('radiator', this.moduleLength(key) / 2, this.panels.get(key)?.value ?? 0);
     const layout = layouts[layouts.length - 1];
     if (layout === undefined) return v3(shipR.x, shipR.y, shipR.z);
-    const transform = this.assemblyValue?.worldTransformOf(key);
+    const transform = this.panels.assembly?.worldTransformOf(key);
     const offset = transform === null || transform === undefined
       ? layout.center : applyTransformToPoint(transform, layout.center);
     return add(shipR, qRotate(att.q, offset));
@@ -227,36 +187,26 @@ export class RadiatorSystem {
 
   // 放熱板を1枚でも積んでいるか。deployOf と同じ結び付けで判定する。
   public hasPanels(): boolean {
-    return this.key('up') !== null || this.key('down') !== null;
+    return this.panels.hasPanels();
   }
 
   // side に放熱板を積んでいるか。deployOf と同じ結び付けで判定する。
   public hasPanel(side: RadiatorSide): boolean {
-    return this.key(side) !== null;
+    return this.panels.hasPanel(side);
   }
 
   public deployOf(sideOrId: RadiatorSide | string): number {
-    const key = this.key(sideOrId);
-    return key === null ? 0 : this.panels.get(key)?.value ?? 0;
+    return this.panels.deployOf(sideOrId);
   }
 
   // 装備していない側の損耗は 0。deployOf と同じく「無いものは無い」とし、積んでいない
   // 放熱板を「損耗100%」の赤表示にしない。
   public wearOf(sideOrId: RadiatorSide | string): number {
-    const key = this.key(sideOrId);
+    const key = this.panels.key(sideOrId);
     return key === null ? 0 : this.wear.get(key) ?? 0;
   }
 
   public serialize(): SerializedRadiatorSystem {
-    const up = this.panels.get('up') ?? new DeployablePanelState(0, 0);
-    const down = this.panels.get('down') ?? new DeployablePanelState(0, 0);
-    const panels = [...this.panels]
-      .filter(([id]) => id !== 'up' && id !== 'down')
-      .map(([id, state]) => ({ id, state: state.serialize() }));
-    return {
-      up: up.serialize(),
-      down: down.serialize(),
-      panels: panels.length === 0 ? null : panels,
-    };
+    return this.panels.serializeSet();
   }
 }

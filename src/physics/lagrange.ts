@@ -108,12 +108,17 @@ export function secondaryFrameOf(
   };
 }
 
+// 系の質量比 μ(副天体質量/全系質量)。ラグランジュ点・回転系の重心原点・スロット族の
+// 座標変換が同じ値を見るので、ここ1か所で求める。
+export function secondaryMu(frame: SecondaryFrame): number {
+  return frame.secondary.def.mu / (frame.primary.def.mu + frame.secondary.def.mu);
+}
+
 // 副天体を基準にした5点の ECI 位置。
 export function lagrangePointsOf(frame: SecondaryFrame): LagrangePoints {
-  const { secondary, primary, secondaryState, primaryState } = frame;
+  const { secondaryState, primaryState } = frame;
   const R = len(sub(secondaryState.r, primaryState.r));
-  const mu = secondary.def.mu / (primary.def.mu + secondary.def.mu);
-  return lagrangePoints(mu, (x, y) => add(primaryState.r, qRotate(frame.rotation.q, v3(R * x, R * y, 0))));
+  return lagrangePoints(secondaryMu(frame), (x, y) => add(primaryState.r, qRotate(frame.rotation.q, v3(R * x, R * y, 0))));
 }
 
 // ラグランジュ点1点の ECI 状態。回転系の角速度 omega と主天体の速度から
