@@ -6,7 +6,7 @@
 import {
   PI, abs, dot, exp, float, greaterThan, length, max, normalize, select, sqrt, sub,
 } from 'three/tsl';
-import type { FloatNode, Vec3Node } from '../tsl-types';
+import type { BoolNode, FloatNode, Vec3Node } from '../tsl-types';
 
 // 極半径/赤道半径の下限。潰し量はこの逆数なので、0 を塞ぐ。太陽系で最も扁平な土星でも 0.90。
 export const MIN_POLAR_RATIO = 1e-3;
@@ -111,6 +111,19 @@ export function sunPathGeometry(
   // 厚みは引き伸ばした空間の長さで出るので、その向きの伸び率で実寸へ戻す。
   const sunPathScale = max(length(toSun), 1).div(max(length(stretchedToSun), 1));
   return { offset, radius, toSun, sunMu, sunPathScale };
+}
+
+// 表の有効範囲外にある点では、恒星へ向かう半直線が打ち切り高度の球へ届くかを調べる。
+// 表の端へクランプした値で、大気から遠い点まで遮光してはならない。
+export function rayReachesAtmosphere(
+  path: Pick<SunPathGeometry, 'radius' | 'sunMu'>,
+  surfaceRadius: FloatNode, altitudeMax: FloatNode,
+): BoolNode {
+  const impactRadius = path.radius.mul(
+    sqrt(max(float(1).sub(path.sunMu.mul(path.sunMu)), 0)),
+  );
+  const closestRadius = select(path.sunMu.greaterThan(0), path.radius, impactRadius);
+  return closestRadius.lessThan(surfaceRadius.add(altitudeMax));
 }
 
 // 三角テントの密度の、ピークに対する平均の比。層を通る幾何学的な路長に掛けて、

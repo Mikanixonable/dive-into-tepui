@@ -5,11 +5,12 @@
 // **幾何学的な遮蔽はここでは扱わない** — 天体を貫通する経路の減衰は影パス(BodyShadow)が担い、
 // ここが足すのは大気そのものによる消衰だけ(二重に数えない)。
 import type * as THREE from 'three/webgpu';
-import { texture, uniformArray, vec3 } from 'three/tsl';
+import { select, texture, uniformArray, vec3 } from 'three/tsl';
 import { MAX_ATMOSPHERE_BODIES, type AtmosphereBody } from '../atmosphere';
 import type { Vec3Node } from '../tsl-types';
 import type { SunLight } from './sun-light';
 import { AtmosphereSlots } from './atmosphere-slots';
+import { rayReachesAtmosphere } from './sun-path-depth';
 import {
   sunTransmittanceUv, type SunTransmittanceTables,
 } from './sun-transmittance-tables';
@@ -53,10 +54,16 @@ export class SunExtinction {
     let transmittance = vec3(1, 1, 1) as Vec3Node;
     for (let i = 0; i < MAX_ATMOSPHERE_BODIES; i++) {
       const path = this.slots.geometryOf(i, worldPos, this.sunLight.position);
+      const altitudeMax = this.altitudeMaxArray.element(i);
       const uv = sunTransmittanceUv(
-        path.sunMu, path.radius.sub(path.surfaceRadius), this.altitudeMaxArray.element(i),
+        path.sunMu, path.radius.sub(path.surfaceRadius), altitudeMax,
       );
-      transmittance = transmittance.mul(this.tables[i]!.sample(uv).rgb) as Vec3Node;
+      // 表の端へクランプされた透過率は遠方の点には適用しない。
+      const crossesAtmosphere = rayReachesAtmosphere(path, path.surfaceRadius, altitudeMax);
+      const attenuation = select(
+        crossesAtmosphere, this.tables[i]!.sample(uv).rgb, vec3(1, 1, 1),
+      );
+      transmittance = transmittance.mul(attenuation) as Vec3Node;
     }
     return transmittance;
   }
