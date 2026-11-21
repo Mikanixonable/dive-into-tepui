@@ -956,6 +956,7 @@ async function bootAndCheckReady() {
         combatView: Boolean(document.querySelector('.hud-combat-root.active')),
         loading: [...document.querySelectorAll('body > div')].some((d) => d.textContent?.includes('初期化中')),
         stageSelect: Boolean(document.querySelector('.ss-window')),
+        frames: document.documentElement.dataset.smokeFrames ?? 'unset',
         canvases: document.querySelectorAll('canvas').length,
       };
     })()`);
