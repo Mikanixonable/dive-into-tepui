@@ -145,51 +145,41 @@
   オフで影が消え、オンへ戻すと最初の撮影と画素差 0)。計測(回線 20Mbps・CPU 4 倍減速)で
   **タイトルまでの転送量 4.3MB・3.0 秒**(達成目標 2 を満たす)、初回既定のフレーム平均 41.6ms。
   建造のスモーク(`SMOKE_CONSTRUCTION=1`)は変更前から「燃料」タブが無くて落ちる(既存の不具合。本計画の外)。
+- テクスチャ解像度の画像の段(手順 5a)。対象は地球の色・星野・月・地球の滑らかさ・実写の雲(地形と気候は
+  雲の生成の入力なので対象外)。段ごとの幅の上限は高 原寸・中 4096・低 2048 px。縮小版は
+  `npm run texture-variants` で生成し、色の画像は線形の光の箱平均で縮める(地球・月の平均輝度の差は 0.1% 以内)。
+  段は `RenderPipeline.rebuildForGraphics` で全体へ渡す(render-lab もこの口を通る)。高の地球 27 撮影は封筒内、
+  高→低→高で絵が変わり戻すと画素差 0。テクスチャ常駐推算は低 56MB・中(初回既定)236MB・高 504MB
+  (**達成目標 4 を満たす**)。
+- フレームレート上限(手順 6)。上限 30 で fps 30、上限なしで 60。デバッグ窓に「上限で待った割合」を出す項目は
+  実施していない(SPEC のデバッグ窓の節を変える必要があり、雲の自動適応の計画の実施時に要否を決める)。
+- UI の背景ぼかし(手順 10)と標識の transform 化。オフで `#hud-topbar`・`#hud .panel` が backdrop-filter none・
+  不透明な地になる。`smoke:layout-suite` が通る。
+- 全テスト 1441 件・型検査・境界検査が通る。`npm run lint` の誤り 2 件は `tools/commit-message-ja/` の既存のもの。
+- 未達: 達成目標 3(GLB 10.8MB、手順 11)、5(初回既定のフレーム平均。CPU 4 倍減速で 41.6ms。手順 7・8)、
+  6(手順 8)。
 
 ## 手順
 
-### 手順 5. テクスチャ解像度の設定(SPEC → 実装)
+### 手順 5b. 地表詳細タイルの常駐層数をテクスチャ解像度の段に連動させる
 
-手順 5 は 5a(画像の段)と 5b(地表詳細タイルの常駐層数)に分けた。SPEC は両方を含めて記入済み
-(84d5920a9 の後の amend)。5b は層数がシェーダに定数として焼かれているので、段の変更で地表の描画物を
-組み直す必要がある。下の表の `earth-surface-layout.ts`・`earth-surface-gpu-three.ts` の行が 5b。
-
-**目的** — モバイルの GPU メモリ上限で落ちないように、大きい画像の解像度を設定で選べるようにする。
-高は従来どおりの解像度にする。
+**目的** — SPEC RENDERING.md「テクスチャ解像度」の「地表の詳細を利用する天体では、同時に手元へ置いておける
+詳細の量も段に応じて減る」を実装する。常駐配列は 260² × RGBA8 × 96 層 × 2 本 ≈ 49.5MB を GPU に、
+同じ大きさを CPU にも持つ。層数はシェーダに定数として焼かれている(`earth-surface-material-node.ts:65` の
+`EARTH_TILE_LAYERS - 1`)ので、段の変更で地表の描画物(配列・常駐管理・マテリアル)を組み直す必要がある。
 
 **変更が必要な箇所**
 
 | ファイル | すること |
 | --- | --- |
-| `DEVELOP/SPEC/RENDERING.md`「描画品質設定」 | `/modify-feature` を通して項目「テクスチャ解像度」(低/中/高)を書く。低は天体・星野の画像を 1/4 の画素数、中は 1/2(8192 幅の画像だけ)、高は原寸。切り替えたその場で反映する。地表詳細タイルの常駐数もこの項目で減る。`docs(spec):` の単独 commit |
-| `tools/`(新規の縮小スクリプト。名前は既存の生成系に合わせる)と `package.json` | `earth.jpg`・`8k_stars.jpg` の 4096 幅版、`8k_moon.jpg`・`earth-terrain.png`・`earth-smoothness.png`・`cloud-field.png` の 2048 幅版を生成する。`cloud-field.png`(4096×2048 RGBA、17MB)は低プリセットが選ぶ「実写」の雲場なので、低で最初に効く |
-| `src/render/deferred-texture.ts` | URL を解像度段ごとの組で受け取り、段の変更で取り直して差し替えられるようにする。待ち行列の1枚ずつの投入は保つ |
-| `src/render/stars.ts:3`・`src/render/earth-surface-defaults.ts:2`・`src/render/earth-surface-factory.ts:19`・`src/game/celestial/solar-system/earth-system.ts:4-7`・`src/render/earth-weather/cloud/observed-cloud-field.ts:59` | 解像度段ごとの URL の組を渡す |
-| `src/render/earth-surface-layout.ts:2-14`・`src/render/earth-surface-gpu-three.ts:64-80` | 常駐層数 `EARTH_TILE_LAYERS=96` を、段ごとの値(低 32・中 64・高 96)へ変える |
-| `src/render/graphics-settings.ts` | `GRAPHICS_OPTIONS` へ `textureResolution` を足す(group `basic`、プリセット 低→低・中→中・高→高) |
+| `src/render/earth-surface-layout.ts:9` | 層数を段ごとの値(例 低 32・中 64・高 96)にする |
+| `src/render/earth-surface-gpu-three.ts:43, 64-80` | 配列の確保を層数の引数で行う |
+| `src/render/earth-surface-resident.ts:322, 330` | 常駐管理の容量を層数の引数で持つ |
+| `src/render/earth-surface-material-node.ts:65` | 層数の上限を定数でなく組み立て時の値で持つ |
+| `src/render/earth-surface-runtime.ts` ほか地表の組み立て | 段の変更で常駐を捨てて組み直す口。段は描画品質設定を配る口(`RenderPipeline.rebuildForGraphics`)から届く経路を `/callstack` で決める |
 
-**達成条件と検証** — `npm run typecheck`、`npm run test:render`、`npm run test:settings`。
-`npm run mobile-probe` の GPU 常駐の推算で、低が高より 250MB 以上少ない。
-render-lab で、高の earth 構図が前と同じ(`render-lab:compare`)。設定パネルで段を切り替えると、
-その場で地球と星野の解像度が変わる。
-
-### 手順 6. フレームレート上限の設定(SPEC → 実装)
-
-**目的** — 高リフレッシュの端末で回りすぎることによる発熱と電池消費を止める。目標 30fps を
-既定で守れるようにする。
-
-**変更が必要な箇所**
-
-| ファイル | すること |
-| --- | --- |
-| `DEVELOP/SPEC/RENDERING.md`「描画品質設定」 | `/modify-feature` を通して項目「フレームレート上限」(30 / 60 / 上限なし)を書く。上限はシミュレーションの進みに影響しない(実時間で進む)。`docs(spec):` の単独 commit |
-| `src/main.ts:64-87`(rAF ループ) | 直前に描いた時刻から `1000/上限 − 許容幅` 未満のコールバックは、何もせずに次の rAF を待つ。経過時間は実時間のまま `Run` へ渡す(`MAX_FRAME_DT=0.1`、`src/run/run.ts:23` はそのまま) |
-| `src/render/graphics-settings.ts` | `frameRateCap` を足す(group `basic`、プリセットは 低 30・中 60・高 上限なし) |
-| `src/game/hud/windows/debug-info-window.ts` | 計測タブの fps 行に、上限で待った割合を出す(手順外の自動適応が余裕と誤認しないための観測口) |
-
-**達成条件と検証** — `npm run typecheck`、`npm run test:settings`、`npm run test:game`。
-`?perf=1` で上限 30 を選ぶと fps 行が 30±2 になり、上限なしへ戻すと元へ戻る。上限 30 で 60 秒
-放置したとき、ゲーム内時刻の進みが上限なしと同じ(時間加速 1 倍で 60 秒進む)。
+**達成条件と検証** — `npm run test:render`。低で地表の常駐層数が 32 になる(デバッグ窓の詳細地表の行)。
+段を変えても地表が消えず、詳細は読み直される。高の地球の撮影が前後で封筒内。
 
 ### 手順 7. 粗いポインタの初回既定を実測で決める(SPEC → 実装)
 
@@ -245,25 +235,6 @@ render-lab で、高の earth 構図が前と同じ(`render-lab:compare`)。設�
 **達成条件と検証** — `npm run typecheck`、`npm run test:launcher`。`grep -rn "new THREE.WebGPURenderer\|new WebGPURenderer" src`
 が `src/render/scene.ts` の1件だけになる。`npm run smoke:browser` でタイトル → ステージ開始が通る。
 タイトル背景の撮影の前後が同じ。
-
-### 手順 10. HUD の背景ぼかしを切れるようにし、標識の配置を transform にする(SPEC → 実装)
-
-**目的** — モバイル GPU で毎フレーム再計算される背景ぼかしを、利用者が止められるようにする。
-毎フレーム書き換える標識の位置を、レイアウトを起こさない書き方にする。
-
-**変更が必要な箇所**
-
-| ファイル | すること |
-| --- | --- |
-| `DEVELOP/SPEC/UI-DESIGN.md`(ガラス面の節、72-84 付近) | `/modify-feature` と `/ui-design` を通して、「描画品質設定で UI の背景ぼかしを切れる。切ると、ぼかし非対応のブラウザと同じ不透明面のフォールバックで描く」を書く。`DEVELOP/SPEC/RENDERING.md`「描画品質設定」へ項目を足す。`docs(spec):` の単独 commit |
-| `src/hud/style/common-ui-style.ts:8-22, 68`・`src/theme.ts:138-140, 227-228` | `@supports not (backdrop-filter)` のフォールバック規則を、ルート要素のクラス(例: `.no-glass-blur`)でも効く形にする。同様のフォールバックが `src/game/hud/style/skeleton-style.ts:98`・`src/game/hud/style/map-view-style.ts:353` にもある |
-| `src/render/graphics-settings.ts` と設定の反映箇所 | `uiBlur` を足す(group `basic`、プリセットは 低 オフ・中 オン・高 オン)。反映はルート要素のクラスの付け外しにする |
-| `src/marker/marker-group.ts:114-140` | `style.left/top` を `style.transform = translate(...)` に変える。`textShadow` と色は、値が変わったときだけ書く |
-
-**達成条件と検証** — `npm run typecheck`、`npm run test:game`、`npm run smoke:layout-suite`。
-設定でぼかしをオフにすると、パネルがぼかし非対応時と同じ不透明面になる(同じ画面を
-`--disable-features` 等でぼかし非対応にして撮った画像と並べる)。標識が前後で同じ位置に出る
-(マップビューで地球・月・ラグランジュ点のラベル)。
 
 ### 手順 11. 残りの部品の分割数を下げる(達成目標 3 の残り)
 
