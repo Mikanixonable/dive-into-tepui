@@ -7,7 +7,7 @@ import type {
 import type { MenuItem } from '../../hud-kit/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
+import { CelestialEntity } from '../celestial/entity/celestial-entity';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { NavTargetPresenter } from '../nav-target-presenter';
 import { focusTargetId } from '../viewer/focus-target';
@@ -19,14 +19,14 @@ import type {
 } from '../presentation-ports';
 import type { ControlSelection } from '../control-selection';
 import { isModularShip } from '../ship/modular-ship';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { isEnemy } from '../dynamic/entity/enemy';
 import type { Targeter } from '../targeter';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
 import type { InspectedObject } from './inspected-object';
 import { ShipInspection } from './ship-inspection';
 import { EnemyInspection } from './enemy-inspection';
-import { Pickup } from '../dynamic/dynamic-entity/pickup';
+import { Pickup } from '../dynamic/entity/pickup';
 import { LagrangePointMarker } from '../marker/lagrange-point-marker';
 import { OrbitPointMarker } from '../marker/orbit-point-marker';
 import { OrbitSlotPickable } from './orbit-slot-pickable';

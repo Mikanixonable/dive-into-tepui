@@ -14,12 +14,12 @@ import { ephemerisContextFor, type EphemerisContext } from '../physics/ephemeris
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { summarizeRun, type RunSummary } from './run-summary';
 import type { GameScene } from '../render/scene';
-import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { Controllable } from './dynamic/entity/controllable';
 import type { RunOptions, SerializedStage, Stage, StageClass } from './stages/stage';
 import type { HudLayers } from './hud/hud-layers';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { LoadingProgress } from './loading-progress';
-import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
+import type { PilotControls } from './dynamic/entity/pilot-controls';
 import type { TrajectoryDemand } from './dynamic/trajectory-demand';
 import type { CameraFrameSamples } from './viewer/camera-selection';
 import type { ShipBlueprintShelf } from './ship/ship-blueprint';

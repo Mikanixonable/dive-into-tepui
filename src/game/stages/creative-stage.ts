@@ -8,7 +8,7 @@ import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
 import {
   StageControlsPanel, type EnemySpawnShape,
 } from '../creative/stage-controls-panel';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { isEnemy } from '../dynamic/entity/enemy';
 import { hudRail } from '../hud/hud-dom';
 import { isModularShip } from '../ship/modular-ship';
 import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';

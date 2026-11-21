@@ -3,8 +3,8 @@
 // 候補の最早出発時刻の手前までしか simTime を進めない時刻バリアを公開する。
 import { planTransfers, type TransferCandidate } from '../../physics/transfer-planner';
 import { planRendezvous, type TerminalProfile } from './terminal-rendezvous';
-import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { aliveCombatTarget } from '../dynamic/entity/combat-target';
+import { isEnemy } from '../dynamic/entity/enemy';
 import { deltaVBudget, effectiveExhaustVelocity } from '../../physics/rocket';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CommandQueue } from '../command-queue';

@@ -9,7 +9,7 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import type { Viewport } from '../../render/viewport';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { AnchorEntities } from '../frame-anchors';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import { screenRay } from './screen-ray';
 import type { Ray } from '../../math/ray';
 import type { HudLayers } from '../hud/hud-layers';

@@ -9,7 +9,7 @@ import { UNCLIPPED_WINDOW_GROUP } from '../../../hud-kit/overlay-manager';
 import { AltitudeTab } from './orbit-altitude-tab';
 import { ApproachTab } from './orbit-approach-tab';
 import { ProjectionTab } from './orbit-projection-tab';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../dynamic/entity/dynamic-entity';
 import type { OverlayManager } from '../../../hud-kit/overlay-manager';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';

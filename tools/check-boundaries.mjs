@@ -122,10 +122,10 @@ const SYNTAX_RULES = {
   // hp キャッシュは同じ所有者が assembly と同期する。型を readonly に分解すると敵の
   // 既存ダメージ経路が二重の adapter になり、移行中の一体性を失うためこの4欄を固定する。
   mutableField: { name: 'モデル層の可変な公開欄の禁止', ref: 'ARCHITECTURE R3', exempt: [
-    ['src/game/dynamic/dynamic-entity/parts.ts', 'Part.hp'],
-    ['src/game/dynamic/dynamic-entity/parts.ts', 'RcsTankPart.fuel'],
-    ['src/game/dynamic/dynamic-entity/ship.ts', 'Ship.hp'],
-    ['src/game/dynamic/dynamic-entity/ship.ts', 'Ship.maxHp'],
+    ['src/game/dynamic/entity/parts.ts', 'Part.hp'],
+    ['src/game/dynamic/entity/parts.ts', 'RcsTankPart.fuel'],
+    ['src/game/dynamic/entity/ship.ts', 'Ship.hp'],
+    ['src/game/dynamic/entity/ship.ts', 'Ship.maxHp'],
   ] },
   // 識別子は「型名.constructor(引数名)」。型の名前 Serialized* は直列化の語彙の行が保証する。不変な
   // 素の値の型をそのまま直列化の形に使うもの(R12)は、新しく作るときにも同じ型で受けるので当てない。
@@ -387,7 +387,7 @@ function findImportViolations({ edges, layerOf }) {
     }
     // スナップショットはモデル層の直列化で、表示の導出を含めない(R11)。実体の直列化の根の型を
     // 置く辞書へ当てる。(暫定 — 段 6 で層の規則が覆うので外す)
-    if (e.from === 'src/game/dynamic/dynamic-entity/entity-dictionary.ts' && isUnder(e.to, PRESENTATION_ROOTS)) {
+    if (e.from === 'src/game/dynamic/entity/entity-dictionary.ts' && isUnder(e.to, PRESENTATION_ROOTS)) {
       flag(RULES.serializationToPresentation);
     }
   }

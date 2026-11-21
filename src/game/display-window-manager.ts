@@ -8,7 +8,7 @@ import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
 import { frameRoleOf } from '../physics/frame';
 import type { FrameAnchorSource, ReferenceFrame } from '../physics/frame';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './dynamic/entity/dynamic-entity';
 import type { PredictedArc } from './dynamic/predicted-arc';
 import type { TrajectoryDemand } from './dynamic/trajectory-demand';
 import type { CelestialBodies } from './celestial/celestial-bodies';

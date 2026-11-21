@@ -8,10 +8,10 @@ import type { ContinuousGameAction } from './game-actions';
 import type { GameInputPort } from './game-input-router';
 import {
   PILOT_COMMAND_KINDS, ROTATION_DIRECTIONS, THRUST_DIRECTIONS, thrustKillSwitchActive,
-} from '../dynamic/dynamic-entity/pilot-controls';
+} from '../dynamic/entity/pilot-controls';
 import type {
   PilotCommand, PilotCommandKind, PilotControls, RotationDirection, ThrustDirection,
-} from '../dynamic/dynamic-entity/pilot-controls';
+} from '../dynamic/entity/pilot-controls';
 
 // 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
 const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;

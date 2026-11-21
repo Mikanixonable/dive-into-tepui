@@ -5,7 +5,7 @@ import type { Projected } from '../../math/projection';
 import type { ActiveCelestialLabel } from './celestial-markers';
 import { MARKER_PRIORITY } from './marker-priority';
 import { bearingPlacement, headingRotationDeg } from './marker-placement';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
 import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from '../../marker-kit/crowding';
 import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import type { MarkerSink } from '../../marker-kit/marker-sink';

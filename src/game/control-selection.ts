@@ -1,6 +1,6 @@
 // 操作対象(自機船 0..n 隻と基地のうち、ちょうど1つ)の選択。選び直しと、操作対象候補を世界から
 // 取り除いたことを出来事として記録する。
-import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { Controllable } from './dynamic/entity/controllable';
 import type { DynamicSystem } from './dynamic/dynamic-system';
 
 // 操作対象の直列化した形。操作対象の id で、操作していなければ null。

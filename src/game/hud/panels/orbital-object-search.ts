@@ -3,7 +3,7 @@ import { Button } from '../../../hud-kit/widgets';
 import { expandHitTarget, stopDragPropagation } from '../../../hud-kit/widgets/widget-base';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ListedObject } from '../../pickable/listed-object';
-import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../../dynamic/entity/orbiting-object';
 
 const MAX_RESULTS = 60; // 一度に並べる一致行の上限
 

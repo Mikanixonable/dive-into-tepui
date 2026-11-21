@@ -8,7 +8,7 @@ import { MARKER_PRIORITY } from './marker-priority';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 
 export class ApsisMarker extends OrbitPointMarker {
   public readonly glyph = ORBIT_POINT_GLYPH.apsis;

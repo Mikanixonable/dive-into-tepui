@@ -1,6 +1,6 @@
 // 航法ターゲットの選択へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
-import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
+import type { CombatTarget } from '../dynamic/entity/combat-target';
 import type { NavTargetSelection } from './nav-target-selection';
 
 // 航法ターゲットを外から変える命令。受け付けるだけで、適用は次の進行の位相。

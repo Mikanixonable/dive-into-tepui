@@ -23,14 +23,14 @@ import {
 import { SalvageCargo } from './stage-utils/salvage-cargo';
 import type { ShipBlueprintShelf } from '../ship/ship-blueprint';
 import type * as THREE from 'three/webgpu';
-import type { Enemy } from '../dynamic/dynamic-entity/enemy';
+import type { Enemy } from '../dynamic/entity/enemy';
 import type { HudLayers } from '../hud/hud-layers';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import type { PresentationStageAuthoring } from '../presentation-ports';
 import type { EnemyDeathCause, PlayerLossCause, StageOutcome } from './stage-outcome';
-import { ENEMY_MAX_ATTACKERS_PER_GROUP } from '../dynamic/dynamic-entity/enemy-fire-controller';
+import { ENEMY_MAX_ATTACKERS_PER_GROUP } from '../dynamic/entity/enemy-fire-controller';
 import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
 import type { CommandQueue } from '../command-queue';

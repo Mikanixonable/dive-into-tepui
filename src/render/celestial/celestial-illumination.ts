@@ -28,7 +28,7 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
 import type {
   CelestialIlluminationSource, DefinedCelestialBody, StellarLightSource,
-} from './celestial-entity/celestial-view';
+} from './entity/celestial-view';
 
 const ZERO_VECTOR = new THREE.Vector3();
 const UP_VECTOR = new THREE.Vector3(0, 1, 0);

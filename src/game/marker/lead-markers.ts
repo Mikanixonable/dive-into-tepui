@@ -7,7 +7,7 @@ import type { MarkerSink } from '../../marker-kit/marker-sink';
 import type { MarkerDevice } from '../../marker-kit/marker-device';
 import { MARKER_PRIORITY } from './marker-priority';
 import { pointPlacement } from './marker-placement';
-import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
+import type { CombatTarget } from '../dynamic/entity/combat-target';
 import { COLOR_MARKER_ALLY } from './marker-identity';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ProjectFn } from '../../math/projection';

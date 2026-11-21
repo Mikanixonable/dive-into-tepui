@@ -10,7 +10,7 @@ import { Stage1 } from '../../src/game/stages/stage1';
 import { SalvageCargo } from '../../src/game/stages/stage-utils/salvage-cargo';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
 import { Logistics } from '../../src/game/stages/stage-utils/logistics';
-import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
+import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
 import { BODY_REVEAL_BASE } from '../../src/game/celestial/body-reveal';
 import {
   SALVAGE_BLUEPRINTS, SALVAGE_REPEAT_EVERY, appendSalvageCargo, crossedSalvageMilestones,
@@ -21,10 +21,10 @@ import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { isShipBlueprint, type ShipBlueprintShelf } from '../../src/game/ship/ship-blueprint';
 import { loadAmmoModels } from '../../src/render/dynamic/ammo-models';
-import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../src/game/dynamic/entity/dynamic-entity';
 import type { EntityRegistry, SpawnRecord } from '../../src/game/dynamic/entity-registry';
 import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
-import type { Enemy } from '../../src/game/dynamic/dynamic-entity/enemy';
+import type { Enemy } from '../../src/game/dynamic/entity/enemy';
 import type { RunEventBody } from '../../src/game/run-events';
 
 // エンティティを配列へ積み、出来事を集める台帳の最小の代役。

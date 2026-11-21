@@ -4,8 +4,8 @@ import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import type { VisibleGuideLine } from '../../render/celestial/orbit-guide/orbit-guide-view';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import { isCombatTarget } from '../dynamic/dynamic-entity/combat-target';
+import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
+import { isCombatTarget } from '../dynamic/entity/combat-target';
 import type { LinePickable } from './line-pickable';
 import type { OrbitSlotPresenter } from '../navigation/orbit-slot-presenter';
 

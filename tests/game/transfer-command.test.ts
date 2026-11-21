@@ -13,7 +13,7 @@ import { Plan, type PlanExecutionMode } from '../../src/game/plan/plan';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { add, sub, len, v3 } from '../../src/math/vec3';
 import { R_EARTH, MU_EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../src/game/dynamic/entity/dynamic-entity';
 
 const SYSTEM = solarSystemParts().system;
 const EMPTY_SLOTS = OrbitSlotRegistry.create();

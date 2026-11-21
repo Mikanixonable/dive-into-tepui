@@ -6,7 +6,7 @@ import type { OrbitalElements } from '../../../physics/elements';
 import { latLonOf } from '../../../physics/body-orientation';
 import type { KinematicState } from '../../../physics/kinematic-state';
 import { type Vec3, dot, len, sub } from '../../../math/vec3';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../dynamic/entity/dynamic-entity';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { OrbitReference } from '../../orbit-reference';
 import { relativeInclinationDeg } from '../../orbit-info';

@@ -3,9 +3,9 @@ import { orbitingAttractorOf } from '../../physics/attractor';
 import { orbitalElementsOf } from '../../physics/elements';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { lenSq, sub, type Vec3 } from '../../math/vec3';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { isEnemy } from '../dynamic/entity/enemy';
 import { isModularShip } from '../ship/modular-ship';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
 
 export type Faction = 'enemy' | 'friendly';
 

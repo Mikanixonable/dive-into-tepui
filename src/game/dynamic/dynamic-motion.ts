@@ -21,7 +21,7 @@ import {
 } from '../../physics/thermal';
 import { orbitalElementsOf, type OrbitalElements } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { Contact } from './dynamic-entity/contact';
+import type { Contact } from './entity/contact';
 import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import {

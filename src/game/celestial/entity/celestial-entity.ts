@@ -14,14 +14,14 @@ import type { CelestialClass } from './celestial-entity-def';
 import type { Vec3 } from '../../../math/vec3';
 import type {
   CelestialIlluminationSource, CelestialView,
-} from '../../../render/celestial/celestial-entity/celestial-view';
+} from '../../../render/celestial/entity/celestial-view';
 import type { CelestialBodies } from '../celestial-bodies';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MenuItem } from '../../../hud-kit/windows/context-menu';
 import type { PropertyRow } from '../../../hud-kit/windows/property-window-content';
 import { BODY_PICKER_GENRES, type MapListSection, type ObjectPickerGenre } from '../../pickable/pickable-listing';
 import type { MapVisibility, MapVisibilityPolicy } from '../../map/visibility-policy';
-import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../../dynamic/entity/orbiting-object';
 
 // 惑星 > 準惑星 > 衛星・小惑星・彗星。恒星は太陽系の基準点なので、惑星と同じ最上位に置く。
 const BODY_LABEL_PRIORITY: Readonly<Record<CelestialClass, number>> = {

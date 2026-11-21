@@ -1,5 +1,5 @@
 // 1周回の戦果を記録するインターフェース。敵の撃破と自然損耗、自機の喪失、自機の射撃と敵への命中を記録する。
-import type { Enemy } from '../dynamic/dynamic-entity/enemy';
+import type { Enemy } from '../dynamic/entity/enemy';
 
 // 敵が失われた理由。'killed' 以外は自然損耗で、撃破数ではなく喪失数へ数える。
 // 焼失(大気)と衝突(固体表面)は別の現象なので分けて持つ。

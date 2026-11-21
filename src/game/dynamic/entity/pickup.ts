@@ -1,7 +1,7 @@
 // 軌道上の補給物(接近した自艦が取り込む漂流物)と、その種別ごとの具象。
 import { fmtDist } from '../../../hud-kit/format';
 import { len, sub, v3, type SerializedVec3, type Vec3 } from '../../../math/vec3';
-import { PickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
+import { PickupView } from '../../../render/dynamic/entity/pickup-view';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
 import { MARKER_PRIORITY } from '../../marker/marker-priority';
 import { COLOR_MARKER_FUEL, DIRECTION_GLYPH, ENTITY_GLYPH } from '../../marker/marker-identity';

@@ -4,7 +4,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
 import type { Vec3 } from '../../math/vec3';
-import type { CelestialClass } from './celestial-entity/celestial-entity-def';
+import type { CelestialClass } from './entity/celestial-entity-def';
 import type { ReferenceFrames } from './reference-frames';
 
 // 1フレームの積分が参照する天体を、役割ごとの一覧として提供するインターフェース。重力・接触判定・抗力は

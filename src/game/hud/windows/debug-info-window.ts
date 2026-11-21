@@ -16,7 +16,7 @@ import type { OverlayManager } from '../../../hud-kit/overlay-manager';
 import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import type { PerfCounts, PerfCountSource } from '../../perf-counts';
 import type { CloudQualityReading } from '../../../render/earth-weather/cloud/cloud-quality-governor';
-import type { EntityCountKind } from '../../dynamic/dynamic-entity/entity-kind';
+import type { EntityCountKind } from '../../dynamic/entity/entity-kind';
 import type { PropertyRow } from '../../../hud-kit/windows/property-window-content';
 
 // エンティティ数の行。並び順と表示名はここで決める。

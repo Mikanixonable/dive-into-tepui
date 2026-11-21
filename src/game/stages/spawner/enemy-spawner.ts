@@ -6,9 +6,9 @@ import { strongestAttractor } from '../../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
 import { randSym } from '../../../math/random';
 import { add, len, norm, scale } from '../../../math/vec3';
-import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
+import type { Enemy } from '../../dynamic/entity/enemy';
 import { generateDriftingEnemy } from './enemy-generator';
-import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
+import type { EntityIdAllocators } from '../../dynamic/entity/entity-id';
 import { COLOR_ENEMY_ORBIT_LINE } from '../../lines/entity-line-manager';
 import type { CelestialBody } from '../../../physics/celestial-body';
 

@@ -14,7 +14,7 @@ import {
 } from '../../alarm/alarm-level';
 
 import { getApsisLabelSpec } from './orbit-labels';
-import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/combat-ship-entity';
+import { MAX_HULL_TEMP } from '../../dynamic/entity/combat-ship-entity';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 
 const SYNC_INTERVAL_MS = 100;

@@ -6,7 +6,7 @@ import { MARKER_PRIORITY } from './marker-priority';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { Vec3 } from '../../math/vec3';
 import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 // 交点種別ごとの、一覧やマーカーで表示する呼称と、軌道要素としてのラベル。

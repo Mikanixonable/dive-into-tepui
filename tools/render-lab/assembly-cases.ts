@@ -5,8 +5,8 @@ import { detachPart, generateAssemblyShape } from '../../src/render/assembly/ass
 import { FloatingOrigin } from '../../src/render/camera/floating-origin';
 import {
   AssemblyEnemyView, type AssemblyVisualSource,
-} from '../../src/render/dynamic/dynamic-entity/assembly-enemy-view';
-import { AssemblyPartDebrisView } from '../../src/render/dynamic/dynamic-entity/assembly-part-debris-view';
+} from '../../src/render/dynamic/entity/assembly-enemy-view';
+import { AssemblyPartDebrisView } from '../../src/render/dynamic/entity/assembly-part-debris-view';
 import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
 import { SunLight } from '../../src/render/pipeline/sun-light';
 import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';

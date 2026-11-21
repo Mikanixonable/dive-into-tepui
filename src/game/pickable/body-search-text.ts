@@ -4,7 +4,7 @@ import { len, sub, type Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import { fmtDist } from '../../hud-kit/format';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 
 // 操作対象がいなければ空文字。pos は displayTime の ECI 位置。
 export function bodySearchText(

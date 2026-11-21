@@ -3,7 +3,7 @@
 import { lenSq, sub } from '../../math/vec3';
 import type { Ray } from '../../math/ray';
 import type { Projected, ProjectFn } from '../../math/projection';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
 import type { InspectedObject } from './inspected-object';
 import type { ListedObject } from './listed-object';
 import type { MapPickable } from './map-pickable';

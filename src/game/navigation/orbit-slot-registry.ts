@@ -1,6 +1,6 @@
 // 軌道標識の台帳: 1ランが持つ標識の正本。id の採番・追加・削除・列挙・改名と、
 // 直列化/復元を担う。航行指令が標識を id で参照するため、視点ではなく進行に置く(R4)。
-import { EntityIdAllocator } from '../dynamic/dynamic-entity/entity-id';
+import { EntityIdAllocator } from '../dynamic/entity/entity-id';
 import { OrbitSlot, type OrbitSlotOrbit, type SerializedOrbitSlot } from './orbit-slot';
 
 // 台帳の直列化した形。nameSeq は既定名「軌道標識 N」の次に使う番号。

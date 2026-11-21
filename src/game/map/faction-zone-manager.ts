@@ -9,9 +9,9 @@ import { FactionZoneView, type OrbitZoneVisual } from '../../render/zones/factio
 import type { ThemePalette } from '../../theme';
 import { lagrangeId, lagrangePointNumbersOf } from '../celestial/lagrange-id';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import { isModularShip } from '../ship/modular-ship';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
 import type { DisplayWindow } from '../display-window-manager';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { MapVisibilityPolicy } from './visibility-policy';

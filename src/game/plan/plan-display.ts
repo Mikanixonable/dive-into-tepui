@@ -22,7 +22,7 @@ import type { PlanData } from './plan';
 import type { PlanPath } from './plan-path';
 import { type DisplayWindow, timeLabelSettingOf } from '../display-window-manager';
 import type { Apsis } from '../../physics/trajectory-features';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import type { ControlSelection } from '../control-selection';
 import type { PredictedArc } from '../dynamic/predicted-arc';
 import type { PerfCounts } from '../perf-counts';

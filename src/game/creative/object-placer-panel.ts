@@ -13,7 +13,7 @@ import type { OverlayHandle, OverlayManager } from '../../hud-kit/overlay-manage
 import type { CollinearPoint } from '../../physics/lagrange';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
 import { ObjectPlacerElementsSection } from './object-placer-elements-section';
 import { ObjectPlacerLagrangeSection } from './object-placer-lagrange-section';
 

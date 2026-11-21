@@ -7,7 +7,7 @@ import { autoOrbitReference } from '../orbit-reference';
 import { getApsisLabelSpec, ORBIT_ELEMENT_LABELS } from '../hud/orbit/orbit-labels';
 import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
 
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 
 // simTime は天体位置を厳密に引く時刻。
 export function orbitRows(

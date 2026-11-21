@@ -16,10 +16,10 @@ import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import type { ProjectFn, ScaleFn } from '../../math/projection';
 import { type DisplayDurationSource, type PlanData, type TimeRange, segmentDurationFrom } from './plan';
 import { type BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
 import { goldenSectionMin } from '../../math/optimize';
-import { SHIP_BCINV, SHIP_SRP_COEFF } from '../dynamic/dynamic-entity/combat-ship-entity';
+import { SHIP_BCINV, SHIP_SRP_COEFF } from '../dynamic/entity/combat-ship-entity';
 
 // 計画弧の衝突判定に使う既定の船体半径。実体の compound shape が無い表示弧では
 // 保守的な球近似を使う。

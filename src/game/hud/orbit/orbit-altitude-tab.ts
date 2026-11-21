@@ -6,7 +6,7 @@ import { altitudeSeries } from './orbit-analysis-data';
 import { ScaleField, buildTabControls, clampScaleKm, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitChart } from './orbit-chart';
 import { distanceAxis, timeAxis } from './orbit-chart-axes';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../dynamic/entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
 import type { ChartMark, ChartPoint } from './orbit-chart';

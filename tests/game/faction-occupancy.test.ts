@@ -6,7 +6,7 @@ import { kinematicState } from '../../src/physics/kinematic-state';
 import type { KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { addScaled, v3 } from '../../src/math/vec3';
-import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../src/game/dynamic/entity/dynamic-entity';
 import {
   type Faction, factionLagrangeZones, factionOrbitZones,
 } from '../../src/game/map/faction-occupancy';

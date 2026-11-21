@@ -6,10 +6,10 @@ import type { Vec3 } from '../../math/vec3';
 import { add, norm, scale, v3 } from '../../math/vec3';
 import {
   OPPOSITE_THRUST_DIRECTION, THRUST_DIRECTIONS, thrustKillSwitchActive,
-} from '../dynamic/dynamic-entity/pilot-controls';
-import type { PilotControls, ThrustDirection } from '../dynamic/dynamic-entity/pilot-controls';
+} from '../dynamic/entity/pilot-controls';
+import type { PilotControls, ThrustDirection } from '../dynamic/entity/pilot-controls';
 import type { RunEventSink } from '../run-events';
-import type { FuelConsumer } from '../dynamic/dynamic-entity/controllable';
+import type { FuelConsumer } from '../dynamic/entity/controllable';
 
 // 並進推力(全 6 方向で共通)の出力 4 段階の加速度 [m/s^2]。
 export const THROTTLE_LEVELS = [5.0, 20.0, 100.0, 400.0];

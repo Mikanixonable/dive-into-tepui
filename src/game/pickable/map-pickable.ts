@@ -3,7 +3,7 @@
 import type { Ray } from '../../math/ray';
 import type { Vec3 } from '../../math/vec3';
 import type { ControlSelectionCommands } from '../control-selection-commands';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MarkerVisibility } from '../../marker-kit/marker-visibility';
 import type { PropertyWindowOpener } from './property-window-opener';

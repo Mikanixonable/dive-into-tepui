@@ -5,10 +5,10 @@ import { add, cross, randVec, type SerializedVec3, type Vec3, v3 } from '../../.
 import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import { deserializeKinematicState, kinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { CapKind } from './entity-kind';
-import { AssemblyPartDebrisView } from '../../../render/dynamic/dynamic-entity/assembly-part-debris-view';
-import { CasingView } from '../../../render/dynamic/dynamic-entity/casing-view';
-import { DebrisFragmentView } from '../../../render/dynamic/dynamic-entity/debris-fragment-view';
-import { MagazineFrameView } from '../../../render/dynamic/dynamic-entity/ejected-gun-part-view';
+import { AssemblyPartDebrisView } from '../../../render/dynamic/entity/assembly-part-debris-view';
+import { CasingView } from '../../../render/dynamic/entity/casing-view';
+import { DebrisFragmentView } from '../../../render/dynamic/entity/debris-fragment-view';
+import { MagazineFrameView } from '../../../render/dynamic/entity/ejected-gun-part-view';
 import { detachedPartOf, detachPart, type AssemblyPartDef } from '../../../render/assembly/assembly-shape';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';

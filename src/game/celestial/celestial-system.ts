@@ -17,8 +17,8 @@ import { ScaleGridView } from './scale-grid-view';
 import { focusTargetId } from '../viewer/focus-target';
 import { CelestialIllumination, type IlluminationTargets } from '../../render/celestial/celestial-illumination';
 import { RingMaterials } from '../../render/celestial/ring';
-import type { CelestialEntity } from './celestial-entity/celestial-entity';
-import type { StellarLightSource } from '../../render/celestial/celestial-entity/celestial-view';
+import type { CelestialEntity } from './entity/celestial-entity';
+import type { StellarLightSource } from '../../render/celestial/entity/celestial-view';
 import { OrbitGuideModel } from './orbit-guide/orbit-guide-model';
 import { ZeroVelocityModel } from './orbit-guide/zero-velocity-model';
 import { OrbitGuideView, type VisibleGuideLine } from '../../render/celestial/orbit-guide/orbit-guide-view';
@@ -26,7 +26,7 @@ import { ZeroVelocityView } from '../../render/celestial/orbit-guide/zero-veloci
 import type { OrbitGuideSettings } from '../viewer/orbit-guide-settings';
 import type { TdbJulianDate } from '../../physics/time';
 import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
-import type { MapOverlayLabel } from '../../render/celestial/celestial-entity/celestial-view';
+import type { MapOverlayLabel } from '../../render/celestial/entity/celestial-view';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';
 import { isOccluded } from '../../physics/occlusion';
@@ -38,7 +38,7 @@ import type { CloudPresentation } from '../../render/earth-weather/cloud/cloud-p
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
 import type { FocusCameraSource } from '../viewer/focus-camera-selection';
-import type { CelestialClass } from './celestial-entity/celestial-entity-def';
+import type { CelestialClass } from './entity/celestial-entity-def';
 import type { PerfCounts } from '../perf-counts';
 import type { ViewMode } from '../view/view-mode';
 import {

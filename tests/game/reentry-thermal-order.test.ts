@@ -15,7 +15,7 @@ import {
 import { MAX_DYN_PRESSURE } from '../../src/game/player/aero-load';
 import {
   MAX_HULL_TEMP, SHIP_BCINV, SHIP_BULK_DENSITY, SHIP_RADIATING_AREA_PER_MASS,
-} from '../../src/game/dynamic/dynamic-entity/combat-ship-entity';
+} from '../../src/game/dynamic/entity/combat-ship-entity';
 
 const SHIP_SPECIFIC_HEAT = 100; // 艦の比熱(combat-ship-entity.ts と同じ値)[J/(kg·K)]
 const SURFACE_R = 6.4e6;

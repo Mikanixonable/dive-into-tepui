@@ -4,10 +4,10 @@ import {
   celestialClassVisible, celestialNameVisible, mapDisplayCategoryVisible,
   type MapDisplayCategory, type MapDisplayToggles,
 } from './display-toggles';
-import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
+import type { CelestialClass } from '../celestial/entity/celestial-entity-def';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
 
 export interface MapVisibility {
   readonly icon: boolean;

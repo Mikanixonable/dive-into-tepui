@@ -1,8 +1,8 @@
 // 直近の進行で起きた一回きりの出来事の記録。進行の位相が起きたことを領域の言葉で積み、
 // 表示の導出が通し番号を鍵に読んで、音・通知・閃光の宣言へ写す(R7)。
 import type { CommandQueue } from './command-queue';
-import type { BulletType } from './dynamic/dynamic-entity/bullet-reaction';
-import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
+import type { BulletType } from './dynamic/entity/bullet-reaction';
+import type { DynamicEntityKind } from './dynamic/entity/entity-kind';
 import type { EnemyDeathCause } from './stages/stage-outcome';
 import type { Attitude } from '../physics/attitude';
 import type { KinematicState } from '../physics/kinematic-state';

@@ -1,9 +1,9 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
-import { ENEMY_MODEL_SCALE } from '../../src/game/dynamic/dynamic-entity/enemy';
-import { metalEnemyCollisionRadius } from '../../src/game/dynamic/dynamic-entity/metal-enemy';
-import { MetalEnemyView, VariantMetalEnemyView } from '../../src/render/dynamic/dynamic-entity/metal-enemy-view';
+import { ENEMY_MODEL_SCALE } from '../../src/game/dynamic/entity/enemy';
+import { metalEnemyCollisionRadius } from '../../src/game/dynamic/entity/metal-enemy';
+import { MetalEnemyView, VariantMetalEnemyView } from '../../src/render/dynamic/entity/metal-enemy-view';
 
 // 組み立てが渡すのと同じ倍率で View を作り、そのモデルの外接球半径を測る。
 function renderedRadius(typeIndex: number | null): number {

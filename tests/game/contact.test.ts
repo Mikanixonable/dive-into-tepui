@@ -8,7 +8,7 @@
 // 解決器と同じ組み方を再現して両者が噛み合っていることまで見る。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { closingSpeed, type Contact } from '../../src/game/dynamic/dynamic-entity/contact';
+import { closingSpeed, type Contact } from '../../src/game/dynamic/entity/contact';
 import {
   distributeFixedContact, distributeSphereContact, resolveSphereCollision, sphereContactGeometry,
 } from '../../src/physics/collision-response';

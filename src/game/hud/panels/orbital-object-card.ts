@@ -7,7 +7,7 @@ import { glyphMarkup, type OrbitalObjectActions } from './orbital-object-search'
 import type { ChartRole } from './orbital-object-chart';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ListedObject } from '../../pickable/listed-object';
-import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../../dynamic/entity/orbiting-object';
 
 const STYLE = `
 /* 札: フォーカス対象と、それにできる操作。束を開いている間は中身の一覧になる。 */

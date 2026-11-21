@@ -6,7 +6,7 @@ import { ModularShip } from '../../src/game/ship/modular-ship';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { createBasePreset, createDefaultCombatPreset, createSalvageTenderPreset } from '../../src/game/ship/ship-presets';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
-import type { Controllable } from '../../src/game/dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../../src/game/dynamic/entity/controllable';
 import type { ViewMode } from '../../src/game/view/view-mode';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';

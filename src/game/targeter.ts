@@ -2,11 +2,11 @@
 // 表示(方位マーカー・見越し点・的通過マーク)もここが受け持つ。
 import type { Vec3 } from '../math/vec3';
 import { add, len, norm, scale, sub } from '../math/vec3';
-import { Enemy } from './dynamic/dynamic-entity/enemy';
-import { isAmmoPickup, isRcsFuelPickup } from './dynamic/dynamic-entity/pickup';
+import { Enemy } from './dynamic/entity/enemy';
+import { isAmmoPickup, isRcsFuelPickup } from './dynamic/entity/pickup';
 import type { EntityRoster } from './dynamic/entity-roster';
 import { ModularShip } from './ship/modular-ship';
-import { aliveCombatTarget, isCombatTarget, type CombatTarget } from './dynamic/dynamic-entity/combat-target';
+import { aliveCombatTarget, isCombatTarget, type CombatTarget } from './dynamic/entity/combat-target';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { Viewport } from '../render/viewport';
 import { GroupedMarkers, withHitFlash, withTargetRole, type GroupedMarkerItem } from './marker/grouped-markers';
@@ -25,7 +25,7 @@ import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy
 import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
 import { isOccluded } from '../physics/occlusion';
 import type { CelestialBody } from '../physics/celestial-body';
-import type { OrbitingObject } from './dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from './dynamic/entity/orbiting-object';
 import type { ProjectFn } from '../math/projection';
 import type { RunEvent } from './run-events';
 import type { NavTargetSource } from './viewer/nav-target-selection';

@@ -7,8 +7,8 @@ import {
 import {
   generateAssemblyShape, type AssemblyPartRole, type AssemblyShape,
 } from '../../src/render/assembly/assembly-shape';
-import { AssemblyEnemy } from '../../src/game/dynamic/dynamic-entity/assembly-enemy';
-import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
+import { AssemblyEnemy } from '../../src/game/dynamic/entity/assembly-enemy';
+import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
 import { RunEventLog } from '../../src/game/run-events';
 import type { EntityRegistry } from '../../src/game/dynamic/entity-registry';
 

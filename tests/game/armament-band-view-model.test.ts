@@ -3,7 +3,7 @@ import { HudPanelPresenter } from '../../src/game/hud/hud-panel-presenter';
 import { reloadDisabledReason, type AmmoViewModel } from '../../src/game/hud/ammo-status';
 import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { ModularShip } from '../../src/game/ship/modular-ship';
-import type { Controllable } from '../../src/game/dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../../src/game/dynamic/entity/controllable';
 import { test } from '../harness';
 
 export function register(): void {

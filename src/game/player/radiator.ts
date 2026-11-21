@@ -5,7 +5,7 @@ import { add, dot, v3, type Vec3 } from '../../math/vec3';
 import { deployablePanelPoses } from '../../physics/ship-panel-layout';
 import { RADIATOR_FOLD_COUNT, RADIATOR_PANEL_WIDTH, RADIATOR_SEGMENT_LENGTH } from '../../physics/player-shape';
 import { kinematicState } from '../../physics/kinematic-state';
-import type { Contact } from '../dynamic/dynamic-entity/contact';
+import type { Contact } from '../dynamic/entity/contact';
 import { ContactProxy } from '../dynamic/contact-proxy';
 import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 import type { ShipAssembly } from '../ship/ship-assembly';

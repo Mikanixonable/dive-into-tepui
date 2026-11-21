@@ -20,7 +20,7 @@ import type { NavTargetPresenter } from '../nav-target-presenter';
 import type { NavTargetCommands } from '../viewer/nav-target-commands';
 import type { ControlSelectionCommands } from '../control-selection-commands';
 import { rayThroughScreen } from '../../math/projection';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { FocusCameraCommands } from '../viewer/camera-commands';
 import type { MapCameraSource } from '../viewer/camera-selection';
 import type { DisplayWindowManager } from '../display-window-manager';

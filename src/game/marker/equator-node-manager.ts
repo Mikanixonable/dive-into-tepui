@@ -3,7 +3,7 @@ import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
 import type { EntityRoster } from '../dynamic/entity-roster';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import { appearsOnMap, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { ObjectPickable } from '../pickable/object-pickable';

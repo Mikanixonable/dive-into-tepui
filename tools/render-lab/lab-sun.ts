@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { R_SUN, SUN, SUN_SURFACE_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { createStarSphere } from '../../src/render/celestial/star-sphere';
-import { surfaceRadianceOf } from '../../src/render/celestial/celestial-entity/star-celestial-view';
+import { surfaceRadianceOf } from '../../src/render/celestial/entity/star-celestial-view';
 import { irradianceAtDistance, scaledRadiantIntensity } from '../../src/render/pipeline/sun-light';
 import { apparentSizePx, metersPerPixelAtDepth } from '../../src/math/projection';
 import { AU } from '../../src/physics/astronomical-unit';

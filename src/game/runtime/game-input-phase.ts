@@ -12,7 +12,7 @@ import { rawGameInputAdapter } from '../input/raw-game-input-adapter';
 import { PilotInput } from '../input/pilot-input';
 import type { GameInputSource } from '../input/game-input-ports';
 import type { PauseMenu } from '../../hud-kit/windows/pause-menu';
-import type { PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
+import type { PilotControls } from '../dynamic/entity/pilot-controls';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { Viewport } from '../../render/viewport';
 import type { Hud } from '../hud/hud';

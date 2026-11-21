@@ -4,8 +4,8 @@
 import { orbitalElementsOf } from '../../physics/elements';
 import { strongestAttractor } from '../../physics/attractor';
 import type { TransferPlannerTarget } from '../../physics/transfer-planner';
-import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import { aliveCombatTarget } from '../dynamic/entity/combat-target';
+import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { OrbitSlotRegistry } from './orbit-slot-registry';
 import type { OrbitSlotCatalogAccess } from './orbit-slot-family';

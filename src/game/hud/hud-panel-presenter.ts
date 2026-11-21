@@ -2,7 +2,7 @@
 import { len, sub } from '../../math/vec3';
 import { frameRoleOf } from '../../physics/frame';
 import { orbitInfo, relativeInfo } from '../orbit-info';
-import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
+import { aliveCombatTarget } from '../dynamic/entity/combat-target';
 import { hasUsableConstructionDock } from '../ship/construction-entry';
 import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import { shipSystemCommands, type ShipSystemCommands } from '../player/ship-system-commands';
@@ -22,7 +22,7 @@ import type { EnemyContact } from './panels/enemies-panel';
 import type { ApproachTargetSource } from './orbit/orbit-analysis-data';
 import type { CommandQueue } from '../command-queue';
 import type { ControlSelection } from '../control-selection';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type {
   PresentationCameraSystem, PresentationCelestialSystem, PresentationDisplayWindow,

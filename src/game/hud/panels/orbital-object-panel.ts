@@ -12,7 +12,7 @@ import type { PanelCollapse } from '../panel-chrome';
 import type { ChartKind, ChartMark, ChartStation } from './orbital-object-chart';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ListedObject } from '../../pickable/listed-object';
-import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../../dynamic/entity/orbiting-object';
 
 const COLLAPSE_LABELS: CollapseToggleLabels = {
   expandedGlyph: COLLAPSE_EXPANDED_GLYPH,

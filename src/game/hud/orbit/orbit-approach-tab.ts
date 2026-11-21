@@ -7,7 +7,7 @@ import { approachSeries, sharedAttractor } from './orbit-analysis-data';
 import { ScaleField, buildTabControls, clampScaleKm, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitChart } from './orbit-chart';
 import { distanceAxis } from './orbit-chart-axes';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../dynamic/entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';

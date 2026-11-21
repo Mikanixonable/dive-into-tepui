@@ -9,7 +9,7 @@ import { createShipDefaultParts } from './ship-default-parts';
 import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
 import { deserializeParts, type Part, type AnyPart } from './parts';
-import { MetalEnemyView, VariantMetalEnemyView } from '../../../render/dynamic/dynamic-entity/metal-enemy-view';
+import { MetalEnemyView, VariantMetalEnemyView } from '../../../render/dynamic/entity/metal-enemy-view';
 
 // 各金属機体モデルを ENEMY_MODEL_SCALE 倍したときの外接球半径 [m]。アセットの bounds を写した
 // 定数で、一致は描画テストが確かめる。

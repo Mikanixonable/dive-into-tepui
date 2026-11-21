@@ -32,7 +32,7 @@ import {
 } from './plan-node-editing';
 import type { SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import type { ControlSelection } from '../control-selection';
 import type { PlanPath } from './plan-path';
 import type { CelestialBodies } from '../celestial/celestial-bodies';

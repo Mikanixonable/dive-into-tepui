@@ -1,5 +1,5 @@
 // 現在のエンティティ一覧を参照するインターフェース。生成や破棄の管理に関わらず、全個体を走査する側が使用する。
-import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './entity/dynamic-entity';
 
 export interface EntityRoster {
   // 保持する全エンティティを追加順に返す（読み取り専用）。

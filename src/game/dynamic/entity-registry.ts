@@ -1,7 +1,7 @@
 // 生成したエンティティを登録コレクションへ追加するインターフェース。即座に追加するものと、条件充足を待って追加するものを扱う。
-import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { EntityIdAllocators } from './dynamic-entity/entity-id';
-import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
+import type { DynamicEntity } from './entity/dynamic-entity';
+import type { EntityIdAllocators } from './entity/entity-id';
+import type { SerializedDynamicEntity } from './entity/entity-dictionary';
 import type { RunEventSink } from '../run-events';
 
 // 個体を実体化可能かを判定する述語関数。何を待機するかは、待機を決定した側のみが保持する。

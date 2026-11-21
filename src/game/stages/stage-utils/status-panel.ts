@@ -3,7 +3,7 @@
 import type { ModularShip } from '../../ship/modular-ship';
 import { fmtEnergy } from '../../../hud-kit/format';
 import { Meter } from '../../../hud-kit/widgets';
-import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/combat-ship-entity';
+import { MAX_HULL_TEMP } from '../../dynamic/entity/combat-ship-entity';
 import { POWER_CAPACITY } from '../../player/power';
 import {
   ARMOR_WARNING_RATIO, TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,

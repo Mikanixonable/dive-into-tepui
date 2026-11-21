@@ -1,6 +1,6 @@
 // 組み立て型の敵1体の被弾モデル(SPEC/ASSEMBLY.md「戦闘状態」)。各部品の HP と構造全体の
 // integrity を持ち、部品の喪失・発射部の停止・撃破をそこから導く。
-import { ENEMY_MAX_HP } from '../dynamic/dynamic-entity/enemy';
+import { ENEMY_MAX_HP } from '../dynamic/entity/enemy';
 import type { AssemblyPartDef, AssemblyShape } from '../../render/assembly/assembly-shape';
 
 // 部品1個の HP。部品の種別や大きさでは変えない。

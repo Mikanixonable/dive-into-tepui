@@ -8,12 +8,12 @@ import { strongestAttractor } from '../../../physics/attractor';
 import { frameOfCelestialBody, toFrameState } from '../../../physics/frame';
 import { semiMajorEccentricityFromApsides, stateFromOrbitalElements } from '../../../physics/elements';
 import { cross, len, norm, rotateAxis, scale, v3 } from '../../../math/vec3';
-import { driftingAttitude, type Enemy } from '../../dynamic/dynamic-entity/enemy';
-import { MetalEnemy } from '../../dynamic/dynamic-entity/metal-enemy';
+import { driftingAttitude, type Enemy } from '../../dynamic/entity/enemy';
+import { MetalEnemy } from '../../dynamic/entity/metal-enemy';
 import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../../physics/celestial-body';
-import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
-import { AssemblyEnemy } from '../../dynamic/dynamic-entity/assembly-enemy';
+import type { EntityIdAllocators } from '../../dynamic/entity/entity-id';
+import { AssemblyEnemy } from '../../dynamic/entity/assembly-enemy';
 
 // 自機軌道(referenceState)を、中心天体 center まわりの軌道面内で弧長 dAlong [m] だけ進めた、center 相対の状態。
 function phasedState(referenceState: KinematicState, center: CelestialBody, dAlong: number): KinematicState<'primaryRel'> {

@@ -9,7 +9,7 @@ import type { MarkerDevice } from '../../marker-kit/marker-device';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { MARKER_DIR_DIST, bearingPlacement, directionPlacement, pointPlacement } from '../marker/marker-placement';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH, COLOR_MARKER_NODE } from '../marker/marker-identity';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import type { PlanPath } from './plan-path';
 import { THROTTLE_LEVELS } from '../player/throttle';
 

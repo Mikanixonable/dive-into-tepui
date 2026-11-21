@@ -13,7 +13,7 @@ import type { CameraFrameSamples } from '../viewer/camera-selection';
 import type { TrajectoryDemand } from '../dynamic/trajectory-demand';
 import type { Viewport } from '../../render/viewport';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import type { RunEvent } from '../run-events';
 
 export interface DisplayPhaseSource {

@@ -1,6 +1,6 @@
 // いまの形式の版で書いた、始めたばかりのランの記録を組む。
 import { SAVED_GAME_VERSION, type SavedGame } from '../../src/launcher/save/save-store';
-import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
+import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
 import { SimSpeedManager } from '../../src/game/dynamic/sim-speed-manager';
 import { PlanNodeRules } from '../../src/game/plan/plan-node-rules';
 import { OrbitSlotRegistry } from '../../src/game/navigation/orbit-slot-registry';

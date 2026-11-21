@@ -7,7 +7,7 @@ import { randSym } from '../../math/random';
 import { pointVelocityAt } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
 import type { EntityRegistry } from '../dynamic/entity-registry';
-import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
+import { DebrisPiece } from '../dynamic/entity/debris-piece';
 import type { ControlSelection } from '../control-selection';
 import type { ModularShip, ModularShipInit } from './modular-ship';
 import type { ModularShipMotion } from './modular-ship-motion';

@@ -14,7 +14,7 @@ import type { Targeter } from '../targeter';
 import type { CommandQueue } from '../command-queue';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ViewSelection } from '../viewer/view-selection';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 
 // ゲーム全体ではなく、単発キーの解釈に必要な進行の読み取り口と、キーで起きる操作の受け口を渡す。
 export interface GameInputSource {

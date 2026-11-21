@@ -14,7 +14,7 @@ import {
   Enemy, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement, driftingAttitude,
   type EnemyPlacement, type SerializedEnemy,
 } from './enemy';
-import { AssemblyEnemyView, type AssemblyVisualSource } from '../../../render/dynamic/dynamic-entity/assembly-enemy-view';
+import { AssemblyEnemyView, type AssemblyVisualSource } from '../../../render/dynamic/entity/assembly-enemy-view';
 import { assemblyPartDebris } from './debris-piece';
 import type { EntityRegistry, SpawnGate } from '../entity-registry';
 import type { RunEventSink } from '../../run-events';

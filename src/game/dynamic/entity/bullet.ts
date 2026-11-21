@@ -2,7 +2,7 @@ import { deserializeKinematicState, type KinematicState } from '../../../physics
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
-import { NormalBulletView, PlasmaBulletView } from '../../../render/dynamic/dynamic-entity/bullet-view';
+import { NormalBulletView, PlasmaBulletView } from '../../../render/dynamic/entity/bullet-view';
 import {
   BulletReaction, type BulletType, type SerializedBulletReaction, type Shooter,
 } from './bullet-reaction';

@@ -2,7 +2,7 @@
 import type { Input, PointerKind } from '../../input-devices/input';
 import type { ViewMode } from '../view/view-mode';
 import { KEY_MAPPING as K, type KeyBinding } from '../../input-devices/key-mapping';
-import type { ThrustDirection } from '../dynamic/dynamic-entity/pilot-controls';
+import type { ThrustDirection } from '../dynamic/entity/pilot-controls';
 import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../../hud-kit/breakpoints';
 import {
   FONT_FAMILY, FONT_XXS, FONT_XL, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
