@@ -81,9 +81,14 @@ export class ValueInput {
 
   // 編集を破棄して確定済みの値へ戻す。
   private cancel(): void {
-    this.suppressBlurCommit = true;
     this.element.value = this.committedValue;
-    this.element.blur();
+    if (document.activeElement === this.element) {
+      // blur() は同期的に blur イベントを出し、blur ハンドラが破棄を確定として解釈するのを
+      // 一度だけ無視する。blur 経由の破棄などフォーカスが既に外れているときはイベントが
+      // 出ないので、残って次の確定を飲むフラグを立てない。
+      this.suppressBlurCommit = true;
+      this.element.blur();
+    }
     this.onCancel?.();
   }
 }

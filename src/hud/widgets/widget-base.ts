@@ -45,7 +45,10 @@ export function bindActivation(el: HTMLElement, handler: () => void): void {
     handler();
   });
   // Enter/Space を click として合成する(role="button" だけでは発火しないため)。
+  // 押しっぱなしのキーリピートでは発火しない — 合成 click は isTrusted が false で
+  // blur ガードが効かず、連射になってしまうため。
   el.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       e.stopPropagation();
