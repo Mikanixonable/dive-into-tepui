@@ -41,7 +41,7 @@ export const VIEW_OPTIONS_PANEL_STYLE = `
   padding-inline: var(--space-2);
   box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 16%, transparent);
 }
-#hud-view-options .view-options-render-label { display: grid; gap: 2px; min-width: 0; }
+#hud-view-options .view-options-render-label { display: grid; gap: var(--space-1); min-width: 0; }
 #hud-view-options .view-options-render-label > span {
   color: var(--text); font-size: var(--font-xs); letter-spacing: 0;
 }

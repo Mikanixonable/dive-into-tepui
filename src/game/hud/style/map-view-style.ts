@@ -150,8 +150,8 @@ export const MAP_VIEW_STYLE = `
 #hud .hud-map-root.active #hud-view-options .body-class-row .body-class-icon-btn.on::after {
   content: '';
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: var(--space-2);
+  right: var(--space-2);
   width: 3px;
   height: 3px;
   border-radius: 50%;
@@ -271,9 +271,9 @@ ${opaqueGlassFallbackStyle('#hud-map-scale')}
 /* マウス等の精密ポインタでは44pxタップ最小の制約がないため、表示パネルの行間・余白を詰める
    (UI-DESIGN.md のタップ最小寸法規則はタッチ環境限定)。 */
 @media (pointer: fine) {
-  #hud .hud-map-root.active #hud-view-options .body-class-row { margin-bottom: 2px; }
+  #hud .hud-map-root.active #hud-view-options .body-class-row { margin-bottom: var(--space-1); }
   #hud .hud-map-root.active #hud-view-options .view-options-section-heading { margin: var(--space-4) 0 var(--space-1); }
-  #hud .hud-map-root.active #hud-view-options .view-options-section-divider { margin: var(--space-2) 0 2px; }
+  #hud .hud-map-root.active #hud-view-options .view-options-section-divider { margin: var(--space-2) 0 var(--space-1); }
   #hud .hud-map-root.active #hud-view-options span.body-class-icon-btn { padding: 3px var(--space-2); }
 }
 `;

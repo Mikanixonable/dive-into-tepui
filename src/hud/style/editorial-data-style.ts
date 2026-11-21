@@ -85,7 +85,7 @@ export const EDITORIAL_DATA_STYLE = `
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-4);
 }
 #hud .editorial-state-cell {
-  display: grid; gap: 2px; min-width: 0;
+  display: grid; gap: var(--space-1); min-width: 0;
 }
 #hud .editorial-state-cell > :last-child {
   min-width: 0; overflow: hidden; color: var(--text);
