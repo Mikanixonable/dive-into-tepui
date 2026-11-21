@@ -58,6 +58,7 @@ export const PREDICT_PANEL_STYLE = `
   font-size: var(--font-s); color: var(--text); font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 #hud-predict .predict-elapsed:hover { color: var(--color-primary); }
+#hud-predict .predict-elapsed:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud-predict .predict-absolute {
   font-size: var(--font-xxs); color: var(--text-dim);
   font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -99,9 +100,10 @@ export const PREDICT_PANEL_STYLE = `
   #hud-predict { max-height: 28vh; max-height: 28dvh; }
 }
 @media ${MQ_COARSE} {
-  #hud-predict-wrap { bottom: 62px; }
+  /* 仮想パッドの高さぶん浮かせる。値は layout-tokens の --hud-rail-bottom に揃える。 */
+  #hud-predict-wrap { bottom: var(--hud-rail-bottom); }
 }
 @media ${MQ_COARSE_SHORT} {
-  #hud-predict-wrap { bottom: 52px; }
+  #hud-predict-wrap { bottom: var(--hud-rail-bottom); }
 }
 `;

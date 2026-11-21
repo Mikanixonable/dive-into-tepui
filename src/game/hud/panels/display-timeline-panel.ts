@@ -5,6 +5,7 @@ import {
   Slider, ToggleSwitch, ToggleValueEdit,
   type CollapseToggleLabels,
 } from '../../../hud/widgets';
+import { bindActivation } from '../../../hud/widgets/widget-base';
 import type { PanelCollapse } from '../panel-chrome';
 import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
 import { fmtDateTime, fmtDuration } from '../../../hud/format';
@@ -160,8 +161,10 @@ export class DisplayTimelinePanel {
     this.elapsedLabel = document.createElement('strong');
     this.elapsedLabel.className = 'predict-elapsed';
     this.elapsedLabel.title = 'クリックして時刻へジャンプ';
+    this.elapsedLabel.setAttribute('role', 'button');
+    this.elapsedLabel.tabIndex = 0;
     this.elapsedLabel.addEventListener('pointerdown', (e) => e.stopPropagation());
-    this.elapsedLabel.addEventListener('click', () => this.jumpToggle.open(
+    bindActivation(this.elapsedLabel, () => this.jumpToggle.open(
       (this.slider.getValue() / this.sliderSteps) * 2 * this.currentDuration - this.currentDuration,
       -this.currentDuration, this.currentDuration,
     ));
