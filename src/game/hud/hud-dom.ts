@@ -397,26 +397,14 @@ function buildTopBar(root: HTMLElement): HTMLElement {
 }
 
 // 視点リセットボタンを組む。id の chase は「動く実体を追っている視点」の意味。
+// 押下の実処理は camera-system がこの要素の click で購読する。
 function buildChaseReset(root: HTMLElement): void {
-  const chaseReset = createHudElement('button', 'hud-chase-reset', root, 'ui-surface-quiet');
-  chaseReset.setAttribute('type', 'button');
-  chaseReset.setAttribute('aria-label', '視点をリセット');
-  chaseReset.setAttribute('title', '視点をリセット');
-  chaseReset.dataset.id = 'chase-reset';
-  // リセットを示す矢印アイコンを描く。
-  chaseReset.innerHTML = `
-    <span class="hud-mini-code" aria-hidden="true">CAM</span>
-    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2"
-      fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-      <path d="M3 3v5h5"></path>
-    </svg>`;
-  // キーボード操作でもポインタ操作と同じ経路で処理されるよう、Enter/Space を pointerdown へ変換する。
-  chaseReset.addEventListener('keydown', (event) => {
-    if (event.repeat || (event.key !== 'Enter' && event.key !== ' ')) return;
-    event.preventDefault();
-    chaseReset.dispatchEvent(new Event('pointerdown', { bubbles: true }));
-  });
+  const button = new Button('⟲', () => {}, undefined, 'icon');
+  button.element.id = 'hud-chase-reset';
+  button.element.dataset.id = 'chase-reset';
+  button.element.setAttribute('aria-label', '視点をリセット');
+  button.element.title = '視点をリセット';
+  root.appendChild(button.element);
 }
 
 // 右上の常設バッジ列を組む。

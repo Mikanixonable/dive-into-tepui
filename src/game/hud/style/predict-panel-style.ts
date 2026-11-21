@@ -34,7 +34,7 @@ export const PREDICT_PANEL_STYLE = `
    #hud-stagestatus は常に非表示なので、他の下端揃えパネル(.hud-rail 等)と同じ bottom まで詰める。
    左右レール(.hud-rail-left/.hud-rail-right)とその収納グリップの内側に収まる幅だけを使い、どちらにも重ねない。 */
 #hud-predict-wrap {
-  position: absolute; bottom: 12px;
+  position: absolute; bottom: var(--space-5);
   left: calc(var(--hud-left-rail-occupied) + var(--hud-rail-grip-reach));
   right: calc(var(--hud-right-rail-occupied) + var(--hud-rail-grip-reach));
   display: flex; flex-direction: column; gap: var(--space-2); pointer-events: none;
@@ -79,7 +79,7 @@ export const PREDICT_PANEL_STYLE = `
   font-size: var(--font-xxs); color: var(--text-dim); white-space: nowrap;
 }
 @media ${MQ_MEDIUM_DOWN} {
-  #hud-predict-wrap { bottom: 8px; }
+  #hud-predict-wrap { bottom: var(--space-4); }
 }
 @media ${MQ_COMPACT} {
   /* compactは左右railの合計幅が中央領域をほぼ使い切るため、PREDICTは横の隙間ではなく
@@ -93,7 +93,7 @@ export const PREDICT_PANEL_STYLE = `
   #hud-predict .slider-ticks { display: none; }
   /* 幅が足りないので、行2はスクラバーと T+ 読み値だけ残す。 */
   #hud-predict .predict-absolute { display: none; }
-  #hud-predict-wrap { left: 8px; right: 8px; bottom: 8px; }
+  #hud-predict-wrap { left: var(--space-4); right: var(--space-4); bottom: var(--space-4); }
   #hud-predict { max-height: 28vh; max-height: 28dvh; }
 }
 @media ${MQ_COARSE} {
