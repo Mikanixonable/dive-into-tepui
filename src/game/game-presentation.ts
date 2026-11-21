@@ -672,11 +672,17 @@ export class GamePresentation {
   }
 
   // 表示生成処理から得られる計測値。
-  public perfCounts(): Pick<PerfCounts, 'planArcs' | 'mapMode' | 'mapItems' | 'mapLabels' | 'displayDurationSec'> {
+  public perfCounts(): Pick<PerfCounts,
+    'planArcs' | 'mapMode' | 'mapItems' | 'mapLabels' | 'displayDurationSec' | 'cloudQuality'
+  > {
+    // 雲の実効の精細さは、雲が見えている天体のものを優先して出す。
+    const clouds = this.game.celestialSystem.cloudPresentations();
+    const cloudPresentation = clouds.find((p) => p.cloudsVisible) ?? clouds[0] ?? null;
     return {
       ...this.planDisplay.perfCounts(),
       ...this.viewManager.activeView.perfCounts(),
       displayDurationSec: this.displayWindowManager.current.duration,
+      cloudQuality: cloudPresentation?.cloudQuality ?? null,
     };
   }
 }

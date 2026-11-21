@@ -7,7 +7,10 @@ import {
 import { CIRRUS_DETAIL, DETAIL_WAVELENGTHS, cirrusOctavesOf, type CirrusDetail } from './cloud-detail';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import { capRadiusFor, snapCap } from './cloud-cap';
-import { DETAIL_TIERS, footprintLevel, type CloudQualityGovernor } from './cloud-quality-governor';
+import {
+  DETAIL_TIERS, footprintLevel,
+  type CloudQualityGovernor, type CloudQualityReading,
+} from './cloud-quality-governor';
 import type { WebGPURenderer } from 'three/webgpu';
 import type { GpuTimingSink } from '../../gpu-timings';
 import type { CloudFieldSource, CloudFieldSourceKind } from './cloud-field-source';
@@ -32,6 +35,20 @@ const CIRRUS_WAVELENGTHS = DETAIL_WAVELENGTHS.slice(2);
 const tmpToObserver = new THREE.Vector3();
 const tmpInverseSpin = new THREE.Quaternion();
 
+// 実効段の決定を読み出し用の形へ写す。実効が設定と同じなら 'setting'、それより
+// 下なら小さい方の上限が決め手(同値なら footprint — 構造的な上限を優先して示す)。
+function qualityReadingOf(
+  quality: { readonly setting: number; readonly footprint: number; readonly effective: number },
+  budget: number,
+): CloudQualityReading {
+  const { setting, effective } = quality;
+  if (effective >= setting) return { setting, effective, limiter: 'setting' };
+  return {
+    setting, effective,
+    limiter: quality.footprint <= budget ? 'footprint' : 'budget',
+  };
+}
+
 export class CloudPresentation {
   private readonly surface: OpaqueCloudSurfaceRenderer;
   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
@@ -50,9 +67,16 @@ export class CloudPresentation {
   // 実効の精細さ。renderInput へ段数として載せ、表面・大気・雲影が同じ値を読む。
   private effectiveCumulus: CumulusDetail = CUMULUS_DETAIL.standard;
   private effectiveCirrus: CirrusDetail = CIRRUS_DETAIL.standard;
-  // 直近に実効段を決めたときの上限ごとの段番号。実効段の表示が「何で決まったか」を出す。
-  private caps: { readonly footprintCumulus: number; readonly footprintCirrus: number; readonly budget: number } = {
-    footprintCumulus: DETAIL_TIERS - 1, footprintCirrus: DETAIL_TIERS - 1, budget: DETAIL_TIERS - 1,
+  // 直近に実効段を決めたときの、雲種ごとの設定・フットプリント上限・実効の段番号と
+  // 共通の予算上限。実効段の表示が「何で決まったか」を出すために覚える。
+  private quality: {
+    cumulus: { readonly setting: number; readonly footprint: number; readonly effective: number };
+    cirrus: { readonly setting: number; readonly footprint: number; readonly effective: number };
+    readonly budget: number;
+  } = {
+    cumulus: { setting: DETAIL_TIERS - 1, footprint: DETAIL_TIERS - 1, effective: DETAIL_TIERS - 1 },
+    cirrus: { setting: DETAIL_TIERS - 1, footprint: DETAIL_TIERS - 1, effective: DETAIL_TIERS - 1 },
+    budget: DETAIL_TIERS - 1,
   };
 
   // 各供給源（generated / observed）を管理し、キャップの視点追従と雲メッシュの描画を同期する。
@@ -108,10 +132,19 @@ export class CloudPresentation {
       const budget = this.governor?.levelCap ?? DETAIL_TIERS - 1;
       const footprintCumulus = footprintLevel(spanMin, CUMULUS_TIER_OCTAVES, DETAIL_WAVELENGTHS);
       const footprintCirrus = footprintLevel(spanMin, CIRRUS_TIER_OCTAVES, CIRRUS_WAVELENGTHS);
-      this.caps = { footprintCumulus, footprintCirrus, budget };
-      this.effectiveCumulus = CUMULUS_BY_TIER[
-        Math.min(graphics.cumulusDetail - 1, footprintCumulus, budget)]!;
-      this.effectiveCirrus = Math.min(graphics.cirrusDetail, footprintCirrus, budget) as CirrusDetail;
+      const cumulusTier = Math.min(graphics.cumulusDetail - 1, footprintCumulus, budget);
+      const cirrusTier = Math.min(graphics.cirrusDetail, footprintCirrus, budget);
+      this.quality = {
+        cumulus: {
+          setting: graphics.cumulusDetail - 1, footprint: footprintCumulus, effective: cumulusTier,
+        },
+        cirrus: {
+          setting: graphics.cirrusDetail, footprint: footprintCirrus, effective: cirrusTier,
+        },
+        budget,
+      };
+      this.effectiveCumulus = CUMULUS_BY_TIER[cumulusTier]!;
+      this.effectiveCirrus = cirrusTier as CirrusDetail;
       this.setDetail(this.effectiveCumulus);
       this.syncLod(apparentDiameterPx);
     }
@@ -127,21 +160,15 @@ export class CloudPresentation {
   // 品質適応の予算上限の状態機械を結ぶ。結ばない間は予算上限が効かない。
   public setQualityGovernor(governor: CloudQualityGovernor): void { this.governor = governor; }
 
-  // 実効の精細さと、その決定に効いた上限ごとの段番号(0..2 = 粗・標準・精細)。
+  // 実効の精細さと、その決定に効いた上限(段番号 0..2 = 粗・標準・精細)。
   // 実効段の表示が「設定・フットプリント・予算のどれで決まったか」を読む。
   public get cloudQuality(): {
-    readonly effectiveCumulus: CumulusDetail;
-    readonly effectiveCirrus: CirrusDetail;
-    readonly footprintCumulus: number;
-    readonly footprintCirrus: number;
-    readonly budgetCap: number;
+    readonly cumulus: CloudQualityReading;
+    readonly cirrus: CloudQualityReading;
   } {
     return {
-      effectiveCumulus: this.effectiveCumulus,
-      effectiveCirrus: this.effectiveCirrus,
-      footprintCumulus: this.caps.footprintCumulus,
-      footprintCirrus: this.caps.footprintCirrus,
-      budgetCap: this.caps.budget,
+      cumulus: qualityReadingOf(this.quality.cumulus, this.quality.budget),
+      cirrus: qualityReadingOf(this.quality.cirrus, this.quality.budget),
     };
   }
 
