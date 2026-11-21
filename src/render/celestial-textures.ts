@@ -9,13 +9,14 @@
 //
 // アルベドの取り方(ボンドアルベド、幾何アルベドからの位相積分)は celestial-albedo.ts と
 // 同じ規約に従う。惑星は NASA Planetary Fact Sheet のボンドアルベドをそのまま使える。
+import type { TextureUrlSource } from './deferred-texture';
 
 // 1天体ぶんのテクスチャと、その明るさをアルベドへ合わせる倍率、そして合わせ先のボンド
 // アルベド(倍率の導出元であり、輝点の明るさを引くのにも要る)。averageHue は緯度重み付き
 // 平均色の色み(Rec.709 輝度 1 へ正規化した線形 RGB)で、天体を光源にするときの色。
 // 倍率と同じ測り方で 2026-08-27 に一度だけ測った。
 export interface CelestialTexture {
-  readonly url: string;
+  readonly url: TextureUrlSource;
   readonly albedoScale: number;
   readonly bondAlbedo: number;
   readonly averageHue: readonly [number, number, number];

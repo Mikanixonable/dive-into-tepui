@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { normalView, positionLocal, uniform } from 'three/tsl';
 import type { CelestialSurfaceFrame } from './celestial/celestial-surface';
-import { DeferredTexture } from './deferred-texture';
+import { DeferredTexture, type TextureUrlSource } from './deferred-texture';
 import {
   EARTH_BASE_TERRAIN_HEIGHT, EARTH_BASE_TERRAIN_WIDTH, loadEarthBaseTerrain,
 } from './earth-surface-terrain-codec';
@@ -60,8 +60,8 @@ function createBaseTerrainTexture(): { readonly texture: THREE.DataTexture; read
 // タイルとmanifestのbase画像を束ねた材質を組む。baseTerrainが届くまでは、同じ地理座標の
 // 楕円体法線と粗さ1で描く。
 export function createEarthSurfaceMaterialBinding(
-  textures: EarthSurfaceGpuTextures, baseColorUrl: string, baseTerrainUrl: string, fetchImpl?: typeof fetch,
-  albedoScale = 1,
+  textures: EarthSurfaceGpuTextures, baseColorUrl: TextureUrlSource, baseTerrainUrl: string,
+  fetchImpl?: typeof fetch, albedoScale = 1,
 ): EarthSurfaceMaterialBinding {
   let disposed = false;
   let baseFailureReason: string | null = null;

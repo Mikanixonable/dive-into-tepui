@@ -1,5 +1,7 @@
 // 配信物が未設定の開発環境で使う地球表面の表示・入力初期値。
 import earthTextureUrl from '../assets/earth.jpg';
+import earthTexture4096Url from '../assets/earth-4096.jpg';
+import earthTexture2048Url from '../assets/earth-2048.jpg';
 import type { CelestialTexture } from './celestial-textures';
 import { EARTH_TILE_MAX_Z } from './earth-surface-tile-key';
 import {
@@ -7,12 +9,12 @@ import {
   type EarthSurfaceSource,
 } from './earth-surface-source';
 
-export const EARTH_TEXTURE: CelestialTexture = {
-  url: earthTextureUrl,
+export const EARTH_TEXTURE = {
+  url: { low: earthTexture2048Url, medium: earthTexture4096Url, high: earthTextureUrl },
   albedoScale: EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION.diffuseAlbedoScale,
   bondAlbedo: EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION.bondAlbedo,
   averageHue: EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION.averageHue,
-};
+} satisfies CelestialTexture;
 
 export const EARTH_SURFACE_FIXTURE_SOURCE = {
   datasetId: 'earth-development-fixture',

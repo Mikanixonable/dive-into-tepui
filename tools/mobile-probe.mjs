@@ -59,6 +59,7 @@ const PRESET_ROWS = [
   ['hitShake', true, true, true],
   ['filmLut', 'none', 'none', 'none'],
   ['antialias', 0, 1, 2],
+  ['textureResolution', 0, 1, 2],
   ['pointField', false, true, true],
   ['rings', false, true, true],
   ['aurora', false, false, true],

@@ -17,7 +17,14 @@ import type { EarthSurfaceSource } from './earth-surface-source';
 import { EARTH_SURFACE_FIXTURE_SOURCE, EARTH_TEXTURE } from './earth-surface-defaults';
 import type { CelestialTexture } from './celestial-textures';
 import earthSmoothnessUrl from '../assets/earth-smoothness.png';
+import earthSmoothness2048Url from '../assets/earth-smoothness-2048.png';
 import { earthSurfaceColorToRgba8 } from './earth-surface-color';
+import type { TextureUrls } from './deferred-texture';
+
+// 地表の滑らかさ画像。4096px は原寸と同じ幅なので、縮小版を持つのは低の段だけ。
+const EARTH_SMOOTHNESS_URLS: TextureUrls = {
+  low: earthSmoothness2048Url, medium: earthSmoothnessUrl, high: earthSmoothnessUrl,
+};
 
 interface EarthSurfaceFactoryOptions extends EarthSurfaceBootstrapOptions {
   readonly renderer?: WebGPURenderer | null;
@@ -38,7 +45,7 @@ interface EarthSurfaceRuntimeHandle {
 
 // 起動直後に表示する8K全球画像を持つfallbackを返す。
 function fallbackSurface(status: EarthSurfaceStatus = 'loading'): EarthSurface {
-  const fallback = CelestialSurface.textured(EARTH_TEXTURE, earthSmoothnessUrl);
+  const fallback = CelestialSurface.textured(EARTH_TEXTURE, EARTH_SMOOTHNESS_URLS);
   return new EarthSurface(
     new EarthSurfaceContext(EARTH_SURFACE_FIXTURE_SOURCE),
     fallback,
@@ -159,7 +166,7 @@ export function createEarthSurfaceRuntime(options: EarthSurfaceFactoryOptions = 
     // 起動結果をsurfaceへ反映し、詳細接続の待機を終える。
     const source = bootstrap.source ?? EARTH_SURFACE_FIXTURE_SOURCE;
     if (bootstrap.state === 'ready') {
-      surface.replaceFallback(CelestialSurface.textured(fallbackTextureFor(source), earthSmoothnessUrl));
+      surface.replaceFallback(CelestialSurface.textured(fallbackTextureFor(source), EARTH_SMOOTHNESS_URLS));
     }
     const connection = coordinatorFor(bootstrap, options);
     surface.attach(source, connection.coordinator, connection.state, connection.material, connection.reason);

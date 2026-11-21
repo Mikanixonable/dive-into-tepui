@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import {
   normalize, normalView, positionLocal, select, texture as textureNode, transformNormalToView, uv,
 } from 'three/tsl';
-import { DeferredTexture } from '../deferred-texture';
+import { DeferredTexture, type TextureUrlSource } from '../deferred-texture';
 import { markLitOpaque } from '../pipeline/lit-layer';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from '../celestial-albedo';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './screen-lod';
@@ -134,12 +134,11 @@ export class CelestialSurface implements CelestialSurfaceLike {
   private activeLevel: SphereLodLevel | null = null;
   private activeAttachment: CelestialSurfaceMaterialAttachment;
 
-  // material と deferred のテクスチャは解放までこの表面が持つ。photometry / textureUrl は静的事実。
+  // material と deferred のテクスチャは解放までこの表面が持つ。photometry は静的事実。
   // lightSource は光源として焼くときに読むベース色で、単色の面では null。
   private constructor(
     private readonly fallbackAttachment: CelestialSurfaceMaterialAttachment,
     public readonly photometry: SurfacePhotometry | null,
-    public readonly textureUrl: string | null,
     private readonly lightSource: {
       readonly deferred: DeferredTexture;
       readonly map: LightSourceMap;
@@ -161,7 +160,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
   // smoothnessUrl を渡すと、地表の滑らかさ(1 − 粗さ)を赤チャンネルに持つ地表と同じ正距円筒の
   // テクスチャが、粗さを場所ごとに決める。
   public static textured(
-    texture: CelestialTexture, smoothnessUrl: string | null = null,
+    texture: CelestialTexture, smoothnessUrl: TextureUrlSource | null = null,
   ): CelestialSurface {
     const baseMap = new DeferredTexture(texture.url, THREE.SRGBColorSpace);
     const smoothnessMap = smoothnessUrl === null
@@ -184,7 +183,7 @@ export class CelestialSurface implements CelestialSurfaceLike {
       {
         material,
         deferred: smoothnessMap === null ? [baseMap] : [baseMap, smoothnessMap],
-      }, photometryOf(texture), texture.url,
+      }, photometryOf(texture),
       { deferred: baseMap, map: { texture: baseMap.texture, albedoScale: texture.albedoScale } });
   }
 
@@ -195,7 +194,12 @@ export class CelestialSurface implements CelestialSurfaceLike {
       roughness: 1, metalness: 0,
     });
     return new CelestialSurface(
-      { material, deferred: [] }, { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo }, null);
+      { material, deferred: [] }, { bondAlbedo: rec709Luminance(albedo), lightSourceAlbedo: albedo });
+  }
+
+  // 現在の段で読む地表画像の URL。テクスチャを持たない面では null。
+  public get textureUrl(): string | null {
+    return this.lightSource?.deferred.resolvedUrl ?? null;
   }
 
   // ベース色の画像が GPU へ届いてから、構築時に組んだ1つの組を返す。届く前は null。

@@ -6,6 +6,7 @@
 import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CIRRUS_DETAIL } from './earth-weather/cloud/cloud-detail';
 import { CLOUD_FIELD_SOURCE_KIND } from './earth-weather/cloud/cloud-field-source';
+import { TEXTURE_RESOLUTION } from './deferred-texture';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
@@ -87,6 +88,17 @@ export const GRAPHICS_OPTIONS = {
     kind: 'choice', group: 'basic', label: 'アンチエイリアス',
     items: [[0, 'なし'], [1, 'FXAA'], [2, 'SMAA']],
     presets: { low: 0, medium: 1, high: 2 },
+  },
+  // 天体の地表や星野へ貼る大きい画像の幅の上限。段を下げるほど細部は粗くなる代わりに、
+  // 画像が占める GPU の記憶領域が減る(高=原寸・中=4096px・低=2048px)。
+  textureResolution: {
+    kind: 'choice', group: 'basic', label: 'テクスチャ解像度',
+    items: [
+      [TEXTURE_RESOLUTION.low, '低'], [TEXTURE_RESOLUTION.medium, '中'], [TEXTURE_RESOLUTION.high, '高'],
+    ],
+    presets: {
+      low: TEXTURE_RESOLUTION.low, medium: TEXTURE_RESOLUTION.medium, high: TEXTURE_RESOLUTION.high,
+    },
   },
   // 小惑星帯・カイパー帯などの点群。
   pointField: {

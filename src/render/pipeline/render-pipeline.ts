@@ -223,6 +223,8 @@ export class RenderPipeline {
 
   // 描画品質設定を各パスへ配る。影マップなどの GPU 資源は、値が変わったものだけを組み直す。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
+    // 天体と星野の画像の段。読み手のテクスチャ実体はそのままで、画像だけが段に応じて差し替わる。
+    DeferredTexture.setResolution(graphics.textureResolution);
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
     this.shadowMaps.setQuality(

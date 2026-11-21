@@ -54,7 +54,7 @@ function readyFetch(): typeof fetch {
 export function register(): void {
   test('earth system: 地球はfallbackテクスチャを保ち、月の表面は変更しない', () => {
     const bodies = earthSystem(new StarMotion(SUN), 0);
-    assert.equal(bodies.earth.view.surfaceTextureUrl, EARTH_TEXTURE.url);
+    assert.equal(bodies.earth.view.surfaceTextureUrl, EARTH_TEXTURE.url.high);
     assert.match(bodies.moon.view.surfaceTextureUrl ?? '', /8k_moon\.jpg$/);
     assert.equal(EARTH_SURFACE_FIXTURE_SOURCE.climateMapUrls.length, 12);
   });
@@ -68,7 +68,7 @@ export function register(): void {
     assert.equal(result.bootstrap.state, 'fallback');
     assert.equal(runtime.surface.status, 'fallback');
     assert.equal(runtime.surface.diagnostics.reason, 'earth surface manifest unavailable');
-    assert.equal(result.surface.textureUrl, EARTH_TEXTURE.url);
+    assert.equal(result.surface.textureUrl, EARTH_TEXTURE.url.high);
     result.surface.dispose();
   });
 
@@ -123,7 +123,7 @@ export function register(): void {
     assert.equal(result.state, 'error');
     assert.equal(result.surface.usesDetailedMaterial, false);
     assert.equal(result.surface.diagnostics.reason, 'Earth surface manifest HTTP 503');
-    assert.equal(result.surface.textureUrl, EARTH_TEXTURE.url);
+    assert.equal(result.surface.textureUrl, EARTH_TEXTURE.url.high);
     result.surface.dispose();
   });
 
