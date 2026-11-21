@@ -27,7 +27,8 @@ import { startViewportTracking } from '../../hud/viewport';
 import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../view/view-mode';
-import type { CollapseToggleLabels } from '../../hud/widgets';
+import { Button, type CollapseToggleLabels } from '../../hud/widgets';
+import { createKeyCap } from '../../hud/key-cap';
 import type { PanelCollapse } from './panel-chrome';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
@@ -418,11 +419,31 @@ function buildChromeActions(
   buildHelpBadge(actions, helpPanel);
 }
 
-// 根の class を反転し、対応するボタンの aria-pressed を合わせる。状態の正本は根の class。
+// アイコンだけの円形ボタンを1つ組み、ショートカットがあるものはキーキャップを隣へ添える。
+// 押下・フォーカス・タッチ時のヒット拡張といった対話部品の共通下地は Button ウィジェットが持つ。
+function buildChromeAction(
+  host: HTMLElement, id: string, glyph: string, keyLabel: string | null,
+  label: string, onPress: () => void,
+): { action: HTMLElement; button: Button } {
+  const action = document.createElement('span');
+  action.className = 'hud-action';
+  const button = new Button(glyph, onPress, undefined, 'icon');
+  button.element.id = id;
+  button.element.setAttribute('aria-label', label);
+  button.element.title = label;
+  action.appendChild(button.element);
+  if (keyLabel !== null) action.appendChild(createKeyCap(keyLabel));
+  host.appendChild(action);
+  return { action, button };
+}
+
+// 根の class を反転し、対応するボタンの点灯と aria-pressed を合わせる。状態の正本は根の class。
 function flipRootClass(root: HTMLElement, className: string, buttonId: string): boolean {
   const on = !root.classList.contains(className);
   root.classList.toggle(className, on);
-  root.querySelector<HTMLElement>(`#${buttonId}`)?.setAttribute('aria-pressed', String(on));
+  const button = root.querySelector<HTMLElement>(`#${buttonId}`);
+  button?.classList.toggle('on', on);
+  button?.setAttribute('aria-pressed', String(on));
   return on;
 }
 
@@ -432,54 +453,44 @@ export function toggleHudWideScreen(root: HTMLElement): void {
 }
 
 // 上部の全体ステータスバーを収納・展開する。収納中も右上のボタンで戻せる。
-function buildTopBarToggle(root: HTMLElement, host: HTMLElement): void {
-  const button = createHudElement('button', 'hud-topbar-toggle', root, 'ui-surface-quiet');
-  button.setAttribute('type', 'button');
-  button.setAttribute('aria-pressed', 'false');
-  button.innerHTML = '<span aria-hidden="true">▲</span>';
+// 状態は根の class が持ち、字形と読み上げ名は切り替えのたびにその状態から組み直す。
+function buildTopBarToggle(actions: HTMLElement, hudRoot: HTMLElement): void {
   const label = (collapsed: boolean): string => (collapsed ? '上部バーを開く' : '上部バーを収納');
-  button.setAttribute('aria-label', label(false));
-  button.title = label(false);
-  // 状態は根の class が持ち、字形と読み上げ名は切り替えのたびにその状態から組み直す。
-  button.addEventListener('click', () => {
-    const collapsed = flipRootClass(host, 'topbar-collapsed', 'hud-topbar-toggle');
-    button.querySelector('span')!.textContent = collapsed ? '▼' : '▲';
-    button.setAttribute('aria-label', label(collapsed));
-    button.title = label(collapsed);
-  });
+  const { button } = buildChromeAction(
+    actions, 'hud-topbar-toggle', '▲', null, label(false), () => {
+      const collapsed = flipRootClass(hudRoot, 'topbar-collapsed', 'hud-topbar-toggle');
+      button.setLabel(collapsed ? '▼' : '▲');
+      button.element.setAttribute('aria-label', label(collapsed));
+      button.element.title = label(collapsed);
+    },
+  );
+  button.element.setAttribute('aria-pressed', 'false');
 }
 
 // 画面を広く使うモードの切り替えバッジ。タッチだけの利用者の入口になる。
-function buildWideScreenToggle(root: HTMLElement, host: HTMLElement): void {
-  const button = createHudElement('button', 'hud-wide-toggle', root, 'ui-surface-quiet');
-  button.setAttribute('type', 'button');
-  button.setAttribute('aria-pressed', 'false');
-  button.setAttribute('aria-label', '画面を広く使う');
-  button.setAttribute('title', '画面を広く使う(TAB)');
-  button.innerHTML = `<span class="hud-mini-code" aria-hidden="true">${K.wideScreenToggle.label}</span><span aria-hidden="true">⤢</span>`;
-  button.addEventListener('click', () => toggleHudWideScreen(host));
+function buildWideScreenToggle(actions: HTMLElement, hudRoot: HTMLElement): void {
+  const { button } = buildChromeAction(
+    actions, 'hud-wide-toggle', '⤢', K.wideScreenToggle.label, '画面を広く使う(TAB)',
+    () => toggleHudWideScreen(hudRoot),
+  );
+  button.element.setAttribute('aria-pressed', 'false');
 }
 
 // Esc キーの代替操作ボタン(⚙アイコン)。CONTROLS.md が Esc と同じ振る舞い(最前面の
 // オーバーレイを閉じる、無ければ ESC メニューを開く)と定めるので、押下は受け口へそのまま渡す。
 // 表示可否は CSS(body.touch-ui-active)側が持つ — ここでは常に組む。
-function buildPauseBadge(root: HTMLElement, onPause: () => void): void {
-  const badge = createHudElement('button', 'hud-pause-badge', root, 'ui-surface-quiet');
-  badge.setAttribute('type', 'button');
-  badge.setAttribute('aria-label', 'ESC メニューを開く');
-  badge.setAttribute('title', 'ESC メニュー(ESC)');
-  badge.innerHTML = `<span class="hud-mini-code" aria-hidden="true">${K.pauseMenu.label}</span><span aria-hidden="true">⚙</span>`;
-  badge.addEventListener('click', onPause);
+function buildPauseBadge(host: HTMLElement, onPause: () => void): void {
+  const { action } = buildChromeAction(
+    host, 'hud-pause-badge', '⚙', K.pauseMenu.label, 'ESC メニュー(ESC)', onPause,
+  );
+  action.classList.add('hud-action--touch');
 }
 
 // H キーを知らないマウス/タッチ操作者向けの、ヘルプパネルを開く常設バッジ。
-function buildHelpBadge(root: HTMLElement, helpPanel: HelpPanel): void {
-  const badge = createHudElement('button', 'hud-help-badge', root, 'ui-surface-quiet');
-  badge.setAttribute('type', 'button');
-  badge.setAttribute('aria-label', '操作ガイドを開く');
-  badge.setAttribute('title', '操作ガイドを開く');
-  badge.innerHTML = '<span class="hud-mini-code" aria-hidden="true">HLP</span><span>?</span>';
-  badge.addEventListener('click', () => helpPanel.open());
+function buildHelpBadge(host: HTMLElement, helpPanel: HelpPanel): void {
+  buildChromeAction(
+    host, 'hud-help-badge', '?', K.help.label, '操作ガイドを開く', () => helpPanel.open(),
+  );
 }
 
 // 上部の固定 UI が占める高さを HUD の配置へ反映する。

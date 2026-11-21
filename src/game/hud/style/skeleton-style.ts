@@ -61,10 +61,8 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud.construction-mode #hud-enemies,
 #hud.construction-mode #hud-map-scale,
 #hud.construction-mode #hud-chase-reset,
-#hud.construction-mode #hud-help-badge,
-#hud.construction-mode #hud-pause-badge,
+#hud.construction-mode #hud-chrome-actions,
 #hud.construction-mode #hud-topbar-toggle,
-#hud.construction-mode #hud-wide-toggle,
 #hud.construction-mode #hud-armament-band,
 #hud.construction-mode .rail-toggle,
 /* 建造中はカメラパネルに「クォータニオン操作」だけを表示する(UI-DESIGN.md §8) —
@@ -142,17 +140,14 @@ ${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-
 #hud .hud-rail-left { left: 12px; width: var(--rail-w-left); }
 #hud .hud-rail-right { right: 12px; width: var(--rail-w-right); }
 #hud .hud-map-root.active .hud-rail { pointer-events: auto; touch-action: pan-y; }
+/* レールの収納グリップは画面の縦中央、レールの内側の縁の外へ置く。レールの実占有量(JS が同期する)を
+   基準にするので、畳むとそのまま画面端へ寄る。 */
 #hud .rail-toggle {
-  width: var(--hud-rail-toggle-size); height: var(--hud-rail-toggle-size); border: 0; border-radius: 50%;
-  background: var(--glass-control); color: var(--color-primary); cursor: pointer; pointer-events: auto;
-  transition: color var(--transition-fast), background var(--transition-fast);
+  display: none; position: absolute; top: 50%; transform: translateY(-50%); z-index: var(--z-hud-rail-toggle);
 }
-#hud .rail-toggle:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
-#hud .rail-toggle:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-#hud .rail-toggle { display: none; position: absolute; top: var(--space-4); z-index: var(--z-hud-rail-toggle); }
-#hud:not(.base-mode) .rail-toggle { display: block; }
-#hud .hud-view-root .rail-toggle-left { left: var(--space-4); }
-#hud .hud-view-root .rail-toggle-right { right: var(--space-4); }
+#hud:not(.base-mode) .rail-toggle { display: inline-flex; }
+#hud .hud-view-root .rail-toggle-left { left: calc(var(--hud-left-rail-occupied) + var(--hud-rail-grip-gap)); }
+#hud .hud-view-root .rail-toggle-right { right: calc(var(--hud-right-rail-occupied) + var(--hud-rail-grip-gap)); }
 #hud:not(.base-mode) .hud-rail.collapsed { width: 0; }
 #hud:not(.base-mode) .hud-rail.collapsed > .panel { display: none !important; }
 #hud.base-mode .rail-toggle { display: none; }
@@ -265,34 +260,30 @@ ${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-
   #hud-chase-reset { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
 }
 
-/* 右上の常設バッジ列。右レール収納トグルの左へ並べる。 */
+/* 右上の常設バッジ列。 */
 /* 画面を広く使うモード(Tab)は、レールとその収納トグル・上部バー・下部の帯を隠す。上部バーの収納は
    上部バーだけを隠す。どちらも右上のボタン群は残し、そこから戻せるようにする。 */
 #hud.hud-wide .hud-rail, #hud.hud-wide .rail-toggle,
-#hud.hud-wide #hud-topbar, #hud.hud-wide #hud-stagestatus, #hud.hud-wide #hud-armament-band,
-#hud.topbar-collapsed #hud-topbar { display: none !important; }
+#hud.hud-wide #hud-topbar, #hud.hud-wide #hud-topbar-toggle,
+#hud.hud-wide #hud-stagestatus, #hud.hud-wide #hud-armament-band,
+#hud #hud-topbar.collapsed { display: none !important; }
+/* 上部バーの収納グリップはバーの下縁の中央に置く。バーを畳むと同じ列の先頭(画面上端)へ上がる。 */
+#hud-topbar-toggle { grid-column: 2; justify-self: center; }
 #hud-chrome-actions {
-  position: absolute; top: var(--space-4);
-  right: calc(var(--space-4) + var(--hud-rail-toggle-size) + var(--space-2));
-  display: flex; align-items: center; gap: var(--space-2);
+  position: absolute; top: var(--space-4); right: var(--space-4);
+  display: flex; align-items: center; gap: var(--space-3);
 }
-#hud-chrome-actions > * {
-  pointer-events: auto; cursor: pointer;
-  min-width: 0; width: auto; height: 30px; border-radius: var(--radius-micro);
-  display: flex; justify-content: center; align-items: center; gap: var(--space-2);
-  padding: 0 var(--space-3); color: var(--text-dim);
-  font: inherit; font-size: var(--font-s); font-weight: 700;
-}
-#hud-chrome-actions > *:hover { background: var(--surface-2); color: var(--color-primary-hover); }
-#hud-chrome-actions > *:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+/* 円形ボタンとそのショートカットのキーキャップを一組にして並べる。 */
+#hud-chrome-actions .hud-action { display: flex; align-items: center; gap: var(--space-1); }
 /* ⚙バッジの表示可否は、仮想パッドと同じ body.touch-ui-active(TouchControls が持つ正本)へ載せる。 */
-#hud-pause-badge { display: none; }
-body.touch-ui-active #hud-pause-badge { display: flex; }
+#hud-chrome-actions .hud-action--touch { display: none; }
+body.touch-ui-active #hud-chrome-actions .hud-action--touch { display: flex; }
 #hud .hud-mini-code {
   color: var(--role-meta); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-code);
 }
 @media ${MQ_COARSE} {
-  #hud-chrome-actions > * { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
+  /* タッチ環境ではキーの案内は意味を持たないので、キーキャップは畳む。 */
+  #hud-chrome-actions .hud-action .ui-key { display: none; }
 }
 
 /* 警報帯: 鳴っている警報をトップバーの下へ「何が起きていて、何をすればよいか」の形で出す。
