@@ -95,7 +95,6 @@ export class PauseMenu implements OverlayHandle {
     );
     const closeBtn = new CloseButton(() => this.toggle(false));
     headerActions.appendChild(closeBtn.element);
-    headerTop.appendChild(headerActions);
     header.appendChild(headerTop);
     const heading = document.createElement('h3');
     heading.className = 'pm-system-heading';
@@ -104,14 +103,20 @@ export class PauseMenu implements OverlayHandle {
     subheading.className = 'pm-system-sub ui-data-context';
     subheading.textContent = 'APPLICATION STATE · SUSPENDED';
     header.append(heading, subheading);
-    wireHeaderDrag(header, {
+    const dragSession = {
       position: () => ({ x: this.panel.offsetLeft, y: this.panel.offsetTop }),
-      moveTo: (x, y) => this.moveTo(x, y),
+      moveTo: (x: number, y: number) => this.moveTo(x, y),
       onDragStart: () => { this.hasCustomPosition = true; },
-    });
+    };
+    wireHeaderDrag(header, dragSession);
+    // 収納した帯はボタンの行だけになる。ボタン以外の隙間を掴んで動かせるよう、同じ配線を張る。
+    wireHeaderDrag(headerActions, dragSession);
     this.panel.appendChild(header);
 
     this.panel.appendChild(this.body);
+    // 最小化トグルと閉じるボタンはパネル全体の右上端へ浮かせる(SPEC UI-DESIGN §8)。
+    // 収納時はこの行だけが残る小さな帯になる。
+    this.panel.appendChild(headerActions);
 
     this.tabBar = new TabBar<PauseMenuTab>(
       [['pause', 'PAUSE'], ['settings', 'SETTINGS']], (tab) => this.setActiveTab(tab),
@@ -286,7 +291,7 @@ export class PauseMenu implements OverlayHandle {
     if (show === this.isOpen) return;
     // 閉じる前にタブを戻し、設定タブの試聴と入力遮断を解いておく。
     if (!show) this.setActiveTab('pause');
-    this.panel.style.display = show ? 'grid' : 'none';
+    this.panel.classList.toggle('open', show);
     if (show) {
       // 開くたびに一時停止タブ・展開状態から始め、動かされていなければ中央へ置く。
       // 先に登録して要素を DOM へ置いてから、実寸を測って中央寄せする。

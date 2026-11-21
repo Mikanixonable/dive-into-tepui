@@ -16,11 +16,19 @@ export const PAUSE_MENU_STYLE = `
   overflow: hidden; pointer-events: auto;
 }
 #hud #hud-pause-menu { padding: var(--space-6); }
-#hud-pause-menu.minimized {
-  grid-template-columns: minmax(260px, 360px);
-  width: min(360px, calc(100vw - var(--space-6) - var(--space-6)));
+#hud-pause-menu.open { display: grid; }
+/* 収納時はボタン行だけを残す小さな帯。中身をすべて畳み、パネルはボタンと余白の
+   寸法へ縮む(.open の grid より後置して display をこちらへ替える)。 */
+#hud-pause-menu.open.minimized {
+  display: flex; justify-content: flex-end;
+  width: auto; min-width: 0; max-height: none;
 }
+#hud #hud-pause-menu.minimized { padding: var(--space-3); }
+#hud-pause-menu.minimized .pm-brand,
+#hud-pause-menu.minimized .pm-system-heading,
+#hud-pause-menu.minimized .pm-system-sub { display: none; }
 #hud-pause-menu.minimized .pm-header { padding-right: 0; box-shadow: none; }
+#hud-pause-menu.minimized .pm-header-actions { position: static; }
 #hud-pause-menu .pm-header {
   display: flex; min-width: 0; flex-direction: column; gap: var(--space-3);
   padding-right: var(--space-5);
@@ -28,7 +36,7 @@ export const PAUSE_MENU_STYLE = `
   cursor: move;
 }
 #hud-pause-menu .pm-header-top {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start;
+  display: grid; grid-template-columns: minmax(0, 1fr); align-items: start;
 }
 #hud-pause-menu .pm-brand {
   display: grid; grid-column: 1; gap: var(--space-3);
@@ -47,8 +55,10 @@ export const PAUSE_MENU_STYLE = `
 #hud-pause-menu .pm-header h3 { min-width: 0; margin: auto 0 0; }
 #hud-pause-menu .pm-system-heading { display: flex; align-items: baseline; gap: var(--space-2); color: var(--text); }
 #hud-pause-menu .pm-system-sub { padding-bottom: var(--space-3); }
+/* 最小化トグルと閉じるボタンは本文側の列を含む、パネル全体の右上端へ浮かせる。 */
 #hud-pause-menu .pm-header-actions {
-  display: flex; grid-column: 2; align-items: center; justify-self: end; gap: var(--space-2); flex: 0 0 auto;
+  position: absolute; top: var(--space-4); right: var(--space-4);
+  display: flex; align-items: center; gap: var(--space-2); flex: 0 0 auto;
 }
 #hud-pause-menu .pm-header .w-close, #hud-pause-menu .pm-minimize {
   flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%;
@@ -66,6 +76,9 @@ export const PAUSE_MENU_STYLE = `
   display: flex; flex: 0 0 auto; gap: var(--space-1); margin-top: var(--space-2);
   padding: var(--space-1); border: 0; border-radius: var(--radius-panel);
 }
+/* 右上端へ浮かせたボタン(20px×2+gap+右offset≈52px)と外側タブの帯が重ならないよう、
+   タブの帯の右端をボタンぶん手前で止める。 */
+#hud-pause-menu .pm-tabs { margin-right: 56px; }
 #hud-pause-menu .pm-settings-view .sv-tabs {
   width: 100%; margin-top: var(--space-4);
 }
@@ -125,11 +138,9 @@ export const PAUSE_MENU_STYLE = `
     padding-right: 0; padding-bottom: var(--space-3);
     box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 22%, transparent);
   }
-  #hud-pause-menu .pm-header-top { grid-template-columns: minmax(0, 1fr) auto; }
-  #hud-pause-menu .pm-brand { grid-column: 1; min-height: 112px; justify-self: start; }
+  #hud-pause-menu .pm-brand { min-height: 112px; justify-self: start; }
   #hud-pause-menu .pm-brand .title-logotype { font-size: clamp(2rem, 12vw, 3.3rem); }
   #hud-pause-menu .pm-brand-meta { display: none; }
-  #hud-pause-menu .pm-header-actions { grid-column: 2; }
   #hud-pause-menu .pm-actions { grid-template-columns: 1fr; }
 }
 @media ${MQ_SHORT} {
