@@ -114,6 +114,7 @@ declare global {
       addReflectionPasses: (offsets: readonly (readonly [number, number])[], first: number) => Promise<void>;
       takeReflectionSums: () => Promise<readonly (readonly FloatImage[])[]>;
       renderReflectionPass: (x: number, y: number) => void;
+      setReflectionFixedLevel: (level: number | null) => void;
       writePackedBands: (index: number, rgba: Float32Array) => void;
       readFloat: (name: FloatTargetName) => Promise<FloatImage>;
       readBand: (band: number) => Promise<FloatImage>;
@@ -464,6 +465,7 @@ async function init(): Promise<void> {
     addReflectionPasses: (offsets, first) => view.addReflectionPasses(offsets, first),
     takeReflectionSums: () => view.takeReflectionSums(),
     renderReflectionPass: (x, y) => view.renderReflectionPass(x, y),
+    setReflectionFixedLevel: (level) => view.setReflectionFixedLevel(level),
     writePackedBands: (index, rgba) => view.writePackedBands(index, rgba),
     readFloat: (name) => view.readFloat(name),
     readBand: (band) => view.readBand(band),

@@ -12,7 +12,7 @@ import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { specularLobeHalfWidthOf } from '../lighting/ggx';
 import { compileInto } from '../compile-into';
 import { phaseTentWeight } from './band-pyramid';
-import { ReflectionReduction, representativeSurfaceOf, sameSurfaceWeight } from './reflection-reduction';
+import { type ReflectionReduction, representativeSurfaceOf, sameSurfaceWeight } from './reflection-reduction';
 import { reflectionDenoiseLevelOf } from './reflection-denoise-level';
 import { NO_REFLECTION_ROUGHNESS } from './reflection-trace';
 import type { FloatNode, Vec2Node, Vec2Uniform, Vec3Node, Vec4Node } from '../../tsl-types';
@@ -70,7 +70,7 @@ export class ReflectionMerge {
   public constructor(
     private readonly renderer: WebGPURenderer, private readonly reduction: ReflectionReduction,
     private readonly gpu: GpuTimings, private readonly focalLength: FloatNode, private readonly coarsestLevel: FloatNode,
-    private readonly distanceLevel: FloatNode, levelCount: number,
+    private readonly distanceLevel: FloatNode, private readonly fixedLevel: FloatNode, levelCount: number,
   ) {
     // 各段の結果を、段番号で決まる合流シェーダに結び付ける。
     this.materials = Array.from({ length: levelCount - 1 }, (_, index) => {
@@ -157,7 +157,8 @@ export class ReflectionMerge {
           If(ownHasDistance.not().and(this.lastLevel.greaterThan(level)), () => hitDistance.assign(parent.hitDistance));
           const viewDir = child.point.negate().div(max(length(child.point), 1e-6));
           const denoiseLevel = reflectionDenoiseLevelOf(
-            child.point, child.normal, width, viewDir, hitDistance, this.focalLength, this.coarsestLevel,
+            child.point, child.normal, width, viewDir, hitDistance, this.focalLength,
+            this.reduction.normalRateAt(level, q), this.coarsestLevel, this.fixedLevel,
           );
           const mix = select(this.lastLevel.greaterThan(level), clamp(denoiseLevel.sub(level), 0, 1), float(0))
             .mul(parent.confidence);

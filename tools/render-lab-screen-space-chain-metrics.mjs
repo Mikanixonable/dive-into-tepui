@@ -20,7 +20,7 @@ import { FIXED_FACTORS, TIER_FACTORS_FIELD } from './screen-space-chain-factors.
 import { ONE_PASS_CORRECTION_PHASES, writeLandingIndex, writeRunIndex } from './screen-space-chain-index.mjs';
 import { BASELINE_RUN, contourMaskOf, maskPng, OUTPUT, RUNS, SCAN_HEIGHT, SCAN_PIXELS as PIXELS, SCAN_WIDTH, signedPng, signedRgb } from './screen-space-chain-runs.mjs';
 import { CHUNK_PASSES, SCENES, sceneSignatureOf, sourceSignatureOf, tierOf } from './screen-space-chain-setup.mjs';
-import { accumulateScaleRms, scaleRmsAccumulator, scaleRmsOf } from './screen-space-chain-scale-rms.mjs';
+import { accumulateScaleRms, accumulateScaleSquareMaps, scaleMapAccumulator, scaleRmsAccumulator, scaleRmsOf, scaleSquareMapsOf, scaleValueMaps, scaleValueMapsOf } from './screen-space-chain-scale-rms.mjs';
 import { HEIGHT, readFloats, unpackedBand, WIDTH, withLab, writeFloats } from './screen-space-lab.mjs';
 
 // 帯和の検査は、閾値に乗った画素の孤立した反転を通し、系統差(超過画素が多い・平均や最大が大きい)だけを止める。
@@ -368,6 +368,8 @@ async function measureNoise(lab, convergedMerged, bandSum, surfaceMask) {
   const maxima = new Float32Array(PIXELS);
   const scaleSquares = scaleRmsAccumulator();
   const seedScaleSquares = scaleRmsAccumulator();
+  const scaleMaps = scaleMapAccumulator();
+  const seedScaleMaps = scaleMapAccumulator();
   const seedSquares = new Float64Array(PIXELS * 4);
   const errorSquares = new Float64Array(PIXELS * 4);
   const errorScaleSquares = scaleRmsAccumulator();
@@ -380,7 +382,9 @@ async function measureNoise(lab, convergedMerged, bandSum, surfaceMask) {
       else await lab.renderProductionCorrectionPhase(frame, true);
       const one = await lab.readFloat('merged-0', 4);
       pair.push(one);
-      accumulateScaleRms(scaleSquares, rgbDifference(one, convergedMerged), surfaceMask);
+      const noiseDifference = rgbDifference(one, convergedMerged);
+      accumulateScaleRms(scaleSquares, noiseDifference, surfaceMask);
+      if (NOISE_JITTER) accumulateScaleSquareMaps(scaleMaps, noiseDifference, surfaceMask);
       for (let j = 0; j < one.length; j += 4) {
         for (let c = 0; c < 3; c++) noiseSquares[j + c] += (one[j + c] - convergedMerged[j + c]) ** 2;
         alphaVariation = Math.max(alphaVariation, Math.abs(one[j + 3] - convergedMerged[j + 3]));
@@ -401,6 +405,7 @@ async function measureNoise(lab, convergedMerged, bandSum, surfaceMask) {
         seedSquares[j + c] += delta * delta / 2;
       }
       accumulateScaleRms(seedScaleSquares, pairDifference, surfaceMask);
+      accumulateScaleSquareMaps(seedScaleMaps, pairDifference, surfaceMask);
     }
   }
   if (NOISE_JITTER) await lab.renderProductionCorrectionPhaseWithRasterJitter(0, null);
@@ -415,6 +420,7 @@ async function measureNoise(lab, convergedMerged, bandSum, surfaceMask) {
     totalScaleRms[scale].map((value, channel) => Math.sqrt(Math.max(value * value - noiseSeedScaleRms[scale][channel] ** 2, 0)))]));
   const onePassError = Float32Array.from(errorSquares, (sum, i) => i % 4 === 3 ? 1 : Math.sqrt(sum / sampleCount));
   return { noise, seed, raster, onePassError, maxima, alphaVariation,
+    noiseScaleMaps: scaleSquareMapsOf(scaleMaps, sampleCount), seedScaleMaps: scaleSquareMapsOf(seedScaleMaps, NOISE_PASSES),
     scaleRms: { noise: totalScaleRms, noiseSeed: noiseSeedScaleRms, noiseRaster: noiseRasterScaleRms,
       onePassError: scaleRmsOf(errorScaleSquares, surfaceMask, sampleCount) } };
 }
@@ -517,6 +523,8 @@ async function captureScene(lab, scene, dir, cache) {
   const structureSquares = scaleRmsAccumulator();
   accumulateScaleRms(structureSquares, structure, surfaceMask);
   const structureScaleRms = scaleRmsOf(structureSquares, surfaceMask);
+  const structureScaleMaps = scaleMapAccumulator();
+  scaleValueMaps(structureScaleMaps, structure, surfaceMask);
   const firstHalf = await mergedOf(lab, cachedMean(cache, 0, PASSES / 2, 'sum', textureCount));
   const secondHalf = await mergedOf(lab, cachedMean(cache, PASSES / 2, PASSES, 'sum', textureCount));
   const structureHalfDifference = rgbDifference(
@@ -553,6 +561,9 @@ async function captureScene(lab, scene, dir, cache) {
   if (NOISE_JITTER) {
     writeFloats(path.join(dir, `noise-seed-rms-${PASSES}.rgba.f32`), noiseResult.seed);
     writeFloats(path.join(dir, `noise-raster-rms-${PASSES}.rgba.f32`), noiseResult.raster);
+    for (const [scale, values] of Object.entries(noiseResult.noiseScaleMaps)) writeFloats(path.join(dir, `noise-scale-${scale}-${PASSES}.rgba.f32`), values);
+    for (const [scale, values] of Object.entries(noiseResult.seedScaleMaps)) writeFloats(path.join(dir, `noise-seed-scale-${scale}-${PASSES}.rgba.f32`), values);
+    for (const [scale, values] of Object.entries(scaleValueMapsOf(structureScaleMaps))) writeFloats(path.join(dir, `structure-scale-${scale}-${PASSES}.rgba.f32`), values);
   }
   writeFloats(path.join(dir, `max-deviation-${PASSES}.rgba.f32`), maxDeviation);
   for (const image of scanImages) {

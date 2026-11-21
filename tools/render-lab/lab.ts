@@ -72,11 +72,12 @@ const MERGED_NAME_PATTERN = /^merged-(\d)$/;
 // 素の深度, 0)、'scan-surface-1' はその法線の rg(ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の
 // 半径が写る描画バッファの画素数で、面の無い画素は 0。'depth' は G バッファの素の深度(r、gba は 0。面の無い画素は 0)。
 // 'upsampled-correction' は蓄積前の補正、'correction-history' は前フレームの補正履歴、'previous-depth' は前フレームの素の
-// 深度、'motion' は G バッファの動きベクトル。
+// 深度、'motion' は G バッファの動きベクトル。'reflection-level' は均し段の符号化値(code − 2 が段)、
+// 'gbuffer-normal' は法線の octahedral 0..1 符号化 RG、'gbuffer-roughness' は R の 0..255 の 8 bit 値。
 export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'upsampled-correction'
   | 'correction-history' | 'previous-depth' | 'correction' | 'diffuse' | 'depth' | 'motion'
   | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius'
-  | 'reflection-raw' | 'reflection-denoised' | 'far-specular';
+  | 'reflection-raw' | 'reflection-denoised' | 'reflection-level' | 'gbuffer-normal' | 'gbuffer-roughness' | 'far-specular';
 const REPRESENTATIVE_NAME_PATTERN = /^representative-(\d)$/;
 const SCAN_SURFACE_NAME_PATTERN = /^scan-surface-([01])$/;
 
@@ -974,6 +975,9 @@ export class LabView {
       const reflection = this.pipeline.reflection;
       return this.readBack((name === 'reflection-raw' ? reflection.rawTarget : reflection.denoisedTarget).textures[0]!);
     }
+    if (name === 'reflection-level') return this.readBack(this.pipeline.reflection.denoisedTarget.textures[2]!);
+    if (name === 'gbuffer-normal') return this.readBack(this.pipeline.gbuffer.normalTexture);
+    if (name === 'gbuffer-roughness') return this.readBack(this.pipeline.gbuffer.roughnessTexture);
     if (name === 'far-specular') return this.readBack(this.pipeline.lighting.farSpecularTexture);
     return this.readBack(this.floatTextureOf(name));
   }
@@ -1015,6 +1019,11 @@ export class LabView {
   public renderReflectionPass(x: number, y: number): void {
     this.pipeline.setReflectionNoiseOffset(x, y);
     this.render();
+  }
+
+  // 診断用に映り込みの読む段を固定する。
+  public setReflectionFixedLevel(level: number | null): void {
+    this.pipeline.setReflectionFixedLevel(level);
   }
 
   // 直前の走査で書いた帯 band の符号付き補正を、共有の復号ノードで浮動小数へ戻して読む。

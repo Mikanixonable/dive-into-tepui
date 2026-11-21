@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import {
-  Fn, If, abs, ceil, dot, float, floor, getViewPosition, ivec2, max, min, mrt, screenCoordinate,
+  Fn, If, abs, ceil, clamp, dot, float, floor, getViewPosition, ivec2, length, max, min, mrt, screenCoordinate,
   select, smoothstep, struct, textureLoad, uniform, vec2, vec4,
 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
@@ -37,11 +37,18 @@ export interface LevelTexel {
   readonly covered: Vec2Node;
   readonly surface: Vec4Node;
 }
+// 法線の変化率を測る近傍の画素。coverage が 0 なら面が写っていない。
+interface NormalCoverage {
+  readonly normal: Vec3Node;
+  readonly coverage: FloatNode;
+}
 
 // 縮小列の段の描画先のテクスチャの名前。MRT の出力と結び付く。
 const LEVEL_WEIGHTED = 'reflectionLevelWeighted';
 const LEVEL_COVERED = 'reflectionLevelCovered';
 const LEVEL_SURFACE = 'reflectionLevelSurface';
+// 測れない近傍の法線の差。単位法線どうしの差はこの値を超えない。
+const UNMEASURED_NORMAL_DIFFERENCE = 2;
 
 // 縮小列の段 1 以降を詰める描画先。添付は LevelTexel の weighted・covered・surface の順で、平面の距離は km 規模の面でも
 // 半精度の上限を超えないよう 32bit 浮動小数で持つ。32bit の添付はフィルタできないので、textureLoad で読むこと。
@@ -217,6 +224,50 @@ export class ReflectionReduction {
   // 段 level の画素 texel の値・点・法線を返す。**Fn の中から呼ぶこと。**
   public reducedChildAt(level: number, texel: Vec2Node): Omit<ReductionChild, 'inside'> {
     return this.childOf(this.levels[level - 1]!, texel);
+  }
+  // 段 level の画素 texel の代表の面の法線が、描画画素 1 つで回る角 [rad/px]。**Fn の中から呼ぶこと。**
+  public normalRateAt(level: number, texel: Vec2Node): FloatNode {
+    const reductionLevel = this.levels[level - 1]!;
+    return this.normalRateOf(
+      texel, reductionLevel.span,
+      (position) => {
+        const read = this.levelTexelAt(reductionLevel, position);
+        return { normal: representativeSurfaceOf(read.surface).normal, coverage: read.covered.y };
+      },
+    );
+  }
+  // 描画画素 texel の面の法線が、描画画素 1 つで回る角 [rad/px]。**Fn の中から呼ぶこと。**
+  public drawnNormalRateAt(texel: Vec2Node): FloatNode {
+    return this.normalRateOf(texel, 1, (position) => {
+      const pixel = ivec2(position);
+      const depth = textureLoad(this.gbuffer.depthTexture, pixel).r;
+      const code = textureLoad(this.gbuffer.normalTexture, pixel).rg;
+      return { normal: octDecodeNormal(code), coverage: select(depth.greaterThan(0), float(1), float(0)) };
+    });
+  }
+
+  // 近傍の法線の差から、画素の一辺あたりに法線が回る角を返す。輪郭の向こうの面を数えないよう、軸ごとに両側の小さいほうを
+  // 取る。**Fn の中から呼ぶこと。**
+  private normalRateOf(
+    texel: Vec2Node, span: number, read: (position: Vec2Node) => NormalCoverage,
+  ): FloatNode {
+    const size = ceil(this.fullSize.div(span)).toVar();
+    const center = read(texel);
+    // 隣の画素との法線の差。測れない隣は UNMEASURED_NORMAL_DIFFERENCE を返す。
+    const difference = (dx: number, dy: number): FloatNode => {
+      const neighbor = texel.add(vec2(dx, dy)).toVar();
+      const inside = neighbor.x.greaterThanEqual(0).and(neighbor.y.greaterThanEqual(0))
+        .and(neighbor.x.lessThan(size.x)).and(neighbor.y.lessThan(size.y));
+      const adjacent = read(clamp(neighbor, vec2(0), size.sub(1)));
+      const valid = inside.and(adjacent.coverage.greaterThan(1e-4));
+      return select(valid, length(adjacent.normal.sub(center.normal)), float(UNMEASURED_NORMAL_DIFFERENCE));
+    };
+    // 1 つの軸の両側の差から、その軸の回転を求める。両側とも測れなければ 0。
+    const axisRate = (first: FloatNode, second: FloatNode): FloatNode => {
+      const smaller = min(first, second);
+      return select(smaller.lessThan(UNMEASURED_NORMAL_DIFFERENCE), smaller, float(0));
+    };
+    return max(axisRate(difference(-1, 0), difference(1, 0)), axisRate(difference(0, -1), difference(0, 1))).div(span);
   }
 
   // 縮小列の段の画素(ReflectionLevelTexel)。finer は 1 つ細かい段で、段 1 では null(段 0)。origin は書く段の矩形の

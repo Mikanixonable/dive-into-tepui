@@ -2,7 +2,7 @@
 // 受け手の段に応じて均す前の値と混ぜる。w × I・w・w × d を同じ重みで均すので、均した後も 3 つの量のあいだの比は保たれる。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
-import { Fn, If, clamp, float, select, struct, uniform, vec4 } from 'three/tsl';
+import { Fn, If, clamp, floor, float, screenCoordinate, select, struct, uniform, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
 import { specularLobeHalfWidth } from '../lighting/ggx';
 import { ShadingSample } from '../lighting/shading-sample';
@@ -46,6 +46,8 @@ export class ReflectionDenoise {
   private readonly coarsestLevel = uniform(MAX_REFLECTION_LEVEL_COUNT - 1);
   // 当たり距離を読み始める段。DISTANCE_LEVEL を、このフレームに書くいちばん粗い段で止めた値。
   private readonly distanceLevel = uniform(DISTANCE_LEVEL);
+  // 診断の道具が固定した読む段。負なら見積もる。
+  private readonly fixedLevel = uniform(-1);
 
   // reflection は均す前の映り込みを読み、均した映り込みを書く先。levelCount は均しの段数(MAX_REFLECTION_LEVEL_COUNT の
   // 冒頭の数え方)。
@@ -56,7 +58,8 @@ export class ReflectionDenoise {
     this.sample = new ShadingSample(gbuffer);
     this.reduction = new ReflectionReduction(renderer, gbuffer, reflection, gpu, BUILT_LEVEL_COUNT);
     this.merge = new ReflectionMerge(
-      renderer, this.reduction, gpu, this.focalLength, this.coarsestLevel, this.distanceLevel, BUILT_LEVEL_COUNT,
+      renderer, this.reduction, gpu, this.focalLength, this.coarsestLevel, this.distanceLevel, this.fixedLevel,
+      BUILT_LEVEL_COUNT,
     );
     // 均した値を、均した側の描画先の出力へ符号化して書く。
     const denoised = this.denoised();
@@ -103,6 +106,11 @@ export class ReflectionDenoise {
     this.levelCount = count;
   }
 
+  // 診断の道具だけが呼ぶ。固定すると全画素がこの段を読む。
+  public setFixedLevel(level: number | null): void {
+    this.fixedLevel.value = level ?? -1;
+  }
+
   // 受け手の画素の均した映り込み(DenoisedReflection)。段 1 の合流値を受け手の面で読み、受け手を均す段に応じて均す前の値と
   // 混ぜる。面の写っていない画素と映り込みの出ない粗さの画素は 0。
   private denoised(): THREE.Node {
@@ -131,7 +139,8 @@ export class ReflectionDenoise {
   private levelOf(distance: FloatNode): FloatNode {
     return reflectionDenoiseLevelOf(
       this.sample.position, this.sample.normal, specularLobeHalfWidth(this.sample), this.sample.viewDir,
-      distance, this.focalLength, this.coarsestLevel,
+      distance, this.focalLength, this.reduction.drawnNormalRateAt(floor(screenCoordinate)),
+      this.coarsestLevel, this.fixedLevel,
     );
   }
 

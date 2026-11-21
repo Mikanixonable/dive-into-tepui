@@ -203,6 +203,7 @@ const LAUNCH_ARGS = [
   '--disable-background-timer-throttling',
   '--disable-renderer-backgrounding',
   '--disable-backgrounding-occluded-windows',
+  '--disable-crash-reporter',
   '--run-all-compositor-stages-before-draw',
   '--mute-audio',
 ];
@@ -243,6 +244,14 @@ export async function openChromeSession({
   const server = startStaticServer(serveDir, port);
   const baseUrl = `http://127.0.0.1:${port}`;
   let browser;
+  function killTree() {
+    if (process.platform === 'win32') {
+      // kill('SIGTERM') は Windows ではメインしか止めない
+      spawnSync('taskkill', ['/pid', String(browser.pid), '/T', '/F'], { stdio: 'ignore' });
+    } else {
+      browser.kill('SIGTERM');
+    }
+  }
   try {
     await waitForServer(`${baseUrl}/`);
     browser = spawn(chrome, [
@@ -258,7 +267,7 @@ export async function openChromeSession({
       baseUrl,
       async close() {
         devTools.close();
-        browser.kill('SIGTERM');
+        killTree();
         await Promise.race([once(browser, 'exit'), sleep(2_000)]);
         server.close();
         // Windows では終了直後の Chrome がプロファイルを掴んだままのことがある。測定結果を失わないよう掃除の失敗では止めず、
@@ -271,9 +280,9 @@ export async function openChromeSession({
       },
     };
   } catch (e) {
-    browser?.kill('SIGTERM');
+    if (browser) killTree();
     server.close();
-    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
     throw e;
   }
 }

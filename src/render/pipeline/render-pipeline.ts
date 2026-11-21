@@ -291,6 +291,11 @@ export class RenderPipeline {
     this.reflectionPass.setNoiseOffset(x, y);
   }
 
+  // 診断の道具だけが呼ぶ。固定すると全画素がこの段を読む。
+  public setReflectionFixedLevel(level: number | null): void {
+    this.reflectionPass.setFixedLevel(level);
+  }
+
   // 描画品質設定を各パスへ配る。影マップなどの GPU 資源は、値が変わったものだけを組み直す。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
     // 描く段と影マップの品質。

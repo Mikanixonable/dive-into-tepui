@@ -115,6 +115,11 @@ export class ReflectionPass {
     this.denoise.setLevelCount(denoiseLevelCount);
   }
 
+  // 診断の道具だけが呼ぶ。固定すると全画素がこの段を読む。
+  public setFixedLevel(level: number | null): void {
+    this.denoise.setFixedLevel(level);
+  }
+
   // 次の render から、ray の向きと開始点のずらしを引く blue noise のタイルを (x, y) [px](整数)ずらして読む。
   // 既定は (0, 0)。
   public setNoiseOffset(x: number, y: number): void {
