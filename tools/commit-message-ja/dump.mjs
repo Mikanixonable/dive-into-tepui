@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const { A, B } = JSON.parse(readFileSync(join(here, 'targets.json'), 'utf8'));
 
-const idmap = {}, inputs = {}, bodyOf = {};
+const idmap = {}, inputs = {};
 let n = 0;
 const msgToId = new Map();
 const add = (sha, msg, cls) => {
