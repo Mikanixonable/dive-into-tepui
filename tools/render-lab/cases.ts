@@ -6,6 +6,7 @@ import { ringShadowBands } from '../../src/render/pipeline/shadow/ring-shadow';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import { RingView } from '../../src/render/celestial/ring-view';
 import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
+import { MOON, MOON_TEXTURE, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
 import { Q_IDENTITY } from '../../src/math/quat';
 import { sub, v3, type Vec3 } from '../../src/math/vec3';
@@ -213,10 +214,41 @@ function constructionRing(): LabCase {
   };
 }
 
+// 月の中心を置く距離 [m]。画面上で直径 300 px ほどになる距離。
+const MOON_DISTANCE = 6.5e6;
+
+// 月: 実写テクスチャの球を、自身を影の源に登録して置く。地球は月軌道相当の距離(3.8e8 m)へ
+// 置くと、天体照(アースシャイン)と地球の影の両方の源になる。
+function moon(): LabCase {
+  const center = new THREE.Vector3(0, 0, -MOON_DISTANCE);
+  const camera = labCamera();
+  const body = texturedBody(MOON_TEXTURE, MOON, center, CLOSE_UP_DIAMETER_PX);
+  return {
+    objects: [body.object],
+    camera,
+    shadowBodies: [{ center, axes: body.axes, bodyFromWorld: new THREE.Matrix4() }],
+    ready: body.ready,
+    shots: {
+      // 恒星に照らされた月。
+      'moon': { view: {} },
+      // 真下に月軌道相当の距離の地球を置き、恒星をカメラの背後へ回す — 手前側が夜面になり、
+      // 残る光は地球からの天体照だけになる。
+      'moon-earthlight': {
+        view: { sunAzimuthDeg: 180, sunElevationDeg: 0, earthElevationDeg: -90 },
+      },
+    },
+    earth: {
+      earthAltitudeLog: Math.log10(3.8e8 - R_EARTH), earthElevationDeg: -30,
+      earthAzimuthDeg: 0, earthLatitudeDeg: 0, earthLongitudeDeg: 0,
+    },
+  };
+}
+
 export const CASES = {
   ...EARTH_CASES,
   ...MATERIAL_CASES,
   'saturn': saturn,
+  'moon': moon,
   ...SHADOW_CASES,
   'order': order,
   'march-slab': marchSlab,
