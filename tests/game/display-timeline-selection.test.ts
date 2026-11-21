@@ -18,6 +18,7 @@ const celestialBodies = { has: (id: string) => id === 'earth' || id === 'moon' }
 
 // タイムラインパネルの選択と命令口の回帰テストを登録する。
 export function register(): void {
+  // 命令適用順とビューごとの時間位置規則を検証する。
   test('display-timeline-selection: DOM 由来の命令は列の適用まで選択を変えない', () => {
     const selection = DisplayTimelineSelection.create(frames, celestialBodies, null);
     const queue = new CommandQueue();
@@ -25,11 +26,11 @@ export function register(): void {
 
     commands.setSliderT(0.75);
     commands.selectDuration('day');
-    assert.equal(selection.sliderT, 0);
+    assert.equal(selection.sliderT, 0.5);
     assert.equal(selection.durationKey, 'orbit');
 
     queue.applyAll();
-    assert.equal(selection.sliderT, 0);
+    assert.equal(selection.sliderT, 0.5);
     assert.equal(selection.durationKey, 'day');
     assert.equal(selection.durationSec(123), 86400);
   });
@@ -51,12 +52,33 @@ export function register(): void {
   test('display-timeline-selection: 戦闘ビューの規則はスクラブ位置を現在へ戻す', () => {
     const selection = DisplayTimelineSelection.create(frames, celestialBodies, null);
     const queue = new CommandQueue();
-    displayTimelineCommands(queue, selection).setSliderT(0.5);
+    displayTimelineCommands(queue, selection).setSliderT(0.8);
     queue.applyAll();
     selection.followProgress(false);
-    assert.equal(selection.sliderT, 0.5);
+    assert.equal(selection.sliderT, 0.8);
 
     selection.followProgress(true);
-    assert.equal(selection.sliderT, 0);
+    assert.equal(selection.sliderT, 0.5);
+  });
+
+  test('display-timeline-selection: 軌道連動中はカメラの中心と回転の変更が描画基準へ追随する', () => {
+    const selection = DisplayTimelineSelection.create(frames, celestialBodies, 'earth');
+    const queue = new CommandQueue();
+    const commands = displayTimelineCommands(queue, selection);
+    const moonRev: FrameRotationSource = { kind: 'revolution', id: 'moon' };
+
+    commands.followCameraFocus('moon');
+    commands.followCameraRotation(moonRev);
+    queue.applyAll();
+    assert.equal(selection.frame.center, 'moon');
+    assert.deepEqual(selection.frame.rotatingWith, moonRev);
+
+    // 連動を切ると、以降のカメラ変更は描画基準を動かさない。
+    commands.setFollowCamera(false);
+    commands.followCameraFocus('earth');
+    commands.followCameraRotation(null);
+    queue.applyAll();
+    assert.equal(selection.frame.center, 'moon');
+    assert.deepEqual(selection.frame.rotatingWith, moonRev);
   });
 }

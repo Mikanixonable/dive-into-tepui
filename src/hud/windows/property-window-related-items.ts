@@ -1,8 +1,6 @@
-// プロパティウィンドウの関連物体一覧。対象に関連する物体をタイトル付きの折りたたみ一覧として
-// 組み立て、ダブルクリック/右クリックが起きたら渡されたコールバックをそのまま呼ぶ。一覧が
-// 空のときは自分自身を DOM から外し、非空になれば内容を組み立て直す。
+// 関連物体を折りたたみ一覧で表示し、選択操作をコールバックへ返す。
 import { COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH } from '../widgets';
-import { bindActivation, expandHitTarget, stopDragPropagation } from '../widgets/widget-base';
+import { bindActivation, bindKeyboardActivation, expandHitTarget, stopDragPropagation } from '../widgets/widget-base';
 import type { ReclampingWindow } from './draggable-window';
 import type { PropertyWindowRelatedItem } from './property-window-content';
 
@@ -82,11 +80,9 @@ export class PropertyWindowRelatedItems {
         e.stopPropagation();
         it.onContextMenu(e.clientX, e.clientY);
       });
-      row.addEventListener('keydown', (e) => {
-        if (e.key !== 'Enter' && e.key !== ' ') return;
-        e.preventDefault();
-        it.onFocus();
-      });
+      // 活性化はダブルクリックと右クリックに分かれているので、click ではなく
+      // Enter/Space の打鍵だけをフォーカスへ配線する。
+      bindKeyboardActivation(row, () => it.onFocus());
       list.appendChild(row);
     }
     this.element.appendChild(list);

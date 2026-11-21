@@ -99,6 +99,9 @@ export class NavTargetPresenter {
   // 所有するマーカー群を取り除く。
   public dispose(): void { this.group.dispose(); }
 
+  // いまの航法ターゲットの id。未設定なら null。
+  public get targetId(): string | null { return this.navTarget.id; }
+
   // AN・DN・再接近点のマーカー。
   private get nodeMarkers(): readonly RelativeNodeMarker[] {
     return [this.ascendingNode, this.descendingNode, this.closestApproach];

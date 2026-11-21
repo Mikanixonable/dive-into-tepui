@@ -1,8 +1,4 @@
-// タッチデバイス用の仮想操作パッド。DOM ボタンを画面下部に重ね、
-// Input.setVirtualKey へ物理キーボードと同じキーコードを流し込む。
-// 押しっぱなし系(並進・回転・射撃・ズーム)とエッジトリガ系(トグル類)を同じ仕組みで扱える。
-// 常設で構築し、表示そのものは setPointerKind が渡す直近の入力種別に従う。長押しの手応えの
-// マーカーの宣言も組む。
+// タッチ操作を仮想キーへ変換するパッドと、その操作に応じたマーカーを管理する。
 import type { Input, PointerKind } from '../../input/input';
 import type { ViewMode } from '../view/view-mode';
 import { KEY_MAPPING as K, type KeyBinding } from '../../input/key-mapping';
@@ -40,16 +36,16 @@ const STYLE = `
    (制動・微動・ホールド・推力ラッチなどの向け。.pressed と見た目は同じでよい) */
 #touch-ui .tbtn.on { background: var(--color-primary-fill-strong); color: var(--text-strong); }
 #touch-ui .mini-col {
-  position: absolute; display: grid; gap: 6px; grid-template-rows: repeat(2, 52px);
+  position: absolute; display: grid; gap: var(--space-3); grid-template-rows: repeat(2, 52px);
 }
 #touch-ui .mini-col .tbtn { width: 46px; }
 #touch-ui .pad {
-  position: absolute; display: grid; gap: 6px;
+  position: absolute; display: grid; gap: var(--space-3);
   grid-template-columns: repeat(3, 52px); grid-auto-rows: 52px;
 }
-#touch-pad-move { left: calc(10px + var(--safe-l)); bottom: calc(12px + var(--safe-b)); }
-#touch-pad-rot { right: calc(10px + var(--safe-r)); bottom: calc(12px + var(--safe-b)); }
-#touch-mode-col { right: calc(186px + var(--safe-r)); bottom: calc(12px + var(--safe-b)); }
+#touch-pad-move { left: calc(10px + var(--safe-l)); bottom: calc(var(--space-5) + var(--safe-b)); }
+#touch-pad-rot { right: calc(10px + var(--safe-r)); bottom: calc(var(--space-5) + var(--safe-b)); }
+#touch-mode-col { right: calc(186px + var(--safe-r)); bottom: calc(var(--space-5) + var(--safe-b)); }
 #touch-fire {
   position: absolute; right: calc(22px + var(--safe-r)); bottom: calc(138px + var(--safe-b));
   width: 74px; height: 74px; border-radius: 50% !important;
@@ -61,11 +57,11 @@ const STYLE = `
 }
 #touch-util {
   position: absolute; left: calc(10px + var(--safe-l)); bottom: calc(138px + var(--safe-b));
-  display: flex; gap: 6px; flex-wrap: wrap; max-width: 46vw;
+  display: flex; gap: var(--space-3); flex-wrap: wrap; max-width: 46vw;
 }
 #touch-util .tbtn { width: 46px; height: var(--hit-target-min); }
 #touch-ui.map-mode #touch-util {
-  left: 50%; right: auto; bottom: 8px; transform: translateX(-50%);
+  left: 50%; right: auto; bottom: var(--space-4); transform: translateX(-50%);
   flex-wrap: nowrap; max-width: calc(100vw - 16px);
 }
 #touch-ui.map-mode #touch-util .tbtn { flex: 0 1 46px; min-width: var(--hit-target-min); }
@@ -73,13 +69,13 @@ const STYLE = `
 @media ${MQ_COARSE} {
   #touch-pad-move, #touch-pad-rot {
     grid-template-columns: repeat(3, var(--hit-target-min)) !important;
-    grid-auto-rows: var(--hit-target-min) !important; gap: 4px;
+    grid-auto-rows: var(--hit-target-min) !important; gap: var(--space-2);
   }
-  #touch-pad-move { left: 6px; bottom: 6px; }
-  #touch-pad-rot { right: 6px; bottom: 6px; }
+  #touch-pad-move { left: var(--space-3); bottom: var(--space-3); }
+  #touch-pad-rot { right: var(--space-3); bottom: var(--space-3); }
   #touch-mode-col {
-    right: auto; left: calc(50% - 38px); bottom: 6px;
-    grid-template-rows: repeat(2, var(--hit-target-min)) !important; gap: 4px;
+    right: auto; left: calc(50% - 38px); bottom: var(--space-3);
+    grid-template-rows: repeat(2, var(--hit-target-min)) !important; gap: var(--space-2);
   }
   #touch-mode-col .tbtn { width: var(--hit-target-min) !important; }
   #touch-util { max-width: 42vw; }
@@ -90,12 +86,12 @@ const STYLE = `
 @media ${MQ_SHORT} {
   #touch-pad-move, #touch-pad-rot {
     grid-template-columns: repeat(3, var(--hit-target-min)) !important;
-    grid-auto-rows: var(--hit-target-min) !important; gap: 4px;
+    grid-auto-rows: var(--hit-target-min) !important; gap: var(--space-2);
   }
-  #touch-pad-move { left: 6px; bottom: 6px; }
-  #touch-pad-rot { right: 6px; bottom: 6px; }
+  #touch-pad-move { left: var(--space-3); bottom: var(--space-3); }
+  #touch-pad-rot { right: var(--space-3); bottom: var(--space-3); }
   #touch-mode-col {
-    right: auto; left: 180px; bottom: 6px;
+    right: auto; left: 180px; bottom: var(--space-3);
     grid-template-rows: repeat(2, var(--hit-target-min)) !important;
   }
   #touch-mode-col .tbtn { width: var(--hit-target-min) !important; }
@@ -103,18 +99,18 @@ const STYLE = `
   #touch-zoom { width: 44px; height: 44px; right: 76px; bottom: 124px; }
   #touch-util { bottom: 110px; max-width: 40vw; }
   #touch-util .tbtn { width: var(--hit-target-min); height: var(--hit-target-min); }
-  #touch-ui.map-mode #touch-util { bottom: 4px; max-width: calc(100vw - 12px); }
+  #touch-ui.map-mode #touch-util { bottom: var(--space-2); max-width: calc(100vw - 12px); }
 }
 @media ${MQ_COMPACT} {
   #touch-pad-move, #touch-pad-rot {
     grid-template-columns: repeat(3, var(--hit-target-min)) !important;
-    grid-auto-rows: var(--hit-target-min) !important; gap: 4px;
+    grid-auto-rows: var(--hit-target-min) !important; gap: var(--space-2);
   }
-  #touch-pad-move { left: 6px; bottom: 6px; }
-  #touch-pad-rot { right: 6px; bottom: 6px; }
+  #touch-pad-move { left: var(--space-3); bottom: var(--space-3); }
+  #touch-pad-rot { right: var(--space-3); bottom: var(--space-3); }
   #touch-mode-col {
-    right: auto; left: calc(50% - 38px); bottom: 6px;
-    grid-template-rows: repeat(2, var(--hit-target-min)) !important; gap: 4px;
+    right: auto; left: calc(50% - 38px); bottom: var(--space-3);
+    grid-template-rows: repeat(2, var(--hit-target-min)) !important; gap: var(--space-2);
   }
   #touch-mode-col .tbtn { width: var(--hit-target-min) !important; }
 }

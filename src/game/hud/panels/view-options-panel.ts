@@ -1,6 +1,4 @@
-// 表示パネル(マップモード左レール): マップの表示項目設定を担当する —
-// 対象・ガイド・軌道ガイドの3タブに分かれ、タブの内装は TargetTab / GuideTab /
-// OrbitGuideTab が担い、このパネルは器とタブ間の配線を持つ。
+// マップに表示する対象・ガイド・軌道ガイドを切り替えるパネル。
 import { hudRail } from '../hud-dom';
 import {
   Button,
@@ -9,11 +7,7 @@ import {
   TabBar,
   type CollapseToggleLabels,
 } from '../../../hud/widgets';
-import type {
-  MapDisplayCategory,
-  MapDisplayMode,
-  MapDisplayToggles,
-} from '../../map/display-toggles';
+import type { MapDisplayToggles } from '../../map/display-toggles';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';
@@ -50,7 +44,8 @@ const VIEW_OPTIONS_COLLAPSE_LABELS: CollapseToggleLabels = {
 };
 
 export class ViewOptionsPanel {
-  public onBodyClassModeChange: ((key: MapDisplayCategory, mode: MapDisplayMode) => void) | null = null;
+  // 対象タブのラベルか軌道線を切り替えるたびに、そのキーと新しい状態で呼ばれる。
+  public onMapDisplayToggle: ((key: keyof MapDisplayToggles, on: boolean) => void) | null = null;
   public onGridToggle: ((key: keyof CelestialGridVisibility, on: boolean) => void) | null = null;
   // 軌道ガイドタブかゼロ速度曲線節を編集するたびに、編集後の軌道ガイド設定全体で呼ばれる。
   public onOrbitGuideChange: ((settings: OrbitGuideSettings) => void) | null = null;
@@ -147,7 +142,7 @@ export class ViewOptionsPanel {
     const targetBody = buildTabBody('target');
     body.appendChild(targetBody);
     this.targetTab = new TargetTab(targetBody);
-    this.targetTab.onModeChange = (key, mode) => this.onBodyClassModeChange?.(key, mode);
+    this.targetTab.onToggle = (key, on) => this.onMapDisplayToggle?.(key, on);
 
     const guideBody = buildTabBody('guide');
     body.appendChild(guideBody);
@@ -196,6 +191,7 @@ export class ViewOptionsPanel {
     this.orbitGuideTab.setGroupTab(tab);
   }
 
+  // 表示スタイルの選択表示を現在値へ合わせる。
   public setRenderStyle(style: RenderStyle): void {
     for (const [candidate, button] of this.renderStyleButtons) button.setOn(candidate === style);
   }
@@ -211,8 +207,8 @@ export class ViewOptionsPanel {
     this.panel.remove();
   }
 
-  // クラス別の表示状態を現在値へ合わせる。
-  public setBodyClassToggles(toggles: MapDisplayToggles): void {
+  // 対象タブのラベル・軌道線の表示状態を現在値へ合わせる。
+  public setMapDisplayToggles(toggles: MapDisplayToggles): void {
     this.targetTab.sync(toggles);
   }
 

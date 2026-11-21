@@ -1,9 +1,8 @@
-// セーブブラウザ左ペイン(セーブデータ一覧)の DOM 構築。
-// 一覧行と行ごとの操作ボタン、新規作成/取り込みの導線を組み立てる。
-// 表示対象の選択・実際の改名/複製/削除などの実処理は、コールバックを通じて呼び出し側へ委ねる。
+// セーブデータ一覧と、作成・取り込み・各データの操作を表示する左ペイン。
 import type { SaveSlotMeta } from '../save/slot-data';
 import { fmtDateTime } from '../../hud/format';
 import { Button } from '../../hud/widgets';
+import { bindActivation } from '../../hud/widgets/widget-base';
 import { injectOnce } from '../../hud/inject-style';
 import { MQ_COMPACT } from '../../hud/breakpoints';
 import { mainBtn, smallBtn, stageLabel } from './shared';
@@ -26,6 +25,7 @@ const STYLE = `
 }
 #save-browser .sb-slot-row.viewed { background: var(--fill-1); }
 #save-browser .sb-slot-row.on { background: var(--color-primary-fill-weak); color: var(--color-primary); }
+#save-browser .sb-slot-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #save-browser .sb-slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 #save-browser .sb-slot-name { font-size: var(--font-s); }
 #save-browser .sb-slot-meta { font-size: var(--font-xxs); color: var(--text-dim); }
@@ -100,7 +100,9 @@ function buildSlotRow(
   row.className = 'sb-slot-row ui-selectable';
   row.classList.toggle('viewed', viewed);
   row.classList.toggle('on', active);
-  row.addEventListener('click', () => callbacks.onSelectSlot(s.id));
+  row.setAttribute('role', 'button');
+  row.tabIndex = 0;
+  bindActivation(row, () => callbacks.onSelectSlot(s.id));
 
   // 名前と、最後に遊んだステージ・日時・保有件数の要約を1行で並べる。
   const info = document.createElement('div');

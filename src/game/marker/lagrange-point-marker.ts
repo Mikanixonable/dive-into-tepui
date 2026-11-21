@@ -67,6 +67,7 @@ export class LagrangePointMarker implements ObjectPickable {
   public menuItems(
     celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
+    // 見出しにこの点を定める天体系を示す。
     const primaryId = celestialBodies.bodyParentId(this.parentId);
     const subLabel = primaryId === null
       ? 'ラグランジュ点'
@@ -85,6 +86,7 @@ export class LagrangePointMarker implements ObjectPickable {
   public propertyRows(
     _celestialBodies: CelestialBodies, viewer: OrbitingObject | null,
   ): readonly PropertyRow[] {
+    // 自艦と位置を使える場合に距離を加える。
     const pos = this.posAt();
     const rows: PropertyRow[] = [];
     if (viewer && pos) {
@@ -112,5 +114,4 @@ export class LagrangePointMarker implements ObjectPickable {
   }
 
   public listCounted(): boolean { return false; }
-  public listPriority(): number { return 0; }
 }

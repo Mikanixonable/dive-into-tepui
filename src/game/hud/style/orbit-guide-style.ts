@@ -24,7 +24,7 @@ export const ORBIT_GUIDE_STYLE = `
 .orbit-guide-value-row.hidden { display: none; }
 .orbit-guide-value-unit { color: var(--text-dim); font-size: var(--font-xs); }
 .orbit-guide-color-row { align-items: center; }
-.orbit-guide-color-row .w-input { width: 44px; height: 24px; padding: 2px; }
+.orbit-guide-color-row .w-input { width: 44px; height: 24px; padding: var(--space-1); }
 .orbit-guide-color-row.hidden { display: none; }
 .orbit-guide-line-count-warning { margin-top: var(--space-2); }
 .orbit-guide-line-count-warning.hidden { display: none; }

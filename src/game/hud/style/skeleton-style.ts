@@ -49,9 +49,9 @@ body.hud-construction-mode #touch-ui { display: none; }
 /* 表示/非表示ユーティリティ */
 #hud .hidden { display: none !important; }
 #hud.construction-mode #hud-view-options,
-#hud.construction-mode #hud-trajectory-frame,
+#hud.construction-mode #hud-map-frame,
 #hud.construction-mode #hud-stage-controls,
-#hud.construction-mode #hud-physical-object-list,
+#hud.construction-mode #hud-orbital-objects,
 #hud.construction-mode #hud-topbar,
 #hud.construction-mode #hud-viewbadge,
 #hud.construction-mode #hud-vessel-status,
@@ -157,7 +157,7 @@ ${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-
   position: absolute; top: 0; left: 0; right: 0;
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 820px) minmax(0, 1fr);
   grid-auto-rows: max-content; align-items: start;
-  padding-inline: 12px; pointer-events: none;
+  padding-inline: var(--space-5); pointer-events: none;
 }
 #hud-topbar {
   position: relative; grid-column: 2; justify-self: center;
@@ -187,7 +187,7 @@ ${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-
   padding-top: var(--space-2);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-dim) 18%, transparent);
 }
-#hud-topbar .gs-metric { display: grid; gap: 2px; min-width: 0; }
+#hud-topbar .gs-metric { display: grid; gap: var(--space-1); min-width: 0; }
 #hud-topbar .gs-metric-time .v {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: var(--text); font-size: var(--font-s); cursor: pointer;

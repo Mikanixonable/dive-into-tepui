@@ -1,6 +1,4 @@
-// 取り消しにくい操作を OverlayManager の入力ゲート下で確認する共通モーダル。
-// 建造の確定確認(ConstructionConfirmationPort)を含め、題名+説明+確定/取消の確認は
-// すべてこの1枚が担う。開閉の骨組みは ModalOverlay が持つ。
+// 取り消しにくい操作を確認する共通モーダル。
 import { injectOnce } from '../inject-style';
 import type { OverlayHandle, OverlayManager } from '../overlay-manager';
 import { Button } from '../widgets/button';
@@ -56,7 +54,7 @@ export class ConfirmationOverlay implements OverlayHandle {
     this.cancel.setLabel(request.cancelLabel ?? 'キャンセル');
     this.shell.panel.dataset['destructive'] = String(request.destructive === true);
     this.shell.open(request, false, onResult);
-    this.confirm.element.focus();
+    this.cancel.element.focus();
   }
 
   public contains(target: Node): boolean { return this.shell.contains(target); }

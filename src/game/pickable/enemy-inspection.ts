@@ -72,7 +72,6 @@ export class EnemyInspection implements InspectedObject {
   public mapVisibility(policy: MapVisibilityPolicy, viewer: OrbitingObject | null): MapVisibility {
     return this.source.mapVisibility(policy, viewer);
   }
-  public listPriority(): number { return 0; }
 
   // viewer から ENEMY_APPROACH_DIST 未満にいれば接近として数える。viewer が無ければ false。
   public listCounted(viewer: OrbitingObject | null, displayTime: number): boolean {

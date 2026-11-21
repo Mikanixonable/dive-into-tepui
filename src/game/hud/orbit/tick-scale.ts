@@ -37,15 +37,23 @@ export function chooseTickInterval(durationSec: number, maxTicks: number): numbe
   return chooseTickIntervalFrom(durationSec, maxTicks, TICK_INTERVALS_SEC);
 }
 
-// [0, durationSec] を chooseTickInterval が選ぶ間隔の倍数で刻んだ目盛り列を返す。
-// durationSec ちょうどが間隔の倍数でない場合、その端には目盛りを置かない。
-export function buildTicks(durationSec: number, maxTicks: number): readonly DisplayTick[] {
+// 時間軸 [−spanSec/2, +spanSec/2](中央が現在)を chooseTickInterval が選ぶ間隔の倍数で刻んだ
+// 目盛り列を返す。t は軸全域に対する位置(0.5 が現在)。両端が間隔の倍数でない場合、その端には
+// 目盛りを置かない。
+export function buildTicks(spanSec: number, maxTicks: number): readonly DisplayTick[] {
   // 非有限値では加算のループが終わらないので、目盛りを置かずに返す。
-  if (!isFinite(durationSec) || durationSec <= 0) return [];
-  const interval = chooseTickInterval(durationSec, maxTicks);
+  if (!isFinite(spanSec) || spanSec <= 0) return [];
+  const interval = chooseTickInterval(spanSec, maxTicks);
   const ticks: DisplayTick[] = [];
-  for (let elapsed = 0; elapsed <= durationSec; elapsed += interval) {
-    ticks.push({ t: elapsed / durationSec, label: `T+${fmtDuration(elapsed, interval)}` });
+  const half = spanSec / 2;
+  const first = Math.ceil(-half / interval);
+  const last = Math.floor(half / interval);
+  for (let i = first; i <= last; i++) {
+    const offset = i * interval;
+    ticks.push({
+      t: (offset + half) / spanSec,
+      label: offset === 0 ? '0' : `T${offset > 0 ? '+' : '−'}${fmtDuration(Math.abs(offset), interval)}`,
+    });
   }
   return ticks;
 }

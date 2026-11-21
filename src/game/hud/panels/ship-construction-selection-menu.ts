@@ -1,9 +1,7 @@
-// 建造中に選んだモジュールの脇へ追従する操作メニュー。回転(−90°/+90°)・向きを反転・
-// 付け替え・撤去・複製を持ち、毎フレーム渡される画面座標へ
-// 置き直す。画面の端からはみ出さないよう画面内へ寄せて置き、モジュールが画面の外へ
-// 出ても画面の縁へ寄せて残す。編集できない選択(接舷中の接続の先)では、効かない
-// 回転・向きを反転・付け替え・撤去を出さない。
+// 選択中モジュールの近くに操作メニューを表示し、選択位置に追従させる。
 import { Button } from '../../../hud/widgets';
+import { clampOverlayPosition } from '../../../hud/layout';
+import { injectOnce } from '../../../hud/inject-style';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import type { Projected } from '../../../math/projection';
 
@@ -23,16 +21,6 @@ const STYLE = `
   display: flex; flex-wrap: wrap; gap: var(--space-2); max-width: 260px;
 }
 `;
-
-let styleInjected = false;
-
-function injectStyle(): void {
-  if (styleInjected) return;
-  styleInjected = true;
-  const style = document.createElement('style');
-  style.textContent = STYLE;
-  document.head.appendChild(style);
-}
 
 // 選択メニュー1フレーム分の表示内容。(x, y) は追従先のモジュールの画面座標 [px]。
 interface ConstructionSelectionMenuSpec extends Projected {
@@ -60,7 +48,7 @@ export class ShipConstructionSelectionMenu {
 
   // 追従 DOM を marker レイヤ配下へ組み、操作を callbacks へ配線する。
   public constructor(parent: HTMLElement, callbacks: ShipConstructionSelectionMenuCallbacks) {
-    injectStyle();
+    injectOnce('construction-selection-menu', STYLE);
     this.root = document.createElement('div');
     this.root.id = 'construction-selection-menu';
     this.root.dataset.id = 'construction-selection-menu';
@@ -116,23 +104,20 @@ export class ShipConstructionSelectionMenu {
     show(this.reattach.element, spec.canEdit);
     show(this.remove.element, spec.canEdit);
 
-    // 画面からはみ出す向きへ出る分は画面内へ寄せる。カメラ背後(front=false)や
-    // 画面外の投影もこの寄せで画面の縁に残る。
-    const width = this.root.offsetWidth;
+    // 投影位置が画面外でもメニューは見える範囲へ寄せる。
     const height = this.root.offsetHeight;
-    const left = clampPx(spec.x + MENU_GAP_PX, VIEWPORT_MARGIN_PX, window.innerWidth - width - VIEWPORT_MARGIN_PX);
-    const top = clampPx(spec.y - height / 2, VIEWPORT_MARGIN_PX, window.innerHeight - height - VIEWPORT_MARGIN_PX);
-    this.root.style.left = `${left}px`;
-    this.root.style.top = `${top}px`;
+    const pos = clampOverlayPosition(
+      { x: spec.x + MENU_GAP_PX, y: spec.y - height / 2 },
+      { width: this.root.offsetWidth, height },
+      { width: window.innerWidth, height: window.innerHeight },
+      VIEWPORT_MARGIN_PX,
+    );
+    this.root.style.left = `${pos.x}px`;
+    this.root.style.top = `${pos.y}px`;
   }
 
   // 追従 DOM を取り除く。
   public dispose(): void {
     this.root.remove();
   }
-}
-
-// value を [min, max] へ収める。max が min を下回る(画面よりメニューが大きい)ときは min 側へ寄せる。
-function clampPx(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), Math.max(min, max));
 }

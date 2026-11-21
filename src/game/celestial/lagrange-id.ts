@@ -10,7 +10,7 @@ export const LAGRANGE_MIN_CLEARANCE_RATIO = 10;
 // L1〜L5 の点番号。
 export type LagrangePointNumber = 1 | 2 | 3 | 4 | 5;
 
-// 成立条件を満たすラグランジュ点の番号を返す。
+// 共線点は L1 の余裕比、三角点は質量比で成立を判定する。
 export function lagrangePointNumbersOf(motion: {
   hasUsableCollinearPoints(clearanceRatio: number): boolean;
   hasStableTriangularPoints(): boolean;

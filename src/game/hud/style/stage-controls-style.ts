@@ -20,6 +20,7 @@ export const STAGE_CONTROLS_STYLE = `
 #hud-stage-controls .stage-control-shapes .w-btn { flex: 1 1 0; min-width: 0; }
 #hud-stage-controls .stage-control-shapes .w-btn.on { background: var(--color-primary-fill); color: var(--color-primary); }
 #hud-stage-controls .stage-control-select { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); color: var(--text-dim); font-size: var(--font-xxs); }
+#hud-stage-controls .stage-control-select .w-group-title { min-width: 0; font-size: var(--font-xxs); letter-spacing: normal; }
 #hud-stage-controls .stage-control-select .w-select { min-width: 86px; }
 #hud-stage-controls .stage-control-select .w-input { width: 72px; text-align: right; }
 `;

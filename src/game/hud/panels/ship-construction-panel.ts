@@ -1,7 +1,4 @@
-// 建造セッションの表示と操作可能状態を同期し、建造操作を通知するパネル。
-// 「いま何を手に持ち、どこへ置けて、船体全体がどう変わるか」に答える区画で組む。
-// 手持ちの操作は手元バー(ship-construction-hand)、選択中モジュールの操作は脇へ
-// 追従するメニュー(ship-construction-selection-menu)、右ペインは性能・候補・履歴のタブ。
+// 建造セッションの状態を表示し、建造操作を通知するパネル。
 import { Button, buildSpan, Meter, TabBar } from '../../../hud/widgets';
 import { ARMOR_WARNING_RATIO, armorAlarmLevel } from '../../alarm/alarm-level';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
@@ -275,11 +272,10 @@ export class ShipConstructionPanel {
       this.slotList.replaceChildren();
       this.slotButtons.clear();
       for (const slot of model.targets) {
-        const button = new Button('', () => this.onSlotChange?.(slot.id), undefined, 'dense');
+        const button = new Button(slot.label, () => this.onSlotChange?.(slot.id), undefined, 'dense');
         button.element.classList.add('construction-slot-button');
         button.element.dataset['valid'] = String(slot.valid);
         button.element.title = slot.reason ?? 'この取り付け先を選ぶ';
-        button.element.replaceChildren(buildSpan('construction-slot-label', slot.label));
         // 無効な候補は選べない。理由はホバーの説明文だけに置かず、ボタン内に明示する。
         if (slot.reason !== null) {
           button.element.appendChild(buildSpan('construction-slot-reason', slot.reason));

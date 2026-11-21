@@ -1,8 +1,6 @@
 import { buildLabeledRow, Slider, ValueInput } from '../../hud/widgets';
 
-// ラベル行(.w-group + .w-group-title)と数値入力を組み立てて返す。root への追加は呼び出し側の仕事
-// (numberField はそのまま追加するだけだが、sliderField はスライダー列を同じ行に足してから追加する)。
-// 値は打鍵のたびに(sliderField が)直接読み書きするので、ValueInput の commit 通知自体は使わない。
+// 軌道要素の数値入力に、値の範囲を操作するスライダーを添える。
 function buildNumberRow(label: string, defaultValue: number, step: number, min?: number, max?: number): { row: HTMLElement; input: HTMLInputElement } {
   const row = buildLabeledRow(label);
   const valueInput = new ValueInput({ type: 'number', step, min, max }, () => {});
@@ -34,11 +32,11 @@ export interface SliderRow {
   setLabel(text: string): void;
   setTicks(labels: readonly string[]): void;
   setMapping(toT: (value: number) => number, fromT: (t: number) => number): void;
-  // bindRelativeSlider が結んだ行にだけ立つ: 基準値相対スライダーの基準をいまの input.value へ
-  // 取り直す。値を外部から書き換えたときはこれも呼ばないと、つまみの位置が実際の値とずれる。
+  // 相対スライダーの中心値を現在の input.value へ合わせる。
   rebase?(): void;
 }
 
+// 数値入力とスライダーを同期する行を root へ追加する。
 export function sliderField(root: HTMLElement, label: string, defaultValue: number, step: number, min?: number, max?: number): SliderRow {
   const wrap = document.createElement('div');
   wrap.className = 'slider-field';
@@ -48,8 +46,11 @@ export function sliderField(root: HTMLElement, label: string, defaultValue: numb
   const sliderCol = document.createElement('div');
   sliderCol.className = 'slider-col';
 
-  const slider = new Slider({ min: 0, max: 1000, step: 1 }, () => {}).element;
-  sliderCol.appendChild(slider);
+  const slider = new Slider({ min: 0, max: 1000, step: 1 }, (v) => {
+    // 次のドラッグの基準値を安定させるため、入力欄の刻みに丸めて書き戻す。
+    input.value = String(Math.round(fromT(v / 1000) / step) * step);
+  });
+  sliderCol.appendChild(slider.element);
 
   const ticksEl = document.createElement('div');
   ticksEl.className = 'slider-ticks';
@@ -62,26 +63,24 @@ export function sliderField(root: HTMLElement, label: string, defaultValue: numb
 
   let toT = (v: number): number => v;
   let fromT = (t: number): number => t;
+  // 入力値を正規化したスライダー位置へ反映する。
   const syncSliderFromInput = (): void => {
     const t = Math.max(0, Math.min(1, toT(Number(input.value))));
-    slider.value = String(Math.round(t * 1000));
+    slider.setValue(Math.round(t * 1000));
   };
   input.addEventListener('input', syncSliderFromInput);
-  slider.addEventListener('input', () => {
-    // 入力欄の刻みへ丸めてから書き戻す。高度スライダーは書き戻した値を次のドラッグの基準に
-    // 取り直すので、丸めないと端数がドラッグのたびに積み上がる。
-    input.value = String(Math.round(fromT(Number(slider.value) / 1000) / step) * step);
-  });
 
   const titleEl = row.querySelector('.w-group-title');
 
   return {
     element: wrap,
     input,
-    slider,
+    slider: slider.element,
+    // 入力行の見出しを更新する。
     setLabel(text) {
       if (titleEl) titleEl.textContent = text;
     },
+    // 目盛りの表示を labels の並びへ揃える。
     setTicks(labels) {
       ticksEl.innerHTML = '';
       for (const text of labels) {
@@ -90,6 +89,7 @@ export function sliderField(root: HTMLElement, label: string, defaultValue: numb
         ticksEl.appendChild(span);
       }
     },
+    // 値から位置・位置から値への変換を設定し、現在値を反映する。
     setMapping(newToT, newFromT) {
       toT = newToT;
       fromT = newFromT;
@@ -126,14 +126,11 @@ function relativeMultiplier(tOffset: number): number {
   return tOffset <= 0 ? 1 + tOffset : Math.pow(2, 2 * tOffset);
 }
 
-// 基準値相対スライダー(Ap/Pe高度・半長軸・周期): ドラッグ開始時点の値を基準の100%として
-// スライダー中央に据え、ドラッグが終わるたびにそのときの値を新しい基準に取り直してつまみを
-// 中央へ戻す(基準を固定しないと上限のない量を動かせない)。refFloor は基準値の下限 —
-// 基準はスライダーの可動範囲そのものなので、値が 0 まで下がったときに 0 を基準にすると倍率を
-// いくら掛けても 0 のままになり、二度と操作で戻せなくなる。量ごとに単位・オーダーが違うので
-// 呼び出し側がその量にとって妥当な床を渡す。
+// 値をスライダー中央の基準へ写し、0 近傍でも正値へ戻れる基準床を受け取る。
 export function bindRelativeSlider(field: SliderRow, refFloor: number): void {
+  // 現在値を新しい中心として、目盛りと双方向変換を揃える。
   const rebase = (): void => {
+    // 現在値を相対スライダーの中心へ据える。
     const ref = Math.max(Number(field.input.value), refFloor);
     field.setMapping(
       (v) => {
