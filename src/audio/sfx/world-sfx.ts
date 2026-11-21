@@ -40,7 +40,7 @@ const LOW_PRIORITY_SPAN: Partial<Record<WorldSound['kind'], number>> = {
   fire: 0.11,
   reload: 1.2,
   spinUp: 0.34,
-  clank: 0.05,
+  clank: 0.45,
   magFeed: 0.1,
   pickup: 0.12,
   emptyClick: 0.03,
@@ -219,12 +219,85 @@ export class WorldSfx {
     src.start(t, Math.random() * 0.4, 0.35);
   }
 
-  // 薬莢が機体に当たったときの、からんとした金属音(かすかに)
+  // 薬莢が機体に当たったときの、重い金属の筒の接触音。乾いた衝撃 + FM のクラン + 乱暴な高倍音 +
+  // 艦体を伝わる低い共鳴で構成する(SPEC/AUDIO.md「被弾・衝突・爆発」)。
   private clank(): void {
-    const f0 = 1800 + Math.random() * 1600;
-    this.engine.tone(f0, 0.05, 0.035, 'triangle');
-    this.engine.tone(f0 * 1.53, 0.04, 0.02, 'triangle'); // 非整数倍音で金属感
-    this.engine.noiseBurst(0.03, 'highpass', 5000, 0.02);
+    const ctx = this.engine.ctx;
+    const noise = this.engine.noiseBuf;
+    if (!ctx || !noise) return;
+    const t = ctx.currentTime;
+    // 艦砲クラスの薬莢の基本共鳴付近。個体差を大きめに。
+    const f0 = 430 * (1 + (Math.random() * 2 - 1) * 0.18);
+    // 接触位置が左右にばらけるだけの定位差。
+    const dest = ctx.createStereoPanner();
+    dest.pan.value = (Math.random() * 2 - 1) * 0.6;
+    dest.connect(ctx.destination);
+
+    const noiseAt = (t0: number, dur: number, type: BiquadFilterType, freq: number, q: number, vol: number): void => {
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const filter = ctx.createBiquadFilter();
+      filter.type = type;
+      filter.frequency.setValueAtTime(freq, t0);
+      filter.Q.value = q;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+      src.connect(filter).connect(gain).connect(dest);
+      src.start(t0, Math.random() * 0.5, dur + 0.02);
+      src.stop(t0 + dur + 0.05);
+    };
+    const partial = (t0: number, freq: number, dur: number, vol: number): void => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t0);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+      osc.connect(gain).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    };
+    // 変調波でキャリアを揺らし、非整数側帯を一括で出す金属音。index は鳴きと一緒に減る。
+    const fmClang = (t0: number, fc: number, ratio: number, index: number, dur: number, vol: number): void => {
+      const carrier = ctx.createOscillator();
+      carrier.frequency.setValueAtTime(fc, t0);
+      const mod = ctx.createOscillator();
+      mod.frequency.setValueAtTime(fc * ratio, t0);
+      const modIndex = ctx.createGain();
+      modIndex.gain.setValueAtTime(fc * index, t0);
+      modIndex.gain.exponentialRampToValueAtTime(1, t0 + dur * 0.8);
+      mod.connect(modIndex).connect(carrier.frequency);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+      carrier.connect(gain).connect(dest);
+      mod.start(t0);
+      carrier.start(t0);
+      mod.stop(t0 + dur + 0.02);
+      carrier.stop(t0 + dur + 0.02);
+    };
+
+    // 乾いた衝撃: 低域の鈍い当たり + 縁の高域エッジ。
+    noiseAt(t, 0.014, 'lowpass', 500, 1, 0.18);
+    noiseAt(t, 0.004, 'highpass', 5200, 0.8, 0.08);
+    // FM のクラン 3 層: 胴の鳴き・中域の金属・高域のエッジ。
+    fmClang(t, f0, 1.02, 2, 0.25, 0.07);
+    fmClang(t, f0 * 2.76, 1.37, 3, 0.14, 0.042);
+    fmClang(t, f0 * 5.4, 1.99, 1.8, 0.07, 0.021);
+    // 乱暴な高倍音: 大きな金属が当たる非整数の高次モード(6.7〜13.7倍)と擦れのキンキン。
+    [6.7, 8.9, 11.3, 13.7].forEach((m, k) => {
+      partial(t, f0 * m * (1 + (Math.random() * 2 - 1) * 0.08), 0.05 + Math.random() * 0.05, 0.032 / (1 + k * 0.5));
+    });
+    noiseAt(t, 0.04, 'bandpass', 5200 * (1 + (Math.random() * 2 - 1) * 0.25), 4, 0.06);
+    // 高域の粒: 擦れ合う金属のビリビリ。
+    const grains = 4 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < grains; i++) {
+      noiseAt(t + Math.random() * 0.015, 0.005, 'bandpass', 4500 * (1 + (Math.random() * 2 - 1) * 0.5), 5, 0.056);
+    }
+    // 艦体を伝わる低い共鳴。
+    noiseAt(t + 0.01, 0.4, 'bandpass', 280 * (1 + (Math.random() * 2 - 1) * 0.15), 3, 0.063);
+    partial(t + 0.01, 190 * (1 + (Math.random() * 2 - 1) * 0.1), 0.3, 0.035);
   }
 
   // マガジン給弾(次のマガジンが取り込まれるガチャッという機械音)
