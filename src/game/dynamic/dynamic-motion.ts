@@ -30,7 +30,7 @@ import {
   type DynamicCollisionPropertiesSnapshot,
 } from './dynamic-motion-collision';
 import {
-  ENV_TEMP, HULL_EMISS, stepThermalState,
+  DRAG_COEFFICIENT, ENV_TEMP, HULL_EMISS, stepThermalState,
   type DynamicMotionThermal,
 } from './dynamic-motion-thermal';
 import { PredictedArc, trajectorySampleInterval } from './predicted-arc';
@@ -50,8 +50,7 @@ export type {
   ContactKind, DynamicMotionBehavior, DynamicMotionProperties,
 } from './dynamic-motion-behavior';
 
-// 弾道係数の逆数から断面積質量比を戻すときの抗力係数 Cd。
-const DRAG_COEFFICIENT = 2.2;
+
 // 1歩ぶんの環境標本が RK4 の4段のとき、平均に掛ける重み。
 const RK4_WEIGHTS: readonly number[] = [1, 2, 2, 1];
 

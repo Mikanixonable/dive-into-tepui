@@ -232,6 +232,29 @@ test:game(549) / test:physics(510) / test:render が全て通過。
 `game-presentation.ts`(sync 3ブロック) > `input.ts`(装置3分割) >
 `world-sfx.ts`(ワンショットレシピ — 音声作業中のため最後)。
 
+### 追加実施(2026-11-21 続)
+
+- `7cd5db06a` — 残件一括: 赤道・相対ノードマーカーを `node-marker.ts` の NodeMarker
+  基底へ統合(§3 equator×relative)、三尖星 SVG を `marker-shapes.ts` の `leadMarkerSvg` へ、
+  `DRAG_COEFFICIENT` 二重定義を dynamic-motion-thermal の export へ一元化、
+  `metal-f0.ts` を tools/model-builder へ移動(§5)
+- §4: `ship-construction.ts` を分割 — 命令列・取り消し履歴を
+  `ship-construction-commands.ts`(ShipConstructionCommands)、設計図操作を
+  `ship-construction-blueprints.ts`(ShipConstructionBlueprints)へ。pointer と同じく
+  本体が狭い host 面を実装する生成時コラボレータ。1029→907行
+- §4: `modular-ship.ts` を分割 — マーカー組立を `modular-ship-markers.ts`、
+  renderSource 合成を `modular-ship-render-source.ts`、ブースター燃焼と燃焼管理
+  表示モデルを `modular-ship-boosters.ts` へ。731→621行
+- §4: `game-presentation.ts` は分割見送り — sync ブロックは約50フィールドの
+  配線を横断する呼び出し順の連結で、port 化すると結合が増える。このファイルは
+  表示の導出の配線の根として据える。代わりに積雲段のシェーダ事前コンパイルを
+  render 層の `precompileCumulusDetails` へ移動(`677504201`)
+- §4: `input.ts` を部分分割 — キーボード追跡を `keyboard-tracker.ts` の
+  KeyboardTracker へ(640→598行)。ポインタ/ドラッグ帳簿は状態機械が相互に
+  書き合うため分離せず据え置き
+- §4: `world-sfx.ts`(551行) は未実施 — 音声調整の作業中のため最後尾のまま据え置き
+- PR #206 として workspace3 の蓄積変更を main へ送出済み(分割コミットも push)
+
 ### 未実施の判断待ち(§1 残件)
 
 - `modular-ship.ts` / `ship-construction-view.ts` が View を直接 new — モデル層が装置を

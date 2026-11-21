@@ -9,6 +9,7 @@ import { MARKER_PRIORITY } from './marker-priority';
 import { pointPlacement } from './marker-placement';
 import type { CombatTarget } from '../dynamic/entity/combat-target';
 import { COLOR_MARKER_ALLY } from './marker-identity';
+import { leadMarkerSvg } from './marker-shapes';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ProjectFn } from '../../math/projection';
 
@@ -57,12 +58,11 @@ export class LeadMarkers {
     this.group.sync(declarations, nowMs);
   }
 
-  // 見越し点1件の宣言。主照準とは反対向き(逆三角形方向)の三尖星を、線だけで描く。
+  // 見越し点1件の宣言。三尖星の形は marker-shapes の leadMarkerSvg が持つ。
   private declaration(
     target: CombatTarget, lead: Vec3, project: ProjectFn,
   ): MarkerDeclaration {
-    // 中央に小さな切り欠きを残すことで、敵マーカーや照準と識別しやすくする。
-    const star = '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="LEAD"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 14.3V22"/><path d="M12 14.3V22" transform="rotate(120 12 12)"/><path d="M12 14.3V22" transform="rotate(240 12 12)"/></g></svg>';
+    const star = leadMarkerSvg();
     const color = 'accentColor' in target ? (target as { accentColor: string }).accentColor : COLOR_MARKER_ALLY;
     const { x, y, front } = pointPlacement(lead, project);
     return {

@@ -2,9 +2,9 @@
 import type * as THREE from 'three/webgpu';
 import type { ViewMode } from '../view/view-mode';
 import { deserializeAttitude, type Attitude } from '../../physics/attitude';
-import { LOCAL_FORWARD, qFromBasis, qRotate } from '../../math/quat';
+import { qFromBasis } from '../../math/quat';
 import { deserializeKinematicState, kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { add, scale, v3, len, sub, type Vec3 } from '../../math/vec3';
+import { add, v3, type Vec3 } from '../../math/vec3';
 import { CombatShipEntity } from '../dynamic/entity/combat-ship-entity';
 import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
 import type { DynamicEntity, SerializedDynamicEntityFields } from '../dynamic/entity/dynamic-entity';
@@ -26,13 +26,13 @@ import type { SerializedBeltController } from '../player/belt-controller';
 import { Plan, type PlanExecutionMode } from '../plan/plan';
 import type { SerializedPlan } from '../plan/plan';
 import { ShipAutopilot, type SerializedShipAutopilot } from './ship-autopilot';
-import { DIRECTION_GLYPH, COLOR_MARKER_ALLY } from '../marker/marker-identity';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
-import { MARKER_PRIORITY } from '../marker/marker-priority';
-import { baseMarkerSvg } from '../marker/marker-shapes';
 import type { Controllable } from '../dynamic/entity/controllable';
 import type { PilotCommand, PilotControls } from '../dynamic/entity/pilot-controls';
 import { ModularShipMotion, type ModularShipMotionReactions } from './modular-ship-motion';
+import { modularShipMarkerItem } from './modular-ship-markers';
+import { ModularShipBoosters } from './modular-ship-boosters';
+import { modularShipRenderSource } from './modular-ship-render-source';
 import type { DynamicMotionThermal } from '../dynamic/dynamic-motion';
 import type { PresentationBurnManagement } from '../presentation-ports';
 import { ShipInspection } from '../pickable/ship-inspection';
@@ -40,7 +40,6 @@ import { PlayerEffects } from '../player/player-effects';
 import { ModularShipReactions } from './modular-ship-reactions';
 import { createDefaultCombatPreset } from './ship-presets';
 import type { ShipAssembly } from './ship-assembly';
-import { shipRenderAssembly } from './ship-render-adapter';
 import { ShipCapabilities } from './ship-capabilities';
 import { shipPhysicsShape } from './ship-physics-shape';
 import type { ControlSelection } from '../control-selection';
@@ -54,8 +53,6 @@ import type { StageOutcome } from '../stages/stage-outcome';
 import type { StageRules } from '../stages/stage-rules';
 
 const HULL_START_TEMP = 273; // 初期機体温度 [K]
-
-const ALLY_BEARING_MAX_DISTANCE = 20e3; // 味方機の画面外方位マーカーを表示する上限距離 [m]
 
 // 給弾ベルトの節点数。たわみ物理の鎖の長さと、表示するリンクメッシュの本数を揃える。
 const BELT_MAX_VISIBLE = 18;
@@ -117,6 +114,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   public readonly altitudeAlarm: AltitudeAlarm;
   private readonly effects: PlayerEffects;
   private readonly reactions: ModularShipReactions;
+  private readonly boosters: ModularShipBoosters;
   private readonly registry: EntityRegistry;
   // この艦自身のマニューバ計画。
   public readonly plan: Plan;
@@ -286,6 +284,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       syncAfterDamage: () => this.syncAssemblyIntegrity(),
     });
     reactionHandler = this.reactions;
+    this.boosters = new ModularShipBoosters(this);
     const thisShipName = (): string => this.name;
     this.connections = new ModularShipConnectionOperations({
       ship: this,
@@ -384,46 +383,9 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     }
   }
 
-  // 点火済み booster module を同時に進め、区間平均推力を現在質量の対数平均で加速度へ直す。
-  private stepBoosters(simDt: number): Vec3 | null {
-    if (!(simDt > 0)) return null;
-    // 区間で燃やせた割合だけ各 booster の推力を足す。
-    const massBefore = this.motion.mass;
-    let averageThrust = 0;
-    let consumedAny = false;
-    for (const booster of this.capabilities.modules('booster', true)) {
-      if (!booster.ignited || booster.fuel <= 0) continue;
-      const definition = this.assembly.definition(booster.id);
-      if (definition === null) continue;
-      const rate = definition.abilities.fuelConsumptionRate ?? 0;
-      const requested = rate * simDt;
-      const consumed = rate > 0 ? this.assembly.consumeBoosterFuel(booster.id, requested) : 0;
-      const burnRatio = rate > 0 ? Math.min(1, consumed / requested) : 1;
-      averageThrust += (definition.abilities.thrust ?? 0) * burnRatio;
-      consumedAny ||= consumed > 0;
-    }
-    if (consumedAny) this.motion.synchronizeAssembly();
-    if (!(averageThrust > 0)) return null;
-    // 燃料消費で質量が動いたので、区間の対数平均質量で加速度へ直す。
-    const massAfter = this.motion.mass;
-    const meanMass = Math.abs(massBefore - massAfter) < 1e-12
-      ? massAfter
-      : (massBefore - massAfter) / Math.log(massBefore / massAfter);
-    const acceleration = meanMass > 0 ? averageThrust / meanMass : 0;
-    return acceleration > 0
-      ? scale(qRotate(this.motion.att.q, LOCAL_FORWARD), acceleration)
-      : null;
-  }
-
   // booster module の点火状態を切り替え、切替後の状態を返す。booster でなければ失敗にする。
   public toggleBoosterIgnition(moduleId: string): boolean {
-    const booster = this.assembly.module(moduleId);
-    if (booster?.kind !== 'booster') throw new Error(`not a booster module: ${moduleId}`);
-    const ignited = !(booster.ignited && booster.fuel > 0 && booster.hp > 0);
-    this.assembly.setIgnited(moduleId, ignited);
-    this.motion.invalidatePrediction();
-    const updated = this.assembly.module(moduleId);
-    return updated?.kind === 'booster' && updated.ignited;
+    return this.boosters.toggleIgnition(moduleId);
   }
 
   // 接舷・分離・修理は接続 identity と衝突猶予を持つ専用所有者へ渡す。
@@ -490,36 +452,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
 
   // ブースターとデカプラーがある艦の燃焼管理表示を組み立てる。
   public burnManagementViewModel(): PresentationBurnManagement | null {
-    // booster・decoupler がどちらも無ければ表示するものは無い。
-    const boosters = this.capabilities.modules('booster');
-    const decouplers = this.capabilities.modules('decoupler');
-    if (boosters.length === 0 && decouplers.length === 0) return null;
-    const activeFuel = boosters.reduce((total, module) => total + module.fuel, 0);
-    const activeFuelMax = boosters.reduce(
-      (total, module) => total + (this.assembly.definition(module.id)?.abilities.fuelCapacity ?? 0), 0,
-    );
-    const anyIgnited = boosters.some(module => module.ignited && module.fuel > 0 && module.hp > 0);
-    // 残量と点火状態から燃焼段の状態を決め、モジュール1つ1行の項目へ並べる。
-    return {
-      stageCount: boosters.length,
-      totalMass: this.motion.mass,
-      activeFuel,
-      activeFuelMax,
-      burnState: boosters.length === 0 ? 'idle'
-        : activeFuel <= 0 ? 'empty' : anyIgnited ? 'burning' : 'ready',
-      modules: [
-        ...decouplers.map(module => ({
-          id: module.id,
-          kind: 'decoupler' as const,
-          state: module.hp > 0 ? 'connected' as const : 'destroyed' as const,
-        })),
-        ...boosters.map(module => ({
-          id: module.id,
-          kind: 'booster' as const,
-          state: module.fuel <= 0 ? 'fuel-empty' as const : module.ignited ? 'burning' as const : 'stopped' as const,
-        })),
-      ],
-    };
+    return this.boosters.burnManagementViewModel();
   }
 
   // 弾薬ピックアップで得たマグ数を加算する。
@@ -535,7 +468,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     const controls = this.capabilities.controllable ? requestedControls : null;
     if (stageRules.selfRepair) this.hpRegen(dt);
     this.syncModuleDeployments();
-    const boosterThrust = this.stepBoosters(simDt);
+    const boosterThrust = this.boosters.step(simDt);
     // 自動操縦は操作艦・非操作艦とも毎フレーム進める。手動の噴射・回転入力は中断として扱う。
     if (controls !== null && (controls.thrust.size > 0 || controls.rotation.size > 0)) {
       this.autopilot.interrupt();
@@ -632,60 +565,17 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   // 画面マーカー・一覧に出すこの艦の項目。isActive はマップ上で自艦と僚艦を塗り分ける
   // ための操作対象フラグ。
   public markerItem(viewerPos: Vec3 | null, pos: Vec3, vel: Vec3, view: ViewMode, isActive: boolean): GroupedMarkerItem {
-    const distance = viewerPos === null ? null : len(sub(pos, viewerPos));
-    const isBaseRole = this.capabilities.role === 'base';
-    return {
-      key: this.markerKey,
-      kind: isBaseRole ? 'base' : this.mapKind,
-      cls: isBaseRole ? 'mk-base' : (isActive ? 'mk-self' : 'mk-ally'),
-      sym: isBaseRole ? baseMarkerSvg() : (view === 'map' ? this.headingHpMarkerSvg() : this.hpMarkerSvg()),
-      pos,
-      vel,
-      // 視点が無いフレームは距離を順位へ持ち込まず、全対象を同じ遠さとして扱う。
-      priority: isBaseRole
-        ? MARKER_PRIORITY.BASE - (distance ?? 0) / 1e9
-        : MARKER_PRIORITY.PLAYER,
-      name: this.name,
-      // 遠距離では画面外方位マーカーを畳み、密集を抑える。
-      bearing: {
-        color: COLOR_MARKER_ALLY,
-        sym: DIRECTION_GLYPH.allyBearing,
-        cls: 'mk-dir mk-ally-dir',
-        visible: distance !== null && distance <= ALLY_BEARING_MAX_DISTANCE,
-        clustered: true,
-      },
-      color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
-      symMarkup: true,
-    };
+    return modularShipMarkerItem(this, viewerPos, pos, vel, view, isActive);
   }
 
-  // 船体 View が読む値を、共通の表示入力へ足す。可動部と噴射は Motion の現在値、
-  // マーカーの弾数と初速は装備の現在値から、このフレームぶんだけを組む。
+  // 船体 View が読むこのフレームの表示入力を返す。
   protected override renderSource(
     viewFrame: DynamicViewFrame, active: boolean,
     orbitReference: OrbitReference | null,
   ): ModularShipRenderSource {
-    const motion = this.motion;
-    const { belt } = motion;
-    // 動圧と対気速度は同じ空力状態から、このフレームの表示入力へ渡す。
-    return {
-      ...super.renderSource(viewFrame, active, orbitReference),
-      assembly: shipRenderAssembly(this.assembly),
-      centerOffset: motion.centerOffset,
-      state: motion.state,
-      active,
-      mainThrustAcceleration: this.throttle.thrust,
-      maximumAcceleration: motion.mass > 0 ? this.totalThrust / motion.mass : 0,
-      torque: motion.torque,
-      dynamicPressure: motion.aero.qdyn,
-      ambientDensity: motion.aero.density,
-      airspeed: motion.aero.airspeed,
-      belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
-      coolingDumpRunning: motion.coolingDump.running,
-      magsLeft: this.magsLeft,
-      gunFireRate: this.fire.isFiring ? this.totalFireRate : 0,
-      recentShotRecords: this.fire.recentShotRecords,
-    };
+    return modularShipRenderSource(
+      this, super.renderSource(viewFrame, active, orbitReference), active,
+    );
   }
 
   // 自身のメッシュやエフェクト等の表示資源を解放する。
