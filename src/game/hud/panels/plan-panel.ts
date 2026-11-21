@@ -149,7 +149,7 @@ export class PlanPanel {
         </div>
       </section>
       <div data-id="planbody"></div>
-      <div data-id="planedit" class="hidden" style="margin-top:${SPACE_4}; padding-top:${SPACE_4}; border-top:1px solid var(--fill-2)">
+      <div data-id="planedit" class="hidden" style="margin-top:${SPACE_4}; padding-top:${SPACE_4}; box-shadow:inset 0 1px 0 var(--fill-2)">
         <div style="font-size:${FONT_XXS}; color:var(--text-dim); margin-bottom:${SPACE_2};">ノード位置（現在時刻からの ΔT [s]）</div>
       </div>
     `;
