@@ -170,21 +170,14 @@
 
 ## 手順
 
-### 手順 7. 粗いポインタの初回既定を実測で決める(SPEC → 実装)
+### 手順 7. 低プリセットの値を見直す(残り)
 
-**目的** — 初めて起動したモバイル端末が、目標 30fps を守る設定で始まるようにする。いまの規則
-(粗いポインタなら中)はコードだけにあり、SPEC に無い。
+初回既定はタッチ主体の端末で低に決めた(iPhone 実機で中が 13fps・WebGL2 だったため。SPEC と実装は済み)。
+残りは、低でも 30fps に届かない端末向けに `src/render/graphics-settings.ts` の各項目の `presets.low` を
+項目別の寄与(1項目ずつ切って測る)から見直すこと。
 
-**変更が必要な箇所**
-
-| ファイル | すること |
-| --- | --- |
-| `DEVELOP/SPEC/RENDERING.md`「描画品質設定」 | `/modify-feature` を通して、「保存が無い初回は、主ポインタが粗い端末では〈手順 0 の基線で決めたプリセット〉、それ以外では高で始める」を書く。`docs(spec):` の単独 commit |
-| `src/render/graphics-settings.ts:280-288`(`firstRunGraphics`) | 手順 0 の基線と、手順 1〜6 の後の再計測から決めた値にする。中で 33.3ms を超えるなら低にする。低でも超えるなら、中を基にした個別値(解像度 50%・fps 上限 30・テクスチャ低)にして、どのプリセットとも一致しない状態で始める |
-| `src/render/graphics-settings.ts` の各項目の `presets.low` | 手順 0 の項目別の寄与(1項目ずつ切って測る)を見て、低の値を見直す |
-
-**達成条件と検証** — `npm run typecheck`、`npm run test:settings`(初回既定の検査を更新する)。
-`npm run mobile-probe` の初回既定の行で、LEO 戦闘ビューの中央値が 33.3ms 以下。
+**達成条件と検証** — `npm run typecheck`、`npm run test:render`。`npm run mobile-probe` の初回既定の行で、
+LEO 戦闘ビューの中央値が 33.3ms 以下。
 
 ### 手順 9. タイトル画面を1つのレンダラで描く(後回し)
 
