@@ -931,6 +931,15 @@ async function bootAndCheckReady() {
         new Promise((resolve) => requestAnimationFrame(() => resolve('alive'))),
         new Promise((resolve) => setTimeout(() => resolve('no-raf'), 2000)),
       ]);
+      const frameMs = await Promise.race([
+        new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            const t1 = performance.now();
+            requestAnimationFrame(() => resolve(Math.round(performance.now() - t1)));
+          });
+        }),
+        new Promise((resolve) => setTimeout(() => resolve('>5000'), 5000)),
+      ]);
       let adapter = 'none';
       if (navigator.gpu) {
         adapter = await Promise.race([
@@ -942,7 +951,9 @@ async function bootAndCheckReady() {
       }
       return {
         raf,
+        frameMs,
         adapter,
+        combatView: Boolean(document.querySelector('.hud-combat-root.active')),
         loading: [...document.querySelectorAll('body > div')].some((d) => d.textContent?.includes('初期化中')),
         stageSelect: Boolean(document.querySelector('.ss-window')),
         canvases: document.querySelectorAll('canvas').length,
