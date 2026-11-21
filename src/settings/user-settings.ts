@@ -4,8 +4,8 @@ import {
   DEFAULT_BGM_VOLUME, formatBgmMuted, formatBgmVolume, parseBgmMuted, parseBgmVolume,
 } from '../audio/bgm/bgm';
 import {
-  formatOrbitGuideGroupTab, formatPanelCollapsed, formatViewOptionsTab,
-  parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
+  formatMissionTimeFormat, formatOrbitGuideGroupTab, formatPanelCollapsed, formatViewOptionsTab,
+  parseMissionTimeFormat, parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
 } from '../game/view/hud-selection';
 import { formatMapDisplayToggles, parseMapDisplayToggles } from '../game/map/display-toggles';
 import { isCoarsePointer } from '../input/pointer-precision';
@@ -14,7 +14,9 @@ import { formatGraphics, parseGraphics } from '../render/graphics-settings';
 import { formatRenderStyle, parseRenderStyle } from '../render/render-style';
 import { formatThemePalette, parseThemePalette } from '../theme';
 import { StoredSetting } from './stored-setting';
-import type { OrbitGuideGroupTab, PanelCollapsedState, ViewOptionsTab } from '../game/view/hud-selection';
+import type {
+  MissionTimeFormat, OrbitGuideGroupTab, PanelCollapsedState, ViewOptionsTab,
+} from '../game/view/hud-selection';
 import type { MapDisplayToggles } from '../game/map/display-toggles';
 import type { CelestialGridVisibility } from '../render/celestial-grid';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
@@ -46,6 +48,8 @@ export class UserSettings {
   public readonly viewOptionsTab: StoredSetting<ViewOptionsTab>;
   // 軌道ガイドタブで選んでいる群タブ。
   public readonly orbitGuideGroupTab: StoredSetting<OrbitGuideGroupTab>;
+  // 全体ステータスバーの時刻の表記。
+  public readonly missionTimeFormat: StoredSetting<MissionTimeFormat>;
 
   // storage は設定一式を残す先。鍵は既存ユーザーの保存に残っている文字列なので、変えると
   // 保存済みの設定が読めなくなる。
@@ -77,6 +81,9 @@ export class UserSettings {
     );
     this.orbitGuideGroupTab = new StoredSetting(
       storage, 'tepui.orbitGuideGroupTab', parseOrbitGuideGroupTab, formatOrbitGuideGroupTab,
+    );
+    this.missionTimeFormat = new StoredSetting(
+      storage, 'tepui.missionTimeFormat', parseMissionTimeFormat, formatMissionTimeFormat,
     );
   }
 

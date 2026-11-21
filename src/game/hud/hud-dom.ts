@@ -382,7 +382,7 @@ function buildTopBar(root: HTMLElement): HTMLElement {
     <div class="gs-metrics">
       <div class="gs-metric gs-metric-time">
         <span class="ui-data-label">MISSION TIME</span>
-        <output class="v" data-id="met">—</output>
+        <output class="v" data-id="met" role="button" tabindex="0" title="クリックして時刻の表記を切り替え">—</output>
       </div>
       <div class="gs-metric">
         <span class="ui-data-label">SIM RATE</span>

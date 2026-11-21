@@ -1,4 +1,5 @@
-// セーブを跨いで共通の HUD の選択(パネルの折りたたみ、パネル内のタブ)の値と、保存文字列との変換。
+// セーブを跨いで共通の HUD の選択(パネルの折りたたみ、パネル内のタブ、読み値の表記)の値と、
+// 保存文字列との変換。
 import { GUIDE_GROUPS } from '../celestial/orbit-guide/orbit-guide-groups';
 import type { GuideGroupId } from '../celestial/orbit-guide/orbit-guide-groups';
 import type { ViewMode } from './view-mode';
@@ -18,6 +19,11 @@ const VIEW_OPTIONS_TABS: readonly ViewOptionsTab[] = ['target', 'guide', 'orbit'
 export type OrbitGuideGroupTab = 'basic' | GuideGroupId;
 
 export const ORBIT_GUIDE_GROUP_TABS: readonly OrbitGuideGroupTab[] = ['basic', ...GUIDE_GROUPS];
+
+// 全体ステータスバーの時刻の表記。T+ 経過時間か絶対日時のどちらか。
+export type MissionTimeFormat = 'elapsed' | 'absolute';
+
+const MISSION_TIME_FORMATS: readonly MissionTimeFormat[] = ['elapsed', 'absolute'];
 
 // 保存値のうち真偽値だけを畳み状態として採る。
 function parseBucket(parsed: unknown): PanelCollapsedBucket | null {
@@ -80,4 +86,14 @@ export function parseOrbitGuideGroupTab(text: string | null): OrbitGuideGroupTab
 // 軌道ガイドの群タブを保存へ載せる文字列にする。
 export function formatOrbitGuideGroupTab(tab: OrbitGuideGroupTab): string {
   return tab;
+}
+
+// 保存された時刻の表記。知らない値は T+ 表記へ落ちる。
+export function parseMissionTimeFormat(text: string | null): MissionTimeFormat {
+  return MISSION_TIME_FORMATS.find((format) => format === text) ?? 'elapsed';
+}
+
+// 時刻の表記を保存へ載せる文字列にする。
+export function formatMissionTimeFormat(format: MissionTimeFormat): string {
+  return format;
 }
