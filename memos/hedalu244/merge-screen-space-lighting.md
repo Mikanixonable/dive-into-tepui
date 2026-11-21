@@ -35,11 +35,14 @@
   （章が main から辿れなくなる）。マージした後もブランチは消さなくてよい。
 - 畳む前の履歴は hedalu244 の作業機のタグ `screen-space-lighting-full` にだけある。**push しない**（消した大きなファイルが戻る）。
 
+- 消された 13 ファイルのうち `src/assets/orbits/lagrange-orbits-*.json` の 8 本は、main が後で復元した（`77acdafde`）。このブランチにも
+  main と同じ内容で入れてあるので、マージでは衝突しない。`src/assets/models/shipModules.json` は旧形式で、main のコードはもう読まない。
+  このブランチの `ship-module-models.ts` はまだ読むので、**マージの前のこのブランチ単体では型検査が通らない**（マージで main の版になって直る）。
+
 ### 作業木の注意
 
-- hedalu244 の作業木で作業するなら、`scratch/`・`src/assets/orbits/`・`src/assets/models/shipModules.json` が未追跡で残っている
-  （main が履歴から消したファイル）。**`git add -A` / `git add .` をしない。** 足すファイルはパスで指定する。
-- 新しく clone した作業木なら気にしなくてよい。
+- hedalu244 の作業木には `scratch/`（手元の試し書き）が未追跡で残っている。main では `.gitignore` の対象なので、マージの後は無視される。
+  消さない。**`git add -A` / `git add .` / ディレクトリ指定の `git add` をしない。** 足すファイルはパスで指定する。
 
 ### 決まっている判断（ユーザーが 2026-11-22 に決めた）
 
