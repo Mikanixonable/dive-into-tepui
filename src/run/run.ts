@@ -48,6 +48,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     progressReader: ProgressReader,
     progress: LoadingProgress,
     runOptions: RunOptions,
+    hudOnly: boolean,
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
@@ -58,7 +59,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     );
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle,
-      sections, syncSections, blueprints, progressReader, progress,
+      sections, syncSections, blueprints, progressReader, progress, hudOnly,
     );
   }
 
@@ -76,6 +77,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
+    hudOnly: boolean,
   ): Promise<Run> {
     const warmUpGraphics = graphics.current;
     const warmUpStyle = renderStyle.current;
@@ -85,7 +87,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     );
     return Run.launch(
       game, warmUpGraphics, warmUpStyle, devices, viewOptions, themePalette, graphics, renderStyle,
-      sections, syncSections, blueprints, progressReader, progress,
+      sections, syncSections, blueprints, progressReader, progress, hudOnly,
     );
   }
 
@@ -105,6 +107,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     blueprints: ShipBlueprintShelf,
     progressReader: ProgressReader,
     progress: LoadingProgress,
+    hudOnly: boolean,
   ): Promise<Run> {
     const presentation = new GamePresentation(
       game, devices, viewOptions, themePalette, sections, syncSections, blueprints,
@@ -116,7 +119,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     presentation.anchorFrameAt(game.simTime);
     game.followCamera(presentation.cameraSamples());
     presentation.presentRunStart();
-    await run.warmUp(warmUpGraphics, warmUpStyle, progress);
+    await run.warmUp(warmUpGraphics, warmUpStyle, progress, hudOnly);
     return run;
   }
 
@@ -133,11 +136,15 @@ export class Run implements SnapshotSource, PerfCountSource {
 
   // シェーダを組む前に、最初に描かれるフレームと同じ表示状態を、進行の後の導出と同期で作る —
   // 天体表面の分割段のように導出と同期が決めるまで現れない表示物が、事前コンパイルから漏れる。
-  private async warmUp(graphics: GraphicsSettingsData, style: RenderStyle, progress: LoadingProgress): Promise<void> {
+  private async warmUp(
+    graphics: GraphicsSettingsData, style: RenderStyle, progress: LoadingProgress, hudOnly: boolean,
+  ): Promise<void> {
     const viewport = this.devices.scene.viewport;
     // 進行を通すと、読み込んだ記録が保存した瞬間の状態から続かなくなる(SAVE.md「保存される内容」)。
     this.deriveAfterProgress(0, viewport);
     this.presentation.sync(graphics, style, viewport, 0);
+    // HUD だけを検査するとき(layout smoke)は、描画資源を組む段も捨てフレームの描画も行わない。
+    if (hudOnly) return;
     await progress.enter('shaders');
     await this.presentation.compile(style, progress);
     // 出力段の階調変換は three が実際に描いたときにしか組まないので、捨てる 1 フレームで組ませる。

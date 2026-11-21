@@ -24,7 +24,7 @@ import { PauseMenu } from './hud/windows/pause-menu';
 import { fmtElapsedUnits } from './hud/format';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
-import { debugInfoOpenAtStart, Launcher } from './launcher/launcher';
+import { debugInfoOpenAtStart, layoutSmokeHudOnly, Launcher } from './launcher/launcher';
 import { UnlockManager } from './launcher/unlock-manager';
 import { SnapshotControls } from './launcher/snapshot-controls';
 import { SaveBrowser } from './launcher/save-browser/save-browser';
@@ -61,6 +61,7 @@ function startAnimationLoop(
   debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, snapshotControls: SnapshotControls,
 ): void {
   const layoutSmoke = new URLSearchParams(window.location.search).has('layout-smoke');
+  const layoutSmokeHud = layoutSmokeHudOnly();
   let lastTime = performance.now();
   let completedFrames = 0;
   // 1フレーム分: ランのフレームを回し、次フレームを予約する。
@@ -75,10 +76,11 @@ function startAnimationLoop(
     // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
     // リサイズしたフレームで画面上の当たり判定がずれる。
     const viewport = browserViewport();
-    // layout smoke は起動完了後も入力・HUD同期を動かすが、viewport変更に伴う
-    // headless WebGPU の再確保だけ止める。通常実行では常に従来どおり同期・描画する。
-    const hudOnlyFrame = layoutSmoke
-      && document.documentElement.dataset.layoutSmokeFreeze === 'true';
+    // layout smoke は起動完了後も入力・HUD同期を動かす。?layout-smoke=hud では描画を一切行わず、
+    // ?layout-smoke では viewport変更に伴う headless WebGPU の再確保だけ止める。
+    // 通常実行では常に従来どおり同期・描画する。
+    const hudOnlyFrame = layoutSmokeHud
+      || (layoutSmoke && document.documentElement.dataset.layoutSmokeFreeze === 'true');
     if (!hudOnlyFrame) devices.scene.syncFrame(viewport, settings.graphics.current, debugInfo.debugTarget);
     // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
     // 決まった周回の進行と、設定面の試聴に合わせる。
