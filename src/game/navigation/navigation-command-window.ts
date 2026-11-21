@@ -24,7 +24,7 @@ const STYLE = `
   padding: var(--space-2); border: none; border-radius: var(--radius-control);
   background: none; color: var(--text); font: inherit; cursor: pointer;
 }
-#hud .navigation-command-row:hover { background: color-mix(in srgb, var(--color-primary) 14%, transparent); }
+#hud .navigation-command-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #hud .navigation-command-row .navcmd-method { font-size: var(--font-xs); letter-spacing: var(--tracking-label); color: var(--color-primary); }
 #hud .navigation-command-row .navcmd-times { font-variant-numeric: tabular-nums; }
 #hud .navigation-command-row .navcmd-dv { font-variant-numeric: tabular-nums; color: var(--text-dim); white-space: nowrap; }
@@ -103,7 +103,7 @@ export class NavigationCommandWindow {
     for (const candidate of candidates) {
       const row = document.createElement('button');
       row.type = 'button';
-      row.className = 'navigation-command-row';
+      row.className = 'navigation-command-row ui-selectable';
       const method = document.createElement('span');
       method.className = 'navcmd-method';
       method.textContent = 'LAMBERT';

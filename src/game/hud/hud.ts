@@ -23,6 +23,8 @@ import type { Vec3 } from '../../math/vec3';
 import type { OverlayLayers } from '../../hud/overlay-layer';
 import type { HudShell } from '../../hud/hud-shell';
 import type { OverlayManager } from '../../hud/overlay-manager';
+import type { SettingValue } from '../../settings/setting-value';
+import type { MissionTimeFormat } from '../view/hud-selection';
 import type { HelpPanel } from './windows/help-panel';
 import type { HintKind, Notifier } from '../../hud/notifier';
 import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
@@ -83,6 +85,8 @@ export class Hud implements HudLayers, Notifier {
   // panelCollapse は各パネルの折りたたみトグルの配線役。
   public constructor(
     private readonly shell: HudShell, public readonly panelCollapse: PanelCollapse, renderStyle: RenderStyle,
+    missionTimeFormat: SettingValue<MissionTimeFormat>,
+    onMissionTimeFormatChange: (format: MissionTimeFormat) => void,
   ) {
     const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(
       shell, panelCollapse, renderStyle, () => this.onPauseBadge?.(),
@@ -92,7 +96,7 @@ export class Hud implements HudLayers, Notifier {
     this.helpPanel = helpPanel;
 
     // 常設パネルを、data-id で引ける要素の一覧から組む。
-    this.topBar = new TopBar(els);
+    this.topBar = new TopBar(els, missionTimeFormat, onMissionTimeFormatChange);
     this.alarmBand = new AlarmBand(els);
     this.viewBadgeRow = els.get('gs-viewrow');
     this.mapScaleBadge = new MapScaleBadge(els);

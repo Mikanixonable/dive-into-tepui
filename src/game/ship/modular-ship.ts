@@ -84,6 +84,7 @@ export interface SerializedModularShip extends SerializedDynamicEntityFields {
   readonly radiator: SerializedRadiatorSystem;
   readonly power: SerializedPowerSystem;
   readonly belt: SerializedBeltController;
+  readonly coolingDump?: boolean;
   readonly throttle: SerializedThrottle;
   readonly altitudeAlarm: SerializedAltitudeAlarm;
   readonly plan: SerializedPlan | null;
@@ -148,11 +149,10 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   public get totalRcsFuel(): number { return this.capabilities.fuel('rcs'); }
   public get totalMaxRcsFuel(): number { return this.capabilities.maxFuel('rcs'); }
   // 主推進燃料を amount だけ消費し、消費できた割合(0..1)を返す。amount <= 0 なら 1。
+  // 消費した分だけ噴射冷却が効く(motion.consumeMainFuel)。
   public consumeFuel(amount: number): number {
     if (amount <= 0) return 1;
-    const consumed = this.capabilities.consumeFuel('main', amount);
-    if (consumed > 0) this.motion.synchronizeAssembly();
-    return consumed / amount;
+    return this.motion.consumeMainFuel(amount) / amount;
   }
   // 主推進燃料を amount だけ補給し、実際に入った量を返す。
   public refuelFuel(amount: number): number {
@@ -262,6 +262,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
           serializedBelt: serialized?.belt,
           serializedRadiator: serialized?.radiator,
           serializedPower: serialized?.power,
+          serializedCoolingDump: serialized?.coolingDump,
         },
       ),
       new ModularShipDynamicView(scene, id, BELT_MAX_VISIBLE),
@@ -680,6 +681,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       ambientDensity: motion.aero.density,
       airspeed: motion.aero.airspeed,
       belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
+      coolingDumpRunning: motion.coolingDump.running,
       magsLeft: this.magsLeft,
       gunFireRate: this.fire.isFiring ? this.totalFireRate : 0,
       recentShotRecords: this.fire.recentShotRecords,
@@ -709,6 +711,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       radiator: this.motion.radiator.serialize(),
       power: this.motion.power.serialize(),
       belt: this.motion.belt.serialize(),
+      coolingDump: this.motion.coolingDump.serialize(),
       throttle: this.throttle.serialize(),
       altitudeAlarm: this.altitudeAlarm.serialize(),
       // 操作・表示の設定と計画

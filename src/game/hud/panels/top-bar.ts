@@ -3,10 +3,13 @@
 import { SyncThrottle } from '../sync-throttle';
 import { fmtDateTime, fmtElapsedUnits, fmtTime } from '../../../hud/format';
 import { type AlarmLevel, applyAlarmLevel } from '../../../hud/alarm-level';
+import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
 import type { HudEls } from '../hud-els';
 import type { ShipAlarms } from '../../alarm/ship-alarms';
 import { SIM_SPEED_LEVELS } from '../../dynamic/sim-speed-manager';
 import { Pulldown } from '../../../hud/widgets';
+import type { SettingValue } from '../../../settings/setting-value';
+import type { MissionTimeFormat } from '../../view/hud-selection';
 
 const SYNC_INTERVAL_MS = 100;
 
@@ -37,7 +40,12 @@ export class TopBar {
   private view: TopBarViewModel | null = null;
 
   // 時間加速ドロップダウンを差し込み、選択の変更を直近の値が持つ口へ返す。
-  public constructor(private readonly els: HudEls) {
+  // format は時刻の読み値の表記の正本で、読み値を押すと onFormatChange へもう一方を渡す。
+  public constructor(
+    private readonly els: HudEls,
+    private readonly format: SettingValue<MissionTimeFormat>,
+    private readonly onFormatChange: (format: MissionTimeFormat) => void,
+  ) {
     const holder = this.els.get('sim-speed');
     const pulldown = new Pulldown<readonly [typeof SPEED_COLUMN]>(
       '', [SPEED_COLUMN], null, ([speed]) => this.view?.setSimSpeed(speed),
@@ -46,6 +54,13 @@ export class TopBar {
     this.simSpeedPulldown = pulldown;
     this.simSpeedEl = pulldown.element.querySelector<HTMLSelectElement>('select')!;
     this.simSpeedEl.classList.add('gs-speed-select');
+
+    const met = this.els.get('met');
+    stopDragPropagation(met);
+    expandHitTarget(met);
+    bindActivation(met, () => {
+      this.onFormatChange(this.format.current === 'elapsed' ? 'absolute' : 'elapsed');
+    });
   }
 
   // 警報灯が最後に出した件数と段。変わらなければ DOM を書き換えない。
@@ -65,7 +80,9 @@ export class TopBar {
     }
     const { simTime } = view;
     this.els.setText(
-      'met', `${fmtDateTime(view.epochUnixSec + simTime)} / T+ ${fmtElapsedUnits(simTime)}`,
+      'met', this.format.current === 'absolute'
+        ? fmtDateTime(view.epochUnixSec + simTime)
+        : `T+ ${fmtElapsedUnits(simTime)}`,
     );
 
     if (!this.throttle.due(nowMs)) return;

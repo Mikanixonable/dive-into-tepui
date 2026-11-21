@@ -6,6 +6,10 @@ import { expandHitTarget, stopDragPropagation } from './widget-base';
 export const COLLAPSE_EXPANDED_GLYPH = '▾';
 export const COLLAPSE_COLLAPSED_GLYPH = '▸';
 
+// 画面の縁に並ぶ面を畳む開閉トグルの姿(収納グリップ)の class。縦長は左右の縁、横長は上下の縁に置く。
+export const EDGE_GRIP_VERTICAL_CLASS = 'ui-edge-grip ui-edge-grip--vertical';
+export const EDGE_GRIP_HORIZONTAL_CLASS = 'ui-edge-grip ui-edge-grip--horizontal';
+
 export interface CollapseToggleLabels {
   readonly expandedGlyph: string;
   readonly collapsedGlyph: string;

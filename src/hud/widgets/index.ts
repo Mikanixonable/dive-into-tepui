@@ -19,5 +19,7 @@ export {
   type CollapseToggleLabels,
   COLLAPSE_EXPANDED_GLYPH,
   COLLAPSE_COLLAPSED_GLYPH,
+  EDGE_GRIP_VERTICAL_CLASS,
+  EDGE_GRIP_HORIZONTAL_CLASS,
 } from './collapse-toggle';
 export { WIDGET_STYLE } from './widget-style';

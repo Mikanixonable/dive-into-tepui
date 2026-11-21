@@ -10,7 +10,7 @@ import { TEXTURE_RESOLUTION } from './deferred-texture';
 import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
-export type QualityPreset = 'low' | 'medium' | 'high';
+export type QualityPreset = 'low' | 'medium' | 'high' | 'max';
 
 // 設定パネルが群を並べる順と、その見出し。項目は自分の group でここへ割り振られる。
 export const GRAPHICS_GROUPS = [
@@ -52,14 +52,14 @@ export const GRAPHICS_OPTIONS = {
   resolutionScale: {
     kind: 'choice', group: 'basic', label: '解像度',
     items: [[0.5, '50%'], [0.75, '75%'], [1, '100%']],
-    presets: { low: 0.5, medium: 0.75, high: 1 },
+    presets: { low: 0.5, medium: 0.5, high: 0.75, max: 1 },
   },
   // 見かけ直径へ掛ける詳細度の倍率。1 より小さいほど粗い LOD 段が選ばれ、球体メッシュ描画を打ち切る距離も
   // 手前になる。
   lodBias: {
     kind: 'choice', group: 'basic', label: '描画詳細度',
     items: [[0.5, '低'], [1, '標準'], [2, '高']],
-    presets: { low: 0.5, medium: 1, high: 2 },
+    presets: { low: 0.5, medium: 0.5, high: 1, max: 2 },
   },
   // 露出へ掛ける倍率。1 段が EV 1 段(明るさ 2 倍)。
   exposureCompensation: {
@@ -68,38 +68,38 @@ export const GRAPHICS_OPTIONS = {
       [0.25, '−2'], [0.5, '−1'], [0.7071067811865476, '−0.5'], [1, '±0'],
       [1.4142135623730951, '+0.5'], [2, '+1'], [4, '+2'],
     ],
-    presets: { low: 1, medium: 1, high: 1 },
+    presets: { low: 1, medium: 1, high: 1, max: 1 },
   },
   // 被弾の瞬間に視点を揺らす演出(SPEC CAMERA.md「6. 被弾の揺れ」)。画面の揺れが苦手な人のための
   // 切り替えで、品質プリセットでは変えない。
   hitShake: {
     kind: 'toggle', group: 'basic', label: '被弾で画面を揺らす',
-    presets: { low: true, medium: true, high: true },
+    presets: { low: true, medium: true, high: true, max: true },
   },
   // トーンマッピング後の色へ当てるフィルムのルック。値はルックの名前で、候補は同梱の .cube から
   // 起動時に決まる。
   filmLut: {
     kind: 'select', group: 'basic', label: 'フィルムのルック',
     items: FILM_LUT_ITEMS,
-    presets: { low: FILM_LUT_NONE, medium: FILM_LUT_NONE, high: FILM_LUT_NONE },
+    presets: { low: FILM_LUT_NONE, medium: FILM_LUT_NONE, high: FILM_LUT_NONE, max: FILM_LUT_NONE },
   },
   // 描画の最終段で、物体の縁と 3D UI の線のギザギザを均す方式。
   antialias: {
     kind: 'choice', group: 'basic', label: 'アンチエイリアス',
     items: [[0, 'なし'], [1, 'FXAA'], [2, 'SMAA']],
-    presets: { low: 0, medium: 1, high: 2 },
+    presets: { low: 0, medium: 1, high: 1, max: 2 },
   },
   // 1 秒に描くフレーム数の上限。0 は上限なし(画面の更新に合わせて描く)。上限はシミュレーション
   // 時間の進みに影響しない。
   frameRateCap: {
     kind: 'choice', group: 'basic', label: 'フレームレート上限',
     items: [[0, '上限なし'], [30, '30'], [60, '60']],
-    presets: { low: 30, medium: 60, high: 0 },
+    presets: { low: 30, medium: 60, high: 60, max: 0 },
   },
   // ガラス面のパネルとウィンドウが背後をぼかすか。オフでは不透明な面で描く。
   uiBlur: {
     kind: 'toggle', group: 'basic', label: 'UI の背景ぼかし',
-    presets: { low: false, medium: true, high: true },
+    presets: { low: false, medium: true, high: true, max: true },
   },
   // 天体の地表や星野へ貼る大きい画像の幅の上限。段を下げるほど細部は粗くなる代わりに、
   // 画像が占める GPU の記憶領域が減る(高=原寸・中=4096px・低=2048px)。
@@ -109,23 +109,24 @@ export const GRAPHICS_OPTIONS = {
       [TEXTURE_RESOLUTION.low, '低'], [TEXTURE_RESOLUTION.medium, '中'], [TEXTURE_RESOLUTION.high, '高'],
     ],
     presets: {
-      low: TEXTURE_RESOLUTION.low, medium: TEXTURE_RESOLUTION.medium, high: TEXTURE_RESOLUTION.high,
+      low: TEXTURE_RESOLUTION.low, medium: TEXTURE_RESOLUTION.medium,
+      high: TEXTURE_RESOLUTION.medium, max: TEXTURE_RESOLUTION.high,
     },
   },
   // 小惑星帯・カイパー帯などの点群。
   pointField: {
     kind: 'toggle', group: 'element', label: '小天体の点群',
-    presets: { low: false, medium: true, high: true },
+    presets: { low: false, medium: true, high: true, max: true },
   },
   // 惑星の環。
   rings: {
     kind: 'toggle', group: 'element', label: '惑星の環',
-    presets: { low: false, medium: true, high: true },
+    presets: { low: false, medium: true, high: true, max: true },
   },
   // 地球のオーロラ。
   aurora: {
     kind: 'toggle', group: 'element', label: 'オーロラ',
-    presets: { low: false, medium: false, high: true },
+    presets: { low: false, medium: false, high: false, max: true },
   },
   // 大気の描き方の段。値は保存された設定を読む鍵なので、段を足しても既存の値は動かさない。
   atmosphere: {
@@ -134,18 +135,21 @@ export const GRAPHICS_OPTIONS = {
       [ATMOSPHERE_QUALITY.off, 'オフ'], [ATMOSPHERE_QUALITY.low, '低'],
       [ATMOSPHERE_QUALITY.medium, '中'], [ATMOSPHERE_QUALITY.high, '高'],
     ],
-    presets: { low: ATMOSPHERE_QUALITY.low, medium: ATMOSPHERE_QUALITY.medium, high: ATMOSPHERE_QUALITY.high },
+    presets: {
+      low: ATMOSPHERE_QUALITY.low, medium: ATMOSPHERE_QUALITY.low,
+      high: ATMOSPHERE_QUALITY.medium, max: ATMOSPHERE_QUALITY.high,
+    },
   },
   // 夜側の縁に淡く光る大気発光。**負荷を下げる設定ではない** — 積分の範囲も刻みも変わらず、
   // 消えるのは発光の項だけで、大気の他の項と切り分けるためにある。
   airglow: {
     kind: 'toggle', group: 'element', label: 'エアグロー',
-    presets: { low: true, medium: true, high: true },
+    presets: { low: true, medium: true, high: true, max: true },
   },
   // 地表へ合成する雲と、雲が地表へ落とす影。
   clouds: {
     kind: 'toggle', group: 'element', label: '雲',
-    presets: { low: false, medium: true, high: true },
+    presets: { low: false, medium: true, high: true, max: true },
   },
   // 雲の分布の出どころ。生成は気候から時々刻々焼く雲、実写は衛星写真から取った止まった雲。
   // どちらも同じ cap へ焼くが、実写は画像を 1 回読むだけなので天気の式より桁で軽い。
@@ -156,17 +160,18 @@ export const GRAPHICS_OPTIONS = {
       low: CLOUD_FIELD_SOURCE_KIND.observed,
       medium: CLOUD_FIELD_SOURCE_KIND.generated,
       high: CLOUD_FIELD_SOURCE_KIND.generated,
+      max: CLOUD_FIELD_SOURCE_KIND.generated,
     },
   },
   // 不透明な雲頂として描く積雲。
   cumulus: {
     kind: 'toggle', group: 'element', label: '積雲',
-    presets: { low: true, medium: true, high: true },
+    presets: { low: true, medium: true, high: true, max: true },
   },
   // 大気中に層として描く巻雲。
   cirrus: {
     kind: 'toggle', group: 'element', label: '巻雲',
-    presets: { low: true, medium: true, high: true },
+    presets: { low: true, medium: true, high: true, max: true },
   },
   // 積雲の球殻を評価するレイマーチングの精細度と、雲頂の細部の段数(粗 4・標準 6・精細 8 オクターブ)。
   // 積雲の表示は別のトグルで切り替える。「精細」は積雲の描画アーティファクトを地表側の乱れから
@@ -177,7 +182,8 @@ export const GRAPHICS_OPTIONS = {
       [CUMULUS_DETAIL.coarse, '粗'], [CUMULUS_DETAIL.standard, '標準'], [CUMULUS_DETAIL.fine, '精細'],
     ],
     presets: {
-      low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.standard, high: CUMULUS_DETAIL.standard,
+      low: CUMULUS_DETAIL.coarse, medium: CUMULUS_DETAIL.coarse,
+      high: CUMULUS_DETAIL.standard, max: CUMULUS_DETAIL.standard,
     },
   },
   // 巻雲の繊維をどれだけ細かく写すか。粗では巻雲は雲場の濃淡だけで描かれ、段を上げるほど細かい筋が
@@ -188,84 +194,85 @@ export const GRAPHICS_OPTIONS = {
       [CIRRUS_DETAIL.coarse, '粗'], [CIRRUS_DETAIL.standard, '標準'], [CIRRUS_DETAIL.fine, '精細'],
     ],
     presets: {
-      low: CIRRUS_DETAIL.coarse, medium: CIRRUS_DETAIL.standard, high: CIRRUS_DETAIL.standard,
+      low: CIRRUS_DETAIL.coarse, medium: CIRRUS_DETAIL.coarse,
+      high: CIRRUS_DETAIL.standard, max: CIRRUS_DETAIL.standard,
     },
   },
   // レンズ効果(ブルーム・光条・ゴースト)。
   lens: {
     kind: 'toggle', group: 'element', label: 'レンズ効果',
-    presets: { low: false, medium: true, high: true },
+    presets: { low: false, medium: true, high: true, max: true },
   },
   // 主推進の排気プルームの描き方。体積は排気を透過する立体として、簡易は発光板として描く。
   thrustPlume: {
     kind: 'choice', group: 'element', label: '噴射プルーム',
     items: [['simple', '簡易'], ['volume', '体積']],
-    presets: { low: 'simple', medium: 'volume', high: 'volume' },
+    presets: { low: 'simple', medium: 'volume', high: 'volume', max: 'volume' },
   },
   // 太陽の光源モデル。球光源では明暗の終端が視半径ぶん柔らかくなり、粗さの小さい金属面に
   // 太陽の円盤が映る。
   sunLightModel: {
     kind: 'choice', group: 'light', label: '太陽の光源モデル',
     items: [[0, '点光源'], [1, '球光源']],
-    presets: { low: 0, medium: 1, high: 1 },
+    presets: { low: 0, medium: 1, high: 1, max: 1 },
   },
   // 天体照の光源モデル。テクスチャでは、粗さの小さい面にその天体の地表と昼夜の明暗が映る。
   planetLightModel: {
     kind: 'choice', group: 'light', label: '天体照の光源モデル',
     items: [[0, '一様球'], [1, 'テクスチャ']],
-    presets: { low: 0, medium: 0, high: 1 },
+    presets: { low: 0, medium: 0, high: 0, max: 1 },
   },
   // 同時に照らす天体の数。1 体につき描画命令 1 本。最大値は MAX_PLANET_LIGHT_SLOTS。
   planetLightCount: {
     kind: 'choice', group: 'light', label: '天体照の光源の数',
     items: [[0, 'なし'], [1, '1'], [2, '2']],
-    presets: { low: 0, medium: 2, high: 2 },
+    presets: { low: 0, medium: 2, high: 2, max: 2 },
   },
   // 面の向きによらない一様な環境光を足すか。
   ambient: {
     kind: 'toggle', group: 'light', label: '環境光',
-    presets: { low: true, medium: true, high: true },
+    presets: { low: true, medium: true, high: true, max: true },
   },
   // 地球の球の内側へだけ届く強めの環境光を足すか。夜側の地表と雲の配置を読むための観察補助で、
   // 地球以外の天体や地球の外にいる物へは届かない。
   nightObservation: {
     kind: 'toggle', group: 'light', label: '夜側の観察',
-    presets: { low: false, medium: false, high: false },
+    presets: { low: false, medium: false, high: false, max: false },
   },
   // 建造中にカメラへ追従して船体を照らす作業灯。建造中でなければ点かない。
   constructionWorkLight: {
     kind: 'toggle', group: 'light', label: '建造の作業灯',
-    presets: { low: true, medium: true, high: true },
+    presets: { low: true, medium: true, high: true, max: true },
   },
   // 艦艇・基地・デブリなどのメッシュが落とす影。天体の球と環が落とす影はこれでは消えない。
   meshShadow: {
     kind: 'toggle', group: 'shadow', label: 'メッシュの影',
-    presets: { low: false, medium: true, high: true },
+    presets: { low: false, medium: true, high: true, max: true },
   },
   // 積雲と巻雲が地表・艦艇・雲へ落とす影。「雲」と各種類の表示がオンのときだけ落ちる。
   cloudShadow: {
     kind: 'toggle', group: 'shadow', label: '雲の影',
-    presets: { low: false, medium: true, high: true },
+    presets: { low: false, medium: true, high: true, max: true },
   },
   // 細かい影を同時に落とせる箇所の数。減らすほど影パスの描画命令が減り、要求の緩い受け手から
   // 粗い影で妥協させられる。最大値は MAX_SHADOW_SLOTS。
   shadowSlotCount: {
     kind: 'choice', group: 'shadow', label: '影マップの枠の数',
     items: [[1, '1'], [2, '2'], [4, '4']],
-    presets: { low: 2, medium: 4, high: 4 },
+    presets: { low: 2, medium: 4, high: 4, max: 4 },
   },
   // 1 箇所あたりの影の解像度 [texel]。確保する深度マップの実寸がこの2乗で決まる。
   shadowSlotSize: {
     kind: 'choice', group: 'shadow', label: '影マップの解像度',
     items: [[512, '512'], [1024, '1024'], [2048, '2048']],
-    presets: { low: 512, medium: 1024, high: 1024 },
+    presets: { low: 512, medium: 1024, high: 1024, max: 1024 },
   },
   // 画面 1 px あたり何 texel の細かさを影へ要求するか。大きいほど枠が狭く細かくなり、
   // 1 枚の枠で覆える受け手が減る。
   shadowTexelsPerPixel: {
     kind: 'choice', group: 'shadow', label: '影マップの精細さ',
     items: [[0.5, '粗'], [1, '標準'], [2, '精細']],
-    presets: { low: 0.5, medium: 1, high: 1 },
+    presets: { low: 0.5, medium: 0.5, high: 1, max: 1 },
   },
 } as const satisfies Readonly<Record<string, GraphicsOption>>;
 
@@ -300,13 +307,14 @@ export const QUALITY_PRESETS: Readonly<Record<QualityPreset, GraphicsSettingsDat
   low: presetData('low'),
   medium: presetData('medium'),
   high: presetData('high'),
+  max: presetData('max'),
 };
 
 // 保存が無いときの設定値一式。
-export const DEFAULT_GRAPHICS: GraphicsSettingsData = QUALITY_PRESETS.high;
+export const DEFAULT_GRAPHICS: GraphicsSettingsData = QUALITY_PRESETS.medium;
 
 // 保存が無いときの初回既定を、主ポインタの精度から選ぶ。粗いポインタ(タッチ主体の端末)では
-// 初回から low で始め、細かいポインタでは DEFAULT_GRAPHICS(high)とする。
+// 初回から low で始め、細かいポインタでは DEFAULT_GRAPHICS(medium)とする。
 function firstRunGraphics(coarsePointer: boolean): GraphicsSettingsData {
   return coarsePointer ? QUALITY_PRESETS.low : DEFAULT_GRAPHICS;
 }

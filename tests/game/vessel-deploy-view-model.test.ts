@@ -12,6 +12,7 @@ import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 import { PowerSystem } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
+import { CoolingDump } from '../../src/game/player/cooling-dump';
 import { test } from '../harness';
 
 const state = kinematicState<'eci'>(0, v3(), v3());
@@ -36,7 +37,10 @@ function shipWithDeploySystems(
       fuel: (kind: string) => kind === 'main' ? 75 : 12,
       maxFuel: (kind: string) => kind === 'main' ? 180 : 30,
     },
-    motion: { power: systems.power, radiator: systems.radiator, aero: { qdyn: 0 } },
+    motion: {
+      power: systems.power, radiator: systems.radiator,
+      coolingDump: new CoolingDump(false), aero: { qdyn: 0 },
+    },
     throttle: { rcsDamp: false, throttleIdx: 0, progradeHold: false },
     _fineAttitude: false,
     fire: null,
@@ -70,6 +74,8 @@ export function register(): void {
       up: { deploy: 0, wear: 0 },
       down: null,
     });
+    // 冷却回路は全ての艦が持つので、流していなければ false が返る。
+    assert.equal(viewModel.coolingDumpRunning, false);
   });
 
   test('vessel deploy view model: 基地は両群とも両側の値を渡す', () => {

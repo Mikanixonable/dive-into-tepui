@@ -74,9 +74,9 @@ export function register(): void {
 
   test('pause badge: 表示は body.touch-ui-active の間だけ', () => {
     // 既定では隠し、タッチ操作系が有効な間だけ常設ボタン群の並びへ出す。
-    assert.match(SKELETON_STYLE, /#hud-pause-badge \{ display: none; \}/);
-    assert.match(SKELETON_STYLE, /body\.touch-ui-active #hud-pause-badge \{ display: flex; \}/);
+    assert.match(SKELETON_STYLE, /#hud-chrome-actions \.hud-action--touch \{ display: none; \}/);
+    assert.match(SKELETON_STYLE, /body\.touch-ui-active #hud-chrome-actions \.hud-action--touch \{ display: flex; \}/);
     // 建造中は他の常設バッジと同様に隠す。
-    assert.match(SKELETON_STYLE, /#hud\.construction-mode #hud-pause-badge,/);
+    assert.match(SKELETON_STYLE, /#hud\.construction-mode #hud-chrome-actions,/);
   });
 }

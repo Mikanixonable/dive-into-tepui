@@ -8,7 +8,7 @@ import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from '../../physics/time';
 import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { len, sub, v3 } from '../../math/vec3';
+import { add, dot, len, scale, sub, v3 } from '../../math/vec3';
 import { RELICS, relicById, type RelicDefinition } from '../relic/relic-catalog';
 import { OrbitSlot } from '../navigation/orbit-slot';
 import { orbitSlotStateAt } from '../navigation/orbit-slot-state';
@@ -261,17 +261,30 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
   }
 
   // 状態を指定しない自機の、いまの simTime における既定の状態: ECI 原点の天体を回る、
-  // 高度 PLAYER_INITIAL_ALT・傾斜角 PLAYER_INITIAL_INC_DEG の円軌道上。
+  // 高度 PLAYER_INITIAL_ALT・傾斜角 PLAYER_INITIAL_INC_DEG の円軌道上。位相は、開始時点で
+  // 自機が中心天体の昼側に来るよう、軌道上で太陽方向に最も近い位置を選ぶ(SPEC GAME.md 2)。
   private defaultPlayerState(): KinematicState {
     const t = this._dynamicSystem.simTime;
     const center = this._celestialSystem.origin.motion;
     const radius = center.def.radius + PLAYER_INITIAL_ALT;
     const speed = Math.sqrt(center.def.mu / radius);
     const inc = (PLAYER_INITIAL_INC_DEG * Math.PI) / 180;
+    // 位相0の位置方向 r̂ と進行方向 t̂。位相 θ では
+    // pos = 半径*(r̂ cosθ + t̂ sinθ), vel = 速さ*(t̂ cosθ − r̂ sinθ)。
+    const rHat = v3(1, 0, 0);
+    const tHat = v3(0, Math.sin(inc), -Math.cos(inc));
+    const centerState = center.stateAt(t);
+    // 太陽方向へ最も近い位相。dot が最大になる θ は atan2(t̂・ŝ, r̂・ŝ)。
+    const sun = this._celestialSystem.sunDirFrom(centerState.r, t);
+    const phase = Math.atan2(dot(tHat, sun), dot(rHat, sun));
+    const cos = Math.cos(phase);
+    const sin = Math.sin(phase);
     const rel = kinematicState<'primaryRel'>(
-      t, v3(radius, 0, 0), v3(0, speed * Math.sin(inc), -speed * Math.cos(inc)),
+      t,
+      add(scale(rHat, radius * cos), scale(tHat, radius * sin)),
+      add(scale(tHat, speed * cos), scale(rHat, -speed * sin)),
     );
-    return addPrimaryRelative(center.stateAt(t), rel);
+    return addPrimaryRelative(centerState, rel);
   }
 
   // 自機の発砲を1発数える。

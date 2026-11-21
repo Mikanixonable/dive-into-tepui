@@ -37,7 +37,7 @@ const STYLE = `
 `;
 
 const PRESET_ITEMS: readonly (readonly [QualityPreset, string])[] = [
-  ['low', '低'], ['medium', '中'], ['high', '高'],
+  ['low', '低'], ['medium', '中'], ['high', '高'], ['max', '最高'],
 ];
 
 // hidden の既定。全項目を並べる。

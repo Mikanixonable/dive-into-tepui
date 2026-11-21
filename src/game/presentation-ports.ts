@@ -9,6 +9,7 @@ import type { CombatTarget } from './dynamic/dynamic-entity/combat-target';
 import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
 import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
 import type { PowerSystem } from './player/power';
+import type { CoolingDump } from './player/cooling-dump';
 import type { RadiatorSystem } from './player/radiator';
 import type { ViewMode } from './view/view-mode';
 import type { FocusTarget } from './viewer/focus-target';
@@ -97,11 +98,12 @@ export interface PresentationShip {
   };
 }
 
-// 艦の運動のうち提示が読む部分。動圧と、展開物の展開状態。
+// 艦の運動のうち提示が読む部分。動圧と、展開物の展開状態と冷却ダンプ。
 export interface PresentationShipMotion {
   readonly aero: { readonly qdyn: number };
   readonly power: PowerSystem;
   readonly radiator: RadiatorSystem;
+  readonly coolingDump: CoolingDump;
 }
 
 // 燃焼管理パネルの各行が持つ段の状態の識別子。表示名への写像はパネル側が持つ。
