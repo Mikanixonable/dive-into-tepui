@@ -160,7 +160,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     public readonly scoreCounter = new ScoreCounter(),
     private _phase: GamePhase = 'playing',
     logistics?: Logistics,
-    private _reinforced = false,
     salvageCargo?: SalvageCargo,
     revealedBodies: readonly string[] = BODY_REVEAL_BASE,
     relicHunt: RelicHunt = RelicHunt.create(),
@@ -191,7 +190,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     const scoreCounter = serialized?.scoreCounter;
     const phase = serialized?.phase;
     const logistics = serialized?.logistics;
-    const reinforced = serialized?.reinforced;
     // null も欠けと同じく新しいランの初期値から始める(既定引数は undefined でしか働かない)。
     return [
       scoreCounter == null ? undefined : ScoreCounter.deserialize(scoreCounter),
@@ -199,7 +197,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       logistics == null
         ? undefined
         : Logistics.deserialize(logistics, scene, dynamicSystem, rules.automaticResupply),
-      reinforced ?? undefined,
       SalvageCargo.deserialize(serialized?.pendingSalvageCargo ?? null),
       serialized?.revealedBodies ?? BODY_REVEAL_BASE,
       RelicHunt.deserialize(serialized?.relics ?? null),
@@ -325,14 +322,13 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
     };
   }
 
-  // 同じ攻撃グループで同時に発砲してよい敵の数。援護付きの周回では 1 つ減る(1 を下回らない)。
+  // 同じ攻撃グループで同時に発砲してよい敵の数。
   public get enemyAttackLimit(): number {
-    return Math.max(1, ENEMY_MAX_ATTACKERS_PER_GROUP - (this._reinforced ? 1 : 0));
+    return ENEMY_MAX_ATTACKERS_PER_GROUP;
   }
 
   // 再出撃のときの選択を、周回を始める前に当てる。省いた選択は既定のまま。
   public applyRunOptions(options: RunOptions): void {
-    this._reinforced = options.reinforced;
     this._revealedBodies = options.revealedBodies;
     if (this.stageClass.judgesOutcome) this.placeDiscoveredRelics(options.discoveredRelics);
   }
@@ -459,7 +455,6 @@ export abstract class Stage implements StageOutcome, StageSimulationEvents {
       scoreCounter: this.scoreCounter.serialize(),
       phase: this._phase,
       logistics: this.logistics.serialize(),
-      reinforced: this._reinforced,
       pendingSalvageCargo: this.salvageCargo.serialize(),
       revealedBodies: this._revealedBodies,
       relics: this.relicHunt.serialize(),
