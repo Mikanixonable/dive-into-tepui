@@ -23,9 +23,7 @@ permissions:
 
 jobs:
   hud-layout:
-    # ubuntu-latest が 26.04 へ進み、ピン留めした Chrome + SwiftShader/Vulkan の
-    # WebGPU 初期化がハングするようになった。復旧まで 24.04 へ固定する。
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     env:
       SMOKE_LAYOUT_ONLY: '1'
     steps:
