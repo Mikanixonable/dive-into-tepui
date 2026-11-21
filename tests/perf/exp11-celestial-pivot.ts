@@ -6,7 +6,7 @@
 import '../repo-assets';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { classifyAttractors } from '../../src/game/dynamic/attractors';
+import { classifyAttractors } from '../../src/physics/attractor';
 import { SIM_SPEED_LEVELS } from '../../src/game/dynamic/sim-speed-manager';
 import { SUBSTEP_MAX_COUNT, SUBSTEP_MAX_DT, simulationMaxStep } from '../../src/game/dynamic/time-step';
 import { stepDynamics } from '../../src/physics/dynamics';

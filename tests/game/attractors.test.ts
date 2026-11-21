@@ -1,4 +1,4 @@
-// 重力源の絞り込み(game/dynamic/attractors.ts)の回帰テスト。絞り込みが落とした天体の寄与の和が
+// 重力源の絞り込み(physics/attractor.ts)の回帰テスト。絞り込みが落とした天体の寄与の和が
 // GRAVITY_NEGLIGIBLE_ACCEL に収まること — 絞り込んだ一覧の重力和が全重力源の重力和と一致すること —
 // を、地球圏・月圏・木星圏の実際の配置で固定する。
 import { solarSystemParts } from '../physics/test-helpers';
@@ -9,7 +9,7 @@ import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { add, addScaled, len, sub, v3 } from '../../src/math/vec3';
 import {
   attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL,
-} from '../../src/game/dynamic/attractors';
+} from '../../src/physics/attractor';
 import { SIM_SPEED_LEVELS } from '../../src/game/dynamic/sim-speed-manager';
 import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { Vec3 } from '../../src/math/vec3';
