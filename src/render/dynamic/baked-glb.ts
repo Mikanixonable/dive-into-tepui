@@ -4,6 +4,7 @@
 import type * as THREE from 'three/webgpu';
 import type * as NodeFs from 'node:fs';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'meshoptimizer/decoder';
 
 const loadPromises = new Map<string, Promise<THREE.Group>>();
 
@@ -21,7 +22,8 @@ async function fetchGlbArrayBuffer(source: string): Promise<ArrayBuffer> {
 }
 
 function parseGlb(arrayBuffer: ArrayBuffer): Promise<THREE.Group> {
-  const loader = new GLTFLoader();
+  // 書き出し側(tools/model-builder/export-models.mjs)が EXT_meshopt_compression で圧縮している。
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
   return new Promise((resolve, reject) => {
     loader.parse(
       arrayBuffer,

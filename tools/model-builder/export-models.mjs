@@ -14,6 +14,10 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import { NodeIO } from '@gltf-transform/core';
+import { ALL_EXTENSIONS, EXTMeshoptCompression } from '@gltf-transform/extensions';
+import { reorder } from '@gltf-transform/functions';
+import { MeshoptDecoder, MeshoptEncoder } from 'meshoptimizer';
 import { buildDebrisChunk, buildDebrisPanel, buildDebrisRod } from './debris-fragments.mjs';
 import { buildCasingMesh, buildMagazineMesh } from './gun-parts.mjs';
 import { buildEnemyShip, buildEnemyVariantA, buildEnemyVariantB, buildEnemyVariantC } from './metal-enemies.mjs';
@@ -95,7 +99,11 @@ function prepareForGlb(root) {
   });
 }
 
-// Object3D を binary GLB として outPath へ書き出す。
+// Object3D を binary GLB として outPath へ書き出す。頂点の並びを詰めてから
+// EXT_meshopt_compression で圧縮する。方式は FILTER(位置は指数フィルタ、法線は八面体
+// フィルタ)に限る — 量子化(KHR_mesh_quantization)は正規化の逆変換をメッシュのノードへ
+// 入れて原点を外接箱へ動かすので、名前で引いた部品を回す駆動(weapon-drives.ts)の支点がずれる。
+// 復号した属性は float に戻るので、読み手は圧縮の有無を区別しない。
 async function exportGlb(object, outPath) {
   const exporter = new GLTFExporter();
   const glbBuffer = await new Promise((resolve, reject) => {
@@ -106,8 +114,18 @@ async function exportGlb(object, outPath) {
       { binary: true },
     );
   });
-  writeFileSync(outPath, Buffer.from(glbBuffer));
-  console.log(`Wrote ${outPath} (${Buffer.byteLength(Buffer.from(glbBuffer))} bytes)`);
+  await MeshoptEncoder.ready;
+  await MeshoptDecoder.ready;
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).registerDependencies({
+    'meshopt.encoder': MeshoptEncoder, 'meshopt.decoder': MeshoptDecoder,
+  });
+  const document = await io.readBinary(new Uint8Array(glbBuffer));
+  await document.transform(reorder({ encoder: MeshoptEncoder, target: 'size' }));
+  document.createExtension(EXTMeshoptCompression).setRequired(true)
+    .setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.FILTER });
+  const compressed = await io.writeBinary(document);
+  writeFileSync(outPath, compressed);
+  console.log(`Wrote ${outPath} (${glbBuffer.byteLength} → ${compressed.byteLength} bytes)`);
 }
 
 // ------------------------------------------------------------- 書き出し
