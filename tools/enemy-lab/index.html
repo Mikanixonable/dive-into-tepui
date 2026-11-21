@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Enemy Lab</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg: #0b0d10; --panel: #14181d; --edge: #2a3038; --text: #d7dde5; --dim: #8a939e; --accent: #ff6a00; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.5 "JetBrains Mono", ui-monospace, monospace;
+    height: 100dvh; display: flex; gap: 8px; padding: 8px;
+  }
+  #stage { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+  #stage-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+  h1 { font-size: 15px; margin: 0 8px 0 0; font-weight: 600; letter-spacing: .04em; }
+  h2 { margin: 0 0 6px; color: var(--accent); font-size: 11px; font-weight: 600; letter-spacing: .12em; }
+  #view { flex: 1 1 auto; min-height: 0; position: relative; border: 1px solid var(--edge); border-radius: 8px; overflow: hidden; }
+  canvas { width: 100%; height: 100%; display: block; }
+  #readout {
+    position: absolute; left: 8px; bottom: 8px; padding: 6px 10px; background: rgba(11,13,16,.82);
+    border: 1px solid var(--edge); border-radius: 6px; white-space: pre; pointer-events: none;
+  }
+  #side { flex: 0 0 380px; max-width: 42vw; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  section { background: var(--panel); border: 1px solid var(--edge); border-radius: 12px; padding: 10px 12px; }
+  .note { color: var(--dim); font-size: 11px; margin: 0 0 6px; }
+  .item { display: grid; grid-template-columns: 9.5em 1fr 4.2em; align-items: center; gap: 6px; }
+  .item span { color: var(--dim); }
+  .item output { text-align: right; font-variant-numeric: tabular-nums; }
+  .item.changed span, .item.changed output { color: var(--accent); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  input[type=number] {
+    width: 6em; background: #1c2229; color: var(--text); border: 1px solid var(--edge);
+    border-radius: 4px; padding: 2px 6px; font: inherit;
+  }
+  button {
+    background: #1c2229; color: var(--text); border: 1px solid var(--edge); border-radius: 4px;
+    padding: 3px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  button:hover { border-color: #3d4650; }
+  button.active { background: var(--accent); color: #0b0d10; border-color: var(--accent); }
+  button:disabled { opacity: .35; cursor: default; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  #message { color: var(--dim); min-height: 1.5em; white-space: pre-wrap; }
+  #message.error { color: #ff8a5c; }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  td { padding: 1px 4px; } td:last-child { text-align: right; }
+  .bar { display: inline-block; height: 8px; background: var(--accent); border-radius: 2px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="stage-bar">
+    <h1>ENEMY LAB</h1>
+    <span class="note" style="margin:0">個体を選ぶ: クリック / 視点: ドラッグ・ホイール</span>
+    <span id="mode-buttons" class="actions"></span>
+    <label>弾ダメージ <input id="damage" type="number" value="1" min="0.1" max="12" step="0.1"></label>
+    <button id="repair">無傷へ戻す</button>
+    <button id="focus-all">全体を見る</button>
+  </div>
+  <div id="view"><canvas id="canvas"></canvas><div id="readout"></div></div>
+</div>
+<div id="side">
+  <section>
+    <h2>個体</h2>
+    <p class="note">seed の始点から並べて個体を作る。同じ調整値と seed は同じ形になる。</p>
+    <div class="actions">
+      <label>seed 始点 <input id="seed" type="number" value="0" min="0" step="1"></label>
+      <label>個体数 <input id="count" type="number" value="12" min="1" max="24" step="1"></label>
+      <button id="reroll">振り直し</button>
+    </div>
+  </section>
+  <section>
+    <h2>ばらつきの統計</h2>
+    <p class="note">いまの調整値で 400 個体を生成して数える。</p>
+    <div id="stats"></div>
+  </section>
+  <div id="tuning"></div>
+  <section>
+    <h2>ゲームへ反映</h2>
+    <p class="note">「ゲームで試す」は git 管理外の上書きで、開発サーバ(npm run dev)の実行中のゲームが拾う。以降に出る敵へ効く。「既定値へ確定」は assembly-tuning.ts を書き換える(git に差分)。</p>
+    <div class="actions">
+      <button id="try">ゲームで試す</button>
+      <button id="clear">試す値を解除</button>
+      <button id="commit">既定値へ確定</button>
+      <button id="reset">既定値へ戻す</button>
+    </div>
+    <div id="message"></div>
+  </section>
+</div>
+</body>
+</html>

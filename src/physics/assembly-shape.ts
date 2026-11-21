@@ -4,6 +4,7 @@ import {
   add, addScaled, cross, dot, len, lenSq, norm, randPerp, randVec, scale, sub, v3, type Vec3,
 } from '../math/vec3';
 import { mulberry32 } from '../math/random';
+import { currentAssemblyTuning, type AssemblyTuning } from './assembly-tuning';
 
 // 部品の役割。発射部はプラズマ弾の発射元、中核は壊すと個体を撃破できる部位。
 export type AssemblyPartRole = 'structure' | 'emitter' | 'core';
@@ -31,36 +32,36 @@ export interface AssemblyShape {
   readonly inertia: Vec3;
 }
 
-// 個体の外接半径の範囲 [m]。
-const OUTER_RADIUS_MIN = 40;
-const OUTER_RADIUS_MAX = 70;
-// 管半径の、外接半径に対する比率の範囲。
-const TUBE_RADIUS_MIN = 0.08;
-const TUBE_RADIUS_MAX = 0.12;
 // 結び目として選ぶ (p,q) トーラス結び目。互いに素な組だけが1成分の結び目になる。
 const TORUS_KNOTS: readonly (readonly [number, number])[] = [
   [2, 3], [2, 5], [2, 7], [3, 4], [3, 5], [4, 5],
 ];
-// 結び目を全体の形として持つ個体の出る確率。
-const WHOLE_KNOT_PROBABILITY = 0.35;
-// 枝分かれ型の個体に局所的な結び目部品が付く確率。
-const LOCAL_KNOT_PROBABILITY = 0.3;
-// ランダムウォークの1ステップで曲がる角度の上限 [rad]。「緩やかに折れ曲がる」程度を決める。
-const WALK_TURN_MAX = 0.6;
-// ランダムウォークの1ステップの長さ(正規化前)。
+// ランダムウォークの1ステップの長さ(正規化前)。個体は外接半径へ正規化されるので、値は形に効かない。
 const WALK_STEP = 1;
 
-// seed から決定論的に1個体の形状を組む。
-export function generateAssemblyShape(seed: number): AssemblyShape {
+// 範囲 [min, max] の整数を一様に引く。
+function intIn(rand: () => number, min: number, max: number): number {
+  return min + Math.floor(rand() * (max - min + 1));
+}
+
+// 範囲 [min, max] の実数を一様に引く。
+function realIn(rand: () => number, min: number, max: number): number {
+  return min + rand() * (max - min);
+}
+
+// seed から決定論的に1個体の形状を組む。ばらつきの範囲は tuning(省けばゲームの調整値)が決める。
+export function generateAssemblyShape(
+  seed: number, tuning: AssemblyTuning = currentAssemblyTuning(),
+): AssemblyShape {
   const rand = mulberry32(seed);
-  const rawParts = rand() < WHOLE_KNOT_PROBABILITY
-    ? buildWholeKnot(rand)
-    : buildBranched(rand);
+  const rawParts = rand() < tuning.wholeKnotProbability
+    ? buildWholeKnot(rand, tuning)
+    : buildBranched(rand, tuning);
   const { index: emitterIndex, tip: emitterTip } = pickEmitter(rawParts);
   const coreIndex = pickCore(rawParts, emitterIndex);
 
   // 目標の外接半径へ一様に縮めてから、役割を付けて確定する。
-  const outerRadius = OUTER_RADIUS_MIN + rand() * (OUTER_RADIUS_MAX - OUTER_RADIUS_MIN);
+  const outerRadius = realIn(rand, tuning.outerRadiusMin, tuning.outerRadiusMax);
   const k = outerRadius / shapeOuterRadius(rawParts);
   const parts = rawParts.map((part, index) => ({
     ...part,
@@ -87,15 +88,16 @@ interface RawPart {
 // --- 部品の組み立て(正規化前の座標で組む) ---
 
 // 種別 'branched': 折れ曲がる主鎖を節で分割し、枝と低確率の局所結び目を付ける。
-function buildBranched(rand: () => number): RawPart[] {
-  const tubeRadius = TUBE_RADIUS_MIN + rand() * (TUBE_RADIUS_MAX - TUBE_RADIUS_MIN);
+function buildBranched(rand: () => number, tuning: AssemblyTuning): RawPart[] {
+  const tubeRadius = realIn(rand, tuning.tubeRadiusMin, tuning.tubeRadiusMax);
   const parts: RawPart[] = [];
 
-  // 主鎖。5〜8 節の歩行を平滑化してから 2〜4 個の部品へ分ける(分割点は折れ線の頂点を共有する)。
+  // 主鎖。歩行を平滑化してから数個の部品へ分ける(分割点は折れ線の頂点を共有する)。
   const spine = gentleCenterline(
-    v3(0, 0, 0), norm(v3(1, rand() - 0.5, rand() - 0.5)), 5 + Math.floor(rand() * 4), rand,
+    v3(0, 0, 0), norm(v3(1, rand() - 0.5, rand() - 0.5)),
+    intIn(rand, tuning.spineStepsMin, tuning.spineStepsMax), rand, tuning,
   );
-  const bounds = evenSplit(spine.length - 1, 2 + Math.floor(rand() * 3));
+  const bounds = evenSplit(spine.length - 1, intIn(rand, tuning.spinePartsMin, tuning.spinePartsMax));
   for (let i = 0; i + 1 < bounds.length; i += 1) {
     parts.push({
       kind: 'tube', centerline: spine.slice(bounds[i]!, bounds[i + 1]! + 1),
@@ -105,25 +107,28 @@ function buildBranched(rand: () => number): RawPart[] {
 
   // 枝。主鎖の中ほどの頂点から、外側へ折れ曲がりながら伸びる。
   const spineCenter = midpointOf(spine);
-  const branchCount = Math.floor(rand() * 4);
+  const branchCount = intIn(rand, 0, tuning.branchCountMax);
   for (let i = 0; i < branchCount; i += 1) {
     const origin = spine[Math.floor(spine.length * (0.2 + rand() * 0.6))]!;
     const outward = norm(sub(origin, spineCenter));
     const base = lenSq(outward) > 1e-6 ? outward : randDir(rand);
-    const dir = norm(addScaled(base, randPerp(base, rand), rand() * 0.8));
+    const dir = norm(addScaled(base, randPerp(base, rand), rand() * tuning.branchSpread));
     parts.push({
-      kind: 'tube', centerline: gentleCenterline(origin, dir, 2 + Math.floor(rand() * 3), rand),
+      kind: 'tube',
+      centerline: gentleCenterline(
+        origin, dir, intIn(rand, tuning.branchStepsMin, tuning.branchStepsMax), rand, tuning,
+      ),
       radius: tubeRadius, closed: false,
     });
   }
 
   // 局所結び目。主鎖の頂点へ寄せた小さなトーラス結び目の部品。
-  if (rand() < LOCAL_KNOT_PROBABILITY) {
+  if (rand() < tuning.localKnotProbability) {
     const [p, q] = TORUS_KNOTS[Math.floor(rand() * TORUS_KNOTS.length)]!;
     const at = spine[Math.floor(spine.length * (0.3 + rand() * 0.4))]!;
     parts.push({
       kind: 'knot',
-      centerline: torusKnotCenterline(p, q, 64).map((point) => add(at, scale(point, 1.2))),
+      centerline: torusKnotCenterline(p, q, 64).map((point) => add(at, scale(point, tuning.localKnotScale))),
       radius: tubeRadius, closed: true,
     });
   }
@@ -131,13 +136,13 @@ function buildBranched(rand: () => number): RawPart[] {
 }
 
 // 種別 'wholeKnot': 全体が1つのトーラス結び目。閉ループを弧で 2〜3 部品へ分け、付属の枝を持てる。
-function buildWholeKnot(rand: () => number): RawPart[] {
-  const tubeRadius = TUBE_RADIUS_MIN + rand() * (TUBE_RADIUS_MAX - TUBE_RADIUS_MIN);
+function buildWholeKnot(rand: () => number, tuning: AssemblyTuning): RawPart[] {
+  const tubeRadius = realIn(rand, tuning.tubeRadiusMin, tuning.tubeRadiusMax);
   const [p, q] = TORUS_KNOTS[Math.floor(rand() * TORUS_KNOTS.length)]!;
   // 頂点を1つ重ねて、切れ目の端面が隣の管へ埋まるようにする。
   const knot = torusKnotCenterline(p, q, 96);
   const parts: RawPart[] = [];
-  const bounds = evenSplit(knot.length - 1, 2 + Math.floor(rand() * 2));
+  const bounds = evenSplit(knot.length - 1, intIn(rand, tuning.wholeKnotPartsMin, tuning.wholeKnotPartsMax));
   for (let i = 0; i + 1 < bounds.length; i += 1) {
     parts.push({
       kind: 'knot', centerline: knot.slice(bounds[i]!, bounds[i + 1]! + 1),
@@ -146,13 +151,16 @@ function buildWholeKnot(rand: () => number): RawPart[] {
   }
 
   // 付属の枝。結び目の外縁の頂点から外側へ伸びる。
-  const branchCount = Math.floor(rand() * 3);
+  const branchCount = intIn(rand, 0, tuning.wholeKnotBranchCountMax);
   for (let i = 0; i < branchCount; i += 1) {
     const origin = knot[Math.floor(rand() * (knot.length - 1))]!;
     const base = norm(origin);
-    const dir = norm(addScaled(base, randPerp(base, rand), rand() * 0.6));
+    const dir = norm(addScaled(base, randPerp(base, rand), rand() * tuning.wholeKnotBranchSpread));
     parts.push({
-      kind: 'tube', centerline: gentleCenterline(origin, dir, 2 + Math.floor(rand() * 2), rand),
+      kind: 'tube',
+      centerline: gentleCenterline(
+        origin, dir, intIn(rand, tuning.wholeKnotBranchStepsMin, tuning.wholeKnotBranchStepsMax), rand, tuning,
+      ),
       radius: tubeRadius, closed: false,
     });
   }
@@ -163,23 +171,23 @@ function buildWholeKnot(rand: () => number): RawPart[] {
 
 // 緩やかに折れ曲がる管の中心線を、steps 回のランダムウォーク + Catmull-Rom 平滑化で組む。
 function gentleCenterline(
-  start: Vec3, dir: Vec3, steps: number, rand: () => number,
+  start: Vec3, dir: Vec3, steps: number, rand: () => number, tuning: AssemblyTuning,
 ): Vec3[] {
   const controls: Vec3[] = [start];
   let position = start;
   let heading = dir;
   for (let i = 0; i < steps; i += 1) {
-    heading = bend(heading, rand);
+    heading = bend(heading, rand, tuning.walkTurnMax);
     position = addScaled(position, heading, WALK_STEP);
     controls.push(position);
   }
   return sampleCatmullRom(controls, 6);
 }
 
-// 進行方向を、直交するランダム軸まわりに WALK_TURN_MAX 以下で回す(ロドリゲスの回転)。
-function bend(heading: Vec3, rand: () => number): Vec3 {
+// 進行方向を、直交するランダム軸まわりに turnMax 以下で回す(ロドリゲスの回転)。
+function bend(heading: Vec3, rand: () => number, turnMax: number): Vec3 {
   const axis = randPerp(heading, rand);
-  const angle = rand() * WALK_TURN_MAX;
+  const angle = rand() * turnMax;
   const c = Math.cos(angle);
   const s = Math.sin(angle);
   return norm(addScaled(
