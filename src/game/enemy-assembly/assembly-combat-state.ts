@@ -71,6 +71,9 @@ export class AssemblyCombatState {
     return this.emitterIndex !== null && this.partAlive(this.emitterIndex);
   }
 
+  // index の部品の残り HP。
+  public partHpOf(index: number): number { return this.partHp[index] ?? 0; }
+
   // index の部品が残っているか。
   public partAlive(index: number): boolean {
     return (this.partHp[index] ?? 0) > 0;
