@@ -219,39 +219,18 @@ function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
   };
 }
 
-// 開発ビルドだけ: 実験環境(cloud-lab)が開発サーバ経由で配る調整値の上書きを定期で拾い、
-// 雲の生成へ反映する(tools/cloud-tuning-overrides-file.cjs の経路)。上書きが書き変わった
-// ときだけ適用し、焼き直すかは雲場が版の照合で決める。本番ビルドではこの呼び出しごと落ちる。
-function startCloudTuningSync(): void {
+// 開発ビルドだけ: 実験環境が開発サーバ経由で配る調整値の上書きを定期で拾い、適用する。上書きが
+// 書き変わったときだけ apply を呼ぶ。経路は cloud-lab が tools/cloud-tuning-overrides-file.cjs、
+// enemy-lab が tools/enemy-lab-apply-tuning.cjs。呼び出しは NODE_ENV の分岐で本番ビルドから落ちる。
+function startOverridesSync<T>(route: string, apply: (overrides: T) => void): void {
   let lastText: string | null = null;
   const poll = async (): Promise<void> => {
     try {
-      const response = await fetch('/__cloud-tuning/overrides');
+      const response = await fetch(route);
       const text = response.ok ? await response.text() : null;
       if (text !== null && text !== lastText) {
         lastText = text;
-        applyCloudTuningOverrides(JSON.parse(text) as Record<string, number>);
-      }
-    } catch {
-      // 応答が壊れた・サーバが落ちただけなら見逃し、次の周期で拾う。
-    }
-    window.setTimeout(poll, 700);
-  };
-  void poll();
-}
-
-// 開発ビルドだけ: 敵の実験環境(enemy-lab)が開発サーバ経由で配る形状パラメータの上書きを定期で拾い、
-// 以降に出る組み立て型の敵へ反映する(tools/enemy-lab-apply-tuning.cjs の経路)。本番ビルドでは
-// この呼び出しごと落ちる。
-function startAssemblyTuningSync(): void {
-  let lastText: string | null = null;
-  const poll = async (): Promise<void> => {
-    try {
-      const response = await fetch('/__assembly-tuning/overrides');
-      const text = response.ok ? await response.text() : null;
-      if (text !== null && text !== lastText) {
-        lastText = text;
-        applyAssemblyTuningOverrides(JSON.parse(text) as Record<string, number>);
+        apply(JSON.parse(text) as T);
       }
     } catch {
       // 応答が壊れた・サーバが落ちただけなら見逃し、次の周期で拾う。
@@ -323,8 +302,9 @@ async function main() {
 
   // 最初のタイトル画面でも設定面と BGM を引き直すため、周回を起こす前からフレームを回す。
   if (process.env.NODE_ENV !== 'production') {
-    startCloudTuningSync();
-    startAssemblyTuningSync();
+    // 雲の生成は、焼き直すかを雲場が版の照合で決める。敵は以降に出る組み立て型の敵へ反映される。
+    startOverridesSync('/__cloud-tuning/overrides', applyCloudTuningOverrides);
+    startOverridesSync('/__assembly-tuning/overrides', applyAssemblyTuningOverrides);
   }
   startAnimationLoop(launcher, devices, settings, bgm, debugInfo, pauseMenu, snapshotControls);
   await launcher.start();
