@@ -13,7 +13,7 @@ import {
   type MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES,
 } from '../../src/game/map/display-toggles';
 import { alwaysFullyVisibleIds, MapVisibilityPolicy } from '../../src/game/map/visibility-policy';
-import { BODY_REVEAL_BASE, revealedAfterClear } from '../../src/game/celestial/body-reveal';
+import { BODY_REVEAL_BASE, revealedAfterClear } from '../../src/game/stages/body-reveal';
 import { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import { v3, addScaled } from '../../src/math/vec3';
 

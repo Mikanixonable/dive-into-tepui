@@ -3,7 +3,7 @@
 import { isModularShip, ModularShip, type ModularShipInit } from '../ship/modular-ship';
 import { dropMagsOf, Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
-import { StatusPanel } from './stage-utils/status-panel';
+import { StatusPanel } from '../hud/panels/stage-status-panel';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from '../../physics/time';
@@ -14,7 +14,7 @@ import { OrbitSlot } from '../navigation/orbit-slot';
 import { orbitSlotStateAt } from '../navigation/orbit-slot-state';
 import { RelicHunt } from './stage-utils/relic-hunt';
 import { solarSystem } from '../celestial/solar-system/solar-system';
-import { BODY_REVEAL_BASE, revealedAfterClear } from '../celestial/body-reveal';
+import { BODY_REVEAL_BASE, revealedAfterClear } from './body-reveal';
 import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
 import {
   crossedSalvageMilestones, nextSalvageMilestoneRemaining, nextSalvageRemaining, SALVAGE_REPEAT_EVERY,

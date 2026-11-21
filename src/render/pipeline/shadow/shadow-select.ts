@@ -3,7 +3,7 @@
 import { maxShadowedFraction } from '../../../physics/shadow';
 import { len, sub } from '../../../math/vec3';
 import { MAX_SHADOW_BODIES } from './body-shadow';
-import { cumulusOctavesOf } from '../../opaque-cloud-surface-renderer';
+import { cumulusOctavesOf } from '../../earth-weather/cloud/opaque-cloud-surface-renderer';
 import { cirrusOctavesOf } from '../../earth-weather/cloud/cloud-detail';
 import type { CloudRenderInput } from '../../earth-weather/cloud/cloud-render-input';
 import type { CelestialBody } from '../../../physics/celestial-body';

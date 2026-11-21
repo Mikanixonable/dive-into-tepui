@@ -1,7 +1,7 @@
 // 透視/平行の THREE カメラ実体を所有し、論理視点をそのフレームの表示値へ確定する。
 // 投影行列・近遠クリップ面・描画原点は、1回の sync が作る CameraFrame にまとまる。
 import * as THREE from 'three/webgpu';
-import { CELESTIAL_SHELL_RADIUS } from '../stars';
+import { CELESTIAL_SHELL_RADIUS } from '../celestial/starfield';
 import { FloatingOrigin } from './floating-origin';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import {

@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { Curve, type CurveColorSampler, type CurveKnots, type CurveSampler } from '../../curve';
-import type { LineStyle } from '../../line-style';
+import type { LineStyle } from '../../lines/line-style';
 import type { CameraFrame } from '../../camera/camera-frame';
 
 // 描く曲線の形。閉じた式で書けるものと、離散サンプルの節点列の2つがある。sample と knots は

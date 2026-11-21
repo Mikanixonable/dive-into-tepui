@@ -3,7 +3,7 @@
 import type * as THREE from 'three/webgpu';
 import { type OrbitalElements, orbitalElementsFromClassical } from '../../../physics/elements';
 import { add, len, scale, sub, type Vec3 } from '../../../math/vec3';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../lines/line-style';
 import type { CameraFrame } from '../../camera/camera-frame';
 import { EllipseLine } from '../../lines/ellipse-line';
 import type { MapOverlayLabel } from './celestial-view';

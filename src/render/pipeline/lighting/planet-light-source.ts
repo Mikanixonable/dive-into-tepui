@@ -11,7 +11,7 @@ import { contributionMaterial, type LightContribution, type LightSource } from '
 import { PlanetLightImage } from './planet-light-image';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { WebGPURenderer } from 'three/webgpu';
-import type { Albedo } from '../../celestial-albedo';
+import type { Albedo } from '../../celestial/celestial-albedo';
 import type { GpuTimingSink } from '../../gpu-timings';
 import type { PlanetLightAppearance, PlanetLightSubject } from './planet-light-subject';
 import type {

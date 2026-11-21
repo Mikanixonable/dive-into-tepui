@@ -14,7 +14,7 @@ import type { CameraFrame } from '../../camera/camera-frame';
 import type { CelestialSurfaceDiagnostics, CelestialSurfaceLike, LightSourceMap } from '../celestial-surface';
 import type { LineOverlay } from '../line-overlay';
 import type { AtmosphereOptics } from '../../atmosphere';
-import type { Albedo } from '../../celestial-albedo';
+import type { Albedo } from '../celestial-albedo';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';

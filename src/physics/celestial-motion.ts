@@ -18,7 +18,7 @@ import {
   type KinematicState, addPrimaryRelative, fromStarRelative, kinematicState, toPrimaryRelative,
 } from './kinematic-state';
 import { SECONDS_PER_DAY } from './time';
-import { type TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
+import { type TimeCacheStats, TimeRing, addTimeCacheStats } from '../math/time-ring';
 import { type Vec3, add, addScaled, cross, len, lenSq, norm, scale, v3 } from '../math/vec3';
 import type { EciTransform } from './eci-transform';
 import type { PlanetSystem } from './planet-system';

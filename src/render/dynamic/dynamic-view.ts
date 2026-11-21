@@ -10,7 +10,7 @@ import { strongestAttractor } from '../../physics/attractor';
 import { orbitalElementsOf } from '../../physics/elements';
 import { disposeOwnedRenderResources } from '../dispose-owned-render-resources';
 import type { EntityVisualSettings } from '../entity-visual-settings';
-import type { LineStyle } from '../line-style';
+import type { LineStyle } from '../lines/line-style';
 import type { RenderStyle } from '../render-style';
 import type { CameraFrame } from '../camera/camera-frame';
 import { EllipseLine } from '../lines/ellipse-line';

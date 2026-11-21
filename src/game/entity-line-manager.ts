@@ -1,7 +1,7 @@
 // どのエンティティに、どんな見た目の軌道線・予測線・過去線を出すかを決め、View へ渡す。
 import type { ViewMode } from './view/view-mode';
 import type { FrameAnchorSource } from '../physics/frame';
-import { LINE_RENDER_ORDER, type LineStyle } from '../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../render/lines/line-style';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { DynamicEntity } from './dynamic/entity/dynamic-entity';
 import type { DynamicLineDisplay } from '../render/dynamic/dynamic-view';

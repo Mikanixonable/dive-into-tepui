@@ -1,7 +1,7 @@
 // Render Lab の組み立て型の敵ケース。枝分かれ型と結び目型の個体を異なる seed で並べ、
 // 部品を失った個体も出す。失われた部品が破片として飛ぶ姿も出す。
 import * as THREE from 'three/webgpu';
-import { detachPart, generateAssemblyShape } from '../../src/render/assembly/assembly-shape';
+import { detachPart, generateAssemblyShape } from '../../src/physics/assembly-shape';
 import { FloatingOrigin } from '../../src/render/camera/floating-origin';
 import {
   AssemblyEnemyView, type AssemblyVisualSource,

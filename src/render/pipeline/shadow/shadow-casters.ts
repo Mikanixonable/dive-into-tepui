@@ -2,7 +2,7 @@
 // シーン直下の子 1 つ(艦 1 隻・基地 1 つ・インスタンスプール 1 本)で、**影を落とす側であると同時に
 // 受け手の代理でもある** — 艦も基地もデブリも、影を落とすと同時に受ける。
 import * as THREE from 'three/webgpu';
-import { anchorAxis, castsOnto, insideBox, requiredTexel } from '../../shadow-demand';
+import { anchorAxis, castsOnto, insideBox, requiredTexel } from './shadow-demand';
 import { SHADOW_CASTER_LAYER } from '../lit-layer';
 import type { SunLight } from '../sun-light';
 

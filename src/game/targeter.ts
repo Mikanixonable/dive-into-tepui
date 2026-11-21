@@ -22,7 +22,7 @@ import { DIRECTION_GLYPH } from './marker/marker-identity';
 import { pickNearest } from './pickable/object-pickable';
 import { fmtMarkerDist } from '../hud-kit/format';
 import type { MapVisibility, MapVisibilityPolicy } from './map/visibility-policy';
-import { mapPlanetFadeOpacity, nearestPlanetDistance } from './celestial/planet-distance';
+import { mapPlanetFadeOpacity, nearestPlanetDistance } from './map/planet-distance';
 import { isOccluded } from '../physics/occlusion';
 import type { CelestialBody } from '../physics/celestial-body';
 import type { OrbitingObject } from './dynamic/entity/orbiting-object';

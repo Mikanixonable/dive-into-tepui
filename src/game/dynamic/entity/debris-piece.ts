@@ -9,7 +9,7 @@ import { AssemblyPartDebrisView } from '../../../render/dynamic/entity/assembly-
 import { CasingView } from '../../../render/dynamic/entity/casing-view';
 import { DebrisFragmentView } from '../../../render/dynamic/entity/debris-fragment-view';
 import { MagazineFrameView } from '../../../render/dynamic/entity/magazine-frame-view';
-import { detachedPartOf, detachPart, type AssemblyPartDef } from '../../../render/assembly/assembly-shape';
+import { detachedPartOf, detachPart, type AssemblyPartDef } from '../../../physics/assembly-shape';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-entity';
 import type { DebrisKind } from './debris-kind';

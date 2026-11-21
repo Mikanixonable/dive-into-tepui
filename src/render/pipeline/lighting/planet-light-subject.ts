@@ -16,7 +16,7 @@ import { cloudReflectanceNode } from '../../earth-weather/cloud/cloud-optics-nod
 import { equirectUvFromDirection } from '../../field-projection';
 import { AtmosphereIntegrator } from '../atmosphere-integrator';
 import type { AtmosphereBody } from '../../atmosphere';
-import type { Albedo } from '../../celestial-albedo';
+import type { Albedo } from '../../celestial/celestial-albedo';
 import type { LightSourceMap } from '../../celestial/celestial-surface';
 import type {
   BoolUniform, ColorUniform, FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform,

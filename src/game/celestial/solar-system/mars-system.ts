@@ -8,7 +8,7 @@ import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
-import type { CelestialTexture } from '../../../render/celestial-textures';
+import type { CelestialTexture } from '../../../render/celestial/celestial-textures';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../entity/celestial-entity';
 import { PointCelestialView } from '../../../render/celestial/entity/point-celestial-view';

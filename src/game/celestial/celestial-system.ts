@@ -6,12 +6,12 @@ import { type CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physic
 import { isStar, type StarCelestialBody } from '../../physics/celestial-body-def';
 import { type EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
-import { ReferenceFrames } from './reference-frames';
-import { addTimeCacheStats } from '../../physics/time-ring';
+import { ReferenceFrames } from '../../physics/reference-frames';
+import { addTimeCacheStats } from '../../math/time-ring';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { norm, sub, v3, type Vec3 } from '../../math/vec3';
-import { CELESTIAL_SHELL_SCALE, createStars, type Stars } from '../../render/stars';
-import { CelestialGrid, type CelestialGridVisibility } from '../../render/celestial-grid';
+import { CELESTIAL_SHELL_SCALE, createStars, type Stars } from '../../render/celestial/starfield';
+import { CelestialGrid, type CelestialGridVisibility } from '../../render/celestial/celestial-grid';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ScaleGridView } from './scale-grid-view';
 import { focusTargetId } from '../viewer/focus-target';

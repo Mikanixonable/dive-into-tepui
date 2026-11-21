@@ -17,7 +17,7 @@ import type { OrbitSlotRegistry } from './orbit-slot-registry';
 import type { OrbitSlotCatalogAccess } from './orbit-slot-family';
 import { transferTargetOf } from './transfer-target';
 import { commitTransferCandidate } from './transfer-command';
-import { NavigationCommandWindow } from './navigation-command-window';
+import { NavigationCommandWindow } from '../hud/windows/navigation-command-window';
 
 // 敵への会合は交戦圏外の待機点で、味方艦・基地への会合はドッキング手前の接近点で終える
 // (SPEC/PLAN.md「航行指令」)。いずれも終端到達点までの距離 [m]。

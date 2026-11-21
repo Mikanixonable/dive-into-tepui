@@ -75,14 +75,12 @@ const MISPLACED_PRESENTATION_FILES = [
   'src/game/plan/plan-editor.ts',
   'src/game/plan/plan-path.ts',
   'src/game/plan/node-gizmo.ts',
-  'src/game/plan/plan-panel.ts',
   'src/game/plan/plan-axis-drag.ts',
   'src/game/plan/plan-display.ts',
   'src/game/plan/plan-guide.ts',
   'src/game/creative/object-placer-panel.ts',
   'src/game/creative/slider-field.ts',
   'src/game/creative/stage-controls-panel.ts',
-  'src/game/stages/stage-utils/status-panel.ts',
 ];
 
 // src/game/ の中にある表示の導出の置き場(1.3)。

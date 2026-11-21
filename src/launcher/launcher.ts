@@ -17,7 +17,7 @@ import type { ThemePalette } from '../theme';
 import type { CurrentGameSource } from './save-browser/save-browser';
 import type { HudShell } from '../hud-kit/hud-shell';
 import type { GamePhase, RunOptions, RunStats, Stage, StageClass, StageResult } from '../game/stages/stage';
-import { BODY_REVEAL_BASE } from '../game/celestial/body-reveal';
+import { BODY_REVEAL_BASE } from '../game/stages/body-reveal';
 import { StageRecords, FORECAST_LOSS_STREAK, bestDetailHtml, type BestComparison } from './stage-records';
 import type { UnlockManager } from './unlock-manager';
 import type { SaveSlots } from './save/save-slots';

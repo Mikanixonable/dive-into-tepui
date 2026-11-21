@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { AuroraField } from '../../src/render/aurora-field';
+import { AuroraField } from '../../src/render/celestial/aurora-field';
 import { v3 } from '../../src/math/vec3';
 
 // 磁極を傾けた地球と同じ配置。太陽の向きを磁気方位へ落とす経路を通すのに要る。

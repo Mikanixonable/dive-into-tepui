@@ -12,7 +12,7 @@ import { AU, SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { addPrimaryRelative, kinematicState } from '../../physics/kinematic-state';
-import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
+import { DEFAULT_ALBEDO } from '../../render/celestial/celestial-albedo';
 import { CelestialSurface } from '../../render/celestial/celestial-surface';
 import { celestialClassOfKind } from '../celestial/entity/celestial-class';
 import { CelestialEntity } from '../celestial/entity/celestial-entity';

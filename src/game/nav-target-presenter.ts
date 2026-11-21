@@ -15,7 +15,7 @@ import type { CelestialBody } from '../physics/celestial-body';
 import type { Controllable } from './dynamic/entity/controllable';
 import type { DisplayWindow } from './display-window-manager';
 import type { EntityRoster } from './dynamic/entity-roster';
-import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
+import type { TimeLabelSetting } from './calendar-ticks';
 import type { MarkerDeclaration } from '../marker-kit/marker-declaration';
 import type { MarkerSink } from '../marker-kit/marker-sink';
 import type { MarkerDevice } from '../marker-kit/marker-device';

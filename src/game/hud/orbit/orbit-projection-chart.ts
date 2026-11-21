@@ -6,7 +6,7 @@ import { injectOnce } from '../../../hud-kit/inject-style';
 import {
   chartCanvasStyle, drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore,
   type BackingStoreState,
-} from './chart-canvas';
+} from '../../../hud-kit/chart-canvas';
 
 interface ProjectionPoint { readonly lonDeg: number; readonly latDeg: number }
 

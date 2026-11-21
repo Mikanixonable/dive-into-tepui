@@ -9,7 +9,7 @@ import {
 } from '../game/view/view-preferences';
 import { formatMapDisplayToggles, parseMapDisplayToggles } from '../game/map/display-toggles';
 import { isCoarsePointer } from '../input-devices/pointer-precision';
-import { formatGridVisibility, parseGridVisibility } from '../render/celestial-grid';
+import { formatGridVisibility, parseGridVisibility } from '../render/celestial/celestial-grid';
 import { formatGraphics, parseGraphics } from '../render/graphics-settings';
 import { formatRenderStyle, parseRenderStyle } from '../render/render-style';
 import { formatThemePalette, parseThemePalette } from '../theme';
@@ -18,7 +18,7 @@ import type {
   MissionTimeFormat, OrbitGuideGroupTab, PanelCollapsedState, ViewOptionsTab,
 } from '../game/view/view-preferences';
 import type { MapDisplayToggles } from '../game/map/display-toggles';
-import type { CelestialGridVisibility } from '../render/celestial-grid';
+import type { CelestialGridVisibility } from '../render/celestial/celestial-grid';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
 import type { ThemePalette } from '../theme';

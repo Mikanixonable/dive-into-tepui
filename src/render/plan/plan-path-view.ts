@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { TrajectoryLine } from '../lines/trajectory-line';
 import type { CameraFrame } from '../camera/camera-frame';
-import type { LineStyle } from '../line-style';
+import type { LineStyle } from '../lines/line-style';
 import type { Vec3 } from '../../math/vec3';
 import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';

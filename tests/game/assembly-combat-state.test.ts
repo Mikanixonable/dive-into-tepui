@@ -3,10 +3,10 @@ import * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import {
   ASSEMBLY_PART_HP, AssemblyCombatState,
-} from '../../src/game/assembly/assembly-combat-state';
+} from '../../src/game/enemy-assembly/assembly-combat-state';
 import {
   generateAssemblyShape, type AssemblyPartRole, type AssemblyShape,
-} from '../../src/render/assembly/assembly-shape';
+} from '../../src/physics/assembly-shape';
 import { AssemblyEnemy } from '../../src/game/dynamic/entity/assembly-enemy';
 import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
 import { RunEventLog } from '../../src/game/run-events';

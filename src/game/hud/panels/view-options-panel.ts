@@ -8,7 +8,7 @@ import {
   type CollapseToggleLabels,
 } from '../../../hud-kit/widgets';
 import type { MapDisplayToggles } from '../../map/display-toggles';
-import type { CelestialGridVisibility } from '../../../render/celestial-grid';
+import type { CelestialGridVisibility } from '../../../render/celestial/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';
 import { OrbitGuideTab } from './orbit-guide-tab';

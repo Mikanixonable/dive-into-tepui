@@ -5,19 +5,19 @@ import { test } from '../harness';
 import {
   EARTH_BASE_TERRAIN_HEIGHT,
   EARTH_BASE_TERRAIN_WIDTH,
-} from '../../src/render/earth-surface-terrain-codec';
+} from '../../src/render/earth-surface/terrain-codec';
 import {
   decodeEarthBaseTerrainPayload,
   decodeEarthTerrainPayload,
-} from '../../src/render/earth-surface-terrain-codec';
-import { decodeEarthSurfaceTileBytes, downloadEarthSurfaceTile } from '../../src/render/earth-surface-tile-decode';
-import type { EarthSurfaceTileRequest } from '../../src/render/earth-surface-tile-decode';
-import { EarthSurfaceDecodeError } from '../../src/render/earth-surface-errors';
+} from '../../src/render/earth-surface/terrain-codec';
+import { decodeEarthSurfaceTileBytes, downloadEarthSurfaceTile } from '../../src/render/earth-surface/tile-decode';
+import type { EarthSurfaceTileRequest } from '../../src/render/earth-surface/tile-decode';
+import { EarthSurfaceDecodeError } from '../../src/render/earth-surface/errors';
 import {
   EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES, EARTH_TERRAIN_HEIGHT, EARTH_TERRAIN_WIDTH,
-} from '../../src/render/earth-surface-format';
-import { earthTileKey } from '../../src/render/earth-surface-tile-key';
-import { decodeEarthTerrainOffThread } from '../../src/render/earth-surface-terrain-worker-client';
+} from '../../src/render/earth-surface/format';
+import { earthTileKey } from '../../src/render/earth-surface/tile-key';
+import { decodeEarthTerrainOffThread } from '../../src/render/earth-surface/terrain-worker-client';
 
 const KEY = earthTileKey(5, 2, 1);
 

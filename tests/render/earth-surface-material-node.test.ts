@@ -6,9 +6,9 @@ import {
   earthSurfaceTileUvNode,
   decodeEarthSurfaceNormalNode,
   earthSurfaceMaterialCapabilities,
-} from '../../src/render/earth-surface-material-node';
-import { configureEarthSurfaceTexture } from '../../src/render/earth-surface-texture';
-import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from '../../src/render/earth-surface-tile-key';
+} from '../../src/render/earth-surface/material-node';
+import { configureEarthSurfaceTexture } from '../../src/render/earth-surface/texture';
+import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from '../../src/render/earth-surface/tile-key';
 import { float, vec2, vec3 } from 'three/tsl';
 import { evaluateShaderNode } from './tsl-node-evaluator';
 

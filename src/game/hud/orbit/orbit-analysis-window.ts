@@ -1,6 +1,6 @@
 // 軌道分析のドラッグ可能ウィンドウ。高度・接近・投影の3タブのうち、いま選べるものをタブバーへ
 // 出し、選択中のタブへ描画を委ねる。
-import { SyncThrottle } from '../sync-throttle';
+import { SyncThrottle } from '../../../hud-kit/sync-throttle';
 import { DraggableWindow } from '../../../hud-kit/windows/draggable-window';
 import { MQ_COMPACT } from '../../../hud-kit/breakpoints';
 import { TabBar } from '../../../hud-kit/widgets';

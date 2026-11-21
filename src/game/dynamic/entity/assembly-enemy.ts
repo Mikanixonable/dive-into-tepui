@@ -5,11 +5,11 @@ import {
   deserializeKinematicState, kinematicState, type KinematicState, type SerializedKinematicState,
 } from '../../../physics/kinematic-state';
 import { collisionDamageFraction } from './contact-damage';
-import { generateAssemblyShape, type AssemblyShape } from '../../../render/assembly/assembly-shape';
-import { AssemblyCollision } from '../../assembly/assembly-collision';
+import { generateAssemblyShape, type AssemblyShape } from '../../../physics/assembly-shape';
+import { AssemblyCollision } from '../../enemy-assembly/assembly-collision';
 import {
   AssemblyCombatState, type SerializedAssemblyCombatState,
-} from '../../assembly/assembly-combat-state';
+} from '../../enemy-assembly/assembly-combat-state';
 import {
   Enemy, PLASMA_BULLET_DAMAGE, deserializeEnemyPlacement, driftingAttitude,
   type EnemyPlacement, type SerializedEnemy,

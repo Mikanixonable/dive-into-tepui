@@ -5,14 +5,14 @@ import { injectOnce } from '../../../hud-kit/inject-style';
 import { PointerPanZoom } from '../../../hud-kit/pointer-pan-zoom';
 import { approachSeries, sharedAttractor } from './orbit-analysis-data';
 import { ScaleField, buildTabControls, clampScaleKm, sampleCountFor } from './orbit-analysis-tab';
-import { OrbitChart } from './orbit-chart';
+import { OrbitChart } from '../../../hud-kit/line-chart';
 import { distanceAxis } from './orbit-chart-axes';
 import type { DynamicEntity } from '../../dynamic/entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
 import type { ThemePalette } from '../../../theme';
-import type { ChartMark, ChartPoint } from './orbit-chart';
+import type { ChartMark, ChartPoint } from '../../../hud-kit/line-chart';
 
 const DEFAULT_SCALE_Y_KM = 1000;
 const DEFAULT_SCALE_X_KM = 1000;

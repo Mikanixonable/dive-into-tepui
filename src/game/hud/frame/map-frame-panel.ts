@@ -28,7 +28,7 @@ import {
   bodyClassGlyph, centerGlyphSvg, type CenterGlyphKind,
   frameDiagramSvg, linkGlyphSvg, rotationGlyphSvg,
 } from './frame-glyphs';
-import { TileStrip, type TileItem } from './tile-strip';
+import { TileStrip, type TileItem } from '../../../hud-kit/widgets/tile-strip';
 import { buildPanel } from './panel-shell';
 
 const MAX_BODY_TILES = 3; // 中心タイル帯へ直接並べる近傍天体の最大数(自機・解除と合わせて5列へ収める)

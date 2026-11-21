@@ -2,30 +2,30 @@
 // 天体照・影・大気の各パスへ描画座標で書き込む。
 import * as THREE from 'three/webgpu';
 import { shapeAxes, shapeInscribedRadius, shapeOf } from '../../physics/celestial-body-def';
-import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
-import { atmosphereDraws } from '../../render/atmosphere';
+import { DEFAULT_ALBEDO } from './celestial-albedo';
+import { atmosphereDraws } from '../atmosphere';
 import {
   REFERENCE_RADIANT_INTENSITY, STARLESS_SUN_COLOR, STARLESS_SUN_DISTANCE, STARLESS_SUN_RADIUS, type SunLight,
   scaledRadiantIntensity,
-} from '../../render/pipeline/sun-light';
-import { ambientFraction, nightObservationFraction } from '../../render/pipeline/lighting/ambient-source';
-import { selectPlanetLights } from '../../render/pipeline/lighting/planet-light-select';
+} from '../pipeline/sun-light';
+import { ambientFraction, nightObservationFraction } from '../pipeline/lighting/ambient-source';
+import { selectPlanetLights } from '../pipeline/lighting/planet-light-select';
 import {
   MAX_PLANET_LIGHT_SLOTS, type PlanetLightValue,
-} from '../../render/pipeline/lighting/planet-light-source';
-import { MAX_SHADOW_BODIES, type BodyShadow, type ShadowBody } from '../../render/pipeline/shadow/body-shadow';
+} from '../pipeline/lighting/planet-light-source';
+import { MAX_SHADOW_BODIES, type BodyShadow, type ShadowBody } from '../pipeline/shadow/body-shadow';
 import {
   cloudShadowKinds, selectRingShadow, selectShadowBodies,
   type CloudShadowKinds, type RingShadowCandidate,
-} from '../../render/pipeline/shadow/shadow-select';
-import { ringShadowBands, type RingBand } from '../../render/pipeline/shadow/ring-shadow';
-import { writeBodyFromWorld } from '../../render/celestial/body-frame';
+} from '../pipeline/shadow/shadow-select';
+import { ringShadowBands, type RingBand } from '../pipeline/shadow/ring-shadow';
+import { writeBodyFromWorld } from './body-frame';
 import type { Vec3 } from '../../math/vec3';
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import type { AtmosphereBody, AtmosphereCandidate, AtmosphereDraw } from '../../render/atmosphere';
-import type { ShadowCloud } from '../../render/pipeline/shadow/cloud-shadow-renderer';
-import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { FloatingOrigin } from '../../render/camera/floating-origin';
+import type { GraphicsSettingsData } from '../graphics-settings';
+import type { AtmosphereBody, AtmosphereCandidate, AtmosphereDraw } from '../atmosphere';
+import type { ShadowCloud } from '../pipeline/shadow/cloud-shadow-renderer';
+import type { CameraFrame } from '../camera/camera-frame';
+import type { FloatingOrigin } from '../camera/floating-origin';
 import type {
   CelestialIlluminationSource, DefinedCelestialBody, StellarLightSource,
 } from './entity/celestial-view';

@@ -12,12 +12,12 @@ import type { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { PlanPathView, type PlanArcLine } from '../../render/plan/plan-path-view';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../render/lines/line-style';
 import type { ProjectFn, ScaleFn } from '../../math/projection';
 import { type DisplayDurationSource, type PlanData, type TimeRange, segmentDurationFrom } from './plan';
 import { type BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
 import type { Controllable } from '../dynamic/entity/controllable';
-import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
+import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from '../../physics/arc-range';
 import { goldenSectionMin } from '../../math/optimize';
 import { SHIP_BCINV, SHIP_SRP_COEFF } from '../dynamic/entity/combat-ship-entity';
 

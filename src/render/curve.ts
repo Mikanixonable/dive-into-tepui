@@ -3,9 +3,9 @@
 
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../math/max-heap';
-import { CameraScale } from './camera-scale';
+import { CameraScale } from './camera/camera-scale';
 import { buildHermiteCurve, type HermiteCurve } from './hermite-curve';
-import type { LineStyle } from './line-style';
+import type { LineStyle } from './lines/line-style';
 import { markOverlay } from './pipeline/lit-layer';
 
 // t∈[0,1] における曲線上の点を out へ書く。sample(0) と sample(1) が一致するなら、その曲線は

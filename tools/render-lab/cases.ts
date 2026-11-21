@@ -14,7 +14,7 @@ import { createBasePreset } from '../../src/game/ship/ship-presets';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { constructionRotationRing } from '../../src/game/ship/ship-construction-rotation';
 import { RotationRingView } from '../../src/render/dynamic/ship/rotation-ring-view';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/lines/line-style';
 import { SHIP_CASES } from './ship-cases';
 import { THUMBNAIL_CASES } from './thumbnail-cases';
 import { EARTH_CASES } from './earth-cases';

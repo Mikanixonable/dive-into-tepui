@@ -10,7 +10,7 @@ import { StateQueue } from '../../physics/state-queue';
 import { add, type Vec3 } from '../../math/vec3';
 import type { CameraFrame } from '../camera/camera-frame';
 import { Curve, type CurveKnots } from '../curve';
-import type { LineStyle } from '../line-style';
+import type { LineStyle } from './line-style';
 import type { CelestialFrameSource } from './celestial-frame-source';
 
 // 頂点数の上限。数百周が重なる区間(28日表示など)は何頂点あっても収束しないので頭打ちにする。

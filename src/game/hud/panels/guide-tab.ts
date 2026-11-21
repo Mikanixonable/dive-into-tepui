@@ -3,7 +3,7 @@
 // (見出し+トグル列)を流用し、面/極/網/縮尺を1つの表にまとめる。
 import { DIRECTION_GLYPH } from '../../marker/marker-identity';
 import { Button } from '../../../hud-kit/widgets';
-import type { CelestialGridVisibility } from '../../../render/celestial-grid';
+import type { CelestialGridVisibility } from '../../../render/celestial/celestial-grid';
 import type { LagrangeLabel } from '../../../physics/lagrange';
 import type { ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';
 import { DEFAULT_ORBIT_GUIDE_SETTINGS } from '../../viewer/orbit-guide-settings';

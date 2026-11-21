@@ -11,7 +11,7 @@ import { addPrimaryRelative, kinematicState, type KinematicState } from '../../p
 import { secondaryFrameOf } from '../../physics/lagrange';
 import { isOccluded } from '../../physics/occlusion';
 import { ObjectPlacementPreviewView } from '../../render/creative/object-placement-preview-view';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../render/lines/line-style';
 import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/entity/entity-id';
 import { AmmoPickup, RcsFuelPickup } from '../dynamic/entity/pickup';
 import { isModularShip, type ModularShipInit } from '../ship/modular-ship';

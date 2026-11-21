@@ -1,6 +1,6 @@
 // 画面全体のトップバー(#hud-topbar)の同期: MET・時間加速・NODE WARP・警報灯。
 // 自機の有無に関係なく常に出す画面全体の状態。
-import { SyncThrottle } from '../sync-throttle';
+import { SyncThrottle } from '../../../hud-kit/sync-throttle';
 import { fmtDateTime, fmtElapsedUnits, fmtTime } from '../../../hud-kit/format';
 import { type AlarmLevel, applyAlarmLevel } from '../../../hud-kit/alarm-level-ui';
 import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud-kit/widgets/widget-base';

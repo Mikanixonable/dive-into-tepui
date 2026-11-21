@@ -2,7 +2,7 @@
 // 部品を破片の姿勢と位置へ置く。
 import * as THREE from 'three/webgpu';
 import { assemblyPartMesh } from '../../assembly/assembly-part-mesh';
-import type { AssemblyPartDef } from '../../assembly/assembly-shape';
+import type { AssemblyPartDef } from '../../../physics/assembly-shape';
 import { markLitOpaque, markShadowCaster } from '../../pipeline/lit-layer';
 import { makeThermallyEmissive } from '../../thermal-emissive';
 import { DynamicView } from '../dynamic-view';

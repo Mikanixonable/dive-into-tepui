@@ -2,7 +2,7 @@
 // 装甲を、ターゲットの固定中に表示する。距離と接近速度が答えで、残りは行に出す。
 import { fmtDist, fmtDistParts, fmtSpeedParts } from '../../../hud-kit/format';
 import { setReadout } from '../../../hud-kit/readout';
-import { SyncThrottle } from '../sync-throttle';
+import { SyncThrottle } from '../../../hud-kit/sync-throttle';
 import type { HudEls } from '../hud-els';
 import { Meter } from '../../../hud-kit/widgets';
 import { applyAlarmLevel } from '../../../hud-kit/alarm-level-ui';

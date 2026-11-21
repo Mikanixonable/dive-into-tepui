@@ -3,11 +3,11 @@
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { lambertSphereIrradiance } from '../../../physics/lambert-sphere';
-import { CELESTIAL_SHELL_RADIUS, POINT_IMAGE_SIZE } from '../../stars';
+import { CELESTIAL_SHELL_RADIUS, POINT_IMAGE_SIZE } from '../starfield';
 import { Billboard } from '../../billboard';
 import { createCelestialSurfaceFrame, type CelestialSurfaceLike } from '../celestial-surface';
 import { writeBodyFromWorld } from '../body-frame';
-import { DEFAULT_ALBEDO, rec709Luminance } from '../../celestial-albedo';
+import { DEFAULT_ALBEDO, rec709Luminance } from '../celestial-albedo';
 import { irradianceAtDistance, scaledRadiantIntensity, SUN_IRRADIANCE_1AU } from '../../pipeline/sun-light';
 import { norm, sub, v3, type Vec3 } from '../../../math/vec3';
 import { SphereCelestialView } from './sphere-celestial-view';

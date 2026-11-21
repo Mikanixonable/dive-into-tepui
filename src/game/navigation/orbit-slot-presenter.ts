@@ -5,7 +5,7 @@ import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { isOccluded } from '../../physics/occlusion';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../render/lines/line-style';
 import {
   OrbitSlotLinesView, type OrbitSlotLineDisplay, type VisibleOrbitSlotLine,
 } from '../../render/lines/orbit-slot-lines-view';

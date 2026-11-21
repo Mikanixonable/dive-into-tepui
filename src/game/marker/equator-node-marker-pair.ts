@@ -5,7 +5,7 @@ import { type FrameAnchorSource, type ReferenceFrame, unbakeToDisplayPoint } fro
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
 import { solveEquatorCrossings } from '../../physics/equator-crossings';
-import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
+import type { TimeLabelSetting } from '../calendar-ticks';
 import { EquatorNodeMarker } from './equator-node-marker';
 import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import type { ObjectPickable } from '../pickable/object-pickable';

@@ -8,7 +8,7 @@ import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
 import { TITLE_LOGOTYPE_HTML } from '../hud-kit/title-logotype';
 import { injectStageSelectStyle } from './stage-select-style';
 import { StartEpochForm } from './start-epoch-form';
-import { TITLE_SCENE_PATTERNS, TitleScene } from './title-scene';
+import { TITLE_SCENE_PATTERNS, TitleScene } from '../render/title-scene';
 import type { StageClass } from '../game/stages/stage';
 import type { TdbJulianDate } from '../physics/time';
 import type { ThemePalette } from '../theme';

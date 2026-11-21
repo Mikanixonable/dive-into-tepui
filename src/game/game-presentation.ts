@@ -1,7 +1,7 @@
 // 1ランの表示の導出の根: 入力の解釈、表示窓・座標系の錨・カメラの導出、表示物と HUD への同期、
 // 描画を所有する。モデル層の根 Game を読み、命令の列へ積み、進行の末尾へ渡す材料を組む。
 import { SYNC_SECTION, type FrameSections, type SyncSectionId } from './frame-sections';
-import { CUMULUS_DETAIL } from '../render/opaque-cloud-surface-renderer';
+import { CUMULUS_DETAIL } from '../render/earth-weather/cloud/opaque-cloud-surface-renderer';
 import { CloudQualityGovernor } from '../render/earth-weather/cloud/cloud-quality-governor';
 import { GPU_PASS } from '../render/gpu-timings';
 import { CameraSystem } from './camera/camera-system';
@@ -57,9 +57,9 @@ import { ViewOptionsControl } from './hud/panels/view-options-control';
 import type { ViewOptionsSettings } from './view/view-options-settings';
 import { controlledLoopSfx } from './controlled-loop-sfx';
 import { UiSoundQueue } from './ui-sound-queue';
-import { GameInputPhase } from '../run/game-input-phase';
+import { GameInputPhase } from './game-input-phase';
 import type { GameInputSource } from './input/game-input-ports';
-import { DisplayPhase, type DisplayPhaseSource } from '../run/display-phase';
+import { DisplayPhase, type DisplayPhaseSource } from './display-phase';
 import { KillStop } from './kill-stop';
 import { ShipAlarms } from './ship-alarms';
 import type { GameInputPort } from './input/game-input-router';

@@ -23,7 +23,7 @@ import type { AxisHandleSpec, NodeHandleSpec } from './node-gizmo';
 import { NodeGizmo } from './node-gizmo';
 import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from '../../render/plan/plan-gizmo-3d';
-import { PlanPanel } from './plan-panel';
+import { PlanPanel } from '../hud/panels/plan-panel';
 import type { Plan } from './plan';
 import type { DisplayWindowManager } from '../display-window-manager';
 import type { PlanCommands } from './plan-commands';

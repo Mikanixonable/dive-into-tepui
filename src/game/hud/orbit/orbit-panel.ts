@@ -2,7 +2,7 @@
 // 周期・動圧・機体温度、および基準切替のセグメントコントロール。戦闘/マップ共通。
 import { fmtDistParts, fmtSpeedParts, fmtTime, type ValueParts } from '../../../hud-kit/format';
 import { setReadout } from '../../../hud-kit/readout';
-import { SyncThrottle } from '../sync-throttle';
+import { SyncThrottle } from '../../../hud-kit/sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';
 import type { OrbitReferenceMode } from '../../viewer/orbit-reference-selection';
 import { Button, Meter, SegmentedControl } from '../../../hud-kit/widgets';

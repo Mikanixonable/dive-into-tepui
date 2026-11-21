@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { mulberry32 } from '../../math/random';
 import { assemblyPartGeometry } from './assembly-geometry';
-import type { AssemblyPartDef } from './assembly-shape';
+import type { AssemblyPartDef } from '../../physics/assembly-shape';
 
 // 構造部の中性色。識別色(accent)を持つ部品と区別が付く、白〜煙色の薄いトーンだけを置く。
 const STRUCTURE_COLORS = [0xf1edf0, 0xd9d9d3, 0xc6cbd6, 0xa8aec0, 0x8d95a8] as const;

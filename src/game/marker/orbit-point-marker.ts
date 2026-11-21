@@ -3,7 +3,7 @@
 // メニューとして公開する。呼称・字形・示す値は具象が与える。
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
 import { MenuCommon, type MenuAction } from '../menu-actions';
-import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
+import { orbitPointLabel, type TimeLabelSetting } from '../calendar-ticks';
 import { fmtTime } from '../../hud-kit/format';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';

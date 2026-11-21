@@ -5,10 +5,10 @@ import { EarthSurfaceContext } from '../../src/render/earth-surface';
 import {
   assertEarthSurfaceDataset, earthSurfaceSourceFromManifest,
   type EarthSurfaceAssetManifest,
-} from '../../src/render/earth-surface-source';
-import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/render/earth-surface-runtime';
-import { earthTileKey } from '../../src/render/earth-surface-tile-key';
-import { EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION } from '../../src/render/earth-surface-source';
+} from '../../src/render/earth-surface/source';
+import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/render/earth-surface/runtime';
+import { earthTileKey } from '../../src/render/earth-surface/tile-key';
+import { EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION } from '../../src/render/earth-surface/source';
 
 // 入力検査を通る固定のmanifest fixture。
 function manifest(): EarthSurfaceAssetManifest {

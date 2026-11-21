@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { len, sub } from '../../src/math/vec3';
-import { generateAssemblyShape } from '../../src/render/assembly/assembly-shape';
+import { generateAssemblyShape } from '../../src/physics/assembly-shape';
 import { test } from '../harness';
 
 // 生成器が満たすべき不変条件(SPEC/ASSEMBLY.md)。形状の見た目ではなく契約を固定する。

@@ -8,7 +8,7 @@ import { Stage, type GamePhase } from '../../src/game/stages/stage';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
 import { Logistics } from '../../src/game/stages/stage-utils/logistics';
 import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
-import { BODY_REVEAL_BASE } from '../../src/game/celestial/body-reveal';
+import { BODY_REVEAL_BASE } from '../../src/game/stages/body-reveal';
 import { AmmoPickup, isAmmoPickup, type SerializedAmmoPickup } from '../../src/game/dynamic/entity/pickup';
 import { loadAmmoModels } from '../../src/render/dynamic/ammo-models';
 import type { DynamicEntity } from '../../src/game/dynamic/entity/dynamic-entity';

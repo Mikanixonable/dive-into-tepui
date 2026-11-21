@@ -1,14 +1,14 @@
 // 地球表面。EarthSurfaceContext は配信版と、地表要求の世代・キャンセル信号を管理・発行する。EarthSurface は
 // 天体表面の球へ、詳細な材質とタイルの常駐を接続する。
 import * as THREE from 'three/webgpu';
-import { scaledToBondAlbedo } from './celestial-albedo';
+import { scaledToBondAlbedo } from './celestial/celestial-albedo';
 import { TEXTURE_RESOLUTION, type TextureResolution } from './deferred-texture';
-import { earthTileLayersFor } from './earth-surface-layout';
-import type { EarthSurfaceSource } from './earth-surface-source';
+import { earthTileLayersFor } from './earth-surface/layout';
+import type { EarthSurfaceSource } from './earth-surface/source';
 import type {
   EarthSurfaceResidentFrame,
-} from './earth-surface-resident';
-import { EarthSurfaceProjectionCache } from './earth-surface-projection';
+} from './earth-surface/resident';
+import { EarthSurfaceProjectionCache } from './earth-surface/projection';
 import type {
   CelestialSurfaceFrame,
   CelestialSurfaceDiagnostics,

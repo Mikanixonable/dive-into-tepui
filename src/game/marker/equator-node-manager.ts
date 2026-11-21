@@ -7,7 +7,7 @@ import type { Controllable } from '../dynamic/entity/controllable';
 import { appearsOnMap, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
+import type { TimeLabelSetting } from '../calendar-ticks';
 import { EquatorNodeMarkerPair, type EquatorNodeInputs } from './equator-node-marker-pair';
 import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import type { MarkerSink } from '../../marker-kit/marker-sink';

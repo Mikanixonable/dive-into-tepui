@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import {
   CUMULUS_DETAIL, OpaqueCloudSurfaceRenderer, cumulusOctavesOf, type CumulusDetail,
-} from '../../opaque-cloud-surface-renderer';
+} from './opaque-cloud-surface-renderer';
 import { CIRRUS_DETAIL, DETAIL_WAVELENGTHS, cirrusOctavesOf, type CirrusDetail } from './cloud-detail';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import { capRadiusFor, snapCap } from './cloud-cap';

@@ -8,7 +8,7 @@ import { SatelliteMotion, type StarMotion } from '../../../physics/celestial-mot
 import { type PlanetDef, planetDefForSimZero, type SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
-import { GRAVITATIONAL_CONSTANT } from '../gravitational-constant';
+import { GRAVITATIONAL_CONSTANT } from '../../../physics/gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
 import { CelestialEntity } from '../entity/celestial-entity';
 import { PointCelestialView } from '../../../render/celestial/entity/point-celestial-view';

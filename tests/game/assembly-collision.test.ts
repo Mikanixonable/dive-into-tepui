@@ -1,9 +1,9 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { AssemblyCollision } from '../../src/game/assembly/assembly-collision';
+import { AssemblyCollision } from '../../src/game/enemy-assembly/assembly-collision';
 import {
   generateAssemblyShape, type AssemblyPartDef,
-} from '../../src/render/assembly/assembly-shape';
+} from '../../src/physics/assembly-shape';
 import { add, len, scale, v3 } from '../../src/math/vec3';
 import { Q_IDENTITY, qFromAxisAngle } from '../../src/math/quat';
 import { kinematicState } from '../../src/physics/kinematic-state';

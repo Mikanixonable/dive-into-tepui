@@ -5,7 +5,7 @@ import { test } from '../harness';
 import {
   earthNormalAtUv, earthNormalToView, earthPositionAtUv, earthRadialAtUv,
   earthSurfaceNormal, earthSurfaceUv, earthSurfaceUvFromRadialNode, earthUvFromRadial,
-} from '../../src/render/earth-surface-coordinate';
+} from '../../src/render/earth-surface/coordinate';
 import { vec3 } from 'three/tsl';
 import { evaluateShaderNode } from './tsl-node-evaluator';
 

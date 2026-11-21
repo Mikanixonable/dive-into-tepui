@@ -5,13 +5,13 @@ import { test } from '../harness';
 import {
   EARTH_BASE_LAYER, EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z,
   earthTileChildren, earthTileId, earthTileKey, earthTileNeighbors, earthTileParent,
-} from '../../src/render/earth-surface-tile-key';
+} from '../../src/render/earth-surface/tile-key';
 import { earthPageAt, earthTileRoots, earthTileSampleUv } from './earth-surface-material-reference';
-import { EarthSurfaceView } from '../../src/render/earth-surface-tile-projection';
-import { EarthSurfaceTiles } from '../../src/render/earth-surface-tiles';
-import type { EarthTileResident } from '../../src/render/earth-surface-tiles';
-import type { EarthTileKey } from '../../src/render/earth-surface-tile-key';
-import type { EarthTileMetric, EarthTileProjection } from '../../src/render/earth-surface-tile-projection';
+import { EarthSurfaceView } from '../../src/render/earth-surface/tile-projection';
+import { EarthSurfaceTiles } from '../../src/render/earth-surface/tiles';
+import type { EarthTileResident } from '../../src/render/earth-surface/tiles';
+import type { EarthTileKey } from '../../src/render/earth-surface/tile-key';
+import type { EarthTileMetric, EarthTileProjection } from '../../src/render/earth-surface/tile-projection';
 
 const ROOTS = earthTileRoots().slice(0, 2);
 

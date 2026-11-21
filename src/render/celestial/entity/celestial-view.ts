@@ -1,7 +1,7 @@
 // 天体1体の3D表示資源を所有し、毎フレーム渡される運動と表示設定を描画座標へ同期する。
 import * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
-import type { GpuTimingSink } from '../../../render/gpu-timings';
+import type { GpuTimingSink } from '../../gpu-timings';
 import type { CelestialMotion } from '../../../physics/celestial-motion';
 import {
   shapeSpheroidRadii, type CelestialBodyDef, type RingSystemDef, type StarCelestialBody,
@@ -13,7 +13,7 @@ import type { CameraFrame } from '../../camera/camera-frame';
 import type { GraphicsSettingsData } from '../../graphics-settings';
 import type { RenderStyle } from '../../render-style';
 import type { RingMaterials } from '../ring';
-import type { Albedo } from '../../celestial-albedo';
+import type { Albedo } from '../celestial-albedo';
 import type { CelestialSurfaceDiagnostics, LightSourceMap } from '../celestial-surface';
 import { withAirglowEnabled } from '../../atmosphere';
 import type { AtmosphereClouds, AtmosphereOptics, AtmosphereCandidate } from '../../atmosphere';
@@ -21,7 +21,7 @@ import type { ShadowCloud } from '../../pipeline/shadow/cloud-shadow-renderer';
 import type { CloudPresentation } from '../../earth-weather/cloud/cloud-presentation';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import { EllipseLine } from '../../lines/ellipse-line';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../lines/line-style';
 
 // 参照軌道線の色と、カメラ距離 [m] で濃さを上げるフェード帯(NEAR で 0、FAR で最大)。
 const SATELLITE_REFERENCE_LINE_COLOR = 0xaab3c0;

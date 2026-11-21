@@ -2,9 +2,9 @@
 import { DisplayTimelinePanel } from './hud/panels/display-timeline-panel';
 import type { PanelCollapse } from './hud/panel-chrome';
 import type { OverlayManager } from '../hud-kit/overlay-manager';
-import { buildTicks } from './hud/orbit/tick-scale';
+import { buildTicks } from '../hud-kit/tick-scale';
 import { epochUnixSeconds } from '../hud-kit/format';
-import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
+import type { TimeLabelSetting } from './calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
 import { frameRoleOf } from '../physics/frame';
 import type { FrameAnchorSource, ReferenceFrame } from '../physics/frame';
