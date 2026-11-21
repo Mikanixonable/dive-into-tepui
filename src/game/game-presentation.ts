@@ -23,6 +23,7 @@ import { RunEventPresenter, worldSoundCues } from './run-event-presenter';
 import { FlashPresenter } from './flash-presenter';
 import { FlashEffectsView } from '../render/vfx/flash-effects-view';
 import { EntityLineManager } from './lines/entity-line-manager';
+import { FactionZoneManager } from './map/faction-zone-manager';
 import { Input } from '../input/input';
 import { KEY_MAPPING as K } from '../input/key-mapping';
 import { TouchControls } from './hud/touch-controls';
@@ -142,6 +143,7 @@ export class GamePresentation {
   private readonly flashPresenter = new FlashPresenter();
   private readonly flashEffectsView: FlashEffectsView;
   private readonly entityLines: EntityLineManager;
+  private readonly factionZones: FactionZoneManager;
   private readonly equatorNodes: EquatorNodeManager;
   // 軌道標識の軌道線・位相点マーカー・被選択物をまとめる口。
   private readonly orbitSlots: OrbitSlotPresenter;
@@ -196,6 +198,7 @@ export class GamePresentation {
     hud.beginRun(activeStage.id);
     const entityDisplayPort = entityDisplayCommands(commands, viewer.entityDisplay);
     this.entityLines = new EntityLineManager(dynamicSystem, viewer.entityDisplay);
+    this.factionZones = new FactionZoneManager(scene.scene, dynamicSystem, celestialSystem);
     const cameraCommandPort = cameraCommands(commands, viewer.camera);
     const targetCommands = navTargetCommands(commands, viewer.navTarget);
     this.navTargetPresenter = new NavTargetPresenter(
@@ -324,7 +327,7 @@ export class GamePresentation {
     this.constructionEntry.startNearestDock(controlled, camera.viewpoint.position);
   }
 
-  // 入力の解釈が読む、ランの操作の口。
+  // ランの操作に必要な状態と命令を返す。
   private gameInputSource(): GameInputSource {
     const game = this.game;
     // 入力中に変わる状態は getter で最新値を渡す。
@@ -370,6 +373,7 @@ export class GamePresentation {
     this.touchControls.dispose();
     this.input.dispose();
     this.planDisplay.dispose();
+    this.factionZones.dispose();
     this.planPath.dispose();
     this.planGuide.dispose();
     this.frameControls.dispose();
@@ -635,6 +639,7 @@ export class GamePresentation {
       controlled, this.targeter.aliveTarget, view, displayWindow, visibilityPolicy, orbitRef,
       camera, this.frameAnchors, celestialSystem, palette,
     );
+    this.factionZones.sync(view, controlled, displayWindow, visibilityPolicy, camera, palette);
     // ビュー専用のパネル・表示物と軌道線の右クリック候補。軌道線が今フレーム焼いたサンプルを
     // 読むため、celestialSystem.sync/entityLines.sync の後に置く。
     this.viewManager.activeView.syncPanels(displayWindow, camera, nowMs);

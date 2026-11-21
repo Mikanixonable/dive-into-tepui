@@ -913,17 +913,67 @@ async function constructMaterialFromBaseDock() {
 
 async function bootAndCheckReady() {
   let state;
-  for (let attempt = 0; attempt < 300; attempt++) {
+  const deadline = Date.now() + 600_000;
+  let lastLog = 0;
+  while (Date.now() < deadline) {
     state = await devTools.evaluate(`({
       ready: document.documentElement.dataset.gameReady === 'true',
       fatal: Boolean(document.getElementById('fatal-error-overlay')),
       fatalText: document.getElementById('fatal-error-overlay')?.textContent ?? '',
+      loading: [...document.querySelectorAll('body > div')].find((d) => d.textContent?.includes('Dive into Tepui'))?.textContent?.slice(0, 120) ?? '',
+      frames: document.documentElement.dataset.smokeFrames ?? 'unset',
     })`);
-    if (state.fatal) throw new Error(`Fatal error overlay appeared during browser smoke test: ${state.fatalText}`);
+    if (state.fatal) {
+      const bufferLog = await devTools.evaluate('JSON.stringify(window.__bufferLog ?? [])');
+      throw new Error(`Fatal error overlay appeared during browser smoke test: ${state.fatalText}\nbufferLog: ${bufferLog}`);
+    }
     if (state.ready) break;
-    await sleep(100);
+    if (Date.now() - lastLog > 10_000) {
+      lastLog = Date.now();
+      console.error(`waiting for boot: loading="${state.loading}" frames=${state.frames}`);
+    }
+    await sleep(500);
   }
-  if (!state?.ready) throw new Error('Game did not complete 60 animation frames within 30 seconds.');
+  if (!state?.ready) {
+    // 起動がどこで止まっているかを残す。rAF とアダプタ要求は応答待ちを短く区切り、
+    // ハングそのものを掴めるようにする(CI の WebGPU 初期化ハング切り分け用)。
+    const diag = await devTools.evaluate(`(async () => {
+      const raf = await Promise.race([
+        new Promise((resolve) => requestAnimationFrame(() => resolve('alive'))),
+        new Promise((resolve) => setTimeout(() => resolve('no-raf'), 2000)),
+      ]);
+      const frameMs = await Promise.race([
+        new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            const t1 = performance.now();
+            requestAnimationFrame(() => resolve(Math.round(performance.now() - t1)));
+          });
+        }),
+        new Promise((resolve) => setTimeout(() => resolve('>5000'), 5000)),
+      ]);
+      let adapter = 'none';
+      if (navigator.gpu) {
+        adapter = await Promise.race([
+          navigator.gpu.requestAdapter({ featureLevel: 'compatibility' })
+            .then((a) => a === null ? 'null' : 'ok maxSampledTextures=' + a.limits.maxSampledTexturesPerShaderStage)
+            .catch((e) => 'error:' + e.message),
+          new Promise((resolve) => setTimeout(() => resolve('requestAdapter-hang'), 5000)),
+        ]);
+      }
+      return {
+        raf,
+        frameMs,
+        adapter,
+        combatView: Boolean(document.querySelector('.hud-combat-root.active')),
+        loading: [...document.querySelectorAll('body > div')].find((d) => d.textContent?.includes('Dive into Tepui'))?.textContent?.slice(0, 120) ?? 'none',
+        stageSelect: Boolean(document.querySelector('.ss-window')),
+        frames: document.documentElement.dataset.smokeFrames ?? 'unset',
+        canvases: document.querySelectorAll('canvas').length,
+      };
+    })()`);
+    console.error(`boot diagnostics: ${JSON.stringify(diag)}\nfatalEvents:\n  ${describeFatalEvents() || '(none)'}`);
+    throw new Error(`Game did not complete 60 animation frames within 30 seconds. diagnostics: ${JSON.stringify(diag)}`);
+  }
   throwIfFatal('Browser reported page exception(s) or console error(s) during boot');
 }
 
@@ -935,6 +985,34 @@ async function runConfiguredScenario() {
   const pageQuery = layoutOnly
     ? `${query}${query.includes('?') ? '&' : '?'}layout-smoke=1`
     : query;
+  // createBuffer が投げたときの descriptor と呼び出し元を残し、CI の GPU エラーを切り分ける。
+  await devTools.send('Page.addScriptToEvaluateOnNewDocument', {
+    source: `(() => {
+      if (typeof GPUDevice === 'undefined') return;
+      window.__bufferLog = { total: 0, mapped: 0, entries: [] };
+      const orig = GPUDevice.prototype.createBuffer;
+      GPUDevice.prototype.createBuffer = function (desc) {
+        const log = window.__bufferLog;
+        log.total++;
+        let rec = null;
+        if (desc.mappedAtCreation) {
+          rec = { t: Math.round(performance.now()), size: desc.size, usage: desc.usage };
+          log.mapped++;
+          log.entries.push(rec);
+          if (log.entries.length > 80) log.entries.shift();
+        }
+        try {
+          return orig.call(this, desc);
+        } catch (e) {
+          log.entries.push({
+            failed: true, size: desc.size, usage: desc.usage, label: desc.label ?? '',
+            error: String(e), stack: new Error('createBuffer-failed').stack,
+          });
+          throw e;
+        }
+      };
+    })()`,
+  });
   await devTools.send('Page.navigate', { url: `${session.baseUrl}/${pageQuery}` });
   await bootAndCheckReady();
   if (emulateTouch) await revealTouchPad();

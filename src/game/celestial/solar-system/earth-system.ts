@@ -17,6 +17,7 @@ import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
 import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
+import type { CelestialTexture } from '../../../render/celestial-textures';
 import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
 import { CloudPresentation } from '../../../render/earth-weather/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/earth-weather/cloud/generated-cloud-field';
@@ -181,6 +182,13 @@ export const EARTH_COASTLINE = coastlineData as readonly LatLonPolyline[];
 // の中心緯度経度・直径から円として焼き込んだ、単位球面上の xyz を1ループとして並べた配列の配列。
 const MOON_SURFACE_MARKINGS = moonFeaturesData as readonly UnitSphereLoop[];
 
+// 月の実写テクスチャ。倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。
+// 4096px は原寸と同じ幅なので、縮小版を持つのは低の段だけ。
+export const MOON_TEXTURE: CelestialTexture = {
+  url: { low: moonTexture2048Url, medium: moonTextureUrl, high: moonTextureUrl },
+  albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
+};
+
 // 地球のオーロラ。オーバル緯度は磁極の配置、発光高度は降り込む粒子が大気を励起する層、
 // 色は酸素の緑(557.7nm)と赤(630nm)の輝線による。
 const EARTH_AURORA_OPTICS: AuroraOptics = {
@@ -265,12 +273,7 @@ export function earthSystem(
       new SatelliteMotion(satelliteDefForSimZero(MOON, simZeroEt), earth),
       EARTH_SYSTEM_NAMES.moon, 'satellite',
       new SphereCelestialView(
-        // 倍率はテクスチャの平均輝度 0.3180 を公表のボンドアルベドへ合わせる値。
-        // 4096px は原寸と同じ幅なので、縮小版を持つのは低の段だけ。
-        CelestialSurface.textured({
-          url: { low: moonTexture2048Url, medium: moonTextureUrl, high: moonTextureUrl },
-          albedoScale: 0.3459, bondAlbedo: 0.11, averageHue: [1.0458, 0.9880, 0.9844],
-        }),
+        CelestialSurface.textured(MOON_TEXTURE),
         null, LineOverlay.of({ kind: 'unitSphereLoops', loops: MOON_SURFACE_MARKINGS }),
       ),
     ),
