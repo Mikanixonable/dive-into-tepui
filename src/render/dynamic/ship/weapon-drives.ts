@@ -2,6 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { MAG_ROUNDS } from '../../../game/player/ammo-spec';
 import type { ModularShipView } from './modular-ship-view';
+import { semanticAnchorName } from './ship-module-models';
 import type { ShipModuleRenderInput } from './ship-render-contract';
 
 // 撃ち始めに目標速度へ近づく一次遅れの時定数 [s]。
@@ -252,8 +253,7 @@ function recoilParts(
     if (module.kind !== 'weapon' || module.hp <= 0) continue;
     for (const anchor of ship.semanticAnchors(module.id, prefix)) {
       // anchor 名の末尾から砲口番号を読む。整数でなければアセットの不備。
-      const name = typeof anchor.userData.semanticAnchor === 'string'
-        ? anchor.userData.semanticAnchor : anchor.name.slice('anchor:'.length);
+      const name = semanticAnchorName(anchor)!;
       const muzzleIndex = Number(name.slice(prefix.length).split(':')[0]);
       if (!Number.isInteger(muzzleIndex) || muzzleIndex < 0) {
         throw new Error(`gun recoil anchor has invalid muzzle index: ${anchor.name}`);
