@@ -92,22 +92,6 @@ SPEC `DEVELOP/SPEC/RENDERING.md` から確定した保存対象:
 
 ## 手順
 
-### 手順 2. 雲パス GPU 時間の常時集計
-
-**目的** — 予算上限の判定材料(雲パスの GPU 合計・フレームに占める割合)を、デバッグ窓を
-開いていなくても読めるようにする。現状 `enabled` が偽だと `beginPass` の宣言が捨てられ
-帰属されないので、雲 4 パスだけは常時帰属・加算する。
-
-**変更が必要な箇所**
-
-| ファイル | すること |
-| --- | --- |
-| `src/render/gpu-timings.ts` | 常時帰属するパス集合(GPU_PASS.cloudBake/cloudSurface/cloudAtmosphere/cloudShadow)を持たせ、`beginPass`/`onBeginRender`/`collectTimestamps` で enabled の有無に関わらずその集合だけ帰属・積算する。`msOf` はそのまま使える。`resolve()` は既に毎フレーム呼ばれている(run.ts:168)ので新たな問い合わせは増えない |
-
-**達成条件と検証** — `npm run typecheck`、`npm run test:render`。窓を閉じた状態で
-`gpu.msOf(GPU_PASS.cloudSurface)` が 0 より大きいことを、render-lab の CDP 口から
-`gpu.snapshot().elapsedMs` を読んで確認(render-lab-measure と同じ窓口を使う)。
-
 ### 手順 3. 積雲マテリアルの段別事前構築
 
 **目的** — 段替えをコンパイルヒッチなしでできるようにする。**この時点で挙動は変えない**
