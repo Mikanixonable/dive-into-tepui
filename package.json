@@ -18,6 +18,7 @@
     "lint:fix:all": "eslint --fix --prune-suppressions --suppressions-location eslint-suppressions.json src tests tools",
     "check:boundaries": "node tools/check-boundaries.mjs",
     "smoke:browser": "node tools/browser-smoke.mjs",
+    "mobile-probe": "node tools/mobile-probe.mjs",
     "usage": "node tools/usage-limits.mjs",
     "usage:selftest": "node tools/usage-limits-selftest.mjs",
     "smoke:layout-suite": "node tools/layout-smoke-retry.mjs --suite",
