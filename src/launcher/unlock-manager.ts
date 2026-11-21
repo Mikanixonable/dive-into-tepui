@@ -1,32 +1,19 @@
 // ステージ解放の判定と、クリア回数の永続化を一元管理する。
 import type { Notifier } from '../hud-kit/notifier';
 import type { ClearCounts, StageId } from '../game/stages/stage';
-import { findStageClass, normalizeStageId, STAGE_CLASSES } from '../game/stages/stage-dictionary';
+import { findStageClass, STAGE_CLASSES } from '../game/stages/stage-dictionary';
+import { loadStageKeyed, saveStageKeyed } from './stage-keyed-storage';
 
 const STORAGE_KEY = 'tepui.clearCounts';
 
 // localStorage からクリア回数を読み込む。取得できなければ空を返す。
-// キーのステージ id は、番号の付け替え以前に保存された旧番号も新番号へ読み替える。
 function loadClearCounts(): Record<string, number> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, number>;
-    return Object.fromEntries(
-      Object.entries(parsed).map(([id, count]) => [normalizeStageId(id), count]),
-    );
-  } catch {
-    return {};
-  }
+  return loadStageKeyed<number>(STORAGE_KEY);
 }
 
-// クリア回数を localStorage へ保存する。
+// クリア回数を localStorage へ保存する。不可なら保存しない(解放状態は都度未解放判定に戻る)。
 function saveClearCounts(counts: ClearCounts): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(counts));
-  } catch {
-    /* localStorage 不可なら保存しない(解放状態は都度未解放判定に戻る) */
-  }
+  saveStageKeyed(STORAGE_KEY, counts);
 }
 
 // stage の解放条件を counts から判定する。条件が定義されていなければ常に解放。

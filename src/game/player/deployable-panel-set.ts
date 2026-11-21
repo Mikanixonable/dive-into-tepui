@@ -46,8 +46,8 @@ export class DeployablePanelSet implements Iterable<[string, DeployablePanelStat
 
   public get assembly(): ShipAssembly | null { return this.assemblyValue; }
 
-  // 直列化した up/down と module ID 連動の panels を復元する。壊れた項は fallbackTarget の初期値へ。
-  public static restore(
+  // 直列化した up/down と module ID 連動の panels を復元する部品を返す。壊れた項は fallbackTarget の初期値へ。
+  public static deserialize(
     serialized: SerializedDeployablePanelSet,
     fallbackTarget: 0 | 1,
   ): { up: DeployablePanelState; down: DeployablePanelState; restoredPanels: RestoredDeployablePanel[] } {

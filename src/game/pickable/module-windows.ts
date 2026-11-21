@@ -1,5 +1,6 @@
 // 搭載モジュールごとのプロパティウィンドウの寿命と、確認・接舷候補の操作を管理する。
 import { PropertyWindow } from '../../hud-kit/windows/property-window';
+import { WindowLedger } from '../../hud-kit/windows/window-ledger';
 import { ModularShip } from '../ship/modular-ship';
 import { dockingEligibility } from '../ship/ship-connection-rules';
 import { moduleContent, moduleItems, type ModuleInspectionAction } from './module-inspection';
@@ -46,7 +47,7 @@ export interface ModuleWindowOpener {
 }
 
 export class ModuleWindows implements ModuleWindowOpener {
-  private readonly windows = new Map<string, ModuleWindowEntry>();
+  private readonly windows = new WindowLedger<ModuleAction, ModuleWindowEntry>();
   private readonly pending = new Set<PendingModuleAction>();
 
   public constructor(
@@ -65,17 +66,11 @@ export class ModuleWindows implements ModuleWindowOpener {
     const module = ship.assembly.module(moduleId);
     if (module === null) return;
     const key = `${ship.id}:${moduleId}`;
-    const existing = this.windows.get(key);
-    if (existing) {
-      existing.win.moveTo(clientX, clientY);
-      existing.win.bringToFront();
-      return;
-    }
+    this.windows.open(key, clientX, clientY, () => {
     const win = new PropertyWindow<ModuleAction>(
       clientX, clientY, moduleContent(ship, module), this.hud.overlayManager,
     );
     const entry: ModuleWindowEntry = { win, ship, moduleId, candidates: null };
-    this.windows.set(key, entry);
     win.onSelect = (act) => {
       if (!ship.inspection.hasModule(moduleId)) return;
       // 確認不要な操作はそのまま命令へ送る。
@@ -118,7 +113,8 @@ export class ModuleWindows implements ModuleWindowOpener {
         } else this.submit(entry, 'undockModule');
       }
     };
-    win.onClose = () => { this.windows.delete(key); };
+    return entry;
+    });
   }
 
   // キーボード/タッチからモジュール行を開くときの既定位置。マウス右クリックは位置を直接渡す。
@@ -157,7 +153,7 @@ export class ModuleWindows implements ModuleWindowOpener {
 
   // 開いているウィンドウをすべて畳む。
   public close(): void {
-    for (const entry of [...this.windows.values()]) entry.win.close();
+    this.windows.closeAll();
   }
 
   // 接舷候補を再評価し、選択中の窓へ保持する。

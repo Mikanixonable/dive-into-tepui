@@ -1,5 +1,6 @@
 // マーカーの骨格の CSS。枠・シンボル・ラベルの置き方と、間引きで伏せる指定を持つ。
 // 種別ごとの重なり順・色・字送りは意味なので、宣言を組む側が別に注入する。
+import { injectOnce } from '../hud-kit/inject-style';
 
 const STYLE_ID = 'marker-structure-style';
 
@@ -25,9 +26,5 @@ const MARKER_STRUCTURE_STYLE = `
 
 // マーカーの骨格の CSS を document へ注入する。同じ id への二度目の呼び出しは何もしない。
 export function injectMarkerStructureStyle(): void {
-  if (document.getElementById(STYLE_ID) !== null) return;
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = MARKER_STRUCTURE_STYLE;
-  document.head.appendChild(style);
+  injectOnce(STYLE_ID, MARKER_STRUCTURE_STYLE);
 }

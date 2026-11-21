@@ -21,7 +21,7 @@ export interface PadZoneVisual {
   readonly key: string;
   readonly color: string;
   readonly position: THREE.Vector3;
-  readonly radius: number; // [m]
+  readonly radius: number; // 描画上の表示半径 [m](画面サイズ由来。占有判定の論理半径ではない)
 }
 
 const RING_SEGMENTS = 128;

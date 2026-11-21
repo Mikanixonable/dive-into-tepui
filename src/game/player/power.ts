@@ -43,7 +43,7 @@ export class PowerSystem {
   }
 
   public static deserialize(serialized: SerializedPowerSystem, assembly: ShipAssembly | null = null): PowerSystem {
-    const { up, down, restoredPanels } = DeployablePanelSet.restore(serialized, 1);
+    const { up, down, restoredPanels } = DeployablePanelSet.deserialize(serialized, 1);
     return new PowerSystem(
       validCharge(serialized.charge) ?? POWER_CAPACITY * 0.75,
       up,

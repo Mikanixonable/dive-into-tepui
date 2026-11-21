@@ -56,7 +56,7 @@ export class RadiatorSystem {
     onContact: RadiatorContactReaction,
     assembly: ShipAssembly | null = null,
   ): RadiatorSystem {
-    const { up, down, restoredPanels } = DeployablePanelSet.restore(serialized, 0);
+    const { up, down, restoredPanels } = DeployablePanelSet.deserialize(serialized, 0);
     return new RadiatorSystem(owner, onContact, up, down, assembly, restoredPanels);
   }
 

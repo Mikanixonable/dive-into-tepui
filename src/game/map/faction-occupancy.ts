@@ -74,7 +74,7 @@ export interface FactionLagrangeZone {
   readonly pointId: string;
   readonly faction: Faction;
   readonly position: Vec3;
-  readonly radius: number; // 判定に使った半径 [m]。パッドの大きさの基準にもなる
+  readonly radius: number; // 判定に使った半径 [m]
 }
 
 // 点の位置と判定半径を受け取り、構成員のいる勢力ぶんだけ占有ゾーンを返す。

@@ -40,7 +40,7 @@ module.exports = (env, argv) => ({
   },
   entry: {
     main: './src/main.ts',
-    'earth-surface-terrain-worker': './src/render/earth-surface-terrain-worker.ts',
+    'earth-surface-terrain-worker': './src/render/earth-surface/terrain-worker.ts',
   },
   resolve: {
     extensions: ['.ts', '.js'],
