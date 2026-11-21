@@ -6,6 +6,7 @@ const RETRYABLE = [
   "Failed to execute 'createBuffer' on 'GPUDevice'",
   'Instance dropped in popErrorScope',
   "Failed to execute 'mapAsync' on 'GPUBuffer'",
+  'RenderBackendUnavailableError',
 ];
 
 function runOnce() {

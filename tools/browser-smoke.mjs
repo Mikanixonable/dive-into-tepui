@@ -1204,8 +1204,8 @@ async function runConfiguredScenario() {
   console.log(`Browser smoke passed (${mode}): production build ran and its HUD held together without page/console fatal errors.`);
 }
 
-try {
-  session = await openChromeSession({
+function launchSession() {
+  return openChromeSession({
     serveDir: path.join(root, 'docs'),
     port,
     debugPort,
@@ -1225,14 +1225,23 @@ try {
       if (event.method === 'Inspector.targetCrashed') fatalEvents.push(event);
     },
   });
-  devTools = session.devTools;
+}
+
+try {
   if (layoutSuite) {
     for (const scenario of layoutScenarios) {
+      // 1シナリオぶんの描画で GPU プロセスが落ちると、以後のナビゲートでアダプタを
+      // 取れなくなる。シナリオごとにセッションを立て直してクラッシュを持ち越さない。
+      await session?.close();
+      session = await launchSession();
+      devTools = session.devTools;
       configureScenario(scenario.query, scenario.creativePreset, scenario.smokeConstruction);
       fatalEvents.length = 0;
       await runConfiguredScenario();
     }
   } else {
+    session = await launchSession();
+    devTools = session.devTools;
     fatalEvents.length = 0;
     await runConfiguredScenario();
   }
