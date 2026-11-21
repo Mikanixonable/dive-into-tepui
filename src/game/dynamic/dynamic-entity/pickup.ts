@@ -150,7 +150,6 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
   public abstract readonly pickerGenre: ObjectPickerGenre;
   public readonly hiddenBehindBodies = true;
   public readonly onlyInFocusedSystem = false;
-  public listPriority(): number { return 0; }
 
   // 表示時刻の ECI 位置。予測が届かない時刻では null。
   public posAt(displayTime: number): Vec3 | null {

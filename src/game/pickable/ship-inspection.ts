@@ -65,8 +65,7 @@ export class ShipInspection implements InspectedObject {
     return this.ship.mapVisibility(policy, viewer);
   }
   public listCounted(): boolean { return false; }
-  public listPriority(viewer: OrbitingObject | null): number { return this.ship === viewer ? -100 : 0; }
-  // 一覧の詳細行。役割・HP・近点高度(PE)を並べる。
+  // 札と検索の行へ添える補助表示。役割・HP・近点高度(PE)を並べる。
   public listDetail(celestialBodies: CelestialBodies): string {
     const center = strongestAttractor(this.ship.motion.state.r, celestialBodies.celestialMotions, this.ship.motion.state.t);
     const elements = this.ship.motion.orbitalElementsAround(center, this.ship.motion.state.t);

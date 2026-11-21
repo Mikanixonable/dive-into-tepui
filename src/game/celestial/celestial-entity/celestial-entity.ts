@@ -67,7 +67,6 @@ export class CelestialEntity implements ObjectPickable {
   public get pickerGenre(): ObjectPickerGenre { return BODY_PICKER_GENRES[this.bodyClass]; }
   public readonly hiddenBehindBodies = false;
   public readonly onlyInFocusedSystem = false;
-  public listPriority(): number { return 0; }
   public listCounted(): boolean { return false; }
   public listDetail(): string { return ''; }
 

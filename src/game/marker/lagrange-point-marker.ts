@@ -112,5 +112,4 @@ export class LagrangePointMarker implements ObjectPickable {
   }
 
   public listCounted(): boolean { return false; }
-  public listPriority(): number { return 0; }
 }

@@ -146,5 +146,4 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   public listDetail(): string { return ''; }
   public listSearchText(): string { return ''; }
   public listCounted(): boolean { return false; }
-  public listPriority(): number { return 0; }
 }

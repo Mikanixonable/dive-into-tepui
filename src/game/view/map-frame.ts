@@ -92,7 +92,7 @@ export class MapFrame implements ViewFrame {
     );
     this.linePickables = new LinePickables(roster, celestialSystem, orbitSlotPresenter);
     this.picking = new MapPicking(
-      hud, camera, roster, celestialSystem, celestialMarkers, markers,
+      hud, camera, roster, celestialSystem, markers,
       navTargetPresenter, navTargetCommands, frameControls, this.objectPickables, this.linePickables, objectWindows,
       controlSelectionCommands, displayWindowManager,
     );

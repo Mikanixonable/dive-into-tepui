@@ -1,4 +1,4 @@
-// 軌道標識の位相点の被選択物。マップ上の ⌾ 記号と軌道物体一覧の行、右クリックの
+// 軌道標識の位相点の被選択物。マップ上の ⌾ 記号と軌道物体パネル、右クリックの
 // プロパティウィンドウの裏側を提供する。実体を持たず、位置は標識の参照軌道から時刻で引く。
 import { len, sub, type Vec3 } from '../../math/vec3';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -111,7 +111,7 @@ export class OrbitSlotPickable implements ObjectPickable {
     return rows;
   }
 
-  // 一覧の行へ添える補助表示。基準天体と周期。
+  // 札と検索の行へ添える補助表示。基準天体と周期。
   public listDetail(bodies: CelestialBodies, _viewer: OrbitingObject | null, displayTime: number): string {
     const pos = this.posAt(displayTime);
     const center = pos === null
@@ -122,5 +122,4 @@ export class OrbitSlotPickable implements ObjectPickable {
     return `${this.slot.name} ${this.listDetail(bodies, viewer, displayTime)}`;
   }
   public listCounted(): boolean { return false; }
-  public listPriority(): number { return 0; }
 }

@@ -51,7 +51,7 @@ body.hud-construction-mode #touch-ui { display: none; }
 #hud.construction-mode #hud-view-options,
 #hud.construction-mode #hud-trajectory-frame,
 #hud.construction-mode #hud-stage-controls,
-#hud.construction-mode #hud-physical-object-list,
+#hud.construction-mode #hud-orbital-objects,
 #hud.construction-mode #hud-topbar,
 #hud.construction-mode #hud-viewbadge,
 #hud.construction-mode #hud-vessel-status,

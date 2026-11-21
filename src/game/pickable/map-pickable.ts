@@ -11,7 +11,7 @@ import type { PickCandidate } from './pick-candidate';
 
 export interface MapPickable extends PickCandidate {
   // 天体に遮られている間は選べなくなるか。天体自身は遮蔽で候補から外さない
-  // (公転・カメラ移動のたびに一覧の行が明滅するため)。
+  // (公転・カメラ移動のたびに軌道物体パネルの図が明滅するため)。
   readonly hiddenBehindBodies: boolean;
   // フォーカス中の惑星系に属するときだけ候補に出すか。
   readonly onlyInFocusedSystem: boolean;

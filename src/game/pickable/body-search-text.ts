@@ -1,4 +1,4 @@
-// 軌道物体一覧の天体区画の行が検索に使う文字列。行には出さないが、操作対象からの距離と
+// 軌道物体パネルの検索が天体に照合する文字列。行には出さないが、操作対象からの距離と
 // その位置を最も強く引く天体の名前で絞り込めるようにする。
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';

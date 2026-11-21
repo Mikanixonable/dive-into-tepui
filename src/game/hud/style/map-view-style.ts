@@ -38,7 +38,6 @@ export const MAP_VIEW_STYLE = `
   overflow: visible;
 }
 
-#hud .hud-map-root.active #hud-physical-object-list h3,
 #hud .hud-map-root.active #hud-view-options h3,
 #hud .hud-map-root.active #hud-orbit h3,
 #hud .hud-map-root.active #burn-management-panel h3,
@@ -53,95 +52,6 @@ export const MAP_VIEW_STYLE = `
   font-weight: 600;
   letter-spacing: 0;
 }
-
-/* Object list: 現在の選択だけを Accent、カメラの関連軌道を Near accent で分ける。 */
-#hud .hud-map-root.active #hud-physical-object-list { max-height: min(576px, 64dvh); }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head {
-  background: var(--glass-inset);
-  border-radius: var(--radius-panel) var(--radius-panel) 0 0;
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-search { padding: 0 0 var(--space-2); }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-search .w-input {
-  min-height: 30px;
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--glass-control);
-  color: var(--title);
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
-  row-gap: var(--space-1);
-  padding: var(--space-1) 0;
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-group-title {
-  flex: 1 0 100%;
-  min-width: 0;
-  color: var(--text-dim);
-  letter-spacing: 0;
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn {
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--glass-control);
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-btn.on {
-  color: var(--color-primary); background: var(--color-primary-fill);
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-breadcrumb {
-  margin: var(--space-2) 0 var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border: 0;
-  border-radius: var(--radius-control);
-  background: var(--glass-inset);
-  color: var(--muted);
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header {
-  border: 0;
-  border-radius: var(--radius-control);
-  color: var(--text-muted);
-  /* 見出しはスクロール領域上端に固定（sticky）される。スクロール時に背後を通過する行が
-     透けて重ならないよう、パネル地と同等の不透明背景を設定する。 */
-  background: var(--glass-quiet);
-  letter-spacing: 0;
-  cursor: pointer;
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:hover { color: var(--color-primary-hover); background: var(--glass-control-hover); }
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-section-header:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
-#hud .hud-map-root.active #hud-physical-object-list .erow {
-  min-height: var(--row-min-h-s);
-  border-radius: var(--radius-control);
-  color: var(--text-dim);
-  transition: color var(--transition-fast), background var(--transition-fast);
-}
-#hud .hud-map-root.active #hud-physical-object-list .erow:hover { color: var(--title); background: var(--glass-control-hover); }
-#hud .hud-map-root.active #hud-physical-object-list .erow:focus { background: var(--color-primary-fill-weak); }
-/* 基調スキンの .erow.focus はこのセレクタより詳細度が低く、上の .erow が指定する色に負ける。
-   フォーカス中の行を目立たせるため、マップ視点でも同じ詳細度で塗り直す。 */
-#hud .hud-map-root.active #hud-physical-object-list .erow.focus {
-  color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 12%, transparent);
-}
-#hud .hud-map-root.active #hud-physical-object-list .erow:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
-@media ${MQ_COARSE} {
-  /* 既定の行高(--row-min-h-s)はマウス向けの詰めた寸法なので、タッチではタップ最小寸法まで広げる。 */
-  #hud .hud-map-root.active #hud-physical-object-list .erow { min-height: var(--hit-target-min); }
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-glyph {
-  flex: 0 0 16px;
-  height: 16px;
-  color: currentColor;
-  text-align: center;
-  font-size: var(--font-xs);
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-glyph svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-#hud .hud-map-root.active #hud-physical-object-list .physical-object-list-detail { color: var(--text-dim); }
 
 /* View: 種別、表示要素、天球を先に読ませ、選択色は小さな点灯へ絞る。 */
 #hud .hud-map-root.active #hud-view-options .view-options-section-heading {
@@ -333,7 +243,7 @@ export const MAP_VIEW_STYLE = `
 ${opaqueGlassFallbackStyle('#hud-map-scale')}
 
 @media ${MQ_MEDIUM_DOWN} {
-  #hud .hud-map-root.active #hud-physical-object-list,
+  #hud .hud-map-root.active #hud-orbital-objects,
   #hud .hud-map-root.active #hud-view-options,
   #hud .hud-map-root.active .hud-frame-controls { border-radius: var(--radius-panel); }
   #hud .hud-map-root.active #hud-view-options .view-options-section-heading,
@@ -350,8 +260,6 @@ ${opaqueGlassFallbackStyle('#hud-map-scale')}
     --rail-w-left: calc(42vw - 8px);
     --rail-w-right: calc(54vw - 8px);
   }
-  #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-head .w-group-title,
-  #hud .hud-map-root.active #hud-physical-object-list .physical-object-list-detail { font-size: 8px; }
   #hud .hud-map-root.active #hud-view-options .view-options-section-heading,
   #hud .hud-map-root.active #hud-view-options .body-class-row { grid-template-columns: 68px minmax(0, 1fr); }
   #hud .hud-map-root.active #hud-view-options .body-class-row.target-class-row { grid-template-columns: minmax(0, 1fr); }
