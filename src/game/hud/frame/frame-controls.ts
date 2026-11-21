@@ -3,6 +3,7 @@ import type { FrameAnchorSource, FrameRotationSource } from '../../../physics/fr
 import type { Vec3 } from '../../../math/vec3';
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import type { ListedObject } from '../../pickable/listed-object';
 import type { FocusCameraCommands } from '../../viewer/camera-commands';
 import type { CameraFrameSample, CameraRotationFollow, FocusCameraSource } from '../../viewer/focus-camera-selection';
@@ -125,7 +126,10 @@ export class FrameControls {
   }
 
   // パネルの選択肢と選択表示を、現在の視点と天体系へ合わせる。
-  public sync(pickables: readonly ListedObject[], cameraPos: Vec3, displayTime: number): void {
+  public sync(
+    pickables: readonly ListedObject[], cameraPos: Vec3, displayTime: number,
+    visibilityPolicy: MapVisibilityPolicy | null,
+  ): void {
     const members = this.celestialBodies.systemMembersAt(cameraPos, displayTime);
     const sample = this.cameraPresentation.sample('map');
     this.mapPanel.sync(pickables, members, displayTime, {
@@ -136,7 +140,7 @@ export class FrameControls {
       projection: this.mapCamera.projection,
       fovDeg: this.mapCamera.fov,
       referencePlane: this.mapCamera.referencePlane,
-    });
+    }, visibilityPolicy);
     this.combatCameraPanel.sync(
       this.combatCamera.cameraRotationMode,
       this.combatCamera.rotationFollow?.kind === 'attitude',

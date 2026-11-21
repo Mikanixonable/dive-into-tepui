@@ -14,6 +14,7 @@ import type { CameraRotationMode } from '../../viewer/camera-orientation';
 import type { ProjectionMode } from '../../../math/projection';
 import type { ListedObject } from '../../pickable/listed-object';
 import type { DisplayTimelineSource } from '../../viewer/display-timeline-selection';
+import type { MapVisibilityPolicy } from '../../map/visibility-policy';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { isLagrangeId } from '../../celestial/lagrange-id';
 import { expandHitTarget } from '../../../hud/widgets/widget-base';
@@ -366,7 +367,7 @@ export class MapFramePanel {
 
   public sync(
     pickables: readonly ListedObject[], members: readonly string[], displayTime: number,
-    cam: MapFrameCameraViewModel,
+    cam: MapFrameCameraViewModel, visibilityPolicy: MapVisibilityPolicy | null,
   ): void {
     const linked = this.displayTimeline.followCamera;
     if (this.lastLinked !== linked) {
@@ -379,18 +380,23 @@ export class MapFramePanel {
     }
 
     this.syncSummary(cam, linked);
+    const includeId = (id: string): boolean => {
+      const isCelestial = this.celestialBodies.bodyClassOf(id) !== null || isLagrangeId(id);
+      return !isCelestial || visibilityPolicy === null || visibilityPolicy.isRevealed(id);
+    };
+    const selectablePickables = pickables.filter((item) => includeId(item.id));
 
     // 視点側の中心ピッカー・タイル・L 点行。
     this.camPicker.setGroups([
       { label: '', items: [[null, '固定を解除']] },
       ROLE_GROUP,
-      ...groupPickables(this.celestialBodies, pickables, true),
+      ...groupPickables(this.celestialBodies, selectablePickables, true, includeId),
     ]);
     this.camPicker.setSelected(cam.focusId);
-    this.camCenterTiles.setItems(this.buildCenterTiles(members, pickables, true));
+    this.camCenterTiles.setItems(this.buildCenterTiles(members, selectablePickables, true));
     this.camCenterTiles.setSelectedKey(cam.focusId ?? '__free__');
 
-    const lagrangeTiles = this.buildLagrangeTiles(members, pickables, cam.focusId);
+    const lagrangeTiles = this.buildLagrangeTiles(members, selectablePickables, cam.focusId);
     this.camLagrangeRow.element.classList.toggle('hidden', lagrangeTiles.length === 0);
     if (lagrangeTiles.length > 0) {
       this.camLagrangeRow.setItems(lagrangeTiles);
@@ -416,10 +422,10 @@ export class MapFramePanel {
       const frame = this.displayTimeline.frame;
       this.frmPicker.setGroups([
         ROLE_GROUP as ObjectPickerGroup<string>,
-        ...groupPickables(this.celestialBodies, pickables, false),
+        ...groupPickables(this.celestialBodies, selectablePickables, false, includeId),
       ]);
       this.frmPicker.setSelected(frame.center);
-      this.frmCenterTiles.setItems(this.buildCenterTiles(members, pickables, false) as TileItem<string>[]);
+      this.frmCenterTiles.setItems(this.buildCenterTiles(members, selectablePickables, false) as TileItem<string>[]);
       this.frmCenterTiles.setSelectedKey(frame.center);
       this.frmRotTiles.setItems(this.buildFrameRotationTiles(members, displayTime));
       this.frmRotTiles.setSelectedKey(rotationSourceKey(frame.rotatingWith));

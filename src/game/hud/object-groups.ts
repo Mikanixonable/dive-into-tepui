@@ -16,6 +16,7 @@ interface CelestialBodyRoster {
 // items をジャンル別にグループ分けする。値は ListedObject.id。空のグループは返さない。
 export function groupPickables(
   roster: CelestialBodyRoster, items: readonly ListedObject[], includeAllCelestialBodies = false,
+  includeId: (id: string) => boolean = () => true,
 ): readonly ObjectPickerGroup<string>[] {
   const byGenre = new Map<ObjectPickerGenre, [string, string][]>();
   const shownIds = new Set<string>();
@@ -26,6 +27,7 @@ export function groupPickables(
   };
 
   for (const item of items) {
+    if (!includeId(item.id)) continue;
     shownIds.add(item.id);
     if (item.pickerGenre !== null) push(item.pickerGenre, item.id, item.name);
   }
@@ -35,7 +37,7 @@ export function groupPickables(
   if (includeAllCelestialBodies) {
     for (const motion of roster.celestialMotions) {
       const bodyClass = roster.bodyClassOf(motion.id);
-      if (shownIds.has(motion.id) || bodyClass === null) continue;
+      if (shownIds.has(motion.id) || bodyClass === null || !includeId(motion.id)) continue;
       push(BODY_PICKER_GENRES[bodyClass], motion.id, roster.nameOf(motion.id));
     }
   }

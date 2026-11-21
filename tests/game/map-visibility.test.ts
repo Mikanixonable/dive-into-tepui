@@ -14,8 +14,10 @@ import {
 } from '../../src/game/map/display-toggles';
 import { alwaysFullyVisibleIds, MapVisibilityPolicy } from '../../src/game/map/visibility-policy';
 import { BODY_REVEAL_BASE, revealedAfterClear } from '../../src/game/celestial/body-reveal';
+import { groupPickables } from '../../src/game/hud/object-groups';
 import { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import { v3, addScaled } from '../../src/math/vec3';
+import type { ListedObject } from '../../src/game/pickable/listed-object';
 
 const MIN_CLEARANCE = 10;
 
@@ -50,6 +52,14 @@ const SATELLITES_OFF: MapDisplayToggles = {
 function massRatio(id: string): number {
   const motion = motionOf(PARTS, id);
   return motion.def.mu / (motion.primary!.def.mu + motion.def.mu);
+}
+
+function listedObject(id: string, pickerGenre: ListedObject['pickerGenre']): ListedObject {
+  return {
+    id, name: id, gone: false, orbitState: null, glyph: '', glyphSvg: null,
+    posAt: () => null, listSection: null, pickerGenre,
+    listDetail: () => '', listSearchText: () => '', listCounted: () => false,
+  };
 }
 
 export function register(): void {
@@ -303,6 +313,22 @@ export function register(): void {
     const sunEarth = new MapVisibilityPolicy(SYSTEM, toggles, new Set(['sun', 'earth']));
     assert.equal(sunEarth.body('earth-l1').pickable, true, '太陽と地球が解放されていれば出る');
     assert.equal(sunEarth.body('jupiter-l1').pickable, false, '木星が未解放の系は出ない');
+    assert.equal(sunOnly.isRevealed('earth-l1'), false, '親天体が未解放なら候補に含めない');
+    assert.equal(sunEarth.isRevealed('earth-l1'), true, '両方解放済みなら候補に含める');
+  });
+
+  test('reveal: 中心選択の全天体候補も解放済みだけに絞る', () => {
+    const policy = new MapVisibilityPolicy(SYSTEM, DEFAULT_MAP_DISPLAY_TOGGLES, new Set(BODY_REVEAL_BASE));
+    const groups = groupPickables(SYSTEM, [
+      listedObject('mars', '惑星'),
+      listedObject('jupiter-l1', 'ラグランジュ点'),
+      listedObject('probe', '自艦'),
+    ], true, (id) => {
+      if (SYSTEM.bodyClassOf(id) !== null || id === 'jupiter-l1') return policy.isRevealed(id);
+      return true;
+    });
+    const ids = groups.flatMap((group) => group.items.map(([id]) => id));
+    assert.deepEqual(ids, ['sun', 'earth', 'moon', 'probe']);
   });
 
   test('reveal: 解放の集合を渡さなければ、天体を伏せない', () => {
