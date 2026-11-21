@@ -2,6 +2,8 @@
 // 描画を所有する。モデル層の根 Game を読み、命令の列へ積み、進行の末尾へ渡す材料を組む。
 import { SYNC_SECTION, type FrameSections, type SyncSectionId } from './frame-sections';
 import { CUMULUS_DETAIL } from '../render/opaque-cloud-surface-renderer';
+import { CloudQualityGovernor } from '../render/earth-weather/cloud/cloud-quality-governor';
+import { GPU_PASS } from '../render/gpu-timings';
 import { CameraSystem } from './camera/camera-system';
 import { controlSelectionCommands } from './control-selection-commands';
 import { simSpeedCommands } from './dynamic/sim-speed-commands';
@@ -93,6 +95,11 @@ export class GamePresentation {
   private readonly uiSfx: UiSfx;
   // 操作と出来事から出す UI の効果音を、同期まで溜める先。
   private readonly uiSounds = new UiSoundQueue();
+  // 雲の実効の精細さを決める予算上限の状態機械。フレーム時間と雲の GPU 時間から
+  // 段を締める。各天体の雲へは sync ごとに同じ実体を結ぶ。
+  private readonly cloudGovernor = new CloudQualityGovernor();
+  // ガバナがフレーム時間を測るための、前フレームの同期時刻 [ms]。
+  private lastSyncNowMs: number | null = null;
   // 進行が記録した出来事を UI の効果音・通知へ写す読み手。
   private readonly runEventPresenter: RunEventPresenter;
   // 天体系・ステージ・長押しの宣言を1つにまとめて置くマーカー。
@@ -504,6 +511,23 @@ export class GamePresentation {
   ): void {
     const { celestialSystem, dynamicSystem, viewer } = this.game;
     this.syncSections.enter(SYNC_SECTION.celestial);
+    // 雲の品質適応をこのフレームの計測へ更新する。時刻印が取れない環境では予算上限を
+    // 働かせない(フットプリント上限だけが効く)。ポーズ・マップ・加速中は窓を進めない —
+    // その間のフレーム時間は雲の費用と関係なく歪む。
+    const gpu = this.devices.scene.gpu;
+    const frameMs = this.lastSyncNowMs === null ? 0 : nowMs - this.lastSyncNowMs;
+    this.lastSyncNowMs = nowMs;
+    this.cloudGovernor.update(
+      frameMs,
+      gpu.supported
+        ? gpu.msOf(GPU_PASS.cloudSurface) + gpu.msOf(GPU_PASS.cloudAtmosphere)
+          + gpu.msOf(GPU_PASS.cloudShadow)
+        : null,
+      !this.isPaused && view !== 'map' && this.game.simSpeedManager.simSpeed === 1,
+    );
+    for (const presentation of celestialSystem.cloudPresentations()) {
+      presentation.setQualityGovernor(this.cloudGovernor);
+    }
     celestialSystem.sync(
       displayTime, nowMs, camera, view, viewer.camera.map, this.cameraSystem.mapResolvedFocus,
       graphics, style,
@@ -648,11 +672,17 @@ export class GamePresentation {
   }
 
   // 表示生成処理から得られる計測値。
-  public perfCounts(): Pick<PerfCounts, 'planArcs' | 'mapMode' | 'mapItems' | 'mapLabels' | 'displayDurationSec'> {
+  public perfCounts(): Pick<PerfCounts,
+    'planArcs' | 'mapMode' | 'mapItems' | 'mapLabels' | 'displayDurationSec' | 'cloudQuality'
+  > {
+    // 雲の実効の精細さは、雲が見えている天体のものを優先して出す。
+    const clouds = this.game.celestialSystem.cloudPresentations();
+    const cloudPresentation = clouds.find((p) => p.cloudsVisible) ?? clouds[0] ?? null;
     return {
       ...this.planDisplay.perfCounts(),
       ...this.viewManager.activeView.perfCounts(),
       displayDurationSec: this.displayWindowManager.current.duration,
+      cloudQuality: cloudPresentation?.cloudQuality ?? null,
     };
   }
 }

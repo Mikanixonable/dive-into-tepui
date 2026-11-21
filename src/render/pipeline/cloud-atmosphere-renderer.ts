@@ -112,6 +112,9 @@ export class CloudAtmosphereRenderer {
   private readonly active: FloatUniform;
   // 巻雲の筋の細部。
   private readonly cirrusDetail = new CirrusDetailEvaluator();
+  // 巻雲の細部の段数の上限(設定値)。実効値は雲の入力が持ち、set() でこの上限と
+  // 小さい方を置く。
+  private cirrusOctaveCap = 0;
 
   // 天体 1 体ぶんの雲の uniform を確保する。雲の有無は uniform で切るので、グラフの
   // 形は変わらない。
@@ -120,8 +123,10 @@ export class CloudAtmosphereRenderer {
     this.active = uniform(0);
   }
 
-  // 巻雲の細部の段数を置く。段数は uniform なので、グラフは組み直さない。
+  // 巻雲の細部の段数の上限を置く。実効値は set() が雲の入力から読む。段数は uniform
+  // なので、グラフは組み直さない。
   public setCirrusOctaves(count: number): void {
+    this.cirrusOctaveCap = count;
     this.cirrusDetail.setOctaves(count);
   }
 
@@ -130,6 +135,8 @@ export class CloudAtmosphereRenderer {
     this.active.value = clouds === null || !clouds.cirrusVisible ? 0 : 1;
     if (clouds === null) return;
     this.bodyFromWorld.value.copy(clouds.bodyFromWorld);
+    // 実効の段数は雲の入力が持つ。上限(設定値)を越えないよう小さい方を置く。
+    this.cirrusDetail.setOctaves(Math.min(this.cirrusOctaveCap, clouds.cloud.cirrusOctaves));
     this.fieldSampler.bind(clouds.cloud.field);
     this.cirrusDetail.syncClock(clouds.cloud.clock.displayTime, clouds.cloud.clock.simSpeed);
   }

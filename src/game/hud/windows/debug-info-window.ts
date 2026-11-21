@@ -15,6 +15,7 @@ import { GPU_PASS_COUNT, GPU_PASS_LABELS, type GpuTimings, type GpuPassId } from
 import type { OverlayManager } from '../../../hud/overlay-manager';
 import { KEY_MAPPING as K } from '../../../input/key-mapping';
 import type { PerfCounts, PerfCountSource } from '../../perf-counts';
+import type { CloudQualityReading } from '../../../render/earth-weather/cloud/cloud-quality-governor';
 import type { EntityCountKind } from '../../dynamic/dynamic-entity/entity-kind';
 import type { PropertyRow } from '../../../hud/windows/property-window-content';
 
@@ -89,6 +90,20 @@ function barText(ms: number): string {
 function percentile(sorted: readonly number[], ratio: number): number {
   const i = Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * ratio) - 1));
   return sorted[i] ?? 0;
+}
+
+// 段番号(0..2)の表示名と、実効段を決めた上限の表示名。
+const TIER_LABELS = ['粗', '標準', '精細'] as const;
+const LIMITER_LABELS: Record<CloudQualityReading['limiter'], string> = {
+  setting: '設定', footprint: 'footprint', budget: '予算',
+};
+
+// 実効段の行の値。「標準」なら設定値のまま、「標準→粗(予算)」なら予算上限で下がっている。
+function cloudQualityText(reading: CloudQualityReading): string {
+  const effective = TIER_LABELS[reading.effective] ?? `${reading.effective}`;
+  if (reading.limiter === 'setting') return effective;
+  const setting = TIER_LABELS[reading.setting] ?? `${reading.setting}`;
+  return `${setting}→${effective}(${LIMITER_LABELS[reading.limiter]})`;
 }
 
 export class DebugInfoWindow {
@@ -370,6 +385,16 @@ export class DebugInfoWindow {
       ...this.gpuStats.map((s, i) => this.gpuPassRow(i, s, frames)),
       this.countRow('draw-calls', 'draw calls', '描画', this.drawCallStats, frames),
       this.countRow('draw-tris', 'triangles', '描画', this.triangleStats, frames),
+
+      // 雲の実効の精細さ。設定から下がっているときは「設定→実効(決め手)」の形で出す。
+      {
+        key: 'cloud-cumulus-detail', label: '積雲 実効段', group: '雲',
+        value: c.cloudQuality === null ? '—' : cloudQualityText(c.cloudQuality.cumulus),
+      },
+      {
+        key: 'cloud-cirrus-detail', label: '巻雲 実効段', group: '雲',
+        value: c.cloudQuality === null ? '—' : cloudQualityText(c.cloudQuality.cirrus),
+      },
 
       ...RATE_COUNTS.map((r, i) => this.countRow(r.key, r.label, r.group, this.rateStats[i]!, frames)),
       { key: 'arc-lead', label: '先端余裕', group: '予測', value: c.arcLead === null ? '—' : `${c.arcLead.toFixed(0)}s` },
