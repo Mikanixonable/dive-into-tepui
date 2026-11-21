@@ -8,7 +8,7 @@ import { float, vec3 } from 'three/tsl';
 import { test } from '../harness';
 import { evaluateShaderNode, type ShaderValue } from './tsl-node-evaluator';
 import {
-  depthToSpace, depthToSpaceValue, layerDepthValue, polarStretchOf, sunPathGeometry,
+  depthToSpace, depthToSpaceValue, layerDepthValue, polarStretchOf, rayReachesAtmosphere, sunPathGeometry,
   type SunPathAtmosphere,
 } from '../../src/render/pipeline/sun-path-depth';
 import {
@@ -41,8 +41,16 @@ function earthAtmosphere(overrides: Partial<AtmosphereBody> = {}): AtmosphereBod
 // 焼いた表の CPU 側の引き方。GPU と同じく、点の幾何(経路式の TSL 版を評価)から
 // (天頂角余弦・高度) を取って双線形に引く。
 function transmittanceAt(body: AtmosphereBody, point: THREE.Vector3, mu: number): number[] {
-  const { data, altitudeMax } = bakeSunTransmittance(body.optics, body.surfaceRadius);
   const sunPos = new THREE.Vector3(Math.sqrt(1 - mu * mu), mu, 0).multiplyScalar(SUN_DISTANCE);
+  return transmittanceAlong(body, point, sunPos);
+}
+
+// 任意の恒星位置から点へ向かう光線の透過率を返す。大気へ届かない経路は RGB 1 を返す。
+function transmittanceAlong(
+  body: AtmosphereBody, point: THREE.Vector3, sunPos: THREE.Vector3,
+): number[] {
+  // 描画側と同じ光路幾何・透過率表を、TSL評価器から引く。
+  const { data, altitudeMax } = bakeSunTransmittance(body.optics, body.surfaceRadius);
   const atmosphere: SunPathAtmosphere = {
     center: vec3(body.center.x, body.center.y, body.center.z),
     surfaceRadius: float(body.surfaceRadius),
@@ -50,14 +58,19 @@ function transmittanceAt(body: AtmosphereBody, point: THREE.Vector3, mu: number)
     polarStretch: float(polarStretchOf(body.polarRatio)),
   };
   const path = sunPathGeometry(pointNode(point), vec3(sunPos.x, sunPos.y, sunPos.z), atmosphere);
+  const surfaceRadius = num(evaluateShaderNode(atmosphere.surfaceRadius));
+  const cutoffAltitude = altitudeMax;
+  if (!evaluateShaderNode(rayReachesAtmosphere(path, float(surfaceRadius), float(cutoffAltitude)))) {
+    return [1, 1, 1];
+  }
   const sunMu = num(evaluateShaderNode(path.sunMu));
   const radius = num(evaluateShaderNode(path.radius));
-  const surfaceRadius = num(evaluateShaderNode(atmosphere.surfaceRadius));
   return [...sampleSunTransmittance(data, altitudeMax, sunMu, Math.max(radius - surfaceRadius, 0))];
 }
 
 const surfacePoint = new THREE.Vector3(0, SURFACE_RADIUS, 0);
 
+// 太陽の光路が大気を通る高度・方向で透過率を検査するテストを登録する。
 export function register(): void {
   test('sun-transmittance: 焼いた表の全要素が 0..1 に収まる', () => {
     const { data } = bakeSunTransmittance(OPTICS, SURFACE_RADIUS);
@@ -150,6 +163,16 @@ export function register(): void {
     const farMean = (far[0]! + far[1]! + far[2]!) / 3;
     assert.ok(nearMean > 0, '地平線下 1° で透過率が 0 になった');
     assert.ok(farMean < nearMean, `沈むほど下がらない: ${nearMean} -> ${farMean}`);
+  });
+
+  test('sun-transmittance: 月軌道付近で地球大気を外れる光線は消衰しない', () => {
+    const body = earthAtmosphere();
+    const point = new THREE.Vector3(3.844e8, 0, 0);
+    const angle = THREE.MathUtils.degToRad(3.9);
+    const sunDirection = new THREE.Vector3(-Math.cos(angle), Math.sin(angle), 0);
+    const sunPosition = point.clone().addScaledVector(sunDirection, SUN_DISTANCE);
+    const rgb = transmittanceAlong(body, point, sunPosition);
+    assert.deepEqual(rgb, [1, 1, 1]);
   });
 
   test('sun-transmittance: 扁平な天体でも、極の地表では真球の天頂と同じ表を引く', () => {

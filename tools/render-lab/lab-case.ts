@@ -3,7 +3,7 @@
 // インスタンスの枝)を持つ。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
-import { shapeAxes, type PlanetDef } from '../../src/physics/celestial-body-def';
+import { shapeAxes, type ShapeDef } from '../../src/physics/celestial-body-def';
 import { Curve, type CurveSampler } from '../../src/render/curve';
 import { createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
@@ -147,7 +147,9 @@ const texturedSurfaces = new Map<CelestialTexture, CelestialSurface>();
 // axes は半軸 [m]、ready は地表の画像がすべて GPU へ届いたか。同じ texture の天体は表面を共有するので、
 // 1 つのケースに置けるのは 1 体まで。
 export function texturedBody(
-  texture: CelestialTexture, def: PlanetDef, center: THREE.Vector3, apparentDiameterPx: number,
+  texture: CelestialTexture,
+  def: { readonly radius: number; readonly shape?: ShapeDef },
+  center: THREE.Vector3, apparentDiameterPx: number,
 ): { readonly object: THREE.Object3D; readonly axes: THREE.Vector3; readonly ready: () => boolean } {
   const shape = shapeAxes(def.radius, def.shape ?? null);
   const axes = new THREE.Vector3(shape.x, shape.y, shape.z);
