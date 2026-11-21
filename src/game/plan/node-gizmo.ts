@@ -2,6 +2,7 @@
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import { FONT_FAMILY, FONT_XS, Z_HUD_NODE_GIZMO } from '../../theme';
 import { ContextMenu } from '../../hud/windows/context-menu';
+import { injectOnce } from '../../hud/inject-style';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { OverlayManager } from '../../hud/overlay-manager';
 
@@ -72,8 +73,6 @@ interface NodeEntry {
   readonly lbl: HTMLDivElement;
 }
 
-let styleInjected = false;
-
 export class NodeGizmo {
   private readonly root: HTMLDivElement;
   private readonly nodeLayer: HTMLDivElement;
@@ -97,12 +96,7 @@ export class NodeGizmo {
 
   // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ。
   public constructor(root: HTMLElement, overlayManager: OverlayManager) {
-    if (!styleInjected) {
-      styleInjected = true;
-      const style = document.createElement('style');
-      style.textContent = STYLE;
-      document.head.appendChild(style);
-    }
+    injectOnce('node-gizmo', STYLE);
 
     this.root = document.createElement('div');
     this.root.id = 'node-gizmo';
