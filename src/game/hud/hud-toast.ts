@@ -1,7 +1,7 @@
 // HUD のトースト通知。通知レイヤ上の #hud-toast 要素へ文言を出し、控えの反映と
 // 期限切れのフェードアウトをフレームごとの sync で行う。通知の発行は Notifier の
 // 面(hint / toast)で受け、バッジの記号と警告色はここで導く。
-import type { HintKind, Notifier } from '../../hud/notifier';
+import type { HintKind, Notifier } from '../../hud-kit/notifier';
 
 // 控え中のトースト1件ぶん。
 interface PendingToast {

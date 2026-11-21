@@ -1,5 +1,5 @@
 // ヘルプ画面(#hud-help)の CSS。
-import { MQ_COMPACT, MQ_MEDIUM_DOWN } from '../../../hud/breakpoints';
+import { MQ_COMPACT, MQ_MEDIUM_DOWN } from '../../../hud-kit/breakpoints';
 
 export const HELP_PANEL_STYLE = `
 #hud-help {

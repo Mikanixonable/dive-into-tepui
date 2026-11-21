@@ -1,6 +1,6 @@
 // 提示が読む狭い面（ポート）の集まり。面の型は葉に置けるものだけで組み、
 // 受け手が使うメンバだけを持つ。
-import type { KeyBinding } from '../input/key-mapping';
+import type { KeyBinding } from '../input-devices/key-mapping';
 import type { Vec3 } from '../math/vec3';
 import type { CelestialBody } from '../physics/celestial-body';
 import type { KinematicState } from '../physics/kinematic-state';

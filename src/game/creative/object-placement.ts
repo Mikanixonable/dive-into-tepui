@@ -42,7 +42,7 @@ import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { RunEventSink } from '../run-events';
 import type { HudLayers } from '../hud/hud-layers';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import type { ViewMode } from '../view/view-mode';
 
 // 軌道上へ配置できる自機の上限隻数。

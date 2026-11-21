@@ -2,7 +2,7 @@
 // ターゲットの経緯度の軌跡を重ねる。表示範囲(中心経緯度・ズーム)はチャート自身が持つので、
 // このタブはスケール入力欄を持たない。
 import { strongestAttractor } from '../../../physics/attractor';
-import { PointerPanZoom } from '../../../hud/pointer-pan-zoom';
+import { PointerPanZoom } from '../../../hud-kit/pointer-pan-zoom';
 import { projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { buildTabControls, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitProjectionChart } from './orbit-projection-chart';

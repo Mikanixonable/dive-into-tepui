@@ -2,14 +2,14 @@
 // 指定のどちらかを選び、フォームで値を指定して、確定で ObjectPlacerForm を通知する。
 import {
   buildLabeledRow, Button, CloseButton, SegmentedControl, ValueInput,
-} from '../../hud/widgets';
+} from '../../hud-kit/widgets';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { baseMarkerSvg, shipMarkerSvg } from '../marker/marker-shapes';
-import { placeOverlayAt } from '../../hud/layout';
-import { onViewportChange } from '../../hud/viewport';
-import { isCompactViewport } from '../../hud/breakpoints';
-import { wireHeaderDrag } from '../../hud/window-drag';
-import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
+import { placeOverlayAt } from '../../hud-kit/layout';
+import { onViewportChange } from '../../hud-kit/viewport';
+import { isCompactViewport } from '../../hud-kit/breakpoints';
+import { wireHeaderDrag } from '../../hud-kit/window-drag';
+import type { OverlayHandle, OverlayManager } from '../../hud-kit/overlay-manager';
 import type { CollinearPoint } from '../../physics/lagrange';
 import type { PlacementFieldId, PlacementFieldIssue } from './placement-validation';
 import type { CelestialSystem } from '../celestial/celestial-system';

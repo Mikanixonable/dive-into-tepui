@@ -2,7 +2,7 @@
 import { strongestAttractor } from '../../../physics/attractor';
 import { eciToEcl } from '../../../physics/ecliptic';
 import { len, sub } from '../../../math/vec3';
-import { fmtMarkerDist } from '../../../hud/format';
+import { fmtMarkerDist } from '../../../hud-kit/format';
 import type { Vec3 } from '../../../math/vec3';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ListedObject } from '../../pickable/listed-object';

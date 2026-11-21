@@ -1,5 +1,5 @@
 // 選択肢が変わらない同期では DOM を保ち、選択状態だけを更新するタイル列。
-import { expandHitTarget } from '../../../hud/widgets/widget-base';
+import { expandHitTarget } from '../../../hud-kit/widgets/widget-base';
 
 export interface TileItem<V> {
   readonly key: string;

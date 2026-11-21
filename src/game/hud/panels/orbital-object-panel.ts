@@ -1,12 +1,12 @@
 // 路線図・軌道図・フォーカス対象の札をまとめたマップ用パネル。
 import { hudRail } from '../hud-dom';
-import { Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, type CollapseToggleLabels } from '../../../hud/widgets';
-import { injectOnce } from '../../../hud/inject-style';
-import { createKeyCap } from '../../../hud/key-cap';
+import { Button, COLLAPSE_COLLAPSED_GLYPH, COLLAPSE_EXPANDED_GLYPH, type CollapseToggleLabels } from '../../../hud-kit/widgets';
+import { injectOnce } from '../../../hud-kit/inject-style';
+import { createKeyCap } from '../../../hud-kit/key-cap';
 import { buildOrbitalObjectChart, CHART_KINDS, isApproachingEnemy } from './orbital-object-chart';
 import { glyphMarkup, OrbitalObjectSearch, type OrbitalObjectActions } from './orbital-object-search';
 import { applyRoleClass, OrbitalObjectCard, setText } from './orbital-object-card';
-import { buildSpan } from '../../../hud/widgets/widget-base';
+import { buildSpan } from '../../../hud-kit/widgets/widget-base';
 import { ORBITAL_OBJECT_PANEL_STYLE } from '../style/orbital-object-panel-style';
 import type { PanelCollapse } from '../panel-chrome';
 import type { ChartKind, ChartMark, ChartStation } from './orbital-object-chart';

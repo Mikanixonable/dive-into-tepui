@@ -3,7 +3,7 @@ import { pickCombatEntityAtPoint, pickShipModuleAtPoint } from '../pickable/comb
 import { isModularShip } from '../ship/modular-ship';
 import { isUsableConstructionDock, type ConstructionEntry } from '../ship/construction-entry';
 import type { PlanGuide } from '../plan/plan-guide';
-import type { Input } from '../../input/input';
+import type { Input } from '../../input-devices/input';
 import type { TouchControls } from '../hud/touch-controls';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { ObjectWindows } from '../pickable/object-windows';

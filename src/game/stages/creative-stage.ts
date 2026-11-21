@@ -20,7 +20,7 @@ import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { PresentationStageAuthoring } from '../presentation-ports';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import type { ViewMode } from '../view/view-mode';
 import type { PlayerLossCause } from './stage-outcome';
 

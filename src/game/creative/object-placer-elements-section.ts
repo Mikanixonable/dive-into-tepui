@@ -3,8 +3,8 @@
 // プリセット行には基準天体に意味を持つものだけを出す。
 import {
   buildGroupTitle, Button, SegmentedControl,
-} from '../../hud/widgets';
-import { ObjectPicker } from '../../hud/windows/object-picker';
+} from '../../hud-kit/widgets';
+import { ObjectPicker } from '../../hud-kit/windows/object-picker';
 import { getApsisLabelSpec } from '../hud/orbit/orbit-labels';
 import { MU_EARTH, R_EARTH, SIDEREAL_DAY } from '../celestial/solar-system/earth-system';
 import { semiMajorFromPeriod } from '../../physics/elements';
@@ -12,7 +12,7 @@ import { bodyGroupsOf, orbitingIdsOf, sunSyncInclinationDeg } from './orbit-form
 import {
   bindAngleSlider, bindEccentricitySlider, bindRelativeSlider, setSliderValue, sliderField, type SliderRow,
 } from './slider-field';
-import type { OverlayManager } from '../../hud/overlay-manager';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
 import type { PlacementFieldId } from './placement-validation';
 import type { CelestialSystem } from '../celestial/celestial-system';
 import type { ElementsForm, PlacementSection, ReferenceCelestialBody } from './object-placer-panel';

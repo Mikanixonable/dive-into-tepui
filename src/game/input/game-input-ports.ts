@@ -1,13 +1,13 @@
 // ゲーム画面の入力ポートの表: どの単発キーをどの持ち主へ渡すかと、その有効条件。表の並びが
 // 優先順位になる。
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import { simSpeedCommands } from '../dynamic/sim-speed-commands';
 import { viewCommands } from '../viewer/view-commands';
 import { gameCommand } from './game-commands';
 import type { GameInputPort } from './game-input-router';
 import type { PilotInput } from './pilot-input';
 import type { Hud } from '../hud/hud';
-import type { PauseMenu } from '../../hud/windows/pause-menu';
+import type { PauseMenu } from '../../hud-kit/windows/pause-menu';
 import type { CameraSystem } from '../camera/camera-system';
 import type { ViewManager } from '../view/view-manager';
 import type { Targeter } from '../targeter';

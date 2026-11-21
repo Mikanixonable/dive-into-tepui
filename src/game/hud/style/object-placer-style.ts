@@ -1,5 +1,5 @@
 // 物体配置パネル(#hud-object-placer、クリエイティブモード限定)の CSS。
-import { MQ_COMPACT } from '../../../hud/breakpoints';
+import { MQ_COMPACT } from '../../../hud-kit/breakpoints';
 
 export const OBJECT_PLACER_STYLE = `
 /* 右上(上部クロームの下)から始まる浮遊ウィンドウ。ドラッグ・クランプで left/top へ

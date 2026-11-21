@@ -1,17 +1,17 @@
 // 搭載モジュールごとのプロパティウィンドウの寿命と、確認・接舷候補の操作を管理する。
-import { PropertyWindow } from '../../hud/windows/property-window';
+import { PropertyWindow } from '../../hud-kit/windows/property-window';
 import { ModularShip } from '../ship/modular-ship';
 import { dockingEligibility } from '../ship/ship-docking';
 import { moduleContent, moduleItems, type ModuleInspectionAction } from './module-inspection';
 import { CommandCompletion } from '../command-completion';
 import { DockingEligibilityError, type ModuleCommands, type ModuleCommandAction } from './module-commands';
-import type { PropertyWindowItem } from '../../hud/windows/property-window-content';
+import type { PropertyWindowItem } from '../../hud-kit/windows/property-window-content';
 import type { ControlSelection } from '../control-selection';
 import type { HudLayers } from '../hud/hud-layers';
 import type { EntityRoster } from '../dynamic/entity-roster';
-import type { Notifier } from '../../hud/notifier';
+import type { Notifier } from '../../hud-kit/notifier';
 import type { ConstructionEntry } from '../ship/construction-entry';
-import type { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
+import type { ConfirmationOverlay } from '../../hud-kit/windows/confirmation-overlay';
 
 type ModuleAction = ModuleInspectionAction | 'cancelDockCandidates' | `dockCandidate:${number}`;
 

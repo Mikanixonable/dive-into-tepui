@@ -1,11 +1,11 @@
 // 航行指令ウィンドウ: 制約(Δv 上限)と求解した遷移候補の一覧を出すドラッグ可能窓。
 // 候補行を選ぶと onChoose へ渡し、適用は呼び出し側が命令として積む。
-import { DraggableWindow } from '../../hud/windows/draggable-window';
-import { UNCLIPPED_WINDOW_GROUP } from '../../hud/overlay-manager';
-import { Button, ValueInput } from '../../hud/widgets';
-import { injectOnce } from '../../hud/inject-style';
-import { fmtSpeed, fmtTime } from '../../hud/format';
-import type { OverlayManager } from '../../hud/overlay-manager';
+import { DraggableWindow } from '../../hud-kit/windows/draggable-window';
+import { UNCLIPPED_WINDOW_GROUP } from '../../hud-kit/overlay-manager';
+import { Button, ValueInput } from '../../hud-kit/widgets';
+import { injectOnce } from '../../hud-kit/inject-style';
+import { fmtSpeed, fmtTime } from '../../hud-kit/format';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
 import type { TransferCandidate } from '../../physics/transfer-planner';
 
 // ウィンドウを開く既定位置 [px]。

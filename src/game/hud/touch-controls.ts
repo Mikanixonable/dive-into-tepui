@@ -1,15 +1,15 @@
 // タッチ操作を仮想キーへ変換するパッドと、その操作に応じたマーカーを管理する。
-import type { Input, PointerKind } from '../../input/input';
+import type { Input, PointerKind } from '../../input-devices/input';
 import type { ViewMode } from '../view/view-mode';
-import { KEY_MAPPING as K, type KeyBinding } from '../../input/key-mapping';
+import { KEY_MAPPING as K, type KeyBinding } from '../../input-devices/key-mapping';
 import type { ThrustDirection } from '../dynamic/dynamic-entity/pilot-controls';
-import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../../hud/breakpoints';
+import { MQ_COARSE, MQ_COMPACT, MQ_SHORT } from '../../hud-kit/breakpoints';
 import {
   FONT_FAMILY, FONT_XXS, FONT_XL, SPACE_1, TRANSITION_SLOW, Z_TOUCH_UI,
 } from '../../theme';
-import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
+import { injectCommonUiStyle } from '../../hud-kit/style/common-ui-style';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 
 const STYLE = `
 /* システムウィンドウ(ESC メニュー・終了画面・ヘルプ)より下に置く。

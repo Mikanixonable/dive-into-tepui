@@ -9,10 +9,10 @@ import {
 } from '../../src/render/graphics-settings';
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
-import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
-import { Pulldown, SegmentedControl, WIDGET_STYLE, type PulldownColumn } from '../../src/hud/widgets';
-import { injectOnce } from '../../src/hud/inject-style';
-import { applyThemeVariables } from '../../src/hud/style/theme-variables';
+import { GraphicsPanel } from '../../src/hud-kit/panels/graphics-panel';
+import { Pulldown, SegmentedControl, WIDGET_STYLE, type PulldownColumn } from '../../src/hud-kit/widgets';
+import { injectOnce } from '../../src/hud-kit/inject-style';
+import { applyThemeVariables } from '../../src/hud-kit/style/theme-variables';
 import { AU } from '../../src/physics/astronomical-unit';
 import { parseThemePalette } from '../../src/theme';
 import { CUMULUS_DITHER_KNOB } from '../../src/render/earth-weather/cloud/cumulus-shape';

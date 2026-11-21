@@ -1,6 +1,6 @@
 // 建造の取り付け先のガイド(接続面の中心・外向き・半径)を ECI 座標へ写す純関数と、
 // 画面座標へ写した候補をポインタ位置へ当てるピックの純関数。
-import { pickRadiusSq } from '../../input/pointer-precision';
+import { pickRadiusSq } from '../../input-devices/pointer-precision';
 import { qRotate, type Quat } from '../../math/quat';
 import { scale, v3, type Vec3 } from '../../math/vec3';
 import {

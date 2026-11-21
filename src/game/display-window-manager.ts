@@ -1,9 +1,9 @@
 // マップ表示の座標系・表示時刻・期間をフレームごとの表示窓として確定する。
 import { DisplayTimelinePanel } from './hud/panels/display-timeline-panel';
 import type { PanelCollapse } from './hud/panel-chrome';
-import type { OverlayManager } from '../hud/overlay-manager';
+import type { OverlayManager } from '../hud-kit/overlay-manager';
 import { buildTicks } from './hud/orbit/tick-scale';
-import { epochUnixSeconds } from '../hud/format';
+import { epochUnixSeconds } from '../hud-kit/format';
 import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
 import { frameRoleOf } from '../physics/frame';

@@ -1,6 +1,6 @@
 import { LoadingProgress } from '../game/loading-progress';
 import { Run } from '../run/run';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { KEY_MAPPING as K } from '../input-devices/key-mapping';
 import { ResultScreen, type RunTransitions } from './result-screen';
 import { findStageClass } from '../game/stages/stage-dictionary';
 import { selectStage } from './stage-select';
@@ -15,7 +15,7 @@ import type { FrameSections, SyncSectionId } from '../game/frame-sections';
 import type { ViewOptionsSettings } from '../game/view/view-options-settings';
 import type { ThemePalette } from '../theme';
 import type { CurrentGameSource } from './save-browser/save-browser';
-import type { HudShell } from '../hud/hud-shell';
+import type { HudShell } from '../hud-kit/hud-shell';
 import type { GamePhase, RunOptions, RunStats, Stage, StageClass, StageResult } from '../game/stages/stage';
 import { BODY_REVEAL_BASE } from '../game/celestial/body-reveal';
 import { StageRecords, FORECAST_LOSS_STREAK, bestDetailHtml, type BestComparison } from './stage-records';

@@ -1,7 +1,7 @@
 // マップの統合座標系パネル(視点+軌道フレーム)と、戦闘の簡易カメラパネルを所有する。
 import type { FrameAnchorSource, FrameRotationSource } from '../../../physics/frame';
 import type { Vec3 } from '../../../math/vec3';
-import type { OverlayManager } from '../../../hud/overlay-manager';
+import type { OverlayManager } from '../../../hud-kit/overlay-manager';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ListedObject } from '../../pickable/listed-object';
 import type { FocusCameraCommands } from '../../viewer/camera-commands';

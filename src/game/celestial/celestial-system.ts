@@ -25,7 +25,7 @@ import { OrbitGuideView, type VisibleGuideLine } from '../../render/celestial/or
 import { ZeroVelocityView } from '../../render/celestial/orbit-guide/zero-velocity-view';
 import type { OrbitGuideSettings } from '../viewer/orbit-guide-settings';
 import type { TdbJulianDate } from '../../physics/time';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import type { MapOverlayLabel } from '../../render/celestial/celestial-entity/celestial-view';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';

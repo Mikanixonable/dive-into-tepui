@@ -1,6 +1,6 @@
 // Stage 4: 第四ステージ(モルニヤ戦域)。ステージ3クリアで解放。
 import { Stage, type ClearCounts, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import {
   generateCoellipticEnemy,
   generateMolniyaEnemy,

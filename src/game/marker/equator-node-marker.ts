@@ -5,7 +5,7 @@ import { ORBIT_POINT_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './marker-priority';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { Vec3 } from '../../math/vec3';
-import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 

@@ -1,11 +1,11 @@
 // 起動時のステージ選択画面。タイトルの3D場面と並べてステージ一覧を出し、選ばれたステージを返す。
 import { STAGE_CLASSES } from '../game/stages/stage-dictionary';
 import { StageDebug } from '../game/stages/stage-debug';
-import { Button, TabBar } from '../hud/widgets';
-import { bindActivation } from '../hud/widgets/widget-base';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { Button, TabBar } from '../hud-kit/widgets';
+import { bindActivation } from '../hud-kit/widgets/widget-base';
+import { KEY_MAPPING as K } from '../input-devices/key-mapping';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
-import { TITLE_LOGOTYPE_HTML } from '../hud/title-logotype';
+import { TITLE_LOGOTYPE_HTML } from '../hud-kit/title-logotype';
 import { injectStageSelectStyle } from './stage-select-style';
 import { StartEpochForm } from './start-epoch-form';
 import { TITLE_SCENE_PATTERNS, TitleScene } from './title-scene';

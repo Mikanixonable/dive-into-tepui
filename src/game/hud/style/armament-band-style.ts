@@ -1,5 +1,5 @@
 // 武装の帯(#hud-armament-band)の CSS。
-import { MQ_MEDIUM_DOWN } from '../../../hud/breakpoints';
+import { MQ_MEDIUM_DOWN } from '../../../hud-kit/breakpoints';
 
 export const ARMAMENT_BAND_STYLE = `
 /* 武装の帯が見えている間だけ、帯の上端まで combat rail の下端を予約する。

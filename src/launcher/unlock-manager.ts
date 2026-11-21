@@ -1,5 +1,5 @@
 // ステージ解放の判定と、クリア回数の永続化を一元管理する。
-import type { Notifier } from '../hud/notifier';
+import type { Notifier } from '../hud-kit/notifier';
 import type { ClearCounts, StageId } from '../game/stages/stage';
 import { findStageClass, normalizeStageId, STAGE_CLASSES } from '../game/stages/stage-dictionary';
 

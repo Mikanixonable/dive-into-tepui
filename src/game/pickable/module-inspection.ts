@@ -1,5 +1,5 @@
 // 船体の搭載モジュールから、検査ウィンドウの表示内容と選べる操作を導出する。
-import type { PropertyWindowContent, PropertyWindowItem } from '../../hud/windows/property-window-content';
+import type { PropertyWindowContent, PropertyWindowItem } from '../../hud-kit/windows/property-window-content';
 import type { ShipAssembly } from '../ship/ship-assembly';
 import type { ShipModuleInstance } from '../ship/ship-module-instance';
 

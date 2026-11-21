@@ -34,12 +34,12 @@ import {
 import type { RunEventSink } from '../run-events';
 import { CommandCompletion } from '../command-completion';
 import type { Projected } from '../../math/projection';
-import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
-import type { Input } from '../../input/input';
+import type { OverlayHandle, OverlayManager } from '../../hud-kit/overlay-manager';
+import type { Input } from '../../input-devices/input';
 import type { Viewport } from '../../render/viewport';
 import type { CameraSystem } from '../camera/camera-system';
 import type { DisplayWindowManager } from '../display-window-manager';
-import type { Notifier } from '../../hud/notifier';
+import type { Notifier } from '../../hud-kit/notifier';
 import type { CommandQueue } from '../command-queue';
 import type { ModularShip } from './modular-ship';
 

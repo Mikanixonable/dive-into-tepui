@@ -1,6 +1,6 @@
 // 2台のカメラ視点を入力命令と表示用 Viewpoint へ結び、ガンサイトと画角遷移を重ねる。
-import type { Input } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import type { Input } from '../../input-devices/input';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import type { Viewpoint } from '../../math/projection';
 import type { Vec3 } from '../../math/vec3';
 import { v3 } from '../../math/vec3';

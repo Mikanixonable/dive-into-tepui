@@ -1,10 +1,10 @@
 // 直近のシミュレーション進行で記録されたイベントを読み、そのフレームで再生する効果音やトースト通知へ変換・反映するプレゼンテーション層。
 // 文面とキーのラベルはここで組む。
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { KEY_MAPPING as K } from '../input-devices/key-mapping';
 import { MAX_PHYS_SIM_SPEED } from './dynamic/sim-speed-manager';
 import { THROTTLE_LABELS, THROTTLE_LEVELS } from './player/throttle';
 import { len, sub } from '../math/vec3';
-import type { Notifier } from '../hud/notifier';
+import type { Notifier } from '../hud-kit/notifier';
 import type { SoundCue } from '../audio/sfx/sound-cue';
 import type { WorldSound } from '../audio/sfx/world-sfx';
 import type { UiSoundQueue } from './ui-sound-queue';

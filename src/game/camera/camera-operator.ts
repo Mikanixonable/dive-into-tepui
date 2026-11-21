@@ -1,6 +1,6 @@
 // 生のキー・ポインタ入力を、1フレーム分のカメラ操作量へ解釈する。
-import type { Input, MouseDelta } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import type { Input, MouseDelta } from '../../input-devices/input';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import type { Viewport } from '../../render/viewport';
 import type { CameraInput } from '../viewer/focus-camera-selection';
 

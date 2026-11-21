@@ -2,7 +2,7 @@
 // 単位系や意味づけは軸構築側(orbit-chart-axes.ts)および利用コンポーネントが定義する。
 import { edgeColor, FONT_FAMILY, FONT_XXS } from '../../../theme';
 import type { ThemePalette } from '../../../theme';
-import { injectOnce } from '../../../hud/inject-style';
+import { injectOnce } from '../../../hud-kit/inject-style';
 import {
   chartCanvasStyle, drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore,
   type BackingStoreState,

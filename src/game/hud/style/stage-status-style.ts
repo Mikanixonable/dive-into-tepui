@@ -1,5 +1,5 @@
 // ステージ状態表示(#hud-stagestatus)の CSS。
-import { MQ_COARSE_SHORT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../../../hud/breakpoints';
+import { MQ_COARSE_SHORT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../../../hud-kit/breakpoints';
 
 export const STAGE_STATUS_STYLE = `
 /* ステージ状態が見えている間だけ combat rail の下端を予約する。

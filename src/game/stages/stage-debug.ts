@@ -6,7 +6,7 @@ import { addScaled } from '../../math/vec3';
 import { kinematicState } from '../../physics/kinematic-state';
 import { generateWave } from './stage-utils/wave-attack';
 import { generateAssemblyEnemy } from './spawner/enemy-generator';
-import { Button, ToggleSwitch } from '../../hud/widgets';
+import { Button, ToggleSwitch } from '../../hud-kit/widgets';
 import type { Enemy } from '../dynamic/dynamic-entity/enemy';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import { LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST } from './stage-utils/logistics';

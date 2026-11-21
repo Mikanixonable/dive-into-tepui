@@ -1,7 +1,7 @@
 // 戦闘ビューの「カメラ」パネル。回転モード切替と、視点の姿勢追従の切替を表示する。
 // 視点追従はカメラの問いなので艦パネルではなくここに置く(UI-DESIGN.md §8)。
-import { KEY_MAPPING as K } from '../../../input/key-mapping';
-import { Button } from '../../../hud/widgets';
+import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
+import { Button } from '../../../hud-kit/widgets';
 import { CameraRotationModeControl, type CameraRotationModeCommands } from './camera-rotation-mode-control';
 import { buildPanel } from './frame-panel';
 import type { CameraRotationMode } from '../../viewer/camera-orientation';

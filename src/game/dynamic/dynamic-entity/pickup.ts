@@ -1,5 +1,5 @@
 // 軌道上の補給物(接近した自艦が取り込む漂流物)と、その種別ごとの具象。
-import { fmtDist } from '../../../hud/format';
+import { fmtDist } from '../../../hud-kit/format';
 import { len, sub, v3, type SerializedVec3, type Vec3 } from '../../../math/vec3';
 import { PickupView } from '../../../render/dynamic/dynamic-entity/pickup-view';
 import { MenuCommon, type MenuAction } from '../../hud/windows/menu-actions';
@@ -11,16 +11,16 @@ import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
 import { PickupMotion, type PickupKind } from './pickup-motion';
 import type * as THREE from 'three/webgpu';
-import type { PropertyRow } from '../../../hud/windows/property-window-content';
+import type { PropertyRow } from '../../../hud-kit/windows/property-window-content';
 import { deserializeAttitude, type Attitude } from '../../../physics/attitude';
 import { deserializeKinematicState, type KinematicState } from '../../../physics/kinematic-state';
 import type { DynamicView } from '../../../render/dynamic/dynamic-view';
 import type { DynamicMotionThermal } from '../dynamic-motion';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ControlSelection } from '../../control-selection';
-import type { MenuItem } from '../../../hud/windows/context-menu';
+import type { MenuItem } from '../../../hud-kit/windows/context-menu';
 import type { GroupedMarkerItem } from '../../marker/grouped-markers';
-import type { MarkerVisibility } from '../../../marker/marker-visibility';
+import type { MarkerVisibility } from '../../../marker-kit/marker-visibility';
 import type { PresentationStageAuthoring } from '../../presentation-ports';
 import type { ObjectPickable } from '../../pickable/object-pickable';
 import type { MapListSection, ObjectPickerGenre } from '../../pickable/pickable-listing';

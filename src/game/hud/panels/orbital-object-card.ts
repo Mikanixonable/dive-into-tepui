@@ -1,7 +1,7 @@
 // フォーカス対象の情報と操作を示し、開いた束の中身を選ばせる札。
-import { Button } from '../../../hud/widgets';
-import { buildSpan } from '../../../hud/widgets/widget-base';
-import { injectOnce } from '../../../hud/inject-style';
+import { Button } from '../../../hud-kit/widgets';
+import { buildSpan } from '../../../hud-kit/widgets/widget-base';
+import { injectOnce } from '../../../hud-kit/inject-style';
 import { isApproachingEnemy } from './orbital-object-chart';
 import { glyphMarkup, type OrbitalObjectActions } from './orbital-object-search';
 import type { ChartRole } from './orbital-object-chart';

@@ -1,7 +1,7 @@
 // 生の入力を機体の操作量へ解釈する。押下中のキーを軸の押下へ、押下エッジを単発の命令へ写し、
 // 並進キーの連打をラッチを反転する命令にする。
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { KeyBinding } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
+import type { KeyBinding } from '../../input-devices/key-mapping';
 import { gameCommand } from './game-commands';
 import type { GameCommand } from './game-commands';
 import type { ContinuousGameAction } from './game-actions';

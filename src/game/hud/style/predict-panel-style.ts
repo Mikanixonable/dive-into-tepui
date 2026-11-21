@@ -2,7 +2,7 @@
 // #hud-predict-toggle)の CSS。
 import {
   MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN,
-} from '../../../hud/breakpoints';
+} from '../../../hud-kit/breakpoints';
 
 export const PREDICT_PANEL_STYLE = `
 /* 下部の固定バーとその開閉トグル。両者を縦積みの flex にして画面下端に揃え、パネルを畳んでも

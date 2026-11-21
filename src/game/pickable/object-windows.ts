@@ -1,15 +1,15 @@
 // 開いているプロパティウィンドウ（選択対象・搭載部品）と空域メニューを管理する台帳。
 // メニューの可否や関連対象の導出は ObjectWindowActions に委ね、ここは窓の寿命と同期を所有する。
 import type { Hud } from '../hud/hud';
-import { ContextMenu } from '../../hud/windows/context-menu';
+import { ContextMenu } from '../../hud-kit/windows/context-menu';
 import type { MenuAction } from '../hud/windows/menu-actions';
-import { PropertyWindow } from '../../hud/windows/property-window';
+import { PropertyWindow } from '../../hud-kit/windows/property-window';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
 import type { MapCameraSource } from '../viewer/camera-selection';
 import type { DisplayWindowManager } from '../display-window-manager';
 import { focusTargetId } from '../viewer/focus-target';
-import { UNCLIPPED_WINDOW_GROUP } from '../../hud/overlay-manager';
+import { UNCLIPPED_WINDOW_GROUP } from '../../hud-kit/overlay-manager';
 import { EmptySpacePickable } from './empty-space-pickable';
 import type { InspectedObject } from './inspected-object';
 import type { PropertyWindowOpener } from './property-window-opener';

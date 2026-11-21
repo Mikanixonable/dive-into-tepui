@@ -1,8 +1,8 @@
 // 軌道線(公転軌道・船の軌道・軌道ガイド)のプロパティウィンドウ。1本につき高々1枚を保ち、
 // 「所属」欄からその軌道の持ち主のウィンドウを開けるようにする。被選択物のウィンドウと共存する。
-import { PropertyWindow } from '../../hud/windows/property-window';
+import { PropertyWindow } from '../../hud-kit/windows/property-window';
 import type { InspectedObject } from './inspected-object';
-import type { PropertyWindowContent, PropertyWindowRelatedItem } from '../../hud/windows/property-window-content';
+import type { PropertyWindowContent, PropertyWindowRelatedItem } from '../../hud-kit/windows/property-window-content';
 import type { MenuAction } from '../hud/windows/menu-actions';
 import type { HudLayers } from '../hud/hud-layers';
 import type { LinePickable } from './line-pickable';

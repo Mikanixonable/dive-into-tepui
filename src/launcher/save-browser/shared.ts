@@ -1,7 +1,7 @@
 // セーブブラウザの左右ペイン(スロット一覧・手動セーブの一覧)が共通で使う表示部品。
 // 汎用ボタンの組み立てと、ステージ id から表示名への解決を持つ。
-import { Button } from '../../hud/widgets';
-import { injectOnce } from '../../hud/inject-style';
+import { Button } from '../../hud-kit/widgets';
+import { injectOnce } from '../../hud-kit/inject-style';
 import { findStageClass } from '../../game/stages/stage-dictionary';
 
 const STYLE = `

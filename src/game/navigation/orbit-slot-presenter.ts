@@ -9,9 +9,9 @@ import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
 import {
   OrbitSlotLinesView, type OrbitSlotLineDisplay, type VisibleOrbitSlotLine,
 } from '../../render/lines/orbit-slot-lines-view';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MarkerDevice } from '../../marker/marker-device';
-import type { MarkerSink } from '../../marker/marker-sink';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MarkerDevice } from '../../marker-kit/marker-device';
+import type { MarkerSink } from '../../marker-kit/marker-sink';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { ORBIT_POINT_GLYPH } from '../marker/marker-identity';
 import { MARKER_PRIORITY } from '../marker/marker-priority';

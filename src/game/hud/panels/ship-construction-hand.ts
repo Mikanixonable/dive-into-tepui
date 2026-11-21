@@ -2,9 +2,9 @@
 // 「どちらでもない」の3状態を1行で言い切る。操作ボタンを持つのは手持ちの状態だけで、
 // 選択中は選んだモジュールの名前と、操作はそのモジュールの脇に出るメニューにある
 // という案内を示す。「置く」は押せないとき無効化し、理由をバーの中へ示す。
-import { Button, SegmentedControl } from '../../../hud/widgets';
-import { createKeyCap } from '../../../hud/key-cap';
-import { KEY_MAPPING as K } from '../../../input/key-mapping';
+import { Button, SegmentedControl } from '../../../hud-kit/widgets';
+import { createKeyCap } from '../../../hud-kit/key-cap';
+import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import { formatConstructionOrientation } from './ship-construction-format';
 import type { ConstructionSymmetry, ShipConstructionPanelModel } from '../../ship/ship-construction-types';
 import type { HudEls } from '../hud-els';

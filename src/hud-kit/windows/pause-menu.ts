@@ -1,5 +1,5 @@
 import type { GraphicsSettingsData } from '../../render/graphics-settings';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import { placeOverlayAt } from '../layout';
 import { onViewportChange } from '../viewport';
 import { injectOnce } from '../inject-style';

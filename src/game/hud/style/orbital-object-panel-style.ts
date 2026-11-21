@@ -1,5 +1,5 @@
 // マップ右レールの路線図・軌道図・対象検索の見た目。
-import { MQ_COARSE } from '../../../hud/breakpoints';
+import { MQ_COARSE } from '../../../hud-kit/breakpoints';
 
 export const ORBITAL_OBJECT_PANEL_STYLE = `
 #hud-orbital-objects { display: flex; flex-direction: column; gap: var(--space-3); }

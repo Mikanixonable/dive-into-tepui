@@ -2,7 +2,7 @@
 // 月赤道、環境:星空)のトグルと、ゼロ速度曲線節を持つ。対象タブと同じ行の形
 // (見出し+トグル列)を流用し、面/極/網/縮尺を1つの表にまとめる。
 import { DIRECTION_GLYPH } from '../../marker/marker-identity';
-import { Button } from '../../../hud/widgets';
+import { Button } from '../../../hud-kit/widgets';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { LagrangeLabel } from '../../../physics/lagrange';
 import type { ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';

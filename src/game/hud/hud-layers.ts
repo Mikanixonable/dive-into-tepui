@@ -1,7 +1,7 @@
 // 窓・ポップアップ・パネルの配置場所と、折りたたみトグルの配線役をまとめたインターフェース。
 import type { PanelCollapse } from './panel-chrome';
-import type { OverlayLayers } from '../../hud/overlay-layer';
-import type { OverlayManager } from '../../hud/overlay-manager';
+import type { OverlayLayers } from '../../hud-kit/overlay-layer';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
 
 export interface HudLayers {
   // HUD 全体の根。

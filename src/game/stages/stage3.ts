@@ -1,6 +1,6 @@
 // Stage 3: 第三ステージ(LEO 戦域)。
 import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import {
   generateCoellipticEnemy,
   generateCrossingEnemy,

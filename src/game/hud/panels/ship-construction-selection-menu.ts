@@ -1,8 +1,8 @@
 // 選択中モジュールの近くに操作メニューを表示し、選択位置に追従させる。
-import { Button } from '../../../hud/widgets';
-import { clampOverlayPosition } from '../../../hud/layout';
-import { injectOnce } from '../../../hud/inject-style';
-import { KEY_MAPPING as K } from '../../../input/key-mapping';
+import { Button } from '../../../hud-kit/widgets';
+import { clampOverlayPosition } from '../../../hud-kit/layout';
+import { injectOnce } from '../../../hud-kit/inject-style';
+import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import type { Projected } from '../../../math/projection';
 
 // モジュールの画面位置からメニューを離す横方向の隙間 [px]。

@@ -11,7 +11,7 @@ import type { CommandQueue } from '../command-queue';
 import type { ControlSelection } from '../control-selection';
 import type { EntityRoster } from '../dynamic/entity-roster';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { OverlayManager } from '../../hud/overlay-manager';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
 import { isModularShip, type ModularShip } from '../ship/modular-ship';
 import type { OrbitSlotRegistry } from './orbit-slot-registry';
 import type { OrbitSlotCatalogAccess } from './orbit-slot-family';

@@ -4,7 +4,7 @@
 // OrbitGuideSettings を組んで onSettingsChange へ渡す。並べる族は、実在する族を示す
 // availableFamilies から作る。
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { buildLabeledRow, Button, SegmentedControl, TabBar, ToggleSwitch, type ValueInput } from '../../../hud/widgets';
+import { buildLabeledRow, Button, SegmentedControl, TabBar, ToggleSwitch, type ValueInput } from '../../../hud-kit/widgets';
 import {
   AMPLITUDE_MAPPING, COUNT_MAPPING, CYCLES_MAPPING, DIRECTION_ITEMS, OPACITY_MAPPING,
   PHASE_MAPPING, RANGE_MAPPING,

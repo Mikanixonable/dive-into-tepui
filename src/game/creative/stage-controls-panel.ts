@@ -1,6 +1,6 @@
 // クリエイティブモードの「ステージ操作」パネル: 補給・波状攻撃のトグルと、手動スポーンの入力
 // (距離・敵の形状/色)の DOM と UI 状態を持ち、確定した値を onXxx のコールバックで知らせる。
-import { Button, Pulldown, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud/widgets';
+import { Button, Pulldown, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud-kit/widgets';
 
 type EnemyShapeDefinition =
   | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }

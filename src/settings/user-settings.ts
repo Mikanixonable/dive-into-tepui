@@ -8,7 +8,7 @@ import {
   parseMissionTimeFormat, parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
 } from '../game/view/hud-selection';
 import { formatMapDisplayToggles, parseMapDisplayToggles } from '../game/map/display-toggles';
-import { isCoarsePointer } from '../input/pointer-precision';
+import { isCoarsePointer } from '../input-devices/pointer-precision';
 import { formatGridVisibility, parseGridVisibility } from '../render/celestial-grid';
 import { formatGraphics, parseGraphics } from '../render/graphics-settings';
 import { formatRenderStyle, parseRenderStyle } from '../render/render-style';

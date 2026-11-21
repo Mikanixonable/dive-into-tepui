@@ -1,7 +1,7 @@
 // 表示パネル(マップモード左レール)ガイドタブのゼロ速度曲線節。CR3BP のヤコビ定数で決まる
 // 到達可能領域の境界を、断面ゲート・ヤコビ定数入力・ラグランジュ点への一発合わせ・範囲/本数・
 // 透明度で設定させる。操作のたびに、書き換わった項目だけを onChange へ渡す。
-import { Button, ToggleSwitch } from '../../../hud/widgets';
+import { Button, ToggleSwitch } from '../../../hud-kit/widgets';
 import type { LagrangeLabel } from '../../../physics/lagrange';
 import { lagrangePointJacobi } from '../../celestial/orbit-guide/orbit-guide-catalog';
 import type { ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';

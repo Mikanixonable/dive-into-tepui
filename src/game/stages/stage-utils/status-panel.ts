@@ -1,8 +1,8 @@
 // ステージの補助メッセージ・撃墜数と、自機の装甲・温度・電力を示す状況パネル。
 
 import type { ModularShip } from '../../ship/modular-ship';
-import { fmtEnergy } from '../../../hud/format';
-import { Meter } from '../../../hud/widgets';
+import { fmtEnergy } from '../../../hud-kit/format';
+import { Meter } from '../../../hud-kit/widgets';
 import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/combat-ship-entity';
 import { POWER_CAPACITY } from '../../player/power';
 import {

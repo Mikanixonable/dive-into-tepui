@@ -1,6 +1,6 @@
 // ウィンドウのヘッダーを掴んで動かすための、ポインタキャプチャとクリック/ドラッグ境界の
 // 判定(CLICK_MOVE_THRESHOLD)。ヘッダーを持つオーバーレイが共有する。
-import { CLICK_MOVE_THRESHOLD } from '../input/input';
+import { CLICK_MOVE_THRESHOLD } from '../input-devices/input';
 import type { Point2 } from './layout';
 
 interface WindowDragSession {

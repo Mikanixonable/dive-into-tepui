@@ -1,5 +1,5 @@
-import type { Input } from '../../input/input';
-import type { KeyBinding } from '../../input/key-mapping';
+import type { Input } from '../../input-devices/input';
+import type { KeyBinding } from '../../input-devices/key-mapping';
 import type { RawGameInputAdapter } from './game-input-router';
 
 function keyBindingOf(binding: { readonly code: string; readonly altCodes?: readonly string[] }): KeyBinding {

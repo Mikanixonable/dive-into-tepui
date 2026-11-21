@@ -2,7 +2,7 @@
 // 建造セッションを開く処理。始められない理由はヒントで通知する。
 import { lenSq, sub, type Vec3 } from '../../math/vec3';
 import type { ModularShip } from './modular-ship';
-import type { Notifier } from '../../hud/notifier';
+import type { Notifier } from '../../hud-kit/notifier';
 import type { ShipConstruction } from './ship-construction';
 import type { PresentationShip, PresentationShipModule } from '../presentation-ports';
 

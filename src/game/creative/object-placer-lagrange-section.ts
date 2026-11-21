@@ -1,12 +1,12 @@
 // 物体配置パネルの「ラグランジュ点」セクション: 系(主天体-副天体)・共線点・
 // 軌道種別(ハロー/リサジュー)と振幅の入力欄を持つ。振幅の既定値は副天体ごとの
 // オーダーで決める。
-import { SegmentedControl } from '../../hud/widgets';
-import { ObjectPicker } from '../../hud/windows/object-picker';
+import { SegmentedControl } from '../../hud-kit/widgets';
+import { ObjectPicker } from '../../hud-kit/windows/object-picker';
 import { MOON } from '../celestial/solar-system/earth-system';
 import { lagrangeSystemItemsOf, orbitingIdsOf, primaryDistanceKm } from './orbit-form-fields';
 import { numberField, setFieldVisible } from './slider-field';
-import type { OverlayManager } from '../../hud/overlay-manager';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
 import type { CollinearPoint } from '../../physics/lagrange';
 import type { PlacementFieldId } from './placement-validation';
 import type { CelestialSystem } from '../celestial/celestial-system';

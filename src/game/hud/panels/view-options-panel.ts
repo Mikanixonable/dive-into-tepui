@@ -6,7 +6,7 @@ import {
   COLLAPSE_EXPANDED_GLYPH,
   TabBar,
   type CollapseToggleLabels,
-} from '../../../hud/widgets';
+} from '../../../hud-kit/widgets';
 import type { MapDisplayToggles } from '../../map/display-toggles';
 import type { CelestialGridVisibility } from '../../../render/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';

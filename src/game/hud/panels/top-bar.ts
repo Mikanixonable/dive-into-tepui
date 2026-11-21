@@ -1,13 +1,13 @@
 // 画面全体のトップバー(#hud-topbar)の同期: MET・時間加速・NODE WARP・警報灯。
 // 自機の有無に関係なく常に出す画面全体の状態。
 import { SyncThrottle } from '../sync-throttle';
-import { fmtDateTime, fmtElapsedUnits, fmtTime } from '../../../hud/format';
-import { type AlarmLevel, applyAlarmLevel } from '../../../hud/alarm-level';
-import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
+import { fmtDateTime, fmtElapsedUnits, fmtTime } from '../../../hud-kit/format';
+import { type AlarmLevel, applyAlarmLevel } from '../../../hud-kit/alarm-level';
+import { bindActivation, expandHitTarget, stopDragPropagation } from '../../../hud-kit/widgets/widget-base';
 import type { HudEls } from '../hud-els';
 import type { ShipAlarms } from '../../alarm/ship-alarms';
 import { SIM_SPEED_LEVELS } from '../../dynamic/sim-speed-manager';
-import { Pulldown } from '../../../hud/widgets';
+import { Pulldown } from '../../../hud-kit/widgets';
 import type { SettingValue } from '../../../settings/setting-value';
 import type { MissionTimeFormat } from '../../view/hud-selection';
 

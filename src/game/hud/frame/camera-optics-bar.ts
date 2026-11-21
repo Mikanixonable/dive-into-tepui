@@ -2,8 +2,8 @@
 import type { ProjectionMode } from '../../../math/projection';
 import type { CameraRotationMode } from '../../viewer/camera-orientation';
 import { FOCUS_CAMERA_FOV_MAX, FOCUS_CAMERA_FOV_MIN } from '../../viewer/focus-camera-selection';
-import { Button, Slider, ValueInput } from '../../../hud/widgets';
-import { expandHitTarget } from '../../../hud/widgets/widget-base';
+import { Button, Slider, ValueInput } from '../../../hud-kit/widgets';
+import { expandHitTarget } from '../../../hud-kit/widgets/widget-base';
 import { CameraRotationModeControl, type CameraRotationModeCommands } from './camera-rotation-mode-control';
 import { projectionGlyphSvg } from './frame-glyphs';
 

@@ -5,7 +5,7 @@ import { test } from '../harness';
 import { RunEventLog } from '../../src/game/run-events';
 import { RunEventPresenter } from '../../src/game/run-event-presenter';
 import { UiSoundQueue } from '../../src/game/ui-sound-queue';
-import type { Notifier } from '../../src/hud/notifier';
+import type { Notifier } from '../../src/hud-kit/notifier';
 
 // 出した告知を順に溜める Notifier と、その本文。
 function recordingNotifier(): { notifier: Notifier; shown: string[] } {

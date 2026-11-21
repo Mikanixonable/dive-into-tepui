@@ -1,5 +1,5 @@
 // ブースターの段構成・燃焼状態と、各段の状態を示す常設パネル。
-import { Meter } from '../../../hud/widgets';
+import { Meter } from '../../../hud-kit/widgets';
 import { FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO, fuelAlarmLevel } from '../../alarm/alarm-level';
 import type { HudEls } from '../hud-els';
 import type { PresentationBurnManagement } from '../../presentation-ports';

@@ -2,10 +2,10 @@
 // カードを組む。操作はコールバックで呼び出し側へ返す。
 import { MANUAL_SAVE_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
-import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/format';
-import { Button, Meter, TabBar } from '../../hud/widgets';
-import { bindKeyboardActivation } from '../../hud/widgets/widget-base';
-import { injectOnce } from '../../hud/inject-style';
+import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud-kit/format';
+import { Button, Meter, TabBar } from '../../hud-kit/widgets';
+import { bindKeyboardActivation } from '../../hud-kit/widgets/widget-base';
+import { injectOnce } from '../../hud-kit/inject-style';
 import { smallBtn, stageLabel } from './shared';
 
 const STYLE = `

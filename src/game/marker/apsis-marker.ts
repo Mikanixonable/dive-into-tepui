@@ -1,13 +1,13 @@
 // 計画軌道の近点・遠点を指す、実体を持たない被選択物。中心天体に応じた呼称(近地点/近月点…)
 // とマーカー用の略称を答え、その天体の表面からの高度を示す。
 import { getApsisLabelSpec, type OrbitLabelSpec } from '../hud/orbit/orbit-labels';
-import { fmtDist } from '../../hud/format';
+import { fmtDist } from '../../hud-kit/format';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import { ORBIT_POINT_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './marker-priority';
 import { OrbitPointMarker } from './orbit-point-marker';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
 import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
 
 export class ApsisMarker extends OrbitPointMarker {

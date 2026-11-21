@@ -2,8 +2,8 @@
 import { v3, type Vec3 } from '../../math/vec3';
 import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
 import type { InspectedObject } from './inspected-object';
-import type { MenuItem } from '../../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { MenuItem } from '../../hud-kit/windows/context-menu';
+import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
 
 const ORIGIN = v3(0, 0, 0); // ECI [m]
 
