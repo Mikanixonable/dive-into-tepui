@@ -10,6 +10,7 @@ import { Logistics } from '../../src/game/stages/stage-utils/logistics';
 import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
 import { BODY_REVEAL_BASE } from '../../src/game/celestial/body-reveal';
 import { AmmoPickup, isAmmoPickup, type SerializedAmmoPickup } from '../../src/game/dynamic/dynamic-entity/pickup';
+import { loadAmmoModels } from '../../src/render/dynamic/ammo-models';
 import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry, SpawnRecord } from '../../src/game/dynamic/entity-registry';
 import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
@@ -79,7 +80,8 @@ function enemyAt(state: KinematicState, formationRole: FormationRole | null = nu
 }
 
 export function register(): void {
-  test('撃破ドロップ: 撃破で敵機の位置へ弾薬補給が1個出る', () => {
+  test('撃破ドロップ: 撃破で敵機の位置へ弾薬補給が1個出る', async () => {
+    await loadAmmoModels();
     const system = new TestDynamicSystem();
     const { stage } = bareStage(system);
     const enemyState = kinematicState<'eci'>(0, v3(7000e3, 100, -200), v3(50, 7500, -30));
@@ -92,7 +94,8 @@ export function register(): void {
     assert.deepEqual(pickups[0]?.motion.state.r, enemyState.r);
   });
 
-  test('撃破ドロップ: 自機が居ないとき補給は敵機の速度を引き継ぎ小さな乱れで散る', () => {
+  test('撃破ドロップ: 自機が居ないとき補給は敵機の速度を引き継ぎ小さな乱れで散る', async () => {
+    await loadAmmoModels();
     const system = new TestDynamicSystem();
     const { stage } = bareStage(system);
     const enemyState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(50, 7500, -30));
@@ -108,7 +111,8 @@ export function register(): void {
     assert.ok(len(dv) <= 1.5 * Math.sqrt(3));
   });
 
-  test('撃破ドロップ: 自機があるとき補給は自機から見た敵機の相対速度の 0.15 倍を残して飛ぶ', () => {
+  test('撃破ドロップ: 自機があるとき補給は自機から見た敵機の相対速度の 0.15 倍を残して飛ぶ', async () => {
+    await loadAmmoModels();
     const system = new TestDynamicSystem();
     const playerState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7600, 0));
     const enemyState = kinematicState<'eci'>(0, v3(7000e3 + 500, 0, 0), v3(300, 7600, 0));
@@ -135,7 +139,8 @@ export function register(): void {
     assert.equal(system.all().filter(isAmmoPickup).length, 0);
   });
 
-  test('撃破ドロップ: 出た補給は通常の回収判定で拾える', () => {
+  test('撃破ドロップ: 出た補給は通常の回収判定で拾える', async () => {
+    await loadAmmoModels();
     const system = new TestDynamicSystem();
     const { logistics } = bareStage(system);
     const dropState = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0));
@@ -156,7 +161,8 @@ export function register(): void {
     assert.equal(pickedMags, 6);
   });
 
-  test('撃破ドロップ: 落とした敵の陣形での役割でマガジン数が決まり、取り込むとその数が増える', () => {
+  test('撃破ドロップ: 落とした敵の陣形での役割でマガジン数が決まり、取り込むとその数が増える', async () => {
+    await loadAmmoModels();
     const cases: readonly (readonly [FormationRole | null, number])[] = [
       ['shield', 6], ['attacker', 4], ['energy', 4], [null, 2],
     ];
@@ -177,7 +183,8 @@ export function register(): void {
     }
   });
 
-  test('補給の直列化はマガジン数を保ち、記録に無ければ 6 で読む', () => {
+  test('補給の直列化はマガジン数を保ち、記録に無ければ 6 で読む', async () => {
+    await loadAmmoModels();
     const system = new TestDynamicSystem();
     const scene = new THREE.Scene();
     const state = kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0));

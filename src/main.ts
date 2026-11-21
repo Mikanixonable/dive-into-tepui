@@ -6,6 +6,7 @@ import './hackgen-400.css';
 import { createGameScene, RenderBackendUnavailableError, type GameScene } from './render/scene';
 import { renderBackendNoticeOf } from './render/render-backend';
 import { loadShipModuleModels } from './render/dynamic/ship/ship-module-models';
+import { loadAmmoModels } from './render/dynamic/ammo-models';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
 import { newSyncSections, newUpdateSections } from './game/frame-sections';
@@ -47,6 +48,7 @@ async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   const [gameScene] = await Promise.all([
     createGameScene(canvas, graphics, browserViewport()),
     loadShipModuleModels(),
+    loadAmmoModels(),
   ]);
   hideLoading();
   return gameScene;

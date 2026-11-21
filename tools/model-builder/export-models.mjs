@@ -1,5 +1,7 @@
-// 機体・弾・薬莢・破片などのモデルを組み立て、THREE.Object3D.toJSON() でシリアライズして
-// src/assets/models/<名前>.json に書き出すツール。実行時はこの JSON を THREE.ObjectLoader でパースして使う。
+// 機体・弾・薬莢・破片などのモデルを組み立て、src/assets/models/ へ書き出すツール。
+// 小さいモデルは THREE.Object3D.toJSON() でシリアライズして <名前>.json にし、実行時は
+// THREE.ObjectLoader でパースして使う。大きいモデルは GLTFExporter で <名前>.glb のバイナリにし、
+// 実行時は起動時の fetch で取って GLTFLoader でパースして使う。
 //
 // 実行: node tools/model-builder/export-models.mjs
 //
@@ -77,14 +79,43 @@ function mergeStaticChildren(root) {
   }
 }
 
+// glTF には flatShading 相当の指定がない。法線を面ごとに焼くと索引が外れて頂点が数倍に
+// 膨らむので、材質の userData(GLB の extras)へ印を残し、読込側(src/render/dynamic/baked-glb.ts)が
+// flatShading を戻す。テクスチャを貼らない材質の UV は読まれないので書き出さない。
+function prepareForGlb(root) {
+  root.traverse((node) => {
+    if (!node.isMesh || node.geometry == null) return;
+    const materials = Array.isArray(node.material) ? node.material : [node.material];
+    for (const material of materials) {
+      if (material.flatShading === true) material.userData.flatShading = true;
+    }
+    if (materials.every((m) => m.map == null) && node.geometry.hasAttribute('uv')) {
+      node.geometry.deleteAttribute('uv');
+    }
+  });
+}
+
+// Object3D を binary GLB として outPath へ書き出す。
+async function exportGlb(object, outPath) {
+  const exporter = new GLTFExporter();
+  const glbBuffer = await new Promise((resolve, reject) => {
+    exporter.parse(
+      object,
+      (result) => resolve(result),
+      (error) => reject(error),
+      { binary: true },
+    );
+  });
+  writeFileSync(outPath, Buffer.from(glbBuffer));
+  console.log(`Wrote ${outPath} (${Buffer.byteLength(Buffer.from(glbBuffer))} bytes)`);
+}
+
 // ------------------------------------------------------------- 書き出し
 const models = {
   enemy:        buildEnemyShip(),
   enemyVariantA: buildEnemyVariantA(),
   enemyVariantB: buildEnemyVariantB(),
   enemyVariantC: buildEnemyVariantC(),
-  magazine:     buildMagazineMesh(),
-  ammo:         buildAmmoPickup(),
   bullet:       buildBulletMesh(),
   plasma:       buildPlasmaBullet(),
 
@@ -94,10 +125,6 @@ const models = {
   debrisRod:    buildDebrisRod(),
   rcsFuel:      buildRcsFuelPickup(),
 };
-
-// magazine は ammo の子としても使われるため、静的な子メッシュを材質ごとに統合する。
-mergeStaticChildren(models.magazine);
-mergeStaticChildren(models.ammo);
 
 for (const [name, object] of Object.entries(models)) {
   // toJSON() は各ノードの matrix をそのまま書き、position/quaternion/scale から組み直さない。
@@ -109,21 +136,20 @@ for (const [name, object] of Object.entries(models)) {
   console.log(`Wrote ${outPath}`);
 }
 
-// ship-modules は統合 GLB バイナリとして書き出す
+// 大きいモデルは統合 GLB バイナリとして書き出し、起動時に fetch して読む。
+const glbModels = {
+  magazine:     buildMagazineMesh(),
+  ammo:         buildAmmoPickup(),
+};
+
+for (const [name, object] of Object.entries(glbModels)) {
+  mergeStaticChildren(object);
+  prepareForGlb(object);
+  object.updateMatrixWorld(true);
+  await exportGlb(object, join(outDir, `${name}.glb`));
+}
+
 const shipModules = await buildShipModules();
 mergeStaticChildren(shipModules);
 shipModules.updateMatrixWorld(true);
-
-const exporter = new GLTFExporter();
-const glbBuffer = await new Promise((resolve, reject) => {
-  exporter.parse(
-    shipModules,
-    (result) => resolve(result),
-    (error) => reject(error),
-    { binary: true },
-  );
-});
-
-const shipModulesGlbPath = join(outDir, 'ship-modules.glb');
-writeFileSync(shipModulesGlbPath, Buffer.from(glbBuffer));
-console.log(`Wrote ${shipModulesGlbPath} (${Buffer.byteLength(Buffer.from(glbBuffer))} bytes)`);
+await exportGlb(shipModules, join(outDir, 'ship-modules.glb'));

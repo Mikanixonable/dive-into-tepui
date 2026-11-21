@@ -20,6 +20,7 @@ import { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { isShipBlueprint, type ShipBlueprintShelf } from '../../src/game/ship/ship-blueprint';
+import { loadAmmoModels } from '../../src/render/dynamic/ammo-models';
 import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
 import type { EntityRegistry, SpawnRecord } from '../../src/game/dynamic/entity-registry';
 import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
@@ -111,7 +112,8 @@ function cargoOf(stage: Stage): readonly string[] {
 }
 
 export function register(): void {
-  test('鹵獲: 撃破数が節目 3・10・25 を跨ぐと、それぞれの設計図の授与が記録される', () => {
+  test('鹵獲: 撃破数が節目 3・10・25 を跨ぐと、それぞれの設計図の授与が記録される', async () => {
+    await loadAmmoModels();
     const cases: readonly [number, string][] = [
       [3, '鹵獲: 砲座'], [10, '鹵獲: 物資ポッド'], [25, '鹵獲: 強襲艇'],
     ];
@@ -128,7 +130,8 @@ export function register(): void {
     assert.deepEqual(grants.map((grant) => grant.name), ['鹵獲: 砲座', '鹵獲: 物資ポッド', '鹵獲: 強襲艇']);
   });
 
-  test('鹵獲: 棚に同名があるとき、授与は記録するが設計図棚への追加は記録しない', () => {
+  test('鹵獲: 棚に同名があるとき、授与は記録するが設計図棚への追加は記録しない', async () => {
+    await loadAmmoModels();
     const blueprint = { id: 'salvage-gunpod', name: '鹵獲: 砲座', createdAtReal: 0, piece: SALVAGE_BLUEPRINTS[0]!.piece };
     const system = new TestDynamicSystem();
     const stage = bareStage(Stage.prototype, system, 2, shelf([blueprint]));
@@ -137,7 +140,8 @@ export function register(): void {
     assert.deepEqual(grantedNames(system), []);
   });
 
-  test('鹵獲: 授与は棚に同名があっても毎ラン記録し、補給艇のあるステージでは積荷の待ち行列へ積む', () => {
+  test('鹵獲: 授与は棚に同名があっても毎ラン記録し、補給艇のあるステージでは積荷の待ち行列へ積む', async () => {
+    await loadAmmoModels();
     const system = new TestDynamicSystem();
     const stage = bareStage(Stage00.prototype, system, 24, shelf());
     stage.recordEnemyDeath(enemyAt(ENEMY_STATE), 0, 'killed');
@@ -154,7 +158,8 @@ export function register(): void {
     assert.deepEqual(cargoOf(ownedStage), ['assault-craft']);
   });
 
-  test('鹵獲: 補給艇のないステージでは、授与しても積荷の待ち行列へ積まない', () => {
+  test('鹵獲: 補給艇のないステージでは、授与しても積荷の待ち行列へ積まない', async () => {
+    await loadAmmoModels();
     const system = new TestDynamicSystem();
     const stage = bareStage(Stage.prototype, system, 24, shelf());
     stage.recordEnemyDeath(enemyAt(ENEMY_STATE), 0, 'killed');
@@ -177,7 +182,8 @@ export function register(): void {
     assert.equal(nextSalvageMilestoneRemaining(26, null), null);
   });
 
-  test('鹵獲: 授与済みの設計図は同じランで二度記録されない', () => {
+  test('鹵獲: 授与済みの設計図は同じランで二度記録されない', async () => {
+    await loadAmmoModels();
     const system = new TestDynamicSystem();
     // 撃破数が既に節目を過ぎた途中からのランでも、跨いだ分だけ記録される。
     const stage = bareStage(Stage.prototype, system, 2, shelf());
@@ -187,7 +193,8 @@ export function register(): void {
     assert.deepEqual(grantedNames(system), ['鹵獲: 砲座']);
   });
 
-  test('鹵獲: salvageRewards を数えないステージでは授与が記録されない', () => {
+  test('鹵獲: salvageRewards を数えないステージでは授与が記録されない', async () => {
+    await loadAmmoModels();
     const system = new TestDynamicSystem();
     const stage = bareStage(CreativeStage.prototype, system, 2, shelf());
     stage.recordEnemyDeath(enemyAt(ENEMY_STATE), 0, 'killed');
