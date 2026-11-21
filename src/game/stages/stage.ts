@@ -3,39 +3,39 @@
 import { isModularShip, ModularShip, type ModularShipInit } from '../ship/modular-ship';
 import { dropMagsOf, Logistics } from './stage-utils/logistics';
 import { ScoreCounter } from './stage-utils/score-counter';
-import { StatusPanel } from './stage-utils/status-panel';
+import { StatusPanel } from '../hud/panels/stage-status-panel';
 import { loadEphemerisPoints } from '../../physics/ephemeris/catalog';
 import { profileAtOrNull } from '../../physics/ephemeris/profile';
 import { calendarDateToJulianDate, parseCalendarDate, type TdbJulianDate } from '../../physics/time';
 import { addPrimaryRelative, kinematicState, type KinematicState } from '../../physics/kinematic-state';
 import { add, dot, len, scale, sub, v3 } from '../../math/vec3';
-import { RELICS, relicById, type RelicDefinition } from '../relic/relic-catalog';
+import { RELICS, relicById, type RelicDefinition } from '../relic-catalog';
 import { OrbitSlot } from '../navigation/orbit-slot';
 import { orbitSlotStateAt } from '../navigation/orbit-slot-state';
 import { RelicHunt } from './stage-utils/relic-hunt';
 import { solarSystem } from '../celestial/solar-system/solar-system';
-import { BODY_REVEAL_BASE, revealedAfterClear } from '../celestial/body-reveal';
+import { BODY_REVEAL_BASE, revealedAfterClear } from './body-reveal';
 import { CAMPAIGN_STAGE_RULES, type StageRules } from './stage-rules';
 import {
   crossedSalvageMilestones, nextSalvageMilestoneRemaining, nextSalvageRemaining, SALVAGE_REPEAT_EVERY,
   salvageGranted,
-} from '../ship/salvage-blueprints';
+} from '../ship/ship-salvage-blueprints';
 import { SalvageCargo } from './stage-utils/salvage-cargo';
 import type { ShipBlueprintShelf } from '../ship/ship-blueprint';
 import type * as THREE from 'three/webgpu';
-import type { Enemy } from '../dynamic/dynamic-entity/enemy';
+import type { Enemy } from '../dynamic/entity/enemy';
 import type { HudLayers } from '../hud/hud-layers';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import type { PresentationStageAuthoring } from '../presentation-ports';
 import type { EnemyDeathCause, PlayerLossCause, StageOutcome } from './stage-outcome';
-import { ENEMY_MAX_ATTACKERS_PER_GROUP } from '../dynamic/dynamic-entity/enemy-fire-controller';
+import { ENEMY_MAX_ATTACKERS_PER_GROUP } from '../dynamic/entity/enemy-fire-controller';
 import type { StageSimulationEvents } from './stage-simulation-events';
 import type { ControlSelection } from '../control-selection';
 import type { CommandQueue } from '../command-queue';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { OrbitSlotRegistry } from '../navigation/orbit-slot-registry';
 import type { ViewMode } from '../view/view-mode';

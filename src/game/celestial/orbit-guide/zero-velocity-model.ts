@@ -7,7 +7,7 @@ import { v3, type Vec3 } from '../../../math/vec3';
 import { guideSecondary, rotatingFrame } from '../../../physics/orbit-guide';
 import { zeroVelocityCurveSet, type SectionPlane } from '../../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../../render/lines/line-style';
 import type { ViewMode } from '../../view/view-mode';
 import type { ZeroVelocityDisplay } from '../../../render/celestial/orbit-guide/zero-velocity-view';
 import type { ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';

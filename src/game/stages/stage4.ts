@@ -1,12 +1,12 @@
 // Stage 4: 第四ステージ(モルニヤ戦域)。ステージ3クリアで解放。
 import { Stage, type ClearCounts, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import {
   generateCoellipticEnemy,
   generateMolniyaEnemy,
   generatePhasedEnemy,
-} from './spawner/enemy-generator';
-import { COLOR_ENEMY_ORBIT_LINE } from '../lines/entity-line-manager';
+} from './enemy-generator';
+import { COLOR_ENEMY_ORBIT_LINE } from '../entity-line-manager';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 
 export class Stage4 extends Stage {

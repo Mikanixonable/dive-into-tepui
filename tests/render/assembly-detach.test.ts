@@ -2,7 +2,7 @@ import * as assert from 'node:assert/strict';
 import { add, len, sub, v3 } from '../../src/math/vec3';
 import {
   detachedPartOf, detachPart, generateAssemblyShape,
-} from '../../src/render/assembly/assembly-shape';
+} from '../../src/physics/assembly-shape';
 import { test } from '../harness';
 
 // 失われた部品を重心まわりの独立した物体として切り出す契約(SPEC/ASSEMBLY.md「破片」)。

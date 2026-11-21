@@ -6,7 +6,7 @@ import {
 } from '../../src/game/stages/stage-rules';
 import { Logistics, type SerializedLogistics } from '../../src/game/stages/stage-utils/logistics';
 import type { EntityRegistry } from '../../src/game/dynamic/entity-registry';
-import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
+import type { EntityRoster } from '../../src/game/dynamic/entity-registry';
 
 const serialized: SerializedLogistics = {
   resupplyCheckAt: 0,

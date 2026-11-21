@@ -5,7 +5,7 @@ import {
 } from '../../physics/frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
-import type { ReferenceFrames } from '../celestial/reference-frames';
+import type { ReferenceFrames } from '../../physics/reference-frames';
 import type { FocusTarget } from '../viewer/focus-target';
 
 // 注視点の候補。ObjectPickable はこの形を構造的に満たすので、呼び出し側はそのまま渡せる。

@@ -1,6 +1,6 @@
 // クリエイティブステージへ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
-import type { EnemySpawnShape } from '../creative/stage-controls-panel';
+import type { EnemySpawnShape } from '../creative/manual-spawn';
 import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { OrbitSlotOrbit } from '../navigation/orbit-slot';

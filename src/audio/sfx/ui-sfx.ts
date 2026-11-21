@@ -44,7 +44,9 @@ export class UiSfx {
 
   // 短いブリップ。
   private warp(): void {
-    this.engine.tone(660, 0.06, 0.08, 'sine');
+    this.engine.tone(440, 0.07, 0.08, 'sine');
+    this.engine.tone(1320, 0.12, 0.02, 'sine');
+    this.engine.tone(1320, 0.1, 0.012, 'sine', 0.12);
   }
 
   // 候補への吸着: 高く短いクリック。
@@ -83,70 +85,23 @@ export class UiSfx {
     this.engine.noiseBurst(0.06, 'lowpass', 900, 0.05);
   }
 
-  // 置けない操作: 低いブザーを2回鳴らす。
+  // 置けない操作: くぐもった木琴の2音と、かすかな倍音。
   private constructionDeny(): void {
-    const ctx = this.engine.ctx;
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    // 音高: 低めのブザー(160 Hz, 矩形波)。
-    osc.type = 'square';
-    osc.frequency.value = 160;
-    const gain = ctx.createGain();
-    // 音量の包絡: 短い休止を挟んで2回鳴る形。
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(0.05, t + 0.01);
-    gain.gain.setValueAtTime(0.05, t + 0.06);
-    gain.gain.linearRampToValueAtTime(0.0001, t + 0.075);
-    gain.gain.setValueAtTime(0.0001, t + 0.11);
-    gain.gain.linearRampToValueAtTime(0.05, t + 0.12);
-    gain.gain.setValueAtTime(0.05, t + 0.17);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.22);
+    this.engine.tone(440, 0.1, 0.08, 'sine');
+    this.engine.tone(880, 0.1, 0.025, 'sine');
+    this.engine.tone(370, 0.12, 0.08, 'sine', 0.11);
   }
 
-  // 鹵獲の授与: 上へ向かう三音の和音。立ち上がりを強くし、残響は短くする。
+  // 鹵獲の授与: 柔らかく下降する2音と、高い倍音の残り。
   private salvageAward(): void {
-    const ctx = this.engine.ctx;
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    // 音高: G4 → C5 → E5 へ進む。
-    osc.frequency.setValueAtTime(392.0, t);
-    osc.frequency.setValueAtTime(523.25, t + 0.12);
-    osc.frequency.setValueAtTime(659.25, t + 0.24);
-    const gain = ctx.createGain();
-    // 音量の包絡。
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(0.1, t + 0.02);
-    gain.gain.setValueAtTime(0.1, t + 0.3);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.56);
+    this.engine.tone(987, 0.09, 0.05, 'sine');
+    this.engine.tone(740, 0.11, 0.05, 'sine', 0.09);
+    this.engine.tone(1480, 0.3, 0.02, 'sine', 0.17);
   }
 
-  // 建造終了: 上へ進む3音。
+  // 建造終了: 温かい和音と、高い残響。
   private constructionFinish(): void {
-    const ctx = this.engine.ctx;
-    if (!ctx) return;
-    const t = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    // 音高: C5 → E5 → G5 へ進む。
-    osc.frequency.setValueAtTime(523.25, t);
-    osc.frequency.setValueAtTime(659.25, t + 0.09);
-    osc.frequency.setValueAtTime(783.99, t + 0.18);
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, t);
-    gain.gain.linearRampToValueAtTime(0.08, t + 0.02);
-    gain.gain.setValueAtTime(0.08, t + 0.26);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.37);
+    for (const f of [440, 554, 659]) this.engine.tone(f, 0.22, 0.05, 'sine');
+    this.engine.tone(880, 0.3, 0.02, 'sine', 0.15);
   }
 }

@@ -2,18 +2,18 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
-import { EarthSurface, EarthSurfaceContext } from '../../src/render/earth-surface';
-import type { EarthSurfaceDetailConnector } from '../../src/render/earth-surface';
+import { EarthSurface, EarthSurfaceContext } from '../../src/render/earth-surface/earth-surface';
+import type { EarthSurfaceDetailConnector } from '../../src/render/earth-surface/earth-surface';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
-import { EarthSurfaceGpuThree } from '../../src/render/earth-surface-gpu-three';
-import { createEarthSurfaceMaterialBinding } from '../../src/render/earth-surface-material-binding';
-import type { EarthSurfaceGpuTextures } from '../../src/render/earth-surface-gpu';
+import { EarthSurfaceGpuThree } from '../../src/render/earth-surface/gpu-three';
+import { createEarthSurfaceMaterialBinding } from '../../src/render/earth-surface/material-binding';
+import type { EarthSurfaceGpuTextures } from '../../src/render/earth-surface/gpu';
 import { TEXTURE_RESOLUTION, type TextureResolution } from '../../src/render/deferred-texture';
-import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface-tile-key';
-import { EarthSurfaceView } from '../../src/render/earth-surface-tile-projection';
-import type { EarthSurfaceResidentFrame } from '../../src/render/earth-surface-resident';
-import type { EarthSurfaceSource } from '../../src/render/earth-surface-source';
-import { EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION } from '../../src/render/earth-surface-source';
+import { EARTH_TILE_LAYERS } from '../../src/render/earth-surface/tile-key';
+import { EarthSurfaceView } from '../../src/render/earth-surface/tile-projection';
+import type { EarthSurfaceResidentFrame } from '../../src/render/earth-surface/resident';
+import type { EarthSurfaceSource } from '../../src/render/earth-surface/source';
+import { EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION } from '../../src/render/earth-surface/source';
 import type {
   CelestialSurfaceFrame,
   CelestialSurfaceLike,

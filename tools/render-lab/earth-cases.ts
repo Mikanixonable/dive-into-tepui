@@ -7,7 +7,7 @@ import { Curve } from '../../src/render/curve';
 import { markLitOpaque } from '../../src/render/pipeline/lit-layer';
 import { sphereShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import { MARS, MARS_ATMOSPHERE_OPTICS, MARS_TEXTURE } from '../../src/game/celestial/solar-system/mars-system';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/lines/line-style';
 import { ATMOSPHERE_QUALITY } from '../../src/render/atmosphere';
 import { anglesFromDirection, directionFromAngles, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import { earthCenterOf } from './lab-earth';

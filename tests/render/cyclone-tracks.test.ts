@@ -8,7 +8,7 @@ import { LOW_COUNT, rawLowPlacementAt } from '../../src/render/earth-weather/low
 import { TROPICAL_COUNT, rawTropicalPlacementAt } from '../../src/render/earth-weather/tropical-tracks';
 import {
   cyclonePlacementsAt, lowPlacementAt, tropicalPlacementAt,
-} from '../../src/render/earth-weather/cyclone-tracks';
+} from '../../src/render/earth-weather/cyclone-placements';
 import { EARTH_ROTATION_PERIOD, EARTH_SURFACE_RADIUS, SAMPLE_STEP, completeLives, sampled } from './cyclone-samples';
 import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 import type { Placements } from './cyclone-samples';

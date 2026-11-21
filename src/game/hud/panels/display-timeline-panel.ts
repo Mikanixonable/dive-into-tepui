@@ -3,12 +3,12 @@ import {
   Button, DurationPillRow, EDGE_GRIP_HORIZONTAL_CLASS,
   Slider, ToggleSwitch, ToggleValueEdit,
   type CollapseToggleLabels,
-} from '../../../hud/widgets';
-import { bindActivation } from '../../../hud/widgets/widget-base';
+} from '../../../hud-kit/widgets';
+import { bindActivation } from '../../../hud-kit/widgets/widget-base';
 import type { PanelCollapse } from '../panel-chrome';
-import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
-import { fmtDateTime, fmtDuration } from '../../../hud/format';
-import type { DisplayTick } from '../orbit/tick-scale';
+import type { OverlayHandle, OverlayManager } from '../../../hud-kit/overlay-manager';
+import { fmtDateTime, fmtDuration } from '../../../hud-kit/format';
+import type { DisplayTick } from '../../../hud-kit/tick-scale';
 import {
   APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,
 } from '../../viewer/display-timeline-selection';

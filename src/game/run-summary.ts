@@ -1,11 +1,11 @@
 // いまのランの要約と、その組み立て。
-import { isEnemy } from './dynamic/dynamic-entity/enemy';
+import { isEnemy } from './dynamic/entity/enemy';
 import { isModularShip } from './ship/modular-ship';
 import { autoOrbitReference } from './orbit-reference';
 import { orbitInfo } from './orbit-info';
 import type { CelestialBodies } from './celestial/celestial-bodies';
-import type { Controllable } from './dynamic/dynamic-entity/controllable';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { Controllable } from './dynamic/entity/controllable';
+import type { DynamicEntity } from './dynamic/entity/dynamic-entity';
 import type { GamePhase } from './stages/stage';
 
 export interface RunSummary {

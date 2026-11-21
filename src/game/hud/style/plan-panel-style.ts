@@ -1,5 +1,5 @@
 // MANEUVER PLAN パネル(#hud-plan)の CSS。マップ操作の主パネルとして右レールの最上段に置く。
-import { MQ_MEDIUM_DOWN } from '../../../hud/breakpoints';
+import { MQ_MEDIUM_DOWN } from '../../../hud-kit/breakpoints';
 
 export const PLAN_PANEL_STYLE = `
 #hud .hud-rail > #hud-plan { width: 100%; min-width: 0; max-width: none; max-height: none; overflow: visible; }

@@ -21,7 +21,7 @@ import {
 import type { ShipAssemblyNode as AssemblyNode } from './ship-assembly-types';
 import { shipAssemblyTotals } from './ship-assembly-totals';
 import { validateShipAssembly } from './ship-assembly-validation';
-import { graftEdgesInOrder, pieceOfModule, rerootedAssembly } from './ship-assembly-graft';
+import { graftEdgesInOrder, pieceOfModule, reachableModuleIds, rerootedAssembly } from './ship-assembly-graft';
 import {
   applyTransformToPoint, copyTransform, finiteQuaternion, finiteVector, isIdentityRotation,
   normalizedTransform, sideMountTransform, sideSlotFromTransform,
@@ -592,20 +592,7 @@ export class ShipAssembly {
 
   // excludedEdge を渡らずに start から辿れる module id の集合(連結成分)。
   private component(start: string, excludedEdge: string): Set<string> {
-    const result = new Set<string>(), pending = [start];
-    // 接続を無向に辿る深さ優先の走査。
-    while (pending.length > 0) {
-      const id = pending.pop();
-      if (id === undefined) break;
-      if (result.has(id)) continue;
-      result.add(id);
-      for (const edge of this.connections) {
-        if (edge.id === excludedEdge) continue;
-        if (edge.parentId === id) pending.push(edge.childId);
-        else if (edge.childId === id) pending.push(edge.parentId);
-      }
-    }
-    return result;
+    return reachableModuleIds(this.connections, start, excludedEdge);
   }
 
   // ids の module とその間の接続を、根を単位変換にした新しい assembly へ移す。

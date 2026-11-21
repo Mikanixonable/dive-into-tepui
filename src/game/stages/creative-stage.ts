@@ -1,14 +1,14 @@
 // クリエイティブモード: 物体配置と軌道計画を自由に試すための、勝利条件の無いステージ。
 import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
-import { ManualSpawn, type SerializedManualSpawn } from '../creative/manual-spawn';
+import { ManualSpawn, type EnemySpawnShape, type SerializedManualSpawn } from '../creative/manual-spawn';
 import {
   ObjectPlacement, reachesPlacedShipLimit, type SerializedObjectPlacement,
 } from '../creative/object-placement';
 import type { ObjectPlacementSelection } from '../creative/object-placer-panel';
 import {
-  StageControlsPanel, type EnemySpawnShape,
+  StageControlsPanel,
 } from '../creative/stage-controls-panel';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { isEnemy } from '../dynamic/entity/enemy';
 import { hudRail } from '../hud/hud-dom';
 import { isModularShip } from '../ship/modular-ship';
 import { WaveAttack, type SerializedWaveAttack } from './stage-utils/wave-attack';
@@ -20,7 +20,7 @@ import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { PresentationStageAuthoring } from '../presentation-ports';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import type { ViewMode } from '../view/view-mode';
 import type { PlayerLossCause } from './stage-outcome';
 

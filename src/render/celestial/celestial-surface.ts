@@ -6,13 +6,13 @@ import {
 } from 'three/tsl';
 import { DeferredTexture, type TextureResolution, type TextureUrlSource } from '../deferred-texture';
 import { markLitOpaque } from '../pipeline/lit-layer';
-import { rec709Luminance, scaledToBondAlbedo, type Albedo } from '../celestial-albedo';
+import { rec709Luminance, scaledToBondAlbedo, type Albedo } from './celestial-albedo';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './screen-lod';
 import {
   disposeCelestialSurfaceMaterialAttachment,
   type CelestialSurfaceMaterialAttachment,
 } from './celestial-surface-material';
-import type { CelestialTexture } from '../celestial-textures';
+import type { CelestialTexture } from './celestial-textures';
 import type { RenderStyle } from '../render-style';
 
 // 球の開始方位 [rad]。正距円筒図法のテクスチャは経度 0 を u=0.5 へ置くので、その経線が

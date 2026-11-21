@@ -1,9 +1,9 @@
 // トップバー1行目のコンテキスト表示: 現在のモード・ビュー切替と、注視/操作/ターゲットの対象名。
 import type { ViewMode } from '../view/view-mode';
 import type { ViewCommands } from '../viewer/view-commands';
-import { ContextMenu, type MenuItem } from '../../hud/windows/context-menu';
-import type { OverlayManager } from '../../hud/overlay-manager';
-import { Button } from '../../hud/widgets';
+import { ContextMenu, type MenuItem } from '../../hud-kit/windows/context-menu';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
+import { Button } from '../../hud-kit/widgets';
 
 const VIEW_LABELS: Record<ViewMode, string> = { combat: 'Combat', map: 'Map' };
 

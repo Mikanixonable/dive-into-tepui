@@ -11,7 +11,7 @@ import {
 import { DEFAULT_RENDER_STYLE } from '../../src/render/render-style';
 import { DEFAULT_BGM_VOLUME } from '../../src/audio/bgm/bgm';
 import { DEFAULT_MAP_DISPLAY_TOGGLES } from '../../src/game/map/display-toggles';
-import { DEFAULT_GRID_VISIBILITY } from '../../src/render/celestial-grid';
+import { DEFAULT_GRID_VISIBILITY } from '../../src/render/celestial/celestial-grid';
 
 // 保存の鍵。**利用者の localStorage に残っている文字列そのもの**なので、実装から導かずに直に書く。
 const GRAPHICS_KEY = 'tepui.settings.graphics';

@@ -3,19 +3,19 @@
 // 姿勢リセット/ターゲット選択の2操作と、タッチ時のみのスロットル段は、
 // キー押下と同じ経路で発火するボタンとしてここに持つ — タッチでも到達できるようにするための、
 // キー入力の代替 UI。視点追従はカメラの問いなので戦闘カメラパネルに、弾薬は武装の帯に置く(UI-DESIGN.md §8)。
-import { KEY_MAPPING as K } from '../../../input/key-mapping';
-import { Button, Meter, SegmentedControl } from '../../../hud/widgets';
-import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud/alarm-level';
-import { createKeyCap } from '../../../hud/key-cap';
-import { setReadout } from '../../../hud/readout';
-import { setStatePip } from '../../../hud/state-pip';
+import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
+import { Button, Meter, SegmentedControl } from '../../../hud-kit/widgets';
+import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud-kit/alarm-level-ui';
+import { createKeyCap } from '../../../hud-kit/dom-elements';
+import { setReadout } from '../../../hud-kit/dom-elements';
+import { setStatePip } from '../../../hud-kit/dom-elements';
 import {
   DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO, FUEL_CAUTION_RATIO, FUEL_WARNING_RATIO,
   dynamicPressureAlarmLevel, fuelAlarmLevel,
-} from '../../alarm/alarm-level';
-import { SyncThrottle } from '../sync-throttle';
+} from '../../alarm-level';
+import { SyncThrottle } from '../../../hud-kit/sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';
-import type { KeyBinding } from '../../../input/key-mapping';
+import type { KeyBinding } from '../../../input-devices/key-mapping';
 import type { RadiatorSide } from '../../player/radiator';
 import type { SolarSide } from '../../player/power';
 import { THROTTLE_LEVELS, THROTTLE_LABELS } from '../../player/throttle';

@@ -6,11 +6,11 @@ import * as THREE from 'three/webgpu';
 import {
   EARTH_BASE_LAYER, EARTH_TILE_EXTENT, EARTH_TILE_GUTTER, EARTH_TILE_MAX_Z, EARTH_TILE_TEXELS, EARTH_TILE_MIN_Z,
   earthTileKey,
-} from '../../src/render/earth-surface-tile-key';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-layout';
-import type { EarthTileKey } from '../../src/render/earth-surface-tile-key';
-import { earthSurfaceNormal, earthSurfaceUv, validateEarthAxes } from '../../src/render/earth-surface-coordinate';
-import { EARTH_ICE_ROUGHNESS, EARTH_LAND_ROUGHNESS, EARTH_WATER_ROUGHNESS } from '../../src/render/earth-surface-material-node';
+} from '../../src/render/earth-surface/tile-key';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface/layout';
+import type { EarthTileKey } from '../../src/render/earth-surface/tile-key';
+import { earthSurfaceNormal, earthSurfaceUv, validateEarthAxes } from '../../src/render/earth-surface/coordinate';
+import { EARTH_ICE_ROUGHNESS, EARTH_LAND_ROUGHNESS, EARTH_WATER_ROUGHNESS } from '../../src/render/earth-surface/material-node';
 
 // ページ表の1セルを最近傍で読む。経度の両端を同じセルへ畳み、南極は最終行へ置く。
 export function earthPageAt(table: Uint8Array, u: number, v: number): readonly number[] {

@@ -11,18 +11,18 @@ import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
 import { anglesFromDirection, type EarthAngleKey, type LabViewAngles } from './view-angles';
-import type { Albedo } from '../../src/render/celestial-albedo';
+import type { Albedo } from '../../src/render/celestial/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
 import type { BodyShadow, ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
 import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
-import type { LineStyle } from '../../src/render/line-style';
+import type { LineStyle } from '../../src/render/lines/line-style';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
-import type { CelestialTexture } from '../../src/render/celestial-textures';
+import type { CelestialTexture } from '../../src/render/celestial/celestial-textures';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;

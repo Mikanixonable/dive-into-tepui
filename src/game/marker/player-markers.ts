@@ -3,15 +3,15 @@ import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import type { ViewMode } from '../view/view-mode';
 import { type KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, sub, type Vec3 } from '../../math/vec3';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MarkerSink } from '../../marker/marker-sink';
-import type { MarkerDevice } from '../../marker/marker-device';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MarkerSink } from '../../marker-kit/marker-sink';
+import type { MarkerDevice } from '../../marker-kit/marker-device';
 import { MARKER_PRIORITY } from './marker-priority';
 import { directionPlacement } from './marker-placement';
 import { DIRECTION_GLYPH } from './marker-identity';
 import type { ModularShip } from '../ship/modular-ship';
 import type { ProjectFn } from '../../math/projection';
-import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
+import { sunGlareSpreadScale } from '../sun-glare-spread';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 // 中央に切り欠きを残した、細い線の三尖星(120度間隔)。

@@ -14,7 +14,7 @@ import {
   ARC_MIN_ITEM_STEPS, ARC_STEP_BUDGET, Predictor,
 } from '../../src/game/dynamic/predictor';
 import type { PredictableMotionRoster } from '../../src/game/dynamic/dynamic-simulation-participant';
-import type { TrajectoryDemand } from '../../src/game/dynamic/trajectory-demand';
+import type { TrajectoryDemand } from '../../src/game/dynamic/predictor';
 
 // 表示期間(予測を伸ばす長さ)は十分に大きく取り、弧が歩数以外では止まらないようにする。
 const DAY = 86400;

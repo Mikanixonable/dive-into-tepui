@@ -1,10 +1,10 @@
 // ステージ選択画面(#stage-select)の CSS。
-import { MQ_COMPACT, MQ_SHORT } from '../hud/breakpoints';
-import { injectOnce } from '../hud/inject-style';
-import { injectCommonUiStyle } from '../hud/style/common-ui-style';
+import { MQ_COMPACT, MQ_SHORT } from '../hud-kit/breakpoints';
+import { injectOnce } from '../hud-kit/inject-style';
+import { injectCommonUiStyle } from '../hud-kit/style/common-ui-style';
 import {
   injectTitleLogotypeStyle, TITLE_FONT_MONO, TITLE_FONT_SANS,
-} from '../hud/title-logotype';
+} from '../hud-kit/title-logotype';
 import { RADIUS_HERO, Z_STAGE_SELECT } from '../theme';
 
 // 声(voice)ごとの書体。Web font が使えない環境でも role ごとのフォールバックを保つ。

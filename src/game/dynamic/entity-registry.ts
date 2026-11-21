@@ -1,7 +1,7 @@
 // 生成したエンティティを登録コレクションへ追加するインターフェース。即座に追加するものと、条件充足を待って追加するものを扱う。
-import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { EntityIdAllocators } from './dynamic-entity/entity-id';
-import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
+import type { DynamicEntity } from './entity/dynamic-entity';
+import type { EntityIdAllocators } from './entity/entity-id';
+import type { SerializedDynamicEntity } from './entity/entity-dictionary';
 import type { RunEventSink } from '../run-events';
 
 // 個体を実体化可能かを判定する述語関数。何を待機するかは、待機を決定した側のみが保持する。
@@ -26,4 +26,15 @@ export interface EntityRegistry {
   spawnWhenReady(record: SpawnRecord): void;
   // 外部リソースが揃うのを待機中で、まだエンティティ一覧に追加されていない敵の数。
   readonly pendingEnemyCount: number;
+}
+
+// 現在のエンティティ一覧を参照するインターフェース。生成や破棄の管理に関わらず、全個体を走査する側が使用する。
+
+export interface EntityRoster {
+  // 保持する全エンティティを追加順に返す（読み取り専用）。
+  all(): readonly DynamicEntity[];
+  // エンティティ集合の世代（リビジョン）。追加・除去・prune のいずれでも増える。同じ世代なら構成は変わっていない。
+  readonly collectionRevision: number;
+  // シミュレーション先端時刻。all() の各個体の状態はこの時刻を指す。
+  readonly simTime: number;
 }

@@ -1,17 +1,17 @@
 // HUD の静的 DOM/スタイル構築。
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { HudShell } from '../../hud/hud-shell';
-import { createHudElement } from '../../hud/hud-element';
-import { instrumentRowHtml } from '../../hud/instrument-row';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
+import type { HudShell } from '../../hud-kit/hud-shell';
+import { createHudElement } from '../../hud-kit/hud-element';
+import { instrumentRowHtml } from '../../hud-kit/dom-elements';
 import { HelpPanel } from './windows/help-panel';
 import { PanelChrome } from './panel-chrome';
 import { HudEls } from './hud-els';
 import { LAYOUT_TOKENS_STYLE } from './style/layout-tokens';
 import { SKELETON_STYLE } from './style/skeleton-style';
-import { COMBAT_PANEL_ROWS_STYLE } from './style/combat-panel-rows-style';
+import { COMBAT_PANEL_ROWS_STYLE } from './style/vessel-burn-panels-style';
 import { PLAN_PANEL_STYLE } from './style/plan-panel-style';
 import { VIEW_OPTIONS_PANEL_STYLE } from './style/view-options-panel-style';
-import { PREDICT_PANEL_STYLE } from './style/predict-panel-style';
+import { PREDICT_PANEL_STYLE } from './style/display-timeline-panel-style';
 import { FRAME_CONTROLS_STYLE } from './style/frame-controls-style';
 import { ORBIT_GUIDE_STYLE } from './style/orbit-guide-style';
 import { STAGE_CONTROLS_STYLE } from './style/stage-controls-style';
@@ -21,16 +21,16 @@ import { ARMAMENT_BAND_STYLE } from './style/armament-band-style';
 import { COMBAT_VIEW_STYLE } from './style/combat-view-style';
 import { MAP_VIEW_STYLE } from './style/map-view-style';
 import { SHIP_CONSTRUCTION_STYLE } from './style/ship-construction-style';
-import { EDITORIAL_DATA_STYLE } from '../../hud/style/editorial-data-style';
-import { isCompactViewport } from '../../hud/breakpoints';
-import { startViewportTracking } from '../../hud/viewport';
-import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
+import { EDITORIAL_DATA_STYLE } from '../../hud-kit/style/editorial-data-style';
+import { isCompactViewport } from '../../hud-kit/breakpoints';
+import { startViewportTracking } from '../../hud-kit/visual-viewport';
+import { injectCommonUiStyle } from '../../hud-kit/style/common-ui-style';
 import type { RenderStyle } from '../../render/render-style';
 import type { ViewMode } from '../view/view-mode';
 import {
   Button, buildCollapseToggle, EDGE_GRIP_HORIZONTAL_CLASS, EDGE_GRIP_VERTICAL_CLASS, type CollapseToggleLabels,
-} from '../../hud/widgets';
-import { createKeyCap } from '../../hud/key-cap';
+} from '../../hud-kit/widgets';
+import { createKeyCap } from '../../hud-kit/dom-elements';
 import type { PanelCollapse } from './panel-chrome';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。

@@ -1,7 +1,7 @@
 // モデル層の外から届いた命令の列が、受け付けた順に1度だけ適用されることを検査する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CommandCompletion } from '../../src/game/command-completion';
+import { CommandCompletion } from '../../src/game/command-queue';
 import { CommandQueue } from '../../src/game/command-queue';
 
 export function register(): void {

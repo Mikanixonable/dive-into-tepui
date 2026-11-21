@@ -1,7 +1,7 @@
 // 操作対象の選択へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from './command-queue';
 import type { ControlSelection } from './control-selection';
-import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { Controllable } from './dynamic/entity/controllable';
 
 // 操作対象の選択を外から変える命令。受け付けるだけで、適用は次の進行の位相。
 export interface ControlSelectionCommands {

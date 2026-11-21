@@ -1,7 +1,7 @@
 // 計画線の表示範囲をサンプル列へ切り出す処理の回帰テスト。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { samplesInRange } from '../../src/game/plan/arc-range';
+import { samplesInRange } from '../../src/physics/arc-range';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3 } from '../../src/math/vec3';
 

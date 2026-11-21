@@ -1,19 +1,19 @@
 // 動的エンティティの集合、実体化待ち、上限管理と寿命回収を担う。
 
-import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './entity/dynamic-entity';
 import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { DynamicMotion } from './dynamic-motion';
 import type { EntityRegistry, SpawnGate, SpawnRecord } from './entity-registry';
-import { EntityIdAllocators } from './dynamic-entity/entity-id';
-import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
-import { findEntityClass } from './dynamic-entity/entity-dictionary';
-import { isSerializedEnemy } from './dynamic-entity/enemy';
-import { ENTITY_CAP, type CapKind } from './dynamic-entity/entity-kind';
+import { EntityIdAllocators } from './entity/entity-id';
+import type { SerializedDynamicEntity } from './entity/entity-dictionary';
+import { findEntityClass } from './entity/entity-dictionary';
+import { isSerializedEnemy } from './entity/enemy';
+import { ENTITY_CAP, type CapKind } from './entity/entity-kind';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { DynamicSimulationRoster, SimulationLifecycle } from './dynamic-simulation-participant';
-import { isControllable, type Controllable } from './dynamic-entity/controllable';
+import { isControllable, type Controllable } from './entity/controllable';
 
 // 登録済みクラスの生成条件を調べ、待機が必要かを返す。
 function readyToSpawn(record: SpawnRecord): boolean {

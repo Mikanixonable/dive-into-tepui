@@ -4,7 +4,7 @@ import { test } from '../harness';
 import { CommandQueue } from '../../src/game/command-queue';
 import {
   hasUsableConstructionDock, isUsableConstructionDock,
-} from '../../src/game/ship/construction-entry';
+} from '../../src/game/ship/ship-construction-entry';
 import { simSpeedCommands } from '../../src/game/dynamic/sim-speed-commands';
 import { viewCommands } from '../../src/game/viewer/view-commands';
 import type {

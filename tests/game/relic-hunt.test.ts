@@ -2,7 +2,7 @@
 // 直列化の往復、発見済みの遺物を判定しないこと、LAGEOS-1 の軌道の近地点・遠地点を検査する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { RELICS, relicById } from '../../src/game/relic/relic-catalog';
+import { RELICS, relicById } from '../../src/game/relic-catalog';
 import { RelicHunt, type RelicSignal } from '../../src/game/stages/stage-utils/relic-hunt';
 
 const KM = 1000;

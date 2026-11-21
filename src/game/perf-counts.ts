@@ -1,5 +1,5 @@
 // ランの規模の計測値。
-import type { EntityCountKind } from './dynamic/dynamic-entity/entity-kind';
+import type { EntityCountKind } from './dynamic/entity/entity-kind';
 import type { CelestialSurfaceDiagnostics } from '../render/celestial/celestial-surface';
 import type { CloudQualityReading } from '../render/earth-weather/cloud/cloud-quality-governor';
 

@@ -2,7 +2,7 @@
 // 開いた端は半球キャップで丸める。部品1個につき1つの BufferGeometry を返す。
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import type { AssemblyPartDef } from './assembly-shape';
+import type { AssemblyPartDef } from '../../physics/assembly-shape';
 
 // 管の周方向の分割数。端の半球キャップも同じ数で組み、継ぎ目の頂点を一致させる。
 const RADIAL_SEGMENTS = 10;

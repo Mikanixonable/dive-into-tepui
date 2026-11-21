@@ -1,6 +1,6 @@
 // 基準面の選択と、基準面に対する真上・真横への視点整列をまとめる。
 import type { CameraReferencePlane, CameraReferenceView } from '../../viewer/focus-camera-selection';
-import { expandHitTarget } from '../../../hud/widgets/widget-base';
+import { expandHitTarget } from '../../../hud-kit/widgets/widget-base';
 import { referencePlaneLabel } from './frame-labels';
 import { angleCompassSvg } from './frame-glyphs';
 

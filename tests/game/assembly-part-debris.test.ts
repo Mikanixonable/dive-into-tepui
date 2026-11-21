@@ -2,12 +2,12 @@ import * as assert from 'node:assert/strict';
 import { add, len, sub, v3 } from '../../src/math/vec3';
 import { qNormalize, qRotate } from '../../src/math/quat';
 import { kinematicState, serializeKinematicState } from '../../src/physics/kinematic-state';
-import { AssemblyEnemy } from '../../src/game/dynamic/dynamic-entity/assembly-enemy';
-import { ASSEMBLY_PART_HP } from '../../src/game/assembly/assembly-combat-state';
-import { assemblyPartDebris, type DebrisPiece } from '../../src/game/dynamic/dynamic-entity/debris-piece';
-import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
+import { AssemblyEnemy } from '../../src/game/dynamic/entity/assembly-enemy';
+import { ASSEMBLY_PART_HP } from '../../src/game/enemy-assembly/assembly-combat-state';
+import { assemblyPartDebris, type DebrisPiece } from '../../src/game/dynamic/entity/debris-piece';
+import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
 import type { EntityRegistry } from '../../src/game/dynamic/entity-registry';
-import { generateAssemblyShape, detachPart } from '../../src/render/assembly/assembly-shape';
+import { generateAssemblyShape, detachPart } from '../../src/physics/assembly-shape';
 import { test } from '../harness';
 
 // 失われた部品は、部品を失った瞬間の敵の重心と姿勢を引き継いで飛ぶ(SPEC/ASSEMBLY.md「破片」)。

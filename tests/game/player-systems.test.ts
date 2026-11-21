@@ -7,13 +7,13 @@ import { v3 } from '../../src/math/vec3';
 import { stepAttitude } from '../../src/physics/attitude';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
-import type { FuelConsumer } from '../../src/game/dynamic/dynamic-entity/controllable';
+import type { FuelConsumer } from '../../src/game/dynamic/entity/controllable';
 import {
   CombatShipEntity, SHIP_BCINV, SHIP_SRP_COEFF,
-} from '../../src/game/dynamic/dynamic-entity/combat-ship-entity';
-import type { PilotControls } from '../../src/game/dynamic/dynamic-entity/pilot-controls';
-import { PartDamageModel } from '../../src/game/dynamic/dynamic-entity/part-damage-model';
-import { createShipDefaultParts } from '../../src/game/dynamic/dynamic-entity/ship-default-parts';
+} from '../../src/game/dynamic/entity/combat-ship-entity';
+import type { PilotControls } from '../../src/game/dynamic/entity/pilot-controls';
+import { PartDamageModel } from '../../src/game/dynamic/entity/part-damage-model';
+import { createShipDefaultParts } from '../../src/game/dynamic/entity/ship-default-parts';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
 import { Throttle } from '../../src/game/player/throttle';
@@ -27,7 +27,7 @@ import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
 import { createDefaultCombatPreset, createSalvageTenderPreset } from '../../src/game/ship/ship-presets';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
-import type { SerializedDynamicEntity } from '../../src/game/dynamic/dynamic-entity/entity-dictionary';
+import type { SerializedDynamicEntity } from '../../src/game/dynamic/entity/entity-dictionary';
 
 const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 const state = kinematicState<'eci'>(0, v3(), v3());

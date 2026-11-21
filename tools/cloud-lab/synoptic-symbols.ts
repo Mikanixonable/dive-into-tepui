@@ -6,7 +6,7 @@ import { eyeStrengthOf } from '../../src/render/earth-weather/pressure-feature';
 import {
   frontSpinesOf, frontStrengthOf,
 } from '../../src/render/earth-weather/front-skeleton';
-import { cyclonePlacementsAt } from '../../src/render/earth-weather/cyclone-tracks';
+import { cyclonePlacementsAt } from '../../src/render/earth-weather/cyclone-placements';
 import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import { strokeWrapped } from './synoptic-map';

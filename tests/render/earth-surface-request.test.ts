@@ -4,10 +4,10 @@ import { gzipSync } from 'node:zlib';
 import { test } from '../harness';
 import {
   EarthSurfaceTileRequestQueue,
-} from '../../src/render/earth-surface-tile-queue';
-import { EarthSurfaceTileSource } from '../../src/render/earth-surface-tile-source';
-import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-format';
-import { earthTileKey } from '../../src/render/earth-surface-tile-key';
+} from '../../src/render/earth-surface/tile-queue';
+import { EarthSurfaceTileSource } from '../../src/render/earth-surface/tile-source';
+import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface/terrain-codec';
+import { earthTileKey } from '../../src/render/earth-surface/tile-key';
 
 const COLOR = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
 const PAYLOAD_BYTES = EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES;

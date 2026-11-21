@@ -1,15 +1,15 @@
 // 軌道分析パネルの高度タブ: 操作対象の基準天体からの高度を、現在時刻からの経過時間に対して
 // 折れ線で描く。縦軸(高度)だけがドラッグ・ホイールで動き、横軸(経過時間)は現在時刻を
 // 基準とした固定の軸なので入力欄でのみ変えられる。
-import { PointerPanZoom } from '../../../hud/pointer-pan-zoom';
+import { PointerPanZoom } from '../../../hud-kit/pointer-pan-zoom';
 import { altitudeSeries } from './orbit-analysis-data';
 import { ScaleField, buildTabControls, clampScaleKm, sampleCountFor } from './orbit-analysis-tab';
-import { OrbitChart } from './orbit-chart';
+import { OrbitChart } from '../../../hud-kit/line-chart';
 import { distanceAxis, timeAxis } from './orbit-chart-axes';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../dynamic/entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
-import type { ChartMark, ChartPoint } from './orbit-chart';
+import type { ChartMark, ChartPoint } from '../../../hud-kit/line-chart';
 import type { ThemePalette } from '../../../theme';
 
 const DEFAULT_SCALE_Y_KM = 1000;

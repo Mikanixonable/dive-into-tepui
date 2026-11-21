@@ -7,15 +7,15 @@ import { randSym } from '../../math/random';
 import type { Vec3 } from '../../math/vec3';
 import { add, addScaled, norm, randPerp, randVec, scale, sub, v3 } from '../../math/vec3';
 
-import type { PilotControls } from '../dynamic/dynamic-entity/pilot-controls';
-import { Bullet } from '../dynamic/dynamic-entity/bullet';
+import type { PilotControls } from '../dynamic/entity/pilot-controls';
+import { Bullet } from '../dynamic/entity/bullet';
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { ModularShip } from '../ship/modular-ship';
 import type { WeaponMuzzle, WeaponPorts } from '../ship/ship-capabilities';
-import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
-import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/dynamic-entity/casing-collision';
-import { sunGlareSpreadScale } from '../combat/sun-glare-spread';
+import { DebrisPiece } from '../dynamic/entity/debris-piece';
+import { CASING_COLLISION_BOUND_RADIUS } from '../dynamic/entity/casing-collision';
+import { sunGlareSpreadScale } from '../sun-glare-spread';
 import {
   WeaponState, type SerializedWeaponState, type WeaponShotRecord,
 } from './weapon-state';

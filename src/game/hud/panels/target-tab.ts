@@ -1,5 +1,5 @@
 // 対象クラスごとの表示・軌道線チップを並べ、ドラッグ選択を扱うタブ。
-import { Button } from '../../../hud/widgets';
+import { Button } from '../../../hud-kit/widgets';
 import { ENTITY_GLYPH, ORBIT_POINT_GLYPH } from '../../marker/marker-identity';
 import type { MapDisplayToggles } from '../../map/display-toggles';
 

@@ -1,13 +1,13 @@
 // 提示が読む狭い面（ポート）の集まり。面の型は葉に置けるものだけで組み、
 // 受け手が使うメンバだけを持つ。
-import type { KeyBinding } from '../input/key-mapping';
+import type { KeyBinding } from '../input-devices/key-mapping';
 import type { Vec3 } from '../math/vec3';
 import type { CelestialBody } from '../physics/celestial-body';
 import type { KinematicState } from '../physics/kinematic-state';
 import type { CelestialBodies } from './celestial/celestial-bodies';
-import type { CombatTarget } from './dynamic/dynamic-entity/combat-target';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
-import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
+import type { CombatTarget } from './dynamic/entity/combat-target';
+import type { DynamicEntity } from './dynamic/entity/dynamic-entity';
+import type { DynamicEntityKind } from './dynamic/entity/entity-kind';
 import type { PowerSystem } from './player/power';
 import type { CoolingDump } from './player/cooling-dump';
 import type { RadiatorSystem } from './player/radiator';

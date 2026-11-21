@@ -1,20 +1,7 @@
 // クリエイティブモードの「ステージ操作」パネル: 補給・波状攻撃のトグルと、手動スポーンの入力
 // (距離・敵の形状/色)の DOM と UI 状態を持ち、確定した値を onXxx のコールバックで知らせる。
-import { Button, Pulldown, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud/widgets';
-
-type EnemyShapeDefinition =
-  | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
-  | { readonly id: 'variant-a' | 'variant-b' | 'variant-c'; readonly family: 'conventional'; readonly kind: 'variant'; readonly typeIndex: number }
-  | { readonly id: 'assembly'; readonly family: 'assembly'; readonly kind: 'assembly' };
-
-export const STAGE_CONTROL_ENEMY_SHAPES: readonly EnemyShapeDefinition[] = [
-  { id: 'drifting', family: 'conventional', kind: 'drifting' },
-  { id: 'variant-a', family: 'conventional', kind: 'variant', typeIndex: 0 },
-  { id: 'variant-b', family: 'conventional', kind: 'variant', typeIndex: 1 },
-  { id: 'variant-c', family: 'conventional', kind: 'variant', typeIndex: 2 },
-  { id: 'assembly', family: 'assembly', kind: 'assembly' },
-];
-export type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
+import { Button, Pulldown, SegmentedControl, TabBar, ToggleSwitch, ValueInput } from '../../hud-kit/widgets';
+import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './manual-spawn';
 
 const STAGE_CONTROL_ENEMY_COLORS = [
   [0xff4a3d, '赤'], [0xff7a2d, '橙'], [0xe0409f, '桃'], [0xbf3dff, '紫'], [0x3dc6ff, '青'],

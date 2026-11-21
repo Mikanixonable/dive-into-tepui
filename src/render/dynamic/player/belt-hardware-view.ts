@@ -2,7 +2,7 @@
 import * as THREE from 'three/webgpu';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { markLitOpaque, markShadowCaster } from '../../pipeline/lit-layer';
-import { markSharedResources } from '../baked-model';
+import { markSharedResources } from '../model-template';
 import { MAG_PLANAR_SCALE } from '../../../physics/player-shape';
 import type { BeltNodes } from './belt-view';
 

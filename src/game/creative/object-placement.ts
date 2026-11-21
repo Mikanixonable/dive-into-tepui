@@ -11,13 +11,13 @@ import { addPrimaryRelative, kinematicState, type KinematicState } from '../../p
 import { secondaryFrameOf } from '../../physics/lagrange';
 import { isOccluded } from '../../physics/occlusion';
 import { ObjectPlacementPreviewView } from '../../render/creative/object-placement-preview-view';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
-import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
-import { AmmoPickup, RcsFuelPickup } from '../dynamic/dynamic-entity/pickup';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../render/lines/line-style';
+import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/entity/entity-id';
+import { AmmoPickup, RcsFuelPickup } from '../dynamic/entity/pickup';
 import { isModularShip, type ModularShipInit } from '../ship/modular-ship';
 import { createBasePreset } from '../ship/ship-presets';
 import { generateRandomName } from '../random-name';
-import { generateDriftingEnemy } from '../stages/spawner/enemy-generator';
+import { generateDriftingEnemy } from '../stages/enemy-generator';
 import { elementsFormFromState } from './duplicate-form';
 import {
   ObjectPlacerPanel, type ElementsForm, type LagrangeForm, type ObjectPlacementSelection,
@@ -27,7 +27,7 @@ import {
   validateEllipticPlacementFields, validateLagrangePlacementFields,
   type PlacementFieldIssue,
 } from './placement-validation';
-import { orbitSlotFromHalo, orbitSlotFromLissajous } from '../navigation/orbit-slot-source';
+import { orbitSlotFromHalo, orbitSlotFromLissajous } from '../navigation/orbit-slot-builders';
 import type { OrbitSlotOrbit } from '../navigation/orbit-slot';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';
@@ -37,12 +37,12 @@ import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
+import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { RunEventSink } from '../run-events';
 import type { HudLayers } from '../hud/hud-layers';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import type { ViewMode } from '../view/view-mode';
 
 // 軌道上へ配置できる自機の上限隻数。

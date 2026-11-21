@@ -5,7 +5,7 @@ import {
   CATALOG_STRIDE, decodeCatalogPoints,
   type CatalogSystem, type CatalogSystemId,
 } from '../../physics/orbit-catalog';
-import { secondaryFrameOf, type SecondaryFrame } from '../../physics/lagrange';
+import { secondaryFrameOf, secondaryMu, type SecondaryFrame } from '../../physics/lagrange';
 import type { OrbitingCelestialBody } from '../../physics/celestial-body';
 import { collinearFrame, haloState, lissajousState } from '../../physics/halo';
 import { rotatingFrame as guideRotatingFrame } from '../../physics/orbit-guide';
@@ -47,7 +47,7 @@ export function slotRotatingFrameAt(
 ): { origin: Vec3; xHat: Vec3; yHat: Vec3; zHat: Vec3; unit: number; omega: number } | null {
   const frame = slotSecondaryFrame(env, primaryId, secondaryId, t);
   if (frame === null) return null;
-  const mu = frame.secondary.def.mu / (frame.primary.def.mu + frame.secondary.def.mu);
+  const mu = secondaryMu(frame);
   const rotating = guideRotatingFrame(frame, mu);
   if (rotating === null) return null;
   const omega = len(frame.rotation.omega);
@@ -148,6 +148,6 @@ export function orbitSlotFamilyMember(
   }
   const frame = slotSecondaryFrame(env, orbit.primaryId, orbit.secondaryId, t);
   if (frame === null) return null;
-  const mu = frame.secondary.def.mu / (frame.primary.def.mu + frame.secondary.def.mu);
+  const mu = secondaryMu(frame);
   return analyticMember(frame, orbit, mu);
 }

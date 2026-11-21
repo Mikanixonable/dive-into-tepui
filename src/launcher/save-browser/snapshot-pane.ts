@@ -2,11 +2,11 @@
 // カードを組む。操作はコールバックで呼び出し側へ返す。
 import { MANUAL_SAVE_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
-import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/format';
-import { Button, Meter, TabBar } from '../../hud/widgets';
-import { bindKeyboardActivation } from '../../hud/widgets/widget-base';
-import { injectOnce } from '../../hud/inject-style';
-import { smallBtn, stageLabel } from './shared';
+import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud-kit/format';
+import { Button, Meter, TabBar } from '../../hud-kit/widgets';
+import { bindKeyboardActivation } from '../../hud-kit/widgets/widget-base';
+import { injectOnce } from '../../hud-kit/inject-style';
+import { smallBtn, stageLabel } from './save-browser-ui';
 
 const STYLE = `
 #save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
@@ -52,7 +52,6 @@ interface SnapshotPaneCallbacks {
   readonly onDeleteSnapshot: (snapshotId: string) => void;
   readonly onBranch: (slotId: string, snapshotId: string) => void;
   // 天体 id → 表示名。
-  readonly nameOf: (id: string) => string;
   // 手動セーブの本体が、いまの形式の版で読めるか。
   readonly isReadable: (snapshotId: string) => boolean;
 }
@@ -168,7 +167,7 @@ function buildSnapshotCard(
 
   const row2 = document.createElement('div');
   row2.className = 'sb-snap-row';
-  row2.textContent = `${callbacks.nameOf(s.centerBodyId)} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
+  row2.textContent = `${s.centerBodyName ?? s.centerBodyId} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
   card.appendChild(row2);
 
   // HP の残りを細いメーターで示す。

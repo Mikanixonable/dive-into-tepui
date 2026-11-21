@@ -3,8 +3,8 @@
 import { isDestroyedTarget } from './nav-target-selection';
 import type { FrameRotationSource, ReferenceFrame } from '../../physics/frame';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { ReferenceFrames } from '../celestial/reference-frames';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { ReferenceFrames } from '../../physics/reference-frames';
+import type { EntityRoster } from '../dynamic/entity-registry';
 
 // カメラの基準 id が登録天体なら、その天体を中心に rotatingWith で回る座標系。そうでなければ null。
 function frameCenteredOnFocus(

@@ -60,15 +60,15 @@ export class AudioEngine {
     else ctx.resume().catch(() => {});
   }
 
-  // 指定音高のトーンを、即時発音・指数減衰で単発鳴らす。
-  public tone(freq: number, duration: number, volume: number, type: OscillatorType = 'sine'): void {
+  // 指定音高のトーンを、指数減衰で単発鳴らす。delay [s] で発音を遅らせられる。
+  public tone(freq: number, duration: number, volume: number, type: OscillatorType = 'sine', delay = 0): void {
     const ctx = this._ctx;
     if (!ctx) return;
     const osc = ctx.createOscillator();
     osc.type = type;
     osc.frequency.value = freq;
     const gain = ctx.createGain();
-    const t = ctx.currentTime;
+    const t = ctx.currentTime + delay;
     gain.gain.setValueAtTime(volume, t);
     gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
     osc.connect(gain).connect(ctx.destination);

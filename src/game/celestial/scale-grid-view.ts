@@ -7,7 +7,7 @@ import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialBodies } from './celestial-bodies';
 import type { Vec3 } from '../../math/vec3';
 import type { ScaleGridVisibility } from '../../render/scale-grid';
-import type { CelestialGridVisibility } from '../../render/celestial-grid';
+import type { CelestialGridVisibility } from '../../render/celestial/celestial-grid';
 import type { FocusCameraSource } from '../viewer/focus-camera-selection';
 import type { ViewMode } from '../view/view-mode';
 

@@ -2,12 +2,12 @@
 import { leadPoint } from '../../physics/intercept';
 import type { Vec3 } from '../../math/vec3';
 import type { ViewMode } from '../view/view-mode';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MarkerSink } from '../../marker/marker-sink';
-import type { MarkerDevice } from '../../marker/marker-device';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MarkerSink } from '../../marker-kit/marker-sink';
+import type { MarkerDevice } from '../../marker-kit/marker-device';
 import { MARKER_PRIORITY } from './marker-priority';
 import { pointPlacement } from './marker-placement';
-import type { CombatTarget } from '../dynamic/dynamic-entity/combat-target';
+import type { CombatTarget } from '../dynamic/entity/combat-target';
 import { COLOR_MARKER_ALLY } from './marker-identity';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { ProjectFn } from '../../math/projection';

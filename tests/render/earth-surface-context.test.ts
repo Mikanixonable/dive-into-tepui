@@ -1,14 +1,14 @@
 // 地表・気候入力のdatasetId共有と、要求の世代・dispose境界を検査する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { EarthSurfaceContext } from '../../src/render/earth-surface';
+import { EarthSurfaceContext } from '../../src/render/earth-surface/earth-surface';
 import {
   assertEarthSurfaceDataset, earthSurfaceSourceFromManifest,
   type EarthSurfaceAssetManifest,
-} from '../../src/render/earth-surface-source';
-import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/render/earth-surface-runtime';
-import { earthTileKey } from '../../src/render/earth-surface-tile-key';
-import { EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION } from '../../src/render/earth-surface-source';
+} from '../../src/render/earth-surface/source';
+import { bootstrapEarthSurface, earthSurfaceManifestUrl } from '../../src/render/earth-surface/runtime';
+import { earthTileKey } from '../../src/render/earth-surface/tile-key';
+import { EARTH_SURFACE_FALLBACK_COLOR_CALIBRATION } from '../../src/render/earth-surface/source';
 
 // 入力検査を通る固定のmanifest fixture。
 function manifest(): EarthSurfaceAssetManifest {

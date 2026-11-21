@@ -2,16 +2,16 @@
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
-import type { EntityRoster } from '../dynamic/entity-roster';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { EntityRoster } from '../dynamic/entity-registry';
+import type { Controllable } from '../dynamic/entity/controllable';
 import { appearsOnMap, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { MapDisplayToggles } from '../map/display-toggles';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { TimeLabelSetting } from '../hud/orbit/calendar-ticks';
+import type { TimeLabelSetting } from '../calendar-ticks';
 import { EquatorNodeMarkerPair, type EquatorNodeInputs } from './equator-node-marker-pair';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MarkerSink } from '../../marker/marker-sink';
-import type { MarkerDevice } from '../../marker/marker-device';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MarkerSink } from '../../marker-kit/marker-sink';
+import type { MarkerDevice } from '../../marker-kit/marker-device';
 import type { SettingValue } from '../../settings/setting-value';
 import type { ViewMode } from '../view/view-mode';
 

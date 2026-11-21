@@ -1,26 +1,26 @@
 // マップ上のクリックを候補列へヒットテストし、対象の被選択物ウィンドウや注視対象へディスパッチする。軌道物体
 // パネルと軌道線のプロパティウィンドウも持つ。
 import type { HudLayers } from '../hud/hud-layers';
-import type { Notifier } from '../../hud/notifier';
+import type { Notifier } from '../../hud-kit/notifier';
 import { pickFrontmostBody, pickNearest, projectMarker, type ObjectPickable } from './object-pickable';
 import type { MapPickable } from './map-pickable';
 import { pickNearestLine } from './line-pickable';
-import type { LinePickables } from './line-pickables';
-import type { ObjectPickables } from './object-pickables';
+import type { LinePickables } from './line-pickable-set';
+import type { ObjectPickables } from './object-pickable-set';
 import type { ObjectWindows } from './object-windows';
 import { OrbitLineWindows } from './orbit-line-windows';
 import { focusTargetId } from '../viewer/focus-target';
 import { OrbitalObjectPanel } from '../hud/panels/orbital-object-panel';
-import type { Input } from '../../input/input';
-import { pickRadiusSq } from '../../input/pointer-precision';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { Input } from '../../input-devices/input';
+import { pickRadiusSq } from '../../input-devices/pointer-precision';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { NavTargetPresenter } from '../nav-target-presenter';
 import type { NavTargetCommands } from '../viewer/nav-target-commands';
 import type { ControlSelectionCommands } from '../control-selection-commands';
 import { rayThroughScreen } from '../../math/projection';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { FocusCameraCommands } from '../viewer/camera-commands';
 import type { MapCameraSource } from '../viewer/camera-selection';
 import type { DisplayWindowManager } from '../display-window-manager';

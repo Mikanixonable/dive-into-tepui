@@ -6,7 +6,7 @@ import type { Attitude } from '../../physics/attitude';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CompoundCylinderShape } from '../../physics/compound-cylinder-contact';
 import type { CompoundSphereShape } from '../../physics/compound-sphere-contact';
-import type { Contact } from './dynamic-entity/contact';
+import type { Contact } from './entity/contact';
 import type { ContactKind } from './dynamic-motion';
 import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
 

@@ -1,20 +1,20 @@
 // 常設 ORBIT パネル(#hud-orbit)の同期: 自艦の基準・高度・速度・遠地点/近地点・傾斜角・
 // 周期・動圧・機体温度、および基準切替のセグメントコントロール。戦闘/マップ共通。
-import { fmtDistParts, fmtSpeedParts, fmtTime, type ValueParts } from '../../../hud/format';
-import { setReadout } from '../../../hud/readout';
-import { SyncThrottle } from '../sync-throttle';
+import { fmtDistParts, fmtSpeedParts, fmtTime, type ValueParts } from '../../../hud-kit/format';
+import { setReadout } from '../../../hud-kit/dom-elements';
+import { SyncThrottle } from '../../../hud-kit/sync-throttle';
 import type { HudEls, HudElId } from '../hud-els';
 import type { OrbitReferenceMode } from '../../viewer/orbit-reference-selection';
-import { Button, Meter, SegmentedControl } from '../../../hud/widgets';
-import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud/alarm-level';
+import { Button, Meter, SegmentedControl } from '../../../hud-kit/widgets';
+import { applyAlarmLevel, worstAlarmLevel, type AlarmLevel } from '../../../hud-kit/alarm-level-ui';
 import {
   DYNAMIC_PRESSURE_CAUTION_RATIO, DYNAMIC_PRESSURE_WARNING_RATIO,
   TEMPERATURE_CAUTION_RATIO, TEMPERATURE_WARNING_RATIO,
   dynamicPressureAlarmLevel, temperatureAlarmLevel,
-} from '../../alarm/alarm-level';
+} from '../../alarm-level';
 
 import { getApsisLabelSpec } from './orbit-labels';
-import { MAX_HULL_TEMP } from '../../dynamic/dynamic-entity/combat-ship-entity';
+import { MAX_HULL_TEMP } from '../../dynamic/entity/combat-ship-entity';
 import { MAX_DYN_PRESSURE } from '../../player/aero-load';
 
 const SYNC_INTERVAL_MS = 100;

@@ -1,6 +1,6 @@
 // マップ一覧に載せる対象の表示区分と検索情報を定める。
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { PickCandidate } from './pick-candidate';
 import type { MapListSection, ObjectPickerGenre } from './pickable-listing';
 

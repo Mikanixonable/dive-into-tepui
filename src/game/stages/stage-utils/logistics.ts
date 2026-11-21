@@ -5,15 +5,15 @@ import { add, addScaled, len, lenSq, randVec, rotateAxis, sub, v3 } from '../../
 import {
   AmmoPickup, AMMO_PICKUP_MAGS, AMMO_PICKUP_RADIUS, isAmmoPickup,
   isRcsFuelPickup, RcsFuelPickup, RCS_FUEL_PICKUP_RADIUS, RCS_FUEL_PICKUP_AMOUNT,
-} from '../../dynamic/dynamic-entity/pickup';
+} from '../../dynamic/entity/pickup';
 import { kinematicState, orbitAxes, type KinematicState } from '../../../physics/kinematic-state';
 import type * as THREE from 'three/webgpu';
 import type { Attitude } from '../../../physics/attitude';
 import type { ModularShip } from '../../ship/modular-ship';
-import type { EntityRoster } from '../../dynamic/entity-roster';
+import type { EntityRoster } from '../../dynamic/entity-registry';
 import type { EntityRegistry } from '../../dynamic/entity-registry';
 import type { SimSpeedManager } from '../../dynamic/sim-speed-manager';
-import type { FormationRole } from '../../dynamic/dynamic-entity/entity-kind';
+import type { FormationRole } from '../../dynamic/entity/entity-kind';
 
 export interface SerializedLogistics {
   readonly resupplyCheckAt: number;

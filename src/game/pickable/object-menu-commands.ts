@@ -1,8 +1,8 @@
 // 被選択物のメニュー操作と搭載部品の展開へ外部から発行できる命令インターフェースと、それをキューへ積む実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { ControlSelection } from '../control-selection';
-import type { Part } from '../dynamic/dynamic-entity/parts';
-import type { MenuAction } from '../hud/windows/menu-actions';
+import type { Part } from '../dynamic/entity/parts';
+import type { MenuAction } from '../menu-actions';
 import type { InspectedObject } from './inspected-object';
 import type {
   PresentationPlanEditor, PresentationStageAuthoring,

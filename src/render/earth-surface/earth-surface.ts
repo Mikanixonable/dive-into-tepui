@@ -1,0 +1,362 @@
+// 地球表面。EarthSurfaceContext は配信版と、地表要求の世代・キャンセル信号を管理・発行する。EarthSurface は
+// 天体表面の球へ、詳細な材質とタイルの常駐を接続する。
+import * as THREE from 'three/webgpu';
+import { scaledToBondAlbedo } from '../celestial/celestial-albedo';
+import { TEXTURE_RESOLUTION, type TextureResolution } from '../deferred-texture';
+import { earthTileLayersFor } from './layout';
+import type { EarthSurfaceSource } from './source';
+import type {
+  EarthSurfaceResidentFrame,
+} from './resident';
+import { EarthSurfaceProjectionCache } from './projection';
+import type {
+  CelestialSurfaceFrame,
+  CelestialSurfaceDiagnostics,
+  CelestialSurfaceLike,
+  CelestialSurfaceStatus,
+  LightSourceMap,
+  SurfacePhotometry,
+} from '../celestial/celestial-surface';
+import {
+  disposeCelestialSurfaceMaterialAttachment,
+  type CelestialSurfaceMaterialAttachment,
+  type CelestialSurfaceMaterialHost,
+} from '../celestial/celestial-surface-material';
+
+// 地表要求1件ぶんの世代とキャンセル信号。使い終えたら release する(信号は中断される)。
+interface EarthSurfaceRequestLease {
+  readonly generation: number;
+  readonly signal: AbortSignal;
+  release(): void;
+}
+
+export type EarthSurfaceStatus = CelestialSurfaceStatus;
+
+// 実GPU実装を直接所有せず、ゲーム側から差し込める地表常駐の最小境界。
+// 具象coordinatorはタイル要求とGPU寿命を持つため、EarthSurfaceはこの2操作だけを知る。
+interface EarthSurfaceResidentCoordinatorLike {
+  sync(input: EarthSurfaceResidentFrame): unknown;
+  readonly residentMaxZ?: number | null;
+  readonly failureReason?: string | null;
+  cancelPending?(): void;
+  reset?(): void;
+  dispose(): void;
+}
+
+// 天体表面の球へ差し込む詳細な材質。syncFrame はフレームごとに呼ぶ。
+export interface EarthSurfaceMaterialAttachment extends CelestialSurfaceMaterialAttachment {
+  readonly syncFrame: (frame: CelestialSurfaceFrame) => void;
+  readonly failureReason?: () => string | null;
+  readonly ready?: () => boolean;
+  readonly prepare?: () => void;
+}
+
+// 指定した物理層数で組んだ詳細地表の接続。coordinator が null のものは全球ベースへ留まる接続。
+export interface EarthSurfaceDetailConnection {
+  readonly coordinator: EarthSurfaceResidentCoordinatorLike | null;
+  readonly status: EarthSurfaceStatus;
+  readonly material: EarthSurfaceMaterialAttachment | null;
+  readonly reason: string | null;
+}
+
+// 詳細地表を、指定した物理層数で組み直す口。manifest がまだ届いていないなど組めない段階では
+// null を返し、呼び手は現在の接続を保つ(要求した層数は渡した側に記録される)。
+export interface EarthSurfaceDetailConnector {
+  connect(tileLayers: number): EarthSurfaceDetailConnection | null;
+}
+
+// 材質差し替えを受けられる天体表面かを判定する。
+function isMaterialHost(
+  surface: CelestialSurfaceLike,
+): surface is CelestialSurfaceLike & CelestialSurfaceMaterialHost {
+  const candidate = surface as unknown as { replaceMaterial?: unknown };
+  return typeof candidate.replaceMaterial === 'function';
+}
+
+// manifestが宣言する地表データセットの測光値を、公開用の測光情報へ変換する。
+function photometryOf(source: EarthSurfaceSource): SurfacePhotometry {
+  return {
+    bondAlbedo: source.colorCalibration.bondAlbedo,
+    lightSourceAlbedo: scaledToBondAlbedo(
+      source.colorCalibration.averageHue, source.colorCalibration.bondAlbedo,
+    ),
+  };
+}
+
+// 配信版(source)を持ち、地表要求へ世代とキャンセル信号を発行する。世代を進めると、それまでに
+// 発行した要求は中断される。
+export class EarthSurfaceContext {
+  private nextGenerationValue = 1;
+  private readonly requests = new Set<AbortController>();
+  private disposed = false;
+
+  public constructor(private sourceValue: EarthSurfaceSource) {}
+
+  public get source(): EarthSurfaceSource { return this.sourceValue; }
+
+  public get generation(): number { return this.nextGenerationValue; }
+
+  // 1つの地表要求へ、現在の世代とキャンセル信号を割り当てる。dispose 後は例外を投げる。
+  public requestLease(): EarthSurfaceRequestLease {
+    if (this.disposed) throw new Error('Earth surface context is disposed');
+    // 世代を進めたときにまとめて中断できるよう、配った要求を控えておく。
+    const controller = new AbortController();
+    const generation = this.nextGenerationValue;
+    this.requests.add(controller);
+    // release は何度呼んでもよく、最初の1回で控えから外して信号を中断する。
+    let released = false;
+    return {
+      generation,
+      signal: controller.signal,
+      release: () => {
+        if (released) return;
+        released = true;
+        this.requests.delete(controller);
+        controller.abort();
+      },
+    };
+  }
+
+  // 世代を進め、配った要求をすべて中断する。返り値は新しい世代。
+  public invalidateRequests(): number {
+    if (this.disposed) return this.nextGenerationValue;
+    this.nextGenerationValue++;
+    for (const controller of this.requests) controller.abort();
+    this.requests.clear();
+    return this.nextGenerationValue;
+  }
+
+  // 配信版を差し替え、旧版の要求を中断する(世代も進む)。dispose 後は例外を投げる。
+  public replaceSource(source: EarthSurfaceSource): void {
+    if (this.disposed) throw new Error('Earth surface context is disposed');
+    this.invalidateRequests();
+    this.sourceValue = source;
+  }
+
+  // 配った要求をすべて中断する。以後 requestLease と replaceSource は例外を投げる。
+  public dispose(): void {
+    if (this.disposed) return;
+    this.invalidateRequests();
+    this.disposed = true;
+  }
+}
+
+// fallback の球面に、attach で詳細な材質とタイルの常駐を重ねる地球の天体表面。
+export class EarthSurface implements CelestialSurfaceLike {
+  private requestLeaseValue: EarthSurfaceRequestLease | null = null;
+  private coordinatorValue: EarthSurfaceResidentCoordinatorLike | null;
+  private readonly projectionCache = new EarthSurfaceProjectionCache();
+  private materialSyncValue: ((frame: CelestialSurfaceFrame) => void) | null = null;
+  private pendingMaterialValue: EarthSurfaceMaterialAttachment | null = null;
+  private materialFailureReasonValue: (() => string | null) | null = null;
+  private statusValue: EarthSurfaceStatus;
+  private reasonValue: string | null;
+  private parentValue: THREE.Object3D | null = null;
+  private apparentDiameterPxValue: number | null = null;
+  private textureResolutionValue: TextureResolution = TEXTURE_RESOLUTION.high;
+  private disposed = false;
+
+  // context と fallback の所有を引き継ぎ、dispose で一緒に解放する。status は省くと
+  // coordinator の有無から決まる。detailConnector はテクスチャ解像度の段が変わったとき
+  // 詳細接続をその段の層数で組み直す協力者で、無い地表は組み直さない。
+  public constructor(
+    private readonly context: EarthSurfaceContext,
+    private fallback: CelestialSurfaceLike,
+    coordinator: EarthSurfaceResidentCoordinatorLike | null = null,
+    status: EarthSurfaceStatus = coordinator === null ? 'fallback' : 'ready',
+    reason: string | null = null,
+    private readonly detailConnector: EarthSurfaceDetailConnector | null = null,
+  ) {
+    this.coordinatorValue = coordinator;
+    this.statusValue = status;
+    this.reasonValue = reason;
+    this.photometryValue = photometryOf(context.source);
+  }
+
+  private photometryValue: SurfacePhotometry | null;
+
+  public get status(): EarthSurfaceStatus { return this.statusValue; }
+
+  public get usesDetailedMaterial(): boolean { return this.materialSyncValue !== null; }
+
+  // 現在の状態。reason は明示の理由・常駐の失敗・材質の失敗のうち最初にあるもの。
+  public get diagnostics(): CelestialSurfaceDiagnostics {
+    return {
+      status: this.statusValue,
+      reason: this.reasonValue ?? this.coordinatorValue?.failureReason
+        ?? this.materialFailureReasonValue?.() ?? null,
+      usesDetailedMaterial: this.usesDetailedMaterial,
+      residentMaxZ: this.coordinatorValue?.residentMaxZ ?? null,
+    };
+  }
+
+  public get photometry(): SurfacePhotometry | null { return this.photometryValue; }
+
+  public get lightSourceMap(): LightSourceMap | null { return this.fallback.lightSourceMap; }
+
+  public get imagesReady(): boolean { return this.fallback.imagesReady; }
+
+  public get textureUrl(): string | null { return this.fallback.textureUrl; }
+
+  public addTo(parent: THREE.Object3D): void {
+    this.parentValue = parent;
+    this.fallback.addTo(parent);
+  }
+
+  public syncLod(apparentDiameterPx: number): void {
+    this.apparentDiameterPxValue = apparentDiameterPx;
+    this.fallback.syncLod(apparentDiameterPx);
+  }
+
+  // フレームの値で球と材質を更新し、タイルの常駐を進める。dispose 後は何もしない。
+  public syncFrame(frame: CelestialSurfaceFrame): void {
+    if (this.disposed) return;
+    this.fallback.syncFrame(frame);
+    if (this.pendingMaterialValue?.ready?.() !== false) this.activatePendingMaterial();
+    this.materialSyncValue?.(frame);
+    this.rebuildDetailFor(frame.textureResolution);
+    if (this.coordinatorValue === null) return;
+
+    // 中断された要求は借り直す。
+    const lease = this.requestLeaseValue?.signal.aborted
+      ? this.context.requestLease()
+      : this.requestLeaseValue ?? this.context.requestLease();
+    this.requestLeaseValue = lease;
+    if (!(frame.camera instanceof THREE.PerspectiveCamera)
+      && !(frame.camera instanceof THREE.OrthographicCamera)) {
+      // EarthSurfaceView が扱えないカメラでは、要求を中断して fallback のまま描く。
+      lease.release();
+      this.requestLeaseValue = null;
+      return;
+    }
+    const projection = this.projectionCache.get(frame);
+    const residentFrame: EarthSurfaceResidentFrame = {
+      projection,
+      timeMs: frame.timeMs,
+      generation: lease.generation,
+      signal: lease.signal,
+      frame: frame.frame,
+    };
+    try {
+      this.coordinatorValue.sync(residentFrame);
+    } catch (error) {
+      lease.release();
+      this.requestLeaseValue = null;
+      throw error;
+    }
+  }
+
+  // 要求を中断し、再表示に使える常駐を保ったまま球を隠す。
+  public hide(): void {
+    if (this.disposed) return;
+    this.requestLeaseValue?.release();
+    this.requestLeaseValue = null;
+    this.context.invalidateRequests();
+    this.coordinatorValue?.cancelPending?.();
+    this.clearProjectionCache();
+    this.fallback.hide();
+  }
+
+  // source・coordinator・材質を差し替えて接続する。渡したものの所有を引き継ぎ、dispose 後に
+  // 渡されたものはその場で解放する。
+  public attach(
+    source: EarthSurfaceSource,
+    coordinator: EarthSurfaceResidentCoordinatorLike | null,
+    status: EarthSurfaceStatus,
+    material: EarthSurfaceMaterialAttachment | null = null,
+    reason: string | null = null,
+  ): void {
+    if (this.disposed) {
+      coordinator?.dispose();
+      if (material !== null) disposeCelestialSurfaceMaterialAttachment(material);
+      return;
+    }
+    // 前の要求・常駐・材質の状態を捨てて、渡されたものへ置き換える。
+    this.requestLeaseValue?.release();
+    this.requestLeaseValue = null;
+    this.coordinatorValue?.dispose();
+    if (this.pendingMaterialValue !== null) disposeCelestialSurfaceMaterialAttachment(this.pendingMaterialValue);
+    this.pendingMaterialValue = null;
+    this.context.replaceSource(source);
+    this.photometryValue = photometryOf(source);
+    this.coordinatorValue = coordinator;
+    this.statusValue = status;
+    this.reasonValue = reason;
+    this.materialSyncValue = null;
+    this.materialFailureReasonValue = null;
+    this.clearProjectionCache();
+    if (material !== null) {
+      this.materialFailureReasonValue = material.failureReason ?? null;
+      material.prepare?.();
+      this.pendingMaterialValue = material;
+      if (material.ready?.() !== false) this.activatePendingMaterial();
+    } else {
+      if (isMaterialHost(this.fallback)) this.fallback.restoreFallbackMaterial?.();
+    }
+  }
+
+  // manifest取得後、詳細材質へ差し替える前に同じbase画像由来の全球fallbackへ切り替える。
+  // 詳細材質接続後の差し替えは資源の所有関係を壊すため受け付けない。
+  public replaceFallback(fallback: CelestialSurfaceLike): void {
+    if (this.disposed || this.usesDetailedMaterial) {
+      fallback.dispose();
+      return;
+    }
+    const previous = this.fallback;
+    this.fallback = fallback;
+    if (this.parentValue !== null) fallback.addTo(this.parentValue);
+    if (this.apparentDiameterPxValue !== null) fallback.syncLod(this.apparentDiameterPxValue);
+    this.photometryValue = fallback.photometry;
+    previous.dispose();
+  }
+
+  // 要求を中断し、所有する coordinator・context・fallback ごと解放する。何度呼んでもよい。
+  public dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.requestLeaseValue?.release();
+    this.requestLeaseValue = null;
+    if (this.pendingMaterialValue !== null) disposeCelestialSurfaceMaterialAttachment(this.pendingMaterialValue);
+    this.pendingMaterialValue = null;
+    this.coordinatorValue?.dispose();
+    this.context.dispose();
+    this.fallback.dispose();
+  }
+
+  // テクスチャ解像度の段が変わったとき、詳細地表をその段の常駐層数で組み直す。
+  // 張り直しのあいだも球面は消えず、新しい詳細タイルが届くまでは全球ベースの層で描かれる。
+  private rebuildDetailFor(resolution: TextureResolution): void {
+    if (this.detailConnector === null || resolution === this.textureResolutionValue) return;
+    this.textureResolutionValue = resolution;
+    const connection = this.detailConnector.connect(earthTileLayersFor(resolution));
+    if (connection === null) return;
+    this.attach(
+      this.context.source, connection.coordinator, connection.status,
+      connection.material, connection.reason,
+    );
+  }
+
+  // sourceや表示寿命の境界で、次のframeに最新の投影を必ず作らせる。
+  private clearProjectionCache(): void {
+    this.projectionCache.reset();
+  }
+
+  // 準備済み詳細材質をfallbackへ接続し、以後のフレーム同期を切り替える。
+  private activatePendingMaterial(): void {
+    // 準備済み材質を検証し、表示中のfallbackへ差し替える。
+    const material = this.pendingMaterialValue;
+    if (material === null) return;
+    this.pendingMaterialValue = null;
+    if (!isMaterialHost(this.fallback)) {
+      disposeCelestialSurfaceMaterialAttachment(material);
+      this.coordinatorValue?.dispose();
+      this.coordinatorValue = null;
+      this.statusValue = 'fallback';
+      this.reasonValue = 'detailed material connection unavailable';
+      return;
+    }
+    this.fallback.replaceMaterial(material);
+    this.materialSyncValue = material.syncFrame;
+    this.materialFailureReasonValue = material.failureReason ?? null;
+  }
+}

@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { mulberry32 } from '../../../math/random';
 import { Billboard } from '../../billboard';
-import { SchematicThrustCone } from '../../schematic-thrust-cone';
+import { SchematicThrustCone } from './schematic-thrust-cone';
 import { plumeNoiseSeed } from './plume-noise';
 import { PlumeVolume } from './plume-volume';
 import type { RenderStyle } from '../../render-style';

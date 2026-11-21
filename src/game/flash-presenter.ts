@@ -6,7 +6,7 @@ import { kinematicState } from '../physics/kinematic-state';
 import type { KinematicState } from '../physics/kinematic-state';
 import type { FlashEffect } from '../render/vfx/flash-effects-view';
 import type { FlashBlend } from '../render/vfx/flash-effects-view';
-import type { BulletType } from './dynamic/dynamic-entity/bullet-reaction';
+import type { BulletType } from './dynamic/entity/bullet-reaction';
 import type { RunEvent, RunEventBody } from './run-events';
 
 // 閃光の種別。どの出来事を示す閃光かを表し、見え方はこれで決まる。

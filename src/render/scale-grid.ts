@@ -2,7 +2,7 @@
 // 月赤道面)に描き、月の2面は毎フレーム向きを受け取る。
 import * as THREE from 'three/webgpu';
 import { ECLIPTIC_BASIS, EQUATOR_BASIS, planeBasisFromPole, type PlaneBasis } from './plane-basis';
-import { CameraScale } from './camera-scale';
+import { CameraScale } from './camera/camera-scale';
 import { markOverlay } from './pipeline/lit-layer';
 import { placeScreenLabel, SCENE_LABEL_STYLE } from './scene-label';
 import type { Viewport } from './viewport';

@@ -5,11 +5,11 @@ import { type PlanetDef, planetDefForSimZero, type SatelliteDef, satelliteDefFor
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT } from '../gravitational-constant';
+import { GRAVITATIONAL_CONSTANT } from '../../../physics/gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
-import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
-import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
+import { CelestialEntity } from '../entity/celestial-entity';
+import { PointCelestialView } from '../../../render/celestial/entity/point-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/entity/sphere-celestial-view';
 import { NEPTUNE_POLE } from './poles';
 import { NEPTUNE_RINGS } from './rings';
 import { equatorialSatelliteOrbit, jplSatelliteOrbit } from './satellite-orbit-builders';

@@ -1,7 +1,7 @@
 // ゲーム画面の HUD のシェル。常設パネル群と描画先(root)を持ち、
 // 毎フレーム渡された値へ同期して、トースト・ヘルプを出す。
 import type { RenderStyle } from '../../render/render-style';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import { buildHudDom, toggleHudWideScreen } from './hud-dom';
 import type { HudLayers } from './hud-layers';
 import type { PanelCollapse } from './panel-chrome';
@@ -20,17 +20,17 @@ import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow, type OrbitAnalysisSubject } from './orbit/orbit-analysis-window';
 import type { AnalysisChartSource } from './orbit/orbit-analysis-tab';
 import type { Vec3 } from '../../math/vec3';
-import type { OverlayLayers } from '../../hud/overlay-layer';
-import type { HudShell } from '../../hud/hud-shell';
-import type { OverlayManager } from '../../hud/overlay-manager';
+import type { OverlayLayers } from '../../hud-kit/overlay-layer';
+import type { HudShell } from '../../hud-kit/hud-shell';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
 import type { SettingValue } from '../../settings/setting-value';
-import type { MissionTimeFormat } from '../view/hud-selection';
+import type { MissionTimeFormat } from '../view/view-preferences';
 import type { HelpPanel } from './windows/help-panel';
-import type { HintKind, Notifier } from '../../hud/notifier';
-import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
+import type { HintKind, Notifier } from '../../hud-kit/notifier';
+import { ConfirmationOverlay } from '../../hud-kit/windows/confirmation-overlay';
 import { HudToast } from './hud-toast';
 import { AlarmBand } from './alarm-band';
-import type { ShipAlarms } from '../alarm/ship-alarms';
+import type { ShipAlarms } from '../ship-alarms';
 import { hudAttention, hudWorkspace } from './hud-workspace';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。

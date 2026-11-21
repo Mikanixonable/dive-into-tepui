@@ -11,7 +11,7 @@ import { MU_SUN } from '../../src/game/celestial/solar-system/sun';
 import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { ArcCelestialBodies } from '../../src/game/dynamic/arc-celestial-bodies';
-import { attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/game/dynamic/attractors';
+import { attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/physics/attractor';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/dynamic/surface-candidates';
 import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';

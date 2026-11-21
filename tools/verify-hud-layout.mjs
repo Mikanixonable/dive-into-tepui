@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
-const hudRoots = ['src/game/hud', 'src/hud'];
+const hudRoots = ['src/game/hud', 'src/hud-kit'];
 const layoutTokensFile = path.normalize('src/game/hud/style/layout-tokens.ts');
 const skeletonFile = path.normalize('src/game/hud/style/skeleton-style.ts');
 

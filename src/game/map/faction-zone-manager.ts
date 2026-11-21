@@ -9,17 +9,21 @@ import { FactionZoneView, type OrbitZoneVisual } from '../../render/zones/factio
 import type { ThemePalette } from '../../theme';
 import { lagrangeId, lagrangePointNumbersOf } from '../celestial/lagrange-id';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import { isModularShip } from '../ship/modular-ship';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
 import type { DisplayWindow } from '../display-window-manager';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { MapVisibilityPolicy } from './visibility-policy';
 import type { ViewMode } from '../view/view-mode';
 import {
   type Faction, type FactionLagrangeZone, factionLagrangeZones, factionOf,
   factionOrbitZones, LAGRANGE_ZONE_RADIUS_RATIO,
 } from './faction-occupancy';
+
+// パッドの見かけ半径 [px]。点の背後に置く記号的な発光で、実寸とは無関係に画面サイズで決める
+// (判定半径を実寸として使うと、太陽-地球系で画面全体を覆う大きさになる)。
+const PAD_RADIUS_PX = 24;
 
 export class FactionZoneManager {
   private readonly zoneView = new FactionZoneView();
@@ -72,7 +76,7 @@ export class FactionZoneManager {
         key: `${zone.pointId}:${zone.faction}`,
         color: zone.faction === 'enemy' ? palette.error : palette.info,
         position: camera.floatingOrigin.RtoThreeV3(zone.position),
-        radius: zone.radius,
+        radius: PAD_RADIUS_PX * camera.radialScale(zone.position),
       })),
       camera.camera.quaternion,
     );

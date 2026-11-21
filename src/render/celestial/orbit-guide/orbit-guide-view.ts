@@ -3,7 +3,7 @@
 import * as THREE from 'three/webgpu';
 import { GuideCurve, type GuideCurveDisplay } from './guide-curve';
 import { DirectionMarkers } from './direction-markers';
-import { LINE_RENDER_ORDER } from '../../line-style';
+import { LINE_RENDER_ORDER } from '../../lines/line-style';
 import type { CurveColorSampler } from '../../curve';
 import type { CameraFrame } from '../../camera/camera-frame';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';

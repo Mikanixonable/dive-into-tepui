@@ -10,7 +10,7 @@ import { solarSystemParts } from '../physics/test-helpers';
 import type { CameraFrameSample } from '../../src/game/viewer/focus-camera-selection';
 import type { SerializedDisplayTimelineSelection } from '../../src/game/viewer/display-timeline-selection';
 import type { CelestialSystem } from '../../src/game/celestial/celestial-system';
-import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
+import type { EntityRoster } from '../../src/game/dynamic/entity-registry';
 
 // 操作対象がいる進行。戦闘ビューへ入れる。
 const control = { current: { id: 'ship-1', plan: { nodes: [] } } };

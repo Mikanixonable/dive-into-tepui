@@ -1,6 +1,6 @@
 // 建造の取り付け先のガイド(接続面の中心・外向き・半径)を ECI 座標へ写す純関数と、
 // 画面座標へ写した候補をポインタ位置へ当てるピックの純関数。
-import { pickRadiusSq } from '../../input/pointer-precision';
+import { pickRadiusSq } from '../../input-devices/pointer-precision';
 import { qRotate, type Quat } from '../../math/quat';
 import { scale, v3, type Vec3 } from '../../math/vec3';
 import {
@@ -161,3 +161,28 @@ export function pickConstructionTarget(
   }
   return best;
 }
+
+// 建造画面の視点を寄せる対象を、船体の姿勢と運動状態から求める。
+
+// 視点を寄せる対象。船体の中の1点(ECI [m])と、それを収める外接半径 [m]。
+export interface ConstructionFocus {
+  readonly position: Vec3;
+  readonly radius: number;
+}
+
+// モジュールの ECI 位置と外接半径。読めなければ null。
+export function constructionModuleFocus(
+  ship: ModularShip, moduleId: string | null,
+): ConstructionFocus | null {
+  if (moduleId === null) return null;
+  const transform = ship.assembly.worldTransformOf(moduleId);
+  const definition = ship.assembly.definition(moduleId);
+  if (transform === null || definition === null) return null;
+  // 船体の重心を差し引いたルート位置へ、モジュールの相対位置を姿勢で回して載せる。
+  return {
+    position: ship.motion.assemblyToEci(transform.position),
+    radius: Math.hypot(definition.length, definition.diameter) / 2,
+  };
+}
+
+import type { ModularShip } from './modular-ship';

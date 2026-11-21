@@ -1,7 +1,7 @@
 // 表示パネルが読み書きする、セーブを跨いで共通の設定。現在値を読み、書き換えは onXxxChange へ返す。
-import type { OrbitGuideGroupTab, ViewOptionsTab } from './hud-selection';
+import type { OrbitGuideGroupTab, ViewOptionsTab } from './view-preferences';
 import type { MapDisplayToggles } from '../map/display-toggles';
-import type { CelestialGridVisibility } from '../../render/celestial-grid';
+import type { CelestialGridVisibility } from '../../render/celestial/celestial-grid';
 import type { SettingValue } from '../../settings/setting-value';
 import type { RenderStyle } from '../../render/render-style';
 

@@ -1,5 +1,5 @@
-import type { ContinuousGameAction, GameInputBinding } from './game-actions';
-import type { GameCommand } from './game-commands';
+import type { ContinuousGameAction, GameInputBinding } from './game-input-types';
+import type { GameCommand } from './game-input-types';
 
 interface GameInputMode {
   readonly camera: boolean;

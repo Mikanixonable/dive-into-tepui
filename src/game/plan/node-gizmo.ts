@@ -1,10 +1,10 @@
 // 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル・Δv アーム・コンテキストメニューを
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import { FONT_FAMILY, FONT_XS, Z_HUD_NODE_GIZMO } from '../../theme';
-import { ContextMenu } from '../../hud/windows/context-menu';
-import { injectOnce } from '../../hud/inject-style';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import type { OverlayManager } from '../../hud/overlay-manager';
+import { ContextMenu } from '../../hud-kit/windows/context-menu';
+import { injectOnce } from '../../hud-kit/inject-style';
+import { MenuCommon, type MenuAction } from '../menu-actions';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
 
 const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
 

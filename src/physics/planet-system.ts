@@ -20,7 +20,7 @@ import {
   type KinematicState, addPrimaryRelative, fromStarRelative, kinematicState,
 } from './kinematic-state';
 import { type SatelliteOrbit, satelliteState } from './satellite-orbit';
-import { type TimeCacheStats, TimeRing, addTimeCacheStats } from './time-ring';
+import { type TimeCacheStats, TimeRing, addTimeCacheStats } from '../math/time-ring';
 
 // 惑星本体の位置を組むとき、重心補正から落としてよい変位の合計 [m]。衛星の惑星相対軌道は
 // 平均要素の二体解へ周期補正項を重ねたモデルで、真値との差は km の桁ある(satellite-orbit.ts

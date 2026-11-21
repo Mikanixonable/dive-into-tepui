@@ -9,7 +9,7 @@ import {
   DynamicMotion,
   type DynamicMotionBehavior,
 } from '../dynamic/dynamic-motion';
-import type { Contact } from '../dynamic/dynamic-entity/contact';
+import type { Contact } from '../dynamic/entity/contact';
 import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 import {
   MAX_HULL_TEMP,
@@ -17,11 +17,11 @@ import {
   SHIP_BCINV,
   SHIP_SRP_COEFF,
   shipMotionProperties,
-} from '../dynamic/dynamic-entity/combat-ship-entity';
+} from '../dynamic/entity/combat-ship-entity';
 import type { SerializedPowerSystem } from '../player/power';
 import type { SerializedRadiatorSystem } from '../player/radiator';
 import { AeroLoad } from '../player/aero-load';
-import { BeltController, type SerializedBeltController } from '../player/belt';
+import { BeltController, type SerializedBeltController } from '../player/belt-controller';
 import { CoolingDump } from '../player/cooling-dump';
 import { PowerSystem } from '../player/power';
 import { RadiatorSystem } from '../player/radiator';

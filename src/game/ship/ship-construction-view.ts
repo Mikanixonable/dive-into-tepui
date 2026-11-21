@@ -11,9 +11,9 @@ import { ShipGhostView, type ShipGhostDisplay } from '../../render/dynamic/ship/
 import type { ShipModuleEmphasis, ShipModuleEmphasisMap } from '../../render/dynamic/ship/ship-render-contract';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CompoundCylinderRayHit } from '../../physics/compound-cylinder-contact';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MarkerDevice } from '../../marker/marker-device';
-import type { MarkerSink } from '../../marker/marker-sink';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MarkerDevice } from '../../marker-kit/marker-device';
+import type { MarkerSink } from '../../marker-kit/marker-sink';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pieceOfModule } from './ship-assembly-graft';
 import type { ShipAssembly } from './ship-assembly';

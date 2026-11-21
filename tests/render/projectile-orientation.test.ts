@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
-import { orientProjectile } from '../../src/render/projectile-orientation';
+import { orientProjectile } from '../../src/render/dynamic/entity/bullet-view';
 
 export function register(): void {
   test('projectile orientation: authored +Z follows the displayed velocity', () => {

@@ -2,11 +2,11 @@
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
-import type { BulletType } from '../dynamic/dynamic-entity/bullet-reaction';
+import type { BulletType } from '../dynamic/entity/bullet-reaction';
 import {
   buildDestroyFragments, DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
   PLAYER_DESTROY_FRAG_COLOR, playerDestroyFragments,
-} from '../dynamic/dynamic-entity/debris-piece';
+} from '../dynamic/entity/debris-piece';
 
 // 放熱板が全損したとき、その先端から出す破片の数。
 const RADIATOR_BREAK_FRAGMENTS = 4;

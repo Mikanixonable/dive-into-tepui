@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
-import { ShipAlarms } from '../../src/game/alarm/ship-alarms';
-import { MAX_HULL_TEMP } from '../../src/game/dynamic/dynamic-entity/combat-ship-entity';
+import { ShipAlarms } from '../../src/game/ship-alarms';
+import { MAX_HULL_TEMP } from '../../src/game/dynamic/entity/combat-ship-entity';
 import { test } from '../harness';
 
 // 操作艦の警報(状態)の振る舞い(UI-DESIGN.md「警報と通知」): 鳴る・確認・解除。

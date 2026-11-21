@@ -1,5 +1,5 @@
 // 操作説明の対応表 — 何を操作すると何が起きるかを1行ずつ持つ。
-import { KEY_MAPPING as K, type KeyBinding } from '../../../input/key-mapping';
+import { KEY_MAPPING as K, type KeyBinding } from '../../../input-devices/key-mapping';
 import { MAX_PHYS_SIM_SPEED } from '../../dynamic/sim-speed-manager';
 import { THROTTLE_LABELS } from '../../player/throttle';
 

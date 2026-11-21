@@ -2,12 +2,12 @@
 // つまみが決める置き方で描画座標へ置く。大気・天体照の光源・自身の影・雲の影の源としての姿も持つ。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface, type LightSourceMap } from '../../src/render/celestial/celestial-surface';
-import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial-albedo';
+import { scaledToBondAlbedo, type Albedo } from '../../src/render/celestial/celestial-albedo';
 import earthSmoothnessUrl from '../../src/assets/earth-smoothness.png';
 import {
   EARTH, EARTH_ATMOSPHERE_OPTICS, EARTH_COASTLINE, earthCloudPresentation, R_EARTH, R_EARTH_EQ,
 } from '../../src/game/celestial/solar-system/earth-system';
-import { EARTH_TEXTURE } from '../../src/render/earth-surface-defaults';
+import { EARTH_TEXTURE } from '../../src/render/earth-surface/defaults';
 import { shapeAxes, shapeSpheroidRadii } from '../../src/physics/celestial-body-def';
 import { BodyGraticule } from '../../src/render/celestial/body-graticule';
 import { LineOverlay } from '../../src/render/celestial/line-overlay';

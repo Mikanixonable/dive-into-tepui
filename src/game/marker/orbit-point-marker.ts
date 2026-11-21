@@ -2,9 +2,9 @@
 // 生成元が解いた位置と通過時刻を place 系メソッドで受け取り、マップのマーカーと右クリック
 // メニューとして公開する。呼称・字形・示す値は具象が与える。
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
-import { fmtTime } from '../../hud/format';
+import { MenuCommon, type MenuAction } from '../menu-actions';
+import { orbitPointLabel, type TimeLabelSetting } from '../calendar-ticks';
+import { fmtTime } from '../../hud-kit/format';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
@@ -13,12 +13,12 @@ import { pointPlacement } from './marker-placement';
 import type { ControlSelection } from '../control-selection';
 import type { PresentationPlanEditor, PresentationStageAuthoring } from '../presentation-ports';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { MenuItem } from '../../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MenuItem } from '../../hud-kit/windows/context-menu';
+import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 
 export abstract class OrbitPointMarker implements ObjectPickable {
   public readonly orbitState = null;

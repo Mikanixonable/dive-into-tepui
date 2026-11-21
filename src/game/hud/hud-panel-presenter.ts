@@ -2,8 +2,8 @@
 import { len, sub } from '../../math/vec3';
 import { frameRoleOf } from '../../physics/frame';
 import { orbitInfo, relativeInfo } from '../orbit-info';
-import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { hasUsableConstructionDock } from '../ship/construction-entry';
+import { aliveCombatTarget } from '../dynamic/entity/combat-target';
+import { hasUsableConstructionDock } from '../ship/ship-construction-entry';
 import { simSpeedCommands, type SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import { shipSystemCommands, type ShipSystemCommands } from '../player/ship-system-commands';
 import { orbitReferenceCommands, type OrbitReferenceCommands } from '../viewer/orbit-reference-commands';
@@ -15,14 +15,14 @@ import { frameRoleName } from './frame/frame-labels';
 import type { Hud, HudPanelViewModels } from './hud';
 import type { VesselPanelViewModel } from './panels/vessel-panel';
 import type { ArmamentBandViewModel } from './panels/armament-band';
-import type { AmmoViewModel } from './ammo-status';
+import type { AmmoViewModel } from './ammo-view-model';
 import type { OrbitPanelViewModel } from './orbit/orbit-panel';
 import type { TargetPanelViewModel } from './panels/target-panel';
 import type { EnemyContact } from './panels/enemies-panel';
 import type { ApproachTargetSource } from './orbit/orbit-analysis-data';
 import type { CommandQueue } from '../command-queue';
 import type { ControlSelection } from '../control-selection';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import type { ObjectPickable } from '../pickable/object-pickable';
 import type {
   PresentationCameraSystem, PresentationCelestialSystem, PresentationDisplayWindow,
@@ -34,7 +34,7 @@ import type { OrbitReference } from '../orbit-reference';
 import type { ViewMode } from '../view/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { ThemePalette } from '../../theme';
-import type { ShipAlarms } from '../alarm/ship-alarms';
+import type { ShipAlarms } from '../ship-alarms';
 
 export class HudPanelPresenter {
   private readonly viewBadge: ViewBadge;

@@ -1,6 +1,6 @@
 // 戦闘ビュー専用の意匠。常設計器は背後の戦場を隠しすぎない Quiet Glass とし、
 // 有彩色は自分(基調のアクセント)・ターゲット(第二アクセント)・注意と警告を表す小さな箇所だけへ限定する。
-import { MQ_COARSE, MQ_MEDIUM_DOWN } from '../../../hud/breakpoints';
+import { MQ_COARSE, MQ_MEDIUM_DOWN } from '../../../hud-kit/breakpoints';
 
 export const COMBAT_VIEW_STYLE = `
 #hud:not(.base-mode) .hud-combat-root.active #hud-vessel-status,

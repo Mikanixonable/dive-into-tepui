@@ -5,9 +5,9 @@ import { len, sub, type Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ProjectFn } from '../../math/projection';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
 import type { GroupedMarkerItem } from './grouped-markers';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
 import { pointPlacement } from './marker-placement';
 
 // これより天体が遠ければ、サブ行を記号と個数だけの1行へ畳む [m]。

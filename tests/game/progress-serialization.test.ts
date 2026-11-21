@@ -7,10 +7,10 @@ import { kinematicState, type SerializedKinematicState } from '../../src/physics
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import { SimSpeedManager, type SerializedSimSpeedManager } from '../../src/game/dynamic/sim-speed-manager';
 import { Plan, type SerializedPlan } from '../../src/game/plan/plan';
-import { PlanNodeRules, type SerializedPlanNodeRules } from '../../src/game/plan/plan-node-rules';
+import { PlanNodeRules, type SerializedPlanNodeRules } from '../../src/game/plan/plan-node-execution';
 import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { AltitudeAlarm, type SerializedAltitudeAlarm } from '../../src/game/player/altitude-alarm';
-import { BeltController, type SerializedBeltController } from '../../src/game/player/belt';
+import { BeltController, type SerializedBeltController } from '../../src/game/player/belt-controller';
 import {
   DeployablePanelState, type SerializedDeployablePanelState,
 } from '../../src/game/player/deployable-panel-state';

@@ -17,6 +17,7 @@ export interface SnapshotMeta {
   createdAtReal: number;
   simTime: number;
   centerBodyId: string;
+  centerBodyName?: string;
   altitude: number;
   speed: number;
   hpRatio: number;

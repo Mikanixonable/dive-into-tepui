@@ -1,8 +1,8 @@
 // モジュール船の接触・被弾・構造喪失・焼失の帰結を所有する。船体の構造と寿命を持つ
 // ModularShip から、接触結果を assembly と演出へ適用する状態機械を分離する。
-import { bulletReactionOf, type BulletType } from '../dynamic/dynamic-entity/bullet-reaction';
-import type { Contact } from '../dynamic/dynamic-entity/contact';
-import { collisionDamageFraction, contactDamageSpeed } from '../dynamic/dynamic-entity/contact-damage';
+import { bulletReactionOf, type BulletType } from '../dynamic/entity/bullet-reaction';
+import type { Contact } from '../dynamic/entity/contact';
+import { collisionDamageFraction, contactDamageSpeed } from '../dynamic/entity/contact';
 import type { DynamicReactionServices, EntityContactParticipant } from '../dynamic/dynamic-simulation-participant';
 import type { ModularShipMotion } from './modular-ship-motion';
 import type { ShipAssembly } from './ship-assembly';

@@ -2,7 +2,7 @@
 // ブレークポイントごとにここで再代入し、判定式そのものをこの1箇所へ集約する。
 import {
   MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT,
-} from '../../../hud/breakpoints';
+} from '../../../hud-kit/breakpoints';
 
 export const LAYOUT_TOKENS_STYLE = `
 :root {

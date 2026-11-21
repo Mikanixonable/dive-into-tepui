@@ -14,10 +14,10 @@ import type { ListedObject } from '../../pickable/listed-object';
 import type { DisplayTimelineSource } from '../../viewer/display-timeline-selection';
 import { LagrangePointMarker } from '../../marker/lagrange-point-marker';
 import { isLagrangeId } from '../../celestial/lagrange-id';
-import { expandHitTarget } from '../../../hud/widgets/widget-base';
-import { ObjectPicker, type ObjectPickerGroup } from '../../../hud/windows/object-picker';
-import type { OverlayManager } from '../../../hud/overlay-manager';
-import { groupPickables } from '../object-groups';
+import { expandHitTarget } from '../../../hud-kit/widgets/widget-base';
+import { ObjectPicker, type ObjectPickerGroup } from '../../../hud-kit/windows/object-picker';
+import type { OverlayManager } from '../../../hud-kit/overlay-manager';
+import { groupPickables } from '../object-picker-groups';
 import { AngleCompass, type AngleCompassCommands } from './angle-compass';
 import { CameraOpticsBar, type CameraOpticsCommands } from './camera-optics-bar';
 import {
@@ -28,8 +28,8 @@ import {
   bodyClassGlyph, centerGlyphSvg, type CenterGlyphKind,
   frameDiagramSvg, linkGlyphSvg, rotationGlyphSvg,
 } from './frame-glyphs';
-import { TileStrip, type TileItem } from './tile-strip';
-import { buildPanel } from './frame-panel';
+import { TileStrip, type TileItem } from '../../../hud-kit/widgets/tile-strip';
+import { buildPanel } from './panel-shell';
 
 const MAX_BODY_TILES = 3; // 中心タイル帯へ直接並べる近傍天体の最大数(自機・解除と合わせて5列へ収める)
 

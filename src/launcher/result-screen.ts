@@ -1,10 +1,10 @@
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { KEY_MAPPING as K } from '../input-devices/key-mapping';
 import type { StageResult } from '../game/stages/stage';
-import type { HudShell } from '../hud/hud-shell';
-import type { OverlayHandle } from '../hud/overlay-manager';
-import { injectOnce } from '../hud/inject-style';
-import { injectCommonUiStyle } from '../hud/style/common-ui-style';
-import { Button } from '../hud/widgets';
+import type { HudShell } from '../hud-kit/hud-shell';
+import type { OverlayHandle } from '../hud-kit/overlay-manager';
+import { injectOnce } from '../hud-kit/inject-style';
+import { injectCommonUiStyle } from '../hud-kit/style/common-ui-style';
+import { Button } from '../hud-kit/widgets';
 import { RESULT_SCREEN_STYLE } from './result-screen-style';
 
 // 決着した周回の次(再出撃かタイトルへ戻るか)を決める契約。

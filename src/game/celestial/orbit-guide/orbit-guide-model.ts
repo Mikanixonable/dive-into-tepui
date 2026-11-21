@@ -9,7 +9,7 @@ import {
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
 } from '../../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../../render/lines/line-style';
 import type { RenderStyle } from '../../../render/render-style';
 import type { ViewMode } from '../../view/view-mode';
 import { SCHEMATIC_LINE } from '../../../render/schematic-style';

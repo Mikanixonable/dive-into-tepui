@@ -1,23 +1,23 @@
 // デバッグ情報ウィンドウ: フレーム時間の計測・集計と、その表示、そして描画パスの中間結果を映す
 // デバッグ表示の選択。窓が開いている間だけ計測が走る(`on` が計測の可否そのもの)。
 import type { WebGPURenderer } from 'three/webgpu';
-import { PropertyWindow } from '../../../hud/windows/property-window';
-import { SegmentedControl, TabBar } from '../../../hud/widgets';
-import { injectOnce } from '../../../hud/inject-style';
+import { PropertyWindow } from '../../../hud-kit/windows/property-window';
+import { SegmentedControl, TabBar } from '../../../hud-kit/widgets';
+import { injectOnce } from '../../../hud-kit/inject-style';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../../render/pipeline/debug-target';
 import type { RenderStyle } from '../../../render/render-style';
-import { fmtDuration } from '../../../hud/format';
+import { fmtDuration } from '../../../hud-kit/format';
 import {
   type FrameSections, SECTION_COUNT, SECTION_LABELS, type SectionId,
   SYNC_SECTION_COUNT, SYNC_SECTION_LABELS, type SyncSectionId,
 } from '../../frame-sections';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, type GpuTimings, type GpuPassId } from '../../../render/gpu-timings';
-import type { OverlayManager } from '../../../hud/overlay-manager';
-import { KEY_MAPPING as K } from '../../../input/key-mapping';
+import type { OverlayManager } from '../../../hud-kit/overlay-manager';
+import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import type { PerfCounts, PerfCountSource } from '../../perf-counts';
 import type { CloudQualityReading } from '../../../render/earth-weather/cloud/cloud-quality-governor';
-import type { EntityCountKind } from '../../dynamic/dynamic-entity/entity-kind';
-import type { PropertyRow } from '../../../hud/windows/property-window-content';
+import type { EntityCountKind } from '../../dynamic/entity/entity-kind';
+import type { PropertyRow } from '../../../hud-kit/windows/property-window-content';
 
 // エンティティ数の行。並び順と表示名はここで決める。
 const ENTITY_COUNT_ROWS: readonly { key: EntityCountKind; label: string }[] = [

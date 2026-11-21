@@ -7,7 +7,7 @@ import { randSym } from '../../math/random';
 import { pointVelocityAt } from '../../physics/attitude';
 import { kinematicState } from '../../physics/kinematic-state';
 import type { EntityRegistry } from '../dynamic/entity-registry';
-import { DebrisPiece } from '../dynamic/dynamic-entity/debris-piece';
+import { DebrisPiece } from '../dynamic/entity/debris-piece';
 import type { ControlSelection } from '../control-selection';
 import type { ModularShip, ModularShipInit } from './modular-ship';
 import type { ModularShipMotion } from './modular-ship-motion';
@@ -15,9 +15,9 @@ import type { ShipAssembly, ShipConnection } from './ship-assembly';
 import { shipPhysicsShape } from './ship-physics-shape';
 import {
   SHIP_DECOUPLING_COLLISION_GRACE, decoupledMasses, separationImpulseVelocities, splitAtDecoupler,
-} from './ship-decoupling';
-import { dockingEligibility } from './ship-docking';
-import { repairDockedAssembly } from './ship-repair';
+} from './ship-connection-rules';
+import { dockingEligibility } from './ship-connection-rules';
+import { repairDockedAssembly } from './ship-connection-rules';
 import type { ShipCapabilities } from './ship-capabilities';
 import { applyTransformToPoint } from './ship-assembly-transform';
 import {

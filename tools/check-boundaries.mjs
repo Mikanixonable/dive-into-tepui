@@ -31,10 +31,10 @@ const LAYER_TABLE = [
   ['src/hackgen-400.css', DEFINITION], // 書体
   ['src/physics/', TIME],
   ['src/render/', DEVICE],
-  ['src/marker/', DEVICE],
+  ['src/marker-kit/', DEVICE],
   ['src/audio/', DEVICE],
-  ['src/input/', DEVICE],
-  ['src/hud/', '表示の導出'],
+  ['src/input-devices/', DEVICE],
+  ['src/hud-kit/', '表示の導出'],
   ['src/game/viewer/', VIEWER],
   ['src/game/', '表示の導出'],
   ['src/settings/', 'アプリ寿命の正本'],
@@ -43,7 +43,7 @@ const LAYER_TABLE = [
   ['src/main.ts', 'アプリの組み立て'],
 ];
 
-// src/hud/ が import してはならない先。hud/ が装置になったときの規則を、いま 0 件である
+// src/hud-kit/ が import してはならない先。hud-kit/ が装置になったときの規則を、いま 0 件である
 // うちにパスで先取りする(層の対応表では hud/ も game/ も表示の導出なので、層では出ない)。
 const HUD_FORBIDDEN_ROOTS = ['src/game/', 'src/settings/', 'src/launcher/'];
 
@@ -75,14 +75,12 @@ const MISPLACED_PRESENTATION_FILES = [
   'src/game/plan/plan-editor.ts',
   'src/game/plan/plan-path.ts',
   'src/game/plan/node-gizmo.ts',
-  'src/game/plan/plan-panel.ts',
   'src/game/plan/plan-axis-drag.ts',
   'src/game/plan/plan-display.ts',
   'src/game/plan/plan-guide.ts',
   'src/game/creative/object-placer-panel.ts',
   'src/game/creative/slider-field.ts',
   'src/game/creative/stage-controls-panel.ts',
-  'src/game/stages/stage-utils/status-panel.ts',
 ];
 
 // src/game/ の中にある表示の導出の置き場(1.3)。
@@ -106,7 +104,7 @@ const RULES = {
   deviceToDevice: { name: '装置どうしの相互 import', ref: 'ARCHITECTURE R2', exempt: [] },
   timeOut: { name: '時刻層の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
   definitionOut: { name: '定義層の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
-  hudOut: { name: 'src/hud/ の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
+  hudOut: { name: 'src/hud-kit/ の出ていく import', ref: 'ARCHITECTURE R2', exempt: [] },
   progressToViewer: { name: '進行から視点への import', ref: 'ARCHITECTURE R4', exempt: [] },
   settingsViewer: { name: '設定と視点の相互 import', ref: 'ARCHITECTURE R4', exempt: [] },
   serializationToPresentation: {
@@ -122,10 +120,10 @@ const SYNTAX_RULES = {
   // hp キャッシュは同じ所有者が assembly と同期する。型を readonly に分解すると敵の
   // 既存ダメージ経路が二重の adapter になり、移行中の一体性を失うためこの4欄を固定する。
   mutableField: { name: 'モデル層の可変な公開欄の禁止', ref: 'ARCHITECTURE R3', exempt: [
-    ['src/game/dynamic/dynamic-entity/parts.ts', 'Part.hp'],
-    ['src/game/dynamic/dynamic-entity/parts.ts', 'RcsTankPart.fuel'],
-    ['src/game/dynamic/dynamic-entity/ship.ts', 'Ship.hp'],
-    ['src/game/dynamic/dynamic-entity/ship.ts', 'Ship.maxHp'],
+    ['src/game/dynamic/entity/parts.ts', 'Part.hp'],
+    ['src/game/dynamic/entity/parts.ts', 'RcsTankPart.fuel'],
+    ['src/game/dynamic/entity/ship.ts', 'Ship.hp'],
+    ['src/game/dynamic/entity/ship.ts', 'Ship.maxHp'],
   ] },
   // 識別子は「型名.constructor(引数名)」。型の名前 Serialized* は直列化の語彙の行が保証する。不変な
   // 素の値の型をそのまま直列化の形に使うもの(R12)は、新しく作るときにも同じ型で受けるので当てない。
@@ -142,7 +140,7 @@ const FORBIDDEN = [
     name: '導出層の壁時計の禁止',
     ref: 'ARCHITECTURE R5',
     pattern: /performance\.now|Date\.now/g,
-    targets: ['src/render/', 'src/marker/', 'src/hud/', 'src/game/hud/'],
+    targets: ['src/render/', 'src/marker-kit/', 'src/hud-kit/', 'src/game/hud/'],
     // 自分の処理にかかった時間を測るための壁時計は、表示する時刻ではないので例外にする。
     exempt: [
       'src/render/earth-weather/cloud/cloud-local-field-baker.ts',
@@ -193,7 +191,7 @@ const FORBIDDEN = [
     name: '生の入力エッジの受けの禁止',
     ref: 'ARCHITECTURE R8',
     pattern: /\binput\.take(?:Key|Keys)\s*\(/g,
-    targets: ['src/game/', 'src/hud/', 'src/launcher/'],
+    targets: ['src/game/', 'src/hud-kit/', 'src/launcher/'],
     exempt: ['src/game/input/raw-game-input-adapter.ts'],
   },
   {
@@ -371,7 +369,7 @@ function findImportViolations({ edges, layerOf }) {
     }
     if (from === TIME && to !== DEFINITION && to !== TIME) flag(RULES.timeOut);
     if (from === DEFINITION && to !== DEFINITION) flag(RULES.definitionOut);
-    if (e.from.startsWith('src/hud/') && isUnder(e.to, HUD_FORBIDDEN_ROOTS)) flag(RULES.hudOut);
+    if (e.from.startsWith('src/hud-kit/') && isUnder(e.to, HUD_FORBIDDEN_ROOTS)) flag(RULES.hudOut);
 
     // 以下の3つは層でなくパスで当てる。import を持たない視点のモジュールも、層では定義層に落ちる(R2)。
     // 進行は視点を import しない、という R4 を当てたもの。
@@ -387,7 +385,7 @@ function findImportViolations({ edges, layerOf }) {
     }
     // スナップショットはモデル層の直列化で、表示の導出を含めない(R11)。実体の直列化の根の型を
     // 置く辞書へ当てる。(暫定 — 段 6 で層の規則が覆うので外す)
-    if (e.from === 'src/game/dynamic/dynamic-entity/entity-dictionary.ts' && isUnder(e.to, PRESENTATION_ROOTS)) {
+    if (e.from === 'src/game/dynamic/entity/entity-dictionary.ts' && isUnder(e.to, PRESENTATION_ROOTS)) {
       flag(RULES.serializationToPresentation);
     }
   }

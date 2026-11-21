@@ -4,10 +4,10 @@ import {
   celestialClassVisible, celestialNameVisible, mapDisplayCategoryVisible,
   type MapDisplayCategory, type MapDisplayToggles,
 } from './display-toggles';
-import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
+import type { CelestialClass } from '../celestial/entity/celestial-class';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import { isLagrangeId, lagrangeParentId } from '../celestial/lagrange-id';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
 
 export interface MapVisibility {
   readonly icon: boolean;
@@ -118,9 +118,12 @@ export class MapVisibilityPolicy {
     this.nearby = new Set(nearbyIds);
   }
 
-  // 天体 id が解放されているか。一覧や選択の候補から未解放の天体を外すときに読む。
+  // 天体またはラグランジュ点の id が解放条件を満たすか。
   public isRevealed(id: string): boolean {
-    return this.revealed === null || this.revealed.has(id);
+    if (this.revealed === null) return true;
+    return isLagrangeId(id)
+      ? this.systemRevealed(lagrangeParentId(id))
+      : this.revealed.has(id);
   }
 
   // 天体 id あるいはラグランジュ点 id の表示判定。星系に無い id はすべて伏せた判定になる。

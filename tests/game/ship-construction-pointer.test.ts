@@ -2,8 +2,8 @@
 // 候補が無ければ何もしない。無効な候補の上でドラッグを離すと理由を出して手放す。
 // 偽の入力・ホスト・カメラで ShipConstructionPointer を駆動する。
 import * as assert from 'node:assert/strict';
-import type { GrabbedDrag, Input, PointerPress } from '../../src/input/input';
-import type { PointerPoint } from '../../src/input/pointer-point';
+import type { GrabbedDrag, Input, PointerPress } from '../../src/input-devices/input';
+import type { PointerPoint } from '../../src/input-devices/pointer-point';
 import type { Viewport } from '../../src/render/viewport';
 import type { CameraSystem } from '../../src/game/camera/camera-system';
 import type { Ray } from '../../src/math/ray';
@@ -34,8 +34,8 @@ import type {
   ConstructionCardDrag, ConstructionHeld, ConstructionTarget,
 } from '../../src/game/ship/ship-construction-types';
 import type { ModularShip } from '../../src/game/ship/modular-ship';
-import type { OverlayManager } from '../../src/hud/overlay-manager';
-import type { Notifier } from '../../src/hud/notifier';
+import type { OverlayManager } from '../../src/hud-kit/overlay-manager';
+import type { Notifier } from '../../src/hud-kit/notifier';
 import type { DisplayWindowManager } from '../../src/game/display-window-manager';
 import type { RunEventSink } from '../../src/game/run-events';
 import { test } from '../harness';

@@ -30,7 +30,7 @@ export function register(): void {
     assert.equal(capability.role, 'material');
   });
 
-  test('ship capabilities: 装備性能・燃料・展開操作を assembly から導出する', () => {
+  test('ship capabilities: 装備性能・燃料を assembly から導出する', () => {
     const assembly = createBasePreset();
     const capability = new ShipCapabilities(assembly);
     assert.equal(capability.role, 'base');
@@ -40,9 +40,5 @@ export function register(): void {
     assert.equal(capability.totalCoolingRate, 9.6);
     assert.equal(capability.consumeFuel('main', 12), 12);
     assert.equal(capability.fuel('main'), 148);
-    assert.equal(capability.toggleDeployable('radiator', 0), true);
-    const radiator = capability.modules('radiator')[0];
-    assert.ok(radiator !== undefined);
-    assert.equal(radiator.deployed, 1);
   });
 }

@@ -3,7 +3,7 @@ import {
   type FrameAnchorSource, type FramePoint, type FrameRotationSource, type ReferenceFrame, toFramePoint,
 } from '../../physics/frame';
 import type { SerializedVec3, Vec3 } from '../../math/vec3';
-import type { ReferenceFrames } from '../celestial/reference-frames';
+import type { ReferenceFrames } from '../../physics/reference-frames';
 
 export type FocusTarget =
   | { readonly kind: 'object'; readonly id: string }

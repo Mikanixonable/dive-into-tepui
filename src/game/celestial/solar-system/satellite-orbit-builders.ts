@@ -64,5 +64,3 @@ export function jplSatelliteOrbit(p: {
     distTerms: [],
   });
 }
-
-// 型注釈ではなく satisfies で受けることで、id ごとの具体型(地球なら惑星、月なら衛星)が

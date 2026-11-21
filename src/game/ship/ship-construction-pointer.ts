@@ -3,15 +3,15 @@
 // 編集できるモジュールを選んでいる間は、その接続軸まわりの回転リングを掴める。
 // 指す先の判定は候補の画面位置への距離とポインタの下のモジュール、モジュールの選択は
 // 船体へのレイキャスト、リングの掴みはリング面への視線の交点で行う。
-import { type KeyBinding, KEY_MAPPING as K } from '../../input/key-mapping';
+import { type KeyBinding, KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import { metersPerPixel, screenProjection } from '../../math/projection';
 import type { Quat } from '../../math/quat';
 import type { Ray } from '../../math/ray';
 import type { Vec3 } from '../../math/vec3';
 import type { CompoundCylinderRayHit } from '../../physics/compound-cylinder-contact';
-import type { GrabbedDrag, Input, PointerPress } from '../../input/input';
-import type { PointerPoint } from '../../input/pointer-point';
-import { pickRadiusSq } from '../../input/pointer-precision';
+import type { GrabbedDrag, Input, PointerPress } from '../../input-devices/input';
+import type { PointerPoint } from '../../input-devices/pointer-point';
+import { pickRadiusSq } from '../../input-devices/pointer-precision';
 import type { Viewport } from '../../render/viewport';
 import type { CameraSystem } from '../camera/camera-system';
 import {

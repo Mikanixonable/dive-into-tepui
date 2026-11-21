@@ -19,7 +19,7 @@ import type { CloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-s
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type {
   CelestialIlluminationSource, CelestialIlluminationView, DefinedCelestialBody,
-} from '../../src/render/celestial/celestial-entity/celestial-view';
+} from '../../src/render/celestial/entity/celestial-view';
 import type { CameraFrame } from '../../src/render/camera/camera-frame';
 import type { Viewpoint } from '../../src/math/projection';
 import type { Viewport } from '../../src/render/viewport';

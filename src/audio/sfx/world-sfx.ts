@@ -6,9 +6,9 @@ import type { SoundCue } from './sound-cue';
 // 被弾点がこの距離まで自機中心から離れると、遠い被弾として音量・音高を下限にする [m]。
 const HIT_SOUND_DISTANCE_MAX = 10;
 
-const THRUST_LOOP_GAIN = 0.1;
-const RCS_LOOP_GAIN = 0.015; // メインエンジンより高く軽いシュー音なので、控えめに混ぜる
-const ALARM_LOOP_GAIN = 0.06;
+const THRUST_LOOP_GAIN = 0.14;
+const RCS_LOOP_GAIN = 0.035;
+const ALARM_LOOP_GAIN = 0.09;
 
 // そのフレームに鳴らすべき連続音の全体。
 export interface LoopSfx {
@@ -40,7 +40,7 @@ const LOW_PRIORITY_SPAN: Partial<Record<WorldSound['kind'], number>> = {
   fire: 0.11,
   reload: 1.2,
   spinUp: 0.34,
-  clank: 0.05,
+  clank: 0.45,
   magFeed: 0.1,
   pickup: 0.12,
   emptyClick: 0.03,
@@ -105,21 +105,24 @@ export class WorldSfx {
     }
   }
 
-  // noise を中心 freq・鋭さ q の帯域で絞ったループ音を鳴らし始め、その音量ノードを返す。音量は 0 で始まる。
-  private loopChannel(ctx: AudioContext, noise: AudioBuffer, freq: number, q: number): GainNode {
-    const src = ctx.createBufferSource();
-    src.buffer = noise;
-    src.loop = true;
-    // 音色は帯域で、鳴らすかどうかは音量で決める。音源は dispose まで鳴り続ける。
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.value = freq;
-    filter.Q.value = q;
+  // noise を2つの帯域へ絞ったループ音を鳴らし始め、共通の音量ノードを返す。音量は 0 で始まる。
+  private dualLoopChannel(ctx: AudioContext, noise: AudioBuffer,
+    freq1: number, q1: number, freq2: number, q2: number): GainNode {
     const gain = ctx.createGain();
     gain.gain.value = 0;
-    src.connect(filter).connect(gain).connect(ctx.destination);
-    src.start();
-    this.loopSources.push(src);
+    for (const [freq, q] of [[freq1, q1], [freq2, q2]] as const) {
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = freq;
+      filter.Q.value = q;
+      src.connect(filter).connect(gain);
+      src.start();
+      this.loopSources.push(src);
+    }
+    gain.connect(ctx.destination);
     return gain;
   }
 
@@ -219,12 +222,85 @@ export class WorldSfx {
     src.start(t, Math.random() * 0.4, 0.35);
   }
 
-  // 薬莢が機体に当たったときの、からんとした金属音(かすかに)
+  // 薬莢が機体に当たったときの、重い金属の筒の接触音。乾いた衝撃 + FM のクラン + 乱暴な高倍音 +
+  // 艦体を伝わる低い共鳴で構成する(SPEC/AUDIO.md「被弾・衝突・爆発」)。
   private clank(): void {
-    const f0 = 1800 + Math.random() * 1600;
-    this.engine.tone(f0, 0.05, 0.035, 'triangle');
-    this.engine.tone(f0 * 1.53, 0.04, 0.02, 'triangle'); // 非整数倍音で金属感
-    this.engine.noiseBurst(0.03, 'highpass', 5000, 0.02);
+    const ctx = this.engine.ctx;
+    const noise = this.engine.noiseBuf;
+    if (!ctx || !noise) return;
+    const t = ctx.currentTime;
+    // 艦砲クラスの薬莢の基本共鳴付近。個体差を大きめに。
+    const f0 = 430 * (1 + (Math.random() * 2 - 1) * 0.18);
+    // 接触位置が左右にばらけるだけの定位差。
+    const dest = ctx.createStereoPanner();
+    dest.pan.value = (Math.random() * 2 - 1) * 0.6;
+    dest.connect(ctx.destination);
+
+    const noiseAt = (t0: number, dur: number, type: BiquadFilterType, freq: number, q: number, vol: number): void => {
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      const filter = ctx.createBiquadFilter();
+      filter.type = type;
+      filter.frequency.setValueAtTime(freq, t0);
+      filter.Q.value = q;
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+      src.connect(filter).connect(gain).connect(dest);
+      src.start(t0, Math.random() * 0.5, dur + 0.02);
+      src.stop(t0 + dur + 0.05);
+    };
+    const partial = (t0: number, freq: number, dur: number, vol: number): void => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t0);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+      osc.connect(gain).connect(dest);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.02);
+    };
+    // 変調波でキャリアを揺らし、非整数側帯を一括で出す金属音。index は鳴きと一緒に減る。
+    const fmClang = (t0: number, fc: number, ratio: number, index: number, dur: number, vol: number): void => {
+      const carrier = ctx.createOscillator();
+      carrier.frequency.setValueAtTime(fc, t0);
+      const mod = ctx.createOscillator();
+      mod.frequency.setValueAtTime(fc * ratio, t0);
+      const modIndex = ctx.createGain();
+      modIndex.gain.setValueAtTime(fc * index, t0);
+      modIndex.gain.exponentialRampToValueAtTime(1, t0 + dur * 0.8);
+      mod.connect(modIndex).connect(carrier.frequency);
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(vol, t0);
+      gain.gain.exponentialRampToValueAtTime(0.0008, t0 + dur);
+      carrier.connect(gain).connect(dest);
+      mod.start(t0);
+      carrier.start(t0);
+      mod.stop(t0 + dur + 0.02);
+      carrier.stop(t0 + dur + 0.02);
+    };
+
+    // 乾いた衝撃: 低域の鈍い当たり + 縁の高域エッジ。
+    noiseAt(t, 0.014, 'lowpass', 500, 1, 0.18);
+    noiseAt(t, 0.004, 'highpass', 5200, 0.8, 0.08);
+    // FM のクラン 3 層: 胴の鳴き・中域の金属・高域のエッジ。
+    fmClang(t, f0, 1.02, 2, 0.25, 0.07);
+    fmClang(t, f0 * 2.76, 1.37, 3, 0.14, 0.042);
+    fmClang(t, f0 * 5.4, 1.99, 1.8, 0.07, 0.021);
+    // 乱暴な高倍音: 大きな金属が当たる非整数の高次モード(6.7〜13.7倍)と擦れのキンキン。
+    [6.7, 8.9, 11.3, 13.7].forEach((m, k) => {
+      partial(t, f0 * m * (1 + (Math.random() * 2 - 1) * 0.08), 0.05 + Math.random() * 0.05, 0.032 / (1 + k * 0.5));
+    });
+    noiseAt(t, 0.04, 'bandpass', 5200 * (1 + (Math.random() * 2 - 1) * 0.25), 4, 0.06);
+    // 高域の粒: 擦れ合う金属のビリビリ。
+    const grains = 4 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < grains; i++) {
+      noiseAt(t + Math.random() * 0.015, 0.005, 'bandpass', 4500 * (1 + (Math.random() * 2 - 1) * 0.5), 5, 0.056);
+    }
+    // 艦体を伝わる低い共鳴。
+    noiseAt(t + 0.01, 0.4, 'bandpass', 280 * (1 + (Math.random() * 2 - 1) * 0.15), 3, 0.063);
+    partial(t + 0.01, 190 * (1 + (Math.random() * 2 - 1) * 0.1), 0.3, 0.035);
   }
 
   // マガジン給弾(次のマガジンが取り込まれるガチャッという機械音)
@@ -234,11 +310,11 @@ export class WorldSfx {
     this.engine.noiseBurst(0.05, 'highpass', 3000, 0.04);
   }
 
-  // 補給マガジンの取り込み(肯定的なブリップ)
+  // 補給マガジンの取り込み(くぐもった肯定の2音と、遠くで鳴るチャイム)
   private pickup(): void {
-    this.engine.tone(660, 0.09, 0.09, 'sine');
-    this.engine.tone(990, 0.12, 0.07, 'sine');
-    this.engine.noiseBurst(0.08, 'lowpass', 600, 0.06);
+    this.engine.tone(220, 0.12, 0.1, 'triangle');
+    this.engine.tone(330, 0.14, 0.08, 'triangle', 0.1);
+    this.engine.tone(1320, 0.25, 0.03, 'sine', 0.18);
   }
 
   // 弾切れの空撃ちクリック
@@ -247,36 +323,74 @@ export class WorldSfx {
     this.engine.noiseBurst(0.02, 'highpass', 4000, 0.03);
   }
 
-  // 弾が至近を通過したときの「ヴン」という磁気干渉音
+  // 弾が至近を通過したときの磁気干渉音。低い唸りをパルス状に断続させ、
+  // そのまわりにプラズマの筋を思わせる小さな唸りを不規則に散らす。
   private magneticInterference(): void {
     const ctx = this.engine.ctx;
     if (!ctx) return;
     const t = ctx.currentTime;
 
-    // 音高: 低い唸りが持ち上がってから沈む。
+    // 主発: 低い唸りが持ち上がってから沈む。矩形波のゲートで断続させる。
     const osc = ctx.createOscillator();
     osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(60 * (1 + (Math.random() * 2 - 1) * 0.04), t);
+    osc.frequency.exponentialRampToValueAtTime(80 * (1 + (Math.random() * 2 - 1) * 0.04), t + 0.14);
+    osc.frequency.exponentialRampToValueAtTime(42 * (1 + (Math.random() * 2 - 1) * 0.04), t + 0.4);
 
-    osc.frequency.setValueAtTime(60, t);
-    osc.frequency.exponentialRampToValueAtTime(80, t + 0.3);
-    osc.frequency.exponentialRampToValueAtTime(40, t + 0.4);
-
-    // 音色: 立ち上がりだけ明るくする。
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.setValueAtTime(100, t);
     filter.frequency.exponentialRampToValueAtTime(400, t + 0.1);
     filter.frequency.exponentialRampToValueAtTime(100, t + 0.3);
 
-    // 音量: 膨らんでから消える。
+    const gate = ctx.createGain();
+    gate.gain.value = 0;
+    const lfo = ctx.createOscillator();
+    lfo.type = 'square';
+    lfo.frequency.value = 22 * (1 + (Math.random() * 2 - 1) * 0.25);
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 0.08;
+    const gateBias = ctx.createConstantSource();
+    gateBias.offset.value = 0.07;
+    lfo.connect(lfoDepth).connect(gate.gain);
+    gateBias.connect(gate.gain);
+
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(0.01, t);
-    gain.gain.linearRampToValueAtTime(0.15, t + 0.2);
+    gain.gain.linearRampToValueAtTime(1, t + 0.2);
     gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
 
-    osc.connect(filter).connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + 0.45);
+    osc.connect(filter).connect(gate).connect(gain).connect(ctx.destination);
+    for (const node of [osc, lfo, gateBias]) {
+      node.start(t);
+      node.stop(t + 0.45);
+    }
+
+    // フィラメント: 本体の周囲を不規則に通り過ぎる小さな唸り。
+    let ft = t + 0.05;
+    const filamentCount = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < filamentCount; i++) {
+      ft += 0.04 + Math.random() * 0.06;
+      const fLow = 55 + Math.random() * 40;
+      const fOsc = ctx.createOscillator();
+      fOsc.type = Math.random() < 0.5 ? 'triangle' : 'sawtooth';
+      fOsc.frequency.setValueAtTime(fLow, ft);
+      fOsc.frequency.exponentialRampToValueAtTime(fLow * (1.2 + Math.random() * 0.3), ft + 0.1);
+      fOsc.frequency.exponentialRampToValueAtTime(fLow * 0.7, ft + 0.2);
+      const fFilter = ctx.createBiquadFilter();
+      fFilter.type = 'lowpass';
+      fFilter.frequency.value = 350;
+      const fGain = ctx.createGain();
+      const fDur = 0.18 + Math.random() * 0.1;
+      fGain.gain.setValueAtTime(0.001, ft);
+      fGain.gain.linearRampToValueAtTime(0.05 + Math.random() * 0.04, ft + fDur * 0.4);
+      fGain.gain.exponentialRampToValueAtTime(0.001, ft + fDur);
+      const pan = ctx.createStereoPanner();
+      pan.pan.value = (Math.random() * 2 - 1) * 0.7;
+      fOsc.connect(fFilter).connect(fGain).connect(pan).connect(ctx.destination);
+      fOsc.start(ft);
+      fOsc.stop(ft + fDur + 0.05);
+    }
   }
 
   // 自機被弾音。被弾点が自機中心から遠いほど、音量と音高を下げる。
@@ -389,8 +503,8 @@ export class WorldSfx {
     const noise = this.engine.noiseBuf;
     if (!ctx || !noise) return null;
     this.loops = {
-      thrust: this.loopChannel(ctx, noise, 320, 0.8),
-      rcs: this.loopChannel(ctx, noise, 1600, 1.1),
+      thrust: this.dualLoopChannel(ctx, noise, 140, 0.6, 50, 1.0),
+      rcs: this.dualLoopChannel(ctx, noise, 650, 1.0, 200, 1.5),
       alarm: this.alarmLoopChannel(ctx),
     };
     return this.loops;
@@ -401,9 +515,13 @@ export class WorldSfx {
     const src = ctx.createBufferSource();
     src.buffer = this.klaxonBuffer(ctx);
     src.loop = true;
+    src.playbackRate.value = 1.2;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 900;
     const gain = ctx.createGain();
     gain.gain.value = 0;
-    src.connect(gain).connect(ctx.destination);
+    src.connect(filter).connect(gain).connect(ctx.destination);
     src.start();
     this.loopSources.push(src);
     return gain;

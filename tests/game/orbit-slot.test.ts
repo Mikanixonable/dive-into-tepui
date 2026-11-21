@@ -6,7 +6,7 @@ import { OrbitSlotRegistry } from '../../src/game/navigation/orbit-slot-registry
 import {
   orbitSlotFromCatalogMember, orbitSlotFromContactElements, orbitSlotFromHalo,
   orbitSlotFromLissajous,
-} from '../../src/game/navigation/orbit-slot-source';
+} from '../../src/game/navigation/orbit-slot-builders';
 import {
   orbitalElementsOf, stateFromOrbitalElements, trueAnomalyFromMean,
 } from '../../src/physics/elements';

@@ -1,6 +1,6 @@
 // 被選択物の並べ場所の分類。軌道物体パネルの種類と、選択ウィジェットのジャンルの語彙。
-import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { CelestialClass } from '../celestial/entity/celestial-class';
+import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
 
 // 軌道物体パネルでの種類。天体はクラスをまたいで1つにまとめ、人工物は種別ごとに分ける。
 // 軌道標識は実体ではないので個別の区画名を持つ。

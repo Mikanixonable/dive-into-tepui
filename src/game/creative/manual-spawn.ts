@@ -2,17 +2,30 @@
 import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import { addScaled } from '../../math/vec3';
 import { kinematicState, type KinematicState } from '../../physics/kinematic-state';
-import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/dynamic-entity/entity-id';
+import { EntityIdAllocator, type EntityIdAllocators } from '../dynamic/entity/entity-id';
 import {
   generateApproachingEnemy, generateAssemblyEnemy, generateDriftingEnemy,
-} from '../stages/spawner/enemy-generator';
-import { STAGE_CONTROL_ENEMY_SHAPES, type EnemySpawnShape } from './stage-controls-panel';
+} from '../stages/enemy-generator';
 import type * as THREE from 'three/webgpu';
 import type { CelestialBody } from '../../physics/celestial-body';
-import type { Enemy } from '../dynamic/dynamic-entity/enemy';
+import type { Enemy } from '../dynamic/entity/enemy';
 import type { ModularShip } from '../ship/modular-ship';
 
 // 敵を出す距離 [m] と、敵の名前の次に発番する連番。
+export type EnemyShapeDefinition =
+  | { readonly id: 'drifting'; readonly family: 'conventional'; readonly kind: 'drifting' }
+  | { readonly id: 'variant-a' | 'variant-b' | 'variant-c'; readonly family: 'conventional'; readonly kind: 'variant'; readonly typeIndex: number }
+  | { readonly id: 'assembly'; readonly family: 'assembly'; readonly kind: 'assembly' };
+
+export const STAGE_CONTROL_ENEMY_SHAPES: readonly EnemyShapeDefinition[] = [
+  { id: 'drifting', family: 'conventional', kind: 'drifting' },
+  { id: 'variant-a', family: 'conventional', kind: 'variant', typeIndex: 0 },
+  { id: 'variant-b', family: 'conventional', kind: 'variant', typeIndex: 1 },
+  { id: 'variant-c', family: 'conventional', kind: 'variant', typeIndex: 2 },
+  { id: 'assembly', family: 'assembly', kind: 'assembly' },
+];
+export type EnemySpawnShape = typeof STAGE_CONTROL_ENEMY_SHAPES[number]['id'];
+
 export interface SerializedManualSpawn {
   readonly spawnDistance: number;
   readonly enemyNameAllocator: number;

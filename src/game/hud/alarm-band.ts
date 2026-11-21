@@ -1,9 +1,9 @@
 // 警報帯(#hud-alarm-band): 鳴っている警報を「何が起きていて、何をすればよいか」の形で出す。
 // 未確認の警告は確認されるまで点滅し、確認のボタンを添える(UI-DESIGN.md「警報と通知」)。
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { Button } from '../../hud/widgets';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
+import { Button } from '../../hud-kit/widgets';
 import type { HudEls } from './hud-els';
-import type { ShipAlarm, ShipAlarms } from '../alarm/ship-alarms';
+import type { ShipAlarm, ShipAlarms } from '../ship-alarms';
 
 // 警報帯が同時に出す件数。あふれた分は件数にまとめる(UI-DESIGN.md「警報と通知」)。
 const MAX_VISIBLE = 2;

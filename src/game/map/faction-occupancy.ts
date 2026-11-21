@@ -3,9 +3,9 @@ import { orbitingAttractorOf } from '../../physics/attractor';
 import { orbitalElementsOf } from '../../physics/elements';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { lenSq, sub, type Vec3 } from '../../math/vec3';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { isEnemy } from '../dynamic/entity/enemy';
 import { isModularShip } from '../ship/modular-ship';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
 
 export type Faction = 'enemy' | 'friendly';
 
@@ -74,7 +74,7 @@ export interface FactionLagrangeZone {
   readonly pointId: string;
   readonly faction: Faction;
   readonly position: Vec3;
-  readonly radius: number; // 判定に使った半径 [m]。パッドの大きさの基準にもなる
+  readonly radius: number; // 判定に使った半径 [m]
 }
 
 // 点の位置と判定半径を受け取り、構成員のいる勢力ぶんだけ占有ゾーンを返す。

@@ -2,7 +2,7 @@
 import { Stage, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
 import {
   DebrisPiece, DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
-} from '../dynamic/dynamic-entity/debris-piece';
+} from '../dynamic/entity/debris-piece';
 import { randomQuat } from '../../math/quat';
 import { kinematicState } from '../../physics/kinematic-state';
 import { mulberry32 } from '../../math/random';

@@ -3,8 +3,8 @@
 // body.touch-ui-active の規則に従うことを固定する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Input } from '../../src/input/input';
-import { KEY_MAPPING as K } from '../../src/input/key-mapping';
+import { Input } from '../../src/input-devices/input';
+import { KEY_MAPPING as K } from '../../src/input-devices/key-mapping';
 import { rawGameInputAdapter } from '../../src/game/input/raw-game-input-adapter';
 import { SKELETON_STYLE } from '../../src/game/hud/style/skeleton-style';
 

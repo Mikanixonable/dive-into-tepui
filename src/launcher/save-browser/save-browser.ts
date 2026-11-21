@@ -1,18 +1,17 @@
 // セーブデータブラウザ: 複数のセーブデータ(スロット)とその手動セーブの履歴を
 // 一覧・切替・クリップ・書き出し/取り込みするフルスクリーン UI。
-import { solarSystemBodyName } from '../../game/celestial/solar-system/solar-system';
 import type { SaveSlots } from '../save/save-slots';
 import type { SnapshotService, SnapshotSource } from '../save/snapshot-service';
 import { exportSlotToFile, pickAndImportSlot } from '../save/save-transfer';
 import type { SaveSlotMeta } from '../save/slot-data';
-import { SYSTEM_MODAL_GROUP } from '../../hud/overlay-manager';
-import type { OverlayHandle, OverlayManager } from '../../hud/overlay-manager';
-import { ConfirmationOverlay } from '../../hud/windows/confirmation-overlay';
-import { TextPromptOverlay } from '../../hud/windows/text-prompt-overlay';
-import { CloseButton, TabBar } from '../../hud/widgets';
-import { injectOnce } from '../../hud/inject-style';
-import { injectCommonUiStyle } from '../../hud/style/common-ui-style';
-import { MQ_COMPACT } from '../../hud/breakpoints';
+import { SYSTEM_MODAL_GROUP } from '../../hud-kit/overlay-manager';
+import type { OverlayHandle, OverlayManager } from '../../hud-kit/overlay-manager';
+import { ConfirmationOverlay } from '../../hud-kit/windows/confirmation-overlay';
+import { TextPromptOverlay } from '../../hud-kit/windows/text-prompt-overlay';
+import { CloseButton, TabBar } from '../../hud-kit/widgets';
+import { injectOnce } from '../../hud-kit/inject-style';
+import { injectCommonUiStyle } from '../../hud-kit/style/common-ui-style';
+import { MQ_COMPACT } from '../../hud-kit/breakpoints';
 import { buildSlotsPane } from './slot-pane';
 import { buildSnapshotPane } from './snapshot-pane';
 
@@ -223,8 +222,6 @@ export class SaveBrowser implements OverlayHandle {
         onRenameSnapshot: (id) => this.handleRenameSnapshot(id),
         onDeleteSnapshot: (id) => this.handleDeleteSnapshot(id),
         onBranch: (slotId, snapId) => this.handleBranch(slotId, snapId),
-        // 周回が1つも動いていない状態でも一覧の中心天体名を出せるよう、静的な表へ落とす。
-        nameOf: (id) => game?.nameOfBody(id) ?? solarSystemBodyName(id),
         isReadable: (id) => this.service.isReadable(id),
       },
     ));

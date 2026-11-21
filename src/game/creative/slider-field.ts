@@ -1,4 +1,4 @@
-import { buildLabeledRow, Slider, ValueInput } from '../../hud/widgets';
+import { buildLabeledRow, Slider, ValueInput } from '../../hud-kit/widgets';
 
 // 軌道要素の数値入力に、値の範囲を操作するスライダーを添える。
 function buildNumberRow(label: string, defaultValue: number, step: number, min?: number, max?: number): { row: HTMLElement; input: HTMLInputElement } {

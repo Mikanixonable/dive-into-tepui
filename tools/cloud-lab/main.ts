@@ -17,7 +17,7 @@ import { buildTuningControls } from './tuning-controls';
 import { latestReportText } from './latest-report';
 // 実験環境が回す天体の目盛り。lab と同じく地球で解く。
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
-import { cyclonePlacementsAt } from '../../src/render/earth-weather/cyclone-tracks';
+import { cyclonePlacementsAt } from '../../src/render/earth-weather/cyclone-placements';
 import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
 import type { PressurePlacement } from '../../src/render/earth-weather/tracks';
 

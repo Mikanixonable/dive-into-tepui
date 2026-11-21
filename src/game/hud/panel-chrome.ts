@@ -5,8 +5,8 @@ import {
   buildCollapseToggle,
   syncCollapseToggle,
   type CollapseToggleLabels,
-} from '../../hud/widgets';
-import type { PanelCollapsedState } from '../view/hud-selection';
+} from '../../hud-kit/widgets';
+import type { PanelCollapsedState } from '../view/view-preferences';
 import type { SettingValue } from '../../settings/setting-value';
 import type { ViewMode } from '../view/view-mode';
 

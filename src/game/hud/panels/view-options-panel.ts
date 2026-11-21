@@ -6,9 +6,9 @@ import {
   COLLAPSE_EXPANDED_GLYPH,
   TabBar,
   type CollapseToggleLabels,
-} from '../../../hud/widgets';
+} from '../../../hud-kit/widgets';
 import type { MapDisplayToggles } from '../../map/display-toggles';
-import type { CelestialGridVisibility } from '../../../render/celestial-grid';
+import type { CelestialGridVisibility } from '../../../render/celestial/celestial-grid';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
 import type { OrbitGuideSettings, ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';
 import { OrbitGuideTab } from './orbit-guide-tab';
@@ -16,7 +16,7 @@ import { zeroVelocityJacobiAt } from './zero-velocity-section';
 import { TargetTab } from './target-tab';
 import { GuideTab } from './guide-tab';
 import type { PanelCollapse } from '../panel-chrome';
-import type { OrbitGuideGroupTab, ViewOptionsTab } from '../../view/hud-selection';
+import type { OrbitGuideGroupTab, ViewOptionsTab } from '../../view/view-preferences';
 import type { RenderStyle } from '../../../render/render-style';
 
 const TAB_ITEMS: readonly (readonly [ViewOptionsTab, string])[] = [

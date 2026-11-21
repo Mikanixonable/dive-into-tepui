@@ -2,11 +2,11 @@
 // canvas 2D へ描く。表示範囲(中心経緯度・ズーム)を自分で持ち、pan/zoom/resetView で操作する。
 import { edgeColor, FONT_FAMILY, FONT_XXS } from '../../../theme';
 import type { ThemePalette } from '../../../theme';
-import { injectOnce } from '../../../hud/inject-style';
+import { injectOnce } from '../../../hud-kit/inject-style';
 import {
   chartCanvasStyle, drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore,
   type BackingStoreState,
-} from './chart-canvas';
+} from '../../../hud-kit/chart-canvas';
 
 interface ProjectionPoint { readonly lonDeg: number; readonly latDeg: number }
 

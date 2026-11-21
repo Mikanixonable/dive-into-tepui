@@ -4,7 +4,7 @@ import { kinematicState, type KinematicState } from '../../src/physics/kinematic
 import {
   casingEntityCollision, casingSweptEntityCollision, casingSphereCollision,
   CASING_COLLISION_BOUND_RADIUS,
-} from '../../src/game/dynamic/dynamic-entity/casing-collision';
+} from '../../src/game/dynamic/entity/casing-collision';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import { test } from '../harness';
 

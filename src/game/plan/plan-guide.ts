@@ -1,15 +1,15 @@
 // 直近ノードの実行ガイド: NODE/BURN マーカーと、噴射方向が視界外のときの方位ガイド。
 import type { KinematicState } from '../../physics/kinematic-state';
 import { addScaled, len, norm, sub } from '../../math/vec3';
-import { fmtDist, fmtSpeed, fmtTime } from '../../hud/format';
+import { fmtDist, fmtSpeed, fmtTime } from '../../hud-kit/format';
 import type { CameraFrame } from '../../render/camera/camera-frame';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MarkerSink } from '../../marker/marker-sink';
-import type { MarkerDevice } from '../../marker/marker-device';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MarkerSink } from '../../marker-kit/marker-sink';
+import type { MarkerDevice } from '../../marker-kit/marker-device';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { MARKER_DIR_DIST, bearingPlacement, directionPlacement, pointPlacement } from '../marker/marker-placement';
 import { DIRECTION_GLYPH, ORBIT_POINT_GLYPH, COLOR_MARKER_NODE } from '../marker/marker-identity';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import type { PlanPath } from './plan-path';
 import { THROTTLE_LEVELS } from '../player/throttle';
 

@@ -2,7 +2,7 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
-import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
+import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
 import type { ModularShip } from '../../src/game/ship/modular-ship';
 import { WaveAttack, type WaveAttackStage } from '../../src/game/stages/stage-utils/wave-attack';
 

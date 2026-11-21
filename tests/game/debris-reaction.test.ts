@@ -1,10 +1,10 @@
 import * as assert from 'node:assert/strict';
 import { v3 } from '../../src/math/vec3';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
-import { DebrisReaction } from '../../src/game/dynamic/dynamic-entity/debris-reaction';
+import { DebrisReaction } from '../../src/game/dynamic/entity/debris-reaction';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import type { DynamicReactionServices } from '../../src/game/dynamic/dynamic-simulation-participant';
-import type { Contact } from '../../src/game/dynamic/dynamic-entity/contact';
+import type { Contact } from '../../src/game/dynamic/entity/contact';
 import type { RunEventBody } from '../../src/game/run-events';
 import { test } from '../harness';
 

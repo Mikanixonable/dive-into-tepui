@@ -5,7 +5,7 @@
 // 引ける時刻だけ両者を数値暦で引き、それ以外は両者を解析へ揃える。
 // THREE/DOM 非依存。
 import { type KinematicState, toEci } from './kinematic-state';
-import { type TimeCacheStats, TimeRing } from './time-ring';
+import { type TimeCacheStats, TimeRing } from '../math/time-ring';
 import { type Vec3, sub } from '../math/vec3';
 import type { EphemerisBody } from './celestial-body';
 

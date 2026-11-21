@@ -1,7 +1,7 @@
 // オーロラカーテン1層: 磁極を囲む波打つリング帯のメッシュ。同じ極に複数重ねて厚みを出す。
 // 天体半径・オーバル緯度・発光高度・色は AuroraOptics で受ける。
 import * as THREE from 'three/webgpu';
-import { AuroraField } from '../aurora-field';
+import { AuroraField } from './aurora-field';
 import type { Vec3 } from '../../math/vec3';
 
 const SEG = 160;

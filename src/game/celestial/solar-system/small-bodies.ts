@@ -5,11 +5,11 @@ import { planetSystem } from '../../../physics/planet-system';
 import { keplerPeriod } from '../../../physics/elements';
 import { JULIAN_CENTURY, type KeplerOrbit, planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT } from '../gravitational-constant';
+import { GRAVITATIONAL_CONSTANT } from '../../../physics/gravitational-constant';
 import { MU_SUN } from './sun';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
-import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
+import { CelestialEntity } from '../entity/celestial-entity';
+import { SphereCelestialView } from '../../../render/celestial/entity/sphere-celestial-view';
 import { CHARIKLO_RINGS, QUAOAR_RINGS } from './rings';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';
 

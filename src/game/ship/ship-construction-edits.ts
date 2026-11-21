@@ -1,7 +1,7 @@
 // 建造の船体編集命令: 置く・付け替える・撤去する・割り込む・回す・写しで置き換える。
 // 各命令は適用時に規則(placementFor)で再検証し、写しへの適用が終わってから実体を差し替える。
-import { createShipModuleInstance } from './ship-module-instance';
-import { pieceRootId, placementFor } from './ship-construction-rules';
+import { placementFor } from './ship-construction-rules';
+import { applyConstructionPlacement } from './ship-construction-apply';
 import { tryConstructionPlacement } from './ship-construction-preview';
 import { pieceOfModule, type AssemblyPiece } from './ship-assembly-graft';
 import {
@@ -38,51 +38,14 @@ export class ShipConstructionEdits {
     const placement = placementFor(assembly, this.anchorId, held, target, orientation, symmetry);
     if (!placement.valid) throw new Error(placement.reason ?? '配置できません');
 
+    // 接ぎ木の手順は試し置きと同じ ship-construction-apply を通す。違いは呼び出し側が
+    // 払い出す本番の識別子だけなので、結果はプレビューと一致する。
     const work = assembly.clone();
-    // 付け替えは先端部を先に切り離す。対称を持たないので接ぎ木は1本。
-    let detached: ShipAssembly | null = null;
-    let detachedConnectionId: string | null = null;
-    if (held.kind === 'piece') {
-      detachedConnectionId = pieceOfModule(work.graph, this.anchorId, held.moduleId)?.rootConnection.id ?? null;
-      detached = work.detachPiece(held.moduleId, this.anchorId);
-    }
-    let placedRootId: string | null = null;
-    for (const [index, plan] of placement.attachments.entries()) {
-      if (held.kind === 'piece') {
-        const piece = detached!;
-        placedRootId ??= pieceRootId(piece);
-        work.attachPiece(
-          piece, plan.parentId, plan.transform, plan.connectionKind,
-          plan.sideSlot ?? undefined, undefined, detachedConnectionId ?? undefined,
-        );
-        continue;
-      }
+    applyConstructionPlacement(work, this.anchorId, held, placement, index => {
       const id = newIds[index];
       if (id === undefined) throw new Error('配置に使う識別子が足りません');
-      if (held.kind === 'catalog') {
-        const definition = work.catalog.require(held.definitionId);
-        work.addModule(
-          createShipModuleInstance(definition, id), plan.parentId, plan.transform,
-          plan.connectionKind, undefined, plan.sideSlot ?? undefined,
-        );
-        placedRootId ??= id;
-      } else {
-        const piece = held.piece.copiedAsNew(id);
-        placedRootId ??= pieceRootId(piece);
-        work.attachPiece(
-          piece, plan.parentId, plan.transform, plan.connectionKind,
-          plan.sideSlot ?? undefined,
-        );
-      }
-    }
-    // 継ぎ目の先の部分を、割り込ませたモジュールの反対側の端へ付き直す。
-    if (placement.reattachment !== null && placedRootId !== null) {
-      const far = work.detachPiece(placement.reattachment.farModuleId, this.anchorId);
-      work.attachPiece(
-        far, placedRootId, placement.reattachment.transform, 'axial',
-        undefined, undefined, placement.reattachment.connectionId,
-      );
-    }
+      return id;
+    });
     assembly.replaceWith(work);
     this.ship.synchronizeAssemblyState();
   }

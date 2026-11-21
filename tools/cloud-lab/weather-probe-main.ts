@@ -12,7 +12,7 @@ import {
   cumulusInCloudOpticalDepthNode, cumulusOpacityNode, cumulusTopAltitudeNode,
 } from '../../src/render/earth-weather/cloud/cloud-kind-node';
 import { FloatPlaneSet, awaitClimateMap, bytesToBase64 } from './probe-common';
-import { cyclonePlacementsAt } from '../../src/render/earth-weather/cyclone-tracks';
+import { cyclonePlacementsAt } from '../../src/render/earth-weather/cyclone-placements';
 import { HIGH_COUNT, highPlacementAt } from '../../src/render/earth-weather/anticyclone-tracks';
 import { R_EARTH, SIDEREAL_DAY } from '../../src/game/celestial/solar-system/earth-system';
 import type { GeneratedCloudField } from '../../src/render/earth-weather/cloud/generated-cloud-field';

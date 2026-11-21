@@ -1,6 +1,6 @@
 // 排出薬莢をゲーム本体と同じ表示部品・インスタンス描画で観察するケース。
 import * as THREE from 'three/webgpu';
-import { CasingPool, CasingView } from '../../src/render/dynamic/dynamic-entity/casing-view';
+import { CasingPool, CasingView } from '../../src/render/dynamic/entity/casing-view';
 import { labCamera, type CaseBuilder, type LabCase } from './lab-case';
 
 // 薬莢1発を排出プールへ積み、実機と同じ経路の見え方を撮る。

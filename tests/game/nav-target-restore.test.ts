@@ -5,12 +5,12 @@ import { Q_IDENTITY } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { lagrangeId } from '../../src/game/celestial/lagrange-id';
-import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
-import { MetalEnemy } from '../../src/game/dynamic/dynamic-entity/metal-enemy';
+import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
+import { MetalEnemy } from '../../src/game/dynamic/entity/metal-enemy';
 import { RunEventLog } from '../../src/game/run-events';
 import { NavTargetSelection } from '../../src/game/viewer/nav-target-selection';
 import type { EntityRegistry } from '../../src/game/dynamic/entity-registry';
-import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
+import type { EntityRoster } from '../../src/game/dynamic/entity-registry';
 
 // 金属敵 name を1体、新しく置く。
 function newEnemy(name: string, idAllocators: EntityIdAllocators): MetalEnemy {

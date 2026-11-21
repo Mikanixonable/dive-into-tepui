@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { v3 } from '../../src/math/vec3';
-import { separationImpulseVelocities } from '../../src/game/ship/ship-decoupling';
+import { separationImpulseVelocities } from '../../src/game/ship/ship-connection-rules';
 import { test } from '../harness';
 
 export function register(): void {

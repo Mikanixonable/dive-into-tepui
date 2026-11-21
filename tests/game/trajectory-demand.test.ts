@@ -17,7 +17,7 @@ import { DEFAULT_HISTORY_DURATION, PredictedArc } from '../../src/game/dynamic/p
 import type {
   DynamicReactionServices, PredictableMotionRoster,
 } from '../../src/game/dynamic/dynamic-simulation-participant';
-import type { TrajectoryDemand } from '../../src/game/dynamic/trajectory-demand';
+import type { TrajectoryDemand } from '../../src/game/dynamic/predictor';
 
 // 1フレームの時間送り [s] と、進めるフレーム数。
 const SIM_DT = 5;

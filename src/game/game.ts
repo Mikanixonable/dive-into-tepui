@@ -2,7 +2,7 @@
 import { SECTION, type FrameSections } from './frame-sections';
 import { CommandQueue } from './command-queue';
 import { ControlSelection, type SerializedControlSelection } from './control-selection';
-import { PlanNodeRules, type SerializedPlanNodeRules } from './plan/plan-node-rules';
+import { PlanNodeRules, type SerializedPlanNodeRules } from './plan/plan-node-execution';
 import { SimSpeedManager, type SerializedSimSpeedManager } from './dynamic/sim-speed-manager';
 import { DynamicSystem, type SerializedDynamicSystem } from './dynamic/dynamic-system';
 import { RunEventLog } from './run-events';
@@ -14,13 +14,13 @@ import { ephemerisContextFor, type EphemerisContext } from '../physics/ephemeris
 import { createJulianDate, type TdbJulianDate } from '../physics/time';
 import { summarizeRun, type RunSummary } from './run-summary';
 import type { GameScene } from '../render/scene';
-import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { Controllable } from './dynamic/entity/controllable';
 import type { RunOptions, SerializedStage, Stage, StageClass } from './stages/stage';
 import type { HudLayers } from './hud/hud-layers';
 import type { CelestialSystem } from './celestial/celestial-system';
 import type { LoadingProgress } from './loading-progress';
-import type { PilotControls } from './dynamic/dynamic-entity/pilot-controls';
-import type { TrajectoryDemand } from './dynamic/trajectory-demand';
+import type { PilotControls } from './dynamic/entity/pilot-controls';
+import type { TrajectoryDemand } from './dynamic/predictor';
 import type { CameraFrameSamples } from './viewer/camera-selection';
 import type { ShipBlueprintShelf } from './ship/ship-blueprint';
 

@@ -4,7 +4,7 @@ import * as assert from 'node:assert/strict';
 import type * as THREE from 'three/webgpu';
 import { test } from '../harness';
 import { EntityLifecycle } from '../../src/game/dynamic/entity-lifecycle';
-import type { DynamicEntity } from '../../src/game/dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../src/game/dynamic/entity/dynamic-entity';
 import type { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import type { CelestialBodies } from '../../src/game/celestial/celestial-bodies';
 import type { RunEventSink } from '../../src/game/run-events';

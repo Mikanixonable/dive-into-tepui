@@ -1,7 +1,7 @@
 // Stage 1: 無限耐久サバイバル。弾薬確保後、波状攻撃が自機破壊まで無限に続く。
 import { Stage, type CommonStageState, type RunOptions, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
+import { isEnemy } from '../dynamic/entity/enemy';
 import { WaveAttack, waveForecastLine, type SerializedWaveAttack } from './stage-utils/wave-attack';
 import {
   MAX_ACTIVE_AMMO_PICKUPS, LOGISTICS_SCRIPTED_MIN_DIST, LOGISTICS_SCRIPTED_MAX_DIST, phaseShiftedBy,

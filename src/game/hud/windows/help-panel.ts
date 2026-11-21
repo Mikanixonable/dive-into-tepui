@@ -1,15 +1,15 @@
 // [H] と常設の起動ボタンで開閉する操作説明のモーダル。章ごとの2列Reference Listとして出す。
-import { KEY_MAPPING as K } from '../../../input/key-mapping';
-import { injectOnce } from '../../../hud/inject-style';
-import { injectCommonUiStyle } from '../../../hud/style/common-ui-style';
-import { CloseButton } from '../../../hud/widgets/close-button';
-import { TabBar } from '../../../hud/widgets/tab-bar';
-import { stopDragPropagation } from '../../../hud/widgets/widget-base';
+import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
+import { injectOnce } from '../../../hud-kit/inject-style';
+import { injectCommonUiStyle } from '../../../hud-kit/style/common-ui-style';
+import { CloseButton } from '../../../hud-kit/widgets/close-button';
+import { TabBar } from '../../../hud-kit/widgets/tab-bar';
+import { stopDragPropagation } from '../../../hud-kit/widgets/widget-base';
 import { HELP_PANEL_STYLE } from '../style/help-panel-style';
 import { helpRows, type HelpCategory } from './help-content';
-import { isCoarsePointer } from '../../../input/pointer-precision';
-import { SYSTEM_MODAL_GROUP } from '../../../hud/overlay-manager';
-import type { OverlayHandle, OverlayManager } from '../../../hud/overlay-manager';
+import { isCoarsePointer } from '../../../input-devices/pointer-precision';
+import { SYSTEM_MODAL_GROUP } from '../../../hud-kit/overlay-manager';
+import type { OverlayHandle, OverlayManager } from '../../../hud-kit/overlay-manager';
 
 const HELP_TABS: readonly (readonly [HelpCategory, string])[] = [
   ['flight', 'FLIGHT'],

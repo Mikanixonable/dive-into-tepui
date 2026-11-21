@@ -4,12 +4,12 @@ import { lambertPhase } from '../../../physics/lambert-sphere';
 import { sunlitFactor } from '../../../physics/shadow';
 import { isStar } from '../../../physics/celestial-body-def';
 import { dot, len, sub } from '../../../math/vec3';
-import { rec709Luminance } from '../../celestial-albedo';
+import { rec709Luminance } from '../../celestial/celestial-albedo';
 import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from './planet-light-source';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance, scaledRadiantIntensity } from '../sun-light';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
-import type { Albedo } from '../../celestial-albedo';
+import type { Albedo } from '../../celestial/celestial-albedo';
 
 // 光源になりうる天体 1 体。**恒星や半径 0 の天体を含む星系の全天体を渡すこと** — 天体自身の
 // 食(sunlitFactor)が、光源にならない天体にも遮られるため。albedo は色つきのボンドアルベド。

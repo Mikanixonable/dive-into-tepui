@@ -4,7 +4,8 @@
 // 基準: 真円に近い目標軌道・非推力の間は線形に従う — 出した Δv は初値であり、
 // 実行側は全力モデルで残差を修正する。
 // THREE/DOM 非依存。
-import { addScaled, sub, type Vec3, v3 } from '../math/vec3';
+import { add, addScaled, cross, lenSq, scale, sub, type Vec3, v3 } from '../math/vec3';
+import { kinematicState, type KinematicState } from './kinematic-state';
 
 // 3x3 行列の行優先の平置き。インデックスは (i, j) → i*3+j。
 type Mat3 = readonly [number, number, number, number, number, number, number, number, number];
@@ -127,4 +128,50 @@ export function cwTwoImpulseTransfer(
   const arrived = cwPropagate({ r: state.r, v: vAfterBurn }, n, t);
   const arriveDeltaV = sub(targetV, arrived.v);
   return { departDeltaV, arriveDeltaV };
+}
+
+// ── 目標の回転局所系(LVLH) ──
+
+// 目標の回転局所系(LVLH)。x = 動径外向き、z = 軌道面法線、y = z×x(面内の進行方向)。
+// CW 方程式と同じ軸の取り方。omega は系の瞬間角速度 h/r² [rad/s]、
+// n はその大きさ(円軌道では平均運動に一致する)。
+export interface LocalFrame {
+  readonly x: Vec3;
+  readonly y: Vec3;
+  readonly z: Vec3;
+  readonly omega: Vec3;
+  readonly n: number;
+}
+
+// 中心天体相対の目標状態から局所系を組む。動径と角運動量が縮退していると null。
+export function localFrameOf(relR: Vec3, relV: Vec3): LocalFrame | null {
+  const rSq = lenSq(relR);
+  const h = cross(relR, relV);
+  const hLen = Math.sqrt(lenSq(h));
+  if (!(rSq > 0) || !(hLen > 0)) return null;
+  const x = scale(relR, 1 / Math.sqrt(rSq));
+  const z = scale(h, 1 / hLen);
+  return { x, y: cross(z, x), z, omega: scale(h, 1 / rSq), n: hLen / rSq };
+}
+
+// 局所系の成分(動径・面内進行・法線)で表した方向を ECI 方向へ写す。
+export function frameDirectionToEci(frame: LocalFrame, hill: Vec3): Vec3 {
+  return addScaled(addScaled(scale(frame.x, hill.x), frame.y, hill.y), frame.z, hill.z);
+}
+
+// 局所系の固定点(offset は Hill 成分 [m])の ECI 状態。速度は v_target + ω×r_off で
+// 系内では静止 — この状態へ到着した艦はその場で目標に対して保持になる。
+// 目標の局所系が組めないとき null。
+export function holdStateAt(
+  targetState: KinematicState, centerState: KinematicState, offset: Vec3,
+): KinematicState | null {
+  const frame = localFrameOf(
+    sub(targetState.r, centerState.r), sub(targetState.v, centerState.v));
+  if (frame === null) return null;
+  const rOff = frameDirectionToEci(frame, offset);
+  return kinematicState<'eci'>(
+    targetState.t,
+    add(targetState.r, rOff),
+    add(targetState.v, cross(frame.omega, rOff)),
+  );
 }

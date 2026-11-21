@@ -1,16 +1,16 @@
 // マップ表示の座標系・表示時刻・期間をフレームごとの表示窓として確定する。
 import { DisplayTimelinePanel } from './hud/panels/display-timeline-panel';
 import type { PanelCollapse } from './hud/panel-chrome';
-import type { OverlayManager } from '../hud/overlay-manager';
-import { buildTicks } from './hud/orbit/tick-scale';
-import { epochUnixSeconds } from '../hud/format';
-import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
+import type { OverlayManager } from '../hud-kit/overlay-manager';
+import { buildTicks } from '../hud-kit/tick-scale';
+import { epochUnixSeconds } from '../hud-kit/format';
+import type { TimeLabelSetting } from './calendar-ticks';
 import { strongestAttractor } from '../physics/attractor';
 import { frameRoleOf } from '../physics/frame';
 import type { FrameAnchorSource, ReferenceFrame } from '../physics/frame';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './dynamic/entity/dynamic-entity';
 import type { PredictedArc } from './dynamic/predicted-arc';
-import type { TrajectoryDemand } from './dynamic/trajectory-demand';
+import type { TrajectoryDemand } from './dynamic/predictor';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import {
   APERIODIC_ARC_DURATION, DISPLAY_DURATION_MAX,

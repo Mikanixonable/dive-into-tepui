@@ -3,7 +3,7 @@
 // 想定域に収まっていること、ヒルダ群が木星に対して三角形状に分布することの回帰テスト。
 import assert from 'node:assert/strict';
 import { test } from '../harness';
-import { generatePointField, jupiterMeanLongitude } from '../../src/game/celestial/solar-system/point-field';
+import { generatePointField, jupiterMeanLongitude } from '../../src/game/celestial/solar-system/small-body-fields';
 import { type PointElements, pointPositionAt } from '../../src/physics/point-orbit';
 import { AU } from '../../src/physics/astronomical-unit';
 import { eciToEcl } from '../../src/physics/ecliptic';

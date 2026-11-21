@@ -1,7 +1,7 @@
 // 建造セッションの状態を表示し、建造操作を通知するパネル。
-import { Button, buildSpan, Meter, TabBar } from '../../../hud/widgets';
-import { ARMOR_WARNING_RATIO, armorAlarmLevel } from '../../alarm/alarm-level';
-import { KEY_MAPPING as K } from '../../../input/key-mapping';
+import { Button, buildSpan, Meter, TabBar } from '../../../hud-kit/widgets';
+import { ARMOR_WARNING_RATIO, armorAlarmLevel } from '../../alarm-level';
+import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import { ShipConstructionCatalog } from './ship-construction-catalog';
 import { ShipConstructionHand } from './ship-construction-hand';
 import { ShipConstructionSelectionMenu } from './ship-construction-selection-menu';

@@ -1,27 +1,27 @@
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { ViewMode } from '../view/view-mode';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { InspectedObject } from './inspected-object';
 import type { PresentationStageAuthoring } from '../presentation-ports';
-import type { MenuItem } from '../../hud/windows/context-menu';
-import type { MenuAction } from '../hud/windows/menu-actions';
-import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { MenuItem } from '../../hud-kit/windows/context-menu';
+import type { MenuAction } from '../menu-actions';
+import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
 import type { DynamicMotion } from '../dynamic/dynamic-motion';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
+import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import type { Ray } from '../../math/ray';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
 import type { GroupedMarkerItem } from '../marker/grouped-markers';
 import { len, sub } from '../../math/vec3';
-import { fmtDist, fmtSpeed } from '../../hud/format';
+import { fmtDist, fmtSpeed } from '../../hud-kit/format';
 import { relativeInfo } from '../orbit-info';
 import { orbitRows } from './orbit-rows';
 import { ENTITY_GLYPH } from '../marker/marker-identity';
 import { shipMarkerSvg } from '../marker/marker-shapes';
-import { MenuCommon } from '../hud/windows/menu-actions';
+import { MenuCommon } from '../menu-actions';
 
 // 一覧で「接近」として数える、viewer からの距離 [m]。
 const ENEMY_APPROACH_DIST = 2e5;

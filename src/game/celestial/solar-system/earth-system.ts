@@ -17,8 +17,8 @@ import { planetOrbit } from '../../../physics/kepler-orbit';
 import { satelliteOrbit } from '../../../physics/satellite-orbit';
 import { Aurora, type AuroraOptics } from '../../../render/celestial/aurora';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
-import type { CelestialTexture } from '../../../render/celestial-textures';
-import { createEarthSurfaceRuntime } from '../../../render/earth-surface-factory';
+import type { CelestialTexture } from '../../../render/celestial/celestial-textures';
+import { createEarthSurfaceRuntime } from '../../../render/earth-surface/factory';
 import { CloudPresentation } from '../../../render/earth-weather/cloud/cloud-presentation';
 import { GeneratedCloudField } from '../../../render/earth-weather/cloud/generated-cloud-field';
 import { ObservedCloudField } from '../../../render/earth-weather/cloud/observed-cloud-field';
@@ -27,12 +27,12 @@ import { TextureTerrainMap } from '../../../render/earth-weather/terrain-map';
 import { OrthographicCap, type FieldProjection } from '../../../render/field-projection';
 import { CLOUD_CAP_SIZE, CLOUD_CAP_MARGIN } from '../../../render/earth-weather/cloud/cloud-cap';
 import { LineOverlay, type LatLonPolyline, type UnitSphereLoop } from '../../../render/celestial/line-overlay';
-import { GeostationaryOverlay } from '../../../render/celestial/celestial-entity/geostationary-overlay';
-import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
-import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
+import { GeostationaryOverlay } from '../../../render/celestial/entity/geostationary-overlay';
+import { PointCelestialView } from '../../../render/celestial/entity/point-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/entity/sphere-celestial-view';
 import { MOON_DIST_TERMS, MOON_LAT_TERMS, MOON_LON_TERMS } from './moon-terms';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
-import { CelestialEntity } from '../celestial-entity/celestial-entity';
+import { CelestialEntity } from '../entity/celestial-entity';
 import { AU } from '../../../physics/astronomical-unit';
 
 // 地球系に登録された天体の id。表示名も構築の網羅性もこの集合が決める。

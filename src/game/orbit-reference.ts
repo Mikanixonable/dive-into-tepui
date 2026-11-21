@@ -4,9 +4,9 @@ import { strongestAttractor } from '../physics/attractor';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { KinematicState } from '../physics/kinematic-state';
 import type { Vec3 } from '../math/vec3';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './dynamic/entity/dynamic-entity';
 import type { NavTargetPresenter } from './nav-target-presenter';
-import type { EntityRoster } from './dynamic/entity-roster';
+import type { EntityRoster } from './dynamic/entity-registry';
 import type { CelestialBody } from '../physics/celestial-body';
 import type { OrbitReferenceMode } from './viewer/orbit-reference-selection';
 

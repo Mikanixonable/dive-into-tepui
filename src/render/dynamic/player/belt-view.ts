@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qFromUnitVectors, qMul, qRotate, type Quat } from '../../../math/quat';
 import { len, scale, sub, type Vec3 } from '../../../math/vec3';
-import { cloneIndependent } from '../baked-model';
+import { cloneIndependent } from '../model-template';
 import { getMagazineTemplate } from '../ammo-models';
 import { BeltHardwareView } from './belt-hardware-view';
 

@@ -1,7 +1,7 @@
 import * as assert from 'node:assert/strict';
 import { HudPanelPresenter } from '../../src/game/hud/hud-panel-presenter';
 import { ModularShip } from '../../src/game/ship/modular-ship';
-import type { Controllable } from '../../src/game/dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../../src/game/dynamic/entity/controllable';
 import type { ViewMode } from '../../src/game/view/view-mode';
 import { test } from '../harness';
 

@@ -4,7 +4,7 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { test } from '../harness';
-import { CelestialGrid, type CelestialGridVisibility } from '../../src/render/celestial-grid';
+import { CelestialGrid, type CelestialGridVisibility } from '../../src/render/celestial/celestial-grid';
 import type { Viewport } from '../../src/render/viewport';
 
 const VIEWPORT: Viewport = { width: 1280, height: 720, pixelRatio: 1 };

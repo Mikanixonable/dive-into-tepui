@@ -1,6 +1,6 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { screenRay } from '../../src/game/camera/screen-ray';
+import { screenRay } from '../../src/game/camera/camera-system';
 import { projectToNdc, type Viewpoint } from '../../src/math/projection';
 import { add, scale, v3 } from '../../src/math/vec3';
 

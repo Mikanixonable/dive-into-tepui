@@ -7,7 +7,7 @@ import { ATMOSPHERE_QUALITY } from './atmosphere';
 import { CIRRUS_DETAIL } from './earth-weather/cloud/cloud-detail';
 import { CLOUD_FIELD_SOURCE_KIND } from './earth-weather/cloud/cloud-field-source';
 import { TEXTURE_RESOLUTION } from './deferred-texture';
-import { CUMULUS_DETAIL } from './opaque-cloud-surface-renderer';
+import { CUMULUS_DETAIL } from './earth-weather/cloud/opaque-cloud-surface-renderer';
 import { FILM_LUT_ITEMS, FILM_LUT_NONE } from './pipeline/film-lut';
 
 export type QualityPreset = 'low' | 'medium' | 'high' | 'max';

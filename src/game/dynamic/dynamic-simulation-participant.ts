@@ -9,7 +9,7 @@ import type { ContactGeometry } from '../../physics/collision-response';
 import type { CompoundCylinderShape } from '../../physics/compound-cylinder-contact';
 import type { CompoundSphereShape } from '../../physics/compound-sphere-contact';
 import type { StageOutcome } from '../stages/stage-outcome';
-import type { Contact } from './dynamic-entity/contact';
+import type { Contact } from './entity/contact';
 import type { ContactKind } from './dynamic-motion';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { EntityRegistry } from './entity-registry';

@@ -1,6 +1,6 @@
 // 授与された鹵獲のうち、まだ補給艇で届けていない積荷の待ち行列(SPEC GAME.md 2.3)。
 // 授与の順に積み、次に補給艇が現れる波間に全部まとめて積む。
-import { isSalvageKind, type SalvageKind } from '../../ship/salvage-blueprints';
+import { isSalvageKind, type SalvageKind } from '../../ship/ship-salvage-blueprints';
 
 export class SalvageCargo {
   private readonly kinds: SalvageKind[];

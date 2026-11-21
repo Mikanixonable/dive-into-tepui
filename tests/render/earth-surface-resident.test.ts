@@ -2,23 +2,23 @@
 import * as assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
 import { test } from '../harness';
-import { EarthSurfaceResidentCoordinator } from '../../src/render/earth-surface-resident';
-import { EarthSurfaceGpuAdapter } from '../../src/render/earth-surface-gpu';
-import type { EarthSurfaceColorToRgba8 } from '../../src/render/earth-surface-resident';
-import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface-gpu';
-import { EarthSurfaceTileRequestQueue } from '../../src/render/earth-surface-tile-queue';
-import { EarthSurfaceTileSource } from '../../src/render/earth-surface-tile-source';
-import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-format';
+import { EarthSurfaceResidentCoordinator } from '../../src/render/earth-surface/resident';
+import { EarthSurfaceGpuAdapter } from '../../src/render/earth-surface/gpu';
+import type { EarthSurfaceColorToRgba8 } from '../../src/render/earth-surface/resident';
+import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface/gpu';
+import { EarthSurfaceTileRequestQueue } from '../../src/render/earth-surface/tile-queue';
+import { EarthSurfaceTileSource } from '../../src/render/earth-surface/tile-source';
+import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface/terrain-codec';
 import {
   EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MIN_Z,
   earthTileChildren, earthTileId, earthTileKey, earthTileParent,
-} from '../../src/render/earth-surface-tile-key';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface-layout';
+} from '../../src/render/earth-surface/tile-key';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface/layout';
 import { earthPageAt } from './earth-surface-material-reference';
-import { EarthSurfaceTiles } from '../../src/render/earth-surface-tiles';
-import type { EarthTileResident } from '../../src/render/earth-surface-tiles';
-import type { EarthTileKey } from '../../src/render/earth-surface-tile-key';
-import type { EarthTileProjection } from '../../src/render/earth-surface-tile-projection';
+import { EarthSurfaceTiles } from '../../src/render/earth-surface/tiles';
+import type { EarthTileResident } from '../../src/render/earth-surface/tiles';
+import type { EarthTileKey } from '../../src/render/earth-surface/tile-key';
+import type { EarthTileProjection } from '../../src/render/earth-surface/tile-projection';
 
 const CAPABILITIES: EarthSurfaceGpuCapabilities = {
   texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS, colorSrgbLinear: true, terrainRgba8Linear: true,

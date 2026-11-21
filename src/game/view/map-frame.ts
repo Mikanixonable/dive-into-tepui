@@ -1,17 +1,17 @@
 // マップビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。
 import { MapPicking } from '../pickable/map-picking';
-import type { Input } from '../../input/input';
+import type { Input } from '../../input-devices/input';
 import type { HudLayers } from '../hud/hud-layers';
-import type { Notifier } from '../../hud/notifier';
+import type { Notifier } from '../../hud-kit/notifier';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import { ObjectPickables } from '../pickable/object-pickables';
-import { LinePickables } from '../pickable/line-pickables';
+import { ObjectPickables } from '../pickable/object-pickable-set';
+import { LinePickables } from '../pickable/line-pickable-set';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialMarkers } from '../marker/celestial-markers';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { Targeter } from '../targeter';
 import type { EquatorNodeManager } from '../marker/equator-node-manager';
 import type { NavTargetPresenter } from '../nav-target-presenter';

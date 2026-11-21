@@ -2,10 +2,10 @@
 // 固有操作の実行処理、および名称変更のインターフェースを提供する。
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
-import type { MenuItem } from '../../hud/windows/context-menu';
-import type { MenuAction } from '../hud/windows/menu-actions';
-import type { PropertyRow } from '../../hud/windows/property-window-content';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
+import type { MenuItem } from '../../hud-kit/windows/context-menu';
+import type { MenuAction } from '../menu-actions';
+import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
 import type { PickCandidate } from './pick-candidate';
 import type {
   PresentationPlanEditor, PresentationStageAuthoring,

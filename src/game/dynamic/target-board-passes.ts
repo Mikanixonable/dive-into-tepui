@@ -1,10 +1,10 @@
 // 発射弾が、ターゲット位置に置いて自機の方へ向けた仮想の標的面(的)を通過したことの記録。
 import { addScaled, dot, lenSq, norm, sub } from '../../math/vec3';
-import { isBullet } from './dynamic-entity/bullet';
-import { bulletReactionOf } from './dynamic-entity/bullet-reaction';
-import { aliveCombatTarget } from './dynamic-entity/combat-target';
-import type { OrbitingObject } from './dynamic-entity/orbiting-object';
-import type { EntityRoster } from './entity-roster';
+import { isBullet } from './entity/bullet';
+import { bulletReactionOf } from './entity/bullet-reaction';
+import { aliveCombatTarget } from './entity/combat-target';
+import type { OrbitingObject } from './entity/orbiting-object';
+import type { EntityRoster } from './entity-registry';
 import type { RunEventSink } from '../run-events';
 
 const BOARD_RADIUS = 4000; // 的の半径 [m](これ以遠の通過は記録しない)

@@ -1,6 +1,6 @@
 // 座標系・カメラパネル(.hud-frame-controls / #hud-map-frame)の CSS。
 // 色・余白・角丸・文字サイズはすべてテーマトークンから引き、リテラル値を書かない。
-import { MQ_COARSE, MQ_COMPACT } from '../../../hud/breakpoints';
+import { MQ_COARSE, MQ_COMPACT } from '../../../hud-kit/breakpoints';
 
 export const FRAME_CONTROLS_STYLE = `
 #hud .hud-frame-controls {

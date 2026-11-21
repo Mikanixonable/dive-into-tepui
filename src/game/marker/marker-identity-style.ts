@@ -1,6 +1,6 @@
 // マーカーの種別ごとの見た目 — 重なり順・識別色・字送り・字の大きさ。骨格(枠・シンボル・
 // ラベルの置き方)はマーカー装置が持ち、ここはその上に種別の意味を重ねる。
-import { injectOnce } from '../../hud/inject-style';
+import { injectOnce } from '../../hud-kit/inject-style';
 import { LIGHT_PALETTE } from '../../theme';
 import { COLOR_MARKER_ALLY, COLOR_MARKER_NODE, COLOR_MARKER_FUEL, COLOR_BASE } from './marker-identity';
 

@@ -1,14 +1,14 @@
 // 物体窓が扱う共通操作の規則。対象固有の表示台帳から切り離し、メニューの可否・命令の振り分け・
 // 関連対象の導出をここへ集める。
-import type { HintKind } from '../../hud/notifier';
+import type { HintKind } from '../../hud-kit/notifier';
 import type {
   PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem,
-} from '../../hud/windows/property-window-content';
-import type { MenuItem } from '../../hud/windows/context-menu';
-import type { MenuAction } from '../hud/windows/menu-actions';
+} from '../../hud-kit/windows/property-window-content';
+import type { MenuItem } from '../../hud-kit/windows/context-menu';
+import type { MenuAction } from '../menu-actions';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import { CelestialEntity } from '../celestial/entity/celestial-entity';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { NavTargetPresenter } from '../nav-target-presenter';
 import { focusTargetId } from '../viewer/focus-target';
 import type {
@@ -19,14 +19,14 @@ import type {
 } from '../presentation-ports';
 import type { ControlSelection } from '../control-selection';
 import { isModularShip } from '../ship/modular-ship';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { isEnemy } from '../dynamic/entity/enemy';
 import type { Targeter } from '../targeter';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
 import type { InspectedObject } from './inspected-object';
 import { ShipInspection } from './ship-inspection';
 import { EnemyInspection } from './enemy-inspection';
-import { Pickup } from '../dynamic/dynamic-entity/pickup';
+import { Pickup } from '../dynamic/entity/pickup';
 import { LagrangePointMarker } from '../marker/lagrange-point-marker';
 import { OrbitPointMarker } from '../marker/orbit-point-marker';
 import { OrbitSlotPickable } from './orbit-slot-pickable';

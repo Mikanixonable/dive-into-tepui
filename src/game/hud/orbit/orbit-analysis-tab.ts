@@ -1,9 +1,9 @@
 // 軌道分析パネルのタブが実装する共通形と、タブが組み立てる部品(スケール入力欄・リセット行)。
-import { Button, ValueInput } from '../../../hud/widgets';
-import { injectOnce } from '../../../hud/inject-style';
+import { Button, ValueInput } from '../../../hud-kit/widgets';
+import { injectOnce } from '../../../hud-kit/inject-style';
 import type { PresentationCelestialSystem } from '../../presentation-ports';
 import type { ThemePalette } from '../../../theme';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../dynamic/entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 

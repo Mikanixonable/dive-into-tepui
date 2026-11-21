@@ -1,9 +1,9 @@
 // 図で見つけにくい軌道物体を、名前で探して操作する検索面。
-import { Button } from '../../../hud/widgets';
-import { expandHitTarget, stopDragPropagation } from '../../../hud/widgets/widget-base';
+import { Button } from '../../../hud-kit/widgets';
+import { expandHitTarget, stopDragPropagation } from '../../../hud-kit/widgets/widget-base';
 import type { CelestialBodies } from '../../celestial/celestial-bodies';
 import type { ListedObject } from '../../pickable/listed-object';
-import type { OrbitingObject } from '../../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../../dynamic/entity/orbiting-object';
 
 const MAX_RESULTS = 60; // 一度に並べる一致行の上限
 

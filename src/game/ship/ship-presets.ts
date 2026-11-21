@@ -2,7 +2,7 @@
 import { SHIP_MODULE_CATALOG, type ShipModuleCatalog } from './ship-module-catalog';
 import { ShipAssembly } from './ship-assembly';
 import { createShipModuleInstance, type ShipModuleState } from './ship-module-instance';
-import { appendSalvageCargo, salvageCargoSide, type SalvageKind } from './salvage-blueprints';
+import { appendSalvageCargo, salvageCargoSide, type SalvageKind } from './ship-salvage-blueprints';
 
 // 定義から module instance を組む省略形。
 function instance(catalog: ShipModuleCatalog, definitionId: string, id: string, state?: ShipModuleState) {

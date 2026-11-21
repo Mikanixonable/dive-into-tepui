@@ -1,8 +1,8 @@
 // 建造部品のカテゴリとカード表示を同期し、部品を選ぶ操作と、カードを画面へ
 // 持ち上げるドラッグを通知する。設計図カテゴリは棚の一覧から組む。
-import { Button, buildSpan, TabBar, ValueInput } from '../../../hud/widgets';
-import { CLICK_MOVE_THRESHOLD } from '../../../input/input';
-import { KEY_MAPPING as K } from '../../../input/key-mapping';
+import { Button, buildSpan, TabBar, ValueInput } from '../../../hud-kit/widgets';
+import { CLICK_MOVE_THRESHOLD } from '../../../input-devices/input';
+import { KEY_MAPPING as K } from '../../../input-devices/key-mapping';
 import { SHIP_MODULE_CATALOG } from '../../ship/ship-module-catalog';
 import { formatConstructionMetric, formatConstructionNumber } from './ship-construction-format';
 import { moduleThumbnailUrl } from './ship-module-thumbnails';

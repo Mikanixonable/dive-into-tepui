@@ -1,11 +1,11 @@
 // 常設 TARGET パネル(#hud-target)の同期。ロック中ターゲットの名前・距離・接近速度・相対速度・
 // 装甲を、ターゲットの固定中に表示する。距離と接近速度が答えで、残りは行に出す。
-import { fmtDist, fmtDistParts, fmtSpeedParts } from '../../../hud/format';
-import { setReadout } from '../../../hud/readout';
-import { SyncThrottle } from '../sync-throttle';
+import { fmtDist, fmtDistParts, fmtSpeedParts } from '../../../hud-kit/format';
+import { setReadout } from '../../../hud-kit/dom-elements';
+import { SyncThrottle } from '../../../hud-kit/sync-throttle';
 import type { HudEls } from '../hud-els';
-import { Meter } from '../../../hud/widgets';
-import { applyAlarmLevel } from '../../../hud/alarm-level';
+import { Meter } from '../../../hud-kit/widgets';
+import { applyAlarmLevel } from '../../../hud-kit/alarm-level-ui';
 
 const SYNC_INTERVAL_MS = 100;
 

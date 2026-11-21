@@ -1,6 +1,6 @@
-import { KEY_MAPPING as K } from '../input/key-mapping';
-import type { Notifier } from '../hud/notifier';
-import type { PauseMenu } from '../hud/windows/pause-menu';
+import { KEY_MAPPING as K } from '../input-devices/key-mapping';
+import type { Notifier } from '../hud-kit/notifier';
+import type { PauseMenu } from '../hud-kit/windows/pause-menu';
 import type { SaveBrowser } from './save-browser/save-browser';
 import type { SnapshotService, SnapshotSource } from './save/snapshot-service';
 

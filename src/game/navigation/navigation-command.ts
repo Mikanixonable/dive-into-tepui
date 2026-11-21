@@ -3,21 +3,21 @@
 // 候補の最早出発時刻の手前までしか simTime を進めない時刻バリアを公開する。
 import { planTransfers, type TransferCandidate } from '../../physics/transfer-planner';
 import { planRendezvous, type TerminalProfile } from './terminal-rendezvous';
-import { aliveCombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { aliveCombatTarget } from '../dynamic/entity/combat-target';
+import { isEnemy } from '../dynamic/entity/enemy';
 import { deltaVBudget, effectiveExhaustVelocity } from '../../physics/rocket';
 import { strongestAttractor } from '../../physics/attractor';
 import type { CommandQueue } from '../command-queue';
 import type { ControlSelection } from '../control-selection';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { OverlayManager } from '../../hud/overlay-manager';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
 import { isModularShip, type ModularShip } from '../ship/modular-ship';
 import type { OrbitSlotRegistry } from './orbit-slot-registry';
 import type { OrbitSlotCatalogAccess } from './orbit-slot-family';
 import { transferTargetOf } from './transfer-target';
 import { commitTransferCandidate } from './transfer-command';
-import { NavigationCommandWindow } from './navigation-command-window';
+import { NavigationCommandWindow } from '../hud/windows/navigation-command-window';
 
 // 敵への会合は交戦圏外の待機点で、味方艦・基地への会合はドッキング手前の接近点で終える
 // (SPEC/PLAN.md「航行指令」)。いずれも終端到達点までの距離 [m]。

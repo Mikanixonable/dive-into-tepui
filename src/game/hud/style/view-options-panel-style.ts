@@ -1,6 +1,6 @@
 // 表示設定パネル(#hud-view-options)の CSS。カテゴリー見出し + 名前/軌道線トグルの行部品
 // (.body-class-row 系)はこのパネルだけが使う。
-import { MQ_COARSE, MQ_MEDIUM_DOWN } from '../../../hud/breakpoints';
+import { MQ_COARSE, MQ_MEDIUM_DOWN } from '../../../hud-kit/breakpoints';
 
 export const VIEW_OPTIONS_PANEL_STYLE = `
 /* body-class-row: カテゴリー見出し + 名前/軌道線トグルの1行(太陽系・表示パネル)。

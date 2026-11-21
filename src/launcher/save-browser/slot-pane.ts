@@ -1,11 +1,11 @@
 // セーブデータ一覧と、作成・取り込み・各データの操作を表示する左ペイン。
 import type { SaveSlotMeta } from '../save/slot-data';
-import { fmtDateTime } from '../../hud/format';
-import { Button } from '../../hud/widgets';
-import { bindActivation } from '../../hud/widgets/widget-base';
-import { injectOnce } from '../../hud/inject-style';
-import { MQ_COMPACT } from '../../hud/breakpoints';
-import { mainBtn, smallBtn, stageLabel } from './shared';
+import { fmtDateTime } from '../../hud-kit/format';
+import { Button } from '../../hud-kit/widgets';
+import { bindActivation } from '../../hud-kit/widgets/widget-base';
+import { injectOnce } from '../../hud-kit/inject-style';
+import { MQ_COMPACT } from '../../hud-kit/breakpoints';
+import { mainBtn, smallBtn, stageLabel } from './save-browser-ui';
 
 const STYLE = `
 #save-browser .sb-pane-slots { flex: 0 0 34%; }

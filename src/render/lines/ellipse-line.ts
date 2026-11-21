@@ -4,7 +4,7 @@ import type { OrbitalElements } from '../../physics/elements';
 import { add, v3, type Vec3 } from '../../math/vec3';
 import type { CameraFrame } from '../camera/camera-frame';
 import { Curve, type CurveSampler } from '../curve';
-import type { LineStyle } from '../line-style';
+import type { LineStyle } from './line-style';
 
 // 離心近点角 E=t·2π から、中心天体相対の ECI オフセット位置を算出する閉曲線サンプラ。
 function ellipseSampler(el: OrbitalElements): CurveSampler {

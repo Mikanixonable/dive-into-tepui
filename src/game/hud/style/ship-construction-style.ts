@@ -1,4 +1,4 @@
-import { MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../../../hud/breakpoints';
+import { MQ_COMPACT, MQ_MEDIUM_DOWN, MQ_SHORT } from '../../../hud-kit/breakpoints';
 
 export const SHIP_CONSTRUCTION_STYLE = `
 /* 建造は通常レールから独立した workspace。左にカタログ、右に船体の状態、中央列の
