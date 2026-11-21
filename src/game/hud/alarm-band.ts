@@ -11,8 +11,8 @@ const MAX_VISIBLE = 2;
 // 警報の id と段から出す、「何が起きているか」の一文。
 const ALARM_TEXT: Readonly<Record<ShipAlarm['id'], Record<'caution' | 'warning', string>>> = {
   hullTemperature: {
-    caution: '船体温度が高い',
-    warning: '船体温度が限界に近い',
+    caution: '注意: 高温',
+    warning: '警告: 高温',
   },
 };
 
