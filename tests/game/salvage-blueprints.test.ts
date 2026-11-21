@@ -6,7 +6,7 @@ import { v3 } from '../../src/math/vec3';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { Stage, type GamePhase } from '../../src/game/stages/stage';
 import { CreativeStage } from '../../src/game/stages/creative-stage';
-import { Stage00 } from '../../src/game/stages/stage00';
+import { Stage1 } from '../../src/game/stages/stage1';
 import { SalvageCargo } from '../../src/game/stages/stage-utils/salvage-cargo';
 import { ScoreCounter } from '../../src/game/stages/stage-utils/score-counter';
 import { Logistics } from '../../src/game/stages/stage-utils/logistics';
@@ -143,7 +143,7 @@ export function register(): void {
   test('鹵獲: 授与は棚に同名があっても毎ラン記録し、補給艇のあるステージでは積荷の待ち行列へ積む', async () => {
     await loadAmmoModels();
     const system = new TestDynamicSystem();
-    const stage = bareStage(Stage00.prototype, system, 24, shelf());
+    const stage = bareStage(Stage1.prototype, system, 24, shelf());
     stage.recordEnemyDeath(enemyAt(ENEMY_STATE), 0, 'killed');
     assert.deepEqual(awardedNames(system), ['鹵獲: 強襲艇']);
     assert.deepEqual(grantedNames(system), ['鹵獲: 強襲艇']);
@@ -151,7 +151,7 @@ export function register(): void {
 
     const owned = [{ id: 'x', name: '鹵獲: 強襲艇', createdAtReal: 0, piece: SALVAGE_BLUEPRINTS[2]!.piece }];
     const ownedSystem = new TestDynamicSystem();
-    const ownedStage = bareStage(Stage00.prototype, ownedSystem, 24, shelf(owned));
+    const ownedStage = bareStage(Stage1.prototype, ownedSystem, 24, shelf(owned));
     ownedStage.recordEnemyDeath(enemyAt(ENEMY_STATE), 0, 'killed');
     assert.deepEqual(awardedNames(ownedSystem), ['鹵獲: 強襲艇']);
     assert.deepEqual(grantedNames(ownedSystem), []);

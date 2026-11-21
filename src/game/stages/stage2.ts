@@ -1,65 +1,110 @@
-// Stage 2: 第二ステージ(モルニヤ戦域)。ステージ1クリアで解放。
-import { Stage, type ClearCounts, type SerializedStage, type StageDeps, STORY_EPOCH } from './stage';
+// Stage 2: 近傍の色分けクラスタを制限時間内に何機撃墜できるかのスコアアタック。タイムアップで終了。
+import { Stage, type CommonStageState, type SerializedStage, type StageDeps, STORY_EPOCH, summaryHtml } from './stage';
 import { KEY_MAPPING as K } from '../../input/key-mapping';
-import {
-  generateCoellipticEnemy,
-  generateMolniyaEnemy,
-  generatePhasedEnemy,
-} from './spawner/enemy-generator';
-import { COLOR_ENEMY_ORBIT_LINE } from '../lines/entity-line-manager';
+import { generateCluster, STAGE2_PER_GROUP, STAGE2_MAX_RANGE, COLOR_STAGE2_GROUP_ACCENTS } from './spawner/enemy-spawner';
+import { ScoreAttackTimer, type SerializedScoreAttackTimer } from './stage-utils/score-attack-timer';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
+
+// 制限時間 [実秒]。
+const STAGE2_TIME_LIMIT = 120;
+const STAGE2_LOGISTICS_INITIAL_AMMO = 4; // 開始時に浮かべておく補給の数
+const STAGE2_LOGISTICS_MIN_DIST = 75; // 補給の配置距離 [m](自機から)
+const STAGE2_LOGISTICS_MAX_DIST = 225;
+
+// 制限時間を分単位で表す。
+const stage2TimeLimitMinutes = (): number => Math.floor(STAGE2_TIME_LIMIT / 60);
+
+interface SerializedStage2 extends SerializedStage {
+  readonly timeLeft: SerializedScoreAttackTimer;
+}
 
 export class Stage2 extends Stage {
   public static readonly id = '2' as const;
   public static readonly epoch = STORY_EPOCH;
   public static readonly selectLabel = 'stage 2';
-  public static readonly selectSub = '【第二ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
-  public static readonly selectLockedSub = '🔒 第一ステージをクリアすると解放';
+  public static readonly selectSub =
+    `【近接戦闘訓練】 常時選択可。${STAGE2_MAX_RANGE / 1000}km以内に色分けされた敵集団 ` +
+    `約${STAGE2_PER_GROUP * COLOR_STAGE2_GROUP_ACCENTS.length}機、` +
+    `制限時間${stage2TimeLimitMinutes()}分の撃墜数スコアアタック`;
   public static readonly selectKey = 'Digit2';
 
-  // 自機を置き、通常軌道の敵とモルニヤ級軌道の敵を混成配置して始める。
+  // 制限時間のタイマーと共通の状態から組む。省いたタイマーは制限時間いっぱいから始まる。
+  private constructor(
+    deps: StageDeps,
+    private readonly timer = new ScoreAttackTimer(STAGE2_TIME_LIMIT),
+    ...common: CommonStageState
+  ) {
+    super(deps, ...common);
+  }
+
+  // 弾薬ゼロの自機を置き、初期補給と敵クラスタを配置して始める。
   public static create(...deps: StageDeps): Stage2 {
     const stage = new Stage2(deps);
-    const player = stage.addPlayer();
-    const referenceState = player.motion.state;
-    const scene = stage._scene;
-    const idAllocators = stage._dynamicSystem.idAllocators;
-    const attractors = stage._celestialSystem.celestialMotions;
-    // 通常軌道の敵
-    stage.addEnemy(generatePhasedEnemy('HOSTILE-α', referenceState, attractors, 1800, 0xff4a3d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    stage.addEnemy(generateCoellipticEnemy('HOSTILE-β', referenceState, attractors, -2600, 3000, 0xff7a2d, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    // モルニヤ級の高楕円軌道の敵
-    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-γ', referenceState, attractors, 0.4, 2.6, 0xe0409f, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-δ', referenceState, attractors, 2.5, 0.9, 0xbf3dff, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
-    stage.addEnemy(generateMolniyaEnemy('MOLNIYA-ε', referenceState, attractors, 4.6, 3.8, 0xff2d6b, COLOR_ENEMY_ORBIT_LINE, scene, idAllocators));
+    // 弾切れの自機のまわりに補給を浮かべる
+    const player = stage.addPlayer({ ammo: { mags: 0, rounds: 0 } });
+    for (let i = 0; i < STAGE2_LOGISTICS_INITIAL_AMMO; i++) {
+      stage.logistics.spawnForPlayer(player, STAGE2_LOGISTICS_MIN_DIST, STAGE2_LOGISTICS_MAX_DIST);
+    }
+    // 自機の近傍に色分けクラスタを置く
+    const enemies = generateCluster(
+      player.motion.state, stage._celestialSystem.celestialMotions,
+      stage._scene, stage._dynamicSystem.idAllocators,
+    );
+    for (const enemy of enemies) stage.addEnemy(enemy);
     stage.composeBriefing();
     return stage;
   }
 
   // 直列化した形から復元する。
-  public static deserialize(serialized: SerializedStage | null, ...deps: StageDeps): Stage2 {
-    return new Stage2(deps, ...Stage.deserializeCommonState(serialized, deps, Stage2.stageRules));
+  public static deserialize(serialized: SerializedStage2 | null, ...deps: StageDeps): Stage2 {
+    const timeLeft = serialized?.timeLeft;
+    return new Stage2(
+      deps,
+      // null も欠けと同じく制限時間いっぱいから始める(既定引数は undefined でしか働かない)。
+      timeLeft == null ? undefined : ScoreAttackTimer.deserialize(timeLeft),
+      ...Stage.deserializeCommonState(serialized, deps, Stage2.stageRules),
+    );
   }
 
-  // 第一ステージのクリア実績があれば解放。
-  public static isUnlocked(clearCounts: ClearCounts): boolean {
-    return (clearCounts['1'] ?? 0) > 0;
-  }
-
-  // 作戦目標と操作方法を示すブリーフィング文面を組む。
+  // ステージ開始時のブリーフィング文言を返す。
   protected briefingHtml(): string {
     return (
-      `<b>作戦目標: 敵機 ${this.enemiesAppeared} 機を全機撃破せよ</b><br>` +
-      `敵の一部はモルニヤ級の高楕円軌道上にいる — [${K.toggleMapMode.label}] 軌道計画モードで遷移を計画せよ<br>` +
+      `<b>訓練ステージ: 制限時間 ${stage2TimeLimitMinutes()}分で何機撃墜できるか</b><br>` +
+      `周囲${STAGE2_MAX_RANGE / 1000}km以内の色分けされた集団を撃墜せよ — RCS の並進と回転の練習に最適<br>` +
+      '補給マガジンが近くに浮いている — 弾切れ時は回収せよ<br>' +
       `[${K.help.label}] キーで操作方法を表示`
     );
   }
 
-  // 補給品の湧きを進める。
-  public update(_dt: number, simTime: number, simSpeed: SimSpeedManager): void {
+  // 補給と制限時間を1フレーム分進める。
+  public update(dt: number, simTime: number, simSpeed: SimSpeedManager): void {
     const player = this.ship;
     if (!player) return;
 
     this.logistics.updateLogistics(simTime, player, simSpeed);
+
+    // 残り時間が尽きたフレームで一度だけ決着させる
+    const running = this.timer.timeLeft > 0;
+    this.timer.update(dt);
+    if (running && this.timer.timeLeft <= 0) {
+      const stats = this.runStats;
+      this.decide('timeup', {
+        win: true, title: 'TIME UP', detailHtml: summaryHtml(stats), stats, lossCause: null,
+      });
+    }
+  }
+
+  // 撃破数では決着させず、制限時間切れを決着とする。
+  protected checkWin(): boolean { return false; }
+  protected onWin(): void { }
+
+  // 残り時間を HUD 表示用の文字列で返す。
+  protected hudSubStatus(): string {
+    return `残り時間: ${Math.ceil(this.timer.timeLeft)}秒`;
+  }
+
+  // 共通の内訳へ残り時間を足して直列化する。
+  public serialize(): SerializedStage2 {
+    return { ...super.serialize(), timeLeft: this.timer.serialize() };
   }
 }

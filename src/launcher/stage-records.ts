@@ -1,6 +1,7 @@
 // ステージごとのベスト(生存時間・撃破数の最高)と連敗数を、ブラウザへ残す。セーブ枠には属さず、
 // ランを跨いで保たれる(クリア回数と同じ保存の仕方)。
 import { missionTimeText, type GamePhase, type RunStats, type StageId } from '../game/stages/stage';
+import { normalizeStageId } from '../game/stages/stage-dictionary';
 
 const STORAGE_KEY = 'tepui.stageRecords';
 
@@ -16,10 +17,15 @@ interface StageRecord {
 type RecordMap = Readonly<Record<string, StageRecord>>;
 
 // localStorage から記録を読み込む。取得できなければ空を返す。
+// キーのステージ id は、番号の付け替え以前に保存された旧番号も新番号へ読み替える。
 function loadRecords(): RecordMap {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as RecordMap;
+    return Object.fromEntries(
+      Object.entries(parsed).map(([id, record]) => [normalizeStageId(id), record]),
+    );
   } catch {
     return {};
   }

@@ -21,7 +21,7 @@ import type { SerializedLogistics } from './stage-utils/logistics';
 import type { SalvageCargo } from './stage-utils/salvage-cargo';
 import type { Stage } from './stage';
 
-export type StageId = '00' | '0' | '1' | '2' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
+export type StageId = '1' | '2' | '3' | '4' | 'creative' | 'debug' | 'debug-alt-system' | 'debug-load';
 
 // 全ステージ共通の協力者。create・deserialize が受け、基底のコンストラクタへそのまま渡す。
 export type StageDeps = [
