@@ -5,7 +5,7 @@ import { OVERLAY_LAYER_STYLE } from '../../../hud/overlay-layer';
 import { opaqueGlassFallbackStyle } from '../../../hud/style/common-ui-style';
 import { LIGHT_PALETTE } from '../../../theme';
 import {
-  MQ_COARSE, MQ_COARSE_SHORT, MQ_COMPACT, MQ_MEDIUM_DOWN,
+  MQ_COARSE, MQ_COMPACT, MQ_MEDIUM_DOWN,
 } from '../../../hud/breakpoints';
 
 export const SKELETON_STYLE = `
@@ -31,7 +31,7 @@ body.title-screen-open.hud-overlay-modal-open #hud { z-index: var(--z-hud-title-
 
 /* 選択無効化対象 */
 #hud .ctx-menu-item,
-#hud .rail-toggle, #hud-chase-reset,
+#hud .rail-toggle,
 #hud-viewbadge .vb-view-btn { user-select: none; }
 
 ${OVERLAY_LAYER_STYLE}
@@ -132,13 +132,13 @@ ${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-
 /* 左右レール */
 #hud .hud-rail {
   position: absolute; top: calc(var(--hud-chrome-h) + var(--space-2)); bottom: var(--hud-rail-bottom);
-  display: flex; flex-direction: column; align-items: stretch; gap: 7px;
+  display: flex; flex-direction: column; align-items: stretch; gap: var(--space-4);
   pointer-events: none; min-height: 0; overflow-x: hidden; overflow-y: auto;
   scrollbar-width: thin; overscroll-behavior: contain;
 }
 #hud .hud-rail > .panel { position: relative; inset: auto; transform: none; pointer-events: auto; flex: 0 0 auto; }
-#hud .hud-rail-left { left: 12px; width: var(--rail-w-left); }
-#hud .hud-rail-right { right: 12px; width: var(--rail-w-right); }
+#hud .hud-rail-left { left: var(--space-5); width: var(--rail-w-left); }
+#hud .hud-rail-right { right: var(--space-5); width: var(--rail-w-right); }
 #hud .hud-map-root.active .hud-rail { pointer-events: auto; touch-action: pan-y; }
 /* レールの収納グリップは画面の縦中央、レールの内側の縁の外へ置く。レールの実占有量(JS が同期する)を
    基準にするので、畳むとそのまま画面端へ寄る。 */
@@ -226,7 +226,7 @@ ${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-
 #hud-viewbadge span.vb-view-btn:hover { color: var(--text); }
 
 #hud-map-scale {
-  position: absolute; right: 12px; bottom: var(--hud-map-scale-bottom); display: none; pointer-events: none;
+  position: absolute; right: var(--space-5); bottom: var(--hud-map-scale-bottom); display: none; pointer-events: none;
   padding: var(--space-2) var(--space-3) var(--space-3); border-radius: var(--radius-micro);
   color: var(--text-dim); font-size: var(--font-xxs); line-height: 1.1;
   font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap;
@@ -248,18 +248,7 @@ ${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-
 #hud-map-scale .map-scale-tick.q3 { left: 75%; }
 #hud-map-scale .map-scale-tick.end { right: 0; }
 
-#hud-chase-reset {
-  position: relative; grid-column: 2; justify-self: center; margin-top: var(--space-2);
-  pointer-events: auto; cursor: pointer;
-  min-width: 0; width: auto; height: 30px; border-radius: var(--radius-micro);
-  display: flex; justify-content: center; align-items: center; gap: var(--space-2);
-  padding: 0 var(--space-3); border: 0; color: var(--text-dim);
-}
-#hud-chase-reset:hover { background: var(--surface-2); color: var(--color-primary-hover); }
-#hud-chase-reset:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
-@media ${MQ_COARSE} {
-  #hud-chase-reset { min-width: var(--hit-target-min); min-height: var(--hit-target-min); }
-}
+#hud-chase-reset { grid-column: 2; justify-self: center; margin-top: var(--space-2); }
 
 /* 右上の常設バッジ列。 */
 /* 画面を広く使うモード(Tab)は、レールと上部バー(どちらも収納グリップごと)・下部の帯を隠し、右上の
@@ -279,9 +268,6 @@ ${opaqueGlassFallbackStyle('#hud-topbar, #hud-map-scale, #hud-chase-reset, #hud-
 /* ⚙バッジの表示可否は、仮想パッドと同じ body.touch-ui-active(TouchControls が持つ正本)へ載せる。 */
 #hud-chrome-actions .hud-action--touch { display: none; }
 body.touch-ui-active #hud-chrome-actions .hud-action--touch { display: flex; }
-#hud .hud-mini-code {
-  color: var(--role-meta); font-size: var(--font-xxs); font-weight: 700; letter-spacing: var(--tracking-code);
-}
 @media ${MQ_COARSE} {
   /* タッチ環境ではキーの案内は意味を持たないので、キーキャップは畳む。 */
   #hud-chrome-actions .hud-action .ui-key { display: none; }
@@ -351,11 +337,9 @@ body.touch-ui-active #hud-chrome-actions .hud-action--touch { display: flex; }
   #hud:not(.map-ui-active) #hud-viewbadge { display: none; }
   #hud-toast { max-width: 92vw; padding: var(--space-5) var(--space-5); font-size: var(--font-l); }
   #hud .hud-rail { gap: var(--space-3); }
-  #hud .hud-rail-left { left: 8px; }
-  #hud .hud-rail-right { right: 8px; }
-  #hud-chase-reset { width: auto; height: 28px; }
-  #hud-chase-reset svg { width: 14px; height: 14px; }
-  #hud-map-scale { right: 8px; font-size: var(--font-xxs); }
+  #hud .hud-rail-left { left: var(--space-4); }
+  #hud .hud-rail-right { right: var(--space-4); }
+  #hud-map-scale { right: var(--space-4); font-size: var(--font-xxs); }
 }
 @media ${MQ_COMPACT} {
   #hud .hud-rail { font-size: var(--font-xxs); }
@@ -368,9 +352,6 @@ body.touch-ui-active #hud-chrome-actions .hud-action--touch { display: flex; }
   /* 通常は MET + SIM、ノードワープ中だけ SIM + NODE WARP を優先する。 */
   #hud-topbar.node-warp-active .gs-metric-time { display: none; }
   #hud-topbar .gs-metric-time .v { font-size: var(--font-xxs); }
-}
-@media ${MQ_COARSE_SHORT} {
-  #hud-chase-reset .hud-mini-code { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   #hud *, #hud *::before, #hud *::after {
