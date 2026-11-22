@@ -16,6 +16,13 @@ export interface EarthTileResident {
   readonly layer: number;
 }
 
+// 公開するページ表。cells は最高LODのセルごとの (層, 親層, z, 遷移の進み)、layers は cells が
+// 参照しうる詳細層で、参照する層をすべて含む。
+export interface EarthPageTable {
+  readonly cells: Uint8Array;
+  readonly layers: ReadonlySet<number>;
+}
+
 interface DisplayedTile extends EarthTileResident {
   readonly parentLayer: number;
   readonly fadeStartMs: number | null;
@@ -62,7 +69,7 @@ export class EarthSurfaceTiles {
   private fadeStarts = new Map<number, number>();
   private drawingTimeMs = 0;
   // 表示から組んだページ表のキャッシュ。表示が変わったら捨てる。
-  private page: Uint8Array | null = null;
+  private page: EarthPageTable | null = null;
   private pageRevisionValue = 0;
 
   // 表示するタイルの最大段を受ける。配信範囲の外は投げる。
@@ -165,15 +172,15 @@ export class EarthSurfaceTiles {
     this.fadeStarts = nextStarts;
   }
 
-  // 現在の表示を最高LODセルへ展開した表。細かいタイルほど後から同じ領域を上書きする。表示が
-  // 変わるまで同じ配列を返すので、書き換えない。
-  public pageTable(): Uint8Array {
-    this.page ??= this.buildPageTable();
+  // 現在の表示を最高LODセルへ展開した表。細かいタイルほど後から同じ領域を上書きする。参照しうる
+  // 層は表示中のタイルの層と親層。表示が変わるまで同じ表を返すので、書き換えない。
+  public pageTable(): EarthPageTable {
+    this.page ??= { cells: this.buildPageCells(), layers: new Set(this.pinnedLayers()) };
     return this.page;
   }
 
   // 全セルを全球基底で埋め、表示中のタイルを z の浅い順に、そのセルの行ごとに上書きする。
-  private buildPageTable(): Uint8Array {
+  private buildPageCells(): Uint8Array {
     const table = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(EARTH_BASE_LAYER);
     const cells = new Uint32Array(table.buffer);
     // 1セル4バイトを、表と同じバイト順の32bit値へ詰める。
