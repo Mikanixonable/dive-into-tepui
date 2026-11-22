@@ -39,7 +39,6 @@ class PointFieldGroupView {
     this.material = new THREE.MeshBasicMaterial({ color: group.color, depthWrite: false });
     this.baseColor = new THREE.Color(group.color);
     this.mesh = new THREE.InstancedMesh(geom, this.material, this.points.length);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     // 点は AU スケールに散らばるので、外接球によるフラスタムカリングを切る。
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;

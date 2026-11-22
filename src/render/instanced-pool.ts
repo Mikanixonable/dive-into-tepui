@@ -47,15 +47,14 @@ export class InstancedPool {
     this.mesh.renderOrder = renderOrder;
     // 変換は storage バッファで渡す。既定の属性だと容量ぶんの mat4 が uniform 配列として
     // シェーダへ焼き込まれ、プールごとに起動時のコンパイルが伸びる。
+    // 属性は版(needsUpdate)と更新範囲で送る。DynamicDrawUsage にすると three はその属性を使う
+    // 描画パスのたびにバッファ全体を送り直す。
     this.mesh.instanceMatrix = new THREE.StorageInstancedBufferAttribute(this.capacity, 16);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     if (perInstanceColor) {
       this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3);
-      this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
     }
     if (perInstanceThermal) {
       this.thermal = new THREE.InstancedBufferAttribute(new Float32Array(this.capacity * 3), 3);
-      this.thermal.setUsage(THREE.DynamicDrawUsage);
       geometry.setAttribute(INSTANCE_THERMAL_ATTRIBUTE, this.thermal);
     }
     // ジオメトリの外接球は散らばった個体を包まないので、フラスタム判定を切る。
