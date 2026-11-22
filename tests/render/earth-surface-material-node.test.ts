@@ -5,7 +5,6 @@ import {
   earthSurfaceDetailLodNode,
   earthSurfaceTileUvNode,
   decodeEarthSurfaceNormalNode,
-  earthSurfaceMaterialCapabilities,
 } from '../../src/render/earth-surface/material-node';
 import { configureEarthSurfaceTexture } from '../../src/render/earth-surface/texture';
 import { EARTH_TILE_MAX_Z, EARTH_TILE_MIN_Z } from '../../src/render/earth-surface/tile-key';
@@ -45,11 +44,6 @@ export function register(): void {
     assert.equal(terrain.colorSpace, THREE.NoColorSpace);
     assert.equal(terrain.generateMipmaps, false);
     assert.equal(terrain.flipY, false);
-  });
-
-  test('earth surface material: unsupported capability selects base fallback', () => {
-    assert.deepEqual(earthSurfaceMaterialCapabilities(true), { useBaseFallback: true });
-    assert.deepEqual(earthSurfaceMaterialCapabilities(false), { useBaseFallback: false });
   });
 
   test('earth surface material: tile Vは各LOD行を走査し、全球南端を最終画素へ置く', () => {

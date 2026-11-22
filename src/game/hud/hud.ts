@@ -78,7 +78,7 @@ export class Hud implements HudLayers, Notifier {
   // 直近に見た目を合わせたビュー。DOM を組み替える差分の鍵。
   private chromeView: ViewMode | null = null;
   // 建造は ViewMode と独立した一時 workspace。ユーザーのパネル折りたたみ設定は変更しない。
-  private constructionMode = false;
+  private constructionActive = false;
   private readonly toastBox: HudToast;
 
   // 画面の器の上に、ゲームの HUD の DOM を組む。renderStyle は組み立て時の見せ方で、
@@ -137,8 +137,8 @@ export class Hud implements HudLayers, Notifier {
 
   // 建造モード中の HUD 表示ゲートを切り替える。ViewMode や折りたたみ保存値は書き換えない。
   public setConstructionMode(active: boolean): void {
-    if (this.constructionMode === active) return;
-    this.constructionMode = active;
+    if (this.constructionActive === active) return;
+    this.constructionActive = active;
     this.root.classList.toggle('construction-mode', active);
     document.body.classList.toggle('hud-construction-mode', active);
     this.applyHudProfile(this.chromeView ?? 'combat', false);
@@ -149,7 +149,7 @@ export class Hud implements HudLayers, Notifier {
     this.root.classList.remove('creative-mode');
     this.root.classList.remove('construction-mode');
     document.body.classList.remove('hud-construction-mode');
-    this.constructionMode = false;
+    this.constructionActive = false;
     this.applyHudProfile(this.chromeView ?? 'combat', false);
     // パネルが掴んでいるランの値と操作の口を、null の状態へ同期する。
     this.topBar.sync(null, null, 0);
@@ -193,8 +193,8 @@ export class Hud implements HudLayers, Notifier {
   // workspace は画面の大分類、attention は flight 内の一時的な強調状態。DOM再配置ではなく
   // dataset と CSS で表現し、ターゲット取得時にもパネル位置を揺らさない。
   private applyHudProfile(view: ViewMode, hasCombatTarget: boolean): void {
-    this.root.dataset['workspace'] = hudWorkspace(view, this.constructionMode);
-    this.root.dataset['attention'] = hudAttention(view, this.constructionMode, hasCombatTarget);
+    this.root.dataset['workspace'] = hudWorkspace(view, this.constructionActive);
+    this.root.dataset['attention'] = hudAttention(view, this.constructionActive, hasCombatTarget);
   }
 
   // 表に出す HUD ルートと、両ビューで1つを使い回すパネルの置き場を view へ揃える。

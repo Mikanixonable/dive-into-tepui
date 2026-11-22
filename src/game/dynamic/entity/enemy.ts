@@ -251,7 +251,7 @@ export abstract class Enemy extends CombatShipEntity implements CombatTarget {
         visible: true, clustered: false,
       },
       color,
-      symMarkup: true,
+      markup: true,
     };
   }
 

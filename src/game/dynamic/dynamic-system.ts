@@ -161,11 +161,11 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     for (const controllable of this.controllables) controllable.clearTransientCommands();
   }
 
-  // 全エンティティを1フレーム進める。自律推力、操縦コマンド、操作・敵の指令を決定してから積分する。operable は
+  // 全エンティティを1フレーム進める。自律推力、操縦コマンド、操作・敵の指令を決定してから積分する。canShipAct は
   // 操作と敵の射撃ができる倍率か、acceptsCommands は controls の命令を操作対象へ適用するか、
   // enemiesMayFire はステージが敵の射撃を許しているか、canEngage は交戦圏を組むか。
   public update(
-    active: Controllable | null, controls: PilotControls, operable: boolean, acceptsCommands: boolean,
+    active: Controllable | null, controls: PilotControls, canShipAct: boolean, acceptsCommands: boolean,
     enemiesMayFire: boolean, dt: number, simDt: number, canEngage: boolean,
     activeStage: StageOutcome & StageSimulationEvents, stageRules: StageRules,
   ): void {
@@ -178,8 +178,8 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
     if (active !== null && acceptsCommands) {
       for (const command of controls.commands) active.handleCommand(command, this);
     }
-    this.updateControllables(active, controls, operable, dt, simDt, activeStage, stageRules);
-    this.behaveAll(active, operable && enemiesMayFire, activeStage.enemyAttackLimit);
+    this.updateControllables(active, controls, canShipAct, dt, simDt, activeStage, stageRules);
+    this.behaveAll(active, canShipAct && enemiesMayFire, activeStage.enemyAttackLimit);
     this.sections.exit(SECTION.command);
     this.nanWatchdog.checkControlled(
       'update(指令決定)', active?.motion ?? null, this.simTime, dt, this.lastSimDt,
@@ -205,14 +205,14 @@ export class DynamicSystem implements EntityRegistry, EntityRoster {
 
   // 生存中の操作されうる全個体へ updateControls を1度ずつ通す。
   private updateControllables(
-    active: Controllable | null, controls: PilotControls, operable: boolean,
+    active: Controllable | null, controls: PilotControls, canShipAct: boolean,
     dt: number, simDt: number, activeStage: StageOutcome, stageRules: StageRules,
   ): void {
     for (const controllable of this.controllables) {
       if (!controllable.motion.alive) continue;
       // 「操作対象でない」と「操作できないワープ倍率」は同じ状態として操作量なしで進める。
       controllable.updateControls(
-        controllable === active && operable ? controls : null,
+        controllable === active && canShipAct ? controls : null,
         dt, simDt, activeStage, stageRules, this.celestialBodies,
       );
     }

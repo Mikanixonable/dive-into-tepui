@@ -45,11 +45,11 @@ export function register(): void {
 
   test('logistics: 直列化した自動補給設定よりステージルールを優先する', () => {
     const campaign = logistics(false);
-    assert.equal(campaign.resupplyEnabled, false);
+    assert.equal(campaign.ammoResupplyEnabled, false);
     assert.equal(campaign.rcsFuelResupplyEnabled, false);
 
     const freePlay = logistics(true);
-    assert.equal(freePlay.resupplyEnabled, true);
+    assert.equal(freePlay.ammoResupplyEnabled, true);
     assert.equal(freePlay.rcsFuelResupplyEnabled, true);
   });
 }

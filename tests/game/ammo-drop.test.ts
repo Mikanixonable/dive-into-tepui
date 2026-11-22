@@ -151,7 +151,7 @@ export function register(): void {
       motion: { state: kinematicState<'eci'>(0, v3(7000e3 + 10, 0, 0), v3(0, 7500, 0)) },
       onPickup: (mags: number): void => { pickedMags += mags; },
     } as unknown as ModularShip;
-    const simSpeed = { canResupplyAmmo: false } as unknown as SimSpeedManager;
+    const simSpeed = { canResupply: false } as unknown as SimSpeedManager;
 
     logistics.updateLogistics(0, player, simSpeed);
 
@@ -178,7 +178,7 @@ export function register(): void {
         motion: { state: kinematicState<'eci'>(0, v3(7000e3, 0, 0), v3(0, 7500, 0)) },
         onPickup: (picked: number): void => { pickedMags += picked; },
       } as unknown as ModularShip;
-      logistics.updateLogistics(0, player, { canResupplyAmmo: false } as unknown as SimSpeedManager);
+      logistics.updateLogistics(0, player, { canResupply: false } as unknown as SimSpeedManager);
       assert.equal(pickedMags, mags);
     }
   });

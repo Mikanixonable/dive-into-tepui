@@ -1,3 +1,4 @@
+import type { ViewMode } from './view/view-mode';
 // ランの規模の計測値。
 import type { EntityCountKind } from './dynamic/entity/entity-kind';
 import type { CelestialSurfaceDiagnostics } from '../render/celestial/celestial-surface';
@@ -15,7 +16,7 @@ export interface PerfCounts {
   entities: Partial<Record<EntityCountKind, number>>;
   predicted: number; predictComplete: number; predictorSteps: number;
   arcCelestialBodies: number; arcRevisits: number; arcLead: number | null;
-  mapMode: boolean; mapItems: number; mapLabels: number; displayDurationSec: number;
+  view: ViewMode; mapItems: number; mapLabels: number; displayDurationSec: number;
   simSubsteps: number; simIntegrated: number; simFollowed: number; gravitySources: number;
   surfaceCandidates: number; contactPairs: number; contactParticipants: number;
   surfaces: readonly SurfacePerfCount[];

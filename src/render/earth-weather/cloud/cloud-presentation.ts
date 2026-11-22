@@ -75,9 +75,11 @@ export class CloudPresentation {
   private readonly sources: Readonly<Record<CloudFieldSourceKind, CloudFieldSource>>;
   // 現在選択されている雲データ供給源。
   private source: CloudFieldSource;
-  private cloudVisible = false;
-  private cumulusVisible = true;
-  private cirrusVisible = true;
+  // 描画設定が雲全体・雲種ごとに描くと決めているか。実際に描くかは cloudsVisible と雲種ごとの
+  // *Visible が設定を合成して答える。
+  private cloudsEnabled = false;
+  private cumulusEnabled = true;
+  private cirrusEnabled = true;
   // 細部の時刻。bake で表示時刻へ進める。
   private clock: CloudDetailClockInput = { displayTime: 0, simSpeed: 0 };
   // 品質適応の予算上限の状態機械。null の間は予算上限が効かない(設定とフットプリント
@@ -127,13 +129,12 @@ export class CloudPresentation {
       cirrusOctaves: cirrusOctavesOf(this.effectiveCirrus),
     };
   }
-  public get visible(): boolean { return this.surface.visible; }
   // 雲全体と、少なくとも一方の雲種が有効なとき表示可能とする。
   public get cloudsVisible(): boolean {
-    return this.cloudVisible && (this.cumulusVisible || this.cirrusVisible);
+    return this.cloudsEnabled && (this.cumulusEnabled || this.cirrusEnabled);
   }
-  public get cumulusEnabled(): boolean { return this.cloudsVisible && this.cumulusVisible; }
-  public get cirrusEnabled(): boolean { return this.cloudsVisible && this.cirrusVisible; }
+  public get cumulusVisible(): boolean { return this.cloudsVisible && this.cumulusEnabled; }
+  public get cirrusVisible(): boolean { return this.cloudsVisible && this.cirrusEnabled; }
   public get topAltitude(): number { return this.surface.topAltitude; }
 
   public addTo(parent: THREE.Object3D): void { this.surface.addTo(parent); }
@@ -141,9 +142,9 @@ export class CloudPresentation {
   // 描画設定のうち雲にかかわる項目と、見かけ直径 apparentDiameterPx [px] を表示状態へ反映する。
   public syncGraphics(graphics: GraphicsSettingsData, apparentDiameterPx: number): void {
     // 雲全体を描くかと、描くときの雲場の出どころ・積雲の精細さ・殻の分割段。
-    this.setCloudsVisible(graphics.clouds);
-    this.cumulusVisible = graphics.cumulus;
-    this.cirrusVisible = graphics.cirrus;
+    this.setCloudsEnabled(graphics.clouds);
+    this.cumulusEnabled = graphics.cumulus;
+    this.cirrusEnabled = graphics.cirrus;
     this.syncSurfaceVisibility();
     if (graphics.clouds) {
       this.setSource(graphics.cloudFieldSource);
@@ -237,26 +238,26 @@ export class CloudPresentation {
   // いま不透明表面へ張っている精細さの段。
   public get cumulusDetail(): CumulusDetail { return this.surface.detail; }
 
-  // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   // 天体固定で見た太陽直下点の経度 [rad] を生成系へ渡す。暦を持つ呼び出し側がフレームごとに
   // 渡し、null で生成側の既定の太陽へ戻す。実写の場は時刻を持たないので何もしない。
   public setSolarLongitude(rad: number | null): void {
     this.sources.generated.setSolarLongitude?.(rad);
   }
 
-  public setCloudsVisible(visible: boolean): void {
-    this.cloudVisible = visible;
+  // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
+  public setCloudsEnabled(enabled: boolean): void {
+    this.cloudsEnabled = enabled;
     this.syncSurfaceVisibility();
   }
 
-  // 積雲が無効なら不透明な雲殻を隠す。
+  // 積雲を描かないなら不透明な雲殻を隠す。
   private syncSurfaceVisibility(): void {
-    if (!this.cumulusEnabled) this.surface.hide();
+    if (!this.cumulusVisible) this.surface.hide();
   }
 
   // 見かけ直径 [px] から不透明表面の分割段を選ぶ。雲を描かないなら隠す。
   private syncLod(apparentDiameterPx: number): void {
-    if (this.cumulusEnabled) this.surface.syncLod(apparentDiameterPx);
+    if (this.cumulusVisible) this.surface.syncLod(apparentDiameterPx);
     else this.surface.hide();
   }
 

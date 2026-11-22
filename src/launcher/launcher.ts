@@ -6,7 +6,7 @@ import { findStageClass } from '../game/stages/stage-dictionary';
 import { selectStage } from './stage-select';
 import { showLoading, hideLoading, setLoadingProgress } from './loading-overlay';
 import { showFatalError } from './fatal-error';
-import { forcesTitle, layoutSmokeHudOnly, requestedStageId } from './launch-query';
+import { forcesTitle, layoutSmoke, requestedStageId } from './launch-query';
 import { BlueprintShelf } from './save/blueprint-shelf';
 import { SALVAGE_BLUEPRINTS } from '../game/ship/ship-salvage-blueprints';
 import type { SerializedGame } from '../game/game';
@@ -162,12 +162,12 @@ export class Launcher implements RunTransitions, CurrentGameSource {
         ? await Run.create(
           stageClass, startEpoch ?? null, this.devices, this.viewOptions, this.themePalette,
           this.graphics, this.renderStyle, this.sections, this.syncSections,
-          this.blueprintShelf, this.autoSave, progress, runOptions, layoutSmokeHudOnly(),
+          this.blueprintShelf, this.autoSave, progress, runOptions, layoutSmoke() === 'hudOnly',
         )
         : await Run.resume(
           initialSave, stageClass, this.devices, this.viewOptions, this.themePalette,
           this.graphics, this.renderStyle, this.sections, this.syncSections,
-          this.blueprintShelf, this.autoSave, progress, layoutSmokeHudOnly(),
+          this.blueprintShelf, this.autoSave, progress, layoutSmoke() === 'hudOnly',
         );
     } finally {
       hideLoading();

@@ -17,6 +17,7 @@ import type { FormationRole } from '../../dynamic/entity/entity-kind';
 
 export interface SerializedLogistics {
   readonly resupplyCheckAt: number;
+  // 弾薬の自動投入を有効にしているか。保存キーなので名前を据え置く。
   readonly resupplyEnabled: boolean;
   readonly rcsFuelResupplyEnabled: boolean;
 }
@@ -66,7 +67,7 @@ export function dropMagsOf(formationRole: FormationRole | null): number {
 
 export class Logistics {
   // 弾薬補給を自動投入するかどうか。回収・デスポーンはこの値によらず走る。
-  private _resupplyEnabled: boolean;
+  private _ammoResupplyEnabled: boolean;
   // RCS燃料を自動投入するかどうか。弾薬設定とは独立している。
   private _rcsFuelResupplyEnabled: boolean;
 
@@ -78,10 +79,10 @@ export class Logistics {
     private readonly dynamicSystem: EntityRegistry & EntityRoster,
     automaticResupply: boolean,
     private resupplyCheckAt = 0,
-    resupplyEnabled = true,
+    ammoResupplyEnabled = true,
     rcsFuelResupplyEnabled = true,
   ) {
-    this._resupplyEnabled = automaticResupply && resupplyEnabled;
+    this._ammoResupplyEnabled = automaticResupply && ammoResupplyEnabled;
     this._rcsFuelResupplyEnabled = automaticResupply && rcsFuelResupplyEnabled;
   }
 
@@ -100,16 +101,16 @@ export class Logistics {
     );
   }
 
-  public get resupplyEnabled(): boolean { return this._resupplyEnabled; }
+  public get ammoResupplyEnabled(): boolean { return this._ammoResupplyEnabled; }
   public get rcsFuelResupplyEnabled(): boolean { return this._rcsFuelResupplyEnabled; }
 
   // 弾薬補給の自動投入の可否を切り替える。
-  public setResupplyEnabled(on: boolean): void {
-    this._resupplyEnabled = on;
+  public setAmmoResupplyEnabled(on: boolean): void {
+    this._ammoResupplyEnabled = on;
   }
 
   // RCS燃料の自動投入の可否を切り替える。
-  public setFuelResupplyEnabled(on: boolean): void {
+  public setRcsFuelResupplyEnabled(on: boolean): void {
     this._rcsFuelResupplyEnabled = on;
   }
 
@@ -184,8 +185,8 @@ export class Logistics {
   ): void {
     this.absorbNearbyAmmoPickups(player);
     this.absorbNearbyRcsFuelPickups(player);
-    const canResupplyAmmo = this._resupplyEnabled && simSpeed.canResupplyAmmo;
-    const canResupplyFuel = this._rcsFuelResupplyEnabled && simSpeed.canResupplyAmmo;
+    const canResupplyAmmo = this._ammoResupplyEnabled && simSpeed.canResupply;
+    const canResupplyFuel = this._rcsFuelResupplyEnabled && simSpeed.canResupply;
     this.despawnFarAmmoPickups(player, respawnOnDespawn && canResupplyAmmo);
     this.despawnFarRcsFuelPickups(player, respawnOnDespawn && canResupplyFuel);
 
@@ -205,7 +206,7 @@ export class Logistics {
   public serialize(): SerializedLogistics {
     return {
       resupplyCheckAt: this.resupplyCheckAt,
-      resupplyEnabled: this._resupplyEnabled,
+      resupplyEnabled: this._ammoResupplyEnabled,
       rcsFuelResupplyEnabled: this._rcsFuelResupplyEnabled,
     };
   }

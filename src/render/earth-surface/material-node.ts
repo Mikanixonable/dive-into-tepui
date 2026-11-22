@@ -10,10 +10,6 @@ import {
   EARTH_TILE_TEXELS,
 } from './tile-key';
 
-interface EarthSurfaceMaterialCapabilities {
-  readonly useBaseFallback: boolean;
-}
-
 interface EarthSurfaceMaterialNodeTextures {
   readonly pageTable: THREE.Texture;
   readonly color: THREE.DataArrayTexture;
@@ -168,10 +164,4 @@ export function createEarthSurfaceNodeMaterial(
   material.roughnessNode = nodes.roughnessNode;
   material.normalNode = nodes.normalNode;
   return material;
-}
-
-// 詳細材質を使えるかどうかをbaseフォールバック契約へ変換する。
-export function earthSurfaceMaterialCapabilities(unsupported: boolean): EarthSurfaceMaterialCapabilities {
-  // 詳細材質を使えるかどうかをbaseフォールバック契約へ変換する。
-  return { useBaseFallback: unsupported };
 }

@@ -99,8 +99,6 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   public override showsEquatorNodesAlways: boolean;
   public override readonly controllable = true;
   public override readonly pickable = true;
-  // 軌道線の表示切替は表示 adapter から直接読む軽量な個体設定。
-  public trajectoryLineVisible = true;
   public readonly inspection = new ShipInspection(this);
   public readonly objectPickable = this.inspection;
   // 除去の前に注視・操作対象の参照を次の艦へ引き継ぐ必要があるので、所有者側に回収させる。

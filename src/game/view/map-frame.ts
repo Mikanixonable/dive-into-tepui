@@ -102,9 +102,9 @@ export class MapFrame implements ViewFrame {
   public get visibilityPolicy(): MapVisibilityPolicy | null { return this.objectPickables.visibilityPolicy; }
 
   // マップの候補列の長さと、表示中の天体ラベル数。
-  public perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
+  public perfCounts(): Pick<PerfCounts, 'view' | 'mapItems' | 'mapLabels'> {
     return {
-      mapMode: true,
+      view: 'map',
       mapItems: this.objectPickables.pickables.length,
       mapLabels: this.celestialMarkers.shownLabelCount,
     };

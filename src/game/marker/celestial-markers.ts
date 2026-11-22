@@ -289,7 +289,7 @@ export class CelestialMarkers {
     // 表示トグルでアイコンを消したラベルは、サブ行を足して組み直しても字形を出さない。
     return {
       pos: label.pos,
-      shown: label.drawn,
+      markerShown: label.drawn,
       labelShown: label.showLabel,
       markerClass: label.item.markerClass,
       markerLabel: label.item.markerLabel,

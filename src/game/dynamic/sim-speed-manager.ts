@@ -70,7 +70,7 @@ export class SimSpeedManager {
   }
 
   // 現在のワープ倍率で補給を投入してよいかどうか。等倍のときだけ投入する根拠は SPEC/GAME.md「8. 補給」。
-  public get canResupplyAmmo(): boolean {
+  public get canResupply(): boolean {
     return this.simSpeed === 1;
   }
 

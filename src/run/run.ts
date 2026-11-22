@@ -166,7 +166,7 @@ export class Run implements SnapshotSource, PerfCountSource {
     renderFrame = true,
   ): boolean {
     const debugInfo = this.devices.debugInfo;
-    const t0 = debugInfo.on ? performance.now() : 0;
+    const t0 = debugInfo.isOpen ? performance.now() : 0;
     this.sections.beginFrame();
     this.advanceFrame(Math.min(dtRaw, MAX_FRAME_DT), nowMs, viewport);
     this.sections.endFrame();
@@ -174,19 +174,19 @@ export class Run implements SnapshotSource, PerfCountSource {
     if (this.disposed) return false;
     // ランを読む者へは、進行と導出の間のモデル層だけが確定した瞬間を渡す(R8)。
     this.progressReader.update(this.snapshot);
-    const t1 = debugInfo.on ? performance.now() : 0;
+    const t1 = debugInfo.isOpen ? performance.now() : 0;
     this.syncSections.beginFrame();
     this.presentation.sync(this.graphics.current, this.renderStyle.current, viewport, nowMs);
     this.syncSections.endFrame();
-    const t2 = debugInfo.on ? performance.now() : 0;
+    const t2 = debugInfo.isOpen ? performance.now() : 0;
     let t3 = t2;
     if (renderFrame) {
       this.presentation.render(this.renderStyle.current);
-      t3 = debugInfo.on ? performance.now() : t2;
+      t3 = debugInfo.isOpen ? performance.now() : t2;
       // 時刻印クエリを溜めないため、描画したフレームだけ解決させる。
       this.devices.scene.gpu.resolve();
     }
-    if (debugInfo.on) debugInfo.record(this, t1 - t0, t2 - t1, t3 - t2, t3);
+    if (debugInfo.isOpen) debugInfo.record(this, t1 - t0, t2 - t1, t3 - t2, t3);
     return true;
   }
 
