@@ -8,9 +8,9 @@ import type { CreativeStage } from './creative-stage';
 // クリエイティブステージの状態を外から変える命令。どれも受け付けるだけで、適用は次の進行の位相。
 export interface CreativeStageCommands {
   // 弾薬の自動投入の可否を切り替える。
-  setResupplyEnabled(on: boolean): void;
+  setAmmoResupplyEnabled(on: boolean): void;
   // RCS燃料の自動投入の可否を切り替える。
-  setFuelResupplyEnabled(on: boolean): void;
+  setRcsFuelResupplyEnabled(on: boolean): void;
   // 敵の波状攻撃の可否を切り替える。
   setWaveAttackEnabled(on: boolean): void;
   // 操作艦の弾薬チェーンへマガジンを1つ追加する。
@@ -32,8 +32,8 @@ export interface CreativeStageCommands {
 // stage へのコマンドを queue へエンキューする実装を構築する。
 export function creativeStageCommands(queue: CommandQueue, stage: CreativeStage): CreativeStageCommands {
   return {
-    setResupplyEnabled: (on) => queue.submit(() => stage.setResupplyEnabled(on)),
-    setFuelResupplyEnabled: (on) => queue.submit(() => stage.setFuelResupplyEnabled(on)),
+    setAmmoResupplyEnabled: (on) => queue.submit(() => stage.setAmmoResupplyEnabled(on)),
+    setRcsFuelResupplyEnabled: (on) => queue.submit(() => stage.setRcsFuelResupplyEnabled(on)),
     setWaveAttackEnabled: (on) => queue.submit(() => stage.setWaveAttackEnabled(on)),
     addMagazineToShip: () => queue.submit(() => stage.addMagazineToShip()),
     refillShipRcsFuel: () => queue.submit(() => stage.refillShipRcsFuel()),
