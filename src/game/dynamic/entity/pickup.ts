@@ -137,7 +137,7 @@ export abstract class Pickup extends DynamicEntity implements ObjectPickable {
         cls: `${this.markerClass} mk-bearing-triangle`, sym: DIRECTION_GLYPH.bearing,
         color: this.bearingColor, visible: true, clustered: true,
       },
-      symMarkup: false,
+      markup: false,
     };
   }
 

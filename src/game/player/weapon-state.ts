@@ -100,7 +100,7 @@ export class WeaponState {
   }
 
   // 装填中か予備に弾が残っているか。
-  public get left(): boolean { return this._rounds > 0 || this._mags > 0; }
+  public get hasAmmo(): boolean { return this._rounds > 0 || this._mags > 0; }
 
   // クールダウンを dt 秒ぶん減らす。0 で止まる。
   public tickCooldown(dt: number): void {
@@ -152,7 +152,7 @@ export class WeaponState {
 
   // muzzleCount 本の砲口を交互に使うときの、次の1発の弾の消費と撃つ砲口。撃てなければ null。
   public nextShot(muzzleCount: number): WeaponFireCommand | null {
-    if (muzzleCount <= 0 || !this.left) return null;
+    if (muzzleCount <= 0 || !this.hasAmmo) return null;
     return { consumption: this.nextConsumption(), muzzleIndex: this._muzzleIdx % muzzleCount };
   }
 

@@ -98,7 +98,7 @@ export class FireControl {
       return;
     }
 
-    if (!this.weapon.left) {
+    if (!this.weapon.hasAmmo) {
       if (!this.weapon.wasEmptyClick) {
         this.registry.events.record({ kind: 'gunDryFired' });
         this.registry.events.record({ kind: 'gunOutOfAmmo' });

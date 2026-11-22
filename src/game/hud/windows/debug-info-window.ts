@@ -137,7 +137,7 @@ export class DebugInfoWindow {
   private _debugTarget: DebugTargetId = 'off';
 
   // 計測が走っているか。窓が開いている間だけ真になる。
-  public get on(): boolean { return this.win !== null; }
+  public get isOpen(): boolean { return this.win !== null; }
 
   // 画面いっぱいに映す中間ターゲットの選択。窓を閉じても残り、ページを読み直すと 'off' に戻る。
   public get debugTarget(): DebugTargetId { return this._debugTarget; }

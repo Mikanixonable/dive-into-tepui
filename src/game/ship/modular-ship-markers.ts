@@ -51,6 +51,6 @@ export function modularShipMarkerItem(
       clustered: true,
     },
     color: isActive ? 'var(--color-primary)' : COLOR_MARKER_ALLY,
-    symMarkup: true,
+    markup: true,
   };
 }
