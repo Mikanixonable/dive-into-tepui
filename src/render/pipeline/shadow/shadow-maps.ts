@@ -274,19 +274,28 @@ export class ShadowMaps {
   private drawSlot(
     scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3, extentCap: number,
   ): void {
-    this.clearSlot(this.farTarget, index);
-    if (!this.configureSlot(index, box, extentCap, sun)) return;
+    if (!this.configureSlot(index, box, extentCap, sun)) {
+      this.clearSlot(this.farTarget, index);
+      return;
+    }
     const parameters = this.slotParameters[index]!;
     // 深度マテリアルはスロット共有なので、深度の原点をこのスロットの near へ差し替える。
     this.drawNear.value = parameters.x;
     if (this.bandSplit > parameters.x) {
       this.setLightDepthRange(parameters.x, this.bandSplit);
-      this.renderer.render(scene, this.lightCamera);
+      this.drawSlotLayer(scene, this.farTarget, index);
+    } else {
+      this.clearSlot(this.farTarget, index);
     }
     this.setLightDepthRange(Math.max(parameters.x, this.bandSplit), this.nearBandFar);
-    this.clearSlot(this.target, index);
-    this.renderer.render(scene, this.lightCamera);
+    this.drawSlotLayer(scene, this.target, index);
     parameters.w = 1;
+  }
+
+  // スロット index の層へ scene を描く。autoClear が立っているので、描く前に空の値で埋まる。
+  private drawSlotLayer(scene: THREE.Scene, target: THREE.RenderTarget, index: number): void {
+    this.renderer.setRenderTarget(target, index);
+    this.renderer.render(scene, this.lightCamera);
   }
 
   // スロット index の深度と色を空の値で埋める。renderer.clear() は camera を持たないレンダー文脈で
@@ -294,8 +303,7 @@ export class ShadowMaps {
   // 中身の無いシーンを、ライトカメラで render して同じ初期化を行う(render は camera を立ててから消す)。
   // 呼び出し元は render() の中だけで、そこで autoClear が立っている。
   private clearSlot(target: THREE.RenderTarget, index: number): void {
-    this.renderer.setRenderTarget(target, index);
-    this.renderer.render(this.emptyScene, this.lightCamera);
+    this.drawSlotLayer(this.emptyScene, target, index);
   }
 
   // ライトカメラが撮る深度の範囲を差し替える。**枠(left/right/top/bottom)は動かさない** —
