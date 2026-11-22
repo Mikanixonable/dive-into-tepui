@@ -53,6 +53,22 @@ function unitCircleGeometry(): THREE.BufferGeometry {
   return geo;
 }
 
+// 帯の頂点を内外の半径 [m] へ書き直す。頂点の並びと値は RingGeometry(innerRadius, outerRadius,
+// RING_SEGMENTS) と同じ。頂点数が変わらないので、作り直さずに書き換えて送る。
+function writeAnnulusRadii(geometry: THREE.BufferGeometry, innerRadius: number, outerRadius: number): void {
+  const positions = geometry.getAttribute('position');
+  let radius = innerRadius;
+  for (let ring = 0; ring <= 1; ring++) {
+    for (let i = 0; i <= RING_SEGMENTS; i++) {
+      const segment = i / RING_SEGMENTS * (Math.PI * 2);
+      positions.setXY(ring * (RING_SEGMENTS + 1) + i, radius * Math.cos(segment), radius * Math.sin(segment));
+    }
+    radius += outerRadius - innerRadius;
+  }
+  positions.needsUpdate = true;
+  geometry.computeBoundingSphere();
+}
+
 // 実寸アニュラスと記号リングを組み合わせた軌道域の表示物。
 interface OrbitZoneObjects {
   readonly annulus: THREE.Mesh;
@@ -87,10 +103,9 @@ export class FactionZoneView {
         this.orbitZones.set(zone.key, objects);
       }
       if (objects.inner !== zone.innerRadius || objects.outer !== zone.outerRadius) {
-        objects.annulus.geometry.dispose();
         // 円軌道だけの帯は幅 0 で届く — 退化した面にならないよう最小の厚みを与える。
-        objects.annulus.geometry = new THREE.RingGeometry(
-          zone.innerRadius, Math.max(zone.outerRadius, zone.innerRadius * 1.002), RING_SEGMENTS);
+        writeAnnulusRadii(
+          objects.annulus.geometry, zone.innerRadius, Math.max(zone.outerRadius, zone.innerRadius * 1.002));
         objects.inner = zone.innerRadius;
         objects.outer = zone.outerRadius;
       }
