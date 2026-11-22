@@ -8,6 +8,7 @@ import { showFatalError } from '../launcher/fatal-error';
 import type { GameInputPort } from '../game/input/game-input-router';
 import type { Bgm } from '../audio/bgm/bgm';
 import type { Launcher } from '../launcher/launcher';
+import type { LayoutSmoke } from '../launcher/launch-query';
 import type { SnapshotControls } from '../launcher/snapshot-controls';
 import type { UserSettings } from '../settings/user-settings';
 import type { PageDevices } from './page-devices';
@@ -34,16 +35,14 @@ export class PageLoop {
   private lastDrawnMs = 0;
   private completedFrames = 0;
 
-  // layoutSmoke はレイアウトのスモーク検査が駆動しているページか。layoutSmokeHud は
-  // ?layout-smoke=hud で、描画資源を組まず常に描画を行わない検査の経路か。
+  // layoutSmoke はレイアウトのスモーク検査がページを駆動する形で、検査でなければ null。
   public constructor(
     private readonly launcher: Launcher,
     private readonly devices: PageDevices,
     private readonly settings: UserSettings,
     private readonly bgm: Bgm,
     snapshotControls: SnapshotControls,
-    private readonly layoutSmoke: boolean,
-    private readonly layoutSmokeHud: boolean,
+    private readonly layoutSmoke: LayoutSmoke | null,
   ) {
     // 手動セーブと一覧の開閉、決着後の再出撃、デバッグ情報の窓の順に優先する。
     this.outsidePorts = [
@@ -108,8 +107,8 @@ export class PageLoop {
     const viewport = browserViewport();
     // ?layout-smoke=hud は常に描画を行わず、?layout-smoke はスモーク検査が凍結を求めたとき
     // 入力と HUD の同期は回したまま、寸法の変化に伴う headless WebGPU の再確保と描画だけを止める。
-    const hudOnly = this.layoutSmokeHud
-      || (this.layoutSmoke && document.documentElement.dataset.layoutSmokeFreeze === 'true');
+    const hudOnly = this.layoutSmoke === 'hudOnly'
+      || (this.layoutSmoke === 'freezable' && document.documentElement.dataset.layoutSmokeFreeze === 'true');
     if (!hudOnly) devices.scene.syncFrame(viewport, settings.graphics.current, devices.debugInfo.debugTarget);
     // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
     // 決まった周回の進行と、設定面の試聴に合わせる。
