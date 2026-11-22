@@ -166,6 +166,7 @@ export class DebugComposites {
   // このフレームに画面いっぱいへ映す中間ターゲット。
   public get target(): DebugTargetId { return this._target; }
 
+  // 画面いっぱいへ映す中間ターゲットを target に選ぶ。次の描画から効く。
   public setTarget(target: DebugTargetId): void {
     this._target = target;
   }

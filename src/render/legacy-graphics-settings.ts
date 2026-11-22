@@ -101,6 +101,7 @@ function acceptedLegacyValues(saved: Record<string, unknown>): LegacyValues {
 function expandedValues(legacy: LegacyValues): GraphicsSettingsData {
   const sampling = SAMPLING_OF_DETAIL[legacy.cumulusDetail];
   const unknown = resolveGraphics(DEFAULT_GRAPHICS_SELECTION);
+  // 分野の順に、そのまま写す値と段から展開した値を並べる。
   return {
     ...unknown,
     resolutionScale: legacy.resolutionScale,

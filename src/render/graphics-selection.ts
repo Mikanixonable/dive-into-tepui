@@ -125,6 +125,7 @@ export function selectField(
 ): GraphicsSelection {
   if (choice === 'off' && GRAPHICS_FIELDS[field].enabled === null) return selection;
   if (choice !== 'off' && choice !== 'custom' && !fieldTiers(field).includes(choice)) return selection;
+  // 全体をカスタムへ移してから、その分野の選択を差し替える。
   const quality = customQualityOf(selection);
   const current = quality.fields[field];
   if (choice === 'custom') {
@@ -212,6 +213,7 @@ function sameValues(a: Readonly<Record<string, unknown>>, b: Readonly<Record<str
 function sameRendering(
   a: GraphicsSettingsData, b: GraphicsSettingsData, skipped: readonly GraphicsFieldKey[],
 ): boolean {
+  // 分野ごとに有無を比べ、有る分野だけノブを比べる。
   for (const field of graphicsFieldKeys()) {
     if (skipped.includes(field)) continue;
     const enabled = GRAPHICS_FIELDS[field].enabled;
@@ -247,6 +249,7 @@ function qualityOf(
   const overall = OVERALL_PRESETS.find((preset) => sameRendering(
     data, resolveGraphics({ quality: preset, preferences: DEFAULT_GRAPHICS_SELECTION.preferences }), unknown));
   if (overall !== undefined) return overall;
+  // どれにも当たらなければ、分野ごとにプリセットかカスタムを当てる。
   const fallback = OVERALL_FIELD_PRESETS[DEFAULT_OVERALL];
   return {
     fields: Object.fromEntries(graphicsFieldKeys().map((field) => [

@@ -59,11 +59,12 @@ type FieldChoice = 'off' | OverallChoice;
 
 // プリセットの段の表示名。
 const PRESET_LABELS: Readonly<Record<QualityPreset, string>> = { low: '低', medium: '中', high: '高', max: '最高' };
-const OVERALL_ITEMS: readonly (readonly [OverallChoice, string])[] = [
-  ['low', '低'], ['medium', '中'], ['high', '高'], ['max', '最高'], ['custom', 'カスタム'],
-];
+const CUSTOM_ITEM: readonly ['custom', string] = ['custom', 'カスタム'];
 const OFF_ITEM: readonly [FieldChoice, string] = ['off', 'オフ'];
-const CUSTOM_ITEM: readonly [FieldChoice, string] = ['custom', 'カスタム'];
+const OVERALL_ITEMS: readonly (readonly [OverallChoice, string])[] = [
+  ...(['low', 'medium', 'high', 'max'] as const).map((preset) => [preset, PRESET_LABELS[preset]] as const),
+  CUSTOM_ITEM,
+];
 
 // 全体のプリセットの行と、表示する要素・好みの群の見出し。
 const OVERALL_TITLE = '全体';

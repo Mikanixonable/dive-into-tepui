@@ -273,6 +273,7 @@ export class RenderPipeline {
   // 符号付きの補正の絵 hdr を、デバッグ表示と同じ符号の色分けで target へ描く。target の扱いは renderComposite と同じ。
   public renderSignedCorrectionComposite(hdr: THREE.Texture, target: THREE.RenderTarget): void {
     const material = this.debugComposites.signedCorrectionMaterial(hdr);
+    // 出力先を target へ差し替えて描き、呼び手が張っていた出力先へ戻す。
     const outputTarget = this.renderer.getOutputRenderTarget();
     try {
       this.renderer.setOutputRenderTarget(target);

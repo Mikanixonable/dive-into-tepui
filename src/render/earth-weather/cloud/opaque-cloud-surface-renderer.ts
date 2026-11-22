@@ -168,6 +168,7 @@ export class OpaqueCloudSurfaceRenderer {
     const material = new THREE.MeshStandardNodeMaterial({
       roughness: CUMULUS_ROUGHNESS, metalness: 0,
     });
+    // 法線の向きと長さ(明るさ)を分けて読み、交点で動きベクトルを書く。
     const marched = this.marchedSurface();
     const shade = marched.get('normal') as Vec3Node;
     material.depthNode = marched.get('depth') as FloatNode;

@@ -56,6 +56,11 @@ function cappedSampling(setting: CumulusSampling, cap: CumulusSampling): Cumulus
   };
 }
 
+// 2 つの標本の配り方が同じか。
+function sameSampling(a: CumulusSampling, b: CumulusSampling): boolean {
+  return a.march === b.march && a.refine === b.refine && a.octaves === b.octaves;
+}
+
 // 標本の配り方の表示名(刻み・二分・細部の段数)。
 function samplingLabel(sampling: CumulusSampling): string {
   return `${sampling.march}·${sampling.refine}·${sampling.octaves}`;
@@ -157,7 +162,7 @@ export class CloudPresentation {
       this.quality = {
         cumulus: qualityReadingOf(
           samplingLabel(cumulusSetting), samplingLabel(cumulus),
-          samplingLabel(cumulus) !== samplingLabel(cumulusSetting), footprintCumulus, budget),
+          !sameSampling(cumulus, cumulusSetting), footprintCumulus, budget),
         cirrus: qualityReadingOf(
           cirrusTierLabel(graphics.cirrusDetail), cirrusTierLabel(cirrusTier),
           cirrusTier < graphics.cirrusDetail, footprintCirrus, budget),
@@ -221,13 +226,13 @@ export class CloudPresentation {
     this.surface.bind(this.renderInput.field);
   }
 
-  // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   // 天体固定で見た太陽直下点の経度 [rad] を生成系へ渡す。暦を持つ呼び出し側がフレームごとに
   // 渡し、null で生成側の既定の太陽へ戻す。実写の場は時刻を持たないので何もしない。
   public setSolarLongitude(rad: number | null): void {
     this.sources.generated.setSolarLongitude?.(rad);
   }
 
+  // 雲全体を描くかを置き直す。偽なら不透明表面も隠す。
   public setCloudsVisible(visible: boolean): void {
     this.cloudVisible = visible;
     this.syncSurfaceVisibility();
