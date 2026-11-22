@@ -14,7 +14,9 @@ type SerializedShipModule = {
   readonly hp: number;
   readonly temperature: number;
 } & (
-  | { readonly kind: 'cockpit' | 'thruster' | 'rcs' | 'weapon' | 'armor' | 'docking_port' | 'dock' | 'decoupler' }
+  | { readonly kind: 'cockpit' | 'thruster' | 'rcs' | 'armor' | 'docking_port' | 'dock' | 'decoupler' }
+  // 弾薬の項目が無い記録は、開始時の積載で読む。
+  | { readonly kind: 'weapon'; readonly rounds?: number; readonly mags?: number }
   | { readonly kind: 'tank'; readonly fuelKind: 'main' | 'rcs'; readonly fuel: number }
   | { readonly kind: 'radiator' | 'solar_panel'; readonly deployed: number }
   | { readonly kind: 'booster'; readonly fuel: number; readonly ignited: boolean }
@@ -102,6 +104,13 @@ function moduleState(serialized: SerializedShipModule): ShipModuleInstance {
   if (serialized.kind === 'booster') {
     if (!finite(serialized.fuel) || typeof serialized.ignited !== 'boolean') {
       throw new Error(`invalid booster state: ${serialized.id}`);
+    }
+    return createShipModuleInstance(definition, serialized.id, serialized);
+  }
+  if (serialized.kind === 'weapon') {
+    const { rounds, mags } = serialized;
+    if ((rounds !== undefined && !finite(rounds)) || (mags !== undefined && !finite(mags))) {
+      throw new Error(`invalid weapon state: ${serialized.id}`);
     }
     return createShipModuleInstance(definition, serialized.id, serialized);
   }

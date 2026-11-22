@@ -107,8 +107,8 @@ export interface DynamicSimulationParticipant extends EntityContactParticipant, 
   placeContactProxies(simTime: number, dt: number): void;
   contactProxies(): readonly EntityContactParticipant[];
   applyContactProxies(dt: number): void;
-  outpacedByDrag(dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number): boolean;
-  substepDivisions(dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number): number;
+  outpacedByDrag(dt: number, atmosphereBody: CelestialBody | null, pivot: number): boolean;
+  substepDivisions(dt: number, atmosphereBody: CelestialBody | null, pivot: number): number;
   stepSimulation(
     dt: number, celestialBodies: readonly CelestialBody[], occluders: ShadowCasters,
     atmosphereBody: CelestialBody | null, star: CelestialBody | null, pivot: number,

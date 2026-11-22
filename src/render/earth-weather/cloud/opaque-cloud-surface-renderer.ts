@@ -120,9 +120,6 @@ export class OpaqueCloudSurfaceRenderer {
     this.meshes = meshes;
   }
 
-  // 殻を描いている段があるか。
-  public get visible(): boolean { return this.activeLevel !== null; }
-
   // 殻の高度 [m]。場の雲頂高度 0..1 が張る高さでもある。
   public get topAltitude(): number { return CLOUD_TOP_SPAN; }
 

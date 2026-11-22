@@ -97,11 +97,11 @@ export class CreativeStage extends Stage {
     );
     // ステージ操作パネル。操作は命令として積む。
     this.stageControlsPanel = new StageControlsPanel(
-      this.logistics.resupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
+      this.logistics.ammoResupplyEnabled, this.logistics.rcsFuelResupplyEnabled, this.waveAttackEnabled,
       this.manualSpawn.spawnDistance,
     );
-    this.stageControlsPanel.onToggleResupply = (on) => this.commands.setResupplyEnabled(on);
-    this.stageControlsPanel.onToggleFuelResupply = (on) => this.commands.setFuelResupplyEnabled(on);
+    this.stageControlsPanel.onToggleAmmoResupply = (on) => this.commands.setAmmoResupplyEnabled(on);
+    this.stageControlsPanel.onToggleRcsFuelResupply = (on) => this.commands.setRcsFuelResupplyEnabled(on);
     this.stageControlsPanel.onToggleWaveAttack = (on) => this.commands.setWaveAttackEnabled(on);
     this.stageControlsPanel.onAddMagazine = () => this.commands.addMagazineToShip();
     this.stageControlsPanel.onRefillFuel = () => this.commands.refillShipRcsFuel();
@@ -139,13 +139,13 @@ export class CreativeStage extends Stage {
   }
 
   // 弾薬の自動投入の可否を切り替える。
-  public setResupplyEnabled(on: boolean): void {
-    this.logistics.setResupplyEnabled(on);
+  public setAmmoResupplyEnabled(on: boolean): void {
+    this.logistics.setAmmoResupplyEnabled(on);
   }
 
   // RCS燃料の自動投入の可否を切り替える。
-  public setFuelResupplyEnabled(on: boolean): void {
-    this.logistics.setFuelResupplyEnabled(on);
+  public setRcsFuelResupplyEnabled(on: boolean): void {
+    this.logistics.setRcsFuelResupplyEnabled(on);
   }
 
   // 敵の波状攻撃の可否を切り替える。

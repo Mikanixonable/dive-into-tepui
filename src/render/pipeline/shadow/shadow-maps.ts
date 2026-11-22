@@ -87,7 +87,7 @@ export class ShadowMaps {
   private readonly slotTexels: FloatUniform;
   private readonly depthMaterial: THREE.MeshBasicNodeMaterial;
   private readonly lightCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
-  // スロットを空へ戻すときだけ描く、中身の無いシーン。clearSlot を参照。
+  // スロットを空へ戻すときだけ描く、中身の無いシーン。
   private readonly emptyScene = new THREE.Scene();
   // スロットの値の正本。uniform 配列がこの 3 本をそのまま包むので、書けば受け手へ届く。
   private readonly lightViewProjections: THREE.Matrix4[];
@@ -230,7 +230,7 @@ export class ShadowMaps {
       }
       // 前フレームに使っていて今フレームは使わないスロットを空へ戻す。
       for (let index = this.clusters.length; index < this.drawnSlots; index++) {
-        for (const target of [this.target, this.farTarget]) this.clearSlot(target, index);
+        for (const target of [this.target, this.farTarget]) this.drawLayer(this.emptyScene, target, index);
       }
       this.drawnSlots = this.clusters.length;
     } finally {
@@ -274,28 +274,27 @@ export class ShadowMaps {
   private drawSlot(
     scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3, extentCap: number,
   ): void {
-    this.clearSlot(this.farTarget, index);
-    if (!this.configureSlot(index, box, extentCap, sun)) return;
+    if (!this.configureSlot(index, box, extentCap, sun)) {
+      this.drawLayer(this.emptyScene, this.farTarget, index);
+      return;
+    }
     const parameters = this.slotParameters[index]!;
     // 深度マテリアルはスロット共有なので、深度の原点をこのスロットの near へ差し替える。
     this.drawNear.value = parameters.x;
-    if (this.bandSplit > parameters.x) {
-      this.setLightDepthRange(parameters.x, this.bandSplit);
-      this.renderer.render(scene, this.lightCamera);
-    }
+    const drawsFar = this.bandSplit > parameters.x;
+    if (drawsFar) this.setLightDepthRange(parameters.x, this.bandSplit);
+    this.drawLayer(drawsFar ? scene : this.emptyScene, this.farTarget, index);
     this.setLightDepthRange(Math.max(parameters.x, this.bandSplit), this.nearBandFar);
-    this.clearSlot(this.target, index);
-    this.renderer.render(scene, this.lightCamera);
+    this.drawLayer(scene, this.target, index);
     parameters.w = 1;
   }
 
-  // スロット index の深度と色を空の値で埋める。renderer.clear() は camera を持たないレンダー文脈で
-  // 動くため、深度配列へ向けると three の WebGL2 フォールバックが camera の null を読んで落ちる。
-  // 中身の無いシーンを、ライトカメラで render して同じ初期化を行う(render は camera を立ててから消す)。
-  // 呼び出し元は render() の中だけで、そこで autoClear が立っている。
-  private clearSlot(target: THREE.RenderTarget, index: number): void {
+  // スロット index の層へ scene を描く。autoClear が立っている間に呼ぶこと — 描く前に空の値で埋まるので、
+  // 中身の無いシーンを渡せば空へ戻すだけになる。renderer.clear() で空へ戻すと、camera を持たない
+  // レンダー文脈で動くため、深度配列へ向けたとき three の WebGL2 フォールバックが camera の null を読んで落ちる。
+  private drawLayer(scene: THREE.Scene, target: THREE.RenderTarget, index: number): void {
     this.renderer.setRenderTarget(target, index);
-    this.renderer.render(this.emptyScene, this.lightCamera);
+    this.renderer.render(scene, this.lightCamera);
   }
 
   // ライトカメラが撮る深度の範囲を差し替える。**枠(left/right/top/bottom)は動かさない** —

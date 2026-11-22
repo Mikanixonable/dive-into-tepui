@@ -204,6 +204,20 @@ export function register(): void {
     ship.assembly.assertValid();
   });
 
+  test('ship construction: 後から載せた機関砲は弾薬を持たずに載る', () => {
+    const ship = new ConstructionTestShip();
+    const edits = new ShipConstructionEdits(ship, 'dock-left');
+    const target = axialFaceTarget(ship.assembly, 'dock-left', 'dock-left', 'front');
+    assert.ok(target !== undefined);
+    edits.place(
+      { kind: 'catalog', definitionId: 'weapon-gatling' }, target.target, ORIENTATION, 1, ['built-gun'],
+    );
+    const gun = ship.assembly.module('built-gun');
+    assert.ok(gun?.kind === 'weapon');
+    assert.equal(gun.rounds, 0);
+    assert.equal(gun.mags, 0);
+  });
+
   // (e) 起点ドックを動かす・消す命令は失敗する
   test('ship construction: 起点ドックの撤去・付け替え・回転は失敗する', () => {
     const ship = new ConstructionTestShip();

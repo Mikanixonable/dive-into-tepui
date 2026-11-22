@@ -72,7 +72,8 @@ export class PlayerMarkers {
   private boresight(player: ModularShip, project: ProjectFn): MarkerDeclaration {
     const state = player.motion.state;
     const fwd = qRotate(player.motion.att.q, LOCAL_FORWARD);
-    let label = `AMMO ${Math.max(0, player.roundsInMag)}\nBELT ${Math.max(0, player.magsLeft)}\n${player.averageMuzzleVelocity.toFixed(0)} m/s`;
+    const { rounds, mags } = player.ammo;
+    let label = `AMMO ${rounds}\nBELT ${mags}\n${player.averageMuzzleVelocity.toFixed(0)} m/s`;
     let cls = 'mk-boresight';
     const spread = sunGlareSpreadScale(state.r, fwd, this.celestialBodies, state.t);
     if (spread > 1.1) {

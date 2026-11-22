@@ -39,7 +39,7 @@ export interface GroupedMarkerItem {
   detail?: string; // ラベル末尾の付随情報(距離など)
   bearing: BearingMarker;
   color?: string; // 画面内マーカー自体の色。省略時は cls の CSS 色に従う
-  symMarkup?: boolean; // sym をマークアップ(SVG など)として扱うか
+  markup?: boolean; // sym をマークアップ(SVG など)として扱うか
   opacity?: number; // 画面内マーカーの不透明度。0 以下なら非表示
   occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
 }
@@ -161,7 +161,7 @@ export class GroupedMarkers {
       id: m.item.key,
       cls: m.item.cls,
       sym: m.item.sym,
-      markup: m.item.symMarkup,
+      markup: m.item.markup,
       x: m.p.x,
       y: m.p.y,
       front: visible,

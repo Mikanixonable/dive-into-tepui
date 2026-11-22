@@ -16,7 +16,7 @@ import {
 import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface/layout';
 import { earthPageAt } from './earth-surface-material-reference';
 import { EarthSurfaceTiles } from '../../src/render/earth-surface/tiles';
-import type { EarthTileResident } from '../../src/render/earth-surface/tiles';
+import type { EarthPageTable, EarthTileResident } from '../../src/render/earth-surface/tiles';
 import type { EarthTileKey } from '../../src/render/earth-surface/tile-key';
 import type { EarthTileProjection } from '../../src/render/earth-surface/tile-projection';
 
@@ -74,8 +74,8 @@ class CandidateTiles extends EarthSurfaceTiles {
 
   public override pinnedLayers(): readonly number[] { return []; }
 
-  public override pageTable(): Uint8Array {
-    return new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
+  public override pageTable(): EarthPageTable {
+    return { cells: new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255), layers: new Set() };
   }
 }
 

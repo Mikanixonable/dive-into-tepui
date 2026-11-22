@@ -2,7 +2,7 @@
 import type {
   EarthSurfaceTiles,
 } from './tiles';
-import { EARTH_BASE_LAYER, earthTileId } from './tile-key';
+import { earthTileId, earthTileIndex } from './tile-key';
 import type { EarthTileKey } from './tile-key';
 import type { EarthTileResident } from './tiles';
 import type { EarthTileProjection } from './tile-projection';
@@ -58,21 +58,10 @@ function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
 }
 
-// ページ表が参照するGPU層を抽出する。
-function pageLayers(table: Uint8Array): ReadonlySet<number> {
-  const layers = new Set<number>();
-  for (let offset = 0; offset < table.length; offset += 4) {
-    const layer = table[offset]!;
-    const parent = table[offset + 1]!;
-    if (layer !== EARTH_BASE_LAYER) layers.add(layer);
-    if (parent !== EARTH_BASE_LAYER) layers.add(parent);
-  }
-  return layers;
-}
-
 export class EarthSurfaceResidentCoordinator {
-  private readonly pending = new Map<string, PendingTile>();
-  private readonly residents = new Map<string, ResidentTile>();
+  // 要求中・常駐中のタイル。鍵は earthTileIndex。
+  private readonly pending = new Map<number, PendingTile>();
+  private readonly residents = new Map<number, ResidentTile>();
   private readonly tasks = new Set<Promise<void>>();
   private activeGeneration = -1;
   private nextFrame = 0;
@@ -83,6 +72,8 @@ export class EarthSurfaceResidentCoordinator {
   private lastGeneration = -1;
   private lastTimeMs: number | null = null;
   private lastResult: EarthSurfaceResidentFrameResult = { frontier: [], requested: [], published: false };
+  // GPU へ予約したページ表の版(tiles.pageRevision)。同じ版の表は送り直さない。
+  private stagedPageRevision = -1;
   private disposed = false;
 
   public constructor(private readonly dependencies: EarthSurfaceResidentCoordinatorDependencies) {}
@@ -144,9 +135,11 @@ export class EarthSurfaceResidentCoordinator {
     this.lastGeneration = input.generation;
     this.lastTimeMs = input.timeMs;
     this.lastResidentRevision = this.residentRevision;
-    const page = this.dependencies.tiles.pageTable();
-    this.touchPinned(page);
-    this.dependencies.gpu.stagePageTable(page);
+    this.touchPinned();
+    if (this.dependencies.tiles.pageRevision !== this.stagedPageRevision) {
+      this.dependencies.gpu.stagePageTable(this.dependencies.tiles.pageTable());
+      this.stagedPageRevision = this.dependencies.tiles.pageRevision;
+    }
     const published = this.dependencies.gpu.publishFrame(frame);
 
     const requested = this.requestCandidates(input, visible, prefetch);
@@ -196,6 +189,7 @@ export class EarthSurfaceResidentCoordinator {
     this.lastGeneration = -1;
     this.lastTimeMs = null;
     this.lastResult = { frontier: [], requested: [], published: false };
+    this.stagedPageRevision = -1;
   }
 
   // 世代が変わった要求を中断して、現在の視点の要求枠を空ける。
@@ -213,9 +207,9 @@ export class EarthSurfaceResidentCoordinator {
     input: EarthSurfaceResidentFrame, visible: readonly EarthTileKey[], prefetch: readonly EarthTileKey[],
   ): readonly EarthTileKey[] {
     // 可視タイルを先に認可し、余力だけを周辺prefetchへ割り当てる。
-    const wanted = new Set([...visible, ...prefetch].map((key) => earthTileId(key)));
+    const wanted = new Set([...visible, ...prefetch].map(earthTileIndex));
     this.cancelObsoleteRequests(wanted);
-    const known = new Set<string>([
+    const known = new Set<number>([
       ...this.residents.keys(), ...this.pending.keys(),
     ]);
     this.evictForCandidates(visible, known);
@@ -226,8 +220,8 @@ export class EarthSurfaceResidentCoordinator {
     const maxNewPrefetch = Math.max(0, MAX_PREFETCH_PENDING_TILES - prefetchPending);
     // 空き層と要求上限を満たす候補だけを登録する。
     const admit = (key: EarthTileKey, kind: PendingTile['kind']): void => {
-      if (known.has(earthTileId(key)) || requested.length >= maxNewRequests) return;
-      const id = earthTileId(key);
+      const id = earthTileIndex(key);
+      if (known.has(id) || requested.length >= maxNewRequests) return;
       requested.push(key);
       known.add(id);
       const pending: PendingTile = { key, generation: input.generation, kind, promise: Promise.resolve() };
@@ -248,7 +242,7 @@ export class EarthSurfaceResidentCoordinator {
   }
 
   // 現在の可視候補から外れた要求を中断する。
-  private cancelObsoleteRequests(wanted: ReadonlySet<string>): void {
+  private cancelObsoleteRequests(wanted: ReadonlySet<number>): void {
     for (const [id, pending] of this.pending) {
       if (wanted.has(id)) continue;
       this.dependencies.queue.abort(pending.key);
@@ -271,7 +265,7 @@ export class EarthSurfaceResidentCoordinator {
         const reservation = this.dependencies.gpu.reservation(layer);
         if (reservation === null) throw new Error('Earth layer reservation disappeared');
         const resident: ResidentTile = { key: pending.key, reservation, state: 'uploading', lastUsedFrame: this.nextFrame };
-        const id = earthTileId(pending.key);
+        const id = earthTileIndex(pending.key);
         this.residents.set(id, resident);
         try {
           await this.dependencies.gpu.uploadLayer(color, payload.terrain, reservation);
@@ -310,8 +304,9 @@ export class EarthSurfaceResidentCoordinator {
     }).finally(() => {
       this.residentRevision++;
       this.dependencies.queue.release(pending.key, pending.generation);
-      if (this.pending.get(earthTileId(pending.key))?.promise === pending.promise) {
-        this.pending.delete(earthTileId(pending.key));
+      const id = earthTileIndex(pending.key);
+      if (this.pending.get(id)?.promise === pending.promise) {
+        this.pending.delete(id);
       }
     });
   }
@@ -333,27 +328,25 @@ export class EarthSurfaceResidentCoordinator {
     return null;
   }
 
-  // ページ表で参照中の常駐タイルをLRU上位へ更新する。
-  private touchPinned(table: Uint8Array): void {
+  // 表示中のタイルが参照する常駐タイルをLRU上位へ更新する。ページ表が参照する層はこの部分集合。
+  private touchPinned(): void {
     const pinned = new Set(this.dependencies.tiles.pinnedLayers());
-    for (const layer of pageLayers(table)) pinned.add(layer);
     for (const resident of this.residents.values()) {
       if (pinned.has(resident.reservation.layer)) resident.lastUsedFrame = this.nextFrame;
     }
   }
 
   // 新しい候補に必要な層だけを、未参照の古い常駐から回収する。
-  private evictForCandidates(candidates: readonly EarthTileKey[], known: ReadonlySet<string>): void {
-    const unknown = candidates.filter((key) => !known.has(earthTileId(key))).length;
-    // 可視候補とページ表が参照する層は回収対象から除外する。
-    const candidateIds = new Set(candidates.map((key) => earthTileId(key)));
+  private evictForCandidates(candidates: readonly EarthTileKey[], known: ReadonlySet<number>): void {
+    const unknown = candidates.filter((key) => !known.has(earthTileIndex(key))).length;
+    // 可視候補と表示中のタイルが参照する層は回収対象から除外する。
+    const candidateIds = new Set(candidates.map(earthTileIndex));
     const pendingCapacity = Math.max(0, MAX_PENDING_TILES - this.pending.size);
     const available = this.freeLayerCount();
     const admitted = Math.min(unknown, pendingCapacity);
     const needed = Math.max(0, admitted - available);
     if (needed === 0) return;
     const pinned = new Set(this.dependencies.tiles.pinnedLayers());
-    for (const layer of pageLayers(this.dependencies.tiles.pageTable())) pinned.add(layer);
     const evictable = [...this.residents.entries()]
       .filter(([id, resident]) => resident.state === 'uploaded' && !candidateIds.has(id)
         && !pinned.has(resident.reservation.layer))

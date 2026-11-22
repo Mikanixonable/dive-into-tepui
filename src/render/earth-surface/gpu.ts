@@ -4,7 +4,7 @@ import {
 } from './tile-key';
 import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from './layout';
 import type { EarthTileKey } from './tile-key';
-import type { EarthTileResident } from './tiles';
+import type { EarthPageTable, EarthTileResident } from './tiles';
 import type { DataArrayTexture, DataTexture } from 'three/webgpu';
 
 // Three.js側の実テクスチャ。GPU固有の書込みはearth-surface-gpu-three.tsへ閉じ込める。
@@ -133,21 +133,14 @@ export class EarthSurfaceGpuAdapter {
     return [...this.slots.values()].filter((slot) => slot.state === 'uploaded').map((slot) => slot.reservation);
   }
 
-  // ページ表が参照する層を記録し、次のフレーム境界で公開する表を予約する。
-  public stagePageTable(table: Uint8Array): void {
+  // ページ表が参照しうる層を公開済みとみなして解放対象から外し、次のフレーム境界で公開する表を
+  // 予約する。予約した後で page を書き換えても、公開する表には混ざらない。
+  public stagePageTable(page: EarthPageTable): void {
     this.requireActive();
-    if (table.length !== EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4) throw new RangeError('Invalid Earth page table');
-    const layers = new Set<number>();
-    // 交換前に表が参照する層を集め、公開済みとみなして解放対象から外す。
-    for (let offset = 0; offset < table.length; offset += 4) {
-      const layer = table[offset]!;
-      const parentLayer = table[offset + 1]!;
-      if (layer !== EARTH_BASE_LAYER) layers.add(layer);
-      if (parentLayer !== EARTH_BASE_LAYER) layers.add(parentLayer);
-    }
-    for (const layer of layers) this.requireUploaded(layer);
-    this.staged = table.slice();
-    this.stagedLayers = layers;
+    if (page.cells.length !== EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4) throw new RangeError('Invalid Earth page table');
+    for (const layer of page.layers) this.requireUploaded(layer);
+    this.staged = page.cells.slice();
+    this.stagedLayers = new Set(page.layers);
   }
 
   // 単調増加する描画フレーム番号ごとに最大1回交換する。交換した場合はtrue。

@@ -9,6 +9,7 @@ import {
 } from '../../src/render/earth-surface/tile-key';
 import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface/layout';
 import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface/gpu';
+import type { EarthPageTable } from '../../src/render/earth-surface/tiles';
 
 const SUPPORTED: EarthSurfaceGpuCapabilities = {
   texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS, colorSrgbLinear: true, terrainRgba8Linear: true,
@@ -57,16 +58,16 @@ class FakeBackend implements EarthSurfaceGpuBackend {
 }
 
 // 指定したz5以上のタイルを1層へ写すページ表。引数省略時は全球ベース。
-function page(layer = 255, key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0)): Uint8Array {
-  const table = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
-  if (layer === 255) return table;
+function page(layer = 255, key = earthTileKey(EARTH_TILE_MIN_Z, 0, 0)): EarthPageTable {
+  const cells = new Uint8Array(EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4).fill(255);
+  if (layer === 255) return { cells, layers: new Set() };
   const size = 2 ** (EARTH_TILE_MAX_Z - key.z);
   for (let y = key.y * size; y < (key.y + 1) * size; y++) {
     for (let x = key.x * size; x < (key.x + 1) * size; x++) {
-      table.set([layer, 255, key.z, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
+      cells.set([layer, 255, key.z, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
     }
   }
-  return table;
+  return { cells, layers: new Set([layer]) };
 }
 
 // この層の回帰テストを登録する。
@@ -149,7 +150,7 @@ export function register(): void {
     // 公開予約後の入力配列の変更は、次のフレームへ混入しない。
     const table = page(0);
     adapter.stagePageTable(table);
-    table.fill(255);
+    table.cells.fill(255);
     assert.equal(backend.pages.length, 0);
     assert.equal(adapter.publishFrame(10), true);
     assert.equal(backend.pages[0]![0], 0);
@@ -182,14 +183,14 @@ export function register(): void {
     backend.color.resolve();
     backend.terrain.resolve();
     await Promise.all([parentUpload, childUpload]);
-    const table = page(0, parent);
+    const { cells } = page(0, parent);
     const size = 2 ** (EARTH_TILE_MAX_Z - child.z);
     for (let y = child.y * size; y < (child.y + 1) * size; y++) {
       for (let x = child.x * size; x < (child.x + 1) * size; x++) {
-        table.set([1, 0, child.z, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
+        cells.set([1, 0, child.z, 255], (y * EARTH_PAGE_WIDTH + x) * 4);
       }
     }
-    adapter.stagePageTable(table);
+    adapter.stagePageTable({ cells, layers: new Set([0, 1]) });
     assert.equal(adapter.publishFrame(1), true);
   });
 

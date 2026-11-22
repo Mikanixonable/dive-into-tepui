@@ -77,7 +77,10 @@ export class ShipInspection implements InspectedObject {
   }
   public listSearchText(celestialBodies: CelestialBodies): string { return this.listDetail(celestialBodies); }
   // メニュー項目。操作対象かどうかで、操作対象の切替・軌跡線・削除の出し方が変わる。
-  public menuItems(_bodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null): readonly MenuItem<MenuAction>[] {
+  public menuItems(
+    _bodies: CelestialBodies, viewer: OrbitingObject | null, navTargetId: string | null,
+    trajectoryLineShown: boolean,
+  ): readonly MenuItem<MenuAction>[] {
     const active = this.ship === viewer;
     // 操作対象では軌跡線トグルと削除を出さず、操作対象の解除を出す。
     return [
@@ -85,7 +88,7 @@ export class ShipInspection implements InspectedObject {
       { label: `軌道計画の実行: ${planExecutionLabel(this.ship.planExecution)}`, act: 'planExecCycle', keepOpen: true },
       active ? { label: '操作対象を解除', act: 'deactivate' } : { label: '操作対象にする', act: 'activate' },
       MenuCommon.focus(),
-      ...(active ? [] : [MenuCommon.trajectoryLine(this.ship.trajectoryLineVisible)]),
+      ...(active ? [] : [MenuCommon.trajectoryLine(trajectoryLineShown)]),
       MenuCommon.duplicate(),
       ...(active ? [] : [{ label: '削除', act: 'delete' as const }]),
       MenuCommon.cancel(),
@@ -93,8 +96,7 @@ export class ShipInspection implements InspectedObject {
   }
   // 選択・計画・配置に関する船のメニュー操作を適用する。
   public runMenu(act: MenuAction, selection: ControlSelection, authoring: PresentationStageAuthoring | null): void {
-    if (act === 'toggleTrajectoryLine') this.ship.trajectoryLineVisible = !this.ship.trajectoryLineVisible;
-    else if (act === 'activate') selection.select(this.ship);
+    if (act === 'activate') selection.select(this.ship);
     else if (act === 'deactivate') selection.release(this.ship);
     else if (act === 'planExecCycle') {
       const index = PLAN_EXECUTION_MODES.indexOf(this.ship.planExecution);
@@ -131,7 +133,7 @@ export class ShipInspection implements InspectedObject {
       },
       { key: 'power', label: '電力', value: fmtEnergy(this.ship.motion.power.chargeJ), presentation: 'major' },
       {
-        key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.ship.roundsInMag, this.ship.magsLeft, this.ship.reloadTimer),
+        key: 'ammo', label: '弾薬', value: fmtAmmoStatus(this.ship.ammo, this.ship.reloadTimer),
         presentation: 'major',
       },
       ...dockRows,

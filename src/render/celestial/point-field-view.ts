@@ -30,6 +30,10 @@ class PointFieldGroupView {
   private cursor = 0;
   // 初回の sync で全点を評価済みか。未評価の点は恒星の位置に固まって写る。
   private primed = false;
+  // 直近に引き直した表示時刻と、その時刻のまま引き直した点の数。全点に届いたら、表示時刻が
+  // 動くまで引き直さない。
+  private evaluatedTime: number | null = null;
+  private evaluatedAtTime = 0;
 
   // 群1つぶんの InstancedMesh を、その群の描画半径・色で組んでシーンへ登録する。
   public constructor(group: PointFieldGroup, scene: THREE.Scene) {
@@ -39,7 +43,6 @@ class PointFieldGroupView {
     this.material = new THREE.MeshBasicMaterial({ color: group.color, depthWrite: false });
     this.baseColor = new THREE.Color(group.color);
     this.mesh = new THREE.InstancedMesh(geom, this.material, this.points.length);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     // 点は AU スケールに散らばるので、外接球によるフラスタムカリングを切る。
     this.mesh.frustumCulled = false;
     this.mesh.visible = false;
@@ -55,8 +58,13 @@ class PointFieldGroupView {
     if (starPos === null) return;
     this.material.color.copy(this.baseColor).multiplyScalar(fixedBrightnessScale);
     this.mesh.position.copy(fo.RtoThreeV3(starPos));
-    // このフレームの持ち分を引き直す。
+    // このフレームの持ち分を引き直す。全点がこの表示時刻で引き直し済みなら何もしない。
     const n = this.points.length;
+    if (this.evaluatedTime !== t) {
+      this.evaluatedTime = t;
+      this.evaluatedAtTime = 0;
+    }
+    if (this.evaluatedAtTime >= n) return;
     const count = this.primed ? Math.ceil(n / UPDATE_FRACTION) : n;
     this.primed = true;
     for (let i = 0; i < count; i++) {
@@ -65,8 +73,16 @@ class PointFieldGroupView {
       this.matrix.makeTranslation(p.x, p.y, p.z);
       this.mesh.setMatrixAt(idx, this.matrix);
     }
+    // 引き直した枠だけを送る。持ち分が末尾を越えたら先頭へ折り返した分も送る。
+    const matrices = this.mesh.instanceMatrix;
+    const itemSize = matrices.itemSize;
+    const head = Math.min(count, n - this.cursor);
+    matrices.clearUpdateRanges();
+    matrices.addUpdateRange(this.cursor * itemSize, head * itemSize);
+    if (count > head) matrices.addUpdateRange(0, (count - head) * itemSize);
+    matrices.needsUpdate = true;
     this.cursor = (this.cursor + count) % n;
-    this.mesh.instanceMatrix.needsUpdate = true;
+    this.evaluatedAtTime += count;
   }
 
   // メッシュを親から外し、インスタンスバッファと自前の geometry/material を解放する。

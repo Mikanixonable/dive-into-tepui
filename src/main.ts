@@ -23,9 +23,7 @@ import { PauseMenu } from './hud-kit/windows/pause-menu';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
 import { Launcher } from './launcher/launcher';
-import {
-  drivenByLayoutSmoke, layoutSmokeHudOnly, opensDebugInfoAtStart,
-} from './launcher/launch-query';
+import { layoutSmoke, opensDebugInfoAtStart } from './launcher/launch-query';
 import { PageLoop } from './run/page-loop';
 import { UnlockManager } from './launcher/unlock-manager';
 import { SnapshotControls } from './launcher/snapshot-controls';
@@ -220,8 +218,7 @@ async function main() {
     startOverridesSync('/__assembly-tuning/overrides', applyAssemblyTuningOverrides);
   }
   new PageLoop(
-    launcher, devices, settings, bgm, snapshotControls,
-    drivenByLayoutSmoke(), layoutSmokeHudOnly(),
+    launcher, devices, settings, bgm, snapshotControls, layoutSmoke(),
   ).start();
   await launcher.start();
 }

@@ -25,7 +25,7 @@ export class ModalOverlay<T> implements OverlayHandle {
   private readonly message: HTMLElement;
   private onResult: ((value: T) => void) | null = null;
   private cancelValue!: T;
-  private openState = false;
+  private isOpen = false;
 
   // className はオーバーレイ自身と子要素のクラス名の接頭辞(.modal-overlay-* ではなく
   // .confirmation-overlay-* のように使い側の名前で見える化する)として使う。
@@ -64,7 +64,7 @@ export class ModalOverlay<T> implements OverlayHandle {
   // onResult は確定時の値、取消・ESC 時は cancelValue を受け取る。
   public open(request: ModalOverlayRequest, cancelValue: T, onResult: (value: T) => void): void {
     this.resolve(this.cancelValue);
-    this.openState = true;
+    this.isOpen = true;
     this.cancelValue = cancelValue;
     this.onResult = onResult;
     // 題名・説明は任意 — 無ければ行ごと畳む。
@@ -94,8 +94,8 @@ export class ModalOverlay<T> implements OverlayHandle {
 
   // 結果 callback の発火・DOM の畳み込み・OverlayManager の登録解除を1回だけ行う。
   public resolve(value: T): void {
-    if (!this.openState) return;
-    this.openState = false;
+    if (!this.isOpen) return;
+    this.isOpen = false;
     const callback = this.onResult;
     this.onResult = null;
     this.element.hidden = true;

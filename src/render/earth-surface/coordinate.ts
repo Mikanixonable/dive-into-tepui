@@ -32,13 +32,18 @@ export function earthSurfaceUv(position: THREE.Vector3, axes: THREE.Vector3): TH
 
 // 地理UVから天体固定の外向き単位法線を返す。uは周期、vは北極から南極まで。
 export function earthNormalAtUv(u: number, v: number): THREE.Vector3 {
+  return writeEarthNormalAtUv(new THREE.Vector3(), u, v);
+}
+
+// earthNormalAtUv を target へ書いて返す。
+function writeEarthNormalAtUv(target: THREE.Vector3, u: number, v: number): THREE.Vector3 {
   if (!Number.isFinite(u) || !Number.isFinite(v) || v < 0 || v > 1) {
     throw new RangeError('Invalid geographic UV');
   }
-  if (v === 0 || v === 1) return new THREE.Vector3(0, v === 0 ? 1 : -1, 0);
+  if (v === 0 || v === 1) return target.set(0, v === 0 ? 1 : -1, 0);
   const longitude = (u - 0.5) * FULL_TURN;
   const latitude = (0.5 - v) * Math.PI;
-  return new THREE.Vector3(
+  return target.set(
     Math.cos(latitude) * Math.sin(longitude), Math.sin(latitude), Math.cos(latitude) * Math.cos(longitude),
   );
 }
@@ -46,8 +51,15 @@ export function earthNormalAtUv(u: number, v: number): THREE.Vector3 {
 // 地理UVが指す実楕円体表面の位置 [m] を返す。
 export function earthPositionAtUv(u: number, v: number, axes: THREE.Vector3): THREE.Vector3 {
   validateEarthAxes(axes);
-  const scaledNormal = earthNormalAtUv(u, v).multiply(axes);
-  return scaledNormal.clone().multiply(axes).divideScalar(scaledNormal.length());
+  return writeEarthPositionAtUv(new THREE.Vector3(), u, v, axes);
+}
+
+// earthPositionAtUv を target へ書いて返す。axes は検査済みの半軸。
+export function writeEarthPositionAtUv(
+  target: THREE.Vector3, u: number, v: number, axes: THREE.Vector3,
+): THREE.Vector3 {
+  const scaledNormalLength = writeEarthNormalAtUv(target, u, v).multiply(axes).length();
+  return target.multiply(axes).divideScalar(scaledNormalLength);
 }
 
 // 地理UVから天体固定の放射方向単位ベクトルを計算する。

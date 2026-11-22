@@ -12,14 +12,14 @@ export function register(): void {
     Object.assign(ship, {
       mapKind: 'player',
       capabilities: { averageMuzzleVelocity: 1000 },
-      fire: { rounds: 18, mags: 2, cooldown: 0 },
+      fire: { ammo: { rounds: 18, mags: 2, capacity: MAG_ROUNDS }, reloadRemaining: 0 },
     });
     const presenter = Object.create(HudPanelPresenter.prototype) as HudPanelPresenter;
     const ammo = (presenter as unknown as {
       ammoViewModel(controlled: Controllable): AmmoViewModel | null;
     }).ammoViewModel(ship);
 
-    assert.deepEqual(ammo, { rounds: 18, mags: 2, cooldown: 0, muzzleVelocityMps: 1000 });
+    assert.deepEqual(ammo, { rounds: 18, mags: 2, capacity: MAG_ROUNDS, reloadRemaining: 0, muzzleVelocityMps: 1000 });
   });
 
   test('armament band view model: 機関砲が無ければ null', () => {
@@ -37,32 +37,32 @@ export function register(): void {
   });
 
   test('reload disabled reason: 弾切れは装填できない', () => {
-    const ammo: AmmoViewModel = { rounds: 0, mags: 0, cooldown: 0, muzzleVelocityMps: 1000 };
+    const ammo: AmmoViewModel = { rounds: 0, mags: 0, capacity: MAG_ROUNDS, reloadRemaining: 0, muzzleVelocityMps: 1000 };
     assert.equal(reloadDisabledReason(ammo), '弾切れのため装填できません');
   });
 
-  test('reload disabled reason: 弾切れはクールダウン中も同じ理由', () => {
-    const ammo: AmmoViewModel = { rounds: 0, mags: 0, cooldown: 1, muzzleVelocityMps: 1000 };
+  test('reload disabled reason: 弾切れはリロード中も同じ理由', () => {
+    const ammo: AmmoViewModel = { rounds: 0, mags: 0, capacity: MAG_ROUNDS, reloadRemaining: 1, muzzleVelocityMps: 1000 };
     assert.equal(reloadDisabledReason(ammo), '弾切れのため装填できません');
   });
 
   test('reload disabled reason: 弾倉が満杯のとき装填できない', () => {
-    const ammo: AmmoViewModel = { rounds: MAG_ROUNDS, mags: 2, cooldown: 0, muzzleVelocityMps: 1000 };
+    const ammo: AmmoViewModel = { rounds: MAG_ROUNDS, mags: 2, capacity: MAG_ROUNDS, reloadRemaining: 0, muzzleVelocityMps: 1000 };
     assert.equal(reloadDisabledReason(ammo), '弾倉は満杯です');
   });
 
   test('reload disabled reason: 弾帯が空でも予備があれば装填できる', () => {
-    const ammo: AmmoViewModel = { rounds: 0, mags: 1, cooldown: 0, muzzleVelocityMps: 1000 };
+    const ammo: AmmoViewModel = { rounds: 0, mags: 1, capacity: MAG_ROUNDS, reloadRemaining: 0, muzzleVelocityMps: 1000 };
     assert.equal(reloadDisabledReason(ammo), null);
   });
 
-  test('reload disabled reason: クールダウンだけでは無効にしない', () => {
-    const ammo: AmmoViewModel = { rounds: 18, mags: 2, cooldown: 0.5, muzzleVelocityMps: 1000 };
+  test('reload disabled reason: リロード中だけでは無効にしない', () => {
+    const ammo: AmmoViewModel = { rounds: 18, mags: 2, capacity: MAG_ROUNDS, reloadRemaining: 0.5, muzzleVelocityMps: 1000 };
     assert.equal(reloadDisabledReason(ammo), null);
   });
 
   test('reload disabled reason: 残弾があるとき装填できる', () => {
-    const ammo: AmmoViewModel = { rounds: 18, mags: 2, cooldown: 0, muzzleVelocityMps: 1000 };
+    const ammo: AmmoViewModel = { rounds: 18, mags: 2, capacity: MAG_ROUNDS, reloadRemaining: 0, muzzleVelocityMps: 1000 };
     assert.equal(reloadDisabledReason(ammo), null);
   });
 }

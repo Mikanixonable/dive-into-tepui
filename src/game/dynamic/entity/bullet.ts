@@ -3,6 +3,8 @@ import { DynamicEntity, type SerializedDynamicEntityFields } from './dynamic-ent
 import type { EntityIdAllocators } from './entity-id';
 import type { EntityRegistry } from '../entity-registry';
 import { NormalBulletView, PlasmaBulletView } from '../../../render/dynamic/entity/bullet-view';
+import type { DynamicRenderSource, DynamicViewFrame } from '../../../render/dynamic/dynamic-view';
+import type { OrbitReference } from '../../orbit-reference';
 import {
   BulletReaction, type BulletType, type SerializedBulletReaction, type Shooter,
 } from './bullet-reaction';
@@ -31,14 +33,15 @@ export class Bullet extends DynamicEntity {
     );
   }
 
-  // shooter が撃った type の弾1発を、state の瞬間から lifetime [sim s] だけ飛ぶ個体として新しく組む。
-  // damage は命中した相手へ与えるダメージ [HP]。
+  // shooter が撃った type の弾1発を、時刻 firedAt [sim s] から lifetime [sim s] だけ飛ぶ個体として新しく
+  // 組む。state は弾の運動状態で、firedAt より前の時刻なら、撃たれる前の弾を砲口から直線に巻き戻した
+  // 状態。damage は命中した相手へ与えるダメージ [HP]。
   public static create(
     state: KinematicState, lifetime: number, shooter: Shooter, type: BulletType, damage: number,
-    idAllocators: EntityIdAllocators,
+    idAllocators: EntityIdAllocators, firedAt = state.t,
   ): Bullet {
     return new Bullet(
-      state, new BulletReaction(state.t, lifetime, shooter, type, damage), idAllocators.entity.next(),
+      state, new BulletReaction(firedAt, lifetime, shooter, type, damage), idAllocators.entity.next(),
     );
   }
 
@@ -50,6 +53,15 @@ export class Bullet extends DynamicEntity {
       registry.idAllocators.entity.next(serialized.id),
       serialized.alive,
     );
+  }
+
+  // 撃たれる前の時刻には描かない。
+  protected override renderSource(
+    viewFrame: DynamicViewFrame, active: boolean, orbitReference: OrbitReference | null,
+  ): DynamicRenderSource {
+    const source = super.renderSource(viewFrame, active, orbitReference);
+    const firedAt = this.motion.reaction.bornSim;
+    return { ...source, stateAt: (t) => (t < firedAt ? null : source.stateAt(t)) };
   }
 
   // 運動状態と、当たる相手・寿命の判定に要る値を直列化した形へ変換する。

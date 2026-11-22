@@ -11,8 +11,8 @@ export class StageControlsPanel {
   // setShipRequiredButtonsEnabled がまとめて有効/無効を切り替える対象。
   private readonly shipRequiredButtons: readonly Button[];
 
-  public onToggleResupply: ((on: boolean) => void) | null = null;
-  public onToggleFuelResupply: ((on: boolean) => void) | null = null;
+  public onToggleAmmoResupply: ((on: boolean) => void) | null = null;
+  public onToggleRcsFuelResupply: ((on: boolean) => void) | null = null;
   public onToggleWaveAttack: ((on: boolean) => void) | null = null;
   public onAddMagazine: (() => void) | null = null;
   public onRefillFuel: (() => void) | null = null;
@@ -25,7 +25,7 @@ export class StageControlsPanel {
 
   // 各引数はパネルの初期値。以後の変更は onXxx コールバックで知らせる。
   public constructor(
-    resupplyEnabled: boolean, rcsFuelResupplyEnabled: boolean, waveAttackEnabled: boolean,
+    ammoResupplyEnabled: boolean, rcsFuelResupplyEnabled: boolean, waveAttackEnabled: boolean,
     initialSpawnDistance: number,
   ) {
     this.spawnDistance = initialSpawnDistance;
@@ -48,7 +48,7 @@ export class StageControlsPanel {
 
     // 補給・波状攻撃・手動スポーンの各セクションを body へ組み込む。
     const generalControls = this.buildGeneralControls(
-      body, resupplyEnabled, rcsFuelResupplyEnabled, waveAttackEnabled,
+      body, ammoResupplyEnabled, rcsFuelResupplyEnabled, waveAttackEnabled,
     );
     const enemy = this.buildEnemySection();
     body.appendChild(enemy.element);
@@ -65,14 +65,14 @@ export class StageControlsPanel {
   // 補給2種・波状攻撃のトグルと、敵のスポーン距離入力を body へ足す。
   // 操作艦を必要とするボタンは、無効化の管理へ回せるよう返す。
   private buildGeneralControls(
-    body: HTMLElement, resupplyEnabled: boolean, rcsFuelResupplyEnabled: boolean, waveAttackEnabled: boolean,
+    body: HTMLElement, ammoResupplyEnabled: boolean, rcsFuelResupplyEnabled: boolean, waveAttackEnabled: boolean,
   ): { shipRequiredButtons: readonly Button[] } {
-    const resupplyToggle = new ToggleSwitch('弾薬の自動投入', (on) => this.onToggleResupply?.(on));
-    resupplyToggle.setOn(resupplyEnabled);
-    body.appendChild(resupplyToggle.element);
-    const fuelResupplyToggle = new ToggleSwitch('RCS燃料の自動投入', (on) => this.onToggleFuelResupply?.(on));
-    fuelResupplyToggle.setOn(rcsFuelResupplyEnabled);
-    body.appendChild(fuelResupplyToggle.element);
+    const ammoResupplyToggle = new ToggleSwitch('弾薬の自動投入', (on) => this.onToggleAmmoResupply?.(on));
+    ammoResupplyToggle.setOn(ammoResupplyEnabled);
+    body.appendChild(ammoResupplyToggle.element);
+    const rcsFuelResupplyToggle = new ToggleSwitch('RCS燃料の自動投入', (on) => this.onToggleRcsFuelResupply?.(on));
+    rcsFuelResupplyToggle.setOn(rcsFuelResupplyEnabled);
+    body.appendChild(rcsFuelResupplyToggle.element);
     const waveAttackToggle = new ToggleSwitch('敵の波状攻撃', (on) => this.onToggleWaveAttack?.(on));
     waveAttackToggle.setOn(waveAttackEnabled);
     body.appendChild(waveAttackToggle.element);

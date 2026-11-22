@@ -63,23 +63,37 @@ export class AudioEngine {
   // 指定音高のトーンを、指数減衰で単発鳴らす。delay [s] で発音を遅らせられる。
   public tone(freq: number, duration: number, volume: number, type: OscillatorType = 'sine', delay = 0): void {
     const ctx = this._ctx;
+    if (ctx) this.toneAt(freq, duration, volume, type, ctx.currentTime + delay);
+  }
+
+  // tone を ctx の時刻 startAt [s] に鳴らす。並べた音の間隔を ctx の時計どおりに保つときに使う。
+  public toneAt(freq: number, duration: number, volume: number, type: OscillatorType, startAt: number): void {
+    const ctx = this._ctx;
     if (!ctx) return;
     const osc = ctx.createOscillator();
     osc.type = type;
     osc.frequency.value = freq;
     const gain = ctx.createGain();
-    const t = ctx.currentTime + delay;
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    gain.gain.setValueAtTime(volume, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.001, startAt + duration);
     osc.connect(gain).connect(ctx.destination);
-    osc.start(t);
-    osc.stop(t + duration);
+    osc.start(startAt);
+    osc.stop(startAt + duration);
   }
 
   // 共有ノイズバッファをフィルタ・減衰させ、短いバースト音として鳴らす。
   public noiseBurst(duration: number, filterType: BiquadFilterType, freq: number, volume: number): void {
     const ctx = this._ctx;
+    if (ctx) this.noiseBurstAt(duration, filterType, freq, volume, ctx.currentTime);
+  }
+
+  // noiseBurst を ctx の時刻 startAt [s] に鳴らす。
+  public noiseBurstAt(
+    duration: number, filterType: BiquadFilterType, freq: number, volume: number, startAt: number,
+  ): void {
+    const ctx = this._ctx;
     if (!ctx || !this._noiseBuf) return;
+    // 再生速度と読み出し位置を毎回ずらし、同じノイズの繰り返しに聞こえないようにする。
     const src = ctx.createBufferSource();
     src.buffer = this._noiseBuf;
     src.playbackRate.value = 0.8 + Math.random() * 0.4;
@@ -87,10 +101,9 @@ export class AudioEngine {
     filter.type = filterType;
     filter.frequency.value = freq;
     const gain = ctx.createGain();
-    const t = ctx.currentTime;
-    gain.gain.setValueAtTime(volume, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    gain.gain.setValueAtTime(volume, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.001, startAt + duration);
     src.connect(filter).connect(gain).connect(ctx.destination);
-    src.start(t, Math.random() * 0.5, duration + 0.05);
+    src.start(startAt, Math.random() * 0.5, duration + 0.05);
   }
 }
