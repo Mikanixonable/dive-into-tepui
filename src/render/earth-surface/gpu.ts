@@ -137,13 +137,17 @@ export class EarthSurfaceGpuAdapter {
   public stagePageTable(table: Uint8Array): void {
     this.requireActive();
     if (table.length !== EARTH_PAGE_WIDTH * EARTH_PAGE_HEIGHT * 4) throw new RangeError('Invalid Earth page table');
-    const layers = new Set<number>();
-    // 交換前に表が参照する層を集め、公開済みとみなして解放対象から外す。
+    // 交換前に表が参照する層を集め、公開済みとみなして解放対象から外す。層番号は 1 バイトなので、
+    // セルごとには印だけを付けて集合は最後に組む。
+    const referenced = new Uint8Array(256);
     for (let offset = 0; offset < table.length; offset += 4) {
-      const layer = table[offset]!;
-      const parentLayer = table[offset + 1]!;
-      if (layer !== EARTH_BASE_LAYER) layers.add(layer);
-      if (parentLayer !== EARTH_BASE_LAYER) layers.add(parentLayer);
+      referenced[table[offset]!] = 1;
+      referenced[table[offset + 1]!] = 1;
+    }
+    referenced[EARTH_BASE_LAYER] = 0;
+    const layers = new Set<number>();
+    for (const [layer, isReferenced] of referenced.entries()) {
+      if (isReferenced === 1) layers.add(layer);
     }
     for (const layer of layers) this.requireUploaded(layer);
     this.staged = table.slice();
