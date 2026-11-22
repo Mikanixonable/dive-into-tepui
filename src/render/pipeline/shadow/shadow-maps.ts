@@ -289,10 +289,9 @@ export class ShadowMaps {
     parameters.w = 1;
   }
 
-  // スロット index の層へ scene を描く。autoClear が立っているので描く前に空の値で埋まり、中身の無い
-  // シーンを渡せば空へ戻すだけになる。renderer.clear() は camera を持たないレンダー文脈で動くため、
-  // 深度配列へ向けると three の WebGL2 フォールバックが camera の null を読んで落ちる。
-  // 呼び出し元は render() の中だけで、そこで autoClear が立っている。
+  // スロット index の層へ scene を描く。autoClear が立っている間に呼ぶこと — 描く前に空の値で埋まるので、
+  // 中身の無いシーンを渡せば空へ戻すだけになる。renderer.clear() で空へ戻すと、camera を持たない
+  // レンダー文脈で動くため、深度配列へ向けたとき three の WebGL2 フォールバックが camera の null を読んで落ちる。
   private drawLayer(scene: THREE.Scene, target: THREE.RenderTarget, index: number): void {
     this.renderer.setRenderTarget(target, index);
     this.renderer.render(scene, this.lightCamera);

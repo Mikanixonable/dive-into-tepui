@@ -102,7 +102,8 @@ export function atmosphericMaxStep(
 }
 
 // 刻み dt のあいだに、抗力がその物体の対気速度を丸ごと奪い切るか。奪い切る幅で積んだ軌道は
-// もはや正確ではない(dragAccel が対気速度で頭打ちにするので発散こそしない)。body は atmosphericMaxStep と同じ。
+// もはや正確ではない(dragAccel が対気速度で頭打ちにするので発散こそしない)。body は
+// atmosphericMaxStep と同じ。
 //
 // **見るのは剛性の項だけで、atmosphericMaxStep の合成値ではない。** 中間段の沈み込みの上限は
 // 密度にも bcInv にも依らず、高い倍率では大気から遥かに離れた低軌道でも下回る — それを根拠に

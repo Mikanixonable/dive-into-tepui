@@ -37,7 +37,7 @@ export function earthTileParent(key: EarthTileKey): EarthTileKey | null {
   return key.z === 0 ? null : earthTileKey(key.z - 1, Math.floor(key.x / 2), Math.floor(key.y / 2));
 }
 
-// 最大段では空、それ以外では4子を返す。正規化済みキーの子は正規化済みなので、そのまま組む。
+// 最大段では空、それ以外では正規化済みの4子を返す。key は正規化済みであること。
 export function earthTileChildren(key: EarthTileKey): readonly EarthTileKey[] {
   if (key.z === EARTH_TILE_MAX_Z) return [];
   const z = key.z + 1;

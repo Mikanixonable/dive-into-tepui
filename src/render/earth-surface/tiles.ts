@@ -25,7 +25,6 @@ export interface EarthPageTable {
 
 interface DisplayedTile extends EarthTileResident {
   readonly parentLayer: number;
-  readonly fadeStartMs: number | null;
   // ページ表のセルへ書く遷移の進み 0..255。
   readonly fadeByte: number;
 }
@@ -155,12 +154,10 @@ export class EarthSurfaceTiles {
         const start = previousIndices.has(index) ? previousStart ?? null : timeMs;
         const fading = start !== null && timeMs < start + FADE_MS;
         if (fading && start !== null) nextStarts.set(index, start);
-        const fadeStartMs = fading ? start : null;
-        const fade = fadeStartMs === null ? 1 : THREE.MathUtils.clamp((timeMs - fadeStartMs) / FADE_MS, 0, 1);
+        const fade = fading && start !== null ? THREE.MathUtils.clamp((timeMs - start) / FADE_MS, 0, 1) : 1;
         return {
           ...tile,
           parentLayer: fading ? this.parentLayer(tile.key, available) : EARTH_BASE_LAYER,
-          fadeStartMs,
           fadeByte: Math.round(fade * 255),
         };
       });
@@ -198,7 +195,7 @@ export class EarthSurfaceTiles {
     return table;
   }
 
-  // 可視性と投影誤差から詳細候補を再帰選択する。区画は木を1度ずつ辿るので、各キーの投影評価は1回。
+  // 可視性と投影誤差から詳細候補を再帰選択し、投影評価の優先度を添えて返す。
   private visibleCandidates(projection: EarthTileProjection): RankedTile[] {
     const candidates: RankedTile[] = [];
     // 可視ノードを辿り、誤差が閾値を超えた領域だけ分割する。

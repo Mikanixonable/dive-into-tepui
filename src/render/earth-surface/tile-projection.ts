@@ -31,6 +31,7 @@ export class EarthSurfaceView implements EarthTileProjection {
   private readonly near: number;
   // 半軸の長短比。区画の角の広がりを楕円体の歪みぶん広げる。
   private readonly axisRatio: number;
+  // 最長の半軸 [m]。
   private readonly maxAxis: number;
   // evaluate の作業領域。評価は1つずつ行うので共有してよい。
   private readonly center = new THREE.Vector3();

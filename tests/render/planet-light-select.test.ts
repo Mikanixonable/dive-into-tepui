@@ -53,6 +53,7 @@ function selectByFullEvaluation(candidates: readonly Candidate[], pivot: number,
   return scored.sort((a, b) => b.irradiance - a.irradiance).slice(0, MAX_PLANET_LIGHT_SLOTS).map((s) => s.light);
 }
 
+// position [m] に静止した半径 radius [m] の天体。恒星なら太陽と同じ放射強度を持つ。
 function motionAt(id: string, radius: number, position: Vec3, kind: 'star' | 'planet' = 'planet'): CelestialMotion {
   return fixedMotion({
     id, mu: 1, radius, state: kinematicState<'eci'>(0, position, v3(0, 0, 0)), kind,

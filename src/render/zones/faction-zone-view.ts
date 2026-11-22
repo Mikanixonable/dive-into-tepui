@@ -54,7 +54,7 @@ function unitCircleGeometry(): THREE.BufferGeometry {
 }
 
 // 帯の頂点を内外の半径 [m] へ書き直す。頂点の並びと値は RingGeometry(innerRadius, outerRadius,
-// RING_SEGMENTS) と同じ。頂点数が変わらないので、作り直さずに書き換えて送る。
+// RING_SEGMENTS) と同じ。
 function writeAnnulusRadii(geometry: THREE.BufferGeometry, innerRadius: number, outerRadius: number): void {
   const positions = geometry.getAttribute('position');
   let radius = innerRadius;
