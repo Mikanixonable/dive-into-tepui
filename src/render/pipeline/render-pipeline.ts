@@ -271,6 +271,7 @@ export class RenderPipeline {
       this.quad.material = this.lensEnabled ? this.lensCompositeMaterial : this.offCompositeMaterial;
       passes.push(
         ['マテリアル', () => this.materialPass.compile(scene, camera, this.target)],
+        ['雲影', () => this._cloudShadow.compile(this.renderer)],
         ['大気', () => this.atmospherePass.compile(camera)],
         ['ワールド', () => compileInto(this.renderer, this.target, scene, camera)],
       );
@@ -305,6 +306,20 @@ export class RenderPipeline {
   // 空として見える。例外はスナップショットのブリットで、「マテリアル」表示の間は大気の写らない
   // フレームでも撮る。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
+    // シーンのワールド行列はフレームの頭で 1 度だけ確定させ、全パスで共有する。パスの途中で
+    // シーンの物体を動かすと、その変化は次のフレームまで描かれない。
+    scene.updateMatrixWorld();
+    const autoUpdate = scene.matrixWorldAutoUpdate;
+    scene.matrixWorldAutoUpdate = false;
+    try {
+      this.renderPasses(scene, camera, style);
+    } finally {
+      scene.matrixWorldAutoUpdate = autoUpdate;
+    }
+  }
+
+  // render の本体。パスを順に発行する。
+  private renderPasses(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
 
@@ -336,6 +351,8 @@ export class RenderPipeline {
       // 大気パス。デバッグ表示が選ばれている間は、そこへ映す1枚も大気パスに描かせる
       // (「マテリアル」は重ねる前の下地なので、大気を描く前に控える)。
       if (this.debugComposites.target === 'material') this.atmospherePass.inspectBackdrop();
+      // 大気が読む雲影の地図を、大気パスの直前に焼く。
+      this._cloudShadow.bake(this.renderer, this.gpu);
       this.atmospherePass.render(camera);
       if (this.debugComposites.target === 'atmosphere') this.atmospherePass.inspectScattered(camera);
 
@@ -382,6 +399,7 @@ export class RenderPipeline {
   public dispose(): void {
     this.gbuffer.dispose();
     this.shadowPass.dispose();
+    this._cloudShadow.dispose();
     this.shadowMaps.dispose();
     this.lightPrepass.dispose();
     this.sphereSpecular.dispose();

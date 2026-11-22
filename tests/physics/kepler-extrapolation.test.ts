@@ -1,5 +1,5 @@
 // kepler-extrapolation.ts の回帰テスト。
-import { fixedMotion } from './test-helpers';
+import { fixedMotion, occludersOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { extrapolatedRelativeState, extrapolatedRelativeStates } from '../../src/physics/kepler-extrapolation';
@@ -19,7 +19,7 @@ function integrate(tip: KinematicState, t: number, dt: number): KinematicState {
   let s = tip;
   const steps = Math.round((t - tip.t) / dt);
   for (let i = 0; i < steps; i++) {
-    s = stepDynamics(s, dt, [EARTH], [], null, 0, 0, 0, null);
+    s = stepDynamics(s, dt, [EARTH], occludersOf([EARTH], []), null, 0, 0, 0, null);
   }
   return s;
 }

@@ -25,6 +25,9 @@ import { solarSystem } from '../../src/game/celestial/solar-system/solar-system'
 import { createJulianDate, J2000_JULIAN_DATE, SECONDS_PER_DAY, type TdbJulianDate } from '../../src/physics/time';
 import { type Vec3, addScaled, cross, len, scale, sub, v3 } from '../../src/math/vec3';
 import { qRotate } from '../../src/math/quat';
+import { ShadowCasters } from '../../src/physics/shadow';
+import { isStar } from '../../src/physics/celestial-body-def';
+import type { CelestialBody } from '../../src/physics/celestial-body';
 
 // 地球原点で組んだ現実の太陽系。天体は宣言順(重力源配列・一覧の順序もこの並び)に並び、
 // 1体ずつは id で引く。同一時刻の集合を答える系と、座標系も一緒に持つ。
@@ -222,4 +225,12 @@ export function fixedMotion(spec: {
   );
   motion.bindEciTransform(FIXED_ECI);
   return motion;
+}
+
+// 積分の重力源 attractors の中の恒星が照らし、bodies が影を落とす遮蔽体の候補。テストの積分が日照率を
+// 引く時刻を限らないので、区間は十分に広く取る(絞り込みは移動しない天体にしか効かない)。
+export function occludersOf(
+  attractors: readonly CelestialBody[], bodies: readonly CelestialBody[],
+): ShadowCasters {
+  return ShadowCasters.classify(attractors.find(isStar) ?? null, bodies, 0, -1e15, 1e15);
 }

@@ -1,7 +1,7 @@
 // 1ランの表示の導出の根: 入力の解釈、表示窓・座標系の錨・カメラの導出、表示物と HUD への同期、
 // 描画を所有する。モデル層の根 Game を読み、命令の列へ積み、進行の末尾へ渡す材料を組む。
 import { SYNC_SECTION, type FrameSections, type SyncSectionId } from './frame-sections';
-import { CUMULUS_DETAIL } from '../render/earth-weather/cloud/opaque-cloud-surface-renderer';
+import { precompileCumulusDetails } from '../render/earth-weather/cloud/cloud-presentation';
 import { CloudQualityGovernor } from '../render/earth-weather/cloud/cloud-quality-governor';
 import { GPU_PASS } from '../render/gpu-timings';
 import { CameraSystem } from './camera/camera-system';
@@ -670,16 +670,10 @@ export class GamePresentation {
       style,
       (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
     );
-    // 積雲の段替えでシェーダのコンパイルが走らないよう、残りの段のマテリアルも雲殻層の
-    // 条件で組んでおく。いま張っている段は G バッファの compile で既に組まれている。
-    const clouds = this.game.celestialSystem.cloudPresentations();
-    const current = clouds.map((p) => p.cumulusDetail);
-    for (const detail of Object.values(CUMULUS_DETAIL)) {
-      if (current.every((d) => d === detail)) continue;
-      for (const presentation of clouds) presentation.setCumulusDetail(detail);
-      await scene.pipeline.compileCloudShell(scene.scene, this.cameraFrame.camera);
-    }
-    clouds.forEach((presentation, i) => presentation.setCumulusDetail(current[i]!));
+    await precompileCumulusDetails(
+      this.game.celestialSystem.cloudPresentations(),
+      scene.pipeline, scene.scene, this.cameraFrame.camera,
+    );
   }
 
   // このフレームの sync が確定させたカメラで描く。まだ1度も sync していなければ何も描かない。

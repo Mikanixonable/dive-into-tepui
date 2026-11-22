@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { importTsDataModule } from '../compile-source.mjs';
 
 export const { F0_ALUMINIUM, F0_BRASS, F0_BURNT_STEEL, F0_STEEL } =
-  await importTsDataModule('src/render/dynamic/metal-f0.ts');
+  await importTsDataModule('tools/model-builder/metal-f0.ts');
 export const { CASING_DISPLAY_COLOR, CASING_DISPLAY_METALNESS, CASING_DISPLAY_ROUGHNESS } =
   await importTsDataModule('src/render/dynamic/casing-style.ts');
 

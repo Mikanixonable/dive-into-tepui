@@ -197,16 +197,14 @@ export class ShadowMaps {
   }
 
   // メッシュを枠へまとめ、枠ごとに 1 スロットを描く。影が切られているか、影を要求する受け手が
-  // 1 つも無いフレームは、GPU 側の仕事がまったく発生しない。
+  // 1 つも無いフレームは、GPU 側の仕事がまったく発生しない。scene のワールド行列は呼び出し側が
+  // 確定させておく — メッシュの箱は親の変換込みで測る。
   public render(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
     this.clearSlots();
     this.clusters.length = 0;
     this.clusterSizes.length = 0;
     this.clusterCaps.length = 0;
     if (this.enabled) {
-      // メッシュの箱は親の変換込みで測る必要がある。**Box3.expandByObject は親の行列を更新しない**
-      // ので、このパスがフレームの先頭で走る限り、ここで確定させないと箱が前フレームの位置で作られる。
-      scene.updateMatrixWorld();
       this.casters = this.shadowCasters.collect(scene, camera, viewportHeight, sun, this.texelsPerPixel);
       this.buildClusters();
     } else {
@@ -372,10 +370,9 @@ export class ShadowMaps {
       this.scratchBox.union(receiver.box);
     }
     if (this.scratchBox.isEmpty()) return;
-    // 箱に密着した枠が既に全体を包んでいるなら、同じ絵をもう 1 枚描くだけになる。
-    const covered = this.clusters.some(
-      (cluster, index) => this.clusterCaps[index] === Infinity && cluster.containsBox(this.scratchBox),
-    );
+    // どの受け手も箱に密着した枠のどれかに収まっているなら、被覆枠は同じ絵を粗く描き直すだけになる。
+    const covered = this.casters.every((receiver) => !Number.isFinite(receiver.requiredTexel)
+      || this.clusters.some((cluster, index) => this.clusterCaps[index] === Infinity && cluster.containsBox(receiver.box)));
     if (covered) return;
     this.pushFrame(this.scratchBox, this.frameSize(this.scratchBox), Infinity);
   }

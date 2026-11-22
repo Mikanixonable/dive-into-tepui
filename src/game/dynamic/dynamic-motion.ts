@@ -9,6 +9,7 @@ import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { environmentSampleAt, type DynamicsEnvironmentSample } from '../../physics/dynamics';
+import type { ShadowCasters } from '../../physics/shadow';
 import {
   compoundCylinderRaycast,
   type CompoundCylinderRayHit,
@@ -30,7 +31,7 @@ import {
   type DynamicCollisionPropertiesSnapshot,
 } from './dynamic-motion-collision';
 import {
-  ENV_TEMP, HULL_EMISS, stepThermalState,
+  DRAG_COEFFICIENT, ENV_TEMP, HULL_EMISS, stepThermalState,
   type DynamicMotionThermal,
 } from './dynamic-motion-thermal';
 import { PredictedArc, trajectorySampleInterval } from './predicted-arc';
@@ -50,8 +51,7 @@ export type {
   ContactKind, DynamicMotionBehavior, DynamicMotionProperties,
 } from './dynamic-motion-behavior';
 
-// 弾道係数の逆数から断面積質量比を戻すときの抗力係数 Cd。
-const DRAG_COEFFICIENT = 2.2;
+
 // 1歩ぶんの環境標本が RK4 の4段のとき、平均に掛ける重み。
 const RK4_WEIGHTS: readonly number[] = [1, 2, 2, 1];
 
@@ -371,9 +371,10 @@ export class DynamicMotion {
       && dragTakesFullAirspeed(this.state, this.bcInv, atmosphereBodies, pivot, dt);
   }
 
-  // 軌道・姿勢・熱を dt 進める。予測弧をなぞらずに積分したときは true を返す。
+  // 軌道・姿勢・熱を dt 進める。予測弧をなぞらずに積分したときは true を返す。substepOccluders は
+  // このサブステップに影を落としうる天体の候補。
   public stepSimulation(
-    dt: number, celestialBodies: readonly CelestialBody[], occluders: readonly CelestialBody[],
+    dt: number, celestialBodies: readonly CelestialBody[], substepOccluders: ShadowCasters,
     atmosphereBody: CelestialBody | null, star: CelestialBody | null, pivot: number,
     services: DynamicReactionServices,
   ): boolean {
@@ -382,6 +383,8 @@ export class DynamicMotion {
     const frameBefore = this.attitudeFrameOf(celestialBodies, pivot);
     // 推力がなく予測弧が届く歩は、弧をなぞって積分を省く。
     const interval = this.historySampleInterval(celestialBodies, pivot);
+    // 遮蔽体の候補は、歩の始まりの状態から1歩で動く範囲へ絞る。
+    const occluders = substepOccluders.near(this.state, dt);
     const integrated = !this.followPredicted(this.state.t + dt, interval);
     let environmentSamples: readonly DynamicsEnvironmentSample[];
     if (integrated) {
