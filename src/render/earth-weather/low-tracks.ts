@@ -155,6 +155,24 @@ interface LowTrack {
   readonly remnant: number;
 }
 
+// lowTrackOf の結果の表。一生は (枡, 世代, 候補, 天体の半径) の閉じた関数なので、同じ引数では
+// 組み直さずに使い回す。時刻が進めば世代も進むので、表があふれたら古く入れたものから捨てる。
+const LOW_TRACK_CACHE_SIZE = 512;
+const lowTrackCache = new Map<string, LowTrack | null>();
+
+// lowTrackOf と同じ値を、表を通して返す。
+function cachedLowTrackOf(
+  index: number, generation: number, candidate: number, surfaceRadius: number,
+): LowTrack | null {
+  const key = `${surfaceRadius}/${generation}/${index}/${candidate}`;
+  const cached = lowTrackCache.get(key);
+  if (cached !== undefined) return cached;
+  const track = lowTrackOf(index, generation, candidate, surfaceRadius);
+  if (lowTrackCache.size >= LOW_TRACK_CACHE_SIZE) lowTrackCache.delete(lowTrackCache.keys().next().value!);
+  lowTrackCache.set(key, track);
+  return track;
+}
+
 // 枡 index に世代 generation で生まれる低気圧の候補 candidate(0 は一次、1 は家族の後続)。
 // 発生を認めないとき(振幅の門を超えない、周期の残りに収まらない)は null。乱数は
 // (枡, 世代, 候補) ごとに 1 列で、引く順が一生を決める — 時刻の閉じた関数のまま保つ。
@@ -173,7 +191,7 @@ function lowTrackOf(
     onset = LOW_REBIRTH_GAP / 2 + rand() * (LOW_PERIOD - lifetime - LOW_REBIRTH_GAP);
   } else {
     // 家族の後続は、一次の低気圧が立って埋まったあと、同じ世代の残りにだけ置く。
-    const primary = lowTrackOf(index, generation, 0, surfaceRadius);
+    const primary = cachedLowTrackOf(index, generation, 0, surfaceRadius);
     if (primary === null) return null;
     onset = primary.onset + primary.lifetime + LOW_HANDOFF_GAP + rand() * LOW_HANDOFF_JITTER;
     if (onset + lifetime + LOW_REBIRTH_GAP / 2 > LOW_PERIOD) return null;
@@ -264,7 +282,7 @@ export function rawLowPlacementAt(
   const generation = Math.floor(age);
   const periodSeconds = (age - generation) * LOW_PERIOD;
   const trackAt = (candidate: number): { track: LowTrack; life: number } | null => {
-    const track = lowTrackOf(index, generation, candidate, surfaceRadius);
+    const track = cachedLowTrackOf(index, generation, candidate, surfaceRadius);
     if (track === null) return null;
     return { track, life: (periodSeconds - track.onset) / track.lifetime };
   };
