@@ -17,7 +17,6 @@ interface AltitudeSample { readonly t: number; readonly alt: number }
 interface AltitudeSeries {
   readonly samples: readonly AltitudeSample[];
   readonly currentAlt: number;
-  readonly truncated: boolean;
 }
 
 interface ApproachSample { readonly x: number; readonly y: number }
@@ -26,7 +25,6 @@ interface ApproachSeries {
   // null は「ここで線が切れる」印 — 位相差の折り返しをまたぐ隣り合う点の間に挟まる。
   readonly samples: readonly (ApproachSample | null)[];
   readonly relIncDeg: number;
-  readonly truncated: boolean;
 }
 
 // 投影の中心天体。運動だけを使う。
@@ -47,25 +45,24 @@ function altitudeOf(state: KinematicState, centerState: KinematicState, center: 
 }
 
 // now から spanSec 先までを sampleCount 等分した各時刻(両端含む sampleCount+1 回)で
-// sampleAt を評価した点列を返す。sampleAt が null を返した時点、あるいは区間・個数が
-// 不正なときは打ち切り(truncated)— 外挿できない先を 0/NaN で埋めない。
+// sampleAt を評価した点列を返す。sampleAt が null を返した時点で打ち切り、区間・個数が
+// 不正なら空 — 外挿できない先を 0/NaN で埋めない。
 function sampleSpan<S>(
   now: number,
   spanSec: number,
   sampleCount: number,
   sampleAt: (t: number) => S | null,
-): { samples: S[]; truncated: boolean } {
+): S[] {
   const samples: S[] = [];
   if (spanSec <= 0 || sampleCount <= 0 || !isFinite(spanSec) || !Number.isFinite(sampleCount)) {
-    return { samples, truncated: true };
+    return samples;
   }
-  let truncated = false;
   for (let i = 0; i <= sampleCount; i++) {
     const sample = sampleAt(now + (i * spanSec) / sampleCount);
-    if (sample === null) { truncated = true; break; }
+    if (sample === null) break;
     samples.push(sample);
   }
-  return { samples, truncated };
+  return samples;
 }
 
 // 隣り合う点で jumped が真になる箇所の間へ null(線が切れる印)を挟む。
@@ -97,12 +94,12 @@ export function altitudeSeries(
   const center = reference.attractor;
   if (center === null) return null;
   const currentAlt = altitudeOf(entity.motion.state, reference.state, center);
-  const { samples, truncated } = sampleSpan(now, spanSec, sampleCount, (t) => {
+  const samples = sampleSpan(now, spanSec, sampleCount, (t) => {
     const state = entity.motion.stateAt(t, celestialBodies);
     if (state === null) return null;
     return { t: t - now, alt: altitudeOf(state, celestialBodies.stateAt(center.id, t), center) };
   });
-  return { samples, currentAlt, truncated };
+  return { samples, currentAlt };
 }
 
 // (-pi, pi] へ畳んだ角度差。
@@ -182,7 +179,7 @@ export function approachSeries(
   const relIncDeg = relativeInclinationDeg(selfEl.hHat, targetEl.hHat);
 
   // どちらかが外挿できなくなった時点で打ち切る。
-  const { samples: points, truncated } = sampleSpan(now, spanSec, sampleCount, (t) => {
+  const points = sampleSpan(now, spanSec, sampleCount, (t) => {
     const shipState = ship.motion.stateAt(t, celestialBodies);
     const targetState = resolved.stateAt(t);
     if (shipState === null || targetState === null) return null;
@@ -198,7 +195,7 @@ export function approachSeries(
   // 隣り合う位相差が半周より大きく跳んだなら、それは折り返しであって実際の移動ではない。
   const samples = insertBreaks(points, (a, b) => Math.abs(b.theta - a.theta) > Math.PI)
     .map((p): ApproachSample | null => (p === null ? null : { x: rCirc * p.theta, y: p.relAlt }));
-  return { samples, relIncDeg, truncated };
+  return { samples, relIncDeg };
 }
 
 interface ProjectionSample { readonly latDeg: number; readonly lonDeg: number }
@@ -207,7 +204,6 @@ interface ProjectionSeries {
   readonly current: ProjectionSample;
   // null は経度 ±180° をまたぐ跳びの印(接近タブの位相折り返しと同じ扱い)。
   readonly samples: readonly (ProjectionSample | null)[];
-  readonly truncated: boolean;
 }
 
 // state(中心天体相対ではなく ECI)を中心天体の時刻 t での自転を通じて緯度経度へ変換する。
@@ -237,11 +233,11 @@ export function projectionSeries(
   if (current === null) return null;
 
   // 未来へ等間隔でサンプリングし、外挿できなくなった時点で打ち切る。
-  const { samples: points, truncated } = sampleSpan(now, spanSec, sampleCount, (t) => {
+  const points = sampleSpan(now, spanSec, sampleCount, (t) => {
     const state = stateAt(t);
     return state === null ? null : projectionSampleAt(state, center.motion.stateAt(t), center, t);
   });
   // 経度 ±180° をまたぐ跳びは null を挟んで線が切れることを示す。
   const samples = insertBreaks(points, (a, b) => Math.abs(b.lonDeg - a.lonDeg) > 180);
-  return { current, samples, truncated };
+  return { current, samples };
 }
