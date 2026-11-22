@@ -38,8 +38,8 @@ export class CombatFrame implements ViewFrame {
   public readonly planEditor = null;
 
   // マップの計測値は、戦闘ビューでは常に 0。
-  public perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'> {
-    return { mapMode: false, mapItems: 0, mapLabels: 0 };
+  public perfCounts(): Pick<PerfCounts, 'view' | 'mapItems' | 'mapLabels'> {
+    return { view: 'combat', mapItems: 0, mapLabels: 0 };
   }
 
   public onEnter(): void {}

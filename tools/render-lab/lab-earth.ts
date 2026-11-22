@@ -92,8 +92,8 @@ export class LabEarth {
     const atmosphereClouds: AtmosphereClouds = {
       get cloud() { return clouds.renderInput; },
       bodyFromWorld,
-      get cumulusVisible() { return clouds.cumulusEnabled; },
-      get cirrusVisible() { return clouds.cirrusEnabled; },
+      get cumulusVisible() { return clouds.cumulusVisible; },
+      get cirrusVisible() { return clouds.cirrusVisible; },
     };
     // 大気の地表は地表メッシュと同じ楕円体に採る。**真球で渡すと**、極で地表と空のあいだに
     // 隙間が開く。

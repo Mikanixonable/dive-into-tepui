@@ -35,42 +35,70 @@ interface PlanetLight<T extends CelestialBody> {
   readonly sunIrradiance: number;
 }
 
-// 基準点 reference(ECI)へ強く届く順に天体光源を MAX_PLANET_LIGHT_SLOTS 体まで返す。
+// 日照率を掛ける前の値まで解いた候補。bound は基準点へ届く明るさの上界(日照率 1 のときの値)。
+interface UnshadowedLight<T extends CelestialBody> {
+  readonly celestialBody: T;
+  readonly position: Vec3;
+  readonly base: Albedo;
+  readonly sunIrradiance: number;
+  readonly bound: number;
+  readonly order: number;
+}
+
+// 日照率まで解いた候補。
+interface ScoredLight<T extends CelestialBody> {
+  readonly light: PlanetLight<T>;
+  readonly irradiance: number;
+  readonly order: number;
+}
+
+// 基準点 reference(ECI)へ強く届く順に天体光源を MAX_PLANET_LIGHT_SLOTS 体まで返す。明るさが等しい
+// ものは candidates の並び順で先のものを先にする。
 export function selectPlanetLights<T extends CelestialBody>(
   candidates: readonly PlanetLightCandidate<T>[], pivot: number, reference: Vec3,
 ): readonly PlanetLight<T>[] {
   const bodies = candidates.map(({ celestialBody }) => celestialBody);
   const star = bodies.find(isStar) ?? null;
   const starIntensity = star === null ? null : scaledRadiantIntensity(star.def.radiantIntensity);
-  const scored: { readonly light: PlanetLight<T>; readonly irradiance: number }[] = [];
-  for (const { celestialBody, albedo } of candidates) {
+  const starPosition = star === null ? null : star.positionAt(pivot);
+  const unshadowed: UnshadowedLight<T>[] = [];
+  for (const [order, { celestialBody, albedo }] of candidates.entries()) {
     if (celestialBody.kind === 'star' || celestialBody.def.radius <= 0) continue;
-    const pos = celestialBody.positionAt(pivot);
+    const position = celestialBody.positionAt(pivot);
     // 主星の無い星系では、全天体が 1 天文単位相当の明るさで満相のまま照らされているとみなす。
-    const toSun = star === null ? null : sub(star.positionAt(pivot), pos);
+    const toSun = starPosition === null ? null : sub(starPosition, position);
     const sunIrradiance = toSun === null || starIntensity === null
       ? SUN_IRRADIANCE_1AU : irradianceAtDistance(starIntensity, len(toSun));
-    const toReference = sub(reference, pos);
+    const toReference = sub(reference, position);
     const dist = Math.max(len(toReference), celestialBody.def.radius);
     // 位相角: 天体から見た主星と基準点のなす角。
     const cosAlpha = toSun === null ? 1 : dot(toSun, toReference) / (len(toSun) * dist);
     const phaseAngle = Math.acos(Math.min(1, Math.max(-1, cosAlpha)));
-    const sunlit = star === null
-      ? 1 : sunlitFactor(pos, star, bodies.filter((b) => b !== celestialBody), pivot);
     const base = planetRadiance(albedo, sunIrradiance);
     // 順位づけは基準点へ届く明るさで測るので、位相も掛ける。
-    const irradiance = planetLightStrength(base, celestialBody.def.radius, dist, phaseAngle) * sunlit;
+    const bound = planetLightStrength(base, celestialBody.def.radius, dist, phaseAngle);
+    unshadowed.push({ celestialBody, position, base, sunIrradiance, bound, order });
+  }
+  // 日照率は 0..1 なので、上界の高い順に日照率を解き、上界が確定した上位の最下位を下回ったら
+  // 残りは枠に入りえない。上界が最下位と等しいものは並び順で入りうるので解く。
+  unshadowed.sort((a, b) => b.bound - a.bound);
+  const scored: ScoredLight<T>[] = [];
+  for (const candidate of unshadowed) {
+    if (scored.length >= MAX_PLANET_LIGHT_SLOTS
+      && candidate.bound < scored[MAX_PLANET_LIGHT_SLOTS - 1]!.irradiance) break;
+    const sunlit = star === null ? 1 : sunlitFactor(
+      candidate.position, star, bodies.filter((b) => b !== candidate.celestialBody), pivot);
+    const { base } = candidate;
     scored.push({
       light: {
-        celestialBody,
+        celestialBody: candidate.celestialBody,
         radiance: [base[0] * sunlit, base[1] * sunlit, base[2] * sunlit],
-        sunIrradiance: sunIrradiance * sunlit,
+        sunIrradiance: candidate.sunIrradiance * sunlit,
       },
-      irradiance,
+      irradiance: candidate.bound * sunlit,
+      order: candidate.order,
     });
+    scored.sort((a, b) => b.irradiance - a.irradiance || a.order - b.order);
   }
-  return scored
-    .sort((a, b) => b.irradiance - a.irradiance)
-    .slice(0, MAX_PLANET_LIGHT_SLOTS)
-    .map(({ light }) => light);
+  return scored.slice(0, MAX_PLANET_LIGHT_SLOTS).map(({ light }) => light);
 }

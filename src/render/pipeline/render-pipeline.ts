@@ -383,6 +383,7 @@ export class RenderPipeline {
         ['映り込みの像の元', () => this.reflectionSourcePass.compile(width, height)],
         ['映り込み', () => this.reflectionPass.compile(camera, width, height)],
         ['マテリアル', () => this.materialPass.compile(scene, camera, this.target)],
+        ['雲影', () => this._cloudShadow.compile(this.renderer)],
         ['大気', () => this.atmospherePass.compile(camera)],
         ['ワールド', () => compileInto(this.renderer, this.target, scene, camera)],
       );
@@ -470,6 +471,8 @@ export class RenderPipeline {
       this.materialPass.render(scene, camera, this.target);
 
       // 大気パス。「大気」のデバッグ表示が選ばれている間は、そこへ映す1枚も大気パスに描かせる。
+      // 大気が読む雲影の地図を、大気パスの直前に焼く。
+      this._cloudShadow.bake(this.renderer, this.gpu);
       this.atmospherePass.render(camera);
       if (this.debugComposites.target === 'atmosphere') this.atmospherePass.inspectScattered(camera);
 
@@ -516,6 +519,7 @@ export class RenderPipeline {
   public dispose(): void {
     this._gbuffer.dispose();
     this.shadowPass.dispose();
+    this._cloudShadow.dispose();
     this.shadowMaps.dispose();
     this.screenSpacePass.dispose();
     this._diffuseCorrection.dispose();

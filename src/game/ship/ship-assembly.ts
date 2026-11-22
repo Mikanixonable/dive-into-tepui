@@ -8,7 +8,10 @@ import {
   SHIP_MODULE_CATALOG, type ShipModuleCatalog,
 } from './ship-module-catalog';
 import type { ShipModuleDefinition } from './ship-module-definition';
-import { cloneShipModuleInstance, createShipModuleInstance, type ShipModuleInstance } from './ship-module-instance';
+import {
+  cloneShipModuleInstance, createShipModuleInstance, type ShipModuleInstance, type ShipModuleState,
+} from './ship-module-instance';
+import { MAG_ROUNDS } from '../player/ammo-spec';
 export type {
   ConnectionKind, DockingMergeResult, ModuleTransform, ShipAssemblyNode as AssemblyNode, ShipAssemblyTotals,
   ShipAssemblyValidation, ShipConnection, ShipRole, SideSlot,
@@ -394,6 +397,15 @@ export class ShipAssembly {
     node.instance.deployed = Math.max(0, Math.min(1, deployed));
   }
 
+  // 機関砲 id の弾薬を ammo へ置き換える。装填中の残弾は装弾数まで、予備は 0 以上の整数へ収める。
+  public setAmmo(id: string, ammo: { readonly rounds: number; readonly mags: number }): void {
+    const node = this.nodes.get(id);
+    if (node === undefined || node.instance.kind !== 'weapon') throw new Error(`unknown weapon module: ${id}`);
+    if (!Number.isFinite(ammo.rounds) || !Number.isFinite(ammo.mags)) throw new Error(`ammo must be finite: ${id}`);
+    node.instance.rounds = Math.max(0, Math.min(MAG_ROUNDS, Math.floor(ammo.rounds)));
+    node.instance.mags = Math.max(0, Math.floor(ammo.mags));
+  }
+
   // 修理・復元・構造操作が module の耐久値を明示的に揃える入口。
   public setHp(id: string, hp: number): void {
     const node = this.nodes.get(id);
@@ -558,8 +570,8 @@ export class ShipAssembly {
     piece.connections.length = 0;
   }
 
-  // 新しい識別子と新品状態(HP・燃料・展開の初期値)の写しを返す。
-  public copiedAsNew(prefix: string): ShipAssembly {
+  // 新しい識別子と新品状態(HP・燃料・展開の初期値)の写しを返す。state は全モジュールへ与える初期状態。
+  public copiedAsNew(prefix: string, state: ShipModuleState = {}): ShipAssembly {
     const copy = new ShipAssembly(this.catalog, this.playerOwned);
     const childIds = new Set(this.connections.map(edge => edge.childId));
     const rootId = [...this.nodes.keys()].find(id => !childIds.has(id));
@@ -571,7 +583,7 @@ export class ShipAssembly {
     const fresh = (id: string): ShipModuleInstance => {
       const node = this.nodes.get(id);
       if (node === undefined) throw new Error(`missing module: ${id}`);
-      return createShipModuleInstance(this.catalog.require(node.instance.definitionId), `${prefix}:${id}`);
+      return createShipModuleInstance(this.catalog.require(node.instance.definitionId), `${prefix}:${id}`, state);
     };
     // 根から接続を順に取り込み、各 edge にも prefix を付ける。
     copy.addRoot(fresh(rootId));

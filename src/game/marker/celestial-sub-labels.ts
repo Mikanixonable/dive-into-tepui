@@ -25,7 +25,7 @@ const SUB_LABEL_GLYPH: Record<DynamicEntityKind, string> = {
 export interface CelestialLabelState {
   readonly pos: Vec3;
   // 画面にマーカーが出ていて、サブ行の集約先になれるか。
-  readonly shown: boolean;
+  readonly markerShown: boolean;
   // 名前を描いているか。
   readonly labelShown: boolean;
   readonly markerClass: string;
@@ -73,7 +73,7 @@ export class CelestialSubLabels {
     // 束ねた先のラベルを、サブ行を足した表記で組み直す。
     for (const [bodyId, entries] of this.entriesByBody) {
       const label = labelStateOf(bodyId);
-      if (label === null || !label.labelShown || !label.shown) continue;
+      if (label === null || !label.labelShown || !label.markerShown) continue;
       const stage2 = len(sub(label.pos, cameraPos)) >= STAGE2_DIST;
       const subDivs = stage2 ? countLine(entries) : listedLines(entries);
       if (!label.drawable) continue;
@@ -94,10 +94,10 @@ export class CelestialSubLabels {
     labelStateOf: (id: string) => CelestialLabelState | null, cameraPos: Vec3,
   ): void {
     const centerLabel = labelStateOf(centerId);
-    const centerShown = centerLabel !== null && centerLabel.shown;
+    const centerShown = centerLabel !== null && centerLabel.markerShown;
     const distToCenter = centerLabel === null ? Infinity : len(sub(centerLabel.pos, cameraPos));
     const primaryId = this.celestialBodies.motionOf(centerId).primary?.id ?? null;
-    const primaryShown = primaryId !== null && (labelStateOf(primaryId)?.shown ?? false);
+    const primaryShown = primaryId !== null && (labelStateOf(primaryId)?.markerShown ?? false);
 
     // 遠い系は主親天体へまとめ、近い系は直近の天体へ付ける(出ていなければ名前を添えて親へ)。
     if (distToCenter >= STAGE2_DIST) {

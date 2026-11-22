@@ -75,7 +75,7 @@ export function register(): void {
     });
     let prev = arc.trajectory.state;
     for (let i = 0; i < 8; i++) {
-      const expected = Math.min(20, atmosphericMaxStep(prev, SHIP_BCINV, [earth], 0));
+      const expected = Math.min(20, atmosphericMaxStep(prev, SHIP_BCINV, earth, 0));
       assert.ok(arc.step(), `step ${i} should grow`);
       const dt = arc.trajectory.state.t - prev.t;
       assert.ok(dt < 20, `step ${i}: 大気の中では上限より短いはず, got ${dt}`);

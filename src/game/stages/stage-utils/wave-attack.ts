@@ -148,7 +148,8 @@ export class WaveAttack {
 
   // 自機が弾薬を確保するまで待ち、確保でき次第 spawning_enemies フェーズへ進める。
   private updateWaitingForAmmoPhase(player: ModularShip): void {
-    if (player.magsLeft <= 0 && player.roundsInMag <= 0) return;
+    const { rounds, mags } = player.ammo;
+    if (mags <= 0 && rounds <= 0) return;
     this.waveState = 'spawning_enemies';
     this.spawnTimer = STAGE00_SPAWN_DELAY;
     this.events.record({ kind: 'waveAttackArmed' });

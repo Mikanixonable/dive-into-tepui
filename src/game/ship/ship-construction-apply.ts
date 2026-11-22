@@ -1,7 +1,10 @@
 // 配置計画(placementFor の結果)を assembly の写しへ適用する手順。
 // 試し置き(ship-construction-preview)と本適用(ship-construction-edits)が
 // 同じ接ぎ木手順をなぞるために共有する。違いは mintId が払い出す識別子だけ。
-import { createShipModuleInstance } from './ship-module-instance';
+import { createShipModuleInstance, type ShipModuleState } from './ship-module-instance';
+
+// 建造で載せるモジュールの初期状態。機関砲は弾薬を持たずに載る(SPEC COMBAT.md「装弾数とリロード」)。
+const BUILT_MODULE_STATE: ShipModuleState = { rounds: 0, mags: 0 };
 import { pieceRootId, type ConstructionPlacementResult } from './ship-construction-rules';
 import { pieceOfModule } from './ship-assembly-graft';
 import type { ConstructionHeld } from './ship-construction-types';
@@ -38,14 +41,14 @@ export function applyConstructionPlacement(
       const definition = work.catalog.require(held.definitionId);
       const id = mintId(index);
       work.addModule(
-        createShipModuleInstance(definition, id), plan.parentId, plan.transform,
+        createShipModuleInstance(definition, id, BUILT_MODULE_STATE), plan.parentId, plan.transform,
         plan.connectionKind, undefined, plan.sideSlot ?? undefined,
       );
       placedRootId ??= id;
       placedIds.push(id);
       connected.add(pairKey(plan.parentId, id));
     } else {
-      const piece = held.kind === 'piece' ? detached! : held.piece.copiedAsNew(mintId(index));
+      const piece = held.kind === 'piece' ? detached! : held.piece.copiedAsNew(mintId(index), BUILT_MODULE_STATE);
       const rootId = pieceRootId(piece);
       if (rootId === null) throw new Error('手に持った部品が見つかりません');
       const ids = piece.moduleIds;

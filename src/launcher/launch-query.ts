@@ -19,13 +19,15 @@ export function opensDebugInfoAtStart(): boolean {
   return query().get('perf') === '1';
 }
 
-// ?layout-smoke が付いていれば、レイアウトのスモーク検査が駆動しているページである。
-export function drivenByLayoutSmoke(): boolean {
-  return query().has('layout-smoke');
-}
+// レイアウトのスモーク検査(tools/browser-smoke)がページをどう駆動しているか。
+// - 'freezable': ?layout-smoke。検査が凍結を求めたフレームだけ描画を止める。
+// - 'hudOnly': ?layout-smoke=hud。描画資源を組まず、描画も行わない。DOM の寸法と入力だけを見る
+//   検査で、シェーダの事前コンパイルを省くための経路。
+export type LayoutSmoke = 'freezable' | 'hudOnly';
 
-// レイアウト検査(tools/browser-smoke)が ?layout-smoke=hud で開いたか。開いたときは描画資源を組まず、
-// 描画も行わない。DOM の寸法と入力だけを見る検査で、シェーダの事前コンパイルを省くための経路。
-export function layoutSmokeHudOnly(): boolean {
-  return query().get('layout-smoke') === 'hud';
+// ?layout-smoke の値が求める駆動の形。検査が駆動していないページでは null。
+export function layoutSmoke(): LayoutSmoke | null {
+  const value = query().get('layout-smoke');
+  if (value === null) return null;
+  return value === 'hud' ? 'hudOnly' : 'freezable';
 }

@@ -55,30 +55,31 @@ export function evaluateChebyshevWithDerivative(
   if (!Number.isInteger(coefficients.length) || coefficients.length < 1) {
     throw new RangeError('Chebyshev coefficients must contain at least one value');
   }
+  for (let k = 0; k < coefficients.length; k++) {
+    const coefficient = coefficients[k];
+    if (coefficient === undefined || !Number.isFinite(coefficient)) {
+      throw new RangeError(`Chebyshev coefficient ${k} must be finite`);
+    }
+  }
+  return clenshawWithDerivative(coefficients, x);
+}
 
+// 検査済みの係数(1 個以上、すべて有限)と有限の x で、evaluateChebyshevWithDerivative と同じ値を返す。
+function clenshawWithDerivative(coefficients: ReadonlyNumberArray, x: number): ChebyshevValueAndDerivative {
   let b1 = 0;
   let b2 = 0;
   let db1 = 0;
   let db2 = 0;
   for (let k = coefficients.length - 1; k >= 1; k--) {
-    const coefficient = coefficients[k];
-    if (coefficient === undefined || !Number.isFinite(coefficient)) {
-      throw new RangeError(`Chebyshev coefficient ${k} must be finite`);
-    }
-    const b0 = 2 * x * b1 - b2 + coefficient;
+    const b0 = 2 * x * b1 - b2 + coefficients[k]!;
     const db0 = 2 * b1 + 2 * x * db1 - db2;
     b2 = b1;
     b1 = b0;
     db2 = db1;
     db1 = db0;
   }
-
-  const constant = coefficients[0];
-  if (constant === undefined || !Number.isFinite(constant)) {
-    throw new RangeError('Chebyshev coefficient 0 must be finite');
-  }
   return {
-    value: x * b1 - b2 + constant,
+    value: x * b1 - b2 + coefficients[0]!,
     derivative: b1 + x * db1 - db2,
   };
 }
@@ -195,10 +196,11 @@ function evaluateSegment(segment: ChebyshevSegment, time: number): { position: V
   const halfSpan = (segment.end - segment.start) / 2;
   const normalizedTime = (time - (segment.start + segment.end) / 2) / halfSpan;
   const scaleToSeconds = 1 / halfSpan;
+  // 係数は構築時に、時刻はセグメントを引くときに検査済み。
   const [x, y, z] = segment.coefficients;
-  const px = evaluateChebyshevWithDerivative(x, normalizedTime);
-  const py = evaluateChebyshevWithDerivative(y, normalizedTime);
-  const pz = evaluateChebyshevWithDerivative(z, normalizedTime);
+  const px = clenshawWithDerivative(x, normalizedTime);
+  const py = clenshawWithDerivative(y, normalizedTime);
+  const pz = clenshawWithDerivative(z, normalizedTime);
   return {
     position: v3(px.value, py.value, pz.value),
     velocity: v3(

@@ -134,7 +134,7 @@ export class DebugInfoWindow {
   private _debugTarget: DebugTargetId = 'off';
 
   // 計測が走っているか。窓が開いている間だけ真になる。
-  public get on(): boolean { return this.win !== null; }
+  public get isOpen(): boolean { return this.win !== null; }
 
   // 画面いっぱいに映す中間ターゲットの選択。窓を閉じても残り、ページを読み直すと 'off' に戻る。
   public get debugTarget(): DebugTargetId { return this._debugTarget; }
@@ -398,7 +398,7 @@ export class DebugInfoWindow {
 
       { key: 'eph-all', label: '全リング', value: `hit ${timeHits} / miss ${timeMisses}`, group: '暦キャッシュ' },
 
-      { key: 'view', label: 'view', value: c.mapMode ? 'map' : 'combat', group: '表示' },
+      { key: 'view', label: 'view', value: c.view, group: '表示' },
       { key: 'view-pickables', label: 'pickables', value: `${c.mapItems}`, group: '表示' },
       { key: 'view-labels', label: 'labels', value: `${c.mapLabels}`, group: '表示' },
       {

@@ -1,9 +1,10 @@
 // 積雲の柱と巻雲の層が落とす影。描画座標の点へ恒星の直射光がどれだけ届くかを、雲の層を抜ける光路の
 // 消散の TSL グラフとして返す。影を落とす殻 1 体ぶんを毎フレーム set() で受ける。
 import * as THREE from 'three/webgpu';
+import type { WebGPURenderer } from 'three/webgpu';
 import {
   Fn, If, Loop, abs, and, ceil, clamp, dot, float, greaterThan, int, length, max, min,
-  normalize, select, sqrt, uniform, vec4,
+  normalize, or, select, sqrt, uniform, vec4,
 } from 'three/tsl';
 import { CIRRUS_PRESENT_AMOUNT, CirrusDetailEvaluator, cirrusColumnInputOf } from '../../earth-weather/cloud/cloud-detail';
 import { CloudFieldSampler } from '../../earth-weather/cloud/cloud-field-sampler';
@@ -16,8 +17,11 @@ import {
 } from '../../earth-weather/cloud/cloud-kind-node';
 import { ICE_CLOUD_ASYMMETRY, LIQUID_CLOUD_ASYMMETRY } from '../../earth-weather/cloud/cloud-optics';
 import { cloudReflectanceNode, fractionalTransmittanceNode } from '../../earth-weather/cloud/cloud-optics-node';
-import type { FloatNode, FloatUniform, Mat4Uniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
+import type { CapPlacement } from '../../field-projection';
+import type { GpuTimings } from '../../gpu-timings';
+import type { FloatNode, FloatUniform, Mat4Uniform, Vec2Node, Vec3Node, Vec3Uniform, Vec4Node } from '../../tsl-types';
 import type { SunLight } from '../sun-light';
+import { CloudShadowSunMap, SUN_MAP_KNOTS } from './cloud-shadow-sun-map';
 import type { CloudShadowKinds } from './shadow-select';
 
 // 影を落とす雲を持つ天体 1 体ぶん。center は描画座標の天体中心、surfaceRadius は雲の高度の基準
@@ -29,6 +33,17 @@ export interface ShadowCloud {
   readonly axes: THREE.Vector3;
   readonly bodyFromWorld: THREE.Matrix4;
   readonly cloud: CloudRenderInput;
+}
+
+// 受け手から恒星へ向かう光路(殻の空間)。offset は天体中心から受け手、rayDir は恒星の方向、
+// along は offset の rayDir 方向の成分、pathLength は殻を抜けるまでの長さ [m]、bodyRadius は
+// 殻の空間の半径 1 が張る実寸 [m]。
+interface LightPath {
+  readonly offset: Vec3Node;
+  readonly rayDir: Vec3Node;
+  readonly along: FloatNode;
+  readonly pathLength: FloatNode;
+  readonly bodyRadius: FloatNode;
 }
 
 // 光路のタップ数。巻雲はその場の雲頂高度の薄い層を全光路で横切るので、層の厚みを分ける程度の
@@ -47,8 +62,8 @@ const FINE_TAPS_MAX = 24;
 // この量を下回る積雲の柱は、細部を最大に乗せても不透明度のディザの帯の下端へ届かない。
 // 影への寄与は 0 なので、前走では「積雲がある」と数えない。
 const CUMULUS_PRESENT_AMOUNT = 0.003;
-// 大気のサンプル点向けの粗い推定をたどるタップ数。柱の形は解かず、影の濃さの分布だけ拾う。
-const AMBIENT_TAPS = 4;
+// 大気の雲影の地図で、光線 1 本の殻の区間をたどるタップ数。結び目の数の倍数に取る。
+const AMBIENT_TAPS = 8;
 // 光路をたどる長さの上限 [m]。恒星が地平線へ寄るほど層を抜けるまでの距離は伸び、昼夜境界の
 // 真上で発散する。
 const MAX_LIGHT_PATH = 3e5;
@@ -58,6 +73,9 @@ const STEP_BLUR = 2;
 // 巻雲の層を斜めに抜ける光路の伸びへ張る上限。恒星が地平線へ寄ると 1/cos は発散するので、
 // 層の厚みぶんの弦を通る程度で頭打ちにする。
 const CIRRUS_MAX_SLANT = 20;
+// 夜側と判じる、光路の天体中心への最接近距離の二乗の上限(殻の空間)。地表の受け手で恒星が地平線の
+// 0.8 度下 — 恒星の視半径(太陽で 0.27 度)より深い。
+const NIGHT_CLOSEST_SQUARED = 1 - 2e-4;
 // 細部を評価せずに透過率 1 と決める上界の判定へ持たせる余裕(雲頂をまたぐ比率の目盛り)。上界と実際の
 // 値は別の式で丸まるので、境目のタップを棄てないよう内側を残す。
 const CEILING_MARGIN = 1e-3;
@@ -76,6 +94,10 @@ export class CloudShadowRenderer {
   private readonly shape: CloudShapeEvaluator;
   // 巻雲の筋の細部。
   private readonly cirrusDetail = new CirrusDetailEvaluator();
+  // 大気の雲影の地図と、それを焼く雲場の cap の置き方。
+  private readonly sunMap: CloudShadowSunMap;
+  private cap: CapPlacement | null = null;
+  private readonly sunDirection = new THREE.Vector3();
 
   // 殻 1 体ぶんの uniform を確保する。殻の有無と種類ごとの有無は uniform で切るので、
   // グラフの形は変わらない。
@@ -89,6 +111,8 @@ export class CloudShadowRenderer {
     this.cumulusActive = uniform(0);
     this.cirrusActive = uniform(0);
     this.shape = new CloudShapeEvaluator(this.surfaceRadius);
+    const shellRadius = float(1).add(this.topAltitude.div(max(this.surfaceRadius, 1)));
+    this.sunMap = new CloudShadowSunMap(shellRadius, (origin, dir, s0, s1) => this.ambientKnots(origin, dir, s0, s1));
   }
 
   // このフレームに影を落とす天体と、雲の種類ごとの有無。cloud が null なら雲の影は落ちない。
@@ -100,6 +124,7 @@ export class CloudShadowRenderer {
     this.cirrusActive.value = cloud !== null && kinds.cirrus ? 1 : 0;
     if (cloud === null || (!kinds.cumulus && !kinds.cirrus)) {
       this.fieldSampler.unbind();
+      this.cap = null;
       return;
     }
     this.center.value.copy(cloud.center);
@@ -108,6 +133,7 @@ export class CloudShadowRenderer {
     this.topAltitude.value = cloud.cloud.topAltitude;
     this.bodyFromWorld.value.copy(cloud.bodyFromWorld);
     this.fieldSampler.bind(cloud.cloud.field);
+    this.cap = cloud.cloud.field.cap;
     this.shape.syncClock(cloud.cloud.clock.displayTime, cloud.cloud.clock.simSpeed);
     this.cirrusDetail.syncClock(cloud.cloud.clock.displayTime, cloud.cloud.clock.simSpeed);
   }
@@ -142,195 +168,228 @@ export class CloudShadowRenderer {
         // 半径 1 を基準半径として測る(真の実寸との差は扁平率ぶんで、細部の段と光路の上限にしか効かない)。
         const exit = sqrt(max(shellRadius.mul(shellRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
           .sub(along).mul(bodyRadius);
-        const pathLength = clamp(exit, 0, MAX_LIGHT_PATH);
-        // 積雲の柱ごとの透過率と、巻雲の層を抜けた光学的厚み。
-        const cumulusTransmittance = float(1).toVar();
-        const cirrusDepth = float(0).toVar();
-        // 受け手の床は自分の積雲の柱のためのもの。積雲の影が無い設定で張ると、巻雲の層を跨ぐ
-        // 高さの判定がずれる。
-        const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius).mul(this.cumulusActive);
-        // 細部を運ぶ風は数百キロで均した流れなので、光路の数十キロのあいだは受け手の上で読んだ 1 つで足りる。
-        const motion = this.fieldSampler.sampleMotion(normalize(offset));
-        const surfaceWind = motion.surfaceWind.toVar();
-        const upperWind = motion.upperWind.toVar();
-
-        // **積雲のタップを、積雲が占めうる高度帯へ絞る。** 殻の上端まで均した間隔では、雲頂より
-        // 上を通るタップは消える段を引くだけで影に寄らない。場の texel を読むだけの粗い前走で
-        // 光路が通る範囲の積雲の雲頂の最大値と区間を拾い、細部を評価するタップはその区間だけへ
-        // 柱の幅より細かい間隔で置く。細部で雲頂が伸びるぶんは不確かさぶん上乗せする。
-        // 前走の本数は光路の長さに比例させる — 低い恒星で光路が伸びても間隔は変わらない。
-        const coarseTapsFloat = clamp(ceil(pathLength.div(COARSE_STEP)),
-          COARSE_TAPS_MIN, COARSE_TAPS_MAX);
-        const coarseStep = pathLength.div(coarseTapsFloat);
-        const coarseRadius = coarseStep.div(bodyRadius);
-        const cumulusTop = float(0).toVar();
-        // 積雲を拾ったタップの光路上の位置 [m] の幅。細部タップを置く区間のもとになる。
-        const cumulusFirst = float(MAX_LIGHT_PATH).toVar();
-        const cumulusLast = float(0).toVar();
-        If(greaterThan(this.cumulusActive, 0.5), () => {
-          Loop({ start: 0, end: int(coarseTapsFloat), type: 'int', condition: '<' }, ({ i }) => {
-            const t = float(i).add(0.5);
-            const sampleOffset = offset.add(rayDir.mul(coarseRadius.mul(t)));
-            const up = sampleOffset.div(max(length(sampleOffset), 1e-6));
-            const amount = this.fieldSampler.sampleField(up).r;
-            If(greaterThan(amount, CUMULUS_PRESENT_AMOUNT), () => {
-              cumulusTop.assign(max(cumulusTop,
-                cumulusFieldTopNode(amount).mul(this.topAltitude)));
-              const tm = coarseStep.mul(t);
-              cumulusFirst.assign(min(cumulusFirst, tm));
-              cumulusLast.assign(max(cumulusLast, tm));
-            });
-          });
+        // **光路が天体の固体を貫く受け手(夜側)では雲をたどらない** — 直射光は天体自身に遮られて届かず、
+        // 雲の影は見えない。境目は恒星の視半径より十分深く取り、明暗境界の半影は削らない。
+        const closest = dot(offset, offset).sub(along.mul(along));
+        If(or(greaterThan(along, 0), greaterThan(closest, NIGHT_CLOSEST_SQUARED)), () => {
+          const path: LightPath = { offset, rayDir, along, pathLength: clamp(exit, 0, MAX_LIGHT_PATH), bodyRadius };
+          // 受け手の床は自分の積雲の柱のためのもの。積雲の影が無い設定で張ると、巻雲の層を跨ぐ
+          // 高さの判定がずれる。
+          const floorAltitude = this.receiverFloorAltitude(offset, bodyRadius).mul(this.cumulusActive);
+          // 細部を運ぶ風は数百キロで均した流れなので、光路の数十キロのあいだは受け手の上で読んだ 1 つで足りる。
+          const motion = this.fieldSampler.sampleMotion(normalize(offset));
+          const cumulus = this.cumulusPathTransmittance(path, floorAltitude, motion.surfaceWind.toVar(), footprint);
+          const cirrusDepth = this.cirrusPathDepth(path, floorAltitude, motion.upperWind.toVar(), footprint);
+          // 届く光は、積雲の柱ごとの透過率と巻雲の層の透過率の積。
+          transmittance.assign(cumulus.mul(float(1).sub(cloudReflectanceNode(cirrusDepth, ICE_CLOUD_ASYMMETRY))));
         });
-        // 光路に積雲が無ければ雲頂は 0 のままで、細部のループごと飛ばす。
-        const cumulusCeiling = select(greaterThan(cumulusTop, 0),
-          min(cumulusTop.add(this.topAltitude.mul(CloudShapeEvaluator.cloudTopUncertainty)),
-            this.topAltitude),
-          float(0));
-        const cumulusRadius = float(1).add(cumulusCeiling.div(bodyRadius));
-        const cumulusEnd = sqrt(max(
-          cumulusRadius.mul(cumulusRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
-          .sub(along).mul(bodyRadius).clamp(0, pathLength);
-        // 細部タップの区間は、拾った位置の両側へ前走の間隔ぶん広げる — 拾い漏らしの縁と、
-        // 按分が前後の半歩ぶん広がるぶんを覆う。上限は雲頂の殻を抜ける距離。積雲を拾えなかった
-        // 光路では区間が潰れて、細部のループごと飛ばす。
-        const cumulusFrom = max(cumulusFirst.sub(coarseStep), 0);
-        const cumulusTo = min(cumulusLast.add(coarseStep), cumulusEnd);
-        const cumulusSpan = max(cumulusTo.sub(cumulusFrom), 0);
-        const cumulusTapsFloat = clamp(ceil(cumulusSpan.div(FINE_STEP)),
-          SHADOW_TAPS, FINE_TAPS_MAX);
-        const cumulusStep = cumulusSpan.div(cumulusTapsFloat);
-        // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
-        // 実寸と光路 1 歩の長さのうち粗いほうを取る。細部の段はこの幅で打ち切る。
-        const cumulusWidth = max(footprint, cumulusStep.mul(STEP_BLUR));
-        const cumulusFromRadius = cumulusFrom.div(bodyRadius);
-        const cumulusStepRadius = cumulusStep.div(bodyRadius);
-        If(greaterThan(cumulusSpan, 0), () => {
-          Loop({ start: 0, end: int(cumulusTapsFloat), type: 'int', condition: '<' }, ({ i }) => {
-            const sampleOffset = offset.add(rayDir.mul(
-              cumulusFromRadius.add(cumulusStepRadius.mul(float(i).add(0.5)))));
-            const sampleRadius = max(length(sampleOffset), 1e-6).toVar();
-            const up = sampleOffset.div(sampleRadius).toVar();
-            const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude).toVar();
-            const cloud = this.fieldAt(up);
-            const opacity = cumulusOpacityNode(cloud.cumulus).toVar();
-            const fieldTop = cumulusFieldTopNode(cloud.cumulus).toVar();
-            const rise = max(dot(rayDir, up), 0).mul(cumulusStep).toVar();
-            // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
-            // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
-            const insideOf = (top: FloatNode): FloatNode => top.sub(altitude).div(max(rise, 1)).add(0.5);
-            // **細部を最大に置いても雲頂がタップへ届かない点と、覆いが 0 のままの柱では細部を評価しない** —
-            // どちらもこのタップの透過率は 1 に決まる。
-            const reachable = and(
-              greaterThan(insideOf(this.shape.cloudTopCeiling(fieldTop).mul(this.topAltitude)), -CEILING_MARGIN),
-              greaterThan(this.shape.opaqueFractionCeiling(opacity), 0));
-            If(reachable, () => {
-              // 細部はタップごとに、幅の上で解像できる段だけを重ねる。
-              const detail = this.shape.detailAt(
-                up, cumulusWidth, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus,
-                surfaceWind, this.shape.grainOf(cloud), cloud.cumulusCell);
-              const cloudTop = this.shape.cloudTop(fieldTop, detail).mul(this.topAltitude);
-              // texel を覆う割合と、その柱の中の光学的厚みが返す光の割合。覆う割合と柱の中の厚みは
-              // 別の量で、厚みは細部を含む雲頂の高さから出す。
-              const coverage = this.shape.opaqueFraction(opacity, detail);
-              const reflected = coverage.mul(cloudReflectanceNode(
-                cumulusInCloudOpticalDepthNode(cloudTop), LIQUID_CLOUD_ASYMMETRY));
-              const inside = clamp(insideOf(cloudTop), 0, 1);
-              const pathFraction = rise.mul(inside).div(max(cloudTop, 1));
-              cumulusTransmittance.mulAssign(fractionalTransmittanceNode(
-                reflected.mul(this.cumulusActive), pathFraction));
-            });
-          });
-        });
-
-        // 巻雲は積雲のタップとは別に、層を抜ける全光路を同じ数の点で横切る。
-        const cirrusStep = pathLength.div(SHADOW_TAPS);
-        const cirrusStepRadius = cirrusStep.div(bodyRadius);
-        const cirrusWidth = max(footprint, cirrusStep.mul(STEP_BLUR));
-        Loop({ start: 0, end: SHADOW_TAPS, type: 'int', condition: '<' }, ({ i }) => {
-          const sampleOffset = offset.add(rayDir.mul(cirrusStepRadius.mul(float(i).add(0.5))));
-          const sampleRadius = max(length(sampleOffset), 1e-6);
-          const up = sampleOffset.div(sampleRadius);
-          const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
-          const texel = this.fieldSampler.sampleField(up);
-          const rise = max(dot(rayDir, up), 0).mul(cirrusStep);
-          // 巻雲は、その場の量が雲頂高度へ写る薄い層。高度帯がその高さを跨ぐタップへ三角に
-          // 分けて合計 1 回ぶんの横断になり、斜めの光路ぶん(stepLength/rise)伸ばした τ を足す。
-          const cirrusCrossing = max(
-            float(1).sub(abs(altitude.sub(cirrusTopAltitudeNode(texel.g))).div(max(rise, 1))), 0);
-          // 筋の細部は、層を横切るタップで、その場所の筋の向きに沿って読む。
-          const cirrusDetail = float(1).toVar();
-          If(and(greaterThan(texel.g, CIRRUS_PRESENT_AMOUNT), greaterThan(cirrusCrossing, 0)), () => {
-            // 型の領域と乾いた陸の判定は環境を要るので、層を横切るタップでだけ環境つきの標本を読む。
-            const cloud = this.fieldAt(up);
-            cirrusDetail.assign(this.cirrusDetail.multiplierAt(
-              up, bodyRadius, cirrusWidth, cloud.cirrusFlow, upperWind,
-              cirrusColumnInputOf(cloud)));
-          });
-          cirrusDepth.addAssign(cirrusColumnOpticalDepthNode(texel.g)
-            .mul(cirrusDetail).mul(cirrusCrossing).mul(min(cirrusStep.div(max(rise, 1)), CIRRUS_MAX_SLANT))
-            .mul(this.cirrusActive));
-        });
-        // 届く光は、積雲の柱ごとの透過率と巻雲の層の透過率の積。
-        transmittance.assign(cumulusTransmittance
-          .mul(float(1).sub(cloudReflectanceNode(cirrusDepth, ICE_CLOUD_ASYMMETRY))));
       });
       return transmittance;
     })();
   }
 
-  // 大気の中の 1 点へ届く直射光の割合を、雲の層を少ないタップでたどる粗い推定として返す。
-  // 大気積分はサンプル点ごとにこれを要るので、地表へ落とす影の transmittance() のように柱の
-  // 形を細部まで解くのは重すぎる — 散乱の霞の中では柱の縁は読めず、影の濃さの空間分布だけ
-  // あれば足りる。柱の形は細部を持たない場の値だけで、タップの配りは透過率の式と同じ。
+  // 大気の中の 1 点へ届く直射光のうち、雲が透す割合。bake() が焼いた恒星方向の地図を引く。
   public ambientTransmittance(worldPos: Vec3Node): FloatNode {
-    const sunDir = this.sunLight.directionFrom(worldPos);
     return Fn(() => {
       const transmittance = float(1).toVar();
       If(greaterThan(max(this.cumulusActive, this.cirrusActive), 0.5), () => {
-        const bodyRadius = max(this.surfaceRadius, 1);
-        const offset = this.toShellSpace(worldPos.sub(this.center));
-        const rayDir = normalize(this.toShellSpace(sunDir));
-        const shellRadius = float(1).add(this.topAltitude.div(bodyRadius));
-        const along = dot(offset, rayDir);
-        // 光路が殻を出るまでの距離(殻の空間の目盛り)。殻より上の点では負で、影は落ちない。
-        const exit = sqrt(max(shellRadius.mul(shellRadius)
-          .sub(dot(offset, offset)).add(along.mul(along)), 0)).sub(along);
-        If(greaterThan(exit, 0), () => {
-          const pathLength = min(exit.mul(bodyRadius), MAX_LIGHT_PATH);
-          const step = pathLength.div(AMBIENT_TAPS);
-          const stepRadius = step.div(bodyRadius);
-          const cumulusTransmittance = float(1).toVar();
-          const cirrusDepth = float(0).toVar();
-          Loop({ start: 0, end: AMBIENT_TAPS, type: 'int', condition: '<' }, ({ i }) => {
-            const sampleOffset = offset.add(rayDir.mul(stepRadius.mul(float(i).add(0.5))));
-            const sampleRadius = max(length(sampleOffset), 1e-6);
-            const up = sampleOffset.div(sampleRadius);
-            const altitude = max(sampleRadius.sub(1).mul(bodyRadius), 0);
-            const texel = this.fieldSampler.sampleField(up);
-            const rise = max(dot(rayDir, up), 0).mul(step);
-            // 積雲は、その方向の柱の雲頂がタップの高度より上なら、柱の中を通る割合で配分する。
-            const cloudTop = cumulusFieldTopNode(texel.r).mul(this.topAltitude);
-            const coverage = this.shape.opaqueFraction(cumulusOpacityNode(texel.r), float(1));
-            const reflected = coverage.mul(cloudReflectanceNode(
-              cumulusInCloudOpticalDepthNode(cloudTop), LIQUID_CLOUD_ASYMMETRY));
-            const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
-            const pathFraction = rise.mul(inside).div(max(cloudTop, 1));
-            cumulusTransmittance.mulAssign(fractionalTransmittanceNode(
-              reflected.mul(this.cumulusActive), pathFraction));
-            // 巻雲は、その場所の層の高さを光路が跨ぐタップへ、斜めの光路ぶん伸ばした τ を足す。
-            const cirrusCrossing = max(float(1)
-              .sub(abs(altitude.sub(cirrusTopAltitudeNode(texel.g))).div(max(rise, 1))), 0);
-            cirrusDepth.addAssign(cirrusColumnOpticalDepthNode(texel.g)
-              .mul(cirrusCrossing).mul(min(step.div(max(rise, 1)), CIRRUS_MAX_SLANT))
-              .mul(this.cirrusActive));
-          });
-          transmittance.assign(cumulusTransmittance
-            .mul(float(1).sub(cloudReflectanceNode(cirrusDepth, ICE_CLOUD_ASYMMETRY))));
-        });
+        transmittance.assign(this.sunMap.transmittanceAt(this.toShellSpace(worldPos.sub(this.center))));
       });
       return transmittance;
     })();
+  }
+
+  // 大気の雲影の地図を、このフレームの恒星の方向と雲場の cap で焼く。雲の影が無いフレームは何もしない。
+  public bake(renderer: WebGPURenderer, gpu: GpuTimings): void {
+    if (!this.casts() || this.cap === null) return;
+    const dir = this.sunDirection.copy(this.sunLight.position.value).sub(this.center.value)
+      .transformDirection(this.bodyFromWorld.value).divide(this.axes.value).normalize();
+    const bodyRadius = Math.max(this.surfaceRadius.value, 1);
+    this.sunMap.update(dir, this.cap, 1 + this.topAltitude.value / bodyRadius);
+    this.sunMap.bake(renderer, gpu);
+  }
+
+  // 地図を事前コンパイルする。
+  public compile(renderer: WebGPURenderer): Promise<void> { return this.sunMap.compile(renderer); }
+
+  // 保持している GPU 資源を解放する。
+  public dispose(): void { this.sunMap.dispose(); }
+
+  // 恒星の方向 dir へ伸びる直線の殻の区間 [s0, s1] を、上端から AMBIENT_TAPS 本のタップで
+  // たどり、区間を下から 4 等分した結び目ごとの、そこから上端までの透過率を返す。柱の形は細部を
+  // 持たない場の値だけで解き、影の濃さの空間分布だけを拾う — 散乱の霞の中では柱の縁は読めない。
+  private ambientKnots(origin: Vec3Node, dir: Vec3Node, s0: FloatNode, s1: FloatNode): Vec4Node {
+    const bodyRadius = max(this.surfaceRadius, 1);
+    const stepRadius = s1.sub(s0).div(AMBIENT_TAPS);
+    const step = stepRadius.mul(bodyRadius);
+    const cumulusTransmittance = float(1).toVar();
+    const cirrusDepth = float(0).toVar();
+    const knots: FloatNode[] = [];
+    const tapsPerKnot = AMBIENT_TAPS / SUN_MAP_KNOTS;
+    for (let knot = 0; knot < SUN_MAP_KNOTS; knot++) {
+      Loop({ start: knot * tapsPerKnot, end: (knot + 1) * tapsPerKnot, type: 'int', condition: '<' }, ({ i }) => {
+        const sampleOffset = origin.add(dir.mul(s1.sub(stepRadius.mul(float(i).add(0.5)))));
+        const sampleRadius = max(length(sampleOffset), 1e-6);
+        const up = sampleOffset.div(sampleRadius);
+        const altitude = max(sampleRadius.sub(1).mul(bodyRadius), 0);
+        const texel = this.fieldSampler.sampleField(up);
+        const rise = max(dot(dir, up), 0).mul(step);
+        // 積雲は、その方向の柱の雲頂がタップの高度より上なら、柱の中を通る割合で配分する。
+        const cloudTop = cumulusFieldTopNode(texel.r).mul(this.topAltitude);
+        const coverage = this.shape.opaqueFraction(cumulusOpacityNode(texel.r), float(1));
+        const reflected = coverage.mul(cloudReflectanceNode(
+          cumulusInCloudOpticalDepthNode(cloudTop), LIQUID_CLOUD_ASYMMETRY));
+        const inside = clamp(cloudTop.sub(altitude).div(max(rise, 1)).add(0.5), 0, 1);
+        const pathFraction = rise.mul(inside).div(max(cloudTop, 1));
+        cumulusTransmittance.mulAssign(fractionalTransmittanceNode(
+          reflected.mul(this.cumulusActive), pathFraction));
+        // 巻雲は、その場所の層の高さを光路が跨ぐタップへ、斜めの光路ぶん伸ばした τ を足す。
+        const cirrusCrossing = max(float(1)
+          .sub(abs(altitude.sub(cirrusTopAltitudeNode(texel.g))).div(max(rise, 1))), 0);
+        cirrusDepth.addAssign(cirrusColumnOpticalDepthNode(texel.g)
+          .mul(cirrusCrossing).mul(min(step.div(max(rise, 1)), CIRRUS_MAX_SLANT))
+          .mul(this.cirrusActive));
+      });
+      // 上から数えた結び目なので、成分は下端(R)へ向かって逆順に並べる。
+      knots.unshift(cumulusTransmittance
+        .mul(float(1).sub(cloudReflectanceNode(cirrusDepth, ICE_CLOUD_ASYMMETRY))).toVar());
+    }
+    return vec4(knots[0]!, knots[1]!, knots[2]!, knots[3]!);
+  }
+
+  // 光路の上の積雲の柱ごとの透過率の積。粗い前走で積雲が占めうる区間を拾い、細部を評価するタップは
+  // その区間だけへ置く。floorAltitude は受け手の床 [m]、surfaceWind は細部を運ぶ下層の風。
+  private cumulusPathTransmittance(
+    path: LightPath, floorAltitude: FloatNode, surfaceWind: Vec2Node, footprint: FloatNode,
+  ): FloatNode {
+    const { offset, rayDir, along, pathLength, bodyRadius } = path;
+    // **積雲のタップを、積雲が占めうる高度帯へ絞る。** 殻の上端まで均した間隔では、雲頂より
+    // 上を通るタップは消える段を引くだけで影に寄らない。場の texel を読むだけの粗い前走で
+    // 光路が通る範囲の積雲の雲頂の最大値と区間を拾い、細部を評価するタップはその区間だけへ
+    // 柱の幅より細かい間隔で置く。細部で雲頂が伸びるぶんは不確かさぶん上乗せする。
+    // 前走の本数は光路の長さに比例させる — 低い恒星で光路が伸びても間隔は変わらない。
+    const coarseTapsFloat = clamp(ceil(pathLength.div(COARSE_STEP)),
+      COARSE_TAPS_MIN, COARSE_TAPS_MAX);
+    const coarseStep = pathLength.div(coarseTapsFloat);
+    const coarseRadius = coarseStep.div(bodyRadius);
+    const cumulusTransmittance = float(1).toVar();
+    const cumulusTop = float(0).toVar();
+    // 積雲を拾ったタップの光路上の位置 [m] の幅。細部タップを置く区間のもとになる。
+    const cumulusFirst = float(MAX_LIGHT_PATH).toVar();
+    const cumulusLast = float(0).toVar();
+    If(greaterThan(this.cumulusActive, 0.5), () => {
+      Loop({ start: 0, end: int(coarseTapsFloat), type: 'int', condition: '<' }, ({ i }) => {
+        const t = float(i).add(0.5);
+        const sampleOffset = offset.add(rayDir.mul(coarseRadius.mul(t)));
+        const up = sampleOffset.div(max(length(sampleOffset), 1e-6));
+        const amount = this.fieldSampler.sampleField(up).r;
+        If(greaterThan(amount, CUMULUS_PRESENT_AMOUNT), () => {
+          cumulusTop.assign(max(cumulusTop,
+            cumulusFieldTopNode(amount).mul(this.topAltitude)));
+          const tm = coarseStep.mul(t);
+          cumulusFirst.assign(min(cumulusFirst, tm));
+          cumulusLast.assign(max(cumulusLast, tm));
+        });
+      });
+    });
+    // 光路に積雲が無ければ雲頂は 0 のままで、細部のループごと飛ばす。
+    const cumulusCeiling = select(greaterThan(cumulusTop, 0),
+      min(cumulusTop.add(this.topAltitude.mul(CloudShapeEvaluator.cloudTopUncertainty)),
+        this.topAltitude),
+      float(0));
+    const cumulusRadius = float(1).add(cumulusCeiling.div(bodyRadius));
+    const cumulusEnd = sqrt(max(
+      cumulusRadius.mul(cumulusRadius).sub(dot(offset, offset)).add(along.mul(along)), 0))
+      .sub(along).mul(bodyRadius).clamp(0, pathLength);
+    // 細部タップの区間は、拾った位置の両側へ前走の間隔ぶん広げる — 拾い漏らしの縁と、
+    // 按分が前後の半歩ぶん広がるぶんを覆う。上限は雲頂の殻を抜ける距離。積雲を拾えなかった
+    // 光路では区間が潰れて、細部のループごと飛ばす。
+    const cumulusFrom = max(cumulusFirst.sub(coarseStep), 0);
+    const cumulusTo = min(cumulusLast.add(coarseStep), cumulusEnd);
+    const cumulusSpan = max(cumulusTo.sub(cumulusFrom), 0);
+    const cumulusTapsFloat = clamp(ceil(cumulusSpan.div(FINE_STEP)),
+      SHADOW_TAPS, FINE_TAPS_MAX);
+    const cumulusStep = cumulusSpan.div(cumulusTapsFloat);
+    // タップ 1 回が代表する実寸。**歩がまたいだ柱は 1 タップが代表する**ので、画面 1 px の
+    // 実寸と光路 1 歩の長さのうち粗いほうを取る。細部の段はこの幅で打ち切る。
+    const cumulusWidth = max(footprint, cumulusStep.mul(STEP_BLUR));
+    const cumulusFromRadius = cumulusFrom.div(bodyRadius);
+    const cumulusStepRadius = cumulusStep.div(bodyRadius);
+    If(greaterThan(cumulusSpan, 0), () => {
+      Loop({ start: 0, end: int(cumulusTapsFloat), type: 'int', condition: '<' }, ({ i }) => {
+        const sampleOffset = offset.add(rayDir.mul(
+          cumulusFromRadius.add(cumulusStepRadius.mul(float(i).add(0.5)))));
+        const sampleRadius = max(length(sampleOffset), 1e-6).toVar();
+        const up = sampleOffset.div(sampleRadius).toVar();
+        const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude).toVar();
+        const cloud = this.fieldAt(up);
+        const opacity = cumulusOpacityNode(cloud.cumulus).toVar();
+        const fieldTop = cumulusFieldTopNode(cloud.cumulus).toVar();
+        const rise = max(dot(rayDir, up), 0).mul(cumulusStep).toVar();
+        // **1 ステップが雲頂をまたぐ比率で按分する** — 雲頂の内外を 1 点で判じると、歩の数だけの段に
+        // 割れた縞が影に出る。タップは歩の中点なので、稼いだ高度の半分が前後に広がる。
+        const insideOf = (top: FloatNode): FloatNode => top.sub(altitude).div(max(rise, 1)).add(0.5);
+        // **細部を最大に置いても雲頂がタップへ届かない点と、覆いが 0 のままの柱では細部を評価しない** —
+        // どちらもこのタップの透過率は 1 に決まる。
+        const reachable = and(
+          greaterThan(insideOf(this.shape.cloudTopCeiling(fieldTop).mul(this.topAltitude)), -CEILING_MARGIN),
+          greaterThan(this.shape.opaqueFractionCeiling(opacity), 0));
+        If(reachable, () => {
+          // 細部はタップごとに、幅の上で解像できる段だけを重ねる。
+          const detail = this.shape.detailAt(
+            up, cumulusWidth, cloud.cumulus, (neighbor) => this.fieldAt(neighbor).cumulus,
+            surfaceWind, this.shape.grainOf(cloud), cloud.cumulusCell);
+          const cloudTop = this.shape.cloudTop(fieldTop, detail).mul(this.topAltitude);
+          // texel を覆う割合と、その柱の中の光学的厚みが返す光の割合。覆う割合と柱の中の厚みは
+          // 別の量で、厚みは細部を含む雲頂の高さから出す。
+          const coverage = this.shape.opaqueFraction(opacity, detail);
+          const reflected = coverage.mul(cloudReflectanceNode(
+            cumulusInCloudOpticalDepthNode(cloudTop), LIQUID_CLOUD_ASYMMETRY));
+          const inside = clamp(insideOf(cloudTop), 0, 1);
+          const pathFraction = rise.mul(inside).div(max(cloudTop, 1));
+          cumulusTransmittance.mulAssign(fractionalTransmittanceNode(
+            reflected.mul(this.cumulusActive), pathFraction));
+        });
+      });
+    });
+    return cumulusTransmittance;
+  }
+
+  // 光路が巻雲の層を横切る光学的厚み。層を抜ける全光路を同じ数のタップで横切る。floorAltitude は
+  // 受け手の床 [m]、upperWind は筋の細部を運ぶ上層の風。
+  private cirrusPathDepth(
+    path: LightPath, floorAltitude: FloatNode, upperWind: Vec2Node, footprint: FloatNode,
+  ): FloatNode {
+    const { offset, rayDir, pathLength, bodyRadius } = path;
+    const cirrusDepth = float(0).toVar();
+    const cirrusStep = pathLength.div(SHADOW_TAPS);
+    const cirrusStepRadius = cirrusStep.div(bodyRadius);
+    const cirrusWidth = max(footprint, cirrusStep.mul(STEP_BLUR));
+    Loop({ start: 0, end: SHADOW_TAPS, type: 'int', condition: '<' }, ({ i }) => {
+      const sampleOffset = offset.add(rayDir.mul(cirrusStepRadius.mul(float(i).add(0.5))));
+      const sampleRadius = max(length(sampleOffset), 1e-6);
+      const up = sampleOffset.div(sampleRadius);
+      const altitude = max(sampleRadius.sub(1).mul(bodyRadius), floorAltitude);
+      const texel = this.fieldSampler.sampleField(up);
+      const rise = max(dot(rayDir, up), 0).mul(cirrusStep);
+      // 巻雲は、その場の量が雲頂高度へ写る薄い層。高度帯がその高さを跨ぐタップへ三角に
+      // 分けて合計 1 回ぶんの横断になり、斜めの光路ぶん(stepLength/rise)伸ばした τ を足す。
+      const cirrusCrossing = max(
+        float(1).sub(abs(altitude.sub(cirrusTopAltitudeNode(texel.g))).div(max(rise, 1))), 0);
+      // 筋の細部は、層を横切るタップで、その場所の筋の向きに沿って読む。
+      const cirrusDetail = float(1).toVar();
+      If(and(greaterThan(texel.g, CIRRUS_PRESENT_AMOUNT), greaterThan(cirrusCrossing, 0)), () => {
+        // 型の領域と乾いた陸の判定は環境を要るので、層を横切るタップでだけ環境つきの標本を読む。
+        const cloud = this.fieldAt(up);
+        cirrusDetail.assign(this.cirrusDetail.multiplierAt(
+          up, bodyRadius, cirrusWidth, cloud.cirrusFlow, upperWind,
+          cirrusColumnInputOf(cloud)));
+      });
+      cirrusDepth.addAssign(cirrusColumnOpticalDepthNode(texel.g)
+        .mul(cirrusDetail).mul(cirrusCrossing).mul(min(cirrusStep.div(max(rise, 1)), CIRRUS_MAX_SLANT))
+        .mul(this.cirrusActive));
+    });
+    return cirrusDepth;
   }
 
   // 描画座標のベクトルを、殻が雲を立てるのと同じ空間へ写す — 地表が半径 1、雲頂が半径

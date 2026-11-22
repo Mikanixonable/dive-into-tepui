@@ -14,7 +14,6 @@ export class StateQueue {
   }
 
   public get size(): number { return this.deque.size; }
-  public get empty(): boolean { return this.deque.empty; }
 
   // 最新サンプル(補間しない生の値)。空なら null。
   public get newest(): KinematicState | null { return this.deque.empty ? null : this.deque.peekLeft(); }

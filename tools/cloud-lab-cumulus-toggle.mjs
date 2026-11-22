@@ -32,8 +32,8 @@ const DUMP = `(() => {
   const placement = cap?.['placement'];
   return JSON.stringify({
     cloudsVisible: clouds?.cloudsVisible,
-    cumulusEnabled: clouds?.cumulusEnabled,
-    cirrusEnabled: clouds?.cirrusEnabled,
+    cumulusVisible: clouds?.cumulusVisible,
+    cirrusVisible: clouds?.cirrusVisible,
     active: renderer?.['active']?.value,
     capCenter: placement?.center?.toArray?.()?.map((x) => x.toFixed(3)),
     capSinRadius: placement?.sinRadius?.toFixed?.(4),

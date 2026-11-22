@@ -12,6 +12,7 @@ import {
   axialMountTransform, inverseTransform, sameTransform, sideMountTransform, sideSlotRotation,
 } from '../../src/game/ship/ship-assembly-transform';
 import { test } from '../harness';
+import { MAG_ROUNDS, START_SPARE_MAGS } from '../../src/game/player/ammo-spec';
 
 // 既定カタログから試験用の module instance を組む省略形。
 function module(definitionId: string, id: string, state = {}) {
@@ -234,6 +235,29 @@ export function register(): void {
     assert.ok(radiator !== null);
     assert.equal(radiator.temperature, 500);
     assert.equal(radiator.kind, 'radiator');
+  });
+
+  test('ship assembly: 機関砲の弾薬は記録を往復し、記録に無ければ開始時の積載で読む', () => {
+    const assembly = createDefaultCombatPreset();
+    const gun = assembly.modules.find((module) => module.kind === 'weapon');
+    assert.ok(gun?.kind === 'weapon');
+    assert.deepEqual({ rounds: gun.rounds, mags: gun.mags }, { rounds: MAG_ROUNDS, mags: START_SPARE_MAGS });
+    assembly.setAmmo(gun.id, { rounds: 7, mags: 5 });
+    const saved = serializeShipAssembly(assembly);
+    const restored = deserializeShipAssembly(saved).module(gun.id);
+    assert.ok(restored?.kind === 'weapon');
+    assert.deepEqual({ rounds: restored.rounds, mags: restored.mags }, { rounds: 7, mags: 5 });
+    const legacy = {
+      ...saved,
+      modules: saved.modules.map((module) => {
+        if (module.kind !== 'weapon') return module;
+        const { rounds: _rounds, mags: _mags, ...rest } = module;
+        return rest;
+      }),
+    };
+    const fallback = deserializeShipAssembly(legacy).module(gun.id);
+    assert.ok(fallback?.kind === 'weapon');
+    assert.deepEqual({ rounds: fallback.rounds, mags: fallback.mags }, { rounds: MAG_ROUNDS, mags: START_SPARE_MAGS });
   });
 
   test('ship assembly: 過去の非対称 rotation を持つセーブデータも対称姿勢へマイグレーションして復元できる', () => {

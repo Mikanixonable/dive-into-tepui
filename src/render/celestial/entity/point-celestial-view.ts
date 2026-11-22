@@ -96,7 +96,7 @@ export class PointCelestialView extends SphereCelestialView {
     motion: CelestialMotion, pos: Vec3, displayTime: number, camera: CameraFrame,
     star: StellarLightSource | null,
   ): void {
-    this.cumulus?.setCloudsVisible(false);
+    this.cumulus?.setCloudsEnabled(false);
     for (const aurora of this.auroras) aurora.mesh.visible = false;
     this.syncBillboard(
       camera.floatingOrigin.RtoThreeV3(pos), pos, motion.def.radius, displayTime, star,
@@ -158,8 +158,8 @@ export class PointCelestialView extends SphereCelestialView {
     return {
       cloud: this.cumulus.renderInput,
       bodyFromWorld: writeBodyFromWorld(new THREE.Matrix4(), motion, displayTime),
-      cumulusVisible: this.cumulus.cumulusEnabled,
-      cirrusVisible: this.cumulus.cirrusEnabled,
+      cumulusVisible: this.cumulus.cumulusVisible,
+      cirrusVisible: this.cumulus.cirrusVisible,
     };
   }
 

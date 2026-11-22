@@ -39,7 +39,7 @@ export function modularShipRenderSource(
     airspeed: motion.aero.airspeed,
     belt: { anchor: belt.anchor, positions: belt.positions, twists: belt.twists },
     coolingDumpRunning: motion.coolingDump.running,
-    magsLeft: ship.fire.mags,
+    magsLeft: ship.fire.beltGun?.mags ?? 0,
     gunFireRate: ship.fire.isFiring ? ship.capabilities.totalFireRate : 0,
     recentShotRecords: ship.fire.recentShotRecords,
   };

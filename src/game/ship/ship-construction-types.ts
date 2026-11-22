@@ -139,7 +139,6 @@ export interface ShipConstructionPanelModel {
   readonly history: ConstructionHistoryView;
   readonly blueprints: readonly ShipBlueprintCardView[];
   readonly canPlace: boolean;
-  readonly canRemove: boolean;
 }
 
 interface ConstructionConfirmationRequest {
@@ -166,6 +165,6 @@ export function hiddenShipConstructionModel(): ShipConstructionPanelModel {
     role: 'material', placeBlockReason: null, pointedTargetId: null, targets: [],
     history: { names: [], position: 0, canUndo: false, canRedo: false },
     blueprints: [],
-    canPlace: false, canRemove: false,
+    canPlace: false,
   };
 }

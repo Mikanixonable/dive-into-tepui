@@ -129,6 +129,5 @@ export function shipConstructionPanelModel(
     }),
     canPlace: (source.held !== null || source.selection !== null)
       && pointedTarget !== null && (trial?.valid ?? false),
-    canRemove: source.selection !== null && source.selection.editable,
   };
 }

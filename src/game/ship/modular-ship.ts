@@ -12,7 +12,7 @@ import type { EntityRegistry } from '../dynamic/entity-registry';
 import { generateRandomName } from '../random-name';
 import { Throttle, type SerializedThrottle } from '../player/throttle';
 import { FireControl, type SerializedFireControl } from '../player/fire-control';
-import { WeaponState, type AmmoLoad } from '../player/weapon-state';
+import type { AmmoLoad, AmmoTotals } from '../player/gun-magazine';
 import { AltitudeAlarm, type SerializedAltitudeAlarm } from '../player/altitude-alarm';
 import {
   ModularShipDynamicView, type ModularShipRenderSource,
@@ -63,6 +63,7 @@ export interface ModularShipInit {
   readonly name?: string;
   readonly state?: KinematicState;
   readonly id?: string;
+  // 各砲へ積む初期積載。省けば各砲が開始時の積載で載る。
   readonly ammo?: AmmoLoad;
   readonly assembly?: ShipAssembly;
   readonly att?: Attitude;
@@ -98,8 +99,6 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   public override showsEquatorNodesAlways: boolean;
   public override readonly controllable = true;
   public override readonly pickable = true;
-  // 軌道線の表示切替は表示 adapter から直接読む軽量な個体設定。
-  public trajectoryLineVisible = true;
   public readonly inspection = new ShipInspection(this);
   public readonly objectPickable = this.inspection;
   // 除去の前に注視・操作対象の参照を次の艦へ引き継ぐ必要があるので、所有者側に回収させる。
@@ -223,8 +222,8 @@ export class ModularShip extends CombatShipEntity implements Controllable {
       return reactionHandler;
     };
     const reactions = (owner: ModularShip): ModularShipMotionReactions => ({
-      roundsInMagazine: () => owner.fire.rounds,
-      magsLeft: () => owner.fire.mags,
+      roundsInMagazine: () => owner.fire.beltGun?.rounds ?? 0,
+      magsLeft: () => owner.fire.beltGun?.mags ?? 0,
       thrustAcceleration: () => owner.motion.thrust ?? v3(),
       radiatorWear: () => owner.radiatorWear(),
       totalCoolingRate: () => owner.totalCoolingRate,
@@ -306,10 +305,12 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     if (serialized) {
       this.connections.deserializeConnectionState(serialized.dockedVessels, serialized.collisionGrace, state.t);
     }
-    this.fire = new FireControl(
-      this, registry, scene,
-      serialized?.fire ? WeaponState.deserialize(serialized.fire) : placement?.ammo ? WeaponState.create(placement.ammo) : undefined,
-    );
+    this.fire = serialized?.fire
+      ? FireControl.deserialize(serialized.fire, this, registry, scene)
+      : FireControl.create(this, registry, scene);
+    // 配置で積載を指定された艦は、各砲へその積載を積む。
+    const ammo = placement?.ammo;
+    if (ammo !== undefined) this.fire.loadAll(ammo);
     this.altitudeAlarm = serialized?.altitudeAlarm
       ? AltitudeAlarm.deserialize(serialized.altitudeAlarm, registry.events)
       : new AltitudeAlarm(registry.events);
@@ -369,9 +370,9 @@ export class ModularShip extends CombatShipEntity implements Controllable {
   }
 
   // -------------------------------------------------------- 移動/射撃 状態
-  public get roundsInMag(): number { return this.fire.rounds; }
-  public get magsLeft(): number { return this.fire.mags; }
-  public get reloadTimer(): number { return this.fire.cooldown; }
+  // 健全な砲を合わせた弾薬と、リロードの残り [s]。
+  public get ammo(): AmmoTotals { return this.fire.ammo; }
+  public get reloadTimer(): number { return this.fire.reloadRemaining; }
 
   // 展開操作状態を module ID に反映する。配列順ではなくモジュールIDに基づいて継続状態を対応付ける。
   private syncModuleDeployments(): void {
@@ -481,7 +482,7 @@ export class ModularShip extends CombatShipEntity implements Controllable {
     }
     this.updateTorque(controls, dt, simDt);
 
-    this.fire.updateFireState(dt, controls, activeStage, celestialBodies);
+    this.fire.updateFireState(simDt, controls, activeStage, celestialBodies);
 
     this.throttle.updateThrustLatches(controls);
     this.throttle.updateThrustState(controls, this.motion.controlAttitude, simDt, this);

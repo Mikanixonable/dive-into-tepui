@@ -119,10 +119,10 @@ export function register(): void {
     const child = earthTileChildren(root)[0]!;
     tiles.sync(projection, [{ key: root, layer: 0 }], 0);
     tiles.sync(projection, [{ key: root, layer: 0 }, { key: child, layer: 1 }], 300);
-    const insideChild = earthPageAt(tiles.pageTable(), (child.x + 0.5) / 2 ** (child.z + 1), (child.y + 0.5) / 2 ** child.z);
+    const insideChild = earthPageAt(tiles.pageTable().cells, (child.x + 0.5) / 2 ** (child.z + 1), (child.y + 0.5) / 2 ** child.z);
     assert.equal(insideChild[0], 1);
     assert.equal(insideChild[2], child.z);
-    const outsideChild = earthPageAt(tiles.pageTable(), (root.x + 0.75) / 2 ** (root.z + 1), (root.y + 0.75) / 2 ** root.z);
+    const outsideChild = earthPageAt(tiles.pageTable().cells, (root.x + 0.75) / 2 ** (root.z + 1), (root.y + 0.75) / 2 ** root.z);
     assert.equal(outsideChild[0], 0);
     assert.equal(outsideChild[2], root.z);
   });
@@ -136,9 +136,9 @@ export function register(): void {
       }),
     };
     tiles.sync(projection, [{ key: target, layer: 3 }], 0);
-    const page = earthPageAt(tiles.pageTable(), (target.x + 0.5) / 2 ** (target.z + 1), (target.y + 0.5) / 2 ** target.z);
+    const page = earthPageAt(tiles.pageTable().cells, (target.x + 0.5) / 2 ** (target.z + 1), (target.y + 0.5) / 2 ** target.z);
     assert.deepEqual(page, [3, EARTH_BASE_LAYER, target.z, 0]);
-    assert.deepEqual(earthPageAt(tiles.pageTable(), 0.5, 0.5), [EARTH_BASE_LAYER, EARTH_BASE_LAYER, EARTH_BASE_LAYER, EARTH_BASE_LAYER]);
+    assert.deepEqual(earthPageAt(tiles.pageTable().cells, 0.5, 0.5), [EARTH_BASE_LAYER, EARTH_BASE_LAYER, EARTH_BASE_LAYER, EARTH_BASE_LAYER]);
   });
 
   test('earth tiles: 可視候補の一段隣接をguard-band候補として返す', () => {
@@ -193,20 +193,20 @@ export function register(): void {
     const children = earthTileChildren(ROOTS[0]!).map((key, index) => ({ key, layer: index + 2 }));
     tiles.sync(projection, roots.concat(children.slice(1)), 300);
     const missingChildUv = tileCenter(children[0]!.key);
-    assert.deepEqual(earthPageAt(tiles.pageTable(), missingChildUv[0], missingChildUv[1]).slice(0, 3), [0, EARTH_BASE_LAYER, ROOTS[0]!.z]);
+    assert.deepEqual(earthPageAt(tiles.pageTable().cells, missingChildUv[0], missingChildUv[1]).slice(0, 3), [0, EARTH_BASE_LAYER, ROOTS[0]!.z]);
     tiles.sync(projection, roots.concat(children), 400);
-    assert.deepEqual(earthPageAt(tiles.pageTable(), ...tileCenter(children[0]!.key)), [2, 0, EARTH_TILE_MIN_Z + 1, 0]);
+    assert.deepEqual(earthPageAt(tiles.pageTable().cells, ...tileCenter(children[0]!.key)), [2, 0, EARTH_TILE_MIN_Z + 1, 0]);
     tiles.sync(projection, roots.concat(children), 525);
-    const halfway = earthPageAt(tiles.pageTable(), ...tileCenter(children[0]!.key));
+    const halfway = earthPageAt(tiles.pageTable().cells, ...tileCenter(children[0]!.key));
     assert.deepEqual(halfway.slice(0, 3), [2, 0, EARTH_TILE_MIN_Z + 1]);
     assert.ok(halfway[3]! > 0 && halfway[3]! < 255);
     tiles.sync(projection, roots.concat(children), 650);
-    assert.equal(earthPageAt(tiles.pageTable(), ...tileCenter(children[0]!.key))[3], 255);
+    assert.equal(earthPageAt(tiles.pageTable().cells, ...tileCenter(children[0]!.key))[3], 255);
 
     // 解像度を下げても、到着済みの個別detailは他の地域と独立して保持する。
     projection.rootError = 0.5;
     tiles.sync(projection, roots.concat(children), 700);
-    assert.equal(earthPageAt(tiles.pageTable(), ...tileCenter(children[0]!.key))[2], EARTH_TILE_MIN_Z);
+    assert.equal(earthPageAt(tiles.pageTable().cells, ...tileCenter(children[0]!.key))[2], EARTH_TILE_MIN_Z);
   });
 
   test('earth tiles: 別keyへ再利用されたlayerをleafとfade親へ誤適用しない', () => {
@@ -220,7 +220,7 @@ export function register(): void {
     leafReuse.sync(projection, roots.concat(children), 400);
     const reusedLayer = { key: earthTileKey(EARTH_TILE_MIN_Z + 1, 2, 0), layer: children[0]!.layer };
     leafReuse.sync(projection, roots.concat(children.slice(1), reusedLayer), 700);
-    assert.deepEqual(earthPageAt(leafReuse.pageTable(), ...tileCenter(children[0]!.key)), [0, EARTH_BASE_LAYER, EARTH_TILE_MIN_Z, 255]);
+    assert.deepEqual(earthPageAt(leafReuse.pageTable().cells, ...tileCenter(children[0]!.key)), [0, EARTH_BASE_LAYER, EARTH_TILE_MIN_Z, 255]);
 
     const parentReuse = new EarthSurfaceTiles();
     parentReuse.sync(projection, roots, 0);
@@ -228,7 +228,7 @@ export function register(): void {
     parentReuse.sync(projection, roots.concat(children), 400);
     const reusedParent = { key: earthTileKey(EARTH_TILE_MIN_Z + 1, 2, 0), layer: roots[0]!.layer };
     parentReuse.sync(projection, [roots[1]!, ...children, reusedParent], 700);
-    const page = earthPageAt(parentReuse.pageTable(), ...tileCenter(children[0]!.key));
+    const page = earthPageAt(parentReuse.pageTable().cells, ...tileCenter(children[0]!.key));
     assert.equal(page[0], children[0]!.layer);
     assert.equal(page[1], EARTH_BASE_LAYER);
     assert.equal(page[2], children[0]!.key.z);
@@ -238,8 +238,8 @@ export function register(): void {
   test('earth tiles: 未取得根はbaseを指し索引境界で親子の標本位置が一致する', () => {
     const tiles = new EarthSurfaceTiles();
     tiles.sync(new SyntheticProjection(3), [], 0);
-    assert.deepEqual(earthPageAt(tiles.pageTable(), 0.2, 0.3), [255, 255, 255, 255]);
-    assert.deepEqual(earthPageAt(tiles.pageTable(), 0, 1), earthPageAt(tiles.pageTable(), 1, 1));
+    assert.deepEqual(earthPageAt(tiles.pageTable().cells, 0.2, 0.3), [255, 255, 255, 255]);
+    assert.deepEqual(earthPageAt(tiles.pageTable().cells, 0, 1), earthPageAt(tiles.pageTable().cells, 1, 1));
     for (const z of [0, 3, 7]) {
       assert.deepEqual(earthTileSampleUv(0, 0.3, z), earthTileSampleUv(1, 0.3, z));
       assert.ok(earthTileSampleUv(0, 1, z).y > earthTileSampleUv(0, 0, z).y);

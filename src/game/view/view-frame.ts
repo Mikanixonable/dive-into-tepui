@@ -14,7 +14,7 @@ export interface ViewFrame {
   // 軌道計画を編集できるビューだけが持つ編集インターフェース。持たないビューは null。
   readonly planEditor: PlanEditor | null;
   // このビューの候補列/ラベル数。
-  perfCounts(): Pick<PerfCounts, 'mapMode' | 'mapItems' | 'mapLabels'>;
+  perfCounts(): Pick<PerfCounts, 'view' | 'mapItems' | 'mapLabels'>;
 
   // このビューへ入るときの支度。
   onEnter(): void;

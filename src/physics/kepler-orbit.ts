@@ -130,11 +130,15 @@ function rotationFromAngles(orbit: KeplerOrbit, a: OrbitAngles): FrameRotation {
     qFromAxisAngle(BASIS_POLE, a.raan),
     qMul(qFromAxisAngle(BASIS_ORIGIN, a.inc), qFromAxisAngle(BASIS_POLE, a.u)),
   ));
+  return { q, omega: angularVelocityFromAngles(orbit, a) };
+}
+
+// この軌道に固定した回転基準系の角速度(ECI)。
+function angularVelocityFromAngles(orbit: KeplerOrbit, a: OrbitAngles): Vec3 {
   const node = toEci(orbit, Math.cos(a.raan), Math.sin(a.raan), 0);
   const basisPole = qRotate(orbit.basisToEci, BASIS_POLE);
   const normal = normalFromAngles(orbit, a);
-  const omega = addScaled(addScaled(scale(basisPole, orbit.raanRate), node, orbit.incRate), normal, a.uRate);
-  return { q, omega };
+  return addScaled(addScaled(scale(basisPole, orbit.raanRate), node, orbit.incRate), normal, a.uRate);
 }
 
 // 角を [0, 2π) へ畳む。
@@ -165,7 +169,7 @@ export function keplerOrbitForSimZero(orbit: KeplerOrbit, simZeroEt: number): Ke
 export function keplerOrbitState(orbit: KeplerOrbit, t: number): KinematicState<'primaryRel'> {
   const a = orbitAngles(orbit, t);
   const r = qRotate(qMul(orbit.basisToEci, Q_ZUP_TO_YUP), positionFromOrbitalElements(a.a, a.e, a.inc, a.raan, a.argp, a.nu));
-  const { omega } = rotationFromAngles(orbit, a);
+  const omega = angularVelocityFromAngles(orbit, a);
   const v = addScaled(cross(omega, r), norm(r), a.rDot);
   return kinematicState<'primaryRel'>(t, r, v);
 }

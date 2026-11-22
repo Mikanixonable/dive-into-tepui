@@ -8,7 +8,6 @@ import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
 import { SimSpeedManager, type SerializedSimSpeedManager } from '../../src/game/dynamic/sim-speed-manager';
 import { Plan, type SerializedPlan } from '../../src/game/plan/plan';
 import { PlanNodeRules, type SerializedPlanNodeRules } from '../../src/game/plan/plan-node-execution';
-import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { AltitudeAlarm, type SerializedAltitudeAlarm } from '../../src/game/player/altitude-alarm';
 import { BeltController, type SerializedBeltController } from '../../src/game/player/belt-controller';
 import {
@@ -17,7 +16,7 @@ import {
 import { POWER_CAPACITY, PowerSystem, type SerializedPowerSystem } from '../../src/game/player/power';
 import { RadiatorSystem, type SerializedRadiatorSystem } from '../../src/game/player/radiator';
 import { THROTTLE_LEVELS, Throttle, type SerializedThrottle } from '../../src/game/player/throttle';
-import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
+import { GunCycle, type SerializedGunCycle } from '../../src/game/player/gun-cycle';
 import { RunEventLog } from '../../src/game/run-events';
 import {
   ScoreAttackTimer, type SerializedScoreAttackTimer,
@@ -85,17 +84,16 @@ function roundTrips(): readonly RoundTrip[] {
       { deployTarget: 1, deploy: 0.3 },
       (serialized) => DeployablePanelState.deserialize(serialized) ?? new DeployablePanelState(0, 0),
     ),
-    roundTrip<SerializedWeaponState>(
-      'WeaponState',
+    roundTrip<SerializedGunCycle>(
+      'GunCycle',
       {
-        mags: 5,
-        rounds: MAG_ROUNDS - 3,
-        cooldown: 0.2,
+        moduleId: 'gun-1',
+        nextShotAt: 12.34,
+        reloadUntil: 13,
         muzzleIdx: 1,
-        wasFiring: true,
-        wasEmptyClick: true,
+        shots: [{ muzzleIndex: 0, firedAt: 12.28, cycleDuration: 0.12 }],
       },
-      (serialized) => WeaponState.deserialize(serialized),
+      (serialized) => GunCycle.deserialize(serialized),
     ),
     roundTrip<SerializedPlan>(
       'Plan',
