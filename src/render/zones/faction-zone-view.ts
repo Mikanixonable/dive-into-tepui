@@ -38,9 +38,10 @@ let sharedUnitCircle: THREE.BufferGeometry | null = null;
 // 省略リングに使う単位円の輪郭を返す。
 function unitCircleGeometry(): THREE.BufferGeometry {
   if (sharedUnitCircle !== null) return sharedUnitCircle;
-  // 呼び出し側の表示倍率に合わせて拡大する輪郭を共用する。
-  const positions = new Float32Array(RING_SEGMENTS * 3);
-  for (let i = 0; i < RING_SEGMENTS; i++) {
+  // 呼び出し側の表示倍率に合わせて拡大する輪郭を共用する。WebGPU の描画は LineLoop を描かないので、
+  // 始点を終点にも置いて折れ線で閉じる。
+  const positions = new Float32Array((RING_SEGMENTS + 1) * 3);
+  for (let i = 0; i <= RING_SEGMENTS; i++) {
     const a = (i / RING_SEGMENTS) * Math.PI * 2;
     positions[i * 3] = Math.cos(a);
     positions[i * 3 + 1] = Math.sin(a);
@@ -52,10 +53,26 @@ function unitCircleGeometry(): THREE.BufferGeometry {
   return geo;
 }
 
+// 帯の頂点を内外の半径 [m] へ書き直す。頂点の並びと値は RingGeometry(innerRadius, outerRadius,
+// RING_SEGMENTS) と同じ。
+function writeAnnulusRadii(geometry: THREE.BufferGeometry, innerRadius: number, outerRadius: number): void {
+  const positions = geometry.getAttribute('position');
+  let radius = innerRadius;
+  for (let ring = 0; ring <= 1; ring++) {
+    for (let i = 0; i <= RING_SEGMENTS; i++) {
+      const segment = i / RING_SEGMENTS * (Math.PI * 2);
+      positions.setXY(ring * (RING_SEGMENTS + 1) + i, radius * Math.cos(segment), radius * Math.sin(segment));
+    }
+    radius += outerRadius - innerRadius;
+  }
+  positions.needsUpdate = true;
+  geometry.computeBoundingSphere();
+}
+
 // 実寸アニュラスと記号リングを組み合わせた軌道域の表示物。
 interface OrbitZoneObjects {
   readonly annulus: THREE.Mesh;
-  readonly ring: THREE.LineLoop;
+  readonly ring: THREE.Line;
   inner: number;
   outer: number;
 }
@@ -86,10 +103,9 @@ export class FactionZoneView {
         this.orbitZones.set(zone.key, objects);
       }
       if (objects.inner !== zone.innerRadius || objects.outer !== zone.outerRadius) {
-        objects.annulus.geometry.dispose();
         // 円軌道だけの帯は幅 0 で届く — 退化した面にならないよう最小の厚みを与える。
-        objects.annulus.geometry = new THREE.RingGeometry(
-          zone.innerRadius, Math.max(zone.outerRadius, zone.innerRadius * 1.002), RING_SEGMENTS);
+        writeAnnulusRadii(
+          objects.annulus.geometry, zone.innerRadius, Math.max(zone.outerRadius, zone.innerRadius * 1.002));
         objects.inner = zone.innerRadius;
         objects.outer = zone.outerRadius;
       }
@@ -117,7 +133,7 @@ export class FactionZoneView {
     markOverlay(annulus);
     annulus.renderOrder = -1;
     // 画面上で細くなる帯の占有先を記号リングで示す。
-    const ring = new THREE.LineLoop(
+    const ring = new THREE.Line(
       unitCircleGeometry(),
       new THREE.LineBasicMaterial({ color: zone.color, transparent: true, opacity: 0 }),
     );

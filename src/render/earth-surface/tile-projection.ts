@@ -1,6 +1,6 @@
 // タイルの投影評価を担当する。LOD状態そのものは所有しない。
 import * as THREE from 'three/webgpu';
-import { earthPositionAtUv, validateEarthAxes } from './coordinate';
+import { validateEarthAxes, writeEarthPositionAtUv } from './coordinate';
 import { EARTH_TILE_TEXELS, type EarthTileKey } from './tile-key';
 
 export interface EarthTileMetric {
@@ -13,6 +13,13 @@ export interface EarthTileProjection {
   evaluate(key: EarthTileKey): EarthTileMetric;
 }
 
+// 画面へ写らない区画の評価。
+const INVISIBLE: EarthTileMetric = { visible: false, errorPx: 0, priority: 0 };
+// 近平面を跨ぐ区画の評価。必ず分割させ、最優先で要求させる。
+const CROSSES_NEAR: EarthTileMetric = { visible: true, errorPx: Infinity, priority: Infinity };
+// 区画の東西・南北を 2 等分した格子の 1 辺の点数。
+const GRID = 3;
+
 export class EarthSurfaceView implements EarthTileProjection {
   private readonly axes: THREE.Vector3;
   private readonly bodyToView: THREE.Matrix4;
@@ -22,6 +29,16 @@ export class EarthSurfaceView implements EarthTileProjection {
   private readonly observerDirection: THREE.Vector3;
   private readonly perspective: boolean;
   private readonly near: number;
+  // 半軸の長短比。区画の角の広がりを楕円体の歪みぶん広げる。
+  private readonly axisRatio: number;
+  // 最長の半軸 [m]。
+  private readonly maxAxis: number;
+  // evaluate の作業領域。評価は1つずつ行うので共有してよい。
+  private readonly center = new THREE.Vector3();
+  private readonly cap = new THREE.Vector3();
+  private readonly sphere = new THREE.Sphere();
+  private readonly position = new THREE.Vector3();
+  private readonly points: readonly THREE.Vector2[] = Array.from({ length: GRID * GRID }, () => new THREE.Vector2());
 
   // earthToWorldは浮動原点補正済みの剛体変換。幅・高さは実drawing bufferの画素数。
   public constructor(
@@ -31,6 +48,8 @@ export class EarthSurfaceView implements EarthTileProjection {
     validateEarthAxes(axes);
     if (!(width > 0 && height > 0)) throw new RangeError('Invalid Earth viewport');
     this.axes = axes.clone();
+    this.maxAxis = Math.max(axes.x, axes.y, axes.z);
+    this.axisRatio = this.maxAxis / Math.min(axes.x, axes.y, axes.z);
     this.bodyToView = camera.matrixWorldInverse.clone().multiply(earthToWorld);
     this.projection = camera.projectionMatrix.clone();
     this.frustum = new THREE.Frustum().setFromProjectionMatrix(
@@ -48,46 +67,48 @@ export class EarthSurfaceView implements EarthTileProjection {
   public evaluate(key: EarthTileKey): EarthTileMetric {
     const columns = 2 ** (key.z + 1);
     const rows = 2 ** key.z;
-    const center = earthPositionAtUv((key.x + 0.5) / columns, (key.y + 0.5) / rows, this.axes);
-    const maxAxis = Math.max(this.axes.x, this.axes.y, this.axes.z);
-    const minAxis = Math.min(this.axes.x, this.axes.y, this.axes.z);
+    const center = writeEarthPositionAtUv(this.center, (key.x + 0.5) / columns, (key.y + 0.5) / rows, this.axes);
     // 正規化したA*nの角変化は、nの角変化のaMax/aMin倍以内に収まる。
-    const angle = Math.min(Math.PI, maxAxis / minAxis * (Math.PI / columns + Math.PI / (2 * rows)));
-    const cap = center.clone().divide(this.axes).normalize();
+    const angle = Math.min(Math.PI, this.axisRatio * (Math.PI / columns + Math.PI / (2 * rows)));
+    const cap = this.cap.copy(center).divide(this.axes).normalize();
     const observer = this.perspective ? this.eyeScaled : this.observerDirection;
     const separation = cap.angleTo(observer);
     const horizon = Math.cos(Math.max(0, separation - angle)) * observer.length();
-    const sphere = new THREE.Sphere(center, 2 * maxAxis * Math.sin(angle / 2));
-    if (horizon < (this.perspective ? 1 : 0) || !this.frustum.intersectsSphere(sphere)) {
-      return { visible: false, errorPx: 0, priority: 0 };
-    }
+    this.sphere.center.copy(center);
+    this.sphere.radius = 2 * this.maxAxis * Math.sin(angle / 2);
+    if (horizon < (this.perspective ? 1 : 0) || !this.frustum.intersectsSphere(this.sphere)) return INVISIBLE;
 
     // 経度はこの格子のまま連続的に進め、半周幅の根でも中央を含めて辺を測る。
-    const points: THREE.Vector2[][] = [];
-    for (let y = 0; y <= 2; y++) {
-      const row: THREE.Vector2[] = [];
-      for (let x = 0; x <= 2; x++) {
-        const position = earthPositionAtUv((key.x + x / 2) / columns, (key.y + y / 2) / rows, this.axes)
-          .applyMatrix4(this.bodyToView);
-        if (this.perspective && -position.z <= this.near) {
-          return { visible: true, errorPx: Infinity, priority: Infinity };
-        }
+    for (let y = 0; y < GRID; y++) {
+      for (let x = 0; x < GRID; x++) {
+        const position = writeEarthPositionAtUv(
+          this.position, (key.x + x / 2) / columns, (key.y + y / 2) / rows, this.axes,
+        ).applyMatrix4(this.bodyToView);
+        if (this.perspective && -position.z <= this.near) return CROSSES_NEAR;
         position.applyMatrix4(this.projection);
-        row.push(new THREE.Vector2(position.x * this.width / 2, position.y * this.height / 2));
+        this.points[y * GRID + x]!.set(position.x * this.width / 2, position.y * this.height / 2);
       }
-      points.push(row);
     }
-    const at = (x: number, y: number): THREE.Vector2 => points[y]![x]!;
+    const at = (x: number, y: number): THREE.Vector2 => this.points[y * GRID + x]!;
     let maxEdge = 0;
-    for (let index = 0; index <= 2; index++) {
+    for (let index = 0; index < GRID; index++) {
       maxEdge = Math.max(maxEdge,
         at(0, index).distanceTo(at(1, index)) + at(1, index).distanceTo(at(2, index)),
         at(index, 0).distanceTo(at(index, 1)) + at(index, 1).distanceTo(at(index, 2)));
     }
-    const bounds = new THREE.Box2().setFromPoints(points.flat());
-    const area = bounds.getSize(new THREE.Vector2());
+    // 格子の画面上の外接矩形の面積で優先度を重み付ける。
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const point of this.points) {
+      minX = Math.min(minX, point.x);
+      minY = Math.min(minY, point.y);
+      maxX = Math.max(maxX, point.x);
+      maxY = Math.max(maxY, point.y);
+    }
     const errorPx = maxEdge / EARTH_TILE_TEXELS;
     const centerDistance = at(1, 1).length() / Math.max(this.width, this.height);
-    return { visible: true, errorPx, priority: errorPx * area.x * area.y / (1 + centerDistance) };
+    return { visible: true, errorPx, priority: errorPx * (maxX - minX) * (maxY - minY) / (1 + centerDistance) };
   }
 }

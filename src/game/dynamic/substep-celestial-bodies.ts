@@ -54,9 +54,6 @@ export class SubstepCelestialBodies {
   // 表面を持つ相手。半径と位置の幾何だけで決まるので、登録天体の全数。
   public get surface(): readonly CelestialBody[] { return this._surface; }
 
-  // 大気を持つ天体の全数。抗力を及ぼす1体は個体ごとに選ぶ。
-  public get atmosphere(): readonly CelestialBody[] { return this._atmosphere; }
-
   // このサブステップに影を落としうる天体の候補。
   public get occluders(): ShadowCasters { return this._occluders; }
 

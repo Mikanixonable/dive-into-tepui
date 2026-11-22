@@ -197,7 +197,8 @@ export class PredictedArc {
     }
     // 大気が要求する上限は下限 ARC_MIN_STEP_DT より優先する — 下限は接近項の潰れ(Zeno)を断つ
     // ためのもので、抗力を積めない幅まで刻みを広げてはならない。
-    const atmosphericDt = atmosphericMaxStep(tip, this.bcInv, collisionBodies, pivot);
+    const atmosphericDt = atmosphericMaxStep(
+      tip, this.bcInv, nearestAtmosphereBody(tip.r, collisionBodies, pivot), pivot);
     if (this.consumable) {
       return Math.min(approachDt, atmosphericDt, this.simulationMaxStep);
     }

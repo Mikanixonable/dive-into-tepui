@@ -27,19 +27,23 @@ export function earthTileId(key: EarthTileKey): string {
   return `${key.z}/${key.x}/${key.y}`;
 }
 
+// 正規化済みキーを、earthTileId と1対1に対応する整数へ写す。x < 2^(z+1) ≤ 2^9、y < 2^z ≤ 2^8。
+export function earthTileIndex(key: EarthTileKey): number {
+  return (key.z << 17) | (key.y << 9) | key.x;
+}
+
 // 根ではnull、それ以外では直近の親を返す。
 export function earthTileParent(key: EarthTileKey): EarthTileKey | null {
   return key.z === 0 ? null : earthTileKey(key.z - 1, Math.floor(key.x / 2), Math.floor(key.y / 2));
 }
 
-// 最大段では空、それ以外では4子を返す。
+// 最大段では空、それ以外では正規化済みの4子を返す。key は正規化済みであること。
 export function earthTileChildren(key: EarthTileKey): readonly EarthTileKey[] {
-  return key.z === EARTH_TILE_MAX_Z ? [] : [
-    earthTileKey(key.z + 1, key.x * 2, key.y * 2),
-    earthTileKey(key.z + 1, key.x * 2 + 1, key.y * 2),
-    earthTileKey(key.z + 1, key.x * 2, key.y * 2 + 1),
-    earthTileKey(key.z + 1, key.x * 2 + 1, key.y * 2 + 1),
-  ];
+  if (key.z === EARTH_TILE_MAX_Z) return [];
+  const z = key.z + 1;
+  const x = key.x * 2;
+  const y = key.y * 2;
+  return [{ z, x, y }, { z, x: x + 1, y }, { z, x, y: y + 1 }, { z, x: x + 1, y: y + 1 }];
 }
 
 // 同じ段の東西南北の隣接キー。極を越える辺は経度を半周ずらして反転する。
