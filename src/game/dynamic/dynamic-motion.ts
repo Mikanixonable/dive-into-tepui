@@ -347,13 +347,12 @@ export class DynamicMotion {
     return orbitalElementsOf(this.state, center, centerPivot);
   }
 
-  // dt を大気突入の刻み幅の上限と個体が要求する刻みの上限に収めるための分割数。
-  public substepDivisions(
-    dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number,
-  ): number {
+  // dt を大気突入の刻み幅の上限と個体が要求する刻みの上限に収めるための分割数。atmosphereBody は
+  // この個体へ抗力を及ぼす1体。
+  public substepDivisions(dt: number, atmosphereBody: CelestialBody | null, pivot: number): number {
     let divisions = 1;
     if (this.preciseReentry) {
-      const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies, pivot);
+      const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBody, pivot);
       if (innerDt < dt) divisions = Math.ceil(dt / innerDt);
     }
     const cap = this.behavior.maxSubstepDuration?.(this);
@@ -363,12 +362,11 @@ export class DynamicMotion {
     return divisions;
   }
 
-  // dt のあいだに抗力が対気速度を奪い切るか。preciseReentry の個体は常に false。
-  public outpacedByDrag(
-    dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number,
-  ): boolean {
+  // dt のあいだに抗力が対気速度を奪い切るか。preciseReentry の個体は常に false。atmosphereBody は
+  // この個体へ抗力を及ぼす1体。
+  public outpacedByDrag(dt: number, atmosphereBody: CelestialBody | null, pivot: number): boolean {
     return !this.preciseReentry
-      && dragTakesFullAirspeed(this.state, this.bcInv, atmosphereBodies, pivot, dt);
+      && dragTakesFullAirspeed(this.state, this.bcInv, atmosphereBody, pivot, dt);
   }
 
   // 軌道・姿勢・熱を dt 進める。予測弧をなぞらずに積分したときは true を返す。substepOccluders は

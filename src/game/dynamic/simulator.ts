@@ -176,15 +176,15 @@ export class Simulator {
     this.sharedIntervalScratch.length = 0;
     for (const e of this.roster.allMotions()) {
       if (!e.alive) continue;
+      // 重力源と大気天体の選択は個体ごとに1回 — 対象天体セットはサブステップの中で変わらない。
+      const atmosphereBody = this.bodies.atmosphereBodyNear(e.state.r);
       // 抗力をもう積めない個体は、進める前に失う — 積んでも正確な軌道は得られない。
-      if (e.outpacedByDrag(dt, this.bodies.atmosphere, this.bodies.pivot)) {
+      if (e.outpacedByDrag(dt, atmosphereBody, this.bodies.pivot)) {
         e.kill();
         continue;
       }
-      // 重力源と大気天体の選択は個体ごとに1回 — 対象天体セットはサブステップの中で変わらない。
       const near = this.bodies.attractorsNear(e.state.r);
-      const atmosphereBody = this.bodies.atmosphereBodyNear(e.state.r);
-      const divisions = e.substepDivisions(dt, this.bodies.atmosphere, this.bodies.pivot);
+      const divisions = e.substepDivisions(dt, atmosphereBody, this.bodies.pivot);
       const step = dt / divisions;
       for (let i = 0; i < divisions && e.alive; i++) {
         // 最後の1歩は endTime までの残りを刻みに採る — 足し込むと丸めで endTime から外れ、先端1件しか

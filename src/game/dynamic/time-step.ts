@@ -3,7 +3,6 @@
 import {
   type Atmosphere, airspeed, atmosphericDensity, atmosphericScaleHeight, ellipsoidAltitude,
 } from '../../physics/atmosphere';
-import { nearestAtmosphereBody } from '../../physics/attractor';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { type Vec3, dot, len, sub } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -87,15 +86,14 @@ function dragMaxStep(rRel: Vec3, vRel: Vec3, bcInv: number, mu: number, atm: Atm
   return Math.min(stiff, sink);
 }
 
-// 現在の状態を積分するにあたって大気が要求する最大刻み幅 [s]。対象は最も近い大気天体1体で、
-// 該当天体がなければ Infinity（大気による制約なし）。抵抗を受けない物体(bcInv = 0)も
-// 同じく Infinity。他の要因（時間送りやイベントなど）による上限との統合は外部で行う。
+// 現在の状態を積分するにあたって大気が要求する最大刻み幅 [s]。body は抗力を及ぼす
+// 1体(nearestAtmosphereBody が選ぶ)で、それが無いか大気を持たなければ Infinity（大気による制約
+// なし）。抵抗を受けない物体(bcInv = 0)も同じく Infinity。他の要因（時間送りやイベントなど）による
+// 上限との統合は外部で行う。
 export function atmosphericMaxStep(
-  state: KinematicState, bcInv: number,
-  atmosphereBodies: readonly CelestialBody[], pivot: number,
+  state: KinematicState, bcInv: number, body: CelestialBody | null, pivot: number,
 ): number {
   if (bcInv <= 0) return Infinity;
-  const body = nearestAtmosphereBody(state.r, atmosphereBodies, pivot);
   const atmosphere = body === null ? null : body.atmosphereAt(pivot);
   if (body === null || atmosphere === null) return Infinity;
   const bodyState = body.stateAt(pivot);
@@ -104,17 +102,15 @@ export function atmosphericMaxStep(
 }
 
 // 刻み dt のあいだに、抗力がその物体の対気速度を丸ごと奪い切るか。奪い切る幅で積んだ軌道は
-// もはや正確ではない(dragAccel が対気速度で頭打ちにするので発散こそしない)。
+// もはや正確ではない(dragAccel が対気速度で頭打ちにするので発散こそしない)。body は atmosphericMaxStep と同じ。
 //
 // **見るのは剛性の項だけで、atmosphericMaxStep の合成値ではない。** 中間段の沈み込みの上限は
 // 密度にも bcInv にも依らず、高い倍率では大気から遥かに離れた低軌道でも下回る — それを根拠に
 // すると、大気に触れていない物体まで巻き込んでしまう。
 export function dragTakesFullAirspeed(
-  state: KinematicState, bcInv: number,
-  atmosphereBodies: readonly CelestialBody[], pivot: number, dt: number,
+  state: KinematicState, bcInv: number, body: CelestialBody | null, pivot: number, dt: number,
 ): boolean {
   if (bcInv <= 0 || dt <= 0) return false;
-  const body = nearestAtmosphereBody(state.r, atmosphereBodies, pivot);
   const atmosphere = body === null ? null : body.atmosphereAt(pivot);
   if (body === null || atmosphere === null) return false;
   const bodyState = body.stateAt(pivot);
