@@ -401,7 +401,7 @@ export class DebugInfoWindow {
 
       { key: 'eph-all', label: '全リング', value: `hit ${timeHits} / miss ${timeMisses}`, group: '暦キャッシュ' },
 
-      { key: 'view', label: 'view', value: c.mapMode ? 'map' : 'combat', group: '表示' },
+      { key: 'view', label: 'view', value: c.view, group: '表示' },
       { key: 'view-pickables', label: 'pickables', value: `${c.mapItems}`, group: '表示' },
       { key: 'view-labels', label: 'labels', value: `${c.mapLabels}`, group: '表示' },
       {
