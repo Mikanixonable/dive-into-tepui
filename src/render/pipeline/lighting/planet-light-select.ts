@@ -4,12 +4,12 @@ import { lambertPhase } from '../../../physics/lambert-sphere';
 import { sunlitFactor } from '../../../physics/shadow';
 import { isStar } from '../../../physics/celestial-body-def';
 import { dot, len, sub } from '../../../math/vec3';
-import { rec709Luminance } from '../../celestial-albedo';
+import { rec709Luminance } from '../../celestial/celestial-albedo';
 import { MAX_PLANET_LIGHT_SLOTS, planetRadiance } from './planet-light-source';
 import { SUN_IRRADIANCE_1AU, irradianceAtDistance, scaledRadiantIntensity } from '../sun-light';
 import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
-import type { Albedo } from '../../celestial-albedo';
+import type { Albedo } from '../../celestial/celestial-albedo';
 
 // 一様球の放射輝度 radiance(色つき)・半径 radius の天体が、距離 distance の基準点へ、位相角 phaseAngle [rad](天体から見た
 // 主星と基準点のなす角)で届ける放射照度の大きさ。光源の順位づけの物差し。

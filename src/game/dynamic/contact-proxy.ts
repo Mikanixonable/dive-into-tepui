@@ -6,7 +6,7 @@ import type { Attitude } from '../../physics/attitude';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CompoundCylinderShape } from '../../physics/compound-cylinder-contact';
 import type { CompoundSphereShape } from '../../physics/compound-sphere-contact';
-import type { Contact } from './dynamic-entity/contact';
+import type { Contact } from './entity/contact';
 import type { ContactKind } from './dynamic-motion';
 import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
 
@@ -14,7 +14,7 @@ import type { DynamicReactionServices, EntityContactParticipant } from './dynami
 const STILL_ATTITUDE: Attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 
 // 代理が他の個体と接触したときの、本体の側のゲーム上の反応。
-export type ContactProxyReaction = (
+type ContactProxyReaction = (
   other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
 ) => void;
 

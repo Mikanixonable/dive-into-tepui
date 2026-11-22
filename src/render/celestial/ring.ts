@@ -15,7 +15,7 @@ import {
   vec3,
   vec4,
 } from 'three/tsl';
-import { RingArcDef, RingOpticsDef } from '../../physics/celestial-body-def';
+import type { RingArcDef, RingOpticsDef } from '../../physics/celestial-body-def';
 import { viewRayAt } from '../pipeline/view-ray';
 import type { SunLight } from '../pipeline/sun-light';
 import type { BodyShadow } from '../pipeline/shadow/body-shadow';
@@ -38,7 +38,7 @@ const RING_COVERAGE_ATTRIBUTE = 'ringCoverage';
 
 export interface RingVisual {
   readonly object: THREE.Object3D;
-  // この表示物が組んだ geometry を解放する。object をシーンから外すのは呼び出し側が行う。
+  // この表示物が組んだ geometry を解放する。object のシーンからの削除は含まない。
   readonly dispose: () => void;
 }
 
@@ -164,8 +164,8 @@ function wrapDeg(deg: number): number {
 }
 
 // 帯を、アークの重なりが変わらない扇形へ切った並び。アークが無ければ全周 1 つ。
-function sectorParts(arcs: readonly RingArcDef[] | undefined): readonly RingSector[] {
-  if (arcs === undefined || arcs.length === 0) return [{ start: 0, length: Math.PI * 2, scale: 1 }];
+function sectorParts(arcs: readonly RingArcDef[] | null): readonly RingSector[] {
+  if (arcs === null || arcs.length === 0) return [{ start: 0, length: Math.PI * 2, scale: 1 }];
   // 全アークの端点で全周を切る。
   const bounds = [0, 360];
   for (const arc of arcs) bounds.push(wrapDeg(arc.fromDeg), wrapDeg(arc.toDeg));
@@ -198,7 +198,7 @@ function combineSectors(visuals: readonly RingVisual[]): RingVisual {
   };
 }
 
-// 扇形ごとの線を 1 つへ束ねる。被覆率は帯ぜんぶで同じなので、全扇形へ配る。
+// 扇形ごとの線を 1 つへ束ねる。被覆率は帯全体で共通なため、全扇形へ適用する。
 function combineLineSectors(visuals: readonly RingLineVisual[]): RingLineVisual {
   return {
     ...combineSectors(visuals),
@@ -233,7 +233,7 @@ export function createAnnulusRing(
   materials: RingMaterials,
   arcs?: readonly RingArcDef[],
 ): RingVisual {
-  return combineSectors(sectorParts(arcs).map((part) => buildAnnulusMesh({
+  return combineSectors(sectorParts(arcs ?? null).map((part) => buildAnnulusMesh({
     ...optics,
     normalOpticalDepth: optics.normalOpticalDepth * part.scale,
   }, innerRadius, outerRadius, part.start, part.length, materials)));
@@ -281,7 +281,7 @@ export function createRingLine(
   materials: RingMaterials,
   arcs?: readonly RingArcDef[],
 ): RingLineVisual {
-  return combineLineSectors(sectorParts(arcs).map((part) => buildLineRingSegment({
+  return combineLineSectors(sectorParts(arcs ?? null).map((part) => buildLineRingSegment({
     ...optics,
     normalOpticalDepth: optics.normalOpticalDepth * part.scale,
   }, radius, part.start, part.length, part.length >= Math.PI * 1.9 ? 256 : 32, materials)));

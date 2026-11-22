@@ -1,6 +1,6 @@
 // 航法ターゲット(任意の ObjectPickable — 月・ラグランジュ点なども含む)の、位置・速度と軌道面への
 // 解決と、自機軌道との相対 AN/DN(昇交点・降交点)・再接近点の算出・マーカー表示・被選択物としての公開。
-import { type Vec3, add, len, sub } from '../math/vec3';
+import { type Vec3, add, addScaled, cross, len, lenSq, norm, scale, sub } from '../math/vec3';
 import { nodeAnomalies, positionOnOrbit, tofBetween, trueAnomalyAt } from '../physics/elements';
 import { strongestAttractor } from '../physics/attractor';
 import { OrbitingMotion } from '../physics/celestial-motion';
@@ -8,24 +8,30 @@ import { type FrameAnchorSource, frameOfCelestialBody, toFrameState, unbakeToDis
 import { type LagrangeLabel, lagrangeStateOf, secondaryFrameOf } from '../physics/lagrange';
 import { LOCAL_FORWARD, qRotate } from '../math/quat';
 import { goldenSectionMin } from '../math/optimize';
-import { aliveCombatTarget } from './dynamic/dynamic-entity/combat-target';
-import { RelativeNodeMarker } from './marker/relative-node-marker';
+import { aliveCombatTarget } from './dynamic/entity/combat-target';
+import { RelativeNodeMarker } from './marker/node-marker';
 import { lagrangePointOf } from './celestial/lagrange-id';
 import type { CelestialBody } from '../physics/celestial-body';
-import type { Controllable } from './dynamic/dynamic-entity/controllable';
+import type { Controllable } from './dynamic/entity/controllable';
 import type { DisplayWindow } from './display-window-manager';
-import type { EntityRoster } from './dynamic/entity-roster';
-import type { TimeLabelSetting } from './hud/orbit/calendar-ticks';
-import type { MarkerDeclaration } from '../marker/marker-declaration';
-import type { MarkerSink } from '../marker/marker-sink';
-import type { MarkerDevice } from '../marker/marker-device';
+import type { EntityRoster } from './dynamic/entity-registry';
+import type { TimeLabelSetting } from './calendar-ticks';
+import type { MarkerDeclaration } from '../marker-kit/marker-declaration';
+import type { MarkerSink } from '../marker-kit/marker-sink';
+import type { MarkerDevice } from '../marker-kit/marker-device';
 import type { CameraFrame } from '../render/camera/camera-frame';
 import type { ObjectPickable } from './pickable/object-pickable';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './dynamic/entity/dynamic-entity';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { OrbitReference } from './orbit-reference';
 import type { NavTargetSource } from './viewer/nav-target-selection';
 import type { ViewMode } from './view/view-mode';
+import {
+  orbitSlotFamilyMember, slotRotatingFrameAt, type OrbitSlotCatalogAccess,
+} from './navigation/orbit-slot-family';
+import { orbitSlotStateAt } from './navigation/orbit-slot-state';
+import type { OrbitSlot } from './navigation/orbit-slot';
+import type { OrbitSlotRegistry } from './navigation/orbit-slot-registry';
 
 // 再接近点探索: 自艦とターゲットの相対距離を今から何秒先まで走査するか。低軌道の
 // 数周ぶんに相当する1日。
@@ -39,13 +45,14 @@ const CLOSEST_APPROACH_REFINE_ITERATIONS = 20;
 // 極小になる時刻と、その時点の自艦位置。どちらかの予測がその時刻まで届かない、または区間内に
 // 極小が無ければ null(まだ近づいている途中、あるいは既に最接近を過ぎている)。
 function findClosestApproach(
-  controlled: DynamicEntity, target: DynamicEntity, celestialBodies: CelestialBodies, simTime: number,
+  controlled: DynamicEntity, targetPosAt: (t: number) => Vec3 | null,
+  celestialBodies: CelestialBodies, simTime: number,
 ): { readonly pos: Vec3; readonly t: number } | null {
   // 時刻 t の相対距離。どちらかの予測が t まで届いていなければ null。
   const distAt = (t: number): number | null => {
     const p = controlled.motion.stateAt(t, celestialBodies);
-    const q = target.motion.stateAt(t, celestialBodies);
-    return p && q ? len(sub(p.r, q.r)) : null;
+    const q = targetPosAt(t);
+    return p && q ? len(sub(p.r, q)) : null;
   };
   const step = CLOSEST_APPROACH_SPAN_SEC / CLOSEST_APPROACH_SAMPLES;
   // 隣接3点が谷型(前後より小さい)になった最初の位置を極小の挟み込み区間として使う。
@@ -79,12 +86,21 @@ export class NavTargetPresenter {
   private readonly group: MarkerSink;
 
   // navTarget から航法ターゲットを読み、マーカーを markers から作ったマーカー群へ宣言する。
-  public constructor(private readonly navTarget: NavTargetSource, markers: MarkerDevice) {
+  // orbitSlots は軌道標識の台帳 — 標識の id もターゲットとして解決する。slotCatalog は
+  // 族型の標識が読む焼き込みカタログの口。
+  public constructor(
+    private readonly navTarget: NavTargetSource, markers: MarkerDevice,
+    private readonly orbitSlots: OrbitSlotRegistry,
+    private readonly slotCatalog: OrbitSlotCatalogAccess | null,
+  ) {
     this.group = markers.createGroup();
   }
 
   // 所有するマーカー群を取り除く。
   public dispose(): void { this.group.dispose(); }
+
+  // いまの航法ターゲットの id。未設定なら null。
+  public get targetId(): string | null { return this.navTarget.id; }
 
   // AN・DN・再接近点のマーカー。
   private get nodeMarkers(): readonly RelativeNodeMarker[] {
@@ -119,11 +135,21 @@ export class NavTargetPresenter {
       unbakeToDisplayPoint(unbakeTf, celestialBodies.frames.transformAt(frame, t, frameAnchors), r);
 
     // 再接近点は軌道面が定まらなくても解けるので、AN/DN の早期 return より前に求める。
-    if (target && strongestAttractor(
-      target.motion.state.r, stateCelestialBodies, simTime,
-    ).id === controlledCenter.id) {
-      const found = findClosestApproach(controlled, target, celestialBodies, simTime);
-      if (found) this.closestApproach.place(toDisplay(found.pos, found.t), found.t, ownerName, targetName);
+    // 軌道標識は台帳から位相点の位置を引く。
+    const slotTarget = target === null ? this.orbitSlots.find(targetId) : null;
+    const targetPosAt: ((t: number) => Vec3 | null) | null = target !== null
+      ? (t) => target.motion.stateAt(t, celestialBodies)?.r ?? null
+      : slotTarget !== null
+        ? (t) => orbitSlotStateAt(slotTarget, t, celestialBodies, this.slotCatalog)?.r ?? null
+        : null;
+    if (targetPosAt !== null) {
+      const targetNow = targetPosAt(simTime);
+      if (targetNow !== null && strongestAttractor(
+        targetNow, stateCelestialBodies, simTime,
+      ).id === controlledCenter.id) {
+        const found = findClosestApproach(controlled, targetPosAt, celestialBodies, simTime);
+        if (found) this.closestApproach.place(toDisplay(found.pos, found.t), found.t, ownerName, targetName);
+      }
     }
 
     const controlledEl = controlled.motion.orbitalElementsAround(controlledCenter, simTime);
@@ -160,7 +186,7 @@ export class NavTargetPresenter {
     if (attractor instanceof OrbitingMotion) {
       return { id, state: attractor.stateAt(t), hasMass: true, attractor, entity: null, fixed: true };
     }
-    // ラグランジュ点は副天体の回転系から解く。
+    // ラグランジュ点は副天体の回転座標系から計算する。
     const lagrange = lagrangePointOf(id);
     if (lagrange !== null) {
       const secondary = celestialBodies.findMotion(lagrange.parentId) ?? null;
@@ -173,6 +199,13 @@ export class NavTargetPresenter {
           attractor: null, entity: null, fixed: true,
         };
       }
+    }
+    // 軌道標識は、台帳に残っている限り位相点の状態を参照軌道から引く。
+    const slot = this.orbitSlots.find(id);
+    if (slot !== null) {
+      const state = orbitSlotStateAt(slot, t, celestialBodies, this.slotCatalog);
+      return state === null ? null
+        : { id, state, hasMass: false, attractor: null, entity: null, fixed: true };
     }
     // 残りは生存中の艦・基地。
     const entity = aliveCombatTarget(roster.all(), id);
@@ -201,10 +234,38 @@ export class NavTargetPresenter {
     if (secondaryMotion instanceof OrbitingMotion) {
       return qRotate(secondaryMotion.orbitFrameRotationAt(t).q, LOCAL_FORWARD);
     }
+    // 軌道標識は、位相点の運動から面を決める。
+    const slot = this.orbitSlots.find(id);
+    if (slot !== null) return this.slotPlaneNormal(slot, celestialBodies, t);
     const entity = aliveCombatTarget(roster.all(), id);
     if (!entity) return null;
     const center = strongestAttractor(entity.motion.state.r, celestialBodies.celestialMotions, t);
     return entity.motion.orbitalElementsAround(center, t)?.hHat ?? null;
+  }
+
+  // 標識の軌道面法線(ECI)。要素型は位相点の基準天体相対の運動から、族型は位相点の
+  // 回転座標の運動から求める。軌道が解けない・位置と速度が退化する標識は null。
+  private slotPlaneNormal(slot: OrbitSlot, celestialBodies: CelestialBodies, t: number): Vec3 | null {
+    if (slot.orbit.kind === 'elements') {
+      const center = celestialBodies.findMotion(slot.orbit.bodyId);
+      const state = orbitSlotStateAt(slot, t, celestialBodies, this.slotCatalog);
+      if (center === null || state === null) return null;
+      const c = center.stateAt(t);
+      const n = cross(sub(state.r, c.r), sub(state.v, c.v));
+      return lenSq(n) > 0 ? norm(n) : null;
+    }
+    const member = orbitSlotFamilyMember(slot.orbit, t, celestialBodies, this.slotCatalog);
+    const frame = slotRotatingFrameAt(
+      celestialBodies, slot.orbit.primaryId, slot.orbit.secondaryId, t,
+    );
+    if (member === null || frame === null || !(member.period > 0)) return null;
+    const phase = (((slot.orbit.phase0 + t / member.period) % 1) + 1) % 1;
+    const s = member.sample(phase);
+    // 回転座標の位置・速度を ECI 基底へ写し、その外積を面の法線とする。
+    const r = addScaled(addScaled(scale(frame.xHat, s[0]), frame.yHat, s[1]), frame.zHat, s[2]);
+    const v = addScaled(addScaled(scale(frame.xHat, s[3]), frame.yHat, s[4]), frame.zHat, s[5]);
+    const n = cross(r, v);
+    return lenSq(n) > 0 ? norm(n) : null;
   }
 
   // 右クリック対象として公開する AN/DN・再接近点アイコン。出す理由が残っているぶんを返す。

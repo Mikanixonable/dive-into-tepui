@@ -1,0 +1,65 @@
+// hud/widgets/ 全体で共有する基盤。個々のウィジェットはここを経由して
+// pointerdown の伝播抑止とタップ領域の拡張を行い、見出し付きの行もここが組む。
+
+// クラスと文言だけの span 要素を作る。
+export function buildSpan(className: string, text: string): HTMLSpanElement {
+  const span = document.createElement('span');
+  span.className = className;
+  span.textContent = text;
+  return span;
+}
+
+// 行の見出し(.w-group-title)。
+export function buildGroupTitle(text: string): HTMLSpanElement {
+  return buildSpan('w-group-title', text);
+}
+
+// 見出し付きの行コンテナを生成する。className は行そのもののクラスで、既定は横並びの行 .w-group。
+// title が空文字なら見出しを持たない行となる。行コンテンツは返却された要素の子として追加する。
+export function buildLabeledRow(title: string, className = 'w-group'): HTMLElement {
+  const row = document.createElement('div');
+  row.className = className;
+  if (title !== '') row.appendChild(buildGroupTitle(title));
+  return row;
+}
+
+// クリックがカメラドラッグ側へ伝播しないよう止める。全ウィジェットの対話要素がこれを呼ぶ。
+export function stopDragPropagation(el: HTMLElement): void {
+  el.addEventListener('pointerdown', (e) => e.stopPropagation());
+}
+
+// pointer:coarse のときだけ --hit-target-min まで寸法を広げるクラスを付ける。
+export function expandHitTarget(el: HTMLElement): void {
+  el.classList.add('w-hit');
+}
+
+// role="button"/role="switch" 相当の要素の活性化を一箇所にまとめる。click は伝播を止めて
+// handler を呼び、ポインタ操作由来(isTrusted)ならフォーカスを外す — 保持したままだと
+// 押しっぱなしの物理キー(Space 連射など)で再発火してしまう。Enter/Space は role だけでは
+// click を発火しないため明示的に合成し、伝播も止める。
+export function bindActivation(el: HTMLElement, handler: () => void): void {
+  // ポインタ由来(isTrusted)のクリックだけフォーカスを外す。
+  el.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (e.isTrusted) el.blur();
+    handler();
+  });
+  // Enter/Space を click として合成する(role="button" だけでは発火しないため)。
+  bindKeyboardActivation(el, () => el.click());
+}
+
+// Enter/Space の打鍵だけを活性化として配線する。dblclick や contextmenu が意味を持つ行など、
+// click 自体を活性化へ割り当てられない要素へ、キーボードからの活性化だけを足すために使う。
+// role だけでは click を発火しないため明示的に呼び、伝播も止める。
+// 押しっぱなしのキーリピートでは発火しない — 合成される活性化は isTrusted が false で
+// blur ガードが効かず、連射になってしまうため。
+export function bindKeyboardActivation(el: HTMLElement, handler: () => void): void {
+  el.addEventListener('keydown', (e) => {
+    if (e.target !== el || e.repeat) return;
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      e.stopPropagation();
+      handler();
+    }
+  });
+}

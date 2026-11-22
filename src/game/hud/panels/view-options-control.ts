@@ -3,27 +3,11 @@
 // (視点)として扱う。
 import { catalogFamilyIndex } from '../../celestial/orbit-guide/orbit-guide-catalog';
 import { normalizeOrbitGuideSettings } from '../../viewer/orbit-guide-settings';
-import { applyMapDisplayMode } from '../../map/display-toggles';
 import { ViewOptionsPanel } from './view-options-panel';
 import type { OrbitGuideCommands } from '../../viewer/orbit-guide-commands';
 import type { OrbitGuideSource } from '../../viewer/orbit-guide-selection';
-import type { OrbitGuideGroupTab, ViewOptionsTab } from '../hud-selection';
-import type { MapDisplayToggles } from '../../map/display-toggles';
-import type { PanelCollapse } from '../panel-shell';
-import type { CelestialGridVisibility } from '../../../render/celestial-grid';
-import type { SettingValue } from '../../../settings/setting-value';
-
-// 表示パネルが読み書きする、セーブを跨いで共通の設定。現在値を読み、書き換えは onXxxChange へ返す。
-export interface ViewOptionsSettings {
-  readonly mapDisplay: SettingValue<MapDisplayToggles>;
-  readonly grid: SettingValue<CelestialGridVisibility>;
-  readonly tab: SettingValue<ViewOptionsTab>;
-  readonly orbitGuideGroupTab: SettingValue<OrbitGuideGroupTab>;
-  onMapDisplayChange(value: MapDisplayToggles): void;
-  onGridChange(value: CelestialGridVisibility): void;
-  onTabChange(value: ViewOptionsTab): void;
-  onOrbitGuideGroupTabChange(value: OrbitGuideGroupTab): void;
-}
+import type { ViewOptionsSettings } from '../../view/view-options-settings';
+import type { PanelCollapse } from '../panel-chrome';
 
 export class ViewOptionsControl {
   private readonly panel: ViewOptionsPanel;
@@ -37,13 +21,19 @@ export class ViewOptionsControl {
   ) {
     this.panel = new ViewOptionsPanel(root, collapse, catalogFamilyIndex());
 
-    // 天体クラスの表示。1ボタンが循環する表示状態を、保存される boolean の組へ畳む。
-    this.panel.onBodyClassModeChange = (key, mode) => {
-      const next = applyMapDisplayMode(settings.mapDisplay.current, key, mode);
+    // 対象クラスのラベル・軌道線。互いに独立したトグルとして書き戻す。
+    this.panel.onMapDisplayToggle = (key, on) => {
+      const next = { ...settings.mapDisplay.current, [key]: on };
       settings.onMapDisplayChange(next);
-      this.panel.setBodyClassToggles(next);
+      this.panel.setMapDisplayToggles(next);
     };
-    this.panel.setBodyClassToggles(settings.mapDisplay.current);
+    this.panel.setMapDisplayToggles(settings.mapDisplay.current);
+
+    this.panel.onRenderStyleChange = (style) => {
+      settings.onRenderStyleChange(style);
+      this.panel.setRenderStyle(style);
+    };
+    this.panel.setRenderStyle(settings.renderStyle.current);
 
     // 天球グリッド。行見出しと面・極・網は、互いに独立したトグルとして書き戻す。
     this.panel.onGridToggle = (key, on) => {

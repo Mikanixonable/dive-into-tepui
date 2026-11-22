@@ -31,6 +31,7 @@ export const FOCUS_CAMERA_FOV_MIN = 15; // 最小垂直画角 [deg]
 export const FOCUS_CAMERA_FOV_MAX = 120; // 最大垂直画角 [deg]
 const FOCUS_CAMERA_MAX_DIST = 1e14; // 注視距離の上限 [m]
 const ENTITY_MIN_DIST = 12; // 機体・固定点フォーカスでの最小注視距離 [m]
+const PLANET_MIN_ALTITUDE = 100e3; // 惑星フォーカスで、表面からこの高度より近づかない [m]
 const FOCUS_CAMERA_FOV = 50; // 既定の垂直画角 [deg]
 const STALE_FOLLOW_FRAMES_TO_DROP = 2; // 回転追従が成立しないフレームがこの数だけ続いたら外す
 
@@ -414,7 +415,7 @@ export class FocusCameraSelection implements FocusCameraSource {
     );
     const normal = norm(frameDirVector(toFrameDir(transform, this.framePlaneNormal(sample))));
     const currentOffset = qRotate(this.orientation.effective(), LOCAL_FORWARD);
-    // 真上は法線から見下ろし、真横はいまの視線を面へ倒す。縮退したら春分方向、次に右軸で代える。
+    // 真上は法線から見下ろし、真横は現在の視線を基準面へ射影する。縮退した場合は春分方向、次に右軸を採用する。
     let offset: Vec3;
     let up: Vec3;
     if (view === 'above') {
@@ -490,10 +491,13 @@ export class FocusCameraSelection implements FocusCameraSource {
     return this.availableRotationFollows(sample).some((candidate) => rotationFollowKey(candidate) === key);
   }
 
-  // 注視距離 [m] を、注視対象の半径(天体でなければ実体の下限)と上限の間へ収めて据える。
+  // 注視距離 [m] を、注視対象の下限と上限の間へ収めて据える。惑星は表面から PLANET_MIN_ALTITUDE 上空、
+  // 他の天体は半径(天体でなければ実体の下限)を下限とする。
   public setDistance(distance: number): void {
     const body = this._focus.kind === 'object' ? this.celestialBodies.findMotion(this._focus.id) : null;
-    const minDistance = body === null ? ENTITY_MIN_DIST : Math.max(FOCUS_CAMERA_MIN_DIST, body.def.radius);
+    const minDistance = body === null ? ENTITY_MIN_DIST
+      : body.kind === 'planet' ? body.def.radius + PLANET_MIN_ALTITUDE
+      : Math.max(FOCUS_CAMERA_MIN_DIST, body.def.radius);
     this._distance = Math.max(minDistance, Math.min(FOCUS_CAMERA_MAX_DIST, distance));
   }
 

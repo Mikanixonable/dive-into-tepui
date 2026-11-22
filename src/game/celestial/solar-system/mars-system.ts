@@ -2,17 +2,17 @@
 import * as THREE from 'three/webgpu';
 import marsTextureUrl from '../../../assets/2k_mars.jpg';
 import phobosTextureUrl from '../../../assets/2k_phobos.jpg';
-import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { SatelliteMotion, type StarMotion } from '../../../physics/celestial-motion';
+import { type PlanetDef, planetDefForSimZero, type SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
 import type { AtmosphereOptics } from '../../../render/atmosphere';
-import type { CelestialTexture } from '../../../render/celestial-textures';
+import type { CelestialTexture } from '../../../render/celestial/celestial-textures';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
-import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
-import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
+import { CelestialEntity } from '../entity/celestial-entity';
+import { PointCelestialView } from '../../../render/celestial/entity/point-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/entity/sphere-celestial-view';
 import { MARS_POLE } from './poles';
 import { equatorialSatelliteOrbit } from './satellite-orbit-builders';
 

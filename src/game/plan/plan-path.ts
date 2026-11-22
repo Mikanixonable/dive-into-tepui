@@ -1,5 +1,5 @@
 // 複数ノードからなる計画軌道を区間ごとの予測弧として算出する。計画を区間へ分解し、各区間の到達状態・
-// アプシス・衝突点と、画面上の最寄り点を答える。折れ線は PlanPathView へ宣言して描く。
+// アプシス・衝突点、および画面上の最寄り点を算出・提供する。折れ線は PlanPathView へ宣言して描く。
 import type * as THREE from 'three/webgpu';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { KinematicState } from '../../physics/kinematic-state';
@@ -12,14 +12,14 @@ import type { Projected } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { PlanPathView, type PlanArcLine } from '../../render/plan/plan-path-view';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../render/lines/line-style';
 import type { ProjectFn, ScaleFn } from '../../math/projection';
 import { type DisplayDurationSource, type PlanData, type TimeRange, segmentDurationFrom } from './plan';
 import { type BodyImpact, PredictedArc } from '../dynamic/predicted-arc';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from './arc-range';
+import type { Controllable } from '../dynamic/entity/controllable';
+import { clipSamplesTo, samplesInRange, stateAt, withinEnd } from '../../physics/arc-range';
 import { goldenSectionMin } from '../../math/optimize';
-import { SHIP_BCINV, SHIP_SRP_COEFF } from '../dynamic/dynamic-entity/combat-ship-entity';
+import { SHIP_BCINV, SHIP_SRP_COEFF } from '../dynamic/entity/combat-ship-entity';
 
 // 計画弧の衝突判定に使う既定の船体半径。実体の compound shape が無い表示弧では
 // 保守的な球近似を使う。
@@ -416,7 +416,7 @@ export class PlanPath {
     return result;
   }
 
-  // source が答える範囲を to でクリップしたうえでの時刻 t の状態。
+  // source の有効範囲を to でクリップした時刻 t における状態。
   private stateAtSource(source: SegmentSource, t: number): KinematicState | null {
     return source.arc ? stateAt(source.arc.trajectory, t, source.to) : null;
   }

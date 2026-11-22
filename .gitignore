@@ -1,5 +1,7 @@
 node_modules
 *.log
+.eslintcache
+.tsbuildinfo
 tests/dist/
 tests/dist-perf/
 docs/
@@ -9,9 +11,12 @@ docs/
 .bgm-lab/
 .render-lab/
 .render-lab-shots/
-.venv-protein-builder/
 __pycache__/
 .cloud-lab/
+.enemy-lab/
+.cloud-lab-shots/
+.cloud-detail/
+reference/
 assets-src/climate/
 .earth-surface/raw/
 .earth-surface/raw-*/
@@ -24,3 +29,21 @@ assets-src/climate/
 .earth-surface/verification/capture/
 .earth-surface/verification/fetch-tasks.txt
 .earth-surface/verification/preflight-micromamba.json
+
+# Security: Secrets and sensitive files
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.secret
+*.p12
+*.pfx
+credentials.json
+service-account.json
+
+# Local scratch work
+scratch/
+artifacts/
+.local/
+.venv-protein-builder/

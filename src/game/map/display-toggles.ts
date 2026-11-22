@@ -1,7 +1,7 @@
 // マップの表示トグル。天体のクラス(惑星・準惑星・衛星・小天体・ラグランジュ点)と、積分で動く
-// 個体の種別(自機・敵艦・弾薬・燃料・基地)を同じ表で持つ — 表示パネルの1ボタンが示す状態も、
-// 保存される boolean の組も、この1つの表が正本。
-import type { CelestialClass } from '../celestial/celestial-entity/celestial-entity-def';
+// 個体の種別(自機・敵艦・弾薬・燃料・基地)のラベル・軌道線を同じ表で持つ — 表示パネルのチップが
+// 示す状態も、保存される boolean の組も、この1つの表が正本。
+import type { CelestialClass } from '../celestial/entity/celestial-class';
 
 export interface MapDisplayToggles {
   readonly planetOrbit: boolean;
@@ -18,14 +18,14 @@ export interface MapDisplayToggles {
   readonly ammoName: boolean; readonly ammoOrbit: boolean;
   readonly fuelName: boolean; readonly fuelOrbit: boolean;
   readonly baseName: boolean; readonly baseOrbit: boolean;
+  readonly orbitSlotName: boolean; readonly orbitSlotOrbit: boolean;
 }
 
-export type MapDisplayMode = 'orbit' | 'label' | 'hidden';
-
-// 表示パネルの1行にあたる、ラベル・軌道線をまとめたクラス全体トグル。
+// ラベル・軌道線をまとめた対象クラス。どちらかが ON ならそのクラスはマップに現れる。
 export type MapDisplayCategory =
   | 'planetVisible' | 'dwarfVisible' | 'satelliteVisible' | 'smallBodyVisible' | 'lagrangeVisible'
-  | 'playerVisible' | 'enemyVisible' | 'ammoVisible' | 'fuelVisible' | 'baseVisible';
+  | 'playerVisible' | 'enemyVisible' | 'ammoVisible' | 'fuelVisible' | 'baseVisible'
+  | 'orbitSlotVisible';
 
 // 既定値(SPEC/MAP.md「表示するオブジェクトの選択」)。準惑星・小天体の軌道線は、数が多く
 // 内側太陽系を埋めるので off。
@@ -41,9 +41,10 @@ export const DEFAULT_MAP_DISPLAY_TOGGLES: MapDisplayToggles = {
   ammoName: true, ammoOrbit: false,
   fuelName: true, fuelOrbit: false,
   baseName: true, baseOrbit: true,
+  orbitSlotName: true, orbitSlotOrbit: true,
 };
 
-// 各クラス全体トグルの配下にある子トグル(ラベル・軌道線)。軌道を持たない lagrange は orbit が null。
+// 各対象クラスに属するトグル(ラベル・軌道線)。軌道を持たない lagrange は orbit が null。
 const MAP_DISPLAY_CATEGORIES: Readonly<Record<MapDisplayCategory, {
   readonly name: keyof MapDisplayToggles;
   readonly orbit: keyof MapDisplayToggles | null;
@@ -58,45 +59,13 @@ const MAP_DISPLAY_CATEGORIES: Readonly<Record<MapDisplayCategory, {
   ammoVisible: { name: 'ammoName', orbit: 'ammoOrbit' },
   fuelVisible: { name: 'fuelName', orbit: 'fuelOrbit' },
   baseVisible: { name: 'baseName', orbit: 'baseOrbit' },
+  orbitSlotVisible: { name: 'orbitSlotName', orbit: 'orbitSlotOrbit' },
 };
 
-// クラス全体トグルの状態。配下の子トグルが1つでも on なら on、全て off なら off。
+// 対象クラスがマップに現れるか。ラベル・軌道線のどちらかが on なら現れる。
 export function mapDisplayCategoryVisible(toggles: MapDisplayToggles, category: MapDisplayCategory): boolean {
   const { name, orbit } = MAP_DISPLAY_CATEGORIES[category];
   return toggles[name] || (orbit !== null && toggles[orbit]);
-}
-
-// 保存されている boolean の組を、表示パネルの1ボタンが示す状態へ変換する。
-export function mapDisplayModeOf(
-  toggles: MapDisplayToggles, category: MapDisplayCategory,
-): MapDisplayMode {
-  const { name, orbit } = MAP_DISPLAY_CATEGORIES[category];
-  if (!toggles[name]) return 'hidden';
-  return orbit !== null && toggles[orbit] ? 'orbit' : 'label';
-}
-
-// 表示パネルの1ボタンを押したときの次の状態。軌道を持つ対象は「非表示 → ラベル →
-// ラベル＋軌道」、持たない対象は「非表示 / ラベル」を循環する。
-export function nextMapDisplayMode(
-  current: MapDisplayMode, hasOrbit: boolean,
-): MapDisplayMode {
-  if (!hasOrbit) return current === 'hidden' ? 'label' : 'hidden';
-  switch (current) {
-    case 'hidden': return 'label';
-    case 'label': return 'orbit';
-    case 'orbit': return 'hidden';
-  }
-}
-
-// 表示パネルの1ボタンが示す状態を、そのクラスの子トグルへ反映した新しい組を返す。
-export function applyMapDisplayMode(
-  current: MapDisplayToggles, category: MapDisplayCategory, mode: MapDisplayMode,
-): MapDisplayToggles {
-  const { name, orbit } = MAP_DISPLAY_CATEGORIES[category];
-  const next = { ...current };
-  next[name] = mode !== 'hidden';
-  if (orbit !== null) next[orbit] = mode === 'orbit';
-  return next;
 }
 
 // 保存された文字列をトグルの組へ読み直す。読めなければ既定値に戻る。
@@ -116,7 +85,7 @@ export function formatMapDisplayToggles(toggles: MapDisplayToggles): string {
   return JSON.stringify(toggles);
 }
 
-// 天体クラスのクラス全体トグル。恒星は表示の基準点なので常に true。
+// 天体クラスがマップに現れるか。恒星は表示の基準点なので常に true。
 export function celestialClassVisible(cls: CelestialClass, toggles: MapDisplayToggles): boolean {
   switch (cls) {
     case 'planet': return mapDisplayCategoryVisible(toggles, 'planetVisible');

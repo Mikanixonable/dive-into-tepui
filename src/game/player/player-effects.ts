@@ -2,15 +2,15 @@
 import type { EntityRegistry } from '../dynamic/entity-registry';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Vec3 } from '../../math/vec3';
-import type { BulletType } from '../dynamic/dynamic-entity/bullet-reaction';
+import type { BulletType } from '../dynamic/entity/bullet-reaction';
 import {
   buildDestroyFragments, DESTROY_FRAG_SIZE_MAX, DESTROY_FRAG_SIZE_MIN,
   PLAYER_DESTROY_FRAG_COLOR, playerDestroyFragments,
-} from '../dynamic/dynamic-entity/debris-piece';
+} from '../dynamic/entity/debris-piece';
 
 // 放熱板が全損したとき、その先端から出す破片の数。
 const RADIATOR_BREAK_FRAGMENTS = 4;
-// 放熱板の破片へ乗せる速度のばらつき [m/s]。
+// 放熱板の破片に付与する初速のばらつき [m/s]。
 const RADIATOR_BREAK_VELOCITY_SPREAD = 8.0;
 
 export class PlayerEffects {
@@ -29,7 +29,7 @@ export class PlayerEffects {
 
   // 機体喪失の出来事と破片。
   public destroy(state: KinematicState): void {
-    this.registry.events.record({ kind: 'shipExploded', state, modelScale: 1 });
+    this.registry.events.record({ kind: 'shipExploded', state, modelScale: 1, owner: 'player' });
     for (const piece of playerDestroyFragments(
       state, this.registry.idAllocators,
     )) this.registry.add(piece);

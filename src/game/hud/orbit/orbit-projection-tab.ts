@@ -2,19 +2,19 @@
 // ターゲットの経緯度の軌跡を重ねる。表示範囲(中心経緯度・ズーム)はチャート自身が持つので、
 // このタブはスケール入力欄を持たない。
 import { strongestAttractor } from '../../../physics/attractor';
-import { PointerPanZoom } from '../../../hud/pointer-pan-zoom';
+import { PointerPanZoom } from '../../../hud-kit/pointer-pan-zoom';
 import { projectionSeries, resolveTarget } from './orbit-analysis-data';
 import { buildTabControls, sampleCountFor } from './orbit-analysis-tab';
 import { OrbitProjectionChart } from './orbit-projection-chart';
-import type { CelestialSystem } from '../../celestial/celestial-system';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import type { PresentationCelestialSystem } from '../../presentation-ports';
+import type { DynamicEntity } from '../../dynamic/entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
 import type { ProjectionSeriesSpec } from './orbit-projection-chart';
 
 // id の天体が持つ円筒図法テクスチャの URL。実写テクスチャが無い天体(単色球扱い)は null。
-function projectionTextureUrl(celestialSystem: CelestialSystem, id: string): string | null {
+function projectionTextureUrl(celestialSystem: PresentationCelestialSystem, id: string): string | null {
   return celestialSystem.find(id)?.view.surfaceTextureUrl ?? null;
 }
 

@@ -1,35 +1,32 @@
 // 航法ターゲットの復元が、撃墜された対象を外し、消えない対象と生きている対象を戻すことを検査する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Q_IDENTITY } from '../../src/math/quat';
 import { v3 } from '../../src/math/vec3';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { lagrangeId } from '../../src/game/celestial/lagrange-id';
-import { EntityIdAllocators } from '../../src/game/dynamic/dynamic-entity/entity-id';
-import { MetalEnemy } from '../../src/game/dynamic/dynamic-entity/metal-enemy';
+import { EntityIdAllocators } from '../../src/game/dynamic/entity/entity-id';
+import { AssemblyEnemy } from '../../src/game/dynamic/entity/assembly-enemy';
 import { RunEventLog } from '../../src/game/run-events';
 import { NavTargetSelection } from '../../src/game/viewer/nav-target-selection';
 import type { EntityRegistry } from '../../src/game/dynamic/entity-registry';
-import type { EntityRoster } from '../../src/game/dynamic/entity-roster';
+import type { EntityRoster } from '../../src/game/dynamic/entity-registry';
 
-// 金属敵 name を1体、新しく置く。
-function newEnemy(name: string, idAllocators: EntityIdAllocators): MetalEnemy {
-  return MetalEnemy.create({
+// 組み立て型の敵 name を1体、新しく置く。
+function newEnemy(name: string, idAllocators: EntityIdAllocators): AssemblyEnemy {
+  return AssemblyEnemy.create({
     name,
     state: kinematicState<'eci'>(0, v3(7e6, 0, 0), v3(0, 7.5e3, 0)),
-    q: Q_IDENTITY,
-    w: v3(),
+    seed: 1,
     accent: 0xffffff,
     orbitLineColor: 0xffffff,
     waveId: null,
     formationId: null,
     formationRole: null,
-    typeIndex: null,
   }, idAllocators);
 }
 
 // 読み込んだ直後の顔ぶれ。撃墜されたまま記録された敵 wreck と、生きている敵 survivor を持つ。
-function restoredRoster(): { roster: EntityRoster; wreck: MetalEnemy; survivor: MetalEnemy } {
+function restoredRoster(): { roster: EntityRoster; wreck: AssemblyEnemy; survivor: AssemblyEnemy } {
   const idAllocators = new EntityIdAllocators();
   const registry: EntityRegistry = {
     idAllocators,
@@ -38,7 +35,7 @@ function restoredRoster(): { roster: EntityRoster; wreck: MetalEnemy; survivor: 
     spawnWhenReady: () => {},
     pendingEnemyCount: 0,
   };
-  const wreck = MetalEnemy.deserialize({ ...newEnemy('wreck', idAllocators).serialize(), alive: false }, registry);
+  const wreck = AssemblyEnemy.deserialize({ ...newEnemy('wreck', idAllocators).serialize(), alive: false }, registry);
   const survivor = newEnemy('survivor', idAllocators);
   return { roster: { all: () => [wreck, survivor], collectionRevision: 0, simTime: 0 }, wreck, survivor };
 }

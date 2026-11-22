@@ -34,10 +34,17 @@ type Evaluate = (input: unknown) => ShaderValue;
 const WEBGPU_BUILDER = { renderer: { coordinateSystem: THREE.WebGPUCoordinateSystem } };
 
 // スカラーとベクトルの算術演算を、GPUのスカラー拡張規則に合わせて適用する。
-function componentwise(left: ShaderValue, right: ShaderValue, operation: (a: number, b: number) => number): ShaderValue {
+function componentwise(left: ShaderValue, right: ShaderValue, operation: (a: number, b: number) => number | boolean): ShaderValue {
   if (Array.isArray(left)) return left.map((value, index) => componentwise(value, Array.isArray(right) ? right[index]! : right, operation)) as ShaderVector;
   if (Array.isArray(right)) return right.map((value) => componentwise(left, value, operation)) as ShaderVector;
   return operation(left as number, right as number);
+}
+
+// 要素ごとの 1 引数関数。スカラーにはそのまま掛け、ベクトルには全成分へ掛ける。
+function elementwise(value: ShaderValue, operation: (x: number) => number): ShaderValue {
+  return Array.isArray(value)
+    ? value.map((x) => elementwise(x, operation) as number)
+    : operation(value as number);
 }
 
 // 演算子を評価する。比較・論理・ビット演算はスカラーだけを扱い、ビット演算は 32 ビットの uint として評価する。
@@ -76,22 +83,22 @@ function evaluateMath(node: ShaderNode, evaluate: Evaluate): ShaderValue {
       const length = Math.hypot(...vector);
       return vector.map((component) => component / length);
     }
-    case 'length': return Math.hypot(...(value as ShaderVector));
+    case 'length': return Math.hypot(...(Array.isArray(value) ? value : [value as number]));
     case 'cross': {
       const [ax, ay, az] = value as ShaderVector;
       const [bx, by, bz] = evaluate(node.bNode) as ShaderVector;
       return [ay! * bz! - az! * by!, az! * bx! - ax! * bz!, ax! * by! - ay! * bx!];
     }
     case 'atan': return Math.atan2(value as number, evaluate(node.bNode) as number);
-    case 'asin': return Math.asin(value as number);
+    case 'asin': return elementwise(value, Math.asin);
     case 'clamp': return componentwise(
       componentwise(value, evaluate(node.bNode), Math.max), evaluate(node.cNode), Math.min,
     );
-    case 'exp2': return 2 ** (value as number);
+    case 'exp2': return elementwise(value, (x) => 2 ** x);
     case 'exp': return Array.isArray(value) ? value.map(Math.exp) : Math.exp(value as number);
     case 'log': return Array.isArray(value) ? value.map(Math.log) : Math.log(value as number);
-    case 'log2': return Math.log2(value as number);
-    case 'fract': return (value as number) - Math.floor(value as number);
+    case 'log2': return elementwise(value, Math.log2);
+    case 'fract': return elementwise(value, (x) => x - Math.floor(x));
     case 'floor': return Array.isArray(value)
       ? value.map((component) => Math.floor(component))
       : Math.floor(value as number);
@@ -106,13 +113,13 @@ function evaluateMath(node: ShaderNode, evaluate: Evaluate): ShaderValue {
     case 'sign': return Array.isArray(value) ? value.map(Math.sign) : Math.sign(value as number);
     case 'abs': return Array.isArray(value) ? value.map(Math.abs) : Math.abs(value as number);
     case 'negate': return Array.isArray(value) ? value.map((component) => -component) : -(value as number);
-    case 'oneMinus': return 1 - (value as number);
-    case 'sqrt': return Math.sqrt(value as number);
-    case 'sin': return Math.sin(value as number);
-    case 'cos': return Math.cos(value as number);
-    case 'acos': return Math.acos(value as number);
-    case 'max': return Math.max(value as number, evaluate(node.bNode) as number);
-    case 'min': return Math.min(value as number, evaluate(node.bNode) as number);
+    case 'oneMinus': return elementwise(value, (x) => 1 - x);
+    case 'sqrt': return elementwise(value, Math.sqrt);
+    case 'sin': return elementwise(value, Math.sin);
+    case 'cos': return elementwise(value, Math.cos);
+    case 'acos': return elementwise(value, Math.acos);
+    case 'max': return componentwise(value, evaluate(node.bNode), Math.max);
+    case 'min': return componentwise(value, evaluate(node.bNode), Math.min);
     case 'pow': return (value as number) ** (evaluate(node.bNode) as number);
     case 'dot': {
       const left = value as ShaderVector;
@@ -184,6 +191,25 @@ function evaluateNode(input: unknown, evaluate: Evaluate): ShaderValue {
   if (node.type === 'MathNode' || node.type === 'BitcountNode') return evaluateMath(node, evaluate);
   if (node.type === 'ConditionalNode') {
     return evaluate(node.condNode) ? evaluate(node.ifNode) : evaluate(node.elseNode);
+  }
+  // vec3(スカラーノード) のような型変換。ベクトル化は値を全成分へ複製し、スカラー化は
+  // 先頭の成分を取る。
+  if (node.type === 'ConvertNode') {
+    const value = evaluateShaderNode(node.node);
+    const count = (node as { readonly nodeType?: string }).nodeType === 'vec2' ? 2
+      : (node as { readonly nodeType?: string }).nodeType === 'vec3' ? 3
+        : (node as { readonly nodeType?: string }).nodeType === 'vec4' ? 4
+          : 0;
+    if (count === 0) return Array.isArray(value) ? value[0]! : value;
+    return Array.isArray(value)
+      ? value.slice(0, count)
+      : Array.from({ length: count }, () => value as number);
+  }
+  // uniformArray(...).element(i)。保持する JS 配列の要素をそのまま評価する。
+  if ((node as { readonly isArrayElementNode?: boolean }).isArrayElementNode === true) {
+    const element = node as { readonly node: { readonly array: readonly unknown[] }; readonly indexNode: unknown };
+    const index = evaluateShaderNode(element.indexNode) as number;
+    return evaluateShaderNode(element.node.array[index]);
   }
   throw new Error(`Unsupported shader node ${node.type}`);
 }

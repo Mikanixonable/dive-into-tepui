@@ -1,7 +1,7 @@
 // 2台のカメラ視点を入力命令と表示用 Viewpoint へ結び、ガンサイトと画角遷移を重ねる。
-import type { Input } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { Viewpoint } from '../../math/projection';
+import type { Input } from '../../input-devices/input';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
+import { rayThroughScreen, type Viewpoint } from '../../math/projection';
 import type { Quat } from '../../math/quat';
 import type { Vec3 } from '../../math/vec3';
 import { v3 } from '../../math/vec3';
@@ -10,21 +10,21 @@ import type { FrameAnchorSource } from '../../physics/frame';
 import type { Viewport } from '../../render/viewport';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { AnchorEntities } from '../frame-anchors';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import { screenRay } from './screen-ray';
+import type { Controllable } from '../dynamic/entity/controllable';
 import type { Ray } from '../../math/ray';
 import type { HudLayers } from '../hud/hud-layers';
 import type { ViewMode } from '../view/view-mode';
 import type { CameraCommands } from '../viewer/camera-commands';
 import { COMBAT_CAMERA_FOV, type CameraFrameSamples, type CameraSelectionSource } from '../viewer/camera-selection';
 import type { CameraFrameSample, FocusCameraSource } from '../viewer/focus-camera-selection';
-import { focusTargetId, type FocusTarget } from '../viewer/focus-target';
+import { focusPoint, focusTargetId, type FocusTarget } from '../viewer/focus-target';
 import type { ViewSelectionSource } from '../viewer/view-selection';
 import { cameraKeyOf } from './camera-key';
 import { cameraOperation } from './camera-operator';
 import { CameraRig } from './camera-rig';
 import type { FocusCandidate } from './focus-derivation';
 import { GunsightCamera } from './gunsight-camera';
+import { HitShake, shakenViewpoint } from './hit-shake';
 
 const ZOOM_LERP_RATE = 9; // ガンサイトとの画角遷移の追従速度 [1/s]
 
@@ -37,6 +37,11 @@ export class CameraSystem {
   private zoomRequested = false;
   private useGunsight = false;
   private combatViewpoint: Viewpoint;
+  // 被弾の瞬間に視点へ掛ける揺れ(SPEC CAMERA.md「6. 被弾の揺れ」)。
+  private readonly hitShake = new HitShake();
+  private lastShakeMs = 0;
+  // 「被弾で画面を揺らす」設定。表示導出の側がフレームごとに写す。
+  public hitShakeEnabled = true;
   private transitionStartFov = COMBAT_CAMERA_FOV;
   private transitionTargetFov = COMBAT_CAMERA_FOV;
   private transitionStartMs = 0;
@@ -67,10 +72,10 @@ export class CameraSystem {
     return velocity ?? v3();
   }
 
-  // 2台の導出器と入力の受け口を組む。
+  // 2台のリグと入力ハンドラを構成する。
   public constructor(
     hud: Pick<HudLayers, 'root'>,
-    celestialBodies: CelestialBodies,
+    private readonly celestialBodies: CelestialBodies,
     private readonly cameraSelection: CameraSelectionSource,
     private readonly commands: CameraCommands,
     private readonly viewSelection: Pick<ViewSelectionSource, 'current'>,
@@ -99,7 +104,7 @@ export class CameraSystem {
     this.gunsightCamera = new GunsightCamera(viewport);
     // HUD の視点リセットボタンを、表に出ているビューのリセットへ繋ぐ。
     this.viewResetButton = hud.root.querySelector('#hud-chase-reset') as HTMLElement | null;
-    this.viewResetButton?.addEventListener('pointerdown', this.handleViewReset);
+    this.viewResetButton?.addEventListener('click', this.handleViewReset);
   }
 
   // 現在の進行値から、命令と導出が共有する2台分のフレーム材料を作る。
@@ -110,7 +115,7 @@ export class CameraSystem {
       const base = { displayTime, frameAnchors };
       return {
         ...base,
-        attitude: id === undefined ? null : this.anchorEntities.attitudeOf(id, displayTime),
+        attitude: id === null ? null : this.anchorEntities.attitudeOf(id, displayTime),
         referenceUp: rig.referenceUp(base),
         lostFocus: rig.lostFocus,
       };
@@ -128,14 +133,27 @@ export class CameraSystem {
     return view === 'map' ? this.samples.map : this.samples.combat;
   }
 
+  // 表に出ているビューの視点から、画面位置を通るレイ。
   public rayThroughScreen(clientX: number, clientY: number, viewport: Viewport): Ray {
     return screenRay(this.activeViewpoint, viewport, clientX, clientY);
   }
 
-  // 建造対象の艦へ戦闘カメラを寄せる。以後の orbit／zoom 操作は通常のカメラ命令が担う。
-  public focusConstruction(shipId: string, radius: number): void {
-    this.commands.combat.setFocus({ kind: 'object', id: shipId });
+  // 建造対象の艦へ戦闘カメラを寄せる。positionEci を渡すと、船体中心を原点とする
+  // 座標系へ焼き込んだ固定点を注視する。以後の orbit／zoom 操作は通常のカメラ命令が担う。
+  public focusConstruction(shipId: string, radius: number, positionEci?: Vec3): void {
+    this.commands.combat.setFocus(positionEci === undefined
+      ? { kind: 'object', id: shipId }
+      : this.shipPointFocus(shipId, positionEci));
     this.commands.combat.setDistance(Math.max(12, radius * 2.5));
+  }
+
+  // positionEci を、船体の位置を原点とする座標系へ焼き込んだ固定点フォーカスへ写す。
+  private shipPointFocus(shipId: string, positionEci: Vec3): FocusTarget {
+    const sample = this.samples.combat;
+    const { frames } = this.celestialBodies;
+    return focusPoint(
+      frames, frames.frameOf(shipId, null), positionEci, sample.displayTime, sample.frameAnchors,
+    );
   }
 
   // 入力を現在のビューの視点命令へ変換する。命令は同じフレームの進行先頭で適用される。
@@ -179,11 +197,23 @@ export class CameraSystem {
     if (this.useGunsight && controlled !== null) this.gunsightCamera.update(controlled, viewport);
     const target = this.useGunsight ? this.gunsightCamera.viewpoint : this.combatRig.viewpoint;
     this.combatViewpoint = { ...target, fovDeg: this.transitionFov(target.fovDeg, nowMs) };
+    // 被弾の揺れは表示の視点にだけ掛ける — 照準・機首の向きは艦の姿勢から読むので動かない。
+    // ズーム中は画角の比で振幅を小さくする(SPEC CAMERA.md「6. 被弾の揺れ」)。
+    const shakeDt = this.lastShakeMs === 0 ? 0 : Math.min(0.1, (nowMs - this.lastShakeMs) / 1000);
+    this.lastShakeMs = nowMs;
+    const shake = this.hitShakeEnabled ? this.hitShake.offset(shakeDt) : null;
+    if (shake !== null) {
+      const amp = this.useGunsight ? target.fovDeg / COMBAT_CAMERA_FOV : 1;
+      this.combatViewpoint = shakenViewpoint(this.combatViewpoint, shake, amp);
+    }
   }
 
-  // 視点リセットボタンへ繋いだ受け口を外す。
+  // 被弾の瞬間に視点の揺れを立てる。表示側が出来事から呼ぶ。
+  public kickHitShake(): void { this.hitShake.kick(); }
+
+  // 視点リセットボタンへ登録したハンドラを解除する。
   public dispose(): void {
-    this.viewResetButton?.removeEventListener('pointerdown', this.handleViewReset);
+    this.viewResetButton?.removeEventListener('click', this.handleViewReset);
   }
 
   // 実時刻から指数遷移を評価し、フレーム刻みに依存しない画角を返す。
@@ -204,8 +234,13 @@ export class CameraSystem {
   }
 
   // 視点リセットボタンの押下を、表に出ているビューのリセットの命令として積む。
-  private readonly handleViewReset = (event: PointerEvent): void => {
+  private readonly handleViewReset = (event: MouseEvent): void => {
     event.stopPropagation();
     this.commands.camera(this.view).reset(this.sample(this.view));
   };
+}
+
+// camera update 後の Viewpoint と同じ CSS pixel viewport から world ray を組む。
+export function screenRay(viewpoint: Viewpoint, viewport: Viewport, clientX: number, clientY: number): Ray {
+  return rayThroughScreen(viewpoint, clientX, clientY, viewport.width, viewport.height);
 }

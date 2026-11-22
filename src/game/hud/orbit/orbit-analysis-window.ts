@@ -1,16 +1,16 @@
 // 軌道分析のドラッグ可能ウィンドウ。高度・接近・投影の3タブのうち、いま選べるものをタブバーへ
 // 出し、選択中のタブへ描画を委ねる。
-import { SyncThrottle } from '../sync-throttle';
-import { DraggableWindow } from '../../../hud/windows/draggable-window';
-import { MQ_COMPACT } from '../../../hud/breakpoints';
-import { TabBar } from '../../../hud/widgets';
-import { injectOnce } from '../../../hud/inject-style';
-import { UNCLIPPED_WINDOW_GROUP } from '../../../hud/overlay-manager';
+import { SyncThrottle } from '../../../hud-kit/sync-throttle';
+import { DraggableWindow } from '../../../hud-kit/windows/draggable-window';
+import { MQ_COMPACT } from '../../../hud-kit/breakpoints';
+import { TabBar } from '../../../hud-kit/widgets';
+import { injectOnce } from '../../../hud-kit/inject-style';
+import { UNCLIPPED_WINDOW_GROUP } from '../../../hud-kit/overlay-manager';
 import { AltitudeTab } from './orbit-altitude-tab';
 import { ApproachTab } from './orbit-approach-tab';
 import { ProjectionTab } from './orbit-projection-tab';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
-import type { OverlayManager } from '../../../hud/overlay-manager';
+import type { DynamicEntity } from '../../dynamic/entity/dynamic-entity';
+import type { OverlayManager } from '../../../hud-kit/overlay-manager';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 import type { AnalysisChartSource, AnalysisTab } from './orbit-analysis-tab';
@@ -48,12 +48,12 @@ export class OrbitAnalysisWindow {
 
   // (clientX, clientY) にウィンドウを開き、高度タブを選んだ状態にする。
   public constructor(
-    root: HTMLElement, clientX: number, clientY: number, overlayManager: OverlayManager,
+    clientX: number, clientY: number, overlayManager: OverlayManager,
   ) {
     // ウィンドウの器。
     injectOnce('orbit-analysis-window', STYLE);
     this.win = new DraggableWindow(
-      root, clientX, clientY,
+      clientX, clientY,
       { title: '軌道分析', initiallyClipped: true, unclippedWindowGroup: UNCLIPPED_WINDOW_GROUP }, overlayManager,
     );
     this.win.element.classList.add('orbit-analysis');

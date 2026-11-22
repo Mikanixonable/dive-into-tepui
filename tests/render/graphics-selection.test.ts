@@ -14,7 +14,7 @@ import {
   type QualityPreset,
 } from '../../src/render/graphics-settings';
 
-const PRESETS: readonly QualityPreset[] = ['low', 'medium', 'high'];
+const PRESETS: readonly QualityPreset[] = ['low', 'medium', 'high', 'max'];
 
 // 分野 field のプリセット preset のノブの値を、キーで引ける形で返す。
 function presetValues(field: GraphicsFieldKey, preset: QualityPreset): Readonly<Record<string, boolean | ChoiceValue>> {
@@ -60,8 +60,8 @@ export function register(): void {
     assert.equal(knob.kind, 'slider');
     if (knob.kind !== 'slider') return;
     assert.deepEqual([knob.min, knob.max, knob.step], [2, 8, 1]);
-    for (const preset of PRESETS) assert.ok(knob.presets[preset] >= 2 && knob.presets[preset] <= 8);
-    assert.equal(resolveGraphics(selectionOf('high')).screenSpaceUpsampleTapCount, knob.presets.high);
+    for (const value of Object.values(knob.presets)) assert.ok(value >= 2 && value <= 8);
+    assert.equal(resolveGraphics(selectionOf('max')).screenSpaceUpsampleTapCount, knob.presets.high);
   });
 
   test('graphics-selection: 既存のカスタム保存値に最後の拡大タップ数が無ければ「高」の値', () => {
@@ -71,9 +71,46 @@ export function register(): void {
     assert.equal(resolveGraphics(selection).screenSpaceUpsampleTapCount, fieldPresetValues('screenSpace', 'high').screenSpaceUpsampleTapCount);
   });
 
-  test('graphics-selection: 保存が無いときは全体「高」で、好みは保存が無いときの値', () => {
-    assert.equal(DEFAULT_GRAPHICS_SELECTION.quality, 'high');
-    assert.deepEqual(DEFAULT_GRAPHICS, resolveGraphics(selectionOf('high')));
+  test('graphics-selection: 保存が無いときは全体「中」で、好みは保存が無いときの値', () => {
+    assert.equal(DEFAULT_GRAPHICS_SELECTION.quality, 'medium');
+    assert.deepEqual(DEFAULT_GRAPHICS, resolveGraphics(selectionOf('medium')));
+  });
+
+  test('graphics-selection: 保存が無い初回は、主ポインタが粗い端末で全体「低」、細かい端末で全体「中」', () => {
+    assert.equal(parseGraphicsSelection(null, true).quality, 'low');
+    assert.deepEqual(parseGraphicsSelection(null, false), DEFAULT_GRAPHICS_SELECTION);
+    // 保存済みの値はポインタ種別によらずそのまま読む。
+    assert.equal(parseGraphicsSelection('{"quality":"max"}', true).quality, 'max');
+  });
+
+  test('graphics-selection: 最高は画面の分野だけが持ち、他の分野の最高は選べない', () => {
+    assert.equal(OVERALL_FIELD_PRESETS.max.screen, 'max');
+    const selection = selectionOf('max');
+    assert.equal(selectField(selection, 'light', 'max'), selection);
+    const parsed = customOf(parseGraphicsSelection(JSON.stringify({ quality: { fields: { light: 'max', screen: 'max' } } })));
+    assert.equal(parsed.fields.screen, 'max');
+    assert.equal(parsed.fields.light, OVERALL_FIELD_PRESETS.medium.light);
+  });
+
+  test('graphics-selection: 全体の中は高より解像度・描画詳細度・雲と影マップの精細さ・大気を軽くする', () => {
+    const medium = resolveGraphics(selectionOf('medium'));
+    const high = resolveGraphics(selectionOf('high'));
+    assert.ok(medium.resolutionScale < high.resolutionScale);
+    assert.ok(medium.lodBias < high.lodBias);
+    assert.ok(medium.cumulusMarchSteps + medium.cumulusRefineSteps < high.cumulusMarchSteps + high.cumulusRefineSteps);
+    assert.ok(medium.cumulusOctaves < high.cumulusOctaves);
+    assert.ok(medium.cirrusDetail < high.cirrusDetail);
+    assert.ok(medium.shadowTexelsPerPixel < high.shadowTexelsPerPixel);
+    assert.ok(medium.atmosphereSampleBudget < high.atmosphereSampleBudget);
+  });
+
+  test('graphics-selection: 積雲と巻雲と建造の作業灯は、全体のどのプリセットでもオン', () => {
+    for (const preset of PRESETS) {
+      const graphics = resolveGraphics(selectionOf(preset));
+      assert.equal(graphics.cumulus, true, preset);
+      assert.equal(graphics.cirrus, true, preset);
+      assert.equal(graphics.constructionWorkLight, true, preset);
+    }
   });
 
   test('graphics-selection: 全体のプリセットを解いた値には、その全体のプリセットが当たる', () => {
@@ -83,13 +120,13 @@ export function register(): void {
   });
 
   test('graphics-selection: 全体のプリセットと 1 項目違う値には、その分野だけカスタムの全体カスタムが当たる', () => {
-    const data: GraphicsSettingsData = { ...resolveGraphics(selectionOf('high')), lodBias: 0.5 };
+    const data: GraphicsSettingsData = { ...resolveGraphics(selectionOf('max')), lodBias: 0.5 };
     const custom = customOf(selectionOfGraphics(data));
-    assert.deepEqual(custom.fields.screen, { custom: { ...fieldPresetValues('screen', 'high'), lodBias: 0.5 } });
+    assert.deepEqual(custom.fields.screen, { custom: { ...fieldPresetValues('screen', 'max'), lodBias: 0.5 } });
     for (const field of graphicsFieldKeys()) {
-      if (field !== 'screen') assert.equal(custom.fields[field], 'high', field);
+      if (field !== 'screen') assert.equal(custom.fields[field], OVERALL_FIELD_PRESETS.max[field], field);
     }
-    assert.deepEqual(custom.elements, elementPresetValues('high'));
+    assert.deepEqual(custom.elements, elementPresetValues('max'));
   });
 
   test('graphics-selection: 有無が偽の分野にはオフが当たり、そのノブの値は捨てる', () => {
@@ -137,9 +174,9 @@ export function register(): void {
   });
 
   test('graphics-selection: 分野をカスタムへ移すと直前のプリセットの値を写し、全体もカスタムになる', () => {
-    const selection = selectField(selectionOf('high'), 'screen', 'custom');
+    const selection = selectField(selectionOf('max'), 'screen', 'custom');
     const custom = customOf(selection);
-    assert.deepEqual(custom.fields.screen, { custom: fieldPresetValues('screen', 'high') });
+    assert.deepEqual(custom.fields.screen, { custom: fieldPresetValues('screen', 'max') });
     assert.equal(custom.fields.light, 'high', '触っていない分野が変わった');
   });
 
@@ -214,7 +251,7 @@ export function register(): void {
     assert.deepEqual(parseGraphicsSelection('"high"'), DEFAULT_GRAPHICS_SELECTION);
   });
 
-  test('graphics-selection: 知らないキーは読まず、欠けた分野と候補外・範囲外の値は全体「高」が選ぶもので埋める', () => {
+  test('graphics-selection: 知らないキーは読まず、欠けた分野と候補外・範囲外の値は全体「中」が選ぶもので埋める', () => {
     const parsed = parseGraphicsSelection(JSON.stringify({
       quality: {
         fields: {
@@ -229,14 +266,14 @@ export function register(): void {
       unknown: true,
     }));
     const custom = customOf(parsed);
-    assert.equal(custom.fields.screen, 'high', '消せない分野のオフが残った');
+    assert.equal(custom.fields.screen, OVERALL_FIELD_PRESETS.medium.screen, '消せない分野のオフが残った');
     assert.equal(custom.fields.atmosphere, 'off');
-    assert.equal(custom.fields.light, 'high', '欠けた分野が高で埋まらない');
+    assert.equal(custom.fields.light, OVERALL_FIELD_PRESETS.medium.light, '欠けた分野が中の選ぶもので埋まらない');
     assert.deepEqual(custom.fields.cloud, {
       custom: { ...fieldPresetValues('cloud', 'high'), cumulusMarchSteps: 3 },
     });
     assert.ok(!('unknownField' in custom.fields));
-    assert.deepEqual(custom.elements, { ...elementPresetValues('high'), lens: false });
+    assert.deepEqual(custom.elements, { ...elementPresetValues('medium'), lens: false });
     assert.deepEqual(parsed.preferences, DEFAULT_GRAPHICS_SELECTION.preferences);
   });
 

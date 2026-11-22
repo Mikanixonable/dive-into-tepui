@@ -2,8 +2,8 @@
 // 視点は毎フレーム機体の位置と姿勢から求め直す。
 import { addScaled, norm, v3 } from '../../math/vec3';
 import { LOCAL_FORWARD, LOCAL_UP, qRotate } from '../../math/quat';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
-import { Viewpoint } from '../../math/projection';
+import type { Controllable } from '../dynamic/entity/controllable';
+import type { Viewpoint } from '../../math/projection';
 import type { Viewport } from '../../render/viewport';
 
 const ZOOM_FOV = 6; // 照準ズームの垂直画角 [deg]

@@ -5,7 +5,7 @@ import { Billboard, POINT_IMAGE_ANGULAR_SIZE } from '../billboard';
 import { glowMeanAlpha } from '../glow-texture';
 import { createOutlineCircle, type OutlineCircle } from './outline-circle';
 import { showsPhysicalSphere } from './screen-lod';
-import { CELESTIAL_SHELL_RADIUS, POINT_IMAGE_SIZE } from '../stars';
+import { CELESTIAL_SHELL_RADIUS, POINT_IMAGE_SIZE } from './starfield';
 import type { RenderStyle } from '../render-style';
 
 // 点像を天球殻上へ置くための書き込み先。

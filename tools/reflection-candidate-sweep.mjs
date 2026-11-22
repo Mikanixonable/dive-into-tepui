@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { ONE_PASS, PIXELS, centeredPng, colorPng } from './reflection-chain-common.mjs';
+import { PIXELS, centeredPng, colorPng } from './reflection-chain-common.mjs';
 import { absDifference, metricGroups, pointMetrics } from './reflection-read-level-metrics.mjs';
 import { grayLevelPng } from './reflection-read-level-images.mjs';
 import { ratiosFor } from './reflection-candidate-curve.mjs';
@@ -35,7 +35,6 @@ function analyzeScene(scene) {
   const baseline = loadLevels(baseDir);
   const candidate = loadLevels(candidateDir);
   const baselineMean = averageLevels(baseline);
-  const candidateMean = averageLevels(candidate);
   const production = floats(path.join(baseDir, 'q-production.f32'), PIXELS * 4);
   const rough = makeRoughBand(baseDir);
   const curve = makeCurveBand(baseDir);

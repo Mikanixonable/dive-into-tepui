@@ -2,7 +2,7 @@
 // 壊れた Game/renderer を同じページで使い回さないよう、復旧の手段はページの再読み込みとする。
 import { FONT_FAMILY, FONT_M, FONT_XL, RADIUS_MICRO, RADIUS_CONTROL, Z_FATAL_ERROR } from '../theme';
 import { hideLoading } from './loading-overlay';
-import { injectCommonUiStyle } from '../hud/style/common-ui-style';
+import { injectCommonUiStyle } from '../hud-kit/style/common-ui-style';
 
 // title/message/error から画面全体のオーバーレイを組み立てて表示する。既に出ていれば何もしない。
 export function showFatalError(title: string, message: string, error: unknown): void {

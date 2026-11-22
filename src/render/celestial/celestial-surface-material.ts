@@ -1,6 +1,6 @@
 // 天体表面へ差し込む材質と、その材質が所有する遅延・実テクスチャの寿命を束ねる。
-import * as THREE from 'three/webgpu';
-import { DeferredTexture } from '../deferred-texture';
+import type * as THREE from 'three/webgpu';
+import type { DeferredTexture } from '../deferred-texture';
 
 export interface CelestialSurfaceMaterialAttachment {
   readonly material: THREE.Material;

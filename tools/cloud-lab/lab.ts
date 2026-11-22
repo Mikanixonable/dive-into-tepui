@@ -3,14 +3,14 @@
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
 import { Fn, If, screenUV, vec2, vec3 } from 'three/tsl';
-// 実写の雲(ゲーム本体が地表へ貼っているもの)。「実写」ビューが比較のためだけに読む。
-import cloudsPhotoUrl from '../../src/assets/8k_clouds.jpg';
 import { earthGeneratedCloudField } from '../../src/game/celestial/solar-system/earth-system';
 import { DeferredTexture } from '../../src/render/deferred-texture';
 import { EquirectProjection, OrthographicCap } from '../../src/render/field-projection';
 import { pixelsToPngDataUrl } from '../lab-png';
 import { CloudLabPane } from './pane';
+import { awaitClimateMap, loadCloudFieldImage, loadCloudsPhoto } from './probe-common';
 import { CLOUD_LAB_VIEWS, DEFAULT_CLOUD_LAB_VIEW, type CloudLabView, type CloudLabViewId } from './views';
+import { SECONDS_PER_HOUR } from './time-units';
 import type { Vec3Node } from '../../src/render/tsl-types';
 
 // 面の大きさ [px]。全球の面は正距円筒なので 2:1、cap の面は正方形。cap の写しは表示と同じ大きさに
@@ -25,14 +25,21 @@ const VIEW_WIDTH = GLOBE_WIDTH + CAP_SIZE;
 // 全球の面と cap の面の境目(キャンバスの幅に対する比)。
 const SPLIT_U = GLOBE_WIDTH / VIEW_WIDTH;
 
-// 気候画像が届くのを待つ上限 [フレーム]。越えたら画像が取れていないので、器を組まずに投げる。
-const CLIMATE_WAIT_FRAMES = 600;
-
 // cap の既定 [°]。時刻 0 の熱帯低気圧の最盛期の位置(19°N・136°E)を中心に、LEO(高度 400 km)の
 // 地平線 19.8° に近い半径で開く。
 const DEFAULT_CAP_LATITUDE = 19;
 const DEFAULT_CAP_LONGITUDE = 136;
 const DEFAULT_CAP_RADIUS = 20;
+
+// プローブが返す 1 点の読み。緯度・経度 [°] と、写しの画素から戻した量の文。
+export interface LabProbe {
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly text: string;
+  // 読んだ画素の生の rgb(表示値 0..1)。復号に使った色そのもの。
+  readonly rgb?: readonly [number, number, number];
+  readonly view?: CloudLabViewId;
+}
 
 export class CloudLabCanvas {
   // 左が本体と同じ全球の写し、右が正射影の cap。並びが画面の左右と一致する。
@@ -53,47 +60,35 @@ export class CloudLabCanvas {
 
   // レンダラを起こし、実写の雲と気候の画像を読み終えてから器を返す — 撮影は画像の到着を待たずに
   // 走るので、ここで待たないと最初の何枚かが空のテクスチャで焼かれる。
-  public static async create(canvas: HTMLCanvasElement): Promise<CloudLabCanvas> {
-    const renderer = new WebGPURenderer({ canvas });
+  // captureOnly は撮影専用(画面へ提示しない)。指定の理由は render() 側に書く。
+  public static async create(canvas: HTMLCanvasElement, captureOnly = false): Promise<CloudLabCanvas> {
+    const renderer = new WebGPURenderer({ canvas, requiredLimits: { maxSampledTexturesPerShaderStage: 32 } });
     renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT, false);
     renderer.toneMapping = THREE.NoToneMapping;
     renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
     await renderer.init();
-    const photo = await new THREE.TextureLoader().loadAsync(cloudsPhotoUrl);
-    // 気候テクスチャと同じ向き(v = 0 が北極)・同じ生の値。表示は 8k を 1024×512 へ潰すので、
-    // ミップを切るとエイリアスがそのまま出る — ここだけはミップ付きで読む。
-    photo.wrapS = THREE.RepeatWrapping;
-    photo.wrapT = THREE.ClampToEdgeWrapping;
-    photo.flipY = false;
-    photo.generateMipmaps = true;
-    photo.minFilter = THREE.LinearMipmapLinearFilter;
-    photo.magFilter = THREE.LinearFilter;
-    photo.colorSpace = THREE.NoColorSpace;
-    const lab = new CloudLabCanvas(renderer, photo);
-    await lab.awaitClimate();
+    // 気候テクスチャと同じ向き(v = 0 が北極)・同じ生の値。表示は 8k を 1024×512 へ潰すので
+    // ミップ付きで読む(切るとエイリアスがそのまま出る)。
+    const photo = await loadCloudsPhoto(true);
+    const observedField = await loadCloudFieldImage();
+    const lab = new CloudLabCanvas(renderer, photo, observedField, captureOnly);
+    await awaitClimateMap(renderer, lab.panes.map((pane) => pane.climate), 'cloud lab');
     return lab;
   }
 
-  // 両面の気候画像の取得を始め、GPU へ載るまで待つ。投入は本体と同じ待ち行列を通すので、
-  // 1 フレームに 1 枚ずつ進める。
-  private async awaitClimate(): Promise<void> {
-    for (const pane of this.panes) pane.climate.request();
-    for (let frame = 0; frame < CLIMATE_WAIT_FRAMES; frame += 1) {
-      if (this.panes.every((pane) => pane.climate.generation > 0)) return;
-      await new Promise<void>((resolve) => { requestAnimationFrame(() => resolve()); });
-      DeferredTexture.publishOne(this.renderer);
-    }
-    throw new Error('cloud lab: 気候画像が届かない');
-  }
-
   // 2 面と、起動時に出す量のマテリアルを組む。
-  private constructor(private readonly renderer: WebGPURenderer, photo: THREE.Texture) {
+  private constructor(
+    private readonly renderer: WebGPURenderer,
+    photo: THREE.Texture,
+    observedField: THREE.Texture,
+    private readonly captureOnly: boolean,
+  ) {
     this.capProjection = new OrthographicCap(
       CAP_SIZE, THREE.MathUtils.degToRad(this.capLatitude), THREE.MathUtils.degToRad(this.capLongitude),
       THREE.MathUtils.degToRad(this.capRadius));
     this.panes = [
-      new CloudLabPane(earthGeneratedCloudField(new EquirectProjection(VIEW_HEIGHT)), photo),
-      new CloudLabPane(earthGeneratedCloudField(this.capProjection), photo),
+      new CloudLabPane(earthGeneratedCloudField(new EquirectProjection(VIEW_HEIGHT)), photo, observedField),
+      new CloudLabPane(earthGeneratedCloudField(this.capProjection), photo, observedField),
     ];
     this.quad = new QuadMesh(this.materialFor(this.view));
   }
@@ -109,38 +104,44 @@ export class CloudLabCanvas {
   }
 
   public get currentView(): CloudLabViewId { return this.view.id; }
-  public get hours(): number { return this.seconds / 3600; }
+  public get hours(): number { return this.seconds / SECONDS_PER_HOUR; }
   public get capCenterLatitude(): number { return this.capLatitude; }
   public get capCenterLongitude(): number { return this.capLongitude; }
   public get capAngularRadius(): number { return this.capRadius; }
 
-  // 表示する量を切り替えて描き直す。
+  // 表示する量を置く。描き直すのは render()。
   public show(id: CloudLabViewId): void {
     this.view = CLOUD_LAB_VIEWS.find((view) => view.id === id)!;
     this.quad.material = this.materialFor(this.view);
-    this.render();
   }
 
-  // 時刻 [h] を変えて描き直す。
+  // 時刻 [h] を置く。描き直すのは render()。
   public setTime(hours: number): void {
-    this.seconds = hours * 3600;
-    this.render();
+    this.seconds = hours * SECONDS_PER_HOUR;
   }
 
-  // cap の中心の緯度・経度と半径 [°] を置き直して描き直す。
+  // モデルの調整値を変えたあとに呼ぶ。両面を次の render() で焼き直す。
+  public invalidate(): void {
+    for (const pane of this.panes) pane.invalidate();
+  }
+
+  // cap の中心の緯度・経度と半径 [°] を置く。描き直すのは render()。
   public aimCap(latitude: number, longitude: number, radius: number): void {
     this.capLatitude = latitude;
     this.capLongitude = longitude;
     this.capRadius = radius;
     this.capProjection.aim(
       THREE.MathUtils.degToRad(latitude), THREE.MathUtils.degToRad(longitude), THREE.MathUtils.degToRad(radius));
-    this.render();
   }
 
   // いまの時刻の場を両面で焼き、選んだ量をキャンバスへ出す。
   public render(): void {
     DeferredTexture.publishOne(this.renderer);
     for (const pane of this.panes) pane.bake(this.renderer, this.seconds);
+    // 撮影専用ではキャンバスへ出さない。GPU の無い環境(ソフトウェア WebGPU)では、キャンバスへの
+    // 提示が共有イメージを作れずに device を落とし、撮影の読み出し(mapAsync)まで道連れにする。
+    // 撮影は captureTarget への描画だけを使うので、提示を止めても撮れる絵は変わらない。
+    if (this.captureOnly && this.renderer.getOutputRenderTarget() === null) return;
     this.quad.render(this.renderer);
   }
 
@@ -155,6 +156,52 @@ export class CloudLabCanvas {
     }
     const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
     return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
+  }
+
+  // キャンバスの画素 (xPx, yPx) の指す緯度・経度 [°] と、そこに出ている色から戻した量を返す。
+  // 場を焼き直さず、いまの写しの quad を撮影先へ描き直して画素を読むだけ — 場 1 面ぶんの
+  // 費用が掛かる bake はホバーごとに走らせられないので、焼き済みのテクスチャを読む quad の
+  // 再描画で済ませる。cap の円板の外や画面外では null。
+  public async probeAt(xPx: number, yPx: number): Promise<LabProbe | null> {
+    if (xPx < 0 || xPx >= VIEW_WIDTH || yPx < 0 || yPx >= VIEW_HEIGHT) return null;
+    this.renderer.setOutputRenderTarget(this.captureTarget);
+    try {
+      this.quad.render(this.renderer);
+    } finally {
+      this.renderer.setOutputRenderTarget(null);
+    }
+    const data = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, xPx, yPx, 1, 1);
+    const rgb = [data[0]! / 255, data[1]! / 255, data[2]! / 255] as const;
+
+    // 面の uv(0..1、v=0 が北極)。全球面は正距円筒、cap 面は正射影の円板へ逆写像する。
+    const onGlobe = xPx < GLOBE_WIDTH;
+    const u = onGlobe ? xPx / GLOBE_WIDTH : (xPx - GLOBE_WIDTH) / CAP_SIZE;
+    const v = yPx / VIEW_HEIGHT;
+    let latitude: number;
+    let longitude: number;
+    if (onGlobe) {
+      latitude = (0.5 - v) * 180;
+      longitude = (u - 0.5) * 360;
+    } else {
+      const offsetX = 2 * u - 1;
+      const offsetY = 1 - 2 * v;
+      if (offsetX * offsetX + offsetY * offsetY > 1) return null; // 円板の外
+      const placement = this.capProjection.placement;
+      const planeX = offsetX * placement.sinRadius;
+      const planeY = offsetY * placement.sinRadius;
+      const alongCenter = Math.sqrt(Math.max(0, 1 - planeX * planeX - planeY * planeY));
+      const direction = new THREE.Vector3()
+        .addScaledVector(placement.east, planeX)
+        .addScaledVector(placement.north, planeY)
+        .addScaledVector(placement.center, alongCenter);
+      latitude = THREE.MathUtils.radToDeg(Math.asin(direction.y));
+      longitude = THREE.MathUtils.radToDeg(Math.atan2(direction.x, direction.z));
+    }
+    return {
+      latitude, longitude, rgb,
+      view: this.view.id,
+      text: this.view.probe?.(rgb) ?? this.view.legend.text,
+    };
   }
 
   // 画面の左右で面を切り替える色。**分岐は select ではなく If で書く** — select は両辺を評価する

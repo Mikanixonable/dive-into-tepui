@@ -4,8 +4,8 @@
 
 import {
   GRAPHICS_ELEMENTS, GRAPHICS_FIELDS, GRAPHICS_PREFERENCES, OVERALL_FIELD_PRESETS,
-  elementPresetValues, fieldKnob, fieldKnobKeys, fieldPresetValues, graphicsElementKeys, graphicsFieldKeys,
-  graphicsPreferenceKeys, initialPreferenceValues,
+  elementPresetValues, fieldKnob, fieldKnobKeys, fieldPresetValues, fieldTiers, graphicsElementKeys,
+  graphicsFieldKeys, graphicsPreferenceKeys, initialPreferenceValues,
   type ChoiceValue, type FieldKnobValues, type FieldPreset, type GraphicsElementKey, type GraphicsElementValues,
   type GraphicsFieldKey, type GraphicsKey, type GraphicsKnob, type GraphicsPreference, type GraphicsPreferenceKey,
   type GraphicsPreferenceValues, type GraphicsSettingsData, type QualityPreset,
@@ -28,8 +28,19 @@ export interface GraphicsSelection {
   readonly preferences: GraphicsPreferenceValues;
 }
 
+// 保存が無いときの全体のプリセット。
+const DEFAULT_OVERALL: QualityPreset = 'medium';
+
 // 保存が無いときの選び方。
-export const DEFAULT_GRAPHICS_SELECTION: GraphicsSelection = { quality: 'high', preferences: initialPreferenceValues() };
+export const DEFAULT_GRAPHICS_SELECTION: GraphicsSelection = {
+  quality: DEFAULT_OVERALL, preferences: initialPreferenceValues(),
+};
+
+// 保存が無いときの初回の選び方を、主ポインタの精度から選ぶ。粗いポインタ(タッチ主体の端末)では全体「低」から
+// 始め、細かいポインタでは DEFAULT_GRAPHICS_SELECTION とする。
+export function firstRunGraphicsSelection(coarsePointer: boolean): GraphicsSelection {
+  return coarsePointer ? { ...DEFAULT_GRAPHICS_SELECTION, quality: 'low' } : DEFAULT_GRAPHICS_SELECTION;
+}
 
 // 分野がオフのあいだ、平らな値一式でそのノブに入れるプリセット。オフからカスタムへ移ったときに始める値でもある。
 const OFF_FIELD_PRESET: QualityPreset = 'medium';
@@ -88,7 +99,7 @@ function fieldSelectionsOf(selection: GraphicsSelection): FieldSelections {
   return typeof selection.quality === 'string' ? OVERALL_FIELD_PRESETS[selection.quality] : selection.quality.fields;
 }
 
-// 全体の選択を choice へ移す。低 / 中 / 高へ移ると分野の選択は捨てる。カスタムへ移ると直前の全体のプリセットが
+// 全体の選択を choice へ移す。低 / 中 / 高 / 最高へ移ると分野の選択は捨てる。カスタムへ移ると直前の全体のプリセットが
 // 選んでいたものから始め、既にカスタムなら変えない。好みは変えない。
 export function selectOverall(selection: GraphicsSelection, choice: QualityPreset | 'custom'): GraphicsSelection {
   if (choice === 'custom') {
@@ -108,11 +119,12 @@ function withFieldSelection(
 
 // 分野 field の選択を choice へ移す。必要なら先に全体をカスタムへ移す。カスタムへ移ると直前のプリセットの値を
 // 写し、オフからなら OFF_FIELD_PRESET の値から始め、既にカスタムなら変えない。プリセットへ移ると調整は捨てる。
-// 消せない分野へのオフは無視する。
+// 消せない分野へのオフと、その分野が持たない段は無視する。
 export function selectField(
   selection: GraphicsSelection, field: GraphicsFieldKey, choice: 'off' | QualityPreset | 'custom',
 ): GraphicsSelection {
   if (choice === 'off' && GRAPHICS_FIELDS[field].enabled === null) return selection;
+  if (choice !== 'off' && choice !== 'custom' && !fieldTiers(field).includes(choice)) return selection;
   const quality = customQualityOf(selection);
   const current = quality.fields[field];
   if (choice === 'custom') {
@@ -195,9 +207,13 @@ function sameValues(a: Readonly<Record<string, unknown>>, b: Readonly<Record<str
   return Object.keys(a).every((key) => a[key] === b[key]);
 }
 
-// 2 つの値一式が同じ絵になるか。分野の有無と表示する要素が同じで、有る分野のノブが同じなら同じ絵。
-function sameRendering(a: GraphicsSettingsData, b: GraphicsSettingsData): boolean {
+// 2 つの値一式が同じ絵になるか。分野の有無と表示する要素が同じで、有る分野のノブが同じなら同じ絵。skipped の
+// 分野は比べない。
+function sameRendering(
+  a: GraphicsSettingsData, b: GraphicsSettingsData, skipped: readonly GraphicsFieldKey[],
+): boolean {
   for (const field of graphicsFieldKeys()) {
+    if (skipped.includes(field)) continue;
     const enabled = GRAPHICS_FIELDS[field].enabled;
     if (enabled !== null) {
       if (a[enabled] !== b[enabled]) return false;
@@ -208,9 +224,7 @@ function sameRendering(a: GraphicsSettingsData, b: GraphicsSettingsData): boolea
   return graphicsElementKeys().every((key) => a[key] === b[key]);
 }
 
-const OVERALL_PRESETS: readonly QualityPreset[] = ['low', 'medium', 'high'];
-// 分野のプリセットを当てる順。中と高が同じ値の分野ではどちらでも絵は同じ。
-const FIELD_PRESETS: readonly QualityPreset[] = ['high', 'medium', 'low'];
+const OVERALL_PRESETS: readonly QualityPreset[] = ['low', 'medium', 'high', 'max'];
 
 // 値一式 data の分野 field と同じ絵になる分野の選び方。有無が偽ならオフ、プリセットと一致すればその名前、
 // どれとも一致しなければカスタム。
@@ -218,20 +232,26 @@ function fieldSelectionOf(field: GraphicsFieldKey, data: GraphicsSettingsData): 
   const enabled = GRAPHICS_FIELDS[field].enabled;
   if (enabled !== null && !data[enabled]) return 'off';
   const values = fieldValuesIn(field, data);
-  const preset = FIELD_PRESETS.find((candidate) => sameValues(values, fieldPresetValues(field, candidate)));
+  // 重いほうの段から当てる。2 つの段が同じ値の分野ではどちらでも絵は同じ。
+  const preset = [...fieldTiers(field)].reverse()
+    .find((candidate) => sameValues(values, fieldPresetValues(field, candidate)));
   return preset ?? customFieldOf(values);
 }
 
 // 値一式 data と同じ絵になる全体の選び方。全体のプリセットのどれかと同じ絵ならその名前、さもなくば分野ごとに
-// 当てたカスタム。FieldSelections と GraphicsElementValues は表のキーで組むので、as での断定は安全。
-function qualityOf(data: GraphicsSettingsData): QualityPreset | CustomGraphics {
+// 当てたカスタム。unknown の分野は data がその値を知らないものとして比べず、カスタムでは既定の全体のプリセットが
+// 選ぶものにする。FieldSelections と GraphicsElementValues は表のキーで組むので、as での断定は安全。
+function qualityOf(
+  data: GraphicsSettingsData, unknown: readonly GraphicsFieldKey[],
+): QualityPreset | CustomGraphics {
   const overall = OVERALL_PRESETS.find((preset) => sameRendering(
-    data, resolveGraphics({ quality: preset, preferences: DEFAULT_GRAPHICS_SELECTION.preferences })));
+    data, resolveGraphics({ quality: preset, preferences: DEFAULT_GRAPHICS_SELECTION.preferences }), unknown));
   if (overall !== undefined) return overall;
+  const fallback = OVERALL_FIELD_PRESETS[DEFAULT_OVERALL];
   return {
-    fields: Object.fromEntries(
-      graphicsFieldKeys().map((field) => [field, fieldSelectionOf(field, data)]),
-    ) as FieldSelections,
+    fields: Object.fromEntries(graphicsFieldKeys().map((field) => [
+      field, unknown.includes(field) ? fallback[field] : fieldSelectionOf(field, data),
+    ])) as FieldSelections,
     elements: Object.fromEntries(graphicsElementKeys().map((key) => [key, data[key]])) as GraphicsElementValues,
   };
 }
@@ -242,9 +262,12 @@ function preferencesIn(data: GraphicsSettingsData): GraphicsPreferenceValues {
 }
 
 // 平らな値一式 data と同じ絵になる選び方。全体のプリセットのどれかと同じ絵ならその名前、さもなくば分野ごとに
-// プリセットを当てた全体カスタム。好みは data の値。
-export function selectionOfGraphics(data: GraphicsSettingsData): GraphicsSelection {
-  return { quality: qualityOf(data), preferences: preferencesIn(data) };
+// プリセットを当てた全体カスタム。好みは data の値。unknown には data が値を知らない分野を渡す — その分野は
+// 当てるときに比べず、カスタムでは既定の全体のプリセットが選ぶものになる。
+export function selectionOfGraphics(
+  data: GraphicsSettingsData, unknown: readonly GraphicsFieldKey[] = [],
+): GraphicsSelection {
+  return { quality: qualityOf(data, unknown), preferences: preferencesIn(data) };
 }
 
 // 選び方を保存へ載せる文字列にする。
@@ -259,7 +282,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 // value がプリセットの名前か。
 function isQualityPreset(value: unknown): value is QualityPreset {
-  return value === 'low' || value === 'medium' || value === 'high';
+  return value === 'low' || value === 'medium' || value === 'high' || value === 'max';
 }
 
 // 項目の表 knobs に並ぶキーを、保存値 saved から受け入れられる値で、受け入れられなければ fallbacks の値で埋める。
@@ -272,11 +295,11 @@ function acceptedValues(
   );
 }
 
-// 分野 field の保存された選択を読み直す。欠けていれば全体「高」が選ぶもの、カスタムでノブが欠けていれば
-// その分野の「高」の値で埋める。
+// 分野 field の保存された選択を読み直す。欠けているかその分野が持たない段なら既定の全体のプリセットが選ぶもの、
+// カスタムでノブが欠けていればその分野の「高」の値で埋める。
 function parseFieldSelection(field: GraphicsFieldKey, saved: unknown): FieldSelection<GraphicsFieldKey> {
-  const fallback = OVERALL_FIELD_PRESETS.high[field];
-  if (isQualityPreset(saved)) return saved;
+  const fallback = OVERALL_FIELD_PRESETS[DEFAULT_OVERALL][field];
+  if (isQualityPreset(saved)) return fieldTiers(field).includes(saved) ? saved as FieldSelection<GraphicsFieldKey> : fallback;
   if (saved === 'off') return GRAPHICS_FIELDS[field].enabled === null ? fallback : 'off';
   if (!isRecord(saved) || !isRecord(saved['custom'])) return fallback;
   return customFieldOf(acceptedValues(GRAPHICS_FIELDS[field].knobs, saved['custom'], fieldPresetValues(field, 'high')));
@@ -293,14 +316,15 @@ function parseQuality(saved: unknown): QualityPreset | CustomGraphics {
     fields: Object.fromEntries(
       graphicsFieldKeys().map((field) => [field, parseFieldSelection(field, fields[field])]),
     ) as FieldSelections,
-    elements: acceptedValues(GRAPHICS_ELEMENTS, elements, elementPresetValues('high')) as GraphicsElementValues,
+    elements: acceptedValues(GRAPHICS_ELEMENTS, elements, elementPresetValues(DEFAULT_OVERALL)) as GraphicsElementValues,
   };
 }
 
 // 保存された文字列を選び方へ読み直す。保存値は利用者がいつ書いたか分からないので、表に無いキーは読まず、
-// 欠けた分野・候補外・範囲外の値は既定で埋め、壊れた文字列と null は保存が無いときの選び方にする。
-export function parseGraphicsSelection(text: string | null): GraphicsSelection {
-  if (text === null) return DEFAULT_GRAPHICS_SELECTION;
+// 欠けた分野・候補外・範囲外の値は既定で埋め、壊れた文字列は保存が無いときの選び方にする。保存自体が無い
+// (null)ときだけ、coarsePointer で初回の選び方を選ぶ — 保存済みの値はポインタ種別によらずそのまま読む。
+export function parseGraphicsSelection(text: string | null, coarsePointer = false): GraphicsSelection {
+  if (text === null) return firstRunGraphicsSelection(coarsePointer);
   try {
     const saved: unknown = JSON.parse(text);
     if (!isRecord(saved)) return DEFAULT_GRAPHICS_SELECTION;

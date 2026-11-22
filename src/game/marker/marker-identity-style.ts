@@ -1,6 +1,6 @@
 // マーカーの種別ごとの見た目 — 重なり順・識別色・字送り・字の大きさ。骨格(枠・シンボル・
 // ラベルの置き方)はマーカー装置が持ち、ここはその上に種別の意味を重ねる。
-import { injectOnce } from '../../hud/inject-style';
+import { injectOnce } from '../../hud-kit/inject-style';
 import { LIGHT_PALETTE } from '../../theme';
 import { COLOR_MARKER_ALLY, COLOR_MARKER_NODE, COLOR_MARKER_FUEL, COLOR_BASE } from './marker-identity';
 
@@ -28,7 +28,7 @@ const MARKER_IDENTITY_STYLE = `
 }
 
 #hud .mk { z-index: var(--z-mk-base); }
-#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight, #hud .mk-protein-site { z-index: var(--z-mk-node); }
+#hud .mk-node, #hud .mk-mnode, #hud .mk-burn, #hud .mk-poi, #hud .mk-base, #hud .mk-nav, #hud .mk-dir, #hud .mk-bearing-triangle, #hud .mk-boardpass, #hud .mk-lead, #hud .mk-pro, #hud .mk-retro, #hud .mk-nrm, #hud .mk-rad, #hud .mk-tgtdir, #hud .mk-boresight, #hud .mk-construction-node { z-index: var(--z-mk-node); }
 #hud .mk-ammo { z-index: var(--z-mk-ammo); }
 #hud .mk-fuel { z-index: var(--z-mk-ammo); }
 #hud .mk-enemy, #hud .mk-target, #hud .mk-ally { z-index: var(--z-mk-enemy); }
@@ -53,9 +53,14 @@ const MARKER_IDENTITY_STYLE = `
   top: auto; left: 100%; bottom: 100%; margin: 0 0 var(--space-1) var(--space-3);
   white-space: pre; text-align: left; font-size: var(--font-xxs); line-height: 1.2;
 }
+/* 散布界の状態 — 逆光で開く(GLARE)は警告色、順光で締まる(SUN)は良い状態の色。 */
+.mk-boresight--glare { color: var(--color-warning); }
+.mk-boresight--sun { color: var(--color-success); }
 
 .mk-target { color: var(--color-signal); }
 .mk-enemy { color: var(--text-strong); }
+/* 命中した敵マーカーの閃き。記号を一瞬明るく光らせ、命中を遠距離からでも読ませる。 */
+#hud .mk-hit .sym { filter: brightness(2.2) drop-shadow(0 0 5px currentColor); }
 .mk-ally { color: ${COLOR_MARKER_ALLY}; }
 .mk-lead { color: var(--color-primary); }
 .mk-pro { color: var(--axis-prograde); }
@@ -77,9 +82,14 @@ const MARKER_IDENTITY_STYLE = `
 .mk-apsis { color: ${COLOR_MARKER_PLANNED}; }
 .mk-impact { color: var(--color-error); }
 .mk-plantick { color: var(--text-dim); }
-.mk-protein-site { color: var(--text-dim); }
-.mk-protein-site .sym { font-size: calc(var(--glyph-base) * 0.25); }
-.mk-protein-site .lbl { font-size: var(--font-xxs); }
+
+/* 建造の接続ノード。置ける=成功色、置けない=エラー色。指しているノードはひと回り大きい。
+   有効・不適合を色で読ませる必要があるので、模式図の一括黒化へは入れない。 */
+.mk-construction-node { color: var(--color-success); }
+.mk-construction-node-invalid { color: var(--color-error); }
+.mk-construction-node .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-element)); }
+.mk-construction-node-pointed .sym { font-size: calc(var(--glyph-base) * var(--mk-scale-element) * 1.5); }
+.mk-construction-node .lbl { color: var(--color-error); font-size: var(--font-xxs); line-height: 1.2; white-space: pre; }
 
 .mk-poi { color: var(--text-strong); }
 .mk-poi:not(.mk-lagrange) .sym { font-size: calc(var(--glyph-poi) * var(--mk-scale-poi)); }

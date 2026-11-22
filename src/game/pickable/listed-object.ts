@@ -1,22 +1,19 @@
-// 軌道物体一覧と選択ウィジェットに並ぶ物体。自分がどの区画・どのジャンルへ出るか、行に何を
-// 添えるか、検索に何を照合させるか、どの順に並ぶかを答える。
+// マップ一覧に載せる対象の表示区分と検索情報を定める。
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { PickCandidate } from './pick-candidate';
 import type { MapListSection, ObjectPickerGenre } from './pickable-listing';
 
 export interface ListedObject extends PickCandidate {
-  // 軌道物体一覧のどの区画へ出すか。一覧に出さない対象は null。
+  // マップ一覧で扱う対象の区分。表示しない対象は null。
   readonly listSection: MapListSection | null;
   // 選択ウィジェット(ObjectPicker)のどのジャンルへ出すか。出さない対象は null。
   readonly pickerGenre: ObjectPickerGenre | null;
 
-  // 軌道物体一覧の行へ添える補助表示。
+  // 対象名へ添える詳細表示。
   listDetail(celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number): string;
-  // 軌道物体一覧の検索が照合する文字列。行に出さない情報を含めてよい。
+  // 検索に使う文字列。対象名に出さない語も含められる。
   listSearchText(celestialBodies: CelestialBodies, viewer: OrbitingObject | null, displayTime: number): string;
-  // 区画見出しの内訳(接近 N・回収可 N)に数えるか。
+  // 状況の内訳に加える対象かを返す。
   listCounted(viewer: OrbitingObject | null, displayTime: number): boolean;
-  // 軌道物体一覧での表示順の優先度。小さいほど先に出る。
-  listPriority(viewer: OrbitingObject | null): number;
 }

@@ -1,7 +1,7 @@
 // 発振器1つを立ち上がり~指数減衰の包絡で鳴らすだけの、いちばん素朴な楽器。
 // 定位(pan)だけは曲の間ずっと要るので、パンナーはコンストラクタで組んで使い回す。
-import { ToneParams } from './types';
-import { Instrument } from '../instrument';
+import type { ToneParams } from './types';
+import type { Instrument } from '../instrument';
 
 // 減衰の到達値。0 へは指数で近づけないので、聞こえない程度の小さな値で止める。
 const DECAY_FLOOR = 0.001;
@@ -12,7 +12,7 @@ export class ToneInstrument implements Instrument {
   private readonly output: AudioNode;
 
   // destination は再生側のゲイン。定位はここで一度組んで曲の間ずっと使う。
-  constructor(
+  public constructor(
     private readonly ctx: AudioContext,
     destination: AudioNode,
     private readonly params: ToneParams,
@@ -24,7 +24,7 @@ export class ToneInstrument implements Instrument {
   }
 
   // when から鳴らす。時刻はすべて引数から導き、ctx.currentTime は読まない。
-  play(freq: number, when: number, durationSec: number, velocity: number): void {
+  public play(freq: number, when: number, durationSec: number, velocity: number): void {
     const ctx = this.ctx;
     const osc = ctx.createOscillator();
     osc.type = this.params.wave;
@@ -40,7 +40,7 @@ export class ToneInstrument implements Instrument {
   }
 
   // 定位を音声グラフから外す。
-  dispose(): void {
+  public dispose(): void {
     this.output.disconnect();
   }
 }

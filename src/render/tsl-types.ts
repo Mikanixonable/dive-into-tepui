@@ -1,6 +1,6 @@
 // シェーダグラフを組むモジュールが共有する TSL ノード型の語彙。three のノードは
 // 値の型を型引数に持つ Node<T> で表されるので、頻出の組にだけ名前を与える。
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 
 // シェーダグラフの中間値。
 export type FloatNode = THREE.Node<'float'>;
@@ -17,9 +17,10 @@ export type Mat4Node = THREE.Node<'mat4'>;
 
 // CPU 側から毎フレーム値を書き込めるノード。`value` への代入がそのまま uniform 更新になる。
 export type FloatUniform = THREE.UniformNode<'float', number>;
-export type UintUniform = THREE.UniformNode<'uint', number>;
+
 export type Vec2Uniform = THREE.UniformNode<'vec2', THREE.Vector2>;
 export type Vec3Uniform = THREE.UniformNode<'vec3', THREE.Vector3>;
+export type Vec4Uniform = THREE.UniformNode<'vec4', THREE.Vector4>;
 export type BoolUniform = THREE.UniformNode<'bool', boolean>;
 export type ColorUniform = THREE.UniformNode<'color', THREE.Color>;
 export type Mat3Uniform = THREE.UniformNode<'mat3', THREE.Matrix3>;

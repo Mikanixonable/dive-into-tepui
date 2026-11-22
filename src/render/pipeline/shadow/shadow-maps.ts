@@ -5,15 +5,15 @@
 // ので、**どのスロットも自分の枠に入るメッシュをすべて描く** — 受け手はそのうち 1 つを選ぶだけで
 // 答えが得られる。
 //
-// **1 スロットは深度マップを 2 枚持つ。** 光源にいちばん近いものが勝つ深度テストは 1 枚に 1 つの
+// **1 スロットは深度マップを 2 枚持つ。** 光源に最も近いものが手前として優先される通常の深度テストでは、1 ピクセルあたり1つの
 // メッシュしか残せないので、枠から見て本影が残るメッシュと、本影を失って淡い減光しか残さない
 // メッシュを、同じ枠・同じ uv の別の層へ分けて撮る。混ぜると、遠くて淡いものが至近の濃いものを
 // 追い出す。
 import * as THREE from 'three/webgpu';
-import { MeshBasicNodeMaterial, WebGPURenderer } from 'three/webgpu';
+import { MeshBasicNodeMaterial, type WebGPURenderer } from 'three/webgpu';
 import { float, positionView, uniform, uniformArray, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../../gpu-timings';
-import { extentForTexel } from '../../shadow-demand';
+import { extentForTexel } from './shadow-demand';
 import type { FloatNode, FloatUniform } from '../../tsl-types';
 import { SHADOW_CASTER_LAYER } from '../lit-layer';
 import { COLUMN_SPAN, ShadowCasters, type ShadowCaster } from './shadow-casters';
@@ -46,7 +46,7 @@ const NO_CASTERS: readonly ShadowCaster[] = [];
 
 // 受け手が shader 内で動的にスロットを選ぶために引く、スロットごとの値。**スロットの値の
 // 正本はこの 3 本の配列だけで、個別の uniform を別に持たない。**
-export type ShadowSlotUniformArrays = {
+interface ShadowSlotUniformArrays {
   // 描画座標 → ライト空間クリップ。UV は xy だけを使う。
   readonly lightViewProjection: THREE.UniformArrayNode<'mat4'>;
   // 描画座標 → ライト空間 view。深度は射影の規約(反転深度)に依らないこちらから測る。
@@ -54,7 +54,7 @@ export type ShadowSlotUniformArrays = {
   // (near, far, texelWorld, active)。texelWorld は 1 texel が描画座標で張るメートルで、
   // バイアスとフィルタ半径の単位になる。active が 0 ならそのスロットは空。
   readonly parameters: THREE.UniformArrayNode<'vec4'>;
-};
+}
 
 // ライト空間の線形深度を書く 1 辺 size のレンダーターゲット。
 //
@@ -87,6 +87,8 @@ export class ShadowMaps {
   private readonly slotTexels: FloatUniform;
   private readonly depthMaterial: THREE.MeshBasicNodeMaterial;
   private readonly lightCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+  // スロットを空へ戻すときだけ描く、中身の無いシーン。clearSlot を参照。
+  private readonly emptyScene = new THREE.Scene();
   // スロットの値の正本。uniform 配列がこの 3 本をそのまま包むので、書けば受け手へ届く。
   private readonly lightViewProjections: THREE.Matrix4[];
   private readonly lightViews: THREE.Matrix4[];
@@ -98,10 +100,10 @@ export class ShadowMaps {
   private casters: readonly ShadowCaster[] = NO_CASTERS;
   // このフレームにスロットを与えた塊の枠(描画座標の AABB)。
   private readonly clusters: THREE.Box3[] = [];
-  // 枠の 1 辺 [m]。相乗りの可否をこれで測る — **枠はこの大きさのまま平行移動するだけ。**
+  // 枠の 1 辺 [m]。枠の共有可否をこれで判定する — **枠はこの大きさのまま平行移動するだけ。**
   private readonly clusterSizes: number[] = [];
   // 枠の半径の上限 [m]。**被覆の枠は箱ぜんたいを覆う必要があるので上限を持たない**(Infinity)。
-  // 細かい窓だけが、要求から決まる半径でここを縛る。
+  // 詳細な領域のみ、要求から決まる半径でこの上限を制限する。
   private readonly clusterCaps: number[] = [];
   private readonly scratchBox = new THREE.Box3();
   private readonly scratchCorner = new THREE.Vector3();
@@ -124,7 +126,7 @@ export class ShadowMaps {
 
   // 上限ぶんの近層・遠層の深度マップと、そこへライト空間の線形深度を書く override マテリアルを
   // 組む。深度マップの実寸は品質が決めるので、確保は最小で起こして setQuality が広げる。
-  constructor(
+  public constructor(
     private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings,
     enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number,
   ) {
@@ -155,36 +157,39 @@ export class ShadowMaps {
   }
 
   // 近層の深度マップ。枠から見て本影が残る距離にあるメッシュだけが、スロットの層へ写る。
-  get texture(): THREE.Texture { return this.target.texture; }
+  public get texture(): THREE.Texture { return this.target.texture; }
 
   // 同じ枠・同じ uv の遠層の深度マップ。本影を失ったメッシュだけが写る。**近層と写るメッシュが
   // 排他なので、2 枚から出した透過率はそのまま掛けられる。**
-  get farTexture(): THREE.Texture { return this.farTarget.texture; }
+  public get farTexture(): THREE.Texture { return this.farTarget.texture; }
 
-  get uniformArrays(): ShadowSlotUniformArrays { return this.slotUniformArrays; }
+  public get uniformArrays(): ShadowSlotUniformArrays { return this.slotUniformArrays; }
 
   // 受け手が texel を単位に幅を組むために引く、スロットの 1 辺 [texel]。
-  get texelsPerSlot(): FloatNode { return this.slotTexels; }
+  public get texelsPerSlot(): FloatNode { return this.slotTexels; }
 
   // 同じく、1 texel ぶんの uv 幅。
-  get uvPerTexel(): FloatNode { return float(1).div(this.slotTexels); }
+  public get uvPerTexel(): FloatNode { return float(1).div(this.slotTexels); }
 
   // このフレームに中身の入ったスロットが 1 つでもあるか。
-  casts(): boolean { return this.slotParameters.some((parameters) => parameters.w > 0); }
+  public casts(): boolean { return this.slotParameters.some((parameters) => parameters.w > 0); }
 
   // 影の品質を設定から受け取る。層付き深度マップは全層で同じ寸法を持つため、枠の数は
-  // active の層数だけを変える。張り直しはテクスチャの実体を差し替えないので、受け手が既に
+  // active の層数だけを変える。切られている間はスロットを描かないので、深度マップは 1 texel へ
+  // 縮めて GPU メモリを返す。張り直しはテクスチャの実体を差し替えないので、受け手が既に
   // 組んだグラフはそのまま生きる。
-  setQuality(enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number): void {
+  public setQuality(enabled: boolean, slotCount: number, slotSize: number, texelsPerPixel: number): void {
     this.enabled = enabled;
     this.texelsPerPixel = texelsPerPixel;
     const count = Math.min(slotCount, MAX_SHADOW_SLOTS);
-    if (count === this.slotCount && slotSize === this.slotSize) return;
+    const size = enabled ? slotSize : 1;
+    if (count === this.slotCount && slotSize === this.slotSize && size === this.target.width) return;
     this.slotCount = count;
     this.slotSize = slotSize;
     this.slotTexels.value = slotSize;
-    this.target.setSize(slotSize, slotSize, MAX_SHADOW_SLOTS);
-    this.farTarget.setSize(SHADOW_FAR_SLOT_SIZE, SHADOW_FAR_SLOT_SIZE, MAX_SHADOW_SLOTS);
+    this.target.setSize(size, size, MAX_SHADOW_SLOTS);
+    const farSize = Math.min(size, SHADOW_FAR_SLOT_SIZE);
+    this.farTarget.setSize(farSize, farSize, MAX_SHADOW_SLOTS);
     // 張り直した深度マップの中身は不定なので、全枠を空にし、次のフレームの空戻しを上限まで
     // 走らせる — 縮めた枠にも前フレームの絵が残ったままだと、デバッグ表示が読み手を欺く。
     this.clearSlots();
@@ -192,16 +197,14 @@ export class ShadowMaps {
   }
 
   // メッシュを枠へまとめ、枠ごとに 1 スロットを描く。影が切られているか、影を要求する受け手が
-  // 1 つも無いフレームは、GPU 側の仕事がまったく発生しない。
-  render(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
+  // 1 つも無いフレームは、GPU 側の仕事がまったく発生しない。scene のワールド行列は呼び出し側が
+  // 確定させておく — メッシュの箱は親の変換込みで測る。
+  public render(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): void {
     this.clearSlots();
     this.clusters.length = 0;
     this.clusterSizes.length = 0;
     this.clusterCaps.length = 0;
     if (this.enabled) {
-      // メッシュの箱は親の変換込みで測る必要がある。**Box3.expandByObject は親の行列を更新しない**
-      // ので、このパスがフレームの先頭で走る限り、ここで確定させないと箱が前フレームの位置で作られる。
-      scene.updateMatrixWorld();
       this.casters = this.shadowCasters.collect(scene, camera, viewportHeight, sun, this.texelsPerPixel);
       this.buildClusters();
     } else {
@@ -227,10 +230,7 @@ export class ShadowMaps {
       }
       // 前フレームに使っていて今フレームは使わないスロットを空へ戻す。
       for (let index = this.clusters.length; index < this.drawnSlots; index++) {
-        for (const target of [this.target, this.farTarget]) {
-          this.renderer.setRenderTarget(target, index);
-          this.renderer.clear(true, true, false);
-        }
+        for (const target of [this.target, this.farTarget]) this.clearSlot(target, index);
       }
       this.drawnSlots = this.clusters.length;
     } finally {
@@ -242,7 +242,7 @@ export class ShadowMaps {
   }
 
   // 影キャスターを深度マップの添付形式で事前コンパイルする。
-  async compile(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): Promise<void> {
+  public async compile(scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight): Promise<void> {
     const savedOverride = scene.overrideMaterial;
     try {
       scene.updateMatrixWorld();
@@ -269,13 +269,12 @@ export class ShadowMaps {
   // 枠 1 つをスロット index へ描く。**枠に入るメッシュはすべて描く** — 枠の外は平行投影が落とす。
   //
   // 撮るのは 2 枚。**本影が残る距離に居るメッシュと、本影を失ったメッシュを、別の深度マップへ分ける**
-  // — 1 枚に混ぜると、光源にいちばん近いものが勝つ深度テストで、遠くて淡いメッシュが至近の濃い
+  // — 1 枚に混ぜると、光源に最も近いものが優先される深度テストにより、遠くて淡いメッシュが至近の濃い
   // メッシュを追い出してしまう。遠層に写るものが 1 つも無いときは空のまま残す。
   private drawSlot(
     scene: THREE.Scene, sun: SunLight, index: number, box: THREE.Box3, extentCap: number,
   ): void {
-    this.renderer.setRenderTarget(this.farTarget, index);
-    this.renderer.clear(true, true, false);
+    this.clearSlot(this.farTarget, index);
     if (!this.configureSlot(index, box, extentCap, sun)) return;
     const parameters = this.slotParameters[index]!;
     // 深度マテリアルはスロット共有なので、深度の原点をこのスロットの near へ差し替える。
@@ -285,10 +284,18 @@ export class ShadowMaps {
       this.renderer.render(scene, this.lightCamera);
     }
     this.setLightDepthRange(Math.max(parameters.x, this.bandSplit), this.nearBandFar);
-    this.renderer.setRenderTarget(this.target, index);
-    this.renderer.clear(true, true, false);
+    this.clearSlot(this.target, index);
     this.renderer.render(scene, this.lightCamera);
     parameters.w = 1;
+  }
+
+  // スロット index の深度と色を空の値で埋める。renderer.clear() は camera を持たないレンダー文脈で
+  // 動くため、深度配列へ向けると three の WebGL2 フォールバックが camera の null を読んで落ちる。
+  // 中身の無いシーンを、ライトカメラで render して同じ初期化を行う(render は camera を立ててから消す)。
+  // 呼び出し元は render() の中だけで、そこで autoClear が立っている。
+  private clearSlot(target: THREE.RenderTarget, index: number): void {
+    this.renderer.setRenderTarget(target, index);
+    this.renderer.render(this.emptyScene, this.lightCamera);
   }
 
   // ライトカメラが撮る深度の範囲を差し替える。**枠(left/right/top/bottom)は動かさない** —
@@ -299,14 +306,14 @@ export class ShadowMaps {
     this.lightCamera.updateProjectionMatrix();
   }
 
-  // 要求の厳しい受け手から順に枠を配る。**枠は受け手のまわりに、要求どおりの大きさで開く** —
+  // 要求の厳しい受け手から順にスロットを割り当てる。**枠は受け手のまわりに、要求どおりの大きさで開く** —
   // 影を落とすメッシュは平行投影でちょうどその枠に重なるものなので、枠が受け手を覆えば必要な
   // メッシュだけが入る。低い要求のために広げると、その枠を起こした受け手まで一緒に粗くなるので
-  // 広げない。既存の枠へ相乗りできるのは、枠の大きさを変えずに平行移動して収まるときだけで、
-  // 枠が尽きていればその受け手は諦める(要求の緩い側から捨てられる)。
+  // 広げない。既存の枠を共有できるのは、枠の大きさを変えずに平行移動して収まるときだけで、
+  // 枠が枯渇した場合はシャドウ生成をスキップする（優先度の低い側から除外される）。
   //
   // **最後の 1 枚は被覆に取っておく。** 要求どおりに縮めた枠はメッシュを覆いきれないので、
-  // はみ出した部分を拾う粗い枠が要る。
+  // はみ出した部分をカバーする粗い枠が要る。
   private buildClusters(): void {
     const windowSlots = this.slotCount - 1;
     for (const receiver of this.casters) {
@@ -319,7 +326,7 @@ export class ShadowMaps {
     this.addCoverageFrame();
   }
 
-  // 既存の枠へ相乗りさせる。**枠の大きさは変えない** — 中身の和が今の大きさに収まるときだけ、
+  // 既存の枠を共有させる。**枠の大きさは変えない** — 中身の和が今の大きさに収まるときだけ、
   // 枠をずらして両方を入れる。粗い枠から試すのは、細かい枠をできるだけ手つかずで残すため。
   private shareFrame(receiver: ShadowCaster, limit: number): boolean {
     for (let index = this.clusters.length - 1; index >= 0; index--) {
@@ -335,7 +342,7 @@ export class ShadowMaps {
   // 受け手 1 つぶんの枠を開く。要求が箱より細かいときは、カメラにいちばん近い点へ寄せた窓を
   // 開き、**続けて箱ぜんたいの枠も開く。** 窓からはみ出した部分が最後の被覆枠(全受け手の和)
   // まで落ちると、そこだけ極端に粗くなる — 至近の艦の胴体に、遠くの艦まで含めた枠の texel が
-  // 出てしまう。以後の受け手は箱ぜんたいの枠のほうへ相乗りする。
+  // 出てしまう。以後の受け手は箱全体の枠を共有する。
   private openFrames(receiver: ShadowCaster, limit: number, budget: number): void {
     const boxSize = this.frameSize(receiver.box);
     const size = receiver.diffuse ? boxSize : Math.min(boxSize, limit);
@@ -354,8 +361,8 @@ export class ShadowMaps {
     this.clusters.push(box.clone());
   }
 
-  // 最後の 1 枚へ、影を要求する受け手をすべて包む枠を置く。**縮めた枠がこぼした部分と、枠が
-  // 尽きて配れなかった受け手を、まとめてここが拾う。**
+  // 最後の 1 枚へ、影を要求する受け手をすべて包む枠を置く。**縮めた枠から漏れた部分と、スロット上限で
+  // 割り当てられなかった受け手を、ここで一括してカバーする。**
   private addCoverageFrame(): void {
     this.scratchBox.makeEmpty();
     for (const receiver of this.casters) {
@@ -363,10 +370,9 @@ export class ShadowMaps {
       this.scratchBox.union(receiver.box);
     }
     if (this.scratchBox.isEmpty()) return;
-    // 箱に密着した枠が既に全体を包んでいるなら、同じ絵をもう 1 枚描くだけになる。
-    const covered = this.clusters.some(
-      (cluster, index) => this.clusterCaps[index] === Infinity && cluster.containsBox(this.scratchBox),
-    );
+    // どの受け手も箱に密着した枠のどれかに収まっているなら、被覆枠は同じ絵を粗く描き直すだけになる。
+    const covered = this.casters.every((receiver) => !Number.isFinite(receiver.requiredTexel)
+      || this.clusters.some((cluster, index) => this.clusterCaps[index] === Infinity && cluster.containsBox(receiver.box)));
     if (covered) return;
     this.pushFrame(this.scratchBox, this.frameSize(this.scratchBox), Infinity);
   }
@@ -403,7 +409,7 @@ export class ShadowMaps {
   }
 
   // 箱を 1 枚へ収める枠の 1 辺 [m]。**世界軸ではなく対角で測る** — 計画の段では光の向きが
-  // 枠ごとに決まっていないので、どう回っても収まる側へ倒す。
+  // 枠ごとに決まっていないので、任意の回転で収まる安全側の値（外接球）を採用する。
   private frameSize(box: THREE.Box3): number {
     box.getSize(this.size);
     return this.size.length();
@@ -424,7 +430,7 @@ export class ShadowMaps {
     const radius = this.size.length() * 0.5;
     const eyeDistance = radius * 2;
     this.lightCamera.position.copy(this.center).addScaledVector(this.lightDirection, eyeDistance);
-    // 視線と平行な up は姿勢を決められないので、光の向きが縦に近いときだけ up を倒す。
+    // 視線と平行な up は姿勢を決められないので、光の向きが縦に近いときだけ up ベクトルを傾ける（切り替える）。
     this.lightCamera.up.set(
       Math.abs(this.lightDirection.y) < 0.9 ? 0 : 1,
       Math.abs(this.lightDirection.y) < 0.9 ? 1 : 0,
@@ -433,7 +439,7 @@ export class ShadowMaps {
     this.lightCamera.lookAt(this.center);
     this.lightCamera.updateMatrixWorld(true);
 
-    // **上限で縛ると枠は箱より小さくなりうる。** はみ出した受け手は被覆の枠が拾う。
+    // **上限で制限すると枠は箱より小さくなりうる。** はみ出した受け手は被覆フレームがカバーする。
     this.measureLightSpaceBox(box);
     const frameFront = this.lightSpaceBox.front;
     const extent = Math.min(this.frameExtent(), extentCap);
@@ -480,13 +486,13 @@ export class ShadowMaps {
     return near <= far ? { near, far } : null;
   }
 
-  // 全スロットを空(active = 0)へ戻す。残りの値は次に配るときに上書きされる。
+  // 全スロットを空(active = 0)へ戻す。残りの値は次の割り当て時に上書きされる。
   private clearSlots(): void {
     for (const parameters of this.slotParameters) parameters.w = 0;
   }
 
   // 保持している GPU 資源を解放する。
-  dispose(): void {
+  public dispose(): void {
     this.target.dispose();
     this.farTarget.dispose();
     this.depthMaterial.dispose();

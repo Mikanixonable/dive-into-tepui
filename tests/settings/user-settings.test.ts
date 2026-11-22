@@ -11,7 +11,7 @@ import {
 import { DEFAULT_RENDER_STYLE } from '../../src/render/render-style';
 import { DEFAULT_BGM_VOLUME } from '../../src/audio/bgm/bgm';
 import { DEFAULT_MAP_DISPLAY_TOGGLES } from '../../src/game/map/display-toggles';
-import { DEFAULT_GRID_VISIBILITY } from '../../src/render/celestial-grid';
+import { DEFAULT_GRID_VISIBILITY } from '../../src/render/celestial/celestial-grid';
 
 // 保存の鍵。**利用者の localStorage に残っている文字列そのもの**なので、実装から導かずに直に書く。
 const GRAPHICS_KEY = 'tepui.settings.graphics.v2';
@@ -20,6 +20,7 @@ const RENDER_STYLE_KEY = 'tepui.settings.renderStyle';
 const BGM_VOLUME_KEY = 'tepui.settings.bgm_vol';
 const MAP_DISPLAY_TOGGLES_KEY = 'tepui.mapDisplayToggles';
 const GRID_VISIBILITY_KEY = 'tepui.gridVisibility';
+const MISSION_TIME_FORMAT_KEY = 'tepui.missionTimeFormat';
 
 // 保存済みの値を仕込んだ保存先を作る。
 function storageWith(entries: Readonly<Record<string, string>>): MemorySettingStorage {
@@ -80,6 +81,13 @@ export function register(): void {
     assert.equal(storage.read(LEGACY_GRAPHICS_KEY), '{"lodBias":0.5}', '旧い鍵が書き換えられた');
   });
 
+  // テスト環境には matchMedia が無いため、ポインタは細かい側と判定され初回の選び方は全体「中」になる。
+  test('user-settings: 保存が無い環境では描画設定は既定(中)で始まる', () => {
+    const settings = new UserSettings(new MemorySettingStorage());
+    assert.deepEqual(settings.graphics.current, DEFAULT_GRAPHICS_SELECTION);
+    assert.equal(settings.graphics.current.quality, 'medium');
+  });
+
   test('user-settings: 読めない保存値は既定へ落ちる', () => {
     const settings = new UserSettings(storageWith({
       [GRAPHICS_KEY]: '{"quality":"low"',
@@ -116,6 +124,15 @@ export function register(): void {
     assert.notEqual(second, first, '書き換えたのに同じ参照が返った');
     assert.equal(second.lodBias, 0.5);
     assert.equal(settings.resolvedGraphics.current, second, '同じ選び方から別の参照が返った');
+  });
+
+  test('user-settings: 時刻の表記は保存値が読み戻り、知らない値は T+ 表記へ落ちる', () => {
+    const settings = new UserSettings(storageWith({ [MISSION_TIME_FORMAT_KEY]: 'absolute' }));
+    assert.equal(settings.missionTimeFormat.current, 'absolute');
+    const fallback = new UserSettings(storageWith({ [MISSION_TIME_FORMAT_KEY]: 'unix' }));
+    assert.equal(fallback.missionTimeFormat.current, 'elapsed');
+    const unset = new UserSettings(new MemorySettingStorage());
+    assert.equal(unset.missionTimeFormat.current, 'elapsed');
   });
 
   test('user-settings: 書き換えが購読者全員へ届き、解除すると止まる', () => {

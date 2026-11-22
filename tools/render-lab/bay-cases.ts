@@ -4,7 +4,7 @@
 // 照り返し、滑らかな面への近くの物体の映り込み)を読む試験体。
 import * as THREE from 'three/webgpu';
 import { R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import { CasingPool } from '../../src/render/dynamic/dynamic-entity/casing-view';
+import { CasingPool } from '../../src/render/dynamic/entity/casing-view';
 import { markLitOpaque, markShadowCaster } from '../../src/render/pipeline/lit-layer';
 import { directionFromAngles, type LabViewAngles } from './view-angles';
 import {

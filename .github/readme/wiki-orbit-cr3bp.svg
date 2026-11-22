@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="280" viewBox="0 0 1200 280" role="img"><title>CR3BP・ラグランジュ点・航法表示</title><defs><style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="280" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">CR3BP・ラグランジュ点・航法表示</text><text x="40" y="60" class="m d sm">模式図・縮尺不同 — L4/L5 は主天体・副天体と正三角形を作る</text>
+<g transform="translate(0 2)">
+ <circle cx="520" cy="150" r="42" fill="url(#earth)" stroke="#c3bec9"/>
+ <circle cx="624" cy="150" r="18" fill="#b8b6b1" stroke="#c3bec9"/>
+ <path d="M520 150H624" class="g"/>
+ <circle cx="594" cy="150" r="5" fill="#ff3155"/><text x="582" y="136" class="m a xs">L1</text>
+ <circle cx="654" cy="150" r="5" fill="#ff3155"/><text x="646" y="136" class="m a xs">L2</text>
+ <circle cx="475" cy="150" r="5" fill="#ff3155"/><text x="464" y="136" class="m a xs">L3</text>
+ <circle cx="572" cy="60" r="5" fill="#3478ff"/><text x="560" y="48" class="m u xs">L4</text>
+ <circle cx="572" cy="240" r="5" fill="#3478ff"/><text x="560" y="258" class="m u xs">L5</text>
+ <path d="M520 150L572 60L624 150M520 150L572 240L624 150" class="g dash"/>
+ <path d="M644 150C648 126 666 117 680 130C694 143 689 166 674 174C659 182 643 171 644 150Z" class="r"/>
+ <path d="M649 150C657 106 683 93 701 113C721 136 713 180 690 196C671 209 650 193 649 150Z" class="bl"/>
+ <text x="682" y="115" class="m a xs">Halo</text><text x="707" y="200" class="m u xs">NRHO</text>
+ <path d="M450 150C465 91 500 76 535 89C554 96 566 111 572 130" class="g dash"/>
+ <path d="M572 170C560 194 543 207 522 211C486 218 456 195 450 150" class="g dash"/>
+ <text x="735" y="150" class="m b sm">回転座標系では L 点が固定</text>
+ <text x="735" y="174" class="m d xs">ECI 表示では時刻ごとに変換</text>
+</g>
+</svg>

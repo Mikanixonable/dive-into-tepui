@@ -9,7 +9,7 @@ import {
   molniyaGuideLoop, sunSyncRepeatGroundTrackLoop, tundraGuideLoop,
 } from '../../../physics/orbit-guide';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../../render/lines/line-style';
 import type { RenderStyle } from '../../../render/render-style';
 import type { ViewMode } from '../../view/view-mode';
 import { SCHEMATIC_LINE } from '../../../render/schematic-style';
@@ -29,7 +29,7 @@ const LISSAJOUS_VERTEX_BUDGET = 2048;
 // 点列を引き直す表示時刻の間隔 [s]。全系で共通の値を、表示負荷と回転基底の更新頻度の釣り合いで採る。
 const RECOMPUTE_INTERVAL = 300;
 // 安定性指数(1 が中立の下限、離れるほど不安定)がこの値以下なら「安定」として濃く見せる。
-// 族の大半は 1.0〜数十に広く分布するので、中立に近い区間だけを拾う値。
+// 族の大半は 1.0〜数十に広く分布するので、中立に近い区間のみを抽出する値。
 const STABILITY_NEUTRAL_THRESHOLD = 1.5;
 // 安定な軌道の不透明度の倍率。WebGPU では線幅が効かないので、太さの代わりに濃さで見分ける。
 const STABLE_OPACITY_BOOST = 1.8;
@@ -78,7 +78,7 @@ type GuideLineEntry = GuideLineFamily & {
   readonly key: string;
   readonly index: number;
   // 適応分割の頂点予算。既定でよい線は undefined。
-  readonly maxVertices: number | undefined;
+  readonly maxVertices: number | null;
   // 表示時刻から引き直すまで、また引けなかった時刻では null(その線は描かれない)。
   geometry: GuideLineGeometry | null;
 };
@@ -100,7 +100,7 @@ function lineStyle(color: number, opacity: number): LineStyle {
 
 // 線1本ぶんの、表示時刻に依らない識別情報。
 function lineEntry(
-  family: GuideLineFamily, index: number, maxVertices: number | undefined,
+  family: GuideLineFamily, index: number, maxVertices: number | null,
 ): GuideLineEntry {
   return {
     ...family,
@@ -109,7 +109,7 @@ function lineEntry(
   };
 }
 
-// ガイド線の曲線を、基準点(パラメータ 0 の位置)相対の描画用の形へ落とす。解析曲線の初期区間数は
+// ガイド線の曲線を、基準点(パラメータ 0 の位置)相対の描画用データへ変換する。解析曲線の初期区間数は
 // 「1区間が半周を超えない」下限。
 function loopGeometry(loop: GuideLoop): GuideLineGeometry {
   const shape = loop.shape;
@@ -150,11 +150,11 @@ function pointOf(familyId: string): string | null {
 
 // 族 id の表示設定を1つに解決する。小題に属する族は、押されている軸値から組める候補に入るかで
 // on を決め、他の欄は小題の共有設定を使う。小題に属さない族は settings.kinds のまま。
-function effectiveKind(settings: OrbitGuideSettings, familyId: string): GuideKindSettings | undefined {
+function effectiveKind(settings: OrbitGuideSettings, familyId: string): GuideKindSettings | null {
   const parsed = parseGuideKindId(familyId);
-  if (parsed === null || parsed.combinedKey === null) return settings.kinds[familyId];
+  if (parsed === null || parsed.combinedKey === null) return settings.kinds[familyId] ?? null;
   const combined = settings.combinedKinds[parsed.combinedKey];
-  if (combined === undefined) return undefined;
+  if (combined === undefined) return null;
   const on = combinedCandidateIds(parsed.combinedKey, combined.axisValues).includes(familyId);
   return { ...combined, on };
 }
@@ -206,7 +206,7 @@ function geometrySignature(settings: OrbitGuideSettings): string {
   return parts.sort().join('|');
 }
 
-// 線の顔ぶれ(種類ごとの on・本数と系選択の直積)を決める設定だけを並べた識別子。
+// ガイド線の構成（種類ごとの有効状態・本数と選択星系の直積）を決定する設定を直列化した識別子。
 function structuralKey(settings: OrbitGuideSettings): string {
   // 族ごとの on と本数、選ばれた系、リサジューの点、参照軌道の on をつなぐ。
   const kindsKey = [...activeFamilyIds(settings)].sort()
@@ -225,7 +225,7 @@ export class OrbitGuideModel {
   private lines: GuideLineEntry[] = [];
   private readonly catalog = new OrbitGuideCatalog();
 
-  // 直近に線の顔ぶれ・点列を組んだときの識別子と、そのときの表示時刻・カタログ世代。
+  // 直近に線の構成・点列を構築したときの識別子と、その時点の表示時刻・カタログ世代。
   private structureKey = '';
   private geometryKey = '';
   private lastComputedTime: number | null = null;
@@ -238,6 +238,9 @@ export class OrbitGuideModel {
 
   public constructor(private readonly celestialBodies: CelestialBodies) {}
 
+  // 焼き込み族カタログの読み取り口。系がまだ読み込まれていなければ null を返す。
+  public get orbitCatalog(): OrbitGuideCatalog { return this.catalog; }
+
   // 直近にマップビューで組んだ線の本数。曲線を引けなかった線も数える。
   public get lineCount(): number { return this.lines.length; }
 
@@ -248,7 +251,7 @@ export class OrbitGuideModel {
   ): readonly GuideLineDisplay[] {
     if (viewMode !== 'map') return NO_LINES;
 
-    // 種類ごとの on・本数と系選択が変わったときだけ線の顔ぶれを組み直す。
+    // 種類ごとの有効状態・本数または選択星系が変更された場合のみ線の構成を再構築する。
     const structureKey = structuralKey(settings);
     if (structureKey !== this.structureKey) {
       this.rebuildLines(settings);
@@ -366,7 +369,7 @@ export class OrbitGuideModel {
         key: entry.key, familyId: entry.familyId, system: entry.system, point: entry.point,
         origin: geometry.origin, shape: geometry.shape, revolutions: geometry.loop.revolutions,
         style: visual.style, colorAt: visual.colorAt, direction: visual.direction,
-        animate: visual.animate, markerColor: visual.markerColor, maxVertices: entry.maxVertices,
+        animate: visual.animate, markerColor: visual.markerColor, maxVertices: entry.maxVertices ?? undefined,
       });
     }
     return displays;
@@ -422,7 +425,7 @@ export class OrbitGuideModel {
     };
   }
 
-  // 種類ごとの on と系選択から線の顔ぶれを組み直す。組み直した線はまだ曲線を持たない(geometry が null)。
+  // 種類ごとの有効状態と選択星系から線の構成を再構築する。再構築直後の線はまだ曲線データを持たない(geometry が null)。
   private rebuildLines(settings: OrbitGuideSettings): void {
     this.lines = [];
 
@@ -436,7 +439,7 @@ export class OrbitGuideModel {
         // その系に無い族の線は、何も描かれないのに線数の警告だけを膨らませる。
         if (!this.catalog.hasFamily(system, familyId)) continue;
         for (let i = 0; i < kind.count; i++) {
-          this.lines.push(lineEntry({ source: 'catalog', familyId, system, point }, i, undefined));
+          this.lines.push(lineEntry({ source: 'catalog', familyId, system, point }, i, null));
         }
       }
     }
@@ -457,7 +460,7 @@ export class OrbitGuideModel {
     // 地球専用参照軌道は系トグルの対象外なので system は null。
     for (const kind of REFERENCE_ORBIT_KINDS) {
       if (!settings[kind].on) continue;
-      this.lines.push(lineEntry({ source: 'reference', familyId: kind, system: null, point: null }, 0, undefined));
+      this.lines.push(lineEntry({ source: 'reference', familyId: kind, system: null, point: null }, 0, null));
     }
   }
 }

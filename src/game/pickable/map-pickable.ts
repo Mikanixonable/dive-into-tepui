@@ -1,17 +1,16 @@
-// マップ上で掴める物体。候補に出る条件の自己申告と、左クリック・注視移動・視線判定への応答を
-// 答える。
+// マップ上で選択可能なオブジェクト。候補となる条件の判定と、左クリック・注視移動・視線交差への応答を
+// 提供する。
 import type { Ray } from '../../math/ray';
 import type { Vec3 } from '../../math/vec3';
 import type { ControlSelectionCommands } from '../control-selection-commands';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { PropertyWindowOpener } from './property-window-opener';
 import type { PickCandidate } from './pick-candidate';
 
 export interface MapPickable extends PickCandidate {
-  // 天体に遮られている間は選べなくなるか。天体自身は遮蔽で候補から外さない
-  // (公転・カメラ移動のたびに一覧の行が明滅するため)。
+  // 天体は遮蔽時も選択候補に残す。
   readonly hiddenBehindBodies: boolean;
   // フォーカス中の惑星系に属するときだけ候補に出すか。
   readonly onlyInFocusedSystem: boolean;

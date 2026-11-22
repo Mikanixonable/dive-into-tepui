@@ -6,8 +6,17 @@
 import type * as THREE from 'three/webgpu';
 import { apparentSizePx } from '../math/projection';
 import { airglowCutoffAltitude, type AirglowOptics } from './airglow';
-import type { CloudRenderInput } from './cloud/cloud-render-input';
+import type { CloudRenderInput } from './earth-weather/cloud/cloud-render-input';
 import type { GraphicsSettingsData } from './graphics-settings';
+
+// オゾン層の吸収。密度は高度 centerAltitude を中心とする底 halfThickness ・高さ 1 の
+// 三角テントとし、absorption は層のピーク密度での RGB 吸収係数 [1/m]。散乱を足さない
+// 純粋な吸収なので、直射光・視線の消散と内部散乱の暗くなる割合の両方に効く。
+export interface OzoneOptics {
+  readonly absorption: THREE.Vector3;
+  readonly centerAltitude: number; // [m]
+  readonly halfThickness: number; // [m]
+}
 
 // 大気 1 つぶんの光学パラメータ。散乱係数はいずれも基準球面(天体半径)での値 [1/m]。
 export interface AtmosphereOptics {
@@ -19,6 +28,8 @@ export interface AtmosphereOptics {
   readonly mieScaleHeight: number; // [m]
   // ミー散乱の非対称因子（0..1）。値が大きいほど前方散乱が強まり、光源周囲のグレアが収束する。
   readonly mieAnisotropy: number;
+  // オゾン層の吸収。未指定なら大気は吸収を持たない。
+  readonly ozone?: OzoneOptics;
   // 大気自身の発光層。未指定なら大気は反射・散乱だけを持つ。
   readonly airglow?: AirglowOptics;
 }
@@ -29,7 +40,7 @@ export const MAX_ATMOSPHERE_BODIES = 4;
 // 描くと決めた天体へ必ず配るサンプル点の数。
 const MIN_SAMPLES = 2;
 
-// 1 体へ配るサンプル点の上限。ここを超えても絵はほとんど変わらないので、支配的な 1 体が予算を
+// 1 天体あたりに割り当てるサンプル点の上限。ここを超えても絵はほとんど変わらないので、支配的な 1 体が予算を
 // 吸い切る構図では余りを使わずに済ませる。
 const MAX_SAMPLES = 16;
 
@@ -72,7 +83,7 @@ export function withAirglowEnabled(optics: AtmosphereOptics, enabled: boolean): 
 }
 
 // 大気を天頂方向へ通り抜ける光学的厚み。**濃さを1つの数で表すためだけの量**なので、波長ごとに
-// 違うレイリー散乱は3成分の平均で潰す。
+// 違うレイリー散乱は3成分の平均値で代表させる。
 function verticalOpticalDepth(optics: AtmosphereOptics): number {
   const rayleigh = (optics.rayleigh.x + optics.rayleigh.y + optics.rayleigh.z) / 3;
   return rayleigh * optics.rayleighScaleHeight + optics.mie * optics.mieScaleHeight;
@@ -92,11 +103,13 @@ function screenImpact(optics: AtmosphereOptics, surfaceRadius: number, metersPer
 export interface AtmosphereClouds {
   readonly cloud: CloudRenderInput;
   readonly bodyFromWorld: THREE.Matrix4;
+  readonly cumulusVisible: boolean;
+  readonly cirrusVisible: boolean;
 }
 
 // 大気を持つ天体 1 体。中心は描画座標、半径は [m]。**地表も大気の等密度面も、自転軸まわりの
 // 相似な回転楕円体**で、surfaceRadius は赤道半径、polarRatio は極半径をそれで割った比。
-// polarAxis は潰す向き(描画座標の単位ベクトル)で、真球(polarRatio = 1)では効かない。
+// polarAxis は扁平化する主軸方向(描画座標の単位ベクトル)で、真球(polarRatio = 1)では影響しない。
 // clouds は大気の中に立てる雲で、雲を持たない天体では null。
 export interface AtmosphereBody {
   readonly center: THREE.Vector3;
@@ -123,8 +136,8 @@ export interface AtmosphereDraw {
   readonly steps: number;
 }
 
-// 予算 budget サンプルを、影響の大きい順に配る。**返す並びは視点に近い順**(合成の順序)。
-// 予算で賄えない数の候補は、影響の小さい側から落ちる。
+// 予算 budget サンプルを、影響度の大きい順に割り当てる。**返す並びは視点に近い順**(合成の順序)。
+// 予算で賄えない余剰候補は、影響度の小さい順に描画対象から除外される。
 function allocateSamples(
   scored: readonly (AtmosphereCandidate & { readonly score: number })[],
   budget: number,

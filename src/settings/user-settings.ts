@@ -4,19 +4,22 @@ import {
   DEFAULT_BGM_VOLUME, formatBgmMuted, formatBgmVolume, parseBgmMuted, parseBgmVolume,
 } from '../audio/bgm/bgm';
 import {
-  formatOrbitGuideGroupTab, formatPanelCollapsed, formatViewOptionsTab,
-  parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
-} from '../game/hud/hud-selection';
+  formatMissionTimeFormat, formatOrbitGuideGroupTab, formatPanelCollapsed, formatViewOptionsTab,
+  parseMissionTimeFormat, parseOrbitGuideGroupTab, parsePanelCollapsed, parseViewOptionsTab,
+} from '../game/view/view-preferences';
 import { formatMapDisplayToggles, parseMapDisplayToggles } from '../game/map/display-toggles';
-import { formatGridVisibility, parseGridVisibility } from '../render/celestial-grid';
+import { isCoarsePointer } from '../input-devices/pointer-precision';
+import { formatGridVisibility, parseGridVisibility } from '../render/celestial/celestial-grid';
 import { formatGraphicsSelection, parseGraphicsSelection, resolveGraphics } from '../render/graphics-selection';
 import { parseLegacyGraphics } from '../render/legacy-graphics-settings';
 import { formatRenderStyle, parseRenderStyle } from '../render/render-style';
 import { formatThemePalette, parseThemePalette } from '../theme';
 import { DerivedSetting, StoredSetting } from './stored-setting';
-import type { OrbitGuideGroupTab, PanelCollapsedState, ViewOptionsTab } from '../game/hud/hud-selection';
+import type {
+  MissionTimeFormat, OrbitGuideGroupTab, PanelCollapsedState, ViewOptionsTab,
+} from '../game/view/view-preferences';
 import type { MapDisplayToggles } from '../game/map/display-toggles';
-import type { CelestialGridVisibility } from '../render/celestial-grid';
+import type { CelestialGridVisibility } from '../render/celestial/celestial-grid';
 import type { GraphicsSelection } from '../render/graphics-selection';
 import type { GraphicsSettingsData } from '../render/graphics-settings';
 import type { RenderStyle } from '../render/render-style';
@@ -53,15 +56,21 @@ export class UserSettings {
   public readonly viewOptionsTab: StoredSetting<ViewOptionsTab>;
   // 軌道ガイドタブで選んでいる群タブ。
   public readonly orbitGuideGroupTab: StoredSetting<OrbitGuideGroupTab>;
+  // 全体ステータスバーの時刻の表記。
+  public readonly missionTimeFormat: StoredSetting<MissionTimeFormat>;
 
   // storage は設定一式を残す先。鍵は既存ユーザーの保存に残っている文字列なので、変えると
   // 保存済みの設定が読めなくなる。
   public constructor(storage: SettingStorage) {
     // 画面全体に適用される全域設定。
+    // 新しい鍵がまだ無い環境では、旧い鍵の平らな値一式を読み替える。どちらの保存も無いときだけ、主ポインタの
+    // 精度で初回の選び方を決める。
     const legacyGraphics = storage.read(LEGACY_GRAPHICS_KEY);
     this.graphics = new StoredSetting(
       storage, 'tepui.settings.graphics.v2',
-      (text) => (text === null ? parseLegacyGraphics(legacyGraphics) : parseGraphicsSelection(text)),
+      (text) => (text === null
+        ? parseLegacyGraphics(legacyGraphics, isCoarsePointer())
+        : parseGraphicsSelection(text)),
       formatGraphicsSelection,
     );
     this.resolvedGraphics = new DerivedSetting(this.graphics, resolveGraphics);
@@ -87,6 +96,9 @@ export class UserSettings {
     );
     this.orbitGuideGroupTab = new StoredSetting(
       storage, 'tepui.orbitGuideGroupTab', parseOrbitGuideGroupTab, formatOrbitGuideGroupTab,
+    );
+    this.missionTimeFormat = new StoredSetting(
+      storage, 'tepui.missionTimeFormat', parseMissionTimeFormat, formatMissionTimeFormat,
     );
   }
 

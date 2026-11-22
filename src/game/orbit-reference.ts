@@ -2,11 +2,11 @@
 // 応じて、基準天体・対象の状態(KinematicState)を解く。
 import { strongestAttractor } from '../physics/attractor';
 import type { CelestialBodies } from './celestial/celestial-bodies';
-import { KinematicState } from '../physics/kinematic-state';
+import type { KinematicState } from '../physics/kinematic-state';
 import type { Vec3 } from '../math/vec3';
-import type { DynamicEntity } from './dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from './dynamic/entity/dynamic-entity';
 import type { NavTargetPresenter } from './nav-target-presenter';
-import type { EntityRoster } from './dynamic/entity-roster';
+import type { EntityRoster } from './dynamic/entity-registry';
 import type { CelestialBody } from '../physics/celestial-body';
 import type { OrbitReferenceMode } from './viewer/orbit-reference-selection';
 
@@ -30,8 +30,8 @@ type OrbitLineBasis =
   | { readonly kind: 'none' };
 
 // fixed / hasMass / attractor / entity の組み合わせを解くのはここだけにする。
-export function orbitLineBasisOf(ref: OrbitReference | undefined, self: DynamicEntity): OrbitLineBasis {
-  if (ref === undefined || !ref.fixed) return { kind: 'ellipse', center: null };
+export function orbitLineBasisOf(ref: OrbitReference | null, self: DynamicEntity): OrbitLineBasis {
+  if (ref === null || !ref.fixed) return { kind: 'ellipse', center: null };
   if (ref.hasMass) return { kind: 'ellipse', center: ref.attractor };
   if (ref.entity !== null && ref.entity !== self) return { kind: 'relative', target: ref.entity };
   return { kind: 'none' };

@@ -1,7 +1,7 @@
-// 1フレームの update を区間へ分け、区間ごとの所要時間 [ms] を溜める。
-// 区間は数値インデックスで指す(`SECTION` の各値)。有効な間だけ時計を読む。
+// 1フレームの update / sync を区間へ分け、区間ごとの所要時間 [ms] を溜める。
+// 区間は数値インデックスで指す(SECTION・SYNC_SECTION の各値)。有効な間だけ時計を読む。
 
-// 区間の識別子。並びは update での呼び出し順。
+// update の区間の識別子。並びは update での呼び出し順。
 export const SECTION = {
   input: 0,
   command: 1,
@@ -31,16 +31,50 @@ export const SECTION_LABELS: readonly string[] = [
 
 export const SECTION_COUNT = SECTION_LABELS.length;
 
-export class FrameSections {
+// 親区間の中で計っている内訳区間(otherMs で二重に引かない)。積分の内訳4区間が該当する。
+const SUBSUMED_UPDATE_SECTIONS: readonly SectionId[] = [
+  SECTION.orbit, SECTION.celestialContact, SECTION.entityContact, SECTION.attitude,
+];
+
+// sync の区間の識別子。並びは GamePresentation.sync での呼び出し順。
+export const SYNC_SECTION = {
+  camera: 0,
+  celestial: 1,
+  construction: 2,
+  dynamic: 3,
+  markers: 4,
+  effects: 5,
+  panels: 6,
+} as const;
+
+export type SyncSectionId = (typeof SYNC_SECTION)[keyof typeof SYNC_SECTION];
+
+// 表示名。並びは SYNC_SECTION の値の順。
+export const SYNC_SECTION_LABELS: readonly string[] = [
+  'カメラ', '天体', '建造', '動的物体', '標識', '演出・照準', '窓・パネル',
+];
+
+export const SYNC_SECTION_COUNT = SYNC_SECTION_LABELS.length;
+
+export class FrameSections<I extends number = SectionId> {
   // 計測の可否。偽の間は enter/exit が時計を読まない。
-  enabled = false;
-  private readonly elapsedMs = new Float64Array(SECTION_COUNT);
-  private readonly enteredAt = new Float64Array(SECTION_COUNT);
+  public enabled = false;
+  private readonly elapsedMs: Float64Array;
+  private readonly enteredAt: Float64Array;
   private frameStart = 0;
   private frameMs = 0;
 
+  // sectionCount は区間の数。subsumed は親区間の中で計る内訳区間 — otherMs で二重に引かない。
+  public constructor(
+    private readonly sectionCount: number,
+    private readonly subsumed: readonly I[] = [],
+  ) {
+    this.elapsedMs = new Float64Array(sectionCount);
+    this.enteredAt = new Float64Array(sectionCount);
+  }
+
   // フレーム頭で呼び、前フレームの累積を捨てる。
-  beginFrame(): void {
+  public beginFrame(): void {
     if (!this.enabled) return;
     this.elapsedMs.fill(0);
     this.frameStart = performance.now();
@@ -48,42 +82,51 @@ export class FrameSections {
   }
 
   // 区間へ入る。同じ区間の enter/exit は入れ子にしないこと。
-  enter(id: SectionId): void {
+  public enter(id: I): void {
     if (!this.enabled) return;
     this.enteredAt[id] = performance.now();
   }
 
   // 区間から出る。同じ区間へ何度出入りしても所要時間は積み上がる。
-  exit(id: SectionId): void {
+  public exit(id: I): void {
     if (!this.enabled) return;
     this.elapsedMs[id] = this.elapsedMs[id]! + (performance.now() - this.enteredAt[id]!);
   }
 
   // 区間 from を抜けて、その同じ瞬間から区間 to へ入る。
-  switchTo(from: SectionId, to: SectionId): void {
+  public switchTo(from: I, to: I): void {
     if (!this.enabled) return;
     const now = performance.now();
     this.elapsedMs[from] = this.elapsedMs[from]! + (now - this.enteredAt[from]!);
     this.enteredAt[to] = now;
   }
 
-  // フレーム末で呼び、update 全体の所要時間 [ms] を確定させる。
-  endFrame(): void {
+  // フレーム末で呼び、このフェーズ全体の所要時間 [ms] を確定させる。
+  public endFrame(): void {
     if (!this.enabled) return;
     this.frameMs = performance.now() - this.frameStart;
   }
 
   // 区間 id の所要時間 [ms]。
-  msOf(id: SectionId): number { return this.elapsedMs[id]!; }
+  public msOf(id: I): number { return this.elapsedMs[id]!; }
 
-  // どの区間にも属さなかった時間 [ms]。積分の内訳は積分の中で計るので、二重に引かない。
-  otherMs(): number {
+  // どの区間にも属さなかった時間 [ms]。内訳区間は親の中で計るので、二重に引かない。
+  public otherMs(): number {
     let sum = 0;
-    for (let i = 0; i < SECTION_COUNT; i++) {
-      if (i === SECTION.orbit || i === SECTION.celestialContact
-        || i === SECTION.entityContact || i === SECTION.attitude) continue;
+    for (let i = 0; i < this.sectionCount; i++) {
+      if (this.subsumed.includes(i as I)) continue;
       sum += this.elapsedMs[i]!;
     }
     return Math.max(0, this.frameMs - sum);
   }
+}
+
+// update 用の器を組む。subsumed には積分の内訳4区間が入る。
+export function newUpdateSections(): FrameSections<SectionId> {
+  return new FrameSections<SectionId>(SECTION_COUNT, SUBSUMED_UPDATE_SECTIONS);
+}
+
+// sync 用の器を組む。内訳区間は無い。
+export function newSyncSections(): FrameSections<SyncSectionId> {
+  return new FrameSections<SyncSectionId>(SYNC_SECTION_COUNT);
 }

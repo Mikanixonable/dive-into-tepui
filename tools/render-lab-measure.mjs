@@ -121,6 +121,14 @@ const SCREEN_SPACE_BASE = {
   screenSpaceSpecularDenoise: false,
 };
 
+// clouds の軸の段。積雲は標本の配り方の組、巻雲は精細さの値。
+const CUMULUS_SAMPLINGS = [
+  ['粗', { cumulusMarchSteps: 1, cumulusRefineSteps: 5, cumulusOctaves: 4 }],
+  ['標準', { cumulusMarchSteps: 6, cumulusRefineSteps: 3, cumulusOctaves: 6 }],
+  ['精細', { cumulusMarchSteps: 12, cumulusRefineSteps: 3, cumulusOctaves: 8 }],
+];
+const CIRRUS_DETAILS = [['巻雲粗', 0], ['巻雲標準', 1], ['巻雲精細', 2]];
+
 // 測る軸。framings の shotName は、撮影名の構図と描画設定の差分を showShot で出し、論理フレームを進めて測る印。
 // framings の angles はケース既定の観察の向きへ重ねる。variants の graphics は setGraphicsOption へ
 // 渡す描画設定の差分で、差分に無い鍵は直前に測った段の値のまま残る。rows は result.gpuPassMs の行名
@@ -290,6 +298,20 @@ const AXES = {
       '近傍拡散蓄積',
     ],
     ratioLabel: '近傍拡散合計',
+  },
+  // earth の雲の 3 パス。大気の標本数 24・雲と雲の影と巻雲をオンに固定し、積雲の標本の配り方(粗・標準・精細の組。
+  // 値は src/render/graphics-settings.ts の cumulusMarchSteps / cumulusRefineSteps / cumulusOctaves)× 巻雲の精細さ
+  // (cirrusDetail)を測る。
+  clouds: {
+    framings: [{ label: 'earth', caseName: 'earth', angles: {} }],
+    variants: CUMULUS_SAMPLINGS.flatMap(([cumulusLabel, cumulus]) => CIRRUS_DETAILS.map(([cirrusLabel, cirrus]) => ({
+      label: `積雲${cumulusLabel} × ${cirrusLabel}`,
+      graphics: {
+        atmosphere: true, atmosphereSampleBudget: 24, clouds: true, cloudShadow: true, cirrus: true, cumulus: true,
+        ...cumulus, cirrusDetail: cirrus,
+      },
+    }))),
+    rows: ['表面雲', '大気(雲あり)', '雲影'],
   },
   // 最後の拡大の K を同じページ上で交互に測る。合流行は GPU 全体の速さの補助指標。
   'upsample-taps': {

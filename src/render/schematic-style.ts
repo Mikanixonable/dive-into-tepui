@@ -27,14 +27,14 @@ export const SURFACE_LINE_RADIUS_RATIO = 1.0015;
 // 環・太陽の輪郭円の色。
 export const OUTLINE_CIRCLE_COLOR = SCHEMATIC_LINE;
 
-// 噴射ノズルに立てる、輪郭抽出に拾わせるための不可視コーン。長さは出力比(0..1)で
+// 噴射ノズルに配置する、輪郭抽出で検出させるための不可視コーン。長さは出力比(0..1)で
 // MIN..MIN+SPAN へ線形に伸び、半径は長さに対するこの比で決める。
 export const SCHEMATIC_THRUST_CONE_LENGTH_MIN = 2.5;
 export const SCHEMATIC_THRUST_CONE_LENGTH_SPAN = 4.5;
 export const SCHEMATIC_THRUST_CONE_RADIUS_RATIO = 0.3;
 
 // 3D UI パスを合成するとき、中心画素の上下左右へこの半径 [px] だけオフセットした4点も
-// 最大値でまとめて拾うダイレート半径。ネイティブ線は WebGPU で太さ制御を持たないため、
+// 最大値でサンプリングするダイレート半径。ネイティブ線は WebGPU で太さ制御を持たないため、
 // これで写実相当(1px)の2倍の太さへ底上げする。
 export const SCHEMATIC_OVERLAY_DILATE_PX = 0.5;
 

@@ -75,6 +75,7 @@ export default defineConfig([
       'dist/**',
       '.bgm-lab/**',
       '.cloud-lab/**',
+      '.enemy-lab/**',
       '.render-lab/**',
     ],
   },

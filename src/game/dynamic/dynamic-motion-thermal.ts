@@ -18,7 +18,7 @@ export interface DynamicMotionThermal {
   readonly pendingSpecificHeat: number; // 次の熱の歩で温度へ足す熱量 [J/kg]
 }
 
-export interface DynamicMotionThermalStepInput {
+interface DynamicMotionThermalStepInput {
   readonly dt: number;
   readonly samples: readonly DynamicsEnvironmentSample[];
   readonly radiantIntensity: number;
@@ -34,7 +34,7 @@ export interface DynamicMotionThermalStepInput {
   readonly solarAbsorbAreaPerMass: (sunDir: Vec3) => number;
 }
 
-export interface DynamicMotionThermalStepResult {
+interface DynamicMotionThermalStepResult {
   readonly temperature: number;
   readonly thermalDeviation: number;
   readonly pendingSpecificHeat: number;
@@ -42,9 +42,11 @@ export interface DynamicMotionThermalStepResult {
 }
 
 // 弾道係数の逆数から断面積質量比を戻すときの抗力係数 Cd。
-const DRAG_COEFFICIENT = 2.2;
-// 空力加熱を受ける淀み点まわりの面積が、断面積に占める割合。
-const STAGNATION_AREA_FRACTION = 0.6;
+export const DRAG_COEFFICIENT = 2.2;
+// 空力加熱を受ける風上面の面積が、断面積に占める割合。淀み点の加熱は前縁だけでなく
+// 風上面全体へ広がるため 1.0 を取る — 小さく絞ると再突入で加熱が構造限界に追いつかず、
+// 空力分解ばかり起きる。
+export const STAGNATION_AREA_FRACTION = 1.0;
 // Sutton–Graves の定数(地球大気) [kg^0.5/m]。
 const SG_CONST = 1.7415e-4;
 // 1歩ぶんの環境標本が RK4 の4段のとき、平均に掛ける重み。

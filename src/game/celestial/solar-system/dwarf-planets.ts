@@ -1,13 +1,13 @@
 // 準惑星・大型小惑星とその衛星。静的事実・運動・見た目を1体につき1箇所で組む。
-import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { SatelliteMotion, type StarMotion } from '../../../physics/celestial-motion';
+import { type PlanetDef, planetDefForSimZero, type SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT } from '../gravitational-constant';
+import { GRAVITATIONAL_CONSTANT } from '../../../physics/gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
-import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
+import { CelestialEntity } from '../entity/celestial-entity';
+import { SphereCelestialView } from '../../../render/celestial/entity/sphere-celestial-view';
 import { PLUTO_POLE, equatorBasis } from './poles';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';
 

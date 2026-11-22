@@ -1,5 +1,5 @@
 // 勝敗結果画面(#hud-result)の CSS。
-import { MQ_MEDIUM_DOWN } from '../hud/breakpoints';
+import { MQ_MEDIUM_DOWN } from '../hud-kit/breakpoints';
 
 export const RESULT_SCREEN_STYLE = `
 

@@ -1,12 +1,12 @@
 // 惑星の IAU 自転極と、衛星の軌道要素が基準面に取る回転。
-import { Quat } from '../../../math/quat';
+import type { Quat } from '../../../math/quat';
 import { equatorBasisToEci } from '../../../physics/body-orientation';
 import { raDecToEci } from '../../../physics/ecliptic';
-import { PoleModel } from '../../../physics/celestial-body-def';
+import type { PoleModel } from '../../../physics/celestial-body-def';
 
 export type IauPole = Extract<PoleModel, { readonly kind: 'iau' }>;
 
-// 衛星を抱える惑星の自転軸。衛星の軌道要素はこの軸が張る赤道面の上で与えるため、
+// 衛星を持つ惑星の自転軸。衛星の軌道要素はこの軸が張る赤道面の上で与えるため、
 // 惑星本体の pole と衛星の基準面が同じ1つの定義を読む。
 export const MARS_POLE: IauPole = {
   kind: 'iau',

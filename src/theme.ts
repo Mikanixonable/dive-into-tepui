@@ -57,12 +57,12 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
     ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff4a20', accentNear: '#ff8060', signal: '#1ee7d2',
   },
   {
-    id: 'fluorescent-red-blue', name: 'Arcade Pulse', description: '赤と青の強い電気的対比', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, page: '#08090d', accent: '#ff3155', accentNear: '#ff6b82', signal: '#3478ff',
+    id: 'fluorescent-red-blue', name: 'Arcade Pulse', description: 'マゼンタと青の強い電気的対比', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, page: '#08090d', accent: '#ff0090', accentNear: '#ff59b7', signal: '#3478ff',
   },
   {
-    id: 'fluorescent-pink-dawn-blue', name: 'Daybreak', description: '朱色寄りの蛍光ピンクと夜明けの淡い青', tone: 'dark',
-    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff2d6c', accentNear: '#ff6f96', signal: '#bfe0ff',
+    id: 'fluorescent-pink-dawn-blue', name: 'Daybreak', description: '蛍光ピンクと夜明けの淡い青', tone: 'dark',
+    ...DARK_SURFACE, ...DARK_SEMANTIC, accent: '#ff0080', accentNear: '#ff59ac', signal: '#bfe0ff',
   },
   {
     id: 'driftwood', name: 'Driftwood', description: '褐色に寒色を差した落ち着いた色調', tone: 'dark',
@@ -102,7 +102,7 @@ export const THEME_PRESETS: readonly ThemePalette[] = [
 export const LIGHT_PALETTE: ThemePalette = THEME_PRESETS.find((palette) => palette.tone === 'light') ?? THEME_PRESETS[0]!;
 
 // 未保存・プリセットに無い id のときの配色。
-const DEFAULT_THEME_ID = 'fluorescent-red-blue';
+const DEFAULT_THEME_ID = 'amber-field';
 
 // id が指すプリセット。プリセットに無い id では null。
 export function themePresetOf(id: string): ThemePalette | null {
@@ -151,6 +151,8 @@ export const AXIS_NORMAL = '#10b981';
 export const AXIS_RADIAL = '#ef4444';
 
 // 文字サイズ。8段。マーカーのグリフサイズ(GLYPH_*)はこれとは別スケール。
+// 3D 空間へ重ねる DOM ラベル(縮尺・天球の方角)の小さな注記書体も別スケール。
+export const FONT_SCENE_LABEL = '10px monospace';
 export const FONT_XXS = '11px';
 export const FONT_XS = '12px';
 const FONT_S = '13px';
@@ -165,11 +167,12 @@ const GLYPH_BASE = '22px'; // .mk .sym の基準
 const GLYPH_POI = '5px'; // 天体ラベルの点(.mk-poi)
 const GLYPH_BORESIGHT = '36px'; // .mk-boresight
 
-// 角丸。役割ごとの4段。
+// 角丸。役割ごとの段。
 export const RADIUS_MICRO = '8px';
 export const RADIUS_CONTROL = '11px';
 const RADIUS_PANEL = '16px';
 export const RADIUS_WINDOW = '22px';
+export const RADIUS_HERO = '30px'; // 画面の大半を占める面(ランチャの 3D 窓)の角丸
 const RADIUS_PILL = '999px'; // トラックなど、完全な角丸ピル
 
 // 余白。6段。
@@ -186,8 +189,14 @@ export const TRANSITION_SLOW = '0.24s';
 
 const HIT_TARGET_MIN = '44px'; // タップ最小寸法
 
+// 収納グリップ(画面の縁の面を畳む開閉トグル)。棒の長さ・太った操作面の太さ・平常時の棒の太さ。
+const EDGE_GRIP_LENGTH = '64px';
+const EDGE_GRIP_THICK = '18px';
+const EDGE_GRIP_BAR = '6px';
+
 // ページ直下(body の子)の要素間の重なり順。#hud の内部は別のスタッキング文脈なので、
 // #hud 内部の z-index とは比べない。
+export const Z_SCENE_LABEL = 8; // 3D 空間へ重ねる DOM ラベル。タッチ UI と HUD の下
 export const Z_TOUCH_UI = 9;
 const Z_HUD = 10;
 export const Z_HUD_NODE_GIZMO = 5; // #hud 内部で、HUD の層の外に置く要素
@@ -207,6 +216,10 @@ export const SAFE_AREA_LEFT = 'env(safe-area-inset-left, 0px)';
 // ラテン字形は JetBrains Mono、日本語を含む残りは HackGen が担う。
 export const FONT_FAMILY =
   "'JetBrains Mono', 'HackGen', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace";
+
+// ターゲット色の薄膜・縁の濃さ。
+const ROLE_TARGET_FILL = '14%';
+const ROLE_TARGET_EDGE = '46%';
 
 // 配色によらないトークン。--token-name のケバブケースで :root に置く。
 // calc() を要するトークンは、計算済みの値ではなく派生関係そのものを値にする。
@@ -256,6 +269,9 @@ const FIXED_CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--transition-fast': TRANSITION_FAST,
   '--transition-slow': TRANSITION_SLOW,
   '--hit-target-min': HIT_TARGET_MIN,
+  '--edge-grip-length': EDGE_GRIP_LENGTH,
+  '--edge-grip-thick': EDGE_GRIP_THICK,
+  '--edge-grip-bar': EDGE_GRIP_BAR,
   '--z-hud': String(Z_HUD),
   '--z-hud-title-menu': String(Z_HUD_TITLE_MENU),
   '--z-hud-rail-toggle': String(Z_HUD_RAIL_TOGGLE),
@@ -264,6 +280,23 @@ const FIXED_CSS_VARIABLES: Readonly<Record<string, string>> = {
   '--safe-b': SAFE_AREA_BOTTOM,
   '--safe-l': SAFE_AREA_LEFT,
   '--font-family': FONT_FAMILY,
+  // HUD の色を意味で引くための別名(UI-DESIGN §2「HUD の色は意味で引く」)。値は既存の配色トークンへの
+  // 参照だけで、配色を切り替えれば追従する。データ・ラベル・補足は中立で、色を持つのは残り4つの意味だけ。
+  '--role-own': 'var(--color-primary)',
+  '--role-own-fill': 'var(--color-primary-fill)',
+  '--role-target': 'var(--color-signal)',
+  '--role-target-fill': `color-mix(in srgb, var(--color-signal) ${ROLE_TARGET_FILL}, transparent)`,
+  '--role-target-edge': `color-mix(in srgb, var(--color-signal) ${ROLE_TARGET_EDGE}, transparent)`,
+  '--role-caution': 'var(--color-warning)',
+  '--role-caution-fill': 'var(--color-warning-fill)',
+  '--role-caution-edge': 'var(--color-warning-edge)',
+  '--role-warning': 'var(--color-error)',
+  '--role-warning-fill': 'var(--color-error-fill)',
+  '--role-warning-edge': 'var(--color-error-edge)',
+  '--role-data': 'var(--text)',
+  '--role-label': 'var(--text-dim)',
+  '--role-meta': 'var(--text-faint)',
+  '--role-hairline': 'var(--fill-2)',
 };
 
 // palette を当てたときの CSS 変数の名前と値、すべて。

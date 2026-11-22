@@ -1,7 +1,7 @@
 // 実体 id の採番器の直列化が、保存前に払い出した id を復元後に払い出させないことを検査する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { EntityIdAllocators, type EntityIdAllocator } from '../../src/game/dynamic/dynamic-entity/entity-id';
+import { EntityIdAllocators, type EntityIdAllocator } from '../../src/game/dynamic/entity/entity-id';
 
 // allocators が種別ごとに持つ採番器。
 function allocatorsOf(allocators: EntityIdAllocators): readonly EntityIdAllocator[] {

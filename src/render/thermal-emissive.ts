@@ -4,7 +4,6 @@
 import * as THREE from 'three/webgpu';
 import { blackbodyEmissiveNode } from './blackbody';
 import { isStandardMaterial } from './pipeline/lit-layer';
-import { toStandardNodeMaterial } from './standard-node-material';
 import type { FloatNode, Vec3Node } from './tsl-types';
 
 // インスタンス 1 個ぶんの熱の状態を運ぶ属性(温度 [K]、局所的な過熱の振幅 [K]、輻射率)。
@@ -93,7 +92,7 @@ export function makeThermallyEmissive<T extends THREE.Object3D>(root: T): T {
   return root;
 }
 
-// root と、その配下すべてへいまの熱の状態を配る。温度と過熱の振幅は [K]。
+// root とその配下すべてへ現在の熱状態を伝播（同期）する。温度と過熱の振幅は [K]。
 export function syncThermalState(
   root: THREE.Object3D, temperature: number, deviation: number, emissivity: number,
 ): void {
@@ -119,4 +118,52 @@ export function writeThermalState(
   out[offset + 1] = deviation;
   out[offset + 2] = emissivity;
   return true;
+}
+
+// 値だけを持つ標準マテリアルと、シェーダグラフを持てる標準マテリアルの間の橋渡し。
+// 見た目を決める色・マップ・面の設定を移し替える 1 箇所を与える。
+
+// 標準マテリアルの外観パラメータのうち、Node 版のコンストラクタが受け取れる設定を抽出してコピーする。
+function standardMaterialParams(
+  src: THREE.MeshStandardMaterial,
+): THREE.MeshStandardNodeMaterialParameters {
+  return {
+    color: src.color,
+    map: src.map,
+    roughness: src.roughness,
+    roughnessMap: src.roughnessMap,
+    metalness: src.metalness,
+    metalnessMap: src.metalnessMap,
+    normalMap: src.normalMap,
+    normalScale: src.normalScale,
+    emissive: src.emissive,
+    emissiveMap: src.emissiveMap,
+    emissiveIntensity: src.emissiveIntensity,
+    alphaMap: src.alphaMap,
+    transparent: src.transparent,
+    opacity: src.opacity,
+    side: src.side,
+    vertexColors: src.vertexColors,
+    depthTest: src.depthTest,
+    depthWrite: src.depthWrite,
+    alphaTest: src.alphaTest,
+    flatShading: src.flatShading,
+    wireframe: src.wireframe,
+    wireframeLinewidth: src.wireframeLinewidth,
+    dithering: src.dithering,
+    premultipliedAlpha: src.premultipliedAlpha,
+  };
+}
+
+// 同じ見た目を持つ Node 版の標準マテリアルを取得する。渡されたものが既に Node 版ならそのまま返し、
+// そうでなければ新規作成して元マテリアルを破棄した上で、新規マテリアルを返す。
+export function toStandardNodeMaterial(material: THREE.Material): THREE.MeshStandardNodeMaterial {
+  if ((material as THREE.MeshStandardNodeMaterial).isMeshStandardNodeMaterial) {
+    return material as THREE.MeshStandardNodeMaterial;
+  }
+  const src = material as THREE.MeshStandardMaterial;
+  const upgraded = new THREE.MeshStandardNodeMaterial(standardMaterialParams(src));
+  upgraded.userData = src.userData;
+  src.dispose();
+  return upgraded;
 }

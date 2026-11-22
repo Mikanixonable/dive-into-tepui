@@ -3,23 +3,30 @@
 // HUD の書体は太さ 400 だけを読み、bold はブラウザの合成に任せる。
 import '@fontsource/jetbrains-mono/latin-400.css';
 import './hackgen-400.css';
-import { createGameScene, type GameScene } from './render/scene';
+import { createGameScene, RenderBackendUnavailableError, type GameScene } from './render/scene';
+import { renderBackendNoticeOf } from './render/render-backend';
+import { loadBakedModels } from './render/dynamic/baked-models';
 import { browserViewport } from './render/viewport';
 import { DebugInfoWindow } from './game/hud/windows/debug-info-window';
-import { FrameSections } from './game/frame-sections';
+import { newSyncSections, newUpdateSections } from './game/frame-sections';
 import { UserSettings } from './settings/user-settings';
 import { browserSettingStorage } from './settings/stored-setting';
 import { themePresetOf } from './theme';
-import { applyThemeVariables } from './hud/style/theme-variables';
+import { applyThemeVariables } from './hud-kit/style/theme-variables';
+import { setUiBackdropBlur } from './hud-kit/style/common-ui-style';
 import { Hud } from './game/hud/hud';
-import { PanelCollapse } from './game/hud/panel-shell';
-import { HudShell } from './hud/hud-shell';
-import { MarkerDevice } from './marker/marker-device';
+import { PanelCollapse } from './game/hud/panel-chrome';
+import { HudShell } from './hud-kit/hud-shell';
+import { MarkerDevice } from './marker-kit/marker-device';
 import { injectMarkerIdentityStyle } from './game/marker/marker-identity-style';
-import { PauseMenu } from './hud/windows/pause-menu';
+import { PauseMenu } from './hud-kit/windows/pause-menu';
 import { AudioEngine } from './audio/audio-engine';
 import { Bgm } from './audio/bgm/bgm';
-import { debugInfoOpenAtStart, Launcher } from './launcher/launcher';
+import { Launcher } from './launcher/launcher';
+import {
+  drivenByLayoutSmoke, layoutSmokeHudOnly, opensDebugInfoAtStart,
+} from './launcher/launch-query';
+import { PageLoop } from './run/page-loop';
 import { UnlockManager } from './launcher/unlock-manager';
 import { SnapshotControls } from './launcher/snapshot-controls';
 import { SaveBrowser } from './launcher/save-browser/save-browser';
@@ -29,95 +36,21 @@ import { SnapshotService } from './launcher/save/snapshot-service';
 import { AutoSave } from './launcher/save/autosave';
 import { showLoading, hideLoading } from './launcher/loading-overlay';
 import { showFatalError } from './launcher/fatal-error';
-import { gameCommand } from './game/input/game-commands';
-import { KEY_MAPPING as K } from './input/key-mapping';
+import { applyCloudTuningOverrides } from './render/earth-weather/cloud-tuning';
+import { applyAssemblyTuningOverrides } from './physics/assembly-tuning';
 import type { PageDevices } from './run/page-devices';
-import type { ViewOptionsSettings } from './game/hud/panels/view-options-control';
+import type { ViewOptionsSettings } from './game/view/view-options-settings';
 import type { GraphicsSettingsData } from './render/graphics-settings';
 
-// ローディング表示下で canvas を作り WebGPU シーンを初期化する
-async function initScene(graphics: GraphicsSettingsData): Promise<GameScene> {
+// ローディング表示を出して canvas を差し、シーンの初期化を始める。焼き込みモデルの読込も始める
+// だけで待たない — 完了はランを組むときに待つので、タイトルを先に出せる。
+function beginScene(graphics: GraphicsSettingsData): Promise<GameScene> {
   showLoading();
   const canvas = document.createElement('canvas');
   document.body.appendChild(canvas);
-
-  const gameScene = await createGameScene(canvas, graphics, browserViewport());
-  hideLoading();
-  return gameScene;
-}
-
-// rAF ループを起動する。フレームで例外が起きたらループを止める。
-function startAnimationLoop(
-  launcher: Launcher, gameScene: GameScene, settings: UserSettings, bgm: Bgm,
-  debugInfo: DebugInfoWindow, pauseMenu: PauseMenu, snapshotControls: SnapshotControls,
-): void {
-  let lastTime = performance.now();
-  let completedFrames = 0;
-  // 1フレーム分: ランのフレームを回し、次フレームを予約する。
-  function animate(now: number) {
-    const dt = (now - lastTime) / 1000;
-    lastTime = now;
-    // 描画先の寸法はフレームの先頭で1度だけ読む。投影・尺度・ポインタ座標が同じ矩形を見ないと、
-    // リサイズしたフレームで画面上の当たり判定がずれる。
-    const viewport = browserViewport();
-    gameScene.syncFrame(viewport, settings.resolvedGraphics.current, debugInfo.debugTarget);
-    // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
-    // 決まった周回の進行と、設定面の試聴に合わせる。
-    pauseMenu.sync(now);
-    const run = launcher.current;
-    bgm.sync({
-      volume: settings.audibleBgmVolume,
-      inRun: run?.isPlaying ?? false,
-      audition: pauseMenu.settingsView.bgmAudition,
-    });
-    // 周回の切り替え中はランが無いので、次フレームを予約して抜ける。
-    if (run === null) {
-      requestAnimationFrame(animate);
-      return;
-    }
-    try {
-      // ランが消費しなかった入力エッジを、ランの外の優先順で受ける口。
-      const completed = run.frame(dt, now, viewport, [
-        {
-          feature: 'snapshot',
-          commands: [
-            gameCommand(K.manualSave.code, K.manualSave),
-            gameCommand(K.openSaveBrowser.code, K.openSaveBrowser),
-          ],
-          handleCommand: command => snapshotControls.handleCommand(command.id, run.snapshot),
-        },
-        {
-          feature: 'launcher',
-          isEnabled: () => !run.game.activeStage.isPlaying,
-          commands: [gameCommand(K.restart.code, K.restart)],
-          handleCommand: command => launcher.handleCommand(command.id),
-        },
-        {
-          feature: 'debug-info',
-          commands: [gameCommand(K.toggleDebugInfoWindow.code, K.toggleDebugInfoWindow)],
-          handleCommand: command => debugInfo.handleCommand(command.id),
-        },
-      ]);
-      if (completed) {
-        launcher.followProgress();
-        completedFrames++;
-        // 例外なく60フレーム完走したことを、外から読めるようにする印。
-        if (completedFrames === 60) document.documentElement.dataset.gameReady = 'true';
-      }
-      requestAnimationFrame(animate);
-    } catch (e) {
-      console.error('Fatal error in animation loop, stopping game loop:', e);
-      showFatalError(
-        'ゲームの実行中にエラーが発生しました。',
-        '安全のためゲームを停止しました。ページを再読み込みしてください。',
-        e,
-      );
-    }
-  }
-  requestAnimationFrame((now) => {
-    lastTime = now;
-    animate(now);
-  });
+  // 失敗はランを組むときの待ちが受け取るので、ここでは未処理の rejection にしない。
+  loadBakedModels().catch(() => {});
+  return createGameScene(canvas, graphics, browserViewport());
 }
 
 // タイトル(ステージ選択)画面の時点から使えるべき画面と音声を、ランより先に組む。
@@ -130,29 +63,34 @@ function initHud(settings: UserSettings): {
   const panelCollapse = new PanelCollapse(
     settings.panelCollapsed, (state) => settings.panelCollapsed.set(state),
   );
-  const hud = new Hud(shell, panelCollapse, settings.renderStyle.current);
+  const hud = new Hud(
+    shell, panelCollapse, settings.renderStyle.current,
+    settings.missionTimeFormat, (format) => settings.missionTimeFormat.set(format),
+  );
   // マーカーの骨格は装置が、種別ごとの見た目は表示の導出が注入する。骨格を先に置き、
-  // 同じ詳細度なら種別ごとの指定が勝つ順序にする。
+  // 同じ詳細度であれば種別ごとのスタイル指定が優先される順序にする。
   const markers = new MarkerDevice(shell.layers.marker);
   injectMarkerIdentityStyle();
   const audioEngine = new AudioEngine();
   const bgm = new Bgm(audioEngine);
   const pauseMenu = new PauseMenu(
-    shell.layers.system, shell.overlayManager,
+    shell.overlayManager,
     settings.graphics.current, settings.audibleBgmVolume, settings.themePalette.current.id,
   );
   return { shell, hud, markers, audioEngine, bgm, pauseMenu };
 }
 
-// 設定の変更を、通知から引き直す側へ配る。書き換えの入口はどれも設定へ戻す。
+// 設定の変更を、通知を受け取る各コンポーネントへ伝播する。書き換えの入口はどれも設定へ戻す。
 function bindSettings(
   settings: UserSettings, hud: Hud, pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
 ): void {
   const settingsView = pauseMenu.settingsView;
   settingsView.onGraphicsChange = (selection) => settings.graphics.set(selection);
 
-  settings.renderStyle.subscribe((style) => debugInfo.syncRenderStyle(style));
-  hud.onRenderStyleChange = (style) => settings.renderStyle.set(style);
+  settings.renderStyle.subscribe((style) => {
+    debugInfo.syncRenderStyle(style);
+    hud.syncRenderStyle(style);
+  });
 
   // 音量は一時停止メニューと設定ビューの両方が書き換えるので、通知を受けた側で両方を引き直す。
   // どちらも消音中は音量を 0 と見せる。
@@ -173,52 +111,90 @@ function bindSettings(
   };
 }
 
-// 表示パネルが読み書きする設定を、読み取り専用の面と書き換えの口に分けて束ねる。
+// 表示パネルが読み書きする設定を、読み取り専用プロパティと更新コールバックに分けて束ねる。
 function viewOptionsSettings(settings: UserSettings): ViewOptionsSettings {
   return {
-    // 読み取り専用の面。
+    // 読み取り専用プロパティ。
     mapDisplay: settings.mapDisplayToggles,
     grid: settings.gridVisibility,
     tab: settings.viewOptionsTab,
     orbitGuideGroupTab: settings.orbitGuideGroupTab,
-    // 書き換えの口。設定の正本へ戻す。
+    renderStyle: settings.renderStyle,
+    // 更新コールバック。設定の正本へ反映する。
     onMapDisplayChange: (value) => settings.mapDisplayToggles.set(value),
     onGridChange: (value) => settings.gridVisibility.set(value),
     onTabChange: (value) => settings.viewOptionsTab.set(value),
     onOrbitGuideGroupTabChange: (value) => settings.orbitGuideGroupTab.set(value),
+    onRenderStyleChange: (value) => settings.renderStyle.set(value),
   };
+}
+
+// 開発ビルドだけ: 実験環境が開発サーバ経由で配る調整値の上書きを定期で拾い、適用する。上書きが
+// 書き変わったときだけ apply を呼ぶ。経路は cloud-lab が tools/cloud-tuning-overrides-file.cjs、
+// enemy-lab が tools/enemy-lab-apply-tuning.cjs。呼び出しは NODE_ENV の分岐で本番ビルドから落ちる。
+function startOverridesSync<T>(route: string, apply: (overrides: T) => void): void {
+  let lastText: string | null = null;
+  const poll = async (): Promise<void> => {
+    try {
+      const response = await fetch(route);
+      const text = response.ok ? await response.text() : null;
+      if (text !== null && text !== lastText) {
+        lastText = text;
+        apply(JSON.parse(text) as T);
+      }
+    } catch {
+      // 応答が壊れた・サーバが落ちただけなら見逃し、次の周期で拾う。
+    }
+    window.setTimeout(poll, 700);
+  };
+  void poll();
 }
 
 // 起動時に一度だけ走る、全システムの生成と配線。
 async function main() {
-  // 設定を読み、選ばれている配色を :root へ当ててからでなければ、ローディング表示も
+  // 設定を読み、選ばれている配色を :root へ適用してからでなければ、ローディング表示も
   // ステージ選択画面も色を引けない。
   const settings = new UserSettings(browserSettingStorage);
   settings.themePalette.subscribe((palette) => applyThemeVariables(palette));
+  settings.graphics.subscribe(() => setUiBackdropBlur(settings.resolvedGraphics.current.uiBlur));
   // セーブを読み、シーンと HUD を組む。
   const unlockManager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
   const slots = SaveSlots.load(saveStore);
   const snapshotService = new SnapshotService(saveStore, slots);
   const autoSave = new AutoSave(snapshotService);
-  const gameScene = await initScene(settings.resolvedGraphics.current);
+  // GPU の初期化を待つ間に画面と音声を組む。canvas は先に差してあるので、HUD はその上に重なる。
+  const sceneReady = beginScene(settings.resolvedGraphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
-  const sections = new FrameSections();
+  const gameScene = await sceneReady;
+  hideLoading();
+  // WebGL2 へ落ちて描いている場合は、その旨を一度だけ通知する(SPEC「描画バックエンド」)。
+  // トーストの表示は HUD の同期が担うため、画面へ出るのはランの HUD が動き始めてからになる。
+  if (renderBackendNoticeOf(gameScene.backend) === 'fallback-notice') {
+    hud.hint(
+      'WebGPU を利用できないため、WebGL2 で描画しています。WebGPU 対応ブラウザでは本来の描画になります。画質はポーズメニューの設定で調整できます。',
+      10000, 'warn',
+    );
+  }
+  const sections = newUpdateSections();
+  const syncSections = newSyncSections();
   const debugInfo = new DebugInfoWindow(
-    shell.layers.window, gameScene.renderer, sections, gameScene.gpu, shell.overlayManager,
-    settings.renderStyle.current, debugInfoOpenAtStart(),
+    gameScene.renderer, sections, syncSections, gameScene.gpu, shell.overlayManager,
+    settings.renderStyle.current, opensDebugInfoAtStart(),
   );
-  const devices: PageDevices = { scene: gameScene, hud, markers, audioEngine, pauseMenu, debugInfo };
+  const devices: PageDevices = {
+    scene: gameScene, hud, markers, audioEngine, pauseMenu, debugInfo,
+  };
 
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
-    shell, devices, viewOptionsSettings(settings), settings.themePalette, sections, unlockManager,
+    shell, devices, viewOptionsSettings(settings), settings.themePalette, sections, syncSections, unlockManager,
     slots, snapshotService, autoSave, settings.resolvedGraphics, settings.renderStyle,
   );
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();
 
-  const saveBrowser = new SaveBrowser(shell.layers.system, slots, snapshotService, launcher, shell.overlayManager);
+  const saveBrowser = new SaveBrowser(slots, snapshotService, launcher, shell.overlayManager);
   saveBrowser.onSlotSwitched = () => launcher.switchSlot();
   saveBrowser.onLoadSnapshot = (id) => launcher.loadSnapshot(id);
   // 設定メニューと一覧は同じシステム窓の帯にいるので、片方を開くときもう片方は閉じる。
@@ -238,12 +214,30 @@ async function main() {
   pauseMenu.onSave = () => snapshotControls.saveManually(launcher.current?.snapshot ?? null);
 
   // 最初のタイトル画面でも設定面と BGM を引き直すため、周回を起こす前からフレームを回す。
-  startAnimationLoop(launcher, gameScene, settings, bgm, debugInfo, pauseMenu, snapshotControls);
+  if (process.env.NODE_ENV !== 'production') {
+    // 雲の生成は、焼き直すかを雲場が版の照合で決める。敵は以降に出る組み立て型の敵へ反映される。
+    startOverridesSync('/__cloud-tuning/overrides', applyCloudTuningOverrides);
+    startOverridesSync('/__assembly-tuning/overrides', applyAssemblyTuningOverrides);
+  }
+  new PageLoop(
+    launcher, devices, settings, bgm, snapshotControls,
+    drivenByLayoutSmoke(), layoutSmokeHudOnly(),
+  ).start();
   await launcher.start();
 }
 
 main().catch((err) => {
   console.error(err);
+  // 対応する描画基盤が無い失敗は、再読み込みでは直らないので理由を示して案内を分ける
+  // (SPEC「描画バックエンド」)。
+  if (err instanceof RenderBackendUnavailableError) {
+    showFatalError(
+      '描画を開始できませんでした。',
+      'このブラウザは WebGPU と WebGL2 のどちらにも対応していないため、画面を描けません。対応するブラウザで開き直してください。',
+      err,
+    );
+    return;
+  }
   showFatalError(
     'ゲームの初期化に失敗しました。',
     'ブラウザやGPUの状態を確認し、ページを再読み込みしてください。',

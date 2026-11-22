@@ -3,6 +3,7 @@ import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import type { CelestialSurfaceLike } from '../../src/render/celestial/celestial-surface';
+import { TEXTURE_RESOLUTION } from '../../src/render/deferred-texture';
 import { test } from '../harness';
 
 function frame(): Parameters<CelestialSurfaceLike['syncFrame']>[0] {
@@ -14,6 +15,7 @@ function frame(): Parameters<CelestialSurfaceLike['syncFrame']>[0] {
     frame: 7,
     timeMs: 1200,
     style: 'realistic',
+    textureResolution: TEXTURE_RESOLUTION.high,
   };
 }
 

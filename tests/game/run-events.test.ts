@@ -5,7 +5,7 @@ import { test } from '../harness';
 import { RunEventLog } from '../../src/game/run-events';
 import { RunEventPresenter } from '../../src/game/run-event-presenter';
 import { UiSoundQueue } from '../../src/game/ui-sound-queue';
-import type { Notifier } from '../../src/hud/notifier';
+import type { Notifier } from '../../src/hud-kit/notifier';
 
 // 出した告知を順に溜める Notifier と、その本文。
 function recordingNotifier(): { notifier: Notifier; shown: string[] } {
@@ -44,5 +44,20 @@ export function register(): void {
     log.record({ kind: 'autoWarpCancelled' });
     presenter.present(log.recent);
     assert.equal(shown.length, 2);
+  });
+
+  test('鹵獲: 授与は通知音を鳴らし、告知は授与の 0.5 秒後に出る', async () => {
+    // SPEC GAME.md 3.1: 告知は撃墜の演出と重ならないよう、授与から 0.5 秒遅らせる。
+    const { notifier, shown } = recordingNotifier();
+    const sounds = new UiSoundQueue();
+    const presenter = new RunEventPresenter(sounds, notifier);
+    const log = new RunEventLog();
+    log.record({ kind: 'salvageAwarded', name: '鹵獲: 砲座' });
+    presenter.present(log.recent);
+
+    assert.deepEqual(sounds.cues.map((cue) => cue.sound), ['salvage-award']);
+    assert.equal(shown.length, 0);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.equal(shown.filter((text) => text.includes('鹵獲: 砲座 を授与')).length, 1);
   });
 }

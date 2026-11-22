@@ -3,7 +3,7 @@
 // 既定戦闘船・インスタンスの枝)を持つ。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
-import { shapeAxes, type PlanetDef } from '../../src/physics/celestial-body-def';
+import { shapeAxes, type ShapeDef } from '../../src/physics/celestial-body-def';
 import { Curve, type CurveSampler } from '../../src/render/curve';
 import { createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
 import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
@@ -12,20 +12,20 @@ import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
 import { BLUE_NOISE_TILE_SIZE } from '../../src/render/blue-noise-tile.generated';
 import { anglesFromDirection, type EarthAngleKey, type LabViewAngles } from './view-angles';
-import type { Albedo } from '../../src/render/celestial-albedo';
+import type { Albedo } from '../../src/render/celestial/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
-import type { ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { BodyShadow, ShadowBody } from '../../src/render/pipeline/shadow/body-shadow';
+import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
+import type { SunLight } from '../../src/render/pipeline/sun-light';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
 import type { SphereLightValue } from '../../src/render/pipeline/lighting/sphere-lights';
-import type { LineStyle } from '../../src/render/line-style';
+import type { LineStyle } from '../../src/render/lines/line-style';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
-import type { ProteinLabCaseMetadata } from './protein-cases';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
-import type { CelestialTexture } from '../../src/render/celestial-textures';
-import type { ProteinMotionFrameSample } from '../../src/game/protein/protein-motion-metrics';
+import type { CelestialTexture } from '../../src/render/celestial/celestial-textures';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
 export const VIEW_WIDTH = 960;
@@ -56,6 +56,8 @@ const NEAR = 2;
 
 // 撮影 1 枚ぶんの差分。
 export interface LabShot {
+  // 可動部を止めて撮る表示時刻 [s]。省略時は 0。
+  readonly displayTime?: number;
   // ケース既定の観察の向きへ重ねる差分。
   readonly view: Partial<LabViewAngles>;
   // 起動時の描画品質設定へ重ねる差分。省略すると起動時の設定のまま撮る。
@@ -88,6 +90,8 @@ export function flickerShots(
 }
 
 export interface LabCase {
+  // 可動部を表示時刻 [s] の姿へ同期する。
+  readonly syncMotion?: (displayTime: number) => void;
   // シーンへ載せる物体。ジオメトリとマテリアルは、userData の ownsGeometry / ownsMaterial を立てた
   // 物体のものがケースを外すときに解放される。
   readonly objects: readonly THREE.Object3D[];
@@ -96,7 +100,7 @@ export interface LabCase {
   readonly camera: THREE.PerspectiveCamera;
   // 恒星の向き(原点から見た単位ベクトル)。省略すると SUN_DIR。
   readonly sunDirection?: THREE.Vector3;
-  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・積雲の影の源になる。省略すると
+  // 地球を置くケースの、地球のつまみの既定値。地球は大気・天体照・影・雲の影の源になる。省略すると
   // 地球を置かない。
   readonly earth?: Pick<LabViewAngles, EarthAngleKey>;
   // カメラを周回させるときに中心へ据える点(描画座標)。省略するとケースの物体を包む箱の中心。
@@ -109,6 +113,8 @@ export interface LabCase {
   readonly atmospheres?: readonly AtmosphereBody[];
   // 地球のほかに影パスへ渡す球。中心は描画座標。
   readonly shadowBodies?: readonly ShadowBody[];
+  // 雲の影の源(地球を置かないケースが雲の影を試すとき)。置くと地球の shadowCloud より先に使う。
+  readonly shadowCloud?: ShadowCloud;
   // 影パスへ渡す環。中心と法線軸は描画座標。
   readonly rings?: {
     readonly center: THREE.Vector3;
@@ -141,12 +147,6 @@ export interface LabCase {
     readonly poolRebuildMs: readonly number[];
     readonly previousMatricesMs: readonly number[];
   };
-  // 計測結果へ添える、タンパク質ケースの識別。
-  readonly proteinMotion?: ProteinLabCaseMetadata;
-  // 表示時刻 displayTime [s] まで残基 motion を進め、そのフレームの計測値を返す。
-  readonly updateProteinMotion?: (displayTime: number) => ProteinMotionFrameSample;
-  // 残基 motion が握る資源を解放する。
-  readonly disposeProteinMotion?: () => void;
 }
 
 // 動きの参照が CPU のレイで追う、論理フレーム 1 つぶんの実体。
@@ -166,7 +166,14 @@ export interface LabMotionEntity {
 }
 
 // ケースを組む関数。style の表示スタイルで組んだ姿を返し、環の帯は ringMaterials で描く。
-export type CaseBuilder = (style: RenderStyle, ringMaterials: RingMaterials) => LabCase;
+// sunLight と bodyShadow は、フレームの恒星と天体影をパイプラインと共有する口で、それらを読む
+// 部品(体積プルームなど)を組むケースへ渡す。
+export type CaseBuilder = (
+  style: RenderStyle,
+  ringMaterials: RingMaterials,
+  sunLight: SunLight,
+  bodyShadow: BodyShadow,
+) => LabCase;
 
 // 原点から -Z を見るケース共通のカメラ。
 export function labCamera(): THREE.PerspectiveCamera {
@@ -201,9 +208,11 @@ const texturedSurfaces = new Map<CelestialTexture, CelestialSurface>();
 // axes は半軸 [m]、ready は地表の画像がすべて GPU へ届いたか。同じ texture の天体は表面を共有するので、
 // 1 つのケースに置けるのは 1 体まで。
 export function texturedBody(
-  texture: CelestialTexture, def: PlanetDef, center: THREE.Vector3, apparentDiameterPx: number,
+  texture: CelestialTexture,
+  def: { readonly radius: number; readonly shape?: ShapeDef },
+  center: THREE.Vector3, apparentDiameterPx: number,
 ): { readonly object: THREE.Object3D; readonly axes: THREE.Vector3; readonly ready: () => boolean } {
-  const shape = shapeAxes(def.radius, def.shape);
+  const shape = shapeAxes(def.radius, def.shape ?? null);
   const axes = new THREE.Vector3(shape.x, shape.y, shape.z);
   const group = new THREE.Group();
   group.position.copy(center);

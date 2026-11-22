@@ -70,7 +70,7 @@ export interface Apsis {
   readonly center: CelestialBody;
 }
 
-// 時刻昇順の apsides から t より前のものを落とす。
+// 時刻昇順の apsides 配列から時刻 t より前の要素を削除する。
 function dropBefore(apsides: Apsis[], t: number): void {
   let cut = 0;
   while (cut < apsides.length && apsides[cut]!.state.t < t) cut++;
@@ -78,7 +78,7 @@ function dropBefore(apsides: Apsis[], t: number): void {
 }
 
 // 積分の1ステップ対を時刻順に observe へ渡すと、見つかった近地点・遠地点を、その時点の中心天体と
-// 組にして時刻昇順に溜める。溜めた列は dropBefore で先頭から落とす。
+// 組にして時刻昇順に蓄積する。蓄積した配列は dropBefore で先頭から古い要素を削除する。
 export class ApsisTrack {
   private readonly periapsides: Apsis[] = [];
   private readonly apoapsides: Apsis[] = [];
@@ -97,7 +97,7 @@ export class ApsisTrack {
     if (crossing?.kind === 'apoapsis') this.apoapsides.push({ state: crossing.state, center });
   }
 
-  // 両列から t より前(< t)の要素を先頭から落とす。
+  // 両配列から t より前(< t)の要素を先頭から除外する。
   public dropBefore(t: number): void {
     dropBefore(this.periapsides, t);
     dropBefore(this.apoapsides, t);

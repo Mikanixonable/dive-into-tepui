@@ -3,13 +3,13 @@
 import { NavTargetSelection, type NavTarget } from './nav-target-selection';
 import { OrbitGuideSelection } from './orbit-guide-selection';
 import { OrbitReferenceSelection, type OrbitReferenceMode } from './orbit-reference-selection';
-import { PredictPanelSelection, type SerializedPredictPanelSelection } from './predict-panel-selection';
+import { DisplayTimelineSelection, type SerializedDisplayTimelineSelection } from './display-timeline-selection';
 import { ViewSelection, type ViewControlSource } from './view-selection';
 import { CameraSelection, type CameraFrameSamples, type SerializedCameraSelection } from './camera-selection';
 import { EntityDisplaySelection, type SerializedEntityDisplaySelection } from './entity-display-selection';
 import { focusTargetId } from './focus-target';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { RunEvent, RunEventSink } from '../run-events';
 import type { ViewMode } from '../view/view-mode';
 import type { OrbitGuideSettings } from './orbit-guide-settings';
@@ -22,7 +22,7 @@ export interface SerializedViewer {
   readonly orbitGuide: OrbitGuideSettings;
   readonly entityDisplay: SerializedEntityDisplaySelection;
   readonly orbitReference: OrbitReferenceMode;
-  readonly predictPanel: SerializedPredictPanelSelection;
+  readonly displayTimeline: SerializedDisplayTimelineSelection;
 }
 
 export class Viewer {
@@ -42,9 +42,9 @@ export class Viewer {
     public readonly entityDisplay = new EntityDisplaySelection(),
     // 軌道要素の基準の選択。
     public readonly orbitReference = new OrbitReferenceSelection(),
-    // 予測パネルの座標系・表示期間・表示時刻・時刻表記の選択。新しいゲームでは、座標系をマップの
-    // カメラの注視から始める。
-    public readonly predictPanel = PredictPanelSelection.create(
+    // タイムラインパネルの座標系・表示期間・表示時刻・時刻表記の選択。新しいゲームでは、座標系を
+    // マップのカメラの注視から始める。
+    public readonly displayTimeline = DisplayTimelineSelection.create(
       celestialBodies.frames, celestialBodies, focusTargetId(camera.map.focus),
     ),
   ) {}
@@ -54,7 +54,7 @@ export class Viewer {
     return new Viewer(control, events, celestialBodies);
   }
 
-  // 直列化した形から視点を復元する。roster は復元を終えた顔ぶれ。
+  // 直列化した状態から視点を復元する。roster は復元完了時点のエンティティ一覧。
   public static deserialize(
     serialized: SerializedViewer,
     roster: EntityRoster,
@@ -62,7 +62,7 @@ export class Viewer {
     events: RunEventSink,
     celestialBodies: CelestialBodies,
   ): Viewer {
-    const { navTarget, orbitGuide, camera, entityDisplay, orbitReference, predictPanel } = serialized;
+    const { navTarget, orbitGuide, camera, entityDisplay, orbitReference, displayTimeline } = serialized;
     // 記録に無い所有者は undefined のまま渡し、新しいゲームの既定から始める。
     return new Viewer(
       control,
@@ -74,8 +74,8 @@ export class Viewer {
       camera === undefined ? undefined : CameraSelection.deserialize(camera, celestialBodies, events),
       entityDisplay === undefined ? undefined : EntityDisplaySelection.deserialize(entityDisplay),
       orbitReference === undefined ? undefined : OrbitReferenceSelection.deserialize(orbitReference),
-      predictPanel === undefined
-        ? undefined : PredictPanelSelection.deserialize(predictPanel, celestialBodies.frames, celestialBodies, roster),
+      displayTimeline === undefined
+        ? undefined : DisplayTimelineSelection.deserialize(displayTimeline, celestialBodies.frames, celestialBodies, roster),
     );
   }
 
@@ -88,7 +88,7 @@ export class Viewer {
       orbitGuide: this.orbitGuide.serialize(),
       entityDisplay: this.entityDisplay.serialize(),
       orbitReference: this.orbitReference.serialize(),
-      predictPanel: this.predictPanel.serialize(),
+      displayTimeline: this.displayTimeline.serialize(),
     };
   }
 
@@ -96,7 +96,7 @@ export class Viewer {
   // 進行の位相の末尾で、一時停止中も毎フレーム呼ぶ。
   public followProgress(events: readonly RunEvent[]): void {
     this.navTarget.followProgress(events);
-    this.predictPanel.followProgress(this.view.current !== 'map');
+    this.displayTimeline.followProgress(this.view.current !== 'map');
   }
 
   // 進行直後の姿勢・座標系と注視対象の生存状態へカメラ視点を合わせる。

@@ -1,52 +1,158 @@
 // 起動時のステージ選択画面。タイトルの3D場面と並べてステージ一覧を出し、選ばれたステージを返す。
 import { STAGE_CLASSES } from '../game/stages/stage-dictionary';
 import { StageDebug } from '../game/stages/stage-debug';
-import { TabBar } from '../hud/widgets';
-import { KEY_MAPPING as K } from '../input/key-mapping';
+import { Button, TabBar } from '../hud-kit/widgets';
+import { bindActivation } from '../hud-kit/widgets/widget-base';
+import { KEY_MAPPING as K } from '../input-devices/key-mapping';
 import tepuiRmqrUrl from '../assets/tepui-rmqr.svg';
+import { TITLE_LOGOTYPE_HTML } from '../hud-kit/title-logotype';
 import { injectStageSelectStyle } from './stage-select-style';
 import { StartEpochForm } from './start-epoch-form';
-import { TITLE_SCENE_PATTERNS, TitleScene } from './title-scene';
+import { TITLE_SCENE_PATTERNS, TitleScene } from '../render/title-scene';
 import type { StageClass } from '../game/stages/stage';
 import type { TdbJulianDate } from '../physics/time';
 import type { ThemePalette } from '../theme';
 import type { UnlockManager } from './unlock-manager';
 
-// タイトルの添え書き1組。primary は副題、script はその下に添える異文字(lang の言語で
-// scriptKind の書体)、note は脇の注。
+// タイトルの添え書き1組。primary は大きく出す引用または英訳、original は原文、
+// transliteration は楔形文字などに添える小さな転写、note は出典または作中の記録ラベル。
+// scriptKind は言語分類ではなく、原文を描くための書体プロファイルだけを表す。
 interface TitleFlavor {
   readonly primary: string;
-  readonly script: string;
-  readonly lang: string;
-  readonly scriptKind: 'cantonese' | 'cuneiform' | 'polynesian';
+  readonly original?: string;
+  readonly transliteration?: string;
+  readonly lang?: string;
+  readonly scriptKind?: 'cantonese' | 'cuneiform' | 'polynesian';
   readonly note: string;
 }
 
-// 起動ごとに1組を選ぶ。3つの文字文化を同じ情報密度で扱い、タイトルの印象だけを変える。
+// 起動ごとに1組を選ぶ。実在文献・詩・格言は出典を note に残し、広東語だけは公暦20115年の
+// シスルナ口語という作中テキストとして創作する。シュメール語は原文の楔形文字と転写を併記する。
 const TITLE_FLAVORS: readonly TitleFlavor[] = [
+  // シュメール文学。CDLI/ORACC の複合テキストに対応する転写から Unicode 楔形文字を組む。
   {
-    primary: 'The Orbit Is the Battlefield.', script: '前往高空堡壘的作戰', lang: 'zh-HK', scriptKind: 'cantonese',
-    note: 'Classic voice, machine measure. 古典的な声と、軌道を測る静かなUI。',
+    primary: 'From the great heaven she set her mind on the great below.',
+    original: '𒀭𒃲𒋫 𒆠𒃲𒂠 𒄑𒌆𒉿𒂵𒉌 𒈾𒀭𒁺',
+    transliteration: 'an gal-ta ki gal-še₃ ĝeštug₂-ga-ni na-an-gub',
+    lang: 'sux',
+    scriptKind: 'cuneiform',
+    note: 'INANA’S DESCENT · Old Babylonian · CDLI Q000343:1',
   },
   {
-    primary: 'A cold path through the upper dark.', script: '𒀭𒂗𒆠 𒀀𒈾 𒀭𒊹', lang: 'sux', scriptKind: 'cuneiform',
-    note: 'The old signs keep their orbit; the instruments keep time.',
+    primary: 'When heaven had been separated from earth.',
+    original: '𒀭𒆠𒋫 𒁀𒁕𒁁𒁺𒀀𒁀',
+    transliteration: 'an ki-ta ba-da-ba₉-ra₂-a-ba',
+    lang: 'sux',
+    scriptKind: 'cuneiform',
+    note: 'GILGAMEŠ, ENKIDU AND THE NETHERWORLD · CDLI Q000364:8',
   },
   {
-    primary: 'Te ara o ngā whetū.', script: 'Te ara ki te rangi', lang: 'mi', scriptKind: 'polynesian',
-    note: 'A path among stars, measured in quiet burns.',
+    primary: 'In those days, in those far remote days.',
+    original: '𒌓𒊑𒀀 𒌓𒋤𒁺𒊑𒀀',
+    transliteration: 'u₄ re-a u₄ su₃-ra₂ re-a',
+    lang: 'sux',
+    scriptKind: 'cuneiform',
+    note: 'INSTRUCTIONS OF ŠURUPPAK · Old Babylonian · CDLI Q000782:1',
+  },
+
+  // 口語広東語。標準書面中国語ではなく、公暦20115年の会話として粤語口語字を使う創作文。
+  {
+    primary: 'Just going home. Why is it so hard?',
+    original: '返屋企啫，點解咁難？',
+    lang: 'yue-Hant-HK',
+    scriptKind: 'cantonese',
+    note: 'CISLUNAR COMMON SPEECH · 公曆20115年',
   },
   {
-    primary: 'Iron citadels turn beneath the equations.', script: '軌道之上，烽火未眠', lang: 'zh-HK', scriptKind: 'cantonese',
-    note: 'A Cantonese signal for the watch at high altitude.',
+    primary: 'Earth is below. The way back is sealed.',
+    original: '地球喺下面，返去嘅路畀佢哋封咗。',
+    lang: 'yue-Hant-HK',
+    scriptKind: 'cantonese',
+    note: 'CISLUNAR COMMON SPEECH · 公曆20115年',
   },
   {
-    primary: 'The sky remembers every departure.', script: '𒀭𒂗𒆠 𒄑𒀀𒁲', lang: 'sux', scriptKind: 'cuneiform',
-    note: 'A cuneiform fragment for a machine that never forgets.',
+    primary: 'Those ahead are not stars.',
+    original: '前面嗰啲唔係星。',
+    lang: 'yue-Hant-HK',
+    scriptKind: 'cantonese',
+    note: 'CISLUNAR COMMON SPEECH · 公曆20115年',
   },
   {
-    primary: 'He moku i te rangi, he ara ki te whetū.', script: 'He ara ki te whetū', lang: 'mi', scriptKind: 'polynesian',
-    note: 'Polynesian wayfinding, translated into orbital motion.',
+    primary: 'Ten thousand years. This time, we go back.',
+    original: '等咗成萬年，今次真係要返去喇。',
+    lang: 'yue-Hant-HK',
+    scriptKind: 'cantonese',
+    note: 'CISLUNAR COMMON SPEECH · 公曆20115年',
+  },
+  {
+    primary: 'Going down is easy. Coming back is the test.',
+    original: '落去唔難，返得嚟先算。',
+    lang: 'yue-Hant-HK',
+    scriptKind: 'cantonese',
+    note: 'CISLUNAR COMMON SPEECH · 公曆20115年',
+  },
+  {
+    primary: 'That blue one is home.',
+    original: '嗰粒藍色嘅，先至係我哋屋企。',
+    lang: 'yue-Hant-HK',
+    scriptKind: 'cantonese',
+    note: 'CISLUNAR COMMON SPEECH · 公曆20115年',
+  },
+
+  // 英詩。軌道航行・帰還・遠望として読み替えられる短い原文断片をそのまま引用する。
+  {
+    primary: 'Is this mine own countree?',
+    note: 'S. T. COLERIDGE · THE RIME OF THE ANCIENT MARINER · 1798',
+  },
+  {
+    primary: 'To sail beyond the sunset',
+    note: 'ALFRED TENNYSON · ULYSSES · 1842',
+  },
+  {
+    primary: 'The world’s great age begins anew',
+    note: 'P. B. SHELLEY · HELLAS · 1822',
+  },
+  {
+    primary: 'Then felt I like some watcher of the skies',
+    note: 'JOHN KEATS · ON FIRST LOOKING INTO CHAPMAN’S HOMER · 1816',
+  },
+  {
+    primary: 'Our birth is but a sleep and a forgetting',
+    note: 'WILLIAM WORDSWORTH · INTIMATIONS OF IMMORTALITY · 1807',
+  },
+  {
+    primary: 'To mingle with the Universe, and feel',
+    note: 'LORD BYRON · CHILDE HAROLD’S PILGRIMAGE IV · 1818',
+  },
+
+  // ポリネシア諸語。伝承または資料で確認できる文を原語のまま置く。
+  {
+    primary: 'Homeless Matariki.',
+    original: 'Matariki kāinga kore',
+    lang: 'mi',
+    scriptKind: 'polynesian',
+    note: 'MĀORI WHAKATAUKĪ · TE PAPA',
+  },
+  {
+    primary: 'People disappear; the land remains.',
+    original: 'Whatungarongaro te tangata, toitū te whenua.',
+    lang: 'mi',
+    scriptKind: 'polynesian',
+    note: 'MĀORI WHAKATAUKĪ · AOTEAROA',
+  },
+  {
+    primary: 'The stars are the spies of heaven.',
+    original: 'ʻO nā hōkū nō nā kiu o ka lani.',
+    lang: 'haw',
+    scriptKind: 'polynesian',
+    note: 'HAWAIIAN ʻŌLELO NOʻEAU · PUKUI #2513',
+  },
+  {
+    primary: 'The ocean is the place of the unknown.',
+    original: 'Moana ko e potu ʻo e taʻeʻiloa.',
+    lang: 'to',
+    scriptKind: 'polynesian',
+    note: 'TONGAN PROVERB · ORTHOGRAPHY NORMALIZED',
   },
 ];
 
@@ -72,6 +178,10 @@ function pickRandom<T>(items: readonly T[]): T {
 }
 
 // 画面の骨組み。左に3D場面とタイトルを重ねた窓、右に背景の rMQR コードだけを置いたステージ選択の窓。
+// 隠し要素「共鳴」の操作: ロゴを RESONANCE_CLICK_GAP_MS 以内の間隔で RESONANCE_CLICK_COUNT 回続けて押す(GAME.md 1.1)。
+const RESONANCE_CLICK_COUNT = 5;
+const RESONANCE_CLICK_GAP_MS = 1200;
+
 // タイトルの添え書きは TITLE_FLAVORS から1組を選んで入れる。
 function createScreenElement(): HTMLElement {
   const root = document.createElement('div');
@@ -85,15 +195,16 @@ function createScreenElement(): HTMLElement {
     '</div>' +
     '<div class="ss-hero">' +
     '<p class="ss-eyebrow">Sortie select · 公暦20115年</p>' +
-    '<h1 id="ss-title" class="ss-logotype" aria-label="Dive into Tepui">' +
-    '<span class="ss-logo-line">Dive<sup class="ss-logo-ornament">∴03</sup></span>' +
-    '<span class="ss-logo-line">into<sub class="ss-logo-ornament">ECI₀</sub></span>' +
-    '<span class="ss-logo-line">Tepui<sup class="ss-logo-ornament">Ω⁺</sup></span>' +
+    '<h1 id="ss-title" class="title-logotype" aria-label="Dive into Tepui">' +
+    TITLE_LOGOTYPE_HTML +
     '</h1>' +
     '<div class="ss-subrow"><div>' +
     '<p class="ss-sub" data-flavor-primary></p>' +
     '<div class="ss-languages">' +
+    '<div class="ss-script-block" data-flavor-script-block>' +
     '<p class="ss-script" data-flavor-script></p>' +
+    '<p class="ss-transliteration" data-flavor-transliteration hidden></p>' +
+    '</div>' +
     '<p class="ss-flavor-note" data-flavor-note></p>' +
     '</div>' +
     '</div><div class="ss-status ui-surface-quiet"><b>∗ Link stable</b><br>h = 420.2 km · i = 51.6°<br>Epoch 06:14:28.03</div></div>' +
@@ -104,11 +215,22 @@ function createScreenElement(): HTMLElement {
 
   // タイトルの添え書き。
   const flavor = pickRandom(TITLE_FLAVORS);
+  const flavorScriptBlock = root.querySelector<HTMLElement>('[data-flavor-script-block]')!;
   const flavorScript = root.querySelector<HTMLElement>('[data-flavor-script]')!;
+  const flavorTransliteration = root.querySelector<HTMLElement>('[data-flavor-transliteration]')!;
   root.querySelector<HTMLElement>('[data-flavor-primary]')!.textContent = flavor.primary;
-  flavorScript.textContent = flavor.script;
-  flavorScript.lang = flavor.lang;
-  flavorScript.classList.add(`ss-script-${flavor.scriptKind}`);
+  if (flavor.original === undefined) {
+    flavorScriptBlock.hidden = true;
+  } else {
+    flavorScript.textContent = flavor.original;
+    if (flavor.lang !== undefined) flavorScript.lang = flavor.lang;
+    if (flavor.scriptKind !== undefined) flavorScript.classList.add(`ss-script-${flavor.scriptKind}`);
+  }
+  if (flavor.transliteration !== undefined) {
+    flavorTransliteration.textContent = flavor.transliteration;
+    flavorTransliteration.lang = 'sux-Latn';
+    flavorTransliteration.hidden = false;
+  }
   root.querySelector<HTMLElement>('[data-flavor-note]')!.textContent = flavor.note;
 
   // ステージ選択の窓の背景に透かす rMQR コード。
@@ -127,23 +249,35 @@ class StageSelectScreen {
   private readonly root = createScreenElement();
   private readonly stageList = document.createElement('div');
   private readonly tabBar: TabBar<string>;
-  private readonly debugLink = document.createElement('div');
-  private readonly settingsButton = document.createElement('button');
+  private readonly debugLink = document.createElement('button');
+  private readonly settingsButton: Button;
   private readonly startEpochForm: StartEpochForm;
   // 解放済みのステージ。画面を開いた時点の解放状況で決まる。
   private readonly unlockedStages: ReadonlySet<StageClass>;
   // 3D 場面は非同期に立ち上がる。選択が先に済んだ場合は、でき次第そのまま破棄する。
   private titleScene: TitleScene | null = null;
   private closed = false;
+  // 隠し要素「共鳴」: ロゴを 1.2 秒以内の間隔で5回続けて押すと、背景の物体が共鳴する(GAME.md 1.1)。
+  private logotypeClicks = 0;
+  private lastLogotypeClickAt = Number.NEGATIVE_INFINITY;
+  // 規定時間内の連打だけを数え、条件成立時にタイトル背景へ共鳴を伝える。
+  private readonly onLogotypeClick = (): void => {
+    const now = performance.now();
+    this.logotypeClicks = now - this.lastLogotypeClickAt <= RESONANCE_CLICK_GAP_MS ? this.logotypeClicks + 1 : 1;
+    this.lastLogotypeClickAt = now;
+    if (this.logotypeClicks < RESONANCE_CLICK_COUNT) return;
+    this.logotypeClicks = 0;
+    this.titleScene?.resonate();
+  };
 
   // onEscape は ESC キーで、onClose は選択が済んで画面を畳むときに、onSettings は設定ボタンで呼ばれる。
   // palette は3D場面の材質と光の色。
   public constructor(
     unlockManager: UnlockManager,
     palette: ThemePalette,
-    private readonly onEscape: (() => void) | undefined,
-    private readonly onClose: (() => void) | undefined,
-    onSettings: (() => void) | undefined,
+    private readonly onEscape: (() => void) | null,
+    private readonly onClose: (() => void) | null,
+    onSettings: (() => void) | null,
     private readonly onSelect: (selection: StageSelection) => void,
   ) {
     injectStageSelectStyle();
@@ -163,20 +297,20 @@ class StageSelectScreen {
     if (groups[0]) this.showGroup(groups[0]);
 
     // 隅の控えめなリンクからデバッグステージへ移動できる。
+    this.debugLink.type = 'button';
     this.debugLink.className = 'ss-debug';
     this.debugLink.textContent = 'debug stage';
     this.debugLink.addEventListener('click', () => this.select(StageDebug));
-    this.settingsButton.type = 'button';
-    this.settingsButton.className = 'ss-settings';
-    this.settingsButton.textContent = '⚙ 設定';
-    this.settingsButton.addEventListener('click', () => onSettings?.());
+    this.settingsButton = new Button('⚙ 設定', () => onSettings?.());
+    this.settingsButton.element.classList.add('ss-settings');
     this.startEpochForm = new StartEpochForm(
       (stageClass, startEpoch) => this.select(stageClass, startEpoch),
       () => this.setStageListVisible(true),
     );
-    stageWindow.append(this.debugLink, this.settingsButton, this.startEpochForm.element);
+    stageWindow.append(this.debugLink, this.settingsButton.element, this.startEpochForm.element);
 
     // 画面を出し、3D 場面の立ち上げとショートカットキーの監視を始める。
+    this.root.querySelector<HTMLElement>('.title-logotype')!.addEventListener('click', this.onLogotypeClick);
     document.body.appendChild(this.root);
     document.body.classList.add('title-screen-open');
     TitleScene.create(
@@ -215,7 +349,9 @@ class StageSelectScreen {
       `<div class="ss-stage-sub">${sub}</div>`;
     // 押したときの選択。
     if (unlocked) {
-      row.addEventListener('click', () => {
+      row.setAttribute('role', 'button');
+      row.tabIndex = 0;
+      bindActivation(row, () => {
         if (stageClass.picksStartEpoch) this.openStartEpochForm(stageClass);
         else this.select(stageClass);
       });
@@ -232,7 +368,7 @@ class StageSelectScreen {
   // 一覧・タブ・デバッグリンク・設定ボタンの表示を切り替える。ss-window は overflow:hidden の固定高さ
   // なので、開始日時の入力欄を出す間はこれらを隠さないと、入力欄が窓の下端からはみ出して見えなくなる。
   private setStageListVisible(visible: boolean): void {
-    for (const element of [this.stageList, this.tabBar.element, this.debugLink, this.settingsButton]) {
+    for (const element of [this.stageList, this.tabBar.element, this.debugLink, this.settingsButton.element]) {
       element.classList.toggle('hidden', !visible);
     }
   }
@@ -273,6 +409,6 @@ export function selectStage(
   onSettings?: () => void,
 ): Promise<StageSelection> {
   return new Promise((resolve) => {
-    new StageSelectScreen(unlockManager, palette, onEscape, onClose, onSettings, resolve);
+    new StageSelectScreen(unlockManager, palette, onEscape ?? null, onClose ?? null, onSettings ?? null, resolve);
   });
 }

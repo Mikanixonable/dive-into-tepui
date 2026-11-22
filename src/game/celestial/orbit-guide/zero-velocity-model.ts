@@ -5,9 +5,9 @@ import { secondaryFrameOf } from '../../../physics/lagrange';
 import type { CelestialBodies } from '../celestial-bodies';
 import { v3, type Vec3 } from '../../../math/vec3';
 import { guideSecondary, rotatingFrame } from '../../../physics/orbit-guide';
-import { zeroVelocityCurveSet, SectionPlane } from '../../../physics/zero-velocity';
+import { zeroVelocityCurveSet, type SectionPlane } from '../../../physics/zero-velocity';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
-import { LINE_RENDER_ORDER, LineStyle } from '../../../render/line-style';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../../render/lines/line-style';
 import type { ViewMode } from '../../view/view-mode';
 import type { ZeroVelocityDisplay } from '../../../render/celestial/orbit-guide/zero-velocity-view';
 import type { ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';
@@ -190,7 +190,7 @@ export class ZeroVelocityModel {
   }
 
   // キャッシュ済みの2次元形状を、その時刻の回転基底(rotatingFrame)で ECI へ埋め込み直す
-  // (軽い処理、表示時刻が動くたびに呼んでよい)。基底を組めない系の断面は落とす。
+  // (軽い処理、表示時刻が動くたびに呼んでよい)。基底を構築できない系の断面は除外する。
   private embed(displayTime: number): readonly EmbeddedContour[] {
     // 系ごとに rotatingFrame を1回だけ求めて使い回す。
     const frames = new Map<CatalogSystemId, ReturnType<typeof rotatingFrame>>();

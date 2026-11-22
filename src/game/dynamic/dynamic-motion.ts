@@ -3,12 +3,13 @@ import { hitsSphere, type Ray } from '../../math/ray';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
 import { sameVec, type Vec3, v3 } from '../../math/vec3';
-import { type Attitude, stepAttitude } from '../../physics/attitude';
+import { type Attitude, type RotatingFrame, stepAttitude, stepAttitudeInFrame } from '../../physics/attitude';
 import { localOrbitPeriod } from '../../physics/attractor';
 import type { CelestialBody } from '../../physics/celestial-body';
 import { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { environmentSampleAt, type DynamicsEnvironmentSample } from '../../physics/dynamics';
+import type { ShadowCasters } from '../../physics/shadow';
 import {
   compoundCylinderRaycast,
   type CompoundCylinderRayHit,
@@ -21,7 +22,7 @@ import {
 } from '../../physics/thermal';
 import { orbitalElementsOf, type OrbitalElements } from '../../physics/elements';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { Contact } from './dynamic-entity/contact';
+import type { Contact } from './entity/contact';
 import type { DynamicReactionServices, EntityContactParticipant } from './dynamic-simulation-participant';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import {
@@ -30,11 +31,15 @@ import {
   type DynamicCollisionPropertiesSnapshot,
 } from './dynamic-motion-collision';
 import {
-  ENV_TEMP, HULL_EMISS, stepThermalState,
+  DRAG_COEFFICIENT, ENV_TEMP, HULL_EMISS, stepThermalState,
   type DynamicMotionThermal,
 } from './dynamic-motion-thermal';
 import { PredictedArc, trajectorySampleInterval } from './predicted-arc';
 import { atmosphericMaxStep, dragTakesFullAirspeed } from './time-step';
+import {
+  PASSIVE_BEHAVIOR,
+  type ContactKind, type DynamicMotionBehavior, type DynamicMotionProperties,
+} from './dynamic-motion-behavior';
 
 export type {
   DynamicCollisionProperties,
@@ -42,9 +47,11 @@ export type {
 } from './dynamic-motion-collision';
 export { ENV_TEMP, HULL_EMISS } from './dynamic-motion-thermal';
 export type { DynamicMotionThermal } from './dynamic-motion-thermal';
+export type {
+  ContactKind, DynamicMotionBehavior, DynamicMotionProperties,
+} from './dynamic-motion-behavior';
 
-// 弾道係数の逆数から断面積質量比を戻すときの抗力係数 Cd。
-const DRAG_COEFFICIENT = 2.2;
+
 // 1歩ぶんの環境標本が RK4 の4段のとき、平均に掛ける重み。
 const RK4_WEIGHTS: readonly number[] = [1, 2, 2, 1];
 
@@ -56,99 +63,12 @@ export const SMALL_DEBRIS_SPECIFIC_HEAT = 900; // [J/(kg·K)]
 export const SMALL_DEBRIS_RADIATING_AREA_PER_MASS = 0.01455; // [m^2/kg]
 export const SMALL_DEBRIS_MAX_TEMP = 933; // [K]
 
-// 接触した相手を見分ける種別。
-export type ContactKind =
-  | 'generic' | 'player' | 'radiator-fold' | 'belt-section' | 'bullet' | 'debris' | 'casing'
-  | 'enemy' | 'ammo' | 'rcs-fuel';
-
 // 断面積質量比 × 放射率で見積もる、球とみなした個体の日射を吸収する質量あたりの面積 [m^2/kg]。
 // bcInv は弾道係数の逆数 [m^2/kg]。
-export function sphereSolarAbsorbAreaPerMass(emissivity: number, bcInv: number): number {
+function sphereSolarAbsorbAreaPerMass(emissivity: number, bcInv: number): number {
   return (emissivity * bcInv) / DRAG_COEFFICIENT;
 }
 
-// 種別ごとに差し込む反応。省いたメソッドは DynamicMotion の既定の振る舞いになる。
-export interface DynamicMotionBehavior {
-  readonly contactKind?: ContactKind;
-  contactMass?(self: DynamicMotion): number;
-  // simDt ぶんの自律の指令(燃焼など)を進める。
-  updateCommands?(self: DynamicMotion, simDt: number): void;
-  // 直近の updateCommands が決めた推力加速度(ECI)。噴いていなければ null。
-  commandedThrust?(self: DynamicMotion): Vec3 | null;
-  contactsWith?(self: DynamicMotion, other: EntityContactParticipant, simTime: number): boolean;
-  testSphereCollision?(
-    self: DynamicMotion, sphereCenter: Vec3, sphereRadius: number,
-    selfState: KinematicState, selfAttitude: Attitude,
-  ): SphereHit | null;
-  testSweptSphereCollision?(
-    self: DynamicMotion, previousSphereCenter: Vec3, sphereCenter: Vec3, sphereRadius: number,
-    previousSelfState: KinematicState, selfState: KinematicState,
-    previousSelfAttitude: Attitude, selfAttitude: Attitude,
-  ): { readonly hit: SphereHit; readonly toi: number } | null;
-  testEntityCollision?(
-    self: DynamicMotion, other: EntityContactParticipant,
-    selfState: KinematicState, otherState: KinematicState,
-  ): ContactGeometry | null;
-  testSweptEntityCollision?(
-    self: DynamicMotion, other: EntityContactParticipant,
-    previousSelf: KinematicState, selfState: KinematicState,
-    previousOther: KinematicState, otherState: KinematicState,
-  ): ContactGeometry | null;
-  hitBodyByRay?(self: DynamicMotion, ray: Ray, pos: Vec3): boolean;
-  placeContactProxies?(self: DynamicMotion, simTime: number, dt: number): void;
-  contactProxies?(self: DynamicMotion): readonly EntityContactParticipant[];
-  applyContactProxies?(self: DynamicMotion, dt: number): void;
-  onEntityContact?(
-    self: DynamicMotion, other: EntityContactParticipant, contact: Contact, services: DynamicReactionServices,
-  ): void;
-  onSurfaceContact?(
-    self: DynamicMotion, body: CelestialBody, contact: Contact, services: DynamicReactionServices,
-  ): void;
-  onBurnUp?(self: DynamicMotion, services: DynamicReactionServices): void;
-  stepEnvironment?(
-    self: DynamicMotion, dt: number, atmosphereBody: CelestialBody | null,
-    atmospherePivot: number, sunlight: number, sunDir: Vec3,
-  ): void;
-  // 質量などの状態に応じて変化する物性。省略時は生成時の固定値を使う。
-  mass?(self: DynamicMotion): number;
-  bcInv?(self: DynamicMotion): number;
-  srpCoeff?(self: DynamicMotion): number;
-  radiatingAreaPerMass?(self: DynamicMotion): number;
-  solarAbsorbAreaPerMass?(self: DynamicMotion, sunDir: Vec3): number;
-  nextSimulationEventTime?(self: DynamicMotion, simTime: number): number | null;
-  checkLoss?(
-    self: DynamicMotion, dt: number, simTime: number, services: DynamicReactionServices,
-    zones: readonly EngagementZone<EngagementParticipant>[], atmosphereBodies: readonly CelestialBody[],
-  ): void;
-}
-
-// DynamicMotion の物性と初期値。省いた項目は既定値になる。
-export interface DynamicMotionProperties {
-  readonly alive?: boolean;
-  readonly attitude?: Attitude;
-  readonly hasAttitude?: boolean;
-  readonly mass?: number;
-  readonly radius?: number;
-  readonly collides?: boolean;
-  readonly engagementAnchor?: boolean;
-  readonly preciseReentry?: boolean;
-  readonly contactDamageWeight?: number;
-  readonly bcInv?: number;
-  readonly srpCoeff?: number;
-  readonly temperature?: number;
-  readonly thermalDeviation?: number;
-  readonly pendingSpecificHeat?: number;
-  readonly specificHeat?: number;
-  readonly bulkDensity?: number;
-  readonly radiatingAreaPerMass?: number;
-  readonly emissivity?: number;
-  readonly maxTemperature?: number;
-  readonly historyDuration?: number;
-  readonly followsPredictedArc?: boolean;
-  readonly behavior?: DynamicMotionBehavior;
-}
-
-const PASSIVE_BEHAVIOR: DynamicMotionBehavior = Object.freeze({ contactKind: 'generic' });
 
 // 1歩ぶんの環境標本を平均した、日照率込みの太陽光の放射照度 [W/m²] と太陽方向(単位ベクトル)。
 // radiantIntensity は光源の放射強度 [W/sr]。
@@ -427,13 +347,20 @@ export class DynamicMotion {
     return orbitalElementsOf(this.state, center, centerPivot);
   }
 
-  // dt を大気突入の刻み幅の上限に収めるための分割数。preciseReentry でない個体は 1。
+  // dt を大気突入の刻み幅の上限と個体が要求する刻みの上限に収めるための分割数。
   public substepDivisions(
     dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number,
   ): number {
-    if (!this.preciseReentry) return 1;
-    const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies, pivot);
-    return innerDt >= dt ? 1 : Math.ceil(dt / innerDt);
+    let divisions = 1;
+    if (this.preciseReentry) {
+      const innerDt = atmosphericMaxStep(this.state, this.bcInv, atmosphereBodies, pivot);
+      if (innerDt < dt) divisions = Math.ceil(dt / innerDt);
+    }
+    const cap = this.behavior.maxSubstepDuration?.(this);
+    if (cap !== undefined && cap !== null && cap > 0 && cap < dt) {
+      divisions = Math.max(divisions, Math.ceil(dt / cap));
+    }
+    return divisions;
   }
 
   // dt のあいだに抗力が対気速度を奪い切るか。preciseReentry の個体は常に false。
@@ -444,14 +371,20 @@ export class DynamicMotion {
       && dragTakesFullAirspeed(this.state, this.bcInv, atmosphereBodies, pivot, dt);
   }
 
-  // 軌道・姿勢・熱を dt 進める。予測弧をなぞらずに積分したときは true を返す。
+  // 軌道・姿勢・熱を dt 進める。予測弧をなぞらずに積分したときは true を返す。substepOccluders は
+  // このサブステップに影を落としうる天体の候補。
   public stepSimulation(
-    dt: number, celestialBodies: readonly CelestialBody[], occluders: readonly CelestialBody[],
+    dt: number, celestialBodies: readonly CelestialBody[], substepOccluders: ShadowCasters,
     atmosphereBody: CelestialBody | null, star: CelestialBody | null, pivot: number,
     services: DynamicReactionServices,
   ): boolean {
+    // この歩の自律の指令を先に決める。推力があれば以降の判定で弧なぞりは選ばれない。
+    this.behavior.stepCommands?.(this, dt, celestialBodies, pivot);
+    const frameBefore = this.attitudeFrameOf(celestialBodies, pivot);
     // 推力がなく予測弧が届く歩は、弧をなぞって積分を省く。
     const interval = this.historySampleInterval(celestialBodies, pivot);
+    // 遮蔽体の候補は、歩の始まりの状態から1歩で動く範囲へ絞る。
+    const occluders = substepOccluders.near(this.state, dt);
     const integrated = !this.followPredicted(this.state.t + dt, interval);
     let environmentSamples: readonly DynamicsEnvironmentSample[];
     if (integrated) {
@@ -465,7 +398,12 @@ export class DynamicMotion {
         this.state.t, this.state.r, this.state.v, star, occluders, atmosphereBody, pivot)];
     }
     this._prevAtt = this._att;
-    if (this.hasAttitude) this._att = stepAttitude(this._att, this._torque, dt);
+    if (this.hasAttitude) {
+      const frameAfter = this.attitudeFrameOf(celestialBodies, pivot);
+      this._att = frameBefore !== null && frameAfter !== null
+        ? stepAttitudeInFrame(this._att, this._torque, dt, frameBefore, frameAfter)
+        : stepAttitude(this._att, this._torque, dt);
+    }
 
     // 歩のあいだの環境の平均で、種別ごとの環境反応と熱を進める。
     const radiantIntensity = star !== null && isStar(star) ? star.def.radiantIntensity : 0;
@@ -474,6 +412,11 @@ export class DynamicMotion {
       this, dt, atmosphereBody, this.state.t, environment.sunlight, environment.sunDir);
     this.stepThermal(dt, environmentSamples, radiantIntensity, services);
     return integrated;
+  }
+
+  // いまの状態で姿勢の基準にする回転座標系。振る舞いが決めず、慣性系で進めるなら null。
+  private attitudeFrameOf(bodies: readonly CelestialBody[], pivot: number): RotatingFrame | null {
+    return this.behavior.attitudeFrame?.(this, this.state, bodies, pivot) ?? null;
   }
 
   // 次の熱の歩で温度へ足す熱量 specificJoules [J/kg] を積む。

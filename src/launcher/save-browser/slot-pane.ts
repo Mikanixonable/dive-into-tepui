@@ -1,24 +1,31 @@
-// セーブブラウザ左ペイン(セーブデータ一覧)の DOM 構築。
-// 一覧行と行ごとの操作ボタン、新規作成/取り込みの導線を組み立てる。
-// 表示対象の選択・実際の改名/複製/削除などの実処理は、コールバックを通じて呼び出し側へ委ねる。
+// セーブデータ一覧と、作成・取り込み・各データの操作を表示する左ペイン。
 import type { SaveSlotMeta } from '../save/slot-data';
-import { fmtDateTime } from '../../hud/utils';
-import { Button } from '../../hud/widgets';
-import { injectOnce } from '../../hud/inject-style';
-import { MQ_COMPACT } from '../../hud/breakpoints';
-import { mainBtn, smallBtn, stageLabel } from './shared';
+import { fmtDateTime } from '../../hud-kit/format';
+import { Button } from '../../hud-kit/widgets';
+import { bindActivation } from '../../hud-kit/widgets/widget-base';
+import { injectOnce } from '../../hud-kit/inject-style';
+import { MQ_COMPACT } from '../../hud-kit/breakpoints';
+import { mainBtn, smallBtn, stageLabel } from './save-browser-ui';
 
 const STYLE = `
 #save-browser .sb-pane-slots { flex: 0 0 34%; }
-#save-browser .sb-slot-list { display: flex; flex-direction: column; gap: var(--space-2); }
+#save-browser .sb-slot-list { display: flex; flex-direction: column; gap: 1px; counter-reset: archive-slot; }
 /* アクティブ行の識別は色数を増やさず、左端 2px のオレンジ帯のみで示す。
    「見ている」行は背景をわずかに明るくするだけで区別する。 */
 #save-browser .sb-slot-row {
-  display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4) var(--space-3) var(--space-3);
-  border: 0; border-radius: var(--radius-m); cursor: pointer;
+  counter-increment: archive-slot;
+  display: grid; grid-template-columns: 2.4em minmax(0, 1fr) auto;
+  align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-3);
+  border: 0; border-radius: 0; cursor: pointer;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 10%, transparent);
+}
+#save-browser .sb-slot-row::before {
+  content: counter(archive-slot, decimal-leading-zero);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
 }
 #save-browser .sb-slot-row.viewed { background: var(--fill-1); }
 #save-browser .sb-slot-row.on { background: var(--color-primary-fill-weak); color: var(--color-primary); }
+#save-browser .sb-slot-row:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #save-browser .sb-slot-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 #save-browser .sb-slot-name { font-size: var(--font-s); }
 #save-browser .sb-slot-meta { font-size: var(--font-xxs); color: var(--text-dim); }
@@ -28,6 +35,8 @@ const STYLE = `
 #save-browser span.sb-btn.sb-btn-play { color: var(--text); }
 @media ${MQ_COMPACT} {
   #save-browser .sb-pane-slots { flex: 1 1 0; }
+  #save-browser .sb-slot-row { grid-template-columns: 2.4em minmax(0, 1fr); }
+  #save-browser .sb-slot-actions { grid-column: 2; justify-content: flex-start; }
 }
 `;
 
@@ -53,7 +62,7 @@ export function buildSlotsPane(
   pane.className = 'sb-pane sb-pane-slots';
   const title = document.createElement('div');
   title.className = 'sb-pane-title';
-  title.textContent = 'セーブデータ';
+  title.textContent = `SLOTS / ${slots.length}`;
   pane.appendChild(title);
 
   // 1件も無ければ一覧の代わりに案内文を出す。
@@ -91,18 +100,20 @@ function buildSlotRow(
   row.className = 'sb-slot-row ui-selectable';
   row.classList.toggle('viewed', viewed);
   row.classList.toggle('on', active);
-  row.addEventListener('click', () => callbacks.onSelectSlot(s.id));
+  row.setAttribute('role', 'button');
+  row.tabIndex = 0;
+  bindActivation(row, () => callbacks.onSelectSlot(s.id));
 
   // 名前と、最後に遊んだステージ・日時・保有件数の要約を1行で並べる。
   const info = document.createElement('div');
   info.className = 'sb-slot-info';
   const name = document.createElement('span');
   name.className = 'sb-slot-name';
-  name.textContent = s.name + (active ? ' ▶' : '');
+  name.textContent = s.name;
   const meta = document.createElement('span');
   meta.className = 'sb-slot-meta';
   const lastStage = s.lastRun === null ? '未プレイ' : stageLabel(s.lastRun.stageId);
-  meta.textContent = `${lastStage} / ${fmtDateTime(s.lastPlayedAtReal / 1000)} / ${totalSnapshots}件`;
+  meta.textContent = `${active ? 'ACTIVE · ' : ''}${lastStage} · ${fmtDateTime(s.lastPlayedAtReal / 1000)} · ${totalSnapshots} SNAPSHOTS`;
   info.append(name, meta);
   row.appendChild(info);
 

@@ -1,12 +1,12 @@
 // 相互重力(小惑星どうし)の回帰テスト。
-import { fixedMotion } from './test-helpers';
+import { fixedMotion, occludersOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { CelestialMotion } from '../../src/physics/celestial-motion';
+import type { CelestialMotion } from '../../src/physics/celestial-motion';
 import { stepDynamics } from '../../src/physics/dynamics';
-import { kinematicState, KinematicState } from '../../src/physics/kinematic-state';
+import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { MU_EARTH, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
-import { Vec3, add, len, scale, sub, v3 } from '../../src/math/vec3';
+import { type Vec3, add, len, scale, sub, v3 } from '../../src/math/vec3';
 
 const ZERO = v3(0, 0, 0);
 
@@ -17,7 +17,7 @@ function makeCelestialBody(id: string, mu: number, state: KinematicState): Celes
 
 // 単一の attractor だけを重力源として1ステップ進める(自由伝播: 抵抗・輻射圧・推力なし)。
 function stepFree(state: KinematicState, dt: number, attractors: readonly CelestialMotion[]): KinematicState {
-  return stepDynamics(state, dt, attractors, attractors, null, 0, 0, 0, null);
+  return stepDynamics(state, dt, attractors, occludersOf(attractors, attractors), null, 0, 0, 0, null);
 }
 
 // dt ぶんのステップの間、相手の attractor 位置をステップ開始時点で固定する近似は

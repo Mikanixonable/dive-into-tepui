@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>船体・建造・ドッキング</title><defs><style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">船体・建造・ドッキング</text><text x="40" y="60" class="m d sm">左: 船体 / 中央: 接続グラフ / 右: docking — 同じ ShipAssembly を別の見方で示す</text>
+<g transform="translate(48 105)">
+ <path d="M30 54L72 28H330L372 54L330 80H72Z" fill="#15171c" stroke="#c3bec9"/>
+ <path d="M30 54H6M372 54h28" class="w"/>
+ <rect x="77" y="35" width="66" height="38" rx="11" fill="#101217" stroke="#ff3155"/><text x="90" y="58" class="m t xs">cockpit</text>
+ <rect x="149" y="35" width="58" height="38" rx="11" fill="#101217" stroke="#48506a"/><text x="165" y="58" class="m t xs">tank</text>
+ <rect x="213" y="35" width="66" height="38" rx="11" fill="#101217" stroke="#48506a"/><text x="226" y="58" class="m t xs">weapon</text>
+ <rect x="285" y="35" width="45" height="38" rx="11" fill="#101217" stroke="#3478ff"/><text x="296" y="58" class="m t xs">dock</text>
+ <path d="M6 44L-20 34V74L6 64Z" fill="#ff3155" opacity=".6"/>
+ <path d="M154 28V8H266V28M180 8V-5M240 8V-5" class="g"/><path d="M164-5h-42M256-5h42" class="bl"/>
+</g>
+<g transform="translate(500 102)">
+ <circle cx="42" cy="54" r="17" fill="#101217" stroke="#ff3155"/><circle cx="110" cy="28" r="17" fill="#101217" stroke="#48506a"/><circle cx="112" cy="82" r="17" fill="#101217" stroke="#48506a"/><circle cx="178" cy="55" r="17" fill="#101217" stroke="#3478ff"/>
+ <path d="M58 48L94 34M59 62L96 77M126 34L162 49M128 77L162 61" class="g"/>
+ <text x="5" y="104" class="m d xs">module graph</text>
+</g>
+<g transform="translate(780 115)">
+ <path d="M0 20H130L155 36L130 52H0Z" fill="#15171c" stroke="#c3bec9"/><path d="M275 20H405L430 36L405 52H275Z" fill="#15171c" stroke="#c3bec9"/>
+ <circle cx="155" cy="36" r="5" fill="#3478ff"/><circle cx="275" cy="36" r="5" fill="#3478ff"/>
+ <path d="M161 36H269" class="r" marker-end="url(#ra)"/><text x="196" y="22" class="m a xs">dock</text>
+ <text x="20" y="82" class="m d xs">assembly A</text><text x="337" y="82" class="m d xs">assembly B</text>
+</g>
+</svg>

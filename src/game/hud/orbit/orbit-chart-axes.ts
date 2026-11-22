@@ -1,8 +1,8 @@
 // 軌道分析パネルの時間軸・距離軸を、OrbitChart が描ける ChartAxis の形へ組み立てる。
 // 目盛り間隔の候補ラダーと、時間 [s] / 距離 [m] それぞれの単位系に応じたラベル書式を持つ。
-import { fmtDuration } from '../../../hud/utils';
-import type { ChartAxis, ChartTick } from './orbit-chart';
-import { chooseTickInterval, chooseTickIntervalFrom } from './tick-scale';
+import { fmtDuration } from '../../../hud-kit/format';
+import type { ChartAxis, ChartTick } from '../../../hud-kit/line-chart';
+import { chooseTickInterval, chooseTickIntervalFrom } from '../../../hud-kit/tick-scale';
 
 // 1本の軸に置く目盛りの上限。これを超えない最大の間隔がラダーから選ばれる。
 const MAX_TICKS = 6;

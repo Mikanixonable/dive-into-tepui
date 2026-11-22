@@ -1,6 +1,6 @@
 // クリエイティブモードの開始日時の入力欄(GAME.md 9.0)。年/月/日/時/分の5欄を持ち、
 // 有効な日時のときだけ開始ボタンを押せる。開始すると、入力した日時をランの元期として通知する。
-import { Button, ValueInput } from '../hud/widgets';
+import { Button, ValueInput } from '../hud-kit/widgets';
 import { calendarDateToJulianDate, julianDateToCalendarDate, parseCalendarDate } from '../physics/time';
 import type { StageClass } from '../game/stages/stage';
 import type { TdbJulianDate } from '../physics/time';

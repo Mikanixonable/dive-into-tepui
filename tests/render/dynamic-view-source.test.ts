@@ -10,7 +10,8 @@ import { DynamicView, type DynamicRenderSource, type DynamicViewFrame } from '..
 import { InstancedPools } from '../../src/render/dynamic/instanced-pools';
 import { ThrustEffects } from '../../src/render/dynamic/player/thrust-effects';
 import { RcsEffects } from '../../src/render/dynamic/player/rcs-effects';
-import { DEFAULT_PROTEIN_DISPLAY } from '../../src/render/protein/protein-display';
+import { SunLight } from '../../src/render/pipeline/sun-light';
+import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
 import { Q_IDENTITY } from '../../src/math/quat';
 import { add, len, sub, v3, type Vec3 } from '../../src/math/vec3';
@@ -56,14 +57,17 @@ function cameraFrame(): CameraFrame {
   return new CameraView().sync(viewpoint, 50, 4.0e7, VIEWPORT, false, v3());
 }
 
-// 表示時刻とカメラだけを持つ、そのフレームの共通入力。
+// そのフレームの共通入力。恒星光と天体影は実物で組む(どちらも uniform の器なので node で立つ)。
 function viewFrame(camera: CameraFrame, pools: InstancedPools): DynamicViewFrame {
+  const sunLight = new SunLight();
   return {
     displayTime: DISPLAY_TIME,
     camera,
     style: 'realistic',
-    visual: { proteinVibration: false },
-    proteinDisplay: DEFAULT_PROTEIN_DISPLAY,
+    visual: { thrustPlume: 'simple' },
+    shipModuleEmphasis: null,
+    sunLight,
+    bodyShadow: new BodyShadow(sunLight),
     pools,
   };
 }
@@ -160,14 +164,13 @@ export function register(): void {
   });
 
   test('dynamic view source: マニューバ噴射の揺らぎは表示時刻だけで決まる', () => {
-    const camera = cameraFrame();
     const scene = new THREE.Scene();
-    const effects = new ThrustEffects(scene, 'entity-0');
-    const position = v3(7.0e6, 0, 0);
-    const thrust = v3(0, 12, 0);
-    const cameraQuat = camera.camera.quaternion;
-    const syncAt = (displayTime: number): void => effects.sync(
-      camera.floatingOrigin, position, thrust, 20, true, cameraQuat, false, 'realistic', displayTime,
+    const sunLight = new SunLight();
+    const effects = new ThrustEffects(scene, 'entity-0', 0, sunLight, new BodyShadow(sunLight));
+    const anchor = new THREE.Object3D();
+    anchor.updateWorldMatrix(true, false);
+    const syncAt = (displayTime: number): void => effects.syncFromAnchor(
+      anchor, 0.6, true, new THREE.Quaternion(), false, 'realistic', displayTime,
     );
 
     syncAt(DISPLAY_TIME);
@@ -179,18 +182,20 @@ export function register(): void {
     assert.ok(varied.size > 1, '表示時刻を変えても揺らぎが動かない');
   });
 
-  test('dynamic view source: module thrust anchor を噴射口の表示位置に使う', () => {
+  test('dynamic view source: module thrust anchor の出口から排気方向へプルームを置く', () => {
     const scene = new THREE.Scene();
-    const effects = new ThrustEffects(scene, 'entity-anchor');
+    const sunLight = new SunLight();
+    const effects = new ThrustEffects(scene, 'entity-anchor', 0, sunLight, new BodyShadow(sunLight));
     const anchor = new THREE.Object3D();
     anchor.position.set(4, 5, 6);
+    anchor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, -1));
     anchor.updateWorldMatrix(true, false);
-    effects.syncFromAnchor(
-      anchor, v3(0, 0, 10), 20, true, new THREE.Quaternion(), false, 'realistic', DISPLAY_TIME,
-    );
+    effects.syncFromAnchor(anchor, 0.5, true, new THREE.Quaternion(), false, 'realistic', DISPLAY_TIME);
     const core = scene.children[0];
     assert.ok(core !== undefined);
-    assert.deepEqual(core.position.toArray(), [4, 5, 2.6]);
+    assert.ok(core.position.x === 4 && core.position.y === 5 && core.position.z < 6);
+    effects.syncFromAnchor(anchor, 0, true, new THREE.Quaternion(), false, 'realistic', DISPLAY_TIME);
+    assert.equal(core.visible, false);
     effects.dispose(scene);
   });
 

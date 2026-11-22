@@ -3,9 +3,8 @@
 
 import * as THREE from 'three/webgpu';
 import { MaxHeap } from '../math/max-heap';
-import { CameraScale } from './camera-scale';
-import { buildHermiteCurve, type HermiteCurve } from './hermite-curve';
-import type { LineStyle } from './line-style';
+import { CameraScale } from './camera/camera-scale';
+import type { LineStyle } from './lines/line-style';
 import { markOverlay } from './pipeline/lit-layer';
 
 // t∈[0,1] における曲線上の点を out へ書く。sample(0) と sample(1) が一致するなら、その曲線は
@@ -27,7 +26,7 @@ const MAX_EDGE_TURN = (5 * Math.PI) / 180;
 // 初期分割数の下限。閉曲線を1区間のままにすると、t=0/1 が同一点で弦が縮退する。
 const INITIAL_SEGMENTS = 8;
 
-// 頂点予算のうち初期頂点へ回してよい割合。残りを適応分割が逸脱の大きい区間へ配るので、
+// 頂点予算のうち初期頂点へ回してよい割合。残りを適応分割が逸脱の大きい区間へ配分するので、
 // 少し余らせたほうが細部の要る場所に頂点が集まる。
 const MAX_INITIAL_VERTEX_RATIO = 0.5;
 
@@ -179,7 +178,7 @@ export class Curve {
     this.appliedStyle = style;
   }
 
-  // sample の座標系の点における m/px。要求された変換でワールドへ写してから換算する。
+  // sample のローカル座標系における点での m/px。指定された変換行列でワールド座標系へ変換してから換算する。
   private scaleAtLocal(cam: CameraScale, lx: number, ly: number, lz: number): number {
     this.scratchWorld.set(lx, ly, lz).applyQuaternion(this.reqQuaternion).add(this.reqPosition);
     return cam.at(this.scratchWorld.x, this.scratchWorld.y, this.scratchWorld.z);
@@ -199,7 +198,7 @@ export class Curve {
     this.line.position.copy(this.reqPosition).add(this.scratchCamWorld);
   }
 
-  // 位置 t の頂点を積み、その番号を返す。連結リストへの接続は呼び出し側が行う。
+  // 位置 t の頂点を追加し、そのインデックスを返す。連結リストの前後ポインタ更新はこれに含まない。
   private pushVertex(t: number, x: number, y: number, z: number, colorAt?: CurveColorSampler): number {
     const i = this.bakedCount++;
     this.ts[i] = t;
@@ -286,7 +285,7 @@ export class Curve {
   // 閉じた式で書ける曲線を描く。sample は t∈[0,1] で曲線上の点を返す滑らかな関数、camera と
   // viewportHeight [CSS px] は画面上の目標を実距離へ換算するための現在の描画カメラと描画先の
   // 高さ。initialSegments は適応分割を始める区間数 — 適応分割は弦の中点しか見ないので、1区間に
-  // 何周ぶんも入る曲線では中点がたまたま曲線上に乗り、区間まるごとが直線に化ける。「1区間が
+  // 何周分も入る曲線では中点が偶然曲線上に乗り、区間全体が誤って直線と判定されてしまう。「1区間が
   // 曲線の半周を超えない」下限を渡してそれを防ぐ。colorAt は線の中で色が変わるときだけ渡す。
   public setAnalyticCurve(
     sample: CurveSampler, camera: THREE.Camera, viewportHeight: number,
@@ -440,4 +439,59 @@ export class Curve {
     this.geom.dispose();
     this.mat.dispose();
   }
+}
+
+// 離散サンプルの節点列から、節点間を3次エルミート(両端の位置を通り、両端の接線を持つ)で埋めた
+// 曲線を組む。
+
+// 節点列から組んだ曲線。ts は間引いたあとの節点のパラメータ列(昇順、先頭 0・末尾 1)。
+export interface HermiteCurve {
+  readonly sample: CurveSampler;
+  readonly ts: ArrayLike<number>;
+}
+
+// knots の節点間を3次エルミートで埋めた曲線を組む。節点が maxCount 個を超えるぶんは元の並びの
+// 上で等間隔に間引く(両端は残すので定義域は縮まない)。節点が2個未満か、パラメータが昇順で
+// なければ例外を投げる。
+export function buildHermiteCurve(knots: CurveKnots, maxCount: number): HermiteCurve {
+  const source = knots.ts;
+  if (source.length < 2) throw new Error(`Curve: 節点が ${source.length} 個では曲線にならない`);
+  const last = source.length - 1;
+  const count = Math.min(source.length, maxCount);
+  const ts = new Float64Array(count);
+  const positions = new Float64Array(count * 3);
+  const tangents = new Float64Array(count * 3);
+  // 節点を等間隔に間引きながら写し、昇順を確かめる。
+  for (let i = 0; i < count; i++) {
+    const j = count === source.length ? i : Math.round((i * last) / (count - 1));
+    ts[i] = source[j]!;
+    if (i > 0 && ts[i]! <= ts[i - 1]!) throw new Error(`Curve: 節点のパラメータが昇順でない (i=${j})`);
+    for (let k = 0; k < 3; k++) {
+      positions[i * 3 + k] = knots.positions[j * 3 + k]!;
+      tangents[i * 3 + k] = knots.tangents[j * 3 + k]!;
+    }
+  }
+
+  // 節点区間の両端の位置と接線から、区間内を3次エルミートで埋める。
+  const sample: CurveSampler = (t, out) => {
+    // t を含む区間 [i, i+1] を二分探索で引く。両端の外は端の区間へ寄せる。
+    let lo = 0, hi = count - 2;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (ts[mid]! <= t) lo = mid; else hi = mid - 1;
+    }
+    const h = ts[lo + 1]! - ts[lo]!;
+    const s = Math.max(0, Math.min(1, (t - ts[lo]!) / h));
+    // エルミート基底の重み。接線の項は区間幅 h を掛けて、区間内の変数 s の微分へ直す。
+    const s2 = s * s, s3 = s2 * s;
+    const w0 = 2 * s3 - 3 * s2 + 1, w1 = (s3 - 2 * s2 + s) * h;
+    const w2 = -2 * s3 + 3 * s2, w3 = (s3 - s2) * h;
+    const a = lo * 3, b = a + 3;
+    out.set(
+      w0 * positions[a]! + w1 * tangents[a]! + w2 * positions[b]! + w3 * tangents[b]!,
+      w0 * positions[a + 1]! + w1 * tangents[a + 1]! + w2 * positions[b + 1]! + w3 * tangents[b + 1]!,
+      w0 * positions[a + 2]! + w1 * tangents[a + 2]! + w2 * positions[b + 2]! + w3 * tangents[b + 2]!,
+    );
+  };
+  return { sample, ts };
 }

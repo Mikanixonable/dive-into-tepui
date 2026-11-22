@@ -9,7 +9,7 @@
 //
 // 面が写っていない画素の照度は 0 になる。
 import * as THREE from 'three/webgpu';
-import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { GBufferPass } from './gbuffer';
 import { DIFFUSE_OUTPUT, FAR_DIFFUSE_OUTPUT, SPECULAR_OUTPUT, type LightSource } from './lighting/light-source';
@@ -21,7 +21,6 @@ import { MrtTexturePool } from './mrt-texture-pool';
 const MAX_ATTACHMENTS = 4;
 
 export class LightPrepass {
-  private readonly renderer: WebGPURenderer;
   private readonly pool: MrtTexturePool;
   private readonly quad: QuadMesh;
   private readonly sample: ShadingSample;
@@ -30,8 +29,6 @@ export class LightPrepass {
   // 積む順の全光源。
   private readonly sources: readonly LightSource[];
   private readonly precompiledSources: readonly LightSource[];
-  // 天体照のスロットの光源。スロット i は、向きを見るとき directionalPlanetDiffuse[i] へ遠方の拡散を書く。
-  private readonly planetSlots: readonly LightSource[];
   // 前のフレームにクリアして結んだテクスチャ。結ばなくなったものを 1 度だけ空へ戻すために覚える。
   private previousBound: readonly THREE.Texture[] = [];
   private readonly diffuse: THREE.Texture;
@@ -42,20 +39,19 @@ export class LightPrepass {
   // クリア色の退避先。毎フレーム確保しないよう 1 つだけ持つ。
   private readonly savedClearColor = new THREE.Color();
 
-  // 照度バッファと、光源が共有するシェーディング入力を組む。積む順は sun、planetSlots、ambient、onDemandSources。
-  // sun・planetSlots・ambient は事前コンパイルでマテリアルを組み、onDemandSources は寄与を持った最初のフレームで組む。
+  // 照度バッファと、光源が共有するシェーディング入力を組む。積む順は sun、planetSlots、others、onDemandSources。
+  // sun・planetSlots・others は事前コンパイルでマテリアルを組み、onDemandSources は寄与を持った最初のフレームで組む。
+  // planetSlots は天体照のスロットの光源。スロット i は、向きを見るとき directionalPlanetDiffuse[i] へ遠方の拡散を書く。
   public constructor(
-    renderer: WebGPURenderer,
+    private readonly renderer: WebGPURenderer,
     gbuffer: GBufferPass,
     sun: LightSource,
-    planetSlots: readonly LightSource[],
-    ambient: LightSource,
+    private readonly planetSlots: readonly LightSource[],
+    others: readonly LightSource[],
     onDemandSources: readonly LightSource[],
     private readonly gpu: GpuTimings,
   ) {
-    this.renderer = renderer;
-    this.planetSlots = planetSlots;
-    this.precompiledSources = [sun, ...planetSlots, ambient];
+    this.precompiledSources = [sun, ...planetSlots, ...others];
     this.sources = [...this.precompiledSources, ...onDemandSources];
 
     // WebGPU に3チャンネル16bit浮動小数点フォーマットは無いため、rgba16float(a は未使用)を使う。

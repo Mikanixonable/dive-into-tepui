@@ -2,7 +2,7 @@
 // シーン直下の子 1 つ(艦 1 隻・基地 1 つ・インスタンスプール 1 本)で、**影を落とす側であると同時に
 // 受け手の代理でもある** — 艦も基地もデブリも、影を落とすと同時に受ける。
 import * as THREE from 'three/webgpu';
-import { anchorAxis, castsOnto, insideBox, requiredTexel } from '../../shadow-demand';
+import { anchorAxis, castsOnto, insideBox, requiredTexel } from './shadow-demand';
 import { SHADOW_CASTER_LAYER } from '../lit-layer';
 import type { SunLight } from '../sun-light';
 
@@ -14,28 +14,28 @@ export const COLUMN_SPAN = 1000;
 
 // 大量の個体を 1 本のメッシュで描く枝が、自分の広がりを影パスへ渡す口。個体が毎フレーム動く枝は
 // メッシュ自身の外接箱が当てにならないので、userData.shadowExtent にこれを置く。
-export type ShadowExtent = {
+export interface ShadowExtent {
   // 今フレームの全個体を包む描画座標の AABB。
   readonly worldBounds: THREE.Box3;
-};
+}
 
 // 枝 1 つぶんの、影を落とすもの。
-export type ShadowCaster = {
+export interface ShadowCaster {
   readonly box: THREE.Box3;
   readonly center: THREE.Vector3;
   // 枝の中でカメラにいちばん近い実体の点と、そこまでの距離 [m]。**窓の中心と要求精度はこれで
   // 決める** — 外接箱の最近点は、細長い部材を持つ艦では実体の無い空間を指す。
   readonly anchor: THREE.Vector3;
   readonly anchorDistance: number;
-  // 個体が箱いっぱいに散らばる枝(薬莢・破片のプール)か。**実体が箱のどこにあるか名指しできない
-  // ので、箱より小さい窓を置いても当たらない** — この枝には窓を作らない。
+  // 個体が箱いっぱいに散らばる枝(薬莢・破片のプール)か。**実体の位置を一意に特定できない
+  // ため、箱より小さい窓を置いても当たらない** — この枝には窓を作らない。
   readonly diffuse: boolean;
   // 箱の外接球の半径 [m]。柱の判定と要求精度をこれで測る。
   readonly radius: number;
   // 受け手としての要求 texel [m]。**Infinity なら枠は要らない** — 画面に写らないか、
   // 誰の影も落ちてこない。
   requiredTexel: number;
-};
+}
 
 export class ShadowCasters {
   private readonly casters: ShadowCaster[] = [];
@@ -47,7 +47,7 @@ export class ShadowCasters {
   private readonly scratchBox = new THREE.Box3();
   private readonly scratchCorner = new THREE.Vector3();
   private readonly scratchMatrix = new THREE.Matrix4();
-  // 枝ごとに拾う、カメラにいちばん近い実体の点とその距離。
+  // 枝ごとに取得する、カメラに最も近い実体の点とその距離。
   private readonly branchAnchor = new THREE.Vector3();
   private branchDistance = Infinity;
   private branchDiffuse = false;
@@ -57,9 +57,9 @@ export class ShadowCasters {
   // 同じ配列を毎フレーム詰め直す。scene のワールド行列は呼び出し側が確定させておく。
   //
   // **層を見るだけでは足りず、Mesh であることまで見る。** シーンルートは全チャンネルを持つ
-  // (レンダラがカメラのチャンネルを絞る間も子を辿れるようにするため)ので、層だけで拾うと
+  // (レンダラがカメラのチャンネルを絞る間も子を辿れるようにするため)ので、レイヤ判定だけで抽出すると
   // ルートに当たり、Box3.expandByObject が子を再帰して天体ごと箱に入れてしまう。
-  collect(
+  public collect(
     scene: THREE.Scene, camera: THREE.Camera, viewportHeight: number, sun: SunLight,
     texelsPerPixel: number,
   ): readonly ShadowCaster[] {
@@ -131,8 +131,8 @@ export class ShadowCasters {
     if (!object.visible) return;
     const mesh = object as THREE.Mesh;
     if (mesh.isMesh && mesh.layers.isEnabled(SHADOW_CASTER_LAYER)) {
-      const extent = mesh.userData.shadowExtent as ShadowExtent | undefined;
-      if (extent === undefined) {
+      const extent = mesh.userData.shadowExtent as ShadowExtent | null;
+      if (extent == null) {
         this.scratchBox.expandByObject(mesh);
         this.takeMeshAnchor(mesh);
       } else if (!extent.worldBounds.isEmpty()) {
@@ -145,8 +145,8 @@ export class ShadowCasters {
     for (const child of object.children) this.expandVisibleCasters(child);
   }
 
-  // メッシュ 1 本ぶんの実体の在りかを、枝の代表点の候補として拾う。個体が散らばる
-  // InstancedMesh は、名指しできる 1 点を持たない枝として branchDiffuse を立てる。
+  // メッシュ 1 本ぶんの実体の在りかを、枝の代表点の候補として取得する。個体が散らばる
+  // InstancedMesh は、代表となる単一の点を特定できない枝として branchDiffuse を有効にする。
   private takeMeshAnchor(mesh: THREE.Mesh): void {
     const instanced = mesh as THREE.InstancedMesh;
     if (instanced.isInstancedMesh) {
@@ -163,7 +163,7 @@ export class ShadowCasters {
     this.takeBoxAnchor(mesh.geometry.boundingBox, mesh.matrixWorld);
   }
 
-  // box の中でカメラにいちばん近い点を、枝の代表点の候補として拾う。toWorld は box の座標系から
+  // box の中でカメラに最も近い点を、枝の代表点の候補として取得する。toWorld は box の座標系から
   // 描画座標への変換で、box が既に描画座標なら null を渡す。
   private takeBoxAnchor(box: THREE.Box3, toWorld: THREE.Matrix4 | null): void {
     // カメラ座標を box のローカル座標系へ変換して最近点を算出する。逆行列演算により OBB に対する

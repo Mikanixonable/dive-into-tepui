@@ -1,7 +1,7 @@
 // 実シミュレーションと積分弧は、同じ問い(この物体にどの天体が効くか)へ別々の絞り込みで答える。
 // 探し方が違うのは同時性から来る正当な差だが、答えが食い違ってよい理由はない。この2つの窓が
 // 同じ位置・同じ時刻で一致することを、重力と表面判定の両方について固定する。
-import { lagrangeOf, motionOf, orbitingMotionOf, solarSystemParts, stateOf } from './test-helpers';
+import { lagrangeOf, occludersOf, orbitingMotionOf, solarSystemParts, stateOf } from './test-helpers';
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { attractorAccel } from '../../src/physics/attractor';
@@ -11,7 +11,7 @@ import { MU_SUN } from '../../src/game/celestial/solar-system/sun';
 import { add, addScaled, cross, len, norm, scale, sub, v3 } from '../../src/math/vec3';
 import { stepDynamics } from '../../src/physics/dynamics';
 import { ArcCelestialBodies } from '../../src/game/dynamic/arc-celestial-bodies';
-import { attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/game/dynamic/attractors';
+import { attractorsNearInto, classifyAttractors, GRAVITY_NEGLIGIBLE_ACCEL } from '../../src/physics/attractor';
 import { SurfaceCandidates, type SurfaceParticipant } from '../../src/game/dynamic/surface-candidates';
 import type { CelestialBody } from '../../src/physics/celestial-body';
 import type { KinematicState } from '../../src/physics/kinematic-state';
@@ -36,10 +36,10 @@ const DAY = 86400;
 const SAMPLE_TIMES: readonly number[] = [0, 90 * DAY, 200 * DAY];
 
 // 検査する場所。位置も速度も天体の運動から導き、どこなのかが式から読めるようにする。
-type Site = {
+interface Site {
   readonly name: string;
   readonly stateAt: (t: number) => KinematicState;
-};
+}
 
 // center のまわりの円軌道の状態。offset は center からの相対位置、normal は軌道面法線で、
 // 両者は直交していなければならない。
@@ -110,14 +110,14 @@ function substepInterval(from: KinematicState, dt: number): SurfaceParticipant {
   const mid = WINDOWS.gravityMotions;
   return {
     prevState: from,
-    state: stepDynamics(from, dt, mid, [], null, 0, 0, 0, null),
+    state: stepDynamics(from, dt, mid, occludersOf(mid, []), null, 0, 0, 0, null),
     radius: SITE_RADIUS,
   };
 }
 
 // 表面判定の相手を比べる場所。円軌道では1サブステップの間にどの表面へも届かないので、
 // 絞り込みが実際に何かを通す「接触が差し迫った場所」でなければ比べる意味がない。
-type SurfaceSite = { readonly name: string; readonly bodyId: string };
+interface SurfaceSite { readonly name: string; readonly bodyId: string }
 
 // 登録天体のうち μ が最も小さいもの。常時加算される重い天体から最も遠い側の経路
 // (グリッドへ載る側・弧の成員から抜けやすい側)を通る相手として選ぶ。

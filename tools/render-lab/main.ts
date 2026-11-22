@@ -1,23 +1,27 @@
 // 描画テスト環境の画面。ケース(とその撮影)と、表示スタイルと、画面へ出す中間バッファを選ぶと、その絵を
 // ゲーム本体と同じ描画経路で描く。描画品質設定の操作はゲーム本体の設定パネル(GraphicsPanel)を
 // そのまま組む。
-import { PROTEIN_ASSET_IDS, requestProteinAsset } from '../../src/game/protein/protein-asset-loader';
+import { loadBakedModels } from '../../src/render/dynamic/baked-models';
 import { DEBUG_TARGETS, type DebugTargetId } from '../../src/render/pipeline/debug-target';
 import { RENDER_STYLES, type RenderStyle } from '../../src/render/render-style';
 import type { ChoiceValue, GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
 import { withGraphicsValue } from '../../src/render/graphics-selection';
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
-import { GraphicsPanel } from '../../src/hud/panels/graphics-panel';
-import { Button, Pulldown, SegmentedControl, WIDGET_STYLE, type PulldownColumn } from '../../src/hud/widgets';
-import { injectOnce } from '../../src/hud/inject-style';
-import { applyThemeVariables } from '../../src/hud/style/theme-variables';
+import { GraphicsPanel } from '../../src/hud-kit/panels/graphics-panel';
+import { Button, Pulldown, SegmentedControl, WIDGET_STYLE, type PulldownColumn } from '../../src/hud-kit/widgets';
+import { injectOnce } from '../../src/hud-kit/inject-style';
+import { applyThemeVariables } from '../../src/hud-kit/style/theme-variables';
 import { AU } from '../../src/physics/astronomical-unit';
 import { parseThemePalette } from '../../src/theme';
-import { CUMULUS_DITHER_KNOB } from '../../src/render/cloud/cumulus-shape';
+import { CUMULUS_DITHER_KNOB } from '../../src/render/earth-weather/cloud/cumulus-shape';
 import { cloudShellKnobOf, type CloudSpecies } from '../../src/render/pipeline/cloud-atmosphere-renderer';
 import { buildSlider } from '../lab-controls';
 import { CASE_NAMES, type CaseName } from './cases';
+import {
+  CLOUD_DETAIL_SHOT_INFOS, CLOUD_DETAIL_STABILITY_SHOT_INFOS, type CloudDetailRandomPoint,
+  type CloudDetailShotInfo,
+} from './cloud-detail-cases';
 import { MAX_CAMERA_DISTANCE_LOG } from './lab-case';
 import {
   LabView, MAX_CAMERA_ELEVATION_DEG, type FloatImage, type FloatTargetName, type LabMeasurement,
@@ -37,7 +41,7 @@ import { phasesOf, type PhaseSequence } from './phase-sequence';
 import type { FloatUniform } from '../../src/render/tsl-types';
 import type { ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
 import type { SceneChangeTerms, SceneChangeWeights } from '../../src/render/pipeline/scene-change';
-import type { EarthSurfaceCaptureDocument } from '../../src/render/earth-surface-metrics';
+import type { EarthSurfaceCaptureDocument } from './earth-surface-metrics';
 import type { LabViewAngles, LightAngleShift } from './view-angles';
 import type {
   ScanTier, ScreenSpaceExperimentVariant, ScreenSpaceStageRange,
@@ -74,6 +78,25 @@ declare global {
       earthSurfaceCapture: (input: EarthSurfaceCaptureInput) => EarthSurfaceCaptureDocument;
       cases: readonly CaseName[];
       shoot: (name: CaseName, graphics?: Partial<GraphicsSettingsData>) => Promise<Readonly<Record<string, string>>>;
+      // 雲の細部の撮影。巡回の撮影(cases + shoot)には載せない別口。
+      cloudDetailShots: () => readonly CloudDetailShotInfo[];
+      // 視点の安定性の撮影の組(基準・横ずらし・高度違い)。
+      cloudDetailStabilityShots: () => readonly CloudDetailShotInfo[];
+      shootCloudDetail: (name: string) => Promise<string>;
+      // ランダム抽出の実写の教師と同じ点で撮る雲。name は PNG の名前。
+      shootCloudDetailRandom: (
+        name: string, point: CloudDetailRandomPoint,
+      ) => Promise<{ png: string, centerKmPerPx: number, altitudeM: number }>;
+      // 値を結ぶ前に組んだシェーダで、同じテクスチャを指す 2 つのテクスチャノードが別々の値を読めるかの GPU 検査。
+      dedupeProbe: () => Promise<Record<string, number[]>>;
+      // 観察の向きを変えた次の 1 フレームを、描画をちょうど 1 回だけ回して撮る(ドラッグ中の 1 フレーム)。
+      captureAfterMove: (changes: Partial<LabViewAngles>, displayTime?: number) => Promise<string>;
+      show: (name: CaseName) => void;
+      setDisplayTime: (displayTime: number) => void;
+      graphicsSettings: () => Readonly<GraphicsSettingsData>;
+      measureShot: (
+        name: CaseName, shotName: string, graphics?: Partial<GraphicsSettingsData>,
+      ) => Promise<LabMeasurement>;
       captureAccumulated: () => Promise<string>;
       compareHistoryAccumulation: (referenceFrames?: number) => ReturnType<typeof compareHistoryAccumulation>;
       historyAccumulationComparisonImage: (key: string) => string;
@@ -253,12 +276,12 @@ function buildViewAngleSliders(view: LabView): () => void {
   };
 }
 
-// 仮設の雲のつまみ(積雲のディザと、半透明な殻の種類ごとの濃さ・高度・反射率)を組む。つまみは
+// 仮設の雲のつまみ(積雲のディザと、半透明な殻の種類ごとの濃さ・高度)を組む。つまみは
 // 描画の uniform を書き換え、view をその場で描き直す。
 function buildCloudSliders(view: LabView): void {
   const redraw = (knob: FloatUniform, value: number): void => { knob.value = value; view.render(); };
 
-  // 積雲の飽和とディザの幅。被覆率が 中央値±半幅 に入る柱がディザに掛かるので、半幅を広げるほど
+  // 積雲の飽和とディザの幅。不透明度が 中央値±半幅 に入る柱がディザに掛かるので、半幅を広げるほど
   // 半透明として読める画素が増える。生成側の場へ差し替えたあとの追い込みまで残す。
   const dither = CUMULUS_DITHER_KNOB;
   buildSlider('cumulus-dither', '中央値', 0, 1, 0.001,
@@ -267,7 +290,7 @@ function buildCloudSliders(view: LabView): void {
     () => `±${dither.halfWidth.value.toFixed(3)}`,
     (v) => redraw(dither.halfWidth, v))(dither.halfWidth.value);
 
-  // 半透明な殻の濃さ・立つ高さ・反射率。不透明な積雲との馴染みを目で追い込み終えるまで残す。
+  // 半透明な殻の濃さ・立つ高さ。不透明な積雲との馴染みを目で追い込み終えるまで残す。
   const kilometers = (value: number) => `${(value / 1000).toFixed(2)} km`;
   // 種類 1 つぶんのつまみを row へ並べ、つまみの位置を殻の現在値へ合わせる。
   const buildShellSliders = (rowId: string, species: CloudSpecies): void => {
@@ -282,16 +305,13 @@ function buildCloudSliders(view: LabView): void {
       (v) => redraw(knob.bottomAltitude, v))(knob.bottomAltitude.value);
     buildSlider(rowId, '上端高度', 0, MAX_SHELL_ALTITUDE, 100, () => kilometers(knob.topAltitude.value),
       (v) => redraw(knob.topAltitude, v))(knob.topAltitude.value);
-    buildSlider(rowId, 'アルベド', 0, 1, 0.01,
-      () => knob.albedo.value.toFixed(2), (v) => redraw(knob.albedo, v))(knob.albedo.value);
   };
-  buildShellSliders('cumulus-shell', 'cumulus');
   buildShellSliders('cirrus-shell', 'cirrus');
 }
 
 // 画面を組み、最初のケースを描き、CDP の入口を window へ生やす。
 async function init(): Promise<void> {
-  // 地表の計測の口は、タンパク質のアセットを待つ前に公開する — 別ケースのアセットが 404 でも
+  // 地表の計測の口は、大型アセットを待つ前に公開する — 別ケースのアセットが 404 でも
   // 「データ未投入」を返せるように。
   const earthSurfaceCapture = createEarthSurfaceCaptureApi();
   window.renderLab = { earthSurfaceCapture } as Window['renderLab'];
@@ -300,8 +320,8 @@ async function init(): Promise<void> {
   applyThemeVariables(parseThemePalette(null));
   injectOnce('widget-style', WIDGET_STYLE);
 
-  // タンパク質のケースは fetch で来る構造・motion を同期的に読むので、器を組む前に待つ。
-  await Promise.all(PROTEIN_ASSET_IDS.map((id) => requestProteinAsset(id)));
+  // fetch で来る大型アセットは、同期 factory を使うケースを組む前にまとめて待つ。
+  await loadBakedModels();
   // **この実行の中だけで生きる設定**。残すと、撮影が「人間が最後に押した状態」に依存して黙って変わる。
   const settings = new UserSettings(new MemorySettingStorage());
   const view = await LabView.create(document.getElementById('view') as HTMLCanvasElement, settings.graphics);
@@ -436,6 +456,20 @@ async function init(): Promise<void> {
     setCaseValue: (name, value) => view.setCaseValue(name, value),
     setView: (changes) => { view.setViewAngles(changes); syncAngles(); },
     viewAngles: () => view.viewAngles,
+    cloudDetailShots: () => CLOUD_DETAIL_SHOT_INFOS,
+    cloudDetailStabilityShots: () => CLOUD_DETAIL_STABILITY_SHOT_INFOS,
+    shootCloudDetail: async (name) => {
+      const png = await view.shootCloudDetail(name); syncAngles(); return png;
+    },
+    shootCloudDetailRandom: async (name, point) => {
+      const result = await view.shootCloudDetailRandom(name, point); syncAngles(); return result;
+    },
+    dedupeProbe: () => view.dedupeProbe(),
+    captureAfterMove: async (changes, displayTime) => {
+      const png = await view.captureAfterMove(changes, displayTime); syncAngles(); return png;
+    },
+    show: (name) => { view.show(name); syncAngles(); },
+    setDisplayTime: (displayTime) => view.setDisplayTime(displayTime),
     setStyle: selectStyle,
     setTarget: (target) => { targets.setSelected(target); view.showDebugTarget(target); },
     setGraphicsOption: (key, value) => {
@@ -503,6 +537,8 @@ async function init(): Promise<void> {
       motionVectorCheck.frame(frame, compareDepth, forceNoHistory, verifyRepeated),
     staticVariance: (sliceCount, historyCap, frames, pngScale) =>
       staticVariance.capture(sliceCount, historyCap, frames, pngScale),
+    graphicsSettings: () => settings.resolvedGraphics.current,
+    measureShot: (name, shotName, graphics) => view.measureShot(name, shotName, graphics),
   };
 }
 

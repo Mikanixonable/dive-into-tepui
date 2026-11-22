@@ -1,17 +1,17 @@
 // 土星系(土星と15個の衛星)。静的事実・運動・見た目を1体につき1箇所で組む。
 import saturnTextureUrl from '../../../assets/2k_saturn.jpg';
 import titanTextureUrl from '../../../assets/2k_titan.jpg';
-import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { SatelliteMotion, type StarMotion } from '../../../physics/celestial-motion';
+import { type PlanetDef, planetDefForSimZero, type SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT } from '../gravitational-constant';
+import { GRAVITATIONAL_CONSTANT } from '../../../physics/gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
-import type { CelestialTexture } from '../../../render/celestial-textures';
-import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
-import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
+import type { CelestialTexture } from '../../../render/celestial/celestial-textures';
+import { CelestialEntity } from '../entity/celestial-entity';
+import { PointCelestialView } from '../../../render/celestial/entity/point-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/entity/sphere-celestial-view';
 import { SATURN_LAPLACE_BASIS, SATURN_POLE } from './poles';
 import { SATURN_RINGS } from './rings';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';

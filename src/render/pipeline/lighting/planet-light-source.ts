@@ -12,15 +12,15 @@ import { contributionMaterial, type LightContribution, type LightSource, type Sp
 import { PlanetLightImage } from './planet-light-image';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { WebGPURenderer } from 'three/webgpu';
-import type { Albedo } from '../../celestial-albedo';
+import type { Albedo } from '../../celestial/celestial-albedo';
 import type { GpuTimingSink } from '../../gpu-timings';
 import type { PlanetLightAppearance, PlanetLightSubject } from './planet-light-subject';
 import type {
   BoolUniform, ColorUniform, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform,
 } from '../../tsl-types';
-import type { CloudSpecies } from '../cloud-atmosphere-renderer';
 import type { BodyShadow } from '../shadow/body-shadow';
 import type { SunLight } from '../sun-light';
+import type { SunTransmittanceTables } from '../sun-transmittance-tables';
 import type { ShadingSample } from './shading-sample';
 
 // 用意するスロットの本数。同時に使う本数は描画設定 planetLightCount(0〜この値)で決まる。
@@ -106,8 +106,8 @@ const clampedToCone = Fn((
 });
 
 // スロット 1 本ぶんの光源。拡散反射も鏡面反射も、視半径を持つ球光源モデルとして評価する
-// (sphere-light.ts)。大きさはその閉じた解が持ち、写しは色の倍率としてしか効かない。
-// TODO: 別の天体の影を受けない — 受け手と天体の間に別の天体があっても届く。
+// (sphere-light.ts)。大きさはその閉じた解が持ち、写しは色の倍率としてしか効かない。届く光は、
+// 受け手と光源天体の間を遮る天体が覆う光源円盤の面積ぶんだけ弱まる。
 class PlanetLightSlot implements LightSource {
   public readonly specularReach: SpecularReach = 'far';
   // 光源モデルごとに 1 枚を遅延生成して持つ。
@@ -119,16 +119,17 @@ class PlanetLightSlot implements LightSource {
   private readonly imaged: BoolUniform = uniform(false);
   private readonly textured: BoolUniform = uniform(false);
 
-  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は写しの大気が読む天体の影。model は描画設定
-  // planetLightModel の値。
+  // sunLight からは、満ち欠けを測る恒星の位置を読む。bodyShadow は、写しの大気が読む天体の影と、
+  // 受け手と光源天体の間を遮る天体の透過率を引く先。model は描画設定 planetLightModel の値。
   public constructor(
     private readonly sunLight: SunLight,
-    bodyShadow: BodyShadow,
+    private readonly bodyShadow: BodyShadow,
     private readonly sphereSpecular: SphereSpecular,
     private readonly slot: SlotUniforms,
     private model: number,
+    sunTables: SunTransmittanceTables,
   ) {
-    this.image = new PlanetLightImage(sunLight, bodyShadow);
+    this.image = new PlanetLightImage(sunLight, bodyShadow, sunTables);
     this.textured.value = model === PLANET_LIGHT_MODEL.textured;
   }
 
@@ -188,8 +189,14 @@ class PlanetLightSlot implements LightSource {
         sample, sample.reflected, this.specularFilterAngle(sample, sinSigmaSqr), lightDir, sinSigmaSqr,
         sphereRadiance)
       : sphereRadiance;
-    const diffuse = this.diffuseIrradianceFor(sample, lightDir, sinSigmaSqr, sphereRadiance);
-    const specular: Vec3Node = specularRadiance.mul(this.sphereSpecular.factor(sample, center, this.slot.radius));
+    // 受け手と光源天体の間を別の天体が遮るぶんだけ届く光を弱める係数。光源天体自身は
+    // 遮蔽へ数えない。写しのモードでも同じ係数 — 写しが色の倍率、遮蔽はエネルギー側の話。
+    // 拡散照度はこの係数を掛けた値で書く — 近くの構造による遮蔽は、天体に遮られた後の照度へ掛かる。
+    const shadowing = this.bodyShadow.transmittanceFrom(
+      sample.worldPosition, this.slot.center, this.slot.radius);
+    const diffuse = this.diffuseIrradianceFor(sample, lightDir, sinSigmaSqr, sphereRadiance).mul(shadowing);
+    const specular: Vec3Node = specularRadiance
+      .mul(this.sphereSpecular.factor(sample, center, this.slot.radius)).mul(shadowing);
     return { diffuse, specular };
   }
 
@@ -282,10 +289,10 @@ export class PlanetLightSource {
   // (描画設定 planetLightCount の値)、model は光源モデル(描画設定 planetLightModel の値)。
   public constructor(
     sunLight: SunLight, bodyShadow: BodyShadow, sphereSpecular: SphereSpecular,
-    private usedCount: number, model: number,
+    private usedCount: number, model: number, sunTables: SunTransmittanceTables,
   ) {
-    this.slotSources = this.slots.map((slot) => new PlanetLightSlot(
-      sunLight, bodyShadow, sphereSpecular, slot, model));
+    this.slotSources = this.slots.map(
+      (slot) => new PlanetLightSlot(sunLight, bodyShadow, sphereSpecular, slot, model, sunTables));
   }
 
   // 受け手 sample から見たスロット slot の天体の球冠。
@@ -309,14 +316,9 @@ export class PlanetLightSource {
     for (const source of this.slotSources) source.subject.setAtmosphereEnabled(enabled);
   }
 
-  // 写しへ不透明な積雲を焼き込むか(描画設定「積雲の立体」がオン)を全スロットへ配る。
+  // 写しへ不透明な積雲を焼き込むか(描画設定「積雲」がオン)を全スロットへ配る。
   public setCumulusEnabled(enabled: boolean): void {
     for (const source of this.slotSources) source.subject.setCumulusEnabled(enabled);
-  }
-
-  // 写しの大気の中に、種類ごとの雲の殻を描くかを全スロットへ配る。
-  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    for (const source of this.slotSources) source.subject.setCloudShellEnabled(species, enabled);
   }
 
   // ライティングパスへ渡す光源の列。スロット 1 本が描画命令 1 本になる。

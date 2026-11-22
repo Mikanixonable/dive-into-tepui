@@ -1,17 +1,17 @@
 // 生の入力を機体の操作量へ解釈する。押下中のキーを軸の押下へ、押下エッジを単発の命令へ写し、
 // 並進キーの連打をラッチを反転する命令にする。
-import { KEY_MAPPING as K } from '../../input/key-mapping';
-import type { KeyBinding } from '../../input/key-mapping';
-import { gameCommand } from './game-commands';
-import type { GameCommand } from './game-commands';
-import type { ContinuousGameAction } from './game-actions';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
+import type { KeyBinding } from '../../input-devices/key-mapping';
+import { gameCommand } from './game-input-types';
+import type { GameCommand } from './game-input-types';
+import type { ContinuousGameAction } from './game-input-types';
 import type { GameInputPort } from './game-input-router';
 import {
   PILOT_COMMAND_KINDS, ROTATION_DIRECTIONS, THRUST_DIRECTIONS, thrustKillSwitchActive,
-} from '../dynamic/dynamic-entity/pilot-controls';
+} from '../dynamic/entity/pilot-controls';
 import type {
   PilotCommand, PilotCommandKind, PilotControls, RotationDirection, ThrustDirection,
-} from '../dynamic/dynamic-entity/pilot-controls';
+} from '../dynamic/entity/pilot-controls';
 
 // 並進方向キーをこの秒数以内に連打すると、押しっぱなし相当にラッチ/解除する [s]
 const THRUST_LATCH_DOUBLE_TAP_SEC = 0.3;

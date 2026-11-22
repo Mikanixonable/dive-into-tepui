@@ -1,9 +1,10 @@
 // 軌道計画ノードの対話的 DOM レイヤ。ノードハンドル・Δv アーム・コンテキストメニューを
 // 画面座標に絶対配置し、pointer イベントを処理してコールバックを発火する。
 import { FONT_FAMILY, FONT_XS, Z_HUD_NODE_GIZMO } from '../../theme';
-import { ContextMenu } from '../hud/windows/context-menu';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import type { OverlayManager } from '../../hud/overlay-manager';
+import { ContextMenu } from '../../hud-kit/windows/context-menu';
+import { injectOnce } from '../../hud-kit/inject-style';
+import { MenuCommon, type MenuAction } from '../menu-actions';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
 
 const NODE_GIZMO_DRAG_THRESHOLD_PX = 4; // ノードハンドルのクリック/ドラッグ判定しきい値 [px]
 
@@ -61,7 +62,7 @@ export interface AxisHandleSpec {
 }
 
 // ドラッグ中の Δv アーム。excessPx はラッチ前は null、ラッチ後は基点からの超過量 [px]。
-export interface AxisHandleDrag {
+interface AxisHandleDrag {
   readonly axis: 0 | 1 | 2;
   readonly sign: 1 | -1;
   readonly excessPx: number | null;
@@ -71,8 +72,6 @@ interface NodeEntry {
   readonly el: HTMLDivElement;
   readonly lbl: HTMLDivElement;
 }
-
-let styleInjected = false;
 
 export class NodeGizmo {
   private readonly root: HTMLDivElement;
@@ -95,15 +94,9 @@ export class NodeGizmo {
   // ドラッグ中の Δv アーム。ドラッグしていなければ null。
   public get axisHandleDrag(): AxisHandleDrag | null { return this._axisHandleDrag; }
 
-  // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ、
-  // popupLayer はノードのコンテキストメニューを置くレイヤ。
-  public constructor(root: HTMLElement, popupLayer: HTMLElement, overlayManager: OverlayManager) {
-    if (!styleInjected) {
-      styleInjected = true;
-      const style = document.createElement('style');
-      style.textContent = STYLE;
-      document.head.appendChild(style);
-    }
+  // DOM レイヤとコンテキストメニューを構築する。root はハンドル/アーム自体を置くレイヤ。
+  public constructor(root: HTMLElement, overlayManager: OverlayManager) {
+    injectOnce('node-gizmo', STYLE);
 
     this.root = document.createElement('div');
     this.root.id = 'node-gizmo';
@@ -114,7 +107,7 @@ export class NodeGizmo {
     this.axisLayer = document.createElement('div');
     this.root.appendChild(this.axisLayer);
 
-    this.menu = new ContextMenu<number, MenuAction>(popupLayer, overlayManager);
+    this.menu = new ContextMenu<number, MenuAction>(overlayManager);
     // メニュー選択を対応するノード操作コールバックへ橋渡しする。
     this.menu.onSelect = (act, idx) => {
       if (act === 'warp') this.onMenuWarpTo?.(idx);

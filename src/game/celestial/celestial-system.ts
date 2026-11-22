@@ -1,32 +1,32 @@
 // 天体系(天体ビュー・星・天球グリッド・参照軌道線・照明)の構築と毎フレームの同期。天体の索引と、
-// 系の所属・系レベルの物理量を答える。
+// 系の所属・系レベルの物理量を提供する。
 import type * as THREE from 'three/webgpu';
 import type { WebGPURenderer } from 'three/webgpu';
 import { type CelestialMotion, OrbitingMotion, PlanetMotion } from '../../physics/celestial-motion';
 import { isStar, type StarCelestialBody } from '../../physics/celestial-body-def';
 import { type EphemerisPoints, ephemerisPointOf } from '../../physics/ephemeris/point';
 import { EciTransform } from '../../physics/eci-transform';
-import { ReferenceFrames } from './reference-frames';
-import { addTimeCacheStats } from '../../physics/time-ring';
+import { ReferenceFrames } from '../../physics/reference-frames';
+import { addTimeCacheStats } from '../../math/time-ring';
 import type { KinematicState } from '../../physics/kinematic-state';
 import { norm, sub, v3, type Vec3 } from '../../math/vec3';
-import { CELESTIAL_SHELL_SCALE, createStars, type Stars } from '../../render/stars';
-import { CelestialGrid, type CelestialGridVisibility } from '../../render/celestial-grid';
+import { CELESTIAL_SHELL_SCALE, createStars, type Stars } from '../../render/celestial/starfield';
+import { CelestialGrid, type CelestialGridVisibility } from '../../render/celestial/celestial-grid';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { ScaleGridView } from './scale-grid-view';
 import { focusTargetId } from '../viewer/focus-target';
 import { CelestialIllumination, type IlluminationTargets } from '../../render/celestial/celestial-illumination';
 import { RingMaterials } from '../../render/celestial/ring';
-import type { CelestialEntity } from './celestial-entity/celestial-entity';
-import type { StellarLightSource } from '../../render/celestial/celestial-entity/celestial-view';
+import type { CelestialEntity } from './entity/celestial-entity';
+import type { StellarLightSource } from '../../render/celestial/entity/celestial-view';
 import { OrbitGuideModel } from './orbit-guide/orbit-guide-model';
 import { ZeroVelocityModel } from './orbit-guide/zero-velocity-model';
 import { OrbitGuideView, type VisibleGuideLine } from '../../render/celestial/orbit-guide/orbit-guide-view';
 import { ZeroVelocityView } from '../../render/celestial/orbit-guide/zero-velocity-view';
 import type { OrbitGuideSettings } from '../viewer/orbit-guide-settings';
 import type { TdbJulianDate } from '../../physics/time';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MapOverlayLabel } from '../../render/celestial/celestial-entity/celestial-view';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MapOverlayLabel } from '../../render/celestial/entity/celestial-view';
 import { MARKER_PRIORITY } from '../marker/marker-priority';
 import { pointPlacement } from '../marker/marker-placement';
 import { isOccluded } from '../../physics/occlusion';
@@ -34,10 +34,11 @@ import type { GraphicsSettingsData } from '../../render/graphics-settings';
 import type { RenderStyle } from '../../render/render-style';
 import type { PointFieldView } from '../../render/celestial/point-field-view';
 import type { GpuTimingSink } from '../../render/gpu-timings';
+import type { CloudPresentation } from '../../render/earth-weather/cloud/cloud-presentation';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialBodies } from './celestial-bodies';
 import type { FocusCameraSource } from '../viewer/focus-camera-selection';
-import type { CelestialClass } from './celestial-entity/celestial-entity-def';
+import type { CelestialClass } from './entity/celestial-class';
 import type { PerfCounts } from '../perf-counts';
 import type { ViewMode } from '../view/view-mode';
 import {
@@ -45,7 +46,7 @@ import {
   sameSystemIds, systemChainAt, systemMembersAt,
 } from './celestial-system-query';
 
-// 数値暦が収録している点を、結び先のノードへ配る。暦は id ごとに天体本体を収録している場合と
+// 数値暦が収録している点を、結び先のノードへ割り当てる（バインドする）。暦は id ごとに天体本体を収録している場合と
 // 惑星系の重心を収録している場合があり、宣言と食い違う点へ結ぶとその系がまるごと重心オフセット
 // ぶんずれる。
 function bindEphemerides(motions: readonly CelestialMotion[], points: EphemerisPoints): void {
@@ -114,7 +115,7 @@ export class CelestialSystem implements CelestialBodies {
     );
     this.eciTransform = new EciTransform(origin.motion);
     this.referenceFrames = new ReferenceFrames(this.celestialMotions, this.eciTransform);
-    // 天体1体ぶんの値は運動が答えるので、その供給源(ECI 変換器・暦)はここで1度だけ配る。
+    // 天体1体分の値は運動モデルが算出するため、その供給源(ECI 変換器・暦)はここで1度だけバインド（設定）する。
     for (const motion of this.celestialMotions) motion.bindEciTransform(this.eciTransform);
     if (ephemerisPoints !== null) bindEphemerides(this.celestialMotions, ephemerisPoints);
     this.entitiesById = new Map(entities.map((b) => [b.id, b]));
@@ -171,26 +172,26 @@ export class CelestialSystem implements CelestialBodies {
 
   // ---------------------------------------------------------------- 系の所属
 
-  // 天体の木を親子関係と重力の効き方から辿り、「何がどの系に属するか」「いまどの系にいるか」を
-  // 答える。
+  // 天体の木構造を親子関係と重力の影響度から辿り、「何がどの系に属するか」「現在どの系に位置するか」を
+  // 判定・提供する。
 
   // focusId と同じ親を持つ天体・その親・focusId 自身の id 集合。focusId 未指定なら空集合。
-  public sameSystemIds(focusId: string | undefined): ReadonlySet<string> {
-    return sameSystemIds(focusId ?? null, this.celestialMotions, this.entities);
+  public sameSystemIds(focusId: string | null): ReadonlySet<string> {
+    return sameSystemIds(focusId, this.celestialMotions, this.entities);
   }
 
   // position の主引力天体が、focus 天体と同じ惑星系に属するか。衛星をフォーカスした場合は親惑星を
   // 系の代表として扱う。天体以外(艦船・固定点など)へフォーカスしている場合は、どの天体系を表示
   // するかを恣意的に決めないため常に真。
-  public isPositionInFocusedSystem(focusId: string | undefined, position: Vec3, pivot: number): boolean {
-    return isPositionInFocusedSystem(focusId ?? null, position, pivot, this.celestialMotions, this.entities);
+  public isPositionInFocusedSystem(focusId: string | null, position: Vec3, pivot: number): boolean {
+    return isPositionInFocusedSystem(focusId, position, pivot, this.celestialMotions, this.entities);
   }
 
-  // 天体 id あるいはラグランジュ点 id の親。undefined は id が不正/古いこと、null は恒星など
-  // 親を持たない天体を表す。ラグランジュ点は id の親部分へ戻してから引く。
-  public bodyParentId(id: string): string | null | undefined {
+  // 天体 id あるいはラグランジュ点 id の親。null は id が不正/古いか、恒星など親を持たない
+  // 天体を表す。ラグランジュ点は id の親部分へ戻してから引く。
+  public bodyParentId(id: string): string | null {
     const parentId = bodyParentId(id, this.entities);
-    return this.has(id) || parentId !== null ? parentId : undefined;
+    return this.has(id) || parentId !== null ? parentId : null;
   }
 
   // focusId の親を辿って主星まで遡った id の列(focusId 自身を含む)。
@@ -251,7 +252,7 @@ export class CelestialSystem implements CelestialBodies {
     return star === null ? v3(1, 0, 0) : norm(sub(star.stateAt(t).r, r));
   }
 
-  // 天体と地表が答える、デバッグ表示用の狭い計測値をまとめる。
+  // 天体と地表から得られる、デバッグ表示用の計測値をまとめる。
   public perfCounts(): Pick<PerfCounts, 'surfaces'> & { timeCacheHits: number; timeCacheMisses: number } {
     let time = this.eciTransform.cacheStats;
     for (const motion of this.celestialMotions) time = addTimeCacheStats(time, motion.cacheStats);
@@ -305,7 +306,7 @@ export class CelestialSystem implements CelestialBodies {
     // 注視中の天体は、影の濃さをカメラ位置と並べて測る基準点になる。天体でない対象を
     // 注視しているフレームでは持たない。
     const focusId = focusTargetId(mapCamera.focus);
-    const focusPosition = focusId === undefined
+    const focusPosition = focusId === null
       ? null : this.findMotion(focusId)?.positionAt(displayTime) ?? null;
     this.illumination.sync(
       this.entities.map((body) => body.illuminationSource()),
@@ -354,9 +355,19 @@ export class CelestialSystem implements CelestialBodies {
     };
   }
 
-  // このフレームに積雲殻を描く天体の雲場を焼く。
-  public bakeClouds(renderer: WebGPURenderer, displayTime: number, gpu?: GpuTimingSink): void {
-    for (const body of this.entities) body.view.bakeClouds(renderer, displayTime, gpu);
+  // このフレームに積雲殻を描く天体の雲場を焼く。simSpeed は実時間 1 秒あたりに進む表示時刻 [s]。
+  public bakeClouds(renderer: WebGPURenderer, displayTime: number, simSpeed: number, gpu?: GpuTimingSink): void {
+    for (const body of this.entities) body.view.bakeClouds(renderer, displayTime, simSpeed, gpu);
+  }
+
+  // 雲を持つ天体の雲の統括の列。雲の精細さの段の事前コンパイルが列挙する。
+  public cloudPresentations(): CloudPresentation[] {
+    const presentations: CloudPresentation[] = [];
+    for (const body of this.entities) {
+      const presentation = body.view.cloudPresentation;
+      if (presentation !== null) presentations.push(presentation);
+    }
+    return presentations;
   }
 
   // 参照軌道線を出すかを表示ポリシーから決め、毎フレームの enabled 値として個体へ渡す。

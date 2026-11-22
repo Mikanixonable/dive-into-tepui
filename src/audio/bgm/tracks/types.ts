@@ -1,8 +1,8 @@
-// トラック宣言の型。1曲がどの Composer で鳴るか(kind)と、その Composer が食うパラメータ
+// トラック宣言の型。1曲がどの Composer で鳴るか(kind)と、その Composer が受け付けるパラメータ
 // (params)の形をここで定める。曲そのもののデータは tracks.ts、
 // 音符を実際の響きにする楽器の宣言は ../instruments/types.ts。
 // Composer を増やすときは、対応する区画へ params 型を書き、union へ1行加える。
-import { InstrumentDef } from '../instruments/types';
+import type { InstrumentDef } from '../instruments/types';
 
 // ============================================================================ 共通
 

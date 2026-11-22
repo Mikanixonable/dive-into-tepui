@@ -1,31 +1,37 @@
 // ゲーム画面の HUD のシェル。常設パネル群と描画先(root)を持ち、
 // 毎フレーム渡された値へ同期して、トースト・ヘルプを出す。
 import type { RenderStyle } from '../../render/render-style';
-import { buildHudDom } from './hud-root';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
+import { buildHudDom, toggleHudWideScreen } from './hud-dom';
 import type { HudLayers } from './hud-layers';
-import type { PanelCollapse } from './panel-shell';
+import type { PanelCollapse } from './panel-chrome';
 import type { ViewMode } from '../view/view-mode';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import { VesselPanel, type VesselPanelViewModel } from './panels/vessel-panel';
+import { ArmamentBand, type ArmamentBandViewModel } from './panels/armament-band';
 import { OrbitPanel, type OrbitPanelViewModel } from './orbit/orbit-panel';
 import { TargetPanel, type TargetPanelViewModel } from './panels/target-panel';
 import { EnemiesPanel, type EnemiesPanelViewModel } from './panels/enemies-panel';
-import {
-  BurnManagementPanel,
-  type BurnManagementPanelHandlers, type BurnManagementViewModel,
-} from './panels/burn-management-panel';
+import { BurnManagementPanel } from './panels/burn-management-panel';
+import type { PresentationBurnManagement } from '../presentation-ports';
 import { ShipConstructionPanel } from './panels/ship-construction-panel';
 import { TopBar, type TopBarViewModel } from './panels/top-bar';
 import { MapScaleBadge } from './panels/map-scale-badge';
 import { OrbitAnalysisWindow, type OrbitAnalysisSubject } from './orbit/orbit-analysis-window';
 import type { AnalysisChartSource } from './orbit/orbit-analysis-tab';
 import type { Vec3 } from '../../math/vec3';
-import type { OverlayLayers } from '../../hud/overlay-layer';
-import type { HudShell } from '../../hud/hud-shell';
-import type { OverlayManager } from '../../hud/overlay-manager';
+import type { OverlayLayers } from '../../hud-kit/overlay-layer';
+import type { HudShell } from '../../hud-kit/hud-shell';
+import type { OverlayManager } from '../../hud-kit/overlay-manager';
+import type { SettingValue } from '../../settings/setting-value';
+import type { MissionTimeFormat } from '../view/view-preferences';
 import type { HelpPanel } from './windows/help-panel';
-import type { Notifier } from '../../hud/notifier';
-import { ConstructionConfirmDialog } from './windows/construction-confirm-dialog';
+import type { HintKind, Notifier } from '../../hud-kit/notifier';
+import { ConfirmationOverlay } from '../../hud-kit/windows/confirmation-overlay';
+import { HudToast } from './hud-toast';
+import { AlarmBand } from './alarm-band';
+import type { ShipAlarms } from '../ship-alarms';
+import { hudAttention, hudWorkspace } from './hud-workspace';
 
 // 軌道分析ウィンドウを開く既定位置 [px]。
 const ANALYSIS_WINDOW_OPEN_X = 320;
@@ -35,11 +41,11 @@ const ANALYSIS_WINDOW_OPEN_Y = 100;
 export interface HudPanelViewModels {
   readonly topBar: TopBarViewModel;
   readonly vessel: VesselPanelViewModel | null;
+  readonly armament: ArmamentBandViewModel | null;
   readonly orbit: OrbitPanelViewModel | null;
   readonly target: TargetPanelViewModel | null;
   readonly enemies: EnemiesPanelViewModel | null;
-  readonly burnManagement: BurnManagementViewModel | null;
-  readonly burnHandlers: BurnManagementPanelHandlers;
+  readonly burnManagement: PresentationBurnManagement | null;
   // マップカメラの注視点の ECI 位置。
   readonly mapFocus: Vec3;
   readonly analysisSource: AnalysisChartSource;
@@ -52,50 +58,62 @@ export class Hud implements HudLayers, Notifier {
   public get overlayManager(): OverlayManager { return this.shell.overlayManager; }
   public readonly combatRoot: HTMLElement;
   public readonly mapRoot: HTMLElement;
+  // ⚙バッジ(ESC メニューの代替操作ボタン)が押されたときに呼ばれる受け口。配線側が
+  // 物理 Esc と同じ仮想キーの経路へつなぐ。
+  public onPauseBadge: (() => void) | null = null;
   private readonly helpPanel: HelpPanel;
   private readonly topBar: TopBar;
+  private readonly alarmBand: AlarmBand;
   public readonly viewBadgeRow: HTMLElement;
   private readonly mapScaleBadge: MapScaleBadge;
   private readonly vesselPanel: VesselPanel;
+  private readonly armamentBand: ArmamentBand;
   private readonly orbitPanel: OrbitPanel;
   private readonly targetPanel: TargetPanel;
   private readonly enemiesPanel: EnemiesPanel;
   private readonly burnManagementPanel: BurnManagementPanel;
   public readonly shipConstructionPanel: ShipConstructionPanel;
-  public readonly constructionConfirm: ConstructionConfirmDialog;
+  public readonly constructionConfirm: ConfirmationOverlay;
   private orbitAnalysisWindow: OrbitAnalysisWindow | null = null;
   // 直近に見た目を合わせたビュー。DOM を組み替える差分の鍵。
   private chromeView: ViewMode | null = null;
-  // 次の tick() で表示するトースト。
-  private pendingToast: { readonly html: string; readonly durationMs: number } | null = null;
-  // 表示中のトーストの期限 [ms, フレームの実時刻と同じ基準]。
-  private toastUntil: number | null = null;
+  // 建造は ViewMode と独立した一時 workspace。ユーザーのパネル折りたたみ設定は変更しない。
+  private constructionMode = false;
+  private readonly toastBox: HudToast;
 
   // 画面の器の上に、ゲームの HUD の DOM を組む。renderStyle は組み立て時の見せ方で、
   // panelCollapse は各パネルの折りたたみトグルの配線役。
   public constructor(
     private readonly shell: HudShell, public readonly panelCollapse: PanelCollapse, renderStyle: RenderStyle,
+    missionTimeFormat: SettingValue<MissionTimeFormat>,
+    onMissionTimeFormatChange: (format: MissionTimeFormat) => void,
   ) {
-    const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(shell, panelCollapse, renderStyle);
+    const { combatRoot, mapRoot, helpPanel, els } = buildHudDom(
+      shell, panelCollapse, renderStyle, () => this.onPauseBadge?.(),
+    );
     this.combatRoot = combatRoot.element;
     this.mapRoot = mapRoot.element;
     this.helpPanel = helpPanel;
 
     // 常設パネルを、data-id で引ける要素の一覧から組む。
-    this.topBar = new TopBar(els);
-    this.viewBadgeRow = els.get('gs-viewrow')!;
+    this.topBar = new TopBar(els, missionTimeFormat, onMissionTimeFormatChange);
+    this.alarmBand = new AlarmBand(els);
+    this.viewBadgeRow = els.get('gs-viewrow');
     this.mapScaleBadge = new MapScaleBadge(els);
     this.vesselPanel = new VesselPanel(els);
+    this.armamentBand = new ArmamentBand(this.combatRoot);
     this.orbitPanel = new OrbitPanel(els, () => this.openOrbitAnalysis());
     this.targetPanel = new TargetPanel(els);
     this.enemiesPanel = new EnemiesPanel(els);
     this.burnManagementPanel = new BurnManagementPanel(els);
     this.shipConstructionPanel = new ShipConstructionPanel(els);
-    this.constructionConfirm = new ConstructionConfirmDialog(this.layers.window, this.overlayManager);
+    this.constructionConfirm = new ConfirmationOverlay(this.overlayManager);
+    this.toastBox = new HudToast(this.root);
 
     // ランがまだ無い状態の見た目で組み上げる。
-    this.burnManagementPanel.sync(null, {});
+    this.burnManagementPanel.sync(null);
     this.applyView('combat');
+    this.applyHudProfile('combat', false);
   }
 
   // 軌道分析ウィンドウを開く。既に開いていれば、その1枚を最前面へ持ち上げる。
@@ -105,7 +123,7 @@ export class Hud implements HudLayers, Notifier {
       return;
     }
     const win = new OrbitAnalysisWindow(
-      this.layers.window, ANALYSIS_WINDOW_OPEN_X, ANALYSIS_WINDOW_OPEN_Y, this.overlayManager,
+      ANALYSIS_WINDOW_OPEN_X, ANALYSIS_WINDOW_OPEN_Y, this.overlayManager,
     );
     win.onClose = () => { this.orbitAnalysisWindow = null; };
     this.orbitAnalysisWindow = win;
@@ -117,45 +135,66 @@ export class Hud implements HudLayers, Notifier {
     this.root.classList.toggle('creative-mode', stageId === 'creative');
   }
 
-  // 建造モード中の HUD 表示ゲートを切り替える。
+  // 建造モード中の HUD 表示ゲートを切り替える。ViewMode や折りたたみ保存値は書き換えない。
   public setConstructionMode(active: boolean): void {
+    if (this.constructionMode === active) return;
+    this.constructionMode = active;
     this.root.classList.toggle('construction-mode', active);
+    document.body.classList.toggle('hud-construction-mode', active);
+    this.applyHudProfile(this.chromeView ?? 'combat', false);
   }
 
   // ランが畳まれたときに、ランの見た目とパネルが掴んでいるランの値・操作の口を落とす。
   public clearRunPanels(): void {
     this.root.classList.remove('creative-mode');
     this.root.classList.remove('construction-mode');
-    this.topBar.sync(null, 0);
+    document.body.classList.remove('hud-construction-mode');
+    this.constructionMode = false;
+    this.applyHudProfile(this.chromeView ?? 'combat', false);
+    // パネルが掴んでいるランの値と操作の口を、null の状態へ同期する。
+    this.topBar.sync(null, null, 0);
+    this.alarmBand.sync(null);
     this.vesselPanel.sync(null, 0);
+    this.armamentBand.sync(null);
     this.orbitPanel.sync(null, 0);
     this.targetPanel.sync(null, 0);
     this.enemiesPanel.sync(null, 0);
-    this.burnManagementPanel.sync(null, {});
+    this.burnManagementPanel.sync(null);
   }
 
-  // view で表に出ている常設パネルと、控えられたトーストを panels の値へ合わせる。
-  // camera はこのフレームの表示カメラで、縮尺表示が読む。nowMs はフレームの実時刻 [ms]。
+  // view で表に出ている常設パネルと、警報帯・控えられたトーストを同期する。
+  // camera はこのフレームの表示カメラで、縮尺表示が読む。alarms は鳴っている警報。
+  // nowMs はフレームの実時刻 [ms]。
   public syncPanels(
-    view: ViewMode, panels: HudPanelViewModels, camera: CameraFrame, nowMs: number,
+    view: ViewMode, panels: HudPanelViewModels, alarms: ShipAlarms, camera: CameraFrame, nowMs: number,
   ): void {
     const map = view === 'map';
     this.panelCollapse.sync(view);
     this.applyView(view);
+    this.applyHudProfile(view, panels.target !== null);
     // 両ビュー共通のパネル。
-    this.burnManagementPanel.sync(panels.burnManagement, panels.burnHandlers);
-    this.topBar.sync(panels.topBar, nowMs);
+    this.burnManagementPanel.sync(panels.burnManagement);
+    this.topBar.sync(panels.topBar, alarms, nowMs);
+    this.alarmBand.sync(alarms);
     this.orbitPanel.sync(panels.orbit, nowMs);
     // ビュー固有のパネル。
     if (map) {
       this.mapScaleBadge.sync(camera.scale, panels.mapFocus);
     } else {
       this.vesselPanel.sync(panels.vessel, nowMs);
+      this.armamentBand.sync(panels.armament);
       this.targetPanel.sync(panels.target, nowMs);
       this.enemiesPanel.sync(panels.enemies, nowMs);
     }
     this.orbitAnalysisWindow?.sync(panels.analysisSource, panels.analysisSubject, nowMs);
-    this.tick(nowMs);
+    this.toastBox.sync(nowMs);
+  }
+
+  // workspace は画面の大分類、attention は flight 内の一時的な強調状態。DOM再配置ではなく
+  // dataset と CSS で表現し、ターゲット取得時にもパネル位置を揺らさない。
+  private applyHudProfile(view: ViewMode, hasCombatTarget: boolean): void {
+    this.root.dataset['workspace'] = hudWorkspace(view, this.constructionMode);
+    this.root.dataset['attention'] = hudAttention(view, this.constructionMode, hasCombatTarget);
   }
 
   // 表に出す HUD ルートと、両ビューで1つを使い回すパネルの置き場を view へ揃える。
@@ -183,48 +222,27 @@ export class Hud implements HudLayers, Notifier {
     this.root.classList.toggle('map-ui-active', map);
   }
 
-  // 見せ方の切り替えが要求されたときに呼ばれる。
-  public onRenderStyleChange: ((style: RenderStyle) => void) | null = null;
-
-  // 見せ方を切り替える。HUD の DOM へ反映し、切り替え要求を外へ返す。
-  public setRenderStyle(style: RenderStyle): void {
+  // 設定の正本から通知された見せ方を HUD の DOM へ反映する。設定へは書き戻さない。
+  public syncRenderStyle(style: RenderStyle): void {
     this.root.dataset['renderStyle'] = style;
-    this.onRenderStyleChange?.(style);
   }
 
-  // 本文だけのトーストを durationMs 表示する。
-  public hint(text: string, durationMs = 1800): void {
-    this.requestToast(text, durationMs);
+  // 本文だけのトーストを durationMs 表示する。kind は通知の意味上の種別。
+  public hint(text: string, durationMs?: number, kind?: HintKind): void {
+    this.toastBox.hint(text, durationMs, kind);
   }
 
   // 見出しと本文を持つ HTML のトーストを durationMs 表示する。
-  public toast(html: string, durationMs = 8000): void {
-    this.requestToast(html, durationMs);
-  }
-
-  // 表示したい文言と表示時間を控える。同じフレームに複数控えられたら最後のものが表示される。
-  private requestToast(html: string, durationMs: number): void {
-    this.pendingToast = { html, durationMs };
+  public toast(html: string, durationMs?: number): void {
+    this.toastBox.toast(html, durationMs);
   }
 
   // router から HUD 固有の単発入力を受け取る。
   public handleCommand(commandId: string): void {
-    this.helpPanel.handleCommand(commandId);
-  }
-
-  // 控えられたトーストを表示し、nowMs が表示期限を過ぎたトーストをフェードアウトさせる。
-  private tick(nowMs: number): void {
-    const toast = document.getElementById('hud-toast');
-    if (!toast) return;
-    // 控えがあれば差し替えて期限を張り直し、無ければ期限切れのものを消す。
-    if (this.pendingToast) {
-      toast.innerHTML = this.pendingToast.html;
-      toast.style.opacity = '1';
-      this.toastUntil = nowMs + this.pendingToast.durationMs;
-      this.pendingToast = null;
-    } else if (this.toastUntil !== null && nowMs > this.toastUntil) {
-      toast.style.opacity = '0';
-      this.toastUntil = null;
+    if (commandId === K.wideScreenToggle.code) {
+      toggleHudWideScreen(this.root);
+      return;
     }
+    this.helpPanel.handleCommand(commandId);
   }
 }

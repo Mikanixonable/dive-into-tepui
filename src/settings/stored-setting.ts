@@ -1,5 +1,5 @@
 // ラン跨ぎで残るユーザー設定1つぶんの器と、その保存先。設定の現在値を持ち、書き換えを保存先へ
-// 流して購読者へ配る。
+// 流して購読者へ通知・配信する。
 
 import type { SettingValue } from './setting-value';
 
@@ -13,7 +13,7 @@ export interface SettingStorage {
 
 // ブラウザの localStorage を保存先にする。
 export const browserSettingStorage: SettingStorage = {
-  // localStorage が使えない環境(private browsing など)では、未保存として答える。
+  // localStorage が使えない環境(private browsing など)では、未保存として null を返す。
   read(key: string): string | null {
     if (typeof window === 'undefined') return null;
     try {
@@ -23,13 +23,13 @@ export const browserSettingStorage: SettingStorage = {
     }
   },
 
-  // localStorage が使えない環境では、保存を諦める。
+  // localStorage が使えない環境では、保存処理をスキップする。
   write(key: string, text: string): void {
     if (typeof window === 'undefined') return;
     try {
       window.localStorage.setItem(key, text);
     } catch {
-      // 保存できなくても、この実行の中では設定が生きている。
+      // 保存できなくても、実行中のメモリ上では設定が維持される。
     }
   },
 };
@@ -38,18 +38,18 @@ export const browserSettingStorage: SettingStorage = {
 export class MemorySettingStorage implements SettingStorage {
   private readonly entries = new Map<string, string>();
 
-  // 仕込まれていない鍵は未保存として答える。
+  // 保存されていないキーは未保存（null）として返す。
   public read(key: string): string | null {
     return this.entries.get(key) ?? null;
   }
 
-  // この実行のあいだだけ覚える。
+  // インメモリのマップへ保持する。
   public write(key: string, text: string): void {
     this.entries.set(key, text);
   }
 }
 
-// 設定1つ。現在値を正本として持ち、書き換えを保存と購読者へ配る。
+// 設定1つ。現在値を正本として保持し、変更内容を保存先と購読者へ配信する。
 export class StoredSetting<T> implements SettingValue<T> {
   private value: T;
   private readonly listeners = new Set<(value: T) => void>();

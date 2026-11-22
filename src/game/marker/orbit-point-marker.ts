@@ -2,24 +2,23 @@
 // 生成元が解いた位置と通過時刻を place 系メソッドで受け取り、マップのマーカーと右クリック
 // メニューとして公開する。呼称・字形・示す値は具象が与える。
 import { MARKER_VISIBILITY, type MapVisibility } from '../map/visibility-policy';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
-import { orbitPointLabel, type TimeLabelSetting } from '../hud/orbit/calendar-ticks';
-import { fmtTime } from '../../hud/utils';
+import { MenuCommon, type MenuAction } from '../menu-actions';
+import { orbitPointLabel, type TimeLabelSetting } from '../calendar-ticks';
+import { fmtTime } from '../../hud-kit/format';
 import type { Vec3 } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ProjectFn } from '../../math/projection';
 import { isOccluded } from '../../physics/occlusion';
 import { pointPlacement } from './marker-placement';
 import type { ControlSelection } from '../control-selection';
-import type { ObjectAuthoring } from '../pickable/inspected-object';
-import type { PlanEditor } from '../plan/plan-editor';
+import type { PresentationPlanEditor, PresentationStageAuthoring } from '../presentation-ports';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { MenuItem } from '../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MenuItem } from '../../hud-kit/windows/context-menu';
+import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 
 export abstract class OrbitPointMarker implements ObjectPickable {
   public readonly orbitState = null;
@@ -91,7 +90,9 @@ export abstract class OrbitPointMarker implements ObjectPickable {
     const base = {
       id: this.id, cls: this.markerClass, sym: this.glyph, priority: this.markerPriority,
     };
+    // 位置が未確定の点は画面上の候補へ含めない。
     if (this.pos === null) return { ...base, x: 0, y: 0, front: false };
+    // 遮蔽された点は投影座標を伏せて返す。
     if (occludeByBodies && isOccluded(cameraPos, this.pos, occluders, occludersPivot)) {
       return { ...base, x: 0, y: 0, front: false, occluded: true };
     }
@@ -115,8 +116,8 @@ export abstract class OrbitPointMarker implements ObjectPickable {
 
   // 加速とノード追加は、通過時刻が求まっていて、計画を編集できるビューにいるフレームで効く。
   public runMenu(
-    act: MenuAction, _controlSelection: ControlSelection, _authoring: ObjectAuthoring | null,
-    planEditor: PlanEditor | null,
+    act: MenuAction, _controlSelection: ControlSelection, _authoring: PresentationStageAuthoring | null,
+    planEditor: PresentationPlanEditor | null,
   ): void {
     const t = this.time;
     if (t === null || planEditor === null) return;
@@ -138,11 +139,13 @@ export abstract class OrbitPointMarker implements ObjectPickable {
   protected passTimeRows(simTime: number): PropertyRow[] {
     return this.time === null
       ? []
-      : [{ key: 'time', label: '通過まで', value: `T+${fmtTime(this.time - simTime)}` }];
+      : [{
+        key: 'time', label: '通過まで', value: `T+${fmtTime(this.time - simTime)}`,
+        presentation: 'hero',
+      }];
   }
 
   public listDetail(): string { return ''; }
   public listSearchText(): string { return ''; }
   public listCounted(): boolean { return false; }
-  public listPriority(): number { return 0; }
 }

@@ -90,7 +90,7 @@ export function randVec(amp: number, rand: () => number = Math.random): Vec3 {
 
 // fwd に直交するランダム単位ベクトル。rand は [0, 1) を返す生成器(既定 Math.random)。
 // 【前提条件】fwd は単位ベクトルであること。射影 r - fwd(r·fwd) は |fwd| = 1 を前提にしており、
-// 長いベクトル(位置ベクトル等)を渡すと第2項が第1項を飲み込んで、直交どころか ±fwd 方向が
+// 大きなノルムのベクトル(位置ベクトル等)を渡すと第2項が支配的となって第1項が桁落ちし、直交どころか ±fwd 方向が
 // 返る。
 export function randPerp(fwd: Vec3, rand: () => number = Math.random): Vec3 {
   for (;;) {
@@ -100,7 +100,7 @@ export function randPerp(fwd: Vec3, rand: () => number = Math.random): Vec3 {
   }
 }
 
-// v から法線方向の成分を抜き、法線に垂直な平面へ落とす。planeNormal は単位ベクトルであること。
+// v から法線方向の成分を抜き、法線に垂直な平面へ射影する。planeNormal は単位ベクトルであること。
 export function projectOntoPlane(v: Vec3, planeNormal: Vec3): Vec3 {
   return sub(v, scale(planeNormal, dot(v, planeNormal)));
 }

@@ -1,8 +1,8 @@
 import modernPackUrl from '../../assets/ephemeris/modern-2026-10y.epk';
 import farFuturePackUrl from '../../assets/ephemeris/far-future-20115-10y.epk';
-import { EphemerisPoints } from './point';
-import { EphemerisProfileId, profileAt } from './profile';
-import { j2000EphemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, TdbJulianDate } from '../time';
+import type { EphemerisPoints } from './point';
+import { type EphemerisProfileId, profileAt } from './profile';
+import { j2000EphemerisSeconds, J2000_JULIAN_DATE, SECONDS_PER_DAY, type TdbJulianDate } from '../time';
 import { PackEphemeris } from './pack';
 
 const PACK_URLS: Readonly<Record<EphemerisProfileId, string>> = {
@@ -41,7 +41,7 @@ async function readWithProgress(response: Response, onProgress?: (ratio: number)
 // onProgress は fetch の受信バイト量から算出した 0..1 の比率を渡す。Content-Length が
 // 得られない応答では呼ばない(偽の途中経過を出さないため)。
 // epoch はこのランの元期(simTime=0)。プロファイルの選択と要求期間の検査は絶対時刻
-// (JD_TDB)で行い、読み込んだ pack は元期起点の simTime で答えるようになる。
+// (JD_TDB)で行い、読み込んだ pack は元期起点の simTime で位置・速度を評価する。
 export async function loadEphemerisPoints(
   profileId: EphemerisProfileId,
   epoch: TdbJulianDate,

@@ -1,7 +1,7 @@
 // 船艇・基地・敵機等の未指定時デフォルト命名ジェネレータ。
 // ポリネシア語（航海・星・自然）、広東語（星海・勇猛・天空）、フランス語（天体・要塞・航海）の
 // 単語群からランダムに選定し、ランダムな識別番号(10〜99)を付与する。
-import type { DynamicEntityKind } from './dynamic/dynamic-entity/entity-kind';
+import type { DynamicEntityKind } from './dynamic/entity/entity-kind';
 
 const POLYNESIAN_SHIPS = [
   'Moana', 'Matariki', 'Matangi', 'Kapehu', 'Hoku', 'Mahina', 'Tawhiri', 'Nalu', 'Waka', 'Moerani', 'Aotearoa',

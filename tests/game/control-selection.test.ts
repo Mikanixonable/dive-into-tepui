@@ -1,7 +1,7 @@
 // 操作対象の復元が、不在・撃破済みの id を安全に生存中の対象へ畳むことを検査する。
 import * as assert from 'node:assert/strict';
 import { ControlSelection } from '../../src/game/control-selection';
-import type { Controllable } from '../../src/game/dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../../src/game/dynamic/entity/controllable';
 import type { DynamicSystem } from '../../src/game/dynamic/dynamic-system';
 import { test } from '../harness';
 

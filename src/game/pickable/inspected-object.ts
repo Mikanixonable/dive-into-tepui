@@ -1,22 +1,15 @@
-// 右クリックメニューとプロパティウィンドウへ中身を差し出す物体。出す操作項目とプロパティ行、
-// 固有の操作の実行、改名の受け口を答える。
+// 右クリックメニューとプロパティウィンドウへ情報を提示するオブジェクト。表示する操作項目・プロパティ行、
+// 固有操作の実行処理、および名称変更のインターフェースを提供する。
 import type { CelestialBodies } from '../celestial/celestial-bodies';
 import type { ControlSelection } from '../control-selection';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
-import type { MenuItem } from '../hud/windows/context-menu';
-import type { MenuAction } from '../hud/windows/menu-actions';
-import type { PlanEditor } from '../plan/plan-editor';
-import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { KinematicState } from '../../physics/kinematic-state';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
+import type { MenuItem } from '../../hud-kit/windows/context-menu';
+import type { MenuAction } from '../menu-actions';
+import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
 import type { PickCandidate } from './pick-candidate';
-
-// 軌道上へオブジェクトを配置・複製する編集機能。これを持つステージだけがマップの
-// 「配置」「複製」項目を出す。focusId はマップの現在フォーカスで、基準天体の初期選択に使う。
-export interface ObjectAuthoring {
-  openObjectPlacer(focusId?: string): void;
-  openObjectPlacerForDuplicate(entityKind: DynamicEntityKind, state: KinematicState): void;
-}
+import type {
+  PresentationPlanEditor, PresentationStageAuthoring,
+} from '../presentation-ports';
 
 export interface InspectedObject extends PickCandidate {
   // 右クリックメニュー・プロパティウィンドウに出す操作項目。先頭の header 項目は
@@ -31,8 +24,8 @@ export interface InspectedObject extends PickCandidate {
   // ウィンドウ側で処理するため、ここには渡されない。固有操作を持たない対象は null。
   // authoring と planEditor はマップ画面でのみ提供されるため、戦闘ビューでは null。
   readonly runMenu: ((
-    act: MenuAction, controlSelection: ControlSelection, authoring: ObjectAuthoring | null,
-    planEditor: PlanEditor | null,
+    act: MenuAction, controlSelection: ControlSelection, authoring: PresentationStageAuthoring | null,
+    planEditor: PresentationPlanEditor | null,
   ) => void) | null;
 
   // プロパティウィンドウに出す行。simTime は天体位置を厳密に引く時刻、displayTime は

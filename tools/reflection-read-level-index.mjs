@@ -307,14 +307,14 @@ function drawLegacy(){
     'noise-fine':'8×8 ブロックの平均を引いた残りの雑音。8 px より細かい尺度。',
     'noise-coarse':'8×8 ブロックの平均の雑音。N8 の出どころ。',
     'noise-leak':'同じ seed の raw の雑音に対する回帰の傾き（8×8 ごと）。1 に近いほど raw がそのまま漏れている。'};
-  document.getElementById('caption').textContent=(descriptions[kind]??'')+'　passes '+(settings.passes??'?')
+  document.getElementById('caption').textContent=(descriptions[kind]??'')+'\u3000passes '+(settings.passes??'?')
     +' / graphics '+JSON.stringify(settings.graphics??{})+' / radius '+(settings.radius??'?')
     +' / gain '+JSON.stringify(report.display??{});
   const chosen=pointRows().find(item=>selected===item.series.key+'/'+item.point.key);
   if(chosen){
     const metric=chosen.point.metrics[group];
     document.getElementById('caption').textContent=chosen.series.label+' / '+chosen.point.label
-      +(metric?'　S '+metric.S.toExponential(3)+'　N8 '+metric.N8.toExponential(3):'');
+      +(metric?'\u3000S '+metric.S.toExponential(3)+'\u3000N8 '+metric.N8.toExponential(3):'');
   }
   drawImage();
   drawNoiseTable(noise, target);

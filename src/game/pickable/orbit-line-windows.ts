@@ -1,23 +1,25 @@
 // 軌道線(公転軌道・船の軌道・軌道ガイド)のプロパティウィンドウ。1本につき高々1枚を保ち、
 // 「所属」欄からその軌道の持ち主のウィンドウを開けるようにする。被選択物のウィンドウと共存する。
-import { PropertyWindow } from '../../hud/windows/property-window';
+import { PropertyWindow } from '../../hud-kit/windows/property-window';
+import { WindowLedger } from '../../hud-kit/windows/window-ledger';
 import type { InspectedObject } from './inspected-object';
-import type { PropertyWindowContent, PropertyWindowRelatedItem } from '../../hud/windows/property-window-content';
-import type { MenuAction } from '../hud/windows/menu-actions';
+import type { PropertyWindowContent, PropertyWindowRelatedItem } from '../../hud-kit/windows/property-window-content';
+import type { MenuAction } from '../menu-actions';
 import type { HudLayers } from '../hud/hud-layers';
 import type { LinePickable } from './line-pickable';
-import type { LinePickables } from './line-pickables';
-import type { ObjectPickables } from './object-pickables';
+import type { LinePickables } from './line-pickable-set';
+import type { ObjectPickables } from './object-pickable-set';
 
 const KIND_LABEL: Record<LinePickable['kind'], string> = {
   'orbit-body': '公転軌道', 'orbit-ship': '船の軌道', 'orbit-guide': '軌道ガイド',
+  'orbit-slot': '軌道標識',
 };
 const CALC_METHOD_LABEL: Record<LinePickable['method'], string> = {
   analytic: '解析軌道', numeric: '予測軌道', guide: '軌道ガイド',
 };
 
 export class OrbitLineWindows {
-  private readonly windows = new Map<string, PropertyWindow<MenuAction>>();
+  private readonly windows = new WindowLedger<MenuAction, { readonly win: PropertyWindow<MenuAction> }>();
 
   // focusOwner / openOwnerWindow は「所属」欄から持ち主へ注視を移す・そのプロパティ
   // ウィンドウを開く手続き。
@@ -31,39 +33,37 @@ export class OrbitLineWindows {
 
   // 軌道線のウィンドウを開く。既に開いていれば、それをクリック位置へ動かして最前面に出す。
   public open(clientX: number, clientY: number, orbit: LinePickable): void {
-    const existing = this.windows.get(orbit.key);
-    if (existing) {
-      existing.moveTo(clientX, clientY);
-      existing.bringToFront();
-      return;
-    }
-    // 新しく開き、閉じたら表から外す。
-    const win = new PropertyWindow<MenuAction>(
-      this.hud.layers.window, clientX, clientY, this.content(orbit), this.hud.overlayManager,
-    );
-    this.windows.set(orbit.key, win);
-    win.onClose = () => { this.windows.delete(orbit.key); };
+    this.windows.open(orbit.key, clientX, clientY, () => ({
+      win: new PropertyWindow<MenuAction>(
+        clientX, clientY, this.content(orbit), this.hud.overlayManager,
+      ),
+    }));
   }
 
   // 開いている各ウィンドウの所属欄を最新化する。線そのものが消えていれば閉じる。
   public sync(): void {
-    for (const [key, win] of [...this.windows]) {
+    for (const [key, entry] of [...this.windows.entryList()]) {
       const orbit = this.linePickables.pickables.find((candidate) => candidate.key === key);
-      if (orbit === undefined) { win.close(); continue; }
-      win.syncRelatedItems(this.relatedItems(orbit), '所属');
+      if (orbit === undefined) { entry.win.close(); continue; }
+      entry.win.syncRelatedItems(this.relatedItems(orbit), '所属');
     }
   }
 
   // 開いているウィンドウをすべて畳む。
   public close(): void {
-    for (const win of [...this.windows.values()]) win.close();
+    this.windows.closeAll();
   }
 
   // ウィンドウ1枚ぶんの見出し・行・所属欄。
   private content(orbit: LinePickable): PropertyWindowContent<MenuAction> {
     return {
       title: KIND_LABEL[orbit.kind],
-      rows: [{ key: 'method', label: '計算方法', value: CALC_METHOD_LABEL[orbit.method] }],
+      kindCode: 'ORB',
+      kindLabel: 'TRAJECTORY',
+      monitorWhenClipped: true,
+      rows: [{
+        key: 'method', label: '計算方法', value: CALC_METHOD_LABEL[orbit.method], presentation: 'hero',
+      }],
       items: [],
       relatedItems: this.relatedItems(orbit),
       relatedTitle: '所属',

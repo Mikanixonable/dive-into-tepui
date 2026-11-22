@@ -1,15 +1,15 @@
 // 軌道分析パネルのタブが実装する共通形と、タブが組み立てる部品(スケール入力欄・リセット行)。
-import { Button, ValueInput } from '../../../hud/widgets';
-import { injectOnce } from '../../../hud/inject-style';
-import type { CelestialSystem } from '../../celestial/celestial-system';
+import { Button, ValueInput } from '../../../hud-kit/widgets';
+import { injectOnce } from '../../../hud-kit/inject-style';
+import type { PresentationCelestialSystem } from '../../presentation-ports';
 import type { ThemePalette } from '../../../theme';
-import type { DynamicEntity } from '../../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../../dynamic/entity/dynamic-entity';
 import type { OrbitReference } from '../../orbit-reference';
 import type { ApproachTargetSource } from './orbit-analysis-data';
 
-// 軌道分析のタブが読む盤面 —— 天体がいつどこにあるかと、未来をどこまで描くか、どの色で描くか。
+// 軌道分析のタブが描く状態 —— 天体がいつどこにあるかと、未来をどこまで描くか、どの色で描くか。
 export interface AnalysisChartSource {
-  readonly celestialSystem: CelestialSystem;
+  readonly celestialSystem: PresentationCelestialSystem;
   // 未来を描く期間 [s]。マップの未来表示が指す期間と揃える。
   readonly windowDurationSec: number;
   // canvas へ直に描く色の出どころ。

@@ -1,7 +1,27 @@
 // 船体構成から役割・操作可否・装備能力・資源量を導出する。
+import type { Quat } from '../../math/quat';
+import type { Vec3 } from '../../math/vec3';
+import { applyTransformToPoint } from './ship-assembly-transform';
 import type { ShipAssembly, ShipAssemblyTotals, ShipRole } from './ship-assembly';
 import type { FuelKind, ShipModuleKind } from './ship-module-definition';
 import type { CockpitInstance, ShipModuleInstance } from './ship-module-instance';
+
+// 健全な武装モジュール1基ぶんの機能点(いずれも assembly 座標 [m])と姿勢。
+export interface WeaponPorts {
+  readonly moduleId: string;
+  readonly muzzles: readonly Vec3[];
+  readonly ejectionPort: Vec3;
+  readonly linkExitPort: Vec3;
+  // assembly 内でのモジュール姿勢。排莢・リンク排出の向きを機体座標へ写すのに使う。
+  readonly rotation: Quat;
+}
+
+// 1つの砲口と、それを持つモジュールの排出点一式。
+export interface WeaponMuzzle {
+  readonly position: Vec3;
+  readonly muzzleIndex: number;
+  readonly weapon: WeaponPorts;
+}
 
 // 操作・HUD・AI に、現在の module state から導出した能力面を提供する。
 export class ShipCapabilities {
@@ -55,6 +75,33 @@ export class ShipCapabilities {
     );
   }
 
+  // 健全な武装モジュールの機能点を、assembly 座標 [m] でモジュールの並び順に返す。
+  // 排出物は撃ったモジュール自身の口から出るので、砲口と排出点は同じ WeaponPorts から取る。
+  public weaponPorts(): readonly WeaponPorts[] {
+    const result: WeaponPorts[] = [];
+    for (const weapon of this.modules('weapon', true)) {
+      const definition = this.assembly.definition(weapon.id);
+      const transform = this.assembly.worldTransformOf(weapon.id);
+      if (definition === null || transform === null) continue;
+      // 砲口と排出口は assembly 座標へ移し、排出方向に使う姿勢も同じ単位で残す。
+      result.push({
+        moduleId: weapon.id,
+        muzzles: definition.muzzles.map(point => applyTransformToPoint(transform, point)),
+        ejectionPort: applyTransformToPoint(transform, definition.ejectionPort),
+        linkExitPort: applyTransformToPoint(transform, definition.linkExitPort),
+        rotation: transform.rotation,
+      });
+    }
+    return result;
+  }
+
+  // 全武装モジュールの砲口を、排出元のモジュール情報つきで列挙する。
+  public weaponMuzzles(): readonly WeaponMuzzle[] {
+    return this.weaponPorts().flatMap(
+      weapon => weapon.muzzles.map((position, muzzleIndex) => ({ position, muzzleIndex, weapon })),
+    );
+  }
+
   public has(kind: ShipModuleKind, healthyOnly = true): boolean {
     return this.assembly.modules.some(module => module.kind === kind && (!healthyOnly || module.hp > 0));
   }
@@ -80,14 +127,34 @@ export class ShipCapabilities {
     return this.assembly.consumeFuel(kind, amount);
   }
 
-  public refuel(kind: FuelKind, amount: number): number {
-    return this.assembly.refuel(kind, amount);
+  // kind の燃料タンクに残っている推進剤の質量 [kg]。表示単位を各タンクの fuelMassPerUnit で換算する。
+  public propellantKg(kind: FuelKind): number {
+    let kg = 0;
+    for (const module of this.modules('tank', true)) {
+      if (module.fuelKind !== kind) continue;
+      kg += module.fuel * (this.assembly.definition(module.id)?.abilities.fuelMassPerUnit ?? 1);
+    }
+    return kg;
   }
 
-  public toggleDeployable(kind: 'radiator' | 'solar_panel', index: number): boolean {
-    const module = this.modules(kind, true)[index];
-    if (module === undefined) return false;
-    this.assembly.setDeployment(module.id, module.deployed >= 0.5 ? 0 : 1);
-    return true;
+  // kind の燃料 1 unit あたりの質量 [kg/unit]。残量に応じた加重平均で、空なら容量に応じた加重平均、
+  // タンクがなければ 1。
+  public fuelMassPerUnit(kind: FuelKind): number {
+    let units = 0, kg = 0, capacity = 0, capacityKg = 0;
+    for (const module of this.modules('tank', true)) {
+      if (module.fuelKind !== kind) continue;
+      const perUnit = this.assembly.definition(module.id)?.abilities.fuelMassPerUnit ?? 1;
+      units += module.fuel;
+      kg += module.fuel * perUnit;
+      const max = this.assembly.definition(module.id)?.abilities.fuelCapacity ?? 0;
+      capacity += max;
+      capacityKg += max * perUnit;
+    }
+    if (units > 0) return kg / units;
+    return capacity > 0 ? capacityKg / capacity : 1;
+  }
+
+  public refuel(kind: FuelKind, amount: number): number {
+    return this.assembly.refuel(kind, amount);
   }
 }

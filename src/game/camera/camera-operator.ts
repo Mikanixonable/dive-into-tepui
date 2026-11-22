@@ -1,6 +1,6 @@
 // 生のキー・ポインタ入力を、1フレーム分のカメラ操作量へ解釈する。
-import type { Input, MouseDelta } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import type { Input, MouseDelta } from '../../input-devices/input';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import type { Viewport } from '../../render/viewport';
 import type { CameraInput } from '../viewer/focus-camera-selection';
 
@@ -11,7 +11,7 @@ const CAM_KEY_PAN_RATE = 600; // キーによるパン [px/s]
 const DRAG_RAD_PER_PX = 0.005; // ドラッグ1pxあたりの回転量 [rad]
 const WHEEL_ZOOM_RATE = 0.0015; // ホイール量を指数ズーム率へ換算する係数
 
-export interface CameraOperatorResult {
+interface CameraOperatorResult {
   readonly input: CameraInput;
   readonly rollReset: boolean;
 }

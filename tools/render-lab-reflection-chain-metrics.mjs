@@ -6,7 +6,7 @@ import path from 'node:path';
 import { withLab, writeFloats } from './screen-space-lab.mjs';
 import {
   BASE_GRAPHICS, GRID, PIXELS, SCENES, argumentOf, centeredPng, colorPng, difference, graphicsOf, logStep,
-  meanImage, powerOfTwoAtMost, qImage, readImage, receiveFloats, seedsOf, takeReflectionSums,
+  meanImage, powerOfTwoAtMost, qImage, readImage, seedsOf, takeReflectionSums,
 } from './reflection-chain-common.mjs';
 
 const OUTPUT = path.join(path.resolve(import.meta.dirname, '..'), '.render-lab-shots', 'ssr-chain-metrics');

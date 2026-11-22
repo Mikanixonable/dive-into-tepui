@@ -1,28 +1,32 @@
 // ゲーム画面の入力ポートの表: どの単発キーをどの持ち主へ渡すかと、その有効条件。表の並びが
 // 優先順位になる。
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import { simSpeedCommands } from '../dynamic/sim-speed-commands';
 import { viewCommands } from '../viewer/view-commands';
-import { gameCommand } from './game-commands';
+import { gameCommand } from './game-input-types';
 import type { GameInputPort } from './game-input-router';
 import type { PilotInput } from './pilot-input';
 import type { Hud } from '../hud/hud';
-import type { PauseMenu } from '../../hud/windows/pause-menu';
+import type { PauseMenu } from '../../hud-kit/windows/pause-menu';
 import type { CameraSystem } from '../camera/camera-system';
 import type { ViewManager } from '../view/view-manager';
 import type { Targeter } from '../targeter';
 import type { CommandQueue } from '../command-queue';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { ViewSelection } from '../viewer/view-selection';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 
-// ゲーム全体ではなく、単発キーの解釈に必要な進行の読み取り口だけを渡す。
+// ゲーム全体ではなく、単発キーの解釈に必要な進行の読み取り口と、キーで起きる操作の受け口を渡す。
 export interface GameInputSource {
   readonly commands: CommandQueue;
   readonly simSpeedManager: SimSpeedManager;
   readonly view: ViewSelection;
   readonly activeControllable: Controllable | null;
   readonly stageIsPlaying: boolean;
+  // 建造開始キーの受け口。「使用可能なドックのうち最寄りのものから始める」は呼び出し側が組む。
+  readonly startConstruction: () => void;
+  // 警報の確認キーの受け口。鳴っている警告をすべて確認済みにする。
+  readonly acknowledgeAlarms: () => void;
 }
 
 // 画面・カメラ・ターゲット・時間加速・ビューの単発キーを受ける口。
@@ -49,9 +53,18 @@ export function gameInputPorts(
     },
     {
       feature: 'hud',
-      isEnabled: () => !constructionActive(),
-      commands: [gameCommand(K.help.code, K.help)],
-      handleCommand: command => hud.handleCommand(command.id),
+      commands: [gameCommand(K.help.code, K.help), gameCommand(K.wideScreenToggle.code, K.wideScreenToggle)],
+      handleCommand: command => {
+        // いずれかの UI 層(窓・ポップアップ・モーダル)が開いている間は切替を止める。
+        // モード登録(建造モード等)は UI 層ではないので数えない。
+        if (command.id === K.wideScreenToggle.code && overlays.hasOpenSurface()) return;
+        hud.handleCommand(command.id);
+      },
+    },
+    {
+      feature: 'alarm',
+      commands: [gameCommand(K.alarmAcknowledge.code, K.alarmAcknowledge)],
+      handleCommand: () => source.acknowledgeAlarms(),
     },
     {
       feature: 'camera-command',
@@ -68,6 +81,16 @@ export function gameInputPorts(
         && source.activeControllable !== null,
       commands: [gameCommand(K.targetSelect.code, K.targetSelect)],
       handleCommand: () => targeter.requestTargetSelect(),
+    },
+    {
+      feature: 'construction-start',
+      isEnabled: () => !overlays.isGamePaused()
+        && !overlays.isInputGated()
+        && !constructionActive()
+        && viewManager.current === 'combat'
+        && source.activeControllable !== null,
+      commands: [gameCommand(K.constructionStart.code, K.constructionStart)],
+      handleCommand: () => source.startConstruction(),
     },
     {
       feature: 'game-speed',

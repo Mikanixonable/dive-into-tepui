@@ -1,4 +1,4 @@
-// 軌道計画へ外から出せる命令の口と、それを列へ積む実装(R3)。
+// 軌道計画へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { Plan } from './plan';
@@ -15,14 +15,17 @@ export interface PlanCommands {
   removeNode(plan: Plan, idx: number): void;
   // plan のノードを全部削除する。
   clear(plan: Plan): void;
+  // plan を起点 anchor とノード列 nodes へ丸ごと差し替える。
+  replaceAll(plan: Plan, anchor: KinematicState, nodes: readonly KinematicState[]): void;
 }
 
-// 計画への命令を queue へ積むだけの口を組む。
+// 計画へのコマンドを queue へエンキューする実装を構築する。
 export function planCommands(queue: CommandQueue): PlanCommands {
   return {
     addNode: (plan, postState, from) => queue.submit(() => { plan.addNode(postState, from); }),
     replaceNode: (plan, idx, postState) => queue.submit(() => plan.replaceNode(idx, postState)),
     removeNode: (plan, idx) => queue.submit(() => plan.removeNode(idx)),
     clear: (plan) => queue.submit(() => plan.clear()),
+    replaceAll: (plan, anchor, nodes) => queue.submit(() => plan.replaceAll(anchor, nodes)),
   };
 }

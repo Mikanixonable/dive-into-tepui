@@ -2,25 +2,34 @@
 // カードを組む。操作はコールバックで呼び出し側へ返す。
 import { MANUAL_SAVE_LIMIT } from '../save/save-slots';
 import type { SaveSlotMeta, SnapshotMeta } from '../save/slot-data';
-import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud/utils';
-import { Button, Meter, TabBar } from '../../hud/widgets';
-import { injectOnce } from '../../hud/inject-style';
-import { smallBtn, stageLabel } from './shared';
+import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud-kit/format';
+import { Button, Meter, TabBar } from '../../hud-kit/widgets';
+import { bindKeyboardActivation } from '../../hud-kit/widgets/widget-base';
+import { injectOnce } from '../../hud-kit/inject-style';
+import { smallBtn, stageLabel } from './save-browser-ui';
 
 const STYLE = `
 #save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
-#save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: var(--space-2); }
+#save-browser .sb-snapshot-list { display: flex; flex-direction: column; gap: 1px; counter-reset: archive-snapshot; }
 #save-browser .sb-snap-card {
-  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4);
-  border: 0; border-radius: var(--radius-m);
+  counter-increment: archive-snapshot;
+  position: relative; display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-3) calc(var(--space-4) + 2.8em);
+  border: 0; border-radius: 0;
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--text-dim) 10%, transparent);
 }
+#save-browser .sb-snap-card::before {
+  content: counter(archive-snapshot, decimal-leading-zero);
+  position: absolute; left: var(--space-3); top: var(--space-3);
+  color: var(--text-dim); font-size: var(--font-xxs); letter-spacing: .08em;
+}
+#save-browser .sb-snap-card:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #save-browser .sb-snap-loadable { cursor: pointer; }
 #save-browser .sb-snap-loadable:hover { background: var(--fill-1); }
 #save-browser .sb-snap-name { font-size: var(--font-s); }
 #save-browser .sb-snap-row { font-size: var(--font-xs); color: var(--text-dim); }
 /* HP バーは細いモノトーン — このパネルの主役はセーブ操作なので、HP 表示を他の注目要素と競合させない。 */
 #save-browser .sb-snap-hp-meter .w-meter-track { height: 3px; border-radius: var(--radius-s); }
-#save-browser .sb-snap-hp-meter .w-meter-fill { background: var(--text-dim); }
 #save-browser .sb-snap-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 `;
 
@@ -43,7 +52,6 @@ interface SnapshotPaneCallbacks {
   readonly onDeleteSnapshot: (snapshotId: string) => void;
   readonly onBranch: (slotId: string, snapshotId: string) => void;
   // 天体 id → 表示名。
-  readonly nameOf: (id: string) => string;
   // 手動セーブの本体が、いまの形式の版で読めるか。
   readonly isReadable: (snapshotId: string) => boolean;
 }
@@ -70,10 +78,10 @@ export function buildSnapshotPane(
 
   const title = document.createElement('div');
   title.className = 'sb-pane-title';
-  title.textContent = `手動セーブ (${manualSaves.length}/${MANUAL_SAVE_LIMIT})`;
+  title.textContent = `SNAPSHOTS / ${manualSaves.length} OF ${MANUAL_SAVE_LIMIT}`;
   wrap.appendChild(title);
 
-  const saveBtn = new Button('今の状態をセーブする', callbacks.onSaveNow, undefined, 'primary');
+  const saveBtn = new Button('CREATE SNAPSHOT', callbacks.onSaveNow, undefined, 'primary');
   saveBtn.element.id = 'sb-save-now';
   saveBtn.element.classList.add('sb-btn');
   saveBtn.setEnabled(canSaveNow);
@@ -134,11 +142,18 @@ function buildSnapshotCard(
   card.classList.toggle('ui-selectable', refusal === null);
   card.classList.toggle('sb-snap-loadable', refusal === null);
   card.title = refusal ?? 'ダブルクリックでロード';
-  // ボタンの click は自身で止まるが dblclick は素通りするので、カード自身の判定で弾く。
+  // ボタンの click は自身で止まるが dblclick は通過するため、カード自身の判定で除外する。
   card.addEventListener('dblclick', (e) => {
     if ((e.target as HTMLElement).closest('.w-btn')) return;
     callbacks.onLoadSnapshot(s.id, refusal);
   });
+  // キーボードからも復元できるよう、ロード可能なカードはボタンとして活性化する
+  // (カード内にボタンを持つため div+role=button に留める)。
+  if (refusal === null) {
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
+    bindKeyboardActivation(card, () => callbacks.onLoadSnapshot(s.id, null));
+  }
 
   const name = document.createElement('div');
   name.className = 'sb-snap-name';
@@ -152,7 +167,7 @@ function buildSnapshotCard(
 
   const row2 = document.createElement('div');
   row2.className = 'sb-snap-row';
-  row2.textContent = `${callbacks.nameOf(s.centerBodyId)} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
+  row2.textContent = `${s.centerBodyName ?? s.centerBodyId} 高度 ${fmtDist(num(s.altitude))} / 速度 ${fmtSpeed(num(s.speed))}`;
   card.appendChild(row2);
 
   // HP の残りを細いメーターで示す。

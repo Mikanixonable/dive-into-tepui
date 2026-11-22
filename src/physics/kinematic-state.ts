@@ -1,22 +1,22 @@
 // 状態ベクトル(KinematicState)そのものの定義と、それだけで完結する幾何演算(軌道基底・
 // エルミート補間)。THREE/DOM 非依存の純粋関数群。
-import { Vec3, add, cross, norm, sub, v3, type SerializedVec3 } from '../math/vec3';
+import { type Vec3, add, cross, norm, sub, v3, type SerializedVec3 } from '../math/vec3';
 
 // 位置・速度を**どの供給源から、どの原点で**測っているか。軸はどれもゲーム ECI 軸
 // (icrf だけ ICRF 軸)。**供給源の違いも原点の違いも値からは見分けられない**ので、型で
 // 持たせて取り違えを型検査に拾わせる。
 //
 // 守っている不変条件は「**絶対 − 絶対は供給源を揃える**」— 数値暦と解析暦は同じ天体に
-// 別の位置を答えるので、片方だけを差し替えると差がそのまま相対位置の誤りになる。
+// 異なる位置を算出するため、片方だけを差し替えると差がそのまま相対位置の誤りになる。
 // 一方「**絶対 + 相対は混ぜてよい**」ので、`primaryRel` は供給源を持たない
 // (解析の相対軌道を数値暦の惑星本体へ足す合成が、そのために要る)。
 //
 // - `eci` — ECI 原点天体(ステージが選ぶ中心天体)中心。無標の既定。
-// - `analytic` — 解析暦が答える位置。原点は太陽系重心で、恒星もその重心のまわりを動く。
-// - `starRel` — 解析暦が答える位置を主星中心で測ったもの。供給源は解析に固定される。
+// - `analytic` — 解析暦が算出する位置。原点は太陽系重心で、恒星もその重心のまわりを動く。
+// - `starRel` — 解析暦が算出する位置を主星中心で測ったもの。供給源は解析に固定される。
 //   **解析経路の ECI 化はこちらどうしの差で組む** — 恒星の重心相対位置は差で厳密に相殺するので、
-//   ECI の答えに効かないまま全惑星系のケプラー解を要求する。
-// - `numeric` — 数値暦が答える位置。原点は太陽系重心。
+//   ECI の値に影響しないまま全惑星系のケプラー解を要求する。
+// - `numeric` — 数値暦が算出する位置。原点は太陽系重心。
 // - `primaryRel` — 何かを中心に測った相対量。**中心が誰かは型に現れない**ので、
 //   足し先を取り違えても型検査は通る。組む側が中心を知っている必要がある。
 // - `icrf` — 太陽系重心中心・ICRF 軸。暦パックの生の座標。
@@ -71,7 +71,7 @@ export function toPrimaryRelative<F extends FrameTag>(
 }
 
 // ECI 原点天体を原点に置き直した状態。**両者は同じ原点で、かつ同じ供給源から引かれて
-// いなければならない** — 数値暦と解析暦は同じ天体に別の位置を答えるので、片方だけを
+// いなければならない** — 数値暦と解析暦は同じ天体に異なる位置を算出するため、片方だけを
 // 差し替えると差がそのまま相対位置の誤りになる。
 export function toEci<F extends FrameTag>(
   t: number, body: KinematicState<F>, origin: KinematicState<F>,
@@ -98,11 +98,11 @@ export function addPrimaryRelative<F extends FrameTag>(
 // 軌道基底: 進行方向・軌道面法線・面内で進行方向に直交する向きからなる正規直交系。
 // radOut が動径外向き r̂ と一致するのは r⊥v のとき(円軌道)だけで、離心軌道では
 // 動径から傾く — マーカーの RADIAL OUT/IN や Δv の OUT/IN はこの軸を指す。
-type OrbitAxes = {
+interface OrbitAxes {
   readonly pro: Vec3; // 進行方向
   readonly nrm: Vec3; // 軌道面法線
   readonly radOut: Vec3; // 面内・進行方向に直交(外向き)
-};
+}
 
 // 状態ベクトルから軌道基底を組む。速度または角運動量が縮退していると各軸は NaN になる。
 export function orbitAxes<F extends FrameTag>(s: KinematicState<F>): OrbitAxes {

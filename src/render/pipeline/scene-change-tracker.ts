@@ -6,7 +6,7 @@ import type { Quat } from '../../math/quat';
 import type { Vec3 } from '../../math/vec3';
 import { lenSq, norm, v3 } from '../../math/vec3';
 import { sphereSunlitFactor } from '../../physics/shadow';
-import { rec709Luminance } from '../celestial-albedo';
+import { rec709Luminance } from '../celestial/celestial-albedo';
 import { frameStepOf } from './screen-space/temporal-accumulation';
 import {
   SCENE_CHANGE_WEIGHTS, sceneChangeOf, sceneChangeTermsOf, type SampleLight, type SampleProjection,

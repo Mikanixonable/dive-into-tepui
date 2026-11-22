@@ -37,7 +37,7 @@ export class MotionVectorCheck {
         (count, value, index) => count + (value === repeatedMotion.rgba[index] ? 0 : 1), 0,
       );
     }
-    // 参照を求める 1 フレーム。タンパク質のケースは実体を渡さず、深度の参照にする。
+    // 参照を求める 1 フレーム。
     const currentCase = this.view.currentCase;
     const depth = await this.view.readFloat('depth');
     const current: MotionReferenceFrame = {
@@ -45,8 +45,8 @@ export class MotionVectorCheck {
       motion,
       camera: this.view.camera.clone(),
       origin: currentCase?.renderOrigin?.() ?? new THREE.Vector3(),
-      entities: currentCase?.proteinMotion === undefined ? entitiesAt(currentCase, frame) : [],
-      rejectedObjects: currentCase?.proteinMotion === undefined ? rejectedObjectsAt(currentCase) : [],
+      entities: entitiesAt(currentCase, frame),
+      rejectedObjects: rejectedObjectsAt(currentCase),
     };
     // 前のフレームが無いはずなら、面のある全画素が履歴なしの印(成分の絶対値 1000 以上)を持つかを数える。
     const expectNoHistory = this.previous === null || forceNoHistory;
@@ -73,14 +73,10 @@ export class MotionVectorCheck {
       : reprojectedPixels(
         current.depth, currentCamera, this.previous.depth, previousCamera!,
       );
-    // タンパク質のケースは全画素を標本にし、全画素が履歴なしになるはずとして照合する。
-    const proteinRejection = currentCase?.proteinMotion !== undefined;
-    const result = await (proteinRejection
-      ? motionReferenceOf(current, null, null, null, 1)
-      : motionReferenceOf(
-        current, forceNoHistory ? null : this.previous, forceNoHistory ? null : toPrevious,
-        forceNoHistory ? null : gpuReprojected,
-      ));
+    const result = await motionReferenceOf(
+      current, forceNoHistory ? null : this.previous, forceNoHistory ? null : toPrevious,
+      forceNoHistory ? null : gpuReprojected,
+    );
     this.previous = current;
     return {
       ...result,

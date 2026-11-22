@@ -4,7 +4,7 @@ import { EllipseLine } from '../lines/ellipse-line';
 import type * as THREE from 'three/webgpu';
 import type { OrbitalElements } from '../../physics/elements';
 import type { CameraFrame } from '../camera/camera-frame';
-import type { LineStyle } from '../line-style';
+import type { LineStyle } from '../lines/line-style';
 
 export class ObjectPlacementPreviewView {
   private readonly ellipseLine: EllipseLine;

@@ -1,11 +1,29 @@
 import * as THREE from 'three/webgpu';
 import { LOCAL_RIGHT, Q_IDENTITY, qFromAxisAngle, qFromUnitVectors, qMul, qRotate, type Quat } from '../../../math/quat';
 import { len, scale, sub, type Vec3 } from '../../../math/vec3';
-import { memoParseIndependent } from '../baked-model';
-import magazineData from '../../../assets/models/magazine.json';
+import { markSharedResources } from '../model-template';
+import { getMagazineTemplate } from '../ammo-models';
+import { prepareStaticModel } from '../../static-model';
+import { BeltHardwareView, linkCable } from './belt-hardware-view';
 
-// マガジンリンク1個分のモデル。
-const parseMagazine = memoParseIndependent<THREE.Group>(magazineData);
+// 下ごしらえを済ませた、マガジンと背面ケーブルからなるリンク 1 個のテンプレート。
+let linkTemplate: THREE.Group | null = null;
+
+// マガジンリンク 1 個分のモデルを、全リンクで共有する資源の複製として作る。
+function beltLink(): THREE.Group {
+  if (linkTemplate === null) {
+    // マガジンの姿勢はリンクが持つので、模型の根の位置と向きは原点へ戻す。
+    const magazine = getMagazineTemplate().clone(true);
+    magazine.position.set(0, 0, 0);
+    magazine.quaternion.identity();
+    linkTemplate = new THREE.Group();
+    linkTemplate.add(magazine, linkCable());
+    prepareStaticModel(linkTemplate);
+  }
+  const link = linkTemplate.clone(true);
+  markSharedResources(link);
+  return link;
+}
 
 // 給弾ベルトの節点配置(いずれも機体座標系)。
 export interface BeltNodes {
@@ -17,15 +35,17 @@ export interface BeltNodes {
 // 給弾ベルトのリンク列を組み、供給された各節の位置とねじれへ同期する。
 export class BeltView {
   private readonly links: THREE.Group[] = [];
+  private readonly hardware: BeltHardwareView;
 
   // root は自機の表示ツリーの根。linkCount ぶんのリンクを給弾口から並べて作る。
   public constructor(root: THREE.Object3D, linkCount: number) {
     const group = new THREE.Group();
     for (let i = 0; i < linkCount; i++) {
-      const link = parseMagazine();
+      const link = beltLink();
       group.add(link);
       this.links.push(link);
     }
+    this.hardware = new BeltHardwareView(group, linkCount);
     root.add(group);
   }
 
@@ -50,5 +70,6 @@ export class BeltView {
       prevQ = bendQ;
       prevPoint = pos;
     }
+    this.hardware.sync(magsLeft, nodes, this.links);
   }
 }

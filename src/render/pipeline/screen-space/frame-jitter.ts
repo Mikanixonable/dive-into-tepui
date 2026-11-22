@@ -6,7 +6,7 @@ export type JitterSource = 'seed' | 'scanRepresentative';
 const PRODUCTION_JITTER_SOURCES: readonly JitterSource[] = ['seed', 'scanRepresentative'];
 
 // 走査の代表の選び方。全ての走査の画素の代表を、受け持つブロックの中の同じ位置 fraction(割合。0 以上 1 未満)に置く。
-export type ScanJitter = { readonly kind: 'grid'; readonly fraction: readonly [number, number] };
+export interface ScanJitter { readonly kind: 'grid'; readonly fraction: readonly [number, number] }
 
 // 1 フレームの走査の入力。seed はブルーノイズのずれ [タイルの幅]、scanRotation は走査の全体の回転 [スライスの間隔]
 // (0 以上 1 未満)、scanJitter は走査の代表の選び方(null はブロックの中心)。

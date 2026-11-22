@@ -1,12 +1,13 @@
 // 恒星の直射光の寄与。光源モデルの設定で「点光源 + GGX」と「一様球の閉じた解 + LTC」を
-// 選ぶ。どちらも影パスの透過率を掛けて出す。
-import * as THREE from 'three/webgpu';
+// 選ぶ。どちらも影パスの透過率と、大気を抜けてくる経路の波長別の消衰を掛けて出す。
+import type * as THREE from 'three/webgpu';
 import { PI, clamp, dot, float, length, max, normalize, saturate, texture } from 'three/tsl';
 import { ggxSpecularFactor } from './ggx';
 import { contributionMaterial, type LightContribution, type LightSource, type SpecularReach } from './light-source';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { FloatNode, Vec3Node } from '../../tsl-types';
 import type { ShadowPass } from '../shadow/shadow-pass';
+import type { SunExtinction } from '../sun-extinction';
 import type { SunLight } from '../sun-light';
 import type { ShadingSample } from './shading-sample';
 
@@ -23,6 +24,7 @@ export class SunSource implements LightSource {
     private readonly sunLight: SunLight,
     private readonly shadow: ShadowPass,
     private readonly sphereSpecular: SphereSpecular,
+    private readonly sunExtinction: SunExtinction,
     private model: number,
   ) {}
 
@@ -42,12 +44,13 @@ export class SunSource implements LightSource {
     return material;
   }
 
-  // 恒星を点として扱った放射照度(影込み)。拡散・鏡面の両方がこれへ BRDF を掛ける。
+  // 恒星を点として扱った放射照度(影と大気の消衰込み)。拡散・鏡面の両方がこれへ BRDF を掛ける。
   public pointIrradiance(sample: ShadingSample): Vec3Node {
     const toSun = this.toSunOf(sample);
     const dotNL: FloatNode = saturate(dot(sample.normal, normalize(toSun)));
     return this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
+      .mul(this.sunExtinction.transmittance(sample.worldPosition))
       .mul(dotNL).mul(this.transmittanceAt(sample));
   }
 
@@ -81,17 +84,19 @@ export class SunSource implements LightSource {
     // 半径 0(主星の無いレジストリの置き光源)でも放射輝度が定義されるよう 1 m を床にする。
     const radius = max(this.sunLight.radius, 1);
     const transmittance = this.transmittanceAt(sample);
+    // 大気を抜けてくる経路の消衰。影の透過率はスカラー、大気のものは RGB — 両方掛ける。
+    const extinction = this.sunExtinction.transmittance(sample.worldPosition);
 
     const cosBeta = dot(sample.normal, toSun.div(dist));
     const sinSigmaSqr = clamp(radius.mul(radius).div(distSqr), 0, 1);
     const diffuse: Vec3Node = this.sunLight.color.mul(this.sunLight.intensity).div(distSqr)
-      .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr)).mul(transmittance);
+      .mul(sphereIrradianceFactor(cosBeta, sinSigmaSqr)).mul(transmittance).mul(extinction);
 
     // 鏡面は一様球の放射輝度 L = 放射強度 / (π R²) に、球光源の鏡面の係数を掛ける。
     const radiance: Vec3Node = this.sunLight.color
       .mul(this.sunLight.intensity).div(radius.mul(radius).mul(PI));
     const specular: Vec3Node = radiance
-      .mul(this.sphereSpecular.factor(sample, center, radius)).mul(transmittance);
+      .mul(this.sphereSpecular.factor(sample, center, radius)).mul(transmittance).mul(extinction);
     return { diffuse, specular };
   }
 

@@ -1,4 +1,5 @@
-import * as THREE from 'three/webgpu';
+// 動的物体1体の表示ツリーの基底と、種別を越えて共有する表示入力・表示同期の材料。
+import type * as THREE from 'three/webgpu';
 import type { FrameAnchorSource, ReferenceFrame } from '../../physics/frame';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -8,8 +9,8 @@ import type { Vec3 } from '../../math/vec3';
 import { strongestAttractor } from '../../physics/attractor';
 import { orbitalElementsOf } from '../../physics/elements';
 import { disposeOwnedRenderResources } from '../dispose-owned-render-resources';
-import type { EntityVisualSettings } from '../entity-visual-settings';
-import type { LineStyle } from '../line-style';
+import type { ThrustPlumeMode } from './player/thrust-effects';
+import type { LineStyle } from '../lines/line-style';
 import type { RenderStyle } from '../render-style';
 import type { CameraFrame } from '../camera/camera-frame';
 import { EllipseLine } from '../lines/ellipse-line';
@@ -17,11 +18,13 @@ import { TargetRelativeLine } from '../lines/target-relative-line';
 import { TrajectoryLine } from '../lines/trajectory-line';
 import type { CelestialFrameSource } from '../lines/celestial-frame-source';
 import type { InstancedPools } from './instanced-pools';
-import type { ProteinDisplaySettings } from '../protein/protein-display';
+import type { ShipModuleEmphasisMap } from './ship/ship-render-contract';
+import type { SunLight } from '../pipeline/sun-light';
+import type { BodyShadow } from '../pipeline/shadow/body-shadow';
 import { syncThermalState } from '../thermal-emissive';
 
 // 熱による発光の表示入力。温度と過熱の振幅は [K]。
-export interface DynamicThermalSource {
+interface DynamicThermalSource {
   readonly temperature: number;
   readonly deviation: number;
   readonly emissivity: number;
@@ -46,8 +49,11 @@ export interface DynamicViewFrame {
   readonly camera: CameraFrame;
   readonly style: RenderStyle;
   readonly visual: EntityVisualSettings;
-  // 全個体に共通のタンパク質の表示形態と着色。
-  readonly proteinDisplay: ProteinDisplaySettings;
+  // モジュール船のモジュールごとの表示上の強調と位置のずらし。宣言の無い個体は通常どおり描く。
+  readonly shipModuleEmphasis: ShipModuleEmphasisMap | null;
+  // このフレームにシーンを照らす恒星の光と、天体が落とす影。
+  readonly sunLight: SunLight;
+  readonly bodyShadow: BodyShadow;
   readonly pools: InstancedPools;
 }
 
@@ -72,7 +78,7 @@ export interface DynamicLineDisplay {
   readonly actual: LineStyle | null;
 }
 
-export interface DynamicLineSamples {
+interface DynamicLineSamples {
   readonly method: 'analytic' | 'numeric';
   readonly points: readonly Vec3[];
 }
@@ -82,7 +88,7 @@ type OrbitLineResource =
   | { readonly kind: 'relative'; readonly line: TargetRelativeLine };
 
 // 種別ごとの View の基底。1体ぶんの表示ツリー、オーバーレイ資源、再構築回避用キャッシュを所有する。
-// S は種別ごとの表示入力で、既定は全個体に共通する面。
+// S は種別ごとの表示入力で、既定は全個体に共通するインターフェース。
 export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderSource> {
   private orbitLineValue: OrbitLineResource | null = null;
   private predictedLineValue: TrajectoryLine | null = null;
@@ -208,7 +214,7 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
   public syncLines(
     display: DynamicLineDisplay,
     motion: DynamicLineSource, frame: ReferenceFrame, simTime: number, displayTime: number,
-    pastDuration: number, predictedTo: number | null, celestialBodies: CelestialFrameSource,
+    historyDuration: number, predictedTo: number | null, celestialBodies: CelestialFrameSource,
     camera: CameraFrame, anchors: FrameAnchorSource,
   ): void {
     // 過去線は表示窓の過去側、予測線は現在から予測終端までを同じ参照系で同期する。
@@ -217,7 +223,7 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
       frame, displayTime, celestialBodies, camera, anchors,
     );
     this.actualLineValue = this.syncTrajectoryLine(
-      this.actualLineValue, display.actual, motion.actual, simTime - pastDuration, simTime,
+      this.actualLineValue, display.actual, motion.actual, simTime - historyDuration, simTime,
       frame, displayTime, celestialBodies, camera, anchors,
     );
     this.syncOrbitLine(
@@ -251,4 +257,12 @@ export abstract class DynamicView<S extends DynamicRenderSource = DynamicRenderS
     this.scene?.remove(this.object);
     disposeOwnedRenderResources(this.object);
   }
+}
+
+// 個体ごとの毎フレーム同期処理が参照する描画設定インターフェース。品質設定のうち、メッシュと付随表示を
+// displayTime の状態へ合わせるときに効く項目だけを持つ。
+
+export interface EntityVisualSettings {
+  // 主推進プルームの描き方。
+  readonly thrustPlume: ThrustPlumeMode;
 }

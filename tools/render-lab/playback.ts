@@ -1,5 +1,5 @@
 // 描画テスト環境の再生。論理フレームに応じて動きを決めて描き、操作・動きの設定・状態表示を組む。
-import { Button, SegmentedControl } from '../../src/hud/widgets';
+import { Button, SegmentedControl } from '../../src/hud-kit/widgets';
 import { lengthCapOf } from '../../src/render/pipeline/screen-space/temporal-accumulation';
 import { SCENE_CHANGE_WEIGHTS, type SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import { buildSlider } from '../lab-controls';

@@ -99,7 +99,7 @@ function lutTexture(): THREE.DataTexture {
     for (let c = 0; c < 3; c++) texels[i * 4 + c] = THREE.DataUtils.toHalfFloat(table[i * 3 + c]!);
     texels[i * 4 + 3] = THREE.DataUtils.toHalfFloat(1);
   }
-  // 段の間は補間で埋め、表の外は両端の段が伸びる。
+  // サンプル間は線形補間で埋め、範囲外は両端の値でクランプされる。
   lut = new THREE.DataTexture(texels, STEPS, 1, THREE.RGBAFormat, THREE.HalfFloatType);
   lut.magFilter = THREE.LinearFilter;
   lut.minFilter = THREE.LinearFilter;
@@ -110,7 +110,7 @@ function lutTexture(): THREE.DataTexture {
   return lut;
 }
 
-// 温度 [K] を表の段の中心を突く横位置(0..1)へ写す。表の外は両端へ張り付く。
+// 温度 [K] をテクスチャサンプルの中心に対応するテクスチャU座標(0..1)へマッピングする。範囲外は両端にクランプされる。
 function lutCoord(temperature: FloatNode): FloatNode {
   const t = THREE.TSL.clamp(
     temperature.sub(MIN_TEMPERATURE).div(MAX_TEMPERATURE - MIN_TEMPERATURE),

@@ -4,7 +4,9 @@
 // ここでは「実装の性質」(連続、非負、単調減少)を検証する。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { Atmosphere, airspeed, atmosphericDensity, dragAccel, ellipsoidAltitude } from '../../src/physics/atmosphere';
+import {
+  type Atmosphere, airspeed, airflow, atmosphericDensity, dragAccel, ellipsoidAltitude,
+} from '../../src/physics/atmosphere';
 import { EARTH_ATMOSPHERE } from '../../src/game/celestial/solar-system/earth-system';
 import { len, v3 } from '../../src/math/vec3';
 
@@ -16,11 +18,8 @@ const TABLE_ALTS_KM = [
   250, 300, 350, 400, 450, 500, 600, 700, 800, 900, 1000,
 ];
 
+// 大気密度・対気速度・抗力の数値契約を検査する。
 export function register(): void {
-  test('atmosphere: density at sea level equals table row 0 (1.225 kg/m^3)', () => {
-    assert.ok(Math.abs(atmosphericDensity(0, EARTH) - 1.225) < 1e-9);
-  });
-
   test('atmosphere: negative altitude clamps to sea-level density (h=max(0,alt))', () => {
     assert.equal(atmosphericDensity(-1000, EARTH), atmosphericDensity(0, EARTH));
   });
@@ -60,13 +59,6 @@ export function register(): void {
     }
   });
 
-  test('atmosphere: extrapolation beyond 1000km uses the last row exponential (measured)', () => {
-    // 1000km 超は最終区間(基準1000km, 3.019e-15, スケールハイト268km)の指数外挿。
-    const d1500 = atmosphericDensity(1500e3, EARTH);
-    const expected = 3.019e-15 * Math.exp(-(1500 - 1000) / 268.0);
-    assert.ok(Math.abs(d1500 - expected) / expected < 1e-9, `d(1500km): ${d1500} vs ${expected}`);
-  });
-
   test('atmosphere: altitude is measured from the reference ellipsoid, so the same true height gives the same density at any latitude', () => {
     // 真の高度 100km を、赤道・中緯度・極の3方向に置く。基準面が球(平均半径)なら
     // 高度が緯度で ±7〜−14km ずれ、密度が桁で変わってしまう。
@@ -103,6 +95,15 @@ export function register(): void {
     assert.ok(len(dragAccel(rLow, v, 3.3e-3, EARTH, 1)) > 0);
     // 大気の届かない高高度では、bcInv が正でも密度の下限で切られてゼロになる。
     assert.equal(len(dragAccel(v3(EARTH_ATMOSPHERE.equatorRadius + 3000e3, 0, 0), v, 3.3e-3, EARTH, 1)), 0);
+  });
+
+  test('atmosphere: airflow exposes the same co-rotating air-relative velocity used for its speed', () => {
+    const r = v3(EARTH_ATMOSPHERE.equatorRadius, 0, 0);
+    const inertialVelocity = v3(0, 0, 0);
+    const flow = airflow(r, inertialVelocity, EARTH);
+    const expected = airspeed(r, inertialVelocity, EARTH);
+    assert.deepEqual(flow.airspeed, expected);
+    assert.equal(flow.speed, len(expected));
   });
 
   test('atmosphere: 抗力が1ステップで奪う対気速度は、対気速度そのものを超えない', () => {

@@ -1,10 +1,10 @@
 // フレーム最後のパス: 合成パスと 3D UI パスが描き終えた表示用の画像の、物体の縁と線の
 // ギザギザを均して画面へ出す。均し方は描画品質設定が選ぶ。
 //
-// 受け取る画像は表示用の階調を持つこと。縁を拾う閾値はその目盛りで定義されていて、
+// 受け取る画像は表示用の階調を持つこと。エッジ検出の閾値はそのスケールで定義されていて、
 // 線形の明るさで渡すと暗い面の境目がすべて閾値の下に沈む。
 import * as THREE from 'three/webgpu';
-import { MeshBasicNodeMaterial, QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { MeshBasicNodeMaterial, QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { colorSpaceToWorking, texture } from 'three/tsl';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
@@ -30,16 +30,14 @@ export class AntialiasPass {
   // 方式ごとに1枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの再コンパイルが
   // フレームを止める。
   private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
-  private method: number;
 
   // source は 3D UI パスまでを描き終えた表示用の画像。
   public constructor(
     private readonly renderer: WebGPURenderer,
     private readonly source: THREE.Texture,
     private readonly gpu: GpuTimings,
-    method: number,
+    private method: number,
   ) {
-    this.method = method;
     this.quad = new QuadMesh(this.material());
   }
 

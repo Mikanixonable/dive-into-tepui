@@ -3,7 +3,7 @@
 import { lenSq, sub } from '../../math/vec3';
 import type { Ray } from '../../math/ray';
 import type { Projected, ProjectFn } from '../../math/projection';
-import type { DynamicEntity } from '../dynamic/dynamic-entity/dynamic-entity';
+import type { DynamicEntity } from '../dynamic/entity/dynamic-entity';
 import type { InspectedObject } from './inspected-object';
 import type { ListedObject } from './listed-object';
 import type { MapPickable } from './map-pickable';
@@ -11,11 +11,11 @@ import type { PickCandidate } from './pick-candidate';
 
 export interface ObjectPickable extends ListedObject, InspectedObject, MapPickable {}
 
-export interface ObjectPickableProvider {
+interface ObjectPickableProvider {
   readonly objectPickable: ObjectPickable;
 }
 
-// この個体が被選択物として公開されるか。顔ぶれから被選択物だけを絞るときに使う。
+// この個体が被選択物として公開されるか。エンティティ一覧から被選択物のみを抽出する際に使用する。
 function isObjectPickable(entity: DynamicEntity): entity is DynamicEntity & ObjectPickable {
   return entity.pickable;
 }

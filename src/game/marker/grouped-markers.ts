@@ -5,18 +5,18 @@ import type { Projected } from '../../math/projection';
 import type { ActiveCelestialLabel } from './celestial-markers';
 import { MARKER_PRIORITY } from './marker-priority';
 import { bearingPlacement, headingRotationDeg } from './marker-placement';
-import type { DynamicEntityKind } from '../dynamic/dynamic-entity/entity-kind';
-import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from '../../marker/crowding';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MarkerSink } from '../../marker/marker-sink';
-import type { MarkerDevice } from '../../marker/marker-device';
+import type { DynamicEntityKind } from '../dynamic/entity/entity-kind';
+import { resolveCrowdingWinner, DEPTH_GUARD_RATIO, DEPTH_GUARD_EXIT_RATIO } from '../../marker-kit/crowding';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MarkerSink } from '../../marker-kit/marker-sink';
+import type { MarkerDevice } from '../../marker-kit/marker-device';
 import type { ThemePalette } from '../../theme';
 import type { CameraFrame } from '../../render/camera/camera-frame';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { ViewMode } from '../view/view-mode';
 
 // 画面外へ出た対象を画面端の円周上で指す方位マーカーの見た目。
-export interface BearingMarker {
+interface BearingMarker {
   readonly cls: string;
   readonly sym: string; // 上向きの記号
   readonly color: string;
@@ -42,6 +42,11 @@ export interface GroupedMarkerItem {
   symMarkup?: boolean; // sym をマークアップ(SVG など)として扱うか
   opacity?: number; // 画面内マーカーの不透明度。0 以下なら非表示
   occluded?: boolean; // 惑星遮蔽中は表示位置を維持したままフェードアウトする
+}
+
+// 命中した直後の敵マーカーへ、閃きの見え方を被せる。見え方は CSS の mk-hit が決める。
+export function withHitFlash(item: GroupedMarkerItem): GroupedMarkerItem {
+  return { ...item, cls: `${item.cls} mk-hit` };
 }
 
 // ターゲットに指定された対象のマーカーへ、代表選出の優先度と palette の強調色を被せる。
@@ -118,7 +123,7 @@ export class GroupedMarkers {
     for (const m of placed) {
       const rotationDeg = mapView
         ? headingRotationDeg(m.item.pos, m.item.vel, project, camera.scale, celestialBodies)
-        : undefined;
+        : null;
       declarations.push(this.itemDeclaration(m, rotationDeg));
       declarations.push(this.bearingDeclaration(m, mapView, camera));
     }
@@ -148,7 +153,7 @@ export class GroupedMarkers {
   }
 
   // 画面内マーカー1件の宣言。遮蔽中は畳み、不透明度が尽きた対象は伏せる。
-  private itemDeclaration(m: PlacedItem, rotationDeg: number | undefined): MarkerDeclaration {
+  private itemDeclaration(m: PlacedItem, rotationDeg: number | null): MarkerDeclaration {
     const opacity = m.item.opacity ?? 1;
     const visible = m.item.occluded !== true && opacity > 0 && m.p.front;
     // 近接まとめはここで済んでいるので、装置へはまとめ済み(clustered)として渡す。
@@ -192,7 +197,7 @@ export class GroupedMarkers {
   }
 
   // 画面手前にあるものだけをクラスタ化し、優先度が最大のものを代表に据える。
-  // 天体ラベルと近接している船マーカーは天体優先(天体 > 船)でラベルを落とす。
+  // 天体ラベルと近接している船マーカーは天体優先(天体 > 船)でラベルを非表示にする。
   private groupNearby(placed: readonly PlacedItem[], celestialLabels: readonly ActiveCelestialLabel[]): void {
     // 画面座標が近いものを同じグループへまとめる
     const groups: PlacedItem[][] = [];
@@ -202,7 +207,7 @@ export class GroupedMarkers {
       if (near) near.push(m);
       else groups.push([m]);
     }
-    // グループ内は優先度最大を代表にし、残りはラベルを落とす
+    // グループ内は優先度最大を代表にし、残りはラベルを非表示にする
     for (const g of groups) {
       if (g.length <= 1) continue;
       g.sort((a, b) => b.item.priority - a.item.priority);

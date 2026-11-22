@@ -4,18 +4,18 @@
 // 導ける不変量と決定論性で、色・不透明度・描画順といった調整値は固定しない。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { solarSystemParts } from '../physics/test-helpers';
+import { occludersOf, solarSystemParts } from '../physics/test-helpers';
 import { CameraView } from '../../src/render/camera/camera-view';
 import { EllipseLine } from '../../src/render/lines/ellipse-line';
 import { TargetRelativeLine } from '../../src/render/lines/target-relative-line';
 import { TrajectoryLine } from '../../src/render/lines/trajectory-line';
-import { LINE_RENDER_ORDER } from '../../src/render/line-style';
+import { LINE_RENDER_ORDER } from '../../src/render/lines/line-style';
 import { orbitalElementsFromClassical } from '../../src/physics/elements';
 import { DynamicTrajectory } from '../../src/physics/dynamic-trajectory';
 import { bodyAnchorSource } from '../../src/physics/attractor';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { dot, len, sub, v3 } from '../../src/math/vec3';
-import type { LineStyle } from '../../src/render/line-style';
+import type { LineStyle } from '../../src/render/lines/line-style';
 import type { CameraFrame } from '../../src/render/camera/camera-frame';
 import type { Viewport } from '../../src/render/viewport';
 import type { Viewpoint } from '../../src/math/projection';
@@ -60,7 +60,7 @@ function orbitTrajectory(): DynamicTrajectory {
   const radius = 7.0e6;
   const speed = Math.sqrt(EARTH.def.mu / radius);
   const trajectory = new DynamicTrajectory(kinematicState<'eci'>(0, v3(radius, 0, 0), v3(0, 0, -speed)));
-  for (let i = 0; i < 60; i++) trajectory.step(10, [EARTH], [], null, 0, 0, 0, null, 10, 1200);
+  for (let i = 0; i < 60; i++) trajectory.step(10, [EARTH], occludersOf([EARTH], []), null, 0, 0, 0, null, 10, 1200);
   return trajectory;
 }
 

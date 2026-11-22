@@ -2,11 +2,11 @@
 // canvas 2D へ描く。表示範囲(中心経緯度・ズーム)を自分で持ち、pan/zoom/resetView で操作する。
 import { edgeColor, FONT_FAMILY, FONT_XXS } from '../../../theme';
 import type { ThemePalette } from '../../../theme';
-import { injectOnce } from '../../../hud/inject-style';
+import { injectOnce } from '../../../hud-kit/inject-style';
 import {
   chartCanvasStyle, drawPointMarker, drawPolylineWithGaps, resizeCanvasBackingStore,
   type BackingStoreState,
-} from './chart-canvas';
+} from '../../../hud-kit/chart-canvas';
 
 interface ProjectionPoint { readonly lonDeg: number; readonly latDeg: number }
 
@@ -19,14 +19,14 @@ export interface ProjectionSeriesSpec {
   readonly currentStyle: 'filled' | 'ring';
 }
 
-export interface ProjectionChartSpec {
+interface ProjectionChartSpec {
   readonly textureImage: HTMLImageElement | null;
   readonly series: readonly ProjectionSeriesSpec[];
   readonly emptyMessage?: string;
 }
 
 // プロットへ映している経緯度の範囲 [deg]。
-interface Window { lonMin: number; lonMax: number; latMin: number; latMax: number }
+interface LonLatWindow { lonMin: number; lonMax: number; latMin: number; latMax: number }
 
 const PADDING_LEFT = 30;
 const PADDING_RIGHT = 10;
@@ -110,7 +110,7 @@ export class OrbitProjectionChart {
   }
 
   // 中心経緯度・ズーム倍率から、現在プロットへ映している経緯度の範囲を求める。
-  private currentWindow(): Window {
+  private currentWindow(): LonLatWindow {
     const { lonSpan, latSpan } = this.spanDeg();
     return {
       lonMin: this.centerLon - lonSpan / 2,
@@ -166,9 +166,9 @@ export class OrbitProjectionChart {
   }
 
   // 経緯度(lonDeg, latDeg)を、表示範囲 win に対するプロット領域内のピクセル座標へ変換する。
-  // 経度は左から右、緯度は上(latMax)から下(latMin)へ向かって増えるので、y だけ向きを反転する。
+  // 経度は左から右、緯度は下(latMin)から上(latMax)へ向かって増えるので、y だけ向きを反転する。
   private toPx(
-    lonDeg: number, latDeg: number, win: Window,
+    lonDeg: number, latDeg: number, win: LonLatWindow,
     plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
   ): { x: number; y: number } {
     return {
@@ -179,7 +179,7 @@ export class OrbitProjectionChart {
 
   // 表示範囲に対応するテクスチャの矩形だけを切り出して拡大表示する。
   private drawTexture(
-    image: HTMLImageElement, win: Window, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
+    image: HTMLImageElement, win: LonLatWindow, plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
   ): void {
     const sx = ((win.lonMin + 180) / 360) * image.naturalWidth;
     const sWidth = ((win.lonMax - win.lonMin) / 360) * image.naturalWidth;
@@ -190,7 +190,7 @@ export class OrbitProjectionChart {
 
   // 表示範囲 win に入る経度・緯度 30 度おきの縦横グリッド線を描く。
   private drawGridLines(
-    win: Window, palette: ThemePalette,
+    win: LonLatWindow, palette: ThemePalette,
     plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
   ): void {
     const ctx = this.ctx;
@@ -218,7 +218,7 @@ export class OrbitProjectionChart {
 
   // drawGridLines の各線に添える経度・緯度のラベル。
   private drawGridLabels(
-    win: Window, palette: ThemePalette,
+    win: LonLatWindow, palette: ThemePalette,
     plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
   ): void {
     const ctx = this.ctx;
@@ -241,7 +241,7 @@ export class OrbitProjectionChart {
 
   // 1系列ぶんの軌跡(折れ線)と現在位置の丸マークを描く。
   private drawSeries(
-    series: ProjectionSeriesSpec, palette: ThemePalette, win: Window,
+    series: ProjectionSeriesSpec, palette: ThemePalette, win: LonLatWindow,
     plotLeft: number, plotTop: number, plotWidth: number, plotHeight: number,
   ): void {
     const toPx = (point: ProjectionPoint): { x: number; y: number } =>

@@ -3,22 +3,27 @@
 // 選ぶと中間ターゲットの中身を画面いっぱいに映す。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
-import { screenUV, texture, uniform, vec4 } from 'three/tsl';
+import { screenUV, texture, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import type { GraphicsSettingsData } from '../graphics-settings';
 import type { RenderStyle } from '../render-style';
-import type { Mat4Uniform, Vec3Node, Vec4Node } from '../tsl-types';
+import type { Vec3Node, Vec4Node } from '../tsl-types';
 import type { DebugTargetId } from './debug-target';
-import { GBufferPass } from './gbuffer';
-import { compositeMaterial } from './composite-material';
+import { buildCompositeMaterial, filmLooked, toneMapped } from './composite';
 import { DebugComposites } from './debug-composites';
+import { GBufferPass } from './gbuffer';
 import { AtmospherePass } from './atmosphere-pass';
 import { LightPrepass } from './light-prepass';
 import { AmbientSource } from './lighting/ambient-source';
 import { PlanetLightSource } from './lighting/planet-light-source';
+import { SkyLightSource } from './lighting/sky-source';
 import { SphereSpecular } from './lighting/sphere-light';
 import { SphereLights } from './lighting/sphere-lights';
 import { SunSource } from './lighting/sun-source';
+import { SunExtinction } from './sun-extinction';
+import { SunTransmittanceTables } from './sun-transmittance-tables';
+import { SkyIrradianceTables } from './sky-irradiance-tables';
+import { WorkLightSource } from './lighting/work-light-source';
 import { MaterialPass } from './material-pass';
 import { ReflectionSourcePass } from './reflection-source-pass';
 import { ReflectionPass } from './reflection-pass';
@@ -38,9 +43,7 @@ import { LensPass } from './lens-pass';
 import { Exposure } from './exposure';
 import { SunLight } from './sun-light';
 import { ShadowMaps } from './shadow/shadow-maps';
-import { flushProteinMotionComputes, registerProteinMotionRenderer } from '../protein/protein-motion-material';
 import { FilmLut } from './film-lut';
-import { VisualEffectLut } from './visual-effect-lut';
 import { compileInto, compileIntoOutput } from './compile-into';
 import { DeferredTexture } from '../deferred-texture';
 import { setCelestialSurfaceViewport } from '../celestial/celestial-surface';
@@ -50,7 +53,7 @@ export class RenderPipeline {
   private readonly shadowPass: ShadowPass;
   private readonly _bodyShadow: BodyShadow;
   private readonly _ringShadow: RingShadow;
-  private readonly _cumulusShadow: CloudShadowRenderer;
+  private readonly _cloudShadow: CloudShadowRenderer;
   private readonly meshShadow: MeshShadow;
   private readonly shadowMaps: ShadowMaps;
   private readonly screenSpacePass: ScreenSpacePass;
@@ -68,52 +71,57 @@ export class RenderPipeline {
   private readonly _sphereLights: SphereLights;
   private readonly reflectionSourcePass: ReflectionSourcePass;
   private readonly reflectionPass: ReflectionPass;
+  private readonly _workLight: WorkLightSource;
   private readonly materialPass: MaterialPass;
   private readonly atmospherePass: AtmospherePass;
   private readonly overlayPass: OverlayPass;
   private readonly antialiasPass: AntialiasPass;
   private readonly lensPass: LensPass;
   private readonly _sunLight: SunLight;
+  private readonly _sunExtinction: SunExtinction;
+  private readonly _skyLight: SkyLightSource;
+  // 天体の光学から焼く表の持ち主。直射光の透過率は地表・雲・艦と大気の散乱が、
+  // 天空光の放射照度は天空光源が読む。
+  private readonly sunTransmittanceTables = new SunTransmittanceTables();
+  private readonly skyIrradianceTables = new SkyIrradianceTables(this.sunTransmittanceTables);
   private readonly _exposure: Exposure;
   private readonly target: THREE.RenderTarget;
   // composite パスと 3D UI パスの描画先。トーンマッピングと表示用色空間への変換を終えた絵が入る。
   private readonly displayTarget: THREE.RenderTarget;
   private readonly quad: QuadMesh;
-  // 合成段の色へ当てるフィルムのルック。通常表示の2枚(compositeMaterial と lensCompositeMaterial)が組み込む。
+  // 合成段の色へ適用するフィルム風ルック（LUT）。通常表示の2枚(offCompositeMaterial と
+  // lensCompositeMaterial)が組み込む。
   private readonly filmLut = new FilmLut();
-  private readonly visualEffectLut = new VisualEffectLut();
-  // 通常表示と、レンズ効果を掛けた通常表示。後者はデバッグ表示の選択肢ではなく、描画品質設定でオン/オフする
-  // 通常表示の別版である。
-  private readonly compositeMaterial: THREE.MeshBasicNodeMaterial;
+  // デバッグ表示の選択肢ごとの合成マテリアル一式と、それが使うカメラ由来の uniform。
+  private readonly debugComposites: DebugComposites;
+  // デバッグ表示を選んでいないときの通常表示。
+  private readonly offCompositeMaterial: THREE.MeshBasicNodeMaterial;
+  // レンズ効果を掛けた通常表示。**offCompositeMaterial とは別に持つ** — デバッグ表示の選択肢
+  // (DebugTargetId)ではなく、描画品質設定でオン/オフする 'off' の別版だからである。
   private readonly lensCompositeMaterial: THREE.MeshBasicNodeMaterial;
   private lensEnabled: boolean;
-  private readonly debugComposites: DebugComposites;
   private readonly schematicComposite: SchematicComposite;
   private readonly schematicMaterial: THREE.MeshBasicNodeMaterial;
-  // 合成パスの表示が深度から位置を戻す、実カメラの逆射影行列。合成パスは QuadMesh 自前の固定直交カメラで描かれる
-  // ため、TSL の組み込みノードはここでは実カメラの値を返さない — 毎フレーム書き込む。
-  private readonly cameraProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
   // getDrawingBufferSize の書き込み先。フレームごとに確保しない使い回し領域。
   private readonly drawingBufferSize = new THREE.Vector2();
   // 天体照の写しの基準点(カメラの描画座標)の書き込み先。同じく使い回し領域。
   private readonly cameraPosition = new THREE.Vector3();
   // 宣言の前の番号との差から、時間方向の蓄積へ渡す変化量を決める。
   private readonly sceneChangeTracker = new SceneChangeTracker();
-  private readonly unregisterProteinMotionRenderer: () => void;
-
-  // 通常表示に代えて画面いっぱいに映す中間ターゲットの選択。
-  private debugTarget: DebugTargetId = 'off';
 
   // 以下は、毎フレームの値(恒星の位置・順応の基準点・影を落とすもの・光源になる天体・環境光の割合・
   // 置く球光源・大気を持つ天体)の書き込み先。
   public get sunLight(): SunLight { return this._sunLight; }
+  public get sunExtinction(): SunExtinction { return this._sunExtinction; }
+  public get skyLight(): SkyLightSource { return this._skyLight; }
   public get exposure(): Exposure { return this._exposure; }
   public get bodyShadow(): BodyShadow { return this._bodyShadow; }
   public get ringShadow(): RingShadow { return this._ringShadow; }
-  public get cumulusShadow(): CloudShadowRenderer { return this._cumulusShadow; }
+  public get cloudShadow(): CloudShadowRenderer { return this._cloudShadow; }
   public get planetLight(): PlanetLightSource { return this._planetLight; }
   public get ambient(): AmbientSource { return this._ambient; }
   public get sphereLights(): SphereLights { return this._sphereLights; }
+  public get workLight(): WorkLightSource { return this._workLight; }
   public get atmosphere(): AtmospherePass { return this.atmospherePass; }
   // 変化量の推定の基準(カメラの同一性の鍵と基準の受け手)の書き込み先。毎フレーム描く前に宣言する。
   public get sceneChange(): SceneChangeDeclarations { return this.sceneChangeTracker; }
@@ -131,9 +139,10 @@ export class RenderPipeline {
   public constructor(
     private readonly renderer: WebGPURenderer, graphics: GraphicsSettingsData, private readonly gpu: GpuTimings,
   ) {
-    this.unregisterProteinMotionRenderer = registerProteinMotionRenderer(renderer);
     this._gbuffer = new GBufferPass(renderer, gpu);
     this._sunLight = new SunLight();
+    this._sunExtinction = new SunExtinction(this._sunLight, this.sunTransmittanceTables);
+    this._skyLight = new SkyLightSource(this._sunLight, this.skyIrradianceTables);
     this._exposure = new Exposure();
     this.shadowMaps = new ShadowMaps(
       renderer, gpu, graphics.meshShadow,
@@ -141,24 +150,25 @@ export class RenderPipeline {
     );
     this._bodyShadow = new BodyShadow(this._sunLight);
     this._ringShadow = new RingShadow(this._sunLight);
-    this._cumulusShadow = new CloudShadowRenderer(this._sunLight);
+    this._cloudShadow = new CloudShadowRenderer(this._sunLight);
     this.meshShadow = new MeshShadow(this._sunLight, this.shadowMaps);
     this.shadowPass = new ShadowPass(
       renderer, this._gbuffer,
-      this._bodyShadow, this._ringShadow, this._cumulusShadow, this.meshShadow, gpu,
+      this._bodyShadow, this._ringShadow, this._cloudShadow, this.meshShadow, gpu,
     );
     this.sphereSpecular = new SphereSpecular();
     this.sunSource = new SunSource(
-      this._sunLight, this.shadowPass, this.sphereSpecular, graphics.sunLightModel);
+      this._sunLight, this.shadowPass, this.sphereSpecular, this._sunExtinction, graphics.sunLightModel);
     this._planetLight = new PlanetLightSource(
-      this._sunLight, this._bodyShadow, this.sphereSpecular, graphics.planetLightCount, graphics.planetLightModel,
-    );
+      this._sunLight, this._bodyShadow, this.sphereSpecular, graphics.planetLightCount,
+      graphics.planetLightModel, this.sunTransmittanceTables);
     this._ambient = new AmbientSource(this._sunLight);
+    this._workLight = new WorkLightSource(this.sphereSpecular);
     this._diffuseCorrection = new DiffuseCorrection();
     this._sphereLights = new SphereLights(this.sphereSpecular);
     this.lightPrepass = new LightPrepass(
-      renderer, this._gbuffer, this.sunSource, this._planetLight.lightSources, this._ambient,
-      this._sphereLights.sources, gpu,
+      renderer, this._gbuffer, this.sunSource, this._planetLight.lightSources,
+      [this._skyLight, this._ambient, this._workLight], this._sphereLights.sources, gpu,
     );
     this.screenSpacePass = new ScreenSpacePass(
       renderer, this._gbuffer, this.lightPrepass, this._planetLight, this._diffuseCorrection, gpu,
@@ -192,7 +202,8 @@ export class RenderPipeline {
       graphics.screenSpaceSpecular, graphics.screenSpaceSpecularDenoise, graphics.screenSpaceOcclusion,
     );
     this.atmospherePass = new AtmospherePass(
-      renderer, this._gbuffer, this.target, this._sunLight, this._bodyShadow, gpu,
+      renderer, this._gbuffer, this.target, this._sunLight, this._bodyShadow,
+      this._cloudShadow, this.sunTransmittanceTables, gpu,
     );
     this.overlayPass = new OverlayPass(renderer, gpu, this._gbuffer.depthTexture);
 
@@ -209,38 +220,48 @@ export class RenderPipeline {
     this.lensPass = new LensPass(renderer, this.target.texture, gpu);
     this.lensEnabled = graphics.lens;
 
-    this.compositeMaterial = compositeMaterial(
-      this.displayColorOf(texture(this.target.texture, screenUV).rgb), this._gbuffer.depthTexture,
+    this.offCompositeMaterial = buildCompositeMaterial(
+      this._gbuffer, this.displayColorOf(texture(this.target.texture, screenUV).rgb),
     );
-    this.lensCompositeMaterial = compositeMaterial(
-      this.displayColorOf(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb)),
-      this._gbuffer.depthTexture,
+    this.lensCompositeMaterial = buildCompositeMaterial(
+      this._gbuffer, this.displayColorOf(this.lensPass.blendedWith(texture(this.target.texture, screenUV).rgb)),
     );
-    this.debugComposites = new DebugComposites(
-      this._gbuffer, this._exposure, this.cameraProjectionInverse, this.shadowMaps, this.meshShadow, this.shadowPass,
-      this.lightPrepass, this.screenSpacePass, this._diffuseCorrection, this.reflectionSourcePass, this.reflectionPass,
-      this._reflection, this._planetLight, this.atmospherePass, this.lensPass,
-    );
+    this.debugComposites = new DebugComposites({
+      gbuffer: this._gbuffer,
+      exposure: this._exposure,
+      shadowMaps: this.shadowMaps,
+      meshShadow: this.meshShadow,
+      shadow: this.shadowPass,
+      lightPrepass: this.lightPrepass,
+      screenSpace: this.screenSpacePass,
+      diffuseCorrection: this._diffuseCorrection,
+      reflectionSource: this.reflectionSourcePass,
+      reflectionPass: this.reflectionPass,
+      reflection: this._reflection,
+      planetLight: this._planetLight,
+      atmosphere: this.atmospherePass,
+      lens: this.lensPass,
+    });
     // 模式図用の合成マテリアル。表示スタイルの切り替えなので、デバッグ表示の選択肢とは別に持つ。
-    this.schematicComposite = new SchematicComposite(this._gbuffer, this.cameraProjectionInverse);
-    this.schematicMaterial = compositeMaterial(this.schematicComposite.colorNode, this._gbuffer.depthTexture);
+    this.schematicComposite = new SchematicComposite(this._gbuffer, this.debugComposites.depthProjInv);
+    this.schematicMaterial = buildCompositeMaterial(this._gbuffer, this.schematicComposite.colorNode);
 
-    this.quad = new QuadMesh(this.compositeMaterial);
+    this.quad = new QuadMesh(this.offCompositeMaterial);
     this.syncTargetSize();
     // 構築で渡さなかった値も含めて、構築時点の設定をすべてのパスへ配る。
     this.rebuildForGraphics(graphics);
   }
 
-  // 通常表示の合成の色: HDR の色 hdr へ露出・トーンマップ・フィルムのルック・視覚効果の LUT を掛けたもの。
+  // 通常表示の合成の色: HDR の色 hdr へ露出・トーンマップ・フィルムのルックを掛けたもの。
   private displayColorOf(hdr: Vec3Node): Vec4Node {
-    return vec4(this.visualEffectLut.apply(this.filmLut.apply(this._exposure.toneMapped(hdr))), 1);
+    return vec4(filmLooked(toneMapped(hdr, this._exposure), this.filmLut), 1);
   }
 
   // フレームの外で作った HDR の絵 hdr(複数フレームの HDR の平均など。線形で、描画バッファと同じ寸法)を、直前の
   // render と同じ通常表示の合成で target へ描く。露出・色の LUT の状態と写す深度は直前の render のものなので、同じ
   // 場面を render した直後に呼ぶ。target は hdr と同じ寸法で深度を持ち、値は表示用の色空間へ変換済みになる。
   public renderComposite(hdr: THREE.Texture, target: THREE.RenderTarget): void {
-    const material = compositeMaterial(this.displayColorOf(texture(hdr, screenUV).rgb), this._gbuffer.depthTexture);
+    const material = buildCompositeMaterial(this._gbuffer, this.displayColorOf(texture(hdr, screenUV).rgb));
     const outputTarget = this.renderer.getOutputRenderTarget();
     this.renderer.setOutputRenderTarget(target);
     this.renderer.setRenderTarget(null);
@@ -249,6 +270,7 @@ export class RenderPipeline {
     material.dispose();
   }
 
+  // 符号付きの補正の絵 hdr を、デバッグ表示と同じ符号の色分けで target へ描く。target の扱いは renderComposite と同じ。
   public renderSignedCorrectionComposite(hdr: THREE.Texture, target: THREE.RenderTarget): void {
     const material = this.debugComposites.signedCorrectionMaterial(hdr);
     const outputTarget = this.renderer.getOutputRenderTarget();
@@ -274,15 +296,9 @@ export class RenderPipeline {
     return this.drawingBufferSize;
   }
 
-  // 合成パスの表示が深度から位置と距離を引き直すための、実カメラの値を書き込む。
-  private syncCompositeCamera(camera: THREE.Camera, width: number, height: number): void {
-    this.cameraProjectionInverse.value.copy(camera.projectionMatrixInverse);
-    this.debugComposites.syncCamera(camera, width, height);
-  }
-
   // このフレームに画面いっぱいへ映す中間ターゲット。'off' なら通常表示。
   public syncDebugTarget(target: DebugTargetId): void {
-    this.debugTarget = target;
+    this.debugComposites.setTarget(target);
   }
 
   // 次のフレームから、映り込みが画素ごとに引く乱数のタイルを (x, y) [px](整数)ずらして読む。既定は (0, 0)。
@@ -298,6 +314,8 @@ export class RenderPipeline {
 
   // 描画品質設定を各パスへ配る。影マップなどの GPU 資源は、値が変わったものだけを組み直す。
   public rebuildForGraphics(graphics: GraphicsSettingsData): void {
+    // 天体と星野の画像の段。読み手のテクスチャ実体はそのままで、画像だけが段に応じて差し替わる。
+    DeferredTexture.setResolution(graphics.textureResolution);
     // 描く段と影マップの品質。
     this.lensEnabled = graphics.lens;
     this.screenSpacePass.setMode(screenSpaceDiffuseOf(graphics));
@@ -327,13 +345,10 @@ export class RenderPipeline {
     this._planetLight.setCount(graphics.planetLightCount);
     this._planetLight.setModel(graphics.planetLightModel);
     this.antialiasPass.setMethod(graphics.antialias);
-    this.atmospherePass.setCloudShellEnabled('cirrus', graphics.cirrus);
-    this.atmospherePass.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
+    this.atmospherePass.setCirrusDetail(graphics.cirrusDetail);
     // 天体照の写しは、その天体の描画設定で見えている雲と大気を写す。
     this._planetLight.setAtmosphereEnabled(graphics.atmosphere);
     this._planetLight.setCumulusEnabled(graphics.cumulus);
-    this._planetLight.setCloudShellEnabled('cirrus', graphics.cirrus);
-    this._planetLight.setCloudShellEnabled('cumulus', graphics.translucentCumulus);
     this.filmLut.select(graphics.filmLut);
   }
 
@@ -346,7 +361,7 @@ export class RenderPipeline {
   ): Promise<void> {
     const { x: width, y: height } = this.syncTargetSize();
 
-    this.syncCompositeCamera(camera, width, height);
+    this.debugComposites.writeCamera(camera, width, height);
 
     // 描画順に並べる。スタイルによらず通る段。
     const passes: [string, () => Promise<void>][] = [
@@ -362,7 +377,7 @@ export class RenderPipeline {
       this.schematicComposite.update(width, height);
       this.quad.material = this.schematicMaterial;
     } else {
-      this.quad.material = this.lensEnabled ? this.lensCompositeMaterial : this.compositeMaterial;
+      this.quad.material = this.lensEnabled ? this.lensCompositeMaterial : this.offCompositeMaterial;
       passes.push(
         ['映り込みの像の元', () => this.reflectionSourcePass.compile(width, height)],
         ['映り込み', () => this.reflectionPass.compile(camera, width, height)],
@@ -394,14 +409,24 @@ export class RenderPipeline {
   // frame は論理フレームの番号(同じ番号の描き直しは時間方向の履歴を進めない)、change は宣言の差から見積もる変化量へ
   // 外から足す量。
   public render(scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, frame: number, change = 0): void {
+    // シーンのワールド行列はフレームの頭で 1 度だけ確定させ、全パスで共有する。パスの途中で
+    // シーンの物体を動かすと、その変化は次のフレームまで描かれない。
+    scene.updateMatrixWorld();
+    const autoUpdate = scene.matrixWorldAutoUpdate;
+    scene.matrixWorldAutoUpdate = false;
+    try {
+      this.renderPasses(scene, camera, style, frame, change);
+    } finally {
+      scene.matrixWorldAutoUpdate = autoUpdate;
+    }
+  }
+
+  // render の本体。パスを順に発行する。
+  private renderPasses(
+    scene: THREE.Scene, camera: THREE.Camera, style: RenderStyle, frame: number, change: number,
+  ): void {
     DeferredTexture.publishOne(this.renderer);
     const { x: width, y: height } = this.syncTargetSize();
-
-    // 物理環境光の有効状態を、そのフレームの通常合成だけへ伝える。模式図と3D UIは別経路。
-    this.visualEffectLut.setEnabled(this._ambient.hasContribution());
-
-    // 影マップパスと本体パスが同じフレームの残基配置を読むよう、両方より前に一度だけ合成する。
-    flushProteinMotionComputes(this.renderer);
 
     // 太陽光の影マップパス。G バッファを必要としないので、その前に置く。
     this.shadowMaps.render(scene, camera, height, this._sunLight);
@@ -445,7 +470,7 @@ export class RenderPipeline {
 
       // 大気パス。「大気」のデバッグ表示が選ばれている間は、そこへ映す1枚も大気パスに描かせる。
       this.atmospherePass.render(camera);
-      if (this.debugTarget === 'atmosphere') this.atmospherePass.inspectScattered(camera);
+      if (this.debugComposites.target === 'atmosphere') this.atmospherePass.inspectScattered(camera);
 
       // world パス。LIT_OPAQUE_LAYER・雲殻の層・背景専用レイヤーはチャンネル0から外れているので、既定の
       // カメラマスクで描く限り重複しない。autoClear を落としてマテリアルパスまでの描画(色・深度とも)
@@ -463,12 +488,14 @@ export class RenderPipeline {
       if (this.lensEnabled) this.lensPass.render(width, height);
       else this.lensPass.clear(width, height);
 
-      if (this.debugTarget !== 'off') this.quad.material = this.debugComposites.material(this.debugTarget);
-      else this.quad.material = this.lensEnabled ? this.lensCompositeMaterial : this.compositeMaterial;
+      const debugTarget = this.debugComposites.target;
+      this.quad.material = debugTarget === 'off'
+        ? (this.lensEnabled ? this.lensCompositeMaterial : this.offCompositeMaterial)
+        : this.debugComposites.materialFor(debugTarget);
     }
 
     // composite パス。
-    this.syncCompositeCamera(camera, width, height);
+    this.debugComposites.writeCamera(camera, width, height);
     // 出力先を差し替えると、描画先を指定しない2つのパスが表示用ターゲットへ向く。撮影のために
     // 呼び出し側が張った出力先を潰さないよう、退避してから戻す。
     const outputTarget = this.renderer.getOutputRenderTarget();
@@ -486,7 +513,6 @@ export class RenderPipeline {
 
   // 保持している GPU 資源を解放する。QuadMesh の板は three が全インスタンスで共有するので解放しない。
   public dispose(): void {
-    this.unregisterProteinMotionRenderer();
     this._gbuffer.dispose();
     this.shadowPass.dispose();
     this.shadowMaps.dispose();
@@ -504,9 +530,11 @@ export class RenderPipeline {
     this.lensPass.dispose();
     // 共有の描画先と、合成段の材質。
     this.lensCompositeMaterial.dispose();
+    this.offCompositeMaterial.dispose();
+    this.sunTransmittanceTables.dispose();
+    this.skyIrradianceTables.dispose();
     this.target.dispose();
     this.displayTarget.dispose();
-    this.compositeMaterial.dispose();
     this.debugComposites.dispose();
     this.schematicMaterial.dispose();
     this.filmLut.dispose();

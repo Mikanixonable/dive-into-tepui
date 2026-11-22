@@ -1,0 +1,56 @@
+// 縦方向の開閉トグル。target の表示/非表示を collapsed クラスで切り替えるボタンを組み立てる。
+import { expandHitTarget, stopDragPropagation } from './widget-base';
+
+// マップのマーカーとは字形の族を分け、開いている状態と閉じている状態でどちらを向くかを
+// 画面内で一貫させる。
+export const COLLAPSE_EXPANDED_GLYPH = '▾';
+export const COLLAPSE_COLLAPSED_GLYPH = '▸';
+
+// 画面の縁に並ぶ面を畳む開閉トグルの姿(収納グリップ)の class。縦長は左右の縁、横長は上下の縁に置く。
+export const EDGE_GRIP_VERTICAL_CLASS = 'ui-edge-grip ui-edge-grip--vertical';
+export const EDGE_GRIP_HORIZONTAL_CLASS = 'ui-edge-grip ui-edge-grip--horizontal';
+
+export interface CollapseToggleLabels {
+  readonly expandedGlyph: string;
+  readonly collapsedGlyph: string;
+  readonly expandedTitle: string;
+  readonly collapsedTitle: string;
+}
+
+// button の見た目(グリフ・aria-expanded・title)を target の collapsed クラスに合わせる。
+export function syncCollapseToggle(button: HTMLElement, target: HTMLElement, labels: CollapseToggleLabels): void {
+  const collapsed = target.classList.contains('collapsed');
+  button.textContent = collapsed ? labels.collapsedGlyph : labels.expandedGlyph;
+  button.setAttribute('aria-expanded', String(!collapsed));
+  button.title = collapsed ? labels.collapsedTitle : labels.expandedTitle;
+  button.setAttribute('aria-label', button.title);
+  if (target.id) button.setAttribute('aria-controls', target.id);
+}
+
+// target の表示/非表示を collapsed クラスで切り替えるボタンを1つ組み、root へ追加して返す。
+// extraHitEls には、button の兄弟であり同じ切り替えを受け付けたい要素(見出しテキストなど)を
+// 渡す。root が画面全体・パネル全体などボタンの置き場を兼ねる広い要素であるときは空配列でよい。
+// onToggle は、どのヒット要素からの切り替えでも、切り替わった後の畳み状態を受ける。
+export function buildCollapseToggle(
+  root: HTMLElement, id: string, className: string, target: HTMLElement, labels: CollapseToggleLabels,
+  extraHitEls: readonly HTMLElement[], onToggle: (collapsed: boolean) => void,
+): HTMLElement {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.id = id;
+  button.className = [className, 'ui-selectable', 'ui-icon-control'].filter(Boolean).join(' ');
+  expandHitTarget(button);
+  root.appendChild(button);
+  // クリックのたびに collapsed を反転し、その結果へ見た目を合わせ直して知らせる。
+  const toggle = (): void => {
+    const collapsed = target.classList.toggle('collapsed');
+    syncCollapseToggle(button, target, labels);
+    onToggle(collapsed);
+  };
+  for (const el of [button, ...extraHitEls]) {
+    stopDragPropagation(el);
+    el.addEventListener('click', toggle);
+  }
+  syncCollapseToggle(button, target, labels);
+  return button;
+}

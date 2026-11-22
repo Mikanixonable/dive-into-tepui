@@ -1,17 +1,17 @@
 // マップビュー専用のフレーム処理と遷移フック(ViewFrame の具象)。
 import { MapPicking } from '../pickable/map-picking';
-import type { Input } from '../../input/input';
+import type { Input } from '../../input-devices/input';
 import type { HudLayers } from '../hud/hud-layers';
-import type { Notifier } from '../../hud/notifier';
+import type { Notifier } from '../../hud-kit/notifier';
 import type { CelestialSystem } from '../celestial/celestial-system';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import { ObjectPickables } from '../pickable/object-pickables';
-import { LinePickables } from '../pickable/line-pickables';
+import { ObjectPickables } from '../pickable/object-pickable-set';
+import { LinePickables } from '../pickable/line-pickable-set';
 import type { ObjectWindows } from '../pickable/object-windows';
 import type { MapVisibilityPolicy } from '../map/visibility-policy';
 import type { CelestialMarkers } from '../marker/celestial-markers';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { Targeter } from '../targeter';
 import type { EquatorNodeManager } from '../marker/equator-node-manager';
 import type { NavTargetPresenter } from '../nav-target-presenter';
@@ -36,6 +36,7 @@ import type { PerfCounts } from '../perf-counts';
 import type { Vec3 } from '../../math/vec3';
 import type { MapCameraSource } from '../viewer/camera-selection';
 import type { UiSoundQueue } from '../ui-sound-queue';
+import type { OrbitSlotPresenter } from '../navigation/orbit-slot-presenter';
 
 interface CameraPositionSource {
   readonly activeCameraPos: Vec3;
@@ -69,12 +70,15 @@ export class MapFrame implements ViewFrame {
     planDisplay: PlanDisplay,
     planPath: PlanPath,
     planCommands: PlanCommands,
+    orbitSlotPresenter: OrbitSlotPresenter,
     scene: THREE.Scene,
     hud: HudLayers & Notifier,
     uiSounds: UiSoundQueue,
     navTargetPresenter: NavTargetPresenter,
     navTargetCommands: NavTargetCommands,
     private readonly mapDisplay: SettingValue<MapDisplayToggles>,
+    // いま遊んでいるランで解放されている天体の id。ランが変わると新しい値を返す。
+    private readonly revealedBodies: () => readonly string[],
   ) {
     // 軌道計画の編集口。
     this.planEditor = new PlanEditor(
@@ -84,11 +88,11 @@ export class MapFrame implements ViewFrame {
     // 被選択物・軌道線の候補列と、それらへクリックを当てる先。
     this.objectPickables = new ObjectPickables(
       controlSelection, roster, celestialSystem, navTargetPresenter, camera,
-      celestialMarkers, planDisplay, frameAnchors, equatorNodes,
+      celestialMarkers, planDisplay, frameAnchors, equatorNodes, orbitSlotPresenter,
     );
-    this.linePickables = new LinePickables(roster, celestialSystem);
+    this.linePickables = new LinePickables(roster, celestialSystem, orbitSlotPresenter);
     this.picking = new MapPicking(
-      hud, camera, roster, celestialSystem, celestialMarkers, markers,
+      hud, camera, roster, celestialSystem, markers,
       navTargetPresenter, navTargetCommands, frameControls, this.objectPickables, this.linePickables, objectWindows,
       controlSelectionCommands, displayWindowManager,
     );
@@ -127,12 +131,12 @@ export class MapFrame implements ViewFrame {
     this.planEditor.handleCommand(commandId);
   }
 
-  // Δv 編集の押下中操作を編集セッションへ配る。
+  // Δv 編集の継続入力を編集セッションへ伝達（ディスパッチ）する。
   public updateActions(dt: number): void {
     this.planEditor.updateActions(this.input, dt);
   }
 
-  // クリック・右クリックを、ノード編集と被選択物・軌道線・空域のメニューへ先着順で配る。
+  // クリック・右クリック入力を、ノード編集と被選択物・軌道線・空域のメニューへ先着順にルーティングする。
   public handlePointer(camera: CameraFrame): void {
     this.picking.handleRightClick(this.input, camera);
     this.picking.handleLeftClick(this.input, camera);
@@ -146,6 +150,7 @@ export class MapFrame implements ViewFrame {
   public update(displayWindow: DisplayWindow): void {
     this.objectPickables.refresh(
       displayWindow, this.mapDisplay.current, this.cameraPresentation.activeCameraPos,
+      new Set(this.revealedBodies()),
     );
     this.displayWindowManager.dropStaleRotatingFrame(displayWindow.displayTime, this.frameAnchors);
     this.planEditor.update();

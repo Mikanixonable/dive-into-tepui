@@ -4,7 +4,7 @@ import {
   If, Loop, bool, clamp, cos, exp2, float, floor, ivec2, length, max, round, screenSize, screenUV, select, sin, sqrt,
   textureLoad, vec2, vec3,
 } from 'three/tsl';
-import { SurfaceWeight, type SurfaceReceiver } from './surface-weight';
+import type { SurfaceWeight, SurfaceReceiver } from './surface-weight';
 import type { ScanSurfaces, Texel } from './texel-surface';
 import type { FloatNode, Vec2Node, Vec3Node } from '../../tsl-types';
 

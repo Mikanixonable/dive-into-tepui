@@ -1,11 +1,12 @@
 import type { SerializedGame } from '../../game/game';
 import type { RunSummary } from '../../game/run-summary';
-import { fmtDist, fmtTime } from '../../hud/utils';
+import { fmtDist, fmtTime } from '../../hud-kit/format';
 import { SAVED_GAME_VERSION, type SavedGame, type SaveStore } from './save-store';
 import type { SaveSlots } from './save-slots';
 import { isEphemerisContextRestorable } from '../../physics/ephemeris/ephemeris-context';
 import { newSaveId } from './slot-data';
 import type { SnapshotMeta } from './slot-data';
+import { normalizeStageId } from '../../game/stages/stage-dictionary';
 
 // 周回を直列化した形 serialized に、いまの形式バージョンを添えた記録本体。
 function savedGame(serialized: SerializedGame): SavedGame {
@@ -39,6 +40,7 @@ export class SnapshotService {
       createdAtReal: Date.now(),
       simTime: summary.simTime,
       centerBodyId: summary.centerBodyId,
+      centerBodyName: summary.centerBodyName,
       altitude: summary.altitude,
       speed: summary.speed,
       hpRatio: summary.hpRatio,
@@ -74,7 +76,8 @@ export class SnapshotService {
     if (data === null) return null;
     // 版を先に照合する — 版の違う記録は形が違うので、ほかの項目を読まない。
     if (data.version !== SAVED_GAME_VERSION) return null;
-    if (expectedStageId !== data.progress.stageId) return null;
+    // 番号の付け替え以前に書かれた記録は旧 id を持つので、読み替えてから照合する。
+    if (normalizeStageId(expectedStageId) !== normalizeStageId(data.progress.stageId)) return null;
     // 元期が選ぶ暦データが手元のものと違えば、絶対天体状態が曖昧になるので拒否する。
     if (!isEphemerisContextRestorable(data.progress.ephemerisContext)) return null;
     return data;

@@ -1,4 +1,4 @@
-// 自機が浴びている空力荷重。動圧と、それが構造限界を超えたか・空力加熱が効く流れの中にいるかを答える。
+// 自機が受ける空力荷重。動圧、およびそれが構造限界を超えたか・空力加熱が有効な領域にいるかを算出・判定する。
 import { airflow } from '../../physics/atmosphere';
 import { type Vec3, sub } from '../../math/vec3';
 import type { CelestialBody } from '../../physics/celestial-body';
@@ -15,6 +15,16 @@ export class AeroLoad {
 
   public get qdyn(): number { return this._qdyn; }
 
+  private _airspeed: Vec3 | null = null;
+
+  public get airspeed(): Vec3 | null { return this._airspeed; }
+
+  // いま浸っている外気の密度 [kg/m^3]。大気天体が無いとき 0。qdyn と同じく update が求め直す
+  // キャッシュ。
+  private _density = 0;
+
+  public get density(): number { return this._density; }
+
   // 位置 r・速度 v の機体が浴びる動圧を求め直す。atmosphereBody は抗力を及ぼすただ1体の
   // 大気天体(null なら真空)。
   public update(
@@ -22,12 +32,17 @@ export class AeroLoad {
   ): void {
     const atm = atmosphereBody === null ? null : atmosphereBody.atmosphereAt(atmospherePivot);
     if (atmosphereBody === null || atm === null) {
+      // 空力値が無いフレームでは、前回の密度・動圧・対気速度を残さない。
       this._qdyn = 0;
+      this._density = 0;
+      this._airspeed = null;
       return;
     }
     const bodyState = atmosphereBody.stateAt(atmospherePivot);
-    const { density, speed } = airflow(sub(r, bodyState.r), sub(v, bodyState.v), atm);
+    const { density, speed, airspeed } = airflow(sub(r, bodyState.r), sub(v, bodyState.v), atm);
+    this._density = density;
     this._qdyn = 0.5 * density * speed * speed;
+    this._airspeed = airspeed;
   }
 
   // 動圧が構造限界を超えたか。

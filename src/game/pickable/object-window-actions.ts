@@ -1,38 +1,40 @@
 // 物体窓が扱う共通操作の規則。対象固有の表示台帳から切り離し、メニューの可否・命令の振り分け・
 // 関連対象の導出をここへ集める。
-import type { PauseMenu } from '../../hud/windows/pause-menu';
+import type { HintKind } from '../../hud-kit/notifier';
 import type {
   PropertyWindowContent, PropertyWindowItem, PropertyWindowRelatedItem,
-} from '../../hud/windows/property-window-content';
-import type { MenuItem } from '../hud/windows/context-menu';
-import type { MenuAction } from '../hud/windows/menu-actions';
+} from '../../hud-kit/windows/property-window-content';
+import type { MenuItem } from '../../hud-kit/windows/context-menu';
+import type { MenuAction } from '../menu-actions';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import { CelestialEntity } from '../celestial/entity/celestial-entity';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import type { NavTargetPresenter } from '../nav-target-presenter';
-import type { NavTargetSource } from '../viewer/nav-target-selection';
-import type { NavTargetCommands } from '../viewer/nav-target-commands';
-import type { EntityDisplaySource } from '../viewer/entity-display-selection';
-import type { EntityDisplayCommands } from '../viewer/entity-display-commands';
-import type { MapCameraSource } from '../viewer/camera-selection';
-import type { FocusCameraCommands } from '../viewer/camera-commands';
-import type { ViewSelectionSource } from '../viewer/view-selection';
 import { focusTargetId } from '../viewer/focus-target';
-import type { PlanEditor } from '../plan/plan-editor';
+import type {
+  PresentationEntityDisplay, PresentationEntityDisplayCommands, PresentationFocusCameraCommands,
+  PresentationMapCamera, PresentationModuleWindows, PresentationNavTarget,
+  PresentationNavTargetCommands, PresentationPauseMenu, PresentationPlanEditor,
+  PresentationStage, PresentationStageAuthoring, PresentationView,
+} from '../presentation-ports';
 import type { ControlSelection } from '../control-selection';
-import type { Stage } from '../stages/stage';
 import { isModularShip } from '../ship/modular-ship';
-import { isEnemy } from '../dynamic/dynamic-entity/enemy';
+import { isEnemy } from '../dynamic/entity/enemy';
 import type { Targeter } from '../targeter';
 import { orbitingAttractorOf } from '../../physics/attractor';
 import type { ViewFrame } from '../view/view-frame';
-import type { InspectedObject, ObjectAuthoring } from './inspected-object';
+import type { InspectedObject } from './inspected-object';
+import { ShipInspection } from './ship-inspection';
+import { EnemyInspection } from './enemy-inspection';
+import { Pickup } from '../dynamic/entity/pickup';
+import { LagrangePointMarker } from '../marker/lagrange-point-marker';
+import { OrbitPointMarker } from '../marker/orbit-point-marker';
+import { OrbitSlotPickable } from './orbit-slot-pickable';
 import type { ObjectMenuCommands } from './object-menu-commands';
 import type { PropertyWindowOpener } from './property-window-opener';
 import { objectPickableOf } from './object-pickable';
-import type { ModuleWindowOpener } from './module-windows';
 
-export interface ObjectWindowParts {
+interface ObjectWindowParts {
   readonly title: string;
   readonly subtitle?: string;
   readonly items: readonly PropertyWindowItem<MenuAction>[];
@@ -42,30 +44,32 @@ export class ObjectWindowActions {
   public constructor(
     private readonly roster: EntityRoster,
     private readonly celestialBodies: CelestialBodies,
-    private readonly navTarget: NavTargetSource,
+    private readonly navTarget: PresentationNavTarget,
     private readonly navTargetPresenter: NavTargetPresenter,
-    private readonly navTargetCommands: NavTargetCommands,
-    private readonly entityDisplay: EntityDisplaySource,
-    private readonly entityDisplayCommands: Pick<EntityDisplayCommands, 'toggleTrajectoryLine'>,
-    private readonly camera: MapCameraSource,
-    private readonly view: Pick<ViewSelectionSource, 'current'>,
+    private readonly navTargetCommands: PresentationNavTargetCommands,
+    private readonly entityDisplay: PresentationEntityDisplay,
+    private readonly entityDisplayCommands: PresentationEntityDisplayCommands,
+    private readonly camera: PresentationMapCamera,
+    private readonly view: PresentationView,
     private readonly activeView: () => ViewFrame,
-    private readonly pauseMenu: PauseMenu,
+    private readonly pauseMenu: PresentationPauseMenu,
     private readonly controlSelection: ControlSelection,
-    private readonly mapFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
-    private readonly combatFocusCommands: Pick<FocusCameraCommands, 'setFocus'>,
-    private readonly activeStage: Stage,
+    private readonly mapFocusCommands: PresentationFocusCameraCommands,
+    private readonly combatFocusCommands: PresentationFocusCameraCommands,
+    private readonly activeStage: PresentationStage,
     private readonly targeter: Targeter,
-    private readonly moduleWindows: ModuleWindowOpener,
+    private readonly moduleWindows: PresentationModuleWindows,
     private readonly commands: ObjectMenuCommands,
-    private readonly hint: (message: string) => void,
+    private readonly hint: (message: string, durationMs?: number, kind?: HintKind) => void,
   ) {}
 
+  // id の敵を窓の対象へ写す。名簿に居なければ null。
   public inspectedEnemy(id: string): InspectedObject | null {
     const enemy = this.roster.all().filter(isEnemy).find((candidate) => candidate.id === id);
     return enemy ? objectPickableOf(enemy) : null;
   }
 
+  // 生存中の航法ターゲットを窓の対象へ写す。照準していなければ null。
   public inspectedTarget(): InspectedObject | null {
     const target = this.targeter.aliveTarget;
     return target ? objectPickableOf(target) : null;
@@ -82,8 +86,11 @@ export class ObjectWindowActions {
           return this.navTargetPresenter.canTarget(
             target.id, this.roster, this.celestialBodies, simTime);
         case 'duplicate':
-        case 'openObjectPlacer':
           return this.authoring !== null;
+        case 'openObjectPlacer':
+          // 天体の窓からはその天体を基準天体にして開くので、基準天体になれない恒星の窓には出さない。
+          return this.authoring !== null
+            && (!(target instanceof CelestialEntity) || target.motion.kind !== 'star');
         case 'planExecCycle':
           return this.activeStage.executesPlans;
         default:
@@ -100,7 +107,8 @@ export class ObjectWindowActions {
     // 進行方向リセット/ターゲット選択が既に使っており、同じキーを両方へは配れない。
     const showShortcuts = this.view.current === 'map';
     const items = all
-      .filter((it) => it.type !== 'header' && it.act !== undefined)
+      // 「キャンセル」はコンテキストメニューの閉じる手段で、窓には ✕/ESC が既にあるので除く。
+      .filter((it) => it.type !== 'header' && it.act !== undefined && it.act !== 'cancel')
       .map((it) => ({
         label: it.label, act: it.act as MenuAction,
         shortcut: showShortcuts ? it.shortcut : undefined,
@@ -109,13 +117,32 @@ export class ObjectWindowActions {
     return { title: header?.label ?? target.name, subtitle: header?.subLabel, items };
   }
 
+  // プロパティ窓へ渡す内容全体を組む。
   public buildContent(
     target: InspectedObject, simTime: number, opener: PropertyWindowOpener,
   ): PropertyWindowContent<MenuAction> {
     const { title, subtitle, items } = this.windowParts(target, simTime);
+    // 種別コードと種別名は、対象の具象型で決める。
+    const kind = target instanceof CelestialEntity
+      ? { kindCode: 'BDY', kindLabel: 'CELESTIAL BODY' }
+      : target instanceof ShipInspection
+        ? { kindCode: 'VSL', kindLabel: 'SPACECRAFT' }
+        : target instanceof EnemyInspection
+          ? { kindCode: 'CNT', kindLabel: 'CONTACT' }
+          : target instanceof Pickup
+            ? { kindCode: 'SUP', kindLabel: 'SUPPLY' }
+            : target instanceof LagrangePointMarker
+              ? { kindCode: 'POI', kindLabel: 'REFERENCE POINT' }
+              : target instanceof OrbitPointMarker
+                ? { kindCode: 'EVT', kindLabel: 'ORBIT EVENT' }
+                : target instanceof OrbitSlotPickable
+                  ? { kindCode: 'SLT', kindLabel: 'ORBIT SLOT' }
+                  : { kindCode: 'OBJ', kindLabel: 'OBJECT' };
     return {
       title,
       subtitle,
+      ...kind,
+      monitorWhenClipped: true,
       icon: target.glyphSvg ?? target.glyph,
       rows: [],
       items,
@@ -133,8 +160,10 @@ export class ObjectWindowActions {
     else if (act === 'toggleTrajectoryLine') this.entityDisplayCommands.toggleTrajectoryLine(target.id);
     else if (act === 'openSettings') this.pauseMenu.toggle(true);
     else if (act === 'openObjectPlacer') {
-      this.authoring?.openObjectPlacer(focusTargetId(this.camera.map.focus));
+      this.authoring?.openObjectPlacer(
+        target instanceof CelestialEntity ? target.id : focusTargetId(this.camera.map.focus));
     } else {
+      // 対象固有の操作は命令口へ渡す。
       this.commands.runMenu(target, act, this.authoring, this.planEditor);
     }
   }
@@ -163,6 +192,7 @@ export class ObjectWindowActions {
     for (const item of this.activeView().pickables) {
       if (item.id === target.id) continue;
       const state = item.orbitState;
+      // 軌道状態を引けない対象は、天体台帳の親で周回を判断する。
       const isOrbiting = state === null
         ? this.celestialBodies.bodyParentId(item.id) === target.id
         : orbitingAttractorOf(state, this.celestialBodies.celestialMotions, pivot)?.id === target.id;
@@ -174,7 +204,7 @@ export class ObjectWindowActions {
       label,
       onFocus: () => {
         this.mapFocusCommands.setFocus({ kind: 'object', id: item.id });
-        this.hint(`${label} にフォーカス`);
+        this.hint(`${label} にフォーカス`, undefined, 'nav');
       },
       onContextMenu: (clientX, clientY) => {
         const current = this.activeView().pickables.find((candidate) => candidate.id === item.id);
@@ -183,10 +213,11 @@ export class ObjectWindowActions {
     }));
   }
 
+  // 操作対象の自艦には MODULES、それ以外には ORBITING を返す。
   public relatedTitleFor(target: InspectedObject): string {
     const controlled = this.controlSelection.current;
     return controlled !== null && isModularShip(controlled) && target.id === controlled.id
-      ? '搭載モジュール' : '周回物体';
+      ? 'MODULES' : 'ORBITING';
   }
 
   // 表示中のビューのカメラの注視を id の対象へ移し、name で知らせる。
@@ -196,14 +227,16 @@ export class ObjectWindowActions {
     } else {
       this.combatFocusCommands.setFocus({ kind: 'object', id });
     }
-    this.hint(`${name} にフォーカス`);
+    this.hint(`${name} にフォーカス`, undefined, 'nav');
   }
 
-  private get authoring(): ObjectAuthoring | null {
+  // マップ表示中の編集面。それ以外のビューでは null。
+  private get authoring(): PresentationStageAuthoring | null {
     return this.view.current === 'map' ? this.activeStage.authoring : null;
   }
 
-  private get planEditor(): PlanEditor | null {
+  // 表示中のビューが持つ計画エディタ。ビューが持たなければ null。
+  private get planEditor(): PresentationPlanEditor | null {
     return this.activeView().planEditor;
   }
 }

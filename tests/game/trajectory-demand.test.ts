@@ -5,7 +5,7 @@
 // 需要の違う2つの進行の結果どうしである。
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
-import { fixedMotion } from '../physics/test-helpers';
+import { fixedMotion, occludersOf } from '../physics/test-helpers';
 import { add, v3, type Vec3 } from '../../src/math/vec3';
 import type { CelestialBody } from '../../src/physics/celestial-body';
 import { kinematicState, type KinematicState } from '../../src/physics/kinematic-state';
@@ -17,7 +17,7 @@ import { DEFAULT_HISTORY_DURATION, PredictedArc } from '../../src/game/dynamic/p
 import type {
   DynamicReactionServices, PredictableMotionRoster,
 } from '../../src/game/dynamic/dynamic-simulation-participant';
-import type { TrajectoryDemand } from '../../src/game/dynamic/trajectory-demand';
+import type { TrajectoryDemand } from '../../src/game/dynamic/predictor';
 
 // 1フレームの時間送り [s] と、進めるフレーム数。
 const SIM_DT = 5;
@@ -100,7 +100,7 @@ function runFrames(demand: TrajectoryDemand, thrust: Vec3 | null): FrameRun {
     motion.requestHistoryDuration(demand.historyDuration);
     predictor.update(motion.state.t, SIM_DT, motion, demand);
     predictedEnd = motion.predicted?.state.t ?? motion.state.t;
-    const integrated = motion.stepSimulation(SIM_DT, bodies, bodies, null, null, PIVOT, services);
+    const integrated = motion.stepSimulation(SIM_DT, bodies, occludersOf(bodies, bodies), null, null, PIVOT, services);
     if (!integrated) followed++;
     states.push(motion.state);
   }

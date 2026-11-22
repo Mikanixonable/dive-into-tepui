@@ -1,9 +1,9 @@
 // 軌道ガイド線の描画資源。1フレームぶんの宣言の列を、線1本ごとの曲線と進行方向マーカーへ
 // 反映する。描かれている点列を、宣言が添えた識別情報とともに返す。
 import * as THREE from 'three/webgpu';
-import { GuideCurve, GuideCurveDisplay } from './guide-curve';
+import { GuideCurve, type GuideCurveDisplay } from './guide-curve';
 import { DirectionMarkers } from './direction-markers';
-import { LINE_RENDER_ORDER } from '../../line-style';
+import { LINE_RENDER_ORDER } from '../../lines/line-style';
 import type { CurveColorSampler } from '../../curve';
 import type { CameraFrame } from '../../camera/camera-frame';
 import type { CatalogSystemId } from '../../../physics/orbit-catalog';
@@ -75,7 +75,7 @@ export class OrbitGuideView {
   // 何も描かないフレームには空の列を渡す。nowMs はこのフレームの実時刻 [ms]で、マーカーの
   // アニメーションはこれだけで進む。
   public sync(displays: readonly GuideLineDisplay[], camera: CameraFrame, nowMs: number): void {
-    // 宣言の列が入れ替わったフレームだけ、線ごとの曲線の顔ぶれを合わせ直す。
+    // 宣言の配列参照が入れ替わったフレームのみ、線ごとの曲線オブジェクトを同期し直す。
     if (displays !== this.displays) {
       this.retainOnly(displays);
       this.displays = displays;

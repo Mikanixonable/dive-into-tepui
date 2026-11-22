@@ -1,20 +1,20 @@
 // ラグランジュ点を指す、実体を持たない被選択物。生成元が解いた時刻の位置を持ち、天体と同じ
-// 名前空間の id と、マップのマーカーへ出す二行表記を答える。
+// 名前空間の id と、マップのマーカーへ出す二行表記テキストを提供する。
 import { lagrangeId, type LagrangePointNumber } from '../celestial/lagrange-id';
 import { len, sub, type Vec3 } from '../../math/vec3';
 import type { MapVisibility, MapVisibilityPolicy } from '../map/visibility-policy';
 import { bodySearchText } from '../pickable/body-search-text';
-import { fmtDist } from '../../hud/utils';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import { fmtDist } from '../../hud-kit/format';
+import { MenuCommon, type MenuAction } from '../menu-actions';
 import { ENTITY_GLYPH } from './marker-identity';
 import { MARKER_PRIORITY } from './marker-priority';
 import type { MapListSection, ObjectPickerGenre } from '../pickable/pickable-listing';
 import type { ObjectPickable } from '../pickable/object-pickable';
-import type { MenuItem } from '../hud/windows/context-menu';
-import type { PropertyRow } from '../../hud/windows/property-window-content';
-import type { MarkerVisibility } from '../../marker/marker-visibility';
+import type { MenuItem } from '../../hud-kit/windows/context-menu';
+import type { PropertyRow } from '../../hud-kit/windows/property-window-content';
+import type { MarkerVisibility } from '../../marker-kit/marker-sink';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
-import type { OrbitingObject } from '../dynamic/dynamic-entity/orbiting-object';
+import type { OrbitingObject } from '../dynamic/entity/orbiting-object';
 
 export class LagrangePointMarker implements ObjectPickable {
   public readonly id: string;
@@ -67,8 +67,9 @@ export class LagrangePointMarker implements ObjectPickable {
   public menuItems(
     celestialBodies: CelestialBodies, _viewer: OrbitingObject | null, navTargetId: string | null,
   ): readonly MenuItem<MenuAction>[] {
+    // 見出しにこの点を定める天体系を示す。
     const primaryId = celestialBodies.bodyParentId(this.parentId);
-    const subLabel = primaryId === undefined || primaryId === null
+    const subLabel = primaryId === null
       ? 'ラグランジュ点'
       : `${celestialBodies.nameOf(primaryId)}-${celestialBodies.nameOf(this.parentId)} ラグランジュ点`;
     return [
@@ -85,12 +86,14 @@ export class LagrangePointMarker implements ObjectPickable {
   public propertyRows(
     _celestialBodies: CelestialBodies, viewer: OrbitingObject | null,
   ): readonly PropertyRow[] {
+    // 自艦と位置を使える場合に距離を加える。
     const pos = this.posAt();
     const rows: PropertyRow[] = [];
     if (viewer && pos) {
       rows.push({
         key: 'dist', label: '自艦からの距離',
         value: fmtDist(len(sub(pos, viewer.motion.state.r))),
+        presentation: 'hero',
       });
     }
     rows.push({ key: 'kind', label: '種別', value: 'ラグランジュ点' });
@@ -111,5 +114,4 @@ export class LagrangePointMarker implements ObjectPickable {
   }
 
   public listCounted(): boolean { return false; }
-  public listPriority(): number { return 0; }
 }

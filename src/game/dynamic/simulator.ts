@@ -12,7 +12,7 @@ import type { FrameCelestialBodies } from '../celestial/celestial-bodies';
 import type { StageOutcome } from '../stages/stage-outcome';
 import type { StageSimulationEvents } from '../stages/stage-simulation-events';
 import { EntityContactPhysics } from './entity-contact-physics';
-import { engagementZones } from './engagement-zone';
+import { EngagementZoneBuilder } from './engagement-zone';
 import { SurfaceContactPhysics } from './surface-contact-physics';
 import { SubstepCelestialBodies } from './substep-celestial-bodies';
 import { NextEventTime } from './next-event-time';
@@ -43,6 +43,8 @@ export class Simulator {
   // ゼロ長サブステップが連続した回数(キャッシュ)。simTime が実際に進んだら 0 へ戻す。
   private consecutiveZeroSteps = 0;
   private readonly contactEntitiesScratch: EntityContactParticipant[] = [];
+  // 交戦圏の作業配列と zone 実体をサブステップ間で使い回す。
+  private readonly engagementZoneBuilder = new EngagementZoneBuilder<DynamicSimulationParticipant>();
   // このサブステップを1歩で渡った個体。区間が揃っているので、天体接触をまとめて解ける。
   private readonly sharedIntervalScratch: DynamicSimulationParticipant[] = [];
   // このサブステップの天体窓。
@@ -69,7 +71,7 @@ export class Simulator {
   }
 
   // simDt ぶんシミュレーションを進める。サブステップごとに全個体を進めてから、天体・物体どうしの
-  // 接触を解く。物体どうしの接触は canEngage のときに限り、交戦圏の内側で解く。
+  // 接触判定・衝突応答を処理する。物体どうしの接触は canEngage のときに限り、交戦圏の内側で処理する。
   public advance(
     dt: number,
     simDt: number,
@@ -86,7 +88,7 @@ export class Simulator {
     this.entityContactPhysics.resetCounts();
     const services: DynamicReactionServices = { activeStage, registry: this.registry };
     const targetTime = this._simTime + simDt;
-    // 天体の顔ぶれと表面候補の絞り込みはこのフレームで1組だけ組んで全サブステップで使い回す。
+    // 天体セットと表面候補の絞り込みはこのフレームで1組だけ構築し全サブステップで再利用する。
     if (this._simTime < targetTime) {
       this.bodies.resetFrame(this.windows, this._simTime, simDt);
       this.lastGravitySourceCount = this.bodies.gravitySourceCount;
@@ -104,7 +106,7 @@ export class Simulator {
         // eventTime との差が 1 ULP 未満に潰れたら、eventTime へ直接そろえて差を1回で消費する。
         if (eventTime !== null && eventTime > this._simTime) this._simTime = eventTime;
         // それでも進まない個体が残るなら、このフレームぶんを一括で消費して検知できる形で打ち切る。
-        // 微小量を足して逃げると、|simTime| が大きいとき ULP 未満の加算が no-op になる。
+        // 微小量を加算して回避しようとすると、|simTime| が大きいとき ULP 未満の加算が no-op になる。
         if (this.consecutiveZeroSteps > SIMULATION_STALL_MAX_ZERO_STEPS) {
           console.error(
             `[Simulator] ゼロ刻みが${this.consecutiveZeroSteps}回連続。simTime=${this._simTime} `
@@ -113,7 +115,10 @@ export class Simulator {
           this.consecutiveZeroSteps = 0;
         }
         activeStage.applySimulationEvents(this._simTime);
-        this.lifecycle.cleanup(0, this._simTime, activeStage, engagementZones(this.roster.allMotions(), canEngage));
+        this.lifecycle.cleanup(
+          0, this._simTime, activeStage,
+          this.engagementZoneBuilder.build(this.roster.allMotions(), canEngage),
+        );
         continue;
       }
       this.consecutiveZeroSteps = 0;
@@ -129,18 +134,18 @@ export class Simulator {
       this.sections.exit(SECTION.orbit);
       this.lastSubsteps++;
       nanWatchdog.checkControlled('simulator.advance(個体の前進)', controlled, this._simTime, dt, subDt);
-      // 天体との接触を物体どうしより先に解く。細分した個体は内側で解き終えているので、ここでは
-      // 1歩で渡った個体に限る — 二重に解くと反発が二度当たる。
+      // 天体との接触を物体どうしより先に判定する。細分した個体は内側で処理を終えているので、ここでは
+      // 1歩で渡った個体に限る — 二重に判定すると反発が二度適用されてしまう。
       this.sections.enter(SECTION.celestialContact);
       this.surfaceContactPhysics.resolveShared(this.sharedIntervalScratch, services);
       this.sections.exit(SECTION.celestialContact);
       nanWatchdog.checkControlled('simulator.advance(天体接触)', controlled, this._simTime, dt, subDt);
       // 接触代理は交戦圏があるときに限って組む — 交戦圏の組まれない倍率で組むと、代理が
-      // substep 幅そのままの粗い刻みで解かれて発散する。
-      const zones = engagementZones(this.roster.allMotions(), canEngage);
+      // substep 幅そのままの粗い刻みで評価されて発散する。
+      const zones = this.engagementZoneBuilder.build(this.roster.allMotions(), canEngage);
       if (zones.length > 0) {
         this.sections.enter(SECTION.entityContact);
-        // 接触代理を参加者へ合流させて解き、解決後に本体へ書き戻す。
+        // 接触代理を参加者へ合流させて接触判定を処理し、解決後に本体へ書き戻す。
         this.contactEntitiesScratch.length = 0;
         for (const entity of this.roster.allMotions()) {
           this.contactEntitiesScratch.push(entity);
@@ -176,7 +181,7 @@ export class Simulator {
         e.kill();
         continue;
       }
-      // 重力源と大気天体の選択は個体ごとに1回 — 顔ぶれはサブステップの中で変わらない。
+      // 重力源と大気天体の選択は個体ごとに1回 — 対象天体セットはサブステップの中で変わらない。
       const near = this.bodies.attractorsNear(e.state.r);
       const atmosphereBody = this.bodies.atmosphereBodyNear(e.state.r);
       const divisions = e.substepDivisions(dt, this.bodies.atmosphere, this.bodies.pivot);
@@ -186,14 +191,14 @@ export class Simulator {
         // 残さない弾・薬莢が表示時刻の状態を答えられなくなる。
         const integrated = e.stepSimulation(
           i === divisions - 1 ? endTime - e.state.t : step,
-          near, this.bodies.surface, atmosphereBody, this.bodies.star,
+          near, this.bodies.occluders, atmosphereBody, this.bodies.star,
           this.bodies.pivot, services);
         if (integrated) this.lastIntegratedSteps++;
         else this.lastFollowedSteps++;
-        // 細分した個体は各歩で表面到達を解く — 判定を粗いままにすると、加熱の山を踏み外し、
-        // 地表を跨いで地面の下を積み続ける。
+        // 細分した個体は各歩で表面到達判定を行う — 判定を粗いままにすると、加熱の山を踏み外し、
+        // 地表を跨いで地面の下を積分し続ける。
         if (divisions > 1) {
-          // 細分の各歩で解く天体接触も天体接触の値段なので、軌道積分を出てから計る。
+          // 細分の各歩で処理する天体接触も天体接触の負荷なので、軌道積分の計測区間を出てから計る。
           this.sections.switchTo(SECTION.orbit, SECTION.celestialContact);
           this.surfaceContactPhysics.resolveOne(e, services);
           this.sections.switchTo(SECTION.celestialContact, SECTION.orbit);

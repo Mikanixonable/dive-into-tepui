@@ -1,8 +1,8 @@
 import * as assert from 'node:assert/strict';
-import type { GameInputBinding } from '../../src/game/input/game-actions';
+import type { GameInputBinding } from '../../src/game/input/game-input-types';
 import { GameInputRouter, type RawGameInputAdapter } from '../../src/game/input/game-input-router';
 import { PilotInput } from '../../src/game/input/pilot-input';
-import type { PilotCommand } from '../../src/game/dynamic/dynamic-entity/pilot-controls';
+import type { PilotCommand } from '../../src/game/dynamic/entity/pilot-controls';
 import { test } from '../harness';
 
 // 押下中のキーと、そのフレームの押下エッジを差し替えられる生入力。

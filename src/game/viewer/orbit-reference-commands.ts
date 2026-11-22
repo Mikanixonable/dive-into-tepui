@@ -1,4 +1,4 @@
-// 軌道要素の基準の選択へ外から出せる命令の口と、それを列へ積む実装(R3)。
+// 軌道要素の基準の選択へ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { OrbitReferenceMode, OrbitReferenceSelection } from './orbit-reference-selection';
 
@@ -8,7 +8,7 @@ export interface OrbitReferenceCommands {
   setMode(mode: OrbitReferenceMode): void;
 }
 
-// selection への命令を queue へ積むだけの口を組む。
+// selection へのコマンドを queue へエンキューする実装を構築する。
 export function orbitReferenceCommands(
   queue: CommandQueue, selection: OrbitReferenceSelection,
 ): OrbitReferenceCommands {

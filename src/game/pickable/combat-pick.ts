@@ -1,11 +1,13 @@
 // 戦闘ビューでの右クリックが、生存中の実体(自艦・敵艦・基地)のどれに当たったかを判定する。
 // 画面座標から実体の形へ視線を通し、最も手前のものを選ぶ。
-import { isCombatTarget, type CombatTarget } from '../dynamic/dynamic-entity/combat-target';
-import type { EntityRoster } from '../dynamic/entity-roster';
+import { isCombatTarget, type CombatTarget } from '../dynamic/entity/combat-target';
+import type { EntityRoster } from '../dynamic/entity-registry';
 import { rayThroughScreen, type Viewpoint } from '../../math/projection';
 import { len, sub } from '../../math/vec3';
 import type { ProjectFn } from '../../math/projection';
 import type { Viewport } from '../../render/viewport';
+import type { ModularShip } from '../ship/modular-ship';
+import type { ShipModuleInstance } from '../ship/ship-module-instance';
 
 // 中心からこの半径 [px] 以内のクリックは、形を外していても当たったものとして扱う。
 // これが無いと、遠方で数ピクセルにしか写らない実体を掴めない。
@@ -41,4 +43,14 @@ export function pickCombatEntityAtPoint(
   }
 
   return bestEntity;
+}
+
+// 画面上の座標 (clientX, clientY) を通る視線が、ship のどのモジュールに最も手前で当たるかを返す。
+// compound 形状を持たない船体や、どのモジュールにも当たらなければ null。
+export function pickShipModuleAtPoint(
+  ship: ModularShip, view: Viewpoint, clientX: number, clientY: number, viewport: Viewport,
+): ShipModuleInstance | null {
+  const ray = rayThroughScreen(view, clientX, clientY, viewport.width, viewport.height);
+  const hit = ship.motion.raycastCompound(ray, ship.motion.state.r);
+  return hit === null ? null : ship.assembly.module(hit.moduleId);
 }

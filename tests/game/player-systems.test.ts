@@ -7,32 +7,35 @@ import { v3 } from '../../src/math/vec3';
 import { stepAttitude } from '../../src/physics/attitude';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { DynamicMotion } from '../../src/game/dynamic/dynamic-motion';
-import type { FuelConsumer } from '../../src/game/dynamic/dynamic-entity/controllable';
-import { Ship, SHIP_BCINV, SHIP_SRP_COEFF } from '../../src/game/dynamic/dynamic-entity/ship';
-import type { PilotControls } from '../../src/game/dynamic/dynamic-entity/pilot-controls';
-import { createShipDefaultParts } from '../../src/game/dynamic/dynamic-entity/ship-default-parts';
+import type { FuelConsumer } from '../../src/game/dynamic/entity/controllable';
+import {
+  CombatShipEntity, SHIP_BCINV, SHIP_SRP_COEFF,
+} from '../../src/game/dynamic/entity/combat-ship-entity';
+import type { PilotControls } from '../../src/game/dynamic/entity/pilot-controls';
 import { DynamicView } from '../../src/render/dynamic/dynamic-view';
 import { FireControl } from '../../src/game/player/fire-control';
 import { Throttle } from '../../src/game/player/throttle';
 import { WeaponState, type SerializedWeaponState } from '../../src/game/player/weapon-state';
+import { MAG_ROUNDS } from '../../src/game/player/ammo-spec';
 import { DeployablePanelState } from '../../src/game/player/deployable-panel-state';
 import { PowerSystem, POWER_CAPACITY } from '../../src/game/player/power';
 import { RadiatorSystem } from '../../src/game/player/radiator';
 import type { ModularShip } from '../../src/game/ship/modular-ship';
 import { ModularShipMotion } from '../../src/game/ship/modular-ship-motion';
-import { createDefaultCombatPreset } from '../../src/game/ship/ship-presets';
+import { createDefaultCombatPreset, createSalvageTenderPreset } from '../../src/game/ship/ship-presets';
 import { createShipModuleInstance } from '../../src/game/ship/ship-module-instance';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
-import type { SerializedDynamicEntity } from '../../src/game/dynamic/dynamic-entity/entity-dictionary';
+import type { SerializedDynamicEntity } from '../../src/game/dynamic/entity/entity-dictionary';
 
 const attitude = { q: Q_IDENTITY, w: v3(), inertia: v3(1, 1, 1) };
 const state = kinematicState<'eci'>(0, v3(), v3());
 
-class TestShip extends Ship {
+class TestShip extends CombatShipEntity {
+  // 既定部品と固定の運動状態で組む。
   public constructor(name: string, id = 'test-ship') {
     super(
       name, 1_000, () => new DynamicMotion(state, { mass: 1_000 }), new NullView(),
-      id, createShipDefaultParts(1_000),
+      id,
     );
   }
 
@@ -51,24 +54,6 @@ class NullView extends DynamicView {
 }
 
 export function register(): void {
-  test('default ship: 固定ロードアウトの集計値を維持する', () => {
-    const ship = new TestShip('default');
-
-    // FLIGHT.md の既定船: HP 1,000、既定部品の出力・資源・装備を合計した値。
-    assert.equal(ship.hp, 1_000);
-    assert.equal(ship.maxHp, 1_000);
-    assert.equal(ship.totalThrust, 400_000);
-    assert.ok(Math.abs(ship.totalTorque - 24_000) < 1e-12);
-    assert.equal(ship.totalFuel, 1_000);
-    assert.equal(ship.totalMaxFuel, 1_000);
-    assert.equal(ship.totalFuelConsumptionRate, 1);
-    assert.equal(ship.totalPowerGeneration, 1_650);
-    assert.equal(ship.totalCoolingRate, 9.6);
-    assert.equal(ship.weaponDamage, 1);
-    assert.equal(ship.totalFireRate, 1 / 0.06);
-    assert.equal(ship.averageMuzzleVelocity, 1_000);
-  });
-
   test('default ship: 実慣性に対して RCS が姿勢を変える角加速度を出す', () => {
     const assembly = createDefaultCombatPreset();
     const totals = assembly.totals();
@@ -90,7 +75,8 @@ export function register(): void {
 
     throttle.updateTorque(motion.att, v3(), v3(), controls, false, 0, 0, fuelConsumer, null);
     const angularAcceleration = throttle.torque.z / motion.att.inertia.z;
-    assert.ok(angularAcceleration > 0.35 && angularAcceleration < 0.5);
+    assert.ok(angularAcceleration > 0.3 && angularAcceleration < 0.4,
+      `RCS roll acceleration ${angularAcceleration} rad/s²`);
 
     const next = stepAttitude(motion.att, throttle.torque, 0.4);
     assert.ok(Math.abs(next.q.z) > 1e-3);
@@ -119,12 +105,70 @@ export function register(): void {
 
     const radiator = new RadiatorSystem(new DynamicMotion(state), () => {}, undefined, undefined, assembly);
     radiator.syncAssembly();
-    radiator.setDeployed('radiator-left', true);
-    assert.equal(radiator.deployOf('radiator-left'), 0);
+    radiator.setDeployed('radiator', true);
+    assert.equal(radiator.deployOf('radiator'), 0);
     radiator.update(3, {});
-    assert.equal(radiator.deployOf('radiator-left'), 1);
+    assert.equal(radiator.deployOf('radiator'), 1);
     assert.equal(radiator.radiatingArea(0), 4.8);
-    assert.deepEqual(radiator.serialize().panels?.map(panel => panel.id), ['radiator-left', 'radiator-right']);
+    assert.deepEqual(radiator.serialize().panels?.map(panel => panel.id), ['radiator']);
+  });
+
+  test('player systems: 未装備の側の放熱板は損耗 0・展開 0 を返す', () => {
+    // 標準戦闘艦は放熱板を1枚だけ積む。無い側を「損耗100%」と読むと、VESSEL パネルが
+    // 積んでいない放熱板を赤い損耗表示にしてしまう。
+    const assembly = createDefaultCombatPreset();
+    const radiator = new RadiatorSystem(new DynamicMotion(state), () => {}, undefined, undefined, assembly);
+    radiator.syncAssembly();
+    assert.equal(radiator.deployOf('up'), 0);
+    assert.equal(radiator.wearOf('up'), 0);
+    assert.equal(radiator.deployOf('down'), 0);
+    assert.equal(radiator.wearOf('down'), 0);
+  });
+
+  test('player systems: 展開部品の有無を hasPanels で問える', () => {
+    // 標準戦闘艦は太陽電池2枚・放熱板1枚を積む。補給艇はどちらも積まない。
+    const combat = createDefaultCombatPreset();
+    const combatPower = new PowerSystem(undefined, undefined, undefined, combat);
+    combatPower.syncAssembly();
+    assert.equal(combatPower.hasPanels(), true);
+    assert.equal(combatPower.hasPanel('up'), true);
+    assert.equal(combatPower.hasPanel('down'), true);
+    const combatRadiator = new RadiatorSystem(new DynamicMotion(state), () => {}, undefined, undefined, combat);
+    combatRadiator.syncAssembly();
+    assert.equal(combatRadiator.hasPanels(), true);
+    assert.equal(combatRadiator.hasPanel('up'), true);
+    assert.equal(combatRadiator.hasPanel('down'), false);
+
+    const tender = createSalvageTenderPreset([]);
+    const tenderPower = new PowerSystem(undefined, undefined, undefined, tender);
+    tenderPower.syncAssembly();
+    assert.equal(tenderPower.hasPanels(), false);
+    assert.equal(tenderPower.hasPanel('up'), false);
+    assert.equal(tenderPower.hasPanel('down'), false);
+    const tenderRadiator = new RadiatorSystem(new DynamicMotion(state), () => {}, undefined, undefined, tender);
+    tenderRadiator.syncAssembly();
+    assert.equal(tenderRadiator.hasPanels(), false);
+    assert.equal(tenderRadiator.hasPanel('up'), false);
+    assert.equal(tenderRadiator.hasPanel('down'), false);
+
+    // assembly を持たない旧式の経路は、既定の2枚を持つ。
+    assert.equal(new PowerSystem().hasPanels(), true);
+    assert.equal(new PowerSystem().hasPanel('up'), true);
+    assert.equal(new PowerSystem().hasPanel('down'), true);
+    assert.equal(new RadiatorSystem(new DynamicMotion(state), () => {}).hasPanels(), true);
+    assert.equal(new RadiatorSystem(new DynamicMotion(state), () => {}).hasPanel('up'), true);
+    assert.equal(new RadiatorSystem(new DynamicMotion(state), () => {}).hasPanel('down'), true);
+  });
+
+  test('player systems: 積んでいない側の展開切替は無操作', () => {
+    // 標準戦闘艦は放熱板を1枚だけ積む。無い側の切替は、ある側の展開度を変えない。
+    const combatRadiator = new RadiatorSystem(
+      new DynamicMotion(state), () => {}, undefined, undefined, createDefaultCombatPreset(),
+    );
+    combatRadiator.syncAssembly();
+    combatRadiator.toggle('down');
+    assert.equal(combatRadiator.deployOf('down'), 0);
+    assert.equal(combatRadiator.deployOf('up'), 0);
   });
 
   test('modular ship motion: booster module の質量で空力・輻射圧の質量あたり値が下がる', () => {
@@ -133,9 +177,9 @@ export function register(): void {
       SHIP_MODULE_CATALOG.require('booster-standard'), 'test-booster',
     ));
     const motion = new ModularShipMotion(assembly, state, attitude);
-    assert.equal(motion.mass, 2_000);
-    assert.equal(motion.bcInv, SHIP_BCINV / 2);
-    assert.equal(motion.srpCoeff, SHIP_SRP_COEFF / 2);
+    assert.equal(motion.mass, 2_030);
+    assert.equal(motion.bcInv, SHIP_BCINV * 1_000 / 2_030);
+    assert.equal(motion.srpCoeff, SHIP_SRP_COEFF * 1_000 / 2_030);
   });
 
   test('ship marker: 同名艦でも clipPath ID が衝突せず、改名でも安定する', () => {
@@ -173,8 +217,7 @@ export function register(): void {
 
   test('fire control: 非正数の補給と不正な保存値を安全な状態へ正規化する', () => {
     const weapon = WeaponState.deserialize({
-      mags: -2, rounds: 999, barrel: -1, cooldown: Number.NaN, muzzleIdx: 8,
-      barrelTemperature: Number.NaN, barrelDeviation: Number.NaN, pendingBarrelJoules: -1,
+      mags: -2, rounds: 999, cooldown: Number.NaN, muzzleIdx: -1,
       wasFiring: false, wasEmptyClick: false,
     } satisfies SerializedWeaponState);
     const fire = new FireControl(
@@ -184,7 +227,7 @@ export function register(): void {
       weapon,
     );
     assert.equal(fire.mags, 2);
-    assert.equal(fire.rounds, 32);
+    assert.equal(fire.rounds, MAG_ROUNDS);
     const before = fire.mags;
     fire.onPickup(0);
     fire.onPickup(-1);
@@ -198,5 +241,30 @@ export function register(): void {
     assert.deepEqual(weapon.nextShot(2), { consumption: 'normal', muzzleIndex: 1 });
     weapon.fire(2);
     assert.equal(weapon.muzzleIdx, 0);
+  });
+
+  test('weapon state: 連射間隔はフレーム長へ切り上がらず、超過分を次の間隔から引く', () => {
+    const weapon = new WeaponState();
+    const interval = 0.06, dt = 1 / 60;
+    let shots = 0;
+    weapon.setShotInterval(interval);
+    for (let frame = 0; frame < 600; frame++) {
+      weapon.tickCooldown(dt);
+      if (weapon.cooldown > 0) continue;
+      shots++;
+      weapon.setShotInterval(interval);
+    }
+    // 10 秒で約 166 発。切り上げ(4 フレーム間隔)なら 150 発になる。
+    assert.ok(shots >= 164, `shots=${shots}`);
+  });
+
+  test('weapon state: 起動遅延はリロード中の残りクールダウンを短くしない', () => {
+    const weapon = new WeaponState();
+    weapon.setCooldown(1.0);
+    weapon.extendCooldown(0.15);
+    assert.equal(weapon.cooldown, 1.0);
+    weapon.setCooldown(0);
+    weapon.extendCooldown(0.15);
+    assert.equal(weapon.cooldown, 0.15);
   });
 }

@@ -3,16 +3,16 @@
 // 役割トークンは毎フレームその時点の対象へ解決されるので、操作対象の乗り換えやターゲットの
 // 付け替えをまたいでも同じ基準を指し続ける(DEVELOP/SPEC/CELESTIAL.md 8節)。
 import { orbitingAttractorOf } from '../physics/attractor';
-import { FrameAnchorSource, FrameRole, frameRoleOf } from '../physics/frame';
-import { KinematicState } from '../physics/kinematic-state';
+import { type FrameAnchorSource, type FrameRole, frameRoleOf } from '../physics/frame';
+import type { KinematicState } from '../physics/kinematic-state';
 import type { Quat } from '../math/quat';
 import type { CelestialBodies } from './celestial/celestial-bodies';
 import type { CelestialBody } from '../physics/celestial-body';
-import type { Controllable } from './dynamic/dynamic-entity/controllable';
-import type { EntityRoster } from './dynamic/entity-roster';
+import type { Controllable } from './dynamic/entity/controllable';
+import type { EntityRoster } from './dynamic/entity-registry';
 import type { NavTargetPresenter } from './nav-target-presenter';
 
-// 解決に要る問い合わせをまとめた受け口。いずれも ECI 状態を答える。
+// 座標解決に必要な問い合わせをまとめたインターフェース。いずれも ECI 状態を返す。
 interface AnchorTargets {
   // 生存中のエンティティ id の時刻 t における状態。見つからなければ null。
   entityState(id: string, t: number): KinematicState | null;
@@ -24,7 +24,7 @@ interface AnchorTargets {
 
 // 役割トークンが一時的に解決できないあいだ直前の状態を保つ枠。連続ミスはフレームで数える —
 // 呼び出し回数で数えると、同じフレームに重ねて問われただけで猶予を使い切る。
-type RoleHold = { state: KinematicState | null; misses: number; missFrame: number };
+interface RoleHold { state: KinematicState | null; misses: number; missFrame: number }
 
 export class FrameAnchors implements FrameAnchorSource {
   private _bodiesPivot = 0;
@@ -104,7 +104,7 @@ export class FrameAnchors implements FrameAnchorSource {
   }
 }
 
-// 基準 id・役割トークンが指す実体を、このランの顔ぶれ・操作対象・航法ターゲットから引く。
+// 基準 id・役割トークンが指す実体を、登録エンティティ一覧・操作対象・航法ターゲットから取得する。
 export class AnchorEntities implements AnchorTargets {
   public constructor(
     private readonly roster: EntityRoster,
@@ -113,7 +113,7 @@ export class AnchorEntities implements AnchorTargets {
     private readonly celestialBodies: CelestialBodies,
   ) {}
 
-  // 顔ぶれのうち生存中の id の、時刻 t における状態。
+  // 登録エンティティのうち生存中の id の、時刻 t における状態。
   public entityState(id: string, t: number): KinematicState | null {
     return this.roster.all()
       .find((e) => e.id === id && e.motion.alive)

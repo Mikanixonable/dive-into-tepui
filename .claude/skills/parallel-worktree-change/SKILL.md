@@ -6,7 +6,7 @@ description: 中〜大規模なリポジトリ変更を専用 Git worktree で�
 # worktree で並列実装し、統合する
 
 この Skill は、実装作業の実行主体ではなく、計画・委譲・レビュー・統合を管理する
-オーケストレーターである。ユーザーの明示的な指示とリポジトリの `AGENTS.md` / `CLAUDE.md`
+オーケストレーターである。ユーザーの明示的な指示とリポジトリの `AGENTS.md`
 を最優先する。
 
 ## 1. 適用するか判定する
@@ -54,7 +54,7 @@ worktree の作成に失敗した場合や、作業対象を安全に分離で�
 
 専用 worktree で、実装前に以下を確認する。
 
-- `AGENTS.md` と `CLAUDE.md`
+- `AGENTS.md`
 - `DEVELOP/CODING-RULE.md`(1.3 に当たるなら `DEVELOP/ARCHITECTURE.md` も)
 - 変更に関係する `DEVELOP/SPEC/`
 - 変更内容に応じた既存 Skill（`/modify-feature`、`/add-feature`、`/ui-design`、

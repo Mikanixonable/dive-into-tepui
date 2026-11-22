@@ -1,7 +1,7 @@
 // 表示パネル(マップモード左レール)ガイドタブのゼロ速度曲線節。CR3BP のヤコビ定数で決まる
 // 到達可能領域の境界を、断面ゲート・ヤコビ定数入力・ラグランジュ点への一発合わせ・範囲/本数・
 // 透明度で設定させる。操作のたびに、書き換わった項目だけを onChange へ渡す。
-import { Button, ToggleSwitch } from '../../../hud/widgets';
+import { Button, ToggleSwitch } from '../../../hud-kit/widgets';
 import type { LagrangeLabel } from '../../../physics/lagrange';
 import { lagrangePointJacobi } from '../../celestial/orbit-guide/orbit-guide-catalog';
 import type { ZeroVelocitySettings } from '../../viewer/orbit-guide-settings';
@@ -118,7 +118,7 @@ export class ZeroVelocitySection {
   private buildRangeFields(parent: HTMLElement): RangeFields {
     const row = document.createElement('div');
     row.className = 'orbit-guide-zero-velocity-range';
-    // 下限・上限は互いに独立して動かせる。大小関係の整えは設定を組み直す側が行う。
+    // 下限・上限は互いに独立して動かせる。大小関係を整えるのは設定を組み直す側が行う。
     const minField = buildValueField('ヤコビ定数(下限)', JACOBI_MAPPING, (v) => this.onChange?.({ jacobiMin: v }));
     const maxField = buildValueField('ヤコビ定数(上限)', JACOBI_MAPPING, (v) => this.onChange?.({ jacobiMax: v }));
     const countField = buildValueField('本数', ZERO_VELOCITY_COUNT_MAPPING, (count) => this.onChange?.({ count: Math.round(count) }));

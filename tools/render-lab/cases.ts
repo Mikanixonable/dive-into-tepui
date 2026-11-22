@@ -6,11 +6,17 @@ import { ringShadowBands } from '../../src/render/pipeline/shadow/ring-shadow';
 import { rayMarch, type MediumSample } from '../../src/render/ray-march';
 import { RingView } from '../../src/render/celestial/ring-view';
 import { SATURN, SATURN_TEXTURE } from '../../src/game/celestial/solar-system/saturn-system';
+import { MOON, MOON_TEXTURE, R_EARTH } from '../../src/game/celestial/solar-system/earth-system';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
-import { v3 } from '../../src/math/vec3';
-import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/line-style';
-import { PROTEIN_CASES } from './protein-cases';
+import { Q_IDENTITY } from '../../src/math/quat';
+import { sub, v3, type Vec3 } from '../../src/math/vec3';
+import { createBasePreset } from '../../src/game/ship/ship-presets';
+import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
+import { constructionRotationRing } from '../../src/game/ship/ship-construction-rotation';
+import { RotationRingView } from '../../src/render/dynamic/ship/rotation-ring-view';
+import { LINE_RENDER_ORDER, type LineStyle } from '../../src/render/lines/line-style';
 import { SHIP_CASES } from './ship-cases';
+import { THUMBNAIL_CASES } from './thumbnail-cases';
 import { EARTH_CASES } from './earth-cases';
 import { MATERIAL_CASES } from './material-cases';
 import { SHADOW_CASES } from './shadow-cases';
@@ -25,8 +31,13 @@ import { METAL_ROOM_CASES } from './metal-room-case';
 import { CASING_ROOM_CASES } from './casing-room-case';
 import { PLANE_CASES } from './plane-case';
 import { CLUTTER_CASES } from './clutter-case';
+import { BELT_CASES } from './belt-cases';
+import { CASING_CASES } from './casing-cases';
+import { ASSEMBLY_CASES } from './assembly-cases';
+import { PLUME_CASES } from './plume-cases';
 import {
-  circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, texturedBody, VIEW_HEIGHT, VIEW_WIDTH,
+  circle, CLOSE_UP_DIAMETER_PX, FOV_DEG, labCamera, shipObject, texturedBody,
+  VIEW_HEIGHT, VIEW_WIDTH,
   type CaseBuilder, type LabCase,
 } from './lab-case';
 import type { LabViewAngles } from './view-angles';
@@ -171,10 +182,87 @@ function saturn(style: RenderStyle, ringMaterials: RingMaterials): LabCase {
   };
 }
 
+// 建造の回転リング。選択中モジュールの接続軸まわりの円と両回りの矢印を、静止中の
+// 姿(main-tank)とドラッグ中の姿(solar-left、回した角の弧とスナップ位置)の両方で撮る。
+// リングは船体に隠れても消えない。
+function constructionRing(): LabCase {
+  const assembly = createBasePreset();
+  const shape = shipPhysicsShape(assembly);
+  if (shape === null) throw new Error('ship assembly is empty');
+  const SHIP_POSITION = -30;
+  const ship = shipObject(assembly);
+  ship.position.set(0, 0, SHIP_POSITION);
+  const face = {
+    assembly,
+    motion: {
+      state: { r: v3() }, att: { q: Q_IDENTITY }, centerOffset: shape.centerOffset,
+      assemblyToEci: (local: Vec3): Vec3 => sub(local, shape.centerOffset),
+    },
+  };
+  const shift = (p: Vec3): Vec3 => v3(p.x, p.y, p.z + SHIP_POSITION);
+  const main = constructionRotationRing(face, 'main-tank');
+  const solar = constructionRotationRing(face, 'solar-left');
+  if (main === null || solar === null) throw new Error('construction rotation ring is missing');
+  // 静止中とドラッグ中のリングを、艦上の2モジュールへ同期する。
+  const idle = new RotationRingView(undefined, false);
+  idle.sync({ position: shift(main.centerEci), rotation: main.rotation, radius: main.radius, drag: null });
+  const dragging = new RotationRingView(undefined, false);
+  dragging.sync({
+    position: shift(solar.centerEci), rotation: solar.rotation, radius: solar.radius,
+    drag: { startAngle: 0.4, angle: 2.6, appliedSteps: 2 },
+  });
+  return {
+    objects: [ship, idle.object, dragging.object],
+    camera: labCamera(),
+    viewTarget: new THREE.Vector3(0, 0, SHIP_POSITION),
+    dispose: () => { idle.dispose(); dragging.dispose(); },
+    shots: {
+      'construction-rotation-ring': { view: {} },
+      'construction-rotation-ring-drag': {
+        view: { cameraAzimuthDeg: -35, cameraElevationDeg: 20, cameraDistanceLog: -0.45 },
+      },
+    },
+  };
+}
+
+// 月の中心を置く距離 [m]。画面上で直径 300 px ほどになる距離。
+const MOON_DISTANCE = 6.5e6;
+
+// 月: 実写テクスチャの球を、自身を影の源に登録して置く。地球は月軌道相当の距離(3.8e8 m)へ
+// 置くと、天体照(アースシャイン)と地球の影の両方の源になる。
+function moon(): LabCase {
+  const center = new THREE.Vector3(0, 0, -MOON_DISTANCE);
+  const camera = labCamera();
+  const body = texturedBody(MOON_TEXTURE, MOON, center, CLOSE_UP_DIAMETER_PX);
+  return {
+    objects: [body.object],
+    camera,
+    shadowBodies: [{ center, axes: body.axes, bodyFromWorld: new THREE.Matrix4() }],
+    ready: body.ready,
+    shots: {
+      // 恒星に照らされた月。
+      'moon': { view: { sunAzimuthDeg: 0, sunElevationDeg: 0 } },
+      // 地球を月のカメラ側へ置き、恒星を月の反対側へ回す — 月の手前側は夜面になり、地球の昼面から
+      // 天体照が届く。
+      'moon-earthlight': {
+        view: {
+          sunAzimuthDeg: 180, sunElevationDeg: 0,
+          earthAzimuthDeg: 0, earthElevationDeg: 0,
+        },
+      },
+    },
+    earth: {
+      earthAltitudeLog: Math.log10(3.8e8 - R_EARTH), earthElevationDeg: 0,
+      earthAzimuthDeg: 90, earthLatitudeDeg: 0, earthLongitudeDeg: 0,
+    },
+  };
+}
+
 export const CASES = {
   ...EARTH_CASES,
   ...MATERIAL_CASES,
   'saturn': saturn,
+  'moon': moon,
   ...SHADOW_CASES,
   ...BAY_CASES,
   ...REFLECTION_CASES,
@@ -190,7 +278,12 @@ export const CASES = {
   'order': order,
   'march-slab': marchSlab,
   ...SHIP_CASES,
-  ...PROTEIN_CASES,
+  'construction-ring': constructionRing,
+  ...PLUME_CASES,
+  ...BELT_CASES,
+  ...CASING_CASES,
+  ...ASSEMBLY_CASES,
+  ...THUMBNAIL_CASES,
 } as const satisfies Record<string, CaseBuilder>;
 
 export type CaseName = keyof typeof CASES;

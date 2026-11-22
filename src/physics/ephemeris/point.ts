@@ -2,7 +2,7 @@
 // 惑星系の重心かを収録していて(EphemerisPointKind)、同梱パックでは 11 件のうち 6 件
 // (mars/jupiter/saturn/uranus/neptune/pluto)が系の重心。どの点のものかは、この値を保持
 // している側(CelestialMotion か PlanetSystem)が決める。
-import { KinematicState } from '../kinematic-state';
+import type { KinematicState } from '../kinematic-state';
 
 // 暦が id ごとに収録している点。天体そのものの中心か、その天体を含む惑星系の重心か。
 // **1つの暦の中で id ごとに違いうる** — JPL の SPK は地球と月を本体まで分解する一方、
@@ -16,12 +16,12 @@ export interface PointEphemeris {
 
   // 太陽系重心中心・ゲーム ECI 軸の位置・速度。範囲外の simTime を渡すと例外。
   // **戻り値のタグは 'numeric' に固定されている** — 数値暦でない供給源(例えば TLE/SGP4)を
-  // ここへ足すなら、その供給源のための FrameTag を新設すること。同じタグを名乗ると、
+  // ここへ足すなら、その供給源のための FrameTag を新設すること。同一のタグを指定すると、
   // 別々の供給源から引いた位置を差し引く取り違えを型が止められなくなる。
   baryStateAt(simTime: number): KinematicState<'numeric'>;
 }
 
-// 結ばれた暦が答える位置・速度。結ばれていない・有効期間の外では null。
+// 関連付けられた暦が提供する位置・速度。関連付けられていない・有効期間の外では null。
 export function boundBaryStateAt(ephemeris: PointEphemeris | null, t: number): KinematicState<'numeric'> | null {
   if (ephemeris === null) return null;
   if (t < ephemeris.validStartSimTime || t > ephemeris.validEndSimTime) return null;
@@ -33,10 +33,10 @@ export function boundBaryStateAt(ephemeris: PointEphemeris | null, t: number): K
 // 引く側が id と種別で2度問い合わせる必要も無くなる。id が載っていなければ未収録。
 export type EphemerisPoints = ReadonlyMap<string, EphemerisPoint>;
 
-type EphemerisPoint = {
+interface EphemerisPoint {
   readonly kind: EphemerisPointKind;
   readonly ephemeris: PointEphemeris;
-};
+}
 
 // id が期待した種別で収録されているときだけ、その暦を返す。**種別が食い違えば null** —
 // 系の重心の系列を惑星本体へ結ぶと、その系がまるごと重心オフセットぶんずれる

@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
-const scanRoots = ['src/hud', 'src/game/hud', 'src/launcher'];
-const commonStyle = path.normalize('src/hud/style/common-ui-style.ts');
+const scanRoots = ['src/hud-kit', 'src/game/hud', 'src/launcher'];
+const commonStyle = path.normalize('src/hud-kit/style/common-ui-style.ts');
 const allowedVisualLines = new Set([
   "content: ''; position: absolute; left: 0; right: 0; top: 5px; border-top: 1px solid var(--text-dim);",
   'position: absolute; top: 1px; height: 9px; border-left: 1px solid var(--text);',

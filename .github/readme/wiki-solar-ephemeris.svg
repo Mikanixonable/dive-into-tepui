@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>時刻と天体暦</title><defs><style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<radialGradient id="sun" cx=".35" cy=".35" r=".82"><stop stop-color="#fff1f4"/><stop offset=".3" stop-color="#ff8798"/><stop offset="1" stop-color="#ff3155"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">時刻と天体暦</text><text x="40" y="60" class="m d sm">元期 + simTime から、同じ絶対時刻の天体状態を評価する</text>
+<g transform="translate(70 130)">
+ <path d="M0 38H820" class="w"/>
+ <path d="M90 38V14M315 38V4M590 38V4M760 38V14" class="g"/>
+ <circle cx="315" cy="38" r="6" fill="#ff3155"/><circle cx="590" cy="38" r="6" fill="#3478ff"/>
+ <text x="280" y="-7" class="m a sm">epoch</text><text x="564" y="-7" class="m u sm">simTime</text>
+ <path d="M120 8H510" stroke="#ff8798" stroke-width="8" stroke-linecap="round"/><text x="267" y="-11" class="m d xs">DE440 / 数値暦</text>
+ <path d="M470 74H790" stroke="#3478ff" stroke-width="8" stroke-linecap="round"/><text x="570" y="99" class="m d xs">DE441 / 解析暦</text>
+ <text x="0" y="75" class="m d xs">過去</text><text x="785" y="75" class="m d xs">未来</text>
+</g>
+<g transform="translate(965 135)">
+ <circle r="25" fill="url(#sun)"/><ellipse rx="80" ry="28" class="g"/><circle cx="74" cy="-8" r="9" fill="url(#earth)"/>
+ <path d="M74-8L110-32" class="bl" marker-end="url(#ba)"/><text x="114" y="-29" class="m d xs">state(t)</text>
+</g>
+</svg>

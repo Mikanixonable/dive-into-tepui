@@ -25,7 +25,7 @@ function silhouetteSagPx(widthSegments: number, apparentDiameterPx: number): num
 
 /** 見かけ直径 [px] から、シルエット誤差が概ね1pxを超えない最小の球分割段を選ぶ。 */
 export function sphereLodLevel(apparentDiameterPx: number): SphereLodLevel {
-  // NaN は最も粗い段へ倒す(+Infinity は下の既定で最も細かい段になる)。
+  // NaN は最も粗い段（LOD）へフォールバックする(+Infinity は下の既定で最も細かい段になる)。
   if (Number.isNaN(apparentDiameterPx)) return SPHERE_LOD_LADDER[0]!;
   return (
     SPHERE_LOD_LADDER.find((level) => silhouetteSagPx(level.widthSegments, apparentDiameterPx) <= SILHOUETTE_ERROR_PX)

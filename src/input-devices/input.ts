@@ -1,0 +1,598 @@
+// キーボード・マウス入力の集約。押下中キーの参照(down)に加え、
+// 1フレームぶんのエッジトリガ(押した瞬間のキー/クリック/右クリック/押下/マウス移動量)を
+// update() で確定させる。エッジトリガは先着順の消費モデルで、
+// take* の handler が true を返したイベントはキューから取り除かれる。
+// takePresses で掴んだ押下は掴みドラッグになり、その指の移動は mouse() と
+// 2本指ジェスチャへ載らず、離してもクリックを合成しない。
+import { KeyboardTracker } from './keyboard-tracker';
+import { PinchTracker } from './pinch-tracker';
+import { LongPressDetector } from './long-press-detector';
+import { DoubleTapSynthesizer } from './double-tap-synthesizer';
+import type { KeyBinding } from './key-mapping';
+import type { PointerPoint, PointerPointRecord } from './pointer-point';
+
+// これ未満の累積移動量ならドラッグではなくクリック扱い [px]
+export const CLICK_MOVE_THRESHOLD = 6;
+const RIGHT_CLICK_MOVE_THRESHOLD = 50; // [px]
+
+// 直近に検知した入力の種別。タッチパッドの表示可否(touch.ts)が読む。
+export type PointerKind = 'touch' | 'mouse';
+
+export interface MouseDelta {
+  dx: number;
+  dy: number;
+  panDx: number;
+  panDy: number;
+  wheel: number;
+  roll: number;
+}
+
+// 左ボタン・単指の押下。takePresses の handler が受け取る。
+export interface PointerPress {
+  // 押下ごとに振る識別子。grabbedDrag で同じドラッグを引く鍵。
+  readonly id: number;
+  // 押下位置(キャンバス座標 [px])。
+  readonly point: PointerPoint;
+}
+
+// takePresses の内部記録。DOM のポインタイベントと対応付けるためにポインタを併記する。
+interface PointerPressRecord extends PointerPress {
+  readonly pointerId: number;
+}
+
+// 掴まれた押下のドラッグ状態。grabbedDrag が返す。
+export interface GrabbedDrag {
+  readonly id: number;
+  // 押下位置(キャンバス座標 [px])。
+  readonly start: PointerPoint;
+  // 現在位置(キャンバス座標 [px])。
+  readonly point: PointerPoint;
+  // 離した位置(キャンバス座標 [px])。まだ押されている間は null。
+  readonly released: PointerPoint | null;
+}
+
+// grabs が持つ内部記録。
+interface GrabbedDragRecord {
+  readonly id: number;
+  readonly pointerId: number;
+  readonly start: PointerPoint;
+  point: PointerPoint;
+  // 掴んでからの累積移動量 [px]。長押しの静止条件に使う。
+  moved: number;
+  released: PointerPoint | null;
+  // 離した記録を既に1フレーム見せたか。見せた分は次の update() で捨てる。
+  releaseAnnounced: boolean;
+}
+
+const ZERO_MOUSE_DELTA: MouseDelta = { dx: 0, dy: 0, panDx: 0, panDy: 0, wheel: 0, roll: 0 };
+
+// macOS では Command キーを押している間、他のキーの keyup がページに配送されない。
+// その間に離されたキーは押しっぱなしとして残り続けるため、Command が離された時点で
+// 押下中セット全体を捨てる(どのキーが実際に離されたかは知りようがない)。
+const META_CODES = ['MetaLeft', 'MetaRight'];
+
+export class Input {
+  // キーボード入力の追跡(押下中セット・押下エッジ・仮想キー)。
+  private readonly keyboard = new KeyboardTracker();
+  private pendingClicks: PointerPointRecord[] = [];
+  private pendingDoubleClicks: PointerPointRecord[] = [];
+  private pendingMiddleClicks: PointerPointRecord[] = [];
+  private pendingRightClicks: PointerPointRecord[] = [];
+  private pendingPointerPresses: PointerPressRecord[] = [];
+  private dx = 0;
+  private dy = 0;
+  private panDx = 0;
+  private panDy = 0;
+  private wheel = 0;
+  private roll = 0;
+  private frameClicks: PointerPointRecord[] = [];
+  private frameDoubleClicks: PointerPointRecord[] = [];
+  private frameMiddleClicks: PointerPointRecord[] = [];
+  private frameRightClicks: PointerPointRecord[] = [];
+  private framePointerPresses: PointerPressRecord[] = [];
+  private frameMouse: MouseDelta = ZERO_MOUSE_DELTA;
+  // 左ポインタごとの、今フレームのスナップショットに積まれた移動量と蓄積中の移動量。
+  // 押下が掴まれたとき、その指の分を mouse() から遡って差し引くために使う。
+  private frameDragDeltas = new Map<number, { dx: number; dy: number }>();
+  private periodDragDeltas = new Map<number, { dx: number; dy: number }>();
+  // 左ポインタごとの離された位置。押下と解放が同じフレームに収まった押下が掴まれたとき、
+  // 離した位置をドラッグへ引き継ぐために使う。
+  private frameReleasedPoints = new Map<number, PointerPoint>();
+  private periodReleasedPoints = new Map<number, PointerPoint>();
+  // 掴まれたドラッグ(pointerId が鍵)。mouse() の集計と2本指ジェスチャの本数から外れる。
+  private grabs = new Map<number, GrabbedDragRecord>();
+  // PointerPress.id の採番。pointerId と別に持つのは、ブラウザが pointerId を
+  // 使い回しても押下を区別できるようにするため。
+  private nextPressId = 1;
+  // キャンバス上の最後のポインタ位置(キャンバス座標 [px])。キャンバス外では null。
+  private _pointerPoint: PointerPoint | null = null;
+  private dragging = false;
+  private panDragging = false;
+  private rightActive = false;
+  private panDragMoved = 0;
+  private dragMoved = 0;
+  private rightDragMoved = 0;
+  // タッチのジェスチャ追跡。複数指ジェスチャ(ピンチ・重心パン・ロール)、
+  // 長押しによる右クリックの合成、タップ列のダブルタップ合成。
+  private readonly pinch = new PinchTracker();
+  private readonly longPress = new LongPressDetector((point, pointerId) => {
+    this.pendingRightClicks.push({ ...point, pointerId });
+  });
+  private readonly doubleTap = new DoubleTapSynthesizer();
+  // 直近に検知した入力種別が変わるたびに通知する(タッチ⇄マウス/キーボードの切替を含む)。
+  public onPointerKindChange: ((kind: PointerKind) => void) | null = null;
+  private lastPointerKind: PointerKind | null = null;
+
+  // 長押しの判定中であることを示す画面上の位置。判定中でないときは null。
+  public get longPressPoint(): PointerPoint | null { return this.longPress.point; }
+  // キャンバス上の最後のポインタ位置(キャンバス座標 [px])。押していなくても追従し、
+  // キャンバス外へ出ると null。
+  public get pointerPoint(): PointerPoint | null { return this._pointerPoint; }
+  // 直近に離した指が掴まれたドラッグだったか。真なら、掴んだ押下がブラウザの
+  // dblclick イベントをクリック相当へ結実させないよう抑止する。
+  private lastPointerUpWasGrabbed = false;
+
+  // キーボード・ポインタ・ホイールのイベントリスナーを登録する。
+  public constructor(private readonly target: HTMLElement) {
+    this.attachKeyboardListeners();
+    this.attachPointerListeners();
+    this.attachWheelListener();
+  }
+
+  // キーボードイベントを購読し、押下エッジと押下中セットを更新する。
+  private attachKeyboardListeners(): void {
+    window.addEventListener('keydown', this.handleKeyDown);
+    window.addEventListener('keyup', this.handleKeyUp);
+    window.addEventListener('blur', this.handleBlur);
+    window.addEventListener('pagehide', this.handlePageHide);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+  }
+
+  // keydown を受け、キー追跡へ反映し、入力活動を通知する。
+  private readonly handleKeyDown = (e: KeyboardEvent): void => {
+    this.keyboard.keyDown(e);
+    this.notePointerKind('mouse');
+  };
+
+  // keyup を受け、Command キーなら押下中状態を一括解除し、それ以外は押下中セットから除外する。
+  private readonly handleKeyUp = (e: KeyboardEvent): void => {
+    if (META_CODES.includes(e.code)) this.releaseAll();
+    else this.keyboard.keyUp(e);
+  };
+
+  private readonly handleBlur = (): void => this.releaseAll();
+  private readonly handlePageHide = (): void => this.releaseAll();
+
+  // タブが非表示になったら押下中・ドラッグ中の状態をすべて解除する。
+  private readonly handleVisibilityChange = (): void => {
+    if (document.hidden) this.releaseAll();
+  };
+
+  // 押下中・ドラッグ中の状態をすべて解除する。keyup / pointerup が届かないまま
+  // 操作が中断された場合の復帰点。
+  private releaseAll(): void {
+    this.keyboard.release();
+    this.dragging = false;
+    this.panDragging = false;
+    // 掴んだ指は離されたものとして受け手へ届ける。
+    for (const grab of this.grabs.values()) grab.released = { ...grab.point };
+    this.longPress.cancel();
+  }
+
+  // target のポインタイベントを購読する。
+  private attachPointerListeners(): void {
+    this.target.addEventListener('contextmenu', this.handleContextMenu);
+    this.target.style.touchAction = 'none'; // ブラウザのスクロール/ピンチを奪う
+    this.target.addEventListener('pointerdown', this.handlePointerDown);
+    this.target.addEventListener('pointermove', this.handlePointerMove);
+    this.target.addEventListener('pointerup', this.handlePointerUp);
+    this.target.addEventListener('pointercancel', this.handlePointerCancel);
+    this.target.addEventListener('pointerleave', this.handlePointerLeave);
+    // マウスのダブルクリック連打判定(タイミング・移動量とも)はブラウザの標準実装に委ねる。
+    // タッチ由来のクリックは自前で合成するため、二重に積まないよう除外する。
+    this.target.addEventListener('dblclick', this.handleDblClick);
+  }
+
+  private readonly handleContextMenu = (e: Event): void => e.preventDefault();
+
+  // 左ボタンかつタッチ由来・掴まれた指由来のどちらでもなければ、ダブルクリックとして積む。
+  private readonly handleDblClick = (e: MouseEvent): void => {
+    if (e.button === 0 && !this.doubleTap.lastPointerUpWasTouch && !this.lastPointerUpWasGrabbed) {
+      this.pendingDoubleClicks.push({ x: e.clientX, y: e.clientY, pointerId: null });
+    }
+  };
+
+  // 左ボタン・右ボタンはともにドラッグ/ピンチ開始(右クリックは閾値未満ならコンテキストメニュー用のクリックとして扱う)、中ボタンはパン開始として扱う。
+  private readonly handlePointerDown = (e: PointerEvent): void => {
+    this.notePointerKind(e.pointerType === 'touch' ? 'touch' : 'mouse');
+    this.syncPointerPoint(e);
+    const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
+    const isLeft = e.button === 0 && !e.ctrlKey;
+    if (isLeft) {
+      // 同じ指が離した直後に残った掴みの記録は、次の押下へ引き継がない。
+      this.grabs.delete(e.pointerId);
+      this.pendingPointerPresses.push({
+        id: this.nextPressId++, pointerId: e.pointerId,
+        point: this.canvasPoint(e.clientX, e.clientY),
+      });
+      this.pinch.add(e);
+      if (this.pinch.size >= 2) {
+        // 指が2本以上あればピンチとして扱い、基準を今の配置で取り直す。
+        this.dragging = false;
+        this.pinch.rebase();
+        this.longPress.cancel();
+      } else if (this.pinch.size === 1) {
+        this.dragging = true;
+        this.dragMoved = 0;
+        this.target.setPointerCapture(e.pointerId);
+        if (e.pointerType === 'touch') this.longPress.start(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+    } else if (isRight) {
+      this.rightActive = true;
+      this.rightDragMoved = 0;
+      this.target.setPointerCapture(e.pointerId);
+    } else if (e.button === 1) {
+      // 中ボタンの既定動作(オートスクロール)を抑止する。
+      e.preventDefault();
+      this.panDragging = true;
+      this.panDragMoved = 0;
+      this.target.setPointerCapture(e.pointerId);
+    }
+  };
+
+  // アクティブなジェスチャ(ピンチ/パン/ドラッグ/掴み)に応じて移動量を積算する。
+  private readonly handlePointerMove = (e: PointerEvent): void => {
+    this.notePointerKind(e.pointerType === 'touch' ? 'touch' : 'mouse');
+    this.syncPointerPoint(e);
+    const grab = this.grabs.get(e.pointerId);
+    if (grab !== undefined) {
+      // 掴んだ指の移動はドラッグ自身の記録へだけ積み、mouse() とジェスチャへ載せない。
+      grab.point = this.canvasPoint(e.clientX, e.clientY);
+      grab.moved += Math.abs(e.movementX) + Math.abs(e.movementY);
+      // 静止条件が崩れたら長押しは成立させない。
+      if (grab.moved >= CLICK_MOVE_THRESHOLD) this.longPress.cancel(e.pointerId);
+      return;
+    }
+    const pinch = this.pinch.move(e);
+    if (pinch !== null) {
+      this.wheel += pinch.wheel;
+      this.panDx += pinch.panDx;
+      this.panDy += pinch.panDy;
+      this.roll += pinch.roll;
+      return;
+    }
+    if (this.panDragging) {
+      this.panDx += e.movementX;
+      this.panDy += e.movementY;
+      this.panDragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
+      return;
+    }
+    if (this.rightActive) {
+      this.rightDragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
+      return;
+    }
+    if (this.dragging) {
+      this.dx += e.movementX;
+      this.dy += e.movementY;
+      // ポインタごとの分も記録し、掴まれたときに遡って外せるようにする。
+      const delta = this.periodDragDeltas.get(e.pointerId) ?? { dx: 0, dy: 0 };
+      delta.dx += e.movementX;
+      delta.dy += e.movementY;
+      this.periodDragDeltas.set(e.pointerId, delta);
+      this.dragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
+      // 静止条件が崩れたら長押しは成立させない。
+      if (this.dragMoved >= CLICK_MOVE_THRESHOLD) this.longPress.cancel(e.pointerId);
+    }
+  }
+
+  // ドラッグ量が閾値未満ならクリックとして記録し、各ジェスチャを終了する。
+  // 長押しが成立済みのポインタは、離した瞬間に左クリックまで合成しないよう除外する。
+  private readonly handlePointerUp = (e: PointerEvent): void => {
+    // タッチは指を離した時点で位置を持たない。マウスは離した点へホバーを置く。
+    if (e.pointerType === 'touch') this._pointerPoint = null;
+    else this.syncPointerPoint(e);
+    const isRight = e.button === 2 || (e.button === 0 && e.ctrlKey);
+    const isLeft = e.button === 0 && !e.ctrlKey;
+    if (isLeft || e.pointerType === 'touch') {
+      this.periodReleasedPoints.set(e.pointerId, this.canvasPoint(e.clientX, e.clientY));
+      const grab = this.grabs.get(e.pointerId);
+      if (grab !== undefined) this.releaseGrab(grab, e);
+      this.lastPointerUpWasGrabbed = grab !== undefined;
+      this.pinch.delete(e.pointerId);
+      if (grab === undefined) {
+        // 長押しがすでに右クリックへ結実したポインタは、離した指を左クリックへも
+        // 二重に変換しない。掴んだ指は同じくクリックを合成しない(上の分岐)。
+        const longPressConsumed = this.longPress.hasFired(e.pointerId);
+        if (this.dragging && !longPressConsumed) {
+          if (this.pushIfClick(this.pendingClicks, this.dragMoved, e)) {
+            const doubleClick = this.doubleTap.registerTap(e);
+            if (doubleClick !== null) this.pendingDoubleClicks.push(doubleClick);
+          }
+        }
+        this.dragging = false;
+        this.pinch.rebase();
+      }
+    }
+    this.longPress.cancel(e.pointerId);
+    if (e.button === 1) {
+      if (this.panDragging) this.pushIfClick(this.pendingMiddleClicks, this.panDragMoved, e);
+      this.panDragging = false;
+    }
+    if (isRight) {
+      if (this.rightActive) {
+        if (this.rightDragMoved < RIGHT_CLICK_MOVE_THRESHOLD) {
+          this.pendingRightClicks.push({ x: e.clientX, y: e.clientY, pointerId: e.pointerId });
+        }
+      }
+      this.rightActive = false;
+    }
+  }
+
+  // ポインタ消失時にジェスチャ状態をリセットする。掴んだ指はドラッグを離したことにするだけで、
+  // 残りの指のジェスチャは続く。
+  private readonly handlePointerCancel = (e: PointerEvent): void => {
+    this.periodReleasedPoints.set(e.pointerId, this.canvasPoint(e.clientX, e.clientY));
+    const grab = this.grabs.get(e.pointerId);
+    if (grab !== undefined) this.releaseGrab(grab, e);
+    this.pinch.delete(e.pointerId);
+    // 掴んでいた指でなければ、押下中・ドラッグ中のジェスチャ状態ごと畳む。
+    if (grab === undefined) {
+      this.dragging = false;
+      this.panDragging = false;
+      this.rightActive = false;
+      this.pinch.clearBaseline();
+    }
+    this.longPress.cancel(e.pointerId);
+    this._pointerPoint = null;
+  };
+
+  // ポインタがキャンバスを出たら、追跡しているポインタ位置を消す。
+  private readonly handlePointerLeave = (): void => {
+    this._pointerPoint = null;
+  };
+
+  // 掴んだドラッグを離されたものとして記録する。
+  private releaseGrab(grab: GrabbedDragRecord, e: PointerEvent): void {
+    grab.point = this.canvasPoint(e.clientX, e.clientY);
+    grab.released = grab.point;
+  }
+
+  // moved が閾値未満(ドラッグでなくクリック)なら e の座標を queue に積み、積んだかを返す。
+  // 左・中・右ボタン共通のクリック判定はここに一本化する。
+  private pushIfClick(queue: PointerPointRecord[], moved: number, e: PointerEvent): boolean {
+    if (moved >= CLICK_MOVE_THRESHOLD) return false;
+    queue.push({ x: e.clientX, y: e.clientY, pointerId: e.pointerId });
+    return true;
+  }
+
+  // target のホイールイベントを購読する。
+  private attachWheelListener(): void {
+    this.target.addEventListener('wheel', this.handleWheel, { passive: false });
+  }
+
+  // ホイール操作を wheel 量として積算する。
+  private readonly handleWheel = (e: WheelEvent): void => {
+    e.preventDefault();
+    this.wheel += e.deltaY;
+  };
+
+  // タッチ UI や HUD の代替操作ボタンからの仮想キー入力。物理キーボードと同じ扱いで
+  // 押下中セットとエッジトリガキューへ反映する。ポインタ種別の通知はしない —
+  // 呼び出し元がタッチ由来とは限らない(HUD 上の代替ボタンはマウスでも押せる)ため。
+  public setVirtualKey(key: KeyBinding, down: boolean): void {
+    this.keyboard.setVirtualKey(key, down);
+  }
+
+  // key を1フレームぶんだけ押されたことにする。HUD 上の代替操作ボタンが物理キーと
+  // 同じ押下エッジを合成する唯一の経路。
+  public tapKey(key: KeyBinding): void {
+    this.keyboard.tapKey(key);
+  }
+
+  // kind が直前の値から変わっていれば記録して onPointerKindChange へ通知する。
+  private notePointerKind(kind: PointerKind): void {
+    if (this.lastPointerKind === kind) return;
+    this.lastPointerKind = kind;
+    this.onPointerKindChange?.(kind);
+  }
+
+  // クライアント座標をキャンバス座標へ写す。DOM 上で進んでいるドラッグの位置を
+  // キャンバス内の位置として読むときに使う。
+  public canvasPoint(clientX: number, clientY: number): PointerPoint {
+    const rect = this.target.getBoundingClientRect();
+    return { x: clientX - rect.left, y: clientY - rect.top };
+  }
+
+  // ポインタがキャンバス内にあれば最後の位置を記録し、外に出ていれば null にする。
+  private syncPointerPoint(e: PointerEvent): void {
+    const point = this.canvasPoint(e.clientX, e.clientY);
+    const rect = this.target.getBoundingClientRect();
+    this._pointerPoint = point.x >= 0 && point.x < rect.width && point.y >= 0 && point.y < rect.height
+      ? point : null;
+  }
+
+  // key が現在押下中か返す。takeHeld で確保済みの code は押下と見なさない。
+  public down(key: KeyBinding): boolean {
+    return this.keyboard.down(key);
+  }
+
+  // 今フレーム key がホールドされていれば、その code (と altCodes) を先着で確保して true を返す。
+  // 確保した code は以後 down() / takeKey() / takeKeys() から見えなくなる。
+  public takeHeld(key: KeyBinding): boolean {
+    return this.keyboard.takeHeld(key);
+  }
+
+  // フレームの先頭で1度だけ呼ぶ。イベントハンドラが溜めた未確定分を今フレームの
+  // スナップショットとして確定し、次フレーム分の蓄積をリセットする。
+  public update(): void {
+    this.keyboard.update();
+    // 蓄積分を今フレームのスナップショットとして確定
+    this.frameClicks = this.pendingClicks;
+    this.frameDoubleClicks = this.pendingDoubleClicks;
+    this.frameMiddleClicks = this.pendingMiddleClicks;
+    this.frameRightClicks = this.pendingRightClicks;
+    this.framePointerPresses = this.pendingPointerPresses;
+    this.frameMouse = {
+      dx: this.dx, dy: this.dy, panDx: this.panDx, panDy: this.panDy, wheel: this.wheel, roll: this.roll,
+    };
+    // ポインタごとの移動量もスナップショットし、掴まれた分を遡って外せるようにする。
+    this.frameDragDeltas = this.periodDragDeltas;
+    this.periodDragDeltas = new Map();
+    this.frameReleasedPoints = this.periodReleasedPoints;
+    this.periodReleasedPoints = new Map();
+    // 離した掴みは、受け手が離した事実を読めるよう1フレームだけ残す。
+    for (const [pointerId, grab] of this.grabs) {
+      if (grab.released === null) continue;
+      if (grab.releaseAnnounced) this.grabs.delete(pointerId);
+      else grab.releaseAnnounced = true;
+    }
+    // 次フレーム分の蓄積をリセット
+    this.pendingClicks = [];
+    this.pendingDoubleClicks = [];
+    this.pendingMiddleClicks = [];
+    this.pendingRightClicks = [];
+    this.pendingPointerPresses = [];
+    this.dx = 0;
+    this.dy = 0;
+    this.panDx = 0;
+    this.panDy = 0;
+    this.wheel = 0;
+    this.roll = 0;
+  }
+
+  // 今フレームの押下エッジに key があれば消費して true を返す。takeHeld で確保済みの
+  // code は渡さない。
+  public takeKey(key: KeyBinding): boolean {
+    return this.keyboard.takeKey(key);
+  }
+
+  // 今フレームの未消費の押下エッジを順に渡し、handler が true を返したものを消費する。
+  // takeHeld で確保済みの code は渡さない。
+  public takeKeys(handler: (code: string) => boolean): void {
+    this.keyboard.takeKeys(handler);
+  }
+
+  // 今フレームの未消費の左ボタン・単指の押下を順に渡し、handler が true を返した押下を
+  // 掴んだドラッグにする。掴んだドラッグは mouse() の移動量と2本指ジェスチャの本数から外れ、
+  // 離されてもクリック・ダブルクリックを合成しない。
+  public takePresses(handler: (press: PointerPress) => boolean): void {
+    for (const press of [...this.framePointerPresses]) {
+      if (!handler(press)) continue;
+      const i = this.framePointerPresses.indexOf(press);
+      if (i !== -1) this.framePointerPresses.splice(i, 1);
+      this.grabPress(press);
+    }
+  }
+
+  // 掴んだドラッグ id の現在の状態。離した記録は1フレームだけ残り、消えたら null。
+  public grabbedDrag(id: number): GrabbedDrag | null {
+    for (const grab of this.grabs.values()) {
+      if (grab.id !== id) continue;
+      // 該当する掴みを見つけたらコピーして返す(呼び手が中身を変えても記録へ影響しない)。
+      return {
+        id: grab.id,
+        start: { ...grab.start },
+        point: { ...grab.point },
+        released: grab.released === null ? null : { ...grab.released },
+      };
+    }
+    return null;
+  }
+
+  // 押下を掴んだドラッグにする。その指を1本指ドラッグ・ピンチの対象から外し、
+  // 今フレームのスナップショットへ既に積まれた移動量を mouse() から差し引く。
+  private grabPress(press: PointerPressRecord): void {
+    if (this.grabs.has(press.pointerId)) return;
+    // 押した指が同じフレームで既に離されていたなら、掴んだ時点で離した記録にする。
+    const released = this.pinch.has(press.pointerId)
+      ? null
+      : this.frameReleasedPoints.get(press.pointerId) ?? { ...press.point };
+    this.grabs.set(press.pointerId, {
+      id: press.id, pointerId: press.pointerId,
+      start: { ...press.point }, point: { ...press.point },
+      moved: 0, released, releaseAnnounced: false,
+    });
+    // 同じフレームで既に合成済みのクリック・タップは、掴んだ押下のものとして取り消す。
+    removePointerPoints(this.frameClicks, press.pointerId);
+    removePointerPoints(this.frameDoubleClicks, press.pointerId);
+    this.doubleTap.forgetTap(press.pointerId);
+    const delta = this.frameDragDeltas.get(press.pointerId);
+    if (delta !== undefined) {
+      this.frameMouse = {
+        ...this.frameMouse,
+        dx: this.frameMouse.dx - delta.dx,
+        dy: this.frameMouse.dy - delta.dy,
+      };
+    }
+    const wasTracked = this.pinch.delete(press.pointerId);
+    if (wasTracked) {
+      // 残った指が1本だけなら、その指が1本指ドラッグを引き継ぐ。
+      this.dragging = this.pinch.size === 1;
+      if (this.dragging) this.dragMoved = 0;
+    }
+  }
+
+  // 今フレームの未消費の左クリック(ドラッグでない短い押下)を順に渡し、handler が true を返したものを消費する。
+  public takeClicks(handler: (point: PointerPoint) => boolean): void {
+    takeFrom(this.frameClicks, handler);
+  }
+
+  // 今フレームの未消費のダブルクリックを順に渡し、handler が true を返したものを消費する。
+  public takeDoubleClicks(handler: (point: PointerPoint) => boolean): void {
+    takeFrom(this.frameDoubleClicks, handler);
+  }
+
+  // 今フレームの未消費の中ボタンクリックを順に渡し、handler が true を返したものを消費する。
+  public takeMiddleClicks(handler: (point: PointerPoint) => boolean): void {
+    takeFrom(this.frameMiddleClicks, handler);
+  }
+
+  // 今フレームの未消費の右ボタン押下を順に渡し、handler が true を返したものを消費する。
+  public takeRightClicks(handler: (point: PointerPoint) => boolean): void {
+    takeFrom(this.frameRightClicks, handler);
+  }
+
+  // 今フレームのマウス移動量・パン量・ホイール量を返す。
+  public mouse(): MouseDelta {
+    return this.frameMouse;
+  }
+
+  // window/document/canvas(target)に張った13個のリスナーを外し、releaseAll() で
+  // 押下中・ドラッグ中の状態も畳む。target は GameScene 所有で Input 自身より長生きするため、
+  // ここで確実に外さないと次に構築する Input へも同じイベントが二重に配送され続ける。
+  public dispose(): void {
+    // window/document に張った5個。
+    window.removeEventListener('keydown', this.handleKeyDown);
+    window.removeEventListener('keyup', this.handleKeyUp);
+    window.removeEventListener('blur', this.handleBlur);
+    window.removeEventListener('pagehide', this.handlePageHide);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    // canvas(target)に張った8個。
+    this.target.removeEventListener('contextmenu', this.handleContextMenu);
+    this.target.removeEventListener('pointerdown', this.handlePointerDown);
+    this.target.removeEventListener('pointermove', this.handlePointerMove);
+    this.target.removeEventListener('pointerup', this.handlePointerUp);
+    this.target.removeEventListener('pointercancel', this.handlePointerCancel);
+    this.target.removeEventListener('pointerleave', this.handlePointerLeave);
+    this.target.removeEventListener('dblclick', this.handleDblClick);
+    this.target.removeEventListener('wheel', this.handleWheel);
+    this.releaseAll();
+  }
+}
+
+// queue から handler が true を返した要素を取り除きながら順に渡す。
+function takeFrom(queue: PointerPoint[], handler: (point: PointerPoint) => boolean): void {
+  for (const point of [...queue]) {
+    if (!handler(point)) continue;
+    const i = queue.indexOf(point);
+    if (i !== -1) queue.splice(i, 1);
+  }
+}
+
+// queue から pointerId が起こした分をすべて取り除く。
+function removePointerPoints(queue: PointerPointRecord[], pointerId: number): void {
+  for (let i = queue.length - 1; i >= 0; i--) {
+    const entry = queue[i];
+    if (entry !== undefined && entry.pointerId === pointerId) queue.splice(i, 1);
+  }
+}

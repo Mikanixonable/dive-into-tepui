@@ -1,9 +1,9 @@
 // ランの規模の計測値。
-import type { EntityCountKind } from './dynamic/dynamic-entity/entity-kind';
-import type { ProteinMotionFrameSample } from './protein/protein-motion-metrics';
+import type { EntityCountKind } from './dynamic/entity/entity-kind';
 import type { CelestialSurfaceDiagnostics } from '../render/celestial/celestial-surface';
+import type { CloudQualityReading } from '../render/earth-weather/cloud/cloud-quality-governor';
 
-export interface SurfacePerfCount {
+interface SurfacePerfCount {
   readonly id: string;
   readonly name: string;
   readonly diagnostics: CelestialSurfaceDiagnostics;
@@ -22,10 +22,11 @@ export interface PerfCounts {
   planArcs: number; planSteps: number;
   timeCacheHits: number; timeCacheMisses: number;
   warp: number;
+  // 雲の品質適応の読み出し。雲を持つ天体が無ければ null。
+  cloudQuality: { readonly cumulus: CloudQualityReading; readonly cirrus: CloudQualityReading } | null;
 }
 
 // 1フレームぶんの計測値を差し出す口。
 export interface PerfCountSource {
   perfCounts(): PerfCounts;
-  proteinMotionFrameSample(): ProteinMotionFrameSample;
 }

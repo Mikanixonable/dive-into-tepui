@@ -16,7 +16,7 @@ export interface BodyOrientation {
 
 // 天体に固定した回転基準系の、ECI に対する姿勢 q と角速度 omega [rad/s](ECI 成分)。
 // 回転軸が一定とは限らないので、軸と回転角の対ではなくこの対で扱う。
-export type FrameRotation = { readonly q: Quat; readonly omega: Vec3 };
+export interface FrameRotation { readonly q: Quat; readonly omega: Vec3 }
 
 // 2次重力場の非軸対称成分(赤道断面の楕円性)を、ある時刻の姿勢へ解決した形。主軸座標系で
 // 表すため S22 は恒等的に 0 になり、長軸の向きだけで姿勢が決まる。
@@ -34,7 +34,7 @@ export interface Degree2Gravity {
   readonly tesseral: TesseralGravity | null; // null なら軸対称
 }
 
-// 時刻から自分1体ぶんの ECI 状態を答える天体。
+// 時刻から自身1体分の ECI 状態を提供する天体。
 export interface CelestialBody {
   readonly id: string;
   readonly kind: CelestialKind;
@@ -42,9 +42,10 @@ export interface CelestialBody {
   readonly def: { readonly id: string; readonly mu: number; readonly radius: number };
   // 主天体。惑星なら恒星、衛星ならその惑星、恒星自身は null。
   readonly primary: CelestialBody | null;
-  // pivot で厳密に引いた値から時刻 t へ外挿した ECI 位置・速度。t を省くと pivot 自身の厳密な値。
+  // pivot で厳密に引いた位置・速度・加速度から時刻 t へ2次で外挿した ECI 位置・速度。t を省くと pivot
+  // 自身の厳密な値。外挿が2次であることを、遮蔽体の分類(shadow.ts)が移動量の上限に使う。
   stateAt(pivot: number, t?: number): KinematicState;
-  // 同じ外挿で位置だけを答える。
+  // 同等の外挿で位置のみを算出する。
   positionAt(pivot: number, t?: number): Vec3;
   // pivot における大気状態。大気モデル未設定時は null。
   atmosphereAt(pivot: number): Atmosphere | null;
@@ -58,19 +59,19 @@ export interface CelestialBody {
   readonly spinRate: number | null;
 }
 
-// 公転している天体。公転面と、それに乗る回転基準系を答える。
+// 公転している天体。公転面と、それに従う回転基準系を提供する。
 export interface OrbitingCelestialBody extends CelestialBody {
   orbitFrameRotationAt(t: number): FrameRotation;
   orbitNormalAt(t: number): Vec3;
 }
 
-// 暦の値をそのまま答える天体。ECI 化はこの値から組むので、原点と対象は必ず同じ経路どうしで
+// 暦の値をそのまま提供する天体。ECI 化はこの値から組むので、原点と対象は必ず同じ経路どうしで
 // 差を取る必要がある — どちらの経路で引けたかが分かる形で返す。
 export interface EphemerisBody {
   readonly id: string;
   // 数値暦で引ける時刻の太陽系重心状態。収録外・有効期間外では null。
   numericStateAt(t: number): KinematicState<'numeric'> | null;
-  // 解析暦による主星相対状態。いつでも答えられる。
+  // 解析暦による主星相対状態。常に算出可能。
   analyticStarRelStateAt(t: number): KinematicState<'starRel'>;
   // 解析暦による太陽系重心加速度 [m/s²]。
   analyticAccelAt(t: number): Vec3;

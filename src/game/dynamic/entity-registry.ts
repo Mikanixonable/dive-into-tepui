@@ -1,29 +1,40 @@
-// 生んだ個体を顔ぶれへ入れる口。即座に入れるものと、条件が揃うのを待ってから入れるものを扱う。
-import type { DynamicEntity } from './dynamic-entity/dynamic-entity';
-import type { EntityIdAllocators } from './dynamic-entity/entity-id';
-import type { SerializedDynamicEntity } from './dynamic-entity/entity-dictionary';
-import type { ProteinEnemyRequest } from './dynamic-entity/protein-enemy';
+// 生成したエンティティを登録コレクションへ追加するインターフェース。即座に追加するものと、条件充足を待って追加するものを扱う。
+import type { DynamicEntity } from './entity/dynamic-entity';
+import type { EntityIdAllocators } from './entity/entity-id';
+import type { SerializedDynamicEntity } from './entity/entity-dictionary';
 import type { RunEventSink } from '../run-events';
 
-// 個体を実体化してよいかを答える述語。何を待つかは、待つと決めた側だけが知っていればよい。
+// 個体を実体化可能かを判定する述語関数。何を待機するかは、待機を決定した側のみが保持する。
 export type SpawnGate = () => boolean;
 
-// 実体化を待てる個体の記録。直列化した個体を戻すものと、新しく置くタンパク質の敵の要求がある。
+// 実体化を待てる個体の記録。直列化した個体を戻す。
 // 待つあいだも直列化できる値だけで表す。
-export type SpawnRecord =
-  | { readonly kind: 'entity'; readonly entity: SerializedDynamicEntity }
-  | { readonly kind: 'protein-enemy'; readonly request: ProteinEnemyRequest };
+export interface SpawnRecord {
+  readonly kind: 'entity';
+  readonly entity: SerializedDynamicEntity;
+}
 
 export interface EntityRegistry {
   // このランの id 採番器。生む側はここから自分の種別の id を取る。
   readonly idAllocators: EntityIdAllocators;
-  // このランの出来事の記録。起きたことを積む側はここへ積む。
+  // このランのイベントログ。発生したイベントを記録するインターフェース。
   readonly events: RunEventSink;
-  // 個体をいまの顔ぶれへ入れる。枠の上限を超えたぶんは持ち主が古いものから落とす。
+  // 個体を現在のエンティティ一覧へ追加する。枠の上限を超えた分は所有者が古いものから破棄する。
   add(entity: DynamicEntity): void;
   // record の個体を実体化して add する。実体化に要る外部資源がいま揃っていればその場で、そうで
   // なければ揃ったフレームで入れる。
   spawnWhenReady(record: SpawnRecord): void;
-  // 外部資源が揃うのを待っていて、まだ顔ぶれに入っていない敵の数。
+  // 外部リソースが揃うのを待機中で、まだエンティティ一覧に追加されていない敵の数。
   readonly pendingEnemyCount: number;
+}
+
+// 現在のエンティティ一覧を参照するインターフェース。生成や破棄の管理に関わらず、全個体を走査する側が使用する。
+
+export interface EntityRoster {
+  // 保持する全エンティティを追加順に返す（読み取り専用）。
+  all(): readonly DynamicEntity[];
+  // エンティティ集合の世代（リビジョン）。追加・除去・prune のいずれでも増える。同じ世代なら構成は変わっていない。
+  readonly collectionRevision: number;
+  // シミュレーション先端時刻。all() の各個体の状態はこの時刻を指す。
+  readonly simTime: number;
 }

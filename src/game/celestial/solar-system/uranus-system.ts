@@ -1,15 +1,15 @@
 // 天王星系(天王星と6個の衛星)。静的事実・運動・見た目を1体につき1箇所で組む。
 import uranusTextureUrl from '../../../assets/2k_uranus.jpg';
-import { SatelliteMotion, StarMotion } from '../../../physics/celestial-motion';
-import { PlanetDef, planetDefForSimZero, SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
+import { SatelliteMotion, type StarMotion } from '../../../physics/celestial-motion';
+import { type PlanetDef, planetDefForSimZero, type SatelliteDef, satelliteDefForSimZero } from '../../../physics/celestial-body-def';
 import { planetSystem } from '../../../physics/planet-system';
 import { planetOrbit } from '../../../physics/kepler-orbit';
 import { AU } from '../../../physics/astronomical-unit';
-import { GRAVITATIONAL_CONSTANT } from '../gravitational-constant';
+import { GRAVITATIONAL_CONSTANT } from '../../../physics/gravitational-constant';
 import { CelestialSurface } from '../../../render/celestial/celestial-surface';
-import { CelestialEntity } from '../celestial-entity/celestial-entity';
-import { PointCelestialView } from '../../../render/celestial/celestial-entity/point-celestial-view';
-import { SphereCelestialView } from '../../../render/celestial/celestial-entity/sphere-celestial-view';
+import { CelestialEntity } from '../entity/celestial-entity';
+import { PointCelestialView } from '../../../render/celestial/entity/point-celestial-view';
+import { SphereCelestialView } from '../../../render/celestial/entity/sphere-celestial-view';
 import { URANUS_POLE, equatorBasis } from './poles';
 import { URANUS_RINGS } from './rings';
 import { jplSatelliteOrbit } from './satellite-orbit-builders';

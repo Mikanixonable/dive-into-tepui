@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" role="img"><title>ラン・ステージ・時間</title><defs><style>
+.m{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Yu Gothic",monospace}.s{font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif}
+.t{fill:#eeeaf5}.b{fill:#c3bec9}.d{fill:#89838f}.a{fill:#ff3155}.u{fill:#3478ff}
+.g{fill:none;stroke:#48506a;stroke-width:1.2}.w{fill:none;stroke:#89838f;stroke-width:1.4}.r{fill:none;stroke:#ff3155;stroke-width:2}.bl{fill:none;stroke:#3478ff;stroke-width:2}.dash{stroke-dasharray:6 6}
+.h{font-size:20px;font-weight:700}.v{font-size:14px;font-weight:650}.sm{font-size:11px}.xs{font-size:9px}
+</style>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#08090d"/><stop offset="1" stop-color="#15171c"/></linearGradient>
+<radialGradient id="earth" cx=".34" cy=".28" r=".82"><stop stop-color="#d8d9dc"/><stop offset=".5" stop-color="#536178"/><stop offset="1" stop-color="#171a20"/></radialGradient>
+<marker id="ra" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#ff3155"/></marker>
+<marker id="ba" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#3478ff"/></marker>
+</defs>
+<rect width="1200" height="260" rx="20" fill="url(#bg)"/>
+<text x="40" y="38" class="m t h">ラン・ステージ・時間</text><text x="40" y="60" class="m d sm">Run を結節点に、ラン内外の責務を分ける</text>
+<g transform="translate(600 146)">
+ <circle r="44" fill="#101217" stroke="#ff3155" stroke-width="2"/><text x="-15" y="-4" class="m a xs">RUN</text><text x="-31" y="14" class="m t sm">1 session</text>
+ <path d="M-36-25L-119-55M0-44V-67M36-25L119-55M44 6L137 17M25 36L75 59M-25 36L-75 59M-44 6L-137 17" class="g"/>
+</g>
+<g class="m">
+ <circle cx="455" cy="80" r="27" fill="#15171c" stroke="#3478ff"/><text x="433" y="84" class="t xs">Launcher</text>
+ <circle cx="600" cy="52" r="27" fill="#15171c" stroke="#ff8798"/><text x="586" y="56" class="t xs">Game</text>
+ <circle cx="745" cy="80" r="27" fill="#15171c" stroke="#ff8798"/><text x="730" y="84" class="t xs">Stage</text>
+ <circle cx="765" cy="166" r="27" fill="#15171c" stroke="#3478ff"/><text x="739" y="170" class="t xs">Presentation</text>
+ <circle cx="694" cy="224" r="27" fill="#15171c" stroke="#3478ff"/><text x="682" y="228" class="t xs">Save</text>
+ <circle cx="506" cy="224" r="27" fill="#15171c" stroke="#3478ff"/><text x="491" y="228" class="t xs">Result</text>
+ <circle cx="435" cy="166" r="27" fill="#15171c" stroke="#ff8798"/><text x="417" y="170" class="t xs">Time</text>
+</g>
+<path d="M405 210C350 184 348 111 428 82" class="r" marker-end="url(#ra)"/><text x="270" y="228" class="m d xs">結果 → 次のラン</text>
+</svg>

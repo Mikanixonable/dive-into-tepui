@@ -12,13 +12,13 @@ import { AU, SOLAR_CONSTANT } from '../../physics/astronomical-unit';
 import { satelliteOrbit } from '../../physics/satellite-orbit';
 import { keplerPeriod, stateFromOrbitalElements } from '../../physics/elements';
 import { addPrimaryRelative, kinematicState } from '../../physics/kinematic-state';
-import { DEFAULT_ALBEDO } from '../../render/celestial-albedo';
+import { DEFAULT_ALBEDO } from '../../render/celestial/celestial-albedo';
 import { CelestialSurface } from '../../render/celestial/celestial-surface';
-import { celestialClassOfKind } from '../celestial/celestial-entity/celestial-entity-def';
-import { CelestialEntity } from '../celestial/celestial-entity/celestial-entity';
+import { celestialClassOfKind } from '../celestial/entity/celestial-class';
+import { CelestialEntity } from '../celestial/entity/celestial-entity';
 import { CelestialSystem } from '../celestial/celestial-system';
-import { SphereCelestialView } from '../../render/celestial/celestial-entity/sphere-celestial-view';
-import { StarCelestialView } from '../../render/celestial/celestial-entity/star-celestial-view';
+import { SphereCelestialView } from '../../render/celestial/entity/sphere-celestial-view';
+import { StarCelestialView } from '../../render/celestial/entity/star-celestial-view';
 import { MAG_ROUNDS } from '../player/ammo-spec';
 import { FREE_PLAY_STAGE_RULES } from './stage-rules';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
@@ -103,6 +103,8 @@ export class StageDebugAltSystem extends Stage {
   public static readonly selectLabel = 'DEBUG(架空星系)';
   public static readonly selectSub = '【デバッグ】架空天体3体だけのレジストリで起動する';
   public static readonly hiddenFromSelect = true;
+  // 撃破しても決着しない(GAME.md 2.7)。解放の記録も読まない。
+  public static readonly judgesOutcome = false;
 
   // 自機を zephyrus の高度 500km の赤道円軌道へ置いて始める。
   public static create(...deps: StageDeps): StageDebugAltSystem {

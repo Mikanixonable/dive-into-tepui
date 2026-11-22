@@ -9,10 +9,11 @@ import {
 } from '../../src/physics/lagrange';
 import { OrbitingMotion } from '../../src/physics/celestial-motion';
 import {
-  applyMapDisplayMode, mapDisplayModeOf, celestialClassVisible, celestialNameVisible,
-  MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES, nextMapDisplayMode,
+  celestialClassVisible, celestialNameVisible,
+  type MapDisplayToggles, DEFAULT_MAP_DISPLAY_TOGGLES,
 } from '../../src/game/map/display-toggles';
-import { alwaysFullyVisibleIds } from '../../src/game/map/visibility-policy';
+import { alwaysFullyVisibleIds, MapVisibilityPolicy } from '../../src/game/map/visibility-policy';
+import { BODY_REVEAL_BASE, revealedAfterClear } from '../../src/game/stages/body-reveal';
 import { CelestialSystem } from '../../src/game/celestial/celestial-system';
 import { v3, addScaled } from '../../src/math/vec3';
 
@@ -25,7 +26,7 @@ const SYSTEM = PARTS.system;
 // マーカーの点か名前のどちらかが出る天体の集合。クラストグルで足される天体と、恒星・
 // フォーカス系・カメラ近傍として無条件に足される天体の和になる。
 function visibleBodyIds(
-  focusId: string | undefined, toggles: MapDisplayToggles,
+  focusId: string | null, toggles: MapDisplayToggles,
   nearbyIds: Iterable<string> = [],
 ): ReadonlySet<string> {
   const forced = alwaysFullyVisibleIds(SYSTEM, focusId, nearbyIds, toggles);
@@ -51,7 +52,9 @@ function massRatio(id: string): number {
   return motion.def.mu / (motion.primary!.def.mu + motion.def.mu);
 }
 
+// 可視性とラグランジュ点の成立条件を太陽系の事実で検査する。
 export function register(): void {
+  // 公転系の成立条件とマップ上の表示条件を、太陽系の静的事実で検査する。
   test('lagrange: Routh の臨界質量比は 27mu(1−mu) = 1 の解と一致する', () => {
     const mu = TRIANGULAR_STABILITY_MASS_RATIO;
     assert.ok(Math.abs(27 * mu * (1 - mu) - 1) < 1e-12, `27mu(1-mu) = ${27 * mu * (1 - mu)}`);
@@ -69,6 +72,7 @@ export function register(): void {
   });
 
   test('lagrange: 共線点の余裕は現行レジストリのしきい値の内外を再現する', () => {
+    // 登録値から L1 の余裕比を返す。
     const clearance = (id: string): number => {
       const def = motionOf(PARTS, id).def as { radius: number; orbit: { a?: number; kepler?: { a: number } } };
       const orbit = def.orbit.kepler ?? (def.orbit as { a: number });
@@ -107,26 +111,17 @@ export function register(): void {
     }
   });
 
-  test('visibility controls: 対象クラスは非表示→ラベル→軌道+ラベルを循環する', () => {
-    const orbit = mapDisplayModeOf(DEFAULT_MAP_DISPLAY_TOGGLES, 'planetVisible');
-    assert.equal(orbit, 'orbit');
-    assert.equal(nextMapDisplayMode(orbit, true), 'hidden');
-    assert.equal(nextMapDisplayMode('hidden', true), 'label');
-    assert.equal(nextMapDisplayMode('label', true), 'orbit');
+  test('visibility controls: ラベルと軌道線は独立で、両方を切ったときだけクラスが消える', () => {
+    const orbitOnly: MapDisplayToggles = { ...DEFAULT_MAP_DISPLAY_TOGGLES, planetName: false };
+    assert.equal(celestialClassVisible('planet', orbitOnly), true);
+    assert.equal(celestialNameVisible('planet', orbitOnly), false);
 
-    const label = applyMapDisplayMode(DEFAULT_MAP_DISPLAY_TOGGLES, 'planetVisible', 'label');
-    assert.equal(celestialClassVisible('planet', label), true);
-    assert.equal(label.planetName, true);
-    assert.equal(label.planetOrbit, false);
+    const labelOnly: MapDisplayToggles = { ...DEFAULT_MAP_DISPLAY_TOGGLES, planetOrbit: false };
+    assert.equal(celestialClassVisible('planet', labelOnly), true);
+    assert.equal(celestialNameVisible('planet', labelOnly), true);
 
-    const hidden = applyMapDisplayMode(label, 'planetVisible', 'hidden');
-    assert.equal(mapDisplayModeOf(hidden, 'planetVisible'), 'hidden');
-    assert.equal(celestialClassVisible('planet', hidden), false);
-    assert.equal(hidden.planetName, false);
-    assert.equal(hidden.planetOrbit, false);
-
-    assert.equal(nextMapDisplayMode('hidden', false), 'label');
-    assert.equal(nextMapDisplayMode('label', false), 'hidden');
+    const off: MapDisplayToggles = { ...orbitOnly, planetOrbit: false };
+    assert.equal(celestialClassVisible('planet', off), false);
   });
 
   test('visibility: フォーカス中の天体の子はトグル無しで見える', () => {
@@ -157,6 +152,7 @@ export function register(): void {
 
   // 天体ラベルの並びと字下げはこの深さで決まるので、その導出だけを固定する。
   test('visibility: 親子の深さは主星を 0 として数えられる', () => {
+    // 主星まで遡った親子階層の深さを返す。
     const depth = (id: string): number => {
       let d = 0;
       for (let cur = motionOf(PARTS, id).primary; cur !== null; cur = cur.primary) d++;
@@ -192,19 +188,19 @@ export function register(): void {
     assert.ok(visible.has('sun'));
   });
 
-  test('visibility: focusId が undefined でも恒星・惑星とトグルで足したクラスは見える', () => {
-    const visible = visibleBodyIds(undefined, { ...SATELLITES_OFF, satelliteName: true });
+  test('visibility: focusId が null でも恒星・惑星とトグルで足したクラスは見える', () => {
+    const visible = visibleBodyIds(null, { ...SATELLITES_OFF, satelliteName: true });
     assert.ok(visible.has('earth'));
     assert.ok(visible.has('sun'));
     assert.ok(visible.has('moon'), 'トグルで足したクラスは無条件で見える');
     // フォーカス由来の親子・兄弟の追加が無いことを、衛星トグルを畳んだ状態で確認する。
-    const visibleNoSatellites = visibleBodyIds(undefined, SATELLITES_OFF);
+    const visibleNoSatellites = visibleBodyIds(null, SATELLITES_OFF);
     assert.ok(!visibleNoSatellites.has('moon'), 'フォーカスが無ければ親子関係による追加も無い');
   });
 
   test('visibility: フォーカス解除後もカメラ近傍の惑星系の衛星は見える', () => {
     const nearby = SYSTEM.systemMembersAt(v3(), 0);
-    const visible = visibleBodyIds(undefined, SATELLITES_OFF, nearby);
+    const visible = visibleBodyIds(null, SATELLITES_OFF, nearby);
     assert.ok(nearby.includes('earth'));
     assert.ok(nearby.includes('moon'));
     assert.ok(visible.has('moon'), '地球近傍カメラではフォーカス解除後も月を残す');
@@ -277,5 +273,44 @@ export function register(): void {
     assert.ok(members.includes('earth'), '月の親である地球が足されるべき');
     assert.ok(members.includes('sun'));
     assert.equal(members.filter((id) => id === 'moon').length, 1, '月は重複しない');
+  });
+
+  test('reveal: 既定の解放は太陽・地球・月だけ', () => {
+    assert.deepEqual([...BODY_REVEAL_BASE], ['sun', 'earth', 'moon']);
+  });
+
+  test('reveal: 勝利で増える解放は、解放済みの天体を失わず重複させない', () => {
+    assert.deepEqual([...revealedAfterClear(['sun', 'earth', 'sun'], 'stage1')], ['sun', 'earth']);
+  });
+
+  test('reveal: ステージのクリアは定められた惑星本体だけを解放する', () => {
+    assert.deepEqual([...revealedAfterClear(BODY_REVEAL_BASE, '0')], ['sun', 'earth', 'moon', 'mars']);
+    assert.deepEqual([...revealedAfterClear(BODY_REVEAL_BASE, '1')], ['sun', 'earth', 'moon', 'venus', 'mercury']);
+    assert.deepEqual([...revealedAfterClear(BODY_REVEAL_BASE, '2')], ['sun', 'earth', 'moon', 'jupiter']);
+    assert.ok(!revealedAfterClear(BODY_REVEAL_BASE, '2').includes('io'), '衛星は解放されない');
+  });
+
+  test('reveal: 未解放の天体は、表示トグルが全部立っていても記号・ラベル・軌道線・選択に現れない', () => {
+    const policy = new MapVisibilityPolicy(SYSTEM, DEFAULT_MAP_DISPLAY_TOGGLES, new Set(BODY_REVEAL_BASE));
+    for (const id of ['mars', 'jupiter']) {
+      assert.equal(policy.isRevealed(id), false, id);
+      assert.deepEqual(policy.body(id), { icon: false, label: false, orbit: false, pickable: false }, id);
+    }
+    assert.equal(policy.body('earth').pickable, true, '解放された地球は見える');
+    assert.equal(policy.body('moon').pickable, true, '解放された月は見える');
+  });
+
+  test('reveal: ラグランジュ点は、その系の両方の天体が解放されているときだけ現れる', () => {
+    const toggles = { ...DEFAULT_MAP_DISPLAY_TOGGLES, lagrangeName: true };
+    const sunOnly = new MapVisibilityPolicy(SYSTEM, toggles, new Set(['sun']));
+    assert.equal(sunOnly.body('earth-l1').pickable, false, '地球が未解放の太陽-地球系は出ない');
+    const sunEarth = new MapVisibilityPolicy(SYSTEM, toggles, new Set(['sun', 'earth']));
+    assert.equal(sunEarth.body('earth-l1').pickable, true, '太陽と地球が解放されていれば出る');
+    assert.equal(sunEarth.body('jupiter-l1').pickable, false, '木星が未解放の系は出ない');
+  });
+
+  test('reveal: 解放の集合を渡さなければ、天体を伏せない', () => {
+    const policy = new MapVisibilityPolicy(SYSTEM, DEFAULT_MAP_DISPLAY_TOGGLES);
+    assert.equal(policy.body('mars').pickable, true);
   });
 }

@@ -1,7 +1,7 @@
 // オーロラカーテン1層: 磁極を囲む波打つリング帯のメッシュ。同じ極に複数重ねて厚みを出す。
 // 天体半径・オーバル緯度・発光高度・色は AuroraOptics で受ける。
 import * as THREE from 'three/webgpu';
-import { AuroraField } from '../aurora-field';
+import { AuroraField } from './aurora-field';
 import type { Vec3 } from '../../math/vec3';
 
 const SEG = 160;
@@ -95,7 +95,7 @@ export class Aurora {
     this.material.dispose();
   }
 
-  // phase 時点のカーテン形状を positions/colors へ書き込む(GPU への反映は呼び出し側)。
+  // phase 時点のカーテン形状を positions/colors 配列へ書き込む（頂点属性の needsUpdate フラグ更新は別段で行う）。
   private writeVertices(phase: number, solarMeridianRad = 0): void {
     const o = this.optics;
     for (let i = 0; i <= SEG; i++) {

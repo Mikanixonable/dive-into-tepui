@@ -3,14 +3,16 @@ import { LOCAL_FORWARD, qRotate } from '../../math/quat';
 import type { ViewMode } from '../view/view-mode';
 import { type KinematicState, kinematicState, orbitAxes } from '../../physics/kinematic-state';
 import { scale, sub, type Vec3 } from '../../math/vec3';
-import type { MarkerDeclaration } from '../../marker/marker-declaration';
-import type { MarkerSink } from '../../marker/marker-sink';
-import type { MarkerDevice } from '../../marker/marker-device';
+import type { MarkerDeclaration } from '../../marker-kit/marker-declaration';
+import type { MarkerSink } from '../../marker-kit/marker-sink';
+import type { MarkerDevice } from '../../marker-kit/marker-device';
 import { MARKER_PRIORITY } from './marker-priority';
 import { directionPlacement } from './marker-placement';
 import { DIRECTION_GLYPH } from './marker-identity';
 import type { ModularShip } from '../ship/modular-ship';
 import type { ProjectFn } from '../../math/projection';
+import { sunGlareSpreadScale } from '../sun-glare-spread';
+import type { CelestialBodies } from '../celestial/celestial-bodies';
 
 // 中央に切り欠きを残した、細い線の三尖星(120度間隔)。
 const BORESIGHT_STAR = '<svg viewBox="0 0 24 24" width="48" height="48" aria-label="照準"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 9.7V2"/><path d="M12 9.7V2" transform="rotate(120 12 12)"/><path d="M12 9.7V2" transform="rotate(240 12 12)"/></g></svg>';
@@ -19,8 +21,8 @@ export class PlayerMarkers {
   private readonly declarations: MarkerDeclaration[] = [];
   private readonly group: MarkerSink;
 
-  // マーカー群を markers から作って持つ。
-  public constructor(markers: MarkerDevice) {
+  // マーカー群を markers から作って持つ。celestialBodies はボアサイトの散布界倍率が読む天体。
+  public constructor(markers: MarkerDevice, private readonly celestialBodies: CelestialBodies) {
     this.group = markers.createGroup();
   }
 
@@ -64,13 +66,24 @@ export class PlayerMarkers {
     out.push(this.direction(`radin-${id}`, 'mk-rad', DIRECTION_GLYPH.radialIn, pr, scale(radDir, -1), project, 'RADIAL IN'));
   }
 
-  // 機首方向へ置くボアサイトマーカー。ラベルへ残弾とベルト・砲口初速を添える。
+  // 機首方向へ置くボアサイトマーカー。ラベルへ残弾とベルト・砲口初速を添え、散布界が逆光で
+  // 開いている(GLARE)/順光で締まっている(SUN)あいだは倍率と修飾クラスを添える
+  // (SPEC MARKERS.md「狙いの印」)。
   private boresight(player: ModularShip, project: ProjectFn): MarkerDeclaration {
     const state = player.motion.state;
     const fwd = qRotate(player.motion.att.q, LOCAL_FORWARD);
-    const label = `AMMO ${Math.max(0, player.roundsInMag)}\nBELT ${Math.max(0, player.magsLeft)}\n${player.averageMuzzleVelocity.toFixed(0)} m/s`;
+    let label = `AMMO ${Math.max(0, player.roundsInMag)}\nBELT ${Math.max(0, player.magsLeft)}\n${player.averageMuzzleVelocity.toFixed(0)} m/s`;
+    let cls = 'mk-boresight';
+    const spread = sunGlareSpreadScale(state.r, fwd, this.celestialBodies, state.t);
+    if (spread > 1.1) {
+      label += `\nGLARE ×${spread.toFixed(1)}`;
+      cls += ' mk-boresight--glare';
+    } else if (spread < 0.9) {
+      label += `\nSUN ×${spread.toFixed(1)}`;
+      cls += ' mk-boresight--sun';
+    }
     return {
-      ...this.direction(`bore-${player.id}`, 'mk-boresight', BORESIGHT_STAR, state.r, fwd, project, label),
+      ...this.direction(`bore-${player.id}`, cls, BORESIGHT_STAR, state.r, fwd, project, label),
       markup: true,
       fixedLabel: true,
     };

@@ -1,6 +1,4 @@
-// マップ実マーカーが使う SVG 形状の定義。船は鏃(やじり)形、基地は正七角形 — マーカー本体
-// (headingHpMarkerSvg 等)と HUD の一覧パネルの凡例アイコンが同じ形を指せるよう、依存フリーな
-// 文字列組み立てだけをここへ集める。three/hud/player など重い・循環しうるモジュールは import しない。
+// マップ上の物体マーカーに使う SVG 文字列を生成する。
 
 
 const COLOR_MARKER_HP_EMPTY = 'rgba(120, 125, 130, .2)';
@@ -17,6 +15,13 @@ export function shipMarkerSvg(filled: boolean): string {
     `</svg>`;
 }
 
+// 見越し点の三尖星アイコン。主照準とは反対向き(逆三角形方向)で、中央に小さな
+// 切り欠きを残して敵マーカーや照準と識別しやすくする。線だけで描く。
+export function leadMarkerSvg(): string {
+  return '<svg viewBox="0 0 24 24" width="24" height="24" aria-label="LEAD"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="butt"><path d="M12 14.3V22"/><path d="M12 14.3V22" transform="rotate(120 12 12)"/><path d="M12 14.3V22" transform="rotate(240 12 12)"/></g></svg>';
+}
+
+// 線色に currentColor を使う基地アイコンの SVG を返す。
 export function baseMarkerSvg(): string {
   return `<svg viewBox="0 0 24 24" width="24" height="24" aria-label="Base">` +
     `<polygon points="${BASE_HEPTAGON_POINTS}" fill="none" stroke="currentColor" stroke-width="1.8"/>` +
@@ -31,6 +36,7 @@ export function triangleHpMarkerSvg(hp: number, maxHp: number): string {
   // 正三角形のシルエット(辺長18、外接円中心は(12,12))。
   const points: [number, number][] = [[12, 3], [21, 18.588], [3, 18.588]];
   const lines: string[] = [];
+  // 辺 i の区間 [a,b] を、HP の点灯状態に応じた線分として加える。
   const emit = (i: number, j: number, k: number, a: number, b: number): void => {
     if (b <= a) return;
     const [x1, y1] = points[i]!;

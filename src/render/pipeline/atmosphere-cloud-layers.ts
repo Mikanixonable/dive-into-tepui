@@ -6,7 +6,7 @@ import {
 } from './cloud-atmosphere-renderer';
 import type { BoolNode, FloatNode, Vec2Node, Vec3Node } from '../tsl-types';
 
-export interface AtmosphereCloudRay {
+interface AtmosphereCloudRay {
   readonly toOrigin: Vec3Node;
   readonly unitDir: Vec3Node;
   readonly unitsPerMeter: FloatNode;
@@ -14,13 +14,13 @@ export interface AtmosphereCloudRay {
   readonly perpSq: FloatNode;
 }
 
-export interface AtmosphereCloudCrossings {
+interface AtmosphereCloudCrossings {
   readonly entry: FloatNode;
   readonly exit: FloatNode;
   readonly crosses: BoolNode;
 }
 
-export interface AtmosphereCloudSegment {
+interface AtmosphereCloudSegment {
   readonly near: FloatNode;
   readonly far: FloatNode;
 }
@@ -40,7 +40,7 @@ export interface AtmosphereCloudGeometry {
 
 export interface CloudShellEvent {
   readonly distance: FloatNode;
-  // その雲イベント自身を抜けた透過率。縦柱tau×airmassを一度だけ変換した値。
+  // その雲イベントを抜けて下地へ届く光の割合。τ×airmass が返す R の残り(1 − R)。
   readonly cloudTransmittance: FloatNode;
   // イベント局所の放射輝度。自分のcloudTransmittanceはまだ掛けない。
   readonly localRadiance: Vec3Node;
@@ -51,14 +51,17 @@ export interface CloudShellEvent {
 export class AtmosphereCloudLayers {
   private readonly clouds = new CloudAtmosphereRenderer();
 
+  // 評価対象の雲の定義を置く。null なら雲の殻を立てない。
   public setClouds(clouds: Parameters<CloudAtmosphereRenderer['set']>[0]): void {
     this.clouds.set(clouds);
   }
 
-  public setShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    this.clouds.setShellEnabled(species, enabled);
+  // 巻雲の筋の細部の段数を、雲の殻の描画へ渡す。0 なら細部を足さない。
+  public setCirrusOctaves(count: number): void {
+    this.clouds.setCirrusOctaves(count);
   }
 
+  // 距離 distance までに通過する雲イベントの透過率の積を返す。
   public transmittanceAt(events: readonly CloudShellEvent[], distance: FloatNode): FloatNode {
     const product = float(1).toVar();
     for (const event of events) {
@@ -67,6 +70,7 @@ export class AtmosphereCloudLayers {
     return product;
   }
 
+  // 雲イベントを視線の順に畳み、大気の透過率と内部散乱へ雲の寄与を合成する。
   public compose(
     atmosphereTransmittance: Vec3Node, atmosphereRadiance: Vec3Node,
     events: readonly CloudShellEvent[],
@@ -86,9 +90,10 @@ export class AtmosphereCloudLayers {
     };
   }
 
+  // pixelAngle は視線の 1 画素が張る角 [rad]。交点までの距離に掛けて、交点で画素の張る実寸を出す。
   public build(
     ray: AtmosphereCloudRay, segment: AtmosphereCloudSegment,
-    rayOrigin: Vec3Node, rayDir: Vec3Node, geometry: AtmosphereCloudGeometry,
+    rayOrigin: Vec3Node, rayDir: Vec3Node, geometry: AtmosphereCloudGeometry, pixelAngle: FloatNode,
   ): readonly CloudShellEvent[] {
     const shells = CLOUD_SHELL_SPECIES.map((species) => {
       const radius = geometry.shellRadiusOf(species);
@@ -108,12 +113,13 @@ export class AtmosphereCloudLayers {
       const inSegment = and(
         greaterThan(distance, segment.near), lessThan(distance, segment.far),
       );
-      If(and(and(shell.crossings.crosses, inSegment), this.clouds.present(shell.species)), () => {
+      If(and(and(shell.crossings.crosses, inSegment), this.clouds.present()), () => {
         const point = geometry.pointAt(rayOrigin, rayDir, distance);
         const offset = geometry.offsetAt(ray, distance);
         const sunDir = normalize(geometry.sunDirectionAt(point));
         const sample: CloudShellSample = this.clouds.scatteredAt(
           shell.species, shell.radius, offset, ray.unitDir, sunDir, geometry.sunRadianceAt(point),
+          pixelAngle.mul(distance),
         );
         cloudTransmittance.assign(sample.transmittance);
         localRadiance.assign(sample.radiance);

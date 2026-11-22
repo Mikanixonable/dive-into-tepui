@@ -11,19 +11,19 @@ import type { Vec3 } from '../../math/vec3';
 import { add, v3 } from '../../math/vec3';
 import { pickNearest } from '../pickable/object-pickable';
 import type { HudLayers } from '../hud/hud-layers';
-import type { Notifier } from '../../hud/notifier';
-import { ContextMenu } from '../hud/windows/context-menu';
-import { MenuCommon, type MenuAction } from '../hud/windows/menu-actions';
+import type { Notifier } from '../../hud-kit/notifier';
+import { ContextMenu } from '../../hud-kit/windows/context-menu';
+import { MenuCommon, type MenuAction } from '../menu-actions';
 import type { UiSoundQueue } from '../ui-sound-queue';
-import type { Input } from '../../input/input';
-import { KEY_MAPPING as K } from '../../input/key-mapping';
+import type { Input } from '../../input-devices/input';
+import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import { focusPoint } from '../viewer/focus-target';
 import type { SimSpeedManager } from '../dynamic/sim-speed-manager';
 import type { AxisHandleSpec, NodeHandleSpec } from './node-gizmo';
 import { NodeGizmo } from './node-gizmo';
 import { AxisDragGizmo } from './plan-axis-drag';
 import { PlanGizmo3D } from '../../render/plan/plan-gizmo-3d';
-import { PlanPanel } from './plan-panel';
+import { PlanPanel } from '../hud/panels/plan-panel';
 import type { Plan } from './plan';
 import type { DisplayWindowManager } from '../display-window-manager';
 import type { PlanCommands } from './plan-commands';
@@ -32,7 +32,7 @@ import {
 } from './plan-node-editing';
 import type { SimSpeedCommands } from '../dynamic/sim-speed-commands';
 import type { FloatingOrigin } from '../../render/camera/floating-origin';
-import type { Controllable } from '../dynamic/dynamic-entity/controllable';
+import type { Controllable } from '../dynamic/entity/controllable';
 import type { ControlSelection } from '../control-selection';
 import type { PlanPath } from './plan-path';
 import type { CelestialBodies } from '../celestial/celestial-bodies';
@@ -102,8 +102,8 @@ export class PlanEditor {
     private readonly planCommands: PlanCommands,
   ) {
     // マップ上の操作物(ノードギズモ・軌道メニュー・3D 矢印・Δv アーム)
-    this.nodeGizmo = new NodeGizmo(this.hud.layers.marker, this.hud.layers.popup, this.hud.overlayManager);
-    this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this.hud.layers.popup, this.hud.overlayManager);
+    this.nodeGizmo = new NodeGizmo(this.hud.layers.marker, this.hud.overlayManager);
+    this.orbitMenu = new ContextMenu<KinematicState, MenuAction>(this.hud.overlayManager);
     this.gizmo3d = new PlanGizmo3D(scene);
     this.axisDrag = new AxisDragGizmo(
       (state) => bodyStateFor(state, this.celestialBodies),
@@ -119,6 +119,7 @@ export class PlanEditor {
     // メニューとギズモのコールバック
     this.orbitMenu.onSelect = (act, state) => {
       if (act === 'warp') this.warpTo(state.t);
+      else if (act === 'delete') this.deleteSelectedNodeOrPlan();
     };
     this.wireNodeGizmo();
   }
@@ -129,11 +130,11 @@ export class PlanEditor {
   // 時刻 t まで自動ワープを始める。既に通過した時刻ならその旨を出すだけで何もしない。
   public warpTo(t: number): void {
     if (!this.simSpeedManager.canAutoWarpTo(t, this.simTime)) {
-      this.hud.hint('この時刻は既に通過しています');
+      this.hud.hint('この時刻は既に通過しています', undefined, 'warn');
       return;
     }
     this.simSpeedCommands.startAutoWarpTo(t, this.simTime);
-    this.hud.hint('指定時刻まで自動ワープ開始');
+    this.hud.hint('指定時刻まで自動ワープ開始', undefined, 'nav');
   }
 
   // NodeGizmo の各種コールバックを配線する。
@@ -182,7 +183,7 @@ export class PlanEditor {
     this.planCommands.removeNode(plan, idx);
     this.closeMenu();
     this.simSpeedCommands.cancelAutoWarp();
-    this.hud.hint('ノードを削除');
+    this.hud.hint('ノードを削除', undefined, 'plan');
   }
 
   // 選択中のノードを削除する。未選択なら計画全体を破棄し、進行中の自動ワープも解除する。
@@ -195,14 +196,14 @@ export class PlanEditor {
     if (!plan || plan.nodes.length <= 0) return;
     this.planCommands.clear(plan);
     this.simSpeedCommands.cancelAutoWarp();
-    this.hud.hint('マニューバ計画を破棄');
+    this.hud.hint('マニューバ計画を破棄', undefined, 'plan');
   }
 
   // 計画キー([X] 削除・[N] 直近ノードへの自動ワープ)の単発入力 commandId を実行する。
   public handleCommand(commandId: string): void {
     if (commandId === K.deleteNode.code) this.deleteSelectedNodeOrPlan();
     if (commandId === K.autoWarpToNode.code) {
-      this.simSpeedCommands.toggleAutoWarpToFirstNode(this.plan?.firstNode(), this.simTime);
+      this.simSpeedCommands.toggleAutoWarpToFirstNode(this.plan?.firstNode() ?? null, this.simTime);
     }
   }
 
@@ -296,7 +297,7 @@ export class PlanEditor {
     if (!ship) return;
     const sample = this.path.sampleAt(t);
     if (!sample) {
-      this.hud.hint('この時刻の計画軌道が求まりません');
+      this.hud.hint('この時刻の計画軌道が求まりません', undefined, 'warn');
       return;
     }
     this.placeNode(ship.plan, sample, ship.plan.anchorOr(ship.motion.state));
@@ -306,7 +307,7 @@ export class PlanEditor {
   // で、その時刻以前は計画の外なので理由を伝えて何もしない。
   private placeNode(plan: Plan, postState: KinematicState, anchor: KinematicState): void {
     if (plan.nodeIndexFor(postState.t, anchor) < 0) {
-      this.hud.hint('計画の起点より前にはノードを置けません');
+      this.hud.hint('計画の起点より前にはノードを置けません', undefined, 'warn');
       return;
     }
     this.selectedNode = postState;
@@ -324,6 +325,7 @@ export class PlanEditor {
       this.selectedNodeIdx = null;
       this.orbitMenu.open(mx, my, picked.state, [
         MenuCommon.warp(),
+        MenuCommon.discardPlan(),
         MenuCommon.cancel(),
       ]);
       return true;
@@ -378,7 +380,7 @@ export class PlanEditor {
     );
     const epsilon = 1e-6;
     if (targetT < range.min - epsilon || targetT > range.max + epsilon) {
-      this.hud.hint('ノード位置は許可された軌道区間内で指定してください');
+      this.hud.hint('ノード位置は許可された軌道区間内で指定してください', undefined, 'warn');
       return;
     }
     if (Math.abs(targetT - node.t) <= epsilon) return;
@@ -386,7 +388,7 @@ export class PlanEditor {
     // その時刻の計画軌道のサンプル
     const picked = this.path.sampleAtWithArc(targetT);
     if (!picked) {
-      this.hud.hint('この時刻の計画軌道が求まりません');
+      this.hud.hint('この時刻の計画軌道が求まりません', undefined, 'warn');
       return;
     }
 
@@ -398,7 +400,7 @@ export class PlanEditor {
     this.selectedNode = moved;
     this.planCommands.replaceNode(plan, idx, moved);
     this.uiSounds.push('warp');
-    if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください');
+    if (hasDownstreamNodes) this.hud.hint('ノード位置を変更しました。後続ノードを再設定してください', undefined, 'plan');
   }
 
   // 選択中ノードの axis 方向(sign 込み)へ amount [m/s] の Δv 加算を積む。

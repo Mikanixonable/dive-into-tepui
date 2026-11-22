@@ -1,10 +1,10 @@
 // 動きベクトルを確かめるケース — 通常物体と薬莢を置く小さな部屋(casing-room)と、薬莢と飛散片を上限まで積む
 // 大きな部屋(casing-pool)。実体の姿勢と積み順は論理フレームの番号と値の口だけで決まり、描く回数に依らない。
 import * as THREE from 'three/webgpu';
-import { ENTITY_CAP } from '../../src/game/dynamic/dynamic-entity/entity-kind';
+import { ENTITY_CAP } from '../../src/game/dynamic/entity/entity-kind';
 import { mulberry32 } from '../../src/math/random';
-import { CasingPool } from '../../src/render/dynamic/dynamic-entity/casing-view';
-import { DebrisFragmentPools } from '../../src/render/dynamic/dynamic-entity/debris-fragment-view';
+import { CasingPool } from '../../src/render/dynamic/entity/casing-view';
+import { DebrisFragmentPools } from '../../src/render/dynamic/entity/debris-fragment-view';
 import { markLitOpaque, markShadowCaster } from '../../src/render/pipeline/lit-layer';
 import { syncThermalState } from '../../src/render/thermal-emissive';
 import { directionFromAngles } from './view-angles';

@@ -1,15 +1,16 @@
-// 前進・予測・接触の機構が個体と顔ぶれに求める面。
+// シミュレーション進行・軌道予測・衝突判定の各機構がエンティティおよびコレクションに要求するインターフェース。
 import type { Vec3 } from '../../math/vec3';
 import type { Attitude } from '../../physics/attitude';
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { DynamicTrajectory } from '../../physics/dynamic-trajectory';
 import type { KinematicState } from '../../physics/kinematic-state';
+import type { ShadowCasters } from '../../physics/shadow';
 import type { SphereHit } from '../../math/triangle-mesh';
 import type { ContactGeometry } from '../../physics/collision-response';
 import type { CompoundCylinderShape } from '../../physics/compound-cylinder-contact';
 import type { CompoundSphereShape } from '../../physics/compound-sphere-contact';
 import type { StageOutcome } from '../stages/stage-outcome';
-import type { Contact } from './dynamic-entity/contact';
+import type { Contact } from './entity/contact';
 import type { ContactKind } from './dynamic-motion';
 import type { EngagementParticipant, EngagementZone } from './engagement-zone';
 import type { EntityRegistry } from './entity-registry';
@@ -29,7 +30,7 @@ export interface PredictableMotion {
   ensurePredictedArc(sources: readonly CelestialBody[]): PredictedArc | null;
 }
 
-// 予測の弧を伸ばす対象の顔ぶれ。
+// 予測軌道を計算・延伸する対象のエンティティ一覧。
 export interface PredictableMotionRoster {
   allMotions(): readonly PredictableMotion[];
 }
@@ -109,7 +110,7 @@ export interface DynamicSimulationParticipant extends EntityContactParticipant, 
   outpacedByDrag(dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number): boolean;
   substepDivisions(dt: number, atmosphereBodies: readonly CelestialBody[], pivot: number): number;
   stepSimulation(
-    dt: number, celestialBodies: readonly CelestialBody[], occluders: readonly CelestialBody[],
+    dt: number, celestialBodies: readonly CelestialBody[], occluders: ShadowCasters,
     atmosphereBody: CelestialBody | null, star: CelestialBody | null, pivot: number,
     services: DynamicReactionServices,
   ): boolean;
@@ -127,15 +128,15 @@ export interface SimulationControlled extends SimulationState {
   readonly att: Attitude;
 }
 
-// 実シミュレーションが進める顔ぶれ。
+// 実シミュレーションで進行させるエンティティ一覧。
 export interface DynamicSimulationRoster {
-  // 顔ぶれが変わるたびに増える世代。
+  // エンティティ一覧の構成が変わるたびにインクリメントされるリビジョン番号。
   readonly collectionRevision: number;
   allMotions(): readonly DynamicSimulationParticipant[];
 }
 
 export interface SimulationLifecycle extends DynamicSimulationRoster {
-  // 寿命と上限を判定し、死んだ個体を顔ぶれから除く。dt [s] は直前に進めた長さ、zones はいまの交戦圏。
+  // 寿命と上限を判定し、非生存個体を登録一覧から除外する。dt [s] は直前に進めた長さ、zones はいまの交戦圏。
   cleanup(
     dt: number, simTime: number, activeStage: StageOutcome,
     zones: readonly EngagementZone<EngagementParticipant>[],

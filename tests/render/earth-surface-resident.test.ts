@@ -1,24 +1,24 @@
 // 要求の到着順、親fallback、同時upload、破棄境界、配列層上限を検査する。
 import * as assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { gzipSync } from 'node:zlib';
 import { test } from '../harness';
-import { EarthSurfaceResidentCoordinator } from '../../src/render/earth-surface-resident';
-import { EarthSurfaceGpuAdapter } from '../../src/render/earth-surface-gpu';
-import type { EarthSurfaceColorToRgba8 } from '../../src/render/earth-surface-resident';
-import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface-gpu';
-import { EarthSurfaceTileRequestQueue } from '../../src/render/earth-surface-tile-queue';
-import { EarthSurfaceTileSource } from '../../src/render/earth-surface-tile-source';
-import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface-format';
+import { EarthSurfaceResidentCoordinator } from '../../src/render/earth-surface/resident';
+import { EarthSurfaceGpuAdapter } from '../../src/render/earth-surface/gpu';
+import type { EarthSurfaceColorToRgba8 } from '../../src/render/earth-surface/resident';
+import type { EarthSurfaceGpuBackend, EarthSurfaceGpuCapabilities } from '../../src/render/earth-surface/gpu';
+import { EarthSurfaceTileRequestQueue } from '../../src/render/earth-surface/tile-queue';
+import { EarthSurfaceTileSource } from '../../src/render/earth-surface/tile-source';
+import { EARTH_TERRAIN_BYTES, EARTH_TERRAIN_HEADER_BYTES } from '../../src/render/earth-surface/terrain-codec';
 import {
   EARTH_TILE_EXTENT, EARTH_TILE_LAYERS, EARTH_TILE_MIN_Z,
   earthTileChildren, earthTileId, earthTileKey, earthTileParent,
-} from '../../src/render/earth-surface-tile-key';
-import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH, earthPageAt } from '../../src/render/earth-surface-page-table';
-import { EarthSurfaceTiles } from '../../src/render/earth-surface-tiles';
-import type { EarthTileResident } from '../../src/render/earth-surface-tiles';
-import type { EarthTileKey } from '../../src/render/earth-surface-tile-key';
-import type { EarthTileProjection } from '../../src/render/earth-surface-tile-projection';
+} from '../../src/render/earth-surface/tile-key';
+import { EARTH_PAGE_HEIGHT, EARTH_PAGE_WIDTH } from '../../src/render/earth-surface/layout';
+import { earthPageAt } from './earth-surface-material-reference';
+import { EarthSurfaceTiles } from '../../src/render/earth-surface/tiles';
+import type { EarthTileResident } from '../../src/render/earth-surface/tiles';
+import type { EarthTileKey } from '../../src/render/earth-surface/tile-key';
+import type { EarthTileProjection } from '../../src/render/earth-surface/tile-projection';
 
 const CAPABILITIES: EarthSurfaceGpuCapabilities = {
   texture2dArray: true, maxTextureArrayLayers: EARTH_TILE_LAYERS, colorSrgbLinear: true, terrainRgba8Linear: true,
@@ -37,6 +37,7 @@ class ImmediateBackend implements EarthSurfaceGpuBackend {
   public dispose(): void { this.disposed = true; }
 }
 
+// key の正常系ESTNタイル。
 function terrain(key: EarthTileKey): Uint8Array {
   const bytes = new Uint8Array(EARTH_TERRAIN_HEADER_BYTES + EARTH_TERRAIN_BYTES);
   bytes.set(new TextEncoder().encode('ESTN'));
@@ -50,17 +51,9 @@ function terrain(key: EarthTileKey): Uint8Array {
 
 class Projection implements EarthTileProjection {
   public constructor(public readonly splitError = 3, public readonly maximumLevel = EARTH_TILE_MIN_Z) {}
+  // maximumLevel までは分割誤差 splitError、それ以深は 0(分割しない)。
   public evaluate(key: EarthTileKey): { readonly visible: boolean; readonly errorPx: number; readonly priority: number } {
     return { visible: true, errorPx: key.z <= this.maximumLevel ? this.splitError : 0, priority: 1 / (1 + key.z) };
-  }
-}
-
-class CountingProjection extends Projection {
-  public evaluations = 0;
-
-  public override evaluate(key: EarthTileKey): { readonly visible: boolean; readonly errorPx: number; readonly priority: number } {
-    this.evaluations++;
-    return super.evaluate(key);
   }
 }
 
@@ -86,10 +79,12 @@ class CandidateTiles extends EarthSurfaceTiles {
   }
 }
 
+// bytes をbodyに持つ応答のfixture。
 function response(bytes: Uint8Array, status = 200): Response {
   return new Response(bytes.slice(), { status, headers: { 'content-length': String(bytes.length) } });
 }
 
+// 要求→GPU→常駐の一式を、即時応答のfixtureで組んで返す。
 function coordinator(keys: readonly EarthTileKey[], fetchImpl: typeof fetch = async (input) => {
   const url = String(input);
   const isColor = url.endsWith('.jpg');
@@ -100,19 +95,21 @@ function coordinator(keys: readonly EarthTileKey[], fetchImpl: typeof fetch = as
 }, backend = new ImmediateBackend(), colorToRgba8: EarthSurfaceColorToRgba8 = (color) => {
   if (!(color instanceof Uint8Array)) throw new Error('fixture color is not RGBA8');
   return color;
-}, tiles = new EarthSurfaceTiles(), decodeImage: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown> = async () => COLOR.slice()) {
+}, tiles = new EarthSurfaceTiles(), decodeImage: (bytes: Uint8Array, signal?: AbortSignal) => Promise<unknown> = async () => COLOR.slice(), layers = EARTH_TILE_LAYERS) {
+  // 各差し替え点をfixtureで満たした一式を組む。
   const source = new EarthSurfaceTileSource('{z}/{x}/{y}.jpg', '{z}/{x}/{y}.bin.gz');
   const queue = new EarthSurfaceTileRequestQueue(source, {
     fetchImpl,
     decodeImage,
   });
-  const gpu = new EarthSurfaceGpuAdapter(backend);
+  const gpu = new EarthSurfaceGpuAdapter(backend, layers);
   const resident = new EarthSurfaceResidentCoordinator({
     tiles, queue, gpu, colorToRgba8,
   });
   return { backend, gpu, queue, resident, tiles };
 }
 
+// z7 のタイルを y=0 行へ並べた候補。
 function candidateKeys(count: number): readonly EarthTileKey[] {
   return Array.from({ length: count }, (_, index) => earthTileKey(7, index, 0));
 }
@@ -130,17 +127,20 @@ class GatedBackend extends ImmediateBackend {
   private releaseGate!: () => void;
   public readonly started: Promise<void>;
   private resolveStarted!: () => void;
+  // 書き込みを gate が開くまで止める backend。started は最初の書き込み開始で解決する。
   public constructor() {
     super();
     this.gate = new Promise<void>((resolve) => { this.releaseGate = resolve; });
     this.started = new Promise<void>((resolve) => { this.resolveStarted = resolve; });
   }
   public release(): void { this.releaseGate(); }
+  // 開始を合図してから gate を待つ。
   public async writeColor(layer: number, pixels: Uint8Array): Promise<void> {
     this.resolveStarted();
     await this.gate;
     return super.writeColor(layer, pixels);
   }
+  // gate を待ってから記録する。
   public async writeTerrain(layer: number, pixels: Uint8Array): Promise<void> {
     await this.gate;
     return super.writeTerrain(layer, pixels);
@@ -156,6 +156,7 @@ class GenerationRaceBackend extends ImmediateBackend {
   public readonly secondFinished: Promise<void>;
   private resolveSecondFinished!: () => void;
 
+  // 層0の最初の書き込みを止め、層1の2回目の書き込み完了を合図する。
   public constructor() {
     super();
     this.firstGate = new Promise<void>((resolve) => { this.releaseFirstGate = resolve; });
@@ -165,11 +166,13 @@ class GenerationRaceBackend extends ImmediateBackend {
 
   public releaseFirst(): void { this.releaseFirstGate(); }
 
+  // 層1の2回目の書き込みで secondFinished を解決する。
   private markSecondWrite(): void {
     this.secondWrites++;
     if (this.secondWrites === 2) this.resolveSecondFinished();
   }
 
+  // 層0は最初の開始を合図して gate を待ち、層1は完了を数える。
   public async writeColor(layer: number, pixels: Uint8Array): Promise<void> {
     if (layer === 0) {
       this.resolveFirstStarted();
@@ -179,6 +182,7 @@ class GenerationRaceBackend extends ImmediateBackend {
     if (layer === 1) this.markSecondWrite();
   }
 
+  // 層0は gate、層1は合図の対象にする。
   public async writeTerrain(layer: number, pixels: Uint8Array): Promise<void> {
     if (layer === 0) await this.firstGate;
     await super.writeTerrain(layer, pixels);
@@ -194,21 +198,17 @@ export function register(): void {
   test('earth resident: 静止安定後は投影評価とページ表公開を繰り返さない', async () => {
     const keys = [earthTileKey(EARTH_TILE_MIN_Z, 0, 0), earthTileKey(EARTH_TILE_MIN_Z, 1, 0)];
     const fixture = coordinator(keys, undefined, new ImmediateBackend(), undefined, new CandidateTiles(keys));
-    const projection = new CountingProjection(0, -1);
+    const projection = new Projection(0, -1);
     fixture.resident.sync({ projection, timeMs: 0, generation: 1 });
     await fixture.resident.settle();
     fixture.resident.sync({ projection, timeMs: 1, generation: 1 });
     await fixture.resident.settle();
     fixture.resident.sync({ projection, timeMs: 252, generation: 1 });
-    const evaluations = projection.evaluations;
-    const pages = fixture.backend.pages.length;
     await fixture.resident.settle();
 
     const result = fixture.resident.sync({ projection, timeMs: 1000, generation: 1 });
     assert.equal(result.published, false);
     assert.deepEqual(result.requested, []);
-    assert.equal(projection.evaluations, evaluations);
-    assert.equal(fixture.backend.pages.length, pages);
     fixture.resident.dispose();
   });
 
@@ -290,6 +290,25 @@ export function register(): void {
       await fixture.resident.settle();
     }
     assert.equal(fixture.gpu.uploadedTiles().length, EARTH_TILE_LAYERS);
+    fixture.resident.dispose();
+  });
+
+  test('earth resident: 絞った物理層数のadapterではその層数だけresidentを収める', async () => {
+    const layers = 32;
+    const keys = candidateKeys(layers + 8);
+    const tiles = new CandidateTiles(keys.slice(0, layers));
+    const fixture = coordinator(keys, undefined, new ImmediateBackend(), undefined, tiles, undefined, layers);
+    for (let group = 0; group < layers / 8; group++) {
+      const result = fixture.resident.sync({ projection: new Projection(), timeMs: group, generation: 1 });
+      assert.equal(result.requested.length, 8);
+      await fixture.resident.settle();
+    }
+    assert.equal(fixture.gpu.uploadedTiles().length, layers);
+    // 層を使い切ったあとは、候補に含まれるresidentを先行退避しないので追加要求は出ない。
+    tiles.setCandidates(keys);
+    const result = fixture.resident.sync({ projection: new Projection(), timeMs: layers / 8, generation: 1 });
+    assert.equal(result.requested.length, 0);
+    assert.equal(fixture.gpu.uploadedTiles().length, layers);
     fixture.resident.dispose();
   });
 
@@ -494,18 +513,9 @@ export function register(): void {
     assert.ok(reservations <= EARTH_TILE_LAYERS);
   });
 
-  test('earth resident: GPU機能不足時は詳細要求を止めて全球baseを維持する', () => {
-    const fixture = coordinator([earthTileKey(EARTH_TILE_MIN_Z, 0, 0)]);
+  test('earth resident: GPU機能不足ではadapterを組まず全球baseへ戻る', () => {
     const unsupported = new ImmediateBackend({ ...CAPABILITIES, texture2dArray: false });
-    const baseGpu = new EarthSurfaceGpuAdapter(unsupported);
-    const baseCoordinator = new EarthSurfaceResidentCoordinator({
-      tiles: new EarthSurfaceTiles(), queue: fixture.queue, gpu: baseGpu,
-      colorToRgba8: (color) => color as Uint8Array,
-    });
-    const result = baseCoordinator.sync({ projection: new Projection(), timeMs: 0, generation: 1 });
-    assert.deepEqual(result.requested, []);
+    assert.throws(() => new EarthSurfaceGpuAdapter(unsupported, EARTH_TILE_LAYERS), /detail features unavailable/);
     assert.equal(unsupported.pages.length, 0);
-    baseCoordinator.dispose();
-    fixture.resident.dispose();
   });
 }

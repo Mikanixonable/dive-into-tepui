@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { ONE_PASS, PIXELS, centeredPng, colorPng } from './reflection-chain-common.mjs';
 import { absDifference, metricGroups, pointMetrics } from './reflection-read-level-metrics.mjs';

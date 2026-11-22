@@ -1,4 +1,4 @@
-// デバッグステージへ外から出せる命令の口と、それを列へ積む実装(R3)。
+// デバッグステージへ外部から発行できるコマンドインターフェースと、それをキューへエンキューする実装(R3)。
 import type { CommandQueue } from '../command-queue';
 import type { StageDebug } from './stage-debug';
 
@@ -8,17 +8,20 @@ export interface StageDebugCommands {
   setEnemyFireEnabled(on: boolean): void;
   // 敵集団を1つ、自艦のまわりへ出す。
   spawnEnemyWave(): void;
+  // 組み立て型の敵を1体、自艦の前方へ出す。
+  spawnAssemblyEnemy(): void;
   // 弾薬を1つ、自艦の近くへ出す。
   spawnAmmo(): void;
   // RCS燃料を1つ、自艦の近くへ出す。
   spawnRcsFuel(): void;
 }
 
-// stage への命令を queue へ積むだけの口を組む。
+// stage へのコマンドを queue へエンキューする実装を構築する。
 export function stageDebugCommands(queue: CommandQueue, stage: StageDebug): StageDebugCommands {
   return {
     setEnemyFireEnabled: (on) => queue.submit(() => stage.setEnemyFireEnabled(on)),
     spawnEnemyWave: () => queue.submit(() => stage.spawnEnemyWave()),
+    spawnAssemblyEnemy: () => queue.submit(() => stage.spawnAssemblyEnemy()),
     spawnAmmo: () => queue.submit(() => stage.spawnAmmo()),
     spawnRcsFuel: () => queue.submit(() => stage.spawnRcsFuel()),
   };

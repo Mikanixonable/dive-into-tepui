@@ -3,15 +3,31 @@
 import * as assert from 'node:assert/strict';
 import * as THREE from 'three/webgpu';
 import { SHIP_MODULE_CATALOG } from '../../src/game/ship/ship-module-catalog';
-import shipModulesData from '../../src/assets/models/shipModules.json';
-import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
+import {
+  buildShipModuleModel,
+  getShipModuleTemplates,
+  loadShipModuleModels,
+} from '../../src/render/dynamic/ship/ship-module-models';
 import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-render-resources';
+import {
+  RADIATOR_FOLD_COUNT,
+  RADIATOR_PANEL_WIDTH,
+  RADIATOR_SEGMENT_LENGTH,
+  SOLAR_PANEL_COUNT,
+  SOLAR_PANEL_COLUMNS,
+  SOLAR_PANEL_CENTERLINE_CLEARANCE,
+  SOLAR_PANEL_FACE_SCALE,
+  SOLAR_PANEL_PANEL_PITCH,
+  SOLAR_PANEL_STAGE_SCALES,
+  SOLAR_PANEL_LENGTH,
+} from '../../src/physics/player-shape';
 import { test } from '../harness';
 
 function parsedRoot(): THREE.Group {
-  return new THREE.ObjectLoader().parse(shipModulesData) as THREE.Group;
+  return getShipModuleTemplates();
 }
 
+// ルート直下の子を moduleModelId で引ける Map にする。id の重複は失敗にする。
 function moduleRoots(root: THREE.Group): Map<string, THREE.Object3D> {
   const result = new Map<string, THREE.Object3D>();
   for (const child of root.children) {
@@ -23,6 +39,7 @@ function moduleRoots(root: THREE.Group): Map<string, THREE.Object3D> {
   return result;
 }
 
+// 全子孫から semanticAnchor 名のノードを探す。無ければ null。
 function semanticAnchor(root: THREE.Object3D, name: string): THREE.Object3D | null {
   let result: THREE.Object3D | null = null;
   root.traverse((child) => {
@@ -31,6 +48,7 @@ function semanticAnchor(root: THREE.Object3D, name: string): THREE.Object3D | nu
   return result;
 }
 
+// 全子孫から名前のノードを探す。無ければ null。
 function objectByName(root: THREE.Object3D, name: string): THREE.Object3D | null {
   let result: THREE.Object3D | null = null;
   root.traverse((child) => {
@@ -39,20 +57,32 @@ function objectByName(root: THREE.Object3D, name: string): THREE.Object3D | null
   return result;
 }
 
+// object の module 局所座標での位置と向き。anchor は可動部の子として入れ子になりうる。
+function transformInModule(module: THREE.Object3D, object: THREE.Object3D): { position: THREE.Vector3, quaternion: THREE.Quaternion } {
+  module.updateMatrixWorld(true);
+  const local = module.matrixWorld.clone().invert().multiply(object.matrixWorld);
+  const position = new THREE.Vector3();
+  const quaternion = new THREE.Quaternion();
+  local.decompose(position, quaternion, new THREE.Vector3());
+  return { position, quaternion };
+}
+
 export function register(): void {
-  test('ship module asset: catalog の全 modelId が独立した等倍 Group を持つ', () => {
+  test('ship module asset: catalog の全 modelId が独立した等倍 Group を持つ', async () => {
+    await loadShipModuleModels();
     const root = parsedRoot();
     const modules = moduleRoots(root);
     const modelIds = new Set(SHIP_MODULE_CATALOG.all().map(definition => definition.modelId));
     assert.deepEqual(new Set(modules.keys()), modelIds);
     assert.deepEqual(root.scale.toArray(), [1, 1, 1]);
     for (const [modelId, module] of modules) {
-      assert.equal(module.type, 'Group', `${modelId} is not an independent Group`);
+      assert.ok(module.type === 'Group' || module.type === 'Object3D', `${modelId} is not an independent Group/Object3D`);
       assert.deepEqual(module.scale.toArray(), [1, 1, 1], `${modelId} has a baked root scale`);
     }
   });
 
-  test('ship module asset: 全 module の接続面は定義長の ±Z に一致する', () => {
+  test('ship module asset: 全 module の接続面は定義長の ±Z に一致する', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
     for (const definition of SHIP_MODULE_CATALOG.all()) {
       const module = modules.get(definition.modelId);
@@ -69,7 +99,8 @@ export function register(): void {
     }
   });
 
-  test('ship module asset: interface ring は接続面と同じ +Z 法線を持つ', () => {
+  test('ship module asset: interface ring は接続面と同じ +Z 法線を持つ', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
     const module = modules.get('dock-standard');
     assert.ok(module !== undefined);
@@ -79,7 +110,8 @@ export function register(): void {
     assert.ok(normal.distanceTo(new THREE.Vector3(0, 0, 1)) < 1e-9);
   });
 
-  test('ship module asset: tank band は船体軸と同じ +Z 法線を持つ', () => {
+  test('ship module asset: tank band は船体軸と同じ +Z 法線を持つ', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
     const module = modules.get('tank-6-main');
     assert.ok(module !== undefined);
@@ -94,13 +126,12 @@ export function register(): void {
     }
   });
 
-  test('ship module asset: 能力を持つ module は対応する semantic anchor を保つ', () => {
+  test('ship module asset: 能力を持つ module は対応する semantic anchor を保つ', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
     const expected: Readonly<Record<string, readonly string[]>> = {
       thruster: ['thrust'],
       booster: ['thrust'],
-      rcs: ['rcs:1,0', 'rcs:-1,0', 'rcs:0,1', 'rcs:0,-1', 'rcs:roll:+', 'rcs:roll:-'],
-      weapon: ['muzzle:left', 'muzzle:right', 'belt'],
       radiator: ['panel-hinge'],
       solar_panel: ['panel-hinge'],
       docking_port: ['docking-port'],
@@ -116,15 +147,204 @@ export function register(): void {
     }
   });
 
-  test('ship module asset: 展開部品は実寸に対応する枚数と幅を持つ', () => {
+  test('ship module asset: 噴射口 anchor はノズル出口面にあり、排気は機軸の後方を向く', async () => {
+    await loadShipModuleModels();
     const modules = moduleRoots(parsedRoot());
-    const expected = [
-      ['radiator-standard', 6, 0.8, 1.0],
-      ['solar-panel-standard', 3, 1.2, 1.0],
-    ] as const;
-    for (const [modelId, count, width, span] of expected) {
+    for (const modelId of ['thruster-standard', 'booster-standard']) {
       const module = modules.get(modelId);
       assert.ok(module !== undefined);
+      const thrust = semanticAnchor(module, 'thrust');
+      assert.ok(thrust !== null);
+      const { position, quaternion } = transformInModule(module, thrust);
+      const box = new THREE.Box3().setFromObject(module);
+      assert.ok(Math.abs(position.z - box.min.z) < 0.05, `${modelId} thrust z ${position.z} vs exit ${box.min.z}`);
+      const exhaust = new THREE.Vector3(0, 0, 1).applyQuaternion(quaternion);
+      assert.ok(exhaust.distanceTo(new THREE.Vector3(0, 0, -1)) < 1e-6);
+    }
+  });
+
+  test('ship module asset: RCS の噴射口は6方向のトルクをどれも出せる', async () => {
+    await loadShipModuleModels();
+    const module = moduleRoots(parsedRoot()).get('rcs-standard');
+    assert.ok(module !== undefined);
+    const nozzles: THREE.Object3D[] = [];
+    module.traverse((child) => {
+      if (typeof child.userData.semanticAnchor === 'string' && child.userData.semanticAnchor.startsWith('rcs:')) nozzles.push(child);
+    });
+    // 軸まわり(roll)はモジュール中心、軸に直交する向き(pitch/yaw)はモジュール前方の重心を支点に測る
+    for (const [axis, pivot] of [
+      [new THREE.Vector3(0, 0, 1), new THREE.Vector3()], [new THREE.Vector3(0, 0, -1), new THREE.Vector3()],
+      [new THREE.Vector3(1, 0, 0), new THREE.Vector3(0, 0, 5)], [new THREE.Vector3(-1, 0, 0), new THREE.Vector3(0, 0, 5)],
+      [new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 5)], [new THREE.Vector3(0, -1, 0), new THREE.Vector3(0, 0, 5)],
+    ] as const) {
+      const produced = nozzles.some((nozzle) => {
+        const exhaust = new THREE.Vector3(0, 0, 1).applyQuaternion(nozzle.quaternion);
+        const torque = nozzle.position.clone().sub(pivot).cross(exhaust.negate());
+        return torque.dot(axis) > 1e-3;
+      });
+      assert.ok(produced, `no nozzle produces torque about ${axis.toArray()}`);
+    }
+  });
+
+  test('ship module asset: 機関砲の砲身先端は定義の砲口に一致する', async () => {
+    await loadShipModuleModels();
+    const definition = SHIP_MODULE_CATALOG.require('weapon-gatling');
+    const module = moduleRoots(parsedRoot()).get(definition.modelId);
+    assert.ok(module !== undefined);
+    const box = new THREE.Box3().setFromObject(module);
+    for (const muzzle of definition.muzzles) assert.ok(Math.abs(box.max.z - muzzle.z) < 1e-3, `muzzle z ${muzzle.z} vs ${box.max.z}`);
+  });
+
+  test('ship module asset: cockpit は9mの船殻と左右対称の断面溝を持つ', async () => {
+    await loadShipModuleModels();
+    const cockpit = moduleRoots(parsedRoot()).get('cockpit-standard');
+    assert.ok(cockpit !== undefined);
+    const hull = objectByName(cockpit, 'cockpit_hull');
+    assert.ok(hull !== null);
+    cockpit.updateMatrixWorld(true);
+    const vertices: THREE.Vector3[] = [];
+    let minZ = Number.POSITIVE_INFINITY;
+    let maxZ = Number.NEGATIVE_INFINITY;
+    let hullMeshCount = 0;
+    hull.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      hullMeshCount++;
+      const moduleFromMesh = cockpit.matrixWorld.clone().invert().multiply(object.matrixWorld);
+      const position = object.geometry.getAttribute('position');
+      for (let index = 0; index < position.count; index++) {
+        const point = new THREE.Vector3(position.getX(index), position.getY(index), position.getZ(index))
+          .applyMatrix4(moduleFromMesh);
+        vertices.push(point);
+        minZ = Math.min(minZ, point.z);
+        maxZ = Math.max(maxZ, point.z);
+      }
+    });
+    assert.ok(hullMeshCount > 0, 'cockpit_hull has no mesh geometry');
+    const aftRadius = Math.max(...vertices.filter(point => point.z < minZ + 0.005)
+      .map(point => Math.hypot(point.x, point.y)));
+    const foreRadius = Math.max(...vertices.filter(point => point.z > maxZ - 0.005)
+      .map(point => Math.hypot(point.x, point.y)));
+    assert.ok(Math.abs(minZ + 4.5) < 0.02 && Math.abs(maxZ - 4.5) < 0.02,
+      `cockpit z bounds ${minZ}..${maxZ}`);
+    assert.ok(Math.abs(aftRadius - 3) < 0.02, `aft diameter ${2 * aftRadius}m`);
+    assert.ok(Math.abs(foreRadius - 1.5) < 0.02, `forward diameter ${2 * foreRadius}m`);
+    const middleSection = vertices.filter(point => Math.abs(point.z) < 0.03);
+    const sideRadius = Math.max(...middleSection.map(point => Math.abs(point.x)));
+    const dorsalRadius = Math.max(...middleSection.map(point => Math.abs(point.y)));
+    assert.ok(dorsalRadius - sideRadius > 0.3,
+      `cockpit cross section is too circular: side ${sideRadius}m, dorsal ${dorsalRadius}m`);
+  });
+
+  test('ship module asset: 主推進器の噴射口はジンバルの支点と一緒に振れる', async () => {
+    await loadShipModuleModels();
+    const module = moduleRoots(parsedRoot()).get('thruster-standard');
+    assert.ok(module !== undefined);
+    const gimbal = semanticAnchor(module, 'engine-gimbal');
+    const thrust = semanticAnchor(module, 'thrust');
+    assert.ok(gimbal !== null && thrust !== null);
+    let ancestor = thrust.parent;
+    while (ancestor !== null && ancestor !== gimbal) ancestor = ancestor.parent;
+    assert.equal(ancestor, gimbal, 'thrust is not a descendant of engine-gimbal');
+  });
+
+  test('ship module asset: 砲身束は後座する機関部に保持され、固定砲架と独立する', async () => {
+    await loadShipModuleModels();
+    const module = buildShipModuleModel('weapon-gatling');
+    const recoil = semanticAnchor(module, 'gun-recoil:0');
+    const rotor = semanticAnchor(module, 'barrel-rotor:0');
+    const feed = semanticAnchor(module, 'feed-drum');
+    assert.ok(recoil !== null && rotor !== null && feed !== null);
+    const travel: unknown = recoil.userData.recoilTravel;
+    assert.ok(typeof travel === 'number' && travel > 0 && Number.isFinite(travel));
+    assert.equal(rotor.parent, recoil);
+    // 後座量に追従する部品。圧縮部品は自然長、リンクは回転比を持つ。
+    for (let i = 0; i < 4; i++) {
+      const compress = semanticAnchor(module, `gun-recoil-compress:0:${i}`);
+      assert.ok(compress !== null, `lacks gun-recoil-compress:0:${i}`);
+      const restLength: unknown = compress.userData.restLength;
+      assert.ok(typeof restLength === 'number' && restLength > 0 && Number.isFinite(restLength));
+    }
+    for (let i = 0; i < 2; i++) {
+      const lever = semanticAnchor(module, `gun-recoil-lever:0:${i}`);
+      assert.ok(lever !== null, `lacks gun-recoil-lever:0:${i}`);
+      const leverRate: unknown = lever.userData.leverRate;
+      assert.ok(typeof leverRate === 'number' && Number.isFinite(leverRate));
+    }
+    // 給弾・排莢の送り路は1発あたりの送り量を持つ。
+    for (const name of ['feed-conveyor', 'eject-conveyor']) {
+      const anchor = semanticAnchor(module, name);
+      assert.ok(anchor !== null, `lacks ${name}`);
+      const pitch: unknown = anchor.userData.conveyorPitch;
+      assert.ok(typeof pitch === 'number' && pitch > 0 && Number.isFinite(pitch), `${name} conveyorPitch`);
+    }
+    for (const name of ['link-kicker', 'eject-rotor']) {
+      assert.ok(semanticAnchor(module, name) !== null, `lacks ${name}`);
+    }
+    for (let i = 0; i < 2; i++) {
+      assert.ok(semanticAnchor(module, `link-roller:${i}`) !== null, `lacks link-roller:${i}`);
+    }
+    const rotorBefore = transformInModule(module, rotor).position;
+    const feedBefore = transformInModule(module, feed).position;
+    // 砲身束と機関部が同じ距離だけ後退し、固定の給弾ドラムは取付位置を保つ。
+    recoil.position.z -= travel;
+    const rotorAfter = transformInModule(module, rotor).position;
+    assert.ok(Math.abs(rotorBefore.z - rotorAfter.z - travel) < 1e-6);
+    assert.ok(transformInModule(module, feed).position.distanceTo(feedBefore) < 1e-6);
+    assert.ok(Math.abs(rotorAfter.x - rotorBefore.x) < 1e-6);
+    assert.ok(Math.abs(rotorAfter.y - rotorBefore.y) < 1e-6);
+    disposeOwnedRenderResources(module);
+  });
+
+  test('ship module asset: 機関砲は砲口ごとに砲口の軸上で機軸まわりに回る砲身束を持つ', async () => {
+    await loadShipModuleModels();
+    const definition = SHIP_MODULE_CATALOG.require('weapon-gatling');
+    const module = moduleRoots(parsedRoot()).get(definition.modelId);
+    assert.ok(module !== undefined);
+    const rotors: THREE.Object3D[] = [];
+    module.traverse((child) => {
+      if (child.userData.semanticAnchor?.startsWith('barrel-rotor:')) rotors.push(child);
+    });
+    assert.equal(rotors.length, definition.muzzles.length);
+    definition.muzzles.forEach((muzzle, index) => {
+      const rotor = semanticAnchor(module, `barrel-rotor:${index}`);
+      assert.ok(rotor !== null, `lacks barrel-rotor:${index}`);
+      const barrelCount: unknown = rotor.userData.barrelCount;
+      assert.ok(typeof barrelCount === 'number' && Number.isInteger(barrelCount) && barrelCount > 0, `barrelCount ${String(barrelCount)}`);
+      const { position, quaternion } = transformInModule(module, rotor);
+      assert.ok(Math.abs(position.x - muzzle.x) < 1e-6 && Math.abs(position.y - muzzle.y) < 1e-6, `rotor ${index} off muzzle axis`);
+      assert.ok(quaternion.angleTo(new THREE.Quaternion()) < 1e-6, `rotor ${index} spin axis is not module +Z`);
+    });
+  });
+
+  test('ship module asset: 展開部品は実寸に対応する枚数と幅を持つ', async () => {
+    await loadShipModuleModels();
+    const modules = moduleRoots(parsedRoot());
+    const solarFaceOffsets: number[] = [];
+    const solarBraceWidths: number[] = [];
+    const solarBraceDepths: number[] = [];
+    const solarPanelSizes = new Map<number, { width: number, depth: number }>();
+    const solarPanelBounds = new Map<number, THREE.Box3>();
+    const solarBraceSizes = new Map<number, { width: number, depth: number }>();
+    const expected = [
+      {
+        modelId: 'radiator-standard',
+        count: RADIATOR_FOLD_COUNT,
+        width: 0.08, // 厚み (X)
+        height: RADIATOR_PANEL_WIDTH * 0.96, // 放熱幅 (Y)
+        depth: RADIATOR_SEGMENT_LENGTH * 0.96, // 展開長 (Z)
+      },
+      {
+        modelId: 'solar-panel-standard',
+        count: SOLAR_PANEL_COUNT,
+        width: SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE, // 1枚の翼幅 (X)
+        height: 0.06, // 厚み (Y)
+        depth: SOLAR_PANEL_LENGTH * SOLAR_PANEL_FACE_SCALE, // 展開方向 (Z)。側面取付後は船体左右軸に沿う。
+      },
+    ] as const;
+    for (const spec of expected) {
+      const module = modules.get(spec.modelId);
+      assert.ok(module !== undefined);
+      module.updateMatrixWorld(true);
       const panels: THREE.Mesh[] = [];
       module.traverse((child) => {
         if (child.name === 'deployable-panel' || child.name.startsWith('deployable-panel:')) {
@@ -132,36 +352,322 @@ export function register(): void {
           panels.push(child as THREE.Mesh);
         }
       });
-      assert.equal(panels.length, count, `${modelId} panel count`);
+      assert.equal(panels.length, spec.count, `${spec.modelId} panel count`);
       for (const panel of panels) {
-        const geometry = panel.geometry as THREE.BoxGeometry;
-        const parameters = geometry.parameters;
-        assert.ok(Math.abs(parameters.width - width * 0.96) < 1e-9, `${modelId} width`);
-        assert.ok(Math.abs(parameters.depth - span * 0.96) < 1e-9, `${modelId} span`);
+        panel.geometry.computeBoundingBox();
+        const bbox = panel.geometry.boundingBox;
+        assert.ok(bbox !== null);
+        const size = new THREE.Vector3();
+        bbox.getSize(size);
+        if (spec.modelId === 'solar-panel-standard') {
+          assert.ok(Math.abs(size.x - spec.width) < spec.width * 0.13, `${spec.modelId} width: ${size.x}`);
+          assert.ok(Math.abs(size.z - spec.depth) < spec.depth * 0.13, `${spec.modelId} depth: ${size.z}`);
+          assert.ok(size.x <= SOLAR_PANEL_PANEL_PITCH + 1e-6,
+            `${spec.modelId} panel width ${size.x} exceeds its hinge pitch`);
+          assert.ok(size.z <= SOLAR_PANEL_LENGTH + 1e-6,
+            `${spec.modelId} panel depth ${size.z} exceeds its hinge pitch`);
+          solarFaceOffsets.push((bbox.min.y + bbox.max.y) / 2);
+          const indexMatch = /^deployable-panel(?::(\d+))?$/.exec(panel.name);
+          assert.ok(indexMatch !== null, `${spec.modelId} has an unrecognized panel name: ${panel.name}`);
+          const panelIndex = indexMatch[1] === undefined ? 0 : Number(indexMatch[1]);
+          solarPanelSizes.set(panelIndex, { width: size.x, depth: size.z });
+          if (spec.modelId === 'solar-panel-standard') {
+            solarPanelBounds.set(panelIndex, new THREE.Box3().setFromObject(panel));
+          }
+        } else {
+          assert.ok(Math.abs(size.x - spec.width) < 1e-3, `${spec.modelId} width: ${size.x} expected ${spec.width}`);
+          assert.ok(Math.abs(size.z - spec.depth) < 1e-3, `${spec.modelId} depth: ${size.z} expected ${spec.depth}`);
+        }
+        assert.ok(Math.abs(size.y - spec.height) < 1e-3, `${spec.modelId} height: ${size.y} expected ${spec.height}`);
+      }
+      if (spec.modelId === 'solar-panel-standard') {
+        const stages = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+        const stageSizes = [...Array(stages).keys()].map((stage) => {
+          const inner = solarPanelSizes.get(stage);
+          const outer = solarPanelSizes.get(stages + stage);
+          assert.ok(inner !== undefined && outer !== undefined, `missing panel size at stage ${stage + 1}`);
+          assert.ok(Math.abs(inner.width - outer.width) < 1e-6 && Math.abs(inner.depth - outer.depth) < 1e-6,
+            `stage ${stage + 1} panels do not have equal dimensions`);
+          return inner;
+        });
+        const stageScales = stageSizes.map((size) => size.width / spec.width);
+        const stageDepthScales = stageSizes.map((size) => size.depth / spec.depth);
+        for (const stage of [...Array(stages).keys()]) {
+          assert.ok(Math.abs(stageScales[stage] - stageDepthScales[stage]) < 1e-6,
+            `stage ${stage + 1} width and depth do not use the same size scale`);
+        }
+        const expectedStageScales = SOLAR_PANEL_STAGE_SCALES;
+        for (const stage of [...Array(stages).keys()]) {
+          assert.ok(Math.abs(stageScales[stage] - expectedStageScales[stage]) < 1e-6,
+            `stage ${stage + 1} scale ${stageScales[stage]} should be ${expectedStageScales[stage]}`);
+        }
+        assert.ok(stageScales[2] > stageScales[1], 'stage 3 should be the largest');
+        assert.ok(stageScales[1] > stageScales[0], 'stage 2 should be larger than stage 1');
+        assert.ok(Math.abs(stageScales[0] - stageScales[3]) < 1e-6,
+          'stages 1 and 4 should have equal dimensions');
+        for (let stage = 0; stage < stages; stage++) {
+          const left = solarPanelBounds.get(stage);
+          const right = solarPanelBounds.get(stages + stage);
+          assert.ok(left !== undefined && right !== undefined, `missing panel bounds at stage ${stage + 1}`);
+          assert.ok(Math.abs(-left.max.x - SOLAR_PANEL_CENTERLINE_CLEARANCE) < 1e-6,
+            `stage ${stage + 1} left panel centerline clearance is ${-left.max.x}`);
+          assert.ok(Math.abs(right.min.x - SOLAR_PANEL_CENTERLINE_CLEARANCE) < 1e-6,
+            `stage ${stage + 1} right panel centerline clearance is ${right.min.x}`);
+        }
+        assert.ok(Math.max(...solarFaceOffsets) - Math.min(...solarFaceOffsets) > 0.01);
+        const braces: THREE.Object3D[] = [];
+        module.traverse((child) => {
+          if (child.name.startsWith('panel_lattice:')) braces.push(child);
+        });
+        assert.equal(braces.length, SOLAR_PANEL_COUNT, 'one rear brace lattice per solar panel');
+        let diamondBraceCount = 0;
+        let centerCrossbarCount = 0;
+        for (const brace of braces) {
+          const braceBox = new THREE.Box3().setFromObject(brace);
+          const braceSize = new THREE.Vector3();
+          braceBox.getSize(braceSize);
+          solarBraceWidths.push(braceSize.x);
+          solarBraceDepths.push(braceSize.z);
+          const indexMatch = /^panel_lattice:(\d+)$/.exec(brace.name);
+          assert.ok(indexMatch !== null, `unrecognized solar brace name: ${brace.name}`);
+          const panelIndex = Number(indexMatch[1]);
+          const panelStage = panelIndex % stages;
+          const expectedPattern = panelStage === 2 ? 'diamond' : 'x';
+          assert.equal(brace.userData.bracePattern, expectedPattern,
+            `${brace.name} should use ${expectedPattern} bracing`);
+          const hasCenterCrossbar = expectedPattern === 'diamond';
+          assert.equal(Boolean(brace.userData.centerCrossbar), hasCenterCrossbar,
+            `${brace.name} should ${hasCenterCrossbar ? 'have' : 'not have'} a center crossbar`);
+          if (expectedPattern === 'diamond') diamondBraceCount++;
+          if (hasCenterCrossbar) centerCrossbarCount++;
+          const panelSize = solarPanelSizes.get(Number(indexMatch[1]));
+          assert.ok(panelSize !== undefined, `missing solar panel size for ${brace.name}`);
+          solarBraceSizes.set(Number(indexMatch[1]), { width: braceSize.x, depth: braceSize.z });
+          assert.ok(Math.abs(braceSize.x / panelSize.width - 1) < 0.16,
+            `${brace.name} width ${braceSize.x} does not follow panel width ${panelSize.width}`);
+          assert.ok(Math.abs(braceSize.z / panelSize.depth - 1) < 0.16,
+            `${brace.name} depth ${braceSize.z} does not follow panel depth ${panelSize.depth}`);
+        }
+        assert.equal(diamondBraceCount, SOLAR_PANEL_COLUMNS, 'both stage 3 panels should use diamond bracing');
+        assert.equal(centerCrossbarCount, SOLAR_PANEL_COLUMNS, 'both stage 3 panels should have a center crossbar');
+        assert.ok(Math.max(...solarBraceWidths) - Math.min(...solarBraceWidths) > 0.05,
+          'brace width does not follow the individual panel sizes');
+        assert.ok(Math.max(...solarBraceDepths) - Math.min(...solarBraceDepths) > 0.05,
+          'brace depth does not follow the individual panel sizes');
+        const braceStages = [...Array(stages).keys()].map((stage) => {
+          const inner = solarBraceSizes.get(stage);
+          const outer = solarBraceSizes.get(stages + stage);
+          assert.ok(inner !== undefined && outer !== undefined, `missing brace lattice at stage ${stage + 1}`);
+          assert.ok(Math.abs(inner.width - outer.width) < 1e-6 && Math.abs(inner.depth - outer.depth) < 1e-6,
+            `stage ${stage + 1} braces do not follow equal panel dimensions`);
+          return inner.width / spec.width;
+        });
+        assert.ok(braceStages[2] > braceStages[1], 'stage 3 brace should be the largest');
+        assert.ok(braceStages[1] > braceStages[0], 'stage 2 brace should be larger than stage 1');
+        assert.ok(Math.abs(braceStages[0] - braceStages[3]) < 1e-6,
+          'stage 1 and 4 braces should have equal dimensions');
       }
       const hinges: THREE.Object3D[] = [];
       module.traverse((child) => {
         if (child.userData.semanticAnchor?.startsWith('panel-hinge:')) hinges.push(child);
       });
-      assert.equal(hinges.length, count, `${modelId} hinge count`);
+      assert.equal(hinges.length, spec.count, `${spec.modelId} hinge count`);
       assert.deepEqual(
         hinges.map((hinge) => hinge.userData.panelIndex),
-        [...Array(count).keys()],
+        [...Array(spec.count).keys()],
       );
+      if (spec.modelId === 'solar-panel-standard') {
+        const rows = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+        const mount = objectByName(module, 'solar_mount_iss_a');
+        assert.ok(mount !== null, 'solar panel mount keeps the ISS-A structure group');
+        assert.equal(mount.userData.mountPattern, 'iss-a');
+        for (const [name, role] of [
+          ['solar_mount_rotary_drive', 'stepped-transverse-drive'],
+          ['solar_mount_saddle', 'raised-box-saddle'],
+          ['solar_mount_twin_rails', 'parallel-spanwise-rails'],
+          ['solar_mount_v_truss', 'open-v-bracing'],
+          ['solar_mount_root_clamps', 'hinge-root-clamps'],
+          ['solar_mount_centerline_yoke', 'folding-centerline-spine-root'],
+        ]) {
+          const part = objectByName(mount, name);
+          assert.ok(part !== null, `solar mount lacks ${name}`);
+          assert.equal(part.userData.mountRole, role, `${name} has the expected mount role`);
+          let containsMesh = false;
+          part.traverse((child) => { if (child instanceof THREE.Mesh) containsMesh = true; });
+          assert.ok(containsMesh, `${name} has visible geometry`);
+        }
+        const spineSegments: THREE.Object3D[] = [];
+        const panelMounts: THREE.Object3D[] = [];
+        module.traverse((child) => {
+          if (/^solar_panel_center_spine:\d+$/.test(child.name)) spineSegments.push(child);
+          if (/^panel_centerline_mount:\d+$/.test(child.name)) panelMounts.push(child);
+        });
+        assert.equal(spineSegments.length, SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS,
+          'one folding centerline spine segment per panel stage');
+        for (const spine of spineSegments) {
+          const bounds = new THREE.Box3().setFromObject(spine);
+          assert.ok(Math.abs((bounds.min.x + bounds.max.x) / 2) < 1e-6,
+            `${spine.name} is not centered on the wing axis`);
+          assert.ok(bounds.max.z - bounds.min.z >= SOLAR_PANEL_LENGTH * 0.95,
+            `${spine.name} does not span its articulated stage`);
+        }
+        assert.equal(panelMounts.length, SOLAR_PANEL_COUNT, 'each panel has a centerline mounting bracket');
+        for (const panelMount of panelMounts) {
+          assert.equal(panelMount.userData.mountRole, 'centerline-panel-bracket');
+          let containsMesh = false;
+          panelMount.traverse((child) => { if (child instanceof THREE.Mesh) containsMesh = true; });
+          assert.ok(containsMesh, `${panelMount.name} has visible bracket geometry`);
+          const bounds = new THREE.Box3().setFromObject(panelMount);
+          const index = panelMount.userData.panelIndex as number;
+          const side = index < rows ? -1 : 1;
+          const centerlineReach = side * (side < 0 ? bounds.max.x : bounds.min.x);
+          assert.ok(centerlineReach > 0.005 && centerlineReach < 0.075,
+            `${panelMount.name} does not reach the central spine: ${centerlineReach}`);
+        }
+        const firstHingeZ = transformInModule(module, hinges[0]).position.z;
+        for (const hinge of hinges) {
+          const index = hinge.userData.panelIndex as number;
+          const column = Math.floor(index / rows);
+          const row = index % rows;
+          const panelPosition: THREE.Vector3 = transformInModule(module, hinge).position;
+          const panelWidth = SOLAR_PANEL_PANEL_PITCH * SOLAR_PANEL_FACE_SCALE * SOLAR_PANEL_STAGE_SCALES[row]!;
+          const side = column === 0 ? -1 : 1;
+          const expectedX = side * (panelWidth / 2 + SOLAR_PANEL_CENTERLINE_CLEARANCE);
+          assert.ok(Math.abs(panelPosition.x - expectedX) < 1e-6,
+            `panel ${index} root hinge x ${panelPosition.x} should be ${expectedX}`);
+          assert.ok(Math.abs(panelPosition.z - firstHingeZ - row * SOLAR_PANEL_LENGTH) < 1e-6,
+            `panel ${index} root hinge is not on the four-panel chain row ${row}`);
+        }
+      }
     }
   });
 
-  test('ship module asset: instance は geometry を共有し material と状態だけを分離する', () => {
+  test('ship module asset: 太陽電池セルはクリアコートの光沢ガラス面を持つ', async () => {
+    await loadShipModuleModels();
+    const solar = moduleRoots(parsedRoot()).get('solar-panel-standard');
+    assert.ok(solar !== undefined);
+    const cellGroups: THREE.Object3D[] = [];
+    solar.traverse((child) => {
+      if (child.name.startsWith('panel_cells:')) cellGroups.push(child);
+    });
+    assert.equal(cellGroups.length, SOLAR_PANEL_COUNT);
+    const blueMaterials = new Map<string, THREE.MeshPhysicalMaterial>();
+    const rustMaterials = new Map<string, THREE.MeshPhysicalMaterial>();
+    let assignedBlueCellGroups = 0;
+    let assignedRustCellGroups = 0;
+    const rustCellCountByPanel = new Map<number, number>();
+    const blueCellCountByPanel = new Map<number, number>();
+    for (const cells of cellGroups) {
+      const panelIndexMatch = /^panel_cells:(\d+)$/.exec(cells.name);
+      assert.ok(panelIndexMatch !== null, `unrecognized solar cell panel name: ${cells.name}`);
+      const panelIndex = Number(panelIndexMatch[1]);
+      cells.traverse((child) => {
+        if (!(child instanceof THREE.Mesh)) return;
+        const materials = Array.isArray(child.material) ? child.material : [child.material];
+        for (const material of materials) {
+          assert.ok(material instanceof THREE.MeshPhysicalMaterial, `${cells.name} is not a physical glass material`);
+          assert.ok(material.clearcoat >= 0.7, `${cells.name} clearcoat: ${material.clearcoat}`);
+          assert.ok(material.clearcoatRoughness <= 0.03, `${cells.name} coat roughness: ${material.clearcoatRoughness}`);
+          if (material.name.startsWith('mat_solar_shade_')) {
+            blueMaterials.set(material.name, material);
+            assignedBlueCellGroups++;
+            blueCellCountByPanel.set(panelIndex, (blueCellCountByPanel.get(panelIndex) ?? 0) + 1);
+          }
+          if (material.name.startsWith('mat_solar_rust_shade_')) {
+            rustMaterials.set(material.name, material);
+            assignedRustCellGroups++;
+            rustCellCountByPanel.set(panelIndex, (rustCellCountByPanel.get(panelIndex) ?? 0) + 1);
+          }
+        }
+      });
+    }
+    assert.ok(blueMaterials.size > 0 && rustMaterials.size > 0, 'blue and muted rust cell materials are present');
+    for (const material of blueMaterials.values()) {
+      assert.ok(material.color.b > material.color.r * 3, `${material.name} is not blue-black: ${material.color.getHexString()}`);
+      assert.ok(material.color.b < 0.03, `${material.name} is too bright: ${material.color.getHexString()}`);
+    }
+    for (const material of rustMaterials.values()) {
+      assert.ok(material.color.r > material.color.g, `${material.name} is not red-brown`);
+      assert.ok(material.color.b > material.color.g, `${material.name} has no cool blue shift`);
+      assert.ok(material.color.b / material.color.r > 0.65, `${material.name} is too saturated red`);
+      assert.ok(material.color.r < 0.07, `${material.name} is too bright: ${material.color.getHexString()}`);
+    }
+    assert.ok(assignedBlueCellGroups > 0, 'blue cells are assigned to cell geometry');
+    assert.ok(assignedRustCellGroups > 0, 'the rust-colored panel is assigned to cell geometry');
+    const stages = SOLAR_PANEL_COUNT / SOLAR_PANEL_COLUMNS;
+    const brownPanelIndices = new Set([...Array(SOLAR_PANEL_COLUMNS).keys()].map((column) => column * stages + 2));
+    for (let index = 0; index < SOLAR_PANEL_COUNT; index++) {
+      if (brownPanelIndices.has(index)) {
+        assert.ok((rustCellCountByPanel.get(index) ?? 0) > 0, `stage 3 panel ${index} has no rust cells`);
+        assert.equal(blueCellCountByPanel.get(index) ?? 0, 0, `stage 3 panel ${index} should be fully rust-colored`);
+      } else {
+        assert.equal(rustCellCountByPanel.get(index) ?? 0, 0, `panel ${index} has an unexpected rust patch`);
+        assert.ok((blueCellCountByPanel.get(index) ?? 0) > 0, `panel ${index} has no blue cells`);
+      }
+    }
+  });
+
+  test('ship module asset: instance は geometry と material を共有し状態だけを分離する', async () => {
+    await loadShipModuleModels();
     const first = buildShipModuleModel('cockpit-standard');
     const second = buildShipModuleModel('cockpit-standard');
     const firstMesh = first.getObjectByProperty('isMesh', true) as THREE.Mesh;
     const secondMesh = second.getObjectByProperty('isMesh', true) as THREE.Mesh;
     assert.ok(firstMesh !== undefined && secondMesh !== undefined);
     assert.equal(firstMesh.geometry, secondMesh.geometry);
-    assert.notEqual(firstMesh.material, secondMesh.material);
+    assert.equal(firstMesh.material, secondMesh.material);
+    assert.notEqual(firstMesh.userData, secondMesh.userData);
     assert.equal(firstMesh.userData.ownsGeometry, false);
-    assert.equal(firstMesh.userData.ownsMaterial, true);
+    assert.equal(firstMesh.userData.ownsMaterial, false);
     disposeOwnedRenderResources(first);
     disposeOwnedRenderResources(second);
+  });
+
+  test('ship module asset: 各モジュールの寸法とバウンディングボックスはカタログ規格に整合する', async () => {
+    await loadShipModuleModels();
+    const modules = moduleRoots(parsedRoot());
+
+    // 1. Cockpit: 全長 3.0m (z in [-1.5, +1.5])
+    const cockpit = modules.get('cockpit-standard');
+    assert.ok(cockpit !== undefined);
+    const boxCockpit = new THREE.Box3().setFromObject(cockpit);
+    assert.ok(boxCockpit.max.z <= 4.55, `cockpit max.z (${boxCockpit.max.z}) exceeds +4.5m`);
+    assert.ok(boxCockpit.min.z >= -4.55, `cockpit min.z (${boxCockpit.min.z}) extends below -4.5m`);
+
+    // 2. Thruster: 前面接続面 z = +0.50m を超えて前方に突き出ないこと (z <= 0.55m)
+    const thruster = modules.get('thruster-standard');
+    assert.ok(thruster !== undefined);
+    const boxThruster = new THREE.Box3().setFromObject(thruster);
+    assert.ok(boxThruster.max.z <= 0.55, `thruster max.z (${boxThruster.max.z}) protrudes forward of connection plane +0.5m`);
+
+    // 3. Booster: 全長 6.0m (z in [-3.0, +3.0])
+    const booster = modules.get('booster-standard');
+    assert.ok(booster !== undefined);
+    const boxBooster = new THREE.Box3().setFromObject(booster);
+    assert.ok(boxBooster.max.z <= 3.05, `booster max.z (${boxBooster.max.z}) exceeds +3.0m`);
+    assert.ok(boxBooster.min.z >= -3.05, `booster min.z (${boxBooster.min.z}) extends below -3.0m`);
+
+    // 4. RCS module: 全長 1.0m (z in [-0.5, +0.5])
+    const rcs = modules.get('rcs-standard');
+    assert.ok(rcs !== undefined);
+    const boxRcs = new THREE.Box3().setFromObject(rcs);
+    assert.ok(boxRcs.max.z <= 0.55, `rcs max.z (${boxRcs.max.z}) exceeds +0.5m`);
+    assert.ok(boxRcs.min.z >= -0.55, `rcs min.z (${boxRcs.min.z}) extends below -0.5m`);
+
+    // 5. Decoupler: 全長 1.0m (平坦な切断面, z in [-0.5, +0.5])
+    const decoupler = modules.get('decoupler-standard');
+    assert.ok(decoupler !== undefined);
+    const boxDecoupler = new THREE.Box3().setFromObject(decoupler);
+    assert.ok(boxDecoupler.max.z <= 0.55, `decoupler max.z (${boxDecoupler.max.z}) exceeds +0.5m`);
+    assert.ok(boxDecoupler.min.z >= -0.55, `decoupler min.z (${boxDecoupler.min.z}) extends below -0.5m`);
+
+    // 6. Docking port / Dock: 後端接続面 z=-0.5m (min.z >= -0.55m)、前端は嵌合ガイド爪が相手側へ突出 (max.z <= 0.75m)
+    for (const modelId of ['dock-standard', 'docking-port-standard']) {
+      const mod = modules.get(modelId);
+      assert.ok(mod !== undefined, modelId);
+      const box = new THREE.Box3().setFromObject(mod);
+      assert.ok(box.min.z >= -0.55, `${modelId} min.z (${box.min.z}) extends below -0.5m`);
+      assert.ok(box.max.z <= 0.75, `${modelId} guide petals max.z (${box.max.z}) exceed +0.75m`);
+    }
   });
 }

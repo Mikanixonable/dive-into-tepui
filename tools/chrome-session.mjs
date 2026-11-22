@@ -98,10 +98,11 @@ async function waitForDebugPage(port) {
 
 // 1リクエストの待ち時間の上限。ページのレンダラが落ちるとその接続宛の応答は二度と返らないので、
 // 上限が無いと待ち続けて呼び出し側がそこで永久に止まる(実際に止まった)。重い条件では
-// 1フレームが1秒を超えるため、フレーム数十回ぶんの余裕を見る。
+// 1フレームが1秒を超えるため、フレーム数十回ぶんの余裕を見る。1回の評価がこれを超える重さの
+// 駆動(8k 全面の撮影など)は、openChromeSession の requestTimeoutMs で延ばせる。
 const REQUEST_TIMEOUT_MS = 180_000;
 
-function connectDevTools(url, onEvent) {
+function connectDevTools(url, onEvent, requestTimeoutMs = REQUEST_TIMEOUT_MS) {
   const socket = new WebSocket(url);
   let nextId = 1;
   const pending = new Map();
@@ -140,8 +141,8 @@ function connectDevTools(url, onEvent) {
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           pending.delete(id);
-          reject(new Error(`Timed out after ${REQUEST_TIMEOUT_MS}ms: ${method}`));
-        }, REQUEST_TIMEOUT_MS);
+          reject(new Error(`Timed out after ${requestTimeoutMs}ms: ${method}`));
+        }, requestTimeoutMs);
         pending.set(id, { resolve, reject, timer });
         try {
           socket.send(JSON.stringify({ id, method, params }));
@@ -166,17 +167,32 @@ function connectDevTools(url, onEvent) {
 
 // 接続が死んでも続けられるように、張り直せる接続として扱う。レンダラが落ちるとその接続宛の
 // 応答は返らなくなるが、Chrome 自体は生きていて新しいページ target を持つので、target を
-// 取り直して繋ぎ直せば残りは続けられる。
-async function attachSession(debugPort, onEvent, windowSize) {
+// 取り直して繋ぎ直せば残りは続けられる。emulation の指定は張り直すたびに再適用する。
+async function attachSession(debugPort, onEvent, windowSize, requestTimeoutMs, emulation) {
   let current = null;
   const attach = async () => {
-    const devTools = connectDevTools(await waitForDebugPage(debugPort), onEvent);
+    const devTools = connectDevTools(await waitForDebugPage(debugPort), onEvent, requestTimeoutMs);
     await devTools.opened;
     await devTools.send('Runtime.enable');
     await devTools.send('Page.enable');
     await devTools.send('Inspector.enable');
     if (windowSize !== null) {
-      await devTools.send('Emulation.setDeviceMetricsOverride', { ...windowSize, deviceScaleFactor: 1, mobile: false });
+      await devTools.send('Emulation.setDeviceMetricsOverride', {
+        ...windowSize,
+        deviceScaleFactor: emulation?.deviceScaleFactor ?? 1,
+        mobile: emulation?.mobile ?? false,
+      });
+    }
+    if (emulation !== undefined) {
+      if (emulation.cpuThrottlingRate !== undefined) {
+        await devTools.send('Emulation.setCPUThrottlingRate', { rate: emulation.cpuThrottlingRate });
+      }
+      if (emulation.userAgent !== undefined) {
+        await devTools.send('Emulation.setUserAgentOverride', { userAgent: emulation.userAgent });
+      }
+      if (emulation.touch !== undefined) {
+        await devTools.send('Emulation.setTouchEmulationEnabled', { enabled: emulation.touch, maxTouchPoints: 5 });
+      }
     }
     current = devTools;
   };
@@ -234,10 +250,15 @@ export function collectFatalEvents() {
 
 // serveDir を port で配り、ヘッドレス Chrome を上げ、CDP を繋いだ状態を返す。
 // windowSize({width,height})を渡すと、その大きさの窓と等倍の device metrics で開く。
+// emulation({deviceScaleFactor,mobile,userAgent?,cpuThrottlingRate?,touch?})を渡すと、
+// device metrics の倍率・mobile フラグをその値にし、指定された分の UA・CPU 減速・タッチを
+// 効かせる。reconnect でも同じ設定が張り直される。省略時は従来どおり(等倍・mobile なし、
+// 追加のエミュレーション無し)。
 // onEvent には CDP のイベントがそのまま流れる。close() で接続・ブラウザ・サーバ・
 // プロファイルを畳む。
 export async function openChromeSession({
-  serveDir, port, debugPort, profilePrefix, windowSize = null, onEvent = () => {},
+  serveDir, port, debugPort, profilePrefix, windowSize = null, onEvent = () => {}, extraLaunchArgs = [],
+  requestTimeoutMs, emulation,
 }) {
   const chrome = findChrome();
   const profile = mkdtempSync(path.join(tmpdir(), profilePrefix));
@@ -256,12 +277,17 @@ export async function openChromeSession({
     await waitForServer(`${baseUrl}/`);
     browser = spawn(chrome, [
       ...LAUNCH_ARGS,
-      ...(windowSize === null ? [] : [`--window-size=${windowSize.width},${windowSize.height}`, '--force-device-scale-factor=1']),
+      ...extraLaunchArgs,
+      ...(windowSize === null ? [] : [
+        `--window-size=${windowSize.width},${windowSize.height}`,
+        // 倍率 1 を強制する起動引数は、エミュレーションで別の倍率を指定したときだけ外す。
+        ...(emulation !== undefined && emulation.deviceScaleFactor !== 1 ? [] : ['--force-device-scale-factor=1']),
+      ]),
       `--remote-debugging-port=${debugPort}`,
       `--user-data-dir=${profile}`,
       'about:blank',
     ], { stdio: 'ignore' });
-    const devTools = await attachSession(debugPort, onEvent, windowSize);
+    const devTools = await attachSession(debugPort, onEvent, windowSize, requestTimeoutMs, emulation);
     return {
       devTools,
       baseUrl,

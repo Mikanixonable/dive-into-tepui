@@ -1,13 +1,13 @@
 // 星系の天体を id で引く索引。天体の表示名・主天体・所属する系・時刻ごとの ECI 状態と、
-// 座標系の解決役を答える。1フレームぶんの積分が読む役割別の一覧もここが答える。
+// 座標系の解決役を提供する。1フレーム分の積分が参照する役割別の一覧もここから提供する。
 import type { CelestialBody } from '../../physics/celestial-body';
 import type { KinematicState } from '../../physics/kinematic-state';
 import type { TdbJulianDate } from '../../physics/time';
 import type { Vec3 } from '../../math/vec3';
-import type { CelestialClass } from './celestial-entity/celestial-entity-def';
-import type { ReferenceFrames } from './reference-frames';
+import type { CelestialClass } from './entity/celestial-class';
+import type { ReferenceFrames } from '../../physics/reference-frames';
 
-// 1フレームの積分が読む天体を、役割ごとの一覧として答える顔ぶれ。重力・接触判定・抗力は
+// 1フレームの積分が参照する天体を、役割ごとの一覧として提供するインターフェース。重力・接触判定・抗力は
 // 個体ではなくこの一覧に対して回る。並びは天体の宣言順で、時刻ごとの解決は天体1体が畳む。
 export interface FrameCelestialBodies {
   // 全登録天体。中心天体は原点に静止。
@@ -43,12 +43,12 @@ export interface CelestialBodies extends FrameCelestialBodies {
   // ECI の点 r から見た恒星方向の単位ベクトル。
   sunDirFrom(r: Vec3, t: number): Vec3;
 
-  // 天体 id の主天体。未登録なら undefined、主天体を持たなければ null。
-  bodyParentId(id: string): string | null | undefined;
+  // 天体 id の主天体。未登録か主天体を持たなければ null。
+  bodyParentId(id: string): string | null;
   // focusId から主星まで遡った id(近い順)。focusId 自身を含む。
   ancestorsOf(focusId: string): readonly string[];
   // focusId と同じ系に属する天体の id。focusId を省くと空集合。
-  sameSystemIds(focusId: string | undefined): ReadonlySet<string>;
+  sameSystemIds(focusId: string | null): ReadonlySet<string>;
   // id から主星までの系の鎖(内側から外側の順)。未登録の id では、その id 1つだけ。
   chainFrom(id: string): readonly string[];
   // 鎖の各段に属する天体の id をまとめたもの。重複は畳む。
@@ -56,5 +56,5 @@ export interface CelestialBodies extends FrameCelestialBodies {
   // カメラ位置がいる系の成員の id。pivot は天体位置を厳密に引く時刻。
   systemMembersAt(cameraPos: Vec3, pivot: number): readonly string[];
   // position が focusId の系の内側にあるか。focusId を省くと常に true。
-  isPositionInFocusedSystem(focusId: string | undefined, position: Vec3, pivot: number): boolean;
+  isPositionInFocusedSystem(focusId: string | null, position: Vec3, pivot: number): boolean;
 }

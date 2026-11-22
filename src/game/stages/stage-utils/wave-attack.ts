@@ -8,18 +8,50 @@ import { ellipsoidAltitude } from '../../../physics/atmosphere';
 import { frameOfCelestialBody, framePoint, toFramePoint, toFrameState, toInertialPoint } from '../../../physics/frame';
 import { strongestAttractor } from '../../../physics/attractor';
 import { add, addScaled, len, norm, randPerp, randVec, scale, sub, v3, type Vec3 } from '../../../math/vec3';
-import { generateApproachingEnemy } from '../spawner/enemy-generator';
+import { generateApproachingEnemy } from '../enemy-generator';
 import type { CelestialBody } from '../../../physics/celestial-body';
-import type { Enemy } from '../../dynamic/dynamic-entity/enemy';
-import type { EntityIdAllocators } from '../../dynamic/dynamic-entity/entity-id';
+import type { Enemy } from '../../dynamic/entity/enemy';
+import type { EntityIdAllocators } from '../../dynamic/entity/entity-id';
 import type { ModularShip } from '../../ship/modular-ship';
 import type { StageOutcome } from '../stage-outcome';
 import type { RunEventSink } from '../../run-events';
 
-// 波状攻撃が敵を足し、交戦圏外へ出た敵の消滅を記録するステージの面。
+// 波状攻撃が敵を追加し、交戦圏外へ出た敵の消滅を記録するステージのインターフェース。
 export interface WaveAttackStage extends StageOutcome {
   // 敵を登録し、出撃数をスコアへ記録する。
   addEnemy(enemy: Enemy): void;
+  // 交戦中の集団が 0 になった波間に呼ぶ。補給艇を届けたら true。
+  onLull(): boolean;
+}
+
+// 難関になる波の周期(番号が周期の倍数の波が難関、その次の波が息抜き)。
+const WAVE_BOSS_PERIOD = 3;
+
+// 波 1 回の形。ships は難関の追加分を除いた機数で、boss は難関(出現中心に 3 機を追加)か、rest は息抜きか。
+export interface WaveShape {
+  readonly ships: number;
+  readonly boss: boolean;
+  readonly rest: boolean;
+}
+
+// 波の番号に応じた形(SPEC GAME.md 2.3「難関と息抜き」)。
+export function waveShape(waveNumber: number): WaveShape {
+  const normal = Math.min(
+    STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE),
+    STAGE00_WAVE_MAX_SHIPS,
+  );
+  const phase = waveNumber % WAVE_BOSS_PERIOD;
+  if (phase === 0) return { ships: normal, boss: true, rest: false };
+  if (phase === 1 && waveNumber > 1) return { ships: Math.ceil(normal / 2), boss: false, rest: true };
+  return { ships: normal, boss: false, rest: false };
+}
+
+// 波の番号ごとに、ブリーフィングへ出す予告の一行を組む。
+export function waveForecastLine(waveNumber: number): string {
+  const shape = waveShape(waveNumber);
+  const kind = shape.boss ? '難関' : shape.rest ? '息抜き' : '通常';
+  const from = waveNumber === 1 ? '・後方から' : '';
+  return `第${waveNumber}波: ${shape.ships} 機・${kind}${from}`;
 }
 
 const REENTRY_ALT = 80e3; // 敵の軌道の近地点余裕を測る基準高度 [m]
@@ -30,12 +62,14 @@ const STAGE00_ALT_OFFSET_MIN = -1000; // 自機よりどれくらい低くする
 const STAGE00_ALT_OFFSET_MAX = -200;
 const STAGE00_SPAWN_INTERVAL = 30.0; // 波状攻撃の間隔 [s]
 const STAGE00_CLEARED_SPAWN_INTERVAL = 2.0; // 交戦中の集団が 0 になったときの波状攻撃の間隔 [s]
+const STAGE00_TENDER_LULL = 60.0; // 補給艇が届いた波間の、次の波までの待ち [s](SPEC GAME.md 2.3)
 const STAGE00_SPAWN_DIST_MIN = 10000; // 敵集団のスポーン距離
 const STAGE00_SPAWN_DIST_MAX = 14000;
 const STAGE00_FLYBY_SPEED = 200.0; // フライパスの相対速度 [m/s]
 const STAGE00_WAVE_BASE_SHIPS = 5; // 第1波の機数
 const STAGE00_WAVE_SHIPS_PER_WAVE = 2; // 波が進むごとに増える機数
 const STAGE00_WAVE_MAX_SHIPS = 30; // 1ウェーブの最大機数上限
+const STAGE00_BOSS_EXTRA_SHIPS = 3; // 難関で出現中心へまとめて加える機数
 const STAGE00_FLYBY_MISS_DIST_MIN = 1000; // フライパスのすれ違い距離下限 [m]
 const STAGE00_FLYBY_MISS_DIST_RANGE = 1000; // 同、上限までの幅 [m]
 const STAGE00_FLYBY_SPEED_RAMP = 10; // 波が進むごとのフライパス速度増加 [m/s]
@@ -54,6 +88,8 @@ export interface SerializedWaveAttack {
   readonly waveState: WaveState;
   readonly spawnTimer: number;
   readonly waveCount: number;
+  // 補給艇が届いた波間か。欠けた記録は false から始まる。
+  readonly lullHeld?: boolean;
 }
 
 export class WaveAttack {
@@ -68,6 +104,8 @@ export class WaveAttack {
     private waveState: WaveState = 'waiting_for_ammo',
     private spawnTimer = 0,
     private _waveCount = 0,
+    // 補給艇が届いた波間か。その間は全滅による待ちの短縮を受けず、届いた時点の待ちを保つ。
+    private lullHeld = false,
   ) {}
 
   // 直列化した進行から復元する。
@@ -78,23 +116,25 @@ export class WaveAttack {
     attractors: readonly CelestialBody[],
     idAllocators: EntityIdAllocators,
   ): WaveAttack {
-    const { waveState, spawnTimer, waveCount } = serialized;
+    const { waveState, spawnTimer, waveCount, lullHeld } = serialized;
     // null も欠けと同じく新しい進行の初期値から始める(既定引数は undefined でしか働かない)。
     return new WaveAttack(
-      events, scene, attractors, idAllocators, waveState ?? undefined, spawnTimer ?? undefined, waveCount ?? undefined,
+      events, scene, attractors, idAllocators, waveState ?? undefined, spawnTimer ?? undefined,
+      waveCount ?? undefined, lullHeld ?? undefined,
     );
   }
 
   // ウェーブ番号を1つ進め、生成した敵を stage へ足す。
   public spawnWave(
-    player: ModularShip, stage: Pick<WaveAttackStage, 'addEnemy'>, forcedPattern?: 'linear' | 'random',
+    player: ModularShip, stage: Pick<WaveAttackStage, 'addEnemy'>,
+    forcedPattern?: 'linear' | 'random',
   ): void {
     const wave = ++this._waveCount;
-    const enemies = generateWave(
+    const spawn = generateWave(
       player.motion.state, wave, this.attractors,
       this.scene, this.idAllocators, forcedPattern,
     );
-    for (const enemy of enemies) stage.addEnemy(enemy);
+    for (const enemy of spawn.enemies) stage.addEnemy(enemy);
   }
 
   // フェーズ機械を1フレーム分進める。敵は stage へ足し、交戦圏外へ出た敵の消滅を stage へ記録する。
@@ -129,21 +169,30 @@ export class WaveAttack {
   ): void {
     despawnOutOfRangeEnemies(enemies, player, ENGAGEMENT_RANGE, simTime, stage);
     const activeGroups = countActiveWaveGroups(enemies);
-    if (activeGroups === 0) {
+    if (activeGroups > 0) {
+      this.lullHeld = false;
+    } else {
       // 短縮先を 0 にすると、湧いた波が同じフレームで離脱しきる時間加速下で毎フレーム湧き続ける。
-      this.spawnTimer = Math.min(this.spawnTimer, STAGE00_CLEARED_SPAWN_INTERVAL);
+      if (!this.lullHeld) this.spawnTimer = Math.min(this.spawnTimer, STAGE00_CLEARED_SPAWN_INTERVAL);
+      if (stage.onLull()) {
+        this.lullHeld = true;
+        this.spawnTimer = Math.max(this.spawnTimer, STAGE00_TENDER_LULL);
+      }
     }
     if (activeGroups >= maxWaveGroups(this._waveCount)) return;
     this.spawnTimer -= dt;
     if (this.spawnTimer > 0) return;
     this.spawnWave(player, stage);
     this.spawnTimer = STAGE00_SPAWN_INTERVAL;
+    this.lullHeld = false;
     this.events.record({ kind: 'waveSpawned', wave: this._waveCount });
   }
 
   // 進行を直列化した形へ畳む。
   public serialize(): SerializedWaveAttack {
-    return { waveState: this.waveState, spawnTimer: this.spawnTimer, waveCount: this._waveCount };
+    return {
+      waveState: this.waveState, spawnTimer: this.spawnTimer, waveCount: this._waveCount, lullHeld: this.lullHeld,
+    };
   }
 }
 
@@ -299,30 +348,37 @@ function waveShipPosition(
   return toInertialPoint(frame, framePoint(placed.x, placed.y, placed.z));
 }
 
+// 1 波ぶんの生成結果。
+export interface WaveSpawn {
+  readonly enemies: Enemy[];
+}
+
 // ウェーブ番号に応じた隻数・編成・接近軌道を決め、敵艦の配列を生成する。
 export function generateWave(
   player: KinematicState, waveNumber: number, attractors: readonly CelestialBody[],
   scene: THREE.Scene, idAllocators: EntityIdAllocators, forcedPattern?: 'linear' | 'random',
-): Enemy[] {
-  const calculatedCount = STAGE00_WAVE_BASE_SHIPS + Math.floor((waveNumber - 1) * STAGE00_WAVE_SHIPS_PER_WAVE);
-  const shipCount = Math.min(calculatedCount, STAGE00_WAVE_MAX_SHIPS);
+): WaveSpawn {
+  const shape = waveShape(waveNumber);
+  const shipCount = shape.ships;
   const centerR = pickWaveCenter(player, waveNumber, attractors);
   const { approachDir, centerV: rawCenterV } = makeFlybyVelocity(player, centerR, waveNumber);
   const centerV = limitFlybyDv(player.v, centerR, rawCenterV, player.t, attractors);
   const subGroups = makeSubGroupHexes(pickWaveBaseHex());
-  const typeIndex = Math.floor(Math.random() * 3);
   const pattern = forcedPattern || (Math.random() < 0.5 ? 'linear' : 'random');
 
-  // 隻数分、位置と識別カラーを割り当てて敵艦を生成する
+  // 隻数分、位置と識別カラーを割り当てて敵艦を生成する。難関は通常の機数に加えて 3 機を足し、
+  // 追加分は 1 つの攻撃グループとしてまとめる。
+  const totalShips = shipCount + (shape.boss ? STAGE00_BOSS_EXTRA_SHIPS : 0);
   const enemies: Enemy[] = [];
-  for (let i = 0; i < shipCount; i++) {
+  for (let i = 0; i < totalShips; i++) {
     const accent = subGroups[i % subGroups.length]!;
-    const position = waveShipPosition(pattern, i, shipCount, centerR, approachDir, attractors, player.t);
+    const position = waveShipPosition(pattern, i, totalShips, centerR, approachDir, attractors, player.t);
     const state: KinematicState = kinematicState<'eci'>(player.t, position, centerV);
     enemies.push(generateApproachingEnemy(
-      `W${waveNumber}-${i + 1}`, state, attractors, accent, accent, typeIndex, waveNumber, scene, idAllocators,
-      `wave-${waveNumber}-group-${i % subGroups.length}`,
+      `W${waveNumber}-${i + 1}`, state, accent, accent, waveNumber, scene, idAllocators,
+      i < shipCount ? `wave-${waveNumber}-group-${i % subGroups.length}` : `wave-${waveNumber}-formation`,
     ));
   }
-  return enemies;
+
+  return { enemies };
 }

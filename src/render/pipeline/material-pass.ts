@@ -2,7 +2,7 @@
 // 自己発光)を掛け合わせた面の画素の最終の陰影と、G バッファの深度を、共有の HDR ターゲットへ書く。映り込みは遠方の
 // 鏡面光を置き換える。背景専用レイヤーの星野を共有ターゲットへ最初に描く(クリアする)のもこのパスが担う。
 import * as THREE from 'three/webgpu';
-import { QuadMesh, WebGPURenderer } from 'three/webgpu';
+import { QuadMesh, type WebGPURenderer } from 'three/webgpu';
 import { BRDF_Lambert, Discard, Fn, float, max, min, mix, screenUV, texture, vec3, vec4 } from 'three/tsl';
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { WORLD_BACKGROUND_LAYER } from './lit-layer';

@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import {
   Fn, If, PI, abs, and, clamp, dot, exp, float, greaterThan, greaterThanEqual, length,
-  lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, uniform, vec2,
+  lessThan, max, min, mix, normalize, not, or, select, smoothstep, sqrt, sub, texture, uniform, vec2,
   vec3,
 } from 'three/tsl';
 import { rayMarch, type MediumSample } from '../ray-march';
@@ -14,22 +14,27 @@ import { airglowEmission } from '../airglow';
 import {
   AtmosphereCloudLayers, type CloudShellEvent, type AtmosphereCloudGeometry,
 } from './atmosphere-cloud-layers';
-import { shellAltitudeOf, type CloudSpecies } from './cloud-atmosphere-renderer';
+import { shellAltitudeOf } from './cloud-atmosphere-renderer';
 import type { AtmosphereBody } from '../atmosphere';
 import type { BoolNode, FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec3Uniform } from '../tsl-types';
 import type { BodyShadow } from './shadow/body-shadow';
+import type { CloudShadowRenderer } from './shadow/cloud-shadow-renderer';
 import type { SunLight } from './sun-light';
+import {
+  depthToSpace, polarStretchOf, sunPathGeometry, toSphereSpace,
+} from './sun-path-depth';
+import {
+  sunTransmittanceUv, type SunTransmittanceTables,
+} from './sun-transmittance-tables';
 
 // 消散係数の下限 [1/m]。散乱の割合を消散で割るときの 0/0 を塞ぐ。
 const MIN_EXTINCTION = 1e-30;
 
-// 極半径/赤道半径の下限。潰し量はこの逆数なので、0 を塞ぐ。太陽系で最も扁平な土星でも 0.90。
-const MIN_POLAR_RATIO = 1e-3;
-
 const NO_AIRGLOW_COLOR = new THREE.Vector3();
+const NO_OZONE_ABSORPTION = new THREE.Vector3();
 
 // 天体 1 体ぶんの uniform。surfaceRadius は赤道半径、cutoffRadius は大気の裾を打ち切る半径
-// (赤道半径 + 打ち切り高度)、steps はこの層の積分におけるサンプル点数。polarAxis は扁平を潰す軸の
+// (赤道半径 + 打ち切り高度)、steps はこの層の積分におけるサンプル点数。polarAxis は扁平化する極軸方向の
 // 単位ベクトル、polarStretch はその向きへ引き伸ばす量(赤道半径/極半径 − 1。真球で 0)。
 interface BodySlot {
   readonly steps: FloatUniform;
@@ -43,10 +48,16 @@ interface BodySlot {
   readonly mie: FloatUniform;
   readonly mieScaleHeight: FloatUniform;
   readonly mieAnisotropy: FloatUniform;
+  readonly ozone: Vec3Uniform;
+  readonly ozoneCenter: FloatUniform;
+  readonly ozoneHalfThickness: FloatUniform;
   readonly airglowColor: Vec3Uniform;
   readonly airglowStrength: FloatUniform;
   readonly airglowAltitude: FloatUniform;
   readonly airglowScaleHeight: FloatUniform;
+  // その天体の光学から焼いた直射光の透過率表と、表の高度軸の上限 [m]。
+  readonly sunTransmittance: THREE.TextureNode;
+  readonly sunAltitudeMax: FloatUniform;
 }
 
 // 視線を、天体を自転軸方向へ引き伸ばして真球にした空間で見た形。**この空間の長さは描画座標の
@@ -76,42 +87,15 @@ interface RaySegment {
   readonly far: FloatNode;
   // 区間のうち大気が最も濃い距離。地表で終わる視線では区間の奥、掠める視線では最接近点。
   readonly densest: FloatNode;
-  // 視線が大気に掛かるか。掛からない画素では素通しへ倒す。
+  // 視線が大気に掛かるか。掛からない画素では透過（素通し）として処理する。
   readonly hitsAtmosphere: BoolNode;
 }
 
 // 天体 1 体ぶんの、視線区間の透過率と内部散乱。
-export interface LayerContribution {
+interface LayerContribution {
   readonly transmittance: Vec3Node;
   readonly inscatter: Vec3Node;
 }
-
-// 半径 r の点から天頂角余弦 mu(0 以上)の向きへ大気の外まで抜けるまでの、散乱係数 1 あたりの
-// 光学的厚み。Chapman 関数を Ch0/((Ch0−1)·mu+1) で近似する — mu=1 で 1、mu=0 で √(πr/2H) と
-// 両端で厳密値に一致し、その間を単調に埋める。
-const outwardDepth = Fn((
-  [radius, mu, surfaceRadius, scaleHeight]: readonly [FloatNode, FloatNode, FloatNode, FloatNode],
-) => {
-  const chapmanZero = sqrt(PI.mul(radius).div(scaleHeight).mul(0.5));
-  const chapman = chapmanZero.div(chapmanZero.sub(1).mul(mu).add(1));
-  return scaleHeight.mul(exp(surfaceRadius.sub(radius).div(scaleHeight))).mul(chapman);
-});
-
-// 半径 radius・天頂角余弦 mu の点から大気の外へ抜けるまでの、散乱係数 1 あたりの光学的厚み。
-// 降る向き(mu<0)の経路は、最接近点で折り返す2本の上向きの経路として組み、最接近点が地表より
-// 内側へ落ちる向きでは地表で打ち切る。**打ち切った値は、地平線を掠める経路の厚みの続きである**
-// — 天体内部を貫通する直射日光の遮蔽は horizonVisibility が判定する。
-//
-// **どちらの枝も outwardDepth へ渡す余弦を非負に保つ** — select は選ばれない枝も評価するので、
-// 負の余弦を通すと Chapman 近似の分母が 0 を跨ぎ、選ばれない側で無限大が湧く。
-const depthToSpace = Fn((
-  [radius, mu, surfaceRadius, scaleHeight]: readonly [FloatNode, FloatNode, FloatNode, FloatNode],
-) => {
-  const ascending = outwardDepth(radius, abs(mu), surfaceRadius, scaleHeight);
-  const perigee = max(radius.mul(sqrt(max(float(1).sub(mu.mul(mu)), 0))), surfaceRadius);
-  const descending = outwardDepth(perigee, float(0), surfaceRadius, scaleHeight).mul(2).sub(ascending);
-  return select(greaterThan(mu, 0), ascending, descending);
-});
 
 // レイリー散乱の位相関数。等方散乱を 1 とする目盛りなので、前後で 1.5、側方で 0.75 になる。
 const rayleighPhase = (cosTheta: FloatNode): FloatNode => cosTheta.mul(cosTheta).add(1).mul(0.75);
@@ -137,6 +121,10 @@ export class AtmosphereIntegrator {
   public constructor(
     private readonly sunLight: SunLight,
     private readonly bodyShadow: BodyShadow,
+    private readonly sunTables: SunTransmittanceTables,
+    // 大気へ影を落とす雲。無ければ雲の影は掛からない(天体照の光源の合成など、
+    // 雲の影が結ばれない経路では省く)。
+    private readonly cloudShadow?: CloudShadowRenderer,
   ) {
     this.slot = {
       steps: uniform(1),
@@ -150,17 +138,22 @@ export class AtmosphereIntegrator {
       mie: uniform(0),
       mieScaleHeight: uniform(1),
       mieAnisotropy: uniform(0),
+      ozone: uniform(new THREE.Vector3()),
+      ozoneCenter: uniform(0),
+      ozoneHalfThickness: uniform(1),
       airglowColor: uniform(new THREE.Vector3()),
       airglowStrength: uniform(0),
       airglowAltitude: uniform(0),
       airglowScaleHeight: uniform(1),
+      sunTransmittance: texture(sunTables.forEmpty().texture),
+      sunAltitudeMax: uniform(1),
     };
     this.cloudLayers = new AtmosphereCloudLayers();
   }
 
-  // 種類ごとに、雲の殻を描くかを置き直す。
-  public setCloudShellEnabled(species: CloudSpecies, enabled: boolean): void {
-    this.cloudLayers.setShellEnabled(species, enabled);
+  // 巻雲の細部の段数を置く。
+  public setCirrusOctaves(count: number): void {
+    this.cloudLayers.setCirrusOctaves(count);
   }
 
   // 描画対象とする天体 1 体分の光学パラメータと雲情報を設定する。cutoffRadius は大気の裾を
@@ -173,12 +166,20 @@ export class AtmosphereIntegrator {
     this.slot.cutoffRadius.value = cutoffRadius;
     // **極軸は単位ベクトルでなければならない** — ノルムが 1 でない場合、扁平率の圧縮係数が二乗で過剰に掛かる。
     this.slot.polarAxis.value.copy(body.polarAxis).normalize();
-    this.slot.polarStretch.value = 1 / Math.max(body.polarRatio, MIN_POLAR_RATIO) - 1;
+    this.slot.polarStretch.value = polarStretchOf(body.polarRatio);
     this.slot.rayleigh.value.copy(body.optics.rayleigh);
     this.slot.rayleighScaleHeight.value = body.optics.rayleighScaleHeight;
     this.slot.mie.value = body.optics.mie;
     this.slot.mieScaleHeight.value = body.optics.mieScaleHeight;
     this.slot.mieAnisotropy.value = body.optics.mieAnisotropy;
+    const ozone = body.optics.ozone;
+    if (ozone === undefined) {
+      this.slot.ozone.value.copy(NO_OZONE_ABSORPTION);
+    } else {
+      this.slot.ozone.value.copy(ozone.absorption);
+      this.slot.ozoneCenter.value = ozone.centerAltitude;
+      this.slot.ozoneHalfThickness.value = ozone.halfThickness;
+    }
     const airglow = body.optics.airglow;
     if (airglow === undefined) {
       this.slot.airglowColor.value.copy(NO_AIRGLOW_COLOR);
@@ -191,22 +192,30 @@ export class AtmosphereIntegrator {
       this.slot.airglowAltitude.value = airglow.altitude;
       this.slot.airglowScaleHeight.value = airglow.scaleHeight;
     }
+    // 太陽光が層へ届くまでの透過率は、地表へ届く直射光と同じ表を引く — 同じ経路モデル。
+    const table = this.sunTables.forBody(body);
+    this.slot.sunTransmittance.value = table.texture;
+    this.slot.sunAltitudeMax.value = table.altitudeMax;
   }
 
   // 視線 1 本がこの層を通って受ける透過率と、この層が視線へ足す内部散乱。opaqueDist は視線が
-  // 不透明面へ届くまでの距離 [m] で、積分はその手前で止まる。**Fn の中から呼ぶこと。**
+  // 不透明面へ届くまでの距離 [m] で、積分はその手前で止まる。pixelAngle は視線の 1 画素が張る角 [rad]。
+  // **Fn の中から呼ぶこと。**
   //
-  // **重い側はすべて分岐の中に置く。** 大気に掛からない視線は区間の判定だけで抜ける —
+  // **重い側はすべて分岐の中に置く。** 大気に掛からない視線は区間の判定だけで早期脱出する —
   // select で混ぜると、捨てるぶんまで毎画素走る。
   public contribution(
-    rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode,
+    rayOrigin: Vec3Node, rayDir: Vec3Node, opaqueDist: FloatNode, pixelAngle: FloatNode,
   ): LayerContribution {
+    // 視線を真球の空間へ写し、大気の区間を求めてから、区間に掛かるときだけ雲と積分を解く。
     const ray = this.sphereSpaceRay(rayOrigin, rayDir);
     const segment = this.raySegment(ray, opaqueDist);
     const transmittance = vec3(1, 1, 1).toVar();
     const inscatter = vec3(0, 0, 0).toVar();
     If(segment.hitsAtmosphere, () => {
-      const shells = this.cloudLayers.build(ray, segment, rayOrigin, rayDir, this.cloudGeometry());
+      const shells = this.cloudLayers.build(
+        ray, segment, rayOrigin, rayDir, this.cloudGeometry(), pixelAngle,
+      );
       const layer = this.integrated(ray, segment, rayOrigin, rayDir, shells);
       transmittance.assign(layer.transmittance);
       inscatter.assign(layer.inscatter);
@@ -225,7 +234,7 @@ export class AtmosphereIntegrator {
   // **この空間の長さは描画座標の長さではない。** 引き伸ばした向きぶん伸びているので、距離を
   // 実寸として使う値は、その向きの伸び率で割ってから返すこと。
   private toSphereSpace(vector: Vec3Node): Vec3Node {
-    return vector.add(this.slot.polarAxis.mul(dot(vector, this.slot.polarAxis).mul(this.slot.polarStretch)));
+    return toSphereSpace(vector, this.slot.polarAxis, this.slot.polarStretch);
   }
 
   // 視線を真球にした空間へ写した形。この空間では地表も裾も等密度面も殻も中心を共有する
@@ -286,7 +295,7 @@ export class AtmosphereIntegrator {
   // **山は 1 つだけ選び、鋭いものを優先する。** 地表(または不透明面)での打ち切りと日没境界は
   // 被積分関数がそこで断ち切られるのに対し、最接近点は滑らかな極大でしかない。鋭い側を外すと、
   // その遷移が丸ごと 1 段の中へ収まって絵に帯が立つ。**最接近点しか無い視線では等間隔で取る**
-  // — 高度は最接近点から距離の 2 乗でしか増えず、寄せて山から離れた側を粗くする害のほうが勝つ。
+  // — 高度は最接近点から距離の 2 乗でしか増えず、特定点へ偏らせて離れた区間を粗くするデメリットのほうが上回るため。
   private integrated(
     ray: SphereSpaceRay, segment: RaySegment, rayOrigin: Vec3Node, rayDir: Vec3Node,
     shells: readonly CloudShellEvent[],
@@ -302,7 +311,7 @@ export class AtmosphereIntegrator {
     const sharpness = select(or(truncated, takesSunset), float(1), float(0));
 
     // 手前側は山へ向かって細かく、奥側はそこから離れるほど粗く。**段を分ける位置は、山が区間の
-    // どこに在るかで決める** — 段数を機械的に半分ずつ配ると、山が区間の端に重なる視線(地表で
+    // どこに在るかで決める** — ステップ数を機械的に等分に割り当てると、山が区間の端に重なる視線(地表で
     // 終わる視線 = 天体が写る画素すべて)で片側の段が長さ 0 に潰れ、サンプル点の半分が同じ 1 点に
     // 積まれて捨てられる。
     const span = max(segment.far.sub(segment.near), 1);
@@ -331,6 +340,7 @@ export class AtmosphereIntegrator {
 
   // 雲 renderer へ渡す天体空間の幾何・光学パラメータ。殻の交差順序と場の解釈は AtmosphereCloudLayers が担い、
   // 大気側は球空間幾何・太陽輝度・大気透過率を提供する。
+  // 大気の幾何を雲の入力へ写す。雲の殻の交差と場の解釈は雲の層が担う。
   private cloudGeometry(): AtmosphereCloudGeometry {
     return {
       shellRadiusOf: (species) => this.slot.surfaceRadius.add(shellAltitudeOf(species)),
@@ -381,7 +391,7 @@ export class AtmosphereIntegrator {
       max(densestRadius.mul(densestRadius).sub(this.slot.surfaceRadius.mul(this.slot.surfaceRadius)), 0),
     );
     // **分母には符号を保ったまま床を張る** — 視線が恒星方向と直交すると 0 になる。そのとき解は
-    // 区間の遥か外へ飛ぶので、呼び出し側の判定がそのまま弾く。**視線は正規化せずに写す** —
+    // 区間の遥か外へ飛ぶので、呼び出し側の判定がそのまま除外する。**視線は正規化せずに写す** —
     // 引き伸ばした長さが実寸 1 m あたりの進みなので、商がそのまま実寸の距離になる。
     const alongSun = dot(ray.unitDir, sunDir).mul(ray.unitsPerMeter);
     const towardSun = select(greaterThan(alongSun, 0), float(1), float(-1));
@@ -399,7 +409,13 @@ export class AtmosphereIntegrator {
     const altitude = radius.sub(this.slot.surfaceRadius);
     const rayleigh: Vec3Node = this.slot.rayleigh.mul(exp(altitude.div(this.slot.rayleighScaleHeight).negate()));
     const mie = this.slot.mie.mul(exp(altitude.div(this.slot.mieScaleHeight).negate()));
-    const extinction: Vec3Node = rayleigh.add(vec3(mie));
+    // オゾン層は高度のテント状の吸収。散乱には足さず消散だけに効く — 消す光が増えるので、
+    // 散乱が消散に占める割合はそのぶん下がり、層の中を通る視線と内部散乱の両方が暗くなる。
+    const ozoneDensity = max(
+      float(0),
+      float(1).sub(abs(altitude.sub(this.slot.ozoneCenter)).div(this.slot.ozoneHalfThickness)),
+    );
+    const extinction: Vec3Node = rayleigh.add(vec3(mie)).add(this.slot.ozone.mul(ozoneDensity));
 
     // 視線へ向かう散乱は、成分ごとの散乱係数に位相関数を掛けて重みを付けた和。
     const sunVector = sub(this.sunLight.position, point);
@@ -415,10 +431,17 @@ export class AtmosphereIntegrator {
     return {
       extinction,
       source: scattered.div(max(extinction, vec3(MIN_EXTINCTION, MIN_EXTINCTION, MIN_EXTINCTION)))
-        .mul(this.sunRadianceAt(point))
+        .mul(this.sunRadianceAt(point)).mul(this.cloudShadowAt(point))
         .add(airglow.div(max(extinction, vec3(MIN_EXTINCTION, MIN_EXTINCTION, MIN_EXTINCTION))))
         .mul(shellTransmittance),
     };
+  }
+
+  // 大気の中の点へ届く直射光のうち、雲の柱と層が透す割合。**雲の殻の照明(sunRadianceAt)には
+  // 掛けない** — 殻の点が自分の柱や層を自身の影として読み、雲全体が自分で暗くなるのを防ぐ。
+  // 大気のサンプル点は雲の下にも取れるので、そこでは雲の影が必要になる。
+  private cloudShadowAt(point: Vec3Node): FloatNode {
+    return this.cloudShadow === undefined ? float(1) : this.cloudShadow.ambientTransmittance(point);
   }
 
   // 大気の中の 1 点へ届く太陽光の輝度。太陽光自身が通ってきた大気の透過率と、他の天体による
@@ -428,23 +451,18 @@ export class AtmosphereIntegrator {
   // 目盛りは拡散面と揃える(放射照度を π で割る)。散乱した割合をアルベドと見なすので、
   // 太陽へ正対した濃い大気は、同じ場所のアルベド 1 の拡散面と同じ表示値になる。
   private sunRadianceAt(point: Vec3Node): Vec3Node {
-    // 太陽光がその点まで通ってきた大気の光学的厚み。天頂角の余弦だけで決まる。
-    const offset = this.toSphereSpace(sub(point, this.slot.center));
-    const radius = max(length(offset), max(this.slot.surfaceRadius, 1));
-    const toSun = sub(this.sunLight.position, point);
-    const stretchedToSun = this.toSphereSpace(toSun);
-    const sunMu = dot(offset.div(radius), normalize(stretchedToSun));
-    // 厚みは引き伸ばした空間の長さで出るので、その向きの伸び率で実寸へ戻す。
-    const sunPathScale = max(length(toSun), 1).div(max(length(stretchedToSun), 1));
-    const sunDepth: Vec3Node = this.slot.rayleigh
-      .mul(depthToSpace(radius, sunMu, this.slot.surfaceRadius, this.slot.rayleighScaleHeight).mul(sunPathScale))
-      .add(vec3(this.slot.mie
-        .mul(depthToSpace(radius, sunMu, this.slot.surfaceRadius, this.slot.mieScaleHeight)).mul(sunPathScale)));
-    const irradiance = this.sunLight.intensity.div(max(dot(toSun, toSun), 1));
+    // 太陽光がその点まで通ってきた大気の透過率。地表へ届く直射光と同じ表を、
+    // 天頂角余弦と高度で引く(同じ経路モデルの値が共有される)。
+    const sunPath = sunPathGeometry(point, this.sunLight.position, this.slot);
+    const uv = sunTransmittanceUv(
+      sunPath.sunMu, sunPath.radius.sub(this.slot.surfaceRadius), this.slot.sunAltitudeMax,
+    );
+    const irradiance = this.sunLight.intensity.div(max(dot(sunPath.toSun, sunPath.toSun), 1));
     const shadow = this.bodyShadow
       .transmittance(point)
-      .mul(this.horizonVisibility(radius, sunMu, toSun));
-    return exp(sunDepth.negate()).mul(irradiance.div(PI)).mul(shadow).mul(this.sunLight.color);
+      .mul(this.horizonVisibility(sunPath.radius, sunPath.sunMu, sunPath.toSun));
+    return this.slot.sunTransmittance.sample(uv).rgb
+      .mul(irradiance.div(PI)).mul(shadow).mul(this.sunLight.color);
   }
 
   // 大気の中の 1 点から見て、恒星がその天体自身の地平線の上に出ている割合 0..1。
