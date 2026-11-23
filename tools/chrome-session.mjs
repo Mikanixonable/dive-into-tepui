@@ -100,7 +100,7 @@ async function waitForDebugPage(port) {
 // 上限が無いと待ち続けて呼び出し側がそこで永久に止まる(実際に止まった)。重い条件では
 // 1フレームが1秒を超えるため、フレーム数十回ぶんの余裕を見る。1回の評価がこれを超える重さの
 // 駆動(8k 全面の撮影など)は、openChromeSession の requestTimeoutMs で延ばせる。
-const REQUEST_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 180_000;
 
 function connectDevTools(url, onEvent, requestTimeoutMs = REQUEST_TIMEOUT_MS) {
   const socket = new WebSocket(url);
@@ -219,6 +219,7 @@ const LAUNCH_ARGS = [
   '--disable-background-timer-throttling',
   '--disable-renderer-backgrounding',
   '--disable-backgrounding-occluded-windows',
+  '--disable-crash-reporter',
   '--run-all-compositor-stages-before-draw',
   '--mute-audio',
 ];
@@ -264,6 +265,14 @@ export async function openChromeSession({
   const server = startStaticServer(serveDir, port);
   const baseUrl = `http://127.0.0.1:${port}`;
   let browser;
+  function killTree() {
+    if (process.platform === 'win32') {
+      // kill('SIGTERM') は Windows ではメインしか止めない
+      spawnSync('taskkill', ['/pid', String(browser.pid), '/T', '/F'], { stdio: 'ignore' });
+    } else {
+      browser.kill('SIGTERM');
+    }
+  }
   try {
     await waitForServer(`${baseUrl}/`);
     browser = spawn(chrome, [
@@ -284,16 +293,22 @@ export async function openChromeSession({
       baseUrl,
       async close() {
         devTools.close();
-        browser.kill('SIGTERM');
+        killTree();
         await Promise.race([once(browser, 'exit'), sleep(2_000)]);
         server.close();
-        rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+        // Windows では終了直後の Chrome がプロファイルを掴んだままのことがある。測定結果を失わないよう掃除の失敗では止めず、
+        // C: に溜まったことに気付けるよう残った場所を出す。
+        try {
+          rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+        } catch (error) {
+          console.warn(`Chrome profile was left at ${profile}: ${error.code ?? error}`);
+        }
       },
     };
   } catch (e) {
-    browser?.kill('SIGTERM');
+    if (browser) killTree();
     server.close();
-    rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
     throw e;
   }
 }

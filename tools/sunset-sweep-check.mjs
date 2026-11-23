@@ -82,8 +82,8 @@ function sceneSunAngles(azimuthDeg, elevationDeg, frame) {
 // 評価で固定する描画品質設定(高プリセットの雲まわり。cloud-shadow-check.mjs と同じ)。
 const GRAPHICS = [
   ['clouds', true], ['cloudFieldSource', 'generated'], ['cirrus', true],
-  ['cumulusDetail', 2], ['cirrusDetail', 1], ['cloudShadow', true],
-  ['atmosphere', 3], ['sunLightModel', 1],
+  ['cumulusMarchSteps', 6], ['cumulusRefineSteps', 3], ['cumulusOctaves', 6], ['cirrusDetail', 1], ['cloudShadow', true],
+  ['atmosphere', true], ['atmosphereSampleBudget', 24], ['sunLightModel', 1],
 ];
 
 function buildRenderLab() {

@@ -14,10 +14,14 @@ import { AtmosphereSlots } from '../atmosphere-slots';
 import {
   skyIrradianceUv, type SkyIrradianceTables,
 } from '../sky-irradiance-tables';
-import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
+import {
+  contributionMaterial, type LightContribution, type LightSource, type SpecularReach,
+} from './light-source';
 import type { ShadingSample } from './shading-sample';
 
 export class SkyLightSource implements LightSource {
+  // 空は遠方の環境なので、鏡面は近くの物体の映り込みが置き換える側へ積む。
+  public readonly specularReach: SpecularReach = 'far';
   private readonly slots = new AtmosphereSlots();
   // 天体ごとの、表の高度軸の上限 [m] と焼き込み済みの表。
   private readonly altitudeMaxes: number[];
@@ -55,7 +59,7 @@ export class SkyLightSource implements LightSource {
 
   // 天空光の寄与のマテリアル。表はテクスチャなので初回だけ組めば足りる。
   public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
-    this.cached ??= contributionMaterial(sample, this.contribution(sample));
+    this.cached ??= contributionMaterial(sample, this.contribution(sample), this.specularReach);
     return this.cached;
   }
 

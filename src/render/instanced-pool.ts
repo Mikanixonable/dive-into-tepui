@@ -1,6 +1,7 @@
 // 同一ジオメトリ/マテリアルを共有する大量の個体を、1本の InstancedMesh でまとめて描画するプール。
 import * as THREE from 'three/webgpu';
-import { markLitOpaque, markOverlay, markShadowCaster } from './pipeline/lit-layer';
+import { LIT_OPAQUE_LAYER, markLitOpaque, markOverlay, markShadowCaster } from './pipeline/lit-layer';
+import { PoolMotionHistory } from './pipeline/motion-history';
 import { INSTANCE_THERMAL_ATTRIBUTE, writeThermalState } from './thermal-emissive';
 import type { ShadowExtent } from './pipeline/shadow/shadow-casters';
 
@@ -12,6 +13,8 @@ const PARKED = new THREE.Matrix4().set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 // 毎フレーム呼び、その間に push した Object3D の変換をまとめて描画する。
 export class InstancedPool {
   private readonly mesh: THREE.InstancedMesh;
+  // 動きベクトルの履歴。G バッファへ描かない(標準マテリアルでない)プールでは null。
+  private readonly motion: PoolMotionHistory | null;
   private count = 0;
   // 前フレームに使った枠数。今フレームで余った枠だけをゼロ行列へ戻すために持つ。
   private lastCount = 0;
@@ -61,6 +64,8 @@ export class InstancedPool {
     this.mesh.frustumCulled = false;
     markLitOpaque(this.mesh);
     markShadowCaster(this.mesh);
+    // 動きベクトルは G バッファにだけ書くので、そこへ描くプールだけが履歴を持つ。
+    this.motion = this.mesh.layers.isEnabled(LIT_OPAQUE_LAYER) ? new PoolMotionHistory(this.mesh, this.capacity) : null;
     this.mesh.userData.shadowExtent = this.extent;
     geometry.computeBoundingSphere();
     this.instanceRadius = geometry.boundingSphere?.radius ?? 0;
@@ -76,6 +81,7 @@ export class InstancedPool {
   // このフレームぶんを積み始める。
   public beginFrame(): void {
     this.count = 0;
+    this.motion?.beginFrame();
     this.colorDirtyEnd = 0;
     this.thermalDirtyStart = Infinity;
     this.thermalDirtyEnd = 0;
@@ -83,9 +89,12 @@ export class InstancedPool {
   }
 
   // visible な renderObject を capacity を上限として受け付け、その変換・色・熱の状態をインスタンスバッファへ
-  // コピーする。renderObject の matrixWorld は内部で更新するが、親の matrixWorld は更新済みであることを前提とする。
+  // コピーする。G バッファへ描くプールでは renderObject が動きベクトルの履歴の鍵になるので、個体ごとに別の
+  // Object3D を渡す(同じフレームに2度積むと例外)。renderObject の matrixWorld は内部で更新するが、親の matrixWorld は
+  // 更新済みであることを前提とする。
   public push(renderObject: THREE.Object3D, color?: THREE.Color): void {
     if (!renderObject.visible || this.count >= this.capacity) return;
+    this.motion?.place(renderObject);
     renderObject.updateMatrixWorld();
     const index = this.count;
     this.mesh.setMatrixAt(index, renderObject.matrixWorld);
@@ -143,6 +152,7 @@ export class InstancedPool {
   // InstancedMesh をシーンから外し、そのインスタンスバッファを解放する。geometry/material は
   // 外部から渡された共有資源のため、本クラスでは破棄しない。
   public dispose(): void {
+    this.motion?.dispose();
     this.mesh.removeFromParent();
     this.mesh.dispose();
   }

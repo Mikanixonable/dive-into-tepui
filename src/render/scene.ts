@@ -9,6 +9,7 @@ import { effectivePixelRatio } from './viewport';
 import { renderBackendKindOf, type RenderBackendKind } from './render-backend';
 import type { DebugTargetId } from './pipeline/debug-target';
 import type { Viewport } from './viewport';
+import { webGpuRequiredLimits } from './webgpu-required-limits';
 
 // canvas と同じ寿命を持つ描画基盤一式。GPU 資源を確保するので、1つだけ作って使い回す。
 export interface GameScene {
@@ -47,7 +48,7 @@ export async function createGameScene(
   // trackTimestamp と reversedDepthBuffer は生成時に渡す。後者をあとから代入すると、深度比較
   // 関数だけが非反転のまま残る。
   const renderer = new WebGPURenderer({
-    canvas, trackTimestamp: true, reversedDepthBuffer: true,
+    canvas, trackTimestamp: true, reversedDepthBuffer: true, requiredLimits: await webGpuRequiredLimits(),
   });
   renderer.setOpaqueSort(reversedOpaqueSort);
   renderer.setTransparentSort(reversedTransparentSort);
@@ -83,13 +84,15 @@ export async function createGameScene(
 
   // 描画先の寸法と描画設定を、このフレームの値へ合わせる。**描画設定は値の同一性で比べる** —
   // 同じ設定のまま組み直すと、影マップなどの GPU 資源を毎フレーム捨てて作り直すことになる。
+  // 解像度は寸法か倍率が変わったときだけ立て直す — 描画先を張り直すので、設定が別の参照になるたびに
+  // 立て直すと、スライダーを動かしているあいだ引っかかる。
   const syncFrame = (next: Viewport, nextGraphics: GraphicsSettingsData, debugTarget: DebugTargetId) => {
-    const resized = next.width !== current.width || next.height !== current.height
-      || next.pixelRatio !== current.pixelRatio;
+    const rescaled = next.width !== current.width || next.height !== current.height
+      || next.pixelRatio !== current.pixelRatio || nextGraphics.resolutionScale !== currentGraphics.resolutionScale;
     const requalified = nextGraphics !== currentGraphics;
     current = next;
     currentGraphics = nextGraphics;
-    if (resized || requalified) applyResolution();
+    if (rescaled) applyResolution();
     if (requalified) pipeline.rebuildForGraphics(nextGraphics);
     pipeline.syncDebugTarget(debugTarget);
   };

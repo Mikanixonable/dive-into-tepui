@@ -6,6 +6,7 @@ import {
 } from 'three/tsl';
 import { DeferredTexture, type TextureResolution, type TextureUrlSource } from '../deferred-texture';
 import { markLitOpaque } from '../pipeline/lit-layer';
+import { markMotionHistoryKey } from '../pipeline/motion-history';
 import { rec709Luminance, scaledToBondAlbedo, type Albedo } from './celestial-albedo';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from './screen-lod';
 import {
@@ -221,7 +222,11 @@ export class CelestialSurface implements CelestialSurfaceLike {
 
   // 全段のメッシュを parent の下へ置く。
   public addTo(parent: THREE.Object3D): void {
-    for (const mesh of this.meshes.values()) parent.add(mesh);
+    for (const mesh of this.meshes.values()) {
+      parent.add(mesh);
+      // 段を切り替えても動きベクトルの履歴が続くよう、全段で parent の履歴を共有する。
+      markMotionHistoryKey(mesh, parent);
+    }
   }
 
   // 全段のメッシュの材質を詳細材質へ差し替え、attachment の資源を解放まで持つ。初期の材質は

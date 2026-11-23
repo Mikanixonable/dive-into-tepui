@@ -1,10 +1,14 @@
 // 描画テスト環境の 1 ビュー。ケースを組み、ゲーム本体と同じ RenderPipeline でキャンバスへ描く。
-// 絵の撮影(PNG)と、CPU / GPU それぞれの所要時間の計測もここが担う。
+// 絵の撮影(PNG)と中間ターゲットの読み戻し、CPU / GPU それぞれの所要時間の計測もここが担う。
 import * as THREE from 'three/webgpu';
 import { QuadMesh, WebGPURenderer } from 'three/webgpu';
-import { texture, vec2, vec4 } from 'three/tsl';
+import {
+  getViewPosition, ivec2, mrt, screenCoordinate, screenUV, select, texture, textureLoad, uniform, vec2, vec4,
+} from 'three/tsl';
 import { distinctTextureNode } from '../../src/render/distinct-texture-node';
-import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
+import { GPU_PASS, GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
+import { projectedRadius } from '../../src/render/pipeline/screen-space/hemisphere-scan';
+import { scanBandsOf } from '../../src/render/pipeline/screen-space/band-pyramid';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
 import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { farClip } from '../../src/render/camera/camera-view';
@@ -21,8 +25,16 @@ import {
 import { RingMaterials } from '../../src/render/celestial/ring';
 import { disposeOwnedRenderResources } from '../../src/render/dispose-owned-render-resources';
 import { metersPerPixelAtDepth } from '../../src/math/projection';
+import { webGpuRequiredLimits } from '../../src/render/webgpu-required-limits';
 import { distributionOf, type SampleDistribution } from '../../src/math/sample-distribution';
-import { EARTH_ATMOSPHERE_OPTICS, R_EARTH, R_EARTH_EQ } from '../../src/game/celestial/solar-system/earth-system';
+import {
+  EARTH_ATMOSPHERE_OPTICS, R_EARTH, R_EARTH_EQ, R_MOON,
+} from '../../src/game/celestial/solar-system/earth-system';
+import { DEFAULT_ALBEDO } from '../../src/render/celestial/celestial-albedo';
+import { planetLightStrength } from '../../src/render/pipeline/lighting/planet-light-select';
+import { SCREEN_SPACE_DIFFUSE, screenSpaceDiffuseOf } from '../../src/render/pipeline/screen-space/screen-space-pass';
+import { stageMaterial } from '../../src/render/pipeline/screen-space/screen-space-stage';
+import { resolveGraphics, selectionOfGraphics, type GraphicsSelection } from '../../src/render/graphics-selection';
 import { CASES, type CaseName } from './cases';
 import {
   cloudDetailCase, cloudDetailRandomShot, CLOUD_DETAIL_CHECK_SHOTS, CLOUD_DETAIL_CIRRUS_COARSE_SHOTS,
@@ -33,12 +45,80 @@ import {
 } from './lab-case';
 import { EARTH_LIGHT_ALBEDO, LabEarth } from './lab-earth';
 import { LabSun } from './lab-sun';
-import { anglesFromDirection, directionFromAngles, type LabViewAngles } from './view-angles';
+import { PassAccumulator } from './pass-accumulator';
+import { RasterPairs } from './raster-pairs';
+import { phaseAt, PRODUCTION_PHASE, rasterJitterAt, rasterPairJitterAt, type CorrectionPhase } from './phase-sequence';
+import {
+  anglesFromDirection, directionFromAngles, withLightShift, type LabViewAngles, type LightAngleShift,
+} from './view-angles';
 import { pixelsToPngDataUrl } from '../lab-png';
-import type { GraphicsOptionKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import { captureAccumulated } from './accumulated-capture';
+import type { GraphicsKey, GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { ScanJitter } from '../../src/render/pipeline/screen-space/frame-jitter';
+import type { SceneChangeDeclarations } from '../../src/render/pipeline/scene-change-tracker';
+import type { SceneChangeWeights } from '../../src/render/pipeline/scene-change';
 import type { StoredSetting } from '../../src/settings/stored-setting';
 import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { RenderStyle } from '../../src/render/render-style';
+import type {
+  ScanTier, ScreenSpaceExperimentVariant, ScreenSpaceStageRange,
+} from '../../src/render/pipeline/screen-space/screen-space-pass';
+import type { Mat4Uniform } from '../../src/render/tsl-types';
+import { multiOutputMaterial } from '../../src/render/pipeline/screen-space/screen-space-stage';
+
+// 近傍拡散補正の、帯を詰めた描画先の i 枚目のテクスチャの読み戻しの名前。'packed-bands-i' は走査(段 0)、'reduced-m-i'
+// は帯の縮小の段 m。帯数 8 までに必要な枚数を含める。
+type PackedBandsName = `packed-bands-${0 | 1 | 2 | 3 | 4 | 5 | 6 | 7}`
+  | `reduced-${1 | 2 | 3 | 4 | 5 | 6 | 7}-${0 | 1 | 2 | 3 | 4 | 5}`;
+const PACKED_BANDS_NAME_PATTERN = /^(?:packed-bands|reduced-(\d))-(\d)$/;
+// 近傍拡散補正の拡大と合流の段 k の出力の読み戻しの名前。
+type MergedName = `merged-${0 | 1 | 2 | 3 | 4 | 5 | 6}`;
+const MERGED_NAME_PATTERN = /^merged-(\d)$/;
+
+// 読み戻せる浮動小数の中間ターゲット。PackedBandsName は、いまの段の帯の数の段 m の描画先が帯 m〜帯の数 − 1 を詰めた
+// i 枚目のテクスチャ(段の帯 b の rgb は、テクスチャを並べた通しのチャンネル 3(b − m)..3(b − m) + 2。帯の数 1 では
+// 'packed-bands-0' の rgb が帯に分けない補正)。MergedName は、いまの段の帯の数の拡大と合流の段 k の出力(rgb は C_k)。
+// 'band-sum' は走査の帯の和(rgb、α は 0)。'scan-correction' は走査の解像度の、最後の拡大の前の補正(rgb。帯の数 1 では
+// 帯 0、2 以上では 'merged-0' と同じ。走査の解像度が 1 なら 'correction' と同じで、'merged-0' は書かれず読めない)。
+// 'surface-radiance' は照り返しの源(走査の解像度の rgb)、'representative-ℓ' は代表の段 ℓ の G バッファの画素の整数座標と
+// 素の深度(rgb、a は 0)。'scan-surface-0' は走査の面の写しの (G バッファの画素の x, y,
+// 素の深度, 0)、'scan-surface-1' はその法線の rg(ba は 0)。'hdr' は合成が読む線形の絵、'projected-radius' は受け手の近傍の
+// 半径が写る描画バッファの画素数で、面の無い画素は 0。'depth' は G バッファの素の深度(r、gba は 0。面の無い画素は 0)。
+// 'upsampled-correction' は蓄積前の補正、'correction-history' は前フレームの補正履歴、'previous-depth' は前フレームの素の
+// 深度、'motion' は G バッファの動きベクトル。'reflection-level' は均し段の符号化値(code − 2 が段)、
+// 'gbuffer-normal' は法線の octahedral 0..1 符号化 RG、'gbuffer-roughness' は R の 0..255 の 8 bit 値。
+export type FloatTargetName = PackedBandsName | MergedName | 'band-sum' | 'scan-correction' | 'upsampled-correction'
+  | 'correction-history' | 'previous-depth' | 'correction' | 'diffuse' | 'depth' | 'motion'
+  | 'surface-radiance' | `representative-${1 | 2 | 3}` | `scan-surface-${0 | 1}` | 'hdr' | 'projected-radius'
+  | 'reflection-raw' | 'reflection-denoised' | 'reflection-level' | 'gbuffer-normal' | 'gbuffer-roughness' | 'far-specular';
+const REPRESENTATIVE_NAME_PATTERN = /^representative-(\d)$/;
+const SCAN_SURFACE_NAME_PATTERN = /^scan-surface-([01])$/;
+
+// 描画先の形式ごとの、画素あたりの成分の数。
+const CHANNELS_OF_FORMAT: Readonly<Partial<Record<THREE.AnyPixelFormat, number>>> = {
+  [THREE.RedFormat]: 1, [THREE.RGFormat]: 2, [THREE.RGBAFormat]: 4,
+};
+
+// accumulateProductionPasses が GPU の終わりを待つ間隔 [パス]。
+const PRODUCTION_PASSES_PER_WAIT = 256;
+// averageCorrection が GPU の終わりを待つ間隔 [位相]。位相ごとに近傍拡散補正の全段を描くので、走査だけを描く
+// accumulateProductionPasses より短く取る。
+const CORRECTION_PASSES_PER_WAIT = 16;
+
+// 単精度の値 v に最も近い半精度のビット列(DataUtils.toHalfFloat は切り捨てる)。
+function nearestHalfOf(v: number): number {
+  const truncated = THREE.DataUtils.toHalfFloat(v);
+  const away = truncated + 1;
+  const error = (bits: number): number => Math.abs(THREE.DataUtils.fromHalfFloat(bits) - v);
+  return error(away) < error(truncated) ? away : truncated;
+}
+
+// 読み戻した画像。rgba は画素ごとに 4 つの値で、行は上から。
+export interface FloatImage {
+  readonly width: number;
+  readonly height: number;
+  readonly rgba: Float32Array;
+}
 
 // 1 ケースの計測結果。所要時間は [ms] の分布で、gpuPassMs はパスのラベルごと。
 export interface LabMeasurement {
@@ -63,6 +143,7 @@ export interface LabMeasurement {
   readonly observedComputeExpectedQueryCounts: readonly number[];
   readonly observedComputeResolvedQueryCounts: readonly number[];
   readonly gpuPassMs: Readonly<Record<string, SampleDistribution>>;
+  readonly gpuPassMsById: Readonly<Record<string, SampleDistribution>>;
   readonly gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu';
   readonly gpuPassRenderCallCpuMs: Readonly<Record<string, SampleDistribution>>;
 }
@@ -70,11 +151,23 @@ export interface LabMeasurement {
 const ORIGIN = new THREE.Vector3();
 const UP = new THREE.Vector3(0, 1, 0);
 
+// 変化量の推定を切る重み。lab の既定 — 撮る道具が渡した変化量をそのまま使う。
+export const SCENE_CHANGE_OFF: SceneChangeWeights = { lightDirection: 0, sunlit: 0, cameraSlide: 0 };
+
 // カメラ位置を毎フレーム組み立てる書き込み先。
 const CAMERA_OFFSET = new THREE.Vector3();
+// 姿勢を重ねたカメラの行列を分解するときの、縮尺の書き込み先。
+const SHIFTED_CAMERA_SCALE = new THREE.Vector3();
 
 // 地球の天体照へ渡す恒星の向きの置き場。毎フレーム書き換えて使い回す。
 const EARTH_STAR_DIRECTION = new THREE.Vector3();
+// 2 つ目の天体照の値と、光源を明るさの順に並べる計算の置き場。毎フレーム書き換えて使い回す。
+const SECOND_PLANET_DIRECTION = new THREE.Vector3();
+const SECOND_PLANET_CENTER = new THREE.Vector3();
+const SECOND_PLANET_STAR_DIRECTION = new THREE.Vector3();
+const LIGHT_STRENGTH_TO_SUN = new THREE.Vector3();
+const LIGHT_STRENGTH_TO_ORIGIN = new THREE.Vector3();
+const SECOND_PLANET_BODY_FROM_WORLD = new THREE.Matrix4();
 
 // カメラの仰角の限界 [deg]。真上・真下では上方向と視線が平行になり、姿勢が決まらない。
 export const MAX_CAMERA_ELEVATION_DEG = 89;
@@ -129,6 +222,15 @@ export class LabView {
   private currentBuilder: CaseBuilder | null = null;
   // いま出ているケースの、巡回のケース表での名前。巡回に載せないケース(細部の撮影)では null。
   private currentName: CaseName | null = null;
+  // ケースへ渡す論理フレーム。同じ番号で描き直しても、ケースの状態は進まない。
+  private frame = 0;
+  // 前の論理フレームから、動きベクトルでは追えない変化の量 (0 = 変化なし、Infinity = 切り替え)。
+  private change = 0;
+  // 時間方向の再生で本番の番号由来位相を使うか。
+  private automaticJitterEnabled = false;
+  // 一時比較中だけ履歴上限を上書きする。描画品質設定そのものは変えない。
+  private comparisonHistoryCap: number | null = null;
+  private selectedDebugTarget: DebugTargetId = 'off';
   // 画面全体の見せ方。起動のたびに写実から始める。
   private style: RenderStyle = 'realistic';
   // 直前の render がパイプラインの描画に費やした CPU 時間 [ms]。
@@ -147,6 +249,7 @@ export class LabView {
     sunAzimuthDeg: 0, sunElevationDeg: 0, sunDistanceLogAu: 0,
     cameraAzimuthDeg: 0, cameraElevationDeg: 0, cameraDistanceLog: 0, cameraZoomLog: 0,
     earthAzimuthDeg: 0, earthElevationDeg: 0, earthAltitudeLog: 0, earthLatitudeDeg: 0, earthLongitudeDeg: 0,
+    secondPlanetAzimuthDeg: 0, secondPlanetElevationDeg: 0, secondPlanetRadiusDeg: 0,
   };
   private angles: LabViewAngles = this.defaultAngles;
   // 全ケースの環の帯が共有するマテリアル。
@@ -157,38 +260,90 @@ export class LabView {
   // ケースのあいだだけシーンへ出して、観察のつまみの置き方へ描くたびに置き直す。
   private readonly earth = new LabEarth();
 
-  // 起動時の描画品質設定。撮影はこれへ差分を重ねる。
+  // 起動時の描画品質設定の選び方を解いた平らな値一式。撮影はこれへ差分を重ねる。
   private readonly startupGraphics: GraphicsSettingsData;
+  // 描画が読む、いまの選び方を解いた平らな値一式。
+  private resolvedGraphics: GraphicsSettingsData;
 
-  // graphics は描く描画品質設定の器。captureOnly は撮影専用(captureTarget へだけ描く)。
+  // 受け手の近傍の半径が写る画素数を描く先と、その描画命令。深度から位置を戻す実カメラの行列は描くたびに書き込む。
+  private readonly radiusTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
+    type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+  });
+  private readonly radiusQuad = new QuadMesh();
+  private readonly radiusProjection: Mat4Uniform = uniform(new THREE.Matrix4());
+  private readonly radiusProjectionInverse: Mat4Uniform = uniform(new THREE.Matrix4());
+  // accumulateProductionPasses が走査の帯を足し込む器。初めて足すとき、または帯の描画先が変わったときに作り直す。
+  private passAccumulator: PassAccumulator | null = null;
+  private reflectionAccumulator: PassAccumulator | null = null;
+  private reflectionAccumulatorSources: readonly THREE.Texture[] | null = null;
+  // averageCorrection が最後の拡大の出力を足し込む器。初めて足すときに作る。
+  private correctionAccumulator: PassAccumulator | null = null;
+  // accumulateRasterPairs の器。合流の描画先が変わったら作り直す。
+  private rasterPairs: RasterPairs | null = null;
+  // G バッファの素の深度を写す先と、その描画命令。
+  private readonly depthTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
+    type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
+    minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+  });
+  private readonly depthQuad = new QuadMesh();
+  // 観察の向きで置いたカメラへ、カメラの座標で重ねる姿勢(setCameraShift)。null なら重ねない。
+  private cameraShift: THREE.Matrix4 | null = null;
+  // 次に描くフレームの光源の置き方へ重ねるつまみのずれ。
+  private lightShift: LightAngleShift = {};
+  // カメラの射影のずれ [描画バッファの画素](setRasterJitter)。null ならずらさない。
+  private rasterJitterPx: readonly [number, number] | null = null;
+  // 与えた HDR を合成した表示を、8 bit へ丸めずに受ける先。合成は深度も写すので深度を持たせる。
+  private readonly compositeTarget = new THREE.RenderTarget(VIEW_WIDTH, VIEW_HEIGHT, {
+    type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: true,
+  });
+
+  // graphics は描く描画品質設定の選び方の器。captureOnly は撮影専用(captureTarget へだけ描く)。
   private constructor(
     private readonly renderer: WebGPURenderer,
     private readonly pipeline: RenderPipeline,
     private readonly gpu: GpuTimings,
-    private readonly graphics: StoredSetting<GraphicsSettingsData>,
+    private readonly graphics: StoredSetting<GraphicsSelection>,
     private readonly captureOnly: boolean = false,
   ) {
+    this.pipeline.sceneChange.setWeights(SCENE_CHANGE_OFF);
+    this.pipeline.screenSpace.setAutomaticJitterEnabled(false);
     // RenderPipeline はカメラのチャンネルを一時的に絞る。シーンルートが既定の 0 だけだと
     // その時点で子要素の走査が止まるため、コンテナとして全チャンネルを受ける。
     this.scene.layers.enableAll();
     this.ringMaterials = new RingMaterials(pipeline.bodyShadow, pipeline.sunLight);
     this.sun.addTo(this.scene);
+    this.resolvedGraphics = resolveGraphics(graphics.current);
     // lab には建造モードが無い — 作業灯は撮影の描画設定差分で明示的に点ける形にし、
     // 起動時の基準値だけは消灯に倒しておく(消さないと全撮影の基線が変わる)。
-    this.startupGraphics = { ...graphics.current, constructionWorkLight: false };
-    graphics.subscribe((next) => this.rebuildForGraphics(next));
+    this.startupGraphics = { ...this.resolvedGraphics, constructionWorkLight: false };
+    graphics.subscribe((selection) => this.rebuildForGraphics(resolveGraphics(selection)));
+    // 近傍の半径は、近傍拡散補正の走査と同じ式で、描画バッファの画素で測る。
+    const radius = new THREE.MeshBasicNodeMaterial({
+      depthTest: false, depthWrite: false, transparent: true, blending: THREE.NoBlending,
+    });
+    const depth = textureLoad(pipeline.gbuffer.depthTexture, ivec2(screenCoordinate.xy)).r;
+    const position = getViewPosition(screenUV, depth, this.radiusProjectionInverse);
+    const pixels = projectedRadius(position, this.radiusProjection, vec2(VIEW_WIDTH, VIEW_HEIGHT));
+    radius.colorNode = vec4(select(depth.greaterThan(0), pixels, 0), 0, 0, 1);
+    this.radiusQuad.material = radius;
+    // 深度は色の経路を通さず MRT の出力で写す — 単精度の値をそのまま残す。
+    this.depthTarget.texture.name = 'labDepth';
+    const depthCopy = stageMaterial();
+    depthCopy.mrtNode = mrt({ labDepth: vec4(depth, 0, 0, 0) });
+    this.depthQuad.material = depthCopy;
   }
 
-  // graphics は描く描画品質設定の器。この時点の値を起動時の設定として控え、以後はその変更を受けて
-  // 描き直す。options.captureOnly を立てると、キャンバスへ提示せず captureTarget へだけ描く。
+  // graphics は描く描画品質設定の選び方の器。この時点の選び方を起動時の設定として控え、以後はその変更を
+  // 受けて描き直す。options.captureOnly を立てると、キャンバスへ提示せず captureTarget へだけ描く。
   public static async create(
-    canvas: HTMLCanvasElement, graphics: StoredSetting<GraphicsSettingsData>,
+    canvas: HTMLCanvasElement, graphics: StoredSetting<GraphicsSelection>,
     options?: { readonly captureOnly?: boolean },
   ): Promise<LabView> {
     // 深度の扱いはゲーム本体(src/render/scene.ts)と揃える。ここが違うと、深度の分解能と
     // 描画順の並べ替えが本番と別物になる。
     const renderer = new WebGPURenderer({
-      canvas, trackTimestamp: true, reversedDepthBuffer: true,
+      canvas, trackTimestamp: true, reversedDepthBuffer: true, requiredLimits: await webGpuRequiredLimits(),
     });
     renderer.setOpaqueSort(reversedOpaqueSort);
     renderer.setTransparentSort(reversedTransparentSort);
@@ -196,8 +351,13 @@ export class LabView {
     await renderer.init();
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
-    const pipeline = new RenderPipeline(renderer, graphics.current, gpu);
+    const pipeline = new RenderPipeline(renderer, resolveGraphics(graphics.current), gpu);
     return new LabView(renderer, pipeline, gpu, graphics, options?.captureOnly ?? false);
+  }
+
+  // 描画の大きさを変える。計測のためだけ。撮影は 960×540 を前提にする。
+  public setRenderSize(width: number, height: number): void {
+    this.renderer.setSize(width, height);
   }
 
   // ケースを差し替え、観察の向きをそのケースの既定へ戻して描く。
@@ -224,6 +384,7 @@ export class LabView {
   // name はケースが撮影を宣言しないときの既定の撮影名になるので、巡回に載せないケースは null。
   private buildCase(builder: CaseBuilder, name: CaseName | null): void {
     if (this.current !== null) {
+      this.current.dispose?.();
       this.scene.remove(...this.current.objects);
       this.current.dispose?.();
       for (const root of this.current.objects) disposeOwnedRenderResources(root);
@@ -236,6 +397,8 @@ export class LabView {
     this.current = built;
     this.currentBuilder = builder;
     this.currentName = name;
+    // 組み直したケースを、履歴が切れる番号から配置する。
+    this.placeFrame(0, Number.POSITIVE_INFINITY);
     // 地球はケースが置き方を宣言したときだけ出し、まずその既定の置き方へ置く。
     if (built.earth !== undefined) {
       this.scene.add(this.earth.object);
@@ -245,20 +408,47 @@ export class LabView {
     }
     // **カメラの既定を引く前に一度同期する** — 環はここで姿勢が決まるので、同期する前に
     // 物体を包む箱を測ると注視点が原点へ寄る。
-    built.sync?.(this.graphics.current, built.earth === undefined ? null : this.earth.center);
+    built.sync?.(this.resolvedGraphics, built.earth === undefined ? null : this.earth.center);
   }
 
-  // 描画品質設定 graphics でパイプラインを組み直し、その場で描き直す。
+  // 描画品質設定 graphics を以後の描画で読み、パイプラインを組み直して、その場で描き直す。
   private rebuildForGraphics(graphics: GraphicsSettingsData): void {
+    this.resolvedGraphics = graphics;
     this.pipeline.ambient.setFraction(ambientFraction(graphics));
     this.pipeline.rebuildForGraphics(graphics);
+    if (this.comparisonHistoryCap !== null) {
+      this.pipeline.screenSpace.setHistoryCap(this.comparisonHistoryCap);
+    }
     this.render();
   }
 
   // 画面へ出す中間バッファを選び、その場で描き直す。
   public showDebugTarget(target: DebugTargetId): void {
+    this.selectedDebugTarget = target;
     this.pipeline.syncDebugTarget(target);
     this.render();
+  }
+
+  public get debugTarget(): DebugTargetId { return this.selectedDebugTarget; }
+
+  // いま表示しているケース。ケースを表示していなければ null。
+  public get currentCase(): LabCase | null { return this.current; }
+
+  // 現在のケースのプールを積み直す CPU 時間と、G バッファがプールの前の行列を書く CPU 時間を、それぞれ iterations 回
+  // 測って回ごとに [ms] で返す。プールの計測を持たないケースでは投げる。
+  public measurePoolRebuild(iterations: number): ReturnType<NonNullable<LabCase['measurePoolRebuild']>> {
+    const current = this.current;
+    if (current?.measurePoolRebuild === undefined) {
+      throw new Error('render-lab: the current case has no pool measurement');
+    }
+    // ケースが積み直しを測ったあとで、同じカメラで前の行列の書き込みを測る。
+    const measured = current.measurePoolRebuild(iterations);
+    const previousMatricesMs = Array.from({ length: iterations }, () => {
+      const started = performance.now();
+      this.pipeline.gbuffer.writePoolMatrices(current.camera);
+      return performance.now() - started;
+    });
+    return { ...measured, previousMatricesMs };
   }
 
   // 雲の細部の撮影と同じケース(地球だけを置き、真下見下ろしの太陽で照らす)を組んで表示する。
@@ -314,6 +504,54 @@ export class LabView {
     return this.capture();
   }
 
+  // 論理フレーム frame と変化量 change を覚え、ケースをその番号の状態へ置いて描き直す。
+  public setFrame(frame: number, change = 0): void {
+    if (!Number.isInteger(frame) || frame < 0) throw new Error(`render-lab: invalid frame ${frame}`);
+    this.placeFrame(frame, change);
+    this.render();
+  }
+
+  // 論理フレーム frame と変化量 change を覚え、ケースをその番号の状態へ置く。
+  private placeFrame(frame: number, change: number): void {
+    this.frame = frame;
+    this.change = change;
+    this.current?.setFrame?.(frame);
+  }
+
+  // 現在のケース固有の値 name を value へ差し替えて描き直す。
+  public setCaseValue(name: string, value: string | number | boolean): void {
+    if (this.current?.setValue === undefined) throw new Error('render-lab: the current case has no configurable values');
+    this.current.setValue(name, value);
+    this.render();
+  }
+
+  // 次に描くフレームから、観察の向きで置いたカメラへ、カメラの座標の剛体の変換 shift を重ねる。null で外す。観察の
+  // 向きでは表せない、カメラの軸に沿う並進と、カメラの位置を中心とする回転を与える口。
+  public setCameraShift(shift: THREE.Matrix4 | null): void {
+    this.cameraShift = shift;
+  }
+
+  // 次に描くフレームから、光源の置き方のつまみへ shift を足して置く。
+  // 番号を進める前に描き直すと、新しい置き方が前の番号の絵として履歴へ入る。
+  public setLightShift(shift: LightAngleShift): void {
+    this.lightShift = shift;
+  }
+
+  // 次に描くフレームから、カメラの射影を描画バッファの画素で offsetPx(x は右、y は下)だけずらす — ラスタライズの
+  // ジッター。null で外す。
+  public setRasterJitter(offsetPx: readonly [number, number] | null): void {
+    this.rasterJitterPx = offsetPx;
+  }
+
+  // 直前に描いたフレームのカメラ。ケースを表示していなければ投げる。
+  public get camera(): THREE.PerspectiveCamera {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    return this.current.camera;
+  }
+
+  // 直前に描いたフレームの GPU 処理が終わるまで待つ。
+  public waitForGpu(): Promise<void> { return this.gpu.waitForResolve(); }
+
   // ケースのカメラと注視点から、観察の向きの既定値を引き直す。
   private resetView(): void {
     const built = this.current;
@@ -329,11 +567,13 @@ export class LabView {
     this.defaultCameraFovDeg = camera.fov;
     this.pivot.copy(camera.position).addScaledVector(forward, this.defaultCameraDistance);
     // 恒星とカメラの向きを角度へ直す。地球を置かないケースでは、地球のつまみを前のケースの値のまま保つ。
+    // 2 つ目の天体照はケースの既定では置かない — 前のケースの撮影で置いたものを持ち越さない。
     const sun = anglesFromDirection(built.sunDirection ?? SUN_DIR);
     const eye = anglesFromDirection(forward.clone().negate());
     this.defaultAngles = {
       ...this.angles,
       ...built.earth,
+      secondPlanetRadiusDeg: 0,
       sunAzimuthDeg: sun.azimuthDeg,
       sunElevationDeg: sun.elevationDeg,
       sunDistanceLogAu: 0,
@@ -349,30 +589,44 @@ export class LabView {
   public render(displayTime = 0, observedFrame = false): void {
     if (this.current === null) return;
     this.displayTime = displayTime;
-    const graphics = this.graphics.current;
+    const graphics = this.resolvedGraphics;
     // カメラを観察の向きへ置く。画角と遠クリップ距離の書き換えは、投影行列を組み直すまで無言で効かない。
     // 遠クリップ距離は、周回の中心までの距離を注視距離としてゲーム本体と同じ式で引く。
     const camera = this.current.camera;
     directionFromAngles(this.angles.cameraAzimuthDeg, this.angles.cameraElevationDeg, CAMERA_OFFSET);
     camera.position.copy(this.pivot).addScaledVector(CAMERA_OFFSET, this.cameraDistance);
     camera.lookAt(this.pivot);
+    if (this.cameraShift !== null) {
+      camera.updateMatrix();
+      // 縮尺は捨てる — カメラの縮尺へ書き戻すと、描くたびに丸めの誤差が溜まる。
+      camera.matrix.multiply(this.cameraShift).decompose(camera.position, camera.quaternion, SHIFTED_CAMERA_SCALE);
+    }
     camera.updateMatrixWorld(true);
     camera.fov = this.cameraFovDeg;
     camera.far = farClip(this.cameraDistance);
+    if (this.rasterJitterPx === null) camera.clearViewOffset();
+    else camera.setViewOffset(VIEW_WIDTH, VIEW_HEIGHT, ...this.rasterJitterPx, VIEW_WIDTH, VIEW_HEIGHT);
     camera.updateProjectionMatrix();
     // 恒星・地球・ケースの部品は、このフレームのカメラを置いてから合わせる — 部品はそのカメラを読んでよい。
     // ケースの部品は地球の中心も読むので、地球を先に置く。
-    this.sun.sync(this.angles, camera, graphics, this.style);
+    const lightAngles = withLightShift(this.angles, this.lightShift);
+    this.sun.sync(lightAngles, camera, graphics, this.style);
     const earth = this.current.earth === undefined ? null : this.earth;
-    earth?.place(this.angles);
+    earth?.place(lightAngles);
     earth?.sync(camera, graphics, this.style);
     this.current.sync?.(graphics, earth?.center ?? null);
     // 恒星の光と露出。順応の基準点は描画原点 — **恒星の距離のつまみはここから恒星までの距離**なので、
     // 露出はその1つの数だけで決まり、ケースが物体をどこへ置いたかには引きずられない。
     this.pipeline.sunLight.set(this.sun.position, R_SUN, SUN_LIGHT_COLOR, this.sun.intensity);
     this.pipeline.exposure.setReference(ORIGIN, this.sun.position, this.sun.intensity);
-    // 天体照の光源は地球だけ、影・大気の源は地球のぶんとケースのぶんを合わせて渡す。
-    this.pipeline.planetLight.set(earth === null ? [] : [earthLightValue(earth, this.sun, graphics.airglow)]);
+    // 天体照の光源は地球と 2 つ目の天体照を描画原点へ届く明るさ順に渡し、影・大気の源は地球のぶんとケースのぶんを合わせる。
+    const secondPlanet = secondPlanetLightValue(this.angles, this.sun);
+    const lights = [
+      ...(earth === null ? [] : [earthLightValue(earth, this.sun, graphics.airglow)]),
+      ...(secondPlanet === null ? [] : [secondPlanet]),
+    ];
+    this.pipeline.planetLight.set(byStrengthAtOrigin(lights, this.sun));
+    this.pipeline.sphereLights.set(this.current.sphereLights ?? []);
     // 「夜側の観察」— 届ける球はゲーム本体と同じ、地球の大気の裾までの球。地球を置かない
     // ケースでは消灯する。
     this.pipeline.ambient.setNightObservation(
@@ -403,7 +657,7 @@ export class LabView {
           metersPerPixel: metersPerPixelAtDepth(camera.fov, distance, VIEW_HEIGHT),
         };
       }),
-      graphics.atmosphere,
+      graphics,
     );
     this.pipeline.atmosphere.setDraws(draws);
     // ゲーム本体と同じく、大気パスが描くのと同じ天体の列を直射光の消衰と天空光へ渡す。
@@ -411,9 +665,14 @@ export class LabView {
     this.pipeline.sunExtinction.set(bodies);
     this.pipeline.skyLight.set(bodies);
     const startedAt = performance.now();
+    this.pipeline.sceneChange.set({
+      cameraKey: 'render-lab',
+      referencePosition: this.pivot,
+      referenceOrientation: new THREE.Quaternion(),
+    });
     try {
       if (this.captureOnly) this.renderToCaptureTarget(camera);
-      else this.pipeline.render(this.scene, camera, this.style);
+      else this.pipeline.render(this.scene, camera, this.style, this.frame, this.change);
     } finally {
       this.lastRenderCpuMs = performance.now() - startedAt;
       if (observedFrame) this.gpu.endObservedFrame();
@@ -428,7 +687,7 @@ export class LabView {
     const previousOutput = this.renderer.getOutputRenderTarget();
     try {
       this.renderer.setOutputRenderTarget(this.captureTarget);
-      this.pipeline.render(this.scene, camera, this.style);
+      this.pipeline.render(this.scene, camera, this.style, this.frame, this.change);
     } finally {
       this.renderer.setOutputRenderTarget(previousOutput);
     }
@@ -440,7 +699,7 @@ export class LabView {
   ): Promise<LabMeasurement> {
     this.show(name);
     this.setViewAngles(angles);
-    return this.measureCurrent(name, warmupFrames, sampleFrames);
+    return this.measureCurrent(warmupFrames, sampleFrames);
   }
 
   // ケースの撮影を適用してから計測する。graphics は撮影の品質設定を適用した後の上書き。
@@ -450,18 +709,21 @@ export class LabView {
   ): Promise<LabMeasurement> {
     this.show(name);
     this.applyShot(shotName);
-    this.setGraphics({ ...this.graphics.current, ...graphics });
+    this.setGraphics({ ...this.resolvedGraphics, ...graphics });
     return withLabPixelRatio(
       this.renderer,
-      this.renderer.getPixelRatio() * this.graphics.current.resolutionScale,
-      () => this.measureCurrent(name, warmupFrames, sampleFrames),
+      this.renderer.getPixelRatio() * this.resolvedGraphics.resolutionScale,
+      () => this.measureCurrent(warmupFrames, sampleFrames),
     );
   }
 
-  // 現在のケースと shot の設定を保持したまま、準備待ち・ウォームアップ・標本収集を共通に行う。
-  private async measureCurrent(
-    name: CaseName, warmupFrames: number, sampleFrames: number,
+  // 現在のケース・観察角・描画設定を保ったまま、準備待ち・ウォームアップ・標本収集を行う。advanceFrame なら番号 0 で
+  // 履歴を切ってから論理フレームを 1 つずつ進めて描き、番号を進めるときの履歴の写しも標本へ含める。
+  public async measureCurrent(
+    warmupFrames = 6, sampleFrames = 30, advanceFrame = false,
   ): Promise<LabMeasurement> {
+    const name = this.currentName;
+    if (name === null) throw new Error('render-lab: no case selected for measurement');
     await this.waitUntilReady();
     if (!this.ready) throw new Error(`render-lab: case "${name}" was not ready for measurement`);
     await this.gpu.waitForResolve();
@@ -471,6 +733,7 @@ export class LabView {
     // 表示時刻は 60fps で進める — 雲場は表示時刻が変わったフレームにだけ焼くので、止めると生成を測れない。
     for (let frame = 0; frame < warmupFrames; frame++) {
       const displayTime = (frame + 1) / 60;
+      if (advanceFrame) this.placeFrame(frame, frame === 0 ? Number.POSITIVE_INFINITY : 0);
       this.render(displayTime);
       await this.gpu.waitForResolve();
     }
@@ -524,6 +787,8 @@ export class LabView {
       for (let frame = 0; frame < sampleFrames; frame++) {
         measuredFrameIndex = frame;
         const displayTime = (warmupFrames + frame + 1) / 60;
+        const logicalFrame = warmupFrames + frame;
+        if (advanceFrame) this.placeFrame(logicalFrame, logicalFrame === 0 ? Number.POSITIVE_INFINITY : 0);
         this.gpu.beginObservedFrame();
         this.render(displayTime, true);
         measuredFrameIndex = null;
@@ -576,11 +841,620 @@ export class LabView {
       observedComputeExpectedQueryCounts,
       observedComputeResolvedQueryCounts,
       gpuPassMs: Object.fromEntries(GPU_PASS_LABELS.map((label, index) => [label, distributionOf(gpuSamples[index]!)])),
+      gpuPassMsById: Object.fromEntries(Object.entries(GPU_PASS).map(([id, index]) => [
+        id, distributionOf(gpuSamples[index]!),
+      ])),
       gpuPassRenderCallCpuScope: 'synchronous-render-call-cpu',
       gpuPassRenderCallCpuMs: Object.fromEntries(
         GPU_PASS_LABELS.map((label, index) => [label, distributionOf(renderCallCpuSamples[index]!)]),
       ),
     };
+  }
+
+  // いまのケース・観察の向き・描画設定のまま、近傍拡散補正の走査の段 tiers を rounds 巡(奇数巡目は逆順)交互に
+  // 測る。返り値は [段][巡] の、GPU の行の名前から p50 [ms] への表で、GPU の計測に対応していなければ null。段は最後に
+  // 測ったものが残る。
+  public async measureTierRounds(
+    tiers: readonly ScanTier[], rounds: number,
+  ): Promise<readonly (readonly Readonly<Record<string, number>>[])[] | null> {
+    const results = tiers.map((): Readonly<Record<string, number>>[] => []);
+    // 巡ごとに順を入れ替えて、熱によるずれを段の差と取り違えないようにする。
+    for (let round = 0; round < rounds; round++) {
+      const order = round % 2 === 0 ? [...tiers.keys()] : [...tiers.keys()].reverse();
+      for (const index of order) {
+        this.pipeline.screenSpace.setTier(tiers[index]!);
+        const result = await this.measureCurrent();
+        if (!result.gpuSupported) return null;
+        results[index]!.push(Object.fromEntries(GPU_PASS_LABELS.map((label) => [label, result.gpuPassMs[label]!.p50])));
+      }
+    }
+    return results;
+  }
+
+  // measureTierRounds と同じく測り、段ごとの、GPU の行の名前から p50 [ms] の巡の中央値への表を返す。GPU の計測に
+  // 対応していなければ値は null。
+  public async measureTiers(
+    tiers: readonly ScanTier[], rounds: number,
+  ): Promise<readonly Readonly<Record<string, number | null>>[]> {
+    const rows = await this.measureTierRounds(tiers, rounds);
+    return tiers.map((_, index) => Object.fromEntries(GPU_PASS_LABELS.map((label) => [
+      label, rows === null ? null : distributionOf(rows[index]!.map((row) => row[label]!)).p50,
+    ])));
+  }
+
+  // いまのケースの、いまの方式と段の近傍拡散補正の描画命令の、実行順の GPU の行の名前とフラグメントシェーダの WGSL。
+  public async screenSpaceShaders(): Promise<readonly { readonly label: string; readonly wgsl: string }[]> {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    const stages = await this.pipeline.screenSpace.stageShaders(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT);
+    return stages.map(({ gpuPass, wgsl }) => ({ label: GPU_PASS_LABELS[gpuPass]!, wgsl }));
+  }
+
+  // いまの段の帯の描画先の形式の、段ごとの並び。
+  public get screenSpaceBandLayout(): readonly string[] { return this.pipeline.screenSpace.bandLayout; }
+
+  // 近傍拡散補正の方式をオフにして 1 フレーム描き、その全描画先を空にする。方式は描画設定のものへ戻し、段は保つ。
+  public clearScreenSpace(): void {
+    const { screenSpace } = this.pipeline;
+    screenSpace.setMode(SCREEN_SPACE_DIFFUSE.off);
+    this.render();
+    screenSpace.setMode(screenSpaceDiffuseOf(this.resolvedGraphics));
+  }
+
+  // 次に描くフレームから、近傍拡散補正を段 tier で走査する。描画品質設定が変わると精細さの段へ戻る。
+  public setScanTier(tier: ScanTier): void {
+    this.pipeline.screenSpace.setTier(tier);
+  }
+
+  // render-lab 専用の比較方式を切り替える。本番 graphics settings には露出しない。
+  public setScreenSpaceExperiment(
+    variant: ScreenSpaceExperimentVariant | null, tier: ScanTier, sparseTapCount = 8,
+  ): void {
+    this.pipeline.screenSpace.setTier(tier);
+    this.pipeline.screenSpace.setExperiment(variant, sparseTapCount);
+    if (variant !== null) this.pipeline.screenSpace.setMode(SCREEN_SPACE_DIFFUSE.indirect);
+    else this.pipeline.screenSpace.setMode(screenSpaceDiffuseOf(this.resolvedGraphics));
+  }
+
+  // 完成した補正を独立パスごとに描き、その出力を平均する一候補の GPU 費用を測る。
+  public async measureScreenSpacePaths(
+    seeds: readonly (readonly [number, number])[], sampleCount = 8,
+  ): Promise<{
+    readonly gpuSupported: boolean;
+    readonly gpuPassMsById: Readonly<Record<string, SampleDistribution>>;
+  }> {
+    if (this.current === null) throw new Error('render-lab: no case selected for screen-space timing');
+    if (seeds.length < 1 || !Number.isInteger(sampleCount) || sampleCount < 1
+      || seeds.some(([x, y]) => !Number.isFinite(x) || !Number.isFinite(y))) {
+      throw new RangeError('render-lab: path measurement needs positive integer counts');
+    }
+    const screenSpace = this.pipeline.screenSpace;
+    const target = screenSpace.experimentOutputTarget;
+    const accumulator = new PassAccumulator(this.renderer, target.textures, target.width, target.height);
+    const samples = Object.fromEntries(Object.keys(GPU_PASS).map((id) => [id, [] as number[]]));
+    try {
+      for (let sample = 0; sample < sampleCount; sample++) {
+        await this.gpu.waitForResolve();
+        this.gpu.reset();
+        accumulator.clear(() => this.gpu.beginPass(GPU_PASS.nearbyDiffuseAverage));
+        for (const [path, seed] of seeds.entries()) {
+          this.setScanSeed(seed[0], seed[1]);
+          screenSpace.renderExperimentPath(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT, path === 0);
+          accumulator.add((path % 2) as 0 | 1, () => this.gpu.beginPass(GPU_PASS.nearbyDiffuseAverage));
+        }
+        accumulator.writeAverage(target, seeds.length, () => this.gpu.beginPass(GPU_PASS.nearbyDiffuseAverage));
+        await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
+        this.gpu.resolve();
+        await this.gpu.waitForResolve();
+        const timings = this.gpu.snapshot();
+        for (const [id, index] of Object.entries(GPU_PASS)) samples[id]!.push(timings.elapsedMs[index] ?? 0);
+      }
+      return {
+        gpuSupported: this.gpu.snapshot().supported,
+        gpuPassMsById: Object.fromEntries(Object.entries(samples).map(([id, values]) => [id, distributionOf(values)])),
+      };
+    } finally {
+      accumulator.dispose();
+    }
+  }
+
+  // 次に描くフレームから、近傍拡散補正の走査が読むブルーノイズを (x, y) [タイルの幅] だけずらし、走査の全体の回転を
+  // x [スライスの間隔] にする。
+  public setScanSeed(x: number, y: number): void {
+    this.pipeline.screenSpace.setSeed(x, y);
+    this.pipeline.screenSpace.setScanRotation(x);
+  }
+
+  // 次に描くフレームから、近傍拡散補正の走査の代表を jitter で選ぶ。null はブロックの中心。
+  public setScanJitter(jitter: ScanJitter | null): void {
+    this.pipeline.screenSpace.setScanJitter(jitter);
+  }
+
+  // 明示位相の比較では自動位相を止め、再生では本番位相を自動適用する。
+  public setAutomaticJitterEnabled(enabled: boolean): void {
+    this.automaticJitterEnabled = enabled;
+    this.pipeline.screenSpace.setAutomaticJitterEnabled(enabled);
+  }
+
+  // render-lab の時間方向比較用。描画品質設定の履歴の上限を frames へ変える。
+  public setHistoryCapForComparison(frames: number | null): void {
+    if (frames !== null && (!Number.isInteger(frames) || frames < 1 || frames > 32)) {
+      throw new RangeError(`render-lab: invalid history cap ${frames}`);
+    }
+    this.comparisonHistoryCap = frames;
+    this.pipeline.screenSpace.setHistoryCap(frames ?? this.resolvedGraphics.screenSpaceHistoryCap);
+  }
+
+  public get logicalFrame(): number { return this.frame; }
+  public get sceneChange(): SceneChangeDeclarations { return this.pipeline.sceneChange; }
+  public get historyCapFrames(): number { return this.pipeline.screenSpace.historyCapFrames; }
+  public get automaticJitterIsEnabled(): boolean { return this.automaticJitterEnabled; }
+
+  // いまの段の走査の画素の幅 [描画バッファの画素]。
+  public get scanCellSize(): number { return this.pipeline.screenSpace.scanCellSize; }
+
+  // 本番ジッター列の frame を既存の G バッファへ適用する。null は静止画の本番位相へ戻す。
+  public renderProductionCorrectionPhase(frame: number | null, fixScanRepresentative = false): void {
+    if (frame !== null && (!Number.isInteger(frame) || frame < 0)) {
+      throw new RangeError(`render-lab: invalid production correction phase ${frame}`);
+    }
+    if (this.rasterJitterPx !== null) {
+      throw new Error('render-lab: production correction phases require an unjittered G-buffer');
+    }
+    const phase = frame === null
+      ? PRODUCTION_PHASE
+      : phaseAt({ sources: ['seed', 'scanRepresentative'], count: 32 }, frame, this.scanCellSize);
+    const scanRepresentative = phaseAt({ sources: ['seed', 'scanRepresentative'], count: 32 }, 0, this.scanCellSize).scanJitter;
+    this.renderCorrection(fixScanRepresentative
+      ? { ...phase, scanJitter: scanRepresentative }
+      : phase);
+  }
+
+  // 本番位相 frame の補正を、ラスタずれの列の rasterFrame 番目のずれでフレーム全体を描いて求める(走査の代表も位相で動く)。
+  // rasterFrame が null ならずれの無いフレームを描き直す — ずれたフレームから renderProductionCorrectionPhase へ戻る前に通す。
+  public renderProductionCorrectionPhaseWithRasterJitter(frame: number, rasterFrame: number | null): void {
+    if (!Number.isInteger(frame) || frame < 0 || (rasterFrame !== null && (!Number.isInteger(rasterFrame) || rasterFrame < 0))) {
+      throw new RangeError(`render-lab: invalid jittered production phase ${frame}/${rasterFrame}`);
+    }
+    const phase = phaseAt({ sources: ['seed', 'scanRepresentative'], count: 32 }, frame, this.scanCellSize);
+    this.renderCorrection({ ...phase, rasterJitter: rasterFrame === null ? null : rasterJitterAt(rasterFrame) });
+  }
+
+  // 位相 phase で近傍拡散補正を描き直す。射影のずれを使う(いま使っている)ならフレーム全体を、そうでなければ直前に描いた
+  // フレームの G バッファなどを入力のまま近傍拡散補正だけを描く。
+  private renderCorrection(phase: CorrectionPhase): void {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    const { screenSpace } = this.pipeline;
+    screenSpace.setSeed(...phase.seed);
+    screenSpace.setScanRotation(phase.scanRotation);
+    screenSpace.setScanJitter(phase.scanJitter);
+    // 射影のずれを外すときも、ずれた G バッファを捨てるためにフレーム全体を描き直す。
+    if (phase.rasterJitter !== null || this.rasterJitterPx !== null) {
+      this.setRasterJitter(phase.rasterJitter);
+      // フレーム全体の描画では、自動ジッターが置いた位相を上書きするので止める。
+      const automaticJitterEnabled = this.automaticJitterEnabled;
+      this.setAutomaticJitterEnabled(false);
+      try {
+        this.render();
+      } finally {
+        this.setAutomaticJitterEnabled(automaticJitterEnabled);
+      }
+    } else {
+      screenSpace.render(this.current.camera, VIEW_WIDTH, VIEW_HEIGHT);
+    }
+  }
+
+  // 次に描くフレームから、近傍拡散補正の段の範囲 range だけを描く('chain' は帯を詰めた描画先に置いた値から鎖を描く)。
+  public setScanStageRange(range: ScreenSpaceStageRange): void {
+    this.pipeline.screenSpace.setStageRange(range);
+  }
+
+  // render-lab の参照撮影で、最後の拡大の A だけを 1 に固定する。通常経路へ戻すときは false を渡す。
+  public setUpsampleAlphaOne(enabled: boolean): void {
+    this.pipeline.screenSpace.setUpsampleAlphaOne(enabled);
+  }
+
+  // 直前に描いたフレームの G バッファなどを入力のまま、近傍拡散補正の照り返しの源と走査だけを、本番ジッターの位相列で
+  // 描き直し、走査が帯を詰めたテクスチャを偶数番目と奇数番目のパスに分けて和へ足す。和は takePassSums で受け取る。
+  // rasterJitter はラスタライズのずれも動かし、パスごとにフレーム全体を描く(収束先からラスタライズのアーティファクトを除く基準)。
+  // 終わると段の範囲と位相は静止画の本番値へ戻り、ずれの無いフレームを描き直す。
+  public async accumulateProductionPasses(first: number, count: number, fixScanRepresentative = false, rasterJitter = false): Promise<void> {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    if (fixScanRepresentative && rasterJitter) throw new Error('render-lab: fixed scan representative cannot be combined with raster jitter');
+    const { screenSpace, diffuseCorrection } = this.pipeline;
+    const layout = screenSpace.bandLayout;
+    if (layout[0] !== 'packed-half') throw new Error('render-lab: pass accumulation requires packed-half bands');
+    const target = diffuseCorrection.bandTarget(layout, 0);
+    if (this.passAccumulator?.sources !== target.textures) {
+      this.passAccumulator?.dispose();
+      this.passAccumulator = new PassAccumulator(this.renderer, target.textures, target.width, target.height);
+    }
+    screenSpace.setStageRange('scan');
+    const sources = rasterJitter ? ['seed', 'scanRepresentative', 'raster'] as const : ['seed', 'scanRepresentative'] as const;
+    const scanRepresentative = phaseAt({ sources, count: first + count }, 0, this.scanCellSize).scanJitter;
+    try {
+      for (let k = first; k < first + count; k++) {
+        const phase = phaseAt({ sources, count: first + count }, k, this.scanCellSize);
+        this.renderCorrection(fixScanRepresentative
+          ? { ...phase, scanJitter: scanRepresentative }
+          : phase);
+        this.passAccumulator.add(k % 2 === 0 ? 0 : 1);
+        // GPU の待ち行列が際限なく伸びないよう、ときどき終わりを待つ。時刻印の器も空ける。
+        if ((k - first) % PRODUCTION_PASSES_PER_WAIT === PRODUCTION_PASSES_PER_WAIT - 1) {
+          await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
+          this.gpu.resolve();
+        }
+      }
+    } finally {
+      screenSpace.setStageRange('all');
+      screenSpace.setSeed(...PRODUCTION_PHASE.seed);
+      screenSpace.setScanRotation(PRODUCTION_PHASE.scanRotation);
+      screenSpace.setScanJitter(PRODUCTION_PHASE.scanJitter);
+      if (rasterJitter) this.renderCorrection(PRODUCTION_PHASE);
+    }
+  }
+
+  // accumulateProductionPasses で足した値の和 sums と成分ごとの二乗の和 squares(どちらも [偶数番目, 奇数番目] の、帯を詰めた
+  // テクスチャごと)を読み戻し、和を 0 に戻す。
+  public async takePassSums(includeSquares = true): Promise<{
+    readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
+  }> {
+    const accumulator = this.passAccumulator;
+    if (accumulator === null) throw new Error('render-lab: no passes accumulated');
+    const sums = await this.readBackHalves(accumulator.sumTextures);
+    const squares = includeSquares ? await this.readBackHalves(accumulator.squareTextures) : [];
+    accumulator.clear();
+    return { sums, squares };
+  }
+
+  // 本番の位相列(長さ total)の k 番目(first ≤ k < first + count)のシードと走査の代表で、ラスタのずれだけを独立に変えた 2 枚 A・B の
+  // フレーム全体を描き、合流 'merged-0' の A・B と差 A − B を偶奇 k % 2 の和へ足す。和は takeRasterPairSums で受け取る。
+  // 終わると位相は静止画の本番値へ戻り、ずれの無いフレームを描き直す。
+  public async accumulateRasterPairs(first: number, count: number, total: number): Promise<void> {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    const { screenSpace, diffuseCorrection } = this.pipeline;
+    const merged = diffuseCorrection.mergedTarget(screenSpace.bandLayout, 0);
+    if (this.rasterPairs?.merged !== merged) {
+      this.rasterPairs?.dispose();
+      this.rasterPairs = new RasterPairs(this.renderer, merged);
+    }
+    const pairs = this.rasterPairs;
+    const sequence = { sources: ['seed', 'scanRepresentative'] as const, count: total };
+    screenSpace.setStageRange('all');
+    try {
+      for (let k = first; k < first + count; k++) {
+        const phase = phaseAt(sequence, k, this.scanCellSize);
+        this.renderCorrection({ ...phase, rasterJitter: rasterJitterAt(k) });
+        pairs.hold();
+        this.renderCorrection({ ...phase, rasterJitter: rasterPairJitterAt(k) });
+        pairs.add(k % 2 === 0 ? 0 : 1);
+        if ((k - first) % PRODUCTION_PASSES_PER_WAIT === PRODUCTION_PASSES_PER_WAIT - 1) {
+          await this.renderer.readRenderTargetPixelsAsync(merged, 0, 0, 1, 1);
+          this.gpu.resolve();
+        }
+      }
+    } finally {
+      this.renderCorrection(PRODUCTION_PHASE);
+    }
+  }
+
+  // accumulateRasterPairs で足した和 sums と成分ごとの二乗の和 squares を [偶数番目, 奇数番目][A, B, A − B] で読み戻し、和を 0 に戻す。
+  public async takeRasterPairSums(): Promise<{
+    readonly sums: readonly (readonly FloatImage[])[]; readonly squares: readonly (readonly FloatImage[])[];
+  }> {
+    const pairs = this.rasterPairs;
+    if (pairs === null) throw new Error('render-lab: no raster pairs accumulated');
+    const sums = await this.readBackHalves(pairs.accumulator.sumTextures);
+    const squares = await this.readBackHalves(pairs.accumulator.squareTextures);
+    pairs.accumulator.clear();
+    return { sums, squares };
+  }
+
+  // 偶奇ごと・テクスチャごとに読み戻す。
+  private async readBackHalves(halves: readonly (readonly THREE.Texture[])[]): Promise<FloatImage[][]> {
+    const images: FloatImage[][] = [];
+    for (const textures of halves) {
+      const half: FloatImage[] = [];
+      for (const texture of textures) half.push(await this.readBack(texture));
+      images.push(half);
+    }
+    return images;
+  }
+
+  // 直前に描いたフレームを位相の列 phases で描き直し(renderCorrection)、最後の拡大の出力(rgba)の平均を返す。終わると
+  // 位相は本番の静止画のものへ戻り、'correction' はその出力になる。
+  public async averageCorrection(phases: readonly CorrectionPhase[]): Promise<FloatImage> {
+    if (phases.length === 0) throw new RangeError('render-lab: averaging needs at least one phase');
+    const target = this.pipeline.diffuseCorrection.upsampledTarget;
+    this.correctionAccumulator ??= new PassAccumulator(this.renderer, [target.texture], target.width, target.height);
+    for (const [k, phase] of phases.entries()) {
+      this.renderCorrection(phase);
+      this.correctionAccumulator.add(0);
+      // GPU の待ち行列が際限なく伸びないよう、ときどき終わりを待つ。時刻印の器も空ける。
+      if (k % CORRECTION_PASSES_PER_WAIT === CORRECTION_PASSES_PER_WAIT - 1) {
+        await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, 1, 1);
+        this.gpu.resolve();
+      }
+    }
+    const sum = await this.readBack(this.correctionAccumulator.sumTextures[0]![0]!);
+    this.correctionAccumulator.clear();
+    this.renderCorrection(PRODUCTION_PHASE);
+    return { ...sum, rgba: sum.rgba.map((v) => v / phases.length) };
+  }
+
+  // いまの段の帯の数の、走査の帯を詰めた描画先の index 枚目('packed-bands-<index>')へ、走査の解像度の画素ごとの RGBA の
+  // 値 rgba(行は上から)を半精度へ丸めて書く。いまの段で 1 度描いて描画先の寸法を合わせてから呼ぶ。段の範囲
+  // 'chain' のフレーム(setScanStageRange)が鎖の入力として読む。
+  public writePackedBands(index: number, rgba: Float32Array): void {
+    const { screenSpace } = this.pipeline;
+    const layout = screenSpace.bandLayout;
+    if (layout[0] !== 'packed-half') throw new Error('render-lab: packed writes require packed-half bands');
+    const target = this.pipeline.diffuseCorrection.bandTarget(layout, 0);
+    const destination = target.textures[index];
+    if (destination === undefined) throw new Error(`render-lab: the scan has no packed band texture ${index}`);
+    const { width, height } = target;
+    if (rgba.length !== width * height * 4) throw new Error(`render-lab: packed bands are ${width}×${height} RGBA`);
+    // 走査の出力と同じ形式(rgba16float)の板を作り、描画先へ写す。
+    const source = new THREE.DataTexture(
+      Uint16Array.from(rgba, nearestHalfOf), width, height, THREE.RGBAFormat, THREE.HalfFloatType);
+    source.needsUpdate = true;
+    this.renderer.copyTextureToTexture(source, destination);
+    source.dispose();
+  }
+
+  // 直前に描いたフレームの露出係数。
+  public get exposureFactor(): number { return this.pipeline.exposure.factorValue; }
+
+  // 直前に描いたフレームの中間ターゲット name を読み戻す。
+  public async readFloat(name: FloatTargetName): Promise<FloatImage> {
+    if (name === 'band-sum') return this.readBandSum();
+    if (name === 'projected-radius') return this.readBack(this.drawProjectedRadius());
+    if (name === 'depth') return this.readBack(this.drawDepth());
+    if (name === 'reflection-raw' || name === 'reflection-denoised') {
+      const reflection = this.pipeline.reflection;
+      return this.readBack((name === 'reflection-raw' ? reflection.rawTarget : reflection.denoisedTarget).textures[0]!);
+    }
+    if (name === 'reflection-level') return this.readBack(this.pipeline.reflection.denoisedTarget.textures[2]!);
+    if (name === 'gbuffer-normal') return this.readBack(this.pipeline.gbuffer.normalTexture);
+    if (name === 'gbuffer-roughness') return this.readBack(this.pipeline.gbuffer.roughnessTexture);
+    if (name === 'far-specular') return this.readBack(this.pipeline.lighting.farSpecularTexture);
+    return this.readBack(this.floatTextureOf(name));
+  }
+
+  // 映り込みの乱数のずらし offsets を 1 つずつ描き、raw と均したの 0 枚目を、通しの番号 first + i の偶奇に分けて GPU 上で
+  // 足す。first が 0 のときは和を空にしてから足す。CDP の 1 回の評価の上限に掛からないように、数百パスずつ呼ぶこと。
+  public async addReflectionPasses(offsets: readonly (readonly [number, number])[], first: number): Promise<void> {
+    const reflection = this.pipeline.reflection;
+    const sources = [reflection.rawTarget.textures[0]!, reflection.denoisedTarget.textures[0]!];
+    if (this.reflectionAccumulatorSources?.some((source, index) => source !== sources[index]) ?? true) {
+      this.reflectionAccumulator?.dispose();
+      this.reflectionAccumulator = new PassAccumulator(this.renderer, sources, reflection.rawTarget.width, reflection.rawTarget.height);
+      this.reflectionAccumulatorSources = sources;
+    }
+    const accumulator = this.reflectionAccumulator!;
+    if (first === 0) accumulator.clear();
+    for (const [index, [x, y]] of offsets.entries()) {
+      this.pipeline.setReflectionNoiseOffset(x, y);
+      this.render();
+      accumulator.add((first + index) % 2 === 0 ? 0 : 1);
+      if (index % PRODUCTION_PASSES_PER_WAIT === PRODUCTION_PASSES_PER_WAIT - 1) {
+        await this.renderer.readRenderTargetPixelsAsync(reflection.rawTarget, 0, 0, 1, 1);
+        this.gpu.resolve();
+      }
+    }
+    await this.renderer.readRenderTargetPixelsAsync(reflection.rawTarget, 0, 0, 1, 1);
+  }
+
+  // addReflectionPasses で足した和を [偶数番目, 奇数番目] × [raw, 均した] で読み、和を空にする。
+  public async takeReflectionSums(): Promise<readonly (readonly FloatImage[])[]> {
+    const accumulator = this.reflectionAccumulator;
+    if (accumulator === null) throw new Error('render-lab: no reflection passes accumulated');
+    const sums = await Promise.all(accumulator.sumTextures.map((parity) => Promise.all(parity.map((texture) => this.readBack(texture)))));
+    accumulator.clear();
+    return sums;
+  }
+
+  // 乱数タイルのずれを指定して映り込みを 1 フレーム描く。
+  public renderReflectionPass(x: number, y: number): void {
+    this.pipeline.setReflectionNoiseOffset(x, y);
+    this.render();
+  }
+
+  // 診断用に映り込みの読む段を固定する。
+  public setReflectionFixedLevel(level: number | null): void {
+    this.pipeline.setReflectionFixedLevel(level);
+  }
+
+  // 直前の走査で書いた帯 band の符号付き補正を、共有の復号ノードで浮動小数へ戻して読む。
+  public async readBand(band: number): Promise<FloatImage> {
+    if (!Number.isInteger(band) || band < 0 || band >= this.pipeline.screenSpace.bandCount) {
+      throw new RangeError(`render-lab: invalid band ${band}`);
+    }
+    const { screenSpace, diffuseCorrection } = this.pipeline;
+    const layout = screenSpace.bandLayout;
+    const source = diffuseCorrection.bandTarget(layout, 0);
+    const target = new THREE.RenderTarget(source.width, source.height, {
+      type: THREE.FloatType, format: THREE.RGBAFormat, depthBuffer: false, samples: 0,
+      minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter,
+    });
+    const material = multiOutputMaterial(target, () => [vec4(scanBandsOf(
+      source.textures.map((item) => textureLoad(item, ivec2(screenCoordinate.xy))), screenSpace.bandCount,
+      layout[0]!, this.pipeline.exposure.factor)[band]!, 0)]);
+    this.renderer.setRenderTarget(target);
+    const quad = new QuadMesh(material);
+    quad.render(this.renderer);
+    this.renderer.setRenderTarget(null);
+    const image = await this.readBack(target.texture);
+    material.dispose();
+    target.dispose();
+    return image;
+  }
+
+  // 直前に描いたフレームの、いまの段の帯の数の走査の帯の和(rgb、α は 0)。帯の並びは packedBands の通しのチャンネル。
+  private async readBandSum(): Promise<FloatImage> {
+    const count = this.pipeline.screenSpace.bandCount;
+    if (this.pipeline.screenSpace.bandLayout[0] !== 'packed-half') {
+      throw new Error('render-lab: band-sum requires packed-half bands');
+    }
+    const packed: FloatImage[] = [];
+    for (const texture of this.pipeline.diffuseCorrection.bandTextures(this.pipeline.screenSpace.bandLayout, 0)) {
+      packed.push(await this.readBack(texture));
+    }
+    const { width, height } = packed[0]!;
+    const rgba = new Float32Array(width * height * 4);
+    // 帯 b の成分 c は通しのチャンネル 3b + c。
+    for (let channel = 0; channel < 3 * count; channel++) {
+      const source = packed[Math.floor(channel / 4)]!.rgba;
+      for (let p = 0; p < width * height; p++) {
+        const sum = 4 * p + channel % 3;
+        rgba[sum] = rgba[sum]! + source[4 * p + channel % 4]!;
+      }
+    }
+    return { width, height, rgba };
+  }
+
+  // HDR の絵 hdr(線形、描画バッファと同じ寸法)を、直前に描いたフレームと同じ通常表示の合成で描いて読み戻す。値は
+  // 表示用の色空間(sRGB)へ変換済みで、8 bit へ丸める前のもの。同じケースを描いた直後に呼ぶ。
+  public async composite(hdr: FloatImage): Promise<FloatImage> {
+    const texture = new THREE.DataTexture(hdr.rgba, hdr.width, hdr.height, THREE.RGBAFormat, THREE.FloatType);
+    texture.minFilter = THREE.NearestFilter;
+    texture.magFilter = THREE.NearestFilter;
+    texture.needsUpdate = true;
+    this.pipeline.renderComposite(texture, this.compositeTarget);
+    const display = await this.readBack(this.compositeTarget.texture);
+    texture.dispose();
+    return display;
+  }
+
+  public signedCorrectionDisplay(hdr: FloatImage, exposure = this.pipeline.exposure.factorValue): FloatImage {
+    if (hdr.rgba.length !== hdr.width * hdr.height * 4) throw new RangeError('render-lab: invalid RGBA image');
+    const output = new Float32Array(hdr.rgba.length);
+    const oetf = (value: number): number => value <= 0.0031308
+      ? 12.92 * value : 1.055 * value ** (1 / 2.4) - 0.055;
+    for (let i = 0; i < hdr.rgba.length; i += 4) {
+      if (hdr.rgba[i + 3] === 0) continue;
+      const value = [0, 1, 2].map((c) => Math.abs(hdr.rgba[i + c]!) * exposure);
+      const minimum = Math.min(...value);
+      const offset = minimum < 0.08 ? minimum - 6.25 * minimum * minimum : 0.04;
+      const color = value.map((channel) => channel - offset);
+      const peak = Math.max(...color);
+      if (peak >= 0.76) {
+        const newPeak = 1 - 0.24 * 0.24 / (peak + 0.24 - 0.76);
+        const desaturation = 1 - 1 / (0.15 * (peak - newPeak) + 1);
+        for (let c = 0; c < 3; c++) {
+          color[c] = color[c]! * (newPeak / peak) * (1 - desaturation) + newPeak * desaturation;
+        }
+      }
+      for (let c = 0; c < 3; c++) {
+        const magnitude = oetf(Math.max(0, color[c]!));
+        const signedCode = 0.5 + Math.sign(hdr.rgba[i + c]!) * magnitude * 0.5;
+        output[i + c] = signedCode;
+      }
+      output[i + 3] = 1;
+    }
+    return { width: hdr.width, height: hdr.height, rgba: output };
+  }
+
+  public async signedCorrectionPng(hdr: FloatImage): Promise<string> {
+    if (hdr.rgba.length !== hdr.width * hdr.height * 4) throw new RangeError('render-lab: invalid RGBA image');
+    if (hdr.width !== VIEW_WIDTH || hdr.height !== VIEW_HEIGHT) throw new RangeError('render-lab: signed PNG needs the viewport size');
+    const texture = new THREE.DataTexture(hdr.rgba, hdr.width, hdr.height, THREE.RGBAFormat, THREE.FloatType);
+    texture.minFilter = THREE.NearestFilter;
+    texture.magFilter = THREE.NearestFilter;
+    texture.needsUpdate = true;
+    try {
+      this.pipeline.renderSignedCorrectionComposite(texture, this.captureTarget);
+      const pixels = await this.renderer.readRenderTargetPixelsAsync(this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT);
+      return pixelsToPngDataUrl(new Uint8Array(pixels.buffer), VIEW_WIDTH, VIEW_HEIGHT);
+    } finally {
+      texture.dispose();
+    }
+  }
+
+  // 描画先のテクスチャ texture を浮動小数で読み戻す。成分が 4 つに満たない形式では、無い成分を 0 にする。
+  private async readBack(texture: THREE.Texture): Promise<FloatImage> {
+    const target = texture.renderTarget;
+    if (target === null) throw new Error(`render-lab: "${texture.name}" is not a render target`);
+    const channels = CHANNELS_OF_FORMAT[texture.format];
+    if (channels === undefined) throw new Error(`render-lab: "${texture.name}" has an unreadable format`);
+    const { width, height } = target;
+    const data = await this.renderer.readRenderTargetPixelsAsync(
+      target, 0, 0, width, height, target.textures.indexOf(texture),
+    );
+    // 行の終わりは 256 byte の境まで詰め物が入る。最後の行には入らない。
+    const rowStride = height > 1 ? (data.length - width * channels) / (height - 1) : width * channels;
+    const toFloat = data instanceof Uint16Array ? THREE.DataUtils.fromHalfFloat : (v: number) => v;
+    const rgba = new Float32Array(width * height * 4);
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const [from, to] = [y * rowStride + x * channels, (y * width + x) * 4];
+        for (let c = 0; c < channels; c++) rgba[to + c] = toFloat(data[from + c]!);
+      }
+    }
+    return { width, height, rgba };
+  }
+
+  // 本番のパイプラインが持つ中間ターゲット name のテクスチャ。いまの段の帯の数の鎖に無い段か枚数なら投げる。
+  private floatTextureOf(name: Exclude<FloatTargetName, 'band-sum' | 'projected-radius' | 'depth'>): THREE.Texture {
+    const { screenSpace, diffuseCorrection } = this.pipeline;
+    switch (name) {
+      case 'scan-correction': return screenSpace.mergesIntoCorrection
+        ? diffuseCorrection.upsampledTarget.texture : diffuseCorrection.mergedTexture(screenSpace.bandLayout, 0);
+      case 'upsampled-correction': return diffuseCorrection.upsampledTarget.texture;
+      case 'correction-history': return screenSpace.temporalHistoryTexture;
+      case 'previous-depth': return screenSpace.previousDepthTexture;
+      case 'correction': return diffuseCorrection.texture;
+      case 'diffuse': return this.pipeline.lighting.diffuseTexture;
+      case 'surface-radiance': return screenSpace.surfaceRadianceTexture;
+      case 'hdr': return this.pipeline.hdrTexture;
+      case 'motion': return this.pipeline.gbuffer.motionTexture;
+      default: {
+        const count = screenSpace.bandCount;
+        const [, scanSurfaceIndex] = SCAN_SURFACE_NAME_PATTERN.exec(name) ?? [];
+        if (scanSurfaceIndex !== undefined) {
+          return screenSpace.inputPyramid.scanSurfaceTexture(Number(scanSurfaceIndex) as 0 | 1);
+        }
+        // 代表の段は、いまの段の帯の数の鎖が読む段 1..帯の数 − 1。
+        const [, representativeLevel] = REPRESENTATIVE_NAME_PATTERN.exec(name) ?? [];
+        if (representativeLevel !== undefined) {
+          if (Number(representativeLevel) >= count) throw new Error(`render-lab: ${count} bands have no "${name}"`);
+          return screenSpace.inputPyramid.representativeTexture(Number(representativeLevel));
+        }
+        const [, mergedLevel] = MERGED_NAME_PATTERN.exec(name) ?? [];
+        if (mergedLevel !== undefined) {
+          if (Number(mergedLevel) >= count - 1) throw new Error(`render-lab: ${count} bands have no "${name}"`);
+          if (Number(mergedLevel) === 0 && screenSpace.mergesIntoCorrection) {
+            throw new Error(`render-lab: "${name}" is not written at scan scale 1 (read "correction")`);
+          }
+          return diffuseCorrection.mergedTarget(screenSpace.bandLayout, Number(mergedLevel)).texture;
+        }
+        // 帯を詰めたテクスチャは、いまの段の帯の数の、名前の段(無ければ走査の段 0)の描画先から引く。
+        const [, level = '0', index] = PACKED_BANDS_NAME_PATTERN.exec(name)!;
+        const texture = Number(level) < count
+          ? diffuseCorrection.bandTextures(screenSpace.bandLayout, Number(level))[Number(index)] : undefined;
+        if (texture === undefined) throw new Error(`render-lab: ${count} bands have no "${name}"`);
+        return texture;
+      }
+    }
+  }
+
+  // 直前に描いたフレームの G バッファの深度から、受け手の近傍の半径が写る画素数を描き、そのテクスチャを返す。
+  private drawProjectedRadius(): THREE.Texture {
+    if (this.current === null) throw new Error('render-lab: no case selected');
+    const camera = this.current.camera;
+    this.radiusProjection.value.copy(camera.projectionMatrix);
+    this.radiusProjectionInverse.value.copy(camera.projectionMatrixInverse);
+    this.renderer.setRenderTarget(this.radiusTarget);
+    this.radiusQuad.render(this.renderer);
+    this.renderer.setRenderTarget(null);
+    return this.radiusTarget.texture;
+  }
+
+  // 直前に描いたフレームの G バッファの深度を写し、そのテクスチャを返す。
+  private drawDepth(): THREE.Texture {
+    this.renderer.setRenderTarget(this.depthTarget);
+    this.depthQuad.render(this.renderer);
+    this.renderer.setRenderTarget(null);
+    return this.depthTarget.texture;
   }
 
   // いまのケースの撮影。ケースが宣言していなければ、ケース名で既定の向きを 1 枚撮る。
@@ -603,8 +1477,10 @@ export class LabView {
 
   // 撮影の実体 shot を当てて描き直す。applyShot との共通部分。
   private applyShotObject(shot: LabShot, graphics: Partial<GraphicsSettingsData>): void {
+    this.pipeline.setReflectionNoiseOffset(...(shot.reflectionNoiseOffset ?? [0, 0]));
     this.setGraphics({ ...this.startupGraphics, ...graphics, ...shot.graphics });
     this.setViewAngles({ ...this.defaultAngles, ...shot.view });
+    this.showDebugTarget(shot.debugTarget ?? 'off');
     this.setDisplayTime(shot.displayTime ?? 0);
   }
 
@@ -615,12 +1491,16 @@ export class LabView {
     this.render(displayTime);
   }
 
-  // 描画品質設定を next にする。**設定の器は同値でも購読者へ配り、パイプラインを組み直す**ので、
-  // いまの値と 1 項目でも違うときだけ書く。
+  // 描画品質設定を、平らな値一式 next と同じ絵になる選び方にする。**設定の器は同値でも購読者へ配り、
+  // パイプラインを組み直す**ので、解いた値がいまの値と 1 項目でも違うときだけ書く。
   private setGraphics(next: GraphicsSettingsData): void {
-    const current = this.graphics.current;
-    const changed = (Object.keys(next) as GraphicsOptionKey[]).some((key) => next[key] !== current[key]);
-    if (changed) this.graphics.set(next);
+    const selection = selectionOfGraphics(next);
+    // **解いた値どうしで比べる** — オフの分野のノブへ書いた値は選び方に残らないので、next と比べると毎回
+    // 変わったと読む。
+    const resolved = resolveGraphics(selection);
+    const current = this.resolvedGraphics;
+    const changed = (Object.keys(resolved) as GraphicsKey[]).some((key) => resolved[key] !== current[key]);
+    if (changed) this.graphics.set(selection);
   }
 
   // ケースを表示し、ケースが宣言した撮影ごとに applyShot を当てて、キャンバスへ出るのと同じ絵
@@ -630,17 +1510,29 @@ export class LabView {
   public async shoot(
     name: CaseName, graphics: Partial<GraphicsSettingsData> = {},
   ): Promise<Readonly<Record<string, string>>> {
-    // **ケースは起動時の値へ graphics を重ねた設定で組んで待つ** — 描画設定が有効な間にしか読み込まない
-    // 部品(雲など)があり、前の撮影の設定のまま待つと、読み込み前の姿を撮る。
-    this.setGraphics({ ...this.startupGraphics, ...graphics });
-    this.show(name);
-    await this.waitUntilReady();
+    await this.showReady(name, graphics);
     const pngs: Record<string, string> = {};
     for (const shotName of this.shotNames) {
       this.applyShot(shotName, graphics);
-      pngs[shotName] = await this.captureSettled(shotName);
+      pngs[shotName] = await captureAccumulated(this, shotName);
     }
     return pngs;
+  }
+
+  // ケース name を表示して部品と地球が揃うのを待ち、撮影 shotName を applyShot で当てる。graphics は shoot と同じ。
+  public async showShot(
+    name: CaseName, shotName: string, graphics: Partial<GraphicsSettingsData> = {},
+  ): Promise<void> {
+    await this.showReady(name, graphics);
+    this.applyShot(shotName, graphics);
+  }
+
+  // ケース name を表示し、部品と地球が揃うまで待つ。**ケースは起動時の値へ graphics を重ねた設定で組んで待つ** —
+  // 描画設定が有効な間にしか読み込まない部品(雲など)があり、前の撮影の設定のまま待つと、読み込み前の姿を撮る。
+  private async showReady(name: CaseName, graphics: Partial<GraphicsSettingsData>): Promise<void> {
+    this.setGraphics({ ...this.startupGraphics, ...graphics });
+    this.show(name);
+    await this.waitUntilReady();
   }
 
   // 雲の細部の撮影 name を当てて 1 枚の PNG(データ URL)を返す。name は CLOUD_DETAIL_SHOT_INFOS の
@@ -716,8 +1608,8 @@ export class LabView {
   }
 
   // 連続する 2 回の capture が一致するまで撮り直し、一致した絵を返す。MAX_SETTLE_CAPTURES 回撮っても
-  // 一致しなければ、撮影名 shotName を添えて投げる。
-  private async captureSettled(shotName: string): Promise<string> {
+  // 一致しなければ、撮ったものの名前 shotName を添えて投げる。
+  public async captureSettled(shotName: string): Promise<string> {
     // **一致を「絵が落ち着いた」ことの判定にする** — 同じセッションの中では、落ち着いたあとのフレームは
     // 完全に決定的。雲場は焼いたフレームの次から載り、パイプラインを組み直した直後のフレームは崩れる。
     let previous = await this.capture();
@@ -796,6 +1688,43 @@ export class LabView {
     }
     return pixelsToPngDataUrl(packed, width, height);
   }
+
+  public async captureCorrectionProbe(): Promise<{
+    readonly capture: string; readonly signed: string; readonly exposureFactor: number;
+    readonly meanAbsoluteError: number; readonly maxAbsoluteError: number;
+  }> {
+    this.renderer.setOutputRenderTarget(this.captureTarget);
+    let capturePixelsPromise: ReturnType<typeof this.renderer.readRenderTargetPixelsAsync>;
+    let hdrPromise: Promise<FloatImage>;
+    let exposureFactor: number;
+    try {
+      this.render();
+      exposureFactor = this.exposureFactor;
+      capturePixelsPromise = this.renderer.readRenderTargetPixelsAsync(
+        this.captureTarget, 0, 0, VIEW_WIDTH, VIEW_HEIGHT,
+      );
+      hdrPromise = this.readBack(this.floatTextureOf('correction'));
+    } finally {
+      this.renderer.setOutputRenderTarget(null);
+    }
+    const [capturePixels, hdr] = await Promise.all([capturePixelsPromise!, hdrPromise!]);
+    const signedDisplay = this.signedCorrectionDisplay(hdr, exposureFactor!);
+    const signedPixels = Uint8Array.from(signedDisplay.rgba, (value) => Math.round(Math.max(0, Math.min(1, value)) * 255));
+    let sum = 0;
+    let maximum = 0;
+    for (let i = 0; i < capturePixels.length; i++) {
+      const difference = Math.abs(capturePixels[i]! - signedPixels[i]!);
+      sum += difference;
+      maximum = Math.max(maximum, difference);
+    }
+    return {
+      capture: pixelsToPngDataUrl(new Uint8Array(capturePixels.buffer), VIEW_WIDTH, VIEW_HEIGHT),
+      signed: pixelsToPngDataUrl(signedPixels, VIEW_WIDTH, VIEW_HEIGHT),
+      exposureFactor: exposureFactor!,
+      meanAbsoluteError: sum / capturePixels.length / 255,
+      maxAbsoluteError: maximum / 255,
+    };
+  }
 }
 
 // 最終 composite は画面全体を不透明に書く。alpha が全て 0 なら透明 sentinel のままなので撮影を失敗させる。
@@ -828,6 +1757,7 @@ function earthLightValue(earth: LabEarth, sun: LabSun, airglow: boolean): Planet
   const sunIrradiance = sun.irradianceAt(earth.center);
   // 面の明るさと恒星方向の大気照に同じ入射強度を渡す。
   return {
+    key: 'earth',
     center: earth.center,
     radius: R_EARTH,
     radiance: planetRadiance(EARTH_LIGHT_ALBEDO, sunIrradiance),
@@ -840,4 +1770,39 @@ function earthLightValue(earth: LabEarth, sun: LabSun, airglow: boolean): Planet
       atmosphere: withAirglowSetting(earth.atmosphere, airglow),
     },
   };
+}
+
+// 観察の向き angles の 2 つ目の天体照を、恒星 sun に照らされた光源とした値。見かけの半径が 0 なら null。
+function secondPlanetLightValue(angles: LabViewAngles, sun: LabSun): PlanetLightValue | null {
+  if (angles.secondPlanetRadiusDeg === 0) return null;
+  const radius = THREE.MathUtils.degToRad(angles.secondPlanetRadiusDeg);
+  const center = SECOND_PLANET_CENTER.copy(
+    directionFromAngles(angles.secondPlanetAzimuthDeg, angles.secondPlanetElevationDeg, SECOND_PLANET_DIRECTION),
+  ).multiplyScalar(R_MOON / Math.sin(radius));
+  const sunIrradiance = sun.irradianceAt(center);
+  return {
+    key: 'moon',
+    center,
+    radius: R_MOON,
+    radiance: planetRadiance(DEFAULT_ALBEDO, sunIrradiance),
+    appearance: {
+      map: null,
+      albedo: DEFAULT_ALBEDO,
+      sunIrradiance,
+      starDirection: SECOND_PLANET_STAR_DIRECTION.subVectors(sun.position, center).normalize(),
+      bodyFromWorld: SECOND_PLANET_BODY_FROM_WORLD,
+      atmosphere: null,
+    },
+  };
+}
+
+// 天体照の光源 lights を、恒星 sun の下で描画原点へ届ける明るさ(planetLightStrength)の強い順に並べた列。
+function byStrengthAtOrigin(lights: readonly PlanetLightValue[], sun: LabSun): readonly PlanetLightValue[] {
+  return lights.map((light) => {
+    const distance = light.center.length();
+    const toSun = LIGHT_STRENGTH_TO_SUN.subVectors(sun.position, light.center);
+    const toOrigin = LIGHT_STRENGTH_TO_ORIGIN.copy(light.center).negate();
+    const phaseAngle = toSun.angleTo(toOrigin);
+    return { light, strength: planetLightStrength(light.radiance, light.radius, distance, phaseAngle) };
+  }).sort((a, b) => b.strength - a.strength).map(({ light }) => light);
 }

@@ -13,9 +13,8 @@ import {
 import { LabView } from '../render-lab/lab';
 import { MemorySettingStorage } from '../../src/settings/stored-setting';
 import { UserSettings } from '../../src/settings/user-settings';
-import {
-  withGraphicsOption, type ChoiceValue, type GraphicsOptionKey,
-} from '../../src/render/graphics-settings';
+import { withGraphicsValue } from '../../src/render/graphics-selection';
+import type { ChoiceValue, GraphicsKey } from '../../src/render/graphics-settings';
 import { applyCloudTuningOverrides } from '../../src/render/earth-weather/cloud-tuning';
 import { CLOUD_FIELD_SOURCE_KIND } from '../../src/render/earth-weather/cloud/cloud-field-source';
 import { buildButtonRow, buildCheckbox } from '../lab-controls';
@@ -75,7 +74,7 @@ declare global {
       // 計測道具が構図と描画設定を自由に重ねて撮るための口(一時)。
       applyShot: (name: string, graphics?: Record<string, unknown>) => void;
       setDisplayTime: (displayTime: number) => void;
-      setGraphicsOption: (key: GraphicsOptionKey, value: boolean | ChoiceValue) => void;
+      setGraphicsOption: (key: GraphicsKey, value: boolean | ChoiceValue) => void;
     };
   }
 }
@@ -123,17 +122,17 @@ async function init(): Promise<void> {
     repaintShot();
   });
 
-  const setOption = (key: GraphicsOptionKey, value: boolean | ChoiceValue): void => {
-    settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
+  const setOption = (key: GraphicsKey, value: boolean | ChoiceValue): void => {
+    settings.graphics.set(withGraphicsValue(settings.graphics.current, key, value));
   };
   // 写しが効く設定: 生成の雲場を出し、種類のトグルを映す。設定の書き込みは1回に畳む —
   // 書き込みごとにパイプラインの組み直し(1フレーム描き直し)が走る。
   const applyShotGraphics = (): void => {
     let next = settings.graphics.current;
-    next = withGraphicsOption(next, 'clouds', true);
-    next = withGraphicsOption(next, 'cloudFieldSource', CLOUD_FIELD_SOURCE_KIND.generated);
-    next = withGraphicsOption(next, 'cumulus', shotKinds.cumulus);
-    next = withGraphicsOption(next, 'cirrus', shotKinds.cirrus);
+    next = withGraphicsValue(next, 'clouds', true);
+    next = withGraphicsValue(next, 'cloudFieldSource', CLOUD_FIELD_SOURCE_KIND.generated);
+    next = withGraphicsValue(next, 'cumulus', shotKinds.cumulus);
+    next = withGraphicsValue(next, 'cirrus', shotKinds.cirrus);
     settings.graphics.set(next);
   };
   buildCheckbox('kind', '積雲', shotKinds.cumulus, (on) => {
@@ -294,7 +293,7 @@ async function init(): Promise<void> {
       view.applyShot(name, graphics),
     setDisplayTime: (displayTime) => view.setDisplayTime(displayTime),
     setGraphicsOption: (key, value) => {
-      settings.graphics.set(withGraphicsOption(settings.graphics.current, key, value));
+      settings.graphics.set(withGraphicsValue(settings.graphics.current, key, value));
     },
   };
 }

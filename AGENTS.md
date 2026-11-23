@@ -58,6 +58,7 @@
 | 実装の予定なしに仕様を進める・棚卸しすると頼まれた | `/advance-spec`(分野を1つ選ぶ。`src/` は触らない) |
 | 調査(コードベース・文献)を要する大規模な機能追加を任された | `/add-feature`(要件定義書/実装計画書を書く。書き始める前に) |
 | HUD/UI/DOM/CSS に触れる | `/ui-design`(書き始める前に) |
+| 遊ぶ人の違和感の報告を受けた / 精度を上げるために作り方を変える・近似を足す | `/approximation-tradeoff`(書き始める前に) |
 | 描画(`src/render/`・シェーダ)に触れる / 見た目を目で確かめる | `/rendering-workflow` |
 | 大きな変更を終えた / 規約からの逸脱が疑わしい | `/refactor` |
 | 大規模な変更のあと、コメントを一括点検する | `/comment-cleanup` |
@@ -246,7 +247,7 @@ fix(ship): ドッキング時のモジュール干渉を修正
 | `npm run render-lab` | 描画の実験環境(http://localhost:8082) | 描画を目で確かめるとき |
 | `npm run render-lab:shot` | 描画の実験環境の撮影(`-- <組の名前>` で `.render-lab-shots/<組の名前>/`、省くと `.render-lab/shots/`) | 描画を画像で確かめるとき |
 | `npm run render-lab:compare` | 描画の実験環境の撮影の前後比較(`.render-lab-shots/compare-<after の名前>/`) | 描画の変更の前後を見比べるとき |
-| `npm run render-lab:measure` | パス別 GPU 時間の計測(大気の段の表と、earth の雲の段の 3 パスの表) | 描画の費用を出すとき |
+| `npm run render-lab:measure` | パス別 GPU 時間の計測(`-- [巡回数] [軸]`。軸は大気の段・earth の雲の 3 パス(`clouds`)・遮蔽と照り返し・映り込みなど) | 描画の費用を出すとき |
 | `npm run enemy-lab` | 敵の設計スタジオ(http://localhost:8084)。組み立て型の敵の形状パラメータとばらつきを調整し、個体の一覧・ばらつきの統計・試射での部品破壊を確かめ、「ゲームで試す」(git 管理外の上書き)と「既定値へ確定」(`src/physics/assembly-tuning.ts` の書き換え)でゲームへ反映する | 敵の形・ばらつきを調整するとき |
 | `npm run cloud-lab` | 雲の実験環境(http://localhost:8083) | 雲の生成を目で確かめるとき |
 | `npm run cloud-lab:shot` | 雲の実験環境の撮影(`.cloud-lab/shots/`) | 雲を画像で確かめるとき |

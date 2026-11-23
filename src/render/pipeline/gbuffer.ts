@@ -9,7 +9,13 @@ import {
 import { GPU_PASS, type GpuTimings } from '../gpu-timings';
 import { LIT_CLOUD_SHELL_LAYER, LIT_OPAQUE_LAYER } from './lit-layer';
 import { compileInto } from './compile-into';
+import { MotionHistory } from './motion-history';
 import type { BoolNode, Vec2Node, Vec3Node } from '../tsl-types';
+
+// G バッファから戻した法線の向きの誤差の上限 [rad]。0..1 に詰めた oct 座標を半精度で持つので、0.5..1 の刻みは 2⁻¹¹ で、
+// 復号した oct 座標 e = 2·raw − 1 の丸めの誤差は成分ごとに 2⁻¹¹ 以下。正規化する前のベクトル
+// (e.x, e.y, 1 − |e.x| − |e.y|) の誤差は √6·2⁻¹¹ 以下、その長さは 1/√3 以上なので、向きの誤差は √18·2⁻¹¹ 以下。
+export const NORMAL_ANGLE_ERROR = Math.sqrt(18) * 2 ** -11;
 
 // v の各成分が 0 以上なら +1、そうでなければ -1 を返す。TSL の sign() は 0 で 0 を返すため、
 // 下記 octEncodeNormal の折り返しがそこで壊れる — 自前で書く。
@@ -22,7 +28,7 @@ function signNotZero(v: Vec2Node): Vec2Node {
 //   p = n.xy / (|n.x| + |n.y| + |n.z|)
 //   n.z < 0 のとき p = (1 - |p.yx|) * signNotZero(p)
 //   出力 = p * 0.5 + 0.5
-function octEncodeNormal(n: Vec3Node): Vec2Node {
+export function octEncodeNormal(n: Vec3Node): Vec2Node {
   const l1Norm = abs(n.x).add(abs(n.y)).add(abs(n.z));
   const p = n.xy.div(l1Norm);
   const folded = float(1).sub(p.yx.abs()).mul(signNotZero(p));
@@ -46,13 +52,15 @@ export function octDecodeNormal(raw: Vec2Node): Vec3Node {
 export class GBufferPass {
   private readonly target: THREE.RenderTarget;
   private readonly mrtNode: ReturnType<typeof mrt>;
+  // 動きベクトルが読む前フレームの変換の記録。
+  private readonly motionHistory = new MotionHistory();
 
   // ターゲットは 1×1 で作り、render() が画面寸法へ合わせる。
   public constructor(private readonly renderer: WebGPURenderer, private readonly gpu: GpuTimings) {
     // モデル間の境界をマルチサンプルで平均すると、法線がどちらの面にも属さない方向に
     // なってしまうため、G バッファはマルチサンプルしない。
-    this.target = new THREE.RenderTarget(1, 1, { count: 4, depthBuffer: true, samples: 0 });
-    const [normalTex, roughnessTex, basecolorTex, emissiveTex] = this.target.textures;
+    this.target = new THREE.RenderTarget(1, 1, { count: 5, depthBuffer: true, samples: 0 });
+    const [normalTex, roughnessTex, basecolorTex, emissiveTex, motionTex] = this.target.textures;
     normalTex!.name = 'normal';
     normalTex!.format = THREE.RGFormat;
     normalTex!.type = THREE.HalfFloatType;
@@ -69,6 +77,10 @@ export class GBufferPass {
     emissiveTex!.name = 'emissive';
     emissiveTex!.format = THREE.RGBAFormat;
     emissiveTex!.type = THREE.HalfFloatType;
+    // 動きベクトルは符号つきの uv と深度の差なので半精度浮動小数点で持つ。
+    motionTex!.name = 'motion';
+    motionTex!.format = THREE.RGBAFormat;
+    motionTex!.type = THREE.HalfFloatType;
     // 深度は 32bit 浮動小数点。RenderTarget の深度が自動で depth32float になるのは
     // キャンバス直描きのときだけで、明示しないと depth24plus のまま — 絵は正常なのに
     // 精度だけ落ちる。
@@ -81,6 +93,7 @@ export class GBufferPass {
       roughness,
       basecolor: vec4(diffuseColor.rgb, metalness),
       emissive: vec4(emissive, 1),
+      motion: this.motionHistory.node,
     });
   }
 
@@ -90,7 +103,13 @@ export class GBufferPass {
   // 有無は covered() で判定する。
   public get basecolorTexture(): THREE.Texture { return this.target.textures[2]!; }
   public get emissiveTexture(): THREE.Texture { return this.target.textures[3]!; }
+  public get motionTexture(): THREE.Texture { return this.target.textures[4]!; }
   public get depthTexture(): THREE.DepthTexture { return this.target.depthTexture!; }
+
+  // 各プールの枠へ、camera の記録から前フレームの model 行列を書く。同じ論理番号の間は何度呼んでも同じ値を書く。
+  public writePoolMatrices(camera: THREE.Camera): void {
+    this.motionHistory.writePoolMatrices(camera);
+  }
 
   // その画素に面が写っているか。反転 Z の far がクリア値 0 なので、素の深度がそのまま虚空を表す。
   public covered(uv: Vec2Node = screenUV): BoolNode {
@@ -100,8 +119,11 @@ export class GBufferPass {
   // lit-opaque 層と雲殻の層を、同じ G バッファへ 2 回に分けて描く。分けるのは雲殻だけの GPU
   // 時間を読むためで、書き出す素材はどちらも同じ。camera はこのあと world パスでも使う同一
   // インスタンスなので、layers.mask は呼び出し前の値へ必ず戻す。
-  public render(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number): void {
+  // frame は論理フレームの番号で、同じ番号の描き直しは動きベクトルを同じ前フレームと比べる。
+  public render(scene: THREE.Scene, camera: THREE.Camera, width: number, height: number, frame: number): void {
     if (this.target.width !== width || this.target.height !== height) this.target.setSize(width, height);
+
+    this.motionHistory.setFrame(frame, camera);
 
     const savedMask = camera.layers.mask;
     const savedAutoClear = this.renderer.autoClear;

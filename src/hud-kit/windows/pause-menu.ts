@@ -1,4 +1,4 @@
-import type { GraphicsSettingsData } from '../../render/graphics-settings';
+import type { GraphicsSelection } from '../../render/graphics-selection';
 import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import { placeOverlayAt } from '../layout';
 import { onViewportChange } from '../visual-viewport';
@@ -77,7 +77,7 @@ export class PauseMenu implements OverlayHandle {
   // 各操作のコールバックは onXxx フィールドへ後から代入する。
   public constructor(
     overlayManager: OverlayManager,
-    graphics: GraphicsSettingsData, bgmVolume: number, themeId: string,
+    graphics: GraphicsSelection, bgmVolume: number, themeId: string,
   ) {
     injectCommonUiStyle();
     injectTitleLogotypeStyle();

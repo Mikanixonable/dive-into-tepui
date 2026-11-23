@@ -20,6 +20,17 @@ import { THUMBNAIL_CASES } from './thumbnail-cases';
 import { EARTH_CASES } from './earth-cases';
 import { MATERIAL_CASES } from './material-cases';
 import { SHADOW_CASES } from './shadow-cases';
+import { BAY_CASES } from './bay-cases';
+import { REFLECTION_CASES } from './reflection-cases';
+import { BOUNCE_COSINE_CASES } from './bounce-cosine-case';
+import { ANGLED_BOUNCE_CASES } from './angled-bounce-case';
+import { GROOVE_LADDER_CASES } from './groove-ladder-case';
+import { SLOPE_FAN_CASES } from './slope-fan-case';
+import { CORNELL_BOX_CASES } from './cornell-box-case';
+import { METAL_ROOM_CASES } from './metal-room-case';
+import { CASING_ROOM_CASES } from './casing-room-case';
+import { PLANE_CASES } from './plane-case';
+import { CLUTTER_CASES } from './clutter-case';
 import { BELT_CASES } from './belt-cases';
 import { CASING_CASES } from './casing-cases';
 import { ASSEMBLY_CASES } from './assembly-cases';
@@ -253,6 +264,17 @@ export const CASES = {
   'saturn': saturn,
   'moon': moon,
   ...SHADOW_CASES,
+  ...BAY_CASES,
+  ...REFLECTION_CASES,
+  ...BOUNCE_COSINE_CASES,
+  ...ANGLED_BOUNCE_CASES,
+  ...GROOVE_LADDER_CASES,
+  ...SLOPE_FAN_CASES,
+  ...CORNELL_BOX_CASES,
+  ...METAL_ROOM_CASES,
+  ...CASING_ROOM_CASES,
+  ...PLANE_CASES,
+  ...CLUTTER_CASES,
   'order': order,
   'march-slab': marchSlab,
   ...SHIP_CASES,

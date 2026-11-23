@@ -1,0 +1,168 @@
+// 手順8-15の収束した帯(1024パス平均など)・その標準偏差(パスについて)・1パスの帯ごとの PNG と集計。
+// PNG の尺度はケースごとに基準 run の収束値(標準偏差は基準 run の標準偏差)で固定し、候補にも同じ尺度を使う。
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import path from 'node:path';
+import { bandSumInvariant } from './screen-space-band-sum-invariant.mjs';
+import { cachedMean, chunkComplete } from './screen-space-chain-cache.mjs';
+import { BASELINE_RUN, metricsOf, OUTPUT, sceneDirOf, signedPng, unsignedPng } from './screen-space-chain-runs.mjs';
+import { CHUNK_PASSES } from './screen-space-chain-setup.mjs';
+import { readFloats, seedOf, unpackedBand, writeFloats } from './screen-space-lab.mjs';
+
+const SCALE_QUANTILE = 0.999;
+export const ZOOMS = [1, 4];
+
+// bands の帯 band だけを packed の RGBA テクスチャ列へ詰める。
+export function packedOfSingleBand(bands, band, slot = band) {
+  const pixels = bands[0].length / 3;
+  const packed = Array.from({ length: Math.ceil(3 * bands.length / 4) }, () => new Float32Array(pixels * 4));
+  for (let c = 0; c < 3; c++) {
+    const channel = 3 * slot + c;
+    const texture = packed[Math.floor(channel / 4)];
+    for (let p = 0; p < pixels; p++) texture[4 * p + channel % 4] = bands[band][3 * p + c];
+  }
+  return packed;
+}
+
+export async function mergedOf(lab, packed) {
+  for (const [index, rgba] of packed.entries()) await lab.writePackedBands(index, rgba);
+  await lab.setStageRange('chain');
+  await lab.renderProductionCorrectionPhase(0, true);
+  return { bandSum: await lab.readFloat('band-sum', 4), merged: await lab.readFloat('merged-0', 4) };
+}
+
+export function rgbDifference(a, b) {
+  const result = new Float32Array(a.length);
+  for (let i = 0; i < result.length; i += 4) {
+    for (let c = 0; c < 3; c++) result[i + c] = a[i + c] - b[i + c];
+    result[i + 3] = 1;
+  }
+  return result;
+}
+
+// 帯の PNG と集計を置く、ケースのフォルダ内のフォルダ。
+export const bandsDirOf = (run, scene) => path.join(sceneDirOf(run, scene), 'bands');
+
+const cacheDirOf = (metrics) => path.join(OUTPUT, 'cache', metrics.scene, metrics.cacheKey);
+
+// run のケースの、収束した帯(画素ごとに RGB の Float32Array × 帯数)。キャッシュに平均が無ければ null。
+export function convergedBandsOf(run, scene) {
+  const metrics = metricsOf(run, scene);
+  if (metrics === null) return null;
+  const bandCount = metrics.conditions.tier.bandCount;
+  const cache = cacheDirOf(metrics);
+  const textureCount = Math.ceil(3 * bandCount / 4);
+  const files = Array.from({ length: textureCount }, (_, texture) => path.join(cache, `mean-${metrics.conditions.passes}-packed-${texture}.f32`));
+  if (!files.every((file) => existsSync(file))) return null;
+  const packed = files.map(readFloats);
+  return Array.from({ length: bandCount }, (_, band) => unpackedBand(packed, band));
+}
+
+// ケースの帯 PNG の表示幅(値 ±scale を白黒の端へ写す)。基準 run の収束帯の |値| の 0.999 分位。
+export function bandScaleOf(scene) {
+  const bands = convergedBandsOf(BASELINE_RUN, scene);
+  if (bands === null) throw new Error(`${BASELINE_RUN}/${scene}: converged bands are missing`);
+  return scaleOfBands(bands);
+}
+
+export const scaleOfBands = (bands) => {
+  const magnitudes = Float32Array.from(bands.flatMap((values) => Array.from(values, Math.abs))).sort();
+  return Math.max(magnitudes[Math.floor(SCALE_QUANTILE * (magnitudes.length - 1))], 1e-12);
+};
+
+// キャッシュ cache の passes パスについての、帯ごとの画素ごとの標準偏差(帯ごとに RGB の Float32Array)。
+// 二乗の和が足りなければ null。
+export function stdBandsOfCache(cache, passes, bandCount) {
+  const textureCount = Math.ceil(3 * bandCount / 4);
+  for (let first = 0; first < passes; first += CHUNK_PASSES) {
+    if (!chunkComplete(cache, first, 'sum', textureCount) || !chunkComplete(cache, first, 'sumsq', textureCount)) return null;
+  }
+  const mean = cachedMean(cache, 0, passes, 'sum', textureCount), meanSquare = cachedMean(cache, 0, passes, 'sumsq', textureCount);
+  return Array.from({ length: bandCount }, (_, band) => {
+    const m = unpackedBand(mean, band), s = unpackedBand(meanSquare, band);
+    return Float32Array.from(m, (value, i) => Math.sqrt(Math.max(0, s[i] - value * value)));
+  });
+}
+
+function stdBandsOf(run, scene) {
+  const metrics = metricsOf(run, scene);
+  return metrics === null ? null : stdBandsOfCache(cacheDirOf(metrics), metrics.conditions.passes, metrics.conditions.tier.bandCount);
+}
+
+// 帯ごとの Σ|値|(画素・RGB の和)・正の和・負の和と、Σ|値| で重みを付けた平均の帯番号 Σ k·E_k / Σ E_k。
+export function bandStatsOf(bands) {
+  const stats = bands.map((values, band) => {
+    let sumAbs = 0, positiveSum = 0, negativeSum = 0;
+    for (const value of values) {
+      sumAbs += Math.abs(value);
+      if (value > 0) positiveSum += value;
+      else negativeSum += value;
+    }
+    return { band, sumAbs, positiveSum, negativeSum };
+  });
+  const total = stats.reduce((sum, { sumAbs }) => sum + sumAbs, 0);
+  const weighted = stats.reduce((sum, { band, sumAbs }) => sum + band * sumAbs, 0);
+  return { bands: stats, meanBandNumber: total === 0 ? null : weighted / total };
+}
+
+// bands を dir へ `<prefix>-<帯>.x<倍率>.png`(値を倍率倍して scale で表示。pngOf は signedPng か unsignedPng)に保存し、書いたファイル名の並びを返す。
+export function writeBandImages(dir, prefix, bands, scale, pngOf = signedPng) {
+  mkdirSync(dir, { recursive: true });
+  const files = [];
+  for (const [band, values] of bands.entries()) {
+    for (const zoom of ZOOMS) {
+      const file = `${prefix}-${band}.x${zoom}.png`;
+      writeFileSync(path.join(dir, file), pngOf(values, 3, scale / zoom));
+      files.push(file);
+    }
+  }
+  return files;
+}
+
+// run のケースの収束帯を bands/ へ書き、集計 converged-bands.json を返す。帯が無ければ null。
+export function writeConvergedBands(run, scene) {
+  const bands = convergedBandsOf(run, scene);
+  if (bands === null) return null;
+  const scale = bandScaleOf(scene);
+  const dir = bandsDirOf(run, scene);
+  const files = writeBandImages(dir, 'converged-band', bands, scale);
+  const summary = { run, scene, passes: metricsOf(run, scene).conditions.passes,
+    scale: { baseline: BASELINE_RUN, quantile: SCALE_QUANTILE, value: scale }, ...bandStatsOf(bands), files };
+  writeFileSync(path.join(dir, 'converged-bands.json'), JSON.stringify(summary, null, 2));
+  return summary;
+}
+
+// run のケースの収束帯の標準偏差を bands/ へ(PNG は 0 を黒とする)書き、集計 converged-std-bands.json を返す。
+// 尺度は基準 run の標準偏差の 0.999 分位。標準偏差が無い(二乗の和のキャッシュが無い)か、基準の標準偏差が無ければ null。
+export function writeConvergedStdBands(run, scene) {
+  const bands = stdBandsOf(run, scene);
+  const baseline = run === BASELINE_RUN ? bands : stdBandsOf(BASELINE_RUN, scene);
+  if (bands === null || baseline === null) return null;
+  const scale = scaleOfBands(baseline);
+  const dir = bandsDirOf(run, scene);
+  const files = writeBandImages(dir, 'converged-band-std', bands, scale, unsignedPng);
+  for (const [band, values] of bands.entries()) writeFloats(path.join(dir, `converged-band-std-${band}.rgb.f32`), values);
+  const summary = { run, scene, passes: metricsOf(run, scene).conditions.passes,
+    scale: { baseline: BASELINE_RUN, quantile: SCALE_QUANTILE, value: scale }, ...bandStatsOf(bands), files };
+  writeFileSync(path.join(dir, 'converged-std-bands.json'), JSON.stringify(summary, null, 2));
+  return summary;
+}
+
+// 走査が直前に描いた1パスの帯(帯ごとに RGB の Float32Array)。
+export async function readBands(lab, bandCount) {
+  const packed = [];
+  for (let texture = 0; texture < Math.ceil(3 * bandCount / 4); texture++) packed.push(await lab.readFloat(`packed-bands-${texture}`, 4));
+  return Array.from({ length: bandCount }, (_, band) => unpackedBand(packed, band));
+}
+
+// blue-noise seed 0 の1パスの bands を bands/ へ(float と、基準の尺度 scale の符号付き PNG)書き、集計
+// one-pass-bands.json を返す。recordedBandSum は同じ描画の帯和(画素ごとに RGBA)で、帯の足し合わせと照合する。
+export function writeOnePassBands(run, scene, bands, scale, recordedBandSum) {
+  const dir = bandsDirOf(run, scene);
+  const files = writeBandImages(dir, 'one-pass-band', bands, scale);
+  for (const [band, values] of bands.entries()) writeFloats(path.join(dir, `one-pass-band-${band}.rgb.f32`), values);
+  const { stats } = bandSumInvariant(recordedBandSum, bands);
+  const summary = { run, scene, blueNoiseSeed: seedOf(0), scale: { baseline: BASELINE_RUN, value: scale },
+    ...bandStatsOf(bands), againstRecordedBandSum: stats, files };
+  writeFileSync(path.join(dir, 'one-pass-bands.json'), JSON.stringify(summary, null, 2));
+  return summary;
+}

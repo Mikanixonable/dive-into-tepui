@@ -94,11 +94,11 @@ export class CloudQualityGovernor {
   public get levelCap(): number { return this.level; }
 }
 
-// 実効の精細さの決定の読み出し。setting・effective は段の番号(0 が最も粗い)。
-// limiter は実効段を決めた上限 — 設定値がそのまま出ているなら 'setting'、それより
+// 実効の精細さの決定の読み出し。setting・effective は設定の値と実効の値の表示名。
+// limiter は実効の値を決めた上限 — 設定値がそのまま出ているなら 'setting'、それより
 // 下なら footprint(画素で解像できない)か budget(フレーム時間の実績)。
 export interface CloudQualityReading {
-  readonly setting: number;
-  readonly effective: number;
+  readonly setting: string;
+  readonly effective: string;
   readonly limiter: 'setting' | 'footprint' | 'budget';
 }

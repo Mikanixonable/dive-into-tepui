@@ -1,9 +1,9 @@
 // 恒星の直射光の寄与。光源モデルの設定で「点光源 + GGX」と「一様球の閉じた解 + LTC」を
 // 選ぶ。どちらも影パスの透過率と、大気を抜けてくる経路の波長別の消衰を掛けて出す。
 import type * as THREE from 'three/webgpu';
-import { PI, clamp, dot, length, max, normalize, saturate, texture } from 'three/tsl';
+import { PI, clamp, dot, float, length, max, normalize, saturate, texture } from 'three/tsl';
 import { ggxSpecularFactor } from './ggx';
-import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
+import { contributionMaterial, type LightContribution, type LightSource, type SpecularReach } from './light-source';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { FloatNode, Vec3Node } from '../../tsl-types';
 import type { ShadowPass } from '../shadow/shadow-pass';
@@ -15,6 +15,7 @@ import type { ShadingSample } from './shading-sample';
 const SUN_LIGHT_MODEL = { point: 0, sphere: 1 } as const;
 
 export class SunSource implements LightSource {
+  public readonly specularReach: SpecularReach = 'direct';
   // モードごとに 1 枚を遅延生成して持つ。切り替えのたびに作り直すと、シェーダの再コンパイルが
   // フレームを止める。
   private readonly materials = new Map<number, THREE.MeshBasicNodeMaterial>();
@@ -38,22 +39,39 @@ export class SunSource implements LightSource {
     if (cached !== undefined) return cached;
     const contribution = this.model === SUN_LIGHT_MODEL.sphere
       ? this.sphereContribution(sample) : this.pointContribution(sample);
-    const material = contributionMaterial(sample, contribution);
+    const material = contributionMaterial(sample, contribution, this.specularReach);
     this.materials.set(this.model, material);
     return material;
   }
 
-  // 恒星を点として扱う寄与。放射照度は差分ベクトルの逆二乗、鏡面は GGX。
-  private pointContribution(sample: ShadingSample): LightContribution {
-    const toSun = sample.viewPositionOf(this.sunLight.position).sub(sample.position);
-    const lightDir = normalize(toSun);
-    const dotNL: FloatNode = saturate(dot(sample.normal, lightDir));
-    // 恒星から届く放射照度(影と大気の消衰込み)。拡散・鏡面の両方がこれへ BRDF を掛ける。
-    const irradiance: Vec3Node = this.sunLight.color
+  // 恒星を点として扱った放射照度(影と大気の消衰込み)。拡散・鏡面の両方がこれへ BRDF を掛ける。
+  public pointIrradiance(sample: ShadingSample): Vec3Node {
+    const toSun = this.toSunOf(sample);
+    const dotNL: FloatNode = saturate(dot(sample.normal, normalize(toSun)));
+    return this.sunLight.color
       .mul(this.sunLight.intensity).div(dot(toSun, toSun))
       .mul(this.sunExtinction.transmittance(sample.worldPosition))
-      .mul(dotNL).mul(texture(this.shadow.texture, sample.uv).r);
-    return { diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)) };
+      .mul(dotNL).mul(this.transmittanceAt(sample));
+  }
+
+  // 受け手 sample の画素へ恒星の光が届く割合(影パスの透過率)。
+  private transmittanceAt(sample: ShadingSample): FloatNode {
+    // 段を明示して読む — 暗黙の段は画素の間の微分で決まり、一様でない分岐の中では組めない。透過率の段は 1 つだけ。
+    return texture(this.shadow.texture, sample.uv).level(float(0)).r;
+  }
+
+  // 恒星を点として扱う寄与。鏡面は GGX。
+  private pointContribution(sample: ShadingSample): LightContribution {
+    const irradiance = this.pointIrradiance(sample);
+    const lightDir = normalize(this.toSunOf(sample));
+    return {
+      diffuse: irradiance, specular: irradiance.mul(ggxSpecularFactor(sample, lightDir)),
+    };
+  }
+
+  // 面から恒星の中心へ向かう view 空間の差分ベクトル [m]。
+  private toSunOf(sample: ShadingSample): Vec3Node {
+    return sample.viewPositionOf(this.sunLight.position).sub(sample.position);
   }
 
   // 恒星を有限の視半径を持つ均質球体光源として扱う寄与（sphere-light.ts）。1 天文単位の遠方では点光源の挙動へ漸近し、
@@ -65,7 +83,7 @@ export class SunSource implements LightSource {
     const dist = max(length(toSun), 1);
     // 半径 0(主星の無いレジストリの置き光源)でも放射輝度が定義されるよう 1 m を床にする。
     const radius = max(this.sunLight.radius, 1);
-    const transmittance = texture(this.shadow.texture, sample.uv).r;
+    const transmittance = this.transmittanceAt(sample);
     // 大気を抜けてくる経路の消衰。影の透過率はスカラー、大気のものは RGB — 両方掛ける。
     const extinction = this.sunExtinction.transmittance(sample.worldPosition);
 

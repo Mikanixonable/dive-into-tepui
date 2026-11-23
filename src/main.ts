@@ -83,7 +83,7 @@ function bindSettings(
   settings: UserSettings, hud: Hud, pauseMenu: PauseMenu, debugInfo: DebugInfoWindow,
 ): void {
   const settingsView = pauseMenu.settingsView;
-  settingsView.onGraphicsChange = (graphics) => settings.graphics.set(graphics);
+  settingsView.onGraphicsChange = (selection) => settings.graphics.set(selection);
 
   settings.renderStyle.subscribe((style) => {
     debugInfo.syncRenderStyle(style);
@@ -154,7 +154,7 @@ async function main() {
   // ステージ選択画面も色を引けない。
   const settings = new UserSettings(browserSettingStorage);
   settings.themePalette.subscribe((palette) => applyThemeVariables(palette));
-  settings.graphics.subscribe((graphics) => setUiBackdropBlur(graphics.uiBlur));
+  settings.graphics.subscribe(() => setUiBackdropBlur(settings.resolvedGraphics.current.uiBlur));
   // セーブを読み、シーンと HUD を組む。
   const unlockManager = new UnlockManager();
   const saveStore = new LocalStorageSaveStore();
@@ -162,7 +162,7 @@ async function main() {
   const snapshotService = new SnapshotService(saveStore, slots);
   const autoSave = new AutoSave(snapshotService);
   // GPU の初期化を待つ間に画面と音声を組む。canvas は先に差してあるので、HUD はその上に重なる。
-  const sceneReady = beginScene(settings.graphics.current);
+  const sceneReady = beginScene(settings.resolvedGraphics.current);
   const { shell, hud, markers, audioEngine, bgm, pauseMenu } = initHud(settings);
   const gameScene = await sceneReady;
   hideLoading();
@@ -187,7 +187,7 @@ async function main() {
   // 周回の遷移と、一時停止メニューからの導線。
   const launcher = new Launcher(
     shell, devices, viewOptionsSettings(settings), settings.themePalette, sections, syncSections, unlockManager,
-    slots, snapshotService, autoSave, settings.graphics, settings.renderStyle,
+    slots, snapshotService, autoSave, settings.resolvedGraphics, settings.renderStyle,
   );
 
   pauseMenu.onQuitToTitle = () => launcher.returnToTitle();

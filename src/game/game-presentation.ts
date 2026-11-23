@@ -1,7 +1,7 @@
 // 1ランの表示の導出の根: 入力の解釈、表示窓・座標系の錨・カメラの導出、表示物と HUD への同期、
 // 描画を所有する。モデル層の根 Game を読み、命令の列へ積み、進行の末尾へ渡す材料を組む。
+import * as THREE from 'three/webgpu';
 import { SYNC_SECTION, type FrameSections, type SyncSectionId } from './frame-sections';
-import { precompileCumulusDetails } from '../render/earth-weather/cloud/cloud-presentation';
 import { CloudQualityGovernor } from '../render/earth-weather/cloud/cloud-quality-governor';
 import { GPU_PASS } from '../render/gpu-timings';
 import { CameraSystem } from './camera/camera-system';
@@ -115,6 +115,8 @@ export class GamePresentation {
   // 論理視点を表示値へ写す側。sync が確定させた1フレームぶんの値を cameraFrame が持つ。
   private readonly cameraView = new CameraView();
   private cameraFrame: CameraFrame | null = null;
+  // sync が進め、render が描く論理フレームの番号。最初の sync で 0。
+  private frame = -1;
   // 操作対象の計画折れ線。計画の表示と、マップの計画の編集・戦闘の噴射ガイドが読む。
   private readonly planPath: PlanPath;
   private readonly planDisplay: PlanDisplay;
@@ -473,6 +475,7 @@ export class GamePresentation {
     this.syncSections.enter(SYNC_SECTION.camera);
     const camera = this.syncCamera(displayWindow, view, viewport, nowMs);
     this.syncSections.exit(SYNC_SECTION.camera);
+    this.frame++;
     // 描く対象と選べる対象を同じ判定から出すため、ビューが確定させた可否を読む。
     const visibilityPolicy = this.viewManager.activeView.visibilityPolicy;
     // 3D 軌道線を軌道パネルと同一の基準系で算出する。
@@ -507,6 +510,15 @@ export class GamePresentation {
       cs.activeViewpoint, cs.clipFovDeg, cs.clipDistance, viewport, cs.zoomActive, cs.focusVelocity,
     );
     this.cameraFrame = camera;
+    // 変化量の推定の基準 — 位置は注視点、向きは注視の対象の姿勢(持たなければ恒等)。
+    const focusAttitude = cs.focusAttitude;
+    this.devices.scene.pipeline.sceneChange.set({
+      cameraKey: cs.cameraKey,
+      referencePosition: camera.floatingOrigin.RtoThreeV3(camera.viewpoint.lookTarget),
+      referenceOrientation: focusAttitude === null
+        ? new THREE.Quaternion()
+        : new THREE.Quaternion(focusAttitude.x, focusAttitude.y, focusAttitude.z, focusAttitude.w),
+    });
     this.viewOptions.setVisible(view === 'map');
     // 天体ラベルの間引きは、この後のマーカー同期が近接判定に読むので先に済ませる。
     this.viewManager.activeView.syncLabels(displayWindow, camera, nowMs);
@@ -671,16 +683,12 @@ export class GamePresentation {
       style,
       (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
     );
-    await precompileCumulusDetails(
-      this.game.celestialSystem.cloudPresentations(),
-      scene.pipeline, scene.scene, this.cameraFrame.camera,
-    );
   }
 
-  // このフレームの sync が確定させたカメラで描く。まだ1度も sync していなければ何も描かない。
+  // このフレームの sync が確定させたカメラで描く。
   public render(style: RenderStyle): void {
     if (this.cameraFrame === null) return;
-    this.devices.scene.pipeline.render(this.devices.scene.scene, this.cameraFrame.camera, style);
+    this.devices.scene.pipeline.render(this.devices.scene.scene, this.cameraFrame.camera, style, this.frame);
   }
 
   // 表示生成処理から得られる計測値。
