@@ -6,7 +6,8 @@ import { fmtDist, fmtSpeed, fmtTime, fmtDateTime } from '../../hud-kit/format';
 import { Button, Meter, TabBar } from '../../hud-kit/widgets';
 import { bindKeyboardActivation } from '../../hud-kit/widgets/widget-base';
 import { injectOnce } from '../../hud-kit/inject-style';
-import { smallBtn, stageLabel } from './save-browser-ui';
+import { smallBtn, smallIconBtn, stageLabel } from './save-browser-ui';
+import { ICON } from '../../hud-kit/icons';
 
 const STYLE = `
 #save-browser .sb-stage-tabs { display: flex; gap: var(--space-2); }
@@ -192,14 +193,14 @@ function buildSnapshotCard(
   const actions = document.createElement('div');
   actions.className = 'sb-snap-actions';
   const pinBtn = new Button(
-    s.pinned ? '📌 解除' : '📌 クリップ', () => callbacks.onTogglePin(s.id, s.pinned), undefined,
+    s.pinned ? '解除' : 'クリップ', () => callbacks.onTogglePin(s.id, s.pinned), ICON.pin,
     ['secondary', 'dense'],
   );
   pinBtn.element.classList.add('sb-btn');
   pinBtn.setOn(s.pinned);
   actions.appendChild(pinBtn.element);
   actions.appendChild(smallBtn('✎', '名前変更', () => callbacks.onRenameSnapshot(s.id)));
-  actions.appendChild(smallBtn('🗑', '削除', () => callbacks.onDeleteSnapshot(s.id)));
+  actions.appendChild(smallIconBtn(ICON.trash, '削除', () => callbacks.onDeleteSnapshot(s.id)));
   actions.appendChild(smallBtn('⑂', 'ここから分岐', () => callbacks.onBranch(slot.id, s.id)));
   card.appendChild(actions);
 

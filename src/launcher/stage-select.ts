@@ -13,6 +13,7 @@ import type { StageClass } from '../game/stages/stage';
 import type { TdbJulianDate } from '../physics/time';
 import type { ThemePalette } from '../theme';
 import type { UnlockManager } from './unlock-manager';
+import { ICON } from '../hud-kit/icons';
 
 // タイトルの添え書き1組。primary は大きく出す引用または英訳、original は原文、
 // transliteration は楔形文字などに添える小さな転写、note は出典または作中の記録ラベル。
@@ -301,7 +302,7 @@ class StageSelectScreen {
     this.debugLink.className = 'ss-debug';
     this.debugLink.textContent = 'debug stage';
     this.debugLink.addEventListener('click', () => this.select(StageDebug));
-    this.settingsButton = new Button('⚙ 設定', () => onSettings?.());
+    this.settingsButton = new Button('設定', () => onSettings?.(), ICON.gear);
     this.settingsButton.element.classList.add('ss-settings');
     this.startEpochForm = new StartEpochForm(
       (stageClass, startEpoch) => this.select(stageClass, startEpoch),
@@ -346,7 +347,7 @@ class StageSelectScreen {
     row.className = `ss-stage ui-selectable${unlocked ? '' : ' locked'}`;
     row.innerHTML =
       `<div class="ss-stage-label"><span>${stageClass.selectLabel}</span><span class="ss-stage-key">${key}</span></div>` +
-      `<div class="ss-stage-sub">${sub}</div>`;
+      `<div class="ss-stage-sub">${unlocked ? '' : `<span class="ss-lock">${ICON.lock}</span>`}${sub}</div>`;
     // 押したときの選択。
     if (unlocked) {
       row.setAttribute('role', 'button');

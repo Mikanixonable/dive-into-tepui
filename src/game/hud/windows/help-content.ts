@@ -151,13 +151,13 @@ export function helpRows(coarse: boolean): readonly HelpRow[] {
     ),
     dualRow(coarse, 'system', [K.help], 'ヘルプボタン', 'このヘルプ', '操作説明を開閉する。'),
     dualRow(coarse, 'system', [K.wideScreenToggle], '右上の ⤢ ボタン', '画面を広く', 'レール・上部バー・下部の帯を隠して画面を広く使う。もう一度押すと戻る。'),
-    dualRow(coarse, 'system', [K.pauseMenu], '⚙ バッジ', 'ESC メニュー', '開いているウィンドウを1つ閉じる。何も開いていなければ ESC メニューを開く。'),
+    dualRow(coarse, 'system', [K.pauseMenu], '⚙\uFE0E バッジ', 'ESC メニュー', '開いているウィンドウを1つ閉じる。何も開いていなければ ESC メニューを開く。'),
     dualRow(
       coarse, 'system',
-      [K.toggleDebugInfoWindow, K.manualSave, K.openSaveBrowser], '⚙ バッジのメニュー', 'デバッグ・セーブ',
+      [K.toggleDebugInfoWindow, K.manualSave, K.openSaveBrowser], '⚙\uFE0E バッジのメニュー', 'デバッグ・セーブ',
       `${K.toggleDebugInfoWindow.label} でデバッグ表示、${K.manualSave.label} で手動セーブ、`
         + `${K.openSaveBrowser.label} でセーブデータ画面を開く。`,
-      '⚙ バッジで開く ESC メニューから、デバッグ表示・手動セーブ・セーブデータ画面を開く。',
+      '⚙\uFE0E バッジで開く ESC メニューから、デバッグ表示・手動セーブ・セーブデータ画面を開く。',
     ),
     dualRow(coarse, 'system', [K.restart], '決着画面のボタン', '決着後の再出撃', '決着画面で同じステージへ再出撃する。'),
     dualRow(

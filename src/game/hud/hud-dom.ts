@@ -32,6 +32,7 @@ import {
 } from '../../hud-kit/widgets';
 import { createKeyCap } from '../../hud-kit/dom-elements';
 import type { PanelCollapse } from './panel-chrome';
+import { ICON } from '../../hud-kit/icons';
 
 // 後に定義した CSS ルールが優先されるため、トークン→骨格→パネル群→ビューの順に連結する。
 const STYLE =
@@ -75,8 +76,8 @@ const TOP_BAR_TOGGLE_LABELS: CollapseToggleLabels = {
 function railToggleLabels(side: 'left' | 'right'): CollapseToggleLabels {
   const label = side === 'left' ? '左' : '右';
   return {
-    expandedGlyph: side === 'left' ? '◀' : '▶',
-    collapsedGlyph: side === 'left' ? '▶' : '◀',
+    expandedGlyph: side === 'left' ? '◀\uFE0E' : '▶\uFE0E',
+    collapsedGlyph: side === 'left' ? '▶\uFE0E' : '◀\uFE0E',
     expandedTitle: `${label}パネルを閉じる`,
     collapsedTitle: `${label}パネルを開く`,
   };
@@ -418,12 +419,14 @@ function buildChromeActions(
 
 // 共通の HUD アクションボタンと、任意のショートカット表示を組む。
 function buildChromeAction(
-  host: HTMLElement, id: string, glyph: string, keyLabel: string | null,
+  host: HTMLElement, id: string, glyph: string | { readonly svg: string }, keyLabel: string | null,
   label: string, onPress: () => void,
 ): { action: HTMLElement; button: Button } {
   const action = document.createElement('span');
   action.className = 'hud-action';
-  const button = new Button(glyph, onPress, undefined, 'icon');
+  const button = typeof glyph === 'string'
+    ? new Button(glyph, onPress, undefined, 'icon')
+    : new Button('', onPress, glyph.svg, 'icon');
   button.element.id = id;
   button.element.setAttribute('aria-label', label);
   button.element.title = label;
@@ -462,7 +465,7 @@ function buildWideScreenToggle(actions: HTMLElement, hudRoot: HTMLElement): void
 // Esc キーと同じ開閉操作を呼び出すボタンを組む。
 function buildPauseBadge(host: HTMLElement, onPause: () => void): void {
   const { action } = buildChromeAction(
-    host, 'hud-pause-badge', '⚙', K.pauseMenu.label, 'ESC メニュー(ESC)', onPause,
+    host, 'hud-pause-badge', { svg: ICON.gear }, K.pauseMenu.label, 'ESC メニュー(ESC)', onPause,
   );
   action.classList.add('hud-action--touch');
 }

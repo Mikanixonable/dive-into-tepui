@@ -30,9 +30,14 @@ export class Button {
         iconEl.innerHTML = icon;
         this.element.appendChild(iconEl);
       }
-      this.labelEl = document.createElement('span');
-      this.labelEl.textContent = label;
-      this.element.appendChild(this.labelEl);
+      // 文言の無いアイコンだけのボタンは、ラベルの枠を作らない。
+      if (label === '') {
+        this.labelEl = null;
+      } else {
+        this.labelEl = document.createElement('span');
+        this.labelEl.textContent = label;
+        this.element.appendChild(this.labelEl);
+      }
       if (keyLabel !== undefined) this.element.appendChild(createKeyCap(keyLabel));
     } else {
       this.element.textContent = label;

@@ -43,6 +43,7 @@ export const WIDGET_STYLE = `
 .w-btn-icon {
   display: inline-block; width: 1em; height: 1em; vertical-align: middle; margin-right: var(--space-2);
 }
+.w-btn-icon:only-child { margin-right: 0; }
 .w-btn-icon svg { display: block; width: 100%; height: 100%; }
 
 /* w-group: 見出し + 排他選択ボタン列(3択以上専用)。 */

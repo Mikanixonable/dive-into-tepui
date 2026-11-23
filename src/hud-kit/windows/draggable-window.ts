@@ -10,6 +10,7 @@ import { injectOnce } from '../inject-style';
 import { injectCommonUiStyle } from '../style/common-ui-style';
 import type { OverlayHandle, OverlayManager, SurfaceSpec } from '../overlay-manager';
 import { wireHeaderDrag } from '../window-drag';
+import { ICON } from '../icons';
 
 const STYLE = `
 #hud .dg-window {
@@ -148,7 +149,7 @@ export class DraggableWindow implements OverlayHandle {
     this.headerExtras = document.createElement('div');
     this.headerExtras.className = 'dg-window-header-extras';
 
-    this.clipBtn = new Button('📌', () => this.setClipped(!this._clipped));
+    this.clipBtn = new Button('', () => this.setClipped(!this._clipped), ICON.pin);
     this.clipBtn.element.classList.add('dg-window-btn', 'ui-icon-control');
     this.clipBtn.element.title = 'クリップ';
     this.clipBtn.element.setAttribute('aria-label', 'クリップ');

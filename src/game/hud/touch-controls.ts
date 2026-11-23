@@ -268,9 +268,9 @@ export class TouchControls {
       { direction: 'up', btn: { key: K.thrustUp, glyph: '▲', label: '上' } },
       { direction: 'forward', btn: { key: K.thrustForward, glyph: '●', label: '前' } },
       { direction: 'down', btn: { key: K.thrustDown, glyph: '▼', label: '下' } },
-      { direction: 'left', btn: { key: K.thrustLeft, glyph: '◀', label: '左' } },
+      { direction: 'left', btn: { key: K.thrustLeft, glyph: '◀\uFE0E', label: '左' } },
       { direction: 'backward', btn: { key: K.thrustBackward, glyph: '○', label: '後' } },
-      { direction: 'right', btn: { key: K.thrustRight, glyph: '▶', label: '右' } },
+      { direction: 'right', btn: { key: K.thrustRight, glyph: '▶\uFE0E', label: '右' } },
     ];
     const pad = this.makePad(root, 'touch-pad-move');
     for (const { direction, btn } of buttons) this.thrustButtons.set(direction, this.makeButton(pad, btn));

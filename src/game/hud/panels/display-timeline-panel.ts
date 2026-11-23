@@ -15,6 +15,7 @@ import {
 import type {
   DisplayDurationKey, TickLabelMode,
 } from '../../viewer/display-timeline-selection';
+import { ICON } from '../../../hud-kit/icons';
 
 // 手動レンジで指定できる表示期間の下限 [s]。表示期間は予測列の保持窓でもあり、0 では
 // サンプルが1件も残らず、どの時刻も引けない列になる。
@@ -148,7 +149,7 @@ export class DisplayTimelinePanel {
     axis.appendChild(sliderWrap);
     strip.appendChild(axis);
 
-    const resetBtn = new Button('⏮', () => this.onResetToNow?.());
+    const resetBtn = new Button('', () => this.onResetToNow?.(), ICON.skipBack);
     resetBtn.element.classList.add('predict-reset', 'w-btn--icon');
     resetBtn.element.title = '現在に戻す';
     resetBtn.element.setAttribute('aria-label', '現在に戻す');

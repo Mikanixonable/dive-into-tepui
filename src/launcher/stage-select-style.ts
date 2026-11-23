@@ -166,6 +166,8 @@ const STAGE_SELECT_STYLE = `
 }
 #stage-select .ss-debug:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
 #stage-select .ss-stage:focus-visible, #stage-select .ss-settings:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
+#stage-select .ss-lock { display: inline-block; width: 1em; height: 1em; margin-right: var(--space-2); vertical-align: -0.15em; }
+#stage-select .ss-lock svg { display: block; width: 100%; height: 100%; }
 #stage-select .ss-settings { align-self: flex-end; flex: 0 0 auto; margin-top: var(--space-1); }
 #stage-select .hidden { display: none !important; }
 #stage-select .ss-datetime { display: flex; flex-direction: column; gap: 14px; }

@@ -32,7 +32,7 @@ export function register(): void {
     assert.equal(row(rows, 'flight', '機体の並進').input, '左下の並進パッド');
     assert.match(row(rows, 'flight', '機体の並進').description, /ボタンを押している間だけ/);
     assert.equal(row(rows, 'combat', '機関砲発射').input, 'FIRE ボタン');
-    assert.equal(row(rows, 'system', 'ESC メニュー').input, '⚙ バッジ');
+    assert.equal(row(rows, 'system', 'ESC メニュー').input, '⚙\uFE0E バッジ');
     assert.equal(row(rows, 'construction', '視点').input, '「視点を寄せる」ボタン');
     assert.equal(row(rows, 'construction', '建造を終える').input, '「建造終了」ボタン');
     assert.match(row(rows, 'system', 'デバッグ・セーブ').description, /ESC メニューから/);

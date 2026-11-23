@@ -5,7 +5,8 @@ import { Button } from '../../hud-kit/widgets';
 import { bindActivation } from '../../hud-kit/widgets/widget-base';
 import { injectOnce } from '../../hud-kit/inject-style';
 import { MQ_COMPACT } from '../../hud-kit/breakpoints';
-import { mainBtn, smallBtn, stageLabel } from './save-browser-ui';
+import { mainBtn, smallBtn, smallIconBtn, stageLabel } from './save-browser-ui';
+import { ICON } from '../../hud-kit/icons';
 
 const STYLE = `
 #save-browser .sb-pane-slots { flex: 0 0 34%; }
@@ -123,7 +124,7 @@ function buildSlotRow(
   actions.appendChild(smallBtn('✎', '名前変更', () => callbacks.onRenameSlot(s.id)));
   actions.appendChild(smallBtn('⎘', '複製', () => callbacks.onDuplicateSlot(s.id)));
   actions.appendChild(smallBtn('⇩', '書き出し', () => callbacks.onExportSlot(s.id)));
-  actions.appendChild(smallBtn('🗑', '削除', () => callbacks.onDeleteSlot(s.id)));
+  actions.appendChild(smallIconBtn(ICON.trash, '削除', () => callbacks.onDeleteSlot(s.id)));
   if (!active) {
     const playBtn = new Button(
       'このデータで遊ぶ', () => callbacks.onPlaySlot(s.id), undefined, ['secondary', 'dense'],

@@ -14,7 +14,7 @@ export class Stage4 extends Stage {
   public static readonly epoch = STORY_EPOCH;
   public static readonly selectLabel = 'stage 4';
   public static readonly selectSub = '【第四ステージ: モルニヤ戦域】 敵は高楕円(モルニヤ級)軌道にも分布。軌道計画モードでの遷移が必須';
-  public static readonly selectLockedSub = '🔒 第三ステージをクリアすると解放';
+  public static readonly selectLockedSub = '第三ステージをクリアすると解放';
   public static readonly selectKey = 'Digit4';
 
   // 自機を置き、通常軌道の敵とモルニヤ級軌道の敵を混成配置して始める。

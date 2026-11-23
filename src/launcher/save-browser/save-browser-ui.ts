@@ -29,8 +29,17 @@ export function mainBtn(label: string, onClick: () => void): HTMLElement {
 // .w-btn--dense/.w-btn--icon の小型アイコンボタンを組む。title はホバー説明とタッチ向け
 // aria-label の両方に使う。
 export function smallBtn(glyph: string, title: string, onClick: () => void): HTMLElement {
+  return smallActionBtn(new Button(glyph, onClick, undefined, ['secondary', 'dense', 'icon']), title);
+}
+
+// アイコン(SVG)だけの小さい操作ボタン。title は説明とスクリーンリーダー用の名前を兼ねる。
+export function smallIconBtn(svg: string, title: string, onClick: () => void): HTMLElement {
+  return smallActionBtn(new Button('', onClick, svg, ['secondary', 'dense', 'icon']), title);
+}
+
+// 組み立て済みのボタンへ、保存画面共通の見た目とタイトルを与えて要素を返す。
+function smallActionBtn(btn: Button, title: string): HTMLElement {
   injectOnce('save-browser-shared', STYLE);
-  const btn = new Button(glyph, onClick, undefined, ['secondary', 'dense', 'icon']);
   btn.element.classList.add('sb-btn');
   btn.element.title = title;
   btn.element.setAttribute('aria-label', title);
