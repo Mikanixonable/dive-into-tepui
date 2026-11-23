@@ -135,6 +135,8 @@ module.exports = (env, argv) => ({
         watch: false,
       },
     ],
+    // 全インターフェースで待ち受け、tailnet 上の端末から IP で開けるようにする。
+    host: '0.0.0.0',
     port: 'auto',
     open: true,
     liveReload: false,
