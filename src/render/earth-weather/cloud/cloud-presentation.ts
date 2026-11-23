@@ -1,9 +1,7 @@
 // 天体ごとの雲テクスチャと表示状態を統括する境界クラス。雲データ供給源（生成／観測）を選択し、
 // テクスチャの準備および雲面レンダラーの寿命を管理する。
 import * as THREE from 'three/webgpu';
-import {
-  CUMULUS_DETAIL, OpaqueCloudSurfaceRenderer, cumulusOctavesOf, type CumulusDetail,
-} from './opaque-cloud-surface-renderer';
+import { OpaqueCloudSurfaceRenderer, type CumulusSampling } from './opaque-cloud-surface-renderer';
 import { CIRRUS_DETAIL, DETAIL_WAVELENGTHS, cirrusOctavesOf, type CirrusDetail } from './cloud-detail';
 import { CLOUD_TOP_SPAN } from './cumulus-shape';
 import { capRadiusFor, snapCap } from './cloud-cap';
@@ -21,10 +19,23 @@ import type { GraphicsSettingsData } from '../../graphics-settings';
 // aimFrom() で置き直すまでのキャップ初期向き。
 const INITIAL_CAP_DIRECTION = new THREE.Vector3(0, 0, 1);
 
-// 段の番号(0..2 = 粗・標準・精細)から積雲の段名への写し。巻雲は段番号がそのまま段名の値。
-const CUMULUS_BY_TIER = [CUMULUS_DETAIL.coarse, CUMULUS_DETAIL.standard, CUMULUS_DETAIL.fine] as const;
-// 積雲の段ごとのオクターブ数(番号 0..2)。数はマテリアルの組み分けと同じ表から引く。
-const CUMULUS_TIER_OCTAVES = CUMULUS_BY_TIER.map(cumulusOctavesOf);
+// 段の番号(0..2 = 粗・標準・精細)ごとの、自動適応が積雲の標本の配り方を下げる先の組。いちばん粗い組は
+// march を 1 本にして refine で補う — 粗い刻みを 2 本以上にすると、手前と奥で拾った雲頂が 2 枚の層に重なって見える。
+// 巻雲は段番号がそのまま段名の値。
+const CUMULUS_TIER_SAMPLING: readonly CumulusSampling[] = [
+  { march: 1, refine: 5, octaves: 4 },
+  { march: 6, refine: 3, octaves: 6 },
+  { march: 12, refine: 3, octaves: 8 },
+];
+// 積雲の段ごとのオクターブ数(番号 0..2)。
+const CUMULUS_TIER_OCTAVES = CUMULUS_TIER_SAMPLING.map((sampling) => sampling.octaves);
+// 巻雲の段番号の表示名。
+const CIRRUS_TIER_LABELS: readonly string[] = ['粗', '標準', '精細'];
+
+// 巻雲の段番号 tier の表示名。
+function cirrusTierLabel(tier: number): string {
+  return CIRRUS_TIER_LABELS[tier] ?? String(tier);
+}
 // 巻雲の段ごとのオクターブ数(番号 0..2)と、巻雲が使う段の波長。巻雲は 32・16 km の段を
 // 持たない(cloud-detail.ts の CIRRUS_FIRST_OCTAVE)。
 const CIRRUS_TIER_OCTAVES = [CIRRUS_DETAIL.coarse, CIRRUS_DETAIL.standard, CIRRUS_DETAIL.fine]
@@ -35,39 +46,33 @@ const CIRRUS_WAVELENGTHS = DETAIL_WAVELENGTHS.slice(2);
 const tmpToObserver = new THREE.Vector3();
 const tmpInverseSpin = new THREE.Quaternion();
 
-// 実効段の決定を読み出し用の形へ写す。実効が設定と同じなら 'setting'、それより
-// 下なら小さい方の上限が決め手(同値なら footprint — 構造的な上限を優先して示す)。
-function qualityReadingOf(
-  quality: { readonly setting: number; readonly footprint: number; readonly effective: number },
-  budget: number,
-): CloudQualityReading {
-  const { setting, effective } = quality;
-  if (effective >= setting) return { setting, effective, limiter: 'setting' };
+// 設定の標本の配り方 setting を、段の組 cap より重くならないよう下げた配り方。刻みと細部の段数は小さいほうを
+// 取り、刻みを下げたときは二分の回数を cap の値にする(粗い刻みは二分で補う)。
+function cappedSampling(setting: CumulusSampling, cap: CumulusSampling): CumulusSampling {
   return {
-    setting, effective,
-    limiter: quality.footprint <= budget ? 'footprint' : 'budget',
+    march: Math.min(setting.march, cap.march),
+    refine: setting.march > cap.march ? cap.refine : setting.refine,
+    octaves: Math.min(setting.octaves, cap.octaves),
   };
 }
 
-// 雲殻層だけをコンパイルする面。積雲の段ごとの事前コンパイルに要る口だけを持つ。
-interface CloudShellCompiler {
-  compileCloudShell(scene: THREE.Scene, camera: THREE.Camera): Promise<void>;
+// 2 つの標本の配り方が同じか。
+function sameSampling(a: CumulusSampling, b: CumulusSampling): boolean {
+  return a.march === b.march && a.refine === b.refine && a.octaves === b.octaves;
 }
 
-// 積雲の段替えでシェーダのコンパイルが走らないよう、残りの段のマテリアルも雲殻層の
-// 条件で組んでおく。いま張っている段は G バッファの compile で既に組まれている前提。
-// 終わる前に各天体が張っていた段へ戻す。
-export async function precompileCumulusDetails(
-  clouds: readonly CloudPresentation[], compiler: CloudShellCompiler,
-  scene: THREE.Scene, camera: THREE.Camera,
-): Promise<void> {
-  const current = clouds.map((p) => p.cumulusDetail);
-  for (const detail of Object.values(CUMULUS_DETAIL)) {
-    if (current.every((d) => d === detail)) continue;
-    for (const presentation of clouds) presentation.setCumulusDetail(detail);
-    await compiler.compileCloudShell(scene, camera);
-  }
-  clouds.forEach((presentation, i) => presentation.setCumulusDetail(current[i]!));
+// 標本の配り方の表示名(刻み・二分・細部の段数)。
+function samplingLabel(sampling: CumulusSampling): string {
+  return `${sampling.march}·${sampling.refine}·${sampling.octaves}`;
+}
+
+// 実効の値の決定を読み出し用の形へ写す。lowered が偽なら 'setting'、真なら小さい方の上限が決め手
+// (同値なら footprint — 構造的な上限を優先して示す)。
+function qualityReadingOf(
+  setting: string, effective: string, lowered: boolean, footprint: number, budget: number,
+): CloudQualityReading {
+  if (!lowered) return { setting, effective, limiter: 'setting' };
+  return { setting, effective, limiter: footprint <= budget ? 'footprint' : 'budget' };
 }
 
 export class CloudPresentation {
@@ -88,18 +93,11 @@ export class CloudPresentation {
   // 直近の aim() で置いた観測点の中心距離(地表 1)。フットプリント上限が読む。
   private observerRho = 1;
   // 実効の精細さ。renderInput へ段数として載せ、表面・大気・雲影が同じ値を読む。
-  private effectiveCumulus: CumulusDetail = CUMULUS_DETAIL.standard;
   private effectiveCirrus: CirrusDetail = CIRRUS_DETAIL.standard;
-  // 直近に実効段を決めたときの、雲種ごとの設定・フットプリント上限・実効の段番号と
-  // 共通の予算上限。実効段の表示が「何で決まったか」を出すために覚える。
-  private quality: {
-    cumulus: { readonly setting: number; readonly footprint: number; readonly effective: number };
-    cirrus: { readonly setting: number; readonly footprint: number; readonly effective: number };
-    readonly budget: number;
-  } = {
-    cumulus: { setting: DETAIL_TIERS - 1, footprint: DETAIL_TIERS - 1, effective: DETAIL_TIERS - 1 },
-    cirrus: { setting: DETAIL_TIERS - 1, footprint: DETAIL_TIERS - 1, effective: DETAIL_TIERS - 1 },
-    budget: DETAIL_TIERS - 1,
+  // 直近に実効の値を決めたときの、雲種ごとの読み出し。実効の値の表示が「何で決まったか」を出すために覚える。
+  private quality: { cumulus: CloudQualityReading; cirrus: CloudQualityReading } = {
+    cumulus: { setting: '', effective: '', limiter: 'setting' },
+    cirrus: { setting: '', effective: '', limiter: 'setting' },
   };
 
   // 各供給源（generated / observed）を管理し、キャップの視点追従と雲メッシュの描画を同期する。
@@ -125,7 +123,7 @@ export class CloudPresentation {
       },
       topAltitude: this.topAltitude,
       clock: this.clock,
-      cumulusOctaves: cumulusOctavesOf(this.effectiveCumulus),
+      cumulusOctaves: this.surface.currentSampling.octaves,
       cirrusOctaves: cirrusOctavesOf(this.effectiveCirrus),
     };
   }
@@ -141,33 +139,37 @@ export class CloudPresentation {
 
   // 描画設定のうち雲にかかわる項目と、見かけ直径 apparentDiameterPx [px] を表示状態へ反映する。
   public syncGraphics(graphics: GraphicsSettingsData, apparentDiameterPx: number): void {
-    // 雲全体を描くかと、描くときの雲場の出どころ・積雲の精細さ・殻の分割段。
+    // 雲全体を描くかと、描くときの雲場の出どころ・積雲の標本の配り方・殻の分割段。
     this.setCloudsEnabled(graphics.clouds);
     this.cumulusEnabled = graphics.cumulus;
     this.cirrusEnabled = graphics.cirrus;
     this.syncSurfaceVisibility();
     if (graphics.clouds) {
       this.setSource(graphics.cloudFieldSource);
-      // 実効の精細さ = min(設定, フットプリント上限, 予算上限)。設定の段は上限として扱う —
-      // 解像できない細かさと、フレーム枠に収まらない細かさは段を落として品質を守る。
+      // 実効の精細さは、設定の値をフットプリント上限と予算上限の小さい方の段の組まで下げたもの。設定は上限として
+      // 扱う — 解像できない細かさと、フレーム枠に収まらない細かさは段を落として品質を守る。最も精細な段まで
+      // 許されるときは設定の値のまま。
       const spanMin = this.minPixelSpan(apparentDiameterPx);
       const budget = this.governor?.levelCap ?? DETAIL_TIERS - 1;
       const footprintCumulus = footprintLevel(spanMin, CUMULUS_TIER_OCTAVES, DETAIL_WAVELENGTHS);
       const footprintCirrus = footprintLevel(spanMin, CIRRUS_TIER_OCTAVES, CIRRUS_WAVELENGTHS);
-      const cumulusTier = Math.min(graphics.cumulusDetail - 1, footprintCumulus, budget);
+      const cumulusSetting: CumulusSampling = {
+        march: graphics.cumulusMarchSteps, refine: graphics.cumulusRefineSteps, octaves: graphics.cumulusOctaves,
+      };
+      const cumulusCap = Math.min(footprintCumulus, budget);
+      const cumulus = cumulusCap >= DETAIL_TIERS - 1
+        ? cumulusSetting : cappedSampling(cumulusSetting, CUMULUS_TIER_SAMPLING[cumulusCap]!);
       const cirrusTier = Math.min(graphics.cirrusDetail, footprintCirrus, budget);
       this.quality = {
-        cumulus: {
-          setting: graphics.cumulusDetail - 1, footprint: footprintCumulus, effective: cumulusTier,
-        },
-        cirrus: {
-          setting: graphics.cirrusDetail, footprint: footprintCirrus, effective: cirrusTier,
-        },
-        budget,
+        cumulus: qualityReadingOf(
+          samplingLabel(cumulusSetting), samplingLabel(cumulus),
+          !sameSampling(cumulus, cumulusSetting), footprintCumulus, budget),
+        cirrus: qualityReadingOf(
+          cirrusTierLabel(graphics.cirrusDetail), cirrusTierLabel(cirrusTier),
+          cirrusTier < graphics.cirrusDetail, footprintCirrus, budget),
       };
-      this.effectiveCumulus = CUMULUS_BY_TIER[cumulusTier]!;
       this.effectiveCirrus = cirrusTier as CirrusDetail;
-      this.setDetail(this.effectiveCumulus);
+      this.surface.setSampling(cumulus);
       this.syncLod(apparentDiameterPx);
     }
   }
@@ -182,16 +184,12 @@ export class CloudPresentation {
   // 品質適応の予算上限の状態機械を結ぶ。結ばない間は予算上限が効かない。
   public setQualityGovernor(governor: CloudQualityGovernor): void { this.governor = governor; }
 
-  // 実効の精細さと、その決定に効いた上限(段番号 0..2 = 粗・標準・精細)。
-  // 実効段の表示が「設定・フットプリント・予算のどれで決まったか」を読む。
+  // 実効の精細さと、その決定に効いた上限。実効の値の表示が「設定・フットプリント・予算のどれで決まったか」を読む。
   public get cloudQuality(): {
     readonly cumulus: CloudQualityReading;
     readonly cirrus: CloudQualityReading;
   } {
-    return {
-      cumulus: qualityReadingOf(this.quality.cumulus, this.quality.budget),
-      cirrus: qualityReadingOf(this.quality.cirrus, this.quality.budget),
-    };
+    return this.quality;
   }
 
   // 雲場の出どころを選ぶ。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
@@ -228,15 +226,6 @@ export class CloudPresentation {
     this.cap.aim(snapped.latitude, snapped.longitude, snapped.radius);
     this.surface.bind(this.renderInput.field);
   }
-
-  private setDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
-
-  // 積雲の精細さの段を置き直す。マテリアルは段ごとに組んであるので、シェーダの組み直しは
-  // 起きない。品質適応(実効段)と、段ごとのマテリアルの事前コンパイルがここを通る。
-  public setCumulusDetail(detail: CumulusDetail): void { this.surface.setDetail(detail); }
-
-  // いま不透明表面へ張っている精細さの段。
-  public get cumulusDetail(): CumulusDetail { return this.surface.detail; }
 
   // 天体固定で見た太陽直下点の経度 [rad] を生成系へ渡す。暦を持つ呼び出し側がフレームごとに
   // 渡し、null で生成側の既定の太陽へ戻す。実写の場は時刻を持たないので何もしない。

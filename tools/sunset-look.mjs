@@ -100,8 +100,8 @@ function sceneSunAngles(azimuthDeg, elevationDeg, frame) {
 // 分解で動かす光源の項(環境光・エアグロー・天体照の数)の基準値を足したもの。
 const GRAPHICS = [
   ['clouds', true], ['cloudFieldSource', 'generated'], ['cirrus', true],
-  ['cumulusDetail', 2], ['cirrusDetail', 1], ['cloudShadow', true],
-  ['atmosphere', 3], ['sunLightModel', 1],
+  ['cumulusMarchSteps', 6], ['cumulusRefineSteps', 3], ['cumulusOctaves', 6], ['cirrusDetail', 1], ['cloudShadow', true],
+  ['atmosphere', true], ['atmosphereSampleBudget', 24], ['sunLightModel', 1],
   ['ambient', true], ['airglow', true], ['planetLightCount', 2],
 ];
 

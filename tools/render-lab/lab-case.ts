@@ -1,6 +1,6 @@
 // 描画テスト環境のケースが共有する取り決め。ケースが返す形と組む関数の型、描画の大きさ、既定の
-// カメラ・恒星の向きと、ケースが物体を置く部品(試験球・円・実写テクスチャの天体・既定戦闘船・
-// インスタンスの枝)を持つ。
+// カメラ・恒星の向きと地球を遠ざける・真上に置く置き方、ケースが物体を置く部品(試験球・円・実写テクスチャの天体・
+// 既定戦闘船・インスタンスの枝)を持つ。
 import * as THREE from 'three/webgpu';
 import { CelestialSurface } from '../../src/render/celestial/celestial-surface';
 import { shapeAxes, type ShapeDef } from '../../src/physics/celestial-body-def';
@@ -10,6 +10,7 @@ import { shipPhysicsShape } from '../../src/game/ship/ship-physics-shape';
 import { shipRenderAssembly } from '../../src/game/ship/ship-render-adapter';
 import { ModularShipView } from '../../src/render/dynamic/ship/modular-ship-view';
 import { buildShipModuleModel } from '../../src/render/dynamic/ship/ship-module-models';
+import { BLUE_NOISE_TILE_SIZE } from '../../src/render/blue-noise-tile.generated';
 import { anglesFromDirection, type EarthAngleKey, type LabViewAngles } from './view-angles';
 import type { Albedo } from '../../src/render/celestial/celestial-albedo';
 import type { RingMaterials } from '../../src/render/celestial/ring';
@@ -17,11 +18,13 @@ import type { BodyShadow, ShadowBody } from '../../src/render/pipeline/shadow/bo
 import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
 import type { SunLight } from '../../src/render/pipeline/sun-light';
 import type { RingBand } from '../../src/render/pipeline/shadow/ring-shadow';
+import type { SphereLightValue } from '../../src/render/pipeline/lighting/sphere-lights';
 import type { LineStyle } from '../../src/render/lines/line-style';
 import type { ShipAssembly } from '../../src/game/ship/ship-assembly';
 import type { AtmosphereBody } from '../../src/render/atmosphere';
 import type { RenderStyle } from '../../src/render/render-style';
 import type { GraphicsSettingsData } from '../../src/render/graphics-settings';
+import type { DebugTargetId } from '../../src/render/pipeline/debug-target';
 import type { CelestialTexture } from '../../src/render/celestial/celestial-textures';
 
 // 描画は 960×540 固定(撮影した PNG の大きさを決め打ちにするため)。
@@ -59,6 +62,31 @@ export interface LabShot {
   readonly view: Partial<LabViewAngles>;
   // 起動時の描画品質設定へ重ねる差分。省略すると起動時の設定のまま撮る。
   readonly graphics?: Partial<GraphicsSettingsData>;
+  // 撮影で表示する実際のパイプライン中間ターゲット。省略時は通常像。
+  readonly debugTarget?: DebugTargetId;
+  // 映り込みが画素ごとに引く乱数のタイルを読む位置のずらし [px](整数の x, y)。省略すると (0, 0)。
+  readonly reflectionNoiseOffset?: readonly [number, number];
+}
+
+// ちらつきの撮影の枚数。
+const FLICKER_SHOT_COUNT = 16;
+// ちらつきの撮影の描画設定。アンチエイリアスとレンズ効果は孤立した画素の明るさをにじませるので切る。
+const FLICKER_GRAPHICS: Partial<GraphicsSettingsData> = { screenSpaceSpecular: true, antialias: 0, lens: false };
+
+// 観察の向き view の映り込みを、乱数のタイルを読む位置だけ変えて FLICKER_SHOT_COUNT 枚撮る、鍵
+// `${name}-flicker-${k}` の撮影。画面が動いて画素の引く乱数が入れ替わるのと同じ揺れを幾何を止めたまま撮り、
+// 撮影どうしの差で映り込みのちらつきを読む。graphics はちらつきの撮影の描画設定へ重ねる差分。
+export function flickerShots(
+  name: string, view: Partial<LabViewAngles>, graphics: Partial<GraphicsSettingsData> = {},
+): Record<string, LabShot> {
+  return Object.fromEntries(Array.from({ length: FLICKER_SHOT_COUNT }, (_, k) => [
+    `${name}-flicker-${k}`,
+    {
+      view,
+      graphics: { ...FLICKER_GRAPHICS, ...graphics },
+      reflectionNoiseOffset: [(17 * k) % BLUE_NOISE_TILE_SIZE, (29 * k) % BLUE_NOISE_TILE_SIZE],
+    },
+  ]));
 }
 
 export interface LabCase {
@@ -93,6 +121,8 @@ export interface LabCase {
     readonly axis: THREE.Vector3;
     readonly bands: readonly RingBand[];
   };
+  // ケースに置く、影を持たない球光源。省くと置かない。
+  readonly sphereLights?: readonly SphereLightValue[];
   // ケースの部品が揃い、絵として比べられる状態になったか。持たせると、撮影はこれが真になるまで
   // 1 フレームずつ描いて待つ。
   readonly ready?: () => boolean;
@@ -100,8 +130,39 @@ export interface LabCase {
   // earthCenter は地球の中心(描画座標)で、地球を置かないケースでは null。毎フレーム、カメラと地球を
   // 置いたあとに呼ばれるので、同値なら何もしないこと。
   readonly sync?: (graphics: GraphicsSettingsData, earthCenter: THREE.Vector3 | null) => void;
-  // ケースが THREE のシーン資源所有走査で扱えない補助資源を解放する。
+  // 論理フレーム frame の状態へ置く。同じ番号を繰り返し渡したときは同じ状態になる。
+  readonly setFrame?: (frame: number) => void;
+  // ケース固有の値を差し替える。受け付ける名前と型はケースが検査する。
+  readonly setValue?: (name: string, value: string | number | boolean) => void;
+  // frame の実体を返す。同じ論理 frame には同じ実体と行列を返し、問い合わせでケースの状態を変えない。
+  readonly motionEntities?: (frame: number) => readonly LabMotionEntity[];
+  // 動きの参照で、写った画素が動きの履歴を棄てるのを正しいとみなす物体を返す。
+  readonly rejectedMotionObjects?: () => readonly THREE.Object3D[];
+  // 直前の sync が描画座標の原点にした、ケースの世界座標の点を返す。
+  readonly renderOrigin?: () => THREE.Vector3;
+  // ケースが握る、objects の所有印では解放できない資源を解放する。
   readonly dispose?: () => void;
+  // プールを iterations 回積み直し、回ごとの CPU の所要時間 [ms] を poolRebuildMs で返す。
+  readonly measurePoolRebuild?: (iterations: number) => {
+    readonly poolRebuildMs: readonly number[];
+    readonly previousMatricesMs: readonly number[];
+  };
+}
+
+// 動きの参照が CPU のレイで追う、論理フレーム 1 つぶんの実体。
+export interface LabMotionEntity {
+  // 同じ実体は全フレームで同じ鍵を持ち、異なる実体は異なる鍵を持つ。
+  readonly key: string;
+  // 部屋、通常物体、プールの区分。
+  readonly kind: 'room' | 'ordinary' | 'pool';
+  // 実体ごとの CPU レイに使う形状。
+  readonly geometry: THREE.BufferGeometry;
+  // 浮動原点で置き直す前の、ケース世界座標での model 行列。
+  readonly matrix: THREE.Matrix4;
+  // プールへ push した順の番号。プール以外は null。
+  readonly slot: number | null;
+  // slot を数えるプールの識別。プールを 1 つしか持たないケースでは省ける。
+  readonly poolId?: string;
 }
 
 // ケースを組む関数。style の表示スタイルで組んだ姿を返し、環の帯は ringMaterials で描く。
@@ -206,8 +267,74 @@ export function shipAt(position: THREE.Vector3, rotation?: THREE.Euler): THREE.O
 
 // 斜光の恒星の向き。カメラは −Z を見るので、左上手前から差す。
 export const OBLIQUE_SUN_DIR = new THREE.Vector3(-0.70, 0.20, 0.68).normalize();
+// 地球を遠ざける置き方: 高度 1e9 m の真下。どの撮影の画面にも入らず、恒星とケースの物体のあいだにも入らない。
+export const EARTH_AWAY: Partial<LabViewAngles> = { earthElevationDeg: -90, earthAltitudeLog: 9 };
+// 地球を真上に置く置き方: 描画原点の高度を低軌道の 420 km にし、直下点を地表の色が読める陸(サハラ、北緯 23°・
+// 東経 13°)にする。
+export const OVERHEAD_EARTH: Pick<LabViewAngles, EarthAngleKey> = {
+  earthAzimuthDeg: 0,
+  earthElevationDeg: 90,
+  earthAltitudeLog: Math.log10(420e3),
+  earthLatitudeDeg: 23,
+  earthLongitudeDeg: 13,
+};
 // 機軸の片端と側面の両方が見える機体の姿勢。
 export const SHIP_ROTATION_PORT = new THREE.Euler(-0.5, 0.6, 0.12);
+
+// 白い面の線形の灰色の値と粗さ。
+export const WHITE = 0.8;
+export const WHITE_ROUGHNESS = 0.7;
+
+// 線形 RGB color の標準マテリアル。
+export function standard(color: THREE.Vector3, roughness: number, metalness: number): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setRGB(color.x, color.y, color.z, THREE.LinearSRGBColorSpace),
+    roughness,
+    metalness,
+  });
+}
+
+// 白い面のマテリアル。
+export function white(): THREE.MeshStandardMaterial {
+  return standard(new THREE.Vector3(WHITE, WHITE, WHITE), WHITE_ROUGHNESS, 0);
+}
+
+// 描画座標の min から max までを占める箱。ジオメトリとマテリアルは箱が所有する。
+export function slab(
+  min: THREE.Vector3, max: THREE.Vector3, material: THREE.Material | THREE.Material[] = white(),
+): THREE.Mesh {
+  const size = new THREE.Vector3().subVectors(max, min);
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(size.x, size.y, size.z), material);
+  mesh.position.addVectors(min, max).multiplyScalar(0.5);
+  mesh.userData.ownsGeometry = true;
+  mesh.userData.ownsMaterial = true;
+  return mesh;
+}
+
+// Cornell box の内寸と板の厚み [m]。内面は x = ±halfWidth・z = backZ・y = height で、z = frontZ で手前を開ける。床の
+// 上面は y = 0。
+export interface CornellRoomDimensions {
+  readonly halfWidth: number;
+  readonly backZ: number;
+  readonly frontZ: number;
+  readonly height: number;
+  readonly panelThickness: number;
+}
+
+// 寸法 dimensions の、手前を開けた Cornell box の殻 — 白い床・天井・奥の壁と、赤い左の壁・緑の右の壁の板。ジオメトリと
+// マテリアルは板が所有する。
+export function cornellRoomShell(dimensions: CornellRoomDimensions): THREE.Mesh[] {
+  const { halfWidth: w, backZ, frontZ, height, panelThickness: t } = dimensions;
+  const red = standard(new THREE.Vector3(0.63, 0.065, 0.05), WHITE_ROUGHNESS, 0);
+  const green = standard(new THREE.Vector3(0.14, 0.45, 0.091), WHITE_ROUGHNESS, 0);
+  return [
+    slab(new THREE.Vector3(-w - t, -t, backZ - t), new THREE.Vector3(w + t, 0, frontZ)),
+    slab(new THREE.Vector3(-w - t, height, backZ - t), new THREE.Vector3(w + t, height + t, frontZ)),
+    slab(new THREE.Vector3(-w - t, 0, backZ - t), new THREE.Vector3(w + t, height, backZ)),
+    slab(new THREE.Vector3(-w - t, 0, backZ), new THREE.Vector3(-w, height, frontZ), red),
+    slab(new THREE.Vector3(w, 0, backZ), new THREE.Vector3(w + t, height, frontZ), green),
+  ];
+}
 
 // 仮の親 host へ組んで個体を積み終えた InstancedPool の枝を、host から外してケースの物体にする。
 // ジオメトリとマテリアルはケースが所有する。

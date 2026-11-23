@@ -3,9 +3,9 @@
 // 場の texel より細かい起伏は天体固定の細部で足す。
 import * as THREE from 'three/webgpu';
 import {
-  Discard, Fn, If, and, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
-  max, mix, modelViewMatrix, modelWorldMatrixInverse, normalize, positionLocal, select,
-  smoothstep, sqrt, step, transformNormalToView, uniform, vec3, vec4,
+  Discard, Fn, If, Loop, and, cameraPosition, cameraProjectionMatrix, dFdx, dFdy, dot, float, length,
+  max, mix, modelViewMatrix, modelWorldMatrixInverse, mrt, normalize, positionLocal, select,
+  smoothstep, sqrt, step, struct, transformNormalToView, uniform, vec3, vec4,
 } from 'three/tsl';
 import { BlueNoise } from '../../blue-noise';
 import { CloudShapeEvaluator } from './cloud-shape-evaluator';
@@ -20,6 +20,7 @@ import {
 } from './cloud-kind-node';
 import { eastAt, northAt } from '../sphere-frame';
 import { markLitCloudShell } from '../../pipeline/lit-layer';
+import { markMotionHistoryKey, motionNodeAtPosition } from '../../pipeline/motion-history';
 import { sphereLodLevel, SPHERE_LOD_LADDER, type SphereLodLevel } from '../../celestial/screen-lod';
 import type { FloatNode, FloatUniform, Vec2Node, Vec3Node, Vec4Node } from '../../tsl-types';
 
@@ -31,29 +32,17 @@ const CUMULUS_ROUGHNESS = 1;
 // 画素の描画欠落が生じる。
 const DITHER_LEVELS = 256;
 
-// 積雲の精細さの段。**値は保存された設定を読む鍵なので、段を足すときも既存の値を動かさない** —
-// 番号を詰め直すと、保存済みの設定が黙って別の段を指す。
-export const CUMULUS_DETAIL = { coarse: 1, standard: 2, fine: 3 } as const;
-export type CumulusDetail = (typeof CUMULUS_DETAIL)[keyof typeof CUMULUS_DETAIL];
+// setSampling で置き直すまでの標本の配り方(刻みの数・二分の回数・細部の段数)。
+const INITIAL_SAMPLING: CumulusSampling = { march: 6, refine: 3, octaves: 6 };
 
-// 雲頂を探す標本の配り方と、細部の段数。march は殻の中を等間隔にたどる刻みの数(どの交点を
+// 雲頂を探す標本の配り方と、細部の段数。march は殻の中を等間隔にたどる刻みの数(1 以上。どの交点を
 // 見つけるかを決める)、refine は雲頂をまたいだ区間を締める二分の回数(見つけた区間の中の精度を
-// 決める)、octaves は細部の段数(粗い側から数える。32〜4 km が粗、1 km までが標準、0.25 km までが精細)。
-interface CumulusSampling { readonly march: number; readonly refine: number; readonly octaves: number }
+// 決める)、octaves は細部の段数(32 km の段から数える)。費用は march + refine 回の標本化。
+export interface CumulusSampling { readonly march: number; readonly refine: number; readonly octaves: number }
 
-// 段ごとの標本の配り方。費用は march + refine 回の標本化。march 0 は殻を描かない段。
-// いちばん粗い段は march を 1 本にして refine で補う — 粗い刻みを 2 本以上にすると、手前と奥で
-// 拾った雲頂が 2 枚の層に重なって見える。
-const SAMPLING_OF_DETAIL = {
-  [CUMULUS_DETAIL.coarse]: { march: 1, refine: 5, octaves: 4 },
-  [CUMULUS_DETAIL.standard]: { march: 6, refine: 3, octaves: 6 },
-  [CUMULUS_DETAIL.fine]: { march: 12, refine: 3, octaves: 8 },
-} as const satisfies Readonly<Record<CumulusDetail, CumulusSampling>>;
-
-// 積雲の精細さの段が使う細部の段数。影も同じ段数で細部を写す。
-export function cumulusOctavesOf(detail: CumulusDetail): number {
-  return SAMPLING_OF_DETAIL[detail].octaves;
-}
+// 1 回のレイマーチが深度・法線・明るさ・動きで共有する結果。normal は view 空間法線に雲の明るさを掛けたもの —
+// 明るさは常に正なので、法線の向きと明るさは向きと長さで分けて読める。
+const MarchedCloudSurface = struct({ hitPoint: 'vec3', normal: 'vec3', depth: 'float' }, 'MarchedCloudSurface');
 
 // 雲頂の勾配を測る差分の幅 [m]。最も細かいオクターブの半波長に取り、その段の起伏の傾きを
 // 法線へ出す。
@@ -73,11 +62,11 @@ const DETAIL_BRIGHTNESS_DEPTH = 0.15;
 
 export class OpaqueCloudSurfaceRenderer {
   private readonly shape: CloudShapeEvaluator;
-  // 活性の精細さの段と、段ごとに事前に組んだマテリアル。march・refine はシェーダへ展開される
-  // 定数なので、段替えで組み直すとコンパイルでフレームが止まる — 全段を組んで持ち、切り替えは
-  // メッシュが参照するマテリアルの交換だけで済ませる。
-  private activeDetail: CumulusDetail = CUMULUS_DETAIL.standard;
-  private readonly materials: ReadonlyMap<CumulusDetail, THREE.Material>;
+  // 標本の配り方。刻みと二分の回数は uniform で回すので、置き直してもシェーダを組み直さない。
+  private readonly march = uniform(INITIAL_SAMPLING.march, 'int');
+  private readonly refine = uniform(INITIAL_SAMPLING.refine, 'int');
+  private sampling: CumulusSampling = INITIAL_SAMPLING;
+  private readonly material: THREE.Material;
   private readonly blueNoise = new BlueNoise();
   // 読む雲場。出どころが焼いた写しと cap の置き方を bind で写し取る。
   private readonly fieldSampler = new CloudFieldSampler();
@@ -100,18 +89,14 @@ export class OpaqueCloudSurfaceRenderer {
     this.groundRadius = uniform(1 / shellScale);
     this.bodyRadius = uniform(bodyRadius);
     this.shape = new CloudShapeEvaluator(this.bodyRadius);
-    this.shape.setDetailOctaves(SAMPLING_OF_DETAIL[this.activeDetail].octaves);
+    this.shape.setDetailOctaves(INITIAL_SAMPLING.octaves);
     this.gradientAngle = uniform(NORMAL_STEP / bodyRadius);
-    const materials = new Map<CumulusDetail, THREE.Material>();
-    for (const detail of Object.values(CUMULUS_DETAIL)) {
-      materials.set(detail, this.buildMaterial(SAMPLING_OF_DETAIL[detail]));
-    }
-    this.materials = materials;
+    this.material = this.buildMaterial();
 
     // 詳細度ごとのメッシュを同じ雲場へ束ねる。
     const meshes = new Map<SphereLodLevel, THREE.Mesh>();
     for (const level of SPHERE_LOD_LADDER) {
-      const mesh = new THREE.Mesh(unitSphereGeometry(level), this.materials.get(this.activeDetail)!);
+      const mesh = new THREE.Mesh(unitSphereGeometry(level), this.material);
       mesh.scale.setScalar(shellScale);
       mesh.visible = false;
       markLitCloudShell(mesh);
@@ -125,20 +110,23 @@ export class OpaqueCloudSurfaceRenderer {
 
   // 全段のメッシュを parent の下へ置く。
   public addTo(parent: THREE.Object3D): void {
-    for (const mesh of this.meshes.values()) parent.add(mesh);
+    for (const mesh of this.meshes.values()) {
+      parent.add(mesh);
+      // 段を切り替えても動きベクトルの履歴が続くよう、全段で parent の履歴を共有する。
+      markMotionHistoryKey(mesh, parent);
+    }
   }
 
-  // 積雲の精細さの段を置き直す。マテリアルは段ごとに組んであるので、参照の交換と
-  // 細部の段数(uniform)の更新だけで済む — ここではシェーダを組み直さない。
-  public setDetail(detail: CumulusDetail): void {
-    this.activeDetail = detail;
-    this.shape.setDetailOctaves(SAMPLING_OF_DETAIL[detail].octaves);
-    const material = this.materials.get(detail)!;
-    for (const mesh of this.meshes.values()) mesh.material = material;
+  // 標本の配り方を置き直す。次の描画から効く。
+  public setSampling(sampling: CumulusSampling): void {
+    this.sampling = sampling;
+    this.march.value = sampling.march;
+    this.refine.value = sampling.refine;
+    this.shape.setDetailOctaves(sampling.octaves);
   }
 
-  // いまメッシュへ張っている精細さの段。
-  public get detail(): CumulusDetail { return this.activeDetail; }
+  // いま置いている標本の配り方。
+  public get currentSampling(): CumulusSampling { return this.sampling; }
 
   // 読む雲場と cap の置き方を写し取る。どちらの出どころも同じ cap へ焼くので、グラフは組み直さない。
   public bind(field: CloudFieldBinding): void {
@@ -150,10 +138,9 @@ export class OpaqueCloudSurfaceRenderer {
     this.shape.syncClock(clock.displayTime, clock.simSpeed);
   }
 
-  // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。精細さがオフなら全段を隠す。
+  // 見かけ直径 [px] から分割段を選び、その段のメッシュを見せる。
   public syncLod(apparentDiameterPx: number): void {
-    const sampling: CumulusSampling = SAMPLING_OF_DETAIL[this.activeDetail];
-    const level = sampling.march === 0 ? null : sphereLodLevel(apparentDiameterPx);
+    const level = sphereLodLevel(apparentDiameterPx);
     if (level === this.activeLevel) return;
     this.activeLevel = level;
     for (const [meshLevel, mesh] of this.meshes) mesh.visible = meshLevel === level;
@@ -165,24 +152,26 @@ export class OpaqueCloudSurfaceRenderer {
     for (const mesh of this.meshes.values()) mesh.visible = false;
   }
 
-  // 全段のメッシュを親から外し、段ごとのマテリアルを解放する。雲場のテクスチャは出どころが解放する。
+  // 全段のメッシュを親から外し、マテリアルを解放する。雲場のテクスチャは出どころが解放する。
   public dispose(): void {
     this.hide();
     for (const mesh of this.meshes.values()) mesh.removeFromParent();
-    for (const material of this.materials.values()) material.dispose();
+    this.material.dispose();
     this.blueNoise.dispose();
   }
 
-  // 雲頂の交点を書く不透明な白の標準マテリアル。深度・法線・明るさは 1 本のレイマーチを共有する。
-  // sampling はこの段が使う標本の配り方 — march・refine はシェーダへ展開される定数になる。
-  private buildMaterial(sampling: CumulusSampling): THREE.Material {
+  // 雲頂の交点を書く不透明な白の標準マテリアル。深度・法線・明るさ・動きは 1 本のレイマーチを共有する。
+  private buildMaterial(): THREE.Material {
     const material = new THREE.MeshStandardNodeMaterial({
       roughness: CUMULUS_ROUGHNESS, metalness: 0,
     });
-    const marched = this.marchedSurface(sampling).toVar();
-    material.depthNode = marched.w;
-    material.normalNode = normalize(marched.xyz);
-    material.colorNode = vec3(CLOUD_ALBEDO).mul(length(marched.xyz));
+    // 法線の向きと長さ(明るさ)を分けて読み、交点で動きベクトルを書く。
+    const marched = this.marchedSurface();
+    const shade = marched.get('normal') as Vec3Node;
+    material.depthNode = marched.get('depth') as FloatNode;
+    material.normalNode = normalize(shade);
+    material.colorNode = vec3(CLOUD_ALBEDO).mul(length(shade));
+    material.mrtNode = mrt({ motion: motionNodeAtPosition(marched.get('hitPoint') as Vec3Node) });
     return material;
   }
 
@@ -195,12 +184,12 @@ export class OpaqueCloudSurfaceRenderer {
     ).mul(float(1).add(detail.mul(DETAIL_BRIGHTNESS_DEPTH)));
   }
 
-  // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、交点の view 空間法線に雲の明るさを掛けたもの(xyz)と
-  // 深度(w)を返す。明るさは常に正なので、法線の向きと明るさは xyz の向きと長さで分けて読める。
+  // 殻の面へ届いた視線を雲頂の高さ場へ下ろし、物体空間の交点・view 空間法線に雲の明るさを掛けたもの・深度を
+  // 返す(MarchedCloudSurface)。
   //
   // **画面微分は分岐の外で取り、捨てるのは最後にする** — 粒の振幅が使う dFdx/dFdy は隣接画素との
   // 差なので、条件分岐や discard のあとでは決まらない。
-  private marchedSurface(sampling: CumulusSampling): Vec4Node {
+  private marchedSurface(): THREE.Node {
     return Fn(() => {
       const entry = positionLocal.toVar();
       const origin = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1)).xyz;
@@ -219,7 +208,7 @@ export class OpaqueCloudSurfaceRenderer {
         along.negate().sub(sqrt(max(groundHalf, 0))),
         along.negate().add(sqrt(max(half.add(1), 0))),
       ), 0);
-      const stepLength = marchEnd.div(sampling.march);
+      const stepLength = marchEnd.div(float(this.march)).toVar();
 
       // 雲頂より内側へ入った最初の刻みを、その手前の刻みと一緒に覚える。命中したあとの
       // 刻みは評価しない — 交点の区間は最初にまたいだ刻みで決まるので、それより先の刻みの
@@ -227,8 +216,8 @@ export class OpaqueCloudSurfaceRenderer {
       const hit = float(0).toVar();
       const above = float(0).toVar();
       const below = marchEnd.toVar();
-      for (let stepIndex = 1; stepIndex <= sampling.march; stepIndex++) {
-        const distance = stepLength.mul(stepIndex);
+      Loop({ start: 1, end: this.march, type: 'int', condition: '<=' }, ({ i }) => {
+        const distance = stepLength.mul(float(i)).toVar();
         If(hit.lessThan(0.5), () => {
           const inside = this.clearanceAt(
             entry.add(direction.mul(distance)), pixelAngle, width, wind).lessThan(0);
@@ -239,18 +228,19 @@ export class OpaqueCloudSurfaceRenderer {
             above.assign(distance);
           });
         });
-      }
+      });
       // 雲頂をまたいだ区間を二分して縁を締める。**外れた視線は締めず法線も引かない** — 捨てる
       // 画素にはどちらの値も届かない。
+      const hitPoint = entry.toVar();
       const surface = vec4(0).toVar();
       If(hit.greaterThan(0.5), () => {
-        for (let refineIndex = 0; refineIndex < sampling.refine; refineIndex++) {
-          const middle = above.add(below).mul(0.5);
+        Loop({ start: 0, end: this.refine, type: 'int', condition: '<' }, () => {
+          const middle = above.add(below).mul(0.5).toVar();
           const inside = this.clearanceAt(
             entry.add(direction.mul(middle)), pixelAngle, width, wind).lessThan(0);
           If(inside, () => { below.assign(middle); }).Else(() => { above.assign(middle); });
-        }
-        const hitPoint = entry.add(direction.mul(below)).toVar();
+        });
+        hitPoint.assign(entry.add(direction.mul(below)));
         const clip = cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(hitPoint, 1)));
         const top = this.cloudTopAt(hitPoint, width, wind).toVar();
         surface.assign(vec4(
@@ -258,7 +248,7 @@ export class OpaqueCloudSurfaceRenderer {
           clip.z.div(clip.w)));
       });
       Discard(hit.lessThan(0.5));
-      return surface;
+      return MarchedCloudSurface(hitPoint, surface.xyz, surface.w);
     })();
   }
 

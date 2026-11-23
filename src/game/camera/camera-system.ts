@@ -2,6 +2,7 @@
 import type { Input } from '../../input-devices/input';
 import { KEY_MAPPING as K } from '../../input-devices/key-mapping';
 import { rayThroughScreen, type Viewpoint } from '../../math/projection';
+import type { Quat } from '../../math/quat';
 import type { Vec3 } from '../../math/vec3';
 import { v3 } from '../../math/vec3';
 import { bodyAnchorSource } from '../../physics/attractor';
@@ -18,6 +19,7 @@ import { COMBAT_CAMERA_FOV, type CameraFrameSamples, type CameraSelectionSource 
 import type { CameraFrameSample, FocusCameraSource } from '../viewer/focus-camera-selection';
 import { focusPoint, focusTargetId, type FocusTarget } from '../viewer/focus-target';
 import type { ViewSelectionSource } from '../viewer/view-selection';
+import { cameraKeyOf } from './camera-key';
 import { cameraOperation } from './camera-operator';
 import { CameraRig } from './camera-rig';
 import type { FocusCandidate } from './focus-derivation';
@@ -47,6 +49,14 @@ export class CameraSystem {
   private get view(): ViewMode { return this.viewSelection.current; }
   private get activeSource(): FocusCameraSource { return this.cameraSelection.camera(this.view); }
   public get activeFocus(): FocusTarget { return this.activeSource.focus; }
+  // 表示中のビュー・照準・注視対象から作る、カメラの同一性の鍵。
+  public get cameraKey(): string {
+    return cameraKeyOf(
+      this.view, this.view === 'combat' && this.useGunsight, focusTargetId(this.activeSource.focus) ?? null,
+    );
+  }
+  // 表に出ているビューの注視の対象の姿勢(ECI)。姿勢を持たない対象(天体・固定点)では null。
+  public get focusAttitude(): Quat | null { return this.sample(this.view).attitude; }
   // 表に出ているビューの視点。
   public get activeViewpoint(): Viewpoint {
     return this.view === 'map' ? this.mapRig.viewpoint : this.combatViewpoint;

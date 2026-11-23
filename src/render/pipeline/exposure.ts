@@ -32,12 +32,14 @@ export class Exposure {
     this.refreshFactor();
   }
 
+  // 露出係数を、順応と露出補正の積へ書き直す。
   private refreshFactor(): void {
     this.factorUniform.value = this.adaptation * this.compensation;
   }
 
   // トーンマッパへ渡す露出係数。物理量として描くものはこれをそのまま受ける。
   public get factor(): FloatNode { return this.factorUniform; }
+  public get factorValue(): number { return this.factorUniform.value; }
 
   // 固定した明るさで描くものが自分の色へ掛ける倍率。順応ぶんをちょうど打ち消すので、
   // どこから見ても同じ明るさで写る。

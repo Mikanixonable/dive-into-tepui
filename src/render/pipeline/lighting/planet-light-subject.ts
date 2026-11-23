@@ -120,7 +120,7 @@ export class PlanetLightSubject {
       atmosphere, ATMOSPHERE_STEPS, cutoffRadius(atmosphere.optics, atmosphere.surfaceRadius));
   }
 
-  // 大気を積分するか(描画設定「大気」がオフでない)。
+  // 大気を積分するか(描画設定「大気」がオン)。
   public setAtmosphereEnabled(enabled: boolean): void { this.atmosphereEnabled.value = enabled; }
 
   // 不透明な積雲を焼き込むか(描画設定「積雲」がオン)。

@@ -48,6 +48,18 @@ export function register(): void {
   test('gpu timings: 行の名前が識別子と 1 対 1 に並ぶ', () => {
     assert.equal(GPU_PASS_COUNT, Object.keys(GPU_PASS).length);
     assert.equal(new Set(GPU_PASS_LABELS).size, GPU_PASS_COUNT);
+    assert.deepEqual(Object.values(GPU_PASS), [...Array(GPU_PASS_COUNT).keys()]);
+    assert.equal(GPU_PASS_LABELS[GPU_PASS.lighting], 'ライティング');
+    assert.deepEqual(GPU_PASS_LABELS.slice(GPU_PASS.cloudShadow, GPU_PASS.nearbyDiffuseAverage + 1), [
+      '雲影', 'ライティング', '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流',
+      '近傍拡散 joint-bilateral 均し', '近傍拡散拡大', '近傍拡散蓄積', '近傍拡散パス平均',
+    ]);
+    assert.deepEqual(GPU_PASS_LABELS.slice(GPU_PASS.shadowMap, GPU_PASS.gbuffer + 1), [
+      '影マップ', '近傍拡散履歴写し', 'Gバッファ',
+    ]);
+    assert.deepEqual(GPU_PASS_LABELS.slice(GPU_PASS.reflectionSource, GPU_PASS.atmosphere + 1), [
+      '映り込みの像の元', '映り込み', '映り込みの縮小', '映り込みの合流', '映り込みの均し', 'マテリアル', '大気',
+    ]);
   });
 
   test('gpu timings: 雲の計測範囲と行の名前が固定される', () => {

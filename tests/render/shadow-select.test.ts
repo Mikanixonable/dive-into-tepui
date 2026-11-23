@@ -3,7 +3,7 @@
 import * as assert from 'node:assert/strict';
 import { test } from '../harness';
 import { cloudShadowKinds, type CloudShadowKinds } from '../../src/render/pipeline/shadow/shadow-select';
-import { QUALITY_PRESETS, withGraphicsOption } from '../../src/render/graphics-settings';
+import { DEFAULT_GRAPHICS_SELECTION, resolveGraphics } from '../../src/render/graphics-selection';
 
 // 雲・雲の影・各種類の表示設定から、種類ごとの影の有無を確認する。
 const CASES: readonly {
@@ -27,13 +27,10 @@ export function register(): void {
     const label = `雲=${onOff(c.clouds)} 雲の影=${onOff(c.cloudShadow)}`
       + ` 積雲=${onOff(c.cumulus)} 巻雲=${onOff(c.cirrus)}`;
     test(`shadow-select: 雲の影の種類ごとの有無(${label})`, () => {
-      const graphics = withGraphicsOption(
-        withGraphicsOption(
-          withGraphicsOption(
-            withGraphicsOption(QUALITY_PRESETS.high, 'clouds', c.clouds),
-            'cloudShadow', c.cloudShadow),
-          'cumulus', c.cumulus),
-        'cirrus', c.cirrus);
+      const graphics = {
+        ...resolveGraphics({ ...DEFAULT_GRAPHICS_SELECTION, quality: 'high' }),
+        clouds: c.clouds, cloudShadow: c.cloudShadow, cumulus: c.cumulus, cirrus: c.cirrus,
+      };
       const kinds = cloudShadowKinds(graphics);
       assert.deepEqual({ cumulus: kinds.cumulus, cirrus: kinds.cirrus }, c.expected);
       assert.equal(kinds.cumulusOctaves, 6);

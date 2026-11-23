@@ -92,18 +92,15 @@ function percentile(sorted: readonly number[], ratio: number): number {
   return sorted[i] ?? 0;
 }
 
-// 段番号(0..2)の表示名と、実効段を決めた上限の表示名。
-const TIER_LABELS = ['粗', '標準', '精細'] as const;
+// 実効の値を決めた上限の表示名。
 const LIMITER_LABELS: Record<CloudQualityReading['limiter'], string> = {
   setting: '設定', footprint: 'footprint', budget: '予算',
 };
 
-// 実効段の行の値。「標準」なら設定値のまま、「標準→粗(予算)」なら予算上限で下がっている。
+// 実効の値の行の値。「標準」なら設定値のまま、「標準→粗(予算)」なら予算上限で下がっている。
 function cloudQualityText(reading: CloudQualityReading): string {
-  const effective = TIER_LABELS[reading.effective] ?? `${reading.effective}`;
-  if (reading.limiter === 'setting') return effective;
-  const setting = TIER_LABELS[reading.setting] ?? `${reading.setting}`;
-  return `${setting}→${effective}(${LIMITER_LABELS[reading.limiter]})`;
+  if (reading.limiter === 'setting') return reading.effective;
+  return `${reading.setting}→${reading.effective}(${LIMITER_LABELS[reading.limiter]})`;
 }
 
 export class DebugInfoWindow {

@@ -4,7 +4,9 @@
 // (DEVELOP/SPEC/RENDERING.md「宇宙船の描画」建造の項)。
 import * as THREE from 'three/webgpu';
 import { PI, clamp, dot, length, max, uniform, vec3 } from 'three/tsl';
-import { contributionMaterial, type LightContribution, type LightSource } from './light-source';
+import {
+  contributionMaterial, type LightContribution, type LightSource, type SpecularReach,
+} from './light-source';
 import { sphereIrradianceFactor, type SphereSpecular } from './sphere-light';
 import type { FloatUniform, Vec3Node, Vec3Uniform } from '../../tsl-types';
 import type { ShadingSample } from './shading-sample';
@@ -42,6 +44,8 @@ export function workLightPlacement(
 }
 
 export class WorkLightSource implements LightSource {
+  // 灯は近くに置いた球光源なので、鏡面は近くの物体の映り込みが置き換えない直接の側へ積む。
+  public readonly specularReach: SpecularReach = 'direct';
   private readonly center: Vec3Uniform = uniform(new THREE.Vector3());
   private readonly radius: FloatUniform = uniform(1);
   private readonly intensity: FloatUniform = uniform(0);
@@ -65,7 +69,7 @@ export class WorkLightSource implements LightSource {
 
   // 作業灯の寄与を描くマテリアル。値はすべてユニフォームなので初回だけ組めば足りる。
   public material(sample: ShadingSample): THREE.MeshBasicNodeMaterial {
-    this.cached ??= contributionMaterial(sample, this.contribution(sample));
+    this.cached ??= contributionMaterial(sample, this.contribution(sample), this.specularReach);
     return this.cached;
   }
 

@@ -11,6 +11,12 @@ import type { CelestialBody } from '../../../physics/celestial-body';
 import type { Vec3 } from '../../../math/vec3';
 import type { Albedo } from '../../celestial/celestial-albedo';
 
+// 一様球の放射輝度 radiance(色つき)・半径 radius の天体が、距離 distance の基準点へ、位相角 phaseAngle [rad](天体から見た
+// 主星と基準点のなす角)で届ける放射照度の大きさ。光源の順位づけの物差し。
+export function planetLightStrength(radiance: Albedo, radius: number, distance: number, phaseAngle: number): number {
+  return Math.PI * rec709Luminance(radiance) * (radius / distance) ** 2 * lambertPhase(phaseAngle);
+}
+
 // 光源になりうる天体 1 体。**恒星や半径 0 の天体を含む星系の全天体を渡すこと** — 天体自身の
 // 食(sunlitFactor)が、光源にならない天体にも遮られるため。albedo は色つきのボンドアルベド。
 interface PlanetLightCandidate<T extends CelestialBody> {
@@ -67,10 +73,10 @@ export function selectPlanetLights<T extends CelestialBody>(
     const dist = Math.max(len(toReference), celestialBody.def.radius);
     // 位相角: 天体から見た主星と基準点のなす角。
     const cosAlpha = toSun === null ? 1 : dot(toSun, toReference) / (len(toSun) * dist);
-    const phase = lambertPhase(Math.acos(Math.min(1, Math.max(-1, cosAlpha))));
+    const phaseAngle = Math.acos(Math.min(1, Math.max(-1, cosAlpha)));
     const base = planetRadiance(albedo, sunIrradiance);
     // 順位づけは基準点へ届く明るさで測るので、位相も掛ける。
-    const bound = Math.PI * rec709Luminance(base) * (celestialBody.def.radius / dist) ** 2 * phase;
+    const bound = planetLightStrength(base, celestialBody.def.radius, dist, phaseAngle);
     unshadowed.push({ celestialBody, position, base, sunIrradiance, bound, order });
   }
   // 日照率は 0..1 なので、上界の高い順に日照率を解き、上界が確定した上位の最下位を下回ったら

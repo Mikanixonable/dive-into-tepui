@@ -107,7 +107,7 @@ export class CelestialIllumination {
     this.syncPlanetLights(sources, atmospheres, displayTime, camera, sunPos);
     this.syncShadowSources(sources, fo, displayTime, focusPosition, graphics);
     // 大気パスが描く天体と同じ列を、直射光の消衰へも渡す — 描かない大気は光も減らさない。
-    const draws = atmosphereDraws([...atmospheres.values()], graphics.atmosphere);
+    const draws = atmosphereDraws([...atmospheres.values()], graphics);
     this.targets.atmosphere.setDraws(draws);
     const bodies = draws.map((draw) => draw.body);
     this.targets.sunExtinction.set(bodies);
@@ -158,6 +158,7 @@ export class CelestialIllumination {
       frame.starDirection.subVectors(sunPos, center).normalize();
       writeBodyFromWorld(frame.bodyFromWorld, light.celestialBody, displayTime);
       return {
+        key: light.celestialBody.def.id,
         center,
         radius: shapeInscribedRadius(light.celestialBody.def.radius, shapeOf(light.celestialBody.def)),
         radiance: light.radiance,

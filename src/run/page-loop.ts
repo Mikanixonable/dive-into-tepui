@@ -79,7 +79,7 @@ export class PageLoop {
   // rAF のコールバック。上限で見送るか、1フレームを回して次を予約する。例外が出たらループを止めて
   // 画面に出す — 壊れた状態で回し続けると、セーブまで壊れた状態を書き込む。
   private readonly tick = (now: number): void => {
-    if (!skipsFrame(now, this.lastDrawnMs, this.settings.graphics.current.frameRateCap)) {
+    if (!skipsFrame(now, this.lastDrawnMs, this.settings.resolvedGraphics.current.frameRateCap)) {
       const dt = (now - this.lastDrawnMs) / 1000;
       this.lastDrawnMs = now;
       try {
@@ -109,7 +109,7 @@ export class PageLoop {
     // 入力と HUD の同期は回したまま、寸法の変化に伴う headless WebGPU の再確保と描画だけを止める。
     const hudOnly = this.layoutSmoke === 'hudOnly'
       || (this.layoutSmoke === 'freezable' && document.documentElement.dataset.layoutSmokeFreeze === 'true');
-    if (!hudOnly) devices.scene.syncFrame(viewport, settings.graphics.current, devices.debugInfo.debugTarget);
+    if (!hudOnly) devices.scene.syncFrame(viewport, settings.resolvedGraphics.current, devices.debugInfo.debugTarget);
     // 設定面と BGM はタイトル画面でも使うので、周回の有無を見る前に引き直す。BGM は、前のフレームまでに
     // 決まった周回の進行と、設定面の試聴に合わせる。
     const pauseMenu = devices.pauseMenu;

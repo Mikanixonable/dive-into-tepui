@@ -90,6 +90,8 @@ export class BodyShadow {
   private readonly centerArray: THREE.UniformArrayNode<'vec3'>;
   private readonly axesArray: THREE.UniformArrayNode<'vec3'>;
   private readonly bodyFromWorldArray: THREE.UniformArrayNode<'mat4'>;
+  // 直前の set で使った天体(上限で切った後)。
+  private used: readonly ShadowBody[] = [];
   // 埋まっているスロットの数。スロットは先頭から詰める。
   private readonly count = uniform(0, 'int');
 
@@ -105,9 +107,11 @@ export class BodyShadow {
 
   // このフレームで影を落とす天体の列(描画座標)。MAX_SHADOW_BODIES を超えた分は捨てる。
   public set(bodies: readonly ShadowBody[]): void {
-    this.count.value = Math.min(bodies.length, MAX_SHADOW_BODIES);
+    const used = bodies.slice(0, MAX_SHADOW_BODIES);
+    this.used = used;
+    this.count.value = used.length;
     for (const [i, axes] of this.axes.entries()) {
-      const body = bodies[i];
+      const body = used[i];
       // 空きスロットは半軸 0 で消す — 実効半径が 0 になり、透過率がそのまま素通しへ倒れる。
       axes.copy(body?.axes ?? ZERO_AXES);
       if (body === undefined) continue;
@@ -115,6 +119,9 @@ export class BodyShadow {
       this.bodyFromWorld[i]!.copy(body.bodyFromWorld);
     }
   }
+
+  // このフレームに宣言されて影を落としている天体(上限で切った後)。値は宣言した側の物で、次の set までに読む。
+  public get declaredBodies(): readonly ShadowBody[] { return this.used; }
 
   // このフレームに影を落とす天体が 1 体でもあるか。**スロットは先頭から詰めるので先頭だけ見れば足りる。**
   public casts(): boolean { return this.axes[0]!.lengthSq() > 0; }

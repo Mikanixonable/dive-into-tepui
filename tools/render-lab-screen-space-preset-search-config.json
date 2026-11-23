@@ -1,0 +1,363 @@
+{
+  "scenes": [
+    {
+      "name": "bay-two-planets",
+      "caseName": "bay",
+      "shotName": "bay-two-planets"
+    },
+    {
+      "name": "bay-earth-open",
+      "caseName": "bay",
+      "shotName": "bay-earth-open"
+    },
+    {
+      "name": "bay-dark",
+      "caseName": "bay",
+      "shotName": "bay-dark"
+    },
+    {
+      "name": "cornell-box",
+      "caseName": "cornell-box",
+      "shotName": "cornell-box"
+    },
+    {
+      "name": "angled-bounce",
+      "caseName": "angled-bounce",
+      "shotName": "angled-bounce"
+    }
+  ],
+  "configs": [
+    {
+      "name": "a8",
+      "base": null,
+      "check": true,
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a8-B6",
+      "base": "a8",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 6,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a8-B8",
+      "base": "a8",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 8,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a8-S2",
+      "base": "a8",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a8-S3",
+      "base": "a8",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 3,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a8-K3",
+      "base": "a8",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 3
+      }
+    },
+    {
+      "name": "a8-K4",
+      "base": "a8",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 4
+      }
+    },
+    {
+      "name": "a8-T4",
+      "base": "a8",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 4,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a8-T5",
+      "base": "a8",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 5,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a8-r4",
+      "base": "a8",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a8-D1",
+      "base": "a8",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 1,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a4",
+      "base": null,
+      "check": true,
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a4-B6",
+      "base": "a4",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 6,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a4-B8",
+      "base": "a4",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 8,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a4-S3",
+      "base": "a4",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 3,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a4-S4",
+      "base": "a4",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 4,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a4-K3",
+      "base": "a4",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 3
+      }
+    },
+    {
+      "name": "a4-K4",
+      "base": "a4",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 4
+      }
+    },
+    {
+      "name": "a4-T4",
+      "base": "a4",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 4,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a4-T5",
+      "base": "a4",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 5,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a4-r8",
+      "base": "a4",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.125,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 1,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    },
+    {
+      "name": "a4-D0",
+      "base": "a4",
+      "graphics": {
+        "screenSpaceOcclusion": true,
+        "screenSpaceIndirect": true,
+        "screenSpaceScanScale": 0.25,
+        "screenSpaceBandCount": 4,
+        "screenSpaceSliceCount": 2,
+        "screenSpaceStepCount": 3,
+        "screenSpaceDirectionalPlanetCount": 0,
+        "screenSpaceHistoryCap": 1,
+        "screenSpaceUpsampleTapCount": 2
+      }
+    }
+  ]
+}

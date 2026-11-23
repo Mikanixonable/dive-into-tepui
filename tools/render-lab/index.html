@@ -50,7 +50,13 @@
     border-radius: var(--radius-panel, 16px);
   }
   #views canvas { display: block; width: 960px; height: 540px; background: #000; }
+  #playback { margin-top: var(--space-4, 8px); }
   #error { color: var(--color-error, #ff8a5c); white-space: pre-wrap; }
+  #load-result { margin-top: var(--space-4, 8px); overflow-x: auto; font-variant-numeric: tabular-nums; }
+  #load-result table { width: 100%; border-collapse: collapse; }
+  #load-result th, #load-result td { padding: var(--space-2, 4px); }
+  #load-result th:first-child, #load-result td:first-child { text-align: left; }
+  #load-result th:not(:first-child), #load-result td:not(:first-child) { text-align: right; }
 </style>
 </head>
 <body>
@@ -63,6 +69,7 @@
       <div id="views">
         <figure><canvas id="view"></canvas></figure>
       </div>
+      <div class="row" id="playback"></div>
       <p id="error"></p>
     </div>
     <aside id="side">
@@ -75,8 +82,17 @@
         <div class="row" id="earth-angles"></div>
       </section>
       <section>
+        <h2>時間方向</h2>
+        <div class="row" id="temporal"></div>
+      </section>
+      <section>
         <h2>描画品質設定</h2>
         <div id="graphics"></div>
+      </section>
+      <section>
+        <h2>負荷</h2>
+        <div id="load-controls"></div>
+        <div id="load-result" aria-live="polite"></div>
       </section>
       <!-- 仮設: 積雲の飽和とディザの幅の追い込み用。生成側の場へ差し替えたあとまで残す。 -->
       <section>

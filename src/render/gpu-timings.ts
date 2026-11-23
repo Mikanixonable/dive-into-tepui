@@ -4,21 +4,36 @@ import { InspectorBase, TimestampQuery, type WebGPURenderer } from 'three/webgpu
 
 // パスの識別子。並びは描画フェーズでの実行順。
 export const GPU_PASS = {
-  shadowMap: 0,
-  gbuffer: 1,
-  shadow: 2,
-  lighting: 3,
-  material: 4,
-  atmosphere: 5,
-  world: 6,
-  lens: 7,
-  composite: 8,
-  overlay: 9,
-  antialias: 10,
-  cloudBake: 11,
-  cloudSurface: 12,
-  cloudAtmosphere: 13,
-  cloudShadow: 14,
+  cloudBake: 0,
+  shadowMap: 1,
+  nearbyDiffuseHistoryCopy: 2,
+  gbuffer: 3,
+  cloudSurface: 4,
+  shadow: 5,
+  cloudShadow: 6,
+  lighting: 7,
+  nearbyDiffuseScanSurface: 8,
+  nearbyDiffuseScan: 9,
+  nearbyDiffuseInputPyramid: 10,
+  nearbyDiffuseBandReduce: 11,
+  nearbyDiffuseMerge: 12,
+  nearbyDiffuseDenoise: 13,
+  nearbyDiffuseUpsample: 14,
+  nearbyDiffuseAccumulation: 15,
+  nearbyDiffuseAverage: 16,
+  reflectionSource: 17,
+  reflection: 18,
+  reflectionReduction: 19,
+  reflectionMerge: 20,
+  reflectionDenoise: 21,
+  material: 22,
+  atmosphere: 23,
+  cloudAtmosphere: 24,
+  world: 25,
+  lens: 26,
+  composite: 27,
+  overlay: 28,
+  antialias: 29,
 } as const;
 
 export type GpuPassId = (typeof GPU_PASS)[keyof typeof GPU_PASS];
@@ -29,8 +44,11 @@ export interface GpuTimingSink {
 
 // 表示名。並びは GPU_PASS の値の順。
 export const GPU_PASS_LABELS: readonly string[] = [
-  '影マップ', 'Gバッファ', '影', 'ライティング', 'マテリアル', '大気', 'ワールド', 'レンズ', '合成',
-  '3D UI', 'アンチエイリアス', '雲の生成', '表面雲', '大気(雲あり)', '雲影',
+  '雲の生成', '影マップ', '近傍拡散履歴写し', 'Gバッファ', '表面雲', '影', '雲影',
+  'ライティング', '近傍拡散写しと源', '近傍拡散走査', '近傍拡散代表縮小', '近傍拡散帯縮小', '近傍拡散合流',
+  '近傍拡散 joint-bilateral 均し', '近傍拡散拡大', '近傍拡散蓄積', '近傍拡散パス平均',
+  '映り込みの像の元', '映り込み', '映り込みの縮小', '映り込みの合流', '映り込みの均し', 'マテリアル', '大気', '大気(雲あり)', 'ワールド', 'レンズ', '合成',
+  '3D UI', 'アンチエイリアス',
 ];
 
 export const GPU_PASS_COUNT = GPU_PASS_LABELS.length;

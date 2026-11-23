@@ -10,7 +10,7 @@ import { BodyShadow } from '../../src/render/pipeline/shadow/body-shadow';
 import { CameraView } from '../../src/render/camera/camera-view';
 import { kinematicState } from '../../src/physics/kinematic-state';
 import { v3, type Vec3 } from '../../src/math/vec3';
-import { DEFAULT_GRAPHICS, withGraphicsOption } from '../../src/render/graphics-settings';
+import { DEFAULT_GRAPHICS } from '../../src/render/graphics-selection';
 import type { AtmosphereBody, AtmosphereDraw } from '../../src/render/atmosphere';
 import type { PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
 import type { ShadowCloud } from '../../src/render/pipeline/shadow/cloud-shadow-renderer';
@@ -253,7 +253,7 @@ export function register(): void {
     // 積雲がオフでも巻雲が描かれていれば源は残り、有無は kinds が伝える。
     illumination.sync(
       sources, 0, camera,
-      withGraphicsOption(DEFAULT_GRAPHICS, 'cumulus', false), null, v3(1, 0, 0));
+      { ...DEFAULT_GRAPHICS, cumulus: false }, null, v3(1, 0, 0));
     assert.ok(targets.cloudCasters[0] !== null, '巻雲だけの空で影の源が切られた');
     const kinds = targets.cloudKinds[0]!;
     assert.deepEqual({ cumulus: kinds.cumulus, cirrus: kinds.cirrus }, { cumulus: false, cirrus: true }, '種類ごとの有無が違う');
@@ -261,7 +261,7 @@ export function register(): void {
     // 「雲の影」を切れば、源があっても書き込まれない。
     illumination.sync(
       sources, 0, camera,
-      withGraphicsOption(DEFAULT_GRAPHICS, 'cloudShadow', false), null, v3(1, 0, 0));
+      { ...DEFAULT_GRAPHICS, cloudShadow: false }, null, v3(1, 0, 0));
     assert.equal(targets.cloudCasters[1], null, '雲の影オフで影の源が置かれた');
   });
 
@@ -278,7 +278,7 @@ export function register(): void {
       source(body('observed', 6e6, position), observationView),
       source(body('other', 1e6, v3()), plainView()),
     ];
-    const on = withGraphicsOption(DEFAULT_GRAPHICS, 'nightObservation', true);
+    const on = { ...DEFAULT_GRAPHICS, nightObservation: true };
 
     illumination.sync(sources, 0, camera, on, null, v3(1, 0, 0));
 
