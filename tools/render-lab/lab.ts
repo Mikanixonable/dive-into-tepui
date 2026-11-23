@@ -6,6 +6,7 @@ import { texture, vec2, vec4 } from 'three/tsl';
 import { distinctTextureNode } from '../../src/render/distinct-texture-node';
 import { GPU_PASS_COUNT, GPU_PASS_LABELS, GpuTimings } from '../../src/render/gpu-timings';
 import { RenderPipeline } from '../../src/render/pipeline/render-pipeline';
+import { limitShaderVariableBudget } from '../../src/render/pipeline/wgsl-variable-budget';
 import { R_SUN, SUN_LIGHT_COLOR } from '../../src/game/celestial/solar-system/sun';
 import { farClip } from '../../src/render/camera/camera-view';
 import { planetRadiance, type PlanetLightValue } from '../../src/render/pipeline/lighting/planet-light-source';
@@ -194,6 +195,7 @@ export class LabView {
     renderer.setTransparentSort(reversedTransparentSort);
     renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT);
     await renderer.init();
+    limitShaderVariableBudget(renderer);
     const gpu = new GpuTimings(renderer);
     gpu.enabled = true;
     const pipeline = new RenderPipeline(renderer, graphics.current, gpu);

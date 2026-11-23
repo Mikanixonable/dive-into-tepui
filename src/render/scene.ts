@@ -7,6 +7,7 @@ import { RenderPipeline } from './pipeline/render-pipeline';
 import { GpuTimings } from './gpu-timings';
 import { effectivePixelRatio } from './viewport';
 import { renderBackendKindOf, type RenderBackendKind } from './render-backend';
+import { limitShaderVariableBudget } from './pipeline/wgsl-variable-budget';
 import type { DebugTargetId } from './pipeline/debug-target';
 import type { Viewport } from './viewport';
 
@@ -68,6 +69,7 @@ export async function createGameScene(
     // ときだけである(片方の失敗は three がもう片方で吸収する)。基盤が無い失敗として包む。
     throw new RenderBackendUnavailableError(error);
   }
+  limitShaderVariableBudget(renderer);
   // 初期化を終えた時点で renderer.backend は実際に選ばれた側を指す。識別フラグは公開型に
   // 出ていないので、gpu-timings と同じく狭い形で読む。
   const backendFlags = renderer.backend as unknown as {

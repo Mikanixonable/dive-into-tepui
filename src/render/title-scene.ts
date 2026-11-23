@@ -2,6 +2,7 @@
 // カプセルといった有機的な形を光沢プラスチックで多数配置し、ゆっくり漂わせる。
 import * as THREE from 'three/webgpu';
 import type { ThemePalette } from '../theme';
+import { limitShaderVariableBudget } from './pipeline/wgsl-variable-budget';
 
 // 背景の図案。図案ごとに物体の並べ方と形の組み合わせが変わる。
 export const TITLE_SCENE_PATTERNS = ['mosaic', 'helix', 'orbital', 'lattice'] as const;
@@ -337,6 +338,7 @@ export class TitleScene {
     const renderer = new THREE.WebGPURenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     await renderer.init();
+    limitShaderVariableBudget(renderer);
     return new TitleScene(renderer, canvas, pointerTarget, pattern, seed, palette);
   }
 
