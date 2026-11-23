@@ -137,6 +137,8 @@ module.exports = (env, argv) => ({
     ],
     // 全インターフェースで待ち受け、tailnet 上の端末から IP で開けるようにする。
     host: '0.0.0.0',
+    // tailnet の名前(*.ts.net)からの接続を許可する。
+    allowedHosts: ['localhost', '.ts.net'],
     port: 'auto',
     open: true,
     liveReload: false,
