@@ -669,7 +669,7 @@ export class GamePresentation {
       scene.scene,
       this.cameraFrame.camera,
       style,
-      (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`),
+      (name, done, total) => progress.within(done / total, `シェーダを準備中: ${name}`, { done, total }),
     );
     await precompileCumulusDetails(
       this.game.celestialSystem.cloudPresentations(),

@@ -13,12 +13,18 @@ const LOADING_PHASE_WEIGHTS: Readonly<Record<LoadingPhase, number>> = {
   shaders: 0.975,
 };
 
+// 数えられる作業の進み具合。終えた数と全体の数。
+export interface LoadingStep {
+  readonly done: number;
+  readonly total: number;
+}
+
 export class LoadingProgress {
   // ここまでに終えた段の重みの合計。
   private completed = 0;
   private currentWeight = 0;
 
-  public constructor(private readonly report: (ratio: number, note?: string) => void) {}
+  public constructor(private readonly report: (ratio: number, note?: string, step?: LoadingStep) => void) {}
 
   // 直前の段までを完了として報告し、ブラウザへ描画を1回明け渡してから phase へ入る。
   // requestAnimationFrame のコールバックは描画の**前**に走るので、そこで解決すると
@@ -33,8 +39,8 @@ export class LoadingProgress {
     });
   }
 
-  // 現在フェーズ内の進捗値 [0, 1] を更新する。
-  public within(ratio: number, note?: string): void {
-    this.report(this.completed + this.currentWeight * Math.min(1, Math.max(0, ratio)), note);
+  // 現在フェーズ内の進捗値 [0, 1] を更新する。数えられる作業なら step に終えた数と全体の数を渡す。
+  public within(ratio: number, note?: string, step?: LoadingStep): void {
+    this.report(this.completed + this.currentWeight * Math.min(1, Math.max(0, ratio)), note, step);
   }
 }
