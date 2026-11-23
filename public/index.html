@@ -7,6 +7,12 @@
   <style>
     html, body { margin: 0; padding: 0; overflow: hidden; background: #000; overscroll-behavior: none; }
     canvas { display: block; touch-action: none; }
+    /* タッチ端末の長押しで、OS の文字選択・コールアウトがページのどこでも起きないようにする。
+       入力欄は編集に必要なので選べるままにする。 */
+    @media (pointer: coarse) {
+      html, body { user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+      input, textarea { user-select: text; -webkit-user-select: text; }
+    }
   </style>
 </head>
 <body>
