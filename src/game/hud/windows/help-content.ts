@@ -126,7 +126,7 @@ export function helpRows(coarse: boolean): readonly HelpRow[] {
     dualRow(coarse, 'map', [K.toggleMapMode], '計画ボタン', 'ビュー切替', '戦闘ビューとマップビューを切り替える。時間は進み続けるのでワープも使える。'),
     dualRow(
       coarse, 'map',
-      [K.autoWarpToNode], 'ノードへボタン', 'ノードまで自動ワープ',
+      [K.autoWarpToNode], 'ノードボタン', 'ノードまで自動ワープ',
       'マップビューで、直近のマニューバノードまで時間を自動加速し、実行点の直前で解除する。',
     ),
     dualRow(

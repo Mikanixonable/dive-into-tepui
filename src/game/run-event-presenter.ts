@@ -142,7 +142,7 @@ export class RunEventPresenter {
         return;
       }
       case 'autoWarpStarted':
-        this.notifier.hint('ノードへ自動ワープ開始', undefined, 'nav');
+        this.notifier.hint('ノード自動ワープ開始', undefined, 'nav');
         return;
       case 'autoWarpCancelled':
         this.notifier.hint('自動ワープ解除', undefined, 'nav');

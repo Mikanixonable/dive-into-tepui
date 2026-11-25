@@ -336,7 +336,7 @@ export class TouchControls {
       { key: K.warpSlower, glyph: '«', label: '減速' },
       { key: K.warpFaster, glyph: '»', label: '加速' },
       { key: K.toggleMapMode, glyph: K.toggleMapMode.label, label: '計画' },
-      { key: K.autoWarpToNode, glyph: K.autoWarpToNode.label, label: 'ノードへ' },
+      { key: K.autoWarpToNode, glyph: K.autoWarpToNode.label, label: 'ノード' },
       { key: K.help, glyph: K.help.label, label: 'ヘルプ' },
     ]) {
       this.makeButton(util, b);
